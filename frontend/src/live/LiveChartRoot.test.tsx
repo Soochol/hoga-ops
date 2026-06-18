@@ -1696,6 +1696,7 @@ describe('LiveChartRoot crosshair → cursor store (ADR-0044)', () => {
   });
 
   it('crosshair move → setCursor; crosshair leave → restore last hover cursor', async () => {
+    const onCursorActiveChange = vi.fn();
     render(
       <LiveChartRoot
         code="005930"
@@ -1703,6 +1704,7 @@ describe('LiveChartRoot crosshair → cursor store (ADR-0044)', () => {
         bundle={DEFAULT_BUNDLE}
         clampEngaged={false}
         isPastCandlesLoading={false}
+        onCursorActiveChange={onCursorActiveChange}
       />,
       { wrapper },
     );
@@ -1723,9 +1725,11 @@ describe('LiveChartRoot crosshair → cursor store (ADR-0044)', () => {
     // rAF coalescing — flush one frame.
     await act(() => new Promise((r) => requestAnimationFrame(() => r(null))));
     expect(useLiveCursorStore.getState().cursorMs).toBe(SESSION_OPEN);
+    expect(onCursorActiveChange).toHaveBeenLastCalledWith(true);
 
     act(() => fire({ time: undefined, point: null }));
     expect(useLiveCursorStore.getState().cursorMs).toBe(SESSION_OPEN);
+    expect(onCursorActiveChange).toHaveBeenLastCalledWith(false);
   });
 
   it('crosshair into the right-offset whitespace (numeric time past the last candle) → keep last hover cursor', async () => {

@@ -37,6 +37,8 @@ export function StudyViewsDrawer() {
     () => data?.saves.find((row) => row.id === currentStudyViewId),
     [currentStudyViewId, data?.saves],
   );
+  const dialogMutation = dialog?.mode === 'overwrite' ? mutations.update : mutations.create;
+  const dialogError = dialogMutation?.error instanceof Error ? dialogMutation.error.message : null;
   const studySource = saveSource?.origin === 'study' ? saveSource : null;
   const overwriteStudyViewId = location.pathname === '/study' ? studySource?.viewId ?? currentStudyViewId ?? undefined : undefined;
   const canSaveStudy = location.pathname === '/study' && !!studySource;
@@ -174,6 +176,8 @@ export function StudyViewsDrawer() {
           defaultMemo={dialog.request.memo ?? ''}
           barCount={dialog.request.snapshot.bundle.candles.length}
           sizeBytes={studySnapshotByteSize(dialog.request.snapshot)}
+          isSubmitting={dialogMutation.isPending}
+          errorMessage={dialogError}
           onCancel={() => setDialog(null)}
           onSubmit={handleDialogSubmit}
         />

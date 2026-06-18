@@ -36,6 +36,13 @@ class BrokerRow:
     qty_delta: int
 
 
+@dataclass(frozen=True)
+class BrokerDetailRow:
+    broker: str
+    net: int
+    dominant_side: BrokerSide
+
+
 # === TSV parser (one row -> 10 entities) ===
 
 
@@ -137,7 +144,32 @@ def query_day_series(
     for gaps when the broker fell out of both top-5 lists (the frontend
     renders such gaps with a dashed line; see ADR-0023).
     """
-    from hoga.api.models import BrokerSeriesEntry, BrokerSeriesPoint  # local: avoid cycle
+    from hoga.api.models import BrokerSeriesEntry  # local: avoid cycle
+
+    by_broker = _query_canonical_series_points(con, path=path)
+    if not by_broker:
+        return []
+
+    entries = [
+        BrokerSeriesEntry(
+            broker=broker,
+            final_net=points[-1].net,
+            dominant_side="buy" if points[-1].net >= 0 else "sell",
+            points=points,
+        )
+        for broker, points in by_broker.items()
+    ]
+    entries.sort(key=lambda e: (-abs(e.final_net), -e.final_net))
+    return entries[:10]
+
+
+def _query_canonical_series_points(
+    con: duckdb.DuckDBPyConnection,
+    *,
+    path: Path,
+) -> dict[str, list["BrokerSeriesPoint"]]:
+    """Return live broker-series points after canonical alias collapse."""
+    from hoga.api.models import BrokerSeriesPoint  # local: avoid cycle
     from hoga.broker_names import canonical
 
     rows = con.execute(
@@ -153,9 +185,6 @@ def query_day_series(
         [str(path)],
     ).fetchall()
 
-    if not rows:
-        return []
-
     # Canonicalize broker names then re-collapse: two raw aliases for the
     # same firm at the same ts_ms must sum into one signed point.
     collapsed: dict[tuple[str, int], int] = {}
@@ -168,15 +197,88 @@ def query_day_series(
         by_broker.setdefault(broker, []).append(
             BrokerSeriesPoint(ts_ms=ts_ms, net=net)
         )
+    return by_broker
 
-    entries = [
-        BrokerSeriesEntry(
-            broker=broker,
-            final_net=points[-1].net,
-            dominant_side="buy" if points[-1].net >= 0 else "sell",
-            points=points,
+
+def _final_broker_order(
+    con: duckdb.DuckDBPyConnection,
+    *,
+    path: Path,
+    limit: int,
+) -> list[str]:
+    """Return top broker names ordered by the same final net as live series."""
+    by_broker = _query_canonical_series_points(con, path=path)
+
+    ordered = sorted(
+        by_broker.items(),
+        key=lambda item: (-abs(item[1][-1].net), -item[1][-1].net),
+    )
+    return [broker for broker, _points in ordered[:limit]]
+
+
+def query_cumulative_details_at(
+    con: duckdb.DuckDBPyConnection,
+    *,
+    path: Path,
+    t_values: list[int],
+    limit: int = 10,
+) -> dict[int, list[BrokerDetailRow]]:
+    """Top broker cumulative net at each native cursor timestamp.
+
+    The result mirrors Cursor Sidebar ordering: select and order brokers by
+    final full-file net, then project each ordered broker's net at the cursor.
+    """
+    from hoga.broker_names import canonical
+
+    if not t_values:
+        return {}
+    uniq = sorted({int(t) for t in t_values})
+    final_order = _final_broker_order(con, path=path, limit=limit)
+    final_rank = {broker: idx for idx, broker in enumerate(final_order)}
+    if not final_order:
+        return {t: [] for t in uniq}
+
+    rows = con.execute(
+        """
+        SELECT
+            t.cursor_ts,
+            p.broker,
+            p.ts_ms,
+            p.seq,
+            SUM(CASE WHEN p.side = 'buy' THEN p.qty_today ELSE -p.qty_today END) AS net
+        FROM (SELECT UNNEST(?::BIGINT[]) AS cursor_ts) AS t
+        JOIN read_parquet(?) AS p
+          ON p.ts_ms <= t.cursor_ts
+        GROUP BY t.cursor_ts, p.broker, p.ts_ms, p.seq
+        ORDER BY t.cursor_ts, p.broker, p.ts_ms, p.seq
+        """,
+        [uniq, str(path)],
+    ).fetchall()
+
+    collapsed: dict[tuple[int, str, int, int], int] = {}
+    for cursor_ts, raw_broker, ts_ms, seq, net in rows:
+        key = (int(cursor_ts), canonical(raw_broker), int(ts_ms), int(seq))
+        collapsed[key] = collapsed.get(key, 0) + int(net)
+
+    latest: dict[tuple[int, str], tuple[int, int, int]] = {}
+    for (cursor_ts, broker, ts_ms, seq), net in collapsed.items():
+        key = (cursor_ts, broker)
+        prev = latest.get(key)
+        if prev is None or (ts_ms, seq) >= prev[:2]:
+            latest[key] = (ts_ms, seq, net)
+
+    grouped: dict[int, list[BrokerDetailRow]] = {t: [] for t in uniq}
+    for (cursor_ts, broker), (_ts_ms, _seq, net) in latest.items():
+        if broker not in final_rank:
+            continue
+        grouped[cursor_ts].append(
+            BrokerDetailRow(
+                broker=broker,
+                net=net,
+                dominant_side="buy" if net >= 0 else "sell",
+            )
         )
-        for broker, points in by_broker.items()
-    ]
-    entries.sort(key=lambda e: (-abs(e.final_net), -e.final_net))
-    return entries[:10]
+    for cursor_ts, details in grouped.items():
+        details.sort(key=lambda r: final_rank[r.broker])
+        grouped[cursor_ts] = details
+    return grouped

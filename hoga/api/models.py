@@ -1079,6 +1079,7 @@ class StudySegment(BaseModel):
     date: str
     session_open_ms: int
     session_close_ms: int
+    source: SourceName = "hogaplay"
 
 
 class StudyCandlePoint(BaseModel):
@@ -1148,6 +1149,44 @@ class StudyFillStrengthPoint(BaseModel):
         return self
 
 
+class StudyOrderbookBucket(BaseModel):
+    t: int
+    snapshot: ApiOrderbookSnapshot | None = None
+    available: bool
+
+    @model_validator(mode="after")
+    def _available_has_snapshot(self):
+        if self.available and self.snapshot is None:
+            raise ValueError("available orderbook buckets require snapshot")
+        return self
+
+
+class StudyBrokerDetail(BaseModel):
+    broker: str
+    net: int
+    dominant_side: Literal["buy", "sell"]
+
+
+class StudyBrokerBucket(BaseModel):
+    t: int
+    brokers: list[StudyBrokerDetail]
+    available: bool
+
+    @model_validator(mode="after")
+    def _available_has_brokers(self):
+        if self.available and not self.brokers:
+            raise ValueError("available broker buckets require brokers")
+        return self
+
+
+class StudyDetailWarning(BaseModel):
+    kind: Literal["orderbook", "broker"]
+    t: int | None = None
+    code: str = Field(pattern=CODE_PATTERN)
+    date: str | None = None
+    message: str
+
+
 class StudySnapshotBundle(BaseModel):
     code: str = Field(pattern=CODE_PATTERN)
     timeframe: LiveTimeframeModel
@@ -1160,6 +1199,9 @@ class StudySnapshotBundle(BaseModel):
     fill_strength: list[StudyFillStrengthPoint]
     ask_peaks: list[AskPeak] = Field(default_factory=list)
     data_warnings: list[str] = Field(default_factory=list)
+    orderbook_buckets: list[StudyOrderbookBucket] = Field(default_factory=list)
+    broker_buckets: list[StudyBrokerBucket] = Field(default_factory=list)
+    detail_warnings: list[StudyDetailWarning] = Field(default_factory=list)
 
     @model_validator(mode="after")
     def _validate_bundle(self):
@@ -1170,11 +1212,20 @@ class StudySnapshotBundle(BaseModel):
             ts = [p.t for p in points]
             if ts != sorted(ts):
                 raise ValueError(f"{name} must be sorted by t")
+        candle_ts = [p.t for p in self.candles]
+        for name in ("orderbook_buckets", "broker_buckets"):
+            detail = getattr(self, name)
+            if not detail:
+                continue
+            detail_ts = [p.t for p in detail]
+            if detail_ts != candle_ts:
+                raise ValueError(f"{name} must align with candles by t")
         return self
 
 
 class ParquetStudySnapshot(BaseModel):
     schema_version: Literal[1] = 1
+    source_policy: Literal["fixed"] = "fixed"
     code: str = Field(pattern=CODE_PATTERN)
     label: str
     timeframe: LiveTimeframeModel

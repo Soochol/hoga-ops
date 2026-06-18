@@ -3,6 +3,19 @@
 All notable changes to this project are documented here.
 The format follows a 4-digit `MAJOR.MINOR.PATCH.MICRO` scheme.
 
+## [0.8.9.0] - 2026-06-18
+
+### Added
+- **저장 학습뷰 10호가·거래원 상세 보기**: 저장한 현재뷰를 열면 선택한 봉의 10호가와 거래원 데이터를
+  parquet 기준으로 함께 확인할 수 있다.
+- 저장 학습뷰 거래원 영역에서 live page와 같은 거래원 그래프와 순매수 수치를 볼 수 있고,
+  마우스로 가리킨 날짜 구간 안에서 처음 등장한 순서대로 거래원을 고정해 보여준다.
+
+### Fixed
+- 현재뷰 저장 팝업에서 저장 요청 중 버튼 상태와 오류 메시지를 표시해 중복 제출과 무응답처럼 보이는 상태를 막았다.
+- 10호가 대표 스냅샷 테스트 fixture를 연속거래 10호가 계약에 맞춰 보정해 저장 학습뷰 상세 조회와
+  기존 `/api/orderbook` bucket 조회 테스트가 같은 기준을 검증하도록 했다.
+
 ## [0.8.8.2] - 2026-06-18
 
 ### Fixed

@@ -241,6 +241,36 @@ def _row_to_api_snapshot(row: tuple) -> ApiOrderbookSnapshot:
     )
 
 
+_REPRESENTATIVE_ORDER_SQL: str = "ts_ms DESC, seq DESC"
+
+
+def _hhmmssms_to_intra_ms(ts_ms: int) -> int:
+    return (
+        (ts_ms // 10_000_000) * 3_600_000
+        + ((ts_ms // 100_000) % 100) * 60_000
+        + ((ts_ms // 1_000) % 100) * 1_000
+        + (ts_ms % 1_000)
+    )
+
+
+def _is_continuous_snapshot(
+    snapshot: ApiOrderbookSnapshot,
+    *,
+    last_continuous_ms: int | None,
+) -> bool:
+    if last_continuous_ms is not None and _hhmmssms_to_intra_ms(snapshot.ts_ms) > last_continuous_ms:
+        return False
+    ask_deep = sum(level.qty for level in snapshot.ask[_AUCTION_BOOK_DEPTH:])
+    bid_deep = sum(level.qty for level in snapshot.bid[_AUCTION_BOOK_DEPTH:])
+    return ask_deep > 0 and bid_deep > 0
+
+
+def _continuous_representative_pred_sql(*, intra_ms_expr: str, last_continuous_ms: int | None) -> str:
+    if last_continuous_ms is None:
+        return _DEEP_BOOK_SQL
+    return f"({_DEEP_BOOK_SQL} AND ({intra_ms_expr} <= {last_continuous_ms}))"
+
+
 def query_at(
     con: duckdb.DuckDBPyConnection, *, path: Path, t_ms: int
 ) -> ApiOrderbookSnapshot | None:
@@ -259,6 +289,26 @@ def query_time_bounds(con: duckdb.DuckDBPyConnection, *, path: Path) -> tuple[in
     if row is None or row[0] is None:
         return None
     return int(row[0]), int(row[1])
+
+
+def _last_continuous_intra_ms(
+    con: duckdb.DuckDBPyConnection,
+    *,
+    path: Path,
+    session_close_ms: int | None,
+) -> int | None:
+    if session_close_ms is None:
+        return None
+    intra_ms_expr = hhmmssms_to_intra_ms_sql("ts_ms")
+    close_intra_sql = hhmmssms_to_intra_ms_sql(str(int(session_close_ms)))
+    row = con.execute(
+        f"SELECT max({intra_ms_expr}) FROM read_parquet(?) "
+        f"WHERE {_DEEP_BOOK_SQL} AND {intra_ms_expr} <= {close_intra_sql}",
+        [str(path)],
+    ).fetchone()
+    if row is None or row[0] is None:
+        return None
+    return int(row[0])
 
 
 def query_first_ts(con: duckdb.DuckDBPyConnection, *, path: Path) -> int | None:
@@ -511,42 +561,82 @@ def query_bucket_representative(
     window ``[lo_native, hi_native]`` (HHMMSSmmm, inclusive).
 
     The representative is the last *continuous-trading* book (depth beyond level
-    3) at/before the session close, falling back to the last snapshot in the
-    window when it is fully auction. This mirrors :func:`query_bucketed_ratio`'s
-    representative selection so the sidebar 10호가 (orderbook) spot view shows the
-    SAME snapshot the 호가비·총잔량 indicator labels at a closing Auction Window
-    straddle bucket — i.e. the closing-auction 3-level book is excluded from the
-    spot view, consistent with the indicator (ADR-0062). Without this the
-    `/orderbook` endpoint's `t + bucket_ms` cutoff returns the 15:20+ auction
-    book while the indicator shows the last pre-auction continuous book.
+    3) at/before the session close. Shallow pre-threshold books are not
+    eligible continuous representatives, and buckets with no qualifying
+    continuous row return ``None``. This keeps the sidebar 10호가 spot view on
+    the same continuous-only contract as saved views.
 
-    ``session_close_ms`` None → legacy last-in-window (no structural exclusion).
-    Returns None when no snapshot falls in the window.
+    ``session_close_ms`` None disables only the time threshold; the continuous
+    depth requirement still applies. Returns None when no qualifying continuous
+    snapshot falls in the window.
     """
     intra_ms_expr = hhmmssms_to_intra_ms_sql("ts_ms")
-    if session_close_ms is None:
-        pre_auction_pred = "TRUE"
-    else:
-        deep_book_sql = _DEEP_BOOK_SQL  # SSOT — same predicate as query_day_ask_peak & client isContinuousBook
-        close_intra_sql = hhmmssms_to_intra_ms_sql(str(int(session_close_ms)))
-        thr = con.execute(
-            f"SELECT max({intra_ms_expr}) FROM read_parquet(?) "
-            f"WHERE {deep_book_sql} AND {intra_ms_expr} <= {close_intra_sql}",
-            [str(path)],
-        ).fetchone()
-        last_continuous_ms = int(thr[0]) if thr is not None and thr[0] is not None else None
-        pre_auction_pred = (
-            f"({intra_ms_expr} <= {last_continuous_ms})"
-            if last_continuous_ms is not None
-            else "TRUE"
-        )
+    last_continuous_ms = _last_continuous_intra_ms(
+        con, path=path, session_close_ms=session_close_ms
+    )
+    continuous_pred = _continuous_representative_pred_sql(
+        intra_ms_expr=intra_ms_expr,
+        last_continuous_ms=last_continuous_ms,
+    )
+    where_parts = ["ts_ms >= ?", "ts_ms <= ?", continuous_pred]
     row = con.execute(
         f"SELECT {_SELECT} FROM read_parquet(?) "
-        f"WHERE ts_ms >= ? AND ts_ms <= ? "
-        f"ORDER BY ({pre_auction_pred}) DESC, ts_ms DESC LIMIT 1",
+        f"WHERE {' AND '.join(where_parts)} "
+        f"ORDER BY {_REPRESENTATIVE_ORDER_SQL} LIMIT 1",
         [str(path), lo_native, hi_native],
     ).fetchone()
     return _row_to_api_snapshot(row) if row is not None else None
+
+
+def query_bucket_representatives(
+    con: duckdb.DuckDBPyConnection,
+    *,
+    path: Path,
+    buckets: list[tuple[int, int]],
+    session_close_ms: int | None = None,
+) -> dict[int, ApiOrderbookSnapshot]:
+    """Return bucket representatives keyed by ``lo_native``.
+
+    Matches :func:`query_bucket_representative` bucket-by-bucket:
+    when ``session_close_ms`` is set, keep only the last deep continuous
+    snapshot inside the window and omit buckets with no qualifying continuous
+    row. When ``session_close_ms`` is None, only the close-time threshold is
+    disabled; shallow or auction rows still never qualify.
+    """
+    if not buckets:
+        return {}
+    last_continuous_ms = _last_continuous_intra_ms(
+        con, path=path, session_close_ms=session_close_ms
+    )
+    min_lo = min(lo for lo, _hi in buckets)
+    max_hi = max(hi for _lo, hi in buckets)
+    rows = con.execute(
+        f"""
+        SELECT {_SELECT}
+        FROM read_parquet(?)
+        WHERE ts_ms BETWEEN ? AND ?
+        ORDER BY ts_ms ASC, seq ASC
+        """,
+        [str(path), min_lo, max_hi],
+    ).fetchall()
+
+    candidates = [_row_to_api_snapshot(row) for row in rows]
+    out: dict[int, ApiOrderbookSnapshot] = {}
+    for lo_native, hi_native in buckets:
+        window = [snap for snap in candidates if lo_native <= snap.ts_ms <= hi_native]
+        if not window:
+            continue
+        eligible = [
+            snap
+            for snap in window
+            if _is_continuous_snapshot(
+                snap,
+                last_continuous_ms=last_continuous_ms,
+            )
+        ]
+        if eligible:
+            out[int(lo_native)] = eligible[-1]
+    return out
 
 
 def query_day_ask_peak(

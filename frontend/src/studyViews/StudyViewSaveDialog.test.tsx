@@ -40,3 +40,22 @@ it('requires confirmation wording for overwrite mode', () => {
   expect(screen.getByRole('heading', { name: '덮어쓰기' })).toBeTruthy();
   expect(screen.getByText(/기존 저장뷰를 현재 차트 스냅샷/)).toBeTruthy();
 });
+
+it('shows save progress and backend errors', () => {
+  render(
+    <StudyViewSaveDialog
+      mode="create"
+      defaultName="삼성전자 5분봉 2026.06.16"
+      defaultMemo=""
+      barCount={220}
+      sizeBytes={12000}
+      isSubmitting
+      errorMessage="저장 요청이 실패했습니다."
+      onCancel={() => {}}
+      onSubmit={() => {}}
+    />,
+  );
+
+  expect(screen.getByRole('button', { name: '저장 중...' })).toBeDisabled();
+  expect(screen.getByText('저장 요청이 실패했습니다.')).toBeTruthy();
+});

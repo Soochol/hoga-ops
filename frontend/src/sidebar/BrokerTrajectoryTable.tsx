@@ -11,9 +11,10 @@ export const GAP_THRESHOLD_MS = 30_000;
 type Props = {
   series: BrokerSeriesEntry[] | null | undefined;
   cursorMs: number | null;
+  gapThresholdMs?: number;
 };
 
-export default function BrokerTrajectoryTable({ series, cursorMs }: Props) {
+export default function BrokerTrajectoryTable({ series, cursorMs, gapThresholdMs = GAP_THRESHOLD_MS }: Props) {
   // Common time domain across all displayed brokers — keeps cursor marker
   // X positions aligned across rows.
   const dayRange = useMemo(() => {
@@ -60,7 +61,7 @@ export default function BrokerTrajectoryTable({ series, cursorMs }: Props) {
             <span className="truncate" title={entry.broker}>
               {brokerDisplayShort(entry.broker)}
             </span>
-            <Sparkline entry={entry} cursorMs={cursorMs} dayRange={dayRange} />
+            <Sparkline entry={entry} cursorMs={cursorMs} dayRange={dayRange} gapThresholdMs={gapThresholdMs} />
             <span
               className={
                 net > 0
@@ -108,10 +109,12 @@ function Sparkline({
   entry,
   cursorMs,
   dayRange,
+  gapThresholdMs,
 }: {
   entry: BrokerSeriesEntry;
   cursorMs: number | null;
   dayRange: { first: number; last: number } | null;
+  gapThresholdMs: number;
 }) {
   // Width/height in viewBox units — preserveAspectRatio="none" lets CSS scale.
   const W = 60;
@@ -146,7 +149,7 @@ function Sparkline({
   // GAP_THRESHOLD_MS. We emit one <polyline> per contiguous run, with
   // dashed runs styled differently. A "run" is a sequence of consecutive
   // points joined by gaps <= threshold.
-  const segments = buildSegments(pts, GAP_THRESHOLD_MS);
+  const segments = buildSegments(pts, gapThresholdMs);
 
   // Cursor marker: only visible when cursorMs is inside the day's range.
   const showCursor =

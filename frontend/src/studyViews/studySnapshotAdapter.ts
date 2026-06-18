@@ -1,5 +1,10 @@
-import type { RangeBundle, VolumeProfile } from '../api/types';
-import type { StudySnapshotBundle } from '../api/studyViews';
+import type { BrokerSeriesEntry, BrokerSeriesPoint, RangeBundle, VolumeProfile } from '../api/types';
+import type {
+  StudyBrokerBucket,
+  StudyDetailWarning,
+  StudyOrderbookBucket,
+  StudySnapshotBundle,
+} from '../api/studyViews';
 import { bucketSeconds } from '../state/livePage';
 
 export type StudySnapshotRatioPoint = { t: number; value: number };
@@ -19,6 +24,12 @@ export type StudySnapshotChartInput = {
   ratioBundle: RangeBundle;
 };
 
+export type StudySnapshotDetailInput = {
+  orderbookByBucketStart: Map<number, StudyOrderbookBucket>;
+  brokersByBucketStart: Map<number, StudyBrokerBucket>;
+  detailWarnings: StudyDetailWarning[];
+};
+
 const EMPTY_VOLUME_PROFILE: VolumeProfile = {
   bin_count: 0,
   price_min: 0,
@@ -29,6 +40,66 @@ const EMPTY_VOLUME_PROFILE: VolumeProfile = {
 
 function bucketMsFor(snapshot: StudySnapshotBundle): number {
   return (bucketSeconds(snapshot.timeframe) ?? 60) * 1000;
+}
+
+export function studySnapshotDetails(snapshot: StudySnapshotBundle): StudySnapshotDetailInput {
+  return {
+    orderbookByBucketStart: new Map((snapshot.orderbook_buckets ?? []).map((bucket) => [bucket.t, bucket])),
+    brokersByBucketStart: new Map((snapshot.broker_buckets ?? []).map((bucket) => [bucket.t, bucket])),
+    detailWarnings: snapshot.detail_warnings ?? [],
+  };
+}
+
+export function studyBrokerBucketsToSeries(
+  brokersByBucketStart: Map<number, StudyBrokerBucket>,
+  range?: { fromMs: number; toMs: number } | null,
+): BrokerSeriesEntry[] {
+  const byBroker = new Map<string, BrokerSeriesPoint[]>();
+  const buckets = [...brokersByBucketStart.values()].sort((a, b) => a.t - b.t);
+  const firstSeenRank = new Map<string, number>();
+
+  for (const bucket of buckets) {
+    if (!bucket.available) continue;
+    for (const broker of bucket.brokers) {
+      if (!firstSeenRank.has(broker.broker)) {
+        firstSeenRank.set(broker.broker, firstSeenRank.size);
+      }
+    }
+    if (range && (bucket.t < range.fromMs || bucket.t > range.toMs)) continue;
+    for (const broker of bucket.brokers) {
+      const points = byBroker.get(broker.broker) ?? [];
+      points.push({ ts_ms: bucket.t, net: broker.net });
+      byBroker.set(broker.broker, points);
+    }
+  }
+
+  const series: BrokerSeriesEntry[] = [];
+  for (const [broker, points] of byBroker.entries()) {
+    const finalNet = points.length > 0 ? points[points.length - 1].net : 0;
+    series.push({
+      broker,
+      final_net: finalNet,
+      dominant_side: finalNet >= 0 ? 'buy' : 'sell',
+      points,
+    });
+  }
+
+  series.sort((a, b) => (
+    (firstSeenRank.get(a.broker) ?? Number.MAX_SAFE_INTEGER)
+    - (firstSeenRank.get(b.broker) ?? Number.MAX_SAFE_INTEGER)
+  ));
+  return series;
+}
+
+export function bucketStartForCursor(
+  candles: Array<{ ts_ms: number }>,
+  bucketMs: number,
+  cursorMs: number,
+): number | null {
+  for (const candle of candles) {
+    if (candle.ts_ms <= cursorMs && cursorMs < candle.ts_ms + bucketMs) return candle.ts_ms;
+  }
+  return null;
 }
 
 export function studySnapshotBundleToRangeBundle(snapshot: StudySnapshotBundle): StudySnapshotRangeBundle {

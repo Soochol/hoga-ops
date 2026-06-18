@@ -56,6 +56,7 @@ export function buildStudySnapshotRequest(args: BuildStudySnapshotArgs): Parquet
 
   const snapshot = {
     schema_version: 1 as const,
+    source_policy: 'fixed' as const,
     code: args.code,
     label: args.label,
     timeframe: args.timeframe,

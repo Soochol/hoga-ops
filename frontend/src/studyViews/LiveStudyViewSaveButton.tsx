@@ -10,6 +10,7 @@ export function LiveStudyViewSaveButton() {
   const mutations = useStudyViewMutations();
   const [request, setRequest] = useState<ParquetStudyViewWriteRequest | null>(null);
   const liveSource = saveSource?.origin === 'live' ? saveSource : null;
+  const createError = mutations.create.error instanceof Error ? mutations.create.error.message : null;
 
   const openDialog = () => {
     if (!liveSource) return;
@@ -40,6 +41,8 @@ export function LiveStudyViewSaveButton() {
           defaultMemo={request.memo ?? ''}
           barCount={request.snapshot.bundle.candles.length}
           sizeBytes={studySnapshotByteSize(request.snapshot)}
+          isSubmitting={mutations.create.isPending}
+          errorMessage={createError}
           onCancel={() => setRequest(null)}
           onSubmit={({ name, memo }) => {
             mutations.create.mutate(

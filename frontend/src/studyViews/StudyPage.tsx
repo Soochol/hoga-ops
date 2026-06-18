@@ -1,9 +1,12 @@
-import { useCallback, useEffect, useMemo, useRef } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useSearchParams } from 'react-router';
 import { LiveChartRoot } from '../live/LiveChartRoot';
+import { useLiveCursorStore } from '../live/useLiveCursorStore';
 import type { TabViewport } from '../live/viewportAnchor';
+import { bucketSeconds } from '../state/livePage';
+import { StudyDetailPanel } from './StudyDetailPanel';
 import { useStudyViewSnapshot } from './useStudyViews';
-import { studySnapshotBundleToChartInput } from './studySnapshotAdapter';
+import { studySnapshotBundleToChartInput, studySnapshotDetails } from './studySnapshotAdapter';
 import {
   clearCurrentStudySaveSource,
   setCurrentStudySaveSource,
@@ -13,16 +16,27 @@ import {
 export function StudyPage() {
   const [params] = useSearchParams();
   const viewId = params.get('view');
+  const cursorMs = useLiveCursorStore((s) => s.cursorMs);
+  const [isCursorActive, setIsCursorActive] = useState(false);
   const snapshotQuery = useStudyViewSnapshot(viewId);
   const snapshot = snapshotQuery.data;
   const chartInput = useMemo(
     () => snapshot ? studySnapshotBundleToChartInput(snapshot.bundle) : null,
     [snapshot],
   );
+  const details = useMemo(
+    () => snapshot ? studySnapshotDetails(snapshot.bundle) : null,
+    [snapshot],
+  );
+  const bucketMs = snapshot ? (bucketSeconds(snapshot.timeframe) ?? 60) * 1000 : 60_000;
   const captureViewportRef = useRef<() => TabViewport | null>(() => null);
   const handleViewportCaptureReady = useCallback((capture: () => TabViewport | null) => {
     captureViewportRef.current = capture;
   }, []);
+
+  useEffect(() => {
+    setIsCursorActive(false);
+  }, [viewId]);
 
   useEffect(() => {
     if (!viewId || !snapshot || !chartInput) {
@@ -82,33 +96,45 @@ export function StudyPage() {
           </div>
         </div>
       </header>
-      <LiveChartRoot
-        code={snapshot.code}
-        timeframe={snapshot.timeframe}
-        viewIdentity={viewId}
-        bundle={chartInput.bundle}
-        chartBundle={chartInput.chartBundle}
-        ratioBundle={chartInput.ratioBundle}
-        clampEngaged={false}
-        isPastCandlesLoading={false}
-        isExtending={false}
-        pastDataWarnings={[]}
-        restoreViewport={{
-          rightEdgeMs: snapshot.viewport.right_edge_ms,
-          barSpan: snapshot.viewport.bar_span,
-          atLiveEdge: snapshot.viewport.at_live_edge,
-        }}
-        dayAskPeaks={chartInput.bundle.ask_peaks}
-        forceHogaPanes
-        paneTogglesOverride={{
-          volumeEnabled: snapshot.indicator_state.volume_enabled,
-          quoteTotalsEnabled: snapshot.indicator_state.quote_totals_enabled,
-          ratioEnabled: snapshot.indicator_state.ratio_enabled,
-          fillStrengthEnabled: snapshot.indicator_state.fill_strength_enabled,
-        }}
-        persistLiveViewport={false}
-        onViewportCaptureReady={handleViewportCaptureReady}
-      />
+      <div className="grid min-h-0 grid-cols-[minmax(0,1fr)_280px]">
+        <LiveChartRoot
+          code={snapshot.code}
+          timeframe={snapshot.timeframe}
+          viewIdentity={viewId}
+          bundle={chartInput.bundle}
+          chartBundle={chartInput.chartBundle}
+          ratioBundle={chartInput.ratioBundle}
+          clampEngaged={false}
+          isPastCandlesLoading={false}
+          isExtending={false}
+          pastDataWarnings={[]}
+          restoreViewport={{
+            rightEdgeMs: snapshot.viewport.right_edge_ms,
+            barSpan: snapshot.viewport.bar_span,
+            atLiveEdge: snapshot.viewport.at_live_edge,
+          }}
+          dayAskPeaks={chartInput.bundle.ask_peaks}
+          forceHogaPanes
+          paneTogglesOverride={{
+            volumeEnabled: snapshot.indicator_state.volume_enabled,
+            quoteTotalsEnabled: snapshot.indicator_state.quote_totals_enabled,
+            ratioEnabled: snapshot.indicator_state.ratio_enabled,
+            fillStrengthEnabled: snapshot.indicator_state.fill_strength_enabled,
+          }}
+          persistLiveViewport={false}
+          onViewportCaptureReady={handleViewportCaptureReady}
+          onCursorActiveChange={setIsCursorActive}
+        />
+        {details && chartInput && (
+          <StudyDetailPanel
+            details={details}
+            candles={chartInput.bundle.candles}
+            segments={chartInput.bundle.segments}
+            bucketMs={bucketMs}
+            cursorMs={isCursorActive ? cursorMs : null}
+          />
+        )}
+      </div>
     </section>
   );
 }
