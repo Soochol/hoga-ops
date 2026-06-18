@@ -549,6 +549,49 @@ def test_query_bucket_representative_and_batch_share_seq_tiebreak(tmp_path: Path
     assert single.seq == batch[151_800_000].seq == 2
 
 
+def test_query_bucket_representatives_matches_single_query_for_multiple_buckets(
+    tmp_path: Path,
+) -> None:
+    from hoga.tables.snapshots import query_bucket_representative, query_bucket_representatives
+
+    obs = [
+        _ob(ts_ms=90_000_100, seq=1, ask_q=(10, 20, 30, 40), bid_q=(5, 5, 5, 5)),
+        _ob(ts_ms=90_010_000, seq=2, ask_q=(11, 21, 31, 41), bid_q=(6, 6, 6, 6)),
+        _ob(ts_ms=90_060_100, seq=3, ask_q=(12, 22, 32, 42), bid_q=(7, 7, 7, 7)),
+        _ob(ts_ms=90_070_000, seq=4, ask_q=(99, 98, 97), bid_q=(8, 8, 8)),
+        _ob(ts_ms=90_120_100, seq=5, ask_q=(13, 23, 33, 43), bid_q=(9, 9, 9, 9)),
+    ]
+    out = tmp_path / "snapshots.parquet"
+    write_parquet(obs, out)
+    buckets = [
+        (90_000_000, 90_059_999),
+        (90_060_000, 90_119_999),
+        (90_120_000, 90_179_999),
+    ]
+
+    with duckdb.connect(":memory:") as con:
+        single = {
+            lo: query_bucket_representative(
+                con,
+                path=out,
+                lo_native=lo,
+                hi_native=hi,
+                session_close_ms=153_000_000,
+            )
+            for lo, hi in buckets
+        }
+        batch = query_bucket_representatives(
+            con,
+            path=out,
+            buckets=buckets,
+            session_close_ms=153_000_000,
+        )
+
+    assert {lo: snap.seq for lo, snap in batch.items()} == {
+        lo: snap.seq for lo, snap in single.items() if snap is not None
+    }
+
+
 # ---------------------------------------------------------------------------
 # query_day_ask_peak (Task 1): 당일 연속거래 매도 최대벽 집계
 # ---------------------------------------------------------------------------
