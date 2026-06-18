@@ -1662,3 +1662,28 @@ def test_past_daily_candles_uses_foreground_queue(monkeypatch, tmp_path):
     assert calls
     assert calls[0][1] == "foreground"
     assert calls[0][2] == "005930"
+
+
+def test_past_daily_candles_unavailable_maps_503(monkeypatch, tmp_path):
+    from hoga.live.api import build_router
+    from hoga.live.daily_fetch_queue import DailyKisUnavailable
+
+    class FakeQueue:
+        async def fetch_past_daily_candles(self, *args, **kwargs):
+            raise DailyKisUnavailable("foreground", "account_unavailable")
+
+    monkeypatch.setattr("hoga.live.api.get_daily_fetch_queue", lambda: FakeQueue())
+
+    app = FastAPI()
+    app.include_router(
+        build_router(
+            get_status=lambda: {"running": False, "watchlist_count": 0, "kis_calls_today": 0},
+            data_dir=tmp_path,
+        )
+    )
+
+    res = TestClient(app).get(
+        "/api/live/past-daily-candles?code=005930&from=20240101&to=20240102"
+    )
+
+    assert res.status_code == 503

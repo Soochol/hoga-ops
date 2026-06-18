@@ -1,44 +1,45 @@
 import datetime
 import pytest
-from hoga.api.screener import _kis_fetch_one
+from hoga.api import screener as screener_mod
+from hoga.api.screener import fetch_screener_daily_bars_via_queue
 from hoga.api.screener_store import DailyBar
 from hoga.live.kis_client import DailyCandleFetchResult
 from hoga.live.kis_models import KisCandle
 
 
-class _FakeRes:
-    def __init__(self, candles): self.candles = candles; self.violations = []
+class _FakeQueue:
+    def __init__(self, candles):
+        self._candles = candles
+        self.calls = []
 
-class _FakeClient:
-    async def fetch_past_daily_candles(self, code, frm, to, *, adjust):
-        assert adjust is False                       # 스크리너는 원주가
-        # 2026-05-14 09:00 KST epoch ms 근처
-        return _FakeRes([KisCandle(t_ms=1778716800000, open=100, high=120, low=90, close=110, volume=5)])
+    async def fetch_past_daily_candles(
+        self, data_dir, *, lane, code, from_yyyymmdd, to_yyyymmdd, adjust,
+    ):
+        self.calls.append((data_dir, lane, code, from_yyyymmdd, to_yyyymmdd, adjust))
+        return DailyCandleFetchResult(candles=self._candles, violations=[])
 
 
 @pytest.mark.asyncio
-async def test_kis_adapter_converts_shape():
-    rows = await _kis_fetch_one(_FakeClient(), "000001", "20260514", "20260514")
+async def test_kis_adapter_converts_shape(monkeypatch, tmp_path):
+    fake = _FakeQueue([
+        KisCandle(t_ms=1778716800000, open=100, high=120, low=90, close=110, volume=5)
+    ])
+    monkeypatch.setattr(screener_mod, "get_daily_fetch_queue", lambda: fake)
+
+    rows = await fetch_screener_daily_bars_via_queue(
+        tmp_path, "000001", "20260514", "20260514",
+    )
     r = rows[0]
     assert isinstance(r, DailyBar)
     assert r.code == "000001"
     assert isinstance(r.open, float) and r.open == 100.0   # int→float 위드닝
     assert isinstance(r.date, datetime.date)                # date 객체
-
-
-class _FakeClientMulti:
-    """2개 캔들을 반환하는 최소 fake — DailyCandleFetchResult 경로 커버."""
-    def __init__(self, candles):
-        self._candles = candles
-
-    async def fetch_past_daily_candles(self, code, frm, to, *, adjust):
-        assert adjust is False
-        return DailyCandleFetchResult(candles=self._candles, violations=[])
+    assert fake.calls == [(tmp_path, "background", "000001", "20260514", "20260514", False)]
 
 
 @pytest.mark.asyncio
-async def test_kis_adapter_maps_dailybar_fields():
-    """_kis_fetch_one 이 DailyCandleFetchResult → list[DailyBar] 를 올바르게 매핑하는지 검증.
+async def test_kis_adapter_maps_dailybar_fields(monkeypatch, tmp_path):
+    """queue-backed adapter가 DailyCandleFetchResult → list[DailyBar] 를 올바르게 매핑하는지 검증.
     code 전파, t_ms→date(KIS_KST), ohlcv float/int 위드닝 모두 포함."""
     # 2026-05-14 09:00 KST = 2026-05-14 00:00 UTC → epoch ms 1778716800000
     # 2026-05-15 09:00 KST = 2026-05-15 00:00 UTC → epoch ms 1778803200000
@@ -46,7 +47,12 @@ async def test_kis_adapter_maps_dailybar_fields():
         KisCandle(t_ms=1778716800000, open=100, high=120, low=90,  close=110, volume=5000),
         KisCandle(t_ms=1778803200000, open=111, high=130, low=105, close=125, volume=3000),
     ]
-    bars = await _kis_fetch_one(_FakeClientMulti(candles), "005930", "20260514", "20260515")
+    fake = _FakeQueue(candles)
+    monkeypatch.setattr(screener_mod, "get_daily_fetch_queue", lambda: fake)
+
+    bars = await fetch_screener_daily_bars_via_queue(
+        tmp_path, "005930", "20260514", "20260515",
+    )
 
     assert len(bars) == 2
 

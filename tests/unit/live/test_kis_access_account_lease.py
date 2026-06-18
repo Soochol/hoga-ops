@@ -25,6 +25,7 @@ def test_foreground_lease_uses_account0(monkeypatch, tmp_path: Path) -> None:
 
 
 def test_background_lease_uses_nonzero_accounts_round_robin(monkeypatch, tmp_path: Path) -> None:
+    monkeypatch.setattr(kis_access, "_bg_round_robin", 0)
     monkeypatch.setattr(
         "hoga.live.kis_runtime.configured_account_ids",
         lambda data_dir: [0, 1, 2],
