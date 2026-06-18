@@ -117,7 +117,7 @@ export function StudyPage() {
         <button
           type="button"
           onClick={() => setIsMemoOpen((value) => !value)}
-          className="shrink-0 rounded border px-2 py-1 text-xs"
+          className="shrink-0 rounded border border-border bg-bg-input px-2 py-1 text-xs text-fg-dim hover:bg-bg-input-hover hover:text-fg"
         >
           메모
         </button>

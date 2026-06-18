@@ -431,17 +431,25 @@ describe('StudyPage', () => {
       updateMetadata: { mutate: updateMetadataMutate, isPending: false, error: null },
     });
     useStudyViewSnapshotMock.mockReturnValue({ data: snapshot, isLoading: false, isError: false });
-    renderAt('/study?view=view1');
+    const { container } = renderAt('/study?view=view1');
 
-    await userEvent.click(screen.getByRole('button', { name: '메모' }));
+    const memoToggle = screen.getByRole('button', { name: '메모' });
+    expect(memoToggle.className).toContain('bg-bg-input');
+    expect(memoToggle.className).toContain('border-border');
+    expect(memoToggle.className).toContain('hover:bg-bg-input-hover');
+
+    await userEvent.click(memoToggle);
     const panel = screen.getByTestId('study-memo-panel');
     const memo = screen.getByLabelText('저장뷰 메모') as HTMLTextAreaElement;
     await userEvent.clear(memo);
     await userEvent.type(memo, '새 메모');
     await userEvent.click(screen.getByRole('button', { name: '저장' }));
 
-    expect(panel.closest('aside')).toBeTruthy();
-    expect(screen.getByTestId('live-chart-root-stub')).toBeTruthy();
+    const aside = panel.closest('aside');
+    expect(aside).toBeTruthy();
+    expect(aside).toContainElement(panel);
+    expect(container.querySelector('[data-testid="study-page"] > div > aside')).toBe(aside);
+    expect(container.querySelector('[data-testid="study-page"] > div > [data-testid="live-chart-root-stub"]')).toBeTruthy();
     expect(updateMetadataMutate).toHaveBeenCalledWith(
       { id: 'view1', body: { memo: '새 메모' } },
       expect.objectContaining({ onError: expect.any(Function) }),
