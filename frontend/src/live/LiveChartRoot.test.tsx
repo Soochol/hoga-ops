@@ -390,6 +390,45 @@ describe('LiveChartRoot', () => {
     expect(capture()).toMatchObject({ barSpan: 15, atLiveEdge: true });
   });
 
+  it('D timeframe: does not persist live-edge wheel zoom as a cold-restore user adjustment', () => {
+    useLivePageStore.setState({ historicalFromDate: null });
+    const { chart, ts } = buildChartMockWithStableTS();
+    const candles = makeCandles(250);
+    const last = candles[candles.length - 1];
+    let capture: () => unknown = () => null;
+    ts.getVisibleLogicalRange.mockReturnValue({ from: 242, to: 255 });
+    ts.getVisibleRange.mockReturnValue({ from: TODAY_OPEN_MS / 1000, to: last.ts_ms / 1000 });
+    ts.coordinateToLogical.mockReturnValue(248);
+    ts.timeToIndex.mockReturnValue(249);
+    vi.mocked(createChartEx).mockImplementationOnce(() => chart as never);
+
+    const { container } = render(
+      <LiveChartRoot
+        code="005930"
+        timeframe="D"
+        bundle={{ ...TODAY_ONLY_BUNDLE, candles }}
+        clampEngaged={false}
+        isPastCandlesLoading={false}
+        onViewportCaptureReady={(fn) => { capture = fn; }}
+      />,
+      { wrapper },
+    );
+
+    act(() => {
+      container.querySelector('[data-testid="live-chart-root"]')!.dispatchEvent(
+        new WheelEvent('wheel', {
+          bubbles: true,
+          cancelable: true,
+          deltaY: -160,
+          clientX: 400,
+          clientY: 120,
+        }),
+      );
+    });
+
+    expect(capture()).toEqual({ rightEdgeMs: last.ts_ms, barSpan: 15, atLiveEdge: true });
+  });
+
   it('D timeframe: replaces candle data fully when the latest daily OHLC changes', () => {
     useLivePageStore.setState({ historicalFromDate: null });
     const candleSeries = {
@@ -1324,6 +1363,27 @@ describe('LiveChartRoot historical-prepend viewport preservation', () => {
       { wrapper },
     );
     expect(ts.setVisibleLogicalRange).toHaveBeenLastCalledWith({ from: 235, to: 255 });
+  });
+
+  it('restore: D timeframe ignores persisted live-edge user zoom so candles reopen at readable density', () => {
+    const handlers: Array<(r: unknown) => void> = [];
+    const ts = makeTs(handlers);
+    vi.mocked(createChartEx).mockImplementationOnce(() => buildStableCapturingMock(ts) as any);
+
+    render(
+      <LiveChartRoot code="005930" timeframe="D"
+        bundle={todayBundle(Array.from({ length: 250 }, (_, i) => TODAY_OPEN_MS + (i + 1) * 60_000))}
+        clampEngaged={false} isPastCandlesLoading={false}
+        restoreViewport={{
+          rightEdgeMs: TODAY_OPEN_MS + 250 * 60_000,
+          barSpan: 8,
+          atLiveEdge: true,
+          userAdjusted: true,
+        }} />,
+      { wrapper },
+    );
+    expect(ts.setVisibleLogicalRange).toHaveBeenLastCalledWith({ from: 235, to: 255 });
+    expect(ts.scrollToPosition).toHaveBeenCalledWith(0, false);
   });
 
   it('restore: no saved viewport → the default 300-bar minute window (regression)', () => {
