@@ -476,11 +476,14 @@ export function LiveChartRoot({ code, timeframe, viewIdentity, bundle, chartBund
             )
           : null;
         const viewportForRestore =
-          timeframe === 'D' && restoreViewport.atLiveEdge
-            ? { ...restoreViewport, barSpan: DAILY_VISIBLE_BARS }
-            : timeframe === 'D' && !restoreViewport.userAdjusted
-              ? { ...restoreViewport, barSpan: DAILY_VISIBLE_BARS }
-              : restoreViewport;
+          timeframe === 'D'
+            ? {
+                ...restoreViewport,
+                barSpan: restoreViewport.userAdjusted && !restoreViewport.atLiveEdge
+                  ? Math.max(restoreViewport.barSpan, DAILY_VISIBLE_BARS)
+                  : DAILY_VISIBLE_BARS,
+              }
+            : restoreViewport;
         if (timeframe === 'D' && restoreViewport.userAdjusted && !restoreViewport.atLiveEdge) {
           userAdjustedDailyViewportRef.current = true;
         }
