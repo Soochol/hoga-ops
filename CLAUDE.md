@@ -41,6 +41,50 @@ $B snapshot -i                       # interactive elements with @e refs
 
 See `~/.claude/skills/gstack/browse/SKILL.md` for the full command list.
 
+### `/live` daily candle body issue
+
+If daily (`D`) candles on `http://localhost:5173/live` appear as long wicks with almost no
+body, do not assume the problem is only the saved viewport span. Debug it with `/browse`
+and collect the actual chart numbers first:
+
+```bash
+B=/home/dev/.claude/skills/gstack/browse/dist/browse
+$B goto http://localhost:5173/live
+$B js "(() => { const c = window.__liveChart; const r = c?.timeScale().getVisibleLogicalRange(); return { href: location.href, dpr: devicePixelRatio, zoom: visualViewport?.scale, range: r, span: r && r.to - r.from, width: c?.timeScale().width(), timeScale: c?.options().timeScale, tabs: localStorage.getItem('live.tabs.v1'), page: localStorage.getItem('live.page.v1') }; })()"
+$B screenshot /tmp/live-daily.png
+```
+
+Root cause confirmed in PR #141: `D` previously used `fitContent()` against a long daily
+history, which could push lightweight-charts to the effective `minBarSpacing` floor and
+collapse candle body width. The fix keeps daily candles on an adaptive visible logical
+range instead of fitting the whole history. When changing this area, check candle body
+legibility in pixels, not just logical span.
+
+Useful sanity checks:
+
+- A very large visible span (hundreds to 1000+) with a narrow chart usually means daily
+  candles are being over-compressed.
+- Compare `timeScale().width()`, visible logical span, `devicePixelRatio`, browser zoom,
+  `localStorage` keys `live.tabs.v1` / `live.page.v1`, and the current active timeframe.
+- Verify `D`, `W`, and `M` pane policy together; do not patch only `barSpan` without
+  checking `barSpacing`, `minBarSpacing`, `rightOffset`, data count, and saved viewport
+  restoration.
+- Run `cd frontend && npx vitest run src/live/LiveChartRoot.test.tsx` and
+  `cd frontend && npm run build` after changes.
+
+If the in-app browser or `/browse` looks correct but the user's desktop Chrome still looks
+wrong, suspect Chrome profile state before changing code. Refresh does not clear local
+site state. Ask the user to clear site data for both `localhost:5173` and `127.0.0.1:5173`,
+reset zoom with `Ctrl+0`, and retry in an incognito window. Console cleanup snippet:
+
+```js
+localStorage.clear();
+sessionStorage.clear();
+indexedDB.databases?.().then((dbs) => dbs.forEach((db) => indexedDB.deleteDatabase(db.name)));
+caches?.keys?.().then((keys) => keys.forEach((key) => caches.delete(key)));
+location.reload();
+```
+
 ## Design System
 
 Always read `DESIGN.md` at the repo root before making any visual or UI decisions in the frontend.
