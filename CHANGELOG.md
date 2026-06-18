@@ -3,6 +3,14 @@
 All notable changes to this project are documented here.
 The format follows a 4-digit `MAJOR.MINOR.PATCH.MICRO` scheme.
 
+## [0.8.10.0] - 2026-06-18
+
+### Added
+- **/live 캔들 기준 Y축 설정**: 설정 모달의 차트 탭에서 캔들 pane 가격축을 캔들 고가·저가 기준으로만 맞출 수 있다.
+
+### Changed
+- 캔들 기준 Y축을 켜면 캔들 pane의 이동평균선과 일봉 이동평균선이 Y축 autoscale 범위를 넓히지 않도록 했다.
+
 ## [0.8.9.0] - 2026-06-18
 
 ### Added

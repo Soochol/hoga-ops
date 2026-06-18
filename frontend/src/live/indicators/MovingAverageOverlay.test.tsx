@@ -1,6 +1,7 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { render, cleanup } from '@testing-library/react';
 import { useLivePageStore, DEFAULT_LIVE_MAS } from '../../state/livePage';
+import { useChartPrefsStore } from '../../state/chartPrefs';
 import MovingAverageOverlay from './MovingAverageOverlay';
 import { useMaSeriesRegistry } from './maSeriesRegistry';
 
@@ -45,6 +46,7 @@ describe('MovingAverageOverlay', () => {
       movingAverageEnabled: true,
       movingAverageHidden: false,
     });
+    useChartPrefsStore.getState().resetToDefaults();
     useMaSeriesRegistry.setState({ series: new Map() });
   });
 
@@ -52,6 +54,37 @@ describe('MovingAverageOverlay', () => {
     const m = makeChartMock();
     render(<MovingAverageOverlay chart={m.chart as never} bundle={bundle} axis={axis} />);
     expect(m.addSeries).toHaveBeenCalledTimes(DEFAULT_LIVE_MAS.length);
+  });
+
+  it('기본값에서는 MA series가 autoscale에 참여한다', () => {
+    const m = makeChartMock();
+    render(<MovingAverageOverlay chart={m.chart as never} bundle={bundle} axis={axis} />);
+    const options = m.addSeries.mock.calls[0][1] as { autoscaleInfoProvider?: unknown };
+    expect(options.autoscaleInfoProvider).toBeUndefined();
+  });
+
+  it('캔들 기준 Y축이 켜지면 MA series autoscale 기여를 제외한다', () => {
+    const m = makeChartMock();
+    useChartPrefsStore.getState().setToggle('candlePaneCandleOnlyScale', true);
+    render(<MovingAverageOverlay chart={m.chart as never} bundle={bundle} axis={axis} />);
+    const options = m.addSeries.mock.calls[0][1] as { autoscaleInfoProvider?: () => null };
+    expect(options.autoscaleInfoProvider).toBeDefined();
+    expect(options.autoscaleInfoProvider?.()).toBeNull();
+  });
+
+  it('캔들 기준 Y축을 끄면 기존 MA series autoscale을 기본 동작으로 되돌린다', () => {
+    const m = makeChartMock();
+    useChartPrefsStore.getState().setToggle('candlePaneCandleOnlyScale', true);
+    const { rerender } = render(<MovingAverageOverlay chart={m.chart as never} bundle={bundle} axis={axis} />);
+    const first = m.addSeries.mock.results[0].value as { applyOptions: ReturnType<typeof vi.fn> };
+    first.applyOptions.mockClear();
+
+    useChartPrefsStore.getState().setToggle('candlePaneCandleOnlyScale', false);
+    rerender(<MovingAverageOverlay chart={m.chart as never} bundle={bundle} axis={axis} />);
+
+    const scaleCall = first.applyOptions.mock.calls.find((c) => 'autoscaleInfoProvider' in (c[0] as object));
+    const provider = (scaleCall?.[0] as { autoscaleInfoProvider?: (original: () => string) => string }).autoscaleInfoProvider;
+    expect(provider?.(() => 'default-autoscale')).toBe('default-autoscale');
   });
 
   it('calls setData on each mounted series', () => {

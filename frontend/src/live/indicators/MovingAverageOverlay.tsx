@@ -1,8 +1,9 @@
 import { memo, useEffect, useRef } from 'react';
-import { LineSeries, type IChartApi, type ISeriesApi, type Time } from 'lightweight-charts';
+import { LineSeries, type AutoscaleInfoProvider, type IChartApi, type ISeriesApi, type Time } from 'lightweight-charts';
 import type { RangeBundle } from '../../api/types';
 import type { VirtualAxis } from '../../util/virtualAxis';
 import { useLivePageStore } from '../../state/livePage';
+import { useChartPrefsStore } from '../../state/chartPrefs';
 import { computeSMA, selectSource } from '../../chart/projectors/movingAverage';
 import { useMaSeriesRegistry } from './maSeriesRegistry';
 
@@ -13,6 +14,8 @@ type Props = {
 };
 
 type LineApi = ISeriesApi<'Line'>;
+const excludeFromAutoscale: AutoscaleInfoProvider = () => null;
+const includeInAutoscale: AutoscaleInfoProvider = (original) => original();
 
 /** /live의 이동평균선 오버레이. /replay의 정적 5슬롯 MOVING_AVERAGE_SPEC과
  *  분리된 가변 슬롯 모델 (ADR-0046). 슬롯 id 기준 series Map을 유지하며
@@ -22,6 +25,7 @@ function MovingAverageOverlay({ chart, bundle, axis }: Props) {
   const configs = useLivePageStore((s) => s.movingAverages);
   const masterEnabled = useLivePageStore((s) => s.movingAverageEnabled);
   const hidden = useLivePageStore((s) => s.movingAverageHidden);
+  const candleOnlyScale = useChartPrefsStore((s) => s.candlePaneCandleOnlyScale);
   const seriesByIdRef = useRef<Map<string, LineApi>>(new Map());
 
   // Reconcile series ↔ configs by id.
@@ -40,6 +44,10 @@ function MovingAverageOverlay({ chart, bundle, axis }: Props) {
 
     // Add or update.
     for (const cfg of configs) {
+      const createScaleOptions = candleOnlyScale ? { autoscaleInfoProvider: excludeFromAutoscale } : {};
+      const updateScaleOptions = {
+        autoscaleInfoProvider: candleOnlyScale ? excludeFromAutoscale : includeInAutoscale,
+      };
       const existing = map.get(cfg.id);
       if (!existing) {
         try {
@@ -49,15 +57,16 @@ function MovingAverageOverlay({ chart, bundle, axis }: Props) {
             priceLineVisible: false,
             lastValueVisible: false,
             crosshairMarkerVisible: false,
+            ...createScaleOptions,
           }, 0); // paneIndex 0 — candle pane overlay
           map.set(cfg.id, s);
           useMaSeriesRegistry.getState().register(cfg.id, s);
         } catch { /* chart torn down */ }
       } else {
-        existing.applyOptions({ color: cfg.color, lineWidth: cfg.lineWidth });
+        existing.applyOptions({ color: cfg.color, lineWidth: cfg.lineWidth, ...updateScaleOptions });
       }
     }
-  }, [chart, configs]);
+  }, [chart, configs, candleOnlyScale]);
 
   // Unmount cleanup — remove all series.
   useEffect(() => {

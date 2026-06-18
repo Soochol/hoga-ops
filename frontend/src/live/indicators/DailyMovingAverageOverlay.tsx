@@ -1,8 +1,9 @@
 import { memo, useEffect, useMemo, useRef } from 'react';
-import { LineSeries, type IChartApi, type ISeriesApi, type Time } from 'lightweight-charts';
+import { LineSeries, type AutoscaleInfoProvider, type IChartApi, type ISeriesApi, type Time } from 'lightweight-charts';
 import type { RangeBundle } from '../../api/types';
 import type { VirtualAxis } from '../../util/virtualAxis';
 import { useLivePageStore, isMinuteTimeframe, type LiveTimeframe } from '../../state/livePage';
+import { useChartPrefsStore } from '../../state/chartPrefs';
 import { useLivePastDailyCandles } from '../../api/livePastDailyCandles';
 import { computeDailyMaByDate } from '../../chart/projectors/dailyMovingAverage';
 import { dailyMaFetchWindow, pickTodayLiveClose } from './dailyMaProjection';
@@ -17,6 +18,8 @@ type Props = {
 };
 
 type LineApi = ISeriesApi<'Line'>;
+const excludeFromAutoscale: AutoscaleInfoProvider = () => null;
+const includeInAutoscale: AutoscaleInfoProvider = (original) => original();
 const EMPTY_DAILY: never[] = [];
 
 /** 일봉 이동평균선 오버레이 — 일봉 종가 SMA를 분봉 축에 거래일-계단으로 투영
@@ -27,6 +30,7 @@ function DailyMovingAverageOverlay({ chart, bundle, axis, code, timeframe, today
   const configs = useLivePageStore((s) => s.dailyMovingAverages);
   const masterEnabled = useLivePageStore((s) => s.dailyMovingAverageEnabled);
   const hidden = useLivePageStore((s) => s.dailyMovingAverageHidden);
+  const candleOnlyScale = useChartPrefsStore((s) => s.candlePaneCandleOnlyScale);
   const seriesByIdRef = useRef<Map<string, LineApi>>(new Map());
 
   const enabled = masterEnabled && isMinuteTimeframe(timeframe) && !!code && !!todayKst;
@@ -48,6 +52,10 @@ function DailyMovingAverageOverlay({ chart, bundle, axis, code, timeframe, today
       }
     }
     for (const cfg of configs) {
+      const createScaleOptions = candleOnlyScale ? { autoscaleInfoProvider: excludeFromAutoscale } : {};
+      const updateScaleOptions = {
+        autoscaleInfoProvider: candleOnlyScale ? excludeFromAutoscale : includeInAutoscale,
+      };
       const existing = map.get(cfg.id);
       if (!existing) {
         try {
@@ -57,14 +65,15 @@ function DailyMovingAverageOverlay({ chart, bundle, axis, code, timeframe, today
             priceLineVisible: false,
             lastValueVisible: false,
             crosshairMarkerVisible: false,
+            ...createScaleOptions,
           }, 0); // paneIndex 0 — candle pane overlay
           map.set(cfg.id, s);
         } catch { /* torn down */ }
       } else {
-        existing.applyOptions({ color: cfg.color, lineWidth: cfg.lineWidth });
+        existing.applyOptions({ color: cfg.color, lineWidth: cfg.lineWidth, ...updateScaleOptions });
       }
     }
-  }, [chart, configs]);
+  }, [chart, configs, candleOnlyScale]);
 
   // Unmount cleanup — remove all series.
   useEffect(() => {

@@ -1,6 +1,7 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { render, cleanup } from '@testing-library/react';
 import { useLivePageStore } from '../../state/livePage';
+import { useChartPrefsStore } from '../../state/chartPrefs';
 import { useLivePastDailyCandles } from '../../api/livePastDailyCandles';
 import DailyMovingAverageOverlay from './DailyMovingAverageOverlay';
 
@@ -13,7 +14,8 @@ function makeChartMock() {
   function makeSeriesMock() {
     return { applyOptions: vi.fn(), setData: vi.fn(), _internalId: ++seriesCounter };
   }
-  const addSeries = vi.fn(() => {
+  const addSeries = vi.fn((...args: unknown[]) => {
+    void args;
     const s = makeSeriesMock();
     seriesById.set(String(s._internalId), s);
     return s;
@@ -59,6 +61,7 @@ describe('DailyMovingAverageOverlay', () => {
       dailyMovingAverageEnabled: true,
       dailyMovingAverageHidden: false,
     });
+    useChartPrefsStore.getState().resetToDefaults();
   });
 
   it('projects the daily MA value onto every in-session candle (day-anchored step)', () => {
@@ -68,6 +71,39 @@ describe('DailyMovingAverageOverlay', () => {
     const data = first.setData.mock.calls.at(-1)?.[0] as Array<{ time: number; value?: number }>;
     expect(data).toHaveLength(3);
     expect(data.every((d) => d.value === 100)).toBe(true);
+  });
+
+  it('기본값에서는 일봉 MA series가 autoscale에 참여한다', () => {
+    const m = makeChartMock();
+    renderOverlay(m);
+    const options = m.addSeries.mock.calls[0][1] as { autoscaleInfoProvider?: unknown };
+    expect(options.autoscaleInfoProvider).toBeUndefined();
+  });
+
+  it('캔들 기준 Y축이 켜지면 일봉 MA series autoscale 기여를 제외한다', () => {
+    const m = makeChartMock();
+    useChartPrefsStore.getState().setToggle('candlePaneCandleOnlyScale', true);
+    renderOverlay(m);
+    const options = m.addSeries.mock.calls[0][1] as { autoscaleInfoProvider?: () => null };
+    expect(options.autoscaleInfoProvider).toBeDefined();
+    expect(options.autoscaleInfoProvider?.()).toBeNull();
+  });
+
+  it('캔들 기준 Y축을 끄면 기존 일봉 MA series autoscale을 기본 동작으로 되돌린다', () => {
+    const m = makeChartMock();
+    useChartPrefsStore.getState().setToggle('candlePaneCandleOnlyScale', true);
+    const { rerender } = renderOverlay(m);
+    const first = m.addSeries.mock.results[0].value as { applyOptions: ReturnType<typeof vi.fn> };
+    first.applyOptions.mockClear();
+
+    useChartPrefsStore.getState().setToggle('candlePaneCandleOnlyScale', false);
+    rerender(
+      <DailyMovingAverageOverlay chart={m.chart as never} bundle={bundle} axis={axis} code="005930" timeframe="1m" todayKst="20260613" />,
+    );
+
+    const scaleCall = first.applyOptions.mock.calls.find((c) => 'autoscaleInfoProvider' in (c[0] as object));
+    const provider = (scaleCall?.[0] as { autoscaleInfoProvider?: (original: () => string) => string }).autoscaleInfoProvider;
+    expect(provider?.(() => 'default-autoscale')).toBe('default-autoscale');
   });
 
   it('reconciles add by id without churning existing slots', () => {
