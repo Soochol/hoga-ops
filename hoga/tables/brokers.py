@@ -228,57 +228,67 @@ def query_cumulative_details_at(
     The result mirrors Cursor Sidebar ordering: select and order brokers by
     final full-file net, then project each ordered broker's net at the cursor.
     """
+    from bisect import bisect_right
+
     from hoga.broker_names import canonical
 
     if not t_values:
         return {}
     uniq = sorted({int(t) for t in t_values})
     final_order = _final_broker_order(con, path=path, limit=limit)
-    final_rank = {broker: idx for idx, broker in enumerate(final_order)}
     if not final_order:
         return {t: [] for t in uniq}
+    final_broker_set = set(final_order)
 
     rows = con.execute(
         """
         SELECT
-            t.cursor_ts,
             p.broker,
             p.ts_ms,
             p.seq,
             SUM(CASE WHEN p.side = 'buy' THEN p.qty_today ELSE -p.qty_today END) AS net
-        FROM (SELECT UNNEST(?::BIGINT[]) AS cursor_ts) AS t
-        JOIN read_parquet(?) AS p
-          ON p.ts_ms <= t.cursor_ts
-        GROUP BY t.cursor_ts, p.broker, p.ts_ms, p.seq
-        ORDER BY t.cursor_ts, p.broker, p.ts_ms, p.seq
+        FROM read_parquet(?) AS p
+        GROUP BY p.broker, p.ts_ms, p.seq
+        ORDER BY p.broker, p.ts_ms, p.seq
         """,
-        [uniq, str(path)],
+        [str(path)],
     ).fetchall()
 
-    collapsed: dict[tuple[int, str, int, int], int] = {}
-    for cursor_ts, raw_broker, ts_ms, seq, net in rows:
-        key = (int(cursor_ts), canonical(raw_broker), int(ts_ms), int(seq))
+    collapsed: dict[tuple[str, int, int], int] = {}
+    for raw_broker, ts_ms, seq, net in rows:
+        key = (canonical(raw_broker), int(ts_ms), int(seq))
         collapsed[key] = collapsed.get(key, 0) + int(net)
 
-    latest: dict[tuple[int, str], tuple[int, int, int]] = {}
-    for (cursor_ts, broker, ts_ms, seq), net in collapsed.items():
-        key = (cursor_ts, broker)
-        prev = latest.get(key)
-        if prev is None or (ts_ms, seq) >= prev[:2]:
-            latest[key] = (ts_ms, seq, net)
+    by_broker: dict[str, list[tuple[int, int, int]]] = {}
+    for (broker, ts_ms, seq), net in sorted(collapsed.items()):
+        if broker not in final_broker_set:
+            continue
+        by_broker.setdefault(broker, []).append((ts_ms, seq, net))
+
+    indexed: dict[str, tuple[list[tuple[int, int]], list[int]]] = {}
+    for broker in final_order:
+        points = by_broker.get(broker, [])
+        indexed[broker] = (
+            [(ts_ms, seq) for ts_ms, seq, _net in points],
+            [net for _ts_ms, _seq, net in points],
+        )
 
     grouped: dict[int, list[BrokerDetailRow]] = {t: [] for t in uniq}
-    for (cursor_ts, broker), (_ts_ms, _seq, net) in latest.items():
-        if broker not in final_rank:
-            continue
-        grouped[cursor_ts].append(
-            BrokerDetailRow(
-                broker=broker,
-                net=net,
-                dominant_side="buy" if net >= 0 else "sell",
+    max_seq = 2**31 - 1
+    for cursor_ts in uniq:
+        details: list[BrokerDetailRow] = []
+        for broker in final_order:
+            keys, nets = indexed[broker]
+            idx = bisect_right(keys, (cursor_ts, max_seq)) - 1
+            if idx < 0:
+                continue
+            net = nets[idx]
+            details.append(
+                BrokerDetailRow(
+                    broker=broker,
+                    net=net,
+                    dominant_side="buy" if net >= 0 else "sell",
+                )
             )
-        )
-    for cursor_ts, details in grouped.items():
-        details.sort(key=lambda r: final_rank[r.broker])
         grouped[cursor_ts] = details
     return grouped
