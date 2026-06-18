@@ -3,6 +3,7 @@ import { describe, expect, it } from 'vitest';
 
 import BrokerTrajectoryTable, {
   netAtCursor,
+  BROKER_TRAJECTORY_ROW_LIMIT,
   GAP_THRESHOLD_MS,
 } from './BrokerTrajectoryTable';
 import type { BrokerSeriesEntry } from '../api/types';
@@ -72,11 +73,11 @@ describe('BrokerTrajectoryTable — render states', () => {
   });
 
   it('renders one row per broker (capped at 10)', () => {
-    const series: BrokerSeriesEntry[] = Array.from({ length: 12 }, (_, i) =>
+    const series: BrokerSeriesEntry[] = Array.from({ length: BROKER_TRAJECTORY_ROW_LIMIT + 2 }, (_, i) =>
       entry(`B${i}`, [{ ts_ms: 100 + i, net: 100 - i }]),
     );
     render(<BrokerTrajectoryTable series={series} cursorMs={null} />);
-    expect(screen.getAllByTestId('broker-row')).toHaveLength(10);
+    expect(screen.getAllByTestId('broker-row')).toHaveLength(BROKER_TRAJECTORY_ROW_LIMIT);
   });
 
   it('renders the compact display label and exposes the canonical name as a tooltip', () => {
@@ -138,7 +139,7 @@ describe('BrokerTrajectoryTable — sparkline', () => {
 
   it('ignores brokers beyond the rendered row cap when computing the visible day range', () => {
     const series: BrokerSeriesEntry[] = [
-      ...Array.from({ length: 10 }, (_, i) =>
+      ...Array.from({ length: BROKER_TRAJECTORY_ROW_LIMIT }, (_, i) =>
         entry(`B${i}`, [
           { ts_ms: 1_000, net: 10 + i },
           { ts_ms: 2_000, net: 20 + i },
@@ -150,7 +151,7 @@ describe('BrokerTrajectoryTable — sparkline', () => {
       <BrokerTrajectoryTable series={series} cursorMs={50_000} />,
     );
 
-    expect(screen.getAllByTestId('broker-row')).toHaveLength(10);
+    expect(screen.getAllByTestId('broker-row')).toHaveLength(BROKER_TRAJECTORY_ROW_LIMIT);
     expect(container.querySelectorAll('[data-testid="cursor-marker"]')).toHaveLength(0);
   });
 

@@ -7,6 +7,7 @@ import { brokerDisplayShort } from './brokerDisplayNames';
  *  between observations. Honest about the brokers parquet's top-5 truncation
  *  rather than forward-fill (see ADR-0023 and the spec's § 4 Data Gaps). */
 export const GAP_THRESHOLD_MS = 30_000;
+export const BROKER_TRAJECTORY_ROW_LIMIT = 10;
 
 type Props = {
   series: BrokerSeriesEntry[] | null | undefined;
@@ -15,7 +16,7 @@ type Props = {
 };
 
 export default function BrokerTrajectoryTable({ series, cursorMs, gapThresholdMs = GAP_THRESHOLD_MS }: Props) {
-  const rows = useMemo(() => series?.slice(0, 10) ?? series, [series]);
+  const rows = useMemo(() => series?.slice(0, BROKER_TRAJECTORY_ROW_LIMIT) ?? [], [series]);
   // Common time domain across all displayed brokers — keeps cursor marker
   // X positions aligned across rows.
   const dayRange = useMemo(() => {

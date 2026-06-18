@@ -29,18 +29,16 @@ export function StudyDetailPanel({ details, candles, segments, bucketMs, cursorM
       segment.session_open_ms <= bucketStart && bucketStart <= segment.session_close_ms
     )) ?? null;
   }, [bucketStart, segments]);
-  const brokerSeries = useMemo(
-    () => {
-      if (bucketStart == null) return [];
-      return studyBrokerBucketsToSeries(
-        details.brokersByBucketStart,
-        activeSegment
-          ? { fromMs: activeSegment.session_open_ms, toMs: activeSegment.session_close_ms }
-          : null,
-      );
-    },
-    [activeSegment, bucketStart, details.brokersByBucketStart],
+  const sessionBrokerSeries = useMemo(
+    () => studyBrokerBucketsToSeries(
+      details.brokersByBucketStart,
+      activeSegment
+        ? { fromMs: activeSegment.session_open_ms, toMs: activeSegment.session_close_ms }
+        : null,
+    ),
+    [activeSegment, details.brokersByBucketStart],
   );
+  const brokerSeries = bucketStart == null ? [] : sessionBrokerSeries;
   const snapshot = orderbook?.available ? orderbook.snapshot : null;
 
   return (
