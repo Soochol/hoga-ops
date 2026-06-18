@@ -3,6 +3,20 @@
 All notable changes to this project are documented here.
 The format follows a 4-digit `MAJOR.MINOR.PATCH.MICRO` scheme.
 
+## [0.8.9.0] - 2026-06-18
+
+### Added
+- Added the Daily KIS Fetch Queue so user-visible daily chart requests get foreground priority over Screener catch-up.
+- Added queue status to Screener status responses for foreground/background queue depth, active work, cooldown, and daily rate-limit counts.
+
+### Changed
+- Routed live daily candles and Screener daily catch-up through the Daily KIS Fetch Queue with explicit account leases.
+- Moved daily candle rate-limit retry ownership from per-request client retry to queue-level cooldown and foreground-first resume.
+
+### Fixed
+- Prevented partial Screener daily fetch failures from advancing global freshness and hiding missing Code/day data.
+- Protected account 0 fallback and post-cooldown retry paths from jumping ahead of queued foreground work.
+
 ## [0.8.8.2] - 2026-06-18
 
 ### Fixed

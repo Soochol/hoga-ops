@@ -161,7 +161,7 @@ class DailyKisFetchQueue:
                         to,
                         adjust,
                         foreground=False,
-                        requires_foreground_idle=lease.account_id == 0,
+                        requires_foreground_idle=True,
                     )
                 finally:
                     self._bg_active -= 1

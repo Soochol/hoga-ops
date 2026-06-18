@@ -235,6 +235,29 @@ async def test_background_retry_yields_to_foreground_after_cooldown(tmp_path: Pa
 
 
 @pytest.mark.asyncio
+async def test_background_first_attempt_yields_to_foreground_after_rate_wait(tmp_path: Path) -> None:
+    queue = DailyKisFetchQueue(
+        acquire_account=lambda role, data_dir, *, allow_account0_fallback=True: None,
+        global_rate_per_sec=1000,
+        cooldown_backoff=(0.0,),
+    )
+
+    async with queue._state_lock:
+        queue._fg_waiting = 1
+
+    bg_turn = asyncio.create_task(
+        queue._wait_global_turn(foreground=False, requires_foreground_idle=True)
+    )
+    await asyncio.sleep(0.03)
+    assert not bg_turn.done()
+
+    async with queue._state_lock:
+        queue._fg_waiting = 0
+
+    await asyncio.wait_for(bg_turn, timeout=1)
+
+
+@pytest.mark.asyncio
 async def test_missing_account_raises_typed_unavailable(tmp_path: Path) -> None:
     def acquire(role, data_dir, *, allow_account0_fallback=True):
         return None
