@@ -179,3 +179,122 @@ describe('projectRatio', () => {
     expect(data[0].value).toBeCloseTo(199, 5);
   });
 });
+
+describe('hoga data gaps', () => {
+  function candle(t: number) {
+    return { ts_ms: t, open: 1, high: 1, low: 1, close: 1, vol_a: 0, vol_b: 0 };
+  }
+
+  it('breaks the ratio connector across candle buckets with no hoga point', () => {
+    const bundle: any = {
+      bucket_ms: 60_000,
+      candles: [
+        candle(sessionOpenMs),
+        candle(sessionOpenMs + 60_000),
+        candle(sessionOpenMs + 120_000),
+      ],
+      quote_ratio: {
+        points: [
+          {
+            t: sessionOpenMs,
+            bid_total: 100,
+            ask_total: 200,
+            bid_max: 100,
+            ask_max: 200,
+            imb_max_bid: 100,
+            imb_max_ask: 200,
+          },
+          {
+            t: sessionOpenMs + 120_000,
+            bid_total: 200,
+            ask_total: 100,
+            bid_max: 200,
+            ask_max: 100,
+            imb_max_bid: 200,
+            imb_max_ask: 100,
+          },
+        ],
+      },
+    };
+
+    const data = projectRatio(bundle, axis, baseCtx) as any[];
+
+    expect(data).toHaveLength(3);
+    expect(data[0].time).toBe(0);
+    expect(data[0].value).toBeCloseTo(1, 5);
+    expect(data[0].topLineColor).toBe('rgba(0,0,0,0)');
+    expect(data[0].bottomLineColor).toBe('rgba(0,0,0,0)');
+
+    expect(data[1]).toMatchObject({
+      time: 60,
+      value: 0,
+      topLineColor: 'rgba(0,0,0,0)',
+      bottomLineColor: 'rgba(0,0,0,0)',
+    });
+
+    expect(data[2].time).toBe(120);
+    expect(data[2].value).toBeCloseTo(-1, 5);
+    expect(data[2].topLineColor).toBeUndefined();
+  });
+
+  it('does not synthesize a ratio baseline when all hoga data is missing', () => {
+    const bundle: any = {
+      bucket_ms: 60_000,
+      candles: [candle(sessionOpenMs), candle(sessionOpenMs + 60_000)],
+      quote_ratio: { points: [] },
+    };
+
+    expect(projectRatio(bundle, axis, baseCtx)).toEqual([]);
+  });
+
+  it('applies the same hoga gap hiding through RATIO_SPEC cached data path', () => {
+    const bundle: any = {
+      bucket_ms: 60_000,
+      segments: [
+        { date: '20260518', session_open_ms: sessionOpenMs, session_close_ms: sessionOpenMs + 23_400_000, source: 'kis_live' },
+      ],
+      candles: [
+        candle(sessionOpenMs),
+        candle(sessionOpenMs + 60_000),
+        candle(sessionOpenMs + 120_000),
+      ],
+      quote_ratio: {
+        points: [
+          {
+            t: sessionOpenMs,
+            bid_total: 100,
+            ask_total: 200,
+            bid_max: 100,
+            ask_max: 200,
+            imb_max_bid: 100,
+            imb_max_ask: 200,
+          },
+          {
+            t: sessionOpenMs + 120_000,
+            bid_total: 200,
+            ask_total: 100,
+            bid_max: 200,
+            ask_max: 100,
+            imb_max_bid: 200,
+            imb_max_ask: 100,
+          },
+        ],
+      },
+    };
+
+    const data = RATIO_SPEC.series[0].data(bundle, axis, baseCtx) as any[];
+
+    expect(data).toHaveLength(3);
+    expect(data[0].time).toBe(0);
+    expect(data[0].value).toBeCloseTo(1, 5);
+    expect(data[0].topLineColor).toBe('rgba(0,0,0,0)');
+    expect(data[1]).toMatchObject({
+      time: 60,
+      value: 0,
+      topLineColor: 'rgba(0,0,0,0)',
+      bottomLineColor: 'rgba(0,0,0,0)',
+    });
+    expect(data[2].time).toBe(120);
+    expect(data[2].value).toBeCloseTo(-1, 5);
+  });
+});
