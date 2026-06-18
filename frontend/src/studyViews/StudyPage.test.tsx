@@ -373,10 +373,16 @@ describe('StudyPage', () => {
 
     const { container } = renderAt('/study?view=view1');
 
+    const props = liveChartRootMock.mock.calls[0][0] as ComponentProps<typeof LiveChartRoot>;
+    act(() => {
+      props.onCursorActiveChange?.(true);
+      useLiveCursorStore.getState().setCursor(1_500);
+    });
+
     expect(screen.getByText('키움')).toBeTruthy();
     expect(screen.getByText('미래에셋')).toBeTruthy();
     expect(screen.getByText('+100')).toBeTruthy();
-    expect(screen.getByText('+300')).toBeTruthy();
+    expect(screen.queryByText('+300')).toBeNull();
     expect(container.querySelectorAll('[data-testid="broker-row"]')).toHaveLength(2);
   });
 
@@ -520,7 +526,7 @@ describe('StudyPage', () => {
     expect(screen.getByText('키움')).toBeTruthy();
     expect(screen.getByText('+100')).toBeTruthy();
     expect(screen.getByText('미래에셋')).toBeTruthy();
-    expect(screen.getByText('+200')).toBeTruthy();
+    expect(screen.queryByText('+200')).toBeNull();
     expect(screen.getAllByTestId('broker-row')).toHaveLength(2);
 
     act(() => {

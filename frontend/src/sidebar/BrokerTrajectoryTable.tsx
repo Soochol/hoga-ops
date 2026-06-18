@@ -83,8 +83,7 @@ export default function BrokerTrajectoryTable({ series, cursorMs, gapThresholdMs
 }
 
 /** Pure function. Binary-searches entry.points for the last ts <= cursorMs.
- *  Returns 0 when cursorMs is null (no cursor), otherwise falls back to the
- *  last available point when the cursor precedes the first observation. */
+ *  Returns 0 when cursorMs is null or precedes the first observation. */
 export function netAtCursor(
   entry: BrokerSeriesEntry,
   cursorMs: number | null,
@@ -92,9 +91,7 @@ export function netAtCursor(
   if (cursorMs == null) return 0;
   const pts = entry.points;
   if (pts.length === 0) return 0;
-  if (cursorMs < pts[0].ts_ms) {
-    return pts[pts.length - 1].net;
-  }
+  if (cursorMs < pts[0].ts_ms) return 0;
   // Binary search for the rightmost point with ts_ms <= cursorMs.
   let lo = 0;
   let hi = pts.length - 1;
