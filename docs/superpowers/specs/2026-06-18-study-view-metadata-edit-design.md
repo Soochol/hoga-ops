@@ -59,13 +59,13 @@ In `StudyViewsDrawer`:
 In `StudyPage`:
 
 - Add a compact "메모" control in the header.
-- Opening it reveals the current memo for the selected saved view.
+- Opening it reveals the current memo for the selected saved view in the existing right-side detail column.
 - The memo can be edited in a textarea.
 - Blur or an explicit save button commits the memo through the metadata mutation.
 - Escape closes without committing the current draft.
 - Empty memo is valid and renders as a quiet empty state.
 
-Render the memo as a header-adjacent popover panel aligned to the right side of the study page header. The panel must stay within the viewport, keep the chart visible underneath, and use existing border/background/text tokens.
+Render the memo as a non-modal docked panel above the existing `StudyDetailPanel` in the right column. It must not overlay the chart or capture pointer events outside the textarea and its own controls, so users can keep panning, zooming, and clicking the chart while the memo panel is open. Clicking the chart while the textarea is focused may blur and auto-save the draft, but the memo panel remains open unless the user closes it.
 
 ## Error Handling
 
