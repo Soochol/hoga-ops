@@ -479,7 +479,7 @@ export function LiveChartRoot({ code, timeframe, viewIdentity, bundle, chartBund
           timeframe === 'D' && restoreViewport.atLiveEdge
             ? { ...restoreViewport, barSpan: DAILY_VISIBLE_BARS }
             : timeframe === 'D' && !restoreViewport.userAdjusted
-              ? { ...restoreViewport, barSpan: Math.min(restoreViewport.barSpan, DAILY_VISIBLE_BARS) }
+              ? { ...restoreViewport, barSpan: DAILY_VISIBLE_BARS }
               : restoreViewport;
         if (timeframe === 'D' && restoreViewport.userAdjusted && !restoreViewport.atLiveEdge) {
           userAdjustedDailyViewportRef.current = true;
