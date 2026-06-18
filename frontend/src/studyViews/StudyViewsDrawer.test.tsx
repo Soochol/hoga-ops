@@ -314,6 +314,29 @@ it('cancels saved view rename on Escape', async () => {
   expect(screen.getByText('급등 이후')).toBeTruthy();
 });
 
+it('does not rename a saved view when the inline value is empty', async () => {
+  renderDrawer('/study?view=a');
+
+  await userEvent.dblClick(screen.getByText('급등 이후'));
+  const input = screen.getByLabelText('저장뷰 이름 수정') as HTMLInputElement;
+  await userEvent.clear(input);
+  await userEvent.keyboard('{Enter}');
+
+  expect(updateMetadataMutate).not.toHaveBeenCalled();
+  expect(screen.getByText('급등 이후')).toBeTruthy();
+});
+
+it('does not rename a saved view when the inline value is unchanged', async () => {
+  renderDrawer('/study?view=a');
+
+  await userEvent.dblClick(screen.getByText('급등 이후'));
+  const input = screen.getByLabelText('저장뷰 이름 수정') as HTMLInputElement;
+  await userEvent.type(input, '{Enter}');
+
+  expect(updateMetadataMutate).not.toHaveBeenCalled();
+  expect(screen.getByText('급등 이후')).toBeTruthy();
+});
+
 it('confirms delete before calling remove mutation', async () => {
   renderDrawer('/study?view=a');
 
