@@ -31,6 +31,7 @@ export function StudyViewsDrawer() {
   const [deleteTarget, setDeleteTarget] = useState<ParquetStudyView | null>(null);
   const [renameState, setRenameState] = useState<{ id: string; value: string; error: string | null } | null>(null);
   const renameCommittingRef = useRef(false);
+  const pendingNavigateRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const deleteConfirmButtonRef = useRef<HTMLButtonElement>(null);
   const navigate = useNavigate();
   const location = useLocation();
@@ -50,6 +51,10 @@ export function StudyViewsDrawer() {
     if (!deleteTarget) return;
     deleteConfirmButtonRef.current?.focus();
   }, [deleteTarget]);
+
+  useEffect(() => () => {
+    if (pendingNavigateRef.current) clearTimeout(pendingNavigateRef.current);
+  }, []);
 
   const openSaveDialog = (mode: 'create' | 'overwrite', id?: string) => {
     if (!studySource) return;
@@ -90,6 +95,24 @@ export function StudyViewsDrawer() {
 
   const startRename = (row: ParquetStudyView) => {
     setRenameState({ id: row.id, value: row.name, error: null });
+  };
+
+  const clearPendingNavigate = () => {
+    if (!pendingNavigateRef.current) return;
+    clearTimeout(pendingNavigateRef.current);
+    pendingNavigateRef.current = null;
+  };
+
+  const navigateToStudyView = (row: ParquetStudyView, clickDetail: number) => {
+    clearPendingNavigate();
+    if (clickDetail === 0) {
+      navigate(`/study?view=${row.id}`);
+      return;
+    }
+    pendingNavigateRef.current = setTimeout(() => {
+      pendingNavigateRef.current = null;
+      navigate(`/study?view=${row.id}`);
+    }, 180);
   };
 
   const cancelRename = () => {
@@ -216,7 +239,12 @@ export function StudyViewsDrawer() {
                   <div className="min-w-0 flex-1">
                     <button
                       type="button"
-                      onClick={() => navigate(`/study?view=${row.id}`)}
+                      onClick={(e) => navigateToStudyView(row, e.detail)}
+                      onDoubleClick={(e) => {
+                        e.preventDefault();
+                        clearPendingNavigate();
+                        startRename(row);
+                      }}
                       className="block w-full truncate text-left text-sm font-medium text-fg focus:outline-none focus:ring-1 focus:ring-line"
                     >
                       {row.name}

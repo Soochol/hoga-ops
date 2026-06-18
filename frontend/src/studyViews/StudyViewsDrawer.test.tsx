@@ -290,6 +290,15 @@ it('pressing Enter on the saved view title navigates to the study route', async 
   await waitFor(() => expect(screen.getByTestId('loc').textContent).toBe('/study?view=a'));
 });
 
+it('double-clicking the saved view title opens inline edit mode without navigating', async () => {
+  renderDrawer('/inventory');
+
+  await userEvent.dblClick(screen.getByRole('button', { name: '급등 이후' }));
+
+  expect(screen.getByLabelText('저장뷰 이름 수정')).toBeTruthy();
+  expect(screen.getByTestId('loc').textContent).toBe('/inventory');
+});
+
 it('clicking rename opens inline edit mode without navigating', async () => {
   renderDrawer('/inventory');
 
