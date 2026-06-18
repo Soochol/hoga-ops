@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react';
-import type { PointerEvent } from 'react';
+import type { FocusEvent, KeyboardEvent, PointerEvent } from 'react';
 
 const HEIGHT_STORAGE_KEY = 'study.memoPanel.height.v1';
 const DEFAULT_HEIGHT = 220;
@@ -34,6 +34,7 @@ export function StudyMemoPanel({
   const [draft, setDraft] = useState(memo);
   const [height, setHeight] = useState(readStoredHeight);
   const dragRef = useRef<{ startY: number; startHeight: number } | null>(null);
+  const saveButtonRef = useRef<HTMLButtonElement | null>(null);
 
   useEffect(() => {
     setDraft(memo);
@@ -67,10 +68,28 @@ export function StudyMemoPanel({
     dragRef.current = null;
   };
 
+  const handleTextareaBlur = (e: FocusEvent<HTMLTextAreaElement>) => {
+    if (e.relatedTarget === saveButtonRef.current) {
+      return;
+    }
+    commit();
+  };
+
+  const resizeByKeyboard = (e: KeyboardEvent<HTMLDivElement>) => {
+    if (e.key !== 'ArrowUp' && e.key !== 'ArrowDown') {
+      return;
+    }
+    e.preventDefault();
+    const delta = e.key === 'ArrowUp' ? -16 : 16;
+    const next = clampHeight(height + delta);
+    setHeight(next);
+    window.localStorage.setItem(HEIGHT_STORAGE_KEY, String(next));
+  };
+
   return (
     <section
       data-testid="study-memo-panel"
-      className="flex shrink-0 flex-col border-b border-[var(--border)] bg-[var(--bg)]"
+      className="flex shrink-0 flex-col border-b border-[var(--border)] bg-bg-card"
       style={{ height }}
     >
       <div className="flex items-center justify-between gap-2 px-3 py-2">
@@ -83,7 +102,7 @@ export function StudyMemoPanel({
         aria-label="저장뷰 메모"
         value={draft}
         onChange={(e) => setDraft(e.target.value)}
-        onBlur={commit}
+        onBlur={handleTextareaBlur}
         onKeyDown={(e) => {
           if (e.key === 'Escape') {
             e.preventDefault();
@@ -97,6 +116,7 @@ export function StudyMemoPanel({
       <div className="flex items-center justify-between gap-2 px-3 py-2 text-xs text-fg-dim">
         <span>{errorMessage ?? (isSaving ? '저장 중...' : '저장됨')}</span>
         <button
+          ref={saveButtonRef}
           type="button"
           disabled={isSaving}
           onClick={commit}
@@ -114,6 +134,7 @@ export function StudyMemoPanel({
         onPointerMove={moveResize}
         onPointerUp={endResize}
         onPointerCancel={endResize}
+        onKeyDown={resizeByKeyboard}
         className="h-2 cursor-row-resize border-t border-[var(--border)] bg-bg-input-hover"
       />
     </section>

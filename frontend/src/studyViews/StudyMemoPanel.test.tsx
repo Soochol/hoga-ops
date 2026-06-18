@@ -16,6 +16,7 @@ it('commits trimmed memo edits with the save button', async () => {
   await userEvent.click(screen.getByRole('button', { name: '저장' }));
 
   expect(onCommit).toHaveBeenCalledWith('새 메모');
+  expect(onCommit).toHaveBeenCalledTimes(1);
 });
 
 it('cancels the draft and closes on Escape', async () => {
@@ -49,4 +50,17 @@ it('persists resized memo panel height', () => {
 
   expect(Number(localStorage.getItem('study.memoPanel.height.v1'))).toBeGreaterThan(280);
   expect(panel).toHaveStyle({ height: `${localStorage.getItem('study.memoPanel.height.v1')}px` });
+});
+
+it('resizes the panel with keyboard arrows and persists the height', async () => {
+  render(<StudyMemoPanel memo="" isSaving={false} errorMessage={null} onClose={vi.fn()} onCommit={vi.fn()} />);
+
+  const panel = screen.getByTestId('study-memo-panel');
+  const handle = screen.getByRole('separator', { name: '메모 크기 조절' });
+
+  handle.focus();
+  await userEvent.keyboard('{ArrowDown}{ArrowDown}{ArrowUp}');
+
+  expect(localStorage.getItem('study.memoPanel.height.v1')).toBe('236');
+  expect(panel).toHaveStyle({ height: '236px' });
 });
