@@ -262,6 +262,7 @@ export function LiveChartRoot({ code, timeframe, viewIdentity, bundle, chartBund
       ) {
         return { ...vp, barSpan: DAILY_VISIBLE_BARS };
       }
+      if (!vp) return null;
       return timeframeRef.current === 'D' && userAdjustedDailyViewportRef.current
         ? { ...vp, userAdjusted: true }
         : vp;
@@ -878,6 +879,7 @@ export function LiveChartRoot({ code, timeframe, viewIdentity, bundle, chartBund
               axis={axis}
               paneIndex={i}
               spec={spec}
+              forceSetData={isCalendarTimeframe(timeframe) && spec.name === 'candle'}
               onPrimarySeriesReady={handleSeriesReady}
               onPrimarySeriesGone={handleSeriesGone}
             />
