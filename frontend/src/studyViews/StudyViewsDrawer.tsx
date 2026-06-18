@@ -212,11 +212,7 @@ export function StudyViewsDrawer() {
                   <div className="truncate text-xs text-fg-dim">{row.label} {row.code} · {row.timeframe}</div>
                 </div>
               ) : (
-                <button
-                  type="button"
-                  onClick={() => navigate(`/study?view=${row.id}`)}
-                  className="min-w-0 flex-1 text-left"
-                >
+                <div className="min-w-0 flex-1">
                   <div
                     className="truncate text-sm font-medium"
                     onDoubleClick={(e) => {
@@ -227,8 +223,14 @@ export function StudyViewsDrawer() {
                   >
                     {row.name}
                   </div>
-                  <div className="text-xs text-fg-dim truncate">{row.label} {row.code} · {row.timeframe}</div>
-                </button>
+                  <button
+                    type="button"
+                    onClick={() => navigate(`/study?view=${row.id}`)}
+                    className="block w-full truncate text-left text-xs text-fg-dim"
+                  >
+                    {row.label} {row.code} · {row.timeframe}
+                  </button>
+                </div>
               )}
               <button
                 type="button"

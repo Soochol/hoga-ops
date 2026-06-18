@@ -314,6 +314,15 @@ it('cancels saved view rename on Escape', async () => {
   expect(screen.getByText('급등 이후')).toBeTruthy();
 });
 
+it('starts inline rename without navigating from a non-study route', async () => {
+  renderDrawer('/inventory');
+
+  await userEvent.dblClick(screen.getByText('급등 이후'));
+
+  expect(screen.getByLabelText('저장뷰 이름 수정')).toBeTruthy();
+  expect(screen.getByTestId('loc').textContent).toBe('/inventory');
+});
+
 it('does not rename a saved view when the inline value is empty', async () => {
   renderDrawer('/study?view=a');
 
