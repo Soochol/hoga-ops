@@ -365,6 +365,48 @@ def test_query_cumulative_details_at_returns_top10_at_each_cursor(tmp_path: Path
     assert out[90_060_000][0].dominant_side == "sell"
 
 
+def test_query_cumulative_details_at_dedupes_cursors_and_returns_empty_before_first_row(
+    tmp_path: Path,
+) -> None:
+    from hoga.tables.brokers import BrokerRow, query_cumulative_details_at, write_parquet
+
+    path = tmp_path / "brokers.parquet"
+    rows = [
+        BrokerRow(
+            ts_ms=90_000_000,
+            seq=1,
+            side="buy",
+            rank=1,
+            broker="키움증권",
+            qty_today=100,
+            qty_delta=0,
+        ),
+        BrokerRow(
+            ts_ms=90_060_000,
+            seq=2,
+            side="buy",
+            rank=1,
+            broker="키움증권",
+            qty_today=150,
+            qty_delta=0,
+        ),
+    ]
+    write_parquet(rows, path)
+
+    with duckdb.connect(":memory:") as con:
+        out = query_cumulative_details_at(
+            con,
+            path=path,
+            t_values=[89_999_999, 90_060_000, 90_060_000],
+        )
+
+    assert out[89_999_999] == []
+    assert [(r.broker, r.net, r.dominant_side) for r in out[90_060_000]] == [
+        ("키움증권", 150, "buy")
+    ]
+    assert sorted(out.keys()) == [89_999_999, 90_060_000]
+
+
 def test_query_cumulative_details_at_keeps_final_day_order_at_earlier_cursor(
     tmp_path: Path,
 ) -> None:
