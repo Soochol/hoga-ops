@@ -288,6 +288,12 @@ async def run_update(sdir: Path, *, codes: list[str], fetch_one: FetchOne,
     rows: list[DailyBar] = [b for batch in fetched for b in batch]
     if not rows:
         return 0
+    if failures:
+        log.warning(
+            "screener update: %d daily fetch failures; preserving last_raw_date",
+            len(failures),
+        )
+        return 0
     up = sdir / "daily_unadjusted.parquet"
 
     def _commit() -> int:                  # 동기 polars는 to_thread로 (루프 블로킹 방지)

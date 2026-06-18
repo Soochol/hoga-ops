@@ -32,6 +32,16 @@ class _Client:
         return DailyCandleFetchResult(candles=[], violations=[])
 
 
+class _RateLimitOnceClient(_Client):
+    async def fetch_past_daily_candles(
+        self, code, frm, to, *, adjust=True, foreground=False, retry=True
+    ):
+        self.calls.append(f"{self.name}:{code}:fg={foreground}:retry={retry}")
+        if len(self.calls) == 1:
+            raise KisRateLimitError("EGW00201")
+        return DailyCandleFetchResult(candles=[], violations=[])
+
+
 @pytest.mark.asyncio
 async def test_background_waits_while_foreground_is_waiting(tmp_path: Path) -> None:
     calls: list[str] = []
@@ -141,8 +151,32 @@ async def test_rate_limit_sets_cooldown_and_records_status(tmp_path: Path) -> No
         )
 
     snap = queue.snapshot()
-    assert snap["daily_rate_limit_count"] == 1
+    assert snap["daily_rate_limit_count"] == 2
     assert snap["cooldown_remaining_ms"] >= 0
+
+
+@pytest.mark.asyncio
+async def test_rate_limit_retries_inside_queue(tmp_path: Path) -> None:
+    calls: list[str] = []
+    client = _RateLimitOnceClient("fg", calls)
+
+    def acquire(role, data_dir, *, allow_account0_fallback=True):
+        return _Lease(role, 0, client)
+
+    queue = DailyKisFetchQueue(
+        acquire_account=acquire,
+        foreground_concurrency=1,
+        background_concurrency_per_account=1,
+        global_rate_per_sec=1000,
+        cooldown_backoff=(0.0,),
+    )
+
+    await queue.fetch_past_daily_candles(
+        tmp_path, lane="foreground", code="FG", from_yyyymmdd="20240101", to_yyyymmdd="20240101",
+    )
+
+    assert calls == ["fg:FG:fg=True:retry=False", "fg:FG:fg=True:retry=False"]
+    assert queue.snapshot()["daily_rate_limit_count"] == 1
 
 
 @pytest.mark.asyncio

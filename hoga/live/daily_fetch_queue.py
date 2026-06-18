@@ -66,6 +66,7 @@ class DailyKisFetchQueue:
         self._bg_active = 0
         self._daily_rate_limit_count = 0
         self._account_bg_sems: dict[int, asyncio.Semaphore] = {}
+        self._state_lock = asyncio.Lock()
 
     def snapshot(self) -> dict:
         now = time.monotonic()
@@ -101,21 +102,25 @@ class DailyKisFetchQueue:
     async def _run_foreground(
         self, data_dir: Path, code: str, frm: str, to: str, adjust: bool
     ) -> DailyCandleFetchResult:
-        self._fg_waiting += 1
+        async with self._state_lock:
+            self._fg_waiting += 1
         try:
             await self._fg_sem.acquire()
         except BaseException:
-            self._fg_waiting -= 1
+            async with self._state_lock:
+                self._fg_waiting -= 1
             raise
-        self._fg_waiting -= 1
-        self._fg_active += 1
+        async with self._state_lock:
+            self._fg_waiting -= 1
+            self._fg_active += 1
         try:
             lease = self._acquire_account("foreground", data_dir)
             if lease is None:
                 raise DailyKisUnavailable("foreground", "account_unavailable")
             return await self._call_lease(lease, code, frm, to, adjust, foreground=True)
         finally:
-            self._fg_active -= 1
+            async with self._state_lock:
+                self._fg_active -= 1
             self._fg_sem.release()
 
     async def _run_background(
@@ -149,10 +154,14 @@ class DailyKisFetchQueue:
                 counted_waiting = False
                 self._bg_active += 1
                 try:
-                    if lease.account_id == 0:
-                        await self._wait_for_foreground_idle()
                     return await self._call_lease(
-                        lease, code, frm, to, adjust, foreground=False
+                        lease,
+                        code,
+                        frm,
+                        to,
+                        adjust,
+                        foreground=False,
+                        requires_foreground_idle=lease.account_id == 0,
                     )
                 finally:
                     self._bg_active -= 1
@@ -161,7 +170,11 @@ class DailyKisFetchQueue:
                 self._bg_waiting -= 1
 
     async def _wait_for_foreground_idle(self) -> None:
-        while self._fg_waiting or self._fg_active:
+        while True:
+            async with self._state_lock:
+                idle = self._fg_waiting == 0 and self._fg_active == 0
+            if idle:
+                return
             await asyncio.sleep(0.02)
 
     async def _call_lease(
@@ -173,22 +186,29 @@ class DailyKisFetchQueue:
         adjust: bool,
         *,
         foreground: bool,
+        requires_foreground_idle: bool = False,
     ) -> DailyCandleFetchResult:
-        await self._wait_global_turn()
-        try:
-            result = await lease.client.fetch_past_daily_candles(
-                code,
-                frm,
-                to,
-                adjust=adjust,
+        attempts = len(self._cooldown_backoff) + 1
+        for attempt in range(attempts):
+            await self._wait_global_turn(
                 foreground=foreground,
-                retry=False,
+                requires_foreground_idle=requires_foreground_idle,
             )
-            self._cooldown_index = 0
-            return result
-        except KisRateLimitError:
-            self._daily_rate_limit_count += 1
-            if self._cooldown_backoff:
+            try:
+                result = await lease.client.fetch_past_daily_candles(
+                    code,
+                    frm,
+                    to,
+                    adjust=adjust,
+                    foreground=foreground,
+                    retry=False,
+                )
+                self._cooldown_index = 0
+                return result
+            except KisRateLimitError:
+                self._daily_rate_limit_count += 1
+                if attempt + 1 >= attempts:
+                    raise
                 delay = self._cooldown_backoff[
                     min(self._cooldown_index, len(self._cooldown_backoff) - 1)
                 ]
@@ -196,19 +216,30 @@ class DailyKisFetchQueue:
                 self._cooldown_until = max(
                     self._cooldown_until, time.monotonic() + delay
                 )
-            raise
+        raise AssertionError("unreachable")
 
-    async def _wait_global_turn(self) -> None:
-        async with self._rate_lock:
-            now = time.monotonic()
-            wait = max(
-                0.0,
-                self._cooldown_until - now,
-                self._last_start + self._global_min_interval - now,
-            )
-            if wait:
-                await asyncio.sleep(wait)
-            self._last_start = time.monotonic()
+    async def _wait_global_turn(
+        self,
+        *,
+        foreground: bool,
+        requires_foreground_idle: bool,
+    ) -> None:
+        while True:
+            async with self._rate_lock:
+                now = time.monotonic()
+                wait = max(
+                    0.0,
+                    self._cooldown_until - now,
+                    self._last_start + self._global_min_interval - now,
+                )
+                if wait <= 0:
+                    async with self._state_lock:
+                        foreground_idle = self._fg_waiting == 0 and self._fg_active == 0
+                    if foreground or not requires_foreground_idle or foreground_idle:
+                        self._last_start = time.monotonic()
+                        return
+                    wait = 0.02
+            await asyncio.sleep(wait)
 
 
 _queue = DailyKisFetchQueue()

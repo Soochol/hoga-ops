@@ -773,11 +773,11 @@ def test_past_daily_partial_hit_gap_fill(tmp_path) -> None:
         assert ts == sorted(set(ts))
 
 
-def test_past_daily_rate_limit_surfaces_data_warning(tmp_path) -> None:
-    """Daily endpoint inherits ADR-0049: a ``KisRateLimitError`` reaching the
-    handler means the client has already exhausted retries. The gap loop then
-    breaks and the user sees one ``kis_rate_limit`` warning rather than the
-    (now-impossible) wall of retryable transients.
+def test_past_daily_rate_limit_recovers_inside_queue(tmp_path) -> None:
+    """Daily endpoint now lets DailyKisFetchQueue own daily-TR retry.
+
+    A single EGW00201 should be retried before the route sees it, so the user
+    does not get a data_warning unless queue-level retry is exhausted.
     """
     fake = _FakeKisForDaily()
     fake.raise_rate_limit_on_call = 1
@@ -789,13 +789,12 @@ def test_past_daily_rate_limit_surfaces_data_warning(tmp_path) -> None:
         warmup_calls = len(fake.calls)
         r2 = c.get("/api/live/past-daily-candles?code=005930&from=20240101&to=20240501")
         body = r2.json()
-        assert any(w["reason"] == "kis_rate_limit" for w in body["data_warnings"])
-        # Gap loop must break after the first EGW00201 — no further KIS
-        # calls for later gap batches in the SAME request. (Client retries
-        # are opaque to the fake; they don't show up as additional calls.)
+        assert not any(w["reason"] == "kis_rate_limit" for w in body["data_warnings"])
+        # Queue-level retry is visible to the fake: the same gap is attempted
+        # twice, then succeeds without moving on to unrelated warning handling.
         post_warmup_calls = len(fake.calls) - warmup_calls
-        assert post_warmup_calls == 1, (
-            f"expected gap loop to break after one rate-limited call; got "
+        assert post_warmup_calls == 2, (
+            f"expected queue retry to replay the same gap once; got "
             f"{post_warmup_calls} calls: {fake.calls[warmup_calls:]}"
         )
 

@@ -127,7 +127,6 @@ async def test_run_update_keeps_successful_codes_when_one_fetch_fails(tmp_path):
         now_ms=123,
     )
 
-    assert updated == 1
+    assert updated == 0
     status = screener_store.read_status(sdir / "status.json")
-    assert status is not None
-    assert status.last_raw_date == "20240102"
+    assert status is None
