@@ -69,24 +69,6 @@ function pad(n: number): string {
 const EMPTY_AXIS: VirtualAxis = createVirtualAxis([]);
 /** 안정 빈 배열 — 기본값이 매 렌더 새 []를 만들지 않게. */
 const EMPTY_ASK_PEAKS: readonly AskPeak[] = [];
-const DAILY_MIN_EFFECTIVE_BAR_SPACING = 3.5;
-
-function dailyLogicalRange(
-  totalBars: number,
-  plotWidth: number,
-  latestLogicalIndex: number | null,
-): { from: number; to: number } {
-  const rightOffset = CHART_TIMESCALE_OPTIONS.rightOffset ?? 0;
-  const latest = latestLogicalIndex ?? totalBars - 1;
-  const to = latest + 1 + rightOffset;
-  const maxLegibleSpan =
-    plotWidth > 0
-      ? Math.max(1, Math.floor(plotWidth / DAILY_MIN_EFFECTIVE_BAR_SPACING))
-      : 260;
-  const loadedSpan = totalBars + rightOffset;
-  const span = Math.min(loadedSpan, maxLegibleSpan);
-  return { from: Math.max(0, to - span), to };
-}
 
 interface Props {
   code: string | null;
@@ -548,32 +530,11 @@ export function LiveChartRoot({ code, timeframe, viewIdentity, bundle, chartBund
         ts.scrollToPosition(0, false);
         lastAppliedCountRef.current = totalBars;
         reveal();
-      } else if (timeframe === 'D') {
-        // Daily must keep candle bodies above a pixel floor. `fitContent()` on a
-        // long D history lets lightweight-charts zoom all the way out to
-        // minBarSpacing (observed: 628px / 1255 logical span = 0.5px), which
-        // collapses candlestick bodies into hairlines. Use a width-derived span
-        // instead. The 3.5px target leaves room for lwc's first-pass width to
-        // include the price scale before the final pane width settles, keeping
-        // the final effective spacing around 3px on the measured 628px pane.
-        // Re-run on count changes so the initial fetch -> extended D history
-        // transition normalizes itself.
-        if (applied === totalBars) { reveal(); return; }
-        const lastMs = cb.candles[cb.candles.length - 1]?.ts_ms;
-        let latestLogicalIndex: number | null = null;
-        if (lastMs != null) {
-          const idx = ts.timeToIndex(realMsToVirtualSeconds(axisRef.current, lastMs) as Time, true);
-          if (typeof idx === 'number' && Number.isFinite(idx)) latestLogicalIndex = idx;
-        }
-        ts.setVisibleLogicalRange(dailyLogicalRange(totalBars, ts.width(), latestLogicalIndex));
-        ts.scrollToPosition(0, false);
-        lastAppliedCountRef.current = totalBars;
-        reveal();
       } else {
-        // W/M re-fit whenever the candle count changes. Growth covers the
-        // initial daily-fetch extension; shrink covers placeholder data from
-        // a wider previous calendar request, which would otherwise leave the
-        // chart stuck at an over-compressed bar spacing.
+        // D/W/M re-fit whenever the candle count changes. Growth covers the
+        // initial daily-fetch extension; shrink covers placeholder data from a
+        // wider previous calendar request, which would otherwise leave the
+        // chart stuck at stale spacing.
         // historicalFromDate !== null (user-driven extension) short-circuits
         // above, so user scroll is preserved.
         if (applied === totalBars) { reveal(); return; }
