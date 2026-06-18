@@ -1,5 +1,5 @@
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
-import { renderHook, waitFor } from '@testing-library/react';
+import { act, renderHook, waitFor } from '@testing-library/react';
 import type { ReactNode } from 'react';
 import { describe, expect, it, vi } from 'vitest';
 
@@ -8,10 +8,11 @@ vi.mock('../api/studyViews', () => ({
   deleteStudyView: vi.fn(async () => undefined),
   getStudyViewSnapshot: vi.fn(),
   listStudyViews: vi.fn(),
+  updateStudyViewMetadata: vi.fn(),
   updateStudyView: vi.fn(),
 }));
 
-import { deleteStudyView } from '../api/studyViews';
+import { deleteStudyView, updateStudyViewMetadata } from '../api/studyViews';
 import { STUDY_VIEW_SAVES_QUERY, studyViewSnapshotQuery, useStudyViewMutations } from './useStudyViews';
 
 function wrap(qc: QueryClient) {
@@ -21,6 +22,25 @@ function wrap(qc: QueryClient) {
 }
 
 describe('useStudyViewMutations', () => {
+  it('updates metadata and invalidates only the saves list', async () => {
+    const qc = new QueryClient();
+    const invalidateSpy = vi.spyOn(qc, 'invalidateQueries');
+    const mutateAsync = vi.fn();
+    vi.mocked(updateStudyViewMetadata).mockImplementation(mutateAsync);
+
+    const { result } = renderHook(() => useStudyViewMutations(), {
+      wrapper: ({ children }) => <QueryClientProvider client={qc}>{children}</QueryClientProvider>,
+    });
+
+    await act(async () => {
+      await result.current.updateMetadata.mutateAsync({ id: 'a', body: { name: '새 이름' } });
+    });
+
+    expect(mutateAsync).toHaveBeenCalledWith('a', { name: '새 이름' });
+    expect(invalidateSpy).toHaveBeenCalledWith({ queryKey: STUDY_VIEW_SAVES_QUERY });
+    expect(invalidateSpy).not.toHaveBeenCalledWith({ queryKey: studyViewSnapshotQuery('a') });
+  });
+
   it('removes the deleted view snapshot query after delete succeeds', async () => {
     const qc = new QueryClient({
       defaultOptions: {

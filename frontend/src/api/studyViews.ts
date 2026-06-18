@@ -123,6 +123,11 @@ export type ParquetStudyViewWriteRequest = {
   snapshot: ParquetStudySnapshot;
 };
 
+export type StudyViewMetadataUpdateRequest = {
+  name?: string;
+  memo?: string;
+};
+
 const json = (body: unknown): RequestInit => ({
   headers: { 'Content-Type': 'application/json' },
   body: JSON.stringify(body),
@@ -136,5 +141,7 @@ export const getStudyViewSnapshot = (id: string) =>
   apiCall<ParquetStudySnapshot>(`/api/study-views/saves/${id}/snapshot`);
 export const updateStudyView = (id: string, body: ParquetStudyViewWriteRequest) =>
   apiCall<ParquetStudyView>(`/api/study-views/saves/${id}`, { method: 'PUT', ...json(body) });
+export const updateStudyViewMetadata = (id: string, body: StudyViewMetadataUpdateRequest) =>
+  apiCall<ParquetStudyView>(`/api/study-views/saves/${id}/metadata`, { method: 'PATCH', ...json(body) });
 export const deleteStudyView = (id: string) =>
   apiAction(`/api/study-views/saves/${id}`, { method: 'DELETE' });
