@@ -129,6 +129,7 @@ export function StudyPage() {
           <StudyDetailPanel
             details={details}
             candles={chartInput.bundle.candles}
+            segments={chartInput.bundle.segments}
             bucketMs={bucketMs}
             cursorMs={isCursorActive ? cursorMs : null}
           />

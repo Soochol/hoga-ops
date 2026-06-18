@@ -1,20 +1,21 @@
 import { useMemo } from 'react';
-import type { StudyBrokerBucket } from '../api/studyViews';
+import BrokerTrajectoryTable from '../sidebar/BrokerTrajectoryTable';
 import OrderbookTable from '../sidebar/OrderbookTable';
-import { brokerDisplayShort } from '../sidebar/brokerDisplayNames';
+import type { RangeSegment } from '../api/types';
 import type { StudySnapshotDetailInput } from './studySnapshotAdapter';
-import { bucketStartForCursor } from './studySnapshotAdapter';
+import { bucketStartForCursor, studyBrokerBucketsToSeries } from './studySnapshotAdapter';
 
 type CandlePoint = { ts_ms: number };
 
 type Props = {
   details: StudySnapshotDetailInput;
   candles: CandlePoint[];
+  segments: RangeSegment[];
   bucketMs: number;
   cursorMs: number | null;
 };
 
-export function StudyDetailPanel({ details, candles, bucketMs, cursorMs }: Props) {
+export function StudyDetailPanel({ details, candles, segments, bucketMs, cursorMs }: Props) {
   const bucketStart = useMemo(() => {
     if (candles.length === 0) return null;
     if (cursorMs == null) return candles[candles.length - 1]?.ts_ms ?? null;
@@ -22,7 +23,28 @@ export function StudyDetailPanel({ details, candles, bucketMs, cursorMs }: Props
   }, [bucketMs, candles, cursorMs]);
 
   const orderbook = bucketStart == null ? undefined : details.orderbookByBucketStart.get(bucketStart);
-  const brokers = bucketStart == null ? undefined : details.brokersByBucketStart.get(bucketStart);
+  const activeSegment = useMemo(() => {
+    if (bucketStart == null) return null;
+    return segments.find((segment) => (
+      segment.session_open_ms <= bucketStart && bucketStart <= segment.session_close_ms
+    )) ?? null;
+  }, [bucketStart, segments]);
+  const brokerSeries = useMemo(
+    () => studyBrokerBucketsToSeries(
+      details.brokersByBucketStart,
+      activeSegment
+        ? { fromMs: activeSegment.session_open_ms, toMs: activeSegment.session_close_ms }
+        : null,
+    ),
+    [activeSegment, details.brokersByBucketStart],
+  );
+  const visibleBrokerSeries = useMemo(() => {
+    if (bucketStart == null) return [];
+    const bucket = details.brokersByBucketStart.get(bucketStart);
+    if (!bucket?.available) return [];
+    const visible = new Set(bucket.brokers.map((broker) => broker.broker));
+    return brokerSeries.filter((entry) => visible.has(entry.broker));
+  }, [brokerSeries, bucketStart, details.brokersByBucketStart]);
   const snapshot = orderbook?.available ? orderbook.snapshot : null;
 
   return (
@@ -33,7 +55,11 @@ export function StudyDetailPanel({ details, candles, bucketMs, cursorMs }: Props
       </section>
       <section>
         <h2 className="border-y px-3 py-2 text-sm font-semibold">거래원</h2>
-        <BrokerDetailRows bucket={brokers} />
+        <BrokerTrajectoryTable
+          series={visibleBrokerSeries}
+          cursorMs={bucketStart}
+          gapThresholdMs={Math.max(30_000, bucketMs + 1)}
+        />
       </section>
       {details.detailWarnings.length > 0 && (
         <section className="border-t px-3 py-2 text-xs text-fg-dim">
@@ -41,35 +67,5 @@ export function StudyDetailPanel({ details, candles, bucketMs, cursorMs }: Props
         </section>
       )}
     </aside>
-  );
-}
-
-function BrokerDetailRows({ bucket }: { bucket: StudyBrokerBucket | undefined }) {
-  if (!bucket || !bucket.available || bucket.brokers.length === 0) {
-    return <div className="grid place-items-center p-3 text-xs text-fg-dimmer">거래원 정보 없음</div>;
-  }
-
-  return (
-    <div className="font-mono text-sm tabular-nums divide-y divide-border-strong">
-      {bucket.brokers.slice(0, 10).map((broker) => (
-        <div
-          key={broker.broker}
-          data-testid="study-broker-row"
-          className="grid grid-cols-[70px_1fr] gap-2 px-2.5 py-0.5"
-        >
-          <span className="truncate" title={broker.broker}>{brokerDisplayShort(broker.broker)}</span>
-          <span
-            className={broker.net > 0
-              ? 'text-price-up text-right'
-              : broker.net < 0
-                ? 'text-price-down text-right'
-                : 'text-fg-dimmer text-right'}
-          >
-            {broker.net > 0 ? '+' : ''}
-            {broker.net.toLocaleString('ko-KR')}
-          </span>
-        </div>
-      ))}
-    </div>
   );
 }

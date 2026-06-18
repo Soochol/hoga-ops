@@ -1,4 +1,4 @@
-import type { RangeBundle, VolumeProfile } from '../api/types';
+import type { BrokerSeriesEntry, BrokerSeriesPoint, RangeBundle, VolumeProfile } from '../api/types';
 import type {
   StudyBrokerBucket,
   StudyDetailWarning,
@@ -48,6 +48,47 @@ export function studySnapshotDetails(snapshot: StudySnapshotBundle): StudySnapsh
     brokersByBucketStart: new Map((snapshot.broker_buckets ?? []).map((bucket) => [bucket.t, bucket])),
     detailWarnings: snapshot.detail_warnings ?? [],
   };
+}
+
+export function studyBrokerBucketsToSeries(
+  brokersByBucketStart: Map<number, StudyBrokerBucket>,
+  range?: { fromMs: number; toMs: number } | null,
+): BrokerSeriesEntry[] {
+  const byBroker = new Map<string, BrokerSeriesPoint[]>();
+  const buckets = [...brokersByBucketStart.values()].sort((a, b) => a.t - b.t);
+  const firstSeenRank = new Map<string, number>();
+
+  for (const bucket of buckets) {
+    if (!bucket.available) continue;
+    for (const broker of bucket.brokers) {
+      if (!firstSeenRank.has(broker.broker)) {
+        firstSeenRank.set(broker.broker, firstSeenRank.size);
+      }
+    }
+    if (range && (bucket.t < range.fromMs || bucket.t > range.toMs)) continue;
+    for (const broker of bucket.brokers) {
+      const points = byBroker.get(broker.broker) ?? [];
+      points.push({ ts_ms: bucket.t, net: broker.net });
+      byBroker.set(broker.broker, points);
+    }
+  }
+
+  const series: BrokerSeriesEntry[] = [];
+  for (const [broker, points] of byBroker.entries()) {
+    const finalNet = points.length > 0 ? points[points.length - 1].net : 0;
+    series.push({
+      broker,
+      final_net: finalNet,
+      dominant_side: finalNet >= 0 ? 'buy' : 'sell',
+      points,
+    });
+  }
+
+  series.sort((a, b) => (
+    (firstSeenRank.get(a.broker) ?? Number.MAX_SAFE_INTEGER)
+    - (firstSeenRank.get(b.broker) ?? Number.MAX_SAFE_INTEGER)
+  ));
+  return series;
 }
 
 export function bucketStartForCursor(

@@ -97,7 +97,13 @@ describe('WatchlistDrawer', () => {
   });
 
   it('cycles a folder sort mode by clicking the group sort icon', async () => {
-    vi.spyOn(watchlistApi, 'getWatchlist').mockResolvedValue(DATA);
+    vi.spyOn(watchlistApi, 'getWatchlist').mockResolvedValue({
+      ...DATA,
+      entries: [
+        { ...ENTRIES[0], folder_id: 'f_0000000a', order: 0 },
+        { ...ENTRIES[1], folder_id: 'f_0000000a', order: 1 },
+      ],
+    });
     vi.spyOn(client, 'apiCall').mockResolvedValue({
       phase: 'open',
       quotes: [

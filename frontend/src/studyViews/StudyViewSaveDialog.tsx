@@ -6,6 +6,8 @@ export function StudyViewSaveDialog({
   defaultMemo,
   barCount,
   sizeBytes,
+  isSubmitting = false,
+  errorMessage,
   onCancel,
   onSubmit,
 }: {
@@ -14,6 +16,8 @@ export function StudyViewSaveDialog({
   defaultMemo: string;
   barCount: number;
   sizeBytes: number;
+  isSubmitting?: boolean;
+  errorMessage?: string | null;
   onCancel: () => void;
   onSubmit: (v: { name: string; memo: string }) => void;
 }) {
@@ -55,10 +59,13 @@ export function StudyViewSaveDialog({
           />
         </label>
         <p className="text-xs text-fg-dim">저장 학습뷰는 현재 화면의 계산된 차트 데이터를 스냅샷으로 저장합니다.</p>
+        {errorMessage && (
+          <p role="alert" className="text-xs text-red-500">{errorMessage}</p>
+        )}
         <div className="flex justify-end gap-2">
-          <button type="button" onClick={onCancel} className="rounded border px-3 py-1 text-sm">취소</button>
-          <button type="submit" disabled={!valid} className="rounded border bg-accent px-3 py-1 text-sm text-white disabled:opacity-50">
-            저장
+          <button type="button" onClick={onCancel} disabled={isSubmitting} className="rounded border px-3 py-1 text-sm disabled:opacity-50">취소</button>
+          <button type="submit" disabled={!valid || isSubmitting} className="rounded border bg-accent px-3 py-1 text-sm text-white disabled:opacity-50">
+            {isSubmitting ? '저장 중...' : '저장'}
           </button>
         </div>
       </form>

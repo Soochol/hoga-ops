@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import {
   bucketStartForCursor,
+  studyBrokerBucketsToSeries,
   studySnapshotBundleToChartInput,
   studySnapshotBundleToRangeBundle,
   studySnapshotDetails,
@@ -201,6 +202,127 @@ describe('studySnapshotBundleToRangeBundle', () => {
     expect(details.orderbookByBucketStart.get(1000)?.snapshot?.seq).toBe(1);
     expect(details.brokersByBucketStart.get(1000)?.brokers[0].net).toBe(100);
     expect(details.detailWarnings[0].message).toBe('partial broker detail');
+  });
+
+  it('builds broker trajectory series from saved broker buckets', () => {
+    const s = snapshot({
+      broker_buckets: [
+        {
+          t: 1000,
+          available: true,
+          brokers: [
+            { broker: '키움증권', net: 100, dominant_side: 'buy' },
+            { broker: 'JP모간', net: -80, dominant_side: 'sell' },
+          ],
+        },
+        {
+          t: 2000,
+          available: false,
+          brokers: [],
+        },
+        {
+          t: 3000,
+          available: true,
+          brokers: [
+            { broker: '키움증권', net: 250, dominant_side: 'buy' },
+            { broker: '미래에셋증권', net: 300, dominant_side: 'buy' },
+          ],
+        },
+      ],
+    } as Partial<StudySnapshotBundle>);
+
+    const series = studyBrokerBucketsToSeries(studySnapshotDetails(s).brokersByBucketStart);
+
+    expect(series.map((entry) => entry.broker)).toEqual(['키움증권', 'JP모간', '미래에셋증권']);
+    expect(series.find((entry) => entry.broker === '키움증권')?.points).toEqual([
+      { ts_ms: 1000, net: 100 },
+      { ts_ms: 3000, net: 250 },
+    ]);
+    expect(series.find((entry) => entry.broker === 'JP모간')).toMatchObject({
+      final_net: -80,
+      dominant_side: 'sell',
+      points: [{ ts_ms: 1000, net: -80 }],
+    });
+  });
+
+  it('limits broker trajectory series to the active session range', () => {
+    const s = snapshot({
+      broker_buckets: [
+        {
+          t: 1000,
+          available: true,
+          brokers: [{ broker: '키움증권', net: 999, dominant_side: 'buy' }],
+        },
+        {
+          t: 100_000,
+          available: true,
+          brokers: [{ broker: '키움증권', net: 100, dominant_side: 'buy' }],
+        },
+        {
+          t: 101_000,
+          available: true,
+          brokers: [{ broker: '키움증권', net: 200, dominant_side: 'buy' }],
+        },
+      ],
+    } as Partial<StudySnapshotBundle>);
+
+    const series = studyBrokerBucketsToSeries(studySnapshotDetails(s).brokersByBucketStart, {
+      fromMs: 100_000,
+      toMs: 101_999,
+    });
+
+    expect(series).toHaveLength(1);
+    expect(series[0]).toMatchObject({
+      broker: '키움증권',
+      final_net: 200,
+      dominant_side: 'buy',
+      points: [
+        { ts_ms: 100_000, net: 100 },
+        { ts_ms: 101_000, net: 200 },
+      ],
+    });
+  });
+
+  it('keeps broker order by first appearance across the saved range', () => {
+    const s = snapshot({
+      broker_buckets: [
+        {
+          t: 1000,
+          available: true,
+          brokers: [
+            { broker: 'A증권', net: 10, dominant_side: 'buy' },
+            { broker: 'B증권', net: 20, dominant_side: 'buy' },
+            { broker: 'C증권', net: 30, dominant_side: 'buy' },
+          ],
+        },
+        {
+          t: 100_000,
+          available: true,
+          brokers: [
+            { broker: 'B증권', net: 900, dominant_side: 'buy' },
+            { broker: 'D증권', net: 800, dominant_side: 'buy' },
+            { broker: 'A증권', net: 700, dominant_side: 'buy' },
+          ],
+        },
+        {
+          t: 101_000,
+          available: true,
+          brokers: [
+            { broker: 'E증권', net: 1000, dominant_side: 'buy' },
+            { broker: 'A증권', net: 600, dominant_side: 'buy' },
+            { broker: 'C증권', net: 500, dominant_side: 'buy' },
+          ],
+        },
+      ],
+    } as Partial<StudySnapshotBundle>);
+    const details = studySnapshotDetails(s);
+
+    const secondDay = studyBrokerBucketsToSeries(details.brokersByBucketStart, {
+      fromMs: 100_000,
+      toMs: 101_999,
+    });
+
+    expect(secondDay.map((entry) => entry.broker)).toEqual(['A증권', 'B증권', 'C증권', 'D증권', 'E증권']);
   });
 
   it('resolves cursor time by containing bucket, not nearest bucket', () => {
