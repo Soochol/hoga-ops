@@ -77,9 +77,10 @@ def load_restorable_snapshot(data_dir: Path, *, id: str) -> ParquetStudySnapshot
     if not p.exists():
         raise StudyViewSnapshotMissingError(id)
     try:
-        return ParquetStudySnapshot.model_validate_json(p.read_text(encoding="utf-8"))
+        snapshot = ParquetStudySnapshot.model_validate_json(p.read_text(encoding="utf-8"))
     except ValidationError as e:
         raise StudyViewSnapshotInvalidError(id) from e
+    return prepare_restorable_snapshot(data_dir, snapshot)
 
 
 def _view_from_req(

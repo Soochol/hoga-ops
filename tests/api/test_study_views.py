@@ -553,6 +553,18 @@ def test_study_views_create_enriches_snapshot_detail_buckets(tmp_path):
     assert snap.bundle.broker_buckets[0].brokers[0].net == 100
     assert snap.bundle.detail_warnings == []
 
+    snapshot_path = tmp_path / "study_views" / "snapshots" / "view1.json"
+    sv.atomic_write_json(snapshot_path, req.snapshot.model_dump(mode="json"))
+    restorable = sv.load_restorable_snapshot(tmp_path, id="view1")
+
+    assert restorable.bundle.orderbook_buckets[0].available is True
+    assert restorable.bundle.orderbook_buckets[0].snapshot is not None
+    assert restorable.bundle.orderbook_buckets[0].snapshot.ts_ms == unix_bucket + 500
+    assert restorable.bundle.broker_buckets[0].available is True
+    assert restorable.bundle.broker_buckets[0].brokers[0].broker == "키움증권"
+    assert restorable.bundle.broker_buckets[0].brokers[0].net == 100
+    assert restorable.bundle.detail_warnings == []
+
 
 @pytest.mark.parametrize("timeframe", ["D", "W", "M"])
 def test_study_views_create_calendar_detail_enrichment_uses_segment_session_window(

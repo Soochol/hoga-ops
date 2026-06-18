@@ -17,5 +17,14 @@ def prepare_restorable_snapshot(
     `bundle.detail_warnings`.
     """
 
-    fixed_snapshot = snapshot.model_copy(update={"source_policy": "fixed"})
+    base_bundle = snapshot.bundle.model_copy(
+        update={
+            "orderbook_buckets": [],
+            "broker_buckets": [],
+            "detail_warnings": [],
+        }
+    )
+    fixed_snapshot = snapshot.model_copy(
+        update={"source_policy": "fixed", "bundle": base_bundle}
+    )
     return enrich_snapshot_with_details(data_dir, fixed_snapshot)
