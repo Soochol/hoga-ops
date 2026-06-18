@@ -20,7 +20,7 @@ import {
   useLiveBrokersAtCursor,
 } from '../api/useLiveCursor';
 import { useLiveInvestorTrendEstimate } from '../api/liveInvestorTrendEstimate';
-import type { MinuteTimeframe, LiveTimeframe } from '../state/livePage';
+import type { MinuteTimeframe } from '../state/livePage';
 import { isMinuteTimeframe } from '../state/livePage';
 
 interface Props {
@@ -41,8 +41,8 @@ interface Props {
  *   - /live uses useLiveSeries (initial REST + SSE) in latest mode
  *   - /live uses useLiveCursor hooks in spot mode (cursor set via hover)
  *
- * Per ADR-0044 and Design C1: header toggles between "최신" pulse (latest
- * mode) and "과거" + pinned timestamp (spot mode) when cursor is set.
+ * The mode header was removed to give the dense 10호가 / 거래원 / 잠정거래원
+ * panels more vertical room.
  *
  * The third "체결" card was removed 2026-05-28 (ADR-0047). The chart's
  * 체결강도 pane provides equivalent information in compact form.
@@ -123,7 +123,6 @@ export function LiveSidebar({ code, live }: Props) {
         background: 'var(--bg-card)',
       }}
     >
-      <SidebarHeader cursorMs={cursorMs} latestOrderbookTs={latestOrderbook?.ts_ms ?? null} timeframe={timeframe} />
       <div style={{ flex: 1, overflow: 'auto' }}>
         <CursorSidebar
           orderbook={
@@ -151,62 +150,6 @@ export function LiveSidebar({ code, live }: Props) {
         />
         <InvestorTrendEstimateCard query={investorTrendEstimate} />
       </div>
-    </div>
-  );
-}
-
-function SidebarHeader({
-  cursorMs,
-  latestOrderbookTs,
-  timeframe,
-}: {
-  cursorMs: number | null;
-  latestOrderbookTs: number | null;
-  timeframe: LiveTimeframe;
-}) {
-  // Design review B2: keep the timestamp pinned right in BOTH modes so it
-  // doesn't jump columns on mouse leave/enter. Left slot carries the mode
-  // label only. C4: 한글 카피로 "과거" 사용 (DESIGN.md Copy Tone).
-  const isSpot = cursorMs !== null && isMinuteTimeframe(timeframe);
-  const rightTs = isSpot ? cursorMs : latestOrderbookTs;
-  return (
-    <div
-      className="font-mono"
-      style={{
-        display: 'flex',
-        alignItems: 'center',
-        justifyContent: 'space-between',
-        gap: 'var(--space-xs)',
-        padding: 'var(--space-sm) var(--space-md)',
-        borderBottom: '1px solid var(--border)',
-        fontSize: 'var(--text-xs)',
-        color: 'var(--fg-dim)',
-      }}
-    >
-      <span style={{ display: 'inline-flex', alignItems: 'center', gap: 'var(--space-xs)' }}>
-        {isSpot ? (
-          <span>과거</span>
-        ) : (
-          <>
-            <span
-              data-testid="live-sidebar-pulse"
-              aria-label="live pulse"
-              style={{
-                display: 'inline-block',
-                width: '6px',
-                height: '6px',
-                borderRadius: '50%',
-                background: 'var(--accent)',
-                animation: 'live-pulse 1.5s ease-in-out infinite',
-              }}
-            />
-            <span>최신</span>
-          </>
-        )}
-      </span>
-      {rightTs !== null && (
-        <span style={{ color: 'var(--fg-dimmer)' }}>{formatTime(rightTs)}</span>
-      )}
     </div>
   );
 }
