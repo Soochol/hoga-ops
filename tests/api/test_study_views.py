@@ -995,3 +995,68 @@ def test_study_views_delete_snapshot_unlink_failure_rolls_back_manifest(tmp_path
 def test_study_views_missing_save_raises(tmp_path):
     with pytest.raises(sv.StudyViewNotFoundError):
         sv.get_save_sync(tmp_path, id="missing")
+
+
+def test_metadata_patch_renames_without_touching_snapshot(study_client, tmp_path, monkeypatch):
+    create = study_client.post("/api/study-views/saves", json=_req(name="원래 이름", memo="old"))
+    assert create.status_code == 201
+    save_id = create.json()["id"]
+    snapshot_path = tmp_path / "study_views" / "snapshots" / f"{save_id}.json"
+    before_snapshot = snapshot_path.read_text(encoding="utf-8")
+    before_mtime = snapshot_path.stat().st_mtime_ns
+
+    monkeypatch.setattr("hoga.api.study_view_routes.time.time", lambda: 10.0)
+    patch = study_client.patch(
+        f"/api/study-views/saves/{save_id}/metadata",
+        json={"name": "  새 이름  "},
+    )
+
+    assert patch.status_code == 200
+    body = patch.json()
+    assert body["name"] == "새 이름"
+    assert body["memo"] == "old"
+    assert body["updated_at_ms"] == 10_000
+    assert snapshot_path.read_text(encoding="utf-8") == before_snapshot
+    assert snapshot_path.stat().st_mtime_ns == before_mtime
+
+
+def test_metadata_patch_updates_memo_without_touching_snapshot(study_client, tmp_path):
+    create = study_client.post("/api/study-views/saves", json=_req(name="원래 이름", memo="old"))
+    assert create.status_code == 201
+    save_id = create.json()["id"]
+    snapshot_path = tmp_path / "study_views" / "snapshots" / f"{save_id}.json"
+    before_snapshot = snapshot_path.read_text(encoding="utf-8")
+
+    patch = study_client.patch(
+        f"/api/study-views/saves/{save_id}/metadata",
+        json={"memo": "  새 메모  "},
+    )
+
+    assert patch.status_code == 200
+    body = patch.json()
+    assert body["name"] == "원래 이름"
+    assert body["memo"] == "새 메모"
+    assert snapshot_path.read_text(encoding="utf-8") == before_snapshot
+
+
+def test_metadata_patch_rejects_blank_name(study_client):
+    create = study_client.post("/api/study-views/saves", json=_req())
+    assert create.status_code == 201
+    save_id = create.json()["id"]
+
+    patch = study_client.patch(
+        f"/api/study-views/saves/{save_id}/metadata",
+        json={"name": "   "},
+    )
+
+    assert patch.status_code == 422
+
+
+def test_metadata_patch_missing_id_returns_404(study_client):
+    patch = study_client.patch(
+        "/api/study-views/saves/missing/metadata",
+        json={"memo": "x"},
+    )
+
+    assert patch.status_code == 404
+    assert patch.json()["detail"]["code"] == "study_view_not_found"
