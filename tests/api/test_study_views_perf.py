@@ -106,9 +106,10 @@ def test_restorable_load_for_enriched_snapshot_is_json_only(tmp_path, monkeypatc
     snapshot_path = tmp_path / "study_views" / "snapshots" / "view1.json"
 
     sv.create_save_sync(tmp_path, req=req, id="view1", now_ms=10)
-    sv.atomic_write_json(snapshot_path, req.snapshot.model_dump(mode="json"))
-    persisted_size = len(snapshot_path.read_text(encoding="utf-8"))
-    assert persisted_size > 10_000
+    persisted = sv.load_snapshot(tmp_path, id="view1")
+    assert len(persisted.bundle.candles) == 200
+    assert len(persisted.bundle.orderbook_buckets) == 200
+    assert len(persisted.bundle.broker_buckets) == 200
 
     def prepare(data_dir, loaded_snapshot):
         raise AssertionError(
