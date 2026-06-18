@@ -9,7 +9,7 @@ import httpx
 import pytest
 
 from hoga.live.api import _candle_to_dict, batched_daily_walkback
-from hoga.live.kis_client import KisClient, KisCredentials, KisTransportError
+from hoga.live.kis_client import KIS_KST, KisClient, KisCredentials, KisTransportError
 from tests.unit.live._fakes import FakeTokenProvider
 
 FIXTURES = Path("tests/fixtures/kis_mock/responses")
@@ -281,6 +281,141 @@ async def test_fetch_past_minute_candles_drops_prior_trading_day_on_non_trading_
     finally:
         await client.aclose()
     assert candles == []
+
+
+@pytest.mark.asyncio
+async def test_fetch_past_minute_candles_threads_nxt_market_div(tmp_path: Path) -> None:
+    seen_params: list[dict[str, str]] = []
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        if request.url.path == "/oauth2/tokenP":
+            return httpx.Response(200, json={"access_token": "T", "expires_in": 86400})
+        seen_params.append(dict(request.url.params))
+        return httpx.Response(
+            200,
+            json={
+                "rt_cd": "0",
+                "msg_cd": "MCA00000",
+                "msg1": "정상처리",
+                "output2": [],
+            },
+        )
+
+    client = _make_client(handler, tmp_path)
+    try:
+        await client.fetch_past_minute_candles("005930", "20260609", venue="NXT")
+    finally:
+        await client.aclose()
+
+    assert seen_params
+    assert seen_params[0]["FID_COND_MRKT_DIV_CODE"] == "NX"
+    assert seen_params[0]["FID_INPUT_HOUR_1"] == "200000"
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("venue", ["AUTO", "BAD"])
+async def test_fetch_past_minute_candles_rejects_non_concrete_venue(
+    tmp_path: Path,
+    venue: str,
+) -> None:
+    data_requests = 0
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        nonlocal data_requests
+        if request.url.path == "/oauth2/tokenP":
+            return httpx.Response(200, json={"access_token": "T", "expires_in": 86400})
+        data_requests += 1
+        return httpx.Response(200, json={"rt_cd": "0", "msg_cd": "", "msg1": "", "output2": []})
+
+    client = _make_client(handler, tmp_path)
+    try:
+        with pytest.raises(ValueError, match="venue must be one of KRX, NXT, UN"):
+            await client.fetch_past_minute_candles("005930", "20260609", venue=venue)  # type: ignore[arg-type]
+    finally:
+        await client.aclose()
+
+    assert data_requests == 0
+
+
+@pytest.mark.asyncio
+async def test_fetch_past_minute_candles_jumps_nxt_empty_pause_anchor(tmp_path: Path) -> None:
+    def make_row(hh: int, mm: int) -> dict:
+        return {
+            "stck_bsop_date": "20260609",
+            "stck_cntg_hour": f"{hh:02d}{mm:02d}00",
+            "stck_oprc": "40000",
+            "stck_hgpr": "40100",
+            "stck_lwpr": "39900",
+            "stck_prpr": "40050",
+            "cntg_vol": "100",
+        }
+
+    pages_by_anchor = {
+        "200000": [make_row(15, 32), make_row(15, 31)],
+        "153000": [],
+        "151900": [make_row(15, 19), make_row(15, 18)],
+    }
+    captured_anchors: list[str] = []
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        if request.url.path == "/oauth2/tokenP":
+            return httpx.Response(200, json={"access_token": "T", "expires_in": 86400})
+        anchor = request.url.params.get("FID_INPUT_HOUR_1")
+        assert anchor is not None
+        captured_anchors.append(anchor)
+        return httpx.Response(
+            200,
+            json={
+                "rt_cd": "0",
+                "msg_cd": "MCA00000",
+                "msg1": "정상처리",
+                "output2": pages_by_anchor.get(anchor, []),
+            },
+        )
+
+    client = _make_client(handler, tmp_path)
+    try:
+        candles = await client.fetch_past_minute_candles("005930", "20260609", venue="NXT")
+    finally:
+        await client.aclose()
+
+    assert captured_anchors[:3] == ["200000", "153000", "151900"]
+    assert [c.t_ms for c in candles] == sorted(c.t_ms for c in candles)
+    assert len(candles) == 4
+    assert datetime.fromtimestamp(candles[0].t_ms / 1000, tz=KIS_KST).strftime("%H%M%S") == "151800"
+    assert datetime.fromtimestamp(candles[-1].t_ms / 1000, tz=KIS_KST).strftime("%H%M%S") == "153200"
+
+
+@pytest.mark.asyncio
+async def test_fetch_past_minute_candles_stops_on_first_empty_nxt_page(tmp_path: Path) -> None:
+    captured_anchors: list[str] = []
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        if request.url.path == "/oauth2/tokenP":
+            return httpx.Response(200, json={"access_token": "T", "expires_in": 86400})
+        anchor = request.url.params.get("FID_INPUT_HOUR_1")
+        assert anchor is not None
+        captured_anchors.append(anchor)
+        return httpx.Response(
+            200,
+            json={
+                "rt_cd": "0",
+                "msg_cd": "MCA00000",
+                "msg1": "정상처리",
+                "output2": [],
+            },
+        )
+
+    client = _make_client(handler, tmp_path)
+    try:
+        candles = await client.fetch_past_minute_candles("005930", "20260609", venue="NXT")
+    finally:
+        await client.aclose()
+
+    assert candles == []
+    assert captured_anchors == ["200000"]
+
+
 # ----------------------------------------------------------------------
 # fetch_past_daily_candles (FHKST03010100, inquire-daily-itemchartprice)
 # ----------------------------------------------------------------------
@@ -478,6 +613,59 @@ async def test_fetch_past_daily_paginates_walk_back(tmp_path) -> None:
     assert len(result.candles) == 5
     assert all(result.candles[i].t_ms < result.candles[i + 1].t_ms for i in range(4))
     assert call_count["n"] == 2  # 구 3콜 — 빈 확인 콜은 조기 종료(⑦)로 소멸
+
+
+@pytest.mark.asyncio
+async def test_fetch_past_daily_candles_threads_integrated_market_div(tmp_path: Path) -> None:
+    seen_params: list[dict[str, str]] = []
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        if request.url.path == "/oauth2/tokenP":
+            return httpx.Response(200, json={"access_token": "T", "expires_in": 86400})
+        seen_params.append(dict(request.url.params))
+        return httpx.Response(
+            200,
+            json={
+                "rt_cd": "0",
+                "msg_cd": "MCA00000",
+                "msg1": "정상처리",
+                "output2": [],
+            },
+        )
+
+    client = _make_client(handler, tmp_path)
+    try:
+        await client.fetch_past_daily_candles("005930", "20240101", "20240105", venue="UN")
+    finally:
+        await client.aclose()
+
+    assert seen_params
+    assert seen_params[0]["FID_COND_MRKT_DIV_CODE"] == "UN"
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("venue", ["AUTO", "BAD"])
+async def test_fetch_past_daily_candles_rejects_non_concrete_venue(
+    tmp_path: Path,
+    venue: str,
+) -> None:
+    data_requests = 0
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        nonlocal data_requests
+        if request.url.path == "/oauth2/tokenP":
+            return httpx.Response(200, json={"access_token": "T", "expires_in": 86400})
+        data_requests += 1
+        return httpx.Response(200, json={"rt_cd": "0", "msg_cd": "", "msg1": "", "output2": []})
+
+    client = _make_client(handler, tmp_path)
+    try:
+        with pytest.raises(ValueError, match="venue must be one of KRX, NXT, UN"):
+            await client.fetch_past_daily_candles("005930", "20240101", "20240105", venue=venue)  # type: ignore[arg-type]
+    finally:
+        await client.aclose()
+
+    assert data_requests == 0
 
 
 # ----------------------------------------------------------------------

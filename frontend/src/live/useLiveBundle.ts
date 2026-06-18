@@ -5,6 +5,7 @@ import { useLivePastDailyCandles } from '../api/livePastDailyCandles';
 import { useLivePastInvestorNet } from '../api/livePastInvestorNet';
 import { useRange } from '../api/range';
 import { useLivePageStore, type LiveTimeframe, isMinuteTimeframe } from '../state/livePage';
+import type { LiveVenueOption } from '../state/liveVenue';
 import {
   TIMEFRAME_TO_MS,
   type Timeframe,
@@ -23,6 +24,11 @@ import {
   initialHistoricalDaysFor,
   earliestAllowedMinuteDate,
 } from './liveDateTime';
+import {
+  liveVenueAllowsKrxTradeOverlay,
+  liveVenueSessionBoundsMs,
+  liveVenueUsesExtendedMinuteWindow,
+} from './liveVenuePolicy';
 
 function laterDate(a: string, b: string): string {
   return a >= b ? a : b;
@@ -48,6 +54,7 @@ export function overlayLiveTradesOnCandles(
   candles: readonly Candle[],
   trades: readonly TradeSnapshot[],
   bucketMs: number,
+  venue: LiveVenueOption = 'KRX',
 ): Candle[] {
   if (candles.length === 0 || bucketMs <= 0) return [...candles];
   const out = candles.map((c) => ({ ...c }));
@@ -65,7 +72,8 @@ export function overlayLiveTradesOnCandles(
         !Number.isFinite(tMs) ||
         !Number.isFinite(ev.price) ||
         !Number.isFinite(ev.qty) ||
-        ev.qty <= 0
+        ev.qty <= 0 ||
+        !liveVenueAllowsKrxTradeOverlay(venue, tMs)
       ) {
         continue;
       }
@@ -130,6 +138,7 @@ export interface UseLiveBundleResult {
 
 type UseLiveBundleOptions = {
   investorNetEnabled?: boolean;
+  venue?: LiveVenueOption;
 };
 
 /** Orchestrate live SSE + KIS past-candles + /api/range hoga indicators into a
@@ -148,6 +157,7 @@ export function useLiveBundle(
   options: UseLiveBundleOptions = {},
 ): UseLiveBundleResult {
   const historicalFromDate = useLivePageStore((s) => s.historicalFromDate);
+  const venue = options.venue ?? 'KRX';
 
   const isMinute = isMinuteTimeframe(timeframe);
   const bucketMs = isMinute ? TIMEFRAME_TO_MS[timeframe] : 60_000;
@@ -186,6 +196,7 @@ export function useLiveBundle(
     enableMinute ? code : null,
     enableMinute ? minutePastFrom : null,
     enableMinute ? minutePastTo : null,
+    venue,
   );
 
   // KIS daily past-candles — only enabled for D/W/M timeframes (ADR-0048).
@@ -196,6 +207,7 @@ export function useLiveBundle(
     enableDaily ? code : null,
     enableDaily ? dailyPastFrom : null,
     enableDaily ? dailyPastTo : null,
+    venue,
   );
 
   // Investor net-buy (foreign/institution) — 'D' (일봉) ONLY. KIS
@@ -236,18 +248,29 @@ export function useLiveBundle(
     return bars.map(kisBarToCandle);
   }, [isMinute, timeframe, pastCandlesQuery.data, pastDailyCandlesQuery.data]);
   const liveCandles = useMemo<Candle[]>(
-    () => (isMinute ? overlayLiveTradesOnCandles(kisCandles, live.trade, bucketMs) : kisCandles),
-    [isMinute, kisCandles, live.trade, bucketMs],
+    () => (isMinute ? overlayLiveTradesOnCandles(kisCandles, live.trade, bucketMs, venue) : kisCandles),
+    [isMinute, kisCandles, live.trade, bucketMs, venue],
   );
 
-  // Session bounds — shared by both bundle halves. Depends only on live.initial
-  // (stable across SSE ticks), so it never drives a tick-time rebuild.
-  const todaySession = useMemo(
+  const defaultKrxSession = useMemo(
     () =>
       live.initial != null
         ? { open_ms: live.initial.session_open_ms, close_ms: live.initial.session_close_ms ?? regularSessionCloseMs(todayKstYyyymmdd) }
         : { open_ms: regularSessionOpenMs(todayKstYyyymmdd), close_ms: regularSessionCloseMs(todayKstYyyymmdd) },
     [live.initial, todayKstYyyymmdd],
+  );
+  // Chart session follows the selected KIS Venue for minute candles. HOGA/WS
+  // side remains KRX-only, so buildHogaSeries keeps the default KRX bounds.
+  const todayChartSession = useMemo(
+    () => (isMinute && liveVenueUsesExtendedMinuteWindow(venue) ? liveVenueSessionBoundsMs(todayKstYyyymmdd, venue) : defaultKrxSession),
+    [defaultKrxSession, isMinute, todayKstYyyymmdd, venue],
+  );
+  const sessionBoundsForDate = useMemo(
+    () =>
+      isMinute && liveVenueUsesExtendedMinuteWindow(venue)
+        ? (yyyymmdd: string) => liveVenueSessionBoundsMs(yyyymmdd, venue)
+        : undefined,
+    [isMinute, venue],
   );
 
   // CHART side (candles + segments + investor). Deps deliberately EXCLUDE the
@@ -264,12 +287,13 @@ export function useLiveBundle(
     const built = buildChartBundle({
       code,
       todayDate: todayKstYyyymmdd,
-      todaySession,
+      todaySession: todayChartSession,
       pastBundle: past.data ?? null,
       kisCandles: liveCandles,
       bucketMs,
       hasTodayObSignal,
       investorPoints,
+      sessionBoundsForDate,
     });
 
     // Segments-identity stabilization (eng review C1): buildChartBundle allocates
@@ -296,20 +320,20 @@ export function useLiveBundle(
     }
 
     return built;
-  }, [code, todayKstYyyymmdd, todaySession, past.data, liveCandles, bucketMs, hasTodayObSignal, investorPoints]);
+  }, [code, todayKstYyyymmdd, todayChartSession, past.data, liveCandles, bucketMs, hasTodayObSignal, investorPoints, sessionBoundsForDate]);
 
   // HOGA side (quote_ratio / fill_strength). Deps INCLUDE ob/trade — this is the
   // ONLY half that rebuilds on an SSE tick.
   const hogaSeries = useMemo<HogaSeries>(
     () =>
       buildHogaSeries({
-        todaySession,
+        todaySession: defaultKrxSession,
         pastBundle: past.data ?? null,
         sseOb: isMinute ? live.ob : [],
         sseTrade: isMinute ? live.trade : [],
         bucketMs,
       }),
-    [todaySession, past.data, isMinute, live.ob, live.trade, bucketMs],
+    [defaultKrxSession, past.data, isMinute, live.ob, live.trade, bucketMs],
   );
 
   // Atomize the historical-prepend across the two independent past sources.

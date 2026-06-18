@@ -73,6 +73,12 @@ describe('DailyMovingAverageOverlay', () => {
     expect(data.every((d) => d.value === 100)).toBe(true);
   });
 
+  it('threads the chart venue into the daily candle query', () => {
+    const m = makeChartMock();
+    renderOverlay(m, { venue: 'AUTO' });
+    expect(mockUseDaily).toHaveBeenLastCalledWith('005930', '20250822', '20260613', 'AUTO');
+  });
+
   it('기본값에서는 일봉 MA series가 autoscale에 참여한다', () => {
     const m = makeChartMock();
     renderOverlay(m);

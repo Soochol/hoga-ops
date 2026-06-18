@@ -5,6 +5,7 @@ import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { LivePage } from './LivePage';
 import { useLivePageStore } from '../state/livePage';
 import { useLiveTabsStore } from '../state/liveTabs';
+import { useLiveVenueStore } from '../state/liveVenue';
 import * as liveStatus from '../api/liveStatus';
 
 const livePageMocks = vi.hoisted(() => {
@@ -23,6 +24,7 @@ const livePageMocks = vi.hoisted(() => {
     liveOb,
     liveTrade,
     liveChartRootProps: [] as Array<{ code?: string | null; timeframe?: string; viewIdentity?: string }>,
+    liveBundleCalls: [] as Array<{ code: unknown; timeframe: unknown; options: { venue?: string } }>,
     dayAskPeakObArgs: [] as unknown[],
     dayAskPeakTradeArgs: [] as unknown[],
     dayAskPeakTodayArgs: [] as unknown[],
@@ -104,13 +106,16 @@ vi.mock('../watchlist/useWatchlist', () => ({
 // LivePage now owns the single useLiveBundle call. Mock to avoid TanStack
 // queries hitting real endpoints in the shell test.
 vi.mock('./useLiveBundle', () => ({
-  useLiveBundle: () => ({
-    bundle: null,
-    isLoading: false,
-    error: null,
-    clampEngaged: false,
-    isPastCandlesLoading: false,
-  }),
+  useLiveBundle: (code: unknown, timeframe: unknown, _today: unknown, _live: unknown, options?: { venue?: string }) => {
+    livePageMocks.liveBundleCalls.push({ code, timeframe, options: options ?? {} });
+    return {
+      bundle: null,
+      isLoading: false,
+      error: null,
+      clampEngaged: false,
+      isPastCandlesLoading: false,
+    };
+  },
 }));
 
 function renderWithRouter(initial = '/live') {
@@ -133,6 +138,7 @@ describe('LivePage shell', () => {
     livePageMocks.dayAskPeakObArgs.length = 0;
     livePageMocks.dayAskPeakTradeArgs.length = 0;
     livePageMocks.liveChartRootProps.length = 0;
+    livePageMocks.liveBundleCalls.length = 0;
     livePageMocks.dayAskPeakTodayArgs.length = 0;
     livePageMocks.allPriceObArgs.length = 0;
     livePageMocks.allPriceTodayArgs.length = 0;
@@ -145,6 +151,7 @@ describe('LivePage shell', () => {
       activeCode: null,
       candleTimeframe: '1m',
     });
+    useLiveVenueStore.setState({ venue: 'KRX' });
     vi.spyOn(liveStatus, 'useLiveStatus').mockReturnValue({
       data: {
         running: true,
@@ -210,8 +217,22 @@ describe('LivePage shell', () => {
     expect(livePageMocks.liveChartRootProps.at(-1)).toMatchObject({
       code: '005930',
       timeframe: '1m',
-      viewIdentity: 'tab-b',
+      viewIdentity: 'tab-b:KRX',
     });
+  });
+
+  it('includes the selected venue in bundle options, status text, and chart identity', () => {
+    useLiveVenueStore.setState({ venue: 'AUTO' });
+    useLiveTabsStore.setState({
+      tabs: [{ id: 'tab-a', code: '005930', label: '삼성전자', timeframe: '1m', historicalFromDate: null, viewport: null }],
+      activeTabId: 'tab-a',
+    });
+
+    renderWithRouter();
+
+    expect(livePageMocks.liveBundleCalls.at(-1)?.options.venue).toBe('AUTO');
+    expect(screen.getByTestId('live-venue-label').textContent).toBe('캔들 자동');
+    expect(livePageMocks.liveChartRootProps.at(-1)?.viewIdentity).toBe('tab-a:AUTO');
   });
 
   it('shows empty-state placeholder when no activeCode anywhere', () => {

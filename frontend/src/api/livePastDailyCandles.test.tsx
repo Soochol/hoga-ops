@@ -14,6 +14,7 @@ const RESPONSE: LivePastDailyCandlesResponse = {
   code: '005930',
   from: '20240101',
   to: '20240105',
+  venue: 'KRX',
   candles: [{ t_ms: 1, open: 100, high: 110, low: 95, close: 105, volume: 10 }],
   cached_batches: [],
   fresh_batches: ['20240101__20240105'],
@@ -32,9 +33,48 @@ describe('useLivePastDailyCandles', () => {
     );
     await waitFor(() => expect(result.current.data?.candles).toHaveLength(1));
     expect(spy).toHaveBeenCalledWith(
-      '/api/live/past-daily-candles?code=005930&from=20240101&to=20240105',
+      '/api/live/past-daily-candles?code=005930&from=20240101&to=20240105&venue=KRX',
       { signal: expect.any(AbortSignal) },
     );
+  });
+
+  it('threads venue through the daily URL and query cache key', async () => {
+    const spy = vi.spyOn(client, 'apiCall').mockResolvedValue(RESPONSE);
+    const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+    const { rerender } = renderHook(
+      ({ venue }: { venue: 'KRX' | 'AUTO' }) => useLivePastDailyCandles('005930', '20240101', '20240105', venue),
+      { wrapper: wrap(qc), initialProps: { venue: 'KRX' } },
+    );
+    await waitFor(() => expect(spy).toHaveBeenCalledTimes(1));
+    rerender({ venue: 'AUTO' });
+    await waitFor(() => expect(spy).toHaveBeenCalledTimes(2));
+    expect(spy.mock.calls[1][0]).toContain('venue=AUTO');
+  });
+
+  it('drops placeholder data when venue changes for the same code', async () => {
+    let resolveAuto: (value: LivePastDailyCandlesResponse) => void = () => {};
+    const autoPending = new Promise<LivePastDailyCandlesResponse>((resolve) => {
+      resolveAuto = resolve;
+    });
+    const krxResponse = { ...RESPONSE, venue: 'KRX' as const, candles: [{ ...RESPONSE.candles[0], close: 100 }] };
+    const autoResponse = { ...RESPONSE, venue: 'AUTO' as const, candles: [{ ...RESPONSE.candles[0], close: 200 }] };
+    const spy = vi.spyOn(client, 'apiCall').mockImplementation((url) =>
+      url.includes('venue=AUTO') ? autoPending : Promise.resolve(krxResponse),
+    );
+    const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+    const { result, rerender } = renderHook(
+      ({ venue }: { venue: 'KRX' | 'AUTO' }) =>
+        useLivePastDailyCandles('005930', '20240101', '20240105', venue),
+      { wrapper: wrap(qc), initialProps: { venue: 'KRX' } },
+    );
+    await waitFor(() => expect(result.current.data?.candles[0].close).toBe(100));
+
+    rerender({ venue: 'AUTO' });
+
+    expect(result.current.data).toBeUndefined();
+    await waitFor(() => expect(spy).toHaveBeenCalledTimes(2));
+    resolveAuto(autoResponse);
+    await waitFor(() => expect(result.current.data?.candles[0].close).toBe(200));
   });
 
   it('does not fetch when code is null', async () => {

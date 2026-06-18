@@ -113,6 +113,7 @@ export interface BuildChartBundleInput {
   hasTodayObSignal: boolean;
   /** Merged by useLiveBundle; candle-path data (investor pane). */
   investorPoints?: InvestorNetPoint[];
+  sessionBoundsForDate?: (yyyymmdd: string) => { open_ms: number; close_ms: number };
 }
 
 export function buildChartBundle(input: BuildChartBundleInput): RangeBundle {
@@ -125,9 +126,15 @@ export function buildChartBundle(input: BuildChartBundleInput): RangeBundle {
     bucketMs,
     hasTodayObSignal,
     investorPoints = [],
+    sessionBoundsForDate,
   } = input;
 
-  const pastSegments = pastBundle?.segments ?? [];
+  const pastSegments = sessionBoundsForDate
+    ? (pastBundle?.segments ?? []).map((s) => {
+        const bounds = sessionBoundsForDate(s.date);
+        return { ...s, session_open_ms: bounds.open_ms, session_close_ms: bounds.close_ms };
+      })
+    : pastBundle?.segments ?? [];
   const pastQRPoints = pastBundle?.quote_ratio.points ?? [];
 
   // Today segment marker — present if we have any signal for today.
@@ -167,12 +174,18 @@ export function buildChartBundle(input: BuildChartBundleInput): RangeBundle {
   }
   const kisOnlySegments: RangeSegment[] = Array.from(kisOnlyDates)
     .sort()
-    .map((d) => ({
-      date: d,
-      session_open_ms: regularSessionOpenMs(d),
-      session_close_ms: regularSessionCloseMs(d),
-      source: 'kis_live',
-    }));
+    .map((d) => {
+      const bounds = sessionBoundsForDate?.(d) ?? {
+        open_ms: regularSessionOpenMs(d),
+        close_ms: regularSessionCloseMs(d),
+      };
+      return {
+        date: d,
+        session_open_ms: bounds.open_ms,
+        session_close_ms: bounds.close_ms,
+        source: 'kis_live',
+      };
+    });
 
   const pastFromDate = pastBundle?.from_date ?? todayDate;
   // Order matters for the VirtualAxis (date-ascending). pastSegments are

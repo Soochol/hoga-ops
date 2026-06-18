@@ -14,6 +14,8 @@ import time
 from datetime import date
 from typing import Literal
 
+from hoga.live.kis_venue import KisVenue
+
 # TTL for today's bar (and negative cache for non-trading-day today).
 TODAY_TTL_SECONDS = 60.0
 
@@ -30,24 +32,41 @@ class PastDailyCandlesCache:
 
     def __init__(self, *, today_ttl_seconds: float = TODAY_TTL_SECONDS) -> None:
         self._today_ttl = today_ttl_seconds
-        self._per_code: dict[str, list[tuple[date, date, list[dict]]]] = {}
+        self._per_key: dict[tuple[KisVenue, str], list[tuple[date, date, list[dict]]]] = {}
         # value: (fetched_at_monotonic, dict | None)
-        self._today_mem: dict[str, tuple[float, dict | None]] = {}
+        self._today_mem: dict[tuple[KisVenue, str], tuple[float, dict | None]] = {}
 
     # --- batches ---
 
-    def list_batches(self, code: str) -> list[tuple[date, date, list[dict]]]:
-        return list(self._per_code.get(code, []))
+    @staticmethod
+    def _parse_code_args(args: tuple[str, ...]) -> tuple[KisVenue, str]:
+        if len(args) == 1:
+            return "KRX", args[0]
+        if len(args) == 2:
+            venue, code = args
+            return venue, code  # type: ignore[return-value]
+        raise TypeError("expected (code) or (venue, code)")
+
+    def list_batches(self, *args: str) -> list[tuple[date, date, list[dict]]]:
+        venue, code = self._parse_code_args(args)
+        return list(self._per_key.get((venue, code), []))
 
     def append_batch(
-        self, code: str, frm: date, to: date, bars: list[dict],
+        self, *args,
     ) -> None:
-        self._per_code.setdefault(code, []).append((frm, to, bars))
+        if len(args) == 4:
+            venue, code, frm, to, bars = "KRX", args[0], args[1], args[2], args[3]
+        elif len(args) == 5:
+            venue, code, frm, to, bars = args
+        else:
+            raise TypeError("expected (code, frm, to, bars) or (venue, code, frm, to, bars)")
+        self._per_key.setdefault((venue, code), []).append((frm, to, bars))
 
     # --- today ---
 
-    def get_today(self, code: str) -> tuple[TodayState, dict | None]:
-        entry = self._today_mem.get(code)
+    def get_today(self, *args: str) -> tuple[TodayState, dict | None]:
+        venue, code = self._parse_code_args(args)
+        entry = self._today_mem.get((venue, code))
         if entry is None:
             return "miss", None
         fetched_at, value = entry
@@ -57,5 +76,11 @@ class PastDailyCandlesCache:
             return "negative", None
         return "hit", value
 
-    def store_today(self, code: str, bar: dict | None) -> None:
-        self._today_mem[code] = (time.monotonic(), bar)
+    def store_today(self, *args) -> None:
+        if len(args) == 2:
+            venue, code, bar = "KRX", args[0], args[1]
+        elif len(args) == 3:
+            venue, code, bar = args
+        else:
+            raise TypeError("expected (code, bar) or (venue, code, bar)")
+        self._today_mem[(venue, code)] = (time.monotonic(), bar)
