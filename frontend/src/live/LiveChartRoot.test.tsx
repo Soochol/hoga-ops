@@ -219,7 +219,7 @@ describe('LiveChartRoot', () => {
     return { chart, ts };
   }
 
-  it('D timeframe: refits content and preserves right-offset whitespace when candle count changes', () => {
+  it('D timeframe: refits content when candle count changes, like W/M', () => {
     useLivePageStore.setState({ historicalFromDate: null });
     const { chart, ts } = buildChartMockWithStableTS();
     vi.mocked(createChartEx).mockImplementationOnce(() => chart as never);
@@ -235,7 +235,7 @@ describe('LiveChartRoot', () => {
       { wrapper },
     );
     expect(ts.fitContent).toHaveBeenCalledTimes(1);
-    expect(ts.setVisibleLogicalRange).toHaveBeenLastCalledWith({ from: 0, to: 29 });
+    expect(ts.setVisibleLogicalRange).not.toHaveBeenCalled();
     expect(ts.scrollToPosition).not.toHaveBeenCalled();
 
     rerender(
@@ -247,9 +247,9 @@ describe('LiveChartRoot', () => {
         isPastCandlesLoading={false}
       />,
     );
-    // Count growth from placeholder/extension must re-fit and keep right whitespace.
+    // Count growth from placeholder/extension must re-fit just like W/M.
     expect(ts.fitContent).toHaveBeenCalledTimes(2);
-    expect(ts.setVisibleLogicalRange).toHaveBeenLastCalledWith({ from: 0, to: 265 });
+    expect(ts.setVisibleLogicalRange).not.toHaveBeenCalled();
 
     rerender(
       <LiveChartRoot
@@ -263,10 +263,10 @@ describe('LiveChartRoot', () => {
     // Shrink still re-fits; otherwise a placeholder/wider previous calendar
     // response can leave the D chart at stale spacing.
     expect(ts.fitContent).toHaveBeenCalledTimes(3);
-    expect(ts.setVisibleLogicalRange).toHaveBeenLastCalledWith({ from: 0, to: 95 });
+    expect(ts.setVisibleLogicalRange).not.toHaveBeenCalled();
   });
 
-  it('D timeframe: fits a long daily history with right-offset whitespace', () => {
+  it('D timeframe: fits a long daily history the same way as W/M', () => {
     useLivePageStore.setState({ historicalFromDate: null });
     const { chart, ts } = buildChartMockWithStableTS();
     ts.width.mockReturnValue(628);
@@ -284,7 +284,7 @@ describe('LiveChartRoot', () => {
     );
 
     expect(ts.fitContent).toHaveBeenCalledTimes(1);
-    expect(ts.setVisibleLogicalRange).toHaveBeenLastCalledWith({ from: 0, to: 479 });
+    expect(ts.setVisibleLogicalRange).not.toHaveBeenCalled();
   });
 
   it('D timeframe: captures the actual live-edge viewport without daily clamping', () => {
@@ -1293,7 +1293,7 @@ describe('LiveChartRoot historical-prepend viewport preservation', () => {
       { wrapper },
     );
     expect(ts.fitContent).toHaveBeenCalledTimes(1);
-    expect(ts.setVisibleLogicalRange).toHaveBeenLastCalledWith({ from: 0, to: 265 });
+    expect(ts.setVisibleLogicalRange).not.toHaveBeenCalled();
     expect(ts.scrollToPosition).not.toHaveBeenCalled();
   });
 
@@ -1318,7 +1318,7 @@ describe('LiveChartRoot historical-prepend viewport preservation', () => {
     );
 
     expect(ts.fitContent).toHaveBeenCalledTimes(1);
-    expect(ts.setVisibleLogicalRange).toHaveBeenLastCalledWith({ from: 0, to: 479 });
+    expect(ts.setVisibleLogicalRange).not.toHaveBeenCalled();
     expect(ts.scrollToPosition).not.toHaveBeenCalled();
   });
 
@@ -2167,7 +2167,7 @@ describe('LiveChartRoot per-view chart remount (cross-view staleness guard)', ()
     // The D initial viewport must land on chart B — with the unkeyed chart
     // state it fired on the removed chart A and B received ZERO viewport calls.
     expect(b.ts.fitContent).toHaveBeenCalledTimes(1);
-    expect(b.ts.setVisibleLogicalRange).toHaveBeenLastCalledWith({ from: 0, to: 16 });
+    expect(b.ts.setVisibleLogicalRange).not.toHaveBeenCalled();
   });
 });
 

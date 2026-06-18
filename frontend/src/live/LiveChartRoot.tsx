@@ -529,10 +529,6 @@ export function LiveChartRoot({ code, timeframe, viewIdentity, bundle, chartBund
         // above, so user scroll is preserved.
         if (applied === totalBars) { reveal(); return; }
         ts.fitContent();
-        if (timeframe === 'D') {
-          const rightOffset = CHART_TIMESCALE_OPTIONS.rightOffset ?? 0;
-          ts.setVisibleLogicalRange({ from: 0, to: totalBars + rightOffset });
-        }
         lastAppliedCountRef.current = totalBars;
         reveal();
       }
