@@ -209,7 +209,9 @@ describe('StudyPage', () => {
 
     renderAt('/study?view=view1');
 
-    expect(screen.getByTestId('live-chart-root-stub').parentElement).toHaveClass(
+    const chartWrapper = screen.getByTestId('live-chart-root-stub').parentElement;
+    expect(chartWrapper).toHaveClass('overflow-hidden');
+    expect(chartWrapper?.parentElement).toHaveClass(
       'grid-cols-[minmax(0,1fr)_var(--sidebar-w)]',
     );
     expect(screen.getByTestId('study-detail-panel')).toBeTruthy();
@@ -678,7 +680,7 @@ describe('StudyPage', () => {
     expect(aside).toBeTruthy();
     expect(aside).toContainElement(panel);
     expect(container.querySelector('[data-testid="study-page"] > div > aside')).toBe(aside);
-    expect(container.querySelector('[data-testid="study-page"] > div > [data-testid="live-chart-root-stub"]')).toBeTruthy();
+    expect(container.querySelector('[data-testid="study-page"] > div > div > [data-testid="live-chart-root-stub"]')).toBeTruthy();
     expect(updateMetadataMutate).toHaveBeenCalledWith(
       { id: 'view1', body: { memo: '새 메모' } },
       expect.objectContaining({ onError: expect.any(Function) }),

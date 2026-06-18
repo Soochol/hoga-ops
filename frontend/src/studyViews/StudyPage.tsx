@@ -123,35 +123,37 @@ export function StudyPage() {
         </button>
       </header>
       <div className="grid min-h-0 grid-cols-[minmax(0,1fr)_var(--sidebar-w)]">
-        <LiveChartRoot
-          code={snapshot.code}
-          timeframe={snapshot.timeframe}
-          viewIdentity={viewId}
-          bundle={chartInput.bundle}
-          chartBundle={chartInput.chartBundle}
-          ratioBundle={chartInput.ratioBundle}
-          clampEngaged={false}
-          isPastCandlesLoading={false}
-          isExtending={false}
-          pastDataWarnings={[]}
-          restoreViewport={{
-            rightEdgeMs: snapshot.viewport.right_edge_ms,
-            barSpan: snapshot.viewport.bar_span,
-            atLiveEdge: snapshot.viewport.at_live_edge,
-          }}
-          dayAskPeaks={chartInput.bundle.ask_peaks}
-          forceHogaPanes
-          paneTogglesOverride={{
-            volumeEnabled: snapshot.indicator_state.volume_enabled,
-            quoteTotalsEnabled: snapshot.indicator_state.quote_totals_enabled,
-            ratioEnabled: snapshot.indicator_state.ratio_enabled,
-            fillStrengthEnabled: snapshot.indicator_state.fill_strength_enabled,
-          }}
-          persistLiveViewport={false}
-          onViewportCaptureReady={handleViewportCaptureReady}
-          onCursorActiveChange={setIsCursorActive}
-        />
-        <aside className="grid min-h-0 grid-rows-[auto_minmax(0,1fr)] border-l border-[var(--border)] bg-[var(--bg-card)]">
+        <div className="min-h-0 min-w-0 overflow-hidden">
+          <LiveChartRoot
+            code={snapshot.code}
+            timeframe={snapshot.timeframe}
+            viewIdentity={viewId}
+            bundle={chartInput.bundle}
+            chartBundle={chartInput.chartBundle}
+            ratioBundle={chartInput.ratioBundle}
+            clampEngaged={false}
+            isPastCandlesLoading={false}
+            isExtending={false}
+            pastDataWarnings={[]}
+            restoreViewport={{
+              rightEdgeMs: snapshot.viewport.right_edge_ms,
+              barSpan: snapshot.viewport.bar_span,
+              atLiveEdge: snapshot.viewport.at_live_edge,
+            }}
+            dayAskPeaks={chartInput.bundle.ask_peaks}
+            forceHogaPanes
+            paneTogglesOverride={{
+              volumeEnabled: snapshot.indicator_state.volume_enabled,
+              quoteTotalsEnabled: snapshot.indicator_state.quote_totals_enabled,
+              ratioEnabled: snapshot.indicator_state.ratio_enabled,
+              fillStrengthEnabled: snapshot.indicator_state.fill_strength_enabled,
+            }}
+            persistLiveViewport={false}
+            onViewportCaptureReady={handleViewportCaptureReady}
+            onCursorActiveChange={setIsCursorActive}
+          />
+        </div>
+        <aside className="relative z-10 grid min-h-0 grid-rows-[auto_minmax(0,1fr)] border-l border-[var(--border)] bg-[var(--bg-card)]">
           {isMemoOpen && selectedSave && (
             <StudyMemoPanel
               memo={selectedSave.memo}
