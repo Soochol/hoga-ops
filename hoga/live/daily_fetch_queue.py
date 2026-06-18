@@ -8,7 +8,7 @@ from pathlib import Path
 from typing import Literal
 
 from hoga.live import kis_access
-from hoga.live.kis_client import DailyCandleFetchResult, KisRateLimitError
+from hoga.live.kis_client import DailyCandleFetchResult, KisAuthError, KisRateLimitError
 
 Lane = Literal["foreground", "background"]
 
@@ -117,7 +117,9 @@ class DailyKisFetchQueue:
             lease = self._acquire_account("foreground", data_dir)
             if lease is None:
                 raise DailyKisUnavailable("foreground", "account_unavailable")
-            return await self._call_lease(lease, code, frm, to, adjust, foreground=True)
+            return await self._call_lease(
+                lease, data_dir, code, frm, to, adjust, foreground=True
+            )
         finally:
             async with self._state_lock:
                 self._fg_active -= 1
@@ -156,6 +158,7 @@ class DailyKisFetchQueue:
                 try:
                     return await self._call_lease(
                         lease,
+                        data_dir,
                         code,
                         frm,
                         to,
@@ -180,6 +183,7 @@ class DailyKisFetchQueue:
     async def _call_lease(
         self,
         lease,
+        data_dir: Path,
         code: str,
         frm: str,
         to: str,
@@ -189,15 +193,18 @@ class DailyKisFetchQueue:
         requires_foreground_idle: bool = False,
     ) -> DailyCandleFetchResult:
         attempts = len(self._cooldown_backoff) + 1
+        current_lease = lease
         for attempt in range(attempts):
             await self._wait_global_turn(
                 foreground=foreground,
                 requires_foreground_idle=(
-                    requires_foreground_idle or (not foreground and attempt > 0)
+                    requires_foreground_idle
+                    or current_lease.account_id == 0
+                    or (not foreground and attempt > 0)
                 ),
             )
             try:
-                result = await lease.client.fetch_past_daily_candles(
+                result = await current_lease.client.fetch_past_daily_candles(
                     code,
                     frm,
                     to,
@@ -207,6 +214,17 @@ class DailyKisFetchQueue:
                 )
                 self._cooldown_index = 0
                 return result
+            except KisAuthError:
+                if foreground or current_lease.account_id == 0:
+                    raise
+                fallback = self._acquire_account(
+                    "background",
+                    data_dir,
+                    allow_account0_fallback=True,
+                )
+                if fallback is None or fallback.account_id == current_lease.account_id:
+                    raise
+                current_lease = fallback
             except KisRateLimitError:
                 self._daily_rate_limit_count += 1
                 if attempt + 1 >= attempts:

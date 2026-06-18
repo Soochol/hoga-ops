@@ -7,7 +7,7 @@ from pathlib import Path
 import pytest
 
 from hoga.live.daily_fetch_queue import DailyKisFetchQueue, DailyKisUnavailable
-from hoga.live.kis_client import DailyCandleFetchResult, KisRateLimitError
+from hoga.live.kis_client import DailyCandleFetchResult, KisAuthError, KisRateLimitError
 
 
 @dataclass
@@ -40,6 +40,14 @@ class _RateLimitOnceClient(_Client):
         if len(self.calls) == 1:
             raise KisRateLimitError("EGW00201")
         return DailyCandleFetchResult(candles=[], violations=[])
+
+
+class _AuthFailClient(_Client):
+    async def fetch_past_daily_candles(
+        self, code, frm, to, *, adjust=True, foreground=False, retry=True
+    ):
+        self.calls.append(f"{self.name}:{code}:fg={foreground}:retry={retry}")
+        raise KisAuthError("auth failed")
 
 
 @pytest.mark.asyncio
@@ -255,6 +263,41 @@ async def test_background_first_attempt_yields_to_foreground_after_rate_wait(tmp
         queue._fg_waiting = 0
 
     await asyncio.wait_for(bg_turn, timeout=1)
+
+
+@pytest.mark.asyncio
+async def test_background_auth_failure_falls_back_to_account0(tmp_path: Path) -> None:
+    calls: list[str] = []
+    acct1 = _AuthFailClient("acct1", calls)
+    acct0 = _Client("acct0", calls)
+
+    def acquire(role, data_dir, *, allow_account0_fallback=True):
+        if role == "foreground":
+            return _Lease(role, 0, acct0)
+        if allow_account0_fallback:
+            return _Lease(role, 0, acct0)
+        return _Lease(role, 1, acct1)
+
+    queue = DailyKisFetchQueue(
+        acquire_account=acquire,
+        foreground_concurrency=1,
+        background_concurrency_per_account=1,
+        global_rate_per_sec=1000,
+        cooldown_backoff=(0.0,),
+    )
+
+    await queue.fetch_past_daily_candles(
+        tmp_path,
+        lane="background",
+        code="BG",
+        from_yyyymmdd="20240101",
+        to_yyyymmdd="20240101",
+    )
+
+    assert calls == [
+        "acct1:BG:fg=False:retry=False",
+        "acct0:BG:fg=False:retry=False",
+    ]
 
 
 @pytest.mark.asyncio
