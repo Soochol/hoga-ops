@@ -3,6 +3,12 @@
 All notable changes to this project are documented here.
 The format follows a 4-digit `MAJOR.MINOR.PATCH.MICRO` scheme.
 
+## [0.8.13.1] - 2026-06-18
+
+### Fixed
+- **/study 10호가·거래원 패널 표시 개선**: 저장 학습뷰의 10호가와 거래원 영역이
+  live page와 같은 폭과 카드 레이아웃으로 표시되어, 차트가 뒤로 비쳐 보이지 않는다.
+
 ## [0.8.13.0] - 2026-06-18
 
 ### Added
