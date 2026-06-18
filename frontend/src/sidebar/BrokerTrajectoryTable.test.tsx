@@ -136,6 +136,24 @@ describe('BrokerTrajectoryTable — sparkline', () => {
     expect(cursorLines.length).toBeGreaterThanOrEqual(1);
   });
 
+  it('ignores brokers beyond the rendered row cap when computing the visible day range', () => {
+    const series: BrokerSeriesEntry[] = [
+      ...Array.from({ length: 10 }, (_, i) =>
+        entry(`B${i}`, [
+          { ts_ms: 1_000, net: 10 + i },
+          { ts_ms: 2_000, net: 20 + i },
+        ]),
+      ),
+      entry('hidden', [{ ts_ms: 100_000, net: 1 }]),
+    ];
+    const { container } = render(
+      <BrokerTrajectoryTable series={series} cursorMs={50_000} />,
+    );
+
+    expect(screen.getAllByTestId('broker-row')).toHaveLength(10);
+    expect(container.querySelectorAll('[data-testid="cursor-marker"]')).toHaveLength(0);
+  });
+
   it('cursor-only rerender moves the marker without changing sparkline geometry', () => {
     const series: BrokerSeriesEntry[] = [
       entry('A', [

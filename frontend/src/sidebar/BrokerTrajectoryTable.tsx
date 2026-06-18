@@ -15,13 +15,14 @@ type Props = {
 };
 
 export default function BrokerTrajectoryTable({ series, cursorMs, gapThresholdMs = GAP_THRESHOLD_MS }: Props) {
+  const rows = useMemo(() => series?.slice(0, 10) ?? series, [series]);
   // Common time domain across all displayed brokers — keeps cursor marker
   // X positions aligned across rows.
   const dayRange = useMemo(() => {
-    if (!series || series.length === 0) return null;
+    if (!rows || rows.length === 0) return null;
     let first = Infinity;
     let last = -Infinity;
-    for (const e of series) {
+    for (const e of rows) {
       for (const p of e.points) {
         if (p.ts_ms < first) first = p.ts_ms;
         if (p.ts_ms > last) last = p.ts_ms;
@@ -30,7 +31,7 @@ export default function BrokerTrajectoryTable({ series, cursorMs, gapThresholdMs
     return Number.isFinite(first) && Number.isFinite(last) && last > first
       ? { first, last }
       : null;
-  }, [series]);
+  }, [rows]);
 
   if (series === undefined) {
     return (
@@ -47,7 +48,6 @@ export default function BrokerTrajectoryTable({ series, cursorMs, gapThresholdMs
     );
   }
 
-  const rows = series.slice(0, 10);
   return (
     <div className="font-mono text-sm tabular-nums divide-y divide-border-strong">
       {rows.map((entry) => {
