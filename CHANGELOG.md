@@ -3,6 +3,23 @@
 All notable changes to this project are documented here.
 The format follows a 4-digit `MAJOR.MINOR.PATCH.MICRO` scheme.
 
+## [0.8.13.0] - 2026-06-18
+
+### Added
+- **/live KIS 캔들 거래소 선택**: 설정 모달에서 `KRX`, `NXT`, `통합`, `자동`을 선택해
+  캔들 차트와 거래량을 해당 KIS Venue 기준으로 볼 수 있다.
+- `자동` 옵션은 정규장 구간은 KRX, 장전·장후 확장 구간은 NXT 분봉을 사용하고,
+  일봉·주봉·월봉에서는 KIS 통합 Venue를 사용한다는 경고를 표시한다.
+
+### Changed
+- NXT·통합·자동 분봉 차트는 08:00~20:00 표시/새로고침 창을 사용하고,
+  호가·체결 실시간 패널은 현재 KRX 기준임을 상태바에서 구분해 보여준다.
+- KIS 캔들 캐시는 거래소별로 분리하고, 통합 Venue는 KIS `UN` 응답을 단일 권위 데이터로 사용한다.
+
+### Fixed
+- 비-KRX 캔들 차트에서 KRX 실시간 체결이 NXT·통합 OHLCV를 덮어쓰지 않도록 막았다.
+- NXT·통합 응답이 비어 있는 장외 구간에서 불필요한 과거 분봉 호출을 반복하지 않도록 했다.
+
 ## [0.8.12.0] - 2026-06-18
 
 ### Added

@@ -3,6 +3,7 @@ import { render, screen, cleanup, fireEvent } from '@testing-library/react';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { LiveStatusBar } from './LiveStatusBar';
 import type { RangeBundle } from '../api/types';
+import type { LiveVenueOption } from '../state/liveVenue';
 
 // useConnectionLiveness reads module-level WS state (_lastHeartbeatMs=0 in tests),
 // so live=false by default. Hoist a mock so tests can control liveness.
@@ -32,7 +33,7 @@ const EMPTY_BUNDLE: RangeBundle = {
 };
 
 function renderBar(
-  props: { activeCode: string | null; captureHealthy: boolean; captureReason: string; bundle: RangeBundle | null },
+  props: { activeCode: string | null; captureHealthy: boolean; captureReason: string; bundle: RangeBundle | null; venue?: LiveVenueOption },
   watchlistCodes: string[] = [],
   quote?: { price: number; change_pct: number | null; change_won: number | null },
   liveSet: string[] = [],
@@ -118,6 +119,12 @@ describe('LiveStatusBar', () => {
   it('renders the kis_live source chip (ADR-0039 compliance)', () => {
     renderBar({ activeCode: '005930', captureHealthy: true, captureReason: 'healthy', bundle: EMPTY_BUNDLE });
     expect(screen.getByTestId('source-chip-kis_live')).toBeTruthy();
+  });
+
+  it('shows the selected candle venue without implying NXT hoga support', () => {
+    renderBar({ activeCode: '005930', captureHealthy: true, captureReason: 'healthy', bundle: EMPTY_BUNDLE, venue: 'NXT' });
+    expect(screen.getByTestId('live-venue-label').textContent).toBe('캔들 NXT');
+    expect(screen.getByTestId('live-venue-ws-note').textContent).toBe('호가 KRX');
   });
 
   it('shows a filled heart (aria-pressed) for a watchlist member', () => {

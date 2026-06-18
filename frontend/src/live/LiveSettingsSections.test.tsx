@@ -1,9 +1,14 @@
 import { describe, it, expect, afterEach } from 'vitest';
 import { render, screen, cleanup, fireEvent } from '@testing-library/react';
 import LiveSettingsSections from './LiveSettingsSections';
+import { useLiveVenueStore } from '../state/liveVenue';
 
 describe('LiveSettingsSections (2단 nav+detail)', () => {
-  afterEach(cleanup);
+  afterEach(() => {
+    cleanup();
+    localStorage.clear();
+    useLiveVenueStore.setState({ venue: 'KRX' });
+  });
 
   it('카테고리 nav를 렌더 (차트·데이터소스만 — 보조지표·총잔량 급증은 지표 모달로 이동)', () => {
     render(<LiveSettingsSections />);
@@ -60,5 +65,19 @@ describe('LiveSettingsSections (2단 nav+detail)', () => {
     expect(screen.queryByTestId('settings-toggle-surgeMarkerEnabled')).toBeNull();
     expect(screen.queryByTestId('settings-toggle-fillStrengthCumulative')).toBeNull();
     expect(screen.queryByTestId('settings-toggle-ratioOutlierFilterEnabled')).toBeNull();
+  });
+
+  it('데이터소스 상세에서 KIS 캔들 venue 옵션을 렌더하고 저장한다', () => {
+    render(<LiveSettingsSections />);
+    fireEvent.click(screen.getByTestId('settings-nav-data-source'));
+
+    expect(screen.getByLabelText('KRX')).toBeChecked();
+    expect(screen.getByLabelText('NXT')).toBeInTheDocument();
+    expect(screen.getByLabelText('통합')).toBeInTheDocument();
+    expect(screen.getByLabelText('자동')).toBeInTheDocument();
+
+    fireEvent.click(screen.getByLabelText('자동'));
+    expect(useLiveVenueStore.getState().venue).toBe('AUTO');
+    expect(localStorage.getItem('live.venue.v1')).toContain('AUTO');
   });
 });

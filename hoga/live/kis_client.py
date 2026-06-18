@@ -23,6 +23,12 @@ log = logging.getLogger(__name__)
 
 import httpx
 
+from hoga.live.kis_venue import (
+    KisVenue,
+    kis_venue_div,
+    previous_empty_page_anchor_hhmmss,
+    session_window_hhmmss,
+)
 from hoga.live.kis_models import (
     InvestorNetPoint,
     InvestorTrendEstimateRow,
@@ -43,12 +49,10 @@ _BASE_REAL = "https://openapi.koreainvestment.com:9443"
 # path: the dead token was served from memory+disk until expires_at (~24h).
 _TOKEN_INVALID_MSG_CDS = ("EGW00121", "EGW00123")
 
-# KIS market-division code for KOSPI/KOSDAQ stocks (single value covers both).
-# Justified by the watchlist boundary in `lifecycle.start_live_stream`, which
-# filters codes through `symbols._cache` — only KOSPI/KOSDAQ stocks reach the
-# stream. Supporting ETF/ETN/ELW would require lifting this to a per-call
-# argument derived from the symbol-master entry's `market`/`asset_class`.
-_STOCK_MRKT_DIV = "J"
+# Default KIS venue for backwards-compatible callers. New /live candle routes
+# pass an explicit venue value and include it in cache/query keys.
+_DEFAULT_KIS_VENUE: KisVenue = "KRX"
+_STOCK_MRKT_DIV = kis_venue_div(_DEFAULT_KIS_VENUE)
 
 # Conservative cap on KIS data calls per second across all callers (backfill +
 # backfill + future). KIS doesn't publish an exact retail limit — 20/sec is
@@ -629,7 +633,13 @@ class KisClient:
         return body
 
     async def fetch_past_minute_candles(
-        self, code: str, date_yyyymmdd: str, *, foreground: bool = False
+        self,
+        code: str,
+        date_yyyymmdd: str,
+        *,
+        venue: KisVenue = _DEFAULT_KIS_VENUE,
+        foreground: bool = False,
+        **kwargs: Any,
     ) -> list[KisCandle]:
         """Fetch 1-minute candles for *code* on *date_yyyymmdd* (KST).
 
@@ -642,18 +652,23 @@ class KisClient:
         KIS retains roughly 1 year of historical minute candles per the
         portal docs (https://apiportal.koreainvestment.com/).
         """
+        if "market" in kwargs:
+            venue = kwargs.pop("market")
+        if kwargs:
+            unexpected = next(iter(kwargs))
+            raise TypeError(f"unexpected keyword argument: {unexpected}")
         path = "/uapi/domestic-stock/v1/quotations/inquire-time-dailychartprice"
         tr_id = "FHKST03010230"
-        # Walk anchor from 15:30 backwards. Stop when the response is empty
-        # or the earliest received bar is at/before 09:00.
-        anchor_hhmmss = "153000"
+        session_open_hhmmss, session_close_hhmmss = session_window_hhmmss(venue)
+        anchor_hhmmss = session_close_hhmmss
+        venue_div = kis_venue_div(venue)
         seen_t_ms: set[int] = set()
         all_candles: list[KisCandle] = []
         # Hard cap so a misbehaving KIS response never spirals into infinite
-        # pages. 6 calls × 120 bars = 720 rows, well past one regular session.
-        for _ in range(6):
+        # pages. NXT/UN can span 12h, so they legitimately need more calls.
+        for _ in range(8 if venue == "KRX" else 16):
             params = {
-                "FID_COND_MRKT_DIV_CODE": _STOCK_MRKT_DIV,
+                "FID_COND_MRKT_DIV_CODE": venue_div,
                 "FID_INPUT_ISCD": code,
                 "FID_INPUT_HOUR_1": anchor_hhmmss,
                 "FID_INPUT_DATE_1": date_yyyymmdd,
@@ -662,6 +677,16 @@ class KisClient:
             }
             body = await self._get(path=path, tr_id=tr_id, params=params, foreground=foreground)
             rows = body.get("output2") or []
+            if not rows:
+                next_anchor = previous_empty_page_anchor_hhmmss(
+                    venue,
+                    date_yyyymmdd,
+                    anchor_hhmmss,
+                )
+                if next_anchor is None:
+                    break
+                anchor_hhmmss = next_anchor
+                continue
             page_candles: list[KisCandle] = []
             for row in rows:
                 date_str = row.get("stck_bsop_date") or ""
@@ -703,7 +728,15 @@ class KisClient:
             earliest_t_ms = min(c.t_ms for c in page_candles)
             earliest_dt = datetime.fromtimestamp(earliest_t_ms / 1000, tz=KIS_KST)
             # If we already covered the session open, stop.
-            if earliest_dt.hour < 9 or (earliest_dt.hour == 9 and earliest_dt.minute == 0):
+            session_open_hour = int(session_open_hhmmss[:2])
+            session_open_minute = int(session_open_hhmmss[2:4])
+            if (
+                earliest_dt.hour < session_open_hour
+                or (
+                    earliest_dt.hour == session_open_hour
+                    and earliest_dt.minute <= session_open_minute
+                )
+            ):
                 break
             # Step the anchor back by 1 minute from the earliest bar.
             next_anchor_dt = earliest_dt - timedelta(minutes=1)
@@ -724,8 +757,10 @@ class KisClient:
         from_yyyymmdd: str,
         to_yyyymmdd: str,
         *,
+        venue: KisVenue = _DEFAULT_KIS_VENUE,
         adjust: bool = True,
         foreground: bool = False,
+        **kwargs: Any,
     ) -> DailyCandleFetchResult:
         """Fetch daily OHLCV for *code* across [from, to] (KST).
 
@@ -738,8 +773,14 @@ class KisClient:
         - violations: per-row drop reasons (close<=0, OHLC inconsistent, malformed,
           out of requested range). Surfaced to caller for data_warnings.
         """
+        if "market" in kwargs:
+            venue = kwargs.pop("market")
+        if kwargs:
+            unexpected = next(iter(kwargs))
+            raise TypeError(f"unexpected keyword argument: {unexpected}")
         path = "/uapi/domestic-stock/v1/quotations/inquire-daily-itemchartprice"
         tr_id = "FHKST03010100"
+        venue_div = kis_venue_div(venue)
         cursor_to = to_yyyymmdd
         # Tracks every row we've already processed (valid or violation) so that
         # paginated re-reads — or mock-server tests that replay the same payload
@@ -752,7 +793,7 @@ class KisClient:
 
         for _ in range(60):
             params = {
-                "FID_COND_MRKT_DIV_CODE": _STOCK_MRKT_DIV,
+                "FID_COND_MRKT_DIV_CODE": venue_div,
                 "FID_INPUT_ISCD": code,
                 "FID_INPUT_DATE_1": from_yyyymmdd,
                 "FID_INPUT_DATE_2": cursor_to,

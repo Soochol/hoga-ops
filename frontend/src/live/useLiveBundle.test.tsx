@@ -61,6 +61,9 @@ vi.mock('../api/livePastCandles', () => ({
   useLivePastCandles: (...args: unknown[]) => livePastCandlesSpy(...args as []),
 }));
 
+const dailyCandlesMock = {
+  warnings: [] as Array<{ date?: string; reason: string; msg: string }>,
+};
 const livePastDailyCandlesSpy = vi.fn(() => ({
   data: {
     code: '005930',
@@ -71,7 +74,7 @@ const livePastDailyCandlesSpy = vi.fn(() => ({
     ],
     cached_batches: [],
     fresh_batches: [],
-    data_warnings: [],
+    data_warnings: dailyCandlesMock.warnings,
   },
   isLoading: false,
   error: null,
@@ -120,6 +123,7 @@ describe('useLiveBundle', () => {
     candlesMock.isPlaceholderData = false;
     candlesMock.isFetching = false;
     candlesMock.warnings = [];
+    dailyCandlesMock.warnings = [];
     rangeMock.isPlaceholderData = false;
     rangeMock.isFetching = false;
     investorMock.isLoading = false;
@@ -165,7 +169,7 @@ describe('useLiveBundle', () => {
   it('clamps pastFrom to 249 days before today when historicalFromDate is older', () => {
     useLivePageStore.setState({ historicalFromDate: '20250101' });
     renderHook(() => useLiveBundle('005930', '1m', '20260527', liveFixture), { wrapper });
-    expect(livePastCandlesSpy).toHaveBeenCalledWith('005930', '20250920', '20260527');
+    expect(livePastCandlesSpy).toHaveBeenCalledWith('005930', '20250920', '20260527', 'KRX');
     // 5th arg = priceRange (undefined here); 6th = todayKst, which drives the
     // 5-min refetch that advances pastMaxQrT (review C1). minutePastTo === today
     // so todayKst === to === '20260527'.
@@ -209,6 +213,61 @@ describe('useLiveBundle', () => {
       close: 70150,
       vol_a: 1007,
       vol_b: 0,
+    });
+  });
+
+  it('does not overlay KRX live trade ticks onto an NXT candle view', () => {
+    const liveWithTrade: LiveSeriesData = {
+      ...liveFixture,
+      trade: [
+        {
+          t_ms: 1779840030000,
+          kind: 'trade',
+          trades: [{ t_ms: 1779840030000, price: 70150, qty: 7, side: 1 }],
+        },
+      ],
+    };
+
+    const { result } = renderHook(
+      () => useLiveBundle('005930', '1m', '20260527', liveWithTrade, { venue: 'NXT' }),
+      { wrapper },
+    );
+
+    expect(result.current.chartBundle!.candles).toHaveLength(1);
+    expect(result.current.chartBundle!.candles[0]).toMatchObject({
+      ts_ms: 1779840000000,
+      high: 70100,
+      close: 70050,
+      vol_a: 1000,
+    });
+  });
+
+  it('overlays KRX live trade ticks onto AUTO only during the KRX-owned regular window', () => {
+    const liveWithTrade: LiveSeriesData = {
+      ...liveFixture,
+      trade: [
+        {
+          t_ms: 1779840030000,
+          kind: 'trade',
+          trades: [
+            { t_ms: 1779840030000, price: 70150, qty: 7, side: 1 },
+            { t_ms: 1779867000000, price: 80000, qty: 99, side: 1 },
+          ],
+        },
+      ],
+    };
+
+    const { result } = renderHook(
+      () => useLiveBundle('005930', '1m', '20260527', liveWithTrade, { venue: 'AUTO' }),
+      { wrapper },
+    );
+
+    expect(result.current.chartBundle!.candles).toHaveLength(1);
+    expect(result.current.chartBundle!.candles[0]).toMatchObject({
+      ts_ms: 1779840000000,
+      high: 70150,
+      close: 70150,
+      vol_a: 1007,
     });
   });
 
@@ -302,6 +361,19 @@ describe('useLiveBundle', () => {
     const { result } = renderHook(() => useLiveBundle('005930', 'D', '20260527', liveFixture), { wrapper });
     expect(result.current.pastDataWarnings).toEqual([]); // daily spy의 data_warnings=[]
   });
+
+  it('D/W/M: AUTO daily integrated fallback warning을 pastDataWarnings로 노출', () => {
+    dailyCandlesMock.warnings = [
+      { reason: 'auto_daily_uses_integrated', msg: 'AUTO daily candles use KIS integrated venue' },
+    ];
+    const { result } = renderHook(
+      () => useLiveBundle('005930', 'D', '20260527', liveFixture, { venue: 'AUTO' }),
+      { wrapper },
+    );
+    expect(result.current.pastDataWarnings).toEqual([
+      { reason: 'auto_daily_uses_integrated', msg: 'AUTO daily candles use KIS integrated venue' },
+    ]);
+  });
 });
 
 describe('useLiveBundle daily/minute branching (ADR-0048)', () => {
@@ -327,6 +399,7 @@ describe('useLiveBundle daily/minute branching (ADR-0048)', () => {
     renderHook(() => useLiveBundle('005930', 'D', '20260527', liveFixture), { wrapper });
     const lastDailyCall = livePastDailyCandlesSpy.mock.calls.at(-1) as unknown as unknown[];
     expect(lastDailyCall[0]).toBe('005930');
+    expect(lastDailyCall[3]).toBe('KRX');
     const lastMinuteCall = livePastCandlesSpy.mock.calls.at(-1) as unknown as unknown[];
     expect(lastMinuteCall[0]).toBeNull();
   });
@@ -352,8 +425,21 @@ describe('useLiveBundle daily/minute branching (ADR-0048)', () => {
     renderHook(() => useLiveBundle('005930', '1m', '20260527', liveFixture), { wrapper });
     const lastMinuteCall = livePastCandlesSpy.mock.calls.at(-1) as unknown as unknown[];
     expect(lastMinuteCall[0]).toBe('005930');
+    expect(lastMinuteCall[3]).toBe('KRX');
     const lastDailyCall = livePastDailyCandlesSpy.mock.calls.at(-1) as unknown as unknown[];
     expect(lastDailyCall[0]).toBeNull();
+  });
+
+  it('NXT minute venue expands chart session bounds to 08:00~20:00 KST and threads the query venue', () => {
+    const { result } = renderHook(
+      () => useLiveBundle('005930', '1m', '20260527', liveFixture, { venue: 'NXT' }),
+      { wrapper },
+    );
+    const seg = result.current.chartBundle!.segments[0];
+    expect(seg.session_open_ms).toBe(1779836400000);
+    expect(seg.session_close_ms).toBe(1779879600000);
+    const lastMinuteCall = livePastCandlesSpy.mock.calls.at(-1) as unknown as unknown[];
+    expect(lastMinuteCall[3]).toBe('NXT');
   });
 
   it('clampEngaged is false on D when historicalFromDate is very old', () => {

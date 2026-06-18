@@ -29,6 +29,30 @@ def test_append_and_read_round_trip() -> None:
     assert b_bars == bars
 
 
+def test_daily_cache_separates_venue_batches() -> None:
+    cache = PastDailyCandlesCache()
+    krx_bars = [_bar(1000)]
+    un_bars = [_bar(2000)]
+
+    cache.append_batch("KRX", "005930", date(2024, 1, 1), date(2024, 1, 31), krx_bars)
+    cache.append_batch("UN", "005930", date(2024, 1, 1), date(2024, 1, 31), un_bars)
+
+    assert cache.list_batches("KRX", "005930")[0][2] == krx_bars
+    assert cache.list_batches("UN", "005930")[0][2] == un_bars
+
+
+def test_daily_today_cache_separates_venue() -> None:
+    cache = PastDailyCandlesCache()
+    krx_bar = _bar(1000)
+    un_bar = _bar(2000)
+
+    cache.store_today("KRX", "005930", krx_bar)
+    cache.store_today("UN", "005930", un_bar)
+
+    assert cache.get_today("KRX", "005930") == ("hit", krx_bar)
+    assert cache.get_today("UN", "005930") == ("hit", un_bar)
+
+
 def test_multiple_batches_kept_in_insertion_order() -> None:
     cache = PastDailyCandlesCache()
     cache.append_batch("005930", date(2024, 1, 1), date(2024, 12, 31), [_bar(1)])

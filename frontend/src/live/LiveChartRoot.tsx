@@ -24,8 +24,10 @@ import {
   isMinuteTimeframe,
   isCalendarTimeframe,
 } from '../state/livePage';
+import type { LiveVenueOption } from '../state/liveVenue';
 import type { AskPeak, RangeBundle } from '../api/types';
 import { PAST_CANDLES_MAX_DAYS } from './liveDateTime';
+import { initialVisibleMinuteBarsFor } from './liveVenuePolicy';
 import { summarizeWarnings, type LiveDataWarning } from './liveDataWarnings';
 import { useViewportBackfill } from './useViewportBackfill';
 import { registerViewportCapture, saveViewportToActiveTab } from '../state/liveTabs';
@@ -91,6 +93,7 @@ function dailyLogicalRange(
 interface Props {
   code: string | null;
   timeframe: LiveTimeframe;
+  venue?: LiveVenueOption;
   /** Optional view-level identity for same-code/timeframe restores (for example `/study?view=...`). */
   viewIdentity?: string;
   /** Full bundle = chart side + live hoga overlay (new ref each SSE tick).
@@ -140,7 +143,7 @@ interface Props {
 /** /live's single-chart root. Mounts the timeframe-appropriate pane set
  * (see `paneSpecsForTimeframe`) inside one createChart instance so
  * timeScale is shared across candle/volume/(hoga) panes. */
-export function LiveChartRoot({ code, timeframe, viewIdentity, bundle, chartBundle, ratioBundle, clampEngaged, isPastCandlesLoading, isExtending = false, pastDataWarnings, restoreViewport = null, dayAskPeaks = EMPTY_ASK_PEAKS, todayAllPriceAskPeak = null, todayKst = '', forceHogaPanes = false, paneTogglesOverride, persistLiveViewport = true, onViewportCaptureReady, onCursorActiveChange }: Props) {
+export function LiveChartRoot({ code, timeframe, venue = 'KRX', viewIdentity, bundle, chartBundle, ratioBundle, clampEngaged, isPastCandlesLoading, isExtending = false, pastDataWarnings, restoreViewport = null, dayAskPeaks = EMPTY_ASK_PEAKS, todayAllPriceAskPeak = null, todayKst = '', forceHogaPanes = false, paneTogglesOverride, persistLiveViewport = true, onViewportCaptureReady, onCursorActiveChange }: Props) {
   const containerRef = useRef<HTMLDivElement>(null);
   // 과거 fetch 경고 요약 — rate-limit 지연(빈칸 문구 전환)과 일부 구간 누락(부분로딩 칩)
   // 표시에 쓴다. summarizeWarnings는 null/빈배열을 {count:0,hasRateLimit:false}로 접는다.
@@ -533,7 +536,7 @@ export function LiveChartRoot({ code, timeframe, viewIdentity, bundle, chartBund
         // inside today's segment must not snap the user's scroll.
         if (applied !== null) { reveal(); return; }
         const rightOffset = CHART_TIMESCALE_OPTIONS.rightOffset ?? 0;
-        const target = 300;
+        const target = initialVisibleMinuteBarsFor(timeframe, venue);
         const from = Math.max(0, totalBars - target);
         const to = totalBars + rightOffset;
         ts.setVisibleLogicalRange({ from, to });
@@ -845,7 +848,7 @@ export function LiveChartRoot({ code, timeframe, viewIdentity, bundle, chartBund
             />
           ))}
           <MovingAverageOverlay chart={chart} bundle={cb} axis={axis} />
-          <DailyMovingAverageOverlay chart={chart} bundle={cb} axis={axis} code={code} timeframe={timeframe} todayKst={todayKst} />
+          <DailyMovingAverageOverlay chart={chart} bundle={cb} axis={axis} code={code} timeframe={timeframe} venue={venue} todayKst={todayKst} />
           <LiveCurrentPriceLine paneSeries={paneSeries} bundle={cb} code={code} />
           {isMinuteTimeframe(timeframe) && (
             <LiveAskPeakSegments

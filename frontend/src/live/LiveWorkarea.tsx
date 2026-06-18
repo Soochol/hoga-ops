@@ -8,6 +8,7 @@ import type { AskPeak, RangeBundle } from '../api/types';
 import type { LiveSeriesData } from '../api/liveSeries';
 import type { LiveDataWarning } from './liveDataWarnings';
 import type { TabViewport } from './viewportAnchor';
+import type { LiveVenueOption } from '../state/liveVenue';
 
 /** 관심종목 행을 차트로 드래그할 때 워크에어리어 위에 뜨는 드롭 타깃 오버레이.
  *  드래그 고스트는 패널 overflow 경계에서 잘리므로 워크에어리어 자체를 어포던스로 쓴다.
@@ -65,6 +66,8 @@ interface Props {
   restoreViewport?: TabViewport | null;
   /** Distinguishes multiple tabs that point at the same code/timeframe. */
   viewIdentity?: string | null;
+  /** Selected KIS candle venue; controls minute-chart initial viewport policy. */
+  venue?: LiveVenueOption;
   /** Owned by LivePage's single useLiveSeries call. Threaded to LiveSidebar
    * so the LATEST mode reads the same SSE buffer that feeds useLiveBundle. */
   live: LiveSeriesData;
@@ -91,6 +94,7 @@ export function LiveWorkarea({
   pastDataWarnings,
   restoreViewport,
   viewIdentity,
+  venue = 'KRX',
   live,
   dayAskPeaks = EMPTY_ASK_PEAKS,
   todayAllPriceAskPeak = null,
@@ -145,6 +149,7 @@ export function LiveWorkarea({
             <LiveChartRoot
               code={activeCode}
               timeframe={timeframe}
+              venue={venue}
               bundle={bundle}
               chartBundle={chartBundle}
               clampEngaged={clampEngaged}
