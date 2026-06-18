@@ -1387,6 +1387,28 @@ describe('LiveChartRoot historical-prepend viewport preservation', () => {
     expect(ts.scrollToPosition).not.toHaveBeenCalled();
   });
 
+  it('restore: D timeframe floors a scrolled-back user zoom to the daily window', () => {
+    const handlers: Array<(r: unknown) => void> = [];
+    const ts = makeTs(handlers);
+    vi.mocked(createChartEx).mockImplementationOnce(() => buildStableCapturingMock(ts) as any);
+
+    const rightEdgeMs = TODAY_OPEN_MS + 200 * 60_000;
+    render(
+      <LiveChartRoot code="005930" timeframe="D"
+        bundle={todayBundle(Array.from({ length: 250 }, (_, i) => TODAY_OPEN_MS + (i + 1) * 60_000))}
+        clampEngaged={false} isPastCandlesLoading={false}
+        restoreViewport={{ rightEdgeMs, barSpan: 8, atLiveEdge: false, userAdjusted: true }} />,
+      { wrapper },
+    );
+    const axis = createVirtualAxis(
+      [{ date: '20260527', sessionOpenMs: TODAY_OPEN_MS, sessionCloseMs: TODAY_CLOSE_MS }],
+      TODAY_OPEN_MS,
+    );
+    const idx = realMsToVirtualSeconds(axis, rightEdgeMs);
+    expect(ts.setVisibleLogicalRange).toHaveBeenLastCalledWith({ from: idx - 15, to: idx });
+    expect(ts.scrollToPosition).not.toHaveBeenCalled();
+  });
+
   it('restore: D timeframe ignores persisted live-edge user zoom so candles reopen at readable density', () => {
     const handlers: Array<(r: unknown) => void> = [];
     const ts = makeTs(handlers);
