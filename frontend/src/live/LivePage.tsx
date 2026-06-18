@@ -96,6 +96,8 @@ export function LivePage() {
 
   const activeCode = useLivePageStore((s) => s.activeCode);
   const timeframe = useLivePageStore((s) => s.candleTimeframe);
+  const foreignNetEnabled = useLivePageStore((s) => s.foreignNetEnabled);
+  const institutionNetEnabled = useLivePageStore((s) => s.institutionNetEnabled);
   const volumeEnabled = useLivePageStore((s) => s.volumeEnabled);
   const quoteTotalsEnabled = useLivePageStore((s) => s.quoteTotalsEnabled);
   const ratioEnabled = useLivePageStore((s) => s.ratioEnabled);
@@ -129,6 +131,7 @@ export function LivePage() {
     timeframe,
     today,
     live,
+    { investorNetEnabled: foreignNetEnabled || institutionNetEnabled },
   );
   const liveSaveBundle = useMemo<RangeBundle | null>(() => {
     if (!bundle) return null;

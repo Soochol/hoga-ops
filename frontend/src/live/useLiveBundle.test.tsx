@@ -80,6 +80,19 @@ vi.mock('../api/livePastDailyCandles', () => ({
   useLivePastDailyCandles: (...args: unknown[]) => livePastDailyCandlesSpy(...args as []),
 }));
 
+const investorMock = {
+  isLoading: false,
+  points: [] as Array<{ t_ms: number; foreign_net: number; institution_net: number }>,
+};
+const livePastInvestorNetSpy = vi.fn(() => ({
+  data: { points: investorMock.points },
+  isLoading: investorMock.isLoading,
+  error: null,
+}));
+vi.mock('../api/livePastInvestorNet', () => ({
+  useLivePastInvestorNet: (...args: unknown[]) => livePastInvestorNetSpy(...args as []),
+}));
+
 const rangeMock = { isPlaceholderData: false, isFetching: false };
 const useRangeSpy = vi.fn(() => ({
   data: null,
@@ -101,6 +114,7 @@ describe('useLiveBundle', () => {
   beforeEach(() => {
     livePastCandlesSpy.mockClear();
     livePastDailyCandlesSpy.mockClear();
+    livePastInvestorNetSpy.mockClear();
     useRangeSpy.mockClear();
     candlesMock.candles = [DEFAULT_CANDLE];
     candlesMock.isPlaceholderData = false;
@@ -108,6 +122,8 @@ describe('useLiveBundle', () => {
     candlesMock.warnings = [];
     rangeMock.isPlaceholderData = false;
     rangeMock.isFetching = false;
+    investorMock.isLoading = false;
+    investorMock.points = [];
     useLivePageStore.setState({
       activeCode: '005930',
       candleTimeframe: '1m',
@@ -313,6 +329,23 @@ describe('useLiveBundle daily/minute branching (ADR-0048)', () => {
     expect(lastDailyCall[0]).toBe('005930');
     const lastMinuteCall = livePastCandlesSpy.mock.calls.at(-1) as unknown as unknown[];
     expect(lastMinuteCall[0]).toBeNull();
+  });
+
+  it('D timeframe disables investor query when investor panes are hidden', () => {
+    renderHook(() => useLiveBundle('005930', 'D', '20260527', liveFixture), { wrapper });
+    const lastInvestorCall = livePastInvestorNetSpy.mock.calls.at(-1) as unknown as unknown[];
+    expect(lastInvestorCall[0]).toBeNull();
+  });
+
+  it('D timeframe enables investor query and holds reveal loading when investor panes are visible', () => {
+    investorMock.isLoading = true;
+    const { result } = renderHook(
+      () => useLiveBundle('005930', 'D', '20260527', liveFixture, { investorNetEnabled: true }),
+      { wrapper },
+    );
+    const lastInvestorCall = livePastInvestorNetSpy.mock.calls.at(-1) as unknown as unknown[];
+    expect(lastInvestorCall[0]).toBe('005930');
+    expect(result.current.isPastCandlesLoading).toBe(true);
   });
 
   it('1m timeframe calls minute hook with non-null code, daily hook with null code', () => {

@@ -69,6 +69,24 @@ function pad(n: number): string {
 const EMPTY_AXIS: VirtualAxis = createVirtualAxis([]);
 /** 안정 빈 배열 — 기본값이 매 렌더 새 []를 만들지 않게. */
 const EMPTY_ASK_PEAKS: readonly AskPeak[] = [];
+const DAILY_MIN_EFFECTIVE_BAR_SPACING = 3.5;
+
+function dailyLogicalRange(
+  totalBars: number,
+  plotWidth: number,
+  latestLogicalIndex: number | null,
+): { from: number; to: number } {
+  const rightOffset = CHART_TIMESCALE_OPTIONS.rightOffset ?? 0;
+  const latest = latestLogicalIndex ?? totalBars - 1;
+  const to = latest + 1 + rightOffset;
+  const maxLegibleSpan =
+    plotWidth > 0
+      ? Math.max(1, Math.floor(plotWidth / DAILY_MIN_EFFECTIVE_BAR_SPACING))
+      : 260;
+  const loadedSpan = totalBars + rightOffset;
+  const span = Math.min(loadedSpan, maxLegibleSpan);
+  return { from: Math.max(0, to - span), to };
+}
 
 interface Props {
   code: string | null;
@@ -483,7 +501,8 @@ export function LiveChartRoot({ code, timeframe, viewIdentity, bundle, chartBund
     const historicalFromDate = useLivePageStore.getState().historicalFromDate;
     if (timeframe === 'D') {
       const shouldPreserveScrolledBackDaily =
-        historicalFromDate !== null && restoreViewport?.atLiveEdge === false;
+        historicalFromDate !== null &&
+        (lastAppliedCountRef.current !== null || restoreViewport?.atLiveEdge === false);
       if (shouldPreserveScrolledBackDaily) {
         reveal();
         return;
@@ -520,8 +539,23 @@ export function LiveChartRoot({ code, timeframe, viewIdentity, bundle, chartBund
         ts.setVisibleLogicalRange({ from, to });
         lastAppliedCountRef.current = totalBars;
         reveal();
+      } else if (timeframe === 'D') {
+        // Daily must avoid fitContent's multi-step internal range settle. On
+        // long histories it compresses candle bodies and visibly shifts the
+        // chart after first paint. Use a width-derived span with the standard
+        // rightOffset instead.
+        if (applied === totalBars) { reveal(); return; }
+        const lastMs = cb.candles[cb.candles.length - 1]?.ts_ms;
+        let latestLogicalIndex: number | null = null;
+        if (lastMs != null) {
+          const idx = ts.timeToIndex(realMsToVirtualSeconds(axisRef.current, lastMs) as Time, true);
+          if (typeof idx === 'number' && Number.isFinite(idx)) latestLogicalIndex = idx;
+        }
+        ts.setVisibleLogicalRange(dailyLogicalRange(totalBars, ts.width(), latestLogicalIndex));
+        lastAppliedCountRef.current = totalBars;
+        reveal();
       } else {
-        // D/W/M re-fit whenever the candle count changes. Growth covers the
+        // W/M re-fit whenever the candle count changes. Growth covers the
         // initial daily-fetch extension; shrink covers placeholder data from a
         // wider previous calendar request, which would otherwise leave the
         // chart stuck at stale spacing.
