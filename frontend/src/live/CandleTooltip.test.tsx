@@ -1,5 +1,6 @@
 import { describe, it, expect, beforeEach, afterEach } from 'vitest';
 import { render, screen, act, cleanup } from '@testing-library/react';
+import { Profiler, type ProfilerOnRenderCallback } from 'react';
 import CandleTooltip from './CandleTooltip';
 import { useChartPrefsStore } from '../state/chartPrefs';
 import type { Candle } from '../api/types';
@@ -55,6 +56,8 @@ describe('CandleTooltip', () => {
   it('커서 이탈(point==null) 시 숨김', () => {
     const { chart, fire } = makeChart();
     renderTip(chart);
+    fire({ point: { x: 100, y: 50 }, time: 1060 });
+    expect(screen.getByTestId('candle-tooltip')).toBeInTheDocument();
     fire({ point: null, time: 1060 });
     expect(screen.queryByTestId('candle-tooltip')).toBeNull();
   });
@@ -127,6 +130,8 @@ describe('CandleTooltip', () => {
     render(
       <CandleTooltip chart={chart} bundle={bundle} axis={axis} paneSeries={ps} timeframe="1m" />,
     );
+    fire({ point: { x: 100, y: 50 }, time: 1060 });
+    expect(screen.getByTestId('candle-tooltip')).toBeInTheDocument();
     fire({ point: { x: 100, y: 350 }, time: 1060 }); // y=350 ∈ pane1(volume)
     expect(screen.queryByTestId('candle-tooltip')).toBeNull();
   });
@@ -151,5 +156,38 @@ describe('CandleTooltip', () => {
     });
     // 커서 안 움직였지만 ts_ms 키로 같은 봉 유지(가상시각 키였다면 사라졌을 것)
     expect(screen.getByTestId('candle-tooltip')).toHaveTextContent('107');
+  });
+
+  it('같은 캔들 안 위치 이동은 React 리렌더 없이 DOM 위치만 갱신한다', () => {
+    const { chart, fire } = makeChart();
+    const ps = new Map() as never;
+    let updates = 0;
+    const onRender: ProfilerOnRenderCallback = (_id, phase) => {
+      if (phase === 'update') updates += 1;
+    };
+
+    const { rerender } = render(
+      <Profiler id="candle-tooltip" onRender={onRender}>
+        <CandleTooltip chart={chart} bundle={bundle} axis={axis} paneSeries={ps} timeframe="1m" />
+      </Profiler>,
+    );
+
+    fire({ point: { x: 100, y: 50 }, time: 1060 });
+    const afterFirstHover = updates;
+    const tip = screen.getByTestId('candle-tooltip');
+    const firstLeft = tip.style.left;
+
+    fire({ point: { x: 180, y: 70 }, time: 1060 });
+
+    expect(updates).toBe(afterFirstHover);
+    expect(tip.style.left).not.toBe(firstLeft);
+    const latestLeft = tip.style.left;
+
+    rerender(
+      <Profiler id="candle-tooltip" onRender={onRender}>
+        <CandleTooltip chart={chart} bundle={bundle} axis={axis} paneSeries={ps} timeframe="1m" />
+      </Profiler>,
+    );
+    expect(tip.style.left).toBe(latestLeft);
   });
 });

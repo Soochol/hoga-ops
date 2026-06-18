@@ -121,37 +121,40 @@ function Sparkline({
   const H = 16;
 
   const pts = entry.points;
-  if (pts.length === 0 || !dayRange) {
+  const geometry = useMemo(() => {
+    if (pts.length === 0 || !dayRange) return null;
+    const { first: tsFirst, last: tsLast } = dayRange;
+    const tSpan = tsLast - tsFirst || 1;
+
+    // Per-row Y domain: include 0 so the line stays visible whether the
+    // trajectory is purely positive (buyer), purely negative (seller), or
+    // straddles zero (rare mixed-side broker).
+    let netMin = 0;
+    let netMax = 0;
+    for (const p of pts) {
+      if (p.net < netMin) netMin = p.net;
+      if (p.net > netMax) netMax = p.net;
+    }
+    const nSpan = netMax - netMin || 1;
+
+    const toX = (t: number) => ((t - tsFirst) / tSpan) * W;
+    const toY = (n: number) => H - ((n - netMin) / nSpan) * H;
+    const segments = buildSegments(pts, gapThresholdMs).map((seg) => ({
+      kind: seg.kind,
+      points: seg.pts.map((p) => `${toX(p.ts_ms)},${toY(p.net)}`).join(' '),
+    }));
+    return { tsFirst, tsLast, tSpan, segments };
+  }, [dayRange, gapThresholdMs, pts]);
+
+  if (!geometry) {
     return <span className="block w-full h-4" />;
   }
-
-  const { first: tsFirst, last: tsLast } = dayRange;
-  const tSpan = tsLast - tsFirst || 1;
-
-  // Per-row Y domain: include 0 so the line stays visible whether the
-  // trajectory is purely positive (buyer), purely negative (seller), or
-  // straddles zero (rare mixed-side broker).
-  let netMin = 0;
-  let netMax = 0;
-  for (const p of pts) {
-    if (p.net < netMin) netMin = p.net;
-    if (p.net > netMax) netMax = p.net;
-  }
-  const nSpan = netMax - netMin || 1;
-
-  const toX = (t: number) => ((t - tsFirst) / tSpan) * W;
-  const toY = (n: number) => H - ((n - netMin) / nSpan) * H;
 
   const stroke =
     entry.dominant_side === 'buy' ? 'var(--price-up)' : 'var(--price-down)';
 
-  // Split the polyline into solid vs dashed segments based on
-  // GAP_THRESHOLD_MS. We emit one <polyline> per contiguous run, with
-  // dashed runs styled differently. A "run" is a sequence of consecutive
-  // points joined by gaps <= threshold.
-  const segments = buildSegments(pts, gapThresholdMs);
-
   // Cursor marker: only visible when cursorMs is inside the day's range.
+  const { tsFirst, tsLast, tSpan, segments } = geometry;
   const showCursor =
     cursorMs != null && cursorMs >= tsFirst && cursorMs <= tsLast;
   const cursorX = showCursor ? ((cursorMs! - tsFirst) / tSpan) * W : 0;
@@ -163,7 +166,6 @@ function Sparkline({
       className="w-full h-4 block"
     >
       {segments.map((seg, i) => {
-        const points = seg.pts.map((p) => `${toX(p.ts_ms)},${toY(p.net)}`).join(' ');
         if (seg.kind === 'solid') {
           return (
             <polyline
@@ -171,7 +173,7 @@ function Sparkline({
               fill="none"
               stroke={stroke}
               strokeWidth={1.2}
-              points={points}
+              points={seg.points}
             />
           );
         }
@@ -183,7 +185,7 @@ function Sparkline({
             strokeWidth={1.2}
             strokeDasharray="1.5,1.5"
             opacity={0.4}
-            points={points}
+            points={seg.points}
           />
         );
       })}

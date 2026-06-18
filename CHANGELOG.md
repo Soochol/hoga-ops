@@ -3,6 +3,14 @@
 All notable changes to this project are documented here.
 The format follows a 4-digit `MAJOR.MINOR.PATCH.MICRO` scheme.
 
+## [0.8.11.0] - 2026-06-18
+
+### Fixed
+- **/live 캔들 hover 버벅임 완화**: 같은 캔들 위에서 마우스를 움직일 때 툴팁 위치만 갱신하고
+  React 렌더를 반복하지 않아 캔들 hover가 더 부드럽게 반응한다.
+- 거래원 trajectory 표는 커서만 움직이는 동안 sparkline geometry를 다시 만들지 않도록 해
+  live page hover 중 불필요한 작업을 줄였다.
+
 ## [0.8.10.0] - 2026-06-18
 
 ### Added

@@ -1,4 +1,4 @@
-import { memo, useEffect, useMemo, useRef, useState, type CSSProperties } from 'react';
+import { memo, useCallback, useEffect, useMemo, useRef, useState, type CSSProperties } from 'react';
 import type { IChartApi, MouseEventParams } from 'lightweight-charts';
 import type { RangeBundle } from '../api/types';
 import type { VirtualAxis } from '../util/virtualAxis';
@@ -75,10 +75,29 @@ function Row({ k, children }: { k: string; children: React.ReactNode }) {
 function CandleTooltip({ chart, bundle, axis, paneSeries, timeframe }: Props) {
   const enabled = useActivePrefs((p) => p.candleTooltipEnabled);
   const tipRef = useRef<HTMLDivElement>(null);
+  const hoverRef = useRef<{ tsMs: number; left: number; top: number } | null>(null);
   // 호버 "키"는 절대 ts_ms 로 저장한다(가상시각 X). 가상시각은 axis 리베이스(과거 거래일
   // 확장)로 시프트되지만 ts_ms 는 불변 — 리베이스 중 정지 커서에서도 같은 봉을 가리킨다.
   // 툴팁 내용 모델은 아래 렌더에서 현재 drawn 으로 파생하므로 SSE 틱마다 in-place 갱신된다.
   const [hover, setHover] = useState<{ tsMs: number; left: number; top: number } | null>(null);
+  const clearHover = useCallback(() => {
+    if (hoverRef.current === null) return;
+    hoverRef.current = null;
+    setHover(null);
+  }, []);
+  const publishHover = useCallback((next: { tsMs: number; left: number; top: number }) => {
+    const prev = hoverRef.current;
+    hoverRef.current = next;
+    if (prev?.tsMs === next.tsMs) {
+      const tip = tipRef.current;
+      if (tip) {
+        tip.style.left = `${next.left}px`;
+        tip.style.top = `${next.top}px`;
+      }
+      return;
+    }
+    setHover(next);
+  }, []);
 
   // 그려진 캔들 배열(projectCandle 와 동일 필터) + 두 인덱스 맵:
   //  - vsecToIndex: 가상시각(초)→index. 핸들러가 param.time(=projectCandle 의 candle.time,
@@ -109,7 +128,7 @@ function CandleTooltip({ chart, bundle, axis, paneSeries, timeframe }: Props) {
     const handler = (param: MouseEventParams) => {
       if (param.point == null || typeof param.time !== 'number') {
         if (pending !== null) { cancelAnimationFrame(pending); pending = null; }
-        setHover(null);
+        clearHover();
         return;
       }
       const point = param.point;
@@ -119,9 +138,9 @@ function CandleTooltip({ chart, bundle, axis, paneSeries, timeframe }: Props) {
         pending = null;
         const { drawn: d, vsecToIndex: vmap, paneSeries: ps } = live.current;
         // 캔들 페인 한정.
-        if (paneIdAtY(chart, ps, point.y) !== 'candle') { setHover(null); return; }
+        if (paneIdAtY(chart, ps, point.y) !== 'candle') { clearHover(); return; }
         const vidx = vmap.get(time);
-        if (vidx === undefined) { setHover(null); return; } // 봉 사이 whitespace
+        if (vidx === undefined) { clearHover(); return; } // 봉 사이 whitespace
         const el = chart.chartElement();
         const tip = tipRef.current;
         const place = placeTooltip(
@@ -129,26 +148,27 @@ function CandleTooltip({ chart, bundle, axis, paneSeries, timeframe }: Props) {
           el?.clientWidth ?? 0, el?.clientHeight ?? 0,
           tip?.offsetWidth ?? 160, tip?.offsetHeight ?? 130,
         );
-        setHover({ tsMs: d[vidx].ts_ms, left: place.left, top: place.top });
+        publishHover({ tsMs: d[vidx].ts_ms, left: place.left, top: place.top });
       });
     };
     chart.subscribeCrosshairMove(handler);
     return () => {
       chart.unsubscribeCrosshairMove(handler);
       if (pending !== null) cancelAnimationFrame(pending);
-      setHover(null);
+      clearHover();
     };
-  }, [chart, enabled]);
+  }, [chart, clearHover, enabled, publishHover]);
 
   // 내용 모델은 렌더에서 현재 데이터로 파생(순수) — SSE 틱/리베이스로 drawn 이 갱신되면
   // 커서를 안 움직여도 자동으로 최신 봉. 호버 봉이 사라지면(idx 부재) 숨김.
   if (!enabled || !hover) return null;
-  const idx = tsMsToIndex.get(hover.tsMs);
+  const renderedHover = hoverRef.current?.tsMs === hover.tsMs ? hoverRef.current : hover;
+  const idx = tsMsToIndex.get(renderedHover.tsMs);
   if (idx === undefined) return null;
   const m = buildCandleTooltip(drawn, idx, timeframe);
   if (!m) return null;
   return (
-    <div ref={tipRef} data-testid="candle-tooltip" style={{ ...boxStyle, left: hover.left, top: hover.top }}>
+    <div ref={tipRef} data-testid="candle-tooltip" style={{ ...boxStyle, left: renderedHover.left, top: renderedHover.top }}>
       <div style={{ ...rowStyle, color: 'var(--fg-dim)', marginBottom: 4 }}>
         <span>{m.dateLabel}{m.timeLabel ? ` ${m.timeLabel}` : ''}</span>
       </div>

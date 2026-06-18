@@ -135,4 +135,56 @@ describe('BrokerTrajectoryTable — sparkline', () => {
     const cursorLines = container.querySelectorAll('[data-testid="cursor-marker"]');
     expect(cursorLines.length).toBeGreaterThanOrEqual(1);
   });
+
+  it('cursor-only rerender moves the marker without changing sparkline geometry', () => {
+    const series: BrokerSeriesEntry[] = [
+      entry('A', [
+        { ts_ms: 1_000, net: 10 },
+        { ts_ms: 2_000, net: 30 },
+        { ts_ms: 5_000, net: 20 },
+      ]),
+    ];
+    const { container, rerender } = render(
+      <BrokerTrajectoryTable series={series} cursorMs={2_000} />,
+    );
+    const polyline = container.querySelector('polyline:not([stroke-dasharray])');
+    const marker = container.querySelector('[data-testid="cursor-marker"]');
+    expect(polyline).not.toBeNull();
+    expect(marker).not.toBeNull();
+    const pointsBefore = polyline!.getAttribute('points');
+    const markerBefore = marker!.getAttribute('x1');
+
+    rerender(<BrokerTrajectoryTable series={series} cursorMs={4_000} />);
+
+    expect(polyline!.getAttribute('points')).toBe(pointsBefore);
+    expect(marker!.getAttribute('x1')).not.toBe(markerBefore);
+  });
+
+  it('series rerender refreshes sparkline geometry while keeping cursor marker valid', () => {
+    const series1: BrokerSeriesEntry[] = [
+      entry('A', [
+        { ts_ms: 1_000, net: 10 },
+        { ts_ms: 2_000, net: 30 },
+        { ts_ms: 5_000, net: 20 },
+      ]),
+    ];
+    const series2: BrokerSeriesEntry[] = [
+      entry('A', [
+        { ts_ms: 1_000, net: 10 },
+        { ts_ms: 2_000, net: 80 },
+        { ts_ms: 5_000, net: 20 },
+      ]),
+    ];
+    const { container, rerender } = render(
+      <BrokerTrajectoryTable series={series1} cursorMs={2_000} />,
+    );
+    const polyline = container.querySelector('polyline:not([stroke-dasharray])');
+    expect(polyline).not.toBeNull();
+    const pointsBefore = polyline!.getAttribute('points');
+
+    rerender(<BrokerTrajectoryTable series={series2} cursorMs={2_000} />);
+
+    expect(polyline!.getAttribute('points')).not.toBe(pointsBefore);
+    expect(container.querySelector('[data-testid="cursor-marker"]')).not.toBeNull();
+  });
 });
