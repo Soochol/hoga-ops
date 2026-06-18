@@ -3,6 +3,13 @@
 All notable changes to this project are documented here.
 The format follows a 4-digit `MAJOR.MINOR.PATCH.MICRO` scheme.
 
+## [0.8.13.2] - 2026-06-19
+
+### Fixed
+- **/study 10호가·거래원 차트선 차폐**: 저장 학습뷰에서 캔들 차트의 날짜 구분선이
+  10호가와 거래원 카드 아래로 비쳐 보이지 않도록 차트 영역을 live page처럼 잘라내고,
+  상세 패널을 카드 위 레이어로 고정했다.
+
 ## [0.8.13.1] - 2026-06-18
 
 ### Fixed
