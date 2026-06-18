@@ -272,10 +272,48 @@ it('overwrites the current study source even when the saves list is missing the 
   expect(updateMutate.mock.calls[0][0].body.name).toBe('삼성전자 5m 저장뷰');
 });
 
-it('renames a saved view on double-click and Enter', async () => {
+it('clicking the saved view title navigates to the study route', async () => {
+  renderDrawer('/inventory');
+
+  await userEvent.click(screen.getByRole('button', { name: '급등 이후' }));
+
+  await waitFor(() => expect(screen.getByTestId('loc').textContent).toBe('/study?view=a'));
+});
+
+it('pressing Enter on the saved view title navigates to the study route', async () => {
+  renderDrawer('/inventory');
+
+  const titleButton = screen.getByRole('button', { name: '급등 이후' });
+  titleButton.focus();
+  await userEvent.keyboard('{Enter}');
+
+  await waitFor(() => expect(screen.getByTestId('loc').textContent).toBe('/study?view=a'));
+});
+
+it('clicking rename opens inline edit mode without navigating', async () => {
+  renderDrawer('/inventory');
+
+  await userEvent.click(screen.getByRole('button', { name: '급등 이후 이름 수정' }));
+
+  expect(screen.getByLabelText('저장뷰 이름 수정')).toBeTruthy();
+  expect(screen.getByTestId('loc').textContent).toBe('/inventory');
+});
+
+it('keyboard activation of rename opens inline edit mode', async () => {
+  renderDrawer('/inventory');
+
+  const renameButton = screen.getByRole('button', { name: '급등 이후 이름 수정' });
+  renameButton.focus();
+  await userEvent.keyboard('{Enter}');
+
+  expect(screen.getByLabelText('저장뷰 이름 수정')).toBeTruthy();
+  expect(screen.getByTestId('loc').textContent).toBe('/inventory');
+});
+
+it('renames a saved view from the explicit rename action and Enter', async () => {
   renderDrawer('/study?view=a');
 
-  await userEvent.dblClick(screen.getByText('급등 이후'));
+  await userEvent.click(screen.getByRole('button', { name: '급등 이후 이름 수정' }));
   const input = screen.getByLabelText('저장뷰 이름 수정') as HTMLInputElement;
   await userEvent.clear(input);
   await userEvent.type(input, '새 이름{Enter}');
@@ -289,7 +327,7 @@ it('renames a saved view on double-click and Enter', async () => {
 it('commits saved view rename on blur', async () => {
   renderDrawer('/study?view=a');
 
-  await userEvent.dblClick(screen.getByText('급등 이후'));
+  await userEvent.click(screen.getByRole('button', { name: '급등 이후 이름 수정' }));
   const input = screen.getByLabelText('저장뷰 이름 수정') as HTMLInputElement;
   await userEvent.clear(input);
   await userEvent.type(input, '블러 저장');
@@ -304,7 +342,7 @@ it('commits saved view rename on blur', async () => {
 it('cancels saved view rename on Escape', async () => {
   renderDrawer('/study?view=a');
 
-  await userEvent.dblClick(screen.getByText('급등 이후'));
+  await userEvent.click(screen.getByRole('button', { name: '급등 이후 이름 수정' }));
   const input = screen.getByLabelText('저장뷰 이름 수정') as HTMLInputElement;
   await userEvent.clear(input);
   await userEvent.type(input, '취소할 이름');
@@ -317,7 +355,7 @@ it('cancels saved view rename on Escape', async () => {
 it('starts inline rename without navigating from a non-study route', async () => {
   renderDrawer('/inventory');
 
-  await userEvent.dblClick(screen.getByText('급등 이후'));
+  await userEvent.click(screen.getByRole('button', { name: '급등 이후 이름 수정' }));
 
   expect(screen.getByLabelText('저장뷰 이름 수정')).toBeTruthy();
   expect(screen.getByTestId('loc').textContent).toBe('/inventory');
@@ -326,7 +364,7 @@ it('starts inline rename without navigating from a non-study route', async () =>
 it('does not rename a saved view when the inline value is empty', async () => {
   renderDrawer('/study?view=a');
 
-  await userEvent.dblClick(screen.getByText('급등 이후'));
+  await userEvent.click(screen.getByRole('button', { name: '급등 이후 이름 수정' }));
   const input = screen.getByLabelText('저장뷰 이름 수정') as HTMLInputElement;
   await userEvent.clear(input);
   await userEvent.keyboard('{Enter}');
@@ -338,7 +376,7 @@ it('does not rename a saved view when the inline value is empty', async () => {
 it('does not rename a saved view when the inline value is unchanged', async () => {
   renderDrawer('/study?view=a');
 
-  await userEvent.dblClick(screen.getByText('급등 이후'));
+  await userEvent.click(screen.getByRole('button', { name: '급등 이후 이름 수정' }));
   const input = screen.getByLabelText('저장뷰 이름 수정') as HTMLInputElement;
   await userEvent.type(input, '{Enter}');
 

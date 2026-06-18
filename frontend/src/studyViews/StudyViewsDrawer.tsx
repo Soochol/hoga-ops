@@ -206,29 +206,32 @@ export function StudyViewsDrawer() {
                         cancelRename();
                       }
                     }}
-                    className="w-full rounded border border-[var(--border)] bg-bg-input px-1 py-0.5 text-sm font-medium text-[var(--fg)]"
+                    className="w-full rounded border border-line bg-bg-input px-1 py-0.5 text-sm font-medium text-fg"
                   />
-                  {renameState.error && <div className="text-xs text-[var(--error)]">{renameState.error}</div>}
+                  {renameState.error && <div className="text-xs text-danger">{renameState.error}</div>}
                   <div className="truncate text-xs text-fg-dim">{row.label} {row.code} · {row.timeframe}</div>
                 </div>
               ) : (
-                <div className="min-w-0 flex-1">
-                  <div
-                    className="truncate text-sm font-medium"
-                    onDoubleClick={(e) => {
-                      e.preventDefault();
-                      e.stopPropagation();
-                      startRename(row);
-                    }}
-                  >
-                    {row.name}
+                <div className="flex min-w-0 flex-1 items-start gap-2">
+                  <div className="min-w-0 flex-1">
+                    <button
+                      type="button"
+                      onClick={() => navigate(`/study?view=${row.id}`)}
+                      className="block w-full truncate text-left text-sm font-medium text-fg focus:outline-none focus:ring-1 focus:ring-line"
+                    >
+                      {row.name}
+                    </button>
+                    <div className="truncate text-xs text-fg-dim">
+                      {row.label} {row.code} · {row.timeframe}
+                    </div>
                   </div>
                   <button
                     type="button"
-                    onClick={() => navigate(`/study?view=${row.id}`)}
-                    className="block w-full truncate text-left text-xs text-fg-dim"
+                    aria-label={`${row.name} 이름 수정`}
+                    onClick={() => startRename(row)}
+                    className="shrink-0 rounded border border-line px-2 py-1 text-xs text-fg-dim hover:bg-bg-input"
                   >
-                    {row.label} {row.code} · {row.timeframe}
+                    수정
                   </button>
                 </div>
               )}
@@ -236,7 +239,7 @@ export function StudyViewsDrawer() {
                 type="button"
                 aria-label={`${row.name} 삭제`}
                 onClick={() => setDeleteTarget(row)}
-                className="shrink-0 rounded border px-2 py-1 text-xs"
+                className="shrink-0 rounded border border-line px-2 py-1 text-xs"
               >
                 삭제
               </button>
