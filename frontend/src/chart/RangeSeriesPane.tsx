@@ -9,7 +9,7 @@ import {
 } from 'lightweight-charts';
 import type { RangeBundle } from '../api/types';
 import { type VirtualAxis } from '../util/virtualAxis';
-import { syncSeriesData } from './seriesDataDiff';
+import { classifyDataChange, syncSeriesData } from './seriesDataDiff';
 import { SurgeMarkersPrimitive, type SurgeMarkerPoint } from './SurgeMarkersPrimitive';
 
 /**
@@ -203,8 +203,11 @@ function RangeSeriesPaneInner<Ctx>({
       // ~1ms for update(tail)) and its safety (update only when exactly
       // equivalent to setData) live in seriesDataDiff.ts.
       if (forceSetData) {
-        seriesList[i].setData(data);
-        lastDataRef.current[i] = data;
+        const decision = classifyDataChange(lastDataRef.current[i] ?? null, data);
+        if (decision.kind !== 'skip') {
+          seriesList[i].setData(data);
+          lastDataRef.current[i] = data;
+        }
       } else {
         lastDataRef.current[i] = syncSeriesData(seriesList[i], lastDataRef.current[i] ?? null, data);
       }

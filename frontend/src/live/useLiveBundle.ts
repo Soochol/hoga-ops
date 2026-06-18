@@ -128,6 +128,10 @@ export interface UseLiveBundleResult {
   pastDataWarnings: LiveDataWarning[];
 }
 
+type UseLiveBundleOptions = {
+  investorNetEnabled?: boolean;
+};
+
 /** Orchestrate live SSE + KIS past-candles + /api/range hoga indicators into a
  * single RangeBundle for LiveChartRoot. ADR-0040 — KIS candles are the single
  * candle source via the dedicated `/api/live/past-candles` endpoint.
@@ -141,6 +145,7 @@ export function useLiveBundle(
   timeframe: LiveTimeframe,
   todayKstYyyymmdd: string,
   live: LiveSeriesData,
+  options: UseLiveBundleOptions = {},
 ): UseLiveBundleResult {
   const historicalFromDate = useLivePageStore((s) => s.historicalFromDate);
 
@@ -199,9 +204,9 @@ export function useLiveBundle(
   // Why daily-only, not all calendar frames: investor points are daily-anchored
   // (09:00 KST), but W/M aggregate candles into week/month segments, so most
   // daily points would fall outside axis.contains and render a near-empty pane.
-  // Kept out of isLoading/error: it's an optional overlay, so a missing or
-  // failed investor fetch must not block the candle chart from rendering.
-  const enableInvestor = !!(code && timeframe === 'D');
+  // Optional pane data: if no investor pane is visible, do not fetch it or let
+  // its later response churn the D chart bundle after the candles are revealed.
+  const enableInvestor = !!(code && timeframe === 'D' && options.investorNetEnabled === true);
   const investorQuery = useLivePastInvestorNet(
     enableInvestor ? code : null,
     enableInvestor ? dailyPastFrom : null,
@@ -390,7 +395,7 @@ export function useLiveBundle(
     isLoading: live.isLoading || past.isLoading || pastCandlesQuery.isLoading || pastDailyCandlesQuery.isLoading,
     error: live.error ?? past.error ?? pastCandlesQuery.error ?? pastDailyCandlesQuery.error ?? null,
     clampEngaged,
-    isPastCandlesLoading: pastCandlesQuery.isLoading || pastDailyCandlesQuery.isLoading,
+    isPastCandlesLoading: pastCandlesQuery.isLoading || pastDailyCandlesQuery.isLoading || (enableInvestor && investorQuery.isLoading),
     isExtending: extending,
     pastDataWarnings,
   };

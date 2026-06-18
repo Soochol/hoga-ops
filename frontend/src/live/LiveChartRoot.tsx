@@ -501,7 +501,8 @@ export function LiveChartRoot({ code, timeframe, viewIdentity, bundle, chartBund
     const historicalFromDate = useLivePageStore.getState().historicalFromDate;
     if (timeframe === 'D') {
       const shouldPreserveScrolledBackDaily =
-        historicalFromDate !== null && restoreViewport?.atLiveEdge === false;
+        historicalFromDate !== null &&
+        (lastAppliedCountRef.current !== null || restoreViewport?.atLiveEdge === false);
       if (shouldPreserveScrolledBackDaily) {
         reveal();
         return;
@@ -531,33 +532,18 @@ export function LiveChartRoot({ code, timeframe, viewIdentity, bundle, chartBund
         // to stay legible. Apply once per (code, timeframe): SSE pushes
         // inside today's segment must not snap the user's scroll.
         if (applied !== null) { reveal(); return; }
+        const rightOffset = CHART_TIMESCALE_OPTIONS.rightOffset ?? 0;
         const target = 300;
         const from = Math.max(0, totalBars - target);
-        const to = totalBars + 5; // 5-bar right padding
+        const to = totalBars + rightOffset;
         ts.setVisibleLogicalRange({ from, to });
-        // setVisibleLogicalRange alone does NOT actually pin the latest bar
-        // to the right edge when CHART_TIMESCALE_OPTIONS.rightOffset is set
-        // and a previous (code, timeframe)'s bar layout is cached on the
-        // chart instance. The library reports getVisibleLogicalRange() ==
-        // what we set, but timeToCoordinate(lastBar) falls past chart.width
-        // — verified 2026-05-29 with rightOffset=15. scrollToPosition(0,
-        // false) explicitly snaps the right edge to the latest bar +
-        // rightOffset gap, which is what users expect ("most recent candle
-        // near the right"). One-shot via lastAppliedCountRef so SSE pushes
-        // still preserve user scroll.
-        ts.scrollToPosition(0, false);
         lastAppliedCountRef.current = totalBars;
         reveal();
       } else if (timeframe === 'D') {
-        // Daily must keep candle bodies above a pixel floor. `fitContent()` on a
-        // long D history lets lightweight-charts zoom all the way out to
-        // minBarSpacing (observed: 628px / 1255 logical span = 0.5px), which
-        // collapses candlestick bodies into hairlines. Use a width-derived span
-        // instead. The 3.5px target leaves room for lwc's first-pass width to
-        // include the price scale before the final pane width settles, keeping
-        // the final effective spacing around 3px on the measured 628px pane.
-        // Re-run on count changes so the initial fetch -> extended D history
-        // transition normalizes itself.
+        // Daily must avoid fitContent's multi-step internal range settle. On
+        // long histories it compresses candle bodies and visibly shifts the
+        // chart after first paint. Use a width-derived span with the standard
+        // rightOffset instead.
         if (applied === totalBars) { reveal(); return; }
         const lastMs = cb.candles[cb.candles.length - 1]?.ts_ms;
         let latestLogicalIndex: number | null = null;
@@ -566,14 +552,13 @@ export function LiveChartRoot({ code, timeframe, viewIdentity, bundle, chartBund
           if (typeof idx === 'number' && Number.isFinite(idx)) latestLogicalIndex = idx;
         }
         ts.setVisibleLogicalRange(dailyLogicalRange(totalBars, ts.width(), latestLogicalIndex));
-        ts.scrollToPosition(0, false);
         lastAppliedCountRef.current = totalBars;
         reveal();
       } else {
         // W/M re-fit whenever the candle count changes. Growth covers the
-        // initial daily-fetch extension; shrink covers placeholder data from
-        // a wider previous calendar request, which would otherwise leave the
-        // chart stuck at an over-compressed bar spacing.
+        // initial daily-fetch extension; shrink covers placeholder data from a
+        // wider previous calendar request, which would otherwise leave the
+        // chart stuck at stale spacing.
         // historicalFromDate !== null (user-driven extension) short-circuits
         // above, so user scroll is preserved.
         if (applied === totalBars) { reveal(); return; }

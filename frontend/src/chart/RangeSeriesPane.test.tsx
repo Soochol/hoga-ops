@@ -174,6 +174,31 @@ describe('RangeSeriesPane', () => {
     expect(created[0].update).toHaveBeenLastCalledWith({ time: 3, close: 108 });
   });
 
+  it('forceSetData skips identical data but fully replaces when data changes', () => {
+    // Calendar candlesticks use forceSetData to avoid stale lwc candlestick
+    // geometry on real OHLC changes. It must not turn unrelated parent
+    // re-renders (same projected data) into another full setData, because lwc
+    // re-settles the viewport after setData and creates a visible refit.
+    const { chart, created } = makeChart();
+    const rows = [{ time: 1, close: 100 }, { time: 2, close: 110 }];
+    const { rerender } = render(
+      <RangeSeriesPane chart={chart} bundle={candleBundle(rows)} axis={axis} paneIndex={1} spec={PROJECT_SPEC} forceSetData />,
+    );
+    expect(created[0].setData).toHaveBeenCalledTimes(1);
+
+    rerender(
+      <RangeSeriesPane chart={chart} bundle={candleBundle([...rows])} axis={axis} paneIndex={1} spec={PROJECT_SPEC} forceSetData />,
+    );
+    expect(created[0].setData).toHaveBeenCalledTimes(1);
+    expect(created[0].update).not.toHaveBeenCalled();
+
+    rerender(
+      <RangeSeriesPane chart={chart} bundle={candleBundle([{ time: 1, close: 100 }, { time: 2, close: 112 }])} axis={axis} paneIndex={1} spec={PROJECT_SPEC} forceSetData />,
+    );
+    expect(created[0].update).not.toHaveBeenCalled();
+    expect(created[0].setData).toHaveBeenCalledTimes(2);
+  });
+
   it('falls back to setData when an earlier bar changes (auction-mask retroactive recolor pattern)', () => {
     // classifyDataChange must NOT update(tail) when a non-tail element changed —
     // that is the maskOutgoingConnector / cumulative-rewrite case where the whole
