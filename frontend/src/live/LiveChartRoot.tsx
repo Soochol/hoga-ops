@@ -576,7 +576,6 @@ export function LiveChartRoot({ code, timeframe, viewIdentity, bundle, chartBund
 
   const repairNarrowDailyViewport = useCallback(() => {
     if (!chart || !cb || timeframe !== 'D' || cb.candles.length === 0 || isPastCandlesLoading) return;
-    if (!restoreViewport || restoreViewport.barSpan >= DAILY_VISIBLE_BARS) return;
     const ts = chart.timeScale();
     try {
       const logical = ts.getVisibleLogicalRange();
@@ -601,6 +600,10 @@ export function LiveChartRoot({ code, timeframe, viewIdentity, bundle, chartBund
     } catch {
       // chart torn down between effects
     }
+    // Keep restoreViewport in the callback deps even though the actual repair
+    // key is the current chart range. A viewport save can normalize persisted D
+    // barSpan to 15 while the mounted lightweight-charts range is still narrower;
+    // the prop change is the signal to re-check the real chart state.
   }, [chart, cb, timeframe, isPastCandlesLoading, restoreViewport]);
 
   useEffect(() => {
