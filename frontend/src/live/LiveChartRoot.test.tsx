@@ -194,9 +194,9 @@ describe('LiveChartRoot', () => {
       getVisibleRange: vi.fn((): { from: number; to: number } | null => null),
       setVisibleRange: vi.fn(),
       timeToCoordinate: vi.fn(() => null),
-      coordinateToLogical: vi.fn(() => null),
+      coordinateToLogical: vi.fn((): number | null => null),
       width: vi.fn(() => 800),
-      timeToIndex: vi.fn(() => null),
+      timeToIndex: vi.fn((): number | null => null),
     };
     const chart = {
       addSeries: vi.fn(() => ({
@@ -388,6 +388,59 @@ describe('LiveChartRoot', () => {
     );
 
     expect(capture()).toMatchObject({ barSpan: 15, atLiveEdge: true });
+  });
+
+  it('D timeframe: replaces candle data fully when the latest daily OHLC changes', () => {
+    useLivePageStore.setState({ historicalFromDate: null });
+    const candleSeries = {
+      setData: vi.fn(),
+      update: vi.fn(),
+      removeSeries: vi.fn(),
+      applyOptions: vi.fn(),
+      priceScale: vi.fn(() => ({ applyOptions: vi.fn() })),
+      createPriceLine: vi.fn(() => ({ applyOptions: vi.fn() })),
+      removePriceLine: vi.fn(),
+      attachPrimitive: vi.fn(),
+      detachPrimitive: vi.fn(),
+      setMarkers: vi.fn(),
+    };
+    const { chart } = buildChartMockWithStableTS();
+    chart.addSeries.mockImplementationOnce(() => candleSeries);
+    vi.mocked(createChartEx).mockImplementationOnce(() => chart as never);
+    const first = makeBundleWithCandles(2);
+    const next: RangeBundle = {
+      ...first,
+      candles: [
+        first.candles[0],
+        { ...first.candles[1], close: first.candles[1].close + 1, high: first.candles[1].high + 1 },
+      ],
+    };
+
+    const { rerender } = render(
+      <LiveChartRoot
+        code="005930"
+        timeframe="D"
+        bundle={first}
+        clampEngaged={false}
+        isPastCandlesLoading={false}
+      />,
+      { wrapper },
+    );
+    candleSeries.setData.mockClear();
+    candleSeries.update.mockClear();
+
+    rerender(
+      <LiveChartRoot
+        code="005930"
+        timeframe="D"
+        bundle={next}
+        clampEngaged={false}
+        isPastCandlesLoading={false}
+      />,
+    );
+
+    expect(candleSeries.update).not.toHaveBeenCalled();
+    expect(candleSeries.setData).toHaveBeenCalledTimes(1);
   });
 
   it('1m timeframe: setVisibleLogicalRange applied once even as bars grow (SSE pushes preserved)', () => {
