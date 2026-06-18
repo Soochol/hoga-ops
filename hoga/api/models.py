@@ -1289,6 +1289,31 @@ class ParquetStudyViewWriteRequest(BaseModel):
         return self
 
 
+class StudyViewMetadataUpdateRequest(BaseModel):
+    name: str | None = None
+    memo: str | None = None
+
+    @field_validator("name")
+    @classmethod
+    def _strip_name(cls, v: str | None) -> str | None:
+        if v is None:
+            return None
+        return _strip_nonblank_name(v)
+
+    @field_validator("memo")
+    @classmethod
+    def _strip_memo(cls, v: str | None) -> str | None:
+        if v is None:
+            return None
+        return v.strip()
+
+    @model_validator(mode="after")
+    def _has_update(self):
+        if self.name is None and self.memo is None:
+            raise ValueError("at least one metadata field is required")
+        return self
+
+
 class ParquetStudyView(BaseModel):
     id: str
     name: str

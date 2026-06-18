@@ -5,7 +5,8 @@ import { useLiveCursorStore } from '../live/useLiveCursorStore';
 import type { TabViewport } from '../live/viewportAnchor';
 import { bucketSeconds } from '../state/livePage';
 import { StudyDetailPanel } from './StudyDetailPanel';
-import { useStudyViewSnapshot } from './useStudyViews';
+import { StudyMemoPanel } from './StudyMemoPanel';
+import { useStudyViewMutations, useStudyViews, useStudyViewSnapshot } from './useStudyViews';
 import { studySnapshotBundleToChartInput, studySnapshotDetails } from './studySnapshotAdapter';
 import {
   clearCurrentStudySaveSource,
@@ -18,8 +19,16 @@ export function StudyPage() {
   const viewId = params.get('view');
   const cursorMs = useLiveCursorStore((s) => s.cursorMs);
   const [isCursorActive, setIsCursorActive] = useState(false);
+  const savesQuery = useStudyViews();
+  const mutations = useStudyViewMutations();
+  const [isMemoOpen, setIsMemoOpen] = useState(false);
+  const [memoError, setMemoError] = useState<string | null>(null);
   const snapshotQuery = useStudyViewSnapshot(viewId);
   const snapshot = snapshotQuery.data;
+  const selectedSave = useMemo(
+    () => savesQuery.data?.saves.find((row) => row.id === viewId) ?? null,
+    [savesQuery.data?.saves, viewId],
+  );
   const chartInput = useMemo(
     () => snapshot ? studySnapshotBundleToChartInput(snapshot.bundle) : null,
     [snapshot],
@@ -33,6 +42,16 @@ export function StudyPage() {
   const handleViewportCaptureReady = useCallback((capture: () => TabViewport | null) => {
     captureViewportRef.current = capture;
   }, []);
+  const commitMemo = useCallback((memo: string) => {
+    if (!viewId || memo === (selectedSave?.memo ?? '')) return;
+    setMemoError(null);
+    mutations.updateMetadata.mutate(
+      { id: viewId, body: { memo } },
+      {
+        onError: (error) => setMemoError(error instanceof Error ? error.message : '메모 저장에 실패했습니다.'),
+      },
+    );
+  }, [mutations.updateMetadata, selectedSave?.memo, viewId]);
 
   useEffect(() => {
     setIsCursorActive(false);
@@ -88,13 +107,20 @@ export function StudyPage() {
 
   return (
     <section data-testid="study-page" className="grid h-full min-w-0 grid-rows-[auto_minmax(0,1fr)] bg-[var(--bg)] text-[var(--fg)]">
-      <header className="flex min-h-12 items-center gap-3 border-b border-[var(--border)] px-4">
+      <header className="flex min-h-12 items-center justify-between gap-3 border-b border-[var(--border)] px-4">
         <div className="min-w-0">
           <div className="truncate text-sm font-semibold">{snapshot.label}</div>
           <div className="text-xs text-[var(--fg-dimmer)]">
             {snapshot.code} · {snapshot.timeframe} · 저장 스냅샷
           </div>
         </div>
+        <button
+          type="button"
+          onClick={() => setIsMemoOpen((value) => !value)}
+          className="shrink-0 rounded border border-border bg-bg-input px-2 py-1 text-xs text-fg-dim hover:bg-bg-input-hover hover:text-fg"
+        >
+          메모
+        </button>
       </header>
       <div className="grid min-h-0 grid-cols-[minmax(0,1fr)_280px]">
         <LiveChartRoot
@@ -125,15 +151,26 @@ export function StudyPage() {
           onViewportCaptureReady={handleViewportCaptureReady}
           onCursorActiveChange={setIsCursorActive}
         />
-        {details && chartInput && (
-          <StudyDetailPanel
-            details={details}
-            candles={chartInput.bundle.candles}
-            segments={chartInput.bundle.segments}
-            bucketMs={bucketMs}
-            cursorMs={isCursorActive ? cursorMs : null}
-          />
-        )}
+        <aside className="grid min-h-0 grid-rows-[auto_minmax(0,1fr)] border-l border-[var(--border)]">
+          {isMemoOpen && selectedSave && (
+            <StudyMemoPanel
+              memo={selectedSave.memo}
+              isSaving={mutations.updateMetadata.isPending}
+              errorMessage={memoError}
+              onClose={() => setIsMemoOpen(false)}
+              onCommit={commitMemo}
+            />
+          )}
+          {details && chartInput && (
+            <StudyDetailPanel
+              details={details}
+              candles={chartInput.bundle.candles}
+              segments={chartInput.bundle.segments}
+              bucketMs={bucketMs}
+              cursorMs={isCursorActive ? cursorMs : null}
+            />
+          )}
+        </aside>
       </div>
     </section>
   );

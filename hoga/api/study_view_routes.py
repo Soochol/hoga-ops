@@ -10,6 +10,7 @@ from hoga.api import study_views
 from hoga.api.models import (
     ParquetStudySnapshot,
     ParquetStudyView,
+    StudyViewMetadataUpdateRequest,
     ParquetStudyViewWriteRequest,
     StudyViewsFile,
 )
@@ -68,6 +69,20 @@ def build_router(*, data_dir: Path) -> APIRouter:
             raise _snapshot_integrity(save_id, code="study_view_snapshot_missing") from e
         except study_views.StudyViewSnapshotInvalidError as e:
             raise _snapshot_integrity(save_id, code="study_view_snapshot_invalid") from e
+
+    @router.patch("/saves/{save_id}/metadata", response_model=ParquetStudyView)
+    async def update_save_metadata(
+        save_id: str, req: StudyViewMetadataUpdateRequest
+    ) -> ParquetStudyView:
+        try:
+            return await study_views.update_save_metadata(
+                data_dir,
+                id=save_id,
+                req=req,
+                now_ms=int(time.time() * 1000),
+            )
+        except study_views.StudyViewNotFoundError as e:
+            raise _not_found(save_id) from e
 
     @router.put("/saves/{save_id}", response_model=ParquetStudyView)
     async def update_save(

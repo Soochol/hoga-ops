@@ -4,7 +4,9 @@ import {
   deleteStudyView,
   getStudyViewSnapshot,
   listStudyViews,
+  updateStudyViewMetadata,
   updateStudyView,
+  type StudyViewMetadataUpdateRequest,
   type ParquetStudyViewWriteRequest,
 } from '../api/studyViews';
 
@@ -37,6 +39,11 @@ export function useStudyViewMutations() {
         invalidate();
         qc.invalidateQueries({ queryKey: studyViewSnapshotQuery(vars.id) });
       },
+    }),
+    updateMetadata: useMutation({
+      mutationFn: ({ id, body }: { id: string; body: StudyViewMetadataUpdateRequest }) =>
+        updateStudyViewMetadata(id, body),
+      onSuccess: invalidate,
     }),
     remove: useMutation({
       mutationFn: deleteStudyView,
