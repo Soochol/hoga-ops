@@ -274,7 +274,9 @@ it('confirms delete before calling remove mutation', async () => {
 
   await userEvent.click(screen.getByRole('button', { name: '급등 이후 삭제' }));
   const dialog = screen.getByRole('dialog', { name: '저장뷰 삭제' });
-  await userEvent.click(within(dialog).getByRole('button', { name: '삭제' }));
+  const confirmButton = within(dialog).getByRole('button', { name: '삭제' });
+  expect(document.activeElement).toBe(confirmButton);
+  await userEvent.keyboard('{Enter}');
 
   expect(removeMutate).toHaveBeenCalledWith('a', expect.objectContaining({ onSuccess: expect.any(Function) }));
 });

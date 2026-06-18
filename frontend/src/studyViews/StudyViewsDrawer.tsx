@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { useNavigate, useLocation } from 'react-router';
 import type { ParquetStudyView, ParquetStudyViewWriteRequest } from '../api/studyViews';
 import { useCurrentStudySaveSource } from './studySaveSource';
@@ -29,6 +29,7 @@ export function StudyViewsDrawer() {
   const [query, setQuery] = useState('');
   const [dialog, setDialog] = useState<SaveDialogState | null>(null);
   const [deleteTarget, setDeleteTarget] = useState<ParquetStudyView | null>(null);
+  const deleteConfirmButtonRef = useRef<HTMLButtonElement>(null);
   const navigate = useNavigate();
   const location = useLocation();
   const rows = useMemo(() => filterStudyViews(data?.saves ?? [], query), [data?.saves, query]);
@@ -42,6 +43,11 @@ export function StudyViewsDrawer() {
   const studySource = saveSource?.origin === 'study' ? saveSource : null;
   const overwriteStudyViewId = location.pathname === '/study' ? studySource?.viewId ?? currentStudyViewId ?? undefined : undefined;
   const canSaveStudy = location.pathname === '/study' && !!studySource;
+
+  useEffect(() => {
+    if (!deleteTarget) return;
+    deleteConfirmButtonRef.current?.focus();
+  }, [deleteTarget]);
 
   const openSaveDialog = (mode: 'create' | 'overwrite', id?: string) => {
     if (!studySource) return;
@@ -191,6 +197,7 @@ export function StudyViewsDrawer() {
               <button type="button" onClick={() => setDeleteTarget(null)} className="rounded border px-3 py-1 text-sm">취소</button>
               <button
                 type="button"
+                ref={deleteConfirmButtonRef}
                 onClick={confirmDelete}
                 className="rounded border px-3 py-1 text-sm"
               >
