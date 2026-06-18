@@ -76,12 +76,12 @@ describe('computeRestoreRange', () => {
     expect(computeRestoreRange(scrolledBack, 5000, null)).toBeNull();
   });
 
-  it('live-edge: pins the latest bar to the right with the saved zoom, ignoring the index', () => {
-    expect(computeRestoreRange(liveEdge, 200, null)).toEqual({ from: 150, to: 205, scrollToRight: true });
+  it('live-edge: preserves the saved zoom with right-offset whitespace, ignoring the index', () => {
+    expect(computeRestoreRange(liveEdge, 200, null)).toEqual({ from: 150, to: 215, scrollToRight: false });
   });
 
   it('live-edge: clamps from to >= 0 when fewer bars than the saved span', () => {
-    expect(computeRestoreRange(liveEdge, 30, null)).toEqual({ from: 0, to: 35, scrollToRight: true });
+    expect(computeRestoreRange(liveEdge, 30, null)).toEqual({ from: 0, to: 45, scrollToRight: false });
   });
 
   it('rounds a fractional saved span', () => {

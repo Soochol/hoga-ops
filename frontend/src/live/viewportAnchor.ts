@@ -1,5 +1,6 @@
 import type { Time } from 'lightweight-charts';
 import type { VirtualAxis } from '../util/virtualAxis';
+import { CHART_TIMESCALE_OPTIONS } from '../util/chartScale';
 
 /**
  * Per-tab saved chart viewport (ADR-0069 A안 — 탭별 보던 위치 복원).
@@ -106,9 +107,11 @@ export function computeRestoreRange(
   anchorIndex: number | null,
 ): RestoreRange | null {
   const span = Math.max(1, Math.round(anchor.barSpan));
+  const rightOffset = CHART_TIMESCALE_OPTIONS.rightOffset ?? 0;
   if (anchor.atLiveEdge) {
-    // Follow live: pin the latest bar to the right, keep the saved zoom.
-    return { from: Math.max(0, totalBars - span), to: totalBars + 5, scrollToRight: true };
+    // Follow live: keep the saved zoom while preserving the standard right
+    // whitespace band after the latest bar.
+    return { from: Math.max(0, totalBars - span), to: totalBars + rightOffset, scrollToRight: false };
   }
   if (anchorIndex === null) return null;
   return { from: Math.max(0, anchorIndex - span), to: anchorIndex, scrollToRight: false };

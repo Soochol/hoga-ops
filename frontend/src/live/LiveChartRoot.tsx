@@ -513,21 +513,11 @@ export function LiveChartRoot({ code, timeframe, viewIdentity, bundle, chartBund
         // to stay legible. Apply once per (code, timeframe): SSE pushes
         // inside today's segment must not snap the user's scroll.
         if (applied !== null) { reveal(); return; }
+        const rightOffset = CHART_TIMESCALE_OPTIONS.rightOffset ?? 0;
         const target = 300;
         const from = Math.max(0, totalBars - target);
-        const to = totalBars + 5; // 5-bar right padding
+        const to = totalBars + rightOffset;
         ts.setVisibleLogicalRange({ from, to });
-        // setVisibleLogicalRange alone does NOT actually pin the latest bar
-        // to the right edge when CHART_TIMESCALE_OPTIONS.rightOffset is set
-        // and a previous (code, timeframe)'s bar layout is cached on the
-        // chart instance. The library reports getVisibleLogicalRange() ==
-        // what we set, but timeToCoordinate(lastBar) falls past chart.width
-        // — verified 2026-05-29 with rightOffset=15. scrollToPosition(0,
-        // false) explicitly snaps the right edge to the latest bar +
-        // rightOffset gap, which is what users expect ("most recent candle
-        // near the right"). One-shot via lastAppliedCountRef so SSE pushes
-        // still preserve user scroll.
-        ts.scrollToPosition(0, false);
         lastAppliedCountRef.current = totalBars;
         reveal();
       } else {
@@ -539,6 +529,10 @@ export function LiveChartRoot({ code, timeframe, viewIdentity, bundle, chartBund
         // above, so user scroll is preserved.
         if (applied === totalBars) { reveal(); return; }
         ts.fitContent();
+        if (timeframe === 'D') {
+          const rightOffset = CHART_TIMESCALE_OPTIONS.rightOffset ?? 0;
+          ts.setVisibleLogicalRange({ from: 0, to: totalBars + rightOffset });
+        }
         lastAppliedCountRef.current = totalBars;
         reveal();
       }
