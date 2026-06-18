@@ -69,7 +69,24 @@ function pad(n: number): string {
 const EMPTY_AXIS: VirtualAxis = createVirtualAxis([]);
 /** 안정 빈 배열 — 기본값이 매 렌더 새 []를 만들지 않게. */
 const EMPTY_ASK_PEAKS: readonly AskPeak[] = [];
-const DAILY_VISIBLE_BARS = 15;
+const DAILY_MIN_EFFECTIVE_BAR_SPACING = 3.5;
+
+function dailyLogicalRange(
+  totalBars: number,
+  plotWidth: number,
+  latestLogicalIndex: number | null,
+): { from: number; to: number } {
+  const rightOffset = CHART_TIMESCALE_OPTIONS.rightOffset ?? 0;
+  const latest = latestLogicalIndex ?? totalBars - 1;
+  const to = latest + 1 + rightOffset;
+  const maxLegibleSpan =
+    plotWidth > 0
+      ? Math.max(1, Math.floor(plotWidth / DAILY_MIN_EFFECTIVE_BAR_SPACING))
+      : 260;
+  const loadedSpan = totalBars + rightOffset;
+  const span = Math.min(loadedSpan, maxLegibleSpan);
+  return { from: Math.max(0, to - span), to };
+}
 
 interface Props {
   code: string | null;
@@ -236,7 +253,6 @@ export function LiveChartRoot({ code, timeframe, viewIdentity, bundle, chartBund
   // Written during render (like axisRef) so it's current before any effect.
   const chartRef = useRef<IChartApi | null>(chart);
   chartRef.current = chart;
-  const userAdjustedDailyViewportRef = useRef(false);
 
   // Viewport capture (ADR-0069 A안): read the live chart's visible range + zoom
   // and pin them to a real-time anchor. The tabs store calls this on switch-away
@@ -253,18 +269,8 @@ export function LiveChartRoot({ code, timeframe, viewIdentity, bundle, chartBund
         axisRef.current,
         lastCandleMsRef.current,
       );
-      if (
-        vp &&
-        timeframeRef.current === 'D' &&
-        vp.atLiveEdge &&
-        vp.barSpan > DAILY_VISIBLE_BARS &&
-        !userAdjustedDailyViewportRef.current
-      ) {
-        return { ...vp, barSpan: DAILY_VISIBLE_BARS };
-      }
-      return timeframeRef.current === 'D' && userAdjustedDailyViewportRef.current
-        ? { ...vp, userAdjusted: true }
-        : vp;
+      if (!vp) return null;
+      return vp;
     } catch {
       return null;
     }
@@ -396,7 +402,6 @@ export function LiveChartRoot({ code, timeframe, viewIdentity, bundle, chartBund
   const chartReady = revealedKey === viewKey;
   useEffect(() => {
     lastAppliedCountRef.current = null;
-    userAdjustedDailyViewportRef.current = false;
     if (revealRafRef.current !== null) {
       cancelAnimationFrame(revealRafRef.current);
       revealRafRef.current = null;
@@ -418,10 +423,7 @@ export function LiveChartRoot({ code, timeframe, viewIdentity, bundle, chartBund
   useViewportBackfill({ chart, axis, bundle: cb, timeframe, isExtending, code: code ?? '' });
   // Modifier-aware 휠 줌/팬 — handleScale.mouseWheel: false(아래 createChartEx
   // 옵션)와 한 쌍. 스펙: docs/superpowers/specs/2026-06-07-live-wheel-interactions-design.md
-  const handleWheelViewportChanged = useCallback(() => {
-    if (timeframeRef.current === 'D') userAdjustedDailyViewportRef.current = true;
-  }, []);
-  useWheelInteractions(chart, containerRef, cb, axis, handleWheelViewportChanged);
+  useWheelInteractions(chart, containerRef, cb, axis);
   useEffect(() => {
     // Reveal the chart two rAFs after the viewport is applied, so lightweight-
     // charts' one-frame-late barSpacing settle (the cold-load zoom flash) lands
@@ -459,7 +461,7 @@ export function LiveChartRoot({ code, timeframe, viewIdentity, bundle, chartBund
     // applied from to >= 0). One-shot via lastAppliedCountRef (like the minute
     // branch) so SSE pushes don't re-snap. Runs BEFORE the historicalFromDate
     // gate so a scrolled-back tab (hfd != null) also restores and reveals here.
-    if (restoreViewport && lastAppliedCountRef.current === null) {
+    if (restoreViewport && timeframe !== 'D' && lastAppliedCountRef.current === null) {
       const tsR = chart.timeScale();
       const totalBarsR = cb.candles.length;
       try {
@@ -480,14 +482,7 @@ export function LiveChartRoot({ code, timeframe, viewIdentity, bundle, chartBund
               true,
             )
           : null;
-        const viewportForRestore =
-          timeframe === 'D' && !restoreViewport.userAdjusted
-            ? { ...restoreViewport, barSpan: Math.min(restoreViewport.barSpan, DAILY_VISIBLE_BARS) }
-            : restoreViewport;
-        if (timeframe === 'D' && restoreViewport.userAdjusted) {
-          userAdjustedDailyViewportRef.current = true;
-        }
-        const range = computeRestoreRange(viewportForRestore, totalBarsR, idx);
+        const range = computeRestoreRange(restoreViewport, totalBarsR, idx);
         if (range) {
           tsR.setVisibleLogicalRange({ from: range.from, to: range.to });
           if (range.scrollToRight) tsR.scrollToPosition(0, false);
@@ -501,7 +496,15 @@ export function LiveChartRoot({ code, timeframe, viewIdentity, bundle, chartBund
         // chart torn down / API threw → fall through to default initial view.
       }
     }
-    if (useLivePageStore.getState().historicalFromDate !== null) {
+    const historicalFromDate = useLivePageStore.getState().historicalFromDate;
+    if (timeframe === 'D') {
+      const shouldPreserveScrolledBackDaily =
+        historicalFromDate !== null && restoreViewport?.atLiveEdge === false;
+      if (shouldPreserveScrolledBackDaily) {
+        reveal();
+        return;
+      }
+    } else if (historicalFromDate !== null) {
       // User-driven extension owns the viewport (prepend-restore is handled by
       // useViewportBackfill). REVEAL so the cover lifts: on an IN-SESSION pan the
       // chart was already revealed (reveal() no-ops via the revealedKey guard);
@@ -544,13 +547,24 @@ export function LiveChartRoot({ code, timeframe, viewIdentity, bundle, chartBund
         lastAppliedCountRef.current = totalBars;
         reveal();
       } else if (timeframe === 'D') {
-        // Daily carries ~250 bars, and a wide fit/replay-style restore makes
-        // candle bodies look like thin sticks. Keep the initial daily window
-        // close to the minute chart's visual density.
+        // Daily must keep candle bodies above a pixel floor. `fitContent()` on a
+        // long D history lets lightweight-charts zoom all the way out to
+        // minBarSpacing (observed: 628px / 1255 logical span = 0.5px), which
+        // collapses candlestick bodies into hairlines. Use a width-derived span
+        // instead. The 3.5px target leaves room for lwc's first-pass width to
+        // include the price scale before the final pane width settles, keeping
+        // the final effective spacing around 3px on the measured 628px pane.
+        // Re-run on count changes so the initial fetch -> extended D history
+        // transition normalizes itself.
         if (applied === totalBars) { reveal(); return; }
-        const from = Math.max(0, totalBars - DAILY_VISIBLE_BARS);
-        const to = totalBars + 5; // 5-bar right padding
-        ts.setVisibleLogicalRange({ from, to });
+        const lastMs = cb.candles[cb.candles.length - 1]?.ts_ms;
+        let latestLogicalIndex: number | null = null;
+        if (lastMs != null) {
+          const idx = ts.timeToIndex(realMsToVirtualSeconds(axisRef.current, lastMs) as Time, true);
+          if (typeof idx === 'number' && Number.isFinite(idx)) latestLogicalIndex = idx;
+        }
+        ts.setVisibleLogicalRange(dailyLogicalRange(totalBars, ts.width(), latestLogicalIndex));
+        ts.scrollToPosition(0, false);
         lastAppliedCountRef.current = totalBars;
         reveal();
       } else {
@@ -569,52 +583,6 @@ export function LiveChartRoot({ code, timeframe, viewIdentity, bundle, chartBund
       // chart torn down between effect runs
     }
   }, [chart, cb, timeframe, isPastCandlesLoading, viewKey, revealedKey, restoreViewport]);
-
-  const clampDailyLiveEdgeViewport = useCallback(() => {
-    if (!chart || !cb || timeframe !== 'D' || cb.candles.length === 0 || isPastCandlesLoading) return;
-    if (userAdjustedDailyViewportRef.current) return;
-    const ts = chart.timeScale();
-    try {
-      const lastCandleMs = cb.candles[cb.candles.length - 1]?.ts_ms ?? null;
-      const vp = viewportFromRanges(
-        ts.getVisibleLogicalRange(),
-        ts.getVisibleRange(),
-        axisRef.current,
-        lastCandleMs,
-      );
-      if (!vp || !vp.atLiveEdge || vp.barSpan <= DAILY_VISIBLE_BARS + 5) return;
-      const totalBars = cb.candles.length;
-      ts.setVisibleLogicalRange({
-        from: Math.max(0, totalBars - DAILY_VISIBLE_BARS),
-        to: totalBars + 5,
-      });
-      ts.scrollToPosition(0, false);
-    } catch {
-      // chart torn down between effects
-    }
-  }, [chart, cb, timeframe, isPastCandlesLoading]);
-
-  useEffect(() => {
-    clampDailyLiveEdgeViewport();
-  }, [clampDailyLiveEdgeViewport]);
-
-  useEffect(() => {
-    const el = containerRef.current;
-    if (!el || typeof ResizeObserver === 'undefined') return;
-    let raf: number | null = null;
-    const ro = new ResizeObserver(() => {
-      if (raf !== null) cancelAnimationFrame(raf);
-      raf = requestAnimationFrame(() => {
-        raf = null;
-        clampDailyLiveEdgeViewport();
-      });
-    });
-    ro.observe(el);
-    return () => {
-      if (raf !== null) cancelAnimationFrame(raf);
-      ro.disconnect();
-    };
-  }, [clampDailyLiveEdgeViewport]);
 
   useEffect(() => {
     const el = containerRef.current;
@@ -701,7 +669,7 @@ export function LiveChartRoot({ code, timeframe, viewIdentity, bundle, chartBund
     // to the container — an extra manual observer here just produces the
     // "Height and width values ignored because 'autoSize' option is enabled"
     // warning on every resize without affecting layout.
-    // [TEMP-DIAG-VIEWPORT] dev-only QA handles for the in-browser repro.
+    // Dev-only QA handles for browser-level chart viewport inspection.
     if (import.meta.env.DEV) {
       const w = window as unknown as { __liveChart?: unknown; __liveAxisGet?: unknown };
       w.__liveChart = c;
@@ -878,6 +846,7 @@ export function LiveChartRoot({ code, timeframe, viewIdentity, bundle, chartBund
               axis={axis}
               paneIndex={i}
               spec={spec}
+              forceSetData={isCalendarTimeframe(timeframe) && spec.name === 'candle'}
               onPrimarySeriesReady={handleSeriesReady}
               onPrimarySeriesGone={handleSeriesGone}
             />

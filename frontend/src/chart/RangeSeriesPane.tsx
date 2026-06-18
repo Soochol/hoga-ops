@@ -82,6 +82,9 @@ type Props<Ctx> = {
   /** Fired right before the primary series is removed from the chart
    *  (component unmount or spec change). `paneName` = spec.name (see above). */
   onPrimarySeriesGone?: (paneName: string) => void;
+  /** Force full replacement instead of tail update. Used where lightweight-
+   * charts' incremental update path can leave stale candlestick geometry. */
+  forceSetData?: boolean;
 };
 
 /**
@@ -99,6 +102,7 @@ function RangeSeriesPaneInner<Ctx>({
   spec,
   onPrimarySeriesReady,
   onPrimarySeriesGone,
+  forceSetData = false,
 }: Props<Ctx>) {
   // Hook position is stable: PaneSpec is a module-level constant per
   // caller (spec.useContext presence never flips between renders), so
@@ -198,12 +202,17 @@ function RangeSeriesPaneInner<Ctx>({
       // the whole array on every setData, ≈66ms/tick at 90-day deep scroll vs
       // ~1ms for update(tail)) and its safety (update only when exactly
       // equivalent to setData) live in seriesDataDiff.ts.
-      lastDataRef.current[i] = syncSeriesData(seriesList[i], lastDataRef.current[i] ?? null, data);
+      if (forceSetData) {
+        seriesList[i].setData(data);
+        lastDataRef.current[i] = data;
+      } else {
+        lastDataRef.current[i] = syncSeriesData(seriesList[i], lastDataRef.current[i] ?? null, data);
+      }
       // Markers: order vs setData is irrelevant — SurgeMarkersPrimitive draws by
       // timeToCoordinate at render time, not by a snapshotted series index.
       if (s.markers) markersRef.current[i]?.setMarkers(s.markers(bundle, axis, ctx));
     });
-  }, [chart, bundle, axis, ctx, spec, paneIndex]);
+  }, [chart, bundle, axis, ctx, spec, paneIndex, forceSetData]);
   return null;
 }
 
