@@ -554,7 +554,6 @@ def test_study_views_create_enriches_snapshot_detail_buckets(tmp_path):
     assert snap.bundle.detail_warnings == []
 
     snapshot_path = tmp_path / "study_views" / "snapshots" / "view1.json"
-    sv.atomic_write_json(snapshot_path, req.snapshot.model_dump(mode="json"))
     restorable = sv.load_restorable_snapshot(tmp_path, id="view1")
 
     assert restorable.bundle.orderbook_buckets[0].available is True
@@ -564,6 +563,68 @@ def test_study_views_create_enriches_snapshot_detail_buckets(tmp_path):
     assert restorable.bundle.broker_buckets[0].brokers[0].broker == "키움증권"
     assert restorable.bundle.broker_buckets[0].brokers[0].net == 100
     assert restorable.bundle.detail_warnings == []
+
+
+def test_load_restorable_snapshot_returns_persisted_enriched_snapshot_without_re_enrich(
+    tmp_path, monkeypatch
+):
+    raw = _snapshot()
+    raw["bundle"]["orderbook_buckets"] = [_orderbook_bucket(1_000)]
+    raw["bundle"]["broker_buckets"] = [_broker_bucket(1_000)]
+    raw["bundle"]["detail_warnings"] = [
+        {
+            "kind": "orderbook",
+            "t": 1_000,
+            "code": "005930",
+            "date": "20260616",
+            "message": "persisted warning",
+        }
+    ]
+    req = ParquetStudyViewWriteRequest.model_validate(
+        _req(snapshot=raw, viewport=raw["viewport"], indicator_state=raw["indicator_state"])
+    )
+    created = sv.create_save_sync(tmp_path, req=req, id="view1", now_ms=10)
+    assert created.snapshot_size_bytes > 0
+    snapshot_path = tmp_path / "study_views" / "snapshots" / "view1.json"
+    sv.atomic_write_json(snapshot_path, raw)
+
+    calls = []
+
+    def prepare(data_dir, snapshot):
+        calls.append((data_dir, snapshot.code))
+        raise AssertionError("load_restorable_snapshot must not re-enrich persisted details")
+
+    monkeypatch.setattr(sv, "prepare_restorable_snapshot", prepare)
+
+    snap = sv.load_restorable_snapshot(tmp_path, id="view1")
+
+    assert calls == []
+    assert snap.bundle.orderbook_buckets[0].available is True
+    assert snap.bundle.broker_buckets[0].available is True
+    assert snap.bundle.detail_warnings[0].message == "persisted warning"
+
+
+def test_load_restorable_snapshot_does_not_enrich_legacy_snapshot_without_detail_arrays(
+    tmp_path, monkeypatch
+):
+    req = ParquetStudyViewWriteRequest.model_validate(_req())
+    sv.create_save_sync(tmp_path, req=req, id="view1", now_ms=10)
+    snapshot_path = tmp_path / "study_views" / "snapshots" / "view1.json"
+    sv.atomic_write_json(snapshot_path, req.snapshot.model_dump(mode="json"))
+
+    calls = []
+
+    def prepare(data_dir, snapshot):
+        calls.append((data_dir, snapshot.code))
+        raise AssertionError("legacy study snapshot load must not repair from parquet")
+
+    monkeypatch.setattr(sv, "prepare_restorable_snapshot", prepare)
+
+    snap = sv.load_restorable_snapshot(tmp_path, id="view1")
+
+    assert calls == []
+    assert snap.bundle.orderbook_buckets == []
+    assert snap.bundle.broker_buckets == []
 
 
 @pytest.mark.parametrize("timeframe", ["D", "W", "M"])
