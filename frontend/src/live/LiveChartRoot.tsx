@@ -253,13 +253,17 @@ export function LiveChartRoot({ code, timeframe, viewIdentity, bundle, chartBund
         axisRef.current,
         lastCandleMsRef.current,
       );
-      if (vp && timeframeRef.current === 'D' && vp.atLiveEdge) {
-        return { ...vp, barSpan: DAILY_VISIBLE_BARS };
-      }
       if (!vp) return null;
+      const normalizedVp =
+        timeframeRef.current === 'D' && vp.barSpan < DAILY_VISIBLE_BARS
+          ? { ...vp, barSpan: DAILY_VISIBLE_BARS }
+          : vp;
+      if (timeframeRef.current === 'D' && normalizedVp.atLiveEdge) {
+        return { ...normalizedVp, barSpan: DAILY_VISIBLE_BARS };
+      }
       return timeframeRef.current === 'D' && userAdjustedDailyViewportRef.current
-        ? { ...vp, userAdjusted: true }
-        : vp;
+        ? { ...normalizedVp, userAdjusted: true }
+        : normalizedVp;
     } catch {
       return null;
     }
@@ -569,6 +573,39 @@ export function LiveChartRoot({ code, timeframe, viewIdentity, bundle, chartBund
       // chart torn down between effect runs
     }
   }, [chart, cb, timeframe, isPastCandlesLoading, viewKey, revealedKey, restoreViewport]);
+
+  const repairNarrowDailyViewport = useCallback(() => {
+    if (!chart || !cb || timeframe !== 'D' || cb.candles.length === 0 || isPastCandlesLoading) return;
+    if (!restoreViewport || restoreViewport.barSpan >= DAILY_VISIBLE_BARS) return;
+    const ts = chart.timeScale();
+    try {
+      const logical = ts.getVisibleLogicalRange();
+      const lastCandleMs = cb.candles[cb.candles.length - 1]?.ts_ms ?? null;
+      const vp = viewportFromRanges(
+        logical,
+        ts.getVisibleRange(),
+        axisRef.current,
+        lastCandleMs,
+      );
+      if (!logical || !vp || vp.barSpan >= DAILY_VISIBLE_BARS) return;
+      const totalBars = cb.candles.length;
+      const to = vp.atLiveEdge
+        ? totalBars + 5
+        : Math.min(logical.to, totalBars + 5);
+      if (!Number.isFinite(to)) return;
+      ts.setVisibleLogicalRange({
+        from: Math.max(0, to - DAILY_VISIBLE_BARS),
+        to,
+      });
+      if (vp.atLiveEdge) ts.scrollToPosition(0, false);
+    } catch {
+      // chart torn down between effects
+    }
+  }, [chart, cb, timeframe, isPastCandlesLoading, restoreViewport]);
+
+  useEffect(() => {
+    repairNarrowDailyViewport();
+  }, [repairNarrowDailyViewport]);
 
   const clampDailyLiveEdgeViewport = useCallback(() => {
     if (!chart || !cb || timeframe !== 'D' || cb.candles.length === 0 || isPastCandlesLoading) return;

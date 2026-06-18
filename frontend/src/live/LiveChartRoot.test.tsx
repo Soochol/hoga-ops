@@ -1409,6 +1409,31 @@ describe('LiveChartRoot historical-prepend viewport preservation', () => {
     expect(ts.scrollToPosition).not.toHaveBeenCalled();
   });
 
+  it('restore: D timeframe repairs a mounted tab that is still narrower than the daily window', () => {
+    const handlers: Array<(r: unknown) => void> = [];
+    const ts = makeTs(handlers);
+    vi.mocked(createChartEx).mockImplementationOnce(() => buildStableCapturingMock(ts) as any);
+    ts.getVisibleLogicalRange.mockReturnValue({ from: 192, to: 200 });
+    ts.getVisibleRange.mockReturnValue({
+      from: TODAY_OPEN_MS / 1000 + 60 * 60,
+      to: TODAY_OPEN_MS / 1000 + 120 * 60,
+    });
+
+    render(
+      <LiveChartRoot code="005930" timeframe="D"
+        bundle={todayBundle(Array.from({ length: 250 }, (_, i) => TODAY_OPEN_MS + (i + 1) * 60_000))}
+        clampEngaged={false} isPastCandlesLoading={false}
+        restoreViewport={{
+          rightEdgeMs: TODAY_OPEN_MS + 200 * 60_000,
+          barSpan: 8,
+          atLiveEdge: false,
+          userAdjusted: true,
+        }} />,
+      { wrapper },
+    );
+    expect(ts.setVisibleLogicalRange).toHaveBeenLastCalledWith({ from: 185, to: 200 });
+  });
+
   it('restore: D timeframe ignores persisted live-edge user zoom so candles reopen at readable density', () => {
     const handlers: Array<(r: unknown) => void> = [];
     const ts = makeTs(handlers);
