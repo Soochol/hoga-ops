@@ -146,7 +146,10 @@ const useRatioContext = (): RatioPaneContext =>
 // 틱당 풀-배열 재투영 제거(P0): 과거 슬라이스 투영은 캐시, 당일만 재투영. 출력은
 // projectRatio와 바이트 동일(pastCachedProjector.test.ts). 모듈 레벨 1개 인스턴스 —
 // 내부 캐시는 axis 식별자별 WeakMap이라 /live 단일 차트에서 안전.
-const ratioCachedData = makePastCachedProjector(projectRatioPoints, quoteRatioPointsForBundle);
+const ratioCachedData = makePastCachedProjector(projectRatioPoints, quoteRatioPointsForBundle, {
+  shouldPatchBoundary: isSyntheticHogaGapPoint,
+  patchPastTail: BASELINE_HIDDEN_COLORS,
+});
 
 export const RATIO_SPEC = {
   name: 'ratio' as const,

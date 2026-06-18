@@ -11,13 +11,13 @@ import type { VirtualAxis } from '../../util/virtualAxis';
  * 태웠다(측정). 당일 세그먼트만 매 틱 변하므로, 과거 투영을 캐시하고 당일만 재투영하면
  * 틱당 비용이 히스토리 깊이와 무관해진다(측정 ~33× — hogaIndicators.perf.test.ts [E]).
  *
- * 정확성 불변식: `project(past) ++ project(today)` 가 `project(all)` 과 바이트 동일해야
- * 한다. 이건 이 헬퍼가 감싸는 projector들(projectRatioPoints / projectBidPoints /
- * projectAskPoints / projectBuyPoints / projectSellPoints)이 점 간 상태를 *하루 경계 너머로*
- * 들고 가지 않기 때문에 성립한다 — maskOutgoingConnector의 1점 lookback은 동시호가 run
- * (장중) 안에서만 일어나고, 당일 첫 emit 점(09:00)은 절대 마스킹 대상이 아니라 경계에서
- * 소급 재작성을 하지 않는다. 누적 체결강도(projectCumulativeNetFill)는 runningSum이 후속
- * 전부에 의존하므로 이 헬퍼로 감싸지 않는다 — 세그먼트 단위 캐시를 따로 쓴다.
+ * 정확성 불변식: 캐시 경로의 `project(past) ++ project(today)` 는 풀 배열 투영과
+ * 바이트 동일해야 한다. 기본 가정은 projector가 하루 경계 너머 상태를 들고 가지
+ * 않는다는 것인데, synthetic hidden-gap sentinel처럼 "당일 첫 visible emit이
+ * 직전 emitted 점의 OUTGOING connector를 소급 마스킹"하는 1점 lookback은 예외다.
+ * 그런 projector는 `boundaryLookbackPatch` 로 경계의 마지막 과거 emit만 같은
+ * 숨김 색으로 패치한다. 누적 체결강도(projectCumulativeNetFill)는 runningSum이
+ * 후속 전부에 의존하므로 이 헬퍼로 감싸지 않는다 — 세그먼트 단위 캐시를 따로 쓴다.
  *
  * 캐시 키 = (axis 식별자, ctx 식별자, 과거 점 개수, 과거 마지막 t). axis는 segments에서
  * 파생되어 줌/팬에 안정(LiveChartRoot per-viewKey memo)하고 좌측 팬으로 과거가 늘면 새
@@ -31,6 +31,11 @@ interface CacheEntry<Ctx, D> {
   pastLen: number;
   pastLastT: number;
   pastData: D[];
+}
+
+interface BoundaryLookbackPatch<P extends { t: number }, D> {
+  shouldPatchBoundary: (firstVisibleTodayPoint: P) => boolean;
+  patchPastTail: Partial<D>;
 }
 
 /** points[i].t >= t 인 첫 index (points는 t 오름차순). 이진 탐색. */
@@ -48,6 +53,7 @@ export function lowerBoundT<P extends { t: number }>(points: readonly P[], t: nu
 export function makePastCachedProjector<P extends { t: number }, Ctx, D>(
   projectPoints: (points: readonly P[], axis: VirtualAxis, ctx: Ctx) => D[],
   getPoints: (bundle: RangeBundle) => readonly P[],
+  boundaryLookbackPatch?: BoundaryLookbackPatch<P, D>,
 ): (bundle: RangeBundle, axis: VirtualAxis, ctx: Ctx) => D[] {
   // axis 식별자별 캐시(WeakMap → 차트/뷰 교체 시 자동 GC, 동시 차트 간 충돌 없음).
   const cache = new WeakMap<VirtualAxis, CacheEntry<Ctx, D>>();
@@ -69,7 +75,18 @@ export function makePastCachedProjector<P extends { t: number }, Ctx, D>(
       entry = { ctx, pastLen, pastLastT, pastData: projectPoints(past, axis, ctx) };
       cache.set(axis, entry);
     }
+    const todayData = projectPoints(today, axis, ctx);
+    if (boundaryLookbackPatch && entry.pastData.length > 0) {
+      const firstVisibleTodayPoint = today.find((p) => axis.contains(p.t));
+      if (firstVisibleTodayPoint && boundaryLookbackPatch.shouldPatchBoundary(firstVisibleTodayPoint)) {
+        const patchedPastTail = {
+          ...entry.pastData[entry.pastData.length - 1],
+          ...boundaryLookbackPatch.patchPastTail,
+        } as D;
+        return entry.pastData.slice(0, -1).concat(patchedPastTail, todayData);
+      }
+    }
     // 과거(동결) + 당일(매 틱 재투영). concat은 O(N) 참조 복사이나 투영보다 훨씬 싸다.
-    return entry.pastData.concat(projectPoints(today, axis, ctx));
+    return entry.pastData.concat(todayData);
   };
 }

@@ -190,11 +190,13 @@ const bidCachedRaw = makePastCachedProjector(
   (pts: readonly QuoteRatioPoint[], a: VirtualAxis, flags: number) =>
     projectBidPoints(pts, a, (flags & 1) !== 0, (flags & 2) !== 0),
   quoteRatioPointsForBundle,
+  { shouldPatchBoundary: isSyntheticHogaGapPoint, patchPastTail: LINE_HIDDEN_COLOR },
 );
 const askCachedRaw = makePastCachedProjector(
   (pts: readonly QuoteRatioPoint[], a: VirtualAxis, flags: number) =>
     projectAskPoints(pts, a, (flags & 1) !== 0, (flags & 2) !== 0),
   quoteRatioPointsForBundle,
+  { shouldPatchBoundary: isSyntheticHogaGapPoint, patchPastTail: LINE_HIDDEN_COLOR },
 );
 const flagsOf = (c: QuoteTotalsCtx): number => (c.auctionMask ? 1 : 0) | (c.intraMax ? 2 : 0);
 const bidCachedData = (b: RangeBundle, a: VirtualAxis, c: QuoteTotalsCtx) => bidCachedRaw(b, a, flagsOf(c));

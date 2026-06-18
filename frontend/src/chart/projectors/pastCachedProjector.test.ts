@@ -1,7 +1,7 @@
 import { describe, it, expect } from 'vitest';
 import { makePastCachedProjector } from './pastCachedProjector';
-import { projectRatio, projectRatioPoints, type RatioPaneContext } from './ratio';
-import { projectBid, projectBidPoints, projectAsk, projectAskPoints } from './quoteTotals';
+import { projectRatio, projectRatioPoints, RATIO_SPEC, type RatioPaneContext } from './ratio';
+import { projectBid, projectBidPoints, projectAsk, projectAskPoints, QUOTE_TOTALS_SPEC } from './quoteTotals';
 import { projectBuy, projectBuyPoints, projectSell, projectSellPoints } from './fillStrength';
 import { projectCumulativeNetFill, makeCumulativeCachedProjector } from './fillStrength';
 import { createVirtualAxis } from '../../util/virtualAxis';
@@ -46,6 +46,50 @@ function makeAxisAndBundle(nDays: number, extraTodayPoints: QRSeed[] = []) {
     bucket_ms: 60_000,
     quote_ratio: { points },
     fill_strength: { points: fsPoints },
+  };
+  return { axis, bundle };
+}
+
+function makeBoundaryGapBundle() {
+  const day0Open = BASE;
+  const day1Open = BASE + DAY;
+  const axis = createVirtualAxis([
+    { date: 'd0', sessionOpenMs: day0Open, sessionCloseMs: day0Open + SESSION },
+    { date: 'd1', sessionOpenMs: day1Open, sessionCloseMs: day1Open + SESSION },
+  ]);
+  const bundle: any = {
+    bucket_ms: 60_000,
+    segments: [
+      { date: 'd0', session_open_ms: day0Open, session_close_ms: day0Open + SESSION, source: 'kis_live' as const },
+      { date: 'd1', session_open_ms: day1Open, session_close_ms: day1Open + SESSION, source: 'kis_live' as const },
+    ],
+    candles: [
+      { ts_ms: day0Open + SESSION - 60_000, open: 1, high: 1, low: 1, close: 1, vol_a: 0, vol_b: 0 },
+      { ts_ms: day1Open, open: 1, high: 1, low: 1, close: 1, vol_a: 0, vol_b: 0 },
+      { ts_ms: day1Open + 60_000, open: 1, high: 1, low: 1, close: 1, vol_a: 0, vol_b: 0 },
+    ],
+    quote_ratio: {
+      points: [
+        {
+          t: day0Open + SESSION - 60_000,
+          bid_total: 100,
+          ask_total: 200,
+          bid_max: 100,
+          ask_max: 200,
+          imb_max_bid: 100,
+          imb_max_ask: 200,
+        },
+        {
+          t: day1Open + 60_000,
+          bid_total: 200,
+          ask_total: 100,
+          bid_max: 200,
+          ask_max: 100,
+          imb_max_bid: 200,
+          imb_max_ask: 100,
+        },
+      ],
+    },
   };
   return { axis, bundle };
 }
@@ -148,6 +192,62 @@ describe('makePastCachedProjector — 총잔량(bid/ask)·체결강도 히스토
       imb_max_ask: 480,
     }]);
     expect(cached(tick.bundle, first.axis, MASK)).toEqual(projectBuy(tick.bundle, first.axis, MASK));
+  });
+});
+
+describe('makePastCachedProjector — day split 경계의 synthetic hoga gap sentinel 회귀', () => {
+  it('ratio cached path hides the last cached past connector when today starts with a synthetic gap point', () => {
+    const { axis, bundle } = makeBoundaryGapBundle();
+    const ctx: RatioPaneContext = {
+      auctionWindowMask: false,
+      outlierFilterEnabled: false,
+      outlierThreshold: 100,
+    };
+
+    const cached = RATIO_SPEC.series[0].data(bundle, axis, ctx) as any[];
+    const full = projectRatio(bundle, axis, ctx) as any[];
+
+    expect(cached).toEqual(full);
+    expect(cached[0]).toMatchObject({
+      time: axis.toVirtual(bundle.quote_ratio.points[0].t) / 1000,
+      value: 1,
+      topLineColor: 'rgba(0,0,0,0)',
+      bottomLineColor: 'rgba(0,0,0,0)',
+    });
+    expect(cached[1]).toMatchObject({
+      time: axis.toVirtual(bundle.segments[1].session_open_ms) / 1000,
+      value: 0,
+      topLineColor: 'rgba(0,0,0,0)',
+      bottomLineColor: 'rgba(0,0,0,0)',
+    });
+  });
+
+  it('quote totals cached path hides the last cached past connector for bid/ask at the same split boundary', () => {
+    const { axis, bundle } = makeBoundaryGapBundle();
+    const ctx = {
+      auctionMask: false,
+      intraMax: false,
+      surgeEnabled: false,
+      surgeApproachPct: 95,
+      surgeRearmPct: 85,
+      surgeStartHHMM: 900,
+    };
+
+    const cachedBid = QUOTE_TOTALS_SPEC.series[0].data(bundle, axis, ctx) as any[];
+    const cachedAsk = QUOTE_TOTALS_SPEC.series[1].data(bundle, axis, ctx) as any[];
+
+    expect(cachedBid).toEqual(projectBid(bundle, axis, false));
+    expect(cachedAsk).toEqual(projectAsk(bundle, axis, false));
+    expect(cachedBid[0]).toEqual({
+      time: axis.toVirtual(bundle.quote_ratio.points[0].t) / 1000,
+      value: 100,
+      color: 'rgba(0,0,0,0)',
+    });
+    expect(cachedAsk[0]).toEqual({
+      time: axis.toVirtual(bundle.quote_ratio.points[0].t) / 1000,
+      value: 200,
+      color: 'rgba(0,0,0,0)',
+    });
   });
 });
 
