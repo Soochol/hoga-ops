@@ -1,12 +1,16 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { act, render, screen } from '@testing-library/react';
+import userEvent from '@testing-library/user-event';
+import { fireEvent } from '@testing-library/react';
 import { MemoryRouter } from 'react-router';
 import type { ComponentProps } from 'react';
 import type { ParquetStudySnapshot } from '../api/studyViews';
 import type { LiveChartRoot } from '../live/LiveChartRoot';
 
-const { useStudyViewSnapshotMock, liveChartRootMock, useLiveBundleMock, useRangeMock } = vi.hoisted(() => ({
+const { useStudyViewSnapshotMock, useStudyViewsMock, useStudyViewMutationsMock, liveChartRootMock, useLiveBundleMock, useRangeMock } = vi.hoisted(() => ({
   useStudyViewSnapshotMock: vi.fn(),
+  useStudyViewsMock: vi.fn(),
+  useStudyViewMutationsMock: vi.fn(),
   liveChartRootMock: vi.fn(),
   useLiveBundleMock: vi.fn(),
   useRangeMock: vi.fn(),
@@ -14,6 +18,8 @@ const { useStudyViewSnapshotMock, liveChartRootMock, useLiveBundleMock, useRange
 
 vi.mock('./useStudyViews', () => ({
   useStudyViewSnapshot: useStudyViewSnapshotMock,
+  useStudyViews: useStudyViewsMock,
+  useStudyViewMutations: useStudyViewMutationsMock,
 }));
 
 vi.mock('../live/LiveChartRoot', () => ({
@@ -92,9 +98,15 @@ function renderAt(path: string) {
 describe('StudyPage', () => {
   beforeEach(() => {
     useStudyViewSnapshotMock.mockReset();
+    useStudyViewsMock.mockReset();
+    useStudyViewMutationsMock.mockReset();
     liveChartRootMock.mockReset();
     useLiveBundleMock.mockReset();
     useRangeMock.mockReset();
+    useStudyViewsMock.mockReturnValue({ data: { schema_version: 1, saves: [{ id: 'view1', memo: 'old memo' }] } });
+    useStudyViewMutationsMock.mockReturnValue({
+      updateMetadata: { mutate: vi.fn(), isPending: false, error: null },
+    });
     useLiveCursorStore.getState().resetCursor();
   });
 
@@ -411,6 +423,59 @@ describe('StudyPage', () => {
     expect(screen.queryByText('+100')).toBeNull();
     expect(useLiveBundle).not.toHaveBeenCalled();
     expect(useRange).not.toHaveBeenCalled();
+  });
+
+  it('opens a docked memo panel and commits memo edits', async () => {
+    const updateMetadataMutate = vi.fn((_vars, opts) => opts.onSuccess?.());
+    useStudyViewMutationsMock.mockReturnValue({
+      updateMetadata: { mutate: updateMetadataMutate, isPending: false, error: null },
+    });
+    useStudyViewSnapshotMock.mockReturnValue({ data: snapshot, isLoading: false, isError: false });
+    const { container } = renderAt('/study?view=view1');
+
+    const memoToggle = screen.getByRole('button', { name: '메모' });
+    expect(memoToggle.className).toContain('bg-bg-input');
+    expect(memoToggle.className).toContain('border-border');
+    expect(memoToggle.className).toContain('hover:bg-bg-input-hover');
+
+    await userEvent.click(memoToggle);
+    const panel = screen.getByTestId('study-memo-panel');
+    const memo = screen.getByLabelText('저장뷰 메모') as HTMLTextAreaElement;
+    await userEvent.clear(memo);
+    await userEvent.type(memo, '새 메모');
+    await userEvent.click(screen.getByRole('button', { name: '저장' }));
+
+    const aside = panel.closest('aside');
+    expect(aside).toBeTruthy();
+    expect(aside).toContainElement(panel);
+    expect(container.querySelector('[data-testid="study-page"] > div > aside')).toBe(aside);
+    expect(container.querySelector('[data-testid="study-page"] > div > [data-testid="live-chart-root-stub"]')).toBeTruthy();
+    expect(updateMetadataMutate).toHaveBeenCalledWith(
+      { id: 'view1', body: { memo: '새 메모' } },
+      expect.objectContaining({ onError: expect.any(Function) }),
+    );
+  });
+
+  it('keeps the memo panel open when memo blur commits after chart click', async () => {
+    const updateMetadataMutate = vi.fn();
+    useStudyViewMutationsMock.mockReturnValue({
+      updateMetadata: { mutate: updateMetadataMutate, isPending: false, error: null },
+    });
+    useStudyViewSnapshotMock.mockReturnValue({ data: snapshot, isLoading: false, isError: false });
+    renderAt('/study?view=view1');
+
+    await userEvent.click(screen.getByRole('button', { name: '메모' }));
+    const memo = screen.getByLabelText('저장뷰 메모') as HTMLTextAreaElement;
+    await userEvent.clear(memo);
+    await userEvent.type(memo, '차트 보면서 메모');
+    fireEvent.blur(memo);
+    fireEvent.click(screen.getByTestId('live-chart-root-stub'));
+
+    expect(updateMetadataMutate).toHaveBeenCalledWith(
+      { id: 'view1', body: { memo: '차트 보면서 메모' } },
+      expect.any(Object),
+    );
+    expect(screen.getByTestId('study-memo-panel')).toBeTruthy();
   });
 
   it('renders an empty state without a view param', () => {

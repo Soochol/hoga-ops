@@ -29,6 +29,9 @@ export function StudyViewsDrawer() {
   const [query, setQuery] = useState('');
   const [dialog, setDialog] = useState<SaveDialogState | null>(null);
   const [deleteTarget, setDeleteTarget] = useState<ParquetStudyView | null>(null);
+  const [renameState, setRenameState] = useState<{ id: string; value: string; error: string | null } | null>(null);
+  const renameCommittingRef = useRef(false);
+  const pendingNavigateRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const deleteConfirmButtonRef = useRef<HTMLButtonElement>(null);
   const navigate = useNavigate();
   const location = useLocation();
@@ -48,6 +51,10 @@ export function StudyViewsDrawer() {
     if (!deleteTarget) return;
     deleteConfirmButtonRef.current?.focus();
   }, [deleteTarget]);
+
+  useEffect(() => () => {
+    if (pendingNavigateRef.current) clearTimeout(pendingNavigateRef.current);
+  }, []);
 
   const openSaveDialog = (mode: 'create' | 'overwrite', id?: string) => {
     if (!studySource) return;
@@ -84,6 +91,55 @@ export function StudyViewsDrawer() {
         if (location.pathname === '/study') navigate(`/study?view=${created.id}`);
       },
     });
+  };
+
+  const startRename = (row: ParquetStudyView) => {
+    setRenameState({ id: row.id, value: row.name, error: null });
+  };
+
+  const clearPendingNavigate = () => {
+    if (!pendingNavigateRef.current) return;
+    clearTimeout(pendingNavigateRef.current);
+    pendingNavigateRef.current = null;
+  };
+
+  const navigateToStudyView = (row: ParquetStudyView, clickDetail: number) => {
+    clearPendingNavigate();
+    if (clickDetail === 0) {
+      navigate(`/study?view=${row.id}`);
+      return;
+    }
+    pendingNavigateRef.current = setTimeout(() => {
+      pendingNavigateRef.current = null;
+      navigate(`/study?view=${row.id}`);
+    }, 180);
+  };
+
+  const cancelRename = () => {
+    renameCommittingRef.current = false;
+    setRenameState(null);
+  };
+
+  const commitRename = (row: ParquetStudyView) => {
+    if (!renameState || renameState.id !== row.id || renameCommittingRef.current) return;
+    const name = renameState.value.trim();
+    if (!name || name === row.name) {
+      cancelRename();
+      return;
+    }
+    renameCommittingRef.current = true;
+    mutations.updateMetadata.mutate(
+      { id: row.id, body: { name } },
+      {
+        onSuccess: () => cancelRename(),
+        onError: (error) => {
+          renameCommittingRef.current = false;
+          setRenameState((current) => current?.id === row.id
+            ? { ...current, error: error instanceof Error ? error.message : '이름 변경에 실패했습니다.' }
+            : current);
+        },
+      },
+    );
   };
 
   const confirmDelete = () => {
@@ -155,19 +211,63 @@ export function StudyViewsDrawer() {
               key={row.id}
               className="flex items-start gap-2 border-b px-3 py-2 hover:bg-bg-input-hover"
             >
-              <button
-                type="button"
-                onClick={() => navigate(`/study?view=${row.id}`)}
-                className="min-w-0 flex-1 text-left"
-              >
-                <div className="text-sm font-medium truncate">{row.name}</div>
-                <div className="text-xs text-fg-dim truncate">{row.label} {row.code} · {row.timeframe}</div>
-              </button>
+              {renameState?.id === row.id ? (
+                <div className="min-w-0 flex-1 space-y-1">
+                  <input
+                    aria-label="저장뷰 이름 수정"
+                    autoFocus
+                    value={renameState.value}
+                    onChange={(e) => setRenameState({ ...renameState, value: e.target.value, error: null })}
+                    onBlur={() => commitRename(row)}
+                    onKeyDown={(e) => {
+                      if (e.key === 'Enter') {
+                        e.preventDefault();
+                        commitRename(row);
+                      }
+                      if (e.key === 'Escape') {
+                        e.preventDefault();
+                        cancelRename();
+                      }
+                    }}
+                    className="w-full rounded border border-line bg-bg-input px-1 py-0.5 text-sm font-medium text-fg"
+                  />
+                  {renameState.error && <div className="text-xs text-danger">{renameState.error}</div>}
+                  <div className="truncate text-xs text-fg-dim">{row.label} {row.code} · {row.timeframe}</div>
+                </div>
+              ) : (
+                <div className="flex min-w-0 flex-1 items-start gap-2">
+                  <div className="min-w-0 flex-1">
+                    <button
+                      type="button"
+                      onClick={(e) => navigateToStudyView(row, e.detail)}
+                      onDoubleClick={(e) => {
+                        e.preventDefault();
+                        clearPendingNavigate();
+                        startRename(row);
+                      }}
+                      className="block w-full truncate text-left text-sm font-medium text-fg focus:outline-none focus:ring-1 focus:ring-line"
+                    >
+                      {row.name}
+                    </button>
+                    <div className="truncate text-xs text-fg-dim">
+                      {row.label} {row.code} · {row.timeframe}
+                    </div>
+                  </div>
+                  <button
+                    type="button"
+                    aria-label={`${row.name} 이름 수정`}
+                    onClick={() => startRename(row)}
+                    className="shrink-0 rounded border border-line px-2 py-1 text-xs text-fg-dim hover:bg-bg-input"
+                  >
+                    수정
+                  </button>
+                </div>
+              )}
               <button
                 type="button"
                 aria-label={`${row.name} 삭제`}
                 onClick={() => setDeleteTarget(row)}
-                className="shrink-0 rounded border px-2 py-1 text-xs"
+                className="shrink-0 rounded border border-line px-2 py-1 text-xs"
               >
                 삭제
               </button>

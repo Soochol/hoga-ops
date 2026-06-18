@@ -9,6 +9,7 @@ import { StudyViewsDrawer, filterStudyViews } from './StudyViewsDrawer';
 
 const createMutate = vi.fn();
 const updateMutate = vi.fn();
+const updateMetadataMutate = vi.fn();
 const removeMutate = vi.fn();
 let saveSource: CurrentStudySaveSource | null = null;
 let mockedSaves: ParquetStudyView[] = [];
@@ -82,6 +83,7 @@ vi.mock('./useStudyViews', () => ({
   useStudyViewMutations: () => ({
     create: { mutate: createMutate },
     update: { mutate: updateMutate },
+    updateMetadata: { mutate: updateMetadataMutate, isPending: false, error: null },
     remove: { mutate: removeMutate },
   }),
 }));
@@ -164,6 +166,7 @@ function renderDrawer(path: string) {
 beforeEach(() => {
   createMutate.mockReset();
   updateMutate.mockReset();
+  updateMetadataMutate.mockReset();
   removeMutate.mockReset();
   saveSource = null;
   mockedSaves = saves;
@@ -267,6 +270,127 @@ it('overwrites the current study source even when the saves list is missing the 
   expect(createMutate).not.toHaveBeenCalled();
   expect(updateMutate.mock.calls[0][0].id).toBe('missing-current');
   expect(updateMutate.mock.calls[0][0].body.name).toBe('삼성전자 5m 저장뷰');
+});
+
+it('clicking the saved view title navigates to the study route', async () => {
+  renderDrawer('/inventory');
+
+  await userEvent.click(screen.getByRole('button', { name: '급등 이후' }));
+
+  await waitFor(() => expect(screen.getByTestId('loc').textContent).toBe('/study?view=a'));
+});
+
+it('pressing Enter on the saved view title navigates to the study route', async () => {
+  renderDrawer('/inventory');
+
+  const titleButton = screen.getByRole('button', { name: '급등 이후' });
+  titleButton.focus();
+  await userEvent.keyboard('{Enter}');
+
+  await waitFor(() => expect(screen.getByTestId('loc').textContent).toBe('/study?view=a'));
+});
+
+it('double-clicking the saved view title opens inline edit mode without navigating', async () => {
+  renderDrawer('/inventory');
+
+  await userEvent.dblClick(screen.getByRole('button', { name: '급등 이후' }));
+
+  expect(screen.getByLabelText('저장뷰 이름 수정')).toBeTruthy();
+  expect(screen.getByTestId('loc').textContent).toBe('/inventory');
+});
+
+it('clicking rename opens inline edit mode without navigating', async () => {
+  renderDrawer('/inventory');
+
+  await userEvent.click(screen.getByRole('button', { name: '급등 이후 이름 수정' }));
+
+  expect(screen.getByLabelText('저장뷰 이름 수정')).toBeTruthy();
+  expect(screen.getByTestId('loc').textContent).toBe('/inventory');
+});
+
+it('keyboard activation of rename opens inline edit mode', async () => {
+  renderDrawer('/inventory');
+
+  const renameButton = screen.getByRole('button', { name: '급등 이후 이름 수정' });
+  renameButton.focus();
+  await userEvent.keyboard('{Enter}');
+
+  expect(screen.getByLabelText('저장뷰 이름 수정')).toBeTruthy();
+  expect(screen.getByTestId('loc').textContent).toBe('/inventory');
+});
+
+it('renames a saved view from the explicit rename action and Enter', async () => {
+  renderDrawer('/study?view=a');
+
+  await userEvent.click(screen.getByRole('button', { name: '급등 이후 이름 수정' }));
+  const input = screen.getByLabelText('저장뷰 이름 수정') as HTMLInputElement;
+  await userEvent.clear(input);
+  await userEvent.type(input, '새 이름{Enter}');
+
+  expect(updateMetadataMutate).toHaveBeenCalledWith(
+    { id: 'a', body: { name: '새 이름' } },
+    expect.objectContaining({ onSuccess: expect.any(Function), onError: expect.any(Function) }),
+  );
+});
+
+it('commits saved view rename on blur', async () => {
+  renderDrawer('/study?view=a');
+
+  await userEvent.click(screen.getByRole('button', { name: '급등 이후 이름 수정' }));
+  const input = screen.getByLabelText('저장뷰 이름 수정') as HTMLInputElement;
+  await userEvent.clear(input);
+  await userEvent.type(input, '블러 저장');
+  input.blur();
+
+  await waitFor(() => expect(updateMetadataMutate).toHaveBeenCalledWith(
+    { id: 'a', body: { name: '블러 저장' } },
+    expect.any(Object),
+  ));
+});
+
+it('cancels saved view rename on Escape', async () => {
+  renderDrawer('/study?view=a');
+
+  await userEvent.click(screen.getByRole('button', { name: '급등 이후 이름 수정' }));
+  const input = screen.getByLabelText('저장뷰 이름 수정') as HTMLInputElement;
+  await userEvent.clear(input);
+  await userEvent.type(input, '취소할 이름');
+  await userEvent.keyboard('{Escape}');
+
+  expect(updateMetadataMutate).not.toHaveBeenCalled();
+  expect(screen.getByText('급등 이후')).toBeTruthy();
+});
+
+it('starts inline rename without navigating from a non-study route', async () => {
+  renderDrawer('/inventory');
+
+  await userEvent.click(screen.getByRole('button', { name: '급등 이후 이름 수정' }));
+
+  expect(screen.getByLabelText('저장뷰 이름 수정')).toBeTruthy();
+  expect(screen.getByTestId('loc').textContent).toBe('/inventory');
+});
+
+it('does not rename a saved view when the inline value is empty', async () => {
+  renderDrawer('/study?view=a');
+
+  await userEvent.click(screen.getByRole('button', { name: '급등 이후 이름 수정' }));
+  const input = screen.getByLabelText('저장뷰 이름 수정') as HTMLInputElement;
+  await userEvent.clear(input);
+  await userEvent.keyboard('{Enter}');
+
+  expect(updateMetadataMutate).not.toHaveBeenCalled();
+  expect(screen.getByText('급등 이후')).toBeTruthy();
+});
+
+it('does not rename a saved view when the inline value is unchanged', async () => {
+  renderDrawer('/study?view=a');
+
+  await userEvent.click(screen.getByRole('button', { name: '급등 이후 이름 수정' }));
+  const input = screen.getByLabelText('저장뷰 이름 수정') as HTMLInputElement;
+  await userEvent.type(input, '{Enter}');
+
+  expect(updateMetadataMutate).not.toHaveBeenCalled();
+  expect(screen.getByText('급등 이후')).toBeTruthy();
 });
 
 it('confirms delete before calling remove mutation', async () => {
