@@ -608,34 +608,56 @@ def query_bucket_representatives(
     last_continuous_ms = _last_continuous_intra_ms(
         con, path=path, session_close_ms=session_close_ms
     )
-    min_lo = min(lo for lo, _hi in buckets)
-    max_hi = max(hi for _lo, hi in buckets)
+    bucket_los = [int(lo) for lo, _hi in buckets]
+    bucket_his = [int(hi) for _lo, hi in buckets]
+    min_lo = min(bucket_los)
+    max_hi = max(bucket_his)
+    continuous_pred = _continuous_representative_pred_sql(
+        intra_ms_expr="intra_ms",
+        last_continuous_ms=last_continuous_ms,
+    )
     rows = con.execute(
         f"""
-        SELECT {_SELECT}
-        FROM read_parquet(?)
-        WHERE ts_ms BETWEEN ? AND ?
-        ORDER BY ts_ms ASC, seq ASC
+        WITH buckets AS (
+          SELECT
+            UNNEST(?::BIGINT[]) AS lo_native,
+            UNNEST(?::BIGINT[]) AS hi_native
+        ),
+        candidates AS (
+          SELECT
+            b.lo_native,
+            s.*,
+            {hhmmssms_to_intra_ms_sql("s.ts_ms")} AS intra_ms
+          FROM buckets b
+          JOIN read_parquet(?) s
+            ON s.ts_ms BETWEEN b.lo_native AND b.hi_native
+          WHERE s.ts_ms BETWEEN ? AND ?
+        ),
+        eligible AS (
+          SELECT *
+          FROM candidates
+          WHERE {continuous_pred}
+        ),
+        ranked AS (
+          SELECT
+            *,
+            ROW_NUMBER() OVER (
+              PARTITION BY lo_native
+              ORDER BY ts_ms DESC, seq DESC
+            ) AS rn
+          FROM eligible
+        )
+        SELECT lo_native, {_SELECT}
+        FROM ranked
+        WHERE rn = 1
+        ORDER BY lo_native
         """,
-        [str(path), min_lo, max_hi],
+        [bucket_los, bucket_his, str(path), min_lo, max_hi],
     ).fetchall()
-
-    candidates = [_row_to_api_snapshot(row) for row in rows]
     out: dict[int, ApiOrderbookSnapshot] = {}
-    for lo_native, hi_native in buckets:
-        window = [snap for snap in candidates if lo_native <= snap.ts_ms <= hi_native]
-        if not window:
-            continue
-        eligible = [
-            snap
-            for snap in window
-            if _is_continuous_snapshot(
-                snap,
-                last_continuous_ms=last_continuous_ms,
-            )
-        ]
-        if eligible:
-            out[int(lo_native)] = eligible[-1]
+    for row in rows:
+        lo_native = int(row[0])
+        out[lo_native] = _row_to_api_snapshot(row[1:])
     return out
 
 
