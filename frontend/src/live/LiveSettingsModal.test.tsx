@@ -25,6 +25,15 @@ describe('LiveSettingsModal (2단)', () => {
     expect(useChartPrefsStore.getState().auctionWindowMask).toBe(false);
   });
 
+  it('캔들 기준 Y축 토글 클릭 시 chartPrefs store에 반영된다', () => {
+    render(<LiveSettingsModal onClose={() => {}} />);
+    fireEvent.click(screen.getByTestId('settings-nav-chart'));
+    expect(useChartPrefsStore.getState().candlePaneCandleOnlyScale).toBe(false);
+    const row = screen.getByTestId('settings-toggle-candlePaneCandleOnlyScale');
+    fireEvent.click(row.querySelector('[role="switch"]') as HTMLElement);
+    expect(useChartPrefsStore.getState().candlePaneCandleOnlyScale).toBe(true);
+  });
+
   it('이동된 급증·극단값 prefs는 설정 모달에 없다 (지표 모달로 이동)', () => {
     // surgeMarkerEnabled·ratioOutlierFilterEnabled가 'indicator-modal'로
     // 재분류돼 surge nav와 그 gated numerics는 ⚙️ 설정에서 사라졌다.

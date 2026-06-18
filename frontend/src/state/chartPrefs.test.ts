@@ -65,6 +65,19 @@ describe('candleTooltipEnabled 토글', () => {
   });
 });
 
+describe('캔들 기준 Y축 토글', () => {
+  it('기본값은 false', () => {
+    expect(DEFAULT_PREFS.candlePaneCandleOnlyScale).toBe(false);
+  });
+
+  it('mergePrefs는 persisted true/false를 보존하고 invalid type은 기본값으로 폴백한다', () => {
+    expect(mergePrefs({ candlePaneCandleOnlyScale: true }).candlePaneCandleOnlyScale).toBe(true);
+    expect(mergePrefs({ candlePaneCandleOnlyScale: false }).candlePaneCandleOnlyScale).toBe(false);
+    expect(mergePrefs({ candlePaneCandleOnlyScale: 'true' as never }).candlePaneCandleOnlyScale)
+      .toBe(DEFAULT_PREFS.candlePaneCandleOnlyScale);
+  });
+});
+
 describe('거래량 체결강도 누적 토글', () => {
   it('기본값은 false', () => {
     expect(DEFAULT_PREFS.volumeFillStrengthCumulative).toBe(false);

@@ -23,6 +23,12 @@ export const CHART_TOGGLES = [
     default: true,
   },
   {
+    key: 'candlePaneCandleOnlyScale',
+    label: '캔들 기준 Y축',
+    description: '캔들 pane의 가격축을 캔들 고가·저가 기준으로만 맞춥니다. 이동평균선 등 상단 지표는 축 범위를 넓히지 않습니다.',
+    default: false,
+  },
+  {
     key: 'ratioOutlierFilterEnabled',
     label: '호가비 극단값 필터',
     description:
