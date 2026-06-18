@@ -4,6 +4,7 @@ import type { RangeBundle } from '../../api/types';
 import type { VirtualAxis } from '../../util/virtualAxis';
 import { useLivePageStore, isMinuteTimeframe, type LiveTimeframe } from '../../state/livePage';
 import { useChartPrefsStore } from '../../state/chartPrefs';
+import type { LiveVenueOption } from '../../state/liveVenue';
 import { useLivePastDailyCandles } from '../../api/livePastDailyCandles';
 import { computeDailyMaByDate } from '../../chart/projectors/dailyMovingAverage';
 import { dailyMaFetchWindow, pickTodayLiveClose } from './dailyMaProjection';
@@ -14,6 +15,7 @@ type Props = {
   axis: VirtualAxis;
   code: string | null;
   timeframe: LiveTimeframe;
+  venue?: LiveVenueOption;
   todayKst: string;
 };
 
@@ -26,7 +28,7 @@ const EMPTY_DAILY: never[] = [];
  *  (ADR-0073). 현재봉 MovingAverageOverlay의 series-reconcile 패턴을 미러링하되,
  *  일봉 데이터를 useLiveBundle 밖 독립 훅으로 fetch한다(번들 split 비침투). 분봉
  *  전용: D/W/M에선 미렌더. 레전드 연동은 v1 비대상(maSeriesRegistry 미등록). */
-function DailyMovingAverageOverlay({ chart, bundle, axis, code, timeframe, todayKst }: Props) {
+function DailyMovingAverageOverlay({ chart, bundle, axis, code, timeframe, venue = 'KRX', todayKst }: Props) {
   const configs = useLivePageStore((s) => s.dailyMovingAverages);
   const masterEnabled = useLivePageStore((s) => s.dailyMovingAverageEnabled);
   const hidden = useLivePageStore((s) => s.dailyMovingAverageHidden);
@@ -38,7 +40,7 @@ function DailyMovingAverageOverlay({ chart, bundle, axis, code, timeframe, today
   // 일봉 fetch 창은 today 앵커라 좌측 팬에 불변 → react-query 키 안정 → 재fetch 없이
   // candle prepend와 lockstep(ADR-0073). lookback 산식·거래일 환산은 dailyMaProjection(테스트됨).
   const fetchWindow = enabled ? dailyMaFetchWindow(todayKst, configs) : null;
-  const dailyQuery = useLivePastDailyCandles(enabled ? code : null, fetchWindow?.from ?? null, fetchWindow?.to ?? null);
+  const dailyQuery = useLivePastDailyCandles(enabled ? code : null, fetchWindow?.from ?? null, fetchWindow?.to ?? null, venue);
   const daily = dailyQuery.data?.candles ?? EMPTY_DAILY;
 
   // Reconcile series ↔ configs by id (MovingAverageOverlay와 동일).

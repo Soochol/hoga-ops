@@ -461,6 +461,27 @@ describe('LiveChartRoot', () => {
     expect(ts.scrollToPosition).not.toHaveBeenCalled();
   });
 
+  it('1m timeframe: NXT initial view spans the extended 08:00-20:00 session', () => {
+    useLivePageStore.setState({ historicalFromDate: null });
+    const { chart, ts } = buildChartMockWithStableTS();
+    vi.mocked(createChartEx).mockImplementationOnce(() => chart as never);
+
+    render(
+      <LiveChartRoot
+        code="005930"
+        timeframe="1m"
+        venue="NXT"
+        bundle={makeBundleWithCandles(900)}
+        clampEngaged={false}
+        isPastCandlesLoading={false}
+      />,
+      { wrapper },
+    );
+
+    expect(ts.setVisibleLogicalRange).toHaveBeenCalledTimes(1);
+    expect(ts.setVisibleLogicalRange).toHaveBeenLastCalledWith({ from: 180, to: 915 });
+  });
+
   it('1m timeframe: code change re-applies setVisibleLogicalRange with new count', () => {
     useLivePageStore.setState({ historicalFromDate: null });
     // A code switch is a viewKey change, which REMOUNTS the chart (cross-view

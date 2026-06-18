@@ -24,6 +24,7 @@ from pathlib import Path
 from typing import Literal
 
 from hoga.api._atomic_write import atomic_write_json
+from hoga.live.kis_venue import KisVenue
 
 _KST = timezone(timedelta(hours=9))
 
@@ -49,19 +50,41 @@ class PastCandlesCache:
         self._data_dir = data_dir
         self._today_ttl = today_ttl_seconds
         # In-memory hot cache for past dates (avoids re-reading disk).
-        self._past_mem: dict[tuple[str, str], list[dict]] = {}
-        # Today: (code) -> (fetched_at_monotonic, bars-or-None).
+        self._past_mem: dict[tuple[KisVenue, str, str], list[dict]] = {}
+        # Today: (venue, code) -> (fetched_at_monotonic, bars-or-None).
         # value=None encodes the negative cache (known non-trading-day today)
         # so a follow-up request within TTL skips KIS.
-        self._today_mem: dict[str, tuple[float, list[dict] | None]] = {}
+        self._today_mem: dict[tuple[KisVenue, str], tuple[float, list[dict] | None]] = {}
 
     # --- past ---
 
-    def _past_path(self, code: str, date: str) -> Path:
-        return self._data_dir / "kis-past-candles" / code / f"{date}.json"
+    @staticmethod
+    def _parse_past_args(args: tuple[str, ...]) -> tuple[KisVenue, str, str]:
+        if len(args) == 2:
+            code, date = args
+            return "KRX", code, date
+        if len(args) == 3:
+            venue, code, date = args
+            return venue, code, date  # type: ignore[return-value]
+        raise TypeError("expected (code, date) or (venue, code, date)")
 
-    def get_past(self, code: str, date: str) -> list[dict] | None:
-        key = (code, date)
+    @staticmethod
+    def _parse_today_args(args: tuple[str, ...]) -> tuple[KisVenue, str]:
+        if len(args) == 1:
+            return "KRX", args[0]
+        if len(args) == 2:
+            venue, code = args
+            return venue, code  # type: ignore[return-value]
+        raise TypeError("expected (code) or (venue, code)")
+
+    def _past_path(self, venue: KisVenue, code: str, date: str) -> Path:
+        if venue == "KRX":
+            return self._data_dir / "kis-past-candles" / code / f"{date}.json"
+        return self._data_dir / "kis-past-candles" / venue / code / f"{date}.json"
+
+    def get_past(self, *args: str) -> list[dict] | None:
+        venue, code, date = self._parse_past_args(args)
+        key = (venue, code, date)
         if key in self._past_mem:
             bars = self._past_mem[key]
             if not self._bars_match_date(bars, date):
@@ -71,7 +94,7 @@ class PastCandlesCache:
                 self._past_mem.pop(key, None)
             else:
                 return bars
-        p = self._past_path(code, date)
+        p = self._past_path(venue, code, date)
         if not p.exists():
             return None
         try:
@@ -112,19 +135,27 @@ class PastCandlesCache:
             return False
         return _ts_ms_to_kst_yyyymmdd(first_ts) == date_yyyymmdd
 
-    def store_past(self, code: str, date: str, bars: list[dict]) -> None:
-        p = self._past_path(code, date)
+    def store_past(self, *args) -> None:
+        if len(args) == 3:
+            venue, code, date = "KRX", args[0], args[1]
+            bars = args[2]
+        elif len(args) == 4:
+            venue, code, date, bars = args
+        else:
+            raise TypeError("expected (code, date, bars) or (venue, code, date, bars)")
+        p = self._past_path(venue, code, date)
         payload = {
             "candles": bars,
             "fetched_at_ms": int(time.time() * 1000),
             "kis_tr_id": _KIS_TR_ID,
+            "kis_venue": venue,
         }
         atomic_write_json(p, payload)
-        self._past_mem[(code, date)] = bars
+        self._past_mem[(venue, code, date)] = bars
 
     # --- today ---
 
-    def get_today_tri(self, code: str) -> tuple[TodayState, list[dict] | None]:
+    def get_today_tri(self, *args: str) -> tuple[TodayState, list[dict] | None]:
         """Tri-state today accessor.
 
         Returns:
@@ -137,7 +168,8 @@ class PastCandlesCache:
         was removed because it conflated "miss" and "negative", defeating the
         negative-cache invariant.
         """
-        entry = self._today_mem.get(code)
+        venue, code = self._parse_today_args(args)
+        entry = self._today_mem.get((venue, code))
         if entry is None:
             return "miss", None
         fetched_at, value = entry
@@ -147,7 +179,13 @@ class PastCandlesCache:
             return "negative", None
         return "hit", value
 
-    def store_today(self, code: str, bars: list[dict] | None) -> None:
+    def store_today(self, *args) -> None:
         """Store *bars* (or None for negative cache — non-trading-day today)
         with monotonic-clock TTL stamp."""
-        self._today_mem[code] = (time.monotonic(), bars)
+        if len(args) == 2:
+            venue, code, bars = "KRX", args[0], args[1]
+        elif len(args) == 3:
+            venue, code, bars = args
+        else:
+            raise TypeError("expected (code, bars) or (venue, code, bars)")
+        self._today_mem[(venue, code)] = (time.monotonic(), bars)

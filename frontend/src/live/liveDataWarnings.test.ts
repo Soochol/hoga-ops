@@ -32,8 +32,9 @@ describe('summarizeWarnings', () => {
     const w = [
       { reason: 'kis_api_error', msg: 'x' },
       { reason: 'invariant_violation', msg: 'y' },
+      { reason: 'auto_daily_uses_integrated', msg: 'z' },
     ];
-    expect(summarizeWarnings(w)).toEqual({ count: 2, hasRateLimit: false });
+    expect(summarizeWarnings(w)).toEqual({ count: 3, hasRateLimit: false });
   });
   it('혼합: 하나라도 rate-limit이면 hasRateLimit=true', () => {
     const w = [

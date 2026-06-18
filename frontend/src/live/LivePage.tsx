@@ -21,6 +21,7 @@ import type { ObSnapshot, TradeSnapshot } from './bucketHogaSeries';
 import type { TabViewport } from './viewportAnchor';
 import { todayKstYyyymmdd } from './liveDateTime';
 import { useChartPrefsStore } from '../state/chartPrefs';
+import { useLiveVenueStore } from '../state/liveVenue';
 import {
   clearCurrentStudySaveSource,
   setCurrentStudySaveSource,
@@ -96,6 +97,7 @@ export function LivePage() {
 
   const activeCode = useLivePageStore((s) => s.activeCode);
   const timeframe = useLivePageStore((s) => s.candleTimeframe);
+  const liveVenue = useLiveVenueStore((s) => s.venue);
   const foreignNetEnabled = useLivePageStore((s) => s.foreignNetEnabled);
   const institutionNetEnabled = useLivePageStore((s) => s.institutionNetEnabled);
   const volumeEnabled = useLivePageStore((s) => s.volumeEnabled);
@@ -131,7 +133,7 @@ export function LivePage() {
     timeframe,
     today,
     live,
-    { investorNetEnabled: foreignNetEnabled || institutionNetEnabled },
+    { investorNetEnabled: foreignNetEnabled || institutionNetEnabled, venue: liveVenue },
   );
   const liveSaveBundle = useMemo<RangeBundle | null>(() => {
     if (!bundle) return null;
@@ -240,6 +242,7 @@ export function LivePage() {
         captureHealthy={status?.capture_healthy ?? false}
         captureReason={status?.capture_reason ?? 'offline'}
         bundle={bundle}
+        venue={liveVenue}
       />
       <LiveToolbar
         onOpenIndicators={() => setIndicatorPanelOpen(true)}
@@ -255,7 +258,8 @@ export function LivePage() {
         isExtending={isExtending}
         pastDataWarnings={pastDataWarnings}
         restoreViewport={restoreViewport}
-        viewIdentity={activeTabId}
+        viewIdentity={activeTabId ? `${activeTabId}:${liveVenue}` : liveVenue}
+        venue={liveVenue}
         live={live}
         dayAskPeaks={dayAskPeaks}
         todayAllPriceAskPeak={todayAllPriceAskPeak}

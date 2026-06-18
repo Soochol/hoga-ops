@@ -14,6 +14,8 @@ import { QuoteChange } from '../rightrail/QuoteChange';
 import { useLiveStatus } from '../api/liveStatus';
 import { deriveCollectionStatus, deriveDisplayStatus } from './collectionStatus';
 import { CollectionDot } from './CollectionDot';
+import type { LiveVenueOption } from '../state/liveVenue';
+import { liveVenueDisplayLabel, liveVenueKeepsHogaKrx } from './liveVenuePolicy';
 
 interface Props {
   activeCode: string | null;
@@ -22,9 +24,10 @@ interface Props {
   /** The Live Candle Backfill bundle, owned by LivePage. ADR-0040 — single
    * useLiveBundle call site per page. */
   bundle: RangeBundle | null;
+  venue?: LiveVenueOption;
 }
 
-export function LiveStatusBar({ activeCode, captureHealthy, captureReason, bundle }: Props) {
+export function LiveStatusBar({ activeCode, captureHealthy, captureReason, bundle, venue = 'KRX' }: Props) {
   // Threshold MUST exceed the 30s server ping so a connected-but-idle
   // socket (e.g. market closed) stays realtime; only a real disconnect
   // (no frame for >35s) flips it to disconnected. (plan-review cross-task flag)
@@ -108,10 +111,24 @@ export function LiveStatusBar({ activeCode, captureHealthy, captureReason, bundl
           <QuoteChange won={null} pct={quote.change_pct} />
         </span>
       )}
-      <span aria-hidden>·</span>
-      <span>{timeframe}</span>
-      <span aria-hidden>·</span>
-      <SourceChip source={lastSegmentSource} />
+      <span className="inline-flex min-w-0 shrink items-center gap-2 whitespace-nowrap overflow-hidden">
+        <span aria-hidden>·</span>
+        <span>{timeframe}</span>
+        <span aria-hidden>·</span>
+        <span data-testid="live-venue-label" title="KIS 캔들 기준" className="min-w-0 truncate">
+          캔들 {liveVenueDisplayLabel(venue)}
+        </span>
+        {liveVenueKeepsHogaKrx(venue) && (
+          <>
+            <span aria-hidden>·</span>
+            <span data-testid="live-venue-ws-note" style={{ color: 'var(--fg-dimmer)' }}>
+              호가 KRX
+            </span>
+          </>
+        )}
+        <span aria-hidden>·</span>
+        <SourceChip source={lastSegmentSource} />
+      </span>
       {activeCode && !member && (
         <>
           <span aria-hidden>·</span>

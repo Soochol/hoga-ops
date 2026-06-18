@@ -7,6 +7,12 @@ import {
   type ChartToggleCategory,
 } from '../state/chartPrefs';
 import { SOURCE_OPTIONS } from '../state/sourcePreference';
+import {
+  LIVE_VENUE_LABELS,
+  LIVE_VENUE_OPTIONS,
+  useLiveVenueStore,
+  type LiveVenueOption,
+} from '../state/liveVenue';
 import MAStylePicker from './indicators/MAStylePicker';
 import IndicatorPrefRows from './settings/IndicatorPrefRows';
 import SourcePreferenceRadio from './settings/SourcePreferenceRadio';
@@ -77,6 +83,14 @@ function DataSourceDetail() {
   return (
     <>
       <div style={{ fontSize: 'var(--text-sm)', color: 'var(--fg-dim)', marginBottom: 'var(--space-xs)' }}>
+        KIS 캔들 거래소
+      </div>
+      <div style={{ display: 'flex', flexWrap: 'wrap', gap: 'var(--space-xs)', marginBottom: 'var(--space-md)' }}>
+        {LIVE_VENUE_OPTIONS.map((opt) => (
+          <LiveVenueRadio key={opt} value={opt} />
+        ))}
+      </div>
+      <div style={{ fontSize: 'var(--text-sm)', color: 'var(--fg-dim)', marginBottom: 'var(--space-xs)' }}>
         기본 데이터 소스 <span style={{ color: 'var(--fg-dimmer)' }}>(모든 차트 공통)</span>
       </div>
       <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--space-xs)' }}>
@@ -88,6 +102,33 @@ function DataSourceDetail() {
         현재 source는 차트 상단 칩에 표시됩니다.
       </div>
     </>
+  );
+}
+
+function LiveVenueRadio({ value }: { value: LiveVenueOption }) {
+  const venue = useLiveVenueStore((s) => s.venue);
+  const setVenue = useLiveVenueStore((s) => s.setVenue);
+  const checked = venue === value;
+  return (
+    <label
+      className="inline-flex items-center gap-2 rounded border px-3 py-1.5 text-sm cursor-pointer focus-within:outline focus-within:outline-2 focus-within:outline-offset-2"
+      style={{
+        borderColor: checked ? 'var(--accent)' : 'var(--border)',
+        background: checked ? 'var(--bg-input)' : 'transparent',
+        color: checked ? 'var(--fg)' : 'var(--fg-dim)',
+        outlineColor: 'var(--accent)',
+      }}
+    >
+      <input
+        type="radio"
+        name="live-kis-venue"
+        value={value}
+        checked={checked}
+        onChange={() => setVenue(value)}
+        data-testid={`live-venue-${value}`}
+      />
+      <span>{LIVE_VENUE_LABELS[value]}</span>
+    </label>
   );
 }
 

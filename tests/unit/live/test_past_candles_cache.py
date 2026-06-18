@@ -49,6 +49,32 @@ def test_past_disk_miss_then_store_then_hit(tmp_path: Path) -> None:
     assert body["candles"][0]["t_ms"] == bars[0]["t_ms"]
 
 
+def test_past_cache_separates_venue_namespaces(tmp_path: Path) -> None:
+    cache = PastCandlesCache(data_dir=tmp_path)
+    krx_bars = _bars_for("20260520", n=1)
+    nxt_bars = _bars_for("20260520", n=2)
+
+    cache.store_past("KRX", "005930", "20260520", krx_bars)
+    cache.store_past("NXT", "005930", "20260520", nxt_bars)
+
+    assert cache.get_past("KRX", "005930", "20260520") == krx_bars
+    assert cache.get_past("NXT", "005930", "20260520") == nxt_bars
+    assert (tmp_path / "kis-past-candles" / "005930" / "20260520.json").exists()
+    assert (tmp_path / "kis-past-candles" / "NXT" / "005930" / "20260520.json").exists()
+
+
+def test_today_cache_separates_venue_namespaces(tmp_path: Path) -> None:
+    cache = PastCandlesCache(data_dir=tmp_path, today_ttl_seconds=60)
+    krx_bars = _bars([100])
+    nxt_bars = _bars([200])
+
+    cache.store_today("KRX", "005930", krx_bars)
+    cache.store_today("NXT", "005930", nxt_bars)
+
+    assert cache.get_today_tri("KRX", "005930") == ("hit", krx_bars)
+    assert cache.get_today_tri("NXT", "005930") == ("hit", nxt_bars)
+
+
 def test_today_memory_miss_then_store_then_hit(tmp_path: Path) -> None:
     cache = PastCandlesCache(data_dir=tmp_path, today_ttl_seconds=60)
     state, value = cache.get_today_tri("005930")
@@ -161,7 +187,7 @@ def test_past_mem_with_wrong_date_evicts_and_falls_through_to_disk(
     # Plant valid disk entry for 20260523 (empty = non-trading day).
     cache.store_past("005930", "20260523", [])
     # Manually corrupt in-memory entry with mismatched-date bars.
-    cache._past_mem[("005930", "20260523")] = _bars([_TS_20260522_KST_0900])
+    cache._past_mem[("KRX", "005930", "20260523")] = _bars([_TS_20260522_KST_0900])
     # First get: mem hit is rejected (wrong date), disk hit is the valid empty list.
     assert cache.get_past("005930", "20260523") == []
 
