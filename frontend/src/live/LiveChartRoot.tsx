@@ -253,13 +253,7 @@ export function LiveChartRoot({ code, timeframe, viewIdentity, bundle, chartBund
         axisRef.current,
         lastCandleMsRef.current,
       );
-      if (
-        vp &&
-        timeframeRef.current === 'D' &&
-        vp.atLiveEdge &&
-        vp.barSpan > DAILY_VISIBLE_BARS &&
-        !userAdjustedDailyViewportRef.current
-      ) {
+      if (vp && timeframeRef.current === 'D' && vp.atLiveEdge) {
         return { ...vp, barSpan: DAILY_VISIBLE_BARS };
       }
       if (!vp) return null;
@@ -482,10 +476,12 @@ export function LiveChartRoot({ code, timeframe, viewIdentity, bundle, chartBund
             )
           : null;
         const viewportForRestore =
-          timeframe === 'D' && !restoreViewport.userAdjusted
-            ? { ...restoreViewport, barSpan: Math.min(restoreViewport.barSpan, DAILY_VISIBLE_BARS) }
-            : restoreViewport;
-        if (timeframe === 'D' && restoreViewport.userAdjusted) {
+          timeframe === 'D' && restoreViewport.atLiveEdge
+            ? { ...restoreViewport, barSpan: DAILY_VISIBLE_BARS }
+            : timeframe === 'D' && !restoreViewport.userAdjusted
+              ? { ...restoreViewport, barSpan: Math.min(restoreViewport.barSpan, DAILY_VISIBLE_BARS) }
+              : restoreViewport;
+        if (timeframe === 'D' && restoreViewport.userAdjusted && !restoreViewport.atLiveEdge) {
           userAdjustedDailyViewportRef.current = true;
         }
         const range = computeRestoreRange(viewportForRestore, totalBarsR, idx);
@@ -702,7 +698,7 @@ export function LiveChartRoot({ code, timeframe, viewIdentity, bundle, chartBund
     // to the container — an extra manual observer here just produces the
     // "Height and width values ignored because 'autoSize' option is enabled"
     // warning on every resize without affecting layout.
-    // [TEMP-DIAG-VIEWPORT] dev-only QA handles for the in-browser repro.
+    // Dev-only QA handles for browser-level chart viewport inspection.
     if (import.meta.env.DEV) {
       const w = window as unknown as { __liveChart?: unknown; __liveAxisGet?: unknown };
       w.__liveChart = c;
