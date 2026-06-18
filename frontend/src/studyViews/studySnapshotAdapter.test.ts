@@ -233,7 +233,7 @@ describe('studySnapshotBundleToRangeBundle', () => {
 
     const series = studyBrokerBucketsToSeries(studySnapshotDetails(s).brokersByBucketStart);
 
-    expect(series.map((entry) => entry.broker)).toEqual(['키움증권', 'JP모간', '미래에셋증권']);
+    expect(series.map((entry) => entry.broker)).toEqual(['미래에셋증권', '키움증권', 'JP모간']);
     expect(series.find((entry) => entry.broker === '키움증권')?.points).toEqual([
       { ts_ms: 1000, net: 100 },
       { ts_ms: 3000, net: 250 },
@@ -283,7 +283,7 @@ describe('studySnapshotBundleToRangeBundle', () => {
     });
   });
 
-  it('keeps broker order by first appearance across the saved range', () => {
+  it('orders broker series by absolute final net within the saved range', () => {
     const s = snapshot({
       broker_buckets: [
         {
@@ -322,7 +322,7 @@ describe('studySnapshotBundleToRangeBundle', () => {
       toMs: 101_999,
     });
 
-    expect(secondDay.map((entry) => entry.broker)).toEqual(['A증권', 'B증권', 'C증권', 'D증권', 'E증권']);
+    expect(secondDay.map((entry) => entry.broker)).toEqual(['E증권', 'B증권', 'D증권', 'A증권', 'C증권']);
   });
 
   it('resolves cursor time by containing bucket, not nearest bucket', () => {

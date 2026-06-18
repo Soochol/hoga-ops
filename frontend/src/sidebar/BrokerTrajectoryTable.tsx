@@ -7,6 +7,7 @@ import { brokerDisplayShort } from './brokerDisplayNames';
  *  between observations. Honest about the brokers parquet's top-5 truncation
  *  rather than forward-fill (see ADR-0023 and the spec's § 4 Data Gaps). */
 export const GAP_THRESHOLD_MS = 30_000;
+export const BROKER_TRAJECTORY_ROW_LIMIT = 10;
 
 type Props = {
   series: BrokerSeriesEntry[] | null | undefined;
@@ -15,13 +16,14 @@ type Props = {
 };
 
 export default function BrokerTrajectoryTable({ series, cursorMs, gapThresholdMs = GAP_THRESHOLD_MS }: Props) {
+  const rows = useMemo(() => series?.slice(0, BROKER_TRAJECTORY_ROW_LIMIT) ?? [], [series]);
   // Common time domain across all displayed brokers — keeps cursor marker
   // X positions aligned across rows.
   const dayRange = useMemo(() => {
-    if (!series || series.length === 0) return null;
+    if (rows.length === 0) return null;
     let first = Infinity;
     let last = -Infinity;
-    for (const e of series) {
+    for (const e of rows) {
       for (const p of e.points) {
         if (p.ts_ms < first) first = p.ts_ms;
         if (p.ts_ms > last) last = p.ts_ms;
@@ -30,7 +32,7 @@ export default function BrokerTrajectoryTable({ series, cursorMs, gapThresholdMs
     return Number.isFinite(first) && Number.isFinite(last) && last > first
       ? { first, last }
       : null;
-  }, [series]);
+  }, [rows]);
 
   if (series === undefined) {
     return (
@@ -47,7 +49,6 @@ export default function BrokerTrajectoryTable({ series, cursorMs, gapThresholdMs
     );
   }
 
-  const rows = series.slice(0, 10);
   return (
     <div className="font-mono text-sm tabular-nums divide-y divide-border-strong">
       {rows.map((entry) => {
@@ -82,8 +83,7 @@ export default function BrokerTrajectoryTable({ series, cursorMs, gapThresholdMs
 }
 
 /** Pure function. Binary-searches entry.points for the last ts <= cursorMs.
- *  Returns 0 when cursorMs is null (no cursor), otherwise falls back to the
- *  last available point when the cursor precedes the first observation. */
+ *  Returns 0 when cursorMs is null or precedes the first observation. */
 export function netAtCursor(
   entry: BrokerSeriesEntry,
   cursorMs: number | null,
@@ -91,9 +91,7 @@ export function netAtCursor(
   if (cursorMs == null) return 0;
   const pts = entry.points;
   if (pts.length === 0) return 0;
-  if (cursorMs < pts[0].ts_ms) {
-    return pts[pts.length - 1].net;
-  }
+  if (cursorMs < pts[0].ts_ms) return 0;
   // Binary search for the rightmost point with ts_ms <= cursorMs.
   let lo = 0;
   let hi = pts.length - 1;

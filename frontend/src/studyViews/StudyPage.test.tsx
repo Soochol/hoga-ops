@@ -233,6 +233,7 @@ describe('StudyPage', () => {
       bundle: {
         ...snapshot.bundle,
         timeframe: '1m',
+        segments: [{ date: '20260616', session_open_ms: 1_000, session_close_ms: 61_999 }],
         candles: [
           { t: 1_000, open: 70_000, high: 72_000, low: 69_000, close: 71_000, volume: 100 },
           { t: 61_000, open: 71_000, high: 73_000, low: 70_000, close: 72_000, volume: 120 },
@@ -334,6 +335,226 @@ describe('StudyPage', () => {
     expect(container.querySelector('[data-testid="study-detail-panel"] polyline[stroke-dasharray]')).toBeNull();
   });
 
+  it('keeps broker rows visible before their first saved bucket in the active session', () => {
+    const enriched: ParquetStudySnapshot = {
+      ...snapshot,
+      timeframe: '1m',
+      bucket_kind: '1m',
+      bundle: {
+        ...snapshot.bundle,
+        timeframe: '1m',
+        segments: [{ date: '20260616', session_open_ms: 1_000, session_close_ms: 121_999 }],
+        candles: [
+          { t: 1_000, open: 70_000, high: 72_000, low: 69_000, close: 71_000, volume: 100 },
+          { t: 61_000, open: 71_000, high: 73_000, low: 70_000, close: 72_000, volume: 120 },
+          { t: 121_000, open: 72_000, high: 74_000, low: 71_000, close: 73_000, volume: 130 },
+        ],
+        orderbook_buckets: [
+          { t: 1_000, available: false, snapshot: null },
+          { t: 61_000, available: false, snapshot: null },
+          { t: 121_000, available: false, snapshot: null },
+        ],
+        broker_buckets: [
+          {
+            t: 1_000,
+            available: true,
+            brokers: [{ broker: '키움증권', net: 100, dominant_side: 'buy' }],
+          },
+          {
+            t: 121_000,
+            available: true,
+            brokers: [{ broker: '미래에셋증권', net: 300, dominant_side: 'buy' }],
+          },
+        ],
+        detail_warnings: [],
+      },
+    };
+    useStudyViewSnapshotMock.mockReturnValue({
+      data: enriched,
+      isLoading: false,
+      isError: false,
+    });
+
+    act(() => {
+      useLiveCursorStore.getState().setCursor(1_500);
+    });
+
+    const { container } = renderAt('/study?view=view1');
+
+    const props = liveChartRootMock.mock.calls[0][0] as ComponentProps<typeof LiveChartRoot>;
+    act(() => {
+      props.onCursorActiveChange?.(true);
+      useLiveCursorStore.getState().setCursor(1_500);
+    });
+
+    expect(screen.getByText('키움')).toBeTruthy();
+    expect(screen.getByText('미래에셋')).toBeTruthy();
+    expect(screen.getByText('+100')).toBeTruthy();
+    expect(screen.queryByText('+300')).toBeNull();
+    expect(container.querySelectorAll('[data-testid="broker-row"]')).toHaveLength(2);
+  });
+
+  it('keeps current-bucket brokers inside the rendered row cap', () => {
+    const enriched: ParquetStudySnapshot = {
+      ...snapshot,
+      timeframe: '1m',
+      bucket_kind: '1m',
+      bundle: {
+        ...snapshot.bundle,
+        timeframe: '1m',
+        segments: [{ date: '20260616', session_open_ms: 1_000, session_close_ms: 121_999 }],
+        candles: [
+          { t: 1_000, open: 70_000, high: 72_000, low: 69_000, close: 71_000, volume: 100 },
+          { t: 121_000, open: 72_000, high: 74_000, low: 71_000, close: 73_000, volume: 130 },
+        ],
+        orderbook_buckets: [
+          { t: 1_000, available: false, snapshot: null },
+          { t: 121_000, available: false, snapshot: null },
+        ],
+        broker_buckets: [
+          {
+            t: 1_000,
+            available: true,
+            brokers: [{ broker: '현재증권', net: 1, dominant_side: 'buy' }],
+          },
+          {
+            t: 121_000,
+            available: true,
+            brokers: Array.from({ length: 10 }, (_, i) => ({
+              broker: `미래${i}증권`,
+              net: 1_000 - i,
+              dominant_side: 'buy' as const,
+            })),
+          },
+        ],
+        detail_warnings: [],
+      },
+    };
+    useStudyViewSnapshotMock.mockReturnValue({
+      data: enriched,
+      isLoading: false,
+      isError: false,
+    });
+
+    act(() => {
+      useLiveCursorStore.getState().setCursor(1_500);
+    });
+
+    const { container } = renderAt('/study?view=view1');
+
+    const props = liveChartRootMock.mock.calls[0][0] as ComponentProps<typeof LiveChartRoot>;
+    act(() => {
+      props.onCursorActiveChange?.(true);
+      useLiveCursorStore.getState().setCursor(1_500);
+    });
+
+    expect(container.querySelectorAll('[data-testid="broker-row"]')).toHaveLength(10);
+    expect(container.querySelector('[title="현재증권"]')).toBeTruthy();
+    expect(screen.getByText('+1')).toBeTruthy();
+  });
+
+  it('does not show all saved brokers when the cursor bucket has no matching segment', () => {
+    const enriched: ParquetStudySnapshot = {
+      ...snapshot,
+      timeframe: '1m',
+      bucket_kind: '1m',
+      bundle: {
+        ...snapshot.bundle,
+        timeframe: '1m',
+        segments: [{ date: '20260616', session_open_ms: 99_000, session_close_ms: 100_000 }],
+        candles: [
+          { t: 1_000, open: 70_000, high: 72_000, low: 69_000, close: 71_000, volume: 100 },
+        ],
+        orderbook_buckets: [
+          { t: 1_000, available: false, snapshot: null },
+        ],
+        broker_buckets: [
+          {
+            t: 1_000,
+            available: true,
+            brokers: [{ broker: '키움증권', net: 100, dominant_side: 'buy' }],
+          },
+        ],
+        detail_warnings: [],
+      },
+    };
+    useStudyViewSnapshotMock.mockReturnValue({
+      data: enriched,
+      isLoading: false,
+      isError: false,
+    });
+
+    act(() => {
+      useLiveCursorStore.getState().setCursor(1_500);
+    });
+
+    renderAt('/study?view=view1');
+
+    const props = liveChartRootMock.mock.calls[0][0] as ComponentProps<typeof LiveChartRoot>;
+    act(() => {
+      props.onCursorActiveChange?.(true);
+      useLiveCursorStore.getState().setCursor(1_500);
+    });
+
+    expect(screen.getByText('거래원 정보 없음')).toBeTruthy();
+    expect(screen.queryByText('키움')).toBeNull();
+  });
+
+  it('does not show all saved brokers when the cursor is outside saved candle buckets', () => {
+    const enriched: ParquetStudySnapshot = {
+      ...snapshot,
+      timeframe: '1m',
+      bucket_kind: '1m',
+      bundle: {
+        ...snapshot.bundle,
+        timeframe: '1m',
+        segments: [{ date: '20260616', session_open_ms: 1_000, session_close_ms: 61_999 }],
+        candles: [
+          { t: 1_000, open: 70_000, high: 72_000, low: 69_000, close: 71_000, volume: 100 },
+          { t: 61_000, open: 71_000, high: 73_000, low: 70_000, close: 72_000, volume: 120 },
+        ],
+        orderbook_buckets: [
+          { t: 1_000, available: false, snapshot: null },
+          { t: 61_000, available: false, snapshot: null },
+        ],
+        broker_buckets: [
+          {
+            t: 1_000,
+            available: true,
+            brokers: [{ broker: '키움증권', net: 100, dominant_side: 'buy' }],
+          },
+          {
+            t: 61_000,
+            available: true,
+            brokers: [{ broker: '미래에셋증권', net: 300, dominant_side: 'buy' }],
+          },
+        ],
+        detail_warnings: [],
+      },
+    };
+    useStudyViewSnapshotMock.mockReturnValue({
+      data: enriched,
+      isLoading: false,
+      isError: false,
+    });
+
+    act(() => {
+      useLiveCursorStore.getState().setCursor(999_000);
+    });
+
+    renderAt('/study?view=view1');
+
+    const props = liveChartRootMock.mock.calls[0][0] as ComponentProps<typeof LiveChartRoot>;
+    act(() => {
+      props.onCursorActiveChange?.(true);
+      useLiveCursorStore.getState().setCursor(999_000);
+    });
+
+    expect(screen.getByText('거래원 정보 없음')).toBeTruthy();
+    expect(screen.queryByText('키움')).toBeNull();
+    expect(screen.queryByText('미래에셋')).toBeNull();
+  });
+
   it('falls back to the latest saved candle when sticky cursor remains after hover ends', () => {
     const enriched: ParquetStudySnapshot = {
       ...snapshot,
@@ -400,10 +621,11 @@ describe('StudyPage', () => {
     renderAt('/study?view=view1');
 
     expect(screen.getByTestId('study-detail-panel')).toBeTruthy();
+    expect(screen.getByText('키움')).toBeTruthy();
+    expect(screen.getByText('+100')).toBeTruthy();
     expect(screen.getByText('미래에셋')).toBeTruthy();
     expect(screen.getByText('+200')).toBeTruthy();
-    expect(screen.queryByText('키움')).toBeNull();
-    expect(screen.queryByText('+100')).toBeNull();
+    expect(screen.getAllByTestId('broker-row')).toHaveLength(2);
     expect(useLiveCursorStore.getState().cursorMs).toBe(1_500);
     expect(useLiveCursorStore.getState().lastCursorMs).toBe(1_500);
 
@@ -417,17 +639,19 @@ describe('StudyPage', () => {
 
     expect(screen.getByText('키움')).toBeTruthy();
     expect(screen.getByText('+100')).toBeTruthy();
-    expect(screen.queryByText('미래에셋')).toBeNull();
+    expect(screen.getByText('미래에셋')).toBeTruthy();
     expect(screen.queryByText('+200')).toBeNull();
+    expect(screen.getAllByTestId('broker-row')).toHaveLength(2);
 
     act(() => {
       props.onCursorActiveChange?.(false);
     });
 
+    expect(screen.getByText('키움')).toBeTruthy();
+    expect(screen.getByText('+100')).toBeTruthy();
     expect(screen.getByText('미래에셋')).toBeTruthy();
     expect(screen.getByText('+200')).toBeTruthy();
-    expect(screen.queryByText('키움')).toBeNull();
-    expect(screen.queryByText('+100')).toBeNull();
+    expect(screen.getAllByTestId('broker-row')).toHaveLength(2);
     expect(useLiveBundle).not.toHaveBeenCalled();
     expect(useRange).not.toHaveBeenCalled();
   });

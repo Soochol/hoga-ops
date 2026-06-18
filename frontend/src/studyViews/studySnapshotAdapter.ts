@@ -56,15 +56,9 @@ export function studyBrokerBucketsToSeries(
 ): BrokerSeriesEntry[] {
   const byBroker = new Map<string, BrokerSeriesPoint[]>();
   const buckets = [...brokersByBucketStart.values()].sort((a, b) => a.t - b.t);
-  const firstSeenRank = new Map<string, number>();
 
   for (const bucket of buckets) {
     if (!bucket.available) continue;
-    for (const broker of bucket.brokers) {
-      if (!firstSeenRank.has(broker.broker)) {
-        firstSeenRank.set(broker.broker, firstSeenRank.size);
-      }
-    }
     if (range && (bucket.t < range.fromMs || bucket.t > range.toMs)) continue;
     for (const broker of bucket.brokers) {
       const points = byBroker.get(broker.broker) ?? [];
@@ -84,10 +78,7 @@ export function studyBrokerBucketsToSeries(
     });
   }
 
-  series.sort((a, b) => (
-    (firstSeenRank.get(a.broker) ?? Number.MAX_SAFE_INTEGER)
-    - (firstSeenRank.get(b.broker) ?? Number.MAX_SAFE_INTEGER)
-  ));
+  series.sort((a, b) => Math.abs(b.final_net) - Math.abs(a.final_net));
   return series;
 }
 

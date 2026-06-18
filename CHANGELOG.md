@@ -3,6 +3,14 @@
 All notable changes to this project are documented here.
 The format follows a 4-digit `MAJOR.MINOR.PATCH.MICRO` scheme.
 
+## [0.8.13.3] - 2026-06-19
+
+### Fixed
+- **저장 학습뷰 거래원 flow 표시**: 거래원이 처음 등장하기 전에도 행을 미리 유지하고,
+  실제 flow 값은 해당 시간대부터 표시해 미래 거래원 수치가 앞선 커서에 노출되지 않는다.
+- 상위 거래원에서 빠졌다가 다시 나타나는 구간은 점선 bridge로 이어 보여주고,
+  현재 커서의 거래원이 10개 표시 제한 밖으로 밀려 사라지지 않도록 했다.
+
 ## [0.8.13.2] - 2026-06-19
 
 ### Fixed

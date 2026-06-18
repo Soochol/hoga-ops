@@ -30,22 +30,31 @@ export function StudyDetailPanel({ details, candles, segments, bucketMs, cursorM
       segment.session_open_ms <= bucketStart && bucketStart <= segment.session_close_ms
     )) ?? null;
   }, [bucketStart, segments]);
-  const brokerSeries = useMemo(
+  const sessionBrokerSeries = useMemo(
     () => studyBrokerBucketsToSeries(
       details.brokersByBucketStart,
       activeSegment
         ? { fromMs: activeSegment.session_open_ms, toMs: activeSegment.session_close_ms }
-        : null,
+        : segments.length > 0
+          ? { fromMs: 1, toMs: 0 }
+          : null,
     ),
-    [activeSegment, details.brokersByBucketStart],
+    [activeSegment, details.brokersByBucketStart, segments.length],
   );
-  const visibleBrokerSeries = useMemo(() => {
+  const brokerSeries = useMemo(() => {
     if (bucketStart == null) return [];
     const bucket = details.brokersByBucketStart.get(bucketStart);
-    if (!bucket?.available) return [];
-    const visible = new Set(bucket.brokers.map((broker) => broker.broker));
-    return brokerSeries.filter((entry) => visible.has(entry.broker));
-  }, [brokerSeries, bucketStart, details.brokersByBucketStart]);
+    if (!bucket?.available) return sessionBrokerSeries;
+    const activeRank = new Map(bucket.brokers.map((broker, index) => [broker.broker, index]));
+    return [...sessionBrokerSeries].sort((a, b) => {
+      const aRank = activeRank.get(a.broker);
+      const bRank = activeRank.get(b.broker);
+      if (aRank != null && bRank != null) return aRank - bRank;
+      if (aRank != null) return -1;
+      if (bRank != null) return 1;
+      return Math.abs(b.final_net) - Math.abs(a.final_net);
+    });
+  }, [bucketStart, details.brokersByBucketStart, sessionBrokerSeries]);
   const snapshot = orderbook?.available ? orderbook.snapshot : null;
 
   return (
@@ -54,7 +63,7 @@ export function StudyDetailPanel({ details, candles, segments, bucketMs, cursorM
         orderbook={<OrderbookTable snapshot={snapshot} />}
         brokers={(
           <BrokerTrajectoryTable
-            series={visibleBrokerSeries}
+            series={brokerSeries}
             cursorMs={bucketStart}
             gapThresholdMs={Math.max(30_000, bucketMs + 1)}
           />
