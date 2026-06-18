@@ -20,7 +20,7 @@ export default function BrokerTrajectoryTable({ series, cursorMs, gapThresholdMs
   // Common time domain across all displayed brokers — keeps cursor marker
   // X positions aligned across rows.
   const dayRange = useMemo(() => {
-    if (!rows || rows.length === 0) return null;
+    if (rows.length === 0) return null;
     let first = Infinity;
     let last = -Infinity;
     for (const e of rows) {
