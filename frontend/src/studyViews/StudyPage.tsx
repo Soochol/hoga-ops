@@ -122,7 +122,7 @@ export function StudyPage() {
           메모
         </button>
       </header>
-      <div className="grid min-h-0 grid-cols-[minmax(0,1fr)_280px]">
+      <div className="grid min-h-0 grid-cols-[minmax(0,1fr)_var(--sidebar-w)]">
         <LiveChartRoot
           code={snapshot.code}
           timeframe={snapshot.timeframe}
@@ -151,7 +151,7 @@ export function StudyPage() {
           onViewportCaptureReady={handleViewportCaptureReady}
           onCursorActiveChange={setIsCursorActive}
         />
-        <aside className="grid min-h-0 grid-rows-[auto_minmax(0,1fr)] border-l border-[var(--border)]">
+        <aside className="grid min-h-0 grid-rows-[auto_minmax(0,1fr)] border-l border-[var(--border)] bg-[var(--bg-card)]">
           {isMemoOpen && selectedSave && (
             <StudyMemoPanel
               memo={selectedSave.memo}

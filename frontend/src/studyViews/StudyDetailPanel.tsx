@@ -1,5 +1,6 @@
 import { useMemo } from 'react';
 import BrokerTrajectoryTable from '../sidebar/BrokerTrajectoryTable';
+import CursorSidebar from '../sidebar/CursorSidebar';
 import OrderbookTable from '../sidebar/OrderbookTable';
 import type { RangeSegment } from '../api/types';
 import type { StudySnapshotDetailInput } from './studySnapshotAdapter';
@@ -57,24 +58,22 @@ export function StudyDetailPanel({ details, candles, segments, bucketMs, cursorM
   const snapshot = orderbook?.available ? orderbook.snapshot : null;
 
   return (
-    <aside data-testid="study-detail-panel" className="h-full min-w-[260px] overflow-auto border-l bg-bg-card">
-      <section>
-        <h2 className="border-b px-3 py-2 text-sm font-semibold">10호가</h2>
-        <OrderbookTable snapshot={snapshot} />
-      </section>
-      <section>
-        <h2 className="border-y px-3 py-2 text-sm font-semibold">거래원</h2>
-        <BrokerTrajectoryTable
-          series={brokerSeries}
-          cursorMs={bucketStart}
-          gapThresholdMs={Math.max(30_000, bucketMs + 1)}
-        />
-      </section>
+    <div data-testid="study-detail-panel" className="grid h-full min-w-0 grid-rows-[minmax(0,1fr)_auto] bg-bg-card">
+      <CursorSidebar
+        orderbook={<OrderbookTable snapshot={snapshot} />}
+        brokers={(
+          <BrokerTrajectoryTable
+            series={brokerSeries}
+            cursorMs={bucketStart}
+            gapThresholdMs={Math.max(30_000, bucketMs + 1)}
+          />
+        )}
+      />
       {details.detailWarnings.length > 0 && (
         <section className="border-t px-3 py-2 text-xs text-fg-dim">
           {details.detailWarnings[0].message}
         </section>
       )}
-    </aside>
+    </div>
   );
 }

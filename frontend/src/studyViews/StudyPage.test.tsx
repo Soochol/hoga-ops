@@ -209,7 +209,12 @@ describe('StudyPage', () => {
 
     renderAt('/study?view=view1');
 
+    expect(screen.getByTestId('live-chart-root-stub').parentElement).toHaveClass(
+      'grid-cols-[minmax(0,1fr)_var(--sidebar-w)]',
+    );
     expect(screen.getByTestId('study-detail-panel')).toBeTruthy();
+    expect(screen.getByTestId('card-orderbook')).toBeTruthy();
+    expect(screen.getByTestId('card-brokers')).toBeTruthy();
     expect(screen.getByText('10호가')).toBeTruthy();
     expect(screen.getByText('거래원')).toBeTruthy();
     expect(screen.getByText('키움')).toBeTruthy();
