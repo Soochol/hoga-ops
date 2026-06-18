@@ -29,6 +29,8 @@ export function StudyViewsDrawer() {
   const [query, setQuery] = useState('');
   const [dialog, setDialog] = useState<SaveDialogState | null>(null);
   const [deleteTarget, setDeleteTarget] = useState<ParquetStudyView | null>(null);
+  const [renameState, setRenameState] = useState<{ id: string; value: string; error: string | null } | null>(null);
+  const renameCommittingRef = useRef(false);
   const deleteConfirmButtonRef = useRef<HTMLButtonElement>(null);
   const navigate = useNavigate();
   const location = useLocation();
@@ -84,6 +86,37 @@ export function StudyViewsDrawer() {
         if (location.pathname === '/study') navigate(`/study?view=${created.id}`);
       },
     });
+  };
+
+  const startRename = (row: ParquetStudyView) => {
+    setRenameState({ id: row.id, value: row.name, error: null });
+  };
+
+  const cancelRename = () => {
+    renameCommittingRef.current = false;
+    setRenameState(null);
+  };
+
+  const commitRename = (row: ParquetStudyView) => {
+    if (!renameState || renameState.id !== row.id || renameCommittingRef.current) return;
+    const name = renameState.value.trim();
+    if (!name || name === row.name) {
+      cancelRename();
+      return;
+    }
+    renameCommittingRef.current = true;
+    mutations.updateMetadata.mutate(
+      { id: row.id, body: { name } },
+      {
+        onSuccess: () => cancelRename(),
+        onError: (error) => {
+          renameCommittingRef.current = false;
+          setRenameState((current) => current?.id === row.id
+            ? { ...current, error: error instanceof Error ? error.message : '이름 변경에 실패했습니다.' }
+            : current);
+        },
+      },
+    );
   };
 
   const confirmDelete = () => {
@@ -160,7 +193,40 @@ export function StudyViewsDrawer() {
                 onClick={() => navigate(`/study?view=${row.id}`)}
                 className="min-w-0 flex-1 text-left"
               >
-                <div className="text-sm font-medium truncate">{row.name}</div>
+                {renameState?.id === row.id ? (
+                  <div className="space-y-1" onClick={(e) => e.stopPropagation()}>
+                    <input
+                      aria-label="저장뷰 이름 수정"
+                      autoFocus
+                      value={renameState.value}
+                      onChange={(e) => setRenameState({ ...renameState, value: e.target.value, error: null })}
+                      onBlur={() => commitRename(row)}
+                      onKeyDown={(e) => {
+                        if (e.key === 'Enter') {
+                          e.preventDefault();
+                          commitRename(row);
+                        }
+                        if (e.key === 'Escape') {
+                          e.preventDefault();
+                          cancelRename();
+                        }
+                      }}
+                      className="w-full rounded border bg-bg-input px-1 py-0.5 text-sm font-medium"
+                    />
+                    {renameState.error && <div className="text-xs text-red-500">{renameState.error}</div>}
+                  </div>
+                ) : (
+                  <div
+                    className="truncate text-sm font-medium"
+                    onDoubleClick={(e) => {
+                      e.preventDefault();
+                      e.stopPropagation();
+                      startRename(row);
+                    }}
+                  >
+                    {row.name}
+                  </div>
+                )}
                 <div className="text-xs text-fg-dim truncate">{row.label} {row.code} · {row.timeframe}</div>
               </button>
               <button
