@@ -126,9 +126,10 @@ describe('LiveSidebar', () => {
     expect(screen.queryByText('호가 데이터 없음')).toBeNull();
   });
 
-  it('shows the LIVE pulse badge in header (Design C1)', () => {
+  it('does not reserve a mode header above the data cards', () => {
     renderSidebar({ code: '005930' });
-    expect(screen.getByTestId('live-sidebar-pulse')).toBeInTheDocument();
+    expect(screen.queryByTestId('live-sidebar-pulse')).toBeNull();
+    expect(screen.queryByText('최신')).toBeNull();
   });
 });
 
@@ -142,21 +143,20 @@ describe('LiveSidebar cursor branching (ADR-0044)', () => {
   });
   afterEach(() => cleanup());
 
-  it('shows LIVE● header when cursorMs is null', () => {
+  it('keeps the mode header absent when cursorMs is null', () => {
     renderSidebar({ code: '005930' });
-    expect(screen.getByTestId('live-sidebar-pulse')).toBeInTheDocument();
-    expect(screen.getByText('최신')).toBeInTheDocument();
+    expect(screen.queryByTestId('live-sidebar-pulse')).toBeNull();
+    expect(screen.queryByText('최신')).toBeNull();
   });
 
-  it('swaps to "과거" + KST timestamp when cursor is set', () => {
+  it('keeps the mode header absent when cursor is set', () => {
     renderSidebar({ code: '005930' });
     // 2026-05-28T04:42:17Z → KST 13:42:17
     const t = new Date('2026-05-28T04:42:17Z').getTime();
     act(() => useLiveCursorStore.getState().setCursor(t));
     expect(screen.queryByTestId('live-sidebar-pulse')).toBeNull();
-    expect(screen.getByText('과거')).toBeInTheDocument();
-    // formatTime uses Asia/Seoul — always produces KST regardless of machine tz
-    expect(screen.getByText('13:42:17')).toBeInTheDocument();
+    expect(screen.queryByText('과거')).toBeNull();
+    expect(screen.queryByText('13:42:17')).toBeNull();
   });
 
   it('does not call cursor hooks when cursorMs null', () => {
@@ -202,14 +202,14 @@ describe('LiveSidebar cursor branching (ADR-0044)', () => {
     );
   });
 
-  it('on D timeframe, cursor does NOT enter spot — keeps LIVE header (legend regression guard)', () => {
+  it('on D timeframe, cursor does NOT enter spot — keeps orderbook data in latest mode', () => {
     // Pane Legend publishes cursorMs on D, but spot mode is minute-only
-    // (ADR-0044). Cursor on D must NOT blank the orderbook / flip the header.
+    // (ADR-0044). Cursor on D must NOT blank the orderbook.
     useLivePageStore.setState({ candleTimeframe: 'D' });
     renderSidebar({ code: '005930' });
     act(() => useLiveCursorStore.getState().setCursor(new Date('2026-05-28T04:42:17Z').getTime()));
     expect(screen.queryByText('과거')).toBeNull();
-    expect(screen.getByTestId('live-sidebar-pulse')).toBeInTheDocument();
+    expect(screen.queryByTestId('live-sidebar-pulse')).toBeNull();
     useLivePageStore.setState({ candleTimeframe: '1m' });
   });
 });
