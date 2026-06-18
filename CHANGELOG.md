@@ -3,6 +3,17 @@
 All notable changes to this project are documented here.
 The format follows a 4-digit `MAJOR.MINOR.PATCH.MICRO` scheme.
 
+## [0.8.12.0] - 2026-06-18
+
+### Added
+- **저장 학습뷰 이름·메모 편집**: 저장뷰 리스트에서 이름을 더블클릭해 바로 수정하고,
+  Enter 또는 포커스 이동으로 메타데이터만 저장할 수 있다.
+- **/study 메모 패널**: 저장 학습뷰에서 메모를 열어 수정할 수 있고, 차트 조작을 유지한 채
+  우측 패널 안에서 크기를 드래그로 조절하며 마지막 크기를 기억한다.
+
+### Fixed
+- 저장뷰 제목 클릭/Enter 이동 접근성을 유지하면서도 제목 더블클릭 rename 동작이 함께 작동하도록 했다.
+
 ## [0.8.11.0] - 2026-06-18
 
 ### Fixed
