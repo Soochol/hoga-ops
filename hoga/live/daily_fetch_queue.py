@@ -192,7 +192,9 @@ class DailyKisFetchQueue:
         for attempt in range(attempts):
             await self._wait_global_turn(
                 foreground=foreground,
-                requires_foreground_idle=requires_foreground_idle,
+                requires_foreground_idle=(
+                    requires_foreground_idle or (not foreground and attempt > 0)
+                ),
             )
             try:
                 result = await lease.client.fetch_past_daily_candles(

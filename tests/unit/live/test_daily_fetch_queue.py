@@ -180,6 +180,61 @@ async def test_rate_limit_retries_inside_queue(tmp_path: Path) -> None:
 
 
 @pytest.mark.asyncio
+async def test_background_retry_yields_to_foreground_after_cooldown(tmp_path: Path) -> None:
+    calls: list[str] = []
+    bg_retry_ready = asyncio.Event()
+    release_fg = asyncio.Event()
+
+    class BackgroundRateLimitOnce(_Client):
+        async def fetch_past_daily_candles(self, code, frm, to, *, adjust=True, foreground=False, retry=True):
+            self.calls.append(f"{self.name}:{code}:fg={foreground}:retry={retry}")
+            if len([c for c in self.calls if c.startswith(f"{self.name}:")]) == 1:
+                raise KisRateLimitError("EGW00201")
+            bg_retry_ready.set()
+            return DailyCandleFetchResult(candles=[], violations=[])
+
+    class SlowForeground(_Client):
+        async def fetch_past_daily_candles(self, *args, **kwargs):
+            await release_fg.wait()
+            return await super().fetch_past_daily_candles(*args, **kwargs)
+
+    bg_client = BackgroundRateLimitOnce("bg", calls)
+    fg_client = SlowForeground("fg", calls)
+
+    def acquire(role, data_dir, *, allow_account0_fallback=True):
+        if role == "foreground":
+            return _Lease(role, 0, fg_client)
+        return _Lease(role, 1, bg_client)
+
+    queue = DailyKisFetchQueue(
+        acquire_account=acquire,
+        foreground_concurrency=1,
+        background_concurrency_per_account=1,
+        global_rate_per_sec=1000,
+        cooldown_backoff=(0.01,),
+    )
+
+    bg = asyncio.create_task(queue.fetch_past_daily_candles(
+        tmp_path, lane="background", code="BG", from_yyyymmdd="20240101", to_yyyymmdd="20240101",
+    ))
+    await asyncio.sleep(0)
+    fg = asyncio.create_task(queue.fetch_past_daily_candles(
+        tmp_path, lane="foreground", code="FG", from_yyyymmdd="20240101", to_yyyymmdd="20240101",
+    ))
+    await asyncio.sleep(0.03)
+
+    assert calls == ["bg:BG:fg=False:retry=False"]
+    assert not bg_retry_ready.is_set()
+    release_fg.set()
+    await asyncio.gather(fg, bg)
+    assert calls == [
+        "bg:BG:fg=False:retry=False",
+        "fg:FG:fg=True:retry=False",
+        "bg:BG:fg=False:retry=False",
+    ]
+
+
+@pytest.mark.asyncio
 async def test_missing_account_raises_typed_unavailable(tmp_path: Path) -> None:
     def acquire(role, data_dir, *, allow_account0_fallback=True):
         return None
