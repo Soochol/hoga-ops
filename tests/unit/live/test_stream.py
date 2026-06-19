@@ -382,6 +382,54 @@ async def test_seed_ask_peak_from_live_file_loads_full_day_peak_and_full_coverag
     }
 
 
+async def test_seed_bid_peak_from_live_file_loads_full_day_peak_and_full_coverage(tmp_path):
+    buf = LiveBuffer()
+    writer = LiveWriter(tmp_path / "live")
+    stream = LiveStream(buffer=buf, writer=writer,
+                        date_fn=lambda: "20260619", phase_fn=lambda: "regular")
+    live_root = tmp_path / "live"
+    live_root.mkdir(parents=True, exist_ok=True)
+    live_path = live_root / "20260619" / "005930.jsonl"
+    live_path.parent.mkdir(parents=True, exist_ok=True)
+    rows = [
+        {
+            "t_ms": int(datetime(2026, 6, 19, 9, 1, tzinfo=KST).timestamp() * 1000),
+            "kind": "trade",
+            "payload": {
+                "trades": [{
+                    "t_ms": int(datetime(2026, 6, 19, 9, 1, tzinfo=KST).timestamp() * 1000),
+                    "price": 70_000,
+                    "qty": 1,
+                    "side": 1,
+                    "side_source": "kis_ws",
+                }],
+            },
+        },
+        {
+            "t_ms": int(datetime(2026, 6, 19, 9, 1, 5, tzinfo=KST).timestamp() * 1000),
+            "kind": "ob",
+            "payload": _bid_peak_ob_tick(
+                int(datetime(2026, 6, 19, 9, 1, 5, tzinfo=KST).timestamp() * 1000)
+            ).payload,
+        },
+    ]
+    live_path.write_text("\n".join(json.dumps(r, ensure_ascii=False) for r in rows) + "\n")
+
+    stream.seed_bid_peak_from_live_file(code="005930", date="20260619", live_root=live_root)
+
+    assert stream.bid_peak_snapshot("005930") == {
+        "date": "20260619",
+        "coverage": "full",
+        "traded_prices": [70_000],
+        "traded_price": 70_000,
+        "traded_qty": 5_000,
+        "traded_t_ms": int(datetime(2026, 6, 19, 9, 1, 5, tzinfo=KST).timestamp() * 1000),
+        "all_price": 68_900,
+        "all_qty": 12_000,
+        "all_t_ms": int(datetime(2026, 6, 19, 9, 1, 5, tzinfo=KST).timestamp() * 1000),
+    }
+
+
 async def test_on_tick_unfiltered_before_active_set_known(tmp_path):
     """set_active_codes 호출 전(None)에는 무필터 — 단위 테스트·부분 조립
     호환을 위한 명시적 계약."""
