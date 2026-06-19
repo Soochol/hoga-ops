@@ -2,6 +2,7 @@
 
 import asyncio
 import contextlib
+from unittest.mock import AsyncMock
 
 import pytest
 
@@ -503,8 +504,10 @@ async def test_ws_watchdog_gate_runs_off_event_loop(
     import threading
 
     from hoga.live import lifecycle
+    from hoga.live.lifecycle import _State
 
     lifecycle.reset_for_tests()
+    lifecycle._state = _State(started_at_ms=1)
     seen: list[bool] = []
 
     def fake_gate(now_ms: int) -> bool:

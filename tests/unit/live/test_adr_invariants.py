@@ -38,6 +38,7 @@ _HOT_PATH_MODULES = (
     "hoga/live/ws_frames.py",
     "hoga/live/downsampler.py",
     "hoga/live/session_gate.py",
+    "hoga/live/coverage.py",
     "hoga/live/snapshot.py",
     "hoga/live/buffer.py",
     "hoga/live/api.py",
