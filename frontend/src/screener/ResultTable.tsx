@@ -7,15 +7,14 @@ interface Props {
   /** Live Quote 가 이미 머지된 결과 행(useScreenerRowsLive). 표시만 하면 된다. */
   rows: ScreenerRowLive[];
   onActivate: (code: string, name?: string, options?: { disposition?: LiveOpenDisposition }) => void;
-  onCapture: (code: string) => void;
 }
 
-const COLS = 'grid-cols-[3.5rem_1fr_4rem_6rem_5rem_6rem_3.2rem]';
+const COLS = 'grid-cols-[3.5rem_1fr_4rem_6rem_5rem_6rem_2.4rem]';
 /** Won → 억 (100M), rounded to whole 억 for the table — matches the filter
  *  unit (거래대금 하한 is entered in 억). */
 const toEok = (won: number) => Math.round(won / 1e8).toLocaleString('ko-KR');
 
-export function ResultTable({ rows, onActivate, onCapture }: Props) {
+export function ResultTable({ rows, onActivate }: Props) {
   return (
     <div className="min-w-0 bg-bg-card border rounded-lg flex flex-col min-h-0 overflow-auto">
       <div className="min-w-[640px] flex min-h-full flex-col">
@@ -43,8 +42,6 @@ export function ResultTable({ rows, onActivate, onCapture }: Props) {
                 <span className="font-mono tabular-nums text-right text-fg-dim">{toEok(r.trade_value_won)}</span>
                 <span className="flex items-center justify-end gap-2">
                   <WatchlistHeartButton code={r.code} name={r.name} variant="row" />
-                  <button type="button" aria-label="캡처 페이지 열기" onClick={(e) => { e.stopPropagation(); onCapture(r.code); }}
-                    className="bg-transparent border-none text-fg-dimmer hover:text-fg cursor-pointer leading-none p-0">📥</button>
                 </span>
               </div>
             );

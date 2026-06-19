@@ -23,12 +23,8 @@ log = logging.getLogger(__name__)
 
 import httpx
 
-from hoga.live.kis_venue import (
-    KisVenue,
-    kis_venue_div,
-    previous_empty_page_anchor_hhmmss,
-    session_window_hhmmss,
-)
+from hoga.live.kis_market import KisMarket, kis_market_div, session_window_hhmmss
+from hoga.live.kis_venue import previous_empty_page_anchor_hhmmss
 from hoga.live.kis_models import (
     InvestorNetPoint,
     InvestorTrendEstimateRow,
@@ -49,10 +45,10 @@ _BASE_REAL = "https://openapi.koreainvestment.com:9443"
 # path: the dead token was served from memory+disk until expires_at (~24h).
 _TOKEN_INVALID_MSG_CDS = ("EGW00121", "EGW00123")
 
-# Default KIS venue for backwards-compatible callers. New /live candle routes
-# pass an explicit venue value and include it in cache/query keys.
-_DEFAULT_KIS_VENUE: KisVenue = "KRX"
-_STOCK_MRKT_DIV = kis_venue_div(_DEFAULT_KIS_VENUE)
+# Default KIS market for backwards-compatible callers. New /live candle routes
+# pass an explicit market value and include it in cache/query keys.
+_DEFAULT_KIS_MARKET: KisMarket = "KRX"
+_STOCK_MRKT_DIV = kis_market_div(_DEFAULT_KIS_MARKET)
 
 # Conservative cap on KIS data calls per second across all callers (backfill +
 # backfill + future). KIS doesn't publish an exact retail limit — 20/sec is
@@ -644,7 +640,7 @@ class KisClient:
         code: str,
         date_yyyymmdd: str,
         *,
-        venue: KisVenue = _DEFAULT_KIS_VENUE,
+        market: KisMarket = _DEFAULT_KIS_MARKET,
         foreground: bool = False,
         **kwargs: Any,
     ) -> list[KisCandle]:
@@ -659,23 +655,23 @@ class KisClient:
         KIS retains roughly 1 year of historical minute candles per the
         portal docs (https://apiportal.koreainvestment.com/).
         """
-        if "market" in kwargs:
-            venue = kwargs.pop("market")
+        if "venue" in kwargs:
+            market = kwargs.pop("venue")
         if kwargs:
             unexpected = next(iter(kwargs))
             raise TypeError(f"unexpected keyword argument: {unexpected}")
         path = "/uapi/domestic-stock/v1/quotations/inquire-time-dailychartprice"
         tr_id = "FHKST03010230"
-        session_open_hhmmss, session_close_hhmmss = session_window_hhmmss(venue)
+        session_open_hhmmss, session_close_hhmmss = session_window_hhmmss(market)
         anchor_hhmmss = session_close_hhmmss
-        venue_div = kis_venue_div(venue)
+        market_div = kis_market_div(market)
         seen_t_ms: set[int] = set()
         all_candles: list[KisCandle] = []
         # Hard cap so a misbehaving KIS response never spirals into infinite
         # pages. NXT/UN can span 12h, so they legitimately need more calls.
-        for _ in range(8 if venue == "KRX" else 16):
+        for _ in range(8 if market == "KRX" else 16):
             params = {
-                "FID_COND_MRKT_DIV_CODE": venue_div,
+                "FID_COND_MRKT_DIV_CODE": market_div,
                 "FID_INPUT_ISCD": code,
                 "FID_INPUT_HOUR_1": anchor_hhmmss,
                 "FID_INPUT_DATE_1": date_yyyymmdd,
@@ -686,7 +682,7 @@ class KisClient:
             rows = body.get("output2") or []
             if not rows:
                 next_anchor = previous_empty_page_anchor_hhmmss(
-                    venue,
+                    market,
                     date_yyyymmdd,
                     anchor_hhmmss,
                 )
@@ -764,7 +760,7 @@ class KisClient:
         from_yyyymmdd: str,
         to_yyyymmdd: str,
         *,
-        venue: KisVenue = _DEFAULT_KIS_VENUE,
+        market: KisMarket = _DEFAULT_KIS_MARKET,
         adjust: bool = True,
         foreground: bool = False,
         **kwargs: Any,
@@ -780,14 +776,14 @@ class KisClient:
         - violations: per-row drop reasons (close<=0, OHLC inconsistent, malformed,
           out of requested range). Surfaced to caller for data_warnings.
         """
-        if "market" in kwargs:
-            venue = kwargs.pop("market")
+        if "venue" in kwargs:
+            market = kwargs.pop("venue")
         if kwargs:
             unexpected = next(iter(kwargs))
             raise TypeError(f"unexpected keyword argument: {unexpected}")
         path = "/uapi/domestic-stock/v1/quotations/inquire-daily-itemchartprice"
         tr_id = "FHKST03010100"
-        venue_div = kis_venue_div(venue)
+        market_div = kis_market_div(market)
         cursor_from = from_yyyymmdd
         cursor_to = to_yyyymmdd
         # Tracks every row we've already processed (valid or violation) so that
@@ -801,7 +797,7 @@ class KisClient:
 
         for _ in range(60):
             params = {
-                "FID_COND_MRKT_DIV_CODE": venue_div,
+                "FID_COND_MRKT_DIV_CODE": market_div,
                 "FID_INPUT_ISCD": code,
                 "FID_INPUT_DATE_1": cursor_from,
                 "FID_INPUT_DATE_2": cursor_to,
