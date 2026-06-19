@@ -3,6 +3,14 @@
 All notable changes to this project are documented here.
 The format follows a 4-digit `MAJOR.MINOR.PATCH.MICRO` scheme.
 
+## [0.8.15.0] - 2026-06-19
+
+### Added
+- **Live 종목 Ctrl/Meta 새 탭 열기**: 관심종목, 스크리너, 히트맵에서 종목을
+  Ctrl/Meta+클릭하면 현재 `/live` 탭을 교체하지 않고 새 Live 탭을 만들어 포커스한다.
+- 스크리너 우측 드로어까지 같은 새 탭 동작을 적용하고, 일반 클릭·키보드 Enter/Space·
+  차트로 드래그 앤 드롭은 기존처럼 현재 탭 교체 동작을 유지한다.
+
 ## [0.8.14.1] - 2026-06-19
 
 ### Changed

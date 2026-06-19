@@ -33,6 +33,21 @@ describe('QuoteRow', () => {
     expect(onClick).toHaveBeenCalledOnce();
   });
 
+  it('plain click opens in the current tab', () => {
+    const { onClick } = row();
+    fireEvent.click(screen.getByTestId('quote-row-005930'));
+    expect(onClick).toHaveBeenCalledWith({ disposition: 'current-tab' });
+  });
+
+  it('Ctrl-click and Meta-click request a new tab', () => {
+    const { onClick } = row();
+    const li = screen.getByTestId('quote-row-005930');
+    fireEvent.click(li, { ctrlKey: true });
+    fireEvent.click(li, { metaKey: true });
+    expect(onClick).toHaveBeenNthCalledWith(1, { disposition: 'new-tab' });
+    expect(onClick).toHaveBeenNthCalledWith(2, { disposition: 'new-tab' });
+  });
+
   it('renders no trailing cell when trailingAction is omitted (backward compat)', () => {
     row();
     expect(within(screen.getByTestId('quote-row-005930')).queryByRole('button')).toBeNull();

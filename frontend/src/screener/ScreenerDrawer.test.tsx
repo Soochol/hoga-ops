@@ -4,6 +4,7 @@ import type { DraggableAttributes, DraggableSyntheticListeners } from '@dnd-kit/
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { MemoryRouter, Routes, Route, useLocation } from 'react-router';
 import { useLivePageStore } from '../state/livePage';
+import { useLiveTabsStore } from '../state/liveTabs';
 import { useScreenerPanelStore } from '../state/screenerPanel';
 import { useEntryDragStore } from '../state/entryDrag';
 import * as savesApi from '../api/savedScreeners';
@@ -104,7 +105,8 @@ describe('ScreenerDrawer', () => {
     dnd.onDragEnd = null;
     dnd.onDragCancel = null;
     useEntryDragStore.setState({ draggingCode: null, overChart: false, hitTestChart: null });
-    useLivePageStore.setState({ activeCode: null });
+    useLivePageStore.setState({ activeCode: null, candleTimeframe: '1m', historicalFromDate: null });
+    useLiveTabsStore.setState({ tabs: [], activeTabId: null });
     useScreenerPanelStore.setState({ selectedSavedId: null, lastScan: null });
     vi.restoreAllMocks();
     vi.spyOn(screenerApi, 'getScreenerStatus').mockResolvedValue({ status: 'ok', last_raw_date: '20260530', days_behind: 0 });
@@ -214,6 +216,70 @@ describe('ScreenerDrawer', () => {
     fireEvent.click(screen.getByText('SK하이닉스'));
     expect(useLivePageStore.getState().activeCode).toBe('000660');
     expect(screen.getByTestId('pathname').textContent).toBe('/live');
+  });
+
+  it('Ctrl-clicking a drawer row opens the symbol in a new focused live tab', async () => {
+    vi.spyOn(savesApi, 'listSaves').mockResolvedValue({ schema_version: 1, saves: [SAVE] });
+    useLiveTabsStore.setState({
+      tabs: [{
+        id: 'tab-a',
+        code: '000660',
+        label: 'SK하이닉스',
+        timeframe: '1m',
+        historicalFromDate: null,
+        viewport: null,
+      }],
+      activeTabId: 'tab-a',
+    });
+    useLivePageStore.setState({ activeCode: '000660', candleTimeframe: '1m', historicalFromDate: null });
+    useScreenerPanelStore.setState({
+      selectedSavedId: 's1',
+      lastScan: { savedId: 's1', savedName: '돌파+거래대금', rows: ROWS, scanStatus: 'ok', warnings: [] },
+    });
+
+    render(<ScreenerDrawer />, { wrapper: wrap(qc(), '/inventory') });
+    await waitFor(() => expect(screen.getByText('삼성전자')).toBeInTheDocument());
+
+    fireEvent.click(screen.getByText('삼성전자'), { ctrlKey: true });
+
+    const { tabs, activeTabId } = useLiveTabsStore.getState();
+    expect(tabs.map((t) => t.code)).toEqual(['000660', '005930']);
+    expect(tabs[1]).toMatchObject({ code: '005930', label: '삼성전자' });
+    expect(activeTabId).toBe(tabs[1].id);
+    expect(useLivePageStore.getState().activeCode).toBe('005930');
+    await waitFor(() => expect(screen.getByTestId('pathname').textContent).toBe('/live'));
+  });
+
+  it('Meta-clicking a drawer row opens the symbol in a new focused live tab', async () => {
+    vi.spyOn(savesApi, 'listSaves').mockResolvedValue({ schema_version: 1, saves: [SAVE] });
+    useLiveTabsStore.setState({
+      tabs: [{
+        id: 'tab-a',
+        code: '000660',
+        label: 'SK하이닉스',
+        timeframe: '1m',
+        historicalFromDate: null,
+        viewport: null,
+      }],
+      activeTabId: 'tab-a',
+    });
+    useLivePageStore.setState({ activeCode: '000660', candleTimeframe: '1m', historicalFromDate: null });
+    useScreenerPanelStore.setState({
+      selectedSavedId: 's1',
+      lastScan: { savedId: 's1', savedName: '돌파+거래대금', rows: ROWS, scanStatus: 'ok', warnings: [] },
+    });
+
+    render(<ScreenerDrawer />, { wrapper: wrap(qc(), '/inventory') });
+    await waitFor(() => expect(screen.getByText('삼성전자')).toBeInTheDocument());
+
+    fireEvent.click(screen.getByText('삼성전자'), { metaKey: true });
+
+    const { tabs, activeTabId } = useLiveTabsStore.getState();
+    expect(tabs.map((t) => t.code)).toEqual(['000660', '005930']);
+    expect(tabs[1]).toMatchObject({ code: '005930', label: '삼성전자' });
+    expect(activeTabId).toBe(tabs[1].id);
+    expect(useLivePageStore.getState().activeCode).toBe('005930');
+    await waitFor(() => expect(screen.getByTestId('pathname').textContent).toBe('/live'));
   });
 
   it('flags when the dropdown selection differs from the last scan', async () => {

@@ -1,4 +1,5 @@
 import type { DraggableAttributes, DraggableSyntheticListeners } from '@dnd-kit/core';
+import { dispositionFromMouseEvent, type LiveOpenDisposition } from '../live/liveActivation';
 import { QuoteChange } from './QuoteChange';
 
 /** 관심종목·스크리너 드로어 공용 행: 종목명(좌) │ 현재가·전일대비 2줄 스택(우) │ (선택) 트레일링 액션.
@@ -14,7 +15,7 @@ export interface QuoteRowProps {
   active: boolean;
   ariaLabel: string;
   testId: string;
-  onClick: () => void;
+  onClick: (options?: { disposition?: LiveOpenDisposition }) => void;
   trailingAction?: React.ReactNode;
   // --- drag (선택 패널용; 미전달 시 비-드래그 동작) ---
   sortableRef?: (node: HTMLElement | null) => void;
@@ -69,7 +70,7 @@ export function QuoteRow({
       aria-current={active ? 'true' : undefined}
       aria-label={ariaLabel}
       aria-keyshortcuts={onDelete ? 'Delete' : undefined}
-      onClick={onClick}
+      onClick={(e) => onClick({ disposition: dispositionFromMouseEvent(e) })}
       onKeyDown={onKeyDown}
       onContextMenu={onContextMenu}
       className={`group cursor-pointer ${indented ? 'pl-10' : 'pl-md'} pr-md py-sm flex items-center gap-2 border-b outline-none hover:bg-bg-input-hover focus-visible:bg-bg-input-hover`}

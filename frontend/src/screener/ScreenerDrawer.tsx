@@ -19,6 +19,7 @@ import { useScreener } from './useScreener';
 import { useScreenerStatus } from './useScreenerStatus';
 import { useScreenerUpdate } from './useScreenerUpdate';
 import { StalenessChip } from './StalenessChip';
+import type { LiveOpenDisposition } from '../live/liveActivation';
 import { QuoteRow } from '../rightrail/QuoteRow';
 import { useScreenerRowsLive } from './useScreenerRowsLive';
 import type { ScreenerRowLive } from './useScreenerRowsLive';
@@ -38,7 +39,7 @@ function DraggableScreenerRow({
 }: {
   row: ScreenerRowLive;
   active: boolean;
-  onActivate: () => void;
+  onActivate: (options?: { disposition?: LiveOpenDisposition }) => void;
 }) {
   const { setNodeRef, listeners, attributes, transform, isDragging } = useDraggable({
     id: screenerDraggableId(row.code),
@@ -248,7 +249,7 @@ export function ScreenerDrawer() {
                       key={r.code}
                       row={r}
                       active={r.code === activeCode}
-                      onActivate={() => openLive(r.code, r.name)}
+                      onActivate={(options) => openLive(r.code, r.name, options)}
                     />
                   ))}
                 </ul>
