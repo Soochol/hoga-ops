@@ -168,6 +168,24 @@ def test_study_snapshot_allows_hidden_indicator_without_numeric_value():
     assert parsed.bundle.ask_peaks[0].qty == 5_000
 
 
+def test_study_snapshot_preserves_bid_peaks():
+    snap = _snapshot()
+    snap["bundle"]["bid_peaks"] = [{
+        "date": "20260616",
+        "price": 69_900,
+        "qty": 4_800,
+        "t_ms": 1_000,
+        "max_price": 69_800,
+        "max_qty": 5_800,
+        "max_t_ms": 1_000,
+    }]
+
+    parsed = ParquetStudySnapshot.model_validate(snap)
+
+    assert parsed.bundle.bid_peaks[0].price == 69_900
+    assert parsed.model_dump()["bundle"]["bid_peaks"][0]["qty"] == 4_800
+
+
 def test_study_snapshot_rejects_unsorted_candles():
     snap = _snapshot()
     snap["bundle"]["candles"] = [

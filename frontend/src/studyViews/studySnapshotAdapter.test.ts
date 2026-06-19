@@ -31,6 +31,15 @@ function snapshot(overrides: Partial<StudySnapshotBundle> = {}): StudySnapshotBu
       max_qty: 6_000,
       max_t_ms: 1_000,
     }],
+    bid_peaks: [{
+      date: '20260616',
+      price: 69_900,
+      qty: 4_800,
+      t_ms: 1_000,
+      max_price: 69_800,
+      max_qty: 5_800,
+      max_t_ms: 1_000,
+    }],
     data_warnings: ['partial'],
     ...overrides,
   };
@@ -69,6 +78,15 @@ describe('studySnapshotBundleToRangeBundle', () => {
       t_ms: 1_000,
       max_price: 70_700,
       max_qty: 6_000,
+      max_t_ms: 1_000,
+    }]);
+    expect(bundle.bid_peaks).toEqual([{
+      date: '20260616',
+      price: 69_900,
+      qty: 4_800,
+      t_ms: 1_000,
+      max_price: 69_800,
+      max_qty: 5_800,
       max_t_ms: 1_000,
     }]);
   });
@@ -160,6 +178,17 @@ describe('studySnapshotBundleToRangeBundle', () => {
       },
     ]);
     expect('study_ratio' in input.ratioBundle).toBe(false);
+    expect(input.bundle.bid_peaks).toEqual([{
+      date: '20260616',
+      price: 69_900,
+      qty: 4_800,
+      t_ms: 1_000,
+      max_price: 69_800,
+      max_qty: 5_800,
+      max_t_ms: 1_000,
+    }]);
+    expect(input.chartBundle.bid_peaks).toBe(input.bundle.bid_peaks);
+    expect(input.ratioBundle.bid_peaks).toEqual(input.bundle.bid_peaks);
   });
 
   it('uses inert date defaults when a snapshot has no segments', () => {

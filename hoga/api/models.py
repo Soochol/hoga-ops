@@ -1228,6 +1228,7 @@ class StudySnapshotBundle(BaseModel):
     ratio: list[StudyRatioPoint]
     fill_strength: list[StudyFillStrengthPoint]
     ask_peaks: list[AskPeak] = Field(default_factory=list)
+    bid_peaks: list[BidPeak] = Field(default_factory=list)
     data_warnings: list[str] = Field(default_factory=list)
     orderbook_buckets: list[StudyOrderbookBucket] = Field(default_factory=list)
     broker_buckets: list[StudyBrokerBucket] = Field(default_factory=list)
