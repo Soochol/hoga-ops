@@ -29,11 +29,6 @@ export function ConditionBuilder({ conditions, universe, onConditionsChange, onU
   };
   const add = (t: ConditionType) => { onConditionsChange([...conditions, makeLeaf(t)]); setMenuOpen(false); };
   const replace = (id: string, next: ConditionLeaf) => onConditionsChange(conditions.map((c) => c.id === id ? next : c));
-  const clone = (id: string) => {
-    const src = conditions.find((c) => c.id === id);
-    if (!src) return;
-    onConditionsChange([...conditions, { ...structuredClone(src), id: makeLeaf(src.type).id } as ConditionLeaf]);
-  };
   const remove = (id: string) => onConditionsChange(conditions.filter((c) => c.id !== id));
 
   const grouped: Array<[string, ConditionType[]]> = [
@@ -79,7 +74,7 @@ export function ConditionBuilder({ conditions, universe, onConditionsChange, onU
         <div className="text-[10px] tracking-[0.06em] text-fg-dimmer text-center">모두 충족 · AND</div>
       )}
       {conditions.map((leaf) => (
-        <ConditionRow key={leaf.id} leaf={leaf} onChange={(n) => replace(leaf.id, n)} onClone={() => clone(leaf.id)} onRemove={() => remove(leaf.id)} />
+        <ConditionRow key={leaf.id} leaf={leaf} onChange={(n) => replace(leaf.id, n)} onRemove={() => remove(leaf.id)} />
       ))}
     </div>
   );

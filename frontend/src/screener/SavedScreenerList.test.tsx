@@ -134,6 +134,14 @@ describe('SavedScreenerList', () => {
     expect(onDuplicate).toHaveBeenCalledWith(expect.objectContaining({ id: 's1' }));
   });
 
+  it('renders the row action menu as a fixed popover so it is not clipped by the list', async () => {
+    mount();
+    await screen.findByText('급등주');
+    fireEvent.click(within(rowOf('급등주')).getByRole('button', { name: '저장 조건 메뉴' }));
+    expect(screen.getByRole('menu').className).toContain('fixed');
+    expect(screen.getByRole('menu').className).not.toContain('absolute');
+  });
+
   it('anchored row is clean-highlighted (teal fill, no 수정됨) when not dirty', async () => {
     mount({ anchorId: 's1', dirty: false });
     await screen.findByText('급등주');
