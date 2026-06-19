@@ -923,6 +923,7 @@ def build_router(
     get_buffer: Callable[[], LiveBuffer] | None = None,
     on_control: Callable[[str], Awaitable[None]] | None = None,
     get_today_ask_peak: Callable[[str], dict | None] | None = None,
+    get_today_bid_peak: Callable[[str], dict | None] | None = None,
     *,
     data_dir: Path | None = None,
 ) -> APIRouter:
@@ -936,6 +937,8 @@ def build_router(
             POST /control is called. None → returns 503 for control requests.
         get_today_ask_peak: optional callable returning the current
             ask-peak-today snapshot for a code. None → /series returns null.
+        get_today_bid_peak: optional callable returning the current
+            bid-peak-today snapshot for a code. None → /series returns null.
     """
     router = APIRouter(prefix="/api/live")
 
@@ -977,6 +980,9 @@ def build_router(
             "is_open": True,
             "ask_peak_today": (
                 get_today_ask_peak(code) if get_today_ask_peak is not None else None
+            ),
+            "bid_peak_today": (
+                get_today_bid_peak(code) if get_today_bid_peak is not None else None
             ),
         }
 

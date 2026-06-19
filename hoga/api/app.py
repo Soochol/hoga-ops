@@ -53,6 +53,9 @@ from hoga.live.lifecycle import (
 from hoga.live.lifecycle import (
     get_today_ask_peak as live_get_today_ask_peak,
 )
+from hoga.live.lifecycle import (
+    get_today_bid_peak as live_get_today_bid_peak,
+)
 from hoga.live.migrate import migrate_to_v2_layout
 
 def create_app(data_dir: Path) -> FastAPI:
@@ -175,6 +178,7 @@ def create_app(data_dir: Path) -> FastAPI:
             get_buffer=live_get_buffer,
             on_control=_live_control,
             get_today_ask_peak=live_get_today_ask_peak,
+            get_today_bid_peak=live_get_today_bid_peak,
             data_dir=data_dir,
         )
     )

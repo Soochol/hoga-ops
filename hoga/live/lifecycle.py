@@ -188,6 +188,18 @@ def get_today_ask_peak(code: str) -> dict | None:
     return None
 
 
+def get_today_bid_peak(code: str) -> dict | None:
+    """Return today's bid-peak snapshot for an active live stream code."""
+    for conn in _state.streams.values():
+        if code not in conn.codes:
+            continue
+        snapshot = getattr(conn.stream_obj, "bid_peak_snapshot", None)
+        if snapshot is None:
+            continue
+        return snapshot(code)
+    return None
+
+
 def _now_ms() -> int:
     return int(time.time() * 1000)
 

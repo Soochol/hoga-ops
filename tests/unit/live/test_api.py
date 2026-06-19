@@ -15,7 +15,12 @@ def _hermetic_kis_env(monkeypatch):
         monkeypatch.delenv(_k, raising=False)
 
 
-def _make_test_app(get_status_fn=None, control_fn=None, get_today_ask_peak=None):
+def _make_test_app(
+    get_status_fn=None,
+    control_fn=None,
+    get_today_ask_peak=None,
+    get_today_bid_peak=None,
+):
     """Mount the live router on a bare FastAPI for isolated testing."""
     from hoga.live import lifecycle
     from hoga.live.api import build_router
@@ -27,6 +32,7 @@ def _make_test_app(get_status_fn=None, control_fn=None, get_today_ask_peak=None)
             get_buffer=lifecycle.get_buffer,
             on_control=control_fn,
             get_today_ask_peak=get_today_ask_peak,
+            get_today_bid_peak=get_today_bid_peak,
         )
     )
     return app
@@ -147,6 +153,7 @@ async def test_get_live_series_returns_buffered_arrays(tmp_path) -> None:
         assert body["is_open"] is True  # session_close_ms None while live
         assert body["session_close_ms"] is None
         assert body["ask_peak_today"] is None
+        assert body["bid_peak_today"] is None
         assert len(body["snapshots"]) == 3
         assert body["snapshots"][0]["total_bid_qty"] == 100
 
@@ -180,6 +187,38 @@ def test_get_live_series_includes_today_ask_peak_from_getter() -> None:
             "all_price": 25_200,
             "all_qty": 9_000,
             "all_t_ms": 1_780_000_005_000,
+        }
+
+
+def test_get_live_series_includes_today_bid_peak_from_getter() -> None:
+    def fake_peak(code: str) -> dict | None:
+        assert code == "005930"
+        return {
+            "date": "20260619",
+            "coverage": "partial",
+            "traded_prices": [70_000],
+            "traded_price": 70_000,
+            "traded_qty": 5_000,
+            "traded_t_ms": 1_781_233_265_000,
+            "all_price": 68_900,
+            "all_qty": 12_000,
+            "all_t_ms": 1_781_233_265_000,
+        }
+
+    app = _make_test_app(get_today_bid_peak=fake_peak)
+    with TestClient(app) as c:
+        r = c.get("/api/live/series?code=005930&date=20260619")
+        assert r.status_code == 200
+        assert r.json()["bid_peak_today"] == {
+            "date": "20260619",
+            "coverage": "partial",
+            "traded_prices": [70_000],
+            "traded_price": 70_000,
+            "traded_qty": 5_000,
+            "traded_t_ms": 1_781_233_265_000,
+            "all_price": 68_900,
+            "all_qty": 12_000,
+            "all_t_ms": 1_781_233_265_000,
         }
 
 

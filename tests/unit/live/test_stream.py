@@ -93,6 +93,19 @@ def _ask_peak_ob_tick(t_ms):
     })
 
 
+def _bid_peak_ob_tick(t_ms):
+    return WsTick(code="005930", t_ms=t_ms, kind=SnapshotKind.OB, payload={
+        "code": "005930", "t_ms": t_ms,
+        "asks": [{"price": 70_100 + i * 50, "qty": 100} for i in range(10)],
+        "bids": [
+            {"price": 70_000, "qty": 5_000},
+            {"price": 68_900, "qty": 12_000},
+            *[{"price": 68_800 - i * 50, "qty": 100} for i in range(8)],
+        ],
+        "total_ask_qty": 1_000, "total_bid_qty": 17_800,
+    })
+
+
 async def test_on_tick_updates_today_ask_peak_state(tmp_path):
     buf = LiveBuffer()
     stream = LiveStream(buffer=buf, writer=LiveWriter(tmp_path / "live"),
@@ -113,6 +126,31 @@ async def test_on_tick_updates_today_ask_peak_state(tmp_path):
         "traded_t_ms": now + 5_000,
         "all_price": 102,
         "all_qty": 9,
+        "all_t_ms": now + 5_000,
+    }
+
+
+async def test_on_tick_updates_today_bid_peak_state(tmp_path):
+    buf = LiveBuffer()
+    stream = LiveStream(buffer=buf, writer=LiveWriter(tmp_path / "live"),
+                        date_fn=lambda: "20260619", phase_fn=lambda: "regular")
+    stream.set_active_codes({"005930"})
+
+    now = int(datetime(2026, 6, 19, 9, 1, tzinfo=KST).timestamp() * 1000)
+    await stream.on_tick(WsTick(code="005930", t_ms=now, kind=SnapshotKind.TRADE, payload={
+        "trades": [{"t_ms": now, "price": 70_000, "qty": 5, "side": 1}],
+    }))
+    await stream.on_tick(_bid_peak_ob_tick(now + 5_000))
+
+    assert stream.bid_peak_snapshot("005930") == {
+        "date": "20260619",
+        "coverage": "partial",
+        "traded_prices": [70_000],
+        "traded_price": 70_000,
+        "traded_qty": 5_000,
+        "traded_t_ms": now + 5_000,
+        "all_price": 68_900,
+        "all_qty": 12_000,
         "all_t_ms": now + 5_000,
     }
 
