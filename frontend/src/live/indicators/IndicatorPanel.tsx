@@ -5,6 +5,7 @@ import DailyMovingAverageConfig from './DailyMovingAverageConfig';
 import VolumeConfig from './VolumeConfig';
 import InvestorNetConfig from './InvestorNetConfig';
 import AskPeakConfig from './AskPeakConfig';
+import BidPeakConfig from './BidPeakConfig';
 import QuoteTotalsConfig from './QuoteTotalsConfig';
 import RatioConfig from './RatioConfig';
 import FillStrengthConfig from './FillStrengthConfig';
@@ -18,6 +19,7 @@ type CategoryId =
   | 'foreign-net'
   | 'institution-net'
   | 'ask-peak'
+  | 'bid-peak'
   | 'quote-totals'
   | 'ratio'
   | 'fill-strength';
@@ -35,6 +37,7 @@ const CATEGORIES: ReadonlyArray<{ id: CategoryId; label: string; group: GroupId 
   { id: 'ratio',           label: '호가비',           group: 'hoga' },
   { id: 'fill-strength',   label: '체결강도',         group: 'hoga' },
   { id: 'ask-peak',        label: '당일 매도 최대벽', group: 'hoga' },
+  { id: 'bid-peak',        label: '당일 매수 최대벽', group: 'hoga' },
 ];
 
 type Props = {
@@ -54,6 +57,8 @@ export default function IndicatorPanel({ onClose }: Props) {
   const setVolumeEnabled = useLivePageStore((s) => s.setVolumeEnabled);
   const askPeakEnabled = useLivePageStore((s) => s.askPeakEnabled);
   const setAskPeakEnabled = useLivePageStore((s) => s.setAskPeakEnabled);
+  const bidPeakEnabled = useLivePageStore((s) => s.bidPeakEnabled);
+  const setBidPeakEnabled = useLivePageStore((s) => s.setBidPeakEnabled);
   const quoteTotals = useLivePageStore((s) => s.quoteTotalsEnabled);
   const setQuoteTotals = useLivePageStore((s) => s.setQuoteTotalsEnabled);
   const ratio = useLivePageStore((s) => s.ratioEnabled);
@@ -76,6 +81,7 @@ export default function IndicatorPanel({ onClose }: Props) {
       case 'institution-net': return institutionNet;
       case 'volume': return volumeEnabled;
       case 'ask-peak': return askPeakEnabled;
+      case 'bid-peak': return bidPeakEnabled;
       case 'quote-totals': return quoteTotals;
       case 'ratio': return ratio;
       case 'fill-strength': return fillStrength;
@@ -90,6 +96,7 @@ export default function IndicatorPanel({ onClose }: Props) {
       case 'institution-net': return () => setInstitutionNet(!institutionNet);
       case 'volume': return () => setVolumeEnabled(!volumeEnabled);
       case 'ask-peak': return () => setAskPeakEnabled(!askPeakEnabled);
+      case 'bid-peak': return () => setBidPeakEnabled(!bidPeakEnabled);
       case 'quote-totals': return () => setQuoteTotals(!quoteTotals);
       case 'ratio': return () => setRatio(!ratio);
       case 'fill-strength': return () => setFillStrength(!fillStrength);
@@ -149,6 +156,7 @@ export default function IndicatorPanel({ onClose }: Props) {
           {selected === 'foreign-net' && <InvestorNetConfig which="foreign" />}
           {selected === 'institution-net' && <InvestorNetConfig which="institution" />}
           {selected === 'ask-peak' && <AskPeakConfig />}
+          {selected === 'bid-peak' && <BidPeakConfig />}
           {selected === 'quote-totals' && <QuoteTotalsConfig />}
           {selected === 'ratio' && <RatioConfig />}
           {selected === 'fill-strength' && <FillStrengthConfig />}

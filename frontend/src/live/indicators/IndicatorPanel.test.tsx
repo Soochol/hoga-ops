@@ -8,7 +8,7 @@ describe('IndicatorPanel', () => {
     useLivePageStore.setState({ quoteTotalsEnabled: true, ratioEnabled: true, fillStrengthEnabled: true });
     render(<IndicatorPanel onClose={() => {}} />);
     const checkboxes = screen.getAllByRole('checkbox');
-    expect(checkboxes).toHaveLength(9); // 상단 5(일봉 이평선 추가) + 호가 4(당일 매도 최대벽 호가 그룹으로 이동), 회색 placeholder 삭제됨
+    expect(checkboxes).toHaveLength(10); // 상단 5 + 호가 5(매도/매수 최대벽 포함), 회색 placeholder 삭제됨
     expect(checkboxes.filter((c) => (c as HTMLButtonElement).disabled)).toHaveLength(0);
     for (const name of ['총잔량', '호가비', '체결강도']) {
       const cb = screen.getByRole('checkbox', { name }) as HTMLButtonElement;
@@ -178,6 +178,23 @@ describe('IndicatorPanel', () => {
     fireEvent.click(screen.getByRole('button', { name: '당일 매도 최대벽' }));
     expect(screen.getByRole('button', { name: '체결가격 기준 최대벽 스타일 선택' })).toBeTruthy();
     expect(screen.getByRole('button', { name: '미체결 포함 최대벽 스타일 선택' })).toBeTruthy();
+  });
+
+  it('당일 매수 최대벽 카테고리 토글', () => {
+    useLivePageStore.setState({ bidPeakEnabled: false });
+    render(<IndicatorPanel onClose={() => {}} />);
+    const cb = screen.getByRole('checkbox', { name: '당일 매수 최대벽' });
+    fireEvent.click(cb);
+    expect(useLivePageStore.getState().bidPeakEnabled).toBe(true);
+  });
+
+  it('매수 최대벽 선택 시 스타일 pane과 토글 표시', () => {
+    render(<IndicatorPanel onClose={() => {}} />);
+    fireEvent.click(screen.getByRole('button', { name: '당일 매수 최대벽' }));
+    expect(screen.getByRole('button', { name: '체결가격 기준 최대벽 스타일 선택' })).toBeTruthy();
+    expect(screen.getByRole('button', { name: '미체결 포함 최대벽 스타일 선택' })).toBeTruthy();
+    expect(screen.getByTestId('settings-toggle-bidPeakIntraMax')).toBeTruthy();
+    expect(screen.getByTestId('settings-toggle-bidPeakShowAllPrices')).toBeTruthy();
   });
 
   it('일봉 이동평균선 체크박스 토글 → dailyMovingAverageEnabled 반전', async () => {

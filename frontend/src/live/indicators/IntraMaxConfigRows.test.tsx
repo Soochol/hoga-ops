@@ -3,6 +3,7 @@ import { render, screen, cleanup } from '@testing-library/react';
 import QuoteTotalsConfig from './QuoteTotalsConfig';
 import RatioConfig from './RatioConfig';
 import AskPeakConfig from './AskPeakConfig';
+import BidPeakConfig from './BidPeakConfig';
 
 describe('호가 Config Intra-Bar Max 토글 행', () => {
   afterEach(cleanup);
@@ -33,5 +34,15 @@ describe('호가 Config Intra-Bar Max 토글 행', () => {
     expect(screen.getByRole('button', { name: '체결가격 기준 최대벽 스타일 선택' })).toBeTruthy();
     expect(screen.getByText('미체결 포함 최대벽')).toBeTruthy();
     expect(screen.getByRole('button', { name: '미체결 포함 최대벽 스타일 선택' })).toBeTruthy();
+  });
+
+  it('BidPeakConfig에 bidPeakIntraMax 토글', () => {
+    render(<BidPeakConfig />);
+    expect(screen.getByTestId('settings-toggle-bidPeakIntraMax')).toBeTruthy();
+  });
+
+  it('BidPeakConfig에 bidPeakShowAllPrices 토글', () => {
+    render(<BidPeakConfig />);
+    expect(screen.getByTestId('settings-toggle-bidPeakShowAllPrices')).toBeTruthy();
   });
 });
