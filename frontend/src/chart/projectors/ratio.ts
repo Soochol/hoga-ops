@@ -8,6 +8,7 @@ import {
 } from 'lightweight-charts';
 import type { RangeBundle, QuoteRatioPoint } from '../../api/types';
 import { type VirtualAxis } from '../../util/virtualAxis';
+import { isSyntheticHogaGapPoint, withHogaGapSentinels } from '../util/hogaGapHide';
 import { quoteImbalance } from '../../util/imbalance';
 import { resolveTokens } from '../../util/tokens';
 import { useShallow } from 'zustand/react/shallow';
@@ -69,18 +70,39 @@ export function projectRatio(
   axis: VirtualAxis,
   ctx: RatioPaneContext,
 ): BaselineData<Time>[] {
-  return projectRatioPoints(bundle.quote_ratio.points, axis, ctx);
+  return projectRatioPoints(quoteRatioPointsForBundle(bundle), axis, ctx);
 }
+
+const quoteRatioPointsForBundle = (bundle: RangeBundle): readonly QuoteRatioPoint[] =>
+  withHogaGapSentinels(bundle.quote_ratio.points, bundle.candles ?? [], bundle.bucket_ms);
+
+const quoteRatioPointsForSlice = ({
+  bundle,
+  points,
+  allPoints,
+  fromT,
+  toT,
+}: {
+  bundle: RangeBundle;
+  points: readonly QuoteRatioPoint[];
+  allPoints: readonly QuoteRatioPoint[];
+  fromT?: number;
+  toT?: number;
+}): readonly QuoteRatioPoint[] =>
+  withHogaGapSentinels(points, bundle.candles ?? [], bundle.bucket_ms, {
+    firstHogaT: allPoints[0]?.t,
+    lastHogaT: allPoints[allPoints.length - 1]?.t,
+    fromT,
+    toT,
+  });
 
 /** Points-array variant of {@link projectRatio} — projects an arbitrary slice
  * of quote_ratio points (not the whole bundle). Extracted so the /live tick
  * path can project the immutable past slice once (cached) and only the live
- * today slice per tick — `projectRatioPoints(past) ++ projectRatioPoints(today)`
- * is byte-identical to `projectRatioPoints(all)` because the only cross-point
- * state (maskOutgoingConnector's 1-point lookback) never crosses a day boundary:
- * the closing-auction run is intra-day and today's first emitted point (09:00)
- * is never auction-hidden, so it issues no retroactive connector mask. See
- * makePastCachedProjector + pastCachedProjector.test.ts. */
+ * today slice per tick. Hoga-gap sentinels are expanded per slice by the cached
+ * spec path; if today's first emitted point is synthetic, makePastCachedProjector
+ * patches the cached past tail so the split output stays byte-identical to full
+ * projection. */
 export function projectRatioPoints(
   points: readonly QuoteRatioPoint[],
   axis: VirtualAxis,
@@ -90,6 +112,11 @@ export function projectRatioPoints(
   for (const p of points) {
     if (!axis.contains(p.t)) continue;
     const time = (axis.toVirtual(p.t) / 1000) as UTCTimestamp;
+    if (isSyntheticHogaGapPoint(p)) {
+      maskOutgoingConnector(out, BASELINE_HIDDEN_COLORS);
+      out.push({ time, value: 0, ...BASELINE_HIDDEN_COLORS });
+      continue;
+    }
     // Auction-window hide (ADR-0029, util/auctionHide.ts). Skipping the
     // outlier check is intentional: a hidden point has no value to clamp.
     // Break the connector from the last pre-auction point so the baseline
@@ -137,7 +164,10 @@ const useRatioContext = (): RatioPaneContext =>
 // 틱당 풀-배열 재투영 제거(P0): 과거 슬라이스 투영은 캐시, 당일만 재투영. 출력은
 // projectRatio와 바이트 동일(pastCachedProjector.test.ts). 모듈 레벨 1개 인스턴스 —
 // 내부 캐시는 axis 식별자별 WeakMap이라 /live 단일 차트에서 안전.
-const ratioCachedData = makePastCachedProjector(projectRatioPoints, (b) => b.quote_ratio.points);
+const ratioCachedData = makePastCachedProjector(projectRatioPoints, (b) => b.quote_ratio.points, {
+  shouldPatchBoundary: isSyntheticHogaGapPoint,
+  patchPastTail: BASELINE_HIDDEN_COLORS,
+}, quoteRatioPointsForSlice);
 
 export const RATIO_SPEC = {
   name: 'ratio' as const,
