@@ -131,6 +131,7 @@ def test_snapshot_returns_none_until_an_eligible_orderbook_peak_exists():
         "all_price": 10_050,
         "all_qty": 700,
         "all_t_ms": 1_000,
+        "all_peaks": [{"price": 10_050, "qty": 700, "t_ms": 1_000}],
     }
 
 
@@ -164,3 +165,33 @@ def test_today_bid_peak_tracks_traded_and_all_bid_peaks():
         "all_qty": 12_000,
         "all_t_ms": 2,
     }
+
+
+def test_snapshot_returns_top_three_all_price_peaks_by_qty():
+    state = TodayAskPeakState()
+
+    state.ingest_orderbook(
+        t_ms=1_000,
+        asks=[
+            {"price": 10_000, "qty": 500},
+            {"price": 10_050, "qty": 900},
+            {"price": 10_100, "qty": 700},
+        ],
+    )
+    state.ingest_orderbook(
+        t_ms=2_000,
+        asks=[
+            {"price": 10_000, "qty": 950},
+            {"price": 10_150, "qty": 800},
+            {"price": 10_200, "qty": 600},
+        ],
+    )
+
+    snap = state.snapshot()
+
+    assert snap is not None
+    assert snap["all_peaks"] == [
+        {"price": 10_000, "qty": 950, "t_ms": 2_000},
+        {"price": 10_050, "qty": 900, "t_ms": 1_000},
+        {"price": 10_150, "qty": 800, "t_ms": 2_000},
+    ]

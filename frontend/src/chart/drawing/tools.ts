@@ -41,7 +41,7 @@ import { translateDrawing, clampDPriceForDrawing } from './translate';
 
 /** A per-gesture draft for the trendline tool — first point captured on
  *  pointer-down, committed on pointer-up. */
-export type TrendlineDraft = { a: Point; pointerId: number; paneId: PaneId };
+export type TrendlineDraft = { a: Point; b?: Point; pointerId: number; paneId: PaneId };
 
 /** A per-gesture draft for the pencil tool. `lastFrame` carries the
  *  performance.now() of the last appended point so the move handler can
@@ -336,6 +336,15 @@ export const trendlineTool: DrawingToolSpec = {
     if (!data) return;
     ctx.trendlineDraft.current = { a: data, pointerId: ctx.pointerId, paneId };
     ctx.capturePointer();
+  },
+  onPointerMove(ctx) {
+    const draft = ctx.trendlineDraft.current;
+    if (!draft || draft.pointerId !== ctx.pointerId) return;
+    const clampedY = ctx.clampYToPane(draft.paneId, ctx.py);
+    const data = ctx.pixelToData(ctx.px, clampedY, draft.paneId);
+    if (!data) return;
+    draft.b = data;
+    ctx.requestRedraw();
   },
   onPointerUp(ctx) {
     const draft = ctx.trendlineDraft.current;

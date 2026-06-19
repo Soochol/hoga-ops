@@ -187,6 +187,29 @@ describe('WatchlistDrawer', () => {
     await waitFor(() => expect(rowCodes()).toEqual(['005930', '000660']));
   });
 
+  it('shows a distinct sort icon for default, ascending, and descending modes', async () => {
+    vi.spyOn(watchlistApi, 'getWatchlist').mockResolvedValue(DATA);
+    const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+    render(<WatchlistDrawer />, { wrapper: wrap(qc, '/inventory') });
+
+    await waitFor(() => expect(screen.getByLabelText('스윙 정렬')).toBeInTheDocument());
+    const sortButton = screen.getByLabelText('스윙 정렬');
+    const sortDescription = () =>
+      document.getElementById(sortButton.getAttribute('aria-describedby') ?? '')?.textContent;
+
+    expect(within(sortButton).getByTestId('sort-icon-default')).toBeInTheDocument();
+    expect(sortDescription()).toBe('현재 기본 정렬, 클릭하면 등락률 오름차순');
+    fireEvent.click(sortButton);
+    expect(within(sortButton).getByTestId('sort-icon-asc')).toBeInTheDocument();
+    expect(sortDescription()).toBe('현재 등락률 오름차순, 클릭하면 등락률 내림차순');
+    fireEvent.click(sortButton);
+    expect(within(sortButton).getByTestId('sort-icon-desc')).toBeInTheDocument();
+    expect(sortDescription()).toBe('현재 등락률 내림차순, 클릭하면 기본 정렬');
+    fireEvent.click(sortButton);
+    expect(within(sortButton).getByTestId('sort-icon-default')).toBeInTheDocument();
+    expect(sortDescription()).toBe('현재 기본 정렬, 클릭하면 등락률 오름차순');
+  });
+
   it('sorts entries in a folder by live change rate and resets to default order', async () => {
     const folder = { id: 'f_0000000a', name: '기본', order: 0 };
     const threeEntries = {
@@ -566,7 +589,7 @@ describe('WatchlistDrawer', () => {
     expect(row005930.querySelector('[data-testid="collection-dot-realtime"]')).toBeInTheDocument();
   });
 
-  it('live_set 밖 + watchlist에 있고 안 보는 중이면 "저녁대기" 배지를 표시한다 (waiting_eod)', async () => {
+  it('live_set 밖 + watchlist에 있고 안 보는 중이면 waiting_eod 점만 표시한다', async () => {
     vi.spyOn(watchlistApi, 'getWatchlist').mockResolvedValue(DATA);
     const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } });
     qc.setQueryData(['live', 'status'], {
@@ -580,8 +603,12 @@ describe('WatchlistDrawer', () => {
     render(<WatchlistDrawer />, { wrapper: wrap(qc, '/inventory') });
     await waitFor(() => expect(screen.getByText('삼성전자')).toBeInTheDocument());
     const row005930 = screen.getByTestId('watchlist-row-005930');
-    expect(row005930.textContent).toContain('저녁대기');
+    expect(row005930.querySelector('[data-testid="collection-dot-waiting_eod"]')).toBeInTheDocument();
+    expect(row005930.textContent).not.toContain('저녁대기');
+    expect(row005930.getAttribute('aria-label')).toContain('관심종목 대기 중');
     const row000660 = screen.getByTestId('watchlist-row-000660');
-    expect(row000660.textContent).toContain('저녁대기');
+    expect(row000660.querySelector('[data-testid="collection-dot-waiting_eod"]')).toBeInTheDocument();
+    expect(row000660.textContent).not.toContain('저녁대기');
+    expect(row000660.getAttribute('aria-label')).toContain('관심종목 대기 중');
   });
 });

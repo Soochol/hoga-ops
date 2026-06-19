@@ -184,6 +184,13 @@ describe('ask peak all-price toggle', () => {
   it('mergePrefs preserves persisted false', () => {
     expect(mergePrefs({ askPeakShowAllPrices: false }).askPeakShowAllPrices).toBe(false);
   });
+
+  it('rank limit defaults to 1 and persists valid 1..3 values', () => {
+    expect(DEFAULT_PREFS.askPeakAllPriceRankLimit).toBe(1);
+    expect(mergePrefs({ askPeakAllPriceRankLimit: 2 }).askPeakAllPriceRankLimit).toBe(2);
+    expect(mergePrefs({ askPeakAllPriceRankLimit: 4 }).askPeakAllPriceRankLimit)
+      .toBe(DEFAULT_PREFS.askPeakAllPriceRankLimit);
+  });
 });
 
 describe('bid peak toggles', () => {

@@ -66,6 +66,10 @@ class TodayAskPeakState:
 
         traded = self.traded_peak
         all_peak = self.all_peak
+        all_peaks = sorted(
+            self.observed_price_peaks.values(),
+            key=lambda p: (-p.qty, p.t_ms, p.price),
+        )[:3]
         return {
             "coverage": self.coverage,
             "traded_prices": sorted(self.traded_prices),
@@ -75,6 +79,10 @@ class TodayAskPeakState:
             "all_price": all_peak.price,
             "all_qty": all_peak.qty,
             "all_t_ms": all_peak.t_ms,
+            "all_peaks": [
+                {"price": p.price, "qty": p.qty, "t_ms": p.t_ms}
+                for p in all_peaks
+            ],
         }
 
 

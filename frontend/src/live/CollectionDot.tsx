@@ -14,6 +14,7 @@ export function CollectionDot({ status }: Props) {
     <span
       data-testid={`collection-dot-${status}`}
       title={ariaLabel}
+      role="img"
       aria-label={ariaLabel}
       className="inline-flex items-center gap-1 font-mono"
       style={{ color: colorVar, fontSize: 'var(--text-xs)' }}

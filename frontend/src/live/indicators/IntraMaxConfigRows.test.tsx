@@ -28,6 +28,13 @@ describe('호가 Config Intra-Bar Max 토글 행', () => {
     expect(screen.getByTestId('settings-toggle-askPeakShowAllPrices')).toBeTruthy();
   });
 
+  it('AskPeakConfig에 미체결 후보 표시 범위 옵션', () => {
+    render(<AskPeakConfig />);
+    expect(screen.getByRole('button', { name: '1등만' })).toBeTruthy();
+    expect(screen.getByRole('button', { name: '2등까지' })).toBeTruthy();
+    expect(screen.getByRole('button', { name: '3등까지' })).toBeTruthy();
+  });
+
   it('AskPeakConfig에 두 매도 최대벽 스타일 컨트롤', () => {
     render(<AskPeakConfig />);
     expect(screen.getByText('체결가격 기준 최대벽')).toBeTruthy();
