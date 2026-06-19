@@ -218,10 +218,13 @@ def startup_catchup_enabled_from_env() -> bool:
 
 
 def start_scheduler(data_dir: Path) -> list[asyncio.Task]:
-    """Spawn the catch-up (one-shot) and daily-loop tasks. Returns the
-    handles so the FastAPI lifespan can cancel them on shutdown.
+    """Spawn scheduler-owned background tasks.
+
+    Startup catch-up is opt-in only; daily-loop remains always-on.
     """
-    return [
-        asyncio.create_task(_catchup_run(data_dir), name="watchlist-catchup"),
+    tasks = [
         asyncio.create_task(_daily_loop(data_dir), name="watchlist-daily-loop"),
     ]
+    if startup_catchup_enabled_from_env():
+        tasks.append(asyncio.create_task(_catchup_run(data_dir), name="watchlist-catchup"))
+    return tasks

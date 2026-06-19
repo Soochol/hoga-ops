@@ -335,7 +335,10 @@ async def test_catchup_reconcile_regresses_stale_marker_to_disk_truth(tmp_path: 
 
 
 @pytest.mark.asyncio
-async def test_start_scheduler_spawns_catchup_and_daily_loop(tmp_path: Path):
+async def test_start_scheduler_spawns_only_daily_loop_by_default(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+):
     import asyncio
     from hoga.api import scheduler
 
@@ -344,17 +347,57 @@ async def test_start_scheduler_spawns_catchup_and_daily_loop(tmp_path: Path):
 
     async def fake_catchup(data_dir):
         catchup_called.set()
-        await asyncio.sleep(3600)  # stay alive so cancel() raises
+        await asyncio.sleep(3600)
 
     async def fake_daily_loop(data_dir):
         daily_loop_entered.set()
-        await asyncio.sleep(3600)  # never fire in this test
+        await asyncio.sleep(3600)
+
+    monkeypatch.delenv("HOGA_STARTUP_CATCHUP_ENABLED", raising=False)
+
+    with patch("hoga.api.scheduler._catchup_run", side_effect=fake_catchup), \
+         patch("hoga.api.scheduler._daily_loop", side_effect=fake_daily_loop):
+        tasks = scheduler.start_scheduler(tmp_path)
+        await asyncio.wait_for(daily_loop_entered.wait(), timeout=1.0)
+        assert catchup_called.is_set() is False
+        assert [t.get_name() for t in tasks] == ["watchlist-daily-loop"]
+        for t in tasks:
+            t.cancel()
+        for t in tasks:
+            with pytest.raises((asyncio.CancelledError, BaseException)):
+                await t
+
+
+@pytest.mark.asyncio
+async def test_start_scheduler_can_opt_into_startup_catchup(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+):
+    import asyncio
+    from hoga.api import scheduler
+
+    catchup_called = asyncio.Event()
+    daily_loop_entered = asyncio.Event()
+
+    async def fake_catchup(data_dir):
+        catchup_called.set()
+        await asyncio.sleep(3600)
+
+    async def fake_daily_loop(data_dir):
+        daily_loop_entered.set()
+        await asyncio.sleep(3600)
+
+    monkeypatch.setenv("HOGA_STARTUP_CATCHUP_ENABLED", "true")
 
     with patch("hoga.api.scheduler._catchup_run", side_effect=fake_catchup), \
          patch("hoga.api.scheduler._daily_loop", side_effect=fake_daily_loop):
         tasks = scheduler.start_scheduler(tmp_path)
         await asyncio.wait_for(catchup_called.wait(), timeout=1.0)
         await asyncio.wait_for(daily_loop_entered.wait(), timeout=1.0)
+        assert sorted(t.get_name() for t in tasks) == [
+            "watchlist-catchup",
+            "watchlist-daily-loop",
+        ]
         for t in tasks:
             t.cancel()
         for t in tasks:
