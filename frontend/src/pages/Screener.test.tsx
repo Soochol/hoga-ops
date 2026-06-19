@@ -31,10 +31,15 @@ vi.mock('../state/livePage', () => ({
 // 단일-탭 모델(ADR-0069 개정): 행 클릭은 useJumpToLive → setActiveTabCode(code, label?)로 흐른다.
 // 실제 liveTabs 모듈은 import 시 useLivePageStore.subscribe를 부르는데, 위 livePage
 // 모킹은 selector만 제공하므로 모킹하지 않으면 모듈 로드가 crash 한다.
-const { setActiveTabCode } = vi.hoisted(() => ({ setActiveTabCode: vi.fn() }));
+const { setActiveTabCode, openSymbolInNewTab } = vi.hoisted(() => ({
+  setActiveTabCode: vi.fn(),
+  openSymbolInNewTab: vi.fn(),
+}));
 vi.mock('../state/liveTabs', () => ({
-  useLiveTabsStore: (sel: (s: { setActiveTabCode: typeof setActiveTabCode }) => unknown) =>
-    sel({ setActiveTabCode }),
+  useLiveTabsStore: (sel: (s: {
+    setActiveTabCode: typeof setActiveTabCode;
+    openSymbolInNewTab: typeof openSymbolInNewTab;
+  }) => unknown) => sel({ setActiveTabCode, openSymbolInNewTab }),
 }));
 
 import { Screener } from './Screener';
@@ -44,7 +49,11 @@ import { useQuoteByCode } from '../api/liveQuotes';
 import type { SavedScreener } from '../api/savedScreeners';
 
 // 오버레이 테스트가 주입한 quote 가 다음 테스트로 새지 않도록 매 테스트 후 빈 Map 복구.
-afterEach(() => { vi.mocked(useQuoteByCode).mockReturnValue(new Map()); });
+afterEach(() => {
+  vi.mocked(useQuoteByCode).mockReturnValue(new Map());
+  setActiveTabCode.mockClear();
+  openSymbolInNewTab.mockClear();
+});
 
 function renderPage() {
   const qc = new QueryClient();
@@ -78,6 +87,24 @@ it('runs scan and renders row; click sets the active tab code', async () => {
   await waitFor(() => screen.getByText('삼성전자'));
   fireEvent.click(screen.getByText('삼성전자'));
   expect(setActiveTabCode).toHaveBeenCalledWith('005930', '삼성전자');
+});
+
+it('Ctrl-clicking a row opens the result in a new live tab', async () => {
+  renderPage();
+  fireEvent.click(screen.getByText('조회'));
+  await waitFor(() => screen.getByText('삼성전자'));
+  fireEvent.click(screen.getByText('삼성전자'), { ctrlKey: true });
+  expect(openSymbolInNewTab).toHaveBeenCalledWith('005930', '삼성전자');
+  expect(setActiveTabCode).not.toHaveBeenCalled();
+});
+
+it('Meta-clicking a row opens the result in a new live tab', async () => {
+  renderPage();
+  fireEvent.click(screen.getByText('조회'));
+  await waitFor(() => screen.getByText('삼성전자'));
+  fireEvent.click(screen.getByText('삼성전자'), { metaKey: true });
+  expect(openSymbolInNewTab).toHaveBeenCalledWith('005930', '삼성전자');
+  expect(setActiveTabCode).not.toHaveBeenCalled();
 });
 
 it('row is keyboard-activatable', async () => {

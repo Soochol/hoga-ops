@@ -61,11 +61,14 @@ function snapshotActiveViewport(): void {
 type TabsStore = {
   tabs: LiveTab[];
   activeTabId: string | null;
-  /** 활성 탭의 종목을 제자리 교체한다(관심종목/검색/스크리너/히트맵 클릭·드롭의 공통 동작).
-   *  활성 탭이 없으면(첫 진입·전체 닫힘) 이 종목으로 첫 탭을 만든다. 단일-탭 내비게이션
-   *  모델(ADR-0069 개정): 새 탭은 addBlankTab(=+ 버튼)로만 생기고, 클릭은 현재 탭을 바꾼다.
-   *  같은 코드가 다른 탭에 있어도 포커스하지 않고 현재 탭을 교체한다(중복 허용). */
+  /** 활성 탭의 종목을 제자리 교체한다(관심종목/검색/스크리너/히트맵 일반 클릭·드롭의 공통 동작).
+   *  활성 탭이 없으면(첫 진입·전체 닫힘) 이 종목으로 첫 탭을 만든다. 단일-탭 기본 모델
+   *  (ADR-0069 개정): 일반 클릭은 현재 탭을 바꾸고, 명시적 새 탭 intent(Ctrl/Meta 클릭)는
+   *  openSymbolInNewTab을 사용한다. 같은 코드가 다른 탭에 있어도 포커스하지 않고 현재 탭을
+   *  교체한다(중복 허용). */
   setActiveTabCode: (code: string, label?: string) => void;
+  /** 종목이 채워진 새 탭을 만들어 포커스한다(Ctrl/Meta+종목 클릭). 중복 탭은 허용한다. */
+  openSymbolInNewTab: (code: string, label?: string) => void;
   /** 빈 탭을 만들어 포커스한다(+ 버튼). 종목 선택 전까지 빈 상태(검색 안내)를 보인다. */
   addBlankTab: () => void;
   focusTab: (id: string) => void;
@@ -214,6 +217,20 @@ export const useLiveTabsStore = create<TabsStore>((set, get) => ({
     const updated: LiveTab = { ...active, code, label: label ?? code, historicalFromDate: null, viewport: null };
     set({ tabs: tabs.map((t) => (t.id === active.id ? updated : t)) });
     applyTabToPage(updated);
+  },
+
+  openSymbolInNewTab: (code, label) => {
+    snapshotActiveViewport();
+    const tab: LiveTab = {
+      id: nanoid(8),
+      code,
+      label: label ?? code,
+      timeframe: useLivePageStore.getState().candleTimeframe,
+      historicalFromDate: null,
+      viewport: null,
+    };
+    set({ tabs: [...get().tabs, tab], activeTabId: tab.id });
+    applyTabToPage(tab);
   },
 
   addBlankTab: () => {

@@ -1,5 +1,6 @@
 import type { FolderGroup } from '../watchlist/grouping';
 import type { LiveQuote } from '../api/liveQuotes';
+import type { LiveOpenDisposition } from '../live/liveActivation';
 import type { HeatmapEntry } from '../api/heatmap';
 import { HeatmapFolder, type RowMenuOpener } from './HeatmapFolder';
 import { visibleFolderGroups } from './visibleGroups';
@@ -9,7 +10,7 @@ export interface HeatmapBoardProps {
   groups: FolderGroup<HeatmapEntry>[];
   quoteByCode: Map<string, LiveQuote>;
   sortMode: SortMode;
-  onPick: (code: string, name?: string) => void;
+  onPick: (code: string, name?: string, options?: { disposition?: LiveOpenDisposition }) => void;
   /** 그룹 내 드래그 재정렬 커밋(manual 모드). folderId=null 은 미분류 그룹.
    *  페이지에서 useReorderHeatmapEntries 로 주입. */
   onReorder?: (folderId: string | null, orderedCodes: string[]) => void;

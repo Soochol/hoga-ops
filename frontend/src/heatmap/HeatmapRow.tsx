@@ -1,4 +1,5 @@
 import type { DraggableSyntheticListeners } from '@dnd-kit/core';
+import { dispositionFromMouseEvent, type LiveOpenDisposition } from '../live/liveActivation';
 import { priceDirClass } from '../ui/priceDir';
 import { CandleGlyph } from './CandleGlyph';
 
@@ -10,7 +11,7 @@ export interface HeatmapRowProps {
   open?: number | null;
   high?: number | null;
   low?: number | null;
-  onClick: () => void;
+  onClick: (options?: { disposition?: LiveOpenDisposition }) => void;
   ariaLabel: string;
   testId: string;
   /** 드래그 재정렬(수동 정렬 모드)용 — manual 모드에서만 SortableHeatmapRow가 채운다.
@@ -47,7 +48,7 @@ export function HeatmapRow({
       // 우선되게 한다(현 PointerSensor 는 onPointerDown 만 — 충돌 없음; 향후 KeyboardSensor
       // 도입 시에도 Enter/Space 가 드래그가 아닌 차트 열기로 유지되도록 하는 방어).
       {...dragListeners}
-      onClick={onClick}
+      onClick={(e) => onClick({ disposition: dispositionFromMouseEvent(e) })}
       onContextMenu={onContextMenu}
       onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); onClick(); } }}
       style={dragging ? { ...sortableStyle, opacity: 0.5 } : sortableStyle}

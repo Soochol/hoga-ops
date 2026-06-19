@@ -42,9 +42,15 @@ vi.mock('../state/livePage', () => ({
 // 탭 도입(D5): 행 클릭은 useJumpToLive → setActiveTabCode(code, label?)로 흐른다.
 // 실제 liveTabs 모듈은 import 시 useLivePageStore.subscribe를 부르는데, 위 livePage
 // 모킹은 selector만 제공하므로 모킹하지 않으면 모듈 로드가 crash 한다.
-const { setActiveTabCode } = vi.hoisted(() => ({ setActiveTabCode: vi.fn() }));
+const { setActiveTabCode, openSymbolInNewTab } = vi.hoisted(() => ({
+  setActiveTabCode: vi.fn(),
+  openSymbolInNewTab: vi.fn(),
+}));
 vi.mock('../state/liveTabs', () => ({
-  useLiveTabsStore: (sel: (s: { setActiveTabCode: typeof setActiveTabCode }) => unknown) => sel({ setActiveTabCode }),
+  useLiveTabsStore: (sel: (s: {
+    setActiveTabCode: typeof setActiveTabCode;
+    openSymbolInNewTab: typeof openSymbolInNewTab;
+  }) => unknown) => sel({ setActiveTabCode, openSymbolInNewTab }),
 }));
 
 import { Heatmap } from './Heatmap';
@@ -59,6 +65,7 @@ function renderPage() {
 beforeEach(() => {
   setActiveCode.mockClear();
   setActiveTabCode.mockClear();
+  openSymbolInNewTab.mockClear();
   useHeatmapPrefsStore.setState({ sortMode: 'manual', groupSort: 'manual' });   // eng-review D2: 기본 manual
   Element.prototype.scrollIntoView = vi.fn();              // jsdom 미구현 — 스트립 점프 대비
   // 매 테스트 open 기본값으로 리셋 — per-test override가 다음 테스트로 누수되지 않게.
@@ -84,6 +91,20 @@ it('행 클릭 → 종목 탭 open-or-focus(jump-to-live)', async () => {
   renderPage();
   fireEvent.click(await screen.findByTestId('heatmap-row-005930'));
   expect(setActiveTabCode).toHaveBeenCalledWith('005930', '삼성전자');
+});
+
+it('Ctrl-clicking a heatmap row opens a new live tab', async () => {
+  renderPage();
+  fireEvent.click(await screen.findByTestId('heatmap-row-005930'), { ctrlKey: true });
+  expect(openSymbolInNewTab).toHaveBeenCalledWith('005930', '삼성전자');
+  expect(setActiveTabCode).not.toHaveBeenCalled();
+});
+
+it('Meta-clicking a heatmap row opens a new live tab', async () => {
+  renderPage();
+  fireEvent.click(await screen.findByTestId('heatmap-row-005930'), { metaKey: true });
+  expect(openSymbolInNewTab).toHaveBeenCalledWith('005930', '삼성전자');
+  expect(setActiveTabCode).not.toHaveBeenCalled();
 });
 
 it('기본 manual=order 순, 등락률↓ 토글 시 등락률 내림차순', async () => {
