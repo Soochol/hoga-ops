@@ -1,13 +1,16 @@
 import { apiCall, apiAction } from './client';
-import type { WatchlistEntry, WatchlistFolder } from './watchlist';
+import type { WatchlistFolder } from './watchlist';
 
 // 히트맵은 watchlist와 독립 스토어(ADR-0068)다. 폴더·엔트리의 프론트 표시 타입은
-// 동형이라 재사용(re-export)한다 — 스펙 §4.1. 백엔드 HeatmapEntry는 캡처 필드
-// (registered_at_kst_date / last_success_date)를 내려보내지 않지만, 히트맵 UI는 그
-// 필드를 절대 읽지 않으므로(heat.ts/HeatmapRow 는 code·name·folder_id·order·시세만 사용)
-// 동형 타입 재사용이 안전하다. 독립성은 store·query key·API·mutation 분리로 보장된다.
+// 백엔드 wire와 같은 최소 필드만 가진다. WatchlistEntry의 capture fields를 재사용하면
+// 실제 /api/heatmap payload보다 넓은 타입이 되어 wire drift를 숨긴다.
 export type HeatmapFolder = WatchlistFolder;
-export type HeatmapEntry = WatchlistEntry;
+export interface HeatmapEntry {
+  code: string;
+  name: string;
+  folder_id: string | null;
+  order: number;
+}
 
 export interface HeatmapResponse {
   folders: HeatmapFolder[];

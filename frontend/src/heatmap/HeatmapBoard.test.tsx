@@ -5,13 +5,14 @@ import { it, expect } from 'vitest';
 import { HeatmapBoard } from './HeatmapBoard';
 import type { FolderGroup } from '../watchlist/grouping';
 import type { LiveQuote } from '../api/liveQuotes';
+import type { HeatmapEntry } from '../api/heatmap';
 
-const groups: FolderGroup[] = [
+const groups: FolderGroup<HeatmapEntry>[] = [
   { folder: { id: 'f1', name: '반도체', order: 0 }, entries: [
-    { code: '005930', name: '삼성전자', registered_at_kst_date: '20260101', last_success_date: null, folder_id: 'f1', order: 0 }] },
+    { code: '005930', name: '삼성전자', folder_id: 'f1', order: 0 }] },
   { folder: { id: 'f2', name: '빈폴더', order: 1 }, entries: [] },     // 빈 → 제외
   { folder: null, entries: [                                            // 비어있지 않은 미분류 → 포함(ADR-0068 G3)
-    { code: '000660', name: 'SK하이닉스', registered_at_kst_date: '20260101', last_success_date: null, folder_id: null, order: 0 }] },
+    { code: '000660', name: 'SK하이닉스', folder_id: null, order: 0 }] },
 ];
 
 it('빈 폴더는 제외, 비어있지 않은 미분류는 포함(별도 그룹)', () => {

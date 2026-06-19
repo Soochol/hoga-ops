@@ -3,7 +3,7 @@ import {
 } from '@dnd-kit/core';
 import { SortableContext, useSortable, verticalListSortingStrategy } from '@dnd-kit/sortable';
 import { CSS } from '@dnd-kit/utilities';
-import type { WatchlistFolder, WatchlistEntry } from '../api/watchlist';
+import type { HeatmapEntry, HeatmapFolder as HeatmapFolderModel } from '../api/heatmap';
 import type { LiveQuote } from '../api/liveQuotes';
 import { HeatmapRow } from './HeatmapRow';
 import { sortEntries, avgPct, heatHeaderBg, makePctOf, type SortMode } from './heat';
@@ -17,8 +17,8 @@ export type RowMenuOpener = (
 
 export interface HeatmapFolderProps {
   /** null = 미분류 그룹(ADR-0068 G3). 합성 폴더 객체가 아니라 render-only 그룹이다. */
-  folder: WatchlistFolder | null;
-  entries: WatchlistEntry[];
+  folder: HeatmapFolderModel | null;
+  entries: HeatmapEntry[];
   quoteByCode: Map<string, LiveQuote>;
   sortMode: SortMode;
   onPick: (code: string, name?: string) => void;
