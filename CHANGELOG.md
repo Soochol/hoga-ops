@@ -3,6 +3,12 @@
 All notable changes to this project are documented here.
 The format follows a 4-digit `MAJOR.MINOR.PATCH.MICRO` scheme.
 
+## [0.8.14.0] - 2026-06-19
+
+### Fixed
+- **비-KRX 일봉 최신 구간 복원**: `NXT`, `통합`, `자동` 일봉 차트에서 KIS 응답이
+  요청 구간의 앞쪽부터 잘려 내려와도 다음 구간을 이어 받아 현재 날짜까지 캔들을 표시한다.
+
 ## [0.8.13.5] - 2026-06-19
 
 ### Added
