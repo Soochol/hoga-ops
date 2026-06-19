@@ -1,0 +1,33 @@
+import type { HeatmapEntry, HeatmapResponse } from './heatmap';
+
+const _heatmapEntry: HeatmapEntry = {
+  code: '005930',
+  name: '삼성전자',
+  folder_id: null,
+  order: 0,
+};
+void _heatmapEntry;
+
+const _heatmapResponse: HeatmapResponse = {
+  folders: [],
+  entries: [_heatmapEntry],
+};
+void _heatmapResponse;
+
+const _heatmapEntryWithCaptureMarker: HeatmapEntry = {
+  code: '005930',
+  name: '삼성전자',
+  // @ts-expect-error Heatmap wire entries do not carry Watchlist capture markers.
+  registered_at_kst_date: '20260601',
+  folder_id: null,
+  order: 0,
+};
+void _heatmapEntryWithCaptureMarker;
+
+const _heatmapResponseWithNextRun: HeatmapResponse = {
+  folders: [],
+  entries: [],
+  // @ts-expect-error Heatmap has no scheduler boundary field.
+  next_run_at_ms: 0,
+};
+void _heatmapResponseWithNextRun;

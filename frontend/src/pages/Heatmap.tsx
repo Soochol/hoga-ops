@@ -5,9 +5,6 @@ import {
 } from '../heatmap/useHeatmap';
 import { groupByFolder } from '../watchlist/grouping';
 import { useLiveQuoteOverlay } from '../api/liveQuotes';
-import { useLiveStatus } from '../api/liveStatus';
-import { deriveBannerState } from '../live/useLiveBannerState';
-import { LiveStateBanner } from '../live/LiveStateBanner';
 import { useJumpToLive } from '../live/useJumpToLive';
 import { useHeatmapPrefsStore } from '../state/heatmapPrefs';
 import { HeatmapBoard } from '../heatmap/HeatmapBoard';
@@ -32,7 +29,6 @@ export function Heatmap() {
   const codes = useMemo(() => entries.map((e) => e.code), [entries]);
 
   const { quoteByCode, phase, dataUpdatedAt } = useLiveQuoteOverlay(codes);
-  const statusQ = useLiveStatus();
   const groups = useMemo(() => groupByFolder(folders, entries), [folders, entries]);
   const onPick = useJumpToLive();
   const sortMode = useHeatmapPrefsStore((s) => s.sortMode);
@@ -73,10 +69,6 @@ export function Heatmap() {
     ? new Date(dataUpdatedAt).toLocaleTimeString('ko-KR') : '—';
   const visibleCount = visibleFolderGroups(groups)
     .reduce((n, g) => n + g.entries.length, 0);
-  // eng-review Q4: 자격증명 없음/오프라인 배너는 /live 와 동일 신호 재사용(DRY).
-  // 빈 히트맵은 아래 빈-상태가 처리하므로 여기선 kis_credentials_missing 만 뜬다.
-  const banner = deriveBannerState({ status: statusQ.data ?? null, watchlistSize: entries.length });
-
   if (isLoading) return <div className="p-4 text-fg-dim">히트맵 불러오는 중…</div>;
   if (error) return <div className="p-4 text-error">히트맵을 불러오지 못했습니다.</div>;
   if (entries.length === 0) return <div className="p-4 text-fg-dim">히트맵이 비어 있습니다.</div>;
@@ -126,7 +118,6 @@ export function Heatmap() {
           </span>
         </span>
       </header>
-      <LiveStateBanner primary={banner.primary} stack={banner.stack} />
       <SectorTempStrip groups={groups} quoteByCode={quoteByCode} onJump={scrollToFolder} />
       {showNewGroup && (
         <GroupNameModal

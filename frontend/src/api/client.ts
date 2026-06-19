@@ -1,16 +1,17 @@
-import { loadConfig, type AppConfig } from '../config';
+import { loadConfig, resolveApiUrl, resolveWsUrl, type AppConfig } from '../config';
 
 let _configPromise: Promise<AppConfig> | null = null;
 
 export async function apiUrl(path: string): Promise<string> {
   if (!_configPromise) _configPromise = loadConfig();
   const cfg = await _configPromise;
-  return `${cfg.api_url}${path}`;
+  return resolveApiUrl(cfg, path);
 }
 
-/** Build a ws(s):// URL by swapping the configured http(s) api_url scheme. */
 export async function wsUrl(path: string): Promise<string> {
-  return (await apiUrl(path)).replace(/^http/, 'ws');
+  if (!_configPromise) _configPromise = loadConfig();
+  const cfg = await _configPromise;
+  return resolveWsUrl(cfg, path);
 }
 
 /** Error thrown by apiCall / apiAction when the backend responds non-OK.

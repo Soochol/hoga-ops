@@ -34,7 +34,6 @@ from hoga.api.models import (
     MemberAddRequest,
     WatchlistDocument,
     WatchlistEntry,
-    WatchlistEntryView,
     WatchlistFolderView,
     WatchlistResponse,
 )
@@ -56,6 +55,7 @@ from hoga.api.watchlist import (
     reorder_entries,
     reorder_folders,
 )
+from hoga.api.watchlist_projection import project_watchlist_response
 from hoga.collector.orchestrator import now_kst
 from hoga.live.lifecycle import refresh_live_stream
 
@@ -72,22 +72,7 @@ def _project(doc: WatchlistDocument, *, next_run_at_ms: int) -> WatchlistRespons
     a multi-folder Code appears once per folder). Backend projection, no client
     adapter (ADR-0004/0070 option B). Drift (a member with no entry) is logged
     loudly and skipped — never crashes the read (ADR-0065)."""
-    by_code = {e.code: e for e in doc.entries}
-    entries: list[WatchlistEntryView] = []
-    for f in doc.folders:
-        for order, code in enumerate(f.member_codes):
-            base = by_code.get(code)
-            if base is None:
-                log.warning("watchlist.drift: member %s in folder %s has no entry (skipped)", code, f.id)
-                continue
-            entries.append(WatchlistEntryView(
-                code=base.code, name=base.name,
-                registered_at_kst_date=base.registered_at_kst_date,
-                last_success_date=base.last_success_date,
-                folder_id=f.id, order=order,
-            ))
-    folders = [WatchlistFolderView(id=f.id, name=f.name, order=f.order) for f in doc.folders]
-    return WatchlistResponse(folders=folders, entries=entries, next_run_at_ms=next_run_at_ms)
+    return project_watchlist_response(doc, next_run_at_ms=next_run_at_ms)
 
 
 def build_router(*, data_dir: Path) -> APIRouter:

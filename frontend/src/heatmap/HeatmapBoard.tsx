@@ -1,12 +1,13 @@
 import type { FolderGroup } from '../watchlist/grouping';
 import type { LiveQuote } from '../api/liveQuotes';
 import type { LiveOpenDisposition } from '../live/liveActivation';
+import type { HeatmapEntry } from '../api/heatmap';
 import { HeatmapFolder, type RowMenuOpener } from './HeatmapFolder';
 import { visibleFolderGroups } from './visibleGroups';
 import type { SortMode } from './heat';
 
 export interface HeatmapBoardProps {
-  groups: FolderGroup[];
+  groups: FolderGroup<HeatmapEntry>[];
   quoteByCode: Map<string, LiveQuote>;
   sortMode: SortMode;
   onPick: (code: string, name?: string, options?: { disposition?: LiveOpenDisposition }) => void;

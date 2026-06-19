@@ -29,10 +29,10 @@ vi.mock('../api/liveQuotes', async (orig) => ({
   })),
 }));
 
-// liveStatus: 기본 running:true → 배너 없음. 자격증명 배너 테스트에서만 override.
+const { useLiveStatusMock } = vi.hoisted(() => ({ useLiveStatusMock: vi.fn() }));
 vi.mock('../api/liveStatus', async (orig) => ({
   ...(await orig<typeof import('../api/liveStatus')>()),
-  useLiveStatus: vi.fn(() => ({ data: { running: true, started_at_ms: 1, cycle_lag_ms: 0 } })),
+  useLiveStatus: useLiveStatusMock,
 }));
 
 const { setActiveCode } = vi.hoisted(() => ({ setActiveCode: vi.fn() }));
@@ -55,7 +55,6 @@ vi.mock('../state/liveTabs', () => ({
 
 import { Heatmap } from './Heatmap';
 import { useHeatmapPrefsStore } from '../state/heatmapPrefs';
-import { useLiveStatus } from '../api/liveStatus';
 import { useLiveQuoteOverlay } from '../api/liveQuotes';
 
 function renderPage() {
@@ -77,9 +76,7 @@ beforeEach(() => {
     ]),
     phase: 'open', dataUpdatedAt: 0,
   } as ReturnType<typeof useLiveQuoteOverlay>);
-  vi.mocked(useLiveStatus).mockReturnValue(
-    { data: { running: true, started_at_ms: 1, cycle_lag_ms: 0 } } as ReturnType<typeof useLiveStatus>,
-  );
+  useLiveStatusMock.mockClear();
 });
 
 it('폴더·종목·phase 배지 렌더 + 색 범례 제거됨(#6)', async () => {
@@ -120,12 +117,11 @@ it('기본 manual=order 순, 등락률↓ 토글 시 등락률 내림차순', as
   expect(change).toEqual(['SK하이닉스', '삼성전자']);          // +5% 먼저
 });
 
-it('관심종목 있는데 KIS 자격증명 없으면(poller 미기동) 배너', async () => {
-  vi.mocked(useLiveStatus).mockReturnValue(
-    { data: { running: false, started_at_ms: null, cycle_lag_ms: 0 } } as ReturnType<typeof useLiveStatus>,
-  );
+it('히트맵은 quote-only 표면이라 Live Capture 상태를 조회하지 않는다', async () => {
   renderPage();
-  expect(await screen.findByText('KIS 자격증명이 설정되지 않았습니다')).toBeInTheDocument();
+  expect(await screen.findByText('삼성전자')).toBeInTheDocument();
+  expect(screen.queryByText('KIS 자격증명이 설정되지 않았습니다')).toBeNull();
+  expect(useLiveStatusMock).not.toHaveBeenCalled();
 });
 
 it('섹터 온도 스트립 칩 렌더(반도체 평균 +1.5%)', async () => {

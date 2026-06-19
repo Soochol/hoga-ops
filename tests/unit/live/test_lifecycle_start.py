@@ -102,7 +102,8 @@ async def test_lifespan_starts_and_stops_stream_gracefully(tmp_path: Path, monke
     Task 11: lifespan was switched from poller to stream path.  The WS gate
     (ws_capture_window) is deterministically forced closed so KisWsClient.run
     sleeps instead of attempting a real approval-key fetch — the test is
-    therefore safe to run at any day/time without network access.
+    therefore safe to run at any day/time without network access. The live
+    startup is opt-in, so this test enables it explicitly.
     """
     import json
     from fastapi.testclient import TestClient
@@ -117,6 +118,7 @@ async def test_lifespan_starts_and_stops_stream_gracefully(tmp_path: Path, monke
     monkeypatch.setattr(session_gate, "should_run_now", lambda _t: False)
 
     lifecycle.reset_for_tests()
+    monkeypatch.setenv("HOGA_LIVE_STARTUP_ENABLED", "true")
     monkeypatch.setenv("KIS_APP_KEY", "K")
     monkeypatch.setenv("KIS_APP_SECRET", "S")
     (tmp_path / "watchlist.json").write_text(json.dumps({

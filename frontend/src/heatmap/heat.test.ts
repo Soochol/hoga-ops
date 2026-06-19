@@ -1,12 +1,11 @@
 import { describe, it, expect } from 'vitest';
 import { heatBg, sortEntries, avgPct, heatHeaderBg, orderFolderGroups, makePctOf } from './heat';
 import type { FolderGroup } from '../watchlist/grouping';
-import type { WatchlistEntry } from '../api/watchlist';
+import type { HeatmapEntry } from '../api/heatmap';
 import type { LiveQuote } from '../api/liveQuotes';
 
-const E = (code: string, order: number): WatchlistEntry => ({
-  code, name: code, registered_at_kst_date: '20260101',
-  last_success_date: null, folder_id: 'f1', order,
+const E = (code: string, order: number): HeatmapEntry => ({
+  code, name: code, folder_id: 'f1', order,
 });
 
 describe('makePctOf', () => {
@@ -79,13 +78,13 @@ describe('avgPct', () => {
   });
 });
 
-const FG = (id: string | null): FolderGroup => ({
+const FG = (id: string | null): FolderGroup<HeatmapEntry> => ({
   folder: id === null ? null : { id, name: id, order: 0 },
   entries: [],
 });
-const avgMap = (m: Record<string, number | null>) => (g: FolderGroup): number | null =>
+const avgMap = (m: Record<string, number | null>) => (g: FolderGroup<HeatmapEntry>): number | null =>
   g.folder ? (m[g.folder.id] ?? null) : (m.__uncat__ ?? null);
-const ids = (gs: FolderGroup[]) => gs.map((x) => x.folder?.id ?? '__uncat__');
+const ids = (gs: FolderGroup<HeatmapEntry>[]) => gs.map((x) => x.folder?.id ?? '__uncat__');
 
 describe('orderFolderGroups', () => {
   it('manual = 입력 순서 그대로(동일 참조)', () => {

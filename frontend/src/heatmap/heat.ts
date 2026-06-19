@@ -1,5 +1,5 @@
-import type { WatchlistEntry } from '../api/watchlist';
 import type { FolderGroup } from '../watchlist/grouping';
+import type { HeatmapEntry } from '../api/heatmap';
 import type { LiveQuote } from '../api/liveQuotes';
 import { makeChangePctOf, sortEntriesByChangePct } from '../rightrail/quoteSort';
 
@@ -38,16 +38,16 @@ export function makePctOf(quoteByCode: Map<string, LiveQuote>): (code: string) =
 
 /** 폴더 내 정렬. change=등락률 내림차순(null 맨 아래), manual=entry.order. 비파괴(복사). */
 export function sortEntries(
-  entries: WatchlistEntry[],
+  entries: HeatmapEntry[],
   mode: SortMode,
   pctOf: (code: string) => number | null,
-): WatchlistEntry[] {
+): HeatmapEntry[] {
   return sortEntriesByChangePct(entries, pctOf, mode === 'manual' ? 'default' : 'change_pct_desc');
 }
 
 /** 섹터 온도 = 시세 도착 종목의 비가중 평균 등락률. 전부 결측이면 null. */
 export function avgPct(
-  entries: WatchlistEntry[],
+  entries: HeatmapEntry[],
   pctOf: (code: string) => number | null,
 ): number | null {
   const vals = entries.map((e) => pctOf(e.code)).filter((v): v is number => v !== null);
@@ -61,10 +61,10 @@ export type GroupSort = 'manual' | 'desc' | 'asc';
  *  'desc'/'asc'=실폴더를 평균 등락(avgOf)으로 정렬, avg=null인 실폴더는 실폴더 구간
  *  끝에(원순서 안정), 미분류(folder=null)는 **항상 맨 끝** 고정. 비파괴(복사). */
 export function orderFolderGroups(
-  groups: FolderGroup[],
+  groups: FolderGroup<HeatmapEntry>[],
   mode: GroupSort,
-  avgOf: (g: FolderGroup) => number | null,
-): FolderGroup[] {
+  avgOf: (g: FolderGroup<HeatmapEntry>) => number | null,
+): FolderGroup<HeatmapEntry>[] {
   if (mode === 'manual') return groups;
   const real = groups.map((g, i) => ({ g, i })).filter((x) => x.g.folder !== null);
   const uncat = groups.filter((g) => g.folder === null);

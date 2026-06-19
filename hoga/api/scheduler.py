@@ -12,10 +12,12 @@ from __future__ import annotations
 
 import asyncio
 import datetime as dt
+import os
 import logging
 from pathlib import Path
 
 from hoga.api.calendar import trading_days_in_range
+from hoga.api.calendar_policy import daily_run_allowed_by_calendar, trading_days_for_enqueue
 from hoga.api.captures import enqueue_items_core
 from hoga.api.disk_state import latest_complete_date
 from hoga.api.eligibility import find_ineligible_dates
@@ -86,14 +88,7 @@ async def _daily_run(data_dir: Path) -> None:
 
     now = now_kst()
     today = now.strftime("%Y%m%d")
-    try:
-        # to_thread: a cold-month KIS chk-holiday fetch is blocking sync HTTP —
-        # never run it on the event loop (the live poller shares this loop).
-        trading = await asyncio.to_thread(trading_days_in_range, today, today)
-    except Exception:  # noqa: BLE001
-        log.warning("daily run: trading-day check failed, skipping")
-        return
-    if today not in trading:
+    if not await daily_run_allowed_by_calendar(trading_days_in_range, today):
         log.info("daily run: %s is not a trading day, skipping", today)
         return
     for entry in load_watchlist(data_dir):
@@ -161,7 +156,7 @@ async def catchup_one_entry(
     start = next_kst_day(floor)
     if start > today:
         return EnqueueResponse(enqueued=[], deduped=[])
-    candidates = await asyncio.to_thread(trading_days_in_range, start, today)
+    candidates = await trading_days_for_enqueue(trading_days_in_range, start, today)
 
     # Step 3: Q14 pre-trim.
     too_early = set(find_ineligible_dates(candidate_dates=candidates, now=now))
@@ -207,11 +202,23 @@ async def _daily_loop(data_dir: Path) -> None:
             log.exception("daily run crashed; loop continues")
 
 
-def start_scheduler(data_dir: Path) -> list[asyncio.Task]:
-    """Spawn the catch-up (one-shot) and daily-loop tasks. Returns the
-    handles so the FastAPI lifespan can cancel them on shutdown.
+def startup_catchup_enabled_from_env() -> bool:
+    """Whether startup should run the one-shot watchlist catch-up.
+
+    Default is false so process boot does not fan out into KIS calendar/capture
+    work. Operators can opt in locally with HOGA_STARTUP_CATCHUP_ENABLED=true.
     """
-    return [
-        asyncio.create_task(_catchup_run(data_dir), name="watchlist-catchup"),
+    return os.environ.get("HOGA_STARTUP_CATCHUP_ENABLED") == "true"
+
+
+def start_scheduler(data_dir: Path) -> list[asyncio.Task]:
+    """Spawn scheduler-owned background tasks.
+
+    Startup catch-up is opt-in only; daily-loop remains always-on.
+    """
+    tasks = [
         asyncio.create_task(_daily_loop(data_dir), name="watchlist-daily-loop"),
     ]
+    if startup_catchup_enabled_from_env():
+        tasks.append(asyncio.create_task(_catchup_run(data_dir), name="watchlist-catchup"))
+    return tasks

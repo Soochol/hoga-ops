@@ -1,7 +1,7 @@
 import { useLivePageStore } from '../state/livePage';
 import { useConnectionLiveness } from '../api/useConnectionLiveness';
 import { LIVE_STALE_MS } from '../api/liveness';
-import { captureHealthSeverity, captureHealthLabel, captureHealthPillColor } from './captureHealthPill';
+import { captureHealthPillColor } from './captureHealthPill';
 import { SourceChip } from '../chart/SourceChip';
 import { useSymbols } from '../capture/useSymbols';
 import type { RangeBundle } from '../api/types';
@@ -16,18 +16,18 @@ import { deriveCollectionStatus, deriveDisplayStatus } from './collectionStatus'
 import { CollectionDot } from './CollectionDot';
 import type { LiveVenueOption } from '../state/liveVenue';
 import { liveVenueDisplayLabel, liveVenueKeepsHogaKrx } from './liveVenuePolicy';
+import type { CaptureHealthView } from './liveStatusProjection';
 
 interface Props {
   activeCode: string | null;
-  captureHealthy: boolean;
-  captureReason: string;
+  captureHealth: CaptureHealthView;
   /** The Live Candle Backfill bundle, owned by LivePage. ADR-0040 — single
    * useLiveBundle call site per page. */
   bundle: RangeBundle | null;
   venue?: LiveVenueOption;
 }
 
-export function LiveStatusBar({ activeCode, captureHealthy, captureReason, bundle, venue = 'KRX' }: Props) {
+export function LiveStatusBar({ activeCode, captureHealth, bundle, venue = 'KRX' }: Props) {
   // Threshold MUST exceed the 30s server ping so a connected-but-idle
   // socket (e.g. market closed) stays realtime; only a real disconnect
   // (no frame for >35s) flips it to disconnected. (plan-review cross-task flag)
@@ -139,12 +139,11 @@ export function LiveStatusBar({ activeCode, captureHealthy, captureReason, bundl
       )}
       <span aria-hidden>·</span>
       {(() => {
-        const sev = captureHealthSeverity(captureHealthy, captureReason);
-        if (captureHealthy && sev === 'ok') {
+        if (captureHealth.showDot) {
           return (
             <span
               data-testid="capture-health-dot"
-              title={`capture_reason = ${captureReason}`}
+              title={captureHealth.title}
               aria-label="캡처 정상"
               className="inline-block rounded-full"
               style={{
@@ -154,18 +153,18 @@ export function LiveStatusBar({ activeCode, captureHealthy, captureReason, bundl
             />
           );
         }
-        const capPill = captureHealthPillColor(sev);
+        const capPill = captureHealthPillColor(captureHealth.severity);
         return (
           <span
             data-testid="capture-health-pill"
-            title={`capture_reason = ${captureReason}`}
+            title={captureHealth.title}
             className="font-mono px-2 py-0.5 rounded"
             style={{
               background: capPill.bg, border: `1px solid ${capPill.border}`,
               color: capPill.fg, fontSize: 'var(--text-xs)',
             }}
           >
-            {captureHealthLabel(captureHealthy, captureReason)}
+            {captureHealth.label}
           </span>
         );
       })()}

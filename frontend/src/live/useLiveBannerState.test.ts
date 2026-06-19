@@ -23,6 +23,14 @@ describe('deriveBannerState', () => {
     expect(r.primary).toBe('kis_credentials_missing');
   });
 
+  it('does not show kis_credentials_missing for normal offline live startup state', () => {
+    const r = deriveBannerState({
+      status: { ...baseStatus, running: false, started_at_ms: null, capture_reason: 'offline' },
+      watchlistSize: 2,
+    });
+    expect(r.primary).toBeNull();
+  });
+
   // Regression (diagnose 2026-05-30): /live keyed its empty-state off
   // status.watchlist_count (poller-tracked, always 0 when the poller is down),
   // so a populated watchlist + stopped poller wrongly rendered

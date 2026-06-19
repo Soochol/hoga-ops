@@ -141,12 +141,10 @@ def seed_from_watchlist_if_absent(data_dir: Path) -> None:
     wl = _watchlist.load_document(data_dir)
     if not wl.entries:
         return  # nothing to seed yet; retry next boot
-    folders = [WatchlistFolder(id=f.id, name=f.name, order=f.order) for f in wl.folders]
-    # Derive each Code's (folder_id, order) from the first folder it appears in.
-    placement: dict[str, tuple[str, int]] = {}
-    for f in sorted(wl.folders, key=lambda f: f.order):
-        for order, code in enumerate(f.member_codes):
-            placement.setdefault(code, (f.id, order))
+    from hoga.api.watchlist_projection import first_membership_positions, ordered_folders
+
+    folders = [WatchlistFolder(id=f.id, name=f.name, order=f.order) for f in ordered_folders(wl)]
+    placement = first_membership_positions(wl)
     name_by_code = {e.code: e.name for e in wl.entries}
     entries = [
         HeatmapEntry(code=code, name=name_by_code.get(code, code),

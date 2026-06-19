@@ -4,7 +4,7 @@ import json
 import pytest
 
 import hoga.live.ws_client as ws_client_mod
-from hoga.live.ws_client import KisWsClient, build_request
+from hoga.live.ws_client import DuplicateAppKeyInUse, KisWsClient, build_request
 
 
 def test_build_request_shape():
@@ -111,6 +111,50 @@ async def test_recv_loop_counts_subscription_acks():
         await client._recv_loop(fake)
     assert client.sub_acked == 2
     assert client.sub_rejected == 1
+
+
+async def test_recv_loop_raises_duplicate_appkey_on_ops8996():
+    msg = '{"header":{"tr_id":null},"body":{"rt_cd":"9","msg_cd":"OPSP8996","msg1":"ALREADY IN USE appkey"}}'
+    fake = FakeWs([msg])
+    client = KisWsClient(
+        approval_key_fn=_fake_approval, on_tick=None, date_fn=lambda: "20260605"
+    )
+
+    with pytest.raises(DuplicateAppKeyInUse):
+        await client._recv_loop(fake)
+
+    assert client.sub_rejected == 1
+
+
+async def test_run_duplicate_appkey_uses_long_backoff_without_fast_reconnect(monkeypatch):
+    msg = '{"header":{"tr_id":null},"body":{"rt_cd":"9","msg_cd":"OPSP8996","msg1":"ALREADY IN USE appkey"}}'
+    calls = {"connect": 0}
+    sleeps: list[float] = []
+
+    def fake_connect(url, **kwargs):
+        calls["connect"] += 1
+        return _FakeConnectCM(FakeWs([msg]))
+
+    async def fake_sleep(delay: float) -> None:
+        if delay == 0:
+            return
+        sleeps.append(delay)
+        raise asyncio.CancelledError
+
+    monkeypatch.setattr(ws_client_mod.websockets, "connect", fake_connect)
+    monkeypatch.setattr(ws_client_mod, "_APPKEY_IN_USE_BACKOFF_S", 123)
+    monkeypatch.setattr(ws_client_mod.asyncio, "sleep", fake_sleep)
+
+    client = KisWsClient(
+        approval_key_fn=_fake_approval, on_tick=None, date_fn=lambda: "20260605"
+    )
+
+    with pytest.raises(asyncio.CancelledError):
+        await client.run(["005930"])
+
+    assert calls["connect"] == 1
+    assert sleeps == [123]
+    assert client.connected is False
 
 
 async def test_subscription_counters_reset_fields_exist():

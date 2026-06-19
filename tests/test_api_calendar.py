@@ -3,6 +3,8 @@ from __future__ import annotations
 
 import datetime as dt
 import json
+import time
+from concurrent.futures import ThreadPoolExecutor
 
 import pytest
 from fastapi.testclient import TestClient
@@ -387,6 +389,38 @@ def test_trading_days_for_negative_caches_failures(
     calendar_module._failure_cache[key] -= calendar_module._FAILURE_TTL_SECONDS + 1
     assert calendar_module._trading_days_for(2026, 5) is None
     assert calls["n"] == 2
+
+
+def test_trading_days_for_singleflights_concurrent_failures(
+    monkeypatch: pytest.MonkeyPatch,
+    caplog: pytest.LogCaptureFixture,
+    _reset_calendar_state: None,
+) -> None:
+    """Concurrent startup callers for the same month should share one failed
+    KIS attempt. The negative cache prevents later retries, but without a
+    lock two first callers can miss the cache together and duplicate the
+    chk-holiday 500/log wall."""
+    import hoga.api.kis_holidays as kis_holidays_module
+
+    calls = {"n": 0}
+
+    def _raise(year, month):
+        calls["n"] += 1
+        time.sleep(0.05)
+        raise kis_holidays_module.KisHolidayFetchError("upstream down")
+
+    monkeypatch.setattr(kis_holidays_module, "fetch_month_trading_days", _raise)
+
+    with (
+        caplog.at_level("WARNING", logger="hoga.api.calendar"),
+        ThreadPoolExecutor(max_workers=2) as pool,
+    ):
+        got = list(pool.map(lambda _i: calendar_module._trading_days_for(2026, 5), range(2)))
+
+    assert got == [None, None]
+    assert calls["n"] == 1
+    warnings = [r for r in caplog.records if "KIS trading-day fetch failed" in r.message]
+    assert len(warnings) == 1
 
 
 def test_trading_days_for_maps_creds_missing_to_distinct_reason(

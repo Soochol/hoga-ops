@@ -3,13 +3,13 @@ import { it, expect, vi } from 'vitest';
 import { SectorTempStrip } from './SectorTempStrip';
 import type { FolderGroup } from '../watchlist/grouping';
 import type { LiveQuote } from '../api/liveQuotes';
+import type { HeatmapEntry } from '../api/heatmap';
 
-const entry = (code: string, folderId: string | null, order = 0) => ({
-  code, name: code, registered_at_kst_date: '20260101',
-  last_success_date: null, folder_id: folderId, order,
+const entry = (code: string, folderId: string | null, order = 0): HeatmapEntry => ({
+  code, name: code, folder_id: folderId, order,
 });
 
-const groups: FolderGroup[] = [
+const groups: FolderGroup<HeatmapEntry>[] = [
   { folder: { id: 'f1', name: '반도체', order: 0 }, entries: [entry('005930', 'f1')] }, // +1
   { folder: { id: 'f2', name: '로봇', order: 1 }, entries: [entry('111', 'f2')] },       // +4
   { folder: { id: 'f3', name: '통신', order: 2 }, entries: [entry('222', 'f3')] },       // -2
