@@ -3,6 +3,13 @@
 All notable changes to this project are documented here.
 The format follows a 4-digit `MAJOR.MINOR.PATCH.MICRO` scheme.
 
+## [0.8.16.2] - 2026-06-20
+
+### Fixed
+- **당일 매도 최대벽 순위 기준 정정**: 표시 범위 옵션이 미체결 후보가 아니라 체결가격 기준
+  최대벽을 `1등만`, `2등까지`, `3등까지` 보여주도록 수정했다.
+- 미체결 포함 최대 매도벽은 순위 옵션과 분리해 당일 1개만 표시하도록 정리했다.
+
 ## [0.8.16.1] - 2026-06-20
 
 ### Changed

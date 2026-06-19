@@ -118,16 +118,17 @@ function untradedPeakFromFields(p: AskPeak, intraMax: boolean): AskPeak | null {
   };
 }
 
-function askPeakFromCandidate(date: string, candidate: NonNullable<AskPeak['all_peaks']>[number]): AskPeak {
-  return {
-    date,
-    price: candidate.price,
-    qty: candidate.qty,
-    t_ms: candidate.t_ms,
-    max_price: candidate.price,
-    max_qty: candidate.qty,
-    max_t_ms: candidate.t_ms,
-  };
+function limitTodayBaselinePeaks(
+  peaks: readonly AskPeak[],
+  todayKst: string,
+  limit: 1 | 2 | 3,
+): AskPeak[] {
+  const today = peaks
+    .filter((p) => p.date === todayKst)
+    .slice()
+    .sort((a, b) => selectedQty(b, false) - selectedQty(a, false) || a.t_ms - b.t_ms || a.price - b.price)
+    .slice(0, limit);
+  return peaks.filter((p) => p.date !== todayKst).concat(today);
 }
 
 export function buildAskPeakOverlaySegments({
@@ -143,8 +144,9 @@ export function buildAskPeakOverlaySegments({
   showAllPrices,
   allPriceRankLimit = 1,
 }: BuildAskPeakOverlaySegmentsArgs): AskPeakSegment[] {
+  const baselinePeaks = limitTodayBaselinePeaks(dayAskPeaks, todayKst, allPriceRankLimit);
   const baseline = buildAskPeakSegments(
-    dayAskPeaks,
+    baselinePeaks,
     segments,
     candles,
     axis,
@@ -156,11 +158,11 @@ export function buildAskPeakOverlaySegments({
   if (!showAllPrices) return baseline;
 
   const untradedPeaks: AskPeak[] = [];
-  for (const p of dayAskPeaks) {
+  const addedUntradedDates = new Set<string>();
+  for (const p of baselinePeaks) {
+    if (addedUntradedDates.has(p.date)) continue;
     const candidates = p.date === todayKst && todayAllPriceAskPeak?.date === todayKst
-      ? (todayAllPriceAskPeak.all_peaks?.slice(0, allPriceRankLimit).map((candidate) => (
-        askPeakFromCandidate(todayKst, candidate)
-      )) ?? [todayAllPriceAskPeak])
+      ? [todayAllPriceAskPeak]
       : [untradedPeakFromFields(p, intraMax)];
     const seenPrices = new Set([intraMax ? p.max_price : p.price]);
     for (const untradedPeak of candidates) {
@@ -170,6 +172,7 @@ export function buildAskPeakOverlaySegments({
       if (selectedQty(untradedPeak, intraMax) <= selectedQty(p, intraMax)) continue;
       seenPrices.add(price);
       untradedPeaks.push(untradedPeak);
+      addedUntradedDates.add(p.date);
     }
   }
   if (untradedPeaks.length === 0) return baseline;

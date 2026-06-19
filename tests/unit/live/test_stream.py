@@ -111,6 +111,9 @@ async def test_on_tick_updates_today_ask_peak_state(tmp_path):
         "traded_price": 101,
         "traded_qty": 3,
         "traded_t_ms": now + 5_000,
+        "traded_peaks": [
+            {"price": 101, "qty": 3, "t_ms": now + 5_000},
+        ],
         "all_price": 102,
         "all_qty": 9,
         "all_t_ms": now + 5_000,
@@ -343,6 +346,9 @@ async def test_seed_ask_peak_from_live_file_loads_full_day_peak_and_full_coverag
         "traded_price": 10_100,
         "traded_qty": 500,
         "traded_t_ms": _kst_ms(9, 10),
+        "traded_peaks": [
+            {"price": 10_100, "qty": 500, "t_ms": _kst_ms(9, 10)},
+        ],
         "all_price": 10_200,
         "all_qty": 900,
         "all_t_ms": _kst_ms(9, 10),

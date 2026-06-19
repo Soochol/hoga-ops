@@ -11,7 +11,14 @@ const deep = (t_ms: number, q: number, price = 26000): ObSnapshot => ({
   bids: Array.from({ length: 10 }, (_, i) => ({ price: 24000 - i, qty: 100 })),
 });
 
-const byDate = (peaks: readonly AskPeak[]) => Object.fromEntries(peaks.map((p) => [p.date, p]));
+const byDate = (peaks: readonly AskPeak[]) => {
+  const out: Record<string, AskPeak> = {};
+  for (const peak of peaks) {
+    const current = out[peak.date];
+    if (!current || peak.qty > current.qty) out[peak.date] = peak;
+  }
+  return out;
+};
 const atKst = (hh: number, mm = 0) => Date.UTC(2026, 5, 13, hh - 9, mm);
 const candle = (t_ms: number, low: number, high: number): Candle => ({
   ts_ms: t_ms,
@@ -138,6 +145,26 @@ describe('useDayAskPeaks', () => {
       max_qty: 9000,
       max_t_ms: 3,
     });
+  });
+
+  it('backend today payload의 traded_peaks를 체결가격 기준 후보 목록으로 보존한다', () => {
+    const restPeak = todayAskPeak({
+      traded_peaks: [
+        { price: 25500, qty: 9000, t_ms: 3 },
+        { price: 25600, qty: 8000, t_ms: 4 },
+        { price: 25700, qty: 7000, t_ms: 5 },
+      ],
+    });
+
+    const { result } = renderHook(
+      () => useDayAskPeaks([], [], [], '20260613', '005930', restPeak),
+    );
+
+    expect(result.current).toEqual([
+      { date: '20260613', price: 25500, qty: 9000, t_ms: 3, max_price: 25500, max_qty: 9000, max_t_ms: 3 },
+      { date: '20260613', price: 25600, qty: 8000, t_ms: 4, max_price: 25600, max_qty: 8000, max_t_ms: 4 },
+      { date: '20260613', price: 25700, qty: 7000, t_ms: 5, max_price: 25700, max_qty: 7000, max_t_ms: 5 },
+    ]);
   });
 
   it('backend today payload에 traded peak가 없으면 오늘 기준선을 만들지 않는다', () => {
