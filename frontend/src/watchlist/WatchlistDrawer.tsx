@@ -1,11 +1,11 @@
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { useEffect, useId, useMemo, useRef, useState } from 'react';
 import { useJumpToLive } from '../live/useJumpToLive';
 import type { LiveOpenDisposition } from '../live/liveActivation';
 import { useQuoteByCode } from '../api/liveQuotes';
 import { makeChangePctOf, sortEntriesByChangePct, type QuoteSortMode } from '../rightrail/quoteSort';
 import { useLivePageStore } from '../state/livePage';
 import { useLiveStatus } from '../api/liveStatus';
-import { deriveCollectionStatus, deriveDisplayStatus } from '../live/collectionStatus';
+import { DISPLAY_PRESENTATION, deriveCollectionStatus, deriveDisplayStatus } from '../live/collectionStatus';
 import { CollectionDot } from '../live/CollectionDot';
 import {
   useWatchlist, useCatchupAll, useRemoveFromWatchlist,
@@ -83,17 +83,35 @@ function ChevronIcon({ collapsed }: { collapsed: boolean }) {
   );
 }
 
-function SortIcon({ active }: { active: boolean }) {
+function SortIcon({ mode }: { mode: QuoteSortMode | undefined }) {
+  const iconMode = mode ?? 'default';
   return (
-    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+    <svg data-testid={`sort-icon-${iconMode === 'change_pct_asc' ? 'asc' : iconMode === 'change_pct_desc' ? 'desc' : 'default'}`}
+      width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor"
       strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
-      <path d="M4 7h10" />
-      <path d="M4 12h7" />
-      <path d="M4 17h4" />
-      <path d="M17 6v12" />
-      <path d={active ? 'M14 9l3-3 3 3' : 'M14 15l3 3 3-3'} />
+      {iconMode === 'default' ? (
+        <>
+          <path d="M5 7h14" />
+          <path d="M5 12h14" />
+          <path d="M5 17h14" />
+        </>
+      ) : (
+        <>
+          <path d="M4 7h10" />
+          <path d="M4 12h7" />
+          <path d="M4 17h4" />
+          <path d="M17 6v12" />
+          <path d={iconMode === 'change_pct_asc' ? 'M14 9l3-3 3 3' : 'M14 15l3 3 3-3'} />
+        </>
+      )}
     </svg>
   );
+}
+
+function sortModeDescription(mode: QuoteSortMode | undefined): string {
+  if (mode === 'change_pct_asc') return '현재 등락률 오름차순, 클릭하면 등락률 내림차순';
+  if (mode === 'change_pct_desc') return '현재 등락률 내림차순, 클릭하면 기본 정렬';
+  return '현재 기본 정렬, 클릭하면 등락률 오름차순';
 }
 
 /**
@@ -117,6 +135,7 @@ function GroupHeader(props: {
   dragHandle?: GroupDragHandle;
 }) {
   const [menuOpen, setMenuOpen] = useState(false);
+  const sortDescriptionId = useId();
   const menuRef = useRef<HTMLDivElement>(null);
   useDismissablePopover(menuOpen, menuRef, () => setMenuOpen(false));
   const itemClass =
@@ -163,9 +182,14 @@ function GroupHeader(props: {
       </button>
       {props.onSort && (
         <button type="button" aria-label={`${props.label} 정렬`}
+          aria-describedby={sortDescriptionId}
           onClick={cycleSortMode}
           className={`opacity-0 group-hover:opacity-100 group-focus-within:opacity-100 px-1 leading-none hover:text-fg ${props.sortMode === 'default' ? 'text-fg-dimmer' : 'text-accent'}`}>
-          <SortIcon active={props.sortMode !== 'default'} />
+          <SortIcon mode={props.sortMode} />
+          <span id={sortDescriptionId}
+            style={{ position: 'absolute', width: 1, height: 1, padding: 0, margin: -1, overflow: 'hidden', clip: 'rect(0, 0, 0, 0)', whiteSpace: 'nowrap', border: 0 }}>
+            {sortModeDescription(props.sortMode)}
+          </span>
         </button>
       )}
       {props.onRename && (
@@ -252,6 +276,7 @@ function SortableQuoteRow(props: {
   onContextMenu: (e: React.MouseEvent<HTMLLIElement>) => void;
   onDelete: () => void;
   collectionBadge?: React.ReactNode;
+  collectionLabel?: string;
   dragEnabled?: boolean;
 }) {
   const { entry } = props;
@@ -264,7 +289,7 @@ function SortableQuoteRow(props: {
       pct={props.pct}
       changeWon={props.changeWon}
       active={props.active}
-      ariaLabel={`${entry.name} ${entry.code} 차트 열기`}
+      ariaLabel={[entry.name, entry.code, props.collectionLabel, '차트 열기'].filter(Boolean).join(' ')}
       testId={`watchlist-row-${entry.code}`}
       onClick={props.onPick}
       onContextMenu={props.onContextMenu}
@@ -522,7 +547,8 @@ export function WatchlistDrawer() {
                     {displayEntries.map((entry) => {
                       const q = quoteByCode.get(entry.code);
                       const status = deriveCollectionStatus(entry.code, liveSet, codes, viewedCodes);
-                      const badge = <CollectionDot status={deriveDisplayStatus(true, status)} />;
+                      const displayStatus = deriveDisplayStatus(true, status);
+                      const badge = <CollectionDot status={displayStatus} />;
                       return (
                         <SortableQuoteRow
                           key={entrySortableId(entry.folder_id, entry.code)}
@@ -535,6 +561,7 @@ export function WatchlistDrawer() {
                           onContextMenu={(e) => openMenu(e, entry.code, entry.name, entry.folder_id)}
                           onDelete={() => removeM.mutate(entry.code)}
                           collectionBadge={badge}
+                          collectionLabel={DISPLAY_PRESENTATION[displayStatus].ariaLabel}
                           dragEnabled={rowDragEnabled}
                         />
                       );
