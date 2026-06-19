@@ -110,15 +110,6 @@ def create_app(data_dir: Path) -> FastAPI:
         # `start_scheduler` raises.
         _scheduler_tasks: list = []
         _scheduler_tasks = start_scheduler(data_dir)
-        # Screener startup recovery: catch up any EOD gap the scheduler missed
-        # while the process was down. Spawned (NOT awaited) so it never blocks
-        # boot and a calendar error inside it can't abort startup. Tracked in
-        # _scheduler_tasks so the `finally` block cancels/awaits it on shutdown.
-        _scheduler_tasks.append(
-            asyncio.create_task(
-                _screener_module.trigger_update(data_dir), name="screener-recovery"
-            )
-        )
         # Task 11: Start the live WS stream (graceful degradation: no-op if
         # KIS_APP_KEY/SECRET missing or watchlist is empty).
         # REST poller는 Task 13에서 완전 은퇴 — 수집은 WS stream 단독.
@@ -152,9 +143,9 @@ def create_app(data_dir: Path) -> FastAPI:
         # ran). The fire/skip condition lives in symbols.needs_boot_refresh()
         # — one owner instead of a status string-compare at this call site.
         # Routed through refresh()/coordinator → single-flight, so a concurrent
-        # manual click won't double-download. Tracked in _scheduler_tasks (same
-        # as screener-recovery) so the `finally` block cancels+awaits it at
-        # shutdown instead of leaking an in-flight download.
+        # manual click won't double-download. Tracked in _scheduler_tasks so the
+        # `finally` block cancels+awaits it at shutdown instead of leaking an
+        # in-flight download.
         if _symbols_module.needs_boot_refresh():
             _scheduler_tasks.append(
                 asyncio.create_task(
@@ -194,9 +185,8 @@ def create_app(data_dir: Path) -> FastAPI:
                     log.exception("scheduler task crashed during shutdown")
             # Task-7 follow-up: close the PROCESS-singleton KisClient (shared
             # 15/s token bucket) only at process shutdown. Closed AFTER every
-            # _scheduler_tasks entry (incl. screener-recovery) is cancelled and
-            # awaited above, so no task — not the EOD update, not the recovery
-            # catch-up — can still be using the client when it's torn down.
+            # _scheduler_tasks entries are cancelled and awaited above, so no
+            # scheduled task can still be using the client when it's torn down.
             await aclose_kis_client()
             # Stop the worker pool first so in-flight items observe cancellation
             # while bus + observer are still live (they emit terminal events).
