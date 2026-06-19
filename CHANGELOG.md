@@ -3,6 +3,14 @@
 All notable changes to this project are documented here.
 The format follows a 4-digit `MAJOR.MINOR.PATCH.MICRO` scheme.
 
+## [0.8.16.0] - 2026-06-20
+
+### Added
+- **당일 매도 최대벽 후보 표시 범위 선택**: 미체결 포함 최대벽을 `1등만`, `2등까지`, `3등까지`
+  선택해 볼 수 있게 했다.
+- 라이브 당일 매도 최대벽 응답에 수량순 상위 3개 후보를 포함해 차트가 선택한 범위만큼
+  후보선을 그릴 수 있게 했다.
+
 ## [0.8.15.5] - 2026-06-20
 
 ### Changed
