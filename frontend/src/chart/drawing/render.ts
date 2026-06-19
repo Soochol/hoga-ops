@@ -1,7 +1,8 @@
 // frontend/src/chart/drawing/render.ts
 import type { IChartApi } from 'lightweight-charts';
 import type { VirtualAxis } from '../../util/virtualAxis';
-import type { Drawing, Hline, Pencil, Trendline, PaneId, LineStyle } from './types';
+import type { Drawing, DrawingDefaults, Hline, Pencil, Trendline, PaneId, LineStyle } from './types';
+import type { TrendlineDraft } from './tools';
 import {
   type PaneSeriesMap,
   priceToCanvasY,
@@ -70,6 +71,7 @@ const BADGE_PAD_X = 4;
 const BADGE_PAD_Y = 2;
 const BADGE_INSET_RIGHT = 8;
 const BADGE_RADIUS = 2;
+const DELTA_LABEL_GAP = 8;
 
 /** W3C relative luminance of an `#RRGGBB` colour, range [0, 1]. */
 function luminance(hex: string): number {
@@ -132,6 +134,45 @@ function drawPriceBadge(
   c.restore();
 }
 
+function formatDeltaLabel(from: number, to: number, paneId: PaneId): string {
+  const delta = to - from;
+  const sign = delta > 0 ? '+' : delta < 0 ? '-' : '';
+  const absDelta = Math.abs(delta);
+  const price =
+    paneId === 'ratio'
+      ? absDelta.toLocaleString('ko-KR', { minimumFractionDigits: 1, maximumFractionDigits: 1 })
+      : (Math.round(absDelta) || 0).toLocaleString('ko-KR');
+  const pct = from === 0 ? 0 : (delta / Math.abs(from)) * 100;
+  const pctText = `${sign}${Math.abs(pct).toFixed(2)}%`;
+  return `${sign}${price} (${pctText})`;
+}
+
+function drawFloatingLabel(
+  c: CanvasRenderingContext2D,
+  canvasWidth: number,
+  x: number,
+  y: number,
+  text: string,
+  bgColor: string,
+) {
+  c.save();
+  c.font = BADGE_FONT;
+  c.textBaseline = 'middle';
+  c.textAlign = 'left';
+  const textWidth = c.measureText(text).width;
+  const w = textWidth + BADGE_PAD_X * 2;
+  const h = BADGE_FONT_PX + BADGE_PAD_Y * 2;
+  const left = Math.max(4, Math.min(x, canvasWidth - w - 4));
+  const top = y - h / 2;
+  c.fillStyle = bgColor;
+  c.beginPath();
+  c.roundRect(left, top, w, h, BADGE_RADIUS);
+  c.fill();
+  c.fillStyle = luminance(bgColor) < 0.5 ? '#FFFFFF' : '#000000';
+  c.fillText(text, left + BADGE_PAD_X, y);
+  c.restore();
+}
+
 function renderHline(c: CanvasRenderingContext2D, ctx: ProjectCtx, h: Hline, selected: boolean) {
   const y = priceToY(ctx, h.price);
   if (y == null) return;
@@ -168,6 +209,55 @@ function renderTrendline(
     if (xa != null) drawHandle(c, t.color, xa, ya);
     if (xb != null) drawHandle(c, t.color, xb, yb);
   }
+}
+
+export function renderTrendlineDraft(
+  c: CanvasRenderingContext2D,
+  ctx: ProjectCtx,
+  draft: TrendlineDraft,
+  defaults: DrawingDefaults,
+) {
+  if (!draft.b) return;
+  const xa = realMsToX(ctx, draft.a.realMs);
+  const ya = priceToY(ctx, draft.a.price);
+  const xb = realMsToX(ctx, draft.b.realMs);
+  const yb = priceToY(ctx, draft.b.price);
+  if (xa == null || xb == null || ya == null || yb == null) return;
+  const d: Trendline = {
+    id: '__trendline_draft__',
+    kind: 'trendline',
+    a: draft.a,
+    b: draft.b,
+    color: defaults.color,
+    width: defaults.width,
+    lineStyle: defaults.lineStyle,
+    paneId: draft.paneId,
+  };
+  c.save();
+  c.globalAlpha = 0.9;
+  drawHaloThenMain(c, d, false, () => {
+    c.beginPath();
+    c.moveTo(xa, ya);
+    c.lineTo(xb, yb);
+    c.stroke();
+  });
+  c.restore();
+
+  c.save();
+  c.strokeStyle = defaults.color;
+  c.globalAlpha = 0.55;
+  c.lineWidth = Math.max(1, defaults.width);
+  c.lineCap = 'butt';
+  c.setLineDash([4, 4]);
+  c.beginPath();
+  c.moveTo(xa, ya);
+  c.lineTo(xb, ya);
+  c.stroke();
+  c.restore();
+
+  const label = formatDeltaLabel(draft.a.price, draft.b.price, draft.paneId);
+  const labelX = xb >= xa ? xb + DELTA_LABEL_GAP : xb - DELTA_LABEL_GAP - c.measureText(label).width;
+  drawFloatingLabel(c, ctx.width, labelX, ya, label, defaults.color);
 }
 
 function drawHandle(c: CanvasRenderingContext2D, color: string, x: number, y: number) {

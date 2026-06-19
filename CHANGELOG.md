@@ -3,6 +3,13 @@
 All notable changes to this project are documented here.
 The format follows a 4-digit `MAJOR.MINOR.PATCH.MICRO` scheme.
 
+## [0.8.15.5] - 2026-06-20
+
+### Changed
+- **/live 추세선 드래그 피드백 강화**: 추세선을 긋는 동안 선을 즉시 미리보기로 표시하고,
+  시작 가격 기준 수평 보조선과 `+/- 변동가격 (변동가격%)` 라벨을 함께 보여 드래그 중
+  가격 변화 폭을 바로 읽을 수 있게 했다.
+
 ## [0.8.15.4] - 2026-06-19
 
 ### Changed
