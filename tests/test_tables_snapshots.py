@@ -13,11 +13,15 @@ from hoga.tables.snapshots import (
     ApiOrderbookSnapshot,
     AskPeakDualRow,
     AskPeakRow,
+    BidPeakDualRow,
+    BidPeakRow,
     Orderbook,
     SnapshotValidationError,
     query_at,
     query_day_ask_peak_dual,
     query_day_ask_peak,
+    query_day_bid_peak,
+    query_day_bid_peak_dual,
     query_first_ts,
     query_time_bounds,
     validate,
@@ -609,6 +613,18 @@ def _ob_ap(ts_ms: int, ask_q: list[int], ask_p: list[int] | None = None) -> "Ord
                      tot_bid=sum(bq), tot_bid_d=0)
 
 
+def _ob_bp(ts_ms: int, bid_q: list[int], bid_p: list[int] | None = None) -> "Orderbook":
+    """bid_q/bid_p are length 10. ask is filled deep enough to look continuous."""
+    bp = tuple(bid_p or [24950 - 50 * i for i in range(10)])
+    bq = tuple(bid_q)
+    aq = tuple([100] * 10)
+    ap = tuple([25000 + 50 * i for i in range(10)])
+    z = tuple([0] * 10)
+    return Orderbook(ts_ms=ts_ms, seq=1, ask_p=ap, ask_q=aq, ask_d=z,
+                     bid_p=bp, bid_q=bq, bid_d=z, tot_ask=sum(aq), tot_ask_d=0,
+                     tot_bid=sum(bq), tot_bid_d=0)
+
+
 def _con_for(path) -> "duckdb.DuckDBPyConnection":
     return duckdb.connect()
 
@@ -969,6 +985,70 @@ def test_query_day_ask_peak_dual_excludes_one_sided_collapsed_ask_book(tmp_path)
     assert peak is not None
     assert peak.all_qty == 2000 and peak.all_price == 26000
     assert peak.all_max_qty == 2000 and peak.all_max_price == 26000
+
+
+def test_query_day_bid_peak_basic(tmp_path) -> None:
+    obs = [
+        _ob_bp(90000000, [100, 5000, 30, 40, 5, 6, 7, 8, 9, 1]),
+        _ob_bp(90030000, [8000, 100, 30, 40, 5, 6, 7, 8, 9, 1],
+            bid_p=[70000, 69900, 69800, 69700, 69600, 69500, 69400, 69300, 69200, 69100]),
+    ]
+    out = tmp_path / "snapshots.parquet"
+    write_parquet(obs, out)
+
+    peak = query_day_bid_peak(_con_for(out), path=out, bucket_ms=60_000)
+
+    assert peak == BidPeakRow(
+        price=70000,
+        qty=8000,
+        intra_ms=9 * 60 * 60 * 1000 + 30_000,
+        max_price=70000,
+        max_qty=8000,
+        max_intra_ms=9 * 60 * 60 * 1000 + 30_000,
+    )
+
+
+def test_query_day_bid_peak_dual_populates_below_low_untraded(tmp_path) -> None:
+    from hoga.tables.trades import Trade, write_parquet as trades_write_parquet
+
+    snapshots = tmp_path / "snapshots.parquet"
+    trades = tmp_path / "trades.parquet"
+    obs = [
+        _ob_bp(90000000, [1000, 9000, 30, 40, 5, 6, 7, 8, 9, 1],
+            bid_p=[70000, 69000, 68900, 68800, 68700, 68600, 68500, 68400, 68300, 68200]),
+        _ob_bp(90100000, [5000, 100, 12000, 40, 5, 6, 7, 8, 9, 1],
+            bid_p=[70000, 69000, 68900, 68800, 68700, 68600, 68500, 68400, 68300, 68200]),
+    ]
+    tr = Trade(
+        ts_ms=90050000, seq=1, price=70000, change_pct=0, qty=1, side=1,
+        cum_vol=1, cum_trades=1, low_so_far=70000, high_so_far=70000,
+        net_pressure=0, unknown_14=0, unknown_16=0, unknown_17=0, unknown_18=0,
+    )
+    write_parquet(obs, snapshots)
+    trades_write_parquet([tr], trades)
+
+    peak = query_day_bid_peak_dual(_con_for(snapshots), path=snapshots, trades_path=trades, bucket_ms=60_000)
+
+    assert peak == BidPeakDualRow(
+        price=70000,
+        qty=5000,
+        intra_ms=9 * 60 * 60 * 1000 + 60_000,
+        max_price=70000,
+        max_qty=5000,
+        max_intra_ms=9 * 60 * 60 * 1000 + 60_000,
+        all_price=68900,
+        all_qty=12000,
+        all_intra_ms=9 * 60 * 60 * 1000 + 60_000,
+        all_max_price=68900,
+        all_max_qty=12000,
+        all_max_intra_ms=9 * 60 * 60 * 1000 + 60_000,
+        untraded_price=68900,
+        untraded_qty=12000,
+        untraded_intra_ms=9 * 60 * 60 * 1000 + 60_000,
+        untraded_max_price=68900,
+        untraded_max_qty=12000,
+        untraded_max_intra_ms=9 * 60 * 60 * 1000 + 60_000,
+    )
 
 
 # ---------------------------------------------------------------------------
