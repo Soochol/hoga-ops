@@ -1,6 +1,6 @@
 import { render, screen, fireEvent, waitFor, within } from '@testing-library/react';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
-import { MemoryRouter, useLocation } from 'react-router';
+import { MemoryRouter } from 'react-router';
 import { it, expect, vi, afterEach } from 'vitest';
 
 vi.mock('../api/screener', async (orig) => ({
@@ -60,25 +60,13 @@ function renderPage() {
   return render(<QueryClientProvider client={qc}><MemoryRouter><Screener /></MemoryRouter></QueryClientProvider>);
 }
 
-function LocationProbe() {
-  const loc = useLocation();
-  return <div data-testid="loc">{loc.pathname + loc.search}</div>;
-}
-
-it('캡처 버튼은 코드를 prefill 한 캡처 페이지로 이동한다 (날짜 없는 enqueue 금지)', async () => {
-  const qc = new QueryClient();
-  render(
-    <QueryClientProvider client={qc}>
-      <MemoryRouter>
-        <Screener />
-        <LocationProbe />
-      </MemoryRouter>
-    </QueryClientProvider>,
-  );
+it('조회 결과 액션에는 관심 그룹 하트만 표시한다', async () => {
+  renderPage();
   fireEvent.click(screen.getByText('조회'));
   await screen.findByText('삼성전자');
-  fireEvent.click(screen.getByRole('button', { name: '캡처 페이지 열기' }));
-  expect(screen.getByTestId('loc').textContent).toBe('/capture?code=005930');
+  const row = screen.getByRole('button', { name: '삼성전자 005930 호가창 열기' });
+  expect(within(row).getByRole('button', { name: '관심 그룹 편집' })).toBeInTheDocument();
+  expect(within(row).queryByRole('button', { name: '캡처 페이지 열기' })).not.toBeInTheDocument();
 });
 
 it('runs scan and renders row; click sets the active tab code', async () => {

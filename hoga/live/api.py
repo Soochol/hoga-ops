@@ -166,6 +166,17 @@ def _kis_error_to_warning(reason: str, msg: str, batch_label: str) -> dict:
     return {"batch": batch_label, "reason": reason, "msg": msg}
 
 
+def _daily_fallback_to_krx_warning(primary_venue: KisVenue, batch_label: str) -> dict:
+    return {
+        "batch": batch_label,
+        "reason": "daily_fallback_to_krx",
+        "msg": (
+            f"{primary_venue} daily returned no candles; using KRX daily candles "
+            "for this batch"
+        ),
+    }
+
+
 def _compute_daily_gaps(
     frm: date, too: date,
     existing: list[tuple[date, date]],
@@ -1252,12 +1263,23 @@ def build_router(
         if daily_cache_instance is None:
             raise HTTPException(503, "past-daily-candles cache not wired (data_dir missing)")
 
+        fallback_warnings: list[dict] = []
+
         async def fetch_batch(code_: str, from_s: str, to_s: str):
             # foreground=True: 사용자 일봉 차트 백필 (우선순위 레인). 스크리너 EOD
             # 배치(screener*.py)는 default background로 사용자 fetch에 양보.
             result = await kis.fetch_past_daily_candles(
                 code_, from_s, to_s, venue=kis_venue, foreground=True,
             )
+            if kis_venue != "KRX" and not result.candles and not result.violations:
+                fallback = await kis.fetch_past_daily_candles(
+                    code_, from_s, to_s, venue="KRX", foreground=True,
+                )
+                if fallback.candles:
+                    fallback_warnings.append(
+                        _daily_fallback_to_krx_warning(kis_venue, f"{from_s}__{to_s}")
+                    )
+                    result = fallback
             return [_candle_to_dict(c) for c in result.candles], result.violations
 
         class _VenueDailyCacheAdapter:
@@ -1284,6 +1306,7 @@ def build_router(
             code=code, frm=frm, too=too, today_d=today_d,
         )
         out["venue"] = policy
+        out["data_warnings"].extend(fallback_warnings)
         if policy == "AUTO":
             warning = AUTO_DAILY_USES_INTEGRATED_WARNING.copy()
             warning["batch"] = f"{from_}__{to}"

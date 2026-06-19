@@ -1,5 +1,4 @@
 import { useMemo, useState } from 'react';
-import { useNavigate } from 'react-router';
 import { PageContainer } from '../layout/PageContainer';
 import { useJumpToLive } from '../live/useJumpToLive';
 import { useScreener } from '../screener/useScreener';
@@ -49,7 +48,6 @@ function SaveNameDialog({ initialName, onSubmit, onClose }: {
 }
 
 export function Screener() {
-  const navigate = useNavigate();   // 캡처 deep-link(/capture?code=…)용
   const openLive = useJumpToLive();
   const editor = useSavedScreenerEditor();
   const [saveDialog, setSaveDialog] = useState<SaveDialogMode | null>(null);
@@ -153,8 +151,7 @@ export function Screener() {
               조건 변경됨 · 다시 조회 필요
             </div>
           )}
-          <ResultTable rows={liveRows} onActivate={openLive}
-            onCapture={(code) => navigate(`/capture?code=${encodeURIComponent(code)}`)} />
+          <ResultTable rows={liveRows} onActivate={openLive} />
         </div>
       )}
       {saveDialog && (

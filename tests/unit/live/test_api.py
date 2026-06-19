@@ -882,6 +882,38 @@ def test_past_daily_auto_uses_integrated_venue_with_warning(tmp_path) -> None:
     )
 
 
+@pytest.mark.parametrize("venue,primary_venue", [("NXT", "NXT"), ("UN", "UN"), ("AUTO", "UN")])
+def test_past_daily_non_krx_empty_falls_back_to_krx(tmp_path, venue: str, primary_venue: str) -> None:
+    class _NoNxtDailyKis(_FakeKisForDaily):
+        async def fetch_past_daily_candles(
+            self, code: str, from_yyyymmdd: str, to_yyyymmdd: str, **_kw
+        ) -> DailyCandleFetchResult:
+            if _kw.get("venue") in ("NXT", "UN"):
+                self.calls.append((code, from_yyyymmdd, to_yyyymmdd))
+                self.kwargs.append(_kw)
+                return DailyCandleFetchResult(candles=[], violations=[])
+            return await super().fetch_past_daily_candles(code, from_yyyymmdd, to_yyyymmdd, **_kw)
+
+    fake = _NoNxtDailyKis()
+    app = _daily_app(tmp_path, fake)
+    with TestClient(app) as c:
+        r = c.get(f"/api/live/past-daily-candles?code=005930&from=20240101&to=20240105&venue={venue}")
+        assert r.status_code == 200
+        body = r.json()
+
+    assert body["venue"] == venue
+    assert len(body["candles"]) == 5
+    assert fake.kwargs[:2] == [
+        {"venue": primary_venue, "foreground": True},
+        {"venue": "KRX", "foreground": True},
+    ]
+    assert any(
+        w["reason"] == "daily_fallback_to_krx"
+        and w["batch"] == "20240101__20240105"
+        for w in body["data_warnings"]
+    )
+
+
 def test_past_daily_rejects_invalid_venue_before_kis(tmp_path) -> None:
     fake = _FakeKisForDaily()
     app = _daily_app(tmp_path, fake)
