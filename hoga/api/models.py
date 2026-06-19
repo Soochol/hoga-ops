@@ -914,7 +914,8 @@ class PriceRangeParams(BaseModel):
 
 class MaParams(BaseModel):
     period: int = Field(ge=1)
-    relation: Literal["above", "below"]                # close >= SMA / close <= SMA
+    relation: Literal["above", "below"]                # source >= SMA(source) / source <= SMA(source)
+    source: Literal["open", "high", "low", "close"] = "close"
 
 class TradeValueLeaf(BaseModel):
     type: Literal["trade_value"] = "trade_value"

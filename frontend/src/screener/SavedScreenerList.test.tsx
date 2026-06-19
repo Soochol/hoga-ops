@@ -19,7 +19,7 @@ const mount = (over: Partial<Props> = {}) => {
   const props: Props = {
     anchorId: null, dirty: false,
     onLoad: vi.fn(), onNewDraft: vi.fn(), onSaveAsNew: vi.fn(),
-    onOverwrite: vi.fn(), onRename: vi.fn(), onRemove: vi.fn(),
+    onDuplicate: vi.fn(), onRename: vi.fn(), onRemove: vi.fn(),
     ...over,
   };
   render(<QueryClientProvider client={new QueryClient()}><SavedScreenerList {...props} /></QueryClientProvider>);
@@ -78,7 +78,8 @@ describe('SavedScreenerList', () => {
   it('rename fires onRename(save, name); same name does not fire', async () => {
     const { onRename } = mount();
     await screen.findByText('급등주');
-    fireEvent.click(within(rowOf('급등주')).getByRole('button', { name: '이름변경' }));
+    fireEvent.click(within(rowOf('급등주')).getByRole('button', { name: '저장 조건 메뉴' }));
+    fireEvent.click(screen.getByRole('menuitem', { name: '이름변경' }));
     const input = screen.getByLabelText('조건검색 이름');
     fireEvent.change(input, { target: { value: '새이름' } });
     fireEvent.blur(input);
@@ -88,7 +89,8 @@ describe('SavedScreenerList', () => {
   it('rename to the same name does not fire onRename', async () => {
     const { onRename } = mount();
     await screen.findByText('급등주');
-    fireEvent.click(within(rowOf('급등주')).getByRole('button', { name: '이름변경' }));
+    fireEvent.click(within(rowOf('급등주')).getByRole('button', { name: '저장 조건 메뉴' }));
+    fireEvent.click(screen.getByRole('menuitem', { name: '이름변경' }));
     const input = screen.getByLabelText('조건검색 이름');
     fireEvent.blur(input);   // value unchanged === '급등주'
     expect(onRename).not.toHaveBeenCalled();
@@ -97,7 +99,8 @@ describe('SavedScreenerList', () => {
   it('rename reverts on Escape (no onRename)', async () => {
     const { onRename } = mount();
     await screen.findByText('급등주');
-    fireEvent.click(within(rowOf('급등주')).getByRole('button', { name: '이름변경' }));
+    fireEvent.click(within(rowOf('급등주')).getByRole('button', { name: '저장 조건 메뉴' }));
+    fireEvent.click(screen.getByRole('menuitem', { name: '이름변경' }));
     const input = screen.getByLabelText('조건검색 이름');
     fireEvent.change(input, { target: { value: '바뀐이름' } });
     fireEvent.keyDown(input, { key: 'Escape' });
@@ -105,29 +108,30 @@ describe('SavedScreenerList', () => {
     expect(screen.getByText('급등주')).toBeInTheDocument();
   });
 
-  it('overwrite ⤓ → target-naming confirm → 덮어쓰기 fires onOverwrite(save)', async () => {
-    const { onOverwrite } = mount();
-    await screen.findByText('급등주');
-    fireEvent.click(within(rowOf('급등주')).getByRole('button', { name: '현재 조건으로 덮어쓰기' }));
-    expect(screen.getByRole('dialog')).toHaveTextContent('급등주');
-    fireEvent.click(screen.getByRole('button', { name: '덮어쓰기' }));
-    expect(onOverwrite).toHaveBeenCalledWith(expect.objectContaining({ id: 's1' }));
-  });
-
-  it('overwrite does nothing when the modal is dismissed', async () => {
-    const { onOverwrite } = mount();
-    await screen.findByText('급등주');
-    fireEvent.click(within(rowOf('급등주')).getByRole('button', { name: '현재 조건으로 덮어쓰기' }));
-    fireEvent.click(screen.getByRole('button', { name: '취소' }));
-    expect(onOverwrite).not.toHaveBeenCalled();
-  });
-
   it('delete 🗑 → confirm → 삭제 fires onRemove(save)', async () => {
     const { onRemove } = mount();
     await screen.findByText('급등주');
-    fireEvent.click(within(rowOf('급등주')).getByRole('button', { name: '삭제' }));
+    fireEvent.click(within(rowOf('급등주')).getByRole('button', { name: '저장 조건 메뉴' }));
+    fireEvent.click(screen.getByRole('menuitem', { name: '삭제' }));
     fireEvent.click(within(screen.getByRole('dialog')).getByRole('button', { name: '삭제' }));
     expect(onRemove).toHaveBeenCalledWith(expect.objectContaining({ id: 's1' }));
+  });
+
+  it('filters saved screeners by name', async () => {
+    mount();
+    await screen.findByText('급등주');
+    fireEvent.change(screen.getByLabelText('저장 조건검색 검색'), { target: { value: '눌림' } });
+    expect(screen.queryByText('급등주')).not.toBeInTheDocument();
+    expect(screen.getByText('눌림목')).toBeInTheDocument();
+  });
+
+  it('duplicate in the row menu fires onDuplicate(save)', async () => {
+    const onDuplicate = vi.fn();
+    mount({ onDuplicate } as Partial<Props>);
+    await screen.findByText('급등주');
+    fireEvent.click(within(rowOf('급등주')).getByRole('button', { name: '저장 조건 메뉴' }));
+    fireEvent.click(screen.getByRole('menuitem', { name: '복제' }));
+    expect(onDuplicate).toHaveBeenCalledWith(expect.objectContaining({ id: 's1' }));
   });
 
   it('anchored row is clean-highlighted (teal fill, no 수정됨) when not dirty', async () => {

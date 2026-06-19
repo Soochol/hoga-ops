@@ -9,7 +9,6 @@ type Editing =
   | { mode: 'rename'; id: string; initial: string }
   | null;
 type Confirm =
-  | { kind: 'overwrite'; save: SavedScreener }
   | { kind: 'delete'; save: SavedScreener }
   | null;
 
@@ -40,12 +39,12 @@ function NameRowInput({ initial, onCommit, onCancel }: {
   );
 }
 
-export function SavedScreenerList({ anchorId, dirty, onLoad, onNewDraft, onSaveAsNew, onOverwrite, onRename, onRemove }: {
+export function SavedScreenerList({ anchorId, dirty, onLoad, onNewDraft, onSaveAsNew, onDuplicate, onRename, onRemove }: {
   anchorId: string | null; dirty: boolean;
   onLoad: (s: SavedScreener) => void;
   onNewDraft: () => void;
   onSaveAsNew: (name: string) => void;
-  onOverwrite: (s: SavedScreener) => void;
+  onDuplicate: (s: SavedScreener) => void;
   onRename: (s: SavedScreener, name: string) => void;
   onRemove: (s: SavedScreener) => void;
 }) {
@@ -53,6 +52,11 @@ export function SavedScreenerList({ anchorId, dirty, onLoad, onNewDraft, onSaveA
   const saves = data?.saves ?? [];
   const [editing, setEditing] = useState<Editing>(null);
   const [confirm, setConfirm] = useState<Confirm>(null);
+  const [menuId, setMenuId] = useState<string | null>(null);
+  const [query, setQuery] = useState('');
+  const visibleSaves = query.trim()
+    ? saves.filter((s) => s.name.includes(query.trim()))
+    : saves;
 
   // create re-anchors to the new save; rename never re-anchors and must carry
   // the SAVE's own conditions/universe (forwarding the live builder is the ✎
@@ -75,8 +79,7 @@ export function SavedScreenerList({ anchorId, dirty, onLoad, onNewDraft, onSaveA
   const runConfirm = () => {
     if (!confirm) return;
     const s = confirm.save;
-    if (confirm.kind === 'overwrite') onOverwrite(s);
-    else onRemove(s);
+    onRemove(s);
     setConfirm(null);
   };
 
@@ -88,13 +91,16 @@ export function SavedScreenerList({ anchorId, dirty, onLoad, onNewDraft, onSaveA
           onClick={() => { onNewDraft(); setEditing({ mode: 'create', initial: suggestSaveName(saves.map((s) => s.name)) }); }}
           className="ml-auto w-[22px] h-[22px] rounded-md bg-bg-input border text-fg-dim hover:text-fg">＋</button>
       </div>
+      <input aria-label="저장 조건검색 검색" value={query} onChange={(e) => setQuery(e.target.value)}
+        placeholder="검색"
+        className="w-full bg-bg-input border border-border rounded-md px-2 py-1 text-sm text-fg placeholder:text-fg-dimmer" />
       <div className="flex flex-col gap-1">
         {editing?.mode === 'create' && (
           <div className="flex items-center gap-2 px-2.5 py-2 rounded-md bg-bg-input">
             <NameRowInput initial={editing.initial} onCommit={commitCreate} onCancel={() => setEditing(null)} />
           </div>
         )}
-        {saves.map((s) => {
+        {visibleSaves.map((s) => {
           // anchor+clean → teal fill + bar; anchor+dirty → bar only + 수정됨.
           const isAnchor = s.id === anchorId;
           const clean = isAnchor && !dirty;
@@ -103,7 +109,7 @@ export function SavedScreenerList({ anchorId, dirty, onLoad, onNewDraft, onSaveA
             <div key={s.id} role="button" tabIndex={0}
               onClick={() => { if (!isRenaming) onLoad(s); }}
               onKeyDown={(e) => { if (!isRenaming && (e.key === 'Enter' || e.key === ' ')) onLoad(s); }}
-              className={`group flex items-center gap-2 px-2.5 py-2 rounded-md text-sm cursor-pointer ${
+              className={`group relative flex items-center gap-2 px-2.5 py-2 rounded-md text-sm cursor-pointer ${
                 clean ? 'bg-[rgba(20,184,166,0.14)] text-fg shadow-[inset_2px_0_0_var(--accent)]'
                   : isAnchor ? 'bg-bg-input text-fg shadow-[inset_2px_0_0_var(--accent)]'
                     : 'bg-bg-input text-fg-dim hover:bg-bg-input-hover'}`}>
@@ -113,29 +119,40 @@ export function SavedScreenerList({ anchorId, dirty, onLoad, onNewDraft, onSaveA
                 <span className="truncate flex-1">{s.name}</span>
               )}
               {isAnchor && dirty && !isRenaming && <span className="shrink-0 text-[10px] tracking-[0.04em] text-fg-dimmer">수정됨</span>}
-              {!isRenaming && (<>
-                <button type="button" aria-label="현재 조건으로 덮어쓰기" onClick={(e) => { e.stopPropagation(); setConfirm({ kind: 'overwrite', save: s }); }}
-                  className="opacity-0 group-hover:opacity-100 text-fg-dimmer hover:text-fg">⤓</button>
-                <button type="button" aria-label="이름변경" onClick={(e) => { e.stopPropagation(); setEditing({ mode: 'rename', id: s.id, initial: s.name }); }}
-                  className="opacity-0 group-hover:opacity-100 text-fg-dimmer hover:text-fg">✎</button>
-                <button type="button" aria-label="삭제" onClick={(e) => { e.stopPropagation(); setConfirm({ kind: 'delete', save: s }); }}
-                  className="opacity-0 group-hover:opacity-100 text-fg-dimmer hover:text-fg">🗑</button>
-              </>)}
+              {!isRenaming && (
+                <button type="button" aria-label="저장 조건 메뉴" aria-expanded={menuId === s.id}
+                  onClick={(e) => { e.stopPropagation(); setMenuId(menuId === s.id ? null : s.id); }}
+                  className="opacity-0 group-hover:opacity-100 focus:opacity-100 text-fg-dimmer hover:text-fg px-1">⋯</button>
+              )}
+              {menuId === s.id && !isRenaming && (
+                <div role="menu" className="absolute right-2 top-8 z-20 min-w-[104px] overflow-hidden rounded-md border border-border-strong bg-bg-card shadow-[0_8px_24px_rgba(0,0,0,0.4)]">
+                  <button type="button" role="menuitem" onClick={(e) => {
+                    e.stopPropagation(); setMenuId(null); setEditing({ mode: 'rename', id: s.id, initial: s.name });
+                  }} className="block w-full px-3 py-2 text-left text-sm text-fg hover:bg-bg-input-hover">이름변경</button>
+                  <button type="button" role="menuitem" onClick={(e) => {
+                    e.stopPropagation(); setMenuId(null); onDuplicate(s);
+                  }} className="block w-full px-3 py-2 text-left text-sm text-fg hover:bg-bg-input-hover">복제</button>
+                  <button type="button" role="menuitem" onClick={(e) => {
+                    e.stopPropagation(); setMenuId(null); setConfirm({ kind: 'delete', save: s });
+                  }} className="block w-full px-3 py-2 text-left text-sm hover:bg-bg-input-hover" style={{ color: 'var(--error)' }}>삭제</button>
+                </div>
+              )}
             </div>
           );
         })}
         {saves.length === 0 && editing?.mode !== 'create' && (
           <div className="text-fg-dimmer text-xs px-1 py-2">저장된 조건검색이 없습니다. ＋ 로 현재 조건을 저장하세요.</div>
         )}
+        {saves.length > 0 && visibleSaves.length === 0 && (
+          <div className="text-fg-dimmer text-xs px-1 py-2">검색 결과가 없습니다.</div>
+        )}
       </div>
 
       {confirm && (
         <ConfirmModal
-          message={confirm.kind === 'overwrite'
-            ? `"${confirm.save.name}"을(를) 현재 빌더 조건으로 덮어쓸까요?`
-            : `"${confirm.save.name}" 삭제?`}
-          confirmLabel={confirm.kind === 'overwrite' ? '덮어쓰기' : '삭제'}
-          tone={confirm.kind === 'overwrite' ? 'primary' : 'destructive'}
+          message={`"${confirm.save.name}" 삭제?`}
+          confirmLabel="삭제"
+          tone="destructive"
           onConfirm={runConfirm}
           onClose={() => setConfirm(null)}
         />

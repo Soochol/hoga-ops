@@ -42,6 +42,12 @@ def test_ma_relation_literal():
     with pytest.raises(ValidationError):
         _A.validate_python({"id": "x", "type": "ma", "params": {"period": 20, "relation": "sideways"}})
 
+def test_ma_source_defaults_close_and_rejects_unknown():
+    leaf = _A.validate_python({"id": "x", "type": "ma", "params": {"period": 20, "relation": "above"}})
+    assert leaf.params.source == "close"
+    with pytest.raises(ValidationError):
+        _A.validate_python({"id": "x", "type": "ma", "params": {"period": 20, "relation": "above", "source": "vwap"}})
+
 
 # === A2: ScanRequest / flat ScreenerRow / saved-screener models ===
 

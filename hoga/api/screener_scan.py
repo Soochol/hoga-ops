@@ -88,15 +88,16 @@ def _compile_price_range(leaf, i):
 def _compile_ma(leaf, i):
     N = leaf.params.period
     op = ">=" if leaf.params.relation == "above" else "<="
+    source = leaf.params.source
     return (
-        f"cond_{i}_w AS (SELECT code, date, close, "
-        f"AVG(close) OVER (PARTITION BY code ORDER BY date "
+        f"cond_{i}_w AS (SELECT code, date, {source} AS v, "
+        f"AVG({source}) OVER (PARTITION BY code ORDER BY date "
         f"ROWS BETWEEN {N - 1} PRECEDING AND CURRENT ROW) sma, "
         f"COUNT(*) OVER (PARTITION BY code ORDER BY date "
         f"ROWS BETWEEN {N - 1} PRECEDING AND CURRENT ROW) wc FROM adj), "
-        f"cond_{i}_l AS (SELECT DISTINCT ON (code) code, close, sma, wc "
+        f"cond_{i}_l AS (SELECT DISTINCT ON (code) code, v, sma, wc "
         f"FROM cond_{i}_w ORDER BY code, date DESC), "
-        f"cond_{i} AS (SELECT code FROM cond_{i}_l WHERE wc = {N} AND close {op} sma)"
+        f"cond_{i} AS (SELECT code FROM cond_{i}_l WHERE wc = {N} AND v {op} sma)"
     ), []
 
 
