@@ -24,6 +24,7 @@ from hoga.api.indicator_reaggregate import reaggregate_fill, reaggregate_ratio
 from hoga.api.invariants import normalize_session_bounds
 from hoga.api.models import (
     AskPeak,
+    BidPeak,
     DateWarning,
     ExcludedDate,
     FillStrength,
@@ -475,6 +476,86 @@ def _compute_ask_peak(
     )
 
 
+def build_bid_peak_slice(
+    engine: QueryEngine,
+    *,
+    code: str,
+    date: str,
+    bucket_ms: int,
+    source: str = "hogaplay",
+    session_open_ms: int | None = None,
+    session_close_ms: int | None = None,
+    cache: PastIndicatorsCache | None = None,
+    today_kst: str | None = None,
+) -> "BidPeak | None":
+    cacheable = cache is not None and today_kst is not None and date != today_kst
+    if cacheable and cache.has_bid_peak(code, date, source, bucket_ms):  # type: ignore[union-attr]
+        return cache.get_bid_peak(code, date, source, bucket_ms)  # type: ignore[union-attr]
+    peak = _compute_bid_peak(
+        engine, code=code, date=date, source=source, bucket_ms=bucket_ms,
+        session_open_ms=session_open_ms, session_close_ms=session_close_ms,
+    )
+    if cacheable:
+        cache.store_bid_peak(code, date, source, bucket_ms, peak)  # type: ignore[union-attr]
+    return peak
+
+
+def _compute_bid_peak(
+    engine: QueryEngine,
+    *,
+    code: str,
+    date: str,
+    source: str,
+    bucket_ms: int,
+    session_open_ms: int | None,
+    session_close_ms: int | None,
+) -> "BidPeak | None":
+    try:
+        path_obj = engine.parquet_dir(date, code, source) / "snapshots.parquet"
+    except (FileNotFoundError, StockDateNotFound):
+        return None
+    if not path_obj.exists():
+        return None
+    trades_path = path_obj.parent / "trades.parquet"
+    if trades_path.exists():
+        row = snapshots_tbl.query_day_bid_peak_dual(
+            engine.conn, path=path_obj, trades_path=trades_path, bucket_ms=bucket_ms,
+            session_open_ms=session_open_ms, session_close_ms=session_close_ms,
+        )
+        if row is None:
+            return None
+
+        def _unix_or_none(intra_ms: int | None) -> int | None:
+            return ms_from_midnight_to_unix_ms(date, intra_ms) if intra_ms is not None else None
+
+        return BidPeak(
+            date=date, price=row.price, qty=row.qty,
+            t_ms=ms_from_midnight_to_unix_ms(date, row.intra_ms),
+            max_price=row.max_price, max_qty=row.max_qty,
+            max_t_ms=ms_from_midnight_to_unix_ms(date, row.max_intra_ms),
+            all_price=row.all_price, all_qty=row.all_qty,
+            all_t_ms=_unix_or_none(row.all_intra_ms),
+            all_max_price=row.all_max_price, all_max_qty=row.all_max_qty,
+            all_max_t_ms=_unix_or_none(row.all_max_intra_ms),
+            untraded_price=row.untraded_price, untraded_qty=row.untraded_qty,
+            untraded_t_ms=_unix_or_none(row.untraded_intra_ms),
+            untraded_max_price=row.untraded_max_price, untraded_max_qty=row.untraded_max_qty,
+            untraded_max_t_ms=_unix_or_none(row.untraded_max_intra_ms),
+        )
+    row = snapshots_tbl.query_day_bid_peak(
+        engine.conn, path=path_obj, bucket_ms=bucket_ms,
+        session_open_ms=session_open_ms, session_close_ms=session_close_ms,
+    )
+    if row is None:
+        return None
+    return BidPeak(
+        date=date, price=row.price, qty=row.qty,
+        t_ms=ms_from_midnight_to_unix_ms(date, row.intra_ms),
+        max_price=row.max_price, max_qty=row.max_qty,
+        max_t_ms=ms_from_midnight_to_unix_ms(date, row.max_intra_ms),
+    )
+
+
 def _empty_range_bundle(
     code: str,
     from_date: str,
@@ -501,6 +582,7 @@ def _empty_range_bundle(
         excluded_dates=excluded,
         data_warnings=[],
         ask_peaks=[],
+        bid_peaks=[],
     )
 
 
@@ -560,6 +642,7 @@ def build_range_bundle(
     # 루프 안에서 계산해 native HHMMSSmmm 세션 경계(meta)에 접근 → 총잔량 지표와 동일하게
     # bucket_ms 버킷 대표 + 동시호가 배제. 과거일은 indicators_cache로 1회 계산(N일 재스캔 회피).
     ask_peaks: list[AskPeak] = []
+    bid_peaks: list[BidPeak] = []
 
     # Indicator cache (호가비·체결강도): completed past days are computed once and
     # re-aggregated on later pans; today_kst gates today out (still promoting).
@@ -605,6 +688,12 @@ def build_range_bundle(
             session_close_ms=meta["regular_session_close_ms"],
             cache=indicators_cache, today_kst=today_kst,
         )
+        bp_d = build_bid_peak_slice(
+            engine, code=code, date=d, bucket_ms=bucket_ms, source=source,
+            session_open_ms=norm_meta["regular_session_open_ms"],
+            session_close_ms=meta["regular_session_close_ms"],
+            cache=indicators_cache, today_kst=today_kst,
+        )
         segments.append(RangeSegment(
             date=d,
             session_open_ms=hhmmssms_to_unix_ms(d, norm_meta["regular_session_open_ms"]),
@@ -617,6 +706,8 @@ def build_range_bundle(
         profiles_by_day.append(vp_d)
         if ap_d is not None:
             ask_peaks.append(ap_d)
+        if bp_d is not None:
+            bid_peaks.append(bp_d)
 
     if not segments:
         # Spec 2026-05-27 §4.3: every in-range date is INVALID → return an
@@ -645,4 +736,5 @@ def build_range_bundle(
         excluded_dates=excluded,
         data_warnings=warnings_list,
         ask_peaks=ask_peaks,
+        bid_peaks=bid_peaks,
     )

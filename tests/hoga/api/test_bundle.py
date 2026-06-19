@@ -860,6 +860,53 @@ def test_build_ask_peak_slice_wires_all_price_peak(tmp_path) -> None:
     assert p.all_price == 26000 and p.all_qty == 9000
 
 
+def test_build_bid_peak_slice_wires_untraded_peak(tmp_path) -> None:
+    from hoga.api.bundle import build_bid_peak_slice
+
+    from unittest.mock import MagicMock
+    from hoga.tables.snapshots import Orderbook, write_parquet as snapshots_write_parquet
+    from hoga.tables.trades import Trade, write_parquet as trades_write_parquet
+
+    z = tuple([0] * 10)
+    ap = tuple(70100 + 50 * i for i in range(10))
+    aq = tuple([100] * 10)
+    bp = (70000, 69000, 68900, 68800, 68700, 68600, 68500, 68400, 68300, 68200)
+    ob = Orderbook(
+        ts_ms=90100000, seq=1,
+        ask_p=ap, ask_q=aq, ask_d=z,
+        bid_p=bp, bid_q=(5000, 9000, 12000, 40, 5, 6, 7, 8, 9, 1), bid_d=z,
+        tot_ask=sum(aq), tot_ask_d=0, tot_bid=26076, tot_bid_d=0,
+    )
+    tr = Trade(
+        ts_ms=90050000, seq=1, price=70000, change_pct=0, qty=1, side=1,
+        cum_vol=1, cum_trades=1, low_so_far=70000, high_so_far=70000,
+        net_pressure=0, unknown_14=0, unknown_16=0, unknown_17=0, unknown_18=0,
+    )
+    snapshots_write_parquet([ob], tmp_path / "snapshots.parquet")
+    trades_write_parquet([tr], tmp_path / "trades.parquet")
+    eng = MagicMock()
+    eng.parquet_dir.side_effect = lambda d, c, src="hogaplay": tmp_path
+    eng.conn = duckdb.connect()
+
+    p = build_bid_peak_slice(
+        eng,
+        code="005930",
+        date="20260619",
+        bucket_ms=60_000,
+        source="hogaplay",
+        session_open_ms=90000000,
+        session_close_ms=153000000,
+        cache=None,
+        today_kst="20260620",
+    )
+
+    assert p is not None
+    assert p.price == 70000
+    assert p.qty == 5000
+    assert p.untraded_price == 68900
+    assert p.untraded_qty == 12000
+
+
 def test_range_bundle_ask_peak_field_defaults_none() -> None:
     from hoga.api.models import AskPeak, RangeBundle
     from hoga.api.models import QuoteRatio, FillStrength, VolumeProfile
@@ -911,3 +958,50 @@ def test_range_bundle_bid_peak_field_defaults_empty() -> None:
         )
     ]})
     assert b2.bid_peaks[0].price == 70000
+
+
+def test_build_range_bundle_includes_bid_peaks(monkeypatch, tmp_path) -> None:
+    import contextlib
+    import hoga.api.bundle as bundle_mod
+    from hoga.api.bundle import build_range_bundle
+    from hoga.api.models import BidPeak, VolumeProfile
+
+    FIXTURE_DATE = "20260613"
+    monkeypatch.setattr(bundle_mod, "_today_kst_yyyymmdd", lambda: FIXTURE_DATE)
+    eng = _engine_with_meta_for_dates([FIXTURE_DATE])
+    eng.parquet_dir.side_effect = lambda d, c, src="hogaplay": tmp_path
+    eng.conn = duckdb.connect()
+    eng.indicators_cache = None
+    patches = _patch_slice_builders(bundle_mod, patch_ask_peak=True) + [
+        patch.object(
+            bundle_mod,
+            "build_bid_peak_slice",
+            return_value=BidPeak(
+                date=FIXTURE_DATE,
+                price=70000,
+                qty=5000,
+                t_ms=1,
+                max_price=70000,
+                max_qty=5000,
+                max_t_ms=1,
+            ),
+        ),
+        patch.object(
+            bundle_mod,
+            "build_volume_profile_range",
+            return_value=VolumeProfile(bin_count=0, price_min=0, price_max=0, bin_width=0, bins=[]),
+        ),
+    ]
+    with contextlib.ExitStack() as stack:
+        for p in patches:
+            stack.enter_context(p)
+        bundle = build_range_bundle(
+            eng,
+            code="005930",
+            from_date=FIXTURE_DATE,
+            to_date=FIXTURE_DATE,
+            bucket_ms=60_000,
+        )
+    assert len(bundle.bid_peaks) == 1
+    assert bundle.bid_peaks[0].price == 70000
+    assert bundle.bid_peaks[0].qty == 5000
