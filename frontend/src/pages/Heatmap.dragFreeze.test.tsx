@@ -68,9 +68,15 @@ const { setActiveCode } = vi.hoisted(() => ({ setActiveCode: vi.fn() }));
 vi.mock('../state/livePage', () => ({
   useLivePageStore: (sel: (s: { setActiveCode: typeof setActiveCode }) => unknown) => sel({ setActiveCode }),
 }));
-const { openOrFocusTab } = vi.hoisted(() => ({ openOrFocusTab: vi.fn() }));
+const { setActiveTabCode, openSymbolInNewTab } = vi.hoisted(() => ({
+  setActiveTabCode: vi.fn(),
+  openSymbolInNewTab: vi.fn(),
+}));
 vi.mock('../state/liveTabs', () => ({
-  useLiveTabsStore: (sel: (s: { openOrFocusTab: typeof openOrFocusTab }) => unknown) => sel({ openOrFocusTab }),
+  useLiveTabsStore: (sel: (s: {
+    setActiveTabCode: typeof setActiveTabCode;
+    openSymbolInNewTab: typeof openSymbolInNewTab;
+  }) => unknown) => sel({ setActiveTabCode, openSymbolInNewTab }),
 }));
 
 import { Heatmap } from './Heatmap';
