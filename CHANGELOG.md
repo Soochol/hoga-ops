@@ -3,6 +3,13 @@
 All notable changes to this project are documented here.
 The format follows a 4-digit `MAJOR.MINOR.PATCH.MICRO` scheme.
 
+## [0.8.16.1] - 2026-06-20
+
+### Changed
+- **/live 추세선 변동 라벨 유지**: 추세선 작성 중 표시하던 시작가 기준 수평 보조선과
+  `+/- 변동가격 (변동가격%)` 라벨을 추세선 완성 후에도 계속 렌더해, 저장된 추세선에서
+  가격 변화 폭을 바로 확인할 수 있게 했다.
+
 ## [0.8.16.0] - 2026-06-20
 
 ### Added
