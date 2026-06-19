@@ -16,7 +16,8 @@ import { useLiveKeyboard } from './useLiveKeyboard';
 import { useLiveBundle } from './useLiveBundle';
 import { useLiveSeries } from '../api/liveSeries';
 import { useDayAskPeaks, useTodayAllPriceAskPeak } from './useDayAskPeaks';
-import type { AskPeak, Candle, RangeBundle } from '../api/types';
+import { useDayBidPeaks, useTodayAllPriceBidPeak } from './useDayBidPeaks';
+import type { AskPeak, BidPeak, Candle, RangeBundle } from '../api/types';
 import type { ObSnapshot, TradeSnapshot } from './bucketHogaSeries';
 import type { TabViewport } from './viewportAnchor';
 import { todayKstYyyymmdd } from './liveDateTime';
@@ -34,6 +35,7 @@ import { useDocumentTitle } from '../util/useDocumentTitle';
 
 /** 안정 빈 배열 — 매 렌더 새 [] 가 useDayAskPeaks의 메모 deps를 churn하지 않게. */
 const EMPTY_ASK_PEAKS: readonly AskPeak[] = [];
+const EMPTY_BID_PEAKS: readonly BidPeak[] = [];
 const EMPTY_CANDLES: readonly Candle[] = [];
 const EMPTY_OB_SNAPSHOTS: readonly ObSnapshot[] = [];
 const EMPTY_TRADE_SNAPSHOTS: readonly TradeSnapshot[] = [];
@@ -211,6 +213,26 @@ export function LivePage() {
     activeCode,
     live.initial?.ask_peak_today ?? null,
   );
+  const bidPeakOb = isMinuteTimeframe(timeframe) ? live.ob : EMPTY_OB_SNAPSHOTS;
+  const bidPeakTrade = isMinuteTimeframe(timeframe) ? live.trade : EMPTY_TRADE_SNAPSHOTS;
+  const bidPeakSeeds = (chartBundle ?? bundle)?.bid_peaks ?? EMPTY_BID_PEAKS;
+  const bidPeakCandles = isMinuteTimeframe(timeframe) ? ((chartBundle ?? bundle)?.candles ?? EMPTY_CANDLES) : EMPTY_CANDLES;
+  const dayBidPeaks = useDayBidPeaks(
+    bidPeakOb,
+    bidPeakTrade,
+    bidPeakSeeds,
+    today,
+    activeCode,
+    live.initial?.bid_peak_today ?? null,
+    bidPeakCandles,
+  );
+  const todayAllPriceBidPeak = useTodayAllPriceBidPeak(
+    bidPeakOb,
+    bidPeakSeeds,
+    today,
+    activeCode,
+    live.initial?.bid_peak_today ?? null,
+  );
 
   return (
     <div
@@ -263,6 +285,8 @@ export function LivePage() {
         live={live}
         dayAskPeaks={dayAskPeaks}
         todayAllPriceAskPeak={todayAllPriceAskPeak}
+        dayBidPeaks={dayBidPeaks}
+        todayAllPriceBidPeak={todayAllPriceBidPeak}
         todayKst={today}
         onViewportCaptureReady={handleViewportCaptureReady}
       />

@@ -1,6 +1,7 @@
 import { describe, it, expect } from 'vitest';
 import { buildAskPeakSegments, buildAskPeakOverlaySegments } from './LiveAskPeakSegments';
-import type { AskPeak, RangeSegment, Candle } from '../api/types';
+import { buildBidPeakOverlaySegments } from './LiveBidPeakSegments';
+import type { AskPeak, BidPeak, RangeSegment, Candle } from '../api/types';
 import type { VirtualAxis } from '../util/virtualAxis';
 
 // 항등 축: toVirtual(ms)=ms → time = ms/1000.
@@ -131,6 +132,43 @@ describe('buildAskPeakSegments', () => {
 });
 
 describe('buildAskPeakOverlaySegments', () => {
+  it('buildBidPeakOverlaySegments renders untraded line only when larger than baseline', () => {
+    const segments = [{ date: '20260619', session_open_ms: 1_000, session_close_ms: 2_000, source: 'kis_live' as const }];
+    const candles = [{ ts_ms: 1_500, open: 70000, high: 70100, low: 69900, close: 70050, vol_a: 0, vol_b: 0 }];
+    const peaks: BidPeak[] = [{
+      date: '20260619',
+      price: 70000,
+      qty: 5000,
+      t_ms: 1_500,
+      max_price: 70000,
+      max_qty: 5000,
+      max_t_ms: 1_500,
+      untraded_price: 69000,
+      untraded_qty: 12000,
+      untraded_t_ms: 1_500,
+      untraded_max_price: 69000,
+      untraded_max_qty: 12000,
+      untraded_max_t_ms: 1_500,
+    }];
+
+    const out = buildBidPeakOverlaySegments({
+      dayBidPeaks: peaks,
+      todayAllPriceBidPeak: null,
+      segments,
+      candles,
+      axis,
+      todayKst: '20260619',
+      baselineStyle: { color: '#DC2626', lineWidth: 2 },
+      allPriceStyle: { color: '#F97316', lineWidth: 1 },
+      intraMax: false,
+      showAllPrices: true,
+    });
+
+    expect(out).toHaveLength(2);
+    expect(out[0].price).toBe(70000);
+    expect(out[1].price).toBe(69000);
+  });
+
   it('오늘 미체결 qty가 체결가격 기준 qty보다 크면 별도 스타일로 둘 다 만든다', () => {
     const traded = peakWithUntraded(
       { date: '20260613', price: 100, qty: 50, t_ms: 120000 },

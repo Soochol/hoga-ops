@@ -4,7 +4,7 @@ import { useEntryDragStore } from '../state/entryDrag';
 import { LiveChartRoot } from './LiveChartRoot';
 import { LiveEmptyState } from './LiveEmptyState';
 import { LiveSidebar } from './LiveSidebar';
-import type { AskPeak, RangeBundle } from '../api/types';
+import type { AskPeak, BidPeak, RangeBundle } from '../api/types';
 import type { LiveSeriesData } from '../api/liveSeries';
 import type { LiveDataWarning } from './liveDataWarnings';
 import type { TabViewport } from './viewportAnchor';
@@ -75,6 +75,10 @@ interface Props {
   dayAskPeaks?: readonly AskPeak[];
   /** Backend today all-price ask peak — optional because tests/legacy callers may omit it. */
   todayAllPriceAskPeak?: AskPeak | null;
+  /** LivePage의 useDayBidPeaks 결과(거래일별) — LiveChartRoot → LiveBidPeakSegments로 전달. */
+  dayBidPeaks?: readonly BidPeak[];
+  /** Backend today all-price bid peak — optional because tests/legacy callers may omit it. */
+  todayAllPriceBidPeak?: BidPeak | null;
   /** 오늘(KST YYYYMMDD) — 오늘 세그먼트만 라이브 엣지까지 연장. */
   todayKst?: string;
   /** LivePage save flows keep this callback and invoke it at save time. */
@@ -83,6 +87,7 @@ interface Props {
 
 /** 안정 빈 배열 — 기본값이 매 렌더 새 []를 만들지 않게. */
 const EMPTY_ASK_PEAKS: readonly AskPeak[] = [];
+const EMPTY_BID_PEAKS: readonly BidPeak[] = [];
 
 export function LiveWorkarea({
   activeCode,
@@ -98,6 +103,8 @@ export function LiveWorkarea({
   live,
   dayAskPeaks = EMPTY_ASK_PEAKS,
   todayAllPriceAskPeak = null,
+  dayBidPeaks = EMPTY_BID_PEAKS,
+  todayAllPriceBidPeak = null,
   todayKst = '',
   onViewportCaptureReady,
 }: Props) {
@@ -160,6 +167,8 @@ export function LiveWorkarea({
               viewIdentity={viewIdentity ?? undefined}
               dayAskPeaks={dayAskPeaks}
               todayAllPriceAskPeak={todayAllPriceAskPeak}
+              dayBidPeaks={dayBidPeaks}
+              todayAllPriceBidPeak={todayAllPriceBidPeak}
               todayKst={todayKst}
               onViewportCaptureReady={onViewportCaptureReady}
             />

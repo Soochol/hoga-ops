@@ -17,9 +17,10 @@ if (typeof window !== 'undefined' && !window.ResizeObserver) {
 // "store toggle → paneToggles → the pane set that reaches RangeSeriesPane" was
 // never asserted end-to-end. RangeSeriesPane renders null in jsdom (imperative
 // lightweight-charts wrapper), so we replace it with a prop-capturing stub.
-const { mounted, askPeakMounts, chartInstances, registerViewportCaptureMock, saveViewportToActiveTabMock } = vi.hoisted(() => ({
+const { mounted, askPeakMounts, bidPeakMounts, chartInstances, registerViewportCaptureMock, saveViewportToActiveTabMock } = vi.hoisted(() => ({
   mounted: [] as string[],
   askPeakMounts: [] as string[],
+  bidPeakMounts: [] as string[],
   chartInstances: [] as Array<{
     remove: ReturnType<typeof vi.fn>;
     timeScaleApi: {
@@ -40,6 +41,13 @@ vi.mock('../chart/RangeSeriesPane', () => ({
 vi.mock('./LiveAskPeakSegments', () => ({
   default: () => {
     askPeakMounts.push('mounted');
+    return null;
+  },
+}));
+
+vi.mock('./LiveBidPeakSegments', () => ({
+  default: () => {
+    bidPeakMounts.push('mounted');
     return null;
   },
 }));
@@ -129,6 +137,7 @@ describe('LiveChartRoot — pane 토글 배선 (store → 마운트된 pane 집�
   beforeEach(() => {
     mounted.length = 0;
     askPeakMounts.length = 0;
+    bidPeakMounts.length = 0;
     chartInstances.length = 0;
     registerViewportCaptureMock.mockClear();
     saveViewportToActiveTabMock.mockClear();
@@ -236,5 +245,13 @@ describe('LiveChartRoot — pane 토글 배선 (store → 마운트된 pane 집�
   it.each(['D', 'W', 'M'] as const)('calendar(%s) → 당일 매도 최대벽 오버레이 미마운트', (timeframe) => {
     renderAt(timeframe);
     expect(askPeakMounts).toEqual([]);
+  });
+
+  it('1m mounts bid peak overlay, calendar does not', () => {
+    renderAt('1m');
+    expect(bidPeakMounts).toHaveLength(1);
+    bidPeakMounts.length = 0;
+    renderAt('D');
+    expect(bidPeakMounts).toHaveLength(0);
   });
 });
