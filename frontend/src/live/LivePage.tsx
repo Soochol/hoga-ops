@@ -152,6 +152,7 @@ export function LivePage() {
       volume_profile_by_day: chartBundle.volume_profile_by_day,
       investorPoints: chartBundle.investorPoints,
       ask_peaks: chartBundle.ask_peaks,
+      bid_peaks: chartBundle.bid_peaks,
     };
   }, [bundle, chartBundle]);
   const indicatorState = useMemo<StudyIndicatorState>(() => ({
