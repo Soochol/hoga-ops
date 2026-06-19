@@ -3,6 +3,13 @@
 All notable changes to this project are documented here.
 The format follows a 4-digit `MAJOR.MINOR.PATCH.MICRO` scheme.
 
+## [Unreleased]
+
+### Added
+- **/live 당일 매수 최대벽 지표 추가**: 기존 당일 매도 최대벽과 동일한 구조로 매수 10호가 기준 최대벽을
+  표시한다. 체결가격 기준 최대벽과 미체결 포함 최대벽(당일 저가 아래 매수벽이 baseline보다 큰 경우)을
+  지원하며, 「지표」 모달에서 마스터 토글·분봉 내 최댓값 기준·미체결 표시 토글과 선 스타일을 설정할 수 있다.
+
 ## [0.8.15.3] - 2026-06-19
 
 ### Fixed

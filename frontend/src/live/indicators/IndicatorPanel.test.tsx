@@ -4,7 +4,7 @@ import IndicatorPanel from './IndicatorPanel';
 import { useLivePageStore } from '../../state/livePage';
 
 describe('IndicatorPanel', () => {
-  it('활성 9개 체크박스(비활성 0), 호가 3종 포함', () => {
+  it('활성 10개 체크박스(비활성 0), 호가 5종 포함', () => {
     useLivePageStore.setState({ quoteTotalsEnabled: true, ratioEnabled: true, fillStrengthEnabled: true });
     render(<IndicatorPanel onClose={() => {}} />);
     const checkboxes = screen.getAllByRole('checkbox');
