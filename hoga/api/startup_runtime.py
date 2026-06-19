@@ -81,34 +81,38 @@ async def start_app_runtime(
     deps: StartupRuntimeDeps,
 ) -> AppStartupRuntime:
     """Start scheduler, Live Capture helpers, Today Promotion, and symbol boot refresh."""
-    scheduler_tasks = deps.start_scheduler(data_dir)
-
-    if live_startup_enabled_from_env(deps.env):
-        await deps.start_live_stream(data_dir=data_dir)
-
-    live_watchdog_task = await deps.start_live_stream_watchdog(data_dir=data_dir)
-
-    today_promoter_task: TaskOrNone = None
-    if today_promoter_enabled_from_env(deps.env):
-        today_promoter_task = await deps.start_today_promoter(
-            data_dir=data_dir,
-            get_active_codes=deps.get_active_codes,
-            interval_s=today_promoter_interval_from_env(deps.env),
-        )
-
-    symbol_master_path = deps.resolve_symbol_master_path()
-    deps.load_symbol_disk_state(path=symbol_master_path, data_dir=data_dir)
-    if deps.needs_symbol_boot_refresh():
-        scheduler_tasks.append(
-            asyncio.create_task(
-                deps.refresh_symbols(path=symbol_master_path, data_dir=data_dir),
-                name="symbols-boot-refresh",
-            )
-        )
-
-    return AppStartupRuntime(
-        scheduler_tasks=scheduler_tasks,
-        live_watchdog_task=live_watchdog_task,
-        today_promoter_task=today_promoter_task,
+    runtime = AppStartupRuntime(
+        scheduler_tasks=[],
+        live_watchdog_task=None,
+        today_promoter_task=None,
         deps=deps,
     )
+    try:
+        runtime.scheduler_tasks = deps.start_scheduler(data_dir)
+
+        if live_startup_enabled_from_env(deps.env):
+            await deps.start_live_stream(data_dir=data_dir)
+
+        runtime.live_watchdog_task = await deps.start_live_stream_watchdog(data_dir=data_dir)
+
+        if today_promoter_enabled_from_env(deps.env):
+            runtime.today_promoter_task = await deps.start_today_promoter(
+                data_dir=data_dir,
+                get_active_codes=deps.get_active_codes,
+                interval_s=today_promoter_interval_from_env(deps.env),
+            )
+
+        symbol_master_path = deps.resolve_symbol_master_path()
+        deps.load_symbol_disk_state(path=symbol_master_path, data_dir=data_dir)
+        if deps.needs_symbol_boot_refresh():
+            runtime.scheduler_tasks.append(
+                asyncio.create_task(
+                    deps.refresh_symbols(path=symbol_master_path, data_dir=data_dir),
+                    name="symbols-boot-refresh",
+                )
+            )
+    except Exception:
+        await runtime.stop()
+        raise
+
+    return runtime

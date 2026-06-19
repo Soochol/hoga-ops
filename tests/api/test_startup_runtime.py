@@ -165,5 +165,61 @@ async def test_startup_runtime_can_opt_into_live_and_symbol_refresh(tmp_path: Pa
     assert ("symbols-refresh", symbols_path, tmp_path) in calls
 
 
+@pytest.mark.asyncio
+async def test_startup_runtime_cleans_up_partial_start_on_failure(tmp_path: Path) -> None:
+    from hoga.api.startup_runtime import StartupRuntimeDeps, start_app_runtime
+
+    calls: list[Any] = []
+
+    async def long_running() -> None:
+        await asyncio.sleep(3600)
+
+    scheduler_task: asyncio.Task | None = None
+
+    def start_scheduler(data_dir: Path) -> list[asyncio.Task]:
+        nonlocal scheduler_task
+        scheduler_task = asyncio.create_task(long_running(), name="daily-loop")
+        calls.append(("scheduler", data_dir))
+        return [scheduler_task]
+
+    async def start_live_stream(*, data_dir: Path) -> bool:
+        calls.append(("live", data_dir))
+        return True
+
+    async def start_live_stream_watchdog(*, data_dir: Path) -> asyncio.Task | None:
+        calls.append(("watchdog", data_dir))
+        return None
+
+    async def start_today_promoter(**_kwargs: Any) -> asyncio.Task | None:
+        calls.append(("promoter", None))
+        raise RuntimeError("promoter failed")
+
+    with pytest.raises(RuntimeError, match="promoter failed"):
+        await start_app_runtime(
+            tmp_path,
+            deps=StartupRuntimeDeps(
+                env={"HOGA_LIVE_STARTUP_ENABLED": "true"},
+                start_scheduler=start_scheduler,
+                start_live_stream=start_live_stream,
+                start_live_stream_watchdog=start_live_stream_watchdog,
+                start_today_promoter=start_today_promoter,
+                stop_today_promoter=lambda task: _record_async(calls, "stop-promoter", task),
+                stop_live_stream=lambda: _record_async(calls, "stop-live", None),
+                aclose_kis_client=lambda: _record_async(calls, "close-kis", None),
+                get_active_codes=lambda: [],
+                load_symbol_disk_state=lambda **_kwargs: None,
+                needs_symbol_boot_refresh=lambda: False,
+                refresh_symbols=lambda **_kwargs: _record_async(calls, "symbols-refresh", None),
+                resolve_symbol_master_path=lambda: tmp_path / "symbols.json",
+            ),
+        )
+
+    assert scheduler_task is not None
+    assert scheduler_task.cancelled()
+    assert ("stop-promoter", None) in calls
+    assert ("stop-live", None) in calls
+    assert ("close-kis", None) in calls
+
+
 async def _record_async(calls: list[Any], name: str, value: Any) -> None:
     calls.append((name, value))
