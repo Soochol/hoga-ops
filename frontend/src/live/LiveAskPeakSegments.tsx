@@ -1,6 +1,6 @@
 import { memo, useEffect, useRef } from 'react';
 import type { ISeriesApi, SeriesType, Time } from 'lightweight-charts';
-import type { AskPeak, Candle, RangeSegment } from '../api/types';
+import type { AskPeak, AskPeakCandidate, Candle, RangeSegment } from '../api/types';
 import type { PaneId } from '../chart/drawing/types';
 import type { PaneSeriesMap } from '../chart/drawing/chartCoordinates';
 import type { VirtualAxis } from '../util/virtualAxis';
@@ -118,16 +118,52 @@ function untradedPeakFromFields(p: AskPeak, intraMax: boolean): AskPeak | null {
   };
 }
 
-function askPeakFromCandidate(date: string, candidate: NonNullable<AskPeak['all_peaks']>[number]): AskPeak {
+function askPeakFromCandidates(
+  base: AskPeak,
+  closeCandidate: AskPeakCandidate,
+  maxCandidate: AskPeakCandidate,
+): AskPeak {
   return {
-    date,
-    price: candidate.price,
-    qty: candidate.qty,
-    t_ms: candidate.t_ms,
-    max_price: candidate.price,
-    max_qty: candidate.qty,
-    max_t_ms: candidate.t_ms,
+    ...base,
+    price: closeCandidate.price,
+    qty: closeCandidate.qty,
+    t_ms: closeCandidate.t_ms,
+    max_price: maxCandidate.price,
+    max_qty: maxCandidate.qty,
+    max_t_ms: maxCandidate.t_ms,
   };
+}
+
+function expandBaselinePeaks(
+  peaks: readonly AskPeak[],
+  limit: 1 | 2 | 3,
+  intraMax: boolean,
+): AskPeak[] {
+  const byDate = new Map<string, AskPeak[]>();
+  for (const p of peaks) {
+    const closeCandidates = p.traded_peaks?.length
+      ? p.traded_peaks
+      : [{ price: p.price, qty: p.qty, t_ms: p.t_ms }];
+    const maxCandidates = p.traded_max_peaks?.length
+      ? p.traded_max_peaks
+      : closeCandidates.map((candidate, idx) => (
+        p.traded_peaks?.length
+          ? { price: candidate.price, qty: candidate.qty, t_ms: candidate.t_ms }
+          : { price: idx === 0 ? p.max_price : candidate.price, qty: idx === 0 ? p.max_qty : candidate.qty, t_ms: idx === 0 ? p.max_t_ms : candidate.t_ms }
+      ));
+    const count = Math.max(closeCandidates.length, maxCandidates.length);
+    const expanded = byDate.get(p.date) ?? [];
+    for (let i = 0; i < count; i += 1) {
+      const close = closeCandidates[i] ?? closeCandidates[closeCandidates.length - 1];
+      const max = maxCandidates[i] ?? maxCandidates[maxCandidates.length - 1] ?? close;
+      expanded.push(askPeakFromCandidates(p, close, max));
+    }
+    byDate.set(p.date, expanded);
+  }
+  return [...byDate.values()].flatMap((items) => items
+    .slice()
+    .sort((a, b) => selectedQty(b, intraMax) - selectedQty(a, intraMax) || a.t_ms - b.t_ms || a.price - b.price)
+    .slice(0, limit));
 }
 
 export function buildAskPeakOverlaySegments({
@@ -143,8 +179,9 @@ export function buildAskPeakOverlaySegments({
   showAllPrices,
   allPriceRankLimit = 1,
 }: BuildAskPeakOverlaySegmentsArgs): AskPeakSegment[] {
+  const baselinePeaks = expandBaselinePeaks(dayAskPeaks, allPriceRankLimit, intraMax);
   const baseline = buildAskPeakSegments(
-    dayAskPeaks,
+    baselinePeaks,
     segments,
     candles,
     axis,
@@ -156,11 +193,11 @@ export function buildAskPeakOverlaySegments({
   if (!showAllPrices) return baseline;
 
   const untradedPeaks: AskPeak[] = [];
-  for (const p of dayAskPeaks) {
+  const addedUntradedDates = new Set<string>();
+  for (const p of baselinePeaks) {
+    if (addedUntradedDates.has(p.date)) continue;
     const candidates = p.date === todayKst && todayAllPriceAskPeak?.date === todayKst
-      ? (todayAllPriceAskPeak.all_peaks?.slice(0, allPriceRankLimit).map((candidate) => (
-        askPeakFromCandidate(todayKst, candidate)
-      )) ?? [todayAllPriceAskPeak])
+      ? [todayAllPriceAskPeak]
       : [untradedPeakFromFields(p, intraMax)];
     const seenPrices = new Set([intraMax ? p.max_price : p.price]);
     for (const untradedPeak of candidates) {
@@ -170,6 +207,7 @@ export function buildAskPeakOverlaySegments({
       if (selectedQty(untradedPeak, intraMax) <= selectedQty(p, intraMax)) continue;
       seenPrices.add(price);
       untradedPeaks.push(untradedPeak);
+      addedUntradedDates.add(p.date);
     }
   }
   if (untradedPeaks.length === 0) return baseline;

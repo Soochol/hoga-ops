@@ -213,8 +213,8 @@ export const CHART_NUMERIC_PREFS = [
   },
   {
     key: 'askPeakAllPriceRankLimit',
-    label: '미체결 최대 매도벽 표시 개수',
-    description: '미체결 포함 최대벽 후보를 수량순으로 몇 등까지 차트에 표시할지 선택합니다.',
+    label: '체결가격 기준 최대벽 표시 개수',
+    description: '체결가격 기준 최대벽 후보를 수량순으로 몇 등까지 차트에 표시할지 선택합니다.',
     default: 1,
     min: 1,
     max: 3,

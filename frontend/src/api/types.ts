@@ -473,8 +473,10 @@ export type PeakBase = {
   untraded_max_t_ms?: number | null;
 };
 
-/** hoga/api/models.py::AskPeak 미러. all_peaks는 매도벽 후보 n개 표시용 ask-only 확장. */
+/** hoga/api/models.py::AskPeak 미러. 후보 배열은 매도벽 표시용 ask-only 확장. */
 export type AskPeak = PeakBase & {
+  traded_peaks?: AskPeakCandidate[];
+  traded_max_peaks?: AskPeakCandidate[];
   all_peaks?: AskPeakCandidate[];
 };
 

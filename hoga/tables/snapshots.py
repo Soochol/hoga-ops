@@ -388,6 +388,13 @@ class AskPeakRow:
 
 
 @dataclass(frozen=True)
+class AskPeakCandidateRow:
+    price: int
+    qty: int
+    intra_ms: int
+
+
+@dataclass(frozen=True)
 class AskPeakDualRow:
     """Day ask peak split into traded-price baseline and all-price peak.
 
@@ -401,6 +408,8 @@ class AskPeakDualRow:
     max_price: int
     max_qty: int
     max_intra_ms: int
+    traded_peaks: tuple[AskPeakCandidateRow, ...]
+    traded_max_peaks: tuple[AskPeakCandidateRow, ...]
     all_price: int
     all_qty: int
     all_intra_ms: int
@@ -832,25 +841,54 @@ def query_day_ask_peak_dual(
         )
     """
 
-    def pick(src: str, *, mode: str) -> tuple[int, int, int] | None:
+    def filter_for_mode(mode: str) -> str:
         if mode == "traded":
-            filter_sql = "WHERE price IN (SELECT price FROM traded_prices)"
-        elif mode == "untraded":
-            filter_sql = "WHERE price > (SELECT price FROM day_high)"
-        elif mode == "all":
-            filter_sql = ""
-        else:
-            raise ValueError(f"unknown ask peak pick mode: {mode}")
+            return "WHERE price IN (SELECT price FROM traded_prices)"
+        if mode == "untraded":
+            return "WHERE price > (SELECT price FROM day_high)"
+        if mode == "all":
+            return ""
+        raise ValueError(f"unknown ask peak pick mode: {mode}")
+
+    def pick(src: str, *, mode: str) -> tuple[int, int, int] | None:
         return con.execute(
             f"""
             {base_ctes},
             levels AS ({level_union(src)})
             SELECT price, qty, intra_ms FROM levels
-            {filter_sql}
+            {filter_for_mode(mode)}
             ORDER BY qty DESC, intra_ms ASC LIMIT 1
             """,
             [str(path), str(trades_path), str(trades_path)],
         ).fetchone()
+
+    def pick_many(src: str, *, mode: str, limit: int = 3) -> tuple[AskPeakCandidateRow, ...]:
+        rows = con.execute(
+            f"""
+            {base_ctes},
+            levels AS ({level_union(src)}),
+            filtered AS (
+              SELECT price, qty, intra_ms FROM levels
+              {filter_for_mode(mode)}
+            ),
+            per_price AS (
+              SELECT price, qty, intra_ms,
+                     ROW_NUMBER() OVER (
+                       PARTITION BY price
+                       ORDER BY qty DESC, intra_ms ASC
+                     ) AS rn
+              FROM filtered
+            )
+            SELECT price, qty, intra_ms FROM per_price
+            WHERE rn = 1
+            ORDER BY qty DESC, intra_ms ASC LIMIT {int(limit)}
+            """,
+            [str(path), str(trades_path), str(trades_path)],
+        ).fetchall()
+        return tuple(
+            AskPeakCandidateRow(price=int(r[0]), qty=int(r[1]), intra_ms=int(r[2]))
+            for r in rows
+        )
 
     all_close = pick("rep", mode="all")
     if all_close is None:
@@ -858,13 +896,21 @@ def query_day_ask_peak_dual(
     all_max = pick("cont", mode="all")
     traded_close = pick("rep", mode="traded") or all_close
     traded_max = pick("cont", mode="traded") or all_max
+    traded_peaks = pick_many("rep", mode="traded")
+    traded_max_peaks = pick_many("cont", mode="traded")
     untraded_close = pick("rep", mode="untraded")
     untraded_max = pick("cont", mode="untraded")
     if all_max is None or traded_max is None:
         return None
+    if not traded_peaks:
+        traded_peaks = (AskPeakCandidateRow(price=int(all_close[0]), qty=int(all_close[1]), intra_ms=int(all_close[2])),)
+    if not traded_max_peaks:
+        traded_max_peaks = (AskPeakCandidateRow(price=int(all_max[0]), qty=int(all_max[1]), intra_ms=int(all_max[2])),)
     return AskPeakDualRow(
         price=int(traded_close[0]), qty=int(traded_close[1]), intra_ms=int(traded_close[2]),
         max_price=int(traded_max[0]), max_qty=int(traded_max[1]), max_intra_ms=int(traded_max[2]),
+        traded_peaks=traded_peaks,
+        traded_max_peaks=traded_max_peaks,
         all_price=int(all_close[0]), all_qty=int(all_close[1]), all_intra_ms=int(all_close[2]),
         all_max_price=int(all_max[0]),
         all_max_qty=int(all_max[1]),

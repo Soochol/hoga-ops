@@ -475,19 +475,23 @@ describe('buildAskPeakOverlaySegments', () => {
     expect(out[1]).toMatchObject({ label: '110, 0.1k', color: '#F97316', lineWidth: 1 });
   });
 
-  it('오늘 live all-price 후보는 rank limit만큼 체결 기준선 뒤에 추가한다', () => {
-    const traded = peak({ date: '20260613', price: 100, qty: 50, t_ms: 120000 });
+  it('오늘 체결가격 기준 후보는 rank limit만큼 그리고 미체결 후보는 1개만 추가한다', () => {
+    const traded = [
+      peak({ date: '20260613', price: 100, qty: 100, t_ms: 120000 }),
+      peak({ date: '20260613', price: 105, qty: 90, t_ms: 130000 }),
+      peak({ date: '20260613', price: 108, qty: 80, t_ms: 140000 }),
+    ];
     const allPrice: AskPeak = {
-      ...peak({ date: '20260613', price: 110, qty: 90, t_ms: 180000 }),
+      ...peak({ date: '20260613', price: 110, qty: 120, t_ms: 180000 }),
       all_peaks: [
-        { price: 110, qty: 90, t_ms: 180000 },
-        { price: 115, qty: 80, t_ms: 190000 },
-        { price: 120, qty: 70, t_ms: 200000 },
+        { price: 110, qty: 120, t_ms: 180000 },
+        { price: 115, qty: 115, t_ms: 190000 },
+        { price: 120, qty: 110, t_ms: 200000 },
       ],
     };
 
     const out = buildAskPeakOverlaySegments({
-      dayAskPeaks: [traded],
+      dayAskPeaks: traded,
       todayAllPriceAskPeak: allPrice,
       segments: [seg('20260613', 60000, 240000)],
       candles: [candle(60000), candle(120000), candle(180000), candle(190000), candle(200000)],
@@ -501,7 +505,76 @@ describe('buildAskPeakOverlaySegments', () => {
     });
 
     expect(out).toHaveLength(3);
-    expect(out.map((s) => s.price)).toEqual([100, 110, 115]);
+    expect(out.map((s) => s.price)).toEqual([100, 105, 110]);
+    expect(out.map((s) => s.color)).toEqual(['#1D4ED8', '#1D4ED8', '#F97316']);
+  });
+
+  it('과거 날짜도 체결가격 기준 후보를 rank limit만큼 그린다', () => {
+    const past: AskPeak = {
+      ...peak({ date: '20260612', price: 100, qty: 100, t_ms: 120000 }),
+      traded_peaks: [
+        { price: 100, qty: 100, t_ms: 120000 },
+        { price: 105, qty: 90, t_ms: 130000 },
+        { price: 108, qty: 80, t_ms: 140000 },
+      ],
+      untraded_price: 110,
+      untraded_qty: 120,
+      untraded_t_ms: 180000,
+      untraded_max_price: 110,
+      untraded_max_qty: 120,
+      untraded_max_t_ms: 180000,
+    };
+
+    const out = buildAskPeakOverlaySegments({
+      dayAskPeaks: [past],
+      todayAllPriceAskPeak: null,
+      segments: [seg('20260612', 60000, 240000)],
+      candles: [candle(60000), candle(120000), candle(180000)],
+      axis,
+      todayKst: '20260613',
+      baselineStyle: { color: '#1D4ED8', lineWidth: 2 },
+      allPriceStyle: { color: '#F97316', lineWidth: 1 },
+      intraMax: false,
+      showAllPrices: true,
+      allPriceRankLimit: 2,
+    });
+
+    expect(out).toHaveLength(3);
+    expect(out.map((s) => s.price)).toEqual([100, 105, 110]);
+    expect(out.map((s) => s.color)).toEqual(['#1D4ED8', '#1D4ED8', '#F97316']);
+  });
+
+  it('오늘과 과거 날짜를 각각 rank limit만큼 함께 그린다', () => {
+    const past: AskPeak = {
+      ...peak({ date: '20260612', price: 100, qty: 100, t_ms: 120000 }),
+      traded_peaks: [
+        { price: 100, qty: 100, t_ms: 120000 },
+        { price: 105, qty: 90, t_ms: 130000 },
+        { price: 108, qty: 80, t_ms: 140000 },
+      ],
+    };
+    const today = [
+      peak({ date: '20260613', price: 200, qty: 200, t_ms: 220000 }),
+      peak({ date: '20260613', price: 205, qty: 190, t_ms: 230000 }),
+      peak({ date: '20260613', price: 208, qty: 180, t_ms: 240000 }),
+    ];
+
+    const out = buildAskPeakOverlaySegments({
+      dayAskPeaks: [past, ...today],
+      todayAllPriceAskPeak: null,
+      segments: [seg('20260612', 60000, 240000), seg('20260613', 260000, 440000)],
+      candles: [candle(60000), candle(120000), candle(220000), candle(230000), candle(240000)],
+      axis,
+      todayKst: '20260613',
+      baselineStyle: { color: '#1D4ED8', lineWidth: 2 },
+      allPriceStyle: { color: '#F97316', lineWidth: 1 },
+      intraMax: false,
+      showAllPrices: false,
+      allPriceRankLimit: 2,
+    });
+
+    expect(out).toHaveLength(4);
+    expect(out.map((s) => s.price)).toEqual([100, 105, 200, 205]);
   });
 
   it('오늘 체결가격 기준선과 미체결 포함 triple이 같으면 한 줄만 만든다', () => {

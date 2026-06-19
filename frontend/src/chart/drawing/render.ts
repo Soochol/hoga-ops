@@ -209,21 +209,41 @@ function renderTrendline(
     if (xa != null) drawHandle(c, t.color, xa, ya);
     if (xb != null) drawHandle(c, t.color, xb, yb);
   }
+  renderTrendlineDeltaGuide(c, ctx, t, x1, xa, x2, ya);
 }
 
-export function renderTrendlineDraft(
+function renderTrendlineDeltaGuide(
   c: CanvasRenderingContext2D,
   ctx: ProjectCtx,
-  draft: TrendlineDraft,
-  defaults: DrawingDefaults,
+  t: Trendline,
+  labelAnchorX: number,
+  realStartX: number | null,
+  guideEndX: number,
+  startY: number,
 ) {
-  if (!draft.b) return;
-  const xa = realMsToX(ctx, draft.a.realMs);
-  const ya = priceToY(ctx, draft.a.price);
-  const xb = realMsToX(ctx, draft.b.realMs);
-  const yb = priceToY(ctx, draft.b.price);
-  if (xa == null || xb == null || ya == null || yb == null) return;
-  const d: Trendline = {
+  c.save();
+  c.strokeStyle = t.color;
+  c.globalAlpha = 0.55;
+  c.lineWidth = Math.max(1, t.width);
+  c.lineCap = 'butt';
+  c.setLineDash([4, 4]);
+  c.beginPath();
+  c.moveTo(realStartX ?? 0, startY);
+  c.lineTo(guideEndX, startY);
+  c.stroke();
+  c.restore();
+
+  const label = formatDeltaLabel(t.a.price, t.b.price, t.paneId);
+  const labelX =
+    guideEndX >= labelAnchorX
+      ? guideEndX + DELTA_LABEL_GAP
+      : guideEndX - DELTA_LABEL_GAP - c.measureText(label).width;
+  drawFloatingLabel(c, ctx.width, labelX, startY, label, t.color);
+}
+
+function trendlineFromDraft(draft: TrendlineDraft, defaults: DrawingDefaults): Trendline | null {
+  if (!draft.b) return null;
+  return {
     id: '__trendline_draft__',
     kind: 'trendline',
     a: draft.a,
@@ -233,6 +253,21 @@ export function renderTrendlineDraft(
     lineStyle: defaults.lineStyle,
     paneId: draft.paneId,
   };
+}
+
+export function renderTrendlineDraft(
+  c: CanvasRenderingContext2D,
+  ctx: ProjectCtx,
+  draft: TrendlineDraft,
+  defaults: DrawingDefaults,
+) {
+  const d = trendlineFromDraft(draft, defaults);
+  if (!d) return;
+  const xa = realMsToX(ctx, d.a.realMs);
+  const ya = priceToY(ctx, d.a.price);
+  const xb = realMsToX(ctx, d.b.realMs);
+  const yb = priceToY(ctx, d.b.price);
+  if (xa == null || xb == null || ya == null || yb == null) return;
   c.save();
   c.globalAlpha = 0.9;
   drawHaloThenMain(c, d, false, () => {
@@ -242,22 +277,7 @@ export function renderTrendlineDraft(
     c.stroke();
   });
   c.restore();
-
-  c.save();
-  c.strokeStyle = defaults.color;
-  c.globalAlpha = 0.55;
-  c.lineWidth = Math.max(1, defaults.width);
-  c.lineCap = 'butt';
-  c.setLineDash([4, 4]);
-  c.beginPath();
-  c.moveTo(xa, ya);
-  c.lineTo(xb, ya);
-  c.stroke();
-  c.restore();
-
-  const label = formatDeltaLabel(draft.a.price, draft.b.price, draft.paneId);
-  const labelX = xb >= xa ? xb + DELTA_LABEL_GAP : xb - DELTA_LABEL_GAP - c.measureText(label).width;
-  drawFloatingLabel(c, ctx.width, labelX, ya, label, defaults.color);
+  renderTrendlineDeltaGuide(c, ctx, d, xa, xa, xb, ya);
 }
 
 function drawHandle(c: CanvasRenderingContext2D, color: string, x: number, y: number) {

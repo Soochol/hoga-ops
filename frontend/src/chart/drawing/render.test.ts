@@ -7,7 +7,7 @@
 import { describe, expect, it, vi } from 'vitest';
 import type { IChartApi } from 'lightweight-charts';
 import { renderDrawing, renderTrendlineDraft, type ProjectCtx, dashPattern } from './render';
-import type { Hline } from './types';
+import type { Hline, Trendline } from './types';
 import type { TrendlineDraft } from './tools';
 
 /** Build a context with all the canvas methods we touch spied. */
@@ -218,6 +218,28 @@ describe('renderTrendlineDraft', () => {
     });
 
     expect(c.lineTo).toHaveBeenCalledWith(2, 200);
+    const labels = (c.fillText as ReturnType<typeof vi.fn>).mock.calls.map((a) => a[0] as string);
+    expect(labels).toContain('+25 (+25.00%)');
+  });
+});
+
+describe('renderTrendline delta label', () => {
+  it('keeps the price-change label after the trendline is committed', () => {
+    const c = makeCanvasSpy();
+    const ctx = makeProjectCtxWithProjection();
+    const t: Trendline = {
+      id: 't1',
+      kind: 'trendline',
+      a: { realMs: 1_000, price: 100 },
+      b: { realMs: 2_000, price: 125 },
+      color: '#14B8A6',
+      width: 2,
+      lineStyle: 'solid',
+      paneId: 'candle',
+    };
+
+    renderDrawing(c, ctx, t, false);
+
     const labels = (c.fillText as ReturnType<typeof vi.fn>).mock.calls.map((a) => a[0] as string);
     expect(labels).toContain('+25 (+25.00%)');
   });

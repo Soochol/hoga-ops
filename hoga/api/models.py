@@ -92,6 +92,12 @@ class Meta(BaseModel):
     parser_version: str
 
 
+class AskPeakCandidate(BaseModel):
+    price: int
+    qty: int
+    t_ms: int
+
+
 class AskPeak(BaseModel):
     """한 거래일 연속거래 중 단일 매도 호가단계 최대 물량·가격(Day Ask Peak).
 
@@ -122,6 +128,8 @@ class AskPeak(BaseModel):
     untraded_max_price: int | None = None
     untraded_max_qty: int | None = None
     untraded_max_t_ms: int | None = None
+    traded_peaks: list[AskPeakCandidate] = Field(default_factory=list)
+    traded_max_peaks: list[AskPeakCandidate] = Field(default_factory=list)
 
 
 class BidPeak(BaseModel):

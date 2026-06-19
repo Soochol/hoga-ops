@@ -17,7 +17,6 @@ export default function AskPeakConfig() {
   const allPriceLineWidth = useLivePageStore((s) => s.askPeakAllPriceLineWidth);
   const setStyle = useLivePageStore((s) => s.setAskPeakStyle);
   const setAllPriceStyle = useLivePageStore((s) => s.setAskPeakAllPriceStyle);
-  const showAllPrices = useChartPrefsStore((s) => s.askPeakShowAllPrices);
   const rankLimit = useChartPrefsStore((s) => s.askPeakAllPriceRankLimit);
   const setNumericPref = useChartPrefsStore((s) => s.setNumericPref);
   return (
@@ -48,22 +47,20 @@ export default function AskPeakConfig() {
       <div className="border-b border-border my-3" />
       <IndicatorPrefRows toggleKeys={['askPeakIntraMax', 'askPeakShowAllPrices']} />
       <div className="border-b border-border my-2" />
-      <div className={showAllPrices ? '' : 'opacity-50'}>
-        <div className="text-sm text-fg mb-2">미체결 후보 표시 범위</div>
-        <div className="inline-flex rounded-md border border-border overflow-hidden" role="group" aria-label="미체결 후보 표시 범위">
+      <div>
+        <div className="text-sm text-fg mb-2">체결가격 기준 표시 범위</div>
+        <div className="inline-flex rounded-md border border-border overflow-hidden" role="group" aria-label="체결가격 기준 표시 범위">
           {RANK_OPTIONS.map((option) => {
             const selected = rankLimit === option.value;
             return (
               <button
                 key={option.value}
                 type="button"
-                disabled={!showAllPrices}
                 aria-pressed={selected}
                 onClick={() => setNumericPref('askPeakAllPriceRankLimit', option.value)}
                 className={[
                   'px-3 py-1.5 text-xs border-r border-border last:border-r-0 transition-colors',
                   selected ? 'bg-accent text-accent-fg' : 'bg-bg-elevated text-fg-dim hover:text-fg',
-                  !showAllPrices ? 'cursor-not-allowed hover:text-fg-dim' : '',
                 ].join(' ')}
               >
                 {option.label}
