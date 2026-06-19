@@ -3,6 +3,14 @@
 All notable changes to this project are documented here.
 The format follows a 4-digit `MAJOR.MINOR.PATCH.MICRO` scheme.
 
+## [0.8.15.4] - 2026-06-19
+
+### Changed
+- **관심종목 수집 상태를 LED 점으로 단순화**: `준실시간`, `저녁대기` 텍스트를 없애고
+  상태 표현을 점으로만 표시해 관심종목 행의 가격·등락률 스캔을 방해하지 않게 했다.
+- **관심종목 정렬 기본 상태 아이콘 추가**: 그룹 정렬 버튼이 기본·오름차순·내림차순
+  세 상태를 각각 다른 아이콘으로 보여 현재 정렬 상태를 바로 구분할 수 있게 했다.
+
 ## [0.8.15.3] - 2026-06-19
 
 ### Fixed
