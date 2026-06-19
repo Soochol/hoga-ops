@@ -3,6 +3,21 @@
 All notable changes to this project are documented here.
 The format follows a 4-digit `MAJOR.MINOR.PATCH.MICRO` scheme.
 
+## [0.8.14.1] - 2026-06-19
+
+### Changed
+- **백엔드 시작 KIS 호출 경계 정리**: 서버 시작만으로 조건검색 스크리너 갱신, 관심종목 catch-up,
+  Live Capture가 자동 실행되지 않게 하고, daily scheduler와 수동 실행 경로만 갱신을 소유한다.
+- **Live 상태 표시 안정화**: 정상 오프라인 시작 상태를 자격증명 오류로 오해하지 않도록
+  /live 배너와 캡처 헬스 표시를 단일 projection으로 정리했다.
+- **관심종목 표시 순서 단일화**: 관심종목 wire 응답, Live Set, Heatmap 초기 seed가 같은 표시 순서
+  projection을 사용하도록 정리했다.
+
+### Fixed
+- KIS calendar 조회와 스크리너 일봉 배치 fan-out이 부팅 시 동시에 몰리던 경로를 제거하고,
+  스크리너 배치 동시성을 `HOGA_SCREENER_FETCH_CONCURRENCY`로 낮춰 조절할 수 있게 했다.
+- KIS WebSocket appkey 중복 사용 거부 시 재연결 backoff를 완화해 같은 오류 로그가 빠르게 반복되지 않게 했다.
+
 ## [0.8.14.0] - 2026-06-19
 
 ### Fixed
