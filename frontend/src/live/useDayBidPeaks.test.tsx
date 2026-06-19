@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { renderHook } from '@testing-library/react';
-import { useDayBidPeaks } from './useDayBidPeaks';
+import { useDayBidPeaks, useTodayAllPriceBidPeak } from './useDayBidPeaks';
 import type { BidPeak, Candle } from '../api/types';
 import type { LiveTodayBidPeak } from '../api/liveSeries';
 import type { ObSnapshot, TradeSnapshot } from './bucketHogaSeries';
@@ -120,5 +120,87 @@ describe('useDayBidPeaks', () => {
       qty: 20000,
       t_ms: atKst(9, 20),
     });
+  });
+});
+
+describe('useTodayAllPriceBidPeak', () => {
+  it('uses REST all-price seed ahead of historical today seed', () => {
+    const seed: BidPeak = {
+      date: '20260613',
+      price: 23900,
+      qty: 5000,
+      t_ms: atKst(9, 5),
+      max_price: 23900,
+      max_qty: 5000,
+      max_t_ms: atKst(9, 5),
+    };
+
+    const { result } = renderHook(() => useTodayAllPriceBidPeak(
+      [],
+      [seed],
+      '20260613',
+      '005930',
+      todayBidPeak({ all_price: 23800, all_qty: 12000, all_t_ms: atKst(9, 11) }),
+    ));
+
+    expect(result.current).toEqual({
+      date: '20260613',
+      price: 23800,
+      qty: 12000,
+      t_ms: atKst(9, 11),
+      max_price: 23800,
+      max_qty: 12000,
+      max_t_ms: atKst(9, 11),
+    });
+  });
+
+  it('falls back to historical today seed when REST today peak is absent', () => {
+    const seed: BidPeak = {
+      date: '20260613',
+      price: 23900,
+      qty: 5000,
+      t_ms: atKst(9, 5),
+      max_price: 23900,
+      max_qty: 5000,
+      max_t_ms: atKst(9, 5),
+    };
+
+    const { result } = renderHook(() => useTodayAllPriceBidPeak(
+      [],
+      [seed],
+      '20260613',
+      '005930',
+      null,
+    ));
+
+    expect(result.current).toEqual(seed);
+  });
+
+  it('ratchets larger live bid walls and resets on code/date changes', () => {
+    const first = deep(
+      atKst(9, 20),
+      [[23800, 9000], ...Array(9).fill([1, 1])] as Array<[number, number]>,
+    );
+    const larger = deep(
+      atKst(9, 21),
+      [[23700, 15000], ...Array(9).fill([1, 1])] as Array<[number, number]>,
+    );
+
+    const { result, rerender } = renderHook(
+      ({ ob, todayKst, code }: { ob: ObSnapshot[]; todayKst: string; code: string }) =>
+        useTodayAllPriceBidPeak(ob, [], todayKst, code, null),
+      { initialProps: { ob: [] as ObSnapshot[], todayKst: '20260613', code: '005930' } },
+    );
+
+    expect(result.current).toBeNull();
+
+    rerender({ ob: [first], todayKst: '20260613', code: '005930' });
+    expect(result.current).toMatchObject({ price: 23800, qty: 9000, t_ms: atKst(9, 20) });
+
+    rerender({ ob: [first, larger], todayKst: '20260613', code: '005930' });
+    expect(result.current).toMatchObject({ price: 23700, qty: 15000, t_ms: atKst(9, 21) });
+
+    rerender({ ob: [], todayKst: '20260614', code: '000660' });
+    expect(result.current).toBeNull();
   });
 });

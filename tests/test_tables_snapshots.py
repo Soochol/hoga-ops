@@ -1008,6 +1008,59 @@ def test_query_day_bid_peak_basic(tmp_path) -> None:
     )
 
 
+def test_query_day_bid_peak_excludes_auction_and_session_boundaries(tmp_path) -> None:
+    z = tuple([0] * 10)
+    collapsed = Orderbook(
+        ts_ms=91000000, seq=1,
+        ask_p=(70100, 70150, 70200) + (0,) * 7,
+        ask_q=(1, 1, 1) + (0,) * 7,
+        ask_d=z,
+        bid_p=(70000, 69900, 69800) + (0,) * 7,
+        bid_q=(99999, 1, 1) + (0,) * 7,
+        bid_d=z,
+        tot_ask=3, tot_ask_d=0, tot_bid=100001, tot_bid_d=0,
+    )
+    regular = _ob_bp(
+        92000000,
+        [5000, 100, 50, 40, 30, 20, 10, 9, 8, 7],
+        bid_p=[70000, 69900, 69800, 69700, 69600, 69500, 69400, 69300, 69200, 69100],
+    )
+    obs = [
+        _ob_bp(85500000, [99999, 100, 50, 40, 30, 20, 10, 9, 8, 7],
+               bid_p=[70500, 70400, 70300, 70200, 70100, 70000, 69900, 69800, 69700, 69600]),
+        collapsed,
+        regular,
+        _ob_bp(153014000, [88888, 100, 50, 40, 30, 20, 10, 9, 8, 7],
+               bid_p=[70600, 70500, 70400, 70300, 70200, 70100, 70000, 69900, 69800, 69700]),
+    ]
+    snapshots = tmp_path / "snapshots.parquet"
+    trades = tmp_path / "trades.parquet"
+    write_parquet(obs, snapshots)
+    write_trades([_trade(92000500, 70000)], trades)
+
+    peak = query_day_bid_peak(
+        _con_for(snapshots),
+        path=snapshots,
+        bucket_ms=60_000,
+        session_open_ms=90000000,
+        session_close_ms=153000000,
+    )
+    dual = query_day_bid_peak_dual(
+        _con_for(snapshots),
+        path=snapshots,
+        trades_path=trades,
+        bucket_ms=60_000,
+        session_open_ms=90000000,
+        session_close_ms=153000000,
+    )
+
+    assert peak is not None
+    assert peak.price == 70000 and peak.qty == 5000
+    assert dual is not None
+    assert dual.price == 70000 and dual.qty == 5000
+    assert dual.all_price == 70000 and dual.all_qty == 5000
+
+
 def test_query_day_bid_peak_dual_populates_below_low_untraded(tmp_path) -> None:
     from hoga.tables.trades import Trade, write_parquet as trades_write_parquet
 

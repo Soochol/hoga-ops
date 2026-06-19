@@ -36,6 +36,7 @@ const livePageMocks = vi.hoisted(() => {
     allPriceObArgs: [] as unknown[],
     allPriceTodayArgs: [] as unknown[],
     currentStudySaveSource: null as unknown,
+    dayBidPeaksResult: null as unknown[] | null,
     todayAskPeak: {
       date: '20260616',
       coverage: 'partial',
@@ -93,7 +94,7 @@ vi.mock('./useDayAskPeaks', () => ({
 
 vi.mock('./useDayBidPeaks', () => ({
   useTodayAllPriceBidPeak: () => null,
-  useDayBidPeaks: (_ob: unknown, _trade: unknown, seeds: unknown) => seeds ?? [],
+  useDayBidPeaks: (_ob: unknown, _trade: unknown, seeds: unknown) => livePageMocks.dayBidPeaksResult ?? seeds ?? [],
 }));
 
 // LiveSidebar now calls cursor hooks (ADR-0044) — mock them so the shell
@@ -196,6 +197,7 @@ describe('LivePage shell', () => {
     livePageMocks.allPriceObArgs.length = 0;
     livePageMocks.allPriceTodayArgs.length = 0;
     livePageMocks.currentStudySaveSource = null;
+    livePageMocks.dayBidPeaksResult = null;
     // The tabs store is a module singleton (loaded once at import). The new
     // LivePage tab-bar wiring makes the mount-seed effect read its activeTabId,
     // so reset it per-test to keep tests isolated — without this, a tab opened
@@ -333,9 +335,10 @@ describe('LivePage shell', () => {
     expect(livePageMocks.allPriceTodayArgs.at(-1)).toBe(livePageMocks.todayAskPeak);
   });
 
-  it('preserves bid_peaks in the live study save bundle when chartBundle is present', async () => {
+  it('preserves rendered bid_peaks in the live study save bundle when chartBundle is present', async () => {
     const askPeaks = [{ date: '20260616', price: 70100, qty: 1000, t_ms: 1, max_price: 70100, max_qty: 1000, max_t_ms: 1 }];
-    const bidPeaks = [{ date: '20260616', price: 69900, qty: 1200, t_ms: 2, max_price: 69900, max_qty: 1200, max_t_ms: 2 }];
+    const seedBidPeaks = [{ date: '20260616', price: 69900, qty: 1200, t_ms: 2, max_price: 69900, max_qty: 1200, max_t_ms: 2 }];
+    const renderedBidPeaks = [{ date: '20260616', price: 69800, qty: 2200, t_ms: 3, max_price: 69800, max_qty: 2200, max_t_ms: 3 }];
     livePageMocks.liveBundleResult.bundle = rangeBundleFixture({
       quote_ratio: {
         bucket_ms: 300_000,
@@ -348,8 +351,9 @@ describe('LivePage shell', () => {
       from_date: '20260615',
       to_date: '20260616',
       ask_peaks: askPeaks,
-      bid_peaks: bidPeaks,
+      bid_peaks: seedBidPeaks,
     });
+    livePageMocks.dayBidPeaksResult = renderedBidPeaks;
 
     renderWithRouter('/live?code=005930');
 
@@ -359,7 +363,7 @@ describe('LivePage shell', () => {
         code: '005930',
         bundle: {
           ask_peaks: askPeaks,
-          bid_peaks: bidPeaks,
+          bid_peaks: renderedBidPeaks,
         },
       });
     });

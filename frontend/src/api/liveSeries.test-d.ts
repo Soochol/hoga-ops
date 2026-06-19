@@ -32,6 +32,19 @@ const _liveSeriesResponse: LiveSeriesResponse = {
 };
 void _liveSeriesResponse;
 
+const _legacyLiveSeriesResponseWithoutBidPeak: LiveSeriesResponse = {
+  code: '005930',
+  date: '20260616',
+  session_open_ms: 1781568000000,
+  session_close_ms: null,
+  is_open: true,
+  snapshots: [],
+  trades: [],
+  brokers: [],
+  ask_peak_today: _todayAskPeakWithoutTradedPeak,
+};
+void _legacyLiveSeriesResponseWithoutBidPeak;
+
 // @ts-expect-error ask_peak_today is required on the live series response.
 const _missingTodayAskPeak: LiveSeriesResponse = {
   code: '005930',
