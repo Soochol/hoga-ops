@@ -3,6 +3,13 @@
 All notable changes to this project are documented here.
 The format follows a 4-digit `MAJOR.MINOR.PATCH.MICRO` scheme.
 
+## [0.8.15.3] - 2026-06-19
+
+### Fixed
+- **/live 외인·기관 추정 순차별 수신시각 보존**: 1차·2차·3차·4차 추정 수급 row가
+  모두 마지막 조회 시각으로 보이지 않도록, 같은 종목·거래일·순차의 최초 수신시각을
+  보존하고 새 순차나 값 변경만 새 수신시각으로 갱신한다.
+
 ## [0.8.15.2] - 2026-06-19
 
 ### Changed
