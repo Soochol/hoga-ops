@@ -362,6 +362,25 @@ async def test_start_scheduler_spawns_catchup_and_daily_loop(tmp_path: Path):
                 await t
 
 
+def test_startup_catchup_enabled_defaults_to_false(monkeypatch):
+    from hoga.api import scheduler
+
+    monkeypatch.delenv("HOGA_STARTUP_CATCHUP_ENABLED", raising=False)
+
+    assert scheduler.startup_catchup_enabled_from_env() is False
+
+
+def test_startup_catchup_enabled_accepts_true_only(monkeypatch):
+    from hoga.api import scheduler
+
+    monkeypatch.setenv("HOGA_STARTUP_CATCHUP_ENABLED", "true")
+    assert scheduler.startup_catchup_enabled_from_env() is True
+
+    for value in ["false", "1", "yes", "", "TRUE "]:
+        monkeypatch.setenv("HOGA_STARTUP_CATCHUP_ENABLED", value)
+        assert scheduler.startup_catchup_enabled_from_env() is False
+
+
 @pytest.mark.asyncio
 async def test_catchup_one_entry_returns_empty_when_no_gap(tmp_path: Path):
     """When last_success >= today, returns empty EnqueueResponse without calling enqueue."""

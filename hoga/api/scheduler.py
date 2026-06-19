@@ -12,6 +12,7 @@ from __future__ import annotations
 
 import asyncio
 import datetime as dt
+import os
 import logging
 from pathlib import Path
 
@@ -205,6 +206,15 @@ async def _daily_loop(data_dir: Path) -> None:
             await _daily_run(data_dir)
         except Exception:  # noqa: BLE001
             log.exception("daily run crashed; loop continues")
+
+
+def startup_catchup_enabled_from_env() -> bool:
+    """Whether startup should run the one-shot watchlist catch-up.
+
+    Default is false so process boot does not fan out into KIS calendar/capture
+    work. Operators can opt in locally with HOGA_STARTUP_CATCHUP_ENABLED=true.
+    """
+    return os.environ.get("HOGA_STARTUP_CATCHUP_ENABLED") == "true"
 
 
 def start_scheduler(data_dir: Path) -> list[asyncio.Task]:
