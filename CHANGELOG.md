@@ -3,6 +3,14 @@
 All notable changes to this project are documented here.
 The format follows a 4-digit `MAJOR.MINOR.PATCH.MICRO` scheme.
 
+## [0.8.13.4] - 2026-06-19
+
+### Fixed
+- **/live 호가 지표 결측 구간 차폐**: 캔들은 존재하지만 호가 데이터가 없는 구간에서
+  총잔량·호가비 그래프가 앞뒤 값을 직선으로 이어 그리지 않고 투명 gap으로 끊어 보인다.
+- 기존 3호가 동시호가 차폐와 과거/당일 split cache 성능 경로를 유지하면서, 오늘 첫 버킷이
+  결측 gap인 경우에도 cached projection과 full projection이 같은 출력이 되도록 보정했다.
+
 ## [0.8.13.3] - 2026-06-19
 
 ### Fixed
