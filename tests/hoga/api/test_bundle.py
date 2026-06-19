@@ -258,12 +258,19 @@ def test_build_volume_profile_slice_top_edge_bin_not_dropped(tmp_path):
 # build_range_bundle (ADR-0013/0014): partial-inventory, segments
 # ---------------------------------------------------------------------------
 
-def _patch_slice_builders(bundle_mod, bucket_ms: int = 60_000, *, patch_ask_peak: bool = True):
+def _patch_slice_builders(
+    bundle_mod,
+    bucket_ms: int = 60_000,
+    *,
+    patch_ask_peak: bool = True,
+    patch_bid_peak: bool = True,
+):
     """Return a list of context managers that stub every per-slice builder.
 
-    ``patch_ask_peak`` (default True) also stubs build_ask_peak_slice → None so the
-    general bundle tests (MagicMock engine, no real parquet/conn) don't exercise it.
-    The dedicated ask_peak tests pass False to run build_ask_peak_slice for real."""
+    ``patch_ask_peak`` and ``patch_bid_peak`` (default True) also stub peak builders
+    to ``None`` so the general bundle tests (MagicMock engine, no real parquet/conn)
+    don't exercise them. Dedicated peak tests pass False or override the stub to run
+    the relevant builder for real."""
     from unittest.mock import patch
     from hoga.api.models import (
         FillStrength, QuoteRatio, VolumeProfile,
@@ -280,6 +287,8 @@ def _patch_slice_builders(bundle_mod, bucket_ms: int = 60_000, *, patch_ask_peak
     ]
     if patch_ask_peak:
         patches.append(patch.object(bundle_mod, "build_ask_peak_slice", return_value=None))
+    if patch_bid_peak:
+        patches.append(patch.object(bundle_mod, "build_bid_peak_slice", return_value=None))
     return patches
 
 
