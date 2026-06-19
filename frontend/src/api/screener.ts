@@ -9,7 +9,8 @@ export type ChangePctOp = 'gte' | 'lte' | 'between';
 export interface ChangePctParams { op: ChangePctOp; pct?: number; lo?: number; hi?: number }
 export interface PriceRangeParams { min?: number; max?: number }
 export type MaRelation = 'above' | 'below';
-export interface MaParams { period: number; relation: MaRelation }
+export type MaSource = 'open' | 'high' | 'low' | 'close';
+export interface MaParams { period: number; relation: MaRelation; source?: MaSource }
 
 export type ConditionLeaf =
   | { id: string; type: 'trade_value'; params: TradeValueParams }

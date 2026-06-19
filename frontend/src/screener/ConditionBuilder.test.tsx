@@ -9,8 +9,19 @@ describe('ConditionBuilder', () => {
     const onConditions = vi.fn();
     render(<ConditionBuilder {...base} onConditionsChange={onConditions} onUniverseChange={vi.fn()} />);
     fireEvent.click(screen.getByRole('button', { name: '조건 추가' }));
+    expect(screen.getByText('신고가/거래량')).toBeInTheDocument();
     fireEvent.click(screen.getByRole('menuitem', { name: '기간내 신고가' }));
     expect(onConditions).toHaveBeenCalledWith([expect.objectContaining({ type: 'new_high' })]);
+  });
+
+  it('groups add-condition options by category', () => {
+    render(<ConditionBuilder {...base} onConditionsChange={vi.fn()} onUniverseChange={vi.fn()} />);
+    fireEvent.click(screen.getByRole('button', { name: '조건 추가' }));
+    expect(screen.getByText('가격')).toBeInTheDocument();
+    expect(screen.getAllByText('거래대금').length).toBeGreaterThanOrEqual(1);
+    expect(screen.getByText('신고가/거래량')).toBeInTheDocument();
+    expect(screen.getAllByText('이동평균').length).toBeGreaterThanOrEqual(1);
+    expect(screen.getAllByText('등락률').length).toBeGreaterThanOrEqual(1);
   });
 
   it('bare "신고가" menu item adds the 당일 variant (new_high_today)', () => {
@@ -28,6 +39,18 @@ describe('ConditionBuilder', () => {
                  { id: 'q', type: 'new_high', params: { lookback: 20, period: 60 } }] as any;
     render(<ConditionBuilder conditions={two} universe={{}} onConditionsChange={vi.fn()} onUniverseChange={vi.fn()} />);
     expect(screen.getAllByText('기간내 신고가')).toHaveLength(2);
+  });
+
+  it('duplicates a condition with the same type and params but a new id', () => {
+    const condition = { id: 'p', type: 'ma', params: { period: 20, relation: 'above' } } as any;
+    const onConditions = vi.fn();
+    render(<ConditionBuilder conditions={[condition]} universe={{}} onConditionsChange={onConditions} onUniverseChange={vi.fn()} />);
+    fireEvent.click(screen.getByRole('button', { name: '조건 복제' }));
+    expect(onConditions).toHaveBeenCalledWith([
+      condition,
+      expect.objectContaining({ type: 'ma', params: condition.params }),
+    ]);
+    expect(onConditions.mock.calls[0][0][1].id).not.toBe('p');
   });
 
   it('delegates universe editing to the 사전필터 modal (header button → modal → onUniverseChange)', () => {

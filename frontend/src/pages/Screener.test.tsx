@@ -1,4 +1,4 @@
-import { render, screen, fireEvent, waitFor } from '@testing-library/react';
+import { render, screen, fireEvent, waitFor, within } from '@testing-library/react';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { MemoryRouter, useLocation } from 'react-router';
 import { it, expect, vi, afterEach } from 'vitest';
@@ -39,7 +39,7 @@ vi.mock('../state/liveTabs', () => ({
 
 import { Screener } from './Screener';
 import { runScan } from '../api/screener';
-import { listSaves, createSave } from '../api/savedScreeners';
+import { listSaves, createSave, updateSave } from '../api/savedScreeners';
 import { useQuoteByCode } from '../api/liveQuotes';
 import type { SavedScreener } from '../api/savedScreeners';
 
@@ -106,6 +106,84 @@ it('selecting a saved screener loads it without running a scan', async () => {
   expect(runScan).not.toHaveBeenCalled();
 });
 
+it('toolbar save overwrites the loaded screener with the current builder', async () => {
+  const saved: SavedScreener = {
+    id: 's1', name: '급등주',
+    conditions: [], universe: {}, created_at_ms: 1, updated_at_ms: 1,
+  };
+  vi.mocked(listSaves).mockResolvedValueOnce({ schema_version: 1, saves: [saved] });
+  vi.mocked(updateSave).mockResolvedValueOnce({ ...saved, universe: { exclude_etf: true } });
+  renderPage();
+
+  fireEvent.click(await screen.findByText('급등주'));
+  fireEvent.click(screen.getByRole('button', { name: /사전필터/ }));
+  fireEvent.click(screen.getByRole('button', { name: '제외' }));
+  fireEvent.click(screen.getByLabelText('ETF 제외'));
+  fireEvent.click(screen.getByRole('button', { name: '저장' }));
+
+  await waitFor(() => expect(updateSave).toHaveBeenCalledWith('s1', {
+    name: '급등주',
+    conditions: [],
+    universe: { exclude_etf: true },
+  }));
+});
+
+it('toolbar save creates a new screener when there is no loaded save', async () => {
+  const created: SavedScreener = {
+    id: 'new1', name: '새전략',
+    conditions: [], universe: {}, created_at_ms: 2, updated_at_ms: 2,
+  };
+  vi.mocked(createSave).mockResolvedValueOnce(created);
+  renderPage();
+
+  fireEvent.click(screen.getByRole('button', { name: '저장' }));
+  const dialog = await screen.findByRole('dialog', { name: '조건검색 저장' });
+  fireEvent.change(screen.getByLabelText('조건검색 이름'), { target: { value: '새전략' } });
+  fireEvent.click(within(dialog).getByRole('button', { name: '저장' }));
+
+  await waitFor(() => expect(createSave).toHaveBeenCalledWith({
+    name: '새전략',
+    conditions: [],
+    universe: {},
+  }));
+});
+
+it('toolbar save-as always creates a new screener from the current builder', async () => {
+  const saved: SavedScreener = {
+    id: 's1', name: '급등주',
+    conditions: [], universe: {}, created_at_ms: 1, updated_at_ms: 1,
+  };
+  vi.mocked(listSaves).mockResolvedValueOnce({ schema_version: 1, saves: [saved] });
+  vi.mocked(createSave).mockResolvedValueOnce({ ...saved, id: 'copy1', name: '복사본' });
+  renderPage();
+
+  fireEvent.click(await screen.findByText('급등주'));
+  fireEvent.click(screen.getByRole('button', { name: '다른 이름으로 저장' }));
+  const dialog = await screen.findByRole('dialog', { name: '조건검색 저장' });
+  fireEvent.change(screen.getByLabelText('조건검색 이름'), { target: { value: '복사본' } });
+  fireEvent.click(within(dialog).getByRole('button', { name: '저장' }));
+
+  await waitFor(() => expect(createSave).toHaveBeenCalledWith({
+    name: '복사본',
+    conditions: [],
+    universe: {},
+  }));
+});
+
+it('marks scan results stale after builder edits, then clears after a new scan', async () => {
+  renderPage();
+  fireEvent.click(screen.getByRole('button', { name: '조회' }));
+  await screen.findByText('삼성전자');
+
+  fireEvent.click(screen.getByRole('button', { name: /사전필터/ }));
+  fireEvent.click(screen.getByRole('button', { name: '제외' }));
+  fireEvent.click(screen.getByLabelText('ETF 제외'));
+  expect(await screen.findByText('조건 변경됨 · 다시 조회 필요')).toBeInTheDocument();
+
+  fireEvent.click(screen.getByRole('button', { name: '조회' }));
+  await waitFor(() => expect(screen.queryByText('조건 변경됨 · 다시 조회 필요')).not.toBeInTheDocument());
+});
+
 it('anchors a loaded screener as clean, then marks 수정됨 once the builder is edited (C4)', async () => {
   // Pins the load-vs-edit setter routing: loading must NOT flip dirty (else the
   // marker would show immediately, before any edit), and a real edit must.
@@ -117,7 +195,7 @@ it('anchors a loaded screener as clean, then marks 수정됨 once the builder is
   fireEvent.click(screen.getByRole('button', { name: /사전필터/ }));  // 모달 열기
   fireEvent.click(screen.getByRole('button', { name: '제외' }));      // 제외 그룹 pane
   fireEvent.click(screen.getByLabelText('ETF 제외'));                 // edit a global pre-filter
-  expect(await screen.findByText('수정됨')).toBeInTheDocument();
+  expect((await screen.findAllByText('수정됨')).length).toBeGreaterThanOrEqual(1);
 });
 
 it('does not lie "clean" when the builder is edited while a create is in flight (C4 race)', async () => {
@@ -140,8 +218,9 @@ it('does not lie "clean" when the builder is edited while a create is in flight 
   await waitFor(() => expect(createSave).toHaveBeenCalled());
   resolveCreate(created);
 
-  expect(await screen.findByText('수정됨')).toBeInTheDocument();
-  expect(screen.getByText('레이스').closest('[role="button"]')!.className)
+  expect((await screen.findAllByText('수정됨')).length).toBeGreaterThanOrEqual(1);
+  const row = screen.getAllByText('레이스').map((el) => el.closest('[role="button"]')).find(Boolean) as HTMLElement;
+  expect(row.className)
     .not.toContain('bg-[rgba(20,184,166,0.14)]');
 });
 

@@ -141,6 +141,21 @@ def test_ma_below(tmp_path):
     out = screener_scan.run_scan(adj, stk, conditions=[leaf], universe=ScreenerUniverse())
     assert [r.code for r in out] == ["000111"]
 
+def test_ma_uses_selected_price_source(tmp_path):
+    # Latest close is below its MA3, but latest high is above high MA3.
+    rows = [
+        ("000111", "2026-04-01", 100, 100, 100, 300, 1),
+        ("000111", "2026-04-02", 100, 100, 100, 300, 1),
+        ("000111", "2026-04-03", 100, 400, 100, 100, 1),
+    ]
+    adj, stk = _seed(tmp_path, rows=rows, stocks=[("000111","a","KOSPI",False,False)])
+
+    close_leaf = MaLeaf(id="m1", params=MaParams(period=3, relation="above"))
+    high_leaf = MaLeaf(id="m2", params=MaParams(period=3, relation="above", source="high"))
+
+    assert screener_scan.run_scan(adj, stk, conditions=[close_leaf], universe=ScreenerUniverse()) == []
+    assert [r.code for r in screener_scan.run_scan(adj, stk, conditions=[high_leaf], universe=ScreenerUniverse())] == ["000111"]
+
 
 from hoga.api.models import NewHighLeaf, BreakoutParams
 

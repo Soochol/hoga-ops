@@ -6,13 +6,14 @@ export interface SaveAnchor {
   conditions: ConditionLeaf[];
   universe: ScreenerUniverse;
   anchorId: string | null;
+  anchorName: string | null;
   dirty: boolean;
   loadSave: (s: SavedScreener) => void;
   newDraft: () => void;
   editConditions: (c: ConditionLeaf[]) => void;
   editUniverse: (u: ScreenerUniverse) => void;
   beginSave: () => void;
-  settleAnchor: (id: string | null) => void;
+  settleAnchor: (id: string | null, name?: string | null) => void;
 }
 
 // The SavedScreener anchor lifecycle for the screener builder. Owns the live
@@ -40,17 +41,26 @@ export function useSaveAnchor(): SaveAnchor {
   const [conditions, setConditions] = useState<ConditionLeaf[]>(() => []);
   const [universe, setUniverse] = useState<ScreenerUniverse>({});
   const [anchorId, setAnchorId] = useState<string | null>(null);
+  const [anchorName, setAnchorName] = useState<string | null>(null);
   const [dirty, setDirty] = useState(false);
   const editGen = useRef(0);
   const pendingSaveGen = useRef<number | null>(null);
 
-  const loadSave = (s: SavedScreener) => { setConditions(s.conditions); setUniverse(s.universe); setAnchorId(s.id); setDirty(false); };
-  const newDraft = () => { setConditions([]); setUniverse({}); setAnchorId(null); setDirty(false); };
+  const loadSave = (s: SavedScreener) => {
+    setConditions(s.conditions);
+    setUniverse(s.universe);
+    setAnchorId(s.id);
+    setAnchorName(s.name);
+    setDirty(false);
+  };
+  const newDraft = () => { setConditions([]); setUniverse({}); setAnchorId(null); setAnchorName(null); setDirty(false); };
   const editConditions = (c: ConditionLeaf[]) => { editGen.current += 1; setConditions(c); setDirty(true); };
   const editUniverse = (u: ScreenerUniverse) => { editGen.current += 1; setUniverse(u); setDirty(true); };
   const beginSave = () => { pendingSaveGen.current = editGen.current; };
-  const settleAnchor = (id: string | null) => {
+  const settleAnchor = (id: string | null, name?: string | null) => {
     setAnchorId(id);
+    if (id === null) setAnchorName(null);
+    else if (name !== undefined) setAnchorName(name);
     // Clean only when nothing was edited since the save was dispatched (or when
     // clearing the anchor). A mutation failure never calls this → dirty is left
     // as-is, which is correct (the save didn't change, so the builder still differs).
@@ -58,5 +68,5 @@ export function useSaveAnchor(): SaveAnchor {
     pendingSaveGen.current = null;
   };
 
-  return { conditions, universe, anchorId, dirty, loadSave, newDraft, editConditions, editUniverse, beginSave, settleAnchor };
+  return { conditions, universe, anchorId, anchorName, dirty, loadSave, newDraft, editConditions, editUniverse, beginSave, settleAnchor };
 }
