@@ -588,10 +588,10 @@ async def _ws_watchdog_check(
     from .kis_client import KIS_KST  # noqa: PLC0415
     from .session_gate import ws_capture_window_async  # noqa: PLC0415
 
-    if not await ws_capture_window_async(now_ms):  # async 진입점이 to_thread 봉인(blocking 계약)
-        return False
     started = _state.started_at_ms
     if started is None:
+        return False
+    if not await ws_capture_window_async(now_ms):  # async 진입점이 to_thread 봉인(blocking 계약)
         return False
 
     kst = datetime.fromtimestamp(now_ms / 1000, tz=KIS_KST)

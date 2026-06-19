@@ -475,6 +475,25 @@ async def test_ws_watchdog_noop_outside_capture_window(
 
 
 @pytest.mark.asyncio
+async def test_ws_watchdog_noop_before_stream_start_skips_calendar_gate(
+    monkeypatch, tmp_path
+) -> None:
+    """If no stream has ever started, watchdog must not touch the calendar gate."""
+    from hoga.live import lifecycle
+
+    lifecycle.reset_for_tests()
+    gate = AsyncMock(return_value=True)
+    monkeypatch.setattr("hoga.live.session_gate.ws_capture_window_async", gate)
+
+    restarted = await lifecycle._ws_watchdog_check(
+        data_dir=tmp_path, now_ms=10_000_000, stale_after_ms=120_000
+    )
+
+    assert restarted is False
+    assert gate.await_count == 0
+
+
+@pytest.mark.asyncio
 async def test_ws_watchdog_gate_runs_off_event_loop(
     monkeypatch, tmp_path
 ) -> None:

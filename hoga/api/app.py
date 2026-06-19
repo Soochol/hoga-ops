@@ -58,6 +58,15 @@ from hoga.live.migrate import migrate_to_v2_layout
 log = logging.getLogger(__name__)
 
 
+def live_startup_enabled_from_env() -> bool:
+    """Whether the app should auto-start the live stream on boot.
+
+    Default is false so startup does not reach into KIS calendar/live work.
+    Operators can opt in locally with HOGA_LIVE_STARTUP_ENABLED=true.
+    """
+    return os.environ.get("HOGA_LIVE_STARTUP_ENABLED") == "true"
+
+
 def create_app(data_dir: Path) -> FastAPI:
     engine = QueryEngine(data_dir)
     bus, observer, inv_handler = build_event_bus(data_dir / "parquet")
@@ -110,10 +119,12 @@ def create_app(data_dir: Path) -> FastAPI:
         # `start_scheduler` raises.
         _scheduler_tasks: list = []
         _scheduler_tasks = start_scheduler(data_dir)
-        # Task 11: Start the live WS stream (graceful degradation: no-op if
-        # KIS_APP_KEY/SECRET missing or watchlist is empty).
+        # Task 11: Start the live WS stream only when explicitly opted in
+        # (graceful degradation: no-op if KIS_APP_KEY/SECRET missing or
+        # watchlist is empty).
         # REST poller는 Task 13에서 완전 은퇴 — 수집은 WS stream 단독.
-        await start_live_stream(data_dir=data_dir)
+        if live_startup_enabled_from_env():
+            await start_live_stream(data_dir=data_dir)
         # ADR-0064: WS watchdog that restarts the stream if it dies or stops
         # ticking during market hours (defense-in-depth self-heal). Spawned
         # unconditionally — it no-ops when the stream wasn't started.
