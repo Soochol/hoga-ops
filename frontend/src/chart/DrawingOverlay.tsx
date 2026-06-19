@@ -8,7 +8,7 @@ import { useCallback, useEffect, useRef } from 'react';
 import type { IChartApi } from 'lightweight-charts';
 import type { VirtualAxis } from '../util/virtualAxis';
 import { useDrawingsStore } from '../state/drawings';
-import { renderDrawing, type ProjectCtx } from './drawing/render';
+import { renderDrawing, renderTrendlineDraft, type ProjectCtx } from './drawing/render';
 import type { Drawing, PaneId } from './drawing/types';
 import { hitTestDrawings } from './drawing/hitTest';
 import {
@@ -152,6 +152,13 @@ export default function DrawingOverlay({ chart, axis, paneSeries }: Props) {
         if (!paneSeries.has(d.paneId)) continue;  // pane absent → silent skip
         clipAndRender(d.paneId, (projCtx) => {
           renderDrawing(c, projCtx, d, d.id === selectedId);
+        });
+      }
+
+      const trendDraft = trendlineDraft.current;
+      if (trendDraft?.b) {
+        clipAndRender(trendDraft.paneId, (projCtx) => {
+          renderTrendlineDraft(c, projCtx, trendDraft, defaults);
         });
       }
 

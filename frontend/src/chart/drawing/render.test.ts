@@ -6,8 +6,9 @@
 
 import { describe, expect, it, vi } from 'vitest';
 import type { IChartApi } from 'lightweight-charts';
-import { renderDrawing, type ProjectCtx, dashPattern } from './render';
+import { renderDrawing, renderTrendlineDraft, type ProjectCtx, dashPattern } from './render';
 import type { Hline } from './types';
+import type { TrendlineDraft } from './tools';
 
 /** Build a context with all the canvas methods we touch spied. */
 function makeCanvasSpy() {
@@ -55,6 +56,29 @@ function makeProjectCtx(): ProjectCtx {
     chart: { panes: () => [{ getHeight: () => 400 }] } as unknown as IChartApi,
     axis: {} as ProjectCtx['axis'],
     paneSeries: new Map([['candle', priceSeries]]),
+    paneId: 'candle',
+    width: 800,
+    height: 400,
+  };
+}
+
+function makeProjectCtxWithProjection(): ProjectCtx {
+  const priceSeries = {
+    priceToCoordinate: vi.fn((price: number) => 300 - price),
+    coordinateToPrice: vi.fn(),
+  };
+  return {
+    chart: {
+      panes: () => [{ getHeight: () => 400 }],
+      timeScale: () => ({
+        timeToCoordinate: vi.fn((time: number) => time),
+      }),
+    } as unknown as IChartApi,
+    axis: {
+      contains: () => true,
+      toVirtual: (realMs: number) => realMs,
+    } as unknown as ProjectCtx['axis'],
+    paneSeries: new Map([['candle', priceSeries]]) as unknown as ProjectCtx['paneSeries'],
     paneId: 'candle',
     width: 800,
     height: 400,
@@ -173,6 +197,29 @@ describe('dashPattern', () => {
   });
   it('returns [0, width*2.5] for dotted (round-cap dots)', () => {
     expect(dashPattern('dotted', 2)).toEqual([0, 5]);
+  });
+});
+
+describe('renderTrendlineDraft', () => {
+  it('draws a horizontal preview and price-change label from start to current endpoint', () => {
+    const c = makeCanvasSpy();
+    const ctx = makeProjectCtxWithProjection();
+    const draft: TrendlineDraft = {
+      a: { realMs: 1_000, price: 100 },
+      b: { realMs: 2_000, price: 125 },
+      pointerId: 1,
+      paneId: 'candle',
+    };
+
+    renderTrendlineDraft(c, ctx, draft, {
+      color: '#14B8A6',
+      width: 2,
+      lineStyle: 'solid',
+    });
+
+    expect(c.lineTo).toHaveBeenCalledWith(2, 200);
+    const labels = (c.fillText as ReturnType<typeof vi.fn>).mock.calls.map((a) => a[0] as string);
+    expect(labels).toContain('+25 (+25.00%)');
   });
 });
 

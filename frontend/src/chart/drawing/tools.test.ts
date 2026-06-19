@@ -137,9 +137,6 @@ describe('trendlineTool — drag commits a 2-point segment', () => {
     expect(ctx.capturePointer).toHaveBeenCalledOnce();
     expect(ctx.trendlineDraft.current).toEqual({ a, pointerId: 1, paneId: 'candle' });
 
-    // Simulate move to a different (px, py) — onPointerMove is undefined for v1.
-    expect(trendlineTool.onPointerMove).toBeUndefined();
-
     // Pointer-up at a different location commits the trendline.
     const upCtx = makeCtx({
       pixelToData: vi.fn(() => b),
@@ -155,6 +152,27 @@ describe('trendlineTool — drag commits a 2-point segment', () => {
       expect(committed.b).toEqual(b);
     }
     expect(upCtx.trendlineDraft.current).toBeNull();
+  });
+
+  it('updates the draft endpoint and requests redraw while dragging', () => {
+    const a: Point = { realMs: 1_000, price: 100 };
+    const b: Point = { realMs: 2_000, price: 125 };
+    const ctx = makeCtx({ pixelToData: vi.fn(() => a) });
+    trendlineTool.onPointerDown!(ctx);
+
+    const moveCtx = makeCtx({
+      pixelToData: vi.fn(() => b),
+      trendlineDraft: ctx.trendlineDraft,
+    });
+    trendlineTool.onPointerMove!(moveCtx);
+
+    expect(moveCtx.trendlineDraft.current).toEqual({
+      a,
+      b,
+      pointerId: 1,
+      paneId: 'candle',
+    });
+    expect(moveCtx.requestRedraw).toHaveBeenCalledOnce();
   });
 
   it('rejects zero-length trendlines (click without drag)', () => {
