@@ -17,7 +17,7 @@ describe('useLiveSeries', () => {
     vi.restoreAllMocks();
     installFakeWebSocket();
     resetWs();
-    vi.spyOn(client, 'wsUrl').mockResolvedValue('ws://localhost:8000/api/ws');
+    vi.spyOn(client, 'wsUrl').mockResolvedValue('ws://localhost:8080/api/ws');
   });
   afterEach(() => { resetWs(); });
 

@@ -10,7 +10,7 @@ import { installLiveMocks } from './helpers/liveMocks';
 
 test.use({ channel: 'chrome' }); // 시스템 Chrome (live-smoke 와 동일 사유)
 
-const API = 'http://localhost:8000';
+const API = 'http://localhost:8080';
 
 const makeState = () => ({
   folders: [{ id: 'f_a', name: '스윙', order: 0 }],

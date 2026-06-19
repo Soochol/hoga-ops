@@ -8,7 +8,7 @@ import { installLiveMocks } from './helpers/liveMocks';
 
 test.use({ channel: 'chrome' });
 
-const API = 'http://localhost:8000';
+const API = 'http://localhost:8080';
 
 interface Entry {
   code: string; name: string; registered_at_kst_date: string;
