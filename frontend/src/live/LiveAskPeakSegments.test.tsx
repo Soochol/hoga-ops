@@ -134,21 +134,22 @@ describe('buildAskPeakSegments', () => {
 describe('buildAskPeakOverlaySegments', () => {
   it('buildBidPeakOverlaySegments renders untraded line only when larger than baseline', () => {
     const segments = [{ date: '20260619', session_open_ms: 1_000, session_close_ms: 2_000, source: 'kis_live' as const }];
-    const candles = [{ ts_ms: 1_500, open: 70000, high: 70100, low: 69900, close: 70050, vol_a: 0, vol_b: 0 }];
+    const peakMs = Date.UTC(2026, 5, 19, 0, 1);
+    const candles = [{ ts_ms: peakMs, open: 70000, high: 70100, low: 69900, close: 70050, vol_a: 0, vol_b: 0 }];
     const peaks: BidPeak[] = [{
       date: '20260619',
       price: 70000,
       qty: 5000,
-      t_ms: 1_500,
+      t_ms: peakMs,
       max_price: 70000,
       max_qty: 5000,
-      max_t_ms: 1_500,
+      max_t_ms: peakMs,
       untraded_price: 69000,
       untraded_qty: 12000,
-      untraded_t_ms: 1_500,
+      untraded_t_ms: peakMs,
       untraded_max_price: 69000,
       untraded_max_qty: 12000,
-      untraded_max_t_ms: 1_500,
+      untraded_max_t_ms: peakMs,
     }];
 
     const out = buildBidPeakOverlaySegments({
@@ -167,6 +168,80 @@ describe('buildAskPeakOverlaySegments', () => {
     expect(out).toHaveLength(2);
     expect(out[0].price).toBe(70000);
     expect(out[1].price).toBe(69000);
+  });
+
+  it('buildBidPeakOverlaySegments only renders today all-price bid peaks below today day low', () => {
+    const segments = [{ date: '20260619', session_open_ms: 1_000, session_close_ms: 2_000, source: 'kis_live' as const }];
+    const candles = [
+      { ts_ms: Date.UTC(2026, 5, 19, 0, 1), open: 70000, high: 70100, low: 69900, close: 70050, vol_a: 0, vol_b: 0 },
+      { ts_ms: Date.UTC(2026, 5, 19, 0, 2), open: 69950, high: 70000, low: 69800, close: 69900, vol_a: 0, vol_b: 0 },
+    ];
+    const baseline: BidPeak = {
+      date: '20260619',
+      price: 69800,
+      qty: 5000,
+      t_ms: Date.UTC(2026, 5, 19, 0, 1),
+      max_price: 69800,
+      max_qty: 5000,
+      max_t_ms: Date.UTC(2026, 5, 19, 0, 1),
+    };
+
+    const commonArgs = {
+      dayBidPeaks: [baseline],
+      segments,
+      candles,
+      axis,
+      todayKst: '20260619',
+      baselineStyle: { color: '#DC2626', lineWidth: 2 },
+      allPriceStyle: { color: '#F97316', lineWidth: 1 },
+      intraMax: false,
+      showAllPrices: true,
+    };
+
+    const atDayLow = buildBidPeakOverlaySegments({
+      ...commonArgs,
+      todayAllPriceBidPeak: {
+        ...baseline,
+        price: 69800,
+        qty: 20000,
+        t_ms: Date.UTC(2026, 5, 19, 0, 2),
+        max_price: 69800,
+        max_qty: 20000,
+        max_t_ms: Date.UTC(2026, 5, 19, 0, 2),
+      },
+    });
+    expect(atDayLow).toHaveLength(1);
+    expect(atDayLow[0]).toMatchObject({ price: 69800, color: '#DC2626' });
+
+    const aboveDayLow = buildBidPeakOverlaySegments({
+      ...commonArgs,
+      todayAllPriceBidPeak: {
+        ...baseline,
+        price: 69900,
+        qty: 20000,
+        t_ms: Date.UTC(2026, 5, 19, 0, 2),
+        max_price: 69900,
+        max_qty: 20000,
+        max_t_ms: Date.UTC(2026, 5, 19, 0, 2),
+      },
+    });
+    expect(aboveDayLow).toHaveLength(1);
+    expect(aboveDayLow[0]).toMatchObject({ price: 69800, color: '#DC2626' });
+
+    const belowDayLow = buildBidPeakOverlaySegments({
+      ...commonArgs,
+      todayAllPriceBidPeak: {
+        ...baseline,
+        price: 69700,
+        qty: 20000,
+        t_ms: Date.UTC(2026, 5, 19, 0, 2),
+        max_price: 69700,
+        max_qty: 20000,
+        max_t_ms: Date.UTC(2026, 5, 19, 0, 2),
+      },
+    });
+    expect(belowDayLow).toHaveLength(2);
+    expect(belowDayLow[1]).toMatchObject({ price: 69700, color: '#F97316' });
   });
 
   it('오늘 미체결 qty가 체결가격 기준 qty보다 크면 별도 스타일로 둘 다 만든다', () => {

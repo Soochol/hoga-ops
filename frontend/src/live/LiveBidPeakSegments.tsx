@@ -7,6 +7,7 @@ import type { VirtualAxis } from '../util/virtualAxis';
 import { useLivePageStore } from '../state/livePage';
 import { useActivePrefs } from '../state/chartPrefs';
 import { formatQtyCompact } from '../util/formatQtyCompact';
+import { realMsToYyyymmdd } from './liveDateTime';
 import {
   AskPeakSegmentsPrimitive,
   type AskPeakSegment,
@@ -102,6 +103,19 @@ function selectedQty(p: BidPeak, intraMax: boolean): number {
   return intraMax ? p.max_qty : p.qty;
 }
 
+function selectedPrice(p: BidPeak, intraMax: boolean): number {
+  return intraMax ? p.max_price : p.price;
+}
+
+function todayDayLow(candles: readonly Candle[], todayKst: string): number | null {
+  let low: number | null = null;
+  for (const c of candles) {
+    if (realMsToYyyymmdd(c.ts_ms) !== todayKst || !Number.isFinite(c.low)) continue;
+    low = low === null ? c.low : Math.min(low, c.low);
+  }
+  return low;
+}
+
 function untradedPeakFromFields(p: BidPeak, intraMax: boolean): BidPeak | null {
   const hasCloseTriple = p.untraded_price != null && p.untraded_qty != null && p.untraded_t_ms != null;
   const hasMaxTriple = p.untraded_max_price != null && p.untraded_max_qty != null && p.untraded_max_t_ms != null;
@@ -141,12 +155,14 @@ export function buildBidPeakOverlaySegments({
   );
   if (!showAllPrices) return baseline;
 
+  const dayLow = todayDayLow(candles, todayKst);
   const untradedPeaks: BidPeak[] = [];
   for (const p of dayBidPeaks) {
     const untradedPeak = p.date === todayKst && todayAllPriceBidPeak?.date === todayKst
       ? todayAllPriceBidPeak
       : untradedPeakFromFields(p, intraMax);
     if (!untradedPeak) continue;
+    if (p.date === todayKst && (dayLow === null || selectedPrice(untradedPeak, intraMax) >= dayLow)) continue;
     if (selectedQty(untradedPeak, intraMax) <= selectedQty(p, intraMax)) continue;
     untradedPeaks.push(untradedPeak);
   }
