@@ -360,6 +360,13 @@ def _prev_day_yyyymmdd(yyyymmdd: str) -> str:
     return (d - timedelta(days=1)).strftime("%Y%m%d")
 
 
+def _next_day_yyyymmdd(yyyymmdd: str) -> str:
+    d = datetime(
+        int(yyyymmdd[:4]), int(yyyymmdd[4:6]), int(yyyymmdd[6:8]), tzinfo=KIS_KST,
+    )
+    return (d + timedelta(days=1)).strftime("%Y%m%d")
+
+
 def _parse_optional_int(value: object) -> int | None:
     if value is None:
         return None
@@ -781,6 +788,7 @@ class KisClient:
         path = "/uapi/domestic-stock/v1/quotations/inquire-daily-itemchartprice"
         tr_id = "FHKST03010100"
         venue_div = kis_venue_div(venue)
+        cursor_from = from_yyyymmdd
         cursor_to = to_yyyymmdd
         # Tracks every row we've already processed (valid or violation) so that
         # paginated re-reads — or mock-server tests that replay the same payload
@@ -795,7 +803,7 @@ class KisClient:
             params = {
                 "FID_COND_MRKT_DIV_CODE": venue_div,
                 "FID_INPUT_ISCD": code,
-                "FID_INPUT_DATE_1": from_yyyymmdd,
+                "FID_INPUT_DATE_1": cursor_from,
                 "FID_INPUT_DATE_2": cursor_to,
                 "FID_PERIOD_DIV_CODE": "D",
                 # 0=수정주가(/live 기본·ADR-0048), 1=원주가(스크리너)
@@ -805,6 +813,7 @@ class KisClient:
             rows = body.get("output2") or []
             page_candles: list[KisCandle] = []
             page_earliest: str | None = None
+            page_latest: str | None = None
             page_progress = False
 
             for row in rows:
@@ -868,27 +877,40 @@ class KisClient:
                 t_ms = _daily_anchor_t_ms(date_str)
                 seen_keys.add(date_str)
                 page_progress = True
+                if page_earliest is None or date_str < page_earliest:
+                    page_earliest = date_str
+                if page_latest is None or date_str > page_latest:
+                    page_latest = date_str
                 page_candles.append(KisCandle(
                     t_ms=t_ms, open=o, high=h, low=l_, close=c, volume=v,
                 ))
-                if page_earliest is None or date_str < page_earliest:
-                    page_earliest = date_str
 
             all_candles.extend(page_candles)
             # Stop when KIS returns an empty page or this iteration produced no
             # new rows (e.g. test fixture replays the same payload on every call).
             if not rows or not page_progress:
                 break
-            if page_earliest is None:
+            if page_earliest is None or page_latest is None:
                 # No new valid candle to anchor cursor walk-back; rely on the
                 # next iteration's empty/no-progress check to terminate.
                 continue
-            if page_earliest <= from_yyyymmdd:
-                # 요청 시작일까지 도달 — 즉시 종료(스펙 2026-06-08 ⑦,
-                # fetch_investor_net과 동일 분기). 이 분기가 없으면 빈 응답을
-                # 받는 헛 콜이 1회 더 나간다.
+            if page_earliest <= from_yyyymmdd and page_latest >= to_yyyymmdd:
+                # Full requested interval covered in one inclusive page.
                 break
-            cursor_to = _prev_day_yyyymmdd(page_earliest)
+            if page_latest < cursor_to and page_earliest <= cursor_from:
+                # Some KIS venue divisions (notably non-KRX daily bars) can
+                # return the lower side of [DATE_1, DATE_2]. Advance DATE_1 so
+                # the newest tail is not silently truncated.
+                cursor_from = _next_day_yyyymmdd(page_latest)
+                if cursor_from > cursor_to:
+                    break
+                continue
+            if page_earliest > cursor_from:
+                # Usual KRX behavior: the page is anchored at DATE_2 and walks
+                # backward. Move the upper cursor below the oldest page row.
+                cursor_to = _prev_day_yyyymmdd(page_earliest)
+                continue
+            break
 
         all_candles.sort(key=lambda c: c.t_ms)
         return DailyCandleFetchResult(candles=all_candles, violations=violations)

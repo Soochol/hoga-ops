@@ -616,6 +616,42 @@ async def test_fetch_past_daily_paginates_walk_back(tmp_path) -> None:
 
 
 @pytest.mark.asyncio
+async def test_fetch_past_daily_paginates_forward_when_venue_returns_low_side(tmp_path) -> None:
+    """Regression: non-KRX daily bars can return the lower side of the requested
+    [DATE_1, DATE_2] window. Treating that as "from reached" stopped after the
+    first page, so a 2026-06 request rendered only through ~2026-02."""
+    pages = {
+        ("20260101", "20260619"): [_daily_row(d) for d in ("20260101", "20260102", "20260227")],
+        ("20260228", "20260619"): [_daily_row(d) for d in ("20260228", "20260618", "20260619")],
+    }
+    seen_params: list[tuple[str, str]] = []
+
+    def handler(request):
+        if request.url.path.endswith("/oauth2/tokenP"):
+            return httpx.Response(200, json={"access_token": "T", "expires_in": 86400})
+        key = (
+            request.url.params["FID_INPUT_DATE_1"],
+            request.url.params["FID_INPUT_DATE_2"],
+        )
+        seen_params.append(key)
+        return httpx.Response(200, json=_ok_daily_body(pages.get(key, [])))
+
+    client = KisClient(
+        KisCredentials(app_key="k", app_secret="s"),
+        token_provider=FakeTokenProvider(),
+        _transport=httpx.MockTransport(handler),
+    )
+    result = await client.fetch_past_daily_candles("005930", "20260101", "20260619", venue="UN")
+
+    dates = [
+        datetime.fromtimestamp(c.t_ms / 1000, tz=KIS_KST).strftime("%Y%m%d")
+        for c in result.candles
+    ]
+    assert seen_params == [("20260101", "20260619"), ("20260228", "20260619")]
+    assert dates == ["20260101", "20260102", "20260227", "20260228", "20260618", "20260619"]
+
+
+@pytest.mark.asyncio
 async def test_fetch_past_daily_candles_threads_integrated_market_div(tmp_path: Path) -> None:
     seen_params: list[dict[str, str]] = []
 
