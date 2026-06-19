@@ -2,6 +2,9 @@
 from __future__ import annotations
 
 import asyncio
+import contextlib
+import fcntl
+import json
 import logging
 import re
 import time as monotonic_time
@@ -13,6 +16,7 @@ from typing import TYPE_CHECKING, Literal
 from fastapi import APIRouter, HTTPException, Query
 from pydantic import BaseModel, ValidationError
 
+from hoga.api._atomic_write import atomic_write_json
 from hoga.api.params import CODE_PATTERN
 from hoga.live.kis_client import (
     KisApiError,
@@ -379,6 +383,146 @@ class LiveInvestorTrendEstimateResponse(BaseModel):
     data_warning: LiveInvestorTrendEstimateWarning | None
 
 
+class _InvestorEstimateObservedAtStore:
+    """Persist per-slot observed times for the display-only investor estimate card."""
+
+    def __init__(self, path: Path) -> None:
+        self._path = path
+        self._lock_path = path.with_suffix(path.suffix + ".lock")
+        self._state: dict[str, dict[str, dict[str, dict[str, int | None]]]] = {}
+
+    def apply(
+        self,
+        *,
+        trading_day: str,
+        code: str,
+        rows: list[LiveInvestorTrendEstimateRow],
+        fetched_at_ms: int,
+        full_history: bool,
+    ) -> list[LiveInvestorTrendEstimateRow]:
+        with self._locked():
+            self._load()
+            changed = self._prune_to_day(trading_day)
+            code_state = self._state.setdefault(trading_day, {}).setdefault(code, {})
+            out: list[LiveInvestorTrendEstimateRow] = []
+            seen_slots: set[str] = set()
+            for row in rows:
+                seen_slots.add(row.slot)
+                stored = code_state.get(row.slot)
+                if stored is not None and _investor_estimate_same_quantities(stored, row):
+                    observed_at_ms = stored.get("observed_at_ms")
+                    if isinstance(observed_at_ms, int):
+                        out.append(row.model_copy(update={"observed_at_ms": observed_at_ms}))
+                        continue
+                code_state[row.slot] = {
+                    "observed_at_ms": fetched_at_ms,
+                    "foreign_qty": row.foreign_qty,
+                    "institution_qty": row.institution_qty,
+                    "sum_qty": row.sum_qty,
+                }
+                changed = True
+                out.append(row)
+            if full_history:
+                stale_slots = [slot for slot in code_state if slot not in seen_slots]
+                for slot in stale_slots:
+                    code_state.pop(slot, None)
+                changed = changed or bool(stale_slots)
+            changed = self._evict_over_capacity(trading_day) or changed
+            if changed:
+                self._save()
+            return out
+
+    def clear(self, *, trading_day: str, code: str) -> None:
+        with self._locked():
+            self._load()
+            changed = self._prune_to_day(trading_day)
+            day_state = self._state.get(trading_day)
+            if day_state is None or code not in day_state:
+                if changed:
+                    self._save()
+                return
+            day_state.pop(code, None)
+            self._save()
+
+    @contextlib.contextmanager
+    def _locked(self):
+        self._lock_path.parent.mkdir(parents=True, exist_ok=True)
+        with self._lock_path.open("a", encoding="utf-8") as lock_file:
+            fcntl.flock(lock_file.fileno(), fcntl.LOCK_EX)
+            try:
+                yield
+            finally:
+                fcntl.flock(lock_file.fileno(), fcntl.LOCK_UN)
+
+    def _load(self) -> None:
+        try:
+            raw = json.loads(self._path.read_text(encoding="utf-8"))
+        except (FileNotFoundError, json.JSONDecodeError, OSError):
+            self._state = {}
+            return
+        self._state = self._sanitize(raw)
+
+    def _sanitize(
+        self,
+        raw: object,
+    ) -> dict[str, dict[str, dict[str, dict[str, int | None]]]]:
+        if not isinstance(raw, dict):
+            return {}
+        state: dict[str, dict[str, dict[str, dict[str, int | None]]]] = {}
+        for day, day_raw in raw.items():
+            if not isinstance(day, str) or not isinstance(day_raw, dict):
+                continue
+            day_state: dict[str, dict[str, dict[str, int | None]]] = {}
+            for code, code_raw in day_raw.items():
+                if not isinstance(code, str) or not isinstance(code_raw, dict):
+                    continue
+                code_state: dict[str, dict[str, int | None]] = {}
+                for slot, slot_raw in code_raw.items():
+                    if not isinstance(slot, str) or not isinstance(slot_raw, dict):
+                        continue
+                    observed_at_ms = slot_raw.get("observed_at_ms")
+                    if not isinstance(observed_at_ms, int):
+                        continue
+                    code_state[slot] = {
+                        "observed_at_ms": observed_at_ms,
+                        "foreign_qty": _optional_int(slot_raw.get("foreign_qty")),
+                        "institution_qty": _optional_int(slot_raw.get("institution_qty")),
+                        "sum_qty": _optional_int(slot_raw.get("sum_qty")),
+                    }
+                if code_state:
+                    day_state[code] = code_state
+            if day_state:
+                state[day] = day_state
+        return state
+
+    def _prune_to_day(self, trading_day: str) -> bool:
+        stale_days = [day for day in self._state if day != trading_day]
+        for day in stale_days:
+            self._state.pop(day, None)
+        return bool(stale_days)
+
+    def _evict_over_capacity(self, trading_day: str) -> bool:
+        day_state = self._state.get(trading_day)
+        if day_state is None:
+            return False
+        overflow = len(day_state) - _INVESTOR_ESTIMATE_MAX_CODES_PER_DAY
+        if overflow <= 0:
+            return False
+        oldest = sorted(
+            day_state,
+            key=lambda code: _max_observed_at(day_state[code]),
+        )[:overflow]
+        for code in oldest:
+            day_state.pop(code, None)
+        return True
+
+    def _save(self) -> None:
+        try:
+            atomic_write_json(self._path, self._state)
+        except OSError:
+            log.warning("failed to persist investor estimate observed_at store", exc_info=True)
+
+
 def _quote_phase(now: datetime) -> Literal["pre_open", "open", "closed"]:
     """/quotes 오버레이의 폴링·표시 게이트(스펙 2026-06-08 ⑧).
 
@@ -480,6 +624,36 @@ def _investor_estimate_has_quantity(row: LiveInvestorTrendEstimateRow) -> bool:
     )
 
 
+def _investor_estimate_same_quantities(
+    previous: LiveInvestorTrendEstimateRow | dict[str, int | None],
+    current: LiveInvestorTrendEstimateRow,
+) -> bool:
+    if isinstance(previous, LiveInvestorTrendEstimateRow):
+        return (
+            previous.foreign_qty == current.foreign_qty
+            and previous.institution_qty == current.institution_qty
+            and previous.sum_qty == current.sum_qty
+        )
+    return (
+        previous.get("foreign_qty") == current.foreign_qty
+        and previous.get("institution_qty") == current.institution_qty
+        and previous.get("sum_qty") == current.sum_qty
+    )
+
+
+def _optional_int(value: object) -> int | None:
+    return value if isinstance(value, int) else None
+
+
+def _max_observed_at(rows: dict[str, dict[str, int | None]]) -> int:
+    values = [
+        observed_at_ms
+        for row in rows.values()
+        if isinstance((observed_at_ms := row.get("observed_at_ms")), int)
+    ]
+    return max(values, default=-1)
+
+
 def _latest_investor_estimate_row(
     rows: list[LiveInvestorTrendEstimateRow],
 ) -> LiveInvestorTrendEstimateRow | None:
@@ -503,9 +677,15 @@ class LiveInvestorEstimateFetcher:
         *,
         ttl_seconds: float = 60.0,
         today_fn: Callable[[], str] = _today_kst_yyyymmdd,
+        observed_at_store_path: Path | None = None,
     ) -> None:
         self._ttl_seconds = ttl_seconds
         self._today_fn = today_fn
+        self._observed_at_store = (
+            _InvestorEstimateObservedAtStore(observed_at_store_path)
+            if observed_at_store_path is not None
+            else None
+        )
         self._cache: dict[
             tuple[str, str],
             tuple[float, LiveInvestorTrendEstimateResponse],
@@ -570,6 +750,14 @@ class LiveInvestorEstimateFetcher:
                 _investor_estimate_row_to_wire(r, observed_at_ms=fetched_at_ms)
                 for r in raw_rows
             ]
+            if self._observed_at_store is not None:
+                rows = self._observed_at_store.apply(
+                    trading_day=trading_day,
+                    code=code,
+                    rows=rows,
+                    fetched_at_ms=fetched_at_ms,
+                    full_history=len(rows) > 1,
+                )
         except KisAuthError:
             log.warning("investor trend estimate auth failed for %s", code, exc_info=True)
             response = self._error_response(
@@ -594,6 +782,8 @@ class LiveInvestorEstimateFetcher:
 
         if not rows:
             self._accumulator[key] = {}
+            if self._observed_at_store is not None:
+                self._observed_at_store.clear(trading_day=trading_day, code=code)
             response = self._response(
                 code=code,
                 trading_day=trading_day,
@@ -605,21 +795,21 @@ class LiveInvestorEstimateFetcher:
             return self._cache_response(key, response)
 
         if len(rows) > 1:
-            latest_slot = _latest_investor_estimate_row(rows)
-            latest_slot_value = latest_slot.slot if latest_slot is not None else None
             prior = self._accumulator.get(key, {})
             self._accumulator[key] = {
                 row.slot: _preserve_investor_estimate_observed_at(
                     previous=prior.get(row.slot),
                     current=row,
-                    latest_slot=latest_slot_value,
                 )
                 for row in rows
             }
         else:
             current = self._accumulator.setdefault(key, {})
             for row in rows:
-                current[row.slot] = row
+                current[row.slot] = _preserve_investor_estimate_observed_at(
+                    previous=current.get(row.slot),
+                    current=row,
+                )
 
         merged = list(self._accumulator.get(key, {}).values())
         status: Literal["ok", "empty"] = (
@@ -720,18 +910,10 @@ class LiveInvestorEstimateFetcher:
 def _preserve_investor_estimate_observed_at(
     previous: LiveInvestorTrendEstimateRow | None,
     current: LiveInvestorTrendEstimateRow,
-    *,
-    latest_slot: str | None,
 ) -> LiveInvestorTrendEstimateRow:
     if previous is None:
         return current
-    if latest_slot is not None and previous.slot != latest_slot:
-        return previous
-    if (
-        previous.foreign_qty == current.foreign_qty
-        and previous.institution_qty == current.institution_qty
-        and previous.sum_qty == current.sum_qty
-    ):
+    if _investor_estimate_same_quantities(previous, current):
         return current.model_copy(update={"observed_at_ms": previous.observed_at_ms})
     return current
 
@@ -801,7 +983,13 @@ def build_router(
     # 시세 오버레이 fetch+캐시+게이팅은 LiveQuoteFetcher 가 소유. build_router 호출마다
     # 새 인스턴스라 마지막-시세 캐시 스코프는 종전(per-router 클로저)과 동일.
     _quote_fetcher = LiveQuoteFetcher()
-    _investor_estimate_fetcher = LiveInvestorEstimateFetcher()
+    _investor_estimate_fetcher = LiveInvestorEstimateFetcher(
+        observed_at_store_path=(
+            data_dir / "live" / "investor-trend-estimate-observed-at.json"
+            if data_dir is not None
+            else None
+        )
+    )
 
     def _kis_for_background() -> "KisClient | None":
         """배경 REST(quotes·investor-net·investor-trend-estimate)용 KisClient — N=2면 account 1(직전엔 유휴였던

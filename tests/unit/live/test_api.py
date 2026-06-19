@@ -267,7 +267,7 @@ def test_past_candles_rejects_range_over_250_days(tmp_path) -> None:
 def test_past_candles_rejects_to_in_future(tmp_path) -> None:
     app = _past_app(tmp_path, _FakeKisForPast())
     with TestClient(app) as c:
-        r = c.get(f"/api/live/past-candles?code=005930&from=20260501&to=20990101")
+        r = c.get("/api/live/past-candles?code=005930&from=20260501&to=20990101")
         assert r.status_code == 422
         assert r.json()["detail"]["code"] == "date_in_future"
 
@@ -1305,6 +1305,20 @@ class _FakeKisForInvestorTrendEstimate:
         return item
 
 
+def _investor_estimate_row_model(
+    slot: str,
+    foreign_qty: int | None,
+    institution_qty: int | None,
+    sum_qty: int | None,
+) -> InvestorTrendEstimateRow:
+    return InvestorTrendEstimateRow(
+        slot=slot,
+        foreign_qty=foreign_qty,
+        institution_qty=institution_qty,
+        sum_qty=sum_qty,
+    )
+
+
 @pytest.mark.asyncio
 async def test_investor_estimate_latest_only_accumulates_same_day_and_overwrites_slot(monkeypatch) -> None:
     from hoga.live import api as live_api
@@ -1390,6 +1404,208 @@ async def test_investor_estimate_full_history_preserves_past_slot_timestamp(monk
         ("0900", 10, 100_000),
         ("0910", 99, 160_000),
     ]
+
+
+@pytest.mark.asyncio
+async def test_investor_estimate_full_history_preserves_unchanged_slots(monkeypatch) -> None:
+    from hoga.live import api as live_api
+    from hoga.live.api import LiveInvestorEstimateFetcher
+
+    now = 100.0
+    monkeypatch.setattr(live_api.monotonic_time, "monotonic", lambda: now)
+    monkeypatch.setattr(live_api.monotonic_time, "time", lambda: now)
+    fake = _FakeKisForInvestorTrendEstimate([
+        [
+            _investor_estimate_row_model("1", -95_000, 0, -95_000),
+            _investor_estimate_row_model("2", -106_000, 0, -106_000),
+            _investor_estimate_row_model("3", -117_000, 0, -117_000),
+        ],
+        [
+            _investor_estimate_row_model("1", -95_000, 0, -95_000),
+            _investor_estimate_row_model("2", -106_000, 0, -106_000),
+            _investor_estimate_row_model("3", -117_000, 0, -117_000),
+            _investor_estimate_row_model("4", -149_000, 53_000, -96_000),
+        ],
+    ])
+    fetcher = LiveInvestorEstimateFetcher(ttl_seconds=0, today_fn=lambda: "20260619")
+
+    await fetcher.fetch(fake, "005930")
+    now = 160.0
+    response = await fetcher.fetch(fake, "005930")
+
+    assert [(r.slot, r.observed_at_ms) for r in response.rows] == [
+        ("1", 100_000),
+        ("2", 100_000),
+        ("3", 100_000),
+        ("4", 160_000),
+    ]
+
+
+@pytest.mark.asyncio
+async def test_investor_estimate_observed_at_survives_fetcher_restart(
+    monkeypatch,
+    tmp_path,
+) -> None:
+    from hoga.live import api as live_api
+    from hoga.live.api import LiveInvestorEstimateFetcher
+
+    now = 100.0
+    monkeypatch.setattr(live_api.monotonic_time, "monotonic", lambda: now)
+    monkeypatch.setattr(live_api.monotonic_time, "time", lambda: now)
+    store_path = tmp_path / "live" / "investor-trend-estimate-observed-at.json"
+    first_fake = _FakeKisForInvestorTrendEstimate([
+        [
+            _investor_estimate_row_model("1", -95_000, 0, -95_000),
+            _investor_estimate_row_model("2", -106_000, 0, -106_000),
+        ],
+    ])
+    first_fetcher = LiveInvestorEstimateFetcher(
+        ttl_seconds=0,
+        today_fn=lambda: "20260619",
+        observed_at_store_path=store_path,
+    )
+
+    await first_fetcher.fetch(first_fake, "005930")
+
+    now = 160.0
+    second_fake = _FakeKisForInvestorTrendEstimate([
+        [
+            _investor_estimate_row_model("1", -95_000, 0, -95_000),
+            _investor_estimate_row_model("2", -106_000, 0, -106_000),
+            _investor_estimate_row_model("3", -117_000, 0, -117_000),
+        ],
+    ])
+    second_fetcher = LiveInvestorEstimateFetcher(
+        ttl_seconds=0,
+        today_fn=lambda: "20260619",
+        observed_at_store_path=store_path,
+    )
+
+    response = await second_fetcher.fetch(second_fake, "005930")
+
+    assert [(r.slot, r.observed_at_ms) for r in response.rows] == [
+        ("1", 100_000),
+        ("2", 100_000),
+        ("3", 160_000),
+    ]
+
+
+@pytest.mark.asyncio
+async def test_investor_estimate_observed_at_store_ignores_malformed_json(
+    monkeypatch,
+    tmp_path,
+) -> None:
+    from hoga.live import api as live_api
+    from hoga.live.api import LiveInvestorEstimateFetcher
+
+    now = 100.0
+    monkeypatch.setattr(live_api.monotonic_time, "monotonic", lambda: now)
+    monkeypatch.setattr(live_api.monotonic_time, "time", lambda: now)
+    store_path = tmp_path / "live" / "investor-trend-estimate-observed-at.json"
+    store_path.parent.mkdir(parents=True)
+    store_path.write_text(
+        '{"20260619":{"005930":{"1":"bad","2":{"observed_at_ms":"bad"}}}}',
+        encoding="utf-8",
+    )
+    fake = _FakeKisForInvestorTrendEstimate([
+        [_investor_estimate_row_model("1", -95_000, 0, -95_000)],
+    ])
+    fetcher = LiveInvestorEstimateFetcher(
+        ttl_seconds=0,
+        today_fn=lambda: "20260619",
+        observed_at_store_path=store_path,
+    )
+
+    response = await fetcher.fetch(fake, "005930")
+
+    assert [(r.slot, r.observed_at_ms) for r in response.rows] == [("1", 100_000)]
+
+
+@pytest.mark.asyncio
+async def test_investor_estimate_full_history_removes_absent_persisted_slots(
+    monkeypatch,
+    tmp_path,
+) -> None:
+    from hoga.live import api as live_api
+    from hoga.live.api import LiveInvestorEstimateFetcher
+
+    now = 100.0
+    monkeypatch.setattr(live_api.monotonic_time, "monotonic", lambda: now)
+    monkeypatch.setattr(live_api.monotonic_time, "time", lambda: now)
+    store_path = tmp_path / "live" / "investor-trend-estimate-observed-at.json"
+    first_fake = _FakeKisForInvestorTrendEstimate([
+        [
+            _investor_estimate_row_model("1", -95_000, 0, -95_000),
+            _investor_estimate_row_model("2", -106_000, 0, -106_000),
+        ],
+        [
+            _investor_estimate_row_model("1", -95_000, 0, -95_000),
+            _investor_estimate_row_model("3", -117_000, 0, -117_000),
+        ],
+    ])
+    fetcher = LiveInvestorEstimateFetcher(
+        ttl_seconds=0,
+        today_fn=lambda: "20260619",
+        observed_at_store_path=store_path,
+    )
+
+    await fetcher.fetch(first_fake, "005930")
+    now = 160.0
+    await fetcher.fetch(first_fake, "005930")
+
+    now = 220.0
+    second_fake = _FakeKisForInvestorTrendEstimate([
+        [
+            _investor_estimate_row_model("1", -95_000, 0, -95_000),
+            _investor_estimate_row_model("2", -106_000, 0, -106_000),
+        ],
+    ])
+    restarted_fetcher = LiveInvestorEstimateFetcher(
+        ttl_seconds=0,
+        today_fn=lambda: "20260619",
+        observed_at_store_path=store_path,
+    )
+    response = await restarted_fetcher.fetch(second_fake, "005930")
+
+    assert [(r.slot, r.observed_at_ms) for r in response.rows] == [
+        ("1", 100_000),
+        ("2", 220_000),
+    ]
+
+
+@pytest.mark.asyncio
+async def test_investor_estimate_observed_at_store_bounds_codes(
+    monkeypatch,
+    tmp_path,
+) -> None:
+    import json
+
+    from hoga.live import api as live_api
+    from hoga.live.api import (
+        _INVESTOR_ESTIMATE_MAX_CODES_PER_DAY,
+        LiveInvestorEstimateFetcher,
+    )
+
+    now = 100.0
+    monkeypatch.setattr(live_api.monotonic_time, "monotonic", lambda: now)
+    monkeypatch.setattr(live_api.monotonic_time, "time", lambda: now)
+    store_path = tmp_path / "live" / "investor-trend-estimate-observed-at.json"
+    fetcher = LiveInvestorEstimateFetcher(
+        ttl_seconds=0,
+        today_fn=lambda: "20260619",
+        observed_at_store_path=store_path,
+    )
+
+    for i in range(_INVESTOR_ESTIMATE_MAX_CODES_PER_DAY + 1):
+        now = 100.0 + i
+        fake = _FakeKisForInvestorTrendEstimate([
+            [_investor_estimate_row_model("1", i, 0, i)],
+        ])
+        await fetcher.fetch(fake, f"{i:06d}")
+
+    state = json.loads(store_path.read_text(encoding="utf-8"))
+    assert len(state["20260619"]) == _INVESTOR_ESTIMATE_MAX_CODES_PER_DAY
+    assert "000000" not in state["20260619"]
 
 
 @pytest.mark.asyncio
