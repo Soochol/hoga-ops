@@ -26,7 +26,9 @@ export default function IndicatorPrefRows({
   return (
     <>
       {toggles.map((toggle, idx) => {
-        const gatedNumerics = CHART_NUMERIC_PREFS.filter((p) => p.enabledBy === toggle.key);
+        const gatedNumerics = CHART_NUMERIC_PREFS.filter((p) => (
+          'enabledBy' in p && p.enabledBy === toggle.key
+        ));
         return (
           <Fragment key={toggle.key}>
             {idx > 0 && <div className="border-b border-border my-2" />}

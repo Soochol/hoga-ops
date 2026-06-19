@@ -196,6 +196,14 @@ export const CHART_NUMERIC_PREFS = [
     max: 1520,
     enabledBy: 'surgeMarkerEnabled',
   },
+  {
+    key: 'askPeakAllPriceRankLimit',
+    label: '미체결 최대 매도벽 표시 개수',
+    description: '미체결 포함 최대벽 후보를 수량순으로 몇 등까지 차트에 표시할지 선택합니다.',
+    default: 1,
+    min: 1,
+    max: 3,
+  },
 ] as const satisfies readonly NumericPrefDef[];
 
 export type NumericPrefKey = (typeof CHART_NUMERIC_PREFS)[number]['key'];

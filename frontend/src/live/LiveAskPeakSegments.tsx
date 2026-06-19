@@ -96,6 +96,7 @@ type BuildAskPeakOverlaySegmentsArgs = {
   allPriceStyle: AskPeakLineStyle;
   intraMax: boolean;
   showAllPrices: boolean;
+  allPriceRankLimit?: 1 | 2 | 3;
 };
 
 function selectedQty(p: AskPeak, intraMax: boolean): number {
@@ -117,6 +118,18 @@ function untradedPeakFromFields(p: AskPeak, intraMax: boolean): AskPeak | null {
   };
 }
 
+function askPeakFromCandidate(date: string, candidate: NonNullable<AskPeak['all_peaks']>[number]): AskPeak {
+  return {
+    date,
+    price: candidate.price,
+    qty: candidate.qty,
+    t_ms: candidate.t_ms,
+    max_price: candidate.price,
+    max_qty: candidate.qty,
+    max_t_ms: candidate.t_ms,
+  };
+}
+
 export function buildAskPeakOverlaySegments({
   dayAskPeaks,
   todayAllPriceAskPeak,
@@ -128,6 +141,7 @@ export function buildAskPeakOverlaySegments({
   allPriceStyle,
   intraMax,
   showAllPrices,
+  allPriceRankLimit = 1,
 }: BuildAskPeakOverlaySegmentsArgs): AskPeakSegment[] {
   const baseline = buildAskPeakSegments(
     dayAskPeaks,
@@ -143,12 +157,20 @@ export function buildAskPeakOverlaySegments({
 
   const untradedPeaks: AskPeak[] = [];
   for (const p of dayAskPeaks) {
-    const untradedPeak = p.date === todayKst && todayAllPriceAskPeak?.date === todayKst
-      ? todayAllPriceAskPeak
-      : untradedPeakFromFields(p, intraMax);
-    if (!untradedPeak) continue;
-    if (selectedQty(untradedPeak, intraMax) <= selectedQty(p, intraMax)) continue;
-    untradedPeaks.push(untradedPeak);
+    const candidates = p.date === todayKst && todayAllPriceAskPeak?.date === todayKst
+      ? (todayAllPriceAskPeak.all_peaks?.slice(0, allPriceRankLimit).map((candidate) => (
+        askPeakFromCandidate(todayKst, candidate)
+      )) ?? [todayAllPriceAskPeak])
+      : [untradedPeakFromFields(p, intraMax)];
+    const seenPrices = new Set([intraMax ? p.max_price : p.price]);
+    for (const untradedPeak of candidates) {
+      if (!untradedPeak) continue;
+      const price = intraMax ? untradedPeak.max_price : untradedPeak.price;
+      if (seenPrices.has(price)) continue;
+      if (selectedQty(untradedPeak, intraMax) <= selectedQty(p, intraMax)) continue;
+      seenPrices.add(price);
+      untradedPeaks.push(untradedPeak);
+    }
   }
   if (untradedPeaks.length === 0) return baseline;
 
@@ -189,6 +211,7 @@ function LiveAskPeakSegments({ paneSeries, axis, dayAskPeaks, todayAllPriceAskPe
   const allPriceLineWidth = useLivePageStore((s) => s.askPeakAllPriceLineWidth);
   const intraMax = useActivePrefs((s) => s.askPeakIntraMax);
   const showAllPrices = useActivePrefs((s) => s.askPeakShowAllPrices);
+  const allPriceRankLimit = useActivePrefs((s) => s.askPeakAllPriceRankLimit);
   const primRef = useRef<AskPeakSegmentsPrimitive | null>(null);
 
   // 생성: series 핸들당 1회(LiveCurrentPriceLine과 동일 — tf·종목 전환에도 핸들 유지).
@@ -224,6 +247,7 @@ function LiveAskPeakSegments({ paneSeries, axis, dayAskPeaks, todayAllPriceAskPe
           allPriceStyle: { color: allPriceColor, lineWidth: allPriceLineWidth },
           intraMax,
           showAllPrices,
+          allPriceRankLimit: allPriceRankLimit as 1 | 2 | 3,
         })
         : [],
     );
@@ -241,6 +265,7 @@ function LiveAskPeakSegments({ paneSeries, axis, dayAskPeaks, todayAllPriceAskPe
     enabled,
     intraMax,
     showAllPrices,
+    allPriceRankLimit,
     series,
   ]);
 
