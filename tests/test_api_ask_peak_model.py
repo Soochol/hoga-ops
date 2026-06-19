@@ -26,3 +26,32 @@ def test_ask_peak_accepts_untraded_fields() -> None:
 
     assert peak.untraded_price == 27000
     assert peak.untraded_qty == 100
+
+
+def test_bid_peak_accepts_untraded_fields() -> None:
+    from hoga.api.models import BidPeak
+
+    peak = BidPeak(
+        date="20260619",
+        price=70000,
+        qty=5000,
+        t_ms=1,
+        max_price=69900,
+        max_qty=7000,
+        max_t_ms=2,
+        all_price=69800,
+        all_qty=9000,
+        all_t_ms=3,
+        all_max_price=69700,
+        all_max_qty=11000,
+        all_max_t_ms=4,
+        untraded_price=69000,
+        untraded_qty=12000,
+        untraded_t_ms=5,
+        untraded_max_price=68900,
+        untraded_max_qty=13000,
+        untraded_max_t_ms=6,
+    )
+
+    assert peak.untraded_price == 69000
+    assert peak.untraded_max_qty == 13000

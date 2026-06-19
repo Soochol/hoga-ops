@@ -877,3 +877,37 @@ def test_range_bundle_ask_peak_field_defaults_none() -> None:
                 max_price=25100, max_qty=5000, max_t_ms=1)
     ]})
     assert b2.ask_peaks[0].price == 25100 and b2.ask_peaks[0].date == "20260613"
+
+
+def test_range_bundle_bid_peak_field_defaults_empty() -> None:
+    from hoga.api.models import BidPeak, FillStrength, QuoteRatio, RangeBundle, VolumeProfile
+
+    b = RangeBundle(
+        code="005930",
+        from_date="20260619",
+        to_date="20260619",
+        bucket_ms=60_000,
+        segments=[],
+        candles=[],
+        quote_ratio=QuoteRatio(bucket_ms=60_000, points=[]),
+        fill_strength=FillStrength(bucket_ms=60_000, points=[]),
+        volume_profile_range=VolumeProfile(
+            bin_count=0, price_min=0, price_max=0, bin_width=0, bins=[]
+        ),
+        volume_profile_by_day=[],
+    )
+
+    assert b.bid_peaks == []
+
+    b2 = b.model_copy(update={"bid_peaks": [
+        BidPeak(
+            date="20260619",
+            price=70000,
+            qty=5000,
+            t_ms=1,
+            max_price=70000,
+            max_qty=5000,
+            max_t_ms=1,
+        )
+    ]})
+    assert b2.bid_peaks[0].price == 70000
