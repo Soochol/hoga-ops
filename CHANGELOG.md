@@ -3,6 +3,15 @@
 All notable changes to this project are documented here.
 The format follows a 4-digit `MAJOR.MINOR.PATCH.MICRO` scheme.
 
+## [0.8.15.2] - 2026-06-19
+
+### Changed
+- 스크리너 조건 카드에서 개별 조건 `복제` 액션을 제거해 조건 편집 행을 단순화했다.
+
+### Fixed
+- 저장한 조건검색 목록의 `⋯` 메뉴가 리스트 카드 뒤쪽에 가려지지 않도록 fixed popover로 렌더하고,
+  화면 가장자리에서 위치를 보정한다.
+
 ## [0.8.15.1] - 2026-06-19
 
 ### Added

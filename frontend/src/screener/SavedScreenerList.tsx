@@ -3,6 +3,8 @@ import type { SavedScreener } from '../api/savedScreeners';
 import { useSavedScreeners } from './useSavedScreeners';
 import { ConfirmModal } from './ConfirmModal';
 import { suggestSaveName } from './suggestName';
+import { useClampedFixedPosition } from '../util/useClampedFixedPosition';
+import { useDismissablePopover } from '../util/useDismissablePopover';
 
 type Editing =
   | { mode: 'create'; initial: string }
@@ -39,6 +41,31 @@ function NameRowInput({ initial, onCommit, onCancel }: {
   );
 }
 
+function SavedScreenerRowMenu({ left, top, onRename, onDuplicate, onDelete }: {
+  left: number;
+  top: number;
+  onRename: () => void;
+  onDuplicate: () => void;
+  onDelete: () => void;
+}) {
+  const { ref, left: clampedLeft, top: clampedTop } = useClampedFixedPosition<HTMLDivElement>(left, top);
+  return (
+    <div ref={ref} role="menu"
+      className="fixed z-50 min-w-[104px] overflow-hidden rounded-md border border-border-strong bg-bg-card shadow-[0_8px_24px_rgba(0,0,0,0.4)]"
+      style={{ left: clampedLeft, top: clampedTop }}>
+      <button type="button" role="menuitem" onClick={(e) => {
+        e.stopPropagation(); onRename();
+      }} className="block w-full px-3 py-2 text-left text-sm text-fg hover:bg-bg-input-hover">이름변경</button>
+      <button type="button" role="menuitem" onClick={(e) => {
+        e.stopPropagation(); onDuplicate();
+      }} className="block w-full px-3 py-2 text-left text-sm text-fg hover:bg-bg-input-hover">복제</button>
+      <button type="button" role="menuitem" onClick={(e) => {
+        e.stopPropagation(); onDelete();
+      }} className="block w-full px-3 py-2 text-left text-sm hover:bg-bg-input-hover" style={{ color: 'var(--error)' }}>삭제</button>
+    </div>
+  );
+}
+
 export function SavedScreenerList({ anchorId, dirty, onLoad, onNewDraft, onSaveAsNew, onDuplicate, onRename, onRemove }: {
   anchorId: string | null; dirty: boolean;
   onLoad: (s: SavedScreener) => void;
@@ -50,10 +77,12 @@ export function SavedScreenerList({ anchorId, dirty, onLoad, onNewDraft, onSaveA
 }) {
   const { data } = useSavedScreeners();
   const saves = data?.saves ?? [];
+  const rootRef = useRef<HTMLDivElement>(null);
   const [editing, setEditing] = useState<Editing>(null);
   const [confirm, setConfirm] = useState<Confirm>(null);
-  const [menuId, setMenuId] = useState<string | null>(null);
+  const [menu, setMenu] = useState<{ id: string; left: number; top: number } | null>(null);
   const [query, setQuery] = useState('');
+  useDismissablePopover(Boolean(menu), rootRef, () => setMenu(null));
   const visibleSaves = query.trim()
     ? saves.filter((s) => s.name.includes(query.trim()))
     : saves;
@@ -84,7 +113,7 @@ export function SavedScreenerList({ anchorId, dirty, onLoad, onNewDraft, onSaveA
   };
 
   return (
-    <div className="bg-bg-card border rounded-lg p-md flex flex-col gap-sm min-h-0 overflow-auto">
+    <div ref={rootRef} className="bg-bg-card border rounded-lg p-md flex flex-col gap-sm min-h-0 overflow-auto">
       <div className="flex items-center gap-1.5">
         <span className="text-[10.5px] font-semibold uppercase tracking-[0.08em] text-fg-dimmer">저장한 조건검색</span>
         <button type="button" aria-label="새 조건검색"
@@ -120,22 +149,26 @@ export function SavedScreenerList({ anchorId, dirty, onLoad, onNewDraft, onSaveA
               )}
               {isAnchor && dirty && !isRenaming && <span className="shrink-0 text-[10px] tracking-[0.04em] text-fg-dimmer">수정됨</span>}
               {!isRenaming && (
-                <button type="button" aria-label="저장 조건 메뉴" aria-expanded={menuId === s.id}
-                  onClick={(e) => { e.stopPropagation(); setMenuId(menuId === s.id ? null : s.id); }}
+                <button type="button" aria-label="저장 조건 메뉴" aria-expanded={menu?.id === s.id}
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    if (menu?.id === s.id) {
+                      setMenu(null);
+                    } else {
+                      const rect = e.currentTarget.getBoundingClientRect();
+                      setMenu({ id: s.id, left: rect.right - 104, top: rect.bottom + 4 });
+                    }
+                  }}
                   className="opacity-0 group-hover:opacity-100 focus:opacity-100 text-fg-dimmer hover:text-fg px-1">⋯</button>
               )}
-              {menuId === s.id && !isRenaming && (
-                <div role="menu" className="absolute right-2 top-8 z-20 min-w-[104px] overflow-hidden rounded-md border border-border-strong bg-bg-card shadow-[0_8px_24px_rgba(0,0,0,0.4)]">
-                  <button type="button" role="menuitem" onClick={(e) => {
-                    e.stopPropagation(); setMenuId(null); setEditing({ mode: 'rename', id: s.id, initial: s.name });
-                  }} className="block w-full px-3 py-2 text-left text-sm text-fg hover:bg-bg-input-hover">이름변경</button>
-                  <button type="button" role="menuitem" onClick={(e) => {
-                    e.stopPropagation(); setMenuId(null); onDuplicate(s);
-                  }} className="block w-full px-3 py-2 text-left text-sm text-fg hover:bg-bg-input-hover">복제</button>
-                  <button type="button" role="menuitem" onClick={(e) => {
-                    e.stopPropagation(); setMenuId(null); setConfirm({ kind: 'delete', save: s });
-                  }} className="block w-full px-3 py-2 text-left text-sm hover:bg-bg-input-hover" style={{ color: 'var(--error)' }}>삭제</button>
-                </div>
+              {menu?.id === s.id && !isRenaming && (
+                <SavedScreenerRowMenu
+                  left={menu.left}
+                  top={menu.top}
+                  onRename={() => { setMenu(null); setEditing({ mode: 'rename', id: s.id, initial: s.name }); }}
+                  onDuplicate={() => { setMenu(null); onDuplicate(s); }}
+                  onDelete={() => { setMenu(null); setConfirm({ kind: 'delete', save: s }); }}
+                />
               )}
             </div>
           );
