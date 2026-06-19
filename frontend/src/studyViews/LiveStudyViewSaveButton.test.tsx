@@ -79,7 +79,7 @@ it('opens create dialog and creates from the live source', async () => {
 
   await userEvent.click(screen.getByRole('button', { name: '현재 뷰 저장' }));
   expect(screen.getByRole('dialog', { name: '저장뷰 만들기' })).toBeTruthy();
-  await userEvent.clear(screen.getByLabelText('이름'));
+  expect(screen.getByLabelText('이름')).toHaveValue('');
   await userEvent.type(screen.getByLabelText('이름'), ' 라이브 저장 ');
   await userEvent.click(screen.getByRole('button', { name: '저장' }));
 

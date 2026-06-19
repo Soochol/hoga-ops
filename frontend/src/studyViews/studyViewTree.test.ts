@@ -25,6 +25,39 @@ describe('studyViewTree', () => {
     expect(samsungGroups.map((group) => group.code)).toEqual(['005930', '123456']);
   });
 
+  it('sorts groups and child rows by Korean name when requested', () => {
+    const groups = groupStudyViewsByCode(rows, 'name-asc');
+
+    expect(groups.map((group) => [group.key, group.rows.map((row) => row.id)])).toEqual([
+      ['005930', ['a', 'c']],
+      ['123456', ['d']],
+      ['000660', ['b']],
+    ]);
+  });
+
+  it('sorts groups and child rows by Korean name descending when requested', () => {
+    const groups = groupStudyViewsByCode(rows, 'name-desc');
+
+    expect(groups.map((group) => [group.key, group.rows.map((row) => row.id)])).toEqual([
+      ['000660', ['b']],
+      ['123456', ['d']],
+      ['005930', ['c', 'a']],
+    ]);
+  });
+
+  it('applies manual group and row order in default sort mode', () => {
+    const groups = groupStudyViewsByCode(rows, 'default', {
+      groupKeys: ['000660', '005930'],
+      rowIdsByGroup: { '005930': ['c', 'a'] },
+    });
+
+    expect(groups.map((group) => [group.key, group.rows.map((row) => row.id)])).toEqual([
+      ['000660', ['b']],
+      ['005930', ['c', 'a']],
+      ['123456', ['d']],
+    ]);
+  });
+
   it('stock label search keeps all rows under matching stock groups', () => {
     const groups = filterStudyViewGroups(groupStudyViewsByCode(rows), '삼성');
 

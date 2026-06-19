@@ -58,4 +58,39 @@ describe('useStudyViewTreeState', () => {
     expect(result.current.isCollapsed('005930')).toBe(false);
     expect(result.current.isCollapsed('000660')).toBe(false);
   });
+
+  it('cycles and persists the tree sort mode', () => {
+    const { result, rerender } = renderHook(() => useStudyViewTreeState(rows));
+
+    expect(result.current.sortAction).toMatchObject({ label: '이름 오름차순 정렬', direction: 'default', pressed: false });
+
+    act(() => result.current.cycleSortMode());
+
+    expect(result.current.sortMode).toBe('name-asc');
+    expect(result.current.sortAction).toMatchObject({ label: '이름 내림차순 정렬', direction: 'asc', pressed: true });
+    expect(JSON.parse(localStorage.getItem('studyViews.treeSortMode.v1') ?? '{}')).toEqual({ sortMode: 'name-asc' });
+
+    act(() => result.current.cycleSortMode());
+    expect(result.current.sortMode).toBe('name-desc');
+
+    act(() => result.current.cycleSortMode());
+    expect(result.current.sortMode).toBe('default');
+
+    rerender();
+    expect(result.current.sortMode).toBe('default');
+  });
+
+  it('reorders groups and rows in default sort mode and persists manual order', () => {
+    const { result } = renderHook(() => useStudyViewTreeState(rows));
+
+    act(() => result.current.reorderGroup('000660', '005930'));
+    expect(result.current.visibleGroups.map((group) => group.code)).toEqual(['000660', '005930']);
+
+    act(() => result.current.reorderRow('005930', 'c', 'a'));
+    expect(result.current.visibleGroups.find((group) => group.code === '005930')?.rows.map((row) => row.id)).toEqual(['c', 'a']);
+    expect(JSON.parse(localStorage.getItem('studyViews.treeManualOrder.v1') ?? '{}')).toEqual({
+      groupKeys: ['000660', '005930'],
+      rowIdsByGroup: { '005930': ['c', 'a'] },
+    });
+  });
 });
