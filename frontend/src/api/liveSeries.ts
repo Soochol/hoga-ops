@@ -15,6 +15,7 @@ export type LiveTodayAskPeak = {
   traded_price: number | null;
   traded_qty: number | null;
   traded_t_ms: number | null;
+  traded_peaks?: AskPeakCandidate[];
   all_price: number;
   all_qty: number;
   all_t_ms: number;

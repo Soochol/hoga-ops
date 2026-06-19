@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from collections.abc import Mapping, Sequence
+from collections.abc import Iterable, Mapping, Sequence
 from dataclasses import dataclass, field
 from typing import Literal
 
@@ -66,16 +66,21 @@ class TodayAskPeakState:
 
         traded = self.traded_peak
         all_peak = self.all_peak
-        all_peaks = sorted(
-            self.observed_price_peaks.values(),
-            key=lambda p: (-p.qty, p.t_ms, p.price),
-        )[:3]
+        all_peaks = _top_peaks(self.observed_price_peaks.values())
+        traded_peaks = _top_peaks(
+            p for price, p in self.observed_price_peaks.items()
+            if price in self.traded_prices
+        )
         return {
             "coverage": self.coverage,
             "traded_prices": sorted(self.traded_prices),
             "traded_price": traded.price if traded is not None else None,
             "traded_qty": traded.qty if traded is not None else None,
             "traded_t_ms": traded.t_ms if traded is not None else None,
+            "traded_peaks": [
+                {"price": p.price, "qty": p.qty, "t_ms": p.t_ms}
+                for p in traded_peaks
+            ],
             "all_price": all_peak.price,
             "all_qty": all_peak.qty,
             "all_t_ms": all_peak.t_ms,
@@ -90,6 +95,13 @@ def _larger_peak(current: Peak | None, *, price: int, qty: int, t_ms: int) -> Pe
     if current is None or qty > current.qty:
         return Peak(price=price, qty=qty, t_ms=t_ms)
     return current
+
+
+def _top_peaks(peaks: Iterable[Peak]) -> list[Peak]:
+    return sorted(
+        peaks,
+        key=lambda p: (-p.qty, p.t_ms, p.price),
+    )[:3]
 
 
 def _positive_int(value: object) -> int | None:
