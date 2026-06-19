@@ -27,6 +27,7 @@ function emptyRangeBundle(overrides: Partial<RangeBundle> = {}): RangeBundle {
     volume_profile_by_day: [],
     investorPoints: [],
     ask_peaks: [],
+    bid_peaks: [],
     ...overrides,
   };
 }
@@ -191,6 +192,38 @@ describe('buildLiveBundle', () => {
       bucketMs: 60_000,
     });
     expect(bundle.ask_peaks).toEqual(past.ask_peaks);
+  });
+
+  it('passes through pastBundle.bid_peaks and defaults to [] when absent', () => {
+    const withBidPeaks = emptyRangeBundle({
+      bid_peaks: [
+        { date: '20260611', price: 297000, qty: 32621, t_ms: 1,
+          max_price: 297000, max_qty: 32621, max_t_ms: 1 },
+      ],
+    });
+    const withPeaks = buildLiveBundle({
+      code: '005930',
+      todayDate: TODAY,
+      todaySession: { open_ms: TODAY_OPEN, close_ms: TODAY_CLOSE },
+      pastBundle: withBidPeaks,
+      sseOb: [],
+      sseTrade: [],
+      kisCandles: [],
+      bucketMs: 60_000,
+    });
+    expect(withPeaks.bid_peaks).toEqual(withBidPeaks.bid_peaks);
+
+    const withoutPeaks = buildLiveBundle({
+      code: '005930',
+      todayDate: TODAY,
+      todaySession: { open_ms: TODAY_OPEN, close_ms: TODAY_CLOSE },
+      pastBundle: emptyRangeBundle(),
+      sseOb: [],
+      sseTrade: [],
+      kisCandles: [],
+      bucketMs: 60_000,
+    });
+    expect(withoutPeaks.bid_peaks).toEqual([]);
   });
 
   it('synthesizes kis_live segments for past dates that KIS has but /api/range does not', () => {

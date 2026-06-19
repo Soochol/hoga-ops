@@ -185,3 +185,16 @@ describe('ask peak all-price toggle', () => {
     expect(mergePrefs({ askPeakShowAllPrices: false }).askPeakShowAllPrices).toBe(false);
   });
 });
+
+describe('bid peak toggles', () => {
+  it('defaults and belongs to the indicator modal', () => {
+    const intra = CHART_TOGGLES.find((t) => t.key === 'bidPeakIntraMax');
+    const allPrices = CHART_TOGGLES.find((t) => t.key === 'bidPeakShowAllPrices');
+
+    expect(intra?.default).toBe(false);
+    expect(categoryOf(intra!)).toBe('indicator-modal');
+    expect(allPrices?.default).toBe(true);
+    expect(allPrices?.label).toBe('미체결 최대 매수벽 표시');
+    expect(categoryOf(allPrices!)).toBe('indicator-modal');
+  });
+});

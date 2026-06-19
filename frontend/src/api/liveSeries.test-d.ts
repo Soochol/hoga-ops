@@ -1,4 +1,4 @@
-import type { LiveSeriesResponse, LiveTodayAskPeak } from './liveSeries';
+import type { LiveSeriesResponse, LiveTodayAskPeak, LiveTodayBidPeak } from './liveSeries';
 
 const _todayAskPeakWithoutTradedPeak: LiveTodayAskPeak = {
   date: '20260616',
@@ -13,6 +13,11 @@ const _todayAskPeakWithoutTradedPeak: LiveTodayAskPeak = {
 };
 void _todayAskPeakWithoutTradedPeak;
 
+const _todayBidPeakWithoutTradedPeak: LiveTodayBidPeak = {
+  ..._todayAskPeakWithoutTradedPeak,
+};
+void _todayBidPeakWithoutTradedPeak;
+
 const _liveSeriesResponse: LiveSeriesResponse = {
   code: '005930',
   date: '20260616',
@@ -23,6 +28,7 @@ const _liveSeriesResponse: LiveSeriesResponse = {
   trades: [],
   brokers: [],
   ask_peak_today: _todayAskPeakWithoutTradedPeak,
+  bid_peak_today: _todayBidPeakWithoutTradedPeak,
 };
 void _liveSeriesResponse;
 
@@ -36,5 +42,6 @@ const _missingTodayAskPeak: LiveSeriesResponse = {
   snapshots: [],
   trades: [],
   brokers: [],
+  bid_peak_today: _todayBidPeakWithoutTradedPeak,
 };
 void _missingTodayAskPeak;

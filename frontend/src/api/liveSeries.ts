@@ -19,6 +19,8 @@ export type LiveTodayAskPeak = {
   all_t_ms: number;
 };
 
+export type LiveTodayBidPeak = LiveTodayAskPeak;
+
 export interface LiveSeriesResponse {
   code: string;
   date: string;
@@ -29,6 +31,7 @@ export interface LiveSeriesResponse {
   trades: Array<Record<string, unknown>>;
   brokers: Array<Record<string, unknown>>;
   ask_peak_today: LiveTodayAskPeak | null;
+  bid_peak_today: LiveTodayBidPeak | null;
 }
 
 /** Return shape of useLiveSeries. Lifted to a named type so the single-call

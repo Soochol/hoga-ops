@@ -66,7 +66,7 @@ vi.mock('./LiveChartRoot', () => ({
 // available in jsdom. Mock the hook so the shell tests stay unit-level.
 vi.mock('../api/liveSeries', () => ({
   useLiveSeries: () => ({
-    initial: { ask_peak_today: livePageMocks.todayAskPeak }, isLoading: false, error: null,
+    initial: { ask_peak_today: livePageMocks.todayAskPeak, bid_peak_today: null }, isLoading: false, error: null,
     ob: livePageMocks.liveOb, trade: livePageMocks.liveTrade, broker: [],
   }),
 }));

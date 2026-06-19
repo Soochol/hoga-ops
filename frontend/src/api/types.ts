@@ -468,6 +468,8 @@ export type AskPeak = {
   untraded_max_t_ms?: number | null;
 };
 
+export type BidPeak = AskPeak;
+
 export type RangeBundle = {
   code: string;
   from_date: string;
@@ -488,4 +490,5 @@ export type RangeBundle = {
    *  x-구간의 수평 세그먼트로 그린다. 오늘 항목은 클라 ratchet(useDayAskPeaks)이 live.ob로 갱신.
    *  D·W·M/무데이터 → []. */
   ask_peaks: AskPeak[];
+  bid_peaks?: BidPeak[];
 };
