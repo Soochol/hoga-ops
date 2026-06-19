@@ -149,6 +149,7 @@ export function buildTodayAllPriceAskPeak(todayAskPeak: LiveTodayAskPeak | null)
     max_price: todayAskPeak.all_price,
     max_qty: todayAskPeak.all_qty,
     max_t_ms: todayAskPeak.all_t_ms,
+    all_peaks: todayAskPeak.all_peaks,
   };
 }
 

@@ -3,6 +3,7 @@ import { useQuery } from '@tanstack/react-query';
 import { apiCall } from './client';
 import { subscribeLive } from './ws';
 import type { LiveSnapshotEntry } from './types';
+import type { AskPeakCandidate } from './types';
 import { LiveSnapshotBuffer, type SnapshotKind } from '../live/liveSnapshotBuffer';
 import type { ObSnapshot, TradeSnapshot } from '../live/bucketHogaSeries';
 import { unixMsToKSTDate } from '../util/time';
@@ -17,6 +18,7 @@ export type LiveTodayAskPeak = {
   all_price: number;
   all_qty: number;
   all_t_ms: number;
+  all_peaks?: AskPeakCandidate[];
 };
 
 export interface LiveSeriesResponse {
