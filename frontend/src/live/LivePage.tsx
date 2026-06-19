@@ -3,7 +3,7 @@ import { useSearchParams } from 'react-router';
 import { isMinuteTimeframe, useLivePageStore } from '../state/livePage';
 import type { StudyIndicatorState } from '../api/studyViews';
 import { useLiveStatus } from '../api/liveStatus';
-import { useLiveBannerState } from './useLiveBannerState';
+import { useLiveStatusProjection } from './liveStatusProjection';
 import { LiveHeader } from './LiveHeader';
 import { LiveStatusBar } from './LiveStatusBar';
 import { LiveToolbar } from './LiveToolbar';
@@ -82,7 +82,8 @@ export function LivePage() {
   }, [queryCode, activeTabId, setActiveTabCode, addBlankTab, focusTab]);
 
   const { data: status } = useLiveStatus();
-  const banner = useLiveBannerState(status);
+  const liveStatus = useLiveStatusProjection(status);
+  const banner = liveStatus.banner;
 
   // Keyboard shortcuts (Addendum 9.y / Design B7).
   // j/k traversal callbacks will be supplied by Stage 11 when the watchlist
@@ -239,8 +240,7 @@ export function LivePage() {
       />
       <LiveStatusBar
         activeCode={activeCode}
-        captureHealthy={status?.capture_healthy ?? false}
-        captureReason={status?.capture_reason ?? 'offline'}
+        captureHealth={liveStatus.captureHealth}
         bundle={bundle}
         venue={liveVenue}
       />

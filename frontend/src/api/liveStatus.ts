@@ -27,8 +27,8 @@ export interface LiveStatus {
  * Polls `/api/live/status` every 5 seconds.
  *
  * The endpoint is cheap (in-memory state read) so 5s is generous; matches the
- * spec §10 LiveStatusBar cadence. The status drives banner gating
- * (`useLiveBannerState`) and the cycle-lag pill.
+ * spec §10 LiveStatusBar cadence. Keep this as the wire-shaped fetch hook;
+ * frontend UI meaning is projected in `liveStatusProjection`.
  */
 export function useLiveStatus() {
   return useQuery({
