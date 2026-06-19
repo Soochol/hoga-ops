@@ -32,6 +32,26 @@ const priceFormat = {
 const quoteRatioPointsForBundle = (bundle: RangeBundle): readonly QuoteRatioPoint[] =>
   withHogaGapSentinels(bundle.quote_ratio.points, bundle.candles ?? [], bundle.bucket_ms);
 
+const quoteRatioPointsForSlice = ({
+  bundle,
+  points,
+  allPoints,
+  fromT,
+  toT,
+}: {
+  bundle: RangeBundle;
+  points: readonly QuoteRatioPoint[];
+  allPoints: readonly QuoteRatioPoint[];
+  fromT?: number;
+  toT?: number;
+}): readonly QuoteRatioPoint[] =>
+  withHogaGapSentinels(points, bundle.candles ?? [], bundle.bucket_ms, {
+    firstHogaT: allPoints[0]?.t,
+    lastHogaT: allPoints[allPoints.length - 1]?.t,
+    fromT,
+    toT,
+  });
+
 export function projectBid(
   bundle: RangeBundle,
   axis: VirtualAxis,
@@ -41,8 +61,8 @@ export function projectBid(
 }
 
 /** Points-array variant of {@link projectBid} — see projectRatioPoints /
- * makePastCachedProjector for the /live past-cache rationale and the day-boundary
- * equivalence invariant. */
+ * makePastCachedProjector for the /live past-cache rationale and synthetic
+ * hoga-gap boundary patch. */
 export function projectBidPoints(
   points: readonly QuoteRatioPoint[],
   axis: VirtualAxis,
@@ -116,8 +136,8 @@ export type QuoteTotalsCtx = {
 };
 
 const KST_OFFSET_MS = 9 * 60 * 60 * 1000;
-/** t(ms epoch)의 KST 자정 기준 분(0–1439). 거래일 경계와 무관한 순수 함수라 과거/당일 청크별로 따로
- *  적용해도 `cachedPast ++ today === all` 불변식이 유지된다(Split Cache seam 안전). */
+/** t(ms epoch)의 KST 자정 기준 분(0–1439). 거래일 경계와 무관한 순수 함수라 과거/당일 청크별로
+ *  따로 적용해도 split-cache 출력 동일성을 깨지 않는다. */
 const kstMinuteOfDay = (t: number): number => Math.floor((t + KST_OFFSET_MS) / 60_000) % 1440;
 /** HHMM 정수(예 930)를 자정 기준 분으로. 분 자리(00–59) 벗어난 값은 자연 환산(960→10:00). */
 const hhmmToMinute = (hhmm: number): number => Math.floor(hhmm / 100) * 60 + (hhmm % 100);
@@ -141,7 +161,7 @@ const useQuoteTotalsContext = (): QuoteTotalsCtx =>
  *  근접(95%)+히스테리시스(85%) 발사 지점을 산출 후 보이는 구간만 SurgeMarkerPoint로 투영(라인과 동일한
  *  axis.toVirtual/1000 좌표 + 그 시점 총잔량 값 price). 라벨 없는 점(circle)만 — 도달률(%) 텍스트는
  *  사용자 요청으로 미표시. 마감 동시호가는 항상 제외(그릴링 Q4). makePastCachedProjector가 과거/당일
- *  청크별로 호출·concat하므로 틱당 비용이 히스토리 깊이와 무관해진다(라인과 동일한 Split Cache seam — #56 P0).
+ *  청크별로 호출·concat하므로 틱당 비용이 히스토리 깊이와 무관해진다(#56 P0).
  *  렌더는 SurgeMarkersPrimitive(timeToCoordinate 기반)가 맡아 series 길이 불일치에 면역. */
 function surgeMarkerPoints(side: 'ask' | 'bid', color: string) {
   const maxField = side === 'ask' ? 'ask_max' : 'bid_max';
@@ -189,14 +209,16 @@ export const bidSurgeMarkers = (b: RangeBundle, a: VirtualAxis, c: QuoteTotalsCt
 const bidCachedRaw = makePastCachedProjector(
   (pts: readonly QuoteRatioPoint[], a: VirtualAxis, flags: number) =>
     projectBidPoints(pts, a, (flags & 1) !== 0, (flags & 2) !== 0),
-  quoteRatioPointsForBundle,
+  (b) => b.quote_ratio.points,
   { shouldPatchBoundary: isSyntheticHogaGapPoint, patchPastTail: LINE_HIDDEN_COLOR },
+  quoteRatioPointsForSlice,
 );
 const askCachedRaw = makePastCachedProjector(
   (pts: readonly QuoteRatioPoint[], a: VirtualAxis, flags: number) =>
     projectAskPoints(pts, a, (flags & 1) !== 0, (flags & 2) !== 0),
-  quoteRatioPointsForBundle,
+  (b) => b.quote_ratio.points,
   { shouldPatchBoundary: isSyntheticHogaGapPoint, patchPastTail: LINE_HIDDEN_COLOR },
+  quoteRatioPointsForSlice,
 );
 const flagsOf = (c: QuoteTotalsCtx): number => (c.auctionMask ? 1 : 0) | (c.intraMax ? 2 : 0);
 const bidCachedData = (b: RangeBundle, a: VirtualAxis, c: QuoteTotalsCtx) => bidCachedRaw(b, a, flagsOf(c));

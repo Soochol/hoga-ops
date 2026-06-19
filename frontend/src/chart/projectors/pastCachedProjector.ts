@@ -38,6 +38,17 @@ interface BoundaryLookbackPatch<P extends { t: number }, D> {
   patchPastTail: Partial<D>;
 }
 
+interface SliceExpansionArgs<P extends { t: number }> {
+  bundle: RangeBundle;
+  points: readonly P[];
+  allPoints: readonly P[];
+  fromT?: number;
+  toT?: number;
+  splitT?: number;
+}
+
+type SliceExpander<P extends { t: number }> = (args: SliceExpansionArgs<P>) => readonly P[];
+
 /** points[i].t >= t 인 첫 index (points는 t 오름차순). 이진 탐색. */
 export function lowerBoundT<P extends { t: number }>(points: readonly P[], t: number): number {
   let lo = 0;
@@ -54,14 +65,18 @@ export function makePastCachedProjector<P extends { t: number }, Ctx, D>(
   projectPoints: (points: readonly P[], axis: VirtualAxis, ctx: Ctx) => D[],
   getPoints: (bundle: RangeBundle) => readonly P[],
   boundaryLookbackPatch?: BoundaryLookbackPatch<P, D>,
+  expandPoints?: SliceExpander<P>,
 ): (bundle: RangeBundle, axis: VirtualAxis, ctx: Ctx) => D[] {
   // axis 식별자별 캐시(WeakMap → 차트/뷰 교체 시 자동 GC, 동시 차트 간 충돌 없음).
   const cache = new WeakMap<VirtualAxis, CacheEntry<Ctx, D>>();
+  const expandSlice: SliceExpander<P> = expandPoints ?? (({ points }) => points);
   return (bundle, axis, ctx) => {
     const points = getPoints(bundle);
     const segs = bundle.segments;
     // 세그먼트가 1개 이하면 "과거"가 없어 분리 이득이 없다 — 풀 투영.
-    if (segs.length < 2) return projectPoints(points, axis, ctx);
+    if (segs.length < 2) {
+      return projectPoints(expandSlice({ bundle, points, allPoints: points }), axis, ctx);
+    }
 
     const todayOpen = segs[segs.length - 1].session_open_ms;
     const splitIdx = lowerBoundT(points, todayOpen);
@@ -72,12 +87,26 @@ export function makePastCachedProjector<P extends { t: number }, Ctx, D>(
 
     let entry = cache.get(axis);
     if (!entry || entry.ctx !== ctx || entry.pastLen !== pastLen || entry.pastLastT !== pastLastT) {
-      entry = { ctx, pastLen, pastLastT, pastData: projectPoints(past, axis, ctx) };
+      const expandedPast = expandSlice({
+        bundle,
+        points: past,
+        allPoints: points,
+        toT: todayOpen,
+        splitT: todayOpen,
+      });
+      entry = { ctx, pastLen, pastLastT, pastData: projectPoints(expandedPast, axis, ctx) };
       cache.set(axis, entry);
     }
-    const todayData = projectPoints(today, axis, ctx);
+    const expandedToday = expandSlice({
+      bundle,
+      points: today,
+      allPoints: points,
+      fromT: todayOpen,
+      splitT: todayOpen,
+    });
+    const todayData = projectPoints(expandedToday, axis, ctx);
     if (boundaryLookbackPatch && entry.pastData.length > 0) {
-      const firstVisibleTodayPoint = today.find((p) => axis.contains(p.t));
+      const firstVisibleTodayPoint = expandedToday.find((p) => axis.contains(p.t));
       if (firstVisibleTodayPoint && boundaryLookbackPatch.shouldPatchBoundary(firstVisibleTodayPoint)) {
         const patchedPastTail = {
           ...entry.pastData[entry.pastData.length - 1],

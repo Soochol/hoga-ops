@@ -5,6 +5,7 @@ import { projectBid, projectBidPoints, projectAsk, projectAskPoints, QUOTE_TOTAL
 import { projectBuy, projectBuyPoints, projectSell, projectSellPoints } from './fillStrength';
 import { projectCumulativeNetFill, makeCumulativeCachedProjector } from './fillStrength';
 import { createVirtualAxis } from '../../util/virtualAxis';
+import { isSyntheticHogaGapPoint } from '../util/hogaGapHide';
 
 // 3거래일. 각 날 09:00, 10:00, 그리고 종가 직전 동시호가(close-5min) 점.
 const DAY = 24 * 60 * 60 * 1000;
@@ -248,6 +249,56 @@ describe('makePastCachedProjector — day split 경계의 synthetic hoga gap sen
       value: 200,
       color: 'rgba(0,0,0,0)',
     });
+  });
+});
+
+describe('makePastCachedProjector — hoga gap expansion happens after the split', () => {
+  it('caches past expansion/projection while recomputing only today on tick bundles', () => {
+    const { axis, bundle } = makeBoundaryGapBundle();
+    const todayOpen = bundle.segments[1].session_open_ms;
+    const tickBundle = {
+      ...bundle,
+      quote_ratio: {
+        points: [
+          ...bundle.quote_ratio.points,
+          {
+            t: todayOpen + 2 * 60_000,
+            bid_total: 300,
+            ask_total: 100,
+            bid_max: 300,
+            ask_max: 100,
+            imb_max_bid: 300,
+            imb_max_ask: 100,
+          },
+        ],
+      },
+    };
+
+    const expandCalls: Array<{ points: number; fromT?: number; toT?: number }> = [];
+    const cached = makePastCachedProjector(
+      projectRatioPoints,
+      (b: any) => b.quote_ratio.points,
+      {
+        shouldPatchBoundary: isSyntheticHogaGapPoint,
+        patchPastTail: {
+          topLineColor: 'rgba(0,0,0,0)',
+          bottomLineColor: 'rgba(0,0,0,0)',
+        },
+      },
+      ({ points, fromT, toT }) => {
+        expandCalls.push({ points: points.length, fromT, toT });
+        return points;
+      },
+    );
+
+    cached(bundle, axis, CTX_MASKED);
+    cached(tickBundle as any, axis, CTX_MASKED);
+
+    expect(expandCalls).toEqual([
+      { points: 1, fromT: undefined, toT: todayOpen },
+      { points: 1, fromT: todayOpen, toT: undefined },
+      { points: 2, fromT: todayOpen, toT: undefined },
+    ]);
   });
 });
 
