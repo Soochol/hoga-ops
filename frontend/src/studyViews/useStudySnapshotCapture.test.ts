@@ -72,6 +72,26 @@ function bundle(overrides: Partial<RangeBundle> = {}): RangeBundle {
         max_t_ms: 1,
       },
     ],
+    bid_peaks: [
+      {
+        date: '20260616',
+        price: 69_900,
+        qty: 4_800,
+        t_ms: 2_000,
+        max_price: 69_800,
+        max_qty: 5_800,
+        max_t_ms: 3_000,
+      },
+      {
+        date: '20260615',
+        price: 68_900,
+        qty: 3_800,
+        t_ms: 1,
+        max_price: 68_800,
+        max_qty: 4_300,
+        max_t_ms: 1,
+      },
+    ],
     ...overrides,
   };
 }
@@ -143,6 +163,17 @@ describe('buildStudySnapshotRequest', () => {
         all_max_price: 71_000,
         all_max_qty: 8_000,
         all_max_t_ms: 3_000,
+      },
+    ]);
+    expect(req.snapshot.bundle.bid_peaks).toEqual([
+      {
+        date: '20260616',
+        price: 69_900,
+        qty: 4_800,
+        t_ms: 2_000,
+        max_price: 69_800,
+        max_qty: 5_800,
+        max_t_ms: 3_000,
       },
     ]);
   });

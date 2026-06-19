@@ -136,6 +136,38 @@ def test_snapshot_returns_none_until_an_eligible_orderbook_peak_exists():
     }
 
 
+def test_today_bid_peak_tracks_traded_and_all_bid_peaks():
+    from hoga.live.ask_peak_state import TodayBidPeakState
+
+    state = TodayBidPeakState()
+    state.ingest_orderbook(
+        t_ms=1,
+        bids=[
+            {"price": 70_000, "qty": 1_000},
+            {"price": 69_000, "qty": 9_000},
+        ],
+    )
+    state.ingest_trade(price=70_000, side=1)
+    state.ingest_orderbook(
+        t_ms=2,
+        bids=[
+            {"price": 70_000, "qty": 5_000},
+            {"price": 68_900, "qty": 12_000},
+        ],
+    )
+
+    assert state.snapshot() == {
+        "coverage": "partial",
+        "traded_prices": [70_000],
+        "traded_price": 70_000,
+        "traded_qty": 5_000,
+        "traded_t_ms": 2,
+        "all_price": 68_900,
+        "all_qty": 12_000,
+        "all_t_ms": 2,
+    }
+
+
 def test_snapshot_returns_top_three_all_price_peaks_by_qty():
     state = TodayAskPeakState()
 

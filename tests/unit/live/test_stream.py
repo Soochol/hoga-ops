@@ -93,6 +93,19 @@ def _ask_peak_ob_tick(t_ms):
     })
 
 
+def _bid_peak_ob_tick(t_ms):
+    return WsTick(code="005930", t_ms=t_ms, kind=SnapshotKind.OB, payload={
+        "code": "005930", "t_ms": t_ms,
+        "asks": [{"price": 70_100 + i * 50, "qty": 100} for i in range(10)],
+        "bids": [
+            {"price": 70_000, "qty": 5_000},
+            {"price": 68_900, "qty": 12_000},
+            *[{"price": 68_800 - i * 50, "qty": 100} for i in range(8)],
+        ],
+        "total_ask_qty": 1_000, "total_bid_qty": 17_800,
+    })
+
+
 async def test_on_tick_updates_today_ask_peak_state(tmp_path):
     buf = LiveBuffer()
     stream = LiveStream(buffer=buf, writer=LiveWriter(tmp_path / "live"),
@@ -122,6 +135,31 @@ async def test_on_tick_updates_today_ask_peak_state(tmp_path):
             {"price": 101, "qty": 3, "t_ms": now + 5_000},
             {"price": 103, "qty": 1, "t_ms": now + 5_000},
         ],
+    }
+
+
+async def test_on_tick_updates_today_bid_peak_state(tmp_path):
+    buf = LiveBuffer()
+    stream = LiveStream(buffer=buf, writer=LiveWriter(tmp_path / "live"),
+                        date_fn=lambda: "20260619", phase_fn=lambda: "regular")
+    stream.set_active_codes({"005930"})
+
+    now = int(datetime(2026, 6, 19, 9, 1, tzinfo=KST).timestamp() * 1000)
+    await stream.on_tick(WsTick(code="005930", t_ms=now, kind=SnapshotKind.TRADE, payload={
+        "trades": [{"t_ms": now, "price": 70_000, "qty": 5, "side": 1}],
+    }))
+    await stream.on_tick(_bid_peak_ob_tick(now + 5_000))
+
+    assert stream.bid_peak_snapshot("005930") == {
+        "date": "20260619",
+        "coverage": "partial",
+        "traded_prices": [70_000],
+        "traded_price": 70_000,
+        "traded_qty": 5_000,
+        "traded_t_ms": now + 5_000,
+        "all_price": 68_900,
+        "all_qty": 12_000,
+        "all_t_ms": now + 5_000,
     }
 
 
@@ -357,6 +395,54 @@ async def test_seed_ask_peak_from_live_file_loads_full_day_peak_and_full_coverag
             {"price": 10_400, "qty": 700, "t_ms": _kst_ms(9, 10)},
             {"price": 10_100, "qty": 500, "t_ms": _kst_ms(9, 10)},
         ],
+    }
+
+
+async def test_seed_bid_peak_from_live_file_loads_full_day_peak_and_full_coverage(tmp_path):
+    buf = LiveBuffer()
+    writer = LiveWriter(tmp_path / "live")
+    stream = LiveStream(buffer=buf, writer=writer,
+                        date_fn=lambda: "20260619", phase_fn=lambda: "regular")
+    live_root = tmp_path / "live"
+    live_root.mkdir(parents=True, exist_ok=True)
+    live_path = live_root / "20260619" / "005930.jsonl"
+    live_path.parent.mkdir(parents=True, exist_ok=True)
+    rows = [
+        {
+            "t_ms": int(datetime(2026, 6, 19, 9, 1, tzinfo=KST).timestamp() * 1000),
+            "kind": "trade",
+            "payload": {
+                "trades": [{
+                    "t_ms": int(datetime(2026, 6, 19, 9, 1, tzinfo=KST).timestamp() * 1000),
+                    "price": 70_000,
+                    "qty": 1,
+                    "side": 1,
+                    "side_source": "kis_ws",
+                }],
+            },
+        },
+        {
+            "t_ms": int(datetime(2026, 6, 19, 9, 1, 5, tzinfo=KST).timestamp() * 1000),
+            "kind": "ob",
+            "payload": _bid_peak_ob_tick(
+                int(datetime(2026, 6, 19, 9, 1, 5, tzinfo=KST).timestamp() * 1000)
+            ).payload,
+        },
+    ]
+    live_path.write_text("\n".join(json.dumps(r, ensure_ascii=False) for r in rows) + "\n")
+
+    stream.seed_bid_peak_from_live_file(code="005930", date="20260619", live_root=live_root)
+
+    assert stream.bid_peak_snapshot("005930") == {
+        "date": "20260619",
+        "coverage": "full",
+        "traded_prices": [70_000],
+        "traded_price": 70_000,
+        "traded_qty": 5_000,
+        "traded_t_ms": int(datetime(2026, 6, 19, 9, 1, 5, tzinfo=KST).timestamp() * 1000),
+        "all_price": 68_900,
+        "all_qty": 12_000,
+        "all_t_ms": int(datetime(2026, 6, 19, 9, 1, 5, tzinfo=KST).timestamp() * 1000),
     }
 
 

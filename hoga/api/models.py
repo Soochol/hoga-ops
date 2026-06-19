@@ -132,6 +132,34 @@ class AskPeak(BaseModel):
     traded_max_peaks: list[AskPeakCandidate] = Field(default_factory=list)
 
 
+class BidPeak(BaseModel):
+    """한 거래일 연속거래 중 단일 매수 호가단계 최대 물량·가격(Day Bid Peak).
+
+    Mirrors ``AskPeak`` on the bid side. ``untraded_*`` fields are bid prices
+    below the day's traded low.
+    """
+
+    date: str
+    price: int
+    qty: int
+    t_ms: int
+    max_price: int
+    max_qty: int
+    max_t_ms: int
+    all_price: int | None = None
+    all_qty: int | None = None
+    all_t_ms: int | None = None
+    all_max_price: int | None = None
+    all_max_qty: int | None = None
+    all_max_t_ms: int | None = None
+    untraded_price: int | None = None
+    untraded_qty: int | None = None
+    untraded_t_ms: int | None = None
+    untraded_max_price: int | None = None
+    untraded_max_qty: int | None = None
+    untraded_max_t_ms: int | None = None
+
+
 class QuoteRatioPoint(BaseModel):
     t: int          # Unix ms
     bid_total: int
@@ -564,6 +592,7 @@ class RangeBundle(BaseModel):
     # 그날 segment x-구간의 수평 세그먼트로 그린다. 오늘 항목은 클라 ratchet이 live.ob로 갱신.
     # D·W·M/무데이터는 빈 리스트. 기본 []라 기존 클라 무영향.
     ask_peaks: list["AskPeak"] = []
+    bid_peaks: list["BidPeak"] = Field(default_factory=list)
 
 
 # === Broker Day-Trajectory (ADR-0023) ===
@@ -1207,6 +1236,7 @@ class StudySnapshotBundle(BaseModel):
     ratio: list[StudyRatioPoint]
     fill_strength: list[StudyFillStrengthPoint]
     ask_peaks: list[AskPeak] = Field(default_factory=list)
+    bid_peaks: list[BidPeak] = Field(default_factory=list)
     data_warnings: list[str] = Field(default_factory=list)
     orderbook_buckets: list[StudyOrderbookBucket] = Field(default_factory=list)
     broker_buckets: list[StudyBrokerBucket] = Field(default_factory=list)

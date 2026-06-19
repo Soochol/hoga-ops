@@ -188,6 +188,18 @@ def get_today_ask_peak(code: str) -> dict | None:
     return None
 
 
+def get_today_bid_peak(code: str) -> dict | None:
+    """Return today's bid-peak snapshot for an active live stream code."""
+    for conn in _state.streams.values():
+        if code not in conn.codes:
+            continue
+        snapshot = getattr(conn.stream_obj, "bid_peak_snapshot", None)
+        if snapshot is None:
+            continue
+        return snapshot(code)
+    return None
+
+
 def _now_ms() -> int:
     return int(time.time() * 1000)
 
@@ -196,6 +208,24 @@ def _today_kst() -> str:
     from datetime import datetime, timedelta, timezone  # noqa: PLC0415
 
     return datetime.now(timezone(timedelta(hours=9))).strftime("%Y%m%d")
+
+
+def _seed_today_peak_state(*, conn: _StreamConn, date: str, live_root: Path) -> None:
+    """Replay persisted today peak state into a rebuilt stream when supported."""
+    if conn.stream_obj is None:
+        return
+    for code in conn.codes:
+        ask_seed = getattr(conn.stream_obj, "seed_ask_peak_from_live_file", None)
+        if ask_seed is not None:
+            ask_seed(code=code, date=date, live_root=live_root)
+        bid_seed = getattr(conn.stream_obj, "seed_bid_peak_from_live_file", None)
+        if bid_seed is not None:
+            bid_seed(code=code, date=date, live_root=live_root)
+
+
+def _seed_today_peak_states(*, date: str, live_root: Path) -> None:
+    for conn in _state.streams.values():
+        _seed_today_peak_state(conn=conn, date=date, live_root=live_root)
 
 
 def _build_conn(account_id: int, codes: list[str], data_dir: Path) -> _StreamConn:
@@ -473,16 +503,7 @@ async def _start_live_stream_locked(*, data_dir: Path) -> bool:
     )
     _state.rest_poller = poller
 
-    date = _today_kst()
-    live_root = data_dir / "live"
-    for conn in _state.streams.values():
-        if conn.stream_obj is None:
-            continue
-        for code in conn.codes:
-            seed = getattr(conn.stream_obj, "seed_ask_peak_from_live_file", None)
-            if seed is None:
-                continue
-            seed(code=code, date=date, live_root=live_root)
+    _seed_today_peak_states(date=_today_kst(), live_root=data_dir / "live")
 
     return True
 
@@ -559,6 +580,7 @@ async def refresh_live_stream(*, data_dir: Path) -> None:
             codes=codes, data_dir=data_dir,
             build_conn=_build_conn, teardown_conn=_teardown_conn,
         )
+        _seed_today_peak_states(date=_today_kst(), live_root=data_dir / "live")
         await _buffer.drop_codes_except(set(codes))  # 떠난 코드 ring 해제
 
 
@@ -571,6 +593,11 @@ async def _restart_conn(account_id: int, *, data_dir: Path) -> None:
             account_id, data_dir=data_dir,
             build_conn=_build_conn, teardown_conn=_teardown_conn,
         )
+        conn = _state.streams.get(account_id)
+        if conn is not None:
+            _seed_today_peak_state(
+                conn=conn, date=_today_kst(), live_root=data_dir / "live",
+            )
 
 
 async def _ws_watchdog_check(

@@ -215,6 +215,7 @@ export function buildChartBundle(input: BuildChartBundleInput): RangeBundle {
     // (hoga 시리즈와 달리 candle-path 데이터라 라이브 오버레이가 덮어쓰지 않는다. 오늘 항목은
     // useDayAskPeaks가 live.ob ratchet으로 추가; segments엔 todaySegment가 있어 매핑된다.)
     ask_peaks: pastBundle?.ask_peaks ?? [],
+    bid_peaks: pastBundle?.bid_peaks ?? [],
   };
 }
 

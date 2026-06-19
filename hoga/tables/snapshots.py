@@ -424,6 +424,54 @@ class AskPeakDualRow:
     untraded_max_intra_ms: int | None = None
 
 
+@dataclass(frozen=True)
+class BidPeakRow:
+    """당일 연속거래 중 단일 매수 호가단계에 걸린 최대 물량과 가격.
+
+    ``intra_ms``는 LINEAR ms-from-midnight(NOT raw HHMMSSmmm, NOT unix ms) -
+    호출자가 ``ms_from_midnight_to_unix_ms(date, intra_ms)``로 unix 변환.
+    QuoteRatioRow.bucket_intra_ms와 동일 규약.
+
+    ``price``/``qty``/``intra_ms`` = 버킷 대표(마지막 연속거래 스냅샷)의
+    당일 매수벽 최댓값(#96 close 변종). ``max_*`` = 버킷 대표를 거치지 않고
+    연속거래 스냅샷 전체에서 찾은 단일 매수단계 당일 max(Intra-Bar Max, ADR-0076).
+    """
+    price: int
+    qty: int
+    intra_ms: int
+    max_price: int
+    max_qty: int
+    max_intra_ms: int
+
+
+@dataclass(frozen=True)
+class BidPeakDualRow:
+    """Day bid peak split into traded-price baseline and all-price peak.
+
+    ``price``/``qty``/``intra_ms`` and ``max_*`` are constrained to bid prices
+    that appeared in continuous trades. ``all_*`` fields use every eligible bid
+    level. Both variants share the same continuous-book/session filters.
+    """
+    price: int
+    qty: int
+    intra_ms: int
+    max_price: int
+    max_qty: int
+    max_intra_ms: int
+    all_price: int
+    all_qty: int
+    all_intra_ms: int
+    all_max_price: int
+    all_max_qty: int
+    all_max_intra_ms: int
+    untraded_price: int | None = None
+    untraded_qty: int | None = None
+    untraded_intra_ms: int | None = None
+    untraded_max_price: int | None = None
+    untraded_max_qty: int | None = None
+    untraded_max_intra_ms: int | None = None
+
+
 def query_bucketed_ratio(
     con: duckdb.DuckDBPyConnection,
     *,
@@ -863,6 +911,156 @@ def query_day_ask_peak_dual(
         max_price=int(traded_max[0]), max_qty=int(traded_max[1]), max_intra_ms=int(traded_max[2]),
         traded_peaks=traded_peaks,
         traded_max_peaks=traded_max_peaks,
+        all_price=int(all_close[0]), all_qty=int(all_close[1]), all_intra_ms=int(all_close[2]),
+        all_max_price=int(all_max[0]),
+        all_max_qty=int(all_max[1]),
+        all_max_intra_ms=int(all_max[2]),
+        untraded_price=int(untraded_close[0]) if untraded_close is not None else None,
+        untraded_qty=int(untraded_close[1]) if untraded_close is not None else None,
+        untraded_intra_ms=int(untraded_close[2]) if untraded_close is not None else None,
+        untraded_max_price=int(untraded_max[0]) if untraded_max is not None else None,
+        untraded_max_qty=int(untraded_max[1]) if untraded_max is not None else None,
+        untraded_max_intra_ms=int(untraded_max[2]) if untraded_max is not None else None,
+    )
+
+
+def query_day_bid_peak(
+    con: duckdb.DuckDBPyConnection,
+    *,
+    path: Path,
+    bucket_ms: int,
+    session_open_ms: int | None = None,
+    session_close_ms: int | None = None,
+) -> BidPeakRow | None:
+    """Past-day bid peak over continuous-trading representative snapshots."""
+    intra = hhmmssms_to_intra_ms_sql("ts_ms")
+    bounds = [_DEEP_BOOK_SQL]
+    if session_open_ms is not None:
+        bounds.append(f"{intra} >= {hhmmssms_to_intra_ms_sql(str(int(session_open_ms)))}")
+    if session_close_ms is not None:
+        bounds.append(f"{intra} <= {hhmmssms_to_intra_ms_sql(str(int(session_close_ms)))}")
+    where = " AND ".join(bounds)
+
+    def level_union(src: str) -> str:
+        return " UNION ALL ".join(
+            f"SELECT bid_p{i} AS price, bid_q{i} AS qty, {intra} AS intra_ms "
+            f"FROM {src} WHERE bid_q{i} > 0"
+            for i in range(1, ORDERBOOK_LEVELS + 1)
+        )
+
+    row = con.execute(
+        f"""
+        WITH cont AS (
+          SELECT *,
+                 ROW_NUMBER() OVER (
+                   PARTITION BY ({intra} // {int(bucket_ms)})
+                   ORDER BY ts_ms DESC
+                 ) AS rn
+          FROM read_parquet(?) WHERE {where}
+        ),
+        rep AS (SELECT * FROM cont WHERE rn = 1)
+        SELECT price, qty, intra_ms FROM ({level_union("rep")})
+        ORDER BY qty DESC, intra_ms ASC LIMIT 1
+        """,
+        [str(path)],
+    ).fetchone()
+    if row is None:
+        return None
+    max_row = con.execute(
+        f"""
+        WITH src AS (SELECT * FROM read_parquet(?) WHERE {where})
+        SELECT price, qty, intra_ms FROM ({level_union("src")})
+        ORDER BY qty DESC, intra_ms ASC LIMIT 1
+        """,
+        [str(path)],
+    ).fetchone()
+    return BidPeakRow(
+        price=int(row[0]), qty=int(row[1]), intra_ms=int(row[2]),
+        max_price=int(max_row[0]), max_qty=int(max_row[1]), max_intra_ms=int(max_row[2]),
+    )
+
+
+def query_day_bid_peak_dual(
+    con: duckdb.DuckDBPyConnection,
+    *,
+    path: Path,
+    trades_path: Path,
+    bucket_ms: int,
+    session_open_ms: int | None = None,
+    session_close_ms: int | None = None,
+) -> BidPeakDualRow | None:
+    """Past-day bid peak split into traded-price and all-price variants.
+
+    Uses the same continuous-book/session predicate as ``query_day_bid_peak`` so
+    opening auction, closing auction, VI/collapsed 3-level books, and post-cross
+    re-expansion are excluded identically for both lines.
+    """
+    intra = hhmmssms_to_intra_ms_sql("ts_ms")
+    bounds = [_DEEP_BOOK_SQL]
+    if session_open_ms is not None:
+        bounds.append(f"{intra} >= {hhmmssms_to_intra_ms_sql(str(int(session_open_ms)))}")
+    if session_close_ms is not None:
+        bounds.append(f"{intra} <= {hhmmssms_to_intra_ms_sql(str(int(session_close_ms)))}")
+    where = " AND ".join(bounds)
+
+    def level_union(src: str) -> str:
+        return " UNION ALL ".join(
+            f"SELECT bid_p{i} AS price, bid_q{i} AS qty, {intra} AS intra_ms "
+            f"FROM {src} WHERE bid_q{i} > 0"
+            for i in range(1, ORDERBOOK_LEVELS + 1)
+        )
+
+    base_ctes = f"""
+        WITH cont AS (
+          SELECT *,
+                 ROW_NUMBER() OVER (
+                   PARTITION BY ({intra} // {int(bucket_ms)})
+                   ORDER BY ts_ms DESC
+                 ) AS rn
+          FROM read_parquet(?) WHERE {where}
+        ),
+        rep AS (SELECT * FROM cont WHERE rn = 1),
+        traded_prices AS (
+          SELECT DISTINCT price FROM read_parquet(?) WHERE side IN (1, -1) AND price > 0
+        ),
+        day_low AS (
+          SELECT min(price) AS price FROM read_parquet(?) WHERE side IN (1, -1) AND price > 0
+        )
+    """
+
+    def pick(src: str, *, mode: str) -> tuple[int, int, int] | None:
+        if mode == "traded":
+            filter_sql = "WHERE price IN (SELECT price FROM traded_prices)"
+        elif mode == "untraded":
+            filter_sql = "WHERE price < (SELECT price FROM day_low)"
+        elif mode == "all":
+            filter_sql = ""
+        else:
+            raise ValueError(f"unknown bid peak pick mode: {mode}")
+        return con.execute(
+            f"""
+            {base_ctes},
+            levels AS ({level_union(src)})
+            SELECT price, qty, intra_ms FROM levels
+            {filter_sql}
+            ORDER BY qty DESC, intra_ms ASC LIMIT 1
+            """,
+            [str(path), str(trades_path), str(trades_path)],
+        ).fetchone()
+
+    all_close = pick("rep", mode="all")
+    if all_close is None:
+        return None
+    all_max = pick("cont", mode="all")
+    traded_close = pick("rep", mode="traded") or all_close
+    traded_max = pick("cont", mode="traded") or all_max
+    untraded_close = pick("rep", mode="untraded")
+    untraded_max = pick("cont", mode="untraded")
+    if all_max is None or traded_max is None:
+        return None
+    return BidPeakDualRow(
+        price=int(traded_close[0]), qty=int(traded_close[1]), intra_ms=int(traded_close[2]),
+        max_price=int(traded_max[0]), max_qty=int(traded_max[1]), max_intra_ms=int(traded_max[2]),
         all_price=int(all_close[0]), all_qty=int(all_close[1]), all_intra_ms=int(all_close[2]),
         all_max_price=int(all_max[0]),
         all_max_qty=int(all_max[1]),

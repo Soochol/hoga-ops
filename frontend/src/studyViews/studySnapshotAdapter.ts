@@ -150,6 +150,7 @@ export function studySnapshotBundleToRangeBundle(snapshot: StudySnapshotBundle):
     volume_profile_by_day: [],
     investorPoints: [],
     ask_peaks: snapshot.ask_peaks ?? [],
+    bid_peaks: snapshot.bid_peaks ?? [],
   };
 }
 
@@ -186,6 +187,7 @@ function rangeBundleWithoutStudyRatio(bundle: StudySnapshotRangeBundle): RangeBu
     volume_profile_by_day: bundle.volume_profile_by_day,
     investorPoints: bundle.investorPoints,
     ask_peaks: bundle.ask_peaks,
+    bid_peaks: bundle.bid_peaks,
   };
 }
 

@@ -141,6 +141,7 @@ export function StudyPage() {
               atLiveEdge: snapshot.viewport.at_live_edge,
             }}
             dayAskPeaks={chartInput.bundle.ask_peaks}
+            dayBidPeaks={chartInput.bundle.bid_peaks}
             forceHogaPanes
             paneTogglesOverride={{
               volumeEnabled: snapshot.indicator_state.volume_enabled,

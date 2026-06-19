@@ -4,6 +4,7 @@ from __future__ import annotations
 import json
 from pathlib import Path
 
+from hoga.api.models import AskPeak, BidPeak
 from hoga.api.past_indicators_cache import PastIndicatorsCache
 from hoga.tables.snapshots import QuoteRatioRow
 from hoga.tables.trades import FillStrengthRow
@@ -101,3 +102,19 @@ def test_schema_version_bumped_to_2_invalidates_old_three_tuple(tmp_path: Path) 
     p.write_text(json.dumps({"version": 1, "rows": [[0, 10, 20]], "fetched_at_ms": 0}),
                  encoding="utf-8")
     assert PastIndicatorsCache(tmp_path).get_ratio(CODE, DATE, SRC) is None
+
+
+def test_bid_peak_cache_is_independent_from_ask_peak(tmp_path: Path) -> None:
+    cache = PastIndicatorsCache(tmp_path)
+    ask = AskPeak(
+        date="20260619", price=71000, qty=1, t_ms=1, max_price=71000, max_qty=1, max_t_ms=1
+    )
+    bid = BidPeak(
+        date="20260619", price=70000, qty=2, t_ms=2, max_price=70000, max_qty=2, max_t_ms=2
+    )
+
+    cache.store_ask_peak("005930", "20260619", "hogaplay", 60_000, ask)
+    cache.store_bid_peak("005930", "20260619", "hogaplay", 60_000, bid)
+
+    assert cache.get_ask_peak("005930", "20260619", "hogaplay", 60_000) == ask
+    assert cache.get_bid_peak("005930", "20260619", "hogaplay", 60_000) == bid

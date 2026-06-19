@@ -120,6 +120,9 @@ type Store = Persisted & PersistedIndicators & {
   setAskPeakEnabled: (enabled: boolean) => void;
   setAskPeakStyle: (patch: { color?: string; lineWidth?: 1 | 2 | 3 | 4 }) => void;
   setAskPeakAllPriceStyle: (patch: { color?: string; lineWidth?: 1 | 2 | 3 | 4 }) => void;
+  setBidPeakEnabled: (enabled: boolean) => void;
+  setBidPeakStyle: (patch: { color?: string; lineWidth?: 1 | 2 | 3 | 4 }) => void;
+  setBidPeakAllPriceStyle: (patch: { color?: string; lineWidth?: 1 | 2 | 3 | 4 }) => void;
   setQuoteTotalsEnabled: (enabled: boolean) => void;
   setRatioEnabled: (enabled: boolean) => void;
   setFillStrengthEnabled: (enabled: boolean) => void;
@@ -180,6 +183,11 @@ function snapshotIndicators(get: () => Store): PersistedIndicators {
     askPeakLineWidth: s.askPeakLineWidth,
     askPeakAllPriceColor: s.askPeakAllPriceColor,
     askPeakAllPriceLineWidth: s.askPeakAllPriceLineWidth,
+    bidPeakEnabled: s.bidPeakEnabled,
+    bidPeakColor: s.bidPeakColor,
+    bidPeakLineWidth: s.bidPeakLineWidth,
+    bidPeakAllPriceColor: s.bidPeakAllPriceColor,
+    bidPeakAllPriceLineWidth: s.bidPeakAllPriceLineWidth,
     quoteTotalsEnabled: s.quoteTotalsEnabled,
     ratioEnabled: s.ratioEnabled,
     fillStrengthEnabled: s.fillStrengthEnabled,
@@ -319,6 +327,27 @@ export const useLivePageStore = create<Store>((set, get) => ({
     set((s) => ({
       askPeakAllPriceColor: patch.color ?? s.askPeakAllPriceColor,
       askPeakAllPriceLineWidth: patch.lineWidth ?? s.askPeakAllPriceLineWidth,
+    }));
+    persistIndicators(snapshotIndicators(get));
+  },
+
+  setBidPeakEnabled: (enabled) => {
+    set({ bidPeakEnabled: enabled });
+    persistIndicators(snapshotIndicators(get));
+  },
+
+  setBidPeakStyle: (patch) => {
+    set((s) => ({
+      bidPeakColor: patch.color ?? s.bidPeakColor,
+      bidPeakLineWidth: patch.lineWidth ?? s.bidPeakLineWidth,
+    }));
+    persistIndicators(snapshotIndicators(get));
+  },
+
+  setBidPeakAllPriceStyle: (patch) => {
+    set((s) => ({
+      bidPeakAllPriceColor: patch.color ?? s.bidPeakAllPriceColor,
+      bidPeakAllPriceLineWidth: patch.lineWidth ?? s.bidPeakAllPriceLineWidth,
     }));
     persistIndicators(snapshotIndicators(get));
   },

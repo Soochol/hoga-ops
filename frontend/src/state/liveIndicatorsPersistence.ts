@@ -55,6 +55,10 @@ export const ASK_PEAK_DEFAULT_COLOR = '#1D4ED8';
 export const ASK_PEAK_DEFAULT_WIDTH: 1 | 2 | 3 | 4 = 2;
 export const ASK_PEAK_ALL_PRICE_DEFAULT_COLOR = '#F97316';
 export const ASK_PEAK_ALL_PRICE_DEFAULT_WIDTH: 1 | 2 | 3 | 4 = 1;
+export const BID_PEAK_DEFAULT_COLOR = '#DC2626';
+export const BID_PEAK_DEFAULT_WIDTH: 1 | 2 | 3 | 4 = 2;
+export const BID_PEAK_ALL_PRICE_DEFAULT_COLOR = '#F97316';
+export const BID_PEAK_ALL_PRICE_DEFAULT_WIDTH: 1 | 2 | 3 | 4 = 1;
 
 export type PersistedIndicators = {
   movingAverages: LiveMAConfig[];
@@ -77,6 +81,16 @@ export type PersistedIndicators = {
   askPeakAllPriceColor: string;
   /** 미체결 포함 매도 최대벽 선 두께. 기본 1. */
   askPeakAllPriceLineWidth: 1 | 2 | 3 | 4;
+  /** 당일 매수 최대벽 토글. opt-in(기본 false). */
+  bidPeakEnabled: boolean;
+  /** 매수 최대벽 선 색(hex). 기본 #DC2626(빨강). */
+  bidPeakColor: string;
+  /** 매수 최대벽 선 두께. 기본 2. */
+  bidPeakLineWidth: 1 | 2 | 3 | 4;
+  /** 미체결 포함 매수 최대벽 선 색(hex). 기본 #F97316(주황). */
+  bidPeakAllPriceColor: string;
+  /** 미체결 포함 매수 최대벽 선 두께. 기본 1. */
+  bidPeakAllPriceLineWidth: 1 | 2 | 3 | 4;
   /** 총잔량 pane on/off. Default TRUE(기존 자동표시 보존). */
   quoteTotalsEnabled: boolean;
   /** 호가비 pane on/off. Default TRUE. */
@@ -134,6 +148,16 @@ export function mergeLiveIndicatorPrefs(
     ? (obj.askPeakAllPriceColor as string) : ASK_PEAK_ALL_PRICE_DEFAULT_COLOR;
   const apAllWidth = VALID_LINE_WIDTHS.has(obj?.askPeakAllPriceLineWidth as number)
     ? (obj!.askPeakAllPriceLineWidth as 1 | 2 | 3 | 4) : ASK_PEAK_ALL_PRICE_DEFAULT_WIDTH;
+  // bidPeak fields — opt-in (default false/BID_PEAK_DEFAULT_COLOR/BID_PEAK_DEFAULT_WIDTH).
+  const bpEnabled = obj?.bidPeakEnabled === true;
+  const bpColor = typeof obj?.bidPeakColor === 'string' && HEX_COLOR.test(obj.bidPeakColor as string)
+    ? (obj.bidPeakColor as string) : BID_PEAK_DEFAULT_COLOR;
+  const bpWidth = VALID_LINE_WIDTHS.has(obj?.bidPeakLineWidth as number)
+    ? (obj!.bidPeakLineWidth as 1 | 2 | 3 | 4) : BID_PEAK_DEFAULT_WIDTH;
+  const bpAllColor = typeof obj?.bidPeakAllPriceColor === 'string' && HEX_COLOR.test(obj.bidPeakAllPriceColor as string)
+    ? (obj.bidPeakAllPriceColor as string) : BID_PEAK_ALL_PRICE_DEFAULT_COLOR;
+  const bpAllWidth = VALID_LINE_WIDTHS.has(obj?.bidPeakAllPriceLineWidth as number)
+    ? (obj!.bidPeakAllPriceLineWidth as 1 | 2 | 3 | 4) : BID_PEAK_ALL_PRICE_DEFAULT_WIDTH;
   // daily MA — opt-in(기본 false), 슬롯 검증·cap·기본값 전략 movingAverages와 동일.
   const dEnabled = obj?.dailyMovingAverageEnabled === true;
   const dHidden = obj?.dailyMovingAverageHidden === true;
@@ -158,6 +182,11 @@ export function mergeLiveIndicatorPrefs(
     askPeakLineWidth: apWidth,
     askPeakAllPriceColor: apAllColor,
     askPeakAllPriceLineWidth: apAllWidth,
+    bidPeakEnabled: bpEnabled,
+    bidPeakColor: bpColor,
+    bidPeakLineWidth: bpWidth,
+    bidPeakAllPriceColor: bpAllColor,
+    bidPeakAllPriceLineWidth: bpAllWidth,
     quoteTotalsEnabled: qt,
     ratioEnabled: ratio,
     fillStrengthEnabled: fill,

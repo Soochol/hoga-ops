@@ -23,6 +23,7 @@ const liveFixture: LiveSeriesData = {
     trades: [],
     brokers: [],
     ask_peak_today: null,
+    bid_peak_today: null,
   },
   isLoading: false,
   error: null,

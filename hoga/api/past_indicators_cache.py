@@ -35,7 +35,7 @@ from hoga.tables.snapshots import QuoteRatioRow
 from hoga.tables.trades import FillStrengthRow
 
 if TYPE_CHECKING:
-    from hoga.api.models import AskPeak
+    from hoga.api.models import AskPeak, BidPeak
 
 _log = logging.getLogger(__name__)
 
@@ -59,6 +59,7 @@ class PastIndicatorsCache:
         # 캐시 값(데이터 없는 날)이라 has_/get_ 분리로 미스 구분. 키에 bucket_ms 포함 —
         # 버킷 대표 위에서 집계하므로 분봉(bucket_ms)이 바뀌면 결과도 달라진다.
         self._mem_ask_peak: dict[tuple[str, str, str, int], "AskPeak | None"] = {}
+        self._mem_bid_peak: dict[tuple[str, str, str, int], "BidPeak | None"] = {}
 
     def _path(self, code: str, date: str, source: str, kind: Kind) -> Path:
         return self._data_dir / "kis-past-indicators" / code / source / f"{date}.{kind}.json"
@@ -125,6 +126,17 @@ class PastIndicatorsCache:
         self, code: str, date: str, source: str, bucket_ms: int, peak: "AskPeak | None"
     ) -> None:
         self._mem_ask_peak[(code, date, source, bucket_ms)] = peak
+
+    def has_bid_peak(self, code: str, date: str, source: str, bucket_ms: int) -> bool:
+        return (code, date, source, bucket_ms) in self._mem_bid_peak
+
+    def get_bid_peak(self, code: str, date: str, source: str, bucket_ms: int) -> "BidPeak | None":
+        return self._mem_bid_peak.get((code, date, source, bucket_ms))
+
+    def store_bid_peak(
+        self, code: str, date: str, source: str, bucket_ms: int, peak: "BidPeak | None"
+    ) -> None:
+        self._mem_bid_peak[(code, date, source, bucket_ms)] = peak
 
     # ── disk I/O ──────────────────────────────────────────────────────────────
 

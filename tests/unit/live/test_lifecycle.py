@@ -185,6 +185,32 @@ def test_get_today_ask_peak_skips_non_matching_or_legacy_streams() -> None:
     assert lifecycle.get_today_ask_peak("373220") is None
 
 
+def test_get_today_bid_peak_returns_matching_stream_snapshot() -> None:
+    from hoga.live import lifecycle
+    from hoga.live.lifecycle import _State, _StreamConn
+
+    lifecycle.reset_for_tests()
+
+    class _FakeStream:
+        def bid_peak_snapshot(self, code: str) -> dict | None:
+            return {"date": "20260619", "code": code, "all_qty": 12_000}
+
+    conn = _StreamConn(
+        account_id=0,
+        stream_obj=_FakeStream(),
+        ws_task=None,
+        flush_task=None,
+        codes=("005930",),
+    )
+    lifecycle._state = _State(started_at_ms=1, n_configured=1, streams={0: conn})
+
+    assert lifecycle.get_today_bid_peak("005930") == {
+        "date": "20260619",
+        "code": "005930",
+        "all_qty": 12_000,
+    }
+
+
 def test_record_today_promote_success_persists_per_code() -> None:
     """ADR-0043 — record_today_promote_success가 dict에 timestamp 보관."""
     from hoga.live import lifecycle
@@ -561,6 +587,95 @@ async def test_ws_watchdog_noop_when_healthy(
                 await t
             except asyncio.CancelledError:
                 pass
+
+
+@pytest.mark.asyncio
+async def test_restart_conn_reseeds_ask_and_bid_peaks_from_live_file(
+    monkeypatch, tmp_path
+) -> None:
+    import json
+
+    from hoga.live import lifecycle, live_session
+    from hoga.live.lifecycle import _State, _StreamConn
+
+    lifecycle.reset_for_tests()
+    (tmp_path / "watchlist.json").write_text(json.dumps({
+        "version": 1,
+        "entries": [{
+            "code": "005930",
+            "name": "삼성전자",
+            "registered_at_kst_date": "20260101",
+            "last_success_date": None,
+        }],
+    }))
+    monkeypatch.setattr(live_session, "_compute_live_set", lambda data_dir, n: ["005930"])
+    monkeypatch.setattr(lifecycle, "_today_kst", lambda: "20260619")
+
+    seeded: list[tuple[str, str, str, object]] = []
+
+    class _FakeSeedStream:
+        def seed_ask_peak_from_live_file(self, *, code: str, date: str, live_root) -> None:
+            seeded.append(("ask", code, date, live_root))
+
+        def seed_bid_peak_from_live_file(self, *, code: str, date: str, live_root) -> None:
+            seeded.append(("bid", code, date, live_root))
+
+    async def _forever() -> None:
+        await asyncio.sleep(60)
+
+    old_ws_task = asyncio.create_task(_forever())
+    old_flush_task = asyncio.create_task(_forever())
+    new_tasks: list[asyncio.Task] = []
+
+    def _fake_build_conn(account_id: int, codes: list[str], data_dir):
+        ws_task = asyncio.create_task(_forever())
+        flush_task = asyncio.create_task(_forever())
+        new_tasks.extend([ws_task, flush_task])
+        return _StreamConn(
+            account_id=account_id,
+            stream_obj=_FakeSeedStream(),
+            ws_task=ws_task,
+            flush_task=flush_task,
+            codes=tuple(codes),
+        )
+
+    async def _fake_teardown(conn: _StreamConn) -> None:
+        for task in (conn.ws_task, conn.flush_task):
+            task.cancel()
+            with contextlib.suppress(asyncio.CancelledError):
+                await task
+
+    monkeypatch.setattr(lifecycle, "_build_conn", _fake_build_conn)
+    monkeypatch.setattr(lifecycle, "_teardown_conn", _fake_teardown)
+
+    lifecycle._state = _State(
+        started_at_ms=1,
+        n_configured=1,
+        watchlist_codes=("005930",),
+        streams={
+            0: _StreamConn(
+                account_id=0,
+                stream_obj=object(),
+                ws_task=old_ws_task,
+                flush_task=old_flush_task,
+                codes=("005930",),
+            ),
+        },
+        live_set=("005930",),
+    )
+
+    try:
+        await lifecycle._restart_conn(0, data_dir=tmp_path)
+
+        assert seeded == [
+            ("ask", "005930", "20260619", tmp_path / "live"),
+            ("bid", "005930", "20260619", tmp_path / "live"),
+        ]
+    finally:
+        for task in new_tasks:
+            task.cancel()
+            with contextlib.suppress(asyncio.CancelledError):
+                await task
 
 
 @pytest.mark.asyncio

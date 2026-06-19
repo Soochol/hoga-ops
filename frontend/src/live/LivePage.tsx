@@ -16,7 +16,8 @@ import { useLiveKeyboard } from './useLiveKeyboard';
 import { useLiveBundle } from './useLiveBundle';
 import { useLiveSeries } from '../api/liveSeries';
 import { useDayAskPeaks, useTodayAllPriceAskPeak } from './useDayAskPeaks';
-import type { AskPeak, Candle, RangeBundle } from '../api/types';
+import { useDayBidPeaks, useTodayAllPriceBidPeak } from './useDayBidPeaks';
+import type { AskPeak, BidPeak, Candle, RangeBundle } from '../api/types';
 import type { ObSnapshot, TradeSnapshot } from './bucketHogaSeries';
 import type { TabViewport } from './viewportAnchor';
 import { todayKstYyyymmdd } from './liveDateTime';
@@ -34,6 +35,7 @@ import { useDocumentTitle } from '../util/useDocumentTitle';
 
 /** 안정 빈 배열 — 매 렌더 새 [] 가 useDayAskPeaks의 메모 deps를 churn하지 않게. */
 const EMPTY_ASK_PEAKS: readonly AskPeak[] = [];
+const EMPTY_BID_PEAKS: readonly BidPeak[] = [];
 const EMPTY_CANDLES: readonly Candle[] = [];
 const EMPTY_OB_SNAPSHOTS: readonly ObSnapshot[] = [];
 const EMPTY_TRADE_SNAPSHOTS: readonly TradeSnapshot[] = [];
@@ -136,22 +138,6 @@ export function LivePage() {
     live,
     { investorNetEnabled: foreignNetEnabled || institutionNetEnabled, venue: liveVenue },
   );
-  const liveSaveBundle = useMemo<RangeBundle | null>(() => {
-    if (!bundle) return null;
-    if (!chartBundle) return bundle;
-    return {
-      ...bundle,
-      from_date: chartBundle.from_date,
-      to_date: chartBundle.to_date,
-      bucket_ms: chartBundle.bucket_ms,
-      segments: chartBundle.segments,
-      candles: chartBundle.candles,
-      volume_profile_range: chartBundle.volume_profile_range,
-      volume_profile_by_day: chartBundle.volume_profile_by_day,
-      investorPoints: chartBundle.investorPoints,
-      ask_peaks: chartBundle.ask_peaks,
-    };
-  }, [bundle, chartBundle]);
   const indicatorState = useMemo<StudyIndicatorState>(() => ({
     volume_enabled: volumeEnabled,
     quote_totals_enabled: quoteTotalsEnabled,
@@ -172,25 +158,6 @@ export function LivePage() {
     volumeEnabled,
   ]);
   const activeTab = tabs.find((t) => t.id === activeTabId);
-  useEffect(() => {
-    if (!activeCode || !liveSaveBundle) {
-      setCurrentStudySaveSource(null);
-      return undefined;
-    }
-    const source: LiveStudySaveSource = {
-      origin: 'live',
-      code: activeCode,
-      label: activeTab?.label || activeCode,
-      timeframe,
-      bundle: liveSaveBundle,
-      indicatorState,
-      captureViewport: () => viewportCaptureRef.current(),
-    };
-    setCurrentStudySaveSource(source);
-    return () => {
-      clearCurrentStudySaveSource(source);
-    };
-  }, [activeCode, activeTab?.label, indicatorState, liveSaveBundle, timeframe]);
   const askPeakOb = isMinuteTimeframe(timeframe) ? live.ob : EMPTY_OB_SNAPSHOTS;
   const askPeakTrade = isMinuteTimeframe(timeframe) ? live.trade : EMPTY_TRADE_SNAPSHOTS;
   const askPeakSeeds = (chartBundle ?? bundle)?.ask_peaks ?? EMPTY_ASK_PEAKS;
@@ -211,6 +178,63 @@ export function LivePage() {
     activeCode,
     live.initial?.ask_peak_today ?? null,
   );
+  const bidPeakOb = isMinuteTimeframe(timeframe) ? live.ob : EMPTY_OB_SNAPSHOTS;
+  const bidPeakTrade = isMinuteTimeframe(timeframe) ? live.trade : EMPTY_TRADE_SNAPSHOTS;
+  const bidPeakSeeds = (chartBundle ?? bundle)?.bid_peaks ?? EMPTY_BID_PEAKS;
+  const bidPeakCandles = isMinuteTimeframe(timeframe) ? ((chartBundle ?? bundle)?.candles ?? EMPTY_CANDLES) : EMPTY_CANDLES;
+  const dayBidPeaks = useDayBidPeaks(
+    bidPeakOb,
+    bidPeakTrade,
+    bidPeakSeeds,
+    today,
+    activeCode,
+    live.initial?.bid_peak_today ?? null,
+    bidPeakCandles,
+  );
+  const todayAllPriceBidPeak = useTodayAllPriceBidPeak(
+    bidPeakOb,
+    bidPeakSeeds,
+    today,
+    activeCode,
+    live.initial?.bid_peak_today ?? null,
+  );
+  const liveSaveBundle = useMemo<RangeBundle | null>(() => {
+    if (!bundle) return null;
+    const base = chartBundle ?? bundle;
+    return {
+      ...bundle,
+      from_date: base.from_date,
+      to_date: base.to_date,
+      bucket_ms: base.bucket_ms,
+      segments: base.segments,
+      candles: base.candles,
+      volume_profile_range: base.volume_profile_range,
+      volume_profile_by_day: base.volume_profile_by_day,
+      investorPoints: base.investorPoints,
+      ask_peaks: dayAskPeaks,
+      bid_peaks: dayBidPeaks,
+    };
+  }, [bundle, chartBundle, dayAskPeaks, dayBidPeaks]);
+
+  useEffect(() => {
+    if (!activeCode || !liveSaveBundle) {
+      setCurrentStudySaveSource(null);
+      return undefined;
+    }
+    const source: LiveStudySaveSource = {
+      origin: 'live',
+      code: activeCode,
+      label: activeTab?.label || activeCode,
+      timeframe,
+      bundle: liveSaveBundle,
+      indicatorState,
+      captureViewport: () => viewportCaptureRef.current(),
+    };
+    setCurrentStudySaveSource(source);
+    return () => {
+      clearCurrentStudySaveSource(source);
+    };
+  }, [activeCode, activeTab?.label, indicatorState, liveSaveBundle, timeframe]);
 
   return (
     <div
@@ -263,6 +287,8 @@ export function LivePage() {
         live={live}
         dayAskPeaks={dayAskPeaks}
         todayAllPriceAskPeak={todayAllPriceAskPeak}
+        dayBidPeaks={dayBidPeaks}
+        todayAllPriceBidPeak={todayAllPriceBidPeak}
         todayKst={today}
         onViewportCaptureReady={handleViewportCaptureReady}
       />

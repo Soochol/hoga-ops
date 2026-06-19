@@ -441,12 +441,17 @@ export interface LiveSnapshotEntry {
  *  − = net sell. t_ms anchors at 09:00 KST — the same anchor as daily candles. */
 export type InvestorNetPoint = { t_ms: number; foreign_net: number; institution_net: number };
 
-/** 한 거래일 매도 최대벽 — 연속거래 중 단일 매도 호가단계 최대 물량·가격.
- *  hoga/api/models.py::AskPeak 미러. date=거래일(YYYYMMDD, segment x-구간 매핑용),
- *  t_ms=unix ms(KST, peak 발생 시점).
+export type AskPeakCandidate = {
+  price: number;
+  qty: number;
+  t_ms: number;
+};
+
+/** 한 거래일 최대벽 공통 필드 — 연속거래 중 단일 호가단계 최대 물량·가격.
+ *  date=거래일(YYYYMMDD, segment x-구간 매핑용), t_ms=unix ms(KST, peak 발생 시점).
  *  price/qty/t_ms=버킷 종가 대표의 당일 max(#96 close 변종). max_*=버킷 틱-max의 당일 max
- *  (분봉 내 최댓값 기준, Intra-Bar Max, ADR-0076). 과거일만 갈림(오늘은 ratchet 동일값). */
-export type AskPeak = {
+ *  (분봉 내 최댓값 기준, Intra-Bar Max, ADR-0076). */
+export type PeakBase = {
   date: string;
   price: number;
   qty: number;
@@ -466,16 +471,17 @@ export type AskPeak = {
   untraded_max_price?: number | null;
   untraded_max_qty?: number | null;
   untraded_max_t_ms?: number | null;
+};
+
+/** hoga/api/models.py::AskPeak 미러. 후보 배열은 매도벽 표시용 ask-only 확장. */
+export type AskPeak = PeakBase & {
   traded_peaks?: AskPeakCandidate[];
   traded_max_peaks?: AskPeakCandidate[];
   all_peaks?: AskPeakCandidate[];
 };
 
-export type AskPeakCandidate = {
-  price: number;
-  qty: number;
-  t_ms: number;
-};
+/** hoga/api/models.py::BidPeak 미러. */
+export type BidPeak = PeakBase;
 
 export type RangeBundle = {
   code: string;
@@ -497,4 +503,5 @@ export type RangeBundle = {
    *  x-구간의 수평 세그먼트로 그린다. 오늘 항목은 클라 ratchet(useDayAskPeaks)이 live.ob로 갱신.
    *  D·W·M/무데이터 → []. */
   ask_peaks: AskPeak[];
+  bid_peaks?: BidPeak[];
 };

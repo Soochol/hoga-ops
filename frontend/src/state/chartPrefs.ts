@@ -102,6 +102,21 @@ export const CHART_TOGGLES = [
     default: true,
     category: 'indicator-modal',
   },
+  {
+    key: 'bidPeakIntraMax',
+    label: '분봉 내 최댓값 기준',
+    description:
+      '분봉 종가 호가창 대신 분봉 내 순간 최대 매수벽까지 포함해 당일 최대벽을 찾습니다(과거 거래일에만 효과 — 오늘은 항상 실시간 최댓값).',
+    default: false,
+    category: 'indicator-modal',
+  },
+  {
+    key: 'bidPeakShowAllPrices',
+    label: '미체결 최대 매수벽 표시',
+    description: '당일 저가보다 아래에 있는 미체결 추정 매수벽 수량이 체결가격 기준 최대벽 수량보다 클 때만 두 라인을 함께 표시합니다.',
+    default: true,
+    category: 'indicator-modal',
+  },
 ] as const;
 
 export type ChartToggleKey = (typeof CHART_TOGGLES)[number]['key'];

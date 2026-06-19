@@ -3,6 +3,7 @@ import { render, screen, act, waitFor } from '@testing-library/react';
 import { MemoryRouter, Routes, Route } from 'react-router';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { LivePage } from './LivePage';
+import type { RangeBundle } from '../api/types';
 import { useLivePageStore } from '../state/livePage';
 import { useLiveTabsStore } from '../state/liveTabs';
 import { useLiveVenueStore } from '../state/liveVenue';
@@ -25,11 +26,17 @@ const livePageMocks = vi.hoisted(() => {
     liveTrade,
     liveChartRootProps: [] as Array<{ code?: string | null; timeframe?: string; viewIdentity?: string }>,
     liveBundleCalls: [] as Array<{ code: unknown; timeframe: unknown; options: { venue?: string } }>,
+    liveBundleResult: {
+      bundle: null as RangeBundle | null,
+      chartBundle: null as RangeBundle | null,
+    },
     dayAskPeakObArgs: [] as unknown[],
     dayAskPeakTradeArgs: [] as unknown[],
     dayAskPeakTodayArgs: [] as unknown[],
     allPriceObArgs: [] as unknown[],
     allPriceTodayArgs: [] as unknown[],
+    currentStudySaveSource: null as unknown,
+    dayBidPeaksResult: null as unknown[] | null,
     todayAskPeak: {
       date: '20260616',
       coverage: 'partial',
@@ -66,7 +73,7 @@ vi.mock('./LiveChartRoot', () => ({
 // available in jsdom. Mock the hook so the shell tests stay unit-level.
 vi.mock('../api/liveSeries', () => ({
   useLiveSeries: () => ({
-    initial: { ask_peak_today: livePageMocks.todayAskPeak }, isLoading: false, error: null,
+    initial: { ask_peak_today: livePageMocks.todayAskPeak, bid_peak_today: null }, isLoading: false, error: null,
     ob: livePageMocks.liveOb, trade: livePageMocks.liveTrade, broker: [],
   }),
 }));
@@ -83,6 +90,11 @@ vi.mock('./useDayAskPeaks', () => ({
     livePageMocks.dayAskPeakTodayArgs.push(todayAskPeak);
     return seeds ?? [];
   },
+}));
+
+vi.mock('./useDayBidPeaks', () => ({
+  useTodayAllPriceBidPeak: () => null,
+  useDayBidPeaks: (_ob: unknown, _trade: unknown, seeds: unknown) => livePageMocks.dayBidPeaksResult ?? seeds ?? [],
 }));
 
 // LiveSidebar now calls cursor hooks (ADR-0044) — mock them so the shell
@@ -109,7 +121,7 @@ vi.mock('./useLiveBundle', () => ({
   useLiveBundle: (code: unknown, timeframe: unknown, _today: unknown, _live: unknown, options?: { venue?: string }) => {
     livePageMocks.liveBundleCalls.push({ code, timeframe, options: options ?? {} });
     return {
-      bundle: null,
+      ...livePageMocks.liveBundleResult,
       isLoading: false,
       error: null,
       clampEngaged: false,
@@ -117,6 +129,46 @@ vi.mock('./useLiveBundle', () => ({
     };
   },
 }));
+
+vi.mock('../studyViews/studySaveSource', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('../studyViews/studySaveSource')>();
+  return {
+    ...actual,
+    setCurrentStudySaveSource: (source: unknown) => {
+      livePageMocks.currentStudySaveSource = source;
+    },
+    clearCurrentStudySaveSource: (source: unknown) => {
+      if (livePageMocks.currentStudySaveSource === source) {
+        livePageMocks.currentStudySaveSource = null;
+      }
+    },
+  };
+});
+
+function rangeBundleFixture(overrides: Partial<RangeBundle> = {}): RangeBundle {
+  return {
+    code: '005930',
+    from_date: '20260616',
+    to_date: '20260616',
+    bucket_ms: 300_000,
+    segments: [{ date: '20260616', session_open_ms: 1_000, session_close_ms: 2_000 }],
+    candles: [
+      { ts_ms: 1_000, open: 1, high: 2, low: 1, close: 2, vol_a: 10, vol_b: 0 },
+      { ts_ms: 2_000, open: 2, high: 3, low: 2, close: 3, vol_a: 11, vol_b: 0 },
+    ],
+    quote_ratio: {
+      bucket_ms: 300_000,
+      points: [{ t: 1_000, bid_total: 100, ask_total: 90, bid_max: 0, ask_max: 0, imb_max_bid: 0, imb_max_ask: 0 }],
+    },
+    fill_strength: { bucket_ms: 300_000, points: [{ t: 1_000, buy_qty: 5, sell_qty: 4 }] },
+    volume_profile_range: { bin_count: 0, price_min: 0, price_max: 0, bin_width: 0, bins: [] },
+    volume_profile_by_day: [],
+    investorPoints: [],
+    ask_peaks: [],
+    bid_peaks: [],
+    ...overrides,
+  };
+}
 
 function renderWithRouter(initial = '/live') {
   const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } });
@@ -139,9 +191,13 @@ describe('LivePage shell', () => {
     livePageMocks.dayAskPeakTradeArgs.length = 0;
     livePageMocks.liveChartRootProps.length = 0;
     livePageMocks.liveBundleCalls.length = 0;
+    livePageMocks.liveBundleResult.bundle = null;
+    livePageMocks.liveBundleResult.chartBundle = null;
     livePageMocks.dayAskPeakTodayArgs.length = 0;
     livePageMocks.allPriceObArgs.length = 0;
     livePageMocks.allPriceTodayArgs.length = 0;
+    livePageMocks.currentStudySaveSource = null;
+    livePageMocks.dayBidPeaksResult = null;
     // The tabs store is a module singleton (loaded once at import). The new
     // LivePage tab-bar wiring makes the mount-seed effect read its activeTabId,
     // so reset it per-test to keep tests isolated — without this, a tab opened
@@ -277,5 +333,39 @@ describe('LivePage shell', () => {
     renderWithRouter('/live?code=005930');
     expect(livePageMocks.dayAskPeakTodayArgs.at(-1)).toBe(livePageMocks.todayAskPeak);
     expect(livePageMocks.allPriceTodayArgs.at(-1)).toBe(livePageMocks.todayAskPeak);
+  });
+
+  it('preserves rendered bid_peaks in the live study save bundle when chartBundle is present', async () => {
+    const askPeaks = [{ date: '20260616', price: 70100, qty: 1000, t_ms: 1, max_price: 70100, max_qty: 1000, max_t_ms: 1 }];
+    const seedBidPeaks = [{ date: '20260616', price: 69900, qty: 1200, t_ms: 2, max_price: 69900, max_qty: 1200, max_t_ms: 2 }];
+    const renderedBidPeaks = [{ date: '20260616', price: 69800, qty: 2200, t_ms: 3, max_price: 69800, max_qty: 2200, max_t_ms: 3 }];
+    livePageMocks.liveBundleResult.bundle = rangeBundleFixture({
+      quote_ratio: {
+        bucket_ms: 300_000,
+        points: [{ t: 1_000, bid_total: 500, ask_total: 400, bid_max: 5, ask_max: 4, imb_max_bid: 3, imb_max_ask: 2 }],
+      },
+      ask_peaks: [],
+      bid_peaks: [],
+    });
+    livePageMocks.liveBundleResult.chartBundle = rangeBundleFixture({
+      from_date: '20260615',
+      to_date: '20260616',
+      ask_peaks: askPeaks,
+      bid_peaks: seedBidPeaks,
+    });
+    livePageMocks.dayBidPeaksResult = renderedBidPeaks;
+
+    renderWithRouter('/live?code=005930');
+
+    await waitFor(() => {
+      expect(livePageMocks.currentStudySaveSource).toMatchObject({
+        origin: 'live',
+        code: '005930',
+        bundle: {
+          ask_peaks: askPeaks,
+          bid_peaks: renderedBidPeaks,
+        },
+      });
+    });
   });
 });

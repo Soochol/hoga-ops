@@ -25,7 +25,7 @@ import {
   isCalendarTimeframe,
 } from '../state/livePage';
 import type { LiveVenueOption } from '../state/liveVenue';
-import type { AskPeak, RangeBundle } from '../api/types';
+import type { AskPeak, BidPeak, RangeBundle } from '../api/types';
 import { PAST_CANDLES_MAX_DAYS } from './liveDateTime';
 import { initialVisibleMinuteBarsFor } from './liveVenuePolicy';
 import { summarizeWarnings, type LiveDataWarning } from './liveDataWarnings';
@@ -44,6 +44,7 @@ import MovingAverageOverlay from './indicators/MovingAverageOverlay';
 import DailyMovingAverageOverlay from './indicators/DailyMovingAverageOverlay';
 import LiveCurrentPriceLine from './LiveCurrentPriceLine';
 import LiveAskPeakSegments from './LiveAskPeakSegments';
+import LiveBidPeakSegments from './LiveBidPeakSegments';
 import AuctionWindowOverlay from '../chart/AuctionWindowOverlay';
 import DrawingOverlay from '../chart/DrawingOverlay';
 import DrawingPropertyPanel from '../chart/DrawingPropertyPanel';
@@ -71,6 +72,7 @@ function pad(n: number): string {
 const EMPTY_AXIS: VirtualAxis = createVirtualAxis([]);
 /** 안정 빈 배열 — 기본값이 매 렌더 새 []를 만들지 않게. */
 const EMPTY_ASK_PEAKS: readonly AskPeak[] = [];
+const EMPTY_BID_PEAKS: readonly BidPeak[] = [];
 const DAILY_MIN_EFFECTIVE_BAR_SPACING = 3.5;
 
 function dailyLogicalRange(
@@ -121,6 +123,10 @@ interface Props {
   dayAskPeaks?: readonly AskPeak[];
   /** Backend today all-price ask peak — optional so existing tests/callers omit it safely. */
   todayAllPriceAskPeak?: AskPeak | null;
+  /** LivePage의 useDayBidPeaks 결과(거래일별) — LiveBidPeakSegments에 전달. */
+  dayBidPeaks?: readonly BidPeak[];
+  /** Backend today all-price bid peak — optional so existing tests/callers omit it safely. */
+  todayAllPriceBidPeak?: BidPeak | null;
   /** 오늘(KST YYYYMMDD) — 오늘 세그먼트만 라이브 엣지까지 연장. */
   todayKst?: string;
   /** Snapshot restore can carry hoga panes on calendar timeframes. /live keeps the default gate. */
@@ -143,7 +149,7 @@ interface Props {
 /** /live's single-chart root. Mounts the timeframe-appropriate pane set
  * (see `paneSpecsForTimeframe`) inside one createChart instance so
  * timeScale is shared across candle/volume/(hoga) panes. */
-export function LiveChartRoot({ code, timeframe, venue = 'KRX', viewIdentity, bundle, chartBundle, ratioBundle, clampEngaged, isPastCandlesLoading, isExtending = false, pastDataWarnings, restoreViewport = null, dayAskPeaks = EMPTY_ASK_PEAKS, todayAllPriceAskPeak = null, todayKst = '', forceHogaPanes = false, paneTogglesOverride, persistLiveViewport = true, onViewportCaptureReady, onCursorActiveChange }: Props) {
+export function LiveChartRoot({ code, timeframe, venue = 'KRX', viewIdentity, bundle, chartBundle, ratioBundle, clampEngaged, isPastCandlesLoading, isExtending = false, pastDataWarnings, restoreViewport = null, dayAskPeaks = EMPTY_ASK_PEAKS, todayAllPriceAskPeak = null, dayBidPeaks = EMPTY_BID_PEAKS, todayAllPriceBidPeak = null, todayKst = '', forceHogaPanes = false, paneTogglesOverride, persistLiveViewport = true, onViewportCaptureReady, onCursorActiveChange }: Props) {
   const containerRef = useRef<HTMLDivElement>(null);
   // 과거 fetch 경고 요약 — rate-limit 지연(빈칸 문구 전환)과 일부 구간 누락(부분로딩 칩)
   // 표시에 쓴다. summarizeWarnings는 null/빈배열을 {count:0,hasRateLimit:false}로 접는다.
@@ -856,6 +862,17 @@ export function LiveChartRoot({ code, timeframe, venue = 'KRX', viewIdentity, bu
               axis={axis}
               dayAskPeaks={dayAskPeaks}
               todayAllPriceAskPeak={todayAllPriceAskPeak}
+              segments={cb.segments}
+              candles={cb.candles}
+              todayKst={todayKst}
+            />
+          )}
+          {isMinuteTimeframe(timeframe) && (
+            <LiveBidPeakSegments
+              paneSeries={paneSeries}
+              axis={axis}
+              dayBidPeaks={dayBidPeaks}
+              todayAllPriceBidPeak={todayAllPriceBidPeak}
               segments={cb.segments}
               candles={cb.candles}
               todayKst={todayKst}
