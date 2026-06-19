@@ -1,6 +1,6 @@
 import { useState } from 'react';
-import type { ParquetStudyViewWriteRequest } from '../api/studyViews';
-import { buildLiveStudySaveRequest, studySnapshotByteSize } from './studySaveRequest';
+import { studySnapshotByteSize } from './studySaveRequest';
+import { makeStudySaveCommand, type StudySaveCommand } from './studySaveCommand';
 import { useCurrentStudySaveSource } from './studySaveSource';
 import { StudyViewSaveDialog } from './StudyViewSaveDialog';
 import { useStudyViewMutations } from './useStudyViews';
@@ -8,14 +8,14 @@ import { useStudyViewMutations } from './useStudyViews';
 export function LiveStudyViewSaveButton() {
   const saveSource = useCurrentStudySaveSource();
   const mutations = useStudyViewMutations();
-  const [request, setRequest] = useState<ParquetStudyViewWriteRequest | null>(null);
+  const [command, setCommand] = useState<StudySaveCommand | null>(null);
   const liveSource = saveSource?.origin === 'live' ? saveSource : null;
   const createError = mutations.create.error instanceof Error ? mutations.create.error.message : null;
 
   const openDialog = () => {
     if (!liveSource) return;
-    const nextRequest = buildLiveStudySaveRequest(liveSource);
-    if (nextRequest) setRequest(nextRequest);
+    const nextCommand = makeStudySaveCommand({ mode: 'create', source: liveSource, existingSave: null });
+    if (nextCommand) setCommand(nextCommand);
   };
 
   return (
@@ -34,20 +34,20 @@ export function LiveStudyViewSaveButton() {
       >
         현재 뷰 저장
       </button>
-      {request && (
+      {command && (
         <StudyViewSaveDialog
           mode="create"
-          defaultName={request.name}
-          defaultMemo={request.memo ?? ''}
-          barCount={request.snapshot.bundle.candles.length}
-          sizeBytes={studySnapshotByteSize(request.snapshot)}
+          defaultName={command.defaultName}
+          defaultMemo={command.defaultMemo}
+          barCount={command.request.snapshot.bundle.candles.length}
+          sizeBytes={studySnapshotByteSize(command.request.snapshot)}
           isSubmitting={mutations.create.isPending}
           errorMessage={createError}
-          onCancel={() => setRequest(null)}
+          onCancel={() => setCommand(null)}
           onSubmit={({ name, memo }) => {
             mutations.create.mutate(
-              { ...request, name, memo },
-              { onSuccess: () => setRequest(null) },
+              { ...command.request, name, memo },
+              { onSuccess: () => setCommand(null) },
             );
           }}
         />

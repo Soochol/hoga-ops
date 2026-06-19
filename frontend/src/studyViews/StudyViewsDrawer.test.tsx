@@ -164,6 +164,7 @@ function renderDrawer(path: string) {
 }
 
 beforeEach(() => {
+  window.localStorage.clear();
   createMutate.mockReset();
   updateMutate.mockReset();
   updateMetadataMutate.mockReset();
@@ -187,7 +188,138 @@ it('renders list and no-match state', async () => {
   expect(screen.getByText('급등 이후')).toBeTruthy();
   await userEvent.type(screen.getByLabelText('저장 뷰 검색'), '없음');
   expect(screen.getByText('검색 결과가 없습니다.')).toBeTruthy();
-  expect(screen.getByText('차트 화면에서 저장할 수 있습니다.')).toBeTruthy();
+  expect(screen.queryByText('차트 화면에서 저장할 수 있습니다.')).toBeNull();
+});
+
+it('renders saved views as Code-keyed stock-name tree groups', () => {
+  mockedSaves = [
+    ...saves,
+    { ...saves[0], id: 'c', name: '종가 반등', memo: 'close rebound', updated_at_ms: 2 },
+    { ...saves[0], id: 'd', code: '123456', name: '동명이종목', memo: 'same label', updated_at_ms: 3 },
+  ];
+
+  renderDrawer('/inventory');
+
+  const samsung = screen.getByRole('region', { name: '삼성전자 005930 저장뷰' });
+  expect(within(samsung).getByRole('button', { name: '삼성전자 005930 접기' })).toHaveAttribute('aria-expanded', 'true');
+  expect(within(samsung).getByTitle('삼성전자 005930')).toBeTruthy();
+  expect(within(samsung).getByRole('button', { name: '급등 이후 저장뷰 열기' })).toBeTruthy();
+  expect(within(samsung).queryByText('삼성전자 005930 · 5m')).toBeNull();
+  expect(within(samsung).getByRole('button', { name: '종가 반등 저장뷰 열기' })).toBeTruthy();
+
+  const sameLabelOtherCode = screen.getByRole('region', { name: '삼성전자 123456 저장뷰' });
+  expect(within(sameLabelOtherCode).getByRole('button', { name: '동명이종목 저장뷰 열기' })).toBeTruthy();
+});
+
+it('collapses and expands one stock group', async () => {
+  renderDrawer('/inventory');
+
+  await userEvent.click(screen.getByRole('button', { name: '삼성전자 005930 접기' }));
+
+  expect(screen.getByRole('button', { name: '삼성전자 005930 펼치기' })).toHaveAttribute('aria-expanded', 'false');
+  expect(screen.queryByRole('button', { name: '급등 이후 저장뷰 열기' })).toBeNull();
+
+  await userEvent.click(screen.getByRole('button', { name: '삼성전자 005930 펼치기' }));
+
+  expect(screen.getByRole('button', { name: '삼성전자 005930 접기' })).toHaveAttribute('aria-expanded', 'true');
+  expect(screen.getByRole('button', { name: '급등 이후 저장뷰 열기' })).toBeTruthy();
+});
+
+it('renders new unpersisted stock groups expanded by default', () => {
+  window.localStorage.setItem('studyViews.collapsedGroups.v1', JSON.stringify({ keys: ['005930'] }));
+  mockedSaves = [
+    ...saves,
+    { ...saves[0], id: 'c', code: '111111', label: '새종목', name: '새 저장뷰', updated_at_ms: 2 },
+  ];
+
+  renderDrawer('/inventory');
+
+  expect(screen.queryByRole('button', { name: '급등 이후 저장뷰 열기' })).toBeNull();
+  expect(screen.getByRole('button', { name: '새 저장뷰 저장뷰 열기' })).toBeTruthy();
+});
+
+it('searches stock name and shows all saved views under matching Code groups', async () => {
+  mockedSaves = [
+    ...saves,
+    { ...saves[0], id: 'c', name: '종가 반등', memo: 'close rebound', updated_at_ms: 2 },
+  ];
+  renderDrawer('/inventory');
+
+  await userEvent.type(screen.getByLabelText('저장 뷰 검색'), '삼성');
+
+  expect(screen.getByRole('button', { name: '삼성전자 005930 접기' })).toBeTruthy();
+  expect(screen.getByRole('button', { name: '급등 이후 저장뷰 열기' })).toBeTruthy();
+  expect(screen.getByRole('button', { name: '종가 반등 저장뷰 열기' })).toBeTruthy();
+  expect(screen.queryByRole('button', { name: 'SK하이닉스 000660 접기' })).toBeNull();
+});
+
+it('searches Code and shows the full matching Code group', async () => {
+  mockedSaves = [
+    ...saves,
+    { ...saves[0], id: 'c', name: '종가 반등', memo: 'close rebound', updated_at_ms: 2 },
+  ];
+  renderDrawer('/inventory');
+
+  await userEvent.type(screen.getByLabelText('저장 뷰 검색'), '005 930');
+
+  expect(screen.getByRole('button', { name: '급등 이후 저장뷰 열기' })).toBeTruthy();
+  expect(screen.getByRole('button', { name: '종가 반등 저장뷰 열기' })).toBeTruthy();
+  expect(screen.queryByRole('button', { name: '눌림 저장뷰 열기' })).toBeNull();
+});
+
+it('searches saved-view fields and shows only matching child rows', async () => {
+  mockedSaves = [
+    ...saves,
+    { ...saves[0], id: 'c', name: '종가 반등', memo: 'close rebound', updated_at_ms: 2 },
+  ];
+  renderDrawer('/inventory');
+
+  await userEvent.type(screen.getByLabelText('저장 뷰 검색'), 'close rebound');
+
+  expect(screen.getByRole('button', { name: '삼성전자 005930 접기' })).toBeTruthy();
+  expect(screen.queryByRole('button', { name: '급등 이후 저장뷰 열기' })).toBeNull();
+  expect(screen.getByRole('button', { name: '종가 반등 저장뷰 열기' })).toBeTruthy();
+});
+
+it('respects collapsed groups during search', async () => {
+  renderDrawer('/inventory');
+
+  await userEvent.click(screen.getByRole('button', { name: '삼성전자 005930 접기' }));
+  await userEvent.type(screen.getByLabelText('저장 뷰 검색'), '삼성');
+
+  expect(screen.getByRole('button', { name: '삼성전자 005930 펼치기' })).toHaveAttribute('aria-expanded', 'false');
+  expect(screen.queryByRole('button', { name: '급등 이후 저장뷰 열기' })).toBeNull();
+});
+
+it('collapses and expands all visible stock groups immediately', async () => {
+  renderDrawer('/inventory');
+
+  await userEvent.click(screen.getByRole('button', { name: '전체 접기' }));
+
+  expect(screen.getByRole('button', { name: '삼성전자 005930 펼치기' })).toHaveAttribute('aria-expanded', 'false');
+  expect(screen.getByRole('button', { name: 'SK하이닉스 000660 펼치기' })).toHaveAttribute('aria-expanded', 'false');
+  expect(screen.queryByRole('button', { name: '급등 이후 저장뷰 열기' })).toBeNull();
+  expect(screen.queryByRole('button', { name: '눌림 저장뷰 열기' })).toBeNull();
+
+  await userEvent.click(screen.getByRole('button', { name: '전체 펼치기' }));
+
+  expect(screen.getByRole('button', { name: '삼성전자 005930 접기' })).toHaveAttribute('aria-expanded', 'true');
+  expect(screen.getByRole('button', { name: 'SK하이닉스 000660 접기' })).toHaveAttribute('aria-expanded', 'true');
+  expect(screen.getByRole('button', { name: '급등 이후 저장뷰 열기' })).toBeTruthy();
+  expect(screen.getByRole('button', { name: '눌림 저장뷰 열기' })).toBeTruthy();
+});
+
+it('bulk controls affect filtered visible groups without changing hidden groups', async () => {
+  renderDrawer('/inventory');
+
+  await userEvent.type(screen.getByLabelText('저장 뷰 검색'), 'SK');
+  await userEvent.click(screen.getByRole('button', { name: '전체 접기' }));
+  await userEvent.clear(screen.getByLabelText('저장 뷰 검색'));
+
+  expect(screen.getByRole('button', { name: '삼성전자 005930 접기' })).toHaveAttribute('aria-expanded', 'true');
+  expect(screen.getByRole('button', { name: '급등 이후 저장뷰 열기' })).toBeTruthy();
+  expect(screen.getByRole('button', { name: 'SK하이닉스 000660 펼치기' })).toHaveAttribute('aria-expanded', 'false');
+  expect(screen.queryByRole('button', { name: '눌림 저장뷰 열기' })).toBeNull();
 });
 
 it('moves the live save action out of the drawer', () => {
@@ -203,10 +335,10 @@ it('moves the live save action out of the drawer', () => {
   renderDrawer('/live');
 
   expect(screen.queryByRole('button', { name: '현재 뷰 저장' })).toBeNull();
-  expect(screen.getByText('라이브 상단 툴바에서 저장할 수 있습니다.')).toBeTruthy();
+  expect(screen.queryByText('라이브 상단 툴바에서 저장할 수 있습니다.')).toBeNull();
 });
 
-it('creates a new study save and navigates to the created view', async () => {
+it('does not show the secondary new-save action in the drawer body', () => {
   const snapshot = snapshotFixture();
   saveSource = {
     origin: 'study',
@@ -215,21 +347,9 @@ it('creates a new study save and navigates to the created view', async () => {
     bundle: rangeBundleFixture(),
     captureViewport: () => ({ rightEdgeMs: 2_000, barSpan: 2, atLiveEdge: false }),
   };
-  createMutate.mockImplementation((_body, opts) => opts.onSuccess({ id: 'created' }));
   renderDrawer('/study?view=a');
 
-  await userEvent.click(screen.getByRole('button', { name: '새 저장본 만들기' }));
-  await userEvent.clear(screen.getByLabelText('이름'));
-  await userEvent.type(screen.getByLabelText('이름'), ' 새 저장 ');
-  await userEvent.type(screen.getByLabelText('메모'), ' 메모 ');
-  await userEvent.click(screen.getByRole('button', { name: '저장' }));
-
-  expect(createMutate).toHaveBeenCalledTimes(1);
-  const body = createMutate.mock.calls[0][0];
-  expect(body.name).toBe('새 저장');
-  expect(body.memo).toBe('메모');
-  expect(body.provenance.saved_from_route).toBe('/study');
-  await waitFor(() => expect(screen.getByTestId('loc').textContent).toBe('/study?view=created'));
+  expect(screen.queryByRole('button', { name: '새 저장본 만들기' })).toBeNull();
 });
 
 it('opens overwrite dialog from current study view primary action', async () => {
@@ -275,7 +395,7 @@ it('overwrites the current study source even when the saves list is missing the 
 it('clicking the saved view title navigates to the study route', async () => {
   renderDrawer('/inventory');
 
-  await userEvent.click(screen.getByRole('button', { name: '급등 이후' }));
+  await userEvent.click(screen.getByRole('button', { name: '급등 이후 저장뷰 열기' }));
 
   await waitFor(() => expect(screen.getByTestId('loc').textContent).toBe('/study?view=a'));
 });
@@ -283,7 +403,7 @@ it('clicking the saved view title navigates to the study route', async () => {
 it('pressing Enter on the saved view title navigates to the study route', async () => {
   renderDrawer('/inventory');
 
-  const titleButton = screen.getByRole('button', { name: '급등 이후' });
+  const titleButton = screen.getByRole('button', { name: '급등 이후 저장뷰 열기' });
   titleButton.focus();
   await userEvent.keyboard('{Enter}');
 
@@ -293,10 +413,10 @@ it('pressing Enter on the saved view title navigates to the study route', async 
 it('double-clicking the saved view title opens inline edit mode without navigating', async () => {
   renderDrawer('/inventory');
 
-  await userEvent.dblClick(screen.getByRole('button', { name: '급등 이후' }));
+  await userEvent.dblClick(screen.getByText('급등 이후'));
 
-  expect(screen.getByLabelText('저장뷰 이름 수정')).toBeTruthy();
-  expect(screen.getByTestId('loc').textContent).toBe('/inventory');
+  expect(screen.queryByLabelText('저장뷰 이름 수정')).toBeNull();
+  await waitFor(() => expect(screen.getByTestId('loc').textContent).toBe('/study?view=a'));
 });
 
 it('clicking rename opens inline edit mode without navigating', async () => {
