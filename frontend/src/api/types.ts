@@ -466,6 +466,8 @@ export type AskPeak = {
   untraded_max_price?: number | null;
   untraded_max_qty?: number | null;
   untraded_max_t_ms?: number | null;
+  traded_peaks?: AskPeakCandidate[];
+  traded_max_peaks?: AskPeakCandidate[];
   all_peaks?: AskPeakCandidate[];
 };
 

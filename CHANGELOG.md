@@ -3,6 +3,13 @@
 All notable changes to this project are documented here.
 The format follows a 4-digit `MAJOR.MINOR.PATCH.MICRO` scheme.
 
+## [0.8.16.3] - 2026-06-20
+
+### Fixed
+- **매도 최대벽 순위 표시 범위 전체 날짜 적용**: 체결가격 기준 `1등만`, `2등까지`,
+  `3등까지` 옵션을 오늘뿐 아니라 전날·과거 거래일에도 날짜별로 적용한다.
+- 과거 range 응답도 체결가격 기준 최대벽 후보를 3등까지 포함하도록 확장했다.
+
 ## [0.8.16.2] - 2026-06-20
 
 ### Fixed
