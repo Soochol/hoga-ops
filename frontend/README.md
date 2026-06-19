@@ -34,7 +34,7 @@ The backend is a FastAPI app served by uvicorn. From the repo root:
 
 ```bash
 uv run uvicorn hoga.api.app:default_app \
-  --factory --host 127.0.0.1 --port 8000 \
+  --factory --host 127.0.0.1 --port 8080 \
   --reload --reload-dir hoga
 ```
 
@@ -43,7 +43,7 @@ This exposes the replay and `/live` APIs the frontend consumes.
 ## Runtime configuration
 
 The frontend reads `/config.json` at startup to pick up the API base URL.
-A default `public/config.json` ships with `{ "apiBaseUrl": "http://localhost:8000" }`.
+A default `public/config.json` ships with `{ "api_url": "http://localhost:8080" }`.
 Override per-deployment by replacing the file in the served `dist/` directory —
 no rebuild required.
 

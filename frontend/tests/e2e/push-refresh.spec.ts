@@ -15,7 +15,7 @@ test.describe('WebSocket inventory refresh', () => {
 
     // Add a second date for 005930 (fixture exists; date differs from globalSetup's
     // 20260520, so this creates a new inventory row).
-    await request.post('http://localhost:8000/api/test/add-stockdate?code=005930&date=20260521');
+    await request.post('http://localhost:8080/api/test/add-stockdate?code=005930&date=20260521');
 
     await expect(page.locator('.combo-option')).toHaveCount(before + 1, { timeout: 2000 });
   });

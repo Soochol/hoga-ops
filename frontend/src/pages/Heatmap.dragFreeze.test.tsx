@@ -60,10 +60,6 @@ vi.mock('../api/liveQuotes', async (orig) => ({
     phase: 'open', dataUpdatedAt: 0,
   })),
 }));
-vi.mock('../api/liveStatus', async (orig) => ({
-  ...(await orig<typeof import('../api/liveStatus')>()),
-  useLiveStatus: vi.fn(() => ({ data: { running: true, started_at_ms: 1, cycle_lag_ms: 0 } })),
-}));
 const { setActiveCode } = vi.hoisted(() => ({ setActiveCode: vi.fn() }));
 vi.mock('../state/livePage', () => ({
   useLivePageStore: (sel: (s: { setActiveCode: typeof setActiveCode }) => unknown) => sel({ setActiveCode }),

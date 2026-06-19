@@ -9,6 +9,7 @@ import asyncio
 import calendar as stdlib_calendar
 import datetime as dt
 import logging
+import threading
 import time
 from pathlib import Path
 
@@ -18,11 +19,13 @@ from hoga.api.disk_state import DiskState, check_disk_state
 from hoga.api.error_codes import UpstreamCode
 from hoga.api.models import CalendarCell, CalendarResponse
 from hoga.api.params import CODE_PATTERN
+
 # Single Clock seam: KST + now_kst + is_today_too_early all live on
 # orchestrator.py per Refactor 3. The today_locked overlay below reuses
 # the same predicate that captures.py's enqueue guard uses — keeps the
 # 17-KST cutoff in one place.
-from hoga.collector.orchestrator import is_today_too_early, now_kst as _now_kst
+from hoga.collector.orchestrator import is_today_too_early
+from hoga.collector.orchestrator import now_kst as _now_kst
 
 log = logging.getLogger(__name__)
 
@@ -39,6 +42,7 @@ _month_cache: dict[tuple[int, int], set[str]] = {}
 # the TTL we return None (weekday fallback) instantly instead of re-fetching.
 _failure_cache: dict[tuple[int, int], float] = {}
 _FAILURE_TTL_SECONDS = 60.0
+_trading_days_lock = threading.Lock()
 
 # ADR-0064 — "is TODAY a KRX session?" cache, kept SEPARATE from _month_cache.
 # `_session_confirmed` holds YYYYMMDD strings proven to be trading sessions;
@@ -83,34 +87,35 @@ def _trading_days_for(year: int, month: int) -> set[str] | None:
     global _last_failure_reason  # noqa: PLW0603
 
     key = (year, month)
-    cached = _month_cache.get(key)
-    if cached is not None:
-        return cached
+    with _trading_days_lock:
+        cached = _month_cache.get(key)
+        if cached is not None:
+            return cached
 
-    failed_at = _failure_cache.get(key)
-    if failed_at is not None and (time.monotonic() - failed_at) < _FAILURE_TTL_SECONDS:
-        return None  # recent failure — keep the fallback, don't re-fetch yet
+        failed_at = _failure_cache.get(key)
+        if failed_at is not None and (time.monotonic() - failed_at) < _FAILURE_TTL_SECONDS:
+            return None  # recent failure — keep the fallback, don't re-fetch yet
 
-    # Late import (per call) keeps the documented monkeypatch seam: tests patch
-    # hoga.api.kis_holidays.fetch_month_trading_days as a module attribute.
-    from hoga.api.kis_holidays import KisCredentialsMissing, fetch_month_trading_days
+        # Late import (per call) keeps the documented monkeypatch seam: tests patch
+        # hoga.api.kis_holidays.fetch_month_trading_days as a module attribute.
+        from hoga.api.kis_holidays import KisCredentialsMissing, fetch_month_trading_days
 
-    try:
-        result = fetch_month_trading_days(year, month)
-    except Exception as e:  # noqa: BLE001 — KisHolidayFetchError or worse
-        _last_failure_reason = (
-            UpstreamCode.KIS_CREDENTIALS_MISSING
-            if isinstance(e, KisCredentialsMissing)
-            else UpstreamCode.KIS_HOLIDAY_FETCH_FAILED
-        )
-        _failure_cache[key] = time.monotonic()
-        # The cause never reached operators before (no logger here) — keep it.
-        log.warning("calendar: KIS trading-day fetch failed for %04d-%02d: %s", year, month, e)
-        return None
-    _month_cache[key] = result
-    _failure_cache.pop(key, None)
-    _last_failure_reason = None
-    return result
+        try:
+            result = fetch_month_trading_days(year, month)
+        except Exception as e:  # noqa: BLE001 — KisHolidayFetchError or worse
+            _last_failure_reason = (
+                UpstreamCode.KIS_CREDENTIALS_MISSING
+                if isinstance(e, KisCredentialsMissing)
+                else UpstreamCode.KIS_HOLIDAY_FETCH_FAILED
+            )
+            _failure_cache[key] = time.monotonic()
+            # The cause never reached operators before (no logger here) — keep it.
+            log.warning("calendar: KIS trading-day fetch failed for %04d-%02d: %s", year, month, e)
+            return None
+        _month_cache[key] = result
+        _failure_cache.pop(key, None)
+        _last_failure_reason = None
+        return result
 
 
 def is_trading_session_today(

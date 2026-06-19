@@ -11,7 +11,7 @@ import { installLiveMocks } from './helpers/liveMocks';
 
 test.use({ channel: 'chrome' }); // 시스템 Chrome (live-smoke 와 동일 사유)
 
-const API = 'http://localhost:8000';
+const API = 'http://localhost:8080';
 
 // 뷰포트(기본 720px)를 확실히 넘기는 콘텐츠: 2개 그룹 × 25행 ≈ 1850px+
 const makeState = () => {

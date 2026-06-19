@@ -31,6 +31,7 @@ _FORBIDDEN_RE = re.compile(r"^(pyarrow|polars)(\..*)?$")
 
 # Hot-path modules — must never import pyarrow/polars.
 _HOT_PATH_MODULES = (
+    "hoga/api/watchlist_projection.py",
     "hoga/live/__init__.py",
     "hoga/live/writer.py",
     "hoga/live/stream.py",
@@ -38,6 +39,7 @@ _HOT_PATH_MODULES = (
     "hoga/live/ws_frames.py",
     "hoga/live/downsampler.py",
     "hoga/live/session_gate.py",
+    "hoga/live/coverage.py",
     "hoga/live/snapshot.py",
     "hoga/live/buffer.py",
     "hoga/live/api.py",

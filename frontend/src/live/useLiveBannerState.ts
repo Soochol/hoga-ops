@@ -1,15 +1,14 @@
 import type { LiveStatus } from '../api/liveStatus';
 import { useWatchlist } from '../watchlist/useWatchlist';
+import { projectLiveStatus, type LiveBannerCause } from './liveStatusProjection';
 
-export type BannerCause =
-  | 'watchlist_empty'           // priority 1, workarea emptystate
-  | 'kis_credentials_missing'   // priority 1, red header banner
-  | 'kis_token_expired';        // priority 2, amber header banner
+export type BannerCause = LiveBannerCause;
 
 export interface LiveStatusInput {
   running: boolean;
   cycle_lag_ms: number;
   started_at_ms?: number | null;
+  capture_reason?: string;
 }
 
 export interface BannerInput {
@@ -39,31 +38,17 @@ export interface BannerState {
 
 /** Pure derivation of banner state from inputs — testable without React. */
 export function deriveBannerState({ status, watchlistSize, tokenExpired = false }: BannerInput): BannerState {
-  if (status === null) return { primary: null, stack: [] };
-
-  // Priority 1 (mutually exclusive). These hinge on the authoritative
-  // inventory size, so hold them back until the watchlist query resolves
-  // (`watchlistSize === null`) — otherwise first paint flashes a false
-  // "empty" before /api/watchlist answers.
-  if (watchlistSize !== null) {
-    // Matrix ordering: watchlist_empty before kis_credentials_missing.
-    if (watchlistSize === 0) {
-      return { primary: 'watchlist_empty', stack: [] };
-    }
-    // Watchlist has entries but the poller never started — almost always
-    // missing KIS creds (start_live_poller returns early before setting
-    // started_at_ms). This branch was unreachable while the empty check
-    // keyed off the always-zero poller count.
-    if (!status.running && status.started_at_ms == null) {
-      return { primary: 'kis_credentials_missing', stack: [] };
-    }
-  }
-
-  // Priority 2 (stackable).
-  const stack: BannerCause[] = [];
-  if (tokenExpired) stack.push('kis_token_expired');
-
-  return { primary: null, stack };
+  return projectLiveStatus({
+    status: status && {
+      ...status,
+      started_at_ms: status.started_at_ms ?? null,
+      capture_healthy: status.running,
+      capture_reason: status.capture_reason ?? 'unknown',
+      watchlist_count: 0,
+    },
+    inventory: { kind: 'watchlist', size: watchlistSize },
+    tokenExpired,
+  }).banner;
 }
 
 /** React hook wrapper deriving banner state from live status + watchlist. */
@@ -82,6 +67,7 @@ export function useLiveBannerState(status: LiveStatus | undefined | null, opts?:
       running: status.running,
       cycle_lag_ms: status.cycle_lag_ms,
       started_at_ms: status.started_at_ms,
+      capture_reason: status.capture_reason,
     },
     watchlistSize,
     tokenExpired: opts?.tokenExpired,

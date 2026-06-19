@@ -1,5 +1,6 @@
 import polars as pl
 from pathlib import Path
+from fastapi.testclient import TestClient
 from hoga.api.screener_store import last_raw_date, append_rows, write_status, read_status
 from hoga.api import screener as _screener_mod
 
@@ -80,3 +81,50 @@ def test_gap_trading_days_delegates_when_gap(monkeypatch):
     # next day after 20260529 = 20260530; today 20260601 → delegates to the calendar.
     monkeypatch.setattr(_screener_mod, "trading_days_in_range", lambda f, t: [f, t])
     assert _screener_mod._gap_trading_days("20260529", "20260601") == ["20260530", "20260601"]
+
+
+def test_lifespan_does_not_run_screener_recovery_on_startup(tmp_path: Path, monkeypatch):
+    from hoga.api import app as app_mod
+
+    calls = []
+
+    async def fake_trigger_update(data_dir, *, bus=None):
+        calls.append(data_dir)
+        return 0
+
+    async def async_noop(**_kw):
+        return None
+
+    monkeypatch.setattr(app_mod._screener_module, "trigger_update", fake_trigger_update)
+    monkeypatch.setattr(app_mod, "start_scheduler", lambda data_dir: [])
+    monkeypatch.setattr(app_mod, "start_live_stream", async_noop)
+    monkeypatch.setattr(app_mod, "start_live_stream_watchdog", async_noop)
+    monkeypatch.setattr(app_mod, "start_today_promoter", async_noop)
+
+    with TestClient(app_mod.create_app(tmp_path)) as client:
+        assert client.get("/health").status_code == 200
+
+    assert calls == []
+
+
+def test_manual_screener_update_still_calls_trigger_update(tmp_path: Path, monkeypatch):
+    from fastapi import FastAPI
+    from hoga.api import screener as screener_mod
+
+    calls = []
+
+    async def fake_trigger_update(data_dir, *, bus=None):
+        calls.append((data_dir, bus))
+        return 2
+
+    monkeypatch.setattr(screener_mod, "trigger_update", fake_trigger_update)
+
+    app = FastAPI()
+    app.include_router(screener_mod.build_router(data_dir=tmp_path, bus=None))
+
+    with TestClient(app) as client:
+        resp = client.post("/api/screener/update")
+
+    assert resp.status_code == 200
+    assert resp.json() == {"updated": 2}
+    assert calls == [(tmp_path, None)]

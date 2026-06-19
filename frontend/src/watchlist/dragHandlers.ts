@@ -1,5 +1,4 @@
 import { arrayMove } from '@dnd-kit/sortable';
-import type { WatchlistEntry } from '../api/watchlist';
 
 export type DragResult =
   | { kind: 'reorder'; folderId: string | null; orderedCodes: string[] }
@@ -31,7 +30,7 @@ export function parseEntrySortableId(id: string): { folderId: string | null; cod
 /** activeCode dragged; `over` is either a folder droppable id (see folderDroppableId)
  *  = cross-folder move, or another row code = reorder. */
 export function resolveDrag(
-  visibleSorted: WatchlistEntry[],   // entries currently shown (one folder), by order
+  visibleSorted: { code: string }[],   // entries currently shown (one folder), by order
   selectedFolder: string | null,
   activeCode: string,
   overId: string,

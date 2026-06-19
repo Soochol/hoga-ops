@@ -155,17 +155,17 @@ export async function installLiveMocks(
   const json = (route: Route, body: unknown) =>
     route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify(body) });
 
-  await page.route('http://localhost:8000/api/watchlist*', (r) => json(r, WATCHLIST));
-  await page.route('http://localhost:8000/api/live/status*', (r) => json(r, LIVE_STATUS_OK));
-  await page.route('http://localhost:8000/api/live/past-candles*', (r) => json(r, PAST_CANDLES_NORMAL));
-  await page.route('http://localhost:8000/api/live/series*', (r) => json(r, EMPTY_SERIES));
-  await page.route('http://localhost:8000/api/range*', (r) => json(r, rangeBody));
-  await page.route('http://localhost:8000/api/captures/queue*', (r) =>
+  await page.route('http://localhost:8080/api/watchlist*', (r) => json(r, WATCHLIST));
+  await page.route('http://localhost:8080/api/live/status*', (r) => json(r, LIVE_STATUS_OK));
+  await page.route('http://localhost:8080/api/live/past-candles*', (r) => json(r, PAST_CANDLES_NORMAL));
+  await page.route('http://localhost:8080/api/live/series*', (r) => json(r, EMPTY_SERIES));
+  await page.route('http://localhost:8080/api/range*', (r) => json(r, rangeBody));
+  await page.route('http://localhost:8080/api/captures/queue*', (r) =>
     json(r, { active: [], queued: [], done: [] }),
   );
-  await page.route('http://localhost:8000/api/calendar*', (r) => json(r, { holidays: [] }));
-  await page.route('http://localhost:8000/api/symbols*', (r) => json(r, { symbols: [] }));
-  await page.route('http://localhost:8000/api/upstream-hints*', (r) => json(r, { hints: [] }));
+  await page.route('http://localhost:8080/api/calendar*', (r) => json(r, { holidays: [] }));
+  await page.route('http://localhost:8080/api/symbols*', (r) => json(r, { symbols: [] }));
+  await page.route('http://localhost:8080/api/upstream-hints*', (r) => json(r, { hints: [] }));
   // TODO(ws-migration): the /live tick channel is no longer mockable via page.route.
   // The app now opens ONE WebSocket at ws://<host>/api/ws (ADR-0053) carrying
   // {ch:'event'|'live'|'subscribed'|'heartbeat'} frames; the client sends

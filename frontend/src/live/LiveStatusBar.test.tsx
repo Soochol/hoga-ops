@@ -4,6 +4,7 @@ import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { LiveStatusBar } from './LiveStatusBar';
 import type { RangeBundle } from '../api/types';
 import type { LiveVenueOption } from '../state/liveVenue';
+import { projectCaptureHealth } from './liveStatusProjection';
 
 // useConnectionLiveness reads module-level WS state (_lastHeartbeatMs=0 in tests),
 // so live=false by default. Hoist a mock so tests can control liveness.
@@ -64,7 +65,12 @@ function renderBar(
   });
   return render(
     <QueryClientProvider client={qc}>
-      <LiveStatusBar {...props} />
+      <LiveStatusBar
+        activeCode={props.activeCode}
+        captureHealth={projectCaptureHealth(props.captureHealthy, props.captureReason)}
+        bundle={props.bundle}
+        venue={props.venue}
+      />
     </QueryClientProvider>,
   );
 }

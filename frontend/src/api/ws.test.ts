@@ -6,7 +6,7 @@ import * as client from './client';
 beforeEach(() => {
   installFakeWebSocket();
   __resetForTests();
-  vi.spyOn(client, 'wsUrl').mockResolvedValue('ws://localhost:8000/api/ws');
+  vi.spyOn(client, 'wsUrl').mockResolvedValue('ws://localhost:8080/api/ws');
 });
 
 async function connect(): Promise<FakeWebSocket> {

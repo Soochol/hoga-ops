@@ -1,9 +1,14 @@
 import type { WatchlistFolder, WatchlistEntry } from '../api/watchlist';
 
-export interface FolderGroup {
+export interface EntryWithFolderOrder {
+  folder_id: string | null;
+  order: number;
+}
+
+export interface FolderGroup<TEntry extends EntryWithFolderOrder = WatchlistEntry> {
   /** null = 미분류 (a render-only group; NOT a synthetic folder object — ADR-0004) */
   folder: WatchlistFolder | null;
-  entries: WatchlistEntry[];
+  entries: TEntry[];
 }
 
 /** UI folder selection: null = 미분류, string = a folder id. */
@@ -14,10 +19,10 @@ export type Selected = null | string;
  *  feeds resolveDrag for row indices) so the two stay in lockstep — the
  *  drag-reorder index contract lives in one function, not a comment two files
  *  apart. Pure — no fetch, no synthetic objects. */
-export function selectVisibleEntries(
-  entries: WatchlistEntry[],
+export function selectVisibleEntries<TEntry extends EntryWithFolderOrder>(
+  entries: TEntry[],
   selected: Selected,
-): WatchlistEntry[] {
+): TEntry[] {
   const list = entries.filter((e) => e.folder_id === selected);
   return [...list].sort((a, b) => a.order - b.order);
 }
@@ -25,13 +30,13 @@ export function selectVisibleEntries(
 /** Group entries by folder for display. Folders sorted by `.order`; 미분류
  *  (folder_id===null) always last. Entries within a group sorted by `.order`.
  *  Empty folders are included. Pure — no fetch, no synthetic objects. */
-export function groupByFolder(
+export function groupByFolder<TEntry extends EntryWithFolderOrder>(
   folders: WatchlistFolder[],
-  entries: WatchlistEntry[],
-): FolderGroup[] {
+  entries: TEntry[],
+): FolderGroup<TEntry>[] {
   const sortedFolders = [...folders].sort((a, b) => a.order - b.order);
-  const byOrder = (a: WatchlistEntry, b: WatchlistEntry) => a.order - b.order;
-  const groups: FolderGroup[] = sortedFolders.map((folder) => ({
+  const byOrder = (a: TEntry, b: TEntry) => a.order - b.order;
+  const groups: FolderGroup<TEntry>[] = sortedFolders.map((folder) => ({
     folder,
     entries: entries.filter((e) => e.folder_id === folder.id).sort(byOrder),
   }));

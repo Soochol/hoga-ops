@@ -58,6 +58,7 @@ def test_subscribe_acks_then_delivers_code_tagged_live():
         assert frame["code"] == "005930"
         assert frame["data"]["kind"] == "ob"
         assert frame["data"]["t_ms"] == 100
+        ws.close()
 
 
 def test_heartbeat_on_idle():
@@ -193,6 +194,7 @@ def test_subscribe_forwards_to_lifecycle_on_view_subscribe(monkeypatch):
     with TestClient(app) as client, client.websocket_connect("/api/ws") as ws:
         ws.send_json({"action": "subscribe", "code": "005930"})
         ack = ws.receive_json()
+        ws.close()
 
     # Existing behaviour preserved — ack frame still arrives.
     assert ack == {"ch": "subscribed", "code": "005930"}

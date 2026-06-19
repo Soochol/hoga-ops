@@ -1,7 +1,10 @@
 import type { LiveQuote } from '../api/liveQuotes';
-import type { WatchlistEntry } from '../api/watchlist';
 
 export type QuoteSortMode = 'default' | 'change_pct_asc' | 'change_pct_desc';
+export interface QuoteSortableEntry {
+  code: string;
+  order: number;
+}
 
 export function makeChangePctOf(quoteByCode: Map<string, LiveQuote>): (code: string) => number | null {
   return (code) => {
@@ -10,11 +13,11 @@ export function makeChangePctOf(quoteByCode: Map<string, LiveQuote>): (code: str
   };
 }
 
-export function sortEntriesByChangePct(
-  entries: WatchlistEntry[],
+export function sortEntriesByChangePct<TEntry extends QuoteSortableEntry>(
+  entries: TEntry[],
   pctOf: (code: string) => number | null,
   mode: QuoteSortMode,
-): WatchlistEntry[] {
+): TEntry[] {
   if (mode === 'default') return [...entries].sort((a, b) => a.order - b.order);
 
   const dir = mode === 'change_pct_asc' ? 1 : -1;

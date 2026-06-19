@@ -3,6 +3,10 @@ import { expect, it, vi, beforeEach, afterEach } from 'vitest';
 vi.mock('../config', () => ({
   loadConfig: vi.fn(async () => ({ api_url: '' })),
   DEFAULT_CONFIG: { api_url: '' },
+  resolveApiUrl: (config: { api_url: string }, path: string) =>
+    `${config.api_url}${path.startsWith('/') ? path : `/${path}`}`,
+  resolveWsUrl: (config: { api_url: string }, path: string) =>
+    `${config.api_url.replace(/^http/, 'ws')}${path.startsWith('/') ? path : `/${path}`}`,
 }));
 
 import {

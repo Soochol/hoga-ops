@@ -4,12 +4,12 @@ import { render, screen, fireEvent } from '@testing-library/react';
 import { it, expect } from 'vitest';
 import { HeatmapFolder } from './HeatmapFolder';
 import { heatHeaderBg } from './heat';
-import type { WatchlistEntry, WatchlistFolder } from '../api/watchlist';
+import type { HeatmapEntry, HeatmapFolder as HeatmapFolderModel } from '../api/heatmap';
 import type { LiveQuote } from '../api/liveQuotes';
 
-const folder: WatchlistFolder = { id: 'f1', name: '반도체', order: 0 };
-const E = (code: string, name: string, order: number): WatchlistEntry => ({
-  code, name, registered_at_kst_date: '20260101', last_success_date: null, folder_id: 'f1', order,
+const folder: HeatmapFolderModel = { id: 'f1', name: '반도체', order: 0 };
+const E = (code: string, name: string, order: number): HeatmapEntry => ({
+  code, name, folder_id: 'f1', order,
 });
 const entries = [E('005930', '삼성전자', 0), E('000660', 'SK하이닉스', 1)];
 const quotes = new Map<string, LiveQuote>([

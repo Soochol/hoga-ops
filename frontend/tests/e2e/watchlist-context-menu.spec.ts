@@ -10,7 +10,7 @@ import { installLiveMocks } from './helpers/liveMocks';
 
 test.use({ channel: 'chrome' }); // 시스템 Chrome (live-smoke 와 동일 사유)
 
-const API = 'http://localhost:8000';
+const API = 'http://localhost:8080';
 
 interface Entry {
   code: string; name: string; registered_at_kst_date: string;

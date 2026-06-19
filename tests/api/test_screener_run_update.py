@@ -33,3 +33,29 @@ async def test_run_update_counts_distinct_appended_dates_not_requested(tmp_path)
     n = await screener_store.run_update(sd, codes=["000001"], fetch_one=fake_fetch,
                                         trading_days=["20260514", "20260515"], now_ms=100)
     assert n == 1
+
+
+def test_fetch_concurrency_defaults_to_three(monkeypatch):
+    from hoga.api import screener_store
+
+    monkeypatch.delenv("HOGA_SCREENER_FETCH_CONCURRENCY", raising=False)
+
+    assert screener_store.fetch_concurrency_from_env() == 3
+
+
+def test_fetch_concurrency_accepts_valid_range(monkeypatch):
+    from hoga.api import screener_store
+
+    monkeypatch.setenv("HOGA_SCREENER_FETCH_CONCURRENCY", "1")
+    assert screener_store.fetch_concurrency_from_env() == 1
+
+    monkeypatch.setenv("HOGA_SCREENER_FETCH_CONCURRENCY", "8")
+    assert screener_store.fetch_concurrency_from_env() == 8
+
+
+def test_fetch_concurrency_falls_back_for_invalid_values(monkeypatch):
+    from hoga.api import screener_store
+
+    for value in ["0", "9", "-1", "abc", ""]:
+        monkeypatch.setenv("HOGA_SCREENER_FETCH_CONCURRENCY", value)
+        assert screener_store.fetch_concurrency_from_env() == 3

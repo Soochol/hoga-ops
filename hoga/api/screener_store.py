@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import datetime as dt
 import logging
+import os
 import subprocess
 import time
 from dataclasses import dataclass
@@ -244,9 +245,24 @@ from collections.abc import Awaitable, Callable  # noqa: E402
 
 FetchOne = Callable[[str, str, str], Awaitable[list[DailyBar]]]
 
-# KIS _get 가 15/s leaky-bucket 으로 HTTP rate 를 캡하므로, 동시성은 버킷을 채울
-# 정도면 충분(직렬 RTT 병목 제거, 버킷 초과 아님).
-_FETCH_CONCURRENCY = 8
+# KIS _get 가 15/s leaky-bucket 으로 HTTP rate 를 캡하더라도, 스크리너 자체
+# fan-out은 보수적으로 둔다. 부팅/수동/일일 배치가 KIS quota를 벽처럼 채우지
+# 않게 기본 3, 운영 튜닝 상한 8.
+_DEFAULT_FETCH_CONCURRENCY = 3
+_MAX_FETCH_CONCURRENCY = 8
+
+
+def fetch_concurrency_from_env() -> int:
+    raw = os.environ.get("HOGA_SCREENER_FETCH_CONCURRENCY")
+    if raw is None:
+        return _DEFAULT_FETCH_CONCURRENCY
+    try:
+        value = int(raw)
+    except ValueError:
+        return _DEFAULT_FETCH_CONCURRENCY
+    if 1 <= value <= _MAX_FETCH_CONCURRENCY:
+        return value
+    return _DEFAULT_FETCH_CONCURRENCY
 
 
 async def run_update(sdir: Path, *, codes: list[str], fetch_one: FetchOne,
@@ -255,7 +271,7 @@ async def run_update(sdir: Path, *, codes: list[str], fetch_one: FetchOne,
     거래일 수(append 된 행의 distinct date) 반환 — 상류가 갭 일부만 반환해도 요청
     거래일 수(len(trading_days))로 과대보고하지 않는다. fetch 는 세마포어로 제한한
     동시 호출(직렬 RTT 병목 제거; 15/s 버킷은 _get 가 캡)."""
-    sem = asyncio.Semaphore(_FETCH_CONCURRENCY)
+    sem = asyncio.Semaphore(fetch_concurrency_from_env())
 
     async def _one(code: str) -> list[DailyBar]:
         async with sem:

@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 import asyncio
-import logging
 import os
 from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
@@ -26,6 +25,7 @@ from hoga.api.queries import QueryEngine
 from hoga.api.routes import build_router
 from hoga.api.scheduler import start_scheduler
 from hoga.api.screener import build_router as build_screener_router
+from hoga.api.startup_runtime import StartupRuntimeDeps, start_app_runtime
 from hoga.api.symbols import build_router as build_symbols_router
 from hoga.api.test_routes import build_test_router
 from hoga.api.watchlist_routes import build_router as build_watchlist_router
@@ -54,9 +54,6 @@ from hoga.live.lifecycle import (
     get_today_ask_peak as live_get_today_ask_peak,
 )
 from hoga.live.migrate import migrate_to_v2_layout
-
-log = logging.getLogger(__name__)
-
 
 def create_app(data_dir: Path) -> FastAPI:
     engine = QueryEngine(data_dir)
@@ -104,100 +101,28 @@ def create_app(data_dir: Path) -> FastAPI:
         set_captures_bus(bus, loop)
         # Single entry point bundles restore-before-spawn invariant (ADR-0019).
         _captures_module._workers = _captures_module.start_capture_pool(data_dir)
-        # ADR-0034: Watchlist scheduler runs alongside the capture pool
-        # in the same uvicorn process. Tasks are cancelled in `finally`.
-        # Initialize defensively so the `finally` block is safe even if
-        # `start_scheduler` raises.
-        _scheduler_tasks: list = []
-        _scheduler_tasks = start_scheduler(data_dir)
-        # Screener startup recovery: catch up any EOD gap the scheduler missed
-        # while the process was down. Spawned (NOT awaited) so it never blocks
-        # boot and a calendar error inside it can't abort startup. Tracked in
-        # _scheduler_tasks so the `finally` block cancels/awaits it on shutdown.
-        _scheduler_tasks.append(
-            asyncio.create_task(
-                _screener_module.trigger_update(data_dir), name="screener-recovery"
-            )
-        )
-        # Task 11: Start the live WS stream (graceful degradation: no-op if
-        # KIS_APP_KEY/SECRET missing or watchlist is empty).
-        # REST poller는 Task 13에서 완전 은퇴 — 수집은 WS stream 단독.
-        await start_live_stream(data_dir=data_dir)
-        # ADR-0064: WS watchdog that restarts the stream if it dies or stops
-        # ticking during market hours (defense-in-depth self-heal). Spawned
-        # unconditionally — it no-ops when the stream wasn't started.
-        live_watchdog_task = await start_live_stream_watchdog(data_dir=data_dir)
-        # ADR-0043: Today Promotion task — overwrite today's jsonl to parquet
-        # every N minutes so /api/range covers today without waiting for the
-        # 17:00 Daily Promotion batch. Optional kill-switch via
-        # HOGA_LIVE_TODAY_PROMOTE_ENABLED=false; interval tunable via
-        # HOGA_LIVE_TODAY_PROMOTE_INTERVAL_S (default 300 = 5 min).
-        today_promoter_task: asyncio.Task | None = None
-        if os.environ.get("HOGA_LIVE_TODAY_PROMOTE_ENABLED", "true").lower() != "false":
-            today_promote_interval_s = float(
-                os.environ.get("HOGA_LIVE_TODAY_PROMOTE_INTERVAL_S", "300")
-            )
-            today_promoter_task = await start_today_promoter(
-                data_dir=data_dir,
+        startup_runtime = await start_app_runtime(
+            data_dir,
+            deps=StartupRuntimeDeps(
+                env=os.environ,
+                start_scheduler=start_scheduler,
+                start_live_stream=start_live_stream,
+                start_live_stream_watchdog=start_live_stream_watchdog,
+                start_today_promoter=start_today_promoter,
+                stop_today_promoter=stop_today_promoter,
+                stop_live_stream=stop_live_stream,
+                aclose_kis_client=aclose_kis_client,
                 get_active_codes=get_active_codes,
-                interval_s=today_promote_interval_s,
-            )
-        # Symbol Master warm-load: read the KIS .mst disk cache at boot so
-        # GET /api/symbols/all is immediately warm without a network call.
-        _symbols_module.load_disk_state(
-            path=resolve_symbol_master_path(), data_dir=data_dir
+                load_symbol_disk_state=_symbols_module.load_disk_state,
+                needs_symbol_boot_refresh=_symbols_module.needs_boot_refresh,
+                refresh_symbols=_symbols_module.refresh,
+                resolve_symbol_master_path=resolve_symbol_master_path,
+            ),
         )
-        # §4.4: .mst is fast + no-auth, so an empty/legacy cache auto-refreshes
-        # in the background (does NOT block startup; load_disk_state already
-        # ran). The fire/skip condition lives in symbols.needs_boot_refresh()
-        # — one owner instead of a status string-compare at this call site.
-        # Routed through refresh()/coordinator → single-flight, so a concurrent
-        # manual click won't double-download. Tracked in _scheduler_tasks (same
-        # as screener-recovery) so the `finally` block cancels+awaits it at
-        # shutdown instead of leaking an in-flight download.
-        if _symbols_module.needs_boot_refresh():
-            _scheduler_tasks.append(
-                asyncio.create_task(
-                    _symbols_module.refresh(
-                        path=resolve_symbol_master_path(), data_dir=data_dir
-                    ),
-                    name="symbols-boot-refresh",
-                )
-            )
         try:
             yield
         finally:
-            # ADR-0043: stop Today Promotion before the live stream so the loop
-            # doesn't observe a half-cancelled stream state.
-            await stop_today_promoter(today_promoter_task)
-            # ADR-0064: stop the watchdog before the stream so it can't race to
-            # "restart" the stream we're deliberately shutting down. (reuses the
-            # generic cancel-and-await helper.)
-            await stop_today_promoter(live_watchdog_task)
-            # Stop the live stream before scheduler to avoid new ticks being
-            # written while the scheduler is shutting down.
-            await stop_live_stream()
-            # Cancel scheduler tasks BEFORE stopping the worker pool: the
-            # scheduler enqueues to the workers, so kill the trigger first
-            # and then let the workers drain.
-            for t in _scheduler_tasks:
-                t.cancel()
-            for t in _scheduler_tasks:
-                try:
-                    await t
-                except asyncio.CancelledError:
-                    pass  # expected outcome of cancel() above
-                except Exception:  # noqa: BLE001
-                    # Bugs in scheduler teardown must not block shutdown,
-                    # but they MUST be logged — otherwise a regression in
-                    # bump_last_success/_daily_loop shutdown vanishes.
-                    log.exception("scheduler task crashed during shutdown")
-            # Task-7 follow-up: close the PROCESS-singleton KisClient (shared
-            # 15/s token bucket) only at process shutdown. Closed AFTER every
-            # _scheduler_tasks entry (incl. screener-recovery) is cancelled and
-            # awaited above, so no task — not the EOD update, not the recovery
-            # catch-up — can still be using the client when it's torn down.
-            await aclose_kis_client()
+            await startup_runtime.stop()
             # Stop the worker pool first so in-flight items observe cancellation
             # while bus + observer are still live (they emit terminal events).
             await _captures_module.stop_workers(_captures_module._workers)

@@ -22,6 +22,11 @@ _log = logging.getLogger(__name__)
 WS_URL_REAL = "ws://ops.koreainvestment.com:21000"
 _TRS = F.TRS  # 종목당 구독 TR — ws_fields 단일진실원(사이징=구독수, 드리프트 불가)
 _BACKOFF_S = (1, 2, 4, 8, 16, 32, 60)
+_APPKEY_IN_USE_BACKOFF_S = 60
+
+
+class DuplicateAppKeyInUse(RuntimeError):
+    """KIS rejected this WS subscription because the appkey is already active."""
 
 
 def build_request(approval_key: str, tr_type: str, tr_id: str, tr_key: str) -> str:
@@ -106,11 +111,19 @@ class KisWsClient:
                 self.connected = False
                 self._ws = None
                 self._approval = None
-                delay = _BACKOFF_S[min(attempt, len(_BACKOFF_S) - 1)]
-                attempt += 1
-                # 인증 오류는 영구성(키 폐기 등) 가능성 — error로 승격해 가시화.
-                log = _log.error if isinstance(e, KisAuthError) else _log.warning
-                log("live.ws.reconnect attempt=%d delay=%ds err=%r", attempt, delay, e)
+                if isinstance(e, DuplicateAppKeyInUse):
+                    delay = _APPKEY_IN_USE_BACKOFF_S
+                    attempt += 1
+                    _log.warning(
+                        "live.ws.appkey_in_use attempt=%d delay=%ds err=%r",
+                        attempt, delay, e,
+                    )
+                else:
+                    delay = _BACKOFF_S[min(attempt, len(_BACKOFF_S) - 1)]
+                    attempt += 1
+                    # 인증 오류는 영구성(키 폐기 등) 가능성 — error로 승격해 가시화.
+                    log = _log.error if isinstance(e, KisAuthError) else _log.warning
+                    log("live.ws.reconnect attempt=%d delay=%ds err=%r", attempt, delay, e)
                 await asyncio.sleep(delay)
 
     async def update_codes(self, codes: list[str]) -> None:
@@ -169,11 +182,15 @@ class KisWsClient:
                 else:
                     # 구독 ACK 카운트(spec §2.1): rt_cd=="0" 성공, 그 외 거부.
                     # 거부 형태는 미관측이라 '0이 아닌 모든 control'을 거부로 본다.
-                    rt_cd = msg.get("body", {}).get("rt_cd")
+                    body = msg.get("body", {})
+                    rt_cd = body.get("rt_cd")
                     if rt_cd == "0":
                         self.sub_acked += 1
                         _log.info("live.ws.subscribed tr_id=%s", tr_id)
                     else:
                         self.sub_rejected += 1
                         _log.warning("live.ws.sub_rejected tr_id=%s msg=%s",
-                                     tr_id, str(msg.get("body", {}))[:200])
+                                     tr_id, str(body)[:200])
+                        if body.get("msg_cd") == "OPSP8996":
+                            msg1 = str(body.get("msg1", ""))
+                            raise DuplicateAppKeyInUse(msg1 or "ALREADY IN USE appkey")

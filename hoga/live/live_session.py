@@ -9,93 +9,33 @@ restart/stop) + 불변식(키=account id∈[0,N), exclude-then-subscribe 순서)
 ADR-0038(hot path): pyarrow/polars import 금지 — promote.py(cold path)만 허용.
 이 모듈은 test_adr_invariants._HOT_PATH_MODULES에 등재됨.
 
-step 1(이 커밋): 순수 헬퍼(partition_live_set/_compute_live_set/display_ordered_codes/
-live_set_codes) + 상수 + _StreamConn을 이동. LiveSession 객체·오케스트레이션은 후속 단계.
-lifecycle은 이름들을 재export해 기존 호출부·테스트가 무수정으로 동작한다.
+Live Coverage planning lives in coverage.py; this module re-exports the old
+helper names for compatibility while owning the WS connection state machine.
 """
 from __future__ import annotations
 
-import logging
 from dataclasses import dataclass
 from pathlib import Path
 from typing import TYPE_CHECKING
 
-from .ws_fields import TRS  # 종목당 구독 TR 집합 — 사이징·구독수 단일진실원(경량 leaf)
+from .coverage import (
+    KIS_WS_MAX_REGISTRATIONS,
+    LIVE_SET_MAX_CODES,
+    TRS_PER_CODE,
+    _PER_ACCOUNT_MAX,
+    _compute_live_set,
+    display_ordered_codes,
+    live_set_codes,
+    partition_live_set,
+    plan_live_coverage,
+)
 
 if TYPE_CHECKING:
     import asyncio
     from collections.abc import Awaitable, Callable
 
-    from hoga.api.models import WatchlistDocument
-
     _BuildConn = Callable[[int, list[str], Path], "_StreamConn"]
     _TeardownConn = Callable[["_StreamConn"], Awaitable[None]]
-
-_log = logging.getLogger(__name__)
-
-
-# ── Live Set constants (spec §4·§5.1) ─────────────────────────────────────────
-
-KIS_WS_MAX_REGISTRATIONS = 30   # 연결(appkey)당 실시간 등록 안전 한도. 실측 ~32(가변
-                                # 32~39, 2026-06-10 라이브 — 3계좌 78등록 전부ACK로 연결당
-                                # 한도 확정, 고객공유 아님) 아래 마진. 옛 41(KIS 문서 가정)은
-                                # 실측 불일치 → 폐기. 깨끗한 재측정 후 상향 가능(최대 ~32).
-TRS_PER_CODE = len(TRS)         # 사이징=구독수 단일진실원(ws_fields.TRS). 드리프트 불가.
-_PER_ACCOUNT_MAX = KIS_WS_MAX_REGISTRATIONS // TRS_PER_CODE  # 3TR→10, 2TR→15 (계좌당 종목)
-# 동적 상한: 13 * n_configured. start에서 n_configured를 곱해 _compute_live_set이 사용.
-LIVE_SET_MAX_CODES = _PER_ACCOUNT_MAX  # 1계좌 기본(_compute_live_set이 n_configured로 동적 절단)
-
-
-def partition_live_set(codes: list[str], n: int) -> list[list[str]]:
-    """display-order 연속 배정: account k = codes[k*W:(k+1)*W], W=_PER_ACCOUNT_MAX (스펙 §5.3, Q4).
-
-    n개 리스트를 항상 반환(후행은 빈 리스트일 수 있음). 연속 슬라이스라
-    W-경계를 안 넘는 코드는 계좌 고정 → 재정렬 churn 최소(위험 #4). 해시 배정
-    대신 연속을 택한 이유: CONTEXT.md 'top-W=경계' 모델 일치 + explicit>clever.
-    """
-    return [codes[k * _PER_ACCOUNT_MAX:(k + 1) * _PER_ACCOUNT_MAX] for k in range(n)]
-
-
-def display_ordered_codes(doc: WatchlistDocument) -> list[str]:
-    """Watchlist Panel 표시 순서로 코드 평탄화 (v3 다중 소속, 2026-06-11 / ADR-0070).
-
-    폴더 `.order` 오름차순 → 각 폴더 `member_codes` 순 → **첫 등장으로 dedup**
-    (다중 소속 Code 의 rank = 가장 위 폴더에서의 등장 위치). 미분류 개념 폐지(v3).
-    """
-    seen: set[str] = set()
-    out: list[str] = []
-    for folder in sorted(doc.folders, key=lambda f: f.order):
-        for code in folder.member_codes:
-            if code not in seen:
-                seen.add(code)
-                out.append(code)
-    return out
-
-
-def _compute_live_set(data_dir: Path, n_configured: int = 1) -> list[str]:
-    """Live Set 산출 파이프라인(start/refresh 공용):
-    load_document → 표시 순서 평탄화 → symbol-master 필터(cold cache 무필터
-    폴백) → 상위 (13 * n_configured) 절단."""
-    from hoga.api import symbols as _symbols  # noqa: PLC0415
-    from hoga.api.watchlist import load_document  # noqa: PLC0415
-
-    ordered = display_ordered_codes(load_document(data_dir))
-    known = {h.code for h in _symbols.search("", limit=10_000)}
-    if known:
-        dropped = [c for c in ordered if c not in known]
-        if dropped:
-            _log.warning("live.stream.codes_unknown dropped=%r", dropped)
-        ordered = [c for c in ordered if c in known]
-    return ordered[: _PER_ACCOUNT_MAX * n_configured]
-
-
-def live_set_codes(doc: WatchlistDocument) -> list[str]:
-    """Live Set = 표시 순서 상위 LIVE_SET_MAX_CODES(=W) (테스트 전용 — 실경로는 _compute_live_set).
-
-    CONTEXT.md 'Live Set', 그릴링 Q3 + 2026-06-06 개정.
-    """
-    return display_ordered_codes(doc)[:LIVE_SET_MAX_CODES]
-
 
 # ── Stream connection (한 KIS 계좌의 WS 연결 묶음) ──────────────────────────────
 
@@ -191,16 +131,17 @@ class LiveSession:
         호출 전 stop()으로 streams가 비어 있어야 한다 — lifecycle이 exclude-then-
         subscribe 순서(stop → ensure_poller → _sync_exclusion → start)로 보장한다.
         """
-        parts = partition_live_set(list(codes), n_configured)
+        plan = plan_live_coverage(list(codes), n_configured=n_configured)
         streams: dict[int, _StreamConn] = {}
-        for account_id, part in enumerate(parts):
+        for account_id, part_tuple in enumerate(plan.partitions):
+            part = list(part_tuple)
             if part:
                 streams[account_id] = build_conn(account_id, part, data_dir)
         self.streams = streams
         self.started_at_ms = now_ms
         self.n_configured = n_configured
-        self.live_set = tuple(codes)
-        self.watchlist_codes = tuple(codes)
+        self.live_set = plan.live_set
+        self.watchlist_codes = plan.live_set
 
     async def refresh(
         self,
@@ -219,16 +160,17 @@ class LiveSession:
         틱이 처리되지 않아 스왑이 원자적. (Pass 1의 async WS 재구독에서 코드가 잠시 양쪽
         WS에 구독돼도 on_tick 활성 필터가 이미 정확하므로 write는 한 conn으로만 간다.)
         """
-        parts = partition_live_set(list(codes), self.n_configured)
+        plan = plan_live_coverage(list(codes), n_configured=self.n_configured)
 
         # Pass 0 (동기): 활성집합 원자 스왑
-        for account_id, part in enumerate(parts):
+        for account_id, part_tuple in enumerate(plan.partitions):
             conn = self.streams.get(account_id)
             if conn is not None:
-                conn.stream_obj.set_active_codes(set(part))   # type: ignore[attr-defined]
+                conn.stream_obj.set_active_codes(set(part_tuple))   # type: ignore[attr-defined]
 
         # Pass 1 (async): WS 구독 diff + build/teardown
-        for account_id, part in enumerate(parts):
+        for account_id, part_tuple in enumerate(plan.partitions):
+            part = list(part_tuple)
             conn = self.streams.get(account_id)
             if part and conn is not None:
                 await conn.stream_obj.ws.update_codes(part)      # type: ignore[attr-defined]
@@ -243,9 +185,8 @@ class LiveSession:
                 await teardown_conn(conn)
                 self.streams.pop(account_id, None)
 
-        live_set = tuple(codes)
-        self.live_set = live_set
-        self.watchlist_codes = live_set
+        self.live_set = plan.live_set
+        self.watchlist_codes = plan.live_set
 
     async def restart(
         self,
@@ -261,11 +202,13 @@ class LiveSession:
         if conn is None:
             return
         n = self.n_configured
-        parts = partition_live_set(_compute_live_set(data_dir, n), n)
+        parts = plan_live_coverage(
+            _compute_live_set(data_dir, n), n_configured=n,
+        ).partitions
         codes = parts[account_id] if account_id < len(parts) else []
         await teardown_conn(conn)
         if codes:
-            self.streams[account_id] = build_conn(account_id, codes, data_dir)
+            self.streams[account_id] = build_conn(account_id, list(codes), data_dir)
         else:
             self.streams.pop(account_id, None)   # 그 사이 watchlist 축소됨
 
