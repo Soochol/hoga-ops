@@ -54,9 +54,8 @@ def should_run_now(t_ms: int) -> bool:
     kst = datetime.fromtimestamp(t_ms / 1000, tz=KIS_KST)
     if kst.weekday() >= 5:  # Saturday/Sunday — never a KRX session  # noqa: PLR2004
         return False
-    from hoga.api.calendar import is_trading_session_today  # noqa: PLC0415
-    verdict = is_trading_session_today(kst.strftime("%Y%m%d"))
-    return verdict is not False
+    from hoga.api.calendar_policy import live_session_allowed_today  # noqa: PLC0415
+    return live_session_allowed_today(kst.strftime("%Y%m%d"))
 
 
 def ws_capture_window(now_ms: int) -> bool:

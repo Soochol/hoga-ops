@@ -17,6 +17,7 @@ import logging
 from pathlib import Path
 
 from hoga.api.calendar import trading_days_in_range
+from hoga.api.calendar_policy import daily_run_allowed_by_calendar, trading_days_for_enqueue
 from hoga.api.captures import enqueue_items_core
 from hoga.api.disk_state import latest_complete_date
 from hoga.api.eligibility import find_ineligible_dates
@@ -87,14 +88,7 @@ async def _daily_run(data_dir: Path) -> None:
 
     now = now_kst()
     today = now.strftime("%Y%m%d")
-    try:
-        # to_thread: a cold-month KIS chk-holiday fetch is blocking sync HTTP —
-        # never run it on the event loop (the live poller shares this loop).
-        trading = await asyncio.to_thread(trading_days_in_range, today, today)
-    except Exception:  # noqa: BLE001
-        log.warning("daily run: trading-day check failed, skipping")
-        return
-    if today not in trading:
+    if not await daily_run_allowed_by_calendar(trading_days_in_range, today):
         log.info("daily run: %s is not a trading day, skipping", today)
         return
     for entry in load_watchlist(data_dir):
@@ -162,7 +156,7 @@ async def catchup_one_entry(
     start = next_kst_day(floor)
     if start > today:
         return EnqueueResponse(enqueued=[], deduped=[])
-    candidates = await asyncio.to_thread(trading_days_in_range, start, today)
+    candidates = await trading_days_for_enqueue(trading_days_in_range, start, today)
 
     # Step 3: Q14 pre-trim.
     too_early = set(find_ineligible_dates(candidate_dates=candidates, now=now))
