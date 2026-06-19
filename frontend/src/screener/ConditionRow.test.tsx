@@ -7,11 +7,12 @@ const leaf: ConditionLeaf = { id: 'x', type: 'new_high', params: { lookback: 200
 
 describe('ConditionRow', () => {
   it('renders the ParamForm immediately with no collapse caret', () => {
-    render(<ConditionRow leaf={leaf} onChange={vi.fn()} onClone={vi.fn()} onRemove={vi.fn()} />);
+    render(<ConditionRow leaf={leaf} onChange={vi.fn()} onRemove={vi.fn()} />);
     expect(screen.getByLabelText('lookback (N)')).toBeInTheDocument();
     expect(screen.getByLabelText('period (M)')).toBeInTheDocument();
     expect(screen.queryByRole('button', { name: '펼치기' })).not.toBeInTheDocument();
     expect(screen.queryByRole('button', { name: '접기' })).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: '조건 복제' })).not.toBeInTheDocument();
     expect(screen.getByRole('button', { name: '조건 제거' })).toBeInTheDocument();
   });
 
@@ -20,7 +21,6 @@ describe('ConditionRow', () => {
     render(<ConditionRow
       leaf={{ id: 'm', type: 'ma', params: { period: 20, relation: 'above' } }}
       onChange={onChange}
-      onClone={vi.fn()}
       onRemove={vi.fn()}
     />);
 

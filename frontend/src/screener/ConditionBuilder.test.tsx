@@ -41,18 +41,6 @@ describe('ConditionBuilder', () => {
     expect(screen.getAllByText('기간내 신고가')).toHaveLength(2);
   });
 
-  it('duplicates a condition with the same type and params but a new id', () => {
-    const condition = { id: 'p', type: 'ma', params: { period: 20, relation: 'above' } } as any;
-    const onConditions = vi.fn();
-    render(<ConditionBuilder conditions={[condition]} universe={{}} onConditionsChange={onConditions} onUniverseChange={vi.fn()} />);
-    fireEvent.click(screen.getByRole('button', { name: '조건 복제' }));
-    expect(onConditions).toHaveBeenCalledWith([
-      condition,
-      expect.objectContaining({ type: 'ma', params: condition.params }),
-    ]);
-    expect(onConditions.mock.calls[0][0][1].id).not.toBe('p');
-  });
-
   it('delegates universe editing to the 사전필터 modal (header button → modal → onUniverseChange)', () => {
     // 인라인 시장 토글이 UniverseFilterModal 로 이동(전역 사전필터 → 센터 모달).
     // ConditionBuilder 는 헤더 버튼만 두고 onUniverseChange 를 위임한다.
