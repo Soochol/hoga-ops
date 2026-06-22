@@ -1,11 +1,25 @@
+from datetime import datetime
+
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
 
 from hoga.live import api as live_api
 from hoga.live.api import build_router
 from hoga.live import lifecycle
-from hoga.live.kis_client import IndexCandleFetchResult, InvestorNetFetchResult
+from hoga.live.kis_client import KIS_KST, IndexCandleFetchResult, InvestorNetFetchResult
 from hoga.live.kis_models import IndexCandlePoint, InvestorNetPoint
+
+
+def _daily_t_ms(day: str) -> int:
+    dt = datetime(
+        int(day[:4]),
+        int(day[4:6]),
+        int(day[6:8]),
+        15,
+        30,
+        tzinfo=KIS_KST,
+    )
+    return int(dt.timestamp() * 1000)
 
 
 def _client() -> TestClient:
@@ -51,7 +65,7 @@ def test_index_candles_returns_fake_kis_daily_rows(tmp_path, monkeypatch) -> Non
             return IndexCandleFetchResult(
                 candles=[
                     IndexCandlePoint(
-                        t_ms=1,
+                        t_ms=_daily_t_ms("20260619"),
                         open=2840.12,
                         high=2861.34,
                         low=2833.20,
@@ -73,7 +87,7 @@ def test_index_candles_returns_fake_kis_daily_rows(tmp_path, monkeypatch) -> Non
     assert body["index_id"] == "KOSPI"
     assert body["candles"] == [
         {
-            "t_ms": 1,
+            "t_ms": _daily_t_ms("20260619"),
             "open": 2840.12,
             "high": 2861.34,
             "low": 2833.2,
@@ -96,7 +110,7 @@ def test_index_daily_candles_reuses_cached_newer_range_for_broader_scrollback(
             return IndexCandleFetchResult(
                 candles=[
                     IndexCandlePoint(
-                        t_ms=int(from_s),
+                        t_ms=_daily_t_ms(from_s),
                         open=close,
                         high=close,
                         low=close,
