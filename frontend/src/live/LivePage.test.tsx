@@ -8,6 +8,8 @@ import { useLivePageStore } from '../state/livePage';
 import { useLiveTabsStore } from '../state/liveTabs';
 import { useLiveVenueStore } from '../state/liveVenue';
 import * as liveStatus from '../api/liveStatus';
+import { initialHistoricalDaysFor, subtractDaysKst, todayKstYyyymmdd } from './liveDateTime';
+import type { LiveTimeframe } from '../state/livePage';
 
 const livePageMocks = vi.hoisted(() => {
   const liveOb = [{
@@ -358,6 +360,26 @@ describe('LivePage shell', () => {
     expect(livePageMocks.liveChartRootProps.at(-1)?.chartBundle?.quote_ratio.points).toEqual([]);
     expect(livePageMocks.liveChartRootProps.at(-1)?.paneTogglesOverride?.hogaPanes).toBe(false);
   });
+
+  it.each(['1m', 'D', 'W', 'M'] as const)(
+    'fetches index %s candles from the same initial history window as stock charts',
+    async (timeframe: LiveTimeframe) => {
+      useLivePageStore.setState({ candleTimeframe: timeframe });
+
+      renderWithRouter('/live?index=KOSPI');
+
+      await waitFor(() => {
+        expect(livePageMocks.indexCandlesCalls.some((args) => {
+          const call = args as unknown[];
+          return call[0] === 'KOSPI' && call[1] === timeframe;
+        })).toBe(true);
+      });
+      const call = (livePageMocks.indexCandlesCalls as unknown[][]).find((args) =>
+        args[0] === 'KOSPI' && args[1] === timeframe,
+      );
+      expect(call?.[2]).toBe(subtractDaysKst(todayKstYyyymmdd(), initialHistoricalDaysFor(timeframe)));
+    },
+  );
 
   it('hydrates KOSPI daily index charts with market investor net points', async () => {
     livePageMocks.indexCandlesResult.data = {
