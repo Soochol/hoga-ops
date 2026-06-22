@@ -1,51 +1,80 @@
-# Task 2 Report: Snapshot Bid Peak Queries
+# Task 2 Report: Backend Live Settings Storage Policy
 
 ## Status
 
-Completed in `/home/dev/.codex/worktrees/6c61/hoga-ops` only.
+DONE
 
-## Scope
+## Scope Delivered
 
-- Added `BidPeakRow` and `BidPeakDualRow` to `hoga/tables/snapshots.py`.
-- Added `query_day_bid_peak(...)`.
-- Added `query_day_bid_peak_dual(...)`.
-- Added focused bid-peak snapshot tests to `tests/test_tables_snapshots.py`.
-- Left range bundle wiring, live behavior, and frontend untouched.
+Implemented the backend-only live storage policy slice from the brief:
+
+- Added persisted live settings storage in `live_settings.json`
+- Added typed API models for live settings read/update payloads
+- Added `GET /api/live/settings`
+- Added `PATCH /api/live/settings`
+- Triggered `refresh_live_stream(data_dir=...)` after successful updates
+- Added focused persistence and route tests
+
+Not implemented, per brief:
+
+- REST recorder behavior
+- source priority behavior
+- frontend UI
+- lifecycle target splitting
 
 ## TDD Record
 
-1. Added the new bid-peak imports and focused tests first.
-2. Ran:
+### Red
+
+Added:
+
+- `/home/dev/.codex/worktrees/d575/hoga-ops/tests/unit/live/test_settings.py`
+- two route tests appended to `/home/dev/.codex/worktrees/d575/hoga-ops/tests/unit/live/test_api.py`
+
+Ran:
 
 ```bash
-./.venv/bin/pytest tests/test_tables_snapshots.py -k "bid_peak" -q
+uv run pytest tests/unit/live/test_settings.py tests/unit/live/test_api.py -v
 ```
 
-3. Verified RED:
-   - collection failed with `ImportError: cannot import name 'BidPeakDualRow' from 'hoga.tables.snapshots'`
-4. Implemented the bid-side dataclasses and query functions by mirroring the ask-side logic and changing only the bid-side SQL / `day_low` / untraded filter behavior required by the brief.
-5. Ran:
+Observed expected failures:
+
+- `ModuleNotFoundError: No module named 'hoga.live.settings'`
+- missing `/api/live/settings` route behavior (`404` / missing `storage_policy`)
+
+### Green
+
+Implemented:
+
+- `/home/dev/.codex/worktrees/d575/hoga-ops/hoga/live/settings.py`
+- `LiveStoragePolicy`, `LiveSettingsResponse`, `LiveSettingsUpdate` in `/home/dev/.codex/worktrees/d575/hoga-ops/hoga/api/models.py`
+- `/api/live/settings` GET/PATCH handlers in `/home/dev/.codex/worktrees/d575/hoga-ops/hoga/live/api.py`
+
+Behavior:
+
+- default settings: `{"schema_version": 1, "storage_policy": "ws_plus_rest"}`
+- persisted file: `live_settings.json`
+- invalid/corrupt settings file is renamed to `live_settings.json.corrupt-<timestamp>` and defaults are returned
+- PATCH validates `storage_policy` through Pydantic literal typing
+- PATCH persists the new policy and attempts `refresh_live_stream`
+
+## Verification
+
+Ran:
 
 ```bash
-./.venv/bin/pytest tests/test_tables_snapshots.py -k "bid_peak or ask_peak" -q
+uv run pytest tests/unit/live/test_settings.py tests/unit/live/test_api.py -v
 ```
 
-6. Verified GREEN:
-   - `17 passed, 31 deselected`
+Result:
 
-## Files Changed
-
-- `hoga/tables/snapshots.py`
-- `tests/test_tables_snapshots.py`
+- `97 passed in 1.50s`
 
 ## Notes
 
-- The brief's dual bid test used `90100000` while expecting `intra_ms = 9h + 100_000ms`. The repo's existing linear time conversion and ask-side tests map `90100000` to `09:01:00.000`, i.e. `9h + 60_000ms`. I kept the implementation consistent with the established conversion and adjusted the new bid test expectation accordingly.
+- The brief's sample route tests were adapted to the repo's actual `build_router(...)` signature by passing `get_status=lifecycle.get_status` and `data_dir=tmp_path`, matching the current backend wiring.
+- I added a small defensive `503` for `/api/live/settings` when `build_router` is constructed without `data_dir`; this does not change the Task 2 happy path and keeps bare router usage from crashing if those endpoints are called unwired.
 
 ## Commit
 
-Planned commit message:
-
-```bash
-git commit -m "feat(tables): query day bid peak"
-```
+- `49eb7709 feat: persist live storage policy`
