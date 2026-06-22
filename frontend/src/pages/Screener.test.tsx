@@ -127,6 +127,13 @@ it('sorts full-page screener results and resets to default on re-scan', async ()
 
   fireEvent.click(sortButton());
   expect(resultNames()).toEqual([
+    '삼성전자 005930 호가창 열기',
+    'NAVER 035420 호가창 열기',
+    'SK하이닉스 000660 호가창 열기',
+  ]);
+
+  fireEvent.click(sortButton());
+  expect(resultNames()).toEqual([
     'SK하이닉스 000660 호가창 열기',
     'NAVER 035420 호가창 열기',
     '삼성전자 005930 호가창 열기',
@@ -135,18 +142,10 @@ it('sorts full-page screener results and resets to default on re-scan', async ()
   fireEvent.click(sortButton());
   expect(resultNames()).toEqual([
     '삼성전자 005930 호가창 열기',
-    'NAVER 035420 호가창 열기',
-    'SK하이닉스 000660 호가창 열기',
-  ]);
-
-  fireEvent.click(sortButton());
-  expect(resultNames()).toEqual([
-    '삼성전자 005930 호가창 열기',
     'SK하이닉스 000660 호가창 열기',
     'NAVER 035420 호가창 열기',
   ]);
 
-  fireEvent.click(sortButton());
   fireEvent.click(sortButton());
   expect(within(sortButton()).getByTestId('sort-icon-desc')).toBeInTheDocument();
   fireEvent.click(screen.getByRole('button', { name: '조회' }));
@@ -170,14 +169,12 @@ it('sorts by overlayed live change_pct when present', async () => {
   await screen.findByText('삼성전자');
 
   fireEvent.click(sortButton());
-  fireEvent.click(sortButton());
   expect(resultNames()).toEqual([
     'NAVER 035420 호가창 열기',
     '삼성전자 005930 호가창 열기',
     'SK하이닉스 000660 호가창 열기',
   ]);
 
-  fireEvent.click(sortButton());
   fireEvent.click(sortButton());
   expect(resultNames()).toEqual([
     'SK하이닉스 000660 호가창 열기',

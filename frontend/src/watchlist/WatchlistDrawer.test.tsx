@@ -181,10 +181,10 @@ describe('WatchlistDrawer', () => {
     await waitFor(() => expect(rowCodes()).toEqual(['005930', '000660']));
 
     fireEvent.click(screen.getByLabelText('스윙 정렬'));
-    await waitFor(() => expect(rowCodes()).toEqual(['000660', '005930']));
+    await waitFor(() => expect(rowCodes()).toEqual(['005930', '000660']));
 
     fireEvent.click(screen.getByLabelText('스윙 정렬'));
-    await waitFor(() => expect(rowCodes()).toEqual(['005930', '000660']));
+    await waitFor(() => expect(rowCodes()).toEqual(['000660', '005930']));
   });
 
   it('shows a distinct sort icon for default, ascending, and descending modes', async () => {
@@ -198,16 +198,16 @@ describe('WatchlistDrawer', () => {
       document.getElementById(sortButton.getAttribute('aria-describedby') ?? '')?.textContent;
 
     expect(within(sortButton).getByTestId('sort-icon-default')).toBeInTheDocument();
-    expect(sortDescription()).toBe('현재 기본 정렬, 클릭하면 등락률 오름차순');
-    fireEvent.click(sortButton);
-    expect(within(sortButton).getByTestId('sort-icon-asc')).toBeInTheDocument();
-    expect(sortDescription()).toBe('현재 등락률 오름차순, 클릭하면 등락률 내림차순');
+    expect(sortDescription()).toBe('현재 기본 정렬, 클릭하면 등락률 내림차순');
     fireEvent.click(sortButton);
     expect(within(sortButton).getByTestId('sort-icon-desc')).toBeInTheDocument();
-    expect(sortDescription()).toBe('현재 등락률 내림차순, 클릭하면 기본 정렬');
+    expect(sortDescription()).toBe('현재 등락률 내림차순, 클릭하면 등락률 오름차순');
+    fireEvent.click(sortButton);
+    expect(within(sortButton).getByTestId('sort-icon-asc')).toBeInTheDocument();
+    expect(sortDescription()).toBe('현재 등락률 오름차순, 클릭하면 기본 정렬');
     fireEvent.click(sortButton);
     expect(within(sortButton).getByTestId('sort-icon-default')).toBeInTheDocument();
-    expect(sortDescription()).toBe('현재 기본 정렬, 클릭하면 등락률 오름차순');
+    expect(sortDescription()).toBe('현재 기본 정렬, 클릭하면 등락률 내림차순');
   });
 
   it('sorts entries in a folder by live change rate and resets to default order', async () => {
@@ -241,10 +241,10 @@ describe('WatchlistDrawer', () => {
     expect(rowCodes()).toEqual(['005930', '000660', '035420']);
 
     fireEvent.click(screen.getByLabelText('기본 정렬'));
-    expect(rowCodes()).toEqual(['000660', '005930', '035420']);
+    expect(rowCodes()).toEqual(['035420', '005930', '000660']);
 
     fireEvent.click(screen.getByLabelText('기본 정렬'));
-    expect(rowCodes()).toEqual(['035420', '005930', '000660']);
+    expect(rowCodes()).toEqual(['000660', '005930', '035420']);
 
     fireEvent.click(screen.getByLabelText('기본 정렬'));
     expect(rowCodes()).toEqual(['005930', '000660', '035420']);
@@ -301,8 +301,8 @@ describe('WatchlistDrawer', () => {
     const swingCodes = toCodes(swing);
     const longCodes = toCodes(long);
 
-    expect(swingCodes).toEqual(['005930', '000660']);
-    expect(longCodes).toEqual(['051910', '035420']);
+    expect(swingCodes).toEqual(['000660', '005930']);
+    expect(longCodes).toEqual(['035420', '051910']);
   });
 
   it('initializes each folder sort mode from legacy storage when not individually saved', async () => {
@@ -346,7 +346,7 @@ describe('WatchlistDrawer', () => {
 
     fireEvent.click(within(swing).getByLabelText('스윙 정렬'));
     fireEvent.click(within(swing).getByLabelText('스윙 정렬'));
-    expect(toCodes(swing)).toEqual(['000660', '005930']);
+    expect(toCodes(swing)).toEqual(['005930', '000660']);
     expect(toCodes(long)).toEqual(['035420', '051910']);
   });
 
@@ -382,7 +382,7 @@ describe('WatchlistDrawer', () => {
     fireEvent.click(screen.getByLabelText('기본 정렬'));
     expect(screen.getAllByTestId(/^watchlist-row-/).map((el) =>
       el.getAttribute('data-testid')?.replace('watchlist-row-', ''))
-      .at(0)).toBe('000660');
+      .at(0)).toBe('035420');
   });
 
   it('right-click opens the context menu; 관심 해제 removes the entry and closes', async () => {
