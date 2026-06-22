@@ -2,7 +2,7 @@ Status
 - Completed
 
 Commit hash
-- (pending until commit)
+- eb324cfe
 
 Changed files
 - frontend/src/screener/sortResults.ts
