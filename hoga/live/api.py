@@ -115,6 +115,10 @@ def _candle_to_dict(c) -> dict:
     }
 
 
+def _candle_date_yyyymmdd(c) -> str:
+    return datetime.fromtimestamp(c.t_ms / 1000, tz=_KST).strftime("%Y%m%d")
+
+
 def _hhmmss_from_t_ms(t_ms: int) -> str:
     return datetime.fromtimestamp(t_ms / 1000, tz=_KST).strftime("%H%M%S")
 
@@ -1111,15 +1115,28 @@ def build_router(
                 fetch_batch,
             )
         batch_label = f"{from_}__{to}"
+        data_warnings = [
+            _violation_to_warning(v, batch_label) for v in result.violations
+        ]
+        if timeframe not in {"D", "W", "M"} and result.candles:
+            earliest_returned = min(_candle_date_yyyymmdd(c) for c in result.candles)
+            if from_ < earliest_returned:
+                data_warnings.append({
+                    "batch": batch_label,
+                    "date": earliest_returned,
+                    "reason": "index_minute_depth_limited",
+                    "msg": (
+                        "KIS index minute REST returned no candles before "
+                        f"{earliest_returned} for this source unit"
+                    ),
+                })
         return {
             "index_id": index.id,
             "from": from_,
             "to": to,
             "timeframe": timeframe,
             "candles": [_candle_to_dict(c) for c in result.candles],
-            "data_warnings": [
-                _violation_to_warning(v, batch_label) for v in result.violations
-            ],
+            "data_warnings": data_warnings,
         }
 
     @router.get("/index-investor-net")

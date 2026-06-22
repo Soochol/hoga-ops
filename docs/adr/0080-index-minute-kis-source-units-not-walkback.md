@@ -39,6 +39,36 @@ Index minute cache는 exact request repeat을 빠르게 하는 cache일 뿐, KIS
 2026-06-23 live probe와 KIS official sample repo 확인 결과, 종목 분봉과 대표지수
 분봉은 같은 이름의 `FID_INPUT_HOUR_1`을 서로 다르게 해석한다.
 
+KIS official GitHub sample repo
+(`koreainvestment/open-trading-api`)에는 대표지수/업종 intraday 후보가 몇 개 있다.
+
+- `examples_llm/domestic_stock/inquire_time_indexchartprice/inquire_time_indexchartprice.py`
+  - `/uapi/domestic-stock/v1/quotations/inquire-time-indexchartprice`
+  - TR `FHKUP03500200`
+  - `FID_PW_DATA_INCU_YN`를 `Y`(과거) / `N`(당일)로 설명한다.
+  - `res.getHeader().tr_cont`가 `M` 또는 `F`이면 다음 호출을 하려는 구조가 있다.
+- `examples_llm/domestic_stock/inquire_index_timeprice/inquire_index_timeprice.py`
+  - `/uapi/domestic-stock/v1/quotations/inquire-index-timeprice`
+  - TR `FHPUP02110200`
+  - 시간별지수(분) endpoint지만, 현재 대표지수 코드(`0001`, `1001`, `2001`, `3003`)
+    실측에서는 빈 `output`을 반환했다.
+- `examples_llm/domestic_stock/inquire_index_tickprice/inquire_index_tickprice.py`
+  - `/uapi/domestic-stock/v1/quotations/inquire-index-tickprice`
+  - TR `FHPUP02110100`
+  - 시간별지수(초) endpoint지만, 현재 대표지수 코드 실측에서는 빈 `output`을 반환했다.
+- `examples_llm/domestic_stock/inquire_time_itemchartprice/inquire_time_itemchartprice.py`
+  and legacy/Postman samples
+  - `/uapi/domestic-stock/v1/quotations/inquire-time-itemchartprice`
+  - TR `FHKST03010200`
+  - legacy/Postman은 `FID_COND_MRKT_DIV_CODE=U`일 때 업종 조회간격 `60` 또는 `120`을
+    넣을 수 있다고 설명한다.
+  - 실측에서는 대표지수 rows가 나오지만 30 rows뿐이라 `FHKUP03500200`의 102 rows보다
+    얕고, forced `tr_cont=N`도 같은 page를 반복했다.
+
+따라서 "공식 샘플에 continuation 코드가 있다"는 사실만으로 지수 분봉 walk-back이
+가능하다고 결론내리면 안 된다. 실제 production 응답 헤더가 다음 page 신호를 주는지,
+그리고 다음 호출이 다른 rows를 반환하는지가 계약의 기준이다.
+
 | 축 | 종목 분봉 | 대표지수 분봉 |
 |---|---|---|
 | endpoint | `/uapi/domestic-stock/v1/quotations/inquire-time-dailychartprice` | `/uapi/domestic-stock/v1/quotations/inquire-time-indexchartprice` |
@@ -51,10 +81,24 @@ Index minute cache는 exact request repeat을 빠르게 하는 cache일 뿐, KIS
 
 - `FID_INPUT_DATE_1=20260619`를 지수 분봉에 추가해도 KIS는 이를 무시하고 최신 page를 반환한다.
 - `FID_INPUT_HOUR_1=153000`은 15:30 anchor가 아니라 큰 source unit처럼 해석되어 하루 3개 수준의 coarse rows를 반환한다.
+- `FID_PW_DATA_INCU_YN=Y`는 캔들 배열(`output2`)을 받기 위해 필요하다. `N`은 정상 응답이지만
+  대표지수 분봉 rows는 0개다.
+- 초기 호출 응답 header `tr_cont`는 빈 문자열이다. 즉 공식 샘플의 조건(`M` 또는 `F`)상
+  다음 page를 호출할 신호가 없다.
 - request header `tr_cont=N` 또는 `tr_cont=M`을 강제로 넣어도 older page가 아니라 같은 rows를 반환한다.
 - `60` source는 1m/3m에 필요한 최신 100여 rows만 제공한다.
 - `300` source는 5m/15m에서 더 넓은 날짜 분포를 제공한다.
 - `600` source는 10m/30m에서 더 넓은 날짜 분포를 제공한다.
+
+2026-06-23 재측정 결과:
+
+| endpoint | index codes | units | initial `tr_cont` | forced `tr_cont=N` |
+|---|---|---|---|---|
+| `FHKUP03500200` | `0001`, `1001`, `2001`, `3003` | `30`, `60`, `120`, `300`, `600`, `3600` | empty | 같은 102 rows 반복 |
+| `FHPUP02110200` | `0001`, `1001`, `2001`, `3003` | `60`, `120`, `300`, `600` | empty | `output=[]` |
+| `FHPUP02110100` | `0001`, `1001`, `2001`, `3003` | n/a | empty | `output=[]` |
+| `FHKST03010200` with `FID_COND_MRKT_DIV_CODE=U` | `0001`, `1001`, `2001`, `3003` | `60`, `120` | empty | 같은 30 rows 반복 |
+| Postman `inquire-daily-indexchartprice` path + `FHKST03010200` time params | `2001` spot check | `60` | empty | same as `FHKST03010200` 30 rows |
 
 따라서 "종목 분봉과 같은 page-walk를 지수 분봉에도 추가"하는 구현은 KIS 계약을
 오해한 것이다. 올바른 backend lever는 source-unit 선택이다.
