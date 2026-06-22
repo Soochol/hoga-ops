@@ -194,6 +194,33 @@ describe('LiveChartRoot', () => {
     expect(onCandleBasisHover).toHaveBeenCalledWith('20260619');
   });
 
+  it('clears transient hover basis when callback wiring is removed', () => {
+    const onCandleBasisHover = vi.fn();
+    const { rerender } = render(
+      <LiveChartRoot
+        code="index:KOSPI"
+        timeframe="1m"
+        bundle={DEFAULT_BUNDLE}
+        clampEngaged={false}
+        isPastCandlesLoading={false}
+        onCandleBasisHover={onCandleBasisHover}
+      />,
+      { wrapper },
+    );
+
+    rerender(
+      <LiveChartRoot
+        code="index:KOSPI"
+        timeframe="1m"
+        bundle={DEFAULT_BUNDLE}
+        clampEngaged={false}
+        isPastCandlesLoading={false}
+      />,
+    );
+
+    expect(onCandleBasisHover).toHaveBeenLastCalledWith(null);
+  });
+
   it('shows D/W/M hoga indicator empty-state notice on D timeframe', () => {
     render(
       <LiveChartRoot

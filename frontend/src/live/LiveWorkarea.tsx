@@ -203,8 +203,8 @@ export function LiveWorkarea({
                 todayKst={todayKst}
                 paneTogglesOverride={paneTogglesOverride}
                 onViewportCaptureReady={onViewportCaptureReady}
-                onCandleBasisHover={(date) => rankingDispatch({ type: 'hover_date', date })}
-                onCandleBasisClick={(date) => rankingDispatch({ type: 'toggle_date_pin', date })}
+                onCandleBasisHover={rankingAllowed ? (date) => rankingDispatch({ type: 'hover_date', date }) : undefined}
+                onCandleBasisClick={rankingAllowed ? (date) => rankingDispatch({ type: 'toggle_date_pin', date }) : undefined}
               />
             </div>
             {rankingAllowed && (

@@ -819,6 +819,7 @@ export function LiveChartRoot({ code, timeframe, venue = 'KRX', viewIdentity, bu
     return () => {
       chart.unsubscribeCrosshairMove(handler);
       if (pending !== null) cancelAnimationFrame(pending);
+      onCandleBasisHover?.(null);
       // Preserve user context only while the chart instance is active; on teardown
       // (view key / timeframe navigation) reset both cursor states.
       onCursorActiveChange?.(false);
