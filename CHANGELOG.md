@@ -3,6 +3,16 @@
 All notable changes to this project are documented here.
 The format follows a 4-digit `MAJOR.MINOR.PATCH.MICRO` scheme.
 
+## [0.8.17.1] - 2026-06-22
+
+### Added
+- **/live 차트 주기 단축키 추가**: `Shift+1`은 현재 기억된 분봉으로, `Shift+2/3/4`는 각각 일봉·주봉·월봉으로
+  전환한다. 기존 숫자 `1`~`9` 탭 선택 단축키와 입력창 동작은 유지된다.
+
+### Fixed
+- 기존 저장 상태에 마지막 분봉 값이 없는 사용자가 일·주·월봉 상태로 `/live`를 다시 열어도 분봉 복귀 값이
+  안전하게 `1분`으로 보정되도록 했다.
+
 ## [0.8.17.0] - 2026-06-22
 
 ### Added
