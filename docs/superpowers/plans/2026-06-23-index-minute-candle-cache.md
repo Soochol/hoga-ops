@@ -12,8 +12,8 @@
 
 - Use TDD: write failing tests before implementation.
 - Preserve existing `/api/live/index-candles` response shape: `index_id`, `from`, `to`, `timeframe`, `candles`, `data_warnings`.
-- Do not enable cache for index minute ranges until measurement proves the returned rows actually cover the requested date range.
-- Cache key must include `index_id`, `timeframe`, and the normalized source unit because KIS serves 1m-like and 10m-like sources differently.
+- Cache exact repeated index minute requests only; do not claim the cache can synthesize older rows that KIS did not return.
+- Cache key must include `index_id`, display `timeframe`, and `bucket_seconds`; source-unit selection is owned by `KisClient.fetch_index_minute_candles`.
 - Treat “repeat request faster” and “older scrollback produces more candles” as separate acceptance criteria.
 - Do not cache malformed rows or KIS API/rate-limit failures.
 
@@ -48,7 +48,7 @@ Implication:
 - Create `hoga/live/index_minute_candles_cache.py`
   - Owns memory-only index minute cache for served ranges.
 - Modify `hoga/live/api.py`
-  - Routes index minute candles through cache only when the requested range is coverable by cached or freshly served rows.
+  - Routes index minute candles through exact-request cache hits for repeated `(index_id, timeframe, bucket_seconds, from, to)` requests.
 - Create `tests/unit/live/test_index_minute_candles_cache.py`
   - Unit tests for cache hit, range miss, timeframe/source-unit separation, and no-cache-on-partial-coverage.
 - Modify `tests/unit/live/test_kis_client.py`
