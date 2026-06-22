@@ -1014,7 +1014,7 @@ def build_router(
     @router.get("/index-candles")
     async def _get_index_candles(
         index_id: str = Query(...),
-        timeframe: Literal["D", "W", "M"] = Query(...),
+        timeframe: Literal["1m", "3m", "5m", "10m", "15m", "30m", "D", "W", "M"] = Query(...),
         from_: str = Query(..., alias="from"),
         to: str = Query(...),
     ) -> dict:
@@ -1024,13 +1024,30 @@ def build_router(
         kis = kis_access.kis_for_role("foreground", data_dir)
         if kis is None:
             raise HTTPException(503, "KIS client not initialized")
-        result = await kis.fetch_index_daily_candles(
-            index,
-            from_,
-            to,
-            period=timeframe,
-            foreground=True,
-        )
+        if timeframe in {"D", "W", "M"}:
+            result = await kis.fetch_index_daily_candles(
+                index,
+                from_,
+                to,
+                period=timeframe,
+                foreground=True,
+            )
+        else:
+            bucket_seconds = {
+                "1m": 60,
+                "3m": 180,
+                "5m": 300,
+                "10m": 600,
+                "15m": 900,
+                "30m": 1800,
+            }[timeframe]
+            result = await kis.fetch_index_minute_candles(
+                index,
+                from_,
+                to,
+                bucket_seconds=bucket_seconds,
+                foreground=True,
+            )
         batch_label = f"{from_}__{to}"
         return {
             "index_id": index.id,

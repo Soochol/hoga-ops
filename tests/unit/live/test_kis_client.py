@@ -62,6 +62,63 @@ def _make_client_with_5xx(
 
 
 @pytest.mark.asyncio
+async def test_fetch_index_minute_candles_calls_kis_time_chart_endpoint() -> None:
+    captured: dict[str, object] = {}
+
+    def handler(req: httpx.Request) -> httpx.Response:
+        captured["path"] = req.url.path
+        captured["params"] = dict(req.url.params)
+        captured["tr_id"] = req.headers.get("tr_id")
+        return httpx.Response(
+            200,
+            json={
+                "rt_cd": "0",
+                "msg_cd": "0",
+                "msg1": "OK",
+                "output2": [
+                    {
+                        "stck_bsop_date": "20260619",
+                        "stck_cntg_hour": "093000",
+                        "bstp_nmix_oprc": "2850.10",
+                        "bstp_nmix_hgpr": "2852.34",
+                        "bstp_nmix_lwpr": "2849.87",
+                        "bstp_nmix_prpr": "2851.67",
+                        "cntg_vol": "123456",
+                    },
+                ],
+            },
+        )
+
+    client = KisClient(
+        credentials=KisCredentials(app_key="K", app_secret="S", env="real"),
+        token_provider=FakeTokenProvider(),
+        _transport=httpx.MockTransport(handler),
+    )
+    try:
+        result = await client.fetch_index_minute_candles(
+            get_representative_index("KOSPI"),
+            "20260619",
+            "20260619",
+            bucket_seconds=60,
+            foreground=True,
+        )
+    finally:
+        await client.aclose()
+
+    assert captured["path"] == "/uapi/domestic-stock/v1/quotations/inquire-time-indexchartprice"
+    assert captured["tr_id"] == "FHKUP03500200"
+    assert captured["params"] == {
+        "FID_COND_MRKT_DIV_CODE": "U",
+        "FID_ETC_CLS_CODE": "0",
+        "FID_INPUT_ISCD": "0001",
+        "FID_INPUT_HOUR_1": "60",
+        "FID_PW_DATA_INCU_YN": "Y",
+    }
+    assert [c.close for c in result.candles] == [2851.67]
+    assert result.candles[0].t_ms == 1781829000000
+
+
+@pytest.mark.asyncio
 async def test_5xx_with_json_body_preserves_upstream_msg_cd() -> None:
     """KIS sometimes wraps a domain error in a 5xx — keep its msg_cd visible.
 
