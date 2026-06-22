@@ -671,7 +671,7 @@ class WatchlistFolderView(BaseModel):
     id: str = Field(pattern=r"^f_[0-9a-f]{8}$")
     name: str = Field(min_length=1, max_length=40)
     order: int = Field(ge=0)
-    capture_enabled: bool
+    capture_enabled: bool = True
 
 
 class WatchlistEntryView(BaseModel):
@@ -681,6 +681,7 @@ class WatchlistEntryView(BaseModel):
     last_success_date: str | None = Field(default=None, pattern=r"^\d{8}$")
     folder_id: str = Field(pattern=r"^f_[0-9a-f]{8}$")  # v3: never null
     order: int = Field(default=0, ge=0)                  # index within the folder's member_codes
+    capture_candidate: bool = True
 
 
 class WatchlistResponse(BaseModel):

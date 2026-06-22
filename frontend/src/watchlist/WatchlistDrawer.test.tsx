@@ -619,10 +619,10 @@ describe('WatchlistDrawer', () => {
         { id: 'f_excluded', name: '제외', order: 1, capture_enabled: false },
       ],
       entries: [
-        { code: '005930', name: '삼성전자', registered_at_kst_date: '20260101', last_success_date: '20260621', folder_id: 'f_enabled', order: 0 },
-        { code: '000660', name: 'SK하이닉스', registered_at_kst_date: '20260101', last_success_date: null, folder_id: 'f_enabled', order: 1 },
-        { code: '035420', name: 'NAVER', registered_at_kst_date: '20260101', last_success_date: null, folder_id: 'f_enabled', order: 2 },
-        { code: '051910', name: 'LG화학', registered_at_kst_date: '20260101', last_success_date: null, folder_id: 'f_excluded', order: 0 },
+        { code: '005930', name: '삼성전자', registered_at_kst_date: '20260101', last_success_date: '20260621', folder_id: 'f_enabled', order: 0, capture_candidate: true },
+        { code: '000660', name: 'SK하이닉스', registered_at_kst_date: '20260101', last_success_date: null, folder_id: 'f_enabled', order: 1, capture_candidate: true },
+        { code: '035420', name: 'NAVER', registered_at_kst_date: '20260101', last_success_date: null, folder_id: 'f_enabled', order: 2, capture_candidate: true },
+        { code: '051910', name: 'LG화학', registered_at_kst_date: '20260101', last_success_date: null, folder_id: 'f_excluded', order: 0, capture_candidate: false },
       ],
       next_run_at_ms: 0,
     });
@@ -651,7 +651,7 @@ describe('WatchlistDrawer', () => {
     expect(screen.getByTestId('watchlist-row-051910')).toHaveTextContent('저장 제외');
   });
 
-  it('uses any capture-enabled membership for storage label', async () => {
+  it('uses backend-projected capture candidate for storage label', async () => {
     vi.spyOn(watchlistApi, 'getWatchlist').mockResolvedValue({
       folders: [
         { id: 'f_enabled', name: '저장', order: 0, capture_enabled: true },
@@ -659,9 +659,9 @@ describe('WatchlistDrawer', () => {
         { id: 'f_legacy', name: '기존', order: 2 },
       ],
       entries: [
-        { code: '005930', name: '삼성전자', registered_at_kst_date: '20260101', last_success_date: null, folder_id: 'f_excluded', order: 0 },
-        { code: '005930', name: '삼성전자', registered_at_kst_date: '20260101', last_success_date: null, folder_id: 'f_enabled', order: 0 },
-        { code: '000660', name: 'SK하이닉스', registered_at_kst_date: '20260101', last_success_date: null, folder_id: 'f_legacy', order: 0 },
+        { code: '005930', name: '삼성전자', registered_at_kst_date: '20260101', last_success_date: null, folder_id: 'f_excluded', order: 0, capture_candidate: true },
+        { code: '005930', name: '삼성전자', registered_at_kst_date: '20260101', last_success_date: null, folder_id: 'f_enabled', order: 0, capture_candidate: true },
+        { code: '000660', name: 'SK하이닉스', registered_at_kst_date: '20260101', last_success_date: null, folder_id: 'f_legacy', order: 0, capture_candidate: true },
       ],
       next_run_at_ms: 0,
     });

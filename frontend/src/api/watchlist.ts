@@ -18,6 +18,7 @@ export interface WatchlistEntry {
   folder_id: string | null;        // watchlist v3 와이어는 항상 실폴더(null 없음, ADR-0070);
                                    // null은 heatmap(v2, 공유 타입)의 미분류용으로만 존재
   order: number;                   // 0-based, 폴더 내 인덱스
+  capture_candidate?: boolean;     // code-level: any capture-enabled watchlist membership
 }
 
 export interface WatchlistResponse {

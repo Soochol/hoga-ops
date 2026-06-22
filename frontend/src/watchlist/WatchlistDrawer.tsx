@@ -7,7 +7,7 @@ import { QuoteSortIcon } from '../rightrail/QuoteSortIcon';
 import { quoteSortModeDescription } from '../rightrail/quoteSortDescription';
 import { useLivePageStore } from '../state/livePage';
 import { useLiveStatus } from '../api/liveStatus';
-import { DISPLAY_PRESENTATION, deriveCollectionStatus, deriveDisplayStatus } from '../live/collectionStatus';
+import { deriveCollectionView } from '../live/collectionStatus';
 import { CollectionDot } from '../live/CollectionDot';
 import {
   useWatchlist, useCatchupAll, useRemoveFromWatchlist,
@@ -325,19 +325,7 @@ export function WatchlistDrawer() {
   // ADR-0067: 행별 수집상태 배지 — live_set을 한 번 읽어 공유 (행마다 재계산 없음).
   const { data: liveStatusData } = useLiveStatus();
   const liveCodes = liveStatusData?.live_set ?? [];
-  const liveSet = useMemo(() => new Set(liveCodes), [liveCodes]);
-  const apiTargets = useMemo(() => new Set(liveStatusData?.kis_api_targets ?? []), [liveStatusData?.kis_api_targets]);
-  const captureEnabledCodes = useMemo(() => {
-    const foldersById = new Map((data?.folders ?? []).map((f) => [f.id, f] as const));
-    const enabled = new Set<string>();
-    for (const entry of data?.entries ?? []) {
-      const folder = entry.folder_id ? foldersById.get(entry.folder_id) : null;
-      if (folder && folder.capture_enabled !== false) {
-        enabled.add(entry.code);
-      }
-    }
-    return enabled;
-  }, [data]);
+  const apiTargets = liveStatusData?.kis_api_targets ?? [];
   const viewedCodes = activeCode ? [activeCode] : [];
 
   // 함수형 업데이터 — 같은 배치의 다중 toggle도 최신 Set 위에서 계산된다.
@@ -533,16 +521,15 @@ export function WatchlistDrawer() {
                   <SortableContext items={displayEntries.map((e) => entrySortableId(e.folder_id, e.code))} strategy={verticalListSortingStrategy}>
                     {displayEntries.map((entry) => {
                       const q = quoteByCode.get(entry.code);
-                      const status = deriveCollectionStatus(entry.code, liveCodes, codes, viewedCodes);
-                      const displayStatus = deriveDisplayStatus(true, status);
-                      const badge = <CollectionDot status={displayStatus} />;
-                      const storageLabel = liveSet.has(entry.code)
-                        ? 'KIS WS 저장 중'
-                        : apiTargets.has(entry.code)
-                          ? 'KIS API 30초 저장 중'
-                          : captureEnabledCodes.has(entry.code)
-                            ? '대기'
-                            : '저장 제외';
+                      const collection = deriveCollectionView({
+                        code: entry.code,
+                        liveSet: liveCodes,
+                        watchlistCodes: codes,
+                        viewedCodes,
+                        kisApiTargets: apiTargets,
+                        captureCandidate: entry.capture_candidate !== false,
+                      });
+                      const badge = <CollectionDot status={collection.displayStatus} />;
                       return (
                         <SortableQuoteRow
                           key={entrySortableId(entry.folder_id, entry.code)}
@@ -555,8 +542,8 @@ export function WatchlistDrawer() {
                           onContextMenu={(e) => openMenu(e, entry.code, entry.name, entry.folder_id)}
                           onDelete={() => removeM.mutate(entry.code)}
                           collectionBadge={badge}
-                          collectionLabel={DISPLAY_PRESENTATION[displayStatus].ariaLabel}
-                          metadata={<span className="text-xs text-fg-dimmer">{storageLabel}</span>}
+                          collectionLabel={collection.ariaLabel}
+                          metadata={<span className="text-xs text-fg-dimmer">{collection.storageLabel}</span>}
                           dragEnabled={rowDragEnabled}
                         />
                       );

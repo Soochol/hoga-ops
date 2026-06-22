@@ -93,6 +93,7 @@ def project_entry_views(doc: WatchlistDocument) -> list[WatchlistEntryView]:
     reads so one bad membership does not make the whole Watchlist unavailable.
     """
     by_code = {entry.code: entry for entry in doc.entries}
+    capture_candidates = set(capture_ordered_codes(doc))
     views: list[WatchlistEntryView] = []
     for folder in ordered_folders(doc):
         for order, code in enumerate(folder.member_codes):
@@ -112,6 +113,7 @@ def project_entry_views(doc: WatchlistDocument) -> list[WatchlistEntryView]:
                     last_success_date=base.last_success_date,
                     folder_id=folder.id,
                     order=order,
+                    capture_candidate=base.code in capture_candidates,
                 )
             )
     return views

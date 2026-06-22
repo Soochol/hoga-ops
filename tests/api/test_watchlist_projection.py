@@ -1,10 +1,17 @@
 """Watchlist display projection rules live in one domain module."""
 from __future__ import annotations
 
+from hoga.api.models import WatchlistDocument, WatchlistEntry, WatchlistFolder
+from hoga.api.watchlist_projection import (
+    capture_ordered_codes,
+    display_ordered_codes,
+    first_membership_positions,
+    project_entry_views,
+    project_folder_views,
+)
+
 
 def _doc():
-    from hoga.api.models import WatchlistDocument, WatchlistEntry, WatchlistFolder
-
     return WatchlistDocument(
         folders=[
             WatchlistFolder(
@@ -44,22 +51,16 @@ def _doc():
 
 
 def test_display_ordered_codes_dedupes_by_first_membership():
-    from hoga.api.watchlist_projection import display_ordered_codes
-
     assert display_ordered_codes(_doc()) == ["005930", "000660", "035720"]
 
 
 def test_project_folder_views_includes_capture_enabled() -> None:
-    from hoga.api.watchlist_projection import project_folder_views
-
     views = project_folder_views(_doc())
 
     assert views[0].capture_enabled is True
 
 
 def test_project_entries_preserves_each_valid_membership_row():
-    from hoga.api.watchlist_projection import project_entry_views
-
     views = project_entry_views(_doc())
 
     assert [(v.folder_id, v.order, v.code) for v in views] == [
@@ -70,11 +71,44 @@ def test_project_entries_preserves_each_valid_membership_row():
     ]
     assert views[0].name == "Samsung"
     assert views[0].last_success_date == "20260610"
+    assert all(v.capture_candidate for v in views)
+
+
+def test_project_entries_marks_capture_candidate_by_any_enabled_membership():
+    doc = WatchlistDocument(
+        folders=[
+            WatchlistFolder(
+                id="f_0000000a",
+                name="Disabled",
+                order=0,
+                member_codes=["005930", "000660"],
+                capture_enabled=False,
+            ),
+            WatchlistFolder(
+                id="f_0000000b",
+                name="Enabled",
+                order=1,
+                member_codes=["005930"],
+                capture_enabled=True,
+            ),
+        ],
+        entries=[
+            WatchlistEntry(code="005930", name="삼성전자", registered_at_kst_date="20260601"),
+            WatchlistEntry(code="000660", name="SK하이닉스", registered_at_kst_date="20260601"),
+        ],
+    )
+
+    views = project_entry_views(doc)
+
+    by_row = {(v.folder_id, v.code): v.capture_candidate for v in views}
+    assert by_row == {
+        ("f_0000000a", "005930"): True,
+        ("f_0000000a", "000660"): False,
+        ("f_0000000b", "005930"): True,
+    }
 
 
 def test_first_membership_positions_returns_topmost_valid_position():
-    from hoga.api.watchlist_projection import first_membership_positions
-
     assert first_membership_positions(_doc()) == {
         "005930": ("f_0000000a", 0),
         "000660": ("f_0000000a", 1),
@@ -83,9 +117,6 @@ def test_first_membership_positions_returns_topmost_valid_position():
 
 
 def test_capture_ordered_codes_uses_enabled_folders_only() -> None:
-    from hoga.api.models import WatchlistDocument, WatchlistEntry, WatchlistFolder
-    from hoga.api.watchlist_projection import capture_ordered_codes
-
     doc = WatchlistDocument(
         folders=[
             WatchlistFolder(
