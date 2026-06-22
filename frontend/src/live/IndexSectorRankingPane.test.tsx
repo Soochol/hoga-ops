@@ -78,7 +78,7 @@ describe('IndexSectorRankingPane', () => {
     expect(screen.getByText('삼성전자')).toBeInTheDocument();
   });
 
-  it('pins a sector on click and unpins it on second click', async () => {
+  it('keeps the preview while a pinned sector remains hovered and clears on leave', async () => {
     const user = userEvent.setup();
     render(
       <IndexSectorRankingPane
@@ -95,10 +95,10 @@ describe('IndexSectorRankingPane', () => {
     await user.click(screen.getByRole('button', { name: /2위 바이오/ }));
     expect(screen.getByText('셀트리온')).toBeInTheDocument();
 
-    await user.unhover(screen.getByRole('button', { name: /2위 바이오/ }));
+    await user.click(screen.getByRole('button', { name: /2위 바이오/ }));
     expect(screen.getByText('셀트리온')).toBeInTheDocument();
 
-    await user.click(screen.getByRole('button', { name: /2위 바이오/ }));
+    await user.unhover(screen.getByRole('button', { name: /2위 바이오/ }));
     expect(screen.queryByText('셀트리온')).toBeNull();
     expect(screen.getByText('삼성전자')).toBeInTheDocument();
   });

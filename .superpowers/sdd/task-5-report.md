@@ -30,4 +30,16 @@ Result: 2 files passed, 11 tests passed.
 
 ## Notes
 
-- I made one narrow local adjustment to the component behavior: when unpinning the currently pinned sector, the pane also clears the hover preview. This keeps the second click test stable under local Testing Library click semantics, where the click sequence can briefly re-hover the button before the handler runs.
+- I removed the forced preview clear from the sector unpin click path. The pane now leaves the current preview alone on unpin and lets the existing hover/focus leave handlers decide when to fall back to rank 1.
+
+## Review Fix
+
+The `IndexSectorRankingPane` unpin handler no longer dispatches `preview_sector(null)`. That keeps the active sector preview stable while the cursor or keyboard focus is still on the same button, and it only returns to rank 1 after hover/focus leaves.
+
+Verification:
+
+```bash
+cd frontend && npx vitest run src/live/IndexSectorRankingPane.test.tsx src/live/indexSectorRankingState.test.ts
+```
+
+Result: 2 files passed, 11 tests passed.

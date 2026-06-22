@@ -167,8 +167,6 @@ export function IndexSectorRankingPane({
       >
         <div className="min-h-0 overflow-auto" style={{ borderRight: '1px solid var(--border)' }}>
           {sectors.map((sector, index) => {
-            const isPinned = state.pinnedSectorId === sector.folder_id;
-
             return (
               <SectorButton
                 key={sector.folder_id ?? `sector-${index}`}
@@ -176,10 +174,7 @@ export function IndexSectorRankingPane({
                 rank={index + 1}
                 active={sector.folder_id === activeSector?.folder_id}
                 onPreview={(folderId) => dispatch({ type: 'preview_sector', folderId })}
-                onPin={(folderId) => {
-                  dispatch({ type: 'toggle_sector_pin', folderId });
-                  if (isPinned) dispatch({ type: 'preview_sector', folderId: null });
-                }}
+                onPin={(folderId) => dispatch({ type: 'toggle_sector_pin', folderId })}
               />
             );
           })}
