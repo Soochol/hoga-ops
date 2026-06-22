@@ -191,14 +191,15 @@ export function useViewportBackfill({
   }, [chart, bundle, axis]);
 
   // 3a. 진행 루프(스텝 2..N): 한 스텝 settle(isExtending true→false) 직후 viewport가
-  // 아직 빈영역이면 다음 스텝을 자가 dispatch한다. minute-only(D/W/M은 one-shot).
+  // 아직 빈영역이면 다음 스텝을 자가 dispatch한다. Applies to minute and
+  // calendar frames alike; D/W/M users can keep moving left without a manual
+  // "one chunk at a time" rhythm.
   // planFillStep이 종료(꽉 참/클램프/백스톱)를 판정. 재배치 effect 뒤에 선언해
   // getVisibleLogicalRange가 재배치 적용 후 위치를 읽도록 한다.
   useEffect(() => {
     const wasExtending = prevExtendingRef.current;
     prevExtendingRef.current = isExtending;
     if (!chart) return;
-    if (!isMinuteTimeframe(timeframe)) return;
     if (!(wasExtending && !isExtending)) return; // falling edge만
     // 초기 캔들 미로드(빈 차트)면 백필 폭주 금지 — candleCountRef 주석 참조.
     if (candleCountRef.current === 0) return;
@@ -216,7 +217,7 @@ export function useViewportBackfill({
       visibleFrom,
       historicalFromDate: cur,
       axisEarliestMs: axis.segments[0].sessionOpenMs,
-      earliestAllowedDate: earliestAllowedMinuteDate(todayKstYyyymmdd()),
+      earliestAllowedDate: isMinuteTimeframe(timeframe) ? earliestAllowedMinuteDate(todayKstYyyymmdd()) : null,
       stepCalendarDays: stepChunkDays(timeframe),
       stepCount: fillStepCountRef.current,
       maxSteps: MAX_FILL_STEPS,
