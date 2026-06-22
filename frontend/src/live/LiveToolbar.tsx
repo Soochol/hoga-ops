@@ -1,5 +1,14 @@
-import type { ReactNode } from 'react';
-import { LIVE_TIMEFRAMES, useLivePageStore } from '../state/livePage';
+import { useCallback, useEffect, useRef, useState, type ReactNode } from 'react';
+import {
+  CALENDAR_TIMEFRAMES,
+  MINUTE_TIMEFRAMES,
+  isMinuteTimeframe,
+  type CalendarTimeframe,
+  type MinuteTimeframe,
+  useLivePageStore,
+} from '../state/livePage';
+import { useDismissablePopover } from '../util/useDismissablePopover';
+import { useClampedFixedPosition } from '../util/useClampedFixedPosition';
 import LiveDrawingMenu from './LiveDrawingMenu';
 
 type Props = {
@@ -8,9 +17,68 @@ type Props = {
   studySaveControl?: ReactNode;
 };
 
+const CALENDAR_LABELS: Record<CalendarTimeframe, string> = {
+  D: '일',
+  W: '주',
+  M: '월',
+};
+
+function minuteLabel(tf: MinuteTimeframe): string {
+  return `${tf.slice(0, -1)}분`;
+}
+
 export function LiveToolbar({ onOpenIndicators, onOpenSettings, studySaveControl }: Props) {
   const tf = useLivePageStore((s) => s.candleTimeframe);
   const setTf = useLivePageStore((s) => s.setCandleTimeframe);
+  const [minuteMenuOpen, setMinuteMenuOpen] = useState(false);
+  const [rememberedMinute, setRememberedMinute] = useState<MinuteTimeframe>(
+    isMinuteTimeframe(tf) ? tf : '1m',
+  );
+  const minuteWrapRef = useRef<HTMLDivElement>(null);
+  const minuteButtonRef = useRef<HTMLButtonElement>(null);
+  const [anchorRect, setAnchorRect] = useState<DOMRect | null>(null);
+
+  const closeMinuteMenu = useCallback(() => setMinuteMenuOpen(false), []);
+  useDismissablePopover(minuteMenuOpen, minuteWrapRef, closeMinuteMenu);
+  const { ref: menuPositionRef, left, top } = useClampedFixedPosition<HTMLDivElement>(
+    anchorRect?.left ?? 0,
+    anchorRect ? anchorRect.bottom + 4 : 0,
+  );
+
+  useEffect(() => {
+    if (isMinuteTimeframe(tf)) setRememberedMinute(tf);
+  }, [tf]);
+
+  useEffect(() => {
+    if (!minuteMenuOpen || !minuteButtonRef.current) return;
+    setAnchorRect(minuteButtonRef.current.getBoundingClientRect());
+  }, [minuteMenuOpen, rememberedMinute]);
+
+  const onMinuteSelectorClick = () => {
+    if (isMinuteTimeframe(tf)) {
+      setAnchorRect(minuteButtonRef.current?.getBoundingClientRect() ?? null);
+      setMinuteMenuOpen((open) => !open);
+      return;
+    }
+    setMinuteMenuOpen(false);
+    setTf(rememberedMinute);
+  };
+
+  const pickMinute = (next: MinuteTimeframe) => {
+    setRememberedMinute(next);
+    setMinuteMenuOpen(false);
+    setTf(next);
+  };
+
+  const pickCalendar = (next: CalendarTimeframe) => {
+    setMinuteMenuOpen(false);
+    setTf(next);
+  };
+
+  const minuteButtonLabel = isMinuteTimeframe(tf)
+    ? `분봉 선택 열기: ${minuteLabel(rememberedMinute)}`
+    : `${minuteLabel(rememberedMinute)}봉으로 전환`;
+
   return (
     <div
       data-testid="live-toolbar"
@@ -21,25 +89,80 @@ export function LiveToolbar({ onOpenIndicators, onOpenSettings, studySaveControl
         background: 'var(--bg-card)',
       }}
     >
-      <div className="flex gap-1" role="group" aria-label="Timeframe">
-        {LIVE_TIMEFRAMES.map((t) => (
+      <div className="flex gap-1" role="group" aria-label="LiveTimeframe">
+        <div ref={minuteWrapRef} className="relative">
           <button
-            key={t}
+            ref={minuteButtonRef}
             type="button"
-            onClick={() => setTf(t)}
-            aria-pressed={tf === t}
-            className="px-2 py-1 rounded font-mono"
+            onClick={onMinuteSelectorClick}
+            aria-label={minuteButtonLabel}
+            aria-haspopup={isMinuteTimeframe(tf) ? 'menu' : undefined}
+            aria-expanded={isMinuteTimeframe(tf) ? minuteMenuOpen : undefined}
+            className="inline-flex items-center gap-1 rounded font-mono hover:opacity-90 transition-opacity"
             style={{
-              background: tf === t ? 'var(--tint-selection)' : 'var(--bg-input)',
-              color: tf === t ? 'var(--accent)' : 'var(--fg-dim)',
+              padding: '4px 10px',
+              background: isMinuteTimeframe(tf) ? 'var(--tint-selection)' : 'var(--bg-input)',
+              color: isMinuteTimeframe(tf) ? 'var(--accent)' : 'var(--fg-dim)',
               fontSize: 'var(--text-xs)',
               border: '1px solid',
-              borderColor: tf === t ? 'var(--accent)' : 'var(--border)',
+              borderColor: isMinuteTimeframe(tf) ? 'var(--accent)' : 'var(--border)',
             }}
           >
-            {t}
+            <span>{minuteLabel(rememberedMinute)}</span>
+            <span aria-hidden="true">⌄</span>
           </button>
-        ))}
+          {minuteMenuOpen && anchorRect && (
+            <div
+              ref={menuPositionRef}
+              role="menu"
+              aria-label="분봉 목록"
+              className="w-24 bg-bg-card border border-border rounded shadow-lg z-30 py-1"
+              style={{ position: 'fixed', left, top }}
+            >
+              {MINUTE_TIMEFRAMES.map((minute) => {
+                const selected = tf === minute;
+                return (
+                  <button
+                    key={minute}
+                    type="button"
+                    role="menuitemradio"
+                    aria-checked={selected}
+                    onClick={() => pickMinute(minute)}
+                    className={
+                      (selected
+                        ? 'bg-bg-input-hover text-accent'
+                        : 'text-fg-dim hover:text-fg hover:bg-bg-input-hover') +
+                      ' w-full text-left px-3 py-1.5 text-sm font-mono'
+                    }
+                  >
+                    {minuteLabel(minute)}
+                  </button>
+                );
+              })}
+            </div>
+          )}
+        </div>
+        {CALENDAR_TIMEFRAMES.map((calendar) => {
+          const active = tf === calendar;
+          return (
+            <button
+              key={calendar}
+              type="button"
+              onClick={() => pickCalendar(calendar)}
+              aria-pressed={active}
+              className="px-2 py-1 rounded font-mono hover:opacity-90 transition-opacity"
+              style={{
+                background: active ? 'var(--tint-selection)' : 'var(--bg-input)',
+                color: active ? 'var(--accent)' : 'var(--fg-dim)',
+                fontSize: 'var(--text-xs)',
+                border: '1px solid',
+                borderColor: active ? 'var(--accent)' : 'var(--border)',
+              }}
+            >
+              {CALENDAR_LABELS[calendar]}
+            </button>
+          );
+        })}
       </div>
       <button
         type="button"
