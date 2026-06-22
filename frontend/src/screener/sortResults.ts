@@ -1,0 +1,32 @@
+import { sortEntriesByChangePct, type QuoteSortMode } from '../rightrail/quoteSort';
+
+export type ScreenerResultSortMode = QuoteSortMode;
+
+type SortableScreenerRow = {
+  code: string;
+  change_pct: number | null | undefined;
+};
+
+function normalizeChangePct(changePct: unknown): number | null {
+  return typeof changePct === 'number' && Number.isFinite(changePct) ? changePct : null;
+}
+
+export function sortScreenerRows<T extends SortableScreenerRow>(
+  rows: readonly T[],
+  mode: ScreenerResultSortMode,
+): T[] {
+  const sortable = rows.map((row, order) => {
+    const syntheticCode = `${order}:${row.code}`;
+    return { row, code: syntheticCode, order };
+  });
+
+  const pctBySyntheticCode = new Map<string, number | null>(
+    sortable.map(({ code, row }) => [code, normalizeChangePct(row.change_pct)]),
+  );
+
+  return sortEntriesByChangePct(
+    sortable,
+    (code) => pctBySyntheticCode.get(code) ?? null,
+    mode,
+  ).map((entry) => entry.row);
+}
