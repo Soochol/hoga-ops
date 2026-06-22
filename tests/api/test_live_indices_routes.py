@@ -231,6 +231,42 @@ def test_index_minute_candles_repeated_request_uses_cache(tmp_path, monkeypatch)
     assert r2.json()["candles"][0]["close"] == 1.0
 
 
+def test_index_minute_candles_warn_when_request_starts_before_returned_depth(tmp_path, monkeypatch) -> None:
+    class FakeKis:
+        async def fetch_index_minute_candles(self, index, from_s, to_s, *, bucket_seconds=60, foreground=False):
+            assert from_s == "20260601"
+            assert to_s == "20260622"
+            return IndexCandleFetchResult(
+                candles=[
+                    IndexCandlePoint(
+                        t_ms=1782103980000,
+                        open=1.0,
+                        high=1.0,
+                        low=1.0,
+                        close=1.0,
+                        volume=1,
+                    ),
+                ],
+                violations=[],
+            )
+
+    monkeypatch.setattr(live_api.kis_access, "kis_for_role", lambda role, data_dir: FakeKis())
+    monkeypatch.setattr(live_api, "index_minute_candles_cache_instance", None, raising=False)
+
+    app = FastAPI()
+    app.include_router(build_router(get_status=lifecycle.get_status, data_dir=tmp_path))
+    res = TestClient(app).get(
+        "/api/live/index-candles?index_id=KOSPI&timeframe=1m&from=20260601&to=20260622",
+    )
+
+    assert res.status_code == 200
+    assert any(
+        w["reason"] == "index_minute_depth_limited"
+        and w["date"] == "20260622"
+        for w in res.json()["data_warnings"]
+    )
+
+
 def test_index_investor_net_returns_market_rows_for_kospi(tmp_path, monkeypatch) -> None:
     class FakeKis:
         async def fetch_market_investor_net(self, index, from_s, to_s):

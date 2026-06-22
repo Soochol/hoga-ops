@@ -32,6 +32,7 @@ const livePageMocks = vi.hoisted(() => {
       viewIdentity?: string;
       chartBundle?: RangeBundle | null;
       isExtending?: boolean;
+      pastDataWarnings?: Array<{ reason: string; msg?: string }>;
       paneTogglesOverride?: { hogaPanes?: boolean };
     }>,
     liveBundleCalls: [] as Array<{ code: unknown; timeframe: unknown; options: { venue?: string } }>,
@@ -416,6 +417,42 @@ describe('LivePage shell', () => {
       code: 'index:KOSPI',
       timeframe: 'W',
       isExtending: true,
+    }));
+  });
+
+  it('passes index candle data warnings through to the chart surface', async () => {
+    livePageMocks.indexCandlesResult.data = {
+      index_id: 'KOSPI',
+      from: '20260601',
+      to: '20260622',
+      timeframe: '1m',
+      candles: [
+        {
+          t_ms: 1_782_103_980_000,
+          open: 2850.10,
+          high: 2852.34,
+          low: 2849.87,
+          close: 2851.67,
+          volume: 123456,
+        },
+      ],
+      data_warnings: [
+        { batch: '20260601__20260622', date: '20260622', reason: 'index_minute_depth_limited', msg: 'limited' },
+      ],
+    };
+    useLivePageStore.setState({
+      candleTimeframe: '1m',
+      historicalFromDate: '20260601',
+    });
+
+    renderWithRouter('/live?index=KOSPI');
+
+    await waitFor(() => expect(livePageMocks.liveChartRootProps.at(-1)).toMatchObject({
+      code: 'index:KOSPI',
+      timeframe: '1m',
+      pastDataWarnings: [
+        expect.objectContaining({ reason: 'index_minute_depth_limited' }),
+      ],
     }));
   });
 
