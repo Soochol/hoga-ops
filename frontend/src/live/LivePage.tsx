@@ -115,6 +115,11 @@ export function LivePage() {
     onNextTab: () => { if (tabs.length) focusTab(tabs[(activeIdx + 1 + tabs.length) % tabs.length].id); },
     onPrevTab: () => { if (tabs.length) focusTab(tabs[(activeIdx - 1 + tabs.length) % tabs.length].id); },
     onSelectTabIndex: (i) => { if (i < tabs.length) focusTab(tabs[i].id); },
+    onSelectTimeframeShortcut: (slot) => {
+      const page = useLivePageStore.getState();
+      const next = slot === 'minute' ? page.lastMinuteTimeframe : slot;
+      page.setCandleTimeframe(next);
+    },
   });
 
   const activeCode = useLivePageStore((s) => s.activeCode);
