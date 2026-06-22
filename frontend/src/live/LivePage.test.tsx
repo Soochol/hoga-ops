@@ -8,6 +8,8 @@ import { useLivePageStore } from '../state/livePage';
 import { useLiveTabsStore } from '../state/liveTabs';
 import { useLiveVenueStore } from '../state/liveVenue';
 import * as liveStatus from '../api/liveStatus';
+import { initialHistoricalDaysFor, subtractDaysKst, todayKstYyyymmdd } from './liveDateTime';
+import type { LiveTimeframe } from '../state/livePage';
 
 const livePageMocks = vi.hoisted(() => {
   const liveOb = [{
@@ -24,11 +26,29 @@ const livePageMocks = vi.hoisted(() => {
   return {
     liveOb,
     liveTrade,
-    liveChartRootProps: [] as Array<{ code?: string | null; timeframe?: string; viewIdentity?: string }>,
+    liveChartRootProps: [] as Array<{
+      code?: string | null;
+      timeframe?: string;
+      viewIdentity?: string;
+      chartBundle?: RangeBundle | null;
+      isExtending?: boolean;
+      paneTogglesOverride?: { hogaPanes?: boolean };
+    }>,
     liveBundleCalls: [] as Array<{ code: unknown; timeframe: unknown; options: { venue?: string } }>,
     liveBundleResult: {
       bundle: null as RangeBundle | null,
       chartBundle: null as RangeBundle | null,
+    },
+    indexCandlesCalls: [] as unknown[],
+    indexCandlesResult: {
+      data: undefined as unknown,
+      isLoading: false,
+      isFetching: false,
+    },
+    indexInvestorNetCalls: [] as unknown[],
+    indexInvestorNetResult: {
+      data: undefined as unknown,
+      isLoading: false,
     },
     dayAskPeakObArgs: [] as unknown[],
     dayAskPeakTradeArgs: [] as unknown[],
@@ -115,6 +135,18 @@ vi.mock('../watchlist/useWatchlist', () => ({
   useRemoveFromWatchlist: () => ({ mutate: vi.fn() }),
 }));
 
+vi.mock('../api/liveIndices', () => ({
+  useLiveIndices: () => ({ data: [] }),
+  useLiveIndexCandles: (...args: unknown[]) => {
+    livePageMocks.indexCandlesCalls.push(args);
+    return livePageMocks.indexCandlesResult;
+  },
+  useLiveIndexInvestorNet: (...args: unknown[]) => {
+    livePageMocks.indexInvestorNetCalls.push(args);
+    return livePageMocks.indexInvestorNetResult;
+  },
+}));
+
 // LivePage now owns the single useLiveBundle call. Mock to avoid TanStack
 // queries hitting real endpoints in the shell test.
 vi.mock('./useLiveBundle', () => ({
@@ -193,6 +225,13 @@ describe('LivePage shell', () => {
     livePageMocks.liveBundleCalls.length = 0;
     livePageMocks.liveBundleResult.bundle = null;
     livePageMocks.liveBundleResult.chartBundle = null;
+    livePageMocks.indexCandlesCalls.length = 0;
+    livePageMocks.indexCandlesResult.data = undefined;
+    livePageMocks.indexCandlesResult.isLoading = false;
+    livePageMocks.indexCandlesResult.isFetching = false;
+    livePageMocks.indexInvestorNetCalls.length = 0;
+    livePageMocks.indexInvestorNetResult.data = undefined;
+    livePageMocks.indexInvestorNetResult.isLoading = false;
     livePageMocks.dayAskPeakTodayArgs.length = 0;
     livePageMocks.allPriceObArgs.length = 0;
     livePageMocks.allPriceTodayArgs.length = 0;
@@ -240,6 +279,213 @@ describe('LivePage shell', () => {
     renderWithRouter('/live?code=000660');
     // The status bar surfaces the code somewhere visible
     expect(screen.getByTestId('live-status-bar').textContent).toContain('000660');
+  });
+
+  it('reads active index from ?index= query param without setting activeCode', async () => {
+    renderWithRouter('/live?index=KOSPI');
+    await waitFor(() => expect(useLivePageStore.getState().activeInstrument).toEqual({
+      kind: 'index',
+      id: 'KOSPI',
+      label: 'KOSPI',
+    }));
+    expect(useLivePageStore.getState().activeCode).toBeNull();
+    expect(useLiveTabsStore.getState().tabs[0].instrument).toEqual({
+      kind: 'index',
+      id: 'KOSPI',
+      label: 'KOSPI',
+    });
+  });
+
+  it('renders an index chart bundle for daily index deep links', async () => {
+    livePageMocks.indexCandlesResult.data = {
+      index_id: 'KOSPI',
+      from: '20260619',
+      to: '20260619',
+      timeframe: 'D',
+      candles: [
+        {
+          t_ms: 1_781_830_800_000,
+          open: 2840.12,
+          high: 2861.34,
+          low: 2833.2,
+          close: 2855.67,
+          volume: 450000000,
+        },
+      ],
+      data_warnings: [],
+    };
+    useLivePageStore.setState({ candleTimeframe: 'D' });
+
+    renderWithRouter('/live?index=KOSPI');
+
+    await waitFor(() => expect(livePageMocks.liveChartRootProps.at(-1)).toMatchObject({
+      code: 'index:KOSPI',
+      timeframe: 'D',
+    }));
+    const lastIndexCall = livePageMocks.indexCandlesCalls.at(-1) as unknown[] | undefined;
+    expect(lastIndexCall?.[0]).toBe('KOSPI');
+    expect(livePageMocks.liveChartRootProps.at(-1)?.chartBundle?.candles[0].close).toBe(2855.67);
+    expect(livePageMocks.liveChartRootProps.at(-1)?.chartBundle?.quote_ratio.points).toEqual([]);
+    expect(livePageMocks.liveChartRootProps.at(-1)?.paneTogglesOverride?.hogaPanes).toBe(false);
+  });
+
+  it('renders an index chart bundle for minute index deep links', async () => {
+    livePageMocks.indexCandlesResult.data = {
+      index_id: 'KOSPI',
+      from: '20260619',
+      to: '20260619',
+      timeframe: '1m',
+      candles: [
+        {
+          t_ms: 1_781_829_000_000,
+          open: 2850.10,
+          high: 2852.34,
+          low: 2849.87,
+          close: 2851.67,
+          volume: 123456,
+        },
+      ],
+      data_warnings: [],
+    };
+    useLivePageStore.setState({ candleTimeframe: '1m' });
+
+    renderWithRouter('/live?index=KOSPI');
+
+    await waitFor(() => expect(livePageMocks.liveChartRootProps.at(-1)).toMatchObject({
+      code: 'index:KOSPI',
+      timeframe: '1m',
+    }));
+    const lastIndexCall = livePageMocks.indexCandlesCalls.at(-1) as unknown[] | undefined;
+    expect(lastIndexCall?.[0]).toBe('KOSPI');
+    expect(lastIndexCall?.[1]).toBe('1m');
+    expect(livePageMocks.liveChartRootProps.at(-1)?.chartBundle?.bucket_ms).toBe(60_000);
+    expect(livePageMocks.liveChartRootProps.at(-1)?.chartBundle?.candles[0].close).toBe(2851.67);
+    expect(livePageMocks.liveChartRootProps.at(-1)?.chartBundle?.quote_ratio.points).toEqual([]);
+    expect(livePageMocks.liveChartRootProps.at(-1)?.paneTogglesOverride?.hogaPanes).toBe(false);
+  });
+
+  it.each(['1m', 'D', 'W', 'M'] as const)(
+    'fetches index %s candles from the same initial history window as stock charts',
+    async (timeframe: LiveTimeframe) => {
+      useLivePageStore.setState({ candleTimeframe: timeframe });
+
+      renderWithRouter('/live?index=KOSPI');
+
+      await waitFor(() => {
+        expect(livePageMocks.indexCandlesCalls.some((args) => {
+          const call = args as unknown[];
+          return call[0] === 'KOSPI' && call[1] === timeframe;
+        })).toBe(true);
+      });
+      const call = (livePageMocks.indexCandlesCalls as unknown[][]).find((args) =>
+        args[0] === 'KOSPI' && args[1] === timeframe,
+      );
+      expect(call?.[2]).toBe(subtractDaysKst(todayKstYyyymmdd(), initialHistoricalDaysFor(timeframe)));
+    },
+  );
+
+  it('marks index charts as extending while a historical index fetch is in flight', async () => {
+    livePageMocks.indexCandlesResult.data = {
+      index_id: 'KOSPI',
+      from: '20260601',
+      to: '20260619',
+      timeframe: 'W',
+      candles: [
+        {
+          t_ms: 1_781_830_800_000,
+          open: 2840.12,
+          high: 2861.34,
+          low: 2833.2,
+          close: 2855.67,
+          volume: 450000000,
+        },
+      ],
+      data_warnings: [],
+    };
+    livePageMocks.indexCandlesResult.isFetching = true;
+    useLivePageStore.setState({
+      candleTimeframe: 'W',
+    });
+
+    renderWithRouter('/live?index=KOSPI');
+    act(() => {
+      useLivePageStore.getState().extendHistoricalRange('20200101');
+    });
+
+    await waitFor(() => expect(livePageMocks.liveChartRootProps.at(-1)).toMatchObject({
+      code: 'index:KOSPI',
+      timeframe: 'W',
+      isExtending: true,
+    }));
+  });
+
+  it('hydrates KOSPI daily index charts with market investor net points', async () => {
+    livePageMocks.indexCandlesResult.data = {
+      index_id: 'KOSPI',
+      from: '20260619',
+      to: '20260619',
+      timeframe: 'D',
+      candles: [
+        {
+          t_ms: 1_781_830_800_000,
+          open: 2840.12,
+          high: 2861.34,
+          low: 2833.2,
+          close: 2855.67,
+          volume: 450000000,
+        },
+      ],
+      data_warnings: [],
+    };
+    livePageMocks.indexInvestorNetResult.data = {
+      index_id: 'KOSPI',
+      from: '20260619',
+      to: '20260619',
+      points: [
+        { t_ms: 1_781_830_800_000, foreign_net: -3519, institution_net: 17184 },
+      ],
+      data_warnings: [],
+    };
+    useLivePageStore.setState({
+      candleTimeframe: 'D',
+      historicalFromDate: '20260619',
+      foreignNetEnabled: true,
+      institutionNetEnabled: false,
+    });
+
+    renderWithRouter('/live?index=KOSPI');
+
+    await waitFor(() => expect(livePageMocks.indexInvestorNetCalls.length).toBeGreaterThan(0));
+    const lastInvestorCall = livePageMocks.indexInvestorNetCalls.at(-1) as unknown[] | undefined;
+    expect(lastInvestorCall?.[0]).toBe('KOSPI');
+    expect(lastInvestorCall?.[1]).toBe('20260619');
+    expect(lastInvestorCall?.[3]).toBe(true);
+    expect(livePageMocks.liveChartRootProps.at(-1)?.chartBundle?.investorPoints).toEqual([
+      { t_ms: 1_781_830_800_000, foreign_net: -3519, institution_net: 17184 },
+    ]);
+  });
+
+  it('does not fetch investor net for non-market representative indices', async () => {
+    livePageMocks.indexCandlesResult.data = {
+      index_id: 'KOSPI200',
+      from: '20260619',
+      to: '20260619',
+      timeframe: 'D',
+      candles: [],
+      data_warnings: [],
+    };
+    useLivePageStore.setState({
+      candleTimeframe: 'D',
+      historicalFromDate: '20260619',
+      foreignNetEnabled: true,
+    });
+
+    renderWithRouter('/live?index=KOSPI200');
+
+    await waitFor(() => expect(livePageMocks.indexCandlesCalls.length).toBeGreaterThan(0));
+    const lastInvestorCall = livePageMocks.indexInvestorNetCalls.at(-1) as unknown[] | undefined;
+    expect(lastInvestorCall?.[0]).toBeNull();
+    expect(lastInvestorCall?.[3]).toBe(false);
   });
 
   it('sets the browser tab title from the active Code on /live', async () => {

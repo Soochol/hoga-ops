@@ -30,6 +30,24 @@ describe('IndicatorPanel', () => {
     expect(screen.getByText('상단 지표')).toBeTruthy();
   });
 
+  it('index capabilities hide every hoga indicator category', () => {
+    render(<IndicatorPanel onClose={() => {}} capabilities={{ hogaPanes: false, investorNet: 'market', studySave: false }} />);
+    expect(screen.queryByText('호가 지표')).toBeNull();
+    for (const name of ['총잔량', '호가비', '체결강도', '당일 매도 최대벽', '당일 매수 최대벽']) {
+      expect(screen.queryByRole('checkbox', { name })).toBeNull();
+      expect(screen.queryByRole('button', { name })).toBeNull();
+    }
+    expect(screen.getByRole('checkbox', { name: '외국인 순매수량' })).toBeTruthy();
+    expect(screen.getByRole('checkbox', { name: '기관 순매수량' })).toBeTruthy();
+  });
+
+  it('indices without investor support hide investor net categories too', () => {
+    render(<IndicatorPanel onClose={() => {}} capabilities={{ hogaPanes: false, investorNet: 'none', studySave: false }} />);
+    expect(screen.queryByRole('checkbox', { name: '외국인 순매수량' })).toBeNull();
+    expect(screen.queryByRole('checkbox', { name: '기관 순매수량' })).toBeNull();
+    expect(screen.getByRole('checkbox', { name: '거래량' })).toBeTruthy();
+  });
+
   it('당일 매도 최대벽은 호가 지표 그룹(체결강도 뒤)에 위치', () => {
     render(<IndicatorPanel onClose={() => {}} />);
     // 네비 라벨 버튼은 CATEGORIES 순서대로 렌더된다(체크박스는 role=checkbox라 제외).

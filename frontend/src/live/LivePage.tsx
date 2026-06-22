@@ -20,7 +20,7 @@ import { useDayBidPeaks, useTodayAllPriceBidPeak } from './useDayBidPeaks';
 import type { AskPeak, BidPeak, Candle, RangeBundle } from '../api/types';
 import type { ObSnapshot, TradeSnapshot } from './bucketHogaSeries';
 import type { TabViewport } from './viewportAnchor';
-import { todayKstYyyymmdd } from './liveDateTime';
+import { initialHistoricalDaysFor, subtractDaysKst, todayKstYyyymmdd } from './liveDateTime';
 import { useChartPrefsStore } from '../state/chartPrefs';
 import { useLiveVenueStore } from '../state/liveVenue';
 import {
@@ -32,6 +32,10 @@ import { LiveStudyViewSaveButton } from '../studyViews/LiveStudyViewSaveButton';
 import IndicatorPanel from './indicators/IndicatorPanel';
 import LiveSettingsModal from './LiveSettingsModal';
 import { useDocumentTitle } from '../util/useDocumentTitle';
+import { indexInstrument, isLiveIndexId } from './liveInstrument';
+import { useLiveIndexCandles, useLiveIndexInvestorNet } from '../api/liveIndices';
+import { buildIndexBundle } from './buildIndexBundle';
+import { capabilitiesForInstrument } from './liveInstrumentCapabilities';
 
 /** 안정 빈 배열 — 매 렌더 새 [] 가 useDayAskPeaks의 메모 deps를 churn하지 않게. */
 const EMPTY_ASK_PEAKS: readonly AskPeak[] = [];
@@ -39,6 +43,18 @@ const EMPTY_BID_PEAKS: readonly BidPeak[] = [];
 const EMPTY_CANDLES: readonly Candle[] = [];
 const EMPTY_OB_SNAPSHOTS: readonly ObSnapshot[] = [];
 const EMPTY_TRADE_SNAPSHOTS: readonly TradeSnapshot[] = [];
+
+const INDEX_BUCKET_MS = {
+  '1m': 60_000,
+  '3m': 180_000,
+  '5m': 300_000,
+  '10m': 600_000,
+  '15m': 900_000,
+  '30m': 1_800_000,
+  D: 86_400_000,
+  W: 7 * 86_400_000,
+  M: 31 * 86_400_000,
+} as const;
 
 /**
  * /live page — KIS-based real-time indicator chart.
@@ -63,9 +79,11 @@ const EMPTY_TRADE_SNAPSHOTS: readonly TradeSnapshot[] = [];
 export function LivePage() {
   const [params] = useSearchParams();
   const queryCode = params.get('code');
+  const queryIndex = params.get('index');
   const tabs = useLiveTabsStore((s) => s.tabs);
   const activeTabId = useLiveTabsStore((s) => s.activeTabId);
   const setActiveTabCode = useLiveTabsStore((s) => s.setActiveTabCode);
+  const setActiveTabInstrument = useLiveTabsStore((s) => s.setActiveTabInstrument);
   const addBlankTab = useLiveTabsStore((s) => s.addBlankTab);
   const focusTab = useLiveTabsStore((s) => s.focusTab);
   const closeTab = useLiveTabsStore((s) => s.closeTab);
@@ -79,9 +97,10 @@ export function LivePage() {
     if (seeded.current) return;
     seeded.current = true;
     if (queryCode) setActiveTabCode(queryCode);
+    else if (isLiveIndexId(queryIndex)) setActiveTabInstrument(indexInstrument(queryIndex, queryIndex));
     else if (activeTabId) focusTab(activeTabId); // 복원된 활성 탭 → page 동기화
     else addBlankTab();                          // 기본 탭 1개
-  }, [queryCode, activeTabId, setActiveTabCode, addBlankTab, focusTab]);
+  }, [queryCode, queryIndex, activeTabId, setActiveTabCode, setActiveTabInstrument, addBlankTab, focusTab]);
 
   const { data: status } = useLiveStatus();
   const liveStatus = useLiveStatusProjection(status);
@@ -96,10 +115,17 @@ export function LivePage() {
     onNextTab: () => { if (tabs.length) focusTab(tabs[(activeIdx + 1 + tabs.length) % tabs.length].id); },
     onPrevTab: () => { if (tabs.length) focusTab(tabs[(activeIdx - 1 + tabs.length) % tabs.length].id); },
     onSelectTabIndex: (i) => { if (i < tabs.length) focusTab(tabs[i].id); },
+    onSelectTimeframeShortcut: (slot) => {
+      const page = useLivePageStore.getState();
+      const next = slot === 'minute' ? page.lastMinuteTimeframe : slot;
+      page.setCandleTimeframe(next);
+    },
   });
 
   const activeCode = useLivePageStore((s) => s.activeCode);
+  const activeInstrument = useLivePageStore((s) => s.activeInstrument);
   const timeframe = useLivePageStore((s) => s.candleTimeframe);
+  const historicalFromDate = useLivePageStore((s) => s.historicalFromDate);
   const liveVenue = useLiveVenueStore((s) => s.venue);
   const foreignNetEnabled = useLivePageStore((s) => s.foreignNetEnabled);
   const institutionNetEnabled = useLivePageStore((s) => s.institutionNetEnabled);
@@ -138,6 +164,34 @@ export function LivePage() {
     live,
     { investorNetEnabled: foreignNetEnabled || institutionNetEnabled, venue: liveVenue },
   );
+  const activeIndexId = activeInstrument?.kind === 'index' ? activeInstrument.id : null;
+  const capabilities = useMemo(() => capabilitiesForInstrument(activeInstrument), [activeInstrument]);
+  const indexFrom = historicalFromDate ?? subtractDaysKst(today, initialHistoricalDaysFor(timeframe));
+  const indexCandles = useLiveIndexCandles(
+    activeIndexId,
+    timeframe,
+    indexFrom,
+    today,
+  );
+  const indexInvestorFrom = indexCandles.data?.from ?? indexFrom;
+  const indexInvestorTo = indexCandles.data?.to ?? today;
+  const indexInvestorNet = useLiveIndexInvestorNet(
+    activeIndexId && timeframe === 'D' && capabilities.investorNet === 'market' ? activeIndexId : null,
+    indexInvestorFrom,
+    indexInvestorTo,
+    timeframe === 'D' && capabilities.investorNet === 'market' && (foreignNetEnabled || institutionNetEnabled),
+  );
+  const indexBundle = useMemo<RangeBundle | null>(() => {
+    if (!activeIndexId || !indexCandles.data) return null;
+    return buildIndexBundle({
+      indexId: activeIndexId,
+      from: indexCandles.data.from,
+      to: indexCandles.data.to,
+      bucketMs: INDEX_BUCKET_MS[timeframe],
+      candles: indexCandles.data.candles,
+      investorPoints: indexInvestorNet.data?.points ?? [],
+    });
+  }, [activeIndexId, timeframe, indexCandles.data, indexInvestorNet.data?.points]);
   const indicatorState = useMemo<StudyIndicatorState>(() => ({
     volume_enabled: volumeEnabled,
     quote_totals_enabled: quoteTotalsEnabled,
@@ -215,6 +269,11 @@ export function LivePage() {
       bid_peaks: dayBidPeaks,
     };
   }, [bundle, chartBundle, dayAskPeaks, dayBidPeaks]);
+  const workareaCode = activeCode ?? (activeIndexId ? `index:${activeIndexId}` : null);
+  const workareaBundle = activeIndexId ? indexBundle : bundle;
+  const workareaChartBundle = activeIndexId ? indexBundle : chartBundle;
+  const workareaLoading = activeIndexId ? indexCandles.isLoading : isPastCandlesLoading;
+  const indexExtending = activeIndexId ? historicalFromDate !== null && indexCandles.isFetching : false;
 
   useEffect(() => {
     if (!activeCode || !liveSaveBundle) {
@@ -259,13 +318,13 @@ export function LivePage() {
         onNewTab={() => { addBlankTab(); focusLiveSearch(); }}
       />
       <LiveStateBanner
-        primary={activeCode && banner.primary === 'watchlist_empty' ? null : banner.primary}
+        primary={workareaCode && banner.primary === 'watchlist_empty' ? null : banner.primary}
         stack={banner.stack}
       />
       <LiveStatusBar
-        activeCode={activeCode}
+        activeCode={workareaCode}
         captureHealth={liveStatus.captureHealth}
-        bundle={bundle}
+        bundle={workareaBundle}
         venue={liveVenue}
       />
       <LiveToolbar
@@ -274,12 +333,12 @@ export function LivePage() {
         studySaveControl={<LiveStudyViewSaveButton />}
       />
       <LiveWorkarea
-        activeCode={activeCode}
-        bundle={bundle}
-        chartBundle={chartBundle}
+        activeCode={workareaCode}
+        bundle={workareaBundle}
+        chartBundle={workareaChartBundle}
         clampEngaged={clampEngaged}
-        isPastCandlesLoading={isPastCandlesLoading}
-        isExtending={isExtending}
+        isPastCandlesLoading={workareaLoading}
+        isExtending={activeIndexId ? indexExtending : isExtending}
         pastDataWarnings={pastDataWarnings}
         restoreViewport={restoreViewport}
         viewIdentity={activeTabId ? `${activeTabId}:${liveVenue}` : liveVenue}
@@ -291,9 +350,15 @@ export function LivePage() {
         todayAllPriceBidPeak={todayAllPriceBidPeak}
         todayKst={today}
         onViewportCaptureReady={handleViewportCaptureReady}
+        paneTogglesOverride={{
+          hogaPanes: capabilities.hogaPanes,
+        }}
       />
       {indicatorPanelOpen && (
-        <IndicatorPanel onClose={() => setIndicatorPanelOpen(false)} />
+        <IndicatorPanel
+          onClose={() => setIndicatorPanelOpen(false)}
+          capabilities={capabilities}
+        />
       )}
       {settingsOpen && (
         <LiveSettingsModal onClose={() => setSettingsOpen(false)} />

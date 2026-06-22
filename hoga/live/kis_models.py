@@ -52,6 +52,15 @@ class KisCandle(BaseModel):
     volume: int
 
 
+class IndexCandlePoint(BaseModel):
+    t_ms: int   # epoch ms (UTC) — start of bar
+    open: float
+    high: float
+    low: float
+    close: float
+    volume: int
+
+
 class InvestorNetPoint(BaseModel):
     """One trading day's foreign/institution net-buy quantity for a code.
 

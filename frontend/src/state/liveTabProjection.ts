@@ -1,7 +1,9 @@
 import type { LiveTimeframe } from './livePage';
 import type { LiveTab } from './liveTabs';
+import { stockInstrument, type LiveInstrument } from '../live/liveInstrument';
 
 export type ActiveViewProjection = {
+  instrument: LiveInstrument | null;
   code: string | null;
   timeframe: LiveTimeframe;
   historicalFromDate: string | null;
@@ -17,6 +19,7 @@ export function projectTabToActiveView(
   currentPageTimeframe: LiveTimeframe,
 ): ActiveViewProjection {
   return {
+    instrument: tab?.instrument ?? (tab?.code ? stockInstrument(tab.code, tab.label) : null),
     code: tab?.code ?? null,
     timeframe: tab?.timeframe ?? currentPageTimeframe,
     historicalFromDate: tab?.historicalFromDate ?? null,

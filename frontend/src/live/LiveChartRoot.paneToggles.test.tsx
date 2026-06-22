@@ -26,6 +26,8 @@ const { mounted, askPeakMounts, bidPeakMounts, chartInstances, registerViewportC
     timeScaleApi: {
       subscribeVisibleLogicalRangeChange: ReturnType<typeof vi.fn>;
       unsubscribeVisibleLogicalRangeChange: ReturnType<typeof vi.fn>;
+      fitContent: ReturnType<typeof vi.fn>;
+      setVisibleLogicalRange: ReturnType<typeof vi.fn>;
     };
   }>,
   registerViewportCaptureMock: vi.fn(),
@@ -70,6 +72,7 @@ vi.mock('lightweight-charts', async () => {
         subscribeVisibleLogicalRangeChange: vi.fn(), unsubscribeVisibleLogicalRangeChange: vi.fn(),
         applyOptions: vi.fn(), fitContent: vi.fn(), scrollToRealTime: vi.fn(), scrollToPosition: vi.fn(),
         setVisibleLogicalRange: vi.fn(), getVisibleRange: vi.fn(() => null), setVisibleRange: vi.fn(),
+        width: vi.fn(() => 900), timeToIndex: vi.fn(() => null),
         timeToCoordinate: vi.fn(() => null),
       };
       const chart = {
@@ -112,6 +115,15 @@ const DEFAULT_BUNDLE: RangeBundle = {
   volume_profile_by_day: [],
   investorPoints: [],
   ask_peaks: [],
+};
+
+const CALENDAR_BUNDLE: RangeBundle = {
+  ...DEFAULT_BUNDLE,
+  bucket_ms: 7 * 24 * 60 * 60 * 1000,
+  candles: [
+    { ts_ms: 1781222400000, open: 1, high: 2, low: 1, close: 2, vol_a: 10, vol_b: 0 },
+    { ts_ms: 1781827200000, open: 2, high: 3, low: 2, close: 3, vol_a: 11, vol_b: 0 },
+  ],
 };
 
 const wrapper = ({ children }: { children: ReactNode }) => {
@@ -245,6 +257,19 @@ describe('LiveChartRoot — pane 토글 배선 (store → 마운트된 pane 집�
   it.each(['D', 'W', 'M'] as const)('calendar(%s) → 당일 매도 최대벽 오버레이 미마운트', (timeframe) => {
     renderAt(timeframe);
     expect(askPeakMounts).toEqual([]);
+  });
+
+  it.each(['W', 'M'] as const)('calendar(%s) starts with candles plus right-side empty space', async (timeframe) => {
+    renderAt(timeframe, { bundle: CALENDAR_BUNDLE });
+
+    await waitFor(() => expect(chartInstances[0].timeScaleApi.setVisibleLogicalRange).toHaveBeenCalled());
+    expect(chartInstances[0].timeScaleApi.fitContent).not.toHaveBeenCalled();
+    expect(chartInstances[0].timeScaleApi.setVisibleLogicalRange).toHaveBeenCalledWith(expect.objectContaining({
+      from: 0,
+      to: expect.any(Number),
+    }));
+    const range = chartInstances[0].timeScaleApi.setVisibleLogicalRange.mock.calls.at(-1)?.[0];
+    expect(range.to).toBeGreaterThan(CALENDAR_BUNDLE.candles.length);
   });
 
   it('1m mounts bid peak overlay, calendar does not', () => {
