@@ -22,9 +22,10 @@ separate decisions.
 
 ## Invariants
 
-- **Watchlist membership owns capture candidates**: watchlist folders own
-  ordered `member_codes`; entries are pruned when no folder references them.
-  근거: `WatchlistFolder.member_codes`, `save_document`.
+- **Watchlist group opt-in owns capture candidates**: watchlist folders own
+  ordered `member_codes`, but only folders with capture enabled contribute
+  live-storage candidates. Entries are still pruned when no folder references
+  them. 근거: `WatchlistFolder.member_codes`, `save_document`.
 - **WS capture remains code-disjoint per account**: a code is written by at most
   one WS stream at a time, using live-set partitioning and active-code filters.
   근거: `LiveSession.refresh`, `LiveStream.set_active_codes`.
@@ -41,17 +42,22 @@ separate decisions.
 
 | Invariant | Impact | Notes |
 |-----------|--------|-------|
-| Watchlist membership owns capture candidates | preserves | REST 30s group toggles are folder metadata; candidate codes still come from folder membership. |
+| Watchlist group opt-in owns capture candidates | intentionally changes | Capture is no longer "all watchlist entries"; only capture-enabled groups contribute candidates. |
 | WS capture remains code-disjoint per account | preserves | WS lifecycle and partitioning remain unchanged except when the storage policy disables WS entirely. |
 | Current viewed-code REST poller remains display-only | preserves | Persistent REST 30s capture is a new recorder, not an extension of `LiveRestPoller`. |
 | Source preference is read policy, not write policy | preserves | Storage policy and display priority are separate settings. |
 | Missing or invalid preferred data falls back | preserves | Three-source fallback order is explicit for every display policy. |
 
+This intentionally changes the old implicit capture model. The new user-facing
+rule is simpler: a group must be enabled before any member in that group is
+stored by either WS or KIS API. Storage policy then decides whether enabled
+symbols are written through WS, KIS API, or both.
+
 ## Goals
 
 - Add a storage policy that controls whether live data is stored through WS,
   REST API, or both.
-- Add group-level REST 30s capture toggles in the watchlist editor.
+- Add group-level capture toggles in the watchlist editor.
 - Persist REST API data every 30 seconds for selected targets, including
   orderbook, trades, and brokers.
 - Add `kis_api` as a first-class source for display selection and fallback.
@@ -88,11 +94,11 @@ spec requires the user-facing concept to be KIS WS, because it is clearer than
 
 Add a storage policy setting with three modes:
 
-| Mode | WS runtime | REST 30s recorder | REST target set |
-|------|------------|-------------------|-----------------|
-| `ws_only` | on | off | none |
-| `ws_plus_rest` | on | on | watchlist candidates not in WS `live_set` |
-| `rest_only` | off | on | all watchlist candidates |
+| Mode | WS runtime | REST 30s recorder | WS target set | REST target set |
+|------|------------|-------------------|---------------|-----------------|
+| `ws_only` | on | off | capture candidates, capped by WS capacity | none |
+| `ws_plus_rest` | on | on | capture candidates, capped by WS capacity | capture candidates not in WS `live_set` |
+| `rest_only` | off | on | none | all capture candidates |
 
 UI labels:
 
@@ -100,14 +106,14 @@ UI labels:
 - `WS 우선 + 나머지 REST 저장`
 - `REST만 저장`
 
-`ws_plus_rest` is the recommended default for broad watchlist coverage without
-duplicating REST work for symbols already covered by WS.
+`ws_plus_rest` is the recommended default for broad enabled-group coverage
+without duplicating REST work for symbols already covered by WS.
 
 `rest_only` disables WS connections. If the user later switches back to
 `ws_only` or `ws_plus_rest`, lifecycle reconnects WS according to the current
-watchlist and configured accounts.
+capture candidates and configured accounts.
 
-### REST 30s group toggles
+### Group capture toggles
 
 Add a boolean folder setting:
 
@@ -117,7 +123,7 @@ Add a boolean folder setting:
   "name": "스윙1",
   "order": 0,
   "member_codes": ["005930"],
-  "kis_api_30s_enabled": true
+  "capture_enabled": true
 }
 ```
 
@@ -128,25 +134,33 @@ multiple enabled groups is recorded once.
 Candidate set:
 
 ```text
-kis_api_candidates = union(member_codes for enabled folders)
+capture_candidates = union(member_codes for capture-enabled folders)
 ```
 
 Runtime target set:
 
 ```text
 ws_only:
+  ws_targets = first N capture_candidates by watchlist display order
   kis_api_targets = empty
 
 ws_plus_rest:
-  kis_api_targets = kis_api_candidates - current_ws_live_set
+  ws_targets = first N capture_candidates by watchlist display order
+  kis_api_targets = capture_candidates - current_ws_live_set
 
 rest_only:
-  kis_api_targets = kis_api_candidates
+  ws_targets = empty
+  kis_api_targets = capture_candidates
 ```
 
-This keeps automatic WS exclusion only in the mixed storage mode. In REST-only
-mode the user has explicitly chosen REST as the storage method, so WS is off and
-all enabled-group candidates are REST targets.
+`N` is the current WS capacity from configured KIS accounts. The existing
+display-order allocation still applies, but it runs over `capture_candidates`
+instead of every watchlist entry.
+
+This makes the group toggle the single "should this group be saved?" control.
+Storage policy then chooses how enabled candidates are split between WS and KIS
+API. In REST-only mode the user has explicitly chosen REST as the storage
+method, so WS is off and all enabled-group candidates are REST targets.
 
 ### REST 30s recorder
 
@@ -168,7 +182,7 @@ Responsibilities:
 The recorder refreshes targets when:
 
 - watchlist folder membership changes,
-- a group REST toggle changes,
+- a group capture toggle changes,
 - storage policy changes,
 - configured account count changes,
 - WS live set changes,
@@ -247,17 +261,18 @@ The `/live` settings modal owns the two global policy controls:
   "기본 데이터 소스" to "데이터 표현 기준" and expanded to include
   `hogaplay 우선`, `KIS WS 우선`, and `KIS API 우선`.
 
-The watchlist edit modal owns group-level REST enablement because the setting is
+The watchlist edit modal owns group-level capture enablement because the setting is
 tied to watchlist groups rather than chart rendering. The left group list should
 show a compact toggle per folder:
 
-- Toggle ON means the folder contributes candidates to KIS API 30s recording.
-- Toggle OFF means the folder contributes no KIS API candidates.
-- If global storage mode is `WS만 저장`, the toggles remain visible but their
-  active effect is disabled; the UI should communicate that REST recording is
-  off globally.
+- Toggle ON means the folder contributes candidates to live storage.
+- Toggle OFF means the folder contributes no live-storage candidates, regardless
+  of whether the current storage mode uses WS, KIS API, or both.
+- If global storage mode is `WS만 저장`, enabled groups are saved through WS up
+  to WS capacity; no KIS API 30s files are written.
 - If global storage mode is `WS 우선 + 나머지 REST 저장`, enabled groups record
-  only members outside the WS live set.
+  WS-capacity members through WS and the remaining enabled members through KIS
+  API.
 - If global storage mode is `REST만 저장`, enabled groups record all their
   members through KIS API and WS is disconnected.
 
@@ -265,7 +280,7 @@ This gives the user two separate UI questions:
 
 ```text
 1. 어떻게 저장할까?     -> /live 설정: 데이터 저장 방식
-2. 어느 그룹을 REST 대상으로 삼을까? -> 관심종목 편집: 그룹 토글
+2. 어느 그룹을 저장 대상으로 삼을까? -> 관심종목 편집: 그룹 토글
 ```
 
 ### Status visibility
@@ -284,6 +299,7 @@ Watchlist rows can derive status as:
 
 - `KIS WS 저장 중` when code is in WS live set,
 - `KIS API 30초 저장 중` when code is in REST targets,
+- `저장 제외` when code is not in any capture-enabled group,
 - `대기` when code is in an enabled group but not currently recordable,
 - existing disconnected / reconnecting variants for WS failures.
 
@@ -293,9 +309,10 @@ Watchlist rows can derive status as:
 
 | Case | Setup | Expected |
 |------|-------|----------|
-| folder toggle persists | Enable `kis_api_30s_enabled` on a folder and reload watchlist | Folder response includes `true`; member entries are unchanged |
+| folder toggle persists | Enable `capture_enabled` on a folder and reload watchlist | Folder response includes `true`; member entries are unchanged |
 | candidate dedupe | Same code appears in two enabled folders | Recorder target contains the code once |
-| `ws_only` targets | Enabled groups exist and WS live set has codes | REST target set is empty |
+| disabled folder excluded | A code appears only in disabled folders | Code is not in WS or KIS API targets |
+| `ws_only` targets | Enabled groups contain A/B/C and WS capacity is 2 | WS targets are first two enabled codes; REST target set is empty |
 | `ws_plus_rest` targets | Enabled groups contain A/B/C and WS live set contains A | REST targets are B/C |
 | `rest_only` targets | Enabled groups contain A/B/C and WS is disabled | REST targets are A/B/C |
 | `rest_only` lifecycle | Switch from `ws_plus_rest` to `rest_only` | WS tasks stop; REST recorder remains active |
@@ -319,7 +336,7 @@ Watchlist rows can derive status as:
 
 ### Manual verification
 
-- In the watchlist editor, enable REST 30s on one group and confirm the group row
+- In the watchlist editor, enable capture on one group and confirm the group row
   shows the toggle state after closing and reopening.
 - With `WS 우선 + 나머지 REST 저장`, confirm WS live-set symbols show WS status
   and non-WS enabled symbols show KIS API 30s status.
