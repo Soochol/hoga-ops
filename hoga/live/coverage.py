@@ -42,8 +42,10 @@ def plan_live_coverage(
     ordered_codes: list[str],
     *,
     n_configured: int,
-    per_account_max: int = _PER_ACCOUNT_MAX,
+    per_account_max: int | None = None,
 ) -> LiveCoveragePlan:
+    if per_account_max is None:
+        per_account_max = _PER_ACCOUNT_MAX
     max_codes = per_account_max * n_configured
     live_set = tuple(ordered_codes[:max_codes])
     partitions = tuple(
@@ -77,8 +79,10 @@ def plan_storage_targets(
     n_configured: int,
     storage_policy: LiveStoragePolicy,
     current_ws_live_set: tuple[str, ...] = (),
-    per_account_max: int = _PER_ACCOUNT_MAX,
+    per_account_max: int | None = None,
 ) -> LiveStorageTargets:
+    if per_account_max is None:
+        per_account_max = _PER_ACCOUNT_MAX
     candidates = tuple(capture_candidates)
     max_codes = per_account_max * n_configured
     if storage_policy == "rest_only":
