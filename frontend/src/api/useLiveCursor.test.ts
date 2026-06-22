@@ -40,7 +40,7 @@ import { apiGet } from './client';
 describe('useLiveOrderbookAtCursor', () => {
   beforeEach(() => {
     useLiveCursorStore.getState().clearCursor();
-    useSourcePreferenceStore.getState().setSourcePreference('hogaplay');
+    useSourcePreferenceStore.getState().setSourcePreference('hogaplay_first');
     (apiGet as unknown as ReturnType<typeof vi.fn>).mockClear();
     (apiGet as unknown as ReturnType<typeof vi.fn>).mockImplementation(async (url: string) => {
       if (url.includes('/api/orderbook')) {
@@ -73,7 +73,7 @@ describe('useLiveOrderbookAtCursor', () => {
     expect(url).toContain('date=20260528');
     expect(url).toContain('t=1779930000000');
     expect(url).toContain('bucket_ms=60000');
-    expect(url).toContain('source_pref=hogaplay');
+    expect(url).toContain('source_pref=hogaplay_first');
     // T14b: result is LiveOrderbookSpot, assert via .snapshot
     await waitFor(() => expect(result.current?.snapshot).toBeDefined());
   });
@@ -103,10 +103,10 @@ describe('useLiveOrderbookAtCursor', () => {
       }
       throw new Error('unexpected url: ' + url);
     });
-    act(() => useSourcePreferenceStore.getState().setSourcePreference('kis_live'));
+    act(() => useSourcePreferenceStore.getState().setSourcePreference('kis_ws_first'));
     await waitFor(() => expect(apiGet).toHaveBeenCalledTimes(2));
     const url = (apiGet as ReturnType<typeof vi.fn>).mock.calls[1][0] as string;
-    expect(url).toContain('source_pref=kis_live');
+    expect(url).toContain('source_pref=kis_ws_first');
   });
 
   it('hover on past-date candle uses date derived from cursorMs (regression guard)', async () => {
@@ -136,7 +136,7 @@ describe('useLiveOrderbookAtCursor', () => {
 describe('useLiveBrokersAtCursor', () => {
   beforeEach(() => {
     useLiveCursorStore.getState().clearCursor();
-    useSourcePreferenceStore.getState().setSourcePreference('hogaplay');
+    useSourcePreferenceStore.getState().setSourcePreference('hogaplay_first');
     (apiGet as unknown as ReturnType<typeof vi.fn>).mockClear();
     (apiGet as unknown as ReturnType<typeof vi.fn>).mockImplementation(async (url: string) => {
       if (url.includes('/api/brokers/series')) {
@@ -177,7 +177,7 @@ describe('useLiveBrokersAtCursor', () => {
     renderHook(() => useLiveBrokersAtCursor({ code: '005930', timeframe: '1m' }));
     act(() => useLiveCursorStore.getState().setCursor(1_779_930_000_000));
     await waitFor(() => expect(apiGet).toHaveBeenCalledTimes(1));
-    act(() => useSourcePreferenceStore.getState().setSourcePreference('kis_live'));
+    act(() => useSourcePreferenceStore.getState().setSourcePreference('kis_ws_first'));
     await waitFor(() => expect(apiGet).toHaveBeenCalledTimes(2));
   });
 });

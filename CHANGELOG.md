@@ -10,7 +10,7 @@ The format follows a 4-digit `MAJOR.MINOR.PATCH.MICRO` scheme.
   같은 구간으로 돌아오는 차트 전환과 새로고침 체감을 빠르게 했다.
 - **지수 분봉 fetch-depth 측정 도구 추가**: KIS가 실제로 반환하는 1m/3m/5m/10m/15m/30m 날짜 범위와 cache hit 속도를
   한 번에 확인할 수 있는 측정 스크립트를 추가했다.
-- **KIS 지수 분봉 ADR 추가**: 대표지수 분봉은 종목 분봉처럼 날짜 walk-back이 아니라 KIS source-unit 선택으로
+- **KIS 지수 분봉 ADR-0080 추가**: 대표지수 분봉은 종목 분봉처럼 날짜 walk-back이 아니라 KIS source-unit 선택으로
   확장해야 한다는 결정을 문서화했다.
 
 ### Changed
@@ -26,6 +26,20 @@ The format follows a 4-digit `MAJOR.MINOR.PATCH.MICRO` scheme.
   사이의 내부 gap에서 빈 차트를 반환하던 문제를 고쳤다.
 - 지수 일봉 cache hit에서도 row-level data warning이 사라지지 않도록 보존한다.
 - 지수 instrument가 선택된 상태에서 sidebar의 종목 전용 cursor hook과 투자자 추정 hook에 `index:*` 값을 넘기지 않도록 했다.
+
+## [0.9.0.4] - 2026-06-23
+
+### Added
+- **KIS API 30초 저장 상태를 관심종목에서 확인**: WS 저장 중, KIS API 30초 저장 중, 대기, 저장 제외 상태를
+  관심종목 행에서 일관되게 볼 수 있게 했다.
+
+### Changed
+- 데이터 표현 소스의 라벨과 해상도 표기를 한 곳에서 관리해 `hogaplay`, KIS WS, KIS API 우선 옵션과 차트
+  source 칩이 같은 정의를 사용하게 했다.
+- 읽기 소스 선택 결과를 경로, 디스크 상태, 누락 사유까지 포함한 구조로 정리해 fallback 결과를 더 명확히
+  다루게 했다.
+- 라이브 저장 정책 적용과 KIS API 30초 recorder 동기화를 별도 런타임 모듈로 분리해 WS/API 저장 대상 계산을
+  한 흐름에서 관리하게 했다.
 
 ## [0.9.0.3] - 2026-06-22
 

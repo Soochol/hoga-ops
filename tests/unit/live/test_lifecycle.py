@@ -807,6 +807,111 @@ async def test_refresh_live_stream_updates_ws_and_buffer(
 
 
 @pytest.mark.asyncio
+async def test_refresh_live_stream_excludes_capture_disabled_folders(
+    monkeypatch, tmp_path
+) -> None:
+    """refresh_live_stream recomputes from capture-enabled folders only."""
+    import json
+
+    from hoga.api import symbols
+    from hoga.live import lifecycle
+    from hoga.live.lifecycle import _State, _StreamConn
+
+    lifecycle.reset_for_tests()
+    monkeypatch.setattr(symbols, "_cache", [])
+
+    (tmp_path / "watchlist.json").write_text(json.dumps({
+        "schema_version": 3,
+        "folders": [
+            {
+                "id": "f_0000000a",
+                "name": "Enabled",
+                "order": 0,
+                "member_codes": ["005930"],
+                "capture_enabled": True,
+            },
+            {
+                "id": "f_0000000b",
+                "name": "Disabled",
+                "order": 1,
+                "member_codes": ["000660"],
+                "capture_enabled": False,
+            },
+        ],
+        "entries": [
+            {
+                "code": "005930",
+                "name": "005930",
+                "registered_at_kst_date": "20260101",
+                "last_success_date": None,
+            },
+            {
+                "code": "000660",
+                "name": "000660",
+                "registered_at_kst_date": "20260101",
+                "last_success_date": None,
+            },
+        ],
+    }))
+
+    calls: dict = {}
+
+    class _FakeWs:
+        async def update_codes(self, codes):
+            calls["update_codes"] = list(codes)
+
+    class _FakeStream:
+        def __init__(self):
+            self.ws = _FakeWs()
+
+        def set_active_codes(self, codes):
+            calls["set_active_codes"] = set(codes)
+
+    drop_calls: list[set[str]] = []
+
+    async def _fake_drop(keep):
+        drop_calls.append(set(keep))
+
+    monkeypatch.setattr(lifecycle._buffer, "drop_codes_except", _fake_drop)
+
+    async def _forever():
+        await asyncio.sleep(60)
+
+    ws_task = asyncio.create_task(_forever())
+    flush_task = asyncio.create_task(_forever())
+    conn = _StreamConn(
+        account_id=0,
+        stream_obj=_FakeStream(),
+        ws_task=ws_task,
+        flush_task=flush_task,
+        codes=("999999",),
+    )
+    lifecycle._state = _State(
+        started_at_ms=1,
+        n_configured=1,
+        watchlist_codes=("999999",),
+        streams={0: conn},
+        live_set=("999999",),
+    )
+    try:
+        await lifecycle.refresh_live_stream(data_dir=tmp_path)
+
+        assert calls["update_codes"] == ["005930"]
+        assert calls["set_active_codes"] == {"005930"}
+        assert drop_calls == [{"005930"}]
+        assert lifecycle._state.live_set == ("005930",)
+        assert lifecycle._state.watchlist_codes == ("005930",)
+        assert lifecycle._state.streams[0].codes == ("005930",)
+    finally:
+        for t in (ws_task, flush_task):
+            t.cancel()
+            try:
+                await t
+            except asyncio.CancelledError:
+                pass
+
+
+@pytest.mark.asyncio
 async def test_refresh_live_stream_early_returns_when_never_started(tmp_path) -> None:
     """streams=={} 이고 poller 없음(기동 전)이면 기동 폴백
     (_start_live_stream_locked)으로 위임 — 그 가드(creds 없음)가 막으면 예외 없이

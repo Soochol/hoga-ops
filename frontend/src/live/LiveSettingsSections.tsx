@@ -13,6 +13,7 @@ import {
   useLiveVenueStore,
   type LiveVenueOption,
 } from '../state/liveVenue';
+import { useLiveSettings, usePatchLiveSettings, type LiveStoragePolicy } from '../api/liveSettings';
 import MAStylePicker from './indicators/MAStylePicker';
 import IndicatorPrefRows from './settings/IndicatorPrefRows';
 import SourcePreferenceRadio from './settings/SourcePreferenceRadio';
@@ -32,6 +33,14 @@ const LABEL: Record<NavId, string> = {
   'indicator-modal': '지표', // never rendered — not in CATEGORY_ORDER; kept for Record<NavId> exhaustiveness
   'data-source': '데이터소스',
 };
+
+const STORAGE_POLICY_LABEL: Record<LiveStoragePolicy, string> = {
+  ws_only: 'WS만 저장',
+  ws_plus_rest: 'WS 우선 + 나머지 REST 저장',
+  rest_only: 'REST만 저장',
+};
+
+const STORAGE_POLICY_OPTIONS: LiveStoragePolicy[] = ['ws_only', 'ws_plus_rest', 'rest_only'];
 
 function CategoryDetail({ category }: { category: ChartToggleCategory }) {
   const keys = CHART_TOGGLES
@@ -91,7 +100,15 @@ function DataSourceDetail() {
         ))}
       </div>
       <div style={{ fontSize: 'var(--text-sm)', color: 'var(--fg-dim)', marginBottom: 'var(--space-xs)' }}>
-        기본 데이터 소스 <span style={{ color: 'var(--fg-dimmer)' }}>(모든 차트 공통)</span>
+        데이터 저장 방식
+      </div>
+      <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--space-xs)', marginBottom: 'var(--space-md)' }}>
+        {STORAGE_POLICY_OPTIONS.map((opt) => (
+          <StoragePolicyRadio key={opt} value={opt} />
+        ))}
+      </div>
+      <div style={{ fontSize: 'var(--text-sm)', color: 'var(--fg-dim)', marginBottom: 'var(--space-xs)' }}>
+        데이터 표현 기준 <span style={{ color: 'var(--fg-dimmer)' }}>(모든 차트 공통)</span>
       </div>
       <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--space-xs)' }}>
         {SOURCE_OPTIONS.map((opt) => (
@@ -102,6 +119,26 @@ function DataSourceDetail() {
         현재 source는 차트 상단 칩에 표시됩니다.
       </div>
     </>
+  );
+}
+
+function StoragePolicyRadio({ value }: { value: LiveStoragePolicy }) {
+  const { data } = useLiveSettings();
+  const patch = usePatchLiveSettings();
+  const checked = (data?.storage_policy ?? 'ws_plus_rest') === value;
+  return (
+    <label style={{ display: 'flex', alignItems: 'center', gap: 'var(--space-sm)', cursor: 'pointer' }}>
+      <input
+        type="radio"
+        name="live-storage-policy"
+        value={value}
+        checked={checked}
+        onChange={() => patch.mutate(value)}
+      />
+      <span style={{ fontSize: 'var(--text-sm)', color: 'var(--fg)' }}>
+        {STORAGE_POLICY_LABEL[value]}
+      </span>
+    </label>
   );
 }
 

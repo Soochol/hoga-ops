@@ -11,8 +11,14 @@ describe('SourceChip', () => {
 
   it('renders kis_live variant with 10s suffix', () => {
     render(<SourceChip source="kis_live" />);
-    expect(screen.getByText(/kis_live/)).toBeInTheDocument();
+    expect(screen.getByText('KIS WS')).toBeInTheDocument();
     expect(screen.getByText(/10s/)).toBeInTheDocument();
+  });
+
+  it('renders kis_api variant with 30s suffix', () => {
+    render(<SourceChip source="kis_api" />);
+    expect(screen.getByText('KIS API')).toBeInTheDocument();
+    expect(screen.getByText(/30s/)).toBeInTheDocument();
   });
 
   it('renders empty (returns null) when source is undefined', () => {
@@ -27,5 +33,8 @@ describe('SourceChip', () => {
     rerender(<SourceChip source="kis_live" />);
     const chip2 = container.firstChild as HTMLElement;
     expect(chip2.style.background).toMatch(/var\(--source-kis-live-bg\)/);
+    rerender(<SourceChip source="kis_api" />);
+    const chip3 = container.firstChild as HTMLElement;
+    expect(chip3.style.background).toMatch(/var\(--source-kis-api-bg\)/);
   });
 });

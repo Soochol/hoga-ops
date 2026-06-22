@@ -23,7 +23,7 @@ from hoga.api.models import (
 )
 from hoga.api.params import Code, StockDate
 from hoga.api.queries import QueryEngine, StockDateNotFound
-from hoga.api.sources import SourceName, resolve_source
+from hoga.api.sources import SourceName, ordered_sources, resolve_source_result
 from hoga.api.timeenc import (
     hhmmssms_to_unix_ms,
     ms_from_midnight_to_unix_ms,
@@ -48,8 +48,22 @@ def _parquet_path(
         raise HTTPException(status_code=404, detail=str(e)) from e
 
 
+def _validate_source_policy(value: str) -> str:
+    try:
+        ordered_sources(value)
+    except ValueError as e:
+        raise HTTPException(
+            status_code=422,
+            detail={
+                "code": "invalid_source_pref",
+                "message": str(e),
+            },
+        ) from e
+    return value
+
+
 def _resolved_parquet_dir(
-    engine: QueryEngine, date: str, code: str, source_pref: SourceName
+    engine: QueryEngine, date: str, code: str, source_pref: str
 ) -> tuple[Path | None, SourceName]:
     """Resolve source preference per ADR-0044 and return (parquet_dir, resolved_source).
 
@@ -64,12 +78,8 @@ def _resolved_parquet_dir(
     doesn't honor source_pref and keeps strict 404 semantics. /api/meta
     is the same.
     """
-    source = resolve_source(engine, date, code, source_pref)
-    try:
-        sd_dir = engine.parquet_dir(date, code, source=source)
-    except StockDateNotFound:
-        return None, source
-    return sd_dir, source
+    resolution = resolve_source_result(engine, date, code, source_pref)
+    return resolution.path, resolution.source
 
 
 def _cursor_to_native(date: str, unix_ms: int) -> int:
@@ -127,7 +137,7 @@ def build_router(engine: QueryEngine) -> APIRouter:
         date: StockDate,
         t: int = Query(...),
         bucket_ms: int | None = Query(None),
-        source_pref: SourceName = Query("hogaplay"),
+        source_pref: str = Query("hogaplay"),
     ) -> OrderbookResponse:
         # ADR-0044: hover spot path honors source_pref via resolve_source +
         # ADR-0039 preference+fallback semantics. The resolved source is
@@ -138,6 +148,7 @@ def build_router(engine: QueryEngine) -> APIRouter:
         # snapshot inside [t, t + bucket_ms) — the same snapshot the indicator
         # labels at t. Without bucket_ms the legacy "latest ≤ t" semantics
         # apply, so the parameter is backward-compatible.
+        source_pref = _validate_source_policy(source_pref)
         sd_dir, source = _resolved_parquet_dir(engine, date, code, source_pref)
         if sd_dir is None:
             return OrderbookResponse(available_from=None, snapshot=None, source=source)
@@ -193,11 +204,12 @@ def build_router(engine: QueryEngine) -> APIRouter:
     def brokers_series(
         code: Code,
         date: StockDate,
-        source_pref: SourceName = Query("hogaplay"),
+        source_pref: str = Query("hogaplay"),
     ) -> BrokerSeriesResponse:
         # ADR-0044: hover spot path honors source_pref via resolve_source +
         # ADR-0039 preference+fallback semantics. The resolved source is
         # echoed back so LiveStatusBar's chip can reflect fallback honestly.
+        source_pref = _validate_source_policy(source_pref)
         sd_dir, source = _resolved_parquet_dir(engine, date, code, source_pref)
         if sd_dir is None:
             return BrokerSeriesResponse(date=date, brokers=[], source=source)
@@ -232,6 +244,7 @@ def build_router(engine: QueryEngine) -> APIRouter:
             validate_bucket_ms(bucket_ms)
         except ValueError as e:
             raise HTTPException(400, str(e)) from e
+        source_pref = _validate_source_policy(source_pref)
         return build_range_bundle(
             engine,
             code=code,

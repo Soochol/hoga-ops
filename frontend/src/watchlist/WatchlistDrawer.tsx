@@ -7,7 +7,7 @@ import { QuoteSortIcon } from '../rightrail/QuoteSortIcon';
 import { quoteSortModeDescription } from '../rightrail/quoteSortDescription';
 import { useLivePageStore } from '../state/livePage';
 import { useLiveStatus } from '../api/liveStatus';
-import { DISPLAY_PRESENTATION, deriveCollectionStatus, deriveDisplayStatus } from '../live/collectionStatus';
+import { deriveCollectionView } from '../live/collectionStatus';
 import { CollectionDot } from '../live/CollectionDot';
 import {
   useWatchlist, useCatchupAll, useRemoveFromWatchlist,
@@ -248,6 +248,7 @@ function SortableQuoteRow(props: {
   onDelete: () => void;
   collectionBadge?: React.ReactNode;
   collectionLabel?: string;
+  metadata?: React.ReactNode;
   dragEnabled?: boolean;
 }) {
   const { entry } = props;
@@ -271,6 +272,7 @@ function SortableQuoteRow(props: {
       dragListeners={props.dragEnabled === false ? undefined : listeners}
       dragging={props.dragEnabled === false ? false : isDragging}
       trailingAction={props.collectionBadge}
+      metadata={props.metadata}
     />
   );
 }
@@ -322,7 +324,8 @@ export function WatchlistDrawer() {
 
   // ADR-0067: 행별 수집상태 배지 — live_set을 한 번 읽어 공유 (행마다 재계산 없음).
   const { data: liveStatusData } = useLiveStatus();
-  const liveSet = liveStatusData?.live_set ?? [];
+  const liveCodes = liveStatusData?.live_set ?? [];
+  const apiTargets = liveStatusData?.kis_api_targets ?? [];
   const viewedCodes = activeCode ? [activeCode] : [];
 
   // 함수형 업데이터 — 같은 배치의 다중 toggle도 최신 Set 위에서 계산된다.
@@ -518,9 +521,15 @@ export function WatchlistDrawer() {
                   <SortableContext items={displayEntries.map((e) => entrySortableId(e.folder_id, e.code))} strategy={verticalListSortingStrategy}>
                     {displayEntries.map((entry) => {
                       const q = quoteByCode.get(entry.code);
-                      const status = deriveCollectionStatus(entry.code, liveSet, codes, viewedCodes);
-                      const displayStatus = deriveDisplayStatus(true, status);
-                      const badge = <CollectionDot status={displayStatus} />;
+                      const collection = deriveCollectionView({
+                        code: entry.code,
+                        liveSet: liveCodes,
+                        watchlistCodes: codes,
+                        viewedCodes,
+                        kisApiTargets: apiTargets,
+                        captureCandidate: entry.capture_candidate !== false,
+                      });
+                      const badge = <CollectionDot status={collection.displayStatus} />;
                       return (
                         <SortableQuoteRow
                           key={entrySortableId(entry.folder_id, entry.code)}
@@ -533,7 +542,8 @@ export function WatchlistDrawer() {
                           onContextMenu={(e) => openMenu(e, entry.code, entry.name, entry.folder_id)}
                           onDelete={() => removeM.mutate(entry.code)}
                           collectionBadge={badge}
-                          collectionLabel={DISPLAY_PRESENTATION[displayStatus].ariaLabel}
+                          collectionLabel={collection.ariaLabel}
+                          metadata={<span className="text-xs text-fg-dimmer">{collection.storageLabel}</span>}
                           dragEnabled={rowDragEnabled}
                         />
                       );

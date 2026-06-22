@@ -1,5 +1,10 @@
 import { describe, it, expect } from 'vitest';
-import { deriveCollectionStatus, deriveDisplayStatus } from './collectionStatus';
+import {
+  deriveCollectionStatus,
+  deriveCollectionView,
+  deriveDisplayStatus,
+  deriveStorageLabel,
+} from './collectionStatus';
 
 describe('deriveCollectionStatus', () => {
   it('realtime: code가 live_set(WS)에 있으면', () => {
@@ -38,5 +43,62 @@ describe('deriveDisplayStatus', () => {
   });
   it('uncollected → uncollected', () => {
     expect(deriveDisplayStatus(true, 'uncollected')).toBe('uncollected');
+  });
+});
+
+describe('deriveStorageLabel', () => {
+  it('prefers KIS WS storage over KIS API storage', () => {
+    expect(deriveStorageLabel({
+      code: '005930',
+      liveSet: ['005930'],
+      kisApiTargets: ['005930'],
+      captureCandidate: true,
+    })).toBe('KIS WS 저장 중');
+  });
+
+  it('uses KIS API label for persisted REST 30s targets outside WS', () => {
+    expect(deriveStorageLabel({
+      code: '000660',
+      liveSet: ['005930'],
+      kisApiTargets: ['000660'],
+      captureCandidate: true,
+    })).toBe('KIS API 30초 저장 중');
+  });
+
+  it('shows waiting for capture candidates not currently assigned', () => {
+    expect(deriveStorageLabel({
+      code: '035420',
+      liveSet: [],
+      kisApiTargets: [],
+      captureCandidate: true,
+    })).toBe('대기');
+  });
+
+  it('shows excluded when backend projection says the code is not a capture candidate', () => {
+    expect(deriveStorageLabel({
+      code: '051910',
+      liveSet: [],
+      kisApiTargets: [],
+      captureCandidate: false,
+    })).toBe('저장 제외');
+  });
+});
+
+describe('deriveCollectionView', () => {
+  it('returns dot status, aria label, and storage label together', () => {
+    const view = deriveCollectionView({
+      code: '000660',
+      liveSet: ['005930'],
+      watchlistCodes: ['005930', '000660'],
+      viewedCodes: [],
+      kisApiTargets: ['000660'],
+      captureCandidate: true,
+      liveConnection: true,
+    });
+
+    expect(view.collectionStatus).toBe('waiting_eod');
+    expect(view.displayStatus).toBe('waiting_eod');
+    expect(view.ariaLabel).toBe('관심종목 대기 중');
+    expect(view.storageLabel).toBe('KIS API 30초 저장 중');
   });
 });

@@ -17,6 +17,7 @@ from fastapi import APIRouter, HTTPException, Query
 from pydantic import BaseModel, ValidationError
 
 from hoga.api._atomic_write import atomic_write_json
+from hoga.api.models import LiveSettingsResponse, LiveSettingsUpdate
 from hoga.api.params import CODE_PATTERN
 from hoga.live.kis_client import (
     KisApiError,
@@ -52,7 +53,8 @@ from hoga.live.past_daily_candles_cache import PastDailyCandlesCache
 
 from . import kis_access
 from .buffer import LiveBuffer
-from .lifecycle import LiveStatus
+from .lifecycle import LiveStatus, refresh_live_stream
+from .settings import load_live_settings, update_live_settings
 
 if TYPE_CHECKING:
     from .kis_client import KisClient
@@ -1008,6 +1010,23 @@ def build_router(
     @router.get("/status", response_model=LiveStatus)
     async def _get_status() -> LiveStatus:
         return get_status()
+
+    @router.get("/settings", response_model=LiveSettingsResponse)
+    async def _get_settings() -> LiveSettingsResponse:
+        if data_dir is None:
+            raise HTTPException(503, "live settings not wired")
+        return load_live_settings(data_dir)
+
+    @router.patch("/settings", response_model=LiveSettingsResponse)
+    async def _patch_settings(req: LiveSettingsUpdate) -> LiveSettingsResponse:
+        if data_dir is None:
+            raise HTTPException(503, "live settings not wired")
+        settings = update_live_settings(data_dir, storage_policy=req.storage_policy)
+        try:
+            await refresh_live_stream(data_dir=data_dir)
+        except Exception:
+            log.exception("live.settings: refresh_live_stream failed")
+        return settings
 
     @router.get("/indices", response_model=LiveIndicesResponse)
     async def _get_indices() -> LiveIndicesResponse:

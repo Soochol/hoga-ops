@@ -1,4 +1,11 @@
-import type { HeatmapEntry, HeatmapResponse } from './heatmap';
+import type { HeatmapEntry, HeatmapFolder, HeatmapResponse } from './heatmap';
+
+const _heatmapFolder: HeatmapFolder = {
+  id: 'f_a',
+  name: '반도체',
+  order: 0,
+};
+void _heatmapFolder;
 
 const _heatmapEntry: HeatmapEntry = {
   code: '005930',

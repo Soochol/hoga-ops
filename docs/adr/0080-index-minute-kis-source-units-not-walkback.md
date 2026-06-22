@@ -1,4 +1,4 @@
-# 0079 — KIS 대표지수 분봉은 날짜 walk-back이 아니라 source-unit 선택으로 확장한다
+# 0080 — KIS 대표지수 분봉은 날짜 walk-back이 아니라 source-unit 선택으로 확장한다
 
 **Status:** accepted (2026-06-23)
 

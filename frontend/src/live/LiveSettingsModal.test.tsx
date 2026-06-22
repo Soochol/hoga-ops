@@ -1,10 +1,18 @@
-import { describe, it, expect, beforeEach } from 'vitest';
+import { describe, it, expect, beforeEach, vi } from 'vitest';
 import { render, screen, fireEvent } from '@testing-library/react';
+import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import LiveSettingsModal from './LiveSettingsModal';
 import { useChartPrefsStore } from '../state/chartPrefs';
+import * as liveSettingsApi from '../api/liveSettings';
+
+function wrap(qc: QueryClient) {
+  return ({ children }: { children: React.ReactNode }) =>
+    <QueryClientProvider client={qc}>{children}</QueryClientProvider>;
+}
 
 describe('LiveSettingsModal (2단)', () => {
   beforeEach(() => {
+    vi.restoreAllMocks();
     useChartPrefsStore.getState().resetToDefaults();
   });
 
@@ -46,10 +54,16 @@ describe('LiveSettingsModal (2단)', () => {
   });
 
   it('데이터소스 nav 클릭 후 source radio 두 옵션이 보인다', () => {
-    render(<LiveSettingsModal onClose={() => {}} />);
+    vi.spyOn(liveSettingsApi, 'getLiveSettings').mockResolvedValue({
+      schema_version: 1,
+      storage_policy: 'ws_plus_rest',
+    });
+    render(<LiveSettingsModal onClose={() => {}} />, {
+      wrapper: wrap(new QueryClient({ defaultOptions: { queries: { retry: false } } })),
+    });
     fireEvent.click(screen.getByTestId('settings-nav-data-source'));
     expect(screen.getByLabelText(/hogaplay 우선/)).toBeTruthy();
-    expect(screen.getByLabelText(/kis_live 우선/)).toBeTruthy();
+    expect(screen.getByLabelText(/KIS API 우선/)).toBeTruthy();
   });
 
   it('Escape calls onClose', () => {

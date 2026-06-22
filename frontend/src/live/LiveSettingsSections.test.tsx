@@ -1,11 +1,19 @@
-import { describe, it, expect, afterEach } from 'vitest';
+import { describe, it, expect, afterEach, vi } from 'vitest';
 import { render, screen, cleanup, fireEvent } from '@testing-library/react';
+import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import LiveSettingsSections from './LiveSettingsSections';
 import { useLiveVenueStore } from '../state/liveVenue';
+import * as liveSettingsApi from '../api/liveSettings';
+
+function wrap(qc: QueryClient) {
+  return ({ children }: { children: React.ReactNode }) =>
+    <QueryClientProvider client={qc}>{children}</QueryClientProvider>;
+}
 
 describe('LiveSettingsSections (2단 nav+detail)', () => {
   afterEach(() => {
     cleanup();
+    vi.restoreAllMocks();
     localStorage.clear();
     useLiveVenueStore.setState({ venue: 'KRX' });
   });
@@ -68,7 +76,11 @@ describe('LiveSettingsSections (2단 nav+detail)', () => {
   });
 
   it('데이터소스 상세에서 KIS 캔들 venue 옵션을 렌더하고 저장한다', () => {
-    render(<LiveSettingsSections />);
+    vi.spyOn(liveSettingsApi, 'getLiveSettings').mockResolvedValue({
+      schema_version: 1,
+      storage_policy: 'ws_plus_rest',
+    });
+    render(<LiveSettingsSections />, { wrapper: wrap(new QueryClient({ defaultOptions: { queries: { retry: false } } })) });
     fireEvent.click(screen.getByTestId('settings-nav-data-source'));
 
     expect(screen.getByLabelText('KRX')).toBeChecked();
@@ -79,5 +91,28 @@ describe('LiveSettingsSections (2단 nav+detail)', () => {
     fireEvent.click(screen.getByLabelText('자동'));
     expect(useLiveVenueStore.getState().venue).toBe('AUTO');
     expect(localStorage.getItem('live.venue.v1')).toContain('AUTO');
+  });
+
+  it('renders storage policy and display priority separately', async () => {
+    vi.spyOn(liveSettingsApi, 'getLiveSettings').mockResolvedValue({
+      schema_version: 1,
+      storage_policy: 'ws_plus_rest',
+    });
+    vi.spyOn(liveSettingsApi, 'patchLiveSettings').mockResolvedValue({
+      schema_version: 1,
+      storage_policy: 'rest_only',
+    });
+
+    render(<LiveSettingsSections />, { wrapper: wrap(new QueryClient({ defaultOptions: { queries: { retry: false } } })) });
+    fireEvent.click(screen.getByTestId('settings-nav-data-source'));
+
+    expect(await screen.findByText('데이터 저장 방식')).toBeInTheDocument();
+    expect(screen.getByText('데이터 표현 기준')).toBeInTheDocument();
+    expect(screen.getByRole('radio', { name: 'WS만 저장' })).toBeInTheDocument();
+    expect(screen.getByRole('radio', { name: 'WS 우선 + 나머지 REST 저장' })).toBeChecked();
+    expect(screen.getByRole('radio', { name: 'REST만 저장' })).toBeInTheDocument();
+    expect(screen.getByRole('radio', { name: 'hogaplay 우선' })).toBeInTheDocument();
+    expect(screen.getByRole('radio', { name: 'KIS WS 우선' })).toBeInTheDocument();
+    expect(screen.getByRole('radio', { name: 'KIS API 우선' })).toBeInTheDocument();
   });
 });
