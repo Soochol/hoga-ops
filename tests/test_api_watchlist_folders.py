@@ -90,6 +90,33 @@ def test_migrate_existing_v3_folder_without_capture_enabled_defaults_true(tmp_pa
     assert doc.folders[0].capture_enabled is True
 
 
+def test_load_invalid_v3_capture_enabled_backs_up_and_returns_empty_doc(tmp_path):
+    from hoga.api.watchlist import load_document
+
+    (tmp_path / "watchlist.json").write_text(json.dumps({
+        "schema_version": 3,
+        "folders": [{
+            "id": "f_0000000a",
+            "name": "스윙",
+            "order": 0,
+            "member_codes": ["005930"],
+            "capture_enabled": "maybe",
+        }],
+        "entries": [{
+            "code": "005930",
+            "name": "삼성전자",
+            "registered_at_kst_date": "20260101",
+            "last_success_date": None,
+        }],
+    }), encoding="utf-8")
+
+    doc = load_document(tmp_path)
+
+    assert doc.entries == []
+    assert doc.folders == []
+    assert list(tmp_path.glob("watchlist.json.corrupt-*"))
+
+
 def test_bump_last_success_preserves_folders(tmp_path):
     """Blocker #1 regression: the Scheduler's bump must NOT drop folders/members."""
     from hoga.api.watchlist import load_document, save_document, bump_last_success

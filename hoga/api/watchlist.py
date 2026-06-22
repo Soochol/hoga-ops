@@ -72,7 +72,7 @@ def _migrate(raw: dict) -> dict:
             "schema_version": 3,
             "folders": [{"id": f["id"], "name": f["name"], "order": f.get("order", i),
                          "member_codes": list(f.get("member_codes", [])),
-                         "capture_enabled": bool(f.get("capture_enabled", True))}
+                         "capture_enabled": f["capture_enabled"] if "capture_enabled" in f else True}
                         for i, f in enumerate(raw.get("folders", []))],
             "entries": [_slim(e) for e in raw.get("entries", [])],
         }
