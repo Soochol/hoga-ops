@@ -3,33 +3,33 @@ import { fireEvent, render, screen, within } from '@testing-library/react';
 import { ScreenerResultSortControl } from './ScreenerResultSortControl';
 
 describe('ScreenerResultSortControl', () => {
-  it('renders three explicit sort buttons and marks the active mode', () => {
+  it('renders one cycling sort button with the active mode icon and state copy', () => {
     render(<ScreenerResultSortControl mode="default" onChange={vi.fn()} />);
 
-    expect(screen.getByRole('button', { name: '기본 순서' })).toHaveAttribute('aria-pressed', 'true');
-    expect(screen.getByRole('button', { name: '등락률 낮은 순' })).toHaveAttribute('aria-pressed', 'false');
-    expect(screen.getByRole('button', { name: '등락률 높은 순' })).toHaveAttribute('aria-pressed', 'false');
-    expect(within(screen.getByRole('button', { name: '기본 순서' })).getByTestId('sort-icon-default')).toBeInTheDocument();
+    const button = screen.getByRole('button', { name: '스크리너 결과 정렬' });
+    expect(within(button).getByTestId('sort-icon-default')).toBeInTheDocument();
+    expect(button).toHaveAccessibleDescription('현재 기본 순서, 클릭하면 등락률 낮은 순');
   });
 
-  it('calls onChange with the requested mode', () => {
+  it('cycles to the next mode from the current mode', () => {
     const onChange = vi.fn();
-    render(<ScreenerResultSortControl mode="default" onChange={onChange} />);
+    const { rerender } = render(<ScreenerResultSortControl mode="default" onChange={onChange} />);
 
-    fireEvent.click(screen.getByRole('button', { name: '등락률 낮은 순' }));
-    fireEvent.click(screen.getByRole('button', { name: '등락률 높은 순' }));
-    fireEvent.click(screen.getByRole('button', { name: '기본 순서' }));
-
+    fireEvent.click(screen.getByRole('button', { name: '스크리너 결과 정렬' }));
     expect(onChange).toHaveBeenNthCalledWith(1, 'change_pct_asc');
+
+    rerender(<ScreenerResultSortControl mode="change_pct_asc" onChange={onChange} />);
+    fireEvent.click(screen.getByRole('button', { name: '스크리너 결과 정렬' }));
     expect(onChange).toHaveBeenNthCalledWith(2, 'change_pct_desc');
+
+    rerender(<ScreenerResultSortControl mode="change_pct_desc" onChange={onChange} />);
+    fireEvent.click(screen.getByRole('button', { name: '스크리너 결과 정렬' }));
     expect(onChange).toHaveBeenNthCalledWith(3, 'default');
   });
 
-  it('disables all buttons when disabled', () => {
+  it('disables the cycling button when disabled', () => {
     render(<ScreenerResultSortControl mode="change_pct_desc" onChange={vi.fn()} disabled />);
 
-    expect(screen.getByRole('button', { name: '기본 순서' })).toBeDisabled();
-    expect(screen.getByRole('button', { name: '등락률 낮은 순' })).toBeDisabled();
-    expect(screen.getByRole('button', { name: '등락률 높은 순' })).toBeDisabled();
+    expect(screen.getByRole('button', { name: '스크리너 결과 정렬' })).toBeDisabled();
   });
 });

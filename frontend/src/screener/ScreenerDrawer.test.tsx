@@ -96,6 +96,10 @@ function qc() {
   return new QueryClient({ defaultOptions: { queries: { retry: false } } });
 }
 
+function sortButton() {
+  return screen.getByRole('button', { name: '스크리너 결과 정렬' });
+}
+
 describe('ScreenerDrawer', () => {
   beforeEach(() => {
     cleanup();
@@ -204,7 +208,7 @@ describe('ScreenerDrawer', () => {
     ]));
     expect(JSON.parse(localStorage.getItem('screenerPanel.v1') ?? '{}')).toEqual({ selectedSavedId: 's1' });
 
-    fireEvent.click(screen.getByRole('button', { name: '등락률 낮은 순' }));
+    fireEvent.click(sortButton());
     await waitFor(() => expect(rowOrder()).toEqual([
       'screener-row-000660',
       'screener-row-005930',
@@ -212,7 +216,7 @@ describe('ScreenerDrawer', () => {
     ]));
     expect(JSON.parse(localStorage.getItem('screenerPanel.v1') ?? '{}')).toEqual({ selectedSavedId: 's1' });
 
-    fireEvent.click(screen.getByRole('button', { name: '등락률 높은 순' }));
+    fireEvent.click(sortButton());
     await waitFor(() => expect(rowOrder()).toEqual([
       'screener-row-035420',
       'screener-row-005930',
@@ -226,7 +230,7 @@ describe('ScreenerDrawer', () => {
       'screener-row-000660',
       'screener-row-035420',
     ]));
-    expect(screen.getByRole('button', { name: '기본 순서' })).toHaveAttribute('aria-pressed', 'true');
+    expect(within(sortButton()).getByTestId('sort-icon-default')).toBeInTheDocument();
   });
 
   it('preserves a persisted non-first selection when saves load', async () => {
@@ -264,9 +268,7 @@ describe('ScreenerDrawer', () => {
     await waitFor(() => expect(useScreenerPanelStore.getState().selectedSavedId).toBe('s1'));
     fireEvent.click(screen.getByRole('button', { name: '조회' }));
     await waitFor(() => expect(screen.getByText('조건에 맞는 종목이 없습니다.')).toBeInTheDocument());
-    expect(screen.getByRole('button', { name: '기본 순서' })).toBeDisabled();
-    expect(screen.getByRole('button', { name: '등락률 낮은 순' })).toBeDisabled();
-    expect(screen.getByRole('button', { name: '등락률 높은 순' })).toBeDisabled();
+    expect(sortButton()).toBeDisabled();
   });
 
   it('clicking a result on /live sets activeCode without navigating away', async () => {
@@ -516,7 +518,8 @@ describe('ScreenerDrawer', () => {
       render(<ScreenerDrawer />, { wrapper: wrap(qc(), '/inventory') });
       await waitFor(() => expect(screen.getByText('NAVER')).toBeInTheDocument());
 
-      fireEvent.click(screen.getByRole('button', { name: '등락률 높은 순' }));
+      fireEvent.click(sortButton());
+      fireEvent.click(sortButton());
       await waitFor(() =>
         expect(screen.getAllByTestId(/^screener-row-/).map((el) => el.dataset.testid)).toEqual([
           'screener-row-035420',
