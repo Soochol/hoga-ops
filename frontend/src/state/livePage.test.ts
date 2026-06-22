@@ -1,4 +1,4 @@
-import { describe, it, expect, beforeEach } from 'vitest';
+import { describe, it, expect, beforeEach, vi } from 'vitest';
 import { useLivePageStore } from './livePage';
 import {
   DEFAULT_LIVE_MAS,
@@ -76,6 +76,25 @@ describe('livePage store', () => {
     useLivePageStore.getState().hydrateFromStorage();
     expect(useLivePageStore.getState().activeCode).toBe('000660');
     expect(useLivePageStore.getState().candleTimeframe).toBe('5m');
+  });
+
+  it('falls back to 1m on initial import when legacy storage omits lastMinuteTimeframe', async () => {
+    localStorage.setItem(
+      'live.page.v1',
+      JSON.stringify({
+        activeCode: '000660',
+        candleTimeframe: 'D',
+        historicalFromDate: null,
+      }),
+    );
+
+    vi.resetModules();
+    const { useLivePageStore: freshStore } = await import('./livePage');
+    const state = freshStore.getState();
+
+    expect(state.activeCode).toBe('000660');
+    expect(state.candleTimeframe).toBe('D');
+    expect(state.lastMinuteTimeframe).toBe('1m');
   });
 
   it('tracks the last selected minute timeframe', () => {

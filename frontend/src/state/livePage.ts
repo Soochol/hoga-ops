@@ -169,16 +169,20 @@ function readStorage(): Partial<Persisted> {
       : isMinuteFrameValue(candleTimeframe)
         ? candleTimeframe
         : undefined;
-    return {
-      activeCode: typeof parsed.activeCode === 'string'
-        ? parsed.activeCode
-        : parsed.activeCode === null ? null : undefined,
-      candleTimeframe,
-      lastMinuteTimeframe: derivedMinute,
-      historicalFromDate: typeof parsed.historicalFromDate === 'string'
-        ? parsed.historicalFromDate
-        : parsed.historicalFromDate === null ? null : undefined,
-    };
+    const next: Partial<Persisted> = {};
+    if (typeof parsed.activeCode === 'string' || parsed.activeCode === null) {
+      next.activeCode = parsed.activeCode;
+    }
+    if (candleTimeframe !== undefined) {
+      next.candleTimeframe = candleTimeframe;
+    }
+    if (derivedMinute !== undefined) {
+      next.lastMinuteTimeframe = derivedMinute;
+    }
+    if (typeof parsed.historicalFromDate === 'string' || parsed.historicalFromDate === null) {
+      next.historicalFromDate = parsed.historicalFromDate;
+    }
+    return next;
   } catch {
     return {};
   }
