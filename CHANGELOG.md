@@ -3,6 +3,18 @@
 All notable changes to this project are documented here.
 The format follows a 4-digit `MAJOR.MINOR.PATCH.MICRO` scheme.
 
+## [0.8.18.0] - 2026-06-22
+
+### Added
+- **스크리너 결과 등락률 정렬**: `/screener`와 우측 스크리너 결과에서 기본 순서,
+  등락률 낮은 순, 등락률 높은 순을 아이콘 버튼으로 전환할 수 있게 했다.
+- 우측 관심종목 정렬 아이콘을 스크리너와 공유해 기본·오름차순·내림차순 상태 표현을
+  같은 시각 언어로 맞췄다.
+
+### Fixed
+- 라이브 시세 일부가 누락될 때 EOD 등락률과 라이브 등락률이 섞여 정렬되지 않도록,
+  live batch 도착 후 quote가 없는 스크리너 행은 정렬 기준에서 missing으로 처리한다.
+
 ## [0.8.17.0] - 2026-06-22
 
 ### Added
