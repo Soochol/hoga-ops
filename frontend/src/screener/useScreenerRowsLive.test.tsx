@@ -16,7 +16,7 @@ describe('useScreenerRowsLive', () => {
     ]));
     const { result } = renderHook(() => useScreenerRowsLive(ROWS));
     expect(result.current[0]).toMatchObject({
-      code: '005930', price: 80000, change_pct: 7.7, change_won: 5000,
+      code: '005930', price: 80000, change_pct: 7.7, change_won: 5000, change_pct_sort: 7.7,
     });
   });
 
@@ -27,7 +27,7 @@ describe('useScreenerRowsLive', () => {
     const { result } = renderHook(() => useScreenerRowsLive(ROWS));
     // 000660 has no quote → EOD price/pct preserved, change_won null (라이브 전용 필드)
     expect(result.current[1]).toMatchObject({
-      code: '000660', price: 180000, change_pct: -1.2, change_won: null,
+      code: '000660', price: 180000, change_pct: -1.2, change_won: null, change_pct_sort: null,
     });
   });
 
@@ -45,7 +45,13 @@ describe('useScreenerRowsLive', () => {
     ]));
     const { result } = renderHook(() => useScreenerRowsLive(ROWS));
     expect(result.current[0]).toMatchObject({
-      code: '005930', price: 72000, change_pct: null, change_won: null,
+      code: '005930', price: 72000, change_pct: null, change_won: null, change_pct_sort: null,
     });
+  });
+
+  it('uses EOD as the sort value only before any live batch is available', () => {
+    vi.spyOn(liveQuotes, 'useQuoteByCode').mockReturnValue(new Map());
+    const { result } = renderHook(() => useScreenerRowsLive(ROWS));
+    expect(result.current.map((row) => row.change_pct_sort)).toEqual([2.1, -1.2]);
   });
 });

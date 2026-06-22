@@ -1,4 +1,4 @@
-import { useEffect, useMemo } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import {
   DndContext,
   PointerSensor,
@@ -24,6 +24,8 @@ import { QuoteRow } from '../rightrail/QuoteRow';
 import { useScreenerRowsLive } from './useScreenerRowsLive';
 import type { ScreenerRowLive } from './useScreenerRowsLive';
 import { WatchlistHeartButton } from '../watchlist/WatchlistHeartButton';
+import { ScreenerResultSortControl } from './ScreenerResultSortControl';
+import { sortScreenerRows, type ScreenerResultSortMode } from './sortResults';
 
 const SCREENER_ENTRY_TYPE = 'screener-entry';
 const SCREENER_DRAG_SENSOR_OPTIONS = { activationConstraint: { distance: 5 } };
@@ -80,6 +82,7 @@ export function ScreenerDrawer() {
   const setSelectedSavedId = useScreenerPanelStore((s) => s.setSelectedSavedId);
   const lastScan = useScreenerPanelStore((s) => s.lastScan);
   const setLastScan = useScreenerPanelStore((s) => s.setLastScan);
+  const [sortMode, setSortMode] = useState<ScreenerResultSortMode>('default');
 
   const { data: savesData, isSuccess: savesLoaded } = useSavedScreeners();
   const saves = useMemo(() => savesData?.saves ?? [], [savesData]);
@@ -108,11 +111,13 @@ export function ScreenerDrawer() {
     screener.mutate(
       { conditions: selected.conditions, universe: selected.universe },
       {
-        onSuccess: (res) =>
+        onSuccess: (res) => {
           setLastScan({
             savedId: selected.id, savedName: selected.name,
             rows: res.rows, scanStatus: res.status, warnings: res.warnings,
-          }),
+          });
+          setSortMode('default');
+        },
       },
     );
   };
@@ -123,6 +128,7 @@ export function ScreenerDrawer() {
   // 무효화하지 않게 한다(풀페이지 Screener.tsx 와 대칭).
   const scanRows = useMemo(() => lastScan?.rows ?? [], [lastScan]);
   const liveRows = useScreenerRowsLive(scanRows);
+  const sortedLiveRows = useMemo(() => sortScreenerRows(liveRows, sortMode), [liveRows, sortMode]);
   const sensors = useSensors(useSensor(PointerSensor, SCREENER_DRAG_SENSOR_OPTIONS));
   const startEntryDrag = useEntryDragStore((s) => s.startDrag);
   const setOverChart = useEntryDragStore((s) => s.setOverChart);
@@ -225,13 +231,16 @@ export function ScreenerDrawer() {
           </div>
         ) : lastScan ? (
           <>
-            <div className="px-md pt-sm pb-1 text-xs uppercase tracking-[0.08em] text-fg-dimmer">
-              결과 {lastScan.rows.length} · {lastScan.savedName}
-              {selectedSavedId !== lastScan.savedId && (
-                <span className="ml-1 normal-case tracking-normal" style={{ color: 'var(--warn)' }}>
-                  · 선택한 조건과 다름 — 조회로 갱신
-                </span>
-              )}
+            <div className="px-md pt-sm pb-1 flex items-center gap-2 text-xs uppercase tracking-[0.08em] text-fg-dimmer">
+              <div className="min-w-0 flex-1 truncate">
+                결과 {lastScan.rows.length} · {lastScan.savedName}
+                {selectedSavedId !== lastScan.savedId && (
+                  <span className="ml-1 normal-case tracking-normal" style={{ color: 'var(--warn)' }}>
+                    · 선택한 조건과 다름 — 조회로 갱신
+                  </span>
+                )}
+              </div>
+              <ScreenerResultSortControl mode={sortMode} onChange={setSortMode} disabled={lastScan.rows.length === 0} />
             </div>
             {lastScan.rows.length === 0 ? (
               <div className="p-md text-fg-dim text-sm">조건에 맞는 종목이 없습니다.</div>
@@ -244,7 +253,7 @@ export function ScreenerDrawer() {
                 onDragCancel={onDragCancel}
               >
                 <ul style={{ listStyle: 'none', margin: 0, padding: 0 }}>
-                  {liveRows.map((r) => (
+                  {sortedLiveRows.map((r) => (
                     <DraggableScreenerRow
                       key={r.code}
                       row={r}
