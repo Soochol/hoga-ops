@@ -11,6 +11,8 @@ import { StalenessChip } from '../screener/StalenessChip';
 import { useSavedScreenerEditor } from '../screener/useSavedScreenerEditor';
 import { useScreenerRowsLive } from '../screener/useScreenerRowsLive';
 import { ModalShell } from '../ui/ModalShell';
+import { ScreenerResultSortControl } from '../screener/ScreenerResultSortControl';
+import { sortScreenerRows, type ScreenerResultSortMode } from '../screener/sortResults';
 
 type SaveDialogMode = 'save-new' | 'save-as';
 
@@ -52,6 +54,7 @@ export function Screener() {
   const editor = useSavedScreenerEditor();
   const [saveDialog, setSaveDialog] = useState<SaveDialogMode | null>(null);
   const [lastScanKey, setLastScanKey] = useState<string | null>(null);
+  const [sortMode, setSortMode] = useState<ScreenerResultSortMode>('default');
 
   const screener = useScreener();
   const { data: status } = useScreenerStatus();
@@ -62,6 +65,7 @@ export function Screener() {
   // 하고, codes 가 비면(notSeeded/error/무결과) 훅이 폴링을 끈다.
   const rows = useMemo(() => screener.data?.rows ?? [], [screener.data]);
   const liveRows = useScreenerRowsLive(rows);
+  const sortedLiveRows = useMemo(() => sortScreenerRows(liveRows, sortMode), [liveRows, sortMode]);
 
   const notSeeded = screener.data?.status === 'not_seeded' || status?.status === 'not_seeded';
   const scanBody = useMemo(
@@ -70,7 +74,12 @@ export function Screener() {
   );
   const scanKey = useMemo(() => JSON.stringify(scanBody), [scanBody]);
   const resultsStale = lastScanKey !== null && lastScanKey !== scanKey;
-  const runScan = () => screener.mutate(scanBody, { onSuccess: () => setLastScanKey(scanKey) });
+  const runScan = () => screener.mutate(scanBody, {
+    onSuccess: () => {
+      setLastScanKey(scanKey);
+      setSortMode('default');
+    },
+  });
   const currentTitle = editor.anchorName ?? '새 조건검색';
   const saveDialogInitial = saveDialog === 'save-as' && editor.anchorName ? `${editor.anchorName} 복사` : '새조건1';
   const submitSaveDialog = (name: string) => {
@@ -151,7 +160,10 @@ export function Screener() {
               조건 변경됨 · 다시 조회 필요
             </div>
           )}
-          <ResultTable rows={liveRows} onActivate={openLive} />
+          <div className="flex justify-end">
+            <ScreenerResultSortControl mode={sortMode} onChange={setSortMode} disabled={rows.length === 0} />
+          </div>
+          <ResultTable rows={sortedLiveRows} onActivate={openLive} />
         </div>
       )}
       {saveDialog && (

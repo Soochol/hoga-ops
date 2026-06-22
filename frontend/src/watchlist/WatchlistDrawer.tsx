@@ -3,6 +3,8 @@ import { useJumpToLive } from '../live/useJumpToLive';
 import type { LiveOpenDisposition } from '../live/liveActivation';
 import { useQuoteByCode } from '../api/liveQuotes';
 import { makeChangePctOf, sortEntriesByChangePct, type QuoteSortMode } from '../rightrail/quoteSort';
+import { QuoteSortIcon } from '../rightrail/QuoteSortIcon';
+import { quoteSortModeDescription } from '../rightrail/quoteSortDescription';
 import { useLivePageStore } from '../state/livePage';
 import { useLiveStatus } from '../api/liveStatus';
 import { DISPLAY_PRESENTATION, deriveCollectionStatus, deriveDisplayStatus } from '../live/collectionStatus';
@@ -83,37 +85,6 @@ function ChevronIcon({ collapsed }: { collapsed: boolean }) {
   );
 }
 
-function SortIcon({ mode }: { mode: QuoteSortMode | undefined }) {
-  const iconMode = mode ?? 'default';
-  return (
-    <svg data-testid={`sort-icon-${iconMode === 'change_pct_asc' ? 'asc' : iconMode === 'change_pct_desc' ? 'desc' : 'default'}`}
-      width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor"
-      strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
-      {iconMode === 'default' ? (
-        <>
-          <path d="M5 7h14" />
-          <path d="M5 12h14" />
-          <path d="M5 17h14" />
-        </>
-      ) : (
-        <>
-          <path d="M4 7h10" />
-          <path d="M4 12h7" />
-          <path d="M4 17h4" />
-          <path d="M17 6v12" />
-          <path d={iconMode === 'change_pct_asc' ? 'M14 9l3-3 3 3' : 'M14 15l3 3 3-3'} />
-        </>
-      )}
-    </svg>
-  );
-}
-
-function sortModeDescription(mode: QuoteSortMode | undefined): string {
-  if (mode === 'change_pct_asc') return '현재 등락률 오름차순, 클릭하면 등락률 내림차순';
-  if (mode === 'change_pct_desc') return '현재 등락률 내림차순, 클릭하면 기본 정렬';
-  return '현재 기본 정렬, 클릭하면 등락률 오름차순';
-}
-
 /**
  * 그룹 헤더 행 — 라벨/chevron 클릭 = 접기 토글, 호버 시 ⋯ 메뉴(이름 변경/삭제;
  * 실폴더만 — 미분류는 onRename/onDelete 미전달 → ⋯ 메뉴 없이 chevron+라벨 버튼만).
@@ -185,10 +156,10 @@ function GroupHeader(props: {
           aria-describedby={sortDescriptionId}
           onClick={cycleSortMode}
           className={`opacity-0 group-hover:opacity-100 group-focus-within:opacity-100 px-1 leading-none hover:text-fg ${props.sortMode === 'default' ? 'text-fg-dimmer' : 'text-accent'}`}>
-          <SortIcon mode={props.sortMode} />
+          <QuoteSortIcon mode={props.sortMode} />
           <span id={sortDescriptionId}
             style={{ position: 'absolute', width: 1, height: 1, padding: 0, margin: -1, overflow: 'hidden', clip: 'rect(0, 0, 0, 0)', whiteSpace: 'nowrap', border: 0 }}>
-            {sortModeDescription(props.sortMode)}
+            {quoteSortModeDescription(props.sortMode)}
           </span>
         </button>
       )}
@@ -397,8 +368,9 @@ export function WatchlistDrawer() {
       if (!seen.has(id)) changed = true;
     });
     if (!changed && folderIds.every((id) => groupSortModes[id] === next[id])) return;
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- one-time storage migration prunes deleted folder keys after server data loads.
     setGroupSortModes(next);
-  }, [data?.folders, groupSortModes, migrationSortMode]);
+  }, [data, groupSortModes, migrationSortMode]);
 
   useEffect(() => {
     persistJson(FOLDER_SORT_MODE_STORAGE_KEY, groupSortModes);
