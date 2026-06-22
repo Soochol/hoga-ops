@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { render, screen } from '@testing-library/react';
-import { QuoteSortIcon, quoteSortModeDescription } from './QuoteSortIcon';
+import { QuoteSortIcon } from './QuoteSortIcon';
+import { quoteSortModeDescription } from './quoteSortDescription';
 
 describe('QuoteSortIcon', () => {
   it('renders distinct icons for default, ascending, and descending modes', () => {

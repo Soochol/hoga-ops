@@ -50,4 +50,14 @@ describe('sortScreenerRows', () => {
     expect(sortScreenerRows(duplicateCodes, 'change_pct_asc').map((row) => `${row.code}:${row.name}`))
       .toEqual(['A:second', 'B:other', 'A:first']);
   });
+
+  it('uses change_pct_sort when live and EOD change percentages must not mix', () => {
+    const mixedFreshness = [
+      { code: 'A', change_pct: 30, change_pct_sort: null },
+      { code: 'B', change_pct: -1, change_pct_sort: 1.2 },
+      { code: 'C', change_pct: 2, change_pct_sort: 5.4 },
+    ];
+    expect(sortScreenerRows(mixedFreshness, 'change_pct_desc').map((row) => row.code))
+      .toEqual(['C', 'B', 'A']);
+  });
 });

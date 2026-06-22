@@ -3,7 +3,8 @@ import { useJumpToLive } from '../live/useJumpToLive';
 import type { LiveOpenDisposition } from '../live/liveActivation';
 import { useQuoteByCode } from '../api/liveQuotes';
 import { makeChangePctOf, sortEntriesByChangePct, type QuoteSortMode } from '../rightrail/quoteSort';
-import { QuoteSortIcon, quoteSortModeDescription } from '../rightrail/QuoteSortIcon';
+import { QuoteSortIcon } from '../rightrail/QuoteSortIcon';
+import { quoteSortModeDescription } from '../rightrail/quoteSortDescription';
 import { useLivePageStore } from '../state/livePage';
 import { useLiveStatus } from '../api/liveStatus';
 import { DISPLAY_PRESENTATION, deriveCollectionStatus, deriveDisplayStatus } from '../live/collectionStatus';
@@ -367,8 +368,9 @@ export function WatchlistDrawer() {
       if (!seen.has(id)) changed = true;
     });
     if (!changed && folderIds.every((id) => groupSortModes[id] === next[id])) return;
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- one-time storage migration prunes deleted folder keys after server data loads.
     setGroupSortModes(next);
-  }, [data?.folders, groupSortModes, migrationSortMode]);
+  }, [data, groupSortModes, migrationSortMode]);
 
   useEffect(() => {
     persistJson(FOLDER_SORT_MODE_STORAGE_KEY, groupSortModes);

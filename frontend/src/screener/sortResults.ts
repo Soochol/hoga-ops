@@ -5,10 +5,18 @@ export type ScreenerResultSortMode = QuoteSortMode;
 type SortableScreenerRow = {
   code: string;
   change_pct: number | null | undefined;
+  change_pct_sort?: number | null | undefined;
 };
 
 function normalizeChangePct(changePct: unknown): number | null {
   return typeof changePct === 'number' && Number.isFinite(changePct) ? changePct : null;
+}
+
+function changePctForSort(row: SortableScreenerRow): number | null {
+  if (Object.prototype.hasOwnProperty.call(row, 'change_pct_sort')) {
+    return normalizeChangePct(row.change_pct_sort);
+  }
+  return normalizeChangePct(row.change_pct);
 }
 
 export function sortScreenerRows<T extends SortableScreenerRow>(
@@ -25,7 +33,7 @@ export function sortScreenerRows<T extends SortableScreenerRow>(
   });
 
   const pctBySyntheticCode = new Map<string, number | null>(
-    sortable.map(({ code, row }) => [code, normalizeChangePct(row.change_pct)]),
+    sortable.map(({ code, row }) => [code, changePctForSort(row)]),
   );
 
   return sortEntriesByChangePct(
