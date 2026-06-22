@@ -110,6 +110,117 @@ describe('LiveChartRoot', () => {
     expect(screen.getByTestId('live-chart-root')).toBeTruthy();
   });
 
+  it('publishes index sector basis hover dates from crosshair movement', async () => {
+    let crosshairHandler: ((param: { time?: unknown; point?: { x: number } | null }) => void) | null = null;
+    const chart = {
+      addSeries: vi.fn(() => ({
+        setData: vi.fn(),
+        update: vi.fn(),
+        removeSeries: vi.fn(),
+        applyOptions: vi.fn(),
+        priceScale: vi.fn(() => ({ applyOptions: vi.fn() })),
+        createPriceLine: vi.fn(() => ({ applyOptions: vi.fn() })),
+        removePriceLine: vi.fn(),
+        attachPrimitive: vi.fn(),
+        detachPrimitive: vi.fn(),
+        setMarkers: vi.fn(),
+      })),
+      removeSeries: vi.fn(),
+      timeScale: vi.fn(() => ({
+        subscribeVisibleTimeRangeChange: vi.fn(),
+        unsubscribeVisibleTimeRangeChange: vi.fn(),
+        subscribeVisibleLogicalRangeChange: vi.fn(),
+        unsubscribeVisibleLogicalRangeChange: vi.fn(),
+        applyOptions: vi.fn(),
+        fitContent: vi.fn(),
+        scrollToRealTime: vi.fn(),
+        scrollToPosition: vi.fn(),
+        setVisibleLogicalRange: vi.fn(),
+        getVisibleLogicalRange: vi.fn(() => null),
+        getVisibleRange: vi.fn(() => null),
+        setVisibleRange: vi.fn(),
+        timeToCoordinate: vi.fn(() => null),
+        coordinateToLogical: vi.fn(() => null),
+        width: vi.fn(() => 800),
+        timeToIndex: vi.fn(() => null),
+      })),
+      panes: vi.fn(() => []),
+      remove: vi.fn(),
+      resize: vi.fn(),
+      applyOptions: vi.fn(),
+      options: vi.fn(() => ({ timeScale: { minBarSpacing: 0.5 } })),
+      subscribeCrosshairMove: vi.fn((handler) => { crosshairHandler = handler; }),
+      unsubscribeCrosshairMove: vi.fn(),
+      subscribeClick: vi.fn(),
+      unsubscribeClick: vi.fn(),
+    };
+    vi.mocked(createChartEx).mockReturnValueOnce(chart as never);
+    const onCandleBasisHover = vi.fn();
+    const realMs = Date.UTC(2026, 5, 19, 0, 0, 0);
+    const basisBundle: RangeBundle = {
+      ...DEFAULT_BUNDLE,
+      from_date: '20260619',
+      to_date: '20260619',
+      segments: [{ date: '20260619', session_open_ms: realMs, session_close_ms: realMs + 23400000, source: 'kis_live' }],
+      candles: [{ ts_ms: realMs, open: 1, high: 1, low: 1, close: 1, vol_a: 1, vol_b: 0 }],
+    };
+
+    render(
+      <LiveChartRoot
+        code="index:KOSPI"
+        timeframe="1m"
+        bundle={basisBundle}
+        clampEngaged={false}
+        isPastCandlesLoading={false}
+        onCandleBasisHover={onCandleBasisHover}
+      />,
+      { wrapper },
+    );
+
+    expect(crosshairHandler).not.toBeNull();
+    const axis = createVirtualAxis([
+      { date: '20260619', sessionOpenMs: realMs, sessionCloseMs: realMs + 23400000 },
+    ], realMs);
+    act(() => {
+      crosshairHandler?.({
+        time: realMsToVirtualSeconds(axis, realMs),
+        point: { x: 10 },
+      });
+    });
+    await act(async () => {
+      await new Promise((resolve) => requestAnimationFrame(resolve));
+    });
+
+    expect(onCandleBasisHover).toHaveBeenCalledWith('20260619');
+  });
+
+  it('clears transient hover basis when callback wiring is removed', () => {
+    const onCandleBasisHover = vi.fn();
+    const { rerender } = render(
+      <LiveChartRoot
+        code="index:KOSPI"
+        timeframe="1m"
+        bundle={DEFAULT_BUNDLE}
+        clampEngaged={false}
+        isPastCandlesLoading={false}
+        onCandleBasisHover={onCandleBasisHover}
+      />,
+      { wrapper },
+    );
+
+    rerender(
+      <LiveChartRoot
+        code="index:KOSPI"
+        timeframe="1m"
+        bundle={DEFAULT_BUNDLE}
+        clampEngaged={false}
+        isPastCandlesLoading={false}
+      />,
+    );
+
+    expect(onCandleBasisHover).toHaveBeenLastCalledWith(null);
+  });
+
   it('shows D/W/M hoga indicator empty-state notice on D timeframe', () => {
     render(
       <LiveChartRoot

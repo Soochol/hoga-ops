@@ -53,6 +53,7 @@ from hoga.live.past_daily_candles_cache import PastDailyCandlesCache
 
 from . import kis_access
 from .buffer import LiveBuffer
+from .index_sector_rankings import IndexSectorRankingResponse, build_index_sector_rankings
 from .lifecycle import LiveStatus, refresh_live_stream
 from .settings import load_live_settings, update_live_settings
 
@@ -1170,6 +1171,17 @@ def build_router(
                 _violation_to_warning(v, batch_label) for v in result.violations
             ],
         }
+
+    @router.get("/index-sector-rankings", response_model=IndexSectorRankingResponse)
+    def _get_index_sector_rankings(date: str = Query(...)) -> IndexSectorRankingResponse:
+        basis = _parse_yyyymmdd(date)
+        if basis is None:
+            raise HTTPException(422, {"code": "invalid_date", "msg": "date must be YYYYMMDD"})
+        if date > _today_kst_yyyymmdd():
+            raise HTTPException(422, {"code": "date_in_future", "msg": "date must be <= today_kst"})
+        if data_dir is None:
+            raise HTTPException(503, "live data dir not wired")
+        return build_index_sector_rankings(data_dir, date).model_dump()
 
     @router.post("/control")
     async def _post_control(req: ControlRequest) -> dict[str, str]:

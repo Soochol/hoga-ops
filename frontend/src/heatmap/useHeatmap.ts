@@ -1,8 +1,10 @@
-import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
+import { useQuery, useMutation, useQueryClient, type QueryClient } from '@tanstack/react-query';
 import { HEATMAP_KEY } from './heatmapKeys';
+import { INDEX_SECTOR_RANKINGS_KEY } from '../api/indexSectorRankings';
 import {
   getHeatmap,
   addToHeatmap,
+  addToHeatmapFolder,
   removeFromHeatmap,
   createHeatmapFolder,
   renameHeatmapFolder,
@@ -26,12 +28,26 @@ export function useHeatmap() {
   });
 }
 
+function invalidateHeatmapDependents(qc: QueryClient) {
+  void qc.invalidateQueries({ queryKey: HEATMAP_KEY });
+  void qc.invalidateQueries({ queryKey: INDEX_SECTOR_RANKINGS_KEY });
+}
+
 export function useAddToHeatmap() {
   const qc = useQueryClient();
   return useMutation({
     mutationKey: ['heatmap', 'add'],
     mutationFn: (code: string) => addToHeatmap(code),
-    onSuccess: () => qc.invalidateQueries({ queryKey: HEATMAP_KEY }),
+    onSuccess: () => invalidateHeatmapDependents(qc),
+  });
+}
+
+export function useAddToHeatmapFolder() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationKey: ['heatmap', 'add-to-folder'],
+    mutationFn: (v: { code: string; folderId: string }) => addToHeatmapFolder(v.code, v.folderId),
+    onSuccess: () => invalidateHeatmapDependents(qc),
   });
 }
 
@@ -40,7 +56,7 @@ export function useRemoveFromHeatmap() {
   return useMutation({
     mutationKey: ['heatmap', 'remove'],
     mutationFn: (code: string) => removeFromHeatmap(code),
-    onSuccess: () => qc.invalidateQueries({ queryKey: HEATMAP_KEY }),
+    onSuccess: () => invalidateHeatmapDependents(qc),
   });
 }
 
@@ -49,21 +65,21 @@ export function useCreateHeatmapFolder() {
   const qc = useQueryClient();
   return useMutation({
     mutationFn: (name: string) => createHeatmapFolder(name),
-    onSuccess: () => qc.invalidateQueries({ queryKey: HEATMAP_KEY }),
+    onSuccess: () => invalidateHeatmapDependents(qc),
   });
 }
 export function useRenameHeatmapFolder() {
   const qc = useQueryClient();
   return useMutation({
     mutationFn: (v: { folderId: string; name: string }) => renameHeatmapFolder(v.folderId, v.name),
-    onSuccess: () => qc.invalidateQueries({ queryKey: HEATMAP_KEY }),
+    onSuccess: () => invalidateHeatmapDependents(qc),
   });
 }
 export function useDeleteHeatmapFolder() {
   const qc = useQueryClient();
   return useMutation({
     mutationFn: (folderId: string) => deleteHeatmapFolder(folderId),
-    onSuccess: () => qc.invalidateQueries({ queryKey: HEATMAP_KEY }),
+    onSuccess: () => invalidateHeatmapDependents(qc),
   });
 }
 
@@ -113,7 +129,7 @@ function useOptimisticHeatmapMutation<V>(
       return { prev };
     },
     onError: (_e, _v, ctx) => { if (ctx?.prev) qc.setQueryData(HEATMAP_KEY, ctx.prev); },
-    onSettled: () => qc.invalidateQueries({ queryKey: HEATMAP_KEY }),
+    onSettled: () => invalidateHeatmapDependents(qc),
   });
 }
 
@@ -133,6 +149,6 @@ export function useRemoveHeatmapEntries() {
   const qc = useQueryClient();
   return useMutation({
     mutationFn: (codes: string[]) => removeHeatmapEntries(codes),
-    onSuccess: () => qc.invalidateQueries({ queryKey: HEATMAP_KEY }),
+    onSuccess: () => invalidateHeatmapDependents(qc),
   });
 }

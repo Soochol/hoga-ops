@@ -30,6 +30,14 @@ export function addToHeatmap(code: string): Promise<HeatmapEntry> {
   });
 }
 
+export function addToHeatmapFolder(code: string, folderId: string): Promise<HeatmapEntry> {
+  return apiCall<HeatmapEntry>(`/api/heatmap/folders/${folderId}/members`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ code }),
+  });
+}
+
 export function removeFromHeatmap(code: string): Promise<void> {
   return apiAction(`/api/heatmap/${code}`, { method: 'DELETE' });
 }

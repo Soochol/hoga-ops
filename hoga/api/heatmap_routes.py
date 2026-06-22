@@ -12,18 +12,12 @@ so the frontend can't cross-wire the two stores' add flows.
 from __future__ import annotations
 
 import logging
+from collections.abc import Iterable
 from pathlib import Path
 from typing import Annotated
 
-from fastapi import APIRouter, HTTPException, Path as PathParam
-
-from hoga.api.params import CODE_PATTERN
-
-log = logging.getLogger(__name__)
-
-# KRX code — params.CODE_PATTERN is the single source of the ticker grammar,
-# shared with watchlist routes and models.HeatmapEntry.code.
-CodePathParam = Annotated[str, PathParam(pattern=CODE_PATTERN)]
+from fastapi import APIRouter, HTTPException
+from fastapi import Path as PathParam
 
 from hoga.api import symbols
 from hoga.api.heatmap import (
@@ -32,6 +26,7 @@ from hoga.api.heatmap import (
     HeatmapSetMismatchError,
     NotInHeatmapError,
     add_entry,
+    add_entry_to_folder,
     create_folder,
     delete_folder,
     load_document,
@@ -50,19 +45,32 @@ from hoga.api.models import (
     FolderRenameRequest,
     FolderReorderRequest,
     HeatmapEntry,
+    HeatmapFolderView,
     HeatmapResponse,
+    MemberAddRequest,
     WatchlistAddRequest,
     WatchlistFolder,
 )
+from hoga.api.params import CODE_PATTERN
+
+log = logging.getLogger(__name__)
+
+# KRX code — params.CODE_PATTERN is the single source of the ticker grammar,
+# shared with watchlist routes and models.HeatmapEntry.code.
+CodePathParam = Annotated[str, PathParam(pattern=CODE_PATTERN)]
 
 
-def build_router(*, data_dir: Path) -> APIRouter:
+def _folder_views(folders: Iterable[WatchlistFolder]) -> list[HeatmapFolderView]:
+    return [HeatmapFolderView(id=f.id, name=f.name, order=f.order) for f in folders]
+
+
+def build_router(*, data_dir: Path) -> APIRouter:  # noqa: PLR0915
     router = APIRouter(prefix="/api/heatmap", tags=["heatmap"])
 
     @router.get("", response_model=HeatmapResponse)
     async def get_heatmap() -> HeatmapResponse:
         doc = load_document(data_dir)
-        return HeatmapResponse(folders=doc.folders, entries=doc.entries)
+        return HeatmapResponse(folders=_folder_views(doc.folders), entries=doc.entries)
 
     @router.post("", status_code=201, response_model=HeatmapEntry)
     async def add_to_heatmap(req: WatchlistAddRequest) -> HeatmapEntry:
@@ -91,9 +99,29 @@ def build_router(*, data_dir: Path) -> APIRouter:
                 "message": f"Code {code} is not in the Heatmap.",
             }) from e
 
-    @router.post("/folders", status_code=201, response_model=WatchlistFolder)
-    async def create_heatmap_folder(req: FolderCreateRequest) -> WatchlistFolder:
+    @router.post("/folders", status_code=201, response_model=HeatmapFolderView)
+    async def create_heatmap_folder(req: FolderCreateRequest) -> HeatmapFolderView:
         return await create_folder(data_dir, name=req.name)
+
+    @router.post("/folders/{folder_id}/members", status_code=201, response_model=HeatmapEntry)
+    async def add_heatmap_folder_member(folder_id: str, req: MemberAddRequest) -> HeatmapEntry:
+        hits = symbols.search(req.code, limit=1)
+        match = next((h for h in hits if h.code == req.code), None)
+        if match is None:
+            raise HTTPException(status_code=404, detail={
+                "code": "unknown_code",
+                "message": f"Code {req.code} is not in the symbol master.",
+            })
+        try:
+            return await add_entry_to_folder(
+                data_dir,
+                code=req.code,
+                name=match.name,
+                folder_id=folder_id,
+            )
+        except FolderNotFoundError as e:
+            raise HTTPException(status_code=404, detail={
+                "code": "folder_not_found", "message": f"Folder {folder_id} not found."}) from e
 
     @router.put("/folders/order", status_code=204)
     async def reorder_heatmap_folders(req: FolderReorderRequest) -> None:

@@ -335,6 +335,7 @@ export function LivePage() {
       />
       <LiveWorkarea
         activeCode={workareaCode}
+        activeInstrument={activeInstrument}
         bundle={workareaBundle}
         chartBundle={workareaChartBundle}
         clampEngaged={clampEngaged}

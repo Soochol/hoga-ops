@@ -783,6 +783,15 @@ class HeatmapEntry(BaseModel):
     order: int = Field(default=0, ge=0)
 
 
+class HeatmapFolderView(BaseModel):
+    """Heatmap folder Wire Model. The store may reuse WatchlistFolder, but the
+    heatmap wire must not expose member_codes (ADR-0004 Entity≠Wire)."""
+
+    id: str = Field(pattern=r"^f_[0-9a-f]{8}$")
+    name: str = Field(min_length=1, max_length=40)
+    order: int = Field(ge=0)
+
+
 class HeatmapDocument(BaseModel):
     """On-disk heatmap.json (v2). Same envelope discipline as
     WatchlistDocument (ADR-0065 applied independently); entries are
@@ -806,7 +815,7 @@ class HeatmapDocument(BaseModel):
 class HeatmapResponse(BaseModel):
     """GET /api/heatmap. No next_run_at_ms — the heatmap has no scheduler."""
 
-    folders: list[WatchlistFolder] = Field(default_factory=list)
+    folders: list[HeatmapFolderView] = Field(default_factory=list)
     entries: list[HeatmapEntry]
 
 

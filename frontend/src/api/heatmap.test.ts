@@ -2,6 +2,7 @@ import { describe, it, expect, vi, beforeEach } from 'vitest';
 import {
   getHeatmap,
   addToHeatmap,
+  addToHeatmapFolder,
   removeFromHeatmap,
   moveHeatmapEntries,
   createHeatmapFolder,
@@ -38,6 +39,15 @@ describe('heatmap api client (independent of watchlist, ADR-0068)', () => {
     expect(path).toBe('/api/heatmap');
     expect(init?.method).toBe('POST');
     expect(JSON.parse(init?.body as string)).toEqual({ code: '003490' });
+  });
+
+  it('addToHeatmapFolder POSTs code to the folder member command', async () => {
+    vi.mocked(apiCall).mockResolvedValueOnce({ code: '005930', name: '삼성전자', folder_id: 'f_0000000a', order: 0 });
+    await addToHeatmapFolder('005930', 'f_0000000a');
+    const [path, init] = vi.mocked(apiCall).mock.calls[0];
+    expect(path).toBe('/api/heatmap/folders/f_0000000a/members');
+    expect(init?.method).toBe('POST');
+    expect(JSON.parse(init?.body as string)).toEqual({ code: '005930' });
   });
 
   it('removeFromHeatmap DELETEs /api/heatmap/{code}', async () => {

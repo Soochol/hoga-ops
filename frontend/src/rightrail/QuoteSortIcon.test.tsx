@@ -16,9 +16,9 @@ describe('QuoteSortIcon', () => {
   });
 
   it('describes the current cycle state for the existing Watchlist one-button control', () => {
-    expect(quoteSortModeDescription('default')).toBe('현재 기본 정렬, 클릭하면 등락률 오름차순');
-    expect(quoteSortModeDescription('change_pct_asc')).toBe('현재 등락률 오름차순, 클릭하면 등락률 내림차순');
-    expect(quoteSortModeDescription('change_pct_desc')).toBe('현재 등락률 내림차순, 클릭하면 기본 정렬');
-    expect(quoteSortModeDescription(undefined)).toBe('현재 기본 정렬, 클릭하면 등락률 오름차순');
+    expect(quoteSortModeDescription('default')).toBe('현재 기본 정렬, 클릭하면 등락률 내림차순');
+    expect(quoteSortModeDescription('change_pct_desc')).toBe('현재 등락률 내림차순, 클릭하면 등락률 오름차순');
+    expect(quoteSortModeDescription('change_pct_asc')).toBe('현재 등락률 오름차순, 클릭하면 기본 정렬');
+    expect(quoteSortModeDescription(undefined)).toBe('현재 기본 정렬, 클릭하면 등락률 내림차순');
   });
 });

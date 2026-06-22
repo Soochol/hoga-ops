@@ -1,14 +1,24 @@
-import { useEffect, useRef } from 'react';
-import { useLivePageStore } from '../state/livePage';
+import { useCallback, useEffect, useMemo, useReducer, useRef } from 'react';
+import { isMinuteTimeframe, useLivePageStore } from '../state/livePage';
 import { useEntryDragStore } from '../state/entryDrag';
 import { LiveChartRoot } from './LiveChartRoot';
 import { LiveEmptyState } from './LiveEmptyState';
+import { IndexSectorRankingPane } from './IndexSectorRankingPane';
 import { LiveSidebar } from './LiveSidebar';
+import type { LiveInstrument } from './liveInstrument';
 import type { AskPeak, BidPeak, RangeBundle } from '../api/types';
 import type { LiveSeriesData } from '../api/liveSeries';
+import { useIndexSectorRankings } from '../api/indexSectorRankings';
 import type { LiveDataWarning } from './liveDataWarnings';
+import { useJumpToLive } from './useJumpToLive';
+import {
+  initialIndexSectorRankingUiState,
+  reduceIndexSectorRankingState,
+  resolveBasisDate,
+} from './indexSectorRankingState';
 import type { TabViewport } from './viewportAnchor';
 import type { LiveVenueOption } from '../state/liveVenue';
+import { realMsToYyyymmdd } from './liveDateTime';
 
 /** 관심종목 행을 차트로 드래그할 때 워크에어리어 위에 뜨는 드롭 타깃 오버레이.
  *  드래그 고스트는 패널 overflow 경계에서 잘리므로 워크에어리어 자체를 어포던스로 쓴다.
@@ -68,6 +78,7 @@ interface Props {
   viewIdentity?: string | null;
   /** Selected KIS candle venue; controls minute-chart initial viewport policy. */
   venue?: LiveVenueOption;
+  activeInstrument?: LiveInstrument | null;
   /** Owned by LivePage's single useLiveSeries call. Threaded to LiveSidebar
    * so the LATEST mode reads the same SSE buffer that feeds useLiveBundle. */
   live: LiveSeriesData;
@@ -111,6 +122,7 @@ export function LiveWorkarea({
   todayKst = '',
   paneTogglesOverride,
   onViewportCaptureReady,
+  activeInstrument = null,
 }: Props) {
   const timeframe = useLivePageStore((s) => s.candleTimeframe);
   // 관심종목 행을 차트로 드래그 중일 때만 드롭 오버레이를 띄운다(WatchlistDrawer가 갱신).
@@ -134,6 +146,36 @@ export function LiveWorkarea({
     return () => clearChartTarget(hitTest);
   }, [registerChartTarget, clearChartTarget]);
 
+  const [rankingState, rankingDispatch] = useReducer(
+    reduceIndexSectorRankingState,
+    initialIndexSectorRankingUiState,
+  );
+  const openStock = useJumpToLive();
+  const isIndexInstrument = activeInstrument?.kind === 'index';
+  const rankingAllowed = isIndexInstrument && (isMinuteTimeframe(timeframe) || timeframe === 'D');
+  const rankingCandles = (chartBundle ?? bundle)?.candles ?? [];
+  const latestRankingDate = rankingCandles.length > 0
+    ? realMsToYyyymmdd(rankingCandles[rankingCandles.length - 1].ts_ms)
+    : null;
+  const rankingBasis = resolveBasisDate(rankingState, latestRankingDate);
+  const rankingQuery = useIndexSectorRankings(rankingBasis.date, rankingAllowed);
+  const handleCandleBasisHover = useCallback(
+    (date: string | null) => {
+      rankingDispatch({ type: 'hover_date', date });
+    },
+    [rankingDispatch],
+  );
+  const handleCandleBasisClick = useCallback(
+    (date: string) => {
+      rankingDispatch({ type: 'toggle_date_pin', date });
+    },
+    [rankingDispatch],
+  );
+  const handleOpenStock = useMemo(
+    () => (code: string, name: string) => openStock(code, name),
+    [openStock],
+  );
+
   // 빈 상태(activeCode 없음 = 빈 탭)와 차트를 하나의 루트로 합친다 — 단일 루트에 ref를 달아
   // 드롭 타깃 히트테스트가 한 element를 가리키게 하고, 빈 탭에도 드롭 가능.
   // position:relative는 absolute 오버레이의 containing block. minHeight:0 + overflow:hidden은
@@ -156,27 +198,42 @@ export function LiveWorkarea({
         </div>
       ) : (
         <>
-          <div style={{ flex: 1, minWidth: 0, minHeight: 0, overflow: 'hidden' }}>
-            <LiveChartRoot
-              code={activeCode}
-              timeframe={timeframe}
-              venue={venue}
-              bundle={bundle}
-              chartBundle={chartBundle}
-              clampEngaged={clampEngaged}
-              isPastCandlesLoading={isPastCandlesLoading}
-              isExtending={isExtending}
-              pastDataWarnings={pastDataWarnings}
-              restoreViewport={restoreViewport}
-              viewIdentity={viewIdentity ?? undefined}
-              dayAskPeaks={dayAskPeaks}
-              todayAllPriceAskPeak={todayAllPriceAskPeak}
-              dayBidPeaks={dayBidPeaks}
-              todayAllPriceBidPeak={todayAllPriceBidPeak}
-              todayKst={todayKst}
-              paneTogglesOverride={paneTogglesOverride}
-              onViewportCaptureReady={onViewportCaptureReady}
-            />
+          <div style={{ flex: 1, minWidth: 0, minHeight: 0, overflow: 'hidden', display: 'flex', flexDirection: 'column' }}>
+            <div style={{ flex: 1, minHeight: 0, overflow: 'hidden' }}>
+              <LiveChartRoot
+                code={activeCode}
+                timeframe={timeframe}
+                venue={venue}
+                bundle={bundle}
+                chartBundle={chartBundle}
+                clampEngaged={clampEngaged}
+                isPastCandlesLoading={isPastCandlesLoading}
+                isExtending={isExtending}
+                pastDataWarnings={pastDataWarnings}
+                restoreViewport={restoreViewport}
+                viewIdentity={viewIdentity ?? undefined}
+                dayAskPeaks={dayAskPeaks}
+                todayAllPriceAskPeak={todayAllPriceAskPeak}
+                dayBidPeaks={dayBidPeaks}
+                todayAllPriceBidPeak={todayAllPriceBidPeak}
+                todayKst={todayKst}
+                paneTogglesOverride={paneTogglesOverride}
+                onViewportCaptureReady={onViewportCaptureReady}
+                onCandleBasisHover={rankingAllowed ? handleCandleBasisHover : undefined}
+                onCandleBasisClick={rankingAllowed ? handleCandleBasisClick : undefined}
+              />
+            </div>
+            {rankingAllowed && (
+              <IndexSectorRankingPane
+                basisDate={rankingBasis.date}
+                basisMode={rankingBasis.mode}
+                ranking={rankingQuery.data}
+                isLoading={rankingQuery.isLoading}
+                error={rankingQuery.error}
+                onClearDatePin={() => rankingDispatch({ type: 'clear_date_pin' })}
+                onOpenStock={handleOpenStock}
+              />
+            )}
           </div>
           <div
             role="complementary"
