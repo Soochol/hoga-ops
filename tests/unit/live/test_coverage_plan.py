@@ -63,6 +63,7 @@ def test_plan_storage_targets_ws_plus_rest_uses_remainder() -> None:
         n_configured=1,
         per_account_max=2,
         storage_policy="ws_plus_rest",
+        current_ws_live_set=("legacy",),
     )
 
     assert plan.ws_targets == ("A", "B")

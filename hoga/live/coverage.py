@@ -76,6 +76,7 @@ def plan_storage_targets(
     *,
     n_configured: int,
     storage_policy: LiveStoragePolicy,
+    current_ws_live_set: tuple[str, ...] = (),
     per_account_max: int = _PER_ACCOUNT_MAX,
 ) -> LiveStorageTargets:
     candidates = tuple(capture_candidates)
