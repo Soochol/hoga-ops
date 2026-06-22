@@ -2,7 +2,7 @@
 
 **Date**: 2026-06-22
 **Status**: Approved for implementation planning
-**Scope**: `frontend/src/screener/ResultTable.tsx`, `frontend/src/screener/ScreenerDrawer.tsx`, `frontend/src/screener/useScreenerRowsLive.ts`, `frontend/src/ui/*Icon.tsx`, screener component tests
+**Scope**: `frontend/src/screener/ResultTable.tsx`, `frontend/src/screener/ScreenerDrawer.tsx`, `frontend/src/screener/useScreenerRowsLive.ts`, existing change-percent sort utilities/icons, screener component tests
 
 ## Problem
 
@@ -20,6 +20,7 @@ The current drawer renders results in scan order with live quote overlay values,
 - **Drawer and full page share result semantics**: both surfaces display the same scan rows with the same live quote overlay behavior. 근거: shared use of `useScreenerRowsLive`.
 - **Missing change percent displays and sorts consistently**: when live quote `change_pct` is `null`, the UI shows `—`; sorted modes must not reintroduce stale EOD fallback values. 근거: [useScreenerRowsLive.ts](../../../frontend/src/screener/useScreenerRowsLive.ts), [ChangeCell.tsx](../../../frontend/src/screener/ChangeCell.tsx), [QuoteChange.tsx](../../../frontend/src/rightrail/QuoteChange.tsx).
 - **Design-system color discipline**: sort controls use UI-state accent/tint only for active or focus state, and market direction colors remain reserved for market values. 근거: [DESIGN.md](../../../DESIGN.md).
+- **Right-rail row composition remains panel-owned**: `QuoteRow` stays a static shared row; each panel owns its list wiring, DnD behavior, and trailing actions. 근거: [ADR-0058](../../adr/0058-right-rail-row-composition.md), [QuoteRow.tsx](../../../frontend/src/rightrail/QuoteRow.tsx).
 
 ## Invariant impact
 
@@ -30,6 +31,7 @@ The current drawer renders results in scan order with live quote overlay values,
 | Drawer and full page share result semantics | preserves | both surfaces consume the same sort helper and mode type. |
 | Missing change percent displays and sorts consistently | preserves | `null`/non-finite values sort last in asc and desc, and remain displayed as `—`. |
 | Design-system color discipline | preserves | active sort button uses selection tint/accent border; price up/down colors stay only in cells. |
+| Right-rail row composition remains panel-owned | preserves | sorting changes list order only; `QuoteRow` props and drag payload stay unchanged. |
 
 ## Goals
 
@@ -48,19 +50,31 @@ The current drawer renders results in scan order with live quote overlay values,
 - No multi-column sort.
 - No sorting by price, 거래대금, market, code, or name.
 - No change to screener condition definitions or saved screener data.
-- No change to watchlist sorting, even though related quote sort helpers exist.
+- No change to watchlist sorting behavior, beyond reusing or extracting existing sort/icon code when that reduces duplication without changing its UI.
 
 ## Design
 
+### Existing Assets To Reuse
+
+The Watchlist Panel already has the same three logical modes and icon vocabulary:
+
+- `QuoteSortMode = 'default' | 'change_pct_asc' | 'change_pct_desc'`
+- `sortEntriesByChangePct(...)`
+- an inline `SortIcon` with default/asc/desc shapes and tests asserting distinct icons
+
+Implementation should avoid a second independent sorting algorithm. Either move the generic mode/helper/icon pieces to a neutral shared module, or keep the existing helper in place and add a screener wrapper that delegates to it. The important boundary is semantic reuse, not the exact file name.
+
+Do not introduce an icon dependency. `frontend/package.json` has no icon package, and this app already uses small local SVG components.
+
 ### Sort Model
 
-Add a small screener-specific sort model:
+Use the existing three-state mode vocabulary:
 
 ```ts
 export type ScreenerResultSortMode = 'default' | 'change_pct_asc' | 'change_pct_desc';
 ```
 
-Sorting lives in a pure helper at `frontend/src/screener/sortResults.ts`.
+The implementation may alias `ScreenerResultSortMode` to the shared `QuoteSortMode` if the helper is promoted to a neutral module. If a screener-specific wrapper is kept, it must delegate to the existing comparison contract so null handling and tie-breaking cannot drift.
 
 The helper accepts rows that include `code` and `change_pct`, plus the original index from the scan result order:
 
@@ -95,9 +109,7 @@ Use accessible labels and `title` text. Visible text is not required because the
 
 ### Icons
 
-No icon package is currently present in `frontend/package.json`, so do not add a new dependency just for three small glyphs.
-
-Add three local UI icons using the existing `frontend/src/ui/*Icon.tsx` pattern:
+Use the existing Watchlist sort icon shapes as the visual baseline. Either extract them into a reusable local component or recreate the same glyphs in the shared screener control:
 
 - `SortDefaultIcon`: list/order reset shape.
 - `SortAscIcon`: upward direction with narrow-to-wide or low-to-high bars.
@@ -125,6 +137,8 @@ The row becomes a flex header:
 - right: three-button sort control
 
 This keeps sorting visually attached to the list it affects and avoids making it look like a scan condition. On narrow drawer width, the left label truncates before the control. The control remains available whenever `lastScan` exists, including zero-result scans, but it may be disabled or visually inert when there are no rows.
+
+Do not move sort mode into `screenerPanel` persisted state. `lastScan` is intentionally in-memory because a screener row is a stale-prone price snapshot; sort mode should have the same transient lifetime.
 
 ### Full `/screener` Page Placement
 
@@ -176,6 +190,8 @@ Sorting should happen after live quote overlay, because the user asked to sort t
 
 The right drawer supports dragging screener rows onto the chart. Sorting changes only the display order of rows; the dragged payload remains `{ type: 'screener-entry', code, name }`. No reorder persistence is introduced.
 
+Keep `DraggableScreenerRow` as the drawer-only adapter. Do not add sort, drag, or table concerns to the shared `QuoteRow`.
+
 ## Testing
 
 ### Unit tests
@@ -204,6 +220,8 @@ The right drawer supports dragging screener rows onto the chart. Sorting changes
 | `ResultTable` | clicking default icon after desc | rows return to scan order |
 | `ScreenerDrawer` | clicking asc icon | drawer rows reorder by lowest 등락률 first |
 | `ScreenerDrawer` | new successful scan after sorted mode | mode resets to default |
+| `ScreenerDrawer` | sorted rows dragged onto chart | dragged code still becomes the active chart code |
+| `ScreenerDrawer` | live quote update while sorted | row order recomputes from the displayed live `change_pct` |
 | both controls | active icon | button has `aria-pressed="true"` and accessible label |
 
 ### Manual verification
@@ -220,6 +238,7 @@ The right drawer supports dragging screener rows onto the chart. Sorting changes
 - The full table currently uses a fixed grid column template. Adding three icons inside the `등락률` header may require modest width tuning to avoid cramped header text.
 - Live quote polling can reorder rows while sorted mode is active. This is expected because the sort is based on displayed live values, but it may make row positions move during active market hours.
 - If the user later wants sort mode persistence, that should be a separate preference decision rather than hidden localStorage in this feature.
+- Watchlist already has a one-button cycle control while this spec calls for three explicit buttons. Reuse the underlying icon/sort contract, not necessarily the exact Watchlist control shape.
 
 ## Out of Scope (Backlog)
 
