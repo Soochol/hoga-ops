@@ -187,6 +187,39 @@ async def add_entry(data_dir: Path, *, code: str, name: str) -> HeatmapEntry:
         return entry
 
 
+async def add_entry_to_folder(
+    data_dir: Path,
+    *,
+    code: str,
+    name: str,
+    folder_id: str,
+) -> HeatmapEntry:
+    """Add code to the Heatmap and place it in folder_id atomically.
+
+    If the code already exists, this moves the existing entry to folder_id
+    instead of failing. This is the single-command form of the old UI
+    choreography: add to 미분류, then move.
+    """
+    async with _lock:
+        doc = load_document(data_dir)
+        if not any(f.id == folder_id for f in doc.folders):
+            raise FolderNotFoundError(folder_id)
+        existing = next((e for e in doc.entries if e.code == code), None)
+        base = max((e.order for e in doc.entries if e.folder_id == folder_id), default=-1) + 1
+        if existing is None:
+            entry = HeatmapEntry(code=code, name=name, folder_id=folder_id, order=base)
+            save_document(data_dir, doc.model_copy(update={"entries": [*doc.entries, entry]}))
+            return entry
+        entry = existing.model_copy(update={"name": name, "folder_id": folder_id, "order": base})
+        save_document(
+            data_dir,
+            doc.model_copy(update={
+                "entries": [entry if e.code == code else e for e in doc.entries],
+            }),
+        )
+        return entry
+
+
 async def remove_entry(data_dir: Path, *, code: str) -> None:
     async with _lock:
         doc = load_document(data_dir)

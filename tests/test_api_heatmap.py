@@ -113,6 +113,16 @@ def test_get_empty_heatmap_has_no_next_run(tmp_path: Path):
     assert "next_run_at_ms" not in body
 
 
+def test_heatmap_folder_wire_drops_member_codes(tmp_path: Path):
+    client = TestClient(_app(tmp_path))
+    r = client.post("/api/heatmap/folders", json={"name": "반도체"})
+    assert r.status_code == 201
+    assert "member_codes" not in r.json()
+
+    body = client.get("/api/heatmap").json()
+    assert "member_codes" not in body["folders"][0]
+
+
 def test_post_unknown_code_404(tmp_path: Path):
     from unittest.mock import patch
     with patch("hoga.api.heatmap_routes.symbols.search", return_value=[]):
@@ -154,6 +164,50 @@ def test_folder_create_and_move_routes(tmp_path: Path):
     mv = client.post("/api/heatmap/move", json={"codes": ["005930"], "folder_id": fid})
     assert mv.status_code == 204
     assert client.get("/api/heatmap").json()["entries"][0]["folder_id"] == fid
+
+
+def test_folder_member_add_is_atomic_for_new_code(tmp_path: Path):
+    from unittest.mock import patch
+    hit = [_fake_hit("005930", "삼성전자")]
+    client = TestClient(_app(tmp_path))
+    fid = client.post("/api/heatmap/folders", json={"name": "반도체"}).json()["id"]
+
+    with patch("hoga.api.heatmap_routes.symbols.search", return_value=hit):
+        r = client.post(f"/api/heatmap/folders/{fid}/members", json={"code": "005930"})
+
+    assert r.status_code == 201
+    assert r.json()["code"] == "005930"
+    assert r.json()["folder_id"] == fid
+    entries = client.get("/api/heatmap").json()["entries"]
+    assert [(e["code"], e["folder_id"], e["order"]) for e in entries] == [("005930", fid, 0)]
+
+
+def test_folder_member_add_moves_existing_code_without_duplicate(tmp_path: Path):
+    from unittest.mock import patch
+    hit = [_fake_hit("005930", "삼성전자")]
+    client = TestClient(_app(tmp_path))
+    fid = client.post("/api/heatmap/folders", json={"name": "반도체"}).json()["id"]
+
+    with patch("hoga.api.heatmap_routes.symbols.search", return_value=hit):
+        assert client.post("/api/heatmap", json={"code": "005930"}).status_code == 201
+        r = client.post(f"/api/heatmap/folders/{fid}/members", json={"code": "005930"})
+
+    assert r.status_code == 201
+    entries = client.get("/api/heatmap").json()["entries"]
+    assert [(e["code"], e["folder_id"]) for e in entries] == [("005930", fid)]
+
+
+def test_folder_member_add_rejects_missing_folder_without_adding_code(tmp_path: Path):
+    from unittest.mock import patch
+    hit = [_fake_hit("005930", "삼성전자")]
+    client = TestClient(_app(tmp_path))
+
+    with patch("hoga.api.heatmap_routes.symbols.search", return_value=hit):
+        r = client.post("/api/heatmap/folders/f_ffffffff/members", json={"code": "005930"})
+
+    assert r.status_code == 404
+    assert r.json()["detail"]["code"] == "folder_not_found"
+    assert client.get("/api/heatmap").json()["entries"] == []
 
 
 # --- separation invariants --------------------------------------------------

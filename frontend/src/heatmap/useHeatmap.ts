@@ -3,6 +3,7 @@ import { HEATMAP_KEY } from './heatmapKeys';
 import {
   getHeatmap,
   addToHeatmap,
+  addToHeatmapFolder,
   removeFromHeatmap,
   createHeatmapFolder,
   renameHeatmapFolder,
@@ -31,6 +32,15 @@ export function useAddToHeatmap() {
   return useMutation({
     mutationKey: ['heatmap', 'add'],
     mutationFn: (code: string) => addToHeatmap(code),
+    onSuccess: () => qc.invalidateQueries({ queryKey: HEATMAP_KEY }),
+  });
+}
+
+export function useAddToHeatmapFolder() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationKey: ['heatmap', 'add-to-folder'],
+    mutationFn: (v: { code: string; folderId: string }) => addToHeatmapFolder(v.code, v.folderId),
     onSuccess: () => qc.invalidateQueries({ queryKey: HEATMAP_KEY }),
   });
 }
