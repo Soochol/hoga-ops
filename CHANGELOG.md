@@ -3,6 +3,12 @@
 All notable changes to this project are documented here.
 The format follows a 4-digit `MAJOR.MINOR.PATCH.MICRO` scheme.
 
+## [0.9.0.2] - 2026-06-22
+
+### Changed
+- **정렬 순환 순서 내림차순 우선 적용**: 우측 스크리너와 관심종목 그룹의 정렬 버튼을
+  기본 순서에서 먼저 등락률 내림차순으로 전환하고, 이후 오름차순·기본 순서로 순환하게 맞췄다.
+
 ## [0.9.0.1] - 2026-06-22
 
 ### Changed
