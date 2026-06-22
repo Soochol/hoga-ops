@@ -1,7 +1,7 @@
 import { useQuery } from '@tanstack/react-query';
 import { apiCall } from './client';
 import type { LiveIndexId } from '../live/liveInstrument';
-import type { CalendarTimeframe } from '../state/livePage';
+import type { LiveTimeframe } from '../state/livePage';
 import type { InvestorNetPoint } from './types';
 
 export type LiveIndexInvestorScope = 'market' | 'index' | 'none';
@@ -44,7 +44,7 @@ export interface LiveIndexCandlesResponse {
   index_id: LiveIndexId;
   from: string;
   to: string;
-  timeframe: CalendarTimeframe;
+  timeframe: LiveTimeframe;
   candles: LiveIndexCandle[];
   data_warnings: LiveIndexCandlesWarning[];
 }
@@ -68,7 +68,7 @@ function mapIndex(row: LiveIndexWire): LiveIndexEntry {
 
 export function useLiveIndexCandles(
   indexId: LiveIndexId | null,
-  timeframe: CalendarTimeframe,
+  timeframe: LiveTimeframe,
   from: string | null,
   to: string | null,
 ) {

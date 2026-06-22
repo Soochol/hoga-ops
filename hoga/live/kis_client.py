@@ -374,6 +374,58 @@ def _parse_index_daily_row(row: dict[str, Any]) -> IndexCandlePoint:
     )
 
 
+def _parse_index_minute_row(row: dict[str, Any]) -> IndexCandlePoint:
+    date_str = str(_row_value(row, "stck_bsop_date", "bsop_date"))
+    hour_str = str(_row_value(row, "stck_cntg_hour", "bsop_hour"))
+    if len(date_str) != 8:
+        raise ValueError("stck_bsop_date missing or wrong length")
+    if len(hour_str) < 6:
+        raise ValueError("stck_cntg_hour missing or wrong length")
+    hour_str = hour_str[:6]
+    dt = datetime(
+        int(date_str[:4]), int(date_str[4:6]), int(date_str[6:8]),
+        int(hour_str[:2]), int(hour_str[2:4]), int(hour_str[4:6]),
+        tzinfo=KIS_KST,
+    )
+    return IndexCandlePoint(
+        t_ms=int(dt.timestamp() * 1000),
+        open=float(_row_value(row, "bstp_nmix_oprc", "oprc")),
+        high=float(_row_value(row, "bstp_nmix_hgpr", "hgpr")),
+        low=float(_row_value(row, "bstp_nmix_lwpr", "lwpr")),
+        close=float(_row_value(row, "bstp_nmix_prpr", "prpr")),
+        volume=int(float(_row_value(row, "cntg_vol", "acml_vol", "volume"))),
+    )
+
+
+def _aggregate_index_minute_candles(
+    candles: list[IndexCandlePoint],
+    bucket_seconds: int,
+) -> list[IndexCandlePoint]:
+    if bucket_seconds <= 60:
+        return sorted(candles, key=lambda c: c.t_ms)
+    bucket_ms = bucket_seconds * 1000
+    buckets: dict[int, list[IndexCandlePoint]] = {}
+    for candle in sorted(candles, key=lambda c: c.t_ms):
+        dt = datetime.fromtimestamp(candle.t_ms / 1000, KIS_KST)
+        session_open = dt.replace(hour=9, minute=0, second=0, microsecond=0)
+        session_open_ms = int(session_open.timestamp() * 1000)
+        bucket_start = session_open_ms + ((candle.t_ms - session_open_ms) // bucket_ms) * bucket_ms
+        buckets.setdefault(bucket_start, []).append(candle)
+
+    aggregated: list[IndexCandlePoint] = []
+    for bucket_start in sorted(buckets):
+        rows = buckets[bucket_start]
+        aggregated.append(IndexCandlePoint(
+            t_ms=bucket_start,
+            open=rows[0].open,
+            high=max(r.high for r in rows),
+            low=min(r.low for r in rows),
+            close=rows[-1].close,
+            volume=sum(r.volume for r in rows),
+        ))
+    return aggregated
+
+
 def _parse_market_investor_daily_row(row: dict[str, Any]) -> InvestorNetPoint:
     date_str = str(_row_value(row, "stck_bsop_date", "bsop_date"))
     if len(date_str) != 8:
@@ -1065,6 +1117,85 @@ class KisClient:
             cursor_to = _prev_day_yyyymmdd(earliest)
 
         candles.sort(key=lambda c: c.t_ms)
+        return IndexCandleFetchResult(candles=candles, violations=violations)
+
+    async def fetch_index_minute_candles(
+        self,
+        index: RepresentativeIndex,
+        from_yyyymmdd: str,
+        to_yyyymmdd: str,
+        *,
+        bucket_seconds: int = 60,
+        foreground: bool = False,
+    ) -> IndexCandleFetchResult:
+        """Fetch domestic representative index intraday OHLCV candles.
+
+        KIS TR_ID: FHKUP03500200 (inquire-time-indexchartprice). KIS supports a
+        small set of server-side minute units; this client always requests 1m
+        rows and aggregates to the display bucket so /live can use the same
+        timeframe set as stock charts.
+        """
+        if index.kis_index_code is None:
+            raise KisApiError(msg_cd="UNSUPPORTED_INDEX", msg1=f"{index.id} has no KIS index code")
+        path = "/uapi/domestic-stock/v1/quotations/inquire-time-indexchartprice"
+        tr_id = "FHKUP03500200"
+        params = {
+            "FID_COND_MRKT_DIV_CODE": "U",
+            "FID_ETC_CLS_CODE": "0",
+            "FID_INPUT_ISCD": index.kis_index_code,
+            "FID_INPUT_HOUR_1": "60",
+            "FID_PW_DATA_INCU_YN": "Y",
+        }
+        body = await self._get(path=path, tr_id=tr_id, params=params, foreground=foreground)
+        rows = body.get("output2") or body.get("output") or []
+        candles: list[IndexCandlePoint] = []
+        violations: list[DailyInvariantViolation] = []
+
+        for row in rows:
+            date_str = str(row.get("stck_bsop_date") or row.get("bsop_date") or "")
+            if len(date_str) != 8:
+                violations.append(DailyInvariantViolation(
+                    date_yyyymmdd=date_str or "(empty)",
+                    reason="malformed_row",
+                    detail="stck_bsop_date missing or wrong length",
+                ))
+                continue
+            if date_str < from_yyyymmdd or date_str > to_yyyymmdd:
+                violations.append(DailyInvariantViolation(
+                    date_yyyymmdd=date_str,
+                    reason="out_of_range",
+                    detail=f"outside requested range {from_yyyymmdd}..{to_yyyymmdd}",
+                ))
+                continue
+            try:
+                point = _parse_index_minute_row(row)
+            except (KeyError, TypeError, ValueError) as e:
+                violations.append(DailyInvariantViolation(
+                    date_yyyymmdd=date_str,
+                    reason="malformed_row",
+                    detail=str(e),
+                ))
+                continue
+            if point.close <= 0:
+                violations.append(DailyInvariantViolation(
+                    date_yyyymmdd=date_str,
+                    reason="close_nonpositive",
+                    detail=f"close={point.close}",
+                ))
+                continue
+            if point.high < max(point.open, point.close) or point.low > min(point.open, point.close) or point.high < point.low:
+                violations.append(DailyInvariantViolation(
+                    date_yyyymmdd=date_str,
+                    reason="ohlc_inconsistent",
+                    detail=(
+                        f"open={point.open} high={point.high} "
+                        f"low={point.low} close={point.close}"
+                    ),
+                ))
+                continue
+            candles.append(point)
+
+        candles = _aggregate_index_minute_candles(candles, bucket_seconds)
         return IndexCandleFetchResult(candles=candles, violations=violations)
 
     async def fetch_market_investor_net(

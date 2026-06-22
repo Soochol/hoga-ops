@@ -324,6 +324,41 @@ describe('LivePage shell', () => {
     expect(livePageMocks.liveChartRootProps.at(-1)?.paneTogglesOverride?.hogaPanes).toBe(false);
   });
 
+  it('renders an index chart bundle for minute index deep links', async () => {
+    livePageMocks.indexCandlesResult.data = {
+      index_id: 'KOSPI',
+      from: '20260619',
+      to: '20260619',
+      timeframe: '1m',
+      candles: [
+        {
+          t_ms: 1_781_829_000_000,
+          open: 2850.10,
+          high: 2852.34,
+          low: 2849.87,
+          close: 2851.67,
+          volume: 123456,
+        },
+      ],
+      data_warnings: [],
+    };
+    useLivePageStore.setState({ candleTimeframe: '1m' });
+
+    renderWithRouter('/live?index=KOSPI');
+
+    await waitFor(() => expect(livePageMocks.liveChartRootProps.at(-1)).toMatchObject({
+      code: 'index:KOSPI',
+      timeframe: '1m',
+    }));
+    const lastIndexCall = livePageMocks.indexCandlesCalls.at(-1) as unknown[] | undefined;
+    expect(lastIndexCall?.[0]).toBe('KOSPI');
+    expect(lastIndexCall?.[1]).toBe('1m');
+    expect(livePageMocks.liveChartRootProps.at(-1)?.chartBundle?.bucket_ms).toBe(60_000);
+    expect(livePageMocks.liveChartRootProps.at(-1)?.chartBundle?.candles[0].close).toBe(2851.67);
+    expect(livePageMocks.liveChartRootProps.at(-1)?.chartBundle?.quote_ratio.points).toEqual([]);
+    expect(livePageMocks.liveChartRootProps.at(-1)?.paneTogglesOverride?.hogaPanes).toBe(false);
+  });
+
   it('hydrates KOSPI daily index charts with market investor net points', async () => {
     livePageMocks.indexCandlesResult.data = {
       index_id: 'KOSPI',
