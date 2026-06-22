@@ -7,7 +7,7 @@ from dataclasses import dataclass
 from pathlib import Path
 
 from hoga.api.models import WatchlistDocument
-from hoga.api.watchlist_projection import display_ordered_codes
+from hoga.api.watchlist_projection import capture_ordered_codes, display_ordered_codes
 
 from .ws_fields import TRS
 
@@ -69,7 +69,7 @@ def _compute_live_set(data_dir: Path, n_configured: int = 1) -> list[str]:
     from hoga.api import symbols as _symbols  # noqa: PLC0415
     from hoga.api.watchlist import load_document  # noqa: PLC0415
 
-    ordered = display_ordered_codes(load_document(data_dir))
+    ordered = capture_ordered_codes(load_document(data_dir))
     known = {h.code for h in _symbols.search("", limit=10_000)}
     selected, dropped = select_live_set(
         ordered,
@@ -83,4 +83,4 @@ def _compute_live_set(data_dir: Path, n_configured: int = 1) -> list[str]:
 
 def live_set_codes(doc: WatchlistDocument) -> list[str]:
     """Live Set = display-order top LIVE_SET_MAX_CODES. Test helper."""
-    return display_ordered_codes(doc)[:LIVE_SET_MAX_CODES]
+    return capture_ordered_codes(doc)[:LIVE_SET_MAX_CODES]
