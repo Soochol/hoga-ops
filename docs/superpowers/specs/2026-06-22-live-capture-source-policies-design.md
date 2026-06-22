@@ -25,7 +25,7 @@ separate decisions.
 - **Watchlist group opt-in owns capture candidates**: watchlist folders own
   ordered `member_codes`, but only folders with capture enabled contribute
   live-storage candidates. Entries are still pruned when no folder references
-  them. 근거: `WatchlistFolder.member_codes`, `save_document`.
+  them. 근거: `WatchlistFolder.member_codes`, `save_document`, ADR-0079.
 - **WS capture remains code-disjoint per account**: a code is written by at most
   one WS stream at a time, using live-set partitioning and active-code filters.
   근거: `LiveSession.refresh`, `LiveStream.set_active_codes`.
@@ -82,13 +82,13 @@ Use three source names throughout the backend and frontend:
 | Source | Meaning | Resolution / origin |
 |--------|---------|---------------------|
 | `hogaplay` | hogaplay downloaded data | high-detail downloaded source |
-| `kis_ws` | KIS WebSocket persisted data | high-frequency WS live capture, currently equivalent to the existing `kis_live` concept |
+| `kis_live` | KIS WebSocket persisted data | high-frequency WS live capture, labeled "KIS WS" in UI |
 | `kis_api` | KIS REST API persisted data | 30-second sampled REST capture |
 
-Implementation may migrate the existing internal `kis_live` name to `kis_ws`, or
-keep `kis_live` as a compatibility alias while presenting `kis_ws` in UI. The
-spec requires the user-facing concept to be KIS WS, because it is clearer than
-"live" once KIS API capture also exists.
+Keep the existing internal source id `kis_live`. Do not migrate on-disk source
+directories, API literals, or existing tests to `kis_ws` in this change. The UI
+label becomes "KIS WS" so users understand the source is WebSocket-based, while
+the wire/source id remains the boring compatibility-preserving `kis_live`.
 
 ### Storage policy
 
@@ -113,6 +113,39 @@ without duplicating REST work for symbols already covered by WS.
 `ws_only` or `ws_plus_rest`, lifecycle reconnects WS according to the current
 capture candidates and configured accounts.
 
+Storage target decision tree:
+
+```text
+Watchlist folders
+  └─ filter capture_enabled=true
+      └─ flatten by Watchlist display order + dedupe + symbol-master filter
+          └─ Capture Candidates
+              ├─ ws_only
+              │   ├─ WS: first N candidates
+              │   └─ KIS API: none
+              ├─ ws_plus_rest
+              │   ├─ WS: first N candidates
+              │   └─ KIS API: remaining candidates
+              └─ rest_only
+                  ├─ WS: none
+                  └─ KIS API: all candidates
+```
+
+Persist this policy on the backend, not only in browser localStorage, because
+the recorder runs without a browser tab. Use a small data-dir scoped settings
+document, for example:
+
+```text
+<data_dir>/live_settings.json
+{
+  "schema_version": 1,
+  "storage_policy": "ws_plus_rest"
+}
+```
+
+`ws_plus_rest` is the migration/default value so existing users keep WS capture
+behavior after upgrade once their folders are migrated to capture-enabled.
+
 ### Group capture toggles
 
 Add a boolean folder setting:
@@ -131,10 +164,21 @@ The watchlist wire model includes the same boolean on each folder. The
 watchlist editor renders a toggle on every group row. A symbol present in
 multiple enabled groups is recorded once.
 
+Migration/defaults:
+
+- Existing folders created before this field existed are migrated with
+  `capture_enabled: true` to preserve current unattended live capture behavior.
+- New folders created after this change default to `capture_enabled: false`, so
+  "checked groups are saved" remains the explicit user model.
+- If the Watchlist is empty, no capture candidates exist regardless of storage
+  policy.
+
 Candidate set:
 
 ```text
 capture_candidates = union(member_codes for capture-enabled folders)
+  -> filtered to known symbol-master Codes
+  -> deduped by first appearance in Watchlist display order
 ```
 
 Runtime target set:
@@ -188,6 +232,12 @@ The recorder refreshes targets when:
 - WS live set changes,
 - server startup initializes live capture.
 
+Do not silently cap KIS API targets. A silent cap would make a checked group
+look saved while some members are absent. Instead, expose target count and
+estimated REST load in status/UI. The recorder should back off on upstream
+rate-limit/token errors and surface degraded status rather than dropping
+targets without telling the user.
+
 ### Disk layout
 
 Persist REST 30s data as a first-class source so display selection can choose it:
@@ -209,7 +259,13 @@ Minimum per-source metadata:
 - `regular_session_close_ms`
 - completeness / health markers sufficient for source fallback decisions
 
-The source must never masquerade as `hogaplay` or `kis_ws`.
+The source must never masquerade as `hogaplay` or `kis_live`.
+
+`kis_api` should follow the same "promoted source" shape the read path already
+understands: `meta.json`, `snapshots.parquet`, `trades.parquet`, and
+`brokers.parquet` where available. Candle data may continue to come from the
+existing KIS candle backfill path, matching `kis_live` behavior, rather than
+being invented from 30-second REST samples.
 
 ### Display priority
 
@@ -220,9 +276,9 @@ Policies:
 
 | UI label | Priority order |
 |----------|----------------|
-| `hogaplay 우선` | `hogaplay` -> `kis_ws` -> `kis_api` |
-| `KIS WS 우선` | `kis_ws` -> `kis_api` -> `hogaplay` |
-| `KIS API 우선` | `kis_api` -> `kis_ws` -> `hogaplay` |
+| `hogaplay 우선` | `hogaplay` -> `kis_live` -> `kis_api` |
+| `KIS WS 우선` | `kis_live` -> `kis_api` -> `hogaplay` |
+| `KIS API 우선` | `kis_api` -> `kis_live` -> `hogaplay` |
 
 Definitions:
 
@@ -236,6 +292,13 @@ Definitions:
 
 Fallback is per source availability and health, not per global date. A preferred
 source may win on one date and fall back on another.
+
+Backend source resolution should move from a single `SourceName` preference to
+an ordered source policy. The read path should validate the requested policy,
+iterate its ordered source list, and pick the first present non-invalid source.
+`source_pref=hogaplay` and `source_pref=kis_live` remain accepted for
+compatibility and map to the first two policies above; new clients should send
+the policy value.
 
 ### Settings structure
 
@@ -318,11 +381,15 @@ Watchlist rows can derive status as:
 | `rest_only` lifecycle | Switch from `ws_plus_rest` to `rest_only` | WS tasks stop; REST recorder remains active |
 | reconnect lifecycle | Switch from `rest_only` to `ws_plus_rest` | WS live set is rebuilt; REST targets exclude WS codes |
 | display priority: hogaplay | All three sources exist | resolver chooses `hogaplay` |
-| display priority: KIS WS | All three sources exist | resolver chooses `kis_ws` |
+| display priority: KIS WS | All three sources exist | resolver chooses `kis_live` |
 | display priority: KIS API | All three sources exist | resolver chooses `kis_api` |
 | fallback skips missing source | Preferred source missing, second source present | resolver chooses second source |
+| legacy source_pref compatibility | Request sends `source_pref=kis_live` | resolver maps it to KIS WS priority order |
+| folder migration default | Load v3 watchlist folders without `capture_enabled` | Existing folders validate as capture-enabled |
+| new folder default | Create a new folder after the migration | New folder starts with `capture_enabled=false` |
 | recorder writes three kinds | Fake KIS returns orderbook/trades/brokers | one 30s sample writes all three payload kinds |
 | recorder isolates failure | One symbol fetch raises | other symbols still write; cycle completes with error count |
+| recorder does not silently cap | Targets exceed practical REST comfort level | all targets remain configured and status reports load/degradation |
 | existing viewed poller remains display-only | Viewed-code poller receives a symbol | no `kis_api` file is written by `LiveRestPoller` |
 
 **Invariant regression tests**:
@@ -355,8 +422,8 @@ Watchlist rows can derive status as:
   make crash-tolerant.
 - The exact health criteria for "normal" `kis_api` source files need to align
   with existing disk-state classification.
-- Existing code and tests use `kis_live`; migration to user-facing `kis_ws`
-  should be staged carefully or handled with an alias.
+- Existing code and tests use `kis_live`; this spec keeps the internal id and
+  only changes the user-facing label to KIS WS.
 
 ## Out of Scope (Backlog)
 
