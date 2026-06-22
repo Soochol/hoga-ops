@@ -25,7 +25,9 @@ import httpx
 
 from hoga.live.kis_market import KisMarket, kis_market_div, session_window_hhmmss
 from hoga.live.kis_venue import previous_empty_page_anchor_hhmmss
+from hoga.live.index_registry import RepresentativeIndex
 from hoga.live.kis_models import (
+    IndexCandlePoint,
     InvestorNetPoint,
     InvestorTrendEstimateRow,
     KisBrokerEntry,
@@ -296,6 +298,12 @@ class DailyCandleFetchResult:
 
 
 @dataclass(frozen=True)
+class IndexCandleFetchResult:
+    candles: list["IndexCandlePoint"]
+    violations: list[DailyInvariantViolation] = field(default_factory=list)
+
+
+@dataclass(frozen=True)
 class KisQuote:
     """One row of intstock-multprice (현재가 + 등락률 + 전일대비 등락액 + 당일 OHLC) for a Code."""
     code: str
@@ -342,6 +350,54 @@ def _daily_anchor_t_ms(date_yyyymmdd: str) -> int:
         9, 0, tzinfo=KIS_KST,
     )
     return int(dt.timestamp() * 1000)
+
+
+def _row_value(row: dict[str, Any], *keys: str) -> Any:
+    for key in keys:
+        value = row.get(key)
+        if value not in (None, ""):
+            return value
+    raise KeyError(keys[0])
+
+
+def _parse_index_daily_row(row: dict[str, Any]) -> IndexCandlePoint:
+    date_str = str(_row_value(row, "stck_bsop_date", "bsop_date"))
+    if len(date_str) != 8:
+        raise ValueError("stck_bsop_date missing or wrong length")
+    return IndexCandlePoint(
+        t_ms=_daily_anchor_t_ms(date_str),
+        open=float(_row_value(row, "bstp_nmix_oprc", "oprc")),
+        high=float(_row_value(row, "bstp_nmix_hgpr", "hgpr")),
+        low=float(_row_value(row, "bstp_nmix_lwpr", "lwpr")),
+        close=float(_row_value(row, "bstp_nmix_prpr", "prpr")),
+        volume=int(float(_row_value(row, "acml_vol", "cntg_vol", "volume"))),
+    )
+
+
+def _parse_market_investor_daily_row(row: dict[str, Any]) -> InvestorNetPoint:
+    date_str = str(_row_value(row, "stck_bsop_date", "bsop_date"))
+    if len(date_str) != 8:
+        raise ValueError("stck_bsop_date missing or wrong length")
+    foreign = _parse_optional_int(_row_value(row, "frgn_ntby_qty"))
+    institution = _parse_optional_int(_row_value(row, "orgn_ntby_qty"))
+    if foreign is None or institution is None:
+        raise ValueError("frgn_ntby_qty/orgn_ntby_qty missing or malformed")
+    return InvestorNetPoint(
+        t_ms=_daily_anchor_t_ms(date_str),
+        foreign_net=foreign,
+        institution_net=institution,
+    )
+
+
+def _market_investor_codes(index: RepresentativeIndex) -> tuple[str, str]:
+    if index.id == "KOSPI":
+        return "KSP", index.kis_index_code or "0001"
+    if index.id == "KOSDAQ":
+        return "KSQ", index.kis_index_code or "1001"
+    raise KisApiError(
+        msg_cd="UNSUPPORTED_INDEX_INVESTOR",
+        msg1=f"{index.id} does not support market investor net",
+    )
 
 
 def _prev_day_yyyymmdd(yyyymmdd: str) -> str:
@@ -910,6 +966,187 @@ class KisClient:
 
         all_candles.sort(key=lambda c: c.t_ms)
         return DailyCandleFetchResult(candles=all_candles, violations=violations)
+
+    async def fetch_index_daily_candles(
+        self,
+        index: RepresentativeIndex,
+        from_yyyymmdd: str,
+        to_yyyymmdd: str,
+        *,
+        period: Literal["D", "W", "M"] = "D",
+        foreground: bool = False,
+    ) -> IndexCandleFetchResult:
+        """Fetch domestic representative index OHLCV candles.
+
+        KIS TR_ID: FHKUP03500100 (inquire-daily-indexchartprice). The endpoint
+        returns at most 50 rows, so this walks the end cursor backwards until it
+        covers the requested start date.
+        """
+        if index.kis_index_code is None:
+            raise KisApiError(msg_cd="UNSUPPORTED_INDEX", msg1=f"{index.id} has no KIS index code")
+        path = "/uapi/domestic-stock/v1/quotations/inquire-daily-indexchartprice"
+        tr_id = "FHKUP03500100"
+        cursor_to = to_yyyymmdd
+        seen_dates: set[str] = set()
+        candles: list[IndexCandlePoint] = []
+        violations: list[DailyInvariantViolation] = []
+
+        for _ in range(80):
+            params = {
+                "FID_COND_MRKT_DIV_CODE": "U",
+                "FID_INPUT_ISCD": index.kis_index_code,
+                "FID_INPUT_DATE_1": from_yyyymmdd,
+                "FID_INPUT_DATE_2": cursor_to,
+                "FID_PERIOD_DIV_CODE": period,
+            }
+            body = await self._get(path=path, tr_id=tr_id, params=params, foreground=foreground)
+            rows = body.get("output2") or body.get("output") or []
+            page_dates: list[str] = []
+            page_progress = False
+            for row in rows:
+                date_str = str(row.get("stck_bsop_date") or row.get("bsop_date") or "")
+                if len(date_str) != 8:
+                    violations.append(DailyInvariantViolation(
+                        date_yyyymmdd=date_str or "(empty)",
+                        reason="malformed_row",
+                        detail="stck_bsop_date missing or wrong length",
+                    ))
+                    page_progress = True
+                    continue
+                if date_str in seen_dates:
+                    continue
+                seen_dates.add(date_str)
+                page_dates.append(date_str)
+                if date_str < from_yyyymmdd or date_str > to_yyyymmdd:
+                    violations.append(DailyInvariantViolation(
+                        date_yyyymmdd=date_str,
+                        reason="out_of_range",
+                        detail=f"outside requested range {from_yyyymmdd}..{to_yyyymmdd}",
+                    ))
+                    page_progress = True
+                    continue
+                try:
+                    point = _parse_index_daily_row(row)
+                except (KeyError, TypeError, ValueError) as e:
+                    violations.append(DailyInvariantViolation(
+                        date_yyyymmdd=date_str,
+                        reason="malformed_row",
+                        detail=str(e),
+                    ))
+                    page_progress = True
+                    continue
+                if point.close <= 0:
+                    violations.append(DailyInvariantViolation(
+                        date_yyyymmdd=date_str,
+                        reason="close_nonpositive",
+                        detail=f"close={point.close}",
+                    ))
+                    page_progress = True
+                    continue
+                if point.high < max(point.open, point.close) or point.low > min(point.open, point.close) or point.high < point.low:
+                    violations.append(DailyInvariantViolation(
+                        date_yyyymmdd=date_str,
+                        reason="ohlc_inconsistent",
+                        detail=(
+                            f"open={point.open} high={point.high} "
+                            f"low={point.low} close={point.close}"
+                        ),
+                    ))
+                    page_progress = True
+                    continue
+                candles.append(point)
+                page_progress = True
+
+            if not rows or not page_progress or not page_dates:
+                break
+            earliest = min(page_dates)
+            if earliest <= from_yyyymmdd:
+                break
+            cursor_to = _prev_day_yyyymmdd(earliest)
+
+        candles.sort(key=lambda c: c.t_ms)
+        return IndexCandleFetchResult(candles=candles, violations=violations)
+
+    async def fetch_market_investor_net(
+        self,
+        index: RepresentativeIndex,
+        from_yyyymmdd: str,
+        to_yyyymmdd: str,
+    ) -> InvestorNetFetchResult:
+        """Fetch KOSPI/KOSDAQ market-level foreign/institution net quantities.
+
+        KIS TR_ID: FHPTJ04040000 (inquire-investor-daily-by-market). This API
+        is market-scoped, not constituent-index-scoped, so it is only exposed
+        for representative market indices whose registry scope is ``market``.
+        """
+        if index.investor_scope != "market":
+            raise KisApiError(
+                msg_cd="UNSUPPORTED_INDEX_INVESTOR",
+                msg1=f"{index.id} does not support market investor net",
+            )
+        market_code, sub_code = _market_investor_codes(index)
+        path = "/uapi/domestic-stock/v1/quotations/inquire-investor-daily-by-market"
+        tr_id = "FHPTJ04040000"
+        cursor = datetime(
+            int(from_yyyymmdd[:4]),
+            int(from_yyyymmdd[4:6]),
+            int(from_yyyymmdd[6:8]),
+            tzinfo=KIS_KST,
+        )
+        end = datetime(
+            int(to_yyyymmdd[:4]),
+            int(to_yyyymmdd[4:6]),
+            int(to_yyyymmdd[6:8]),
+            tzinfo=KIS_KST,
+        )
+        points: list[InvestorNetPoint] = []
+        violations: list[InvestorNetInvariantViolation] = []
+        seen: set[str] = set()
+
+        while cursor <= end:
+            date_str = cursor.strftime("%Y%m%d")
+            params = {
+                "FID_COND_MRKT_DIV_CODE": "J",
+                "FID_INPUT_ISCD": sub_code,
+                "FID_INPUT_DATE_1": date_str,
+                "FID_INPUT_ISCD_1": market_code,
+                "FID_INPUT_DATE_2": date_str,
+                "FID_INPUT_ISCD_2": sub_code,
+            }
+            body = await self._get(path=path, tr_id=tr_id, params=params)
+            rows = body.get("output")
+            if not isinstance(rows, list):
+                rows = []
+            for row in rows:
+                row_date = str(row.get("stck_bsop_date") or row.get("bsop_date") or "")
+                if len(row_date) != 8:
+                    row_key = "malformed:" + json.dumps(row, sort_keys=True)
+                    if row_key in seen:
+                        continue
+                    seen.add(row_key)
+                    violations.append(InvestorNetInvariantViolation(
+                        date_yyyymmdd=row_date or "(empty)",
+                        reason="malformed_row",
+                        detail="stck_bsop_date missing or wrong length",
+                    ))
+                    continue
+                if row_date in seen:
+                    continue
+                seen.add(row_date)
+                if row_date < from_yyyymmdd or row_date > to_yyyymmdd:
+                    continue
+                try:
+                    points.append(_parse_market_investor_daily_row(row))
+                except (KeyError, TypeError, ValueError) as e:
+                    violations.append(InvestorNetInvariantViolation(
+                        date_yyyymmdd=row_date,
+                        reason="malformed_row",
+                        detail=str(e),
+                    ))
+            cursor += timedelta(days=1)
+
+        points.sort(key=lambda p: p.t_ms)
+        return InvestorNetFetchResult(points=points, violations=violations)
 
     # ------------------------------------------------------------------
     # fetch_multi_price (FHKST11300006, intstock-multprice)

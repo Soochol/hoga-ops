@@ -137,6 +137,7 @@ interface Props {
     quoteTotalsEnabled?: boolean;
     ratioEnabled?: boolean;
     fillStrengthEnabled?: boolean;
+    hogaPanes?: boolean;
   };
   /** /live persists viewport to active live tabs; snapshot study pages opt out. */
   persistLiveViewport?: boolean;
@@ -701,6 +702,7 @@ export function LiveChartRoot({ code, timeframe, venue = 'KRX', viewIdentity, bu
   const effectiveQuoteTotalsEnabled = paneTogglesOverride?.quoteTotalsEnabled ?? quoteTotalsEnabled;
   const effectiveRatioEnabled = paneTogglesOverride?.ratioEnabled ?? ratioEnabled;
   const effectiveFillStrengthEnabled = paneTogglesOverride?.fillStrengthEnabled ?? fillStrengthEnabled;
+  const effectiveHogaPanes = paneTogglesOverride?.hogaPanes;
 
   // Single source for the pane-mount toggles, consumed by BOTH the stretch
   // effect and the render-side paneSpecsForTimeframe call. Building it once
@@ -713,6 +715,7 @@ export function LiveChartRoot({ code, timeframe, venue = 'KRX', viewIdentity, bu
       quoteTotalsEnabled: effectiveQuoteTotalsEnabled,
       ratioEnabled: effectiveRatioEnabled,
       fillStrengthEnabled: effectiveFillStrengthEnabled,
+      hogaPanes: effectiveHogaPanes,
       forceHogaPanes,
     }),
     [
@@ -722,6 +725,7 @@ export function LiveChartRoot({ code, timeframe, venue = 'KRX', viewIdentity, bu
       effectiveQuoteTotalsEnabled,
       effectiveRatioEnabled,
       effectiveFillStrengthEnabled,
+      effectiveHogaPanes,
       forceHogaPanes,
     ],
   );

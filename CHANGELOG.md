@@ -3,6 +3,20 @@
 All notable changes to this project are documented here.
 The format follows a 4-digit `MAJOR.MINOR.PATCH.MICRO` scheme.
 
+## [0.9.0.0] - 2026-06-22
+
+### Added
+- **/live 대표지수 차트 지원**: KOSPI, KOSDAQ, KOSPI200, KOSDAQ150, KRX100을 종목 검색처럼 열고
+  KIS 지수 일·주·월 캔들 API로 차트를 볼 수 있게 했다.
+- **지수별 기능 capability 분리**: 지수 차트에서는 호가 총잔량, 호가비, 체결강도, 당일 매도·매수 최대벽처럼
+  호가 데이터가 필요한 지표를 숨기고, 캔들·거래량 중심 차트만 표시한다.
+- **KOSPI/KOSDAQ 시장 투자자 수급**: KIS 시장별 투자자매매동향 API를 통해 KOSPI와 KOSDAQ 지수 차트에
+  외국인·기관 순매수 패널을 표시한다.
+
+### Changed
+- `/live` 내부 상태와 탭 저장 구조를 종목 코드 전용 모델에서 주식·지수를 함께 담는 `LiveInstrument` 모델로 확장했다.
+- KRX300은 KIS 지수 코드 지원을 확인할 때까지 대표지수 목록에서 비활성 상태로 유지한다.
+
 ## [0.8.18.0] - 2026-06-22
 
 ### Added

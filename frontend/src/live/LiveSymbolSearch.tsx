@@ -6,23 +6,47 @@ import { onFocusLiveSearch } from './liveSearchFocus';
 import { shouldIgnoreEvent } from './useLiveKeyboard';
 import { WatchlistHeartButton } from '../watchlist/WatchlistHeartButton';
 import type { SymbolHit } from '../api/types';
+import { useLiveIndices, type LiveIndexEntry } from '../api/liveIndices';
+import { indexInstrument, type LiveIndexId } from './liveInstrument';
+
+type SearchItem =
+  | { kind: 'stock'; hit: SymbolHit }
+  | { kind: 'index'; index: LiveIndexEntry };
 
 export function LiveSymbolSearch() {
   const setActiveTabCode = useLiveTabsStore((s) => s.setActiveTabCode);
+  const setActiveTabInstrument = useLiveTabsStore((s) => s.setActiveTabInstrument);
   const [query, setQuery] = useState('');
   const rawItems = useSymbolSearch(query, 20);
+  const indices = useLiveIndices().data ?? [];
   // `filterSymbols('')` returns ALL symbols (not []), so without this gate a
   // focus-then-Enter on an empty input would invisibly select rawItems[0]
   // (the dropdown is hidden when the query is empty). Mirrors capture/SymbolSearch.
-  const items = query.trim().length >= 1 ? rawItems : [];
+  const q = query.trim().toLowerCase();
+  const indexItems: SearchItem[] = q.length >= 1
+    ? indices
+        .filter((idx) => idx.id.toLowerCase().includes(q) || idx.label.toLowerCase().includes(q))
+        .map((index) => ({ kind: 'index', index }))
+    : [];
+  const stockItems: SearchItem[] = query.trim().length >= 1
+    ? rawItems.map((hit) => ({ kind: 'stock', hit }))
+    : [];
+  const items = [...indexItems, ...stockItems];
 
-  const selectHit = (hit: SymbolHit) => { setActiveTabCode(hit.code, hit.name); setQuery(''); };
+  const selectItem = (item: SearchItem) => {
+    if (item.kind === 'stock') {
+      setActiveTabCode(item.hit.code, item.hit.name);
+    } else {
+      setActiveTabInstrument(indexInstrument(item.index.id as LiveIndexId, item.index.label));
+    }
+    setQuery('');
+  };
 
-  const combo = useCombobox<SymbolHit>({
+  const combo = useCombobox<SearchItem>({
     query,
     setQuery,
     items,
-    onSelect: selectHit,
+    onSelect: selectItem,
     onEnterEmpty: (q) => {
       const t = q.trim();
       if (/^\d{6}$/.test(t)) { setActiveTabCode(t); setQuery(''); return true; }
@@ -90,19 +114,30 @@ export function LiveSymbolSearch() {
           {items.length === 0 ? (
             <div className="py-3 px-2.5 text-sm text-fg-dim">검색 결과가 없습니다.</div>
           ) : (
-            items.map((hit, i) => (
+            items.map((item, i) => (
               <div
-                key={hit.code}
+                key={item.kind === 'stock' ? `stock:${item.hit.code}` : `index:${item.index.id}`}
                 role="option"
                 {...getOptionProps(i)}
-                onClick={() => { selectHit(hit); setOpen(false); }}
+                onClick={() => { selectItem(item); setOpen(false); }}
                 style={{ background: i === highlightedIndex ? 'var(--tint-selection)' : 'transparent' }}
                 className="grid grid-cols-[1fr_auto_auto_auto] gap-2.5 items-center py-2 px-2.5 cursor-pointer"
               >
-                <span className="text-sm text-fg">{hit.name}</span>
-                <span className="text-sm font-mono text-fg-dim tabular-nums">{hit.code}</span>
-                <span className="border border-border-strong rounded px-1 text-badge font-semibold tracking-wider text-fg-dim">{hit.market}</span>
-                <WatchlistHeartButton code={hit.code} name={hit.name} />
+                {item.kind === 'stock' ? (
+                  <>
+                    <span className="text-sm text-fg">{item.hit.name}</span>
+                    <span className="text-sm font-mono text-fg-dim tabular-nums">{item.hit.code}</span>
+                    <span className="border border-border-strong rounded px-1 text-badge font-semibold tracking-wider text-fg-dim">{item.hit.market}</span>
+                    <WatchlistHeartButton code={item.hit.code} name={item.hit.name} />
+                  </>
+                ) : (
+                  <>
+                    <span className="text-sm text-fg">{item.index.label}</span>
+                    <span className="text-sm font-mono text-fg-dim tabular-nums">{item.index.id}</span>
+                    <span className="border border-border-strong rounded px-1 text-badge font-semibold tracking-wider text-fg-dim">지수</span>
+                    <span aria-hidden />
+                  </>
+                )}
               </div>
             ))
           )}

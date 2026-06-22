@@ -15,13 +15,15 @@ export type PaneToggles = {
   quoteTotalsEnabled?: boolean;
   ratioEnabled?: boolean;
   fillStrengthEnabled?: boolean;
+  hogaPanes?: boolean;
   forceHogaPanes?: boolean;
 };
 
 const NO_TOGGLES: PaneToggles = { foreignNet: false, institutionNet: false };
 
 const isMinute = (tf: LiveTimeframe): boolean => !isCalendarTimeframe(tf);
-const hogaAllowed = (tf: LiveTimeframe, t: PaneToggles): boolean => t.forceHogaPanes === true || isMinute(tf);
+const hogaAllowed = (tf: LiveTimeframe, t: PaneToggles): boolean =>
+  t.hogaPanes !== false && (t.forceHogaPanes === true || isMinute(tf));
 
 /** A pane's mount gate: does this pane mount at this timeframe under these
  *  toggles? */
