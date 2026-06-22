@@ -274,6 +274,7 @@ export function LivePage() {
   const workareaChartBundle = activeIndexId ? indexBundle : chartBundle;
   const workareaLoading = activeIndexId ? indexCandles.isLoading : isPastCandlesLoading;
   const indexExtending = activeIndexId ? historicalFromDate !== null && indexCandles.isFetching : false;
+  const workareaDataWarnings = activeIndexId ? indexCandles.data?.data_warnings ?? [] : pastDataWarnings;
 
   useEffect(() => {
     if (!activeCode || !liveSaveBundle) {
@@ -340,7 +341,7 @@ export function LivePage() {
         clampEngaged={clampEngaged}
         isPastCandlesLoading={workareaLoading}
         isExtending={activeIndexId ? indexExtending : isExtending}
-        pastDataWarnings={pastDataWarnings}
+        pastDataWarnings={workareaDataWarnings}
         restoreViewport={restoreViewport}
         viewIdentity={activeTabId ? `${activeTabId}:${liveVenue}` : liveVenue}
         venue={liveVenue}
