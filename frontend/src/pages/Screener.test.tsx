@@ -67,6 +67,10 @@ function resultNames() {
   return screen.getAllByRole('button', { name: /호가창 열기/ }).map((row) => row.getAttribute('aria-label') ?? '');
 }
 
+function sortButton() {
+  return screen.getByRole('button', { name: '스크리너 결과 정렬' });
+}
+
 it('조회 결과 액션에는 관심 그룹 하트만 표시한다', async () => {
   renderPage();
   fireEvent.click(screen.getByText('조회'));
@@ -121,31 +125,32 @@ it('sorts full-page screener results and resets to default on re-scan', async ()
     'NAVER 035420 호가창 열기',
   ]);
 
-  fireEvent.click(screen.getByRole('button', { name: '등락률 높은 순' }));
-  expect(resultNames()).toEqual([
-    '삼성전자 005930 호가창 열기',
-    'NAVER 035420 호가창 열기',
-    'SK하이닉스 000660 호가창 열기',
-  ]);
-
-  fireEvent.click(screen.getByRole('button', { name: '등락률 낮은 순' }));
+  fireEvent.click(sortButton());
   expect(resultNames()).toEqual([
     'SK하이닉스 000660 호가창 열기',
     'NAVER 035420 호가창 열기',
     '삼성전자 005930 호가창 열기',
   ]);
 
-  fireEvent.click(screen.getByRole('button', { name: '기본 순서' }));
+  fireEvent.click(sortButton());
+  expect(resultNames()).toEqual([
+    '삼성전자 005930 호가창 열기',
+    'NAVER 035420 호가창 열기',
+    'SK하이닉스 000660 호가창 열기',
+  ]);
+
+  fireEvent.click(sortButton());
   expect(resultNames()).toEqual([
     '삼성전자 005930 호가창 열기',
     'SK하이닉스 000660 호가창 열기',
     'NAVER 035420 호가창 열기',
   ]);
 
-  fireEvent.click(screen.getByRole('button', { name: '등락률 높은 순' }));
-  expect(screen.getByRole('button', { name: '등락률 높은 순' })).toHaveAttribute('aria-pressed', 'true');
+  fireEvent.click(sortButton());
+  fireEvent.click(sortButton());
+  expect(within(sortButton()).getByTestId('sort-icon-desc')).toBeInTheDocument();
   fireEvent.click(screen.getByRole('button', { name: '조회' }));
-  await waitFor(() => expect(screen.getByRole('button', { name: '기본 순서' })).toHaveAttribute('aria-pressed', 'true'));
+  await waitFor(() => expect(within(sortButton()).getByTestId('sort-icon-default')).toBeInTheDocument());
   expect(resultNames()).toEqual([
     '삼성전자 005930 호가창 열기',
     'SK하이닉스 000660 호가창 열기',
@@ -164,14 +169,16 @@ it('sorts by overlayed live change_pct when present', async () => {
   fireEvent.click(screen.getByRole('button', { name: '조회' }));
   await screen.findByText('삼성전자');
 
-  fireEvent.click(screen.getByRole('button', { name: '등락률 높은 순' }));
+  fireEvent.click(sortButton());
+  fireEvent.click(sortButton());
   expect(resultNames()).toEqual([
     'NAVER 035420 호가창 열기',
     '삼성전자 005930 호가창 열기',
     'SK하이닉스 000660 호가창 열기',
   ]);
 
-  fireEvent.click(screen.getByRole('button', { name: '등락률 낮은 순' }));
+  fireEvent.click(sortButton());
+  fireEvent.click(sortButton());
   expect(resultNames()).toEqual([
     'SK하이닉스 000660 호가창 열기',
     '삼성전자 005930 호가창 열기',
@@ -187,9 +194,7 @@ it('keeps the full-page sort control disabled for empty scan results', async () 
 
   await waitFor(() => expect(runScan).toHaveBeenCalled());
   expect(screen.queryByRole('button', { name: /호가창 열기/ })).not.toBeInTheDocument();
-  expect(screen.getByRole('button', { name: '기본 순서' })).toBeDisabled();
-  expect(screen.getByRole('button', { name: '등락률 낮은 순' })).toBeDisabled();
-  expect(screen.getByRole('button', { name: '등락률 높은 순' })).toBeDisabled();
+  expect(sortButton()).toBeDisabled();
 });
 
 it('surfaces a scan error instead of a silent dead-end', async () => {
