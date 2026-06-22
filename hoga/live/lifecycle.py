@@ -591,6 +591,7 @@ async def _restart_conn(account_id: int, *, data_dir: Path) -> None:
     async with _lifecycle_lock:
         await _state.session.restart(
             account_id, data_dir=data_dir,
+            storage_policy="ws_plus_rest",
             build_conn=_build_conn, teardown_conn=_teardown_conn,
         )
         conn = _state.streams.get(account_id)

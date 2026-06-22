@@ -41,3 +41,44 @@ def test_empty_folders_yield_empty():
     doc = _doc(folders=[{"id": "f_0000000a", "name": "A", "order": 0, "member_codes": []}],
                entries_codes=[])
     assert display_ordered_codes(doc) == []
+
+
+def test_compute_capture_candidates_uses_enabled_folders(tmp_path, monkeypatch) -> None:
+    from hoga.api.models import WatchlistDocument, WatchlistEntry, WatchlistFolder
+    from hoga.api.watchlist import save_document
+    from hoga.live.coverage import _compute_capture_candidates
+
+    save_document(tmp_path, WatchlistDocument(
+        folders=[
+            WatchlistFolder(
+                id="f_0000000a",
+                name="Enabled",
+                order=0,
+                member_codes=["005930", "000660"],
+                capture_enabled=True,
+            ),
+            WatchlistFolder(
+                id="f_0000000b",
+                name="Disabled",
+                order=1,
+                member_codes=["035720"],
+                capture_enabled=False,
+            ),
+        ],
+        entries=[
+            WatchlistEntry(code="005930", name="삼성전자", registered_at_kst_date="20260601"),
+            WatchlistEntry(code="000660", name="SK하이닉스", registered_at_kst_date="20260601"),
+            WatchlistEntry(code="035720", name="카카오", registered_at_kst_date="20260601"),
+        ],
+    ))
+
+    class Hit:
+        def __init__(self, code):
+            self.code = code
+
+    monkeypatch.setattr(
+        "hoga.api.symbols.search",
+        lambda _query, limit=10_000: [Hit("005930"), Hit("035720")],
+    )
+
+    assert _compute_capture_candidates(tmp_path) == ["005930"]

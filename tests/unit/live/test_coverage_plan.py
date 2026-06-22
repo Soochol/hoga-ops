@@ -38,3 +38,60 @@ def test_select_live_set_filters_unknown_codes_but_cold_cache_keeps_all() -> Non
         ("005930", "999999"),
         (),
     )
+
+
+def test_plan_storage_targets_ws_only_excludes_rest() -> None:
+    from hoga.live.coverage import plan_storage_targets
+
+    plan = plan_storage_targets(
+        ["A", "B", "C"],
+        n_configured=1,
+        per_account_max=2,
+        storage_policy="ws_only",
+    )
+
+    assert plan.ws_targets == ("A", "B")
+    assert plan.kis_api_targets == ()
+    assert plan.capture_candidates == ("A", "B", "C")
+
+
+def test_plan_storage_targets_ws_plus_rest_uses_remainder() -> None:
+    from hoga.live.coverage import plan_storage_targets
+
+    plan = plan_storage_targets(
+        ["A", "B", "C"],
+        n_configured=1,
+        per_account_max=2,
+        storage_policy="ws_plus_rest",
+    )
+
+    assert plan.ws_targets == ("A", "B")
+    assert plan.kis_api_targets == ("C",)
+
+
+def test_plan_storage_targets_rest_only_disables_ws() -> None:
+    from hoga.live.coverage import plan_storage_targets
+
+    plan = plan_storage_targets(
+        ["A", "B", "C"],
+        n_configured=3,
+        per_account_max=2,
+        storage_policy="rest_only",
+    )
+
+    assert plan.ws_targets == ()
+    assert plan.kis_api_targets == ("A", "B", "C")
+
+
+def test_plan_storage_targets_does_not_silently_cap_rest_targets() -> None:
+    from hoga.live.coverage import plan_storage_targets
+
+    candidates = [f"{i:06d}" for i in range(50)]
+    plan = plan_storage_targets(
+        candidates,
+        n_configured=1,
+        per_account_max=10,
+        storage_policy="rest_only",
+    )
+
+    assert plan.kis_api_targets == tuple(candidates)
