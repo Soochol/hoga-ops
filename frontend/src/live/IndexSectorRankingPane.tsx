@@ -143,7 +143,7 @@ export function IndexSectorRankingPane({
   const activeSectorId = resolveActiveSectorId(sectors, state);
 
   const activeSector = useMemo(
-    () => sectors.find((sector) => sector.folder_id === activeSectorId) ?? sectors[0] ?? null,
+    () => sectors.find((sector) => sectorIdentityKey(sector.folder_id) === activeSectorId) ?? sectors[0] ?? null,
     [activeSectorId, sectors],
   );
 
@@ -173,7 +173,7 @@ export function IndexSectorRankingPane({
                 key={sector.folder_id ?? `sector-${index}`}
                 sector={sector}
                 rank={index + 1}
-                active={sector.folder_id === activeSector?.folder_id}
+                active={sectorIdentityKey(sector.folder_id) === activeSectorId}
                 onPreview={(sectorKey) => dispatch({ type: 'preview_sector', sectorKey })}
                 onPin={(sectorKey) => dispatch({ type: 'toggle_sector_pin', sectorKey })}
               />

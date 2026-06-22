@@ -74,10 +74,10 @@ describe('index sector ranking state', () => {
       sectorKey: 'folder:bio',
     });
 
-    expect(resolveActiveSectorId(sectors, preview)).toBe('bio');
+    expect(resolveActiveSectorId(sectors, preview)).toBe('folder:bio');
 
     const ended = reduceIndexSectorRankingState(preview, { type: 'preview_sector', sectorKey: null });
-    expect(resolveActiveSectorId(sectors, ended)).toBe('semi');
+    expect(resolveActiveSectorId(sectors, ended)).toBe('folder:semi');
   });
 
   it('sector click toggles pin and falls back to rank 1', () => {
@@ -85,13 +85,13 @@ describe('index sector ranking state', () => {
       type: 'toggle_sector_pin',
       sectorKey: 'folder:bio',
     });
-    expect(resolveActiveSectorId(sectors, pinned)).toBe('bio');
+    expect(resolveActiveSectorId(sectors, pinned)).toBe('folder:bio');
 
     const unpinned = reduceIndexSectorRankingState(pinned, {
       type: 'toggle_sector_pin',
       sectorKey: 'folder:bio',
     });
-    expect(resolveActiveSectorId(sectors, unpinned)).toBe('semi');
+    expect(resolveActiveSectorId(sectors, unpinned)).toBe('folder:semi');
   });
 
   it('keeps uncategorized sectors addressable when previewing and pinning', () => {
@@ -120,19 +120,19 @@ describe('index sector ranking state', () => {
       type: 'preview_sector',
       sectorKey: '__uncat__',
     });
-    expect(resolveActiveSectorId(uncategorizedSectors, previewed)).toBeNull();
+    expect(resolveActiveSectorId(uncategorizedSectors, previewed)).toBe('__uncat__');
 
     const pinned = reduceIndexSectorRankingState(initialIndexSectorRankingUiState, {
       type: 'toggle_sector_pin',
       sectorKey: '__uncat__',
     });
-    expect(resolveActiveSectorId(uncategorizedSectors, pinned)).toBeNull();
+    expect(resolveActiveSectorId(uncategorizedSectors, pinned)).toBe('__uncat__');
 
     const unpinned = reduceIndexSectorRankingState(pinned, {
       type: 'toggle_sector_pin',
       sectorKey: '__uncat__',
     });
-    expect(resolveActiveSectorId(uncategorizedSectors, unpinned)).toBe('semi');
+    expect(resolveActiveSectorId(uncategorizedSectors, unpinned)).toBe('folder:semi');
   });
 
   it('clears missing pinned sector and falls back to rank 1', () => {
@@ -141,6 +141,6 @@ describe('index sector ranking state', () => {
       sectorKey: 'folder:removed',
     });
 
-    expect(resolveActiveSectorId(sectors, pinned)).toBe('semi');
+    expect(resolveActiveSectorId(sectors, pinned)).toBe('folder:semi');
   });
 });

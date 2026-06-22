@@ -77,14 +77,14 @@ function findSectorByKey(
 export function resolveActiveSectorId(
   sectors: IndexSectorRankingSector[],
   state: IndexSectorRankingUiState,
-): string | null {
+): SectorIdentityKey | null {
   if (state.previewSectorKey !== null) {
     const previewSector = findSectorByKey(sectors, state.previewSectorKey);
-    if (previewSector) return previewSector.folder_id;
+    if (previewSector) return sectorIdentityKey(previewSector.folder_id);
   }
   if (state.pinnedSectorKey !== null) {
     const pinnedSector = findSectorByKey(sectors, state.pinnedSectorKey);
-    if (pinnedSector) return pinnedSector.folder_id;
+    if (pinnedSector) return sectorIdentityKey(pinnedSector.folder_id);
   }
-  return sectors[0]?.folder_id ?? null;
+  return sectors[0] ? sectorIdentityKey(sectors[0].folder_id) : null;
 }

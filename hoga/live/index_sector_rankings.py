@@ -1,7 +1,9 @@
 from __future__ import annotations
 
 import datetime as dt
+from collections import OrderedDict
 from pathlib import Path
+from threading import Lock
 from typing import Literal
 
 import polars as pl
@@ -12,6 +14,17 @@ from hoga.api.models import HeatmapEntry
 
 RankingSource = Literal["daily_adjusted", "unavailable"]
 MissingReason = Literal["no_basis_bar", "no_previous_close"]
+UnavailableReason = Literal[
+    "screener_daily_corpus_missing",
+    "daily_corpus_invalid",
+    "no_basis_bars",
+]
+_CACHE_MAX = 64
+_cache_lock = Lock()
+_ranking_cache: OrderedDict[
+    tuple[str, str, int, int],
+    IndexSectorRankingResponse,
+] = OrderedDict()
 
 
 class IndexSectorStock(BaseModel):
@@ -39,7 +52,7 @@ class IndexSectorGroup(BaseModel):
 class IndexSectorRankingResponse(BaseModel):
     date: str
     source: RankingSource
-    unavailable_reason: Literal["screener_daily_corpus_missing"] | None = None
+    unavailable_reason: UnavailableReason | None = None
     sectors: list[IndexSectorGroup]
 
 
@@ -163,46 +176,97 @@ def _sort_sectors(sectors: list[IndexSectorGroup]) -> list[IndexSectorGroup]:
     )
 
 
+def _mtime_ns(path: Path) -> int:
+    try:
+        return path.stat().st_mtime_ns
+    except FileNotFoundError:
+        return 0
+
+
+def _unavailable(basis_date: str, reason: UnavailableReason) -> IndexSectorRankingResponse:
+    return IndexSectorRankingResponse(
+        date=basis_date,
+        source="unavailable",
+        unavailable_reason=reason,
+        sectors=[],
+    )
+
+
+def _cache_get(key: tuple[str, str, int, int]) -> IndexSectorRankingResponse | None:
+    with _cache_lock:
+        cached = _ranking_cache.get(key)
+        if cached is not None:
+            _ranking_cache.move_to_end(key)
+        return cached
+
+
+def _cache_put(
+    key: tuple[str, str, int, int],
+    value: IndexSectorRankingResponse,
+) -> IndexSectorRankingResponse:
+    with _cache_lock:
+        _ranking_cache[key] = value
+        _ranking_cache.move_to_end(key)
+        while len(_ranking_cache) > _CACHE_MAX:
+            _ranking_cache.popitem(last=False)
+    return value
+
+
 def build_index_sector_rankings(data_dir: Path, basis_date: str) -> IndexSectorRankingResponse:
     basis = _parse_basis_date(basis_date)
-    doc = load_document(data_dir)
     corpus_path = data_dir / "screener" / "daily_adjusted.parquet"
+    heatmap_path = data_dir / "heatmap.json"
+    cache_key = (
+        str(data_dir.resolve()),
+        basis_date,
+        _mtime_ns(heatmap_path),
+        _mtime_ns(corpus_path),
+    )
+    cached = _cache_get(cache_key)
+    if cached is not None:
+        return cached
+
+    doc = load_document(data_dir)
     if not corpus_path.exists():
-        return IndexSectorRankingResponse(
-            date=basis_date,
-            source="unavailable",
-            unavailable_reason="screener_daily_corpus_missing",
-            sectors=[],
-        )
+        return _cache_put(cache_key, _unavailable(basis_date, "screener_daily_corpus_missing"))
     codes = [entry.code for entry in doc.entries]
-    daily_rows = _load_daily_rows(corpus_path, codes, basis)
+    try:
+        daily_rows = _load_daily_rows(corpus_path, codes, basis)
+    except Exception:
+        return _cache_put(cache_key, _unavailable(basis_date, "daily_corpus_invalid"))
     folder_names = {folder.id: folder.name for folder in doc.folders}
     folder_orders = {folder.id: folder.order for folder in doc.folders}
-    sectors: list[IndexSectorGroup] = []
-    for folder_id, folder_name, folder_order, entries in _entry_groups(doc.entries, folder_names, folder_orders):
-        stocks = _sort_stocks([
-            _stock_from_entry(
-                entry,
-                folder_name=folder_name,
-                basis=basis,
-                rows=daily_rows.get(entry.code, []),
+    try:
+        sectors: list[IndexSectorGroup] = []
+        for folder_id, folder_name, folder_order, entries in _entry_groups(doc.entries, folder_names, folder_orders):
+            stocks = _sort_stocks([
+                _stock_from_entry(
+                    entry,
+                    folder_name=folder_name,
+                    basis=basis,
+                    rows=daily_rows.get(entry.code, []),
+                )
+                for entry in entries
+            ])
+            avg, finite_count = _sector_average(stocks)
+            sectors.append(
+                IndexSectorGroup(
+                    folder_id=folder_id,
+                    folder_name=folder_name,
+                    order=folder_order,
+                    change_pct=avg,
+                    finite_count=finite_count,
+                    total_count=len(stocks),
+                    stocks=stocks,
+                ),
             )
-            for entry in entries
-        ])
-        avg, finite_count = _sector_average(stocks)
-        sectors.append(
-            IndexSectorGroup(
-                folder_id=folder_id,
-                folder_name=folder_name,
-                order=folder_order,
-                change_pct=avg,
-                finite_count=finite_count,
-                total_count=len(stocks),
-                stocks=stocks,
-            ),
-        )
-    return IndexSectorRankingResponse(
+    except (KeyError, TypeError, ValueError):
+        return _cache_put(cache_key, _unavailable(basis_date, "daily_corpus_invalid"))
+    all_stocks = [stock for sector in sectors for stock in sector.stocks]
+    if all_stocks and all(stock.missing_reason == "no_basis_bar" for stock in all_stocks):
+        return _cache_put(cache_key, _unavailable(basis_date, "no_basis_bars"))
+    return _cache_put(cache_key, IndexSectorRankingResponse(
         date=basis_date,
         source="daily_adjusted",
         sectors=_sort_sectors(sectors),
-    )
+    ))

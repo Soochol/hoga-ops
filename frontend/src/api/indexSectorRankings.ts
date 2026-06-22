@@ -3,6 +3,7 @@ import { apiCall } from './client';
 
 export type IndexSectorRankingSource = 'daily_adjusted' | 'unavailable';
 export type IndexSectorMissingReason = 'no_basis_bar' | 'no_previous_close';
+export const INDEX_SECTOR_RANKINGS_KEY = ['live', 'index-sector-rankings'] as const;
 
 export interface IndexSectorRankingStock {
   code: string;
@@ -29,13 +30,13 @@ export interface IndexSectorRankingSector {
 export interface IndexSectorRankingResponse {
   date: string;
   source: IndexSectorRankingSource;
-  unavailable_reason: 'screener_daily_corpus_missing' | null;
+  unavailable_reason: 'screener_daily_corpus_missing' | 'daily_corpus_invalid' | 'no_basis_bars' | null;
   sectors: IndexSectorRankingSector[];
 }
 
 export function useIndexSectorRankings(date: string | null, enabledByCaller = true) {
   return useQuery({
-    queryKey: ['live', 'index-sector-rankings', date] as const,
+    queryKey: [...INDEX_SECTOR_RANKINGS_KEY, date] as const,
     queryFn: ({ signal }) =>
       apiCall<IndexSectorRankingResponse>(
         `/api/live/index-sector-rankings?date=${date}`,

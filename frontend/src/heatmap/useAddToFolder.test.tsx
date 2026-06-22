@@ -11,6 +11,7 @@ vi.mock('../api/heatmap', async (orig) => ({
 
 import { useAddToFolder } from './useAddToFolder';
 import { addToHeatmapFolder } from '../api/heatmap';
+import { INDEX_SECTOR_RANKINGS_KEY } from '../api/indexSectorRankings';
 
 function wrapper({ children }: { children: ReactNode }) {
   const qc = new QueryClient();
@@ -37,4 +38,23 @@ it('단일 command가 실패하면 에러를 전파한다', async () => {
   await expect(
     act(async () => { await result.current.addToFolder('005930', 'f1'); }),
   ).rejects.toThrow('boom');
+});
+
+it('히트맵 멤버십 변경 후 index sector ranking cache도 무효화한다', async () => {
+  const qc = new QueryClient();
+  const rankingKey = [...INDEX_SECTOR_RANKINGS_KEY, '20260619'] as const;
+  qc.setQueryData(rankingKey, {
+    date: '20260619',
+    source: 'daily_adjusted',
+    unavailable_reason: null,
+    sectors: [],
+  });
+  const customWrapper = ({ children }: { children: ReactNode }) => (
+    <QueryClientProvider client={qc}>{children}</QueryClientProvider>
+  );
+  const { result } = renderHook(() => useAddToFolder(), { wrapper: customWrapper });
+
+  await act(async () => { await result.current.addToFolder('005930', 'f1'); });
+
+  expect(qc.getQueryState(rankingKey)?.isInvalidated).toBe(true);
 });

@@ -5,6 +5,7 @@ from pathlib import Path
 
 import polars as pl
 
+from hoga.live import index_sector_rankings as rankings
 from hoga.api.heatmap import save_document
 from hoga.api.models import HeatmapDocument, HeatmapEntry, WatchlistFolder
 from hoga.live.index_sector_rankings import build_index_sector_rankings
@@ -99,6 +100,73 @@ def test_build_index_sector_rankings_reports_unavailable_when_corpus_missing(tmp
     assert result.source == "unavailable"
     assert result.unavailable_reason == "screener_daily_corpus_missing"
     assert result.sectors == []
+
+
+def test_build_index_sector_rankings_reports_unavailable_when_no_basis_bars(tmp_path: Path) -> None:
+    _seed_heatmap(tmp_path)
+    _seed_daily(tmp_path)
+
+    result = build_index_sector_rankings(tmp_path, "20260620")
+
+    assert result.source == "unavailable"
+    assert result.unavailable_reason == "no_basis_bars"
+    assert result.sectors == []
+
+
+def test_build_index_sector_rankings_reports_unavailable_when_corpus_invalid(tmp_path: Path) -> None:
+    _seed_heatmap(tmp_path)
+    sdir = tmp_path / "screener"
+    sdir.mkdir()
+    pl.DataFrame({
+        "code": ["005930"],
+        "date": [dt.date(2026, 6, 19)],
+    }).write_parquet(sdir / "daily_adjusted.parquet")
+
+    result = build_index_sector_rankings(tmp_path, "20260619")
+
+    assert result.source == "unavailable"
+    assert result.unavailable_reason == "daily_corpus_invalid"
+    assert result.sectors == []
+
+
+def test_build_index_sector_rankings_reports_unavailable_when_close_value_invalid(tmp_path: Path) -> None:
+    _seed_heatmap(tmp_path)
+    sdir = tmp_path / "screener"
+    sdir.mkdir()
+    pl.DataFrame(
+        {
+            "code": ["005930", "005930"],
+            "date": [dt.date(2026, 6, 18), dt.date(2026, 6, 19)],
+            "close": [100.0, None],
+        },
+    ).write_parquet(sdir / "daily_adjusted.parquet")
+
+    result = build_index_sector_rankings(tmp_path, "20260619")
+
+    assert result.source == "unavailable"
+    assert result.unavailable_reason == "daily_corpus_invalid"
+    assert result.sectors == []
+
+
+def test_build_index_sector_rankings_caches_unchanged_heatmap_and_corpus(
+    tmp_path: Path,
+    monkeypatch,
+) -> None:
+    _seed_heatmap(tmp_path)
+    _seed_daily(tmp_path)
+    calls = 0
+    original = rankings._load_daily_rows
+
+    def counting_load_daily_rows(path, codes, basis):
+        nonlocal calls
+        calls += 1
+        return original(path, codes, basis)
+
+    monkeypatch.setattr(rankings, "_load_daily_rows", counting_load_daily_rows)
+
+    assert build_index_sector_rankings(tmp_path, "20260619").source == "daily_adjusted"
+    assert build_index_sector_rankings(tmp_path, "20260619").source == "daily_adjusted"
+    assert calls == 1
 
 
 def test_build_index_sector_rankings_marks_missing_previous_close(tmp_path: Path) -> None:
