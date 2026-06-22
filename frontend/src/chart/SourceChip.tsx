@@ -1,13 +1,9 @@
-import type { SourcePreference } from '../state/sourcePreference';
+import type { SourceName } from '../api/types';
+import { getSourceCapability } from '../api/sourceCapabilities';
 
 interface Props {
-  source: SourcePreference | undefined;
+  source: SourceName | undefined;
 }
-
-const RESOLUTION: Record<SourcePreference, string> = {
-  hogaplay: 'tick',
-  kis_live: '10s',
-};
 
 /**
  * Source identity chip — surfaces which capture source produced the
@@ -20,8 +16,9 @@ const RESOLUTION: Record<SourcePreference, string> = {
  */
 export function SourceChip({ source }: Props) {
   if (!source) return null;
-  const bgVar = `var(--source-${source.replace('_', '-')}-bg)`;
-  const borderVar = `var(--source-${source.replace('_', '-')}-border)`;
+  const capability = getSourceCapability(source);
+  const bgVar = `var(--source-${capability.cssTokenName}-bg)`;
+  const borderVar = `var(--source-${capability.cssTokenName}-border)`;
 
   return (
     <span
@@ -38,12 +35,11 @@ export function SourceChip({ source }: Props) {
         fontSize: 'var(--text-xs)',
         fontFamily: 'monospace',
         color: 'var(--fg-dim)',
-        textTransform: 'lowercase',
       }}
     >
-      <span>{source}</span>
+      <span>{capability.label}</span>
       <span aria-hidden style={{ color: 'var(--fg-dimmer)' }}>·</span>
-      <span style={{ color: 'var(--fg-dimmer)' }}>{RESOLUTION[source]}</span>
+      <span style={{ color: 'var(--fg-dimmer)' }}>{capability.resolutionLabel}</span>
     </span>
   );
 }

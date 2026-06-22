@@ -13,6 +13,14 @@ const baseStatus: LiveStatus = {
   kis_calls_today: 0,
   kis_rate_limit_remaining: null,
   live_set: [],
+  storage_policy: 'ws_plus_rest',
+  kis_api_running: false,
+  kis_api_targets: [],
+  kis_api_target_count: 0,
+  kis_api_last_cycle_ms: null,
+  kis_api_last_error: null,
+  kis_api_last_error_count: 0,
+  kis_api_degraded: false,
 };
 
 function project(input: Partial<LiveStatusProjectionInput>) {

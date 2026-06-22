@@ -24,6 +24,7 @@ from .coverage import (
     TRS_PER_CODE,
     _PER_ACCOUNT_MAX,
     _compute_live_set,
+    _compute_ws_targets,
     display_ordered_codes,
     live_set_codes,
     partition_live_set,
@@ -33,6 +34,7 @@ from .coverage import (
 if TYPE_CHECKING:
     import asyncio
     from collections.abc import Awaitable, Callable
+    from hoga.api.models import LiveStoragePolicy
 
     _BuildConn = Callable[[int, list[str], Path], "_StreamConn"]
     _TeardownConn = Callable[["_StreamConn"], Awaitable[None]]
@@ -193,6 +195,7 @@ class LiveSession:
         account_id: int,
         *,
         data_dir: Path,
+        storage_policy: LiveStoragePolicy,
         build_conn: _BuildConn,
         teardown_conn: _TeardownConn,
     ) -> None:
@@ -203,7 +206,7 @@ class LiveSession:
             return
         n = self.n_configured
         parts = plan_live_coverage(
-            _compute_live_set(data_dir, n), n_configured=n,
+            _compute_ws_targets(data_dir, n, storage_policy), n_configured=n,
         ).partitions
         codes = parts[account_id] if account_id < len(parts) else []
         await teardown_conn(conn)

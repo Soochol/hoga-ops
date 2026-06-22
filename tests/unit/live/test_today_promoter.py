@@ -138,3 +138,33 @@ async def test_today_promoter_empty_codes_no_promote_calls(
     await stop_today_promoter(task)
 
     assert calls == []
+
+
+@pytest.mark.asyncio
+async def test_today_promoter_promotes_ws_and_api_targets(
+    tmp_path: Path, monkeypatch,
+) -> None:
+    """WS live JSONL and REST 30s JSONL must both become readable parquet."""
+    live_calls: list[str] = []
+    api_calls: list[str] = []
+
+    async def fake_promote(data_dir, *, code):
+        live_calls.append(code)
+
+    async def fake_promote_api(data_dir, *, code):
+        api_calls.append(code)
+
+    monkeypatch.setattr("hoga.live.lifecycle.promote_today", fake_promote)
+    monkeypatch.setattr("hoga.live.lifecycle.promote_api_today", fake_promote_api)
+
+    task = await start_today_promoter(
+        data_dir=tmp_path,
+        get_active_codes=lambda: ["005930"],
+        get_api_capture_codes=lambda: ["000660"],
+        interval_s=0.05,
+    )
+    await asyncio.sleep(0.12)
+    await stop_today_promoter(task)
+
+    assert "005930" in live_calls
+    assert "000660" in api_calls

@@ -394,6 +394,39 @@ def test_folder_reorder_route(tmp_path: Path):
         assert [f["name"] for f in client.get("/api/watchlist").json()["folders"]] == ["B", "A"]
 
 
+def test_create_folder_response_includes_capture_disabled(tmp_path: Path):
+    with _folder_client(tmp_path) as client:
+        r = client.post("/api/watchlist/folders", json={"name": "스윙"})
+
+    assert r.status_code == 201
+    assert r.json()["capture_enabled"] is False
+
+
+def test_patch_folder_capture_refreshes_live_stream(tmp_path: Path):
+    with _folder_client(tmp_path) as client:
+        fid = client.post("/api/watchlist/folders", json={"name": "스윙"}).json()["id"]
+        with patch("hoga.api.watchlist_routes.refresh_live_stream", new=AsyncMock()) as ref:
+            r = client.patch(
+                f"/api/watchlist/folders/{fid}/capture",
+                json={"capture_enabled": True},
+            )
+
+    assert r.status_code == 200
+    assert r.json()["capture_enabled"] is True
+    ref.assert_awaited_once()
+
+
+def test_patch_folder_capture_unknown_folder_returns_404(tmp_path: Path):
+    with _folder_client(tmp_path) as client:
+        r = client.patch(
+            "/api/watchlist/folders/f_deadbeef/capture",
+            json={"capture_enabled": True},
+        )
+
+    assert r.status_code == 404
+    assert r.json()["detail"]["code"] == "folder_not_found"
+
+
 def test_reorder_and_bulk_remove_routes(tmp_path: Path):
     with _folder_client(tmp_path) as client:
         fid = client.post("/api/watchlist/folders", json={"name": "스윙"}).json()["id"]

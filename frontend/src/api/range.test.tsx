@@ -30,7 +30,7 @@ describe('useRange', () => {
   beforeEach(() => {
     vi.restoreAllMocks();
     localStorage.clear();
-    useSourcePreferenceStore.setState({ sourcePreference: 'hogaplay' });
+    useSourcePreferenceStore.setState({ sourcePreference: 'hogaplay_first' });
   });
 
   it('disabled when any input is null', () => {
@@ -78,7 +78,7 @@ describe('useRange', () => {
 
   it('threads sourcePref into the query string and key', async () => {
     vi.spyOn(client, 'apiCall').mockResolvedValue({} as RangeBundle);
-    useSourcePreferenceStore.setState({ sourcePreference: 'kis_live' });
+    useSourcePreferenceStore.setState({ sourcePreference: 'kis_api_first' });
 
     renderHook(
       () => useRange('005930', '20260520', '20260520', '1m'),
@@ -86,7 +86,7 @@ describe('useRange', () => {
     );
     await waitFor(() => expect(client.apiCall).toHaveBeenCalled());
     const calledWith = (client.apiCall as ReturnType<typeof vi.spyOn>).mock.calls[0][0] as string;
-    expect(calledWith).toContain('source_pref=kis_live');
+    expect(calledWith).toContain('source_pref=kis_api_first');
   });
 });
 

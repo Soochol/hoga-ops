@@ -11,10 +11,11 @@ from hoga.api import models as m
 
 
 EXPECTED_REST_WIRE_FIELDS: dict[str, frozenset[str]] = {
-    "WatchlistFolderView": frozenset({"id", "name", "order"}),
+    "WatchlistFolderView": frozenset({"id", "name", "order", "capture_enabled"}),
     "WatchlistEntryView": frozenset(
         {
             "code",
+            "capture_candidate",
             "folder_id",
             "last_success_date",
             "name",

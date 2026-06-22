@@ -12,7 +12,7 @@ import { HeartIcon } from '../ui/HeartIcon';
 import { useQuoteByCode } from '../api/liveQuotes';
 import { QuoteChange } from '../rightrail/QuoteChange';
 import { useLiveStatus } from '../api/liveStatus';
-import { deriveCollectionStatus, deriveDisplayStatus } from './collectionStatus';
+import { deriveCollectionView } from './collectionStatus';
 import { CollectionDot } from './CollectionDot';
 import type { LiveVenueOption } from '../state/liveVenue';
 import { liveVenueDisplayLabel, liveVenueKeepsHogaKrx } from './liveVenuePolicy';
@@ -49,12 +49,16 @@ export function LiveStatusBar({ activeCode, captureHealth, bundle, venue = 'KRX'
   const watchlistCodes = watchlistData?.entries.map((e) => e.code) ?? [];
   const { data: liveStatusData } = useLiveStatus();
   const liveSet = liveStatusData?.live_set ?? [];
-  const collectionStatus = deriveCollectionStatus(
-    activeCode,
+  const collection = deriveCollectionView({
+    code: activeCode,
     liveSet,
     watchlistCodes,
-    activeCode ? [activeCode] : [],
-  );
+    viewedCodes: activeCode ? [activeCode] : [],
+    kisApiTargets: liveStatusData?.kis_api_targets ?? [],
+    captureCandidate: watchlistData?.entries.some((e) =>
+      e.code === activeCode && e.capture_candidate !== false) ?? member,
+    liveConnection: live,
+  });
 
   // 종목명·현재가 옆 전일대비(등락액·등락률) — 관심/스크리너 패널과 동일한
   // 라이브 quote 단일 출처(ADR-0056). 현재가는 bundle(WS) 이라 별개.
@@ -84,7 +88,7 @@ export function LiveStatusBar({ activeCode, captureHealth, bundle, venue = 'KRX'
       }}
     >
       <span className="inline-flex items-center gap-1">
-        <CollectionDot status={deriveDisplayStatus(live, collectionStatus)} />
+        <CollectionDot status={collection.displayStatus} />
         <span className="font-mono" style={{ color: 'var(--fg)' }}>
           {symbolLabel}
         </span>

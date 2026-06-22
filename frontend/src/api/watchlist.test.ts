@@ -4,6 +4,7 @@ import {
   addMember,
   removeMember,
   removeFromWatchlist,
+  setFolderCaptureEnabled,
   type WatchlistResponse,
 } from './watchlist';
 
@@ -56,6 +57,24 @@ describe('watchlist api client', () => {
       '/api/watchlist/folders/f_0000000a/members/005930',
       expect.objectContaining({ method: 'DELETE' }),
     );
+  });
+
+  it('sets folder capture flag', async () => {
+    vi.mocked(apiCall).mockResolvedValueOnce({
+      id: 'f_0000000a',
+      name: '스윙',
+      order: 0,
+      capture_enabled: true,
+    });
+
+    const result = await setFolderCaptureEnabled('f_0000000a', true);
+
+    expect(apiCall).toHaveBeenCalledWith('/api/watchlist/folders/f_0000000a/capture', {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ capture_enabled: true }),
+    });
+    expect(result.capture_enabled).toBe(true);
   });
 });
 

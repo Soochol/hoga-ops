@@ -49,6 +49,27 @@ def test_resolve_source_fallback(tmp_path: Path) -> None:
         engine.close()
 
 
+def test_resolve_source_prefers_kis_api_when_policy_requests_it(tmp_path: Path) -> None:
+    from hoga.api.bundle import _resolve_source
+    from hoga.api.queries import QueryEngine
+
+    sd_dir = tmp_path / "parquet" / "20260622" / "005930"
+    for source in ("hogaplay", "kis_live", "kis_api"):
+        (sd_dir / source).mkdir(parents=True, exist_ok=True)
+        (sd_dir / source / "meta.json").write_text(json.dumps({
+            "collection_complete": True,
+            "is_partial": False,
+            "regular_session_open_ms": 90000000,
+            "regular_session_close_ms": 153000000,
+        }))
+
+    engine = QueryEngine(tmp_path)
+    try:
+        assert _resolve_source(engine, "20260622", "005930", "kis_api_first") == "kis_api"
+    finally:
+        engine.close()
+
+
 def test_list_stock_dates_in_range_finds_any_source(tmp_path: Path) -> None:
     """list_stock_dates_in_range matches any source for backward compat."""
     from hoga.api.queries import QueryEngine

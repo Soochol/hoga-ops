@@ -3,6 +3,20 @@
 All notable changes to this project are documented here.
 The format follows a 4-digit `MAJOR.MINOR.PATCH.MICRO` scheme.
 
+## [0.9.0.4] - 2026-06-23
+
+### Added
+- **KIS API 30초 저장 상태를 관심종목에서 확인**: WS 저장 중, KIS API 30초 저장 중, 대기, 저장 제외 상태를
+  관심종목 행에서 일관되게 볼 수 있게 했다.
+
+### Changed
+- 데이터 표현 소스의 라벨과 해상도 표기를 한 곳에서 관리해 `hogaplay`, KIS WS, KIS API 우선 옵션과 차트
+  source 칩이 같은 정의를 사용하게 했다.
+- 읽기 소스 선택 결과를 경로, 디스크 상태, 누락 사유까지 포함한 구조로 정리해 fallback 결과를 더 명확히
+  다루게 했다.
+- 라이브 저장 정책 적용과 KIS API 30초 recorder 동기화를 별도 런타임 모듈로 분리해 WS/API 저장 대상 계산을
+  한 흐름에서 관리하게 했다.
+
 ## [0.9.0.3] - 2026-06-22
 
 ### Added
