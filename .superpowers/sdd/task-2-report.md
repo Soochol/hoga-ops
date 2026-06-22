@@ -1,21 +1,22 @@
 Status
 - Completed
 
-Commit hash
-- eb324cfe
+Commit
+- a0290eb2
 
-Changed files
-- frontend/src/screener/sortResults.ts
-- frontend/src/screener/sortResults.test.ts
-- frontend/src/screener/ScreenerResultSortControl.tsx
-- frontend/src/screener/ScreenerResultSortControl.test.tsx
+Work completed
+- Added `GET /api/live/index-sector-rankings` route in `hoga/live/api.py` with:
+  - validation via `_parse_yyyymmdd` returning `invalid_date`
+  - future-date guard against `_today_kst_yyyymmdd` returning `date_in_future`
+  - response via `build_index_sector_rankings(...).model_dump()`
+- Added `tests/api/test_index_sector_rankings_route.py` with the required three tests for invalid input, future-date rejection, and service payload passthrough.
 
-Tests run and results
-- `cd frontend && npx vitest run src/screener/sortResults.test.ts src/screener/ScreenerResultSortControl.test.tsx`
+Tests run
+- `/home/dev/.local/bin/uv run --extra dev python -m pytest tests/api/test_index_sector_rankings_route.py -v`
   - PASSED
-- `cd frontend && npx vitest run src/rightrail/quoteSort.test.ts`
+- `/home/dev/.local/bin/uv run --extra dev python -m pytest tests/api/test_index_sector_rankings_route.py tests/unit/live/test_index_sector_rankings.py -v`
   - PASSED
 
-Any concerns
-- Task 2 began as isolated helper + control files, then the follow-up commits wired the shared sort control into `/screener` and `ScreenerDrawer`.
-- Current implementation scope now covers shared icon/control behavior plus both screener result surfaces.
+Notes/concerns
+- To make the test-helper compatible with current router API, `_client` passes `get_status=lambda: None` to `build_router`.
+- The route returns `model_dump()` explicitly so the unit route test can monkeypatch with a lightweight fake object.

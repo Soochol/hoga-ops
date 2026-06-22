@@ -44,6 +44,7 @@ from hoga.live.past_daily_candles_cache import PastDailyCandlesCache
 from . import kis_access
 from .buffer import LiveBuffer
 from .lifecycle import LiveStatus
+from .index_sector_rankings import IndexSectorRankingResponse, build_index_sector_rankings
 
 if TYPE_CHECKING:
     from .kis_client import KisClient
@@ -1091,6 +1092,15 @@ def build_router(
                 _violation_to_warning(v, batch_label) for v in result.violations
             ],
         }
+
+    @router.get("/index-sector-rankings", response_model=IndexSectorRankingResponse)
+    async def _get_index_sector_rankings(date: str = Query(...)) -> IndexSectorRankingResponse:
+        basis = _parse_yyyymmdd(date)
+        if basis is None:
+            raise HTTPException(422, {"code": "invalid_date", "msg": "date must be YYYYMMDD"})
+        if date > _today_kst_yyyymmdd():
+            raise HTTPException(422, {"code": "date_in_future", "msg": "date must be <= today_kst"})
+        return build_index_sector_rankings(data_dir, date).model_dump()
 
     @router.post("/control")
     async def _post_control(req: ControlRequest) -> dict[str, str]:
