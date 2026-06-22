@@ -3,6 +3,30 @@
 All notable changes to this project are documented here.
 The format follows a 4-digit `MAJOR.MINOR.PATCH.MICRO` scheme.
 
+## [0.9.1.0] - 2026-06-23
+
+### Added
+- **/live 대표지수 캔들 캐시 추가**: 지수 일·주·월봉과 분봉을 반복 조회할 때 이미 받은 KIS 데이터를 재사용해
+  같은 구간으로 돌아오는 차트 전환과 새로고침 체감을 빠르게 했다.
+- **지수 분봉 fetch-depth 측정 도구 추가**: KIS가 실제로 반환하는 1m/3m/5m/10m/15m/30m 날짜 범위와 cache hit 속도를
+  한 번에 확인할 수 있는 측정 스크립트를 추가했다.
+- **KIS 지수 분봉 ADR 추가**: 대표지수 분봉은 종목 분봉처럼 날짜 walk-back이 아니라 KIS source-unit 선택으로
+  확장해야 한다는 결정을 문서화했다.
+
+### Changed
+- **지수 일봉 cold load 개선**: 일봉은 3개월 단위 병렬 window로 나누어 가져오고 cache를 채워, 긴 기간의 첫 조회와
+  이후 과거 이동 응답을 줄였다.
+- **지수 5분·15분봉 깊이 개선**: KIS `300` source unit을 사용해 5분봉과 15분봉이 기존 1분 source 기반보다 더 넓은
+  최근 거래일 구간을 표시하게 했다.
+- **D/W/M 과거 이동 연속 backfill 허용**: 일·주·월봉도 좌측 빈 영역이 남아 있으면 한 번으로 멈추지 않고 다음
+  과거 구간을 이어서 요청한다.
+
+### Fixed
+- 지수 일봉 cache가 넓은 cached range에서 좁은 구간을 다시 요청할 때 요청 범위 밖 캔들을 돌려주거나, cached island
+  사이의 내부 gap에서 빈 차트를 반환하던 문제를 고쳤다.
+- 지수 일봉 cache hit에서도 row-level data warning이 사라지지 않도록 보존한다.
+- 지수 instrument가 선택된 상태에서 sidebar의 종목 전용 cursor hook과 투자자 추정 hook에 `index:*` 값을 넘기지 않도록 했다.
+
 ## [0.9.0.3] - 2026-06-22
 
 ### Added
