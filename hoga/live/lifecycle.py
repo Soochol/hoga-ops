@@ -32,7 +32,6 @@ from hoga.api.models import LiveStoragePolicy
 
 from . import account_health, kis_access, kis_runtime  # health probe / role 라우팅 / 리소스
 from .buffer import LiveBuffer
-from .coverage import _compute_capture_candidates, plan_storage_targets
 from .live_session import (  # noqa: F401 — C3 재export(호출부·테스트 호환) + LiveSession 사용
     _PER_ACCOUNT_MAX,
     KIS_WS_MAX_REGISTRATIONS,
@@ -48,6 +47,7 @@ from .live_session import (  # noqa: F401 — C3 재export(호출부·테스트 
 )
 from .promote import promote_api_today, promote_today
 from .settings import load_live_settings
+from .storage_runtime import stop_storage_runtime, sync_storage_runtime
 
 _log = logging.getLogger(__name__)
 
@@ -526,52 +526,20 @@ def _sync_exclusion(poller: LiveRestPoller | None, live_set: tuple[str, ...]) ->
         poller.set_excluded_codes(set(live_set))
 
 
-def _ensure_rest30_recorder(data_dir: Path) -> Rest30sRecorder | None:
-    from .rest30_recorder import Rest30sRecorder  # noqa: PLC0415
-
-    if _state.rest30_recorder is not None:
-        return _state.rest30_recorder
-    if kis_runtime.ensure_kis_client_from_env(data_dir) is None:
-        return None
-    recorder = Rest30sRecorder(
-        kis_resolver=lambda: kis_access.kis_for_role("background", data_dir),
-        buffer=_buffer,
-        data_dir=data_dir,
-        date_fn=_today_kst,
-        phase_fn=lambda: __import__(
-            "hoga.live.session_gate", fromlist=["market_phase"],
-        ).market_phase(_now_ms()),
-    )
-    _state.rest30_recorder = recorder
-    return recorder
-
-
 async def _sync_storage_targets(
     data_dir: Path,
     *,
     n_configured: int | None = None,
 ) -> tuple[list[str], tuple[str, ...]]:
-    settings = load_live_settings(data_dir)
-    _state.storage_policy = settings.storage_policy
-    if n_configured is None:
-        n_configured = len(kis_runtime.configured_account_ids(data_dir))
-    targets = plan_storage_targets(
-        _compute_capture_candidates(data_dir),
+    snapshot = await sync_storage_runtime(
+        data_dir,
+        state=_state,
+        buffer=_buffer,
+        date_fn=_today_kst,
+        now_ms_fn=_now_ms,
         n_configured=n_configured,
-        storage_policy=settings.storage_policy,
     )
-    recorder = (
-        _ensure_rest30_recorder(data_dir)
-        if targets.kis_api_targets
-        else _state.rest30_recorder
-    )
-    if recorder is not None:
-        recorder.set_targets(set(targets.kis_api_targets))
-        if targets.kis_api_targets:
-            recorder.start()
-        else:
-            await recorder.stop()
-    return list(targets.ws_targets), targets.kis_api_targets
+    return list(snapshot.ws_targets), snapshot.kis_api_targets
 
 
 async def _start_live_stream_locked(*, data_dir: Path) -> bool:
@@ -630,10 +598,8 @@ async def _stop_live_stream_locked() -> None:
     """완전 정지 — conn teardown + poller stop + _state 리셋."""
     global _state  # noqa: PLW0603
     poller = _state.rest_poller
-    rest30_recorder = _state.rest30_recorder
     await _state.session.stop(_teardown_conn)
-    if rest30_recorder is not None:
-        await rest30_recorder.stop()
+    await stop_storage_runtime(_state)
     if poller is not None:
         await poller.stop()
     _state = _State()
