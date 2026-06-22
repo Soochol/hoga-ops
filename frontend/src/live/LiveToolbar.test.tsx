@@ -49,6 +49,19 @@ describe('LiveToolbar', () => {
     );
   });
 
+  it('clicking the active minute selector again closes the minute list', () => {
+    renderToolbar();
+
+    const minuteSelector = screen.getByRole('button', { name: '분봉 선택 열기: 1분' });
+    fireEvent.click(minuteSelector);
+    expect(screen.getByRole('menu', { name: '분봉 목록' })).toBeInTheDocument();
+
+    fireEvent.click(minuteSelector);
+
+    expect(useLivePageStore.getState().candleTimeframe).toBe('1m');
+    expect(screen.queryByRole('menu', { name: '분봉 목록' })).toBeNull();
+  });
+
   it('from calendar timeframe, minute selector switches directly to remembered minute without opening menu', () => {
     renderToolbar();
 
@@ -73,6 +86,15 @@ describe('LiveToolbar', () => {
 
     expect(useLivePageStore.getState().candleTimeframe).toBe('W');
     expect(screen.queryByRole('menu', { name: '분봉 목록' })).toBeNull();
+  });
+
+  it('month button switches to monthly timeframe', () => {
+    renderToolbar();
+
+    fireEvent.click(screen.getByRole('button', { name: '월' }));
+
+    expect(useLivePageStore.getState().candleTimeframe).toBe('M');
+    expect(screen.getByRole('button', { name: '월' })).toHaveAttribute('aria-pressed', 'true');
   });
 
   it('Escape closes the minute list without changing timeframe', () => {

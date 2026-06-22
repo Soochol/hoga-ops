@@ -37,6 +37,7 @@ export function LiveToolbar({ onOpenIndicators, onOpenSettings, studySaveControl
   const minuteWrapRef = useRef<HTMLDivElement>(null);
   const minuteButtonRef = useRef<HTMLButtonElement>(null);
   const [anchorRect, setAnchorRect] = useState<DOMRect | null>(null);
+  const displayedMinute = isMinuteTimeframe(tf) ? tf : rememberedMinute;
 
   const closeMinuteMenu = useCallback(() => setMinuteMenuOpen(false), []);
   useDismissablePopover(minuteMenuOpen, minuteWrapRef, closeMinuteMenu);
@@ -46,13 +47,9 @@ export function LiveToolbar({ onOpenIndicators, onOpenSettings, studySaveControl
   );
 
   useEffect(() => {
-    if (isMinuteTimeframe(tf)) setRememberedMinute(tf);
-  }, [tf]);
-
-  useEffect(() => {
     if (!minuteMenuOpen || !minuteButtonRef.current) return;
     setAnchorRect(minuteButtonRef.current.getBoundingClientRect());
-  }, [minuteMenuOpen, rememberedMinute]);
+  }, [minuteMenuOpen, displayedMinute]);
 
   const onMinuteSelectorClick = () => {
     if (isMinuteTimeframe(tf)) {
@@ -71,12 +68,13 @@ export function LiveToolbar({ onOpenIndicators, onOpenSettings, studySaveControl
   };
 
   const pickCalendar = (next: CalendarTimeframe) => {
+    if (isMinuteTimeframe(tf)) setRememberedMinute(tf);
     setMinuteMenuOpen(false);
     setTf(next);
   };
 
   const minuteButtonLabel = isMinuteTimeframe(tf)
-    ? `분봉 선택 열기: ${minuteLabel(rememberedMinute)}`
+    ? `분봉 선택 열기: ${minuteLabel(displayedMinute)}`
     : `${minuteLabel(rememberedMinute)}봉으로 전환`;
 
   return (
@@ -108,7 +106,7 @@ export function LiveToolbar({ onOpenIndicators, onOpenSettings, studySaveControl
               borderColor: isMinuteTimeframe(tf) ? 'var(--accent)' : 'var(--border)',
             }}
           >
-            <span>{minuteLabel(rememberedMinute)}</span>
+            <span>{minuteLabel(displayedMinute)}</span>
             <span aria-hidden="true">⌄</span>
           </button>
           {minuteMenuOpen && anchorRect && (
