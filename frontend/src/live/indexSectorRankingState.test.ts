@@ -47,37 +47,78 @@ describe('index sector ranking state', () => {
   it('sector hover previews without overwriting a pinned sector', () => {
     const pinned = reduceIndexSectorRankingState(initialIndexSectorRankingUiState, {
       type: 'toggle_sector_pin',
-      folderId: 'semi',
+      sectorKey: 'folder:semi',
     });
     const preview = reduceIndexSectorRankingState(pinned, {
       type: 'preview_sector',
-      folderId: 'bio',
+      sectorKey: 'folder:bio',
     });
 
     expect(resolveActiveSectorId(sectors, preview)).toBe('bio');
 
-    const ended = reduceIndexSectorRankingState(preview, { type: 'preview_sector', folderId: null });
+    const ended = reduceIndexSectorRankingState(preview, { type: 'preview_sector', sectorKey: null });
     expect(resolveActiveSectorId(sectors, ended)).toBe('semi');
   });
 
   it('sector click toggles pin and falls back to rank 1', () => {
     const pinned = reduceIndexSectorRankingState(initialIndexSectorRankingUiState, {
       type: 'toggle_sector_pin',
-      folderId: 'bio',
+      sectorKey: 'folder:bio',
     });
     expect(resolveActiveSectorId(sectors, pinned)).toBe('bio');
 
     const unpinned = reduceIndexSectorRankingState(pinned, {
       type: 'toggle_sector_pin',
-      folderId: 'bio',
+      sectorKey: 'folder:bio',
     });
     expect(resolveActiveSectorId(sectors, unpinned)).toBe('semi');
+  });
+
+  it('keeps uncategorized sectors addressable when previewing and pinning', () => {
+    const uncategorizedSectors: IndexSectorRankingSector[] = [
+      {
+        folder_id: 'semi',
+        folder_name: '반도체',
+        order: 0,
+        change_pct: 5,
+        finite_count: 1,
+        total_count: 1,
+        stocks: [],
+      },
+      {
+        folder_id: null,
+        folder_name: '미분류',
+        order: 1,
+        change_pct: 2,
+        finite_count: 1,
+        total_count: 1,
+        stocks: [],
+      },
+    ];
+
+    const previewed = reduceIndexSectorRankingState(initialIndexSectorRankingUiState, {
+      type: 'preview_sector',
+      sectorKey: '__uncat__',
+    });
+    expect(resolveActiveSectorId(uncategorizedSectors, previewed)).toBeNull();
+
+    const pinned = reduceIndexSectorRankingState(initialIndexSectorRankingUiState, {
+      type: 'toggle_sector_pin',
+      sectorKey: '__uncat__',
+    });
+    expect(resolveActiveSectorId(uncategorizedSectors, pinned)).toBeNull();
+
+    const unpinned = reduceIndexSectorRankingState(pinned, {
+      type: 'toggle_sector_pin',
+      sectorKey: '__uncat__',
+    });
+    expect(resolveActiveSectorId(uncategorizedSectors, unpinned)).toBe('semi');
   });
 
   it('clears missing pinned sector and falls back to rank 1', () => {
     const pinned = reduceIndexSectorRankingState(initialIndexSectorRankingUiState, {
       type: 'toggle_sector_pin',
-      folderId: 'removed',
+      sectorKey: 'folder:removed',
     });
 
     expect(resolveActiveSectorId(sectors, pinned)).toBe('semi');

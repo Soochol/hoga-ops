@@ -43,3 +43,22 @@ cd frontend && npx vitest run src/live/IndexSectorRankingPane.test.tsx src/live/
 ```
 
 Result: 2 files passed, 11 tests passed.
+
+## Null-folder Fix
+
+The sector UI state now tracks an internal sector key instead of storing raw `folder_id` values directly. Regular sectors use `folder:<id>`, uncategorized sectors use `__uncat__`, and `null` remains the sentinel for "no preview" / "no pin".
+
+That lets the backend's valid null-folder `미분류` sector participate in hover preview and click-to-pin without colliding with the empty state. The pane now encodes sector identity before dispatching preview/pin actions, and the reducer resolves those keys back to the matching ranking sector.
+
+Added regression coverage for:
+
+- reducer preview/pin handling for `__uncat__`
+- pane hover preview and pinned state for a `folder_id: null` sector
+
+Verification:
+
+```bash
+cd frontend && npx vitest run src/live/IndexSectorRankingPane.test.tsx src/live/indexSectorRankingState.test.ts
+```
+
+Result: 2 files passed, 13 tests passed.

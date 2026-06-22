@@ -36,6 +36,36 @@ const ranking: IndexSectorRankingResponse = {
   ],
 };
 
+const rankingWithUncategorized: IndexSectorRankingResponse = {
+  date: '20260619',
+  source: 'daily_adjusted',
+  unavailable_reason: null,
+  sectors: [
+    {
+      folder_id: 'semi',
+      folder_name: '반도체',
+      order: 0,
+      change_pct: 7.5,
+      finite_count: 2,
+      total_count: 2,
+      stocks: [
+        { code: '005930', name: '삼성전자', folder_id: 'semi', folder_name: '반도체', order: 0, close: 110, previous_close: 100, change_pct: 10, missing_reason: null },
+      ],
+    },
+    {
+      folder_id: null,
+      folder_name: '미분류',
+      order: 1,
+      change_pct: 1.2,
+      finite_count: 1,
+      total_count: 1,
+      stocks: [
+        { code: '999999', name: '미분류종목', folder_id: null, folder_name: '미분류', order: 0, close: 50, previous_close: 49, change_pct: 2.04, missing_reason: null },
+      ],
+    },
+  ],
+};
+
 describe('IndexSectorRankingPane', () => {
   it('renders basis date, sector ranking, and default rank 1 stocks', () => {
     render(
@@ -121,6 +151,30 @@ describe('IndexSectorRankingPane', () => {
     await user.click(screen.getByRole('button', { name: /삼성전자 005930/ }));
 
     expect(onOpenStock).toHaveBeenCalledWith('005930', '삼성전자');
+  });
+
+  it('can preview and pin an uncategorized sector', async () => {
+    const user = userEvent.setup();
+    render(
+      <IndexSectorRankingPane
+        basisDate="20260619"
+        basisMode="hover"
+        ranking={rankingWithUncategorized}
+        isLoading={false}
+        error={null}
+        onClearDatePin={() => {}}
+        onOpenStock={() => {}}
+      />,
+    );
+
+    const uncategorizedSector = screen.getByRole('button', { name: /2위 미분류/ });
+    await user.hover(uncategorizedSector);
+    expect(screen.getByText('미분류종목')).toBeInTheDocument();
+    expect(screen.queryByText('삼성전자')).toBeNull();
+
+    await user.click(uncategorizedSector);
+    await user.unhover(uncategorizedSector);
+    expect(screen.getByText('미분류종목')).toBeInTheDocument();
   });
 
   it('shows unavailable state for missing daily corpus', () => {

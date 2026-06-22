@@ -1,27 +1,34 @@
 import type { IndexSectorRankingSector } from '../api/indexSectorRankings';
 
 export type BasisMode = 'latest' | 'hover' | 'pinned';
+export type SectorIdentityKey = string;
+
+const UNCATEGORIZED_SECTOR_KEY = '__uncat__';
+
+export function sectorIdentityKey(folderId: string | null): SectorIdentityKey {
+  return folderId === null ? UNCATEGORIZED_SECTOR_KEY : `folder:${folderId}`;
+}
 
 export interface IndexSectorRankingUiState {
   hoverDate: string | null;
   pinnedDate: string | null;
-  previewSectorId: string | null;
-  pinnedSectorId: string | null;
+  previewSectorKey: SectorIdentityKey | null;
+  pinnedSectorKey: SectorIdentityKey | null;
 }
 
 export const initialIndexSectorRankingUiState: IndexSectorRankingUiState = {
   hoverDate: null,
   pinnedDate: null,
-  previewSectorId: null,
-  pinnedSectorId: null,
+  previewSectorKey: null,
+  pinnedSectorKey: null,
 };
 
 export type IndexSectorRankingAction =
   | { type: 'hover_date'; date: string | null }
   | { type: 'toggle_date_pin'; date: string }
   | { type: 'clear_date_pin' }
-  | { type: 'preview_sector'; folderId: string | null }
-  | { type: 'toggle_sector_pin'; folderId: string | null }
+  | { type: 'preview_sector'; sectorKey: SectorIdentityKey | null }
+  | { type: 'toggle_sector_pin'; sectorKey: SectorIdentityKey | null }
   | { type: 'clear_sector_pin' };
 
 export function reduceIndexSectorRankingState(
@@ -40,14 +47,14 @@ export function reduceIndexSectorRankingState(
     case 'clear_date_pin':
       return { ...state, pinnedDate: null };
     case 'preview_sector':
-      return { ...state, previewSectorId: action.folderId };
+      return { ...state, previewSectorKey: action.sectorKey };
     case 'toggle_sector_pin':
       return {
         ...state,
-        pinnedSectorId: state.pinnedSectorId === action.folderId ? null : action.folderId,
+        pinnedSectorKey: state.pinnedSectorKey === action.sectorKey ? null : action.sectorKey,
       };
     case 'clear_sector_pin':
-      return { ...state, pinnedSectorId: null };
+      return { ...state, pinnedSectorKey: null };
   }
 }
 
@@ -60,19 +67,24 @@ export function resolveBasisDate(
   return { date: latestDate, mode: 'latest' };
 }
 
-function sectorExists(sectors: IndexSectorRankingSector[], folderId: string | null): boolean {
-  return sectors.some((sector) => sector.folder_id === folderId);
+function findSectorByKey(
+  sectors: IndexSectorRankingSector[],
+  sectorKey: SectorIdentityKey,
+): IndexSectorRankingSector | null {
+  return sectors.find((sector) => sectorIdentityKey(sector.folder_id) === sectorKey) ?? null;
 }
 
 export function resolveActiveSectorId(
   sectors: IndexSectorRankingSector[],
   state: IndexSectorRankingUiState,
 ): string | null {
-  if (state.previewSectorId !== null && sectorExists(sectors, state.previewSectorId)) {
-    return state.previewSectorId;
+  if (state.previewSectorKey !== null) {
+    const previewSector = findSectorByKey(sectors, state.previewSectorKey);
+    if (previewSector) return previewSector.folder_id;
   }
-  if (state.pinnedSectorId !== null && sectorExists(sectors, state.pinnedSectorId)) {
-    return state.pinnedSectorId;
+  if (state.pinnedSectorKey !== null) {
+    const pinnedSector = findSectorByKey(sectors, state.pinnedSectorKey);
+    if (pinnedSector) return pinnedSector.folder_id;
   }
   return sectors[0]?.folder_id ?? null;
 }

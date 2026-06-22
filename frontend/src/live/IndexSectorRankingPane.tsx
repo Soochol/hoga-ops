@@ -4,6 +4,7 @@ import type { BasisMode } from './indexSectorRankingState';
 import {
   initialIndexSectorRankingUiState,
   reduceIndexSectorRankingState,
+  sectorIdentityKey,
   resolveActiveSectorId,
 } from './indexSectorRankingState';
 import type {
@@ -55,19 +56,19 @@ function SectorButton({
   sector: IndexSectorRankingSector;
   rank: number;
   active: boolean;
-  onPreview: (folderId: string | null) => void;
-  onPin: (folderId: string | null) => void;
+  onPreview: (sectorKey: string | null) => void;
+  onPin: (sectorKey: string | null) => void;
 }) {
   return (
     <button
       type="button"
       aria-label={sectorButtonLabel(rank, sector)}
       aria-pressed={active}
-      onMouseEnter={() => onPreview(sector.folder_id)}
+      onMouseEnter={() => onPreview(sectorIdentityKey(sector.folder_id))}
       onMouseLeave={() => onPreview(null)}
-      onFocus={() => onPreview(sector.folder_id)}
+      onFocus={() => onPreview(sectorIdentityKey(sector.folder_id))}
       onBlur={() => onPreview(null)}
-      onClick={() => onPin(sector.folder_id)}
+      onClick={() => onPin(sectorIdentityKey(sector.folder_id))}
       className="grid w-full items-center text-left"
       style={{
         gridTemplateColumns: '32px minmax(0, 1fr) 72px',
@@ -173,8 +174,8 @@ export function IndexSectorRankingPane({
                 sector={sector}
                 rank={index + 1}
                 active={sector.folder_id === activeSector?.folder_id}
-                onPreview={(folderId) => dispatch({ type: 'preview_sector', folderId })}
-                onPin={(folderId) => dispatch({ type: 'toggle_sector_pin', folderId })}
+                onPreview={(sectorKey) => dispatch({ type: 'preview_sector', sectorKey })}
+                onPin={(sectorKey) => dispatch({ type: 'toggle_sector_pin', sectorKey })}
               />
             );
           })}
