@@ -83,6 +83,55 @@ def test_index_candles_returns_fake_kis_daily_rows(tmp_path, monkeypatch) -> Non
     ]
 
 
+def test_index_daily_candles_reuses_cached_newer_range_for_broader_scrollback(
+    tmp_path,
+    monkeypatch,
+) -> None:
+    calls: list[tuple[str, str]] = []
+
+    class FakeKis:
+        async def fetch_index_daily_candles(self, index, from_s, to_s, *, period="D", foreground=False):
+            calls.append((from_s, to_s))
+            close = float(len(calls))
+            return IndexCandleFetchResult(
+                candles=[
+                    IndexCandlePoint(
+                        t_ms=int(from_s),
+                        open=close,
+                        high=close,
+                        low=close,
+                        close=close,
+                        volume=1,
+                    ),
+                ],
+            )
+
+    async def no_windowing(from_s, to_s, period, fetch_batch, *, max_concurrency=3):
+        return await fetch_batch(from_s, to_s)
+
+    monkeypatch.setattr(live_api.kis_access, "kis_for_role", lambda role, data_dir: FakeKis())
+    monkeypatch.setattr(live_api, "fetch_index_daily_candles_windowed", no_windowing, raising=False)
+    monkeypatch.setattr(live_api, "index_candles_cache_instance", None, raising=False)
+
+    app = FastAPI()
+    app.include_router(build_router(get_status=lifecycle.get_status, data_dir=tmp_path))
+    client = TestClient(app)
+    r1 = client.get(
+        "/api/live/index-candles?index_id=KOSDAQ&timeframe=D&from=20250101&to=20251231",
+    )
+    r2 = client.get(
+        "/api/live/index-candles?index_id=KOSDAQ&timeframe=D&from=20240101&to=20251231",
+    )
+
+    assert r1.status_code == 200
+    assert r2.status_code == 200
+    assert calls == [
+        ("20250101", "20251231"),
+        ("20240101", "20241231"),
+    ]
+    assert [c["close"] for c in r2.json()["candles"]] == [2.0, 1.0]
+
+
 def test_index_candles_returns_fake_kis_minute_rows(tmp_path, monkeypatch) -> None:
     class FakeKis:
         async def fetch_index_minute_candles(self, index, from_s, to_s, *, bucket_seconds=60, foreground=False):
