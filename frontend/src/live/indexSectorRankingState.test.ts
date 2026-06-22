@@ -44,6 +44,26 @@ describe('index sector ranking state', () => {
     expect(resolveBasisDate(unpinned, '20260619')).toEqual({ date: '20260619', mode: 'latest' });
   });
 
+  it('clears stale hover date when an explicit pin clear happens after leaving the candle', () => {
+    const hovered = reduceIndexSectorRankingState(initialIndexSectorRankingUiState, {
+      type: 'hover_date',
+      date: '20260618',
+    });
+    const pinned = reduceIndexSectorRankingState(hovered, {
+      type: 'toggle_date_pin',
+      date: '20260618',
+    });
+    const leftChart = reduceIndexSectorRankingState(pinned, {
+      type: 'hover_date',
+      date: null,
+    });
+    const unpinned = reduceIndexSectorRankingState(leftChart, {
+      type: 'clear_date_pin',
+    });
+
+    expect(resolveBasisDate(unpinned, '20260619')).toEqual({ date: '20260619', mode: 'latest' });
+  });
+
   it('sector hover previews without overwriting a pinned sector', () => {
     const pinned = reduceIndexSectorRankingState(initialIndexSectorRankingUiState, {
       type: 'toggle_sector_pin',

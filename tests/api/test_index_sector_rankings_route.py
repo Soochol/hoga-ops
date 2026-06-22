@@ -13,6 +13,12 @@ def _client(tmp_path):
     return TestClient(app)
 
 
+def _client_without_data_dir():
+    app = FastAPI()
+    app.include_router(build_router(get_status=lambda: None, data_dir=None))
+    return TestClient(app)
+
+
 def test_index_sector_rankings_rejects_invalid_date(tmp_path) -> None:
     res = _client(tmp_path).get("/api/live/index-sector-rankings?date=2026-06-19")
 
@@ -27,6 +33,14 @@ def test_index_sector_rankings_rejects_future_date(tmp_path, monkeypatch) -> Non
 
     assert res.status_code == 422
     assert res.json()["detail"]["code"] == "date_in_future"
+
+
+def test_index_sector_rankings_returns_503_without_data_dir(monkeypatch) -> None:
+    monkeypatch.setattr(live_api, "_today_kst_yyyymmdd", lambda: "20260619")
+
+    res = _client_without_data_dir().get("/api/live/index-sector-rankings?date=20260619")
+
+    assert res.status_code == 503
 
 
 def test_index_sector_rankings_returns_service_payload(tmp_path, monkeypatch) -> None:

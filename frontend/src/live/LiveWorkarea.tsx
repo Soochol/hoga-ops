@@ -18,6 +18,7 @@ import {
 } from './indexSectorRankingState';
 import type { TabViewport } from './viewportAnchor';
 import type { LiveVenueOption } from '../state/liveVenue';
+import { realMsToYyyymmdd } from './liveDateTime';
 
 /** 관심종목 행을 차트로 드래그할 때 워크에어리어 위에 뜨는 드롭 타깃 오버레이.
  *  드래그 고스트는 패널 overflow 경계에서 잘리므로 워크에어리어 자체를 어포던스로 쓴다.
@@ -152,7 +153,10 @@ export function LiveWorkarea({
   const openStock = useJumpToLive();
   const isIndexInstrument = activeInstrument?.kind === 'index';
   const rankingAllowed = isIndexInstrument && (isMinuteTimeframe(timeframe) || timeframe === 'D');
-  const latestRankingDate = bundle?.to_date ?? (todayKst || null);
+  const rankingCandles = (chartBundle ?? bundle)?.candles ?? [];
+  const latestRankingDate = rankingCandles.length > 0
+    ? realMsToYyyymmdd(rankingCandles[rankingCandles.length - 1].ts_ms)
+    : null;
   const rankingBasis = resolveBasisDate(rankingState, latestRankingDate);
   const rankingQuery = useIndexSectorRankings(rankingBasis.date, rankingAllowed);
   const handleCandleBasisHover = useCallback(

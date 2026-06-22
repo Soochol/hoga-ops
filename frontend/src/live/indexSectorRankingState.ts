@@ -45,7 +45,7 @@ export function reduceIndexSectorRankingState(
         hoverDate: state.pinnedDate === action.date ? null : state.hoverDate,
       };
     case 'clear_date_pin':
-      return { ...state, pinnedDate: null };
+      return { ...state, pinnedDate: null, hoverDate: null };
     case 'preview_sector':
       return { ...state, previewSectorKey: action.sectorKey };
     case 'toggle_sector_pin':

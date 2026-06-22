@@ -1094,12 +1094,14 @@ def build_router(
         }
 
     @router.get("/index-sector-rankings", response_model=IndexSectorRankingResponse)
-    async def _get_index_sector_rankings(date: str = Query(...)) -> IndexSectorRankingResponse:
+    def _get_index_sector_rankings(date: str = Query(...)) -> IndexSectorRankingResponse:
         basis = _parse_yyyymmdd(date)
         if basis is None:
             raise HTTPException(422, {"code": "invalid_date", "msg": "date must be YYYYMMDD"})
         if date > _today_kst_yyyymmdd():
             raise HTTPException(422, {"code": "date_in_future", "msg": "date must be <= today_kst"})
+        if data_dir is None:
+            raise HTTPException(503, "live data dir not wired")
         return build_index_sector_rankings(data_dir, date).model_dump()
 
     @router.post("/control")

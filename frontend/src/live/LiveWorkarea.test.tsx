@@ -71,6 +71,29 @@ const INDEX_BUNDLE: RangeBundle = {
   ask_peaks: [],
 };
 
+const INDEX_BUNDLE_WITH_LAST_CANDLE: RangeBundle = {
+  ...INDEX_BUNDLE,
+  to_date: '20260621',
+  segments: [
+    {
+      date: '20260618',
+      session_open_ms: Date.UTC(2026, 5, 18, 0, 0),
+      session_close_ms: Date.UTC(2026, 5, 18, 6, 30),
+    },
+  ],
+  candles: [
+    {
+      ts_ms: Date.UTC(2026, 5, 18, 0, 0),
+      open: 2800,
+      high: 2840,
+      low: 2790,
+      close: 2830,
+      vol_a: 1_000_000,
+      vol_b: 0,
+    },
+  ],
+};
+
 function renderWorkarea(activeCode: string | null, activeInstrument = null) {
   return render(
     <LiveWorkarea
@@ -109,7 +132,7 @@ describe('LiveWorkarea gate', () => {
       <LiveWorkarea
         activeCode="index:KOSPI"
         activeInstrument={indexInstrument('KOSPI', 'KOSPI')}
-        bundle={INDEX_BUNDLE}
+        bundle={INDEX_BUNDLE_WITH_LAST_CANDLE}
         clampEngaged={false}
         isPastCandlesLoading={false}
         isExtending={false}
@@ -117,12 +140,46 @@ describe('LiveWorkarea gate', () => {
       />,
     );
     expect(screen.getByTestId('index-sector-ranking-pane')).toBeInTheDocument();
-    expect(useIndexSectorRankingsMock).toHaveBeenCalledWith('20260619', true);
+    expect(useIndexSectorRankingsMock).toHaveBeenCalledWith('20260618', true);
     const chartProps = liveChartRootMock.mock.calls.at(-1)?.[0] as
       | { onCandleBasisHover?: unknown; onCandleBasisClick?: unknown }
       | undefined;
     expect(chartProps?.onCandleBasisHover).toEqual(expect.any(Function));
     expect(chartProps?.onCandleBasisClick).toEqual(expect.any(Function));
+  });
+
+  it('uses the last loaded index candle date as the latest ranking basis', () => {
+    useLivePageStore.setState({ candleTimeframe: 'D' });
+    render(
+      <LiveWorkarea
+        activeCode="index:KOSPI"
+        activeInstrument={indexInstrument('KOSPI', 'KOSPI')}
+        bundle={INDEX_BUNDLE_WITH_LAST_CANDLE}
+        clampEngaged={false}
+        isPastCandlesLoading={false}
+        isExtending={false}
+        live={LIVE}
+      />,
+    );
+
+    expect(useIndexSectorRankingsMock).toHaveBeenCalledWith('20260618', true);
+  });
+
+  it('does not fetch a latest index sector ranking without a loaded candle date', () => {
+    useLivePageStore.setState({ candleTimeframe: 'D' });
+    render(
+      <LiveWorkarea
+        activeCode="index:KOSPI"
+        activeInstrument={indexInstrument('KOSPI', 'KOSPI')}
+        bundle={INDEX_BUNDLE}
+        clampEngaged={false}
+        isPastCandlesLoading={false}
+        isExtending={false}
+        live={LIVE}
+      />,
+    );
+
+    expect(useIndexSectorRankingsMock).toHaveBeenCalledWith(null, true);
   });
 
   it('keeps ranking callbacks stable across allowed rerenders', () => {
@@ -198,7 +255,7 @@ describe('LiveWorkarea gate', () => {
         />,
       );
       expect(screen.queryByTestId('index-sector-ranking-pane')).toBeNull();
-      expect(useIndexSectorRankingsMock).toHaveBeenCalledWith('20260619', false);
+      expect(useIndexSectorRankingsMock).toHaveBeenCalledWith(null, false);
       const chartProps = liveChartRootMock.mock.calls.at(-1)?.[0] as
         | { onCandleBasisHover?: unknown; onCandleBasisClick?: unknown }
         | undefined;
