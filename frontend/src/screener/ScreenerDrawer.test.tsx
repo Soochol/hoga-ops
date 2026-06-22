@@ -219,6 +219,14 @@ describe('ScreenerDrawer', () => {
       'screener-row-000660',
     ]));
     expect(JSON.parse(localStorage.getItem('screenerPanel.v1') ?? '{}')).toEqual({ selectedSavedId: 's1' });
+
+    fireEvent.click(screen.getByRole('button', { name: '조회' }));
+    await waitFor(() => expect(rowOrder()).toEqual([
+      'screener-row-005930',
+      'screener-row-000660',
+      'screener-row-035420',
+    ]));
+    expect(screen.getByRole('button', { name: '기본 순서' })).toHaveAttribute('aria-pressed', 'true');
   });
 
   it('preserves a persisted non-first selection when saves load', async () => {
@@ -256,6 +264,9 @@ describe('ScreenerDrawer', () => {
     await waitFor(() => expect(useScreenerPanelStore.getState().selectedSavedId).toBe('s1'));
     fireEvent.click(screen.getByRole('button', { name: '조회' }));
     await waitFor(() => expect(screen.getByText('조건에 맞는 종목이 없습니다.')).toBeInTheDocument());
+    expect(screen.getByRole('button', { name: '기본 순서' })).toBeDisabled();
+    expect(screen.getByRole('button', { name: '등락률 낮은 순' })).toBeDisabled();
+    expect(screen.getByRole('button', { name: '등락률 높은 순' })).toBeDisabled();
   });
 
   it('clicking a result on /live sets activeCode without navigating away', async () => {
@@ -482,6 +493,50 @@ describe('ScreenerDrawer', () => {
 
       expect(useLivePageStore.getState().activeCode).toBe('005930');
       expect(useEntryDragStore.getState().draggingCode).toBeNull();
+      await waitFor(() => expect(screen.getByTestId('pathname').textContent).toBe('/live'));
+    } finally {
+      useEntryDragStore.getState().clearChartTarget(hitTest);
+    }
+  });
+
+  it('dragging a sorted screener row over the chart keeps the row payload', async () => {
+    vi.spyOn(savesApi, 'listSaves').mockResolvedValue({ schema_version: 1, saves: [SAVE] });
+    const rows = [
+      { code: '005930', name: '삼성전자', market: 'KOSPI' as const, price: 70000, trade_value_won: 1e11, change_pct: 2.1 },
+      { code: '000660', name: 'SK하이닉스', market: 'KOSPI' as const, price: 180000, trade_value_won: 2e11, change_pct: -1.2 },
+      { code: '035420', name: 'NAVER', market: 'KOSPI' as const, price: 210000, trade_value_won: 3e11, change_pct: 4.4 },
+    ];
+    useScreenerPanelStore.setState({
+      selectedSavedId: 's1',
+      lastScan: { savedId: 's1', savedName: '돌파+거래대금', rows, scanStatus: 'ok', warnings: [] },
+    });
+    const hitTest = (clientX: number) => clientX < 800;
+    useEntryDragStore.getState().registerChartTarget(hitTest);
+    try {
+      render(<ScreenerDrawer />, { wrapper: wrap(qc(), '/inventory') });
+      await waitFor(() => expect(screen.getByText('NAVER')).toBeInTheDocument());
+
+      fireEvent.click(screen.getByRole('button', { name: '등락률 높은 순' }));
+      await waitFor(() =>
+        expect(screen.getAllByTestId(/^screener-row-/).map((el) => el.dataset.testid)).toEqual([
+          'screener-row-035420',
+          'screener-row-005930',
+          'screener-row-000660',
+        ]),
+      );
+
+      dnd.onDragStart!({
+        active: { id: 'screener-entry:035420', data: { current: { type: 'screener-entry', code: '035420', name: 'NAVER' } } },
+      });
+      expect(useEntryDragStore.getState().draggingCode).toBe('035420');
+
+      dnd.onDragEnd!({
+        active: { id: 'screener-entry:035420', data: { current: { type: 'screener-entry', code: '035420', name: 'NAVER' } } },
+        activatorEvent: { clientX: 900, clientY: 300 } as MouseEvent,
+        delta: { x: -500, y: 0 },
+      });
+
+      expect(useLivePageStore.getState().activeCode).toBe('035420');
       await waitFor(() => expect(screen.getByTestId('pathname').textContent).toBe('/live'));
     } finally {
       useEntryDragStore.getState().clearChartTarget(hitTest);
