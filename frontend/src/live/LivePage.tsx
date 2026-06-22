@@ -20,7 +20,7 @@ import { useDayBidPeaks, useTodayAllPriceBidPeak } from './useDayBidPeaks';
 import type { AskPeak, BidPeak, Candle, RangeBundle } from '../api/types';
 import type { ObSnapshot, TradeSnapshot } from './bucketHogaSeries';
 import type { TabViewport } from './viewportAnchor';
-import { todayKstYyyymmdd } from './liveDateTime';
+import { initialHistoricalDaysFor, subtractDaysKst, todayKstYyyymmdd } from './liveDateTime';
 import { useChartPrefsStore } from '../state/chartPrefs';
 import { useLiveVenueStore } from '../state/liveVenue';
 import {
@@ -166,7 +166,7 @@ export function LivePage() {
   );
   const activeIndexId = activeInstrument?.kind === 'index' ? activeInstrument.id : null;
   const capabilities = useMemo(() => capabilitiesForInstrument(activeInstrument), [activeInstrument]);
-  const indexFrom = historicalFromDate ?? today;
+  const indexFrom = historicalFromDate ?? subtractDaysKst(today, initialHistoricalDaysFor(timeframe));
   const indexCandles = useLiveIndexCandles(
     activeIndexId,
     timeframe,
