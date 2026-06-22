@@ -179,6 +179,19 @@ it('sorts by overlayed live change_pct when present', async () => {
   ]);
 });
 
+it('keeps the full-page sort control disabled for empty scan results', async () => {
+  vi.mocked(runScan).mockResolvedValueOnce({ status: 'ok', warnings: [], rows: [] });
+
+  renderPage();
+  fireEvent.click(screen.getByRole('button', { name: '조회' }));
+
+  await waitFor(() => expect(runScan).toHaveBeenCalled());
+  expect(screen.queryByRole('button', { name: /호가창 열기/ })).not.toBeInTheDocument();
+  expect(screen.getByRole('button', { name: '기본 순서' })).toBeDisabled();
+  expect(screen.getByRole('button', { name: '등락률 낮은 순' })).toBeDisabled();
+  expect(screen.getByRole('button', { name: '등락률 높은 순' })).toBeDisabled();
+});
+
 it('surfaces a scan error instead of a silent dead-end', async () => {
   vi.mocked(runScan).mockRejectedValueOnce(new Error('422'));
   renderPage();

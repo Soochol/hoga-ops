@@ -15,6 +15,10 @@ export function sortScreenerRows<T extends SortableScreenerRow>(
   rows: readonly T[],
   mode: ScreenerResultSortMode,
 ): T[] {
+  if (mode === 'default') {
+    return [...rows];
+  }
+
   const sortable = rows.map((row, order) => {
     const syntheticCode = `${order}:${row.code}`;
     return { row, code: syntheticCode, order };

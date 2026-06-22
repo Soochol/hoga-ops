@@ -17,5 +17,5 @@ Tests run and results
   - PASSED
 
 Any concerns
-- Task 2 was implemented as isolated helper + control files only, per your requested write scope.
-- Next step (Task 3 in the plan) would be wiring these into `/screener` and `ScreenerDrawer`; not part of this task.
+- Task 2 began as isolated helper + control files, then the follow-up commits wired the shared sort control into `/screener` and `ScreenerDrawer`.
+- Current implementation scope now covers shared icon/control behavior plus both screener result surfaces.
