@@ -23,8 +23,8 @@ from pathlib import Path
 from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
-    from .rest_poller import LiveRestPoller
     from .rest30_recorder import Rest30sRecorder
+    from .rest_poller import LiveRestPoller
 
 from pydantic import BaseModel, Field
 
