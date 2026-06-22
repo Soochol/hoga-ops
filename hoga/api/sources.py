@@ -1,13 +1,4 @@
-"""Source-name resolution for /api routes.
-
-The previous incarnation was `hoga.api.bundle._resolve_source`. Promoted
-to a public module so the per-spot endpoints (/api/orderbook,
-/api/brokers/series) can honor `?source_pref=` without back-importing
-from bundle.py.
-
-ADR-0039 (preference + fallback) defines the semantics. ADR-0044
-documents the /live hover-spot boundary that motivated this promotion.
-"""
+"""Source-name resolution for /api routes."""
 from __future__ import annotations
 
 from typing import TYPE_CHECKING, Literal, cast
@@ -15,29 +6,45 @@ from typing import TYPE_CHECKING, Literal, cast
 if TYPE_CHECKING:
     from hoga.api.queries import QueryEngine
 
-SourceName = Literal["hogaplay", "kis_live"]
+SourceName = Literal["hogaplay", "kis_live", "kis_api"]
+SourcePolicy = Literal[
+    "hogaplay",
+    "kis_live",
+    "kis_api",
+    "hogaplay_first",
+    "kis_ws_first",
+    "kis_api_first",
+]
+
+_POLICY_ORDER: dict[str, tuple[SourceName, ...]] = {
+    "hogaplay": ("hogaplay", "kis_live", "kis_api"),
+    "hogaplay_first": ("hogaplay", "kis_live", "kis_api"),
+    "kis_live": ("kis_live", "kis_api", "hogaplay"),
+    "kis_ws_first": ("kis_live", "kis_api", "hogaplay"),
+    "kis_api": ("kis_api", "kis_live", "hogaplay"),
+    "kis_api_first": ("kis_api", "kis_live", "hogaplay"),
+}
 
 
-def resolve_source(engine: "QueryEngine", date: str, code: str, pref: SourceName) -> SourceName:
-    """Return the source name actually present on disk for this (date, code).
+def ordered_sources(policy: str) -> tuple[SourceName, ...]:
+    try:
+        return _POLICY_ORDER[policy]
+    except KeyError as e:
+        raise ValueError(f"unknown source policy: {policy}") from e
 
-    Prefers ``pref`` if its meta.json exists; otherwise picks the first other
-    source that does. Returns ``pref`` even if nothing exists so the
-    downstream StockDateNotFound surfaces naturally.
 
-    Reads only ``engine.data_dir`` (a real ``Path`` in production and in tests,
-    which back the engine with a ``tmp_path`` data_dir) — no other engine state,
-    so tests need no full QueryEngine, just an object carrying ``data_dir``.
-    """
-    from hoga.api.disk_state import classify_stock_date
+def resolve_source(engine: "QueryEngine", date: str, code: str, pref: str) -> SourceName:
+    from hoga.api.disk_state import DiskState, classify_stock_date
 
+    order = ordered_sources(pref)
     sd_dir = engine.data_dir / "parquet" / date / code
     per_source = classify_stock_date(sd_dir)
-    if pref in per_source:
-        return pref
-    if per_source:
-        # classify_stock_date keys are dir names — guaranteed SourceName by
-        # ADR-0037's source-subfolder layout. Cast narrows the dict[str, ...]
-        # return without runtime cost.
-        return cast(SourceName, next(iter(per_source)))
-    return pref
+    healthy = {
+        source
+        for source, classification in per_source.items()
+        if classification.state != DiskState.INVALID
+    }
+    for source in order:
+        if source in healthy:
+            return source
+    return cast(SourceName, order[0])

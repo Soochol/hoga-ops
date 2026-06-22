@@ -10,6 +10,7 @@ from hoga.api.sources import SourceName
 def test_brokers_response_has_source_field() -> None:
     resp = BrokerSeriesResponse(date="20260528", brokers=[], source="hogaplay")
     assert resp.source == "hogaplay"
+    assert BrokerSeriesResponse(date="20260528", brokers=[], source="kis_api").source == "kis_api"
     # Type narrowed to SourceName Literal — wrong values rejected by Pydantic
     from pydantic import ValidationError
     with pytest.raises(ValidationError):
@@ -51,3 +52,4 @@ def test_brokers_source_pref_invalid_returns_422(seed_brokers):
         "code": "005930", "date": "20260528", "source_pref": "garbage",
     })
     assert r.status_code == 422
+    assert r.json()["detail"]["code"] == "invalid_source_pref"
