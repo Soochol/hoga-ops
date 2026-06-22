@@ -83,6 +83,50 @@ def test_index_candles_returns_fake_kis_daily_rows(tmp_path, monkeypatch) -> Non
     ]
 
 
+def test_index_candles_returns_fake_kis_minute_rows(tmp_path, monkeypatch) -> None:
+    class FakeKis:
+        async def fetch_index_minute_candles(self, index, from_s, to_s, *, bucket_seconds=60, foreground=False):
+            assert index.id == "KOSPI"
+            assert from_s == "20260619"
+            assert to_s == "20260619"
+            assert bucket_seconds == 60
+            assert foreground is True
+            return IndexCandleFetchResult(
+                candles=[
+                    IndexCandlePoint(
+                        t_ms=1781829000000,
+                        open=2850.10,
+                        high=2852.34,
+                        low=2849.87,
+                        close=2851.67,
+                        volume=123456,
+                    ),
+                ],
+            )
+
+    monkeypatch.setattr(live_api.kis_access, "kis_for_role", lambda role, data_dir: FakeKis())
+
+    app = FastAPI()
+    app.include_router(build_router(get_status=lifecycle.get_status, data_dir=tmp_path))
+    res = TestClient(app).get(
+        "/api/live/index-candles?index_id=KOSPI&timeframe=1m&from=20260619&to=20260619",
+    )
+    assert res.status_code == 200
+    body = res.json()
+    assert body["index_id"] == "KOSPI"
+    assert body["timeframe"] == "1m"
+    assert body["candles"] == [
+        {
+            "t_ms": 1781829000000,
+            "open": 2850.10,
+            "high": 2852.34,
+            "low": 2849.87,
+            "close": 2851.67,
+            "volume": 123456,
+        },
+    ]
+
+
 def test_index_investor_net_returns_market_rows_for_kospi(tmp_path, monkeypatch) -> None:
     class FakeKis:
         async def fetch_market_investor_net(self, index, from_s, to_s):

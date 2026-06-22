@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useSearchParams } from 'react-router';
-import { isCalendarTimeframe, isMinuteTimeframe, useLivePageStore } from '../state/livePage';
+import { isMinuteTimeframe, useLivePageStore } from '../state/livePage';
 import type { StudyIndicatorState } from '../api/studyViews';
 import { useLiveStatus } from '../api/liveStatus';
 import { useLiveStatusProjection } from './liveStatusProjection';
@@ -44,7 +44,13 @@ const EMPTY_CANDLES: readonly Candle[] = [];
 const EMPTY_OB_SNAPSHOTS: readonly ObSnapshot[] = [];
 const EMPTY_TRADE_SNAPSHOTS: readonly TradeSnapshot[] = [];
 
-const CALENDAR_BUCKET_MS = {
+const INDEX_BUCKET_MS = {
+  '1m': 60_000,
+  '3m': 180_000,
+  '5m': 300_000,
+  '10m': 600_000,
+  '15m': 900_000,
+  '30m': 1_800_000,
   D: 86_400_000,
   W: 7 * 86_400_000,
   M: 31 * 86_400_000,
@@ -156,10 +162,9 @@ export function LivePage() {
   const activeIndexId = activeInstrument?.kind === 'index' ? activeInstrument.id : null;
   const capabilities = useMemo(() => capabilitiesForInstrument(activeInstrument), [activeInstrument]);
   const indexFrom = historicalFromDate ?? today;
-  const indexCalendarTimeframe = isCalendarTimeframe(timeframe) ? timeframe : 'D';
   const indexCandles = useLiveIndexCandles(
-    activeIndexId && isCalendarTimeframe(timeframe) ? activeIndexId : null,
-    indexCalendarTimeframe,
+    activeIndexId,
+    timeframe,
     indexFrom,
     today,
   );
@@ -177,11 +182,11 @@ export function LivePage() {
       indexId: activeIndexId,
       from: indexCandles.data.from,
       to: indexCandles.data.to,
-      bucketMs: CALENDAR_BUCKET_MS[indexCalendarTimeframe],
+      bucketMs: INDEX_BUCKET_MS[timeframe],
       candles: indexCandles.data.candles,
       investorPoints: indexInvestorNet.data?.points ?? [],
     });
-  }, [activeIndexId, indexCalendarTimeframe, indexCandles.data, indexInvestorNet.data?.points]);
+  }, [activeIndexId, timeframe, indexCandles.data, indexInvestorNet.data?.points]);
   const indicatorState = useMemo<StudyIndicatorState>(() => ({
     volume_enabled: volumeEnabled,
     quote_totals_enabled: quoteTotalsEnabled,

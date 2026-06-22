@@ -549,11 +549,10 @@ export function LiveChartRoot({ code, timeframe, venue = 'KRX', viewIdentity, bu
         ts.setVisibleLogicalRange({ from, to });
         lastAppliedCountRef.current = totalBars;
         reveal();
-      } else if (timeframe === 'D') {
-        // Daily must avoid fitContent's multi-step internal range settle. On
-        // long histories it compresses candle bodies and visibly shifts the
-        // chart after first paint. Use a width-derived span with the standard
-        // rightOffset instead.
+      } else if (isCalendarTimeframe(timeframe)) {
+        // Calendar frames avoid fitContent's multi-step internal range settle.
+        // Use a width-derived span with the standard rightOffset so D/W/M all
+        // open with visible candles plus the same empty area on the right.
         if (applied === totalBars) { reveal(); return; }
         const lastMs = cb.candles[cb.candles.length - 1]?.ts_ms;
         let latestLogicalIndex: number | null = null;
@@ -562,17 +561,6 @@ export function LiveChartRoot({ code, timeframe, venue = 'KRX', viewIdentity, bu
           if (typeof idx === 'number' && Number.isFinite(idx)) latestLogicalIndex = idx;
         }
         ts.setVisibleLogicalRange(dailyLogicalRange(totalBars, ts.width(), latestLogicalIndex));
-        lastAppliedCountRef.current = totalBars;
-        reveal();
-      } else {
-        // W/M re-fit whenever the candle count changes. Growth covers the
-        // initial daily-fetch extension; shrink covers placeholder data from a
-        // wider previous calendar request, which would otherwise leave the
-        // chart stuck at stale spacing.
-        // historicalFromDate !== null (user-driven extension) short-circuits
-        // above, so user scroll is preserved.
-        if (applied === totalBars) { reveal(); return; }
-        ts.fitContent();
         lastAppliedCountRef.current = totalBars;
         reveal();
       }
