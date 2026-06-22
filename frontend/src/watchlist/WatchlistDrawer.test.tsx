@@ -50,7 +50,7 @@ describe('WatchlistDrawer', () => {
     vi.spyOn(watchlistApi, 'getWatchlist').mockResolvedValue(DATA);
     const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } });
     render(<WatchlistDrawer />, { wrapper: wrap(qc, '/inventory') });
-    await waitFor(() => expect(screen.getByText('삼성전자')).toBeInTheDocument());
+    await waitFor(() => expect(screen.getByTestId('watchlist-row-005930')).toBeInTheDocument());
     expect(screen.getByText(/스윙/)).toBeInTheDocument();
     expect(screen.getByText(/미분류/)).toBeInTheDocument();
     expect(screen.getByText('SK하이닉스')).toBeInTheDocument();
@@ -60,7 +60,7 @@ describe('WatchlistDrawer', () => {
     vi.spyOn(watchlistApi, 'getWatchlist').mockResolvedValue(DATA);
     const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } });
     render(<WatchlistDrawer />, { wrapper: wrap(qc, '/inventory') });
-    await waitFor(() => expect(screen.getByText('삼성전자')).toBeInTheDocument());
+    await waitFor(() => expect(screen.getByTestId('watchlist-row-005930')).toBeInTheDocument());
     fireEvent.click(screen.getByText('삼성전자'));
     expect(useLivePageStore.getState().activeCode).toBe('005930');
     await waitFor(() => expect(screen.getByTestId('pathname').textContent).toBe('/live'));
@@ -649,5 +649,45 @@ describe('WatchlistDrawer', () => {
     expect(screen.getByTestId('watchlist-row-000660')).toHaveTextContent('KIS API 30초 저장 중');
     expect(screen.getByTestId('watchlist-row-035420')).toHaveTextContent('대기');
     expect(screen.getByTestId('watchlist-row-051910')).toHaveTextContent('저장 제외');
+  });
+
+  it('uses any capture-enabled membership for storage label', async () => {
+    vi.spyOn(watchlistApi, 'getWatchlist').mockResolvedValue({
+      folders: [
+        { id: 'f_enabled', name: '저장', order: 0, capture_enabled: true },
+        { id: 'f_excluded', name: '제외', order: 1, capture_enabled: false },
+        { id: 'f_legacy', name: '기존', order: 2 },
+      ],
+      entries: [
+        { code: '005930', name: '삼성전자', registered_at_kst_date: '20260101', last_success_date: null, folder_id: 'f_excluded', order: 0 },
+        { code: '005930', name: '삼성전자', registered_at_kst_date: '20260101', last_success_date: null, folder_id: 'f_enabled', order: 0 },
+        { code: '000660', name: 'SK하이닉스', registered_at_kst_date: '20260101', last_success_date: null, folder_id: 'f_legacy', order: 0 },
+      ],
+      next_run_at_ms: 0,
+    });
+    const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+    qc.setQueryData(['live', 'status'], {
+      running: true, started_at_ms: 1, last_tick_ms: 1, cycle_lag_ms: 0,
+      capture_healthy: true, capture_reason: 'healthy',
+      watchlist_count: 2, kis_calls_today: 0, kis_rate_limit_remaining: null,
+      live_set: [],
+      storage_policy: 'ws_plus_rest',
+      kis_api_running: true,
+      kis_api_targets: [],
+      kis_api_target_count: 0,
+      kis_api_last_cycle_ms: null,
+      kis_api_last_error: null,
+      kis_api_last_error_count: 0,
+      kis_api_degraded: false,
+    });
+
+    render(<WatchlistDrawer />, { wrapper: wrap(qc, '/inventory') });
+    await waitFor(() => expect(screen.getAllByTestId('watchlist-row-005930')).toHaveLength(2));
+
+    for (const row of screen.getAllByTestId('watchlist-row-005930')) {
+      expect(row).toHaveTextContent('대기');
+      expect(row).not.toHaveTextContent('저장 제외');
+    }
+    expect(screen.getByTestId('watchlist-row-000660')).toHaveTextContent('대기');
   });
 });

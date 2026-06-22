@@ -356,6 +356,17 @@ export function WatchlistDrawer() {
   const liveCodes = liveStatusData?.live_set ?? [];
   const liveSet = useMemo(() => new Set(liveCodes), [liveCodes]);
   const apiTargets = useMemo(() => new Set(liveStatusData?.kis_api_targets ?? []), [liveStatusData?.kis_api_targets]);
+  const captureEnabledCodes = useMemo(() => {
+    const foldersById = new Map((data?.folders ?? []).map((f) => [f.id, f] as const));
+    const enabled = new Set<string>();
+    for (const entry of data?.entries ?? []) {
+      const folder = entry.folder_id ? foldersById.get(entry.folder_id) : null;
+      if (folder && folder.capture_enabled !== false) {
+        enabled.add(entry.code);
+      }
+    }
+    return enabled;
+  }, [data]);
   const viewedCodes = activeCode ? [activeCode] : [];
 
   // 함수형 업데이터 — 같은 배치의 다중 toggle도 최신 Set 위에서 계산된다.
@@ -557,7 +568,7 @@ export function WatchlistDrawer() {
                         ? 'KIS WS 저장 중'
                         : apiTargets.has(entry.code)
                           ? 'KIS API 30초 저장 중'
-                          : data?.folders.some((f) => f.capture_enabled && f.id === entry.folder_id)
+                          : captureEnabledCodes.has(entry.code)
                             ? '대기'
                             : '저장 제외';
                       return (

@@ -46,7 +46,7 @@ from .live_session import (  # noqa: F401 — C3 재export(호출부·테스트 
     live_set_codes,
     partition_live_set,
 )
-from .promote import promote_today
+from .promote import promote_api_today, promote_today
 from .settings import load_live_settings
 
 _log = logging.getLogger(__name__)
@@ -187,6 +187,14 @@ def get_active_codes() -> list[str]:
     no caching, no stale closure.
     """
     return list(_state.watchlist_codes)
+
+
+def get_api_codes() -> list[str]:
+    """Return currently configured persisted KIS REST 30s capture targets."""
+    recorder = _state.rest30_recorder
+    if recorder is None:
+        return []
+    return list(recorder.status().targets)
 
 
 def get_buffer() -> LiveBuffer:
@@ -420,6 +428,7 @@ async def start_today_promoter(
     *,
     data_dir: Path,
     get_active_codes: Callable[[], list[str]],
+    get_api_capture_codes: Callable[[], list[str]] | None = None,
     interval_s: float = 300.0,
 ) -> asyncio.Task:
     """Start the ADR-0043 Today Promotion loop.
@@ -438,13 +447,21 @@ async def start_today_promoter(
     async def loop() -> None:
         while True:
             try:
-                codes = get_active_codes()
-                for code in codes:
+                ws_codes = get_active_codes()
+                api_codes = (get_api_capture_codes or get_api_codes)()
+                for code in ws_codes:
                     try:
                         await promote_today(data_dir, code=code)
                     except Exception:
                         log.exception(
                             "live.today_promote.code_failed code=%s", code,
+                        )
+                for code in api_codes:
+                    try:
+                        await promote_api_today(data_dir, code=code)
+                    except Exception:
+                        log.exception(
+                            "live.today_promote.api_code_failed code=%s", code,
                         )
             except Exception:
                 log.exception("live.today_promote.cycle_failed")
