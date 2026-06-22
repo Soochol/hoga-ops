@@ -81,6 +81,7 @@ const INDICATORS_STORAGE_KEY = 'live.indicators.v1';
 type Persisted = {
   activeCode: string | null;
   candleTimeframe: LiveTimeframe;
+  lastMinuteTimeframe: MinuteTimeframe;
   /** Earliest stock-date the user has scrolled into (YYYYMMDD). null = today
    * only (no /api/range call needed yet). Resets when activeCode or timeframe
    * changes. */
@@ -136,6 +137,7 @@ type Store = Persisted & PersistedIndicators & {
 const DEFAULTS: Persisted = {
   activeCode: null,
   candleTimeframe: '1m',
+  lastMinuteTimeframe: '1m',
   historicalFromDate: null,
 };
 
@@ -147,12 +149,36 @@ function persist(state: Persisted): void {
   }
 }
 
+function isLiveTimeframe(v: unknown): v is LiveTimeframe {
+  return typeof v === 'string' && (LIVE_TIMEFRAMES as readonly string[]).includes(v);
+}
+
+function isMinuteFrameValue(v: unknown): v is MinuteTimeframe {
+  return typeof v === 'string' && (MINUTE_TIMEFRAMES as readonly string[]).includes(v);
+}
+
 function readStorage(): Partial<Persisted> {
   try {
     const raw = localStorage.getItem(STORAGE_KEY);
     if (!raw) return {};
-    const parsed = JSON.parse(raw) as Partial<Persisted>;
-    return parsed ?? {};
+    const parsed = JSON.parse(raw) as Record<string, unknown> | null;
+    if (!parsed) return {};
+    const candleTimeframe = isLiveTimeframe(parsed.candleTimeframe) ? parsed.candleTimeframe : undefined;
+    const derivedMinute = isMinuteFrameValue(parsed.lastMinuteTimeframe)
+      ? parsed.lastMinuteTimeframe
+      : isMinuteFrameValue(candleTimeframe)
+        ? candleTimeframe
+        : undefined;
+    return {
+      activeCode: typeof parsed.activeCode === 'string'
+        ? parsed.activeCode
+        : parsed.activeCode === null ? null : undefined,
+      candleTimeframe,
+      lastMinuteTimeframe: derivedMinute,
+      historicalFromDate: typeof parsed.historicalFromDate === 'string'
+        ? parsed.historicalFromDate
+        : parsed.historicalFromDate === null ? null : undefined,
+    };
   } catch {
     return {};
   }
@@ -424,7 +450,12 @@ export const useLivePageStore = create<Store>((set, get) => ({
     // One atomic write — no reset-then-restore. tf is clamped like setCandleTimeframe
     // (belt-and-suspenders; tabs already carry validated timeframes).
     const tf = LIVE_TIMEFRAMES.includes(timeframe) ? timeframe : get().candleTimeframe;
-    const next = { activeCode: code, candleTimeframe: tf, historicalFromDate };
+    const next = {
+      activeCode: code,
+      candleTimeframe: tf,
+      lastMinuteTimeframe: isMinuteTimeframe(tf) ? tf : get().lastMinuteTimeframe,
+      historicalFromDate,
+    };
     set(next);
     persist({ ...get(), ...next });
   },
@@ -436,8 +467,13 @@ export const useLivePageStore = create<Store>((set, get) => ({
 
   setCandleTimeframe: (tf) => {
     if (!LIVE_TIMEFRAMES.includes(tf)) return;
-    set({ candleTimeframe: tf, historicalFromDate: null });
-    persist({ ...get(), candleTimeframe: tf, historicalFromDate: null });
+    const next = {
+      candleTimeframe: tf,
+      lastMinuteTimeframe: isMinuteTimeframe(tf) ? tf : get().lastMinuteTimeframe,
+      historicalFromDate: null,
+    };
+    set(next);
+    persist({ ...get(), ...next });
   },
 
   extendHistoricalRange: (date) => {
@@ -454,6 +490,9 @@ export const useLivePageStore = create<Store>((set, get) => ({
 
   hydrateFromStorage: () => {
     const stored = readStorage();
-    set({ ...DEFAULTS, ...stored });
+    const merged = { ...DEFAULTS, ...stored };
+    const lastMinuteTimeframe = stored.lastMinuteTimeframe
+      ?? (isMinuteTimeframe(merged.candleTimeframe) ? merged.candleTimeframe : DEFAULTS.lastMinuteTimeframe);
+    set({ ...merged, lastMinuteTimeframe });
   },
 }));

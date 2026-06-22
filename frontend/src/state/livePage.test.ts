@@ -11,7 +11,12 @@ import {
 describe('livePage store', () => {
   beforeEach(() => {
     localStorage.clear();
-    useLivePageStore.setState({ activeCode: null, candleTimeframe: '1m', historicalFromDate: null });
+    useLivePageStore.setState({
+      activeCode: null,
+      candleTimeframe: '1m',
+      lastMinuteTimeframe: '1m',
+      historicalFromDate: null,
+    });
   });
 
   it('starts with sensible defaults', () => {
@@ -71,6 +76,81 @@ describe('livePage store', () => {
     useLivePageStore.getState().hydrateFromStorage();
     expect(useLivePageStore.getState().activeCode).toBe('000660');
     expect(useLivePageStore.getState().candleTimeframe).toBe('5m');
+  });
+
+  it('tracks the last selected minute timeframe', () => {
+    useLivePageStore.getState().setCandleTimeframe('10m');
+    expect(useLivePageStore.getState().candleTimeframe).toBe('10m');
+    expect(useLivePageStore.getState().lastMinuteTimeframe).toBe('10m');
+
+    useLivePageStore.getState().setCandleTimeframe('D');
+    expect(useLivePageStore.getState().candleTimeframe).toBe('D');
+    expect(useLivePageStore.getState().lastMinuteTimeframe).toBe('10m');
+  });
+
+  it('persists and hydrates lastMinuteTimeframe', () => {
+    useLivePageStore.getState().setCandleTimeframe('15m');
+    useLivePageStore.getState().setCandleTimeframe('W');
+
+    const raw = JSON.parse(localStorage.getItem('live.page.v1') ?? '{}');
+    expect(raw.candleTimeframe).toBe('W');
+    expect(raw.lastMinuteTimeframe).toBe('15m');
+
+    useLivePageStore.setState({
+      activeCode: null,
+      candleTimeframe: '1m',
+      lastMinuteTimeframe: '1m',
+      historicalFromDate: null,
+    });
+    useLivePageStore.getState().hydrateFromStorage();
+    expect(useLivePageStore.getState().candleTimeframe).toBe('W');
+    expect(useLivePageStore.getState().lastMinuteTimeframe).toBe('15m');
+  });
+
+  it('derives missing lastMinuteTimeframe from stored minute candleTimeframe', () => {
+    localStorage.setItem(
+      'live.page.v1',
+      JSON.stringify({ activeCode: '000660', candleTimeframe: '5m', historicalFromDate: null }),
+    );
+
+    useLivePageStore.getState().hydrateFromStorage();
+
+    expect(useLivePageStore.getState().candleTimeframe).toBe('5m');
+    expect(useLivePageStore.getState().lastMinuteTimeframe).toBe('5m');
+  });
+
+  it('falls back to 1m when stored lastMinuteTimeframe is invalid or missing on calendar timeframe', () => {
+    localStorage.setItem(
+      'live.page.v1',
+      JSON.stringify({
+        activeCode: '000660',
+        candleTimeframe: 'D',
+        historicalFromDate: null,
+        lastMinuteTimeframe: 'bogus',
+      }),
+    );
+
+    useLivePageStore.getState().hydrateFromStorage();
+
+    expect(useLivePageStore.getState().candleTimeframe).toBe('D');
+    expect(useLivePageStore.getState().lastMinuteTimeframe).toBe('1m');
+  });
+
+  it('projectActiveView updates lastMinuteTimeframe only for minute projections', () => {
+    useLivePageStore.getState().projectActiveView({
+      code: '005930',
+      timeframe: '10m',
+      historicalFromDate: null,
+    });
+    expect(useLivePageStore.getState().lastMinuteTimeframe).toBe('10m');
+
+    useLivePageStore.getState().projectActiveView({
+      code: '005930',
+      timeframe: 'M',
+      historicalFromDate: null,
+    });
+    expect(useLivePageStore.getState().candleTimeframe).toBe('M');
+    expect(useLivePageStore.getState().lastMinuteTimeframe).toBe('10m');
   });
 });
 
