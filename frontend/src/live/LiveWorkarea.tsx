@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useReducer, useRef } from 'react';
+import { useCallback, useEffect, useMemo, useReducer, useRef } from 'react';
 import { isMinuteTimeframe, useLivePageStore } from '../state/livePage';
 import { useEntryDragStore } from '../state/entryDrag';
 import { LiveChartRoot } from './LiveChartRoot';
@@ -155,6 +155,18 @@ export function LiveWorkarea({
   const latestRankingDate = bundle?.to_date ?? (todayKst || null);
   const rankingBasis = resolveBasisDate(rankingState, latestRankingDate);
   const rankingQuery = useIndexSectorRankings(rankingBasis.date, rankingAllowed);
+  const handleCandleBasisHover = useCallback(
+    (date: string | null) => {
+      rankingDispatch({ type: 'hover_date', date });
+    },
+    [rankingDispatch],
+  );
+  const handleCandleBasisClick = useCallback(
+    (date: string) => {
+      rankingDispatch({ type: 'toggle_date_pin', date });
+    },
+    [rankingDispatch],
+  );
   const handleOpenStock = useMemo(
     () => (code: string, name: string) => openStock(code, name),
     [openStock],
@@ -203,8 +215,8 @@ export function LiveWorkarea({
                 todayKst={todayKst}
                 paneTogglesOverride={paneTogglesOverride}
                 onViewportCaptureReady={onViewportCaptureReady}
-                onCandleBasisHover={rankingAllowed ? (date) => rankingDispatch({ type: 'hover_date', date }) : undefined}
-                onCandleBasisClick={rankingAllowed ? (date) => rankingDispatch({ type: 'toggle_date_pin', date }) : undefined}
+                onCandleBasisHover={rankingAllowed ? handleCandleBasisHover : undefined}
+                onCandleBasisClick={rankingAllowed ? handleCandleBasisClick : undefined}
               />
             </div>
             {rankingAllowed && (

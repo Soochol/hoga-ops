@@ -104,6 +104,42 @@ describe('LiveWorkarea gate', () => {
     expect(chartProps?.onCandleBasisClick).toEqual(expect.any(Function));
   });
 
+  it('keeps ranking callbacks stable across allowed rerenders', () => {
+    useLivePageStore.setState({ candleTimeframe: 'D' });
+    const { rerender } = render(
+      <LiveWorkarea
+        activeCode="index:KOSPI"
+        activeInstrument={indexInstrument('KOSPI', 'KOSPI')}
+        bundle={INDEX_BUNDLE}
+        clampEngaged={false}
+        isPastCandlesLoading={false}
+        isExtending={false}
+        live={LIVE}
+      />,
+    );
+    const firstChartProps = liveChartRootMock.mock.calls.at(-1)?.[0] as
+      | { onCandleBasisHover?: unknown; onCandleBasisClick?: unknown }
+      | undefined;
+
+    rerender(
+      <LiveWorkarea
+        activeCode="index:KOSPI"
+        activeInstrument={indexInstrument('KOSPI', 'KOSPI')}
+        bundle={INDEX_BUNDLE}
+        clampEngaged={false}
+        isPastCandlesLoading={false}
+        isExtending={false}
+        live={{ ...LIVE }}
+      />,
+    );
+    const secondChartProps = liveChartRootMock.mock.calls.at(-1)?.[0] as
+      | { onCandleBasisHover?: unknown; onCandleBasisClick?: unknown }
+      | undefined;
+
+    expect(secondChartProps?.onCandleBasisHover).toBe(firstChartProps?.onCandleBasisHover);
+    expect(secondChartProps?.onCandleBasisClick).toBe(firstChartProps?.onCandleBasisClick);
+  });
+
   it('does not render the index sector pane for stock instruments', () => {
     useLivePageStore.setState({ candleTimeframe: 'D' });
     render(
