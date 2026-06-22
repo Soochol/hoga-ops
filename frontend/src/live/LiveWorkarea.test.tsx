@@ -1,31 +1,52 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { render, screen } from '@testing-library/react';
 import { LiveWorkarea } from './LiveWorkarea';
+import type { LiveChartRoot } from './LiveChartRoot';
 import { useLivePageStore } from '../state/livePage';
 import { indexInstrument, stockInstrument } from './liveInstrument';
+import type { IndexSectorRankingResponse } from '../api/indexSectorRankings';
 import type { LiveSeriesData } from '../api/liveSeries';
 import type { RangeBundle } from '../api/types';
 
+type LiveChartRootProps = Parameters<typeof LiveChartRoot>[0];
+type LiveChartRootMock = (props: LiveChartRootProps) => JSX.Element;
+type UseIndexSectorRankingsMock = (
+  date: string | null,
+  enabledByCaller?: boolean,
+) => {
+  data: IndexSectorRankingResponse | undefined;
+  isLoading: boolean;
+  error: unknown;
+};
+
 const liveChartRootMock = vi.hoisted(() =>
-  vi.fn(() => <div data-testid="chart-stub" />),
+  vi.fn((props: LiveChartRootProps): ReturnType<LiveChartRootMock> => {
+    void props;
+    return <div data-testid="chart-stub" />;
+  }),
 );
 const useIndexSectorRankingsMock = vi.hoisted(() =>
-  vi.fn(() => ({
-    data: { date: '20260619', source: 'daily_adjusted', unavailable_reason: null, sectors: [] },
-    isLoading: false,
-    error: null,
-  })),
+  vi.fn<UseIndexSectorRankingsMock>((date, enabledByCaller = true) => {
+    void date;
+    void enabledByCaller;
+    return {
+      data: { date: '20260619', source: 'daily_adjusted', unavailable_reason: null, sectors: [] },
+      isLoading: false,
+      error: null,
+    };
+  }),
 );
 
 vi.mock('./LiveChartRoot', () => ({
-  LiveChartRoot: (props: Record<string, unknown>) => liveChartRootMock(props),
+  LiveChartRoot: (props: LiveChartRootProps) => liveChartRootMock(props),
 }));
 vi.mock('./LiveSidebar', () => ({ LiveSidebar: () => <div data-testid="sidebar-stub" /> }));
 vi.mock('./IndexSectorRankingPane', () => ({
   IndexSectorRankingPane: () => <div data-testid="index-sector-ranking-pane" />,
 }));
 vi.mock('../api/indexSectorRankings', () => ({
-  useIndexSectorRankings: (...args: unknown[]) => useIndexSectorRankingsMock(...args),
+  useIndexSectorRankings: (...args: Parameters<UseIndexSectorRankingsMock>) =>
+    useIndexSectorRankingsMock(...args),
 }));
 vi.mock('./useJumpToLive', () => ({
   useJumpToLive: () => vi.fn(),
