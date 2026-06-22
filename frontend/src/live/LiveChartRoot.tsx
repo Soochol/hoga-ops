@@ -65,6 +65,11 @@ function pad(n: number): string {
   return String(n).padStart(2, '0');
 }
 
+function kstDateFromMs(realMs: number): string {
+  const d = new Date(realMs + 9 * 60 * 60 * 1000);
+  return `${d.getUTCFullYear()}${pad(d.getUTCMonth() + 1)}${pad(d.getUTCDate())}`;
+}
+
 /** Empty axis used while the bundle is loading. timeFormatter / tickMarkFormatter
  * read through `axisRef.current` to convert virtual seconds back to real KST;
  * before the real axis arrives they need a working `.toReal()` to return
@@ -145,12 +150,14 @@ interface Props {
   onViewportCaptureReady?: (capture: () => TabViewport | null) => void;
   /** Optional hover activity signal for consumers that must ignore sticky cursor restore. */
   onCursorActiveChange?: (active: boolean) => void;
+  onCandleBasisHover?: (date: string | null) => void;
+  onCandleBasisClick?: (date: string) => void;
 }
 
 /** /live's single-chart root. Mounts the timeframe-appropriate pane set
  * (see `paneSpecsForTimeframe`) inside one createChart instance so
  * timeScale is shared across candle/volume/(hoga) panes. */
-export function LiveChartRoot({ code, timeframe, venue = 'KRX', viewIdentity, bundle, chartBundle, ratioBundle, clampEngaged, isPastCandlesLoading, isExtending = false, pastDataWarnings, restoreViewport = null, dayAskPeaks = EMPTY_ASK_PEAKS, todayAllPriceAskPeak = null, dayBidPeaks = EMPTY_BID_PEAKS, todayAllPriceBidPeak = null, todayKst = '', forceHogaPanes = false, paneTogglesOverride, persistLiveViewport = true, onViewportCaptureReady, onCursorActiveChange }: Props) {
+export function LiveChartRoot({ code, timeframe, venue = 'KRX', viewIdentity, bundle, chartBundle, ratioBundle, clampEngaged, isPastCandlesLoading, isExtending = false, pastDataWarnings, restoreViewport = null, dayAskPeaks = EMPTY_ASK_PEAKS, todayAllPriceAskPeak = null, dayBidPeaks = EMPTY_BID_PEAKS, todayAllPriceBidPeak = null, todayKst = '', forceHogaPanes = false, paneTogglesOverride, persistLiveViewport = true, onViewportCaptureReady, onCursorActiveChange, onCandleBasisHover, onCandleBasisClick }: Props) {
   const containerRef = useRef<HTMLDivElement>(null);
   // 과거 fetch 경고 요약 — rate-limit 지연(빈칸 문구 전환)과 일부 구간 누락(부분로딩 칩)
   // 표시에 쓴다. summarizeWarnings는 null/빈배열을 {count:0,hasRateLimit:false}로 접는다.
@@ -770,6 +777,7 @@ export function LiveChartRoot({ code, timeframe, venue = 'KRX', viewIdentity, bu
       if (param.point == null) {
         if (pending !== null) { cancelAnimationFrame(pending); pending = null; }
         onCursorActiveChange?.(false);
+        onCandleBasisHover?.(null);
         useLiveCursorStore.getState().restoreCursor();
         return;
       }
@@ -802,6 +810,7 @@ export function LiveChartRoot({ code, timeframe, venue = 'KRX', viewIdentity, bu
           store.restoreCursor();
           return;
         }
+        onCandleBasisHover?.(kstDateFromMs(realMs));
         onCursorActiveChange?.(true);
         store.setCursor(realMs);
       });
@@ -815,7 +824,22 @@ export function LiveChartRoot({ code, timeframe, venue = 'KRX', viewIdentity, bu
       onCursorActiveChange?.(false);
       useLiveCursorStore.getState().resetCursor();
     };
-  }, [chart, axis, timeframe, onCursorActiveChange]);
+  }, [chart, axis, timeframe, onCursorActiveChange, onCandleBasisHover]);
+
+  useEffect(() => {
+    if (!chart || !onCandleBasisClick) return;
+    const handler = (param: { time?: unknown; point?: { x: number } | null }) => {
+      if (param.point == null || typeof param.time !== 'number' || axis.segments.length === 0) return;
+      const realMs = axis.toReal(param.time * 1000);
+      const lastMs = lastCandleMsRef.current;
+      if (lastMs !== null && realMs > lastMs) return;
+      onCandleBasisClick(kstDateFromMs(realMs));
+    };
+    chart.subscribeClick(handler);
+    return () => {
+      chart.unsubscribeClick(handler);
+    };
+  }, [chart, axis, onCandleBasisClick]);
 
   const dwDisabled = isCalendarTimeframe(timeframe) && !forceHogaPanes;
 
