@@ -158,10 +158,10 @@ describe('useLiveKeyboard', () => {
     const onSelectTimeframeShortcut = vi.fn();
     render(<Harness onSelectTimeframeShortcut={onSelectTimeframeShortcut} />);
 
-    fireEvent.keyDown(window, { key: '1', shiftKey: true });
-    fireEvent.keyDown(window, { key: '2', shiftKey: true });
-    fireEvent.keyDown(window, { key: '3', shiftKey: true });
-    fireEvent.keyDown(window, { key: '4', shiftKey: true });
+    fireEvent.keyDown(window, { key: '!', code: 'Digit1', shiftKey: true });
+    fireEvent.keyDown(window, { key: '@', code: 'Digit2', shiftKey: true });
+    fireEvent.keyDown(window, { key: '#', code: 'Digit3', shiftKey: true });
+    fireEvent.keyDown(window, { key: '$', code: 'Digit4', shiftKey: true });
 
     expect(onSelectTimeframeShortcut.mock.calls).toEqual([
       ['minute'],
@@ -181,8 +181,25 @@ describe('useLiveKeyboard', () => {
       />,
     );
 
-    fireEvent.keyDown(window, { key: '1', shiftKey: true });
+    fireEvent.keyDown(window, { key: '!', code: 'Digit1', shiftKey: true });
 
+    expect(onSelectTimeframeShortcut).toHaveBeenCalledWith('minute');
+    expect(onSelectTabIndex).not.toHaveBeenCalled();
+  });
+
+  it('Shift+1 with ! key text still triggers minute shortcut using code Digit1', () => {
+    const onSelectTabIndex = vi.fn();
+    const onSelectTimeframeShortcut = vi.fn();
+    render(
+      <Harness
+        onSelectTabIndex={onSelectTabIndex}
+        onSelectTimeframeShortcut={onSelectTimeframeShortcut}
+      />,
+    );
+
+    fireEvent.keyDown(window, { key: '!', code: 'Digit1', shiftKey: true });
+
+    expect(onSelectTimeframeShortcut).toHaveBeenCalledOnce();
     expect(onSelectTimeframeShortcut).toHaveBeenCalledWith('minute');
     expect(onSelectTabIndex).not.toHaveBeenCalled();
   });
@@ -191,7 +208,11 @@ describe('useLiveKeyboard', () => {
     const onSelectTimeframeShortcut = vi.fn();
     const { getByTestId } = render(<HarnessWithInput onSelectTimeframeShortcut={onSelectTimeframeShortcut} />);
 
-    fireEvent.keyDown(getByTestId('input'), { key: '1', shiftKey: true });
+    fireEvent.keyDown(getByTestId('input'), {
+      key: '!',
+      code: 'Digit1',
+      shiftKey: true,
+    });
 
     expect(onSelectTimeframeShortcut).not.toHaveBeenCalled();
   });
@@ -200,9 +221,9 @@ describe('useLiveKeyboard', () => {
     const onSelectTimeframeShortcut = vi.fn();
     render(<Harness onSelectTimeframeShortcut={onSelectTimeframeShortcut} />);
 
-    fireEvent.keyDown(window, { key: '1', shiftKey: true, ctrlKey: true });
-    fireEvent.keyDown(window, { key: '1', shiftKey: true, metaKey: true });
-    fireEvent.keyDown(window, { key: '1', shiftKey: true, altKey: true });
+    fireEvent.keyDown(window, { key: '!', code: 'Digit1', shiftKey: true, ctrlKey: true });
+    fireEvent.keyDown(window, { key: '!', code: 'Digit1', shiftKey: true, metaKey: true });
+    fireEvent.keyDown(window, { key: '!', code: 'Digit1', shiftKey: true, altKey: true });
 
     expect(onSelectTimeframeShortcut).not.toHaveBeenCalled();
   });

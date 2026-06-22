@@ -3,11 +3,11 @@ import { useRightRailStore } from '../state/rightRail';
 
 export type LiveTimeframeShortcutSlot = 'minute' | 'D' | 'W' | 'M';
 
-const TIMEFRAME_SHORTCUTS: Record<string, LiveTimeframeShortcutSlot> = {
-  '1': 'minute',
-  '2': 'D',
-  '3': 'W',
-  '4': 'M',
+const TIMEFRAME_SHORTCUT_KEYS: Record<string, LiveTimeframeShortcutSlot> = {
+  Digit1: 'minute',
+  Digit2: 'D',
+  Digit3: 'W',
+  Digit4: 'M',
 };
 
 /**
@@ -46,7 +46,7 @@ export function useLiveKeyboard(opts: UseLiveKeyboardOpts = {}): void {
       if (shouldIgnoreEvent(e.target)) return;
       if (e.metaKey || e.ctrlKey || e.altKey) return;
       if (e.shiftKey) {
-        const slot = TIMEFRAME_SHORTCUTS[e.key];
+        const slot = TIMEFRAME_SHORTCUT_KEYS[e.code];
         if (slot && opts.onSelectTimeframeShortcut) {
           opts.onSelectTimeframeShortcut(slot);
           e.preventDefault();
