@@ -27,6 +27,8 @@ The toolbar should render one representative minute button plus calendar buttons
 - Calendar buttons: `일`, `주`, `월`.
 - No `년` button.
 
+Use the canonical existing domain term **LiveTimeframe** for the full selector value. In this feature, call the first control the **minute selector** rather than inventing a new persisted "last-used settings" concept.
+
 Minute button behavior:
 
 - If the current chart is `D`, `W`, or `M`, clicking the minute button immediately switches to the remembered minute timeframe and does not open the menu.
@@ -38,6 +40,19 @@ Calendar button behavior:
 
 - Clicking `일`, `주`, or `월` immediately switches to `D`, `W`, or `M`.
 - Calendar clicks close the minute list if it is open.
+
+State machine:
+
+```text
+current: minute
+  minute selector click -> open menu
+  menu item click       -> set selected minute, close menu
+  일/주/월 click         -> set D/W/M, close menu
+
+current: D/W/M
+  minute selector click -> set remembered minute, keep menu closed
+  일/주/월 click         -> set D/W/M, keep menu closed
+```
 
 ## State Model
 
@@ -58,16 +73,21 @@ Keep the change scoped to the toolbar surface:
 - `LiveToolbar` owns the minute menu open/close state and remembered minute timeframe.
 - `livePage` remains the single owner of the active timeframe.
 - `liveTabs` mirror behavior remains unchanged and observes the same `setCandleTimeframe` calls as before.
+- Render minute options from `MINUTE_TIMEFRAMES` and calendar options from `CALENDAR_TIMEFRAMES`; do not re-split string literals from `LIVE_TIMEFRAMES` in the component.
+- Reuse existing popover utilities where possible: `useDismissablePopover` for outside mousedown/Escape dismissal and `useClampedFixedPosition` if a fixed-position dropdown is needed to avoid clipping.
 
 If the toolbar component starts to grow hard to read, extract a small `MinuteTimeframeMenu` component in the same file or sibling file. It should receive plain props: current timeframe, remembered minute timeframe, open state, and callbacks.
 
 ## Accessibility
 
-The representative minute button should expose that it opens a menu only when the current chart is already a minute timeframe:
+The representative minute button has dual behavior, so its accessible label must describe the behavior that will happen on this click:
 
-- Use `aria-haspopup="menu"` and `aria-expanded` while the menu is available/open.
+- On `D/W/M`, label it as switching back to the remembered minute timeframe.
+- On a minute timeframe, label it as opening the minute selection menu.
+- Use `aria-haspopup="menu"` and `aria-expanded` when the current click can open the menu.
 - The dropdown should use `role="menu"` and each option should be a button or `role="menuitemradio"` with a clear accessible name.
-- Escape and outside click dismissal are desirable if they match existing local popover patterns. At minimum, selecting another toolbar button or a menu item must close the menu.
+- Escape and outside click dismissal are required, using the existing dismissable-popover contract.
+- Selecting another toolbar button or a menu item must close the menu.
 
 ## Styling
 
@@ -87,6 +107,9 @@ Add focused tests in `frontend/src/live/LiveToolbar.test.tsx`:
 - On a minute timeframe, clicking the minute button opens the minute list.
 - Selecting a minute option switches timeframe and closes the menu.
 - Clicking `일`, `주`, or `월` switches to the corresponding calendar timeframe and closes any open minute list.
+- Escape closes the minute list without changing timeframe.
+- Outside mousedown closes the minute list without changing timeframe.
+- The remembered minute updates after selecting a different minute, then survives `minute -> calendar -> minute button` in the same mounted toolbar session.
 
 Existing tab mirror tests should continue to pass without modification because the toolbar still uses `setCandleTimeframe`.
 
