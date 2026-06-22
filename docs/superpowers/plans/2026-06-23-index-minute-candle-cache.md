@@ -592,3 +592,15 @@ older pan does not falsely show invented candles when KIS did not return older m
 **Placeholder scan:** No `TBD`, `TODO`, or undefined implementation steps remain.
 
 **Type consistency:** `IndexMinuteCandlesCache`, `IndexMinuteCacheKey`, and `collect_index_minute_candles_with_cache` are defined before use and referenced consistently.
+
+## Verified KIS Index Minute Limitation
+
+2026-06-23 live probes confirmed that domestic index minute endpoint
+`/uapi/domestic-stock/v1/quotations/inquire-time-indexchartprice`
+does not behave like stock `inquire-time-dailychartprice`.
+
+- Stock minute supports `FID_INPUT_DATE_1` plus `FID_INPUT_HOUR_1=HHMMSS` cursor.
+- Index minute uses `FID_INPUT_HOUR_1` as a source unit such as `30`, `60`, `300`, `600`, `3600`.
+- Adding `FID_INPUT_DATE_1` to index minute requests is ignored by KIS.
+- Forcing `tr_cont=N` or `tr_cont=M` returns the same page, not an older page.
+- Therefore cache improves repeated requests, and better source-unit selection improves 5m/15m depth, but KIS REST cannot create stock-like 1-year index minute scrollback.

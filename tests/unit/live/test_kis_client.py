@@ -122,11 +122,15 @@ async def test_fetch_index_minute_candles_calls_kis_time_chart_endpoint() -> Non
 @pytest.mark.parametrize(
     ("display_bucket_seconds", "kis_input_hour"),
     [
+        (60, "60"),
+        (180, "60"),
+        (300, "300"),
         (600, "600"),
+        (900, "300"),
         (1800, "600"),
     ],
 )
-async def test_fetch_index_minute_candles_uses_kis_10m_source_for_supported_longer_buckets(
+async def test_fetch_index_minute_candles_uses_best_kis_source_for_display_bucket(
     display_bucket_seconds: int,
     kis_input_hour: str,
 ) -> None:
@@ -171,6 +175,64 @@ async def test_fetch_index_minute_candles_uses_kis_10m_source_for_supported_long
         await client.aclose()
 
     assert (captured["params"] or {})["FID_INPUT_HOUR_1"] == kis_input_hour
+
+
+@pytest.mark.asyncio
+async def test_fetch_index_minute_candles_aggregates_5m_source_to_15m_display_bucket() -> None:
+    captured: dict[str, object] = {}
+
+    def row(hhmmss: str, open_s: str, high_s: str, low_s: str, close_s: str, volume_s: str) -> dict[str, str]:
+        return {
+            "stck_bsop_date": "20260619",
+            "stck_cntg_hour": hhmmss,
+            "bstp_nmix_oprc": open_s,
+            "bstp_nmix_hgpr": high_s,
+            "bstp_nmix_lwpr": low_s,
+            "bstp_nmix_prpr": close_s,
+            "cntg_vol": volume_s,
+        }
+
+    def handler(req: httpx.Request) -> httpx.Response:
+        captured["params"] = dict(req.url.params)
+        return httpx.Response(
+            200,
+            json={
+                "rt_cd": "0",
+                "msg_cd": "0",
+                "msg1": "OK",
+                "output2": [
+                    row("090000", "100", "105", "99", "104", "10"),
+                    row("090500", "104", "108", "103", "106", "20"),
+                    row("091000", "106", "109", "101", "102", "30"),
+                    row("091500", "102", "103", "100", "101", "40"),
+                ],
+            },
+        )
+
+    client = KisClient(
+        credentials=KisCredentials(app_key="K", app_secret="S", env="real"),
+        token_provider=FakeTokenProvider(),
+        _transport=httpx.MockTransport(handler),
+    )
+    try:
+        result = await client.fetch_index_minute_candles(
+            get_representative_index("KOSPI"),
+            "20260619",
+            "20260619",
+            bucket_seconds=900,
+            foreground=True,
+        )
+    finally:
+        await client.aclose()
+
+    assert (captured["params"] or {})["FID_INPUT_HOUR_1"] == "300"
+    assert len(result.candles) == 2
+    first = result.candles[0]
+    assert first.open == 100.0
+    assert first.high == 109.0
+    assert first.low == 99.0
+    assert first.close == 102.0
+    assert first.volume == 60
 
 
 @pytest.mark.asyncio

@@ -429,6 +429,8 @@ def _aggregate_index_minute_candles(
 def _kis_index_minute_unit_seconds(bucket_seconds: int) -> int:
     if bucket_seconds in {600, 1800}:
         return 600
+    if bucket_seconds in {300, 900}:
+        return 300
     return 60
 
 
