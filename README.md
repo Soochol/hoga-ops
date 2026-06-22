@@ -39,4 +39,4 @@ node scripts/measure_index_daily_cold_fetch.mjs
 HOGA_TIMEFRAMES=1m,3m,5m,10m,15m,30m node scripts/measure_index_minute_fetch_depth.mjs
 ```
 
-Both scripts default to `http://127.0.0.1:8000`; override with `HOGA_API_BASE` when the API is on another port.
+Both scripts default to `http://127.0.0.1:8000`; override with `HOGA_API_BASE` when the API is on another port. Use `HOGA_FROM` / `HOGA_TO` to change the date range, `HOGA_STOCKS` / `HOGA_INDICES` for the daily comparison set, and `HOGA_INDEX` / `HOGA_TIMEFRAMES` for the minute-depth probe.

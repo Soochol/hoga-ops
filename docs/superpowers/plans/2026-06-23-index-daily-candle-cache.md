@@ -27,7 +27,7 @@
   - Owns the index D/W/M memory range cache.
   - Provides a small async collector that mirrors the stock daily cache behavior without touching stock code.
 - Create `hoga/live/index_cold_fetch.py`
-  - Owns index D/W/M cold-fetch range planning and bounded concurrent fetch orchestration.
+  - Owns index cold-fetch range planning and bounded concurrent fetch orchestration for `D`; `W` and `M` keep a single KIS range.
   - Keeps KIS-specific 50-row pagination mitigation out of the API route.
 - Modify `hoga/live/api.py`
   - Instantiates the index cache next to `daily_cache_instance`.
