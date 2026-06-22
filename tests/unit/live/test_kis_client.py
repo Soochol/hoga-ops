@@ -19,6 +19,7 @@ from hoga.live.kis_client import (
     KisTransportError,
     _TokenBucket,
 )
+from hoga.live.index_registry import get_representative_index
 from tests.unit.live._fakes import FakeTokenProvider
 
 
@@ -400,6 +401,48 @@ async def test_foreground_flag_threads_to_rate_limiter() -> None:
         seen.clear()
         await client.fetch_past_minute_candles("005930", "20260609")
         assert seen and all(f is False for f in seen)
+    finally:
+        await client.aclose()
+
+
+@pytest.mark.asyncio
+async def test_fetch_market_investor_net_uses_kis_market_daily_api_params() -> None:
+    seen: dict[str, str] = {}
+
+    def handler(req: httpx.Request) -> httpx.Response:
+        seen["path"] = req.url.path
+        seen["tr_id"] = req.headers.get("tr_id", "")
+        seen.update(dict(req.url.params))
+        return httpx.Response(200, json={
+            "rt_cd": "0",
+            "output": [
+                {
+                    "stck_bsop_date": "20260619",
+                    "frgn_ntby_qty": "-3519",
+                    "orgn_ntby_qty": "17184",
+                },
+            ],
+        })
+
+    client = KisClient(
+        credentials=KisCredentials(app_key="K", app_secret="S", env="real"),
+        token_provider=FakeTokenProvider(),
+        _transport=httpx.MockTransport(handler),
+    )
+    try:
+        result = await client.fetch_market_investor_net(
+            get_representative_index("KOSDAQ"),
+            "20260619",
+            "20260619",
+        )
+        assert seen["path"] == "/uapi/domestic-stock/v1/quotations/inquire-investor-daily-by-market"
+        assert seen["tr_id"] == "FHPTJ04040000"
+        assert seen["FID_COND_MRKT_DIV_CODE"] == "J"
+        assert seen["FID_INPUT_ISCD"] == "1001"
+        assert seen["FID_INPUT_ISCD_1"] == "KSQ"
+        assert seen["FID_INPUT_ISCD_2"] == "1001"
+        assert result.points[0].foreign_net == -3519
+        assert result.points[0].institution_net == 17184
     finally:
         await client.aclose()
 
