@@ -13,6 +13,7 @@ describe('LiveToolbar', () => {
     useLivePageStore.setState({
       activeCode: null,
       candleTimeframe: '1m',
+      lastMinuteTimeframe: '1m',
       historicalFromDate: null,
     });
   });
@@ -74,6 +75,30 @@ describe('LiveToolbar', () => {
 
     expect(useLivePageStore.getState().candleTimeframe).toBe('5m');
     expect(screen.queryByRole('menu', { name: '분봉 목록' })).toBeNull();
+  });
+
+  it('from calendar timeframe, minute selector uses shared lastMinuteTimeframe', () => {
+    useLivePageStore.setState({
+      candleTimeframe: 'D',
+      lastMinuteTimeframe: '10m',
+      historicalFromDate: null,
+    });
+    renderToolbar();
+
+    fireEvent.click(screen.getByRole('button', { name: '10분봉으로 전환' }));
+
+    expect(useLivePageStore.getState().candleTimeframe).toBe('10m');
+    expect(useLivePageStore.getState().lastMinuteTimeframe).toBe('10m');
+  });
+
+  it('selecting a minute option updates shared lastMinuteTimeframe', () => {
+    renderToolbar();
+
+    fireEvent.click(screen.getByRole('button', { name: '분봉 선택 열기: 1분' }));
+    fireEvent.click(within(screen.getByRole('menu', { name: '분봉 목록' })).getByRole('menuitemradio', { name: '15분' }));
+
+    expect(useLivePageStore.getState().candleTimeframe).toBe('15m');
+    expect(useLivePageStore.getState().lastMinuteTimeframe).toBe('15m');
   });
 
   it('calendar buttons switch timeframe and close an open minute menu', () => {
