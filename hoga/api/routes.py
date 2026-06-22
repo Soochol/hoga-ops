@@ -23,7 +23,7 @@ from hoga.api.models import (
 )
 from hoga.api.params import Code, StockDate
 from hoga.api.queries import QueryEngine, StockDateNotFound
-from hoga.api.sources import SourceName, ordered_sources, resolve_source
+from hoga.api.sources import SourceName, ordered_sources, resolve_source_result
 from hoga.api.timeenc import (
     hhmmssms_to_unix_ms,
     ms_from_midnight_to_unix_ms,
@@ -78,12 +78,8 @@ def _resolved_parquet_dir(
     doesn't honor source_pref and keeps strict 404 semantics. /api/meta
     is the same.
     """
-    source = resolve_source(engine, date, code, source_pref)
-    try:
-        sd_dir = engine.parquet_dir(date, code, source=source)
-    except StockDateNotFound:
-        return None, source
-    return sd_dir, source
+    resolution = resolve_source_result(engine, date, code, source_pref)
+    return resolution.path, resolution.source
 
 
 def _cursor_to_native(date: str, unix_ms: int) -> int:

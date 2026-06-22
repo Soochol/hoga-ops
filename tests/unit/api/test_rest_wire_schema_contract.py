@@ -15,6 +15,7 @@ EXPECTED_REST_WIRE_FIELDS: dict[str, frozenset[str]] = {
     "WatchlistEntryView": frozenset(
         {
             "code",
+            "capture_candidate",
             "folder_id",
             "last_success_date",
             "name",
