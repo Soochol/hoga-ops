@@ -10,6 +10,12 @@ import {
   type LiveMAConfig,
   type PersistedIndicators,
 } from './liveIndicatorsPersistence';
+import {
+  instrumentToActiveCode,
+  isLiveInstrument,
+  stockInstrument,
+  type LiveInstrument,
+} from '../live/liveInstrument';
 export type { MASource };
 
 // Re-export so existing imports from `./livePage` keep working — single
@@ -79,6 +85,7 @@ const STORAGE_KEY = 'live.page.v1';
 const INDICATORS_STORAGE_KEY = 'live.indicators.v1';
 
 type Persisted = {
+  activeInstrument: LiveInstrument | null;
   activeCode: string | null;
   candleTimeframe: LiveTimeframe;
   lastMinuteTimeframe: MinuteTimeframe;
@@ -98,6 +105,7 @@ type Persisted = {
  *  get wrong (setActiveCode/setCandleTimeframe each reset historicalFromDate; an
  *  atomic write has nothing to reset-then-restore). */
 export type ActiveViewProjection = {
+  instrument?: LiveInstrument | null;
   code: string | null;
   timeframe: LiveTimeframe;
   historicalFromDate: string | null;
@@ -135,6 +143,7 @@ type Store = Persisted & PersistedIndicators & {
 };
 
 const DEFAULTS: Persisted = {
+  activeInstrument: null,
   activeCode: null,
   candleTimeframe: '1m',
   lastMinuteTimeframe: '1m',
@@ -170,8 +179,17 @@ function readStorage(): Partial<Persisted> {
         ? candleTimeframe
         : undefined;
     const next: Partial<Persisted> = {};
+    if (isLiveInstrument(parsed.activeInstrument)) {
+      next.activeInstrument = parsed.activeInstrument;
+    } else if (typeof parsed.activeCode === 'string' && parsed.activeCode) {
+      next.activeInstrument = stockInstrument(parsed.activeCode);
+    } else if (parsed.activeInstrument === null || parsed.activeCode === null) {
+      next.activeInstrument = null;
+    }
     if (typeof parsed.activeCode === 'string' || parsed.activeCode === null) {
       next.activeCode = parsed.activeCode;
+    } else if (next.activeInstrument !== undefined) {
+      next.activeCode = instrumentToActiveCode(next.activeInstrument);
     }
     if (candleTimeframe !== undefined) {
       next.candleTimeframe = candleTimeframe;
@@ -450,12 +468,18 @@ export const useLivePageStore = create<Store>((set, get) => ({
     persistIndicators(snapshotIndicators(get));
   },
 
-  projectActiveView: ({ code, timeframe, historicalFromDate }) => {
+  projectActiveView: ({ instrument, code, timeframe, historicalFromDate }) => {
     // One atomic write — no reset-then-restore. tf is clamped like setCandleTimeframe
     // (belt-and-suspenders; tabs already carry validated timeframes).
     const tf = LIVE_TIMEFRAMES.includes(timeframe) ? timeframe : get().candleTimeframe;
+    const nextInstrument = instrument === undefined
+      ? (code ? stockInstrument(code) : null)
+      : instrument;
     const next = {
-      activeCode: code,
+      activeInstrument: nextInstrument,
+      activeCode: instrument === undefined
+        ? code
+        : (instrument === null && code === '' ? '' : instrumentToActiveCode(nextInstrument)),
       candleTimeframe: tf,
       lastMinuteTimeframe: isMinuteTimeframe(tf) ? tf : get().lastMinuteTimeframe,
       historicalFromDate,
@@ -465,8 +489,9 @@ export const useLivePageStore = create<Store>((set, get) => ({
   },
 
   setActiveCode: (code) => {
-    set({ activeCode: code, historicalFromDate: null });
-    persist({ ...get(), activeCode: code, historicalFromDate: null });
+    const activeInstrument = code ? stockInstrument(code) : null;
+    set({ activeInstrument, activeCode: code, historicalFromDate: null });
+    persist({ ...get(), activeInstrument, activeCode: code, historicalFromDate: null });
   },
 
   setCandleTimeframe: (tf) => {

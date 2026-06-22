@@ -5,6 +5,7 @@ import {
 } from './liveTabs';
 import { useLivePageStore } from './livePage';
 import type { TabViewport } from '../live/viewportAnchor';
+import { stockInstrument } from '../live/liveInstrument';
 
 const VP_A: TabViewport = { rightEdgeMs: 1748275200000, barSpan: 300, atLiveEdge: false };
 
@@ -75,6 +76,25 @@ describe('useLiveTabsStore', () => {
   it('writes the active tab code into useLivePageStore (single writer)', () => {
     useLiveTabsStore.getState().setActiveTabCode('035420', 'NAVER');
     expect(useLivePageStore.getState().activeCode).toBe('035420');
+  });
+
+  it('setActiveTabInstrument creates an index tab and clears the stock activeCode projection', () => {
+    useLiveTabsStore.getState().setActiveTabInstrument({
+      kind: 'index',
+      id: 'KOSPI',
+      label: 'KOSPI',
+    });
+    const { tabs, activeTabId } = useLiveTabsStore.getState();
+    const active = tabs.find((t) => t.id === activeTabId)!;
+    expect(active.instrument).toEqual({ kind: 'index', id: 'KOSPI', label: 'KOSPI' });
+    expect(active.code).toBe('');
+    expect(active.label).toBe('KOSPI');
+    expect(useLivePageStore.getState().activeInstrument).toEqual({
+      kind: 'index',
+      id: 'KOSPI',
+      label: 'KOSPI',
+    });
+    expect(useLivePageStore.getState().activeCode).toBeNull();
   });
 
   it('addBlankTab adds a focused blank tab and clears the page active code', () => {
@@ -242,6 +262,27 @@ describe('liveTabs persistence', () => {
     expect(tabs[0].id).not.toBe('');
   });
 
+  it('migrates live.tabs.v1 stock tabs into stock instruments', () => {
+    localStorage.setItem('live.tabs.v1', JSON.stringify({
+      version: 1,
+      activeIndex: 0,
+      tabs: [{
+        code: '005930',
+        label: '삼성전자',
+        timeframe: '5m',
+        historicalFromDate: '20260601',
+        viewport: null,
+      }],
+    }));
+    const { tabs } = loadTabs();
+    expect(tabs[0].instrument).toEqual({
+      kind: 'stock',
+      code: '005930',
+      label: '삼성전자',
+    });
+    expect(tabs[0].code).toBe('005930');
+  });
+
   it('keeps the active tab (by code) when a malformed entry is filtered out', () => {
     // Malformed entry at raw index 0 makes the raw activeIndex (1 → '000660')
     // shift down a slot after filtering. Index-based selection would pick
@@ -278,18 +319,34 @@ describe('liveTabs persistence', () => {
 
   it('toTabsSnapshot keeps persisted fields (incl. viewport), drops runtime-only id', () => {
     const snap = toTabsSnapshot({
-      tabs: [{ id: 'abc', code: '005930', label: '삼성전자', timeframe: '1m', historicalFromDate: null, viewport: VP_A }],
+      tabs: [{
+        id: 'abc',
+        instrument: stockInstrument('005930', '삼성전자'),
+        code: '005930',
+        label: '삼성전자',
+        timeframe: '1m',
+        historicalFromDate: null,
+        viewport: VP_A,
+      }],
       activeTabId: 'abc',
     } as never);
     expect(snap).toEqual({
-      version: 1, activeIndex: 0,
-      tabs: [{ code: '005930', timeframe: '1m', historicalFromDate: null, label: '삼성전자', viewport: VP_A }],
+      version: 2, activeIndex: 0,
+      tabs: [{
+        instrument: { kind: 'stock', code: '005930', label: '삼성전자' },
+        code: '005930',
+        timeframe: '1m',
+        historicalFromDate: null,
+        label: '삼성전자',
+        viewport: VP_A,
+      }],
     });
   });
 
   it('toTabsSnapshot persists a bounded active-centered window for pathological tab counts', () => {
     const tabs = Array.from({ length: 1005 }, (_, index) => ({
       id: `tab-${index}`,
+      instrument: stockInstrument(String(100000 + index), `종목 ${index + 1}`),
       code: String(100000 + index),
       label: `종목 ${index + 1}`,
       timeframe: '1m' as const,

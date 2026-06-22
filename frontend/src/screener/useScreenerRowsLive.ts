@@ -5,6 +5,7 @@ import { useQuoteByCode } from '../api/liveQuotes';
 /** 스크리너 결과 행에 Live Quote 를 덮은 행. change_won 은 라이브 전용(EOD 없음). */
 export interface ScreenerRowLive extends ScreenerRow {
   change_won: number | null;
+  change_pct_sort: number | null;
 }
 
 /**
@@ -22,13 +23,17 @@ export function useScreenerRowsLive(rows: ScreenerRow[]): ScreenerRowLive[] {
     () =>
       rows.map((r) => {
         const q = quoteByCode.get(r.code);
+        const hasLiveBatch = quoteByCode.size > 0;
         // quote 존재 여부로 분기(값의 null 여부가 아니라). 라이브가 도착하면 현재가·
         // 등락률·등락액을 그대로 쓴다 — 장전·파싱실패로 change_pct=null 이면 그 null 을
         // 유지해 '—' 로 표시(관심종목과 동일 기준). quote 미도착 행만 EOD 로 폴백한다.
         // `?? r.change_pct` 로 두면 장전에 EOD 등락률이 떠 관심종목과 어긋난다.
+        // 정렬은 별도 값을 쓴다. live batch 가 일부 도착한 뒤 누락된 코드는 EOD 등락률과
+        // live 등락률이 섞이지 않게 missing 취급하고, 아직 batch 자체가 없을 때만 EOD 로
+        // 초기 정렬을 허용한다.
         return q
-          ? { ...r, price: q.price, change_pct: q.change_pct, change_won: q.change_won }
-          : { ...r, change_won: null };
+          ? { ...r, price: q.price, change_pct: q.change_pct, change_won: q.change_won, change_pct_sort: q.change_pct }
+          : { ...r, change_won: null, change_pct_sort: hasLiveBatch ? null : r.change_pct };
       }),
     [rows, quoteByCode],
   );

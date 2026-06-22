@@ -33,6 +33,11 @@ from hoga.live.kis_venue import (
     merge_auto_minute_bars,
     parse_live_venue_policy,
 )
+from hoga.live.index_registry import (
+    UnknownRepresentativeIndex,
+    get_representative_index,
+    list_representative_indices,
+)
 from hoga.live.past_candles_cache import PastCandlesCache
 from hoga.live.past_daily_candles_cache import PastDailyCandlesCache
 
@@ -139,6 +144,31 @@ def _validate_past_request(
                 {"code": "date_range_too_large", "msg": f"max {max_days} days", "max_days": max_days},
             )
     return frm, too, today_d
+
+
+def _validate_index_range(index_id: str, from_: str, to: str):
+    try:
+        index = get_representative_index(index_id)
+    except UnknownRepresentativeIndex as e:
+        raise HTTPException(
+            422,
+            {"code": "invalid_index_id", "msg": "unknown representative index"},
+        ) from e
+    if index.kis_index_code is None:
+        raise HTTPException(
+            422,
+            {"code": "unsupported_index", "msg": f"{index.id} is not supported by KIS index routes"},
+        )
+    frm = _parse_yyyymmdd(from_)
+    too = _parse_yyyymmdd(to)
+    if frm is None or too is None:
+        raise HTTPException(422, {"code": "invalid_date", "msg": "from/to must be YYYYMMDD"})
+    if frm > too:
+        raise HTTPException(422, {"code": "from_after_to", "msg": "from must be <= to"})
+    today_d = _today_kst_date()
+    if too > today_d:
+        raise HTTPException(422, {"code": "date_in_future", "msg": "to must be <= today_kst"})
+    return index
 
 
 def _violation_to_warning(v, batch_label: str) -> dict:
@@ -360,6 +390,17 @@ class LiveQuote(BaseModel):
 class LiveQuotesResponse(BaseModel):
     phase: Literal["pre_open", "open", "closed"]
     quotes: list[LiveQuote]
+
+
+class LiveIndexEntry(BaseModel):
+    kind: Literal["index"] = "index"
+    id: str
+    label: str
+    investor_scope: Literal["market", "index", "none"]
+
+
+class LiveIndicesResponse(BaseModel):
+    indices: list[LiveIndexEntry]
 
 
 InvestorEstimateWarningReason = Literal[
@@ -956,6 +997,100 @@ def build_router(
     @router.get("/status", response_model=LiveStatus)
     async def _get_status() -> LiveStatus:
         return get_status()
+
+    @router.get("/indices", response_model=LiveIndicesResponse)
+    async def _get_indices() -> LiveIndicesResponse:
+        return LiveIndicesResponse(
+            indices=[
+                LiveIndexEntry(
+                    id=index.id,
+                    label=index.label,
+                    investor_scope=index.investor_scope,
+                )
+                for index in list_representative_indices()
+            ],
+        )
+
+    @router.get("/index-candles")
+    async def _get_index_candles(
+        index_id: str = Query(...),
+        timeframe: Literal["1m", "3m", "5m", "10m", "15m", "30m", "D", "W", "M"] = Query(...),
+        from_: str = Query(..., alias="from"),
+        to: str = Query(...),
+    ) -> dict:
+        index = _validate_index_range(index_id, from_, to)
+        if data_dir is None:
+            raise HTTPException(503, "KIS client not wired")
+        kis = kis_access.kis_for_role("foreground", data_dir)
+        if kis is None:
+            raise HTTPException(503, "KIS client not initialized")
+        if timeframe in {"D", "W", "M"}:
+            result = await kis.fetch_index_daily_candles(
+                index,
+                from_,
+                to,
+                period=timeframe,
+                foreground=True,
+            )
+        else:
+            bucket_seconds = {
+                "1m": 60,
+                "3m": 180,
+                "5m": 300,
+                "10m": 600,
+                "15m": 900,
+                "30m": 1800,
+            }[timeframe]
+            result = await kis.fetch_index_minute_candles(
+                index,
+                from_,
+                to,
+                bucket_seconds=bucket_seconds,
+                foreground=True,
+            )
+        batch_label = f"{from_}__{to}"
+        return {
+            "index_id": index.id,
+            "from": from_,
+            "to": to,
+            "timeframe": timeframe,
+            "candles": [_candle_to_dict(c) for c in result.candles],
+            "data_warnings": [
+                _violation_to_warning(v, batch_label) for v in result.violations
+            ],
+        }
+
+    @router.get("/index-investor-net")
+    async def _get_index_investor_net(
+        index_id: str = Query(...),
+        from_: str = Query(..., alias="from"),
+        to: str = Query(...),
+    ) -> dict:
+        index = _validate_index_range(index_id, from_, to)
+        if index.investor_scope != "market":
+            raise HTTPException(
+                422,
+                {
+                    "code": "unsupported_index_investor_net",
+                    "msg": f"{index.id} does not support market investor net",
+                },
+            )
+        if data_dir is None:
+            raise HTTPException(503, "KIS client not wired")
+        kis = kis_access.kis_for_role("background", data_dir)
+        if kis is None:
+            raise HTTPException(503, "KIS client not initialized")
+        result = await kis.fetch_market_investor_net(index, from_, to)
+        batch_label = f"{from_}__{to}"
+        return {
+            "index_id": index.id,
+            "from": from_,
+            "to": to,
+            "points": [_investor_point_to_dict(p) for p in result.points],
+            "data_warnings": [
+                _violation_to_warning(v, batch_label) for v in result.violations
+            ],
+        }
 
     @router.post("/control")
     async def _post_control(req: ControlRequest) -> dict[str, str]:

@@ -11,6 +11,7 @@ import RatioConfig from './RatioConfig';
 import FillStrengthConfig from './FillStrengthConfig';
 import { ModalShell } from '../../ui/ModalShell';
 import { CheckIcon } from '../../ui/CheckIcon';
+import { STOCK_CAPABILITIES, type LiveInstrumentCapabilities } from '../liveInstrumentCapabilities';
 
 type CategoryId =
   | 'moving-average'
@@ -42,9 +43,10 @@ const CATEGORIES: ReadonlyArray<{ id: CategoryId; label: string; group: GroupId 
 
 type Props = {
   onClose: () => void;
+  capabilities?: LiveInstrumentCapabilities;
 };
 
-export default function IndicatorPanel({ onClose }: Props) {
+export default function IndicatorPanel({ onClose, capabilities = STOCK_CAPABILITIES }: Props) {
   const maEnabled = useLivePageStore((s) => s.movingAverageEnabled);
   const setMaEnabled = useLivePageStore((s) => s.setMovingAverageEnabled);
   const dailyMaEnabled = useLivePageStore((s) => s.dailyMovingAverageEnabled);
@@ -69,6 +71,14 @@ export default function IndicatorPanel({ onClose }: Props) {
   // Which category's detail pane shows on the right. Clicking a category label
   // navigates here; the checkbox icon toggles its master switch separately.
   const [selected, setSelected] = useState<CategoryId>('moving-average');
+
+  const categories = CATEGORIES.filter((c) => {
+    if (c.group === 'hoga') return capabilities.hogaPanes;
+    if ((c.id === 'foreign-net' || c.id === 'institution-net') && capabilities.investorNet === 'none') {
+      return false;
+    }
+    return true;
+  });
 
   // Each category maps to a master on/off toggle. Investor bars have an
   // informational detail pane (legend + daily note) but no per-slot config,
@@ -112,11 +122,11 @@ export default function IndicatorPanel({ onClose }: Props) {
     <ModalShell ariaLabel="지표" title="지표" onClose={onClose}>
       <div className="flex">
         <nav className="w-[200px] py-2 border-r border-border" aria-label="지표 카테고리">
-          {CATEGORIES.map((c, i) => {
+          {categories.map((c, i) => {
             const checked = checkedFor(c.id);
             const onToggle = toggleFor(c.id);
             const isSelected = selected === c.id;
-            const showHeader = i === 0 || CATEGORIES[i - 1].group !== c.group;
+            const showHeader = i === 0 || categories[i - 1].group !== c.group;
             const rowBase = 'flex w-full items-center justify-between pl-4 pr-2 text-sm';
             return (
               <Fragment key={c.id}>

@@ -6,7 +6,10 @@ import { it, expect, vi, afterEach } from 'vitest';
 vi.mock('../api/screener', async (orig) => ({
   ...(await orig<typeof import('../api/screener')>()),
   runScan: vi.fn(() => Promise.resolve({ status: 'ok', warnings: [], rows: [
-    { code: '005930', name: '삼성전자', market: 'KOSPI', price: 74200, trade_value_won: 842_000_000_000, change_pct: 5.8 }] })),
+    { code: '005930', name: '삼성전자', market: 'KOSPI', price: 74200, trade_value_won: 842_000_000_000, change_pct: 5.8 },
+    { code: '000660', name: 'SK하이닉스', market: 'KOSPI', price: 180000, trade_value_won: 600_000_000_000, change_pct: -1.2 },
+    { code: '035420', name: 'NAVER', market: 'KOSPI', price: 210000, trade_value_won: 300_000_000_000, change_pct: 2.4 },
+  ] })),
   getScreenerStatus: vi.fn(() => Promise.resolve({ status: 'ok', last_raw_date: '20260530', days_behind: 0 })),
   triggerScreenerUpdate: vi.fn(),
 }));
@@ -60,6 +63,14 @@ function renderPage() {
   return render(<QueryClientProvider client={qc}><MemoryRouter><Screener /></MemoryRouter></QueryClientProvider>);
 }
 
+function resultNames() {
+  return screen.getAllByRole('button', { name: /호가창 열기/ }).map((row) => row.getAttribute('aria-label') ?? '');
+}
+
+function sortButton() {
+  return screen.getByRole('button', { name: '스크리너 결과 정렬' });
+}
+
 it('조회 결과 액션에는 관심 그룹 하트만 표시한다', async () => {
   renderPage();
   fireEvent.click(screen.getByText('조회'));
@@ -101,6 +112,86 @@ it('row is keyboard-activatable', async () => {
   const row = await screen.findByText('삼성전자');
   fireEvent.keyDown(row.closest('[role="button"]')!, { key: 'Enter' });
   expect(setActiveTabCode).toHaveBeenCalledWith('005930', '삼성전자');
+});
+
+it('sorts full-page screener results and resets to default on re-scan', async () => {
+  renderPage();
+  fireEvent.click(screen.getByRole('button', { name: '조회' }));
+  await screen.findByText('삼성전자');
+
+  expect(resultNames()).toEqual([
+    '삼성전자 005930 호가창 열기',
+    'SK하이닉스 000660 호가창 열기',
+    'NAVER 035420 호가창 열기',
+  ]);
+
+  fireEvent.click(sortButton());
+  expect(resultNames()).toEqual([
+    '삼성전자 005930 호가창 열기',
+    'NAVER 035420 호가창 열기',
+    'SK하이닉스 000660 호가창 열기',
+  ]);
+
+  fireEvent.click(sortButton());
+  expect(resultNames()).toEqual([
+    'SK하이닉스 000660 호가창 열기',
+    'NAVER 035420 호가창 열기',
+    '삼성전자 005930 호가창 열기',
+  ]);
+
+  fireEvent.click(sortButton());
+  expect(resultNames()).toEqual([
+    '삼성전자 005930 호가창 열기',
+    'SK하이닉스 000660 호가창 열기',
+    'NAVER 035420 호가창 열기',
+  ]);
+
+  fireEvent.click(sortButton());
+  expect(within(sortButton()).getByTestId('sort-icon-desc')).toBeInTheDocument();
+  fireEvent.click(screen.getByRole('button', { name: '조회' }));
+  await waitFor(() => expect(within(sortButton()).getByTestId('sort-icon-default')).toBeInTheDocument());
+  expect(resultNames()).toEqual([
+    '삼성전자 005930 호가창 열기',
+    'SK하이닉스 000660 호가창 열기',
+    'NAVER 035420 호가창 열기',
+  ]);
+});
+
+it('sorts by overlayed live change_pct when present', async () => {
+  vi.mocked(useQuoteByCode).mockReturnValue(new Map([
+    ['005930', { code: '005930', price: 80000, change_pct: 7.7, change_won: 5000 }],
+    ['000660', { code: '000660', price: 176000, change_pct: -9.8, change_won: -19000 }],
+    ['035420', { code: '035420', price: 200000, change_pct: 12.5, change_won: 25000 }],
+  ]));
+
+  renderPage();
+  fireEvent.click(screen.getByRole('button', { name: '조회' }));
+  await screen.findByText('삼성전자');
+
+  fireEvent.click(sortButton());
+  expect(resultNames()).toEqual([
+    'NAVER 035420 호가창 열기',
+    '삼성전자 005930 호가창 열기',
+    'SK하이닉스 000660 호가창 열기',
+  ]);
+
+  fireEvent.click(sortButton());
+  expect(resultNames()).toEqual([
+    'SK하이닉스 000660 호가창 열기',
+    '삼성전자 005930 호가창 열기',
+    'NAVER 035420 호가창 열기',
+  ]);
+});
+
+it('keeps the full-page sort control disabled for empty scan results', async () => {
+  vi.mocked(runScan).mockResolvedValueOnce({ status: 'ok', warnings: [], rows: [] });
+
+  renderPage();
+  fireEvent.click(screen.getByRole('button', { name: '조회' }));
+
+  await waitFor(() => expect(runScan).toHaveBeenCalled());
+  expect(screen.queryByRole('button', { name: /호가창 열기/ })).not.toBeInTheDocument();
+  expect(sortButton()).toBeDisabled();
 });
 
 it('surfaces a scan error instead of a silent dead-end', async () => {

@@ -4,9 +4,17 @@ import { useLivePageStore, LIVE_TIMEFRAMES, type LiveTimeframe } from './livePag
 import { attachPersistence } from './persistentSubscriber';
 import type { TabViewport } from '../live/viewportAnchor';
 import { mirrorPageViewToActiveTab, projectTabToActiveView } from './liveTabProjection';
+import {
+  instrumentLabel,
+  instrumentToActiveCode,
+  isLiveInstrument,
+  stockInstrument,
+  type LiveInstrument,
+} from '../live/liveInstrument';
 
 export type LiveTab = {
   id: string;
+  instrument?: LiveInstrument | null;
   code: string;
   label: string;
   timeframe: LiveTimeframe;
@@ -67,6 +75,7 @@ type TabsStore = {
    *  openSymbolInNewTab을 사용한다. 같은 코드가 다른 탭에 있어도 포커스하지 않고 현재 탭을
    *  교체한다(중복 허용). */
   setActiveTabCode: (code: string, label?: string) => void;
+  setActiveTabInstrument: (instrument: LiveInstrument) => void;
   /** 종목이 채워진 새 탭을 만들어 포커스한다(Ctrl/Meta+종목 클릭). 중복 탭은 허용한다. */
   openSymbolInNewTab: (code: string, label?: string) => void;
   /** 빈 탭을 만들어 포커스한다(+ 버튼). 종목 선택 전까지 빈 상태(검색 안내)를 보인다. */
@@ -86,17 +95,19 @@ export function applyTabToPage(tab: LiveTab | null): void {
   page.projectActiveView(projectTabToActiveView(tab, page.candleTimeframe));
 }
 
-const STORAGE_KEY = 'live.tabs.v1';
+const STORAGE_KEY = 'live.tabs.v2';
+const LEGACY_STORAGE_KEY = 'live.tabs.v1';
 const MAX_PERSISTED_TABS = 1000;
 
 type TabSnapshot = {
+  instrument?: LiveInstrument | null;
   code: string;
   timeframe: LiveTimeframe;
   historicalFromDate: string | null;
   label: string;
   viewport: TabViewport | null;
 };
-type TabsSnapshot = { version: 1; activeIndex: number; tabs: TabSnapshot[] };
+type TabsSnapshot = { version: 2; activeIndex: number; tabs: TabSnapshot[] };
 
 function isTimeframe(v: unknown): v is LiveTimeframe {
   return typeof v === 'string' && (LIVE_TIMEFRAMES as readonly string[]).includes(v);
@@ -126,19 +137,54 @@ export function toTabsSnapshot(state: Pick<TabsStore, 'tabs' | 'activeTabId'>): 
       );
   const tabs = state.tabs.slice(start, start + MAX_PERSISTED_TABS);
   return {
-    version: 1,
+    version: 2,
     activeIndex: Math.max(0, activeIndex - start),
     tabs: tabs.map((t) => ({
+      instrument: t.instrument,
       code: t.code, timeframe: t.timeframe, historicalFromDate: t.historicalFromDate,
       label: t.label, viewport: t.viewport,
     })),
   };
 }
 
+function tabFieldsFromInstrument(instrument: LiveInstrument | null): { code: string; label: string } {
+  if (!instrument) return { code: '', label: '새 탭' };
+  return {
+    code: instrumentToActiveCode(instrument) ?? '',
+    label: instrumentLabel(instrument),
+  };
+}
+
+function coerceTabInstrument(t: Partial<TabSnapshot>): LiveInstrument | null {
+  if (isLiveInstrument(t.instrument)) return t.instrument;
+  if (typeof t.code === 'string' && t.code) {
+    return stockInstrument(t.code, typeof t.label === 'string' && t.label ? t.label : t.code);
+  }
+  return null;
+}
+
+function makeTab(params: {
+  instrument: LiveInstrument | null;
+  timeframe: LiveTimeframe;
+  historicalFromDate?: string | null;
+  viewport?: TabViewport | null;
+}): LiveTab {
+  const fields = tabFieldsFromInstrument(params.instrument);
+  return {
+    id: nanoid(8),
+    instrument: params.instrument,
+    code: fields.code,
+    label: fields.label,
+    timeframe: params.timeframe,
+    historicalFromDate: params.historicalFromDate ?? null,
+    viewport: params.viewport ?? null,
+  };
+}
+
 export function loadTabs(): { tabs: LiveTab[]; activeTabId: string | null } {
-  // 1) live.tabs.v1
+  // 1) live.tabs.v2, then legacy live.tabs.v1
   try {
-    const raw = localStorage.getItem(STORAGE_KEY);
+    const raw = localStorage.getItem(STORAGE_KEY) ?? localStorage.getItem(LEGACY_STORAGE_KEY);
     if (raw) {
       const snap = JSON.parse(raw) as Partial<TabsSnapshot>;
       if (snap && Array.isArray(snap.tabs) && snap.tabs.length > 0) {
@@ -150,10 +196,8 @@ export function loadTabs(): { tabs: LiveTab[]; activeTabId: string | null } {
         const activeCodeRaw = rawTabs[Math.min(Math.max(0, ai), rawTabs.length - 1)]?.code;
         const tabs: LiveTab[] = rawTabs
           .filter((t) => t && typeof t.code === 'string')
-          .map((t) => ({
-            id: nanoid(8),
-            code: t.code,
-            label: typeof t.label === 'string' && t.label ? t.label : t.code,
+          .map((t) => makeTab({
+            instrument: coerceTabInstrument(t),
             timeframe: isTimeframe(t.timeframe) ? t.timeframe : '1m',
             historicalFromDate: typeof t.historicalFromDate === 'string' ? t.historicalFromDate : null,
             viewport: isViewport(t.viewport) ? t.viewport : null,
@@ -173,14 +217,11 @@ export function loadTabs(): { tabs: LiveTab[]; activeTabId: string | null } {
     if (raw) {
       const p = JSON.parse(raw) as { activeCode?: string | null; candleTimeframe?: unknown; historicalFromDate?: unknown };
       if (p && typeof p.activeCode === 'string' && p.activeCode) {
-        const tab: LiveTab = {
-          id: nanoid(8),
-          code: p.activeCode,
-          label: p.activeCode,
+        const tab = makeTab({
+          instrument: stockInstrument(p.activeCode),
           timeframe: isTimeframe(p.candleTimeframe) ? p.candleTimeframe : '1m',
           historicalFromDate: typeof p.historicalFromDate === 'string' ? p.historicalFromDate : null,
-          viewport: null,
-        };
+        });
         return { tabs: [tab], activeTabId: tab.id };
       }
     }
@@ -194,18 +235,20 @@ export const useLiveTabsStore = create<TabsStore>((set, get) => ({
   ...loadTabs(),
 
   setActiveTabCode: (code, label) => {
+    get().setActiveTabInstrument(stockInstrument(code, label ?? code));
+  },
+
+  setActiveTabInstrument: (instrument) => {
     const { tabs, activeTabId } = get();
     const active = tabs.find((t) => t.id === activeTabId);
     if (!active) {
       // 활성 탭이 없으면(첫 진입·전체 닫힘) 이 종목으로 첫 탭을 만든다.
-      const tab: LiveTab = {
-        id: nanoid(8),
-        code,
-        label: label ?? code,
+      const tab = makeTab({
+        instrument,
         timeframe: useLivePageStore.getState().candleTimeframe,
         historicalFromDate: null,
         viewport: null,
-      };
+      });
       set({ tabs: [...tabs, tab], activeTabId: tab.id });
       applyTabToPage(tab);
       return;
@@ -214,21 +257,27 @@ export const useLiveTabsStore = create<TabsStore>((set, get) => ({
     // pan(historicalFromDate)·viewport는 새 종목의 기본 뷰를 위해 초기화한다(다른 종목의
     // 저장 뷰를 복원하면 안 됨; ADR-0069 A안 viewport는 탭 전환 복귀용). projectActiveView에
     // historicalFromDate: null을 직접 전달하므로 page와 tab 양쪽이 일관된다.
-    const updated: LiveTab = { ...active, code, label: label ?? code, historicalFromDate: null, viewport: null };
+    const fields = tabFieldsFromInstrument(instrument);
+    const updated: LiveTab = {
+      ...active,
+      instrument,
+      code: fields.code,
+      label: fields.label,
+      historicalFromDate: null,
+      viewport: null,
+    };
     set({ tabs: tabs.map((t) => (t.id === active.id ? updated : t)) });
     applyTabToPage(updated);
   },
 
   openSymbolInNewTab: (code, label) => {
     snapshotActiveViewport();
-    const tab: LiveTab = {
-      id: nanoid(8),
-      code,
-      label: label ?? code,
+    const tab = makeTab({
+      instrument: stockInstrument(code, label ?? code),
       timeframe: useLivePageStore.getState().candleTimeframe,
       historicalFromDate: null,
       viewport: null,
-    };
+    });
     set({ tabs: [...get().tabs, tab], activeTabId: tab.id });
     applyTabToPage(tab);
   },
@@ -237,14 +286,12 @@ export const useLiveTabsStore = create<TabsStore>((set, get) => ({
     // 나가는 탭의 viewport를 새 탭 추가 전에 스냅샷(ADR-0069 A안), 그 후 tabs를 FRESH로 읽어
     // 스냅샷 쓰기가 stale spread에 덮이지 않게 한다.
     snapshotActiveViewport();
-    const tab: LiveTab = {
-      id: nanoid(8),
-      code: '',
-      label: '새 탭',
+    const tab = makeTab({
+      instrument: null,
       timeframe: useLivePageStore.getState().candleTimeframe,
       historicalFromDate: null,
       viewport: null,
-    };
+    });
     set({ tabs: [...get().tabs, tab], activeTabId: tab.id });
     applyTabToPage(tab); // code='' → activeCode 비움 → 빈 상태(종목 검색 안내)
   },
