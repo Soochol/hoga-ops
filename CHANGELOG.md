@@ -3,6 +3,13 @@
 All notable changes to this project are documented here.
 The format follows a 4-digit `MAJOR.MINOR.PATCH.MICRO` scheme.
 
+## [0.9.0.1] - 2026-06-22
+
+### Changed
+- **스크리너 정렬 버튼 단일화**: `/screener`와 우측 스크리너 결과 정렬을 관심종목 그룹처럼
+  한 자리의 아이콘 버튼으로 바꾸고, 클릭할 때마다 기본 순서·등락률 낮은 순·등락률 높은 순을
+  순환하게 했다.
+
 ## [0.9.0.0] - 2026-06-22
 
 ### Added
