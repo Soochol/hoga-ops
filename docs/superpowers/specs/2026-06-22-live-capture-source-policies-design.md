@@ -239,8 +239,34 @@ Separate write policy from read policy in the UI:
 - KIS API 우선
 ```
 
-The watchlist edit modal remains the place for group-level REST enablement,
-because the setting is tied to watchlist groups rather than chart rendering.
+The `/live` settings modal owns the two global policy controls:
+
+- **데이터 저장 방식**: a radio group or segmented control for `WS만 저장`,
+  `WS 우선 + 나머지 REST 저장`, and `REST만 저장`.
+- **데이터 표현 기준**: the existing source preference control, renamed from
+  "기본 데이터 소스" to "데이터 표현 기준" and expanded to include
+  `hogaplay 우선`, `KIS WS 우선`, and `KIS API 우선`.
+
+The watchlist edit modal owns group-level REST enablement because the setting is
+tied to watchlist groups rather than chart rendering. The left group list should
+show a compact toggle per folder:
+
+- Toggle ON means the folder contributes candidates to KIS API 30s recording.
+- Toggle OFF means the folder contributes no KIS API candidates.
+- If global storage mode is `WS만 저장`, the toggles remain visible but their
+  active effect is disabled; the UI should communicate that REST recording is
+  off globally.
+- If global storage mode is `WS 우선 + 나머지 REST 저장`, enabled groups record
+  only members outside the WS live set.
+- If global storage mode is `REST만 저장`, enabled groups record all their
+  members through KIS API and WS is disconnected.
+
+This gives the user two separate UI questions:
+
+```text
+1. 어떻게 저장할까?     -> /live 설정: 데이터 저장 방식
+2. 어느 그룹을 REST 대상으로 삼을까? -> 관심종목 편집: 그룹 토글
+```
 
 ### Status visibility
 
