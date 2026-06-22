@@ -71,7 +71,8 @@ def _migrate(raw: dict) -> dict:
         return {
             "schema_version": 3,
             "folders": [{"id": f["id"], "name": f["name"], "order": f.get("order", i),
-                         "member_codes": list(f.get("member_codes", []))}
+                         "member_codes": list(f.get("member_codes", [])),
+                         "capture_enabled": bool(f.get("capture_enabled", True))}
                         for i, f in enumerate(raw.get("folders", []))],
             "entries": [_slim(e) for e in raw.get("entries", [])],
         }
@@ -94,12 +95,13 @@ def _migrate(raw: dict) -> dict:
         return [e["code"] for e in sorted(by_fid.get(fid, []), key=lambda r: r["order"])]
 
     folders_v3 = [{"id": f["id"], "name": f["name"], "order": f.get("order", i),
-                   "member_codes": codes_in(f["id"])}
+                   "member_codes": codes_in(f["id"]), "capture_enabled": True}
                   for i, f in enumerate(folders_v2)]
     nulls = codes_in(None)
     if nulls:
         folders_v3.append({"id": _DEFAULT_FOLDER_ID, "name": _DEFAULT_FOLDER_NAME,
-                           "order": len(folders_v3), "member_codes": nulls})
+                           "order": len(folders_v3), "member_codes": nulls,
+                           "capture_enabled": True})
     return {"schema_version": 3, "folders": folders_v3,
             "entries": [_slim(e) for e in v2_entries]}
 
@@ -344,7 +346,8 @@ async def create_folder(data_dir: Path, *, name: str) -> WatchlistFolder:
     async with _lock:
         doc = load_document(data_dir)
         folder = WatchlistFolder(id=_mint_folder_id(), name=name.strip(),
-                                 order=len(doc.folders))
+                                 order=len(doc.folders), member_codes=[],
+                                 capture_enabled=False)
         save_document(data_dir, doc.model_copy(update={"folders": [*doc.folders, folder]}))
         return folder
 
@@ -360,10 +363,28 @@ async def rename_folder(data_dir: Path, *, folder_id: str, name: str) -> None:
         # an over-length name (>max_length=40 after strip) would otherwise be
         # persisted unchecked and then trip model_validate on the NEXT load —
         # quarantining the whole watchlist (ADR-0065: irreplaceable user data).
-        new = [WatchlistFolder(id=f.id, name=name.strip(), order=f.order)
+        new = [WatchlistFolder(id=f.id, name=name.strip(), order=f.order,
+                               member_codes=f.member_codes, capture_enabled=f.capture_enabled)
                if f.id == folder_id else f
                for f in doc.folders]
         save_document(data_dir, doc.model_copy(update={"folders": new}))
+
+
+async def set_folder_capture_enabled(
+    data_dir: Path,
+    *,
+    folder_id: str,
+    capture_enabled: bool,
+) -> WatchlistFolder:
+    async with _lock:
+        doc = load_document(data_dir)
+        folder = next((f for f in doc.folders if f.id == folder_id), None)
+        if folder is None:
+            raise FolderNotFoundError(folder_id)
+        updated = folder.model_copy(update={"capture_enabled": capture_enabled})
+        folders = [updated if f.id == folder_id else f for f in doc.folders]
+        save_document(data_dir, doc.model_copy(update={"folders": folders}))
+        return updated
 
 
 async def delete_folder(data_dir: Path, *, folder_id: str) -> None:

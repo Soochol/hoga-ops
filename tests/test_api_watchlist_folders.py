@@ -26,6 +26,14 @@ def test_folder_model_fields():
     assert f.member_codes == []
 
 
+def test_watchlist_folder_defaults_capture_enabled_true_for_direct_model() -> None:
+    from hoga.api.models import WatchlistFolder
+
+    folder = WatchlistFolder(id="f_0000000a", name="스윙", order=0)
+
+    assert folder.capture_enabled is True
+
+
 def test_migrate_v1_to_v3_default_folder(tmp_path):
     """v1 (folder-less) → v3: unfiled Codes preserved into a '기본' folder."""
     from hoga.api.watchlist import load_document
@@ -56,6 +64,30 @@ def test_migrate_is_idempotent(tmp_path):
     assert reloaded.schema_version == 3
     assert reloaded.folders[0].id == "f_0000000a"
     assert reloaded.folders[0].member_codes == ["005930"]
+
+
+def test_migrate_existing_v3_folder_without_capture_enabled_defaults_true(tmp_path):
+    from hoga.api.watchlist import load_document
+
+    (tmp_path / "watchlist.json").write_text(json.dumps({
+        "schema_version": 3,
+        "folders": [{
+            "id": "f_0000000a",
+            "name": "스윙",
+            "order": 0,
+            "member_codes": ["005930"],
+        }],
+        "entries": [{
+            "code": "005930",
+            "name": "삼성전자",
+            "registered_at_kst_date": "20260101",
+            "last_success_date": None,
+        }],
+    }), encoding="utf-8")
+
+    doc = load_document(tmp_path)
+
+    assert doc.folders[0].capture_enabled is True
 
 
 def test_bump_last_success_preserves_folders(tmp_path):
@@ -110,6 +142,29 @@ def test_create_folder_mints_id_and_appends(tmp_path):
     f2 = asyncio.run(create_folder(tmp_path, name="장기투자"))
     assert f2.order == 1
     assert [x.id for x in load_document(tmp_path).folders] == [f.id, f2.id]
+
+
+def test_new_folder_defaults_capture_disabled(tmp_path):
+    from hoga.api.watchlist import create_folder, load_document
+
+    folder = asyncio.run(create_folder(tmp_path, name="신규"))
+
+    assert folder.capture_enabled is False
+    assert load_document(tmp_path).folders[0].capture_enabled is False
+
+
+def test_set_folder_capture_enabled_persists(tmp_path):
+    from hoga.api.watchlist import create_folder, load_document, set_folder_capture_enabled
+
+    folder = asyncio.run(create_folder(tmp_path, name="스윙"))
+    updated = asyncio.run(set_folder_capture_enabled(
+        tmp_path,
+        folder_id=folder.id,
+        capture_enabled=True,
+    ))
+
+    assert updated.capture_enabled is True
+    assert load_document(tmp_path).folders[0].capture_enabled is True
 
 
 def test_rename_folder_keeps_id(tmp_path):

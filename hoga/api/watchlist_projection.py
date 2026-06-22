@@ -48,9 +48,42 @@ def display_ordered_codes(doc: WatchlistDocument) -> list[str]:
 def project_folder_views(doc: WatchlistDocument) -> list[WatchlistFolderView]:
     """Wire folder rows in display order."""
     return [
-        WatchlistFolderView(id=folder.id, name=folder.name, order=folder.order)
+        WatchlistFolderView(
+            id=folder.id,
+            name=folder.name,
+            order=folder.order,
+            capture_enabled=folder.capture_enabled,
+        )
         for folder in ordered_folders(doc)
     ]
+
+
+def capture_ordered_codes(
+    doc: WatchlistDocument,
+    *,
+    known_codes: set[str] | None = None,
+) -> list[str]:
+    by_code = {e.code for e in doc.entries}
+    seen: set[str] = set()
+    out: list[str] = []
+    for folder in ordered_folders(doc):
+        if not folder.capture_enabled:
+            continue
+        for code in folder.member_codes:
+            if code in seen:
+                continue
+            if code not in by_code:
+                log.warning(
+                    "watchlist.drift: member %s in folder %s has no entry (skipped)",
+                    code,
+                    folder.id,
+                )
+                continue
+            if known_codes is not None and code not in known_codes:
+                continue
+            seen.add(code)
+            out.append(code)
+    return out
 
 
 def project_entry_views(doc: WatchlistDocument) -> list[WatchlistEntryView]:
