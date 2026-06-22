@@ -114,6 +114,14 @@ describe('paneSpecsForTimeframe — 호가 토글', () => {
     const n = names('D', { foreignNet: false, institutionNet: false, forceHogaPanes: true });
     expect(n).toEqual(['candle', 'volume', 'quote-totals', 'ratio', 'fill-strength']);
   });
+  it('hogaPanes=false removes hoga panes even on minute timeframes', () => {
+    const n = names('1m', { foreignNet: false, institutionNet: false, hogaPanes: false });
+    expect(n).toEqual(['candle', 'volume']);
+  });
+  it('hogaPanes=false overrides forceHogaPanes for index instruments', () => {
+    const n = names('D', { foreignNet: false, institutionNet: false, hogaPanes: false, forceHogaPanes: true });
+    expect(n).toEqual(['candle', 'volume']);
+  });
   it('동일 토글 2회 호출 → 동일 배열 참조(참조 안정)', () => {
     const t = { foreignNet: false, institutionNet: false, ratioEnabled: false };
     expect(paneSpecsForTimeframe('1m', t)).toBe(paneSpecsForTimeframe('1m', t));

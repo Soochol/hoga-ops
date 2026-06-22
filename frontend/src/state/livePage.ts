@@ -10,6 +10,12 @@ import {
   type LiveMAConfig,
   type PersistedIndicators,
 } from './liveIndicatorsPersistence';
+import {
+  instrumentToActiveCode,
+  isLiveInstrument,
+  stockInstrument,
+  type LiveInstrument,
+} from '../live/liveInstrument';
 export type { MASource };
 
 // Re-export so existing imports from `./livePage` keep working — single
@@ -79,6 +85,7 @@ const STORAGE_KEY = 'live.page.v1';
 const INDICATORS_STORAGE_KEY = 'live.indicators.v1';
 
 type Persisted = {
+  activeInstrument: LiveInstrument | null;
   activeCode: string | null;
   candleTimeframe: LiveTimeframe;
   /** Earliest stock-date the user has scrolled into (YYYYMMDD). null = today
@@ -97,6 +104,7 @@ type Persisted = {
  *  get wrong (setActiveCode/setCandleTimeframe each reset historicalFromDate; an
  *  atomic write has nothing to reset-then-restore). */
 export type ActiveViewProjection = {
+  instrument?: LiveInstrument | null;
   code: string | null;
   timeframe: LiveTimeframe;
   historicalFromDate: string | null;
@@ -134,6 +142,7 @@ type Store = Persisted & PersistedIndicators & {
 };
 
 const DEFAULTS: Persisted = {
+  activeInstrument: null,
   activeCode: null,
   candleTimeframe: '1m',
   historicalFromDate: null,
@@ -152,6 +161,11 @@ function readStorage(): Partial<Persisted> {
     const raw = localStorage.getItem(STORAGE_KEY);
     if (!raw) return {};
     const parsed = JSON.parse(raw) as Partial<Persisted>;
+    if (!isLiveInstrument(parsed.activeInstrument)) {
+      parsed.activeInstrument = typeof parsed.activeCode === 'string' && parsed.activeCode
+        ? stockInstrument(parsed.activeCode)
+        : null;
+    }
     return parsed ?? {};
   } catch {
     return {};
@@ -420,18 +434,29 @@ export const useLivePageStore = create<Store>((set, get) => ({
     persistIndicators(snapshotIndicators(get));
   },
 
-  projectActiveView: ({ code, timeframe, historicalFromDate }) => {
+  projectActiveView: ({ instrument, code, timeframe, historicalFromDate }) => {
     // One atomic write — no reset-then-restore. tf is clamped like setCandleTimeframe
     // (belt-and-suspenders; tabs already carry validated timeframes).
     const tf = LIVE_TIMEFRAMES.includes(timeframe) ? timeframe : get().candleTimeframe;
-    const next = { activeCode: code, candleTimeframe: tf, historicalFromDate };
+    const nextInstrument = instrument === undefined
+      ? (code ? stockInstrument(code) : null)
+      : instrument;
+    const next = {
+      activeInstrument: nextInstrument,
+      activeCode: instrument === undefined
+        ? code
+        : (instrument === null && code === '' ? '' : instrumentToActiveCode(nextInstrument)),
+      candleTimeframe: tf,
+      historicalFromDate,
+    };
     set(next);
     persist({ ...get(), ...next });
   },
 
   setActiveCode: (code) => {
-    set({ activeCode: code, historicalFromDate: null });
-    persist({ ...get(), activeCode: code, historicalFromDate: null });
+    const activeInstrument = code ? stockInstrument(code) : null;
+    set({ activeInstrument, activeCode: code, historicalFromDate: null });
+    persist({ ...get(), activeInstrument, activeCode: code, historicalFromDate: null });
   },
 
   setCandleTimeframe: (tf) => {

@@ -3,6 +3,7 @@ import { render, screen, fireEvent, cleanup } from '@testing-library/react';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { LiveSymbolSearch } from './LiveSymbolSearch';
 import { useLivePageStore } from '../state/livePage';
+import { useLiveTabsStore } from '../state/liveTabs';
 import type { SymbolHit } from '../api/types';
 
 const HIT: SymbolHit = {
@@ -16,6 +17,15 @@ const HIT: SymbolHit = {
 // This is what lets the empty-Enter guard test below catch the regression.
 vi.mock('../capture/useSymbols', () => ({
   useSymbolSearch: () => [HIT],
+}));
+
+vi.mock('../api/liveIndices', () => ({
+  useLiveIndices: () => ({
+    data: [
+      { kind: 'index', id: 'KOSPI', label: 'KOSPI', investorScope: 'market' },
+      { kind: 'index', id: 'KOSPI200', label: 'KOSPI 200', investorScope: 'none' },
+    ],
+  }),
 }));
 
 function renderSearch() {
@@ -32,6 +42,7 @@ describe('LiveSymbolSearch', () => {
   beforeEach(() => {
     cleanup();
     useLivePageStore.setState({ activeCode: null });
+    useLiveTabsStore.setState({ tabs: [], activeTabId: null });
   });
 
   it('focuses the input when "/" is pressed', () => {
@@ -49,6 +60,32 @@ describe('LiveSymbolSearch', () => {
     fireEvent.change(input, { target: { value: '삼성' } });
     fireEvent.click(screen.getByText('삼성전자'));
     expect(useLivePageStore.getState().activeCode).toBe('005930');
+  });
+
+  it('selecting an index result opens an index instrument tab', () => {
+    renderSearch();
+    const input = screen.getByRole('combobox');
+    fireEvent.focus(input);
+    fireEvent.change(input, { target: { value: 'kospi' } });
+    fireEvent.click(screen.getAllByRole('option')[0]);
+    const active = useLiveTabsStore.getState().tabs[0];
+    expect(active.instrument).toEqual({ kind: 'index', id: 'KOSPI', label: 'KOSPI' });
+    expect(useLivePageStore.getState().activeInstrument).toEqual({
+      kind: 'index',
+      id: 'KOSPI',
+      label: 'KOSPI',
+    });
+    expect(useLivePageStore.getState().activeCode).toBeNull();
+  });
+
+  it('renders index rows with a 지수 badge and without a watchlist heart', () => {
+    renderSearch();
+    const input = screen.getByRole('combobox');
+    fireEvent.focus(input);
+    fireEvent.change(input, { target: { value: 'kospi' } });
+    expect(screen.getAllByText('지수')).toHaveLength(2);
+    expect(screen.getByText('삼성전자')).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: '관심 그룹 편집' })).toBeInTheDocument();
   });
 
   it('clicking a result row heart opens the group picker (v3)', () => {

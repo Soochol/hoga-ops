@@ -81,6 +81,9 @@ interface Props {
   todayAllPriceBidPeak?: BidPeak | null;
   /** 오늘(KST YYYYMMDD) — 오늘 세그먼트만 라이브 엣지까지 연장. */
   todayKst?: string;
+  paneTogglesOverride?: {
+    hogaPanes?: boolean;
+  };
   /** LivePage save flows keep this callback and invoke it at save time. */
   onViewportCaptureReady?: (capture: () => TabViewport | null) => void;
 }
@@ -106,6 +109,7 @@ export function LiveWorkarea({
   dayBidPeaks = EMPTY_BID_PEAKS,
   todayAllPriceBidPeak = null,
   todayKst = '',
+  paneTogglesOverride,
   onViewportCaptureReady,
 }: Props) {
   const timeframe = useLivePageStore((s) => s.candleTimeframe);
@@ -170,6 +174,7 @@ export function LiveWorkarea({
               dayBidPeaks={dayBidPeaks}
               todayAllPriceBidPeak={todayAllPriceBidPeak}
               todayKst={todayKst}
+              paneTogglesOverride={paneTogglesOverride}
               onViewportCaptureReady={onViewportCaptureReady}
             />
           </div>

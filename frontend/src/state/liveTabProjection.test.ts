@@ -4,12 +4,14 @@ import {
   mirrorPageViewToActiveTab,
   projectTabToActiveView,
 } from './liveTabProjection';
+import { stockInstrument } from '../live/liveInstrument';
 
 const viewport = { rightEdgeMs: 1_700_000_000_000, barSpan: 120, atLiveEdge: false };
 
 function tab(overrides: Partial<LiveTab> = {}): LiveTab {
   return {
     id: 'tab-a',
+    instrument: stockInstrument('005930', '삼성전자'),
     code: '005930',
     label: '삼성전자',
     timeframe: '1m',
@@ -22,6 +24,7 @@ function tab(overrides: Partial<LiveTab> = {}): LiveTab {
 describe('live tab projection policy', () => {
   it('projects a tab into the active page view atomically', () => {
     expect(projectTabToActiveView(tab({ timeframe: 'D', historicalFromDate: '2026-01-02' }), '1m')).toEqual({
+      instrument: { kind: 'stock', code: '005930', label: '삼성전자' },
       code: '005930',
       timeframe: 'D',
       historicalFromDate: '2026-01-02',
@@ -30,6 +33,7 @@ describe('live tab projection policy', () => {
 
   it('projects a null tab by clearing the code and preserving the current page timeframe', () => {
     expect(projectTabToActiveView(null, 'D')).toEqual({
+      instrument: null,
       code: null,
       timeframe: 'D',
       historicalFromDate: null,
