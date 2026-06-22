@@ -8,6 +8,8 @@ import { useLivePageStore } from '../state/livePage';
 import { useLiveTabsStore } from '../state/liveTabs';
 import { useLiveVenueStore } from '../state/liveVenue';
 import * as liveStatus from '../api/liveStatus';
+import { initialHistoricalDaysFor, subtractDaysKst, todayKstYyyymmdd } from './liveDateTime';
+import type { LiveTimeframe } from '../state/livePage';
 
 const livePageMocks = vi.hoisted(() => {
   const liveOb = [{
@@ -29,6 +31,7 @@ const livePageMocks = vi.hoisted(() => {
       timeframe?: string;
       viewIdentity?: string;
       chartBundle?: RangeBundle | null;
+      isExtending?: boolean;
       paneTogglesOverride?: { hogaPanes?: boolean };
     }>,
     liveBundleCalls: [] as Array<{ code: unknown; timeframe: unknown; options: { venue?: string } }>,
@@ -40,6 +43,7 @@ const livePageMocks = vi.hoisted(() => {
     indexCandlesResult: {
       data: undefined as unknown,
       isLoading: false,
+      isFetching: false,
     },
     indexInvestorNetCalls: [] as unknown[],
     indexInvestorNetResult: {
@@ -224,6 +228,7 @@ describe('LivePage shell', () => {
     livePageMocks.indexCandlesCalls.length = 0;
     livePageMocks.indexCandlesResult.data = undefined;
     livePageMocks.indexCandlesResult.isLoading = false;
+    livePageMocks.indexCandlesResult.isFetching = false;
     livePageMocks.indexInvestorNetCalls.length = 0;
     livePageMocks.indexInvestorNetResult.data = undefined;
     livePageMocks.indexInvestorNetResult.isLoading = false;
@@ -357,6 +362,61 @@ describe('LivePage shell', () => {
     expect(livePageMocks.liveChartRootProps.at(-1)?.chartBundle?.candles[0].close).toBe(2851.67);
     expect(livePageMocks.liveChartRootProps.at(-1)?.chartBundle?.quote_ratio.points).toEqual([]);
     expect(livePageMocks.liveChartRootProps.at(-1)?.paneTogglesOverride?.hogaPanes).toBe(false);
+  });
+
+  it.each(['1m', 'D', 'W', 'M'] as const)(
+    'fetches index %s candles from the same initial history window as stock charts',
+    async (timeframe: LiveTimeframe) => {
+      useLivePageStore.setState({ candleTimeframe: timeframe });
+
+      renderWithRouter('/live?index=KOSPI');
+
+      await waitFor(() => {
+        expect(livePageMocks.indexCandlesCalls.some((args) => {
+          const call = args as unknown[];
+          return call[0] === 'KOSPI' && call[1] === timeframe;
+        })).toBe(true);
+      });
+      const call = (livePageMocks.indexCandlesCalls as unknown[][]).find((args) =>
+        args[0] === 'KOSPI' && args[1] === timeframe,
+      );
+      expect(call?.[2]).toBe(subtractDaysKst(todayKstYyyymmdd(), initialHistoricalDaysFor(timeframe)));
+    },
+  );
+
+  it('marks index charts as extending while a historical index fetch is in flight', async () => {
+    livePageMocks.indexCandlesResult.data = {
+      index_id: 'KOSPI',
+      from: '20260601',
+      to: '20260619',
+      timeframe: 'W',
+      candles: [
+        {
+          t_ms: 1_781_830_800_000,
+          open: 2840.12,
+          high: 2861.34,
+          low: 2833.2,
+          close: 2855.67,
+          volume: 450000000,
+        },
+      ],
+      data_warnings: [],
+    };
+    livePageMocks.indexCandlesResult.isFetching = true;
+    useLivePageStore.setState({
+      candleTimeframe: 'W',
+    });
+
+    renderWithRouter('/live?index=KOSPI');
+    act(() => {
+      useLivePageStore.getState().extendHistoricalRange('20200101');
+    });
+
+    await waitFor(() => expect(livePageMocks.liveChartRootProps.at(-1)).toMatchObject({
+      code: 'index:KOSPI',
+      timeframe: 'W',
+      isExtending: true,
+    }));
   });
 
   it('hydrates KOSPI daily index charts with market investor net points', async () => {

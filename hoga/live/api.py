@@ -17,6 +17,7 @@ from fastapi import APIRouter, HTTPException, Query
 from pydantic import BaseModel, ValidationError
 
 from hoga.api._atomic_write import atomic_write_json
+from hoga.api.models import LiveSettingsResponse, LiveSettingsUpdate
 from hoga.api.params import CODE_PATTERN
 from hoga.live.kis_client import (
     KisApiError,
@@ -38,13 +39,23 @@ from hoga.live.index_registry import (
     get_representative_index,
     list_representative_indices,
 )
+from hoga.live.index_candles_cache import (
+    IndexCandlesCache,
+    collect_index_candles_with_cache,
+)
+from hoga.live.index_cold_fetch import fetch_index_daily_candles_windowed
+from hoga.live.index_minute_candles_cache import (
+    IndexMinuteCandlesCache,
+    collect_index_minute_candles_with_cache,
+)
 from hoga.live.past_candles_cache import PastCandlesCache
 from hoga.live.past_daily_candles_cache import PastDailyCandlesCache
 
 from . import kis_access
 from .buffer import LiveBuffer
-from .lifecycle import LiveStatus
 from .index_sector_rankings import IndexSectorRankingResponse, build_index_sector_rankings
+from .lifecycle import LiveStatus, refresh_live_stream
+from .settings import load_live_settings, update_live_settings
 
 if TYPE_CHECKING:
     from .kis_client import KisClient
@@ -66,6 +77,8 @@ _PAST_CANDLES_CONCURRENCY = 5
 _CODE_RE = re.compile(CODE_PATTERN)
 _KST = timezone(timedelta(hours=9))
 _INVESTOR_ESTIMATE_MAX_CODES_PER_DAY = 256
+index_candles_cache_instance: IndexCandlesCache | None = None
+index_minute_candles_cache_instance: IndexMinuteCandlesCache | None = None
 
 # Rate-limit retry policy lives in ``KisClient._get`` (ADR-0050). Handlers
 # here just call ``kis.fetch_*`` directly; a ``KisRateLimitError`` that
@@ -999,6 +1012,23 @@ def build_router(
     async def _get_status() -> LiveStatus:
         return get_status()
 
+    @router.get("/settings", response_model=LiveSettingsResponse)
+    async def _get_settings() -> LiveSettingsResponse:
+        if data_dir is None:
+            raise HTTPException(503, "live settings not wired")
+        return load_live_settings(data_dir)
+
+    @router.patch("/settings", response_model=LiveSettingsResponse)
+    async def _patch_settings(req: LiveSettingsUpdate) -> LiveSettingsResponse:
+        if data_dir is None:
+            raise HTTPException(503, "live settings not wired")
+        settings = update_live_settings(data_dir, storage_policy=req.storage_policy)
+        try:
+            await refresh_live_stream(data_dir=data_dir)
+        except Exception:
+            log.exception("live.settings: refresh_live_stream failed")
+        return settings
+
     @router.get("/indices", response_model=LiveIndicesResponse)
     async def _get_indices() -> LiveIndicesResponse:
         return LiveIndicesResponse(
@@ -1026,12 +1056,32 @@ def build_router(
         if kis is None:
             raise HTTPException(503, "KIS client not initialized")
         if timeframe in {"D", "W", "M"}:
-            result = await kis.fetch_index_daily_candles(
-                index,
+            if index_candles_cache_instance is None:
+                raise HTTPException(503, "index-candles cache not wired (data_dir missing)")
+
+            async def fetch_batch(from_s: str, to_s: str):
+                async def direct_fetch(inner_from_s: str, inner_to_s: str):
+                    return await kis.fetch_index_daily_candles(
+                        index,
+                        inner_from_s,
+                        inner_to_s,
+                        period=timeframe,
+                        foreground=True,
+                    )
+
+                return await fetch_index_daily_candles_windowed(
+                    from_s,
+                    to_s,
+                    timeframe,
+                    direct_fetch,
+                )
+
+            result = await collect_index_candles_with_cache(
+                index_candles_cache_instance,
+                (index.id, timeframe),
                 from_,
                 to,
-                period=timeframe,
-                foreground=True,
+                fetch_batch,
             )
         else:
             bucket_seconds = {
@@ -1042,12 +1092,24 @@ def build_router(
                 "15m": 900,
                 "30m": 1800,
             }[timeframe]
-            result = await kis.fetch_index_minute_candles(
-                index,
+            if index_minute_candles_cache_instance is None:
+                raise HTTPException(503, "index-minute-candles cache not wired (data_dir missing)")
+
+            async def fetch_batch(from_s: str, to_s: str):
+                return await kis.fetch_index_minute_candles(
+                    index,
+                    from_s,
+                    to_s,
+                    bucket_seconds=bucket_seconds,
+                    foreground=True,
+                )
+
+            result = await collect_index_minute_candles_with_cache(
+                index_minute_candles_cache_instance,
+                (index.id, timeframe, bucket_seconds),
                 from_,
                 to,
-                bucket_seconds=bucket_seconds,
-                foreground=True,
+                fetch_batch,
             )
         batch_label = f"{from_}__{to}"
         return {
@@ -1242,6 +1304,12 @@ def build_router(
     daily_cache_instance: PastDailyCandlesCache | None = (
         PastDailyCandlesCache() if data_dir is not None else None
     )
+    global index_candles_cache_instance
+    if data_dir is not None and index_candles_cache_instance is None:
+        index_candles_cache_instance = IndexCandlesCache()
+    global index_minute_candles_cache_instance
+    if data_dir is not None and index_minute_candles_cache_instance is None:
+        index_minute_candles_cache_instance = IndexMinuteCandlesCache()
     # Investor net-buy reuses the daily candle cache (ADR-0055): same date-cursor
     # walk-back + batch/gap memory cache shape, just storing point dicts.
     investor_cache_instance: PastDailyCandlesCache | None = (

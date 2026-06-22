@@ -62,7 +62,7 @@ export type OrderbookSnapshot = {
 
 /** Source name for ADR-0039 source_pref thread-through. Mirrors
  *  hoga/api/sources.py::SourceName. */
-export type SourceName = 'hogaplay' | 'kis_live';
+export type SourceName = 'hogaplay' | 'kis_live' | 'kis_api';
 
 /** GET /api/orderbook response envelope. */
 export type OrderbookResponse = {
@@ -402,7 +402,7 @@ export type RangeSegment = {
   date: string;            // YYYYMMDD KST
   session_open_ms: number; // Unix ms
   session_close_ms: number;
-  source?: 'hogaplay' | 'kis_live';  // ADR-0037, ADR-0039; absent in legacy responses
+  source?: SourceName;     // ADR-0037, ADR-0039; absent in legacy responses
 };
 
 export type Timeframe = '1m' | '3m' | '5m' | '10m' | '15m' | '30m';

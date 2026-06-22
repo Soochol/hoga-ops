@@ -23,9 +23,12 @@ from pathlib import Path
 from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
+    from .rest30_recorder import Rest30sRecorder
     from .rest_poller import LiveRestPoller
 
 from pydantic import BaseModel, Field
+
+from hoga.api.models import LiveStoragePolicy
 
 from . import account_health, kis_access, kis_runtime  # health probe / role 라우팅 / 리소스
 from .buffer import LiveBuffer
@@ -42,7 +45,9 @@ from .live_session import (  # noqa: F401 — C3 재export(호출부·테스트 
     live_set_codes,
     partition_live_set,
 )
-from .promote import promote_today
+from .promote import promote_api_today, promote_today
+from .settings import load_live_settings
+from .storage_runtime import stop_storage_runtime, sync_storage_runtime
 
 _log = logging.getLogger(__name__)
 
@@ -79,6 +84,14 @@ class LiveStatus(BaseModel):
     # 캡처 헬스(spec 2026-06-08 §2.2) — cycle_lag_ms를 대체하는 정직한 신호.
     capture_healthy: bool = True
     capture_reason: str = "offline"
+    storage_policy: LiveStoragePolicy = "ws_plus_rest"
+    kis_api_running: bool = False
+    kis_api_targets: list[str] = Field(default_factory=list)
+    kis_api_target_count: int = 0
+    kis_api_last_cycle_ms: int | None = None
+    kis_api_last_error: str | None = None
+    kis_api_last_error_count: int = 0
+    kis_api_degraded: bool = False
 
 
 # ── State ──────────────────────────────────────────────────────────────────────
@@ -98,6 +111,8 @@ class _State:
         streams: dict[int, _StreamConn] | None = None,
         live_set: tuple[str, ...] = (),
         rest_poller: LiveRestPoller | None = None,
+        rest30_recorder: Rest30sRecorder | None = None,
+        storage_policy: LiveStoragePolicy = "ws_plus_rest",
         session: LiveSession | None = None,
     ) -> None:
         if session is None:
@@ -110,6 +125,8 @@ class _State:
                 session.streams = streams
         self.session = session
         self.rest_poller = rest_poller
+        self.rest30_recorder = rest30_recorder
+        self.storage_policy = storage_policy
 
     # 위임 property — 기존 `_state.X` 접근 호환(streams dict의 in-place 변이도 그대로 통과).
     @property
@@ -170,6 +187,14 @@ def get_active_codes() -> list[str]:
     no caching, no stale closure.
     """
     return list(_state.watchlist_codes)
+
+
+def get_api_codes() -> list[str]:
+    """Return currently configured persisted KIS REST 30s capture targets."""
+    recorder = _state.rest30_recorder
+    if recorder is None:
+        return []
+    return list(recorder.status().targets)
 
 
 def get_buffer() -> LiveBuffer:
@@ -327,13 +352,22 @@ def get_status() -> LiveStatus:
     session.status_fields가 단일 계산(account_health WS-probe와 공유, dedup). poller.alive OR-항·
     idle/offline·today-promote 합성은 여기 전용. market_closed는 lifecycle이 계산해 전달."""
     poller = _state.rest_poller
+    rest30_status = (
+        _state.rest30_recorder.status()
+        if _state.rest30_recorder is not None
+        else None
+    )
     now_ms = _now_ms()
     sf = _state.session.status_fields(
         now_ms=now_ms,
         market_closed=_market_clock_closed_for_capture(now_ms),
         stale_after_ms=_WATCHDOG_STALE_AFTER_MS,
     )
-    running = sf["streams_running"] or (poller is not None and poller.alive)
+    running = (
+        sf["streams_running"]
+        or (poller is not None and poller.alive)
+        or bool(rest30_status and rest30_status.running)
+    )
 
     # 캡처 헬스 — 존재 conn 기준(Q11). capture=None(conn 0, C4 poller-only)이면 running과
     # 결합해 idle/offline 판정(streams 있을 때의 셋은 session이 계산).
@@ -360,6 +394,14 @@ def get_status() -> LiveStatus:
         degraded_accounts=degraded,
         capture_healthy=cap_healthy,
         capture_reason=cap_reason,
+        storage_policy=_state.storage_policy,
+        kis_api_running=bool(rest30_status and rest30_status.running),
+        kis_api_targets=list(rest30_status.targets) if rest30_status else [],
+        kis_api_target_count=rest30_status.target_count if rest30_status else 0,
+        kis_api_last_cycle_ms=rest30_status.last_cycle_ms if rest30_status else None,
+        kis_api_last_error=rest30_status.last_error if rest30_status else None,
+        kis_api_last_error_count=rest30_status.last_error_count if rest30_status else 0,
+        kis_api_degraded=rest30_status.degraded if rest30_status else False,
     )
 
 
@@ -370,6 +412,10 @@ def reset_for_tests() -> None:
         for task in (conn.ws_task, conn.flush_task):
             if task is not None and not task.done():
                 task.cancel()
+    recorder = _state.rest30_recorder
+    task = getattr(recorder, "_task", None)
+    if task is not None and not task.done():
+        task.cancel()
     _state = _State()
     _buffer = LiveBuffer()
     kis_runtime.reset_for_tests()
@@ -382,6 +428,7 @@ async def start_today_promoter(
     *,
     data_dir: Path,
     get_active_codes: Callable[[], list[str]],
+    get_api_capture_codes: Callable[[], list[str]] | None = None,
     interval_s: float = 300.0,
 ) -> asyncio.Task:
     """Start the ADR-0043 Today Promotion loop.
@@ -400,13 +447,21 @@ async def start_today_promoter(
     async def loop() -> None:
         while True:
             try:
-                codes = get_active_codes()
-                for code in codes:
+                ws_codes = get_active_codes()
+                api_codes = (get_api_capture_codes or get_api_codes)()
+                for code in ws_codes:
                     try:
                         await promote_today(data_dir, code=code)
                     except Exception:
                         log.exception(
                             "live.today_promote.code_failed code=%s", code,
+                        )
+                for code in api_codes:
+                    try:
+                        await promote_api_today(data_dir, code=code)
+                    except Exception:
+                        log.exception(
+                            "live.today_promote.api_code_failed code=%s", code,
                         )
             except Exception:
                 log.exception("live.today_promote.cycle_failed")
@@ -471,12 +526,30 @@ def _sync_exclusion(poller: LiveRestPoller | None, live_set: tuple[str, ...]) ->
         poller.set_excluded_codes(set(live_set))
 
 
+async def _sync_storage_targets(
+    data_dir: Path,
+    *,
+    n_configured: int | None = None,
+) -> tuple[list[str], tuple[str, ...]]:
+    snapshot = await sync_storage_runtime(
+        data_dir,
+        state=_state,
+        buffer=_buffer,
+        date_fn=_today_kst,
+        now_ms_fn=_now_ms,
+        n_configured=n_configured,
+    )
+    return list(snapshot.ws_targets), snapshot.kis_api_targets
+
+
 async def _start_live_stream_locked(*, data_dir: Path) -> bool:
     """start의 본체(락 보유 중). dynamic-N + poller 분리 + C4 (스펙 §5.4).
 
     exclude-then-subscribe 순서를 lifecycle이 봉인(C3 ①): stop → ensure_poller →
     _sync_exclusion → session.start(conn build). poller는 WS 세션 밖이라 lifecycle 소유.
     """
+    _state.storage_policy = load_live_settings(data_dir).storage_policy
+
     # 1. account 0 creds 게이트(완전 오프라인이면 stop만)
     n_configured = len(kis_runtime.configured_account_ids(data_dir))
     if n_configured == 0:
@@ -490,11 +563,19 @@ async def _start_live_stream_locked(*, data_dir: Path) -> bool:
     if poller is None:
         return False  # account 0 creds 사라짐(레이스) — 오프라인
 
-    # 4. Live Set 산출(동적 절단)
-    codes = _compute_live_set(data_dir, n_configured)
+    # 4. Storage policy 적용: WS targets + REST 30s recorder targets 산출.
+    codes, _rest_targets = await _sync_storage_targets(data_dir)
 
     # 5. exclude-then-subscribe: 먼저 배제 동기화, 그 다음 conn build(session.start)
     _sync_exclusion(poller, tuple(codes))
+
+    if _state.storage_policy == "rest_only":
+        _state.rest_poller = poller
+        await _state.session.start(
+            codes=[], n_configured=n_configured, data_dir=data_dir,
+            now_ms=_now_ms(), build_conn=_build_conn,
+        )
+        return True
 
     # 6. 코드 있는 파티션만 conn 생성(session이 dynamic-N 빌드 — 빈 part=연결 없음 → C4)
     await _state.session.start(
@@ -518,6 +599,7 @@ async def _stop_live_stream_locked() -> None:
     global _state  # noqa: PLW0603
     poller = _state.rest_poller
     await _state.session.stop(_teardown_conn)
+    await stop_storage_runtime(_state)
     if poller is not None:
         await poller.stop()
     _state = _State()
@@ -569,7 +651,9 @@ async def refresh_live_stream(*, data_dir: Path) -> None:
             await _start_live_stream_locked(data_dir=data_dir)
             return
 
-        codes = _compute_live_set(data_dir, _state.n_configured)
+        codes, _rest_targets = await _sync_storage_targets(
+            data_dir, n_configured=_state.n_configured,
+        )
 
         # exclude-then-subscribe: build/update 전에 배제 동기화(스펙 §5.5, C3 ①).
         _sync_exclusion(_state.rest_poller, tuple(codes))
@@ -591,6 +675,7 @@ async def _restart_conn(account_id: int, *, data_dir: Path) -> None:
     async with _lifecycle_lock:
         await _state.session.restart(
             account_id, data_dir=data_dir,
+            storage_policy=_state.storage_policy,
             build_conn=_build_conn, teardown_conn=_teardown_conn,
         )
         conn = _state.streams.get(account_id)

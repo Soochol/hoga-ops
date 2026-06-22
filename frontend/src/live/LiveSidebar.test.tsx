@@ -93,6 +93,18 @@ describe('LiveSidebar', () => {
     expect(investorTrendEstimateMock).toHaveBeenCalledWith('005930');
   });
 
+  it('does not call stock-only sidebar hooks with index instruments', () => {
+    renderSidebar({ code: 'index:KOSDAQ' });
+
+    expect(investorTrendEstimateMock).toHaveBeenCalledWith(null);
+    expect(cursorHooks.useLiveOrderbookAtCursor).toHaveBeenCalledWith(
+      expect.objectContaining({ code: null }),
+    );
+    expect(cursorHooks.useLiveBrokersAtCursor).toHaveBeenCalledWith(
+      expect.objectContaining({ code: null }),
+    );
+  });
+
   it('renders investor trend estimate card after brokers card', () => {
     renderSidebar({ code: '005930' });
 

@@ -14,6 +14,7 @@ from hoga.api.models import OrderbookResponse
 def test_orderbook_response_has_source_field() -> None:
     resp = OrderbookResponse(available_from=None, snapshot=None, source="hogaplay")
     assert resp.source == "hogaplay"
+    assert OrderbookResponse(available_from=None, snapshot=None, source="kis_api").source == "kis_api"
     # Type narrowed to SourceName Literal — wrong values rejected by Pydantic
     from pydantic import ValidationError
     with pytest.raises(ValidationError):
@@ -57,6 +58,7 @@ def test_orderbook_source_pref_invalid_returns_422(seed_orderbook):
         "code": "005930", "date": "20260528", "t": 1779930000000, "source_pref": "garbage"
     })
     assert r.status_code == 422
+    assert r.json()["detail"]["code"] == "invalid_source_pref"
 
 
 def test_orderbook_returns_empty_response_when_source_dir_missing(

@@ -49,3 +49,54 @@ export const DISPLAY_PRESENTATION: Record<DisplayStatus, DisplayPresentation> = 
   disconnected: { label: '재연결 중', colorVar: 'var(--warn)',      ariaLabel: '연결 재시도 중' },
   uncollected:  { label: null,       colorVar: 'var(--fg-dimmer)', ariaLabel: '' },
 };
+
+export interface CollectionViewInput {
+  code: string | null;
+  liveSet: string[];
+  watchlistCodes: string[];
+  viewedCodes: string[];
+  kisApiTargets?: string[];
+  captureCandidate?: boolean;
+  liveConnection?: boolean;
+}
+
+export interface CollectionView {
+  collectionStatus: CollectionStatus;
+  displayStatus: DisplayStatus;
+  ariaLabel: string;
+  storageLabel: string;
+}
+
+export function deriveStorageLabel(input: {
+  code: string | null;
+  liveSet: string[];
+  kisApiTargets?: string[];
+  captureCandidate?: boolean;
+}): string {
+  const { code, liveSet, kisApiTargets = [], captureCandidate = true } = input;
+  if (!code || !captureCandidate) return '저장 제외';
+  if (liveSet.includes(code)) return 'KIS WS 저장 중';
+  if (kisApiTargets.includes(code)) return 'KIS API 30초 저장 중';
+  return '대기';
+}
+
+export function deriveCollectionView(input: CollectionViewInput): CollectionView {
+  const collectionStatus = deriveCollectionStatus(
+    input.code,
+    input.liveSet,
+    input.watchlistCodes,
+    input.viewedCodes,
+  );
+  const displayStatus = deriveDisplayStatus(input.liveConnection ?? true, collectionStatus);
+  return {
+    collectionStatus,
+    displayStatus,
+    ariaLabel: DISPLAY_PRESENTATION[displayStatus].ariaLabel,
+    storageLabel: deriveStorageLabel({
+      code: input.code,
+      liveSet: input.liveSet,
+      kisApiTargets: input.kisApiTargets,
+      captureCandidate: input.captureCandidate,
+    }),
+  };
+}

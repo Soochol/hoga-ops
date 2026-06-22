@@ -1,6 +1,15 @@
 import { useEffect } from 'react';
 import { useRightRailStore } from '../state/rightRail';
 
+export type LiveTimeframeShortcutSlot = 'minute' | 'D' | 'W' | 'M';
+
+const TIMEFRAME_SHORTCUT_KEYS: Record<string, LiveTimeframeShortcutSlot> = {
+  Digit1: 'minute',
+  Digit2: 'D',
+  Digit3: 'W',
+  Digit4: 'M',
+};
+
 /**
  * Keyboard shortcuts for the /live page (Addendum Task 9.y / Design B7).
  *
@@ -19,6 +28,7 @@ export interface UseLiveKeyboardOpts {
   onNextTab?: () => void;
   onPrevTab?: () => void;
   onSelectTabIndex?: (index: number) => void;
+  onSelectTimeframeShortcut?: (slot: LiveTimeframeShortcutSlot) => void;
 }
 
 export function shouldIgnoreEvent(target: EventTarget | null): boolean {
@@ -35,6 +45,14 @@ export function useLiveKeyboard(opts: UseLiveKeyboardOpts = {}): void {
     function onKey(e: KeyboardEvent) {
       if (shouldIgnoreEvent(e.target)) return;
       if (e.metaKey || e.ctrlKey || e.altKey) return;
+      if (e.shiftKey) {
+        const slot = TIMEFRAME_SHORTCUT_KEYS[e.code];
+        if (slot && opts.onSelectTimeframeShortcut) {
+          opts.onSelectTimeframeShortcut(slot);
+          e.preventDefault();
+        }
+        return;
+      }
 
       switch (e.key) {
         case 'j':
@@ -81,5 +99,12 @@ export function useLiveKeyboard(opts: UseLiveKeyboardOpts = {}): void {
     }
     window.addEventListener('keydown', onKey);
     return () => window.removeEventListener('keydown', onKey);
-  }, [opts.onNextCode, opts.onPrevCode, opts.onNextTab, opts.onPrevTab, opts.onSelectTabIndex]);
+  }, [
+    opts.onNextCode,
+    opts.onPrevCode,
+    opts.onNextTab,
+    opts.onPrevTab,
+    opts.onSelectTabIndex,
+    opts.onSelectTimeframeShortcut,
+  ]);
 }

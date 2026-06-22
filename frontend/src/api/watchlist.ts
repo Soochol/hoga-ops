@@ -7,6 +7,7 @@ export interface WatchlistFolder {
   id: string;
   name: string;
   order: number;
+  capture_enabled?: boolean;
 }
 
 export interface WatchlistEntry {
@@ -17,6 +18,7 @@ export interface WatchlistEntry {
   folder_id: string | null;        // watchlist v3 와이어는 항상 실폴더(null 없음, ADR-0070);
                                    // null은 heatmap(v2, 공유 타입)의 미분류용으로만 존재
   order: number;                   // 0-based, 폴더 내 인덱스
+  capture_candidate?: boolean;     // code-level: any capture-enabled watchlist membership
 }
 
 export interface WatchlistResponse {
@@ -59,6 +61,15 @@ export function renameFolder(folderId: string, name: string): Promise<void> {
   return apiAction(`/api/watchlist/folders/${folderId}`, {
     method: 'PATCH', headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ name }),
+  });
+}
+export function setFolderCaptureEnabled(
+  folderId: string,
+  capture_enabled: boolean,
+): Promise<WatchlistFolder> {
+  return apiCall<WatchlistFolder>(`/api/watchlist/folders/${folderId}/capture`, {
+    method: 'PATCH', headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ capture_enabled }),
   });
 }
 export function deleteFolder(folderId: string): Promise<void> {

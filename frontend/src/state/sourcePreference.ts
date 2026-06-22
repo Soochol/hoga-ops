@@ -1,15 +1,18 @@
 import { create } from 'zustand';
+import {
+  SOURCE_PREFERENCE_OPTIONS,
+  type SourcePreference,
+} from '../api/sourceCapabilities';
 
 /**
  * Source Preference (ADR-0039) — global per-user setting that drives the
  * source selection on `/api/range` requests.
  *
- * Default: 'hogaplay' (the higher-resolution capture source). Falls back
- * automatically when the preferred source is missing — see backend
+ * Default: 'hogaplay_first' (the higher-resolution capture source). Falls back
+ * according to display priority when the preferred source is missing — see backend
  * `build_range_bundle(source_pref=...)` and ADR-0039 semantics.
  */
-export const SOURCE_OPTIONS = ['hogaplay', 'kis_live'] as const;
-export type SourcePreference = (typeof SOURCE_OPTIONS)[number];
+export { SOURCE_PREFERENCE_OPTIONS as SOURCE_OPTIONS, type SourcePreference };
 
 const STORAGE_KEY = 'chart.sourcePreference.v1';
 
@@ -24,8 +27,13 @@ function readStorage(): { sourcePreference: SourcePreference } | null {
     const raw = localStorage.getItem(STORAGE_KEY);
     if (!raw) return null;
     const parsed = JSON.parse(raw) as { sourcePreference: string };
-    if (SOURCE_OPTIONS.includes(parsed.sourcePreference as SourcePreference)) {
-      return { sourcePreference: parsed.sourcePreference as SourcePreference };
+    const legacy: Record<string, SourcePreference> = {
+      hogaplay: 'hogaplay_first',
+      kis_live: 'kis_ws_first',
+    };
+    const value = legacy[parsed.sourcePreference] ?? parsed.sourcePreference;
+    if (SOURCE_PREFERENCE_OPTIONS.includes(value as SourcePreference)) {
+      return { sourcePreference: value as SourcePreference };
     }
     return null;
   } catch {
@@ -42,10 +50,10 @@ function persist(state: { sourcePreference: SourcePreference }): void {
 }
 
 export const useSourcePreferenceStore = create<Store>((set, _get) => ({
-  sourcePreference: readStorage()?.sourcePreference ?? 'hogaplay',
+  sourcePreference: readStorage()?.sourcePreference ?? 'hogaplay_first',
 
   setSourcePreference: (value) => {
-    if (!SOURCE_OPTIONS.includes(value)) return;
+    if (!SOURCE_PREFERENCE_OPTIONS.includes(value)) return;
     set({ sourcePreference: value });
     persist({ sourcePreference: value });
   },

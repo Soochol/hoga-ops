@@ -192,7 +192,7 @@ def check_disk_state(data_dir: Path, code: str, date: str) -> Classification:
         # violations, so surface the winning source's Classification directly —
         # no second meta.json read (be-capture-03).
         winning = next(
-            (per_source[src] for src in ("hogaplay", "kis_live")
+            (per_source[src] for src in ("hogaplay", "kis_live", "kis_api")
              if src in per_source and per_source[src].state == aggregated),
             None,
         )

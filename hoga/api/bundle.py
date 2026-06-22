@@ -14,6 +14,7 @@ Why the engine instead of ``(conn, data_dir)``:
 """
 from __future__ import annotations
 
+import json
 from datetime import datetime, timedelta, timezone
 from typing import TYPE_CHECKING
 
@@ -38,7 +39,7 @@ from hoga.api.models import (
     validate_bucket_ms,
 )
 from hoga.api.queries import QueryEngine, StockDateNotFound
-from hoga.api.sources import resolve_source as _resolve_source
+from hoga.api.sources import resolve_source_result
 from hoga.api.timeenc import (
     hhmmssms_to_unix_ms,
     ms_from_midnight_to_unix_ms,
@@ -60,6 +61,11 @@ _KST = timezone(timedelta(hours=9))
 # 1000 ms /replay default, sub-minute callers) bypasses the cache and queries
 # directly — re-aggregation cannot synthesize a finer grain than the cache.
 _ONE_MINUTE_MS = 60_000
+
+
+def _resolve_source(engine: QueryEngine, date: str, code: str, pref: str) -> str:
+    """Backward-compatible source-name helper for older unit tests."""
+    return resolve_source_result(engine, date, code, pref).source
 
 
 def _today_kst_yyyymmdd() -> str:
@@ -659,12 +665,19 @@ def build_range_bundle(
     today_kst = _today_kst_yyyymmdd()
 
     for d in dates:
-        source = _resolve_source(engine, d, code, source_pref)
-        try:
-            meta = engine.get_meta(d, code, source)
-        except (FileNotFoundError, StockDateNotFound):
-            continue
-        c = classify_from_meta(meta)   # state + violations in one pass
+        resolution = resolve_source_result(engine, d, code, source_pref)
+        source = resolution.source
+        if resolution.path is not None:
+            try:
+                meta = json.loads((resolution.path / "meta.json").read_text(encoding="utf-8"))
+            except (FileNotFoundError, ValueError, OSError):
+                continue
+        else:
+            try:
+                meta = engine.get_meta(d, code, source)
+            except (FileNotFoundError, StockDateNotFound):
+                continue
+        c = resolution.classification or classify_from_meta(meta)
 
         if c.state == DiskState.INVALID:
             excluded.append(ExcludedDate(

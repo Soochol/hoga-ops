@@ -21,6 +21,14 @@ export interface LiveStatus {
   kis_rate_limit_remaining: number | null;
   /** Codes the backend is *actively collecting* in the current cycle. Used for collection-status badge visibility. */
   live_set: string[];
+  storage_policy: 'ws_only' | 'ws_plus_rest' | 'rest_only';
+  kis_api_running: boolean;
+  kis_api_targets: string[];
+  kis_api_target_count: number;
+  kis_api_last_cycle_ms: number | null;
+  kis_api_last_error: string | null;
+  kis_api_last_error_count: number;
+  kis_api_degraded: boolean;
 }
 
 /**

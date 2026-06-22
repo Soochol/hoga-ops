@@ -88,6 +88,7 @@ type Persisted = {
   activeInstrument: LiveInstrument | null;
   activeCode: string | null;
   candleTimeframe: LiveTimeframe;
+  lastMinuteTimeframe: MinuteTimeframe;
   /** Earliest stock-date the user has scrolled into (YYYYMMDD). null = today
    * only (no /api/range call needed yet). Resets when activeCode or timeframe
    * changes. */
@@ -145,6 +146,7 @@ const DEFAULTS: Persisted = {
   activeInstrument: null,
   activeCode: null,
   candleTimeframe: '1m',
+  lastMinuteTimeframe: '1m',
   historicalFromDate: null,
 };
 
@@ -156,17 +158,49 @@ function persist(state: Persisted): void {
   }
 }
 
+function isLiveTimeframe(v: unknown): v is LiveTimeframe {
+  return typeof v === 'string' && (LIVE_TIMEFRAMES as readonly string[]).includes(v);
+}
+
+function isMinuteFrameValue(v: unknown): v is MinuteTimeframe {
+  return typeof v === 'string' && (MINUTE_TIMEFRAMES as readonly string[]).includes(v);
+}
+
 function readStorage(): Partial<Persisted> {
   try {
     const raw = localStorage.getItem(STORAGE_KEY);
     if (!raw) return {};
-    const parsed = JSON.parse(raw) as Partial<Persisted>;
-    if (!isLiveInstrument(parsed.activeInstrument)) {
-      parsed.activeInstrument = typeof parsed.activeCode === 'string' && parsed.activeCode
-        ? stockInstrument(parsed.activeCode)
-        : null;
+    const parsed = JSON.parse(raw) as Record<string, unknown> | null;
+    if (!parsed) return {};
+    const candleTimeframe = isLiveTimeframe(parsed.candleTimeframe) ? parsed.candleTimeframe : undefined;
+    const derivedMinute = isMinuteFrameValue(parsed.lastMinuteTimeframe)
+      ? parsed.lastMinuteTimeframe
+      : isMinuteFrameValue(candleTimeframe)
+        ? candleTimeframe
+        : undefined;
+    const next: Partial<Persisted> = {};
+    if (isLiveInstrument(parsed.activeInstrument)) {
+      next.activeInstrument = parsed.activeInstrument;
+    } else if (typeof parsed.activeCode === 'string' && parsed.activeCode) {
+      next.activeInstrument = stockInstrument(parsed.activeCode);
+    } else if (parsed.activeInstrument === null || parsed.activeCode === null) {
+      next.activeInstrument = null;
     }
-    return parsed ?? {};
+    if (typeof parsed.activeCode === 'string' || parsed.activeCode === null) {
+      next.activeCode = parsed.activeCode;
+    } else if (next.activeInstrument !== undefined) {
+      next.activeCode = instrumentToActiveCode(next.activeInstrument);
+    }
+    if (candleTimeframe !== undefined) {
+      next.candleTimeframe = candleTimeframe;
+    }
+    if (derivedMinute !== undefined) {
+      next.lastMinuteTimeframe = derivedMinute;
+    }
+    if (typeof parsed.historicalFromDate === 'string' || parsed.historicalFromDate === null) {
+      next.historicalFromDate = parsed.historicalFromDate;
+    }
+    return next;
   } catch {
     return {};
   }
@@ -447,6 +481,7 @@ export const useLivePageStore = create<Store>((set, get) => ({
         ? code
         : (instrument === null && code === '' ? '' : instrumentToActiveCode(nextInstrument)),
       candleTimeframe: tf,
+      lastMinuteTimeframe: isMinuteTimeframe(tf) ? tf : get().lastMinuteTimeframe,
       historicalFromDate,
     };
     set(next);
@@ -461,8 +496,13 @@ export const useLivePageStore = create<Store>((set, get) => ({
 
   setCandleTimeframe: (tf) => {
     if (!LIVE_TIMEFRAMES.includes(tf)) return;
-    set({ candleTimeframe: tf, historicalFromDate: null });
-    persist({ ...get(), candleTimeframe: tf, historicalFromDate: null });
+    const next = {
+      candleTimeframe: tf,
+      lastMinuteTimeframe: isMinuteTimeframe(tf) ? tf : get().lastMinuteTimeframe,
+      historicalFromDate: null,
+    };
+    set(next);
+    persist({ ...get(), ...next });
   },
 
   extendHistoricalRange: (date) => {
@@ -479,6 +519,9 @@ export const useLivePageStore = create<Store>((set, get) => ({
 
   hydrateFromStorage: () => {
     const stored = readStorage();
-    set({ ...DEFAULTS, ...stored });
+    const merged = { ...DEFAULTS, ...stored };
+    const lastMinuteTimeframe = stored.lastMinuteTimeframe
+      ?? (isMinuteTimeframe(merged.candleTimeframe) ? merged.candleTimeframe : DEFAULTS.lastMinuteTimeframe);
+    set({ ...merged, lastMinuteTimeframe });
   },
 }));

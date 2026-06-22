@@ -3,6 +3,7 @@ import { useQuery } from '@tanstack/react-query';
 import { apiCall } from './client';
 import { TIMEFRAME_TO_MS, type RangeBundle, type Timeframe } from './types';
 import { useSourcePreferenceStore } from '../state/sourcePreference';
+import type { SourcePreference } from '../state/sourcePreference';
 
 /**
  * Refetch cadence for a today-inclusive range query (ms).
@@ -70,7 +71,7 @@ export function useRange(
 ) {
   const bucketMs = timeframe ? TIMEFRAME_TO_MS[timeframe] : null;
   const enabled = !!(code && from && to && bucketMs);
-  const sourcePref = useSourcePreferenceStore((s) => s.sourcePreference);
+  const sourcePref: SourcePreference = useSourcePreferenceStore((s) => s.sourcePreference);
   const priceQs = priceRange ? `&price_min=${priceRange.min}&price_max=${priceRange.max}` : '';
   const { staleTime, refetchInterval } = rangeFreshnessOptions(to, todayKst ?? null);
 

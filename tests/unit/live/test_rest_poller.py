@@ -449,3 +449,14 @@ async def test_poll_skips_cycle_when_resolver_returns_none():
     await poller._poll_once()  # raise 없이 통과
     assert poller.last_cycle_ms is not None  # 사이클 완료 신호 갱신
     assert await buf.get_latest("005930") is None  # 폴링 안 됨(publish 없음)
+
+
+def test_live_rest_poller_still_has_no_writer_dependency() -> None:
+    import inspect
+
+    import hoga.live.rest_poller as rest_poller
+
+    src = inspect.getsource(rest_poller.LiveRestPoller)
+    assert "LiveWriter" not in src
+    assert "promote_api_today" not in src
+    assert "live_api" not in src

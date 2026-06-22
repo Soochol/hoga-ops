@@ -50,6 +50,7 @@ interface Props {
 export function LiveSidebar({ code, live }: Props) {
   const cursorMs = useLiveCursorStore((s) => s.cursorMs);
   const timeframe = useLivePageStore((s) => s.candleTimeframe);
+  const stockCode = code && !code.startsWith('index:') ? code : null;
 
   // Spot mode is minute-only (ADR-0044): D/W/M have no per-cursor parquet. The
   // chart still publishes cursorMs on D for the Pane Legend, so gate spot entry
@@ -68,9 +69,9 @@ export function LiveSidebar({ code, live }: Props) {
   // Spot-mode data (dormant when cursorMs null).
   const spotTimeframe: MinuteTimeframe | null =
     timeframe && isMinuteTimeframe(timeframe) ? timeframe : null;
-  const spotOrderbook = useLiveOrderbookAtCursor({ code, timeframe: spotTimeframe });
-  const spotBrokers = useLiveBrokersAtCursor({ code, timeframe: spotTimeframe });
-  const investorTrendEstimate = useLiveInvestorTrendEstimate(code);
+  const spotOrderbook = useLiveOrderbookAtCursor({ code: stockCode, timeframe: spotTimeframe });
+  const spotBrokers = useLiveBrokersAtCursor({ code: stockCode, timeframe: spotTimeframe });
+  const investorTrendEstimate = useLiveInvestorTrendEstimate(stockCode);
 
   // Axis for Auction Mask in spot mode.
   const axis = useLiveAxisStore((s) => s.axis);

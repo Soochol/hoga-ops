@@ -199,3 +199,34 @@ def test_source_pref_fallback_when_pref_missing(tmp_path: Path) -> None:
 
     assert bundle.segments[0].source == "kis_live"
     assert any(p.bid_total == 33333 for p in bundle.quote_ratio.points)
+
+
+def test_source_pref_kis_api_first_reads_kis_api(tmp_path: Path) -> None:
+    code = "003490"
+    date = "20260622"
+    sd_dir = tmp_path / "parquet" / date / code
+
+    _write_meta(sd_dir / "kis_live" / "meta.json", source="kis_live", date=date)
+    _write_snapshots(sd_dir / "kis_live" / "snapshots.parquet", [_snap(100000000, 11111, 22222)])
+    _write_empty_candles(sd_dir / "kis_live" / "candles.parquet")
+    _write_empty_trades(sd_dir / "kis_live" / "trades.parquet")
+
+    _write_meta(sd_dir / "kis_api" / "meta.json", source="kis_api", date=date, sampling_ms=30000)
+    _write_snapshots(sd_dir / "kis_api" / "snapshots.parquet", [_snap(100000000, 33333, 44444)])
+    _write_empty_trades(sd_dir / "kis_api" / "trades.parquet")
+
+    engine = QueryEngine(tmp_path)
+    try:
+        bundle = build_range_bundle(
+            engine,
+            code=code,
+            from_date=date,
+            to_date=date,
+            bucket_ms=60_000,
+            source_pref="kis_api_first",
+        )
+    finally:
+        engine.close()
+
+    assert bundle.segments[0].source == "kis_api"
+    assert any(p.bid_total == 33333 for p in bundle.quote_ratio.points)

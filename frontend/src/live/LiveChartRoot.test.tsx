@@ -1623,7 +1623,7 @@ describe('LiveChartRoot historical-prepend viewport preservation', () => {
     expect(ts.getVisibleLogicalRange).toHaveBeenCalled();
   });
 
-  it('does NOT run the fill loop on D timeframe (minute-only)', () => {
+  it('dispatches the next step on D timeframe when whitespace remains after an extension', () => {
     useLivePageStore.setState({ historicalFromDate: '20260521' });
     const handlers: Array<(r: unknown) => void> = [];
     const ts = makeTs(handlers);
@@ -1641,10 +1641,28 @@ describe('LiveChartRoot historical-prepend viewport preservation', () => {
           clampEngaged={false} isPastCandlesLoading={false} isExtending={false} />,
       );
     });
-    expect(useLivePageStore.getState().historicalFromDate).toBe('20260521'); // D one-shot, 불변
-    // (구 국소화였던 "getVisibleLogicalRange 미호출"은 v3에서 무효 — pre-swap
-    // 스냅샷 layout effect가 모든 타임프레임에서 정당하게 viewport를 읽는다.
-    // 잠그는 행동은 위의 단언: D에서 settle-loop가 dispatch하지 않는다.)
+    expect(useLivePageStore.getState().historicalFromDate).toBe('20250605');
+  });
+
+  it('keeps dispatching D timeframe fill steps past the minute scrollback clamp', () => {
+    useLivePageStore.setState({ historicalFromDate: '20250605' });
+    const handlers: Array<(r: unknown) => void> = [];
+    const ts = makeTs(handlers);
+    ts.getVisibleLogicalRange = vi.fn(() => ({ from: -50, to: 100 }));
+    vi.mocked(createChartEx).mockImplementationOnce(() => buildStableCapturingMock(ts) as any);
+
+    const { rerender } = render(
+      <LiveChartRoot code="005930" timeframe="D" bundle={TWO_SEGMENT_BUNDLE}
+        clampEngaged={false} isPastCandlesLoading={false} isExtending={true} />,
+      { wrapper },
+    );
+    act(() => {
+      rerender(
+        <LiveChartRoot code="005930" timeframe="D" bundle={TWO_SEGMENT_BUNDLE}
+          clampEngaged={false} isPastCandlesLoading={false} isExtending={false} />,
+      );
+    });
+    expect(useLivePageStore.getState().historicalFromDate).toBe('20240620');
   });
 
   it('does NOT restore on pure SSE growth while historicalFromDate is null', () => {

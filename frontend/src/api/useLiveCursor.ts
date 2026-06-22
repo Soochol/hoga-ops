@@ -11,6 +11,7 @@
  */
 import { useLiveCursorStore } from '../live/useLiveCursorStore';
 import { useSourcePreferenceStore } from '../state/sourcePreference';
+import type { SourcePreference } from '../state/sourcePreference';
 import { useSpot } from './useSpot';
 import { apiGet } from './client';
 import { TIMEFRAME_TO_MS, type OrderbookResponse, type Timeframe } from './types';
@@ -52,7 +53,7 @@ export interface LiveOrderbookSpot {
  */
 export function useLiveOrderbookAtCursor(p: Params): LiveOrderbookSpot | undefined {
   const cursorMs = useLiveCursorStore((s) => s.cursorMs);
-  const sourcePref = useSourcePreferenceStore((s) => s.sourcePreference);
+  const sourcePref: SourcePreference = useSourcePreferenceStore((s) => s.sourcePreference);
   const bucketMs = p.timeframe ? TIMEFRAME_TO_MS[p.timeframe as Timeframe] : null;
   const alignedT =
     cursorMs !== null && bucketMs !== null
@@ -108,7 +109,7 @@ export function useLiveBrokersAtCursor(
   p: BrokersParams,
 ): BrokerSeriesEntry[] | undefined {
   const cursorMs = useLiveCursorStore((s) => s.cursorMs);
-  const sourcePref = useSourcePreferenceStore((s) => s.sourcePreference);
+  const sourcePref: SourcePreference = useSourcePreferenceStore((s) => s.sourcePreference);
   const date = cursorMs !== null ? unixMsToKSTDate(cursorMs) : null;
   // Key gates on cursor presence AND a minute timeframe — no fetch in latest
   // mode, and never on D/W/M (no per-cursor parquet; LiveChartRoot publishes

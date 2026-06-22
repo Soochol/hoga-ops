@@ -4,8 +4,10 @@ from pathlib import Path
 
 import pytest
 
+from hoga.api.models import LiveStoragePolicy
 import hoga.live.kis_runtime as kis_runtime
 import hoga.live.lifecycle as lifecycle
+import hoga.live.live_session as live_session_module
 
 
 @pytest.fixture(autouse=True)
@@ -26,6 +28,9 @@ class _FakeKis:
 
     async def aclose(self) -> None:
         self.aclose_calls += 1
+
+
+_DEFAULT_STORAGE_POLICY: LiveStoragePolicy = "ws_plus_rest"
 
 
 @pytest.mark.asyncio
@@ -154,6 +159,63 @@ async def test_watchdog_restarts_only_dead_conn(tmp_path, monkeypatch):
     assert lifecycle._state.streams[0].ws_task is conn0_ws_task
     assert lifecycle._state.streams[1].ws_task is not conn1.ws_task
     await lifecycle.stop_live_stream()
+
+
+@pytest.mark.asyncio
+async def test_restart_passes_ws_plus_rest_storage_policy(tmp_path, monkeypatch):
+    session = lifecycle.LiveSession()
+    session.n_configured = 2
+    overflow_code = f"{lifecycle._PER_ACCOUNT_MAX:06d}"
+
+    class _Conn:
+        def __init__(self) -> None:
+            self.account_id = 1
+            self.stream_obj = object()
+            self.ws_task = asyncio.create_task(asyncio.sleep(0))
+            self.flush_task = asyncio.create_task(asyncio.sleep(0))
+            self.codes = ("OLD",)
+
+    conn = _Conn()
+    session.streams = {1: conn}
+
+    seen: dict[str, object] = {}
+
+    def fake_compute_ws_targets(
+        data_dir: Path,
+        n_configured: int = 1,
+        storage_policy: LiveStoragePolicy = "ws_plus_rest",
+    ) -> list[str]:
+        seen["data_dir"] = data_dir
+        seen["n_configured"] = n_configured
+        seen["storage_policy"] = storage_policy
+        return [f"{i:06d}" for i in range(lifecycle._PER_ACCOUNT_MAX)] + [overflow_code]
+
+    def fake_build_conn(account_id: int, codes: list[str], data_dir: Path):
+        seen["build_account_id"] = account_id
+        seen["build_codes"] = tuple(codes)
+        seen["build_data_dir"] = data_dir
+        return _Conn()
+
+    async def fake_teardown_conn(_conn) -> None:
+        seen["torn_down"] = True
+
+    monkeypatch.setattr(live_session_module, "_compute_ws_targets", fake_compute_ws_targets)
+
+    await session.restart(
+        1,
+        data_dir=tmp_path,
+        storage_policy=_DEFAULT_STORAGE_POLICY,
+        build_conn=fake_build_conn,
+        teardown_conn=fake_teardown_conn,
+    )
+
+    assert seen["data_dir"] == tmp_path
+    assert seen["n_configured"] == 2
+    assert seen["storage_policy"] == "ws_plus_rest"
+    assert seen["torn_down"] is True
+    assert seen["build_account_id"] == 1
+    assert seen["build_codes"] == (overflow_code,)
+    assert seen["build_data_dir"] == tmp_path
 
 
 # ── get_status 집계 + degraded_accounts (Task 10) ──────────────────────────────

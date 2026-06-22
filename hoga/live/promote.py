@@ -54,6 +54,7 @@ def _parse_jsonl_to_records(  # noqa: PLR0912, PLR0915
     *,
     code: str,
     date: str,
+    source: str = "kis_live",
 ) -> tuple[list[Orderbook], list[Trade], list[BrokerRow], list[Fill], dict]:
     """Parse one Live Capture JSONL into typed table records + meta.
 
@@ -91,7 +92,15 @@ def _parse_jsonl_to_records(  # noqa: PLR0912, PLR0915
     fill_seq = 0
 
     if not jsonl_path.exists():
-        meta = _build_meta(code, date, snapshots, trades, broker_snapshot_count, fill_count=0)
+        meta = _build_meta(
+            code,
+            date,
+            snapshots,
+            trades,
+            broker_snapshot_count,
+            fill_count=0,
+            source=source,
+        )
         return snapshots, trades, broker_rows, fills, meta
 
     with jsonl_path.open("r", encoding="utf-8") as f:
@@ -217,16 +226,26 @@ def _parse_jsonl_to_records(  # noqa: PLR0912, PLR0915
                     sell_qty=int(p.get("sell_qty") or 0),
                 ))
 
-    meta = _build_meta(code, date, snapshots, trades, broker_snapshot_count, fill_count=len(fills))
+    meta = _build_meta(
+        code,
+        date,
+        snapshots,
+        trades,
+        broker_snapshot_count,
+        fill_count=len(fills),
+        source=source,
+    )
     return snapshots, trades, broker_rows, fills, meta
 
 
 def _build_meta(
     code: str, date: str, snapshots: list, trades: list, broker_snapshot_count: int,
     fill_count: int = 0,
+    *,
+    source: str = "kis_live",
 ) -> dict:
-    return {
-        "source": "kis_live",
+    meta = {
+        "source": source,
         "code": code,
         "date": date,
         "promoted_at": datetime.now(UTC).isoformat(),
@@ -240,6 +259,10 @@ def _build_meta(
         "regular_session_open_ms": 90000000,    # 09:00:00.000
         "regular_session_close_ms": 153000000,  # 15:30:00.000
     }
+    if source == "kis_api":
+        meta["sampling_ms"] = 30000
+        meta["created_from"] = "kis_rest"
+    return meta
 
 
 def _today_kst_yyyymmdd() -> str:
@@ -317,6 +340,29 @@ async def promote_today(data_dir: Path, *, code: str) -> None:
             record_fn(code, int(time.time() * 1000))
     except ImportError:
         pass
+
+
+async def promote_api_today(data_dir: Path, *, code: str) -> None:
+    from hoga.api._atomic_write import atomic_write_json
+
+    today = _today_kst_yyyymmdd()
+    jsonl_path = data_dir / "live_api" / today / f"{code}.jsonl"
+    target = data_dir / "parquet" / today / code / "kis_api"
+    if not jsonl_path.exists():
+        return
+
+    snapshots, trades, broker_rows, fills, meta = _parse_jsonl_to_records(
+        jsonl_path,
+        code=code,
+        date=today,
+        source="kis_api",
+    )
+    target.mkdir(parents=True, exist_ok=True)
+    _atomic_write_table(write_snapshots_parquet, snapshots, target / "snapshots.parquet")
+    _atomic_write_table(write_trades_parquet, trades, target / "trades.parquet")
+    _atomic_write_table(write_brokers_parquet, broker_rows, target / "brokers.parquet")
+    _atomic_write_table(write_fills_parquet, fills, target / "fills.parquet")
+    atomic_write_json(target / "meta.json", meta, indent=2)
 
 
 async def promote_one(

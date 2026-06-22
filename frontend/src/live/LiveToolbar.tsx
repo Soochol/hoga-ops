@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState, type ReactNode } from 'react';
+import { useCallback, useRef, useState, type ReactNode } from 'react';
 import {
   CALENDAR_TIMEFRAMES,
   MINUTE_TIMEFRAMES,
@@ -30,10 +30,8 @@ function minuteLabel(tf: MinuteTimeframe): string {
 export function LiveToolbar({ onOpenIndicators, onOpenSettings, studySaveControl }: Props) {
   const tf = useLivePageStore((s) => s.candleTimeframe);
   const setTf = useLivePageStore((s) => s.setCandleTimeframe);
+  const rememberedMinute = useLivePageStore((s) => s.lastMinuteTimeframe);
   const [minuteMenuOpen, setMinuteMenuOpen] = useState(false);
-  const [rememberedMinute, setRememberedMinute] = useState<MinuteTimeframe>(
-    isMinuteTimeframe(tf) ? tf : '1m',
-  );
   const minuteWrapRef = useRef<HTMLDivElement>(null);
   const minuteButtonRef = useRef<HTMLButtonElement>(null);
   const [anchorRect, setAnchorRect] = useState<DOMRect | null>(null);
@@ -46,11 +44,6 @@ export function LiveToolbar({ onOpenIndicators, onOpenSettings, studySaveControl
     anchorRect ? anchorRect.bottom + 4 : 0,
   );
 
-  useEffect(() => {
-    if (!minuteMenuOpen || !minuteButtonRef.current) return;
-    setAnchorRect(minuteButtonRef.current.getBoundingClientRect());
-  }, [minuteMenuOpen, displayedMinute]);
-
   const onMinuteSelectorClick = () => {
     if (isMinuteTimeframe(tf)) {
       setAnchorRect(minuteButtonRef.current?.getBoundingClientRect() ?? null);
@@ -62,13 +55,11 @@ export function LiveToolbar({ onOpenIndicators, onOpenSettings, studySaveControl
   };
 
   const pickMinute = (next: MinuteTimeframe) => {
-    setRememberedMinute(next);
     setMinuteMenuOpen(false);
     setTf(next);
   };
 
   const pickCalendar = (next: CalendarTimeframe) => {
-    if (isMinuteTimeframe(tf)) setRememberedMinute(tf);
     setMinuteMenuOpen(false);
     setTf(next);
   };

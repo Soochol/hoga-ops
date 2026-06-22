@@ -20,7 +20,7 @@ import { useDayBidPeaks, useTodayAllPriceBidPeak } from './useDayBidPeaks';
 import type { AskPeak, BidPeak, Candle, RangeBundle } from '../api/types';
 import type { ObSnapshot, TradeSnapshot } from './bucketHogaSeries';
 import type { TabViewport } from './viewportAnchor';
-import { todayKstYyyymmdd } from './liveDateTime';
+import { initialHistoricalDaysFor, subtractDaysKst, todayKstYyyymmdd } from './liveDateTime';
 import { useChartPrefsStore } from '../state/chartPrefs';
 import { useLiveVenueStore } from '../state/liveVenue';
 import {
@@ -115,6 +115,11 @@ export function LivePage() {
     onNextTab: () => { if (tabs.length) focusTab(tabs[(activeIdx + 1 + tabs.length) % tabs.length].id); },
     onPrevTab: () => { if (tabs.length) focusTab(tabs[(activeIdx - 1 + tabs.length) % tabs.length].id); },
     onSelectTabIndex: (i) => { if (i < tabs.length) focusTab(tabs[i].id); },
+    onSelectTimeframeShortcut: (slot) => {
+      const page = useLivePageStore.getState();
+      const next = slot === 'minute' ? page.lastMinuteTimeframe : slot;
+      page.setCandleTimeframe(next);
+    },
   });
 
   const activeCode = useLivePageStore((s) => s.activeCode);
@@ -161,7 +166,7 @@ export function LivePage() {
   );
   const activeIndexId = activeInstrument?.kind === 'index' ? activeInstrument.id : null;
   const capabilities = useMemo(() => capabilitiesForInstrument(activeInstrument), [activeInstrument]);
-  const indexFrom = historicalFromDate ?? today;
+  const indexFrom = historicalFromDate ?? subtractDaysKst(today, initialHistoricalDaysFor(timeframe));
   const indexCandles = useLiveIndexCandles(
     activeIndexId,
     timeframe,
@@ -268,6 +273,7 @@ export function LivePage() {
   const workareaBundle = activeIndexId ? indexBundle : bundle;
   const workareaChartBundle = activeIndexId ? indexBundle : chartBundle;
   const workareaLoading = activeIndexId ? indexCandles.isLoading : isPastCandlesLoading;
+  const indexExtending = activeIndexId ? historicalFromDate !== null && indexCandles.isFetching : false;
 
   useEffect(() => {
     if (!activeCode || !liveSaveBundle) {
@@ -333,7 +339,7 @@ export function LivePage() {
         chartBundle={workareaChartBundle}
         clampEngaged={clampEngaged}
         isPastCandlesLoading={workareaLoading}
-        isExtending={activeIndexId ? false : isExtending}
+        isExtending={activeIndexId ? indexExtending : isExtending}
         pastDataWarnings={pastDataWarnings}
         restoreViewport={restoreViewport}
         viewIdentity={activeTabId ? `${activeTabId}:${liveVenue}` : liveVenue}

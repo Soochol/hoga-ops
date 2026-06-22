@@ -26,11 +26,20 @@ describe('useLiveStatus', () => {
       watchlist_count: 3,
       kis_calls_today: 12,
       kis_rate_limit_remaining: null,
+      storage_policy: 'ws_plus_rest',
+      kis_api_running: true,
+      kis_api_targets: ['000660'],
+      kis_api_target_count: 1,
+      kis_api_last_cycle_ms: 1770000000000,
+      kis_api_last_error: null,
+      kis_api_last_error_count: 0,
+      kis_api_degraded: false,
     };
     vi.spyOn(client, 'apiCall').mockResolvedValue(fake);
     const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } });
     const { result } = renderHook(() => useLiveStatus(), { wrapper: wrapper(qc) });
     await waitFor(() => expect(result.current.data).toEqual(fake));
+    expect(result.current.data?.kis_api_targets).toEqual(['000660']);
     expect(client.apiCall).toHaveBeenCalledWith('/api/live/status');
   });
 

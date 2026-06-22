@@ -89,6 +89,8 @@
   --source-hogaplay-border: var(--fg-dimmer);
   --source-kis-live-bg: color-mix(in srgb, var(--accent) 12%, var(--bg-card));
   --source-kis-live-border: var(--accent);
+  --source-kis-api-bg: color-mix(in srgb, var(--warn) 12%, var(--bg-card));
+  --source-kis-api-border: var(--warn);
 
   /* BEGIN AUTO-GENERATED (size + radius + layout) — regenerate via npm run gen:tokens */
   /* ───── Typography sizes (rem-based) ───── */

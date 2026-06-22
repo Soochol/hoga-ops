@@ -9,25 +9,36 @@ function Harness({
   onNextTab,
   onPrevTab,
   onSelectTabIndex,
+  onSelectTimeframeShortcut,
 }: {
   onNextCode?: () => void;
   onPrevCode?: () => void;
   onNextTab?: () => void;
   onPrevTab?: () => void;
   onSelectTabIndex?: (index: number) => void;
+  onSelectTimeframeShortcut?: (slot: 'minute' | 'D' | 'W' | 'M') => void;
 }) {
-  useLiveKeyboard({ onNextCode, onPrevCode, onNextTab, onPrevTab, onSelectTabIndex });
+  useLiveKeyboard({
+    onNextCode,
+    onPrevCode,
+    onNextTab,
+    onPrevTab,
+    onSelectTabIndex,
+    onSelectTimeframeShortcut,
+  });
   return <div data-testid="harness" tabIndex={0} />;
 }
 
 function HarnessWithInput({
   onNextCode,
   onSelectTabIndex,
+  onSelectTimeframeShortcut,
 }: {
   onNextCode?: () => void;
   onSelectTabIndex?: (index: number) => void;
+  onSelectTimeframeShortcut?: (slot: 'minute' | 'D' | 'W' | 'M') => void;
 }) {
-  useLiveKeyboard({ onNextCode, onSelectTabIndex });
+  useLiveKeyboard({ onNextCode, onSelectTabIndex, onSelectTimeframeShortcut });
   return <input data-testid="input" />;
 }
 
@@ -141,5 +152,95 @@ describe('useLiveKeyboard', () => {
     const input = getByTestId('input');
     fireEvent.keyDown(input, { key: '5' });
     expect(onSelectTabIndex).not.toHaveBeenCalled();
+  });
+
+  it('Shift+1..4 trigger timeframe shortcuts', () => {
+    const onSelectTimeframeShortcut = vi.fn();
+    render(<Harness onSelectTimeframeShortcut={onSelectTimeframeShortcut} />);
+
+    fireEvent.keyDown(window, { key: '!', code: 'Digit1', shiftKey: true });
+    fireEvent.keyDown(window, { key: '@', code: 'Digit2', shiftKey: true });
+    fireEvent.keyDown(window, { key: '#', code: 'Digit3', shiftKey: true });
+    fireEvent.keyDown(window, { key: '$', code: 'Digit4', shiftKey: true });
+
+    expect(onSelectTimeframeShortcut.mock.calls).toEqual([
+      ['minute'],
+      ['D'],
+      ['W'],
+      ['M'],
+    ]);
+  });
+
+  it('Shift+1 does not select tab index 0', () => {
+    const onSelectTabIndex = vi.fn();
+    const onSelectTimeframeShortcut = vi.fn();
+    render(
+      <Harness
+        onSelectTabIndex={onSelectTabIndex}
+        onSelectTimeframeShortcut={onSelectTimeframeShortcut}
+      />,
+    );
+
+    fireEvent.keyDown(window, { key: '!', code: 'Digit1', shiftKey: true });
+
+    expect(onSelectTimeframeShortcut).toHaveBeenCalledWith('minute');
+    expect(onSelectTabIndex).not.toHaveBeenCalled();
+  });
+
+  it('Shift+1 with ! key text still triggers minute shortcut using code Digit1', () => {
+    const onSelectTabIndex = vi.fn();
+    const onSelectTimeframeShortcut = vi.fn();
+    render(
+      <Harness
+        onSelectTabIndex={onSelectTabIndex}
+        onSelectTimeframeShortcut={onSelectTimeframeShortcut}
+      />,
+    );
+
+    fireEvent.keyDown(window, { key: '!', code: 'Digit1', shiftKey: true });
+
+    expect(onSelectTimeframeShortcut).toHaveBeenCalledOnce();
+    expect(onSelectTimeframeShortcut).toHaveBeenCalledWith('minute');
+    expect(onSelectTabIndex).not.toHaveBeenCalled();
+  });
+
+  it('ignores Shift timeframe shortcuts when focus is in an input', () => {
+    const onSelectTimeframeShortcut = vi.fn();
+    const { getByTestId } = render(<HarnessWithInput onSelectTimeframeShortcut={onSelectTimeframeShortcut} />);
+
+    fireEvent.keyDown(getByTestId('input'), {
+      key: '!',
+      code: 'Digit1',
+      shiftKey: true,
+    });
+
+    expect(onSelectTimeframeShortcut).not.toHaveBeenCalled();
+  });
+
+  it('ignores Ctrl/Meta/Alt modified Shift timeframe shortcuts', () => {
+    const onSelectTimeframeShortcut = vi.fn();
+    render(<Harness onSelectTimeframeShortcut={onSelectTimeframeShortcut} />);
+
+    fireEvent.keyDown(window, { key: '!', code: 'Digit1', shiftKey: true, ctrlKey: true });
+    fireEvent.keyDown(window, { key: '!', code: 'Digit1', shiftKey: true, metaKey: true });
+    fireEvent.keyDown(window, { key: '!', code: 'Digit1', shiftKey: true, altKey: true });
+
+    expect(onSelectTimeframeShortcut).not.toHaveBeenCalled();
+  });
+
+  it('plain 1 still selects tab index 0', () => {
+    const onSelectTabIndex = vi.fn();
+    const onSelectTimeframeShortcut = vi.fn();
+    render(
+      <Harness
+        onSelectTabIndex={onSelectTabIndex}
+        onSelectTimeframeShortcut={onSelectTimeframeShortcut}
+      />,
+    );
+
+    fireEvent.keyDown(window, { key: '1' });
+
+    expect(onSelectTabIndex).toHaveBeenCalledWith(0);
+    expect(onSelectTimeframeShortcut).not.toHaveBeenCalled();
   });
 });

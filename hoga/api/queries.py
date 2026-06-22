@@ -13,6 +13,7 @@ from hoga.api.disk_state import DiskState, classify_from_meta
 from hoga.api.invariants import normalize_session_bounds
 from hoga.api.models import StockDate
 from hoga.api.past_indicators_cache import PastIndicatorsCache
+from hoga.api.sources import resolve_source_result
 from hoga.api.timeenc import hhmmssms_to_unix_ms
 from hoga.tables import snapshots
 
@@ -311,17 +312,7 @@ class QueryEngine:
             code_dir = date_dir / code
             if not code_dir.is_dir():
                 continue
-            # Preferred source first
-            if (code_dir / source_pref / "meta.json").exists():
+            resolution = resolve_source_result(self, date, code, source_pref)
+            if resolution.path is not None:
                 out.append(date)
-                continue
-            # Legacy flat layout
-            if (code_dir / "meta.json").exists():
-                out.append(date)
-                continue
-            # Any other source subdir
-            for src_dir in code_dir.iterdir():
-                if src_dir.is_dir() and (src_dir / "meta.json").exists():
-                    out.append(date)
-                    break
         return out
