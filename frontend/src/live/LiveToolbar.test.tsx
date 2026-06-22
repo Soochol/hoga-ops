@@ -34,10 +34,10 @@ describe('LiveToolbar', () => {
 
     fireEvent.click(screen.getByRole('button', { name: '분봉 선택 열기: 1분' }));
     const menu = screen.getByRole('menu', { name: '분봉 목록' });
-    expect(within(menu).getByRole('menuitemradio', { name: '3분' })).toHaveAttribute(
-      'aria-checked',
-      'false',
-    );
+    ['1분', '3분', '5분', '10분', '15분', '30분'].forEach((minuteOption) => {
+      expect(within(menu).getByRole('menuitemradio', { name: minuteOption })).toBeInTheDocument();
+    });
+    expect(within(menu).getByRole('menuitemradio', { name: '3분' })).toHaveAttribute('aria-checked', 'false');
 
     fireEvent.click(within(menu).getByRole('menuitemradio', { name: '3분' }));
 
