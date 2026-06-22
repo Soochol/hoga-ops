@@ -114,9 +114,9 @@ function GroupHeader(props: {
   const cycleSortMode = () => {
     if (!props.onSort || !props.sortMode) return;
     if (props.sortMode === 'default') {
-      props.onSort('change_pct_asc');
-    } else if (props.sortMode === 'change_pct_asc') {
       props.onSort('change_pct_desc');
+    } else if (props.sortMode === 'change_pct_desc') {
+      props.onSort('change_pct_asc');
     } else {
       props.onSort('default');
     }

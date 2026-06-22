@@ -210,17 +210,17 @@ describe('ScreenerDrawer', () => {
 
     fireEvent.click(sortButton());
     await waitFor(() => expect(rowOrder()).toEqual([
-      'screener-row-000660',
-      'screener-row-005930',
       'screener-row-035420',
+      'screener-row-005930',
+      'screener-row-000660',
     ]));
     expect(JSON.parse(localStorage.getItem('screenerPanel.v1') ?? '{}')).toEqual({ selectedSavedId: 's1' });
 
     fireEvent.click(sortButton());
     await waitFor(() => expect(rowOrder()).toEqual([
-      'screener-row-035420',
-      'screener-row-005930',
       'screener-row-000660',
+      'screener-row-005930',
+      'screener-row-035420',
     ]));
     expect(JSON.parse(localStorage.getItem('screenerPanel.v1') ?? '{}')).toEqual({ selectedSavedId: 's1' });
 
@@ -518,7 +518,6 @@ describe('ScreenerDrawer', () => {
       render(<ScreenerDrawer />, { wrapper: wrap(qc(), '/inventory') });
       await waitFor(() => expect(screen.getByText('NAVER')).toBeInTheDocument());
 
-      fireEvent.click(sortButton());
       fireEvent.click(sortButton());
       await waitFor(() =>
         expect(screen.getAllByTestId(/^screener-row-/).map((el) => el.dataset.testid)).toEqual([

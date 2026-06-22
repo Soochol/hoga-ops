@@ -8,7 +8,7 @@ describe('ScreenerResultSortControl', () => {
 
     const button = screen.getByRole('button', { name: '스크리너 결과 정렬' });
     expect(within(button).getByTestId('sort-icon-default')).toBeInTheDocument();
-    expect(button).toHaveAccessibleDescription('현재 기본 순서, 클릭하면 등락률 낮은 순');
+    expect(button).toHaveAccessibleDescription('현재 기본 순서, 클릭하면 등락률 높은 순');
   });
 
   it('cycles to the next mode from the current mode', () => {
@@ -16,13 +16,13 @@ describe('ScreenerResultSortControl', () => {
     const { rerender } = render(<ScreenerResultSortControl mode="default" onChange={onChange} />);
 
     fireEvent.click(screen.getByRole('button', { name: '스크리너 결과 정렬' }));
-    expect(onChange).toHaveBeenNthCalledWith(1, 'change_pct_asc');
-
-    rerender(<ScreenerResultSortControl mode="change_pct_asc" onChange={onChange} />);
-    fireEvent.click(screen.getByRole('button', { name: '스크리너 결과 정렬' }));
-    expect(onChange).toHaveBeenNthCalledWith(2, 'change_pct_desc');
+    expect(onChange).toHaveBeenNthCalledWith(1, 'change_pct_desc');
 
     rerender(<ScreenerResultSortControl mode="change_pct_desc" onChange={onChange} />);
+    fireEvent.click(screen.getByRole('button', { name: '스크리너 결과 정렬' }));
+    expect(onChange).toHaveBeenNthCalledWith(2, 'change_pct_asc');
+
+    rerender(<ScreenerResultSortControl mode="change_pct_asc" onChange={onChange} />);
     fireEvent.click(screen.getByRole('button', { name: '스크리너 결과 정렬' }));
     expect(onChange).toHaveBeenNthCalledWith(3, 'default');
   });

@@ -9,15 +9,15 @@ interface Props {
 }
 
 const NEXT_MODE: Record<ScreenerResultSortMode, ScreenerResultSortMode> = {
-  default: 'change_pct_asc',
-  change_pct_asc: 'change_pct_desc',
-  change_pct_desc: 'default',
+  default: 'change_pct_desc',
+  change_pct_desc: 'change_pct_asc',
+  change_pct_asc: 'default',
 };
 
 function sortDescription(mode: ScreenerResultSortMode): string {
-  if (mode === 'change_pct_asc') return '현재 등락률 낮은 순, 클릭하면 등락률 높은 순';
-  if (mode === 'change_pct_desc') return '현재 등락률 높은 순, 클릭하면 기본 순서';
-  return '현재 기본 순서, 클릭하면 등락률 낮은 순';
+  if (mode === 'change_pct_desc') return '현재 등락률 높은 순, 클릭하면 등락률 낮은 순';
+  if (mode === 'change_pct_asc') return '현재 등락률 낮은 순, 클릭하면 기본 순서';
+  return '현재 기본 순서, 클릭하면 등락률 높은 순';
 }
 
 export function ScreenerResultSortControl({ mode, onChange, disabled = false }: Props) {
