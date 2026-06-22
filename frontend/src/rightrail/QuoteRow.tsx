@@ -17,6 +17,7 @@ export interface QuoteRowProps {
   testId: string;
   onClick: (options?: { disposition?: LiveOpenDisposition }) => void;
   trailingAction?: React.ReactNode;
+  metadata?: React.ReactNode;
   // --- drag (선택 패널용; 미전달 시 비-드래그 동작) ---
   sortableRef?: (node: HTMLElement | null) => void;
   sortableStyle?: Pick<React.CSSProperties, 'transform' | 'transition'>;
@@ -33,7 +34,7 @@ export interface QuoteRowProps {
 }
 
 export function QuoteRow({
-  name, price, pct, changeWon, active, ariaLabel, testId, onClick, trailingAction,
+  name, price, pct, changeWon, active, ariaLabel, testId, onClick, trailingAction, metadata,
   sortableRef, sortableStyle, dragListeners, dragAttributes, dragging,
   onContextMenu, onDelete, indented,
 }: QuoteRowProps) {
@@ -83,7 +84,10 @@ export function QuoteRow({
     >
       {/* 종목명은 가격(text-sm)보다 의도적으로 작게(text-xs) — 그룹 헤더(text-sm/600) >
           종목명 크기 위계 + 가격이 1차 콘텐츠. 등락(text-xs)과는 서체(mono)·색으로 구분. */}
-      <span className="flex-1 truncate text-xs text-fg">{name}</span>
+      <span className="flex-1 min-w-0 flex flex-col leading-tight">
+        <span className="truncate text-xs text-fg">{name}</span>
+        {metadata}
+      </span>
       <span className="flex flex-col items-end leading-tight">
         <span className="font-mono tabular-nums text-sm text-fg">
           {price != null ? `${price.toLocaleString('ko-KR')}원` : '—'}

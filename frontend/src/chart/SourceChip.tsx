@@ -1,12 +1,19 @@
-import type { SourcePreference } from '../state/sourcePreference';
+import type { SourceName } from '../api/types';
 
 interface Props {
-  source: SourcePreference | undefined;
+  source: SourceName | undefined;
 }
 
-const RESOLUTION: Record<SourcePreference, string> = {
+const SOURCE_LABEL: Record<SourceName, string> = {
+  hogaplay: 'hogaplay',
+  kis_live: 'KIS WS',
+  kis_api: 'KIS API',
+};
+
+const RESOLUTION: Record<SourceName, string> = {
   hogaplay: 'tick',
   kis_live: '10s',
+  kis_api: '30s',
 };
 
 /**
@@ -38,10 +45,9 @@ export function SourceChip({ source }: Props) {
         fontSize: 'var(--text-xs)',
         fontFamily: 'monospace',
         color: 'var(--fg-dim)',
-        textTransform: 'lowercase',
       }}
     >
-      <span>{source}</span>
+      <span>{SOURCE_LABEL[source]}</span>
       <span aria-hidden style={{ color: 'var(--fg-dimmer)' }}>·</span>
       <span style={{ color: 'var(--fg-dimmer)' }}>{RESOLUTION[source]}</span>
     </span>

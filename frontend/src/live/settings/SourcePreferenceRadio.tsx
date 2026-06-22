@@ -5,8 +5,9 @@ export default function SourcePreferenceRadio({ value }: { value: SourcePreferen
   const current = useSourcePreferenceStore((s) => s.sourcePreference);
   const setPref = useSourcePreferenceStore((s) => s.setSourcePreference);
   const labelMap: Record<SourcePreference, string> = {
-    hogaplay: 'hogaplay 우선',
-    kis_live: 'KIS API 우선',
+    hogaplay_first: 'hogaplay 우선',
+    kis_ws_first: 'KIS WS 우선',
+    kis_api_first: 'KIS API 우선',
   };
   return (
     <label style={{ display: 'flex', alignItems: 'center', gap: 'var(--space-sm)', cursor: 'pointer' }}>

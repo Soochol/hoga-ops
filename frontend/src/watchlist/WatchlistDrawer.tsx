@@ -277,6 +277,7 @@ function SortableQuoteRow(props: {
   onDelete: () => void;
   collectionBadge?: React.ReactNode;
   collectionLabel?: string;
+  metadata?: React.ReactNode;
   dragEnabled?: boolean;
 }) {
   const { entry } = props;
@@ -300,6 +301,7 @@ function SortableQuoteRow(props: {
       dragListeners={props.dragEnabled === false ? undefined : listeners}
       dragging={props.dragEnabled === false ? false : isDragging}
       trailingAction={props.collectionBadge}
+      metadata={props.metadata}
     />
   );
 }
@@ -351,7 +353,9 @@ export function WatchlistDrawer() {
 
   // ADR-0067: 행별 수집상태 배지 — live_set을 한 번 읽어 공유 (행마다 재계산 없음).
   const { data: liveStatusData } = useLiveStatus();
-  const liveSet = liveStatusData?.live_set ?? [];
+  const liveCodes = liveStatusData?.live_set ?? [];
+  const liveSet = useMemo(() => new Set(liveCodes), [liveCodes]);
+  const apiTargets = useMemo(() => new Set(liveStatusData?.kis_api_targets ?? []), [liveStatusData?.kis_api_targets]);
   const viewedCodes = activeCode ? [activeCode] : [];
 
   // 함수형 업데이터 — 같은 배치의 다중 toggle도 최신 Set 위에서 계산된다.
@@ -546,9 +550,16 @@ export function WatchlistDrawer() {
                   <SortableContext items={displayEntries.map((e) => entrySortableId(e.folder_id, e.code))} strategy={verticalListSortingStrategy}>
                     {displayEntries.map((entry) => {
                       const q = quoteByCode.get(entry.code);
-                      const status = deriveCollectionStatus(entry.code, liveSet, codes, viewedCodes);
+                      const status = deriveCollectionStatus(entry.code, liveCodes, codes, viewedCodes);
                       const displayStatus = deriveDisplayStatus(true, status);
                       const badge = <CollectionDot status={displayStatus} />;
+                      const storageLabel = liveSet.has(entry.code)
+                        ? 'KIS WS 저장 중'
+                        : apiTargets.has(entry.code)
+                          ? 'KIS API 30초 저장 중'
+                          : data?.folders.some((f) => f.capture_enabled && f.id === entry.folder_id)
+                            ? '대기'
+                            : '저장 제외';
                       return (
                         <SortableQuoteRow
                           key={entrySortableId(entry.folder_id, entry.code)}
@@ -562,6 +573,7 @@ export function WatchlistDrawer() {
                           onDelete={() => removeM.mutate(entry.code)}
                           collectionBadge={badge}
                           collectionLabel={DISPLAY_PRESENTATION[displayStatus].ariaLabel}
+                          metadata={<span className="text-xs text-fg-dimmer">{storageLabel}</span>}
                           dragEnabled={rowDragEnabled}
                         />
                       );

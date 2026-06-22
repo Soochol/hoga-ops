@@ -134,7 +134,7 @@ describe('useLiveBundle', () => {
       candleTimeframe: '1m',
       historicalFromDate: null,
     });
-    useSourcePreferenceStore.setState({ sourcePreference: 'kis_live' });
+    useSourcePreferenceStore.setState({ sourcePreference: 'kis_ws_first' });
   });
 
   it('builds a today-only bundle when historicalFromDate is null', () => {
@@ -393,7 +393,7 @@ describe('useLiveBundle daily/minute branching (ADR-0048)', () => {
       candleTimeframe: '1m',
       historicalFromDate: null,
     });
-    useSourcePreferenceStore.setState({ sourcePreference: 'kis_live' });
+    useSourcePreferenceStore.setState({ sourcePreference: 'kis_ws_first' });
   });
 
   it('D timeframe calls daily hook with non-null code, minute hook with null code', () => {
@@ -481,7 +481,7 @@ describe('useLiveBundle extension atomization gate', () => {
     rangeMock.isPlaceholderData = false;
     rangeMock.isFetching = false;
     useLivePageStore.setState({ activeCode: '005930', candleTimeframe: '1m', historicalFromDate: null });
-    useSourcePreferenceStore.setState({ sourcePreference: 'kis_live' });
+    useSourcePreferenceStore.setState({ sourcePreference: 'kis_ws_first' });
   });
 
   const liveWithOb = (tMs: number): LiveSeriesData => ({
@@ -562,7 +562,7 @@ describe('useLiveBundle isExtending', () => {
       candleTimeframe: '1m',
       historicalFromDate: null,
     });
-    useSourcePreferenceStore.setState({ sourcePreference: 'kis_live' });
+    useSourcePreferenceStore.setState({ sourcePreference: 'kis_ws_first' });
   });
 
   it('is true during a historical extension (placeholderData + isFetching, historicalFromDate set)', () => {

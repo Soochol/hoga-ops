@@ -111,6 +111,8 @@ describe('LiveSettingsSections (2단 nav+detail)', () => {
     expect(screen.getByRole('radio', { name: 'WS만 저장' })).toBeInTheDocument();
     expect(screen.getByRole('radio', { name: 'WS 우선 + 나머지 REST 저장' })).toBeChecked();
     expect(screen.getByRole('radio', { name: 'REST만 저장' })).toBeInTheDocument();
+    expect(screen.getByRole('radio', { name: 'hogaplay 우선' })).toBeInTheDocument();
+    expect(screen.getByRole('radio', { name: 'KIS WS 우선' })).toBeInTheDocument();
     expect(screen.getByRole('radio', { name: 'KIS API 우선' })).toBeInTheDocument();
   });
 });
