@@ -1,11 +1,25 @@
+from datetime import datetime
+
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
 
 from hoga.live import api as live_api
 from hoga.live.api import build_router
 from hoga.live import lifecycle
-from hoga.live.kis_client import IndexCandleFetchResult, InvestorNetFetchResult
+from hoga.live.kis_client import KIS_KST, IndexCandleFetchResult, InvestorNetFetchResult
 from hoga.live.kis_models import IndexCandlePoint, InvestorNetPoint
+
+
+def _daily_t_ms(day: str) -> int:
+    dt = datetime(
+        int(day[:4]),
+        int(day[4:6]),
+        int(day[6:8]),
+        15,
+        30,
+        tzinfo=KIS_KST,
+    )
+    return int(dt.timestamp() * 1000)
 
 
 def _client() -> TestClient:
@@ -51,7 +65,7 @@ def test_index_candles_returns_fake_kis_daily_rows(tmp_path, monkeypatch) -> Non
             return IndexCandleFetchResult(
                 candles=[
                     IndexCandlePoint(
-                        t_ms=1,
+                        t_ms=_daily_t_ms("20260619"),
                         open=2840.12,
                         high=2861.34,
                         low=2833.20,
@@ -73,7 +87,7 @@ def test_index_candles_returns_fake_kis_daily_rows(tmp_path, monkeypatch) -> Non
     assert body["index_id"] == "KOSPI"
     assert body["candles"] == [
         {
-            "t_ms": 1,
+            "t_ms": _daily_t_ms("20260619"),
             "open": 2840.12,
             "high": 2861.34,
             "low": 2833.2,
@@ -81,6 +95,55 @@ def test_index_candles_returns_fake_kis_daily_rows(tmp_path, monkeypatch) -> Non
             "volume": 450000000,
         },
     ]
+
+
+def test_index_daily_candles_reuses_cached_newer_range_for_broader_scrollback(
+    tmp_path,
+    monkeypatch,
+) -> None:
+    calls: list[tuple[str, str]] = []
+
+    class FakeKis:
+        async def fetch_index_daily_candles(self, index, from_s, to_s, *, period="D", foreground=False):
+            calls.append((from_s, to_s))
+            close = float(len(calls))
+            return IndexCandleFetchResult(
+                candles=[
+                    IndexCandlePoint(
+                        t_ms=_daily_t_ms(from_s),
+                        open=close,
+                        high=close,
+                        low=close,
+                        close=close,
+                        volume=1,
+                    ),
+                ],
+            )
+
+    async def no_windowing(from_s, to_s, period, fetch_batch, *, max_concurrency=3):
+        return await fetch_batch(from_s, to_s)
+
+    monkeypatch.setattr(live_api.kis_access, "kis_for_role", lambda role, data_dir: FakeKis())
+    monkeypatch.setattr(live_api, "fetch_index_daily_candles_windowed", no_windowing, raising=False)
+    monkeypatch.setattr(live_api, "index_candles_cache_instance", None, raising=False)
+
+    app = FastAPI()
+    app.include_router(build_router(get_status=lifecycle.get_status, data_dir=tmp_path))
+    client = TestClient(app)
+    r1 = client.get(
+        "/api/live/index-candles?index_id=KOSDAQ&timeframe=D&from=20250101&to=20251231",
+    )
+    r2 = client.get(
+        "/api/live/index-candles?index_id=KOSDAQ&timeframe=D&from=20240101&to=20251231",
+    )
+
+    assert r1.status_code == 200
+    assert r2.status_code == 200
+    assert calls == [
+        ("20250101", "20251231"),
+        ("20240101", "20241231"),
+    ]
+    assert [c["close"] for c in r2.json()["candles"]] == [2.0, 1.0]
 
 
 def test_index_candles_returns_fake_kis_minute_rows(tmp_path, monkeypatch) -> None:
@@ -125,6 +188,47 @@ def test_index_candles_returns_fake_kis_minute_rows(tmp_path, monkeypatch) -> No
             "volume": 123456,
         },
     ]
+
+
+def test_index_minute_candles_repeated_request_uses_cache(tmp_path, monkeypatch) -> None:
+    calls = 0
+
+    class FakeKis:
+        async def fetch_index_minute_candles(self, index, from_s, to_s, *, bucket_seconds=60, foreground=False):
+            nonlocal calls
+            calls += 1
+            return IndexCandleFetchResult(
+                candles=[
+                    IndexCandlePoint(
+                        t_ms=1782103980000,
+                        open=1.0,
+                        high=1.0,
+                        low=1.0,
+                        close=float(calls),
+                        volume=1,
+                    ),
+                ],
+                violations=[],
+            )
+
+    monkeypatch.setattr(live_api.kis_access, "kis_for_role", lambda role, data_dir: FakeKis())
+    monkeypatch.setattr(live_api, "index_minute_candles_cache_instance", None, raising=False)
+
+    app = FastAPI()
+    app.include_router(build_router(get_status=lifecycle.get_status, data_dir=tmp_path))
+    client = TestClient(app)
+
+    r1 = client.get(
+        "/api/live/index-candles?index_id=KOSPI&timeframe=1m&from=20260622&to=20260622",
+    )
+    r2 = client.get(
+        "/api/live/index-candles?index_id=KOSPI&timeframe=1m&from=20260622&to=20260622",
+    )
+
+    assert r1.status_code == 200
+    assert r2.status_code == 200
+    assert calls == 1
+    assert r2.json()["candles"][0]["close"] == 1.0
 
 
 def test_index_investor_net_returns_market_rows_for_kospi(tmp_path, monkeypatch) -> None:
