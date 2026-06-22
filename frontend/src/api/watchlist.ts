@@ -7,6 +7,7 @@ export interface WatchlistFolder {
   id: string;
   name: string;
   order: number;
+  capture_enabled: boolean;
 }
 
 export interface WatchlistEntry {
@@ -59,6 +60,15 @@ export function renameFolder(folderId: string, name: string): Promise<void> {
   return apiAction(`/api/watchlist/folders/${folderId}`, {
     method: 'PATCH', headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ name }),
+  });
+}
+export function setFolderCaptureEnabled(
+  folderId: string,
+  capture_enabled: boolean,
+): Promise<WatchlistFolder> {
+  return apiCall<WatchlistFolder>(`/api/watchlist/folders/${folderId}/capture`, {
+    method: 'PATCH', headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ capture_enabled }),
   });
 }
 export function deleteFolder(folderId: string): Promise<void> {

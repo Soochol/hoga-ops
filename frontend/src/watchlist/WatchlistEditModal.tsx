@@ -5,7 +5,7 @@ import {
 } from '@dnd-kit/core';
 import {
   useWatchlist, useCreateFolder, useReorderEntries, useMoveMember,
-  useRenameFolder, useDeleteFolder, useReorderFolders,
+  useRenameFolder, useDeleteFolder, useReorderFolders, useSetFolderCaptureEnabled,
 } from './useWatchlist';
 import { WatchlistEntryPane } from './WatchlistEntryPane';
 import { resolveDrag, folderDroppableId } from './dragHandlers';
@@ -19,8 +19,10 @@ import { ModalShell } from '../ui/ModalShell';
 // on hover via `group-hover`.
 function FolderRow(props: {
   id: string; name: string; idx: number; count: number;
+  captureEnabled: boolean;
   isSelected: boolean; isEditing: boolean; isLast: boolean; editName: string;
   onSelect: () => void; onStartEdit: () => void; onDelete: () => void;
+  onToggleCapture: () => void;
   onMoveUp: () => void; onMoveDown: () => void;
   onEditNameChange: (v: string) => void; onCommit: () => void; onCancelEdit: () => void;
 }) {
@@ -50,6 +52,26 @@ function FolderRow(props: {
         // opacity 숨김(display:none 아님) — Tab 포커스 도달 + group-focus-within 노출
         // (패널 GroupHeader ⋯과 같은 키보드 접근성 계약).
         <div className="flex items-center gap-0.5 text-fg-dimmer opacity-0 group-hover:opacity-100 group-focus-within:opacity-100">
+          <button
+            type="button"
+            role="switch"
+            aria-checked={props.captureEnabled}
+            aria-label={`${props.name} 저장 대상`}
+            onClick={(e) => {
+              e.stopPropagation();
+              props.onToggleCapture();
+            }}
+            className={`w-8 h-4 rounded-full border ${
+              props.captureEnabled ? 'bg-accent border-accent' : 'bg-bg-input border-border'
+            }`}
+          >
+            <span
+              aria-hidden
+              className={`block w-3 h-3 rounded-full bg-fg transition-transform ${
+                props.captureEnabled ? 'translate-x-4' : 'translate-x-0.5'
+              }`}
+            />
+          </button>
           <button type="button" aria-label={`${props.name} 위로`} disabled={props.idx === 0}
             onClick={props.onMoveUp}
             className="px-1 leading-none hover:text-fg disabled:opacity-40">▲</button>
@@ -76,6 +98,7 @@ export function WatchlistEditModal({ onClose }: { onClose: () => void }) {
   const renameM = useRenameFolder();
   const deleteM = useDeleteFolder();
   const reorderFoldersM = useReorderFolders();
+  const captureM = useSetFolderCaptureEnabled();
   const [selected, setSelected] = useState<Selected>(null);
   const [adding, setAdding] = useState(false);
   const [newName, setNewName] = useState('');
@@ -160,11 +183,16 @@ export function WatchlistEditModal({ onClose }: { onClose: () => void }) {
             <div className="flex-1 overflow-auto px-2 pb-2 flex flex-col gap-px">
               {folders.map((f, idx) => (
                 <FolderRow key={f.id} id={f.id} name={f.name} idx={idx} count={countIn(f.id)}
+                  captureEnabled={f.capture_enabled}
                   isSelected={selected === f.id} isEditing={editingId === f.id}
                   isLast={idx === folders.length - 1} editName={editName}
                   onSelect={() => setSelected(f.id)}
                   onStartEdit={() => { setEditingId(f.id); setEditName(f.name); }}
                   onDelete={() => { deleteM.mutate(f.id); if (selected === f.id) setSelected(null); }}
+                  onToggleCapture={() => captureM.mutate({
+                    folderId: f.id,
+                    captureEnabled: !f.capture_enabled,
+                  })}
                   onMoveUp={() => moveFolder(f.id, -1)}
                   onMoveDown={() => moveFolder(f.id, +1)}
                   onEditNameChange={setEditName}
