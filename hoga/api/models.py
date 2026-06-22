@@ -733,6 +733,18 @@ class FolderReorderRequest(BaseModel):
     ordered_ids: list[str]
 
 
+LiveStoragePolicy = Literal["ws_only", "ws_plus_rest", "rest_only"]
+
+
+class LiveSettingsResponse(BaseModel):
+    schema_version: int = 1
+    storage_policy: LiveStoragePolicy = "ws_plus_rest"
+
+
+class LiveSettingsUpdate(BaseModel):
+    storage_policy: LiveStoragePolicy
+
+
 # Code lists below validate against params.CODE_PATTERN (6-char alphanumeric +
 # Q-prefixed ETN) — same boundary rule as every other code input, so the
 # folder endpoints can't smuggle arbitrary strings into watchlist storage.

@@ -2057,3 +2057,45 @@ def test_investor_trend_estimate_route_missing_kis_returns_degraded_error(tmp_pa
     assert body["rows"] == []
     assert body["latest"] is None
     assert body["data_warning"]["reason"] == "kis_credentials_missing"
+
+
+def test_live_settings_routes_round_trip(tmp_path):
+    from hoga.live import lifecycle
+    from hoga.live.api import build_router
+
+    lifecycle.reset_for_tests()
+    app = FastAPI()
+    app.include_router(
+        build_router(
+            data_dir=tmp_path,
+            get_status=lifecycle.get_status,
+        )
+    )
+    client = TestClient(app)
+
+    assert client.get("/api/live/settings").json()["storage_policy"] == "ws_plus_rest"
+
+    r = client.patch("/api/live/settings", json={"storage_policy": "rest_only"})
+
+    assert r.status_code == 200
+    assert r.json()["storage_policy"] == "rest_only"
+    assert client.get("/api/live/settings").json()["storage_policy"] == "rest_only"
+
+
+def test_live_settings_rejects_unknown_storage_policy(tmp_path):
+    from hoga.live import lifecycle
+    from hoga.live.api import build_router
+
+    lifecycle.reset_for_tests()
+    app = FastAPI()
+    app.include_router(
+        build_router(
+            data_dir=tmp_path,
+            get_status=lifecycle.get_status,
+        )
+    )
+    client = TestClient(app)
+
+    r = client.patch("/api/live/settings", json={"storage_policy": "bad"})
+
+    assert r.status_code == 422
