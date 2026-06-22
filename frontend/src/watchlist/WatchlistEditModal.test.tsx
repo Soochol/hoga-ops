@@ -140,4 +140,28 @@ describe('WatchlistEditModal', () => {
 
     await waitFor(() => expect(setCapture).toHaveBeenCalledWith('f_a', true));
   });
+
+  it('defaults missing folder capture state to enabled in the edit modal', async () => {
+    vi.spyOn(api, 'getWatchlist').mockResolvedValue({
+      folders: [{ id: 'f_a', name: '스윙', order: 0 }],
+      entries: [],
+      next_run_at_ms: 0,
+    });
+    const setCapture = vi.spyOn(api, 'setFolderCaptureEnabled').mockResolvedValue({
+      id: 'f_a',
+      name: '스윙',
+      order: 0,
+      capture_enabled: false,
+    });
+    const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+
+    render(<WatchlistEditModal onClose={() => {}} />, { wrapper: wrap(qc) });
+
+    const toggle = await screen.findByRole('switch', { name: '스윙 저장 대상' });
+    expect(toggle).toBeChecked();
+
+    fireEvent.click(toggle);
+
+    await waitFor(() => expect(setCapture).toHaveBeenCalledWith('f_a', false));
+  });
 });

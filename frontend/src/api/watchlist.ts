@@ -7,7 +7,7 @@ export interface WatchlistFolder {
   id: string;
   name: string;
   order: number;
-  capture_enabled: boolean;
+  capture_enabled?: boolean;
 }
 
 export interface WatchlistEntry {

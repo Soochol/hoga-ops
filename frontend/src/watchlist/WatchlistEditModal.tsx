@@ -12,6 +12,8 @@ import { resolveDrag, folderDroppableId } from './dragHandlers';
 import { selectVisibleEntries, swapFolderOrder, type Selected } from './grouping';
 import { ModalShell } from '../ui/ModalShell';
 
+const DEFAULT_CAPTURE_ENABLED = true;
+
 // Hoisted to module scope (stable identity) so the inline-edit <input> reconciles in place
 // instead of remounting on every keystroke (remount → detached node → lost focus + blur).
 // Droppable container (F8 drop target) + sibling selection / action buttons — the action
@@ -181,24 +183,27 @@ export function WatchlistEditModal({ onClose }: { onClose: () => void }) {
               )}
             </div>
             <div className="flex-1 overflow-auto px-2 pb-2 flex flex-col gap-px">
-              {folders.map((f, idx) => (
-                <FolderRow key={f.id} id={f.id} name={f.name} idx={idx} count={countIn(f.id)}
-                  captureEnabled={f.capture_enabled}
-                  isSelected={selected === f.id} isEditing={editingId === f.id}
-                  isLast={idx === folders.length - 1} editName={editName}
-                  onSelect={() => setSelected(f.id)}
-                  onStartEdit={() => { setEditingId(f.id); setEditName(f.name); }}
-                  onDelete={() => { deleteM.mutate(f.id); if (selected === f.id) setSelected(null); }}
-                  onToggleCapture={() => captureM.mutate({
-                    folderId: f.id,
-                    captureEnabled: !f.capture_enabled,
-                  })}
-                  onMoveUp={() => moveFolder(f.id, -1)}
-                  onMoveDown={() => moveFolder(f.id, +1)}
-                  onEditNameChange={setEditName}
-                  onCommit={() => commitRename(f.id)}
-                  onCancelEdit={() => setEditingId(null)} />
-              ))}
+              {folders.map((f, idx) => {
+                const captureEnabled = f.capture_enabled ?? DEFAULT_CAPTURE_ENABLED;
+                return (
+                  <FolderRow key={f.id} id={f.id} name={f.name} idx={idx} count={countIn(f.id)}
+                    captureEnabled={captureEnabled}
+                    isSelected={selected === f.id} isEditing={editingId === f.id}
+                    isLast={idx === folders.length - 1} editName={editName}
+                    onSelect={() => setSelected(f.id)}
+                    onStartEdit={() => { setEditingId(f.id); setEditName(f.name); }}
+                    onDelete={() => { deleteM.mutate(f.id); if (selected === f.id) setSelected(null); }}
+                    onToggleCapture={() => captureM.mutate({
+                      folderId: f.id,
+                      captureEnabled: !captureEnabled,
+                    })}
+                    onMoveUp={() => moveFolder(f.id, -1)}
+                    onMoveDown={() => moveFolder(f.id, +1)}
+                    onEditNameChange={setEditName}
+                    onCommit={() => commitRename(f.id)}
+                    onCancelEdit={() => setEditingId(null)} />
+                );
+              })}
             </div>
           </div>
 
