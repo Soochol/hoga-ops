@@ -3,6 +3,17 @@
 All notable changes to this project are documented here.
 The format follows a 4-digit `MAJOR.MINOR.PATCH.MICRO` scheme.
 
+## [0.8.17.0] - 2026-06-22
+
+### Added
+- **/live 차트 주기 선택 UX 개선**: 분봉 선택 버튼과 일·주·월 버튼으로 툴바를 정리해, 현재 분봉을 바로 확인하고
+  필요한 분봉 목록을 펼쳐 선택할 수 있게 했다.
+
+### Changed
+- 일봉·주봉·월봉 상태에서 분봉 버튼을 누르면 마지막으로 사용한 분봉으로 즉시 돌아가고, 분봉 상태에서 다시 누를 때만
+  1분·3분·5분·10분·15분·30분 목록을 보여준다.
+- `/live` 차트 주기 선택에서 연봉 버튼을 제거했다.
+
 ## [0.8.16.3] - 2026-06-20
 
 ### Added
