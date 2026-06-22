@@ -210,6 +210,15 @@ async def add_entry_to_folder(
             entry = HeatmapEntry(code=code, name=name, folder_id=folder_id, order=base)
             save_document(data_dir, doc.model_copy(update={"entries": [*doc.entries, entry]}))
             return entry
+        if existing.folder_id == folder_id:
+            entry = existing.model_copy(update={"name": name})
+            save_document(
+                data_dir,
+                doc.model_copy(update={
+                    "entries": [entry if e.code == code else e for e in doc.entries],
+                }),
+            )
+            return entry
         entry = existing.model_copy(update={"name": name, "folder_id": folder_id, "order": base})
         save_document(
             data_dir,

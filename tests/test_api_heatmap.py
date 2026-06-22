@@ -197,6 +197,28 @@ def test_folder_member_add_moves_existing_code_without_duplicate(tmp_path: Path)
     assert [(e["code"], e["folder_id"]) for e in entries] == [("005930", fid)]
 
 
+def test_folder_member_add_preserves_order_when_code_already_in_folder(tmp_path: Path):
+    from unittest.mock import patch
+    hits = [
+        _fake_hit("005930", "삼성전자"),
+        _fake_hit("000660", "SK하이닉스"),
+    ]
+    client = TestClient(_app(tmp_path))
+    fid = client.post("/api/heatmap/folders", json={"name": "반도체"}).json()["id"]
+
+    with patch("hoga.api.heatmap_routes.symbols.search", side_effect=[[hits[0]], [hits[1]], [hits[0]]]):
+        assert client.post(f"/api/heatmap/folders/{fid}/members", json={"code": "005930"}).status_code == 201
+        assert client.post(f"/api/heatmap/folders/{fid}/members", json={"code": "000660"}).status_code == 201
+        r = client.post(f"/api/heatmap/folders/{fid}/members", json={"code": "005930"})
+
+    assert r.status_code == 201
+    entries = client.get("/api/heatmap").json()["entries"]
+    assert [(e["code"], e["folder_id"], e["order"]) for e in entries] == [
+        ("005930", fid, 0),
+        ("000660", fid, 1),
+    ]
+
+
 def test_folder_member_add_rejects_missing_folder_without_adding_code(tmp_path: Path):
     from unittest.mock import patch
     hit = [_fake_hit("005930", "삼성전자")]
