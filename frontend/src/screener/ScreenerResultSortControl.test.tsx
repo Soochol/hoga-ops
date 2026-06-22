@@ -33,4 +33,3 @@ describe('ScreenerResultSortControl', () => {
     expect(screen.getByRole('button', { name: '등락률 높은 순' })).toBeDisabled();
   });
 });
-

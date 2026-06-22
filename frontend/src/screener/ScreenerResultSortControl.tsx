@@ -38,4 +38,3 @@ export function ScreenerResultSortControl({ mode, onChange, disabled = false }: 
     </div>
   );
 }
-

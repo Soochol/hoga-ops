@@ -51,4 +51,3 @@ describe('sortScreenerRows', () => {
       .toEqual(['A:second', 'B:other', 'A:first']);
   });
 });
-
