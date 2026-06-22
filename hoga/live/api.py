@@ -43,6 +43,10 @@ from hoga.live.index_candles_cache import (
     collect_index_candles_with_cache,
 )
 from hoga.live.index_cold_fetch import fetch_index_daily_candles_windowed
+from hoga.live.index_minute_candles_cache import (
+    IndexMinuteCandlesCache,
+    collect_index_minute_candles_with_cache,
+)
 from hoga.live.past_candles_cache import PastCandlesCache
 from hoga.live.past_daily_candles_cache import PastDailyCandlesCache
 
@@ -71,6 +75,7 @@ _CODE_RE = re.compile(CODE_PATTERN)
 _KST = timezone(timedelta(hours=9))
 _INVESTOR_ESTIMATE_MAX_CODES_PER_DAY = 256
 index_candles_cache_instance: IndexCandlesCache | None = None
+index_minute_candles_cache_instance: IndexMinuteCandlesCache | None = None
 
 # Rate-limit retry policy lives in ``KisClient._get`` (ADR-0050). Handlers
 # here just call ``kis.fetch_*`` directly; a ``KisRateLimitError`` that
@@ -1067,12 +1072,24 @@ def build_router(
                 "15m": 900,
                 "30m": 1800,
             }[timeframe]
-            result = await kis.fetch_index_minute_candles(
-                index,
+            if index_minute_candles_cache_instance is None:
+                raise HTTPException(503, "index-minute-candles cache not wired (data_dir missing)")
+
+            async def fetch_batch(from_s: str, to_s: str):
+                return await kis.fetch_index_minute_candles(
+                    index,
+                    from_s,
+                    to_s,
+                    bucket_seconds=bucket_seconds,
+                    foreground=True,
+                )
+
+            result = await collect_index_minute_candles_with_cache(
+                index_minute_candles_cache_instance,
+                (index.id, timeframe, bucket_seconds),
                 from_,
                 to,
-                bucket_seconds=bucket_seconds,
-                foreground=True,
+                fetch_batch,
             )
         batch_label = f"{from_}__{to}"
         return {
@@ -1259,6 +1276,9 @@ def build_router(
     global index_candles_cache_instance
     if data_dir is not None and index_candles_cache_instance is None:
         index_candles_cache_instance = IndexCandlesCache()
+    global index_minute_candles_cache_instance
+    if data_dir is not None and index_minute_candles_cache_instance is None:
+        index_minute_candles_cache_instance = IndexMinuteCandlesCache()
     # Investor net-buy reuses the daily candle cache (ADR-0055): same date-cursor
     # walk-back + batch/gap memory cache shape, just storing point dicts.
     investor_cache_instance: PastDailyCandlesCache | None = (

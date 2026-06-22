@@ -426,6 +426,12 @@ def _aggregate_index_minute_candles(
     return aggregated
 
 
+def _kis_index_minute_unit_seconds(bucket_seconds: int) -> int:
+    if bucket_seconds in {600, 1800}:
+        return 600
+    return 60
+
+
 def _parse_market_investor_daily_row(row: dict[str, Any]) -> InvestorNetPoint:
     date_str = str(_row_value(row, "stck_bsop_date", "bsop_date"))
     if len(date_str) != 8:
@@ -1131,9 +1137,9 @@ class KisClient:
         """Fetch domestic representative index intraday OHLCV candles.
 
         KIS TR_ID: FHKUP03500200 (inquire-time-indexchartprice). KIS supports a
-        small set of server-side minute units; this client always requests 1m
-        rows and aggregates to the display bucket so /live can use the same
-        timeframe set as stock charts.
+        small set of server-side minute units. Request the coarsest exact source
+        that preserves the display bucket's OHLC boundaries, then aggregate only
+        when the display bucket is a clean multiple of that source.
         """
         if index.kis_index_code is None:
             raise KisApiError(msg_cd="UNSUPPORTED_INDEX", msg1=f"{index.id} has no KIS index code")
@@ -1143,7 +1149,7 @@ class KisClient:
             "FID_COND_MRKT_DIV_CODE": "U",
             "FID_ETC_CLS_CODE": "0",
             "FID_INPUT_ISCD": index.kis_index_code,
-            "FID_INPUT_HOUR_1": "60",
+            "FID_INPUT_HOUR_1": str(_kis_index_minute_unit_seconds(bucket_seconds)),
             "FID_PW_DATA_INCU_YN": "Y",
         }
         body = await self._get(path=path, tr_id=tr_id, params=params, foreground=foreground)
@@ -1161,11 +1167,6 @@ class KisClient:
                 ))
                 continue
             if date_str < from_yyyymmdd or date_str > to_yyyymmdd:
-                violations.append(DailyInvariantViolation(
-                    date_yyyymmdd=date_str,
-                    reason="out_of_range",
-                    detail=f"outside requested range {from_yyyymmdd}..{to_yyyymmdd}",
-                ))
                 continue
             try:
                 point = _parse_index_minute_row(row)

@@ -119,6 +119,113 @@ async def test_fetch_index_minute_candles_calls_kis_time_chart_endpoint() -> Non
 
 
 @pytest.mark.asyncio
+@pytest.mark.parametrize(
+    ("display_bucket_seconds", "kis_input_hour"),
+    [
+        (600, "600"),
+        (1800, "600"),
+    ],
+)
+async def test_fetch_index_minute_candles_uses_kis_10m_source_for_supported_longer_buckets(
+    display_bucket_seconds: int,
+    kis_input_hour: str,
+) -> None:
+    captured: dict[str, object] = {}
+
+    def handler(req: httpx.Request) -> httpx.Response:
+        captured["params"] = dict(req.url.params)
+        return httpx.Response(
+            200,
+            json={
+                "rt_cd": "0",
+                "msg_cd": "0",
+                "msg1": "OK",
+                "output2": [
+                    {
+                        "stck_bsop_date": "20260619",
+                        "stck_cntg_hour": "090000",
+                        "bstp_nmix_oprc": "2850.10",
+                        "bstp_nmix_hgpr": "2852.34",
+                        "bstp_nmix_lwpr": "2849.87",
+                        "bstp_nmix_prpr": "2851.67",
+                        "cntg_vol": "123456",
+                    },
+                ],
+            },
+        )
+
+    client = KisClient(
+        credentials=KisCredentials(app_key="K", app_secret="S", env="real"),
+        token_provider=FakeTokenProvider(),
+        _transport=httpx.MockTransport(handler),
+    )
+    try:
+        await client.fetch_index_minute_candles(
+            get_representative_index("KOSPI"),
+            "20260619",
+            "20260619",
+            bucket_seconds=display_bucket_seconds,
+            foreground=True,
+        )
+    finally:
+        await client.aclose()
+
+    assert (captured["params"] or {})["FID_INPUT_HOUR_1"] == kis_input_hour
+
+
+@pytest.mark.asyncio
+async def test_fetch_index_minute_candles_filters_out_of_range_rows_without_warning() -> None:
+    def handler(req: httpx.Request) -> httpx.Response:
+        return httpx.Response(
+            200,
+            json={
+                "rt_cd": "0",
+                "msg_cd": "0",
+                "msg1": "OK",
+                "output2": [
+                    {
+                        "stck_bsop_date": "20260619",
+                        "stck_cntg_hour": "093000",
+                        "bstp_nmix_oprc": "2850.10",
+                        "bstp_nmix_hgpr": "2852.34",
+                        "bstp_nmix_lwpr": "2849.87",
+                        "bstp_nmix_prpr": "2851.67",
+                        "cntg_vol": "123456",
+                    },
+                    {
+                        "stck_bsop_date": "20260622",
+                        "stck_cntg_hour": "093000",
+                        "bstp_nmix_oprc": "2860.10",
+                        "bstp_nmix_hgpr": "2862.34",
+                        "bstp_nmix_lwpr": "2859.87",
+                        "bstp_nmix_prpr": "2861.67",
+                        "cntg_vol": "123456",
+                    },
+                ],
+            },
+        )
+
+    client = KisClient(
+        credentials=KisCredentials(app_key="K", app_secret="S", env="real"),
+        token_provider=FakeTokenProvider(),
+        _transport=httpx.MockTransport(handler),
+    )
+    try:
+        result = await client.fetch_index_minute_candles(
+            get_representative_index("KOSPI"),
+            "20260622",
+            "20260622",
+            bucket_seconds=600,
+            foreground=True,
+        )
+    finally:
+        await client.aclose()
+
+    assert [c.close for c in result.candles] == [2861.67]
+    assert result.violations == []
+
+
+@pytest.mark.asyncio
 async def test_5xx_with_json_body_preserves_upstream_msg_cd() -> None:
     """KIS sometimes wraps a domain error in a 5xx — keep its msg_cd visible.
 
