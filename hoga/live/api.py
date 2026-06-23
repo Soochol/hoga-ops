@@ -34,11 +34,6 @@ from hoga.live.kis_venue import (
     merge_auto_minute_bars,
     parse_live_venue_policy,
 )
-from hoga.live.index_registry import (
-    UnknownRepresentativeIndex,
-    get_representative_index,
-    list_representative_indices,
-)
 from hoga.live.index_candles_cache import (
     IndexCandlesCache,
     collect_index_candles_with_cache,
@@ -48,12 +43,21 @@ from hoga.live.index_minute_candles_cache import (
     IndexMinuteCandlesCache,
     collect_index_minute_candles_with_cache,
 )
+from hoga.live.index_registry import (
+    UnknownRepresentativeIndex,
+    get_representative_index,
+    list_representative_indices,
+)
 from hoga.live.past_candles_cache import PastCandlesCache
 from hoga.live.past_daily_candles_cache import PastDailyCandlesCache
 
 from . import kis_access
 from .buffer import LiveBuffer
-from .index_sector_rankings import IndexSectorRankingResponse, build_index_sector_rankings
+from .index_sector_rankings import (
+    IndexSectorRankingResponse,
+    build_index_sector_rankings,
+    list_index_sector_ranking_codes,
+)
 from .lifecycle import LiveStatus, refresh_live_stream
 from .settings import load_live_settings, update_live_settings
 
@@ -1209,15 +1213,34 @@ def build_router(
         }
 
     @router.get("/index-sector-rankings", response_model=IndexSectorRankingResponse)
-    def _get_index_sector_rankings(date: str = Query(...)) -> IndexSectorRankingResponse:
+    async def _get_index_sector_rankings(date: str = Query(...)) -> IndexSectorRankingResponse:
         basis = _parse_yyyymmdd(date)
         if basis is None:
             raise HTTPException(422, {"code": "invalid_date", "msg": "date must be YYYYMMDD"})
-        if date > _today_kst_yyyymmdd():
+        today = _today_kst_yyyymmdd()
+        if date > today:
             raise HTTPException(422, {"code": "date_in_future", "msg": "date must be <= today_kst"})
         if data_dir is None:
             raise HTTPException(503, "live data dir not wired")
-        return build_index_sector_rankings(data_dir, date).model_dump()
+        intraday_prices: dict[str, int] | None = {} if date == today else None
+        if date == today:
+            kis = _kis_for_background()
+            if kis is not None:
+                try:
+                    codes = list_index_sector_ranking_codes(data_dir)
+                    quotes = await _quote_fetcher.fetch_and_gate(
+                        kis,
+                        codes,
+                        _quote_phase(datetime.now(_KST)),
+                    )
+                    intraday_prices = {quote.code: quote.price for quote in quotes}
+                except Exception as exc:  # noqa: BLE001 - ranking must degrade to daily corpus.
+                    log.warning("index sector intraday quote fetch failed: %s", exc)
+        return build_index_sector_rankings(
+            data_dir,
+            date,
+            intraday_prices=intraday_prices,
+        ).model_dump()
 
     @router.post("/control")
     async def _post_control(req: ControlRequest) -> dict[str, str]:
