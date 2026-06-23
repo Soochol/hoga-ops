@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from pathlib import Path
 
+import httpx
 import pytest
 
 from hoga.live.kis_models import (
@@ -112,6 +113,47 @@ async def test_rest30_recorder_isolates_one_symbol_failure(tmp_path: Path) -> No
     assert not (tmp_path / "live_api" / "20260622" / "000660.jsonl").exists()
     assert recorder.status().last_error_count == 1
     assert recorder.status().degraded is True
+
+
+@pytest.mark.asyncio
+async def test_rest30_recorder_logs_transport_failures_without_traceback(
+    tmp_path: Path,
+    caplog: pytest.LogCaptureFixture,
+) -> None:
+    from hoga.live.buffer import LiveBuffer
+    from hoga.live.kis_client import KisTransportError
+    from hoga.live.rest30_recorder import Rest30sRecorder
+
+    class TimeoutKis(FakeKis):
+        async def fetch_orderbook(self, code: str) -> KisOrderbook:
+            self.calls.append(("orderbook", code))
+            raise KisTransportError(httpx.ConnectTimeout("connect timed out"))
+
+    kis = TimeoutKis()
+    recorder = Rest30sRecorder(
+        kis_resolver=lambda: kis,
+        buffer=LiveBuffer(),
+        data_dir=tmp_path,
+        date_fn=lambda: "20260622",
+        now_ms_fn=lambda: 1770000000000,
+        phase_fn=lambda: "regular",
+    )
+    recorder.set_targets({"005930"})
+
+    with caplog.at_level("WARNING", logger="hoga.live.rest30_recorder"):
+        await recorder.poll_once()
+
+    records = [r for r in caplog.records if r.name == "hoga.live.rest30_recorder"]
+    assert len(records) == 1
+    assert records[0].levelname == "WARNING"
+    assert records[0].exc_info is None
+    assert records[0].getMessage() == (
+        "live.rest30.api_code_failed code=005930 error=TRANSPORT/ConnectTimeout"
+    )
+    assert recorder.status().last_error_count == 1
+    assert recorder.status().last_error == (
+        "KisTransportError: KIS api error TRANSPORT/ConnectTimeout: connect timed out"
+    )
 
 
 @pytest.mark.asyncio

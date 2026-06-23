@@ -11,7 +11,7 @@ from pathlib import Path
 from typing import Protocol, runtime_checkable
 
 from hoga.live.buffer import LiveBuffer
-from hoga.live.kis_client import KisAuthError, KisRateLimitError
+from hoga.live.kis_client import KisApiError, KisAuthError, KisRateLimitError
 from hoga.live.kis_models import KisBrokers, KisOrderbook, KisTrade
 from hoga.live.rest30_writer import make_rest30_writer
 from hoga.live.rest_buffer_build import brokers_to_snapshot, ob_to_snapshot, trades_to_snapshots
@@ -155,7 +155,14 @@ class Rest30sRecorder:
                         self._backoff_remaining,
                         self._backoff_cycles,
                     )
-                _log.exception("live.rest30.code_failed code=%s", code)
+                if isinstance(e, KisApiError):
+                    _log.warning(
+                        "live.rest30.api_code_failed code=%s error=%s",
+                        code,
+                        e.msg_cd,
+                    )
+                else:
+                    _log.exception("live.rest30.code_failed code=%s", code)
 
         await self._writer.fsync_all()
         self._last_cycle_ms = self._now_ms()
