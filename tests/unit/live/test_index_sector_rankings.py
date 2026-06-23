@@ -4,11 +4,19 @@ import datetime as dt
 from pathlib import Path
 
 import polars as pl
+import pytest
 
 from hoga.live import index_sector_rankings as rankings
 from hoga.api.heatmap import save_document
 from hoga.api.models import HeatmapDocument, HeatmapEntry, WatchlistFolder
 from hoga.live.index_sector_rankings import build_index_sector_rankings
+
+
+@pytest.fixture(autouse=True)
+def clear_ranking_cache() -> None:
+    rankings._ranking_cache.clear()
+    yield
+    rankings._ranking_cache.clear()
 
 
 def _seed_heatmap(tmp_path: Path) -> None:
@@ -178,6 +186,39 @@ def test_index_sector_ranking_disk_cache_path_uses_input_fingerprint(tmp_path: P
 
     assert path.parent == tmp_path / "cache" / "index_sector_rankings"
     assert path.name == "20260619-heatmap_111-daily_222.json"
+
+
+def test_build_index_sector_rankings_writes_disk_cache(tmp_path: Path) -> None:
+    _seed_heatmap(tmp_path)
+    _seed_daily(tmp_path)
+
+    result = build_index_sector_rankings(tmp_path, "20260619")
+    cache_files = list((tmp_path / "cache" / "index_sector_rankings").glob("20260619-*.json"))
+
+    assert result.source == "daily_adjusted"
+    assert len(cache_files) == 1
+    cached = rankings._read_disk_cache(cache_files[0])
+    assert cached == result
+
+
+def test_build_index_sector_rankings_reads_valid_disk_cache_on_memory_miss(
+    tmp_path: Path,
+    monkeypatch,
+) -> None:
+    _seed_heatmap(tmp_path)
+    _seed_daily(tmp_path)
+    first = build_index_sector_rankings(tmp_path, "20260619")
+    rankings._ranking_cache.clear()
+
+    def fail_load_daily_rows(path, codes, basis):
+        raise AssertionError("disk cache hit should not scan parquet")
+
+    monkeypatch.setattr(rankings, "_load_daily_rows", fail_load_daily_rows)
+
+    second = build_index_sector_rankings(tmp_path, "20260619")
+
+    assert second == first
+    assert second.source == "daily_adjusted"
 
 
 def test_build_index_sector_rankings_marks_missing_previous_close(tmp_path: Path) -> None:

@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import datetime as dt
+import json
 from collections import OrderedDict
 from pathlib import Path
 from threading import Lock
@@ -242,6 +243,24 @@ def _ranking_disk_cache_path(
     return data_dir / "cache" / "index_sector_rankings" / filename
 
 
+def _read_disk_cache(path: Path) -> IndexSectorRankingResponse | None:
+    try:
+        raw = json.loads(path.read_text(encoding="utf-8"))
+        return IndexSectorRankingResponse.model_validate(raw)
+    except (OSError, ValueError):
+        return None
+
+
+def _write_disk_cache(path: Path, value: IndexSectorRankingResponse) -> None:
+    try:
+        path.parent.mkdir(parents=True, exist_ok=True)
+        tmp_path = path.with_suffix(path.suffix + ".tmp")
+        tmp_path.write_text(value.model_dump_json(), encoding="utf-8")
+        tmp_path.replace(path)
+    except OSError:
+        return
+
+
 def _unavailable(basis_date: str, reason: UnavailableReason) -> IndexSectorRankingResponse:
     return IndexSectorRankingResponse(
         date=basis_date,
@@ -271,6 +290,15 @@ def _cache_put(
     return value
 
 
+def _cache_put_with_disk(
+    key: tuple[str, str, int, int],
+    disk_path: Path,
+    value: IndexSectorRankingResponse,
+) -> IndexSectorRankingResponse:
+    _write_disk_cache(disk_path, value)
+    return _cache_put(key, value)
+
+
 def build_index_sector_rankings(data_dir: Path, basis_date: str) -> IndexSectorRankingResponse:
     basis = _parse_basis_date(basis_date)
     corpus_path = data_dir / "screener" / "daily_adjusted.parquet"
@@ -285,6 +313,16 @@ def build_index_sector_rankings(data_dir: Path, basis_date: str) -> IndexSectorR
     if cached is not None:
         return cached
 
+    disk_cache_path = _ranking_disk_cache_path(
+        data_dir,
+        basis_date,
+        heatmap_mtime_ns=cache_key[2],
+        corpus_mtime_ns=cache_key[3],
+    )
+    disk_cached = _read_disk_cache(disk_cache_path)
+    if disk_cached is not None:
+        return _cache_put(cache_key, disk_cached)
+
     doc = load_document(data_dir)
     if not corpus_path.exists():
         return _cache_put(cache_key, _unavailable(basis_date, "screener_daily_corpus_missing"))
@@ -292,7 +330,7 @@ def build_index_sector_rankings(data_dir: Path, basis_date: str) -> IndexSectorR
     try:
         daily_rows = _load_daily_rows(corpus_path, codes, basis)
     except Exception:
-        return _cache_put(cache_key, _unavailable(basis_date, "daily_corpus_invalid"))
+        return _cache_put_with_disk(cache_key, disk_cache_path, _unavailable(basis_date, "daily_corpus_invalid"))
     folder_names = {folder.id: folder.name for folder in doc.folders}
     folder_orders = {folder.id: folder.order for folder in doc.folders}
     try:
@@ -314,10 +352,10 @@ def build_index_sector_rankings(data_dir: Path, basis_date: str) -> IndexSectorR
                     basis=fallback_basis,
                 )
     except (KeyError, TypeError, ValueError):
-        return _cache_put(cache_key, _unavailable(basis_date, "daily_corpus_invalid"))
+        return _cache_put_with_disk(cache_key, disk_cache_path, _unavailable(basis_date, "daily_corpus_invalid"))
     if _all_stocks_missing_basis(sectors):
         return _cache_put(cache_key, _unavailable(basis_date, "no_basis_bars"))
-    return _cache_put(cache_key, IndexSectorRankingResponse(
+    return _cache_put_with_disk(cache_key, disk_cache_path, IndexSectorRankingResponse(
         date=basis_date,
         source="daily_adjusted",
         sectors=_sort_sectors(sectors),
