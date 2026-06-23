@@ -1,6 +1,17 @@
-import type { RangeBundle, RangeSegment, Candle, VolumeProfile, QuoteRatio, FillStrength, InvestorNetPoint } from '../api/types';
+import type {
+  RangeBundle,
+  RangeSegment,
+  Candle,
+  VolumeProfile,
+  QuoteRatio,
+  FillStrength,
+  InvestorNetPoint,
+  QuoteRatioPoint,
+  FillStrengthPoint,
+} from '../api/types';
 import {
   bucketHogaSeries,
+  isContinuousBook,
   type ObSnapshot,
   type TradeSnapshot,
 } from './bucketHogaSeries';
@@ -9,6 +20,7 @@ import {
   regularSessionOpenMs,
   regularSessionCloseMs,
 } from './liveDateTime';
+import { quoteImbalance } from '../util/imbalance';
 
 /** /live never mounts VolumeProfileOverlay; the bundle ships an empty profile
  * that satisfies the RangeBundle type without claiming any data. */
@@ -19,6 +31,8 @@ const EMPTY_VOLUME_PROFILE: VolumeProfile = {
   bin_width: 0,
   bins: [],
 };
+
+const AFTER_HOURS_EXTENSION_MS = 30 * 60 * 1000;
 
 export interface BuildLiveBundleInput {
   code: string;
@@ -55,11 +69,27 @@ export interface HogaSeries {
   fill_strength: FillStrength;
 }
 
+interface PastHogaSeries {
+  validPastQR: QuoteRatioPoint[];
+  validPastFS: FillStrengthPoint[];
+  pastMaxQrT: number;
+  pastMaxFsT: number;
+}
+
+function preparePastHogaSeries(pastBundle: RangeBundle | null, todaySessionCloseMs: number): PastHogaSeries {
+  const afterHoursEndMs = todaySessionCloseMs + AFTER_HOURS_EXTENSION_MS;
+  const validPastQR = pastBundle?.quote_ratio.points.filter((p) => p.t <= afterHoursEndMs) ?? [];
+  const validPastFS = pastBundle?.fill_strength.points.filter((p) => p.t <= afterHoursEndMs) ?? [];
+  return {
+    validPastQR,
+    validPastFS,
+    pastMaxQrT: validPastQR.length > 0 ? validPastQR[validPastQR.length - 1].t : 0,
+    pastMaxFsT: validPastFS.length > 0 ? validPastFS[validPastFS.length - 1].t : 0,
+  };
+}
+
 export function buildHogaSeries(input: BuildHogaSeriesInput): HogaSeries {
   const { todaySession, pastBundle, sseOb, sseTrade, bucketMs } = input;
-
-  const pastQRPoints = pastBundle?.quote_ratio.points ?? [];
-  const pastFSPoints = pastBundle?.fill_strength.points ?? [];
 
   // ADR-0049 / spec §3 — filter (not clip) past points whose t escapes
   // the Live Session end so a backend encoding regression cannot block SSE
@@ -72,11 +102,10 @@ export function buildHogaSeries(input: BuildHogaSeriesInput): HogaSeries {
   // anyway). Ceiling = close_ms + 30min (Live Session end incl. After-Hours
   // Trading, ADR-0044 / CONTEXT.md "Live Session"). Healthy past always
   // passes — no-op for normal bundles.
-  const AFTER_HOURS_END_MS = todaySession.close_ms + 30 * 60 * 1000;
-  const validPastQR = pastQRPoints.filter((p) => p.t <= AFTER_HOURS_END_MS);
-  const validPastFS = pastFSPoints.filter((p) => p.t <= AFTER_HOURS_END_MS);
-  const pastMaxQrT = validPastQR.length > 0 ? validPastQR[validPastQR.length - 1].t : 0;
-  const pastMaxFsT = validPastFS.length > 0 ? validPastFS[validPastFS.length - 1].t : 0;
+  const { validPastQR, validPastFS, pastMaxQrT, pastMaxFsT } = preparePastHogaSeries(
+    pastBundle,
+    todaySession.close_ms,
+  );
 
   // Today's straddle/auction buckets must not pull the closing-auction (3-level)
   // book into 호가비·총잔량. bucketHogaSeries detects the auction structurally
@@ -92,6 +121,254 @@ export function buildHogaSeries(input: BuildHogaSeriesInput): HogaSeries {
   return {
     quote_ratio: { bucket_ms: bucketMs, points: [...validPastQR, ...incrementalQR] },
     fill_strength: { bucket_ms: bucketMs, points: [...validPastFS, ...incrementalFS] },
+  };
+}
+
+function isOrderedByTime<T extends { t_ms: number }>(items: readonly T[]): boolean {
+  for (let i = 1; i < items.length; i++) {
+    if (items[i - 1].t_ms > items[i].t_ms) return false;
+  }
+  return true;
+}
+
+function bucketStartMs(tMs: number, bucketMs: number): number {
+  return Math.floor(tMs / bucketMs) * bucketMs;
+}
+
+class IncrementalHogaBucketer {
+  private bucketMs = 0;
+  private sessionCloseMs = Number.POSITIVE_INFINITY;
+  private obLength = 0;
+  private tradeLength = 0;
+  private lastObRef: ObSnapshot | null = null;
+  private lastTradeRef: TradeSnapshot | null = null;
+  private continuousBoundaryMs: number | null = null;
+  private maxProcessedObT: number | null = null;
+  private maxProcessedTradeT: number | null = null;
+  private quoteByBucket = new Map<number, QuoteRatioPoint>();
+  private quoteOrder: number[] = [];
+  private seenPre = new Set<number>();
+  private fillByBucket = new Map<number, FillStrengthPoint>();
+  private fillOrder: number[] = [];
+
+  update(
+    ob: readonly ObSnapshot[],
+    trade: readonly TradeSnapshot[],
+    bucketMs: number,
+    sessionCloseMs: number,
+  ): { quoteRatioPoints: QuoteRatioPoint[]; fillStrengthPoints: FillStrengthPoint[] } {
+    if (
+      this.bucketMs !== bucketMs ||
+      this.sessionCloseMs !== sessionCloseMs ||
+      !this.canAppendOb(ob) ||
+      !this.canAppendTrade(trade)
+    ) {
+      this.reset(bucketMs, sessionCloseMs);
+      const obSorted = isOrderedByTime(ob) ? ob : [...ob].sort((a, b) => a.t_ms - b.t_ms);
+      const tradeSorted = isOrderedByTime(trade) ? trade : [...trade].sort((a, b) => a.t_ms - b.t_ms);
+      this.appendOb(obSorted);
+      this.appendTrade(tradeSorted);
+      this.rememberInputs(ob, trade);
+      return this.snapshot();
+    }
+
+    const obDelta = ob.slice(this.obLength);
+    const tradeDelta = trade.slice(this.tradeLength);
+    if (!this.isMonotonicObDelta(obDelta) || !this.isMonotonicTradeDelta(tradeDelta)) {
+      this.reset(bucketMs, sessionCloseMs);
+      const obSorted = isOrderedByTime(ob) ? ob : [...ob].sort((a, b) => a.t_ms - b.t_ms);
+      const tradeSorted = isOrderedByTime(trade) ? trade : [...trade].sort((a, b) => a.t_ms - b.t_ms);
+      this.appendOb(obSorted);
+      this.appendTrade(tradeSorted);
+      this.rememberInputs(ob, trade);
+      return this.snapshot();
+    }
+    if (!this.appendOb(obDelta)) {
+      this.reset(bucketMs, sessionCloseMs);
+      const obSorted = isOrderedByTime(ob) ? ob : [...ob].sort((a, b) => a.t_ms - b.t_ms);
+      const tradeSorted = isOrderedByTime(trade) ? trade : [...trade].sort((a, b) => a.t_ms - b.t_ms);
+      this.appendOb(obSorted);
+      this.appendTrade(tradeSorted);
+      this.rememberInputs(ob, trade);
+      return this.snapshot();
+    }
+    this.appendTrade(tradeDelta);
+    this.rememberInputs(ob, trade);
+    return this.snapshot();
+  }
+
+  private reset(bucketMs: number, sessionCloseMs: number) {
+    this.bucketMs = bucketMs;
+    this.sessionCloseMs = sessionCloseMs;
+    this.obLength = 0;
+    this.tradeLength = 0;
+    this.lastObRef = null;
+    this.lastTradeRef = null;
+    this.continuousBoundaryMs = null;
+    this.maxProcessedObT = null;
+    this.maxProcessedTradeT = null;
+    this.quoteByBucket = new Map();
+    this.quoteOrder = [];
+    this.seenPre = new Set();
+    this.fillByBucket = new Map();
+    this.fillOrder = [];
+  }
+
+  private canAppendOb(ob: readonly ObSnapshot[]): boolean {
+    if (ob.length < this.obLength) return false;
+    if (this.obLength === 0) return true;
+    return ob[this.obLength - 1] === this.lastObRef;
+  }
+
+  private canAppendTrade(trade: readonly TradeSnapshot[]): boolean {
+    if (trade.length < this.tradeLength) return false;
+    if (this.tradeLength === 0) return true;
+    return trade[this.tradeLength - 1] === this.lastTradeRef;
+  }
+
+  private rememberInputs(ob: readonly ObSnapshot[], trade: readonly TradeSnapshot[]) {
+    this.obLength = ob.length;
+    this.tradeLength = trade.length;
+    this.lastObRef = ob.length > 0 ? ob[ob.length - 1] : null;
+    this.lastTradeRef = trade.length > 0 ? trade[trade.length - 1] : null;
+  }
+
+  private isMonotonicObDelta(obs: readonly ObSnapshot[]): boolean {
+    let last = this.maxProcessedObT;
+    for (const s of obs) {
+      if (last !== null && s.t_ms < last) return false;
+      last = s.t_ms;
+    }
+    return true;
+  }
+
+  private isMonotonicTradeDelta(trades: readonly TradeSnapshot[]): boolean {
+    let last = this.maxProcessedTradeT;
+    for (const s of trades) {
+      if (last !== null && s.t_ms < last) return false;
+      last = s.t_ms;
+    }
+    return true;
+  }
+
+  private appendOb(obs: readonly ObSnapshot[]): boolean {
+    if (obs.length === 0) return true;
+    const oldBoundary = this.continuousBoundaryMs;
+    let nextBoundary = oldBoundary;
+    for (const s of obs) {
+      if (s.t_ms <= this.sessionCloseMs && isContinuousBook(s)) {
+        nextBoundary = nextBoundary === null ? s.t_ms : Math.max(nextBoundary, s.t_ms);
+      }
+    }
+
+    if (
+      oldBoundary !== null &&
+      nextBoundary !== null &&
+      nextBoundary > oldBoundary &&
+      this.maxProcessedObT !== null &&
+      this.maxProcessedObT > oldBoundary
+    ) {
+      return false;
+    }
+
+    this.continuousBoundaryMs = nextBoundary;
+    const threshold = this.continuousBoundaryMs ?? Number.POSITIVE_INFINITY;
+    for (const s of obs) {
+      const t = bucketStartMs(s.t_ms, this.bucketMs);
+      if (s.t_ms <= threshold) {
+        const prev = this.quoteByBucket.get(t);
+        const bid_max = Math.max(prev?.bid_max ?? 0, s.total_bid_qty);
+        const ask_max = Math.max(prev?.ask_max ?? 0, s.total_ask_qty);
+        let imb_max_bid = prev?.imb_max_bid ?? 0;
+        let imb_max_ask = prev?.imb_max_ask ?? 0;
+        const curMag = Math.abs(quoteImbalance(s.total_bid_qty, s.total_ask_qty));
+        const prevMag = prev ? Math.abs(quoteImbalance(imb_max_bid, imb_max_ask)) : -1;
+        if (curMag > prevMag) {
+          imb_max_bid = s.total_bid_qty;
+          imb_max_ask = s.total_ask_qty;
+        }
+        if (!prev) this.quoteOrder.push(t);
+        this.quoteByBucket.set(t, {
+          t,
+          ask_total: s.total_ask_qty,
+          bid_total: s.total_bid_qty,
+          bid_max,
+          ask_max,
+          imb_max_bid,
+          imb_max_ask,
+        });
+        this.seenPre.add(t);
+      } else if (!this.seenPre.has(t) && !this.quoteByBucket.has(t)) {
+        this.quoteOrder.push(t);
+        this.quoteByBucket.set(t, {
+          t,
+          ask_total: 0,
+          bid_total: 0,
+          bid_max: 0,
+          ask_max: 0,
+          imb_max_bid: 0,
+          imb_max_ask: 0,
+        });
+      }
+      this.maxProcessedObT = this.maxProcessedObT === null ? s.t_ms : Math.max(this.maxProcessedObT, s.t_ms);
+    }
+    return true;
+  }
+
+  private appendTrade(trades: readonly TradeSnapshot[]) {
+    for (const s of trades) {
+      const t = bucketStartMs(s.t_ms, this.bucketMs);
+      let bucket = this.fillByBucket.get(t);
+      if (!bucket) {
+        bucket = { t, buy_qty: 0, sell_qty: 0 };
+        this.fillByBucket.set(t, bucket);
+        this.fillOrder.push(t);
+      }
+      for (const ev of s.trades) {
+        if (ev.side === 1) bucket.buy_qty += ev.qty;
+        else if (ev.side === -1) bucket.sell_qty += ev.qty;
+      }
+      this.maxProcessedTradeT = this.maxProcessedTradeT === null ? s.t_ms : Math.max(this.maxProcessedTradeT, s.t_ms);
+    }
+  }
+
+  private snapshot() {
+    return {
+      quoteRatioPoints: this.quoteOrder.map((t) => ({ ...this.quoteByBucket.get(t)! })),
+      fillStrengthPoints: this.fillOrder.map((t) => ({ ...this.fillByBucket.get(t)! })),
+    };
+  }
+}
+
+export function createIncrementalHogaSeriesBuilder(): (input: BuildHogaSeriesInput) => HogaSeries {
+  const bucketer = new IncrementalHogaBucketer();
+  let pastBundleRef: RangeBundle | null | undefined;
+  let pastSessionCloseMs = 0;
+  let cachedPastQR: QuoteRatioPoint[] = [];
+  let cachedPastFS: FillStrengthPoint[] = [];
+  let cachedPastMaxQrT = 0;
+  let cachedPastMaxFsT = 0;
+
+  return (input: BuildHogaSeriesInput): HogaSeries => {
+    const { todaySession, pastBundle, sseOb, sseTrade, bucketMs } = input;
+    if (pastBundleRef !== pastBundle || pastSessionCloseMs !== todaySession.close_ms) {
+      pastBundleRef = pastBundle;
+      pastSessionCloseMs = todaySession.close_ms;
+      const past = preparePastHogaSeries(pastBundle, todaySession.close_ms);
+      cachedPastQR = past.validPastQR;
+      cachedPastFS = past.validPastFS;
+      cachedPastMaxQrT = past.pastMaxQrT;
+      cachedPastMaxFsT = past.pastMaxFsT;
+    }
+
+    const sseBuckets = bucketer.update(sseOb, sseTrade, bucketMs, todaySession.close_ms);
+    const incrementalQR = sseBuckets.quoteRatioPoints.filter((p) => p.t > cachedPastMaxQrT);
+    const incrementalFS = sseBuckets.fillStrengthPoints.filter((p) => p.t > cachedPastMaxFsT);
+
+    return {
+      quote_ratio: { bucket_ms: bucketMs, points: [...cachedPastQR, ...incrementalQR] },
+      fill_strength: { bucket_ms: bucketMs, points: [...cachedPastFS, ...incrementalFS] },
+    };
   };
 }
 

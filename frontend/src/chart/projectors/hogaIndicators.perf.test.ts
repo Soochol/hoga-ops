@@ -3,6 +3,7 @@
 // 캔들/거래량 제외. 순수 함수만 측정 — lwc setData(렌더) 비용은 별도(측정 불가, 정적 추정).
 import { describe, it } from 'vitest';
 import { bucketHogaSeries, type ObSnapshot, type TradeSnapshot } from '../../live/bucketHogaSeries';
+import { createIncrementalHogaSeriesBuilder } from '../../live/buildLiveBundle';
 import { projectRatio } from './ratio';
 import { projectBid, projectAsk } from './quoteTotals';
 import { projectBuy, projectSell, projectCumulativeNetFill } from './fillStrength';
@@ -127,6 +128,27 @@ describe('라이브 호가 보조지표 — 틱당 처리 비용 (캔들/거래�
         `[B] ob=${String(obN).padStart(5)} trade=${String(trN).padStart(5)} | ` +
         `bucket=${t.toFixed(2)}ms (정렬분=${tSort.toFixed(2)}ms, ${((tSort / t) * 100).toFixed(0)}%) → ` +
         `/초=${(t * FLUSH_HZ).toFixed(0)}ms`,
+      );
+    }
+  });
+
+  it('B2) incremental HOGA builder append 비용 (틱당, 버퍼 크기 스윕)', () => {
+    for (const [obN, trN] of [[900, 900], [2000, 2000], [4000, 6000], [8000, 12000]] as const) {
+      const { ob, trade, sessionCloseMs } = makeBuffer(obN, trN);
+      const build = createIncrementalHogaSeriesBuilder();
+      const base = {
+        todaySession: { open_ms: BASE + 5 * DAY, close_ms: sessionCloseMs },
+        pastBundle: null,
+        bucketMs: BUCKET_MS,
+      };
+      build({ ...base, sseOb: ob.slice(0, -1), sseTrade: trade.slice(0, -1) });
+      const t = median(() => {
+        build({ ...base, sseOb: ob, sseTrade: trade });
+      });
+      // eslint-disable-next-line no-console
+      console.log(
+        `[B2] ob=${String(obN).padStart(5)} trade=${String(trN).padStart(5)} | ` +
+        `incremental append=${t.toFixed(4)}ms → /초=${(t * FLUSH_HZ).toFixed(1)}ms`,
       );
     }
   });

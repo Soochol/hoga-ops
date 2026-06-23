@@ -3,6 +3,14 @@
 All notable changes to this project are documented here.
 The format follows a 4-digit `MAJOR.MINOR.PATCH.MICRO` scheme.
 
+## [0.9.2.0] - 2026-06-23
+
+### Changed
+- **/live 차트 드래그 응답성 개선**: 호가·체결 보조 시리즈와 당일 매수/매도 벽 후보 계산을 증분 처리해, 차트 핸들링 중 긴 멈춤이 덜 발생하게 했다.
+
+### Fixed
+- 캔들 범위가 바뀐 뒤에도 이전 캔들 범위에서만 허용되던 당일 매수/매도 벽이 차트에 남을 수 있던 문제를 고쳤다.
+
 ## [0.9.1.4] - 2026-06-23
 
 ### Added

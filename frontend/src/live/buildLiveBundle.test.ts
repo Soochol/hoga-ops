@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { buildLiveBundle } from './buildLiveBundle';
+import { buildHogaSeries, buildLiveBundle, createIncrementalHogaSeriesBuilder } from './buildLiveBundle';
 import type { QuoteRatioPoint, RangeBundle } from '../api/types';
 
 // buildLiveBundle dedupe/promote logic only reads t/bid_total/ask_total; the Intra-Bar Max
@@ -262,6 +262,116 @@ describe('buildLiveBundle', () => {
     expect(bundle.segments[0].source).toBe('kis_live');
     expect(bundle.segments[1].source).toBe('hogaplay');
     expect(bundle.segments[2].source).toBe('kis_live');
+  });
+});
+
+describe('createIncrementalHogaSeriesBuilder', () => {
+  const session = { open_ms: TODAY_OPEN, close_ms: TODAY_CLOSE };
+  const baseInput = {
+    todaySession: session,
+    pastBundle: null,
+    bucketMs: 60_000,
+  };
+  const contLvls = (qty: number) => Array.from({ length: 10 }, (_, i) => ({ price: 100 + i, qty }));
+  const aucLvls = (qty: number) => Array.from({ length: 10 }, (_, i) => ({ price: 100 + i, qty: i < 3 ? qty : 0 }));
+  const shapedOb = (t: number, ask: number, bid: number, auction: boolean) => ({
+    t_ms: t,
+    total_ask_qty: ask,
+    total_bid_qty: bid,
+    asks: (auction ? aucLvls : contLvls)(ask),
+    bids: (auction ? aucLvls : contLvls)(bid),
+  });
+
+  it('matches buildHogaSeries across append-only live ticks', () => {
+    const buildIncremental = createIncrementalHogaSeriesBuilder();
+    const ob = [
+      { t_ms: TODAY_OPEN, total_ask_qty: 100, total_bid_qty: 80 },
+      { t_ms: TODAY_OPEN + 10_000, total_ask_qty: 120, total_bid_qty: 70 },
+      { t_ms: TODAY_OPEN + 70_000, total_ask_qty: 90, total_bid_qty: 110 },
+    ];
+    const trade = [
+      { t_ms: TODAY_OPEN + 5_000, trades: [{ side: 1, qty: 10 }, { side: -1, qty: 4 }] },
+      { t_ms: TODAY_OPEN + 65_000, trades: [{ side: 1, qty: 7 }] },
+    ];
+
+    for (let i = 0; i <= ob.length; i++) {
+      const input = {
+        ...baseInput,
+        sseOb: ob.slice(0, i),
+        sseTrade: trade.slice(0, Math.min(i, trade.length)),
+      };
+      expect(buildIncremental(input)).toEqual(buildHogaSeries(input));
+    }
+  });
+
+  it('falls back safely when the live buffer slides instead of only appending', () => {
+    const buildIncremental = createIncrementalHogaSeriesBuilder();
+    const full = [
+      { t_ms: TODAY_OPEN, total_ask_qty: 100, total_bid_qty: 80 },
+      { t_ms: TODAY_OPEN + 60_000, total_ask_qty: 120, total_bid_qty: 90 },
+      { t_ms: TODAY_OPEN + 120_000, total_ask_qty: 140, total_bid_qty: 95 },
+    ];
+    buildIncremental({ ...baseInput, sseOb: full.slice(0, 2), sseTrade: [] });
+
+    const slid = full.slice(1);
+    const input = { ...baseInput, sseOb: slid, sseTrade: [] };
+    expect(buildIncremental(input)).toEqual(buildHogaSeries(input));
+  });
+
+  it('rebuilds safely when a later continuous book moves the auction boundary forward', () => {
+    const buildIncremental = createIncrementalHogaSeriesBuilder();
+    const ob = [
+      shapedOb(TODAY_OPEN, 100, 80, false),
+      shapedOb(TODAY_OPEN + 60_000, 900, 800, true),
+      shapedOb(TODAY_OPEN + 120_000, 120, 95, false),
+    ];
+    const trade = [
+      { t_ms: TODAY_OPEN, trades: [{ side: 1, qty: 10 }] },
+      { t_ms: TODAY_OPEN + 120_000, trades: [{ side: -1, qty: 3 }] },
+    ];
+    buildIncremental({
+      ...baseInput,
+      sseOb: ob.slice(0, 2),
+      sseTrade: trade.slice(0, 1),
+    });
+
+    const input = { ...baseInput, sseOb: ob, sseTrade: trade };
+    expect(buildIncremental(input)).toEqual(buildHogaSeries(input));
+  });
+
+  it('does not mutate a previously returned series when later ticks update the same bucket', () => {
+    const buildIncremental = createIncrementalHogaSeriesBuilder();
+    const ob = [
+      { t_ms: TODAY_OPEN, total_ask_qty: 100, total_bid_qty: 80 },
+      { t_ms: TODAY_OPEN + 10_000, total_ask_qty: 120, total_bid_qty: 90 },
+    ];
+    const trade = [
+      { t_ms: TODAY_OPEN, trades: [{ side: 1, qty: 10 }] },
+      { t_ms: TODAY_OPEN + 10_000, trades: [{ side: -1, qty: 4 }] },
+    ];
+
+    const first = buildIncremental({ ...baseInput, sseOb: ob.slice(0, 1), sseTrade: trade.slice(0, 1) });
+    const firstSnapshot = structuredClone(first);
+
+    buildIncremental({ ...baseInput, sseOb: ob, sseTrade: trade });
+
+    expect(first).toEqual(firstSnapshot);
+  });
+
+  it('falls back safely when an appended snapshot arrives out of time order', () => {
+    const buildIncremental = createIncrementalHogaSeriesBuilder();
+    const ob = [
+      { t_ms: TODAY_OPEN + 30_000, total_ask_qty: 130, total_bid_qty: 70 },
+      { t_ms: TODAY_OPEN + 10_000, total_ask_qty: 110, total_bid_qty: 90 },
+    ];
+    const trade = [
+      { t_ms: TODAY_OPEN + 30_000, trades: [{ side: 1, qty: 5 }] },
+      { t_ms: TODAY_OPEN + 10_000, trades: [{ side: -1, qty: 3 }] },
+    ];
+    buildIncremental({ ...baseInput, sseOb: ob.slice(0, 1), sseTrade: trade.slice(0, 1) });
+
+    const input = { ...baseInput, sseOb: ob, sseTrade: trade };
+    expect(buildIncremental(input)).toEqual(buildHogaSeries(input));
   });
 });
 
