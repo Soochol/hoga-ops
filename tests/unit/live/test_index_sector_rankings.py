@@ -102,15 +102,19 @@ def test_build_index_sector_rankings_reports_unavailable_when_corpus_missing(tmp
     assert result.sectors == []
 
 
-def test_build_index_sector_rankings_reports_unavailable_when_no_basis_bars(tmp_path: Path) -> None:
+def test_build_index_sector_rankings_falls_back_to_latest_available_basis_when_requested_day_missing(
+    tmp_path: Path,
+) -> None:
     _seed_heatmap(tmp_path)
     _seed_daily(tmp_path)
 
     result = build_index_sector_rankings(tmp_path, "20260620")
 
-    assert result.source == "unavailable"
-    assert result.unavailable_reason == "no_basis_bars"
-    assert result.sectors == []
+    assert result.date == "20260620"
+    assert result.source == "daily_adjusted"
+    assert result.unavailable_reason is None
+    assert result.sectors[0].change_pct == 7.5
+    assert result.sectors[0].stocks[0].change_pct == 10.0
 
 
 def test_build_index_sector_rankings_reports_unavailable_when_corpus_invalid(tmp_path: Path) -> None:

@@ -1,4 +1,4 @@
-import { useMemo, useReducer } from 'react';
+import { useCallback, useEffect, useMemo, useReducer, useRef, useState } from 'react';
 import type { ReactNode } from 'react';
 import type { BasisMode } from './indexSectorRankingState';
 import {
@@ -21,6 +21,14 @@ interface Props {
   error: unknown;
   onClearDatePin: () => void;
   onOpenStock: (code: string, name: string) => void;
+}
+
+const DEFAULT_PANE_HEIGHT = 220;
+const MIN_PANE_HEIGHT = 140;
+const MAX_PANE_HEIGHT = 520;
+
+function clampPaneHeight(value: number): number {
+  return Math.min(MAX_PANE_HEIGHT, Math.max(MIN_PANE_HEIGHT, value));
 }
 
 function formatDate(date: string | null): string {
@@ -138,6 +146,29 @@ export function IndexSectorRankingPane({
     reduceIndexSectorRankingState,
     initialIndexSectorRankingUiState,
   );
+  const [height, setHeight] = useState(DEFAULT_PANE_HEIGHT);
+  const resizeStartRef = useRef<{ y: number; height: number } | null>(null);
+
+  const startResize = useCallback((clientY: number) => {
+    resizeStartRef.current = { y: clientY, height };
+  }, [height]);
+
+  useEffect(() => {
+    const handleMouseMove = (event: MouseEvent) => {
+      const start = resizeStartRef.current;
+      if (!start) return;
+      setHeight(clampPaneHeight(start.height + start.y - event.clientY));
+    };
+    const handleMouseUp = () => {
+      resizeStartRef.current = null;
+    };
+    window.addEventListener('mousemove', handleMouseMove);
+    window.addEventListener('mouseup', handleMouseUp);
+    return () => {
+      window.removeEventListener('mousemove', handleMouseMove);
+      window.removeEventListener('mouseup', handleMouseUp);
+    };
+  }, []);
 
   const sectors = ranking?.sectors ?? [];
   const activeSectorId = resolveActiveSectorId(sectors, state);
@@ -195,11 +226,52 @@ export function IndexSectorRankingPane({
       data-testid="index-sector-ranking-pane"
       className="flex min-h-0 flex-col"
       style={{
-        height: 220,
+        height,
         borderTop: '1px solid var(--border)',
         background: 'var(--bg)',
       }}
     >
+      <div
+        role="separator"
+        aria-label="섹터 랭킹 높이 조절"
+        aria-orientation="horizontal"
+        aria-valuemin={MIN_PANE_HEIGHT}
+        aria-valuemax={MAX_PANE_HEIGHT}
+        aria-valuenow={height}
+        tabIndex={0}
+        onMouseDown={(event) => {
+          event.preventDefault();
+          startResize(event.clientY);
+        }}
+        onKeyDown={(event) => {
+          if (event.key === 'ArrowUp') {
+            setHeight((current) => clampPaneHeight(current + 20));
+            event.preventDefault();
+          } else if (event.key === 'ArrowDown') {
+            setHeight((current) => clampPaneHeight(current - 20));
+            event.preventDefault();
+          }
+        }}
+        style={{
+          height: 8,
+          cursor: 'ns-resize',
+          display: 'grid',
+          placeItems: 'center',
+          color: 'var(--fg-dimmer)',
+          background: 'var(--bg)',
+          flexShrink: 0,
+        }}
+      >
+        <span
+          aria-hidden
+          style={{
+            width: 36,
+            height: 3,
+            borderTop: '1px solid var(--border-strong)',
+            borderBottom: '1px solid var(--border-strong)',
+          }}
+        />
+      </div>
       <div
         className="flex items-center gap-sm"
         style={{

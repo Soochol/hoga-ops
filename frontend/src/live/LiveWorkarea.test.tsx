@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { render, screen } from '@testing-library/react';
+import { fireEvent, render, screen } from '@testing-library/react';
 import { LiveWorkarea } from './LiveWorkarea';
 import type { LiveChartRoot } from './LiveChartRoot';
 import { useLivePageStore } from '../state/livePage';
@@ -216,6 +216,98 @@ describe('LiveWorkarea gate', () => {
 
     expect(secondChartProps?.onCandleBasisHover).toBe(firstChartProps?.onCandleBasisHover);
     expect(secondChartProps?.onCandleBasisClick).toBe(firstChartProps?.onCandleBasisClick);
+  });
+
+  it('returns to the latest candle basis when the chart whitespace is clicked', () => {
+    useLivePageStore.setState({ candleTimeframe: 'D' });
+    const { rerender } = render(
+      <LiveWorkarea
+        activeCode="index:KOSPI"
+        activeInstrument={indexInstrument('KOSPI', 'KOSPI')}
+        bundle={INDEX_BUNDLE_WITH_LAST_CANDLE}
+        clampEngaged={false}
+        isPastCandlesLoading={false}
+        isExtending={false}
+        live={LIVE}
+      />,
+    );
+    const chartProps = liveChartRootMock.mock.calls.at(-1)?.[0] as
+      | { onCandleBasisClick?: (date: string | null) => void }
+      | undefined;
+
+    chartProps?.onCandleBasisClick?.('20260617');
+    rerender(
+      <LiveWorkarea
+        activeCode="index:KOSPI"
+        activeInstrument={indexInstrument('KOSPI', 'KOSPI')}
+        bundle={INDEX_BUNDLE_WITH_LAST_CANDLE}
+        clampEngaged={false}
+        isPastCandlesLoading={false}
+        isExtending={false}
+        live={LIVE}
+      />,
+    );
+    expect(useIndexSectorRankingsMock).toHaveBeenLastCalledWith('20260617', true);
+
+    chartProps?.onCandleBasisClick?.(null);
+    rerender(
+      <LiveWorkarea
+        activeCode="index:KOSPI"
+        activeInstrument={indexInstrument('KOSPI', 'KOSPI')}
+        bundle={INDEX_BUNDLE_WITH_LAST_CANDLE}
+        clampEngaged={false}
+        isPastCandlesLoading={false}
+        isExtending={false}
+        live={LIVE}
+      />,
+    );
+    expect(useIndexSectorRankingsMock).toHaveBeenLastCalledWith('20260618', true);
+  });
+
+  it('returns to the latest candle basis on Escape', () => {
+    useLivePageStore.setState({ candleTimeframe: 'D' });
+    const { rerender } = render(
+      <LiveWorkarea
+        activeCode="index:KOSPI"
+        activeInstrument={indexInstrument('KOSPI', 'KOSPI')}
+        bundle={INDEX_BUNDLE_WITH_LAST_CANDLE}
+        clampEngaged={false}
+        isPastCandlesLoading={false}
+        isExtending={false}
+        live={LIVE}
+      />,
+    );
+    const chartProps = liveChartRootMock.mock.calls.at(-1)?.[0] as
+      | { onCandleBasisClick?: (date: string | null) => void }
+      | undefined;
+
+    chartProps?.onCandleBasisClick?.('20260617');
+    rerender(
+      <LiveWorkarea
+        activeCode="index:KOSPI"
+        activeInstrument={indexInstrument('KOSPI', 'KOSPI')}
+        bundle={INDEX_BUNDLE_WITH_LAST_CANDLE}
+        clampEngaged={false}
+        isPastCandlesLoading={false}
+        isExtending={false}
+        live={LIVE}
+      />,
+    );
+    expect(useIndexSectorRankingsMock).toHaveBeenLastCalledWith('20260617', true);
+
+    fireEvent.keyDown(window, { key: 'Escape' });
+    rerender(
+      <LiveWorkarea
+        activeCode="index:KOSPI"
+        activeInstrument={indexInstrument('KOSPI', 'KOSPI')}
+        bundle={INDEX_BUNDLE_WITH_LAST_CANDLE}
+        clampEngaged={false}
+        isPastCandlesLoading={false}
+        isExtending={false}
+        live={LIVE}
+      />,
+    );
+    expect(useIndexSectorRankingsMock).toHaveBeenLastCalledWith('20260618', true);
   });
 
   it('does not render the index sector pane for stock instruments', () => {

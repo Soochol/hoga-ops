@@ -1,5 +1,5 @@
 import { describe, it, expect, vi } from 'vitest';
-import { render, screen } from '@testing-library/react';
+import { fireEvent, render, screen } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 
 import { IndexSectorRankingPane } from './IndexSectorRankingPane';
@@ -191,5 +191,29 @@ describe('IndexSectorRankingPane', () => {
     );
 
     expect(screen.getByText('일봉 랭킹 데이터를 사용할 수 없습니다.')).toBeInTheDocument();
+  });
+
+  it('lets the user resize the pane height by dragging the separator', () => {
+    render(
+      <IndexSectorRankingPane
+        basisDate="20260619"
+        basisMode="hover"
+        ranking={ranking}
+        isLoading={false}
+        error={null}
+        onClearDatePin={() => {}}
+        onOpenStock={() => {}}
+      />,
+    );
+
+    const pane = screen.getByTestId('index-sector-ranking-pane');
+    const separator = screen.getByRole('separator', { name: '섹터 랭킹 높이 조절' });
+    expect(pane).toHaveStyle({ height: '220px' });
+
+    fireEvent.mouseDown(separator, { clientY: 300 });
+    fireEvent.mouseMove(window, { clientY: 240 });
+    fireEvent.mouseUp(window);
+
+    expect(pane).toHaveStyle({ height: '280px' });
   });
 });

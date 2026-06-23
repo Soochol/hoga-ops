@@ -25,6 +25,7 @@ export const initialIndexSectorRankingUiState: IndexSectorRankingUiState = {
 
 export type IndexSectorRankingAction =
   | { type: 'hover_date'; date: string | null }
+  | { type: 'select_date'; date: string | null }
   | { type: 'toggle_date_pin'; date: string }
   | { type: 'clear_date_pin' }
   | { type: 'preview_sector'; sectorKey: SectorIdentityKey | null }
@@ -38,6 +39,8 @@ export function reduceIndexSectorRankingState(
   switch (action.type) {
     case 'hover_date':
       return state.pinnedDate ? state : { ...state, hoverDate: action.date };
+    case 'select_date':
+      return { ...state, pinnedDate: action.date, hoverDate: null };
     case 'toggle_date_pin':
       return {
         ...state,
