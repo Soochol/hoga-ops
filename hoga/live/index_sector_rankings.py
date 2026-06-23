@@ -232,6 +232,17 @@ def _mtime_ns(path: Path) -> int:
         return 0
 
 
+def _ranking_disk_cache_path(
+    data_dir: Path,
+    basis_date: str,
+    *,
+    heatmap_mtime_ns: int,
+    corpus_mtime_ns: int,
+) -> Path:
+    filename = f"{basis_date}-heatmap_{heatmap_mtime_ns}-daily_{corpus_mtime_ns}.json"
+    return data_dir / "cache" / "index_sector_rankings" / filename
+
+
 def _unavailable(basis_date: str, reason: UnavailableReason) -> IndexSectorRankingResponse:
     return IndexSectorRankingResponse(
         date=basis_date,

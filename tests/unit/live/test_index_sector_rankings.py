@@ -173,6 +173,18 @@ def test_build_index_sector_rankings_caches_unchanged_heatmap_and_corpus(
     assert calls == 1
 
 
+def test_index_sector_ranking_disk_cache_path_uses_input_fingerprint(tmp_path: Path) -> None:
+    path = rankings._ranking_disk_cache_path(
+        tmp_path,
+        "20260619",
+        heatmap_mtime_ns=111,
+        corpus_mtime_ns=222,
+    )
+
+    assert path.parent == tmp_path / "cache" / "index_sector_rankings"
+    assert path.name == "20260619-heatmap_111-daily_222.json"
+
+
 def test_build_index_sector_rankings_marks_missing_previous_close(tmp_path: Path) -> None:
     solo_id = "f_00000004"
     save_document(
