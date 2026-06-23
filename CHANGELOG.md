@@ -3,6 +3,14 @@
 All notable changes to this project are documented here.
 The format follows a 4-digit `MAJOR.MINOR.PATCH.MICRO` scheme.
 
+## [0.9.1.4] - 2026-06-23
+
+### Added
+- **/live 지수 섹터 랭킹 디스크 캐시 추가**: 서버 재시작 후에도 같은 날짜와 같은 히트맵/일봉 입력 기준의 섹터·종목 랭킹을 빠르게 다시 열 수 있게 했다.
+
+### Fixed
+- 깨진 섹터 랭킹 캐시 파일은 무시하고 다시 계산해, 캐시 손상으로 API 응답이 실패하지 않게 했다.
+
 ## [0.9.1.3] - 2026-06-23
 
 ### Changed
