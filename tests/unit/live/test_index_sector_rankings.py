@@ -221,6 +221,27 @@ def test_build_index_sector_rankings_reads_valid_disk_cache_on_memory_miss(
     assert second.source == "daily_adjusted"
 
 
+def test_build_index_sector_rankings_ignores_corrupt_disk_cache(tmp_path: Path) -> None:
+    _seed_heatmap(tmp_path)
+    _seed_daily(tmp_path)
+    heatmap_path = tmp_path / "heatmap.json"
+    corpus_path = tmp_path / "screener" / "daily_adjusted.parquet"
+    cache_path = rankings._ranking_disk_cache_path(
+        tmp_path,
+        "20260619",
+        heatmap_mtime_ns=heatmap_path.stat().st_mtime_ns,
+        corpus_mtime_ns=corpus_path.stat().st_mtime_ns,
+    )
+    cache_path.parent.mkdir(parents=True)
+    cache_path.write_text("{not json", encoding="utf-8")
+
+    result = build_index_sector_rankings(tmp_path, "20260619")
+
+    assert result.source == "daily_adjusted"
+    assert result.sectors[0].change_pct == 7.5
+    assert rankings._read_disk_cache(cache_path) == result
+
+
 def test_build_index_sector_rankings_marks_missing_previous_close(tmp_path: Path) -> None:
     solo_id = "f_00000004"
     save_document(
