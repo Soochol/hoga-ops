@@ -953,6 +953,50 @@ def test_past_daily_non_krx_empty_falls_back_to_krx(tmp_path, venue: str, primar
     )
 
 
+def test_past_daily_non_krx_partial_range_fills_missing_dates_from_krx(tmp_path) -> None:
+    class _PartialUnDailyKis(_FakeKisForDaily):
+        async def fetch_past_daily_candles(
+            self, code: str, from_yyyymmdd: str, to_yyyymmdd: str, **_kw
+        ) -> DailyCandleFetchResult:
+            self.calls.append((code, from_yyyymmdd, to_yyyymmdd))
+            self.kwargs.append(_kw)
+            if _kw.get("venue") == "UN":
+                kst = datetime.timezone(datetime.timedelta(hours=9))
+                candles = [
+                    KisCandle(
+                        t_ms=int(datetime.datetime(2024, 1, 1, 9, 0, tzinfo=kst).timestamp() * 1000),
+                        open=200, high=210, low=195, close=205, volume=20,
+                    ),
+                    KisCandle(
+                        t_ms=int(datetime.datetime(2024, 1, 2, 9, 0, tzinfo=kst).timestamp() * 1000),
+                        open=201, high=211, low=196, close=206, volume=21,
+                    ),
+                ]
+                return DailyCandleFetchResult(candles=candles, violations=[])
+            return await super().fetch_past_daily_candles(code, from_yyyymmdd, to_yyyymmdd, **_kw)
+
+    fake = _PartialUnDailyKis()
+    app = _daily_app(tmp_path, fake)
+    with TestClient(app) as c:
+        r = c.get("/api/live/past-daily-candles?code=089030&from=20240101&to=20240120&venue=UN")
+        assert r.status_code == 200
+        body = r.json()
+
+    assert fake.kwargs[:2] == [
+        {"venue": "UN", "foreground": True},
+        {"venue": "KRX", "foreground": True},
+    ]
+    assert len(body["candles"]) == 20
+    assert body["candles"][0]["close"] == 205
+    assert body["candles"][1]["close"] == 206
+    assert body["candles"][2]["close"] == 105
+    assert any(
+        w["reason"] == "daily_fallback_to_krx"
+        and "partial range" in w["msg"]
+        for w in body["data_warnings"]
+    )
+
+
 def test_past_daily_rejects_invalid_venue_before_kis(tmp_path) -> None:
     fake = _FakeKisForDaily()
     app = _daily_app(tmp_path, fake)

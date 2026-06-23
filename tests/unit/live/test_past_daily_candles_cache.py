@@ -2,14 +2,19 @@
 from __future__ import annotations
 
 import time
-from datetime import date
+from datetime import date, datetime
 from unittest.mock import patch
 
+from hoga.live.kis_venue import KIS_KST
 from hoga.live.past_daily_candles_cache import PastDailyCandlesCache
 
 
 def _bar(t_ms: int) -> dict:
     return {"t_ms": t_ms, "open": 100, "high": 110, "low": 95, "close": 105, "volume": 10}
+
+
+def _bar_for(d: date) -> dict:
+    return _bar(int(datetime(d.year, d.month, d.day, 9, 0, tzinfo=KIS_KST).timestamp() * 1000))
 
 
 def test_empty_code_returns_no_batches() -> None:
@@ -19,7 +24,7 @@ def test_empty_code_returns_no_batches() -> None:
 
 def test_append_and_read_round_trip() -> None:
     cache = PastDailyCandlesCache()
-    bars = [_bar(1000), _bar(2000)]
+    bars = [_bar_for(date(2024, 1, 1)), _bar_for(date(2024, 12, 31))]
     cache.append_batch("005930", date(2024, 1, 1), date(2024, 12, 31), bars)
     out = cache.list_batches("005930")
     assert len(out) == 1
@@ -27,6 +32,17 @@ def test_append_and_read_round_trip() -> None:
     assert b_from == date(2024, 1, 1)
     assert b_to == date(2024, 12, 31)
     assert b_bars == bars
+
+
+def test_batch_coverage_is_narrowed_to_actual_row_dates() -> None:
+    cache = PastDailyCandlesCache()
+    bars = [_bar_for(date(2026, 2, 10)), _bar_for(date(2026, 2, 11))]
+
+    cache.append_batch("UN", "089030", date(2024, 7, 23), date(2026, 6, 22), bars)
+
+    assert cache.list_batches("UN", "089030") == [
+        (date(2026, 2, 10), date(2026, 2, 11), bars),
+    ]
 
 
 def test_daily_cache_separates_venue_batches() -> None:
