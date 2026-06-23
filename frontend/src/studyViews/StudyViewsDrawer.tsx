@@ -171,8 +171,10 @@ export function StudyViewsDrawer() {
   const saveSource = useCurrentStudySaveSource();
   const [dialog, setDialog] = useState<SaveDialogState | null>(null);
   const [deleteTarget, setDeleteTarget] = useState<ParquetStudyView | null>(null);
+  const [rowMenu, setRowMenu] = useState<{ row: ParquetStudyView; left: number; top: number } | null>(null);
   const [renameState, setRenameState] = useState<{ id: string; value: string; error: string | null } | null>(null);
   const renameCommittingRef = useRef(false);
+  const renameInputRef = useRef<HTMLInputElement>(null);
   const deleteConfirmButtonRef = useRef<HTMLButtonElement>(null);
   const navigate = useNavigate();
   const location = useLocation();
@@ -206,6 +208,28 @@ export function StudyViewsDrawer() {
     if (!deleteTarget) return;
     deleteConfirmButtonRef.current?.focus();
   }, [deleteTarget]);
+
+  useEffect(() => {
+    if (!renameState) return;
+    renameInputRef.current?.focus();
+    renameInputRef.current?.select();
+  }, [renameState?.id]);
+
+  useEffect(() => {
+    if (!rowMenu) return;
+
+    const close = () => setRowMenu(null);
+    const closeOnEscape = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') close();
+    };
+
+    document.addEventListener('mousedown', close);
+    document.addEventListener('keydown', closeOnEscape);
+    return () => {
+      document.removeEventListener('mousedown', close);
+      document.removeEventListener('keydown', closeOnEscape);
+    };
+  }, [rowMenu]);
 
   const openSaveDialog = (mode: 'create' | 'overwrite', id?: string) => {
     if (!studySource) return;
@@ -303,19 +327,24 @@ export function StudyViewsDrawer() {
       tabIndex={renameState?.id === row.id ? undefined : 0}
       aria-label={renameState?.id === row.id ? undefined : `${row.name} 저장뷰 열기`}
       onClick={renameState?.id === row.id ? undefined : () => navigateToStudyView(row)}
+      onContextMenu={renameState?.id === row.id ? undefined : (e) => {
+        e.preventDefault();
+        setRowMenu({ row, left: e.clientX, top: e.clientY });
+      }}
       onKeyDown={renameState?.id === row.id ? undefined : (e) => {
         if (e.target !== e.currentTarget) return;
         if (e.key !== 'Enter' && e.key !== ' ') return;
         e.preventDefault();
         navigateToStudyView(row);
       }}
-      className="flex cursor-pointer items-start gap-2 border-b px-3 py-2 pl-7 hover:bg-bg-input-hover focus:outline-none focus:ring-1 focus:ring-inset focus:ring-line"
+      className="flex cursor-pointer items-center gap-2 border-b border-border pl-10 pr-md py-sm hover:bg-bg-input-hover focus:outline-none focus:ring-1 focus:ring-inset focus:ring-line"
     >
       {renameState?.id === row.id ? (
         <div className="min-w-0 flex-1 space-y-1">
           <input
             aria-label="저장뷰 이름 수정"
             autoFocus
+            ref={renameInputRef}
             value={renameState.value}
             onChange={(e) => setRenameState({ ...renameState, value: e.target.value, error: null })}
             onBlur={() => commitRename(row)}
@@ -329,41 +358,28 @@ export function StudyViewsDrawer() {
                 cancelRename();
               }
             }}
-            className="w-full rounded border border-line bg-bg-input px-1 py-0.5 text-sm font-medium text-fg"
+            className="w-full rounded border border-line bg-bg-input px-1 py-0.5 text-xs text-fg"
           />
           {renameState.error && <div className="text-xs text-danger">{renameState.error}</div>}
         </div>
       ) : (
         <div className="flex min-w-0 flex-1 items-start gap-2">
+          <span className="h-1.5 w-1.5 shrink-0 rounded-full border border-line bg-bg" aria-hidden />
           <div className="min-w-0 flex-1">
-            <div className="truncate text-sm font-medium text-fg">
+            <div
+              className="truncate text-xs text-fg"
+              onClick={(e) => e.stopPropagation()}
+              onDoubleClick={(e) => {
+                e.preventDefault();
+                e.stopPropagation();
+                startRename(row);
+              }}
+            >
               {row.name}
             </div>
           </div>
-          <button
-            type="button"
-            aria-label={`${row.name} 이름 수정`}
-            onClick={(e) => {
-              e.stopPropagation();
-              startRename(row);
-            }}
-            className="shrink-0 rounded border border-line px-2 py-1 text-xs text-fg-dim hover:bg-bg-input"
-          >
-            수정
-          </button>
         </div>
       )}
-      <button
-        type="button"
-        aria-label={`${row.name} 삭제`}
-        onClick={(e) => {
-          e.stopPropagation();
-          setDeleteTarget(row);
-        }}
-        className="shrink-0 rounded border border-line px-2 py-1 text-xs"
-      >
-        삭제
-      </button>
     </div>
   );
 
@@ -482,6 +498,27 @@ export function StudyViewsDrawer() {
           </DndContext>
         </div>
       </div>
+      {rowMenu && (
+        <div
+          role="menu"
+          aria-label={`${rowMenu.row.name} 저장뷰 메뉴`}
+          className="fixed z-50 min-w-[96px] rounded border border-line bg-bg shadow-lg"
+          style={{ left: rowMenu.left, top: rowMenu.top }}
+          onMouseDown={(e) => e.stopPropagation()}
+        >
+          <button
+            type="button"
+            role="menuitem"
+            onClick={() => {
+              setDeleteTarget(rowMenu.row);
+              setRowMenu(null);
+            }}
+            className="block w-full px-3 py-1.5 text-left text-sm hover:bg-bg-input"
+          >
+            삭제
+          </button>
+        </div>
+      )}
       {dialog && (
         <StudyViewSaveDialog
           mode={dialog.mode}

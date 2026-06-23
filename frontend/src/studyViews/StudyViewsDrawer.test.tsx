@@ -1,5 +1,5 @@
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
-import { render, screen, waitFor, within } from '@testing-library/react';
+import { fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { MemoryRouter, Route, Routes, useLocation } from 'react-router';
 import { beforeEach, expect, it, vi } from 'vitest';
@@ -410,39 +410,29 @@ it('pressing Enter on the saved view title navigates to the study route', async 
   await waitFor(() => expect(screen.getByTestId('loc').textContent).toBe('/study?view=a'));
 });
 
-it('double-clicking the saved view title opens inline edit mode without navigating', async () => {
+it('does not render persistent row edit or delete buttons', () => {
+  renderDrawer('/inventory');
+
+  expect(screen.queryByRole('button', { name: '급등 이후 이름 수정' })).toBeNull();
+  expect(screen.queryByRole('button', { name: '급등 이후 삭제' })).toBeNull();
+});
+
+it('double-clicking the saved view name opens inline edit mode and selects the name', async () => {
   renderDrawer('/inventory');
 
   await userEvent.dblClick(screen.getByText('급등 이후'));
+  const input = screen.getByLabelText('저장뷰 이름 수정') as HTMLInputElement;
 
-  expect(screen.queryByLabelText('저장뷰 이름 수정')).toBeNull();
-  await waitFor(() => expect(screen.getByTestId('loc').textContent).toBe('/study?view=a'));
-});
-
-it('clicking rename opens inline edit mode without navigating', async () => {
-  renderDrawer('/inventory');
-
-  await userEvent.click(screen.getByRole('button', { name: '급등 이후 이름 수정' }));
-
-  expect(screen.getByLabelText('저장뷰 이름 수정')).toBeTruthy();
+  expect(input.value).toBe('급등 이후');
+  expect(input.selectionStart).toBe(0);
+  expect(input.selectionEnd).toBe('급등 이후'.length);
   expect(screen.getByTestId('loc').textContent).toBe('/inventory');
 });
 
-it('keyboard activation of rename opens inline edit mode', async () => {
-  renderDrawer('/inventory');
-
-  const renameButton = screen.getByRole('button', { name: '급등 이후 이름 수정' });
-  renameButton.focus();
-  await userEvent.keyboard('{Enter}');
-
-  expect(screen.getByLabelText('저장뷰 이름 수정')).toBeTruthy();
-  expect(screen.getByTestId('loc').textContent).toBe('/inventory');
-});
-
-it('renames a saved view from the explicit rename action and Enter', async () => {
+it('renames a saved view from double-click edit mode and Enter', async () => {
   renderDrawer('/study?view=a');
 
-  await userEvent.click(screen.getByRole('button', { name: '급등 이후 이름 수정' }));
+  await userEvent.dblClick(screen.getByText('급등 이후'));
   const input = screen.getByLabelText('저장뷰 이름 수정') as HTMLInputElement;
   await userEvent.clear(input);
   await userEvent.type(input, '새 이름{Enter}');
@@ -456,7 +446,7 @@ it('renames a saved view from the explicit rename action and Enter', async () =>
 it('commits saved view rename on blur', async () => {
   renderDrawer('/study?view=a');
 
-  await userEvent.click(screen.getByRole('button', { name: '급등 이후 이름 수정' }));
+  await userEvent.dblClick(screen.getByText('급등 이후'));
   const input = screen.getByLabelText('저장뷰 이름 수정') as HTMLInputElement;
   await userEvent.clear(input);
   await userEvent.type(input, '블러 저장');
@@ -471,7 +461,7 @@ it('commits saved view rename on blur', async () => {
 it('cancels saved view rename on Escape', async () => {
   renderDrawer('/study?view=a');
 
-  await userEvent.click(screen.getByRole('button', { name: '급등 이후 이름 수정' }));
+  await userEvent.dblClick(screen.getByText('급등 이후'));
   const input = screen.getByLabelText('저장뷰 이름 수정') as HTMLInputElement;
   await userEvent.clear(input);
   await userEvent.type(input, '취소할 이름');
@@ -484,7 +474,7 @@ it('cancels saved view rename on Escape', async () => {
 it('starts inline rename without navigating from a non-study route', async () => {
   renderDrawer('/inventory');
 
-  await userEvent.click(screen.getByRole('button', { name: '급등 이후 이름 수정' }));
+  await userEvent.dblClick(screen.getByText('급등 이후'));
 
   expect(screen.getByLabelText('저장뷰 이름 수정')).toBeTruthy();
   expect(screen.getByTestId('loc').textContent).toBe('/inventory');
@@ -493,7 +483,7 @@ it('starts inline rename without navigating from a non-study route', async () =>
 it('does not rename a saved view when the inline value is empty', async () => {
   renderDrawer('/study?view=a');
 
-  await userEvent.click(screen.getByRole('button', { name: '급등 이후 이름 수정' }));
+  await userEvent.dblClick(screen.getByText('급등 이후'));
   const input = screen.getByLabelText('저장뷰 이름 수정') as HTMLInputElement;
   await userEvent.clear(input);
   await userEvent.keyboard('{Enter}');
@@ -505,7 +495,7 @@ it('does not rename a saved view when the inline value is empty', async () => {
 it('does not rename a saved view when the inline value is unchanged', async () => {
   renderDrawer('/study?view=a');
 
-  await userEvent.click(screen.getByRole('button', { name: '급등 이후 이름 수정' }));
+  await userEvent.dblClick(screen.getByText('급등 이후'));
   const input = screen.getByLabelText('저장뷰 이름 수정') as HTMLInputElement;
   await userEvent.type(input, '{Enter}');
 
@@ -516,7 +506,8 @@ it('does not rename a saved view when the inline value is unchanged', async () =
 it('confirms delete before calling remove mutation', async () => {
   renderDrawer('/study?view=a');
 
-  await userEvent.click(screen.getByRole('button', { name: '급등 이후 삭제' }));
+  fireEvent.contextMenu(screen.getByRole('button', { name: '급등 이후 저장뷰 열기' }));
+  await userEvent.click(screen.getByRole('menuitem', { name: '삭제' }));
   const dialog = screen.getByRole('dialog', { name: '저장뷰 삭제' });
   const confirmButton = within(dialog).getByRole('button', { name: '삭제' });
   expect(document.activeElement).toBe(confirmButton);
@@ -536,7 +527,8 @@ it('navigates away after deleting the active study view', async () => {
   removeMutate.mockImplementation((_id, opts) => opts.onSuccess());
   renderDrawer('/study?view=a');
 
-  await userEvent.click(screen.getByRole('button', { name: '급등 이후 삭제' }));
+  fireEvent.contextMenu(screen.getByRole('button', { name: '급등 이후 저장뷰 열기' }));
+  await userEvent.click(screen.getByRole('menuitem', { name: '삭제' }));
   const dialog = screen.getByRole('dialog', { name: '저장뷰 삭제' });
   await userEvent.click(within(dialog).getByRole('button', { name: '삭제' }));
 
