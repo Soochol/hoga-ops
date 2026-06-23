@@ -13,7 +13,7 @@ import {
   type Candle,
   type InvestorNetPoint,
 } from '../api/types';
-import { buildChartBundle, buildHogaSeries, type HogaSeries } from './buildLiveBundle';
+import { buildChartBundle, createIncrementalHogaSeriesBuilder, type HogaSeries } from './buildLiveBundle';
 import type { LiveDataWarning } from './liveDataWarnings';
 import type { TradeSnapshot } from './bucketHogaSeries';
 import { aggregateCandles, aggregateCalendar } from './aggregateCandles';
@@ -324,9 +324,13 @@ export function useLiveBundle(
 
   // HOGA side (quote_ratio / fill_strength). Deps INCLUDE ob/trade — this is the
   // ONLY half that rebuilds on an SSE tick.
+  const hogaSeriesBuilderRef = useRef<ReturnType<typeof createIncrementalHogaSeriesBuilder> | null>(null);
+  if (hogaSeriesBuilderRef.current === null) {
+    hogaSeriesBuilderRef.current = createIncrementalHogaSeriesBuilder();
+  }
   const hogaSeries = useMemo<HogaSeries>(
     () =>
-      buildHogaSeries({
+      hogaSeriesBuilderRef.current!({
         todaySession: defaultKrxSession,
         pastBundle: past.data ?? null,
         sseOb: isMinute ? live.ob : [],

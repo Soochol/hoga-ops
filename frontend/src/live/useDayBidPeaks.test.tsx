@@ -97,6 +97,24 @@ describe('useDayBidPeaks', () => {
     });
   });
 
+  it('drops a candle-only live bid peak when the current candle range no longer covers it', () => {
+    const ob = [deep(atKst(10, 42), [[23800, 12000], ...Array(9).fill([1, 1])] as Array<[number, number]>)];
+    const { result, rerender } = renderHook(
+      ({ candles }: { candles: Candle[] }) =>
+        useDayBidPeaks(ob, [], [], '20260613', '005930', null, candles),
+      { initialProps: { candles: [candle(atKst(10, 42), 23700, 23900)] } },
+    );
+
+    expect(byDate(result.current)['20260613']).toMatchObject({
+      price: 23800,
+      qty: 12000,
+    });
+
+    rerender({ candles: [candle(atKst(10, 43), 23000, 23100)] });
+
+    expect(byDate(result.current)['20260613']).toBeUndefined();
+  });
+
   it('retroactively promotes a previously observed bid wall once that price trades later', () => {
     const { result, rerender } = renderHook(
       ({ ob, trades }: { ob: ObSnapshot[]; trades: TradeSnapshot[] }) =>
@@ -120,6 +138,35 @@ describe('useDayBidPeaks', () => {
       qty: 20000,
       t_ms: atKst(9, 20),
     });
+  });
+
+  it('keeps live bid peak updates responsive with many candles and repeated prices', () => {
+    const base = Date.UTC(2026, 5, 13, 0, 0, 0);
+    const candles = Array.from({ length: 2500 }, (_, i) =>
+      candle(base + (i % 300) * 60_000, 20_000 + i * 10, 20_005 + i * 10),
+    );
+    const ob = Array.from({ length: 2000 }, (_, i): ObSnapshot => ({
+      t_ms: base + i * 1000,
+      total_ask_qty: 1,
+      total_bid_qty: 1,
+      asks: Array.from({ length: 10 }, (_unused, level) => ({
+        price: 41_000 + level,
+        qty: 100 + i + level,
+      })),
+      bids: Array.from({ length: 10 }, (_unused, level) => ({
+        price: 40_000 + level,
+        qty: 100 + i + level,
+      })),
+    }));
+
+    const started = performance.now();
+    const { result } = renderHook(() =>
+      useDayBidPeaks(ob, [], [], '20260613', '005930', null, candles),
+    );
+    const elapsed = performance.now() - started;
+
+    expect(result.current.at(-1)?.price).toBeGreaterThanOrEqual(40_000);
+    expect(elapsed).toBeLessThan(500);
   });
 });
 

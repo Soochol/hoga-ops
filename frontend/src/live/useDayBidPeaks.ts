@@ -3,7 +3,7 @@ import type { BidPeak, Candle } from '../api/types';
 import type { LiveTodayBidPeak } from '../api/liveSeries';
 import { isContinuousBook, type ObSnapshot, type TradeSnapshot } from './bucketHogaSeries';
 import { isAfterRegularOpen } from '../util/tradingDay';
-import { realMsToYyyymmdd } from './liveDateTime';
+import { buildCandlePriceCoverage } from './candlePriceCoverage';
 import {
   reduceDayBidPeak,
   FRESH_RATCHET,
@@ -119,6 +119,10 @@ export function bestTradedObservedPeak(
   return best;
 }
 
+function eligibleSeed(peak: DayPeak | null, allowPrice: (price: number) => boolean): DayPeak | null {
+  return peak && allowPrice(peak.price) ? peak : null;
+}
+
 export function buildTodayTradedBidPeak(todayBidPeak: LiveTodayBidPeak | null): BidPeak | null {
   if (
     !todayBidPeak
@@ -152,20 +156,11 @@ export function buildTodayAllPriceBidPeak(todayBidPeak: LiveTodayBidPeak | null)
   };
 }
 
-function candleRangeContainsPrice(price: number, candles: readonly Candle[], todayKst: string): boolean {
-  return candles.some((c) => (
-    realMsToYyyymmdd(c.ts_ms) === todayKst
-    && c.low <= price
-    && price <= c.high
-  ));
-}
-
 export function buildTodayCandleRangeBidPeak(
   todayBidPeak: LiveTodayBidPeak | null,
-  candles: readonly Candle[],
-  todayKst: string,
+  isCandleRangeTraded: (price: number) => boolean,
 ): BidPeak | null {
-  if (!todayBidPeak || !candleRangeContainsPrice(todayBidPeak.all_price, candles, todayKst)) {
+  if (!todayBidPeak || !isCandleRangeTraded(todayBidPeak.all_price)) {
     return null;
   }
   return {
@@ -194,13 +189,21 @@ export function useDayBidPeaks(
   todayBidPeak: LiveTodayBidPeak | null = null,
   todayCandles: readonly Candle[] = EMPTY_CANDLES,
 ): BidPeak[] {
+  const isCandleRangeTraded = useMemo(
+    () => buildCandlePriceCoverage(todayCandles, todayKst),
+    [todayCandles, todayKst],
+  );
   const backendTodayPeak = useMemo(
     () => buildTodayTradedBidPeak(todayBidPeak),
     [todayBidPeak],
   );
+  const backendTradedSeed = useMemo(
+    () => toDayPeak(backendTodayPeak),
+    [backendTodayPeak],
+  );
   const candleRangeTodayPeak = useMemo(
-    () => buildTodayCandleRangeBidPeak(todayBidPeak, todayCandles, todayKst),
-    [todayBidPeak, todayCandles, todayKst],
+    () => buildTodayCandleRangeBidPeak(todayBidPeak, isCandleRangeTraded),
+    [todayBidPeak, isCandleRangeTraded],
   );
   const backendTodaySeed = useMemo(
     () => toDayPeak(backendTodayPeak ?? candleRangeTodayPeak),
@@ -212,7 +215,7 @@ export function useDayBidPeaks(
 
   const stateRef = useRef<RatchetState>(FRESH_RATCHET);
   const tradePriceRef = useRef<TradePriceState>(
-    freshTradePriceState(backendTodaySeed, backendTradedPrices),
+    freshTradePriceState(backendTradedSeed, backendTradedPrices),
   );
   const observedPricePeaksRef = useRef<ObservedPricePeaks>(new Map());
   const tradeCursorRef = useRef<BufferCursor<TradeSnapshot>>(freshCursor());
@@ -222,13 +225,13 @@ export function useDayBidPeaks(
   // 종목 전환 → ratchet 리셋·재시드(remount 비의존).
   useEffect(() => {
     stateRef.current = FRESH_RATCHET;
-    tradePriceRef.current = freshTradePriceState(backendTodaySeed, backendTradedPrices);
+    tradePriceRef.current = freshTradePriceState(backendTradedSeed, backendTradedPrices);
     observedPricePeaksRef.current = new Map();
     tradeCursorRef.current = freshCursor();
     obCursorRef.current = freshCursor();
     setTodayPeak(liveSeed);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [code, todayKst, todayBidPeak, todayCandles]);
+  }, [code, todayKst, todayBidPeak]);
 
   // ob/trade 틱마다 오늘 ratchet 전진. REST todayBidPeak은 seed일 뿐, 이후 라이브를 계속 반영한다.
   useEffect(() => {
@@ -238,17 +241,17 @@ export function useDayBidPeaks(
     observeBidPricePeaks(observedPricePeaksRef.current, unreadOb);
     const allowPrice = (price: number) => (
       tradePriceRef.current.prices.has(price)
-      || candleRangeContainsPrice(price, todayCandles, todayKst)
+      || isCandleRangeTraded(price)
     );
     const s = reduceDayBidPeak(stateRef.current, liveSeed, unreadOb, allowPrice);
     stateRef.current = s;
     setTodayPeak(bestTradedObservedPeak(
-      s.peak ?? liveSeed,
+      eligibleSeed(s.peak, allowPrice) ?? eligibleSeed(liveSeed, allowPrice),
       observedPricePeaksRef.current,
       tradePriceRef.current.prices,
-      (price) => candleRangeContainsPrice(price, todayCandles, todayKst),
+      isCandleRangeTraded,
     ));
-  }, [ob, trade, liveSeed, todayBidPeak, todayCandles, todayKst]);
+  }, [ob, trade, liveSeed, todayBidPeak, todayKst, isCandleRangeTraded]);
 
   // 과거일 seed(그대로) + 오늘 ratchet 결과(date 부착)를 합친 per-day 리스트.
   // 오늘 entry는 live ratchet 값 하나만 추적하므로 close triple과 max triple을 동일하게 채운다.
