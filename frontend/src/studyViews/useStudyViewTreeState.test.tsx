@@ -43,20 +43,24 @@ describe('useStudyViewTreeState', () => {
     const { result } = renderHook(() => useStudyViewTreeState(rows));
 
     act(() => result.current.setQuery('SK'));
-    act(() => result.current.collapseVisibleGroups());
+    expect(result.current.visibleGroupsCollapsed).toBe(false);
+    act(() => result.current.toggleVisibleGroups());
 
     expect(result.current.isCollapsed('000660')).toBe(true);
     expect(result.current.isCollapsed('005930')).toBe(false);
+    expect(result.current.visibleGroupsCollapsed).toBe(true);
 
     act(() => result.current.setQuery(''));
     act(() => result.current.toggleGroup('005930'));
 
     expect(result.current.isCollapsed('005930')).toBe(true);
+    expect(result.current.visibleGroupsCollapsed).toBe(true);
 
-    act(() => result.current.expandVisibleGroups());
+    act(() => result.current.toggleVisibleGroups());
 
     expect(result.current.isCollapsed('005930')).toBe(false);
     expect(result.current.isCollapsed('000660')).toBe(false);
+    expect(result.current.visibleGroupsCollapsed).toBe(false);
   });
 
   it('cycles and persists the tree sort mode', () => {

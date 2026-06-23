@@ -305,8 +305,11 @@ it('respects collapsed groups during search', async () => {
   expect(screen.queryByRole('button', { name: '급등 이후 저장뷰 열기' })).toBeNull();
 });
 
-it('collapses and expands all visible stock groups immediately', async () => {
+it('toggles all visible stock groups with one toolbar button', async () => {
   renderDrawer('/inventory');
+
+  expect(screen.getByRole('button', { name: '전체 접기' })).toBeTruthy();
+  expect(screen.queryByRole('button', { name: '전체 펼치기' })).toBeNull();
 
   await userEvent.click(screen.getByRole('button', { name: '전체 접기' }));
 
@@ -314,6 +317,8 @@ it('collapses and expands all visible stock groups immediately', async () => {
   expect(screen.getByRole('button', { name: 'SK하이닉스 000660 펼치기' })).toHaveAttribute('aria-expanded', 'false');
   expect(screen.queryByRole('button', { name: '급등 이후 저장뷰 열기' })).toBeNull();
   expect(screen.queryByRole('button', { name: '눌림 저장뷰 열기' })).toBeNull();
+  expect(screen.queryByRole('button', { name: '전체 접기' })).toBeNull();
+  expect(screen.getByRole('button', { name: '전체 펼치기' })).toBeTruthy();
 
   await userEvent.click(screen.getByRole('button', { name: '전체 펼치기' }));
 
@@ -321,6 +326,8 @@ it('collapses and expands all visible stock groups immediately', async () => {
   expect(screen.getByRole('button', { name: 'SK하이닉스 000660 접기' })).toHaveAttribute('aria-expanded', 'true');
   expect(screen.getByRole('button', { name: '급등 이후 저장뷰 열기' })).toBeTruthy();
   expect(screen.getByRole('button', { name: '눌림 저장뷰 열기' })).toBeTruthy();
+  expect(screen.getByRole('button', { name: '전체 접기' })).toBeTruthy();
+  expect(screen.queryByRole('button', { name: '전체 펼치기' })).toBeNull();
 });
 
 it('bulk controls affect filtered visible groups without changing hidden groups', async () => {

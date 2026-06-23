@@ -95,6 +95,7 @@ export function useStudyViewTreeState<T extends StudyViewTreeRow>(rows: T[]) {
   const sourceGroups = useMemo(() => groupStudyViewsByCode(rows), [rows]);
   const allGroups = useMemo(() => groupStudyViewsByCode(rows, sortMode, manualOrder), [manualOrder, rows, sortMode]);
   const visibleGroups = useMemo(() => filterStudyViewGroups(allGroups, query), [allGroups, query]);
+  const visibleGroupsCollapsed = visibleGroups.length > 0 && visibleGroups.every((group) => collapsedGroups.has(group.key));
 
   useEffect(() => {
     persistCollapsedStudyViewGroups(collapsedGroups, allGroups);
@@ -132,6 +133,14 @@ export function useStudyViewTreeState<T extends StudyViewTreeRow>(rows: T[]) {
       for (const group of visibleGroups) next.delete(group.key);
       return next;
     });
+  };
+
+  const toggleVisibleGroups = () => {
+    if (visibleGroupsCollapsed) {
+      expandVisibleGroups();
+      return;
+    }
+    collapseVisibleGroups();
   };
 
   const reorderGroup = (activeKey: string, overKey: string) => {
@@ -172,10 +181,12 @@ export function useStudyViewTreeState<T extends StudyViewTreeRow>(rows: T[]) {
     cycleSortMode: () => setSortMode(nextSortMode),
     dragEnabled: sortMode === 'default' && query.trim() === '',
     visibleGroups,
+    visibleGroupsCollapsed,
     isCollapsed: (key: string) => collapsedGroups.has(key),
     toggleGroup,
     collapseVisibleGroups,
     expandVisibleGroups,
+    toggleVisibleGroups,
     reorderGroup,
     reorderRow,
   };

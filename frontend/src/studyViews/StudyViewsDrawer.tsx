@@ -185,10 +185,10 @@ export function StudyViewsDrawer() {
     cycleSortMode,
     dragEnabled,
     visibleGroups,
+    visibleGroupsCollapsed,
     isCollapsed,
     toggleGroup,
-    collapseVisibleGroups,
-    expandVisibleGroups,
+    toggleVisibleGroups,
     reorderGroup,
     reorderRow,
   } = useStudyViewTreeState(data?.saves ?? []);
@@ -414,21 +414,14 @@ export function StudyViewsDrawer() {
               <div className="flex shrink-0 gap-1">
                 <button
                   type="button"
-                  onClick={collapseVisibleGroups}
-                  aria-label="전체 접기"
-                  title="전체 접기"
+                  onClick={toggleVisibleGroups}
+                  aria-label={visibleGroupsCollapsed ? '전체 펼치기' : '전체 접기'}
+                  title={visibleGroupsCollapsed ? '전체 펼치기' : '전체 접기'}
                   className={treeToolbarButtonClass()}
                 >
-                  <CollapseAllIcon className="h-4 w-4" />
-                </button>
-                <button
-                  type="button"
-                  onClick={expandVisibleGroups}
-                  aria-label="전체 펼치기"
-                  title="전체 펼치기"
-                  className={treeToolbarButtonClass()}
-                >
-                  <ExpandAllIcon className="h-4 w-4" />
+                  {visibleGroupsCollapsed
+                    ? <ExpandAllIcon className="h-4 w-4" />
+                    : <CollapseAllIcon className="h-4 w-4" />}
                 </button>
                 <button
                   type="button"
