@@ -66,6 +66,8 @@ describe('LiveSymbolSearch', () => {
     const dialog = screen.getByRole('dialog', { name: '종목 검색' });
     const input = screen.getByPlaceholderText('검색어를 입력해주세요') as HTMLInputElement;
     expect(dialog).toHaveClass('fixed', 'left-1/2', 'top-[12vh]');
+    expect(input).toHaveClass('text-sm');
+    expect(input).not.toHaveClass('text-[22px]');
     expect(document.activeElement).toBe(input);
   });
 
@@ -93,6 +95,8 @@ describe('LiveSymbolSearch', () => {
     fireEvent.keyDown(window, { key: '/' });
     expect(screen.getByRole('dialog', { name: '종목 검색' })).toBeInTheDocument();
     expect(screen.getByText('최근 검색')).toBeInTheDocument();
+    expect(screen.getByText('최근 검색')).toHaveClass('text-sm');
+    expect(screen.getByRole('option', { name: /SK하이닉스/ })).toHaveClass('text-sm');
     expect(screen.getByText('SK하이닉스')).toBeInTheDocument();
     expect(screen.getByText('삼성바이오로직스')).toBeInTheDocument();
     expect(screen.queryByText('셀트리온')).toBeNull();

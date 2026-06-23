@@ -151,8 +151,8 @@ export function LiveSymbolSearch() {
           style={{ boxShadow: '0 18px 50px rgba(0,0,0,0.45)' }}
           className="fixed left-1/2 top-[12vh] z-50 w-[min(960px,calc(100vw-32px))] -translate-x-1/2 rounded-xl border border-border-strong bg-bg-card p-4 font-ui"
         >
-          <div className="flex items-center gap-3 h-[58px] px-4 rounded-xl bg-bg-input">
-            <svg aria-hidden viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="text-fg-dimmer w-[24px] h-[24px] shrink-0">
+          <div className="flex items-center gap-2.5 h-11 px-3 rounded-xl bg-bg-input">
+            <svg aria-hidden viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="text-fg-dimmer w-[18px] h-[18px] shrink-0">
               <circle cx="11" cy="11" r="7" />
               <line x1="21" y1="21" x2="16.65" y2="16.65" />
             </svg>
@@ -163,7 +163,7 @@ export function LiveSymbolSearch() {
               aria-controls="live-symbol-search-list"
               type="text"
               placeholder="검색어를 입력해주세요"
-              className="min-w-0 flex-1 bg-transparent text-[22px] leading-none text-fg outline-none placeholder:text-fg-dimmer"
+              className="min-w-0 flex-1 bg-transparent text-sm text-fg outline-none placeholder:text-fg-dimmer"
               {...inputProps}
             />
           </div>
@@ -172,13 +172,13 @@ export function LiveSymbolSearch() {
             <div
               id="live-symbol-search-list"
               {...listProps}
-              className="mt-8 max-h-[50vh] overflow-y-auto"
+              className="mt-5 max-h-[50vh] overflow-y-auto"
             >
               {items.length === 0 ? (
                 <div className="py-3 px-2.5 text-sm text-fg-dim">검색 결과가 없습니다.</div>
               ) : showingRecent ? (
                 <>
-                  <div className="mb-5 px-4 text-xl font-semibold text-fg">
+                  <div className="mb-3 px-1 text-sm font-semibold text-fg">
                     최근 검색
                   </div>
                   <div className="flex flex-wrap gap-3">
@@ -190,7 +190,7 @@ export function LiveSymbolSearch() {
                         {...getOptionProps(i)}
                         onClick={() => { selectItem(item); setOpen(false); }}
                         style={{ background: i === highlightedIndex ? 'var(--tint-selection)' : 'var(--bg-input)' }}
-                        className="inline-flex max-w-full items-center gap-2 rounded-full px-4 py-2 text-lg font-semibold text-fg"
+                        className="inline-flex max-w-full items-center gap-1.5 rounded-full px-3 py-1.5 text-sm font-semibold text-fg"
                       >
                         <span className="truncate">{item.hit.name}</span>
                         <span aria-hidden className="text-fg-dimmer">×</span>
