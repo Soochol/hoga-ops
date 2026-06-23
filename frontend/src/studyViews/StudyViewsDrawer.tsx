@@ -337,7 +337,7 @@ export function StudyViewsDrawer() {
         e.preventDefault();
         navigateToStudyView(row);
       }}
-      className="flex cursor-pointer items-start gap-2 border-b px-3 py-2 pl-7 hover:bg-bg-input-hover focus:outline-none focus:ring-1 focus:ring-inset focus:ring-line"
+      className="flex cursor-pointer items-center gap-2 border-b border-border pl-10 pr-md py-sm hover:bg-bg-input-hover focus:outline-none focus:ring-1 focus:ring-inset focus:ring-line"
     >
       {renameState?.id === row.id ? (
         <div className="min-w-0 flex-1 space-y-1">
@@ -358,16 +358,16 @@ export function StudyViewsDrawer() {
                 cancelRename();
               }
             }}
-            className="w-full rounded border border-line bg-bg-input px-1 py-0.5 text-sm font-medium text-fg"
+            className="w-full rounded border border-line bg-bg-input px-1 py-0.5 text-xs text-fg"
           />
           {renameState.error && <div className="text-xs text-danger">{renameState.error}</div>}
         </div>
       ) : (
         <div className="flex min-w-0 flex-1 items-start gap-2">
-          <span className="mt-1.5 h-1.5 w-1.5 shrink-0 rounded-full border border-line bg-bg" aria-hidden />
+          <span className="h-1.5 w-1.5 shrink-0 rounded-full border border-line bg-bg" aria-hidden />
           <div className="min-w-0 flex-1">
             <div
-              className="truncate text-sm font-medium text-fg"
+              className="truncate text-xs text-fg"
               onClick={(e) => e.stopPropagation()}
               onDoubleClick={(e) => {
                 e.preventDefault();
