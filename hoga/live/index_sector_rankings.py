@@ -15,7 +15,7 @@ from hoga.api.heatmap import load_document
 from hoga.api.models import HeatmapEntry
 
 RankingSource = Literal["daily_adjusted", "unavailable"]
-MissingReason = Literal["no_basis_bar", "no_previous_close"]
+MissingReason = Literal["no_basis_bar", "no_previous_close", "no_intraday_price"]
 UnavailableReason = Literal[
     "screener_daily_corpus_missing",
     "daily_corpus_invalid",
@@ -101,15 +101,38 @@ def _load_daily_rows(path: Path, codes: list[str], basis: dt.date) -> dict[str, 
     return by_code
 
 
+def list_index_sector_ranking_codes(data_dir: Path) -> list[str]:
+    doc = load_document(data_dir)
+    return [entry.code for entry in doc.entries]
+
+
 def _stock_from_entry(
     entry: HeatmapEntry,
     *,
     folder_name: str,
     basis: dt.date,
     rows: list[dict],
+    intraday_prices: dict[str, int] | None = None,
 ) -> IndexSectorStock:
-    basis_row = next((row for row in reversed(rows) if row["date"] == basis), None)
-    if basis_row is None:
+    intraday_price = intraday_prices.get(entry.code) if intraday_prices is not None else None
+    basis_row = (
+        None
+        if intraday_price is not None
+        else next((row for row in reversed(rows) if row["date"] == basis), None)
+    )
+    if intraday_prices is not None and intraday_price is None:
+        return IndexSectorStock(
+            code=entry.code,
+            name=entry.name,
+            folder_id=entry.folder_id,
+            folder_name=folder_name,
+            order=entry.order,
+            close=None,
+            previous_close=None,
+            change_pct=None,
+            missing_reason="no_intraday_price",
+        )
+    if basis_row is None and intraday_price is None:
         return IndexSectorStock(
             code=entry.code,
             name=entry.name,
@@ -122,7 +145,7 @@ def _stock_from_entry(
             missing_reason="no_basis_bar",
         )
     previous_row = next((row for row in reversed(rows) if row["date"] < basis), None)
-    close = float(basis_row["close"])
+    close = float(intraday_price if intraday_price is not None else basis_row["close"])
     if previous_row is None or float(previous_row["close"]) == 0:
         return IndexSectorStock(
             code=entry.code,
@@ -197,6 +220,7 @@ def _build_sector_groups(
     folder_orders: dict[str, int],
     daily_rows: dict[str, list[dict]],
     basis: dt.date,
+    intraday_prices: dict[str, int] | None = None,
 ) -> list[IndexSectorGroup]:
     sectors: list[IndexSectorGroup] = []
     for folder_id, folder_name, folder_order, group_entries in _entry_groups(entries, folder_names, folder_orders):
@@ -206,6 +230,7 @@ def _build_sector_groups(
                 folder_name=folder_name,
                 basis=basis,
                 rows=daily_rows.get(entry.code, []),
+                intraday_prices=intraday_prices,
             )
             for entry in group_entries
         ])
@@ -331,19 +356,26 @@ def _cache_put_with_disk(
     return _cache_put(key, value)
 
 
-def build_index_sector_rankings(data_dir: Path, basis_date: str) -> IndexSectorRankingResponse:
+def build_index_sector_rankings(
+    data_dir: Path,
+    basis_date: str,
+    *,
+    intraday_prices: dict[str, int] | None = None,
+) -> IndexSectorRankingResponse:
     basis = _parse_basis_date(basis_date)
     corpus_path = data_dir / "screener" / "daily_adjusted.parquet"
     heatmap_path = data_dir / "heatmap.json"
+    use_cache = intraday_prices is None
     cache_key = (
         str(data_dir.resolve()),
         basis_date,
         _file_fingerprint(heatmap_path),
         _file_fingerprint(corpus_path),
     )
-    cached = _cache_get(cache_key)
-    if cached is not None:
-        return cached
+    if use_cache:
+        cached = _cache_get(cache_key)
+        if cached is not None:
+            return cached
 
     disk_cache_path = _ranking_disk_cache_path(
         data_dir,
@@ -351,18 +383,27 @@ def build_index_sector_rankings(data_dir: Path, basis_date: str) -> IndexSectorR
         heatmap_fingerprint=cache_key[2],
         corpus_fingerprint=cache_key[3],
     )
-    disk_cached = _read_disk_cache(disk_cache_path)
-    if disk_cached is not None:
-        return _cache_put(cache_key, disk_cached)
+    if use_cache:
+        disk_cached = _read_disk_cache(disk_cache_path)
+        if disk_cached is not None:
+            return _cache_put(cache_key, disk_cached)
 
     doc = load_document(data_dir)
     if not corpus_path.exists():
-        return _cache_put_with_disk(cache_key, disk_cache_path, _unavailable(basis_date, "screener_daily_corpus_missing"))
+        return _cache_put_with_disk(
+            cache_key,
+            disk_cache_path,
+            _unavailable(basis_date, "screener_daily_corpus_missing"),
+        )
     codes = [entry.code for entry in doc.entries]
     try:
         daily_rows = _load_daily_rows(corpus_path, codes, basis)
     except Exception:
-        return _cache_put_with_disk(cache_key, disk_cache_path, _unavailable(basis_date, "daily_corpus_invalid"))
+        return _cache_put_with_disk(
+            cache_key,
+            disk_cache_path,
+            _unavailable(basis_date, "daily_corpus_invalid"),
+        )
     folder_names = {folder.id: folder.name for folder in doc.folders}
     folder_orders = {folder.id: folder.order for folder in doc.folders}
     try:
@@ -372,8 +413,9 @@ def build_index_sector_rankings(data_dir: Path, basis_date: str) -> IndexSectorR
             folder_orders=folder_orders,
             daily_rows=daily_rows,
             basis=basis,
+            intraday_prices=intraday_prices,
         )
-        if _all_stocks_missing_basis(sectors):
+        if intraday_prices is None and _all_stocks_missing_basis(sectors):
             fallback_basis = _latest_available_basis(daily_rows, basis)
             if fallback_basis is not None and fallback_basis != basis:
                 sectors = _build_sector_groups(
@@ -384,11 +426,22 @@ def build_index_sector_rankings(data_dir: Path, basis_date: str) -> IndexSectorR
                     basis=fallback_basis,
                 )
     except (KeyError, TypeError, ValueError):
-        return _cache_put_with_disk(cache_key, disk_cache_path, _unavailable(basis_date, "daily_corpus_invalid"))
+        return _cache_put_with_disk(
+            cache_key,
+            disk_cache_path,
+            _unavailable(basis_date, "daily_corpus_invalid"),
+        )
     if _all_stocks_missing_basis(sectors):
-        return _cache_put_with_disk(cache_key, disk_cache_path, _unavailable(basis_date, "no_basis_bars"))
-    return _cache_put_with_disk(cache_key, disk_cache_path, IndexSectorRankingResponse(
+        return _cache_put_with_disk(
+            cache_key,
+            disk_cache_path,
+            _unavailable(basis_date, "no_basis_bars"),
+        )
+    response = IndexSectorRankingResponse(
         date=basis_date,
         source="daily_adjusted",
         sectors=_sort_sectors(sectors),
-    ))
+    )
+    if not use_cache:
+        return response
+    return _cache_put_with_disk(cache_key, disk_cache_path, response)

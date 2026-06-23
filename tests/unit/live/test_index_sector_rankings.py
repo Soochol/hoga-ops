@@ -6,11 +6,17 @@ from pathlib import Path
 
 import polars as pl
 import pytest
+from fastapi import FastAPI
+from fastapi.testclient import TestClient
 
+from hoga.live import api as live_api
+from hoga.live import kis_runtime, lifecycle
 from hoga.live import index_sector_rankings as rankings
 from hoga.api.heatmap import save_document
 from hoga.api.models import HeatmapDocument, HeatmapEntry, WatchlistFolder
+from hoga.live.api import build_router
 from hoga.live.index_sector_rankings import build_index_sector_rankings
+from hoga.live.kis_client import KisQuote
 
 
 @pytest.fixture(autouse=True)
@@ -65,6 +71,17 @@ def _seed_daily(tmp_path: Path) -> None:
     ).write_parquet(sdir / "daily_adjusted.parquet")
 
 
+class _FakeKis:
+    def __init__(self, quotes: list[KisQuote]) -> None:
+        self.quotes = quotes
+        self.seen_codes: list[str] = []
+
+    async def fetch_multi_price(self, codes: list[str]) -> list[KisQuote]:
+        self.seen_codes = codes
+        by_code = {quote.code: quote for quote in self.quotes}
+        return [by_code[code] for code in codes if code in by_code]
+
+
 def test_build_index_sector_rankings_sorts_sectors_and_stocks(tmp_path: Path) -> None:
     _seed_heatmap(tmp_path)
     _seed_daily(tmp_path)
@@ -83,6 +100,53 @@ def test_build_index_sector_rankings_sorts_sectors_and_stocks(tmp_path: Path) ->
     assert result.sectors[1].stocks[-1].code == "999999"
     assert result.sectors[1].stocks[-1].change_pct is None
     assert result.sectors[1].stocks[-1].missing_reason == "no_basis_bar"
+
+
+def test_index_sector_rankings_route_uses_intraday_quotes_for_today(
+    monkeypatch,
+    tmp_path: Path,
+) -> None:
+    _seed_heatmap(tmp_path)
+    _seed_daily(tmp_path)
+    monkeypatch.setattr(live_api, "_today_kst_yyyymmdd", lambda: "20260620")
+    fake = _FakeKis([
+        KisQuote("005930", 121, 0.0),
+        KisQuote("000660", 189, 0.0),
+        KisQuote("068270", 107, 0.0),
+    ])
+    lifecycle.reset_for_tests()
+    kis_runtime.set_kis_client(fake, 0)  # type: ignore[arg-type]
+    app = FastAPI()
+    app.include_router(build_router(get_status=lifecycle.get_status, data_dir=tmp_path))
+
+    response = TestClient(app).get("/api/live/index-sector-rankings", params={"date": "20260620"})
+
+    assert response.status_code == 200
+    body = response.json()
+    assert fake.seen_codes == ["005930", "000660", "068270", "999999"]
+    semi = next(sector for sector in body["sectors"] if sector["folder_id"] == "f_00000001")
+    assert semi["change_pct"] == 0.0
+    assert {stock["code"]: stock["change_pct"] for stock in semi["stocks"]} == {
+        "005930": 10.0,
+        "000660": -10.0,
+    }
+
+
+def test_build_index_sector_rankings_does_not_fallback_to_previous_day_in_intraday_mode(
+    tmp_path: Path,
+) -> None:
+    _seed_heatmap(tmp_path)
+    _seed_daily(tmp_path)
+
+    result = build_index_sector_rankings(tmp_path, "20260620", intraday_prices={})
+
+    assert result.source == "daily_adjusted"
+    assert result.sectors[0].change_pct is None
+    assert all(
+        stock.change_pct is None and stock.missing_reason == "no_intraday_price"
+        for sector in result.sectors
+        for stock in sector.stocks
+    )
 
 
 def test_build_index_sector_rankings_uses_current_heatmap_membership(tmp_path: Path) -> None:

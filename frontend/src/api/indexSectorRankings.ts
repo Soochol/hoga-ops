@@ -2,7 +2,7 @@ import { useQuery } from '@tanstack/react-query';
 import { apiCall } from './client';
 
 export type IndexSectorRankingSource = 'daily_adjusted' | 'unavailable';
-export type IndexSectorMissingReason = 'no_basis_bar' | 'no_previous_close';
+export type IndexSectorMissingReason = 'no_basis_bar' | 'no_previous_close' | 'no_intraday_price';
 export const INDEX_SECTOR_RANKINGS_KEY = ['live', 'index-sector-rankings'] as const;
 export const TODAY_INDEX_SECTOR_RANKINGS_REFETCH_MS = 60_000;
 
