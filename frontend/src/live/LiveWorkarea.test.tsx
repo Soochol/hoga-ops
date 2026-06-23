@@ -13,6 +13,7 @@ type LiveChartRootMock = (props: LiveChartRootProps) => JSX.Element;
 type UseIndexSectorRankingsMock = (
   date: string | null,
   enabledByCaller?: boolean,
+  todayKst?: string | null,
 ) => {
   data: IndexSectorRankingResponse | undefined;
   isLoading: boolean;
@@ -26,9 +27,10 @@ const liveChartRootMock = vi.hoisted(() =>
   }),
 );
 const useIndexSectorRankingsMock = vi.hoisted(() =>
-  vi.fn<UseIndexSectorRankingsMock>((date, enabledByCaller = true) => {
+  vi.fn<UseIndexSectorRankingsMock>((date, enabledByCaller = true, todayKst = null) => {
     void date;
     void enabledByCaller;
+    void todayKst;
     return {
       data: { date: '20260619', source: 'daily_adjusted', unavailable_reason: null, sectors: [] },
       isLoading: false,
@@ -94,6 +96,28 @@ const INDEX_BUNDLE_WITH_LAST_CANDLE: RangeBundle = {
   ],
 };
 
+const INDEX_BUNDLE_WITH_TODAY_CANDLE: RangeBundle = {
+  ...INDEX_BUNDLE,
+  segments: [
+    {
+      date: '20260619',
+      session_open_ms: Date.UTC(2026, 5, 19, 0, 0),
+      session_close_ms: Date.UTC(2026, 5, 19, 6, 30),
+    },
+  ],
+  candles: [
+    {
+      ts_ms: Date.UTC(2026, 5, 19, 0, 0),
+      open: 2830,
+      high: 2860,
+      low: 2820,
+      close: 2850,
+      vol_a: 1_200_000,
+      vol_b: 0,
+    },
+  ],
+};
+
 function renderWorkarea(activeCode: string | null, activeInstrument = null) {
   return render(
     <LiveWorkarea
@@ -140,7 +164,7 @@ describe('LiveWorkarea gate', () => {
       />,
     );
     expect(screen.getByTestId('index-sector-ranking-pane')).toBeInTheDocument();
-    expect(useIndexSectorRankingsMock).toHaveBeenCalledWith('20260618', true);
+    expect(useIndexSectorRankingsMock).toHaveBeenCalledWith('20260618', true, null);
     const chartProps = liveChartRootMock.mock.calls.at(-1)?.[0] as
       | { onCandleBasisHover?: unknown; onCandleBasisClick?: unknown }
       | undefined;
@@ -162,7 +186,25 @@ describe('LiveWorkarea gate', () => {
       />,
     );
 
-    expect(useIndexSectorRankingsMock).toHaveBeenCalledWith('20260618', true);
+    expect(useIndexSectorRankingsMock).toHaveBeenCalledWith('20260618', true, null);
+  });
+
+  it('passes todayKst to refresh the same-day index sector ranking', () => {
+    useLivePageStore.setState({ candleTimeframe: 'D' });
+    render(
+      <LiveWorkarea
+        activeCode="index:KOSPI"
+        activeInstrument={indexInstrument('KOSPI', 'KOSPI')}
+        bundle={INDEX_BUNDLE_WITH_TODAY_CANDLE}
+        clampEngaged={false}
+        isPastCandlesLoading={false}
+        isExtending={false}
+        live={LIVE}
+        todayKst="20260619"
+      />,
+    );
+
+    expect(useIndexSectorRankingsMock).toHaveBeenCalledWith('20260619', true, '20260619');
   });
 
   it('does not fetch a latest index sector ranking without a loaded candle date', () => {
@@ -179,7 +221,7 @@ describe('LiveWorkarea gate', () => {
       />,
     );
 
-    expect(useIndexSectorRankingsMock).toHaveBeenCalledWith(null, true);
+    expect(useIndexSectorRankingsMock).toHaveBeenCalledWith(null, true, null);
   });
 
   it('keeps ranking callbacks stable across allowed rerenders', () => {
@@ -247,7 +289,7 @@ describe('LiveWorkarea gate', () => {
         live={LIVE}
       />,
     );
-    expect(useIndexSectorRankingsMock).toHaveBeenLastCalledWith('20260617', true);
+    expect(useIndexSectorRankingsMock).toHaveBeenLastCalledWith('20260617', true, null);
 
     chartProps?.onCandleBasisClick?.(null);
     rerender(
@@ -261,7 +303,7 @@ describe('LiveWorkarea gate', () => {
         live={LIVE}
       />,
     );
-    expect(useIndexSectorRankingsMock).toHaveBeenLastCalledWith('20260618', true);
+    expect(useIndexSectorRankingsMock).toHaveBeenLastCalledWith('20260618', true, null);
   });
 
   it('returns to the latest candle basis on Escape', () => {
@@ -293,7 +335,7 @@ describe('LiveWorkarea gate', () => {
         live={LIVE}
       />,
     );
-    expect(useIndexSectorRankingsMock).toHaveBeenLastCalledWith('20260617', true);
+    expect(useIndexSectorRankingsMock).toHaveBeenLastCalledWith('20260617', true, null);
 
     fireEvent.keyDown(window, { key: 'Escape' });
     rerender(
@@ -307,7 +349,7 @@ describe('LiveWorkarea gate', () => {
         live={LIVE}
       />,
     );
-    expect(useIndexSectorRankingsMock).toHaveBeenLastCalledWith('20260618', true);
+    expect(useIndexSectorRankingsMock).toHaveBeenLastCalledWith('20260618', true, null);
   });
 
   it('does not render the index sector pane for stock instruments', () => {
@@ -324,7 +366,7 @@ describe('LiveWorkarea gate', () => {
       />,
     );
     expect(screen.queryByTestId('index-sector-ranking-pane')).toBeNull();
-    expect(useIndexSectorRankingsMock).toHaveBeenCalledWith(null, false);
+    expect(useIndexSectorRankingsMock).toHaveBeenCalledWith(null, false, null);
     const chartProps = liveChartRootMock.mock.calls.at(-1)?.[0] as
       | { onCandleBasisHover?: unknown; onCandleBasisClick?: unknown }
       | undefined;
@@ -347,7 +389,7 @@ describe('LiveWorkarea gate', () => {
         />,
       );
       expect(screen.queryByTestId('index-sector-ranking-pane')).toBeNull();
-      expect(useIndexSectorRankingsMock).toHaveBeenCalledWith(null, false);
+      expect(useIndexSectorRankingsMock).toHaveBeenCalledWith(null, false, null);
       const chartProps = liveChartRootMock.mock.calls.at(-1)?.[0] as
         | { onCandleBasisHover?: unknown; onCandleBasisClick?: unknown }
         | undefined;

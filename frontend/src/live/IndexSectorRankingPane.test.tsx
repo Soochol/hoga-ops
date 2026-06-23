@@ -1,4 +1,4 @@
-import { describe, it, expect, vi } from 'vitest';
+import { beforeEach, describe, it, expect, vi } from 'vitest';
 import { fireEvent, render, screen } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 
@@ -67,6 +67,10 @@ const rankingWithUncategorized: IndexSectorRankingResponse = {
 };
 
 describe('IndexSectorRankingPane', () => {
+  beforeEach(() => {
+    localStorage.clear();
+  });
+
   it('renders basis date, sector ranking, and default rank 1 stocks', () => {
     render(
       <IndexSectorRankingPane
@@ -215,5 +219,32 @@ describe('IndexSectorRankingPane', () => {
     fireEvent.mouseUp(window);
 
     expect(pane).toHaveStyle({ height: '280px' });
+  });
+
+  it('remembers the resized pane height after remount', () => {
+    const props = {
+      basisDate: '20260619',
+      basisMode: 'hover' as const,
+      ranking,
+      isLoading: false,
+      error: null,
+      onClearDatePin: () => {},
+      onOpenStock: () => {},
+    };
+    const { unmount } = render(<IndexSectorRankingPane {...props} />);
+
+    const pane = screen.getByTestId('index-sector-ranking-pane');
+    const separator = screen.getByRole('separator', { name: '섹터 랭킹 높이 조절' });
+    fireEvent.mouseDown(separator, { clientY: 300 });
+    fireEvent.mouseMove(window, { clientY: 190 });
+    fireEvent.mouseUp(window);
+
+    expect(pane).toHaveStyle({ height: '330px' });
+    expect(localStorage.getItem('live.indexSectorRankingPane.v1')).toBe('330');
+
+    unmount();
+    render(<IndexSectorRankingPane {...props} />);
+
+    expect(screen.getByTestId('index-sector-ranking-pane')).toHaveStyle({ height: '330px' });
   });
 });

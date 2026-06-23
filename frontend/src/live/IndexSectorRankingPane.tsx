@@ -26,9 +26,24 @@ interface Props {
 const DEFAULT_PANE_HEIGHT = 220;
 const MIN_PANE_HEIGHT = 140;
 const MAX_PANE_HEIGHT = 520;
+const PANE_HEIGHT_STORAGE_KEY = 'live.indexSectorRankingPane.v1';
 
 function clampPaneHeight(value: number): number {
   return Math.min(MAX_PANE_HEIGHT, Math.max(MIN_PANE_HEIGHT, value));
+}
+
+function readStoredPaneHeight(): number {
+  if (typeof window === 'undefined') return DEFAULT_PANE_HEIGHT;
+  const raw = window.localStorage.getItem(PANE_HEIGHT_STORAGE_KEY);
+  if (raw === null) return DEFAULT_PANE_HEIGHT;
+  const parsed = Number(raw);
+  if (!Number.isFinite(parsed)) return DEFAULT_PANE_HEIGHT;
+  return clampPaneHeight(parsed);
+}
+
+function writeStoredPaneHeight(value: number): void {
+  if (typeof window === 'undefined') return;
+  window.localStorage.setItem(PANE_HEIGHT_STORAGE_KEY, String(value));
 }
 
 function formatDate(date: string | null): string {
@@ -146,7 +161,7 @@ export function IndexSectorRankingPane({
     reduceIndexSectorRankingState,
     initialIndexSectorRankingUiState,
   );
-  const [height, setHeight] = useState(DEFAULT_PANE_HEIGHT);
+  const [height, setHeight] = useState(readStoredPaneHeight);
   const resizeStartRef = useRef<{ y: number; height: number } | null>(null);
 
   const startResize = useCallback((clientY: number) => {
@@ -157,7 +172,11 @@ export function IndexSectorRankingPane({
     const handleMouseMove = (event: MouseEvent) => {
       const start = resizeStartRef.current;
       if (!start) return;
-      setHeight(clampPaneHeight(start.height + start.y - event.clientY));
+      setHeight(() => {
+        const next = clampPaneHeight(start.height + start.y - event.clientY);
+        writeStoredPaneHeight(next);
+        return next;
+      });
     };
     const handleMouseUp = () => {
       resizeStartRef.current = null;
@@ -245,10 +264,18 @@ export function IndexSectorRankingPane({
         }}
         onKeyDown={(event) => {
           if (event.key === 'ArrowUp') {
-            setHeight((current) => clampPaneHeight(current + 20));
+            setHeight((current) => {
+              const next = clampPaneHeight(current + 20);
+              writeStoredPaneHeight(next);
+              return next;
+            });
             event.preventDefault();
           } else if (event.key === 'ArrowDown') {
-            setHeight((current) => clampPaneHeight(current - 20));
+            setHeight((current) => {
+              const next = clampPaneHeight(current - 20);
+              writeStoredPaneHeight(next);
+              return next;
+            });
             event.preventDefault();
           }
         }}
