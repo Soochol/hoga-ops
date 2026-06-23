@@ -363,7 +363,7 @@ export function StudyViewsDrawer() {
           {renameState.error && <div className="text-xs text-danger">{renameState.error}</div>}
         </div>
       ) : (
-        <div className="flex min-w-0 flex-1 items-start gap-2">
+        <div className="flex min-w-0 flex-1 items-center gap-2 leading-tight">
           <span className="h-1.5 w-1.5 shrink-0 rounded-full border border-line bg-bg" aria-hidden />
           <div className="min-w-0 flex-1">
             <div
@@ -474,7 +474,7 @@ export function StudyViewsDrawer() {
                           aria-expanded={!groupCollapsed}
                           title={`${group.label} ${group.code}`}
                           onClick={() => toggleGroup(group.key)}
-                          className={`sticky top-0 z-10 flex w-full items-center gap-2 border-b bg-bg-card px-3 py-1.5 text-left text-sm font-semibold text-fg-dim hover:bg-bg-input-hover ${dragEnabled ? 'cursor-grab active:cursor-grabbing' : ''}`}
+                          className={`sticky top-0 z-10 flex w-full items-center gap-2 border-b bg-bg-card px-3 py-1.5 text-left text-xs text-fg hover:bg-bg-input-hover ${dragEnabled ? 'cursor-grab active:cursor-grabbing' : ''}`}
                         >
                           <span className="w-3 text-xs" aria-hidden>{groupCollapsed ? '▶' : '▼'}</span>
                           <span className="min-w-0 flex-1 truncate">{group.label}</span>

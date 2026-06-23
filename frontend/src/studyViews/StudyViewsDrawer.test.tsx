@@ -211,6 +211,20 @@ it('renders saved views as Code-keyed stock-name tree groups', () => {
   expect(within(sameLabelOtherCode).getByRole('button', { name: '동명이종목 저장뷰 열기' })).toBeTruthy();
 });
 
+it('matches watchlist list typography for stock headers and saved view names', () => {
+  renderDrawer('/inventory');
+
+  const groupHeader = screen.getByRole('button', { name: '삼성전자 005930 접기' });
+  expect(groupHeader).toHaveClass('text-xs');
+  expect(groupHeader).toHaveClass('text-fg');
+  expect(groupHeader).not.toHaveClass('text-sm');
+
+  const savedViewName = screen.getByText('급등 이후');
+  expect(savedViewName).toHaveClass('text-xs');
+  expect(savedViewName).toHaveClass('text-fg');
+  expect(savedViewName).not.toHaveClass('text-sm');
+});
+
 it('collapses and expands one stock group', async () => {
   renderDrawer('/inventory');
 
