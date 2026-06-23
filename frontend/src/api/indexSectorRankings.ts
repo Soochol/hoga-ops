@@ -4,6 +4,7 @@ import { apiCall } from './client';
 export type IndexSectorRankingSource = 'daily_adjusted' | 'unavailable';
 export type IndexSectorMissingReason = 'no_basis_bar' | 'no_previous_close';
 export const INDEX_SECTOR_RANKINGS_KEY = ['live', 'index-sector-rankings'] as const;
+export const TODAY_INDEX_SECTOR_RANKINGS_REFETCH_MS = 60_000;
 
 export interface IndexSectorRankingStock {
   code: string;
@@ -34,7 +35,24 @@ export interface IndexSectorRankingResponse {
   sectors: IndexSectorRankingSector[];
 }
 
-export function useIndexSectorRankings(date: string | null, enabledByCaller = true) {
+export function indexSectorRankingFreshnessOptions(
+  date: string | null,
+  todayKst: string | null,
+): { staleTime: number; refetchInterval: number | false } {
+  const isToday = !!(date && todayKst && date === todayKst);
+  return {
+    staleTime: TODAY_INDEX_SECTOR_RANKINGS_REFETCH_MS,
+    refetchInterval: isToday ? TODAY_INDEX_SECTOR_RANKINGS_REFETCH_MS : false,
+  };
+}
+
+export function useIndexSectorRankings(
+  date: string | null,
+  enabledByCaller = true,
+  todayKst?: string | null,
+) {
+  const { staleTime, refetchInterval } = indexSectorRankingFreshnessOptions(date, todayKst ?? null);
+
   return useQuery({
     queryKey: [...INDEX_SECTOR_RANKINGS_KEY, date] as const,
     queryFn: ({ signal }) =>
@@ -43,7 +61,8 @@ export function useIndexSectorRankings(date: string | null, enabledByCaller = tr
         { signal },
       ),
     enabled: enabledByCaller && !!date,
-    staleTime: 60_000,
+    staleTime,
+    refetchInterval,
     placeholderData: (prev) => (prev && prev.date === date ? prev : undefined),
   });
 }

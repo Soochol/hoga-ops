@@ -3,7 +3,11 @@ import { renderHook, waitFor } from '@testing-library/react';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import type { ReactNode } from 'react';
 
-import { useIndexSectorRankings } from './indexSectorRankings';
+import {
+  TODAY_INDEX_SECTOR_RANKINGS_REFETCH_MS,
+  indexSectorRankingFreshnessOptions,
+  useIndexSectorRankings,
+} from './indexSectorRankings';
 import { __resetConfigForTests } from './client';
 
 function wrapper({ children }: { children: ReactNode }) {
@@ -43,5 +47,21 @@ describe('useIndexSectorRankings', () => {
     renderHook(() => useIndexSectorRankings(null), { wrapper });
 
     expect(fetch).toHaveBeenCalledTimes(0);
+  });
+});
+
+describe('indexSectorRankingFreshnessOptions', () => {
+  it('refetches today rankings while the same basis date can change intraday', () => {
+    expect(indexSectorRankingFreshnessOptions('20260619', '20260619')).toEqual({
+      staleTime: TODAY_INDEX_SECTOR_RANKINGS_REFETCH_MS,
+      refetchInterval: TODAY_INDEX_SECTOR_RANKINGS_REFETCH_MS,
+    });
+  });
+
+  it('does not poll historical ranking dates', () => {
+    expect(indexSectorRankingFreshnessOptions('20260618', '20260619')).toEqual({
+      staleTime: TODAY_INDEX_SECTOR_RANKINGS_REFETCH_MS,
+      refetchInterval: false,
+    });
   });
 });

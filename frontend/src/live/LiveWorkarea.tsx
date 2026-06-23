@@ -158,7 +158,7 @@ export function LiveWorkarea({
     ? realMsToYyyymmdd(rankingCandles[rankingCandles.length - 1].ts_ms)
     : null;
   const rankingBasis = resolveBasisDate(rankingState, latestRankingDate);
-  const rankingQuery = useIndexSectorRankings(rankingBasis.date, rankingAllowed);
+  const rankingQuery = useIndexSectorRankings(rankingBasis.date, rankingAllowed, todayKst || null);
   const handleCandleBasisHover = useCallback(
     (date: string | null) => {
       rankingDispatch({ type: 'hover_date', date });
