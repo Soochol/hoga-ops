@@ -176,6 +176,55 @@ def _sort_sectors(sectors: list[IndexSectorGroup]) -> list[IndexSectorGroup]:
     )
 
 
+def _latest_available_basis(daily_rows: dict[str, list[dict]], basis: dt.date) -> dt.date | None:
+    dates = [
+        row["date"]
+        for rows in daily_rows.values()
+        for row in rows
+        if row.get("date") <= basis
+    ]
+    return max(dates) if dates else None
+
+
+def _build_sector_groups(
+    entries: list[HeatmapEntry],
+    *,
+    folder_names: dict[str, str],
+    folder_orders: dict[str, int],
+    daily_rows: dict[str, list[dict]],
+    basis: dt.date,
+) -> list[IndexSectorGroup]:
+    sectors: list[IndexSectorGroup] = []
+    for folder_id, folder_name, folder_order, group_entries in _entry_groups(entries, folder_names, folder_orders):
+        stocks = _sort_stocks([
+            _stock_from_entry(
+                entry,
+                folder_name=folder_name,
+                basis=basis,
+                rows=daily_rows.get(entry.code, []),
+            )
+            for entry in group_entries
+        ])
+        avg, finite_count = _sector_average(stocks)
+        sectors.append(
+            IndexSectorGroup(
+                folder_id=folder_id,
+                folder_name=folder_name,
+                order=folder_order,
+                change_pct=avg,
+                finite_count=finite_count,
+                total_count=len(stocks),
+                stocks=stocks,
+            ),
+        )
+    return sectors
+
+
+def _all_stocks_missing_basis(sectors: list[IndexSectorGroup]) -> bool:
+    all_stocks = [stock for sector in sectors for stock in sector.stocks]
+    return bool(all_stocks) and all(stock.missing_reason == "no_basis_bar" for stock in all_stocks)
+
+
 def _mtime_ns(path: Path) -> int:
     try:
         return path.stat().st_mtime_ns
@@ -237,33 +286,26 @@ def build_index_sector_rankings(data_dir: Path, basis_date: str) -> IndexSectorR
     folder_names = {folder.id: folder.name for folder in doc.folders}
     folder_orders = {folder.id: folder.order for folder in doc.folders}
     try:
-        sectors: list[IndexSectorGroup] = []
-        for folder_id, folder_name, folder_order, entries in _entry_groups(doc.entries, folder_names, folder_orders):
-            stocks = _sort_stocks([
-                _stock_from_entry(
-                    entry,
-                    folder_name=folder_name,
-                    basis=basis,
-                    rows=daily_rows.get(entry.code, []),
+        sectors = _build_sector_groups(
+            doc.entries,
+            folder_names=folder_names,
+            folder_orders=folder_orders,
+            daily_rows=daily_rows,
+            basis=basis,
+        )
+        if _all_stocks_missing_basis(sectors):
+            fallback_basis = _latest_available_basis(daily_rows, basis)
+            if fallback_basis is not None and fallback_basis != basis:
+                sectors = _build_sector_groups(
+                    doc.entries,
+                    folder_names=folder_names,
+                    folder_orders=folder_orders,
+                    daily_rows=daily_rows,
+                    basis=fallback_basis,
                 )
-                for entry in entries
-            ])
-            avg, finite_count = _sector_average(stocks)
-            sectors.append(
-                IndexSectorGroup(
-                    folder_id=folder_id,
-                    folder_name=folder_name,
-                    order=folder_order,
-                    change_pct=avg,
-                    finite_count=finite_count,
-                    total_count=len(stocks),
-                    stocks=stocks,
-                ),
-            )
     except (KeyError, TypeError, ValueError):
         return _cache_put(cache_key, _unavailable(basis_date, "daily_corpus_invalid"))
-    all_stocks = [stock for sector in sectors for stock in sector.stocks]
-    if all_stocks and all(stock.missing_reason == "no_basis_bar" for stock in all_stocks):
+    if _all_stocks_missing_basis(sectors):
         return _cache_put(cache_key, _unavailable(basis_date, "no_basis_bars"))
     return _cache_put(cache_key, IndexSectorRankingResponse(
         date=basis_date,

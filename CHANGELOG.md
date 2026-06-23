@@ -3,6 +3,15 @@
 All notable changes to this project are documented here.
 The format follows a 4-digit `MAJOR.MINOR.PATCH.MICRO` scheme.
 
+## [0.9.1.3] - 2026-06-23
+
+### Changed
+- **/live 지수 섹터 랭킹 패널 높이 조절 추가**: 사용자가 섹터 랭킹 패널 상단 핸들을 드래그하거나 키보드로 높이를 조절할 수 있게 했다.
+- 지수 차트에서 `Esc` 또는 차트 빈공간 클릭으로 고정 날짜를 해제하고 최신 캔들 기준 섹터 랭킹으로 돌아가게 했다.
+
+### Fixed
+- 장중 당일 지수 캔들을 클릭했을 때 당일 daily corpus가 아직 없어도 직전 사용 가능한 일봉 기준으로 섹터 랭킹이 표시되도록 했다.
+
 ## [0.9.1.2] - 2026-06-23
 
 ### Added

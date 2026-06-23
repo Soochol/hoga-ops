@@ -151,7 +151,7 @@ interface Props {
   /** Optional hover activity signal for consumers that must ignore sticky cursor restore. */
   onCursorActiveChange?: (active: boolean) => void;
   onCandleBasisHover?: (date: string | null) => void;
-  onCandleBasisClick?: (date: string) => void;
+  onCandleBasisClick?: (date: string | null) => void;
 }
 
 /** /live's single-chart root. Mounts the timeframe-appropriate pane set
@@ -830,10 +830,16 @@ export function LiveChartRoot({ code, timeframe, venue = 'KRX', viewIdentity, bu
   useEffect(() => {
     if (!chart || !onCandleBasisClick) return;
     const handler = (param: { time?: unknown; point?: { x: number } | null }) => {
-      if (param.point == null || typeof param.time !== 'number' || axis.segments.length === 0) return;
+      if (param.point == null || typeof param.time !== 'number' || axis.segments.length === 0) {
+        onCandleBasisClick(null);
+        return;
+      }
       const realMs = axis.toReal(param.time * 1000);
       const lastMs = lastCandleMsRef.current;
-      if (lastMs !== null && realMs > lastMs) return;
+      if (lastMs !== null && realMs > lastMs) {
+        onCandleBasisClick(null);
+        return;
+      }
       onCandleBasisClick(kstDateFromMs(realMs));
     };
     chart.subscribeClick(handler);

@@ -166,11 +166,21 @@ export function LiveWorkarea({
     [rankingDispatch],
   );
   const handleCandleBasisClick = useCallback(
-    (date: string) => {
-      rankingDispatch({ type: 'toggle_date_pin', date });
+    (date: string | null) => {
+      rankingDispatch({ type: 'select_date', date });
     },
     [rankingDispatch],
   );
+  useEffect(() => {
+    if (!rankingAllowed) return undefined;
+    const handleKeyDown = (event: KeyboardEvent) => {
+      if (event.key !== 'Escape') return;
+      if (document.querySelector('[role="dialog"], [role="menu"]')) return;
+      rankingDispatch({ type: 'clear_date_pin' });
+    };
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, [rankingAllowed]);
   const handleOpenStock = useMemo(
     () => (code: string, name: string) => openStock(code, name),
     [openStock],
