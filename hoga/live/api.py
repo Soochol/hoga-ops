@@ -229,6 +229,42 @@ def _daily_fallback_to_krx_warning(primary_venue: KisVenue, batch_label: str) ->
     }
 
 
+def _daily_partial_fallback_to_krx_warning(primary_venue: KisVenue, batch_label: str) -> dict:
+    return {
+        "batch": batch_label,
+        "reason": "daily_fallback_to_krx",
+        "msg": (
+            f"{primary_venue} daily returned a partial range; filling missing daily "
+            "candles from KRX for this batch"
+        ),
+    }
+
+
+def _daily_candle_date(candle) -> date:
+    return datetime.fromtimestamp(candle.t_ms / 1000, tz=_KST).date()
+
+
+def _needs_krx_daily_fill(candles: list, from_s: str, to_s: str) -> bool:
+    if not candles:
+        return True
+    from_d = datetime.strptime(from_s, "%Y%m%d").date()
+    to_d = datetime.strptime(to_s, "%Y%m%d").date()
+    dates = sorted({_daily_candle_date(c) for c in candles})
+    # A few calendar days of edge slack avoids fallback for weekend/holiday
+    # request edges. Month-scale holes (observed 089030 NXT/UN) must be filled.
+    if dates[0] > from_d + timedelta(days=10):
+        return True
+    if dates[-1] < to_d - timedelta(days=10):
+        return True
+    return any((b - a).days > 10 for a, b in zip(dates, dates[1:]))
+
+
+def _merge_daily_fallback(primary: list, fallback: list) -> list:
+    by_ts = {c.t_ms: c for c in fallback}
+    by_ts.update({c.t_ms: c for c in primary})
+    return [by_ts[t] for t in sorted(by_ts)]
+
+
 def _compute_daily_gaps(
     frm: date, too: date,
     existing: list[tuple[date, date]],
@@ -1532,15 +1568,27 @@ def build_router(
             result = await kis.fetch_past_daily_candles(
                 code_, from_s, to_s, venue=kis_venue, foreground=True,
             )
-            if kis_venue != "KRX" and not result.candles and not result.violations:
+            if kis_venue != "KRX" and not result.violations and _needs_krx_daily_fill(
+                result.candles, from_s, to_s
+            ):
                 fallback = await kis.fetch_past_daily_candles(
                     code_, from_s, to_s, venue="KRX", foreground=True,
                 )
                 if fallback.candles:
-                    fallback_warnings.append(
-                        _daily_fallback_to_krx_warning(kis_venue, f"{from_s}__{to_s}")
-                    )
-                    result = fallback
+                    batch = f"{from_s}__{to_s}"
+                    if result.candles:
+                        fallback_warnings.append(
+                            _daily_partial_fallback_to_krx_warning(kis_venue, batch)
+                        )
+                        result = type(result)(
+                            candles=_merge_daily_fallback(result.candles, fallback.candles),
+                            violations=result.violations,
+                        )
+                    else:
+                        fallback_warnings.append(
+                            _daily_fallback_to_krx_warning(kis_venue, batch)
+                        )
+                        result = fallback
             return [_candle_to_dict(c) for c in result.candles], result.violations
 
         class _VenueDailyCacheAdapter:

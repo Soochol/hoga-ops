@@ -55,8 +55,8 @@ def test_index_sector_rankings_returns_service_payload(tmp_path, monkeypatch) ->
                 "sectors": [],
             }
 
-    def fake_build(data_dir, basis_date):
-        calls.append((data_dir, basis_date))
+    def fake_build(data_dir, basis_date, *, intraday_prices=None):
+        calls.append((data_dir, basis_date, intraday_prices))
         return FakeResponse()
 
     monkeypatch.setattr(live_api, "build_index_sector_rankings", fake_build)
@@ -64,7 +64,7 @@ def test_index_sector_rankings_returns_service_payload(tmp_path, monkeypatch) ->
     res = _client(tmp_path).get("/api/live/index-sector-rankings?date=20260619")
 
     assert res.status_code == 200
-    assert calls == [(tmp_path, "20260619")]
+    assert calls == [(tmp_path, "20260619", None)]
     assert res.json() == {
         "date": "20260619",
         "source": "daily_adjusted",

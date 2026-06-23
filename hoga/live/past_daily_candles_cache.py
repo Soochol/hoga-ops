@@ -11,10 +11,10 @@ because 1-minute data at scale exceeds memory.
 from __future__ import annotations
 
 import time
-from datetime import date
+from datetime import date, datetime
 from typing import Literal
 
-from hoga.live.kis_venue import KisVenue
+from hoga.live.kis_venue import KIS_KST, KisVenue
 
 # TTL for today's bar (and negative cache for non-trading-day today).
 TODAY_TTL_SECONDS = 60.0
@@ -39,6 +39,27 @@ class PastDailyCandlesCache:
     # --- batches ---
 
     @staticmethod
+    def _row_date_bounds(bars: list[dict]) -> tuple[date, date] | None:
+        dates: list[date] = []
+        for bar in bars:
+            ts = bar.get("t_ms")
+            if isinstance(ts, int):
+                dates.append(datetime.fromtimestamp(ts / 1000, tz=KIS_KST).date())
+        if not dates:
+            return None
+        return min(dates), max(dates)
+
+    @classmethod
+    def _normalize_batch(
+        cls, frm: date, to: date, bars: list[dict],
+    ) -> tuple[date, date, list[dict]]:
+        row_bounds = cls._row_date_bounds(bars)
+        if row_bounds is None:
+            return frm, to, bars
+        row_from, row_to = row_bounds
+        return max(frm, row_from), min(to, row_to), bars
+
+    @staticmethod
     def _parse_code_args(args: tuple[str, ...]) -> tuple[KisVenue, str]:
         if len(args) == 1:
             return "KRX", args[0]
@@ -49,7 +70,10 @@ class PastDailyCandlesCache:
 
     def list_batches(self, *args: str) -> list[tuple[date, date, list[dict]]]:
         venue, code = self._parse_code_args(args)
-        return list(self._per_key.get((venue, code), []))
+        return [
+            self._normalize_batch(frm, to, bars)
+            for frm, to, bars in self._per_key.get((venue, code), [])
+        ]
 
     def append_batch(
         self, *args,
@@ -60,7 +84,9 @@ class PastDailyCandlesCache:
             venue, code, frm, to, bars = args
         else:
             raise TypeError("expected (code, frm, to, bars) or (venue, code, frm, to, bars)")
-        self._per_key.setdefault((venue, code), []).append((frm, to, bars))
+        self._per_key.setdefault((venue, code), []).append(
+            self._normalize_batch(frm, to, bars)
+        )
 
     # --- today ---
 
