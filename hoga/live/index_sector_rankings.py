@@ -22,11 +22,13 @@ UnavailableReason = Literal[
     "no_basis_bars",
 ]
 _CACHE_MAX = 64
+_FINGERPRINT_CACHE_MAX = 128
 _cache_lock = Lock()
 _ranking_cache: OrderedDict[
     tuple[str, str, str, str],
     IndexSectorRankingResponse,
 ] = OrderedDict()
+_fingerprint_cache: OrderedDict[tuple[str, tuple[int, int, int, int, int]], str] = OrderedDict()
 
 
 class IndexSectorStock(BaseModel):
@@ -227,7 +229,7 @@ def _all_stocks_missing_basis(sectors: list[IndexSectorGroup]) -> bool:
     return bool(all_stocks) and all(stock.missing_reason == "no_basis_bar" for stock in all_stocks)
 
 
-def _file_fingerprint(path: Path) -> str:
+def _read_file_fingerprint(path: Path) -> str:
     digest = hashlib.sha256()
     try:
         with path.open("rb") as handle:
@@ -235,7 +237,32 @@ def _file_fingerprint(path: Path) -> str:
                 digest.update(chunk)
     except FileNotFoundError:
         return "missing"
+    except OSError:
+        return "unreadable"
     return digest.hexdigest()
+
+
+def _file_fingerprint(path: Path) -> str:
+    try:
+        stat = path.stat()
+    except FileNotFoundError:
+        return "missing"
+    except OSError:
+        return "unreadable"
+    stat_key = (stat.st_dev, stat.st_ino, stat.st_size, stat.st_mtime_ns, stat.st_ctime_ns)
+    cache_key = (str(path.resolve()), stat_key)
+    with _cache_lock:
+        cached = _fingerprint_cache.get(cache_key)
+        if cached is not None:
+            _fingerprint_cache.move_to_end(cache_key)
+            return cached
+    fingerprint = _read_file_fingerprint(path)
+    with _cache_lock:
+        _fingerprint_cache[cache_key] = fingerprint
+        _fingerprint_cache.move_to_end(cache_key)
+        while len(_fingerprint_cache) > _FINGERPRINT_CACHE_MAX:
+            _fingerprint_cache.popitem(last=False)
+    return fingerprint
 
 
 def _ranking_disk_cache_path(

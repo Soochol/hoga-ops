@@ -16,8 +16,10 @@ from hoga.live.index_sector_rankings import build_index_sector_rankings
 @pytest.fixture(autouse=True)
 def clear_ranking_cache() -> None:
     rankings._ranking_cache.clear()
+    rankings._fingerprint_cache.clear()
     yield
     rankings._ranking_cache.clear()
+    rankings._fingerprint_cache.clear()
 
 
 def _seed_heatmap(tmp_path: Path) -> None:
@@ -246,6 +248,27 @@ def test_build_index_sector_rankings_reads_valid_disk_cache_on_memory_miss(
     assert second.source == "daily_adjusted"
 
 
+def test_build_index_sector_rankings_reuses_file_fingerprints_for_hot_memory_hit(
+    tmp_path: Path,
+    monkeypatch,
+) -> None:
+    _seed_heatmap(tmp_path)
+    _seed_daily(tmp_path)
+    calls = 0
+    original = rankings._read_file_fingerprint
+
+    def counting_read_file_fingerprint(path):
+        nonlocal calls
+        calls += 1
+        return original(path)
+
+    monkeypatch.setattr(rankings, "_read_file_fingerprint", counting_read_file_fingerprint)
+
+    assert build_index_sector_rankings(tmp_path, "20260619").source == "daily_adjusted"
+    assert build_index_sector_rankings(tmp_path, "20260619").source == "daily_adjusted"
+    assert calls == 2
+
+
 def test_build_index_sector_rankings_ignores_corrupt_disk_cache(tmp_path: Path) -> None:
     _seed_heatmap(tmp_path)
     _seed_daily(tmp_path)
@@ -329,6 +352,19 @@ def test_build_index_sector_rankings_invalidates_disk_cache_when_daily_corpus_ch
     assert first.sectors[0].change_pct == 7.5
     assert second.sectors[0].change_pct == 15.0
     assert len(cache_files) == 2
+
+
+def test_build_index_sector_rankings_reports_unavailable_when_corpus_path_is_unreadable(
+    tmp_path: Path,
+) -> None:
+    _seed_heatmap(tmp_path)
+    corpus_path = tmp_path / "screener" / "daily_adjusted.parquet"
+    corpus_path.mkdir(parents=True)
+
+    result = build_index_sector_rankings(tmp_path, "20260619")
+
+    assert result.source == "unavailable"
+    assert result.unavailable_reason == "daily_corpus_invalid"
 
 
 def test_build_index_sector_rankings_marks_missing_previous_close(tmp_path: Path) -> None:
