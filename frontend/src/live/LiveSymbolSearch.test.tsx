@@ -11,6 +11,14 @@ const HIT: SymbolHit = {
   captured_count: 0,
   captured_breakdown: { complete: 0, source_partial: 0, client_incomplete: 0, invalid: 0 },
 };
+const RECENT_HITS: SymbolHit[] = [
+  { ...HIT, code: '000660', name: 'SK하이닉스' },
+  { ...HIT, code: '373220', name: 'LG에너지솔루션' },
+  { ...HIT, code: '035420', name: 'NAVER' },
+  { ...HIT, code: '005380', name: '현대차' },
+  { ...HIT, code: '207940', name: '삼성바이오로직스' },
+  { ...HIT, code: '068270', name: '셀트리온' },
+];
 
 // Faithful to the real contract: filterSymbols('') returns ALL symbols (not
 // []), so the mock returns [HIT] for EVERY query — including the empty one.
@@ -41,6 +49,7 @@ function renderSearch() {
 describe('LiveSymbolSearch', () => {
   beforeEach(() => {
     cleanup();
+    localStorage.clear();
     useLivePageStore.setState({ activeCode: null });
     useLiveTabsStore.setState({ tabs: [], activeTabId: null });
   });
@@ -60,6 +69,27 @@ describe('LiveSymbolSearch', () => {
     fireEvent.change(input, { target: { value: '삼성' } });
     fireEvent.click(screen.getByText('삼성전자'));
     expect(useLivePageStore.getState().activeCode).toBe('005930');
+  });
+
+  it('stores selected stocks as recent searches in localStorage', () => {
+    renderSearch();
+    const input = screen.getByRole('combobox');
+    fireEvent.focus(input);
+    fireEvent.change(input, { target: { value: '삼성' } });
+    fireEvent.click(screen.getByText('삼성전자'));
+    expect(JSON.parse(localStorage.getItem('hoga.liveSymbolSearch.recent') ?? '[]')).toEqual([
+      { code: '005930', name: '삼성전자', market: 'KOSPI' },
+    ]);
+  });
+
+  it('shows the five most recent selected stocks when "/" focuses an empty search', () => {
+    localStorage.setItem('hoga.liveSymbolSearch.recent', JSON.stringify(RECENT_HITS));
+    renderSearch();
+    fireEvent.keyDown(window, { key: '/' });
+    expect(screen.getByText('최근 검색')).toBeInTheDocument();
+    expect(screen.getByText('SK하이닉스')).toBeInTheDocument();
+    expect(screen.getByText('삼성바이오로직스')).toBeInTheDocument();
+    expect(screen.queryByText('셀트리온')).toBeNull();
   });
 
   it('selecting an index result opens an index instrument tab', () => {
