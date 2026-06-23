@@ -235,7 +235,6 @@ def _mtime_ns(path: Path) -> int:
 def _ranking_disk_cache_path(
     data_dir: Path,
     basis_date: str,
-    *,
     heatmap_mtime_ns: int,
     corpus_mtime_ns: int,
 ) -> Path:
