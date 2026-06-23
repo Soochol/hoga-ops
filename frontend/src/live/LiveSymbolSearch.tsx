@@ -102,27 +102,34 @@ export function LiveSymbolSearch() {
     inputProps, getOptionProps, listProps,
   } = combo;
 
-  // Global "/" focuses the input (Discord/Linear pattern). The shared guard
-  // skips when focus is already in an input, so "/" types literally there.
+  // Global "/" opens the centered search surface. The shared guard skips when
+  // focus is already in an input, so "/" types literally there.
   useEffect(() => {
     function onKey(e: KeyboardEvent) {
       if (e.key !== '/' || shouldIgnoreEvent(e.target)) return;
       e.preventDefault();
-      inputRef.current?.focus();
+      setOpen(true);
     }
     window.addEventListener('keydown', onKey);
     return () => window.removeEventListener('keydown', onKey);
-  }, [inputRef]);
+  }, [setOpen]);
 
-  useEffect(() => onFocusLiveSearch(() => inputRef.current?.focus()), [inputRef]);
+  useEffect(() => onFocusLiveSearch(() => setOpen(true)), [setOpen]);
+
+  useEffect(() => {
+    if (open) inputRef.current?.focus();
+  }, [inputRef, open]);
 
   const showingRecent = open && q.length === 0 && recentItems.length > 0;
-  const dropdownVisible = open && (query.trim().length >= 1 || showingRecent);
+  const listVisible = query.trim().length >= 1 || showingRecent;
 
   return (
-    <div ref={wrapperRef} className="relative flex-1 max-w-[360px] font-ui">
-      <div
-        className={`flex items-center gap-2 h-7 px-2.5 bg-bg-input border rounded-lg ${
+    <div className="relative flex-1 max-w-[360px] font-ui">
+      <button
+        type="button"
+        aria-label="종목 검색 열기"
+        onClick={() => setOpen(true)}
+        className={`flex items-center gap-2 h-7 w-full px-2.5 bg-bg-input border rounded-lg text-left ${
           open ? 'border-accent' : 'border-border-strong'
         }`}
       >
@@ -130,64 +137,96 @@ export function LiveSymbolSearch() {
           <circle cx="11" cy="11" r="7" />
           <line x1="21" y1="21" x2="16.65" y2="16.65" />
         </svg>
-        <input
-          ref={inputRef}
-          role="combobox"
-          aria-expanded={dropdownVisible}
-          aria-controls="live-symbol-search-list"
-          type="text"
-          placeholder="종목명 또는 코드 검색…"
-          className="flex-1 bg-transparent text-fg text-sm outline-none placeholder:text-fg-dimmer"
-          {...inputProps}
-        />
+        <span className="flex-1 text-sm text-fg-dimmer">종목명 또는 코드 검색…</span>
         <span className="ml-auto flex items-center gap-1 text-fg-dimmer text-xs">
           <kbd className="inline-flex items-center justify-center min-w-[17px] h-[17px] px-1 border border-border-strong rounded bg-bg-input font-mono">/</kbd>
         </span>
-      </div>
+      </button>
 
-      {dropdownVisible && (
+      {open && (
         <div
-          id="live-symbol-search-list"
-          {...listProps}
-          style={{ boxShadow: '0 8px 24px rgba(0,0,0,0.4)' }}
-          className="absolute z-20 top-full left-0 right-0 mt-1 bg-bg-card border border-border-strong rounded-lg max-h-80 overflow-y-auto"
+          ref={wrapperRef}
+          role="dialog"
+          aria-label="종목 검색"
+          style={{ boxShadow: '0 18px 50px rgba(0,0,0,0.45)' }}
+          className="fixed left-1/2 top-[12vh] z-50 w-[min(960px,calc(100vw-32px))] -translate-x-1/2 rounded-xl border border-border-strong bg-bg-card p-4 font-ui"
         >
-          {items.length === 0 ? (
-            <div className="py-3 px-2.5 text-sm text-fg-dim">검색 결과가 없습니다.</div>
-          ) : (
-            <>
-              {showingRecent && (
-                <div className="px-2.5 pt-2 pb-1 text-badge font-semibold tracking-wider text-fg-dimmer">
-                  최근 검색
-                </div>
+          <div className="flex items-center gap-3 h-[58px] px-4 rounded-xl bg-bg-input">
+            <svg aria-hidden viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="text-fg-dimmer w-[24px] h-[24px] shrink-0">
+              <circle cx="11" cy="11" r="7" />
+              <line x1="21" y1="21" x2="16.65" y2="16.65" />
+            </svg>
+            <input
+              ref={inputRef}
+              role="combobox"
+              aria-expanded={listVisible}
+              aria-controls="live-symbol-search-list"
+              type="text"
+              placeholder="검색어를 입력해주세요"
+              className="min-w-0 flex-1 bg-transparent text-[22px] leading-none text-fg outline-none placeholder:text-fg-dimmer"
+              {...inputProps}
+            />
+          </div>
+
+          {listVisible && (
+            <div
+              id="live-symbol-search-list"
+              {...listProps}
+              className="mt-8 max-h-[50vh] overflow-y-auto"
+            >
+              {items.length === 0 ? (
+                <div className="py-3 px-2.5 text-sm text-fg-dim">검색 결과가 없습니다.</div>
+              ) : showingRecent ? (
+                <>
+                  <div className="mb-5 px-4 text-xl font-semibold text-fg">
+                    최근 검색
+                  </div>
+                  <div className="flex flex-wrap gap-3">
+                    {items.map((item, i) => item.kind === 'stock' && (
+                      <button
+                        key={`recent:${item.hit.code}`}
+                        type="button"
+                        role="option"
+                        {...getOptionProps(i)}
+                        onClick={() => { selectItem(item); setOpen(false); }}
+                        style={{ background: i === highlightedIndex ? 'var(--tint-selection)' : 'var(--bg-input)' }}
+                        className="inline-flex max-w-full items-center gap-2 rounded-full px-4 py-2 text-lg font-semibold text-fg"
+                      >
+                        <span className="truncate">{item.hit.name}</span>
+                        <span aria-hidden className="text-fg-dimmer">×</span>
+                      </button>
+                    ))}
+                  </div>
+                </>
+              ) : (
+                items.map((item, i) => (
+                  <div
+                    key={item.kind === 'stock' ? `stock:${item.hit.code}` : `index:${item.index.id}`}
+                    role="option"
+                    {...getOptionProps(i)}
+                    onClick={() => { selectItem(item); setOpen(false); }}
+                    style={{ background: i === highlightedIndex ? 'var(--tint-selection)' : 'transparent' }}
+                    className="grid grid-cols-[1fr_auto_auto_auto] gap-2.5 items-center rounded-lg py-2 px-2.5 cursor-pointer"
+                  >
+                    {item.kind === 'stock' ? (
+                      <>
+                        <span className="text-sm text-fg">{item.hit.name}</span>
+                        <span className="text-sm font-mono text-fg-dim tabular-nums">{item.hit.code}</span>
+                        <span className="border border-border-strong rounded px-1 text-badge font-semibold tracking-wider text-fg-dim">{item.hit.market}</span>
+                        <WatchlistHeartButton code={item.hit.code} name={item.hit.name} />
+                      </>
+                    ) : (
+                      <>
+                        <span className="text-sm text-fg">{item.index.label}</span>
+                        <span className="text-sm font-mono text-fg-dim tabular-nums">{item.index.id}</span>
+                        <span className="border border-border-strong rounded px-1 text-badge font-semibold tracking-wider text-fg-dim">지수</span>
+                        <span aria-hidden />
+                      </>
+                    )}
+                  </div>
+                ))
               )}
-              {items.map((item, i) => (
-                <div
-                  key={item.kind === 'stock' ? `stock:${item.hit.code}` : `index:${item.index.id}`}
-                  role="option"
-                  {...getOptionProps(i)}
-                  onClick={() => { selectItem(item); setOpen(false); }}
-                  style={{ background: i === highlightedIndex ? 'var(--tint-selection)' : 'transparent' }}
-                  className="grid grid-cols-[1fr_auto_auto_auto] gap-2.5 items-center py-2 px-2.5 cursor-pointer"
-                >
-                  {item.kind === 'stock' ? (
-                    <>
-                      <span className="text-sm text-fg">{item.hit.name}</span>
-                      <span className="text-sm font-mono text-fg-dim tabular-nums">{item.hit.code}</span>
-                      <span className="border border-border-strong rounded px-1 text-badge font-semibold tracking-wider text-fg-dim">{item.hit.market}</span>
-                      <WatchlistHeartButton code={item.hit.code} name={item.hit.name} />
-                    </>
-                  ) : (
-                    <>
-                      <span className="text-sm text-fg">{item.index.label}</span>
-                      <span className="text-sm font-mono text-fg-dim tabular-nums">{item.index.id}</span>
-                      <span className="border border-border-strong rounded px-1 text-badge font-semibold tracking-wider text-fg-dim">지수</span>
-                      <span aria-hidden />
-                    </>
-                  )}
-                </div>
-              ))}
-            </>
+            </div>
           )}
         </div>
       )}

@@ -46,6 +46,11 @@ function renderSearch() {
   );
 }
 
+function openSearchPopover() {
+  fireEvent.keyDown(window, { key: '/' });
+  return screen.getByRole('combobox');
+}
+
 describe('LiveSymbolSearch', () => {
   beforeEach(() => {
     cleanup();
@@ -54,18 +59,19 @@ describe('LiveSymbolSearch', () => {
     useLiveTabsStore.setState({ tabs: [], activeTabId: null });
   });
 
-  it('focuses the input when "/" is pressed', () => {
+  it('opens a centered search popover when "/" is pressed', () => {
     renderSearch();
-    const input = screen.getByRole('combobox') as HTMLInputElement;
-    expect(document.activeElement).not.toBe(input);
+    expect(screen.queryByRole('dialog', { name: '종목 검색' })).toBeNull();
     fireEvent.keyDown(window, { key: '/' });
+    const dialog = screen.getByRole('dialog', { name: '종목 검색' });
+    const input = screen.getByPlaceholderText('검색어를 입력해주세요') as HTMLInputElement;
+    expect(dialog).toHaveClass('fixed', 'left-1/2', 'top-[12vh]');
     expect(document.activeElement).toBe(input);
   });
 
   it('selecting a result sets activeCode', () => {
     renderSearch();
-    const input = screen.getByRole('combobox');
-    fireEvent.focus(input);
+    const input = openSearchPopover();
     fireEvent.change(input, { target: { value: '삼성' } });
     fireEvent.click(screen.getByText('삼성전자'));
     expect(useLivePageStore.getState().activeCode).toBe('005930');
@@ -73,8 +79,7 @@ describe('LiveSymbolSearch', () => {
 
   it('stores selected stocks as recent searches in localStorage', () => {
     renderSearch();
-    const input = screen.getByRole('combobox');
-    fireEvent.focus(input);
+    const input = openSearchPopover();
     fireEvent.change(input, { target: { value: '삼성' } });
     fireEvent.click(screen.getByText('삼성전자'));
     expect(JSON.parse(localStorage.getItem('hoga.liveSymbolSearch.recent') ?? '[]')).toEqual([
@@ -86,6 +91,7 @@ describe('LiveSymbolSearch', () => {
     localStorage.setItem('hoga.liveSymbolSearch.recent', JSON.stringify(RECENT_HITS));
     renderSearch();
     fireEvent.keyDown(window, { key: '/' });
+    expect(screen.getByRole('dialog', { name: '종목 검색' })).toBeInTheDocument();
     expect(screen.getByText('최근 검색')).toBeInTheDocument();
     expect(screen.getByText('SK하이닉스')).toBeInTheDocument();
     expect(screen.getByText('삼성바이오로직스')).toBeInTheDocument();
@@ -94,8 +100,7 @@ describe('LiveSymbolSearch', () => {
 
   it('selecting an index result opens an index instrument tab', () => {
     renderSearch();
-    const input = screen.getByRole('combobox');
-    fireEvent.focus(input);
+    const input = openSearchPopover();
     fireEvent.change(input, { target: { value: 'kospi' } });
     fireEvent.click(screen.getAllByRole('option')[0]);
     const active = useLiveTabsStore.getState().tabs[0];
@@ -110,8 +115,7 @@ describe('LiveSymbolSearch', () => {
 
   it('renders index rows with a 지수 badge and without a watchlist heart', () => {
     renderSearch();
-    const input = screen.getByRole('combobox');
-    fireEvent.focus(input);
+    const input = openSearchPopover();
     fireEvent.change(input, { target: { value: 'kospi' } });
     expect(screen.getAllByText('지수')).toHaveLength(2);
     expect(screen.getByText('삼성전자')).toBeInTheDocument();
@@ -120,8 +124,7 @@ describe('LiveSymbolSearch', () => {
 
   it('clicking a result row heart opens the group picker (v3)', () => {
     renderSearch();
-    const input = screen.getByRole('combobox');
-    fireEvent.focus(input);
+    const input = openSearchPopover();
     fireEvent.change(input, { target: { value: '삼성' } });
     fireEvent.click(screen.getByRole('button', { name: '관심 그룹 편집' }));
     expect(screen.getByRole('menu', { name: '내 관심 그룹' })).toBeInTheDocument();
@@ -129,16 +132,14 @@ describe('LiveSymbolSearch', () => {
 
   it('Enter on a focused empty input does not select an arbitrary symbol', () => {
     renderSearch();
-    const input = screen.getByRole('combobox');
-    fireEvent.focus(input); // opens dropdown logic but query is still ''
+    const input = openSearchPopover();
     fireEvent.keyDown(input, { key: 'Enter' });
     expect(useLivePageStore.getState().activeCode).toBeNull();
   });
 
-  it('closes the dropdown on an outside mousedown', () => {
+  it('closes the popover on an outside mousedown', () => {
     renderSearch();
-    const input = screen.getByRole('combobox');
-    fireEvent.focus(input);
+    const input = openSearchPopover();
     fireEvent.change(input, { target: { value: '삼성' } });
     expect(screen.getByText('삼성전자')).toBeInTheDocument(); // dropdown open
     fireEvent.mouseDown(document.body);                       // click outside
