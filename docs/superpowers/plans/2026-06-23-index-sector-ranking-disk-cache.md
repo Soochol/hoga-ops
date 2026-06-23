@@ -38,7 +38,8 @@
 - Test: `tests/unit/live/test_index_sector_rankings.py`
 
 **Interfaces:**
-- Produces: `_ranking_disk_cache_path(data_dir: Path, basis_date: str, heatmap_mtime_ns: int, corpus_mtime_ns: int) -> Path`
+- Produces: `_file_fingerprint(path: Path) -> str`
+- Produces: `_ranking_disk_cache_path(data_dir: Path, basis_date: str, heatmap_fingerprint: str, corpus_fingerprint: str) -> Path`
 - Produces: cache files under `data_dir / "cache" / "index_sector_rankings"`
 
 - [ ] **Step 1: Write failing unit test for deterministic cache path**
@@ -50,12 +51,12 @@ def test_index_sector_ranking_disk_cache_path_uses_input_fingerprint(tmp_path: P
     path = rankings._ranking_disk_cache_path(
         tmp_path,
         "20260619",
-        heatmap_mtime_ns=111,
-        corpus_mtime_ns=222,
+        heatmap_fingerprint="heatmap123",
+        corpus_fingerprint="daily456",
     )
 
     assert path.parent == tmp_path / "cache" / "index_sector_rankings"
-    assert path.name == "20260619-heatmap_111-daily_222.json"
+    assert path.name == "20260619-heatmap_heatmap123-daily_daily456.json"
 ```
 
 - [ ] **Step 2: Run test to verify it fails**
@@ -70,17 +71,27 @@ Expected: FAIL with `AttributeError: module 'hoga.live.index_sector_rankings' ha
 
 - [ ] **Step 3: Implement path helper**
 
-Add in `hoga/live/index_sector_rankings.py` near `_mtime_ns`:
+Add in `hoga/live/index_sector_rankings.py`:
 
 ```python
+def _file_fingerprint(path: Path) -> str:
+    digest = hashlib.sha256()
+    try:
+        with path.open("rb") as handle:
+            for chunk in iter(lambda: handle.read(1024 * 1024), b""):
+                digest.update(chunk)
+    except FileNotFoundError:
+        return "missing"
+    return digest.hexdigest()
+
+
 def _ranking_disk_cache_path(
     data_dir: Path,
     basis_date: str,
-    *,
-    heatmap_mtime_ns: int,
-    corpus_mtime_ns: int,
+    heatmap_fingerprint: str,
+    corpus_fingerprint: str,
 ) -> Path:
-    filename = f"{basis_date}-heatmap_{heatmap_mtime_ns}-daily_{corpus_mtime_ns}.json"
+    filename = f"{basis_date}-heatmap_{heatmap_fingerprint}-daily_{corpus_fingerprint}.json"
     return data_dir / "cache" / "index_sector_rankings" / filename
 ```
 
@@ -168,8 +179,8 @@ In `build_index_sector_rankings`, after memory cache miss and before `load_docum
 disk_cache_path = _ranking_disk_cache_path(
     data_dir,
     basis_date,
-    heatmap_mtime_ns=cache_key[2],
-    corpus_mtime_ns=cache_key[3],
+    heatmap_fingerprint=cache_key[2],
+    corpus_fingerprint=cache_key[3],
 )
 disk_cached = _read_disk_cache(disk_cache_path)
 if disk_cached is not None:
@@ -267,7 +278,7 @@ For unavailable returns after `disk_cache_path` exists, use:
 return _cache_put_with_disk(cache_key, disk_cache_path, _unavailable(basis_date, "daily_corpus_invalid"))
 ```
 
-Do not write cache before `disk_cache_path` is defined; missing corpus can still use the path because corpus mtime is `0`.
+Do not write cache before `disk_cache_path` is defined; missing corpus can still use the path because missing corpus fingerprints as `"missing"`.
 
 - [ ] **Step 4: Run disk cache tests**
 
@@ -305,8 +316,8 @@ def test_build_index_sector_rankings_ignores_corrupt_disk_cache(tmp_path: Path) 
     cache_path = rankings._ranking_disk_cache_path(
         tmp_path,
         "20260619",
-        heatmap_mtime_ns=heatmap_path.stat().st_mtime_ns,
-        corpus_mtime_ns=corpus_path.stat().st_mtime_ns,
+        heatmap_fingerprint=rankings._file_fingerprint(heatmap_path),
+        corpus_fingerprint=rankings._file_fingerprint(corpus_path),
     )
     cache_path.parent.mkdir(parents=True)
     cache_path.write_text("{not json", encoding="utf-8")
@@ -343,7 +354,7 @@ git commit -m "test: recover corrupt index sector ranking disk cache"
 - Modify: `tests/unit/live/test_index_sector_rankings.py`
 
 **Interfaces:**
-- Consumes: mtime-based fingerprint in `_ranking_disk_cache_path`.
+- Consumes: content-based fingerprint in `_ranking_disk_cache_path`.
 - Behavior: changing heatmap membership creates a different cache file and returns current heatmap basis.
 
 - [ ] **Step 1: Write heatmap invalidation test**
@@ -380,7 +391,7 @@ Run:
 /home/dev/.local/bin/uv run --extra dev python -m pytest tests/unit/live/test_index_sector_rankings.py::test_build_index_sector_rankings_uses_new_disk_cache_after_heatmap_changes -q
 ```
 
-Expected: PASS. If filesystem mtime resolution is flaky, update `_ranking_disk_cache_path` to use a short content hash instead of mtime.
+Expected: PASS. Add a same-mtime content-change regression test so restored mtimes cannot reuse stale disk cache.
 
 - [ ] **Step 3: Commit**
 
@@ -450,17 +461,18 @@ git commit -m "chore: release index sector ranking disk cache"
 
 ## Self-Review
 
-**Spec coverage:**  
-- Fast repeated lookup across server restart: Tasks 2 and 3.  
-- Current heatmap/daily correctness after input changes: Task 5.  
-- Corrupt cache safety: Task 4.  
-- Existing API shape preserved: no model/route response fields added.  
+**Spec coverage:**
+- Fast repeated lookup across server restart: Tasks 2 and 3.
+- Current heatmap/daily correctness after input changes: Task 5.
+- Corrupt cache safety: Task 4.
+- Existing API shape preserved: no model/route response fields added.
 - Hover/click speed: memory hit remains first, disk hit becomes second, parquet scan only on miss.
 
 **Placeholder scan:** No `TBD`, `TODO`, or unspecified “add tests” steps remain.
 
 **Type consistency:** Helper signatures are consistent across tasks:
-- `_ranking_disk_cache_path(data_dir, basis_date, heatmap_mtime_ns=..., corpus_mtime_ns=...)`
+- `_file_fingerprint(path)`
+- `_ranking_disk_cache_path(data_dir, basis_date, heatmap_fingerprint=..., corpus_fingerprint=...)`
 - `_read_disk_cache(path)`
 - `_write_disk_cache(path, value)`
 - `_cache_put_with_disk(key, disk_path, value)`

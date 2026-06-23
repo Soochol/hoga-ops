@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import datetime as dt
+import hashlib
 import json
 from collections import OrderedDict
 from pathlib import Path
@@ -23,7 +24,7 @@ UnavailableReason = Literal[
 _CACHE_MAX = 64
 _cache_lock = Lock()
 _ranking_cache: OrderedDict[
-    tuple[str, str, int, int],
+    tuple[str, str, str, str],
     IndexSectorRankingResponse,
 ] = OrderedDict()
 
@@ -226,20 +227,24 @@ def _all_stocks_missing_basis(sectors: list[IndexSectorGroup]) -> bool:
     return bool(all_stocks) and all(stock.missing_reason == "no_basis_bar" for stock in all_stocks)
 
 
-def _mtime_ns(path: Path) -> int:
+def _file_fingerprint(path: Path) -> str:
+    digest = hashlib.sha256()
     try:
-        return path.stat().st_mtime_ns
+        with path.open("rb") as handle:
+            for chunk in iter(lambda: handle.read(1024 * 1024), b""):
+                digest.update(chunk)
     except FileNotFoundError:
-        return 0
+        return "missing"
+    return digest.hexdigest()
 
 
 def _ranking_disk_cache_path(
     data_dir: Path,
     basis_date: str,
-    heatmap_mtime_ns: int,
-    corpus_mtime_ns: int,
+    heatmap_fingerprint: str,
+    corpus_fingerprint: str,
 ) -> Path:
-    filename = f"{basis_date}-heatmap_{heatmap_mtime_ns}-daily_{corpus_mtime_ns}.json"
+    filename = f"{basis_date}-heatmap_{heatmap_fingerprint}-daily_{corpus_fingerprint}.json"
     return data_dir / "cache" / "index_sector_rankings" / filename
 
 
@@ -270,7 +275,7 @@ def _unavailable(basis_date: str, reason: UnavailableReason) -> IndexSectorRanki
     )
 
 
-def _cache_get(key: tuple[str, str, int, int]) -> IndexSectorRankingResponse | None:
+def _cache_get(key: tuple[str, str, str, str]) -> IndexSectorRankingResponse | None:
     with _cache_lock:
         cached = _ranking_cache.get(key)
         if cached is not None:
@@ -279,7 +284,7 @@ def _cache_get(key: tuple[str, str, int, int]) -> IndexSectorRankingResponse | N
 
 
 def _cache_put(
-    key: tuple[str, str, int, int],
+    key: tuple[str, str, str, str],
     value: IndexSectorRankingResponse,
 ) -> IndexSectorRankingResponse:
     with _cache_lock:
@@ -291,7 +296,7 @@ def _cache_put(
 
 
 def _cache_put_with_disk(
-    key: tuple[str, str, int, int],
+    key: tuple[str, str, str, str],
     disk_path: Path,
     value: IndexSectorRankingResponse,
 ) -> IndexSectorRankingResponse:
@@ -306,8 +311,8 @@ def build_index_sector_rankings(data_dir: Path, basis_date: str) -> IndexSectorR
     cache_key = (
         str(data_dir.resolve()),
         basis_date,
-        _mtime_ns(heatmap_path),
-        _mtime_ns(corpus_path),
+        _file_fingerprint(heatmap_path),
+        _file_fingerprint(corpus_path),
     )
     cached = _cache_get(cache_key)
     if cached is not None:
@@ -316,8 +321,8 @@ def build_index_sector_rankings(data_dir: Path, basis_date: str) -> IndexSectorR
     disk_cache_path = _ranking_disk_cache_path(
         data_dir,
         basis_date,
-        heatmap_mtime_ns=cache_key[2],
-        corpus_mtime_ns=cache_key[3],
+        heatmap_fingerprint=cache_key[2],
+        corpus_fingerprint=cache_key[3],
     )
     disk_cached = _read_disk_cache(disk_cache_path)
     if disk_cached is not None:
@@ -325,7 +330,7 @@ def build_index_sector_rankings(data_dir: Path, basis_date: str) -> IndexSectorR
 
     doc = load_document(data_dir)
     if not corpus_path.exists():
-        return _cache_put(cache_key, _unavailable(basis_date, "screener_daily_corpus_missing"))
+        return _cache_put_with_disk(cache_key, disk_cache_path, _unavailable(basis_date, "screener_daily_corpus_missing"))
     codes = [entry.code for entry in doc.entries]
     try:
         daily_rows = _load_daily_rows(corpus_path, codes, basis)
@@ -354,7 +359,7 @@ def build_index_sector_rankings(data_dir: Path, basis_date: str) -> IndexSectorR
     except (KeyError, TypeError, ValueError):
         return _cache_put_with_disk(cache_key, disk_cache_path, _unavailable(basis_date, "daily_corpus_invalid"))
     if _all_stocks_missing_basis(sectors):
-        return _cache_put(cache_key, _unavailable(basis_date, "no_basis_bars"))
+        return _cache_put_with_disk(cache_key, disk_cache_path, _unavailable(basis_date, "no_basis_bars"))
     return _cache_put_with_disk(cache_key, disk_cache_path, IndexSectorRankingResponse(
         date=basis_date,
         source="daily_adjusted",

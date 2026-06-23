@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import datetime as dt
+import os
 from pathlib import Path
 
 import polars as pl
@@ -125,10 +126,13 @@ def test_build_index_sector_rankings_reports_unavailable_when_corpus_missing(tmp
     _seed_heatmap(tmp_path)
 
     result = build_index_sector_rankings(tmp_path, "20260619")
+    cache_files = list((tmp_path / "cache" / "index_sector_rankings").glob("20260619-*.json"))
 
     assert result.source == "unavailable"
     assert result.unavailable_reason == "screener_daily_corpus_missing"
     assert result.sectors == []
+    assert len(cache_files) == 1
+    assert rankings._read_disk_cache(cache_files[0]) == result
 
 
 def test_build_index_sector_rankings_falls_back_to_latest_available_basis_when_requested_day_missing(
@@ -203,10 +207,10 @@ def test_build_index_sector_rankings_caches_unchanged_heatmap_and_corpus(
 
 
 def test_index_sector_ranking_disk_cache_path_uses_input_fingerprint(tmp_path: Path) -> None:
-    path = rankings._ranking_disk_cache_path(tmp_path, "20260619", 111, 222)
+    path = rankings._ranking_disk_cache_path(tmp_path, "20260619", "heatmap123", "daily456")
 
     assert path.parent == tmp_path / "cache" / "index_sector_rankings"
-    assert path.name == "20260619-heatmap_111-daily_222.json"
+    assert path.name == "20260619-heatmap_heatmap123-daily_daily456.json"
 
 
 def test_build_index_sector_rankings_writes_disk_cache(tmp_path: Path) -> None:
@@ -250,8 +254,8 @@ def test_build_index_sector_rankings_ignores_corrupt_disk_cache(tmp_path: Path) 
     cache_path = rankings._ranking_disk_cache_path(
         tmp_path,
         "20260619",
-        heatmap_mtime_ns=heatmap_path.stat().st_mtime_ns,
-        corpus_mtime_ns=corpus_path.stat().st_mtime_ns,
+        heatmap_fingerprint=rankings._file_fingerprint(heatmap_path),
+        corpus_fingerprint=rankings._file_fingerprint(corpus_path),
     )
     cache_path.parent.mkdir(parents=True)
     cache_path.write_text("{not json", encoding="utf-8")
@@ -261,6 +265,33 @@ def test_build_index_sector_rankings_ignores_corrupt_disk_cache(tmp_path: Path) 
     assert result.source == "daily_adjusted"
     assert result.sectors[0].change_pct == 7.5
     assert rankings._read_disk_cache(cache_path) == result
+
+
+def test_build_index_sector_rankings_invalidates_disk_cache_when_heatmap_changes_with_same_mtime(
+    tmp_path: Path,
+) -> None:
+    _seed_heatmap(tmp_path)
+    _seed_daily(tmp_path)
+    heatmap_path = tmp_path / "heatmap.json"
+    original_stat = heatmap_path.stat()
+    first = build_index_sector_rankings(tmp_path, "20260619")
+    rankings._ranking_cache.clear()
+
+    moved_id = "f_00000003"
+    save_document(
+        tmp_path,
+        HeatmapDocument(
+            folders=[WatchlistFolder.model_construct(id=moved_id, name="이동후", order=0)],
+            entries=[HeatmapEntry.model_construct(code="005930", name="삼성전자", folder_id=moved_id, order=0)],
+        ),
+    )
+    os.utime(heatmap_path, ns=(original_stat.st_atime_ns, original_stat.st_mtime_ns))
+    second = build_index_sector_rankings(tmp_path, "20260619")
+    cache_files = list((tmp_path / "cache" / "index_sector_rankings").glob("20260619-*.json"))
+
+    assert first.sectors[0].folder_name == "반도체"
+    assert second.sectors[0].folder_name == "이동후"
+    assert len(cache_files) == 2
 
 
 def test_build_index_sector_rankings_marks_missing_previous_close(tmp_path: Path) -> None:
