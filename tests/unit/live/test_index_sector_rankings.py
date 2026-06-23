@@ -294,6 +294,43 @@ def test_build_index_sector_rankings_invalidates_disk_cache_when_heatmap_changes
     assert len(cache_files) == 2
 
 
+def test_build_index_sector_rankings_invalidates_disk_cache_when_daily_corpus_changes_with_same_mtime(
+    tmp_path: Path,
+) -> None:
+    _seed_heatmap(tmp_path)
+    _seed_daily(tmp_path)
+    corpus_path = tmp_path / "screener" / "daily_adjusted.parquet"
+    original_stat = corpus_path.stat()
+    first = build_index_sector_rankings(tmp_path, "20260619")
+    rankings._ranking_cache.clear()
+
+    pl.DataFrame(
+        {
+            "code": ["005930", "005930", "000660", "000660", "068270", "068270"],
+            "date": [
+                dt.date(2026, 6, 18),
+                dt.date(2026, 6, 19),
+                dt.date(2026, 6, 18),
+                dt.date(2026, 6, 19),
+                dt.date(2026, 6, 18),
+                dt.date(2026, 6, 19),
+            ],
+            "open": [0.0, 0.0, 0.0, 0.0, 0.0, 0.0],
+            "high": [0.0, 0.0, 0.0, 0.0, 0.0, 0.0],
+            "low": [0.0, 0.0, 0.0, 0.0, 0.0, 0.0],
+            "close": [100.0, 120.0, 200.0, 220.0, 100.0, 98.0],
+            "volume": [1, 1, 1, 1, 1, 1],
+        },
+    ).write_parquet(corpus_path)
+    os.utime(corpus_path, ns=(original_stat.st_atime_ns, original_stat.st_mtime_ns))
+    second = build_index_sector_rankings(tmp_path, "20260619")
+    cache_files = list((tmp_path / "cache" / "index_sector_rankings").glob("20260619-*.json"))
+
+    assert first.sectors[0].change_pct == 7.5
+    assert second.sectors[0].change_pct == 15.0
+    assert len(cache_files) == 2
+
+
 def test_build_index_sector_rankings_marks_missing_previous_close(tmp_path: Path) -> None:
     solo_id = "f_00000004"
     save_document(
