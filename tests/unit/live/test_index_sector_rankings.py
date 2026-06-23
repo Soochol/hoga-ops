@@ -100,6 +100,27 @@ def test_build_index_sector_rankings_uses_current_heatmap_membership(tmp_path: P
     assert [s.code for s in result.sectors[0].stocks] == ["005930"]
 
 
+def test_build_index_sector_rankings_uses_new_disk_cache_after_heatmap_changes(tmp_path: Path) -> None:
+    _seed_heatmap(tmp_path)
+    _seed_daily(tmp_path)
+    first = build_index_sector_rankings(tmp_path, "20260619")
+
+    moved_id = "f_00000003"
+    save_document(
+        tmp_path,
+        HeatmapDocument(
+            folders=[WatchlistFolder.model_construct(id=moved_id, name="이동후", order=0)],
+            entries=[HeatmapEntry.model_construct(code="005930", name="삼성전자", folder_id=moved_id, order=0)],
+        ),
+    )
+    second = build_index_sector_rankings(tmp_path, "20260619")
+    cache_files = list((tmp_path / "cache" / "index_sector_rankings").glob("20260619-*.json"))
+
+    assert first.sectors[0].folder_name == "반도체"
+    assert second.sectors[0].folder_name == "이동후"
+    assert len(cache_files) == 2
+
+
 def test_build_index_sector_rankings_reports_unavailable_when_corpus_missing(tmp_path: Path) -> None:
     _seed_heatmap(tmp_path)
 
