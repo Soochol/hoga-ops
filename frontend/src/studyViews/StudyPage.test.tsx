@@ -2,10 +2,11 @@ import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { act, render, screen } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { fireEvent } from '@testing-library/react';
-import { MemoryRouter } from 'react-router';
+import { MemoryRouter, useLocation, useNavigate } from 'react-router';
 import type { ComponentProps } from 'react';
 import type { ParquetStudySnapshot } from '../api/studyViews';
 import type { LiveChartRoot } from '../live/LiveChartRoot';
+import { useStudyTabsStore } from '../state/studyTabs';
 
 const { useStudyViewSnapshotMock, useStudyViewsMock, useStudyViewMutationsMock, liveChartRootMock, useLiveBundleMock, useRangeMock } = vi.hoisted(() => ({
   useStudyViewSnapshotMock: vi.fn(),
@@ -41,6 +42,7 @@ import { StudyPage } from './StudyPage';
 import { useLiveBundle } from '../live/useLiveBundle';
 import { useRange } from '../api/range';
 import { useLiveCursorStore } from '../live/useLiveCursorStore';
+import { isPointOnStudy, useEntryDragStore } from '../state/entryDrag';
 
 const snapshot: ParquetStudySnapshot = {
   schema_version: 1,
@@ -101,10 +103,42 @@ const snapshot: ParquetStudySnapshot = {
   captured_at_ms: 3_000,
 };
 
+function makeSave(id: string, name: string) {
+  return {
+    id,
+    name,
+    code: '005930',
+    label: '삼성전자',
+    timeframe: 'D' as const,
+  };
+}
+
+function makeSnapshot(viewId: string): ParquetStudySnapshot {
+  return {
+    ...snapshot,
+    label: `삼성전자 ${viewId}`,
+  };
+}
+
+function LocationProbe() {
+  const location = useLocation();
+  return <div data-testid="location-probe">{location.pathname}{location.search}</div>;
+}
+
+function RouteChangeButton({ to }: { to: string }) {
+  const navigate = useNavigate();
+  return (
+    <button type="button" onClick={() => navigate(to)}>
+      route:{to}
+    </button>
+  );
+}
+
 function renderAt(path: string) {
   return render(
     <MemoryRouter initialEntries={[path]}>
       <StudyPage />
+      <LocationProbe />
     </MemoryRouter>,
   );
 }
@@ -117,11 +151,206 @@ describe('StudyPage', () => {
     liveChartRootMock.mockReset();
     useLiveBundleMock.mockReset();
     useRangeMock.mockReset();
-    useStudyViewsMock.mockReturnValue({ data: { schema_version: 1, saves: [{ id: 'view1', memo: 'old memo' }] } });
+    window.localStorage.clear();
+    useStudyTabsStore.setState({ tabs: [], activeTabId: null });
+    useStudyViewsMock.mockReturnValue({
+      data: {
+        schema_version: 1,
+        saves: [
+          { id: 'view1', name: '장초반', code: '005930', label: '삼성전자', timeframe: 'D', memo: 'old memo' },
+          { id: 'view2', name: '마감', code: '005930', label: '삼성전자', timeframe: 'D', memo: 'second memo' },
+        ],
+      },
+      isLoading: false,
+      isError: false,
+    });
     useStudyViewMutationsMock.mockReturnValue({
       updateMetadata: { mutate: vi.fn(), isPending: false, error: null },
     });
     useLiveCursorStore.getState().resetCursor();
+    (useEntryDragStore.setState as unknown as (state: Record<string, unknown>) => void)({
+      draggingCode: null,
+      overChart: false,
+      overStudy: false,
+      hitTestChart: null,
+      hitTestStudy: null,
+      targets: {},
+    });
+  });
+
+  it('seeds a study tab from the query and renders the study tab bar', () => {
+    useStudyViewSnapshotMock.mockImplementation((viewId: string | null) => ({
+      data: viewId ? makeSnapshot(viewId) : undefined,
+      isLoading: false,
+      isError: false,
+    }));
+
+    renderAt('/study?view=view1');
+
+    const state = useStudyTabsStore.getState();
+    expect(screen.getByRole('tablist', { name: '열린 탭' })).toBeTruthy();
+    expect(screen.getByRole('tab', { name: /삼성전자 · 장초반 · D/i })).toHaveAttribute('aria-selected', 'true');
+    expect(state.tabs).toHaveLength(1);
+    expect(state.tabs[0]).toMatchObject({ viewId: 'view1' });
+    expect(state.activeTabId).toBe(state.tabs[0].id);
+  });
+
+  it('replaces the active study tab when the study route changes to a different saved view', async () => {
+    useStudyViewSnapshotMock.mockImplementation((viewId: string | null) => ({
+      data: viewId ? makeSnapshot(viewId) : undefined,
+      isLoading: false,
+      isError: false,
+    }));
+
+    render(
+      <MemoryRouter initialEntries={['/study?view=view1']}>
+        <StudyPage />
+        <RouteChangeButton to="/study?view=view2" />
+        <LocationProbe />
+      </MemoryRouter>,
+    );
+
+    const initialState = useStudyTabsStore.getState();
+    const initialActiveTabId = initialState.activeTabId;
+
+    await userEvent.click(screen.getByRole('button', { name: 'route:/study?view=view2' }));
+
+    const state = useStudyTabsStore.getState();
+    expect(state.tabs).toHaveLength(1);
+    expect(state.activeTabId).toBe(initialActiveTabId);
+    expect(state.tabs[0]).toMatchObject({ viewId: 'view2' });
+    expect(screen.getByRole('tab', { name: /삼성전자 · 마감 · D/i })).toHaveAttribute('aria-selected', 'true');
+    expect(screen.getByText('삼성전자 view2')).toBeTruthy();
+    expect(screen.getByTestId('location-probe')).toHaveTextContent('/study?view=view2');
+  });
+
+  it('does not let a persisted active tab overwrite the initial query route before saves resolve', async () => {
+    useStudyTabsStore.getState().openSaveInActiveTab(makeSave('view2', '마감'));
+    let savesResult: {
+      data?: { schema_version: number; saves: Array<ReturnType<typeof makeSave> & { memo: string }> };
+      isLoading: boolean;
+      isError: boolean;
+    } = {
+      data: undefined,
+      isLoading: true,
+      isError: false,
+    };
+    useStudyViewsMock.mockImplementation(() => savesResult);
+    useStudyViewSnapshotMock.mockImplementation((viewId: string | null) => ({
+      data: !savesResult.isLoading && viewId ? makeSnapshot(viewId) : undefined,
+      isLoading: savesResult.isLoading,
+      isError: false,
+    }));
+
+    const rendered = renderAt('/study?view=view1');
+
+    expect(screen.getByTestId('location-probe')).toHaveTextContent('/study?view=view1');
+    expect(useStudyTabsStore.getState().tabs.find((tab) => tab.id === useStudyTabsStore.getState().activeTabId)?.viewId).toBe('view2');
+
+    savesResult = {
+      data: {
+        schema_version: 1,
+        saves: [
+          { ...makeSave('view1', '장초반'), memo: 'old memo' },
+          { ...makeSave('view2', '마감'), memo: 'second memo' },
+        ],
+      },
+      isLoading: false,
+      isError: false,
+    };
+
+    rendered.rerender(
+      <MemoryRouter initialEntries={['/study?view=view1']}>
+        <StudyPage />
+        <LocationProbe />
+      </MemoryRouter>,
+    );
+
+    await act(async () => {
+      await Promise.resolve();
+    });
+
+    const state = useStudyTabsStore.getState();
+    expect(screen.getByTestId('location-probe')).toHaveTextContent('/study?view=view1');
+    expect(state.tabs.find((tab) => tab.id === state.activeTabId)?.viewId).toBe('view1');
+  });
+
+  it('pressing 2 focuses the second tab when two study tabs exist', async () => {
+    useStudyTabsStore.getState().openSaveInNewTab(makeSave('view1', '장초반'));
+    useStudyTabsStore.getState().openSaveInNewTab(makeSave('view2', '마감'));
+    const firstTabId = useStudyTabsStore.getState().tabs[0].id;
+    useStudyTabsStore.getState().focusTab(firstTabId);
+    useStudyViewSnapshotMock.mockImplementation((viewId: string | null) => ({
+      data: viewId ? makeSnapshot(viewId) : undefined,
+      isLoading: false,
+      isError: false,
+    }));
+
+    renderAt('/study');
+    await userEvent.keyboard('2');
+
+    const state = useStudyTabsStore.getState();
+    expect(state.tabs.find((tab) => tab.id === state.activeTabId)?.viewId).toBe('view2');
+    expect(screen.getByRole('tab', { name: /삼성전자 · 마감 · D/i })).toHaveAttribute('aria-selected', 'true');
+    expect(screen.getByTestId('location-probe')).toHaveTextContent('/study?view=view2');
+  });
+
+  it('pressing 5 does nothing', async () => {
+    useStudyTabsStore.getState().openSaveInNewTab(makeSave('view1', '장초반'));
+    useStudyTabsStore.getState().openSaveInNewTab(makeSave('view2', '마감'));
+    const firstTabId = useStudyTabsStore.getState().tabs[0].id;
+    useStudyTabsStore.getState().focusTab(firstTabId);
+    useStudyViewSnapshotMock.mockImplementation((viewId: string | null) => ({
+      data: viewId ? makeSnapshot(viewId) : undefined,
+      isLoading: false,
+      isError: false,
+    }));
+
+    renderAt('/study');
+    await userEvent.keyboard('5');
+
+    expect(useStudyTabsStore.getState().activeTabId).toBe(firstTabId);
+    expect(screen.getByRole('tab', { name: /삼성전자 · 장초반 · D/i })).toHaveAttribute('aria-selected', 'true');
+    expect(screen.getByTestId('location-probe')).toHaveTextContent('/study?view=view1');
+  });
+
+  it('ignores digit shortcuts while an input is focused', async () => {
+    useStudyTabsStore.getState().openSaveInNewTab(makeSave('view1', '장초반'));
+    useStudyTabsStore.getState().openSaveInNewTab(makeSave('view2', '마감'));
+    const firstTabId = useStudyTabsStore.getState().tabs[0].id;
+    useStudyTabsStore.getState().focusTab(firstTabId);
+    useStudyViewSnapshotMock.mockImplementation((viewId: string | null) => ({
+      data: viewId ? makeSnapshot(viewId) : undefined,
+      isLoading: false,
+      isError: false,
+    }));
+
+    renderAt('/study');
+    const input = document.createElement('input');
+    document.body.appendChild(input);
+    input.focus();
+    await userEvent.keyboard('2');
+
+    expect(useStudyTabsStore.getState().activeTabId).toBe(firstTabId);
+    expect(screen.getByRole('tab', { name: /삼성전자 · 장초반 · D/i })).toHaveAttribute('aria-selected', 'true');
+    expect(screen.getByTestId('location-probe')).toHaveTextContent('/study?view=view1');
+
+    input.remove();
+  });
+
+  it('returns to the empty study route when the last tab is closed', async () => {
+    useStudyViewSnapshotMock.mockImplementation((viewId: string | null) => ({
+      data: viewId ? makeSnapshot(viewId) : undefined,
+      isLoading: false,
+      isError: false,
+    }));
+
+    renderAt('/study?view=view1');
+    await userEvent.click(screen.getByRole('button', { name: '005930 닫기' }));
+
+    expect(useStudyTabsStore.getState().tabs).toHaveLength(0);
+    expect(screen.getByTestId('study-page-empty')).toBeTruthy();
+    expect(screen.getByTestId('location-probe')).toHaveTextContent('/study');
   });
 
   it('renders a saved snapshot from /study?view=view1 without live or range hooks', () => {
@@ -305,6 +534,84 @@ describe('StudyPage', () => {
     expect(screen.getByText('+250')).toBeTruthy();
     expect(container.querySelector('[data-testid="study-detail-panel"] svg')).toBeTruthy();
     expect(container.querySelector('[data-testid="study-detail-panel"] polyline')).toBeTruthy();
+  });
+
+  it('registers the study drop target on the empty study shell and clears it on unmount', () => {
+    useStudyViewSnapshotMock.mockReturnValue({
+      data: undefined,
+      isLoading: false,
+      isError: false,
+    });
+
+    const rendered = renderAt('/study');
+    const target = screen.getByTestId('study-drop-target');
+
+    vi.spyOn(target, 'getBoundingClientRect').mockReturnValue({
+      x: 100,
+      y: 120,
+      left: 100,
+      top: 120,
+      right: 700,
+      bottom: 620,
+      width: 600,
+      height: 500,
+      toJSON: () => ({}),
+    } as DOMRect);
+
+    expect(screen.getByTestId('study-page-empty')).toBeTruthy();
+    expect(isPointOnStudy({ x: 300, y: 300 })).toBe(true);
+    expect(isPointOnStudy({ x: 80, y: 300 })).toBe(false);
+
+    rendered.unmount();
+
+    expect(isPointOnStudy({ x: 300, y: 300 })).toBe(false);
+  });
+
+  it('registers the study drop target while a saved study view is mounted', () => {
+    useStudyViewSnapshotMock.mockReturnValue({
+      data: snapshot,
+      isLoading: false,
+      isError: false,
+    });
+
+    renderAt('/study?view=view1');
+    const target = screen.getByTestId('study-drop-target');
+
+    vi.spyOn(target, 'getBoundingClientRect').mockReturnValue({
+      x: 100,
+      y: 120,
+      left: 100,
+      top: 120,
+      right: 700,
+      bottom: 620,
+      width: 600,
+      height: 500,
+      toJSON: () => ({}),
+    } as DOMRect);
+
+    expect(isPointOnStudy({ x: 300, y: 300 })).toBe(true);
+    expect(isPointOnStudy({ x: 80, y: 300 })).toBe(false);
+
+    expect(screen.getByTestId('study-page')).toBeTruthy();
+  });
+
+  it('shows the study drop overlay when an entry drag is over the study target', () => {
+    useStudyViewSnapshotMock.mockReturnValue({
+      data: snapshot,
+      isLoading: false,
+      isError: false,
+    });
+    useEntryDragStore.setState({ draggingCode: '005930', overStudy: true });
+
+    renderAt('/study?view=view1');
+
+    const overlay = screen.getByText('여기에 놓아 학습뷰 열기').closest('[aria-hidden="true"]');
+    const aside = screen.getByTestId('study-page').querySelector('aside');
+
+    expect(overlay).toBeTruthy();
+    expect(aside).toBeTruthy();
+    expect(overlay!).toHaveClass('z-20');
+    expect(aside!).toHaveClass('z-10');
   });
 
   it('limits saved broker graph and values to the hovered date session', () => {

@@ -4,8 +4,68 @@ import userEvent from '@testing-library/user-event';
 import { MemoryRouter, Route, Routes, useLocation } from 'react-router';
 import { beforeEach, expect, it, vi } from 'vitest';
 import type { ParquetStudySnapshot, ParquetStudyView } from '../api/studyViews';
+import { useEntryDragStore } from '../state/entryDrag';
+import { useStudyTabsStore } from '../state/studyTabs';
 import type { CurrentStudySaveSource } from './studySaveSource';
 import { StudyViewsDrawer, filterStudyViews } from './StudyViewsDrawer';
+
+type DndHandlers = {
+  onDragStart: null | ((event: unknown) => void);
+  onDragMove: null | ((event: unknown) => void);
+  onDragEnd: null | ((event: unknown) => void);
+  onDragCancel: null | (() => void);
+};
+
+const dnd = vi.hoisted<DndHandlers>(() => ({
+  onDragStart: null,
+  onDragMove: null,
+  onDragEnd: null,
+  onDragCancel: null,
+}));
+
+vi.mock('@dnd-kit/core', async (orig) => {
+  const actual = await orig<typeof import('@dnd-kit/core')>();
+  return {
+    ...actual,
+    DndContext: ({
+      children,
+      onDragStart,
+      onDragMove,
+      onDragEnd,
+      onDragCancel,
+    }: {
+      children: React.ReactNode;
+      onDragStart?: (event: unknown) => void;
+      onDragMove?: (event: unknown) => void;
+      onDragEnd?: (event: unknown) => void;
+      onDragCancel?: () => void;
+    }) => {
+      dnd.onDragStart = onDragStart ?? null;
+      dnd.onDragMove = onDragMove ?? null;
+      dnd.onDragEnd = onDragEnd ?? null;
+      dnd.onDragCancel = onDragCancel ?? null;
+      return <>{children}</>;
+    },
+    useSensor: () => ({}),
+    useSensors: () => [],
+    PointerSensor: class {},
+  };
+});
+
+vi.mock('@dnd-kit/sortable', async (orig) => {
+  const actual = await orig<typeof import('@dnd-kit/sortable')>();
+  return {
+    ...actual,
+    SortableContext: ({ children }: { children: React.ReactNode }) => <>{children}</>,
+    useSortable: () => ({
+      setNodeRef: () => {},
+      listeners: {},
+      transform: null,
+      transition: undefined,
+      isDragging: false,
+    }),
+  };
+});
 
 const createMutate = vi.fn();
 const updateMutate = vi.fn();
@@ -163,14 +223,34 @@ function renderDrawer(path: string) {
   );
 }
 
+function groupHeaderLabels(): string[] {
+  return screen
+    .getAllByRole('button')
+    .map((button) => button.getAttribute('aria-label'))
+    .filter((label): label is string => !!label && /\d{6}/.test(label) && (label.endsWith('접기') || label.endsWith('펼치기')));
+}
+
 beforeEach(() => {
   window.localStorage.clear();
   createMutate.mockReset();
   updateMutate.mockReset();
   updateMetadataMutate.mockReset();
   removeMutate.mockReset();
+  dnd.onDragStart = null;
+  dnd.onDragMove = null;
+  dnd.onDragEnd = null;
+  dnd.onDragCancel = null;
   saveSource = null;
   mockedSaves = saves;
+  useStudyTabsStore.setState({ tabs: [], activeTabId: null });
+  (useEntryDragStore.setState as unknown as (state: Record<string, unknown>) => void)({
+    draggingCode: null,
+    overChart: false,
+    overStudy: false,
+    hitTestChart: null,
+    hitTestStudy: null,
+    targets: {},
+  });
 });
 
 it('filters by name, code, and memo ignoring whitespace and case', () => {
@@ -421,12 +501,39 @@ it('clicking the saved view title navigates to the study route', async () => {
   await waitFor(() => expect(screen.getByTestId('loc').textContent).toBe('/study?view=a'));
 });
 
+it('normal row click replaces the current study tab instead of opening only the route', async () => {
+  useStudyTabsStore.getState().openSaveInActiveTab(saves[1]);
+  const activeTabId = useStudyTabsStore.getState().activeTabId;
+  renderDrawer('/study?view=b');
+
+  await userEvent.click(screen.getByRole('button', { name: '급등 이후 저장뷰 열기' }));
+
+  await waitFor(() => expect(screen.getByTestId('loc').textContent).toBe('/study?view=a'));
+  const state = useStudyTabsStore.getState();
+  expect(state.tabs).toHaveLength(1);
+  expect(state.activeTabId).toBe(activeTabId);
+  expect(state.tabs[0]).toMatchObject({ viewId: 'a', name: '급등 이후' });
+});
+
 it('clicking the saved view name text navigates to the study route', async () => {
   renderDrawer('/inventory');
 
   await userEvent.click(screen.getByText('급등 이후'));
 
   await waitFor(() => expect(screen.getByTestId('loc').textContent).toBe('/study?view=a'));
+});
+
+it('ctrl-clicking a saved view row opens that exact save in a new study tab', async () => {
+  useStudyTabsStore.getState().openSaveInActiveTab(saves[1]);
+  renderDrawer('/inventory');
+
+  fireEvent.click(screen.getByRole('button', { name: '급등 이후 저장뷰 열기' }), { ctrlKey: true });
+
+  await waitFor(() => expect(screen.getByTestId('loc').textContent).toBe('/study?view=a'));
+  const state = useStudyTabsStore.getState();
+  expect(state.tabs).toHaveLength(2);
+  expect(state.tabs.map((tab) => tab.viewId)).toEqual(['b', 'a']);
+  expect(state.tabs.find((tab) => tab.id === state.activeTabId)).toMatchObject({ viewId: 'a', name: '급등 이후' });
 });
 
 it('pressing Enter on the saved view title navigates to the study route', async () => {
@@ -563,4 +670,105 @@ it('navigates away after deleting the active study view', async () => {
 
   await waitFor(() => expect(screen.getByTestId('loc').textContent).toBe('/study'));
   expect(screen.queryByRole('dialog', { name: '저장뷰 삭제' })).toBeNull();
+});
+
+it('ctrl-clicking a stock group header opens its newest save in a new study tab without collapsing the group', async () => {
+  mockedSaves = [
+    ...saves,
+    { ...saves[0], id: 'c', name: '종가 반등', memo: 'close rebound', updated_at_ms: 2, created_at_ms: 2 },
+  ];
+  useStudyTabsStore.getState().openSaveInActiveTab(saves[1]);
+  renderDrawer('/inventory');
+
+  fireEvent.click(screen.getByRole('button', { name: '삼성전자 005930 접기' }), { ctrlKey: true });
+
+  await waitFor(() => expect(screen.getByTestId('loc').textContent).toBe('/study?view=c'));
+  const state = useStudyTabsStore.getState();
+  expect(state.tabs).toHaveLength(2);
+  expect(state.tabs.map((tab) => tab.viewId)).toEqual(['b', 'c']);
+  expect(screen.getByRole('button', { name: '삼성전자 005930 접기' })).toHaveAttribute('aria-expanded', 'true');
+  expect(screen.getByRole('button', { name: '급등 이후 저장뷰 열기' })).toBeTruthy();
+});
+
+it('updates study hover state during stock-group drag', async () => {
+  const hitTest = (clientX: number) => clientX < 800;
+  useEntryDragStore.getState().registerStudyTarget(hitTest);
+
+  try {
+    renderDrawer('/inventory');
+    await waitFor(() => expect(screen.getByRole('button', { name: '삼성전자 005930 접기' })).toBeInTheDocument());
+
+    dnd.onDragStart?.({
+      active: { id: 'study-view-group:005930', data: { current: { type: 'group', code: '005930' } } },
+    });
+    expect(useEntryDragStore.getState().draggingCode).toBe('005930');
+
+    dnd.onDragMove?.({
+      active: { id: 'study-view-group:005930', data: { current: { type: 'group', code: '005930' } } },
+      activatorEvent: { clientX: 900, clientY: 300 } as MouseEvent,
+      delta: { x: -500, y: 0 },
+    });
+    expect(useEntryDragStore.getState().overStudy).toBe(true);
+
+    dnd.onDragCancel?.();
+    expect(useEntryDragStore.getState().draggingCode).toBeNull();
+    expect(useEntryDragStore.getState().overStudy).toBe(false);
+  } finally {
+    useEntryDragStore.getState().clearStudyTarget(hitTest);
+  }
+});
+
+it('dragging a stock group over the study target opens its newest save in the active tab without reordering groups', async () => {
+  mockedSaves = [
+    ...saves,
+    { ...saves[0], id: 'c', name: '종가 반등', memo: 'close rebound', updated_at_ms: 2, created_at_ms: 2 },
+  ];
+  useStudyTabsStore.getState().openSaveInActiveTab(saves[1]);
+  const activeTabId = useStudyTabsStore.getState().activeTabId;
+  const hitTest = (clientX: number) => clientX < 800;
+  useEntryDragStore.getState().registerStudyTarget(hitTest);
+
+  try {
+    renderDrawer('/inventory');
+    expect(groupHeaderLabels()).toEqual(['삼성전자 005930 접기', 'SK하이닉스 000660 접기']);
+
+    dnd.onDragEnd?.({
+      active: { id: 'study-view-group:005930', data: { current: { type: 'group' } } },
+      over: { id: 'study-view-group:000660', data: { current: { type: 'group' } } },
+      activatorEvent: { clientX: 900, clientY: 300 } as MouseEvent,
+      delta: { x: -500, y: 0 },
+    });
+
+    await waitFor(() => expect(screen.getByTestId('loc').textContent).toBe('/study?view=c'));
+    const state = useStudyTabsStore.getState();
+    expect(state.tabs).toHaveLength(1);
+    expect(state.activeTabId).toBe(activeTabId);
+    expect(state.tabs[0]).toMatchObject({ viewId: 'c', name: '종가 반등' });
+    expect(groupHeaderLabels()).toEqual(['삼성전자 005930 접기', 'SK하이닉스 000660 접기']);
+  } finally {
+    useEntryDragStore.getState().clearStudyTarget(hitTest);
+  }
+});
+
+it('dragging a stock group outside the study target still reorders groups', async () => {
+  const hitTest = (clientX: number) => clientX < 800;
+  useEntryDragStore.getState().registerStudyTarget(hitTest);
+
+  try {
+    renderDrawer('/inventory');
+    expect(groupHeaderLabels()).toEqual(['삼성전자 005930 접기', 'SK하이닉스 000660 접기']);
+
+    dnd.onDragEnd?.({
+      active: { id: 'study-view-group:005930', data: { current: { type: 'group' } } },
+      over: { id: 'study-view-group:000660', data: { current: { type: 'group' } } },
+      activatorEvent: { clientX: 900, clientY: 300 } as MouseEvent,
+      delta: { x: 0, y: 0 },
+    });
+
+    await waitFor(() => expect(groupHeaderLabels()).toEqual(['SK하이닉스 000660 접기', '삼성전자 005930 접기']));
+    expect(screen.getByTestId('loc').textContent).toBe('/inventory');
+    expect(useStudyTabsStore.getState().tabs).toHaveLength(0);
+  } finally {
+    useEntryDragStore.getState().clearStudyTarget(hitTest);
+  }
 });

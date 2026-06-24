@@ -1,9 +1,7 @@
-import { useEffect, useRef, type CSSProperties } from 'react';
 import type { LiveTab } from '../state/liveTabs';
+import { ChartTabBar } from '../tabs/ChartTabBar';
 import { LiveTabOverflowMenu } from './LiveTabOverflowMenu';
 import { formatLiveViewLabel } from './liveViewLabel';
-
-const MAX_RENDERED_TABS = 24;
 
 interface Props {
   tabs: LiveTab[];
@@ -16,116 +14,18 @@ interface Props {
   onNewTab: () => void;
 }
 
-/** 상태점: 활성+로딩=accent pulse(◌), 활성+로드=success(●), 비활성=dimmer outline(○). */
-function statusDotStyle(active: boolean, loading: boolean): CSSProperties {
-  if (active && loading) return { background: 'var(--accent)', animation: 'tab-pulse 1.5s ease-in-out infinite' };
-  if (active) return { background: 'var(--success)', boxShadow: '0 0 4px color-mix(in srgb, var(--success) 50%, transparent)' };
-  return { background: 'transparent', border: '1px solid var(--fg-dimmer)' };
-}
-
 export function LiveTabBar({ tabs, activeTabId, activeLoading, onFocus, onClose, onReorder, onNewTab }: Props) {
-  const activeElRef = useRef<HTMLDivElement | null>(null);
-  const activeIdx = Math.max(0, tabs.findIndex((t) => t.id === activeTabId));
-  const windowStart = tabs.length <= MAX_RENDERED_TABS
-    ? 0
-    : Math.min(
-        Math.max(0, activeIdx - Math.floor(MAX_RENDERED_TABS / 2)),
-        tabs.length - MAX_RENDERED_TABS,
-      );
-  const visibleTabs = tabs.slice(windowStart, windowStart + MAX_RENDERED_TABS);
-
-  useEffect(() => {
-    if (typeof activeElRef.current?.scrollIntoView === 'function') {
-      activeElRef.current.scrollIntoView({ block: 'nearest', inline: 'nearest' });
-    }
-  }, [activeTabId]);
-
   return (
-    <div className="flex items-end gap-1 h-full px-2 font-ui min-w-0" style={{ background: 'var(--bg-subtle)' }}>
-      <div role="tablist" aria-label="열린 탭" className="flex items-end gap-0.5 min-w-0 flex-1 overflow-x-auto overflow-y-hidden">
-        {windowStart > 0 && (
-          <div aria-hidden="true" className="h-8 px-1.5 flex items-center shrink-0 text-xs" style={{ color: 'var(--fg-dimmer)' }}>
-            …
-          </div>
-        )}
-        {visibleTabs.map((t, offset) => {
-          const idx = windowStart + offset;
-          const active = t.id === activeTabId;
-          const displayLabel = formatLiveViewLabel(t.label, t.timeframe);
-          return (
-            <div
-              key={t.id}
-              ref={active ? activeElRef : null}
-              data-tab-id={t.id}
-              role="tab"
-              aria-selected={active}
-              onClick={() => onFocus(t.id)}
-              onMouseDown={(e) => { if (e.button === 1) { e.preventDefault(); onClose(t.id); } }}
-              draggable
-              onDragStart={(e) => { e.dataTransfer.setData('text/tab-index', String(idx)); e.dataTransfer.effectAllowed = 'move'; }}
-              onDragOver={(e) => { if (e.dataTransfer.types.includes('text/tab-index')) e.preventDefault(); }}
-              onDrop={(e) => {
-                e.preventDefault();
-                const raw = e.dataTransfer.getData('text/tab-index');
-                if (raw === '') return; // 외부 드래그(텍스트/링크/파일) — 우리 탭 아님
-                const from = Number(raw);
-                if (Number.isInteger(from) && from !== idx) onReorder(from, idx);
-              }}
-              // 비활성 배경은 inline이 아닌 className으로 둔다: inline style은 specificity로
-              // hover: 클래스를 이겨 hover 배경이 silent no-op이 되기 때문(DESIGN.md §Tabs Hover).
-              className={`relative flex items-center gap-1.5 h-8 px-2.5 rounded-t-md cursor-pointer select-none group shrink-0 ${
-                active ? 'bg-bg-card' : 'bg-bg-input hover:bg-bg-input-hover'
-              }`}
-              style={{
-                borderTop: active ? 'none' : '1px solid var(--border)',
-                borderRight: active ? 'none' : '1px solid var(--border)',
-                borderLeft: active ? 'none' : '1px solid var(--border)',
-                borderBottom: 'none',
-              }}
-            >
-              {active && (
-                <span className="absolute left-0 right-0 top-0 h-[2px]" style={{ background: 'var(--accent)' }} />
-              )}
-              <span className="w-1.5 h-1.5 rounded-full shrink-0" style={statusDotStyle(active, activeLoading)} />
-              <span className="text-sm shrink-0 max-w-36 truncate" title={displayLabel} style={{ color: active ? 'var(--fg)' : 'var(--fg-dim)' }}>{displayLabel}</span>
-              <button
-                type="button"
-                draggable={false}
-                aria-label={`${t.code} 닫기`}
-                onClick={(e) => { e.stopPropagation(); onClose(t.id); }}
-                className="ml-1 w-[18px] h-[18px] flex items-center justify-center rounded opacity-0 group-hover:opacity-100"
-                style={{ color: 'var(--fg-dimmer)' }}
-              >
-                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" className="w-[11px] h-[11px]">
-                  <line x1="18" y1="6" x2="6" y2="18" /><line x1="6" y1="6" x2="18" y2="18" />
-                </svg>
-              </button>
-            </div>
-          );
-        })}
-        {windowStart + visibleTabs.length < tabs.length && (
-          <div aria-hidden="true" className="h-8 px-1.5 flex items-center shrink-0 text-xs" style={{ color: 'var(--fg-dimmer)' }}>
-            …
-          </div>
-        )}
-      </div>
-      <div className="flex items-center gap-1 self-center shrink-0">
-        <button
-          type="button"
-          aria-label="새 탭"
-          onClick={onNewTab}
-          className="w-7 h-7 flex items-center justify-center rounded-md"
-          style={{ color: 'var(--fg-dim)', border: '1px solid var(--border)' }}
-        >
-          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.4" className="w-[13px] h-[13px]">
-            <line x1="12" y1="5" x2="12" y2="19" /><line x1="5" y1="12" x2="19" y2="12" />
-          </svg>
-        </button>
-        <LiveTabOverflowMenu tabs={tabs} activeTabId={activeTabId} onFocus={onFocus} onClose={onClose} />
-        <span className="text-xs font-mono whitespace-nowrap" style={{ color: 'var(--fg-dimmer)' }}>
-          {tabs.length} open
-        </span>
-      </div>
-    </div>
+    <ChartTabBar
+      tabs={tabs}
+      activeTabId={activeTabId}
+      activeLoading={activeLoading}
+      onFocus={onFocus}
+      onClose={onClose}
+      onReorder={onReorder}
+      renderLabel={(tab) => formatLiveViewLabel(tab.label, tab.timeframe)}
+      newTabButton={{ ariaLabel: '새 탭', onClick: onNewTab }}
+      trailingActions={<LiveTabOverflowMenu tabs={tabs} activeTabId={activeTabId} onFocus={onFocus} onClose={onClose} />}
+    />
   );
 }
