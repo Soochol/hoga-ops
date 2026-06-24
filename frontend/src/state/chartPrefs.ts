@@ -66,6 +66,12 @@ export const CHART_TOGGLES = [
     default: true,
   },
   {
+    key: 'viLimitPriceDotsEnabled',
+    label: 'VI/상하한가 점',
+    description: '실제 체결가가 VI 가격대 또는 상하한가에 닿은 경우 캔들 차트에 점으로 표시합니다.',
+    default: true,
+  },
+  {
     key: 'surgeMarkerEnabled',
     label: '총잔량 급증 마커',
     description: '매도/매수총잔량이 당일 직전 고가에 다시 근접(기본 95%)하는 순간 총잔량 라인에 마커를 표시합니다. 한 번 표시 후 직전 고가의 85% 아래로 빠져야 재표시(히스테리시스).',

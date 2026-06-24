@@ -16,7 +16,7 @@ from __future__ import annotations
 
 import json
 from datetime import datetime, timedelta, timezone
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Literal
 
 from fastapi import HTTPException
 
@@ -30,6 +30,7 @@ from hoga.api.models import (
     ExcludedDate,
     FillStrength,
     FillStrengthPoint,
+    PriceLevelHit,
     QuoteRatio,
     QuoteRatioPoint,
     RangeBundle,
@@ -55,6 +56,9 @@ if TYPE_CHECKING:
     from hoga.api.past_indicators_cache import PastIndicatorsCache
 
 _KST = timezone(timedelta(hours=9))
+_PriceLevelKind = Literal["vi", "limit"]
+_PriceLevelDirection = Literal["upper", "lower"]
+_PriceLevelPct = Literal[10, 20, 30]
 
 # /api/range minute timeframes are multiples of this; the indicator cache stores
 # 1m and re-aggregates up. A request whose bucket_ms is NOT a 1m multiple (the
@@ -571,6 +575,74 @@ def _compute_bid_peak(
     )
 
 
+def _candidate_price_levels(
+    *,
+    vi_base_open: int | None,
+    limit_base_prev_close: int | None,
+) -> list[tuple[int, _PriceLevelKind, _PriceLevelDirection, _PriceLevelPct]]:
+    candidates: list[tuple[int, _PriceLevelKind, _PriceLevelDirection, _PriceLevelPct]] = []
+    if vi_base_open is not None and vi_base_open > 0:
+        for pct, mult in ((10, 1.10), (20, 1.20)):
+            candidates.append((int(round(vi_base_open * mult)), "vi", "upper", pct))
+        for pct, mult in ((10, 0.90), (20, 0.80)):
+            candidates.append((int(round(vi_base_open * mult)), "vi", "lower", pct))
+    if limit_base_prev_close is not None and limit_base_prev_close > 0:
+        candidates.append((int(round(limit_base_prev_close * 1.30)), "limit", "upper", 30))
+        candidates.append((int(round(limit_base_prev_close * 0.70)), "limit", "lower", 30))
+    return candidates
+
+
+def build_price_level_hits_slice(
+    con,
+    *,
+    date: str,
+    trades_path,
+    vi_base_open: int | None,
+    limit_base_prev_close: int | None,
+) -> list[PriceLevelHit]:
+    candidates = _candidate_price_levels(
+        vi_base_open=vi_base_open,
+        limit_base_prev_close=limit_base_prev_close,
+    )
+    if not candidates or not trades_path.exists():
+        return []
+
+    by_price: dict[int, list[tuple[_PriceLevelKind, _PriceLevelDirection, _PriceLevelPct]]] = {}
+    for price, kind, direction, pct in candidates:
+        if price <= 0:
+            continue
+        by_price.setdefault(price, []).append((kind, direction, pct))
+    if not by_price:
+        return []
+
+    placeholders = ", ".join("?" for _ in by_price)
+    rows = con.execute(
+        f"""
+        SELECT price, MIN(ts_ms) AS first_ts
+        FROM read_parquet(?)
+        WHERE price IN ({placeholders})
+        GROUP BY price
+        """,
+        [str(trades_path), *by_price.keys()],
+    ).fetchall()
+    first_by_price = {int(price): int(first_ts) for price, first_ts in rows}
+
+    hits: list[PriceLevelHit] = []
+    for price, kind, direction, pct in candidates:
+        first_ts = first_by_price.get(price)
+        if first_ts is None:
+            continue
+        hits.append(PriceLevelHit(
+            date=date,
+            t_ms=hhmmssms_to_unix_ms(date, first_ts),
+            price=price,
+            kind=kind,
+            direction=direction,
+            pct=pct,
+        ))
+    return hits
+
+
 def _empty_range_bundle(
     code: str,
     from_date: str,
@@ -598,6 +670,7 @@ def _empty_range_bundle(
         data_warnings=[],
         ask_peaks=[],
         bid_peaks=[],
+        price_level_hits=[],
     )
 
 
@@ -658,11 +731,23 @@ def build_range_bundle(
     # bucket_ms 버킷 대표 + 동시호가 배제. 과거일은 indicators_cache로 1회 계산(N일 재스캔 회피).
     ask_peaks: list[AskPeak] = []
     bid_peaks: list[BidPeak] = []
+    price_level_hits: list[PriceLevelHit] = []
 
     # Indicator cache (호가비·체결강도): completed past days are computed once and
     # re-aggregated on later pans; today_kst gates today out (still promoting).
     indicators_cache = engine.indicators_cache
     today_kst = _today_kst_yyyymmdd()
+    stock_dates_for_code = sorted(
+        (row for row in engine.list_stock_dates() if row.code == code),
+        key=lambda row: row.date,
+    )
+    prev_close_by_date: dict[str, int] = {}
+    prev_close: int | None = None
+    for row in stock_dates_for_code:
+        prev_close_by_date[row.date] = (
+            prev_close if prev_close is not None and prev_close > 0 else 0
+        )
+        prev_close = row.today_close
 
     for d in dates:
         resolution = resolve_source_result(engine, d, code, source_pref)
@@ -730,6 +815,21 @@ def build_range_bundle(
             ask_peaks.append(ap_d)
         if bp_d is not None:
             bid_peaks.append(bp_d)
+        vi_base_open = raw_candles[0].open if raw_candles else int(meta.get("today_open") or 0)
+        trades_path = (
+            resolution.path / "trades.parquet"
+            if resolution.path is not None
+            else engine.parquet_dir(d, code, source) / "trades.parquet"
+        )
+        price_level_hits.extend(
+            build_price_level_hits_slice(
+                engine.conn,
+                date=d,
+                trades_path=trades_path,
+                vi_base_open=vi_base_open,
+                limit_base_prev_close=prev_close_by_date.get(d) or None,
+            ),
+        )
 
     if not segments:
         # Spec 2026-05-27 §4.3: every in-range date is INVALID → return an
@@ -759,4 +859,5 @@ def build_range_bundle(
         data_warnings=warnings_list,
         ask_peaks=ask_peaks,
         bid_peaks=bid_peaks,
+        price_level_hits=price_level_hits,
     )
