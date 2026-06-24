@@ -2,7 +2,7 @@ import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { act, render, screen } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { fireEvent } from '@testing-library/react';
-import { MemoryRouter, useLocation } from 'react-router';
+import { MemoryRouter, useLocation, useNavigate } from 'react-router';
 import type { ComponentProps } from 'react';
 import type { ParquetStudySnapshot } from '../api/studyViews';
 import type { LiveChartRoot } from '../live/LiveChartRoot';
@@ -124,6 +124,15 @@ function LocationProbe() {
   return <div data-testid="location-probe">{location.pathname}{location.search}</div>;
 }
 
+function RouteChangeButton({ to }: { to: string }) {
+  const navigate = useNavigate();
+  return (
+    <button type="button" onClick={() => navigate(to)}>
+      route:{to}
+    </button>
+  );
+}
+
 function renderAt(path: string) {
   return render(
     <MemoryRouter initialEntries={[path]}>
@@ -173,6 +182,35 @@ describe('StudyPage', () => {
     expect(state.tabs).toHaveLength(1);
     expect(state.tabs[0]).toMatchObject({ viewId: 'view1' });
     expect(state.activeTabId).toBe(state.tabs[0].id);
+  });
+
+  it('replaces the active study tab when the study route changes to a different saved view', async () => {
+    useStudyViewSnapshotMock.mockImplementation((viewId: string | null) => ({
+      data: viewId ? makeSnapshot(viewId) : undefined,
+      isLoading: false,
+      isError: false,
+    }));
+
+    render(
+      <MemoryRouter initialEntries={['/study?view=view1']}>
+        <StudyPage />
+        <RouteChangeButton to="/study?view=view2" />
+        <LocationProbe />
+      </MemoryRouter>,
+    );
+
+    const initialState = useStudyTabsStore.getState();
+    const initialActiveTabId = initialState.activeTabId;
+
+    await userEvent.click(screen.getByRole('button', { name: 'route:/study?view=view2' }));
+
+    const state = useStudyTabsStore.getState();
+    expect(state.tabs).toHaveLength(1);
+    expect(state.activeTabId).toBe(initialActiveTabId);
+    expect(state.tabs[0]).toMatchObject({ viewId: 'view2' });
+    expect(screen.getByRole('tab', { name: /삼성전자 · 마감 · D/i })).toHaveAttribute('aria-selected', 'true');
+    expect(screen.getByText('삼성전자 view2')).toBeTruthy();
+    expect(screen.getByTestId('location-probe')).toHaveTextContent('/study?view=view2');
   });
 
   it('pressing 2 focuses the second tab when two study tabs exist', async () => {

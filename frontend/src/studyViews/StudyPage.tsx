@@ -30,10 +30,13 @@ export function StudyPage() {
   const tabs = useStudyTabsStore((state) => state.tabs);
   const activeTabId = useStudyTabsStore((state) => state.activeTabId);
   const ensureQuerySeed = useStudyTabsStore((state) => state.ensureQuerySeed);
+  const openSaveInActiveTab = useStudyTabsStore((state) => state.openSaveInActiveTab);
   const focusTab = useStudyTabsStore((state) => state.focusTab);
   const closeTab = useStudyTabsStore((state) => state.closeTab);
   const reorderTabs = useStudyTabsStore((state) => state.reorderTabs);
   const initialQueryViewIdRef = useRef(queryViewId);
+  const handledQueryViewIdRef = useRef(queryViewId);
+  const routeSyncPendingRef = useRef(false);
   const activeTab = useMemo(
     () => tabs.find((tab) => tab.id === activeTabId) ?? null,
     [activeTabId, tabs],
@@ -97,10 +100,22 @@ export function StudyPage() {
   }, [ensureQuerySeed, querySave, queryViewId]);
 
   useEffect(() => {
+    routeSyncPendingRef.current = false;
+    if (initialQueryViewIdRef.current !== null) return;
+    if (queryViewId === handledQueryViewIdRef.current) return;
+    handledQueryViewIdRef.current = queryViewId;
+    if (!querySave) return;
+    if (activeTab?.viewId === querySave.id) return;
+    routeSyncPendingRef.current = true;
+    openSaveInActiveTab(querySave);
+  }, [activeTab?.viewId, openSaveInActiveTab, querySave, queryViewId]);
+
+  useEffect(() => {
     setIsCursorActive(false);
   }, [activeViewId]);
 
   useEffect(() => {
+    if (routeSyncPendingRef.current) return;
     if (activeTab) {
       if (queryViewId === activeTab.viewId) return;
       navigate(`/study?view=${activeTab.viewId}`, { replace: true });
