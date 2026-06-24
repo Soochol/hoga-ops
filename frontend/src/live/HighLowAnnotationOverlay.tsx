@@ -48,10 +48,36 @@ const LABEL_EDGE_PAD_PX = 6;
 const LABEL_DOT_GAP_PX = 8;
 const LABEL_HEIGHT_PX = 16;
 const LABEL_CHAR_WIDTH_PX = 6.6;
-const LABEL_AVOID_GAP_PX = LABEL_HEIGHT_PX;
+const LABEL_AVOID_GAP_PX = 2;
+const WALL_LABEL_GAP_PX = 3;
+const WALL_LABEL_FONT_PX = 11;
+const WALL_LABEL_BOX_Y_PAD_PX = 1;
 
 function estimateLabelWidth(text: string): number {
   return text.length * LABEL_CHAR_WIDTH_PX + 8;
+}
+
+type VerticalBox = {
+  top: number;
+  bottom: number;
+};
+
+function highLowLabelBox(anchorY: number, place: ExtremeLabelPlace): VerticalBox {
+  return place === 'above'
+    ? { top: anchorY - LABEL_DOT_GAP_PX - LABEL_HEIGHT_PX, bottom: anchorY - LABEL_DOT_GAP_PX }
+    : { top: anchorY + LABEL_DOT_GAP_PX, bottom: anchorY + LABEL_DOT_GAP_PX + LABEL_HEIGHT_PX };
+}
+
+function wallLabelBoxFromLineY(lineY: number): VerticalBox {
+  const baselineY = lineY - WALL_LABEL_GAP_PX;
+  return {
+    top: baselineY - WALL_LABEL_FONT_PX - WALL_LABEL_BOX_Y_PAD_PX,
+    bottom: baselineY + WALL_LABEL_BOX_Y_PAD_PX,
+  };
+}
+
+function verticalBoxesOverlap(a: VerticalBox, b: VerticalBox): boolean {
+  return a.top < b.bottom && b.top < a.bottom;
 }
 
 export function placeExtremeLabel(
@@ -79,19 +105,30 @@ export function placeExtremeLabel(
     const minY = LABEL_EDGE_PAD_PX;
     const maxY = paneHeight - LABEL_EDGE_PAD_PX;
     const direction = place === 'above' ? -1 : 1;
-    const conflicts = (candidate: number) => avoidYLines.some((lineY) => (
-      Number.isFinite(lineY) && Math.abs(candidate - lineY) < LABEL_AVOID_GAP_PX
-    ));
+    const avoidBoxes = avoidYLines.filter(Number.isFinite).map(wallLabelBoxFromLineY);
+    const conflicts = (candidate: number) => {
+      const candidateBox = highLowLabelBox(candidate, place);
+      return avoidBoxes.some((box) => verticalBoxesOverlap(candidateBox, box));
+    };
     const pushAway = (startY: number, pushDirection: 1 | -1): number => {
       let candidate = startY;
-      const sorted = avoidYLines
-        .filter(Number.isFinite)
+      const sorted = avoidBoxes
         .sort((a, b) => (
-          pushDirection > 0 ? a - b : b - a
+          pushDirection > 0 ? a.top - b.top : b.bottom - a.bottom
         ));
-      for (const lineY of sorted) {
-        if (Math.abs(candidate - lineY) < LABEL_AVOID_GAP_PX) {
-          candidate = lineY + pushDirection * LABEL_AVOID_GAP_PX;
+      for (const box of sorted) {
+        if (verticalBoxesOverlap(highLowLabelBox(candidate, place), box)) {
+          candidate = place === 'above'
+            ? (
+              pushDirection < 0
+                ? box.top - LABEL_AVOID_GAP_PX + LABEL_DOT_GAP_PX
+                : box.bottom + LABEL_AVOID_GAP_PX + LABEL_DOT_GAP_PX + LABEL_HEIGHT_PX
+            )
+            : (
+              pushDirection > 0
+                ? box.bottom + LABEL_AVOID_GAP_PX - LABEL_DOT_GAP_PX
+                : box.top - LABEL_AVOID_GAP_PX - LABEL_DOT_GAP_PX - LABEL_HEIGHT_PX
+            );
         }
       }
       return Math.min(maxY, Math.max(minY, candidate));

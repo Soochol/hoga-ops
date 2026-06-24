@@ -129,14 +129,39 @@ describe('placeExtremeLabel', () => {
     expect(right.x).toBeLessThan(750);
   });
 
-  it('moves high/low labels away from occupied wall-label y lines', () => {
+  it('moves high labels away from occupied wall-label text boxes', () => {
     const high = placeExtremeLabel('above', 440, 96, '60,000원 (-13.59%, 06.10 09:30)', 760, 180, [96]);
-    const low = placeExtremeLabel('below', 440, 96, '58,700원 (+2.10%, 06.10 09:30)', 760, 180, [96]);
+
+    const renderedTop = high.y - 8 - 16;
+    const renderedBottom = high.y - 8;
+    const wallTextTop = 96 - 3 - 11 - 1;
+    const wallTextBottom = 96 - 3 + 1;
 
     expect(high.y).toBeLessThan(96);
-    expect(low.y).toBeGreaterThan(96);
-    expect(Math.abs(high.y - 96)).toBeGreaterThanOrEqual(16);
-    expect(Math.abs(low.y - 96)).toBeGreaterThanOrEqual(16);
+    expect(renderedBottom <= wallTextTop || renderedTop >= wallTextBottom).toBe(true);
+  });
+
+  it('moves low labels away when their rendered box would cross a wall-label text box', () => {
+    const low = placeExtremeLabel('below', 440, 80, '58,700원 (+2.10%, 06.10 09:30)', 760, 180, [112]);
+
+    const renderedTop = low.y + 8;
+    const renderedBottom = low.y + 8 + 16;
+    const wallTextTop = 112 - 3 - 11 - 1;
+    const wallTextBottom = 112 - 3 + 1;
+
+    expect(renderedBottom <= wallTextTop || renderedTop >= wallTextBottom).toBe(true);
+  });
+
+  it('keeps the rendered high label box out of a wall-label text box above the wall line', () => {
+    // Wall label text is drawn above the wall line, so avoiding only the line y is not enough.
+    const label = placeExtremeLabel('above', 440, 130, '550,000원 (-59.23%, 04.17 09:00)', 760, 180, [112]);
+
+    const renderedTop = label.y - 8 - 16;
+    const renderedBottom = label.y - 8;
+    const wallTextTop = 112 - 3 - 11 - 1;
+    const wallTextBottom = 112 - 3 + 1;
+
+    expect(renderedBottom <= wallTextTop || renderedTop >= wallTextBottom).toBe(true);
   });
 
   it('falls back to the original point before pane size is known', () => {
