@@ -63,6 +63,8 @@ export const BID_PEAK_DEFAULT_COLOR = '#DC2626';
 export const BID_PEAK_DEFAULT_WIDTH: 1 | 2 | 3 | 4 = 2;
 export const BID_PEAK_ALL_PRICE_DEFAULT_COLOR = '#F97316';
 export const BID_PEAK_ALL_PRICE_DEFAULT_WIDTH: 1 | 2 | 3 | 4 = 1;
+export const TRADE_VOLUME_POC_DEFAULT_BAND_PCT = 0.005;
+const VALID_TRADE_VOLUME_POC_BAND_PCTS = new Set([0.005, 0.01]);
 
 export type PersistedIndicators = {
   movingAverages: LiveMAConfig[];
@@ -103,6 +105,10 @@ export type PersistedIndicators = {
   bidPeakAllPriceColor: string;
   /** 미체결 포함 매수 최대벽 선 두께. 기본 1. */
   bidPeakAllPriceLineWidth: 1 | 2 | 3 | 4;
+  /** 당일 최다거래대(체결량 POC) 밴드 on/off. Default TRUE. */
+  tradeVolumePocEnabled: boolean;
+  /** 당일 최다거래대 자동 밴드 폭. Default +/-0.5%. */
+  tradeVolumePocBandPct: number;
   /** 총잔량 pane on/off. Default TRUE(기존 자동표시 보존). */
   quoteTotalsEnabled: boolean;
   /** 호가비 pane on/off. Default TRUE. */
@@ -180,6 +186,9 @@ export function mergeLiveIndicatorPrefs(
     ? (obj.bidPeakAllPriceColor as string) : BID_PEAK_ALL_PRICE_DEFAULT_COLOR;
   const bpAllWidth = VALID_LINE_WIDTHS.has(obj?.bidPeakAllPriceLineWidth as number)
     ? (obj!.bidPeakAllPriceLineWidth as 1 | 2 | 3 | 4) : BID_PEAK_ALL_PRICE_DEFAULT_WIDTH;
+  const tvpBandPct = VALID_TRADE_VOLUME_POC_BAND_PCTS.has(obj?.tradeVolumePocBandPct as number)
+    ? (obj!.tradeVolumePocBandPct as number)
+    : TRADE_VOLUME_POC_DEFAULT_BAND_PCT;
   // daily MA — opt-in(기본 false), 슬롯 검증·cap·기본값 전략 movingAverages와 동일.
   const dEnabled = obj?.dailyMovingAverageEnabled === true;
   const dHidden = obj?.dailyMovingAverageHidden === true;
@@ -191,7 +200,7 @@ export function mergeLiveIndicatorPrefs(
   const build = (
     mas: LiveMAConfig[], enabled: boolean, fNet: boolean, iNet: boolean,
     vol: boolean, hidden: boolean,
-    qt: boolean, ratio: boolean, fill: boolean,
+    qt: boolean, ratio: boolean, fill: boolean, tradeVolumePoc: boolean,
   ): PersistedIndicators => ({
     movingAverages: mas,
     movingAverageEnabled: enabled,
@@ -213,6 +222,8 @@ export function mergeLiveIndicatorPrefs(
     bidPeakLineWidth: bpWidth,
     bidPeakAllPriceColor: bpAllColor,
     bidPeakAllPriceLineWidth: bpAllWidth,
+    tradeVolumePocEnabled: tradeVolumePoc,
+    tradeVolumePocBandPct: tvpBandPct,
     quoteTotalsEnabled: qt,
     ratioEnabled: ratio,
     fillStrengthEnabled: fill,
@@ -220,7 +231,7 @@ export function mergeLiveIndicatorPrefs(
     dailyMovingAverageEnabled: dEnabled,
     dailyMovingAverageHidden: dHidden,
   });
-  if (!raw || typeof raw !== 'object') return build(defaults, true, false, false, true, false, true, true, true);
+  if (!raw || typeof raw !== 'object') return build(defaults, true, false, false, true, false, true, true, true, true);
   // obj is guaranteed non-null here (same condition checked above)
   const o = obj!;
   const enabled = o.movingAverageEnabled === false ? false : true;
@@ -236,9 +247,10 @@ export function mergeLiveIndicatorPrefs(
   const qt = o.quoteTotalsEnabled === false ? false : true;
   const ratio = o.ratioEnabled === false ? false : true;
   const fill = o.fillStrengthEnabled === false ? false : true;
+  const tradeVolumePoc = o.tradeVolumePocEnabled === false ? false : true;
   const arr = o.movingAverages;
-  if (!Array.isArray(arr)) return build(defaults, enabled, fNet, iNet, vol, hidden, qt, ratio, fill);
+  if (!Array.isArray(arr)) return build(defaults, enabled, fNet, iNet, vol, hidden, qt, ratio, fill, tradeVolumePoc);
   const kept = arr.filter(isValidEntry).slice(0, MA_SLOT_LIMIT) as LiveMAConfig[];
-  if (kept.length === 0) return build(defaults, enabled, fNet, iNet, vol, hidden, qt, ratio, fill);
-  return build(kept, enabled, fNet, iNet, vol, hidden, qt, ratio, fill);
+  if (kept.length === 0) return build(defaults, enabled, fNet, iNet, vol, hidden, qt, ratio, fill, tradeVolumePoc);
+  return build(kept, enabled, fNet, iNet, vol, hidden, qt, ratio, fill, tradeVolumePoc);
 }

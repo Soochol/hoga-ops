@@ -572,6 +572,23 @@ class PriceLevelHit(BaseModel):
     pct: Literal[10, 20, 30]
 
 
+class TradeVolumePoc(BaseModel):
+    """One trading day's most-traded regular-session price area.
+
+    The range is centered on a traded price, expanded by ``band_pct``, and
+    adjusted to the KRX stock tick grid. ``t_ms`` is the first time the center
+    price traded.
+    """
+
+    date: str
+    center_price: int
+    low_price: int
+    high_price: int
+    qty: int
+    t_ms: int
+    band_pct: float
+
+
 class RangeBundle(BaseModel):
     """The sole read-path Wire Model for a Stock-Date Range (ADR-0013).
 
@@ -605,6 +622,7 @@ class RangeBundle(BaseModel):
     ask_peaks: list["AskPeak"] = []
     bid_peaks: list["BidPeak"] = Field(default_factory=list)
     price_level_hits: list[PriceLevelHit] = Field(default_factory=list)
+    trade_volume_pocs: list[TradeVolumePoc] = Field(default_factory=list)
 
 
 # === Broker Day-Trajectory (ADR-0023) ===

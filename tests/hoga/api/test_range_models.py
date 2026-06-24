@@ -10,6 +10,7 @@ from hoga.api.models import (
     RangeBundle,
     RangeSegment,
     VolumeProfile,
+    TradeVolumePoc,
     validate_bucket_ms,
 )
 
@@ -96,6 +97,28 @@ def test_range_bundle_has_excluded_dates_field_default_empty() -> None:
     )
     assert rb.excluded_dates == []
     assert rb.data_warnings == []
+    assert rb.trade_volume_pocs == []
+
+
+def test_trade_volume_poc_model_round_trip() -> None:
+    poc = TradeVolumePoc(
+        date="20260624",
+        center_price=72_300,
+        low_price=71_500,
+        high_price=73_100,
+        qty=100,
+        t_ms=1_782_259_320_000,
+        band_pct=0.005,
+    )
+    assert poc.model_dump() == {
+        "date": "20260624",
+        "center_price": 72_300,
+        "low_price": 71_500,
+        "high_price": 73_100,
+        "qty": 100,
+        "t_ms": 1_782_259_320_000,
+        "band_pct": 0.005,
+    }
 
 
 def test_excluded_date_round_trip() -> None:

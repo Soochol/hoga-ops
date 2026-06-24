@@ -47,6 +47,7 @@ import DailyMovingAverageOverlay from './indicators/DailyMovingAverageOverlay';
 import LiveCurrentPriceLine from './LiveCurrentPriceLine';
 import LiveAskPeakSegments, { buildAskPeakOverlaySegments } from './LiveAskPeakSegments';
 import LiveBidPeakSegments, { buildBidPeakOverlaySegments } from './LiveBidPeakSegments';
+import TradeVolumePocOverlay from './TradeVolumePocOverlay';
 import AuctionWindowOverlay from '../chart/AuctionWindowOverlay';
 import DrawingOverlay from '../chart/DrawingOverlay';
 import DrawingPropertyPanel from '../chart/DrawingPropertyPanel';
@@ -56,6 +57,7 @@ import HighLowAnnotationOverlay from './HighLowAnnotationOverlay';
 import PriceLevelDotsOverlay from './PriceLevelDotsOverlay';
 import type { PaneId } from '../chart/drawing/types';
 import { useDrawingHost } from '../chart/useDrawingHost';
+import type { TradeVolumePoc } from './tradeVolumePoc';
 
 const TOKEN_SPEC = {
   bgCard: ['--bg-card', '#13131C'],
@@ -138,6 +140,8 @@ interface Props {
   todayAllPriceBidPeak?: BidPeak | null;
   /** 오늘(KST YYYYMMDD) — 오늘 세그먼트만 라이브 엣지까지 연장. */
   todayKst?: string;
+  /** Per-day regular-session trade-volume POC bands. */
+  tradeVolumePocs?: readonly TradeVolumePoc[];
   /** Snapshot restore can carry hoga panes on calendar timeframes. /live keeps the default gate. */
   forceHogaPanes?: boolean;
   /** Snapshot restore can pin pane mounts to saved indicator state. Omitted means read /live store. */
@@ -166,7 +170,7 @@ interface Props {
 /** /live's single-chart root. Mounts the timeframe-appropriate pane set
  * (see `paneSpecsForTimeframe`) inside one createChart instance so
  * timeScale is shared across candle/volume/(hoga) panes. */
-export function LiveChartRoot({ code, timeframe, venue = 'KRX', viewIdentity, bundle, chartBundle, ratioBundle, clampEngaged, isPastCandlesLoading, isExtending = false, pastDataWarnings, restoreViewport = null, dayAskPeaks = EMPTY_ASK_PEAKS, todayAllPriceAskPeak = null, dayBidPeaks = EMPTY_BID_PEAKS, todayAllPriceBidPeak = null, todayKst = '', forceHogaPanes = false, paneTogglesOverride, dailyMovingAverageOverride, persistLiveViewport = true, onViewportCaptureReady, onCursorActiveChange, onCandleBasisHover, onCandleBasisClick }: Props) {
+export function LiveChartRoot({ code, timeframe, venue = 'KRX', viewIdentity, bundle, chartBundle, ratioBundle, clampEngaged, isPastCandlesLoading, isExtending = false, pastDataWarnings, restoreViewport = null, dayAskPeaks = EMPTY_ASK_PEAKS, todayAllPriceAskPeak = null, dayBidPeaks = EMPTY_BID_PEAKS, todayAllPriceBidPeak = null, todayKst = '', tradeVolumePocs = [], forceHogaPanes = false, paneTogglesOverride, dailyMovingAverageOverride, persistLiveViewport = true, onViewportCaptureReady, onCursorActiveChange, onCandleBasisHover, onCandleBasisClick }: Props) {
   const containerRef = useRef<HTMLDivElement>(null);
   // 과거 fetch 경고 요약 — rate-limit 지연(빈칸 문구 전환)과 일부 구간 누락(부분로딩 칩)
   // 표시에 쓴다. summarizeWarnings는 null/빈배열을 {count:0,hasRateLimit:false}로 접는다.
@@ -969,6 +973,16 @@ export function LiveChartRoot({ code, timeframe, venue = 'KRX', viewIdentity, bu
               axis={axis}
               dayBidPeaks={dayBidPeaks}
               todayAllPriceBidPeak={todayAllPriceBidPeak}
+              segments={cb.segments}
+              candles={cb.candles}
+              todayKst={todayKst}
+            />
+          )}
+          {isMinuteTimeframe(timeframe) && (
+            <TradeVolumePocOverlay
+              paneSeries={paneSeries}
+              axis={axis}
+              pocs={tradeVolumePocs}
               segments={cb.segments}
               candles={cb.candles}
               todayKst={todayKst}

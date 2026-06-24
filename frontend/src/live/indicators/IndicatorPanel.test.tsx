@@ -4,13 +4,18 @@ import IndicatorPanel from './IndicatorPanel';
 import { useLivePageStore } from '../../state/livePage';
 
 describe('IndicatorPanel', () => {
-  it('활성 10개 체크박스(비활성 0), 호가 5종 포함', () => {
-    useLivePageStore.setState({ quoteTotalsEnabled: true, ratioEnabled: true, fillStrengthEnabled: true });
+  it('활성 11개 체크박스(비활성 0), 호가 6종 포함', () => {
+    useLivePageStore.setState({
+      quoteTotalsEnabled: true,
+      ratioEnabled: true,
+      fillStrengthEnabled: true,
+      tradeVolumePocEnabled: true,
+    });
     render(<IndicatorPanel onClose={() => {}} />);
     const checkboxes = screen.getAllByRole('checkbox');
-    expect(checkboxes).toHaveLength(10); // 상단 5 + 호가 5(매도/매수 최대벽 포함), 회색 placeholder 삭제됨
+    expect(checkboxes).toHaveLength(11); // 상단 5 + 호가 6(최다거래대/매도/매수 최대벽 포함)
     expect(checkboxes.filter((c) => (c as HTMLButtonElement).disabled)).toHaveLength(0);
-    for (const name of ['총잔량', '호가비', '체결강도']) {
+    for (const name of ['총잔량', '호가비', '체결강도', '당일 최다거래대']) {
       const cb = screen.getByRole('checkbox', { name }) as HTMLButtonElement;
       expect(cb.disabled).toBe(false);
       expect(cb.getAttribute('aria-checked')).toBe('true'); // 기본 ON
@@ -33,7 +38,7 @@ describe('IndicatorPanel', () => {
   it('index capabilities hide every hoga indicator category', () => {
     render(<IndicatorPanel onClose={() => {}} capabilities={{ hogaPanes: false, investorNet: 'market', studySave: false }} />);
     expect(screen.queryByText('호가 지표')).toBeNull();
-    for (const name of ['총잔량', '호가비', '체결강도', '당일 매도 최대벽', '당일 매수 최대벽']) {
+    for (const name of ['총잔량', '호가비', '체결강도', '당일 최다거래대', '당일 매도 최대벽', '당일 매수 최대벽']) {
       expect(screen.queryByRole('checkbox', { name })).toBeNull();
       expect(screen.queryByRole('button', { name })).toBeNull();
     }
@@ -53,9 +58,12 @@ describe('IndicatorPanel', () => {
     // 네비 라벨 버튼은 CATEGORIES 순서대로 렌더된다(체크박스는 role=checkbox라 제외).
     const labels = screen.getAllByRole('button').map((b) => b.textContent);
     const askPeak = labels.indexOf('당일 매도 최대벽');
+    const poc = labels.indexOf('당일 최다거래대');
     const fill = labels.indexOf('체결강도');
     const inst = labels.indexOf('기관 순매수량');
     expect(askPeak).toBeGreaterThan(fill); // 호가 그룹 안, 체결강도 뒤
+    expect(poc).toBeGreaterThan(fill);
+    expect(askPeak).toBeGreaterThan(poc);
     expect(askPeak).toBeGreaterThan(inst); // 상단 지표(기관 순매수량) 그룹 뒤
   });
 
@@ -189,6 +197,31 @@ describe('IndicatorPanel', () => {
     const cb = screen.getByRole('checkbox', { name: '당일 매도 최대벽' });
     fireEvent.click(cb);
     expect(useLivePageStore.getState().askPeakEnabled).toBe(true);
+  });
+
+  it('당일 최다거래대 카테고리 토글', () => {
+    useLivePageStore.setState({ tradeVolumePocEnabled: true });
+    render(<IndicatorPanel onClose={() => {}} />);
+    const cb = screen.getByRole('checkbox', { name: '당일 최다거래대' });
+    fireEvent.click(cb);
+    expect(useLivePageStore.getState().tradeVolumePocEnabled).toBe(false);
+  });
+
+  it('당일 최다거래대 선택 시 자동 범위 설명 표시', () => {
+    render(<IndicatorPanel onClose={() => {}} />);
+    fireEvent.click(screen.getByRole('button', { name: '당일 최다거래대' }));
+    expect(screen.getAllByText(/자동 ±0.5%/).length).toBeGreaterThan(0);
+    expect(screen.getByRole('button', { name: '±0.5%' })).toHaveAttribute('aria-pressed', 'true');
+    expect(screen.getByRole('button', { name: '±1%' })).toBeTruthy();
+    expect(screen.getByText(/동시호가 제외/)).toBeTruthy();
+  });
+
+  it('당일 최다거래대 범위 선택을 저장한다', () => {
+    useLivePageStore.setState({ tradeVolumePocBandPct: 0.005 });
+    render(<IndicatorPanel onClose={() => {}} />);
+    fireEvent.click(screen.getByRole('button', { name: '당일 최다거래대' }));
+    fireEvent.click(screen.getByRole('button', { name: '±1%' }));
+    expect(useLivePageStore.getState().tradeVolumePocBandPct).toBe(0.01);
   });
 
   it('매도 최대벽 선택 시 스타일 pane(MAStylePicker) 표시', () => {
