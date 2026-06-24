@@ -10,10 +10,13 @@ import {
 import { SortableContext, useSortable, verticalListSortingStrategy } from '@dnd-kit/sortable';
 import { CSS } from '@dnd-kit/utilities';
 import type { ParquetStudyView, ParquetStudyViewWriteRequest } from '../api/studyViews';
+import { dropPoint, isPointOnStudy } from '../state/entryDrag';
+import { useStudyTabsStore } from '../state/studyTabs';
 import { useCurrentStudySaveSource } from './studySaveSource';
 import { studySnapshotByteSize } from './studySaveRequest';
 import { makeStudySaveCommand } from './studySaveCommand';
 import { StudyViewSaveDialog } from './StudyViewSaveDialog';
+import { latestStudyViewForCode } from './studyViewSelection';
 import { useStudyViewMutations, useStudyViews } from './useStudyViews';
 import {
   normalizeStudyViewQuery,
@@ -288,11 +291,30 @@ export function StudyViewsDrawer() {
     navigate(`/study?view=${row.id}`);
   }
 
+  function openSaveInActiveTab(row: ParquetStudyView) {
+    useStudyTabsStore.getState().openSaveInActiveTab(row);
+  }
+
+  function openSaveInNewTab(row: ParquetStudyView) {
+    useStudyTabsStore.getState().openSaveInNewTab(row);
+  }
+
+  function openStudyViewInActiveTab(row: ParquetStudyView) {
+    openSaveInActiveTab(row);
+    navigateToStudyView(row);
+  }
+
+  function openStudyViewInNewTab(row: ParquetStudyView) {
+    cancelPendingStudyViewNavigation();
+    openSaveInNewTab(row);
+    navigate(`/study?view=${row.id}`);
+  }
+
   function scheduleStudyViewNavigation(row: ParquetStudyView) {
     cancelPendingStudyViewNavigation();
     navigateClickTimerRef.current = window.setTimeout(() => {
       navigateClickTimerRef.current = null;
-      navigateToStudyView(row);
+      openStudyViewInActiveTab(row);
     }, 180);
   }
 
@@ -323,6 +345,9 @@ export function StudyViewsDrawer() {
     const deletedId = deleteTarget.id;
     mutations.remove.mutate(deletedId, {
       onSuccess: () => {
+        const { tabs, activeTabId, closeTab } = useStudyTabsStore.getState();
+        const activeTab = tabs.find((tab) => tab.id === activeTabId);
+        if (activeTab?.viewId === deletedId) closeTab(activeTab.id);
         setDeleteTarget(null);
         setDialog(null);
         if (location.pathname === '/study' && (currentStudyViewId === deletedId || studySource?.viewId === deletedId)) {
@@ -333,6 +358,13 @@ export function StudyViewsDrawer() {
   };
 
   const handleDragEnd = (event: Parameters<typeof resolveStudyViewTreeDrag>[0]) => {
+    if (event.active.data.current?.type === 'group' && isPointOnStudy(dropPoint(event))) {
+      const draggedGroup = visibleGroups.find((group) => studyViewGroupDndId(group.key) === String(event.active.id));
+      const save = draggedGroup ? latestStudyViewForCode(data?.saves ?? [], draggedGroup.code) : null;
+      if (save) openStudyViewInActiveTab(save);
+      return;
+    }
+
     const intent = resolveStudyViewTreeDrag(event);
     if (!intent) return;
     if (intent.type === 'group') {
@@ -348,7 +380,13 @@ export function StudyViewsDrawer() {
       role={renameState?.id === row.id ? undefined : 'button'}
       tabIndex={renameState?.id === row.id ? undefined : 0}
       aria-label={renameState?.id === row.id ? undefined : `${row.name} 저장뷰 열기`}
-      onClick={renameState?.id === row.id ? undefined : () => scheduleStudyViewNavigation(row)}
+      onClick={renameState?.id === row.id ? undefined : (event) => {
+        if (event.ctrlKey || event.metaKey) {
+          openStudyViewInNewTab(row);
+          return;
+        }
+        scheduleStudyViewNavigation(row);
+      }}
       onContextMenu={renameState?.id === row.id ? undefined : (e) => {
         e.preventDefault();
         setRowMenu({ row, left: e.clientX, top: e.clientY });
@@ -357,7 +395,7 @@ export function StudyViewsDrawer() {
         if (e.target !== e.currentTarget) return;
         if (e.key !== 'Enter' && e.key !== ' ') return;
         e.preventDefault();
-        navigateToStudyView(row);
+        openStudyViewInActiveTab(row);
       }}
       className="flex cursor-pointer items-center gap-2 border-b border-border pl-10 pr-md py-sm hover:bg-bg-input-hover focus:outline-none focus:ring-1 focus:ring-inset focus:ring-line"
     >
@@ -488,7 +526,15 @@ export function StudyViewsDrawer() {
                           aria-label={`${group.label} ${group.code} ${groupCollapsed ? '펼치기' : '접기'}`}
                           aria-expanded={!groupCollapsed}
                           title={`${group.label} ${group.code}`}
-                          onClick={() => toggleGroup(group.key)}
+                          onClick={(event) => {
+                            if (event.ctrlKey || event.metaKey) {
+                              event.preventDefault();
+                              const save = latestStudyViewForCode(data?.saves ?? [], group.code);
+                              if (save) openStudyViewInNewTab(save);
+                              return;
+                            }
+                            toggleGroup(group.key);
+                          }}
                           className={`sticky top-0 z-10 flex w-full items-center gap-2 border-b bg-bg-card px-3 py-1.5 text-left text-xs text-fg hover:bg-bg-input-hover ${dragEnabled ? 'cursor-grab active:cursor-grabbing' : ''}`}
                         >
                           <span className="w-3 text-xs" aria-hidden>{groupCollapsed ? '▶' : '▼'}</span>
