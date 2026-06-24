@@ -22,9 +22,8 @@ function StudyDropOverlay() {
   return (
     <div
       aria-hidden
-      className="absolute inset-0 flex items-center justify-center"
+      className="absolute inset-0 z-20 flex items-center justify-center"
       style={{
-        zIndex: 5,
         pointerEvents: 'none',
         background: 'var(--tint-selection)',
         border: '2px dashed var(--accent)',

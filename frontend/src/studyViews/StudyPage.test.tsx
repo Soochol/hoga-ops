@@ -525,7 +525,13 @@ describe('StudyPage', () => {
 
     renderAt('/study?view=view1');
 
-    expect(screen.queryByText('여기에 놓아 학습뷰 열기')).toBeTruthy();
+    const overlay = screen.getByText('여기에 놓아 학습뷰 열기').closest('[aria-hidden="true"]');
+    const aside = screen.getByTestId('study-page').querySelector('aside');
+
+    expect(overlay).toBeTruthy();
+    expect(aside).toBeTruthy();
+    expect(overlay!).toHaveClass('z-20');
+    expect(aside!).toHaveClass('z-10');
   });
 
   it('limits saved broker graph and values to the hovered date session', () => {
