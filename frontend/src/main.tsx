@@ -10,10 +10,17 @@ import Settings from './pages/Settings';
 import { Heatmap } from './pages/Heatmap';
 import { StudyPage } from './studyViews/StudyPage';
 import { initLiveTabsSync } from './state/liveTabs';
+import { initStudyTabsSync } from './state/studyTabs';
 import './styles/global.css';
 
 const _disposeLiveTabsSync = initLiveTabsSync();
-if (import.meta.hot) import.meta.hot.dispose(_disposeLiveTabsSync);
+const _disposeStudyTabsSync = initStudyTabsSync();
+if (import.meta.hot) {
+  import.meta.hot.dispose(() => {
+    _disposeLiveTabsSync();
+    _disposeStudyTabsSync();
+  });
+}
 
 const qc = new QueryClient({ defaultOptions: { queries: { staleTime: 60_000, retry: 1 } } });
 
