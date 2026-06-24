@@ -27,6 +27,8 @@ export interface AskPeakSegment {
   peakTime: Time;
   /** 그날 최대 매도벽 가격(priceToCoordinate 입력). */
   price: number;
+  /** 비교용 물량. 현재 보이는 영역 내 최대벽 강조 선택에 사용하며 직접 렌더링하지 않는다. */
+  qty: number;
   /** 가격·물량 라벨(예: "150,000, 16.5k"). 빈 문자열이면 라벨 생략. */
   label: string;
   color: string;

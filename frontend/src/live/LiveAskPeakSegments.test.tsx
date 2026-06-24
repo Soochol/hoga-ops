@@ -1,5 +1,9 @@
 import { describe, it, expect } from 'vitest';
-import { buildAskPeakSegments, buildAskPeakOverlaySegments } from './LiveAskPeakSegments';
+import {
+  buildAskPeakSegments,
+  buildAskPeakOverlaySegments,
+  styleVisibleMaxAskPeakSegments,
+} from './LiveAskPeakSegments';
 import { buildBidPeakOverlaySegments } from './LiveBidPeakSegments';
 import type { AskPeak, BidPeak, RangeSegment, Candle } from '../api/types';
 import type { VirtualAxis } from '../util/virtualAxis';
@@ -49,6 +53,7 @@ describe('buildAskPeakSegments', () => {
     expect(today.time1).toBe(12); // 마지막 캔들 12000/1000 (session_close 99999 아님)
     expect(today.live).toBe(true);
     expect(today.label).toBe('323,000, 153.1k'); // 가격 + formatQtyCompact(153125)
+    expect(today.qty).toBe(153125);
     expect(today.peakTime).toBe(2 / 1000); // axis.toVirtual(t_ms=2)/1000 — peak 발생 시점
     expect(today.color).toBe('#1D4ED8');
     expect(today.lineWidth).toBe(2);
@@ -128,6 +133,58 @@ describe('buildAskPeakSegments', () => {
     expect(on[0].peakTime).toBe(120);
     expect(on[0].time0).toBe(off[0].time0);
     expect(on[0].time1).toBe(off[0].time1);
+  });
+});
+
+describe('styleVisibleMaxAskPeakSegments', () => {
+  const baseSeg = (overrides: Partial<ReturnType<typeof buildAskPeakSegments>[number]> = {}) => ({
+    time0: 10 as ReturnType<typeof buildAskPeakSegments>[number]['time0'],
+    time1: 20 as ReturnType<typeof buildAskPeakSegments>[number]['time1'],
+    peakTime: 15 as ReturnType<typeof buildAskPeakSegments>[number]['peakTime'],
+    price: 100,
+    qty: 100,
+    label: '100, 0.1k',
+    color: '#1D4ED8',
+    lineWidth: 2,
+    live: false,
+    ...overrides,
+  });
+
+  it('visible range와 겹치는 세그먼트 중 qty 1개만 강조한다', () => {
+    const out = styleVisibleMaxAskPeakSegments(
+      [
+        baseSeg({ time0: 0 as never, time1: 5 as never, qty: 1000, color: '#1D4ED8' }),
+        baseSeg({ time0: 10 as never, time1: 20 as never, qty: 300, color: '#1D4ED8' }),
+        baseSeg({ time0: 15 as never, time1: 25 as never, qty: 500, color: '#F97316', lineWidth: 1 }),
+      ],
+      { from: 12, to: 22 },
+      { color: '#EAB308', lineWidth: 3 },
+    );
+
+    expect(out.map((s) => ({ qty: s.qty, color: s.color, lineWidth: s.lineWidth }))).toEqual([
+      { qty: 1000, color: '#1D4ED8', lineWidth: 2 },
+      { qty: 300, color: '#1D4ED8', lineWidth: 2 },
+      { qty: 500, color: '#EAB308', lineWidth: 3 },
+    ]);
+  });
+
+  it('visible range가 없으면 원래 스타일을 유지한다', () => {
+    const input = [baseSeg({ qty: 500 })];
+    const out = styleVisibleMaxAskPeakSegments(input, null, { color: '#EAB308', lineWidth: 3 });
+    expect(out).toEqual(input);
+  });
+
+  it('동률이면 먼저 나온 visible 세그먼트를 강조한다', () => {
+    const out = styleVisibleMaxAskPeakSegments(
+      [
+        baseSeg({ time0: 10 as never, time1: 20 as never, qty: 500, price: 100 }),
+        baseSeg({ time0: 12 as never, time1: 22 as never, qty: 500, price: 110 }),
+      ],
+      { from: 10, to: 22 },
+      { color: '#EAB308', lineWidth: 3 },
+    );
+    expect(out[0]).toMatchObject({ color: '#EAB308', lineWidth: 3, price: 100 });
+    expect(out[1]).toMatchObject({ color: '#1D4ED8', lineWidth: 2, price: 110 });
   });
 });
 

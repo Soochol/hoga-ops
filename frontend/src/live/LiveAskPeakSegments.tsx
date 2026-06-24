@@ -71,6 +71,7 @@ export function buildAskPeakSegments(
       // peak이 실제 걸린 시점(속한 캔들에 스냅) — 그 x에 점을 찍어 언제 최대벽이었는지 표시.
       peakTime: (axis.toVirtual(peakMs) / 1000) as Time,
       price: peakPrice,
+      qty: peakQty,
       label: formatAskPeakLabel(peakPrice, peakQty),
       color,
       lineWidth,
@@ -84,6 +85,40 @@ type AskPeakLineStyle = {
   color: string;
   lineWidth: number;
 };
+
+type VisibleTimeRange = { from: number; to: number } | null;
+
+function segmentOverlapsVisibleRange(segment: AskPeakSegment, visibleRange: VisibleTimeRange): boolean {
+  if (!visibleRange) return false;
+  const from = Math.min(visibleRange.from, visibleRange.to);
+  const to = Math.max(visibleRange.from, visibleRange.to);
+  const s0 = segment.time0 as unknown as number;
+  const s1 = segment.time1 as unknown as number;
+  return Math.max(s0, from) <= Math.min(s1, to);
+}
+
+export function styleVisibleMaxAskPeakSegments(
+  segments: readonly AskPeakSegment[],
+  visibleRange: VisibleTimeRange,
+  style: AskPeakLineStyle,
+): AskPeakSegment[] {
+  if (!visibleRange || segments.length === 0) return [...segments];
+  let bestIndex = -1;
+  let bestQty = Number.NEGATIVE_INFINITY;
+  segments.forEach((segment, index) => {
+    if (!segmentOverlapsVisibleRange(segment, visibleRange)) return;
+    if (segment.qty > bestQty) {
+      bestQty = segment.qty;
+      bestIndex = index;
+    }
+  });
+  if (bestIndex === -1) return [...segments];
+  return segments.map((segment, index) => (
+    index === bestIndex
+      ? { ...segment, color: style.color, lineWidth: style.lineWidth }
+      : segment
+  ));
+}
 
 type BuildAskPeakOverlaySegmentsArgs = {
   dayAskPeaks: readonly AskPeak[];
