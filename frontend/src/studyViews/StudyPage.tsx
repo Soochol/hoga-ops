@@ -4,6 +4,7 @@ import { LiveChartRoot } from '../live/LiveChartRoot';
 import { useLiveCursorStore } from '../live/useLiveCursorStore';
 import type { TabViewport } from '../live/viewportAnchor';
 import { bucketSeconds, type LiveMAConfig } from '../state/livePage';
+import { useEntryDragStore } from '../state/entryDrag';
 import { useStudyTabsStore } from '../state/studyTabs';
 import { StudyDetailPanel } from './StudyDetailPanel';
 import { StudyMemoPanel } from './StudyMemoPanel';
@@ -16,6 +17,33 @@ import {
   setCurrentStudySaveSource,
   type StoredStudySaveSource,
 } from './studySaveSource';
+
+function StudyDropOverlay() {
+  return (
+    <div
+      aria-hidden
+      className="absolute inset-0 flex items-center justify-center"
+      style={{
+        zIndex: 5,
+        pointerEvents: 'none',
+        background: 'var(--tint-selection)',
+        border: '2px dashed var(--accent)',
+      }}
+    >
+      <span
+        className="rounded-md font-ui text-sm font-semibold"
+        style={{
+          padding: 'var(--space-sm) var(--space-md)',
+          background: 'var(--accent)',
+          color: 'var(--accent-fg)',
+          boxShadow: '0 8px 24px rgba(0,0,0,0.4)',
+        }}
+      >
+        여기에 놓아 학습뷰 열기
+      </span>
+    </div>
+  );
+}
 
 export function StudyPage() {
   const [params] = useSearchParams();
@@ -37,6 +65,7 @@ export function StudyPage() {
   const initialQueryViewIdRef = useRef(queryViewId);
   const handledQueryViewIdRef = useRef(queryViewId);
   const routeSyncPendingRef = useRef(false);
+  const studyDropTargetRef = useRef<HTMLDivElement>(null);
   const activeTab = useMemo(
     () => tabs.find((tab) => tab.id === activeTabId) ?? null,
     [activeTabId, tabs],
@@ -77,6 +106,10 @@ export function StudyPage() {
     };
   }, [snapshot]);
   const captureViewportRef = useRef<() => TabViewport | null>(() => null);
+  const draggingEntry = useEntryDragStore((s) => s.draggingCode != null);
+  const overStudy = useEntryDragStore((s) => s.overStudy);
+  const registerStudyTarget = useEntryDragStore((s) => s.registerStudyTarget);
+  const clearStudyTarget = useEntryDragStore((s) => s.clearStudyTarget);
   const handleViewportCaptureReady = useCallback((capture: () => TabViewport | null) => {
     captureViewportRef.current = capture;
   }, []);
@@ -151,6 +184,18 @@ export function StudyPage() {
     };
   }, [activeViewId, captureViewportRef, chartInput, snapshot]);
 
+  useEffect(() => {
+    if (!activeViewId || !snapshot || !chartInput) return undefined;
+    const hitTest = (clientX: number, clientY: number): boolean => {
+      const el = studyDropTargetRef.current;
+      if (!el) return false;
+      const r = el.getBoundingClientRect();
+      return clientX >= r.left && clientX <= r.right && clientY >= r.top && clientY <= r.bottom;
+    };
+    registerStudyTarget(hitTest);
+    return () => clearStudyTarget(hitTest);
+  }, [activeViewId, chartInput, clearStudyTarget, registerStudyTarget, snapshot]);
+
   if (!activeViewId) {
     return (
       <section data-testid="study-page-empty" className="h-full min-w-0 bg-[var(--bg)] text-[var(--fg)]">
@@ -211,7 +256,11 @@ export function StudyPage() {
           메모
         </button>
       </header>
-      <div className="grid min-h-0 grid-cols-[minmax(0,1fr)_var(--sidebar-w)]">
+      <div
+        ref={studyDropTargetRef}
+        data-testid="study-drop-target"
+        className="relative grid min-h-0 grid-cols-[minmax(0,1fr)_var(--sidebar-w)]"
+      >
         <div className="min-h-0 min-w-0 overflow-hidden">
           <LiveChartRoot
             code={snapshot.code}
@@ -264,6 +313,7 @@ export function StudyPage() {
             />
           )}
         </aside>
+        {draggingEntry && overStudy && <StudyDropOverlay />}
       </div>
     </section>
   );

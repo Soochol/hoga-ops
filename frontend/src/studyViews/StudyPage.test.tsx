@@ -42,6 +42,7 @@ import { StudyPage } from './StudyPage';
 import { useLiveBundle } from '../live/useLiveBundle';
 import { useRange } from '../api/range';
 import { useLiveCursorStore } from '../live/useLiveCursorStore';
+import { isPointOnStudy, useEntryDragStore } from '../state/entryDrag';
 
 const snapshot: ParquetStudySnapshot = {
   schema_version: 1,
@@ -165,6 +166,14 @@ describe('StudyPage', () => {
       updateMetadata: { mutate: vi.fn(), isPending: false, error: null },
     });
     useLiveCursorStore.getState().resetCursor();
+    (useEntryDragStore.setState as unknown as (state: Record<string, unknown>) => void)({
+      draggingCode: null,
+      overChart: false,
+      overStudy: false,
+      hitTestChart: null,
+      hitTestStudy: null,
+      targets: {},
+    });
   });
 
   it('seeds a study tab from the query and renders the study tab bar', () => {
@@ -472,6 +481,51 @@ describe('StudyPage', () => {
     expect(screen.getByText('+250')).toBeTruthy();
     expect(container.querySelector('[data-testid="study-detail-panel"] svg')).toBeTruthy();
     expect(container.querySelector('[data-testid="study-detail-panel"] polyline')).toBeTruthy();
+  });
+
+  it('registers the study drop target while mounted and clears it on unmount', () => {
+    useStudyViewSnapshotMock.mockReturnValue({
+      data: snapshot,
+      isLoading: false,
+      isError: false,
+    });
+
+    const rendered = renderAt('/study?view=view1');
+    const target = screen.queryByTestId('study-drop-target');
+    expect(target).toBeTruthy();
+    if (!target) return;
+
+    vi.spyOn(target, 'getBoundingClientRect').mockReturnValue({
+      x: 100,
+      y: 120,
+      left: 100,
+      top: 120,
+      right: 700,
+      bottom: 620,
+      width: 600,
+      height: 500,
+      toJSON: () => ({}),
+    } as DOMRect);
+
+    expect(isPointOnStudy({ x: 300, y: 300 })).toBe(true);
+    expect(isPointOnStudy({ x: 80, y: 300 })).toBe(false);
+
+    rendered.unmount();
+
+    expect(isPointOnStudy({ x: 300, y: 300 })).toBe(false);
+  });
+
+  it('shows the study drop overlay when an entry drag is over the study target', () => {
+    useStudyViewSnapshotMock.mockReturnValue({
+      data: snapshot,
+      isLoading: false,
+      isError: false,
+    });
+    useEntryDragStore.setState({ draggingCode: '005930', overStudy: true });
+
+    renderAt('/study?view=view1');
+
+    expect(screen.queryByText('여기에 놓아 학습뷰 열기')).toBeTruthy();
   });
 
   it('limits saved broker graph and values to the hovered date session', () => {
