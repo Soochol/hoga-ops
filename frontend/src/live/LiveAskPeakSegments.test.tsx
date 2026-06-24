@@ -7,9 +7,11 @@ import {
 import { buildBidPeakOverlaySegments } from './LiveBidPeakSegments';
 import type { AskPeak, BidPeak, RangeSegment, Candle } from '../api/types';
 import type { VirtualAxis } from '../util/virtualAxis';
+import type { Time } from 'lightweight-charts';
 
 // 항등 축: toVirtual(ms)=ms → time = ms/1000.
 const axis = { toVirtual: (ms: number) => ms } as unknown as VirtualAxis;
+const t = (time: number): Time => time as Time;
 const seg = (date: string, o: number, c: number): RangeSegment =>
   ({ date, session_open_ms: o, session_close_ms: c }) as RangeSegment;
 const candle = (ts_ms: number): Candle =>
@@ -157,7 +159,7 @@ describe('styleVisibleMaxAskPeakSegments', () => {
         baseSeg({ time0: 10 as never, time1: 20 as never, qty: 300, color: '#1D4ED8' }),
         baseSeg({ time0: 15 as never, time1: 25 as never, qty: 500, color: '#F97316', lineWidth: 1 }),
       ],
-      { from: 12, to: 22 },
+      { from: t(12), to: t(22) },
       { color: '#EAB308', lineWidth: 3 },
     );
 
@@ -180,7 +182,7 @@ describe('styleVisibleMaxAskPeakSegments', () => {
         baseSeg({ time0: 10 as never, time1: 20 as never, qty: 500, price: 100 }),
         baseSeg({ time0: 12 as never, time1: 22 as never, qty: 500, price: 110 }),
       ],
-      { from: 10, to: 22 },
+      { from: t(10), to: t(22) },
       { color: '#EAB308', lineWidth: 3 },
     );
     expect(out[0]).toMatchObject({ color: '#EAB308', lineWidth: 3, price: 100 });

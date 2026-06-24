@@ -1,5 +1,5 @@
 import { memo, useCallback, useEffect, useRef } from 'react';
-import type { ISeriesApi, SeriesType, Time } from 'lightweight-charts';
+import type { IRange, ISeriesApi, SeriesType, Time } from 'lightweight-charts';
 import type { AskPeak, AskPeakCandidate, Candle, RangeSegment } from '../api/types';
 import type { PaneId } from '../chart/drawing/types';
 import type { PaneSeriesMap } from '../chart/drawing/chartCoordinates';
@@ -86,12 +86,14 @@ type AskPeakLineStyle = {
   lineWidth: number;
 };
 
-type VisibleTimeRange = { from: number; to: number } | null;
+type VisibleTimeRange = IRange<Time> | null;
 
 function segmentOverlapsVisibleRange(segment: AskPeakSegment, visibleRange: VisibleTimeRange): boolean {
   if (!visibleRange) return false;
-  const from = Math.min(visibleRange.from, visibleRange.to);
-  const to = Math.max(visibleRange.from, visibleRange.to);
+  const visibleFrom = visibleRange.from as unknown as number;
+  const visibleTo = visibleRange.to as unknown as number;
+  const from = Math.min(visibleFrom, visibleTo);
+  const to = Math.max(visibleFrom, visibleTo);
   const s0 = segment.time0 as unknown as number;
   const s1 = segment.time1 as unknown as number;
   return Math.max(s0, from) <= Math.min(s1, to);
