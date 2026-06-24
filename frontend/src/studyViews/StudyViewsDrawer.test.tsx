@@ -42,7 +42,7 @@ vi.mock('@dnd-kit/core', async (orig) => {
     }) => {
       dnd.onDragStart = onDragStart ?? null;
       dnd.onDragMove = onDragMove ?? null;
-      dnd.onDragEnd = onDragEnd;
+      dnd.onDragEnd = onDragEnd ?? null;
       dnd.onDragCancel = onDragCancel ?? null;
       return <>{children}</>;
     },
