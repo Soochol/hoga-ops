@@ -439,6 +439,7 @@ describe('StudyPage', () => {
         t_ms: 1_000,
         bandPct: 0.0025,
       }],
+      todayKst: '20260616',
       forceHogaPanes: true,
       paneTogglesOverride: {
         volumeEnabled: false,
@@ -475,6 +476,37 @@ describe('StudyPage', () => {
       imb_max_ask: 1,
     }]);
     expect('study_ratio' in props.ratioBundle!).toBe(false);
+  });
+
+  it('reconstructs trade-volume POC bands from saved candles when older snapshots have no POC rows', () => {
+    useStudyViewSnapshotMock.mockReturnValue({
+      data: {
+        ...snapshot,
+        bundle: {
+          ...snapshot.bundle,
+          trade_volume_pocs: [],
+          candles: [
+            { t: 1_000, open: 70_000, high: 70_100, low: 69_900, close: 70_000, volume: 100 },
+            { t: 1_600, open: 70_000, high: 70_100, low: 69_900, close: 70_000, volume: 200 },
+          ],
+        },
+      },
+      isLoading: false,
+      isError: false,
+    });
+
+    renderAt('/study?view=view1');
+
+    const props = liveChartRootMock.mock.calls[0][0] as ComponentProps<typeof LiveChartRoot>;
+    expect(props.tradeVolumePocs).toEqual([{
+      date: '20260616',
+      centerPrice: 70_000,
+      lowPrice: 69_800,
+      highPrice: 70_200,
+      qty: 300,
+      t_ms: 1_000,
+      bandPct: 0.0025,
+    }]);
   });
 
   it('renders saved orderbook and broker detail from snapshot without cursor fetch hooks', () => {

@@ -291,6 +291,78 @@ def test_study_snapshot_preserves_daily_moving_average_indicator_state():
     ]
 
 
+def test_study_snapshot_preserves_trade_volume_poc_state_and_bands():
+    snap = _snapshot()
+    snap["indicator_state"] = {
+        **snap["indicator_state"],
+        "trade_volume_poc_enabled": True,
+        "trade_volume_poc_band_pct": 0.0025,
+        "trade_volume_poc_color": "#22C55E",
+        "trade_volume_poc_opacity": 0.28,
+    }
+    snap["bundle"]["trade_volume_pocs"] = [
+        {
+            "date": "20260616",
+            "center_price": 70_000,
+            "low_price": 69_500,
+            "high_price": 70_500,
+            "qty": 12_345,
+            "t_ms": 1_000,
+            "band_pct": 0.0025,
+        }
+    ]
+
+    parsed = ParquetStudySnapshot.model_validate(snap)
+    dumped = parsed.model_dump(mode="json")
+
+    assert dumped["indicator_state"]["trade_volume_poc_enabled"] is True
+    assert dumped["indicator_state"]["trade_volume_poc_band_pct"] == 0.0025
+    assert dumped["indicator_state"]["trade_volume_poc_color"] == "#22C55E"
+    assert dumped["indicator_state"]["trade_volume_poc_opacity"] == 0.28
+    assert dumped["bundle"]["trade_volume_pocs"] == [
+        {
+            "date": "20260616",
+            "center_price": 70_000.0,
+            "low_price": 69_500.0,
+            "high_price": 70_500.0,
+            "qty": 12_345.0,
+            "t_ms": 1_000,
+            "band_pct": 0.0025,
+        }
+    ]
+
+
+def test_study_views_create_round_trips_trade_volume_poc_state_and_bands(tmp_path):
+    raw = _req()
+    raw["indicator_state"] = {
+        **raw["indicator_state"],
+        "trade_volume_poc_enabled": True,
+        "trade_volume_poc_band_pct": 0.0025,
+        "trade_volume_poc_color": "#22C55E",
+        "trade_volume_poc_opacity": 0.28,
+    }
+    raw["snapshot"]["indicator_state"] = raw["indicator_state"]
+    raw["snapshot"]["bundle"]["trade_volume_pocs"] = [
+        {
+            "date": "20260616",
+            "center_price": 70_000,
+            "low_price": 69_500,
+            "high_price": 70_500,
+            "qty": 12_345,
+            "t_ms": 1_000,
+            "band_pct": 0.0025,
+        }
+    ]
+    req = ParquetStudyViewWriteRequest.model_validate(raw)
+
+    sv.create_save_sync(tmp_path, req=req, id="view1", now_ms=10)
+    loaded = sv.load_snapshot(tmp_path, id="view1").model_dump(mode="json")
+
+    assert loaded["indicator_state"]["trade_volume_poc_band_pct"] == 0.0025
+    assert loaded["indicator_state"]["trade_volume_poc_color"] == "#22C55E"
+    assert loaded["bundle"]["trade_volume_pocs"][0]["center_price"] == 70_000.0
+
+
 def test_study_snapshot_defaults_detail_arrays_for_legacy_snapshots():
     snap = ParquetStudySnapshot.model_validate(_snapshot())
 

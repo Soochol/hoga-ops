@@ -2,7 +2,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useNavigate, useSearchParams } from 'react-router';
 import { LiveChartRoot } from '../live/LiveChartRoot';
 import { useLiveCursorStore } from '../live/useLiveCursorStore';
-import type { TradeVolumePoc } from '../live/tradeVolumePoc';
+import { computeCandleVolumePocs, type TradeVolumePoc } from '../live/tradeVolumePoc';
 import type { TabViewport } from '../live/viewportAnchor';
 import { bucketSeconds, type LiveMAConfig } from '../state/livePage';
 import { useEntryDragStore } from '../state/entryDrag';
@@ -94,6 +94,7 @@ export function StudyPage() {
     [snapshot],
   );
   const bucketMs = snapshot ? (bucketSeconds(snapshot.timeframe) ?? 60) * 1000 : 60_000;
+  const snapshotTodayKst = snapshot?.bundle.segments.at(-1)?.date ?? '';
   const dailyMovingAverageOverride = useMemo(() => {
     if (!snapshot) return undefined;
     return {
@@ -109,8 +110,8 @@ export function StudyPage() {
       hidden: snapshot.indicator_state.daily_moving_average_hidden === true,
     };
   }, [snapshot]);
-  const tradeVolumePocs = useMemo<TradeVolumePoc[]>(() => (
-    (snapshot?.bundle.trade_volume_pocs ?? []).map((poc) => ({
+  const tradeVolumePocs = useMemo<TradeVolumePoc[]>(() => {
+    const saved = (snapshot?.bundle.trade_volume_pocs ?? []).map((poc) => ({
       date: poc.date,
       centerPrice: poc.center_price,
       lowPrice: poc.low_price,
@@ -118,8 +119,16 @@ export function StudyPage() {
       qty: poc.qty,
       t_ms: poc.t_ms,
       bandPct: poc.band_pct,
-    }))
-  ), [snapshot]);
+    }));
+    if (!chartInput || !snapshot) return saved;
+    const seenDates = new Set(saved.map((poc) => poc.date));
+    const fallback = computeCandleVolumePocs(
+      chartInput.bundle.candles,
+      chartInput.bundle.segments,
+      { bandPct: snapshot.indicator_state.trade_volume_poc_band_pct ?? 0.005 },
+    ).filter((poc) => !seenDates.has(poc.date));
+    return [...saved, ...fallback];
+  }, [chartInput, snapshot]);
   const tradeVolumePocOverride = useMemo(() => {
     if (!snapshot) return undefined;
     return {
@@ -315,6 +324,7 @@ export function StudyPage() {
             }}
             dayAskPeaks={chartInput.bundle.ask_peaks}
             dayBidPeaks={chartInput.bundle.bid_peaks}
+            todayKst={snapshotTodayKst}
             tradeVolumePocs={tradeVolumePocs}
             forceHogaPanes
             paneTogglesOverride={{
