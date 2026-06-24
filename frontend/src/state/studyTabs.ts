@@ -32,6 +32,7 @@ type StudyTabsStore = {
   ensureQuerySeed: (save: SaveTabFields) => void;
   focusTab: (id: string) => void;
   closeTab: (id: string) => void;
+  closeTabsByViewId: (viewId: string) => StudyTab | null;
   reorderTabs: (from: number, to: number) => void;
 };
 
@@ -138,6 +139,26 @@ export const useStudyTabsStore = create<StudyTabsStore>((set, get) => ({
     }
     const nextActiveId = next[index]?.id ?? next[index - 1]?.id ?? null;
     set({ tabs: next, activeTabId: nextActiveId });
+  },
+
+  closeTabsByViewId: (viewId) => {
+    const { tabs, activeTabId } = get();
+    const removedIndexes = tabs
+      .map((tab, index) => (tab.viewId === viewId ? index : -1))
+      .filter((index) => index !== -1);
+    if (removedIndexes.length === 0) {
+      return tabs.find((tab) => tab.id === activeTabId) ?? null;
+    }
+    const next = tabs.filter((tab) => tab.viewId !== viewId);
+    const activeWasRemoved = tabs.some((tab) => tab.id === activeTabId && tab.viewId === viewId);
+    if (!activeWasRemoved) {
+      set({ tabs: next });
+      return next.find((tab) => tab.id === activeTabId) ?? null;
+    }
+    const firstRemovedIndex = removedIndexes[0] ?? 0;
+    const nextActive = next[firstRemovedIndex] ?? next[firstRemovedIndex - 1] ?? null;
+    set({ tabs: next, activeTabId: nextActive?.id ?? null });
+    return nextActive;
   },
 
   reorderTabs: (from, to) => {
