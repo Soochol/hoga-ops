@@ -4,6 +4,8 @@ import { CaptureForm } from '../capture/CaptureForm';
 import { CaptureQueue } from '../capture/CaptureQueue';
 import VerticalSplitter from '../layout/VerticalSplitter';
 import { PageContainer } from '../layout/PageContainer';
+import { instrumentToActiveCode } from '../live/liveInstrument';
+import { useLiveTabsStore } from '../state/liveTabs';
 
 function currentKstMonth(): { year: number; month: number } {
   const now = new Date();
@@ -34,7 +36,12 @@ function clamp(pct: number): number {
 export default function Capture() {
   const { year, month } = currentKstMonth();
   const [searchParams] = useSearchParams();
-  const initialCode = searchParams.get('code');
+  const codeParam = searchParams.get('code');
+  const activeLiveTabCode = useLiveTabsStore((s) => {
+    const active = s.tabs.find((t) => t.id === s.activeTabId);
+    return active ? instrumentToActiveCode(active.instrument ?? null) : null;
+  });
+  const initialCode = codeParam ?? activeLiveTabCode;
   const containerRef = useRef<HTMLDivElement>(null);
   const [leftPct, setLeftPct] = useState<number>(loadInitialPct);
 
