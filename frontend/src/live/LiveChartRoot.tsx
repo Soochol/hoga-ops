@@ -25,6 +25,7 @@ import {
   isMinuteTimeframe,
   isCalendarTimeframe,
 } from '../state/livePage';
+import { useActivePrefs } from '../state/chartPrefs';
 import type { LiveVenueOption } from '../state/liveVenue';
 import type { AskPeak, BidPeak, RangeBundle } from '../api/types';
 import { PAST_CANDLES_MAX_DAYS } from './liveDateTime';
@@ -44,8 +45,8 @@ import { useLiveAxisStore } from './useLiveAxisStore';
 import MovingAverageOverlay from './indicators/MovingAverageOverlay';
 import DailyMovingAverageOverlay from './indicators/DailyMovingAverageOverlay';
 import LiveCurrentPriceLine from './LiveCurrentPriceLine';
-import LiveAskPeakSegments from './LiveAskPeakSegments';
-import LiveBidPeakSegments from './LiveBidPeakSegments';
+import LiveAskPeakSegments, { buildAskPeakOverlaySegments } from './LiveAskPeakSegments';
+import LiveBidPeakSegments, { buildBidPeakOverlaySegments } from './LiveBidPeakSegments';
 import AuctionWindowOverlay from '../chart/AuctionWindowOverlay';
 import DrawingOverlay from '../chart/DrawingOverlay';
 import DrawingPropertyPanel from '../chart/DrawingPropertyPanel';
@@ -80,6 +81,7 @@ const EMPTY_AXIS: VirtualAxis = createVirtualAxis([]);
 /** 안정 빈 배열 — 기본값이 매 렌더 새 []를 만들지 않게. */
 const EMPTY_ASK_PEAKS: readonly AskPeak[] = [];
 const EMPTY_BID_PEAKS: readonly BidPeak[] = [];
+const HIGH_LOW_AVOID_BASELINE_STYLE = { color: '', lineWidth: 1 };
 const DAILY_MIN_EFFECTIVE_BAR_SPACING = 3.5;
 
 function dailyLogicalRange(
@@ -700,6 +702,12 @@ export function LiveChartRoot({ code, timeframe, venue = 'KRX', viewIdentity, bu
   const quoteTotalsEnabled = useLivePageStore((s) => s.quoteTotalsEnabled);
   const ratioEnabled = useLivePageStore((s) => s.ratioEnabled);
   const fillStrengthEnabled = useLivePageStore((s) => s.fillStrengthEnabled);
+  const askPeakEnabled = useLivePageStore((s) => s.askPeakEnabled);
+  const bidPeakEnabled = useLivePageStore((s) => s.bidPeakEnabled);
+  const askPeakIntraMax = useActivePrefs((s) => s.askPeakIntraMax);
+  const askPeakShowAllPrices = useActivePrefs((s) => s.askPeakShowAllPrices);
+  const bidPeakIntraMax = useActivePrefs((s) => s.bidPeakIntraMax);
+  const bidPeakShowAllPrices = useActivePrefs((s) => s.bidPeakShowAllPrices);
   const effectiveVolumeEnabled = paneTogglesOverride?.volumeEnabled ?? volumeEnabled;
   const effectiveQuoteTotalsEnabled = paneTogglesOverride?.quoteTotalsEnabled ?? quoteTotalsEnabled;
   const effectiveRatioEnabled = paneTogglesOverride?.ratioEnabled ?? ratioEnabled;
@@ -760,6 +768,66 @@ export function LiveChartRoot({ code, timeframe, venue = 'KRX', viewIdentity, bu
       cancelAnimationFrame(raf);
     };
   }, [chart, cb, timeframe, paneToggles]);
+
+  const highLowAvoidLabelYLines = useMemo(() => {
+    if (!cb || !isMinuteTimeframe(timeframe)) return [];
+    const series = paneSeries.get('candle' as PaneId);
+    if (!series) return [];
+    const wallSegments = [
+      ...(askPeakEnabled
+        ? buildAskPeakOverlaySegments({
+          dayAskPeaks,
+          todayAllPriceAskPeak,
+          segments: cb.segments,
+          candles: cb.candles,
+          axis,
+          todayKst,
+          baselineStyle: HIGH_LOW_AVOID_BASELINE_STYLE,
+          allPriceStyle: HIGH_LOW_AVOID_BASELINE_STYLE,
+          intraMax: askPeakIntraMax,
+          showAllPrices: askPeakShowAllPrices,
+        })
+        : []),
+      ...(bidPeakEnabled
+        ? buildBidPeakOverlaySegments({
+          dayBidPeaks,
+          todayAllPriceBidPeak,
+          segments: cb.segments,
+          candles: cb.candles,
+          axis,
+          todayKst,
+          baselineStyle: HIGH_LOW_AVOID_BASELINE_STYLE,
+          allPriceStyle: HIGH_LOW_AVOID_BASELINE_STYLE,
+          intraMax: bidPeakIntraMax,
+          showAllPrices: bidPeakShowAllPrices,
+        })
+        : []),
+    ];
+    const yLines: number[] = [];
+    for (const segment of wallSegments) {
+      const y = series.priceToCoordinate(segment.price);
+      if (y === null) continue;
+      const rounded = Math.round(Number(y));
+      if (!yLines.includes(rounded)) yLines.push(rounded);
+    }
+    return yLines;
+  }, [
+    askPeakEnabled,
+    askPeakIntraMax,
+    askPeakShowAllPrices,
+    axis,
+    bidPeakEnabled,
+    bidPeakIntraMax,
+    bidPeakShowAllPrices,
+    cb,
+    dayAskPeaks,
+    dayBidPeaks,
+    paneSeries,
+    timeframe,
+    todayAllPriceAskPeak,
+    todayAllPriceBidPeak,
+    todayKst,
+  ]);
 
   // ADR-0044: hover → cursor store. Only mount on minute timeframes —
   // calendar timeframes (D/W/M) don't have backing parquet on /live.
@@ -917,7 +985,14 @@ export function LiveChartRoot({ code, timeframe, venue = 'KRX', viewIdentity, bu
           <CandleTooltip chart={chart} bundle={cb} axis={axis} paneSeries={paneSeries} timeframe={timeframe} />
           {/* 고저 극값 라벨 — 보이는 범위의 최고/최저봉에 극값 대비율 라벨. cb(안정)·viewport
               구독이라 SSE 틱엔 미재렌더, 팬/줌·캔들 갱신 시에만 재계산. 토글 self-gate. */}
-          <HighLowAnnotationOverlay chart={chart} bundle={cb} axis={axis} paneSeries={paneSeries} timeframe={timeframe} />
+          <HighLowAnnotationOverlay
+            chart={chart}
+            bundle={cb}
+            axis={axis}
+            paneSeries={paneSeries}
+            timeframe={timeframe}
+            avoidLabelYLines={highLowAvoidLabelYLines}
+          />
           {isMinuteTimeframe(timeframe) && hogaBundle && (
             <PriceLevelDotsOverlay chart={chart} bundle={hogaBundle} axis={axis} paneSeries={paneSeries} />
           )}

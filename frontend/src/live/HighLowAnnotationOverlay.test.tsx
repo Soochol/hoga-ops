@@ -129,6 +129,16 @@ describe('placeExtremeLabel', () => {
     expect(right.x).toBeLessThan(750);
   });
 
+  it('moves high/low labels away from occupied wall-label y lines', () => {
+    const high = placeExtremeLabel('above', 440, 96, '60,000원 (-13.59%, 06.10 09:30)', 760, 180, [96]);
+    const low = placeExtremeLabel('below', 440, 96, '58,700원 (+2.10%, 06.10 09:30)', 760, 180, [96]);
+
+    expect(high.y).toBeLessThan(96);
+    expect(low.y).toBeGreaterThan(96);
+    expect(Math.abs(high.y - 96)).toBeGreaterThanOrEqual(16);
+    expect(Math.abs(low.y - 96)).toBeGreaterThanOrEqual(16);
+  });
+
   it('falls back to the original point before pane size is known', () => {
     expect(placeExtremeLabel('above', 20, 12, '59,300원 (-3.90%, 06.09 10:00)', 0, 0)).toEqual({
       place: 'above',
