@@ -441,7 +441,7 @@ export const useLivePageStore = create<Store>((set, get) => ({
   },
 
   setTradeVolumePocBandPct: (bandPct) => {
-    if (bandPct !== 0.005 && bandPct !== 0.01) return;
+    if (bandPct !== 0.0025 && bandPct !== 0.005 && bandPct !== 0.01) return;
     set({ tradeVolumePocBandPct: bandPct });
     persistIndicators(snapshotIndicators(get));
   },

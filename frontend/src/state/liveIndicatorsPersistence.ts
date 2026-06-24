@@ -66,7 +66,7 @@ export const BID_PEAK_ALL_PRICE_DEFAULT_WIDTH: 1 | 2 | 3 | 4 = 1;
 export const TRADE_VOLUME_POC_DEFAULT_BAND_PCT = 0.005;
 export const TRADE_VOLUME_POC_DEFAULT_COLOR = '#A855F7';
 export const TRADE_VOLUME_POC_DEFAULT_OPACITY = 0.12;
-const VALID_TRADE_VOLUME_POC_BAND_PCTS = new Set([0.005, 0.01]);
+const VALID_TRADE_VOLUME_POC_BAND_PCTS = new Set([0.0025, 0.005, 0.01]);
 
 export type PersistedIndicators = {
   movingAverages: LiveMAConfig[];

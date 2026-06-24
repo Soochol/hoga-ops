@@ -177,7 +177,8 @@ describe('mergeLiveIndicatorPrefs — 호가 토글', () => {
     expect(m.tradeVolumePocEnabled).toBe(false);
     expect(m.quoteTotalsEnabled).toBe(true);
   });
-  it('최다거래대 band pct는 0.5% 또는 1%만 보존', () => {
+  it('최대 매물대 band pct는 0.25%, 0.5%, 1%만 보존', () => {
+    expect(mergeLiveIndicatorPrefs({ tradeVolumePocBandPct: 0.0025 }).tradeVolumePocBandPct).toBe(0.0025);
     expect(mergeLiveIndicatorPrefs({ tradeVolumePocBandPct: 0.01 }).tradeVolumePocBandPct).toBe(0.01);
     expect(mergeLiveIndicatorPrefs({ tradeVolumePocBandPct: 0.123 }).tradeVolumePocBandPct).toBe(0.005);
   });
