@@ -300,6 +300,33 @@ describe('useLivePageStore.askPeakAllPriceStyle', () => {
   });
 });
 
+describe('useLivePageStore.askPeakVisibleMaxStyle', () => {
+  beforeEach(() => {
+    localStorage.removeItem('live.indicators.v1');
+    useLivePageStore.setState({
+      askPeakVisibleMaxColor: '#EAB308',
+      askPeakVisibleMaxLineWidth: 3,
+    });
+  });
+
+  it('setAskPeakVisibleMaxStyle updates color and width independently', () => {
+    useLivePageStore.getState().setAskPeakVisibleMaxStyle({ color: '#A855F7' });
+    expect(useLivePageStore.getState().askPeakVisibleMaxColor).toBe('#A855F7');
+    expect(useLivePageStore.getState().askPeakVisibleMaxLineWidth).toBe(3);
+
+    useLivePageStore.getState().setAskPeakVisibleMaxStyle({ lineWidth: 4 });
+    expect(useLivePageStore.getState().askPeakVisibleMaxColor).toBe('#A855F7');
+    expect(useLivePageStore.getState().askPeakVisibleMaxLineWidth).toBe(4);
+  });
+
+  it('persists visible max style fields in the indicator snapshot', () => {
+    useLivePageStore.getState().setAskPeakVisibleMaxStyle({ color: '#A855F7', lineWidth: 4 });
+    const raw = JSON.parse(localStorage.getItem('live.indicators.v1') ?? '{}');
+    expect(raw.askPeakVisibleMaxColor).toBe('#A855F7');
+    expect(raw.askPeakVisibleMaxLineWidth).toBe(4);
+  });
+});
+
 describe('LiveMAConfig constants', () => {
   it('exposes period bounds and slot limit', () => {
     expect(MA_PERIOD_MIN).toBe(2);
