@@ -73,7 +73,11 @@ export function StudyPage() {
     () => savesQuery.data?.saves.find((row) => row.id === queryViewId) ?? null,
     [queryViewId, savesQuery.data?.saves],
   );
-  const activeViewId = queryViewId ?? activeTab?.viewId ?? null;
+  const initialQueryPending = initialQueryViewIdRef.current !== null && queryViewId === initialQueryViewIdRef.current;
+  const unhandledRouteQuery = queryViewId !== null && queryViewId !== handledQueryViewIdRef.current;
+  const activeViewId = initialQueryPending || unhandledRouteQuery
+    ? queryViewId
+    : activeTab?.viewId ?? queryViewId ?? null;
   const snapshotQuery = useStudyViewSnapshot(activeViewId);
   const snapshot = snapshotQuery.data;
   const selectedSave = useMemo(
