@@ -133,6 +133,9 @@ export function LivePage() {
   const quoteTotalsEnabled = useLivePageStore((s) => s.quoteTotalsEnabled);
   const ratioEnabled = useLivePageStore((s) => s.ratioEnabled);
   const fillStrengthEnabled = useLivePageStore((s) => s.fillStrengthEnabled);
+  const dailyMovingAverages = useLivePageStore((s) => s.dailyMovingAverages);
+  const dailyMovingAverageEnabled = useLivePageStore((s) => s.dailyMovingAverageEnabled);
+  const dailyMovingAverageHidden = useLivePageStore((s) => s.dailyMovingAverageHidden);
   const auctionWindowMask = useChartPrefsStore((s) => s.auctionWindowMask);
   const ratioIntraMax = useChartPrefsStore((s) => s.ratioIntraMax);
   const ratioOutlierFilterEnabled = useChartPrefsStore((s) => s.ratioOutlierFilterEnabled);
@@ -201,8 +204,21 @@ export function LivePage() {
     auction_window_mask: auctionWindowMask,
     ratio_outlier_filter_enabled: ratioOutlierFilterEnabled,
     ratio_outlier_threshold: ratioOutlierThreshold,
+    daily_moving_averages: dailyMovingAverages.map((m) => ({
+      id: m.id,
+      enabled: m.enabled,
+      period: m.period,
+      color: m.color,
+      line_width: m.lineWidth,
+      source: m.source,
+    })),
+    daily_moving_average_enabled: dailyMovingAverageEnabled,
+    daily_moving_average_hidden: dailyMovingAverageHidden,
   }), [
     auctionWindowMask,
+    dailyMovingAverageEnabled,
+    dailyMovingAverageHidden,
+    dailyMovingAverages,
     fillStrengthEnabled,
     quoteTotalsEnabled,
     ratioEnabled,

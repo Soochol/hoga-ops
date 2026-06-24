@@ -1,5 +1,6 @@
 import { apiAction, apiCall } from './client';
 import type { LiveTimeframe } from '../state/livePage';
+import type { MASource } from '../chart/projectors/movingAverage';
 import type { AskPeak, BidPeak, OrderbookSnapshot, SourceName } from './types';
 
 export type StudyAggregationBasis = 'close' | 'intra_period_max';
@@ -12,6 +13,15 @@ export type StudyViewport = {
   at_live_edge: boolean;
 };
 
+export type StudyMovingAverageConfig = {
+  id: string;
+  enabled: boolean;
+  period: number;
+  color: string;
+  line_width: 1 | 2 | 3 | 4;
+  source: MASource;
+};
+
 export type StudyIndicatorState = {
   volume_enabled: boolean;
   quote_totals_enabled: boolean;
@@ -21,6 +31,9 @@ export type StudyIndicatorState = {
   auction_window_mask: boolean;
   ratio_outlier_filter_enabled: boolean;
   ratio_outlier_threshold: number;
+  daily_moving_averages?: StudyMovingAverageConfig[];
+  daily_moving_average_enabled?: boolean;
+  daily_moving_average_hidden?: boolean;
 };
 
 export type StudyProvenance = {

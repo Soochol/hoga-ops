@@ -242,6 +242,55 @@ def test_study_snapshot_rejects_non_finite_indicator_threshold():
         ParquetStudySnapshot.model_validate(snap)
 
 
+def test_study_snapshot_preserves_daily_moving_average_indicator_state():
+    snap = _snapshot()
+    snap["indicator_state"] = {
+        **snap["indicator_state"],
+        "daily_moving_average_enabled": True,
+        "daily_moving_average_hidden": False,
+        "daily_moving_averages": [
+            {
+                "id": "dma-20",
+                "enabled": True,
+                "period": 20,
+                "color": "#EAB308",
+                "line_width": 2,
+                "source": "close",
+            },
+            {
+                "id": "dma-60",
+                "enabled": False,
+                "period": 60,
+                "color": "#22C55E",
+                "line_width": 1,
+                "source": "hl2",
+            },
+        ],
+    }
+
+    parsed = ParquetStudySnapshot.model_validate(snap)
+
+    assert parsed.indicator_state.daily_moving_average_enabled is True
+    assert parsed.model_dump(mode="json")["indicator_state"]["daily_moving_averages"] == [
+        {
+            "id": "dma-20",
+            "enabled": True,
+            "period": 20,
+            "color": "#EAB308",
+            "line_width": 2,
+            "source": "close",
+        },
+        {
+            "id": "dma-60",
+            "enabled": False,
+            "period": 60,
+            "color": "#22C55E",
+            "line_width": 1,
+            "source": "hl2",
+        },
+    ]
+
+
 def test_study_snapshot_defaults_detail_arrays_for_legacy_snapshots():
     snap = ParquetStudySnapshot.model_validate(_snapshot())
 
