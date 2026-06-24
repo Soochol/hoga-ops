@@ -20,6 +20,7 @@ import { paneSpecsForTimeframe } from './paneSpecsForTimeframe';
 import DayBoundaryOverlay from '../chart/DayBoundaryOverlay';
 import {
   useLivePageStore,
+  type LiveMAConfig,
   type LiveTimeframe,
   isMinuteTimeframe,
   isCalendarTimeframe,
@@ -145,6 +146,11 @@ interface Props {
     fillStrengthEnabled?: boolean;
     hogaPanes?: boolean;
   };
+  dailyMovingAverageOverride?: {
+    configs: readonly LiveMAConfig[];
+    masterEnabled: boolean;
+    hidden: boolean;
+  };
   /** /live persists viewport to active live tabs; snapshot study pages opt out. */
   persistLiveViewport?: boolean;
   /** Save flows can read the current chart viewport without coupling to chart internals. */
@@ -158,7 +164,7 @@ interface Props {
 /** /live's single-chart root. Mounts the timeframe-appropriate pane set
  * (see `paneSpecsForTimeframe`) inside one createChart instance so
  * timeScale is shared across candle/volume/(hoga) panes. */
-export function LiveChartRoot({ code, timeframe, venue = 'KRX', viewIdentity, bundle, chartBundle, ratioBundle, clampEngaged, isPastCandlesLoading, isExtending = false, pastDataWarnings, restoreViewport = null, dayAskPeaks = EMPTY_ASK_PEAKS, todayAllPriceAskPeak = null, dayBidPeaks = EMPTY_BID_PEAKS, todayAllPriceBidPeak = null, todayKst = '', forceHogaPanes = false, paneTogglesOverride, persistLiveViewport = true, onViewportCaptureReady, onCursorActiveChange, onCandleBasisHover, onCandleBasisClick }: Props) {
+export function LiveChartRoot({ code, timeframe, venue = 'KRX', viewIdentity, bundle, chartBundle, ratioBundle, clampEngaged, isPastCandlesLoading, isExtending = false, pastDataWarnings, restoreViewport = null, dayAskPeaks = EMPTY_ASK_PEAKS, todayAllPriceAskPeak = null, dayBidPeaks = EMPTY_BID_PEAKS, todayAllPriceBidPeak = null, todayKst = '', forceHogaPanes = false, paneTogglesOverride, dailyMovingAverageOverride, persistLiveViewport = true, onViewportCaptureReady, onCursorActiveChange, onCandleBasisHover, onCandleBasisClick }: Props) {
   const containerRef = useRef<HTMLDivElement>(null);
   // 과거 fetch 경고 요약 — rate-limit 지연(빈칸 문구 전환)과 일부 구간 누락(부분로딩 칩)
   // 표시에 쓴다. summarizeWarnings는 null/빈배열을 {count:0,hasRateLimit:false}로 접는다.
@@ -770,16 +776,14 @@ export function LiveChartRoot({ code, timeframe, venue = 'KRX', viewIdentity, bu
     }
     let pending: number | null = null;
     const handler = (param: { time?: unknown; point?: { x: number } | null }) => {
-      // Cursor left the chart pane entirely (mouse-leave) → restore the last
-      // valid hover point so the side panel stays pinned instead of jumping to
-      // LIVE.
-      // Cancel any pending valid-hover write so a queued rAF can't re-set the
-      // cursor after we've restored.
+      // Cursor left the chart pane entirely (mouse-leave) → return the sidebar
+      // to latest mode. Cancel any pending valid-hover write so a queued rAF
+      // can't re-set the cursor after the pointer is already off-chart.
       if (param.point == null) {
         if (pending !== null) { cancelAnimationFrame(pending); pending = null; }
         onCursorActiveChange?.(false);
         onCandleBasisHover?.(null);
-        useLiveCursorStore.getState().restoreCursor();
+        useLiveCursorStore.getState().clearCursor();
         return;
       }
       if (pending !== null) cancelAnimationFrame(pending);
@@ -787,10 +791,10 @@ export function LiveChartRoot({ code, timeframe, venue = 'KRX', viewIdentity, bu
         pending = null;
         const store = useLiveCursorStore.getState();
         const t = param.time;
-        // No usable time (defensive) → not on a bar → keep sticky last point.
+        // No usable time (defensive) → not on a bar → latest mode.
         if (typeof t !== 'number' || axis.segments.length === 0) {
           onCursorActiveChange?.(false);
-          store.restoreCursor();
+          store.clearCursor();
           return;
         }
         // ChartStage.tsx:197 pattern — param.time is virtual-axis seconds.
@@ -801,14 +805,14 @@ export function LiveChartRoot({ code, timeframe, venue = 'KRX', viewIdentity, bu
         // compressed) virtual axis forward, so `realMs` lands on the session tail
         // (15:20–15:30 closing-auction window), a FUTURE no-data time. Left as a
         // cursor it pinned the sidebar to a slot parquet/SSE can't serve → blank.
-        // Treat "cursor past the last real candle" as not-on-a-bar → keep the
-        // last sticky point.
+        // Treat "cursor past the last real candle" as not-on-a-bar → return
+        // to latest mode.
         // (verified 2026-06-11: coordinateToTime jumps 14:53 → 15:20 across the
         // whitespace boundary while the live edge was 14:54).
         const lastMs = lastCandleMsRef.current;
         if (lastMs !== null && realMs > lastMs) {
           onCursorActiveChange?.(false);
-          store.restoreCursor();
+          store.clearCursor();
           return;
         }
         onCandleBasisHover?.(kstDateFromMs(realMs));
@@ -878,7 +882,7 @@ export function LiveChartRoot({ code, timeframe, venue = 'KRX', viewIdentity, bu
             />
           ))}
           <MovingAverageOverlay chart={chart} bundle={cb} axis={axis} />
-          <DailyMovingAverageOverlay chart={chart} bundle={cb} axis={axis} code={code} timeframe={timeframe} venue={venue} todayKst={todayKst} />
+          <DailyMovingAverageOverlay chart={chart} bundle={cb} axis={axis} code={code} timeframe={timeframe} venue={venue} todayKst={todayKst} override={dailyMovingAverageOverride} />
           <LiveCurrentPriceLine paneSeries={paneSeries} bundle={cb} code={code} />
           {isMinuteTimeframe(timeframe) && (
             <LiveAskPeakSegments

@@ -178,6 +178,30 @@ describe('buildStudySnapshotRequest', () => {
     ]);
   });
 
+  it('preserves daily moving average indicator settings in the saved snapshot state', () => {
+    const dailyMaState = {
+      ...indicatorState,
+      daily_moving_average_enabled: true,
+      daily_moving_average_hidden: false,
+      daily_moving_averages: [
+        { id: 'dma-20', enabled: true, period: 20, color: '#EAB308', line_width: 2, source: 'close' },
+        { id: 'dma-60', enabled: false, period: 60, color: '#22C55E', line_width: 1, source: 'hl2' },
+      ],
+    };
+
+    const req = build({ indicatorState: dailyMaState as never });
+
+    expect(req.indicator_state).toMatchObject({
+      daily_moving_average_enabled: true,
+      daily_moving_average_hidden: false,
+      daily_moving_averages: [
+        { id: 'dma-20', enabled: true, period: 20, color: '#EAB308', line_width: 2, source: 'close' },
+        { id: 'dma-60', enabled: false, period: 60, color: '#22C55E', line_width: 1, source: 'hl2' },
+      ],
+    });
+    expect(req.snapshot.indicator_state).toEqual(req.indicator_state);
+  });
+
   it('derives ratio with the same quoteImbalance semantics as the chart', () => {
     const req = build();
 

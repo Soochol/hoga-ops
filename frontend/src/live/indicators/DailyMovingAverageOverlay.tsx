@@ -2,7 +2,7 @@ import { memo, useEffect, useMemo, useRef } from 'react';
 import { LineSeries, type AutoscaleInfoProvider, type IChartApi, type ISeriesApi, type Time } from 'lightweight-charts';
 import type { RangeBundle } from '../../api/types';
 import type { VirtualAxis } from '../../util/virtualAxis';
-import { useLivePageStore, isMinuteTimeframe, type LiveTimeframe } from '../../state/livePage';
+import { useLivePageStore, isMinuteTimeframe, type LiveMAConfig, type LiveTimeframe } from '../../state/livePage';
 import { useChartPrefsStore } from '../../state/chartPrefs';
 import type { LiveVenueOption } from '../../state/liveVenue';
 import { useLivePastDailyCandles } from '../../api/livePastDailyCandles';
@@ -17,6 +17,11 @@ type Props = {
   timeframe: LiveTimeframe;
   venue?: LiveVenueOption;
   todayKst: string;
+  override?: {
+    configs: readonly LiveMAConfig[];
+    masterEnabled: boolean;
+    hidden: boolean;
+  };
 };
 
 type LineApi = ISeriesApi<'Line'>;
@@ -28,10 +33,13 @@ const EMPTY_DAILY: never[] = [];
  *  (ADR-0073). 현재봉 MovingAverageOverlay의 series-reconcile 패턴을 미러링하되,
  *  일봉 데이터를 useLiveBundle 밖 독립 훅으로 fetch한다(번들 split 비침투). 분봉
  *  전용: D/W/M에선 미렌더. 레전드 연동은 v1 비대상(maSeriesRegistry 미등록). */
-function DailyMovingAverageOverlay({ chart, bundle, axis, code, timeframe, venue = 'KRX', todayKst }: Props) {
-  const configs = useLivePageStore((s) => s.dailyMovingAverages);
-  const masterEnabled = useLivePageStore((s) => s.dailyMovingAverageEnabled);
-  const hidden = useLivePageStore((s) => s.dailyMovingAverageHidden);
+function DailyMovingAverageOverlay({ chart, bundle, axis, code, timeframe, venue = 'KRX', todayKst, override }: Props) {
+  const storeConfigs = useLivePageStore((s) => s.dailyMovingAverages);
+  const storeMasterEnabled = useLivePageStore((s) => s.dailyMovingAverageEnabled);
+  const storeHidden = useLivePageStore((s) => s.dailyMovingAverageHidden);
+  const configs = override?.configs ?? storeConfigs;
+  const masterEnabled = override?.masterEnabled ?? storeMasterEnabled;
+  const hidden = override?.hidden ?? storeHidden;
   const candleOnlyScale = useChartPrefsStore((s) => s.candlePaneCandleOnlyScale);
   const seriesByIdRef = useRef<Map<string, LineApi>>(new Map());
 
