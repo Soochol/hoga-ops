@@ -2,6 +2,7 @@ import { useMemo } from 'react';
 import BrokerTrajectoryTable from '../sidebar/BrokerTrajectoryTable';
 import CursorSidebar from '../sidebar/CursorSidebar';
 import OrderbookTable from '../sidebar/OrderbookTable';
+import TotalQtyBar from '../sidebar/TotalQtyBar';
 import type { RangeSegment } from '../api/types';
 import type { StudySnapshotDetailInput } from './studySnapshotAdapter';
 import { bucketStartForCursor, studyBrokerBucketsToSeries } from './studySnapshotAdapter';
@@ -60,7 +61,12 @@ export function StudyDetailPanel({ details, candles, segments, bucketMs, cursorM
   return (
     <div data-testid="study-detail-panel" className="grid h-full min-w-0 grid-rows-[minmax(0,1fr)_auto] bg-bg-card">
       <CursorSidebar
-        orderbook={<OrderbookTable snapshot={snapshot} />}
+        orderbook={(
+          <>
+            <OrderbookTable snapshot={snapshot} />
+            <TotalQtyBar snapshot={snapshot} maskRatio={false} />
+          </>
+        )}
         brokers={(
           <BrokerTrajectoryTable
             series={brokerSeries}
