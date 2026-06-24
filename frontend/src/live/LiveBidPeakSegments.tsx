@@ -72,6 +72,7 @@ export function buildBidPeakSegments(
       // peak이 실제 걸린 시점(속한 캔들에 스냅) — 그 x에 점을 찍어 언제 최대벽이었는지 표시.
       peakTime: (axis.toVirtual(peakMs) / 1000) as Time,
       price: peakPrice,
+      qty: peakQty,
       label: formatBidPeakLabel(peakPrice, peakQty),
       color,
       lineWidth,

@@ -196,6 +196,7 @@ describe('IndicatorPanel', () => {
     fireEvent.click(screen.getByRole('button', { name: '당일 매도 최대벽' }));
     expect(screen.getByRole('button', { name: '체결가격 기준 최대벽 스타일 선택' })).toBeTruthy();
     expect(screen.getByRole('button', { name: '미체결 포함 최대벽 스타일 선택' })).toBeTruthy();
+    expect(screen.getByRole('button', { name: '보이는 영역 최대벽 스타일 선택' })).toBeTruthy();
   });
 
   it('당일 매수 최대벽 카테고리 토글', () => {

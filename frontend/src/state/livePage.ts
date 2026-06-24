@@ -129,6 +129,7 @@ type Store = Persisted & PersistedIndicators & {
   setAskPeakEnabled: (enabled: boolean) => void;
   setAskPeakStyle: (patch: { color?: string; lineWidth?: 1 | 2 | 3 | 4 }) => void;
   setAskPeakAllPriceStyle: (patch: { color?: string; lineWidth?: 1 | 2 | 3 | 4 }) => void;
+  setAskPeakVisibleMaxStyle: (patch: { color?: string; lineWidth?: 1 | 2 | 3 | 4 }) => void;
   setBidPeakEnabled: (enabled: boolean) => void;
   setBidPeakStyle: (patch: { color?: string; lineWidth?: 1 | 2 | 3 | 4 }) => void;
   setBidPeakAllPriceStyle: (patch: { color?: string; lineWidth?: 1 | 2 | 3 | 4 }) => void;
@@ -231,6 +232,8 @@ function snapshotIndicators(get: () => Store): PersistedIndicators {
     askPeakLineWidth: s.askPeakLineWidth,
     askPeakAllPriceColor: s.askPeakAllPriceColor,
     askPeakAllPriceLineWidth: s.askPeakAllPriceLineWidth,
+    askPeakVisibleMaxColor: s.askPeakVisibleMaxColor,
+    askPeakVisibleMaxLineWidth: s.askPeakVisibleMaxLineWidth,
     bidPeakEnabled: s.bidPeakEnabled,
     bidPeakColor: s.bidPeakColor,
     bidPeakLineWidth: s.bidPeakLineWidth,
@@ -375,6 +378,14 @@ export const useLivePageStore = create<Store>((set, get) => ({
     set((s) => ({
       askPeakAllPriceColor: patch.color ?? s.askPeakAllPriceColor,
       askPeakAllPriceLineWidth: patch.lineWidth ?? s.askPeakAllPriceLineWidth,
+    }));
+    persistIndicators(snapshotIndicators(get));
+  },
+
+  setAskPeakVisibleMaxStyle: (patch) => {
+    set((s) => ({
+      askPeakVisibleMaxColor: patch.color ?? s.askPeakVisibleMaxColor,
+      askPeakVisibleMaxLineWidth: patch.lineWidth ?? s.askPeakVisibleMaxLineWidth,
     }));
     persistIndicators(snapshotIndicators(get));
   },
