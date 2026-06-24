@@ -23,6 +23,8 @@ type Props = {
   axis: VirtualAxis;
   paneSeries: PaneSeriesMap;
   timeframe: LiveTimeframe;
+  /** Canvas-based wall indicator labels already occupying these y lines. High/low labels yield. */
+  avoidLabelYLines?: readonly number[];
 };
 
 const dotStyle = (color: string): CSSProperties => ({
@@ -46,6 +48,7 @@ const LABEL_EDGE_PAD_PX = 6;
 const LABEL_DOT_GAP_PX = 8;
 const LABEL_HEIGHT_PX = 16;
 const LABEL_CHAR_WIDTH_PX = 6.6;
+const LABEL_AVOID_GAP_PX = LABEL_HEIGHT_PX;
 
 function estimateLabelWidth(text: string): number {
   return text.length * LABEL_CHAR_WIDTH_PX + 8;
@@ -58,6 +61,7 @@ export function placeExtremeLabel(
   text: string,
   paneWidth: number,
   paneHeight: number,
+  avoidYLines: readonly number[] = [],
 ): ExtremeLabelPlacement {
   if (paneWidth <= 0 || paneHeight <= 0) return { x, y, place: preferred };
   const labelWidth = estimateLabelWidth(text);
@@ -70,7 +74,31 @@ export function placeExtremeLabel(
   let place = preferred;
   if (preferred === 'above' && !roomAbove && roomBelow) place = 'below';
   if (preferred === 'below' && !roomBelow && roomAbove) place = 'above';
-  const placedY = Math.min(paneHeight - LABEL_EDGE_PAD_PX, Math.max(LABEL_EDGE_PAD_PX, y));
+  let placedY = Math.min(paneHeight - LABEL_EDGE_PAD_PX, Math.max(LABEL_EDGE_PAD_PX, y));
+  if (avoidYLines.length > 0) {
+    const minY = LABEL_EDGE_PAD_PX;
+    const maxY = paneHeight - LABEL_EDGE_PAD_PX;
+    const direction = place === 'above' ? -1 : 1;
+    const conflicts = (candidate: number) => avoidYLines.some((lineY) => (
+      Number.isFinite(lineY) && Math.abs(candidate - lineY) < LABEL_AVOID_GAP_PX
+    ));
+    const pushAway = (startY: number, pushDirection: 1 | -1): number => {
+      let candidate = startY;
+      const sorted = avoidYLines
+        .filter(Number.isFinite)
+        .sort((a, b) => (
+          pushDirection > 0 ? a - b : b - a
+        ));
+      for (const lineY of sorted) {
+        if (Math.abs(candidate - lineY) < LABEL_AVOID_GAP_PX) {
+          candidate = lineY + pushDirection * LABEL_AVOID_GAP_PX;
+        }
+      }
+      return Math.min(maxY, Math.max(minY, candidate));
+    };
+    const preferredY = pushAway(placedY, direction);
+    placedY = conflicts(preferredY) ? pushAway(placedY, direction === 1 ? -1 : 1) : preferredY;
+  }
   return { x: placedX, y: placedY, place };
 }
 
@@ -107,7 +135,7 @@ function readVisibleRange(ts: ITimeScaleApi<Time>): { from: number; to: number }
  * 구독해 팬/줌 시 재계산하고, 차트 API 는 read-only 로 읽는다. PaneSpec series-marker 가 아닌
  * DOM 오버레이인 이유: marker seam 은 데이터 cadence(팬/줌 무반응)라 이 기능엔 맞지 않음(그릴링).
  */
-function HighLowAnnotationOverlay({ chart, bundle, axis, paneSeries, timeframe }: Props) {
+function HighLowAnnotationOverlay({ chart, bundle, axis, paneSeries, timeframe, avoidLabelYLines = [] }: Props) {
   const enabled = useActivePrefs((p) => p.highLowLabelsEnabled);
   const containerRef = useRef<HTMLDivElement>(null);
   const [, tick] = useReducer((n: number) => n + 1, 0);
@@ -193,7 +221,7 @@ function HighLowAnnotationOverlay({ chart, bundle, axis, paneSeries, timeframe }
       {items.map(
         (it) => {
           if (!it) return null;
-          const label = placeExtremeLabel(it.place, it.x, it.y, it.text, paneWidth, paneHeight);
+          const label = placeExtremeLabel(it.place, it.x, it.y, it.text, paneWidth, paneHeight, avoidLabelYLines);
           return (
             <div key={it.kind}>
               <span aria-hidden="true" style={{ ...dotStyle(it.color), left: it.x, top: it.y }} />
