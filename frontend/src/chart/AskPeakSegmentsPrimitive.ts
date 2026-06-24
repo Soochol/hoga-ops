@@ -38,6 +38,92 @@ export interface AskPeakSegment {
 const PEAK_DOT_RADIUS_PX = 3.5;
 const LABEL_GAP_PX = 3;
 const LABEL_FONT_PX = 11;
+const LABEL_ROW_GAP_PX = 2;
+const LABEL_EDGE_PAD_PX = 4;
+
+export type AskPeakLabelCandidate = {
+  index: number;
+  xRight: number;
+  yLine: number;
+  width: number;
+};
+
+export type AskPeakLabelLayout = AskPeakLabelCandidate & {
+  baselineY: number;
+};
+
+function clamp(n: number, lo: number, hi: number): number {
+  return Math.min(hi, Math.max(lo, n));
+}
+
+function labelsOverlap(a: AskPeakLabelLayout, b: AskPeakLabelLayout, rowHeight: number): boolean {
+  const aLeft = a.xRight - a.width;
+  const bLeft = b.xRight - b.width;
+  const xOverlaps = aLeft <= b.xRight && bLeft <= a.xRight;
+  const yOverlaps = Math.abs(a.baselineY - b.baselineY) < rowHeight;
+  return xOverlaps && yOverlaps;
+}
+
+function labelXOverlaps(a: AskPeakLabelLayout, b: AskPeakLabelLayout): boolean {
+  const aLeft = a.xRight - a.width;
+  const bLeft = b.xRight - b.width;
+  return aLeft <= b.xRight && bLeft <= a.xRight;
+}
+
+function overlappingLabelGroups(layouts: readonly AskPeakLabelLayout[]): AskPeakLabelLayout[][] {
+  const groups: AskPeakLabelLayout[][] = [];
+  for (const layout of layouts) {
+    const matches = groups.filter((group) => group.some((item) => labelXOverlaps(item, layout)));
+    if (matches.length === 0) {
+      groups.push([layout]);
+      continue;
+    }
+    const merged = matches.flat().concat(layout);
+    for (const match of matches) {
+      groups.splice(groups.indexOf(match), 1);
+    }
+    groups.push(merged);
+  }
+  return groups;
+}
+
+/**
+ * Canvas 라벨은 DOM 레이아웃 도움을 못 받으므로, 같은 화면 영역의 라벨끼리만 baseline을 벌린다.
+ * 원래 선 위 위치를 우선하되 겹치면 아래쪽 빈 슬롯으로 내리고, pane 밖으로 나가면 위로 되민다.
+ */
+export function layoutAskPeakLabels(
+  candidates: readonly AskPeakLabelCandidate[],
+  minBaselineY: number,
+  maxBaselineY: number,
+  rowHeight: number,
+): AskPeakLabelLayout[] {
+  const layouts: AskPeakLabelLayout[] = [];
+  const sorted = candidates.slice().sort((a, b) => a.yLine - b.yLine || a.xRight - b.xRight || a.index - b.index);
+  for (const c of sorted) {
+    let baselineY = clamp(c.yLine, minBaselineY, maxBaselineY);
+    for (const placed of layouts) {
+      if (labelsOverlap({ ...c, baselineY }, placed, rowHeight)) {
+        baselineY = Math.max(baselineY, placed.baselineY + rowHeight);
+      }
+    }
+    layouts.push({ ...c, baselineY });
+  }
+  for (const group of overlappingLabelGroups(layouts)) {
+    const maxY = Math.max(...group.map((layout) => layout.baselineY));
+    const overflow = Math.max(0, maxY - maxBaselineY);
+    if (overflow > 0) {
+      for (const layout of group) layout.baselineY -= overflow;
+    }
+    const minY = Math.min(...group.map((layout) => layout.baselineY));
+    const underflow = Math.max(0, minBaselineY - minY);
+    if (underflow > 0) {
+      for (const layout of group) layout.baselineY += underflow;
+    }
+  }
+  return layouts
+    .map((layout) => ({ ...layout, baselineY: clamp(layout.baselineY, minBaselineY, maxBaselineY) }))
+    .sort((a, b) => a.index - b.index);
+}
 
 class AskPeakSegmentsRenderer implements IPrimitivePaneRenderer {
   private readonly _source: AskPeakSegmentsPrimitive;
@@ -56,7 +142,9 @@ class AskPeakSegmentsRenderer implements IPrimitivePaneRenderer {
       const ctx = scope.context;
       const hr = scope.horizontalPixelRatio;
       const vr = scope.verticalPixelRatio;
-      for (const s of segments) {
+      const labelCandidates: AskPeakLabelCandidate[] = [];
+      for (let i = 0; i < segments.length; i += 1) {
+        const s = segments[i];
         const x0 = timeScale.timeToCoordinate(s.time0);
         const x1 = timeScale.timeToCoordinate(s.time1);
         const y = series.priceToCoordinate(s.price);
@@ -87,14 +175,29 @@ class AskPeakSegmentsRenderer implements IPrimitivePaneRenderer {
         ctx.arc(xPeak * hr, py, PEAK_DOT_RADIUS_PX * hr, 0, Math.PI * 2);
         ctx.fillStyle = s.color;
         ctx.fill();
-        // 라벨(선 위, 오른쪽 끝 정렬).
+        // 라벨은 선/점 렌더 후 한 번에 배치해 가까운 가격대의 텍스트 겹침을 피한다.
         if (s.label) {
           ctx.font = `${LABEL_FONT_PX * vr}px sans-serif`;
-          ctx.fillStyle = s.color;
-          ctx.textBaseline = 'bottom';
-          ctx.textAlign = 'right';
-          ctx.fillText(s.label, px1, py - LABEL_GAP_PX * vr);
+          labelCandidates.push({
+            index: i,
+            xRight: px1,
+            yLine: py - LABEL_GAP_PX * vr,
+            width: ctx.measureText(s.label).width,
+          });
         }
+      }
+      if (labelCandidates.length === 0) return;
+      const rowHeight = (LABEL_FONT_PX + LABEL_ROW_GAP_PX) * vr;
+      const minBaselineY = (LABEL_FONT_PX + LABEL_EDGE_PAD_PX) * vr;
+      const maxBaselineY = scope.bitmapSize.height - LABEL_EDGE_PAD_PX * vr;
+      const labelLayouts = layoutAskPeakLabels(labelCandidates, minBaselineY, maxBaselineY, rowHeight);
+      for (const layout of labelLayouts) {
+        const s = segments[layout.index];
+        ctx.font = `${LABEL_FONT_PX * vr}px sans-serif`;
+        ctx.fillStyle = s.color;
+        ctx.textBaseline = 'bottom';
+        ctx.textAlign = 'right';
+        ctx.fillText(s.label, layout.xRight, layout.baselineY);
       }
     });
   }
