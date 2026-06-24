@@ -30,8 +30,8 @@ function FolderRow(props: {
 }) {
   const { setNodeRef, isOver } = useDroppable({ id: folderDroppableId(props.id) });
   return (
-    <div ref={setNodeRef}
-      className={`group flex items-center gap-1 pl-3 pr-2 py-1.5 rounded text-sm ${
+    <div ref={setNodeRef} data-testid={`folder-row-${props.id}`}
+      className={`group relative flex items-center gap-1 pl-3 pr-2 py-1.5 rounded text-sm ${
         props.isSelected ? 'bg-bg-input text-fg' : 'text-fg-dim hover:bg-bg-input-hover'} ${
         isOver ? 'ring-1 ring-accent bg-bg-input-hover' : ''}`}>
       {props.isEditing ? (
@@ -45,15 +45,18 @@ function FolderRow(props: {
           className="flex-1 min-w-0 px-1 py-0.5 rounded bg-bg-input text-sm border border-border" />
       ) : (
         <button type="button" onClick={props.onSelect}
-          className="flex-1 min-w-0 flex items-center justify-between text-left">
-          <span className="truncate">{props.name}</span>
-          <span className="font-mono tabular-nums text-fg-dimmer text-xs">{props.count}</span>
+          className="flex-1 min-w-0 flex items-center justify-between text-left pr-2 group-hover:pr-24 group-focus-within:pr-24">
+          <span className="truncate" title={props.name}>{props.name}</span>
+          <span className="shrink-0 font-mono tabular-nums text-fg-dimmer text-xs">{props.count}</span>
         </button>
       )}
       {!props.isEditing && (
         // opacity 숨김(display:none 아님) — Tab 포커스 도달 + group-focus-within 노출
         // (패널 GroupHeader ⋯과 같은 키보드 접근성 계약).
-        <div className="flex items-center gap-0.5 text-fg-dimmer opacity-0 group-hover:opacity-100 group-focus-within:opacity-100">
+        <div data-testid={`folder-row-actions-${props.id}`}
+          className={`absolute right-2 flex items-center gap-0.5 text-fg-dimmer opacity-0 pointer-events-none group-hover:opacity-100 group-hover:pointer-events-auto group-focus-within:opacity-100 group-focus-within:pointer-events-auto ${
+            props.isSelected ? 'bg-bg-input' : 'bg-bg-input-hover'
+          }`}>
           <button
             type="button"
             role="switch"
