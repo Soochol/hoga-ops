@@ -68,6 +68,10 @@ const snapshot: ParquetStudySnapshot = {
     daily_moving_averages: [
       { id: 'dma-20', enabled: true, period: 20, color: '#EAB308', line_width: 2, source: 'close' },
     ],
+    trade_volume_poc_enabled: true,
+    trade_volume_poc_band_pct: 0.0025,
+    trade_volume_poc_color: '#22C55E',
+    trade_volume_poc_opacity: 0.28,
   },
   provenance: { saved_from_route: '/live', data_provenance: 'live_mixed' },
   bundle: {
@@ -97,6 +101,15 @@ const snapshot: ParquetStudySnapshot = {
       max_price: 69_800,
       max_qty: 5_800,
       max_t_ms: 1_000,
+    }],
+    trade_volume_pocs: [{
+      date: '20260616',
+      center_price: 70_000,
+      low_price: 69_500,
+      high_price: 70_500,
+      qty: 12_345,
+      t_ms: 1_000,
+      band_pct: 0.0025,
     }],
     data_warnings: [],
   },
@@ -417,6 +430,15 @@ describe('StudyPage', () => {
         max_qty: 5_800,
         max_t_ms: 1_000,
       }],
+      tradeVolumePocs: [{
+        date: '20260616',
+        centerPrice: 70_000,
+        lowPrice: 69_500,
+        highPrice: 70_500,
+        qty: 12_345,
+        t_ms: 1_000,
+        bandPct: 0.0025,
+      }],
       forceHogaPanes: true,
       paneTogglesOverride: {
         volumeEnabled: false,
@@ -428,6 +450,11 @@ describe('StudyPage', () => {
         configs: [{ id: 'dma-20', enabled: true, period: 20, color: '#EAB308', lineWidth: 2, source: 'close' }],
         masterEnabled: true,
         hidden: false,
+      },
+      tradeVolumePocOverride: {
+        enabled: true,
+        color: '#22C55E',
+        opacity: 0.28,
       },
       persistLiveViewport: false,
     });

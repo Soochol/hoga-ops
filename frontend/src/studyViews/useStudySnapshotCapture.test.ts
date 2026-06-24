@@ -92,6 +92,26 @@ function bundle(overrides: Partial<RangeBundle> = {}): RangeBundle {
         max_t_ms: 1,
       },
     ],
+    trade_volume_pocs: [
+      {
+        date: '20260616',
+        center_price: 70_000,
+        low_price: 69_500,
+        high_price: 70_500,
+        qty: 12_345,
+        t_ms: 2_000,
+        band_pct: 0.0025,
+      },
+      {
+        date: '20260615',
+        center_price: 69_000,
+        low_price: 68_500,
+        high_price: 69_500,
+        qty: 5_000,
+        t_ms: 1,
+        band_pct: 0.005,
+      },
+    ],
     ...overrides,
   };
 }
@@ -176,6 +196,17 @@ describe('buildStudySnapshotRequest', () => {
         max_t_ms: 3_000,
       },
     ]);
+    expect(req.snapshot.bundle.trade_volume_pocs).toEqual([
+      {
+        date: '20260616',
+        center_price: 70_000,
+        low_price: 69_500,
+        high_price: 70_500,
+        qty: 12_345,
+        t_ms: 2_000,
+        band_pct: 0.0025,
+      },
+    ]);
   });
 
   it('preserves daily moving average indicator settings in the saved snapshot state', () => {
@@ -198,6 +229,26 @@ describe('buildStudySnapshotRequest', () => {
         { id: 'dma-20', enabled: true, period: 20, color: '#EAB308', line_width: 2, source: 'close' },
         { id: 'dma-60', enabled: false, period: 60, color: '#22C55E', line_width: 1, source: 'hl2' },
       ],
+    });
+    expect(req.snapshot.indicator_state).toEqual(req.indicator_state);
+  });
+
+  it('preserves trade volume POC indicator settings in the saved snapshot state', () => {
+    const pocState = {
+      ...indicatorState,
+      trade_volume_poc_enabled: true,
+      trade_volume_poc_band_pct: 0.0025,
+      trade_volume_poc_color: '#22C55E',
+      trade_volume_poc_opacity: 0.28,
+    };
+
+    const req = build({ indicatorState: pocState });
+
+    expect(req.indicator_state).toMatchObject({
+      trade_volume_poc_enabled: true,
+      trade_volume_poc_band_pct: 0.0025,
+      trade_volume_poc_color: '#22C55E',
+      trade_volume_poc_opacity: 0.28,
     });
     expect(req.snapshot.indicator_state).toEqual(req.indicator_state);
   });
