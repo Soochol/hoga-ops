@@ -76,18 +76,23 @@ describe('PriceLevelDotsOverlay', () => {
     expect(screen.queryByLabelText('VI +10% 11,000원 09:01')).toBeNull();
   });
 
-  it('uses a smaller solid VI dot and a ringed limit dot', () => {
+  it('renders foreground dots with candle-distinct colors and a ringed limit marker', () => {
     renderOverlay();
 
+    expect(screen.getByTestId('price-level-dots-overlay')).toHaveStyle({
+      zIndex: '20',
+    });
     expect(screen.getByTestId('price-level-dot-vi-upper-10')).toHaveStyle({
-      width: '6px',
-      height: '6px',
+      width: '8px',
+      height: '8px',
+      boxSizing: 'border-box',
     });
     expect(screen.getByTestId('price-level-dot-limit-upper-30')).toHaveStyle({
-      width: '7px',
-      height: '7px',
+      width: '9px',
+      height: '9px',
       boxSizing: 'border-box',
     });
     expect(screen.getByTestId('price-level-dot-limit-upper-30').getAttribute('style')).toContain('border: 1px solid');
+    expect(screen.getByTestId('price-level-dot-limit-upper-30').getAttribute('style')).toContain('box-shadow:');
   });
 });
