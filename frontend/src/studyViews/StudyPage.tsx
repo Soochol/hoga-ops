@@ -1,11 +1,14 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { useSearchParams } from 'react-router';
+import { useNavigate, useSearchParams } from 'react-router';
 import { LiveChartRoot } from '../live/LiveChartRoot';
 import { useLiveCursorStore } from '../live/useLiveCursorStore';
 import type { TabViewport } from '../live/viewportAnchor';
 import { bucketSeconds, type LiveMAConfig } from '../state/livePage';
+import { useStudyTabsStore } from '../state/studyTabs';
 import { StudyDetailPanel } from './StudyDetailPanel';
 import { StudyMemoPanel } from './StudyMemoPanel';
+import { StudyTabBar } from './StudyTabBar';
+import { useStudyKeyboard } from './useStudyKeyboard';
 import { useStudyViewMutations, useStudyViews, useStudyViewSnapshot } from './useStudyViews';
 import { studySnapshotBundleToChartInput, studySnapshotDetails } from './studySnapshotAdapter';
 import {
@@ -16,18 +19,35 @@ import {
 
 export function StudyPage() {
   const [params] = useSearchParams();
-  const viewId = params.get('view');
+  const queryViewId = params.get('view');
+  const navigate = useNavigate();
   const cursorMs = useLiveCursorStore((s) => s.cursorMs);
   const [isCursorActive, setIsCursorActive] = useState(false);
   const savesQuery = useStudyViews();
   const mutations = useStudyViewMutations();
   const [isMemoOpen, setIsMemoOpen] = useState(false);
   const [memoError, setMemoError] = useState<string | null>(null);
-  const snapshotQuery = useStudyViewSnapshot(viewId);
+  const tabs = useStudyTabsStore((state) => state.tabs);
+  const activeTabId = useStudyTabsStore((state) => state.activeTabId);
+  const ensureQuerySeed = useStudyTabsStore((state) => state.ensureQuerySeed);
+  const focusTab = useStudyTabsStore((state) => state.focusTab);
+  const closeTab = useStudyTabsStore((state) => state.closeTab);
+  const reorderTabs = useStudyTabsStore((state) => state.reorderTabs);
+  const initialQueryViewIdRef = useRef(queryViewId);
+  const activeTab = useMemo(
+    () => tabs.find((tab) => tab.id === activeTabId) ?? null,
+    [activeTabId, tabs],
+  );
+  const querySave = useMemo(
+    () => savesQuery.data?.saves.find((row) => row.id === queryViewId) ?? null,
+    [queryViewId, savesQuery.data?.saves],
+  );
+  const activeViewId = queryViewId ?? activeTab?.viewId ?? null;
+  const snapshotQuery = useStudyViewSnapshot(activeViewId);
   const snapshot = snapshotQuery.data;
   const selectedSave = useMemo(
-    () => savesQuery.data?.saves.find((row) => row.id === viewId) ?? null,
-    [savesQuery.data?.saves, viewId],
+    () => savesQuery.data?.saves.find((row) => row.id === activeViewId) ?? null,
+    [activeViewId, savesQuery.data?.saves],
   );
   const chartInput = useMemo(
     () => snapshot ? studySnapshotBundleToChartInput(snapshot.bundle) : null,
@@ -58,28 +78,54 @@ export function StudyPage() {
     captureViewportRef.current = capture;
   }, []);
   const commitMemo = useCallback((memo: string) => {
-    if (!viewId || memo === (selectedSave?.memo ?? '')) return;
+    if (!activeViewId || memo === (selectedSave?.memo ?? '')) return;
     setMemoError(null);
     mutations.updateMetadata.mutate(
-      { id: viewId, body: { memo } },
+      { id: activeViewId, body: { memo } },
       {
         onError: (error) => setMemoError(error instanceof Error ? error.message : '메모 저장에 실패했습니다.'),
       },
     );
-  }, [mutations.updateMetadata, selectedSave?.memo, viewId]);
+  }, [activeViewId, mutations.updateMetadata, selectedSave?.memo]);
+
+  useEffect(() => {
+    if (initialQueryViewIdRef.current === null) return;
+    if (queryViewId !== initialQueryViewIdRef.current) return;
+    if (!querySave) return;
+    ensureQuerySeed(querySave);
+    initialQueryViewIdRef.current = null;
+  }, [ensureQuerySeed, querySave, queryViewId]);
 
   useEffect(() => {
     setIsCursorActive(false);
-  }, [viewId]);
+  }, [activeViewId]);
 
   useEffect(() => {
-    if (!viewId || !snapshot || !chartInput) {
+    if (activeTab) {
+      if (queryViewId === activeTab.viewId) return;
+      navigate(`/study?view=${activeTab.viewId}`, { replace: true });
+      return;
+    }
+    if (tabs.length === 0 && queryViewId !== null && initialQueryViewIdRef.current === null) {
+      navigate('/study', { replace: true });
+    }
+  }, [activeTab, navigate, queryViewId, tabs.length]);
+
+  useStudyKeyboard({
+    onSelectTabIndex: (index) => {
+      const nextTab = tabs[index];
+      if (nextTab) focusTab(nextTab.id);
+    },
+  });
+
+  useEffect(() => {
+    if (!activeViewId || !snapshot || !chartInput) {
       setCurrentStudySaveSource(null);
       return undefined;
     }
     const source: StoredStudySaveSource = {
       origin: 'study',
-      viewId,
+      viewId: activeViewId,
       snapshot,
       bundle: chartInput.bundle,
       captureViewport: () => captureViewportRef.current(),
@@ -88,9 +134,9 @@ export function StudyPage() {
     return () => {
       clearCurrentStudySaveSource(source);
     };
-  }, [captureViewportRef, chartInput, snapshot, viewId]);
+  }, [activeViewId, captureViewportRef, chartInput, snapshot]);
 
-  if (!viewId) {
+  if (!activeViewId) {
     return (
       <section data-testid="study-page-empty" className="h-full min-w-0 bg-[var(--bg)] text-[var(--fg)]">
         <div className="flex h-full items-center justify-center text-sm text-[var(--fg-dimmer)]">
@@ -121,7 +167,20 @@ export function StudyPage() {
   }
 
   return (
-    <section data-testid="study-page" className="grid h-full min-w-0 grid-rows-[auto_minmax(0,1fr)] bg-[var(--bg)] text-[var(--fg)]">
+    <section data-testid="study-page" className="grid h-full min-w-0 grid-rows-[auto_auto_minmax(0,1fr)] bg-[var(--bg)] text-[var(--fg)]">
+      {tabs.length > 0 && (
+        <div className="min-w-0 border-b border-[var(--border)]">
+          <StudyTabBar
+            tabs={tabs}
+            activeTabId={activeTabId}
+            activeLoading={snapshotQuery.isLoading}
+            onFocus={focusTab}
+            onClose={closeTab}
+            onReorder={reorderTabs}
+            onNewTab={() => {}}
+          />
+        </div>
+      )}
       <header className="flex min-h-12 items-center justify-between gap-3 border-b border-[var(--border)] px-4">
         <div className="min-w-0">
           <div className="truncate text-sm font-semibold">{snapshot.label}</div>
@@ -142,7 +201,7 @@ export function StudyPage() {
           <LiveChartRoot
             code={snapshot.code}
             timeframe={snapshot.timeframe}
-            viewIdentity={viewId}
+            viewIdentity={activeTabId ? `${activeTabId}:${activeViewId}` : activeViewId}
             bundle={chartInput.bundle}
             chartBundle={chartInput.chartBundle}
             ratioBundle={chartInput.ratioBundle}
