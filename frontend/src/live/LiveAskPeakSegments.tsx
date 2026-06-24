@@ -1,4 +1,4 @@
-import { memo, useEffect, useRef } from 'react';
+import { memo, useCallback, useEffect, useRef } from 'react';
 import type { ISeriesApi, SeriesType, Time } from 'lightweight-charts';
 import type { AskPeak, AskPeakCandidate, Candle, RangeSegment } from '../api/types';
 import type { PaneId } from '../chart/drawing/types';
@@ -282,6 +282,8 @@ function LiveAskPeakSegments({ paneSeries, axis, dayAskPeaks, todayAllPriceAskPe
   const lineWidth = useLivePageStore((s) => s.askPeakLineWidth);
   const allPriceColor = useLivePageStore((s) => s.askPeakAllPriceColor);
   const allPriceLineWidth = useLivePageStore((s) => s.askPeakAllPriceLineWidth);
+  const visibleMaxColor = useLivePageStore((s) => s.askPeakVisibleMaxColor);
+  const visibleMaxLineWidth = useLivePageStore((s) => s.askPeakVisibleMaxLineWidth);
   const intraMax = useActivePrefs((s) => s.askPeakIntraMax);
   const showAllPrices = useActivePrefs((s) => s.askPeakShowAllPrices);
   const allPriceRankLimit = useActivePrefs((s) => s.askPeakAllPriceRankLimit);
@@ -303,27 +305,32 @@ function LiveAskPeakSegments({ paneSeries, axis, dayAskPeaks, todayAllPriceAskPe
     };
   }, [series]);
 
-  // 갱신: dayAskPeaks·segments·candles·축·스타일·토글 변화 시 세그먼트 재계산.
-  useEffect(() => {
+  const updateSegments = useCallback(() => {
     const prim = primRef.current;
     if (!prim) return;
-    prim.setSegments(
-      enabled
-        ? buildAskPeakOverlaySegments({
-          dayAskPeaks,
-          todayAllPriceAskPeak,
-          segments,
-          candles,
-          axis,
-          todayKst,
-          baselineStyle: { color, lineWidth },
-          allPriceStyle: { color: allPriceColor, lineWidth: allPriceLineWidth },
-          intraMax,
-          showAllPrices,
-          allPriceRankLimit: allPriceRankLimit as 1 | 2 | 3,
-        })
-        : [],
-    );
+    if (!enabled) {
+      prim.setSegments([]);
+      return;
+    }
+    const rawSegments = buildAskPeakOverlaySegments({
+      dayAskPeaks,
+      todayAllPriceAskPeak,
+      segments,
+      candles,
+      axis,
+      todayKst,
+      baselineStyle: { color, lineWidth },
+      allPriceStyle: { color: allPriceColor, lineWidth: allPriceLineWidth },
+      intraMax,
+      showAllPrices,
+      allPriceRankLimit: allPriceRankLimit as 1 | 2 | 3,
+    });
+    const visibleRange = prim.chartApi()?.timeScale().getVisibleRange() ?? null;
+    prim.setSegments(styleVisibleMaxAskPeakSegments(
+      rawSegments,
+      visibleRange,
+      { color: visibleMaxColor, lineWidth: visibleMaxLineWidth },
+    ));
   }, [
     dayAskPeaks,
     todayAllPriceAskPeak,
@@ -335,12 +342,33 @@ function LiveAskPeakSegments({ paneSeries, axis, dayAskPeaks, todayAllPriceAskPe
     lineWidth,
     allPriceColor,
     allPriceLineWidth,
+    visibleMaxColor,
+    visibleMaxLineWidth,
     enabled,
     intraMax,
     showAllPrices,
     allPriceRankLimit,
-    series,
   ]);
+
+  // 갱신: dayAskPeaks·segments·candles·축·스타일·토글 변화 시 세그먼트 재계산.
+  useEffect(() => {
+    updateSegments();
+  }, [updateSegments, series]);
+
+  useEffect(() => {
+    const prim = primRef.current;
+    const chart = prim?.chartApi();
+    if (!chart) return;
+    const timeScale = chart.timeScale();
+    const handler = () => {
+      updateSegments();
+    };
+    timeScale.subscribeVisibleLogicalRangeChange(handler);
+    updateSegments();
+    return () => {
+      timeScale.unsubscribeVisibleLogicalRangeChange(handler);
+    };
+  }, [series, updateSegments]);
 
   return null;
 }
