@@ -29,6 +29,11 @@ type Props = {
   segments: readonly RangeSegment[];
   candles: readonly Candle[];
   todayKst: string;
+  override?: {
+    enabled?: boolean;
+    color?: string;
+    opacity?: number;
+  };
 };
 
 export function buildTradeVolumePocSegments(
@@ -58,11 +63,14 @@ export function buildTradeVolumePocSegments(
   return out;
 }
 
-function TradeVolumePocOverlay({ paneSeries, axis, pocs, segments, candles, todayKst }: Props) {
+function TradeVolumePocOverlay({ paneSeries, axis, pocs, segments, candles, todayKst, override }: Props) {
   const series = paneSeries.get('candle' as PaneId) as ISeriesApi<SeriesType> | undefined;
-  const enabled = useLivePageStore((s) => s.tradeVolumePocEnabled);
-  const color = useLivePageStore((s) => s.tradeVolumePocColor);
-  const opacity = useLivePageStore((s) => s.tradeVolumePocOpacity);
+  const storeEnabled = useLivePageStore((s) => s.tradeVolumePocEnabled);
+  const storeColor = useLivePageStore((s) => s.tradeVolumePocColor);
+  const storeOpacity = useLivePageStore((s) => s.tradeVolumePocOpacity);
+  const enabled = override?.enabled ?? storeEnabled;
+  const color = override?.color ?? storeColor;
+  const opacity = override?.opacity ?? storeOpacity;
   const primitiveRef = useRef<TradeVolumePocPrimitive | null>(null);
   const fillColor = useMemo(() => hexToRgba(color, opacity), [color, opacity]);
   const segment = useMemo(

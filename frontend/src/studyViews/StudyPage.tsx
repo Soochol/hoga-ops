@@ -2,6 +2,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useNavigate, useSearchParams } from 'react-router';
 import { LiveChartRoot } from '../live/LiveChartRoot';
 import { useLiveCursorStore } from '../live/useLiveCursorStore';
+import type { TradeVolumePoc } from '../live/tradeVolumePoc';
 import type { TabViewport } from '../live/viewportAnchor';
 import { bucketSeconds, type LiveMAConfig } from '../state/livePage';
 import { useEntryDragStore } from '../state/entryDrag';
@@ -106,6 +107,25 @@ export function StudyPage() {
       })),
       masterEnabled: snapshot.indicator_state.daily_moving_average_enabled === true,
       hidden: snapshot.indicator_state.daily_moving_average_hidden === true,
+    };
+  }, [snapshot]);
+  const tradeVolumePocs = useMemo<TradeVolumePoc[]>(() => (
+    (snapshot?.bundle.trade_volume_pocs ?? []).map((poc) => ({
+      date: poc.date,
+      centerPrice: poc.center_price,
+      lowPrice: poc.low_price,
+      highPrice: poc.high_price,
+      qty: poc.qty,
+      t_ms: poc.t_ms,
+      bandPct: poc.band_pct,
+    }))
+  ), [snapshot]);
+  const tradeVolumePocOverride = useMemo(() => {
+    if (!snapshot) return undefined;
+    return {
+      enabled: snapshot.indicator_state.trade_volume_poc_enabled !== false,
+      color: snapshot.indicator_state.trade_volume_poc_color,
+      opacity: snapshot.indicator_state.trade_volume_poc_opacity,
     };
   }, [snapshot]);
   const captureViewportRef = useRef<() => TabViewport | null>(() => null);
@@ -295,6 +315,7 @@ export function StudyPage() {
             }}
             dayAskPeaks={chartInput.bundle.ask_peaks}
             dayBidPeaks={chartInput.bundle.bid_peaks}
+            tradeVolumePocs={tradeVolumePocs}
             forceHogaPanes
             paneTogglesOverride={{
               volumeEnabled: snapshot.indicator_state.volume_enabled,
@@ -303,6 +324,7 @@ export function StudyPage() {
               fillStrengthEnabled: snapshot.indicator_state.fill_strength_enabled,
             }}
             dailyMovingAverageOverride={dailyMovingAverageOverride}
+            tradeVolumePocOverride={tradeVolumePocOverride}
             persistLiveViewport={false}
             onViewportCaptureReady={handleViewportCaptureReady}
             onCursorActiveChange={setIsCursorActive}

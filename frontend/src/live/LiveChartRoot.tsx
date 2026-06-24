@@ -157,6 +157,11 @@ interface Props {
     masterEnabled: boolean;
     hidden: boolean;
   };
+  tradeVolumePocOverride?: {
+    enabled?: boolean;
+    color?: string;
+    opacity?: number;
+  };
   /** /live persists viewport to active live tabs; snapshot study pages opt out. */
   persistLiveViewport?: boolean;
   /** Save flows can read the current chart viewport without coupling to chart internals. */
@@ -170,7 +175,7 @@ interface Props {
 /** /live's single-chart root. Mounts the timeframe-appropriate pane set
  * (see `paneSpecsForTimeframe`) inside one createChart instance so
  * timeScale is shared across candle/volume/(hoga) panes. */
-export function LiveChartRoot({ code, timeframe, venue = 'KRX', viewIdentity, bundle, chartBundle, ratioBundle, clampEngaged, isPastCandlesLoading, isExtending = false, pastDataWarnings, restoreViewport = null, dayAskPeaks = EMPTY_ASK_PEAKS, todayAllPriceAskPeak = null, dayBidPeaks = EMPTY_BID_PEAKS, todayAllPriceBidPeak = null, todayKst = '', tradeVolumePocs = [], forceHogaPanes = false, paneTogglesOverride, dailyMovingAverageOverride, persistLiveViewport = true, onViewportCaptureReady, onCursorActiveChange, onCandleBasisHover, onCandleBasisClick }: Props) {
+export function LiveChartRoot({ code, timeframe, venue = 'KRX', viewIdentity, bundle, chartBundle, ratioBundle, clampEngaged, isPastCandlesLoading, isExtending = false, pastDataWarnings, restoreViewport = null, dayAskPeaks = EMPTY_ASK_PEAKS, todayAllPriceAskPeak = null, dayBidPeaks = EMPTY_BID_PEAKS, todayAllPriceBidPeak = null, todayKst = '', tradeVolumePocs = [], forceHogaPanes = false, paneTogglesOverride, dailyMovingAverageOverride, tradeVolumePocOverride, persistLiveViewport = true, onViewportCaptureReady, onCursorActiveChange, onCandleBasisHover, onCandleBasisClick }: Props) {
   const containerRef = useRef<HTMLDivElement>(null);
   // 과거 fetch 경고 요약 — rate-limit 지연(빈칸 문구 전환)과 일부 구간 누락(부분로딩 칩)
   // 표시에 쓴다. summarizeWarnings는 null/빈배열을 {count:0,hasRateLimit:false}로 접는다.
@@ -986,6 +991,7 @@ export function LiveChartRoot({ code, timeframe, venue = 'KRX', viewIdentity, bu
               segments={cb.segments}
               candles={cb.candles}
               todayKst={todayKst}
+              override={tradeVolumePocOverride}
             />
           )}
           <DrawingOverlay chart={chart} axis={axis} paneSeries={paneSeries} />

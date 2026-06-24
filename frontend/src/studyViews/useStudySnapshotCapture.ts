@@ -85,6 +85,7 @@ export function buildStudySnapshotRequest(args: BuildStudySnapshotArgs): Parquet
       fill_strength: hoga.fill_strength,
       ask_peaks: args.bundle.ask_peaks.filter((p) => segmentDates.has(p.date)),
       bid_peaks: (args.bundle.bid_peaks ?? []).filter((p) => segmentDates.has(p.date)),
+      trade_volume_pocs: (args.bundle.trade_volume_pocs ?? []).filter((p) => segmentDates.has(p.date)),
       data_warnings: dataWarnings(args.bundle),
     },
     captured_at_ms: args.capturedAtMs ?? Date.now(),
