@@ -3,6 +3,15 @@
 All notable changes to this project are documented here.
 The format follows a 4-digit `MAJOR.MINOR.PATCH.MICRO` scheme.
 
+## [0.9.3.1] - 2026-06-24
+
+### Added
+- **/live 당일 최다거래대 보조지표 추가**: 정규장 연속매매 체결만 집계해 하루별 최다 거래 가격대를 캔들 위 밴드와 중심선으로 표시한다.
+- **최다거래대 범위 선택 추가**: 보조지표 설정에서 자동 `±0.5%`와 `±1%` 범위를 선택할 수 있게 했고, 기본값은 `±0.5%`로 설정했다.
+
+### Changed
+- 과거 차트에서도 선택한 최다거래대 범위가 즉시 반영되도록 range bundle이 날짜별 `0.5%`/`1%` 후보를 함께 내려준다.
+
 ## [0.9.3.0] - 2026-06-24
 
 ### Added

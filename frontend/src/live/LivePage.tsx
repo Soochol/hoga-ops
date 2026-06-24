@@ -17,6 +17,7 @@ import { useLiveBundle } from './useLiveBundle';
 import { useLiveSeries } from '../api/liveSeries';
 import { useDayAskPeaks, useTodayAllPriceAskPeak } from './useDayAskPeaks';
 import { useDayBidPeaks, useTodayAllPriceBidPeak } from './useDayBidPeaks';
+import { useTradeVolumePocs } from './useTradeVolumePoc';
 import type { AskPeak, BidPeak, Candle, RangeBundle } from '../api/types';
 import type { ObSnapshot, TradeSnapshot } from './bucketHogaSeries';
 import type { TabViewport } from './viewportAnchor';
@@ -268,6 +269,12 @@ export function LivePage() {
     activeCode,
     live.initial?.bid_peak_today ?? null,
   );
+  const tradeVolumePocs = useTradeVolumePocs(
+    isMinuteTimeframe(timeframe) ? live.trade : EMPTY_TRADE_SNAPSHOTS,
+    (chartBundle ?? bundle)?.trade_volume_pocs ?? [],
+    today,
+    activeCode,
+  );
   const liveSaveBundle = useMemo<RangeBundle | null>(() => {
     if (!bundle) return null;
     const base = chartBundle ?? bundle;
@@ -367,6 +374,7 @@ export function LivePage() {
         dayBidPeaks={dayBidPeaks}
         todayAllPriceBidPeak={todayAllPriceBidPeak}
         todayKst={today}
+        tradeVolumePocs={tradeVolumePocs}
         onViewportCaptureReady={handleViewportCaptureReady}
         paneTogglesOverride={{
           hogaPanes: capabilities.hogaPanes,

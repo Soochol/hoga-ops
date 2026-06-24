@@ -293,6 +293,70 @@ class FillStrengthRow:
     sell_qty: int
 
 
+@dataclass(frozen=True)
+class TradeVolumePocRow:
+    """One date's most-traded regular-session price area.
+
+    ``*_price`` are KRX tick-adjusted won prices. ``intra_ms`` is the first
+    linear ms-from-midnight at which the center price traded.
+    """
+
+    center_price: int
+    low_price: int
+    high_price: int
+    qty: int
+    intra_ms: int
+
+
+def _krx_stock_tick_size(price: int) -> int:
+    if price < 2_000:
+        return 1
+    if price < 5_000:
+        return 5
+    if price < 20_000:
+        return 10
+    if price < 50_000:
+        return 50
+    if price < 200_000:
+        return 100
+    if price < 500_000:
+        return 500
+    return 1_000
+
+
+def _floor_krx_stock_tick(price: float) -> int:
+    if price <= 0:
+        return 0
+    candidate = int(price)
+    candidate = (candidate // _krx_stock_tick_size(candidate)) * _krx_stock_tick_size(candidate)
+    while candidate > price:
+        candidate -= _krx_stock_tick_size(candidate)
+    return candidate
+
+
+def _ceil_krx_stock_tick(price: float) -> int:
+    if price <= 0:
+        return 0
+    candidate = int(price) if price == int(price) else int(price) + 1
+    step = _krx_stock_tick_size(candidate)
+    candidate = ((candidate + step - 1) // step) * step
+    while candidate < price:
+        candidate += _krx_stock_tick_size(candidate)
+    return candidate
+
+
+def _hhmmssms_to_intra_ms(value: int) -> int:
+    h = value // 10_000_000
+    m = (value // 100_000) % 100
+    s = (value // 1000) % 100
+    ms = value % 1000
+    return h * 3_600_000 + m * 60_000 + s * 1000 + ms
+
+
+def _session_bound_to_intra_ms(value: int) -> int:
+    return _hhmmssms_to_intra_ms(value) if value > 86_400_000 else value
+
+
 def query_fill_strength(
     con: duckdb.DuckDBPyConnection, *, path: Path, bucket_ms: int
 ) -> list[FillStrengthRow]:
@@ -326,6 +390,75 @@ def query_fill_strength(
         FillStrengthRow(bucket_intra_ms=int(r[0]), buy_qty=int(r[1]), sell_qty=int(r[2]))
         for r in rows
     ]
+
+
+def query_trade_volume_poc(
+    con: duckdb.DuckDBPyConnection,
+    *,
+    path: Path,
+    session_open_ms: int,
+    session_close_ms: int,
+    band_pct: float = 0.005,
+) -> TradeVolumePocRow | None:
+    """Return the strongest regular-session trade-volume POC band for a day.
+
+    Regular-session means side +/-1 trades inside ``[session_open_ms,
+    session_close_ms)`` after decoding native HHMMSSmmm to linear
+    ms-from-midnight. side=0 is excluded so auction/single-price prints do not
+    dominate the band.
+    """
+    intra_ms_expr = hhmmssms_to_intra_ms_sql("ts_ms")
+    session_open_intra_ms = _session_bound_to_intra_ms(session_open_ms)
+    session_close_intra_ms = _session_bound_to_intra_ms(session_close_ms)
+    rows = con.execute(
+        f"""
+        WITH regular AS (
+          SELECT price,
+                 qty,
+                 {intra_ms_expr} AS intra_ms
+          FROM read_parquet(?)
+          WHERE side IN (1, -1)
+            AND price > 0
+            AND qty > 0
+        )
+        SELECT price,
+               SUM(qty) AS qty,
+               MIN(intra_ms) AS first_intra_ms
+        FROM regular
+        WHERE intra_ms >= ? AND intra_ms < ?
+        GROUP BY 1
+        ORDER BY first_intra_ms ASC, price ASC
+        """,
+        [str(path), session_open_intra_ms, session_close_intra_ms],
+    ).fetchall()
+    if not rows:
+        return None
+
+    buckets = [
+        (int(price), int(qty), int(first_intra_ms), order)
+        for order, (price, qty, first_intra_ms) in enumerate(rows)
+    ]
+    best: tuple[int, int, int, int, int, int] | None = None
+    for center_price, _center_qty, first_intra_ms, order in buckets:
+        low_price = _floor_krx_stock_tick(center_price * (1 - band_pct))
+        high_price = _ceil_krx_stock_tick(center_price * (1 + band_pct))
+        band_qty = sum(
+            qty for price, qty, _first, _order in buckets
+            if low_price <= price <= high_price
+        )
+        candidate = (band_qty, -order, center_price, low_price, high_price, first_intra_ms)
+        if best is None or candidate > best:
+            best = candidate
+
+    assert best is not None
+    band_qty, _neg_order, center_price, low_price, high_price, first_intra_ms = best
+    return TradeVolumePocRow(
+        center_price=center_price,
+        low_price=low_price,
+        high_price=high_price,
+        qty=band_qty,
+        intra_ms=first_intra_ms,
+    )
 
 
 @dataclass(frozen=True)

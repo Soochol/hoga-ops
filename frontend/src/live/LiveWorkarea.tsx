@@ -19,6 +19,7 @@ import {
 import type { TabViewport } from './viewportAnchor';
 import type { LiveVenueOption } from '../state/liveVenue';
 import { realMsToYyyymmdd } from './liveDateTime';
+import type { TradeVolumePoc } from './tradeVolumePoc';
 
 /** 관심종목 행을 차트로 드래그할 때 워크에어리어 위에 뜨는 드롭 타깃 오버레이.
  *  드래그 고스트는 패널 overflow 경계에서 잘리므로 워크에어리어 자체를 어포던스로 쓴다.
@@ -92,6 +93,8 @@ interface Props {
   todayAllPriceBidPeak?: BidPeak | null;
   /** 오늘(KST YYYYMMDD) — 오늘 세그먼트만 라이브 엣지까지 연장. */
   todayKst?: string;
+  /** Per-day regular-session trade-volume POC bands. */
+  tradeVolumePocs?: readonly TradeVolumePoc[];
   paneTogglesOverride?: {
     hogaPanes?: boolean;
   };
@@ -120,6 +123,7 @@ export function LiveWorkarea({
   dayBidPeaks = EMPTY_BID_PEAKS,
   todayAllPriceBidPeak = null,
   todayKst = '',
+  tradeVolumePocs = [],
   paneTogglesOverride,
   onViewportCaptureReady,
   activeInstrument = null,
@@ -227,6 +231,7 @@ export function LiveWorkarea({
                 dayBidPeaks={dayBidPeaks}
                 todayAllPriceBidPeak={todayAllPriceBidPeak}
                 todayKst={todayKst}
+                tradeVolumePocs={tradeVolumePocs}
                 paneTogglesOverride={paneTogglesOverride}
                 onViewportCaptureReady={onViewportCaptureReady}
                 onCandleBasisHover={rankingAllowed ? handleCandleBasisHover : undefined}

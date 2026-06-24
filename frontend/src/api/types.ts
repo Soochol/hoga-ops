@@ -492,6 +492,16 @@ export type AskPeak = PeakBase & {
 /** hoga/api/models.py::BidPeak 미러. */
 export type BidPeak = PeakBase;
 
+export type TradeVolumePocWire = {
+  date: string;
+  center_price: number;
+  low_price: number;
+  high_price: number;
+  qty: number;
+  t_ms: number;
+  band_pct: number;
+};
+
 export type RangeBundle = {
   code: string;
   from_date: string;
@@ -516,4 +526,6 @@ export type RangeBundle = {
   /** 캔들 고저가 VI 가격대(1차: 당일 open 기준 ±10%, 2차: VI 재개봉 open 기준 ±10%)
    *  또는 상하한가(전일 close 기준 ±30%)에 닿은 최초 시점. */
   price_level_hits?: PriceLevelHit[];
+  /** 거래일별 정규장 체결량 최다 가격대(자동 +/-1%, KRX 호가 보정). */
+  trade_volume_pocs?: TradeVolumePocWire[];
 };

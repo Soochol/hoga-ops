@@ -7,6 +7,7 @@ import {
   MA_PERIOD_MIN,
   MA_PERIOD_MAX,
   MA_SLOT_LIMIT,
+  TRADE_VOLUME_POC_DEFAULT_BAND_PCT,
   type LiveMAConfig,
   type PersistedIndicators,
 } from './liveIndicatorsPersistence';
@@ -28,6 +29,7 @@ export {
   MA_PERIOD_MIN,
   MA_PERIOD_MAX,
   MA_SLOT_LIMIT,
+  TRADE_VOLUME_POC_DEFAULT_BAND_PCT,
 };
 export type { LiveMAConfig };
 
@@ -134,6 +136,8 @@ type Store = Persisted & PersistedIndicators & {
   setBidPeakEnabled: (enabled: boolean) => void;
   setBidPeakStyle: (patch: { color?: string; lineWidth?: 1 | 2 | 3 | 4 }) => void;
   setBidPeakAllPriceStyle: (patch: { color?: string; lineWidth?: 1 | 2 | 3 | 4 }) => void;
+  setTradeVolumePocEnabled: (enabled: boolean) => void;
+  setTradeVolumePocBandPct: (bandPct: number) => void;
   setQuoteTotalsEnabled: (enabled: boolean) => void;
   setRatioEnabled: (enabled: boolean) => void;
   setFillStrengthEnabled: (enabled: boolean) => void;
@@ -242,6 +246,8 @@ function snapshotIndicators(get: () => Store): PersistedIndicators {
     bidPeakLineWidth: s.bidPeakLineWidth,
     bidPeakAllPriceColor: s.bidPeakAllPriceColor,
     bidPeakAllPriceLineWidth: s.bidPeakAllPriceLineWidth,
+    tradeVolumePocEnabled: s.tradeVolumePocEnabled,
+    tradeVolumePocBandPct: s.tradeVolumePocBandPct,
     quoteTotalsEnabled: s.quoteTotalsEnabled,
     ratioEnabled: s.ratioEnabled,
     fillStrengthEnabled: s.fillStrengthEnabled,
@@ -419,6 +425,17 @@ export const useLivePageStore = create<Store>((set, get) => ({
       bidPeakAllPriceColor: patch.color ?? s.bidPeakAllPriceColor,
       bidPeakAllPriceLineWidth: patch.lineWidth ?? s.bidPeakAllPriceLineWidth,
     }));
+    persistIndicators(snapshotIndicators(get));
+  },
+
+  setTradeVolumePocEnabled: (enabled) => {
+    set({ tradeVolumePocEnabled: enabled });
+    persistIndicators(snapshotIndicators(get));
+  },
+
+  setTradeVolumePocBandPct: (bandPct) => {
+    if (bandPct !== 0.005 && bandPct !== 0.01) return;
+    set({ tradeVolumePocBandPct: bandPct });
     persistIndicators(snapshotIndicators(get));
   },
 

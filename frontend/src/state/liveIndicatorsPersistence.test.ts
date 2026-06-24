@@ -25,6 +25,8 @@ describe('mergeLiveIndicatorPrefs', () => {
       bidPeakLineWidth: 2,
       bidPeakAllPriceColor: '#F97316',
       bidPeakAllPriceLineWidth: 1,
+      tradeVolumePocEnabled: true,
+      tradeVolumePocBandPct: 0.005,
       quoteTotalsEnabled: true,
       ratioEnabled: true,
       fillStrengthEnabled: true,
@@ -151,18 +153,27 @@ describe('mergeLiveIndicatorPrefs — 호가 토글', () => {
     expect(m.quoteTotalsEnabled).toBe(true);
     expect(m.ratioEnabled).toBe(true);
     expect(m.fillStrengthEnabled).toBe(true);
+    expect(m.tradeVolumePocEnabled).toBe(true);
+    expect(m.tradeVolumePocBandPct).toBe(0.005);
   });
   it('구버전 store(키 없음) → ON으로 머지', () => {
     const m = mergeLiveIndicatorPrefs({ movingAverages: [], movingAverageEnabled: true });
     expect(m.quoteTotalsEnabled).toBe(true);
     expect(m.ratioEnabled).toBe(true);
     expect(m.fillStrengthEnabled).toBe(true);
+    expect(m.tradeVolumePocEnabled).toBe(true);
+    expect(m.tradeVolumePocBandPct).toBe(0.005);
   });
   it('명시적 false 보존', () => {
-    const m = mergeLiveIndicatorPrefs({ ratioEnabled: false, fillStrengthEnabled: false });
+    const m = mergeLiveIndicatorPrefs({ ratioEnabled: false, fillStrengthEnabled: false, tradeVolumePocEnabled: false });
     expect(m.ratioEnabled).toBe(false);
     expect(m.fillStrengthEnabled).toBe(false);
+    expect(m.tradeVolumePocEnabled).toBe(false);
     expect(m.quoteTotalsEnabled).toBe(true);
+  });
+  it('최다거래대 band pct는 0.5% 또는 1%만 보존', () => {
+    expect(mergeLiveIndicatorPrefs({ tradeVolumePocBandPct: 0.01 }).tradeVolumePocBandPct).toBe(0.01);
+    expect(mergeLiveIndicatorPrefs({ tradeVolumePocBandPct: 0.123 }).tradeVolumePocBandPct).toBe(0.005);
   });
 });
 

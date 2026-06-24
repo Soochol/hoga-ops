@@ -402,6 +402,7 @@ def _patch_slice_builders(
         patches.append(patch.object(bundle_mod, "build_ask_peak_slice", return_value=None))
     if patch_bid_peak:
         patches.append(patch.object(bundle_mod, "build_bid_peak_slice", return_value=None))
+    patches.append(patch.object(bundle_mod, "build_trade_volume_poc_slice", return_value=None))
     return patches
 
 

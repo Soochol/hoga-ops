@@ -35,6 +35,7 @@ from hoga.api.models import (
     QuoteRatioPoint,
     RangeBundle,
     RangeSegment,
+    TradeVolumePoc,
     VolumeProfile,
     VolumeProfileBin,
     validate_bucket_ms,
@@ -576,6 +577,40 @@ def _compute_bid_peak(
     )
 
 
+def build_trade_volume_poc_slice(
+    engine: QueryEngine,
+    *,
+    code: str,
+    date: str,
+    source: str,
+    session_open_ms: int,
+    session_close_ms: int,
+    band_pct: float = 0.005,
+) -> TradeVolumePoc | None:
+    code_dir = engine.parquet_dir(date, code, source)
+    trades_path = code_dir / "trades.parquet"
+    if not trades_path.exists():
+        return None
+    row = trades_tbl.query_trade_volume_poc(
+        engine.conn,
+        path=trades_path,
+        session_open_ms=session_open_ms,
+        session_close_ms=session_close_ms,
+        band_pct=band_pct,
+    )
+    if row is None:
+        return None
+    return TradeVolumePoc(
+        date=date,
+        center_price=row.center_price,
+        low_price=row.low_price,
+        high_price=row.high_price,
+        qty=row.qty,
+        t_ms=ms_from_midnight_to_unix_ms(date, row.intra_ms),
+        band_pct=band_pct,
+    )
+
+
 def _krx_stock_tick_size(price: int) -> int:
     if price < 2_000:
         return 1
@@ -847,6 +882,7 @@ def build_range_bundle(
     ask_peaks: list[AskPeak] = []
     bid_peaks: list[BidPeak] = []
     price_level_hits: list[PriceLevelHit] = []
+    trade_volume_pocs: list[TradeVolumePoc] = []
 
     # Indicator cache (호가비·체결강도): completed past days are computed once and
     # re-aggregated on later pans; today_kst gates today out (still promoting).
@@ -916,6 +952,15 @@ def build_range_bundle(
             session_close_ms=meta["regular_session_close_ms"],
             cache=indicators_cache, today_kst=today_kst,
         )
+        tvp_ds = [
+            build_trade_volume_poc_slice(
+                engine, code=code, date=d, source=source,
+                session_open_ms=norm_meta["regular_session_open_ms"],
+                session_close_ms=meta["regular_session_close_ms"],
+                band_pct=band_pct,
+            )
+            for band_pct in (0.005, 0.01)
+        ]
         segments.append(RangeSegment(
             date=d,
             session_open_ms=hhmmssms_to_unix_ms(d, norm_meta["regular_session_open_ms"]),
@@ -930,6 +975,7 @@ def build_range_bundle(
             ask_peaks.append(ap_d)
         if bp_d is not None:
             bid_peaks.append(bp_d)
+        trade_volume_pocs.extend(tvp_d for tvp_d in tvp_ds if tvp_d is not None)
         vi_base_open = raw_candles[0].open if raw_candles else int(meta.get("today_open") or 0)
         price_level_hits.extend(
             build_price_level_hits_slice(
@@ -969,4 +1015,5 @@ def build_range_bundle(
         ask_peaks=ask_peaks,
         bid_peaks=bid_peaks,
         price_level_hits=price_level_hits,
+        trade_volume_pocs=trade_volume_pocs,
     )
