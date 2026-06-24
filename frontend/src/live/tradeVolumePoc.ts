@@ -1,4 +1,5 @@
 import type { TradeSnapshot } from './bucketHogaSeries';
+import type { Candle, RangeSegment } from '../api/types';
 import { kstMinuteOfDay } from '../util/tradingDay';
 
 const REGULAR_OPEN_MIN = 9 * 60;
@@ -21,6 +22,42 @@ type PriceBucket = {
   firstTMs: number;
   order: number;
 };
+
+function chooseBestPoc(
+  buckets: readonly PriceBucket[],
+  options: { bandPct: number; date: string },
+): TradeVolumePoc | null {
+  const { bandPct, date } = options;
+  if (buckets.length === 0) return null;
+  let best: TradeVolumePoc & { order: number } | null = null;
+  for (const center of buckets) {
+    const lowPrice = floorKrxStockTick(center.price * (1 - bandPct));
+    const highPrice = ceilKrxStockTick(center.price * (1 + bandPct));
+    let qty = 0;
+    for (const bucket of buckets) {
+      if (bucket.price >= lowPrice && bucket.price <= highPrice) qty += bucket.qty;
+    }
+    if (
+      best === null
+      || qty > best.qty
+      || (qty === best.qty && center.order < best.order)
+    ) {
+      best = {
+        date,
+        centerPrice: center.price,
+        lowPrice,
+        highPrice,
+        qty,
+        t_ms: center.firstTMs,
+        bandPct,
+        order: center.order,
+      };
+    }
+  }
+  if (best === null) return null;
+  const { order: _order, ...poc } = best;
+  return poc;
+}
 
 export function krxStockTickSize(price: number): number {
   if (price < 2_000) return 1;
@@ -86,36 +123,42 @@ export function computeTradeVolumePoc(
     }
   }
 
-  if (byPrice.size === 0) return null;
+  return chooseBestPoc(Array.from(byPrice.values()), {
+    bandPct,
+    date: options.date ?? '',
+  });
+}
 
-  const buckets = Array.from(byPrice.values());
-  let best: TradeVolumePoc & { order: number } | null = null;
-  for (const center of buckets) {
-    const lowPrice = floorKrxStockTick(center.price * (1 - bandPct));
-    const highPrice = ceilKrxStockTick(center.price * (1 + bandPct));
-    let qty = 0;
-    for (const bucket of buckets) {
-      if (bucket.price >= lowPrice && bucket.price <= highPrice) qty += bucket.qty;
+export function computeCandleVolumePocs(
+  candles: readonly Candle[],
+  segments: readonly RangeSegment[],
+  options: { bandPct?: number } = {},
+): TradeVolumePoc[] {
+  const bandPct = options.bandPct ?? DEFAULT_BAND_PCT;
+  const out: TradeVolumePoc[] = [];
+  for (const segment of segments) {
+    const byPrice = new Map<number, PriceBucket>();
+    let order = 0;
+    for (const candle of candles) {
+      if (candle.ts_ms < segment.session_open_ms || candle.ts_ms >= segment.session_close_ms) continue;
+      if (!isRegularContinuousTrade(candle.ts_ms)) continue;
+      const price = Math.round(candle.close);
+      const qty = Math.max(0, Math.round((candle.vol_a ?? 0) + (candle.vol_b ?? 0)));
+      if (!Number.isFinite(price) || price <= 0 || !Number.isFinite(qty) || qty <= 0) continue;
+      const current = byPrice.get(price);
+      if (current) {
+        current.qty += qty;
+        current.firstTMs = Math.min(current.firstTMs, candle.ts_ms);
+      } else {
+        byPrice.set(price, { price, qty, firstTMs: candle.ts_ms, order });
+        order += 1;
+      }
     }
-    if (
-      best === null
-      || qty > best.qty
-      || (qty === best.qty && center.order < best.order)
-    ) {
-      best = {
-        date: options.date ?? '',
-        centerPrice: center.price,
-        lowPrice,
-        highPrice,
-        qty,
-        t_ms: center.firstTMs,
-        bandPct,
-        order: center.order,
-      };
-    }
+    const poc = chooseBestPoc(Array.from(byPrice.values()), {
+      bandPct,
+      date: segment.date,
+    });
+    if (poc) out.push(poc);
   }
-
-  if (best === null) return null;
-  const { order: _order, ...poc } = best;
-  return poc;
+  return out;
 }

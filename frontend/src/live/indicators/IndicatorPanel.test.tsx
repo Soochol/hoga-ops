@@ -13,9 +13,9 @@ describe('IndicatorPanel', () => {
     });
     render(<IndicatorPanel onClose={() => {}} />);
     const checkboxes = screen.getAllByRole('checkbox');
-    expect(checkboxes).toHaveLength(11); // 상단 5 + 호가 6(최다거래대/매도/매수 최대벽 포함)
+    expect(checkboxes).toHaveLength(11); // 상단 5 + 호가 6(최대 매물대/매도/매수 최대벽 포함)
     expect(checkboxes.filter((c) => (c as HTMLButtonElement).disabled)).toHaveLength(0);
-    for (const name of ['총잔량', '호가비', '체결강도', '당일 최다거래대']) {
+    for (const name of ['총잔량', '호가비', '체결강도', '당일 최대 매물대']) {
       const cb = screen.getByRole('checkbox', { name }) as HTMLButtonElement;
       expect(cb.disabled).toBe(false);
       expect(cb.getAttribute('aria-checked')).toBe('true'); // 기본 ON
@@ -38,7 +38,7 @@ describe('IndicatorPanel', () => {
   it('index capabilities hide every hoga indicator category', () => {
     render(<IndicatorPanel onClose={() => {}} capabilities={{ hogaPanes: false, investorNet: 'market', studySave: false }} />);
     expect(screen.queryByText('호가 지표')).toBeNull();
-    for (const name of ['총잔량', '호가비', '체결강도', '당일 최다거래대', '당일 매도 최대벽', '당일 매수 최대벽']) {
+    for (const name of ['총잔량', '호가비', '체결강도', '당일 최대 매물대', '당일 매도 최대벽', '당일 매수 최대벽']) {
       expect(screen.queryByRole('checkbox', { name })).toBeNull();
       expect(screen.queryByRole('button', { name })).toBeNull();
     }
@@ -58,7 +58,7 @@ describe('IndicatorPanel', () => {
     // 네비 라벨 버튼은 CATEGORIES 순서대로 렌더된다(체크박스는 role=checkbox라 제외).
     const labels = screen.getAllByRole('button').map((b) => b.textContent);
     const askPeak = labels.indexOf('당일 매도 최대벽');
-    const poc = labels.indexOf('당일 최다거래대');
+    const poc = labels.indexOf('당일 최대 매물대');
     const fill = labels.indexOf('체결강도');
     const inst = labels.indexOf('기관 순매수량');
     expect(askPeak).toBeGreaterThan(fill); // 호가 그룹 안, 체결강도 뒤
@@ -199,29 +199,46 @@ describe('IndicatorPanel', () => {
     expect(useLivePageStore.getState().askPeakEnabled).toBe(true);
   });
 
-  it('당일 최다거래대 카테고리 토글', () => {
+  it('당일 최대 매물대 카테고리 토글', () => {
     useLivePageStore.setState({ tradeVolumePocEnabled: true });
     render(<IndicatorPanel onClose={() => {}} />);
-    const cb = screen.getByRole('checkbox', { name: '당일 최다거래대' });
+    const cb = screen.getByRole('checkbox', { name: '당일 최대 매물대' });
     fireEvent.click(cb);
     expect(useLivePageStore.getState().tradeVolumePocEnabled).toBe(false);
   });
 
-  it('당일 최다거래대 선택 시 자동 범위 설명 표시', () => {
+  it('당일 최대 매물대 선택 시 자동 범위 설명 표시', () => {
     render(<IndicatorPanel onClose={() => {}} />);
-    fireEvent.click(screen.getByRole('button', { name: '당일 최다거래대' }));
+    fireEvent.click(screen.getByRole('button', { name: '당일 최대 매물대' }));
     expect(screen.getAllByText(/자동 ±0.5%/).length).toBeGreaterThan(0);
     expect(screen.getByRole('button', { name: '±0.5%' })).toHaveAttribute('aria-pressed', 'true');
     expect(screen.getByRole('button', { name: '±1%' })).toBeTruthy();
+    expect(screen.getByRole('button', { name: '당일 최대 매물대 색상 #22C55E' })).toBeTruthy();
+    expect(screen.getByRole('slider', { name: '당일 최대 매물대 투명도' })).toBeTruthy();
     expect(screen.getByText(/동시호가 제외/)).toBeTruthy();
   });
 
-  it('당일 최다거래대 범위 선택을 저장한다', () => {
+  it('당일 최대 매물대 범위 선택을 저장한다', () => {
     useLivePageStore.setState({ tradeVolumePocBandPct: 0.005 });
     render(<IndicatorPanel onClose={() => {}} />);
-    fireEvent.click(screen.getByRole('button', { name: '당일 최다거래대' }));
+    fireEvent.click(screen.getByRole('button', { name: '당일 최대 매물대' }));
     fireEvent.click(screen.getByRole('button', { name: '±1%' }));
     expect(useLivePageStore.getState().tradeVolumePocBandPct).toBe(0.01);
+  });
+
+  it('당일 최대 매물대 색상과 투명도를 저장한다', () => {
+    useLivePageStore.setState({
+      tradeVolumePocColor: '#A855F7',
+      tradeVolumePocOpacity: 0.12,
+    });
+    render(<IndicatorPanel onClose={() => {}} />);
+    fireEvent.click(screen.getByRole('button', { name: '당일 최대 매물대' }));
+    fireEvent.click(screen.getByRole('button', { name: '당일 최대 매물대 색상 #22C55E' }));
+    fireEvent.change(screen.getByRole('slider', { name: '당일 최대 매물대 투명도' }), {
+      target: { value: '28' },
+    });
+    expect(useLivePageStore.getState().tradeVolumePocColor).toBe('#22C55E');
+    expect(useLivePageStore.getState().tradeVolumePocOpacity).toBe(0.28);
   });
 
   it('매도 최대벽 선택 시 스타일 pane(MAStylePicker) 표시', () => {

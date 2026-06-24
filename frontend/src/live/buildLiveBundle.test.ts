@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { buildHogaSeries, buildLiveBundle, createIncrementalHogaSeriesBuilder } from './buildLiveBundle';
+import { buildChartBundle, buildHogaSeries, buildLiveBundle, createIncrementalHogaSeriesBuilder } from './buildLiveBundle';
 import type { QuoteRatioPoint, RangeBundle } from '../api/types';
 
 // buildLiveBundle dedupe/promote logic only reads t/bid_total/ask_total; the Intra-Bar Max
@@ -33,6 +33,59 @@ function emptyRangeBundle(overrides: Partial<RangeBundle> = {}): RangeBundle {
 }
 
 describe('buildLiveBundle', () => {
+  it('preserves historical trade volume POC candidates on the chart bundle', () => {
+    const pastBundle = {
+      code: '005930',
+      from_date: '20260527',
+      to_date: '20260527',
+      bucket_ms: 60_000,
+      segments: [{
+        date: '20260527',
+        session_open_ms: TODAY_OPEN,
+        session_close_ms: TODAY_CLOSE,
+        source: 'hogaplay' as const,
+      }],
+      candles: [],
+      quote_ratio: { bucket_ms: 60_000, points: [] },
+      fill_strength: { bucket_ms: 60_000, points: [] },
+      volume_profile_range: { bin_count: 0, price_min: 0, price_max: 0, bin_width: 0, bins: [] },
+      volume_profile_by_day: [],
+      investorPoints: [],
+      ask_peaks: [],
+      bid_peaks: [],
+      price_level_hits: [],
+      trade_volume_pocs: [{
+        date: '20260527',
+        center_price: 72_300,
+        low_price: 71_900,
+        high_price: 72_700,
+        qty: 1234,
+        t_ms: TODAY_OPEN + 120_000,
+        band_pct: 0.005,
+      }],
+    };
+
+    const bundle = buildChartBundle({
+      code: '005930',
+      todayDate: '20260527',
+      todaySession: { open_ms: TODAY_OPEN, close_ms: TODAY_CLOSE },
+      pastBundle,
+      kisCandles: [{
+        ts_ms: TODAY_OPEN,
+        open: 72_000,
+        high: 72_500,
+        low: 71_800,
+        close: 72_300,
+        vol_a: 100,
+        vol_b: 0,
+      }],
+      bucketMs: 60_000,
+      hasTodayObSignal: false,
+    });
+
+    expect(bundle.trade_volume_pocs).toEqual(pastBundle.trade_volume_pocs);
+  });
+
   it('empty inputs → empty bundle', () => {
     const bundle = buildLiveBundle({
       code: '005930',

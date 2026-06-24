@@ -13,21 +13,10 @@ import type { CanvasRenderingTarget2D } from 'fancy-canvas';
 export type TradeVolumePocSegment = {
   time0: Time;
   time1: Time;
-  peakTime: Time;
   lowPrice: number;
   highPrice: number;
-  centerPrice: number;
-  qty: number;
-  label: string;
-  color: string;
   fillColor: string;
-  lineWidth: number;
 };
-
-const LABEL_FONT_PX = 11;
-const LABEL_PAD_X_PX = 4;
-const LABEL_PAD_Y_PX = 1;
-const DOT_RADIUS_PX = 3.5;
 
 class TradeVolumePocRenderer implements IPrimitivePaneRenderer {
   private readonly source: TradeVolumePocPrimitive;
@@ -52,59 +41,15 @@ class TradeVolumePocRenderer implements IPrimitivePaneRenderer {
         const x1 = timeScale.timeToCoordinate(segment.time1);
         const yLow = series.priceToCoordinate(segment.lowPrice);
         const yHigh = series.priceToCoordinate(segment.highPrice);
-        const yCenter = series.priceToCoordinate(segment.centerPrice);
-        if (x0 === null || x1 === null || yLow === null || yHigh === null || yCenter === null) continue;
+        if (x0 === null || x1 === null || yLow === null || yHigh === null) continue;
 
-      const left = Math.min(x0, x1) * hr;
-      const right = Math.max(x0, x1) * hr;
-      const top = Math.min(yLow, yHigh) * vr;
-      const bottom = Math.max(yLow, yHigh) * vr;
-      const centerY = yCenter * vr;
+        const left = Math.min(x0, x1) * hr;
+        const right = Math.max(x0, x1) * hr;
+        const top = Math.min(yLow, yHigh) * vr;
+        const bottom = Math.max(yLow, yHigh) * vr;
 
-      ctx.fillStyle = segment.fillColor;
-      ctx.fillRect(left, top, Math.max(1, right - left), Math.max(1, bottom - top));
-
-      ctx.beginPath();
-      ctx.strokeStyle = segment.color;
-      ctx.lineWidth = Math.max(1, segment.lineWidth) * vr;
-      ctx.moveTo(left, centerY);
-      ctx.lineTo(right, centerY);
-      ctx.stroke();
-
-      const rawPeakX = timeScale.timeToCoordinate(segment.peakTime);
-      let peakX: number;
-      if (rawPeakX === null) {
-        const t0 = segment.time0 as unknown as number;
-        const t1 = segment.time1 as unknown as number;
-        const tp = segment.peakTime as unknown as number;
-        const frac = t1 > t0 ? Math.min(1, Math.max(0, (tp - t0) / (t1 - t0))) : 0;
-        peakX = (x0 as number) + frac * ((x1 as number) - (x0 as number));
-      } else {
-        peakX = rawPeakX as number;
-      }
-      ctx.beginPath();
-      ctx.arc(peakX * hr, centerY, DOT_RADIUS_PX * hr, 0, Math.PI * 2);
-      ctx.fillStyle = segment.color;
-      ctx.fill();
-
-      if (!segment.label) continue;
-      ctx.font = `${LABEL_FONT_PX * vr}px sans-serif`;
-      const textWidth = ctx.measureText(segment.label).width;
-      const padX = LABEL_PAD_X_PX * hr;
-      const padY = LABEL_PAD_Y_PX * vr;
-      const textRight = Math.max(left + textWidth + padX, right - padX);
-      const baseline = Math.max((LABEL_FONT_PX + 4) * vr, top - 4 * vr);
-      ctx.fillStyle = 'rgba(11, 15, 26, 0.72)';
-      ctx.fillRect(
-        textRight - textWidth - padX,
-        baseline - LABEL_FONT_PX * vr - padY,
-        textWidth + padX * 2,
-        LABEL_FONT_PX * vr + padY * 2,
-      );
-      ctx.fillStyle = segment.color;
-      ctx.textAlign = 'right';
-      ctx.textBaseline = 'bottom';
-      ctx.fillText(segment.label, textRight, baseline);
+        ctx.fillStyle = segment.fillColor;
+        ctx.fillRect(left, top, Math.max(1, right - left), Math.max(1, bottom - top));
       }
     });
   }

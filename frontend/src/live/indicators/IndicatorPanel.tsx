@@ -39,7 +39,7 @@ const CATEGORIES: ReadonlyArray<{ id: CategoryId; label: string; group: GroupId 
   { id: 'quote-totals',    label: '총잔량',           group: 'hoga' },
   { id: 'ratio',           label: '호가비',           group: 'hoga' },
   { id: 'fill-strength',   label: '체결강도',         group: 'hoga' },
-  { id: 'trade-volume-poc', label: '당일 최다거래대', group: 'hoga' },
+  { id: 'trade-volume-poc', label: '당일 최대 매물대', group: 'hoga' },
   { id: 'ask-peak',        label: '당일 매도 최대벽', group: 'hoga' },
   { id: 'bid-peak',        label: '당일 매수 최대벽', group: 'hoga' },
 ];
