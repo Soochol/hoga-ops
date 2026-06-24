@@ -34,15 +34,60 @@ const dotStyle = (color: string): CSSProperties => ({
   transform: 'translate(-50%, -50%)',
 });
 
-const labelStyle = (place: 'above' | 'below', color: string): CSSProperties => ({
+type ExtremeLabelPlace = 'above' | 'below';
+
+export type ExtremeLabelPlacement = {
+  x: number;
+  y: number;
+  place: ExtremeLabelPlace;
+};
+
+const LABEL_EDGE_PAD_PX = 6;
+const LABEL_DOT_GAP_PX = 8;
+const LABEL_HEIGHT_PX = 16;
+const LABEL_CHAR_WIDTH_PX = 6.6;
+
+function estimateLabelWidth(text: string): number {
+  return text.length * LABEL_CHAR_WIDTH_PX + 8;
+}
+
+export function placeExtremeLabel(
+  preferred: ExtremeLabelPlace,
+  x: number,
+  y: number,
+  text: string,
+  paneWidth: number,
+  paneHeight: number,
+): ExtremeLabelPlacement {
+  if (paneWidth <= 0 || paneHeight <= 0) return { x, y, place: preferred };
+  const labelWidth = estimateLabelWidth(text);
+  const halfWidth = labelWidth / 2;
+  const minX = LABEL_EDGE_PAD_PX + halfWidth;
+  const maxX = Math.max(minX, paneWidth - LABEL_EDGE_PAD_PX - halfWidth);
+  const placedX = Math.min(maxX, Math.max(minX, x));
+  const roomAbove = y - LABEL_DOT_GAP_PX - LABEL_HEIGHT_PX >= LABEL_EDGE_PAD_PX;
+  const roomBelow = y + LABEL_DOT_GAP_PX + LABEL_HEIGHT_PX <= paneHeight - LABEL_EDGE_PAD_PX;
+  let place = preferred;
+  if (preferred === 'above' && !roomAbove && roomBelow) place = 'below';
+  if (preferred === 'below' && !roomBelow && roomAbove) place = 'above';
+  const placedY = Math.min(paneHeight - LABEL_EDGE_PAD_PX, Math.max(LABEL_EDGE_PAD_PX, y));
+  return { x: placedX, y: placedY, place };
+}
+
+const labelStyle = (place: ExtremeLabelPlace, color: string): CSSProperties => ({
   position: 'absolute',
-  // 고가는 점 위, 저가는 점 아래로 8px 오프셋, 가로 중앙 정렬.
-  transform: place === 'above' ? 'translate(-50%, calc(-100% - 8px))' : 'translate(-50%, 8px)',
+  transform: place === 'above'
+    ? `translate(-50%, calc(-100% - ${LABEL_DOT_GAP_PX}px))`
+    : `translate(-50%, ${LABEL_DOT_GAP_PX}px)`,
   color,
   fontFamily: 'var(--font-mono)',
   fontSize: 'var(--text-xs)',
   lineHeight: 1.2,
   whiteSpace: 'nowrap',
+  background: 'rgba(11, 15, 26, 0.76)',
+  borderRadius: 2,
+  padding: '1px 4px',
+  boxShadow: '0 0 0 1px rgba(11, 15, 26, 0.58)',
 });
 
 /** 가시 시간범위(가상초 {from,to}). 초기 마운트엔 null, 차트 teardown 중엔 throw → null. */
@@ -102,6 +147,9 @@ function HighLowAnnotationOverlay({ chart, bundle, axis, paneSeries, timeframe }
   // 컨테이너는 enabled면 항상 렌더(빈 상태 포함) — ResizeObserver 가 관측할 DOM 노드를
   // 보장해 리사이즈/초기 레이아웃 self-heal 경로를 유지한다. 라벨만 조건부.
   const series = paneSeries.get('candle' as PaneId);
+  const paneRect = containerRef.current?.getBoundingClientRect();
+  const paneWidth = paneRect?.width ?? 0;
+  const paneHeight = paneRect?.height ?? 0;
   const ts = chart.timeScale();
   const range = readVisibleRange(ts);
   // 기준가는 computeVisibleExtremes 가 가시 범위의 우측 끝 캔들 close에서 내부 산출한다
@@ -143,18 +191,21 @@ function HighLowAnnotationOverlay({ chart, bundle, axis, paneSeries, timeframe }
       style={{ position: 'absolute', inset: 0, pointerEvents: 'none', zIndex: 4 }}
     >
       {items.map(
-        (it) =>
-          it && (
+        (it) => {
+          if (!it) return null;
+          const label = placeExtremeLabel(it.place, it.x, it.y, it.text, paneWidth, paneHeight);
+          return (
             <div key={it.kind}>
               <span aria-hidden="true" style={{ ...dotStyle(it.color), left: it.x, top: it.y }} />
               <div
                 data-testid={`highlow-label-${it.kind}`}
-                style={{ ...labelStyle(it.place, it.color), left: it.x, top: it.y }}
+                style={{ ...labelStyle(label.place, it.color), left: label.x, top: label.y }}
               >
                 {it.text}
               </div>
             </div>
-          ),
+          );
+        },
       )}
     </div>
   );

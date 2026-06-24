@@ -1,6 +1,6 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import { render, screen, cleanup } from '@testing-library/react';
-import HighLowAnnotationOverlay from './HighLowAnnotationOverlay';
+import HighLowAnnotationOverlay, { placeExtremeLabel } from './HighLowAnnotationOverlay';
 import { useChartPrefsStore } from '../state/chartPrefs';
 import { createVirtualAxis } from '../util/virtualAxis';
 import type { Candle, RangeBundle } from '../api/types';
@@ -110,5 +110,30 @@ describe('HighLowAnnotationOverlay', () => {
 
     expect(observed).not.toBeNull();
     expect(observed).toBe(screen.getByTestId('highlow-overlay'));
+  });
+});
+
+describe('placeExtremeLabel', () => {
+  it('flips a high label below the dot when it is too close to the top edge', () => {
+    expect(placeExtremeLabel('above', 140, 12, '59,300원 (-3.90%, 06.09 10:00)', 760, 180)).toMatchObject({
+      place: 'below',
+      y: 12,
+    });
+  });
+
+  it('keeps labels inside the horizontal pane edges', () => {
+    const left = placeExtremeLabel('above', 20, 80, '59,300원 (-3.90%, 06.09 10:00)', 760, 180);
+    const right = placeExtremeLabel('below', 750, 80, '58,900원 (+1.20%, 06.09 10:00)', 760, 180);
+
+    expect(left.x).toBeGreaterThan(20);
+    expect(right.x).toBeLessThan(750);
+  });
+
+  it('falls back to the original point before pane size is known', () => {
+    expect(placeExtremeLabel('above', 20, 12, '59,300원 (-3.90%, 06.09 10:00)', 0, 0)).toEqual({
+      place: 'above',
+      x: 20,
+      y: 12,
+    });
   });
 });
