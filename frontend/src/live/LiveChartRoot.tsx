@@ -769,16 +769,14 @@ export function LiveChartRoot({ code, timeframe, venue = 'KRX', viewIdentity, bu
     }
     let pending: number | null = null;
     const handler = (param: { time?: unknown; point?: { x: number } | null }) => {
-      // Cursor left the chart pane entirely (mouse-leave) → restore the last
-      // valid hover point so the side panel stays pinned instead of jumping to
-      // LIVE.
-      // Cancel any pending valid-hover write so a queued rAF can't re-set the
-      // cursor after we've restored.
+      // Cursor left the chart pane entirely (mouse-leave) → return the sidebar
+      // to latest mode. Cancel any pending valid-hover write so a queued rAF
+      // can't re-set the cursor after the pointer is already off-chart.
       if (param.point == null) {
         if (pending !== null) { cancelAnimationFrame(pending); pending = null; }
         onCursorActiveChange?.(false);
         onCandleBasisHover?.(null);
-        useLiveCursorStore.getState().restoreCursor();
+        useLiveCursorStore.getState().clearCursor();
         return;
       }
       if (pending !== null) cancelAnimationFrame(pending);
@@ -786,10 +784,10 @@ export function LiveChartRoot({ code, timeframe, venue = 'KRX', viewIdentity, bu
         pending = null;
         const store = useLiveCursorStore.getState();
         const t = param.time;
-        // No usable time (defensive) → not on a bar → keep sticky last point.
+        // No usable time (defensive) → not on a bar → latest mode.
         if (typeof t !== 'number' || axis.segments.length === 0) {
           onCursorActiveChange?.(false);
-          store.restoreCursor();
+          store.clearCursor();
           return;
         }
         // ChartStage.tsx:197 pattern — param.time is virtual-axis seconds.
@@ -800,14 +798,14 @@ export function LiveChartRoot({ code, timeframe, venue = 'KRX', viewIdentity, bu
         // compressed) virtual axis forward, so `realMs` lands on the session tail
         // (15:20–15:30 closing-auction window), a FUTURE no-data time. Left as a
         // cursor it pinned the sidebar to a slot parquet/SSE can't serve → blank.
-        // Treat "cursor past the last real candle" as not-on-a-bar → keep the
-        // last sticky point.
+        // Treat "cursor past the last real candle" as not-on-a-bar → return
+        // to latest mode.
         // (verified 2026-06-11: coordinateToTime jumps 14:53 → 15:20 across the
         // whitespace boundary while the live edge was 14:54).
         const lastMs = lastCandleMsRef.current;
         if (lastMs !== null && realMs > lastMs) {
           onCursorActiveChange?.(false);
-          store.restoreCursor();
+          store.clearCursor();
           return;
         }
         onCandleBasisHover?.(kstDateFromMs(realMs));
