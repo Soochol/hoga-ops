@@ -5,14 +5,7 @@ import type { PaneSeriesMap } from '../chart/drawing/chartCoordinates';
 import type { PaneId } from '../chart/drawing/types';
 import type { VirtualAxis } from '../util/virtualAxis';
 import { useActivePrefs } from '../state/chartPrefs';
-import { resolveTokens } from '../util/tokens';
-
-const TOKENS = resolveTokens({
-  upper: ['--warn', '#FACC15'],
-  lower: ['--accent', '#22D3EE'],
-  foreground: ['--fg', '#F8FAFC'],
-  shadow: ['--bg', '#020617'],
-});
+import { useLivePageStore } from '../state/livePage';
 
 type Props = {
   chart: IChartApi;
@@ -30,23 +23,20 @@ function readVisibleRange(ts: ITimeScaleApi<Time>): { from: number; to: number }
   }
 }
 
-function dotStyle(hit: PriceLevelHit, x: number, y: number): CSSProperties {
-  const color = hit.direction === 'upper' ? TOKENS.upper : TOKENS.lower;
-  const isLimit = hit.kind === 'limit';
+function lineStyle(x0: number, x1: number, y: number, color: string, lineWidth: number): CSSProperties {
+  const left = Math.min(x0, x1);
+  const width = Math.abs(x1 - x0);
   return {
     position: 'absolute',
-    left: x,
-    top: y,
-    width: isLimit ? 9 : 8,
-    height: isLimit ? 9 : 8,
-    borderRadius: '50%',
-    background: color,
-    border: `1px solid ${TOKENS.foreground}`,
-    transform: 'translate(-50%, -50%)',
+    left,
+    top: y - lineWidth / 2,
+    width,
+    height: lineWidth,
+    borderRadius: Math.max(1, lineWidth / 2),
+    backgroundColor: color,
     boxSizing: 'border-box',
-    boxShadow: isLimit
-      ? `0 0 0 2px ${TOKENS.shadow}, 0 0 0 4px ${color}`
-      : `0 0 0 2px ${TOKENS.shadow}, 0 0 6px ${color}`,
+    boxShadow: '0 0 0 1px rgba(2, 6, 23, 0.75)',
+    opacity: 0.95,
   };
 }
 
@@ -65,6 +55,8 @@ function ariaLabel(hit: PriceLevelHit): string {
 
 function PriceLevelDotsOverlay({ chart, bundle, axis, paneSeries }: Props) {
   const enabled = useActivePrefs((p) => p.viLimitPriceDotsEnabled);
+  const color = useLivePageStore((s) => s.viLimitPriceLineColor);
+  const lineWidth = useLivePageStore((s) => s.viLimitPriceLineWidth);
   const containerRef = useRef<HTMLDivElement>(null);
   const [, tick] = useReducer((n: number) => n + 1, 0);
 
@@ -98,27 +90,32 @@ function PriceLevelDotsOverlay({ chart, bundle, axis, paneSeries }: Props) {
   const range = readVisibleRange(ts);
   const activeSeries = paneSeries.get('candle' as PaneId);
   const hits = activeSeries ? bundle.price_level_hits ?? [] : [];
+  const segmentsByDate = new Map((bundle.segments ?? []).map((s) => [s.date, s]));
   const items = hits.map((hit) => {
     if (!activeSeries) return null;
-    const virtualMs = axis.toVirtual(hit.t_ms);
-    const virtualSec = virtualMs / 1000;
-    if (range && (virtualSec < range.from || virtualSec > range.to)) return null;
-    let xc: ReturnType<typeof ts.timeToCoordinate>;
+    const segment = segmentsByDate.get(hit.date);
+    if (!segment) return null;
+    const startSec = axis.toVirtual(segment.session_open_ms) / 1000;
+    const endSec = axis.toVirtual(segment.session_close_ms) / 1000;
+    if (range && (endSec < range.from || startSec > range.to)) return null;
+    let x0: ReturnType<typeof ts.timeToCoordinate>;
+    let x1: ReturnType<typeof ts.timeToCoordinate>;
     let yc: ReturnType<typeof activeSeries.priceToCoordinate>;
     try {
-      xc = ts.timeToCoordinate(virtualSec as Time);
+      x0 = ts.timeToCoordinate(startSec as Time);
+      x1 = ts.timeToCoordinate(endSec as Time);
       yc = activeSeries.priceToCoordinate(hit.price);
     } catch {
       return null;
     }
-    if (xc == null || yc == null) return null;
-    return { hit, x: Number(xc), y: Number(yc) };
+    if (x0 == null || x1 == null || yc == null) return null;
+    return { hit, x0: Number(x0), x1: Number(x1), y: Number(yc) };
   });
 
   return (
     <div
       ref={containerRef}
-      data-testid="price-level-dots-overlay"
+      data-testid="price-level-lines-overlay"
       style={{ position: 'absolute', inset: 0, pointerEvents: 'none', zIndex: 20 }}
     >
       {items.map(
@@ -126,10 +123,10 @@ function PriceLevelDotsOverlay({ chart, bundle, axis, paneSeries }: Props) {
           it && (
             <span
               key={`${it.hit.date}-${it.hit.kind}-${it.hit.direction}-${it.hit.pct}-${it.hit.price}`}
-              data-testid={`price-level-dot-${it.hit.kind}-${it.hit.direction}-${it.hit.pct}`}
+              data-testid={`price-level-line-${it.hit.kind}-${it.hit.direction}-${it.hit.pct}`}
               aria-label={ariaLabel(it.hit)}
               role="img"
-              style={dotStyle(it.hit, it.x, it.y)}
+              style={lineStyle(it.x0, it.x1, it.y, color, lineWidth)}
             />
           ),
       )}

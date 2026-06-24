@@ -57,6 +57,8 @@ export const ASK_PEAK_ALL_PRICE_DEFAULT_COLOR = '#F97316';
 export const ASK_PEAK_ALL_PRICE_DEFAULT_WIDTH: 1 | 2 | 3 | 4 = 1;
 export const ASK_PEAK_VISIBLE_MAX_DEFAULT_COLOR = '#EAB308';
 export const ASK_PEAK_VISIBLE_MAX_DEFAULT_WIDTH: 1 | 2 | 3 | 4 = 3;
+export const VI_LIMIT_PRICE_LINE_DEFAULT_COLOR = '#EAB308';
+export const VI_LIMIT_PRICE_LINE_DEFAULT_WIDTH: 1 | 2 | 3 | 4 = 3;
 export const BID_PEAK_DEFAULT_COLOR = '#DC2626';
 export const BID_PEAK_DEFAULT_WIDTH: 1 | 2 | 3 | 4 = 2;
 export const BID_PEAK_ALL_PRICE_DEFAULT_COLOR = '#F97316';
@@ -87,6 +89,10 @@ export type PersistedIndicators = {
   askPeakVisibleMaxColor: string;
   /** 현재 보이는 캔들 영역 안에서 가장 큰 매도 최대벽 강조 두께. 기본 3. */
   askPeakVisibleMaxLineWidth: 1 | 2 | 3 | 4;
+  /** VI/상하한가 가격선 색(hex). 기본 #EAB308(보이는 영역 최대벽과 동일). */
+  viLimitPriceLineColor: string;
+  /** VI/상하한가 가격선 두께. 기본 3(보이는 영역 최대벽과 동일). */
+  viLimitPriceLineWidth: 1 | 2 | 3 | 4;
   /** 당일 매수 최대벽 토글. opt-in(기본 false). */
   bidPeakEnabled: boolean;
   /** 매수 최대벽 선 색(hex). 기본 #DC2626(빨강). */
@@ -159,6 +165,11 @@ export function mergeLiveIndicatorPrefs(
     ? (obj.askPeakVisibleMaxColor as string) : ASK_PEAK_VISIBLE_MAX_DEFAULT_COLOR;
   const apVisibleMaxWidth = VALID_LINE_WIDTHS.has(obj?.askPeakVisibleMaxLineWidth as number)
     ? (obj!.askPeakVisibleMaxLineWidth as 1 | 2 | 3 | 4) : ASK_PEAK_VISIBLE_MAX_DEFAULT_WIDTH;
+  const viLimitPriceLineColor = typeof obj?.viLimitPriceLineColor === 'string'
+    && HEX_COLOR.test(obj.viLimitPriceLineColor as string)
+    ? (obj.viLimitPriceLineColor as string) : VI_LIMIT_PRICE_LINE_DEFAULT_COLOR;
+  const viLimitPriceLineWidth = VALID_LINE_WIDTHS.has(obj?.viLimitPriceLineWidth as number)
+    ? (obj!.viLimitPriceLineWidth as 1 | 2 | 3 | 4) : VI_LIMIT_PRICE_LINE_DEFAULT_WIDTH;
   // bidPeak fields — opt-in (default false/BID_PEAK_DEFAULT_COLOR/BID_PEAK_DEFAULT_WIDTH).
   const bpEnabled = obj?.bidPeakEnabled === true;
   const bpColor = typeof obj?.bidPeakColor === 'string' && HEX_COLOR.test(obj.bidPeakColor as string)
@@ -195,6 +206,8 @@ export function mergeLiveIndicatorPrefs(
     askPeakAllPriceLineWidth: apAllWidth,
     askPeakVisibleMaxColor: apVisibleMaxColor,
     askPeakVisibleMaxLineWidth: apVisibleMaxWidth,
+    viLimitPriceLineColor,
+    viLimitPriceLineWidth,
     bidPeakEnabled: bpEnabled,
     bidPeakColor: bpColor,
     bidPeakLineWidth: bpWidth,

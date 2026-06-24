@@ -42,6 +42,13 @@ describe('LiveSettingsModal (2단)', () => {
     expect(useChartPrefsStore.getState().candlePaneCandleOnlyScale).toBe(true);
   });
 
+  it('차트 설정에 VI/상하한가 선 스타일 선택이 보인다', () => {
+    render(<LiveSettingsModal onClose={() => {}} />);
+    fireEvent.click(screen.getByTestId('settings-nav-chart'));
+    expect(screen.getByText('VI/상하한가 선 스타일')).toBeTruthy();
+    expect(screen.getByRole('button', { name: 'VI/상하한가 선 스타일 선택' })).toBeTruthy();
+  });
+
   it('이동된 급증·극단값 prefs는 설정 모달에 없다 (지표 모달로 이동)', () => {
     // surgeMarkerEnabled·ratioOutlierFilterEnabled가 'indicator-modal'로
     // 재분류돼 surge nav와 그 gated numerics는 ⚙️ 설정에서 사라졌다.

@@ -28,9 +28,7 @@ describe('priceLevelHits', () => {
 
     expect(hits.map((h) => [h.kind, h.direction, h.pct, h.price, h.t_ms])).toEqual([
       ['vi', 'upper', 10, 11_000, todayOpen + 120_000],
-      ['vi', 'upper', 20, 12_000, todayOpen + 180_000],
       ['vi', 'lower', 10, 9_000, todayOpen + 300_000],
-      ['vi', 'lower', 20, 8_000, todayOpen + 300_000],
       ['limit', 'upper', 30, 13_000, todayOpen + 240_000],
       ['limit', 'lower', 30, 7_000, todayOpen + 300_000],
     ]);
@@ -50,6 +48,29 @@ describe('priceLevelHits', () => {
     ]);
   });
 
+  it('uses the first post-VI cooling candle open as the second VI basis', () => {
+    const candles = [
+      candleRange(todayOpen, 10_000, 10_500, 9_500),
+      candleRange(todayOpen + 60_000, 10_500, 11_000, 10_400),
+      candleRange(todayOpen + 120_000, 11_000, 11_100, 10_900),
+      candleRange(todayOpen + 180_000, 11_500, 12_600, 11_400),
+      candleRange(todayOpen + 240_000, 12_500, 12_700, 12_400),
+      candleRange(todayOpen + 300_000, 12_650, 12_700, 9_000),
+      candleRange(todayOpen + 360_000, 9_000, 9_100, 8_800),
+      candleRange(todayOpen + 420_000, 8_500, 8_600, 7_900),
+      candleRange(todayOpen + 480_000, 8_000, 8_100, 7_650),
+    ];
+
+    const hits = buildLivePriceLevelHits(candles, '20260624');
+
+    expect(hits.map((h) => [h.kind, h.direction, h.pct, h.price, h.t_ms])).toEqual([
+      ['vi', 'upper', 10, 11_000, todayOpen + 60_000],
+      ['vi', 'upper', 20, 12_650, todayOpen + 240_000],
+      ['vi', 'lower', 10, 9_000, todayOpen + 300_000],
+      ['vi', 'lower', 20, 7_650, todayOpen + 480_000],
+    ]);
+  });
+
   it('uses KRX tick-adjusted trigger prices instead of raw rounded percentages', () => {
     const candles = [
       candle(yesterdayOpen + 60_000, 23_000, 24_200),
@@ -62,6 +83,7 @@ describe('priceLevelHits', () => {
 
     expect(hits.map((h) => [h.kind, h.direction, h.pct, h.price, h.t_ms])).toEqual([
       ['vi', 'upper', 10, 32_050, todayOpen + 60_000],
+      ['vi', 'upper', 20, 28_850, todayOpen + 180_000],
       ['vi', 'lower', 10, 26_150, todayOpen + 120_000],
       ['limit', 'upper', 30, 31_450, todayOpen + 60_000],
     ]);

@@ -14,6 +14,7 @@ import {
   type LiveVenueOption,
 } from '../state/liveVenue';
 import { useLiveSettings, usePatchLiveSettings, type LiveStoragePolicy } from '../api/liveSettings';
+import { useLivePageStore } from '../state/livePage';
 import MAStylePicker from './indicators/MAStylePicker';
 import IndicatorPrefRows from './settings/IndicatorPrefRows';
 import SourcePreferenceRadio from './settings/SourcePreferenceRadio';
@@ -58,6 +59,7 @@ function CategoryDetail({ category }: { category: ChartToggleCategory }) {
           {idx > 0 && <div className="border-b border-border my-2" />}
           <IndicatorPrefRows toggleKeys={[key]} />
           {key === 'dayBoundaryEnabled' && <DayBoundaryStyleRow />}
+          {key === 'viLimitPriceDotsEnabled' && <ViLimitPriceLineStyleRow />}
         </Fragment>
       ))}
     </>
@@ -83,6 +85,29 @@ function DayBoundaryStyleRow() {
         onChange={setStyle}
         label="날짜 구분선"
         extraColors={[DAY_BOUNDARY_COLOR_DEFAULT]}
+      />
+    </div>
+  );
+}
+
+function ViLimitPriceLineStyleRow() {
+  const color = useLivePageStore((s) => s.viLimitPriceLineColor);
+  const lineWidth = useLivePageStore((s) => s.viLimitPriceLineWidth);
+  const setStyle = useLivePageStore((s) => s.setViLimitPriceLineStyle);
+
+  return (
+    <div className="flex items-center justify-between py-2">
+      <div className="flex-1 pr-4">
+        <div className="text-fg text-sm">VI/상하한가 선 스타일</div>
+        <div className="text-fg-dim text-xs mt-0.5">
+          VI 가격대와 상한가·하한가 가격선을 표시하는 색상과 두께입니다.
+        </div>
+      </div>
+      <MAStylePicker
+        color={color}
+        lineWidth={lineWidth}
+        onChange={setStyle}
+        label="VI/상하한가 선"
       />
     </div>
   );
