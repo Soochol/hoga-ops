@@ -68,6 +68,10 @@ const snapshot: ParquetStudySnapshot = {
     daily_moving_averages: [
       { id: 'dma-20', enabled: true, period: 20, color: '#EAB308', line_width: 2, source: 'close' },
     ],
+    trade_volume_poc_enabled: true,
+    trade_volume_poc_band_pct: 0.0025,
+    trade_volume_poc_color: '#22C55E',
+    trade_volume_poc_opacity: 0.28,
   },
   provenance: { saved_from_route: '/live', data_provenance: 'live_mixed' },
   bundle: {
@@ -97,6 +101,15 @@ const snapshot: ParquetStudySnapshot = {
       max_price: 69_800,
       max_qty: 5_800,
       max_t_ms: 1_000,
+    }],
+    trade_volume_pocs: [{
+      date: '20260616',
+      center_price: 70_000,
+      low_price: 69_500,
+      high_price: 70_500,
+      qty: 12_345,
+      t_ms: 1_000,
+      band_pct: 0.0025,
     }],
     data_warnings: [],
   },
@@ -417,6 +430,16 @@ describe('StudyPage', () => {
         max_qty: 5_800,
         max_t_ms: 1_000,
       }],
+      tradeVolumePocs: [{
+        date: '20260616',
+        centerPrice: 70_000,
+        lowPrice: 69_500,
+        highPrice: 70_500,
+        qty: 12_345,
+        t_ms: 1_000,
+        bandPct: 0.0025,
+      }],
+      todayKst: '20260616',
       forceHogaPanes: true,
       paneTogglesOverride: {
         volumeEnabled: false,
@@ -428,6 +451,11 @@ describe('StudyPage', () => {
         configs: [{ id: 'dma-20', enabled: true, period: 20, color: '#EAB308', lineWidth: 2, source: 'close' }],
         masterEnabled: true,
         hidden: false,
+      },
+      tradeVolumePocOverride: {
+        enabled: true,
+        color: '#22C55E',
+        opacity: 0.28,
       },
       persistLiveViewport: false,
     });
@@ -448,6 +476,37 @@ describe('StudyPage', () => {
       imb_max_ask: 1,
     }]);
     expect('study_ratio' in props.ratioBundle!).toBe(false);
+  });
+
+  it('reconstructs trade-volume POC bands from saved candles when older snapshots have no POC rows', () => {
+    useStudyViewSnapshotMock.mockReturnValue({
+      data: {
+        ...snapshot,
+        bundle: {
+          ...snapshot.bundle,
+          trade_volume_pocs: [],
+          candles: [
+            { t: 1_000, open: 70_000, high: 70_100, low: 69_900, close: 70_000, volume: 100 },
+            { t: 1_600, open: 70_000, high: 70_100, low: 69_900, close: 70_000, volume: 200 },
+          ],
+        },
+      },
+      isLoading: false,
+      isError: false,
+    });
+
+    renderAt('/study?view=view1');
+
+    const props = liveChartRootMock.mock.calls[0][0] as ComponentProps<typeof LiveChartRoot>;
+    expect(props.tradeVolumePocs).toEqual([{
+      date: '20260616',
+      centerPrice: 70_000,
+      lowPrice: 69_800,
+      highPrice: 70_200,
+      qty: 300,
+      t_ms: 1_000,
+      bandPct: 0.0025,
+    }]);
   });
 
   it('renders saved orderbook and broker detail from snapshot without cursor fetch hooks', () => {

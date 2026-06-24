@@ -1178,6 +1178,10 @@ class StudyIndicatorState(BaseModel):
     daily_moving_averages: list[StudyMovingAverageConfig] = Field(default_factory=list)
     daily_moving_average_enabled: bool = False
     daily_moving_average_hidden: bool = False
+    trade_volume_poc_enabled: bool = True
+    trade_volume_poc_band_pct: float = 0.005
+    trade_volume_poc_color: str = Field(default="#A855F7", pattern=r"^#[0-9A-Fa-f]{6}$")
+    trade_volume_poc_opacity: float = Field(default=0.12, ge=0, le=1)
 
     @field_validator("ratio_outlier_threshold")
     @classmethod
@@ -1314,6 +1318,7 @@ class StudySnapshotBundle(BaseModel):
     fill_strength: list[StudyFillStrengthPoint]
     ask_peaks: list[AskPeak] = Field(default_factory=list)
     bid_peaks: list[BidPeak] = Field(default_factory=list)
+    trade_volume_pocs: list[TradeVolumePoc] = Field(default_factory=list)
     data_warnings: list[str] = Field(default_factory=list)
     orderbook_buckets: list[StudyOrderbookBucket] = Field(default_factory=list)
     broker_buckets: list[StudyBrokerBucket] = Field(default_factory=list)

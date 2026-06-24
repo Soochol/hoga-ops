@@ -18,7 +18,7 @@ import { useLiveSeries } from '../api/liveSeries';
 import { useDayAskPeaks, useTodayAllPriceAskPeak } from './useDayAskPeaks';
 import { useDayBidPeaks, useTodayAllPriceBidPeak } from './useDayBidPeaks';
 import { useTradeVolumePocs } from './useTradeVolumePoc';
-import type { AskPeak, BidPeak, Candle, RangeBundle } from '../api/types';
+import type { AskPeak, BidPeak, Candle, RangeBundle, TradeVolumePocWire } from '../api/types';
 import type { ObSnapshot, TradeSnapshot } from './bucketHogaSeries';
 import type { TabViewport } from './viewportAnchor';
 import { initialHistoricalDaysFor, subtractDaysKst, todayKstYyyymmdd } from './liveDateTime';
@@ -56,6 +56,26 @@ const INDEX_BUCKET_MS = {
   W: 7 * 86_400_000,
   M: 31 * 86_400_000,
 } as const;
+
+function tradeVolumePocsToWire(pocs: readonly {
+  date: string;
+  centerPrice: number;
+  lowPrice: number;
+  highPrice: number;
+  qty: number;
+  t_ms: number;
+  bandPct: number;
+}[]): TradeVolumePocWire[] {
+  return pocs.map((poc) => ({
+    date: poc.date,
+    center_price: poc.centerPrice,
+    low_price: poc.lowPrice,
+    high_price: poc.highPrice,
+    qty: poc.qty,
+    t_ms: poc.t_ms,
+    band_pct: poc.bandPct,
+  }));
+}
 
 /**
  * /live page — KIS-based real-time indicator chart.
@@ -137,6 +157,10 @@ export function LivePage() {
   const dailyMovingAverages = useLivePageStore((s) => s.dailyMovingAverages);
   const dailyMovingAverageEnabled = useLivePageStore((s) => s.dailyMovingAverageEnabled);
   const dailyMovingAverageHidden = useLivePageStore((s) => s.dailyMovingAverageHidden);
+  const tradeVolumePocEnabled = useLivePageStore((s) => s.tradeVolumePocEnabled);
+  const tradeVolumePocBandPct = useLivePageStore((s) => s.tradeVolumePocBandPct);
+  const tradeVolumePocColor = useLivePageStore((s) => s.tradeVolumePocColor);
+  const tradeVolumePocOpacity = useLivePageStore((s) => s.tradeVolumePocOpacity);
   const auctionWindowMask = useChartPrefsStore((s) => s.auctionWindowMask);
   const ratioIntraMax = useChartPrefsStore((s) => s.ratioIntraMax);
   const ratioOutlierFilterEnabled = useChartPrefsStore((s) => s.ratioOutlierFilterEnabled);
@@ -215,6 +239,10 @@ export function LivePage() {
     })),
     daily_moving_average_enabled: dailyMovingAverageEnabled,
     daily_moving_average_hidden: dailyMovingAverageHidden,
+    trade_volume_poc_enabled: tradeVolumePocEnabled,
+    trade_volume_poc_band_pct: tradeVolumePocBandPct,
+    trade_volume_poc_color: tradeVolumePocColor,
+    trade_volume_poc_opacity: tradeVolumePocOpacity,
   }), [
     auctionWindowMask,
     dailyMovingAverageEnabled,
@@ -226,6 +254,10 @@ export function LivePage() {
     ratioIntraMax,
     ratioOutlierFilterEnabled,
     ratioOutlierThreshold,
+    tradeVolumePocBandPct,
+    tradeVolumePocColor,
+    tradeVolumePocEnabled,
+    tradeVolumePocOpacity,
     volumeEnabled,
   ]);
   const activeTab = tabs.find((t) => t.id === activeTabId);
@@ -292,8 +324,9 @@ export function LivePage() {
       investorPoints: base.investorPoints,
       ask_peaks: dayAskPeaks,
       bid_peaks: dayBidPeaks,
+      trade_volume_pocs: tradeVolumePocsToWire(tradeVolumePocs),
     };
-  }, [bundle, chartBundle, dayAskPeaks, dayBidPeaks]);
+  }, [bundle, chartBundle, dayAskPeaks, dayBidPeaks, tradeVolumePocs]);
   const workareaCode = activeCode ?? (activeIndexId ? `index:${activeIndexId}` : null);
   const workareaBundle = activeIndexId ? indexBundle : bundle;
   const workareaChartBundle = activeIndexId ? indexBundle : chartBundle;

@@ -31,6 +31,7 @@ const livePageMocks = vi.hoisted(() => {
       timeframe?: string;
       viewIdentity?: string;
       chartBundle?: RangeBundle | null;
+      tradeVolumePocs?: unknown[];
       isExtending?: boolean;
       pastDataWarnings?: Array<{ reason: string; msg?: string }>;
       paneTogglesOverride?: { hogaPanes?: boolean };
@@ -58,6 +59,7 @@ const livePageMocks = vi.hoisted(() => {
     allPriceTodayArgs: [] as unknown[],
     currentStudySaveSource: null as unknown,
     dayBidPeaksResult: null as unknown[] | null,
+    tradeVolumePocsResult: [] as unknown[],
     todayAskPeak: {
       date: '20260616',
       coverage: 'partial',
@@ -116,6 +118,10 @@ vi.mock('./useDayAskPeaks', () => ({
 vi.mock('./useDayBidPeaks', () => ({
   useTodayAllPriceBidPeak: () => null,
   useDayBidPeaks: (_ob: unknown, _trade: unknown, seeds: unknown) => livePageMocks.dayBidPeaksResult ?? seeds ?? [],
+}));
+
+vi.mock('./useTradeVolumePoc', () => ({
+  useTradeVolumePocs: () => livePageMocks.tradeVolumePocsResult,
 }));
 
 // LiveSidebar now calls cursor hooks (ADR-0044) — mock them so the shell
@@ -238,6 +244,7 @@ describe('LivePage shell', () => {
     livePageMocks.allPriceTodayArgs.length = 0;
     livePageMocks.currentStudySaveSource = null;
     livePageMocks.dayBidPeaksResult = null;
+    livePageMocks.tradeVolumePocsResult = [];
     // The tabs store is a module singleton (loaded once at import). The new
     // LivePage tab-bar wiring makes the mount-seed effect read its activeTabId,
     // so reset it per-test to keep tests isolated — without this, a tab opened
@@ -647,6 +654,67 @@ describe('LivePage shell', () => {
         bundle: {
           ask_peaks: askPeaks,
           bid_peaks: renderedBidPeaks,
+        },
+      });
+    });
+  });
+
+  it('captures daily MA and trade volume POC settings/data in the live study save source', async () => {
+    livePageMocks.liveBundleResult.bundle = rangeBundleFixture({
+      from_date: '20260615',
+      to_date: '20260616',
+      segments: [
+        { date: '20260615', session_open_ms: 500, session_close_ms: 900 },
+        { date: '20260616', session_open_ms: 1_000, session_close_ms: 2_000 },
+      ],
+    });
+    livePageMocks.tradeVolumePocsResult = [{
+      date: '20260616',
+      centerPrice: 70_000,
+      lowPrice: 69_500,
+      highPrice: 70_500,
+      qty: 12_345,
+      t_ms: 1_000,
+      bandPct: 0.0025,
+    }];
+    useLivePageStore.setState({
+      dailyMovingAverageEnabled: true,
+      dailyMovingAverageHidden: true,
+      dailyMovingAverages: [
+        { id: 'dma-20', enabled: true, period: 20, color: '#EAB308', lineWidth: 2, source: 'close' },
+      ],
+      tradeVolumePocEnabled: true,
+      tradeVolumePocBandPct: 0.0025,
+      tradeVolumePocColor: '#22C55E',
+      tradeVolumePocOpacity: 0.28,
+    });
+
+    renderWithRouter('/live?code=005930');
+
+    await waitFor(() => {
+      expect(livePageMocks.currentStudySaveSource).toMatchObject({
+        origin: 'live',
+        indicatorState: {
+          daily_moving_average_enabled: true,
+          daily_moving_average_hidden: true,
+          daily_moving_averages: [
+            { id: 'dma-20', enabled: true, period: 20, color: '#EAB308', line_width: 2, source: 'close' },
+          ],
+          trade_volume_poc_enabled: true,
+          trade_volume_poc_band_pct: 0.0025,
+          trade_volume_poc_color: '#22C55E',
+          trade_volume_poc_opacity: 0.28,
+        },
+        bundle: {
+          trade_volume_pocs: [{
+            date: '20260616',
+            center_price: 70_000,
+            low_price: 69_500,
+            high_price: 70_500,
+            qty: 12_345,
+            t_ms: 1_000,
+            band_pct: 0.0025,
+          }],
         },
       });
     });
