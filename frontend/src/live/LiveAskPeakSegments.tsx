@@ -103,20 +103,18 @@ export function styleVisibleMaxAskPeakSegments(
   segments: readonly AskPeakSegment[],
   visibleRange: VisibleTimeRange,
   style: AskPeakLineStyle,
+  rankLimit: 1 | 2 | 3 = 1,
 ): AskPeakSegment[] {
   if (!visibleRange || segments.length === 0) return [...segments];
-  let bestIndex = -1;
-  let bestQty = Number.NEGATIVE_INFINITY;
-  segments.forEach((segment, index) => {
-    if (!segmentOverlapsVisibleRange(segment, visibleRange)) return;
-    if (segment.qty > bestQty) {
-      bestQty = segment.qty;
-      bestIndex = index;
-    }
-  });
-  if (bestIndex === -1) return [...segments];
+  const highlighted = new Set(segments
+    .map((segment, index) => ({ segment, index }))
+    .filter(({ segment }) => segmentOverlapsVisibleRange(segment, visibleRange))
+    .sort((a, b) => b.segment.qty - a.segment.qty || a.index - b.index)
+    .slice(0, rankLimit)
+    .map(({ index }) => index));
+  if (highlighted.size === 0) return [...segments];
   return segments.map((segment, index) => (
-    index === bestIndex
+    highlighted.has(index)
       ? { ...segment, color: style.color, lineWidth: style.lineWidth }
       : segment
   ));
@@ -289,6 +287,7 @@ function LiveAskPeakSegments({ paneSeries, axis, dayAskPeaks, todayAllPriceAskPe
   const intraMax = useActivePrefs((s) => s.askPeakIntraMax);
   const showAllPrices = useActivePrefs((s) => s.askPeakShowAllPrices);
   const allPriceRankLimit = useActivePrefs((s) => s.askPeakAllPriceRankLimit);
+  const visibleMaxRankLimit = useActivePrefs((s) => s.askPeakVisibleMaxRankLimit);
   const primRef = useRef<AskPeakSegmentsPrimitive | null>(null);
 
   // 생성: series 핸들당 1회(LiveCurrentPriceLine과 동일 — tf·종목 전환에도 핸들 유지).
@@ -332,6 +331,7 @@ function LiveAskPeakSegments({ paneSeries, axis, dayAskPeaks, todayAllPriceAskPe
       rawSegments,
       visibleRange,
       { color: visibleMaxColor, lineWidth: visibleMaxLineWidth },
+      visibleMaxRankLimit as 1 | 2 | 3,
     ));
   }, [
     dayAskPeaks,
@@ -350,6 +350,7 @@ function LiveAskPeakSegments({ paneSeries, axis, dayAskPeaks, todayAllPriceAskPe
     intraMax,
     showAllPrices,
     allPriceRankLimit,
+    visibleMaxRankLimit,
   ]);
 
   // 갱신: dayAskPeaks·segments·candles·축·스타일·토글 변화 시 세그먼트 재계산.
