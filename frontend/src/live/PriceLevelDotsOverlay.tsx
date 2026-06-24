@@ -8,9 +8,10 @@ import { useActivePrefs } from '../state/chartPrefs';
 import { resolveTokens } from '../util/tokens';
 
 const TOKENS = resolveTokens({
-  up: ['--price-up', '#DC2626'],
-  down: ['--price-down', '#2563EB'],
-  ring: ['--fg-dim', '#94A3B8'],
+  upper: ['--warn', '#FACC15'],
+  lower: ['--accent', '#22D3EE'],
+  foreground: ['--fg', '#F8FAFC'],
+  shadow: ['--bg', '#020617'],
 });
 
 type Props = {
@@ -30,19 +31,22 @@ function readVisibleRange(ts: ITimeScaleApi<Time>): { from: number; to: number }
 }
 
 function dotStyle(hit: PriceLevelHit, x: number, y: number): CSSProperties {
-  const color = hit.direction === 'upper' ? TOKENS.up : TOKENS.down;
+  const color = hit.direction === 'upper' ? TOKENS.upper : TOKENS.lower;
   const isLimit = hit.kind === 'limit';
   return {
     position: 'absolute',
     left: x,
     top: y,
-    width: isLimit ? 7 : 6,
-    height: isLimit ? 7 : 6,
+    width: isLimit ? 9 : 8,
+    height: isLimit ? 9 : 8,
     borderRadius: '50%',
     background: color,
-    border: isLimit ? `1px solid ${TOKENS.ring}` : 'none',
+    border: `1px solid ${TOKENS.foreground}`,
     transform: 'translate(-50%, -50%)',
     boxSizing: 'border-box',
+    boxShadow: isLimit
+      ? `0 0 0 2px ${TOKENS.shadow}, 0 0 0 4px ${color}`
+      : `0 0 0 2px ${TOKENS.shadow}, 0 0 6px ${color}`,
   };
 }
 
@@ -115,7 +119,7 @@ function PriceLevelDotsOverlay({ chart, bundle, axis, paneSeries }: Props) {
     <div
       ref={containerRef}
       data-testid="price-level-dots-overlay"
-      style={{ position: 'absolute', inset: 0, pointerEvents: 'none', zIndex: 4 }}
+      style={{ position: 'absolute', inset: 0, pointerEvents: 'none', zIndex: 20 }}
     >
       {items.map(
         (it) =>
