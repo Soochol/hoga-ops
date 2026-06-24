@@ -639,17 +639,14 @@ it('does not rename a saved view when the inline value is unchanged', async () =
   expect(screen.getByText('급등 이후')).toBeTruthy();
 });
 
-it('confirms delete before calling remove mutation', async () => {
+it('deletes a saved view directly from the row context menu', async () => {
   renderDrawer('/study?view=a');
 
   fireEvent.contextMenu(screen.getByRole('button', { name: '급등 이후 저장뷰 열기' }));
   await userEvent.click(screen.getByRole('menuitem', { name: '삭제' }));
-  const dialog = screen.getByRole('dialog', { name: '저장뷰 삭제' });
-  const confirmButton = within(dialog).getByRole('button', { name: '삭제' });
-  expect(document.activeElement).toBe(confirmButton);
-  await userEvent.keyboard('{Enter}');
 
   expect(removeMutate).toHaveBeenCalledWith('a', expect.objectContaining({ onSuccess: expect.any(Function) }));
+  expect(screen.queryByRole('dialog', { name: '저장뷰 삭제' })).toBeNull();
 });
 
 it('navigates away after deleting the active study view', async () => {
@@ -665,8 +662,6 @@ it('navigates away after deleting the active study view', async () => {
 
   fireEvent.contextMenu(screen.getByRole('button', { name: '급등 이후 저장뷰 열기' }));
   await userEvent.click(screen.getByRole('menuitem', { name: '삭제' }));
-  const dialog = screen.getByRole('dialog', { name: '저장뷰 삭제' });
-  await userEvent.click(within(dialog).getByRole('button', { name: '삭제' }));
 
   await waitFor(() => expect(screen.getByTestId('loc').textContent).toBe('/study'));
   expect(screen.queryByRole('dialog', { name: '저장뷰 삭제' })).toBeNull();
@@ -683,8 +678,6 @@ it('removes every open tab for a deleted inactive study view', async () => {
 
   fireEvent.contextMenu(screen.getByRole('button', { name: '급등 이후 저장뷰 열기' }));
   await userEvent.click(screen.getByRole('menuitem', { name: '삭제' }));
-  const dialog = screen.getByRole('dialog', { name: '저장뷰 삭제' });
-  await userEvent.click(within(dialog).getByRole('button', { name: '삭제' }));
 
   const state = useStudyTabsStore.getState();
   expect(state.tabs.map((tab) => tab.viewId)).toEqual(['b']);
