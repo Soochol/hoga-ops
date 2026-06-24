@@ -175,6 +175,7 @@ export function StudyViewsDrawer() {
   const [renameState, setRenameState] = useState<{ id: string; value: string; error: string | null } | null>(null);
   const renameCommittingRef = useRef(false);
   const renameInputRef = useRef<HTMLInputElement>(null);
+  const navigateClickTimerRef = useRef<number | null>(null);
   const deleteConfirmButtonRef = useRef<HTMLButtonElement>(null);
   const navigate = useNavigate();
   const location = useLocation();
@@ -208,6 +209,12 @@ export function StudyViewsDrawer() {
     if (!deleteTarget) return;
     deleteConfirmButtonRef.current?.focus();
   }, [deleteTarget]);
+
+  useEffect(() => () => {
+    if (navigateClickTimerRef.current === null) return;
+    window.clearTimeout(navigateClickTimerRef.current);
+    navigateClickTimerRef.current = null;
+  }, []);
 
   useEffect(() => {
     if (!renameState) return;
@@ -265,14 +272,29 @@ export function StudyViewsDrawer() {
     setRenameState({ id: row.id, value: row.name, error: null });
   };
 
-  const navigateToStudyView = (row: ParquetStudyView) => {
-    navigate(`/study?view=${row.id}`);
-  };
-
   const cancelRename = () => {
     renameCommittingRef.current = false;
     setRenameState(null);
   };
+
+  function cancelPendingStudyViewNavigation() {
+    if (navigateClickTimerRef.current === null) return;
+    window.clearTimeout(navigateClickTimerRef.current);
+    navigateClickTimerRef.current = null;
+  }
+
+  function navigateToStudyView(row: ParquetStudyView) {
+    cancelPendingStudyViewNavigation();
+    navigate(`/study?view=${row.id}`);
+  }
+
+  function scheduleStudyViewNavigation(row: ParquetStudyView) {
+    cancelPendingStudyViewNavigation();
+    navigateClickTimerRef.current = window.setTimeout(() => {
+      navigateClickTimerRef.current = null;
+      navigateToStudyView(row);
+    }, 180);
+  }
 
   const commitRename = (row: ParquetStudyView) => {
     if (!renameState || renameState.id !== row.id || renameCommittingRef.current) return;
@@ -326,7 +348,7 @@ export function StudyViewsDrawer() {
       role={renameState?.id === row.id ? undefined : 'button'}
       tabIndex={renameState?.id === row.id ? undefined : 0}
       aria-label={renameState?.id === row.id ? undefined : `${row.name} 저장뷰 열기`}
-      onClick={renameState?.id === row.id ? undefined : () => navigateToStudyView(row)}
+      onClick={renameState?.id === row.id ? undefined : () => scheduleStudyViewNavigation(row)}
       onContextMenu={renameState?.id === row.id ? undefined : (e) => {
         e.preventDefault();
         setRowMenu({ row, left: e.clientX, top: e.clientY });
@@ -368,10 +390,10 @@ export function StudyViewsDrawer() {
           <div className="min-w-0 flex-1">
             <div
               className="truncate text-xs text-fg"
-              onClick={(e) => e.stopPropagation()}
               onDoubleClick={(e) => {
                 e.preventDefault();
                 e.stopPropagation();
+                cancelPendingStudyViewNavigation();
                 startRename(row);
               }}
             >
