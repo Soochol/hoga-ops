@@ -178,13 +178,11 @@ export function StudyViewsDrawer() {
   const mutations = useStudyViewMutations();
   const saveSource = useCurrentStudySaveSource();
   const [dialog, setDialog] = useState<SaveDialogState | null>(null);
-  const [deleteTarget, setDeleteTarget] = useState<ParquetStudyView | null>(null);
   const [rowMenu, setRowMenu] = useState<{ row: ParquetStudyView; left: number; top: number } | null>(null);
   const [renameState, setRenameState] = useState<{ id: string; value: string; error: string | null } | null>(null);
   const renameCommittingRef = useRef(false);
   const renameInputRef = useRef<HTMLInputElement>(null);
   const navigateClickTimerRef = useRef<number | null>(null);
-  const deleteConfirmButtonRef = useRef<HTMLButtonElement>(null);
   const navigate = useNavigate();
   const location = useLocation();
   const {
@@ -215,11 +213,6 @@ export function StudyViewsDrawer() {
   const startEntryDrag = useEntryDragStore((s) => s.startDrag);
   const setOverStudy = useEntryDragStore((s) => s.setOverStudy);
   const endEntryDrag = useEntryDragStore((s) => s.endDrag);
-
-  useEffect(() => {
-    if (!deleteTarget) return;
-    deleteConfirmButtonRef.current?.focus();
-  }, [deleteTarget]);
 
   useEffect(() => () => {
     if (navigateClickTimerRef.current === null) return;
@@ -348,13 +341,11 @@ export function StudyViewsDrawer() {
     );
   };
 
-  const confirmDelete = () => {
-    if (!deleteTarget) return;
-    const deletedId = deleteTarget.id;
+  const deleteSave = (row: ParquetStudyView) => {
+    const deletedId = row.id;
     mutations.remove.mutate(deletedId, {
       onSuccess: () => {
         const nextActiveTab = useStudyTabsStore.getState().closeTabsByViewId(deletedId);
-        setDeleteTarget(null);
         setDialog(null);
         if (location.pathname === '/study' && (currentStudyViewId === deletedId || studySource?.viewId === deletedId)) {
           navigate(nextActiveTab ? `/study?view=${nextActiveTab.viewId}` : '/study');
@@ -602,7 +593,7 @@ export function StudyViewsDrawer() {
             type="button"
             role="menuitem"
             onClick={() => {
-              setDeleteTarget(rowMenu.row);
+              deleteSave(rowMenu.row);
               setRowMenu(null);
             }}
             className="block w-full px-3 py-1.5 text-left text-sm hover:bg-bg-input"
@@ -623,25 +614,6 @@ export function StudyViewsDrawer() {
           onCancel={() => setDialog(null)}
           onSubmit={handleDialogSubmit}
         />
-      )}
-      {deleteTarget && (
-        <div role="dialog" aria-modal="true" aria-label="저장뷰 삭제" className="fixed inset-0 z-50 grid place-items-center bg-black/40">
-          <div className="w-[320px] max-w-[calc(100vw-24px)] space-y-3 rounded border bg-bg p-4 shadow-lg">
-            <h2 className="text-sm font-semibold">저장뷰 삭제</h2>
-            <p className="text-xs text-fg-dim">{deleteTarget.name} 저장뷰를 삭제합니다.</p>
-            <div className="flex justify-end gap-2">
-              <button type="button" onClick={() => setDeleteTarget(null)} className="rounded border px-3 py-1 text-sm">취소</button>
-              <button
-                type="button"
-                ref={deleteConfirmButtonRef}
-                onClick={confirmDelete}
-                className="rounded border px-3 py-1 text-sm"
-              >
-                삭제
-              </button>
-            </div>
-          </div>
-        </div>
       )}
     </aside>
   );
