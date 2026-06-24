@@ -52,6 +52,7 @@ import DrawingPropertyPanel from '../chart/DrawingPropertyPanel';
 import PaneLegendOverlay from './PaneLegendOverlay';
 import CandleTooltip from './CandleTooltip';
 import HighLowAnnotationOverlay from './HighLowAnnotationOverlay';
+import PriceLevelDotsOverlay from './PriceLevelDotsOverlay';
 import type { PaneId } from '../chart/drawing/types';
 import { useDrawingHost } from '../chart/useDrawingHost';
 
@@ -917,6 +918,9 @@ export function LiveChartRoot({ code, timeframe, venue = 'KRX', viewIdentity, bu
           {/* 고저 극값 라벨 — 보이는 범위의 최고/최저봉에 극값 대비율 라벨. cb(안정)·viewport
               구독이라 SSE 틱엔 미재렌더, 팬/줌·캔들 갱신 시에만 재계산. 토글 self-gate. */}
           <HighLowAnnotationOverlay chart={chart} bundle={cb} axis={axis} paneSeries={paneSeries} timeframe={timeframe} />
+          {isMinuteTimeframe(timeframe) && hogaBundle && (
+            <PriceLevelDotsOverlay chart={chart} bundle={hogaBundle} axis={axis} paneSeries={paneSeries} />
+          )}
           <DrawingPropertyPanel computeAnchor={computeAnchor} />
           {/* Day boundary lines only make sense on intraday timeframes —
               D/W/M's candles are already day/week/month units, so a

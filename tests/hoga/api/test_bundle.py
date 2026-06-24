@@ -6,8 +6,9 @@ from unittest.mock import MagicMock, patch
 import duckdb
 import pytest
 
-from hoga.api.bundle import downsample_candles
+from hoga.api.bundle import build_price_level_hits_slice, downsample_candles
 from hoga.tables.candles import ApiCandle
+from hoga.tables.trades import Trade, write_parquet
 
 
 def _c(ts_ms: int, o: int, h: int, l: int, c: int, va: int = 0, vb: int = 0) -> ApiCandle:
@@ -66,6 +67,81 @@ def test_downsample_candles_handles_all_six_timeframes():
         assert sum(c.vol_a for c in out) == 30
         for c in out:
             assert c.ts_ms % bucket_ms == 0
+
+
+def test_build_price_level_hits_uses_open_for_vi_and_prev_close_for_limits(tmp_path):
+    trades_path = tmp_path / "trades.parquet"
+    write_parquet(
+        [
+            Trade(90100000, 1, 11000, 0, 1, 1, 1, 1, 0, 0, 0, 0, 0, 0, 0),
+            Trade(90200000, 2, 12000, 0, 1, 1, 2, 2, 0, 0, 0, 0, 0, 0, 0),
+            Trade(90300000, 3, 9000, 0, 1, -1, 3, 3, 0, 0, 0, 0, 0, 0, 0),
+            Trade(90400000, 4, 8000, 0, 1, -1, 4, 4, 0, 0, 0, 0, 0, 0, 0),
+            # Limit hits must use previous close=10000, not day open=13000.
+            Trade(90500000, 5, 13000, 0, 1, 1, 5, 5, 0, 0, 0, 0, 0, 0, 0),
+            Trade(90600000, 6, 7000, 0, 1, -1, 6, 6, 0, 0, 0, 0, 0, 0, 0),
+        ],
+        trades_path,
+    )
+
+    hits = build_price_level_hits_slice(
+        duckdb.connect(database=":memory:"),
+        date="20260624",
+        trades_path=trades_path,
+        vi_base_open=10_000,
+        limit_base_prev_close=10_000,
+    )
+
+    assert [(h.kind, h.direction, h.pct, h.price, h.t_ms) for h in hits] == [
+        ("vi", "upper", 10, 11000, 1782259260000),
+        ("vi", "upper", 20, 12000, 1782259320000),
+        ("vi", "lower", 10, 9000, 1782259380000),
+        ("vi", "lower", 20, 8000, 1782259440000),
+        ("limit", "upper", 30, 13000, 1782259500000),
+        ("limit", "lower", 30, 7000, 1782259560000),
+    ]
+
+
+def test_build_price_level_hits_requires_exact_trade_price_and_first_hit(tmp_path):
+    trades_path = tmp_path / "trades.parquet"
+    write_parquet(
+        [
+            Trade(90100000, 1, 10999, 0, 1, 1, 1, 1, 0, 0, 0, 0, 0, 0, 0),
+            Trade(90200000, 2, 11000, 0, 1, 1, 2, 2, 0, 0, 0, 0, 0, 0, 0),
+            Trade(90300000, 3, 11000, 0, 1, 1, 3, 3, 0, 0, 0, 0, 0, 0, 0),
+        ],
+        trades_path,
+    )
+
+    hits = build_price_level_hits_slice(
+        duckdb.connect(database=":memory:"),
+        date="20260624",
+        trades_path=trades_path,
+        vi_base_open=10_000,
+        limit_base_prev_close=None,
+    )
+
+    assert [(h.kind, h.direction, h.pct, h.price, h.t_ms) for h in hits] == [
+        ("vi", "upper", 10, 11000, 1782259320000),
+    ]
+
+
+def test_build_price_level_hits_returns_empty_without_basis_or_trades(tmp_path):
+    con = duckdb.connect(database=":memory:")
+    assert build_price_level_hits_slice(
+        con,
+        date="20260624",
+        trades_path=tmp_path / "missing.parquet",
+        vi_base_open=10_000,
+        limit_base_prev_close=10_000,
+    ) == []
+    assert build_price_level_hits_slice(
+        con,
+        date="20260624",
+        trades_path=tmp_path / "missing.parquet",
+        vi_base_open=None,
+        limit_base_prev_close=None,
+    ) == []
 
 
 # ---------------------------------------------------------------------------

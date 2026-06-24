@@ -561,6 +561,17 @@ class DateWarning(BaseModel):
     warnings: list[ViolationModel]
 
 
+class PriceLevelHit(BaseModel):
+    """One exact trade at a calculated VI or limit-up/down price level."""
+
+    date: str
+    t_ms: int
+    price: int
+    kind: Literal["vi", "limit"]
+    direction: Literal["upper", "lower"]
+    pct: Literal[10, 20, 30]
+
+
 class RangeBundle(BaseModel):
     """The sole read-path Wire Model for a Stock-Date Range (ADR-0013).
 
@@ -593,6 +604,7 @@ class RangeBundle(BaseModel):
     # D·W·M/무데이터는 빈 리스트. 기본 []라 기존 클라 무영향.
     ask_peaks: list["AskPeak"] = []
     bid_peaks: list["BidPeak"] = Field(default_factory=list)
+    price_level_hits: list[PriceLevelHit] = Field(default_factory=list)
 
 
 # === Broker Day-Trajectory (ADR-0023) ===

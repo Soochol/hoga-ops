@@ -28,6 +28,15 @@ export type StockDate = {
 
 export type Candle = { ts_ms: number; open: number; close: number; high: number; low: number; vol_a: number; vol_b: number };
 
+export type PriceLevelHit = {
+  date: string;
+  t_ms: number;
+  price: number;
+  kind: 'vi' | 'limit';
+  direction: 'upper' | 'lower';
+  pct: 10 | 20 | 30;
+};
+
 export type QuoteRatioPoint = {
   t: number;
   bid_total: number;
@@ -504,4 +513,7 @@ export type RangeBundle = {
    *  D·W·M/무데이터 → []. */
   ask_peaks: AskPeak[];
   bid_peaks?: BidPeak[];
+  /** 실제 체결가가 VI 가격대(당일 open 기준 ±10/±20%) 또는 상하한가(전일 close 기준 ±30%)와
+   *  일치한 최초 시점. Backend 저장분 + frontend live trade hit가 merge된다. */
+  price_level_hits?: PriceLevelHit[];
 };

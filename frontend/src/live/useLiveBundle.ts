@@ -29,6 +29,7 @@ import {
   liveVenueSessionBoundsMs,
   liveVenueUsesExtendedMinuteWindow,
 } from './liveVenuePolicy';
+import { buildLivePriceLevelHits, mergePriceLevelHits } from './priceLevelHits';
 
 function laterDate(a: string, b: string): string {
   return a >= b ? a : b;
@@ -339,6 +340,10 @@ export function useLiveBundle(
       }),
     [defaultKrxSession, past.data, isMinute, live.ob, live.trade, bucketMs],
   );
+  const livePriceLevelHits = useMemo(
+    () => (isMinute ? buildLivePriceLevelHits(liveCandles, live.trade, todayKstYyyymmdd) : []),
+    [isMinute, liveCandles, live.trade, todayKstYyyymmdd],
+  );
 
   // Atomize the historical-prepend across the two independent past sources.
   // A leftward pan changes `historicalFromDate`, which re-keys BOTH past
@@ -401,9 +406,14 @@ export function useLiveBundle(
   const bundle = useMemo<RangeBundle | null>(
     () =>
       chartBundle
-        ? { ...chartBundle, quote_ratio: hogaSeries.quote_ratio, fill_strength: hogaSeries.fill_strength }
+        ? {
+            ...chartBundle,
+            quote_ratio: hogaSeries.quote_ratio,
+            fill_strength: hogaSeries.fill_strength,
+            price_level_hits: mergePriceLevelHits(chartBundle.price_level_hits, livePriceLevelHits),
+          }
         : null,
-    [chartBundle, hogaSeries],
+    [chartBundle, hogaSeries, livePriceLevelHits],
   );
 
   // Clamp is a minute-path concern only; the daily endpoint has no 250d cap.
