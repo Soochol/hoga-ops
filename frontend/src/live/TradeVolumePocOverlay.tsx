@@ -51,9 +51,19 @@ export function buildTradeVolumePocSegments(
   for (const poc of pocs) {
     const segment = byDate.get(poc.date);
     if (!segment) continue;
-    const endMs = poc.date === todayKst ? lastCandle.ts_ms : segment.session_close_ms;
+    const rawEndMs = poc.date === todayKst ? lastCandle.ts_ms : segment.session_close_ms;
+    const segmentCandles = candles.filter(
+      (candle) =>
+        candle.ts_ms >= segment.session_open_ms
+        && candle.ts_ms <= segment.session_close_ms
+        && candle.ts_ms <= rawEndMs,
+    );
+    if (segmentCandles.length === 0) continue;
+    const startMs = Math.max(segment.session_open_ms, segmentCandles[0].ts_ms);
+    const endMs = Math.min(rawEndMs, segmentCandles[segmentCandles.length - 1].ts_ms);
+    if (endMs < startMs) continue;
     out.push({
-      time0: (axis.toVirtual(segment.session_open_ms) / 1000) as Time,
+      time0: (axis.toVirtual(startMs) / 1000) as Time,
       time1: (axis.toVirtual(endMs) / 1000) as Time,
       lowPrice: poc.lowPrice,
       highPrice: poc.highPrice,
@@ -95,7 +105,7 @@ function TradeVolumePocOverlay({ paneSeries, axis, pocs, segments, candles, toda
 
   useEffect(() => {
     primitiveRef.current?.setSegments(enabled ? segment : []);
-  }, [enabled, segment]);
+  }, [enabled, segment, series]);
 
   return null;
 }

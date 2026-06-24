@@ -172,6 +172,14 @@ interface Props {
   onCandleBasisClick?: (date: string | null) => void;
 }
 
+export function shouldShowTradeVolumePocOverlay(
+  timeframe: LiveTimeframe,
+  forceHogaPanes: boolean,
+  tradeVolumePocCount: number,
+): boolean {
+  return isMinuteTimeframe(timeframe) || (forceHogaPanes && tradeVolumePocCount > 0);
+}
+
 /** /live's single-chart root. Mounts the timeframe-appropriate pane set
  * (see `paneSpecsForTimeframe`) inside one createChart instance so
  * timeScale is shared across candle/volume/(hoga) panes. */
@@ -931,6 +939,11 @@ export function LiveChartRoot({ code, timeframe, venue = 'KRX', viewIdentity, bu
   }, [chart, axis, onCandleBasisClick]);
 
   const dwDisabled = isCalendarTimeframe(timeframe) && !forceHogaPanes;
+  const showTradeVolumePocOverlay = shouldShowTradeVolumePocOverlay(
+    timeframe,
+    forceHogaPanes,
+    tradeVolumePocs.length,
+  );
 
   return (
     <div
@@ -983,7 +996,7 @@ export function LiveChartRoot({ code, timeframe, venue = 'KRX', viewIdentity, bu
               todayKst={todayKst}
             />
           )}
-          {isMinuteTimeframe(timeframe) && (
+          {showTradeVolumePocOverlay && (
             <TradeVolumePocOverlay
               paneSeries={paneSeries}
               axis={axis}

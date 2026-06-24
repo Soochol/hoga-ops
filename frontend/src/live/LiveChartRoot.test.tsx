@@ -18,7 +18,7 @@ if (typeof window !== 'undefined' && !window.ResizeObserver) {
   };
 }
 
-import { LiveChartRoot } from './LiveChartRoot';
+import { LiveChartRoot, shouldShowTradeVolumePocOverlay } from './LiveChartRoot';
 import { useLivePageStore } from '../state/livePage';
 import { createChartEx, TickMarkType } from 'lightweight-charts';
 import { createVirtualAxis } from '../util/virtualAxis';
@@ -108,6 +108,13 @@ describe('LiveChartRoot', () => {
       { wrapper },
     );
     expect(screen.getByTestId('live-chart-root')).toBeTruthy();
+  });
+
+  it('allows saved study views to restore trade-volume POC overlays outside the live minute gate', () => {
+    expect(shouldShowTradeVolumePocOverlay('D', true, 1)).toBe(true);
+    expect(shouldShowTradeVolumePocOverlay('D', true, 0)).toBe(false);
+    expect(shouldShowTradeVolumePocOverlay('D', false, 1)).toBe(false);
+    expect(shouldShowTradeVolumePocOverlay('1m', false, 0)).toBe(true);
   });
 
   it('publishes index sector basis hover dates from crosshair movement', async () => {
