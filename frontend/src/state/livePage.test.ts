@@ -327,6 +327,33 @@ describe('useLivePageStore.askPeakVisibleMaxStyle', () => {
   });
 });
 
+describe('useLivePageStore.viLimitPriceLineStyle', () => {
+  beforeEach(() => {
+    localStorage.removeItem('live.indicators.v1');
+    useLivePageStore.setState({
+      viLimitPriceLineColor: '#EAB308',
+      viLimitPriceLineWidth: 3,
+    });
+  });
+
+  it('setViLimitPriceLineStyle updates color and width independently', () => {
+    useLivePageStore.getState().setViLimitPriceLineStyle({ color: '#A855F7' });
+    expect(useLivePageStore.getState().viLimitPriceLineColor).toBe('#A855F7');
+    expect(useLivePageStore.getState().viLimitPriceLineWidth).toBe(3);
+
+    useLivePageStore.getState().setViLimitPriceLineStyle({ lineWidth: 4 });
+    expect(useLivePageStore.getState().viLimitPriceLineColor).toBe('#A855F7');
+    expect(useLivePageStore.getState().viLimitPriceLineWidth).toBe(4);
+  });
+
+  it('persists VI/상하한가 line style fields in the indicator snapshot', () => {
+    useLivePageStore.getState().setViLimitPriceLineStyle({ color: '#A855F7', lineWidth: 4 });
+    const raw = JSON.parse(localStorage.getItem('live.indicators.v1') ?? '{}');
+    expect(raw.viLimitPriceLineColor).toBe('#A855F7');
+    expect(raw.viLimitPriceLineWidth).toBe(4);
+  });
+});
+
 describe('LiveMAConfig constants', () => {
   it('exposes period bounds and slot limit', () => {
     expect(MA_PERIOD_MIN).toBe(2);

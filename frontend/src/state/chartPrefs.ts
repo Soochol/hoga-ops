@@ -67,8 +67,8 @@ export const CHART_TOGGLES = [
   },
   {
     key: 'viLimitPriceDotsEnabled',
-    label: 'VI/상하한가 점',
-    description: '실제 체결가가 VI 가격대 또는 상하한가에 닿은 경우 캔들 차트에 점으로 표시합니다.',
+    label: 'VI/상하한가 선',
+    description: '가격이 VI 가격대 또는 상하한가에 닿은 경우 캔들 차트에 가격선으로 표시합니다.',
     default: true,
   },
   {

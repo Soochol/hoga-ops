@@ -18,6 +18,8 @@ describe('mergeLiveIndicatorPrefs', () => {
       askPeakAllPriceLineWidth: 1,
       askPeakVisibleMaxColor: '#EAB308',
       askPeakVisibleMaxLineWidth: 3,
+      viLimitPriceLineColor: '#EAB308',
+      viLimitPriceLineWidth: 3,
       bidPeakEnabled: false,
       bidPeakColor: '#DC2626',
       bidPeakLineWidth: 2,
@@ -215,6 +217,27 @@ describe('mergeLiveIndicatorPrefs — askPeak', () => {
     });
     expect(m.askPeakVisibleMaxColor).toBe('#EAB308');
     expect(m.askPeakVisibleMaxLineWidth).toBe(3);
+  });
+  it('VI/상하한가 선 스타일 기본값은 보이는 영역 최대벽과 같은 #EAB308/3', () => {
+    const m = mergeLiveIndicatorPrefs(undefined);
+    expect(m.viLimitPriceLineColor).toBe('#EAB308');
+    expect(m.viLimitPriceLineWidth).toBe(3);
+  });
+  it('VI/상하한가 선 스타일 유효값 보존', () => {
+    const m = mergeLiveIndicatorPrefs({
+      viLimitPriceLineColor: '#A855F7',
+      viLimitPriceLineWidth: 4,
+    });
+    expect(m.viLimitPriceLineColor).toBe('#A855F7');
+    expect(m.viLimitPriceLineWidth).toBe(4);
+  });
+  it('VI/상하한가 선 스타일 이상값 폴백', () => {
+    const m = mergeLiveIndicatorPrefs({
+      viLimitPriceLineColor: 'gold',
+      viLimitPriceLineWidth: 9,
+    });
+    expect(m.viLimitPriceLineColor).toBe('#EAB308');
+    expect(m.viLimitPriceLineWidth).toBe(3);
   });
   it('이상값 폴백', () => {
     const m = mergeLiveIndicatorPrefs({

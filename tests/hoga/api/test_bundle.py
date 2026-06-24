@@ -90,9 +90,9 @@ def test_build_price_level_hits_uses_candle_touch_open_for_vi_and_prev_close_for
 
     assert [(h.kind, h.direction, h.pct, h.price, h.t_ms) for h in hits] == [
         ("vi", "upper", 10, 11000, 1782259260000),
-        ("vi", "upper", 20, 12000, 1782259320000),
+        ("vi", "upper", 20, 12650, 1782259500000),
         ("vi", "lower", 10, 9000, 1782259380000),
-        ("vi", "lower", 20, 8000, 1782259440000),
+        ("vi", "lower", 20, 7200, 1782259560000),
         ("limit", "upper", 30, 13000, 1782259500000),
         ("limit", "lower", 30, 7000, 1782259560000),
     ]
@@ -115,6 +115,34 @@ def test_build_price_level_hits_uses_first_candle_that_touches_price():
     ]
 
 
+def test_build_price_level_hits_uses_post_vi_reopen_open_for_second_vi():
+    hits = build_price_level_hits_slice(
+        date="20260624",
+        candles=[
+            _c(JUN24_0901, 10_000, 10_500, 9_500, 10_000),
+            _c(JUN24_0901 + MINUTE, 10_500, 11_000, 10_400, 11_000),
+            _c(JUN24_0901 + 2 * MINUTE, 11_000, 11_100, 10_900, 11_000),
+            # First candle after the 2-minute VI cooling window. Its open is
+            # the best candle-level proxy for the single-price reopening print.
+            _c(JUN24_0901 + 3 * MINUTE, 11_500, 12_600, 11_400, 12_500),
+            _c(JUN24_0901 + 4 * MINUTE, 12_500, 12_700, 12_400, 12_650),
+            _c(JUN24_0901 + 5 * MINUTE, 12_650, 12_700, 9_000, 9_000),
+            _c(JUN24_0901 + 6 * MINUTE, 9_000, 9_100, 8_800, 9_000),
+            _c(JUN24_0901 + 7 * MINUTE, 8_500, 8_600, 7_900, 8_000),
+            _c(JUN24_0901 + 8 * MINUTE, 8_000, 8_100, 7_650, 7_700),
+        ],
+        vi_base_open=10_000,
+        limit_base_prev_close=None,
+    )
+
+    assert [(h.kind, h.direction, h.pct, h.price, h.t_ms) for h in hits] == [
+        ("vi", "upper", 10, 11000, JUN24_0901 + MINUTE),
+        ("vi", "upper", 20, 12650, JUN24_0901 + 4 * MINUTE),
+        ("vi", "lower", 10, 9000, JUN24_0901 + 5 * MINUTE),
+        ("vi", "lower", 20, 7650, JUN24_0901 + 8 * MINUTE),
+    ]
+
+
 def test_build_price_level_hits_uses_krx_tick_adjusted_trigger_prices():
     hits = build_price_level_hits_slice(
         date="20260624",
@@ -132,6 +160,7 @@ def test_build_price_level_hits_uses_krx_tick_adjusted_trigger_prices():
 
     assert [(h.kind, h.direction, h.pct, h.price, h.t_ms) for h in hits] == [
         ("vi", "upper", 10, 32050, 1782259260000),
+        ("vi", "upper", 20, 28850, 1782259380000),
         ("vi", "lower", 10, 26150, 1782259320000),
         ("limit", "upper", 30, 31450, 1782259260000),
     ]

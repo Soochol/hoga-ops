@@ -2,6 +2,7 @@ import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { cleanup, render, screen } from '@testing-library/react';
 import PriceLevelDotsOverlay from './PriceLevelDotsOverlay';
 import { useChartPrefsStore } from '../state/chartPrefs';
+import { useLivePageStore } from '../state/livePage';
 import { createVirtualAxis } from '../util/virtualAxis';
 import type { PaneSeriesMap } from '../chart/drawing/chartCoordinates';
 import type { PaneId } from '../chart/drawing/types';
@@ -19,9 +20,13 @@ const hits: PriceLevelHit[] = [
   { date: '20260624', t_ms: OPEN + 120_000, price: 13_000, kind: 'limit', direction: 'upper', pct: 30 },
 ];
 
-const bundle = { price_level_hits: hits } as RangeBundle;
+const bundle = {
+  price_level_hits: hits,
+  segments: [{ date: '20260624', session_open_ms: OPEN, session_close_ms: CLOSE }],
+  candles: [{ ts_ms: OPEN + 180_000, open: 10_000, high: 13_000, low: 9_000, close: 12_000, vol_a: 0, vol_b: 0 }],
+} as RangeBundle;
 
-function makeChart(timeToCoordinate: () => number | null = () => 100) {
+function makeChart(timeToCoordinate: (time: number) => number | null = () => 100) {
   return {
     timeScale: () => ({
       subscribeVisibleLogicalRangeChange: () => {},
@@ -37,7 +42,7 @@ function paneSeries(priceToCoordinate: () => number | null = () => 50): PaneSeri
 }
 
 function renderOverlay(opts?: {
-  timeToCoordinate?: () => number | null;
+  timeToCoordinate?: (time: number) => number | null;
   priceToCoordinate?: () => number | null;
   bundle?: RangeBundle;
 }) {
@@ -52,10 +57,13 @@ function renderOverlay(opts?: {
 }
 
 describe('PriceLevelDotsOverlay', () => {
-  beforeEach(() => useChartPrefsStore.setState({ viLimitPriceDotsEnabled: true }));
+  beforeEach(() => {
+    useChartPrefsStore.setState({ viLimitPriceDotsEnabled: true });
+    useLivePageStore.setState({ viLimitPriceLineColor: '#A855F7', viLimitPriceLineWidth: 4 });
+  });
   afterEach(() => cleanup());
 
-  it('renders VI and limit dots with accessible labels', () => {
+  it('renders VI and limit price lines with accessible labels', () => {
     renderOverlay();
 
     expect(screen.getByLabelText('VI +10% 11,000원 09:01')).toBeInTheDocument();
@@ -66,33 +74,33 @@ describe('PriceLevelDotsOverlay', () => {
     useChartPrefsStore.setState({ viLimitPriceDotsEnabled: false });
     renderOverlay();
 
-    expect(screen.queryByTestId('price-level-dots-overlay')).toBeNull();
+    expect(screen.queryByTestId('price-level-lines-overlay')).toBeNull();
   });
 
-  it('skips dots when chart coordinates are null', () => {
+  it('skips lines when chart coordinates are null', () => {
     renderOverlay({ timeToCoordinate: () => null });
 
-    expect(screen.getByTestId('price-level-dots-overlay')).toBeInTheDocument();
+    expect(screen.getByTestId('price-level-lines-overlay')).toBeInTheDocument();
     expect(screen.queryByLabelText('VI +10% 11,000원 09:01')).toBeNull();
   });
 
-  it('renders foreground dots with candle-distinct colors and a ringed limit marker', () => {
-    renderOverlay();
+  it('renders foreground price lines using the configured style', () => {
+    renderOverlay({
+      timeToCoordinate: (time) => {
+        if (time === OPEN / 1000) return 10;
+        if (time === CLOSE / 1000) return 210;
+        return 100;
+      },
+    });
 
-    expect(screen.getByTestId('price-level-dots-overlay')).toHaveStyle({
+    expect(screen.getByTestId('price-level-lines-overlay')).toHaveStyle({
       zIndex: '20',
     });
-    expect(screen.getByTestId('price-level-dot-vi-upper-10')).toHaveStyle({
-      width: '8px',
-      height: '8px',
-      boxSizing: 'border-box',
+    expect(screen.getByTestId('price-level-line-vi-upper-10')).toHaveStyle({
+      left: '10px',
+      width: '200px',
+      height: '4px',
+      backgroundColor: '#A855F7',
     });
-    expect(screen.getByTestId('price-level-dot-limit-upper-30')).toHaveStyle({
-      width: '9px',
-      height: '9px',
-      boxSizing: 'border-box',
-    });
-    expect(screen.getByTestId('price-level-dot-limit-upper-30').getAttribute('style')).toContain('border: 1px solid');
-    expect(screen.getByTestId('price-level-dot-limit-upper-30').getAttribute('style')).toContain('box-shadow:');
   });
 });

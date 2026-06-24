@@ -59,6 +59,7 @@ _KST = timezone(timedelta(hours=9))
 _PriceLevelKind = Literal["vi", "limit"]
 _PriceLevelDirection = Literal["upper", "lower"]
 _PriceLevelPct = Literal[10, 20, 30]
+_VI_COOLING_MS = 120_000
 
 # /api/range minute timeframes are multiples of this; the indicator cache stores
 # 1m and re-aggregates up. A request whose bucket_ms is NOT a 1m multiple (the
@@ -610,21 +611,118 @@ def _floor_krx_stock_tick(price: float) -> int:
     return candidate
 
 
-def _candidate_price_levels(
+def _ceil_krx_stock_tick_ratio(price: int, numerator: int, denominator: int) -> int:
+    won = (price * numerator + denominator - 1) // denominator
+    return _ceil_krx_stock_tick(won)
+
+
+def _floor_krx_stock_tick_ratio(price: int, numerator: int, denominator: int) -> int:
+    won = (price * numerator) // denominator
+    return _floor_krx_stock_tick(won)
+
+
+def _limit_price_levels(
     *,
-    vi_base_open: int | None,
     limit_base_prev_close: int | None,
 ) -> list[tuple[int, _PriceLevelKind, _PriceLevelDirection, _PriceLevelPct]]:
     candidates: list[tuple[int, _PriceLevelKind, _PriceLevelDirection, _PriceLevelPct]] = []
-    if vi_base_open is not None and vi_base_open > 0:
-        for pct, mult in ((10, 1.10), (20, 1.20)):
-            candidates.append((_ceil_krx_stock_tick(vi_base_open * mult), "vi", "upper", pct))
-        for pct, mult in ((10, 0.90), (20, 0.80)):
-            candidates.append((_floor_krx_stock_tick(vi_base_open * mult), "vi", "lower", pct))
     if limit_base_prev_close is not None and limit_base_prev_close > 0:
-        candidates.append((_floor_krx_stock_tick(limit_base_prev_close * 1.30), "limit", "upper", 30))
-        candidates.append((_ceil_krx_stock_tick(limit_base_prev_close * 0.70), "limit", "lower", 30))
+        candidates.append((_floor_krx_stock_tick_ratio(limit_base_prev_close, 13, 10), "limit", "upper", 30))
+        candidates.append((_ceil_krx_stock_tick_ratio(limit_base_prev_close, 7, 10), "limit", "lower", 30))
     return candidates
+
+
+def _first_price_level_touch(
+    candles: list[ApiCandle],
+    *,
+    price: int,
+    direction: _PriceLevelDirection,
+    min_ts_ms: int | None = None,
+) -> ApiCandle | None:
+    for c in candles:
+        if min_ts_ms is not None and c.ts_ms < min_ts_ms:
+            continue
+        if direction == "upper" and c.high >= price:
+            return c
+        if direction == "lower" and c.low <= price:
+            return c
+    return None
+
+
+def _append_hit(
+    hits: list[PriceLevelHit],
+    *,
+    date: str,
+    candle: ApiCandle,
+    price: int,
+    kind: _PriceLevelKind,
+    direction: _PriceLevelDirection,
+    pct: _PriceLevelPct,
+) -> None:
+    hits.append(PriceLevelHit(
+        date=date,
+        t_ms=candle.ts_ms,
+        price=price,
+        kind=kind,
+        direction=direction,
+        pct=pct,
+    ))
+
+
+def _append_vi_hits(
+    hits: list[PriceLevelHit],
+    *,
+    date: str,
+    candles: list[ApiCandle],
+    vi_base_open: int | None,
+    direction: _PriceLevelDirection,
+) -> None:
+    if vi_base_open is None or vi_base_open <= 0:
+        return
+
+    if direction == "upper":
+        first_price = _ceil_krx_stock_tick_ratio(vi_base_open, 11, 10)
+    else:
+        first_price = _floor_krx_stock_tick_ratio(vi_base_open, 9, 10)
+
+    first = _first_price_level_touch(candles, price=first_price, direction=direction)
+    if first is None:
+        return
+    _append_hit(
+        hits,
+        date=date,
+        candle=first,
+        price=first_price,
+        kind="vi",
+        direction=direction,
+        pct=10,
+    )
+
+    reopen = next((c for c in candles if c.ts_ms >= first.ts_ms + _VI_COOLING_MS), None)
+    if reopen is None:
+        return
+    second_price = (
+        _ceil_krx_stock_tick_ratio(reopen.open, 11, 10)
+        if direction == "upper"
+        else _floor_krx_stock_tick_ratio(reopen.open, 9, 10)
+    )
+    second = _first_price_level_touch(
+        candles,
+        price=second_price,
+        direction=direction,
+        min_ts_ms=reopen.ts_ms,
+    )
+    if second is None:
+        return
+    _append_hit(
+        hits,
+        date=date,
+        candle=second,
+        price=second_price,
+        kind="vi",
+        direction=direction,
+        pct=20,
+    )
 
 
 def build_price_level_hits_slice(
@@ -634,31 +732,29 @@ def build_price_level_hits_slice(
     vi_base_open: int | None,
     limit_base_prev_close: int | None,
 ) -> list[PriceLevelHit]:
-    candidates = _candidate_price_levels(
-        vi_base_open=vi_base_open,
-        limit_base_prev_close=limit_base_prev_close,
-    )
-    if not candidates or not candles:
+    if not candles:
         return []
 
+    candles = sorted(candles, key=lambda c: c.ts_ms)
     hits: list[PriceLevelHit] = []
-    for price, kind, direction, pct in candidates:
+    _append_vi_hits(hits, date=date, candles=candles, vi_base_open=vi_base_open, direction="upper")
+    _append_vi_hits(hits, date=date, candles=candles, vi_base_open=vi_base_open, direction="lower")
+
+    for price, kind, direction, pct in _limit_price_levels(limit_base_prev_close=limit_base_prev_close):
         if price <= 0:
             continue
-        if direction == "upper":
-            first = next((c for c in candles if c.high >= price), None)
-        else:
-            first = next((c for c in candles if c.low <= price), None)
+        first = _first_price_level_touch(candles, price=price, direction=direction)
         if first is None:
             continue
-        hits.append(PriceLevelHit(
+        _append_hit(
+            hits,
             date=date,
-            t_ms=first.ts_ms,
+            candle=first,
             price=price,
             kind=kind,
             direction=direction,
             pct=pct,
-        ))
+        )
     return hits
 
 

@@ -513,7 +513,7 @@ export type RangeBundle = {
    *  D·W·M/무데이터 → []. */
   ask_peaks: AskPeak[];
   bid_peaks?: BidPeak[];
-  /** 실제 체결가가 VI 가격대(당일 open 기준 ±10/±20%) 또는 상하한가(전일 close 기준 ±30%)와
-   *  일치한 최초 시점. Backend 저장분 + frontend live trade hit가 merge된다. */
+  /** 캔들 고저가 VI 가격대(1차: 당일 open 기준 ±10%, 2차: VI 재개봉 open 기준 ±10%)
+   *  또는 상하한가(전일 close 기준 ±30%)에 닿은 최초 시점. */
   price_level_hits?: PriceLevelHit[];
 };
