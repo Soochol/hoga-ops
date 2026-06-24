@@ -1120,6 +1120,22 @@ class StudyViewport(BaseModel):
         return self
 
 
+class StudyMovingAverageConfig(BaseModel):
+    id: str
+    enabled: bool
+    period: int = Field(ge=2, le=400)
+    color: str = Field(pattern=r"^#[0-9A-Fa-f]{6}$")
+    line_width: Literal[1, 2, 3, 4]
+    source: Literal["close", "open", "high", "low", "hl2", "hlc3", "ohlc4"]
+
+    @field_validator("id")
+    @classmethod
+    def _nonblank_id(cls, v: str) -> str:
+        if not v:
+            raise ValueError("id must not be blank")
+        return v
+
+
 class StudyIndicatorState(BaseModel):
     volume_enabled: bool
     quote_totals_enabled: bool
@@ -1129,6 +1145,9 @@ class StudyIndicatorState(BaseModel):
     auction_window_mask: bool
     ratio_outlier_filter_enabled: bool
     ratio_outlier_threshold: float
+    daily_moving_averages: list[StudyMovingAverageConfig] = Field(default_factory=list)
+    daily_moving_average_enabled: bool = False
+    daily_moving_average_hidden: bool = False
 
     @field_validator("ratio_outlier_threshold")
     @classmethod

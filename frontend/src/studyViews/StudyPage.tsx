@@ -3,7 +3,7 @@ import { useSearchParams } from 'react-router';
 import { LiveChartRoot } from '../live/LiveChartRoot';
 import { useLiveCursorStore } from '../live/useLiveCursorStore';
 import type { TabViewport } from '../live/viewportAnchor';
-import { bucketSeconds } from '../state/livePage';
+import { bucketSeconds, type LiveMAConfig } from '../state/livePage';
 import { StudyDetailPanel } from './StudyDetailPanel';
 import { StudyMemoPanel } from './StudyMemoPanel';
 import { useStudyViewMutations, useStudyViews, useStudyViewSnapshot } from './useStudyViews';
@@ -38,6 +38,21 @@ export function StudyPage() {
     [snapshot],
   );
   const bucketMs = snapshot ? (bucketSeconds(snapshot.timeframe) ?? 60) * 1000 : 60_000;
+  const dailyMovingAverageOverride = useMemo(() => {
+    if (!snapshot) return undefined;
+    return {
+      configs: (snapshot.indicator_state.daily_moving_averages ?? []).map((m): LiveMAConfig => ({
+        id: m.id,
+        enabled: m.enabled,
+        period: m.period,
+        color: m.color,
+        lineWidth: m.line_width,
+        source: m.source,
+      })),
+      masterEnabled: snapshot.indicator_state.daily_moving_average_enabled === true,
+      hidden: snapshot.indicator_state.daily_moving_average_hidden === true,
+    };
+  }, [snapshot]);
   const captureViewportRef = useRef<() => TabViewport | null>(() => null);
   const handleViewportCaptureReady = useCallback((capture: () => TabViewport | null) => {
     captureViewportRef.current = capture;
@@ -149,6 +164,7 @@ export function StudyPage() {
               ratioEnabled: snapshot.indicator_state.ratio_enabled,
               fillStrengthEnabled: snapshot.indicator_state.fill_strength_enabled,
             }}
+            dailyMovingAverageOverride={dailyMovingAverageOverride}
             persistLiveViewport={false}
             onViewportCaptureReady={handleViewportCaptureReady}
             onCursorActiveChange={setIsCursorActive}

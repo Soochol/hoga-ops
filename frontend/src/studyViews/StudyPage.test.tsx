@@ -61,6 +61,11 @@ const snapshot: ParquetStudySnapshot = {
     auction_window_mask: true,
     ratio_outlier_filter_enabled: true,
     ratio_outlier_threshold: 50,
+    daily_moving_average_enabled: true,
+    daily_moving_average_hidden: false,
+    daily_moving_averages: [
+      { id: 'dma-20', enabled: true, period: 20, color: '#EAB308', line_width: 2, source: 'close' },
+    ],
   },
   provenance: { saved_from_route: '/live', data_provenance: 'live_mixed' },
   bundle: {
@@ -169,6 +174,11 @@ describe('StudyPage', () => {
         quoteTotalsEnabled: true,
         ratioEnabled: false,
         fillStrengthEnabled: true,
+      },
+      dailyMovingAverageOverride: {
+        configs: [{ id: 'dma-20', enabled: true, period: 20, color: '#EAB308', lineWidth: 2, source: 'close' }],
+        masterEnabled: true,
+        hidden: false,
       },
       persistLiveViewport: false,
     });

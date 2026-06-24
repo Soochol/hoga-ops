@@ -20,6 +20,7 @@ import { paneSpecsForTimeframe } from './paneSpecsForTimeframe';
 import DayBoundaryOverlay from '../chart/DayBoundaryOverlay';
 import {
   useLivePageStore,
+  type LiveMAConfig,
   type LiveTimeframe,
   isMinuteTimeframe,
   isCalendarTimeframe,
@@ -144,6 +145,11 @@ interface Props {
     fillStrengthEnabled?: boolean;
     hogaPanes?: boolean;
   };
+  dailyMovingAverageOverride?: {
+    configs: readonly LiveMAConfig[];
+    masterEnabled: boolean;
+    hidden: boolean;
+  };
   /** /live persists viewport to active live tabs; snapshot study pages opt out. */
   persistLiveViewport?: boolean;
   /** Save flows can read the current chart viewport without coupling to chart internals. */
@@ -157,7 +163,7 @@ interface Props {
 /** /live's single-chart root. Mounts the timeframe-appropriate pane set
  * (see `paneSpecsForTimeframe`) inside one createChart instance so
  * timeScale is shared across candle/volume/(hoga) panes. */
-export function LiveChartRoot({ code, timeframe, venue = 'KRX', viewIdentity, bundle, chartBundle, ratioBundle, clampEngaged, isPastCandlesLoading, isExtending = false, pastDataWarnings, restoreViewport = null, dayAskPeaks = EMPTY_ASK_PEAKS, todayAllPriceAskPeak = null, dayBidPeaks = EMPTY_BID_PEAKS, todayAllPriceBidPeak = null, todayKst = '', forceHogaPanes = false, paneTogglesOverride, persistLiveViewport = true, onViewportCaptureReady, onCursorActiveChange, onCandleBasisHover, onCandleBasisClick }: Props) {
+export function LiveChartRoot({ code, timeframe, venue = 'KRX', viewIdentity, bundle, chartBundle, ratioBundle, clampEngaged, isPastCandlesLoading, isExtending = false, pastDataWarnings, restoreViewport = null, dayAskPeaks = EMPTY_ASK_PEAKS, todayAllPriceAskPeak = null, dayBidPeaks = EMPTY_BID_PEAKS, todayAllPriceBidPeak = null, todayKst = '', forceHogaPanes = false, paneTogglesOverride, dailyMovingAverageOverride, persistLiveViewport = true, onViewportCaptureReady, onCursorActiveChange, onCandleBasisHover, onCandleBasisClick }: Props) {
   const containerRef = useRef<HTMLDivElement>(null);
   // 과거 fetch 경고 요약 — rate-limit 지연(빈칸 문구 전환)과 일부 구간 누락(부분로딩 칩)
   // 표시에 쓴다. summarizeWarnings는 null/빈배열을 {count:0,hasRateLimit:false}로 접는다.
@@ -875,7 +881,7 @@ export function LiveChartRoot({ code, timeframe, venue = 'KRX', viewIdentity, bu
             />
           ))}
           <MovingAverageOverlay chart={chart} bundle={cb} axis={axis} />
-          <DailyMovingAverageOverlay chart={chart} bundle={cb} axis={axis} code={code} timeframe={timeframe} venue={venue} todayKst={todayKst} />
+          <DailyMovingAverageOverlay chart={chart} bundle={cb} axis={axis} code={code} timeframe={timeframe} venue={venue} todayKst={todayKst} override={dailyMovingAverageOverride} />
           <LiveCurrentPriceLine paneSeries={paneSeries} bundle={cb} code={code} />
           {isMinuteTimeframe(timeframe) && (
             <LiveAskPeakSegments
