@@ -225,6 +225,14 @@ export const CHART_NUMERIC_PREFS = [
     min: 1,
     max: 3,
   },
+  {
+    key: 'askPeakVisibleMaxRankLimit',
+    label: '보이는 영역 최대벽 강조 개수',
+    description: '현재 보이는 캔들 영역 안에서 수량순으로 몇 순위까지 같은 강조 색상으로 표시할지 선택합니다.',
+    default: 1,
+    min: 1,
+    max: 3,
+  },
 ] as const satisfies readonly NumericPrefDef[];
 
 export type NumericPrefKey = (typeof CHART_NUMERIC_PREFS)[number]['key'];

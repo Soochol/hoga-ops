@@ -152,27 +152,30 @@ describe('styleVisibleMaxAskPeakSegments', () => {
     ...overrides,
   });
 
-  it('visible range와 겹치는 세그먼트 중 qty 1개만 강조한다', () => {
+  it('visible range와 겹치는 세그먼트 중 qty 상위 N개를 같은 스타일로 강조한다', () => {
     const out = styleVisibleMaxAskPeakSegments(
       [
         baseSeg({ time0: 0 as never, time1: 5 as never, qty: 1000, color: '#1D4ED8' }),
         baseSeg({ time0: 10 as never, time1: 20 as never, qty: 300, color: '#1D4ED8' }),
         baseSeg({ time0: 15 as never, time1: 25 as never, qty: 500, color: '#F97316', lineWidth: 1 }),
+        baseSeg({ time0: 18 as never, time1: 28 as never, qty: 400, color: '#1D4ED8' }),
       ],
       { from: t(12), to: t(22) },
       { color: '#EAB308', lineWidth: 3 },
+      2,
     );
 
     expect(out.map((s) => ({ qty: s.qty, color: s.color, lineWidth: s.lineWidth }))).toEqual([
       { qty: 1000, color: '#1D4ED8', lineWidth: 2 },
       { qty: 300, color: '#1D4ED8', lineWidth: 2 },
       { qty: 500, color: '#EAB308', lineWidth: 3 },
+      { qty: 400, color: '#EAB308', lineWidth: 3 },
     ]);
   });
 
   it('visible range가 없으면 원래 스타일을 유지한다', () => {
     const input = [baseSeg({ qty: 500 })];
-    const out = styleVisibleMaxAskPeakSegments(input, null, { color: '#EAB308', lineWidth: 3 });
+    const out = styleVisibleMaxAskPeakSegments(input, null, { color: '#EAB308', lineWidth: 3 }, 3);
     expect(out).toEqual(input);
   });
 
@@ -184,6 +187,7 @@ describe('styleVisibleMaxAskPeakSegments', () => {
       ],
       { from: t(10), to: t(22) },
       { color: '#EAB308', lineWidth: 3 },
+      1,
     );
     expect(out[0]).toMatchObject({ color: '#EAB308', lineWidth: 3, price: 100 });
     expect(out[1]).toMatchObject({ color: '#1D4ED8', lineWidth: 2, price: 110 });
