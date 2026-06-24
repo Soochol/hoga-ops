@@ -125,11 +125,14 @@ export function StudyPage() {
 
   useEffect(() => {
     if (initialQueryViewIdRef.current === null) return;
-    if (queryViewId !== initialQueryViewIdRef.current) return;
-    if (!querySave) return;
-    ensureQuerySeed(querySave);
+    if (queryViewId !== initialQueryViewIdRef.current) {
+      initialQueryViewIdRef.current = null;
+      return;
+    }
+    if (savesQuery.isLoading) return;
+    if (querySave) ensureQuerySeed(querySave);
     initialQueryViewIdRef.current = null;
-  }, [ensureQuerySeed, querySave, queryViewId]);
+  }, [ensureQuerySeed, querySave, queryViewId, savesQuery.isLoading]);
 
   useEffect(() => {
     routeSyncPendingRef.current = false;
@@ -148,6 +151,7 @@ export function StudyPage() {
 
   useEffect(() => {
     if (routeSyncPendingRef.current) return;
+    if (initialQueryViewIdRef.current !== null) return;
     if (activeTab) {
       if (queryViewId === activeTab.viewId) return;
       navigate(`/study?view=${activeTab.viewId}`, { replace: true });
@@ -184,7 +188,6 @@ export function StudyPage() {
   }, [activeViewId, captureViewportRef, chartInput, snapshot]);
 
   useEffect(() => {
-    if (!activeViewId || !snapshot || !chartInput) return undefined;
     const hitTest = (clientX: number, clientY: number): boolean => {
       const el = studyDropTargetRef.current;
       if (!el) return false;
@@ -193,13 +196,16 @@ export function StudyPage() {
     };
     registerStudyTarget(hitTest);
     return () => clearStudyTarget(hitTest);
-  }, [activeViewId, chartInput, clearStudyTarget, registerStudyTarget, snapshot]);
+  }, [clearStudyTarget, registerStudyTarget]);
 
   if (!activeViewId) {
     return (
       <section data-testid="study-page-empty" className="h-full min-w-0 bg-[var(--bg)] text-[var(--fg)]">
-        <div className="flex h-full items-center justify-center text-sm text-[var(--fg-dimmer)]">
-          저장된 학습뷰를 선택하세요.
+        <div ref={studyDropTargetRef} data-testid="study-drop-target" className="relative h-full">
+          <div className="flex h-full items-center justify-center text-sm text-[var(--fg-dimmer)]">
+            저장된 학습뷰를 선택하세요.
+          </div>
+          {draggingEntry && overStudy && <StudyDropOverlay />}
         </div>
       </section>
     );
@@ -208,8 +214,11 @@ export function StudyPage() {
   if (snapshotQuery.isLoading) {
     return (
       <section data-testid="study-page-loading" className="h-full min-w-0 bg-[var(--bg)] text-[var(--fg)]">
-        <div className="flex h-full items-center justify-center text-sm text-[var(--fg-dimmer)]">
-          학습뷰 불러오는 중...
+        <div ref={studyDropTargetRef} data-testid="study-drop-target" className="relative h-full">
+          <div className="flex h-full items-center justify-center text-sm text-[var(--fg-dimmer)]">
+            학습뷰 불러오는 중...
+          </div>
+          {draggingEntry && overStudy && <StudyDropOverlay />}
         </div>
       </section>
     );
@@ -218,8 +227,11 @@ export function StudyPage() {
   if (snapshotQuery.isError || !snapshot || !chartInput) {
     return (
       <section data-testid="study-page-error" className="h-full min-w-0 bg-[var(--bg)] text-[var(--fg)]">
-        <div className="flex h-full items-center justify-center text-sm text-[var(--fg-dimmer)]">
-          학습뷰를 찾을 수 없습니다.
+        <div ref={studyDropTargetRef} data-testid="study-drop-target" className="relative h-full">
+          <div className="flex h-full items-center justify-center text-sm text-[var(--fg-dimmer)]">
+            학습뷰를 찾을 수 없습니다.
+          </div>
+          {draggingEntry && overStudy && <StudyDropOverlay />}
         </div>
       </section>
     );

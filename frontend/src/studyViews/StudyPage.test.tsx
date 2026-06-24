@@ -161,6 +161,8 @@ describe('StudyPage', () => {
           { id: 'view2', name: '마감', code: '005930', label: '삼성전자', timeframe: 'D', memo: 'second memo' },
         ],
       },
+      isLoading: false,
+      isError: false,
     });
     useStudyViewMutationsMock.mockReturnValue({
       updateMetadata: { mutate: vi.fn(), isPending: false, error: null },
@@ -220,6 +222,57 @@ describe('StudyPage', () => {
     expect(screen.getByRole('tab', { name: /삼성전자 · 마감 · D/i })).toHaveAttribute('aria-selected', 'true');
     expect(screen.getByText('삼성전자 view2')).toBeTruthy();
     expect(screen.getByTestId('location-probe')).toHaveTextContent('/study?view=view2');
+  });
+
+  it('does not let a persisted active tab overwrite the initial query route before saves resolve', async () => {
+    useStudyTabsStore.getState().openSaveInActiveTab(makeSave('view2', '마감'));
+    let savesResult: {
+      data?: { schema_version: number; saves: Array<ReturnType<typeof makeSave> & { memo: string }> };
+      isLoading: boolean;
+      isError: boolean;
+    } = {
+      data: undefined,
+      isLoading: true,
+      isError: false,
+    };
+    useStudyViewsMock.mockImplementation(() => savesResult);
+    useStudyViewSnapshotMock.mockImplementation((viewId: string | null) => ({
+      data: !savesResult.isLoading && viewId ? makeSnapshot(viewId) : undefined,
+      isLoading: savesResult.isLoading,
+      isError: false,
+    }));
+
+    const rendered = renderAt('/study?view=view1');
+
+    expect(screen.getByTestId('location-probe')).toHaveTextContent('/study?view=view1');
+    expect(useStudyTabsStore.getState().tabs.find((tab) => tab.id === useStudyTabsStore.getState().activeTabId)?.viewId).toBe('view2');
+
+    savesResult = {
+      data: {
+        schema_version: 1,
+        saves: [
+          { ...makeSave('view1', '장초반'), memo: 'old memo' },
+          { ...makeSave('view2', '마감'), memo: 'second memo' },
+        ],
+      },
+      isLoading: false,
+      isError: false,
+    };
+
+    rendered.rerender(
+      <MemoryRouter initialEntries={['/study?view=view1']}>
+        <StudyPage />
+        <LocationProbe />
+      </MemoryRouter>,
+    );
+
+    await act(async () => {
+      await Promise.resolve();
+    });
+
+    const state = useStudyTabsStore.getState();
+    expect(screen.getByTestId('location-probe')).toHaveTextContent('/study?view=view1');
+    expect(state.tabs.find((tab) => tab.id === state.activeTabId)?.viewId).toBe('view1');
   });
 
   it('pressing 2 focuses the second tab when two study tabs exist', async () => {
@@ -483,17 +536,46 @@ describe('StudyPage', () => {
     expect(container.querySelector('[data-testid="study-detail-panel"] polyline')).toBeTruthy();
   });
 
-  it('registers the study drop target while mounted and clears it on unmount', () => {
+  it('registers the study drop target on the empty study shell and clears it on unmount', () => {
+    useStudyViewSnapshotMock.mockReturnValue({
+      data: undefined,
+      isLoading: false,
+      isError: false,
+    });
+
+    const rendered = renderAt('/study');
+    const target = screen.getByTestId('study-drop-target');
+
+    vi.spyOn(target, 'getBoundingClientRect').mockReturnValue({
+      x: 100,
+      y: 120,
+      left: 100,
+      top: 120,
+      right: 700,
+      bottom: 620,
+      width: 600,
+      height: 500,
+      toJSON: () => ({}),
+    } as DOMRect);
+
+    expect(screen.getByTestId('study-page-empty')).toBeTruthy();
+    expect(isPointOnStudy({ x: 300, y: 300 })).toBe(true);
+    expect(isPointOnStudy({ x: 80, y: 300 })).toBe(false);
+
+    rendered.unmount();
+
+    expect(isPointOnStudy({ x: 300, y: 300 })).toBe(false);
+  });
+
+  it('registers the study drop target while a saved study view is mounted', () => {
     useStudyViewSnapshotMock.mockReturnValue({
       data: snapshot,
       isLoading: false,
       isError: false,
     });
 
-    const rendered = renderAt('/study?view=view1');
-    const target = screen.queryByTestId('study-drop-target');
-    expect(target).toBeTruthy();
-    if (!target) return;
+    renderAt('/study?view=view1');
+    const target = screen.getByTestId('study-drop-target');
 
     vi.spyOn(target, 'getBoundingClientRect').mockReturnValue({
       x: 100,
@@ -510,9 +592,7 @@ describe('StudyPage', () => {
     expect(isPointOnStudy({ x: 300, y: 300 })).toBe(true);
     expect(isPointOnStudy({ x: 80, y: 300 })).toBe(false);
 
-    rendered.unmount();
-
-    expect(isPointOnStudy({ x: 300, y: 300 })).toBe(false);
+    expect(screen.getByTestId('study-page')).toBeTruthy();
   });
 
   it('shows the study drop overlay when an entry drag is over the study target', () => {

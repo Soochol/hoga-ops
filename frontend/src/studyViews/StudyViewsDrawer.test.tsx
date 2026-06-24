@@ -9,14 +9,41 @@ import { useStudyTabsStore } from '../state/studyTabs';
 import type { CurrentStudySaveSource } from './studySaveSource';
 import { StudyViewsDrawer, filterStudyViews } from './StudyViewsDrawer';
 
-const dnd = vi.hoisted(() => ({ onDragEnd: null as null | ((event: unknown) => void) }));
+type DndHandlers = {
+  onDragStart: null | ((event: unknown) => void);
+  onDragMove: null | ((event: unknown) => void);
+  onDragEnd: null | ((event: unknown) => void);
+  onDragCancel: null | (() => void);
+};
+
+const dnd = vi.hoisted<DndHandlers>(() => ({
+  onDragStart: null,
+  onDragMove: null,
+  onDragEnd: null,
+  onDragCancel: null,
+}));
 
 vi.mock('@dnd-kit/core', async (orig) => {
   const actual = await orig<typeof import('@dnd-kit/core')>();
   return {
     ...actual,
-    DndContext: ({ children, onDragEnd }: { children: React.ReactNode; onDragEnd: (event: unknown) => void }) => {
+    DndContext: ({
+      children,
+      onDragStart,
+      onDragMove,
+      onDragEnd,
+      onDragCancel,
+    }: {
+      children: React.ReactNode;
+      onDragStart?: (event: unknown) => void;
+      onDragMove?: (event: unknown) => void;
+      onDragEnd?: (event: unknown) => void;
+      onDragCancel?: () => void;
+    }) => {
+      dnd.onDragStart = onDragStart ?? null;
+      dnd.onDragMove = onDragMove ?? null;
       dnd.onDragEnd = onDragEnd;
+      dnd.onDragCancel = onDragCancel ?? null;
       return <>{children}</>;
     },
     useSensor: () => ({}),
@@ -209,7 +236,10 @@ beforeEach(() => {
   updateMutate.mockReset();
   updateMetadataMutate.mockReset();
   removeMutate.mockReset();
+  dnd.onDragStart = null;
+  dnd.onDragMove = null;
   dnd.onDragEnd = null;
+  dnd.onDragCancel = null;
   saveSource = null;
   mockedSaves = saves;
   useStudyTabsStore.setState({ tabs: [], activeTabId: null });
@@ -658,6 +688,34 @@ it('ctrl-clicking a stock group header opens its newest save in a new study tab 
   expect(state.tabs.map((tab) => tab.viewId)).toEqual(['b', 'c']);
   expect(screen.getByRole('button', { name: '삼성전자 005930 접기' })).toHaveAttribute('aria-expanded', 'true');
   expect(screen.getByRole('button', { name: '급등 이후 저장뷰 열기' })).toBeTruthy();
+});
+
+it('updates study hover state during stock-group drag', async () => {
+  const hitTest = (clientX: number) => clientX < 800;
+  useEntryDragStore.getState().registerStudyTarget(hitTest);
+
+  try {
+    renderDrawer('/inventory');
+    await waitFor(() => expect(screen.getByRole('button', { name: '삼성전자 005930 접기' })).toBeInTheDocument());
+
+    dnd.onDragStart?.({
+      active: { id: 'study-view-group:005930', data: { current: { type: 'group', code: '005930' } } },
+    });
+    expect(useEntryDragStore.getState().draggingCode).toBe('005930');
+
+    dnd.onDragMove?.({
+      active: { id: 'study-view-group:005930', data: { current: { type: 'group', code: '005930' } } },
+      activatorEvent: { clientX: 900, clientY: 300 } as MouseEvent,
+      delta: { x: -500, y: 0 },
+    });
+    expect(useEntryDragStore.getState().overStudy).toBe(true);
+
+    dnd.onDragCancel?.();
+    expect(useEntryDragStore.getState().draggingCode).toBeNull();
+    expect(useEntryDragStore.getState().overStudy).toBe(false);
+  } finally {
+    useEntryDragStore.getState().clearStudyTarget(hitTest);
+  }
 });
 
 it('dragging a stock group over the study target opens its newest save in the active tab without reordering groups', async () => {

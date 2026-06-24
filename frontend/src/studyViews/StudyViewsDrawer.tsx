@@ -6,11 +6,14 @@ import {
   useSensor,
   useSensors,
   type DraggableSyntheticListeners,
+  type DragEndEvent,
+  type DragMoveEvent,
+  type DragStartEvent,
 } from '@dnd-kit/core';
 import { SortableContext, useSortable, verticalListSortingStrategy } from '@dnd-kit/sortable';
 import { CSS } from '@dnd-kit/utilities';
 import type { ParquetStudyView, ParquetStudyViewWriteRequest } from '../api/studyViews';
-import { dropPoint, isPointOnStudy } from '../state/entryDrag';
+import { dropPoint, isPointOnStudy, useEntryDragStore } from '../state/entryDrag';
 import { useStudyTabsStore } from '../state/studyTabs';
 import { useCurrentStudySaveSource } from './studySaveSource';
 import { studySnapshotByteSize } from './studySaveRequest';
@@ -109,17 +112,19 @@ function treeToolbarButtonClass(active = false): string {
 
 function SortableStudyViewGroup({
   id,
+  code,
   disabled,
   children,
 }: {
   id: string;
+  code: string;
   disabled: boolean;
   children: (listeners: DraggableSyntheticListeners | undefined) => ReactNode;
 }) {
   const { listeners, setNodeRef, transform, transition, isDragging } = useSortable({
     id: studyViewGroupDndId(id),
     disabled,
-    data: { type: 'group' },
+    data: { type: 'group', code },
   });
 
   return (
@@ -207,6 +212,9 @@ export function StudyViewsDrawer() {
   const overwriteStudyViewId = location.pathname === '/study' ? studySource?.viewId ?? currentStudyViewId ?? undefined : undefined;
   const canSaveStudy = location.pathname === '/study' && !!studySource;
   const sensors = useSensors(useSensor(PointerSensor, { activationConstraint: { distance: 5 } }));
+  const startEntryDrag = useEntryDragStore((s) => s.startDrag);
+  const setOverStudy = useEntryDragStore((s) => s.setOverStudy);
+  const endEntryDrag = useEntryDragStore((s) => s.endDrag);
 
   useEffect(() => {
     if (!deleteTarget) return;
@@ -357,7 +365,24 @@ export function StudyViewsDrawer() {
     });
   };
 
-  const handleDragEnd = (event: Parameters<typeof resolveStudyViewTreeDrag>[0]) => {
+  const handleDragStart = (event: DragStartEvent) => {
+    if (event.active.data.current?.type !== 'group') return;
+    const draggedGroup = event.active.data.current as { code?: string };
+    if (draggedGroup.code) startEntryDrag(draggedGroup.code);
+  };
+
+  const handleDragMove = (event: DragMoveEvent) => {
+    if (event.active.data.current?.type !== 'group') return;
+    setOverStudy(isPointOnStudy(dropPoint(event)));
+  };
+
+  const handleDragCancel = () => {
+    endEntryDrag();
+  };
+
+  const handleDragEnd = (event: DragEndEvent) => {
+    const wasGroupDrag = event.active.data.current?.type === 'group';
+    endEntryDrag();
     if (event.active.data.current?.type === 'group' && isPointOnStudy(dropPoint(event))) {
       const draggedGroup = visibleGroups.find((group) => studyViewGroupDndId(group.key) === String(event.active.id));
       const save = draggedGroup ? latestStudyViewForCode(data?.saves ?? [], draggedGroup.code) : null;
@@ -365,6 +390,7 @@ export function StudyViewsDrawer() {
       return;
     }
 
+    if (wasGroupDrag && !event.over) return;
     const intent = resolveStudyViewTreeDrag(event);
     if (!intent) return;
     if (intent.type === 'group') {
@@ -512,12 +538,19 @@ export function StudyViewsDrawer() {
           <div className="p-3 text-sm text-fg-dim">검색 결과가 없습니다.</div>
         )}
         <div className="min-h-0 flex-1 overflow-auto">
-          <DndContext sensors={sensors} collisionDetection={studyViewTreeCollision} onDragEnd={handleDragEnd}>
+          <DndContext
+            sensors={sensors}
+            collisionDetection={studyViewTreeCollision}
+            onDragStart={handleDragStart}
+            onDragMove={handleDragMove}
+            onDragEnd={handleDragEnd}
+            onDragCancel={handleDragCancel}
+          >
             <SortableContext items={visibleGroups.map((group) => studyViewGroupDndId(group.key))} strategy={verticalListSortingStrategy}>
               {visibleGroups.map((group) => {
                 const groupCollapsed = isCollapsed(group.key);
                 return (
-                  <SortableStudyViewGroup key={group.key} id={group.key} disabled={!dragEnabled}>
+                  <SortableStudyViewGroup key={group.key} id={group.key} code={group.code} disabled={!dragEnabled}>
                     {(groupDragListeners) => (
                       <section aria-label={`${group.label} ${group.code} 저장뷰`}>
                         <button
