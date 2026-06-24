@@ -2,6 +2,7 @@ import { useLivePageStore } from '../../state/livePage';
 import { MA_COLOR_ROWS } from './MAStylePicker';
 
 const BAND_OPTIONS = [
+  { label: '±0.25%', value: 0.0025 },
   { label: '±0.5%', value: 0.005 },
   { label: '±1%', value: 0.01 },
 ] as const;
@@ -24,12 +25,13 @@ export default function TradeVolumePocConfig() {
   const setBandPct = useLivePageStore((s) => s.setTradeVolumePocBandPct);
   const setStyle = useLivePageStore((s) => s.setTradeVolumePocStyle);
   const opacityPct = Math.round(opacity * 100);
+  const selectedBandLabel = BAND_OPTIONS.find((option) => option.value === bandPct)?.label ?? '±0.5%';
 
   return (
     <div>
       <h3 className="text-fg text-base font-medium pb-1">당일 최대 매물대</h3>
       <p className="text-fg-dim text-xs mb-3">
-        정규장 연속매매 체결량을 가격별로 누적하고, 각 체결가의 자동 ±0.5% 또는 ±1% 호가 보정 범위 중 거래량이 가장 큰 구간을 캔들 위 밴드로 표시합니다. 동시호가 제외.
+        정규장 연속매매 체결량을 가격별로 누적하고, 각 체결가의 자동 ±0.25%, ±0.5%, ±1% 호가 보정 범위 중 거래량이 가장 큰 구간을 캔들 위 밴드로 표시합니다. 동시호가 제외.
       </p>
       <div className="mb-3">
         <div className="text-xs text-fg-dim mb-1.5">자동 범위</div>
@@ -107,7 +109,7 @@ export default function TradeVolumePocConfig() {
         />
       </div>
       <div className="text-xs text-fg-dim leading-5">
-        <div>범위: 중심 체결가 기준 자동 {bandPct === 0.01 ? '±1%' : '±0.5%'}</div>
+        <div>범위: 중심 체결가 기준 자동 {selectedBandLabel}</div>
         <div>보정: KRX 호가 단위로 하단 내림, 상단 올림</div>
         <div>표시: 가격대 범위 밴드</div>
       </div>

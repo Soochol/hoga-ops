@@ -211,6 +211,7 @@ describe('IndicatorPanel', () => {
     render(<IndicatorPanel onClose={() => {}} />);
     fireEvent.click(screen.getByRole('button', { name: '당일 최대 매물대' }));
     expect(screen.getAllByText(/자동 ±0.5%/).length).toBeGreaterThan(0);
+    expect(screen.getByRole('button', { name: '±0.25%' })).toBeTruthy();
     expect(screen.getByRole('button', { name: '±0.5%' })).toHaveAttribute('aria-pressed', 'true');
     expect(screen.getByRole('button', { name: '±1%' })).toBeTruthy();
     expect(screen.getByRole('button', { name: '당일 최대 매물대 색상 #22C55E' })).toBeTruthy();
@@ -222,6 +223,8 @@ describe('IndicatorPanel', () => {
     useLivePageStore.setState({ tradeVolumePocBandPct: 0.005 });
     render(<IndicatorPanel onClose={() => {}} />);
     fireEvent.click(screen.getByRole('button', { name: '당일 최대 매물대' }));
+    fireEvent.click(screen.getByRole('button', { name: '±0.25%' }));
+    expect(useLivePageStore.getState().tradeVolumePocBandPct).toBe(0.0025);
     fireEvent.click(screen.getByRole('button', { name: '±1%' }));
     expect(useLivePageStore.getState().tradeVolumePocBandPct).toBe(0.01);
   });
