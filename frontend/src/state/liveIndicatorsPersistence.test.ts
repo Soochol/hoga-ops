@@ -27,6 +27,8 @@ describe('mergeLiveIndicatorPrefs', () => {
       bidPeakAllPriceLineWidth: 1,
       tradeVolumePocEnabled: true,
       tradeVolumePocBandPct: 0.005,
+      tradeVolumePocColor: '#A855F7',
+      tradeVolumePocOpacity: 0.12,
       quoteTotalsEnabled: true,
       ratioEnabled: true,
       fillStrengthEnabled: true,
@@ -155,6 +157,8 @@ describe('mergeLiveIndicatorPrefs — 호가 토글', () => {
     expect(m.fillStrengthEnabled).toBe(true);
     expect(m.tradeVolumePocEnabled).toBe(true);
     expect(m.tradeVolumePocBandPct).toBe(0.005);
+    expect(m.tradeVolumePocColor).toBe('#A855F7');
+    expect(m.tradeVolumePocOpacity).toBe(0.12);
   });
   it('구버전 store(키 없음) → ON으로 머지', () => {
     const m = mergeLiveIndicatorPrefs({ movingAverages: [], movingAverageEnabled: true });
@@ -163,6 +167,8 @@ describe('mergeLiveIndicatorPrefs — 호가 토글', () => {
     expect(m.fillStrengthEnabled).toBe(true);
     expect(m.tradeVolumePocEnabled).toBe(true);
     expect(m.tradeVolumePocBandPct).toBe(0.005);
+    expect(m.tradeVolumePocColor).toBe('#A855F7');
+    expect(m.tradeVolumePocOpacity).toBe(0.12);
   });
   it('명시적 false 보존', () => {
     const m = mergeLiveIndicatorPrefs({ ratioEnabled: false, fillStrengthEnabled: false, tradeVolumePocEnabled: false });
@@ -174,6 +180,21 @@ describe('mergeLiveIndicatorPrefs — 호가 토글', () => {
   it('최다거래대 band pct는 0.5% 또는 1%만 보존', () => {
     expect(mergeLiveIndicatorPrefs({ tradeVolumePocBandPct: 0.01 }).tradeVolumePocBandPct).toBe(0.01);
     expect(mergeLiveIndicatorPrefs({ tradeVolumePocBandPct: 0.123 }).tradeVolumePocBandPct).toBe(0.005);
+  });
+  it('최대 매물대 색상/투명도 유효값만 보존', () => {
+    const valid = mergeLiveIndicatorPrefs({
+      tradeVolumePocColor: '#22C55E',
+      tradeVolumePocOpacity: 0.24,
+    });
+    expect(valid.tradeVolumePocColor).toBe('#22C55E');
+    expect(valid.tradeVolumePocOpacity).toBe(0.24);
+
+    const invalid = mergeLiveIndicatorPrefs({
+      tradeVolumePocColor: 'purple',
+      tradeVolumePocOpacity: 1.2,
+    });
+    expect(invalid.tradeVolumePocColor).toBe('#A855F7');
+    expect(invalid.tradeVolumePocOpacity).toBe(0.12);
   });
 });
 

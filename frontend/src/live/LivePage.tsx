@@ -274,6 +274,8 @@ export function LivePage() {
     (chartBundle ?? bundle)?.trade_volume_pocs ?? [],
     today,
     activeCode,
+    isMinuteTimeframe(timeframe) ? ((chartBundle ?? bundle)?.candles ?? EMPTY_CANDLES) : EMPTY_CANDLES,
+    isMinuteTimeframe(timeframe) ? ((chartBundle ?? bundle)?.segments ?? []) : [],
   );
   const liveSaveBundle = useMemo<RangeBundle | null>(() => {
     if (!bundle) return null;

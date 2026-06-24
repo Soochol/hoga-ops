@@ -64,6 +64,8 @@ export const BID_PEAK_DEFAULT_WIDTH: 1 | 2 | 3 | 4 = 2;
 export const BID_PEAK_ALL_PRICE_DEFAULT_COLOR = '#F97316';
 export const BID_PEAK_ALL_PRICE_DEFAULT_WIDTH: 1 | 2 | 3 | 4 = 1;
 export const TRADE_VOLUME_POC_DEFAULT_BAND_PCT = 0.005;
+export const TRADE_VOLUME_POC_DEFAULT_COLOR = '#A855F7';
+export const TRADE_VOLUME_POC_DEFAULT_OPACITY = 0.12;
 const VALID_TRADE_VOLUME_POC_BAND_PCTS = new Set([0.005, 0.01]);
 
 export type PersistedIndicators = {
@@ -105,10 +107,14 @@ export type PersistedIndicators = {
   bidPeakAllPriceColor: string;
   /** 미체결 포함 매수 최대벽 선 두께. 기본 1. */
   bidPeakAllPriceLineWidth: 1 | 2 | 3 | 4;
-  /** 당일 최다거래대(체결량 POC) 밴드 on/off. Default TRUE. */
+  /** 당일 최대 매물대(체결량 POC) 밴드 on/off. Default TRUE. */
   tradeVolumePocEnabled: boolean;
-  /** 당일 최다거래대 자동 밴드 폭. Default +/-0.5%. */
+  /** 당일 최대 매물대 자동 밴드 폭. Default +/-0.5%. */
   tradeVolumePocBandPct: number;
+  /** 당일 최대 매물대 밴드 색(hex). 기본 #A855F7(보라). */
+  tradeVolumePocColor: string;
+  /** 당일 최대 매물대 밴드 투명도(0~1). 기본 0.12. */
+  tradeVolumePocOpacity: number;
   /** 총잔량 pane on/off. Default TRUE(기존 자동표시 보존). */
   quoteTotalsEnabled: boolean;
   /** 호가비 pane on/off. Default TRUE. */
@@ -189,6 +195,17 @@ export function mergeLiveIndicatorPrefs(
   const tvpBandPct = VALID_TRADE_VOLUME_POC_BAND_PCTS.has(obj?.tradeVolumePocBandPct as number)
     ? (obj!.tradeVolumePocBandPct as number)
     : TRADE_VOLUME_POC_DEFAULT_BAND_PCT;
+  const tvpColor = typeof obj?.tradeVolumePocColor === 'string'
+    && HEX_COLOR.test(obj.tradeVolumePocColor as string)
+    ? (obj.tradeVolumePocColor as string)
+    : TRADE_VOLUME_POC_DEFAULT_COLOR;
+  const tvpOpacityRaw = obj?.tradeVolumePocOpacity;
+  const tvpOpacity = typeof tvpOpacityRaw === 'number'
+    && Number.isFinite(tvpOpacityRaw)
+    && tvpOpacityRaw >= 0
+    && tvpOpacityRaw <= 1
+    ? tvpOpacityRaw
+    : TRADE_VOLUME_POC_DEFAULT_OPACITY;
   // daily MA — opt-in(기본 false), 슬롯 검증·cap·기본값 전략 movingAverages와 동일.
   const dEnabled = obj?.dailyMovingAverageEnabled === true;
   const dHidden = obj?.dailyMovingAverageHidden === true;
@@ -224,6 +241,8 @@ export function mergeLiveIndicatorPrefs(
     bidPeakAllPriceLineWidth: bpAllWidth,
     tradeVolumePocEnabled: tradeVolumePoc,
     tradeVolumePocBandPct: tvpBandPct,
+    tradeVolumePocColor: tvpColor,
+    tradeVolumePocOpacity: tvpOpacity,
     quoteTotalsEnabled: qt,
     ratioEnabled: ratio,
     fillStrengthEnabled: fill,

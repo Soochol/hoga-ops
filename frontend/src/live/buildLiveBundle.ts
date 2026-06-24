@@ -494,6 +494,7 @@ export function buildChartBundle(input: BuildChartBundleInput): RangeBundle {
     ask_peaks: pastBundle?.ask_peaks ?? [],
     bid_peaks: pastBundle?.bid_peaks ?? [],
     price_level_hits: pastBundle?.price_level_hits ?? [],
+    trade_volume_pocs: pastBundle?.trade_volume_pocs ?? [],
   };
 }
 

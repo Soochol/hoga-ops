@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import {
+  computeCandleVolumePocs,
   computeTradeVolumePoc,
   krxStockTickSize,
   type TradeVolumePoc,
@@ -95,6 +96,33 @@ describe('computeTradeVolumePoc', () => {
     expectPoc(poc, {
       centerPrice: 10_000,
       qty: 20,
+    });
+  });
+});
+
+describe('computeCandleVolumePocs', () => {
+  it('falls back to candle close volume when exact trade prices are unavailable', () => {
+    const pocs = computeCandleVolumePocs([
+      { ts_ms: atKst(9, 1), open: 71_500, high: 72_000, low: 71_000, close: 71_500, vol_a: 20, vol_b: 0 },
+      { ts_ms: atKst(9, 2), open: 72_000, high: 72_500, low: 71_500, close: 72_300, vol_a: 50, vol_b: 0 },
+      { ts_ms: atKst(9, 3), open: 72_500, high: 73_200, low: 72_000, close: 73_100, vol_a: 30, vol_b: 0 },
+      { ts_ms: atKst(15, 20), open: 80_000, high: 80_000, low: 80_000, close: 80_000, vol_a: 1_000, vol_b: 0 },
+    ], [{
+      date: '20260624',
+      session_open_ms: atKst(9, 0),
+      session_close_ms: atKst(15, 30),
+      source: 'kis_live',
+    }]);
+
+    expect(pocs).toHaveLength(1);
+    expect(pocs[0]).toMatchObject({
+      date: '20260624',
+      centerPrice: 72_300,
+      lowPrice: 71_900,
+      highPrice: 72_700,
+      qty: 50,
+      t_ms: atKst(9, 2),
+      bandPct: 0.005,
     });
   });
 });

@@ -8,6 +8,8 @@ import {
   MA_PERIOD_MAX,
   MA_SLOT_LIMIT,
   TRADE_VOLUME_POC_DEFAULT_BAND_PCT,
+  TRADE_VOLUME_POC_DEFAULT_COLOR,
+  TRADE_VOLUME_POC_DEFAULT_OPACITY,
   type LiveMAConfig,
   type PersistedIndicators,
 } from './liveIndicatorsPersistence';
@@ -30,6 +32,8 @@ export {
   MA_PERIOD_MAX,
   MA_SLOT_LIMIT,
   TRADE_VOLUME_POC_DEFAULT_BAND_PCT,
+  TRADE_VOLUME_POC_DEFAULT_COLOR,
+  TRADE_VOLUME_POC_DEFAULT_OPACITY,
 };
 export type { LiveMAConfig };
 
@@ -138,6 +142,7 @@ type Store = Persisted & PersistedIndicators & {
   setBidPeakAllPriceStyle: (patch: { color?: string; lineWidth?: 1 | 2 | 3 | 4 }) => void;
   setTradeVolumePocEnabled: (enabled: boolean) => void;
   setTradeVolumePocBandPct: (bandPct: number) => void;
+  setTradeVolumePocStyle: (patch: { color?: string; opacity?: number }) => void;
   setQuoteTotalsEnabled: (enabled: boolean) => void;
   setRatioEnabled: (enabled: boolean) => void;
   setFillStrengthEnabled: (enabled: boolean) => void;
@@ -248,6 +253,8 @@ function snapshotIndicators(get: () => Store): PersistedIndicators {
     bidPeakAllPriceLineWidth: s.bidPeakAllPriceLineWidth,
     tradeVolumePocEnabled: s.tradeVolumePocEnabled,
     tradeVolumePocBandPct: s.tradeVolumePocBandPct,
+    tradeVolumePocColor: s.tradeVolumePocColor,
+    tradeVolumePocOpacity: s.tradeVolumePocOpacity,
     quoteTotalsEnabled: s.quoteTotalsEnabled,
     ratioEnabled: s.ratioEnabled,
     fillStrengthEnabled: s.fillStrengthEnabled,
@@ -436,6 +443,16 @@ export const useLivePageStore = create<Store>((set, get) => ({
   setTradeVolumePocBandPct: (bandPct) => {
     if (bandPct !== 0.005 && bandPct !== 0.01) return;
     set({ tradeVolumePocBandPct: bandPct });
+    persistIndicators(snapshotIndicators(get));
+  },
+
+  setTradeVolumePocStyle: (patch) => {
+    set((s) => ({
+      tradeVolumePocColor: patch.color ?? s.tradeVolumePocColor,
+      tradeVolumePocOpacity: patch.opacity === undefined
+        ? s.tradeVolumePocOpacity
+        : clamp(patch.opacity, 0, 1),
+    }));
     persistIndicators(snapshotIndicators(get));
   },
 

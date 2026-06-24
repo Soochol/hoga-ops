@@ -4,7 +4,6 @@ import type { Candle, RangeSegment } from '../api/types';
 import type { PaneId } from '../chart/drawing/types';
 import type { PaneSeriesMap } from '../chart/drawing/chartCoordinates';
 import type { VirtualAxis } from '../util/virtualAxis';
-import { formatQtyCompact } from '../util/formatQtyCompact';
 import { useLivePageStore } from '../state/livePage';
 import {
   TradeVolumePocPrimitive,
@@ -12,9 +11,16 @@ import {
 } from '../chart/TradeVolumePocPrimitive';
 import type { TradeVolumePoc } from './tradeVolumePoc';
 
-const POC_COLOR = '#A855F7';
-const POC_FILL = 'rgba(168, 85, 247, 0.12)';
-const POC_LINE_WIDTH = 2;
+function hexToRgba(hex: string, opacity: number): string {
+  const match = /^#?([0-9a-f]{6})$/i.exec(hex);
+  if (!match) return `rgba(168, 85, 247, ${Math.max(0, Math.min(1, opacity))})`;
+  const raw = match[1];
+  const r = Number.parseInt(raw.slice(0, 2), 16);
+  const g = Number.parseInt(raw.slice(2, 4), 16);
+  const b = Number.parseInt(raw.slice(4, 6), 16);
+  const alpha = Math.max(0, Math.min(1, opacity));
+  return `rgba(${r}, ${g}, ${b}, ${alpha})`;
+}
 
 type Props = {
   paneSeries: PaneSeriesMap;
@@ -25,20 +31,13 @@ type Props = {
   todayKst: string;
 };
 
-function formatPrice(price: number): string {
-  return Math.round(price).toLocaleString('ko-KR');
-}
-
-function formatPocLabel(poc: TradeVolumePoc): string {
-  return `최다거래대 ${formatPrice(poc.lowPrice)}~${formatPrice(poc.highPrice)} / ${formatQtyCompact(poc.qty)}`;
-}
-
 export function buildTradeVolumePocSegments(
   pocs: readonly TradeVolumePoc[],
   segments: readonly RangeSegment[],
   candles: readonly Candle[],
   axis: VirtualAxis,
   todayKst: string,
+  fillColor: string,
 ): TradeVolumePocSegment[] {
   if (pocs.length === 0 || candles.length === 0) return [];
   const byDate = new Map(segments.map((s) => [s.date, s]));
@@ -51,15 +50,9 @@ export function buildTradeVolumePocSegments(
     out.push({
       time0: (axis.toVirtual(segment.session_open_ms) / 1000) as Time,
       time1: (axis.toVirtual(endMs) / 1000) as Time,
-      peakTime: (axis.toVirtual(poc.t_ms) / 1000) as Time,
       lowPrice: poc.lowPrice,
       highPrice: poc.highPrice,
-      centerPrice: poc.centerPrice,
-      qty: poc.qty,
-      label: formatPocLabel(poc),
-      color: POC_COLOR,
-      fillColor: POC_FILL,
-      lineWidth: POC_LINE_WIDTH,
+      fillColor,
     });
   }
   return out;
@@ -68,10 +61,13 @@ export function buildTradeVolumePocSegments(
 function TradeVolumePocOverlay({ paneSeries, axis, pocs, segments, candles, todayKst }: Props) {
   const series = paneSeries.get('candle' as PaneId) as ISeriesApi<SeriesType> | undefined;
   const enabled = useLivePageStore((s) => s.tradeVolumePocEnabled);
+  const color = useLivePageStore((s) => s.tradeVolumePocColor);
+  const opacity = useLivePageStore((s) => s.tradeVolumePocOpacity);
   const primitiveRef = useRef<TradeVolumePocPrimitive | null>(null);
+  const fillColor = useMemo(() => hexToRgba(color, opacity), [color, opacity]);
   const segment = useMemo(
-    () => buildTradeVolumePocSegments(pocs, segments, candles, axis, todayKst),
-    [pocs, segments, candles, axis, todayKst],
+    () => buildTradeVolumePocSegments(pocs, segments, candles, axis, todayKst, fillColor),
+    [pocs, segments, candles, axis, todayKst, fillColor],
   );
 
   useEffect(() => {
