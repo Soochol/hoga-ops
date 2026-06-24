@@ -4,20 +4,48 @@ import { realMsToYyyymmdd } from './liveDateTime';
 
 type Candidate = Pick<PriceLevelHit, 'price' | 'kind' | 'direction' | 'pct'>;
 
+function krxStockTickSize(price: number): number {
+  if (price < 2_000) return 1;
+  if (price < 5_000) return 5;
+  if (price < 20_000) return 10;
+  if (price < 50_000) return 50;
+  if (price < 200_000) return 100;
+  if (price < 500_000) return 500;
+  return 1_000;
+}
+
+function ceilKrxStockTick(price: number): number {
+  let candidate = Math.trunc(price);
+  candidate =
+    Math.ceil(candidate / krxStockTickSize(candidate)) *
+    krxStockTickSize(candidate);
+  while (candidate < price) candidate += krxStockTickSize(candidate);
+  return candidate;
+}
+
+function floorKrxStockTick(price: number): number {
+  let candidate = Math.trunc(price);
+  candidate =
+    Math.floor(candidate / krxStockTickSize(candidate)) *
+    krxStockTickSize(candidate);
+  while (candidate > price) candidate -= krxStockTickSize(candidate);
+  return candidate;
+}
+
 function priceCandidates(viBaseOpen: number | null, limitBasePrevClose: number | null): Candidate[] {
   const out: Candidate[] = [];
   if (viBaseOpen != null && Number.isFinite(viBaseOpen) && viBaseOpen > 0) {
     out.push(
-      { price: Math.round(viBaseOpen * 1.1), kind: 'vi', direction: 'upper', pct: 10 },
-      { price: Math.round(viBaseOpen * 1.2), kind: 'vi', direction: 'upper', pct: 20 },
-      { price: Math.round(viBaseOpen * 0.9), kind: 'vi', direction: 'lower', pct: 10 },
-      { price: Math.round(viBaseOpen * 0.8), kind: 'vi', direction: 'lower', pct: 20 },
+      { price: ceilKrxStockTick(viBaseOpen * 1.1), kind: 'vi', direction: 'upper', pct: 10 },
+      { price: ceilKrxStockTick(viBaseOpen * 1.2), kind: 'vi', direction: 'upper', pct: 20 },
+      { price: floorKrxStockTick(viBaseOpen * 0.9), kind: 'vi', direction: 'lower', pct: 10 },
+      { price: floorKrxStockTick(viBaseOpen * 0.8), kind: 'vi', direction: 'lower', pct: 20 },
     );
   }
   if (limitBasePrevClose != null && Number.isFinite(limitBasePrevClose) && limitBasePrevClose > 0) {
     out.push(
-      { price: Math.round(limitBasePrevClose * 1.3), kind: 'limit', direction: 'upper', pct: 30 },
-      { price: Math.round(limitBasePrevClose * 0.7), kind: 'limit', direction: 'lower', pct: 30 },
+      { price: floorKrxStockTick(limitBasePrevClose * 1.3), kind: 'limit', direction: 'upper', pct: 30 },
+      { price: ceilKrxStockTick(limitBasePrevClose * 0.7), kind: 'limit', direction: 'lower', pct: 30 },
     );
   }
   return out;

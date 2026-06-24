@@ -575,6 +575,41 @@ def _compute_bid_peak(
     )
 
 
+def _krx_stock_tick_size(price: int) -> int:
+    if price < 2_000:
+        return 1
+    if price < 5_000:
+        return 5
+    if price < 20_000:
+        return 10
+    if price < 50_000:
+        return 50
+    if price < 200_000:
+        return 100
+    if price < 500_000:
+        return 500
+    return 1_000
+
+
+def _ceil_krx_stock_tick(price: float) -> int:
+    candidate = int(price)
+    candidate = (
+        (candidate + _krx_stock_tick_size(candidate) - 1)
+        // _krx_stock_tick_size(candidate)
+    ) * _krx_stock_tick_size(candidate)
+    while candidate < price:
+        candidate += _krx_stock_tick_size(candidate)
+    return candidate
+
+
+def _floor_krx_stock_tick(price: float) -> int:
+    candidate = int(price)
+    candidate = (candidate // _krx_stock_tick_size(candidate)) * _krx_stock_tick_size(candidate)
+    while candidate > price:
+        candidate -= _krx_stock_tick_size(candidate)
+    return candidate
+
+
 def _candidate_price_levels(
     *,
     vi_base_open: int | None,
@@ -583,12 +618,12 @@ def _candidate_price_levels(
     candidates: list[tuple[int, _PriceLevelKind, _PriceLevelDirection, _PriceLevelPct]] = []
     if vi_base_open is not None and vi_base_open > 0:
         for pct, mult in ((10, 1.10), (20, 1.20)):
-            candidates.append((int(round(vi_base_open * mult)), "vi", "upper", pct))
+            candidates.append((_ceil_krx_stock_tick(vi_base_open * mult), "vi", "upper", pct))
         for pct, mult in ((10, 0.90), (20, 0.80)):
-            candidates.append((int(round(vi_base_open * mult)), "vi", "lower", pct))
+            candidates.append((_floor_krx_stock_tick(vi_base_open * mult), "vi", "lower", pct))
     if limit_base_prev_close is not None and limit_base_prev_close > 0:
-        candidates.append((int(round(limit_base_prev_close * 1.30)), "limit", "upper", 30))
-        candidates.append((int(round(limit_base_prev_close * 0.70)), "limit", "lower", 30))
+        candidates.append((_floor_krx_stock_tick(limit_base_prev_close * 1.30), "limit", "upper", 30))
+        candidates.append((_ceil_krx_stock_tick(limit_base_prev_close * 0.70), "limit", "lower", 30))
     return candidates
 
 
