@@ -126,6 +126,35 @@ def test_build_price_level_hits_requires_exact_trade_price_and_first_hit(tmp_pat
     ]
 
 
+def test_build_price_level_hits_uses_krx_tick_adjusted_trigger_prices(tmp_path):
+    trades_path = tmp_path / "trades.parquet"
+    write_parquet(
+        [
+            # open=29,100: raw +10 is 32,010, but executable KRX tick is 32,050.
+            Trade(90100000, 1, 32050, 0, 1, 1, 1, 1, 0, 0, 0, 0, 0, 0, 0),
+            # raw -10 is 26,190, but lower trigger executable tick is 26,150.
+            Trade(90200000, 2, 26150, 0, 1, -1, 2, 2, 0, 0, 0, 0, 0, 0, 0),
+            # prev close=24,200: raw upper limit is 31,460, max allowed tick is 31,450.
+            Trade(90300000, 3, 31450, 0, 1, 1, 3, 3, 0, 0, 0, 0, 0, 0, 0),
+        ],
+        trades_path,
+    )
+
+    hits = build_price_level_hits_slice(
+        duckdb.connect(database=":memory:"),
+        date="20260624",
+        trades_path=trades_path,
+        vi_base_open=29_100,
+        limit_base_prev_close=24_200,
+    )
+
+    assert [(h.kind, h.direction, h.pct, h.price, h.t_ms) for h in hits] == [
+        ("vi", "upper", 10, 32050, 1782259260000),
+        ("vi", "lower", 10, 26150, 1782259320000),
+        ("limit", "upper", 30, 31450, 1782259380000),
+    ]
+
+
 def test_build_price_level_hits_returns_empty_without_basis_or_trades(tmp_path):
     con = duckdb.connect(database=":memory:")
     assert build_price_level_hits_slice(

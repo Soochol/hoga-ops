@@ -52,6 +52,26 @@ describe('priceLevelHits', () => {
     ]);
   });
 
+  it('uses KRX tick-adjusted trigger prices instead of raw rounded percentages', () => {
+    const candles = [
+      candle(yesterdayOpen + 60_000, 23_000, 24_200),
+      candle(todayOpen + 60_000, 29_100),
+    ];
+    const trades = [
+      trade(todayOpen + 120_000, 32_050),
+      trade(todayOpen + 180_000, 26_150),
+      trade(todayOpen + 240_000, 31_450),
+    ];
+
+    const hits = buildLivePriceLevelHits(candles, trades, '20260624');
+
+    expect(hits.map((h) => [h.kind, h.direction, h.pct, h.price, h.t_ms])).toEqual([
+      ['vi', 'upper', 10, 32_050, todayOpen + 120_000],
+      ['vi', 'lower', 10, 26_150, todayOpen + 180_000],
+      ['limit', 'upper', 30, 31_450, todayOpen + 240_000],
+    ]);
+  });
+
   it('dedupes backend and live hits by date price kind direction pct', () => {
     const backend: PriceLevelHit[] = [{
       date: '20260624',
