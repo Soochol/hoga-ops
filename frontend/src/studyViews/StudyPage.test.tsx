@@ -495,6 +495,9 @@ describe('StudyPage', () => {
     expect(screen.getByTestId('card-orderbook')).toBeTruthy();
     expect(screen.getByTestId('card-brokers')).toBeTruthy();
     expect(screen.getByText('10호가')).toBeTruthy();
+    expect(screen.getByRole('group', { name: '총잔량' })).toBeTruthy();
+    expect(screen.getByLabelText('매도총잔량 145')).toBeInTheDocument();
+    expect(screen.getByLabelText('매수총잔량 245')).toBeInTheDocument();
     expect(screen.getByText('거래원')).toBeTruthy();
     expect(screen.getByText('키움')).toBeTruthy();
     expect(screen.getByText('+100')).toBeTruthy();
