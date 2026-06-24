@@ -15,8 +15,11 @@ export default function AskPeakConfig() {
   const lineWidth = useLivePageStore((s) => s.askPeakLineWidth);
   const allPriceColor = useLivePageStore((s) => s.askPeakAllPriceColor);
   const allPriceLineWidth = useLivePageStore((s) => s.askPeakAllPriceLineWidth);
+  const visibleMaxColor = useLivePageStore((s) => s.askPeakVisibleMaxColor);
+  const visibleMaxLineWidth = useLivePageStore((s) => s.askPeakVisibleMaxLineWidth);
   const setStyle = useLivePageStore((s) => s.setAskPeakStyle);
   const setAllPriceStyle = useLivePageStore((s) => s.setAskPeakAllPriceStyle);
+  const setVisibleMaxStyle = useLivePageStore((s) => s.setAskPeakVisibleMaxStyle);
   const rankLimit = useChartPrefsStore((s) => s.askPeakAllPriceRankLimit);
   const setNumericPref = useChartPrefsStore((s) => s.setNumericPref);
   return (
@@ -41,6 +44,15 @@ export default function AskPeakConfig() {
             lineWidth={allPriceLineWidth}
             onChange={setAllPriceStyle}
             label="미체결 포함 최대벽"
+          />
+        </div>
+        <div className="flex items-center gap-2">
+          <span className="text-sm text-fg">보이는 영역 최대벽</span>
+          <MAStylePicker
+            color={visibleMaxColor}
+            lineWidth={visibleMaxLineWidth}
+            onChange={setVisibleMaxStyle}
+            label="보이는 영역 최대벽"
           />
         </div>
       </div>
