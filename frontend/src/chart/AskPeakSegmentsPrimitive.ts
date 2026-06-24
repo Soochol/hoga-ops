@@ -40,12 +40,14 @@ const LABEL_GAP_PX = 3;
 const LABEL_FONT_PX = 11;
 const LABEL_ROW_GAP_PX = 2;
 const LABEL_EDGE_PAD_PX = 4;
+const LABEL_SEGMENT_PAD_PX = 8;
 
 export type AskPeakLabelCandidate = {
   index: number;
   xRight: number;
   yLine: number;
   width: number;
+  segmentWidth: number;
 };
 
 export type AskPeakLabelLayout = AskPeakLabelCandidate & {
@@ -85,6 +87,13 @@ function overlappingLabelGroups(layouts: readonly AskPeakLabelLayout[]): AskPeak
     groups.push(merged);
   }
   return groups;
+}
+
+export function visibleAskPeakLabelCandidates(
+  candidates: readonly AskPeakLabelCandidate[],
+  segmentPad: number,
+): AskPeakLabelCandidate[] {
+  return candidates.filter((candidate) => candidate.segmentWidth >= candidate.width + segmentPad * 2);
 }
 
 /**
@@ -183,6 +192,7 @@ class AskPeakSegmentsRenderer implements IPrimitivePaneRenderer {
             xRight: px1,
             yLine: py - LABEL_GAP_PX * vr,
             width: ctx.measureText(s.label).width,
+            segmentWidth: Math.abs(px1 - px0),
           });
         }
       }
@@ -190,7 +200,8 @@ class AskPeakSegmentsRenderer implements IPrimitivePaneRenderer {
       const rowHeight = (LABEL_FONT_PX + LABEL_ROW_GAP_PX) * vr;
       const minBaselineY = (LABEL_FONT_PX + LABEL_EDGE_PAD_PX) * vr;
       const maxBaselineY = scope.bitmapSize.height - LABEL_EDGE_PAD_PX * vr;
-      const labelLayouts = layoutAskPeakLabels(labelCandidates, minBaselineY, maxBaselineY, rowHeight);
+      const visibleLabels = visibleAskPeakLabelCandidates(labelCandidates, LABEL_SEGMENT_PAD_PX * hr);
+      const labelLayouts = layoutAskPeakLabels(visibleLabels, minBaselineY, maxBaselineY, rowHeight);
       for (const layout of labelLayouts) {
         const s = segments[layout.index];
         ctx.font = `${LABEL_FONT_PX * vr}px sans-serif`;

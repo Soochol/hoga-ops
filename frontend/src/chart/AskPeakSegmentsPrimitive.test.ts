@@ -1,11 +1,22 @@
 import { describe, expect, it } from 'vitest';
-import { layoutAskPeakLabels, type AskPeakLabelCandidate } from './AskPeakSegmentsPrimitive';
+import {
+  layoutAskPeakLabels,
+  visibleAskPeakLabelCandidates,
+  type AskPeakLabelCandidate,
+} from './AskPeakSegmentsPrimitive';
 
-const candidate = (index: number, xRight: number, yLine: number, width = 70): AskPeakLabelCandidate => ({
+const candidate = (
+  index: number,
+  xRight: number,
+  yLine: number,
+  width = 70,
+  segmentWidth = 120,
+): AskPeakLabelCandidate => ({
   index,
   xRight,
   yLine,
   width,
+  segmentWidth,
 });
 
 describe('layoutAskPeakLabels', () => {
@@ -36,5 +47,16 @@ describe('layoutAskPeakLabels', () => {
     ], 15, 220, 13);
 
     expect(out.map((l) => l.baselineY)).toEqual([194, 207, 220]);
+  });
+});
+
+describe('visibleAskPeakLabelCandidates', () => {
+  it('hides labels when zoomed out so the segment cannot fit the label', () => {
+    const out = visibleAskPeakLabelCandidates([
+      candidate(0, 500, 100, 70, 120),
+      candidate(1, 540, 104, 70, 60),
+    ], 8);
+
+    expect(out.map((l) => l.index)).toEqual([0]);
   });
 });
