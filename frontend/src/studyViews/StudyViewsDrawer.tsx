@@ -353,13 +353,11 @@ export function StudyViewsDrawer() {
     const deletedId = deleteTarget.id;
     mutations.remove.mutate(deletedId, {
       onSuccess: () => {
-        const { tabs, activeTabId, closeTab } = useStudyTabsStore.getState();
-        const activeTab = tabs.find((tab) => tab.id === activeTabId);
-        if (activeTab?.viewId === deletedId) closeTab(activeTab.id);
+        const nextActiveTab = useStudyTabsStore.getState().closeTabsByViewId(deletedId);
         setDeleteTarget(null);
         setDialog(null);
         if (location.pathname === '/study' && (currentStudyViewId === deletedId || studySource?.viewId === deletedId)) {
-          navigate('/study');
+          navigate(nextActiveTab ? `/study?view=${nextActiveTab.viewId}` : '/study');
         }
       },
     });

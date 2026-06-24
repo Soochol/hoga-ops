@@ -672,6 +672,26 @@ it('navigates away after deleting the active study view', async () => {
   expect(screen.queryByRole('dialog', { name: '저장뷰 삭제' })).toBeNull();
 });
 
+it('removes every open tab for a deleted inactive study view', async () => {
+  useStudyTabsStore.getState().openSaveInNewTab(saves[1]);
+  useStudyTabsStore.getState().openSaveInNewTab(saves[0]);
+  useStudyTabsStore.getState().openSaveInNewTab(saves[0]);
+  const firstTabId = useStudyTabsStore.getState().tabs[0].id;
+  useStudyTabsStore.getState().focusTab(firstTabId);
+  removeMutate.mockImplementation((_id, opts) => opts.onSuccess());
+  renderDrawer('/study?view=b');
+
+  fireEvent.contextMenu(screen.getByRole('button', { name: '급등 이후 저장뷰 열기' }));
+  await userEvent.click(screen.getByRole('menuitem', { name: '삭제' }));
+  const dialog = screen.getByRole('dialog', { name: '저장뷰 삭제' });
+  await userEvent.click(within(dialog).getByRole('button', { name: '삭제' }));
+
+  const state = useStudyTabsStore.getState();
+  expect(state.tabs.map((tab) => tab.viewId)).toEqual(['b']);
+  expect(state.activeTabId).toBe(firstTabId);
+  expect(screen.getByTestId('loc').textContent).toBe('/study?view=b');
+});
+
 it('ctrl-clicking a stock group header opens its newest save in a new study tab without collapsing the group', async () => {
   mockedSaves = [
     ...saves,

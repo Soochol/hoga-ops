@@ -295,6 +295,26 @@ describe('StudyPage', () => {
     expect(screen.getByTestId('location-probe')).toHaveTextContent('/study?view=view2');
   });
 
+  it('uses the newly focused tab snapshot before the URL catches up', () => {
+    useStudyTabsStore.getState().openSaveInNewTab(makeSave('view1', '장초반'));
+    useStudyTabsStore.getState().openSaveInNewTab(makeSave('view2', '마감'));
+    const firstTabId = useStudyTabsStore.getState().tabs[0].id;
+    useStudyTabsStore.getState().focusTab(firstTabId);
+    useStudyViewSnapshotMock.mockImplementation((viewId: string | null) => ({
+      data: viewId ? makeSnapshot(viewId) : undefined,
+      isLoading: false,
+      isError: false,
+    }));
+
+    renderAt('/study?view=view1');
+    useStudyViewSnapshotMock.mockClear();
+
+    fireEvent.click(screen.getByRole('tab', { name: /삼성전자 · 마감 · D/i }));
+
+    expect(useStudyViewSnapshotMock).toHaveBeenCalled();
+    expect(useStudyViewSnapshotMock.mock.calls[0][0]).toBe('view2');
+  });
+
   it('pressing 5 does nothing', async () => {
     useStudyTabsStore.getState().openSaveInNewTab(makeSave('view1', '장초반'));
     useStudyTabsStore.getState().openSaveInNewTab(makeSave('view2', '마감'));

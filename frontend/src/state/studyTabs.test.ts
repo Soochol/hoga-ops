@@ -75,4 +75,17 @@ describe('studyTabs store', () => {
       timeframe: '1m',
     });
   });
+
+  it('closes every tab for a deleted study view and focuses a safe neighbor', () => {
+    useStudyTabsStore.getState().openSaveInNewTab(save);
+    useStudyTabsStore.getState().openSaveInNewTab({ ...save, id: 'view2', name: '마감' });
+    useStudyTabsStore.getState().openSaveInNewTab({ ...save, id: 'view1', name: '장초반 복사' });
+
+    const nextActive = useStudyTabsStore.getState().closeTabsByViewId('view1');
+    const state = useStudyTabsStore.getState();
+
+    expect(state.tabs.map((tab) => tab.viewId)).toEqual(['view2']);
+    expect(state.activeTabId).toBe(state.tabs[0].id);
+    expect(nextActive?.viewId).toBe('view2');
+  });
 });
