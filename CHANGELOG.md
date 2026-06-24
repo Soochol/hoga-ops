@@ -3,6 +3,20 @@
 All notable changes to this project are documented here.
 The format follows a 4-digit `MAJOR.MINOR.PATCH.MICRO` scheme.
 
+## [0.9.3.0] - 2026-06-24
+
+### Added
+- **/study 탭 작업공간 추가**: 저장된 학습뷰를 `/live`처럼 탭으로 열고, `1`~`4` 단축키로 빠르게 전환할 수 있게 했다.
+- **저장뷰 패널에서 study 탭 열기 추가**: 저장뷰 행을 클릭하면 현재 study 탭을 교체하고, Ctrl/Meta 클릭하면 새 탭으로 열 수 있게 했다.
+- **저장뷰 종목 그룹 드래그 추가**: 저장뷰의 종목명 그룹을 `/study` 화면에 놓으면 해당 종목의 최신 저장뷰가 현재 study 탭에 열린다.
+
+### Changed
+- `/live`와 `/study`가 같은 차트 탭바 UI를 공유하도록 정리해 탭 표시, 닫기, 재정렬 동작을 일관되게 유지했다.
+
+### Fixed
+- `/study?view=...`로 직접 진입할 때 이전에 저장된 활성 study 탭이 deep link를 덮어쓰지 않도록 했다.
+- 빈 `/study` 화면에서도 저장뷰 종목 그룹 드롭이 동작하도록 drop target을 유지했다.
+
 ## [0.9.2.0] - 2026-06-23
 
 ### Changed
