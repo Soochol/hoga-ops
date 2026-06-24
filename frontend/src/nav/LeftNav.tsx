@@ -4,6 +4,7 @@ import { CaptureStatusPill } from './CaptureStatusPill';
 
 export const WORKSPACE_NAV_ITEMS = [
   { to: '/live', label: 'Live' },
+  { to: '/study', label: 'Study' },
   { to: '/heatmap', label: 'Heatmap' },
   { to: '/screener', label: 'Screener' },
   { to: '/inventory', label: 'Inventory' },
