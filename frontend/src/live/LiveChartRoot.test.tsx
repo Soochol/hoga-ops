@@ -1962,7 +1962,7 @@ describe('LiveChartRoot crosshair → cursor store (ADR-0044)', () => {
     expect(chart.subscribeCrosshairMove).toHaveBeenCalledTimes(3);
   });
 
-  it('crosshair move → setCursor; crosshair leave → restore last hover cursor', async () => {
+  it('crosshair move → setCursor; crosshair leave → clear cursor for latest mode', async () => {
     const onCursorActiveChange = vi.fn();
     render(
       <LiveChartRoot
@@ -1995,11 +1995,11 @@ describe('LiveChartRoot crosshair → cursor store (ADR-0044)', () => {
     expect(onCursorActiveChange).toHaveBeenLastCalledWith(true);
 
     act(() => fire({ time: undefined, point: null }));
-    expect(useLiveCursorStore.getState().cursorMs).toBe(SESSION_OPEN);
+    expect(useLiveCursorStore.getState().cursorMs).toBeNull();
     expect(onCursorActiveChange).toHaveBeenLastCalledWith(false);
   });
 
-  it('crosshair into the right-offset whitespace (numeric time past the last candle) → keep last hover cursor', async () => {
+  it('crosshair into the right-offset whitespace (numeric time past the last candle) → clear cursor for latest mode', async () => {
     // Real mechanism (verified 2026-06-11 — supersedes the original #69
     // assumption of `time: undefined`): with CrosshairMode.Normal lwc does NOT
     // report an empty time in the whitespace; it extrapolates the gap-compressed
@@ -2039,7 +2039,7 @@ describe('LiveChartRoot crosshair → cursor store (ADR-0044)', () => {
     const whitespaceTimeSec = (TODAY_OPEN_MS + 600_000) / 1000;
     act(() => fire({ time: whitespaceTimeSec, point: { x: 9999 } }));
     await flush();
-    expect(useLiveCursorStore.getState().cursorMs).toBe(SESSION_OPEN);
+    expect(useLiveCursorStore.getState().cursorMs).toBeNull();
   });
 
   it('clears cursor when timeframe switches from minute to calendar', () => {
