@@ -15,6 +15,10 @@ def _c(ts_ms: int, o: int, h: int, l: int, c: int, va: int = 0, vb: int = 0) -> 
     return ApiCandle(ts_ms=ts_ms, open=o, close=c, high=h, low=l, vol_a=va, vol_b=vb)
 
 
+JUN24_0901 = 1_782_259_260_000
+MINUTE = 60_000
+
+
 def test_downsample_candles_identity_at_60000():
     inp = [_c(60_000, 100, 110, 95, 105), _c(120_000, 105, 108, 100, 102)]
     out = downsample_candles(inp, bucket_ms=60_000)
@@ -72,13 +76,13 @@ def test_build_price_level_hits_uses_candle_touch_open_for_vi_and_prev_close_for
     hits = build_price_level_hits_slice(
         date="20260624",
         candles=[
-            _c(90100000, 10_000, 11_100, 9_950, 10_500),
-            _c(90200000, 10_500, 12_100, 10_400, 11_500),
-            _c(90300000, 11_500, 11_600, 8_900, 9_000),
-            _c(90400000, 9_000, 9_100, 7_900, 8_000),
+            _c(JUN24_0901, 10_000, 11_100, 9_950, 10_500),
+            _c(JUN24_0901 + MINUTE, 10_500, 12_100, 10_400, 11_500),
+            _c(JUN24_0901 + 2 * MINUTE, 11_500, 11_600, 8_900, 9_000),
+            _c(JUN24_0901 + 3 * MINUTE, 9_000, 9_100, 7_900, 8_000),
             # Limit hits must use previous close=10000, not day open=13000.
-            _c(90500000, 8_000, 13_100, 7_950, 13_000),
-            _c(90600000, 13_000, 13_050, 6_900, 7_000),
+            _c(JUN24_0901 + 4 * MINUTE, 8_000, 13_100, 7_950, 13_000),
+            _c(JUN24_0901 + 5 * MINUTE, 13_000, 13_050, 6_900, 7_000),
         ],
         vi_base_open=10_000,
         limit_base_prev_close=10_000,
@@ -98,9 +102,9 @@ def test_build_price_level_hits_uses_first_candle_that_touches_price():
     hits = build_price_level_hits_slice(
         date="20260624",
         candles=[
-            _c(90100000, 10_000, 10_999, 9_950, 10_900),
-            _c(90200000, 10_900, 11_001, 10_850, 11_000),
-            _c(90300000, 11_000, 11_500, 10_900, 11_100),
+            _c(JUN24_0901, 10_000, 10_999, 9_950, 10_900),
+            _c(JUN24_0901 + MINUTE, 10_900, 11_001, 10_850, 11_000),
+            _c(JUN24_0901 + 2 * MINUTE, 11_000, 11_500, 10_900, 11_100),
         ],
         vi_base_open=10_000,
         limit_base_prev_close=None,
@@ -116,11 +120,11 @@ def test_build_price_level_hits_uses_krx_tick_adjusted_trigger_prices():
         date="20260624",
         candles=[
             # open=29,100: raw +10 is 32,010, but executable KRX tick is 32,050.
-            _c(90100000, 29_100, 32_060, 29_000, 32_000),
+            _c(JUN24_0901, 29_100, 32_060, 29_000, 32_000),
             # raw -10 is 26,190, but lower trigger executable tick is 26,150.
-            _c(90200000, 32_000, 32_010, 26_140, 26_200),
+            _c(JUN24_0901 + MINUTE, 32_000, 32_010, 26_140, 26_200),
             # prev close=24,200: raw upper limit is 31,460, max allowed tick is 31,450.
-            _c(90300000, 26_200, 31_460, 26_100, 31_450),
+            _c(JUN24_0901 + 2 * MINUTE, 26_200, 31_460, 26_100, 31_450),
         ],
         vi_base_open=29_100,
         limit_base_prev_close=24_200,
@@ -142,7 +146,7 @@ def test_build_price_level_hits_returns_empty_without_basis_or_candles():
     ) == []
     assert build_price_level_hits_slice(
         date="20260624",
-        candles=[_c(90100000, 10_000, 10_500, 9_500, 10_000)],
+        candles=[_c(JUN24_0901, 10_000, 10_500, 9_500, 10_000)],
         vi_base_open=None,
         limit_base_prev_close=None,
     ) == []

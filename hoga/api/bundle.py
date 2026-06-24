@@ -653,7 +653,7 @@ def build_price_level_hits_slice(
             continue
         hits.append(PriceLevelHit(
             date=date,
-            t_ms=hhmmssms_to_unix_ms(date, first.ts_ms),
+            t_ms=first.ts_ms,
             price=price,
             kind=kind,
             direction=direction,
