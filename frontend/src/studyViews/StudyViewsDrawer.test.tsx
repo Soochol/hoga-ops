@@ -421,6 +421,14 @@ it('clicking the saved view title navigates to the study route', async () => {
   await waitFor(() => expect(screen.getByTestId('loc').textContent).toBe('/study?view=a'));
 });
 
+it('clicking the saved view name text navigates to the study route', async () => {
+  renderDrawer('/inventory');
+
+  await userEvent.click(screen.getByText('급등 이후'));
+
+  await waitFor(() => expect(screen.getByTestId('loc').textContent).toBe('/study?view=a'));
+});
+
 it('pressing Enter on the saved view title navigates to the study route', async () => {
   renderDrawer('/inventory');
 
