@@ -38,9 +38,11 @@ export interface AskPeakSegment {
 const PEAK_DOT_RADIUS_PX = 3.5;
 const LABEL_GAP_PX = 3;
 const LABEL_FONT_PX = 11;
-const LABEL_ROW_GAP_PX = 2;
+const LABEL_ROW_GAP_PX = 5;
 const LABEL_EDGE_PAD_PX = 4;
 const LABEL_SEGMENT_PAD_PX = 8;
+const LABEL_BOX_X_PAD_PX = 4;
+const LABEL_BOX_Y_PAD_PX = 1;
 
 export type AskPeakLabelCandidate = {
   index: number;
@@ -205,6 +207,16 @@ class AskPeakSegmentsRenderer implements IPrimitivePaneRenderer {
       for (const layout of labelLayouts) {
         const s = segments[layout.index];
         ctx.font = `${LABEL_FONT_PX * vr}px sans-serif`;
+        const xPad = LABEL_BOX_X_PAD_PX * hr;
+        const yPad = LABEL_BOX_Y_PAD_PX * vr;
+        const fontHeight = LABEL_FONT_PX * vr;
+        ctx.fillStyle = 'rgba(11, 15, 26, 0.72)';
+        ctx.fillRect(
+          layout.xRight - layout.width - xPad,
+          layout.baselineY - fontHeight - yPad,
+          layout.width + xPad * 2,
+          fontHeight + yPad * 2,
+        );
         ctx.fillStyle = s.color;
         ctx.textBaseline = 'bottom';
         ctx.textAlign = 'right';

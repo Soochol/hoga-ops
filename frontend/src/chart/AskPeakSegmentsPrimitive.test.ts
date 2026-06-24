@@ -30,6 +30,16 @@ describe('layoutAskPeakLabels', () => {
     expect(out.map((l) => l.baselineY)).toEqual([100, 113, 126]);
   });
 
+  it('uses the requested row height as the readable gap between close labels', () => {
+    const out = layoutAskPeakLabels([
+      candidate(0, 500, 100),
+      candidate(1, 500, 108),
+      candidate(2, 500, 116),
+    ], 15, 220, 16);
+
+    expect(out.map((l) => l.baselineY)).toEqual([100, 116, 132]);
+  });
+
   it('leaves nearby y labels alone when their text boxes do not overlap horizontally', () => {
     const out = layoutAskPeakLabels([
       candidate(0, 150, 100),
