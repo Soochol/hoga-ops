@@ -25,6 +25,28 @@ describe('WatchlistEditModal', () => {
     expect(screen.queryByText('미분류')).not.toBeInTheDocument();   // v3: 미분류 폐지
     expect(screen.queryByText('모든 종목')).not.toBeInTheDocument();
   });
+  it('keeps folder names readable until row actions are revealed', async () => {
+    vi.spyOn(api, 'getWatchlist').mockResolvedValue({
+      folders: [{ id: 'f_a', name: '길게 만든 관심 그룹 이름', order: 0, capture_enabled: true }],
+      entries: [],
+      next_run_at_ms: 0,
+    });
+    const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+
+    render(<WatchlistEditModal onClose={() => {}} />, { wrapper: wrap(qc) });
+
+    const name = await screen.findByText('길게 만든 관심 그룹 이름');
+    const selectButton = name.closest('button');
+    const row = screen.getByTestId('folder-row-f_a');
+    const actions = screen.getByTestId('folder-row-actions-f_a');
+
+    expect(name).toHaveAttribute('title', '길게 만든 관심 그룹 이름');
+    expect(row).toHaveClass('relative');
+    expect(selectButton).toHaveClass('group-hover:pr-24');
+    expect(selectButton).toHaveClass('group-focus-within:pr-24');
+    expect(actions).toHaveClass('absolute');
+    expect(actions).toHaveClass('right-2');
+  });
   it('creates a folder via 그룹 추가', async () => {
     vi.spyOn(api, 'getWatchlist').mockResolvedValue(DATA);
     const create = vi.spyOn(api, 'createFolder').mockResolvedValue({ id: 'f_new', name: '장기', order: 1 });
