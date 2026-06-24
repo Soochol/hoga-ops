@@ -341,8 +341,8 @@ export function useLiveBundle(
     [defaultKrxSession, past.data, isMinute, live.ob, live.trade, bucketMs],
   );
   const livePriceLevelHits = useMemo(
-    () => (isMinute ? buildLivePriceLevelHits(liveCandles, live.trade, todayKstYyyymmdd) : []),
-    [isMinute, liveCandles, live.trade, todayKstYyyymmdd],
+    () => (isMinute ? buildLivePriceLevelHits(liveCandles, todayKstYyyymmdd) : []),
+    [isMinute, liveCandles, todayKstYyyymmdd],
   );
 
   // Atomize the historical-prepend across the two independent past sources.

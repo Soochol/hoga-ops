@@ -628,10 +628,9 @@ def _candidate_price_levels(
 
 
 def build_price_level_hits_slice(
-    con,
     *,
     date: str,
-    trades_path,
+    candles: list[ApiCandle],
     vi_base_open: int | None,
     limit_base_prev_close: int | None,
 ) -> list[PriceLevelHit]:
@@ -639,37 +638,22 @@ def build_price_level_hits_slice(
         vi_base_open=vi_base_open,
         limit_base_prev_close=limit_base_prev_close,
     )
-    if not candidates or not trades_path.exists():
+    if not candidates or not candles:
         return []
-
-    by_price: dict[int, list[tuple[_PriceLevelKind, _PriceLevelDirection, _PriceLevelPct]]] = {}
-    for price, kind, direction, pct in candidates:
-        if price <= 0:
-            continue
-        by_price.setdefault(price, []).append((kind, direction, pct))
-    if not by_price:
-        return []
-
-    placeholders = ", ".join("?" for _ in by_price)
-    rows = con.execute(
-        f"""
-        SELECT price, MIN(ts_ms) AS first_ts
-        FROM read_parquet(?)
-        WHERE price IN ({placeholders})
-        GROUP BY price
-        """,
-        [str(trades_path), *by_price.keys()],
-    ).fetchall()
-    first_by_price = {int(price): int(first_ts) for price, first_ts in rows}
 
     hits: list[PriceLevelHit] = []
     for price, kind, direction, pct in candidates:
-        first_ts = first_by_price.get(price)
-        if first_ts is None:
+        if price <= 0:
+            continue
+        if direction == "upper":
+            first = next((c for c in candles if c.high >= price), None)
+        else:
+            first = next((c for c in candles if c.low <= price), None)
+        if first is None:
             continue
         hits.append(PriceLevelHit(
             date=date,
-            t_ms=hhmmssms_to_unix_ms(date, first_ts),
+            t_ms=hhmmssms_to_unix_ms(date, first.ts_ms),
             price=price,
             kind=kind,
             direction=direction,
@@ -851,16 +835,10 @@ def build_range_bundle(
         if bp_d is not None:
             bid_peaks.append(bp_d)
         vi_base_open = raw_candles[0].open if raw_candles else int(meta.get("today_open") or 0)
-        trades_path = (
-            resolution.path / "trades.parquet"
-            if resolution.path is not None
-            else engine.parquet_dir(d, code, source) / "trades.parquet"
-        )
         price_level_hits.extend(
             build_price_level_hits_slice(
-                engine.conn,
                 date=d,
-                trades_path=trades_path,
+                candles=candles_d,
                 vi_base_open=vi_base_open,
                 limit_base_prev_close=prev_close_by_date.get(d) or None,
             ),

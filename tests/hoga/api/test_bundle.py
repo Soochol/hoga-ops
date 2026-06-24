@@ -8,7 +8,6 @@ import pytest
 
 from hoga.api.bundle import build_price_level_hits_slice, downsample_candles
 from hoga.tables.candles import ApiCandle
-from hoga.tables.trades import Trade, write_parquet
 
 
 def _c(ts_ms: int, o: int, h: int, l: int, c: int, va: int = 0, vb: int = 0) -> ApiCandle:
@@ -69,25 +68,18 @@ def test_downsample_candles_handles_all_six_timeframes():
             assert c.ts_ms % bucket_ms == 0
 
 
-def test_build_price_level_hits_uses_open_for_vi_and_prev_close_for_limits(tmp_path):
-    trades_path = tmp_path / "trades.parquet"
-    write_parquet(
-        [
-            Trade(90100000, 1, 11000, 0, 1, 1, 1, 1, 0, 0, 0, 0, 0, 0, 0),
-            Trade(90200000, 2, 12000, 0, 1, 1, 2, 2, 0, 0, 0, 0, 0, 0, 0),
-            Trade(90300000, 3, 9000, 0, 1, -1, 3, 3, 0, 0, 0, 0, 0, 0, 0),
-            Trade(90400000, 4, 8000, 0, 1, -1, 4, 4, 0, 0, 0, 0, 0, 0, 0),
-            # Limit hits must use previous close=10000, not day open=13000.
-            Trade(90500000, 5, 13000, 0, 1, 1, 5, 5, 0, 0, 0, 0, 0, 0, 0),
-            Trade(90600000, 6, 7000, 0, 1, -1, 6, 6, 0, 0, 0, 0, 0, 0, 0),
-        ],
-        trades_path,
-    )
-
+def test_build_price_level_hits_uses_candle_touch_open_for_vi_and_prev_close_for_limits():
     hits = build_price_level_hits_slice(
-        duckdb.connect(database=":memory:"),
         date="20260624",
-        trades_path=trades_path,
+        candles=[
+            _c(90100000, 10_000, 11_100, 9_950, 10_500),
+            _c(90200000, 10_500, 12_100, 10_400, 11_500),
+            _c(90300000, 11_500, 11_600, 8_900, 9_000),
+            _c(90400000, 9_000, 9_100, 7_900, 8_000),
+            # Limit hits must use previous close=10000, not day open=13000.
+            _c(90500000, 8_000, 13_100, 7_950, 13_000),
+            _c(90600000, 13_000, 13_050, 6_900, 7_000),
+        ],
         vi_base_open=10_000,
         limit_base_prev_close=10_000,
     )
@@ -102,21 +94,14 @@ def test_build_price_level_hits_uses_open_for_vi_and_prev_close_for_limits(tmp_p
     ]
 
 
-def test_build_price_level_hits_requires_exact_trade_price_and_first_hit(tmp_path):
-    trades_path = tmp_path / "trades.parquet"
-    write_parquet(
-        [
-            Trade(90100000, 1, 10999, 0, 1, 1, 1, 1, 0, 0, 0, 0, 0, 0, 0),
-            Trade(90200000, 2, 11000, 0, 1, 1, 2, 2, 0, 0, 0, 0, 0, 0, 0),
-            Trade(90300000, 3, 11000, 0, 1, 1, 3, 3, 0, 0, 0, 0, 0, 0, 0),
-        ],
-        trades_path,
-    )
-
+def test_build_price_level_hits_uses_first_candle_that_touches_price():
     hits = build_price_level_hits_slice(
-        duckdb.connect(database=":memory:"),
         date="20260624",
-        trades_path=trades_path,
+        candles=[
+            _c(90100000, 10_000, 10_999, 9_950, 10_900),
+            _c(90200000, 10_900, 11_001, 10_850, 11_000),
+            _c(90300000, 11_000, 11_500, 10_900, 11_100),
+        ],
         vi_base_open=10_000,
         limit_base_prev_close=None,
     )
@@ -126,24 +111,17 @@ def test_build_price_level_hits_requires_exact_trade_price_and_first_hit(tmp_pat
     ]
 
 
-def test_build_price_level_hits_uses_krx_tick_adjusted_trigger_prices(tmp_path):
-    trades_path = tmp_path / "trades.parquet"
-    write_parquet(
-        [
-            # open=29,100: raw +10 is 32,010, but executable KRX tick is 32,050.
-            Trade(90100000, 1, 32050, 0, 1, 1, 1, 1, 0, 0, 0, 0, 0, 0, 0),
-            # raw -10 is 26,190, but lower trigger executable tick is 26,150.
-            Trade(90200000, 2, 26150, 0, 1, -1, 2, 2, 0, 0, 0, 0, 0, 0, 0),
-            # prev close=24,200: raw upper limit is 31,460, max allowed tick is 31,450.
-            Trade(90300000, 3, 31450, 0, 1, 1, 3, 3, 0, 0, 0, 0, 0, 0, 0),
-        ],
-        trades_path,
-    )
-
+def test_build_price_level_hits_uses_krx_tick_adjusted_trigger_prices():
     hits = build_price_level_hits_slice(
-        duckdb.connect(database=":memory:"),
         date="20260624",
-        trades_path=trades_path,
+        candles=[
+            # open=29,100: raw +10 is 32,010, but executable KRX tick is 32,050.
+            _c(90100000, 29_100, 32_060, 29_000, 32_000),
+            # raw -10 is 26,190, but lower trigger executable tick is 26,150.
+            _c(90200000, 32_000, 32_010, 26_140, 26_200),
+            # prev close=24,200: raw upper limit is 31,460, max allowed tick is 31,450.
+            _c(90300000, 26_200, 31_460, 26_100, 31_450),
+        ],
         vi_base_open=29_100,
         limit_base_prev_close=24_200,
     )
@@ -151,23 +129,20 @@ def test_build_price_level_hits_uses_krx_tick_adjusted_trigger_prices(tmp_path):
     assert [(h.kind, h.direction, h.pct, h.price, h.t_ms) for h in hits] == [
         ("vi", "upper", 10, 32050, 1782259260000),
         ("vi", "lower", 10, 26150, 1782259320000),
-        ("limit", "upper", 30, 31450, 1782259380000),
+        ("limit", "upper", 30, 31450, 1782259260000),
     ]
 
 
-def test_build_price_level_hits_returns_empty_without_basis_or_trades(tmp_path):
-    con = duckdb.connect(database=":memory:")
+def test_build_price_level_hits_returns_empty_without_basis_or_candles():
     assert build_price_level_hits_slice(
-        con,
         date="20260624",
-        trades_path=tmp_path / "missing.parquet",
+        candles=[],
         vi_base_open=10_000,
         limit_base_prev_close=10_000,
     ) == []
     assert build_price_level_hits_slice(
-        con,
         date="20260624",
-        trades_path=tmp_path / "missing.parquet",
+        candles=[_c(90100000, 10_000, 10_500, 9_500, 10_000)],
         vi_base_open=None,
         limit_base_prev_close=None,
     ) == []

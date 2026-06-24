@@ -1,5 +1,4 @@
 import type { Candle, PriceLevelHit } from '../api/types';
-import type { TradeSnapshot } from './bucketHogaSeries';
 import { realMsToYyyymmdd } from './liveDateTime';
 
 type Candidate = Pick<PriceLevelHit, 'price' | 'kind' | 'direction' | 'pct'>;
@@ -71,40 +70,24 @@ function hitKey(hit: PriceLevelHit): string {
 
 export function buildLivePriceLevelHits(
   candles: readonly Candle[],
-  trades: readonly TradeSnapshot[],
   todayKst: string,
 ): PriceLevelHit[] {
   const candidates = priceCandidates(findTodayOpen(candles, todayKst), findPreviousClose(candles, todayKst));
-  if (candidates.length === 0 || trades.length === 0) return [];
-
-  const flatTrades = trades
-    .flatMap((snapshot) =>
-      snapshot.trades.map((ev) => ({
-        tMs: ev.t_ms ?? snapshot.t_ms,
-        price: ev.price,
-        qty: ev.qty,
-      })),
-    )
-    .filter(
-      (ev): ev is { tMs: number; price: number; qty: number } =>
-        Number.isFinite(ev.tMs) &&
-        typeof ev.price === 'number' &&
-        Number.isFinite(ev.price) &&
-        typeof ev.qty === 'number' &&
-        Number.isFinite(ev.qty) &&
-        ev.qty > 0 &&
-        realMsToYyyymmdd(ev.tMs) === todayKst,
-    )
-    .sort((a, b) => a.tMs - b.tMs);
+  if (candidates.length === 0 || candles.length === 0) return [];
+  const todayCandles = candles
+    .filter((c) => realMsToYyyymmdd(c.ts_ms) === todayKst)
+    .sort((a, b) => a.ts_ms - b.ts_ms);
 
   const hits: PriceLevelHit[] = [];
   const seen = new Set<string>();
   for (const candidate of candidates) {
-    const trade = flatTrades.find((ev) => Math.round(ev.price) === candidate.price);
-    if (!trade) continue;
+    const candle = todayCandles.find((c) =>
+      candidate.direction === 'upper' ? c.high >= candidate.price : c.low <= candidate.price,
+    );
+    if (!candle) continue;
     const hit: PriceLevelHit = {
       date: todayKst,
-      t_ms: trade.tMs,
+      t_ms: candle.ts_ms,
       ...candidate,
     };
     const key = hitKey(hit);
