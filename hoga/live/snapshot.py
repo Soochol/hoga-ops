@@ -17,10 +17,14 @@ from typing import Any
 
 class SnapshotKind(str, Enum):
     """The kinds of Live Snapshot. ob/broker/trade는 poller 시절부터,
-    fill은 WS 전환(그릴링 Q4)의 10초 체결강도 구간합."""
+    fill은 WS 전환(그릴링 Q4)의 10초 체결강도 구간합.
+
+    WS 경로의 trade는 per-tick 원본이 아니라 10초 (price, side) qty
+    집계이며, Continuous Trade Volume Distribution의 price-level artifact다.
+    """
 
     OB = "ob"
-    TRADE = "trade"   # 저장 경로에선 fill로 대체; 메모리(buffer) 전용으로 존속
+    TRADE = "trade"
     BROKER = "broker"
     FILL = "fill"
 

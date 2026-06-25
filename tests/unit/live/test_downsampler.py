@@ -39,6 +39,34 @@ def test_state_last_wins_and_flow_sums():
     }
 
 
+def test_flush_emits_price_grouped_trade_snapshot_for_volume_distribution():
+    ds = TickDownsampler()
+    ds.ingest(_tr("005930", 1500, qty=5, side=1))
+    ds.ingest(_tr("005930", 1600, qty=4, side=1))
+    ds.ingest(WsTick(code="005930", t_ms=1700, kind=SnapshotKind.TRADE, payload={
+        "trades": [{"t_ms": 1700, "price": 110, "qty": 3, "side": -1, "side_source": "kis_ws"}],
+    }))
+    ds.ingest(_tr("005930", 1800, qty=99, side=0))
+
+    out = ds.flush(now_ms=20_000, phase="regular", fill_t_ms=10_000)
+    snaps = {s.kind: s for s in out["005930"]}
+
+    assert snaps[SnapshotKind.TRADE].t_ms == 10_000
+    assert sorted(snaps[SnapshotKind.TRADE].payload["trades"], key=lambda t: (t["price"], t["side"])) == [
+        {"t_ms": 10_000, "price": 100, "qty": 9, "side": 1, "side_source": "kis_ws_10s"},
+        {"t_ms": 10_000, "price": 110, "qty": 3, "side": -1, "side_source": "kis_ws_10s"},
+    ]
+
+    ds.commit_code(
+        "005930",
+        buy_qty=9,
+        sell_qty=3,
+        trades=snaps[SnapshotKind.TRADE].payload["trades"],
+    )
+    out2 = ds.flush(now_ms=30_000, phase="regular", fill_t_ms=20_000)
+    assert all(s.kind is not SnapshotKind.TRADE for s in out2["005930"])
+
+
 def test_side_zero_excluded_from_fill():
     """§10 fills 분류 동등성 — side==0(단일가/장전)은 합산 금지."""
     ds = TickDownsampler()

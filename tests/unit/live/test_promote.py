@@ -376,6 +376,62 @@ async def test_promote_writes_fills_parquet_only_when_fill_lines_exist(tmp_path:
 
 
 @pytest.mark.asyncio
+async def test_promote_today_persists_price_grouped_trades_for_distribution(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Today Promotion must preserve price-level trades for today's 매물대.
+
+    fills.parquet is enough for FillStrength, but Continuous Trade Volume
+    Distribution needs trades.parquet with price/qty/side. This guards the
+    live WS path from silently degrading back to "fills only".
+    """
+    from hoga.api.timeenc import hhmmssms_to_unix_ms
+    from hoga.live import promote as promote_mod
+
+    date = "20260625"
+    code = "005930"
+    monkeypatch.setattr(promote_mod, "_today_kst_yyyymmdd", lambda: date)
+
+    jsonl_path = tmp_path / "live" / date / f"{code}.jsonl"
+    jsonl_path.parent.mkdir(parents=True)
+    base_t = hhmmssms_to_unix_ms(date, 90000000)
+    rows = [
+        {"t_ms": base_t, "kind": "trade", "payload": {
+            "trades": [
+                {"t_ms": base_t, "price": 70000, "qty": 9, "side": 1,
+                 "side_source": "kis_ws_10s"},
+                {"t_ms": base_t, "price": 70100, "qty": 3, "side": -1,
+                 "side_source": "kis_ws_10s"},
+            ],
+            "phase": "regular",
+        }},
+        {"t_ms": base_t, "kind": "fill", "payload": {
+            "buy_qty": 9,
+            "sell_qty": 3,
+            "phase": "regular",
+        }},
+    ]
+    jsonl_path.write_text("\n".join(json.dumps(r) for r in rows) + "\n")
+
+    await promote_mod.promote_today(tmp_path, code=code)
+
+    target = tmp_path / "parquet" / date / code / "kis_live"
+    assert (target / "trades.parquet").exists()
+    assert (target / "fills.parquet").exists()
+    assert not (target / "candles.parquet").exists()
+
+    trades = pl.read_parquet(target / "trades.parquet")
+    assert {"ts_ms", "seq", "price", "qty", "side"} <= set(trades.columns)
+    assert trades.select(["price", "qty", "side"]).to_dicts() == [
+        {"price": 70000, "qty": 9, "side": 1},
+        {"price": 70100, "qty": 3, "side": -1},
+    ]
+
+    meta = json.loads((target / "meta.json").read_text())
+    assert meta["row_counts"] == {"snapshots": 0, "trades": 2, "brokers": 0, "fills": 1}
+
+
+@pytest.mark.asyncio
 async def test_promote_legacy_jsonl_without_fill_writes_no_fills_parquet(tmp_path: Path):
     """레거시(trade kind만 있는) JSONL 재프로모트 시 빈 fills.parquet이 생기면
     bundle의 fills-우선 분기가 진짜 trades 데이터를 가리게 됨 — 금지."""

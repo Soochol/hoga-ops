@@ -13,7 +13,7 @@
 Daily Promotion(ADR-0038, 17:00 KST 1회 batch)에 더해, 장 중에도 **오늘 Stock-Date 한정**으로 jsonl을 Parquet으로 변환하는 **Today Promotion**을 도입한다.
 
 - 별도 asyncio task `start_today_promoter`가 기본 5분(env `HOGA_LIVE_TODAY_PROMOTE_INTERVAL_S`) 주기로 활성 watchlist 종목의 오늘 jsonl을 처리한다.
-- 동작은 `promote_today(data_dir, *, code)` — jsonl 전체 재읽기, 4개 Parquet 파일을 `atomic_write` 패턴(tempfile + rename)으로 overwrite, `meta.json` 갱신, **archive 이동 안 함**(jsonl은 계속 polling 중이므로 살아있어야 함).
+- 동작은 `promote_today(data_dir, *, code)` — jsonl 전체 재읽기, Parquet 파일을 `atomic_write` 패턴(tempfile + rename)으로 overwrite, `meta.json` 갱신, **archive 이동 안 함**(jsonl은 계속 capture 중이므로 살아있어야 함).
 - Daily Promotion(`promote_pending`)은 오늘 날짜를 skip하도록 가드 추가 — 두 promote 경로가 동일 jsonl을 동시에 만지지 않음.
 - 자정 경과 후 어제가 된 jsonl은 다음날 17:00 Daily Promotion이 archive 이동 + 최종화. Today Promotion은 항상 오늘만.
 - Kill switch: `HOGA_LIVE_TODAY_PROMOTE_ENABLED=false`로 task 비활성 → ADR-0038 단독 동작으로 회귀 가능.
@@ -66,11 +66,13 @@ Today Promotion은 `hoga/live/promote.py`(jsonl writer와 분리된 모듈)에�
 ## Invariants introduced
 
 1. **책임 분리(date-disjoint)**: Today Promotion은 오늘 Stock-Date만 처리한다. `promote_today`가 어제 이전 날짜의 jsonl을 만지면 Daily Promotion과 충돌. `promote_pending`은 오늘 날짜를 skip한다 — 두 경로의 책임 분리가 일방향이어야 함(Today는 today only, Daily는 today 제외).
-2. **Candles 미생성**: Today Promotion이 만드는 Parquet은 `snapshots.parquet` / `trades.parquet` / `brokers.parquet` 셋뿐. `candles.parquet`은 ADR-0040의 **Live Candle Backfill**(별도 캐시 경로)이 담당하므로 절대 만들지 않는다. `promote_today`가 candles.parquet을 만들면 ADR-0040의 캐시 분리 의도와 충돌.
+2. **Candles 미생성**: Today Promotion이 만드는 Parquet은 `snapshots.parquet` / `trades.parquet` / `fills.parquet` / `brokers.parquet`뿐. `candles.parquet`은 ADR-0040의 **Live Candle Backfill**(별도 캐시 경로)이 담당하므로 절대 만들지 않는다. `promote_today`가 candles.parquet을 만들면 ADR-0040의 캐시 분리 의도와 충돌.
+3. **Price-level trades 유지**: `fills.parquet`은 FillStrength용 10초 side-total artifact라 price를 담지 않는다. 오늘 **연속체결 매물대 분포 (Continuous Trade Volume Distribution)**는 `trades.parquet`의 `price` / `qty` / `side`가 필요하므로, WS 경로의 `kind="trade"` Live Snapshot은 10초 `(price, side)` qty 집계로 유지되어야 한다. `promote_today`가 fills만 만들고 trades를 비우면 당일 매물대가 live buffer 일부만 보이는 회귀가 난다.
 
 위반 시:
 - Invariant 1 위반 → 두 task가 같은 (date, code)의 jsonl을 만져 archive 이동 race / parquet 중복 write 발생 가능.
 - Invariant 2 위반 → Live Candle Backfill 캐시(`~/.local/share/hoga-ops/kis-past-candles/`)와 `parquet/{date}/{code}/kis_live/candles.parquet` 두 source가 같은 candle 데이터를 갖게 되어 read path가 어느 쪽을 신뢰해야 할지 모호해짐.
+- Invariant 3 위반 → `fills.parquet`만으로는 price-bin을 재구성할 수 없어 `/api/range`의 `volume_distributions`가 당일에 비거나 일부 live buffer 가격대만 표시됨.
 
 ## Why not stream-to-Parquet via PyArrow ParquetWriter? (ADR-0038에서 이미 거부)
 

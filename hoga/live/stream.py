@@ -350,10 +350,12 @@ class LiveStream:
                 _log.exception("live.stream.append_failed code=%s", code)
                 continue  # commit 안 함 → 합 보존 → 다음 윈도 롤
             fill = next((s for s in snaps if s.kind is SnapshotKind.FILL), None)
+            trade = next((s for s in snaps if s.kind is SnapshotKind.TRADE), None)
             if fill is not None:
                 self._ds.commit_code(
                     code, buy_qty=fill.payload["buy_qty"],
                     sell_qty=fill.payload["sell_qty"],
+                    trades=trade.payload["trades"] if trade is not None else None,
                 )
         await self._writer.fsync_all()
         self.last_flush_ms = now_ms
