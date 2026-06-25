@@ -582,6 +582,78 @@ def test_query_volume_profile_zero_width_guard(tmp_path: Path) -> None:
 
 
 # ---------------------------------------------------------------------------
+# query_continuous_trade_volume_distribution: session-bounded, side-filtered
+# binning for 연속체결 매물대 분포 (Continuous Trade Volume Distribution)
+# ---------------------------------------------------------------------------
+
+
+def test_continuous_trade_volume_distribution_filters_side_and_session(tmp_path: Path) -> None:
+    import duckdb
+
+    from hoga.tables.trades import query_continuous_trade_volume_distribution
+
+    path = tmp_path / "trades.parquet"
+    write_parquet([
+        Trade(ts_ms=85_959_000, seq=1, price=100, change_pct=0, qty=999, side=1,
+              cum_vol=999, cum_trades=1, low_so_far=100, high_so_far=100,
+              net_pressure=999, unknown_14=0, unknown_16=0, unknown_17=0, unknown_18=0),
+        Trade(ts_ms=90_000_000, seq=2, price=100, change_pct=0, qty=10, side=1,
+              cum_vol=1009, cum_trades=2, low_so_far=100, high_so_far=100,
+              net_pressure=1009, unknown_14=0, unknown_16=0, unknown_17=0, unknown_18=0),
+        Trade(ts_ms=90_100_000, seq=3, price=110, change_pct=0, qty=20, side=-1,
+              cum_vol=1029, cum_trades=3, low_so_far=100, high_so_far=110,
+              net_pressure=989, unknown_14=0, unknown_16=0, unknown_17=0, unknown_18=0),
+        Trade(ts_ms=90_200_000, seq=4, price=120, change_pct=0, qty=30, side=0,
+              cum_vol=0, cum_trades=0, low_so_far=0, high_so_far=0,
+              net_pressure=0, unknown_14=0, unknown_16=0, unknown_17=0, unknown_18=0),
+        Trade(ts_ms=153_000_000, seq=5, price=120, change_pct=0, qty=777, side=1,
+              cum_vol=1806, cum_trades=4, low_so_far=100, high_so_far=120,
+              net_pressure=1766, unknown_14=0, unknown_16=0, unknown_17=0, unknown_18=0),
+    ], path)
+
+    con = duckdb.connect()
+    got = query_continuous_trade_volume_distribution(
+        con,
+        path=path,
+        price_lo=100,
+        price_hi=120,
+        bins=2,
+        session_open_ms=90_000_000,
+        session_close_ms=153_000_000,
+    )
+
+    assert got.price_min == 100
+    assert got.price_max == 120
+    assert got.bins == [(0, 10), (1, 20)]
+
+
+def test_continuous_trade_volume_distribution_folds_high_price_into_last_bin(tmp_path: Path) -> None:
+    import duckdb
+
+    from hoga.tables.trades import query_continuous_trade_volume_distribution
+
+    path = tmp_path / "trades.parquet"
+    write_parquet([
+        Trade(ts_ms=93_000_000, seq=1, price=120, change_pct=0, qty=33, side=1,
+              cum_vol=33, cum_trades=1, low_so_far=120, high_so_far=120,
+              net_pressure=33, unknown_14=0, unknown_16=0, unknown_17=0, unknown_18=0),
+    ], path)
+
+    con = duckdb.connect()
+    got = query_continuous_trade_volume_distribution(
+        con,
+        path=path,
+        price_lo=100,
+        price_hi=120,
+        bins=2,
+        session_open_ms=90_000_000,
+        session_close_ms=153_000_000,
+    )
+
+    assert got.bins == [(2, 33)]
+
+
+# ---------------------------------------------------------------------------
 # dedup_overlap_resends — drop hogaplay page re-send duplicates (keep-LAST)
 # ---------------------------------------------------------------------------
 

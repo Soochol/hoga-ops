@@ -579,3 +579,54 @@ def query_volume_profile(
         bin_width=float(bin_width),
         bins=[(int(idx), int(qty)) for idx, qty in rows],
     )
+
+
+def query_continuous_trade_volume_distribution(
+    con: duckdb.DuckDBPyConnection,
+    *,
+    path: Path,
+    price_lo: int,
+    price_hi: int,
+    bins: int,
+    session_open_ms: int,
+    session_close_ms: int,
+) -> VolumeProfileBinning:
+    """Bin continuous-trading qty into a caller-supplied candle price range.
+
+    Unlike query_volume_profile, this excludes Auction Cross rows (side=0) and
+    bounds rows to the Stock-Date session after decoding HHMMSSmmm into linear
+    ms-from-midnight.
+    """
+    bin_width = (price_hi - price_lo) / bins
+    if bin_width <= 0:
+        bin_width = 1
+    intra_ms_expr = hhmmssms_to_intra_ms_sql("ts_ms")
+    session_open_intra_ms = _session_bound_to_intra_ms(session_open_ms)
+    session_close_intra_ms = _session_bound_to_intra_ms(session_close_ms)
+    rows = con.execute(
+        f"""
+        WITH continuous AS (
+          SELECT price,
+                 qty,
+                 {intra_ms_expr} AS intra_ms
+          FROM read_parquet(?)
+          WHERE side IN (1, -1)
+            AND price > 0
+            AND qty > 0
+        )
+        SELECT FLOOR((price - {price_lo}) / {bin_width})::BIGINT AS bin_idx,
+               SUM(qty) AS qty
+        FROM continuous
+        WHERE intra_ms >= ?
+          AND intra_ms < ?
+          AND price BETWEEN {price_lo} AND {price_hi}
+        GROUP BY 1 ORDER BY 1
+        """,
+        [str(path), session_open_intra_ms, session_close_intra_ms],
+    ).fetchall()
+    return VolumeProfileBinning(
+        price_min=price_lo,
+        price_max=price_hi,
+        bin_width=float(bin_width),
+        bins=[(int(idx), int(qty)) for idx, qty in rows],
+    )
