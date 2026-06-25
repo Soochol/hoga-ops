@@ -30,7 +30,11 @@ import type { TabViewport } from './viewportAnchor';
 import type { LiveVenueOption } from '../state/liveVenue';
 import { realMsToYyyymmdd } from './liveDateTime';
 import type { TradeVolumePoc } from './tradeVolumePoc';
-import { clampRightPanelWidth, useLiveLayoutStore } from '../state/liveLayout';
+import {
+  clampRightPanelWidth,
+  LIVE_WORKAREA_SPLITTER_WIDTH_PX,
+  useLiveLayoutStore,
+} from '../state/liveLayout';
 
 /** 관심종목 행을 차트로 드래그할 때 워크에어리어 위에 뜨는 드롭 타깃 오버레이.
  *  드래그 고스트는 패널 overflow 경계에서 잘리므로 워크에어리어 자체를 어포던스로 쓴다.
@@ -171,22 +175,15 @@ export function LiveWorkarea({
     registerChartTarget(hitTest);
     return () => clearChartTarget(hitTest);
   }, [registerChartTarget, clearChartTarget]);
-  const syncRightPanelWidth = useCallback((nextWorkareaWidthPx: number) => {
+  const syncWorkareaWidth = useCallback((nextWorkareaWidthPx: number) => {
     if (!(nextWorkareaWidthPx > 0)) return;
-
     setWorkareaWidthPx(nextWorkareaWidthPx);
-    const currentWidthPx = useLiveLayoutStore.getState().rightPanelWidthPx;
-    const clampedWidthPx = clampRightPanelWidth(currentWidthPx, nextWorkareaWidthPx);
-
-    if (clampedWidthPx !== currentWidthPx) {
-      setRightPanelWidthPx(clampedWidthPx);
-    }
-  }, [setRightPanelWidthPx]);
+  }, []);
   useLayoutEffect(() => {
     const workarea = workareaRef.current;
     if (!workarea) return;
-    syncRightPanelWidth(workarea.clientWidth);
-  }, [syncRightPanelWidth]);
+    syncWorkareaWidth(workarea.clientWidth);
+  }, [syncWorkareaWidth]);
   useEffect(() => {
     const workarea = workareaRef.current;
     if (!workarea || typeof ResizeObserver === 'undefined') return undefined;
@@ -194,12 +191,12 @@ export function LiveWorkarea({
     const observer = new ResizeObserver((entries) => {
       const entry = entries[0];
       if (!entry) return;
-      syncRightPanelWidth(entry.contentRect.width);
+      syncWorkareaWidth(entry.contentRect.width);
     });
 
     observer.observe(workarea);
     return () => observer.disconnect();
-  }, [syncRightPanelWidth]);
+  }, [syncWorkareaWidth]);
   useEffect(() => () => {
     activeResizeCleanupRef.current?.();
     activeResizeCleanupRef.current = null;
@@ -256,7 +253,11 @@ export function LiveWorkarea({
     const workareaWidth = workarea.clientWidth;
     const target = event.currentTarget;
     const move = (moveEvent: PointerEvent) => {
-      const next = clampRightPanelWidth(startWidth - (moveEvent.clientX - startX), workareaWidth);
+      const next = clampRightPanelWidth(
+        startWidth - (moveEvent.clientX - startX),
+        workareaWidth,
+        LIVE_WORKAREA_SPLITTER_WIDTH_PX,
+      );
       useLiveLayoutStore.setState({ rightPanelWidthPx: next });
     };
     const cleanup = () => {
@@ -293,8 +294,13 @@ export function LiveWorkarea({
     display: 'flex',
     flexDirection: 'column',
   };
+  const detailPanelVisible = !isIndexInstrument;
   const renderedRightPanelWidthPx = workareaWidthPx != null
-    ? clampRightPanelWidth(rightPanelWidthPx, workareaWidthPx)
+    ? clampRightPanelWidth(
+      rightPanelWidthPx,
+      workareaWidthPx,
+      detailPanelVisible ? LIVE_WORKAREA_SPLITTER_WIDTH_PX : 0,
+    )
     : rightPanelWidthPx;
 
   // position:relative는 absolute 오버레이의 containing block. minHeight:0 + overflow:hidden은
@@ -370,7 +376,7 @@ export function LiveWorkarea({
               />
             )}
           </div>
-          {!isIndexInstrument && (
+          {detailPanelVisible && (
             <>
               <div
                 role="separator"
@@ -378,7 +384,12 @@ export function LiveWorkarea({
                 aria-label="차트 / 상세 패널 크기 조절"
                 data-testid="live-workarea-splitter"
                 onPointerDown={beginWidthResize}
-                style={{ width: 6, cursor: 'col-resize', display: 'grid', placeItems: 'center' }}
+                style={{
+                  width: LIVE_WORKAREA_SPLITTER_WIDTH_PX,
+                  cursor: 'col-resize',
+                  display: 'grid',
+                  placeItems: 'center',
+                }}
               >
                 <div aria-hidden style={{ width: 1, height: '100%', background: 'var(--border)' }} />
               </div>
@@ -388,6 +399,8 @@ export function LiveWorkarea({
                 style={{
                   width: renderedRightPanelWidthPx,
                   flexShrink: 0,
+                  minHeight: 0,
+                  overflow: 'hidden',
                   borderLeft: '1px solid var(--border)',
                 }}
               >

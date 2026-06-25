@@ -122,12 +122,14 @@ export function LiveSidebar({ code, live, programTrade = null }: Props) {
       data-testid="live-sidebar"
       style={{
         height: '100%',
+        minHeight: 0,
         display: 'flex',
         flexDirection: 'column',
+        overflow: 'hidden',
         background: 'var(--bg-card)',
       }}
     >
-      <div style={{ flex: 1, minHeight: 0 }}>
+      <div style={{ flex: 1, minHeight: 0, overflow: 'hidden' }}>
         <LiveDetailPanel
           orderbook={
             <>

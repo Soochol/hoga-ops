@@ -173,4 +173,17 @@ describe('LiveDetailPanel', () => {
 
     fireEvent.pointerUp(window, { pointerId: 1, clientY: 550 });
   });
+
+  it('allows the detail stack to scroll when card minimum heights exceed the available height', () => {
+    render(
+      <LiveDetailPanel
+        orderbook={<div style={{ height: 260 }}>orderbook</div>}
+        program={<div style={{ height: 96 }}>program</div>}
+        brokers={<div style={{ height: 160 }}>brokers</div>}
+        investor={<div style={{ height: 120 }}>investor</div>}
+      />,
+    );
+
+    expect(screen.getByTestId('live-detail-panel')).toHaveClass('overflow-y-auto');
+  });
 });

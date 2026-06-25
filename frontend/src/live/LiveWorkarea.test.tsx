@@ -316,7 +316,7 @@ describe('LiveWorkarea gate', () => {
     expect(document.body.style.userSelect).toBe('');
   });
 
-  it('clamps a persisted oversized detail width on mount', () => {
+  it('clamps a persisted oversized detail width on mount without overwriting the saved width', () => {
     useLiveLayoutStore.setState({
       rightPanelWidthPx: 700,
       rightCardWeights: DEFAULT_CARD_WEIGHTS,
@@ -343,7 +343,7 @@ describe('LiveWorkarea gate', () => {
 
       const detailPanel = screen.getByRole('complementary', { name: 'Live Detail Panel' });
       expect(detailPanel).toHaveStyle({ width: '320px' });
-      expect(useLiveLayoutStore.getState().rightPanelWidthPx).toBe(320);
+      expect(useLiveLayoutStore.getState().rightPanelWidthPx).toBe(700);
     } finally {
       if (clientWidthDescriptor) {
         Object.defineProperty(HTMLElement.prototype, 'clientWidth', clientWidthDescriptor);
@@ -353,7 +353,7 @@ describe('LiveWorkarea gate', () => {
     }
   });
 
-  it('clamps the detail width when the workarea shrinks', () => {
+  it('clamps the rendered detail width when the workarea shrinks without overwriting the saved width', () => {
     useLiveLayoutStore.setState({
       rightPanelWidthPx: 500,
       rightCardWeights: DEFAULT_CARD_WEIGHTS,
@@ -380,7 +380,29 @@ describe('LiveWorkarea gate', () => {
     triggerResize(workarea, 900);
 
     expect(detailPanel).toHaveStyle({ width: '320px' });
-    expect(useLiveLayoutStore.getState().rightPanelWidthPx).toBe(320);
+    expect(useLiveLayoutStore.getState().rightPanelWidthPx).toBe(500);
+  });
+
+  it('keeps the saved detail width when representative index charts hide the panel', () => {
+    useLiveLayoutStore.setState({
+      rightPanelWidthPx: 700,
+      rightCardWeights: DEFAULT_CARD_WEIGHTS,
+    });
+
+    render(
+      <LiveWorkarea
+        activeCode="index:KOSPI"
+        activeInstrument={indexInstrument('KOSPI', 'KOSPI')}
+        bundle={INDEX_BUNDLE_WITH_LAST_CANDLE}
+        clampEngaged={false}
+        isPastCandlesLoading={false}
+        isExtending={false}
+        live={LIVE}
+      />,
+    );
+
+    expect(screen.queryByRole('complementary', { name: 'Live Detail Panel' })).toBeNull();
+    expect(useLiveLayoutStore.getState().rightPanelWidthPx).toBe(700);
   });
 
   it('hides the live detail panel for representative index charts', () => {

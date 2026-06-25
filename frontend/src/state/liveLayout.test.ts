@@ -40,12 +40,13 @@ describe('liveLayout store helpers', () => {
   });
 
   it('clamps detail width against current workarea width', async () => {
-    const { clampRightPanelWidth } = await import('./liveLayout');
+    const { clampRightPanelWidth, LIVE_WORKAREA_SPLITTER_WIDTH_PX } = await import('./liveLayout');
 
     expect(clampRightPanelWidth(500, 2000)).toBe(500);
     expect(clampRightPanelWidth(100, 2000)).toBe(320);
     expect(clampRightPanelWidth(1200, 2000)).toBe(900);
     expect(clampRightPanelWidth(600, 850)).toBe(320);
+    expect(clampRightPanelWidth(700, 966, LIVE_WORKAREA_SPLITTER_WIDTH_PX)).toBe(320);
   });
 
   it('resizes adjacent weights without disturbing the rest of the layout', async () => {

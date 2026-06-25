@@ -129,7 +129,7 @@ export function LiveDetailPanel({ orderbook, program, brokers, investor }: Props
     <aside
       ref={panelRef}
       data-testid="live-detail-panel"
-      className="grid h-full min-h-0 bg-bg p-[var(--space-sm)]"
+      className="grid h-full min-h-0 overflow-y-auto bg-bg p-[var(--space-sm)]"
       style={{
         gridTemplateRows: cards
           .map((card) => `minmax(${LIVE_CARD_MIN_HEIGHT_PX[card.key]}px, ${weights[card.key]}fr)`)
