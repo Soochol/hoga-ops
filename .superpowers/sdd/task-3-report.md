@@ -83,3 +83,23 @@ Result:
 
 - 2 test files passed
 - 99 tests passed
+
+## Re-Review Cleanup
+
+Removed the premature study restore plumbing for volume-distribution settings:
+
+- removed unused `volumeDistributionOverride` from `LiveChartRoot`
+- stopped building/passing that override from `StudyPage`
+- deleted the `StudyPage.test.tsx` assertion that only proved the unused prop was forwarded
+- kept Task 3's actual deliverables intact: `DayVolumeDistribution`, `RangeBundle.volume_distributions`, optional `volume_distribution_bins` in `useRange`, persisted live settings, indicator-panel controls, and snapshot schema fields
+
+Verification:
+
+```bash
+cd frontend && npm test -- range.test.tsx liveIndicatorsPersistence.test.ts IndicatorPanel.test.tsx StudyPage.test.tsx
+```
+
+Result:
+
+- 4 test files passed
+- 102 tests passed

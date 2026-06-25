@@ -137,15 +137,6 @@ export function StudyPage() {
       opacity: snapshot.indicator_state.trade_volume_poc_opacity,
     };
   }, [snapshot]);
-  const volumeDistributionOverride = useMemo(() => {
-    if (!snapshot) return undefined;
-    return {
-      enabled: snapshot.indicator_state.volume_distribution_enabled !== false,
-      rangeCount: snapshot.indicator_state.volume_distribution_range_count,
-      color: snapshot.indicator_state.volume_distribution_color,
-      maxColor: snapshot.indicator_state.volume_distribution_max_color,
-    };
-  }, [snapshot]);
   const captureViewportRef = useRef<() => TabViewport | null>(() => null);
   const draggingEntry = useEntryDragStore((s) => s.draggingCode != null);
   const overStudy = useEntryDragStore((s) => s.overStudy);
@@ -344,7 +335,6 @@ export function StudyPage() {
             }}
             dailyMovingAverageOverride={dailyMovingAverageOverride}
             tradeVolumePocOverride={tradeVolumePocOverride}
-            volumeDistributionOverride={volumeDistributionOverride}
             persistLiveViewport={false}
             onViewportCaptureReady={handleViewportCaptureReady}
             onCursorActiveChange={setIsCursorActive}

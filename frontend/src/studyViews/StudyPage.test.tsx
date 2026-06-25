@@ -473,12 +473,6 @@ describe('StudyPage', () => {
         color: '#22C55E',
         opacity: 0.28,
       },
-      volumeDistributionOverride: {
-        enabled: false,
-        rangeCount: 24,
-        color: '#64748B',
-        maxColor: '#EAB308',
-      },
       persistLiveViewport: false,
     });
     expect(props.bundle).toBe(props.chartBundle);
