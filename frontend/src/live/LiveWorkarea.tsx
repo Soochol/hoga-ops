@@ -159,6 +159,7 @@ export function LiveWorkarea({
   // 라이프사이클이 "워크에어리어 하나" invariant를 포섭한다(마지막 등록이 진실).
   const workareaRef = useRef<HTMLDivElement>(null);
   const chartPanelRef = useRef<HTMLDivElement>(null);
+  const detailPanelScrollRef = useRef<HTMLDivElement>(null);
   const registerChartTarget = useEntryDragStore((s) => s.registerChartTarget);
   const clearChartTarget = useEntryDragStore((s) => s.clearChartTarget);
   const rightPanelWidthPx = useLiveLayoutStore((s) => s.rightPanelWidthPx);
@@ -306,6 +307,13 @@ export function LiveWorkarea({
       detailPanelVisible ? LIVE_WORKAREA_SPLITTER_WIDTH_PX : 0,
     )
     : rightPanelWidthPx;
+  const handleWheelCapture = useCallback((event: React.WheelEvent<HTMLDivElement>) => {
+    if (!event.altKey || !detailPanelVisible) return;
+    const scroller = detailPanelScrollRef.current;
+    if (!scroller) return;
+    scroller.scrollTop += event.deltaY;
+    event.preventDefault();
+  }, [detailPanelVisible]);
 
   // position:relative는 absolute 오버레이의 containing block. minHeight:0 + overflow:hidden은
   // 차트 캔버스 intrinsic 크기가 flex 높이를 밀어내는 runaway 루프를 막는다(67c527a).
@@ -314,6 +322,7 @@ export function LiveWorkarea({
       ref={workareaRef}
       data-testid="live-workarea"
       className="h-full flex"
+      onWheelCapture={handleWheelCapture}
       style={{
         position: 'relative',
         background: 'var(--bg)',
@@ -400,12 +409,15 @@ export function LiveWorkarea({
               <div
                 role="complementary"
                 aria-label="Live Detail Panel"
+                ref={detailPanelScrollRef}
                 style={{
                   width: renderedRightPanelWidthPx,
                   flexShrink: 0,
                   minHeight: 0,
-                  overflow: 'hidden',
+                  overflowY: 'auto',
+                  overflowX: 'hidden',
                   borderLeft: '1px solid var(--border)',
+                  scrollbarGutter: 'stable',
                 }}
               >
                 <LiveSidebar

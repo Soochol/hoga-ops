@@ -9,18 +9,20 @@ export const LIVE_WORKAREA_SPLITTER_WIDTH_PX = 6;
 
 const RIGHT_PANEL_MAX_FRACTION = 0.45;
 
-export type LiveCardKey = 'orderbook' | 'program' | 'brokers' | 'investor';
+export type LiveCardKey = 'orderbook' | 'volumeDistribution' | 'program' | 'brokers' | 'investor';
 export type LiveCardWeights = Record<LiveCardKey, number>;
 
 export const DEFAULT_CARD_WEIGHTS: LiveCardWeights = {
-  orderbook: 48,
-  program: 13,
-  brokers: 24,
-  investor: 15,
+  orderbook: 34,
+  volumeDistribution: 18,
+  program: 12,
+  brokers: 22,
+  investor: 14,
 };
 
 export const LIVE_CARD_MIN_HEIGHT_PX: Record<LiveCardKey, number> = {
   orderbook: 260,
+  volumeDistribution: 180,
   program: 96,
   brokers: 160,
   investor: 120,
@@ -56,17 +58,16 @@ function readPersistedCardWeights(value: unknown): LiveCardWeights | null {
   if (!value || typeof value !== 'object') return null;
 
   const candidate = value as Partial<Record<LiveCardKey, unknown>>;
+  const next: LiveCardWeights = { ...DEFAULT_CARD_WEIGHTS };
   for (const key of Object.keys(DEFAULT_CARD_WEIGHTS)) {
     if (!isLiveCardKey(key)) continue;
-    if (!isPositiveFiniteNumber(candidate[key])) return null;
+    const persisted = candidate[key];
+    if (persisted === undefined && key === 'volumeDistribution') continue;
+    if (!isPositiveFiniteNumber(persisted)) return null;
+    next[key] = persisted;
   }
 
-  return {
-    orderbook: candidate.orderbook as number,
-    program: candidate.program as number,
-    brokers: candidate.brokers as number,
-    investor: candidate.investor as number,
-  };
+  return next;
 }
 
 export function clampRightPanelWidth(

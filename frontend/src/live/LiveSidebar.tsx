@@ -250,15 +250,14 @@ export function LiveSidebar({ code, live, bundle = null, todayKst = '', programT
     <div
       data-testid="live-sidebar"
       style={{
-        height: '100%',
-        minHeight: 0,
+        minHeight: '100%',
         display: 'flex',
         flexDirection: 'column',
-        overflow: 'hidden',
+        overflow: 'visible',
         background: 'var(--bg-card)',
       }}
     >
-      <div style={{ flex: 1, minHeight: 0, overflow: 'hidden' }}>
+      <div style={{ flex: 1, minHeight: 0, overflow: 'visible' }}>
         <LiveDetailPanel
           orderbook={
             <>
