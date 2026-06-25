@@ -148,6 +148,25 @@ def test_stock_dates_blocked_at_threshold(app_client: TestClient) -> None:
         captures._fail_streaks.clear()
 
 
+def test_stock_dates_includes_blocked_pair_without_inventory_row(app_client: TestClient) -> None:
+    """A fail-streak-blocked pair with no meta.json still appears so it can be unblocked."""
+    from hoga.api import captures
+    captures._fail_streaks.clear()
+    captures._fail_streaks["122640|20260624"] = 5
+    try:
+        r = app_client.get("/api/stock-dates")
+        assert r.status_code == 200
+        row = next(x for x in r.json() if x["code"] == "122640" and x["date"] == "20260624")
+        assert row["name"] == "122640"
+        assert row["disk_state"] == "client_incomplete"
+        assert row["collection_complete"] is False
+        assert row["is_partial"] is True
+        assert row["fail_streak"] == 5
+        assert row["blocked"] is True
+    finally:
+        captures._fail_streaks.clear()
+
+
 # ADR-0063: open_ms=0 sentinel normalization on the StockDate inventory path.
 
 
