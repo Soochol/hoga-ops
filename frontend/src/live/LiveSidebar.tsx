@@ -216,13 +216,12 @@ export function LiveSidebar({ code, live, bundle = null, todayKst = '' }: Props)
     persistedVolumeDistributions,
     liveDistributionTrades,
   ]);
-  const activeVolumeDistributionClose = useMemo(() => {
-    if (!activeBundle || !activeVolumeDistributionDate) return null;
-    const candles = activeBundle.candles
+  const activeVolumeDistributionClosePoints = useMemo(() => {
+    if (!activeBundle || !activeVolumeDistributionDate) return [];
+    return activeBundle.candles
       .filter((candle) => realMsToYyyymmdd(candle.ts_ms) === activeVolumeDistributionDate)
-      .sort((a, b) => a.ts_ms - b.ts_ms);
-    const last = candles[candles.length - 1];
-    return last?.close ?? null;
+      .sort((a, b) => a.ts_ms - b.ts_ms)
+      .map((candle) => ({ t_ms: candle.ts_ms, close: candle.close }));
   }, [activeBundle, activeVolumeDistributionDate]);
 
   // T14b: "다음 가용: HH:MM" hint above orderbook table when spot orderbook
@@ -271,7 +270,7 @@ export function LiveSidebar({ code, live, bundle = null, todayKst = '' }: Props)
             <VolumeDistributionCard
               profile={activeVolumeDistribution}
               cursorMs={isSpot ? cursorMs : brokerCursorMs}
-              closePrice={activeVolumeDistributionClose}
+              closePoints={activeVolumeDistributionClosePoints}
               color={volumeDistributionColor}
               maxColor={volumeDistributionMaxColor}
             />

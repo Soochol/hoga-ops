@@ -178,6 +178,18 @@ describe('LiveSidebar', () => {
       code: '005930',
       bundle: {
         ...bundleFixture,
+        candles: [
+          ...bundleFixture.candles,
+          {
+            ts_ms: Date.UTC(2026, 4, 27, 0, 1, 0),
+            open: 70300,
+            high: 70400,
+            low: 70000,
+            close: 70100,
+            vol_a: 100,
+            vol_b: 0,
+          },
+        ],
         volume_distributions: [
           {
             date: '20260527',
@@ -199,7 +211,7 @@ describe('LiveSidebar', () => {
     expect(screen.queryByText('09:00')).toBeNull();
     expect(screen.getAllByTestId('volume-distribution-row')).toHaveLength(2);
     expect(screen.getByTestId('volume-distribution-max-bar')).toBeInTheDocument();
-    expect(screen.getByTestId('volume-distribution-close-line')).toBeInTheDocument();
+    expect(screen.getByTestId('volume-distribution-close-graph')).toBeInTheDocument();
   });
 
   it('keeps persisted today volume distribution instead of replacing it with the live tail', () => {
