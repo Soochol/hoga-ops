@@ -336,7 +336,6 @@ export function StudyPage() {
             }}
             dailyMovingAverageOverride={dailyMovingAverageOverride}
             tradeVolumePocOverride={tradeVolumePocOverride}
-            persistLiveViewport={false}
             onViewportCaptureReady={handleViewportCaptureReady}
             onCursorActiveChange={setIsCursorActive}
           />

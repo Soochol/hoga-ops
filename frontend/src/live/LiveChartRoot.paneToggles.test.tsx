@@ -17,7 +17,7 @@ if (typeof window !== 'undefined' && !window.ResizeObserver) {
 // "store toggle → paneToggles → the pane set that reaches RangeSeriesPane" was
 // never asserted end-to-end. RangeSeriesPane renders null in jsdom (imperative
 // lightweight-charts wrapper), so we replace it with a prop-capturing stub.
-const { mounted, askPeakMounts, bidPeakMounts, chartInstances, registerViewportCaptureMock, saveViewportToActiveTabMock } = vi.hoisted(() => ({
+const { mounted, askPeakMounts, bidPeakMounts, chartInstances } = vi.hoisted(() => ({
   mounted: [] as string[],
   askPeakMounts: [] as string[],
   bidPeakMounts: [] as string[],
@@ -30,8 +30,6 @@ const { mounted, askPeakMounts, bidPeakMounts, chartInstances, registerViewportC
       setVisibleLogicalRange: ReturnType<typeof vi.fn>;
     };
   }>,
-  registerViewportCaptureMock: vi.fn(),
-  saveViewportToActiveTabMock: vi.fn(),
 }));
 vi.mock('../chart/RangeSeriesPane', () => ({
   default: (props: { spec: { name: string } }) => {
@@ -52,14 +50,6 @@ vi.mock('./LiveBidPeakSegments', () => ({
     bidPeakMounts.push('mounted');
     return null;
   },
-}));
-
-vi.mock('../state/liveTabs', () => ({
-  registerViewportCapture: (capture: unknown) => {
-    registerViewportCaptureMock(capture);
-    return vi.fn();
-  },
-  saveViewportToActiveTab: saveViewportToActiveTabMock,
 }));
 
 vi.mock('lightweight-charts', async () => {
@@ -152,8 +142,6 @@ describe('LiveChartRoot — pane 토글 배선 (store → 마운트된 pane 집�
     askPeakMounts.length = 0;
     bidPeakMounts.length = 0;
     chartInstances.length = 0;
-    registerViewportCaptureMock.mockClear();
-    saveViewportToActiveTabMock.mockClear();
     // Deterministic baseline: all togglable panes ON, investor OFF.
     useLivePageStore.setState({
       historicalFromDate: null,
@@ -246,11 +234,6 @@ describe('LiveChartRoot — pane 토글 배선 (store → 마운트된 pane 집�
 
     await waitFor(() => expect(chartInstances).toHaveLength(2));
     expect(chartInstances[0].remove).toHaveBeenCalled();
-  });
-
-  it('persistLiveViewport=false이면 live tab viewport capture를 등록하지 않는다', () => {
-    renderAt('1m', { persistLiveViewport: false });
-    expect(registerViewportCaptureMock).not.toHaveBeenCalled();
   });
 
   it('1m → 당일 매도 최대벽 오버레이 마운트', () => {

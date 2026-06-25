@@ -43,7 +43,6 @@ export function mirrorPageViewToActiveTab(
           ...t,
           timeframe: page.candleTimeframe,
           historicalFromDate: null,
-          viewport: null,
         }
       : t,
   );

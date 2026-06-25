@@ -4,9 +4,9 @@ import { LiveTabOverflowMenu } from './LiveTabOverflowMenu';
 import type { LiveTab } from '../state/liveTabs';
 
 const tabs: LiveTab[] = [
-  { id: 'a', code: '005930', label: '삼성전자', timeframe: '1m', historicalFromDate: null, viewport: null },
-  { id: 'b', code: '000660', label: 'SK하이닉스', timeframe: '1m', historicalFromDate: null, viewport: null },
-  { id: 'c', code: '035420', label: 'NAVER', timeframe: 'D', historicalFromDate: null, viewport: null },
+  { id: 'a', code: '005930', label: '삼성전자', timeframe: '1m', historicalFromDate: null },
+  { id: 'b', code: '000660', label: 'SK하이닉스', timeframe: '1m', historicalFromDate: null },
+  { id: 'c', code: '035420', label: 'NAVER', timeframe: 'D', historicalFromDate: null },
 ];
 
 function setup() {
@@ -80,7 +80,6 @@ it('bounds the rendered result list and lets search reach later tabs', () => {
     label: `종목 ${index + 1}`,
     timeframe: '1m',
     historicalFromDate: null,
-    viewport: null,
   }));
   const onFocus = vi.fn();
   const onClose = vi.fn();

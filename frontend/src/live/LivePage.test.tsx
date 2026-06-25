@@ -31,7 +31,6 @@ const livePageMocks = vi.hoisted(() => {
       timeframe?: string;
       viewIdentity?: string;
       restoreViewport?: unknown;
-      persistLiveViewport?: boolean;
       onViewportCaptureReady?: (capture: () => unknown) => void;
       chartBundle?: RangeBundle | null;
       tradeVolumePocs?: unknown[];
@@ -94,7 +93,6 @@ vi.mock('./LiveChartRoot', () => ({
     timeframe?: string;
     viewIdentity?: string;
     restoreViewport?: unknown;
-    persistLiveViewport?: boolean;
     onViewportCaptureReady?: (capture: () => unknown) => void;
   }) => {
     livePageMocks.liveChartRootProps.push(props);
@@ -553,7 +551,7 @@ describe('LivePage shell', () => {
     // 아니라 탭이 진실). 마운트 시드가 focusTab → applyTabToPage 로 동기화한다.
     const id = 'restored';
     useLiveTabsStore.setState({
-      tabs: [{ id, code: '035720', label: '035720', timeframe: '1m', historicalFromDate: null, viewport: null }],
+      tabs: [{ id, code: '035720', label: '035720', timeframe: '1m', historicalFromDate: null }],
       activeTabId: id,
     });
     renderWithRouter();
@@ -563,8 +561,8 @@ describe('LivePage shell', () => {
   it('passes the active tab id as chart view identity so same-code tabs do not share viewport state', () => {
     useLiveTabsStore.setState({
       tabs: [
-        { id: 'tab-a', code: '005930', label: '삼성전자', timeframe: '1m', historicalFromDate: null, viewport: null },
-        { id: 'tab-b', code: '005930', label: '삼성전자', timeframe: '1m', historicalFromDate: null, viewport: null },
+        { id: 'tab-a', code: '005930', label: '삼성전자', timeframe: '1m', historicalFromDate: null },
+        { id: 'tab-b', code: '005930', label: '삼성전자', timeframe: '1m', historicalFromDate: null },
       ],
       activeTabId: 'tab-b',
     });
@@ -576,7 +574,6 @@ describe('LivePage shell', () => {
       timeframe: '1m',
       viewIdentity: 'tab-b:KRX',
       restoreViewport: null,
-      persistLiveViewport: false,
     });
   });
 
@@ -606,7 +603,7 @@ describe('LivePage shell', () => {
   it('includes the selected venue in bundle options, status text, and chart identity', () => {
     useLiveVenueStore.setState({ venue: 'AUTO' });
     useLiveTabsStore.setState({
-      tabs: [{ id: 'tab-a', code: '005930', label: '삼성전자', timeframe: '1m', historicalFromDate: null, viewport: null }],
+      tabs: [{ id: 'tab-a', code: '005930', label: '삼성전자', timeframe: '1m', historicalFromDate: null }],
       activeTabId: 'tab-a',
     });
 

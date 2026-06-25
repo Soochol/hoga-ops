@@ -5,8 +5,8 @@ import { LiveTabBar } from './LiveTabBar';
 import type { LiveTab } from '../state/liveTabs';
 
 const tabs: LiveTab[] = [
-  { id: 'a', code: '005930', label: '삼성전자', timeframe: '1m', historicalFromDate: null, viewport: null },
-  { id: 'b', code: '000660', label: 'SK하이닉스', timeframe: '1m', historicalFromDate: null, viewport: null },
+  { id: 'a', code: '005930', label: '삼성전자', timeframe: '1m', historicalFromDate: null },
+  { id: 'b', code: '000660', label: 'SK하이닉스', timeframe: '1m', historicalFromDate: null },
 ];
 
 function setup(over: Partial<ComponentProps<typeof LiveTabBar>> = {}) {
@@ -27,7 +27,7 @@ it('renders the stock name with timeframe (code hidden when the name is known)',
 
 it('falls back to the code when the name is unknown (label === code)', () => {
   setup({
-    tabs: [{ id: 'x', code: '123456', label: '123456', timeframe: 'D', historicalFromDate: null, viewport: null }],
+    tabs: [{ id: 'x', code: '123456', label: '123456', timeframe: 'D', historicalFromDate: null }],
     activeTabId: 'x',
   });
   expect(screen.getByText('123456 일봉')).toBeInTheDocument();
@@ -116,7 +116,6 @@ it('keeps fixed actions outside the scrollable tablist', () => {
     label: `종목 ${index + 1}`,
     timeframe: '1m',
     historicalFromDate: null,
-    viewport: null,
   }));
   setup({ tabs: manyTabs, activeTabId: 'tab-0' });
 
@@ -140,7 +139,6 @@ it('bounds tab strip rendering while keeping the active tab visible', () => {
     label: `종목 ${index + 1}`,
     timeframe: '1m',
     historicalFromDate: null,
-    viewport: null,
   }));
   setup({ tabs: manyTabs, activeTabId: 'tab-70' });
 

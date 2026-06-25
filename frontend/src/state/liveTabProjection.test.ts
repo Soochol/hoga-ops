@@ -6,8 +6,6 @@ import {
 } from './liveTabProjection';
 import { stockInstrument } from '../live/liveInstrument';
 
-const viewport = { rightEdgeMs: 1_700_000_000_000, barSpan: 120, atLiveEdge: false };
-
 function tab(overrides: Partial<LiveTab> = {}): LiveTab {
   return {
     id: 'tab-a',
@@ -16,7 +14,6 @@ function tab(overrides: Partial<LiveTab> = {}): LiveTab {
     label: '삼성전자',
     timeframe: '1m',
     historicalFromDate: null,
-    viewport,
     ...overrides,
   };
 }
@@ -40,7 +37,7 @@ describe('live tab projection policy', () => {
     });
   });
 
-  it('mirrors page timeframe into the active tab while dropping pan and viewport', () => {
+  it('mirrors page timeframe into the active tab while dropping pan', () => {
     const tabs = [tab(), tab({ id: 'tab-b', code: '000660', label: 'SK하이닉스', timeframe: 'D' })];
 
     expect(
@@ -49,12 +46,12 @@ describe('live tab projection policy', () => {
         historicalFromDate: '2026-01-02',
       }),
     ).toEqual([
-      { ...tabs[0], timeframe: 'D', historicalFromDate: null, viewport: null },
+      { ...tabs[0], timeframe: 'D', historicalFromDate: null },
       tabs[1],
     ]);
   });
 
-  it('preserves the target tab viewport during tab-switch projection', () => {
+  it('leaves the target tab unchanged when its timeframe already matches', () => {
     const tabs = [tab(), tab({ id: 'tab-b', code: '000660', label: 'SK하이닉스', timeframe: 'D' })];
 
     expect(

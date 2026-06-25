@@ -422,7 +422,6 @@ export function LivePage() {
         todayAllPriceBidPeak={todayAllPriceBidPeak}
         todayKst={today}
         tradeVolumePocs={tradeVolumePocs}
-        persistLiveViewport={false}
         onViewportCaptureReady={handleViewportCaptureReady}
         paneTogglesOverride={{
           hogaPanes: capabilities.hogaPanes,

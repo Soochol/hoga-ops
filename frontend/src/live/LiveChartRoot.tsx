@@ -33,7 +33,6 @@ import { initialVisibleMinuteBarsFor } from './liveVenuePolicy';
 import { minuteRightOffsetBars } from './minuteViewportPolicy';
 import { summarizeWarnings, type LiveDataWarning } from './liveDataWarnings';
 import { useViewportBackfill } from './useViewportBackfill';
-import { registerViewportCapture, saveViewportToActiveTab } from '../state/liveTabs';
 import {
   viewportFromRanges,
   computeRestoreRange,
@@ -164,8 +163,6 @@ interface Props {
     color?: string;
     opacity?: number;
   };
-  /** /live persists viewport to active live tabs; snapshot study pages opt out. */
-  persistLiveViewport?: boolean;
   /** Save flows can read the current chart viewport without coupling to chart internals. */
   onViewportCaptureReady?: (capture: () => TabViewport | null) => void;
   /** Optional hover activity signal for consumers that must ignore sticky cursor restore. */
@@ -185,7 +182,7 @@ export function shouldShowTradeVolumePocOverlay(
 /** /live's single-chart root. Mounts the timeframe-appropriate pane set
  * (see `paneSpecsForTimeframe`) inside one createChart instance so
  * timeScale is shared across candle/volume/(hoga) panes. */
-export function LiveChartRoot({ code, timeframe, venue = 'KRX', viewIdentity, bundle, chartBundle, ratioBundle, clampEngaged, isPastCandlesLoading, isExtending = false, pastDataWarnings, restoreViewport = null, dayAskPeaks = EMPTY_ASK_PEAKS, todayAllPriceAskPeak = null, dayBidPeaks = EMPTY_BID_PEAKS, todayAllPriceBidPeak = null, todayKst = '', tradeVolumePocs = [], forceHogaPanes = false, paneTogglesOverride, dailyMovingAverageOverride, tradeVolumePocOverride, persistLiveViewport = true, onViewportCaptureReady, onCursorActiveChange, onCandleBasisHover, onCandleBasisClick }: Props) {
+export function LiveChartRoot({ code, timeframe, venue = 'KRX', viewIdentity, bundle, chartBundle, ratioBundle, clampEngaged, isPastCandlesLoading, isExtending = false, pastDataWarnings, restoreViewport = null, dayAskPeaks = EMPTY_ASK_PEAKS, todayAllPriceAskPeak = null, dayBidPeaks = EMPTY_BID_PEAKS, todayAllPriceBidPeak = null, todayKst = '', tradeVolumePocs = [], forceHogaPanes = false, paneTogglesOverride, dailyMovingAverageOverride, tradeVolumePocOverride, onViewportCaptureReady, onCursorActiveChange, onCandleBasisHover, onCandleBasisClick }: Props) {
   const containerRef = useRef<HTMLDivElement>(null);
   // 과거 fetch 경고 요약 — rate-limit 지연(빈칸 문구 전환)과 일부 구간 누락(부분로딩 칩)
   // 표시에 쓴다. summarizeWarnings는 null/빈배열을 {count:0,hasRateLimit:false}로 접는다.
@@ -323,74 +320,9 @@ export function LiveChartRoot({ code, timeframe, venue = 'KRX', viewIdentity, bu
     }
   }, []);
   useEffect(() => {
-    if (!persistLiveViewport) return;
-    return registerViewportCapture(captureViewport);
-  }, [captureViewport, persistLiveViewport]);
-
-  useEffect(() => {
     onViewportCaptureReady?.(captureViewport);
     return () => onViewportCaptureReady?.(() => null);
   }, [captureViewport, onViewportCaptureReady]);
-
-  // Continuous viewport capture (ADR-0069 A안 보강). focusTab/addBlankTab snapshot
-  // the OUTGOING tab synchronously on a tab switch, but route navigation (leaving
-  // /live) and a full reload never go through those — so the last-seen zoom/scroll
-  // was lost on switch-back from another page. Subscribing to visible-range changes
-  // and persisting (debounced) to the active tab backstops EVERY exit path.
-  //
-  // Trailing timeout debounce (NOT rAF): a save rewrites the active tab's `viewport`
-  // (a new ref on LivePage's `tabs.find().viewport` → LiveChartRoot re-render) and
-  // wakes attachPersistence's own 250ms localStorage write. rAF-frequency would do
-  // that every frame mid-zoom; one save per gesture-settle is enough — tab switches
-  // are already captured synchronously, so this only needs to cover route-nav/reload
-  // where ~1 gesture of staleness is imperceptible.
-  //
-  // Guard: lastAppliedCountRef===null means the initial-view / restore effect hasn't
-  // applied yet (the chart still sits at lightweight-charts' default ~60-bar fit) —
-  // skip so that cold-load garbage isn't persisted as the user's view. After
-  // application the first range-change saves the applied (restored/default) view
-  // itself, which is idempotent and harmless.
-  useEffect(() => {
-    if (!persistLiveViewport) return;
-    if (!chart) return;
-    const ts = chart.timeScale();
-    let timer: ReturnType<typeof setTimeout> | null = null;
-    let lastSaved: { barSpan: number; atLiveEdge: boolean } | null = null;
-    const save = () => {
-      const vp = captureViewport();
-      if (!vp) return;
-      // Dedup the live-edge tick storm. During market hours a forming bar's setData
-      // can fire range-change many times/sec; at the live edge that only drifts
-      // rightEdgeMs while barSpan/atLiveEdge hold — and an atLiveEdge restore IGNORES
-      // rightEdgeMs (it pins the latest bar), so persisting it is a pure store-write +
-      // re-render with no recoverable information. Skip only that case. A zoom/scroll
-      // changes barSpan; leaving/returning to the live edge flips atLiveEdge; a
-      // scrolled-back pan keeps atLiveEdge=false so it always saves (its rightEdgeMs
-      // IS the restore anchor) — all still captured.
-      if (lastSaved && vp.atLiveEdge && lastSaved.atLiveEdge && lastSaved.barSpan === vp.barSpan) return;
-      lastSaved = { barSpan: vp.barSpan, atLiveEdge: vp.atLiveEdge };
-      saveViewportToActiveTab(vp);
-    };
-    const onRangeChange = () => {
-      if (lastAppliedCountRef.current === null) return;
-      if (timer) clearTimeout(timer);
-      timer = setTimeout(() => { timer = null; save(); }, 250);
-    };
-    ts.subscribeVisibleLogicalRangeChange(onRangeChange);
-    return () => {
-      ts.unsubscribeVisibleLogicalRangeChange(onRangeChange);
-      // Flush a pending capture on unmount (route-nav leaving /live) so the last
-      // gesture isn't lost inside the debounce window — the route-nav reset bug.
-      // captureViewport() directly (not the registry) so it can't race the
-      // registerViewportCapture teardown; a removed chart try/catches to null →
-      // saveViewportToActiveTab no-ops. This cleanup runs before the chart-create
-      // effect's c.remove() (declared earlier), so the chart is still alive here.
-      if (timer) {
-        clearTimeout(timer);
-        save();
-      }
-    };
-  }, [chart, captureViewport, persistLiveViewport]);
 
   // Publish axis to the shared store so LiveSidebar can read
   // axis.inClosingAuctionWindow(cursorMs) for TotalQtyBar mask.

@@ -74,7 +74,6 @@ describe('useJumpToLive', () => {
         label: 'SK하이닉스',
         timeframe: '1m',
         historicalFromDate: null,
-        viewport: null,
       }],
       activeTabId: 'tab-a',
     });
@@ -93,7 +92,6 @@ describe('useJumpToLive', () => {
       label: '삼성전자',
       timeframe: '1m',
       historicalFromDate: null,
-      viewport: null,
     });
     expect(activeTabId).toBe(tabs[1].id);
     expect(useLivePageStore.getState().activeCode).toBe('005930');
@@ -107,7 +105,6 @@ describe('useJumpToLive', () => {
         label: 'SK하이닉스',
         timeframe: '1m',
         historicalFromDate: null,
-        viewport: null,
       }],
       activeTabId: 'tab-a',
     });

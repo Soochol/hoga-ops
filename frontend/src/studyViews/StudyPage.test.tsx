@@ -473,7 +473,6 @@ describe('StudyPage', () => {
         color: '#22C55E',
         opacity: 0.28,
       },
-      persistLiveViewport: false,
     });
     expect(props.bundle).toBe(props.chartBundle);
     expect(props.bundle).toMatchObject({

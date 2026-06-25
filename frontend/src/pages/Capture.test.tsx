@@ -70,7 +70,6 @@ describe('Capture page', () => {
         label: '삼성전자',
         timeframe: '1m',
         historicalFromDate: null,
-        viewport: null,
       }],
       activeTabId: 'tab-a',
     });
