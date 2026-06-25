@@ -241,7 +241,7 @@ class QueueItem(BaseModel):
     code: str
     date: str
     phase: CapturePhase
-    force_retry: bool          # frozen at enqueue per spec §11 Q16
+    force_retry: bool          # legacy wire field; retry policy no longer branches on it
     pause_origin: bool         # True when cancelled by cookie-expired pool pause
     enqueued_at_ms: int
     started_at_ms: int | None = None
@@ -401,7 +401,7 @@ class EnqueueDedupedRow(BaseModel):
         "already_in_queue",
         "already_running",
         "already_complete",  # ADR-0033 — addItems collided with _done(phase=done)
-        "already_skipped",   # ADR-0033 — addItems collided with _done(phase=skipped, no force_retry)
+        "already_skipped",   # Legacy value; skipped rows are now re-enqueueable.
     ]
 
 

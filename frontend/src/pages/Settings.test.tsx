@@ -110,32 +110,17 @@ describe('Settings — Symbol Master section', () => {
     expect(screen.getByRole('button', { name: /Update Now/i })).toBeEnabled();
   });
 
-  it('Capture defaults checkbox reflects the persisted localStorage value on mount', async () => {
-    localStorage.setItem('capture.force_retry_default', 'true');
+  it('does not render force retry capture defaults', async () => {
     vi.spyOn(symbolsApi, 'getSymbolMasterInfo').mockResolvedValue({
       count: 0, fetched_at_ms: null, status: 'unavailable', reason: 'symbol_master_not_initialized',
     });
 
     renderWithQuery(<Settings />);
 
-    const cb = await screen.findByTestId('settings-force-retry-default');
-    expect((cb as HTMLInputElement).checked).toBe(true);
-  });
-
-  it('Clicking the Capture defaults checkbox writes through to localStorage and updates UI', async () => {
-    vi.spyOn(symbolsApi, 'getSymbolMasterInfo').mockResolvedValue({
-      count: 0, fetched_at_ms: null, status: 'unavailable', reason: 'symbol_master_not_initialized',
+    await waitFor(() => {
+      expect(screen.getByText(/Symbol Master/i)).toBeInTheDocument();
     });
-
-    renderWithQuery(<Settings />);
-
-    const cb = await screen.findByTestId('settings-force-retry-default');
-    expect((cb as HTMLInputElement).checked).toBe(false);
-    expect(localStorage.getItem('capture.force_retry_default')).toBeNull();
-
-    cb.click();
-
-    expect((cb as HTMLInputElement).checked).toBe(true);
-    expect(localStorage.getItem('capture.force_retry_default')).toBe('true');
+    expect(screen.queryByTestId('settings-force-retry-default')).toBeNull();
+    expect(screen.queryByText(/force/i)).toBeNull();
   });
 });

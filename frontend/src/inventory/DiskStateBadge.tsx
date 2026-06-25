@@ -32,7 +32,7 @@ export const RECAPTURABLE_DISK_STATES: readonly DiskStateValue[] = [
 
 /** A captured Stock-Date is recapturable when its DiskState appears in
  *  RECAPTURABLE_DISK_STATES (everything except complete). Backend policy
- *  (eligibility.py:76-77) skips COMPLETE even with force_retry=true. */
+ *  (eligibility.py) skips COMPLETE even on explicit recapture. */
 export function isRecapturable(state: DiskStateValue): boolean {
   return (RECAPTURABLE_DISK_STATES as readonly DiskStateValue[]).includes(state);
 }

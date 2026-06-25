@@ -8,9 +8,9 @@ Two entry points, both pure:
   17-KST `today_too_early` rule from spec §11 Q14). Caller raises 400.
 
 - :func:`decide_capture` — worker-time deciding-phase. Composes
-  :func:`disk_state.check_disk_state` with the `force_retry` toggle into
-  a :class:`CaptureDecision` describing whether to skip (and why) or
-  proceed (with `resume` flag for CLIENT_INCOMPLETE).
+  :func:`disk_state.check_disk_state` into a :class:`CaptureDecision`
+  describing whether to skip (and why) or proceed (with `resume` flag for
+  CLIENT_INCOMPLETE).
 
 This module is the second concrete payoff of the horizontal-seam pattern
 ADR-0007 established for ``disk_state.py``: two callers (enqueue route and
@@ -33,6 +33,7 @@ import datetime as dt
 from collections.abc import Iterable
 from dataclasses import dataclass
 from pathlib import Path
+
 from hoga.api.disk_state import DiskState, check_disk_state
 from hoga.api.models import SkipReason
 from hoga.collector.orchestrator import is_today_too_early
@@ -40,7 +41,7 @@ from hoga.collector.orchestrator import is_today_too_early
 
 @dataclass(frozen=True)
 class CaptureDecision:
-    """Decision output for one (Stock-Date, force_retry) tuple.
+    """Decision output for one Stock-Date.
 
     Invariant: exactly one of ``skip_reason`` is non-None OR ``resume`` is
     meaningful — when ``skip_reason`` is set, the caller skips and ignores
@@ -62,11 +63,8 @@ def decide_capture(
 
     Branches (ADR-0021 + ADR-0007):
       - DiskState.COMPLETE         → skip with reason "already_complete"
-      - DiskState.NO_UPSTREAM_DATA + not force_retry → skip "no_upstream_data"
-      - DiskState.NO_UPSTREAM_DATA + force_retry     → delete sentinel,
-                                                       proceed resume=False
-      - DiskState.SOURCE_PARTIAL   → skip with "source_partial" unless
-                                     force_retry (then fall through to fresh)
+      - DiskState.NO_UPSTREAM_DATA → delete sentinel, proceed resume=False
+      - DiskState.SOURCE_PARTIAL   → proceed resume=False
       - DiskState.INVALID          → proceed with resume=False (don't trust
                                      corrupt artifacts; fresh capture)
       - DiskState.CLIENT_INCOMPLETE → proceed with resume=True
@@ -76,14 +74,8 @@ def decide_capture(
     if disk == DiskState.COMPLETE:
         return CaptureDecision(skip_reason="already_complete", resume=False)
     if disk == DiskState.NO_UPSTREAM_DATA:
-        if not force_retry:
-            return CaptureDecision(skip_reason="no_upstream_data", resume=False)
-        # force_retry: clear the sentinel so collect_stock_date runs fresh.
-        # If hogaplay still returns empty, the worker re-creates the sentinel.
         (data_dir / "raw" / date / code / ".no_upstream_data").unlink(missing_ok=True)
         return CaptureDecision(skip_reason=None, resume=False)
-    if disk == DiskState.SOURCE_PARTIAL and not force_retry:
-        return CaptureDecision(skip_reason="source_partial", resume=False)
     # INVALID and NONE both produce resume=False; only CLIENT_INCOMPLETE resumes.
     resume_flag = (disk == DiskState.CLIENT_INCOMPLETE)
     return CaptureDecision(skip_reason=None, resume=resume_flag)

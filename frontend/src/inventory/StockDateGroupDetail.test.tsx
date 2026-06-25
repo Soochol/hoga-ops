@@ -116,7 +116,7 @@ describe('StockDateGroupDetail — per-row re-capture', () => {
     expect(buttons.length).toBe(1);  // only the source_partial row
   });
 
-  it('clicking the row icon POSTs force_retry=true with that date and does NOT navigate', async () => {
+  it('clicking the row icon POSTs a plain recapture request with that date and does NOT navigate', async () => {
     setupFetch();
     const qc = new QueryClient({ defaultOptions: { queries: { retry: false }, mutations: { retry: false } } });
     renderDetail([row('005930', '삼성전자', '20260520', 'source_partial')], '005930', qc);
@@ -130,7 +130,7 @@ describe('StockDateGroupDetail — per-row re-capture', () => {
       );
       expect(post).toBeTruthy();
       const body = JSON.parse((post![1] as RequestInit).body as string);
-      expect(body).toEqual({ code: '005930', dates: ['20260520'], force_retry: true });
+      expect(body).toEqual({ code: '005930', dates: ['20260520'], force_retry: false });
     });
   });
 
@@ -153,7 +153,7 @@ describe('StockDateGroupDetail — per-row re-capture', () => {
     });
   });
 
-  it('header bulk button POSTs force_retry=true with all recapturable dates', async () => {
+  it('header bulk button POSTs a plain recapture request with all recapturable dates', async () => {
     setupFetch();
     const qc = new QueryClient({ defaultOptions: { queries: { retry: false }, mutations: { retry: false } } });
     renderDetail(
@@ -175,7 +175,7 @@ describe('StockDateGroupDetail — per-row re-capture', () => {
       const body = JSON.parse((post![1] as RequestInit).body as string);
       expect(body.code).toBe('005930');
       expect(body.dates.sort()).toEqual(['20260520', '20260522']);
-      expect(body.force_retry).toBe(true);
+      expect(body.force_retry).toBe(false);
     });
   });
 

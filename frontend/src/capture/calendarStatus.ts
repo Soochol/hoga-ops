@@ -62,14 +62,14 @@ export const CALENDAR_STATUS: Record<CalendarStatus, CalendarStatusDescriptor> =
   },
   no_upstream_data: {
     // ADR-0021 — hogaplay info.php returned 200 + empty body. The cell stays
-    // clickable so force_retry can re-attempt; the dim baseColor + en-dash
+    // clickable so the next capture can re-attempt; the dim baseColor + en-dash
     // marker signal absence (distinct from '✕' broken which means "data
     // exists but collection was interrupted").
     marker: '–',
     badgeColor: 'var(--fg-dimmer)',
     baseColorVar: 'var(--fg-dim)',
     disabled: false,
-    tooltipSuffix: 'no upstream data (force to retry)',
+    tooltipSuffix: 'no upstream data (retry on capture)',
     legendLabel: '– no upstream data',
   },
   today_locked: {

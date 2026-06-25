@@ -45,7 +45,7 @@ export function useInventoryRecapture() {
         const resp: EnqueueResponse = await addItems.mutateAsync({
           code,
           dates,
-          force_retry: true,
+          force_retry: false,
         });
         useInventoryRecaptureOrigins.getState().add(resp.enqueued.map((i) => i.item_id));
         setStatus({

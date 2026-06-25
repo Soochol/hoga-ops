@@ -23,9 +23,9 @@ describe('CaptureQueueRow', () => {
       .toContain('005930');
   });
 
-  it('Q16: shows ⚠ force chip when force_retry=true', () => {
+  it('does not render a force chip when legacy payloads carry force_retry=true', () => {
     render(<CaptureQueueRow item={{ ...base, force_retry: true }} symbolName="삼성전자" onCancel={() => {}} onRetry={() => {}} />);
-    expect(screen.getByTitle(/force re-capture/i)).toBeTruthy();
+    expect(screen.queryByText(/force/i)).toBeNull();
   });
 
   it('queued row action button is ✕ remove (calls onCancel)', () => {
@@ -85,11 +85,10 @@ describe('CaptureQueueRow attempt badge (ADR-0031)', () => {
     expect(badge.textContent).toBe('×3');
   });
 
-  it('renders both ⚠ force and ×N badges together when both apply', () => {
+  it('renders only the attempt badge when legacy force_retry and attempt both apply', () => {
     render(<CaptureQueueRow item={{ ...base, force_retry: true, attempt: 2 }}
                            symbolName="삼성전자"
                            onCancel={() => {}} onRetry={() => {}} />);
-    expect(screen.getByTitle(/force re-capture/i)).toBeTruthy();
     expect(screen.getByTitle(/Attempt 2/i)).toBeTruthy();
   });
 });

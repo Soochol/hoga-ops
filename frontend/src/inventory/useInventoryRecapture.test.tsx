@@ -38,7 +38,7 @@ beforeEach(() => {
 afterEach(() => { vi.useRealTimers(); });
 
 describe('useInventoryRecapture', () => {
-  it('sends force_retry=true and the given dates', async () => {
+  it('sends a plain recapture request with the given dates', async () => {
     const fetchMock = setupFetch();
     const qc = new QueryClient({ defaultOptions: { mutations: { retry: false } } });
     const { result } = renderHook(() => useInventoryRecapture(), { wrapper: wrapper(qc) });
@@ -48,7 +48,7 @@ describe('useInventoryRecapture', () => {
     const calls = fetchMock.mock.calls.filter((c) => String(c[0]).includes('/api/captures/items'));
     expect(calls.length).toBe(1);
     const body = JSON.parse((calls[0][1] as RequestInit).body as string);
-    expect(body).toEqual({ code: '005930', dates: ['20260520', '20260521'], force_retry: true });
+    expect(body).toEqual({ code: '005930', dates: ['20260520', '20260521'], force_retry: false });
   });
 
   it('sets success status with enqueued + skipped counts', async () => {
