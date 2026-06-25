@@ -850,21 +850,19 @@ export function LiveChartRoot({ code, timeframe, venue = 'KRX', viewIdentity, bu
         }
         // ChartStage.tsx:197 pattern — param.time is virtual-axis seconds.
         // Convert to virtual-ms, then real Unix-ms via axis.toReal().
-        const realMs = axis.toReal(t * 1000);
+        let realMs = axis.toReal(t * 1000);
         // Right-offset whitespace past the last candle: with CrosshairMode.Normal
         // lwc does NOT report an empty time there — it extrapolates the (gap-
         // compressed) virtual axis forward, so `realMs` lands on the session tail
         // (15:20–15:30 closing-auction window), a FUTURE no-data time. Left as a
         // cursor it pinned the sidebar to a slot parquet/SSE can't serve → blank.
-        // Treat "cursor past the last real candle" as not-on-a-bar → return
-        // to latest mode.
+        // Treat "cursor past the last real candle" as a hover on the last
+        // concrete candle so sidebar cards keep showing candle-basis detail.
         // (verified 2026-06-11: coordinateToTime jumps 14:53 → 15:20 across the
         // whitespace boundary while the live edge was 14:54).
         const lastMs = lastCandleMsRef.current;
         if (lastMs !== null && realMs > lastMs) {
-          onCursorActiveChange?.(false);
-          store.clearCursor();
-          return;
+          realMs = lastMs;
         }
         onCandleBasisHover?.(kstDateFromMs(realMs));
         onCursorActiveChange?.(true);

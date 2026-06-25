@@ -2129,15 +2129,15 @@ describe('LiveChartRoot crosshair → cursor store (ADR-0044)', () => {
     expect(onCursorActiveChange).toHaveBeenLastCalledWith(false);
   });
 
-  it('crosshair into the right-offset whitespace (numeric time past the last candle) → clear cursor for latest mode', async () => {
+  it('crosshair into the right-offset whitespace (numeric time past the last candle) → pins the sidebar to the last candle', async () => {
     // Real mechanism (verified 2026-06-11 — supersedes the original #69
     // assumption of `time: undefined`): with CrosshairMode.Normal lwc does NOT
     // report an empty time in the whitespace; it extrapolates the gap-compressed
     // virtual axis forward, so param.time is a NUMBER that maps PAST the last
     // candle (onto the session tail). The handler must treat "realMs > last
-    // candle" as not-on-a-bar → clear (→ LIVE WS), not pin the cursor to a
-    // future no-data slot (which is what left the sidebar blank). TODAY_ONLY_
-    // BUNDLE carries one candle so lastCandleMsRef is populated.
+    // candle" as the latest concrete candle basis, not as the extrapolated
+    // future no-data slot. TODAY_ONLY_BUNDLE carries one candle so
+    // lastCandleMsRef is populated.
     render(
       <LiveChartRoot
         code="005930"
@@ -2164,12 +2164,12 @@ describe('LiveChartRoot crosshair → cursor store (ADR-0044)', () => {
     // Whitespace: param.time is virtual-axis seconds on a REAL-ANCHORED origin
     // (virtualStart = session_open_ms), so toReal(t·1000) = t·1000 inside the
     // session. Pick a time 10 min past the open — well past the single candle at
-    // open+60s → realMs > last candle → revert to LIVE (cursor cleared), NOT
-    // pinned to a future no-data slot.
+    // open+60s → pin to the last real candle so the 10호가 / 매물대 / 거래원 /
+    // 프로그램 순매수 cards keep showing candle-based detail.
     const whitespaceTimeSec = (TODAY_OPEN_MS + 600_000) / 1000;
     act(() => fire({ time: whitespaceTimeSec, point: { x: 9999 } }));
     await flush();
-    expect(useLiveCursorStore.getState().cursorMs).toBeNull();
+    expect(useLiveCursorStore.getState().cursorMs).toBe(lastCandleMs);
   });
 
   it('clears cursor when timeframe switches from minute to calendar', () => {
