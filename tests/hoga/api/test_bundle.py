@@ -632,6 +632,56 @@ def test_build_volume_distribution_slice_returns_unix_session_bounds(tmp_path):
     assert profile.last_trade_ms == ms_from_midnight_to_unix_ms("20260512", 32_460_000)
 
 
+def test_build_volume_distribution_slice_uses_supplied_price_range_without_candles_parquet(tmp_path):
+    from hoga.api import bundle as bundle_mod
+    from hoga.api.bundle import build_volume_distribution_slice
+    from hoga.tables.trades import VolumeProfileBinning
+
+    code_dir = tmp_path / "20260512" / "005930"
+    code_dir.mkdir(parents=True)
+    (code_dir / "trades.parquet").touch()
+    engine = MagicMock()
+    engine.conn = object()
+    engine.parquet_dir.return_value = code_dir
+
+    with patch.object(bundle_mod.candles_tbl, "query_price_range") as price_range_query, \
+         patch.object(
+             bundle_mod.trades_tbl,
+             "query_continuous_trade_volume_distribution",
+             return_value=VolumeProfileBinning(
+                 price_min=70_000,
+                 price_max=71_000,
+                 bin_width=100.0,
+                 bins=[(1, 456)],
+                 max_intra_ms=32_460_000,
+             ),
+         ) as dist_query:
+        profile = build_volume_distribution_slice(
+            engine,
+            code="005930",
+            date="20260512",
+            source="kis_live",
+            session_open_ms=90_000_000,
+            session_close_ms=153_000_000,
+            range_count=10,
+            price_min=70_000,
+            price_max=71_000,
+        )
+
+    price_range_query.assert_not_called()
+    dist_query.assert_called_once_with(
+        engine.conn,
+        path=code_dir / "trades.parquet",
+        price_lo=70_000,
+        price_hi=71_000,
+        bins=10,
+        session_open_ms=90_000_000,
+        session_close_ms=153_000_000,
+    )
+    assert profile is not None
+    assert [bin.qty for bin in profile.bins][1] == 456
+
+
 def test_expand_distribution_bins_single_price_day_stays_on_candle_range():
     bins = _expand_distribution_bins(
         price_min=70_000,
