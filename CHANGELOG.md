@@ -3,6 +3,11 @@
 All notable changes to this project are documented here.
 The format follows a 4-digit `MAJOR.MINOR.PATCH.MICRO` scheme.
 
+## [0.10.0.1] - 2026-06-25
+
+### Fixed
+- **프로그램 순매수 지표 위치 수정**: 지표 모달에서 `프로그램 순매수`를 `10호가 지표`와 `거래원 지표` 사이의 별도 `프로그램 지표` 그룹으로 이동했다.
+
 ## [0.10.0.0] - 2026-06-25
 
 ### Added
