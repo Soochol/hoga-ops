@@ -47,6 +47,27 @@ function isLiveCardKey(value: string): value is LiveCardKey {
   return value in DEFAULT_CARD_WEIGHTS;
 }
 
+function sanitizeRightPanelWidthPx(widthPx: unknown): number {
+  return isPositiveFiniteNumber(widthPx) ? Math.round(widthPx) : DEFAULT_RIGHT_PANEL_WIDTH_PX;
+}
+
+function readPersistedCardWeights(value: unknown): LiveCardWeights | null {
+  if (!value || typeof value !== 'object') return null;
+
+  const candidate = value as Partial<Record<LiveCardKey, unknown>>;
+  for (const key of Object.keys(DEFAULT_CARD_WEIGHTS)) {
+    if (!isLiveCardKey(key)) continue;
+    if (!isPositiveFiniteNumber(candidate[key])) return null;
+  }
+
+  return {
+    orderbook: candidate.orderbook as number,
+    program: candidate.program as number,
+    brokers: candidate.brokers as number,
+    investor: candidate.investor as number,
+  };
+}
+
 export function clampRightPanelWidth(widthPx: number, workareaWidthPx: number): number {
   const safeWorkareaWidthPx = isPositiveFiniteNumber(workareaWidthPx) ? workareaWidthPx : 0;
   if (safeWorkareaWidthPx <= 0) return DEFAULT_RIGHT_PANEL_WIDTH_PX;
@@ -110,11 +131,12 @@ function readStorage(): Partial<Persisted> {
   const next: Partial<Persisted> = {};
 
   if (isPositiveFiniteNumber(parsed.rightPanelWidthPx)) {
-    next.rightPanelWidthPx = parsed.rightPanelWidthPx;
+    next.rightPanelWidthPx = Math.round(parsed.rightPanelWidthPx);
   }
 
-  if (parsed.rightCardWeights && typeof parsed.rightCardWeights === 'object') {
-    next.rightCardWeights = clampCardWeights(parsed.rightCardWeights as Partial<LiveCardWeights>);
+  const persistedWeights = readPersistedCardWeights(parsed.rightCardWeights);
+  if (persistedWeights) {
+    next.rightCardWeights = persistedWeights;
   }
 
   return next;
@@ -131,10 +153,11 @@ export const useLiveLayoutStore = create<Store>((set) => ({
   rightCardWeights: DEFAULT_CARD_WEIGHTS,
   ...hydrated,
   setRightPanelWidthPx: (widthPx) => {
+    const nextWidthPx = sanitizeRightPanelWidthPx(widthPx);
     set((state) => {
-      const next = { rightPanelWidthPx: widthPx, rightCardWeights: state.rightCardWeights };
+      const next = { rightPanelWidthPx: nextWidthPx, rightCardWeights: state.rightCardWeights };
       persist(next);
-      return { rightPanelWidthPx: widthPx };
+      return { rightPanelWidthPx: nextWidthPx };
     });
   },
   setRightCardWeights: (weights) => {
