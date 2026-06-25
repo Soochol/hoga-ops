@@ -25,6 +25,7 @@ function emptyRangeBundle(overrides: Partial<RangeBundle> = {}): RangeBundle {
     fill_strength: { bucket_ms: 60_000, points: [] },
     volume_profile_range: { bin_count: 0, price_min: 0, price_max: 0, bin_width: 0, bins: [] },
     volume_profile_by_day: [],
+    volume_distributions: overrides.volume_distributions ?? [],
     investorPoints: [],
     ask_peaks: [],
     bid_peaks: [],
@@ -50,6 +51,7 @@ describe('buildLiveBundle', () => {
       fill_strength: { bucket_ms: 60_000, points: [] },
       volume_profile_range: { bin_count: 0, price_min: 0, price_max: 0, bin_width: 0, bins: [] },
       volume_profile_by_day: [],
+      volume_distributions: [],
       investorPoints: [],
       ask_peaks: [],
       bid_peaks: [],
@@ -447,6 +449,7 @@ function makeRangeBundle(qrPoints: QuoteRatioPoint[]): RangeBundle {
     fill_strength: { bucket_ms: MINUTE_MS, points: [] },
     volume_profile_range: { bin_count: 0, price_min: 0, price_max: 0, bin_width: 0, bins: [] },
     volume_profile_by_day: [],
+    volume_distributions: [],
     investorPoints: [],
     ask_peaks: [],
   };

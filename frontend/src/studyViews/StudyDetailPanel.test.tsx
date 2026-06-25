@@ -8,6 +8,10 @@ function details(overrides: Partial<StudySnapshotDetailInput> = {}): StudySnapsh
     orderbookByBucketStart: new Map(),
     brokersByBucketStart: new Map(),
     detailWarnings: [],
+    volumeDistributionEnabled: true,
+    volumeDistributionColor: '#64748B',
+    volumeDistributionMaxColor: '#EAB308',
+    volumeDistributions: [],
     ...overrides,
   };
 }
