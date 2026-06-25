@@ -17,8 +17,7 @@ describe('liveLayout store helpers', () => {
       },
     }));
 
-    const { useLiveLayoutStore, DEFAULT_RIGHT_PANEL_WIDTH_PX, DEFAULT_CARD_WEIGHTS } =
-      await import('./liveLayout');
+    const { useLiveLayoutStore, DEFAULT_CARD_WEIGHTS } = await import('./liveLayout');
 
     expect(useLiveLayoutStore.getState().rightPanelWidthPx).toBe(512);
     expect(useLiveLayoutStore.getState().rightCardWeights).toEqual(DEFAULT_CARD_WEIGHTS);
