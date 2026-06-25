@@ -23,7 +23,8 @@ type CardDef = {
 };
 
 const RESIZER_PAIRS: Array<{ upper: LiveCardKey; lower: LiveCardKey; label: string }> = [
-  { upper: 'orderbook', lower: 'program', label: '10호가 / 프로그램 순매수 크기 조절' },
+  { upper: 'orderbook', lower: 'volumeDistribution', label: '10호가 / 매물대 크기 조절' },
+  { upper: 'volumeDistribution', lower: 'program', label: '매물대 / 프로그램 순매수 크기 조절' },
   { upper: 'program', lower: 'brokers', label: '프로그램 순매수 / 거래원 크기 조절' },
   { upper: 'brokers', lower: 'investor', label: '거래원 / 잠정투자자 크기 조절' },
 ];
@@ -45,6 +46,13 @@ export function LiveDetailPanel({ orderbook, volumeDistribution, program, broker
       testId: 'live-detail-card-orderbook',
       contentTestId: 'card-orderbook',
       content: orderbook,
+    },
+    {
+      key: 'volumeDistribution',
+      label: '매물대',
+      testId: 'live-detail-card-volumeDistribution',
+      contentTestId: 'card-volume-distribution',
+      content: volumeDistribution ?? null,
     },
     {
       key: 'program',
@@ -135,7 +143,7 @@ export function LiveDetailPanel({ orderbook, volumeDistribution, program, broker
     <aside
       ref={panelRef}
       data-testid="live-detail-panel"
-      className="grid h-full min-h-0 overflow-y-auto bg-bg p-[var(--space-sm)]"
+      className="grid min-h-full bg-bg p-[var(--space-sm)]"
       style={{
         gridTemplateRows: cards
           .map((card) => `minmax(${LIVE_CARD_MIN_HEIGHT_PX[card.key]}px, ${weights[card.key]}fr)`)
@@ -147,16 +155,13 @@ export function LiveDetailPanel({ orderbook, volumeDistribution, program, broker
           <section
             data-testid={card.testId}
             data-card={card.key}
-            className="flex min-h-0 flex-col overflow-hidden rounded border bg-bg-card"
+            className="flex flex-col rounded border bg-bg-card"
           >
             <header className="border-b px-3 py-2 text-xs font-semibold uppercase tracking-wider text-fg-dimmer">
               {card.label}
             </header>
-            <div className="min-h-0 flex-1 overflow-auto">
+            <div data-testid={`live-detail-content-${card.key}`} className="flex-1">
               <div data-testid={card.contentTestId}>{card.content}</div>
-              {card.key === 'orderbook' && volumeDistribution ? (
-                <div data-testid="card-volume-distribution">{volumeDistribution}</div>
-              ) : null}
             </div>
           </section>
           {index < RESIZER_PAIRS.length ? (

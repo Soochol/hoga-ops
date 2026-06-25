@@ -24,6 +24,28 @@ describe('liveLayout store helpers', () => {
     expect(useLiveLayoutStore.getState().rightCardWeights).toEqual(DEFAULT_CARD_WEIGHTS);
   });
 
+  it('migrates valid four-card weights by adding the default volume distribution weight', async () => {
+    localStorage.setItem('live.layout.v1', JSON.stringify({
+      rightPanelWidthPx: 512,
+      rightCardWeights: {
+        orderbook: 48,
+        program: 13,
+        brokers: 24,
+        investor: 15,
+      },
+    }));
+
+    const { useLiveLayoutStore, DEFAULT_CARD_WEIGHTS } = await import('./liveLayout');
+
+    expect(useLiveLayoutStore.getState().rightCardWeights).toEqual({
+      orderbook: 48,
+      volumeDistribution: DEFAULT_CARD_WEIGHTS.volumeDistribution,
+      program: 13,
+      brokers: 24,
+      investor: 15,
+    });
+  });
+
   it('sanitizes width before persisting it', async () => {
     const { useLiveLayoutStore, DEFAULT_RIGHT_PANEL_WIDTH_PX } = await import('./liveLayout');
 

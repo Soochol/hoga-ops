@@ -317,6 +317,28 @@ describe('LiveWorkarea gate', () => {
     expect(document.body.style.userSelect).toBe('');
   });
 
+  it('scrolls the whole detail group when Alt+wheel is used over the workarea', () => {
+    render(
+      <LiveWorkarea
+        activeCode="005930"
+        bundle={INDEX_BUNDLE}
+        clampEngaged={false}
+        isPastCandlesLoading={false}
+        isExtending={false}
+        live={LIVE}
+      />,
+    );
+
+    const detailGroup = screen.getByRole('complementary', { name: 'Live Detail Panel' });
+    Object.defineProperty(detailGroup, 'scrollTop', { configurable: true, writable: true, value: 20 });
+    Object.defineProperty(detailGroup, 'scrollHeight', { configurable: true, value: 1200 });
+    Object.defineProperty(detailGroup, 'clientHeight', { configurable: true, value: 300 });
+
+    fireEvent.wheel(screen.getByTestId('live-chart-panel'), { altKey: true, deltaY: 90 });
+
+    expect(detailGroup.scrollTop).toBe(110);
+  });
+
   it('starts splitter drag from the rendered clamped width when the saved width is oversized', () => {
     useLiveLayoutStore.setState({
       rightPanelWidthPx: 700,
