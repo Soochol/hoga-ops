@@ -1,5 +1,4 @@
 import type { Candle, DayVolumeDistribution, RangeSegment } from '../api/types';
-import { classifyWithinSegment } from '../util/sessionTime';
 
 type ContinuousTradeLike = {
   t_ms: number;
@@ -32,11 +31,7 @@ export function computeContinuousTradeVolumeDistribution(args: {
     if (trade.side !== 1 && trade.side !== -1) continue;
     if (!Number.isFinite(trade.price) || trade.price <= 0) continue;
     if (!Number.isFinite(trade.qty) || trade.qty <= 0) continue;
-    if (classifyWithinSegment({
-      sessionOpenMs: segment.session_open_ms,
-      sessionCloseMs: segment.session_close_ms,
-    }, trade.t_ms) === 'post-axis') continue;
-    if (trade.t_ms < segment.session_open_ms) continue;
+    if (trade.t_ms < segment.session_open_ms || trade.t_ms >= segment.session_close_ms) continue;
     if (trade.price < priceMin || trade.price > priceMax) continue;
 
     const idx = Math.floor((trade.price - priceMin) / binWidth);
