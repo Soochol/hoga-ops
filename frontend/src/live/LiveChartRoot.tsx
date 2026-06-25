@@ -30,9 +30,9 @@ import type { LiveVenueOption } from '../state/liveVenue';
 import type { AskPeak, BidPeak, RangeBundle } from '../api/types';
 import { PAST_CANDLES_MAX_DAYS } from './liveDateTime';
 import { initialVisibleMinuteBarsFor } from './liveVenuePolicy';
+import { minuteRightOffsetBars } from './minuteViewportPolicy';
 import { summarizeWarnings, type LiveDataWarning } from './liveDataWarnings';
 import { useViewportBackfill } from './useViewportBackfill';
-import { registerViewportCapture, saveViewportToActiveTab } from '../state/liveTabs';
 import {
   viewportFromRanges,
   computeRestoreRange,
@@ -163,8 +163,6 @@ interface Props {
     color?: string;
     opacity?: number;
   };
-  /** /live persists viewport to active live tabs; snapshot study pages opt out. */
-  persistLiveViewport?: boolean;
   /** Save flows can read the current chart viewport without coupling to chart internals. */
   onViewportCaptureReady?: (capture: () => TabViewport | null) => void;
   /** Optional hover activity signal for consumers that must ignore sticky cursor restore. */
@@ -184,7 +182,7 @@ export function shouldShowTradeVolumePocOverlay(
 /** /live's single-chart root. Mounts the timeframe-appropriate pane set
  * (see `paneSpecsForTimeframe`) inside one createChart instance so
  * timeScale is shared across candle/volume/(hoga) panes. */
-export function LiveChartRoot({ code, timeframe, venue = 'KRX', viewIdentity, bundle, chartBundle, ratioBundle, clampEngaged, isPastCandlesLoading, isExtending = false, pastDataWarnings, restoreViewport = null, dayAskPeaks = EMPTY_ASK_PEAKS, todayAllPriceAskPeak = null, dayBidPeaks = EMPTY_BID_PEAKS, todayAllPriceBidPeak = null, todayKst = '', tradeVolumePocs = [], forceHogaPanes = false, paneTogglesOverride, dailyMovingAverageOverride, tradeVolumePocOverride, persistLiveViewport = true, onViewportCaptureReady, onCursorActiveChange, onCandleBasisHover, onCandleBasisClick }: Props) {
+export function LiveChartRoot({ code, timeframe, venue = 'KRX', viewIdentity, bundle, chartBundle, ratioBundle, clampEngaged, isPastCandlesLoading, isExtending = false, pastDataWarnings, restoreViewport = null, dayAskPeaks = EMPTY_ASK_PEAKS, todayAllPriceAskPeak = null, dayBidPeaks = EMPTY_BID_PEAKS, todayAllPriceBidPeak = null, todayKst = '', tradeVolumePocs = [], forceHogaPanes = false, paneTogglesOverride, dailyMovingAverageOverride, tradeVolumePocOverride, onViewportCaptureReady, onCursorActiveChange, onCandleBasisHover, onCandleBasisClick }: Props) {
   const containerRef = useRef<HTMLDivElement>(null);
   // 과거 fetch 경고 요약 — rate-limit 지연(빈칸 문구 전환)과 일부 구간 누락(부분로딩 칩)
   // 표시에 쓴다. summarizeWarnings는 null/빈배열을 {count:0,hasRateLimit:false}로 접는다.
@@ -322,74 +320,9 @@ export function LiveChartRoot({ code, timeframe, venue = 'KRX', viewIdentity, bu
     }
   }, []);
   useEffect(() => {
-    if (!persistLiveViewport) return;
-    return registerViewportCapture(captureViewport);
-  }, [captureViewport, persistLiveViewport]);
-
-  useEffect(() => {
     onViewportCaptureReady?.(captureViewport);
     return () => onViewportCaptureReady?.(() => null);
   }, [captureViewport, onViewportCaptureReady]);
-
-  // Continuous viewport capture (ADR-0069 A안 보강). focusTab/addBlankTab snapshot
-  // the OUTGOING tab synchronously on a tab switch, but route navigation (leaving
-  // /live) and a full reload never go through those — so the last-seen zoom/scroll
-  // was lost on switch-back from another page. Subscribing to visible-range changes
-  // and persisting (debounced) to the active tab backstops EVERY exit path.
-  //
-  // Trailing timeout debounce (NOT rAF): a save rewrites the active tab's `viewport`
-  // (a new ref on LivePage's `tabs.find().viewport` → LiveChartRoot re-render) and
-  // wakes attachPersistence's own 250ms localStorage write. rAF-frequency would do
-  // that every frame mid-zoom; one save per gesture-settle is enough — tab switches
-  // are already captured synchronously, so this only needs to cover route-nav/reload
-  // where ~1 gesture of staleness is imperceptible.
-  //
-  // Guard: lastAppliedCountRef===null means the initial-view / restore effect hasn't
-  // applied yet (the chart still sits at lightweight-charts' default ~60-bar fit) —
-  // skip so that cold-load garbage isn't persisted as the user's view. After
-  // application the first range-change saves the applied (restored/default) view
-  // itself, which is idempotent and harmless.
-  useEffect(() => {
-    if (!persistLiveViewport) return;
-    if (!chart) return;
-    const ts = chart.timeScale();
-    let timer: ReturnType<typeof setTimeout> | null = null;
-    let lastSaved: { barSpan: number; atLiveEdge: boolean } | null = null;
-    const save = () => {
-      const vp = captureViewport();
-      if (!vp) return;
-      // Dedup the live-edge tick storm. During market hours a forming bar's setData
-      // can fire range-change many times/sec; at the live edge that only drifts
-      // rightEdgeMs while barSpan/atLiveEdge hold — and an atLiveEdge restore IGNORES
-      // rightEdgeMs (it pins the latest bar), so persisting it is a pure store-write +
-      // re-render with no recoverable information. Skip only that case. A zoom/scroll
-      // changes barSpan; leaving/returning to the live edge flips atLiveEdge; a
-      // scrolled-back pan keeps atLiveEdge=false so it always saves (its rightEdgeMs
-      // IS the restore anchor) — all still captured.
-      if (lastSaved && vp.atLiveEdge && lastSaved.atLiveEdge && lastSaved.barSpan === vp.barSpan) return;
-      lastSaved = { barSpan: vp.barSpan, atLiveEdge: vp.atLiveEdge };
-      saveViewportToActiveTab(vp);
-    };
-    const onRangeChange = () => {
-      if (lastAppliedCountRef.current === null) return;
-      if (timer) clearTimeout(timer);
-      timer = setTimeout(() => { timer = null; save(); }, 250);
-    };
-    ts.subscribeVisibleLogicalRangeChange(onRangeChange);
-    return () => {
-      ts.unsubscribeVisibleLogicalRangeChange(onRangeChange);
-      // Flush a pending capture on unmount (route-nav leaving /live) so the last
-      // gesture isn't lost inside the debounce window — the route-nav reset bug.
-      // captureViewport() directly (not the registry) so it can't race the
-      // registerViewportCapture teardown; a removed chart try/catches to null →
-      // saveViewportToActiveTab no-ops. This cleanup runs before the chart-create
-      // effect's c.remove() (declared earlier), so the chart is still alive here.
-      if (timer) {
-        clearTimeout(timer);
-        save();
-      }
-    };
-  }, [chart, captureViewport, persistLiveViewport]);
 
   // Publish axis to the shared store so LiveSidebar can read
   // axis.inClosingAuctionWindow(cursorMs) for TotalQtyBar mask.
@@ -422,6 +355,10 @@ export function LiveChartRoot({ code, timeframe, venue = 'KRX', viewIdentity, bu
   // transition doesn't leave the chart zoomed on the early window with the
   // latest data off the right edge.
   const lastAppliedCountRef = useRef<number | null>(null);
+  const canTriggerBackfill = useCallback(
+    () => lastAppliedCountRef.current !== null || useLivePageStore.getState().historicalFromDate !== null,
+    [],
+  );
   // Cold-load reveal gate. On a cold (code, timeframe) load the hoga panes
   // (/api/range) resolve up to ~2.5s before the candles (/api/live/past-candles
   // carries ~40 days) and establish lightweight-charts' default ~60-bar fit on
@@ -466,10 +403,23 @@ export function LiveChartRoot({ code, timeframe, venue = 'KRX', viewIdentity, bu
   // repositioner and the initial-view effect below are mutually exclusive via
   // historicalFromDate (null → initial-view owns the viewport; non-null →
   // repositioner), so their relative declaration order is immaterial.
-  useViewportBackfill({ chart, axis, bundle: cb, timeframe, isExtending, code: code ?? '' });
+  useViewportBackfill({
+    chart,
+    axis,
+    bundle: cb,
+    timeframe,
+    isExtending,
+    code: code ?? '',
+    canTriggerBackfill,
+  });
   // Modifier-aware 휠 줌/팬 — handleScale.mouseWheel: false(아래 createChartEx
   // 옵션)와 한 쌍. 스펙: docs/superpowers/specs/2026-06-07-live-wheel-interactions-design.md
-  useWheelInteractions(chart, containerRef, cb, axis);
+  const getLiveRightOffsetBars = useCallback((visibleBars: number, plotWidth: number) => (
+    isMinuteTimeframe(timeframe)
+      ? minuteRightOffsetBars(visibleBars, plotWidth)
+      : (CHART_TIMESCALE_OPTIONS.rightOffset ?? 0)
+  ), [timeframe]);
+  useWheelInteractions(chart, containerRef, cb, axis, undefined, getLiveRightOffsetBars);
   useEffect(() => {
     // Reveal the chart two rAFs after the viewport is applied, so lightweight-
     // charts' one-frame-late barSpacing settle (the cold-load zoom flash) lands
@@ -528,7 +478,10 @@ export function LiveChartRoot({ code, timeframe, venue = 'KRX', viewIdentity, bu
               true,
             )
           : null;
-        const range = computeRestoreRange(restoreViewport, totalBarsR, idx);
+        const restoreRightOffset = isMinuteTimeframe(timeframe)
+          ? minuteRightOffsetBars(restoreViewport.barSpan, tsR.width())
+          : undefined;
+        const range = computeRestoreRange(restoreViewport, totalBarsR, idx, restoreRightOffset);
         if (range) {
           tsR.setVisibleLogicalRange({ from: range.from, to: range.to });
           if (range.scrollToRight) tsR.scrollToPosition(0, false);
@@ -576,10 +529,18 @@ export function LiveChartRoot({ code, timeframe, venue = 'KRX', viewIdentity, bu
         // to stay legible. Apply once per (code, timeframe): SSE pushes
         // inside today's segment must not snap the user's scroll.
         if (applied !== null) { reveal(); return; }
-        const rightOffset = CHART_TIMESCALE_OPTIONS.rightOffset ?? 0;
+        const lastMs = cb.candles[cb.candles.length - 1]?.ts_ms;
+        let latestLogicalIndex: number | null = null;
+        if (lastMs != null && typeof ts.timeToIndex === 'function') {
+          const idx = ts.timeToIndex(realMsToVirtualSeconds(axisRef.current, lastMs) as Time, true);
+          if (typeof idx === 'number' && Number.isFinite(idx)) latestLogicalIndex = idx;
+        }
+        const latest = latestLogicalIndex ?? totalBars - 1;
         const target = initialVisibleMinuteBarsFor(timeframe, venue);
-        const from = Math.max(0, totalBars - target);
-        const to = totalBars + rightOffset;
+        const visibleBars = Math.min(totalBars, target);
+        const rightOffset = minuteRightOffsetBars(visibleBars, ts.width());
+        const from = Math.max(0, latest + 1 - visibleBars);
+        const to = latest + 1 + rightOffset;
         ts.setVisibleLogicalRange({ from, to });
         lastAppliedCountRef.current = totalBars;
         reveal();
@@ -590,7 +551,7 @@ export function LiveChartRoot({ code, timeframe, venue = 'KRX', viewIdentity, bu
         if (applied === totalBars) { reveal(); return; }
         const lastMs = cb.candles[cb.candles.length - 1]?.ts_ms;
         let latestLogicalIndex: number | null = null;
-        if (lastMs != null) {
+        if (lastMs != null && typeof ts.timeToIndex === 'function') {
           const idx = ts.timeToIndex(realMsToVirtualSeconds(axisRef.current, lastMs) as Time, true);
           if (typeof idx === 'number' && Number.isFinite(idx)) latestLogicalIndex = idx;
         }
@@ -601,7 +562,7 @@ export function LiveChartRoot({ code, timeframe, venue = 'KRX', viewIdentity, bu
     } catch {
       // chart torn down between effect runs
     }
-  }, [chart, cb, timeframe, isPastCandlesLoading, viewKey, revealedKey, restoreViewport]);
+  }, [chart, cb, timeframe, venue, isPastCandlesLoading, viewKey, revealedKey, restoreViewport]);
 
   useEffect(() => {
     const el = containerRef.current;

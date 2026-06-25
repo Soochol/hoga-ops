@@ -291,6 +291,50 @@ def test_study_snapshot_preserves_daily_moving_average_indicator_state():
     ]
 
 
+def test_study_snapshot_preserves_volume_distribution_indicator_state_and_profiles():
+    snap = _snapshot()
+    snap["indicator_state"] = {
+        **snap["indicator_state"],
+        "volume_distribution_enabled": False,
+        "volume_distribution_range_count": 24,
+        "volume_distribution_color": "#64748B",
+        "volume_distribution_max_color": "#EAB308",
+    }
+    snap["bundle"]["volume_distributions"] = [{
+        "date": "20260616",
+        "range_count": 10,
+        "price_min": 69_000,
+        "price_max": 72_000,
+        "session_open_ms": 1_000,
+        "session_close_ms": 2_000,
+        "bins": [{"price_low": 69_000, "price_high": 70_500, "qty": 40}],
+    }]
+
+    parsed = ParquetStudySnapshot.model_validate(snap)
+
+    assert parsed.indicator_state.volume_distribution_enabled is False
+    assert parsed.indicator_state.volume_distribution_range_count == 24
+    assert parsed.bundle.volume_distributions[0].range_count == 10
+    assert parsed.model_dump(mode="json")["bundle"]["volume_distributions"][0]["bins"][0]["qty"] == 40
+
+
+@pytest.mark.parametrize(
+    "indicator_state_patch",
+    [
+        {"volume_distribution_range_count": 4},
+        {"volume_distribution_range_count": 31},
+        {"volume_distribution_color": "#XYZXYZ"},
+        {"volume_distribution_max_color": "64748B"},
+    ],
+)
+def test_study_snapshot_rejects_invalid_volume_distribution_indicator_state(indicator_state_patch):
+    snap = _snapshot()
+    snap["indicator_state"] = {**snap["indicator_state"], **indicator_state_patch}
+
+    with pytest.raises(ValidationError):
+        ParquetStudySnapshot.model_validate(snap)
+
+
 def test_study_snapshot_preserves_trade_volume_poc_state_and_bands():
     snap = _snapshot()
     snap["indicator_state"] = {
@@ -361,6 +405,51 @@ def test_study_views_create_round_trips_trade_volume_poc_state_and_bands(tmp_pat
     assert loaded["indicator_state"]["trade_volume_poc_band_pct"] == 0.0025
     assert loaded["indicator_state"]["trade_volume_poc_color"] == "#22C55E"
     assert loaded["bundle"]["trade_volume_pocs"][0]["center_price"] == 70_000.0
+
+
+def test_study_views_create_round_trips_volume_distribution_state_and_profiles(tmp_path):
+    raw = _req()
+    raw["indicator_state"] = {
+        **raw["indicator_state"],
+        "volume_distribution_enabled": False,
+        "volume_distribution_range_count": 24,
+        "volume_distribution_color": "#64748B",
+        "volume_distribution_max_color": "#EAB308",
+    }
+    raw["snapshot"]["indicator_state"] = raw["indicator_state"]
+    raw["snapshot"]["bundle"]["volume_distributions"] = [
+        {
+            "date": "20260616",
+            "range_count": 10,
+            "price_min": 69_000,
+            "price_max": 72_000,
+            "session_open_ms": 1_000,
+            "session_close_ms": 2_000,
+            "last_trade_ms": 1_500,
+            "bins": [{"price_low": 69_000, "price_high": 70_500, "qty": 40}],
+        }
+    ]
+    req = ParquetStudyViewWriteRequest.model_validate(raw)
+
+    sv.create_save_sync(tmp_path, req=req, id="view1", now_ms=10)
+    loaded = sv.load_snapshot(tmp_path, id="view1").model_dump(mode="json")
+
+    assert loaded["indicator_state"]["volume_distribution_enabled"] is False
+    assert loaded["indicator_state"]["volume_distribution_range_count"] == 24
+    assert loaded["indicator_state"]["volume_distribution_color"] == "#64748B"
+    assert loaded["indicator_state"]["volume_distribution_max_color"] == "#EAB308"
+    assert loaded["bundle"]["volume_distributions"] == [
+        {
+            "date": "20260616",
+            "range_count": 10,
+            "price_min": 69_000.0,
+            "price_max": 72_000.0,
+            "session_open_ms": 1_000,
+            "session_close_ms": 2_000,
+            "last_trade_ms": 1_500,
+            "bins": [{"price_low": 69_000.0, "price_high": 70_500.0, "qty": 40.0}],
+        }
+    ]
 
 
 def test_study_snapshot_defaults_detail_arrays_for_legacy_snapshots():

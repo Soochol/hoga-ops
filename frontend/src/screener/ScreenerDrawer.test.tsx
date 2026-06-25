@@ -292,7 +292,6 @@ describe('ScreenerDrawer', () => {
         label: 'SK하이닉스',
         timeframe: '1m',
         historicalFromDate: null,
-        viewport: null,
       }],
       activeTabId: 'tab-a',
     });
@@ -324,7 +323,6 @@ describe('ScreenerDrawer', () => {
         label: 'SK하이닉스',
         timeframe: '1m',
         historicalFromDate: null,
-        viewport: null,
       }],
       activeTabId: 'tab-a',
     });

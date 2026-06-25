@@ -160,14 +160,14 @@ export function LivePage() {
   const tradeVolumePocBandPct = useLivePageStore((s) => s.tradeVolumePocBandPct);
   const tradeVolumePocColor = useLivePageStore((s) => s.tradeVolumePocColor);
   const tradeVolumePocOpacity = useLivePageStore((s) => s.tradeVolumePocOpacity);
+  const volumeDistributionEnabled = useLivePageStore((s) => s.volumeDistributionEnabled);
+  const volumeDistributionRangeCount = useLivePageStore((s) => s.volumeDistributionRangeCount);
+  const volumeDistributionColor = useLivePageStore((s) => s.volumeDistributionColor);
+  const volumeDistributionMaxColor = useLivePageStore((s) => s.volumeDistributionMaxColor);
   const auctionWindowMask = useChartPrefsStore((s) => s.auctionWindowMask);
   const ratioIntraMax = useChartPrefsStore((s) => s.ratioIntraMax);
   const ratioOutlierFilterEnabled = useChartPrefsStore((s) => s.ratioOutlierFilterEnabled);
   const ratioOutlierThreshold = useChartPrefsStore((s) => s.ratioOutlierThreshold);
-  // Active tab's saved viewport (ADR-0069 A안) → LiveChartRoot restores it on
-  // cold switch-back. Stable reference (the tab object's viewport field) across
-  // SSE renders; only rewritten on switch-away, so it doesn't thrash the chart.
-  const restoreViewport = tabs.find((t) => t.id === activeTabId)?.viewport ?? null;
   useDocumentTitle(activeCode);
   const [indicatorPanelOpen, setIndicatorPanelOpen] = useState(false);
   const [settingsOpen, setSettingsOpen] = useState(false);
@@ -243,6 +243,10 @@ export function LivePage() {
     trade_volume_poc_band_pct: tradeVolumePocBandPct,
     trade_volume_poc_color: tradeVolumePocColor,
     trade_volume_poc_opacity: tradeVolumePocOpacity,
+    volume_distribution_enabled: volumeDistributionEnabled,
+    volume_distribution_range_count: volumeDistributionRangeCount,
+    volume_distribution_color: volumeDistributionColor,
+    volume_distribution_max_color: volumeDistributionMaxColor,
   }), [
     auctionWindowMask,
     dailyMovingAverageEnabled,
@@ -259,6 +263,10 @@ export function LivePage() {
     tradeVolumePocColor,
     tradeVolumePocEnabled,
     tradeVolumePocOpacity,
+    volumeDistributionColor,
+    volumeDistributionEnabled,
+    volumeDistributionMaxColor,
+    volumeDistributionRangeCount,
     volumeEnabled,
   ]);
   const activeTab = tabs.find((t) => t.id === activeTabId);
@@ -322,6 +330,7 @@ export function LivePage() {
       candles: base.candles,
       volume_profile_range: base.volume_profile_range,
       volume_profile_by_day: base.volume_profile_by_day,
+      volume_distributions: base.volume_distributions ?? [],
       investorPoints: base.investorPoints,
       ask_peaks: dayAskPeaks,
       bid_peaks: dayBidPeaks,
@@ -396,7 +405,7 @@ export function LivePage() {
         isPastCandlesLoading={workareaLoading}
         isExtending={activeIndexId ? indexExtending : isExtending}
         pastDataWarnings={workareaDataWarnings}
-        restoreViewport={restoreViewport}
+        restoreViewport={null}
         viewIdentity={activeTabId ? `${activeTabId}:${liveVenue}` : liveVenue}
         venue={liveVenue}
         live={live}

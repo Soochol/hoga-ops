@@ -62,6 +62,7 @@ function makeBundle(candleCount: number): RangeBundle {
     fill_strength: { bucket_ms: 60_000, points: [] },
     volume_profile_range: { bin_count: 0, price_min: 0, price_max: 0, bin_width: 0, bins: [] },
     volume_profile_by_day: [],
+    volume_distributions: [],
     investorPoints: [],
     ask_peaks: [],
   };
@@ -71,13 +72,15 @@ function Harness({
   chart,
   bundle,
   axis = makeAxis(false),
+  getRightOffsetBars,
 }: {
   chart: IChartApi | null;
   bundle: RangeBundle | null;
   axis?: VirtualAxis;
+  getRightOffsetBars?: (visibleBars: number, plotWidth: number) => number;
 }) {
   const ref = useRef<HTMLDivElement>(null);
-  useWheelInteractions(chart, ref, bundle, axis);
+  useWheelInteractions(chart, ref, bundle, axis, undefined, getRightOffsetBars);
   return <div data-testid="wheel-host" ref={ref} />;
 }
 
@@ -249,5 +252,28 @@ describe('useWheelInteractions', () => {
     // 스테일하면 110 < 114라 클램프 미발동 {from:10, to:110}으로 실패한다.
     wheel(host, { deltaY: 100, shiftKey: true });
     expect(ts.setVisibleLogicalRange).toHaveBeenCalledWith({ from: -36, to: 64 });
+  });
+
+  it('shift wheel: supplied right-offset policy owns the live-edge wall', () => {
+    const BASE = 1_780_000_000_000;
+    const ts = makeTs({
+      getVisibleLogicalRange: vi.fn(() => ({ from: 100, to: 431 })),
+      width: vi.fn(() => 1495),
+      timeToIndex: vi.fn((vt: number) => Math.round((vt * 1000 - BASE) / 60_000)),
+    });
+    const getRightOffsetBars = vi.fn(() => 31);
+    const { getByTestId } = render(
+      <Harness
+        chart={makeChart(ts)}
+        bundle={makeBundle(400)}
+        axis={makeAxis(true)}
+        getRightOffsetBars={getRightOffsetBars}
+      />,
+    );
+
+    wheel(getByTestId('wheel-host'), { deltaY: 100, shiftKey: true });
+
+    expect(getRightOffsetBars).toHaveBeenCalledWith(331, 1495);
+    expect(ts.setVisibleLogicalRange).toHaveBeenCalledWith({ from: 99, to: 430 });
   });
 });

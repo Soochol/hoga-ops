@@ -49,6 +49,7 @@ function rangeBundleFixture() {
     fill_strength: { bucket_ms: 300_000, points: [{ t: 1_000, buy_qty: 5, sell_qty: 4 }] },
     volume_profile_range: { bin_count: 0, price_min: 0, price_max: 0, bin_width: 0, bins: [] },
     volume_profile_by_day: [],
+    volume_distributions: [],
     investorPoints: [],
     ask_peaks: [],
   };

@@ -8,6 +8,7 @@ import {
 
 type Props = {
   orderbook: ReactNode;
+  volumeDistribution?: ReactNode;
   program: ReactNode;
   brokers: ReactNode;
   investor: ReactNode;
@@ -17,6 +18,7 @@ type CardDef = {
   key: LiveCardKey;
   label: string;
   testId: string;
+  contentTestId: string;
   content: ReactNode;
 };
 
@@ -27,7 +29,7 @@ const RESIZER_PAIRS: Array<{ upper: LiveCardKey; lower: LiveCardKey; label: stri
 ];
 const RESIZER_HEIGHT_PX = 8;
 
-export function LiveDetailPanel({ orderbook, program, brokers, investor }: Props) {
+export function LiveDetailPanel({ orderbook, volumeDistribution, program, brokers, investor }: Props) {
   const panelRef = useRef<HTMLDivElement>(null);
   const activeResizeCleanupRef = useRef<(() => void) | null>(null);
   const weights = useLiveLayoutStore((state) => state.rightCardWeights);
@@ -41,24 +43,28 @@ export function LiveDetailPanel({ orderbook, program, brokers, investor }: Props
       key: 'orderbook',
       label: '10호가',
       testId: 'live-detail-card-orderbook',
+      contentTestId: 'card-orderbook',
       content: orderbook,
     },
     {
       key: 'program',
       label: '프로그램 순매수',
       testId: 'live-detail-card-program',
+      contentTestId: 'card-program',
       content: program,
     },
     {
       key: 'brokers',
       label: '거래원',
       testId: 'live-detail-card-brokers',
+      contentTestId: 'card-brokers',
       content: brokers,
     },
     {
       key: 'investor',
       label: '잠정투자자',
       testId: 'live-detail-card-investor',
+      contentTestId: 'card-investor',
       content: investor,
     },
   ];
@@ -146,7 +152,12 @@ export function LiveDetailPanel({ orderbook, program, brokers, investor }: Props
             <header className="border-b px-3 py-2 text-xs font-semibold uppercase tracking-wider text-fg-dimmer">
               {card.label}
             </header>
-            <div className="min-h-0 flex-1 overflow-auto">{card.content}</div>
+            <div className="min-h-0 flex-1 overflow-auto">
+              <div data-testid={card.contentTestId}>{card.content}</div>
+              {card.key === 'orderbook' && volumeDistribution ? (
+                <div data-testid="card-volume-distribution">{volumeDistribution}</div>
+              ) : null}
+            </div>
           </section>
           {index < RESIZER_PAIRS.length ? (
             <div

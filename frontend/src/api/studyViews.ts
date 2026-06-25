@@ -1,7 +1,15 @@
 import { apiAction, apiCall } from './client';
 import type { LiveTimeframe } from '../state/livePage';
 import type { MASource } from '../chart/projectors/movingAverage';
-import type { AskPeak, BidPeak, OrderbookSnapshot, ProgramTradeSeries, SourceName, TradeVolumePocWire } from './types';
+import type {
+  AskPeak,
+  BidPeak,
+  DayVolumeDistribution,
+  OrderbookSnapshot,
+  ProgramTradeSeries,
+  SourceName,
+  TradeVolumePocWire,
+} from './types';
 
 export type StudyAggregationBasis = 'close' | 'intra_period_max';
 export type StudyDataProvenance = 'live_mixed' | 'study_snapshot' | 'unknown';
@@ -39,6 +47,10 @@ export type StudyIndicatorState = {
   trade_volume_poc_band_pct?: number;
   trade_volume_poc_color?: string;
   trade_volume_poc_opacity?: number;
+  volume_distribution_enabled?: boolean;
+  volume_distribution_range_count?: number;
+  volume_distribution_color?: string;
+  volume_distribution_max_color?: string;
 };
 
 export type StudyProvenance = {
@@ -86,6 +98,7 @@ export type StudySnapshotBundle = {
   ask_peaks: AskPeak[];
   bid_peaks?: BidPeak[];
   trade_volume_pocs?: TradeVolumePocWire[];
+  volume_distributions?: DayVolumeDistribution[];
   data_warnings: string[];
   orderbook_buckets?: StudyOrderbookBucket[];
   broker_buckets?: StudyBrokerBucket[];

@@ -22,7 +22,7 @@ export function projectTabToActiveView(
     instrument: tab?.instrument ?? (tab?.code ? stockInstrument(tab.code, tab.label) : null),
     code: tab?.code ?? null,
     timeframe: tab?.timeframe ?? currentPageTimeframe,
-    historicalFromDate: tab?.historicalFromDate ?? null,
+    historicalFromDate: null,
   };
 }
 
@@ -35,14 +35,14 @@ export function mirrorPageViewToActiveTab(
   const activeTab = tabs.find((t) => t.id === activeTabId);
   if (!activeTab) return tabs;
   const userChangedTimeframe = page.candleTimeframe !== activeTab.timeframe;
+  if (!userChangedTimeframe) return tabs;
 
   return tabs.map((t) =>
     t.id === activeTabId
       ? {
           ...t,
           timeframe: page.candleTimeframe,
-          historicalFromDate: page.historicalFromDate,
-          ...(userChangedTimeframe ? { viewport: null } : {}),
+          historicalFromDate: null,
         }
       : t,
   );

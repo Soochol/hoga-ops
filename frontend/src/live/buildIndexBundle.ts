@@ -48,6 +48,7 @@ export function buildIndexBundle(input: {
     fill_strength: { bucket_ms: input.bucketMs, points: [] },
     volume_profile_range: EMPTY_VOLUME_PROFILE,
     volume_profile_by_day: [],
+    volume_distributions: [],
     investorPoints: input.investorPoints ?? [],
     ask_peaks: [],
     bid_peaks: [],

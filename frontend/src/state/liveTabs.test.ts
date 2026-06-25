@@ -1,13 +1,9 @@
 import { describe, it, expect, beforeEach, afterEach } from 'vitest';
 import {
   useLiveTabsStore, loadTabs, toTabsSnapshot, initLiveTabsSync,
-  registerViewportCapture,
 } from './liveTabs';
 import { useLivePageStore } from './livePage';
-import type { TabViewport } from '../live/viewportAnchor';
 import { stockInstrument } from '../live/liveInstrument';
-
-const VP_A: TabViewport = { rightEdgeMs: 1748275200000, barSpan: 300, atLiveEdge: false };
 
 beforeEach(() => {
   localStorage.clear();
@@ -192,7 +188,7 @@ describe('useLiveTabsStore', () => {
     expect(useLiveTabsStore.getState().tabs.map((t) => t.code)).toEqual(original);
   });
 
-  it('switching to a tab projects its code+timeframe+pan onto the page in one shot (pan survives)', () => {
+  it('switching to a tab projects code+timeframe and resets pan to latest fit', () => {
     openTab('005930', '삼성전자');
     useLiveTabsStore.setState((st) => ({
       tabs: st.tabs.map((t) => (t.id === st.activeTabId ? { ...t, timeframe: '5m', historicalFromDate: '20260601' } : t)),
@@ -203,33 +199,24 @@ describe('useLiveTabsStore', () => {
     const page = useLivePageStore.getState();
     expect(page.activeCode).toBe('005930');
     expect(page.candleTimeframe).toBe('5m');
-    expect(page.historicalFromDate).toBe('20260601'); // pan survived the projection (no reset leak)
+    expect(page.historicalFromDate).toBeNull(); // pan is not restored; chart starts at latest fit
   });
 
-  it('cross-timeframe tab switch-back preserves the saved viewport (mirror must not null it)', () => {
-    // The page→tab mirror is what nulls a viewport on a tf change — it only runs
-    // when sync is active, so this bug is invisible without initLiveTabsSync().
-    const dispose = initLiveTabsSync();
-    try {
-      openTab('005930', '삼성전자'); // tab A (1m)
-      const tabA = useLiveTabsStore.getState().activeTabId!;
-      // A carries a saved viewport (normally written by focusTab / continuous capture).
-      useLiveTabsStore.setState((st) => ({
-        tabs: st.tabs.map((t) => (t.id === tabA ? { ...t, viewport: VP_A } : t)),
-      }));
-      openTab('000660', 'SK하이닉스'); // tab B (1m)
-      // User changes B's timeframe to 5m: page tf 1m→5m → mirror nulls B.viewport, B.tf=5m.
-      useLivePageStore.getState().setCandleTimeframe('5m');
-      // Switch back to A (1m): page tf 5m→1m. A NAIVE "tf changed → null viewport" mirror
-      // would wipe A's viewport here (the cross-tf reset bug); the stateless tf-match
-      // discriminator preserves it because page tf now equals A's own tf.
-      useLiveTabsStore.getState().focusTab(tabA);
-      const restoredA = useLiveTabsStore.getState().tabs.find((t) => t.id === tabA);
-      expect(restoredA?.viewport).toEqual(VP_A);
-    } finally {
-      dispose();
-    }
+  it('focusTab ignores stored historicalFromDate so tab switches start at latest fit', () => {
+    openTab('005930', '삼성전자');
+    const tabId = useLiveTabsStore.getState().tabs[0].id;
+    useLiveTabsStore.setState({
+      tabs: useLiveTabsStore.getState().tabs.map((t) => (
+        t.id === tabId ? { ...t, historicalFromDate: '20260601' } : t
+      )),
+    });
+
+    useLivePageStore.setState({ historicalFromDate: '20260501' });
+    useLiveTabsStore.getState().focusTab(tabId);
+
+    expect(useLivePageStore.getState().historicalFromDate).toBeNull();
   });
+
 });
 
 describe('liveTabs persistence', () => {
@@ -271,7 +258,6 @@ describe('liveTabs persistence', () => {
         label: '삼성전자',
         timeframe: '5m',
         historicalFromDate: '20260601',
-        viewport: null,
       }],
     }));
     const { tabs } = loadTabs();
@@ -317,7 +303,7 @@ describe('liveTabs persistence', () => {
     expect(loadTabs()).toEqual({ tabs: [], activeTabId: null });
   });
 
-  it('toTabsSnapshot keeps persisted fields (incl. viewport), drops runtime-only id', () => {
+  it('toTabsSnapshot keeps persisted fields and drops runtime-only id', () => {
     const snap = toTabsSnapshot({
       tabs: [{
         id: 'abc',
@@ -326,7 +312,6 @@ describe('liveTabs persistence', () => {
         label: '삼성전자',
         timeframe: '1m',
         historicalFromDate: null,
-        viewport: VP_A,
       }],
       activeTabId: 'abc',
     } as never);
@@ -338,7 +323,6 @@ describe('liveTabs persistence', () => {
         timeframe: '1m',
         historicalFromDate: null,
         label: '삼성전자',
-        viewport: VP_A,
       }],
     });
   });
@@ -351,7 +335,6 @@ describe('liveTabs persistence', () => {
       label: `종목 ${index + 1}`,
       timeframe: '1m' as const,
       historicalFromDate: null,
-      viewport: null,
     }));
     const snap = toTabsSnapshot({ tabs, activeTabId: 'tab-1004' });
     expect(snap.tabs).toHaveLength(1000);
@@ -360,32 +343,15 @@ describe('liveTabs persistence', () => {
     expect(snap.activeIndex).toBe(999);
   });
 
-  it('round-trips a saved viewport through save → load', () => {
-    localStorage.setItem('live.tabs.v1', JSON.stringify({
-      version: 1, activeIndex: 0,
-      tabs: [{ code: '005930', timeframe: '1m', historicalFromDate: null, label: '삼성전자', viewport: VP_A }],
-    }));
-    const { tabs } = loadTabs();
-    expect(tabs[0].viewport).toEqual(VP_A);
-  });
-
-  it('drops a malformed/absent viewport to null on load (forward + backward compat)', () => {
+  it('ignores legacy viewport fields on load', () => {
     localStorage.setItem('live.tabs.v1', JSON.stringify({
       version: 1, activeIndex: 0,
       tabs: [
-        { code: '005930', timeframe: '1m', historicalFromDate: null, label: 'no viewport field' },
-        { code: '000660', timeframe: '1m', historicalFromDate: null, label: 'bad viewport', viewport: { rightEdgeMs: 'x', barSpan: -1, atLiveEdge: 1 } },
+        { code: '005930', timeframe: '1m', historicalFromDate: null, label: 'legacy viewport', viewport: { rightEdgeMs: 1, barSpan: 10, atLiveEdge: false } },
       ],
     }));
     const { tabs } = loadTabs();
-    expect(tabs[0].viewport).toBeNull();
-    expect(tabs[1].viewport).toBeNull();
-  });
-
-  it('migrated live.page.v1 tab has a null viewport', () => {
-    localStorage.setItem('live.page.v1', JSON.stringify({ activeCode: '005930', candleTimeframe: '1m' }));
-    const { tabs } = loadTabs();
-    expect(tabs[0].viewport).toBeNull();
+    expect('viewport' in tabs[0]).toBe(false);
   });
 });
 
@@ -417,10 +383,10 @@ describe('liveTabs ↔ page mirror', () => {
     expect(useLivePageStore.getState().candleTimeframe).toBe('5m'); // A restored
   });
 
-  it('pan (historicalFromDate) persists per tab', () => {
+  it('pan changes are not mirrored into the active tab', () => {
     openTab('005930', '삼성전자');
     useLivePageStore.getState().extendHistoricalRange('20260601');
-    expect(useLiveTabsStore.getState().tabs[0].historicalFromDate).toBe('20260601');
+    expect(useLiveTabsStore.getState().tabs[0].historicalFromDate).toBeNull();
   });
 
   it('projecting a tab is idempotent on the active tab and does not churn its fields (mirror works without the guard)', () => {
@@ -434,77 +400,6 @@ describe('liveTabs ↔ page mirror', () => {
     expect(useLivePageStore.getState().candleTimeframe).toBe('5m');
   });
 
-  it('timeframe change clears the active tab viewport (barSpan invalid across timeframes)', () => {
-    openTab('005930', '삼성전자');
-    useLiveTabsStore.setState({
-      tabs: useLiveTabsStore.getState().tabs.map((t) => ({ ...t, viewport: VP_A })),
-    });
-    useLivePageStore.getState().setCandleTimeframe('5m'); // toolbar tf change → mirror clears viewport
-    expect(useLiveTabsStore.getState().tabs[0].viewport).toBeNull();
-  });
-
-  it('a pure pan (historicalFromDate change, tf unchanged) leaves the saved viewport intact', () => {
-    openTab('005930', '삼성전자');
-    useLiveTabsStore.setState({
-      tabs: useLiveTabsStore.getState().tabs.map((t) => ({ ...t, viewport: VP_A })),
-    });
-    useLivePageStore.getState().extendHistoricalRange('20260601'); // pan, same tf
-    expect(useLiveTabsStore.getState().tabs[0].viewport).toEqual(VP_A);
-  });
-});
-
-describe('liveTabs viewport capture', () => {
-  beforeEach(() => {
-    localStorage.clear();
-    useLiveTabsStore.setState({ tabs: [], activeTabId: null });
-    useLivePageStore.setState({ activeCode: null, candleTimeframe: '1m', historicalFromDate: null });
-  });
-
-  // 단일-탭 모델: openOrFocusTab 제거 → openTab(addBlankTab+setActiveTabCode) 헬퍼로 탭을 만든다.
-  // addBlankTab이 나가는 탭 viewport를 스냅샷하므로 #75 viewport 캡처 시맨틱은 동일하게 검증된다.
-  it('snapshots the OUTGOING active tab viewport on switch', () => {
-    const dispose = registerViewportCapture(() => VP_A);
-    openTab('005930', '삼성전자'); // A active; nothing to snapshot yet
-    openTab('000660', 'SK하이닉스'); // switch → A's viewport captured
-    const tabs = useLiveTabsStore.getState().tabs;
-    expect(tabs.find((t) => t.code === '005930')?.viewport).toEqual(VP_A);
-    expect(tabs.find((t) => t.code === '000660')?.viewport).toBeNull(); // new tab clean
-    dispose();
-  });
-
-  it('new-tab creation reads tabs FRESH so the snapshot is not clobbered by the spread', () => {
-    const dispose = registerViewportCapture(() => VP_A);
-    openTab('005930');
-    openTab('000660'); // new-tab path: snapshot A, THEN [...get().tabs, B]
-    expect(useLiveTabsStore.getState().tabs[0].viewport).toEqual(VP_A);
-    dispose();
-  });
-
-  it('focusTab snapshots the outgoing tab but leaves the target tab viewport untouched', () => {
-    // Capture is one-directional: the store SAVES viewport on switch-away;
-    // restore happens in LiveChartRoot via the restoreViewport prop, not here.
-    const dispose = registerViewportCapture(() => VP_A);
-    openTab('005930');
-    openTab('000660'); // leaving A → A.viewport = VP_A
-    const aId = useLiveTabsStore.getState().tabs[0].id;
-    useLiveTabsStore.getState().focusTab(aId); // leaving B → B.viewport = VP_A; A unchanged
-    expect(useLiveTabsStore.getState().tabs[0].viewport).toEqual(VP_A);
-    dispose();
-  });
-
-  it('no registered capture → switch leaves viewport null (tests / empty chart)', () => {
-    openTab('005930');
-    openTab('000660');
-    expect(useLiveTabsStore.getState().tabs[0].viewport).toBeNull();
-  });
-
-  it('a null capture result is not written (degenerate / torn-down chart)', () => {
-    const dispose = registerViewportCapture(() => null);
-    openTab('005930');
-    openTab('000660');
-    expect(useLiveTabsStore.getState().tabs[0].viewport).toBeNull();
-    dispose();
-  });
 });
 
 describe('initLiveTabsSync', () => {

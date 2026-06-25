@@ -411,6 +411,8 @@ export function LiveWorkarea({
                 <LiveSidebar
                   code={activeCode}
                   live={live}
+                  bundle={chartBundle ?? bundle}
+                  todayKst={todayKst}
                   programTrade={(chartBundle ?? bundle)?.program_trade ?? null}
                 />
               </div>

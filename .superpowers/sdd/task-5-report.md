@@ -1,64 +1,57 @@
-# Task 5 Report: Index Sector Ranking Pane Component
+# Task 5 Report: Live Wiring And Today Recompute
 
-Implemented `frontend/src/live/IndexSectorRankingPane.tsx` and `frontend/src/live/IndexSectorRankingPane.test.tsx` only, keeping the work inside the requested scope and leaving `LiveWorkarea` untouched.
+## Status
+
+DONE
 
 ## What changed
 
-- Added the pane component with the required public props and behavior.
-- Wired sector hover preview and click-to-pin behavior through `indexSectorRankingState`.
-- Rendered the requested header state from `basisDate` and `basisMode`, including the pinned-date clear action.
-- Added loading, error, unavailable, and empty states.
-- Rendered the active sector's stocks and forwarded stock clicks to `onOpenStock(code, name)`.
+1. Wired `연속체결 매물대 분포 (Continuous Trade Volume Distribution)` into `/live` sidebar rendering.
+2. Threaded the active chart-side `RangeBundle` and `todayKst` into `LiveSidebar` from `LiveWorkarea`.
+3. In `LiveSidebar`, derived the active stock-date profile by KST date:
+   - hovered stock-date when minute spot cursor is active
+   - latest segment date otherwise
+4. Added a today-only recompute path that uses:
+   - the active bundle's today segment session bounds
+   - the active bundle's today candles for the price grid
+   - live trade buffer rows flattened from `live.trade`
+   - `computeContinuousTradeVolumeDistribution`
+5. Kept recompute dependencies scoped to bundle/trade/settings inputs so cursor movement only changes profile selection and marker placement, not the expensive recompute memo.
+6. Preserved persisted `volume_distributions` coverage and added regression tests around it.
+7. Updated the existing `useLiveBundle` test expectation to match the already-present `volumeDistributionBins` query option.
 
-## Test coverage
+## Domain behavior verified
 
-- Basis date and default rank-1 rendering.
-- Hover preview switching between sectors.
-- Click pin and unpin behavior.
-- Stock navigation callback.
-- Unavailable daily corpus state.
+- Only continuous-trading trades count: `side === 1 || side === -1`
+- `side === 0` rows are excluded via the recompute helper
+- Price grid comes from today candle low/high, not trade min/max
+- Session bounds come from the per-date segment already built for the active bundle
+- Persisted profile remains the fallback when today recompute is unavailable
+
+## Files changed
+
+- `frontend/src/live/LiveSidebar.tsx`
+- `frontend/src/live/LiveWorkarea.tsx`
+- `frontend/src/live/LiveSidebar.test.tsx`
+- `frontend/src/live/buildLiveBundle.test.ts`
+- `frontend/src/live/useLiveBundle.test.tsx`
 
 ## Verification
 
-Focused tests passed:
+Ran:
 
 ```bash
-cd frontend && npx vitest run src/live/IndexSectorRankingPane.test.tsx src/live/indexSectorRankingState.test.ts
+cd frontend
+npm test -- useLiveBundle.test.tsx buildLiveBundle.test.ts LiveSidebar.test.tsx LiveWorkarea.test.tsx
 ```
 
-Result: 2 files passed, 11 tests passed.
+Result:
+
+- `4` test files passed
+- `83` tests passed
+- `0` failures
 
 ## Notes
 
-- I removed the forced preview clear from the sector unpin click path. The pane now leaves the current preview alone on unpin and lets the existing hover/focus leave handlers decide when to fall back to rank 1.
-
-## Review Fix
-
-The `IndexSectorRankingPane` unpin handler no longer dispatches `preview_sector(null)`. That keeps the active sector preview stable while the cursor or keyboard focus is still on the same button, and it only returns to rank 1 after hover/focus leaves.
-
-Verification:
-
-```bash
-cd frontend && npx vitest run src/live/IndexSectorRankingPane.test.tsx src/live/indexSectorRankingState.test.ts
-```
-
-Result: 2 files passed, 11 tests passed.
-
-## Null-folder Fix
-
-The sector UI state now tracks an internal sector key instead of storing raw `folder_id` values directly. Regular sectors use `folder:<id>`, uncategorized sectors use `__uncat__`, and `null` remains the sentinel for "no preview" / "no pin".
-
-That lets the backend's valid null-folder `미분류` sector participate in hover preview and click-to-pin without colliding with the empty state. The pane now encodes sector identity before dispatching preview/pin actions, and the reducer resolves those keys back to the matching ranking sector.
-
-Added regression coverage for:
-
-- reducer preview/pin handling for `__uncat__`
-- pane hover preview and pinned state for a `folder_id: null` sector
-
-Verification:
-
-```bash
-cd frontend && npx vitest run src/live/IndexSectorRankingPane.test.tsx src/live/indexSectorRankingState.test.ts
-```
-
-Result: 2 files passed, 13 tests passed.
+- I did not implement study detail restore; that remains Task 6 as requested.
+- `useLiveBundle.ts` and `buildLiveBundle.ts` already contained the volume-distribution query option / pass-through pieces from earlier tasks, so this task focused on the missing `/live` wiring and today recompute behavior.

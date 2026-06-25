@@ -31,6 +31,8 @@ const livePageMocks = vi.hoisted(() => {
       code?: string | null;
       timeframe?: string;
       viewIdentity?: string;
+      restoreViewport?: unknown;
+      onViewportCaptureReady?: (capture: () => unknown) => void;
       chartBundle?: RangeBundle | null;
       tradeVolumePocs?: unknown[];
       isExtending?: boolean;
@@ -87,7 +89,13 @@ if (typeof window !== 'undefined' && !window.ResizeObserver) {
 // activeCode is set. Mock LiveChartRoot so the shell tests stay unit-level
 // and don't have to model lightweight-charts' full v5 series/timeScale API.
 vi.mock('./LiveChartRoot', () => ({
-  LiveChartRoot: (props: { code?: string | null; timeframe?: string; viewIdentity?: string }) => {
+  LiveChartRoot: (props: {
+    code?: string | null;
+    timeframe?: string;
+    viewIdentity?: string;
+    restoreViewport?: unknown;
+    onViewportCaptureReady?: (capture: () => unknown) => void;
+  }) => {
     livePageMocks.liveChartRootProps.push(props);
     return null;
   },
@@ -203,6 +211,7 @@ function rangeBundleFixture(overrides: Partial<RangeBundle> = {}): RangeBundle {
     fill_strength: { bucket_ms: 300_000, points: [{ t: 1_000, buy_qty: 5, sell_qty: 4 }] },
     volume_profile_range: { bin_count: 0, price_min: 0, price_max: 0, bin_width: 0, bins: [] },
     volume_profile_by_day: [],
+    volume_distributions: overrides.volume_distributions ?? [],
     investorPoints: [],
     ask_peaks: [],
     bid_peaks: [],
@@ -548,7 +557,7 @@ describe('LivePage shell', () => {
     // 아니라 탭이 진실). 마운트 시드가 focusTab → applyTabToPage 로 동기화한다.
     const id = 'restored';
     useLiveTabsStore.setState({
-      tabs: [{ id, code: '035720', label: '035720', timeframe: '1m', historicalFromDate: null, viewport: null }],
+      tabs: [{ id, code: '035720', label: '035720', timeframe: '1m', historicalFromDate: null }],
       activeTabId: id,
     });
     renderWithRouter();
@@ -558,8 +567,8 @@ describe('LivePage shell', () => {
   it('passes the active tab id as chart view identity so same-code tabs do not share viewport state', () => {
     useLiveTabsStore.setState({
       tabs: [
-        { id: 'tab-a', code: '005930', label: '삼성전자', timeframe: '1m', historicalFromDate: null, viewport: null },
-        { id: 'tab-b', code: '005930', label: '삼성전자', timeframe: '1m', historicalFromDate: null, viewport: null },
+        { id: 'tab-a', code: '005930', label: '삼성전자', timeframe: '1m', historicalFromDate: null },
+        { id: 'tab-b', code: '005930', label: '삼성전자', timeframe: '1m', historicalFromDate: null },
       ],
       activeTabId: 'tab-b',
     });
@@ -570,13 +579,37 @@ describe('LivePage shell', () => {
       code: '005930',
       timeframe: '1m',
       viewIdentity: 'tab-b:KRX',
+      restoreViewport: null,
     });
+  });
+
+  it('does not restore logical viewport across minute timeframe changes', async () => {
+    const capturedViewport = {
+      rightEdgeMs: 1_781_000_000_000,
+      barSpan: 331,
+      atLiveEdge: true,
+    };
+    renderWithRouter('/live?code=005930');
+    await waitFor(() => expect(livePageMocks.liveChartRootProps.at(-1)?.code).toBe('005930'));
+    act(() => {
+      livePageMocks.liveChartRootProps.at(-1)?.onViewportCaptureReady?.(() => capturedViewport);
+    });
+
+    act(() => {
+      screen.getByRole('button', { name: '분봉 선택 열기: 1분' }).click();
+    });
+    act(() => {
+      screen.getByRole('menuitemradio', { name: '3분' }).click();
+    });
+
+    await waitFor(() => expect(livePageMocks.liveChartRootProps.at(-1)?.timeframe).toBe('3m'));
+    expect(livePageMocks.liveChartRootProps.at(-1)?.restoreViewport).toBeNull();
   });
 
   it('includes the selected venue in bundle options, status text, and chart identity', () => {
     useLiveVenueStore.setState({ venue: 'AUTO' });
     useLiveTabsStore.setState({
-      tabs: [{ id: 'tab-a', code: '005930', label: '삼성전자', timeframe: '1m', historicalFromDate: null, viewport: null }],
+      tabs: [{ id: 'tab-a', code: '005930', label: '삼성전자', timeframe: '1m', historicalFromDate: null }],
       activeTabId: 'tab-a',
     });
 

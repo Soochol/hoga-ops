@@ -174,7 +174,15 @@ describe('useLiveBundle', () => {
     // 5th arg = priceRange (undefined here); 6th = todayKst, which drives the
     // 5-min refetch that advances pastMaxQrT (review C1). minutePastTo === today
     // so todayKst === to === '20260527'.
-    expect(useRangeSpy).toHaveBeenCalledWith('005930', '20250920', '20260527', '1m', undefined, '20260527');
+    expect(useRangeSpy).toHaveBeenCalledWith(
+      '005930',
+      '20250920',
+      '20260527',
+      '1m',
+      undefined,
+      '20260527',
+      { volumeDistributionBins: 10 },
+    );
   });
 
   it('exposes clampEngaged=true when historicalFromDate older than 250 days', () => {

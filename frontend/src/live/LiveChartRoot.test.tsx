@@ -57,6 +57,7 @@ vi.mock('lightweight-charts', async () => {
         getVisibleRange: vi.fn(() => null),
         setVisibleRange: vi.fn(),
         timeToCoordinate: vi.fn(() => null),
+        width: vi.fn(() => 800),
       })),
       panes: vi.fn(() => []),
       remove: vi.fn(),
@@ -82,6 +83,7 @@ const DEFAULT_BUNDLE: RangeBundle = {
   fill_strength: { bucket_ms: 60_000, points: [] },
   volume_profile_range: { bin_count: 0, price_min: 0, price_max: 0, bin_width: 0, bins: [] },
   volume_profile_by_day: [],
+  volume_distributions: [],
   investorPoints: [],
   ask_peaks: [],
 };
@@ -639,7 +641,7 @@ describe('LiveChartRoot', () => {
     expect(ts.setVisibleLogicalRange).toHaveBeenCalledTimes(1);
   });
 
-  it('1m timeframe: initial apply includes the configured right-offset whitespace', () => {
+  it('1m timeframe: initial apply includes pixel-safe right whitespace', () => {
     // The live edge should look like W/M: latest candle visible with an empty
     // band to its right. The range owns that padding directly instead of
     // scrollToPosition(0), which snaps the candle tight to the right edge.
@@ -658,7 +660,51 @@ describe('LiveChartRoot', () => {
       { wrapper },
     );
     expect(ts.setVisibleLogicalRange).toHaveBeenCalledTimes(1);
-    expect(ts.setVisibleLogicalRange).toHaveBeenLastCalledWith({ from: 0, to: 115 });
+    expect(ts.setVisibleLogicalRange).toHaveBeenLastCalledWith({ from: 0, to: 130 });
+    expect(ts.scrollToPosition).not.toHaveBeenCalled();
+  });
+
+  it('minute timeframes: widen live-edge whitespace enough to clear the right axis labels', () => {
+    useLivePageStore.setState({ historicalFromDate: null });
+    const { chart, ts } = buildChartMockWithStableTS();
+    ts.width.mockReturnValue(1495);
+    vi.mocked(createChartEx).mockImplementationOnce(() => chart as never);
+
+    render(
+      <LiveChartRoot
+        code="005930"
+        timeframe="1m"
+        bundle={makeBundleWithCandles(400)}
+        clampEngaged={false}
+        isPastCandlesLoading={false}
+      />,
+      { wrapper },
+    );
+
+    expect(ts.setVisibleLogicalRange).toHaveBeenCalledTimes(1);
+    expect(ts.setVisibleLogicalRange).toHaveBeenLastCalledWith({ from: 100, to: 442 });
+    expect(ts.scrollToPosition).not.toHaveBeenCalled();
+  });
+
+  it('10m timeframe: uses the same pixel-gutter policy as 1m', () => {
+    useLivePageStore.setState({ historicalFromDate: null });
+    const { chart, ts } = buildChartMockWithStableTS();
+    ts.width.mockReturnValue(1495);
+    vi.mocked(createChartEx).mockImplementationOnce(() => chart as never);
+
+    render(
+      <LiveChartRoot
+        code="005930"
+        timeframe="10m"
+        bundle={makeBundleWithCandles(400)}
+        clampEngaged={false}
+        isPastCandlesLoading={false}
+      />,
+      { wrapper },
+    );
+
+    expect(ts.setVisibleLogicalRange).toHaveBeenCalledTimes(1);
+    expect(ts.setVisibleLogicalRange).toHaveBeenLastCalledWith({ from: 100, to: 442 });
     expect(ts.scrollToPosition).not.toHaveBeenCalled();
   });
 
@@ -680,7 +726,7 @@ describe('LiveChartRoot', () => {
     );
 
     expect(ts.setVisibleLogicalRange).toHaveBeenCalledTimes(1);
-    expect(ts.setVisibleLogicalRange).toHaveBeenLastCalledWith({ from: 180, to: 915 });
+    expect(ts.setVisibleLogicalRange).toHaveBeenLastCalledWith({ from: 180, to: 1110 });
   });
 
   it('1m timeframe: code change re-applies setVisibleLogicalRange with new count', () => {
@@ -704,7 +750,7 @@ describe('LiveChartRoot', () => {
       />,
       { wrapper },
     );
-    expect(first.ts.setVisibleLogicalRange).toHaveBeenLastCalledWith({ from: 0, to: 115 });
+    expect(first.ts.setVisibleLogicalRange).toHaveBeenLastCalledWith({ from: 0, to: 130 });
 
     // Watchlist switch: new code, new (smaller-or-larger) bundle. The fresh
     // chart instance must receive the new code's 300-bar window — and the
@@ -718,7 +764,7 @@ describe('LiveChartRoot', () => {
         isPastCandlesLoading={false}
       />,
     );
-    expect(second.ts.setVisibleLogicalRange).toHaveBeenLastCalledWith({ from: 100, to: 415 });
+    expect(second.ts.setVisibleLogicalRange).toHaveBeenLastCalledWith({ from: 100, to: 488 });
     expect(first.ts.setVisibleLogicalRange).toHaveBeenCalledTimes(1);
   });
 
@@ -965,6 +1011,7 @@ const TODAY_ONLY_BUNDLE: RangeBundle = {
   fill_strength: { bucket_ms: 60_000, points: [] },
   volume_profile_range: { bin_count: 0, price_min: 0, price_max: 0, bin_width: 0, bins: [] },
   volume_profile_by_day: [],
+  volume_distributions: [],
   investorPoints: [],
   ask_peaks: [],
 };
@@ -986,13 +1033,14 @@ const TWO_SEGMENT_BUNDLE: RangeBundle = {
   fill_strength: { bucket_ms: 60_000, points: [] },
   volume_profile_range: { bin_count: 0, price_min: 0, price_max: 0, bin_width: 0, bins: [] },
   volume_profile_by_day: [],
+  volume_distributions: [],
   investorPoints: [],
   ask_peaks: [],
 };
 
 describe('LiveChartRoot lazy fetch trigger', () => {
   beforeEach(() => {
-    useLivePageStore.setState({ historicalFromDate: null });
+    useLivePageStore.setState({ activeCode: null, candleTimeframe: '1m', historicalFromDate: null });
     vi.useFakeTimers();
     vi.setSystemTime(TODAY_OPEN_MS);
   });
@@ -1115,6 +1163,61 @@ describe('LiveChartRoot lazy fetch trigger', () => {
     expect(useLivePageStore.getState().historicalFromDate).toBeNull();
   });
 
+  it('does NOT fire extendHistoricalRange before the initial viewport has been applied', () => {
+    const handlers: Array<(r: unknown) => void> = [];
+    const chart = buildChartMockCapturing(handlers) as any;
+    const ts = chart.timeScale();
+    ts.subscribeVisibleLogicalRangeChange = vi.fn((h: (r: unknown) => void) => {
+      handlers.push(h);
+      h({ from: -50.3, to: 100.7 });
+    });
+    vi.mocked(createChartEx).mockImplementationOnce(() => chart);
+
+    render(
+      <LiveChartRoot
+        code="005930"
+        timeframe="1m"
+        bundle={TWO_SEGMENT_BUNDLE}
+        clampEngaged={false}
+        isPastCandlesLoading={false}
+      />,
+      { wrapper },
+    );
+
+    act(() => {
+      vi.advanceTimersByTime(200);
+    });
+
+    expect(useLivePageStore.getState().historicalFromDate).toBeNull();
+    expect(ts.setVisibleLogicalRange).toHaveBeenCalled();
+  });
+
+  it('does NOT apply a stale backfill debounce after the timeframe changed', () => {
+    const handlers: Array<(r: unknown) => void> = [];
+    vi.mocked(createChartEx).mockImplementationOnce(() => buildChartMockCapturing(handlers) as any);
+    useLivePageStore.setState({ activeCode: '005930', candleTimeframe: '1m', historicalFromDate: null });
+
+    render(
+      <LiveChartRoot
+        code="005930"
+        timeframe="1m"
+        bundle={TWO_SEGMENT_BUNDLE}
+        clampEngaged={false}
+        isPastCandlesLoading={false}
+      />,
+      { wrapper },
+    );
+
+    act(() => {
+      handlers.forEach((h) => h({ from: -50.3, to: 100.7 }));
+      useLivePageStore.getState().setCandleTimeframe('3m');
+      vi.advanceTimersByTime(200);
+    });
+
+    expect(useLivePageStore.getState().candleTimeframe).toBe('3m');
+    expect(useLivePageStore.getState().historicalFromDate).toBeNull();
+  });
+
   it('(auto-fill 불변식) 캔들 로드 후 초기 빈영역(from<0)은 사용자 팬 없이 자동 백필 — small-window 보장', () => {
     // (a) 초기 창 5거래일 축소(/diagnose 2026-06-09 후속)의 안전성 고정: 받아둔 양이
     // 적어도, 화면에 빈영역이 보이면 사용자 액션 없이 채워진다. 여기선 그 시작점인 3b
@@ -1186,6 +1289,7 @@ describe('LiveChartRoot lazy fetch trigger', () => {
     // extend the same way as on minute timeframes. Prior behavior had a
     // `!isMinuteTimeframe` early-return that blocked D/W/M users from
     // ever seeing more history; this guards against that regression.
+    useLivePageStore.setState({ candleTimeframe: 'D' });
     const handlers: Array<(r: unknown) => void> = [];
     vi.mocked(createChartEx).mockImplementationOnce(() => buildChartMockCapturing(handlers) as any);
 
@@ -1326,7 +1430,7 @@ describe('LiveChartRoot historical-prepend viewport preservation', () => {
       getVisibleLogicalRange: vi.fn(() => ({ from: LR_FROM, to: LR_TO })),
       // Stand-in union index = the (integer) virtual-second value, so the test
       // can derive the expected shift from the same axis math production uses.
-      timeToIndex: vi.fn((t: unknown) => Math.round(t as number)),
+      timeToIndex: vi.fn((t: unknown): number | null => Math.round(t as number)),
       width: vi.fn(() => 800),
       setVisibleRange: vi.fn(),
       timeToCoordinate: vi.fn(() => null),
@@ -1605,6 +1709,7 @@ describe('LiveChartRoot historical-prepend viewport preservation', () => {
   it('restore: no saved viewport → the default 300-bar minute window (regression)', () => {
     const handlers: Array<(r: unknown) => void> = [];
     const ts = makeTs(handlers);
+    ts.timeToIndex.mockReturnValue(null);
     vi.mocked(createChartEx).mockImplementationOnce(() => buildStableCapturingMock(ts) as any);
 
     render(
@@ -1613,7 +1718,24 @@ describe('LiveChartRoot historical-prepend viewport preservation', () => {
         clampEngaged={false} isPastCandlesLoading={false} /> /* restoreViewport omitted */,
       { wrapper },
     );
-    expect(ts.setVisibleLogicalRange).toHaveBeenLastCalledWith({ from: 0, to: 115 });
+    expect(ts.setVisibleLogicalRange).toHaveBeenLastCalledWith({ from: 0, to: 130 });
+  });
+
+  it('initial minute viewport anchors to the latest candle union index, not candles.length', () => {
+    const handlers: Array<(r: unknown) => void> = [];
+    const ts = makeTs(handlers);
+    ts.timeToIndex.mockReturnValue(699);
+    vi.mocked(createChartEx).mockImplementationOnce(() => buildStableCapturingMock(ts) as any);
+
+    render(
+      <LiveChartRoot code="005930" timeframe="3m"
+        bundle={todayBundle(Array.from({ length: 400 }, (_, i) => TODAY_OPEN_MS + (i + 1) * 3 * 60_000))}
+        clampEngaged={false} isPastCandlesLoading={false} />,
+      { wrapper },
+    );
+
+    expect(ts.timeToIndex).toHaveBeenCalled();
+    expect(ts.setVisibleLogicalRange).toHaveBeenLastCalledWith({ from: 400, to: 788 });
   });
 
   it('restore: an anchor older than the earliest loaded bar falls through to default (no degenerate {0,0})', () => {
@@ -1624,6 +1746,7 @@ describe('LiveChartRoot historical-prepend viewport preservation', () => {
     // (before the first bar).
     const handlers: Array<(r: unknown) => void> = [];
     const ts = makeTs(handlers);
+    ts.timeToIndex.mockReturnValue(null);
     vi.mocked(createChartEx).mockImplementationOnce(() => buildStableCapturingMock(ts) as any);
 
     render(
@@ -1634,7 +1757,7 @@ describe('LiveChartRoot historical-prepend viewport preservation', () => {
       { wrapper },
     );
     // Default minute window, NOT {from:0,to:0}.
-    expect(ts.setVisibleLogicalRange).toHaveBeenLastCalledWith({ from: 0, to: 115 });
+    expect(ts.setVisibleLogicalRange).toHaveBeenLastCalledWith({ from: 0, to: 130 });
   });
 
   // ── 진행 루프(스텝 2..N): isExtending falling edge + 빈영역 → 다음 스텝 자가 dispatch ──
@@ -2077,6 +2200,24 @@ describe('LiveChartRoot crosshair → cursor store (ADR-0044)', () => {
 /** Build a fresh chart mock that captures any subscribed visible-range
  * handler so the test can invoke it synchronously. */
 function buildChartMockCapturing(handlers: Array<(r: unknown) => void>) {
+  const ts = {
+    subscribeVisibleTimeRangeChange: vi.fn(),
+    unsubscribeVisibleTimeRangeChange: vi.fn(),
+    subscribeVisibleLogicalRangeChange: (h: (r: unknown) => void) => {
+      handlers.push(h);
+    },
+    unsubscribeVisibleLogicalRangeChange: vi.fn(),
+    applyOptions: vi.fn(),
+    fitContent: vi.fn(),
+    scrollToRealTime: vi.fn(),
+    scrollToPosition: vi.fn(),
+    setVisibleLogicalRange: vi.fn(),
+    getVisibleRange: vi.fn(() => null),
+    setVisibleRange: vi.fn(),
+    timeToCoordinate: vi.fn(() => null),
+    timeToIndex: vi.fn(() => null),
+    width: vi.fn(() => 800),
+  };
   return {
     addSeries: vi.fn(() => ({
       setData: vi.fn(),
@@ -2091,21 +2232,7 @@ function buildChartMockCapturing(handlers: Array<(r: unknown) => void>) {
       setMarkers: vi.fn(),
     })),
     removeSeries: vi.fn(),
-    timeScale: vi.fn(() => ({
-      subscribeVisibleTimeRangeChange: vi.fn(),
-      unsubscribeVisibleTimeRangeChange: vi.fn(),
-      subscribeVisibleLogicalRangeChange: (h: (r: unknown) => void) => {
-        handlers.push(h);
-      },
-      unsubscribeVisibleLogicalRangeChange: vi.fn(),
-      applyOptions: vi.fn(),
-      fitContent: vi.fn(),
-      scrollToRealTime: vi.fn(),
-      setVisibleLogicalRange: vi.fn(),
-      getVisibleRange: vi.fn(() => null),
-      setVisibleRange: vi.fn(),
-      timeToCoordinate: vi.fn(() => null),
-    })),
+    timeScale: vi.fn(() => ts),
     panes: vi.fn(() => []),
     remove: vi.fn(),
     resize: vi.fn(),
