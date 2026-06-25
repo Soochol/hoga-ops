@@ -199,6 +199,7 @@ describe('LiveSidebar', () => {
     expect(screen.queryByText('09:00')).toBeNull();
     expect(screen.getAllByTestId('volume-distribution-row')).toHaveLength(2);
     expect(screen.getByTestId('volume-distribution-max-bar')).toBeInTheDocument();
+    expect(screen.getByTestId('volume-distribution-close-line')).toBeInTheDocument();
   });
 
   it('keeps persisted today volume distribution instead of replacing it with the live tail', () => {

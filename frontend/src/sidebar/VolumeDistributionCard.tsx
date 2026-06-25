@@ -4,11 +4,12 @@ import { classifyWithinSegment } from '../util/sessionTime';
 type Props = {
   profile: DayVolumeDistribution | null | undefined;
   cursorMs: number | null;
+  closePrice?: number | null;
   color: string;
   maxColor: string;
 };
 
-export function VolumeDistributionCard({ profile, cursorMs, color, maxColor }: Props) {
+export function VolumeDistributionCard({ profile, cursorMs, closePrice = null, color, maxColor }: Props) {
   if (profile === undefined) {
     return <div className="grid h-full place-items-center text-xs text-fg-dimmer">—</div>;
   }
@@ -29,6 +30,15 @@ export function VolumeDistributionCard({ profile, cursorMs, color, maxColor }: P
   const markerPct = markerVisible && axisEndMs > profile.session_open_ms
     ? ((cursorMs - profile.session_open_ms) / (axisEndMs - profile.session_open_ms)) * 100
     : 0;
+  const closeLineVisible =
+    closePrice != null &&
+    Number.isFinite(closePrice) &&
+    closePrice >= profile.price_min &&
+    closePrice <= profile.price_max &&
+    profile.price_max > profile.price_min;
+  const closeLinePct = closeLineVisible
+    ? ((profile.price_max - closePrice) / (profile.price_max - profile.price_min)) * 100
+    : 0;
   return (
     <div
       data-testid="volume-distribution-card"
@@ -40,6 +50,13 @@ export function VolumeDistributionCard({ profile, cursorMs, color, maxColor }: P
             data-testid="volume-distribution-cursor-marker"
             className="pointer-events-none absolute bottom-0 top-0 border-l border-dotted border-accent"
             style={{ left: `${Math.min(100, Math.max(0, markerPct))}%` }}
+          />
+        )}
+        {closeLineVisible && (
+          <div
+            data-testid="volume-distribution-close-line"
+            className="pointer-events-none absolute left-0 right-0 border-t border-dashed border-fg-dimmer/70"
+            style={{ top: `${Math.min(100, Math.max(0, closeLinePct))}%` }}
           />
         )}
         <div className="flex h-full min-h-0 flex-col gap-1">

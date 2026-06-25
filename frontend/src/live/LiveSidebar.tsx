@@ -216,6 +216,14 @@ export function LiveSidebar({ code, live, bundle = null, todayKst = '' }: Props)
     persistedVolumeDistributions,
     liveDistributionTrades,
   ]);
+  const activeVolumeDistributionClose = useMemo(() => {
+    if (!activeBundle || !activeVolumeDistributionDate) return null;
+    const candles = activeBundle.candles
+      .filter((candle) => realMsToYyyymmdd(candle.ts_ms) === activeVolumeDistributionDate)
+      .sort((a, b) => a.ts_ms - b.ts_ms);
+    const last = candles[candles.length - 1];
+    return last?.close ?? null;
+  }, [activeBundle, activeVolumeDistributionDate]);
 
   // T14b: "다음 가용: HH:MM" hint above orderbook table when spot orderbook
   // has no snapshot yet AND the SSE buffer can't fill it either (a genuine gap,
@@ -263,6 +271,7 @@ export function LiveSidebar({ code, live, bundle = null, todayKst = '' }: Props)
             <VolumeDistributionCard
               profile={activeVolumeDistribution}
               cursorMs={isSpot ? cursorMs : brokerCursorMs}
+              closePrice={activeVolumeDistributionClose}
               color={volumeDistributionColor}
               maxColor={volumeDistributionMaxColor}
             />

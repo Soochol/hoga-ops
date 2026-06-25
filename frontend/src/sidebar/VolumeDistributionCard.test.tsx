@@ -27,6 +27,7 @@ describe('VolumeDistributionCard', () => {
       <VolumeDistributionCard
         profile={profile}
         cursorMs={cursorMs}
+        closePrice={110}
         color="#64748B"
         maxColor="#EAB308"
       />,
@@ -39,6 +40,7 @@ describe('VolumeDistributionCard', () => {
     expect(screen.queryByText('09:00')).toBeNull();
     expect(screen.queryByText('15:30')).toBeNull();
     expect(screen.getByTestId('volume-distribution-max-bar')).toBeInTheDocument();
+    expect(screen.getByTestId('volume-distribution-close-line')).toHaveStyle({ top: '50%' });
   });
 
   it('shows the cursor marker only inside the session bounds', () => {
@@ -63,6 +65,20 @@ describe('VolumeDistributionCard', () => {
     );
 
     expect(screen.queryByTestId('volume-distribution-cursor-marker')).toBeNull();
+  });
+
+  it('hides the close line when the close is outside the profile price range', () => {
+    render(
+      <VolumeDistributionCard
+        profile={profile}
+        cursorMs={cursorMs}
+        closePrice={99}
+        color="#64748B"
+        maxColor="#EAB308"
+      />,
+    );
+
+    expect(screen.queryByTestId('volume-distribution-close-line')).toBeNull();
   });
 
   it('positions the cursor marker against the latest trade time when available', () => {
