@@ -16,6 +16,7 @@ from __future__ import annotations
 
 import json
 from datetime import datetime, timedelta, timezone
+from pathlib import Path
 from typing import TYPE_CHECKING, Literal
 
 from fastapi import HTTPException
@@ -31,6 +32,8 @@ from hoga.api.models import (
     FillStrength,
     FillStrengthPoint,
     PriceLevelHit,
+    ProgramTradePoint,
+    ProgramTradeSeries,
     QuoteRatio,
     QuoteRatioPoint,
     RangeBundle,
@@ -52,6 +55,7 @@ from hoga.tables import snapshots as snapshots_tbl
 from hoga.tables import trades as trades_tbl
 from hoga.tables.candles import ApiCandle
 from hoga.tables.trades import FillStrengthRow
+from hoga.live.program_trade_store import ProgramTradeStore
 
 if TYPE_CHECKING:
     from hoga.api.past_indicators_cache import PastIndicatorsCache
@@ -821,7 +825,32 @@ def _empty_range_bundle(
         ask_peaks=[],
         bid_peaks=[],
         price_level_hits=[],
+        program_trade=ProgramTradeSeries(points=[]),
     )
+
+
+def build_program_trade_series(engine: QueryEngine, *, code: str, dates: list[str]) -> ProgramTradeSeries:
+    data_dir = getattr(engine, "data_dir", None)
+    if not isinstance(data_dir, Path):
+        return ProgramTradeSeries(points=[])
+    store = ProgramTradeStore(data_dir)
+    points: list[ProgramTradePoint] = []
+    for date in dates:
+        day = store.load(code, date)
+        gap_times = {str(ev.get("new_oldest")) for ev in day.gap_events}
+        for row in day.rows:
+            points.append(
+                ProgramTradePoint(
+                    t=row.t_ms,
+                    net_qty=row.net_qty,
+                    net_amount=row.net_amount,
+                    delta_qty=row.delta_qty,
+                    delta_amount=row.delta_amount,
+                    gap_risk=row.bsop_hour in gap_times,
+                )
+            )
+    points.sort(key=lambda p: p.t)
+    return ProgramTradeSeries(points=points)
 
 
 def build_range_bundle(
@@ -883,6 +912,7 @@ def build_range_bundle(
     bid_peaks: list[BidPeak] = []
     price_level_hits: list[PriceLevelHit] = []
     trade_volume_pocs: list[TradeVolumePoc] = []
+    included_dates: list[str] = []
 
     # Indicator cache (호가비·체결강도): completed past days are computed once and
     # re-aggregated on later pans; today_kst gates today out (still promoting).
@@ -967,6 +997,7 @@ def build_range_bundle(
             session_close_ms=hhmmssms_to_unix_ms(d, meta["regular_session_close_ms"]),
             source=source,
         ))
+        included_dates.append(d)
         candles.extend(candles_d)
         ratio_pts.extend(qr_d.points)
         fill_pts.extend(fs_d.points)
@@ -1016,4 +1047,5 @@ def build_range_bundle(
         bid_peaks=bid_peaks,
         price_level_hits=price_level_hits,
         trade_volume_pocs=trade_volume_pocs,
+        program_trade=build_program_trade_series(engine, code=code, dates=included_dates),
     )

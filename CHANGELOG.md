@@ -3,6 +3,16 @@
 All notable changes to this project are documented here.
 The format follows a 4-digit `MAJOR.MINOR.PATCH.MICRO` scheme.
 
+## [0.10.0.0] - 2026-06-25
+
+### Added
+- **KIS 프로그램 순매수 저장 추가**: REST `program-trade-by-stock` 응답을 캡처 활성 관심그룹 종목 기준으로 30초 폴링하고, 거래일별 JSON sidecar로 누적 저장한다.
+- **프로그램 순매수 차트 지표 추가**: 저장된 프로그램 누적 순매수 금액을 `/live` 차트의 시간순 보조 pane으로 표시하고, 과거일 range bundle에서도 같은 sidecar를 읽어 보여준다.
+- **데이터소스 설정 토글 추가**: REST 저장이 허용된 정책에서만 `프로그램 순매수 저장`을 켤 수 있게 하고, `WS만 저장`에서는 자동으로 비활성화한다.
+
+### Changed
+- KIS 프로그램 순매수 row는 `bsop_hour`를 KST Unix ms로 보강해 과거일과 당일 그래프가 같은 시간축 규칙을 쓰도록 했다.
+
 ## [0.9.3.1] - 2026-06-24
 
 ### Added

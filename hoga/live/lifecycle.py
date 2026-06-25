@@ -112,6 +112,7 @@ class _State:
         live_set: tuple[str, ...] = (),
         rest_poller: LiveRestPoller | None = None,
         rest30_recorder: Rest30sRecorder | None = None,
+        program_trade_collector=None,
         storage_policy: LiveStoragePolicy = "ws_plus_rest",
         session: LiveSession | None = None,
     ) -> None:
@@ -126,6 +127,7 @@ class _State:
         self.session = session
         self.rest_poller = rest_poller
         self.rest30_recorder = rest30_recorder
+        self.program_trade_collector = program_trade_collector
         self.storage_policy = storage_policy
 
     # 위임 property — 기존 `_state.X` 접근 호환(streams dict의 in-place 변이도 그대로 통과).
@@ -414,6 +416,10 @@ def reset_for_tests() -> None:
                 task.cancel()
     recorder = _state.rest30_recorder
     task = getattr(recorder, "_task", None)
+    if task is not None and not task.done():
+        task.cancel()
+    collector = _state.program_trade_collector
+    task = getattr(collector, "_task", None)
     if task is not None and not task.done():
         task.cancel()
     _state = _State()

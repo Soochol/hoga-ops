@@ -485,6 +485,7 @@ export function buildChartBundle(input: BuildChartBundleInput): RangeBundle {
     // these, so the empty stub is invisible to the candle path.
     quote_ratio: { bucket_ms: bucketMs, points: [] },
     fill_strength: { bucket_ms: bucketMs, points: [] },
+    program_trade: pastBundle?.program_trade ?? { points: [] },
     volume_profile_range: EMPTY_VOLUME_PROFILE,
     volume_profile_by_day: [],
     investorPoints,

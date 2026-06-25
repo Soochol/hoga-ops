@@ -818,6 +818,59 @@ async def test_fetch_investor_trend_estimate_accepts_output_fallback(tmp_path) -
     assert rows[0].slot == "1430"
 
 
+def _program_trade_row(bsop_hour: str, *, net_qty: str, net_amount: str) -> dict:
+    return {
+        "bsop_hour": bsop_hour,
+        "stck_prpr": "70000",
+        "whol_smtn_ntby_qty": net_qty,
+        "whol_smtn_ntby_tr_pbmn": net_amount,
+        "whol_buy_qty": "1200",
+        "whol_seln_qty": "1000",
+        "whol_buy_tr_pbmn": "84000000",
+        "whol_seln_tr_pbmn": "70000000",
+        "whol_ntby_vol_icdc": "200",
+        "whol_ntby_tr_pbmn_icdc": "14000000",
+    }
+
+
+def _program_trade_handler(rows: list[dict]):
+    async def handler(request: httpx.Request) -> httpx.Response:
+        assert request.url.path == "/uapi/domestic-stock/v1/quotations/program-trade-by-stock"
+        assert request.url.params["FID_COND_MRKT_DIV_CODE"] == "J"
+        assert request.url.params["FID_INPUT_ISCD"] == "005930"
+        assert request.headers["tr_id"] == "FHPPG04650101"
+        return httpx.Response(200, json={
+            "rt_cd": "0",
+            "msg_cd": "MCA00000",
+            "msg1": "정상처리 되었습니다.",
+            "output": rows,
+        })
+
+    return handler
+
+
+@pytest.mark.anyio
+async def test_fetch_program_trade_by_stock_parses_rows_and_sorts(tmp_path) -> None:
+    client = _make_client(
+        _program_trade_handler([
+            _program_trade_row("090030", net_qty="-2,000", net_amount="-140000000"),
+            _program_trade_row("090000", net_qty="1,000", net_amount="70000000"),
+            {"bsop_hour": "", "whol_smtn_ntby_qty": "bad"},
+        ]),
+        tmp_path,
+    )
+
+    rows = await client.fetch_program_trade_by_stock("005930")
+
+    assert [r.bsop_hour for r in rows] == ["090000", "090030"]
+    assert rows[0].code == "005930"
+    assert rows[0].net_qty == 1000
+    assert rows[0].net_amount == 70000000
+    assert rows[0].buy_qty == 1200
+    assert rows[0].sell_qty == 1000
+    assert rows[1].net_qty == -2000
+
+
 @pytest.mark.asyncio
 async def test_fetch_investor_net_parses_foreign_and_institution(tmp_path) -> None:
     rows = [

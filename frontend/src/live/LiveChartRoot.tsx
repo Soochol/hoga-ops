@@ -150,6 +150,7 @@ interface Props {
     quoteTotalsEnabled?: boolean;
     ratioEnabled?: boolean;
     fillStrengthEnabled?: boolean;
+    programTradeEnabled?: boolean;
     hogaPanes?: boolean;
   };
   dailyMovingAverageOverride?: {
@@ -719,6 +720,7 @@ export function LiveChartRoot({ code, timeframe, venue = 'KRX', viewIdentity, bu
   const quoteTotalsEnabled = useLivePageStore((s) => s.quoteTotalsEnabled);
   const ratioEnabled = useLivePageStore((s) => s.ratioEnabled);
   const fillStrengthEnabled = useLivePageStore((s) => s.fillStrengthEnabled);
+  const programTradeEnabled = useLivePageStore((s) => s.programTradeEnabled);
   const askPeakEnabled = useLivePageStore((s) => s.askPeakEnabled);
   const bidPeakEnabled = useLivePageStore((s) => s.bidPeakEnabled);
   const askPeakIntraMax = useActivePrefs((s) => s.askPeakIntraMax);
@@ -729,6 +731,7 @@ export function LiveChartRoot({ code, timeframe, venue = 'KRX', viewIdentity, bu
   const effectiveQuoteTotalsEnabled = paneTogglesOverride?.quoteTotalsEnabled ?? quoteTotalsEnabled;
   const effectiveRatioEnabled = paneTogglesOverride?.ratioEnabled ?? ratioEnabled;
   const effectiveFillStrengthEnabled = paneTogglesOverride?.fillStrengthEnabled ?? fillStrengthEnabled;
+  const effectiveProgramTradeEnabled = paneTogglesOverride?.programTradeEnabled ?? programTradeEnabled;
   const effectiveHogaPanes = paneTogglesOverride?.hogaPanes;
 
   // Single source for the pane-mount toggles, consumed by BOTH the stretch
@@ -742,6 +745,7 @@ export function LiveChartRoot({ code, timeframe, venue = 'KRX', viewIdentity, bu
       quoteTotalsEnabled: effectiveQuoteTotalsEnabled,
       ratioEnabled: effectiveRatioEnabled,
       fillStrengthEnabled: effectiveFillStrengthEnabled,
+      programTradeEnabled: effectiveProgramTradeEnabled,
       hogaPanes: effectiveHogaPanes,
       forceHogaPanes,
     }),
@@ -752,6 +756,7 @@ export function LiveChartRoot({ code, timeframe, venue = 'KRX', viewIdentity, bu
       effectiveQuoteTotalsEnabled,
       effectiveRatioEnabled,
       effectiveFillStrengthEnabled,
+      effectiveProgramTradeEnabled,
       effectiveHogaPanes,
       forceHogaPanes,
     ],

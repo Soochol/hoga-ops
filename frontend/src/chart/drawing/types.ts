@@ -33,6 +33,7 @@ export type PaneId =
   | 'ratio'
   | 'quote-totals'
   | 'fill-strength'
+  | 'program-trade'
   | 'investor-foreign'
   | 'investor-institution';
 

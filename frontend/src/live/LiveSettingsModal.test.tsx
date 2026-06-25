@@ -64,6 +64,7 @@ describe('LiveSettingsModal (2단)', () => {
     vi.spyOn(liveSettingsApi, 'getLiveSettings').mockResolvedValue({
       schema_version: 1,
       storage_policy: 'ws_plus_rest',
+      program_trade_storage_enabled: false,
     });
     render(<LiveSettingsModal onClose={() => {}} />, {
       wrapper: wrap(new QueryClient({ defaultOptions: { queries: { retry: false } } })),

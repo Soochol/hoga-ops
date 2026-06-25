@@ -32,6 +32,7 @@ describe('mergeLiveIndicatorPrefs', () => {
       quoteTotalsEnabled: true,
       ratioEnabled: true,
       fillStrengthEnabled: true,
+      programTradeEnabled: true,
       dailyMovingAverages: DEFAULT_DAILY_MAS.map((m) => ({ ...m })),
       dailyMovingAverageEnabled: false,
       dailyMovingAverageHidden: false,
@@ -150,11 +151,12 @@ describe('mergeLiveIndicatorPrefs', () => {
 });
 
 describe('mergeLiveIndicatorPrefs — 호가 토글', () => {
-  it('빈 입력 → 호가 3토글 기본 ON', () => {
+  it('빈 입력 → 호가 4토글 기본 ON', () => {
     const m = mergeLiveIndicatorPrefs(undefined);
     expect(m.quoteTotalsEnabled).toBe(true);
     expect(m.ratioEnabled).toBe(true);
     expect(m.fillStrengthEnabled).toBe(true);
+    expect(m.programTradeEnabled).toBe(true);
     expect(m.tradeVolumePocEnabled).toBe(true);
     expect(m.tradeVolumePocBandPct).toBe(0.005);
     expect(m.tradeVolumePocColor).toBe('#A855F7');
@@ -165,15 +167,22 @@ describe('mergeLiveIndicatorPrefs — 호가 토글', () => {
     expect(m.quoteTotalsEnabled).toBe(true);
     expect(m.ratioEnabled).toBe(true);
     expect(m.fillStrengthEnabled).toBe(true);
+    expect(m.programTradeEnabled).toBe(true);
     expect(m.tradeVolumePocEnabled).toBe(true);
     expect(m.tradeVolumePocBandPct).toBe(0.005);
     expect(m.tradeVolumePocColor).toBe('#A855F7');
     expect(m.tradeVolumePocOpacity).toBe(0.12);
   });
   it('명시적 false 보존', () => {
-    const m = mergeLiveIndicatorPrefs({ ratioEnabled: false, fillStrengthEnabled: false, tradeVolumePocEnabled: false });
+    const m = mergeLiveIndicatorPrefs({
+      ratioEnabled: false,
+      fillStrengthEnabled: false,
+      programTradeEnabled: false,
+      tradeVolumePocEnabled: false,
+    });
     expect(m.ratioEnabled).toBe(false);
     expect(m.fillStrengthEnabled).toBe(false);
+    expect(m.programTradeEnabled).toBe(false);
     expect(m.tradeVolumePocEnabled).toBe(false);
     expect(m.quoteTotalsEnabled).toBe(true);
   });
