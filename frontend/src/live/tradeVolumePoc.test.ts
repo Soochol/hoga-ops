@@ -33,21 +33,30 @@ describe('krxStockTickSize', () => {
 });
 
 describe('computeTradeVolumePoc', () => {
-  it('defaults to the strongest +/-0.5% tick-adjusted regular-session price band', () => {
+  it('selects the strongest continuous-trade volume-distribution bin', () => {
     const poc = computeTradeVolumePoc([
-      trade(atKst(9, 1), 71_500, 20),
-      trade(atKst(9, 2), 72_300, 50),
-      trade(atKst(9, 3), 73_100, 30),
-      trade(atKst(9, 4), 76_000, 99),
-    ]);
+      trade(atKst(9, 1), 100, 10),
+      trade(atKst(9, 2), 110, 20),
+      trade(atKst(9, 3), 120, 30, 0),
+    ], {
+      date: '20260624',
+      candles: [{ ts_ms: atKst(9, 1), open: 100, high: 120, low: 100, close: 110, vol_a: 0, vol_b: 0 }],
+      rangeCount: 2,
+      segment: {
+        date: '20260624',
+        session_open_ms: atKst(9, 0),
+        session_close_ms: atKst(15, 30),
+        source: 'kis_live',
+      },
+    });
 
     expectPoc(poc, {
-      centerPrice: 76_000,
-      lowPrice: 75_600,
-      highPrice: 76_400,
-      qty: 99,
-      t_ms: atKst(9, 4),
-      date: '',
+      centerPrice: 115,
+      lowPrice: 110,
+      highPrice: 120,
+      qty: 20,
+      t_ms: atKst(9, 2),
+      date: '20260624',
     });
   });
 
@@ -86,6 +95,83 @@ describe('computeTradeVolumePoc', () => {
     });
   });
 
+  it('folds a trade at the day high into the last distribution bin', () => {
+    const segment = {
+      date: '20260624',
+      session_open_ms: atKst(9, 0),
+      session_close_ms: atKst(15, 30),
+      source: 'kis_live' as const,
+    };
+    const poc = computeTradeVolumePoc([
+      trade(atKst(9, 1), 100, 10),
+      trade(atKst(9, 2), 120, 30),
+    ], {
+      date: '20260624',
+      candles: [{ ts_ms: atKst(9, 1), open: 100, high: 120, low: 100, close: 110, vol_a: 0, vol_b: 0 }],
+      rangeCount: 2,
+      segment,
+    });
+
+    expectPoc(poc, {
+      centerPrice: 115,
+      lowPrice: 110,
+      highPrice: 120,
+      qty: 30,
+      t_ms: atKst(9, 2),
+    });
+  });
+
+  it('keeps the earlier distribution bin when max-bin quantities tie', () => {
+    const segment = {
+      date: '20260624',
+      session_open_ms: atKst(9, 0),
+      session_close_ms: atKst(15, 30),
+      source: 'kis_live' as const,
+    };
+    const poc = computeTradeVolumePoc([
+      trade(atKst(9, 1), 100, 20),
+      trade(atKst(9, 2), 110, 20),
+    ], {
+      date: '20260624',
+      candles: [{ ts_ms: atKst(9, 1), open: 100, high: 120, low: 100, close: 110, vol_a: 0, vol_b: 0 }],
+      rangeCount: 2,
+      segment,
+    });
+
+    expectPoc(poc, {
+      centerPrice: 105,
+      lowPrice: 100,
+      highPrice: 110,
+      qty: 20,
+      t_ms: atKst(9, 1),
+    });
+  });
+
+  it('handles single-price distribution ranges', () => {
+    const segment = {
+      date: '20260624',
+      session_open_ms: atKst(9, 0),
+      session_close_ms: atKst(15, 30),
+      source: 'kis_live' as const,
+    };
+    const poc = computeTradeVolumePoc([
+      trade(atKst(9, 1), 100, 20),
+    ], {
+      date: '20260624',
+      candles: [{ ts_ms: atKst(9, 1), open: 100, high: 100, low: 100, close: 100, vol_a: 0, vol_b: 0 }],
+      rangeCount: 5,
+      segment,
+    });
+
+    expectPoc(poc, {
+      centerPrice: 100,
+      lowPrice: 100,
+      highPrice: 101,
+      qty: 20,
+      t_ms: atKst(9, 1),
+    });
+  });
+
   it('keeps the earlier center when two bands have the same accumulated volume', () => {
     const poc = computeTradeVolumePoc([
       trade(atKst(9, 1), 10_000, 10),
@@ -101,28 +187,26 @@ describe('computeTradeVolumePoc', () => {
 });
 
 describe('computeCandleVolumePocs', () => {
-  it('falls back to candle close volume when exact trade prices are unavailable', () => {
+  it('falls back to candle close volume using the volume-distribution max bin', () => {
     const pocs = computeCandleVolumePocs([
-      { ts_ms: atKst(9, 1), open: 71_500, high: 72_000, low: 71_000, close: 71_500, vol_a: 20, vol_b: 0 },
-      { ts_ms: atKst(9, 2), open: 72_000, high: 72_500, low: 71_500, close: 72_300, vol_a: 50, vol_b: 0 },
-      { ts_ms: atKst(9, 3), open: 72_500, high: 73_200, low: 72_000, close: 73_100, vol_a: 30, vol_b: 0 },
-      { ts_ms: atKst(15, 20), open: 80_000, high: 80_000, low: 80_000, close: 80_000, vol_a: 1_000, vol_b: 0 },
+      { ts_ms: atKst(9, 1), open: 100, high: 120, low: 100, close: 100, vol_a: 10, vol_b: 0 },
+      { ts_ms: atKst(9, 2), open: 110, high: 120, low: 100, close: 110, vol_a: 20, vol_b: 0 },
+      { ts_ms: atKst(15, 20), open: 120, high: 120, low: 120, close: 120, vol_a: 1_000, vol_b: 0 },
     ], [{
       date: '20260624',
       session_open_ms: atKst(9, 0),
       session_close_ms: atKst(15, 30),
       source: 'kis_live',
-    }]);
+    }], { rangeCount: 2 });
 
     expect(pocs).toHaveLength(1);
     expect(pocs[0]).toMatchObject({
       date: '20260624',
-      centerPrice: 72_300,
-      lowPrice: 71_900,
-      highPrice: 72_700,
-      qty: 50,
+      centerPrice: 115,
+      lowPrice: 110,
+      highPrice: 120,
+      qty: 20,
       t_ms: atKst(9, 2),
-      bandPct: 0.005,
     });
   });
 });

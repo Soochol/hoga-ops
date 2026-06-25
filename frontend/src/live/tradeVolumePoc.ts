@@ -23,6 +23,14 @@ type PriceBucket = {
   order: number;
 };
 
+type DistributionBucket = {
+  lowPrice: number;
+  highPrice: number;
+  qty: number;
+  firstTMs: number;
+  order: number;
+};
+
 function chooseBestPoc(
   buckets: readonly PriceBucket[],
   options: { bandPct: number; date: string },
@@ -94,11 +102,96 @@ function isEligibleSide(side: number): boolean {
   return side === -1 || side === 1;
 }
 
+function priceRangeFromCandles(candles: readonly Candle[]): { min: number; max: number } | null {
+  const lows = candles.map((candle) => candle.low).filter(Number.isFinite);
+  const highs = candles.map((candle) => candle.high).filter(Number.isFinite);
+  if (lows.length === 0 || highs.length === 0) return null;
+  return { min: Math.min(...lows), max: Math.max(...highs) };
+}
+
+function chooseBestDistributionBucket(
+  buckets: readonly DistributionBucket[],
+  options: { date: string; bandPct: number },
+): TradeVolumePoc | null {
+  let best: DistributionBucket | null = null;
+  for (const bucket of buckets) {
+    if (bucket.qty <= 0) continue;
+    if (
+      best === null
+      || bucket.qty > best.qty
+      || (bucket.qty === best.qty && bucket.order < best.order)
+    ) {
+      best = bucket;
+    }
+  }
+  if (best === null) return null;
+  return {
+    date: options.date,
+    centerPrice: Math.floor((best.lowPrice + best.highPrice) / 2),
+    lowPrice: best.lowPrice,
+    highPrice: best.highPrice,
+    qty: best.qty,
+    t_ms: best.firstTMs,
+    bandPct: options.bandPct,
+  };
+}
+
+function emptyDistributionBuckets(priceMin: number, priceMax: number, rangeCount: number): DistributionBucket[] {
+  const rawBinWidth = (priceMax - priceMin) / rangeCount;
+  const binWidth = rawBinWidth > 0 ? rawBinWidth : 1;
+  return Array.from({ length: rangeCount }, (_, idx) => ({
+    lowPrice: Math.floor(priceMin + idx * binWidth),
+    highPrice: idx === rangeCount - 1 ? priceMax : Math.floor(priceMin + (idx + 1) * binWidth),
+    qty: 0,
+    firstTMs: Number.POSITIVE_INFINITY,
+    order: idx,
+  }));
+}
+
+function distributionIndex(price: number, priceMin: number, priceMax: number, rangeCount: number): number {
+  const rawBinWidth = (priceMax - priceMin) / rangeCount;
+  const binWidth = rawBinWidth > 0 ? rawBinWidth : 1;
+  return Math.max(0, Math.min(rangeCount - 1, Math.floor((price - priceMin) / binWidth)));
+}
+
 export function computeTradeVolumePoc(
   trades: readonly TradeSnapshot[],
-  options: { bandPct?: number; date?: string } = {},
+  options: {
+    bandPct?: number;
+    date?: string;
+    candles?: readonly Candle[];
+    rangeCount?: number;
+    segment?: RangeSegment;
+  } = {},
 ): TradeVolumePoc | null {
   const bandPct = options.bandPct ?? DEFAULT_BAND_PCT;
+  const rangeCount = options.rangeCount;
+  if (options.candles && options.segment && typeof rangeCount === 'number' && Number.isInteger(rangeCount) && rangeCount > 0) {
+    const range = priceRangeFromCandles(options.candles);
+    if (range === null) return null;
+    const buckets = emptyDistributionBuckets(range.min, range.max, rangeCount);
+    for (const snapshot of trades) {
+      for (const event of snapshot.trades) {
+        const tMs = event.t_ms ?? snapshot.t_ms;
+        if (tMs < options.segment.session_open_ms || tMs >= options.segment.session_close_ms) continue;
+        if (!isRegularContinuousTrade(tMs)) continue;
+        if (!isEligibleSide(event.side)) continue;
+        const rawPrice = event.price;
+        const qty = event.qty;
+        if (typeof rawPrice !== 'number' || !Number.isFinite(rawPrice) || rawPrice <= 0) continue;
+        if (typeof qty !== 'number' || !Number.isFinite(qty) || qty <= 0) continue;
+        if (rawPrice < range.min || rawPrice > range.max) continue;
+        const idx = distributionIndex(rawPrice, range.min, range.max, rangeCount);
+        buckets[idx].qty += qty;
+        buckets[idx].firstTMs = Math.min(buckets[idx].firstTMs, tMs);
+      }
+    }
+    return chooseBestDistributionBucket(buckets, {
+      bandPct,
+      date: options.date ?? '',
+    });
+  }
+
   const byPrice = new Map<number, PriceBucket>();
   let order = 0;
 
@@ -132,11 +225,34 @@ export function computeTradeVolumePoc(
 export function computeCandleVolumePocs(
   candles: readonly Candle[],
   segments: readonly RangeSegment[],
-  options: { bandPct?: number } = {},
+  options: { bandPct?: number; rangeCount?: number } = {},
 ): TradeVolumePoc[] {
   const bandPct = options.bandPct ?? DEFAULT_BAND_PCT;
+  const rangeCount = options.rangeCount;
   const out: TradeVolumePoc[] = [];
   for (const segment of segments) {
+    const segmentCandles = candles.filter(
+      (candle) => candle.ts_ms >= segment.session_open_ms && candle.ts_ms < segment.session_close_ms,
+    );
+    if (typeof rangeCount === 'number' && Number.isInteger(rangeCount) && rangeCount > 0) {
+      const range = priceRangeFromCandles(segmentCandles);
+      if (range === null) continue;
+      const buckets = emptyDistributionBuckets(range.min, range.max, rangeCount);
+      for (const candle of segmentCandles) {
+        if (!isRegularContinuousTrade(candle.ts_ms)) continue;
+        const price = candle.close;
+        const qty = Math.max(0, Math.round((candle.vol_a ?? 0) + (candle.vol_b ?? 0)));
+        if (!Number.isFinite(price) || price <= 0 || !Number.isFinite(qty) || qty <= 0) continue;
+        if (price < range.min || price > range.max) continue;
+        const idx = distributionIndex(price, range.min, range.max, rangeCount);
+        buckets[idx].qty += qty;
+        buckets[idx].firstTMs = Math.min(buckets[idx].firstTMs, candle.ts_ms);
+      }
+      const poc = chooseBestDistributionBucket(buckets, { bandPct, date: segment.date });
+      if (poc) out.push(poc);
+      continue;
+    }
+
     const byPrice = new Map<number, PriceBucket>();
     let order = 0;
     for (const candle of candles) {

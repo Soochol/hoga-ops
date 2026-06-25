@@ -589,9 +589,9 @@ class PriceLevelHit(BaseModel):
 class TradeVolumePoc(BaseModel):
     """One trading day's most-traded regular-session price area.
 
-    The range is centered on a traded price, expanded by ``band_pct``, and
-    adjusted to the KRX stock tick grid. ``t_ms`` is the first time the center
-    price traded.
+    The range is the max-quantity price bin from the continuous-trade volume
+    distribution grid. ``band_pct`` remains on the wire for backward
+    compatibility with older saved indicator state.
     """
 
     date: str

@@ -15,6 +15,7 @@ def _build_range_bundle_stub(
     bucket_ms,
     source_pref="hogaplay",
     volume_distribution_bins=None,
+    trade_volume_poc_bins=None,
 ):
     """Return a minimal valid RangeBundle for happy-path tests."""
     from hoga.api.models import (
@@ -232,6 +233,7 @@ def test_api_range_source_pref_threads_through(app_client: TestClient) -> None:
         bucket_ms,
         source_pref="hogaplay",
         volume_distribution_bins=None,
+        trade_volume_poc_bins=None,
     ):
         captured.append(source_pref)
         return _build_range_bundle_stub(
@@ -241,6 +243,7 @@ def test_api_range_source_pref_threads_through(app_client: TestClient) -> None:
             bucket_ms=bucket_ms,
             source_pref=source_pref,
             volume_distribution_bins=volume_distribution_bins,
+            trade_volume_poc_bins=trade_volume_poc_bins,
         )
 
     with patch("hoga.api.routes.build_range_bundle", side_effect=_stub):
@@ -265,6 +268,7 @@ def test_api_range_source_pref_defaults_to_hogaplay(app_client: TestClient) -> N
         bucket_ms,
         source_pref="hogaplay",
         volume_distribution_bins=None,
+        trade_volume_poc_bins=None,
     ):
         captured.append(source_pref)
         return _build_range_bundle_stub(
@@ -274,6 +278,7 @@ def test_api_range_source_pref_defaults_to_hogaplay(app_client: TestClient) -> N
             bucket_ms=bucket_ms,
             source_pref=source_pref,
             volume_distribution_bins=volume_distribution_bins,
+            trade_volume_poc_bins=trade_volume_poc_bins,
         )
 
     with patch("hoga.api.routes.build_range_bundle", side_effect=_stub):
@@ -316,11 +321,37 @@ def test_api_range_threads_volume_distribution_bins(app_client: TestClient) -> N
     assert captured == [10]
 
 
+def test_api_range_threads_trade_volume_poc_bins(app_client: TestClient) -> None:
+    captured: list[int | None] = []
+
+    def _stub(engine, **kw):
+        captured.append(kw.get("trade_volume_poc_bins"))
+        return _build_range_bundle_stub(**kw)
+
+    with patch("hoga.api.routes.build_range_bundle", side_effect=_stub):
+        r = app_client.get(
+            "/api/range?code=005930&from=20260512&to=20260512"
+            "&bucket_ms=60000&trade_volume_poc_bins=12"
+        )
+
+    assert r.status_code == 200, r.text
+    assert captured == [12]
+
+
 def test_api_range_rejects_invalid_volume_distribution_bins(app_client: TestClient) -> None:
     for value in ("4", "31"):
         r = app_client.get(
             "/api/range?code=005930&from=20260512&to=20260512"
             f"&bucket_ms=60000&volume_distribution_bins={value}"
+        )
+        assert r.status_code in (400, 422)
+
+
+def test_api_range_rejects_invalid_trade_volume_poc_bins(app_client: TestClient) -> None:
+    for value in ("4", "31"):
+        r = app_client.get(
+            "/api/range?code=005930&from=20260512&to=20260512"
+            f"&bucket_ms=60000&trade_volume_poc_bins={value}"
         )
         assert r.status_code in (400, 422)
 

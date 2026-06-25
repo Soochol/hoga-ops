@@ -3,6 +3,12 @@
 All notable changes to this project are documented here.
 The format follows a 4-digit `MAJOR.MINOR.PATCH.MICRO` scheme.
 
+## [0.11.1.0] - 2026-06-25
+
+### Changed
+- **당일 최대 매물대 계산법 변경**: 분봉 차트의 전체 거래일에 대해 연속체결 매물대 분포의 max bar와 동일한 가격 구간을 당일 최대 매물대로 표시하도록 했다.
+- **매물대 분포 요청 분리**: 당일 최대 매물대만 켜진 경우 전체 매물대 분포 히스토그램을 함께 요청하지 않도록 `/api/range`에 POC 전용 구간 수 파라미터를 추가했다.
+
 ## [0.11.0.2] - 2026-06-25
 
 ### Fixed

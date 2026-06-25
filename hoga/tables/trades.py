@@ -297,8 +297,8 @@ class FillStrengthRow:
 class TradeVolumePocRow:
     """One date's most-traded regular-session price area.
 
-    ``*_price`` are KRX tick-adjusted won prices. ``intra_ms`` is the first
-    linear ms-from-midnight at which the center price traded.
+    ``*_price`` are the selected distribution-bin boundaries and midpoint.
+    ``intra_ms`` is the first linear ms-from-midnight trade in that bin.
     """
 
     center_price: int
@@ -306,43 +306,6 @@ class TradeVolumePocRow:
     high_price: int
     qty: int
     intra_ms: int
-
-
-def _krx_stock_tick_size(price: int) -> int:
-    if price < 2_000:
-        return 1
-    if price < 5_000:
-        return 5
-    if price < 20_000:
-        return 10
-    if price < 50_000:
-        return 50
-    if price < 200_000:
-        return 100
-    if price < 500_000:
-        return 500
-    return 1_000
-
-
-def _floor_krx_stock_tick(price: float) -> int:
-    if price <= 0:
-        return 0
-    candidate = int(price)
-    candidate = (candidate // _krx_stock_tick_size(candidate)) * _krx_stock_tick_size(candidate)
-    while candidate > price:
-        candidate -= _krx_stock_tick_size(candidate)
-    return candidate
-
-
-def _ceil_krx_stock_tick(price: float) -> int:
-    if price <= 0:
-        return 0
-    candidate = int(price) if price == int(price) else int(price) + 1
-    step = _krx_stock_tick_size(candidate)
-    candidate = ((candidate + step - 1) // step) * step
-    while candidate < price:
-        candidate += _krx_stock_tick_size(candidate)
-    return candidate
 
 
 def _hhmmssms_to_intra_ms(value: int) -> int:
@@ -396,17 +359,22 @@ def query_trade_volume_poc(
     con: duckdb.DuckDBPyConnection,
     *,
     path: Path,
+    price_lo: int,
+    price_hi: int,
+    bins: int,
     session_open_ms: int,
     session_close_ms: int,
-    band_pct: float = 0.005,
 ) -> TradeVolumePocRow | None:
-    """Return the strongest regular-session trade-volume POC band for a day.
+    """Return the strongest regular-session distribution bin for a day.
 
     Regular-session means side +/-1 trades inside ``[session_open_ms,
     session_close_ms)`` after decoding native HHMMSSmmm to linear
     ms-from-midnight. side=0 is excluded so auction/single-price prints do not
-    dominate the band.
+    dominate the bin.
     """
+    bin_width = (price_hi - price_lo) / bins
+    if bin_width <= 0:
+        bin_width = 1
     intra_ms_expr = hhmmssms_to_intra_ms_sql("ts_ms")
     session_open_intra_ms = _session_bound_to_intra_ms(session_open_ms)
     session_close_intra_ms = _session_bound_to_intra_ms(session_close_ms)
@@ -421,42 +389,48 @@ def query_trade_volume_poc(
             AND price > 0
             AND qty > 0
         )
-        SELECT price,
+        SELECT GREATEST(0, LEAST(?, FLOOR((price - ?) / ?)::BIGINT)) AS bin_idx,
                SUM(qty) AS qty,
                MIN(intra_ms) AS first_intra_ms
         FROM regular
         WHERE intra_ms >= ? AND intra_ms < ?
+          AND price BETWEEN ? AND ?
         GROUP BY 1
-        ORDER BY first_intra_ms ASC, price ASC
+        ORDER BY bin_idx ASC
         """,
-        [str(path), session_open_intra_ms, session_close_intra_ms],
+        [
+            str(path),
+            bins - 1,
+            price_lo,
+            bin_width,
+            session_open_intra_ms,
+            session_close_intra_ms,
+            price_lo,
+            price_hi,
+        ],
     ).fetchall()
     if not rows:
         return None
 
-    buckets = [
-        (int(price), int(qty), int(first_intra_ms), order)
-        for order, (price, qty, first_intra_ms) in enumerate(rows)
-    ]
     best: tuple[int, int, int, int, int, int] | None = None
-    for center_price, _center_qty, first_intra_ms, order in buckets:
-        low_price = _floor_krx_stock_tick(center_price * (1 - band_pct))
-        high_price = _ceil_krx_stock_tick(center_price * (1 + band_pct))
-        band_qty = sum(
-            qty for price, qty, _first, _order in buckets
-            if low_price <= price <= high_price
-        )
-        candidate = (band_qty, -order, center_price, low_price, high_price, first_intra_ms)
+    for order, (bin_idx_raw, qty_raw, first_intra_ms_raw) in enumerate(rows):
+        bin_idx = max(0, min(bins - 1, int(bin_idx_raw)))
+        low_price = int(price_lo + bin_idx * bin_width)
+        high_price = int(price_hi if bin_idx == bins - 1 else price_lo + (bin_idx + 1) * bin_width)
+        center_price = int((low_price + high_price) // 2)
+        qty = int(qty_raw)
+        first_intra_ms = int(first_intra_ms_raw)
+        candidate = (qty, -order, center_price, low_price, high_price, first_intra_ms)
         if best is None or candidate > best:
             best = candidate
 
     assert best is not None
-    band_qty, _neg_order, center_price, low_price, high_price, first_intra_ms = best
+    qty, _neg_order, center_price, low_price, high_price, first_intra_ms = best
     return TradeVolumePocRow(
         center_price=center_price,
         low_price=low_price,
         high_price=high_price,
-        qty=band_qty,
+        qty=qty,
         intra_ms=first_intra_ms,
     )
 

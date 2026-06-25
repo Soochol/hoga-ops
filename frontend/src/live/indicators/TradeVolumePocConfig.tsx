@@ -1,12 +1,6 @@
 import { useLivePageStore } from '../../state/livePage';
 import { MA_COLOR_ROWS } from './MAStylePicker';
 
-const BAND_OPTIONS = [
-  { label: '±0.25%', value: 0.0025 },
-  { label: '±0.5%', value: 0.005 },
-  { label: '±1%', value: 0.01 },
-] as const;
-
 function hexToRgba(hex: string, opacity: number): string {
   const match = /^#?([0-9a-f]{6})$/i.exec(hex);
   if (!match) return `rgba(168, 85, 247, ${Math.max(0, Math.min(1, opacity))})`;
@@ -19,44 +13,18 @@ function hexToRgba(hex: string, opacity: number): string {
 }
 
 export default function TradeVolumePocConfig() {
-  const bandPct = useLivePageStore((s) => s.tradeVolumePocBandPct);
   const color = useLivePageStore((s) => s.tradeVolumePocColor);
   const opacity = useLivePageStore((s) => s.tradeVolumePocOpacity);
-  const setBandPct = useLivePageStore((s) => s.setTradeVolumePocBandPct);
+  const rangeCount = useLivePageStore((s) => s.volumeDistributionRangeCount);
   const setStyle = useLivePageStore((s) => s.setTradeVolumePocStyle);
   const opacityPct = Math.round(opacity * 100);
-  const selectedBandLabel = BAND_OPTIONS.find((option) => option.value === bandPct)?.label ?? '±0.5%';
 
   return (
     <div>
       <h3 className="text-fg text-base font-medium pb-1">당일 최대 매물대</h3>
       <p className="text-fg-dim text-xs mb-3">
-        정규장 연속매매 체결량을 가격별로 누적하고, 각 체결가의 자동 ±0.25%, ±0.5%, ±1% 호가 보정 범위 중 거래량이 가장 큰 구간을 캔들 위 밴드로 표시합니다. 동시호가 제외.
+        정규장 연속매매 체결량을 연속체결 매물대 분포와 동일한 가격 구간에 누적하고, 거래량이 가장 큰 구간을 캔들 위 밴드로 표시합니다. 동시호가 제외.
       </p>
-      <div className="mb-3">
-        <div className="text-xs text-fg-dim mb-1.5">자동 범위</div>
-        <div className="inline-flex rounded-md border border-border-subtle bg-bg-elevated p-0.5">
-          {BAND_OPTIONS.map((option) => {
-            const selected = bandPct === option.value;
-            return (
-              <button
-                key={option.value}
-                type="button"
-                aria-pressed={selected}
-                className={[
-                  'px-2.5 py-1 text-xs rounded transition-colors',
-                  selected
-                    ? 'bg-accent text-accent-fg'
-                    : 'text-fg-dim hover:text-fg hover:bg-bg-muted',
-                ].join(' ')}
-                onClick={() => setBandPct(option.value)}
-              >
-                {option.label}
-              </button>
-            );
-          })}
-        </div>
-      </div>
       <div className="mb-3">
         <div className="text-xs text-fg-dim mb-1.5">색상</div>
         <div className="flex items-center gap-2">
@@ -79,7 +47,7 @@ export default function TradeVolumePocConfig() {
                       className="h-5 w-5 rounded-full"
                       style={{
                         backgroundColor: candidate,
-                        outline: selected ? '2px solid var(--fg)' : 'none',
+                        outline: selected ? '2px solid var(--fg)' : undefined,
                         outlineOffset: 2,
                         border: '1px solid var(--border-subtle)',
                       }}
@@ -109,8 +77,8 @@ export default function TradeVolumePocConfig() {
         />
       </div>
       <div className="text-xs text-fg-dim leading-5">
-        <div>범위: 중심 체결가 기준 자동 {selectedBandLabel}</div>
-        <div>보정: KRX 호가 단위로 하단 내림, 상단 올림</div>
+        <div>범위: 연속체결 매물대 분포와 동일한 {rangeCount}개 가격 구간</div>
+        <div>선택: 체결량이 가장 큰 max bar 구간</div>
         <div>표시: 가격대 범위 밴드</div>
       </div>
     </div>

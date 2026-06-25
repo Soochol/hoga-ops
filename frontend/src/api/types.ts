@@ -561,6 +561,6 @@ export type RangeBundle = {
   /** 캔들 고저가 VI 가격대(1차: 당일 open 기준 ±10%, 2차: VI 재개봉 open 기준 ±10%)
    *  또는 상하한가(전일 close 기준 ±30%)에 닿은 최초 시점. */
   price_level_hits?: PriceLevelHit[];
-  /** 거래일별 정규장 체결량 최다 가격대(자동 +/-1%, KRX 호가 보정). */
+  /** 거래일별 정규장 체결량 최다 가격대(연속체결 매물대 분포의 max bar와 동일한 bin). */
   trade_volume_pocs?: TradeVolumePocWire[];
 };

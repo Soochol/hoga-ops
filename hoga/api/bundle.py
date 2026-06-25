@@ -67,6 +67,7 @@ _PriceLevelKind = Literal["vi", "limit"]
 _PriceLevelDirection = Literal["upper", "lower"]
 _PriceLevelPct = Literal[10, 20, 30]
 _VI_COOLING_MS = 120_000
+DEFAULT_TRADE_VOLUME_POC_BINS = 10
 
 # /api/range minute timeframes are multiples of this; the indicator cache stores
 # 1m and re-aggregates up. A request whose bucket_ms is NOT a 1m multiple (the
@@ -675,18 +676,23 @@ def build_trade_volume_poc_slice(
     source: str,
     session_open_ms: int,
     session_close_ms: int,
+    range_count: int,
+    price_range: tuple[int, int] | None = None,
     band_pct: float = 0.005,
 ) -> TradeVolumePoc | None:
     code_dir = engine.parquet_dir(date, code, source)
     trades_path = code_dir / "trades.parquet"
-    if not trades_path.exists():
+    if price_range is None or not trades_path.exists():
         return None
+    price_min, price_max = price_range
     row = trades_tbl.query_trade_volume_poc(
         engine.conn,
         path=trades_path,
+        price_lo=price_min,
+        price_hi=price_max,
+        bins=range_count,
         session_open_ms=session_open_ms,
         session_close_ms=session_close_ms,
-        band_pct=band_pct,
     )
     if row is None:
         return None
@@ -949,6 +955,7 @@ def build_range_bundle(
     bucket_ms: int,
     source_pref: str = "hogaplay",  # ADR-0039
     volume_distribution_bins: int | None = None,
+    trade_volume_poc_bins: int | None = None,
 ) -> RangeBundle:
     """Build the Wire Model for a Stock-Date Range (ADR-0013, ADR-0014).
 
@@ -1046,6 +1053,13 @@ def build_range_bundle(
             ))
 
         raw_candles = build_candles_slice(engine, code=code, date=d, source=source)
+        raw_lows = [c.low for c in raw_candles]
+        raw_highs = [c.high for c in raw_candles]
+        price_range = (
+            (min(raw_lows), max(raw_highs))
+            if raw_lows and raw_highs
+            else None
+        )
         candles_d = downsample_candles(raw_candles, bucket_ms=bucket_ms)
         qr_d = build_quote_ratio_slice(
             engine, code=code, date=d, bucket_ms=bucket_ms, source=source,
@@ -1071,15 +1085,13 @@ def build_range_bundle(
             session_close_ms=meta["regular_session_close_ms"],
             cache=indicators_cache, today_kst=today_kst,
         )
-        tvp_ds = [
-            build_trade_volume_poc_slice(
-                engine, code=code, date=d, source=source,
-                session_open_ms=norm_meta["regular_session_open_ms"],
-                session_close_ms=meta["regular_session_close_ms"],
-                band_pct=band_pct,
-            )
-            for band_pct in (0.005, 0.01)
-        ]
+        tvp_d = build_trade_volume_poc_slice(
+            engine, code=code, date=d, source=source,
+            session_open_ms=norm_meta["regular_session_open_ms"],
+            session_close_ms=meta["regular_session_close_ms"],
+            range_count=trade_volume_poc_bins or DEFAULT_TRADE_VOLUME_POC_BINS,
+            price_range=price_range,
+        )
         segments.append(RangeSegment(
             date=d,
             session_open_ms=hhmmssms_to_unix_ms(d, norm_meta["regular_session_open_ms"]),
@@ -1092,8 +1104,6 @@ def build_range_bundle(
         fill_pts.extend(fs_d.points)
         profiles_by_day.append(vp_d)
         if volume_distribution_bins is not None:
-            raw_lows = [c.low for c in raw_candles]
-            raw_highs = [c.high for c in raw_candles]
             profile = build_volume_distribution_slice(
                 engine,
                 code=code,
@@ -1102,8 +1112,8 @@ def build_range_bundle(
                 session_open_ms=int(norm_meta["regular_session_open_ms"]),
                 session_close_ms=int(meta["regular_session_close_ms"]),
                 range_count=volume_distribution_bins,
-                price_min=min(raw_lows) if raw_lows else None,
-                price_max=max(raw_highs) if raw_highs else None,
+                price_min=price_range[0] if price_range is not None else None,
+                price_max=price_range[1] if price_range is not None else None,
             )
             if profile is not None:
                 volume_distributions.append(profile)
@@ -1111,7 +1121,8 @@ def build_range_bundle(
             ask_peaks.append(ap_d)
         if bp_d is not None:
             bid_peaks.append(bp_d)
-        trade_volume_pocs.extend(tvp_d for tvp_d in tvp_ds if tvp_d is not None)
+        if tvp_d is not None:
+            trade_volume_pocs.append(tvp_d)
         vi_base_open = raw_candles[0].open if raw_candles else int(meta.get("today_open") or 0)
         price_level_hits.extend(
             build_price_level_hits_slice(

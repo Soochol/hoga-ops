@@ -133,6 +133,9 @@ describe('useLiveBundle', () => {
       activeCode: '005930',
       candleTimeframe: '1m',
       historicalFromDate: null,
+      tradeVolumePocEnabled: true,
+      volumeDistributionEnabled: true,
+      volumeDistributionRangeCount: 10,
     });
     useSourcePreferenceStore.setState({ sourcePreference: 'kis_ws_first' });
   });
@@ -181,7 +184,49 @@ describe('useLiveBundle', () => {
       '1m',
       undefined,
       '20260527',
-      { volumeDistributionBins: 10 },
+      { volumeDistributionBins: 10, tradeVolumePocBins: 10 },
+    );
+  });
+
+  it('requests POC bins without volume distributions when only trade POC is enabled', () => {
+    useLivePageStore.setState({
+      historicalFromDate: '20260501',
+      volumeDistributionEnabled: false,
+      tradeVolumePocEnabled: true,
+      volumeDistributionRangeCount: 12,
+    });
+
+    renderHook(() => useLiveBundle('005930', '1m', '20260527', liveFixture), { wrapper });
+
+    expect(useRangeSpy).toHaveBeenCalledWith(
+      '005930',
+      '20260501',
+      '20260527',
+      '1m',
+      undefined,
+      '20260527',
+      { volumeDistributionBins: null, tradeVolumePocBins: 12 },
+    );
+  });
+
+  it('omits both optional distribution requests when both indicators are disabled', () => {
+    useLivePageStore.setState({
+      historicalFromDate: '20260501',
+      volumeDistributionEnabled: false,
+      tradeVolumePocEnabled: false,
+      volumeDistributionRangeCount: 12,
+    });
+
+    renderHook(() => useLiveBundle('005930', '1m', '20260527', liveFixture), { wrapper });
+
+    expect(useRangeSpy).toHaveBeenCalledWith(
+      '005930',
+      '20260501',
+      '20260527',
+      '1m',
+      undefined,
+      '20260527',
+      { volumeDistributionBins: null, tradeVolumePocBins: null },
     );
   });
 
