@@ -7,7 +7,15 @@ from unittest.mock import patch
 from fastapi.testclient import TestClient
 
 
-def _build_range_bundle_stub(*, code, from_date, to_date, bucket_ms, source_pref="hogaplay"):
+def _build_range_bundle_stub(
+    *,
+    code,
+    from_date,
+    to_date,
+    bucket_ms,
+    source_pref="hogaplay",
+    volume_distribution_bins=None,
+):
     """Return a minimal valid RangeBundle for happy-path tests."""
     from hoga.api.models import (
         FillStrength,
@@ -125,6 +133,7 @@ def _stub_slice_builders():
         patch("hoga.api.bundle.build_fill_strength_slice", return_value=fs),
         patch("hoga.api.bundle.build_volume_profile_slice", return_value=vp),
         patch("hoga.api.bundle.build_volume_profile_range", return_value=vp),
+        patch("hoga.api.bundle.build_trade_volume_poc_slice", return_value=None),
     ]
 
 
@@ -214,7 +223,16 @@ def test_api_range_source_pref_threads_through(app_client: TestClient) -> None:
     """source_pref query param is forwarded to build_range_bundle (ADR-0039)."""
     captured: list[str] = []
 
-    def _stub(engine, *, code, from_date, to_date, bucket_ms, source_pref="hogaplay"):
+    def _stub(
+        engine,
+        *,
+        code,
+        from_date,
+        to_date,
+        bucket_ms,
+        source_pref="hogaplay",
+        volume_distribution_bins=None,
+    ):
         captured.append(source_pref)
         return _build_range_bundle_stub(
             code=code,
@@ -222,6 +240,7 @@ def test_api_range_source_pref_threads_through(app_client: TestClient) -> None:
             to_date=to_date,
             bucket_ms=bucket_ms,
             source_pref=source_pref,
+            volume_distribution_bins=volume_distribution_bins,
         )
 
     with patch("hoga.api.routes.build_range_bundle", side_effect=_stub):
@@ -237,7 +256,16 @@ def test_api_range_source_pref_defaults_to_hogaplay(app_client: TestClient) -> N
     """source_pref defaults to 'hogaplay' when not provided (ADR-0039)."""
     captured: list[str] = []
 
-    def _stub(engine, *, code, from_date, to_date, bucket_ms, source_pref="hogaplay"):
+    def _stub(
+        engine,
+        *,
+        code,
+        from_date,
+        to_date,
+        bucket_ms,
+        source_pref="hogaplay",
+        volume_distribution_bins=None,
+    ):
         captured.append(source_pref)
         return _build_range_bundle_stub(
             code=code,
@@ -245,6 +273,7 @@ def test_api_range_source_pref_defaults_to_hogaplay(app_client: TestClient) -> N
             to_date=to_date,
             bucket_ms=bucket_ms,
             source_pref=source_pref,
+            volume_distribution_bins=volume_distribution_bins,
         )
 
     with patch("hoga.api.routes.build_range_bundle", side_effect=_stub):
@@ -253,6 +282,47 @@ def test_api_range_source_pref_defaults_to_hogaplay(app_client: TestClient) -> N
         )
     assert r.status_code == 200, r.text
     assert captured == ["hogaplay"]
+
+
+def test_api_range_omits_volume_distribution_by_default(app_client: TestClient) -> None:
+    captured: list[int | None] = []
+
+    def _stub(engine, **kw):
+        captured.append(kw.get("volume_distribution_bins"))
+        return _build_range_bundle_stub(**kw)
+
+    with patch("hoga.api.routes.build_range_bundle", side_effect=_stub):
+        r = app_client.get("/api/range?code=005930&from=20260512&to=20260512&bucket_ms=60000")
+
+    assert r.status_code == 200, r.text
+    assert captured == [None]
+    assert r.json()["volume_distributions"] == []
+
+
+def test_api_range_threads_volume_distribution_bins(app_client: TestClient) -> None:
+    captured: list[int | None] = []
+
+    def _stub(engine, **kw):
+        captured.append(kw.get("volume_distribution_bins"))
+        return _build_range_bundle_stub(**kw)
+
+    with patch("hoga.api.routes.build_range_bundle", side_effect=_stub):
+        r = app_client.get(
+            "/api/range?code=005930&from=20260512&to=20260512"
+            "&bucket_ms=60000&volume_distribution_bins=10"
+        )
+
+    assert r.status_code == 200, r.text
+    assert captured == [10]
+
+
+def test_api_range_rejects_invalid_volume_distribution_bins(app_client: TestClient) -> None:
+    for value in ("4", "31"):
+        r = app_client.get(
+            "/api/range?code=005930&from=20260512&to=20260512"
+            f"&bucket_ms=60000&volume_distribution_bins={value}"
+        )
+        assert r.status_code in (400, 422)
 
 
 # --- Roundtrip: parser write path is visible to /api/range read path ---

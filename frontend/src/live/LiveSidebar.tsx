@@ -5,6 +5,7 @@ import OrderbookTable from '../sidebar/OrderbookTable';
 import BrokerTrajectoryTable from '../sidebar/BrokerTrajectoryTable';
 import ProgramTradeSummaryCard from '../sidebar/ProgramTradeSummaryCard';
 import TotalQtyBar from '../sidebar/TotalQtyBar';
+import { VolumeDistributionCard } from '../sidebar/VolumeDistributionCard';
 import type { LiveSeriesData } from '../api/liveSeries';
 import type { ProgramTradeSeries } from '../api/types';
 import {
@@ -12,7 +13,7 @@ import {
   latestOrderbookSnapshot,
   orderbookSnapshotAtCursor,
 } from './liveSidebarAdapters';
-import { TIMEFRAME_TO_MS, type Timeframe } from '../api/types';
+import { TIMEFRAME_TO_MS, type DayVolumeDistribution, type RangeBundle, type Timeframe } from '../api/types';
 import { useLiveCursorStore } from './useLiveCursorStore';
 import { useLiveAxisStore } from './useLiveAxisStore';
 import { useLivePageStore } from '../state/livePage';
@@ -24,6 +25,8 @@ import {
 import { useLiveInvestorTrendEstimate } from '../api/liveInvestorTrendEstimate';
 import type { MinuteTimeframe } from '../state/livePage';
 import { isMinuteTimeframe } from '../state/livePage';
+import { realMsToYyyymmdd } from './liveDateTime';
+import { computeContinuousTradeVolumeDistribution } from './continuousTradeVolumeDistribution';
 
 interface Props {
   code: string | null;
@@ -32,6 +35,8 @@ interface Props {
    * SSE connection and a parallel buffer that drifts out of sync on HMR
    * re-mounts. */
   live: LiveSeriesData;
+  bundle?: RangeBundle | null;
+  todayKst?: string;
   programTrade?: ProgramTradeSeries | null;
 }
 
@@ -50,9 +55,60 @@ interface Props {
  * The third "체결" card was removed 2026-05-28 (ADR-0047). The chart's
  * 체결강도 pane provides equivalent information in compact form.
  */
-export function LiveSidebar({ code, live, programTrade = null }: Props) {
+function profileForDate(
+  profiles: readonly DayVolumeDistribution[],
+  date: string | null,
+): DayVolumeDistribution | null {
+  if (!date) return null;
+  return profiles.find((profile) => profile.date === date) ?? null;
+}
+
+type VolumeDistributionTrade = {
+  t_ms: number;
+  price: number;
+  qty: number;
+  side: number;
+};
+
+function mergeVolumeDistributionDelta(
+  profile: DayVolumeDistribution,
+  trades: readonly VolumeDistributionTrade[],
+): DayVolumeDistribution {
+  if (profile.last_trade_ms == null || profile.bins.length === 0) return profile;
+  const rangeCount = profile.bins.length;
+  const rawBinWidth = (profile.price_max - profile.price_min) / rangeCount;
+  const binWidth = rawBinWidth > 0 ? rawBinWidth : 1;
+  const bins = profile.bins.map((bin) => ({ ...bin }));
+  let lastTradeMs = profile.last_trade_ms;
+
+  for (const trade of trades) {
+    if (trade.t_ms <= profile.last_trade_ms) continue;
+    if (trade.t_ms < profile.session_open_ms || trade.t_ms >= profile.session_close_ms) continue;
+    if (trade.side !== 1 && trade.side !== -1) continue;
+    if (!Number.isFinite(trade.price) || trade.price <= 0) continue;
+    if (!Number.isFinite(trade.qty) || trade.qty <= 0) continue;
+    if (trade.price < profile.price_min || trade.price > profile.price_max) continue;
+
+    const idx = Math.max(
+      0,
+      Math.min(rangeCount - 1, Math.floor((trade.price - profile.price_min) / binWidth)),
+    );
+    bins[idx] = { ...bins[idx], qty: bins[idx].qty + trade.qty };
+    lastTradeMs = Math.max(lastTradeMs, trade.t_ms);
+  }
+
+  return lastTradeMs === profile.last_trade_ms
+    ? profile
+    : { ...profile, bins, last_trade_ms: lastTradeMs };
+}
+
+export function LiveSidebar({ code, live, bundle = null, todayKst = '', programTrade = null }: Props) {
   const cursorMs = useLiveCursorStore((s) => s.cursorMs);
   const timeframe = useLivePageStore((s) => s.candleTimeframe);
+  const volumeDistributionEnabled = useLivePageStore((s) => s.volumeDistributionEnabled);
+  const volumeDistributionRangeCount = useLivePageStore((s) => s.volumeDistributionRangeCount);
+  const volumeDistributionColor = useLivePageStore((s) => s.volumeDistributionColor);
+  const volumeDistributionMaxColor = useLivePageStore((s) => s.volumeDistributionMaxColor);
   const stockCode = code && !code.startsWith('index:') ? code : null;
 
   // Spot mode is minute-only (ADR-0044): D/W/M have no per-cursor parquet. The
@@ -68,6 +124,7 @@ export function LiveSidebar({ code, live, programTrade = null }: Props) {
   const latestBrokerSeries = useMemo(() => aggregateBrokerSeries(broker), [broker]);
   const latestBrokerTs =
     broker.length > 0 ? (broker[broker.length - 1].t_ms as number) : Date.now();
+  const activeBundle = bundle;
 
   // Spot-mode data (dormant when cursorMs null).
   const spotTimeframe: MinuteTimeframe | null =
@@ -105,6 +162,70 @@ export function LiveSidebar({ code, live, programTrade = null }: Props) {
     ? spotBrokers
     : (broker.length === 0 ? undefined : latestBrokerSeries);
   const brokerCursorMs = isSpot ? (cursorMs ?? latestBrokerTs) : latestBrokerTs;
+  const activeVolumeDistributionDate = isSpot && cursorMs !== null
+    ? realMsToYyyymmdd(cursorMs)
+    : (activeBundle?.segments[activeBundle.segments.length - 1]?.date ?? todayKst ?? null);
+  const persistedVolumeDistributions = activeBundle?.volume_distributions ?? [];
+  const liveDistributionTrades = useMemo(
+    () => live.trade.flatMap((snapshot) =>
+      snapshot.trades.map((trade) => ({
+        t_ms: trade.t_ms ?? snapshot.t_ms,
+        price: trade.price ?? NaN,
+        qty: trade.qty,
+        side: trade.side,
+      })),
+    ),
+    [live.trade],
+  );
+  const recomputedTodayVolumeDistribution = useMemo(() => {
+    if (
+      !volumeDistributionEnabled ||
+      !stockCode ||
+      !todayKst ||
+      !isMinuteTimeframe(timeframe) ||
+      !activeBundle
+    ) {
+      return null;
+    }
+    const todaySegment = activeBundle.segments.find((segment) => segment.date === todayKst);
+    if (!todaySegment) return null;
+    const todayCandles = activeBundle.candles.filter((candle) => realMsToYyyymmdd(candle.ts_ms) === todayKst);
+    if (todayCandles.length === 0 || liveDistributionTrades.length === 0) return null;
+    return computeContinuousTradeVolumeDistribution({
+      date: todayKst,
+      candles: todayCandles,
+      trades: liveDistributionTrades,
+      rangeCount: volumeDistributionRangeCount,
+      segment: todaySegment,
+    });
+  }, [volumeDistributionEnabled, stockCode, todayKst, timeframe, activeBundle, liveDistributionTrades, volumeDistributionRangeCount]);
+  const activeVolumeDistribution = useMemo(() => {
+    if (!volumeDistributionEnabled) return undefined;
+    const persistedProfile = profileForDate(persistedVolumeDistributions, activeVolumeDistributionDate);
+    if (persistedProfile) {
+      return activeVolumeDistributionDate === todayKst
+        ? mergeVolumeDistributionDelta(persistedProfile, liveDistributionTrades)
+        : persistedProfile;
+    }
+    if (activeVolumeDistributionDate === todayKst) {
+      return recomputedTodayVolumeDistribution;
+    }
+    return null;
+  }, [
+    volumeDistributionEnabled,
+    activeVolumeDistributionDate,
+    todayKst,
+    recomputedTodayVolumeDistribution,
+    persistedVolumeDistributions,
+    liveDistributionTrades,
+  ]);
+  const activeVolumeDistributionClosePoints = useMemo(() => {
+    if (!activeBundle || !activeVolumeDistributionDate) return [];
+    return activeBundle.candles
+      .filter((candle) => realMsToYyyymmdd(candle.ts_ms) === activeVolumeDistributionDate)
+      .sort((a, b) => a.ts_ms - b.ts_ms)
+      .map((candle) => ({ t_ms: candle.ts_ms, close: candle.close }));
+  }, [activeBundle, activeVolumeDistributionDate]);
 
   // T14b: "다음 가용: HH:MM" hint above orderbook table when spot orderbook
   // has no snapshot yet AND the SSE buffer can't fill it either (a genuine gap,
@@ -147,6 +268,15 @@ export function LiveSidebar({ code, live, programTrade = null }: Props) {
               <OrderbookTable snapshot={orderbookForCard} />
               <TotalQtyBar snapshot={orderbookForCard} maskRatio={maskRatio} />
             </>
+          }
+          volumeDistribution={
+            <VolumeDistributionCard
+              profile={activeVolumeDistribution}
+              cursorMs={isSpot ? cursorMs : brokerCursorMs}
+              closePoints={activeVolumeDistributionClosePoints}
+              color={volumeDistributionColor}
+              maxColor={volumeDistributionMaxColor}
+            />
           }
           program={
             <ProgramTradeSummaryCard

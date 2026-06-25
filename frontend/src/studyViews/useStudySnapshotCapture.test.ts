@@ -13,6 +13,10 @@ const indicatorState: StudyIndicatorState = {
   auction_window_mask: false,
   ratio_outlier_filter_enabled: false,
   ratio_outlier_threshold: 50,
+  volume_distribution_enabled: true,
+  volume_distribution_range_count: 10,
+  volume_distribution_color: '#64748B',
+  volume_distribution_max_color: '#EAB308',
 };
 
 function bundle(overrides: Partial<RangeBundle> = {}): RangeBundle {
@@ -45,6 +49,26 @@ function bundle(overrides: Partial<RangeBundle> = {}): RangeBundle {
     },
     volume_profile_range: { bin_count: 0, price_min: 0, price_max: 0, bin_width: 0, bins: [] },
     volume_profile_by_day: [],
+    volume_distributions: [
+      {
+        date: '20260616',
+        range_count: 10,
+        price_min: 69_000,
+        price_max: 71_000,
+        session_open_ms: 1_000,
+        session_close_ms: 4_000,
+        bins: [{ price_low: 69_000, price_high: 69_200, qty: 100 }],
+      },
+      {
+        date: '20260615',
+        range_count: 10,
+        price_min: 68_000,
+        price_max: 70_000,
+        session_open_ms: 1,
+        session_close_ms: 999,
+        bins: [{ price_low: 68_000, price_high: 68_200, qty: 90 }],
+      },
+    ],
     investorPoints: [],
     ask_peaks: [
       {
@@ -220,6 +244,17 @@ describe('buildStudySnapshotRequest', () => {
         band_pct: 0.0025,
       },
     ]);
+    expect(req.snapshot.bundle.volume_distributions).toEqual([
+      {
+        date: '20260616',
+        range_count: 10,
+        price_min: 69_000,
+        price_max: 71_000,
+        session_open_ms: 1_000,
+        session_close_ms: 4_000,
+        bins: [{ price_low: 69_000, price_high: 69_200, qty: 100 }],
+      },
+    ]);
   });
 
   it('preserves daily moving average indicator settings in the saved snapshot state', () => {
@@ -262,6 +297,26 @@ describe('buildStudySnapshotRequest', () => {
       trade_volume_poc_band_pct: 0.0025,
       trade_volume_poc_color: '#22C55E',
       trade_volume_poc_opacity: 0.28,
+    });
+    expect(req.snapshot.indicator_state).toEqual(req.indicator_state);
+  });
+
+  it('preserves volume distribution indicator settings in the saved snapshot state', () => {
+    const distributionState = {
+      ...indicatorState,
+      volume_distribution_enabled: false,
+      volume_distribution_range_count: 24,
+      volume_distribution_color: '#22C55E',
+      volume_distribution_max_color: '#EF4444',
+    };
+
+    const req = build({ indicatorState: distributionState });
+
+    expect(req.indicator_state).toMatchObject({
+      volume_distribution_enabled: false,
+      volume_distribution_range_count: 24,
+      volume_distribution_color: '#22C55E',
+      volume_distribution_max_color: '#EF4444',
     });
     expect(req.snapshot.indicator_state).toEqual(req.indicator_state);
   });

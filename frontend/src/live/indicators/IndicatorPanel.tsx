@@ -10,6 +10,7 @@ import TradeVolumePocConfig from './TradeVolumePocConfig';
 import QuoteTotalsConfig from './QuoteTotalsConfig';
 import RatioConfig from './RatioConfig';
 import FillStrengthConfig from './FillStrengthConfig';
+import { MA_COLOR_ROWS } from './MAStylePicker';
 import ProgramTradeConfig from './ProgramTradeConfig';
 import { ModalShell } from '../../ui/ModalShell';
 import { CheckIcon } from '../../ui/CheckIcon';
@@ -24,6 +25,7 @@ type CategoryId =
   | 'ask-peak'
   | 'bid-peak'
   | 'trade-volume-poc'
+  | 'volume-distribution'
   | 'quote-totals'
   | 'ratio'
   | 'fill-strength'
@@ -44,6 +46,7 @@ const CATEGORIES: ReadonlyArray<{ id: CategoryId; label: string; group: GroupId 
   { id: 'quote-totals',    label: '총잔량',           group: 'hoga' },
   { id: 'ratio',           label: '호가비',           group: 'hoga' },
   { id: 'fill-strength',   label: '체결강도',         group: 'hoga' },
+  { id: 'volume-distribution', label: '연속체결 매물대 분포', group: 'hoga' },
   { id: 'trade-volume-poc', label: '당일 최대 매물대', group: 'hoga' },
   { id: 'ask-peak',        label: '당일 매도 최대벽', group: 'hoga' },
   { id: 'bid-peak',        label: '당일 매수 최대벽', group: 'hoga' },
@@ -74,6 +77,13 @@ export default function IndicatorPanel({ onClose, capabilities = STOCK_CAPABILIT
   const setBidPeakEnabled = useLivePageStore((s) => s.setBidPeakEnabled);
   const tradeVolumePocEnabled = useLivePageStore((s) => s.tradeVolumePocEnabled);
   const setTradeVolumePocEnabled = useLivePageStore((s) => s.setTradeVolumePocEnabled);
+  const volumeDistributionEnabled = useLivePageStore((s) => s.volumeDistributionEnabled);
+  const setVolumeDistributionEnabled = useLivePageStore((s) => s.setVolumeDistributionEnabled);
+  const volumeDistributionRangeCount = useLivePageStore((s) => s.volumeDistributionRangeCount);
+  const volumeDistributionColor = useLivePageStore((s) => s.volumeDistributionColor);
+  const volumeDistributionMaxColor = useLivePageStore((s) => s.volumeDistributionMaxColor);
+  const setVolumeDistributionRangeCount = useLivePageStore((s) => s.setVolumeDistributionRangeCount);
+  const setVolumeDistributionStyle = useLivePageStore((s) => s.setVolumeDistributionStyle);
   const quoteTotals = useLivePageStore((s) => s.quoteTotalsEnabled);
   const setQuoteTotals = useLivePageStore((s) => s.setQuoteTotalsEnabled);
   const ratio = useLivePageStore((s) => s.ratioEnabled);
@@ -108,6 +118,7 @@ export default function IndicatorPanel({ onClose, capabilities = STOCK_CAPABILIT
       case 'ask-peak': return askPeakEnabled;
       case 'bid-peak': return bidPeakEnabled;
       case 'trade-volume-poc': return tradeVolumePocEnabled;
+      case 'volume-distribution': return volumeDistributionEnabled;
       case 'quote-totals': return quoteTotals;
       case 'ratio': return ratio;
       case 'fill-strength': return fillStrength;
@@ -125,6 +136,7 @@ export default function IndicatorPanel({ onClose, capabilities = STOCK_CAPABILIT
       case 'ask-peak': return () => setAskPeakEnabled(!askPeakEnabled);
       case 'bid-peak': return () => setBidPeakEnabled(!bidPeakEnabled);
       case 'trade-volume-poc': return () => setTradeVolumePocEnabled(!tradeVolumePocEnabled);
+      case 'volume-distribution': return () => setVolumeDistributionEnabled(!volumeDistributionEnabled);
       case 'quote-totals': return () => setQuoteTotals(!quoteTotals);
       case 'ratio': return () => setRatio(!ratio);
       case 'fill-strength': return () => setFillStrength(!fillStrength);
@@ -187,6 +199,103 @@ export default function IndicatorPanel({ onClose, capabilities = STOCK_CAPABILIT
           {selected === 'ask-peak' && <AskPeakConfig />}
           {selected === 'bid-peak' && <BidPeakConfig />}
           {selected === 'trade-volume-poc' && <TradeVolumePocConfig />}
+          {selected === 'volume-distribution' && (
+            <div>
+              <h3 className="text-fg text-base font-medium pb-1">연속체결 매물대 분포</h3>
+              <p className="text-fg-dim text-xs mb-3">
+                정규장 연속매매 체결만 집계한 가격대별 체결량 분포를 거래일 단위로 표시합니다. 가격 구간은 각 Stock-Date 캔들 저가-고가 범위를 기준으로 나눕니다.
+              </p>
+              <div className="mb-3">
+                <label className="flex items-center justify-between gap-3 text-sm text-fg">
+                  <span>구간 수</span>
+                  <input
+                    type="number"
+                    min={5}
+                    max={30}
+                    step={1}
+                    aria-label="연속체결 매물대 분포 구간 수"
+                    className="w-[84px] text-right text-sm bg-bg-input border border-border rounded-[4px] px-2 py-1 tabular-nums"
+                    value={volumeDistributionRangeCount}
+                    onChange={(event) => setVolumeDistributionRangeCount(Number(event.currentTarget.value))}
+                  />
+                </label>
+              </div>
+              <div className="mb-3">
+                <div className="text-xs text-fg-dim mb-1.5">색상</div>
+                <div className="flex flex-col gap-3">
+                  <div className="flex items-center gap-2">
+                    <div
+                      aria-hidden="true"
+                      className="h-6 w-10 rounded border border-border-subtle"
+                      style={{ backgroundColor: volumeDistributionColor, borderColor: volumeDistributionColor }}
+                    />
+                    <div className="flex flex-col gap-1">
+                      {MA_COLOR_ROWS.map((row, rowIndex) => (
+                        <div key={`volume-distribution-color-row-${rowIndex}`} className="grid grid-cols-8 gap-1">
+                          {row.map((candidate) => {
+                            const selected = candidate.toLowerCase() === volumeDistributionColor.toLowerCase();
+                            return (
+                              <button
+                                key={candidate}
+                                type="button"
+                                aria-label={`연속체결 매물대 분포 색상 ${candidate}`}
+                                aria-pressed={selected}
+                                className="h-5 w-5 rounded-full"
+                                style={{
+                                  backgroundColor: candidate,
+                                  outline: selected ? '2px solid var(--fg)' : 'none',
+                                  outlineOffset: 2,
+                                  border: '1px solid var(--border-subtle)',
+                                }}
+                                onClick={() => setVolumeDistributionStyle({ color: candidate })}
+                              />
+                            );
+                          })}
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <div
+                      aria-hidden="true"
+                      className="h-6 w-10 rounded border border-border-subtle"
+                      style={{ backgroundColor: volumeDistributionMaxColor, borderColor: volumeDistributionMaxColor }}
+                    />
+                    <div className="flex flex-col gap-1">
+                      {MA_COLOR_ROWS.map((row, rowIndex) => (
+                        <div key={`volume-distribution-max-color-row-${rowIndex}`} className="grid grid-cols-8 gap-1">
+                          {row.map((candidate) => {
+                            const selected = candidate.toLowerCase() === volumeDistributionMaxColor.toLowerCase();
+                            return (
+                              <button
+                                key={candidate}
+                                type="button"
+                                aria-label={`연속체결 매물대 분포 최대 구간 색상 ${candidate}`}
+                                aria-pressed={selected}
+                                className="h-5 w-5 rounded-full"
+                                style={{
+                                  backgroundColor: candidate,
+                                  outline: selected ? '2px solid var(--fg)' : 'none',
+                                  outlineOffset: 2,
+                                  border: '1px solid var(--border-subtle)',
+                                }}
+                                onClick={() => setVolumeDistributionStyle({ maxColor: candidate })}
+                              />
+                            );
+                          })}
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                </div>
+              </div>
+              <div className="text-xs text-fg-dim leading-5">
+                <div>대상: 연속매매 체결만 집계, 동시호가 제외</div>
+                <div>단위: 거래일별 가격대 분포</div>
+                <div>강조: 거래일 내 최대 체결량 구간</div>
+              </div>
+            </div>
+          )}
           {selected === 'quote-totals' && <QuoteTotalsConfig />}
           {selected === 'ratio' && <RatioConfig />}
           {selected === 'fill-strength' && <FillStrengthConfig />}

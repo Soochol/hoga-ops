@@ -219,3 +219,51 @@ def test_manual_catchup_all_response_aggregates():
                                      enqueued_count=0, deduped_count=5),
     ])
     assert len(resp.results) == 2
+
+
+def test_day_volume_distribution_range_count_is_constrained():
+    import pytest
+    from pydantic import ValidationError
+
+    from hoga.api.models import DayVolumeDistribution
+
+    DayVolumeDistribution(
+        date="20260520",
+        range_count=10,
+        price_min=100,
+        price_max=120,
+        session_open_ms=90_000_000,
+        session_close_ms=153_000_000,
+        bins=[],
+    )
+    with pytest.raises(ValidationError):
+        DayVolumeDistribution(
+            date="20260520",
+            range_count=4,
+            price_min=100,
+            price_max=120,
+            session_open_ms=90_000_000,
+            session_close_ms=153_000_000,
+            bins=[],
+        )
+
+
+def test_range_bundle_volume_distributions_defaults_empty():
+    from hoga.api.models import FillStrength, QuoteRatio, RangeBundle, VolumeProfile
+
+    bundle = RangeBundle(
+        code="005930",
+        from_date="20260520",
+        to_date="20260520",
+        bucket_ms=60_000,
+        segments=[],
+        candles=[],
+        quote_ratio=QuoteRatio(bucket_ms=60_000, points=[]),
+        fill_strength=FillStrength(bucket_ms=60_000, points=[]),
+        volume_profile_range=VolumeProfile(
+            bin_count=10, price_min=100, price_max=120, bin_width=2, bins=[],
+        ),
+        volume_profile_by_day=[],
+    )
+
+    assert bundle.volume_distributions == []

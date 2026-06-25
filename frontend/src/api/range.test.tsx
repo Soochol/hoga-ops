@@ -22,6 +22,7 @@ const fakeBundle: RangeBundle = {
   fill_strength: { bucket_ms: 60_000, points: [] },
   volume_profile_range: { bin_count: 0, price_min: 0, price_max: 0, bin_width: 0, bins: [] },
   volume_profile_by_day: [],
+  volume_distributions: [],
   investorPoints: [],
   ask_peaks: [],
 };
@@ -87,6 +88,26 @@ describe('useRange', () => {
     await waitFor(() => expect(client.apiCall).toHaveBeenCalled());
     const calledWith = (client.apiCall as ReturnType<typeof vi.spyOn>).mock.calls[0][0] as string;
     expect(calledWith).toContain('source_pref=kis_api_first');
+  });
+
+  it('omits volume_distribution_bins when not requested', async () => {
+    const spy = vi.spyOn(client, 'apiCall').mockResolvedValue(fakeBundle);
+    renderHook(
+      () => useRange('005930', '20260512', '20260512', '1m'),
+      { wrapper: makeWrapper() },
+    );
+    await waitFor(() => expect(spy).toHaveBeenCalled());
+    expect(spy.mock.calls[0][0]).not.toContain('volume_distribution_bins=');
+  });
+
+  it('threads volume_distribution_bins into query string', async () => {
+    const spy = vi.spyOn(client, 'apiCall').mockResolvedValue(fakeBundle);
+    renderHook(
+      () => useRange('005930', '20260512', '20260512', '1m', undefined, null, { volumeDistributionBins: 20 }),
+      { wrapper: makeWrapper() },
+    );
+    await waitFor(() => expect(spy).toHaveBeenCalled());
+    expect(spy.mock.calls[0][0]).toContain('&volume_distribution_bins=20');
   });
 });
 

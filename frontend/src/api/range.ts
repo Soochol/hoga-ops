@@ -68,11 +68,16 @@ export function useRange(
   timeframe: Timeframe | null,
   priceRange?: { min: number; max: number },
   todayKst?: string | null,
+  options?: { volumeDistributionBins?: number | null },
 ) {
   const bucketMs = timeframe ? TIMEFRAME_TO_MS[timeframe] : null;
   const enabled = !!(code && from && to && bucketMs);
   const sourcePref: SourcePreference = useSourcePreferenceStore((s) => s.sourcePreference);
   const priceQs = priceRange ? `&price_min=${priceRange.min}&price_max=${priceRange.max}` : '';
+  const volumeDistributionBins = options?.volumeDistributionBins ?? null;
+  const volumeDistributionQs = volumeDistributionBins != null
+    ? `&volume_distribution_bins=${volumeDistributionBins}`
+    : '';
   const { staleTime, refetchInterval } = rangeFreshnessOptions(to, todayKst ?? null);
 
   return useQuery({
@@ -84,12 +89,13 @@ export function useRange(
       bucketMs,
       priceRange?.min,
       priceRange?.max,
+      volumeDistributionBins,
       sourcePref,
     ] as const,
     queryFn: ({ signal }) =>
       apiCall<RangeBundle>(
         `/api/range?code=${code}&from=${from}&to=${to}&bucket_ms=${bucketMs}` +
-          `${priceQs}&source_pref=${sourcePref}`,
+          `${priceQs}${volumeDistributionQs}&source_pref=${sourcePref}`,
         { signal },
       ),
     enabled,

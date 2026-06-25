@@ -29,6 +29,10 @@ describe('mergeLiveIndicatorPrefs', () => {
       tradeVolumePocBandPct: 0.005,
       tradeVolumePocColor: '#A855F7',
       tradeVolumePocOpacity: 0.12,
+      volumeDistributionEnabled: true,
+      volumeDistributionRangeCount: 10,
+      volumeDistributionColor: '#64748B',
+      volumeDistributionMaxColor: '#EAB308',
       quoteTotalsEnabled: true,
       ratioEnabled: true,
       fillStrengthEnabled: true,
@@ -205,6 +209,35 @@ describe('mergeLiveIndicatorPrefs — 호가 토글', () => {
     });
     expect(invalid.tradeVolumePocColor).toBe('#A855F7');
     expect(invalid.tradeVolumePocOpacity).toBe(0.12);
+  });
+  it('연속체결 매물대 분포 기본값/범위/색상 정규화', () => {
+    const defaults = mergeLiveIndicatorPrefs(undefined);
+    expect(defaults.volumeDistributionEnabled).toBe(true);
+    expect(defaults.volumeDistributionRangeCount).toBe(10);
+    expect(defaults.volumeDistributionColor).toBe('#64748B');
+    expect(defaults.volumeDistributionMaxColor).toBe('#EAB308');
+
+    const valid = mergeLiveIndicatorPrefs({
+      volumeDistributionEnabled: false,
+      volumeDistributionRangeCount: 24,
+      volumeDistributionColor: '#22C55E',
+      volumeDistributionMaxColor: '#EF4444',
+    });
+    expect(valid.volumeDistributionEnabled).toBe(false);
+    expect(valid.volumeDistributionRangeCount).toBe(24);
+    expect(valid.volumeDistributionColor).toBe('#22C55E');
+    expect(valid.volumeDistributionMaxColor).toBe('#EF4444');
+
+    const invalid = mergeLiveIndicatorPrefs({
+      volumeDistributionRangeCount: 100,
+      volumeDistributionColor: 'slate',
+      volumeDistributionMaxColor: '#fff',
+    });
+    expect(invalid.volumeDistributionRangeCount).toBe(30);
+    expect(invalid.volumeDistributionColor).toBe('#64748B');
+    expect(invalid.volumeDistributionMaxColor).toBe('#EAB308');
+    expect(mergeLiveIndicatorPrefs({ volumeDistributionRangeCount: 1 }).volumeDistributionRangeCount).toBe(5);
+    expect(mergeLiveIndicatorPrefs({ volumeDistributionRangeCount: '12.8' as never }).volumeDistributionRangeCount).toBe(10);
   });
 });
 
