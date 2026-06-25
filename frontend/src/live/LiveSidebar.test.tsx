@@ -195,8 +195,10 @@ describe('LiveSidebar', () => {
       },
     });
 
-    expect(screen.getByText('70000-70200')).toBeInTheDocument();
-    expect(screen.getByText('0.3k')).toBeInTheDocument();
+    expect(screen.getByTestId('volume-distribution-time-axis')).toHaveTextContent('09:00');
+    expect(screen.getByTestId('volume-distribution-time-axis')).toHaveTextContent('15:30');
+    expect(screen.getAllByTestId('volume-distribution-row')).toHaveLength(2);
+    expect(screen.getByTestId('volume-distribution-max-bar')).toBeInTheDocument();
   });
 
   it('keeps persisted today volume distribution instead of replacing it with the live tail', () => {
@@ -238,10 +240,8 @@ describe('LiveSidebar', () => {
       },
     });
 
-    expect(screen.getByText('70000-70200')).toBeInTheDocument();
-    expect(screen.getByText('0.3k')).toBeInTheDocument();
-    expect(screen.queryByText('0.5k')).toBeNull();
-    expect(screen.queryByText('0.7k')).toBeNull();
+    expect(screen.getByTestId('volume-distribution-time-axis')).toHaveTextContent('09:00');
+    expect(screen.getByTestId('volume-distribution-bar')).toHaveStyle({ width: '50%' });
   });
 
   it('merges newer live continuous trades into the persisted today volume distribution', () => {
@@ -285,9 +285,9 @@ describe('LiveSidebar', () => {
       },
     });
 
-    expect(screen.getByText('0.2k')).toBeInTheDocument();
-    expect(screen.getByText('0.4k')).toBeInTheDocument();
-    expect(screen.queryByText('1k')).toBeNull();
+    expect(screen.getByTestId('volume-distribution-bar')).toHaveStyle({
+      width: `${(200 / 370) * 100}%`,
+    });
   });
 
   it('uses live continuous trades as a today volume distribution fallback when no persisted profile exists', () => {
@@ -316,9 +316,9 @@ describe('LiveSidebar', () => {
       },
     });
 
-    expect(screen.getByText('0.5k')).toBeInTheDocument();
-    expect(screen.getByText('0.7k')).toBeInTheDocument();
-    expect(screen.queryByText('1k')).toBeNull();
+    expect(screen.getByTestId('volume-distribution-bar')).toHaveStyle({
+      width: `${(500 / 700) * 100}%`,
+    });
   });
 
   it('reads live data from the prop, not from useLiveSeries (LivePage-lift)', () => {

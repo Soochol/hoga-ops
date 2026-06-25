@@ -1,6 +1,6 @@
 import type { DayVolumeDistribution } from '../api/types';
-import { formatQtyCompact } from '../util/formatQtyCompact';
 import { classifyWithinSegment } from '../util/sessionTime';
+import { unixMsToKSTClock } from '../util/time';
 
 type Props = {
   profile: DayVolumeDistribution | null | undefined;
@@ -29,44 +29,59 @@ export function VolumeDistributionCard({ profile, cursorMs, color, maxColor }: P
   const markerPct = markerVisible && profile.session_close_ms > profile.session_open_ms
     ? ((cursorMs - profile.session_open_ms) / (profile.session_close_ms - profile.session_open_ms)) * 100
     : 0;
+  const midMs = profile.session_open_ms + (profile.session_close_ms - profile.session_open_ms) / 2;
+  const timeTicks = [
+    formatAxisTime(profile.session_open_ms),
+    formatAxisTime(midMs),
+    formatAxisTime(profile.session_close_ms),
+  ];
 
   return (
     <div
       data-testid="volume-distribution-card"
-      className="relative flex h-full min-h-0 flex-col gap-1 px-2 py-2 text-[11px]"
+      className="flex h-full min-h-0 flex-col gap-1 px-2 py-2 text-[11px]"
     >
-      {markerVisible && (
-        <div
-          data-testid="volume-distribution-cursor-marker"
-          className="pointer-events-none absolute bottom-2 top-2 border-l border-dotted border-accent"
-          style={{ left: `${Math.min(100, Math.max(0, markerPct))}%` }}
-        />
-      )}
-      {rows.map((bin, index) => {
-        const isMax = maxQty > 0 && bin.qty === maxQty;
-        const width = maxQty > 0 ? `${(bin.qty / maxQty) * 100}%` : '0%';
-        return (
+      <div className="relative min-h-0 flex-1">
+        {markerVisible && (
           <div
-            key={`${bin.price_low}-${bin.price_high}-${index}`}
-            data-testid="volume-distribution-row"
-            className="grid min-h-0 grid-cols-[72px_1fr_52px] items-center gap-2"
-          >
-            <div className="truncate font-mono text-fg-dim">
-              {bin.price_low}
-              -
-              {bin.price_high}
-            </div>
-            <div className="h-2 overflow-hidden rounded-sm bg-bg">
+            data-testid="volume-distribution-cursor-marker"
+            className="pointer-events-none absolute bottom-0 top-0 border-l border-dotted border-accent"
+            style={{ left: `${Math.min(100, Math.max(0, markerPct))}%` }}
+          />
+        )}
+        <div className="flex h-full min-h-0 flex-col gap-1">
+          {rows.map((bin, index) => {
+            const isMax = maxQty > 0 && bin.qty === maxQty;
+            const width = maxQty > 0 ? `${(bin.qty / maxQty) * 100}%` : '0%';
+            return (
               <div
-                data-testid={isMax ? 'volume-distribution-max-bar' : 'volume-distribution-bar'}
-                className="h-full"
-                style={{ width, backgroundColor: isMax ? maxColor : color }}
-              />
-            </div>
-            <div className="text-right font-mono text-fg-dimmer">{formatQtyCompact(bin.qty)}</div>
-          </div>
-        );
-      })}
+                key={`${bin.price_low}-${bin.price_high}-${index}`}
+                data-testid="volume-distribution-row"
+                className="min-h-0"
+              >
+                <div className="h-2 overflow-hidden rounded-sm bg-bg">
+                  <div
+                    data-testid={isMax ? 'volume-distribution-max-bar' : 'volume-distribution-bar'}
+                    className="h-full"
+                    style={{ width, backgroundColor: isMax ? maxColor : color }}
+                  />
+                </div>
+              </div>
+            );
+          })}
+        </div>
+      </div>
+      <div data-testid="volume-distribution-time-axis">
+        <div className="relative h-4 border-t border-border/70 font-mono text-[10px] leading-4 text-fg-dimmer">
+          <span className="absolute left-0 top-0">{timeTicks[0]}</span>
+          <span className="absolute left-1/2 top-0 -translate-x-1/2">{timeTicks[1]}</span>
+          <span className="absolute right-0 top-0">{timeTicks[2]}</span>
+        </div>
+      </div>
     </div>
   );
+}
+
+function formatAxisTime(ms: number): string {
+  return unixMsToKSTClock(ms).slice(0, 5);
 }
