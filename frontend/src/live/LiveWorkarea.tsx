@@ -1,10 +1,11 @@
-import { useCallback, useEffect, useMemo, useReducer, useRef } from 'react';
+import { useCallback, useEffect, useMemo, useReducer, useRef, type ReactNode } from 'react';
 import { isMinuteTimeframe, useLivePageStore } from '../state/livePage';
 import { useEntryDragStore } from '../state/entryDrag';
 import { LiveChartRoot } from './LiveChartRoot';
 import { LiveEmptyState } from './LiveEmptyState';
 import { IndexSectorRankingPane } from './IndexSectorRankingPane';
 import { LiveSidebar } from './LiveSidebar';
+import { LiveToolbar } from './LiveToolbar';
 import type { LiveInstrument } from './liveInstrument';
 import type { AskPeak, BidPeak, RangeBundle } from '../api/types';
 import type { LiveSeriesData } from '../api/liveSeries';
@@ -20,6 +21,7 @@ import type { TabViewport } from './viewportAnchor';
 import type { LiveVenueOption } from '../state/liveVenue';
 import { realMsToYyyymmdd } from './liveDateTime';
 import type { TradeVolumePoc } from './tradeVolumePoc';
+import { clampRightPanelWidth, useLiveLayoutStore } from '../state/liveLayout';
 
 /** 관심종목 행을 차트로 드래그할 때 워크에어리어 위에 뜨는 드롭 타깃 오버레이.
  *  드래그 고스트는 패널 overflow 경계에서 잘리므로 워크에어리어 자체를 어포던스로 쓴다.
@@ -98,6 +100,9 @@ interface Props {
   paneTogglesOverride?: {
     hogaPanes?: boolean;
   };
+  onOpenIndicators?: () => void;
+  onOpenSettings?: () => void;
+  studySaveControl?: ReactNode;
   /** LivePage save flows keep this callback and invoke it at save time. */
   onViewportCaptureReady?: (capture: () => TabViewport | null) => void;
 }
@@ -125,6 +130,9 @@ export function LiveWorkarea({
   todayKst = '',
   tradeVolumePocs = [],
   paneTogglesOverride,
+  onOpenIndicators,
+  onOpenSettings,
+  studySaveControl,
   onViewportCaptureReady,
   activeInstrument = null,
 }: Props) {
@@ -137,11 +145,14 @@ export function LiveWorkarea({
   // 패널 드롭 로직은 이 술어로만 "차트 위인가"를 묻고 차트 DOM·rect를 모른다. 등록/해제
   // 라이프사이클이 "워크에어리어 하나" invariant를 포섭한다(마지막 등록이 진실).
   const workareaRef = useRef<HTMLDivElement>(null);
+  const chartPanelRef = useRef<HTMLDivElement>(null);
   const registerChartTarget = useEntryDragStore((s) => s.registerChartTarget);
   const clearChartTarget = useEntryDragStore((s) => s.clearChartTarget);
+  const rightPanelWidthPx = useLiveLayoutStore((s) => s.rightPanelWidthPx);
+  const setRightPanelWidthPx = useLiveLayoutStore((s) => s.setRightPanelWidthPx);
   useEffect(() => {
     const hitTest = (clientX: number, clientY: number): boolean => {
-      const el = workareaRef.current;
+      const el = chartPanelRef.current;
       if (!el) return false;
       const r = el.getBoundingClientRect();
       return clientX >= r.left && clientX <= r.right && clientY >= r.top && clientY <= r.bottom;
@@ -189,9 +200,29 @@ export function LiveWorkarea({
     () => (code: string, name: string) => openStock(code, name),
     [openStock],
   );
+  const beginWidthResize = useCallback((event: React.PointerEvent<HTMLDivElement>) => {
+    event.preventDefault();
+    const workarea = workareaRef.current;
+    if (!workarea) return;
+    event.currentTarget.setPointerCapture(event.pointerId);
+    const startX = event.clientX;
+    const startWidth = useLiveLayoutStore.getState().rightPanelWidthPx;
+    const workareaWidth = workarea.clientWidth;
+    const target = event.currentTarget;
+    const move = (moveEvent: PointerEvent) => {
+      const next = clampRightPanelWidth(startWidth - (moveEvent.clientX - startX), workareaWidth);
+      useLiveLayoutStore.setState({ rightPanelWidthPx: next });
+    };
+    const up = (upEvent: PointerEvent) => {
+      target.releasePointerCapture(upEvent.pointerId);
+      window.removeEventListener('pointermove', move);
+      window.removeEventListener('pointerup', up);
+      setRightPanelWidthPx(useLiveLayoutStore.getState().rightPanelWidthPx);
+    };
+    window.addEventListener('pointermove', move);
+    window.addEventListener('pointerup', up);
+  }, [setRightPanelWidthPx]);
 
-  // 빈 상태(activeCode 없음 = 빈 탭)와 차트를 하나의 루트로 합친다 — 단일 루트에 ref를 달아
-  // 드롭 타깃 히트테스트가 한 element를 가리키게 하고, 빈 탭에도 드롭 가능.
   // position:relative는 absolute 오버레이의 containing block. minHeight:0 + overflow:hidden은
   // 차트 캔버스 intrinsic 크기가 flex 높이를 밀어내는 runaway 루프를 막는다(67c527a).
   return (
@@ -212,7 +243,18 @@ export function LiveWorkarea({
         </div>
       ) : (
         <>
-          <div style={{ flex: 1, minWidth: 0, minHeight: 0, overflow: 'hidden', display: 'flex', flexDirection: 'column' }}>
+          <div
+            ref={chartPanelRef}
+            data-testid="live-chart-panel"
+            style={{ flex: 1, minWidth: 0, minHeight: 0, overflow: 'hidden', display: 'flex', flexDirection: 'column' }}
+          >
+            {onOpenIndicators && onOpenSettings && (
+              <LiveToolbar
+                onOpenIndicators={onOpenIndicators}
+                onOpenSettings={onOpenSettings}
+                studySaveControl={studySaveControl}
+              />
+            )}
             <div style={{ flex: 1, minHeight: 0, overflow: 'hidden' }}>
               <LiveChartRoot
                 code={activeCode}
@@ -250,21 +292,35 @@ export function LiveWorkarea({
               />
             )}
           </div>
-          <div
-            role="complementary"
-            aria-label="Live Sidebar"
-            style={{
-              width: 'var(--sidebar-w)',
-              flexShrink: 0,
-              borderLeft: '1px solid var(--border)',
-            }}
-          >
-            <LiveSidebar
-              code={activeCode}
-              live={live}
-              programTrade={(chartBundle ?? bundle)?.program_trade ?? null}
-            />
-          </div>
+          {!isIndexInstrument && (
+            <>
+              <div
+                role="separator"
+                aria-orientation="vertical"
+                aria-label="차트 / 상세 패널 크기 조절"
+                data-testid="live-workarea-splitter"
+                onPointerDown={beginWidthResize}
+                style={{ width: 6, cursor: 'col-resize', display: 'grid', placeItems: 'center' }}
+              >
+                <div aria-hidden style={{ width: 1, height: '100%', background: 'var(--border)' }} />
+              </div>
+              <div
+                role="complementary"
+                aria-label="Live Detail Panel"
+                style={{
+                  width: rightPanelWidthPx,
+                  flexShrink: 0,
+                  borderLeft: '1px solid var(--border)',
+                }}
+              >
+                <LiveSidebar
+                  code={activeCode}
+                  live={live}
+                  programTrade={(chartBundle ?? bundle)?.program_trade ?? null}
+                />
+              </div>
+            </>
+          )}
         </>
       )}
       {draggingEntry && <ChartDropOverlay over={overChart} />}

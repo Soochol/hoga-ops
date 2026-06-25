@@ -7,6 +7,7 @@ import { indexInstrument, stockInstrument } from './liveInstrument';
 import type { IndexSectorRankingResponse } from '../api/indexSectorRankings';
 import type { LiveSeriesData } from '../api/liveSeries';
 import type { RangeBundle } from '../api/types';
+import { DEFAULT_CARD_WEIGHTS, DEFAULT_RIGHT_PANEL_WIDTH_PX, useLiveLayoutStore } from '../state/liveLayout';
 
 type LiveChartRootProps = Parameters<typeof LiveChartRoot>[0];
 type LiveChartRootMock = (props: LiveChartRootProps) => JSX.Element;
@@ -143,10 +144,15 @@ function renderWorkarea(activeCode: string | null, activeInstrument = null) {
 
 describe('LiveWorkarea gate', () => {
   beforeEach(() => {
+    localStorage.clear();
     liveChartRootMock.mockClear();
     liveSidebarMock.mockClear();
     useIndexSectorRankingsMock.mockClear();
     useLivePageStore.setState({ candleTimeframe: '1m' });
+    useLiveLayoutStore.setState({
+      rightPanelWidthPx: DEFAULT_RIGHT_PANEL_WIDTH_PX,
+      rightCardWeights: DEFAULT_CARD_WEIGHTS,
+    });
   });
 
   it('renders the chart when activeCode is set (even with empty watchlist)', () => {
@@ -180,6 +186,77 @@ describe('LiveWorkarea gate', () => {
     expect(liveSidebarMock).toHaveBeenCalledWith(
       expect.objectContaining({ programTrade }),
     );
+  });
+
+  it('renders the toolbar inside the chart panel and sidebar beside it', () => {
+    render(
+      <LiveWorkarea
+        activeCode="005930"
+        bundle={INDEX_BUNDLE}
+        clampEngaged={false}
+        isPastCandlesLoading={false}
+        isExtending={false}
+        live={LIVE}
+        onOpenIndicators={vi.fn()}
+        onOpenSettings={vi.fn()}
+        studySaveControl={<button type="button">save</button>}
+      />,
+    );
+
+    const chartPanel = screen.getByTestId('live-chart-panel');
+    expect(chartPanel).toContainElement(screen.getByTestId('live-toolbar'));
+    expect(screen.getByTestId('live-workarea-splitter')).toHaveAttribute('aria-orientation', 'vertical');
+    expect(screen.getByTestId('sidebar-stub')).toBeInTheDocument();
+  });
+
+  it('resizes the detail panel from the vertical splitter', () => {
+    render(
+      <LiveWorkarea
+        activeCode="005930"
+        bundle={INDEX_BUNDLE}
+        clampEngaged={false}
+        isPastCandlesLoading={false}
+        isExtending={false}
+        live={LIVE}
+      />,
+    );
+
+    const workarea = screen.getByTestId('live-workarea');
+    Object.defineProperty(workarea, 'clientWidth', { configurable: true, value: 1200 });
+    const splitter = screen.getByTestId('live-workarea-splitter');
+    const setPointerCapture = vi.fn();
+    const releasePointerCapture = vi.fn();
+    Object.defineProperty(splitter, 'setPointerCapture', { configurable: true, value: setPointerCapture });
+    Object.defineProperty(splitter, 'releasePointerCapture', { configurable: true, value: releasePointerCapture });
+
+    fireEvent.pointerDown(splitter, { pointerId: 1, clientX: 800 });
+    fireEvent.pointerMove(window, { clientX: 760 });
+    fireEvent.pointerUp(window, { pointerId: 1, clientX: 760 });
+
+    expect(setPointerCapture).toHaveBeenCalledWith(1);
+    expect(releasePointerCapture).toHaveBeenCalledWith(1);
+    expect(useLiveLayoutStore.getState().rightPanelWidthPx).toBe(440);
+  });
+
+  it('hides the live detail panel for representative index charts', () => {
+    useLivePageStore.setState({ candleTimeframe: 'D' });
+    render(
+      <LiveWorkarea
+        activeCode="index:KOSPI"
+        activeInstrument={indexInstrument('KOSPI', 'KOSPI')}
+        bundle={INDEX_BUNDLE_WITH_LAST_CANDLE}
+        clampEngaged={false}
+        isPastCandlesLoading={false}
+        isExtending={false}
+        live={LIVE}
+        onOpenIndicators={vi.fn()}
+        onOpenSettings={vi.fn()}
+      />,
+    );
+
+    expect(screen.queryByTestId('sidebar-stub')).toBeNull();
+    expect(screen.queryByTestId('live-workarea-splitter')).toBeNull();
+    expect(screen.getByTestId('live-chart-panel')).toBeInTheDocument();
   });
 
   it('renders the search-prompt empty state when no activeCode', () => {
