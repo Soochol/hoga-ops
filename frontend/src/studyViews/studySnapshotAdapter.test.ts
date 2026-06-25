@@ -22,6 +22,11 @@ function snapshot(overrides: Partial<StudySnapshotBundle> = {}): StudySnapshotBu
     ],
     ratio: [{ t: 1000, value: 0.2, visible: true }],
     fill_strength: [{ t: 1000, buy_qty: 5, sell_qty: 4, visible: true }],
+    program_trade: {
+      points: [
+        { t: 1000, net_qty: 100, net_amount: 1_500_000_000, delta_amount: 1_500_000_000, gap_risk: false },
+      ],
+    },
     ask_peaks: [{
       date: '20260616',
       price: 70_500,
@@ -68,6 +73,9 @@ describe('studySnapshotBundleToRangeBundle', () => {
     expect(bundle.quote_ratio.points).toHaveLength(1);
     expect(bundle.study_ratio.points).toEqual([{ t: 1000, value: 0.2 }]);
     expect(bundle.fill_strength.points[0]).toMatchObject({ t: 1000, buy_qty: 5, sell_qty: 4 });
+    expect(bundle.program_trade?.points).toEqual([
+      { t: 1000, net_qty: 100, net_amount: 1_500_000_000, delta_amount: 1_500_000_000, gap_risk: false },
+    ]);
     expect(bundle.volume_profile_range).toEqual({ bin_count: 0, price_min: 0, price_max: 0, bin_width: 0, bins: [] });
     expect(bundle.volume_profile_by_day).toEqual([]);
     expect(bundle.investorPoints).toEqual([]);
@@ -189,6 +197,8 @@ describe('studySnapshotBundleToRangeBundle', () => {
     }]);
     expect(input.chartBundle.bid_peaks).toBe(input.bundle.bid_peaks);
     expect(input.ratioBundle.bid_peaks).toEqual(input.bundle.bid_peaks);
+    expect(input.chartBundle.program_trade).toEqual(input.bundle.program_trade);
+    expect(input.ratioBundle.program_trade).toEqual(input.bundle.program_trade);
   });
 
   it('uses inert date defaults when a snapshot has no segments', () => {

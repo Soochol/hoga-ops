@@ -1,7 +1,8 @@
 import { describe, expect, it } from 'vitest';
+import { LineSeries } from 'lightweight-charts';
 import type { RangeBundle } from '../../api/types';
 import { createVirtualAxis } from '../../util/virtualAxis';
-import { projectProgramTradeNetAmount } from './programTrade';
+import { PROGRAM_TRADE_SPEC, projectProgramTradeNetAmount } from './programTrade';
 
 const OPEN = Date.UTC(2026, 4, 12, 0, 0, 0);
 const CLOSE = Date.UTC(2026, 4, 12, 6, 30, 0);
@@ -25,17 +26,22 @@ function bundle(points: NonNullable<RangeBundle['program_trade']>['points']): Ra
 }
 
 describe('programTrade projector', () => {
-  it('maps program_trade.points to signed net-amount histogram data', () => {
+  it('uses a line series for cumulative program net amount', () => {
+    expect(PROGRAM_TRADE_SPEC.series[0].type).toBe(LineSeries);
+  });
+
+  it('maps program_trade.points to signed cumulative net-amount line data', () => {
     const axis = createVirtualAxis([{ date: '20260512', sessionOpenMs: OPEN, sessionCloseMs: CLOSE }], OPEN);
     const out = projectProgramTradeNetAmount(bundle([
-      { t: OPEN + 60_000, net_qty: 100, net_amount: 1_500_000, gap_risk: false },
-      { t: OPEN + 120_000, net_qty: -30, net_amount: -400_000, gap_risk: false },
+      { t: OPEN + 60_000, net_qty: 100, net_amount: 1_500_000, delta_amount: 1_500_000, gap_risk: false },
+      { t: OPEN + 120_000, net_qty: -30, net_amount: -400_000, delta_amount: -1_900_000, gap_risk: false },
     ]), axis);
 
     expect(out.map((p) => ({ time: p.time, value: p.value }))).toEqual([
       { time: axis.toVirtual(OPEN + 60_000) / 1000, value: 1_500_000 },
       { time: axis.toVirtual(OPEN + 120_000) / 1000, value: -400_000 },
     ]);
+    expect('color' in out[0]).toBe(false);
   });
 
   it('returns [] when the optional sidecar is absent', () => {

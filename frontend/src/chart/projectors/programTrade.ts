@@ -1,39 +1,39 @@
 import {
-  HistogramSeries,
-  type HistogramData,
+  LineSeries,
+  type LineData,
   type Time,
   type UTCTimestamp,
 } from 'lightweight-charts';
 import type { RangeBundle } from '../../api/types';
 import { type VirtualAxis } from '../../util/virtualAxis';
 import { resolveTokens } from '../../util/tokens';
-import { formatKoreanInt } from '../../util/koreanNumber';
+import { formatKoreanWonEok } from '../../util/koreanNumber';
 import type { PaneSpec } from '../RangeSeriesPane';
 
 const TOKEN_SPEC = {
-  up: ['--price-up', '#DC2626'],
-  down: ['--price-down', '#2563EB'],
-  gap: ['--fg-dim', '#94A3B8'],
+  line: ['--accent', '#14B8A6'],
 } as const;
 
-const { up, down, gap } = resolveTokens(TOKEN_SPEC);
+const { line } = resolveTokens(TOKEN_SPEC);
 
-const histogramOptions = {
+const lineOptions = {
+  color: line,
+  lineWidth: 2,
   priceFormat: {
     type: 'custom' as const,
-    formatter: (v: number) => formatKoreanInt(v),
+    formatter: (v: number) => formatKoreanWonEok(v),
     minMove: 1,
   },
   priceScaleId: 'right',
   priceLineVisible: false,
-  lastValueVisible: false,
+  lastValueVisible: true,
 } as const;
 
 export function projectProgramTradeNetAmount(
   bundle: RangeBundle,
   axis: VirtualAxis,
-): HistogramData<Time>[] {
-  const out: HistogramData<Time>[] = [];
+): LineData<Time>[] {
+  const out: LineData<Time>[] = [];
   const points = bundle.program_trade?.points ?? [];
   for (const p of points) {
     if (p.net_amount == null) continue;
@@ -41,7 +41,6 @@ export function projectProgramTradeNetAmount(
     out.push({
       time: (axis.toVirtual(p.t) / 1000) as UTCTimestamp,
       value: p.net_amount,
-      color: p.gap_risk ? gap : p.net_amount >= 0 ? up : down,
     });
   }
   return out;
@@ -52,8 +51,8 @@ export const PROGRAM_TRADE_SPEC = {
   stretch: 0.35,
   series: [
     {
-      type: HistogramSeries,
-      options: histogramOptions,
+      type: LineSeries,
+      options: lineOptions,
       data: (bundle: RangeBundle, axis: VirtualAxis) => projectProgramTradeNetAmount(bundle, axis),
     },
   ],

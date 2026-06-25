@@ -1,7 +1,7 @@
 import { apiAction, apiCall } from './client';
 import type { LiveTimeframe } from '../state/livePage';
 import type { MASource } from '../chart/projectors/movingAverage';
-import type { AskPeak, BidPeak, OrderbookSnapshot, SourceName, TradeVolumePocWire } from './types';
+import type { AskPeak, BidPeak, OrderbookSnapshot, ProgramTradeSeries, SourceName, TradeVolumePocWire } from './types';
 
 export type StudyAggregationBasis = 'close' | 'intra_period_max';
 export type StudyDataProvenance = 'live_mixed' | 'study_snapshot' | 'unknown';
@@ -34,6 +34,7 @@ export type StudyIndicatorState = {
   daily_moving_averages?: StudyMovingAverageConfig[];
   daily_moving_average_enabled?: boolean;
   daily_moving_average_hidden?: boolean;
+  program_trade_enabled?: boolean;
   trade_volume_poc_enabled?: boolean;
   trade_volume_poc_band_pct?: number;
   trade_volume_poc_color?: string;
@@ -81,6 +82,7 @@ export type StudySnapshotBundle = {
   quote_totals: { t: number; bid_total?: number | null; ask_total?: number | null; visible: boolean }[];
   ratio: { t: number; value?: number | null; visible: boolean }[];
   fill_strength: { t: number; buy_qty?: number | null; sell_qty?: number | null; visible: boolean }[];
+  program_trade?: ProgramTradeSeries;
   ask_peaks: AskPeak[];
   bid_peaks?: BidPeak[];
   trade_volume_pocs?: TradeVolumePocWire[];

@@ -3,6 +3,12 @@
 All notable changes to this project are documented here.
 The format follows a 4-digit `MAJOR.MINOR.PATCH.MICRO` scheme.
 
+## [0.10.0.3] - 2026-06-25
+
+### Changed
+- **프로그램 순매수 pane 실선화**: 누적 순매수 금액을 막대가 아닌 실선 시계열로 표시하고, 금액 축과 사이드바 금액을 `억` 단위로 읽기 쉽게 바꿨다.
+- **study 저장뷰 프로그램 지표 보존**: `/live`에서 저장한 `program_trade` 시계열과 프로그램 pane on/off 상태를 study snapshot에 포함해 `/study`에서도 같은 프로그램 지표와 사이드바 요약을 볼 수 있게 했다.
+
 ## [0.10.0.2] - 2026-06-25
 
 ### Fixed

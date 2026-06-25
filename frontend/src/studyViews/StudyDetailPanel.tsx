@@ -2,8 +2,9 @@ import { useMemo } from 'react';
 import BrokerTrajectoryTable from '../sidebar/BrokerTrajectoryTable';
 import CursorSidebar from '../sidebar/CursorSidebar';
 import OrderbookTable from '../sidebar/OrderbookTable';
+import ProgramTradeSummaryCard from '../sidebar/ProgramTradeSummaryCard';
 import TotalQtyBar from '../sidebar/TotalQtyBar';
-import type { RangeSegment } from '../api/types';
+import type { ProgramTradeSeries, RangeSegment } from '../api/types';
 import type { StudySnapshotDetailInput } from './studySnapshotAdapter';
 import { bucketStartForCursor, studyBrokerBucketsToSeries } from './studySnapshotAdapter';
 
@@ -13,11 +14,12 @@ type Props = {
   details: StudySnapshotDetailInput;
   candles: CandlePoint[];
   segments: RangeSegment[];
+  programTrade?: ProgramTradeSeries | null;
   bucketMs: number;
   cursorMs: number | null;
 };
 
-export function StudyDetailPanel({ details, candles, segments, bucketMs, cursorMs }: Props) {
+export function StudyDetailPanel({ details, candles, segments, programTrade = null, bucketMs, cursorMs }: Props) {
   const bucketStart = useMemo(() => {
     if (candles.length === 0) return null;
     if (cursorMs == null) return candles[candles.length - 1]?.ts_ms ?? null;
@@ -66,6 +68,12 @@ export function StudyDetailPanel({ details, candles, segments, bucketMs, cursorM
             <OrderbookTable snapshot={snapshot} />
             <TotalQtyBar snapshot={snapshot} maskRatio={false} />
           </>
+        )}
+        program={(
+          <ProgramTradeSummaryCard
+            series={programTrade}
+            cursorMs={bucketStart}
+          />
         )}
         brokers={(
           <BrokerTrajectoryTable
