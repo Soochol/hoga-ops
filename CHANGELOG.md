@@ -3,6 +3,16 @@
 All notable changes to this project are documented here.
 The format follows a 4-digit `MAJOR.MINOR.PATCH.MICRO` scheme.
 
+## [0.11.0.2] - 2026-06-25
+
+### Fixed
+- **당일 매물대 분포 빈 구간 표시 보정**: 거래량이 0인 가격 구간도 track으로 보여줘, 당일 live tail만 있는 상태에서도 10개 구간이 모두 보이도록 했다.
+
+## [0.11.0.1] - 2026-06-25
+
+### Fixed
+- **당일 매물대 분포 구간 수 보정**: 저장된 당일 분포의 bin 수가 현재 설정값과 다를 때 캔들 저가-고가 기준으로 다시 계산해, 10구간 설정이면 당일에도 항상 10개 구간을 보여준다.
+
 ## [0.11.0.0] - 2026-06-25
 
 ### Added

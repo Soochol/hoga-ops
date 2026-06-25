@@ -91,7 +91,10 @@ export function VolumeDistributionCard({
                 data-testid="volume-distribution-row"
                 className="min-h-0"
               >
-                <div className="h-2 overflow-hidden rounded-sm bg-bg">
+                <div
+                  data-testid="volume-distribution-track"
+                  className="h-2 overflow-hidden rounded-sm border border-border-subtle bg-bg-input"
+                >
                   <div
                     data-testid={isMax ? 'volume-distribution-max-bar' : 'volume-distribution-bar'}
                     className="h-full"
