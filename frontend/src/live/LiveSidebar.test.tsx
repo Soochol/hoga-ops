@@ -174,6 +174,7 @@ describe('LiveSidebar', () => {
   });
 
   it('renders the persisted volume distribution for the active stock-date', () => {
+    useLivePageStore.setState({ volumeDistributionRangeCount: 2 });
     renderSidebar({
       code: '005930',
       bundle: {
@@ -332,6 +333,73 @@ describe('LiveSidebar', () => {
     expect(screen.getByTestId('volume-distribution-bar')).toHaveStyle({
       width: `${(500 / 700) * 100}%`,
     });
+  });
+
+  it('recomputes today distribution when persisted bins do not match the selected range count', () => {
+    useLivePageStore.setState({ volumeDistributionRangeCount: 10 });
+    const liveWithTrades: LiveSeriesData = {
+      ...emptyLive,
+      trade: [
+        {
+          t_ms: Date.UTC(2026, 4, 27, 0, 10, 0),
+          kind: 'trade',
+          trades: [
+            { t_ms: Date.UTC(2026, 4, 27, 0, 10, 0), price: 70100, qty: 500, side: 1 },
+            { t_ms: Date.UTC(2026, 4, 27, 0, 12, 0), price: 70350, qty: 700, side: -1 },
+          ],
+        },
+      ],
+    };
+
+    renderSidebar({
+      code: '005930',
+      live: liveWithTrades,
+      bundle: {
+        ...bundleFixture,
+        volume_distributions: [
+          {
+            date: '20260527',
+            range_count: 1,
+            price_min: 70000,
+            price_max: 70400,
+            session_open_ms: Date.UTC(2026, 4, 27, 0, 0, 0),
+            session_close_ms: Date.UTC(2026, 4, 27, 6, 30, 0),
+            bins: [
+              { price_low: 70000, price_high: 70400, qty: 1200 },
+            ],
+          },
+        ],
+      },
+    });
+
+    expect(screen.getAllByTestId('volume-distribution-row')).toHaveLength(10);
+  });
+
+  it('keeps the selected today range count even before live trades arrive', () => {
+    useLivePageStore.setState({ volumeDistributionRangeCount: 10 });
+
+    renderSidebar({
+      code: '005930',
+      live: emptyLive,
+      bundle: {
+        ...bundleFixture,
+        volume_distributions: [
+          {
+            date: '20260527',
+            range_count: 1,
+            price_min: 70000,
+            price_max: 70400,
+            session_open_ms: Date.UTC(2026, 4, 27, 0, 0, 0),
+            session_close_ms: Date.UTC(2026, 4, 27, 6, 30, 0),
+            bins: [
+              { price_low: 70000, price_high: 70400, qty: 0 },
+            ],
+          },
+        ],
+      },
+    });
+
+    expect(screen.getAllByTestId('volume-distribution-row')).toHaveLength(10);
   });
 
   it('renders the program trade card between orderbook and brokers', () => {

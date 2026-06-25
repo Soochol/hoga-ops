@@ -190,7 +190,7 @@ export function LiveSidebar({ code, live, bundle = null, todayKst = '', programT
     const todaySegment = activeBundle.segments.find((segment) => segment.date === todayKst);
     if (!todaySegment) return null;
     const todayCandles = activeBundle.candles.filter((candle) => realMsToYyyymmdd(candle.ts_ms) === todayKst);
-    if (todayCandles.length === 0 || liveDistributionTrades.length === 0) return null;
+    if (todayCandles.length === 0) return null;
     return computeContinuousTradeVolumeDistribution({
       date: todayKst,
       candles: todayCandles,
@@ -203,6 +203,13 @@ export function LiveSidebar({ code, live, bundle = null, todayKst = '', programT
     if (!volumeDistributionEnabled) return undefined;
     const persistedProfile = profileForDate(persistedVolumeDistributions, activeVolumeDistributionDate);
     if (persistedProfile) {
+      if (
+        activeVolumeDistributionDate === todayKst &&
+        persistedProfile.bins.length !== volumeDistributionRangeCount &&
+        recomputedTodayVolumeDistribution
+      ) {
+        return recomputedTodayVolumeDistribution;
+      }
       return activeVolumeDistributionDate === todayKst
         ? mergeVolumeDistributionDelta(persistedProfile, liveDistributionTrades)
         : persistedProfile;
@@ -215,6 +222,7 @@ export function LiveSidebar({ code, live, bundle = null, todayKst = '', programT
     volumeDistributionEnabled,
     activeVolumeDistributionDate,
     todayKst,
+    volumeDistributionRangeCount,
     recomputedTodayVolumeDistribution,
     persistedVolumeDistributions,
     liveDistributionTrades,
