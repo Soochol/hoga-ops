@@ -660,7 +660,7 @@ describe('LiveChartRoot', () => {
       { wrapper },
     );
     expect(ts.setVisibleLogicalRange).toHaveBeenCalledTimes(1);
-    expect(ts.setVisibleLogicalRange).toHaveBeenLastCalledWith({ from: 0, to: 122 });
+    expect(ts.setVisibleLogicalRange).toHaveBeenLastCalledWith({ from: 0, to: 130 });
     expect(ts.scrollToPosition).not.toHaveBeenCalled();
   });
 
@@ -682,7 +682,7 @@ describe('LiveChartRoot', () => {
     );
 
     expect(ts.setVisibleLogicalRange).toHaveBeenCalledTimes(1);
-    expect(ts.setVisibleLogicalRange).toHaveBeenLastCalledWith({ from: 100, to: 431 });
+    expect(ts.setVisibleLogicalRange).toHaveBeenLastCalledWith({ from: 100, to: 442 });
     expect(ts.scrollToPosition).not.toHaveBeenCalled();
   });
 
@@ -704,7 +704,7 @@ describe('LiveChartRoot', () => {
     );
 
     expect(ts.setVisibleLogicalRange).toHaveBeenCalledTimes(1);
-    expect(ts.setVisibleLogicalRange).toHaveBeenLastCalledWith({ from: 100, to: 431 });
+    expect(ts.setVisibleLogicalRange).toHaveBeenLastCalledWith({ from: 100, to: 442 });
     expect(ts.scrollToPosition).not.toHaveBeenCalled();
   });
 
@@ -726,7 +726,7 @@ describe('LiveChartRoot', () => {
     );
 
     expect(ts.setVisibleLogicalRange).toHaveBeenCalledTimes(1);
-    expect(ts.setVisibleLogicalRange).toHaveBeenLastCalledWith({ from: 180, to: 1053 });
+    expect(ts.setVisibleLogicalRange).toHaveBeenLastCalledWith({ from: 180, to: 1110 });
   });
 
   it('1m timeframe: code change re-applies setVisibleLogicalRange with new count', () => {
@@ -750,7 +750,7 @@ describe('LiveChartRoot', () => {
       />,
       { wrapper },
     );
-    expect(first.ts.setVisibleLogicalRange).toHaveBeenLastCalledWith({ from: 0, to: 122 });
+    expect(first.ts.setVisibleLogicalRange).toHaveBeenLastCalledWith({ from: 0, to: 130 });
 
     // Watchlist switch: new code, new (smaller-or-larger) bundle. The fresh
     // chart instance must receive the new code's 300-bar window — and the
@@ -764,7 +764,7 @@ describe('LiveChartRoot', () => {
         isPastCandlesLoading={false}
       />,
     );
-    expect(second.ts.setVisibleLogicalRange).toHaveBeenLastCalledWith({ from: 100, to: 464 });
+    expect(second.ts.setVisibleLogicalRange).toHaveBeenLastCalledWith({ from: 100, to: 488 });
     expect(first.ts.setVisibleLogicalRange).toHaveBeenCalledTimes(1);
   });
 
@@ -1690,7 +1690,7 @@ describe('LiveChartRoot historical-prepend viewport preservation', () => {
         clampEngaged={false} isPastCandlesLoading={false} /> /* restoreViewport omitted */,
       { wrapper },
     );
-    expect(ts.setVisibleLogicalRange).toHaveBeenLastCalledWith({ from: 0, to: 122 });
+    expect(ts.setVisibleLogicalRange).toHaveBeenLastCalledWith({ from: 0, to: 130 });
   });
 
   it('restore: an anchor older than the earliest loaded bar falls through to default (no degenerate {0,0})', () => {
@@ -1711,7 +1711,7 @@ describe('LiveChartRoot historical-prepend viewport preservation', () => {
       { wrapper },
     );
     // Default minute window, NOT {from:0,to:0}.
-    expect(ts.setVisibleLogicalRange).toHaveBeenLastCalledWith({ from: 0, to: 122 });
+    expect(ts.setVisibleLogicalRange).toHaveBeenLastCalledWith({ from: 0, to: 130 });
   });
 
   // ── 진행 루프(스텝 2..N): isExtending falling edge + 빈영역 → 다음 스텝 자가 dispatch ──

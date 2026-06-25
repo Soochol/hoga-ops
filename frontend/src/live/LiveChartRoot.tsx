@@ -30,6 +30,7 @@ import type { LiveVenueOption } from '../state/liveVenue';
 import type { AskPeak, BidPeak, RangeBundle } from '../api/types';
 import { PAST_CANDLES_MAX_DAYS } from './liveDateTime';
 import { initialVisibleMinuteBarsFor } from './liveVenuePolicy';
+import { minuteRightOffsetBars } from './minuteViewportPolicy';
 import { summarizeWarnings, type LiveDataWarning } from './liveDataWarnings';
 import { useViewportBackfill } from './useViewportBackfill';
 import { registerViewportCapture, saveViewportToActiveTab } from '../state/liveTabs';
@@ -85,7 +86,6 @@ const EMPTY_ASK_PEAKS: readonly AskPeak[] = [];
 const EMPTY_BID_PEAKS: readonly BidPeak[] = [];
 const HIGH_LOW_AVOID_BASELINE_STYLE = { color: '', lineWidth: 1 };
 const DAILY_MIN_EFFECTIVE_BAR_SPACING = 3.5;
-const MINUTE_RIGHT_LABEL_GUTTER_PX = 140;
 
 function dailyLogicalRange(
   totalBars: number,
@@ -102,16 +102,6 @@ function dailyLogicalRange(
   const loadedSpan = totalBars + rightOffset;
   const span = Math.min(loadedSpan, maxLegibleSpan);
   return { from: Math.max(0, to - span), to };
-}
-
-function minuteRightOffsetBars(visibleBars: number, plotWidth: number): number {
-  const configured = CHART_TIMESCALE_OPTIONS.rightOffset ?? 0;
-  if (plotWidth <= MINUTE_RIGHT_LABEL_GUTTER_PX || visibleBars <= 0) return configured;
-  const offsetForLabelGutter = Math.ceil(
-    (MINUTE_RIGHT_LABEL_GUTTER_PX * visibleBars) /
-      (plotWidth - MINUTE_RIGHT_LABEL_GUTTER_PX),
-  );
-  return Math.max(configured, offsetForLabelGutter);
 }
 
 interface Props {
@@ -492,7 +482,12 @@ export function LiveChartRoot({ code, timeframe, venue = 'KRX', viewIdentity, bu
   });
   // Modifier-aware 휠 줌/팬 — handleScale.mouseWheel: false(아래 createChartEx
   // 옵션)와 한 쌍. 스펙: docs/superpowers/specs/2026-06-07-live-wheel-interactions-design.md
-  useWheelInteractions(chart, containerRef, cb, axis);
+  const getLiveRightOffsetBars = useCallback((visibleBars: number, plotWidth: number) => (
+    isMinuteTimeframe(timeframe)
+      ? minuteRightOffsetBars(visibleBars, plotWidth)
+      : (CHART_TIMESCALE_OPTIONS.rightOffset ?? 0)
+  ), [timeframe]);
+  useWheelInteractions(chart, containerRef, cb, axis, undefined, getLiveRightOffsetBars);
   useEffect(() => {
     // Reveal the chart two rAFs after the viewport is applied, so lightweight-
     // charts' one-frame-late barSpacing settle (the cold-load zoom flash) lands
@@ -551,7 +546,10 @@ export function LiveChartRoot({ code, timeframe, venue = 'KRX', viewIdentity, bu
               true,
             )
           : null;
-        const range = computeRestoreRange(restoreViewport, totalBarsR, idx);
+        const restoreRightOffset = isMinuteTimeframe(timeframe)
+          ? minuteRightOffsetBars(restoreViewport.barSpan, tsR.width())
+          : undefined;
+        const range = computeRestoreRange(restoreViewport, totalBarsR, idx, restoreRightOffset);
         if (range) {
           tsR.setVisibleLogicalRange({ from: range.from, to: range.to });
           if (range.scrollToRight) tsR.scrollToPosition(0, false);

@@ -105,9 +105,10 @@ export function computeRestoreRange(
   anchor: TabViewport,
   totalBars: number,
   anchorIndex: number | null,
+  rightOffsetOverride?: number,
 ): RestoreRange | null {
   const span = Math.max(1, Math.round(anchor.barSpan));
-  const rightOffset = CHART_TIMESCALE_OPTIONS.rightOffset ?? 0;
+  const rightOffset = rightOffsetOverride ?? (CHART_TIMESCALE_OPTIONS.rightOffset ?? 0);
   if (anchor.atLiveEdge) {
     // Follow live: keep the saved zoom while preserving the standard right
     // whitespace band after the latest bar.

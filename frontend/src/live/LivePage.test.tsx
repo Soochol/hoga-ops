@@ -32,6 +32,7 @@ const livePageMocks = vi.hoisted(() => {
       viewIdentity?: string;
       restoreViewport?: unknown;
       persistLiveViewport?: boolean;
+      onViewportCaptureReady?: (capture: () => unknown) => void;
       chartBundle?: RangeBundle | null;
       tradeVolumePocs?: unknown[];
       isExtending?: boolean;
@@ -94,6 +95,7 @@ vi.mock('./LiveChartRoot', () => ({
     viewIdentity?: string;
     restoreViewport?: unknown;
     persistLiveViewport?: boolean;
+    onViewportCaptureReady?: (capture: () => unknown) => void;
   }) => {
     livePageMocks.liveChartRootProps.push(props);
     return null;
@@ -576,6 +578,29 @@ describe('LivePage shell', () => {
       restoreViewport: null,
       persistLiveViewport: false,
     });
+  });
+
+  it('passes the current viewport once when the toolbar changes minute timeframe', async () => {
+    const capturedViewport = {
+      rightEdgeMs: 1_781_000_000_000,
+      barSpan: 331,
+      atLiveEdge: true,
+    };
+    renderWithRouter('/live?code=005930');
+    await waitFor(() => expect(livePageMocks.liveChartRootProps.at(-1)?.code).toBe('005930'));
+    act(() => {
+      livePageMocks.liveChartRootProps.at(-1)?.onViewportCaptureReady?.(() => capturedViewport);
+    });
+
+    act(() => {
+      screen.getByRole('button', { name: '분봉 선택 열기: 1분' }).click();
+    });
+    act(() => {
+      screen.getByRole('menuitemradio', { name: '3분' }).click();
+    });
+
+    await waitFor(() => expect(livePageMocks.liveChartRootProps.at(-1)?.timeframe).toBe('3m'));
+    expect(livePageMocks.liveChartRootProps.at(-1)?.restoreViewport).toEqual(capturedViewport);
   });
 
   it('includes the selected venue in bundle options, status text, and chart identity', () => {

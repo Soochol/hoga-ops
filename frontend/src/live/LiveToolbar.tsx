@@ -15,6 +15,7 @@ type Props = {
   onOpenIndicators: () => void;
   onOpenSettings: () => void;
   studySaveControl?: ReactNode;
+  onSelectTimeframe?: (tf: MinuteTimeframe | CalendarTimeframe) => void;
 };
 
 const CALENDAR_LABELS: Record<CalendarTimeframe, string> = {
@@ -27,7 +28,7 @@ function minuteLabel(tf: MinuteTimeframe): string {
   return `${tf.slice(0, -1)}분`;
 }
 
-export function LiveToolbar({ onOpenIndicators, onOpenSettings, studySaveControl }: Props) {
+export function LiveToolbar({ onOpenIndicators, onOpenSettings, studySaveControl, onSelectTimeframe }: Props) {
   const tf = useLivePageStore((s) => s.candleTimeframe);
   const setTf = useLivePageStore((s) => s.setCandleTimeframe);
   const rememberedMinute = useLivePageStore((s) => s.lastMinuteTimeframe);
@@ -36,6 +37,7 @@ export function LiveToolbar({ onOpenIndicators, onOpenSettings, studySaveControl
   const minuteButtonRef = useRef<HTMLButtonElement>(null);
   const [anchorRect, setAnchorRect] = useState<DOMRect | null>(null);
   const displayedMinute = isMinuteTimeframe(tf) ? tf : rememberedMinute;
+  const selectTimeframe = onSelectTimeframe ?? setTf;
 
   const closeMinuteMenu = useCallback(() => setMinuteMenuOpen(false), []);
   useDismissablePopover(minuteMenuOpen, minuteWrapRef, closeMinuteMenu);
@@ -51,17 +53,17 @@ export function LiveToolbar({ onOpenIndicators, onOpenSettings, studySaveControl
       return;
     }
     setMinuteMenuOpen(false);
-    setTf(rememberedMinute);
+    selectTimeframe(rememberedMinute);
   };
 
   const pickMinute = (next: MinuteTimeframe) => {
     setMinuteMenuOpen(false);
-    setTf(next);
+    selectTimeframe(next);
   };
 
   const pickCalendar = (next: CalendarTimeframe) => {
     setMinuteMenuOpen(false);
-    setTf(next);
+    selectTimeframe(next);
   };
 
   const minuteButtonLabel = isMinuteTimeframe(tf)

@@ -33,6 +33,7 @@ export function useWheelInteractions(
   bundle: RangeBundle | null,
   axis: VirtualAxis,
   onViewportChanged?: (range: { from: number; to: number }) => void,
+  getRightOffsetBars?: (visibleBars: number, plotWidth: number) => number,
 ): void {
   // maxTo ref — bundle 교체(SSE 푸시 포함)마다 값만 갱신, 리스너는 재부착하지
   // 않는다. 오른쪽 벽 = 마지막 캔들 + rightOffset: shift 팬으로 라이브 엣지에
@@ -46,6 +47,7 @@ export function useWheelInteractions(
   // deps에 넣으면 SSE 푸시마다 리스너가 재부착되어 churn이 생긴다(기존 설계).
   const lastMsRef = useRef<number | undefined>(undefined);
   const axisRef = useRef<VirtualAxis>(axis);
+  const getRightOffsetBarsRef = useRef<typeof getRightOffsetBars>(getRightOffsetBars);
   useEffect(() => {
     lastMsRef.current =
       bundle != null && bundle.candles.length > 0
@@ -55,6 +57,9 @@ export function useWheelInteractions(
   useEffect(() => {
     axisRef.current = axis;
   }, [axis]);
+  useEffect(() => {
+    getRightOffsetBarsRef.current = getRightOffsetBars;
+  }, [getRightOffsetBars]);
 
   // 휠 리스너 — chart당 1회 부착. deps의 containerRef는
   // react-hooks/exhaustive-deps 충족용(레포 선례: useDrawingHost) —
@@ -107,9 +112,12 @@ export function useWheelInteractions(
           const idx = ts.timeToIndex(vt as Time, true);
           if (typeof idx === 'number' && Number.isFinite(idx)) lastBarIndex = idx;
         }
+        const rightOffsetBars =
+          getRightOffsetBarsRef.current?.(Math.max(1, range.to - range.from), plotWidth) ??
+          (CHART_TIMESCALE_OPTIONS.rightOffset ?? 0);
         const maxTo =
           lastBarIndex != null
-            ? lastBarIndex + (CHART_TIMESCALE_OPTIONS.rightOffset ?? 0)
+            ? lastBarIndex + rightOffsetBars
             : Number.POSITIVE_INFINITY;
         const outcome = computeWheelOutcome({
           range,
