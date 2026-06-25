@@ -49,20 +49,11 @@ def test_decide_capture_complete_skips_even_with_force_retry_per_adr_0035(tmp_pa
     assert decision == CaptureDecision(skip_reason="already_complete", resume=False)
 
 
-def test_decide_capture_source_partial_skips_when_not_force_retry(tmp_path: Path) -> None:
+def test_decide_capture_source_partial_retries_without_force_concept(tmp_path: Path) -> None:
     _write_meta(tmp_path / "parquet" / "20260518" / "005930" / "meta.json",
                 collection_complete=True, is_partial=True)
     decision = eligibility.decide_capture(
         data_dir=tmp_path, code="005930", date="20260518", force_retry=False,
-    )
-    assert decision == CaptureDecision(skip_reason="source_partial", resume=False)
-
-
-def test_decide_capture_source_partial_falls_through_when_force_retry(tmp_path: Path) -> None:
-    _write_meta(tmp_path / "parquet" / "20260518" / "005930" / "meta.json",
-                collection_complete=True, is_partial=True)
-    decision = eligibility.decide_capture(
-        data_dir=tmp_path, code="005930", date="20260518", force_retry=True,
     )
     assert decision == CaptureDecision(skip_reason=None, resume=False)
 
@@ -139,10 +130,12 @@ def test_decide_capture_invalid_proceeds_as_fresh(tmp_path: Path) -> None:
     assert decision.resume is False
 
 
-def test_decide_capture_no_upstream_data_without_force_retry_skips(tmp_path: Path) -> None:
-    """A sentinel-only directory + force_retry=False → skip with reason
-    no_upstream_data. The sentinel must remain on disk (we are not
-    cleaning up; we are skipping)."""
+def test_decide_capture_no_upstream_data_retries_without_force_concept(tmp_path: Path) -> None:
+    """A sentinel-only directory should be retried on the next user request.
+
+    The old force_retry distinction is gone: the sentinel is just the previous
+    outcome marker, not a permanent skip gate.
+    """
     from hoga.api.eligibility import decide_capture
 
     raw_dir = tmp_path / "raw" / "20260319" / "003490"
@@ -153,29 +146,9 @@ def test_decide_capture_no_upstream_data_without_force_retry_skips(tmp_path: Pat
     decision = decide_capture(
         data_dir=tmp_path, code="003490", date="20260319", force_retry=False
     )
-    assert decision.skip_reason == "no_upstream_data"
-    assert decision.resume is False
-    assert sentinel.exists()  # NOT deleted on plain skip
-
-
-def test_decide_capture_no_upstream_data_with_force_retry_deletes_sentinel(tmp_path: Path) -> None:
-    """force_retry=True bypasses the sentinel: the sentinel file is deleted
-    and the decision proceeds with resume=False so collect_stock_date runs
-    fresh. Mirrors the SOURCE_PARTIAL+force_retry path (consistent UX:
-    force_retry ignores every cache)."""
-    from hoga.api.eligibility import decide_capture
-
-    raw_dir = tmp_path / "raw" / "20260319" / "003490"
-    raw_dir.mkdir(parents=True)
-    sentinel = raw_dir / ".no_upstream_data"
-    sentinel.touch()
-
-    decision = decide_capture(
-        data_dir=tmp_path, code="003490", date="20260319", force_retry=True
-    )
     assert decision.skip_reason is None
     assert decision.resume is False
-    assert not sentinel.exists()  # deleted by decide_capture
+    assert not sentinel.exists()
 
 
 def test_decide_capture_no_sentinel_no_change_in_existing_paths(tmp_path: Path) -> None:

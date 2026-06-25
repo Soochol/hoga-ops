@@ -7,7 +7,6 @@ import { useSymbols, filterSymbols } from './useSymbols';
 import { enqueueErrorHints } from '../api/upstream-hints';
 import type { ApiError } from '../api/client';
 import type { BlockedItem, EnqueueResponse, SymbolHit, UpstreamCode } from '../api/types';
-import { loadForceRetryDefault } from './forceRetryDefault';
 import { legendText } from './calendarStatus';
 
 function formatBlockedMessage(items: BlockedItem[]): string {
@@ -67,9 +66,7 @@ export function CaptureForm({ referenceYear, referenceMonth, initialCode = null 
         code: symbol!.code,
         start_date: range!.start,
         end_date: range!.end!,
-        // Read at submit time so a Settings change between mount and submit
-        // is honored without remounting the form.
-        force_retry: loadForceRetryDefault(),
+        force_retry: false,
       });
       // ADR-0042: 201 partial-success path — some items accepted, some blocked.
       if (resp.blocked && resp.blocked.length > 0) {

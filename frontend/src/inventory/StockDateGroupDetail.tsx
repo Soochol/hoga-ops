@@ -28,9 +28,8 @@ export function StockDateGroupDetail({ group }: Props) {
   const { queue } = useCaptureQueue();
   // Optimistic guard: the queue snapshot only catches up after the POST
   // response + SSE round-trip. Between click and snapshot refresh, the
-  // user can rapid-double-click the same row's ↻ and fire two POSTs (both
-  // succeed with force_retry=true). Track the (code,date) of an in-flight
-  // submit locally to disable that row immediately.
+  // user can rapid-double-click the same row's ↻ and fire two POSTs. Track
+  // the (code,date) of an in-flight submit locally to disable that row immediately.
   const [pendingKey, setPendingKey] = useState<string | null>(null);
 
   // In-flight set: any (code, date) currently in queue.active ∪ queue.queued.
