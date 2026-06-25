@@ -57,6 +57,7 @@ vi.mock('lightweight-charts', async () => {
         getVisibleRange: vi.fn(() => null),
         setVisibleRange: vi.fn(),
         timeToCoordinate: vi.fn(() => null),
+        width: vi.fn(() => 800),
       })),
       panes: vi.fn(() => []),
       remove: vi.fn(),
@@ -662,6 +663,50 @@ describe('LiveChartRoot', () => {
     expect(ts.scrollToPosition).not.toHaveBeenCalled();
   });
 
+  it('minute timeframes: widen live-edge whitespace enough to clear the right axis labels', () => {
+    useLivePageStore.setState({ historicalFromDate: null });
+    const { chart, ts } = buildChartMockWithStableTS();
+    ts.width.mockReturnValue(1495);
+    vi.mocked(createChartEx).mockImplementationOnce(() => chart as never);
+
+    render(
+      <LiveChartRoot
+        code="005930"
+        timeframe="1m"
+        bundle={makeBundleWithCandles(400)}
+        clampEngaged={false}
+        isPastCandlesLoading={false}
+      />,
+      { wrapper },
+    );
+
+    expect(ts.setVisibleLogicalRange).toHaveBeenCalledTimes(1);
+    expect(ts.setVisibleLogicalRange).toHaveBeenLastCalledWith({ from: 100, to: 422 });
+    expect(ts.scrollToPosition).not.toHaveBeenCalled();
+  });
+
+  it('10m timeframe: uses the same pixel-gutter policy as 1m', () => {
+    useLivePageStore.setState({ historicalFromDate: null });
+    const { chart, ts } = buildChartMockWithStableTS();
+    ts.width.mockReturnValue(1495);
+    vi.mocked(createChartEx).mockImplementationOnce(() => chart as never);
+
+    render(
+      <LiveChartRoot
+        code="005930"
+        timeframe="10m"
+        bundle={makeBundleWithCandles(400)}
+        clampEngaged={false}
+        isPastCandlesLoading={false}
+      />,
+      { wrapper },
+    );
+
+    expect(ts.setVisibleLogicalRange).toHaveBeenCalledTimes(1);
+    expect(ts.setVisibleLogicalRange).toHaveBeenLastCalledWith({ from: 100, to: 422 });
+    expect(ts.scrollToPosition).not.toHaveBeenCalled();
+  });
+
   it('1m timeframe: NXT initial view spans the extended 08:00-20:00 session', () => {
     useLivePageStore.setState({ historicalFromDate: null });
     const { chart, ts } = buildChartMockWithStableTS();
@@ -680,7 +725,7 @@ describe('LiveChartRoot', () => {
     );
 
     expect(ts.setVisibleLogicalRange).toHaveBeenCalledTimes(1);
-    expect(ts.setVisibleLogicalRange).toHaveBeenLastCalledWith({ from: 180, to: 915 });
+    expect(ts.setVisibleLogicalRange).toHaveBeenLastCalledWith({ from: 180, to: 1003 });
   });
 
   it('1m timeframe: code change re-applies setVisibleLogicalRange with new count', () => {
@@ -718,7 +763,7 @@ describe('LiveChartRoot', () => {
         isPastCandlesLoading={false}
       />,
     );
-    expect(second.ts.setVisibleLogicalRange).toHaveBeenLastCalledWith({ from: 100, to: 415 });
+    expect(second.ts.setVisibleLogicalRange).toHaveBeenLastCalledWith({ from: 100, to: 443 });
     expect(first.ts.setVisibleLogicalRange).toHaveBeenCalledTimes(1);
   });
 
