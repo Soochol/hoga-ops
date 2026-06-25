@@ -282,6 +282,9 @@ export function useViewportBackfill({
       const nextFrom = nextHistoricalFrom(axis.segments[0].sessionOpenMs, cur, stepChunkDays(timeframe));
       if (timeoutId !== null) clearTimeout(timeoutId);
       timeoutId = setTimeout(() => {
+        const state = useLivePageStore.getState();
+        if (state.candleTimeframe !== timeframe) return;
+        if (state.activeCode && state.activeCode !== code) return;
         useLivePageStore.getState().extendHistoricalRange(nextFrom);
       }, 150);
     };

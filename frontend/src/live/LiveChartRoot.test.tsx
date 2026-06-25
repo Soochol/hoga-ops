@@ -1040,7 +1040,7 @@ const TWO_SEGMENT_BUNDLE: RangeBundle = {
 
 describe('LiveChartRoot lazy fetch trigger', () => {
   beforeEach(() => {
-    useLivePageStore.setState({ historicalFromDate: null });
+    useLivePageStore.setState({ activeCode: null, candleTimeframe: '1m', historicalFromDate: null });
     vi.useFakeTimers();
     vi.setSystemTime(TODAY_OPEN_MS);
   });
@@ -1192,6 +1192,32 @@ describe('LiveChartRoot lazy fetch trigger', () => {
     expect(ts.setVisibleLogicalRange).toHaveBeenCalled();
   });
 
+  it('does NOT apply a stale backfill debounce after the timeframe changed', () => {
+    const handlers: Array<(r: unknown) => void> = [];
+    vi.mocked(createChartEx).mockImplementationOnce(() => buildChartMockCapturing(handlers) as any);
+    useLivePageStore.setState({ activeCode: '005930', candleTimeframe: '1m', historicalFromDate: null });
+
+    render(
+      <LiveChartRoot
+        code="005930"
+        timeframe="1m"
+        bundle={TWO_SEGMENT_BUNDLE}
+        clampEngaged={false}
+        isPastCandlesLoading={false}
+      />,
+      { wrapper },
+    );
+
+    act(() => {
+      handlers.forEach((h) => h({ from: -50.3, to: 100.7 }));
+      useLivePageStore.getState().setCandleTimeframe('3m');
+      vi.advanceTimersByTime(200);
+    });
+
+    expect(useLivePageStore.getState().candleTimeframe).toBe('3m');
+    expect(useLivePageStore.getState().historicalFromDate).toBeNull();
+  });
+
   it('(auto-fill 불변식) 캔들 로드 후 초기 빈영역(from<0)은 사용자 팬 없이 자동 백필 — small-window 보장', () => {
     // (a) 초기 창 5거래일 축소(/diagnose 2026-06-09 후속)의 안전성 고정: 받아둔 양이
     // 적어도, 화면에 빈영역이 보이면 사용자 액션 없이 채워진다. 여기선 그 시작점인 3b
@@ -1263,6 +1289,7 @@ describe('LiveChartRoot lazy fetch trigger', () => {
     // extend the same way as on minute timeframes. Prior behavior had a
     // `!isMinuteTimeframe` early-return that blocked D/W/M users from
     // ever seeing more history; this guards against that regression.
+    useLivePageStore.setState({ candleTimeframe: 'D' });
     const handlers: Array<(r: unknown) => void> = [];
     vi.mocked(createChartEx).mockImplementationOnce(() => buildChartMockCapturing(handlers) as any);
 
