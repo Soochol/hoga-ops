@@ -25,6 +25,7 @@ const RESIZER_PAIRS: Array<{ upper: LiveCardKey; lower: LiveCardKey; label: stri
   { upper: 'program', lower: 'brokers', label: '프로그램 순매수 / 거래원 크기 조절' },
   { upper: 'brokers', lower: 'investor', label: '거래원 / 잠정투자자 크기 조절' },
 ];
+const RESIZER_HEIGHT_PX = 8;
 
 export function LiveDetailPanel({ orderbook, program, brokers, investor }: Props) {
   const panelRef = useRef<HTMLDivElement>(null);
@@ -64,6 +65,14 @@ export function LiveDetailPanel({ orderbook, program, brokers, investor }: Props
       const startY = event.clientY;
       const startWeights = useLiveLayoutStore.getState().rightCardWeights;
       const panelHeight = panelRef.current?.clientHeight ?? 0;
+      const totalWeight = Object.values(startWeights).reduce((sum, weight) => sum + weight, 0);
+      const pairWeight = startWeights[upper] + startWeights[lower];
+      const contentHeight = Math.max(
+        0,
+        panelHeight - RESIZER_PAIRS.length * RESIZER_HEIGHT_PX,
+      );
+      const pairHeight =
+        totalWeight > 0 && pairWeight > 0 ? (contentHeight * pairWeight) / totalWeight : 0;
 
       target.setPointerCapture(event.pointerId);
 
@@ -73,22 +82,32 @@ export function LiveDetailPanel({ orderbook, program, brokers, investor }: Props
           upper,
           lower,
           moveEvent.clientY - startY,
-          panelHeight,
+          pairHeight,
         );
         useLiveLayoutStore.setState({ rightCardWeights: nextWeights });
       };
 
-      const handlePointerUp = (upEvent: PointerEvent) => {
-        if (target.hasPointerCapture(upEvent.pointerId)) {
-          target.releasePointerCapture(upEvent.pointerId);
+      const finishResize = (pointerId: number) => {
+        if (target.hasPointerCapture(pointerId)) {
+          target.releasePointerCapture(pointerId);
         }
         window.removeEventListener('pointermove', handlePointerMove);
         window.removeEventListener('pointerup', handlePointerUp);
+        window.removeEventListener('pointercancel', handlePointerCancel);
         setWeights(useLiveLayoutStore.getState().rightCardWeights);
+      };
+
+      const handlePointerUp = (upEvent: PointerEvent) => {
+        finishResize(upEvent.pointerId);
+      };
+
+      const handlePointerCancel = (cancelEvent: PointerEvent) => {
+        finishResize(cancelEvent.pointerId);
       };
 
       window.addEventListener('pointermove', handlePointerMove);
       window.addEventListener('pointerup', handlePointerUp);
+      window.addEventListener('pointercancel', handlePointerCancel);
     };
 
   return (
