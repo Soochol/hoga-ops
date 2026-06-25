@@ -90,7 +90,7 @@ export function StudyPage() {
     [snapshot],
   );
   const details = useMemo(
-    () => snapshot ? studySnapshotDetails(snapshot.bundle) : null,
+    () => snapshot ? studySnapshotDetails(snapshot.bundle, snapshot.indicator_state) : null,
     [snapshot],
   );
   const bucketMs = snapshot ? (bucketSeconds(snapshot.timeframe) ?? 60) * 1000 : 60_000;

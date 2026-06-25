@@ -3,6 +3,7 @@ import BrokerTrajectoryTable from '../sidebar/BrokerTrajectoryTable';
 import CursorSidebar from '../sidebar/CursorSidebar';
 import OrderbookTable from '../sidebar/OrderbookTable';
 import TotalQtyBar from '../sidebar/TotalQtyBar';
+import { VolumeDistributionCard } from '../sidebar/VolumeDistributionCard';
 import type { RangeSegment } from '../api/types';
 import type { StudySnapshotDetailInput } from './studySnapshotAdapter';
 import { bucketStartForCursor, studyBrokerBucketsToSeries } from './studySnapshotAdapter';
@@ -16,6 +17,14 @@ type Props = {
   bucketMs: number;
   cursorMs: number | null;
 };
+
+function profileForDate(
+  profiles: StudySnapshotDetailInput['volumeDistributions'],
+  date: string | null,
+) {
+  if (!date) return null;
+  return profiles.find((profile) => profile.date === date) ?? null;
+}
 
 export function StudyDetailPanel({ details, candles, segments, bucketMs, cursorMs }: Props) {
   const bucketStart = useMemo(() => {
@@ -57,6 +66,11 @@ export function StudyDetailPanel({ details, candles, segments, bucketMs, cursorM
     });
   }, [bucketStart, details.brokersByBucketStart, sessionBrokerSeries]);
   const snapshot = orderbook?.available ? orderbook.snapshot : null;
+  const activeVolumeDistribution = useMemo(() => {
+    if (!details.volumeDistributionEnabled) return undefined;
+    return profileForDate(details.volumeDistributions, activeSegment?.date ?? null);
+  }, [activeSegment?.date, details.volumeDistributionEnabled, details.volumeDistributions]);
+  const volumeDistributionCursorMs = cursorMs ?? bucketStart;
 
   return (
     <div data-testid="study-detail-panel" className="grid h-full min-w-0 grid-rows-[minmax(0,1fr)_auto] bg-bg-card">
@@ -66,6 +80,14 @@ export function StudyDetailPanel({ details, candles, segments, bucketMs, cursorM
             <OrderbookTable snapshot={snapshot} />
             <TotalQtyBar snapshot={snapshot} maskRatio={false} />
           </>
+        )}
+        volumeDistribution={(
+          <VolumeDistributionCard
+            profile={activeVolumeDistribution}
+            cursorMs={volumeDistributionCursorMs}
+            color={details.volumeDistributionColor}
+            maxColor={details.volumeDistributionMaxColor}
+          />
         )}
         brokers={(
           <BrokerTrajectoryTable

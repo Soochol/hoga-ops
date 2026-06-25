@@ -1199,6 +1199,10 @@ class StudyIndicatorState(BaseModel):
     trade_volume_poc_band_pct: float = 0.005
     trade_volume_poc_color: str = Field(default="#A855F7", pattern=r"^#[0-9A-Fa-f]{6}$")
     trade_volume_poc_opacity: float = Field(default=0.12, ge=0, le=1)
+    volume_distribution_enabled: bool = True
+    volume_distribution_range_count: int = Field(default=10, ge=5, le=30)
+    volume_distribution_color: str = Field(default="#64748B", pattern=r"^#[0-9A-Fa-f]{6}$")
+    volume_distribution_max_color: str = Field(default="#EAB308", pattern=r"^#[0-9A-Fa-f]{6}$")
 
     @field_validator("ratio_outlier_threshold")
     @classmethod
@@ -1336,6 +1340,7 @@ class StudySnapshotBundle(BaseModel):
     ask_peaks: list[AskPeak] = Field(default_factory=list)
     bid_peaks: list[BidPeak] = Field(default_factory=list)
     trade_volume_pocs: list[TradeVolumePoc] = Field(default_factory=list)
+    volume_distributions: list[DayVolumeDistribution] = Field(default_factory=list)
     data_warnings: list[str] = Field(default_factory=list)
     orderbook_buckets: list[StudyOrderbookBucket] = Field(default_factory=list)
     broker_buckets: list[StudyBrokerBucket] = Field(default_factory=list)

@@ -2,6 +2,7 @@ import type { BrokerSeriesEntry, BrokerSeriesPoint, RangeBundle, VolumeProfile }
 import type {
   StudyBrokerBucket,
   StudyDetailWarning,
+  StudyIndicatorState,
   StudyOrderbookBucket,
   StudySnapshotBundle,
 } from '../api/studyViews';
@@ -28,6 +29,10 @@ export type StudySnapshotDetailInput = {
   orderbookByBucketStart: Map<number, StudyOrderbookBucket>;
   brokersByBucketStart: Map<number, StudyBrokerBucket>;
   detailWarnings: StudyDetailWarning[];
+  volumeDistributionEnabled: boolean;
+  volumeDistributionColor: string;
+  volumeDistributionMaxColor: string;
+  volumeDistributions: RangeBundle['volume_distributions'];
 };
 
 const EMPTY_VOLUME_PROFILE: VolumeProfile = {
@@ -42,11 +47,18 @@ function bucketMsFor(snapshot: StudySnapshotBundle): number {
   return (bucketSeconds(snapshot.timeframe) ?? 60) * 1000;
 }
 
-export function studySnapshotDetails(snapshot: StudySnapshotBundle): StudySnapshotDetailInput {
+export function studySnapshotDetails(
+  snapshot: StudySnapshotBundle,
+  indicatorState?: StudyIndicatorState,
+): StudySnapshotDetailInput {
   return {
     orderbookByBucketStart: new Map((snapshot.orderbook_buckets ?? []).map((bucket) => [bucket.t, bucket])),
     brokersByBucketStart: new Map((snapshot.broker_buckets ?? []).map((bucket) => [bucket.t, bucket])),
     detailWarnings: snapshot.detail_warnings ?? [],
+    volumeDistributionEnabled: indicatorState?.volume_distribution_enabled ?? true,
+    volumeDistributionColor: indicatorState?.volume_distribution_color ?? '#64748B',
+    volumeDistributionMaxColor: indicatorState?.volume_distribution_max_color ?? '#EAB308',
+    volumeDistributions: snapshot.volume_distributions ?? [],
   };
 }
 
