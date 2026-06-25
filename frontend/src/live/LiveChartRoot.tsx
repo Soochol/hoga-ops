@@ -529,11 +529,18 @@ export function LiveChartRoot({ code, timeframe, venue = 'KRX', viewIdentity, bu
         // to stay legible. Apply once per (code, timeframe): SSE pushes
         // inside today's segment must not snap the user's scroll.
         if (applied !== null) { reveal(); return; }
+        const lastMs = cb.candles[cb.candles.length - 1]?.ts_ms;
+        let latestLogicalIndex: number | null = null;
+        if (lastMs != null && typeof ts.timeToIndex === 'function') {
+          const idx = ts.timeToIndex(realMsToVirtualSeconds(axisRef.current, lastMs) as Time, true);
+          if (typeof idx === 'number' && Number.isFinite(idx)) latestLogicalIndex = idx;
+        }
+        const latest = latestLogicalIndex ?? totalBars - 1;
         const target = initialVisibleMinuteBarsFor(timeframe, venue);
-        const from = Math.max(0, totalBars - target);
-        const visibleBars = totalBars - from;
+        const visibleBars = Math.min(totalBars, target);
         const rightOffset = minuteRightOffsetBars(visibleBars, ts.width());
-        const to = totalBars + rightOffset;
+        const from = Math.max(0, latest + 1 - visibleBars);
+        const to = latest + 1 + rightOffset;
         ts.setVisibleLogicalRange({ from, to });
         lastAppliedCountRef.current = totalBars;
         reveal();
@@ -544,7 +551,7 @@ export function LiveChartRoot({ code, timeframe, venue = 'KRX', viewIdentity, bu
         if (applied === totalBars) { reveal(); return; }
         const lastMs = cb.candles[cb.candles.length - 1]?.ts_ms;
         let latestLogicalIndex: number | null = null;
-        if (lastMs != null) {
+        if (lastMs != null && typeof ts.timeToIndex === 'function') {
           const idx = ts.timeToIndex(realMsToVirtualSeconds(axisRef.current, lastMs) as Time, true);
           if (typeof idx === 'number' && Number.isFinite(idx)) latestLogicalIndex = idx;
         }
@@ -555,7 +562,7 @@ export function LiveChartRoot({ code, timeframe, venue = 'KRX', viewIdentity, bu
     } catch {
       // chart torn down between effect runs
     }
-  }, [chart, cb, timeframe, isPastCandlesLoading, viewKey, revealedKey, restoreViewport]);
+  }, [chart, cb, timeframe, venue, isPastCandlesLoading, viewKey, revealedKey, restoreViewport]);
 
   useEffect(() => {
     const el = containerRef.current;

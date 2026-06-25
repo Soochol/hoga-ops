@@ -1430,7 +1430,7 @@ describe('LiveChartRoot historical-prepend viewport preservation', () => {
       getVisibleLogicalRange: vi.fn(() => ({ from: LR_FROM, to: LR_TO })),
       // Stand-in union index = the (integer) virtual-second value, so the test
       // can derive the expected shift from the same axis math production uses.
-      timeToIndex: vi.fn((t: unknown) => Math.round(t as number)),
+      timeToIndex: vi.fn((t: unknown): number | null => Math.round(t as number)),
       width: vi.fn(() => 800),
       setVisibleRange: vi.fn(),
       timeToCoordinate: vi.fn(() => null),
@@ -1709,6 +1709,7 @@ describe('LiveChartRoot historical-prepend viewport preservation', () => {
   it('restore: no saved viewport → the default 300-bar minute window (regression)', () => {
     const handlers: Array<(r: unknown) => void> = [];
     const ts = makeTs(handlers);
+    ts.timeToIndex.mockReturnValue(null);
     vi.mocked(createChartEx).mockImplementationOnce(() => buildStableCapturingMock(ts) as any);
 
     render(
@@ -1720,6 +1721,23 @@ describe('LiveChartRoot historical-prepend viewport preservation', () => {
     expect(ts.setVisibleLogicalRange).toHaveBeenLastCalledWith({ from: 0, to: 130 });
   });
 
+  it('initial minute viewport anchors to the latest candle union index, not candles.length', () => {
+    const handlers: Array<(r: unknown) => void> = [];
+    const ts = makeTs(handlers);
+    ts.timeToIndex.mockReturnValue(699);
+    vi.mocked(createChartEx).mockImplementationOnce(() => buildStableCapturingMock(ts) as any);
+
+    render(
+      <LiveChartRoot code="005930" timeframe="3m"
+        bundle={todayBundle(Array.from({ length: 400 }, (_, i) => TODAY_OPEN_MS + (i + 1) * 3 * 60_000))}
+        clampEngaged={false} isPastCandlesLoading={false} />,
+      { wrapper },
+    );
+
+    expect(ts.timeToIndex).toHaveBeenCalled();
+    expect(ts.setVisibleLogicalRange).toHaveBeenLastCalledWith({ from: 400, to: 788 });
+  });
+
   it('restore: an anchor older than the earliest loaded bar falls through to default (no degenerate {0,0})', () => {
     // Pre-landing review P2: lwc timeToIndex(findNearest) CLAMPS a too-early
     // anchor to bar 0 (does NOT return null), which would pin a degenerate
@@ -1728,6 +1746,7 @@ describe('LiveChartRoot historical-prepend viewport preservation', () => {
     // (before the first bar).
     const handlers: Array<(r: unknown) => void> = [];
     const ts = makeTs(handlers);
+    ts.timeToIndex.mockReturnValue(null);
     vi.mocked(createChartEx).mockImplementationOnce(() => buildStableCapturingMock(ts) as any);
 
     render(
