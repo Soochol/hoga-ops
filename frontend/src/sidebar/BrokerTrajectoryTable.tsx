@@ -1,5 +1,10 @@
 import { useMemo } from 'react';
 import type { BrokerSeriesEntry, BrokerSeriesPoint } from '../api/types';
+import {
+  realMsToYyyymmdd,
+  regularSessionCloseMs,
+  regularSessionOpenMs,
+} from '../live/liveDateTime';
 import { brokerDisplayShort } from './brokerDisplayNames';
 
 /** Gap detection threshold (ms). Consecutive points farther apart are
@@ -16,7 +21,13 @@ type Props = {
 };
 
 export default function BrokerTrajectoryTable({ series, cursorMs, gapThresholdMs = GAP_THRESHOLD_MS }: Props) {
-  const rows = useMemo(() => series?.slice(0, BROKER_TRAJECTORY_ROW_LIMIT) ?? [], [series]);
+  const rows = useMemo(
+    () =>
+      (series?.slice(0, BROKER_TRAJECTORY_ROW_LIMIT) ?? [])
+        .map(clipEntryToRegularSession)
+        .filter((entry) => entry.points.length > 0),
+    [series],
+  );
   // Common time domain across all displayed brokers — keeps cursor marker
   // X positions aligned across rows.
   const dayRange = useMemo(() => {
@@ -25,8 +36,11 @@ export default function BrokerTrajectoryTable({ series, cursorMs, gapThresholdMs
     let last = -Infinity;
     for (const e of rows) {
       for (const p of e.points) {
-        if (p.ts_ms < first) first = p.ts_ms;
-        if (p.ts_ms > last) last = p.ts_ms;
+        const date = realMsToYyyymmdd(p.ts_ms);
+        const open = regularSessionOpenMs(date);
+        const close = regularSessionCloseMs(date);
+        if (open < first) first = open;
+        if (close > last) last = close;
       }
     }
     return Number.isFinite(first) && Number.isFinite(last) && last > first
@@ -41,7 +55,7 @@ export default function BrokerTrajectoryTable({ series, cursorMs, gapThresholdMs
       </div>
     );
   }
-  if (series === null || series.length === 0) {
+  if (series === null || series.length === 0 || rows.length === 0) {
     return (
       <div className="grid place-items-center h-full text-fg-dimmer text-xs">
         거래원 정보 없음
@@ -80,6 +94,16 @@ export default function BrokerTrajectoryTable({ series, cursorMs, gapThresholdMs
       })}
     </div>
   );
+}
+
+function clipEntryToRegularSession(entry: BrokerSeriesEntry): BrokerSeriesEntry {
+  const firstPoint = entry.points[0];
+  if (!firstPoint) return entry;
+  const date = realMsToYyyymmdd(firstPoint.ts_ms);
+  const open = regularSessionOpenMs(date);
+  const close = regularSessionCloseMs(date);
+  const points = entry.points.filter((p) => p.ts_ms >= open && p.ts_ms <= close);
+  return points.length === entry.points.length ? entry : { ...entry, points };
 }
 
 /** Pure function. Binary-searches entry.points for the last ts <= cursorMs.
