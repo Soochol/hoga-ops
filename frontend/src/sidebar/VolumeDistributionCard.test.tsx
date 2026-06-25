@@ -39,6 +39,7 @@ describe('VolumeDistributionCard', () => {
 
     const rows = screen.getAllByTestId('volume-distribution-row');
     expect(rows).toHaveLength(2);
+    expect(screen.getAllByTestId('volume-distribution-track')).toHaveLength(2);
     expect(rows[0]).not.toHaveTextContent('110-120');
     expect(screen.getByTestId('volume-distribution-time-axis')).toHaveTextContent('');
     expect(screen.queryByText('09:00')).toBeNull();
@@ -130,5 +131,27 @@ describe('VolumeDistributionCard', () => {
       expect.anything(),
     );
     consoleError.mockRestore();
+  });
+
+  it('renders a visible track for zero-volume bins', () => {
+    render(
+      <VolumeDistributionCard
+        profile={{
+          ...profile,
+          range_count: 10,
+          bins: Array.from({ length: 10 }, (_, index) => ({
+            price_low: 100 + index,
+            price_high: 101 + index,
+            qty: index === 0 ? 10 : 0,
+          })),
+        }}
+        cursorMs={cursorMs}
+        color="#64748B"
+        maxColor="#EAB308"
+      />,
+    );
+
+    expect(screen.getAllByTestId('volume-distribution-row')).toHaveLength(10);
+    expect(screen.getAllByTestId('volume-distribution-track')).toHaveLength(10);
   });
 });
