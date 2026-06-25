@@ -26,14 +26,10 @@ export type LiveTab = {
   viewport: TabViewport | null;
 };
 
-// Viewport capture registry. LiveChartRoot registers a reader over the LIVE
-// chart instance; the store calls it on switch-AWAY (focusTab / addBlankTab
-// new-tab) to snapshot the OUTGOING tab's view before applyTabToPage swaps the
-// code and the per-viewKey chart remounts. Module-level: the store can't reach
-// the chart on its own. The capture runs synchronously inside the click handler,
-// so chartRef still points at the outgoing chart and getVisibleRange() returns
-// the real outgoing viewport — no staleness window (unlike useViewportBackfill's
-// snapshot, which needs a layout effect precisely because it runs across a data swap).
+// Viewport capture registry. LiveChartRoot still exposes a reader for save flows
+// and non-/live callers, but live tab switching no longer snapshots or restores
+// viewports. The registry stays as a compatibility seam while live tabs move to
+// latest-fit switching.
 let viewportCapture: (() => TabViewport | null) | null = null;
 export function registerViewportCapture(fn: () => TabViewport | null): () => void {
   viewportCapture = fn;
@@ -55,15 +51,6 @@ export function saveViewportToActiveTab(vp: TabViewport | null): void {
   useLiveTabsStore.setState({
     tabs: tabs.map((t) => (t.id === activeTabId ? { ...t, viewport: vp } : t)),
   });
-}
-
-/** Snapshot the live chart's current viewport onto the active tab via the registered
- *  capture. Called on switch-AWAY (focusTab / addBlankTab) — a synchronous moment
- *  where the chart is alive and the registry is current. No-op without an active tab
- *  or a registered capture (tests / empty-state). */
-function snapshotActiveViewport(): void {
-  if (!viewportCapture) return;
-  saveViewportToActiveTab(viewportCapture());
 }
 
 type TabsStore = {
@@ -271,7 +258,6 @@ export const useLiveTabsStore = create<TabsStore>((set, get) => ({
   },
 
   openSymbolInNewTab: (code, label) => {
-    snapshotActiveViewport();
     const tab = makeTab({
       instrument: stockInstrument(code, label ?? code),
       timeframe: useLivePageStore.getState().candleTimeframe,
@@ -283,9 +269,6 @@ export const useLiveTabsStore = create<TabsStore>((set, get) => ({
   },
 
   addBlankTab: () => {
-    // 나가는 탭의 viewport를 새 탭 추가 전에 스냅샷(ADR-0069 A안), 그 후 tabs를 FRESH로 읽어
-    // 스냅샷 쓰기가 stale spread에 덮이지 않게 한다.
-    snapshotActiveViewport();
     const tab = makeTab({
       instrument: null,
       timeframe: useLivePageStore.getState().candleTimeframe,
@@ -299,7 +282,6 @@ export const useLiveTabsStore = create<TabsStore>((set, get) => ({
   focusTab: (id) => {
     const tab = get().tabs.find((t) => t.id === id);
     if (!tab) return;
-    snapshotActiveViewport(); // save the OUTGOING active tab's view before swap
     set({ activeTabId: id });
     applyTabToPage(tab);
   },
@@ -338,26 +320,13 @@ export function initLiveTabsSync(): () => void {
     storageKey: STORAGE_KEY,
     toSnapshot: (s) => toTabsSnapshot(s),
   });
-  // page→tab mirror: user-initiated tf/pan changes flow into the active tab.
-  // The early-return on unchanged tf+hfd skips indicator-only page changes
-  // (MA/volume toggles fire this unselectored subscribe) AND makes the projection's
-  // own atomic write a no-op here when the active tab already holds those values.
+  // page→tab mirror: user-initiated timeframe changes flow into the active tab.
+  // Pan/scrollback is intentionally not mirrored, so tab switches always return
+  // to the latest-candle default fit.
   const unsubMirror = useLivePageStore.subscribe((state, prev) => {
     if (state.candleTimeframe === prev.candleTimeframe && state.historicalFromDate === prev.historicalFromDate) return;
     const { tabs, activeTabId } = useLiveTabsStore.getState();
     if (!activeTabId) return;
-    // Invalidate the saved viewport ONLY when the USER changed the timeframe
-    // (its barSpan is in the OLD timeframe's bars, meaningless after re-aggregation
-    // — mirrors how setCandleTimeframe resets historicalFromDate). Discriminate the
-    // user-tf-change from a TAB SWITCH statelessly via the tab's own tf:
-    //   • user clicks a tf button → setCandleTimeframe writes page first, the active
-    //     tab still holds the OLD tf → page tf ≠ tab tf → null (correct).
-    //   • tab switch → focusTab does set({activeTabId}) BEFORE projectActiveView, so
-    //     by the time this mirror fires activeTabId is already the NEW tab and that
-    //     tab already carries its own tf → page tf == tab tf → PRESERVE the viewport
-    //     we are about to restore (ADR-0069 A안 cross-timeframe switch-back fix).
-    // A pure pan (tf unchanged) leaves viewport alone; it's re-captured continuously
-    // by LiveChartRoot's debounced range subscription.
     useLiveTabsStore.setState({
       tabs: mirrorPageViewToActiveTab(tabs, activeTabId, state),
     });

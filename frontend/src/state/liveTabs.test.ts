@@ -192,7 +192,7 @@ describe('useLiveTabsStore', () => {
     expect(useLiveTabsStore.getState().tabs.map((t) => t.code)).toEqual(original);
   });
 
-  it('switching to a tab projects its code+timeframe+pan onto the page in one shot (pan survives)', () => {
+  it('switching to a tab projects code+timeframe and resets pan to latest fit', () => {
     openTab('005930', '삼성전자');
     useLiveTabsStore.setState((st) => ({
       tabs: st.tabs.map((t) => (t.id === st.activeTabId ? { ...t, timeframe: '5m', historicalFromDate: '20260601' } : t)),
@@ -203,7 +203,22 @@ describe('useLiveTabsStore', () => {
     const page = useLivePageStore.getState();
     expect(page.activeCode).toBe('005930');
     expect(page.candleTimeframe).toBe('5m');
-    expect(page.historicalFromDate).toBe('20260601'); // pan survived the projection (no reset leak)
+    expect(page.historicalFromDate).toBeNull(); // pan is not restored; chart starts at latest fit
+  });
+
+  it('focusTab ignores stored historicalFromDate so tab switches start at latest fit', () => {
+    openTab('005930', '삼성전자');
+    const tabId = useLiveTabsStore.getState().tabs[0].id;
+    useLiveTabsStore.setState({
+      tabs: useLiveTabsStore.getState().tabs.map((t) => (
+        t.id === tabId ? { ...t, historicalFromDate: '20260601' } : t
+      )),
+    });
+
+    useLivePageStore.setState({ historicalFromDate: '20260501' });
+    useLiveTabsStore.getState().focusTab(tabId);
+
+    expect(useLivePageStore.getState().historicalFromDate).toBeNull();
   });
 
   it('cross-timeframe tab switch-back preserves the saved viewport (mirror must not null it)', () => {
@@ -417,10 +432,10 @@ describe('liveTabs ↔ page mirror', () => {
     expect(useLivePageStore.getState().candleTimeframe).toBe('5m'); // A restored
   });
 
-  it('pan (historicalFromDate) persists per tab', () => {
+  it('pan changes are not mirrored into the active tab', () => {
     openTab('005930', '삼성전자');
     useLivePageStore.getState().extendHistoricalRange('20260601');
-    expect(useLiveTabsStore.getState().tabs[0].historicalFromDate).toBe('20260601');
+    expect(useLiveTabsStore.getState().tabs[0].historicalFromDate).toBeNull();
   });
 
   it('projecting a tab is idempotent on the active tab and does not churn its fields (mirror works without the guard)', () => {
@@ -460,35 +475,32 @@ describe('liveTabs viewport capture', () => {
     useLivePageStore.setState({ activeCode: null, candleTimeframe: '1m', historicalFromDate: null });
   });
 
-  // 단일-탭 모델: openOrFocusTab 제거 → openTab(addBlankTab+setActiveTabCode) 헬퍼로 탭을 만든다.
-  // addBlankTab이 나가는 탭 viewport를 스냅샷하므로 #75 viewport 캡처 시맨틱은 동일하게 검증된다.
-  it('snapshots the OUTGOING active tab viewport on switch', () => {
+  it('does not snapshot the outgoing active tab viewport on switch', () => {
     const dispose = registerViewportCapture(() => VP_A);
     openTab('005930', '삼성전자'); // A active; nothing to snapshot yet
-    openTab('000660', 'SK하이닉스'); // switch → A's viewport captured
+    openTab('000660', 'SK하이닉스'); // switch → A's viewport ignored
     const tabs = useLiveTabsStore.getState().tabs;
-    expect(tabs.find((t) => t.code === '005930')?.viewport).toEqual(VP_A);
+    expect(tabs.find((t) => t.code === '005930')?.viewport).toBeNull();
     expect(tabs.find((t) => t.code === '000660')?.viewport).toBeNull(); // new tab clean
     dispose();
   });
 
-  it('new-tab creation reads tabs FRESH so the snapshot is not clobbered by the spread', () => {
+  it('new-tab creation leaves the outgoing tab viewport untouched', () => {
     const dispose = registerViewportCapture(() => VP_A);
     openTab('005930');
-    openTab('000660'); // new-tab path: snapshot A, THEN [...get().tabs, B]
-    expect(useLiveTabsStore.getState().tabs[0].viewport).toEqual(VP_A);
+    openTab('000660');
+    expect(useLiveTabsStore.getState().tabs[0].viewport).toBeNull();
     dispose();
   });
 
-  it('focusTab snapshots the outgoing tab but leaves the target tab viewport untouched', () => {
-    // Capture is one-directional: the store SAVES viewport on switch-away;
-    // restore happens in LiveChartRoot via the restoreViewport prop, not here.
+  it('focusTab leaves both outgoing and target tab viewport untouched', () => {
     const dispose = registerViewportCapture(() => VP_A);
     openTab('005930');
-    openTab('000660'); // leaving A → A.viewport = VP_A
+    openTab('000660');
     const aId = useLiveTabsStore.getState().tabs[0].id;
-    useLiveTabsStore.getState().focusTab(aId); // leaving B → B.viewport = VP_A; A unchanged
-    expect(useLiveTabsStore.getState().tabs[0].viewport).toEqual(VP_A);
+    useLiveTabsStore.getState().focusTab(aId);
+    expect(useLiveTabsStore.getState().tabs[0].viewport).toBeNull();
+    expect(useLiveTabsStore.getState().tabs[1].viewport).toBeNull();
     dispose();
   });
 

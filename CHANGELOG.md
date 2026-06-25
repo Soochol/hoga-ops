@@ -3,6 +3,11 @@
 All notable changes to this project are documented here.
 The format follows a 4-digit `MAJOR.MINOR.PATCH.MICRO` scheme.
 
+## [0.10.1.0] - 2026-06-25
+
+### Changed
+- **/live 탭 전환 최신 캔들 기준화**: 탭 이동 시 이전 차트 줌·스크롤 위치를 복원하지 않고, 각 탭의 종목과 봉 주기만 유지한 채 최신 캔들이 보이는 기본 위치로 다시 맞춘다.
+
 ## [0.10.0.4] - 2026-06-25
 
 ### Fixed

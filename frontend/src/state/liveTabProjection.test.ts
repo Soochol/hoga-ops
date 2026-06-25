@@ -22,12 +22,12 @@ function tab(overrides: Partial<LiveTab> = {}): LiveTab {
 }
 
 describe('live tab projection policy', () => {
-  it('projects a tab into the active page view atomically', () => {
+  it('projects a tab into the active page view while resetting pan to latest fit', () => {
     expect(projectTabToActiveView(tab({ timeframe: 'D', historicalFromDate: '2026-01-02' }), '1m')).toEqual({
       instrument: { kind: 'stock', code: '005930', label: '삼성전자' },
       code: '005930',
       timeframe: 'D',
-      historicalFromDate: '2026-01-02',
+      historicalFromDate: null,
     });
   });
 
@@ -40,7 +40,7 @@ describe('live tab projection policy', () => {
     });
   });
 
-  it('mirrors page timeframe and pan into the active tab while clearing viewport only for a real timeframe change', () => {
+  it('mirrors page timeframe into the active tab while dropping pan and viewport', () => {
     const tabs = [tab(), tab({ id: 'tab-b', code: '000660', label: 'SK하이닉스', timeframe: 'D' })];
 
     expect(
@@ -49,7 +49,7 @@ describe('live tab projection policy', () => {
         historicalFromDate: '2026-01-02',
       }),
     ).toEqual([
-      { ...tabs[0], timeframe: 'D', historicalFromDate: '2026-01-02', viewport: null },
+      { ...tabs[0], timeframe: 'D', historicalFromDate: null, viewport: null },
       tabs[1],
     ]);
   });
