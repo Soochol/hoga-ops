@@ -1,4 +1,4 @@
-import { type ReactNode, useRef } from 'react';
+import { type ReactNode, useEffect, useRef } from 'react';
 import {
   type LiveCardKey,
   LIVE_CARD_MIN_HEIGHT_PX,
@@ -29,8 +29,13 @@ const RESIZER_HEIGHT_PX = 8;
 
 export function LiveDetailPanel({ orderbook, program, brokers, investor }: Props) {
   const panelRef = useRef<HTMLDivElement>(null);
+  const activeResizeCleanupRef = useRef<(() => void) | null>(null);
   const weights = useLiveLayoutStore((state) => state.rightCardWeights);
   const setWeights = useLiveLayoutStore((state) => state.setRightCardWeights);
+  useEffect(() => () => {
+    activeResizeCleanupRef.current?.();
+    activeResizeCleanupRef.current = null;
+  }, []);
   const cards: CardDef[] = [
     {
       key: 'orderbook',
@@ -75,6 +80,8 @@ export function LiveDetailPanel({ orderbook, program, brokers, investor }: Props
         totalWeight > 0 && pairWeight > 0 ? (contentHeight * pairWeight) / totalWeight : 0;
 
       target.setPointerCapture(event.pointerId);
+      document.body.style.cursor = 'row-resize';
+      document.body.style.userSelect = 'none';
 
       const handlePointerMove = (moveEvent: PointerEvent) => {
         const nextWeights = resizeAdjacentWeights(
@@ -87,13 +94,20 @@ export function LiveDetailPanel({ orderbook, program, brokers, investor }: Props
         useLiveLayoutStore.setState({ rightCardWeights: nextWeights });
       };
 
+      const cleanup = () => {
+        window.removeEventListener('pointermove', handlePointerMove);
+        window.removeEventListener('pointerup', handlePointerUp);
+        window.removeEventListener('pointercancel', handlePointerCancel);
+        document.body.style.cursor = '';
+        document.body.style.userSelect = '';
+        activeResizeCleanupRef.current = null;
+      };
+
       const finishResize = (pointerId: number) => {
         if (target.hasPointerCapture(pointerId)) {
           target.releasePointerCapture(pointerId);
         }
-        window.removeEventListener('pointermove', handlePointerMove);
-        window.removeEventListener('pointerup', handlePointerUp);
-        window.removeEventListener('pointercancel', handlePointerCancel);
+        cleanup();
         setWeights(useLiveLayoutStore.getState().rightCardWeights);
       };
 
@@ -108,6 +122,7 @@ export function LiveDetailPanel({ orderbook, program, brokers, investor }: Props
       window.addEventListener('pointermove', handlePointerMove);
       window.addEventListener('pointerup', handlePointerUp);
       window.addEventListener('pointercancel', handlePointerCancel);
+      activeResizeCleanupRef.current = cleanup;
     };
 
   return (

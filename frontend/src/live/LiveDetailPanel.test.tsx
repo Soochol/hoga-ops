@@ -1,5 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
-import { render, screen } from '@testing-library/react';
+import { fireEvent, render, screen } from '@testing-library/react';
 import { act } from 'react';
 import { LiveDetailPanel } from './LiveDetailPanel';
 import * as liveLayout from '../state/liveLayout';
@@ -112,6 +112,8 @@ describe('LiveDetailPanel', () => {
       );
     });
 
+    expect(document.body.style.cursor).toBe('row-resize');
+    expect(document.body.style.userSelect).toBe('none');
     const movedWeights = useLiveLayoutStore.getState().rightCardWeights;
     expect(movedWeights.brokers).toBe(DEFAULT_CARD_WEIGHTS.brokers);
     expect(movedWeights.investor).toBe(DEFAULT_CARD_WEIGHTS.investor);
@@ -136,6 +138,39 @@ describe('LiveDetailPanel', () => {
     expect(JSON.parse(localStorage.getItem('live.layout.v1') ?? '{}').rightCardWeights).toEqual(
       movedWeights,
     );
+    expect(document.body.style.cursor).toBe('');
+    expect(document.body.style.userSelect).toBe('');
     resizeSpy.mockRestore();
+  });
+
+  it('updates the live layout state during horizontal dragging and keeps the labels exposed', () => {
+    render(
+      <LiveDetailPanel
+        orderbook={<div />}
+        program={<div />}
+        brokers={<div />}
+        investor={<div />}
+      />,
+    );
+
+    const panel = screen.getByTestId('live-detail-panel');
+    Object.defineProperty(panel, 'clientHeight', { configurable: true, value: 1000 });
+
+    const separator = screen.getByTestId('live-detail-resizer-orderbook-program');
+    Object.defineProperty(separator, 'setPointerCapture', { configurable: true, value: vi.fn() });
+    Object.defineProperty(separator, 'releasePointerCapture', { configurable: true, value: vi.fn() });
+    Object.defineProperty(separator, 'hasPointerCapture', { configurable: true, value: vi.fn(() => true) });
+
+    fireEvent.pointerDown(separator, { pointerId: 1, clientY: 500 });
+    fireEvent.pointerMove(window, { pointerId: 1, clientY: 550 });
+
+    const { rightCardWeights } = useLiveLayoutStore.getState();
+    expect(rightCardWeights.orderbook).toBeGreaterThan(DEFAULT_CARD_WEIGHTS.orderbook);
+    expect(rightCardWeights.program).toBeLessThan(DEFAULT_CARD_WEIGHTS.program);
+    expect(
+      screen.getByRole('separator', { name: '10호가 / 프로그램 순매수 크기 조절' }),
+    ).toHaveAttribute('aria-orientation', 'horizontal');
+
+    fireEvent.pointerUp(window, { pointerId: 1, clientY: 550 });
   });
 });

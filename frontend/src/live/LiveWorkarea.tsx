@@ -159,6 +159,7 @@ export function LiveWorkarea({
   const clearChartTarget = useEntryDragStore((s) => s.clearChartTarget);
   const rightPanelWidthPx = useLiveLayoutStore((s) => s.rightPanelWidthPx);
   const setRightPanelWidthPx = useLiveLayoutStore((s) => s.setRightPanelWidthPx);
+  const activeResizeCleanupRef = useRef<(() => void) | null>(null);
   const [workareaWidthPx, setWorkareaWidthPx] = useState<number | null>(null);
   useEffect(() => {
     const hitTest = (clientX: number, clientY: number): boolean => {
@@ -199,6 +200,10 @@ export function LiveWorkarea({
     observer.observe(workarea);
     return () => observer.disconnect();
   }, [syncRightPanelWidth]);
+  useEffect(() => () => {
+    activeResizeCleanupRef.current?.();
+    activeResizeCleanupRef.current = null;
+  }, []);
 
   const [rankingState, rankingDispatch] = useReducer(
     reduceIndexSectorRankingState,
@@ -244,6 +249,8 @@ export function LiveWorkarea({
     const workarea = workareaRef.current;
     if (!workarea) return;
     event.currentTarget.setPointerCapture(event.pointerId);
+    document.body.style.cursor = 'col-resize';
+    document.body.style.userSelect = 'none';
     const startX = event.clientX;
     const startWidth = useLiveLayoutStore.getState().rightPanelWidthPx;
     const workareaWidth = workarea.clientWidth;
@@ -252,14 +259,31 @@ export function LiveWorkarea({
       const next = clampRightPanelWidth(startWidth - (moveEvent.clientX - startX), workareaWidth);
       useLiveLayoutStore.setState({ rightPanelWidthPx: next });
     };
-    const up = (upEvent: PointerEvent) => {
-      target.releasePointerCapture(upEvent.pointerId);
+    const cleanup = () => {
       window.removeEventListener('pointermove', move);
       window.removeEventListener('pointerup', up);
+      window.removeEventListener('pointercancel', cancel);
+      document.body.style.cursor = '';
+      document.body.style.userSelect = '';
+      activeResizeCleanupRef.current = null;
+    };
+    const finish = (pointerId: number) => {
+      if (target.hasPointerCapture(pointerId)) {
+        target.releasePointerCapture(pointerId);
+      }
+      cleanup();
       setRightPanelWidthPx(useLiveLayoutStore.getState().rightPanelWidthPx);
+    };
+    const up = (upEvent: PointerEvent) => {
+      finish(upEvent.pointerId);
+    };
+    const cancel = (cancelEvent: PointerEvent) => {
+      finish(cancelEvent.pointerId);
     };
     window.addEventListener('pointermove', move);
     window.addEventListener('pointerup', up);
+    window.addEventListener('pointercancel', cancel);
+    activeResizeCleanupRef.current = cleanup;
   }, [setRightPanelWidthPx]);
   const chartPanelStyle: React.CSSProperties = {
     flex: 1,

@@ -295,16 +295,25 @@ describe('LiveWorkarea gate', () => {
     const splitter = screen.getByTestId('live-workarea-splitter');
     const setPointerCapture = vi.fn();
     const releasePointerCapture = vi.fn();
+    const hasPointerCapture = vi.fn(() => true);
     Object.defineProperty(splitter, 'setPointerCapture', { configurable: true, value: setPointerCapture });
     Object.defineProperty(splitter, 'releasePointerCapture', { configurable: true, value: releasePointerCapture });
+    Object.defineProperty(splitter, 'hasPointerCapture', { configurable: true, value: hasPointerCapture });
 
     fireEvent.pointerDown(splitter, { pointerId: 1, clientX: 800 });
+    expect(document.body.style.cursor).toBe('col-resize');
+    expect(document.body.style.userSelect).toBe('none');
     fireEvent.pointerMove(window, { clientX: 760 });
+    expect(useLiveLayoutStore.getState().rightPanelWidthPx).toBe(440);
     fireEvent.pointerUp(window, { pointerId: 1, clientX: 760 });
 
     expect(setPointerCapture).toHaveBeenCalledWith(1);
+    expect(hasPointerCapture).toHaveBeenCalledWith(1);
     expect(releasePointerCapture).toHaveBeenCalledWith(1);
     expect(useLiveLayoutStore.getState().rightPanelWidthPx).toBe(440);
+    expect(JSON.parse(localStorage.getItem('live.layout.v1') ?? '{}').rightPanelWidthPx).toBe(440);
+    expect(document.body.style.cursor).toBe('');
+    expect(document.body.style.userSelect).toBe('');
   });
 
   it('clamps a persisted oversized detail width on mount', () => {
