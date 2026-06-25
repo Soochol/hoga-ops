@@ -5,6 +5,7 @@ This file is the thin glue layer.
 
 from __future__ import annotations
 
+import re
 from pathlib import Path
 
 from fastapi import APIRouter, HTTPException, Query
@@ -21,7 +22,7 @@ from hoga.api.models import (
 from hoga.api.models import (
     StockDate as StockDateModel,
 )
-from hoga.api.params import Code, StockDate
+from hoga.api.params import CODE_PATTERN, Code, StockDate
 from hoga.api.queries import QueryEngine, StockDateNotFound
 from hoga.api.sources import SourceName, ordered_sources, resolve_source_result
 from hoga.api.timeenc import (
@@ -97,6 +98,43 @@ def _cursor_to_native(date: str, unix_ms: int) -> int:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
 
 
+def _blocked_manifest_stock_date(
+    *, code: str, date: str, fail_streak: int
+) -> StockDateModel | None:
+    if re.fullmatch(CODE_PATTERN, code) is None or re.fullmatch(r"\d{8}", date) is None:
+        return None
+    try:
+        open_ms = hhmmssms_to_unix_ms(date, 90_000_000)
+        close_ms = hhmmssms_to_unix_ms(date, 153_000_000)
+    except ValueError:
+        return None
+    return StockDateModel(
+        date=date,
+        code=code,
+        name=code,
+        regular_session_open_ms=open_ms,
+        regular_session_close_ms=close_ms,
+        data_window_first_ms=open_ms,
+        data_window_last_ms=close_ms,
+        price_min=0,
+        price_max=0,
+        captured_at=0,
+        total_volume=0,
+        pages_collected=0,
+        file_size_bytes=0,
+        today_open=0,
+        today_high=0,
+        today_low=0,
+        today_close=0,
+        collection_complete=False,
+        is_partial=True,
+        disk_state="client_incomplete",
+        full_capture_count=None,
+        fail_streak=fail_streak,
+        blocked=True,
+    )
+
+
 def build_router(engine: QueryEngine) -> APIRouter:
     router = APIRouter(prefix="/api")
 
@@ -111,6 +149,7 @@ def build_router(engine: QueryEngine) -> APIRouter:
         rows = engine.list_stock_dates()
         if not captures._fail_streaks:
             return rows
+        seen = {(row.code, row.date) for row in rows}
         annotated: list[StockDateModel] = []
         for row in rows:
             streak = captures._fail_streaks.get(streak_key(row.code, row.date), 0)
@@ -121,6 +160,20 @@ def build_router(engine: QueryEngine) -> APIRouter:
                     "fail_streak": streak,
                     "blocked": streak >= ATTEMPT_CAP,
                 }))
+        for key, streak in captures._fail_streaks.items():
+            if streak < ATTEMPT_CAP:
+                continue
+            try:
+                code, date = key.split("|", 1)
+            except ValueError:
+                continue
+            if (code, date) in seen:
+                continue
+            blocked_row = _blocked_manifest_stock_date(
+                code=code, date=date, fail_streak=streak
+            )
+            if blocked_row is not None:
+                annotated.append(blocked_row)
         return annotated
 
     @router.get("/meta", response_model=Meta)
