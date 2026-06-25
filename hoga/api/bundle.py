@@ -27,6 +27,7 @@ from hoga.api.models import (
     AskPeak,
     BidPeak,
     DateWarning,
+    DayVolumeDistribution,
     ExcludedDate,
     FillStrength,
     FillStrengthPoint,
@@ -36,6 +37,7 @@ from hoga.api.models import (
     RangeBundle,
     RangeSegment,
     TradeVolumePoc,
+    VolumeDistributionBin,
     VolumeProfile,
     VolumeProfileBin,
     validate_bucket_ms,
@@ -259,6 +261,26 @@ def _expand_dense_bins(
     return bins_arr
 
 
+def _expand_distribution_bins(
+    price_min: int,
+    price_max: int,
+    bin_width: float,
+    sparse_bins: list[tuple[int, int]],
+    range_count: int,
+) -> list[VolumeDistributionBin]:
+    rows: list[VolumeDistributionBin] = []
+    qty_by_idx = [0 for _ in range(range_count)]
+    for idx, qty in sparse_bins:
+        if idx < 0:
+            continue
+        qty_by_idx[min(idx, range_count - 1)] += qty
+    for i, qty in enumerate(qty_by_idx):
+        low = int(price_min + i * bin_width)
+        high = price_max if i == range_count - 1 else int(price_min + (i + 1) * bin_width)
+        rows.append(VolumeDistributionBin(price_low=low, price_high=high, qty=qty))
+    return rows
+
+
 def build_volume_profile_slice(
     engine: QueryEngine,
     *,
@@ -299,6 +321,51 @@ def build_volume_profile_slice(
         # int() the float bin_width only for the wire value — price_low above is
         # computed from the raw float so fractional widths don't shift the grid.
         bin_width=int(binning.bin_width), bins=bins_arr,
+    )
+
+
+def build_volume_distribution_slice(
+    engine: QueryEngine,
+    *,
+    code: str,
+    date: str,
+    source: str,
+    session_open_ms: int,
+    session_close_ms: int,
+    range_count: int,
+) -> DayVolumeDistribution | None:
+    code_dir = engine.parquet_dir(date, code, source)
+    candles_path = code_dir / "candles.parquet"
+    trades_path = code_dir / "trades.parquet"
+    if not candles_path.exists() or not trades_path.exists():
+        return None
+    price_range = candles_tbl.query_price_range(engine.conn, path=candles_path)
+    if price_range is None:
+        return None
+    price_min, price_max = price_range
+    binning = trades_tbl.query_continuous_trade_volume_distribution(
+        engine.conn,
+        path=trades_path,
+        price_lo=price_min,
+        price_hi=price_max,
+        bins=range_count,
+        session_open_ms=session_open_ms,
+        session_close_ms=session_close_ms,
+    )
+    return DayVolumeDistribution(
+        date=date,
+        range_count=range_count,
+        price_min=price_min,
+        price_max=price_max,
+        session_open_ms=session_open_ms,
+        session_close_ms=session_close_ms,
+        bins=_expand_distribution_bins(
+            price_min,
+            price_max,
+            binning.bin_width,
+            binning.bins,
+            range_count,
+        ),
     )
 
 
@@ -821,6 +888,7 @@ def _empty_range_bundle(
         ask_peaks=[],
         bid_peaks=[],
         price_level_hits=[],
+        volume_distributions=[],
     )
 
 
@@ -832,6 +900,7 @@ def build_range_bundle(
     to_date: str,
     bucket_ms: int,
     source_pref: str = "hogaplay",  # ADR-0039
+    volume_distribution_bins: int | None = None,
 ) -> RangeBundle:
     """Build the Wire Model for a Stock-Date Range (ADR-0013, ADR-0014).
 
@@ -876,6 +945,7 @@ def build_range_bundle(
     ratio_pts: list[QuoteRatioPoint] = []
     fill_pts: list[FillStrengthPoint] = []
     profiles_by_day: list[VolumeProfile] = []
+    volume_distributions: list[DayVolumeDistribution] = []
     # 거래일별 매도 최대벽 — 데이터 있는 각 거래일당 1개(프론트가 그날 구간 수평 세그먼트로 렌더).
     # 루프 안에서 계산해 native HHMMSSmmm 세션 경계(meta)에 접근 → 총잔량 지표와 동일하게
     # bucket_ms 버킷 대표 + 동시호가 배제. 과거일은 indicators_cache로 1회 계산(N일 재스캔 회피).
@@ -971,6 +1041,18 @@ def build_range_bundle(
         ratio_pts.extend(qr_d.points)
         fill_pts.extend(fs_d.points)
         profiles_by_day.append(vp_d)
+        if volume_distribution_bins is not None:
+            profile = build_volume_distribution_slice(
+                engine,
+                code=code,
+                date=d,
+                source=source,
+                session_open_ms=int(norm_meta["regular_session_open_ms"]),
+                session_close_ms=int(meta["regular_session_close_ms"]),
+                range_count=volume_distribution_bins,
+            )
+            if profile is not None:
+                volume_distributions.append(profile)
         if ap_d is not None:
             ask_peaks.append(ap_d)
         if bp_d is not None:
@@ -1016,4 +1098,5 @@ def build_range_bundle(
         bid_peaks=bid_peaks,
         price_level_hits=price_level_hits,
         trade_volume_pocs=trade_volume_pocs,
+        volume_distributions=volume_distributions,
     )
