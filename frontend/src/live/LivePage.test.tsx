@@ -580,7 +580,7 @@ describe('LivePage shell', () => {
     });
   });
 
-  it('passes the current viewport once when the toolbar changes minute timeframe', async () => {
+  it('does not restore logical viewport across minute timeframe changes', async () => {
     const capturedViewport = {
       rightEdgeMs: 1_781_000_000_000,
       barSpan: 331,
@@ -600,7 +600,7 @@ describe('LivePage shell', () => {
     });
 
     await waitFor(() => expect(livePageMocks.liveChartRootProps.at(-1)?.timeframe).toBe('3m'));
-    expect(livePageMocks.liveChartRootProps.at(-1)?.restoreViewport).toEqual(capturedViewport);
+    expect(livePageMocks.liveChartRootProps.at(-1)?.restoreViewport).toBeNull();
   });
 
   it('includes the selected venue in bundle options, status text, and chart identity', () => {

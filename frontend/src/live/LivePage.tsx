@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useSearchParams } from 'react-router';
-import { isMinuteTimeframe, useLivePageStore, type LiveTimeframe } from '../state/livePage';
+import { isMinuteTimeframe, useLivePageStore } from '../state/livePage';
 import type { StudyIndicatorState } from '../api/studyViews';
 import { useLiveStatus } from '../api/liveStatus';
 import { useLiveStatusProjection } from './liveStatusProjection';
@@ -177,23 +177,6 @@ export function LivePage() {
   const handleViewportCaptureReady = useCallback((capture: () => TabViewport | null) => {
     viewportCaptureRef.current = capture;
   }, []);
-  const [pendingTimeframeViewport, setPendingTimeframeViewport] = useState<{
-    code: string | null;
-    timeframe: LiveTimeframe;
-    viewport: TabViewport;
-  } | null>(null);
-  const handleSelectTimeframe = useCallback((next: LiveTimeframe) => {
-    const current = useLivePageStore.getState().candleTimeframe;
-    const captured = isMinuteTimeframe(current) && isMinuteTimeframe(next)
-      ? viewportCaptureRef.current()
-      : null;
-    setPendingTimeframeViewport(
-      captured
-        ? { code: activeCode, timeframe: next, viewport: captured }
-        : null,
-    );
-    useLivePageStore.getState().setCandleTimeframe(next);
-  }, [activeCode]);
 
   // Single live source for the page: useLiveSeries owns the SSE connection
   // and ring buffer; useLiveBundle composes it with KIS past-candles for the
@@ -419,7 +402,6 @@ export function LivePage() {
         onOpenIndicators={() => setIndicatorPanelOpen(true)}
         onOpenSettings={() => setSettingsOpen(true)}
         studySaveControl={<LiveStudyViewSaveButton />}
-        onSelectTimeframe={handleSelectTimeframe}
       />
       <LiveWorkarea
         activeCode={workareaCode}
@@ -430,12 +412,7 @@ export function LivePage() {
         isPastCandlesLoading={workareaLoading}
         isExtending={activeIndexId ? indexExtending : isExtending}
         pastDataWarnings={workareaDataWarnings}
-        restoreViewport={
-          pendingTimeframeViewport?.code === activeCode &&
-          pendingTimeframeViewport.timeframe === timeframe
-            ? pendingTimeframeViewport.viewport
-            : null
-        }
+        restoreViewport={null}
         viewIdentity={activeTabId ? `${activeTabId}:${liveVenue}` : liveVenue}
         venue={liveVenue}
         live={live}
