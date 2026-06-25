@@ -26,6 +26,7 @@ export function computeContinuousTradeVolumeDistribution(args: {
   const rawBinWidth = (priceMax - priceMin) / rangeCount;
   const binWidth = rawBinWidth > 0 ? rawBinWidth : 1;
   const qtyByBin = Array.from({ length: rangeCount }, () => 0);
+  let lastTradeMs: number | null = null;
 
   for (const trade of trades) {
     if (trade.side !== 1 && trade.side !== -1) continue;
@@ -36,6 +37,7 @@ export function computeContinuousTradeVolumeDistribution(args: {
 
     const idx = Math.floor((trade.price - priceMin) / binWidth);
     qtyByBin[Math.max(0, Math.min(rangeCount - 1, idx))] += trade.qty;
+    lastTradeMs = lastTradeMs == null ? trade.t_ms : Math.max(lastTradeMs, trade.t_ms);
   }
 
   return {
@@ -45,6 +47,7 @@ export function computeContinuousTradeVolumeDistribution(args: {
     price_max: priceMax,
     session_open_ms: segment.session_open_ms,
     session_close_ms: segment.session_close_ms,
+    last_trade_ms: lastTradeMs,
     bins: qtyByBin.map((qty, idx) => ({
       price_low: Math.floor(priceMin + idx * binWidth),
       price_high: idx === rangeCount - 1

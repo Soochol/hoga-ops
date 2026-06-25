@@ -67,6 +67,7 @@ export type DayVolumeDistribution = {
   price_max: number;
   session_open_ms: number;
   session_close_ms: number;
+  last_trade_ms?: number | null;
   bins: VolumeDistributionBin[];
 };
 

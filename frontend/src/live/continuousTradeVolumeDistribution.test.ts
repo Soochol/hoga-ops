@@ -17,6 +17,7 @@ describe('computeContinuousTradeVolumeDistribution', () => {
     });
 
     expect(profile?.bins.map((bin) => bin.qty)).toEqual([10, 20]);
+    expect(profile?.last_trade_ms).toBe(90_001_000);
   });
 
   it('folds a high-price trade into the last bin', () => {
@@ -44,5 +45,6 @@ describe('computeContinuousTradeVolumeDistribution', () => {
     });
 
     expect(profile?.bins.map((bin) => bin.qty)).toEqual([10, 0]);
+    expect(profile?.last_trade_ms).toBe(152_999_999);
   });
 });

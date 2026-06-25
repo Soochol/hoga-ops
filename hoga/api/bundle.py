@@ -368,6 +368,11 @@ def build_volume_distribution_slice(
         price_max=price_max,
         session_open_ms=hhmmssms_to_unix_ms(date, session_open_ms),
         session_close_ms=hhmmssms_to_unix_ms(date, session_close_ms),
+        last_trade_ms=(
+            ms_from_midnight_to_unix_ms(date, binning.max_intra_ms)
+            if binning.max_intra_ms is not None
+            else None
+        ),
         bins=_expand_distribution_bins(
             price_min,
             price_max,

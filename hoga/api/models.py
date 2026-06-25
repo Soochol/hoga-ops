@@ -602,6 +602,7 @@ class DayVolumeDistribution(BaseModel):
     price_max: int
     session_open_ms: int
     session_close_ms: int
+    last_trade_ms: int | None = None
     bins: list[VolumeDistributionBin]
 
 

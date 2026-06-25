@@ -60,6 +60,45 @@ function profileForDate(
   return profiles.find((profile) => profile.date === date) ?? null;
 }
 
+type VolumeDistributionTrade = {
+  t_ms: number;
+  price: number;
+  qty: number;
+  side: number;
+};
+
+function mergeVolumeDistributionDelta(
+  profile: DayVolumeDistribution,
+  trades: readonly VolumeDistributionTrade[],
+): DayVolumeDistribution {
+  if (profile.last_trade_ms == null || profile.bins.length === 0) return profile;
+  const rangeCount = profile.bins.length;
+  const rawBinWidth = (profile.price_max - profile.price_min) / rangeCount;
+  const binWidth = rawBinWidth > 0 ? rawBinWidth : 1;
+  const bins = profile.bins.map((bin) => ({ ...bin }));
+  let lastTradeMs = profile.last_trade_ms;
+
+  for (const trade of trades) {
+    if (trade.t_ms <= profile.last_trade_ms) continue;
+    if (trade.t_ms < profile.session_open_ms || trade.t_ms >= profile.session_close_ms) continue;
+    if (trade.side !== 1 && trade.side !== -1) continue;
+    if (!Number.isFinite(trade.price) || trade.price <= 0) continue;
+    if (!Number.isFinite(trade.qty) || trade.qty <= 0) continue;
+    if (trade.price < profile.price_min || trade.price > profile.price_max) continue;
+
+    const idx = Math.max(
+      0,
+      Math.min(rangeCount - 1, Math.floor((trade.price - profile.price_min) / binWidth)),
+    );
+    bins[idx] = { ...bins[idx], qty: bins[idx].qty + trade.qty };
+    lastTradeMs = Math.max(lastTradeMs, trade.t_ms);
+  }
+
+  return lastTradeMs === profile.last_trade_ms
+    ? profile
+    : { ...profile, bins, last_trade_ms: lastTradeMs };
+}
+
 export function LiveSidebar({ code, live, bundle = null, todayKst = '' }: Props) {
   const cursorMs = useLiveCursorStore((s) => s.cursorMs);
   const timeframe = useLivePageStore((s) => s.candleTimeframe);
@@ -124,6 +163,17 @@ export function LiveSidebar({ code, live, bundle = null, todayKst = '' }: Props)
     ? realMsToYyyymmdd(cursorMs)
     : (activeBundle?.segments[activeBundle.segments.length - 1]?.date ?? todayKst ?? null);
   const persistedVolumeDistributions = activeBundle?.volume_distributions ?? [];
+  const liveDistributionTrades = useMemo(
+    () => live.trade.flatMap((snapshot) =>
+      snapshot.trades.map((trade) => ({
+        t_ms: trade.t_ms ?? snapshot.t_ms,
+        price: trade.price ?? NaN,
+        qty: trade.qty,
+        side: trade.side,
+      })),
+    ),
+    [live.trade],
+  );
   const recomputedTodayVolumeDistribution = useMemo(() => {
     if (
       !volumeDistributionEnabled ||
@@ -137,27 +187,22 @@ export function LiveSidebar({ code, live, bundle = null, todayKst = '' }: Props)
     const todaySegment = activeBundle.segments.find((segment) => segment.date === todayKst);
     if (!todaySegment) return null;
     const todayCandles = activeBundle.candles.filter((candle) => realMsToYyyymmdd(candle.ts_ms) === todayKst);
-    if (todayCandles.length === 0 || live.trade.length === 0) return null;
+    if (todayCandles.length === 0 || liveDistributionTrades.length === 0) return null;
     return computeContinuousTradeVolumeDistribution({
       date: todayKst,
       candles: todayCandles,
-      trades: live.trade.flatMap((snapshot) =>
-        snapshot.trades.map((trade) => ({
-          t_ms: trade.t_ms ?? snapshot.t_ms,
-          price: trade.price ?? NaN,
-          qty: trade.qty,
-          side: trade.side,
-        })),
-      ),
+      trades: liveDistributionTrades,
       rangeCount: volumeDistributionRangeCount,
       segment: todaySegment,
     });
-  }, [volumeDistributionEnabled, stockCode, todayKst, timeframe, activeBundle, live.trade, volumeDistributionRangeCount]);
+  }, [volumeDistributionEnabled, stockCode, todayKst, timeframe, activeBundle, liveDistributionTrades, volumeDistributionRangeCount]);
   const activeVolumeDistribution = useMemo(() => {
     if (!volumeDistributionEnabled) return undefined;
     const persistedProfile = profileForDate(persistedVolumeDistributions, activeVolumeDistributionDate);
     if (persistedProfile) {
-      return persistedProfile;
+      return activeVolumeDistributionDate === todayKst
+        ? mergeVolumeDistributionDelta(persistedProfile, liveDistributionTrades)
+        : persistedProfile;
     }
     if (activeVolumeDistributionDate === todayKst) {
       return recomputedTodayVolumeDistribution;
@@ -169,6 +214,7 @@ export function LiveSidebar({ code, live, bundle = null, todayKst = '' }: Props)
     todayKst,
     recomputedTodayVolumeDistribution,
     persistedVolumeDistributions,
+    liveDistributionTrades,
   ]);
 
   // T14b: "다음 가용: HH:MM" hint above orderbook table when spot orderbook

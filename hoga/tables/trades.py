@@ -488,6 +488,7 @@ class VolumeProfileBinning:
     price_max: int
     bin_width: float
     bins: list[tuple[int, int]]
+    max_intra_ms: int | None = None
 
 
 def query_volume_profile_range(
@@ -613,14 +614,22 @@ def query_continuous_trade_volume_distribution(
           WHERE side IN (1, -1)
             AND price > 0
             AND qty > 0
+        ),
+        filtered AS (
+          SELECT price, qty, intra_ms
+          FROM continuous
+          WHERE intra_ms >= ?
+            AND intra_ms < ?
+            AND price BETWEEN {price_lo} AND {price_hi}
+        ),
+        stats AS (
+          SELECT MAX(intra_ms) AS max_intra_ms FROM filtered
         )
         SELECT FLOOR((price - {price_lo}) / {bin_width})::BIGINT AS bin_idx,
-               SUM(qty) AS qty
-        FROM continuous
-        WHERE intra_ms >= ?
-          AND intra_ms < ?
-          AND price BETWEEN {price_lo} AND {price_hi}
-        GROUP BY 1 ORDER BY 1
+               SUM(qty) AS qty,
+               stats.max_intra_ms
+        FROM filtered, stats
+        GROUP BY 1, 3 ORDER BY 1
         """,
         [str(path), session_open_intra_ms, session_close_intra_ms],
     ).fetchall()
@@ -628,5 +637,6 @@ def query_continuous_trade_volume_distribution(
         price_min=price_lo,
         price_max=price_hi,
         bin_width=float(bin_width),
-        bins=[(int(idx), int(qty)) for idx, qty in rows],
+        bins=[(int(idx), int(qty)) for idx, qty, _max_intra_ms in rows],
+        max_intra_ms=int(rows[0][2]) if rows and rows[0][2] is not None else None,
     )

@@ -425,6 +425,7 @@ def test_study_views_create_round_trips_volume_distribution_state_and_profiles(t
             "price_max": 72_000,
             "session_open_ms": 1_000,
             "session_close_ms": 2_000,
+            "last_trade_ms": 1_500,
             "bins": [{"price_low": 69_000, "price_high": 70_500, "qty": 40}],
         }
     ]
@@ -445,6 +446,7 @@ def test_study_views_create_round_trips_volume_distribution_state_and_profiles(t
             "price_max": 72_000.0,
             "session_open_ms": 1_000,
             "session_close_ms": 2_000,
+            "last_trade_ms": 1_500,
             "bins": [{"price_low": 69_000.0, "price_high": 70_500.0, "qty": 40.0}],
         }
     ]

@@ -244,6 +244,52 @@ describe('LiveSidebar', () => {
     expect(screen.queryByText('0.7k')).toBeNull();
   });
 
+  it('merges newer live continuous trades into the persisted today volume distribution', () => {
+    useLivePageStore.setState({ volumeDistributionRangeCount: 2 });
+    const liveWithTrades: LiveSeriesData = {
+      ...emptyLive,
+      trade: [
+        {
+          t_ms: Date.UTC(2026, 4, 27, 0, 10, 0),
+          kind: 'trade',
+          trades: [
+            { t_ms: Date.UTC(2026, 4, 27, 0, 4, 0), price: 70100, qty: 999, side: 1 },
+            { t_ms: Date.UTC(2026, 4, 27, 0, 10, 0), price: 70100, qty: 50, side: 1 },
+            { t_ms: Date.UTC(2026, 4, 27, 0, 11, 0), price: 70120, qty: 990, side: 0 },
+            { t_ms: Date.UTC(2026, 4, 27, 0, 12, 0), price: 70350, qty: 70, side: -1 },
+          ],
+        },
+      ],
+    };
+
+    renderSidebar({
+      code: '005930',
+      live: liveWithTrades,
+      bundle: {
+        ...bundleFixture,
+        volume_distributions: [
+          {
+            date: '20260527',
+            range_count: 2,
+            price_min: 70000,
+            price_max: 70400,
+            session_open_ms: Date.UTC(2026, 4, 27, 0, 0, 0),
+            session_close_ms: Date.UTC(2026, 4, 27, 6, 30, 0),
+            last_trade_ms: Date.UTC(2026, 4, 27, 0, 5, 0),
+            bins: [
+              { price_low: 70000, price_high: 70200, qty: 150 },
+              { price_low: 70200, price_high: 70400, qty: 300 },
+            ],
+          },
+        ],
+      },
+    });
+
+    expect(screen.getByText('0.2k')).toBeInTheDocument();
+    expect(screen.getByText('0.4k')).toBeInTheDocument();
+    expect(screen.queryByText('1k')).toBeNull();
+  });
+
   it('uses live continuous trades as a today volume distribution fallback when no persisted profile exists', () => {
     useLivePageStore.setState({ volumeDistributionRangeCount: 2 });
     const liveWithTrades: LiveSeriesData = {

@@ -625,6 +625,7 @@ def test_continuous_trade_volume_distribution_filters_side_and_session(tmp_path:
     assert got.price_min == 100
     assert got.price_max == 120
     assert got.bins == [(0, 10), (1, 20)]
+    assert got.max_intra_ms == 32_460_000
 
 
 def test_continuous_trade_volume_distribution_folds_high_price_into_last_bin(tmp_path: Path) -> None:

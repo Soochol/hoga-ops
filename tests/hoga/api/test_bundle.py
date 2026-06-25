@@ -526,7 +526,7 @@ def test_build_range_bundle_volume_distributions_are_opt_in():
 def test_build_volume_distribution_slice_returns_unix_session_bounds(tmp_path):
     from hoga.api import bundle as bundle_mod
     from hoga.api.bundle import build_volume_distribution_slice
-    from hoga.api.timeenc import hhmmssms_to_unix_ms
+    from hoga.api.timeenc import hhmmssms_to_unix_ms, ms_from_midnight_to_unix_ms
     from hoga.tables.trades import VolumeProfileBinning
 
     code_dir = tmp_path / "20260512" / "005930"
@@ -546,6 +546,7 @@ def test_build_volume_distribution_slice_returns_unix_session_bounds(tmp_path):
                  price_max=71_000,
                  bin_width=100.0,
                  bins=[(0, 123)],
+                 max_intra_ms=32_460_000,
              ),
          ) as dist_query:
         profile = build_volume_distribution_slice(
@@ -570,6 +571,7 @@ def test_build_volume_distribution_slice_returns_unix_session_bounds(tmp_path):
     assert profile is not None
     assert profile.session_open_ms == hhmmssms_to_unix_ms("20260512", 90_000_000)
     assert profile.session_close_ms == hhmmssms_to_unix_ms("20260512", 153_000_000)
+    assert profile.last_trade_ms == ms_from_midnight_to_unix_ms("20260512", 32_460_000)
 
 
 def test_expand_distribution_bins_single_price_day_stays_on_candle_range():
