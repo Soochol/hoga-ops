@@ -18,7 +18,7 @@ export const DEFAULT_CARD_WEIGHTS: LiveCardWeights = {
   investor: 15,
 };
 
-const LIVE_CARD_MIN_HEIGHT_PX: Record<LiveCardKey, number> = {
+export const LIVE_CARD_MIN_HEIGHT_PX: Record<LiveCardKey, number> = {
   orderbook: 260,
   program: 96,
   brokers: 160,
