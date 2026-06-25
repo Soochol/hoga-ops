@@ -3,6 +3,12 @@
 All notable changes to this project are documented here.
 The format follows a 4-digit `MAJOR.MINOR.PATCH.MICRO` scheme.
 
+## [0.10.0.4] - 2026-06-25
+
+### Fixed
+- **프로그램 순매수 당일 표시 보정**: `/live` 차트에서 캔들이 없는 날짜의 프로그램 sidecar가 빈 세션에 따로 그려지지 않도록, 프로그램 포인트를 실제 차트 캔들 날짜에 맞춰 필터링한다.
+- **프로그램 순매수 라인 버킷 정렬**: KIS 원본의 6~7초 단위 행을 그대로 그리지 않고 현재 차트 주기별 마지막 누적값으로 정렬해, 1분봉 등에서 당일 선이 과밀하게 보이지 않도록 했다.
+
 ## [0.10.0.3] - 2026-06-25
 
 ### Changed
