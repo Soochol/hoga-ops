@@ -3,6 +3,11 @@
 All notable changes to this project are documented here.
 The format follows a 4-digit `MAJOR.MINOR.PATCH.MICRO` scheme.
 
+## [0.10.0.2] - 2026-06-25
+
+### Fixed
+- **/live 사이드바 프로그램 카드 위치 수정**: 오른쪽 사이드바에서 `10호가`와 `거래원` 사이에 `프로그램` 카드를 추가해 프로그램 순매수 요약이 의도한 위치에 보이도록 했다.
+
 ## [0.10.0.1] - 2026-06-25
 
 ### Fixed

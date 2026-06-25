@@ -42,7 +42,16 @@ const useIndexSectorRankingsMock = vi.hoisted(() =>
 vi.mock('./LiveChartRoot', () => ({
   LiveChartRoot: (props: LiveChartRootProps) => liveChartRootMock(props),
 }));
-vi.mock('./LiveSidebar', () => ({ LiveSidebar: () => <div data-testid="sidebar-stub" /> }));
+const liveSidebarMock = vi.hoisted(() =>
+  vi.fn((props: unknown) => {
+    void props;
+    return <div data-testid="sidebar-stub" />;
+  }),
+);
+
+vi.mock('./LiveSidebar', () => ({
+  LiveSidebar: (props: unknown) => liveSidebarMock(props),
+}));
 vi.mock('./IndexSectorRankingPane', () => ({
   IndexSectorRankingPane: () => <div data-testid="index-sector-ranking-pane" />,
 }));
@@ -135,6 +144,7 @@ function renderWorkarea(activeCode: string | null, activeInstrument = null) {
 describe('LiveWorkarea gate', () => {
   beforeEach(() => {
     liveChartRootMock.mockClear();
+    liveSidebarMock.mockClear();
     useIndexSectorRankingsMock.mockClear();
     useLivePageStore.setState({ candleTimeframe: '1m' });
   });
@@ -143,6 +153,33 @@ describe('LiveWorkarea gate', () => {
     renderWorkarea('005930');
     expect(screen.getByTestId('chart-stub')).toBeInTheDocument();
     expect(screen.queryByTestId('live-empty-state')).toBeNull();
+  });
+
+  it('passes program trade series to the live sidebar', () => {
+    const programTrade = {
+      points: [
+        {
+          t: new Date('2026-06-25T00:00:00Z').getTime(),
+          net_qty: 10,
+          net_amount: 1000,
+          gap_risk: false,
+        },
+      ],
+    };
+    render(
+      <LiveWorkarea
+        activeCode="005930"
+        bundle={{ ...INDEX_BUNDLE, code: '005930', program_trade: programTrade }}
+        clampEngaged={false}
+        isPastCandlesLoading={false}
+        isExtending={false}
+        live={LIVE}
+      />,
+    );
+
+    expect(liveSidebarMock).toHaveBeenCalledWith(
+      expect.objectContaining({ programTrade }),
+    );
   });
 
   it('renders the search-prompt empty state when no activeCode', () => {

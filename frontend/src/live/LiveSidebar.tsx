@@ -3,8 +3,10 @@ import CursorSidebar from '../sidebar/CursorSidebar';
 import { InvestorTrendEstimateCard } from '../sidebar/InvestorTrendEstimateCard';
 import OrderbookTable from '../sidebar/OrderbookTable';
 import BrokerTrajectoryTable from '../sidebar/BrokerTrajectoryTable';
+import ProgramTradeSummaryCard from '../sidebar/ProgramTradeSummaryCard';
 import TotalQtyBar from '../sidebar/TotalQtyBar';
 import type { LiveSeriesData } from '../api/liveSeries';
+import type { ProgramTradeSeries } from '../api/types';
 import {
   aggregateBrokerSeries,
   latestOrderbookSnapshot,
@@ -30,6 +32,7 @@ interface Props {
    * SSE connection and a parallel buffer that drifts out of sync on HMR
    * re-mounts. */
   live: LiveSeriesData;
+  programTrade?: ProgramTradeSeries | null;
 }
 
 /**
@@ -47,7 +50,7 @@ interface Props {
  * The third "체결" card was removed 2026-05-28 (ADR-0047). The chart's
  * 체결강도 pane provides equivalent information in compact form.
  */
-export function LiveSidebar({ code, live }: Props) {
+export function LiveSidebar({ code, live, programTrade = null }: Props) {
   const cursorMs = useLiveCursorStore((s) => s.cursorMs);
   const timeframe = useLivePageStore((s) => s.candleTimeframe);
   const stockCode = code && !code.startsWith('index:') ? code : null;
@@ -144,6 +147,12 @@ export function LiveSidebar({ code, live }: Props) {
               <OrderbookTable snapshot={orderbookForCard} />
               <TotalQtyBar snapshot={orderbookForCard} maskRatio={maskRatio} />
             </>
+          }
+          program={
+            <ProgramTradeSummaryCard
+              series={programTrade}
+              cursorMs={isSpot ? cursorMs : null}
+            />
           }
           brokers={
             <BrokerTrajectoryTable series={brokerSeriesForCard} cursorMs={brokerCursorMs} />
