@@ -25,7 +25,7 @@ export function StalenessChip({ status }: Props) {
       style={{ color }}
     >
       <span className="rounded-full" style={{ width: 6, height: 6, background: color }} aria-hidden />
-      마지막: {last ?? '—'}
+      EOD 마지막: {last ?? '—'}
       {behind && ` · ${daysBehind}거래일 뒤처짐`}
     </span>
   );

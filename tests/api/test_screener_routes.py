@@ -2,6 +2,7 @@ import polars as pl
 from fastapi.testclient import TestClient
 from fastapi import FastAPI
 from hoga.api.screener import build_router
+from hoga.api.models import ScreenerResponse
 
 
 def _app(tmp_path):
@@ -74,3 +75,29 @@ def test_status_days_behind_deterministic(tmp_path, monkeypatch):
     r = TestClient(_app(tmp_path)).get("/api/screener/status")
     assert r.status_code == 200
     assert r.json()["days_behind"] == 3
+
+
+def test_scan_post_delegates_to_runner(tmp_path, monkeypatch):
+    import hoga.api.screener as screener_mod
+
+    calls = []
+
+    async def fake_runner(**kwargs):
+        calls.append(kwargs)
+        return ScreenerResponse(status="ok", rows=[], warnings=["from_runner"])
+
+    monkeypatch.setattr(screener_mod.screener_runner, "run_screener_scan", fake_runner)
+
+    resp = TestClient(_app(tmp_path)).post("/api/screener/scan", json={
+        "basis": "intraday",
+        "conditions": [],
+        "universe": {"markets": ["KOSPI"]},
+    })
+
+    assert resp.status_code == 200
+    body = resp.json()
+    assert body["status"] == "ok"
+    assert body["warnings"] == ["from_runner"]
+    assert calls[0]["data_dir"] == tmp_path
+    assert calls[0]["req"].basis == "intraday"
+    assert calls[0]["req"].universe.markets == ["KOSPI"]
