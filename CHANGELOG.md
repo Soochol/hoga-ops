@@ -3,6 +3,11 @@
 All notable changes to this project are documented here.
 The format follows a 4-digit `MAJOR.MINOR.PATCH.MICRO` scheme.
 
+## [0.11.0.2] - 2026-06-25
+
+### Fixed
+- **당일 매물대 분포 빈 구간 표시 보정**: 거래량이 0인 가격 구간도 track으로 보여줘, 당일 live tail만 있는 상태에서도 10개 구간이 모두 보이도록 했다.
+
 ## [0.11.0.1] - 2026-06-25
 
 ### Fixed
