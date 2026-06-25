@@ -21,6 +21,7 @@ function bundle(points: NonNullable<RangeBundle['program_trade']>['points']): Ra
     volume_profile_by_day: [],
     investorPoints: [],
     ask_peaks: [],
+    volume_distributions: [],
     program_trade: { points },
   };
 }

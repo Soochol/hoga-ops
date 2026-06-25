@@ -67,6 +67,9 @@ export const TRADE_VOLUME_POC_DEFAULT_BAND_PCT = 0.005;
 export const TRADE_VOLUME_POC_DEFAULT_COLOR = '#A855F7';
 export const TRADE_VOLUME_POC_DEFAULT_OPACITY = 0.12;
 const VALID_TRADE_VOLUME_POC_BAND_PCTS = new Set([0.0025, 0.005, 0.01]);
+export const VOLUME_DISTRIBUTION_DEFAULT_COLOR = '#64748B';
+export const VOLUME_DISTRIBUTION_DEFAULT_MAX_COLOR = '#EAB308';
+export const VOLUME_DISTRIBUTION_DEFAULT_RANGE_COUNT = 10;
 
 export type PersistedIndicators = {
   movingAverages: LiveMAConfig[];
@@ -115,6 +118,14 @@ export type PersistedIndicators = {
   tradeVolumePocColor: string;
   /** 당일 최대 매물대 밴드 투명도(0~1). 기본 0.12. */
   tradeVolumePocOpacity: number;
+  /** 연속체결 매물대 분포 on/off. Default TRUE. */
+  volumeDistributionEnabled: boolean;
+  /** 연속체결 매물대 분포 가격 구간 수(5~30). Default 10. */
+  volumeDistributionRangeCount: number;
+  /** 연속체결 매물대 분포 기본 막대 색(hex). 기본 #64748B. */
+  volumeDistributionColor: string;
+  /** 연속체결 매물대 분포 최대 구간 강조 색(hex). 기본 #EAB308. */
+  volumeDistributionMaxColor: string;
   /** 총잔량 pane on/off. Default TRUE(기존 자동표시 보존). */
   quoteTotalsEnabled: boolean;
   /** 호가비 pane on/off. Default TRUE. */
@@ -146,6 +157,16 @@ function isValidEntry(m: unknown): m is LiveMAConfig {
     && typeof e.lineWidth === 'number' && VALID_LINE_WIDTHS.has(e.lineWidth)
     && typeof e.source === 'string' && VALID_SOURCES.has(e.source)
   );
+}
+
+function normalizeHexColor(value: unknown, fallback: string): string {
+  return typeof value === 'string' && HEX_COLOR.test(value) ? value : fallback;
+}
+
+function normalizeVolumeDistributionRangeCount(value: unknown): number {
+  const n = typeof value === 'number' ? Math.trunc(value) : Number.NaN;
+  if (!Number.isFinite(n)) return VOLUME_DISTRIBUTION_DEFAULT_RANGE_COUNT;
+  return Math.min(30, Math.max(5, n));
 }
 
 /** Merge persisted state with defaults. If the input is structurally
@@ -208,6 +229,13 @@ export function mergeLiveIndicatorPrefs(
     && tvpOpacityRaw <= 1
     ? tvpOpacityRaw
     : TRADE_VOLUME_POC_DEFAULT_OPACITY;
+  const volumeDistributionEnabled = obj?.volumeDistributionEnabled !== false;
+  const volumeDistributionRangeCount = normalizeVolumeDistributionRangeCount(obj?.volumeDistributionRangeCount);
+  const volumeDistributionColor = normalizeHexColor(obj?.volumeDistributionColor, VOLUME_DISTRIBUTION_DEFAULT_COLOR);
+  const volumeDistributionMaxColor = normalizeHexColor(
+    obj?.volumeDistributionMaxColor,
+    VOLUME_DISTRIBUTION_DEFAULT_MAX_COLOR,
+  );
   // daily MA — opt-in(기본 false), 슬롯 검증·cap·기본값 전략 movingAverages와 동일.
   const dEnabled = obj?.dailyMovingAverageEnabled === true;
   const dHidden = obj?.dailyMovingAverageHidden === true;
@@ -245,6 +273,10 @@ export function mergeLiveIndicatorPrefs(
     tradeVolumePocBandPct: tvpBandPct,
     tradeVolumePocColor: tvpColor,
     tradeVolumePocOpacity: tvpOpacity,
+    volumeDistributionEnabled,
+    volumeDistributionRangeCount,
+    volumeDistributionColor,
+    volumeDistributionMaxColor,
     quoteTotalsEnabled: qt,
     ratioEnabled: ratio,
     fillStrengthEnabled: fill,

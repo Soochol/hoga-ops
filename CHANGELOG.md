@@ -3,6 +3,17 @@
 All notable changes to this project are documented here.
 The format follows a 4-digit `MAJOR.MINOR.PATCH.MICRO` scheme.
 
+## [0.11.0.0] - 2026-06-25
+
+### Added
+- **/live 사이드바 연속체결 매물대 분포 추가**: 10호가 아래에서 선택한 거래일의 정규장 연속매매 체결량을 가격대별 누적 bar chart로 볼 수 있게 했다.
+- **당일 종가 흐름 오버레이 추가**: 매물대 분포 카드 위에 해당 거래일의 종가 흐름선을 함께 표시하고, 마우스 hover 시점은 세로 점선으로 보여준다.
+- **매물대 분포 설정 추가**: 지표 설정창에서 구간 수, 기본 bar 색상, 최대 매물대 bar 색상을 조정할 수 있게 했다.
+- **과거일과 study 저장뷰 매물대 분포 보존**: range bundle과 study snapshot에 거래일별 매물대 분포를 포함해 과거일과 저장뷰에서도 같은 분포를 볼 수 있게 했다.
+
+### Fixed
+- **당일 라이브 tail 병합 보정**: 저장된 당일 분포보다 늦게 들어온 라이브 체결만 누적해, 전체 하루 분포가 live tail로 덮어써지지 않도록 했다.
+
 ## [0.10.1.0] - 2026-06-25
 
 ### Changed

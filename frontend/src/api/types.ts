@@ -54,6 +54,23 @@ export type VolumeProfile = {
   bins: VolumeProfileBin[];
 };
 
+export type VolumeDistributionBin = {
+  price_low: number;
+  price_high: number;
+  qty: number;
+};
+
+export type DayVolumeDistribution = {
+  date: string;
+  range_count: number;
+  price_min: number;
+  price_max: number;
+  session_open_ms: number;
+  session_close_ms: number;
+  last_trade_ms?: number | null;
+  bins: VolumeDistributionBin[];
+};
+
 export type FillStrengthPoint = { t: number; buy_qty: number; sell_qty: number };
 export type FillStrength = { bucket_ms: number; points: FillStrengthPoint[] };
 
@@ -530,6 +547,7 @@ export type RangeBundle = {
   program_trade?: ProgramTradeSeries;
   volume_profile_range: VolumeProfile;
   volume_profile_by_day: VolumeProfile[];
+  volume_distributions: DayVolumeDistribution[];
   /** ADR-0055: daily foreign/institution net-buy bars across the requested
    *  range (FHPTJ04160001 date-cursor walk-back).
    *  Empty on minute timeframes (KIS provides investor data for D/W/M only).

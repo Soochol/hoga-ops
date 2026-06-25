@@ -39,6 +39,7 @@ function bundle(): RangeBundle {
     },
     volume_profile_range: { bin_count: 0, price_min: 0, price_max: 0, bin_width: 0, bins: [] },
     volume_profile_by_day: [],
+    volume_distributions: [],
     investorPoints: [],
     ask_peaks: [],
   };

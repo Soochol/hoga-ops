@@ -4,11 +4,12 @@ import CursorSidebar from '../sidebar/CursorSidebar';
 import OrderbookTable from '../sidebar/OrderbookTable';
 import ProgramTradeSummaryCard from '../sidebar/ProgramTradeSummaryCard';
 import TotalQtyBar from '../sidebar/TotalQtyBar';
+import { VolumeDistributionCard } from '../sidebar/VolumeDistributionCard';
 import type { ProgramTradeSeries, RangeSegment } from '../api/types';
 import type { StudySnapshotDetailInput } from './studySnapshotAdapter';
 import { bucketStartForCursor, studyBrokerBucketsToSeries } from './studySnapshotAdapter';
 
-type CandlePoint = { ts_ms: number };
+type CandlePoint = { ts_ms: number; close?: number };
 
 type Props = {
   details: StudySnapshotDetailInput;
@@ -19,6 +20,21 @@ type Props = {
   cursorMs: number | null;
 };
 
+function profileForDate(
+  profiles: StudySnapshotDetailInput['volumeDistributions'],
+  date: string | null,
+) {
+  if (!date) return null;
+  return profiles.find((profile) => profile.date === date) ?? null;
+}
+
+function segmentForTime(segments: RangeSegment[], timeMs: number | null): RangeSegment | null {
+  if (timeMs == null) return null;
+  return segments.find((segment) => (
+    segment.session_open_ms <= timeMs && timeMs <= segment.session_close_ms
+  )) ?? null;
+}
+
 export function StudyDetailPanel({ details, candles, segments, programTrade = null, bucketMs, cursorMs }: Props) {
   const bucketStart = useMemo(() => {
     if (candles.length === 0) return null;
@@ -28,11 +44,13 @@ export function StudyDetailPanel({ details, candles, segments, programTrade = nu
 
   const orderbook = bucketStart == null ? undefined : details.orderbookByBucketStart.get(bucketStart);
   const activeSegment = useMemo(() => {
-    if (bucketStart == null) return null;
-    return segments.find((segment) => (
-      segment.session_open_ms <= bucketStart && bucketStart <= segment.session_close_ms
-    )) ?? null;
+    return segmentForTime(segments, bucketStart);
   }, [bucketStart, segments]);
+  const volumeDistributionTimeMs = cursorMs ?? candles[candles.length - 1]?.ts_ms ?? null;
+  const activeVolumeDistributionSegment = useMemo(
+    () => segmentForTime(segments, volumeDistributionTimeMs),
+    [segments, volumeDistributionTimeMs],
+  );
   const sessionBrokerSeries = useMemo(
     () => studyBrokerBucketsToSeries(
       details.brokersByBucketStart,
@@ -59,6 +77,26 @@ export function StudyDetailPanel({ details, candles, segments, programTrade = nu
     });
   }, [bucketStart, details.brokersByBucketStart, sessionBrokerSeries]);
   const snapshot = orderbook?.available ? orderbook.snapshot : null;
+  const activeVolumeDistribution = useMemo(() => {
+    if (!details.volumeDistributionEnabled) return undefined;
+    return profileForDate(details.volumeDistributions, activeVolumeDistributionSegment?.date ?? null);
+  }, [
+    activeVolumeDistributionSegment?.date,
+    details.volumeDistributionEnabled,
+    details.volumeDistributions,
+  ]);
+  const volumeDistributionCursorMs = cursorMs ?? bucketStart;
+  const activeVolumeDistributionClosePoints = useMemo(() => {
+    const date = activeVolumeDistributionSegment?.date;
+    if (!date) return [];
+    return candles
+      .filter((candle) => {
+        const segment = segmentForTime(segments, candle.ts_ms);
+        return segment?.date === date && typeof candle.close === 'number';
+      })
+      .sort((a, b) => a.ts_ms - b.ts_ms)
+      .map((candle) => ({ t_ms: candle.ts_ms, close: candle.close as number }));
+  }, [activeVolumeDistributionSegment?.date, candles, segments]);
 
   return (
     <div data-testid="study-detail-panel" className="grid h-full min-w-0 grid-rows-[minmax(0,1fr)_auto] bg-bg-card">
@@ -68,6 +106,15 @@ export function StudyDetailPanel({ details, candles, segments, programTrade = nu
             <OrderbookTable snapshot={snapshot} />
             <TotalQtyBar snapshot={snapshot} maskRatio={false} />
           </>
+        )}
+        volumeDistribution={(
+          <VolumeDistributionCard
+            profile={activeVolumeDistribution}
+            cursorMs={volumeDistributionCursorMs}
+            closePoints={activeVolumeDistributionClosePoints}
+            color={details.volumeDistributionColor}
+            maxColor={details.volumeDistributionMaxColor}
+          />
         )}
         program={(
           <ProgramTradeSummaryCard

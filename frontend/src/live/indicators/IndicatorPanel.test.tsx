@@ -10,12 +10,13 @@ describe('IndicatorPanel', () => {
       ratioEnabled: true,
       fillStrengthEnabled: true,
       tradeVolumePocEnabled: true,
+      volumeDistributionEnabled: true,
     });
     render(<IndicatorPanel onClose={() => {}} />);
     const checkboxes = screen.getAllByRole('checkbox');
-    expect(checkboxes).toHaveLength(12); // 상단 3 + 10호가 6 + 프로그램 1 + 거래원 2
+    expect(checkboxes).toHaveLength(13); // 상단 3 + 10호가 7 + 프로그램 1 + 거래원 2
     expect(checkboxes.filter((c) => (c as HTMLButtonElement).disabled)).toHaveLength(0);
-    for (const name of ['총잔량', '호가비', '체결강도', '프로그램 순매수', '당일 최대 매물대']) {
+    for (const name of ['총잔량', '호가비', '체결강도', '연속체결 매물대 분포', '프로그램 순매수', '당일 최대 매물대']) {
       const cb = screen.getByRole('checkbox', { name }) as HTMLButtonElement;
       expect(cb.disabled).toBe(false);
       expect(cb.getAttribute('aria-checked')).toBe('true'); // 기본 ON
@@ -42,7 +43,7 @@ describe('IndicatorPanel', () => {
     expect(screen.queryByText('10호가 지표')).toBeNull();
     expect(screen.queryByText('프로그램 지표')).toBeNull();
     expect(screen.getByText('거래원 지표')).toBeTruthy();
-    for (const name of ['총잔량', '호가비', '체결강도', '프로그램 순매수', '당일 최대 매물대', '당일 매도 최대벽', '당일 매수 최대벽']) {
+    for (const name of ['총잔량', '호가비', '체결강도', '연속체결 매물대 분포', '프로그램 순매수', '당일 최대 매물대', '당일 매도 최대벽', '당일 매수 최대벽']) {
       expect(screen.queryByRole('checkbox', { name })).toBeNull();
       expect(screen.queryByRole('button', { name })).toBeNull();
     }
@@ -63,9 +64,12 @@ describe('IndicatorPanel', () => {
     const labels = screen.getAllByRole('button').map((b) => b.textContent);
     const askPeak = labels.indexOf('당일 매도 최대벽');
     const poc = labels.indexOf('당일 최대 매물대');
+    const distribution = labels.indexOf('연속체결 매물대 분포');
     const fill = labels.indexOf('체결강도');
     const program = labels.indexOf('프로그램 순매수');
     expect(askPeak).toBeGreaterThan(fill); // 호가 그룹 안, 체결강도 뒤
+    expect(distribution).toBeGreaterThan(fill);
+    expect(poc).toBeGreaterThan(distribution);
     expect(poc).toBeGreaterThan(fill);
     expect(askPeak).toBeGreaterThan(poc);
     expect(askPeak).toBeLessThan(program);
@@ -232,6 +236,32 @@ describe('IndicatorPanel', () => {
     const cb = screen.getByRole('checkbox', { name: '당일 최대 매물대' });
     fireEvent.click(cb);
     expect(useLivePageStore.getState().tradeVolumePocEnabled).toBe(false);
+  });
+
+  it('연속체결 매물대 분포 카테고리 토글', () => {
+    useLivePageStore.setState({ volumeDistributionEnabled: true });
+    render(<IndicatorPanel onClose={() => {}} />);
+    const cb = screen.getByRole('checkbox', { name: '연속체결 매물대 분포' });
+    fireEvent.click(cb);
+    expect(useLivePageStore.getState().volumeDistributionEnabled).toBe(false);
+  });
+
+  it('연속체결 매물대 분포 선택 시 범위/색상 설정을 저장한다', () => {
+    useLivePageStore.setState({
+      volumeDistributionRangeCount: 10,
+      volumeDistributionColor: '#64748B',
+      volumeDistributionMaxColor: '#EAB308',
+    });
+    render(<IndicatorPanel onClose={() => {}} />);
+    fireEvent.click(screen.getByRole('button', { name: '연속체결 매물대 분포' }));
+    fireEvent.change(screen.getByRole('spinbutton', { name: '연속체결 매물대 분포 구간 수' }), {
+      target: { value: '18' },
+    });
+    fireEvent.click(screen.getByRole('button', { name: '연속체결 매물대 분포 색상 #22C55E' }));
+    fireEvent.click(screen.getByRole('button', { name: '연속체결 매물대 분포 최대 구간 색상 #EF4444' }));
+    expect(useLivePageStore.getState().volumeDistributionRangeCount).toBe(18);
+    expect(useLivePageStore.getState().volumeDistributionColor).toBe('#22C55E');
+    expect(useLivePageStore.getState().volumeDistributionMaxColor).toBe('#EF4444');
   });
 
   it('당일 최대 매물대 선택 시 자동 범위 설명 표시', () => {
