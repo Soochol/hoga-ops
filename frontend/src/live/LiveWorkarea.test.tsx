@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { fireEvent, render, screen } from '@testing-library/react';
+import { act, fireEvent, render, screen } from '@testing-library/react';
 import { LiveWorkarea } from './LiveWorkarea';
 import type { LiveChartRoot } from './LiveChartRoot';
 import { useLivePageStore } from '../state/livePage';
@@ -64,6 +64,20 @@ vi.mock('../api/indexSectorRankings', () => ({
 vi.mock('./useJumpToLive', () => ({
   useJumpToLive: () => vi.fn(),
 }));
+
+const resizeObserverCallbacks: ResizeObserverCallback[] = [];
+
+if (typeof window !== 'undefined' && !window.ResizeObserver) {
+  window.ResizeObserver = class ResizeObserver {
+    constructor(callback: ResizeObserverCallback) {
+      resizeObserverCallbacks.push(callback);
+    }
+
+    observe() {}
+    unobserve() {}
+    disconnect() {}
+  };
+}
 
 const LIVE: LiveSeriesData = {
   initial: undefined, isLoading: false, error: null, ob: [], trade: [], broker: [],
@@ -163,9 +177,35 @@ function mockRect(
   });
 }
 
+function triggerResize(target: Element, width: number, height = 0) {
+  Object.defineProperty(target, 'clientWidth', { configurable: true, value: width });
+  act(() => {
+    for (const callback of resizeObserverCallbacks) {
+      callback(
+        [{
+          target,
+          contentRect: {
+            x: 0,
+            y: 0,
+            top: 0,
+            left: 0,
+            bottom: height,
+            right: width,
+            width,
+            height,
+            toJSON: () => ({}),
+          },
+        } as ResizeObserverEntry],
+        {} as ResizeObserver,
+      );
+    }
+  });
+}
+
 describe('LiveWorkarea gate', () => {
   beforeEach(() => {
     localStorage.clear();
+    resizeObserverCallbacks.length = 0;
     liveChartRootMock.mockClear();
     liveSidebarMock.mockClear();
     useIndexSectorRankingsMock.mockClear();
@@ -265,6 +305,73 @@ describe('LiveWorkarea gate', () => {
     expect(setPointerCapture).toHaveBeenCalledWith(1);
     expect(releasePointerCapture).toHaveBeenCalledWith(1);
     expect(useLiveLayoutStore.getState().rightPanelWidthPx).toBe(440);
+  });
+
+  it('clamps a persisted oversized detail width on mount', () => {
+    useLiveLayoutStore.setState({
+      rightPanelWidthPx: 700,
+      rightCardWeights: DEFAULT_CARD_WEIGHTS,
+    });
+    const clientWidthDescriptor = Object.getOwnPropertyDescriptor(HTMLElement.prototype, 'clientWidth');
+    Object.defineProperty(HTMLElement.prototype, 'clientWidth', {
+      configurable: true,
+      get() {
+        return this instanceof HTMLElement && this.dataset.testid === 'live-workarea' ? 900 : 0;
+      },
+    });
+
+    try {
+      render(
+        <LiveWorkarea
+          activeCode="005930"
+          bundle={INDEX_BUNDLE}
+          clampEngaged={false}
+          isPastCandlesLoading={false}
+          isExtending={false}
+          live={LIVE}
+        />,
+      );
+
+      const detailPanel = screen.getByRole('complementary', { name: 'Live Detail Panel' });
+      expect(detailPanel).toHaveStyle({ width: '320px' });
+      expect(useLiveLayoutStore.getState().rightPanelWidthPx).toBe(320);
+    } finally {
+      if (clientWidthDescriptor) {
+        Object.defineProperty(HTMLElement.prototype, 'clientWidth', clientWidthDescriptor);
+      } else {
+        delete (HTMLElement.prototype as Partial<HTMLElement>).clientWidth;
+      }
+    }
+  });
+
+  it('clamps the detail width when the workarea shrinks', () => {
+    useLiveLayoutStore.setState({
+      rightPanelWidthPx: 500,
+      rightCardWeights: DEFAULT_CARD_WEIGHTS,
+    });
+
+    render(
+      <LiveWorkarea
+        activeCode="005930"
+        bundle={INDEX_BUNDLE}
+        clampEngaged={false}
+        isPastCandlesLoading={false}
+        isExtending={false}
+        live={LIVE}
+      />,
+    );
+
+    const workarea = screen.getByTestId('live-workarea');
+    Object.defineProperty(workarea, 'clientWidth', { configurable: true, value: 1200 });
+    triggerResize(workarea, 1200);
+
+    const detailPanel = screen.getByRole('complementary', { name: 'Live Detail Panel' });
+    expect(detailPanel).toHaveStyle({ width: '500px' });
+
+    triggerResize(workarea, 900);
+
+    expect(detailPanel).toHaveStyle({ width: '320px' });
+    expect(useLiveLayoutStore.getState().rightPanelWidthPx).toBe(320);
   });
 
   it('hides the live detail panel for representative index charts', () => {

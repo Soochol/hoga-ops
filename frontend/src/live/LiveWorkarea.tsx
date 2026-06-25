@@ -1,4 +1,13 @@
-import { useCallback, useEffect, useMemo, useReducer, useRef, type ReactNode } from 'react';
+import {
+  useCallback,
+  useEffect,
+  useLayoutEffect,
+  useMemo,
+  useReducer,
+  useRef,
+  useState,
+  type ReactNode,
+} from 'react';
 import { isMinuteTimeframe, useLivePageStore } from '../state/livePage';
 import { useEntryDragStore } from '../state/entryDrag';
 import { LiveChartRoot } from './LiveChartRoot';
@@ -150,6 +159,7 @@ export function LiveWorkarea({
   const clearChartTarget = useEntryDragStore((s) => s.clearChartTarget);
   const rightPanelWidthPx = useLiveLayoutStore((s) => s.rightPanelWidthPx);
   const setRightPanelWidthPx = useLiveLayoutStore((s) => s.setRightPanelWidthPx);
+  const [workareaWidthPx, setWorkareaWidthPx] = useState<number | null>(null);
   useEffect(() => {
     const hitTest = (clientX: number, clientY: number): boolean => {
       const el = chartPanelRef.current;
@@ -160,6 +170,35 @@ export function LiveWorkarea({
     registerChartTarget(hitTest);
     return () => clearChartTarget(hitTest);
   }, [registerChartTarget, clearChartTarget]);
+  const syncRightPanelWidth = useCallback((nextWorkareaWidthPx: number) => {
+    if (!(nextWorkareaWidthPx > 0)) return;
+
+    setWorkareaWidthPx(nextWorkareaWidthPx);
+    const currentWidthPx = useLiveLayoutStore.getState().rightPanelWidthPx;
+    const clampedWidthPx = clampRightPanelWidth(currentWidthPx, nextWorkareaWidthPx);
+
+    if (clampedWidthPx !== currentWidthPx) {
+      setRightPanelWidthPx(clampedWidthPx);
+    }
+  }, [setRightPanelWidthPx]);
+  useLayoutEffect(() => {
+    const workarea = workareaRef.current;
+    if (!workarea) return;
+    syncRightPanelWidth(workarea.clientWidth);
+  }, [syncRightPanelWidth]);
+  useEffect(() => {
+    const workarea = workareaRef.current;
+    if (!workarea || typeof ResizeObserver === 'undefined') return undefined;
+
+    const observer = new ResizeObserver((entries) => {
+      const entry = entries[0];
+      if (!entry) return;
+      syncRightPanelWidth(entry.contentRect.width);
+    });
+
+    observer.observe(workarea);
+    return () => observer.disconnect();
+  }, [syncRightPanelWidth]);
 
   const [rankingState, rankingDispatch] = useReducer(
     reduceIndexSectorRankingState,
@@ -230,6 +269,9 @@ export function LiveWorkarea({
     display: 'flex',
     flexDirection: 'column',
   };
+  const renderedRightPanelWidthPx = workareaWidthPx != null
+    ? clampRightPanelWidth(rightPanelWidthPx, workareaWidthPx)
+    : rightPanelWidthPx;
 
   // position:relative는 absolute 오버레이의 containing block. minHeight:0 + overflow:hidden은
   // 차트 캔버스 intrinsic 크기가 flex 높이를 밀어내는 runaway 루프를 막는다(67c527a).
@@ -320,7 +362,7 @@ export function LiveWorkarea({
                 role="complementary"
                 aria-label="Live Detail Panel"
                 style={{
-                  width: rightPanelWidthPx,
+                  width: renderedRightPanelWidthPx,
                   flexShrink: 0,
                   borderLeft: '1px solid var(--border)',
                 }}

@@ -21,3 +21,15 @@ Tests:
 
 Concerns:
 - None blocking. Empty tabs now mount the same chart-panel drop target wrapper used by the active workarea, while active hit testing stays bounded to the left chart panel and excludes the splitter/detail side.
+
+Status: done
+
+Commits:
+- `HEAD` `fix(live): clamp persisted detail panel width`
+
+Tests:
+- `cd frontend && npx vitest run src/live/LiveWorkarea.test.tsx src/live/LivePage.test.tsx src/state/liveLayout.test.ts`
+- Result: 3 files passed, 47 tests passed
+
+Concerns:
+- None blocking. LiveWorkarea now clamps persisted detail width on mount and during workarea shrink via `ResizeObserver`, with the mount-time `clientWidth` sync covering environments where observer notifications lag or are unavailable.
