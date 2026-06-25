@@ -225,6 +225,41 @@ describe('buildLiveBundle', () => {
     ]);
   });
 
+  it('keeps program trade points only for dates that have chart candles', () => {
+    const yesterday = '20260526';
+    const Y_OPEN = TODAY_OPEN - 86400_000;
+    const past = emptyRangeBundle({
+      from_date: yesterday,
+      to_date: TODAY,
+      segments: [
+        { date: yesterday, session_open_ms: Y_OPEN, session_close_ms: Y_OPEN + 6.5 * 3600 * 1000, source: 'hogaplay' },
+        { date: TODAY, session_open_ms: TODAY_OPEN, session_close_ms: TODAY_CLOSE, source: 'kis_live' },
+      ],
+      program_trade: {
+        points: [
+          { t: Y_OPEN + 60_000, net_qty: 1, net_amount: 100_000_000, gap_risk: false },
+          { t: TODAY_OPEN + 60_000, net_qty: 2, net_amount: 200_000_000, gap_risk: false },
+        ],
+      },
+    });
+
+    const bundle = buildChartBundle({
+      code: '005930',
+      todayDate: TODAY,
+      todaySession: { open_ms: TODAY_OPEN, close_ms: TODAY_CLOSE },
+      pastBundle: past,
+      kisCandles: [
+        { ts_ms: Y_OPEN, open: 1, close: 1, high: 1, low: 1, vol_a: 1, vol_b: 0 },
+      ],
+      bucketMs: 60_000,
+      hasTodayObSignal: false,
+    });
+
+    expect(bundle.program_trade?.points).toEqual([
+      { t: Y_OPEN + 60_000, net_qty: 1, net_amount: 100_000_000, gap_risk: false },
+    ]);
+  });
+
   it('pastBundle.ask_peaks(거래일별 매도 최대벽)를 그대로 통과시킨다 (회귀: []로 덮어쓰지 않음)', () => {
     const past = emptyRangeBundle({
       ask_peaks: [

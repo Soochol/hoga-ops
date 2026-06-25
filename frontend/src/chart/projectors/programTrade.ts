@@ -33,17 +33,27 @@ export function projectProgramTradeNetAmount(
   bundle: RangeBundle,
   axis: VirtualAxis,
 ): LineData<Time>[] {
-  const out: LineData<Time>[] = [];
+  const byBucket = new Map<number, number>();
   const points = bundle.program_trade?.points ?? [];
   for (const p of points) {
     if (p.net_amount == null) continue;
-    if (!axis.contains(p.t)) continue;
-    out.push({
-      time: (axis.toVirtual(p.t) / 1000) as UTCTimestamp,
-      value: p.net_amount,
-    });
+    const t = bucketTime(bundle, p.t);
+    if (t == null || !axis.contains(t)) continue;
+    byBucket.set(t, p.net_amount);
   }
-  return out;
+  return [...byBucket.entries()]
+    .sort(([a], [b]) => a - b)
+    .map(([t, value]) => ({
+      time: (axis.toVirtual(t) / 1000) as UTCTimestamp,
+      value,
+    }));
+}
+
+function bucketTime(bundle: RangeBundle, t: number): number | null {
+  const segment = bundle.segments.find((s) => s.session_open_ms <= t && t <= s.session_close_ms);
+  if (!segment) return null;
+  const bucketMs = Math.max(1, bundle.bucket_ms || 1);
+  return segment.session_open_ms + Math.floor((t - segment.session_open_ms) / bucketMs) * bucketMs;
 }
 
 export const PROGRAM_TRADE_SPEC = {

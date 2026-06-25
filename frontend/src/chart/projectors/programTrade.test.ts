@@ -44,6 +44,19 @@ describe('programTrade projector', () => {
     expect('color' in out[0]).toBe(false);
   });
 
+  it('uses the latest cumulative value inside each display bucket', () => {
+    const axis = createVirtualAxis([{ date: '20260512', sessionOpenMs: OPEN, sessionCloseMs: CLOSE }], OPEN);
+    const out = projectProgramTradeNetAmount(bundle([
+      { t: OPEN + 60_005, net_qty: 100, net_amount: 1_000_000, gap_risk: false },
+      { t: OPEN + 60_030, net_qty: 110, net_amount: 1_100_000, gap_risk: false },
+      { t: OPEN + 119_999, net_qty: 120, net_amount: 1_200_000, gap_risk: false },
+    ]), axis);
+
+    expect(out).toEqual([
+      { time: axis.toVirtual(OPEN + 60_000) / 1000, value: 1_200_000 },
+    ]);
+  });
+
   it('returns [] when the optional sidecar is absent', () => {
     const axis = createVirtualAxis([{ date: '20260512', sessionOpenMs: OPEN, sessionCloseMs: CLOSE }], OPEN);
     const b = bundle([]);
