@@ -70,6 +70,9 @@ export function useWheelInteractions(
     const ts = chart.timeScale();
 
     const onWheel = (e: WheelEvent) => {
+      // Alt+wheel is reserved by LiveWorkarea for scrolling the full detail
+      // panel. Let it bubble without preventDefault or chart viewport changes.
+      if (e.altKey) return;
       // chart teardown(뷰 전환 remount) 사이에 휠이 끼어드는 경합 방어 —
       // 현재는 effect 선언 순서상 리스너가 c.remove()보다 먼저 해제되어
       // 도달 불가지만, 레포의 다른 lwc viewport 호출부와 같은 관례적 가드.
