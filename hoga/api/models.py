@@ -1195,6 +1195,7 @@ class StudyIndicatorState(BaseModel):
     daily_moving_averages: list[StudyMovingAverageConfig] = Field(default_factory=list)
     daily_moving_average_enabled: bool = False
     daily_moving_average_hidden: bool = False
+    program_trade_enabled: bool = True
     trade_volume_poc_enabled: bool = True
     trade_volume_poc_band_pct: float = 0.005
     trade_volume_poc_color: str = Field(default="#A855F7", pattern=r"^#[0-9A-Fa-f]{6}$")
@@ -1333,6 +1334,7 @@ class StudySnapshotBundle(BaseModel):
     quote_totals: list[StudyQuoteTotalsPoint]
     ratio: list[StudyRatioPoint]
     fill_strength: list[StudyFillStrengthPoint]
+    program_trade: ProgramTradeSeries = Field(default_factory=ProgramTradeSeries)
     ask_peaks: list[AskPeak] = Field(default_factory=list)
     bid_peaks: list[BidPeak] = Field(default_factory=list)
     trade_volume_pocs: list[TradeVolumePoc] = Field(default_factory=list)

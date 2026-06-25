@@ -31,6 +31,15 @@ function dataWarnings(bundle: RangeBundle): string[] {
   return Array.isArray(warnings) ? warnings.filter((w): w is string => typeof w === 'string') : [];
 }
 
+function programTradeInRange(bundle: RangeBundle, from: number, to: number): RangeBundle['program_trade'] {
+  const series = bundle.program_trade;
+  if (!series) return { points: [] };
+  return {
+    ...series,
+    points: series.points.filter((p) => p.t >= from && p.t <= to),
+  };
+}
+
 export function buildStudySnapshotRequest(args: BuildStudySnapshotArgs): ParquetStudyViewWriteRequest {
   const fromIndex = Math.max(0, Math.min(args.fromIndex, args.bundle.candles.length - 1));
   const toIndex = Math.max(fromIndex, Math.min(args.toIndex, args.bundle.candles.length - 1));
@@ -83,6 +92,7 @@ export function buildStudySnapshotRequest(args: BuildStudySnapshotArgs): Parquet
       quote_totals: hoga.quote_totals,
       ratio: hoga.ratio,
       fill_strength: hoga.fill_strength,
+      program_trade: programTradeInRange(args.bundle, from, to),
       ask_peaks: args.bundle.ask_peaks.filter((p) => segmentDates.has(p.date)),
       bid_peaks: (args.bundle.bid_peaks ?? []).filter((p) => segmentDates.has(p.date)),
       trade_volume_pocs: (args.bundle.trade_volume_pocs ?? []).filter((p) => segmentDates.has(p.date)),

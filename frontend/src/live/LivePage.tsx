@@ -157,6 +157,7 @@ export function LivePage() {
   const dailyMovingAverages = useLivePageStore((s) => s.dailyMovingAverages);
   const dailyMovingAverageEnabled = useLivePageStore((s) => s.dailyMovingAverageEnabled);
   const dailyMovingAverageHidden = useLivePageStore((s) => s.dailyMovingAverageHidden);
+  const programTradeEnabled = useLivePageStore((s) => s.programTradeEnabled);
   const tradeVolumePocEnabled = useLivePageStore((s) => s.tradeVolumePocEnabled);
   const tradeVolumePocBandPct = useLivePageStore((s) => s.tradeVolumePocBandPct);
   const tradeVolumePocColor = useLivePageStore((s) => s.tradeVolumePocColor);
@@ -239,6 +240,7 @@ export function LivePage() {
     })),
     daily_moving_average_enabled: dailyMovingAverageEnabled,
     daily_moving_average_hidden: dailyMovingAverageHidden,
+    program_trade_enabled: programTradeEnabled,
     trade_volume_poc_enabled: tradeVolumePocEnabled,
     trade_volume_poc_band_pct: tradeVolumePocBandPct,
     trade_volume_poc_color: tradeVolumePocColor,
@@ -254,6 +256,7 @@ export function LivePage() {
     ratioIntraMax,
     ratioOutlierFilterEnabled,
     ratioOutlierThreshold,
+    programTradeEnabled,
     tradeVolumePocBandPct,
     tradeVolumePocColor,
     tradeVolumePocEnabled,

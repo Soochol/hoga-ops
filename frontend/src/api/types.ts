@@ -454,11 +454,14 @@ export type ProgramTradePoint = {
   t: number;
   net_qty: number | null;
   net_amount: number | null;
+  delta_qty?: number | null;
+  delta_amount?: number | null;
   gap_risk: boolean;
 };
 
 export type ProgramTradeSeries = {
   points: ProgramTradePoint[];
+  source?: 'kis_program_trade';
 };
 
 export type AskPeakCandidate = {

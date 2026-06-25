@@ -332,6 +332,7 @@ export function StudyPage() {
               quoteTotalsEnabled: snapshot.indicator_state.quote_totals_enabled,
               ratioEnabled: snapshot.indicator_state.ratio_enabled,
               fillStrengthEnabled: snapshot.indicator_state.fill_strength_enabled,
+              programTradeEnabled: snapshot.indicator_state.program_trade_enabled ?? true,
             }}
             dailyMovingAverageOverride={dailyMovingAverageOverride}
             tradeVolumePocOverride={tradeVolumePocOverride}
@@ -355,6 +356,7 @@ export function StudyPage() {
               details={details}
               candles={chartInput.bundle.candles}
               segments={chartInput.bundle.segments}
+              programTrade={chartInput.bundle.program_trade ?? null}
               bucketMs={bucketMs}
               cursorMs={isCursorActive ? cursorMs : null}
             />

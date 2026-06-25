@@ -140,8 +140,8 @@ describe('LiveSidebar', () => {
           live={emptyLive}
           programTrade={{
             points: [
-              { t: new Date('2026-06-25T00:00:00Z').getTime(), net_qty: 10, net_amount: 1000, gap_risk: false },
-              { t: new Date('2026-06-25T00:01:00Z').getTime(), net_qty: -20, net_amount: -2000, gap_risk: false },
+              { t: new Date('2026-06-25T00:00:00Z').getTime(), net_qty: 10, net_amount: 100_000_000, gap_risk: false },
+              { t: new Date('2026-06-25T00:01:00Z').getTime(), net_qty: -20, net_amount: -200_000_000, gap_risk: false },
             ],
           }}
         />
@@ -149,7 +149,7 @@ describe('LiveSidebar', () => {
     );
 
     expect(screen.getByTestId('card-program-trade')).toHaveTextContent('프로그램');
-    expect(screen.getByTestId('card-program-trade')).toHaveTextContent('-2,000');
+    expect(screen.getByTestId('card-program-trade')).toHaveTextContent('-2억');
     expect(screen.getByTestId('card-program-trade')).toHaveTextContent('-20');
   });
 

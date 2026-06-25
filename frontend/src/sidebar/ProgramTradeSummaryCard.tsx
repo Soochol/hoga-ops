@@ -1,5 +1,5 @@
 import type { ProgramTradePoint, ProgramTradeSeries } from '../api/types';
-import { formatKoreanInt } from '../util/koreanNumber';
+import { formatKoreanInt, formatKoreanWonEok } from '../util/koreanNumber';
 
 type Props = {
   series?: ProgramTradeSeries | null;
@@ -29,7 +29,7 @@ export default function ProgramTradeSummaryCard({ series, cursorMs = null }: Pro
       <div className="grid grid-cols-[auto_1fr] gap-x-3 gap-y-1.5 pt-2 tabular-nums">
         <span className="text-fg-dimmer">금액</span>
         <span className={`text-right text-sm font-semibold ${amountClass}`}>
-          {formatSigned(point.net_amount)}
+          {formatSignedAmount(point.net_amount)}
         </span>
         <span className="text-fg-dimmer">수량</span>
         <span className={`text-right ${qtyClass}`}>{formatSigned(point.net_qty)}</span>
@@ -59,6 +59,12 @@ function formatSigned(value: number | null): string {
   if (value === null) return '-';
   const sign = value > 0 ? '+' : '';
   return `${sign}${formatKoreanInt(value)}`;
+}
+
+function formatSignedAmount(value: number | null): string {
+  if (value === null) return '-';
+  const sign = value > 0 ? '+' : '';
+  return `${sign}${formatKoreanWonEok(value)}`;
 }
 
 function signedClass(value: number | null): string {
