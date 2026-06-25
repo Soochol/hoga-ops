@@ -93,6 +93,29 @@ describe('BrokerTrajectoryTable — render states', () => {
 });
 
 describe('BrokerTrajectoryTable — sparkline', () => {
+  it('clips after-close broker points to the regular-session x domain', () => {
+    // 2026-06-25 09:00~15:30 KST.
+    const open = Date.UTC(2026, 5, 25, 0, 0, 0);
+    const close = open + 6.5 * 3600_000;
+    const series: BrokerSeriesEntry[] = [
+      entry('A', [
+        { ts_ms: open, net: 10 },
+        { ts_ms: close, net: 20 },
+        { ts_ms: close + 60 * 60_000, net: 999 },
+      ]),
+    ];
+    const { container } = render(
+      <BrokerTrajectoryTable series={series} cursorMs={close + 60 * 60_000} />,
+    );
+
+    const points = Array.from(container.querySelectorAll('polyline')).map((line) =>
+      line.getAttribute('points'),
+    );
+    expect(points).toContain('0,8 60,0');
+    expect(screen.getByText('+20')).toBeInTheDocument();
+    expect(container.querySelector('[data-testid="cursor-marker"]')).toBeNull();
+  });
+
   it('renders a dashed polyline when a gap exceeds GAP_THRESHOLD_MS', () => {
     const big_gap = GAP_THRESHOLD_MS + 1;
     const series: BrokerSeriesEntry[] = [
@@ -117,7 +140,7 @@ describe('BrokerTrajectoryTable — sparkline', () => {
       ]),
     ];
     const { container } = render(
-      <BrokerTrajectoryTable series={series} cursorMs={500} />,    // before tsFirst
+      <BrokerTrajectoryTable series={series} cursorMs={-500} />,    // before regular-session open
     );
     const cursorLines = container.querySelectorAll('[data-testid="cursor-marker"]');
     expect(cursorLines.length).toBe(0);
@@ -148,7 +171,7 @@ describe('BrokerTrajectoryTable — sparkline', () => {
       entry('hidden', [{ ts_ms: 100_000, net: 1 }]),
     ];
     const { container } = render(
-      <BrokerTrajectoryTable series={series} cursorMs={50_000} />,
+      <BrokerTrajectoryTable series={series} cursorMs={30_000_000} />,
     );
 
     expect(screen.getAllByTestId('broker-row')).toHaveLength(BROKER_TRAJECTORY_ROW_LIMIT);
