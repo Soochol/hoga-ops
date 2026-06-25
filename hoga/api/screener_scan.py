@@ -2,6 +2,8 @@ from __future__ import annotations
 from collections.abc import Callable
 from pathlib import Path
 import duckdb
+import polars as pl
+from hoga.api import screener_universe
 from hoga.api.models import (
     BreakoutParams, ConditionLeaf, ScreenerRow, ScreenerUniverse,
 )
@@ -114,22 +116,25 @@ CONDITION_COMPILERS: dict[str, LeafCompiler] = {
 }
 
 
-def _universe_wheres(u: ScreenerUniverse) -> tuple[list[str], list]:
-    wheres, params = [], []
-    if u.markets:
-        wheres.append(f"stk.market IN ({','.join('?' * len(u.markets))})"); params += list(u.markets)
-    if u.exclude_etf:
-        wheres.append("NOT stk.is_etf")
-    if u.exclude_halted:
-        wheres.append("NOT stk.is_halted")
-    return wheres, params
-
-
 def run_scan(adjusted_path: Path, stocks_path: Path, *,
              conditions: list[ConditionLeaf], universe: ScreenerUniverse,
-             limit: int = 1000) -> list[ScreenerRow]:
+             limit: int = 1000,
+             intraday_rows: pl.DataFrame | None = None) -> list[ScreenerRow]:
     con = duckdb.connect(":memory:")
-    con.execute(f"CREATE VIEW adj AS SELECT * FROM '{adjusted_path}'")
+    con.execute(f"CREATE VIEW adj_hist AS SELECT * FROM '{adjusted_path}'")
+    if intraday_rows is not None and intraday_rows.height > 0:
+        con.register("intraday_rows", intraday_rows)
+        con.execute("""
+            CREATE VIEW adj AS
+            SELECT * FROM adj_hist h
+            WHERE NOT EXISTS (
+              SELECT 1 FROM intraday_rows i WHERE i.code = h.code AND i.date = h.date
+            )
+            UNION ALL
+            SELECT code, date, open, high, low, close, volume FROM intraday_rows
+        """)
+    else:
+        con.execute("CREATE VIEW adj AS SELECT * FROM adj_hist")
     con.execute(f"CREATE VIEW stk AS SELECT * FROM '{stocks_path}'")
 
     ctes = ["base AS (SELECT DISTINCT ON (code) code, date, open, high, low, close, volume, "
@@ -143,7 +148,7 @@ def run_scan(adjusted_path: Path, stocks_path: Path, *,
         joins.append(f"JOIN cond_{i} ON cond_{i}.code = base.code")
         params += p
 
-    uwheres, uparams = _universe_wheres(universe)
+    uwheres, uparams = screener_universe.duckdb_wheres(universe)
     params += uparams
     # 코퍼스 계약 가드(항상 적용): ScreenerRow.market 은 Literal["KOSPI","KOSDAQ"],
     # name 은 필수 str. 상류 stocks export 가 KONEX/ETN/NULL-name 행을 흘려도 한 행이

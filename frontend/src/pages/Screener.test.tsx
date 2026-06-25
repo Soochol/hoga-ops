@@ -88,6 +88,20 @@ it('runs scan and renders row; click sets the active tab code', async () => {
   expect(setActiveTabCode).toHaveBeenCalledWith('005930', '삼성전자');
 });
 
+it('runs full-page scans with intraday basis by default', async () => {
+  renderPage();
+  fireEvent.click(screen.getByText('조회'));
+  await waitFor(() => expect(runScan).toHaveBeenCalled());
+  expect(vi.mocked(runScan).mock.calls.at(-1)?.[0]).toMatchObject({ basis: 'intraday' });
+});
+
+it('shows an EOD fallback warning when intraday scan falls back', async () => {
+  vi.mocked(runScan).mockResolvedValueOnce({ status: 'ok', warnings: ['intraday_fallback_eod'], rows: [] });
+  renderPage();
+  fireEvent.click(screen.getByText('조회'));
+  expect(await screen.findByText('장중 조회 불가 · 전일 확정 데이터로 표시 중')).toBeInTheDocument();
+});
+
 it('Ctrl-clicking a row opens the result in a new live tab', async () => {
   renderPage();
   fireEvent.click(screen.getByText('조회'));

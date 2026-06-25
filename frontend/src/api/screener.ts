@@ -30,10 +30,13 @@ export interface ScreenerUniverse {
   exclude_halted?: boolean;
 }
 
+export type ScanBasis = 'eod' | 'intraday';
+
 export interface ScanRequest {
   conditions: ConditionLeaf[];
   universe: ScreenerUniverse;
   limit?: number;
+  basis?: ScanBasis;
 }
 
 export interface ScreenerRow {

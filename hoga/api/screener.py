@@ -10,7 +10,7 @@ from pathlib import Path
 import polars as pl
 from fastapi import APIRouter, HTTPException
 
-from hoga.api import screener_saves, screener_scan, screener_store
+from hoga.api import screener_runner, screener_saves, screener_store
 from hoga.api.screener_store import DailyBar
 from hoga.api.calendar import trading_days_in_range
 from hoga.api.models import (
@@ -117,13 +117,8 @@ def build_router(*, data_dir: Path, bus=None) -> APIRouter:
     sdir = data_dir / "screener"
 
     @router.post("/scan")
-    def scan(req: ScanRequest) -> ScreenerResponse:
-        if not (sdir / "status.json").exists():
-            return ScreenerResponse(status="not_seeded", rows=[])
-        rows = screener_scan.run_scan(
-            sdir / "daily_adjusted.parquet", sdir / "stocks.parquet",
-            conditions=req.conditions, universe=req.universe, limit=req.limit)
-        return ScreenerResponse(status="ok", rows=rows)
+    async def scan(req: ScanRequest) -> ScreenerResponse:
+        return await screener_runner.run_screener_scan(data_dir=data_dir, req=req)
 
     @router.get("/status")
     def status() -> dict:

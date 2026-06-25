@@ -3,6 +3,15 @@
 All notable changes to this project are documented here.
 The format follows a 4-digit `MAJOR.MINOR.PATCH.MICRO` scheme.
 
+## [0.12.0.0] - 2026-06-25
+
+### Added
+- **/screener 장중 조건검색 추가**: KIS 현재가 quote를 오늘 일봉 오버레이로 합성해 신고가, 등락률, 가격범위, 거래대금, 신고거래량 조건을 장중 기준으로 조회할 수 있게 했다.
+- **스크리너 기준 선택 추가**: `/screener`에서 `오늘 장중`과 `전일 확정` 기준을 전환하고, KIS 장중 조회가 불가하면 전일 데이터 fallback 경고를 보여준다.
+
+### Changed
+- **스크리너 실행 구조 분리**: scan 실행 오케스트레이션과 유니버스 필터를 `screener_runner`/`screener_universe`로 분리해 앞으로 조건과 기준이 늘어날 때 라우터, 계산, KIS overlay 책임이 섞이지 않게 했다.
+
 ## [0.11.2.0] - 2026-06-25
 
 ### Fixed

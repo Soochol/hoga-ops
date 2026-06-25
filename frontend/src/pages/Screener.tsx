@@ -13,6 +13,7 @@ import { useScreenerRowsLive } from '../screener/useScreenerRowsLive';
 import { ModalShell } from '../ui/ModalShell';
 import { ScreenerResultSortControl } from '../screener/ScreenerResultSortControl';
 import { sortScreenerRows, type ScreenerResultSortMode } from '../screener/sortResults';
+import type { ScanBasis } from '../api/screener';
 
 type SaveDialogMode = 'save-new' | 'save-as';
 
@@ -55,6 +56,7 @@ export function Screener() {
   const [saveDialog, setSaveDialog] = useState<SaveDialogMode | null>(null);
   const [lastScanKey, setLastScanKey] = useState<string | null>(null);
   const [sortMode, setSortMode] = useState<ScreenerResultSortMode>('default');
+  const [basis, setBasis] = useState<ScanBasis>('intraday');
 
   const screener = useScreener();
   const { data: status } = useScreenerStatus();
@@ -69,11 +71,12 @@ export function Screener() {
 
   const notSeeded = screener.data?.status === 'not_seeded' || status?.status === 'not_seeded';
   const scanBody = useMemo(
-    () => ({ conditions: editor.conditions, universe: editor.universe }),
-    [editor.conditions, editor.universe],
+    () => ({ conditions: editor.conditions, universe: editor.universe, basis }),
+    [editor.conditions, editor.universe, basis],
   );
   const scanKey = useMemo(() => JSON.stringify(scanBody), [scanBody]);
   const resultsStale = lastScanKey !== null && lastScanKey !== scanKey;
+  const intradayFallback = basis === 'intraday' && (screener.data?.warnings ?? []).includes('intraday_fallback_eod');
   const runScan = () => screener.mutate(scanBody, {
     onSuccess: () => {
       setLastScanKey(scanKey);
@@ -113,6 +116,18 @@ export function Screener() {
           className="px-3 py-[7px] rounded-lg bg-bg-input border text-fg-dim text-sm hover:bg-bg-input-hover disabled:opacity-50 disabled:cursor-not-allowed">
           다른 이름으로 저장
         </button>
+        <div className="inline-flex rounded-lg border border-border bg-bg-input overflow-hidden" role="group" aria-label="스크리너 기준">
+          {(['intraday', 'eod'] as const).map((value) => (
+            <button
+              key={value}
+              type="button"
+              onClick={() => setBasis(value)}
+              className={`px-3 py-[7px] text-sm ${basis === value ? 'bg-tint-selection text-accent' : 'text-fg-dim hover:bg-bg-input-hover'}`}
+            >
+              {value === 'intraday' ? '오늘 장중' : '전일 확정'}
+            </button>
+          ))}
+        </div>
         <button type="button" onClick={runScan} disabled={screener.isPending || notSeeded}
           className="px-lg py-sm rounded-lg bg-accent text-accent-fg font-semibold text-base hover:brightness-110 disabled:opacity-50 disabled:cursor-not-allowed">
           {screener.isPending ? '조회 중…' : '조회'}
@@ -127,6 +142,14 @@ export function Screener() {
           <span className="text-sm" style={{ color: 'var(--error)' }}>갱신 실패</span>
         )}
         <div className="min-w-0 flex-1" />
+        {basis === 'intraday' && (
+          <span
+            className="inline-flex items-center gap-1.5 font-mono text-xs tabular-nums text-fg-dim"
+            title="조건검색 실행 시 오늘 KIS quote를 일봉 위에 임시 반영합니다"
+          >
+            오늘 장중: KIS quote 반영
+          </span>
+        )}
         <StalenessChip status={status} />
       </div>
 
@@ -158,6 +181,11 @@ export function Screener() {
           {resultsStale && (
             <div className="bg-bg-card border rounded-lg px-md py-sm text-sm" style={{ color: 'var(--warn)' }}>
               조건 변경됨 · 다시 조회 필요
+            </div>
+          )}
+          {intradayFallback && (
+            <div className="bg-bg-card border rounded-lg px-md py-sm text-sm" style={{ color: 'var(--warn)' }}>
+              장중 조회 불가 · 전일 확정 데이터로 표시 중
             </div>
           )}
           <div className="flex justify-end">

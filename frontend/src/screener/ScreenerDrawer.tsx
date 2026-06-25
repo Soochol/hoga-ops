@@ -26,9 +26,11 @@ import type { ScreenerRowLive } from './useScreenerRowsLive';
 import { WatchlistHeartButton } from '../watchlist/WatchlistHeartButton';
 import { ScreenerResultSortControl } from './ScreenerResultSortControl';
 import { sortScreenerRows, type ScreenerResultSortMode } from './sortResults';
+import type { ScanBasis } from '../api/screener';
 
 const SCREENER_ENTRY_TYPE = 'screener-entry';
 const SCREENER_DRAG_SENSOR_OPTIONS = { activationConstraint: { distance: 5 } };
+const DRAWER_SCAN_BASIS: ScanBasis = 'intraday';
 
 function screenerDraggableId(code: string): string {
   return `${SCREENER_ENTRY_TYPE}:${code}`;
@@ -109,7 +111,7 @@ export function ScreenerDrawer() {
   const runScan = () => {
     if (!selected) return;
     screener.mutate(
-      { conditions: selected.conditions, universe: selected.universe },
+      { conditions: selected.conditions, universe: selected.universe, basis: DRAWER_SCAN_BASIS },
       {
         onSuccess: (res) => {
           setLastScan({
@@ -218,6 +220,11 @@ export function ScreenerDrawer() {
         {notSeeded && (
           <div className="text-sm" style={{ color: 'var(--warn)' }}>시드 필요 — 운영자 CLI로 시드 후 조회하세요</div>
         )}
+        {!notSeeded && (
+          <div className="text-xs text-fg-dimmer" title="저장 조건 조회 시 오늘 KIS quote를 일봉 위에 임시 반영합니다">
+            오늘 장중: KIS quote 반영
+          </div>
+        )}
       </div>
 
       {/* Results */}
@@ -231,6 +238,11 @@ export function ScreenerDrawer() {
           </div>
         ) : lastScan ? (
           <>
+            {(lastScan.warnings ?? []).includes('intraday_fallback_eod') && (
+              <div className="mx-md mt-sm rounded-lg border px-3 py-2 text-sm" style={{ color: 'var(--warn)' }}>
+                장중 조회 불가 · 전일 확정 데이터로 표시 중
+              </div>
+            )}
             <div className="px-md pt-sm pb-1 flex items-center gap-2 text-xs uppercase tracking-[0.08em] text-fg-dimmer">
               <div className="min-w-0 flex-1 truncate">
                 결과 {lastScan.rows.length} · {lastScan.savedName}

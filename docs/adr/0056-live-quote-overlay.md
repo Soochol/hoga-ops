@@ -78,3 +78,25 @@ P1(관심종목 Drawer)은 출하됨. P2(스크리너 Drawer)는 동일 `QuoteRo
    queryKey(정렬된 코드 join)로 dedup. 실측 부담이 드러나면 후속으로 cap 재도입.
 5. **필터≠표시 괴리 확대.** 위 "Negative / watch"의 "필터=EOD vs 표시=라이브" 불일치가
    이제 상위 30행이 아니라 **전 행**에 적용된다(의도적 수용 — 저녁 EOD 갱신 후 수렴).
+
+## Amendment (2026-06-25) — `/screener` 명시적 장중 scan basis
+
+기존 결정의 **Live Quote 표시용** 성질은 Watchlist Panel, Screener Panel, 기존 EOD scan 경로에
+대해 유지한다. 단, 풀페이지 `/screener` 는 사용자가 직접 고르는 실행 옵션
+`basis="intraday"` 를 추가해 스크리너 필터 자체가 KIS quote-derived 당일 OHLCV overlay 를
+사용할 수 있게 한다.
+
+1. **명시적 basis.** `/api/screener/scan` 기본값은 `basis="eod"` 로 보존한다. 풀페이지
+   `/screener` 는 기본 선택을 `오늘 장중`으로 두고, 사용자가 `전일 확정`으로 되돌릴 수 있다.
+   저장된 조건검색의 `{conditions, universe}` schema 에는 basis 를 저장하지 않는다.
+2. **DuckDB overlay.** 조건별로 KIS 를 호출하지 않는다. KIS `intstock-multprice` 의 당일
+   OHLCV 행을 짧은 TTL cache 로 만들고, scan 시 `daily_adjusted.parquet` 앞단의 `adj` relation 에
+   query-time overlay 로 union 한다. 따라서 `new_high_today`, `change_pct`, `price_range`,
+   `trade_value`, `new_high_vol_today` 등 기존 OHLCV 조건 컴파일러가 같은 경로로 동작한다.
+3. **거래대금 의미 유지.** KIS raw 거래대금 필드가 아니라 기존 Screener 정의
+   `(open+high+low+close)/4*volume` 을 계속 사용한다. full intraday support 는 batched quote 의
+   누적 거래량(`volume`) 파싱 가능성에 의존한다.
+4. **Fallback.** KIS 인증/호출 실패, 누적 거래량 결측, empty overlay 는 500 이 아니라 EOD scan +
+   `intraday_fallback_eod` warning 으로 수렴한다. UI 는 이 fallback 을 사용자가 볼 수 있게 표시한다.
+5. **Panel boundary.** Right-rail Screener Panel 은 이번 변경 범위 밖이다. 저장된 조건검색을 실행하는
+   패널 scan 은 EOD corpus 기준이며, 행 표시만 Live Quote overlay 를 계속 쓴다.

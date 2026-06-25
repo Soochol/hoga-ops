@@ -11,6 +11,7 @@ describe('runScan', () => {
       conditions: [{ id: 'a', type: 'new_high', params: { lookback: 200, period: 500 } }],
       universe: { markets: ['KOSPI'] },
       limit: 20,
+      basis: 'intraday',
     });
     const [path, init] = (apiCall as any).mock.calls[0] as [string, RequestInit];
     expect(path).toBe('/api/screener/scan');
@@ -19,5 +20,6 @@ describe('runScan', () => {
     expect(body.conditions[0]).toMatchObject({ id: 'a', type: 'new_high', params: { lookback: 200, period: 500 } });
     expect(body.universe).toEqual({ markets: ['KOSPI'] });
     expect(body.limit).toBe(20);
+    expect(body.basis).toBe('intraday');
   });
 });

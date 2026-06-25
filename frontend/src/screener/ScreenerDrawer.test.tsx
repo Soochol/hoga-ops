@@ -130,8 +130,29 @@ describe('ScreenerDrawer', () => {
     render(<ScreenerDrawer />, { wrapper: wrap(qc(), '/live') });
     await waitFor(() => expect(useScreenerPanelStore.getState().selectedSavedId).toBe('s1'));
     fireEvent.click(screen.getByRole('button', { name: '조회' }));
-    await waitFor(() => expect(scan).toHaveBeenCalledWith({ conditions: SAVE.conditions, universe: SAVE.universe }));
+    await waitFor(() => expect(scan).toHaveBeenCalledWith({
+      conditions: SAVE.conditions,
+      universe: SAVE.universe,
+      basis: 'intraday',
+    }));
     await waitFor(() => expect(screen.getByText('삼성전자')).toBeInTheDocument());
+  });
+
+  it('shows that drawer scans use the intraday quote basis and surfaces EOD fallback', async () => {
+    vi.spyOn(savesApi, 'listSaves').mockResolvedValue({ schema_version: 1, saves: [SAVE] });
+    vi.spyOn(screenerApi, 'runScan').mockResolvedValue({
+      status: 'ok',
+      rows: [],
+      warnings: ['intraday_fallback_eod'],
+    });
+
+    render(<ScreenerDrawer />, { wrapper: wrap(qc(), '/live') });
+
+    await waitFor(() => expect(screen.getByText('오늘 장중: KIS quote 반영')).toBeInTheDocument());
+    await waitFor(() => expect(useScreenerPanelStore.getState().selectedSavedId).toBe('s1'));
+    fireEvent.click(screen.getByRole('button', { name: '조회' }));
+
+    await waitFor(() => expect(screen.getByText('장중 조회 불가 · 전일 확정 데이터로 표시 중')).toBeInTheDocument());
   });
 
   it('clicking a result row sets activeCode and navigates to /live from elsewhere', async () => {

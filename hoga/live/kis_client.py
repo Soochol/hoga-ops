@@ -306,7 +306,7 @@ class IndexCandleFetchResult:
 
 @dataclass(frozen=True)
 class KisQuote:
-    """One row of intstock-multprice (현재가 + 등락률 + 전일대비 등락액 + 당일 OHLC) for a Code."""
+    """One row of intstock-multprice (현재가 + 등락률 + 전일대비 등락액 + 당일 OHLCV) for a Code."""
     code: str
     price: int
     change_pct: float | None
@@ -315,6 +315,7 @@ class KisQuote:
     open: int | None = None
     high: int | None = None
     low: int | None = None
+    volume: int | None = None
 
 
 @dataclass(frozen=True)
@@ -1618,6 +1619,15 @@ def _parse_ohlc_field(raw: object) -> int | None:
     return v if v > 0 else None
 
 
+def _parse_optional_int_field(raw: object) -> int | None:
+    if raw in (None, ""):
+        return None
+    try:
+        return int(float(raw))  # type: ignore[arg-type]
+    except (TypeError, ValueError):
+        return None
+
+
 def _parse_change(row: dict) -> tuple[float | None, int | None]:
     """(change_pct, change_won). prdy_ctrt 빈값/파싱실패·미인식 부호코드면 (None, None)
     — 절대값 필드라 부호 없으면 양수 위조 금지(#11)."""
@@ -1664,6 +1674,7 @@ def _parse_quote(row: dict) -> KisQuote | None:
         open=_parse_ohlc_field(row.get("inter2_oprc")),
         high=_parse_ohlc_field(row.get("inter2_hgpr")),
         low=_parse_ohlc_field(row.get("inter2_lwpr")),
+        volume=_parse_optional_int_field(row.get("acml_vol")),
     )
 
 
