@@ -46,7 +46,7 @@ from hoga.api.models import (
     validate_bucket_ms,
 )
 from hoga.api.queries import QueryEngine, StockDateNotFound
-from hoga.api.sources import resolve_source_result
+from hoga.api.sources import ordered_sources, resolve_source_result
 from hoga.api.timeenc import (
     hhmmssms_to_unix_ms,
     ms_from_midnight_to_unix_ms,
@@ -79,6 +79,38 @@ _ONE_MINUTE_MS = 60_000
 def _resolve_source(engine: QueryEngine, date: str, code: str, pref: str) -> str:
     """Backward-compatible source-name helper for older unit tests."""
     return resolve_source_result(engine, date, code, pref).source
+
+
+def _resolve_trade_indicator_source(
+    engine: QueryEngine,
+    *,
+    date: str,
+    code: str,
+    source_pref: str,
+    selected_source: str,
+) -> str:
+    """Pick the first policy source with price-level trades for trade indicators."""
+    candidates = [selected_source]
+    candidates.extend(source for source in ordered_sources(source_pref) if source not in candidates)
+    for source in candidates:
+        try:
+            source_dir = engine.parquet_dir(date, code, source)
+        except (FileNotFoundError, StockDateNotFound):
+            continue
+        if not isinstance(source_dir, Path):
+            continue
+        if not (source_dir / "trades.parquet").exists():
+            continue
+        meta_path = source_dir / "meta.json"
+        if meta_path.exists():
+            try:
+                classification = classify_from_meta(json.loads(meta_path.read_text(encoding="utf-8")))
+            except (ValueError, OSError):
+                continue
+            if classification.state == DiskState.INVALID:
+                continue
+        return source
+    return selected_source
 
 
 def _today_kst_yyyymmdd() -> str:
@@ -956,6 +988,8 @@ def build_range_bundle(
     source_pref: str = "hogaplay",  # ADR-0039
     volume_distribution_bins: int | None = None,
     trade_volume_poc_bins: int | None = None,
+    volume_distribution_price_min: int | None = None,
+    volume_distribution_price_max: int | None = None,
 ) -> RangeBundle:
     """Build the Wire Model for a Stock-Date Range (ADR-0013, ADR-0014).
 
@@ -1055,10 +1089,23 @@ def build_range_bundle(
         raw_candles = build_candles_slice(engine, code=code, date=d, source=source)
         raw_lows = [c.low for c in raw_candles]
         raw_highs = [c.high for c in raw_candles]
-        price_range = (
+        candle_price_range = (
             (min(raw_lows), max(raw_highs))
             if raw_lows and raw_highs
             else None
+        )
+        supplied_trade_price_range = (
+            (volume_distribution_price_min, volume_distribution_price_max)
+            if volume_distribution_price_min is not None and volume_distribution_price_max is not None
+            else None
+        )
+        price_range = candle_price_range or supplied_trade_price_range
+        trade_indicator_source = _resolve_trade_indicator_source(
+            engine,
+            date=d,
+            code=code,
+            source_pref=source_pref,
+            selected_source=source,
         )
         candles_d = downsample_candles(raw_candles, bucket_ms=bucket_ms)
         qr_d = build_quote_ratio_slice(
@@ -1086,7 +1133,7 @@ def build_range_bundle(
             cache=indicators_cache, today_kst=today_kst,
         )
         tvp_d = build_trade_volume_poc_slice(
-            engine, code=code, date=d, source=source,
+            engine, code=code, date=d, source=trade_indicator_source,
             session_open_ms=norm_meta["regular_session_open_ms"],
             session_close_ms=meta["regular_session_close_ms"],
             range_count=trade_volume_poc_bins or DEFAULT_TRADE_VOLUME_POC_BINS,
@@ -1108,7 +1155,7 @@ def build_range_bundle(
                 engine,
                 code=code,
                 date=d,
-                source=source,
+                source=trade_indicator_source,
                 session_open_ms=int(norm_meta["regular_session_open_ms"]),
                 session_close_ms=int(meta["regular_session_close_ms"]),
                 range_count=volume_distribution_bins,

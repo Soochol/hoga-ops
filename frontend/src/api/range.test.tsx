@@ -111,6 +111,19 @@ describe('useRange', () => {
     expect(spy.mock.calls[0][0]).toContain('&volume_distribution_bins=20');
   });
 
+  it('threads volume_distribution_price_min/max into query string', async () => {
+    const spy = vi.spyOn(client, 'apiCall').mockResolvedValue(fakeBundle);
+    renderHook(
+      () => useRange('005930', '20260512', '20260512', '1m', undefined, null, {
+        volumeDistributionBins: 10,
+        volumeDistributionPriceRange: { min: 69900, max: 70100 },
+      }),
+      { wrapper: makeWrapper() },
+    );
+    await waitFor(() => expect(spy).toHaveBeenCalled());
+    expect(spy.mock.calls[0][0]).toContain('&volume_distribution_price_min=69900&volume_distribution_price_max=70100');
+  });
+
   it('threads trade_volume_poc_bins into query string', async () => {
     const spy = vi.spyOn(client, 'apiCall').mockResolvedValue(fakeBundle);
     renderHook(

@@ -3,6 +3,11 @@
 All notable changes to this project are documented here.
 The format follows a 4-digit `MAJOR.MINOR.PATCH.MICRO` scheme.
 
+## [0.11.2.0] - 2026-06-25
+
+### Fixed
+- **당일 매물대 분포 KIS 가격범위/체결 소스 보정**: `/live`가 오늘 KIS 캔들의 정규장 고저 범위를 `/api/range`에 넘기고, `/api/range`는 선택된 `kis_live`에 체결가가 없으면 정책 순서 안에서 `kis_api` 체결 parquet로 매물대/최다거래대를 계산한다. 오늘 KIS 캔들은 보이지만 매물대 bar가 0~2개만 나오던 상태에서, `kis_api` 체결이 있는 종목은 10개 구간 bar를 다시 표시한다.
+
 ## [0.11.1.1] - 2026-06-25
 
 ### Fixed
