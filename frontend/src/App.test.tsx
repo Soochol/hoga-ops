@@ -72,8 +72,8 @@ describe('App document title', () => {
     expect(document.title).toBe('before-test');
   });
 
-  it('uses hoga-ops for routes without a side menu item', () => {
+  it('sets /study to the matching left nav label', () => {
     wrap(<div>unused</div>, '/study');
-    expect(document.title).toBe('hoga-ops');
+    expect(document.title).toBe('Study');
   });
 });
