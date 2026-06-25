@@ -222,6 +222,14 @@ export function LiveWorkarea({
     window.addEventListener('pointermove', move);
     window.addEventListener('pointerup', up);
   }, [setRightPanelWidthPx]);
+  const chartPanelStyle: React.CSSProperties = {
+    flex: 1,
+    minWidth: 0,
+    minHeight: 0,
+    overflow: 'hidden',
+    display: 'flex',
+    flexDirection: 'column',
+  };
 
   // position:relative는 absolute 오버레이의 containing block. minHeight:0 + overflow:hidden은
   // 차트 캔버스 intrinsic 크기가 flex 높이를 밀어내는 runaway 루프를 막는다(67c527a).
@@ -238,7 +246,11 @@ export function LiveWorkarea({
       }}
     >
       {!activeCode ? (
-        <div style={{ flex: 1, minWidth: 0 }}>
+        <div
+          ref={chartPanelRef}
+          data-testid="live-chart-panel"
+          style={chartPanelStyle}
+        >
           <LiveEmptyState cause="no_active_code" />
         </div>
       ) : (
@@ -246,7 +258,7 @@ export function LiveWorkarea({
           <div
             ref={chartPanelRef}
             data-testid="live-chart-panel"
-            style={{ flex: 1, minWidth: 0, minHeight: 0, overflow: 'hidden', display: 'flex', flexDirection: 'column' }}
+            style={chartPanelStyle}
           >
             {onOpenIndicators && onOpenSettings && (
               <LiveToolbar

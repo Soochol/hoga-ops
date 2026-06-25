@@ -3,6 +3,7 @@ import { fireEvent, render, screen } from '@testing-library/react';
 import { LiveWorkarea } from './LiveWorkarea';
 import type { LiveChartRoot } from './LiveChartRoot';
 import { useLivePageStore } from '../state/livePage';
+import { isPointOnChart, useEntryDragStore } from '../state/entryDrag';
 import { indexInstrument, stockInstrument } from './liveInstrument';
 import type { IndexSectorRankingResponse } from '../api/indexSectorRankings';
 import type { LiveSeriesData } from '../api/liveSeries';
@@ -142,12 +143,40 @@ function renderWorkarea(activeCode: string | null, activeInstrument = null) {
   );
 }
 
+function mockRect(
+  element: Element,
+  rect: { left: number; top: number; right: number; bottom: number },
+) {
+  Object.defineProperty(element, 'getBoundingClientRect', {
+    configurable: true,
+    value: () => ({
+      x: rect.left,
+      y: rect.top,
+      width: rect.right - rect.left,
+      height: rect.bottom - rect.top,
+      left: rect.left,
+      top: rect.top,
+      right: rect.right,
+      bottom: rect.bottom,
+      toJSON: () => rect,
+    }),
+  });
+}
+
 describe('LiveWorkarea gate', () => {
   beforeEach(() => {
     localStorage.clear();
     liveChartRootMock.mockClear();
     liveSidebarMock.mockClear();
     useIndexSectorRankingsMock.mockClear();
+    useEntryDragStore.setState({
+      draggingCode: null,
+      overChart: false,
+      overStudy: false,
+      targets: {},
+      hitTestChart: null,
+      hitTestStudy: null,
+    });
     useLivePageStore.setState({ candleTimeframe: '1m' });
     useLiveLayoutStore.setState({
       rightPanelWidthPx: DEFAULT_RIGHT_PANEL_WIDTH_PX,
@@ -262,6 +291,40 @@ describe('LiveWorkarea gate', () => {
   it('renders the search-prompt empty state when no activeCode', () => {
     renderWorkarea(null);
     expect(screen.getByTestId('live-empty-state')).toBeInTheDocument();
+  });
+
+  it('keeps the empty-state workarea droppable for chart-entry drags', () => {
+    renderWorkarea(null);
+
+    const chartPanel = screen.getByTestId('live-chart-panel');
+    mockRect(chartPanel, { left: 40, top: 20, right: 640, bottom: 420 });
+
+    expect(isPointOnChart({ x: 60, y: 60 })).toBe(true);
+    expect(isPointOnChart({ x: 20, y: 60 })).toBe(false);
+    expect(isPointOnChart({ x: 60, y: 460 })).toBe(false);
+  });
+
+  it('hit-tests the full chart panel, including toolbar, but excludes splitter and detail panel', () => {
+    render(
+      <LiveWorkarea
+        activeCode="005930"
+        bundle={INDEX_BUNDLE}
+        clampEngaged={false}
+        isPastCandlesLoading={false}
+        isExtending={false}
+        live={LIVE}
+        onOpenIndicators={vi.fn()}
+        onOpenSettings={vi.fn()}
+      />,
+    );
+
+    const chartPanel = screen.getByTestId('live-chart-panel');
+    mockRect(chartPanel, { left: 0, top: 0, right: 900, bottom: 600 });
+
+    expect(isPointOnChart({ x: 80, y: 24 })).toBe(true);
+    expect(isPointOnChart({ x: 320, y: 300 })).toBe(true);
+    expect(isPointOnChart({ x: 902, y: 300 })).toBe(false);
+    expect(isPointOnChart({ x: 1040, y: 300 })).toBe(false);
   });
 
   it('renders the index sector pane for index D timeframe', () => {
