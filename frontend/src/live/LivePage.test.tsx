@@ -30,6 +30,8 @@ const livePageMocks = vi.hoisted(() => {
       code?: string | null;
       timeframe?: string;
       viewIdentity?: string;
+      restoreViewport?: unknown;
+      persistLiveViewport?: boolean;
       chartBundle?: RangeBundle | null;
       tradeVolumePocs?: unknown[];
       isExtending?: boolean;
@@ -86,7 +88,13 @@ if (typeof window !== 'undefined' && !window.ResizeObserver) {
 // activeCode is set. Mock LiveChartRoot so the shell tests stay unit-level
 // and don't have to model lightweight-charts' full v5 series/timeScale API.
 vi.mock('./LiveChartRoot', () => ({
-  LiveChartRoot: (props: { code?: string | null; timeframe?: string; viewIdentity?: string }) => {
+  LiveChartRoot: (props: {
+    code?: string | null;
+    timeframe?: string;
+    viewIdentity?: string;
+    restoreViewport?: unknown;
+    persistLiveViewport?: boolean;
+  }) => {
     livePageMocks.liveChartRootProps.push(props);
     return null;
   },
@@ -565,6 +573,8 @@ describe('LivePage shell', () => {
       code: '005930',
       timeframe: '1m',
       viewIdentity: 'tab-b:KRX',
+      restoreViewport: null,
+      persistLiveViewport: false,
     });
   });
 

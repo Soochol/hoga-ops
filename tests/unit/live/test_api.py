@@ -2117,13 +2117,45 @@ def test_live_settings_routes_round_trip(tmp_path):
     )
     client = TestClient(app)
 
-    assert client.get("/api/live/settings").json()["storage_policy"] == "ws_plus_rest"
+    assert client.get("/api/live/settings").json() == {
+        "schema_version": 1,
+        "storage_policy": "ws_plus_rest",
+        "program_trade_storage_enabled": False,
+    }
 
-    r = client.patch("/api/live/settings", json={"storage_policy": "rest_only"})
+    r = client.patch(
+        "/api/live/settings",
+        json={"storage_policy": "rest_only", "program_trade_storage_enabled": True},
+    )
 
     assert r.status_code == 200
     assert r.json()["storage_policy"] == "rest_only"
-    assert client.get("/api/live/settings").json()["storage_policy"] == "rest_only"
+    assert r.json()["program_trade_storage_enabled"] is True
+    assert client.get("/api/live/settings").json()["program_trade_storage_enabled"] is True
+
+
+def test_live_settings_forces_program_trade_off_under_ws_only(tmp_path):
+    from hoga.live import lifecycle
+    from hoga.live.api import build_router
+
+    lifecycle.reset_for_tests()
+    app = FastAPI()
+    app.include_router(
+        build_router(
+            data_dir=tmp_path,
+            get_status=lifecycle.get_status,
+        )
+    )
+    client = TestClient(app)
+
+    r = client.patch(
+        "/api/live/settings",
+        json={"storage_policy": "ws_only", "program_trade_storage_enabled": True},
+    )
+
+    assert r.status_code == 200
+    assert r.json()["storage_policy"] == "ws_only"
+    assert r.json()["program_trade_storage_enabled"] is False
 
 
 def test_live_settings_rejects_unknown_storage_policy(tmp_path):

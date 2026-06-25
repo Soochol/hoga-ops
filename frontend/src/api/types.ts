@@ -467,6 +467,20 @@ export interface LiveSnapshotEntry {
  *  − = net sell. t_ms anchors at 09:00 KST — the same anchor as daily candles. */
 export type InvestorNetPoint = { t_ms: number; foreign_net: number; institution_net: number };
 
+export type ProgramTradePoint = {
+  t: number;
+  net_qty: number | null;
+  net_amount: number | null;
+  delta_qty?: number | null;
+  delta_amount?: number | null;
+  gap_risk: boolean;
+};
+
+export type ProgramTradeSeries = {
+  points: ProgramTradePoint[];
+  source?: 'kis_program_trade';
+};
+
 export type AskPeakCandidate = {
   price: number;
   qty: number;
@@ -528,6 +542,9 @@ export type RangeBundle = {
   candles: Candle[];
   quote_ratio: QuoteRatio;
   fill_strength: FillStrength;
+  /** KIS REST program-trade sidecar. Optional in TS so older fixtures/snapshots
+   *  remain readable; live backend responses include it when supported. */
+  program_trade?: ProgramTradeSeries;
   volume_profile_range: VolumeProfile;
   volume_profile_by_day: VolumeProfile[];
   volume_distributions: DayVolumeDistribution[];

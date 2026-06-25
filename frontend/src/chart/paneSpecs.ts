@@ -5,6 +5,7 @@ import { VOLUME_SPEC } from './projectors/volume';
 import { RATIO_SPEC } from './projectors/ratio';
 import { QUOTE_TOTALS_SPEC } from './projectors/quoteTotals';
 import { FILL_STRENGTH_SPEC } from './projectors/fillStrength';
+import { PROGRAM_TRADE_SPEC } from './projectors/programTrade';
 
 /**
  * A `PaneSpec` whose `name` is a typed `PaneId` literal. Members of
@@ -43,6 +44,7 @@ export const PANE_SPECS: BoundPaneSpec[] = [
   QUOTE_TOTALS_SPEC,   // paneIndex 2
   RATIO_SPEC,          // paneIndex 3
   FILL_STRENGTH_SPEC,  // paneIndex 4
+  PROGRAM_TRADE_SPEC,  // paneIndex 5
 ];
 
 export const PANE_STRETCH = PANE_SPECS.map((s) => s.stretch);

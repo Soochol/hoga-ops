@@ -149,6 +149,7 @@ type Store = Persisted & PersistedIndicators & {
   setQuoteTotalsEnabled: (enabled: boolean) => void;
   setRatioEnabled: (enabled: boolean) => void;
   setFillStrengthEnabled: (enabled: boolean) => void;
+  setProgramTradeEnabled: (enabled: boolean) => void;
   setDailyMovingAverage: (id: string, patch: Partial<LiveMAConfig>) => void;
   addDailyMovingAverage: () => void;
   removeDailyMovingAverage: (id: string) => void;
@@ -265,6 +266,7 @@ function snapshotIndicators(get: () => Store): PersistedIndicators {
     quoteTotalsEnabled: s.quoteTotalsEnabled,
     ratioEnabled: s.ratioEnabled,
     fillStrengthEnabled: s.fillStrengthEnabled,
+    programTradeEnabled: s.programTradeEnabled,
     dailyMovingAverages: s.dailyMovingAverages,
     dailyMovingAverageEnabled: s.dailyMovingAverageEnabled,
     dailyMovingAverageHidden: s.dailyMovingAverageHidden,
@@ -494,6 +496,11 @@ export const useLivePageStore = create<Store>((set, get) => ({
 
   setFillStrengthEnabled: (enabled) => {
     set({ fillStrengthEnabled: enabled });
+    persistIndicators(snapshotIndicators(get));
+  },
+
+  setProgramTradeEnabled: (enabled) => {
+    set({ programTradeEnabled: enabled });
     persistIndicators(snapshotIndicators(get));
   },
 

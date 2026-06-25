@@ -56,7 +56,7 @@ describe('StudyDetailPanel', () => {
     );
 
     expect(screen.getByTestId('volume-distribution-card')).toBeTruthy();
-    expect(screen.getByText('200-202')).toBeTruthy();
+    expect(screen.getAllByTestId('volume-distribution-row')).toHaveLength(1);
     expect(screen.queryByText('100-102')).toBeNull();
     expect(screen.getByTestId('volume-distribution-cursor-marker')).toBeTruthy();
     expect(screen.getByTestId('volume-distribution-max-bar')).toHaveStyle({ backgroundColor: '#EAB308' });

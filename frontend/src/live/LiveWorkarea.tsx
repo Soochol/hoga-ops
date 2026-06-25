@@ -98,6 +98,8 @@ interface Props {
   paneTogglesOverride?: {
     hogaPanes?: boolean;
   };
+  /** Whether this chart should persist viewport into live tabs. */
+  persistLiveViewport?: boolean;
   /** LivePage save flows keep this callback and invoke it at save time. */
   onViewportCaptureReady?: (capture: () => TabViewport | null) => void;
 }
@@ -125,6 +127,7 @@ export function LiveWorkarea({
   todayKst = '',
   tradeVolumePocs = [],
   paneTogglesOverride,
+  persistLiveViewport = true,
   onViewportCaptureReady,
   activeInstrument = null,
 }: Props) {
@@ -233,6 +236,7 @@ export function LiveWorkarea({
                 todayKst={todayKst}
                 tradeVolumePocs={tradeVolumePocs}
                 paneTogglesOverride={paneTogglesOverride}
+                persistLiveViewport={persistLiveViewport}
                 onViewportCaptureReady={onViewportCaptureReady}
                 onCandleBasisHover={rankingAllowed ? handleCandleBasisHover : undefined}
                 onCandleBasisClick={rankingAllowed ? handleCandleBasisClick : undefined}
@@ -264,6 +268,7 @@ export function LiveWorkarea({
               live={live}
               bundle={chartBundle ?? bundle}
               todayKst={todayKst}
+              programTrade={(chartBundle ?? bundle)?.program_trade ?? null}
             />
           </div>
         </>

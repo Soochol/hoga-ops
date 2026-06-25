@@ -21,8 +21,14 @@ class Rest30RecorderLike(Protocol):
     async def stop(self) -> None: ...
 
 
+class ProgramTradeCollectorLike(Protocol):
+    def start(self) -> None: ...
+    async def stop(self) -> None: ...
+
+
 class StorageRuntimeState(Protocol):
     rest30_recorder: Rest30RecorderLike | None
+    program_trade_collector: ProgramTradeCollectorLike | None
     storage_policy: LiveStoragePolicy
 
 
@@ -58,6 +64,26 @@ def _ensure_rest30_recorder(
     )
     state.rest30_recorder = recorder
     return recorder
+
+
+def _ensure_program_trade_collector(
+    state: StorageRuntimeState,
+    *,
+    data_dir: Path,
+    date_fn: Callable[[], str],
+    now_ms_fn: Callable[[], int],
+) -> ProgramTradeCollectorLike:
+    from .program_trade_collector import ProgramTradeCollector  # noqa: PLC0415
+
+    if state.program_trade_collector is not None:
+        return state.program_trade_collector
+    collector = ProgramTradeCollector(
+        data_dir=data_dir,
+        date_fn=date_fn,
+        now_ms_fn=now_ms_fn,
+    )
+    state.program_trade_collector = collector
+    return collector
 
 
 async def sync_storage_runtime(
@@ -96,6 +122,22 @@ async def sync_storage_runtime(
             recorder.start()
         else:
             await recorder.stop()
+
+    program_collector = (
+        _ensure_program_trade_collector(
+            state,
+            data_dir=data_dir,
+            date_fn=date_fn,
+            now_ms_fn=now_ms_fn,
+        )
+        if settings.program_trade_storage_enabled and settings.storage_policy != "ws_only"
+        else state.program_trade_collector
+    )
+    if program_collector is not None:
+        if settings.program_trade_storage_enabled and settings.storage_policy != "ws_only":
+            program_collector.start()
+        else:
+            await program_collector.stop()
     return StorageRuntimeSnapshot(
         storage_policy=settings.storage_policy,
         ws_targets=targets.ws_targets,
@@ -107,3 +149,6 @@ async def stop_storage_runtime(state: StorageRuntimeState) -> None:
     recorder = state.rest30_recorder
     if recorder is not None:
         await recorder.stop()
+    collector = state.program_trade_collector
+    if collector is not None:
+        await collector.stop()

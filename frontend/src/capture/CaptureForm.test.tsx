@@ -61,11 +61,7 @@ describe('CaptureForm', () => {
     expect((btn as HTMLButtonElement).disabled).toBe(true);
   });
 
-  it('Start POSTs addItems with force_retry sourced from the Settings default', async () => {
-    // The per-capture checkbox is gone — force_retry comes exclusively from
-    // the persisted Settings default. Pre-seed localStorage to assert that
-    // the form reads it at submit time.
-    localStorage.setItem('capture.force_retry_default', 'true');
+  it('Start POSTs a plain capture request without user-facing force semantics', async () => {
     const { qc, fetchMock } = setup();
     render(<CaptureForm referenceYear={2026} referenceMonth={5} />, { wrapper: W(qc) });
     await new Promise((r) => setTimeout(r, 30));
@@ -80,25 +76,8 @@ describe('CaptureForm', () => {
     expect(itemsCall).toBeDefined();
     const body = JSON.parse(itemsCall![1]!.body as string);
     expect(body).toEqual({
-      code: '005930', start_date: '20260518', end_date: '20260520', force_retry: true,
+      code: '005930', start_date: '20260518', end_date: '20260520', force_retry: false,
     });
-  });
-
-  it('Start POSTs force_retry: false when the Settings default is unset', async () => {
-    const { qc, fetchMock } = setup();
-    render(<CaptureForm referenceYear={2026} referenceMonth={5} />, { wrapper: W(qc) });
-    await new Promise((r) => setTimeout(r, 30));
-    fireEvent.change(screen.getByPlaceholderText(/종목/i), { target: { value: '삼성' } });
-    await new Promise((r) => setTimeout(r, 30));
-    fireEvent.click(screen.getByText('삼성전자'));
-    fireEvent.click(screen.getByTestId('calendar-cell-20260518'));
-    fireEvent.click(screen.getByTestId('calendar-cell-20260520'));
-    fireEvent.click(screen.getByRole('button', { name: /Start/i }));
-    await new Promise((r) => setTimeout(r, 30));
-    const itemsCall = fetchMock.mock.calls.find((c) => String(c[0]).includes('/api/captures/items'));
-    expect(itemsCall).toBeDefined();
-    const body = JSON.parse(itemsCall![1]!.body as string);
-    expect(body.force_retry).toBe(false);
   });
 
   it('clears the date range and disables Start after a successful Start (symbol preserved)', async () => {
@@ -131,11 +110,11 @@ describe('CaptureForm', () => {
     expect((screen.getByPlaceholderText(/종목/i) as HTMLInputElement).value).toContain('삼성전자');
   });
 
-  it('does not render the per-capture Force re-capture checkbox (moved to Settings)', async () => {
+  it('does not render force retry controls', async () => {
     const { qc } = setup();
     render(<CaptureForm referenceYear={2026} referenceMonth={5} />, { wrapper: W(qc) });
     await new Promise((r) => setTimeout(r, 30));
-    expect(screen.queryByLabelText(/Force re-capture/i)).toBeNull();
+    expect(screen.queryByText(/force/i)).toBeNull();
   });
 
   it('Legend lists the new "no upstream data" entry', () => {

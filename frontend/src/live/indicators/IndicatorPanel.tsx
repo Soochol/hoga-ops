@@ -11,6 +11,7 @@ import QuoteTotalsConfig from './QuoteTotalsConfig';
 import RatioConfig from './RatioConfig';
 import FillStrengthConfig from './FillStrengthConfig';
 import { MA_COLOR_ROWS } from './MAStylePicker';
+import ProgramTradeConfig from './ProgramTradeConfig';
 import { ModalShell } from '../../ui/ModalShell';
 import { CheckIcon } from '../../ui/CheckIcon';
 import { STOCK_CAPABILITIES, type LiveInstrumentCapabilities } from '../liveInstrumentCapabilities';
@@ -27,17 +28,21 @@ type CategoryId =
   | 'volume-distribution'
   | 'quote-totals'
   | 'ratio'
-  | 'fill-strength';
+  | 'fill-strength'
+  | 'program-trade';
 
-type GroupId = 'top' | 'hoga';
-const GROUP_LABEL: Record<GroupId, string> = { top: '상단 지표', hoga: '호가 지표' };
+type GroupId = 'top' | 'hoga' | 'program' | 'broker';
+const GROUP_LABEL: Record<GroupId, string> = {
+  top: '상단 지표',
+  hoga: '10호가 지표',
+  program: '프로그램 지표',
+  broker: '거래원 지표',
+};
 
 const CATEGORIES: ReadonlyArray<{ id: CategoryId; label: string; group: GroupId }> = [
   { id: 'moving-average',  label: '이동평균선',       group: 'top'  },
   { id: 'daily-moving-average', label: '일봉 이동평균선',  group: 'top'  },
   { id: 'volume',          label: '거래량',           group: 'top'  },
-  { id: 'foreign-net',     label: '외국인 순매수량',  group: 'top'  },
-  { id: 'institution-net', label: '기관 순매수량',    group: 'top'  },
   { id: 'quote-totals',    label: '총잔량',           group: 'hoga' },
   { id: 'ratio',           label: '호가비',           group: 'hoga' },
   { id: 'fill-strength',   label: '체결강도',         group: 'hoga' },
@@ -45,6 +50,9 @@ const CATEGORIES: ReadonlyArray<{ id: CategoryId; label: string; group: GroupId 
   { id: 'trade-volume-poc', label: '당일 최대 매물대', group: 'hoga' },
   { id: 'ask-peak',        label: '당일 매도 최대벽', group: 'hoga' },
   { id: 'bid-peak',        label: '당일 매수 최대벽', group: 'hoga' },
+  { id: 'program-trade',   label: '프로그램 순매수',  group: 'program' },
+  { id: 'foreign-net',     label: '외국인 순매수량',  group: 'broker'  },
+  { id: 'institution-net', label: '기관 순매수량',    group: 'broker'  },
 ];
 
 type Props = {
@@ -82,13 +90,15 @@ export default function IndicatorPanel({ onClose, capabilities = STOCK_CAPABILIT
   const setRatio = useLivePageStore((s) => s.setRatioEnabled);
   const fillStrength = useLivePageStore((s) => s.fillStrengthEnabled);
   const setFillStrength = useLivePageStore((s) => s.setFillStrengthEnabled);
+  const programTrade = useLivePageStore((s) => s.programTradeEnabled);
+  const setProgramTrade = useLivePageStore((s) => s.setProgramTradeEnabled);
 
   // Which category's detail pane shows on the right. Clicking a category label
   // navigates here; the checkbox icon toggles its master switch separately.
   const [selected, setSelected] = useState<CategoryId>('moving-average');
 
   const categories = CATEGORIES.filter((c) => {
-    if (c.group === 'hoga') return capabilities.hogaPanes;
+    if (c.group === 'hoga' || c.group === 'program') return capabilities.hogaPanes;
     if ((c.id === 'foreign-net' || c.id === 'institution-net') && capabilities.investorNet === 'none') {
       return false;
     }
@@ -112,6 +122,7 @@ export default function IndicatorPanel({ onClose, capabilities = STOCK_CAPABILIT
       case 'quote-totals': return quoteTotals;
       case 'ratio': return ratio;
       case 'fill-strength': return fillStrength;
+      case 'program-trade': return programTrade;
       default: return false;
     }
   };
@@ -129,6 +140,7 @@ export default function IndicatorPanel({ onClose, capabilities = STOCK_CAPABILIT
       case 'quote-totals': return () => setQuoteTotals(!quoteTotals);
       case 'ratio': return () => setRatio(!ratio);
       case 'fill-strength': return () => setFillStrength(!fillStrength);
+      case 'program-trade': return () => setProgramTrade(!programTrade);
       default: return null;
     }
   };
@@ -287,6 +299,7 @@ export default function IndicatorPanel({ onClose, capabilities = STOCK_CAPABILIT
           {selected === 'quote-totals' && <QuoteTotalsConfig />}
           {selected === 'ratio' && <RatioConfig />}
           {selected === 'fill-strength' && <FillStrengthConfig />}
+          {selected === 'program-trade' && <ProgramTradeConfig />}
         </div>
       </div>
       {/* Footer — mirrors SettingsModal pattern for cross-modal visual

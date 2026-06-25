@@ -200,6 +200,20 @@ class FillStrength(BaseModel):
     points: list[FillStrengthPoint]
 
 
+class ProgramTradePoint(BaseModel):
+    t: int
+    net_qty: int | None
+    net_amount: int | None
+    delta_qty: int | None
+    delta_amount: int | None
+    gap_risk: bool = False
+
+
+class ProgramTradeSeries(BaseModel):
+    points: list[ProgramTradePoint] = Field(default_factory=list)
+    source: Literal["kis_program_trade"] = "kis_program_trade"
+
+
 CapturePhase = Literal[
     "queued", "deciding", "capturing", "parsing",
     "done", "failed", "cancelled", "skipped",
@@ -241,7 +255,7 @@ class QueueItem(BaseModel):
     code: str
     date: str
     phase: CapturePhase
-    force_retry: bool          # frozen at enqueue per spec §11 Q16
+    force_retry: bool          # legacy wire field; retry policy no longer branches on it
     pause_origin: bool         # True when cancelled by cookie-expired pool pause
     enqueued_at_ms: int
     started_at_ms: int | None = None
@@ -401,7 +415,7 @@ class EnqueueDedupedRow(BaseModel):
         "already_in_queue",
         "already_running",
         "already_complete",  # ADR-0033 — addItems collided with _done(phase=done)
-        "already_skipped",   # ADR-0033 — addItems collided with _done(phase=skipped, no force_retry)
+        "already_skipped",   # Legacy value; skipped rows are now re-enqueueable.
     ]
 
 
@@ -641,6 +655,7 @@ class RangeBundle(BaseModel):
     price_level_hits: list[PriceLevelHit] = Field(default_factory=list)
     trade_volume_pocs: list[TradeVolumePoc] = Field(default_factory=list)
     volume_distributions: list[DayVolumeDistribution] = Field(default_factory=list)
+    program_trade: ProgramTradeSeries = Field(default_factory=ProgramTradeSeries)
 
 
 # === Broker Day-Trajectory (ADR-0023) ===
@@ -788,10 +803,12 @@ LiveStoragePolicy = Literal["ws_only", "ws_plus_rest", "rest_only"]
 class LiveSettingsResponse(BaseModel):
     schema_version: int = 1
     storage_policy: LiveStoragePolicy = "ws_plus_rest"
+    program_trade_storage_enabled: bool = False
 
 
 class LiveSettingsUpdate(BaseModel):
     storage_policy: LiveStoragePolicy
+    program_trade_storage_enabled: bool | None = None
 
 
 # Code lists below validate against params.CODE_PATTERN (6-char alphanumeric +
@@ -1196,6 +1213,7 @@ class StudyIndicatorState(BaseModel):
     daily_moving_averages: list[StudyMovingAverageConfig] = Field(default_factory=list)
     daily_moving_average_enabled: bool = False
     daily_moving_average_hidden: bool = False
+    program_trade_enabled: bool = True
     trade_volume_poc_enabled: bool = True
     trade_volume_poc_band_pct: float = 0.005
     trade_volume_poc_color: str = Field(default="#A855F7", pattern=r"^#[0-9A-Fa-f]{6}$")
@@ -1338,6 +1356,7 @@ class StudySnapshotBundle(BaseModel):
     quote_totals: list[StudyQuoteTotalsPoint]
     ratio: list[StudyRatioPoint]
     fill_strength: list[StudyFillStrengthPoint]
+    program_trade: ProgramTradeSeries = Field(default_factory=ProgramTradeSeries)
     ask_peaks: list[AskPeak] = Field(default_factory=list)
     bid_peaks: list[BidPeak] = Field(default_factory=list)
     trade_volume_pocs: list[TradeVolumePoc] = Field(default_factory=list)

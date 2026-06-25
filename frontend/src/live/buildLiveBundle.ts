@@ -3,6 +3,7 @@ import type {
   RangeSegment,
   Candle,
   VolumeProfile,
+  ProgramTradeSeries,
   QuoteRatio,
   FillStrength,
   InvestorNetPoint,
@@ -74,6 +75,18 @@ interface PastHogaSeries {
   validPastFS: FillStrengthPoint[];
   pastMaxQrT: number;
   pastMaxFsT: number;
+}
+
+function filterProgramTradeForCandles(
+  series: ProgramTradeSeries | undefined,
+  candles: readonly Candle[],
+): ProgramTradeSeries {
+  if (!series || series.points.length === 0 || candles.length === 0) return { points: [] };
+  const candleDates = new Set(candles.map((c) => realMsToYyyymmdd(c.ts_ms)));
+  return {
+    ...series,
+    points: series.points.filter((p) => candleDates.has(realMsToYyyymmdd(p.t))),
+  };
 }
 
 function preparePastHogaSeries(pastBundle: RangeBundle | null, todaySessionCloseMs: number): PastHogaSeries {
@@ -485,6 +498,7 @@ export function buildChartBundle(input: BuildChartBundleInput): RangeBundle {
     // these, so the empty stub is invisible to the candle path.
     quote_ratio: { bucket_ms: bucketMs, points: [] },
     fill_strength: { bucket_ms: bucketMs, points: [] },
+    program_trade: filterProgramTradeForCandles(pastBundle?.program_trade, kisCandles),
     volume_profile_range: EMPTY_VOLUME_PROFILE,
     volume_profile_by_day: [],
     volume_distributions: pastBundle?.volume_distributions ?? [],

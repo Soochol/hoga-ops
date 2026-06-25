@@ -15,6 +15,7 @@ export type PaneToggles = {
   quoteTotalsEnabled?: boolean;
   ratioEnabled?: boolean;
   fillStrengthEnabled?: boolean;
+  programTradeEnabled?: boolean;
   hogaPanes?: boolean;
   forceHogaPanes?: boolean;
 };
@@ -48,6 +49,7 @@ const GATE_BY_NAME: Partial<Record<string, PaneGate>> = {
   'quote-totals': (tf, t) => hogaAllowed(tf, t) && t.quoteTotalsEnabled !== false,
   ratio: (tf, t) => hogaAllowed(tf, t) && t.ratioEnabled !== false,
   'fill-strength': (tf, t) => hogaAllowed(tf, t) && t.fillStrengthEnabled !== false,
+  'program-trade': (tf, t) => hogaAllowed(tf, t) && t.programTradeEnabled !== false,
 };
 
 /**

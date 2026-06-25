@@ -1,6 +1,6 @@
 # 0033 — `addItems`가 `_done`을 phase별로 dedupe (Implicit Retry path)
 
-**Status:** accepted (2026-05-25)
+**Status:** accepted (2026-05-25) — force-gated dedupe table superseded by ADR-0081
 
 **Related:**
 - ADR-0019 — Capture Queue 매니페스트 영속화 (pause_origin carve-out 맥락)

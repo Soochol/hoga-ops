@@ -1066,7 +1066,11 @@ def build_router(
     async def _patch_settings(req: LiveSettingsUpdate) -> LiveSettingsResponse:
         if data_dir is None:
             raise HTTPException(503, "live settings not wired")
-        settings = update_live_settings(data_dir, storage_policy=req.storage_policy)
+        settings = update_live_settings(
+            data_dir,
+            storage_policy=req.storage_policy,
+            program_trade_storage_enabled=req.program_trade_storage_enabled,
+        )
         try:
             await refresh_live_stream(data_dir=data_dir)
         except Exception:

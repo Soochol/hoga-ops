@@ -158,6 +158,7 @@ export function studySnapshotBundleToRangeBundle(snapshot: StudySnapshotBundle):
         return [{ t: p.t, buy_qty: p.buy_qty, sell_qty: p.sell_qty }];
       }),
     },
+    program_trade: snapshot.program_trade ?? { points: [] },
     volume_profile_range: EMPTY_VOLUME_PROFILE,
     volume_profile_by_day: [],
     volume_distributions: snapshot.volume_distributions ?? [],
@@ -197,6 +198,7 @@ function rangeBundleWithoutStudyRatio(bundle: StudySnapshotRangeBundle): RangeBu
     candles: bundle.candles,
     quote_ratio: bundle.quote_ratio,
     fill_strength: bundle.fill_strength,
+    program_trade: bundle.program_trade,
     volume_profile_range: bundle.volume_profile_range,
     volume_profile_by_day: bundle.volume_profile_by_day,
     volume_distributions: bundle.volume_distributions,

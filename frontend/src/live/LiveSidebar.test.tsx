@@ -334,6 +334,44 @@ describe('LiveSidebar', () => {
     });
   });
 
+  it('renders the program trade card between orderbook and brokers', () => {
+    renderSidebar({
+      code: '005930',
+      live: emptyLive,
+    });
+
+    const orderbook = screen.getByTestId('card-orderbook');
+    const program = screen.getByTestId('card-program-trade');
+    const brokers = screen.getByTestId('card-brokers');
+    expect(
+      orderbook.compareDocumentPosition(program) & Node.DOCUMENT_POSITION_FOLLOWING,
+    ).toBeTruthy();
+    expect(
+      program.compareDocumentPosition(brokers) & Node.DOCUMENT_POSITION_FOLLOWING,
+    ).toBeTruthy();
+  });
+
+  it('renders latest program trade summary when sidecar points exist', () => {
+    render(
+      <QueryClientProvider client={makeQc()}>
+        <LiveSidebar
+          code="005930"
+          live={emptyLive}
+          programTrade={{
+            points: [
+              { t: new Date('2026-06-25T00:00:00Z').getTime(), net_qty: 10, net_amount: 100_000_000, gap_risk: false },
+              { t: new Date('2026-06-25T00:01:00Z').getTime(), net_qty: -20, net_amount: -200_000_000, gap_risk: false },
+            ],
+          }}
+        />
+      </QueryClientProvider>,
+    );
+
+    expect(screen.getByTestId('card-program-trade')).toHaveTextContent('프로그램');
+    expect(screen.getByTestId('card-program-trade')).toHaveTextContent('-2억');
+    expect(screen.getByTestId('card-program-trade')).toHaveTextContent('-20');
+  });
+
   it('reads live data from the prop, not from useLiveSeries (LivePage-lift)', () => {
     // Regression guard for the dual-call-site bug: LiveSidebar must NOT
     // open its own SSE / hydrate its own buffer. LivePage owns the single

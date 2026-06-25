@@ -101,9 +101,9 @@ describe('CalendarCell (no_upstream_data)', () => {
     expect(onClick).toHaveBeenCalledWith('20260319');
   });
 
-  it("shows the 'no upstream data (force to retry)' tooltip", () => {
+  it("shows the 'no upstream data (retry on capture)' tooltip", () => {
     render(<CalendarCell date="20260319" status="no_upstream_data" />);
     const btn = screen.getByTestId('calendar-cell-20260319');
-    expect(btn.getAttribute('title')).toBe('20260319 · no upstream data (force to retry)');
+    expect(btn.getAttribute('title')).toBe('20260319 · no upstream data (retry on capture)');
   });
 });

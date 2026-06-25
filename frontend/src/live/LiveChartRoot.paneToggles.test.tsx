@@ -161,14 +161,15 @@ describe('LiveChartRoot — pane 토글 배선 (store → 마운트된 pane 집�
       quoteTotalsEnabled: true,
       ratioEnabled: true,
       fillStrengthEnabled: true,
+      programTradeEnabled: true,
       foreignNetEnabled: false,
       institutionNetEnabled: false,
     });
   });
 
-  it('기본(전부 ON) 1m → 5 pane 마운트', () => {
+  it('기본(전부 ON) 1m → 6 pane 마운트', () => {
     renderAt('1m');
-    expect(mounted).toEqual(['candle', 'volume', 'quote-totals', 'ratio', 'fill-strength']);
+    expect(mounted).toEqual(['candle', 'volume', 'quote-totals', 'ratio', 'fill-strength', 'program-trade']);
   });
 
   it('quoteTotalsEnabled=false → 총잔량 pane 미마운트', () => {
@@ -177,12 +178,13 @@ describe('LiveChartRoot — pane 토글 배선 (store → 마운트된 pane 집�
     expect(mounted).not.toContain('quote-totals');
     expect(mounted).toContain('ratio');
     expect(mounted).toContain('fill-strength');
+    expect(mounted).toContain('program-trade');
   });
 
-  it('ratio·fill 동시 off → candle·volume·총잔량만', () => {
+  it('ratio·fill 동시 off → candle·volume·총잔량·프로그램 순매수', () => {
     useLivePageStore.setState({ ratioEnabled: false, fillStrengthEnabled: false });
     renderAt('1m');
-    expect(mounted).toEqual(['candle', 'volume', 'quote-totals']);
+    expect(mounted).toEqual(['candle', 'volume', 'quote-totals', 'program-trade']);
   });
 
   it('volumeEnabled=false → 거래량 pane 미마운트', () => {
@@ -211,6 +213,7 @@ describe('LiveChartRoot — pane 토글 배선 (store → 마운트된 pane 집�
         quoteTotalsEnabled: true,
         ratioEnabled: false,
         fillStrengthEnabled: true,
+        programTradeEnabled: false,
       },
     });
     expect(mounted).toEqual(['candle', 'quote-totals', 'fill-strength']);

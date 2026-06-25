@@ -63,7 +63,7 @@ describe('paneSpecsForTimeframe', () => {
   it('volumeEnabled:false drops the volume pane on minute timeframes', () => {
     expect(
       paneSpecsForTimeframe('1m', { foreignNet: false, institutionNet: false, volumeEnabled: false }).map((s) => s.name),
-    ).toEqual(['candle', 'quote-totals', 'ratio', 'fill-strength']);
+    ).toEqual(['candle', 'quote-totals', 'ratio', 'fill-strength', 'program-trade']);
   });
 
   it('volumeEnabled:false drops the volume pane on calendar timeframes', () => {
@@ -92,9 +92,9 @@ describe('paneSpecsForTimeframe', () => {
 describe('paneSpecsForTimeframe — 호가 토글', () => {
   const names = (tf: LiveTimeframe, t: PaneToggles) => paneSpecsForTimeframe(tf, t).map((s) => s.name);
 
-  it('기본(토글 ON) 분봉 → 5 pane 유지', () => {
+  it('기본(토글 ON) 분봉 → 프로그램 순매수 포함 6 pane 유지', () => {
     const n = names('1m', { foreignNet: false, institutionNet: false });
-    expect(n).toEqual(['candle', 'volume', 'quote-totals', 'ratio', 'fill-strength']);
+    expect(n).toEqual(['candle', 'volume', 'quote-totals', 'ratio', 'fill-strength', 'program-trade']);
   });
   it('quoteTotalsEnabled=false → 총잔량 pane 제거', () => {
     const n = names('1m', { foreignNet: false, institutionNet: false, quoteTotalsEnabled: false });
@@ -104,7 +104,7 @@ describe('paneSpecsForTimeframe — 호가 토글', () => {
   });
   it('ratio·fill 동시 off → 둘 다 제거', () => {
     const n = names('1m', { foreignNet: false, institutionNet: false, ratioEnabled: false, fillStrengthEnabled: false });
-    expect(n).toEqual(['candle', 'volume', 'quote-totals']);
+    expect(n).toEqual(['candle', 'volume', 'quote-totals', 'program-trade']);
   });
   it('calendar(D) → 호가 토글 무관(애초에 없음)', () => {
     const n = names('D', { foreignNet: false, institutionNet: false, quoteTotalsEnabled: true });
@@ -112,7 +112,7 @@ describe('paneSpecsForTimeframe — 호가 토글', () => {
   });
   it('study mode can mount hoga panes for calendar timeframe snapshots', () => {
     const n = names('D', { foreignNet: false, institutionNet: false, forceHogaPanes: true });
-    expect(n).toEqual(['candle', 'volume', 'quote-totals', 'ratio', 'fill-strength']);
+    expect(n).toEqual(['candle', 'volume', 'quote-totals', 'ratio', 'fill-strength', 'program-trade']);
   });
   it('hogaPanes=false removes hoga panes even on minute timeframes', () => {
     const n = names('1m', { foreignNet: false, institutionNet: false, hogaPanes: false });
@@ -133,5 +133,11 @@ describe('paneSpecsForTimeframe — 호가 토글', () => {
     const ratioOff = paneSpecsForTimeframe('1m', { foreignNet: false, institutionNet: false, ratioEnabled: false });
     expect(volOff.map((s) => s.name)).not.toEqual(ratioOff.map((s) => s.name));
     expect(volOff).not.toBe(ratioOff);
+  });
+
+  it('programTradeEnabled=false → 프로그램 순매수 pane 제거', () => {
+    const n = names('1m', { foreignNet: false, institutionNet: false, programTradeEnabled: false });
+    expect(n).not.toContain('program-trade');
+    expect(n).toContain('fill-strength');
   });
 });

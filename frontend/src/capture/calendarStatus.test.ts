@@ -62,7 +62,7 @@ describe('markerFor', () => {
 describe('tooltipFor', () => {
   it('joins `${date} · ${suffix}` when suffix is non-null', () => {
     expect(tooltipFor('complete', '20260319')).toBe('20260319 · captured (complete)');
-    expect(tooltipFor('no_upstream_data', '20260319')).toBe('20260319 · no upstream data (force to retry)');
+    expect(tooltipFor('no_upstream_data', '20260319')).toBe('20260319 · no upstream data (retry on capture)');
   });
 
   it('returns just `${date}` when suffix is null (`none` status)', () => {
@@ -78,7 +78,7 @@ describe('isDisabled', () => {
     expect(isDisabled('today_locked')).toBe(true);
   });
 
-  it('no_upstream_data stays clickable (force_retry path — ADR-0021)', () => {
+  it('no_upstream_data stays clickable so the next capture can retry', () => {
     expect(isDisabled('no_upstream_data')).toBe(false);
   });
 

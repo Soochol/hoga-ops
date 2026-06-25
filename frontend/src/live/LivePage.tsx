@@ -157,6 +157,7 @@ export function LivePage() {
   const dailyMovingAverages = useLivePageStore((s) => s.dailyMovingAverages);
   const dailyMovingAverageEnabled = useLivePageStore((s) => s.dailyMovingAverageEnabled);
   const dailyMovingAverageHidden = useLivePageStore((s) => s.dailyMovingAverageHidden);
+  const programTradeEnabled = useLivePageStore((s) => s.programTradeEnabled);
   const tradeVolumePocEnabled = useLivePageStore((s) => s.tradeVolumePocEnabled);
   const tradeVolumePocBandPct = useLivePageStore((s) => s.tradeVolumePocBandPct);
   const tradeVolumePocColor = useLivePageStore((s) => s.tradeVolumePocColor);
@@ -169,10 +170,6 @@ export function LivePage() {
   const ratioIntraMax = useChartPrefsStore((s) => s.ratioIntraMax);
   const ratioOutlierFilterEnabled = useChartPrefsStore((s) => s.ratioOutlierFilterEnabled);
   const ratioOutlierThreshold = useChartPrefsStore((s) => s.ratioOutlierThreshold);
-  // Active tab's saved viewport (ADR-0069 A안) → LiveChartRoot restores it on
-  // cold switch-back. Stable reference (the tab object's viewport field) across
-  // SSE renders; only rewritten on switch-away, so it doesn't thrash the chart.
-  const restoreViewport = tabs.find((t) => t.id === activeTabId)?.viewport ?? null;
   useDocumentTitle(activeCode);
   const [indicatorPanelOpen, setIndicatorPanelOpen] = useState(false);
   const [settingsOpen, setSettingsOpen] = useState(false);
@@ -243,6 +240,7 @@ export function LivePage() {
     })),
     daily_moving_average_enabled: dailyMovingAverageEnabled,
     daily_moving_average_hidden: dailyMovingAverageHidden,
+    program_trade_enabled: programTradeEnabled,
     trade_volume_poc_enabled: tradeVolumePocEnabled,
     trade_volume_poc_band_pct: tradeVolumePocBandPct,
     trade_volume_poc_color: tradeVolumePocColor,
@@ -262,6 +260,7 @@ export function LivePage() {
     ratioIntraMax,
     ratioOutlierFilterEnabled,
     ratioOutlierThreshold,
+    programTradeEnabled,
     tradeVolumePocBandPct,
     tradeVolumePocColor,
     tradeVolumePocEnabled,
@@ -413,7 +412,7 @@ export function LivePage() {
         isPastCandlesLoading={workareaLoading}
         isExtending={activeIndexId ? indexExtending : isExtending}
         pastDataWarnings={workareaDataWarnings}
-        restoreViewport={restoreViewport}
+        restoreViewport={null}
         viewIdentity={activeTabId ? `${activeTabId}:${liveVenue}` : liveVenue}
         venue={liveVenue}
         live={live}
@@ -423,6 +422,7 @@ export function LivePage() {
         todayAllPriceBidPeak={todayAllPriceBidPeak}
         todayKst={today}
         tradeVolumePocs={tradeVolumePocs}
+        persistLiveViewport={false}
         onViewportCaptureReady={handleViewportCaptureReady}
         paneTogglesOverride={{
           hogaPanes: capabilities.hogaPanes,

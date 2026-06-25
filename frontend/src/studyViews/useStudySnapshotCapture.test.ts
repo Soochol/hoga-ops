@@ -136,6 +136,13 @@ function bundle(overrides: Partial<RangeBundle> = {}): RangeBundle {
         band_pct: 0.005,
       },
     ],
+    program_trade: {
+      points: [
+        { t: 1_000, net_qty: 10, net_amount: 100_000_000, delta_amount: 100_000_000, gap_risk: false },
+        { t: 2_000, net_qty: 20, net_amount: 200_000_000, delta_amount: 100_000_000, gap_risk: false },
+        { t: 3_000, net_qty: -5, net_amount: -50_000_000, delta_amount: -250_000_000, gap_risk: true },
+      ],
+    },
     ...overrides,
   };
 }
@@ -192,6 +199,12 @@ describe('buildStudySnapshotRequest', () => {
       { t: 2_000, buy_qty: 6, sell_qty: 3, visible: true },
       { t: 3_000, buy_qty: 7, sell_qty: 2, visible: true },
     ]);
+    expect(req.snapshot.bundle.program_trade).toEqual({
+      points: [
+        { t: 2_000, net_qty: 20, net_amount: 200_000_000, delta_amount: 100_000_000, gap_risk: false },
+        { t: 3_000, net_qty: -5, net_amount: -50_000_000, delta_amount: -250_000_000, gap_risk: true },
+      ],
+    });
     expect(req.snapshot.bundle.ask_peaks).toEqual([
       {
         date: '20260616',

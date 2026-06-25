@@ -4,7 +4,7 @@ import IndicatorPanel from './IndicatorPanel';
 import { useLivePageStore } from '../../state/livePage';
 
 describe('IndicatorPanel', () => {
-  it('활성 12개 체크박스(비활성 0), 호가 7종 포함', () => {
+  it('활성 12개 체크박스(비활성 0), 10호가·프로그램·거래원 지표 포함', () => {
     useLivePageStore.setState({
       quoteTotalsEnabled: true,
       ratioEnabled: true,
@@ -14,9 +14,9 @@ describe('IndicatorPanel', () => {
     });
     render(<IndicatorPanel onClose={() => {}} />);
     const checkboxes = screen.getAllByRole('checkbox');
-    expect(checkboxes).toHaveLength(12); // 상단 5 + 호가 7(연속체결 매물대 분포 포함)
+    expect(checkboxes).toHaveLength(13); // 상단 3 + 10호가 7 + 프로그램 1 + 거래원 2
     expect(checkboxes.filter((c) => (c as HTMLButtonElement).disabled)).toHaveLength(0);
-    for (const name of ['총잔량', '호가비', '체결강도', '연속체결 매물대 분포', '당일 최대 매물대']) {
+    for (const name of ['총잔량', '호가비', '체결강도', '연속체결 매물대 분포', '프로그램 순매수', '당일 최대 매물대']) {
       const cb = screen.getByRole('checkbox', { name }) as HTMLButtonElement;
       expect(cb.disabled).toBe(false);
       expect(cb.getAttribute('aria-checked')).toBe('true'); // 기본 ON
@@ -30,16 +30,20 @@ describe('IndicatorPanel', () => {
     }
   });
 
-  it('"호가 지표" 서브헤더를 렌더', () => {
+  it('지표 그룹 서브헤더를 렌더', () => {
     render(<IndicatorPanel onClose={() => {}} />);
-    expect(screen.getByText('호가 지표')).toBeTruthy();
     expect(screen.getByText('상단 지표')).toBeTruthy();
+    expect(screen.getByText('10호가 지표')).toBeTruthy();
+    expect(screen.getByText('프로그램 지표')).toBeTruthy();
+    expect(screen.getByText('거래원 지표')).toBeTruthy();
   });
 
-  it('index capabilities hide every hoga indicator category', () => {
+  it('index capabilities hide every hoga and program indicator category', () => {
     render(<IndicatorPanel onClose={() => {}} capabilities={{ hogaPanes: false, investorNet: 'market', studySave: false }} />);
-    expect(screen.queryByText('호가 지표')).toBeNull();
-    for (const name of ['총잔량', '호가비', '체결강도', '연속체결 매물대 분포', '당일 최대 매물대', '당일 매도 최대벽', '당일 매수 최대벽']) {
+    expect(screen.queryByText('10호가 지표')).toBeNull();
+    expect(screen.queryByText('프로그램 지표')).toBeNull();
+    expect(screen.getByText('거래원 지표')).toBeTruthy();
+    for (const name of ['총잔량', '호가비', '체결강도', '연속체결 매물대 분포', '프로그램 순매수', '당일 최대 매물대', '당일 매도 최대벽', '당일 매수 최대벽']) {
       expect(screen.queryByRole('checkbox', { name })).toBeNull();
       expect(screen.queryByRole('button', { name })).toBeNull();
     }
@@ -54,7 +58,7 @@ describe('IndicatorPanel', () => {
     expect(screen.getByRole('checkbox', { name: '거래량' })).toBeTruthy();
   });
 
-  it('당일 매도 최대벽은 호가 지표 그룹(체결강도 뒤)에 위치', () => {
+  it('당일 매도 최대벽은 10호가 지표 그룹(체결강도 뒤)에 위치', () => {
     render(<IndicatorPanel onClose={() => {}} />);
     // 네비 라벨 버튼은 CATEGORIES 순서대로 렌더된다(체크박스는 role=checkbox라 제외).
     const labels = screen.getAllByRole('button').map((b) => b.textContent);
@@ -62,13 +66,23 @@ describe('IndicatorPanel', () => {
     const poc = labels.indexOf('당일 최대 매물대');
     const distribution = labels.indexOf('연속체결 매물대 분포');
     const fill = labels.indexOf('체결강도');
-    const inst = labels.indexOf('기관 순매수량');
+    const program = labels.indexOf('프로그램 순매수');
     expect(askPeak).toBeGreaterThan(fill); // 호가 그룹 안, 체결강도 뒤
     expect(distribution).toBeGreaterThan(fill);
     expect(poc).toBeGreaterThan(distribution);
     expect(poc).toBeGreaterThan(fill);
     expect(askPeak).toBeGreaterThan(poc);
-    expect(askPeak).toBeGreaterThan(inst); // 상단 지표(기관 순매수량) 그룹 뒤
+    expect(askPeak).toBeLessThan(program);
+  });
+
+  it('프로그램 순매수는 10호가 지표와 거래원 지표 사이에 위치', () => {
+    render(<IndicatorPanel onClose={() => {}} />);
+    const labels = screen.getAllByRole('button').map((b) => b.textContent);
+    const bidPeak = labels.indexOf('당일 매수 최대벽');
+    const program = labels.indexOf('프로그램 순매수');
+    const foreign = labels.indexOf('외국인 순매수량');
+    expect(program).toBeGreaterThan(bidPeak);
+    expect(program).toBeLessThan(foreign);
   });
 
   it('총잔량 토글 클릭 → quoteTotalsEnabled 반전', () => {
@@ -76,6 +90,19 @@ describe('IndicatorPanel', () => {
     render(<IndicatorPanel onClose={() => {}} />);
     fireEvent.click(screen.getByRole('checkbox', { name: '총잔량' }));
     expect(useLivePageStore.getState().quoteTotalsEnabled).toBe(false);
+  });
+
+  it('프로그램 순매수 토글 클릭 → programTradeEnabled 반전', () => {
+    useLivePageStore.setState({ programTradeEnabled: true });
+    render(<IndicatorPanel onClose={() => {}} />);
+    fireEvent.click(screen.getByRole('checkbox', { name: '프로그램 순매수' }));
+    expect(useLivePageStore.getState().programTradeEnabled).toBe(false);
+  });
+
+  it('프로그램 순매수 라벨 클릭 → 설명 표시', () => {
+    render(<IndicatorPanel onClose={() => {}} />);
+    fireEvent.click(screen.getByRole('button', { name: '프로그램 순매수' }));
+    expect(screen.getByText(/KIS REST 저장 데이터/)).toBeTruthy();
   });
 
   it('호가비 라벨 클릭 → 우측에 RatioConfig(극단값 필터 토글) 노출', () => {

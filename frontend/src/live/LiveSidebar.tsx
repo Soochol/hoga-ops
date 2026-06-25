@@ -3,9 +3,11 @@ import CursorSidebar from '../sidebar/CursorSidebar';
 import { InvestorTrendEstimateCard } from '../sidebar/InvestorTrendEstimateCard';
 import OrderbookTable from '../sidebar/OrderbookTable';
 import BrokerTrajectoryTable from '../sidebar/BrokerTrajectoryTable';
+import ProgramTradeSummaryCard from '../sidebar/ProgramTradeSummaryCard';
 import TotalQtyBar from '../sidebar/TotalQtyBar';
 import { VolumeDistributionCard } from '../sidebar/VolumeDistributionCard';
 import type { LiveSeriesData } from '../api/liveSeries';
+import type { ProgramTradeSeries } from '../api/types';
 import {
   aggregateBrokerSeries,
   latestOrderbookSnapshot,
@@ -35,6 +37,7 @@ interface Props {
   live: LiveSeriesData;
   bundle?: RangeBundle | null;
   todayKst?: string;
+  programTrade?: ProgramTradeSeries | null;
 }
 
 /**
@@ -99,7 +102,7 @@ function mergeVolumeDistributionDelta(
     : { ...profile, bins, last_trade_ms: lastTradeMs };
 }
 
-export function LiveSidebar({ code, live, bundle = null, todayKst = '' }: Props) {
+export function LiveSidebar({ code, live, bundle = null, todayKst = '', programTrade = null }: Props) {
   const cursorMs = useLiveCursorStore((s) => s.cursorMs);
   const timeframe = useLivePageStore((s) => s.candleTimeframe);
   const volumeDistributionEnabled = useLivePageStore((s) => s.volumeDistributionEnabled);
@@ -273,6 +276,12 @@ export function LiveSidebar({ code, live, bundle = null, todayKst = '' }: Props)
               closePoints={activeVolumeDistributionClosePoints}
               color={volumeDistributionColor}
               maxColor={volumeDistributionMaxColor}
+            />
+          }
+          program={
+            <ProgramTradeSummaryCard
+              series={programTrade}
+              cursorMs={isSpot ? cursorMs : null}
             />
           }
           brokers={

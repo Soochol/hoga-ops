@@ -45,7 +45,19 @@ def update_live_settings(
     data_dir: Path,
     *,
     storage_policy: LiveStoragePolicy,
+    program_trade_storage_enabled: bool | None = None,
 ) -> LiveSettings:
-    settings = LiveSettings(storage_policy=storage_policy)
+    previous = load_live_settings(data_dir)
+    program_enabled = (
+        previous.program_trade_storage_enabled
+        if program_trade_storage_enabled is None
+        else program_trade_storage_enabled
+    )
+    settings = LiveSettings(
+        storage_policy=storage_policy,
+        program_trade_storage_enabled=(
+            False if storage_policy == "ws_only" else bool(program_enabled)
+        ),
+    )
     save_live_settings(data_dir, settings)
     return settings

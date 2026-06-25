@@ -134,10 +134,16 @@ async def test_deciding_skips_complete(monkeypatch, tmp_path):
 
 
 @pytest.mark.asyncio
-async def test_deciding_skips_source_partial(monkeypatch, tmp_path):
+async def test_deciding_retries_source_partial(monkeypatch, tmp_path):
     monkeypatch.setattr(captures, "_data_dir", tmp_path)
     monkeypatch.setattr("hoga.api.eligibility.check_disk_state",
                         lambda *_a, **_k: Classification(state=DiskState.SOURCE_PARTIAL))
+
+    captured = {}
+    async def _stub_capture(state, resume, **_kwargs):
+        captured["resume"] = resume
+        state.phase = "done"
+    monkeypatch.setattr(captures, "_run_capture_and_parse", _stub_capture)
 
     captures._queue.append(_make_item("x-1"))  # force_retry=False
     workers = captures.start_workers(n=1)
@@ -145,8 +151,8 @@ async def test_deciding_skips_source_partial(monkeypatch, tmp_path):
     await captures.stop_workers(workers)
 
     snap = captures.get_queue_snapshot()
-    assert snap.done[0].phase == "skipped"
-    assert snap.done[0].skip_reason == "source_partial"
+    assert captured.get("resume") is False
+    assert snap.done[0].phase == "done"
 
 
 @pytest.mark.asyncio
@@ -1239,23 +1245,21 @@ def _seed_done_item(*, item_id: str, code: str, date: str, phase: CapturePhase,
     return s
 
 
-def test_enqueue_dedupes_against_done_complete_with_force_false(monkeypatch, tmp_path):
-    """done-phase _done item + force_retry=false → deduped as already_complete; _done untouched."""
+def test_enqueue_re_enqueues_done_without_force_concept(monkeypatch, tmp_path):
+    """done-phase _done item is re-enqueued; worker decides whether disk is complete."""
     _no_workers(monkeypatch)
     app = _build_test_app(monkeypatch, tmp_path)
     with TestClient(app) as c:
-        old = _seed_done_item(item_id="old-d", code="005930", date="20260520", phase="done")
+        _seed_done_item(item_id="old-d", code="005930", date="20260520", phase="done")
 
         r = _post_items(c, "005930", ["20260520"], force_retry=False)
         assert r.status_code == 201, r.text
         body = r.json()
-        assert body["enqueued"] == []
-        assert body["deduped"] == [{
-            "code": "005930", "date": "20260520", "reason": "already_complete",
-        }]
-        # _done untouched.
-        assert any(s.item_id == "old-d" for s in captures._done)
-        assert len(captures._queue) == 0
+        assert len(body["enqueued"]) == 1
+        assert body["enqueued"][0]["attempt"] == 2
+        assert body["deduped"] == []
+        assert all(s.item_id != "old-d" for s in captures._done)
+        assert len(captures._queue) == 1
 
 
 def test_enqueue_re_enqueues_done_with_force_true_per_adr_0035(monkeypatch, tmp_path):
@@ -1345,8 +1349,8 @@ def test_enqueue_re_enqueues_cancelled_done_regardless_of_force(monkeypatch, tmp
         assert all(s.item_id != "old-c" for s in captures._done)
 
 
-def test_enqueue_dedupes_against_skipped_with_force_false(monkeypatch, tmp_path):
-    """skipped + force_retry=false → already_skipped; _done untouched."""
+def test_enqueue_re_enqueues_skipped_without_force_concept(monkeypatch, tmp_path):
+    """skipped + force_retry=false still re-enqueues; retry cap is the only guard."""
     _no_workers(monkeypatch)
     app = _build_test_app(monkeypatch, tmp_path)
     with TestClient(app) as c:
@@ -1356,9 +1360,10 @@ def test_enqueue_dedupes_against_skipped_with_force_false(monkeypatch, tmp_path)
         r = _post_items(c, "005930", ["20260520"], force_retry=False)
         assert r.status_code == 201, r.text
         body = r.json()
-        assert body["enqueued"] == []
-        assert body["deduped"][0]["reason"] == "already_skipped"
-        assert any(s.item_id == "old-s" for s in captures._done)
+        assert len(body["enqueued"]) == 1
+        assert body["enqueued"][0]["attempt"] == 2
+        assert body["deduped"] == []
+        assert all(s.item_id != "old-s" for s in captures._done)
 
 
 def test_enqueue_re_enqueues_skipped_with_force_true(monkeypatch, tmp_path):
