@@ -414,7 +414,7 @@ describe('LiveWorkarea gate', () => {
       if (clientWidthDescriptor) {
         Object.defineProperty(HTMLElement.prototype, 'clientWidth', clientWidthDescriptor);
       } else {
-        delete (HTMLElement.prototype as Partial<HTMLElement>).clientWidth;
+        Reflect.deleteProperty(HTMLElement.prototype, 'clientWidth');
       }
     }
   });

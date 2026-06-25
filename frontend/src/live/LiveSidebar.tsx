@@ -102,6 +102,10 @@ function mergeVolumeDistributionDelta(
     : { ...profile, bins, last_trade_ms: lastTradeMs };
 }
 
+function isEmptyVolumeDistribution(profile: DayVolumeDistribution): boolean {
+  return profile.last_trade_ms == null && profile.bins.every((bin) => bin.qty === 0);
+}
+
 export function LiveSidebar({ code, live, bundle = null, todayKst = '', programTrade = null }: Props) {
   const cursorMs = useLiveCursorStore((s) => s.cursorMs);
   const timeframe = useLivePageStore((s) => s.candleTimeframe);
@@ -203,6 +207,13 @@ export function LiveSidebar({ code, live, bundle = null, todayKst = '', programT
     if (!volumeDistributionEnabled) return undefined;
     const persistedProfile = profileForDate(persistedVolumeDistributions, activeVolumeDistributionDate);
     if (persistedProfile) {
+      if (
+        activeVolumeDistributionDate === todayKst &&
+        isEmptyVolumeDistribution(persistedProfile) &&
+        recomputedTodayVolumeDistribution
+      ) {
+        return recomputedTodayVolumeDistribution;
+      }
       if (
         activeVolumeDistributionDate === todayKst &&
         persistedProfile.bins.length !== volumeDistributionRangeCount &&
