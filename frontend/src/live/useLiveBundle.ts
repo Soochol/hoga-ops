@@ -51,6 +51,17 @@ function bucketStartMs(tMs: number, bucketMs: number): number {
   return Math.floor(tMs / bucketMs) * bucketMs;
 }
 
+function candlePriceRange(candles: readonly Candle[], startMs: number, endMs: number): { min: number; max: number } | null {
+  let min = Number.POSITIVE_INFINITY;
+  let max = Number.NEGATIVE_INFINITY;
+  for (const candle of candles) {
+    if (candle.ts_ms < startMs || candle.ts_ms > endMs) continue;
+    if (Number.isFinite(candle.low)) min = Math.min(min, candle.low);
+    if (Number.isFinite(candle.high)) max = Math.max(max, candle.high);
+  }
+  return Number.isFinite(min) && Number.isFinite(max) ? { min, max } : null;
+}
+
 export function overlayLiveTradesOnCandles(
   candles: readonly Candle[],
   trades: readonly TradeSnapshot[],
@@ -183,23 +194,6 @@ export function useLiveBundle(
   // Minute-only gate: both /api/range (hoga indicators) and
   // /api/live/past-candles fire on the same condition.
   const enableMinute = !!(code && isMinute && minutePastFrom <= minutePastTo);
-  const past = useRange(
-    enableMinute ? code : null,
-    enableMinute ? minutePastFrom : null,
-    enableMinute ? minutePastTo : null,
-    enableMinute ? (timeframe as Timeframe) : null,
-    undefined,
-    // /live's minutePastTo is always today (line 83), so this enables the
-    // 5-min refetch that advances pastMaxQrT (review C1 — seam hole). The gate
-    // lives in rangeFreshnessOptions: past-only callers (no todayKst) stay
-    // frozen. A periodic refetch keeps the same query key → no placeholderData
-    // swap → does not set isExtending, so today's right edge is untouched.
-    todayKstYyyymmdd,
-    {
-      volumeDistributionBins: volumeDistributionEnabled ? volumeDistributionRangeCount : null,
-      tradeVolumePocBins: tradeVolumePocEnabled ? volumeDistributionRangeCount : null,
-    },
-  );
   const pastCandlesQuery = useLivePastCandles(
     enableMinute ? code : null,
     enableMinute ? minutePastFrom : null,
@@ -255,6 +249,31 @@ export function useLiveBundle(
     const bars = timeframe === 'D' ? raw : aggregateCalendar(raw, timeframe as 'W' | 'M');
     return bars.map(kisBarToCandle);
   }, [isMinute, timeframe, pastCandlesQuery.data, pastDailyCandlesQuery.data]);
+  const volumeDistributionPriceRange = useMemo(
+    () =>
+      isMinute && volumeDistributionEnabled
+        ? candlePriceRange(kisCandles, regularSessionOpenMs(todayKstYyyymmdd), regularSessionCloseMs(todayKstYyyymmdd))
+        : null,
+    [isMinute, volumeDistributionEnabled, kisCandles, todayKstYyyymmdd],
+  );
+  const past = useRange(
+    enableMinute ? code : null,
+    enableMinute ? minutePastFrom : null,
+    enableMinute ? minutePastTo : null,
+    enableMinute ? (timeframe as Timeframe) : null,
+    undefined,
+    // /live's minutePastTo is always today (line 83), so this enables the
+    // 5-min refetch that advances pastMaxQrT (review C1 — seam hole). The gate
+    // lives in rangeFreshnessOptions: past-only callers (no todayKst) stay
+    // frozen. A periodic refetch keeps the same query key → no placeholderData
+    // swap → does not set isExtending, so today's right edge is untouched.
+    todayKstYyyymmdd,
+    {
+      volumeDistributionBins: volumeDistributionEnabled ? volumeDistributionRangeCount : null,
+      tradeVolumePocBins: tradeVolumePocEnabled ? volumeDistributionRangeCount : null,
+      volumeDistributionPriceRange,
+    },
+  );
   const liveCandles = useMemo<Candle[]>(
     () => (isMinute ? overlayLiveTradesOnCandles(kisCandles, live.trade, bucketMs, venue) : kisCandles),
     [isMinute, kisCandles, live.trade, bucketMs, venue],

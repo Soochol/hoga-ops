@@ -68,7 +68,11 @@ export function useRange(
   timeframe: Timeframe | null,
   priceRange?: { min: number; max: number },
   todayKst?: string | null,
-  options?: { volumeDistributionBins?: number | null; tradeVolumePocBins?: number | null },
+  options?: {
+    volumeDistributionBins?: number | null;
+    tradeVolumePocBins?: number | null;
+    volumeDistributionPriceRange?: { min: number; max: number } | null;
+  },
 ) {
   const bucketMs = timeframe ? TIMEFRAME_TO_MS[timeframe] : null;
   const enabled = !!(code && from && to && bucketMs);
@@ -76,8 +80,12 @@ export function useRange(
   const priceQs = priceRange ? `&price_min=${priceRange.min}&price_max=${priceRange.max}` : '';
   const volumeDistributionBins = options?.volumeDistributionBins ?? null;
   const tradeVolumePocBins = options?.tradeVolumePocBins ?? null;
+  const volumeDistributionPriceRange = options?.volumeDistributionPriceRange ?? null;
   const volumeDistributionQs = volumeDistributionBins != null
     ? `&volume_distribution_bins=${volumeDistributionBins}`
+    : '';
+  const volumeDistributionPriceQs = volumeDistributionPriceRange != null
+    ? `&volume_distribution_price_min=${volumeDistributionPriceRange.min}&volume_distribution_price_max=${volumeDistributionPriceRange.max}`
     : '';
   const tradeVolumePocQs = tradeVolumePocBins != null
     ? `&trade_volume_poc_bins=${tradeVolumePocBins}`
@@ -94,13 +102,15 @@ export function useRange(
       priceRange?.min,
       priceRange?.max,
       volumeDistributionBins,
+      volumeDistributionPriceRange?.min,
+      volumeDistributionPriceRange?.max,
       tradeVolumePocBins,
       sourcePref,
     ] as const,
     queryFn: ({ signal }) =>
       apiCall<RangeBundle>(
         `/api/range?code=${code}&from=${from}&to=${to}&bucket_ms=${bucketMs}` +
-          `${priceQs}${volumeDistributionQs}${tradeVolumePocQs}&source_pref=${sourcePref}`,
+          `${priceQs}${volumeDistributionQs}${volumeDistributionPriceQs}${tradeVolumePocQs}&source_pref=${sourcePref}`,
         { signal },
       ),
     enabled,

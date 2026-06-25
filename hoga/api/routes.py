@@ -293,12 +293,22 @@ def build_router(engine: QueryEngine) -> APIRouter:
         bucket_ms: int = Query(...),
         source_pref: str = Query("hogaplay"),
         volume_distribution_bins: int | None = Query(None, ge=5, le=30),
+        volume_distribution_price_min: int | None = Query(None, ge=0),
+        volume_distribution_price_max: int | None = Query(None, ge=0),
         trade_volume_poc_bins: int | None = Query(None, ge=5, le=30),
     ) -> RangeBundle:
         try:
             validate_bucket_ms(bucket_ms)
         except ValueError as e:
             raise HTTPException(400, str(e)) from e
+        if (volume_distribution_price_min is None) != (volume_distribution_price_max is None):
+            raise HTTPException(400, "volume_distribution_price_min/max must be supplied together")
+        if (
+            volume_distribution_price_min is not None
+            and volume_distribution_price_max is not None
+            and volume_distribution_price_max < volume_distribution_price_min
+        ):
+            raise HTTPException(400, "volume_distribution_price_max < volume_distribution_price_min")
         source_pref = _validate_source_policy(source_pref)
         return build_range_bundle(
             engine,
@@ -308,6 +318,8 @@ def build_router(engine: QueryEngine) -> APIRouter:
             bucket_ms=bucket_ms,
             source_pref=source_pref,
             volume_distribution_bins=volume_distribution_bins,
+            volume_distribution_price_min=volume_distribution_price_min,
+            volume_distribution_price_max=volume_distribution_price_max,
             trade_volume_poc_bins=trade_volume_poc_bins,
         )
 

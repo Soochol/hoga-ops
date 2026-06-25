@@ -184,7 +184,11 @@ describe('useLiveBundle', () => {
       '1m',
       undefined,
       '20260527',
-      { volumeDistributionBins: 10, tradeVolumePocBins: 10 },
+      {
+        volumeDistributionBins: 10,
+        tradeVolumePocBins: 10,
+        volumeDistributionPriceRange: { min: 69900, max: 70100 },
+      },
     );
   });
 
@@ -205,7 +209,11 @@ describe('useLiveBundle', () => {
       '1m',
       undefined,
       '20260527',
-      { volumeDistributionBins: null, tradeVolumePocBins: 12 },
+      {
+        volumeDistributionBins: null,
+        tradeVolumePocBins: 12,
+        volumeDistributionPriceRange: null,
+      },
     );
   });
 
@@ -226,7 +234,11 @@ describe('useLiveBundle', () => {
       '1m',
       undefined,
       '20260527',
-      { volumeDistributionBins: null, tradeVolumePocBins: null },
+      {
+        volumeDistributionBins: null,
+        tradeVolumePocBins: null,
+        volumeDistributionPriceRange: null,
+      },
     );
   });
 

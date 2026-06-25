@@ -15,6 +15,8 @@ def _build_range_bundle_stub(
     bucket_ms,
     source_pref="hogaplay",
     volume_distribution_bins=None,
+    volume_distribution_price_min=None,
+    volume_distribution_price_max=None,
     trade_volume_poc_bins=None,
 ):
     """Return a minimal valid RangeBundle for happy-path tests."""
@@ -233,6 +235,8 @@ def test_api_range_source_pref_threads_through(app_client: TestClient) -> None:
         bucket_ms,
         source_pref="hogaplay",
         volume_distribution_bins=None,
+        volume_distribution_price_min=None,
+        volume_distribution_price_max=None,
         trade_volume_poc_bins=None,
     ):
         captured.append(source_pref)
@@ -243,6 +247,8 @@ def test_api_range_source_pref_threads_through(app_client: TestClient) -> None:
             bucket_ms=bucket_ms,
             source_pref=source_pref,
             volume_distribution_bins=volume_distribution_bins,
+            volume_distribution_price_min=volume_distribution_price_min,
+            volume_distribution_price_max=volume_distribution_price_max,
             trade_volume_poc_bins=trade_volume_poc_bins,
         )
 
@@ -268,6 +274,8 @@ def test_api_range_source_pref_defaults_to_hogaplay(app_client: TestClient) -> N
         bucket_ms,
         source_pref="hogaplay",
         volume_distribution_bins=None,
+        volume_distribution_price_min=None,
+        volume_distribution_price_max=None,
         trade_volume_poc_bins=None,
     ):
         captured.append(source_pref)
@@ -278,6 +286,8 @@ def test_api_range_source_pref_defaults_to_hogaplay(app_client: TestClient) -> N
             bucket_ms=bucket_ms,
             source_pref=source_pref,
             volume_distribution_bins=volume_distribution_bins,
+            volume_distribution_price_min=volume_distribution_price_min,
+            volume_distribution_price_max=volume_distribution_price_max,
             trade_volume_poc_bins=trade_volume_poc_bins,
         )
 
@@ -319,6 +329,44 @@ def test_api_range_threads_volume_distribution_bins(app_client: TestClient) -> N
 
     assert r.status_code == 200, r.text
     assert captured == [10]
+
+
+def test_api_range_threads_volume_distribution_price_range(app_client: TestClient) -> None:
+    captured: list[tuple[int | None, int | None]] = []
+
+    def _stub(engine, **kw):
+        captured.append((
+            kw.get("volume_distribution_price_min"),
+            kw.get("volume_distribution_price_max"),
+        ))
+        return _build_range_bundle_stub(**kw)
+
+    with patch("hoga.api.routes.build_range_bundle", side_effect=_stub):
+        r = app_client.get(
+            "/api/range?code=005930&from=20260512&to=20260512"
+            "&bucket_ms=60000&volume_distribution_price_min=69900"
+            "&volume_distribution_price_max=70100"
+        )
+
+    assert r.status_code == 200, r.text
+    assert captured == [(69900, 70100)]
+
+
+def test_api_range_rejects_incomplete_volume_distribution_price_range(app_client: TestClient) -> None:
+    r = app_client.get(
+        "/api/range?code=005930&from=20260512&to=20260512"
+        "&bucket_ms=60000&volume_distribution_price_min=69900"
+    )
+    assert r.status_code == 400
+
+
+def test_api_range_rejects_reversed_volume_distribution_price_range(app_client: TestClient) -> None:
+    r = app_client.get(
+        "/api/range?code=005930&from=20260512&to=20260512"
+        "&bucket_ms=60000&volume_distribution_price_min=70100"
+        "&volume_distribution_price_max=69900"
+    )
+    assert r.status_code == 400
 
 
 def test_api_range_threads_trade_volume_poc_bins(app_client: TestClient) -> None:

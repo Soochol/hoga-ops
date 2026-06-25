@@ -764,6 +764,80 @@ def test_build_volume_distribution_slice_uses_supplied_price_range_without_candl
     assert [bin.qty for bin in profile.bins][1] == 456
 
 
+def test_build_range_bundle_falls_back_to_trade_source_with_supplied_distribution_range(tmp_path):
+    import contextlib
+    import json
+
+    from hoga.api import bundle as bundle_mod
+    from hoga.api.bundle import build_range_bundle
+    from hoga.api.models import DayVolumeDistribution, VolumeDistributionBin, VolumeProfile
+
+    date = "20260512"
+    code = "005930"
+    meta = {
+        "regular_session_open_ms": 90_000_000,
+        "regular_session_close_ms": 153_000_000,
+        "collection_complete": True,
+        "is_partial": False,
+        "pages_collected": 1,
+        "total_unique_events": 1,
+    }
+    for source in ("kis_live", "kis_api"):
+        source_dir = tmp_path / "parquet" / date / code / source
+        source_dir.mkdir(parents=True)
+        (source_dir / "meta.json").write_text(json.dumps(meta), encoding="utf-8")
+    (tmp_path / "parquet" / date / code / "kis_api" / "trades.parquet").touch()
+
+    engine = _engine_with_meta_for_dates([date])
+    engine.data_dir = tmp_path
+    engine.parquet_dir.side_effect = lambda d, c, src="hogaplay": tmp_path / "parquet" / d / c / src
+
+    profile = DayVolumeDistribution(
+        date=date,
+        range_count=10,
+        price_min=69_900,
+        price_max=70_100,
+        session_open_ms=1,
+        session_close_ms=2,
+        bins=[VolumeDistributionBin(price_low=69_900, price_high=70_100, qty=123)],
+    )
+    vp = VolumeProfile(bin_count=0, price_min=0, price_max=0, bin_width=0, bins=[])
+    qr = bundle_mod.QuoteRatio(bucket_ms=60_000, points=[])
+    fs = bundle_mod.FillStrength(bucket_ms=60_000, points=[])
+
+    with contextlib.ExitStack() as stack:
+        stack.enter_context(patch.object(bundle_mod, "build_candles_slice", return_value=[]))
+        stack.enter_context(patch.object(bundle_mod, "downsample_candles", return_value=[]))
+        stack.enter_context(patch.object(bundle_mod, "build_quote_ratio_slice", return_value=qr))
+        stack.enter_context(patch.object(bundle_mod, "build_fill_strength_slice", return_value=fs))
+        stack.enter_context(patch.object(bundle_mod, "build_volume_profile_slice", return_value=vp))
+        stack.enter_context(patch.object(bundle_mod, "build_volume_profile_range", return_value=vp))
+        stack.enter_context(patch.object(bundle_mod, "build_ask_peak_slice", return_value=None))
+        stack.enter_context(patch.object(bundle_mod, "build_bid_peak_slice", return_value=None))
+        stack.enter_context(patch.object(bundle_mod, "build_program_trade_series", return_value=bundle_mod.ProgramTradeSeries(points=[])))
+        poc_builder = stack.enter_context(patch.object(bundle_mod, "build_trade_volume_poc_slice", return_value=None))
+        dist_builder = stack.enter_context(patch.object(bundle_mod, "build_volume_distribution_slice", return_value=profile))
+
+        rb = build_range_bundle(
+            engine,
+            code=code,
+            from_date=date,
+            to_date=date,
+            bucket_ms=60_000,
+            source_pref="kis_ws_first",
+            volume_distribution_bins=10,
+            volume_distribution_price_min=69_900,
+            volume_distribution_price_max=70_100,
+        )
+
+    assert rb.segments[0].source == "kis_live"
+    assert rb.volume_distributions == [profile]
+    assert dist_builder.call_args.kwargs["source"] == "kis_api"
+    assert dist_builder.call_args.kwargs["price_min"] == 69_900
+    assert dist_builder.call_args.kwargs["price_max"] == 70_100
+    assert poc_builder.call_args.kwargs["source"] == "kis_api"
+
+
 def test_expand_distribution_bins_single_price_day_stays_on_candle_range():
     bins = _expand_distribution_bins(
         price_min=70_000,
