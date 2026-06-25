@@ -407,6 +407,49 @@ def test_study_views_create_round_trips_trade_volume_poc_state_and_bands(tmp_pat
     assert loaded["bundle"]["trade_volume_pocs"][0]["center_price"] == 70_000.0
 
 
+def test_study_views_create_round_trips_volume_distribution_state_and_profiles(tmp_path):
+    raw = _req()
+    raw["indicator_state"] = {
+        **raw["indicator_state"],
+        "volume_distribution_enabled": False,
+        "volume_distribution_range_count": 24,
+        "volume_distribution_color": "#64748B",
+        "volume_distribution_max_color": "#EAB308",
+    }
+    raw["snapshot"]["indicator_state"] = raw["indicator_state"]
+    raw["snapshot"]["bundle"]["volume_distributions"] = [
+        {
+            "date": "20260616",
+            "range_count": 10,
+            "price_min": 69_000,
+            "price_max": 72_000,
+            "session_open_ms": 1_000,
+            "session_close_ms": 2_000,
+            "bins": [{"price_low": 69_000, "price_high": 70_500, "qty": 40}],
+        }
+    ]
+    req = ParquetStudyViewWriteRequest.model_validate(raw)
+
+    sv.create_save_sync(tmp_path, req=req, id="view1", now_ms=10)
+    loaded = sv.load_snapshot(tmp_path, id="view1").model_dump(mode="json")
+
+    assert loaded["indicator_state"]["volume_distribution_enabled"] is False
+    assert loaded["indicator_state"]["volume_distribution_range_count"] == 24
+    assert loaded["indicator_state"]["volume_distribution_color"] == "#64748B"
+    assert loaded["indicator_state"]["volume_distribution_max_color"] == "#EAB308"
+    assert loaded["bundle"]["volume_distributions"] == [
+        {
+            "date": "20260616",
+            "range_count": 10,
+            "price_min": 69_000.0,
+            "price_max": 72_000.0,
+            "session_open_ms": 1_000,
+            "session_close_ms": 2_000,
+            "bins": [{"price_low": 69_000.0, "price_high": 70_500.0, "qty": 40.0}],
+        }
+    ]
+
+
 def test_study_snapshot_defaults_detail_arrays_for_legacy_snapshots():
     snap = ParquetStudySnapshot.model_validate(_snapshot())
 

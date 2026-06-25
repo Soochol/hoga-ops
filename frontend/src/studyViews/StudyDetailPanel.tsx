@@ -26,6 +26,13 @@ function profileForDate(
   return profiles.find((profile) => profile.date === date) ?? null;
 }
 
+function segmentForTime(segments: RangeSegment[], timeMs: number | null): RangeSegment | null {
+  if (timeMs == null) return null;
+  return segments.find((segment) => (
+    segment.session_open_ms <= timeMs && timeMs <= segment.session_close_ms
+  )) ?? null;
+}
+
 export function StudyDetailPanel({ details, candles, segments, bucketMs, cursorMs }: Props) {
   const bucketStart = useMemo(() => {
     if (candles.length === 0) return null;
@@ -35,11 +42,13 @@ export function StudyDetailPanel({ details, candles, segments, bucketMs, cursorM
 
   const orderbook = bucketStart == null ? undefined : details.orderbookByBucketStart.get(bucketStart);
   const activeSegment = useMemo(() => {
-    if (bucketStart == null) return null;
-    return segments.find((segment) => (
-      segment.session_open_ms <= bucketStart && bucketStart <= segment.session_close_ms
-    )) ?? null;
+    return segmentForTime(segments, bucketStart);
   }, [bucketStart, segments]);
+  const volumeDistributionTimeMs = cursorMs ?? candles[candles.length - 1]?.ts_ms ?? null;
+  const activeVolumeDistributionSegment = useMemo(
+    () => segmentForTime(segments, volumeDistributionTimeMs),
+    [segments, volumeDistributionTimeMs],
+  );
   const sessionBrokerSeries = useMemo(
     () => studyBrokerBucketsToSeries(
       details.brokersByBucketStart,
@@ -68,8 +77,12 @@ export function StudyDetailPanel({ details, candles, segments, bucketMs, cursorM
   const snapshot = orderbook?.available ? orderbook.snapshot : null;
   const activeVolumeDistribution = useMemo(() => {
     if (!details.volumeDistributionEnabled) return undefined;
-    return profileForDate(details.volumeDistributions, activeSegment?.date ?? null);
-  }, [activeSegment?.date, details.volumeDistributionEnabled, details.volumeDistributions]);
+    return profileForDate(details.volumeDistributions, activeVolumeDistributionSegment?.date ?? null);
+  }, [
+    activeVolumeDistributionSegment?.date,
+    details.volumeDistributionEnabled,
+    details.volumeDistributions,
+  ]);
   const volumeDistributionCursorMs = cursorMs ?? bucketStart;
 
   return (

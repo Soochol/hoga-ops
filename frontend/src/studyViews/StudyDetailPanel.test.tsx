@@ -13,7 +13,7 @@ function details(overrides: Partial<StudySnapshotDetailInput> = {}): StudySnapsh
 }
 
 describe('StudyDetailPanel', () => {
-  it('renders the saved volume distribution for the active segment date with the saved marker/colors', () => {
+  it('renders the saved volume distribution for the hovered segment date even when the cursor is between saved candles', () => {
     render(
       <StudyDetailPanel
         details={details({
@@ -47,7 +47,7 @@ describe('StudyDetailPanel', () => {
           { date: '20260626', session_open_ms: 190_000_000, session_close_ms: 253_000_000, source: 'hogaplay' },
         ]}
         bucketMs={60_000}
-        cursorMs={190_030_000}
+        cursorMs={190_120_000}
       />,
     );
 

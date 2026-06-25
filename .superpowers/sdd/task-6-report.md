@@ -51,3 +51,17 @@ Status: DONE
 
 - The frontend capture and adapter paths already had the `volume_distributions` round-trip in place from earlier work, so Task 6 focused on filling the remaining backend model gap and completing the restored study-detail rendering path.
 - The card respects saved indicator enablement: disabled snapshots continue to show the sidebar placeholder instead of forcing the card visible.
+
+## Review Fix Addendum
+
+- Adjusted `StudyDetailPanel` so saved `volume_distributions` are selected from the hovered/latest segment time instead of the active candle bucket. This keeps the saved profile visible when `cursorMs` is inside a session segment but between saved candle intervals, while leaving orderbook and broker lookups bucket-based.
+- Added a frontend regression in `StudyDetailPanel.test.tsx` covering a cursor positioned between saved candles inside the same segment.
+- Added a backend save/load regression in `tests/api/test_study_views.py` to prove `bundle.volume_distributions` and volume-distribution indicator settings survive `create_save_sync(...)` and `load_snapshot(...)`.
+
+### Review fix verification
+
+- `cd frontend && npm test -- useStudySnapshotCapture.test.ts studySnapshotAdapter.test.ts StudyDetailPanel`
+  - `Test Files  3 passed (3)`
+  - `Tests  21 passed (21)`
+- `uv run pytest tests/api/test_study_views.py -k volume_distribution -v`
+  - `6 passed, 60 deselected in 0.11s`
