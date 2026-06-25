@@ -1,5 +1,6 @@
 import duckdb, datetime as dt
 from pathlib import Path
+import polars as pl
 from hoga.api import screener_scan
 from hoga.api.models import ScreenerUniverse, TradeValueLeaf, TradeValueParams
 
@@ -28,6 +29,62 @@ def test_trade_value_filters_latest_day(tmp_path):
     rows = screener_scan.run_scan(adj, stk, conditions=[leaf], universe=ScreenerUniverse())
     assert [r.code for r in rows] == ["005930"]
     assert rows[0].code == "005930" and rows[0].trade_value_won == 600_000_000
+
+
+def test_intraday_rows_participate_in_new_high_today(tmp_path):
+    from hoga.api.models import NewHighTodayLeaf, PeriodParams
+
+    adj, stk = _seed(tmp_path,
+        rows=[("000111", "2026-06-20", 100, 100, 100, 100, 10),
+              ("000111", "2026-06-23", 100, 101, 100, 100, 10),
+              ("000111", "2026-06-24", 100, 102, 100, 100, 10)],
+        stocks=[("000111", "a", "KOSPI", False, False)])
+    intraday = pl.DataFrame({
+        "code": ["000111"],
+        "date": [dt.date(2026, 6, 25)],
+        "open": [100.0],
+        "high": [110.0],
+        "low": [99.0],
+        "close": [109.0],
+        "volume": [100],
+    })
+
+    out = screener_scan.run_scan(
+        adj, stk,
+        conditions=[NewHighTodayLeaf(id="t", params=PeriodParams(period=3))],
+        universe=ScreenerUniverse(),
+        intraday_rows=intraday,
+    )
+
+    assert [r.code for r in out] == ["000111"]
+    assert out[0].price == 109
+
+
+def test_intraday_rows_drive_trade_value_period(tmp_path):
+    from hoga.api.models import TradeValuePeriodLeaf, TradeValuePeriodParams
+
+    adj, stk = _seed(tmp_path,
+        rows=[("000111", "2026-06-24", 100, 100, 100, 100, 1)],
+        stocks=[("000111", "a", "KOSPI", False, False)])
+    intraday = pl.DataFrame({
+        "code": ["000111"],
+        "date": [dt.date(2026, 6, 25)],
+        "open": [100.0],
+        "high": [300.0],
+        "low": [100.0],
+        "close": [100.0],
+        "volume": [1_000_000],
+    })
+
+    out = screener_scan.run_scan(
+        adj, stk,
+        conditions=[TradeValuePeriodLeaf(id="t", params=TradeValuePeriodParams(lookback=1, min_eok=1))],
+        universe=ScreenerUniverse(),
+        intraday_rows=intraday,
+    )
+
+    assert [r.code for r in out] == ["000111"]
+    assert out[0].trade_value_won == 150_000_000
 
 
 def test_scan_filters_noncorpus_market_and_null_name(tmp_path):

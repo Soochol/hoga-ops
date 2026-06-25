@@ -53,7 +53,12 @@ def test_ma_source_defaults_close_and_rejects_unknown():
 
 def test_scan_request_defaults():
     r = ScanRequest.model_validate({"conditions": [], "universe": {}})
-    assert r.limit == 1000 and r.universe.markets == []
+    assert r.limit == 1000 and r.universe.markets == [] and r.basis == "eod"
+
+
+def test_scan_request_accepts_intraday_basis():
+    r = ScanRequest.model_validate({"conditions": [], "universe": {}, "basis": "intraday"})
+    assert r.basis == "intraday"
 
 def test_screener_row_is_flat_no_matches():
     row = ScreenerRow(code="005930", name="삼성전자", market="KOSPI",

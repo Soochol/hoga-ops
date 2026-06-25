@@ -1106,10 +1106,14 @@ class ScreenerUniverse(BaseModel):
     exclude_etf: bool = False
     exclude_halted: bool = False
 
+ScanBasis = Literal["eod", "intraday"]
+
+
 class ScanRequest(BaseModel):
     conditions: list[ConditionLeaf] = Field(default_factory=list)
     universe: ScreenerUniverse = Field(default_factory=ScreenerUniverse)
     limit: int = Field(1000, ge=1, le=2000)
+    basis: ScanBasis = "eod"
 
 class ScreenerRow(BaseModel):                          # 평면형 — 조건 배지 없음
     code: str = Field(pattern=CODE_PATTERN)
