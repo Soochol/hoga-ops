@@ -346,16 +346,21 @@ def build_volume_distribution_slice(
     session_open_ms: int,
     session_close_ms: int,
     range_count: int,
+    price_min: int | None = None,
+    price_max: int | None = None,
 ) -> DayVolumeDistribution | None:
     code_dir = engine.parquet_dir(date, code, source)
     candles_path = code_dir / "candles.parquet"
     trades_path = code_dir / "trades.parquet"
-    if not candles_path.exists() or not trades_path.exists():
+    if not trades_path.exists():
         return None
-    price_range = candles_tbl.query_price_range(engine.conn, path=candles_path)
-    if price_range is None:
-        return None
-    price_min, price_max = price_range
+    if price_min is None or price_max is None:
+        if not candles_path.exists():
+            return None
+        price_range = candles_tbl.query_price_range(engine.conn, path=candles_path)
+        if price_range is None:
+            return None
+        price_min, price_max = price_range
     binning = trades_tbl.query_continuous_trade_volume_distribution(
         engine.conn,
         path=trades_path,
@@ -1087,6 +1092,8 @@ def build_range_bundle(
         fill_pts.extend(fs_d.points)
         profiles_by_day.append(vp_d)
         if volume_distribution_bins is not None:
+            raw_lows = [c.low for c in raw_candles]
+            raw_highs = [c.high for c in raw_candles]
             profile = build_volume_distribution_slice(
                 engine,
                 code=code,
@@ -1095,6 +1102,8 @@ def build_range_bundle(
                 session_open_ms=int(norm_meta["regular_session_open_ms"]),
                 session_close_ms=int(meta["regular_session_close_ms"]),
                 range_count=volume_distribution_bins,
+                price_min=min(raw_lows) if raw_lows else None,
+                price_max=max(raw_highs) if raw_highs else None,
             )
             if profile is not None:
                 volume_distributions.append(profile)
