@@ -316,6 +316,49 @@ describe('LiveWorkarea gate', () => {
     expect(document.body.style.userSelect).toBe('');
   });
 
+  it('starts splitter drag from the rendered clamped width when the saved width is oversized', () => {
+    useLiveLayoutStore.setState({
+      rightPanelWidthPx: 700,
+      rightCardWeights: DEFAULT_CARD_WEIGHTS,
+    });
+
+    render(
+      <LiveWorkarea
+        activeCode="005930"
+        bundle={INDEX_BUNDLE}
+        clampEngaged={false}
+        isPastCandlesLoading={false}
+        isExtending={false}
+        live={LIVE}
+      />,
+    );
+
+    const workarea = screen.getByTestId('live-workarea');
+    Object.defineProperty(workarea, 'clientWidth', { configurable: true, value: 1100 });
+    triggerResize(workarea, 1100);
+
+    const detailPanel = screen.getByRole('complementary', { name: 'Live Detail Panel' });
+    expect(detailPanel).toHaveStyle({ width: '454px' });
+
+    const splitter = screen.getByTestId('live-workarea-splitter');
+    const setPointerCapture = vi.fn();
+    const releasePointerCapture = vi.fn();
+    const hasPointerCapture = vi.fn(() => true);
+    Object.defineProperty(splitter, 'setPointerCapture', { configurable: true, value: setPointerCapture });
+    Object.defineProperty(splitter, 'releasePointerCapture', { configurable: true, value: releasePointerCapture });
+    Object.defineProperty(splitter, 'hasPointerCapture', { configurable: true, value: hasPointerCapture });
+
+    fireEvent.pointerDown(splitter, { pointerId: 1, clientX: 800 });
+    fireEvent.pointerMove(window, { clientX: 810 });
+
+    expect(useLiveLayoutStore.getState().rightPanelWidthPx).toBe(444);
+
+    fireEvent.pointerUp(window, { pointerId: 1, clientX: 810 });
+
+    expect(useLiveLayoutStore.getState().rightPanelWidthPx).toBe(444);
+    expect(JSON.parse(localStorage.getItem('live.layout.v1') ?? '{}').rightPanelWidthPx).toBe(444);
+  });
+
   it('clamps a persisted oversized detail width on mount without overwriting the saved width', () => {
     useLiveLayoutStore.setState({
       rightPanelWidthPx: 700,

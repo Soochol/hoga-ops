@@ -249,8 +249,12 @@ export function LiveWorkarea({
     document.body.style.cursor = 'col-resize';
     document.body.style.userSelect = 'none';
     const startX = event.clientX;
-    const startWidth = useLiveLayoutStore.getState().rightPanelWidthPx;
     const workareaWidth = workarea.clientWidth;
+    const startWidth = clampRightPanelWidth(
+      useLiveLayoutStore.getState().rightPanelWidthPx,
+      workareaWidth,
+      LIVE_WORKAREA_SPLITTER_WIDTH_PX,
+    );
     const target = event.currentTarget;
     const move = (moveEvent: PointerEvent) => {
       const next = clampRightPanelWidth(
