@@ -143,6 +143,9 @@ type Store = Persisted & PersistedIndicators & {
   setTradeVolumePocEnabled: (enabled: boolean) => void;
   setTradeVolumePocBandPct: (bandPct: number) => void;
   setTradeVolumePocStyle: (patch: { color?: string; opacity?: number }) => void;
+  setVolumeDistributionEnabled: (enabled: boolean) => void;
+  setVolumeDistributionRangeCount: (count: number) => void;
+  setVolumeDistributionStyle: (patch: { color?: string; maxColor?: string }) => void;
   setQuoteTotalsEnabled: (enabled: boolean) => void;
   setRatioEnabled: (enabled: boolean) => void;
   setFillStrengthEnabled: (enabled: boolean) => void;
@@ -255,6 +258,10 @@ function snapshotIndicators(get: () => Store): PersistedIndicators {
     tradeVolumePocBandPct: s.tradeVolumePocBandPct,
     tradeVolumePocColor: s.tradeVolumePocColor,
     tradeVolumePocOpacity: s.tradeVolumePocOpacity,
+    volumeDistributionEnabled: s.volumeDistributionEnabled,
+    volumeDistributionRangeCount: s.volumeDistributionRangeCount,
+    volumeDistributionColor: s.volumeDistributionColor,
+    volumeDistributionMaxColor: s.volumeDistributionMaxColor,
     quoteTotalsEnabled: s.quoteTotalsEnabled,
     ratioEnabled: s.ratioEnabled,
     fillStrengthEnabled: s.fillStrengthEnabled,
@@ -452,6 +459,25 @@ export const useLivePageStore = create<Store>((set, get) => ({
       tradeVolumePocOpacity: patch.opacity === undefined
         ? s.tradeVolumePocOpacity
         : clamp(patch.opacity, 0, 1),
+    }));
+    persistIndicators(snapshotIndicators(get));
+  },
+
+  setVolumeDistributionEnabled: (enabled) => {
+    set({ volumeDistributionEnabled: enabled });
+    persistIndicators(snapshotIndicators(get));
+  },
+
+  setVolumeDistributionRangeCount: (count) => {
+    if (!Number.isFinite(count)) return;
+    set({ volumeDistributionRangeCount: clamp(Math.trunc(count), 5, 30) });
+    persistIndicators(snapshotIndicators(get));
+  },
+
+  setVolumeDistributionStyle: (patch) => {
+    set((s) => ({
+      volumeDistributionColor: patch.color ?? s.volumeDistributionColor,
+      volumeDistributionMaxColor: patch.maxColor ?? s.volumeDistributionMaxColor,
     }));
     persistIndicators(snapshotIndicators(get));
   },

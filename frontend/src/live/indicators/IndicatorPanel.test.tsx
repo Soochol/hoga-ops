@@ -4,18 +4,19 @@ import IndicatorPanel from './IndicatorPanel';
 import { useLivePageStore } from '../../state/livePage';
 
 describe('IndicatorPanel', () => {
-  it('활성 11개 체크박스(비활성 0), 호가 6종 포함', () => {
+  it('활성 12개 체크박스(비활성 0), 호가 7종 포함', () => {
     useLivePageStore.setState({
       quoteTotalsEnabled: true,
       ratioEnabled: true,
       fillStrengthEnabled: true,
       tradeVolumePocEnabled: true,
+      volumeDistributionEnabled: true,
     });
     render(<IndicatorPanel onClose={() => {}} />);
     const checkboxes = screen.getAllByRole('checkbox');
-    expect(checkboxes).toHaveLength(11); // 상단 5 + 호가 6(최대 매물대/매도/매수 최대벽 포함)
+    expect(checkboxes).toHaveLength(12); // 상단 5 + 호가 7(연속체결 매물대 분포 포함)
     expect(checkboxes.filter((c) => (c as HTMLButtonElement).disabled)).toHaveLength(0);
-    for (const name of ['총잔량', '호가비', '체결강도', '당일 최대 매물대']) {
+    for (const name of ['총잔량', '호가비', '체결강도', '연속체결 매물대 분포', '당일 최대 매물대']) {
       const cb = screen.getByRole('checkbox', { name }) as HTMLButtonElement;
       expect(cb.disabled).toBe(false);
       expect(cb.getAttribute('aria-checked')).toBe('true'); // 기본 ON
@@ -38,7 +39,7 @@ describe('IndicatorPanel', () => {
   it('index capabilities hide every hoga indicator category', () => {
     render(<IndicatorPanel onClose={() => {}} capabilities={{ hogaPanes: false, investorNet: 'market', studySave: false }} />);
     expect(screen.queryByText('호가 지표')).toBeNull();
-    for (const name of ['총잔량', '호가비', '체결강도', '당일 최대 매물대', '당일 매도 최대벽', '당일 매수 최대벽']) {
+    for (const name of ['총잔량', '호가비', '체결강도', '연속체결 매물대 분포', '당일 최대 매물대', '당일 매도 최대벽', '당일 매수 최대벽']) {
       expect(screen.queryByRole('checkbox', { name })).toBeNull();
       expect(screen.queryByRole('button', { name })).toBeNull();
     }
@@ -59,9 +60,12 @@ describe('IndicatorPanel', () => {
     const labels = screen.getAllByRole('button').map((b) => b.textContent);
     const askPeak = labels.indexOf('당일 매도 최대벽');
     const poc = labels.indexOf('당일 최대 매물대');
+    const distribution = labels.indexOf('연속체결 매물대 분포');
     const fill = labels.indexOf('체결강도');
     const inst = labels.indexOf('기관 순매수량');
     expect(askPeak).toBeGreaterThan(fill); // 호가 그룹 안, 체결강도 뒤
+    expect(distribution).toBeGreaterThan(fill);
+    expect(poc).toBeGreaterThan(distribution);
     expect(poc).toBeGreaterThan(fill);
     expect(askPeak).toBeGreaterThan(poc);
     expect(askPeak).toBeGreaterThan(inst); // 상단 지표(기관 순매수량) 그룹 뒤
@@ -205,6 +209,32 @@ describe('IndicatorPanel', () => {
     const cb = screen.getByRole('checkbox', { name: '당일 최대 매물대' });
     fireEvent.click(cb);
     expect(useLivePageStore.getState().tradeVolumePocEnabled).toBe(false);
+  });
+
+  it('연속체결 매물대 분포 카테고리 토글', () => {
+    useLivePageStore.setState({ volumeDistributionEnabled: true });
+    render(<IndicatorPanel onClose={() => {}} />);
+    const cb = screen.getByRole('checkbox', { name: '연속체결 매물대 분포' });
+    fireEvent.click(cb);
+    expect(useLivePageStore.getState().volumeDistributionEnabled).toBe(false);
+  });
+
+  it('연속체결 매물대 분포 선택 시 범위/색상 설정을 저장한다', () => {
+    useLivePageStore.setState({
+      volumeDistributionRangeCount: 10,
+      volumeDistributionColor: '#64748B',
+      volumeDistributionMaxColor: '#EAB308',
+    });
+    render(<IndicatorPanel onClose={() => {}} />);
+    fireEvent.click(screen.getByRole('button', { name: '연속체결 매물대 분포' }));
+    fireEvent.change(screen.getByRole('spinbutton', { name: '연속체결 매물대 분포 구간 수' }), {
+      target: { value: '18' },
+    });
+    fireEvent.click(screen.getByRole('button', { name: '연속체결 매물대 분포 색상 #22C55E' }));
+    fireEvent.click(screen.getByRole('button', { name: '연속체결 매물대 분포 최대 구간 색상 #EF4444' }));
+    expect(useLivePageStore.getState().volumeDistributionRangeCount).toBe(18);
+    expect(useLivePageStore.getState().volumeDistributionColor).toBe('#22C55E');
+    expect(useLivePageStore.getState().volumeDistributionMaxColor).toBe('#EF4444');
   });
 
   it('당일 최대 매물대 선택 시 자동 범위 설명 표시', () => {

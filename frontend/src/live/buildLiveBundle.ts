@@ -487,6 +487,7 @@ export function buildChartBundle(input: BuildChartBundleInput): RangeBundle {
     fill_strength: { bucket_ms: bucketMs, points: [] },
     volume_profile_range: EMPTY_VOLUME_PROFILE,
     volume_profile_by_day: [],
+    volume_distributions: pastBundle?.volume_distributions ?? [],
     investorPoints,
     // 거래일별 매도 최대벽은 /api/range(pastBundle)에서 거래일당 1개씩 온다 — 그대로 통과시킨다.
     // (hoga 시리즈와 달리 candle-path 데이터라 라이브 오버레이가 덮어쓰지 않는다. 오늘 항목은

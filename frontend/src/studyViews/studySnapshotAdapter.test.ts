@@ -40,6 +40,7 @@ function snapshot(overrides: Partial<StudySnapshotBundle> = {}): StudySnapshotBu
       max_qty: 5_800,
       max_t_ms: 1_000,
     }],
+    volume_distributions: [],
     data_warnings: ['partial'],
     ...overrides,
   };
@@ -70,6 +71,7 @@ describe('studySnapshotBundleToRangeBundle', () => {
     expect(bundle.fill_strength.points[0]).toMatchObject({ t: 1000, buy_qty: 5, sell_qty: 4 });
     expect(bundle.volume_profile_range).toEqual({ bin_count: 0, price_min: 0, price_max: 0, bin_width: 0, bins: [] });
     expect(bundle.volume_profile_by_day).toEqual([]);
+    expect(bundle.volume_distributions).toEqual([]);
     expect(bundle.investorPoints).toEqual([]);
     expect(bundle.ask_peaks).toEqual([{
       date: '20260616',
@@ -137,6 +139,30 @@ describe('studySnapshotBundleToRangeBundle', () => {
       imb_max_ask: 90,
     }]);
     expect(bundle.study_ratio.points).toEqual([{ t: 1000, value: -49 }]);
+  });
+
+  it('preserves saved volume distributions from the snapshot bundle', () => {
+    const bundle = studySnapshotBundleToRangeBundle(snapshot({
+      volume_distributions: [{
+        date: '20260616',
+        range_count: 10,
+        price_min: 69_000,
+        price_max: 71_000,
+        session_open_ms: 1_000,
+        session_close_ms: 2_000,
+        bins: [{ price_low: 69_000, price_high: 69_200, qty: 100 }],
+      }],
+    }));
+
+    expect(bundle.volume_distributions).toEqual([{
+      date: '20260616',
+      range_count: 10,
+      price_min: 69_000,
+      price_max: 71_000,
+      session_open_ms: 1_000,
+      session_close_ms: 2_000,
+      bins: [{ price_low: 69_000, price_high: 69_200, qty: 100 }],
+    }]);
   });
 
   it('adapts saved ratio display into a chart-ready ratio bundle', () => {
