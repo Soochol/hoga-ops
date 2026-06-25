@@ -151,11 +151,12 @@ describe('LiveSidebar', () => {
   it('renders investor trend estimate card after brokers card', () => {
     renderSidebar({ code: '005930' });
 
-    const brokers = screen.getByTestId('card-brokers');
-    const estimate = screen.getByTestId('investor-trend-estimate-card');
+    const brokers = screen.getByTestId('live-detail-card-brokers');
+    const estimate = screen.getByTestId('live-detail-card-investor');
     expect(
       brokers.compareDocumentPosition(estimate) & Node.DOCUMENT_POSITION_FOLLOWING,
     ).toBeTruthy();
+    expect(screen.getByTestId('investor-trend-estimate-card')).toBeInTheDocument();
   });
 
   it('renders the volume distribution card between orderbook and brokers', () => {
@@ -408,9 +409,9 @@ describe('LiveSidebar', () => {
       live: emptyLive,
     });
 
-    const orderbook = screen.getByTestId('card-orderbook');
-    const program = screen.getByTestId('card-program-trade');
-    const brokers = screen.getByTestId('card-brokers');
+    const orderbook = screen.getByTestId('live-detail-card-orderbook');
+    const program = screen.getByTestId('live-detail-card-program');
+    const brokers = screen.getByTestId('live-detail-card-brokers');
     expect(
       orderbook.compareDocumentPosition(program) & Node.DOCUMENT_POSITION_FOLLOWING,
     ).toBeTruthy();
@@ -435,9 +436,9 @@ describe('LiveSidebar', () => {
       </QueryClientProvider>,
     );
 
-    expect(screen.getByTestId('card-program-trade')).toHaveTextContent('프로그램');
-    expect(screen.getByTestId('card-program-trade')).toHaveTextContent('-2억');
-    expect(screen.getByTestId('card-program-trade')).toHaveTextContent('-20');
+    expect(screen.getByTestId('live-detail-card-program')).toHaveTextContent('프로그램');
+    expect(screen.getByTestId('live-detail-card-program')).toHaveTextContent('-2억');
+    expect(screen.getByTestId('live-detail-card-program')).toHaveTextContent('-20');
   });
 
   it('reads live data from the prop, not from useLiveSeries (LivePage-lift)', () => {

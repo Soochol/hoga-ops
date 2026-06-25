@@ -1,12 +1,14 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { fireEvent, render, screen } from '@testing-library/react';
+import { act, fireEvent, render, screen } from '@testing-library/react';
 import { LiveWorkarea } from './LiveWorkarea';
 import type { LiveChartRoot } from './LiveChartRoot';
 import { useLivePageStore } from '../state/livePage';
+import { isPointOnChart, useEntryDragStore } from '../state/entryDrag';
 import { indexInstrument, stockInstrument } from './liveInstrument';
 import type { IndexSectorRankingResponse } from '../api/indexSectorRankings';
 import type { LiveSeriesData } from '../api/liveSeries';
 import type { RangeBundle } from '../api/types';
+import { DEFAULT_CARD_WEIGHTS, DEFAULT_RIGHT_PANEL_WIDTH_PX, useLiveLayoutStore } from '../state/liveLayout';
 
 type LiveChartRootProps = Parameters<typeof LiveChartRoot>[0];
 type LiveChartRootMock = (props: LiveChartRootProps) => JSX.Element;
@@ -62,6 +64,20 @@ vi.mock('../api/indexSectorRankings', () => ({
 vi.mock('./useJumpToLive', () => ({
   useJumpToLive: () => vi.fn(),
 }));
+
+const resizeObserverCallbacks: ResizeObserverCallback[] = [];
+
+if (typeof window !== 'undefined' && !window.ResizeObserver) {
+  window.ResizeObserver = class ResizeObserver {
+    constructor(callback: ResizeObserverCallback) {
+      resizeObserverCallbacks.push(callback);
+    }
+
+    observe() {}
+    unobserve() {}
+    disconnect() {}
+  };
+}
 
 const LIVE: LiveSeriesData = {
   initial: undefined, isLoading: false, error: null, ob: [], trade: [], broker: [],
@@ -142,12 +158,71 @@ function renderWorkarea(activeCode: string | null, activeInstrument = null) {
   );
 }
 
+function mockRect(
+  element: Element,
+  rect: { left: number; top: number; right: number; bottom: number },
+) {
+  Object.defineProperty(element, 'getBoundingClientRect', {
+    configurable: true,
+    value: () => ({
+      x: rect.left,
+      y: rect.top,
+      width: rect.right - rect.left,
+      height: rect.bottom - rect.top,
+      left: rect.left,
+      top: rect.top,
+      right: rect.right,
+      bottom: rect.bottom,
+      toJSON: () => rect,
+    }),
+  });
+}
+
+function triggerResize(target: Element, width: number, height = 0) {
+  Object.defineProperty(target, 'clientWidth', { configurable: true, value: width });
+  act(() => {
+    for (const callback of resizeObserverCallbacks) {
+      callback(
+        [{
+          target,
+          contentRect: {
+            x: 0,
+            y: 0,
+            top: 0,
+            left: 0,
+            bottom: height,
+            right: width,
+            width,
+            height,
+            toJSON: () => ({}),
+          },
+        } as ResizeObserverEntry],
+        {} as ResizeObserver,
+      );
+    }
+  });
+}
+
 describe('LiveWorkarea gate', () => {
   beforeEach(() => {
+    localStorage.clear();
+    resizeObserverCallbacks.length = 0;
     liveChartRootMock.mockClear();
     liveSidebarMock.mockClear();
     useIndexSectorRankingsMock.mockClear();
+    useEntryDragStore.setState({
+      draggingCode: null,
+      overChart: false,
+      overStudy: false,
+      targets: {},
+      hitTestChart: null,
+      hitTestStudy: null,
+    });
     useLivePageStore.setState({ candleTimeframe: '1m' });
+    useLiveLayoutStore.setState({
+      rightPanelWidthPx: DEFAULT_RIGHT_PANEL_WIDTH_PX,
+      rightCardWeights: DEFAULT_CARD_WEIGHTS,
+    });
   });
 
   it('renders the chart when activeCode is set (even with empty watchlist)', () => {
@@ -183,9 +258,255 @@ describe('LiveWorkarea gate', () => {
     );
   });
 
+  it('renders the toolbar inside the chart panel and sidebar beside it', () => {
+    render(
+      <LiveWorkarea
+        activeCode="005930"
+        bundle={INDEX_BUNDLE}
+        clampEngaged={false}
+        isPastCandlesLoading={false}
+        isExtending={false}
+        live={LIVE}
+        onOpenIndicators={vi.fn()}
+        onOpenSettings={vi.fn()}
+        studySaveControl={<button type="button">save</button>}
+      />,
+    );
+
+    const chartPanel = screen.getByTestId('live-chart-panel');
+    expect(chartPanel).toContainElement(screen.getByTestId('live-toolbar'));
+    expect(screen.getByTestId('live-workarea-splitter')).toHaveAttribute('aria-orientation', 'vertical');
+    expect(screen.getByTestId('sidebar-stub')).toBeInTheDocument();
+  });
+
+  it('resizes the detail panel from the vertical splitter', () => {
+    render(
+      <LiveWorkarea
+        activeCode="005930"
+        bundle={INDEX_BUNDLE}
+        clampEngaged={false}
+        isPastCandlesLoading={false}
+        isExtending={false}
+        live={LIVE}
+      />,
+    );
+
+    const workarea = screen.getByTestId('live-workarea');
+    Object.defineProperty(workarea, 'clientWidth', { configurable: true, value: 1200 });
+    const splitter = screen.getByTestId('live-workarea-splitter');
+    const setPointerCapture = vi.fn();
+    const releasePointerCapture = vi.fn();
+    const hasPointerCapture = vi.fn(() => true);
+    Object.defineProperty(splitter, 'setPointerCapture', { configurable: true, value: setPointerCapture });
+    Object.defineProperty(splitter, 'releasePointerCapture', { configurable: true, value: releasePointerCapture });
+    Object.defineProperty(splitter, 'hasPointerCapture', { configurable: true, value: hasPointerCapture });
+
+    fireEvent.pointerDown(splitter, { pointerId: 1, clientX: 800 });
+    expect(document.body.style.cursor).toBe('col-resize');
+    expect(document.body.style.userSelect).toBe('none');
+    fireEvent.pointerMove(window, { clientX: 760 });
+    expect(useLiveLayoutStore.getState().rightPanelWidthPx).toBe(440);
+    fireEvent.pointerUp(window, { pointerId: 1, clientX: 760 });
+
+    expect(setPointerCapture).toHaveBeenCalledWith(1);
+    expect(hasPointerCapture).toHaveBeenCalledWith(1);
+    expect(releasePointerCapture).toHaveBeenCalledWith(1);
+    expect(useLiveLayoutStore.getState().rightPanelWidthPx).toBe(440);
+    expect(JSON.parse(localStorage.getItem('live.layout.v1') ?? '{}').rightPanelWidthPx).toBe(440);
+    expect(document.body.style.cursor).toBe('');
+    expect(document.body.style.userSelect).toBe('');
+  });
+
+  it('starts splitter drag from the rendered clamped width when the saved width is oversized', () => {
+    useLiveLayoutStore.setState({
+      rightPanelWidthPx: 700,
+      rightCardWeights: DEFAULT_CARD_WEIGHTS,
+    });
+
+    render(
+      <LiveWorkarea
+        activeCode="005930"
+        bundle={INDEX_BUNDLE}
+        clampEngaged={false}
+        isPastCandlesLoading={false}
+        isExtending={false}
+        live={LIVE}
+      />,
+    );
+
+    const workarea = screen.getByTestId('live-workarea');
+    Object.defineProperty(workarea, 'clientWidth', { configurable: true, value: 1100 });
+    triggerResize(workarea, 1100);
+
+    const detailPanel = screen.getByRole('complementary', { name: 'Live Detail Panel' });
+    expect(detailPanel).toHaveStyle({ width: '454px' });
+
+    const splitter = screen.getByTestId('live-workarea-splitter');
+    const setPointerCapture = vi.fn();
+    const releasePointerCapture = vi.fn();
+    const hasPointerCapture = vi.fn(() => true);
+    Object.defineProperty(splitter, 'setPointerCapture', { configurable: true, value: setPointerCapture });
+    Object.defineProperty(splitter, 'releasePointerCapture', { configurable: true, value: releasePointerCapture });
+    Object.defineProperty(splitter, 'hasPointerCapture', { configurable: true, value: hasPointerCapture });
+
+    fireEvent.pointerDown(splitter, { pointerId: 1, clientX: 800 });
+    fireEvent.pointerMove(window, { clientX: 810 });
+
+    expect(useLiveLayoutStore.getState().rightPanelWidthPx).toBe(444);
+
+    fireEvent.pointerUp(window, { pointerId: 1, clientX: 810 });
+
+    expect(useLiveLayoutStore.getState().rightPanelWidthPx).toBe(444);
+    expect(JSON.parse(localStorage.getItem('live.layout.v1') ?? '{}').rightPanelWidthPx).toBe(444);
+  });
+
+  it('clamps a persisted oversized detail width on mount without overwriting the saved width', () => {
+    useLiveLayoutStore.setState({
+      rightPanelWidthPx: 700,
+      rightCardWeights: DEFAULT_CARD_WEIGHTS,
+    });
+    const clientWidthDescriptor = Object.getOwnPropertyDescriptor(HTMLElement.prototype, 'clientWidth');
+    Object.defineProperty(HTMLElement.prototype, 'clientWidth', {
+      configurable: true,
+      get() {
+        return this instanceof HTMLElement && this.dataset.testid === 'live-workarea' ? 900 : 0;
+      },
+    });
+
+    try {
+      render(
+        <LiveWorkarea
+          activeCode="005930"
+          bundle={INDEX_BUNDLE}
+          clampEngaged={false}
+          isPastCandlesLoading={false}
+          isExtending={false}
+          live={LIVE}
+        />,
+      );
+
+      const detailPanel = screen.getByRole('complementary', { name: 'Live Detail Panel' });
+      expect(detailPanel).toHaveStyle({ width: '320px' });
+      expect(useLiveLayoutStore.getState().rightPanelWidthPx).toBe(700);
+    } finally {
+      if (clientWidthDescriptor) {
+        Object.defineProperty(HTMLElement.prototype, 'clientWidth', clientWidthDescriptor);
+      } else {
+        delete (HTMLElement.prototype as Partial<HTMLElement>).clientWidth;
+      }
+    }
+  });
+
+  it('clamps the rendered detail width when the workarea shrinks without overwriting the saved width', () => {
+    useLiveLayoutStore.setState({
+      rightPanelWidthPx: 500,
+      rightCardWeights: DEFAULT_CARD_WEIGHTS,
+    });
+
+    render(
+      <LiveWorkarea
+        activeCode="005930"
+        bundle={INDEX_BUNDLE}
+        clampEngaged={false}
+        isPastCandlesLoading={false}
+        isExtending={false}
+        live={LIVE}
+      />,
+    );
+
+    const workarea = screen.getByTestId('live-workarea');
+    Object.defineProperty(workarea, 'clientWidth', { configurable: true, value: 1200 });
+    triggerResize(workarea, 1200);
+
+    const detailPanel = screen.getByRole('complementary', { name: 'Live Detail Panel' });
+    expect(detailPanel).toHaveStyle({ width: '500px' });
+
+    triggerResize(workarea, 900);
+
+    expect(detailPanel).toHaveStyle({ width: '320px' });
+    expect(useLiveLayoutStore.getState().rightPanelWidthPx).toBe(500);
+  });
+
+  it('keeps the saved detail width when representative index charts hide the panel', () => {
+    useLiveLayoutStore.setState({
+      rightPanelWidthPx: 700,
+      rightCardWeights: DEFAULT_CARD_WEIGHTS,
+    });
+
+    render(
+      <LiveWorkarea
+        activeCode="index:KOSPI"
+        activeInstrument={indexInstrument('KOSPI', 'KOSPI')}
+        bundle={INDEX_BUNDLE_WITH_LAST_CANDLE}
+        clampEngaged={false}
+        isPastCandlesLoading={false}
+        isExtending={false}
+        live={LIVE}
+      />,
+    );
+
+    expect(screen.queryByRole('complementary', { name: 'Live Detail Panel' })).toBeNull();
+    expect(useLiveLayoutStore.getState().rightPanelWidthPx).toBe(700);
+  });
+
+  it('hides the live detail panel for representative index charts', () => {
+    useLivePageStore.setState({ candleTimeframe: 'D' });
+    render(
+      <LiveWorkarea
+        activeCode="index:KOSPI"
+        activeInstrument={indexInstrument('KOSPI', 'KOSPI')}
+        bundle={INDEX_BUNDLE_WITH_LAST_CANDLE}
+        clampEngaged={false}
+        isPastCandlesLoading={false}
+        isExtending={false}
+        live={LIVE}
+        onOpenIndicators={vi.fn()}
+        onOpenSettings={vi.fn()}
+      />,
+    );
+
+    expect(screen.queryByTestId('sidebar-stub')).toBeNull();
+    expect(screen.queryByTestId('live-workarea-splitter')).toBeNull();
+    expect(screen.getByTestId('live-chart-panel')).toBeInTheDocument();
+  });
+
   it('renders the search-prompt empty state when no activeCode', () => {
     renderWorkarea(null);
     expect(screen.getByTestId('live-empty-state')).toBeInTheDocument();
+  });
+
+  it('keeps the empty-state workarea droppable for chart-entry drags', () => {
+    renderWorkarea(null);
+
+    const chartPanel = screen.getByTestId('live-chart-panel');
+    mockRect(chartPanel, { left: 40, top: 20, right: 640, bottom: 420 });
+
+    expect(isPointOnChart({ x: 60, y: 60 })).toBe(true);
+    expect(isPointOnChart({ x: 20, y: 60 })).toBe(false);
+    expect(isPointOnChart({ x: 60, y: 460 })).toBe(false);
+  });
+
+  it('hit-tests the full chart panel, including toolbar, but excludes splitter and detail panel', () => {
+    render(
+      <LiveWorkarea
+        activeCode="005930"
+        bundle={INDEX_BUNDLE}
+        clampEngaged={false}
+        isPastCandlesLoading={false}
+        isExtending={false}
+        live={LIVE}
+        onOpenIndicators={vi.fn()}
+        onOpenSettings={vi.fn()}
+      />,
+    );
+
+    const chartPanel = screen.getByTestId('live-chart-panel');
+    mockRect(chartPanel, { left: 0, top: 0, right: 900, bottom: 600 });
+
+    expect(isPointOnChart({ x: 80, y: 24 })).toBe(true);
+    expect(isPointOnChart({ x: 320, y: 300 })).toBe(true);
+    expect(isPointOnChart({ x: 902, y: 300 })).toBe(false);
+    expect(isPointOnChart({ x: 1040, y: 300 })).toBe(false);
   });
 
   it('renders the index sector pane for index D timeframe', () => {

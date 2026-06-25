@@ -1,5 +1,4 @@
 import { useMemo } from 'react';
-import CursorSidebar from '../sidebar/CursorSidebar';
 import { InvestorTrendEstimateCard } from '../sidebar/InvestorTrendEstimateCard';
 import OrderbookTable from '../sidebar/OrderbookTable';
 import BrokerTrajectoryTable from '../sidebar/BrokerTrajectoryTable';
@@ -25,6 +24,7 @@ import {
 import { useLiveInvestorTrendEstimate } from '../api/liveInvestorTrendEstimate';
 import type { MinuteTimeframe } from '../state/livePage';
 import { isMinuteTimeframe } from '../state/livePage';
+import { LiveDetailPanel } from './LiveDetailPanel';
 import { realMsToYyyymmdd } from './liveDateTime';
 import { computeContinuousTradeVolumeDistribution } from './continuousTradeVolumeDistribution';
 
@@ -43,8 +43,8 @@ interface Props {
 /**
  * Live Sidebar — two cards (10호가 / 거래원) wired to live data.
  *
- * Reuses the existing CursorSidebar layout shell from /replay so visual
- * parity is automatic. The data wiring differs:
+ * Reuses the shared sidebar cards inside a live-only detail stack. The data
+ * wiring differs:
  *   - /replay uses cursor-keyed REST hooks (useCursor, useBrokerSeriesForDay)
  *   - /live uses useLiveSeries (initial REST + SSE) in latest mode
  *   - /live uses useLiveCursor hooks in spot mode (cursor set via hover)
@@ -251,13 +251,15 @@ export function LiveSidebar({ code, live, bundle = null, todayKst = '', programT
       data-testid="live-sidebar"
       style={{
         height: '100%',
+        minHeight: 0,
         display: 'flex',
         flexDirection: 'column',
+        overflow: 'hidden',
         background: 'var(--bg-card)',
       }}
     >
-      <div style={{ flex: 1, overflow: 'auto' }}>
-        <CursorSidebar
+      <div style={{ flex: 1, minHeight: 0, overflow: 'hidden' }}>
+        <LiveDetailPanel
           orderbook={
             <>
               {showAvailableHint && (
@@ -295,8 +297,8 @@ export function LiveSidebar({ code, live, bundle = null, todayKst = '', programT
           brokers={
             <BrokerTrajectoryTable series={brokerSeriesForCard} cursorMs={brokerCursorMs} />
           }
+          investor={<InvestorTrendEstimateCard query={investorTrendEstimate} />}
         />
-        <InvestorTrendEstimateCard query={investorTrendEstimate} />
       </div>
     </div>
   );

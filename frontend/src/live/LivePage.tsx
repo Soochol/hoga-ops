@@ -6,7 +6,6 @@ import { useLiveStatus } from '../api/liveStatus';
 import { useLiveStatusProjection } from './liveStatusProjection';
 import { LiveHeader } from './LiveHeader';
 import { LiveStatusBar } from './LiveStatusBar';
-import { LiveToolbar } from './LiveToolbar';
 import { LiveWorkarea } from './LiveWorkarea';
 import { LiveStateBanner } from './LiveStateBanner';
 import { LiveTabBar } from './LiveTabBar';
@@ -80,13 +79,12 @@ function tradeVolumePocsToWire(pocs: readonly {
 /**
  * /live page — KIS-based real-time indicator chart.
  *
- * Six-row grid (Stage 9-β added LiveStateBanner; ADR-0069 adds the tab bar as row 2):
+ * Five-row grid (Stage 9-β added LiveStateBanner; ADR-0069 adds the tab bar as row 2):
  *   1. LiveHeader      (var(--h-live-header))  — title + ⭐ toggle + symbol search
  *   2. LiveTabBar      (40px)                  — open stock tabs (ADR-0069)
  *   3. LiveStateBanner (auto)                  — empty/error state matrix
  *   4. LiveStatusBar   (var(--h-pricestrip))   — code/price/source/timeframe + cycle_lag pill
- *   5. LiveToolbar     (var(--h-toolbar))      — timeframe selector
- *   6. LiveWorkarea    (1fr)                   — chart + sidebar
+ *   5. LiveWorkarea    (1fr)                   — chart panel (toolbar + chart) + detail panel
  *
  * Active code resolution (CONTEXT.md / ADR-0052 / ADR-0069):
  *   useLivePageStore remains the single source of truth that all read sites
@@ -373,7 +371,7 @@ export function LivePage() {
         // minmax(0, 1fr) on the workarea row prevents the chart canvas's
         // intrinsic size from pushing the row past viewport height.
         gridTemplateRows:
-          'var(--h-live-header) 40px auto var(--h-pricestrip) var(--h-toolbar) minmax(0, 1fr)',
+          'var(--h-live-header) 40px auto var(--h-pricestrip) minmax(0, 1fr)',
       }}
     >
       <LiveHeader />
@@ -398,11 +396,6 @@ export function LivePage() {
         bundle={workareaBundle}
         venue={liveVenue}
       />
-      <LiveToolbar
-        onOpenIndicators={() => setIndicatorPanelOpen(true)}
-        onOpenSettings={() => setSettingsOpen(true)}
-        studySaveControl={<LiveStudyViewSaveButton />}
-      />
       <LiveWorkarea
         activeCode={workareaCode}
         activeInstrument={activeInstrument}
@@ -422,6 +415,9 @@ export function LivePage() {
         todayAllPriceBidPeak={todayAllPriceBidPeak}
         todayKst={today}
         tradeVolumePocs={tradeVolumePocs}
+        onOpenIndicators={() => setIndicatorPanelOpen(true)}
+        onOpenSettings={() => setSettingsOpen(true)}
+        studySaveControl={<LiveStudyViewSaveButton />}
         onViewportCaptureReady={handleViewportCaptureReady}
         paneTogglesOverride={{
           hogaPanes: capabilities.hogaPanes,

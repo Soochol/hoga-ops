@@ -7,6 +7,7 @@ import type { RangeBundle } from '../api/types';
 import { useLivePageStore } from '../state/livePage';
 import { useLiveTabsStore } from '../state/liveTabs';
 import { useLiveVenueStore } from '../state/liveVenue';
+import { DEFAULT_CARD_WEIGHTS, DEFAULT_RIGHT_PANEL_WIDTH_PX, useLiveLayoutStore } from '../state/liveLayout';
 import * as liveStatus from '../api/liveStatus';
 import { initialHistoricalDaysFor, subtractDaysKst, todayKstYyyymmdd } from './liveDateTime';
 import type { LiveTimeframe } from '../state/livePage';
@@ -264,6 +265,10 @@ describe('LivePage shell', () => {
       candleTimeframe: '1m',
     });
     useLiveVenueStore.setState({ venue: 'KRX' });
+    useLiveLayoutStore.setState({
+      rightPanelWidthPx: DEFAULT_RIGHT_PANEL_WIDTH_PX,
+      rightCardWeights: DEFAULT_CARD_WEIGHTS,
+    });
     vi.spyOn(liveStatus, 'useLiveStatus').mockReturnValue({
       data: {
         running: true,
@@ -284,12 +289,13 @@ describe('LivePage shell', () => {
     vi.restoreAllMocks();
   });
 
-  it('renders the four rows of the grid', () => {
-    renderWithRouter();
+  it('renders the page chrome and places the toolbar inside the workarea', () => {
+    renderWithRouter('/live?code=000660');
     expect(screen.getByTestId('live-header')).toBeInTheDocument();
     expect(screen.getByTestId('live-status-bar')).toBeInTheDocument();
     expect(screen.getByTestId('live-toolbar')).toBeInTheDocument();
     expect(screen.getByTestId('live-workarea')).toBeInTheDocument();
+    expect(screen.getByTestId('live-chart-panel')).toContainElement(screen.getByTestId('live-toolbar'));
   });
 
   it('reads activeCode from ?code= query param', () => {
