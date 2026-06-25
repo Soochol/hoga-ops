@@ -9,6 +9,7 @@ import type { ProgramTradeSeries, RangeSegment } from '../api/types';
 import type { StudySnapshotDetailInput } from './studySnapshotAdapter';
 import { bucketStartForCursor, studyBrokerBucketsToSeries } from './studySnapshotAdapter';
 import { selectVolumeDistributionProfile } from '../live/continuousTradeVolumeDistribution';
+import { realMsToYyyymmdd } from '../live/liveDateTime';
 
 type CandlePoint = { ts_ms: number; close?: number };
 
@@ -23,9 +24,12 @@ type Props = {
 
 function segmentForTime(segments: RangeSegment[], timeMs: number | null): RangeSegment | null {
   if (timeMs == null) return null;
-  return segments.find((segment) => (
+  const sessionMatch = segments.find((segment) => (
     segment.session_open_ms <= timeMs && timeMs <= segment.session_close_ms
-  )) ?? null;
+  ));
+  if (sessionMatch) return sessionMatch;
+  const date = realMsToYyyymmdd(timeMs);
+  return segments.find((segment) => segment.date === date) ?? null;
 }
 
 export function StudyDetailPanel({ details, candles, segments, programTrade = null, bucketMs, cursorMs }: Props) {
@@ -41,7 +45,7 @@ export function StudyDetailPanel({ details, candles, segments, programTrade = nu
   }, [bucketStart, segments]);
   const volumeDistributionTimeMs = cursorMs ?? candles[candles.length - 1]?.ts_ms ?? null;
   const activeVolumeDistributionSegment = useMemo(
-    () => segmentForTime(segments, volumeDistributionTimeMs),
+    () => segmentForTime(segments, volumeDistributionTimeMs) ?? segments[segments.length - 1] ?? null,
     [segments, volumeDistributionTimeMs],
   );
   const sessionBrokerSeries = useMemo(
