@@ -169,6 +169,14 @@ describe('useWheelInteractions', () => {
     expect(ts.setVisibleLogicalRange).toHaveBeenCalledWith({ from: 10, to: 110 });
   });
 
+  it('alt wheel: chart zoom/pan is bypassed so the workarea scrollbar can own it', () => {
+    const ts = makeTs();
+    const { getByTestId } = render(<Harness chart={makeChart(ts)} bundle={null} />);
+    const e = wheel(getByTestId('wheel-host'), { deltaY: 100, altKey: true });
+    expect(ts.setVisibleLogicalRange).not.toHaveBeenCalled();
+    expect(e.defaultPrevented).toBe(false);
+  });
+
   it('range가 있으면 preventDefault로 페이지 스크롤 차단', () => {
     const ts = makeTs();
     const { getByTestId } = render(<Harness chart={makeChart(ts)} bundle={null} />);
