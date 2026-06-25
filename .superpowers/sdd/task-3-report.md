@@ -63,3 +63,23 @@ Result:
 
 - `frontend/node_modules` was missing in this worktree, so `npm ci` was required before the requested test commands could execute.
 - Kept the indicator UI in the existing category/detail-pane pattern rather than introducing a new settings surface.
+
+## Review Follow-Up
+
+Fixed the incomplete study restore round-trip for volume-distribution settings:
+
+- added `volumeDistributionOverride` to `LiveChartRoot` alongside the existing daily-MA and trade-volume-POC override props
+- built the override in `StudyPage` from saved `indicator_state.volume_distribution_*` values
+- passed the override into the study chart surface so saved enable/range-count/color/max-color settings restore with the snapshot
+- extended `StudyPage.test.tsx` to prove saved volume-distribution state is converted into the chart override prop
+
+Verification:
+
+```bash
+cd frontend && npm test -- StudyPage.test.tsx LiveChartRoot.test.tsx
+```
+
+Result:
+
+- 2 test files passed
+- 99 tests passed
