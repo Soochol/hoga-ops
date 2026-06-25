@@ -79,4 +79,38 @@ describe('StudyDetailPanel', () => {
     expect(screen.getByTestId('volume-distribution-cursor-marker')).toBeTruthy();
     expect(screen.getByTestId('volume-distribution-max-bar')).toHaveStyle({ backgroundColor: '#EAB308' });
   });
+
+  it('matches saved volume distributions by trading date when daily candle time is outside session hours', () => {
+    const candleAtKstMidnight = Date.UTC(2026, 5, 25, 15, 0, 0);
+    const sessionOpen = Date.UTC(2026, 5, 26, 0, 0, 0);
+    const sessionClose = Date.UTC(2026, 5, 26, 6, 30, 0);
+
+    render(
+      <StudyDetailPanel
+        details={details({
+          volumeDistributionEnabled: true,
+          volumeDistributions: [{
+            date: '20260626',
+            range_count: 10,
+            price_min: 100,
+            price_max: 120,
+            session_open_ms: sessionOpen,
+            session_close_ms: sessionClose,
+            bins: [
+              { price_low: 100, price_high: 102, qty: 10 },
+              { price_low: 102, price_high: 104, qty: 30 },
+            ],
+          }],
+        })}
+        candles={[{ ts_ms: candleAtKstMidnight, close: 110 }]}
+        segments={[{ date: '20260626', session_open_ms: sessionOpen, session_close_ms: sessionClose, source: 'hogaplay' }]}
+        bucketMs={86_400_000}
+        cursorMs={null}
+      />,
+    );
+
+    expect(screen.getByTestId('volume-distribution-card')).toBeTruthy();
+    expect(screen.getAllByTestId('volume-distribution-row')).toHaveLength(2);
+    expect(screen.getByTestId('volume-distribution-max-bar')).toHaveStyle({ backgroundColor: '#EAB308' });
+  });
 });
