@@ -1,9 +1,9 @@
 # /live 프로그램 순매수 시간순 지표 — Design
 
 **Date**: 2026-06-25
-**Status**: Approved for implementation planning
+**Status**: Reviewed for implementation planning
 **User-approved decisions**:
-- Scope: 관심종목 대상 KIS REST polling.
+- Scope: capture-enabled watchlist stocks, i.e. existing **Capture Candidates**, via KIS REST polling.
 - Data source: KIS `program-trade-by-stock` REST, not WebSocket.
 - Storage: continuously merge polling rows to disk so today becomes future historical data.
 - Data-source policy: follow the recommended settings behavior; program-trade storage is a separate REST storage toggle that is available only when the selected storage policy allows REST storage.
@@ -28,10 +28,10 @@ Live probing on 2026-06-25 against `005930` confirmed that the endpoint returns 
 
 ## Goals
 
-- Persist program-trade rows for watchlist stocks while REST storage is enabled.
+- Persist program-trade rows for **Capture Candidates** while REST storage is enabled.
 - Show a time-ordered chart pane for today and saved historical days.
 - Use cumulative net-buy values as the primary y-axis so the latest value remains correct even if intermediate rows are sparse.
-- Avoid mixing this data with KIS WS orderbook/trade capture. Program-trade storage is a REST side-channel with a different cadence and source contract.
+- Avoid mixing this data with KIS WS orderbook/trade capture or the existing `kis_api`/`kis_live` Source inventory. Program-trade storage is a REST side-channel with a different cadence and source contract.
 - Keep KIS credentials, tokens, and raw headers out of persisted program-trade files and probe artifacts.
 - Provide gap-risk detection so the chart can communicate when a polling interval may have missed part of the rolling window.
 
@@ -82,32 +82,36 @@ Add a separate program-trade storage toggle under live data-source settings:
 - Label: `프로그램 순매수 저장`
 - Default: off.
 - Enabled only when REST storage is allowed by the selected storage policy.
-- Target set: capture-enabled watchlist stocks by default, not every symbol ever searched.
+- Target set: existing **Capture Candidates** by default, not every symbol ever searched.
 - Poll interval: 30 seconds by default.
 
 This keeps the current storage-policy semantics honest: selecting `WS만 저장` must not create hidden REST traffic.
 
+When the separate toggle is enabled under a REST-allowed policy, program-trade storage polls all current Capture Candidates, including codes that are also in the WS Live Set. This is intentional: program-trade data has no current WS equivalent in this design, so the global storage policy gates whether REST side-channel storage is allowed; it does not partition program-trade rows by `kis_live` versus `kis_api` Source.
+
 ## Collection Model
 
-Program-trade collection is a background REST poller that scans eligible watchlist codes.
+Program-trade collection is a background REST poller that scans eligible Capture Candidate codes.
 
 Eligibility:
 
-- Use the watchlist display/capture-selection contract already used by live capture candidates.
-- Include only capture-enabled watchlist entries.
-- Deduplicate codes while preserving display order.
+- Reuse `capture_ordered_codes` / the existing Capture Candidates contract.
+- Include only codes from capture-enabled watchlist folders.
+- Deduplicate codes while preserving Capture Candidate display order.
 
 Polling:
 
 - Default interval: 30 seconds.
 - On each cycle, call `KisClient.fetch_program_trade_by_stock(code)` for each eligible code.
-- Reuse the existing KIS REST client and account-role routing.
+- Reuse the existing KIS REST client and account-role routing through `kis_access.fetch_for_role("background", data_dir, ...)`.
 - Use `background` role so this auxiliary poller does not compete with foreground chart backfill.
 - Respect existing KIS client rate limiting and retry behavior.
+- Avoid bursty fan-out: run sequentially or with low bounded concurrency plus light jitter.
 
 Storage:
 
 - Persist under `data/kis-program-trade/<code>/<YYYYMMDD>.json`.
+- Use a versioned JSON envelope with `schema_version`, `source`, `poll_interval_ms`, `rows`, `gap_events`, and `updated_at_ms`.
 - Merge each response by `(date, code, bsop_hour)`.
 - Store only normalized, non-secret row data.
 - Keep rows sorted by `bsop_hour`.
@@ -143,8 +147,11 @@ The row window is rolling, so the collector should detect possible missed window
 For each `(date, code)`, keep the previous latest `bsop_hour`. On the next successful response:
 
 - Let `new_oldest` be the minimum `bsop_hour` in the response.
+- Let `new_newest` be the maximum `bsop_hour` in the response.
 - Let `previous_latest` be the last stored/latest time before the response.
-- If `previous_latest < new_oldest`, mark `gap_risk=true` for this poll interval.
+- If `previous_latest` appears in the new response, there is overlap and no gap is inferred.
+- If `previous_latest` does not appear and `previous_latest < new_oldest`, mark `gap_risk=true` for this poll interval because the rolling window may have advanced past unseen rows.
+- If `previous_latest > new_newest`, treat the response as stale/out-of-order or a day-boundary anomaly and do not merge it as a normal forward poll.
 
 This does not mean the latest cumulative value is wrong. It only means intermediate points may be missing. The chart can render the segment as a normal line by default or later use a dotted connection if the UI needs stronger disclosure.
 
@@ -194,6 +201,8 @@ Add a lifecycle-managed background task only when:
 - KIS credentials are available;
 - there is at least one eligible watchlist code.
 
+The lifecycle must own exactly one program-trade collector task per data dir. Settings refreshes must cancel/recreate or update that task without duplicating poll loops.
+
 Failures must be local:
 
 - rate-limit/API/transport failures log a warning and skip that code for the cycle;
@@ -224,7 +233,7 @@ type ProgramTradeSeries = {
 
 Add `program_trade` to `RangeBundle`. For historical range requests, load saved files for each included stock-date and concatenate time-sorted points. For today, `/live` can use the same disk store plus current polling output, because polling writes to disk continuously.
 
-If no rows exist for a date, return an empty series. Do not call KIS synchronously from `/api/range`; range rendering should not fan out into live KIS requests.
+If no rows exist for a date, return an empty series. Do not call KIS synchronously from `/api/range`; range rendering should not fan out into live KIS requests. Program-trade files do not create Stock-Date inventory entries by themselves; they are attached only as an auxiliary series for dates already included in the range bundle.
 
 ## Frontend Design
 
@@ -259,7 +268,9 @@ Backend:
 - KIS client parses `program-trade-by-stock` rows and sends the correct path, TR ID, and params.
 - Store merge is idempotent by `(date, code, bsop_hour)`.
 - Store sorts by `t_ms`.
-- Gap-risk detection triggers when the previous latest time falls before the new response's oldest time.
+- Gap-risk detection distinguishes overlap, no-overlap gaps, stale/out-of-order responses, malformed `bsop_hour`, and day-boundary reset.
+- Corrupt existing program-trade JSON is handled without killing the collector.
+- Settings gate starts/stops exactly one collector for REST-allowed policy + `program_trade_storage_enabled=true`, and never starts under `WS만 저장`.
 - Collector skips failed codes without killing the loop.
 - Range bundle includes stored historical program-trade points and does not call KIS during range construction.
 
@@ -270,6 +281,7 @@ Frontend:
 - Indicator panel shows and toggles `프로그램 순매수`.
 - Pane gating respects the persisted toggle.
 - Empty series renders without crashing.
+- Settings UI disables the program-trade storage toggle under `WS만 저장` and persists it under REST-allowed policies.
 
 Manual verification:
 

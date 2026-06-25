@@ -459,6 +459,64 @@ def test_build_range_bundle_multi_day_concatenates_per_segment_lists():
     assert len(rb.volume_profile_by_day) == 2
 
 
+def test_build_range_bundle_attaches_program_trade_sidecar_from_disk(tmp_path):
+    import contextlib
+
+    from hoga.api import bundle as bundle_mod
+    from hoga.api.bundle import build_range_bundle
+    from hoga.api.models import VolumeProfile
+    from hoga.live.kis_models import ProgramTradeByStockRow
+    from hoga.live.program_trade_store import ProgramTradeStore
+
+    store = ProgramTradeStore(tmp_path)
+    store.merge_response(
+        code="005930",
+        date="20260512",
+        observed_at_ms=100,
+        rows=[
+            ProgramTradeByStockRow(
+                code="005930",
+                bsop_hour="090000",
+                t_ms=1_747_006_200_000,
+                price=70000,
+                net_qty=1000,
+                net_amount=70_000_000,
+                buy_qty=None,
+                sell_qty=None,
+                buy_amount=None,
+                sell_amount=None,
+                delta_qty=1000,
+                delta_amount=70_000_000,
+            )
+        ],
+    )
+
+    mock_engine = _engine_with_meta_for_dates(["20260512"])
+    mock_engine.data_dir = tmp_path
+    patches = _patch_slice_builders(bundle_mod) + [
+        patch.object(
+            bundle_mod,
+            "build_volume_profile_range",
+            return_value=VolumeProfile(bin_count=0, price_min=0, price_max=0, bin_width=0, bins=[]),
+        ),
+    ]
+    with contextlib.ExitStack() as stack:
+        for pcm in patches:
+            stack.enter_context(pcm)
+        rb = build_range_bundle(
+            mock_engine,
+            code="005930",
+            from_date="20260512",
+            to_date="20260512",
+            bucket_ms=60_000,
+        )
+
+    assert rb.program_trade.source == "kis_program_trade"
+    assert [(p.t, p.net_amount, p.delta_amount) for p in rb.program_trade.points] == [
+        (1_747_006_200_000, 70_000_000, 70_000_000)
+    ]
+
+
 def test_build_range_bundle_rejects_from_gt_to():
     from fastapi import HTTPException
     from hoga.api.bundle import build_range_bundle

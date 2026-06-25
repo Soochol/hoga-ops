@@ -35,9 +35,26 @@ class FakeRest30Recorder:
         self.stopped = True
 
 
+class FakeProgramTradeCollector:
+    created = []
+
+    def __init__(self, **kwargs):
+        self.started = False
+        self.stopped = False
+        FakeProgramTradeCollector.created.append(self)
+
+    def start(self) -> None:
+        self.started = True
+        self.stopped = False
+
+    async def stop(self) -> None:
+        self.stopped = True
+
+
 @dataclass
 class FakeStorageState:
     rest30_recorder: FakeRest30Recorder | None = None
+    program_trade_collector: FakeProgramTradeCollector | None = None
     storage_policy: LiveStoragePolicy = "ws_plus_rest"
 
 
@@ -69,6 +86,7 @@ def _patch_common(monkeypatch):
             self.code = code
 
     FakeRest30Recorder.created.clear()
+    FakeProgramTradeCollector.created.clear()
     monkeypatch.setattr(
         "hoga.api.symbols.search",
         lambda _query, limit=10_000: [Hit("005930"), Hit("000660"), Hit("035420")],
@@ -79,6 +97,10 @@ def _patch_common(monkeypatch):
     )
     monkeypatch.setattr("hoga.live.kis_access.kis_for_role", lambda role, data_dir: object())
     monkeypatch.setattr("hoga.live.rest30_recorder.Rest30sRecorder", FakeRest30Recorder)
+    monkeypatch.setattr(
+        "hoga.live.program_trade_collector.ProgramTradeCollector",
+        FakeProgramTradeCollector,
+    )
 
 
 @pytest.mark.asyncio
@@ -156,4 +178,56 @@ async def test_storage_runtime_ws_only_stops_existing_api_recorder(
 
     assert snapshot.kis_api_targets == ()
     assert existing.targets == set()
+    assert existing.stopped is True
+
+
+@pytest.mark.asyncio
+async def test_storage_runtime_starts_program_trade_collector_for_rest_allowed_toggle(
+    tmp_path,
+    monkeypatch,
+) -> None:
+    _patch_common(monkeypatch)
+    _seed_watchlist(tmp_path)
+    save_live_settings(
+        tmp_path,
+        LiveSettings(storage_policy="ws_plus_rest", program_trade_storage_enabled=True),
+    )
+    state = FakeStorageState()
+
+    await sync_storage_runtime(
+        tmp_path,
+        state=state,
+        buffer=object(),  # type: ignore[arg-type]
+        date_fn=lambda: "20260623",
+        now_ms_fn=lambda: 0,
+        n_configured=1,
+    )
+
+    assert state.program_trade_collector is FakeProgramTradeCollector.created[0]
+    assert state.program_trade_collector.started is True
+
+
+@pytest.mark.asyncio
+async def test_storage_runtime_stops_program_trade_collector_under_ws_only(
+    tmp_path,
+    monkeypatch,
+) -> None:
+    _patch_common(monkeypatch)
+    _seed_watchlist(tmp_path)
+    existing = FakeProgramTradeCollector()
+    save_live_settings(
+        tmp_path,
+        LiveSettings(storage_policy="ws_only", program_trade_storage_enabled=True),
+    )
+    state = FakeStorageState(program_trade_collector=existing)
+
+    await sync_storage_runtime(
+        tmp_path,
+        state=state,
+        buffer=object(),  # type: ignore[arg-type]
+        date_fn=lambda: "20260623",
+        now_ms_fn=lambda: 0,
+        n_configured=1,
+    )
+
     assert existing.stopped is True

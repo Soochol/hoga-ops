@@ -36,6 +36,7 @@ from hoga.live.kis_models import (
     KisOrderbook,
     KisTrade,
     OrderbookLevel,
+    ProgramTradeByStockRow,
 )
 
 KIS_KST = timezone(timedelta(hours=9))
@@ -1429,6 +1430,51 @@ class KisClient:
                     sum_qty=_parse_optional_int(raw.get("sum_fake_ntby_qty")),
                 )
             )
+        return rows
+
+    async def fetch_program_trade_by_stock(self, code: str) -> list[ProgramTradeByStockRow]:
+        """Fetch stock-level program-trade cumulative net-buy rows.
+
+        KIS TR_ID: FHPPG04650101 (program-trade-by-stock). The endpoint returns
+        a rolling latest window, so callers must persist rows during the session
+        if they need historical intraday flow.
+        """
+        body = await self._get(
+            path="/uapi/domestic-stock/v1/quotations/program-trade-by-stock",
+            tr_id="FHPPG04650101",
+            params={
+                "FID_COND_MRKT_DIV_CODE": _STOCK_MRKT_DIV,
+                "FID_INPUT_ISCD": code,
+            },
+        )
+        raw_rows = body.get("output")
+        if not isinstance(raw_rows, list):
+            return []
+
+        rows: list[ProgramTradeByStockRow] = []
+        for raw in raw_rows:
+            if not isinstance(raw, dict):
+                continue
+            bsop_hour = str(raw.get("bsop_hour") or "").strip()
+            if len(bsop_hour) != 6 or not bsop_hour.isdigit():
+                continue
+            rows.append(
+                ProgramTradeByStockRow(
+                    code=code,
+                    bsop_hour=bsop_hour,
+                    t_ms=0,
+                    price=_parse_optional_int(raw.get("stck_prpr")),
+                    net_qty=_parse_optional_int(raw.get("whol_smtn_ntby_qty")),
+                    net_amount=_parse_optional_int(raw.get("whol_smtn_ntby_tr_pbmn")),
+                    buy_qty=_parse_optional_int(raw.get("whol_buy_qty")),
+                    sell_qty=_parse_optional_int(raw.get("whol_seln_qty")),
+                    buy_amount=_parse_optional_int(raw.get("whol_buy_tr_pbmn")),
+                    sell_amount=_parse_optional_int(raw.get("whol_seln_tr_pbmn")),
+                    delta_qty=_parse_optional_int(raw.get("whol_ntby_vol_icdc")),
+                    delta_amount=_parse_optional_int(raw.get("whol_ntby_tr_pbmn_icdc")),
+                )
+            )
+        rows.sort(key=lambda row: row.bsop_hour)
         return rows
 
     # ------------------------------------------------------------------

@@ -1,9 +1,10 @@
 import { describe, it, expect, afterEach, vi } from 'vitest';
-import { render, screen, cleanup, fireEvent } from '@testing-library/react';
+import { render, screen, cleanup, fireEvent, waitFor } from '@testing-library/react';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import LiveSettingsSections from './LiveSettingsSections';
 import { useLiveVenueStore } from '../state/liveVenue';
 import * as liveSettingsApi from '../api/liveSettings';
+import * as apiClient from '../api/client';
 
 function wrap(qc: QueryClient) {
   return ({ children }: { children: React.ReactNode }) =>
@@ -79,6 +80,7 @@ describe('LiveSettingsSections (2단 nav+detail)', () => {
     vi.spyOn(liveSettingsApi, 'getLiveSettings').mockResolvedValue({
       schema_version: 1,
       storage_policy: 'ws_plus_rest',
+      program_trade_storage_enabled: false,
     });
     render(<LiveSettingsSections />, { wrapper: wrap(new QueryClient({ defaultOptions: { queries: { retry: false } } })) });
     fireEvent.click(screen.getByTestId('settings-nav-data-source'));
@@ -97,10 +99,12 @@ describe('LiveSettingsSections (2단 nav+detail)', () => {
     vi.spyOn(liveSettingsApi, 'getLiveSettings').mockResolvedValue({
       schema_version: 1,
       storage_policy: 'ws_plus_rest',
+      program_trade_storage_enabled: false,
     });
     vi.spyOn(liveSettingsApi, 'patchLiveSettings').mockResolvedValue({
       schema_version: 1,
       storage_policy: 'rest_only',
+      program_trade_storage_enabled: false,
     });
 
     render(<LiveSettingsSections />, { wrapper: wrap(new QueryClient({ defaultOptions: { queries: { retry: false } } })) });
@@ -114,5 +118,54 @@ describe('LiveSettingsSections (2단 nav+detail)', () => {
     expect(screen.getByRole('radio', { name: 'hogaplay 우선' })).toBeInTheDocument();
     expect(screen.getByRole('radio', { name: 'KIS WS 우선' })).toBeInTheDocument();
     expect(screen.getByRole('radio', { name: 'KIS API 우선' })).toBeInTheDocument();
+  });
+
+  it('데이터소스 상세에서 프로그램 순매수 저장 토글을 REST 허용 정책에서만 켠다', async () => {
+    const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+    qc.setQueryData(liveSettingsApi.LIVE_SETTINGS_KEY, {
+      schema_version: 1,
+      storage_policy: 'ws_plus_rest',
+      program_trade_storage_enabled: false,
+    });
+    const apiCall = vi.spyOn(apiClient, 'apiCall')
+      .mockResolvedValueOnce({
+        schema_version: 1,
+        storage_policy: 'ws_plus_rest',
+        program_trade_storage_enabled: false,
+      })
+      .mockResolvedValueOnce({
+        schema_version: 1,
+        storage_policy: 'ws_plus_rest',
+        program_trade_storage_enabled: true,
+      });
+
+    render(<LiveSettingsSections />, { wrapper: wrap(qc) });
+    fireEvent.click(screen.getByTestId('settings-nav-data-source'));
+    const toggle = await screen.findByRole('switch', { name: '프로그램 순매수 저장' });
+
+    await waitFor(() => expect(toggle).not.toBeDisabled());
+    fireEvent.click(toggle);
+    await waitFor(() => expect(apiCall).toHaveBeenCalledWith('/api/live/settings', {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        storage_policy: 'ws_plus_rest',
+        program_trade_storage_enabled: true,
+      }),
+    }));
+  });
+
+  it('WS만 저장 정책에서는 프로그램 순매수 저장 토글을 비활성화한다', async () => {
+    const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+    qc.setQueryData(liveSettingsApi.LIVE_SETTINGS_KEY, {
+      schema_version: 1,
+      storage_policy: 'ws_only',
+      program_trade_storage_enabled: false,
+    });
+
+    render(<LiveSettingsSections />, { wrapper: wrap(qc) });
+    fireEvent.click(screen.getByTestId('settings-nav-data-source'));
+
+    expect(await screen.findByRole('switch', { name: '프로그램 순매수 저장' })).toBeDisabled();
   });
 });

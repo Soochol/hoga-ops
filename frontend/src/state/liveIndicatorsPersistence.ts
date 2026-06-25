@@ -121,6 +121,8 @@ export type PersistedIndicators = {
   ratioEnabled: boolean;
   /** 체결강도 pane on/off. Default TRUE. */
   fillStrengthEnabled: boolean;
+  /** 프로그램 순매수 pane on/off. Default TRUE. */
+  programTradeEnabled: boolean;
   /** 일봉 이동평균선 슬롯(현재봉 movingAverages와 별개, ADR-0073). */
   dailyMovingAverages: LiveMAConfig[];
   /** 일봉 MA 마스터 토글. opt-in(기본 false). */
@@ -217,7 +219,7 @@ export function mergeLiveIndicatorPrefs(
   const build = (
     mas: LiveMAConfig[], enabled: boolean, fNet: boolean, iNet: boolean,
     vol: boolean, hidden: boolean,
-    qt: boolean, ratio: boolean, fill: boolean, tradeVolumePoc: boolean,
+    qt: boolean, ratio: boolean, fill: boolean, programTrade: boolean, tradeVolumePoc: boolean,
   ): PersistedIndicators => ({
     movingAverages: mas,
     movingAverageEnabled: enabled,
@@ -246,11 +248,12 @@ export function mergeLiveIndicatorPrefs(
     quoteTotalsEnabled: qt,
     ratioEnabled: ratio,
     fillStrengthEnabled: fill,
+    programTradeEnabled: programTrade,
     dailyMovingAverages: dMas,
     dailyMovingAverageEnabled: dEnabled,
     dailyMovingAverageHidden: dHidden,
   });
-  if (!raw || typeof raw !== 'object') return build(defaults, true, false, false, true, false, true, true, true, true);
+  if (!raw || typeof raw !== 'object') return build(defaults, true, false, false, true, false, true, true, true, true, true);
   // obj is guaranteed non-null here (same condition checked above)
   const o = obj!;
   const enabled = o.movingAverageEnabled === false ? false : true;
@@ -266,10 +269,11 @@ export function mergeLiveIndicatorPrefs(
   const qt = o.quoteTotalsEnabled === false ? false : true;
   const ratio = o.ratioEnabled === false ? false : true;
   const fill = o.fillStrengthEnabled === false ? false : true;
+  const programTrade = o.programTradeEnabled === false ? false : true;
   const tradeVolumePoc = o.tradeVolumePocEnabled === false ? false : true;
   const arr = o.movingAverages;
-  if (!Array.isArray(arr)) return build(defaults, enabled, fNet, iNet, vol, hidden, qt, ratio, fill, tradeVolumePoc);
+  if (!Array.isArray(arr)) return build(defaults, enabled, fNet, iNet, vol, hidden, qt, ratio, fill, programTrade, tradeVolumePoc);
   const kept = arr.filter(isValidEntry).slice(0, MA_SLOT_LIMIT) as LiveMAConfig[];
-  if (kept.length === 0) return build(defaults, enabled, fNet, iNet, vol, hidden, qt, ratio, fill, tradeVolumePoc);
-  return build(kept, enabled, fNet, iNet, vol, hidden, qt, ratio, fill, tradeVolumePoc);
+  if (kept.length === 0) return build(defaults, enabled, fNet, iNet, vol, hidden, qt, ratio, fill, programTrade, tradeVolumePoc);
+  return build(kept, enabled, fNet, iNet, vol, hidden, qt, ratio, fill, programTrade, tradeVolumePoc);
 }

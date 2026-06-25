@@ -35,6 +35,7 @@ function wrap(ui: ReactNode, initialEntry: string) {
           <Route element={<App />}>
             <Route path="/live" element={<div>live page</div>} />
             <Route path="/study" element={<div>study page</div>} />
+            <Route path="/ad-hoc" element={<div>ad hoc page</div>} />
             <Route path="/heatmap" element={ui} />
             <Route path="/inventory" element={ui} />
             <Route path="/screener" element={ui} />
@@ -73,7 +74,7 @@ describe('App document title', () => {
   });
 
   it('uses hoga-ops for routes without a side menu item', () => {
-    wrap(<div>unused</div>, '/study');
+    wrap(<div>unused</div>, '/ad-hoc');
     expect(document.title).toBe('hoga-ops');
   });
 });

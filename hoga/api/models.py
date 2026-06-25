@@ -200,6 +200,20 @@ class FillStrength(BaseModel):
     points: list[FillStrengthPoint]
 
 
+class ProgramTradePoint(BaseModel):
+    t: int
+    net_qty: int | None
+    net_amount: int | None
+    delta_qty: int | None
+    delta_amount: int | None
+    gap_risk: bool = False
+
+
+class ProgramTradeSeries(BaseModel):
+    points: list[ProgramTradePoint] = Field(default_factory=list)
+    source: Literal["kis_program_trade"] = "kis_program_trade"
+
+
 CapturePhase = Literal[
     "queued", "deciding", "capturing", "parsing",
     "done", "failed", "cancelled", "skipped",
@@ -623,6 +637,7 @@ class RangeBundle(BaseModel):
     bid_peaks: list["BidPeak"] = Field(default_factory=list)
     price_level_hits: list[PriceLevelHit] = Field(default_factory=list)
     trade_volume_pocs: list[TradeVolumePoc] = Field(default_factory=list)
+    program_trade: ProgramTradeSeries = Field(default_factory=ProgramTradeSeries)
 
 
 # === Broker Day-Trajectory (ADR-0023) ===
@@ -770,10 +785,12 @@ LiveStoragePolicy = Literal["ws_only", "ws_plus_rest", "rest_only"]
 class LiveSettingsResponse(BaseModel):
     schema_version: int = 1
     storage_policy: LiveStoragePolicy = "ws_plus_rest"
+    program_trade_storage_enabled: bool = False
 
 
 class LiveSettingsUpdate(BaseModel):
     storage_policy: LiveStoragePolicy
+    program_trade_storage_enabled: bool | None = None
 
 
 # Code lists below validate against params.CODE_PATTERN (6-char alphanumeric +

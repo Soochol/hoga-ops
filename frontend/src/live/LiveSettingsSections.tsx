@@ -114,6 +114,12 @@ function ViLimitPriceLineStyleRow() {
 }
 
 function DataSourceDetail() {
+  const { data } = useLiveSettings();
+  const patch = usePatchLiveSettings();
+  const storagePolicy = data?.storage_policy ?? 'ws_plus_rest';
+  const restAllowed = data != null && storagePolicy !== 'ws_only';
+  const programTradeEnabled = data?.program_trade_storage_enabled ?? false;
+
   return (
     <>
       <div style={{ fontSize: 'var(--text-sm)', color: 'var(--fg-dim)', marginBottom: 'var(--space-xs)' }}>
@@ -131,6 +137,38 @@ function DataSourceDetail() {
         {STORAGE_POLICY_OPTIONS.map((opt) => (
           <StoragePolicyRadio key={opt} value={opt} />
         ))}
+      </div>
+      <div className="flex items-center justify-between py-2 mb-3" data-testid="program-trade-storage-row">
+        <div className="flex-1 pr-4">
+          <div className="text-fg text-sm">프로그램 순매수 저장</div>
+          <div className="text-fg-dim text-xs mt-0.5">
+            캡처 활성 관심그룹 종목의 프로그램 순매수 시계열을 저장합니다.
+          </div>
+        </div>
+        <button
+          type="button"
+          role="switch"
+          aria-checked={programTradeEnabled && restAllowed}
+          aria-label="프로그램 순매수 저장"
+          disabled={!restAllowed}
+          onClick={() => patch.mutate({
+            storage_policy: storagePolicy,
+            program_trade_storage_enabled: !(programTradeEnabled && restAllowed),
+          })}
+          className={
+            programTradeEnabled && restAllowed
+              ? 'relative inline-flex h-5 w-9 items-center rounded-full bg-accent transition-colors disabled:opacity-50'
+              : 'relative inline-flex h-5 w-9 items-center rounded-full bg-bg-input-hover transition-colors disabled:opacity-50'
+          }
+        >
+          <span
+            className={
+              programTradeEnabled && restAllowed
+                ? 'inline-block h-4 w-4 transform rounded-full bg-accent-fg translate-x-[18px] transition-transform'
+                : 'inline-block h-4 w-4 transform rounded-full bg-fg-dim translate-x-[2px] transition-transform'
+            }
+          />
+        </button>
       </div>
       <div style={{ fontSize: 'var(--text-sm)', color: 'var(--fg-dim)', marginBottom: 'var(--space-xs)' }}>
         데이터 표현 기준 <span style={{ color: 'var(--fg-dimmer)' }}>(모든 차트 공통)</span>
@@ -158,7 +196,12 @@ function StoragePolicyRadio({ value }: { value: LiveStoragePolicy }) {
         name="live-storage-policy"
         value={value}
         checked={checked}
-        onChange={() => patch.mutate(value)}
+        onChange={() => patch.mutate({
+          storage_policy: value,
+          program_trade_storage_enabled: value === 'ws_only'
+            ? false
+            : (data?.program_trade_storage_enabled ?? false),
+        })}
       />
       <span style={{ fontSize: 'var(--text-sm)', color: 'var(--fg)' }}>
         {STORAGE_POLICY_LABEL[value]}

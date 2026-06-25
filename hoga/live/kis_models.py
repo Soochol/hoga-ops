@@ -80,3 +80,25 @@ class InvestorTrendEstimateRow(BaseModel):
     foreign_qty: int | None
     institution_qty: int | None
     sum_qty: int | None
+
+
+class ProgramTradeByStockRow(BaseModel):
+    """One KIS stock-level program-trade row.
+
+    `bsop_hour` is the KIS intraday HHMMSS key. The endpoint reports cumulative
+    net-buy quantity/amount, so each observed point is independently meaningful
+    even when the rolling response window skips intermediate rows.
+    """
+
+    code: str
+    bsop_hour: str
+    t_ms: int
+    price: int | None
+    net_qty: int | None
+    net_amount: int | None
+    buy_qty: int | None
+    sell_qty: int | None
+    buy_amount: int | None
+    sell_amount: int | None
+    delta_qty: int | None
+    delta_amount: int | None
