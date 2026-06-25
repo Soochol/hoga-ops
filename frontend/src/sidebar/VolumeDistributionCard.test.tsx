@@ -1,5 +1,5 @@
 import { render, screen } from '@testing-library/react';
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 
 import type { DayVolumeDistribution } from '../api/types';
 import { VolumeDistributionCard } from './VolumeDistributionCard';
@@ -56,5 +56,33 @@ describe('VolumeDistributionCard', () => {
     );
 
     expect(screen.queryByTestId('volume-distribution-cursor-marker')).toBeNull();
+  });
+
+  it('does not emit duplicate-key warnings for single-price profiles', () => {
+    const consoleError = vi.spyOn(console, 'error').mockImplementation(() => {});
+
+    render(
+      <VolumeDistributionCard
+        profile={{
+          ...profile,
+          price_min: 100,
+          price_max: 100,
+          bins: [
+            { price_low: 100, price_high: 100, qty: 10 },
+            { price_low: 100, price_high: 100, qty: 5 },
+          ],
+        }}
+        cursorMs={100_000_000}
+        color="#64748B"
+        maxColor="#EAB308"
+      />,
+    );
+
+    expect(consoleError).not.toHaveBeenCalledWith(
+      expect.stringContaining('Encountered two children with the same key'),
+      expect.anything(),
+      expect.anything(),
+    );
+    consoleError.mockRestore();
   });
 });

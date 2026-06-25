@@ -366,8 +366,8 @@ def build_volume_distribution_slice(
         range_count=range_count,
         price_min=price_min,
         price_max=price_max,
-        session_open_ms=session_open_ms,
-        session_close_ms=session_close_ms,
+        session_open_ms=hhmmssms_to_unix_ms(date, session_open_ms),
+        session_close_ms=hhmmssms_to_unix_ms(date, session_close_ms),
         bins=_expand_distribution_bins(
             price_min,
             price_max,

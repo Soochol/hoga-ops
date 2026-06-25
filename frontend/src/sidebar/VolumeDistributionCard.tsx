@@ -42,12 +42,12 @@ export function VolumeDistributionCard({ profile, cursorMs, color, maxColor }: P
           style={{ left: `${Math.min(100, Math.max(0, markerPct))}%` }}
         />
       )}
-      {rows.map((bin) => {
+      {rows.map((bin, index) => {
         const isMax = maxQty > 0 && bin.qty === maxQty;
         const width = maxQty > 0 ? `${(bin.qty / maxQty) * 100}%` : '0%';
         return (
           <div
-            key={`${bin.price_low}-${bin.price_high}`}
+            key={`${bin.price_low}-${bin.price_high}-${index}`}
             data-testid="volume-distribution-row"
             className="grid min-h-0 grid-cols-[72px_1fr_52px] items-center gap-2"
           >

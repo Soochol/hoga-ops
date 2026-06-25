@@ -155,10 +155,14 @@ export function LiveSidebar({ code, live, bundle = null, todayKst = '' }: Props)
   }, [volumeDistributionEnabled, stockCode, todayKst, timeframe, activeBundle, live.trade, volumeDistributionRangeCount]);
   const activeVolumeDistribution = useMemo(() => {
     if (!volumeDistributionEnabled) return undefined;
-    if (activeVolumeDistributionDate === todayKst && recomputedTodayVolumeDistribution) {
+    const persistedProfile = profileForDate(persistedVolumeDistributions, activeVolumeDistributionDate);
+    if (persistedProfile) {
+      return persistedProfile;
+    }
+    if (activeVolumeDistributionDate === todayKst) {
       return recomputedTodayVolumeDistribution;
     }
-    return profileForDate(persistedVolumeDistributions, activeVolumeDistributionDate);
+    return null;
   }, [
     volumeDistributionEnabled,
     activeVolumeDistributionDate,
