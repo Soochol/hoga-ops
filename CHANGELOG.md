@@ -3,6 +3,11 @@
 All notable changes to this project are documented here.
 The format follows a 4-digit `MAJOR.MINOR.PATCH.MICRO` scheme.
 
+## [0.11.1.1] - 2026-06-25
+
+### Fixed
+- **당일 매물대 분포 live 체결 저장 보정**: KIS WS 체결을 10초 가격대별 trade snapshot으로도 저장해, Today Promotion이 `trades.parquet`의 `price`/`qty`/`side`를 보존하고 당일 매물대 bar가 일부 live buffer 가격대만 보이는 회귀를 막았다.
+
 ## [0.11.1.0] - 2026-06-25
 
 ### Changed

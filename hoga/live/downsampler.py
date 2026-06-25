@@ -3,8 +3,8 @@
 상태형(ob/broker): 윈도 내 마지막 payload가 살아남고, 윈도가 비면 직전값을
 flush 시각 t_ms로 carry(§9). 흐름형(fill): side==±1 qty 합 — side==0
 (Auction Cross/장전)은 trades.query_fill_strength 의 ``WHERE side != 0``과
-동일하게 제외한다. 집계 시점에 분류가 비가역적으로 구워지므로(그릴링 advisor
-Finding 2) 이 모듈의 테스트가 분류 동등성의 단일 검증 지점이다.
+동일하게 제외한다. 매물대용 trade snapshot은 같은 side 필터로 10초 동안의
+(price, side) qty를 집계해 저장한다.
 """
 from __future__ import annotations
 
@@ -20,6 +20,7 @@ class _CodeState:
     last_broker: dict | None = None
     buy_qty: int = 0
     sell_qty: int = 0
+    trade_qty_by_price_side: dict[tuple[int, int], int] | None = None
 
 
 class TickDownsampler:
@@ -38,10 +39,20 @@ class TickDownsampler:
         elif tick.kind is SnapshotKind.TRADE:
             for tr in tick.payload.get("trades", ()):
                 side = tr.get("side", 0)
+                price = int(tr.get("price", 0) or 0)
+                qty = int(tr.get("qty", 0) or 0)
                 if side == 1:
-                    st.buy_qty += int(tr.get("qty", 0))
+                    st.buy_qty += qty
                 elif side == -1:
-                    st.sell_qty += int(tr.get("qty", 0))
+                    st.sell_qty += qty
+                else:
+                    continue
+                if price <= 0 or qty <= 0:
+                    continue
+                if st.trade_qty_by_price_side is None:
+                    st.trade_qty_by_price_side = {}
+                key = (price, int(side))
+                st.trade_qty_by_price_side[key] = st.trade_qty_by_price_side.get(key, 0) + qty
 
     def set_active_codes(self, codes: set[str]) -> None:
         """Live Set 밖으로 밀려난 코드의 carry 상태 제거(advisor C) —
@@ -78,6 +89,24 @@ class TickDownsampler:
             if st.last_broker is not None:
                 payload = {**st.last_broker, "phase": phase}
                 snaps.append(LiveSnapshot(t_ms=now_ms, kind=SnapshotKind.BROKER, payload=payload))
+            if st.trade_qty_by_price_side:
+                trades = [
+                    {
+                        "t_ms": label_ms,
+                        "price": price,
+                        "qty": qty,
+                        "side": side,
+                        "side_source": "kis_ws_10s",
+                    }
+                    for (price, side), qty in sorted(st.trade_qty_by_price_side.items())
+                    if qty > 0
+                ]
+                if trades:
+                    snaps.append(LiveSnapshot(
+                        t_ms=label_ms,
+                        kind=SnapshotKind.TRADE,
+                        payload={"trades": trades, "phase": phase},
+                    ))
             snaps.append(LiveSnapshot.from_fill(
                 t_ms=label_ms, buy_qty=st.buy_qty, sell_qty=st.sell_qty, phase=phase,
             ))
@@ -88,7 +117,14 @@ class TickDownsampler:
             out[code] = snaps
         return out
 
-    def commit_code(self, code: str, *, buy_qty: int, sell_qty: int) -> None:
+    def commit_code(
+        self,
+        code: str,
+        *,
+        buy_qty: int,
+        sell_qty: int,
+        trades: list[dict] | None = None,
+    ) -> None:
         """append 성공 후 flush가 본 흐름 합을 뺀다(spec flush-durability §2.2).
 
         zero가 아니라 **빼기**인 이유: flush와 commit 사이 await 창에 도착한
@@ -99,3 +135,15 @@ class TickDownsampler:
             return
         st.buy_qty -= buy_qty
         st.sell_qty -= sell_qty
+        if trades and st.trade_qty_by_price_side:
+            for trade in trades:
+                key = (int(trade.get("price", 0) or 0), int(trade.get("side", 0) or 0))
+                qty = int(trade.get("qty", 0) or 0)
+                if key in st.trade_qty_by_price_side:
+                    remaining = st.trade_qty_by_price_side[key] - qty
+                    if remaining > 0:
+                        st.trade_qty_by_price_side[key] = remaining
+                    else:
+                        del st.trade_qty_by_price_side[key]
+            if not st.trade_qty_by_price_side:
+                st.trade_qty_by_price_side = None

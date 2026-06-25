@@ -45,7 +45,8 @@ async def test_on_tick_publishes_immediately_and_flush_writes_jsonl(tmp_path):
     jsonl = (tmp_path / "live" / "20260605" / "005930.jsonl").read_text()
     assert '"kind": "fill"' in jsonl
     assert '"buy_qty": 5' in jsonl
-    assert '"kind": "trade"' not in jsonl            # 체결 raw는 JSONL에 안 감(Q4)
+    assert '"kind": "trade"' in jsonl               # 매물대용 10초 가격 집계
+    assert '"price": 100' in jsonl
 
 
 async def test_on_tick_ingest_gated_off_skips_storage_but_still_displays(tmp_path):
