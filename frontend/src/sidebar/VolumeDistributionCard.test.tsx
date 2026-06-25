@@ -22,7 +22,7 @@ const profile: DayVolumeDistribution = {
 };
 
 describe('VolumeDistributionCard', () => {
-  it('renders distribution rows with a time axis and highlights the max bin', () => {
+  it('renders distribution rows with an unlabeled time axis and highlights the max bin', () => {
     render(
       <VolumeDistributionCard
         profile={profile}
@@ -35,8 +35,9 @@ describe('VolumeDistributionCard', () => {
     const rows = screen.getAllByTestId('volume-distribution-row');
     expect(rows).toHaveLength(2);
     expect(rows[0]).not.toHaveTextContent('110-120');
-    expect(screen.getByTestId('volume-distribution-time-axis')).toHaveTextContent('09:00');
-    expect(screen.getByTestId('volume-distribution-time-axis')).toHaveTextContent('15:30');
+    expect(screen.getByTestId('volume-distribution-time-axis')).toHaveTextContent('');
+    expect(screen.queryByText('09:00')).toBeNull();
+    expect(screen.queryByText('15:30')).toBeNull();
     expect(screen.getByTestId('volume-distribution-max-bar')).toBeInTheDocument();
   });
 
@@ -62,6 +63,22 @@ describe('VolumeDistributionCard', () => {
     );
 
     expect(screen.queryByTestId('volume-distribution-cursor-marker')).toBeNull();
+  });
+
+  it('positions the cursor marker against the latest trade time when available', () => {
+    render(
+      <VolumeDistributionCard
+        profile={{
+          ...profile,
+          last_trade_ms: Date.UTC(2026, 5, 25, 2, 0, 0),
+        }}
+        cursorMs={cursorMs}
+        color="#64748B"
+        maxColor="#EAB308"
+      />,
+    );
+
+    expect(screen.getByTestId('volume-distribution-cursor-marker')).toHaveStyle({ left: '50%' });
   });
 
   it('does not emit duplicate-key warnings for single-price profiles', () => {

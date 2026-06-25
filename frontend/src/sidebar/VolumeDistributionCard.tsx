@@ -1,6 +1,5 @@
 import type { DayVolumeDistribution } from '../api/types';
 import { classifyWithinSegment } from '../util/sessionTime';
-import { unixMsToKSTClock } from '../util/time';
 
 type Props = {
   profile: DayVolumeDistribution | null | undefined;
@@ -26,16 +25,10 @@ export function VolumeDistributionCard({ profile, cursorMs, color, maxColor }: P
       sessionCloseMs: profile.session_close_ms,
     }, cursorMs);
   const markerVisible = cursorMs != null && (cursorPhase === 'regular' || cursorPhase === 'auction');
-  const markerPct = markerVisible && profile.session_close_ms > profile.session_open_ms
-    ? ((cursorMs - profile.session_open_ms) / (profile.session_close_ms - profile.session_open_ms)) * 100
+  const axisEndMs = Math.max(profile.session_open_ms, profile.last_trade_ms ?? profile.session_close_ms);
+  const markerPct = markerVisible && axisEndMs > profile.session_open_ms
+    ? ((cursorMs - profile.session_open_ms) / (axisEndMs - profile.session_open_ms)) * 100
     : 0;
-  const midMs = profile.session_open_ms + (profile.session_close_ms - profile.session_open_ms) / 2;
-  const timeTicks = [
-    formatAxisTime(profile.session_open_ms),
-    formatAxisTime(midMs),
-    formatAxisTime(profile.session_close_ms),
-  ];
-
   return (
     <div
       data-testid="volume-distribution-card"
@@ -72,16 +65,8 @@ export function VolumeDistributionCard({ profile, cursorMs, color, maxColor }: P
         </div>
       </div>
       <div data-testid="volume-distribution-time-axis">
-        <div className="relative h-4 border-t border-border/70 font-mono text-[10px] leading-4 text-fg-dimmer">
-          <span className="absolute left-0 top-0">{timeTicks[0]}</span>
-          <span className="absolute left-1/2 top-0 -translate-x-1/2">{timeTicks[1]}</span>
-          <span className="absolute right-0 top-0">{timeTicks[2]}</span>
-        </div>
+        <div className="h-px bg-border/70" />
       </div>
     </div>
   );
-}
-
-function formatAxisTime(ms: number): string {
-  return unixMsToKSTClock(ms).slice(0, 5);
 }
