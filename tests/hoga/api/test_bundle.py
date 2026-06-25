@@ -6,7 +6,11 @@ from unittest.mock import MagicMock, patch
 import duckdb
 import pytest
 
-from hoga.api.bundle import build_price_level_hits_slice, downsample_candles
+from hoga.api.bundle import (
+    _expand_distribution_bins,
+    build_price_level_hits_slice,
+    downsample_candles,
+)
 from hoga.tables.candles import ApiCandle
 
 
@@ -517,6 +521,26 @@ def test_build_range_bundle_volume_distributions_are_opt_in():
 
     assert dist_builder.call_count == 1
     assert rb.volume_distributions == [profile]
+
+
+def test_expand_distribution_bins_single_price_day_stays_on_candle_range():
+    bins = _expand_distribution_bins(
+        price_min=70_000,
+        price_max=70_000,
+        bin_width=1.0,
+        sparse_bins=[(0, 120)],
+        range_count=5,
+    )
+
+    assert len(bins) == 5
+    assert [(b.price_low, b.price_high) for b in bins] == [
+        (70_000, 70_000),
+        (70_000, 70_000),
+        (70_000, 70_000),
+        (70_000, 70_000),
+        (70_000, 70_000),
+    ]
+    assert [b.qty for b in bins] == [120, 0, 0, 0, 0]
 
 
 def test_build_range_bundle_rejects_from_gt_to():

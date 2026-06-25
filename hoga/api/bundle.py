@@ -274,6 +274,15 @@ def _expand_distribution_bins(
         if idx < 0:
             continue
         qty_by_idx[min(idx, range_count - 1)] += qty
+    if price_min == price_max:
+        return [
+            VolumeDistributionBin(
+                price_low=price_min,
+                price_high=price_max,
+                qty=qty,
+            )
+            for qty in qty_by_idx
+        ]
     for i, qty in enumerate(qty_by_idx):
         low = int(price_min + i * bin_width)
         high = price_max if i == range_count - 1 else int(price_min + (i + 1) * bin_width)
