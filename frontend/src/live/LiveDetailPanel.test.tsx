@@ -97,6 +97,25 @@ describe('LiveDetailPanel', () => {
     }
   });
 
+  it('stacks detail cards compactly instead of stretching them to fill tall chart panes', () => {
+    render(
+      <LiveDetailPanel
+        orderbook={<div>orderbook</div>}
+        volumeDistribution={<div>volume</div>}
+        program={<div>program</div>}
+        brokers={<div>brokers</div>}
+        investor={<div>investor</div>}
+      />,
+    );
+
+    const panel = screen.getByTestId('live-detail-panel');
+    expect(panel.getAttribute('style') ?? '').not.toContain('fr');
+    expect(screen.getByTestId('live-detail-card-orderbook')).toHaveStyle({ minHeight: '260px' });
+    expect(screen.getByTestId('live-detail-card-volumeDistribution')).toHaveStyle({
+      minHeight: '180px',
+    });
+  });
+
   it('resizes only the adjacent pair and persists the updated weights after dragging', () => {
     const setPointerCapture = vi.fn();
     const releasePointerCapture = vi.fn();

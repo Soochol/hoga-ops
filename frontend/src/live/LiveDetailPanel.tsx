@@ -29,6 +29,7 @@ const RESIZER_PAIRS: Array<{ upper: LiveCardKey; lower: LiveCardKey; label: stri
   { upper: 'brokers', lower: 'investor', label: '거래원 / 잠정투자자 크기 조절' },
 ];
 const RESIZER_HEIGHT_PX = 8;
+const WEIGHT_TO_MIN_HEIGHT_PX = 6;
 
 export function LiveDetailPanel({ orderbook, volumeDistribution, program, brokers, investor }: Props) {
   const panelRef = useRef<HTMLDivElement>(null);
@@ -145,9 +146,7 @@ export function LiveDetailPanel({ orderbook, volumeDistribution, program, broker
       data-testid="live-detail-panel"
       className="grid min-h-full bg-bg p-[var(--space-sm)]"
       style={{
-        gridTemplateRows: cards
-          .map((card) => `minmax(${LIVE_CARD_MIN_HEIGHT_PX[card.key]}px, ${weights[card.key]}fr)`)
-          .join(' 8px '),
+        gridTemplateRows: cards.map(() => 'auto').join(' 8px '),
       }}
     >
       {cards.map((card, index) => (
@@ -156,6 +155,12 @@ export function LiveDetailPanel({ orderbook, volumeDistribution, program, broker
             data-testid={card.testId}
             data-card={card.key}
             className="flex flex-col rounded border bg-bg-card"
+            style={{
+              minHeight: Math.max(
+                LIVE_CARD_MIN_HEIGHT_PX[card.key],
+                Math.round(weights[card.key] * WEIGHT_TO_MIN_HEIGHT_PX),
+              ),
+            }}
           >
             <header className="border-b px-3 py-2 text-xs font-semibold uppercase tracking-wider text-fg-dimmer">
               {card.label}
