@@ -75,14 +75,15 @@ describe('IndicatorPanel', () => {
     expect(askPeak).toBeLessThan(program);
   });
 
-  it('프로그램 순매수는 10호가 지표와 거래원 지표 사이에 위치', () => {
+  it('프로그램 순매수는 거래원 지표 뒤에 위치', () => {
     render(<IndicatorPanel onClose={() => {}} />);
     const labels = screen.getAllByRole('button').map((b) => b.textContent);
     const bidPeak = labels.indexOf('당일 매수 최대벽');
     const program = labels.indexOf('프로그램 순매수');
     const foreign = labels.indexOf('외국인 순매수량');
     expect(program).toBeGreaterThan(bidPeak);
-    expect(program).toBeLessThan(foreign);
+    expect(foreign).toBeGreaterThan(bidPeak);
+    expect(program).toBeGreaterThan(foreign);
   });
 
   it('총잔량 토글 클릭 → quoteTotalsEnabled 반전', () => {

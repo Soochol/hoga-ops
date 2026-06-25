@@ -2,11 +2,12 @@ import { describe, expect, it } from 'vitest';
 import {
   bucketStartForCursor,
   studyBrokerBucketsToSeries,
+  studySnapshotRenderModel,
   studySnapshotBundleToChartInput,
   studySnapshotBundleToRangeBundle,
   studySnapshotDetails,
 } from './studySnapshotAdapter';
-import type { StudySnapshotBundle } from '../api/studyViews';
+import type { ParquetStudySnapshot, StudyIndicatorState, StudySnapshotBundle } from '../api/studyViews';
 
 function snapshot(overrides: Partial<StudySnapshotBundle> = {}): StudySnapshotBundle {
   return {
@@ -47,6 +48,59 @@ function snapshot(overrides: Partial<StudySnapshotBundle> = {}): StudySnapshotBu
     }],
     volume_distributions: [],
     data_warnings: ['partial'],
+    ...overrides,
+  };
+}
+
+function indicatorState(overrides: Partial<StudyIndicatorState> = {}): StudyIndicatorState {
+  return {
+    volume_enabled: true,
+    quote_totals_enabled: true,
+    ratio_enabled: true,
+    fill_strength_enabled: true,
+    aggregation_basis: 'close',
+    auction_window_mask: true,
+    ratio_outlier_filter_enabled: false,
+    ratio_outlier_threshold: 20,
+    ...overrides,
+  };
+}
+
+function parquetSnapshot(overrides: Partial<ParquetStudySnapshot> = {}): ParquetStudySnapshot {
+  const bundle = overrides.bundle ?? snapshot({
+    segments: [
+      { date: '20260615', session_open_ms: 1_000, session_close_ms: 2_000 },
+      { date: '20260616', session_open_ms: 100_000, session_close_ms: 101_000 },
+    ],
+    candles: [
+      { t: 1_000, open: 10, high: 12, low: 9, close: 10, volume: 100 },
+      { t: 100_000, open: 20, high: 21, low: 19, close: 20, volume: 300 },
+      { t: 101_000, open: 22, high: 23, low: 21, close: 22, volume: 700 },
+    ],
+    trade_volume_pocs: [{
+      date: '20260615',
+      center_price: 10,
+      low_price: 9,
+      high_price: 11,
+      qty: 100,
+      t_ms: 1_000,
+      band_pct: 0.01,
+    }],
+  });
+  return {
+    schema_version: 1,
+    source_policy: 'fixed',
+    code: bundle.code,
+    label: '삼성전자',
+    timeframe: bundle.timeframe,
+    snapshot_from_ms: bundle.snapshot_from_ms,
+    snapshot_to_ms: bundle.snapshot_to_ms,
+    bucket_kind: bundle.timeframe,
+    viewport: { right_edge_ms: 101_000, bar_span: 120, at_live_edge: false },
+    indicator_state: indicatorState(),
+    provenance: { saved_from_route: '/live', data_provenance: 'live_mixed' },
+    bundle,
+    captured_at_ms: 123_456,
     ...overrides,
   };
 }
@@ -396,5 +450,72 @@ describe('studySnapshotBundleToRangeBundle', () => {
     expect(bucketStartForCursor(candles, 1000, 1999)).toBe(1000);
     expect(bucketStartForCursor(candles, 1000, 2000)).toBe(2000);
     expect(bucketStartForCursor(candles, 1000, 999)).toBeNull();
+  });
+
+  it('builds the StudyPage render primitives from a saved snapshot without a page facade', () => {
+    const model = studySnapshotRenderModel(parquetSnapshot({
+      indicator_state: indicatorState({
+        volume_enabled: false,
+        quote_totals_enabled: true,
+        ratio_enabled: false,
+        fill_strength_enabled: true,
+        program_trade_enabled: false,
+        trade_volume_poc_enabled: true,
+        trade_volume_poc_band_pct: 0.01,
+        trade_volume_poc_color: '#22C55E',
+        trade_volume_poc_opacity: 0.28,
+        daily_moving_average_enabled: true,
+        daily_moving_average_hidden: true,
+        daily_moving_averages: [{
+          id: 'dma-1',
+          enabled: true,
+          period: 20,
+          color: '#EC4899',
+          line_width: 2,
+          source: 'close',
+        }],
+      }),
+    }));
+
+    expect(model.todayKst).toBe('20260616');
+    expect(model.restoreViewport).toEqual({ rightEdgeMs: 101_000, barSpan: 120, atLiveEdge: false });
+    expect(model.paneTogglesOverride).toEqual({
+      volumeEnabled: false,
+      quoteTotalsEnabled: true,
+      ratioEnabled: false,
+      fillStrengthEnabled: true,
+      programTradeEnabled: false,
+    });
+    expect(model.dailyMovingAverageOverride).toEqual({
+      configs: [{
+        id: 'dma-1',
+        enabled: true,
+        period: 20,
+        color: '#EC4899',
+        lineWidth: 2,
+        source: 'close',
+      }],
+      masterEnabled: true,
+      hidden: true,
+    });
+    expect(model.tradeVolumePocOverride).toEqual({
+      enabled: true,
+      color: '#22C55E',
+      opacity: 0.28,
+    });
+  });
+
+  it('preserves saved trade-volume POCs and fills missing dates from candles', () => {
+    const model = studySnapshotRenderModel(parquetSnapshot());
+
+    expect(model.tradeVolumePocs.map((poc) => ({
+      date: poc.date,
+      centerPrice: poc.centerPrice,
+      qty: poc.qty,
+      bandPct: poc.bandPct,
+    }))).toEqual([
+      { date: '20260615', centerPrice: 10, qty: 100, bandPct: 0.01 },
+      { date: '20260616', centerPrice: 20, qty: 300, bandPct: 0.005 },
+    ]);
   });
 });

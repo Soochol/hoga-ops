@@ -24,9 +24,9 @@ type CardDef = {
 
 const RESIZER_PAIRS: Array<{ upper: LiveCardKey; lower: LiveCardKey; label: string }> = [
   { upper: 'orderbook', lower: 'volumeDistribution', label: '10호가 / 매물대 크기 조절' },
-  { upper: 'volumeDistribution', lower: 'program', label: '매물대 / 프로그램 순매수 크기 조절' },
-  { upper: 'program', lower: 'brokers', label: '프로그램 순매수 / 거래원 크기 조절' },
-  { upper: 'brokers', lower: 'investor', label: '거래원 / 잠정투자자 크기 조절' },
+  { upper: 'volumeDistribution', lower: 'brokers', label: '매물대 / 거래원 크기 조절' },
+  { upper: 'brokers', lower: 'program', label: '거래원 / 프로그램 순매수 크기 조절' },
+  { upper: 'program', lower: 'investor', label: '프로그램 순매수 / 잠정투자자 크기 조절' },
 ];
 const RESIZER_HEIGHT_PX = 8;
 const WEIGHT_TO_MIN_HEIGHT_PX = 6;
@@ -56,18 +56,18 @@ export function LiveDetailPanel({ orderbook, volumeDistribution, program, broker
       content: volumeDistribution ?? null,
     },
     {
-      key: 'program',
-      label: '프로그램 순매수',
-      testId: 'live-detail-card-program',
-      contentTestId: 'card-program',
-      content: program,
-    },
-    {
       key: 'brokers',
       label: '거래원',
       testId: 'live-detail-card-brokers',
       contentTestId: 'card-brokers',
       content: brokers,
+    },
+    {
+      key: 'program',
+      label: '프로그램 순매수',
+      testId: 'live-detail-card-program',
+      contentTestId: 'card-program',
+      content: program,
     },
     {
       key: 'investor',

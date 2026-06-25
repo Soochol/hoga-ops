@@ -12,7 +12,7 @@ import {
   latestOrderbookSnapshot,
   orderbookSnapshotAtCursor,
 } from './liveSidebarAdapters';
-import { TIMEFRAME_TO_MS, type DayVolumeDistribution, type RangeBundle, type Timeframe } from '../api/types';
+import { TIMEFRAME_TO_MS, type RangeBundle, type Timeframe } from '../api/types';
 import { useLiveCursorStore } from './useLiveCursorStore';
 import { useLiveAxisStore } from './useLiveAxisStore';
 import { useLivePageStore } from '../state/livePage';
@@ -26,7 +26,11 @@ import type { MinuteTimeframe } from '../state/livePage';
 import { isMinuteTimeframe } from '../state/livePage';
 import { LiveDetailPanel } from './LiveDetailPanel';
 import { realMsToYyyymmdd } from './liveDateTime';
-import { computeContinuousTradeVolumeDistribution } from './continuousTradeVolumeDistribution';
+import {
+  computeContinuousTradeVolumeDistribution,
+  selectVolumeDistributionProfile,
+  volumeDistributionClosePoints,
+} from './continuousTradeVolumeDistribution';
 
 interface Props {
   code: string | null;
@@ -55,57 +59,6 @@ interface Props {
  * The third "체결" card was removed 2026-05-28 (ADR-0047). The chart's
  * 체결강도 pane provides equivalent information in compact form.
  */
-function profileForDate(
-  profiles: readonly DayVolumeDistribution[],
-  date: string | null,
-): DayVolumeDistribution | null {
-  if (!date) return null;
-  return profiles.find((profile) => profile.date === date) ?? null;
-}
-
-type VolumeDistributionTrade = {
-  t_ms: number;
-  price: number;
-  qty: number;
-  side: number;
-};
-
-function mergeVolumeDistributionDelta(
-  profile: DayVolumeDistribution,
-  trades: readonly VolumeDistributionTrade[],
-): DayVolumeDistribution {
-  if (profile.last_trade_ms == null || profile.bins.length === 0) return profile;
-  const rangeCount = profile.bins.length;
-  const rawBinWidth = (profile.price_max - profile.price_min) / rangeCount;
-  const binWidth = rawBinWidth > 0 ? rawBinWidth : 1;
-  const bins = profile.bins.map((bin) => ({ ...bin }));
-  let lastTradeMs = profile.last_trade_ms;
-
-  for (const trade of trades) {
-    if (trade.t_ms <= profile.last_trade_ms) continue;
-    if (trade.t_ms < profile.session_open_ms || trade.t_ms >= profile.session_close_ms) continue;
-    if (trade.side !== 1 && trade.side !== -1) continue;
-    if (!Number.isFinite(trade.price) || trade.price <= 0) continue;
-    if (!Number.isFinite(trade.qty) || trade.qty <= 0) continue;
-    if (trade.price < profile.price_min || trade.price > profile.price_max) continue;
-
-    const idx = Math.max(
-      0,
-      Math.min(rangeCount - 1, Math.floor((trade.price - profile.price_min) / binWidth)),
-    );
-    bins[idx] = { ...bins[idx], qty: bins[idx].qty + trade.qty };
-    lastTradeMs = Math.max(lastTradeMs, trade.t_ms);
-  }
-
-  return lastTradeMs === profile.last_trade_ms
-    ? profile
-    : { ...profile, bins, last_trade_ms: lastTradeMs };
-}
-
-function isEmptyVolumeDistribution(profile: DayVolumeDistribution): boolean {
-  return profile.last_trade_ms == null && profile.bins.every((bin) => bin.qty === 0);
-}
-
 export function LiveSidebar({ code, live, bundle = null, todayKst = '', programTrade = null }: Props) {
   const cursorMs = useLiveCursorStore((s) => s.cursorMs);
   const timeframe = useLivePageStore((s) => s.candleTimeframe);
@@ -204,31 +157,15 @@ export function LiveSidebar({ code, live, bundle = null, todayKst = '', programT
     });
   }, [volumeDistributionEnabled, stockCode, todayKst, timeframe, activeBundle, liveDistributionTrades, volumeDistributionRangeCount]);
   const activeVolumeDistribution = useMemo(() => {
-    if (!volumeDistributionEnabled) return undefined;
-    const persistedProfile = profileForDate(persistedVolumeDistributions, activeVolumeDistributionDate);
-    if (persistedProfile) {
-      if (
-        activeVolumeDistributionDate === todayKst &&
-        isEmptyVolumeDistribution(persistedProfile) &&
-        recomputedTodayVolumeDistribution
-      ) {
-        return recomputedTodayVolumeDistribution;
-      }
-      if (
-        activeVolumeDistributionDate === todayKst &&
-        persistedProfile.bins.length !== volumeDistributionRangeCount &&
-        recomputedTodayVolumeDistribution
-      ) {
-        return recomputedTodayVolumeDistribution;
-      }
-      return activeVolumeDistributionDate === todayKst
-        ? mergeVolumeDistributionDelta(persistedProfile, liveDistributionTrades)
-        : persistedProfile;
-    }
-    if (activeVolumeDistributionDate === todayKst) {
-      return recomputedTodayVolumeDistribution;
-    }
-    return null;
+    return selectVolumeDistributionProfile({
+      enabled: volumeDistributionEnabled,
+      date: activeVolumeDistributionDate,
+      todayKst,
+      rangeCount: volumeDistributionRangeCount,
+      persistedProfiles: persistedVolumeDistributions,
+      recomputedToday: recomputedTodayVolumeDistribution,
+      liveTrades: liveDistributionTrades,
+    });
   }, [
     volumeDistributionEnabled,
     activeVolumeDistributionDate,
@@ -239,11 +176,10 @@ export function LiveSidebar({ code, live, bundle = null, todayKst = '', programT
     liveDistributionTrades,
   ]);
   const activeVolumeDistributionClosePoints = useMemo(() => {
-    if (!activeBundle || !activeVolumeDistributionDate) return [];
-    return activeBundle.candles
-      .filter((candle) => realMsToYyyymmdd(candle.ts_ms) === activeVolumeDistributionDate)
-      .sort((a, b) => a.ts_ms - b.ts_ms)
-      .map((candle) => ({ t_ms: candle.ts_ms, close: candle.close }));
+    return volumeDistributionClosePoints({
+      date: activeVolumeDistributionDate,
+      candles: activeBundle?.candles ?? [],
+    });
   }, [activeBundle, activeVolumeDistributionDate]);
 
   // T14b: "다음 가용: HH:MM" hint above orderbook table when spot orderbook

@@ -224,6 +224,25 @@ describe('StudyPage', () => {
     expect(state.activeTabId).toBe(state.tabs[0].id);
   });
 
+  it('scrolls the study detail panel when Alt+wheel is used over the chart', () => {
+    useStudyViewSnapshotMock.mockImplementation((viewId: string | null) => ({
+      data: viewId ? makeSnapshot(viewId) : undefined,
+      isLoading: false,
+      isError: false,
+    }));
+
+    renderAt('/study?view=view1');
+
+    const detailPanel = screen.getByRole('complementary', { name: 'Study Detail Panel' });
+    Object.defineProperty(detailPanel, 'scrollTop', { configurable: true, writable: true, value: 15 });
+    Object.defineProperty(detailPanel, 'scrollHeight', { configurable: true, value: 1200 });
+    Object.defineProperty(detailPanel, 'clientHeight', { configurable: true, value: 360 });
+
+    fireEvent.wheel(screen.getByTestId('live-chart-root-stub'), { altKey: true, deltaY: 75 });
+
+    expect(detailPanel.scrollTop).toBe(90);
+  });
+
   it('replaces the active study tab when the study route changes to a different saved view', async () => {
     useStudyViewSnapshotMock.mockImplementation((viewId: string | null) => ({
       data: viewId ? makeSnapshot(viewId) : undefined,

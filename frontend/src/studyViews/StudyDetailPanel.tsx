@@ -8,6 +8,7 @@ import { VolumeDistributionCard } from '../sidebar/VolumeDistributionCard';
 import type { ProgramTradeSeries, RangeSegment } from '../api/types';
 import type { StudySnapshotDetailInput } from './studySnapshotAdapter';
 import { bucketStartForCursor, studyBrokerBucketsToSeries } from './studySnapshotAdapter';
+import { selectVolumeDistributionProfile } from '../live/continuousTradeVolumeDistribution';
 
 type CandlePoint = { ts_ms: number; close?: number };
 
@@ -19,14 +20,6 @@ type Props = {
   bucketMs: number;
   cursorMs: number | null;
 };
-
-function profileForDate(
-  profiles: StudySnapshotDetailInput['volumeDistributions'],
-  date: string | null,
-) {
-  if (!date) return null;
-  return profiles.find((profile) => profile.date === date) ?? null;
-}
 
 function segmentForTime(segments: RangeSegment[], timeMs: number | null): RangeSegment | null {
   if (timeMs == null) return null;
@@ -78,8 +71,15 @@ export function StudyDetailPanel({ details, candles, segments, programTrade = nu
   }, [bucketStart, details.brokersByBucketStart, sessionBrokerSeries]);
   const snapshot = orderbook?.available ? orderbook.snapshot : null;
   const activeVolumeDistribution = useMemo(() => {
-    if (!details.volumeDistributionEnabled) return undefined;
-    return profileForDate(details.volumeDistributions, activeVolumeDistributionSegment?.date ?? null);
+    return selectVolumeDistributionProfile({
+      enabled: details.volumeDistributionEnabled,
+      date: activeVolumeDistributionSegment?.date ?? null,
+      todayKst: null,
+      rangeCount: 0,
+      persistedProfiles: details.volumeDistributions,
+      recomputedToday: null,
+      liveTrades: [],
+    });
   }, [
     activeVolumeDistributionSegment?.date,
     details.volumeDistributionEnabled,

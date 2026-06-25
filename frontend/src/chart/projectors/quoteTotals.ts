@@ -7,13 +7,14 @@ import {
 import { useShallow } from 'zustand/react/shallow';
 import type { RangeBundle, QuoteRatioPoint } from '../../api/types';
 import { type VirtualAxis } from '../../util/virtualAxis';
-import { isSyntheticHogaGapPoint, withHogaGapSentinels } from '../util/hogaGapHide';
+import { isSyntheticHogaGapPoint } from '../util/hogaGapHide';
 import { resolveTokens } from '../../util/tokens';
 import { useActivePrefs } from '../../state/chartPrefs';
 import type { PaneSpec } from '../RangeSeriesPane';
 import type { SurgeMarkerPoint } from '../SurgeMarkersPrimitive';
 import { isAuctionHidden, LINE_HIDDEN_COLOR, maskOutgoingConnector } from '../util/auctionHide';
 import { makePastCachedProjector } from './pastCachedProjector';
+import { quoteRatioPointsForBundle, quoteRatioPointsForSlice } from './quoteRatioPoints';
 import { detectSurgeSide } from '../surge/detectSurges';
 
 const TOKEN_SPEC = {
@@ -28,29 +29,6 @@ const priceFormat = {
   formatter: (v: number) => Math.round(v).toLocaleString('ko-KR'),
   minMove: 1,
 };
-
-const quoteRatioPointsForBundle = (bundle: RangeBundle): readonly QuoteRatioPoint[] =>
-  withHogaGapSentinels(bundle.quote_ratio.points, bundle.candles ?? [], bundle.bucket_ms);
-
-const quoteRatioPointsForSlice = ({
-  bundle,
-  points,
-  allPoints,
-  fromT,
-  toT,
-}: {
-  bundle: RangeBundle;
-  points: readonly QuoteRatioPoint[];
-  allPoints: readonly QuoteRatioPoint[];
-  fromT?: number;
-  toT?: number;
-}): readonly QuoteRatioPoint[] =>
-  withHogaGapSentinels(points, bundle.candles ?? [], bundle.bucket_ms, {
-    firstHogaT: allPoints[0]?.t,
-    lastHogaT: allPoints[allPoints.length - 1]?.t,
-    fromT,
-    toT,
-  });
 
 export function projectBid(
   bundle: RangeBundle,

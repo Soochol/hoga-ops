@@ -1,12 +1,14 @@
 import type { BrokerSeriesEntry, BrokerSeriesPoint, RangeBundle, VolumeProfile } from '../api/types';
 import type {
+  ParquetStudySnapshot,
   StudyBrokerBucket,
   StudyDetailWarning,
   StudyIndicatorState,
   StudyOrderbookBucket,
   StudySnapshotBundle,
 } from '../api/studyViews';
-import { bucketSeconds } from '../state/livePage';
+import { computeCandleVolumePocs, type TradeVolumePoc } from '../live/tradeVolumePoc';
+import { bucketSeconds, type LiveMAConfig } from '../state/livePage';
 
 export type StudySnapshotRatioPoint = { t: number; value: number };
 export type StudySnapshotRatio = { bucket_ms: number; points: StudySnapshotRatioPoint[] };
@@ -33,6 +35,32 @@ export type StudySnapshotDetailInput = {
   volumeDistributionColor: string;
   volumeDistributionMaxColor: string;
   volumeDistributions: RangeBundle['volume_distributions'];
+};
+
+export type StudySnapshotRenderModel = {
+  chartInput: StudySnapshotChartInput;
+  details: StudySnapshotDetailInput;
+  bucketMs: number;
+  todayKst: string;
+  restoreViewport: { rightEdgeMs: number; barSpan: number; atLiveEdge: boolean };
+  paneTogglesOverride: {
+    volumeEnabled: boolean;
+    quoteTotalsEnabled: boolean;
+    ratioEnabled: boolean;
+    fillStrengthEnabled: boolean;
+    programTradeEnabled: boolean;
+  };
+  dailyMovingAverageOverride: {
+    configs: readonly LiveMAConfig[];
+    masterEnabled: boolean;
+    hidden: boolean;
+  };
+  tradeVolumePocs: TradeVolumePoc[];
+  tradeVolumePocOverride: {
+    enabled: boolean;
+    color?: string;
+    opacity?: number;
+  };
 };
 
 const EMPTY_VOLUME_PROFILE: VolumeProfile = {
@@ -219,5 +247,61 @@ export function studySnapshotBundleToChartInput(snapshot: StudySnapshotBundle): 
     bundle,
     chartBundle: bundle,
     ratioBundle,
+  };
+}
+
+export function studySnapshotRenderModel(snapshot: ParquetStudySnapshot): StudySnapshotRenderModel {
+  const chartInput = studySnapshotBundleToChartInput(snapshot.bundle);
+  const savedPocs = (snapshot.bundle.trade_volume_pocs ?? []).map((poc) => ({
+    date: poc.date,
+    centerPrice: poc.center_price,
+    lowPrice: poc.low_price,
+    highPrice: poc.high_price,
+    qty: poc.qty,
+    t_ms: poc.t_ms,
+    bandPct: poc.band_pct,
+  }));
+  const seenDates = new Set(savedPocs.map((poc) => poc.date));
+  const fallbackPocs = computeCandleVolumePocs(
+    chartInput.bundle.candles,
+    chartInput.bundle.segments,
+    { bandPct: snapshot.indicator_state.trade_volume_poc_band_pct ?? 0.005 },
+  ).filter((poc) => !seenDates.has(poc.date));
+
+  return {
+    chartInput,
+    details: studySnapshotDetails(snapshot.bundle, snapshot.indicator_state),
+    bucketMs: (bucketSeconds(snapshot.timeframe) ?? 60) * 1000,
+    todayKst: snapshot.bundle.segments.at(-1)?.date ?? '',
+    restoreViewport: {
+      rightEdgeMs: snapshot.viewport.right_edge_ms,
+      barSpan: snapshot.viewport.bar_span,
+      atLiveEdge: snapshot.viewport.at_live_edge,
+    },
+    paneTogglesOverride: {
+      volumeEnabled: snapshot.indicator_state.volume_enabled,
+      quoteTotalsEnabled: snapshot.indicator_state.quote_totals_enabled,
+      ratioEnabled: snapshot.indicator_state.ratio_enabled,
+      fillStrengthEnabled: snapshot.indicator_state.fill_strength_enabled,
+      programTradeEnabled: snapshot.indicator_state.program_trade_enabled ?? true,
+    },
+    dailyMovingAverageOverride: {
+      configs: (snapshot.indicator_state.daily_moving_averages ?? []).map((m): LiveMAConfig => ({
+        id: m.id,
+        enabled: m.enabled,
+        period: m.period,
+        color: m.color,
+        lineWidth: m.line_width,
+        source: m.source,
+      })),
+      masterEnabled: snapshot.indicator_state.daily_moving_average_enabled === true,
+      hidden: snapshot.indicator_state.daily_moving_average_hidden === true,
+    },
+    tradeVolumePocs: [...savedPocs, ...fallbackPocs],
+    tradeVolumePocOverride: {
+      enabled: snapshot.indicator_state.trade_volume_poc_enabled !== false,
+      color: snapshot.indicator_state.trade_volume_poc_color,
+      opacity: snapshot.indicator_state.trade_volume_poc_opacity,
+    },
   };
 }

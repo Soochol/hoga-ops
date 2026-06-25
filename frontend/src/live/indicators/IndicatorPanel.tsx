@@ -50,9 +50,9 @@ const CATEGORIES: ReadonlyArray<{ id: CategoryId; label: string; group: GroupId 
   { id: 'trade-volume-poc', label: '당일 최대 매물대', group: 'hoga' },
   { id: 'ask-peak',        label: '당일 매도 최대벽', group: 'hoga' },
   { id: 'bid-peak',        label: '당일 매수 최대벽', group: 'hoga' },
-  { id: 'program-trade',   label: '프로그램 순매수',  group: 'program' },
   { id: 'foreign-net',     label: '외국인 순매수량',  group: 'broker'  },
   { id: 'institution-net', label: '기관 순매수량',    group: 'broker'  },
+  { id: 'program-trade',   label: '프로그램 순매수',  group: 'program' },
 ];
 
 type Props = {

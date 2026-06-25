@@ -1,10 +1,8 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState, type WheelEvent } from 'react';
 import { useNavigate, useSearchParams } from 'react-router';
 import { LiveChartRoot } from '../live/LiveChartRoot';
 import { useLiveCursorStore } from '../live/useLiveCursorStore';
-import { computeCandleVolumePocs, type TradeVolumePoc } from '../live/tradeVolumePoc';
 import type { TabViewport } from '../live/viewportAnchor';
-import { bucketSeconds, type LiveMAConfig } from '../state/livePage';
 import { useEntryDragStore } from '../state/entryDrag';
 import { useStudyTabsStore } from '../state/studyTabs';
 import { StudyDetailPanel } from './StudyDetailPanel';
@@ -12,7 +10,7 @@ import { StudyMemoPanel } from './StudyMemoPanel';
 import { StudyTabBar } from './StudyTabBar';
 import { useStudyKeyboard } from './useStudyKeyboard';
 import { useStudyViewMutations, useStudyViews, useStudyViewSnapshot } from './useStudyViews';
-import { studySnapshotBundleToChartInput, studySnapshotDetails } from './studySnapshotAdapter';
+import { studySnapshotRenderModel } from './studySnapshotAdapter';
 import {
   clearCurrentStudySaveSource,
   setCurrentStudySaveSource,
@@ -66,6 +64,7 @@ export function StudyPage() {
   const handledQueryViewIdRef = useRef(queryViewId);
   const routeSyncPendingRef = useRef(false);
   const studyDropTargetRef = useRef<HTMLDivElement>(null);
+  const detailPanelScrollRef = useRef<HTMLElement>(null);
   const activeTab = useMemo(
     () => tabs.find((tab) => tab.id === activeTabId) ?? null,
     [activeTabId, tabs],
@@ -85,58 +84,12 @@ export function StudyPage() {
     () => savesQuery.data?.saves.find((row) => row.id === activeViewId) ?? null,
     [activeViewId, savesQuery.data?.saves],
   );
-  const chartInput = useMemo(
-    () => snapshot ? studySnapshotBundleToChartInput(snapshot.bundle) : null,
+  const renderModel = useMemo(
+    () => snapshot ? studySnapshotRenderModel(snapshot) : null,
     [snapshot],
   );
-  const details = useMemo(
-    () => snapshot ? studySnapshotDetails(snapshot.bundle, snapshot.indicator_state) : null,
-    [snapshot],
-  );
-  const bucketMs = snapshot ? (bucketSeconds(snapshot.timeframe) ?? 60) * 1000 : 60_000;
-  const snapshotTodayKst = snapshot?.bundle.segments.at(-1)?.date ?? '';
-  const dailyMovingAverageOverride = useMemo(() => {
-    if (!snapshot) return undefined;
-    return {
-      configs: (snapshot.indicator_state.daily_moving_averages ?? []).map((m): LiveMAConfig => ({
-        id: m.id,
-        enabled: m.enabled,
-        period: m.period,
-        color: m.color,
-        lineWidth: m.line_width,
-        source: m.source,
-      })),
-      masterEnabled: snapshot.indicator_state.daily_moving_average_enabled === true,
-      hidden: snapshot.indicator_state.daily_moving_average_hidden === true,
-    };
-  }, [snapshot]);
-  const tradeVolumePocs = useMemo<TradeVolumePoc[]>(() => {
-    const saved = (snapshot?.bundle.trade_volume_pocs ?? []).map((poc) => ({
-      date: poc.date,
-      centerPrice: poc.center_price,
-      lowPrice: poc.low_price,
-      highPrice: poc.high_price,
-      qty: poc.qty,
-      t_ms: poc.t_ms,
-      bandPct: poc.band_pct,
-    }));
-    if (!chartInput || !snapshot) return saved;
-    const seenDates = new Set(saved.map((poc) => poc.date));
-    const fallback = computeCandleVolumePocs(
-      chartInput.bundle.candles,
-      chartInput.bundle.segments,
-      { bandPct: snapshot.indicator_state.trade_volume_poc_band_pct ?? 0.005 },
-    ).filter((poc) => !seenDates.has(poc.date));
-    return [...saved, ...fallback];
-  }, [chartInput, snapshot]);
-  const tradeVolumePocOverride = useMemo(() => {
-    if (!snapshot) return undefined;
-    return {
-      enabled: snapshot.indicator_state.trade_volume_poc_enabled !== false,
-      color: snapshot.indicator_state.trade_volume_poc_color,
-      opacity: snapshot.indicator_state.trade_volume_poc_opacity,
-    };
-  }, [snapshot]);
+  const chartInput = renderModel?.chartInput ?? null;
+  const details = renderModel?.details ?? null;
   const captureViewportRef = useRef<() => TabViewport | null>(() => null);
   const draggingEntry = useEntryDragStore((s) => s.draggingCode != null);
   const overStudy = useEntryDragStore((s) => s.overStudy);
@@ -144,6 +97,13 @@ export function StudyPage() {
   const clearStudyTarget = useEntryDragStore((s) => s.clearStudyTarget);
   const handleViewportCaptureReady = useCallback((capture: () => TabViewport | null) => {
     captureViewportRef.current = capture;
+  }, []);
+  const handleWheelCapture = useCallback((event: WheelEvent<HTMLDivElement>) => {
+    if (!event.altKey) return;
+    const scroller = detailPanelScrollRef.current;
+    if (!scroller) return;
+    scroller.scrollTop += event.deltaY;
+    event.preventDefault();
   }, []);
   const commitMemo = useCallback((memo: string) => {
     if (!activeViewId || memo === (selectedSave?.memo ?? '')) return;
@@ -203,7 +163,7 @@ export function StudyPage() {
   });
 
   useEffect(() => {
-    if (!activeViewId || !snapshot || !chartInput) {
+    if (!activeViewId || !snapshot || !renderModel) {
       setCurrentStudySaveSource(null);
       return undefined;
     }
@@ -211,14 +171,14 @@ export function StudyPage() {
       origin: 'study',
       viewId: activeViewId,
       snapshot,
-      bundle: chartInput.bundle,
+      bundle: renderModel.chartInput.bundle,
       captureViewport: () => captureViewportRef.current(),
     };
     setCurrentStudySaveSource(source);
     return () => {
       clearCurrentStudySaveSource(source);
     };
-  }, [activeViewId, captureViewportRef, chartInput, snapshot]);
+  }, [activeViewId, captureViewportRef, renderModel, snapshot]);
 
   useEffect(() => {
     const hitTest = (clientX: number, clientY: number): boolean => {
@@ -257,7 +217,7 @@ export function StudyPage() {
     );
   }
 
-  if (snapshotQuery.isError || !snapshot || !chartInput) {
+  if (snapshotQuery.isError || !snapshot || !renderModel) {
     return (
       <section data-testid="study-page-error" className="h-full min-w-0 bg-[var(--bg)] text-[var(--fg)]">
         <div ref={studyDropTargetRef} data-testid="study-drop-target" className="relative h-full">
@@ -304,43 +264,40 @@ export function StudyPage() {
         ref={studyDropTargetRef}
         data-testid="study-drop-target"
         className="relative grid min-h-0 grid-cols-[minmax(0,1fr)_var(--sidebar-w)]"
+        onWheelCapture={handleWheelCapture}
       >
         <div className="min-h-0 min-w-0 overflow-hidden">
           <LiveChartRoot
             code={snapshot.code}
             timeframe={snapshot.timeframe}
             viewIdentity={activeTabId ? `${activeTabId}:${activeViewId}` : activeViewId}
-            bundle={chartInput.bundle}
-            chartBundle={chartInput.chartBundle}
-            ratioBundle={chartInput.ratioBundle}
+            bundle={renderModel.chartInput.bundle}
+            chartBundle={renderModel.chartInput.chartBundle}
+            ratioBundle={renderModel.chartInput.ratioBundle}
             clampEngaged={false}
             isPastCandlesLoading={false}
             isExtending={false}
             pastDataWarnings={[]}
-            restoreViewport={{
-              rightEdgeMs: snapshot.viewport.right_edge_ms,
-              barSpan: snapshot.viewport.bar_span,
-              atLiveEdge: snapshot.viewport.at_live_edge,
-            }}
-            dayAskPeaks={chartInput.bundle.ask_peaks}
-            dayBidPeaks={chartInput.bundle.bid_peaks}
-            todayKst={snapshotTodayKst}
-            tradeVolumePocs={tradeVolumePocs}
+            restoreViewport={renderModel.restoreViewport}
+            dayAskPeaks={renderModel.chartInput.bundle.ask_peaks}
+            dayBidPeaks={renderModel.chartInput.bundle.bid_peaks}
+            todayKst={renderModel.todayKst}
+            tradeVolumePocs={renderModel.tradeVolumePocs}
             forceHogaPanes
-            paneTogglesOverride={{
-              volumeEnabled: snapshot.indicator_state.volume_enabled,
-              quoteTotalsEnabled: snapshot.indicator_state.quote_totals_enabled,
-              ratioEnabled: snapshot.indicator_state.ratio_enabled,
-              fillStrengthEnabled: snapshot.indicator_state.fill_strength_enabled,
-              programTradeEnabled: snapshot.indicator_state.program_trade_enabled ?? true,
-            }}
-            dailyMovingAverageOverride={dailyMovingAverageOverride}
-            tradeVolumePocOverride={tradeVolumePocOverride}
+            paneTogglesOverride={renderModel.paneTogglesOverride}
+            dailyMovingAverageOverride={renderModel.dailyMovingAverageOverride}
+            tradeVolumePocOverride={renderModel.tradeVolumePocOverride}
             onViewportCaptureReady={handleViewportCaptureReady}
             onCursorActiveChange={setIsCursorActive}
           />
         </div>
-        <aside className="relative z-10 grid min-h-0 grid-rows-[auto_minmax(0,1fr)] border-l border-[var(--border)] bg-[var(--bg-card)]">
+        <aside
+          ref={detailPanelScrollRef}
+          role="complementary"
+          aria-label="Study Detail Panel"
+          className="relative z-10 grid min-h-0 grid-rows-[auto_minmax(0,1fr)] overflow-y-auto overflow-x-hidden border-l border-[var(--border)] bg-[var(--bg-card)]"
+          style={{ scrollbarGutter: 'stable' }}
+        >
           {isMemoOpen && selectedSave && (
             <StudyMemoPanel
               memo={selectedSave.memo}
@@ -353,10 +310,10 @@ export function StudyPage() {
           {details && chartInput && (
             <StudyDetailPanel
               details={details}
-              candles={chartInput.bundle.candles}
-              segments={chartInput.bundle.segments}
-              programTrade={chartInput.bundle.program_trade ?? null}
-              bucketMs={bucketMs}
+              candles={renderModel.chartInput.bundle.candles}
+              segments={renderModel.chartInput.bundle.segments}
+              programTrade={renderModel.chartInput.bundle.program_trade ?? null}
+              bucketMs={renderModel.bucketMs}
               cursorMs={isCursorActive ? cursorMs : null}
             />
           )}

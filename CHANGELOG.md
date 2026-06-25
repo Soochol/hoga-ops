@@ -3,6 +3,15 @@
 All notable changes to this project are documented here.
 The format follows a 4-digit `MAJOR.MINOR.PATCH.MICRO` scheme.
 
+## [0.12.1.0] - 2026-06-25
+
+### Fixed
+- **/study 상세 패널 스크롤 동작 보정**: `/study` 오른쪽 상세 패널도 `/live`처럼 하나의 세로 스크롤 영역으로 묶고, `Alt + 마우스 휠`은 캔들 차트 줌 대신 상세 패널 스크롤을 움직이게 했다.
+- **거래원/프로그램 표시 순서 정렬**: `/live`와 `/study` 사이드바 및 지표 설정에서 거래원 지표가 프로그램 지표보다 먼저 보이도록 순서를 맞췄다.
+
+### Changed
+- **저장 학습뷰 복원 계산 정리**: snapshot 복원 값, 매물대/POC fallback, quote-ratio sentinel 준비 로직을 작은 공용 helper로 분리해 `/live`와 `/study`의 매물대/호가 지표 규칙이 갈라지지 않게 했다.
+
 ## [0.12.0.0] - 2026-06-25
 
 ### Added

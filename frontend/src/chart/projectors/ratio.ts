@@ -8,7 +8,7 @@ import {
 } from 'lightweight-charts';
 import type { RangeBundle, QuoteRatioPoint } from '../../api/types';
 import { type VirtualAxis } from '../../util/virtualAxis';
-import { isSyntheticHogaGapPoint, withHogaGapSentinels } from '../util/hogaGapHide';
+import { isSyntheticHogaGapPoint } from '../util/hogaGapHide';
 import { quoteImbalance } from '../../util/imbalance';
 import { resolveTokens } from '../../util/tokens';
 import { useShallow } from 'zustand/react/shallow';
@@ -17,6 +17,7 @@ import type { PaneSpec } from '../RangeSeriesPane';
 import { addZeroBaselineGuide } from '../util/zeroBaseline';
 import { isAuctionHidden, BASELINE_HIDDEN_COLORS, maskOutgoingConnector } from '../util/auctionHide';
 import { makePastCachedProjector } from './pastCachedProjector';
+import { quoteRatioPointsForBundle, quoteRatioPointsForSlice } from './quoteRatioPoints';
 
 const TOKEN_SPEC = {
   // KRX 컨벤션: 매수=상승=빨강, 매도=하락=파랑. RatioPane은 price-direction
@@ -72,29 +73,6 @@ export function projectRatio(
 ): BaselineData<Time>[] {
   return projectRatioPoints(quoteRatioPointsForBundle(bundle), axis, ctx);
 }
-
-const quoteRatioPointsForBundle = (bundle: RangeBundle): readonly QuoteRatioPoint[] =>
-  withHogaGapSentinels(bundle.quote_ratio.points, bundle.candles ?? [], bundle.bucket_ms);
-
-const quoteRatioPointsForSlice = ({
-  bundle,
-  points,
-  allPoints,
-  fromT,
-  toT,
-}: {
-  bundle: RangeBundle;
-  points: readonly QuoteRatioPoint[];
-  allPoints: readonly QuoteRatioPoint[];
-  fromT?: number;
-  toT?: number;
-}): readonly QuoteRatioPoint[] =>
-  withHogaGapSentinels(points, bundle.candles ?? [], bundle.bucket_ms, {
-    firstHogaT: allPoints[0]?.t,
-    lastHogaT: allPoints[allPoints.length - 1]?.t,
-    fromT,
-    toT,
-  });
 
 /** Points-array variant of {@link projectRatio} — projects an arbitrary slice
  * of quote_ratio points (not the whole bundle). Extracted so the /live tick

@@ -448,7 +448,7 @@ describe('LiveSidebar', () => {
     expect(screen.getAllByTestId('volume-distribution-bar').some((bar) => bar.style.width !== '0%')).toBe(true);
   });
 
-  it('renders the program trade card between orderbook and brokers', () => {
+  it('renders the broker card before the program trade card', () => {
     renderSidebar({
       code: '005930',
       live: emptyLive,
@@ -458,10 +458,10 @@ describe('LiveSidebar', () => {
     const program = screen.getByTestId('live-detail-card-program');
     const brokers = screen.getByTestId('live-detail-card-brokers');
     expect(
-      orderbook.compareDocumentPosition(program) & Node.DOCUMENT_POSITION_FOLLOWING,
+      orderbook.compareDocumentPosition(brokers) & Node.DOCUMENT_POSITION_FOLLOWING,
     ).toBeTruthy();
     expect(
-      program.compareDocumentPosition(brokers) & Node.DOCUMENT_POSITION_FOLLOWING,
+      brokers.compareDocumentPosition(program) & Node.DOCUMENT_POSITION_FOLLOWING,
     ).toBeTruthy();
   });
 
