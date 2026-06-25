@@ -34,13 +34,13 @@ describe('LiveDetailPanel', () => {
       orderbook.compareDocumentPosition(volumeDistribution) & Node.DOCUMENT_POSITION_FOLLOWING,
     ).toBeTruthy();
     expect(
-      volumeDistribution.compareDocumentPosition(program) & Node.DOCUMENT_POSITION_FOLLOWING,
+      volumeDistribution.compareDocumentPosition(brokers) & Node.DOCUMENT_POSITION_FOLLOWING,
     ).toBeTruthy();
     expect(
-      program.compareDocumentPosition(brokers) & Node.DOCUMENT_POSITION_FOLLOWING,
+      brokers.compareDocumentPosition(program) & Node.DOCUMENT_POSITION_FOLLOWING,
     ).toBeTruthy();
     expect(
-      brokers.compareDocumentPosition(investor) & Node.DOCUMENT_POSITION_FOLLOWING,
+      program.compareDocumentPosition(investor) & Node.DOCUMENT_POSITION_FOLLOWING,
     ).toBeTruthy();
     expect(orderbook).not.toContainElement(volumeDistribution);
   });
@@ -59,13 +59,13 @@ describe('LiveDetailPanel', () => {
       screen.getByRole('separator', { name: '10호가 / 매물대 크기 조절' }),
     ).toHaveAttribute('aria-orientation', 'horizontal');
     expect(
-      screen.getByRole('separator', { name: '매물대 / 프로그램 순매수 크기 조절' }),
+      screen.getByRole('separator', { name: '매물대 / 거래원 크기 조절' }),
     ).toHaveAttribute('aria-orientation', 'horizontal');
     expect(
-      screen.getByRole('separator', { name: '프로그램 순매수 / 거래원 크기 조절' }),
+      screen.getByRole('separator', { name: '거래원 / 프로그램 순매수 크기 조절' }),
     ).toHaveAttribute('aria-orientation', 'horizontal');
     expect(
-      screen.getByRole('separator', { name: '거래원 / 잠정투자자 크기 조절' }),
+      screen.getByRole('separator', { name: '프로그램 순매수 / 잠정투자자 크기 조절' }),
     ).toHaveAttribute('aria-orientation', 'horizontal');
   });
 

@@ -17,6 +17,24 @@ function details(overrides: Partial<StudySnapshotDetailInput> = {}): StudySnapsh
 }
 
 describe('StudyDetailPanel', () => {
+  it('renders 거래원 before 프로그램 in the detail stack', () => {
+    render(
+      <StudyDetailPanel
+        details={details()}
+        candles={[{ ts_ms: 1_000 }]}
+        segments={[{ date: '20260625', session_open_ms: 1_000, session_close_ms: 2_000, source: 'hogaplay' }]}
+        bucketMs={60_000}
+        cursorMs={null}
+      />,
+    );
+
+    const brokers = screen.getByTestId('card-brokers');
+    const program = screen.getByTestId('card-program-trade');
+    expect(
+      brokers.compareDocumentPosition(program) & Node.DOCUMENT_POSITION_FOLLOWING,
+    ).toBeTruthy();
+  });
+
   it('renders the saved volume distribution for the hovered segment date even when the cursor is between saved candles', () => {
     render(
       <StudyDetailPanel
