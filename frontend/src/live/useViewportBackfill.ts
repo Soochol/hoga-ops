@@ -28,6 +28,8 @@ export interface ViewportBackfillArgs {
   isExtending: boolean;
   /** Reset key — per-code state (snapshot, fill-step counter) clears on switch. */
   code: string;
+  /** Backfill must not race the initial live-edge viewport placement. */
+  canTriggerBackfill?: () => boolean;
 }
 
 /** Headless controller for /live's leftward-pan historical backfill +
@@ -75,6 +77,7 @@ export function useViewportBackfill({
   timeframe,
   isExtending,
   code,
+  canTriggerBackfill = () => true,
 }: ViewportBackfillArgs): void {
   // Pre-swap snapshot: the view as of the CURRENT commit's layout phase, with
   // the right edge resolved to real ms through the axis the chart was actually
@@ -200,6 +203,7 @@ export function useViewportBackfill({
     const wasExtending = prevExtendingRef.current;
     prevExtendingRef.current = isExtending;
     if (!chart) return;
+    if (!canTriggerBackfill()) return;
     if (!(wasExtending && !isExtending)) return; // falling edge만
     // 초기 캔들 미로드(빈 차트)면 백필 폭주 금지 — candleCountRef 주석 참조.
     if (candleCountRef.current === 0) return;
@@ -228,7 +232,7 @@ export function useViewportBackfill({
     }
     fillStepCountRef.current += 1;
     useLivePageStore.getState().extendHistoricalRange(plan.nextFrom);
-  }, [chart, axis, timeframe, isExtending]);
+  }, [chart, axis, timeframe, isExtending, canTriggerBackfill]);
 
   // 3b. Lazy fetch trigger — extend historicalFromDate when user scrolls past
   // the leftmost loaded candle.
@@ -251,6 +255,7 @@ export function useViewportBackfill({
     const ts = chart.timeScale();
     let timeoutId: ReturnType<typeof setTimeout> | null = null;
     const handler = (range: unknown) => {
+      if (!canTriggerBackfill()) return;
       // Lazy-fetch runs for every LiveTimeframe, including D/W/M. The
       // candle backfill (/api/live/past-candles) is timeframe-independent
       // — useLiveBundle re-aggregates the same 1m bars into D/W/M on the
@@ -285,5 +290,5 @@ export function useViewportBackfill({
       if (timeoutId !== null) clearTimeout(timeoutId);
       ts.unsubscribeVisibleLogicalRangeChange(handler);
     };
-  }, [chart, axis, timeframe]);
+  }, [chart, axis, timeframe, canTriggerBackfill]);
 }

@@ -85,7 +85,7 @@ const EMPTY_ASK_PEAKS: readonly AskPeak[] = [];
 const EMPTY_BID_PEAKS: readonly BidPeak[] = [];
 const HIGH_LOW_AVOID_BASELINE_STYLE = { color: '', lineWidth: 1 };
 const DAILY_MIN_EFFECTIVE_BAR_SPACING = 3.5;
-const MINUTE_RIGHT_LABEL_GUTTER_PX = 100;
+const MINUTE_RIGHT_LABEL_GUTTER_PX = 140;
 
 function dailyLogicalRange(
   totalBars: number,
@@ -433,6 +433,10 @@ export function LiveChartRoot({ code, timeframe, venue = 'KRX', viewIdentity, bu
   // transition doesn't leave the chart zoomed on the early window with the
   // latest data off the right edge.
   const lastAppliedCountRef = useRef<number | null>(null);
+  const canTriggerBackfill = useCallback(
+    () => lastAppliedCountRef.current !== null || useLivePageStore.getState().historicalFromDate !== null,
+    [],
+  );
   // Cold-load reveal gate. On a cold (code, timeframe) load the hoga panes
   // (/api/range) resolve up to ~2.5s before the candles (/api/live/past-candles
   // carries ~40 days) and establish lightweight-charts' default ~60-bar fit on
@@ -477,7 +481,15 @@ export function LiveChartRoot({ code, timeframe, venue = 'KRX', viewIdentity, bu
   // repositioner and the initial-view effect below are mutually exclusive via
   // historicalFromDate (null → initial-view owns the viewport; non-null →
   // repositioner), so their relative declaration order is immaterial.
-  useViewportBackfill({ chart, axis, bundle: cb, timeframe, isExtending, code: code ?? '' });
+  useViewportBackfill({
+    chart,
+    axis,
+    bundle: cb,
+    timeframe,
+    isExtending,
+    code: code ?? '',
+    canTriggerBackfill,
+  });
   // Modifier-aware 휠 줌/팬 — handleScale.mouseWheel: false(아래 createChartEx
   // 옵션)와 한 쌍. 스펙: docs/superpowers/specs/2026-06-07-live-wheel-interactions-design.md
   useWheelInteractions(chart, containerRef, cb, axis);
