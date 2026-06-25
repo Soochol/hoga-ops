@@ -97,6 +97,11 @@ export const useStudyTabsStore = create<StudyTabsStore>((set, get) => ({
 
   openSaveInActiveTab: (save) => {
     const { tabs, activeTabId } = get();
+    const existing = tabs.find((tab) => tab.viewId === save.id);
+    if (existing) {
+      set({ activeTabId: existing.id });
+      return;
+    }
     const next = studyTabFromSave(save);
     const active = tabs.find((tab) => tab.id === activeTabId);
     if (!active) {
