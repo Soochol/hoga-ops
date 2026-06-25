@@ -142,6 +142,14 @@ export function Screener() {
           <span className="text-sm" style={{ color: 'var(--error)' }}>갱신 실패</span>
         )}
         <div className="min-w-0 flex-1" />
+        {basis === 'intraday' && (
+          <span
+            className="inline-flex items-center gap-1.5 font-mono text-xs tabular-nums text-fg-dim"
+            title="조건검색 실행 시 오늘 KIS quote를 일봉 위에 임시 반영합니다"
+          >
+            오늘 장중: KIS quote 반영
+          </span>
+        )}
         <StalenessChip status={status} />
       </div>
 
