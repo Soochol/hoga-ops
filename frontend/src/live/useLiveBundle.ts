@@ -158,6 +158,7 @@ export function useLiveBundle(
   options: UseLiveBundleOptions = {},
 ): UseLiveBundleResult {
   const historicalFromDate = useLivePageStore((s) => s.historicalFromDate);
+  const tradeVolumePocEnabled = useLivePageStore((s) => s.tradeVolumePocEnabled);
   const volumeDistributionEnabled = useLivePageStore((s) => s.volumeDistributionEnabled);
   const volumeDistributionRangeCount = useLivePageStore((s) => s.volumeDistributionRangeCount);
   const venue = options.venue ?? 'KRX';
@@ -194,7 +195,10 @@ export function useLiveBundle(
     // frozen. A periodic refetch keeps the same query key → no placeholderData
     // swap → does not set isExtending, so today's right edge is untouched.
     todayKstYyyymmdd,
-    { volumeDistributionBins: volumeDistributionEnabled ? volumeDistributionRangeCount : null },
+    {
+      volumeDistributionBins: volumeDistributionEnabled ? volumeDistributionRangeCount : null,
+      tradeVolumePocBins: tradeVolumePocEnabled ? volumeDistributionRangeCount : null,
+    },
   );
   const pastCandlesQuery = useLivePastCandles(
     enableMinute ? code : null,

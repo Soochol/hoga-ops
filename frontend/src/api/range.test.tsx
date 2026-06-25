@@ -98,6 +98,7 @@ describe('useRange', () => {
     );
     await waitFor(() => expect(spy).toHaveBeenCalled());
     expect(spy.mock.calls[0][0]).not.toContain('volume_distribution_bins=');
+    expect(spy.mock.calls[0][0]).not.toContain('trade_volume_poc_bins=');
   });
 
   it('threads volume_distribution_bins into query string', async () => {
@@ -108,6 +109,16 @@ describe('useRange', () => {
     );
     await waitFor(() => expect(spy).toHaveBeenCalled());
     expect(spy.mock.calls[0][0]).toContain('&volume_distribution_bins=20');
+  });
+
+  it('threads trade_volume_poc_bins into query string', async () => {
+    const spy = vi.spyOn(client, 'apiCall').mockResolvedValue(fakeBundle);
+    renderHook(
+      () => useRange('005930', '20260512', '20260512', '1m', undefined, null, { tradeVolumePocBins: 12 }),
+      { wrapper: makeWrapper() },
+    );
+    await waitFor(() => expect(spy).toHaveBeenCalled());
+    expect(spy.mock.calls[0][0]).toContain('&trade_volume_poc_bins=12');
   });
 });
 

@@ -523,6 +523,88 @@ def test_build_range_bundle_volume_distributions_are_opt_in():
     assert rb.volume_distributions == [profile]
 
 
+def test_build_range_bundle_builds_trade_volume_poc_by_default_from_candle_range():
+    import contextlib
+    from hoga.api import bundle as bundle_mod
+    from hoga.api.bundle import build_range_bundle
+    from hoga.api.models import TradeVolumePoc, VolumeProfile
+    from hoga.tables.candles import ApiCandle
+
+    mock_engine = _engine_with_meta_for_dates(["20260512"])
+    raw_candles = [
+        ApiCandle(ts_ms=1, open=70_000, close=70_100, high=70_200, low=69_900, vol_a=1, vol_b=0),
+        ApiCandle(ts_ms=2, open=70_100, close=70_300, high=70_400, low=70_000, vol_a=1, vol_b=0),
+    ]
+    poc = TradeVolumePoc(
+        date="20260512",
+        center_price=70_150,
+        low_price=69_900,
+        high_price=70_400,
+        qty=123,
+        t_ms=1,
+        band_pct=0.005,
+    )
+    patches = _patch_slice_builders(bundle_mod) + [
+        patch.object(bundle_mod, "build_candles_slice", return_value=raw_candles),
+        patch.object(bundle_mod, "build_volume_profile_range", return_value=VolumeProfile(bin_count=0, price_min=0, price_max=0, bin_width=0, bins=[])),
+    ]
+
+    with contextlib.ExitStack() as stack:
+        for pcm in patches:
+            stack.enter_context(pcm)
+        poc_builder = stack.enter_context(
+            patch.object(bundle_mod, "build_trade_volume_poc_slice", return_value=poc)
+        )
+        rb = build_range_bundle(
+            mock_engine,
+            code="005930",
+            from_date="20260512",
+            to_date="20260512",
+            bucket_ms=60_000,
+        )
+
+    assert rb.trade_volume_pocs == [poc]
+    assert poc_builder.call_args.kwargs["range_count"] == 10
+    assert poc_builder.call_args.kwargs["price_range"] == (69_900, 70_400)
+
+
+def test_build_range_bundle_threads_explicit_trade_volume_poc_bins():
+    import contextlib
+    from hoga.api import bundle as bundle_mod
+    from hoga.api.bundle import build_range_bundle
+    from hoga.api.models import VolumeProfile
+    from hoga.tables.candles import ApiCandle
+
+    mock_engine = _engine_with_meta_for_dates(["20260512"])
+    patches = _patch_slice_builders(bundle_mod) + [
+        patch.object(
+            bundle_mod,
+            "build_candles_slice",
+            return_value=[
+                ApiCandle(ts_ms=1, open=100, close=101, high=102, low=99, vol_a=1, vol_b=0),
+            ],
+        ),
+        patch.object(bundle_mod, "build_volume_profile_range", return_value=VolumeProfile(bin_count=0, price_min=0, price_max=0, bin_width=0, bins=[])),
+    ]
+
+    with contextlib.ExitStack() as stack:
+        for pcm in patches:
+            stack.enter_context(pcm)
+        poc_builder = stack.enter_context(
+            patch.object(bundle_mod, "build_trade_volume_poc_slice", return_value=None)
+        )
+        build_range_bundle(
+            mock_engine,
+            code="005930",
+            from_date="20260512",
+            to_date="20260512",
+            bucket_ms=60_000,
+            trade_volume_poc_bins=12,
+        )
+
+    assert poc_builder.call_args.kwargs["range_count"] == 12
+
+
 def test_build_range_bundle_attaches_program_trade_sidecar_from_disk(tmp_path):
     import contextlib
 

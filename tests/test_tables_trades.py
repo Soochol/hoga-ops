@@ -296,64 +296,37 @@ def test_query_fill_strength_empty_parquet_returns_no_rows(tmp_path: Path) -> No
 
 
 # ---------------------------------------------------------------------------
-# query_trade_volume_poc: date-scope most-traded +/-0.5%/+/-1% price band
+# query_trade_volume_poc: date-scope max continuous-trade volume-distribution bin
 # ---------------------------------------------------------------------------
 
 
-def test_query_trade_volume_poc_defaults_to_tick_adjusted_half_pct_band(tmp_path: Path) -> None:
+def test_query_trade_volume_poc_selects_max_distribution_bin(tmp_path: Path) -> None:
     import duckdb
 
     from hoga.tables.trades import query_trade_volume_poc
 
     p = tmp_path / "trades.parquet"
     write_parquet([
-        _price_trade(ts_ms=90_100_000, seq=1, price=71_500, qty=20, side=1),
-        _price_trade(ts_ms=90_200_000, seq=2, price=72_300, qty=50, side=-1),
-        _price_trade(ts_ms=90_300_000, seq=3, price=73_100, qty=30, side=1),
-        _price_trade(ts_ms=90_400_000, seq=4, price=76_000, qty=99, side=1),
+        _price_trade(ts_ms=90_100_000, seq=1, price=100, qty=10, side=1),
+        _price_trade(ts_ms=90_200_000, seq=2, price=110, qty=20, side=-1),
+        _price_trade(ts_ms=90_300_000, seq=3, price=120, qty=30, side=0),
     ], p)
 
     row = query_trade_volume_poc(
         duckdb.connect(),
         path=p,
+        price_lo=100,
+        price_hi=120,
+        bins=2,
         session_open_ms=90_000_000,
         session_close_ms=152_000_000,
     )
 
     assert row is not None
-    assert row.center_price == 76_000
-    assert row.low_price == 75_600
-    assert row.high_price == 76_400
-    assert row.qty == 99
-    assert row.intra_ms == 32_640_000
-
-
-def test_query_trade_volume_poc_can_select_tick_adjusted_one_pct_band(tmp_path: Path) -> None:
-    import duckdb
-
-    from hoga.tables.trades import query_trade_volume_poc
-
-    p = tmp_path / "trades.parquet"
-    write_parquet([
-        _price_trade(ts_ms=90_100_000, seq=1, price=71_500, qty=20, side=1),
-        _price_trade(ts_ms=90_200_000, seq=2, price=72_300, qty=50, side=-1),
-        _price_trade(ts_ms=90_300_000, seq=3, price=73_100, qty=30, side=1),
-        _price_trade(ts_ms=90_400_000, seq=4, price=76_000, qty=99, side=1),
-    ], p)
-
-    row = query_trade_volume_poc(
-        duckdb.connect(),
-        path=p,
-        session_open_ms=90_000_000,
-        session_close_ms=152_000_000,
-        band_pct=0.01,
-    )
-
-    assert row is not None
-    assert row.center_price == 72_300
-    assert row.low_price == 71_500
-    assert row.high_price == 73_100
-    assert row.qty == 100
+    assert row.center_price == 115
+    assert row.low_price == 110
+    assert row.high_price == 120
+    assert row.qty == 20
     assert row.intra_ms == 32_520_000
 
 
@@ -374,15 +347,97 @@ def test_query_trade_volume_poc_excludes_auction_side_and_outside_session(tmp_pa
     row = query_trade_volume_poc(
         duckdb.connect(),
         path=p,
+        price_lo=70_000,
+        price_hi=72_100,
+        bins=2,
         session_open_ms=90_000_000,
         session_close_ms=152_000_000,
     )
 
     assert row is not None
-    assert row.center_price == 72_000
-    assert row.low_price == 71_600
-    assert row.high_price == 72_400
+    assert row.low_price == 71_050
+    assert row.high_price == 72_100
     assert row.qty == 30
+
+
+def test_query_trade_volume_poc_clamps_high_price_trade_to_last_bin(tmp_path: Path) -> None:
+    import duckdb
+
+    from hoga.tables.trades import query_trade_volume_poc
+
+    p = tmp_path / "trades.parquet"
+    write_parquet([
+        _price_trade(ts_ms=90_100_000, seq=1, price=100, qty=10, side=1),
+        _price_trade(ts_ms=90_200_000, seq=2, price=120, qty=30, side=1),
+    ], p)
+
+    row = query_trade_volume_poc(
+        duckdb.connect(),
+        path=p,
+        price_lo=100,
+        price_hi=120,
+        bins=2,
+        session_open_ms=90_000_000,
+        session_close_ms=152_000_000,
+    )
+
+    assert row is not None
+    assert row.low_price == 110
+    assert row.high_price == 120
+    assert row.qty == 30
+
+
+def test_query_trade_volume_poc_tie_keeps_lower_distribution_bin(tmp_path: Path) -> None:
+    import duckdb
+
+    from hoga.tables.trades import query_trade_volume_poc
+
+    p = tmp_path / "trades.parquet"
+    write_parquet([
+        _price_trade(ts_ms=90_100_000, seq=1, price=110, qty=30, side=1),
+        _price_trade(ts_ms=90_200_000, seq=2, price=100, qty=30, side=1),
+    ], p)
+
+    row = query_trade_volume_poc(
+        duckdb.connect(),
+        path=p,
+        price_lo=100,
+        price_hi=120,
+        bins=2,
+        session_open_ms=90_000_000,
+        session_close_ms=152_000_000,
+    )
+
+    assert row is not None
+    assert row.low_price == 100
+    assert row.high_price == 110
+    assert row.qty == 30
+
+
+def test_query_trade_volume_poc_handles_single_price_range(tmp_path: Path) -> None:
+    import duckdb
+
+    from hoga.tables.trades import query_trade_volume_poc
+
+    p = tmp_path / "trades.parquet"
+    write_parquet([
+        _price_trade(ts_ms=90_100_000, seq=1, price=100, qty=10, side=1),
+    ], p)
+
+    row = query_trade_volume_poc(
+        duckdb.connect(),
+        path=p,
+        price_lo=100,
+        price_hi=100,
+        bins=5,
+        session_open_ms=90_000_000,
+        session_close_ms=152_000_000,
+    )
+
+    assert row is not None
+    assert row.low_price == 100
+    assert row.high_price == 101
+    assert row.qty == 10
 
 
 def test_query_trade_volume_poc_returns_none_for_no_regular_trades(tmp_path: Path) -> None:
@@ -398,6 +453,9 @@ def test_query_trade_volume_poc_returns_none_for_no_regular_trades(tmp_path: Pat
     assert query_trade_volume_poc(
         duckdb.connect(),
         path=p,
+        price_lo=70_000,
+        price_hi=71_000,
+        bins=2,
         session_open_ms=90_000_000,
         session_close_ms=152_000_000,
     ) is None

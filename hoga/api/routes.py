@@ -293,6 +293,7 @@ def build_router(engine: QueryEngine) -> APIRouter:
         bucket_ms: int = Query(...),
         source_pref: str = Query("hogaplay"),
         volume_distribution_bins: int | None = Query(None, ge=5, le=30),
+        trade_volume_poc_bins: int | None = Query(None, ge=5, le=30),
     ) -> RangeBundle:
         try:
             validate_bucket_ms(bucket_ms)
@@ -307,6 +308,7 @@ def build_router(engine: QueryEngine) -> APIRouter:
             bucket_ms=bucket_ms,
             source_pref=source_pref,
             volume_distribution_bins=volume_distribution_bins,
+            trade_volume_poc_bins=trade_volume_poc_bins,
         )
 
     return router
