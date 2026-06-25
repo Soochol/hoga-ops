@@ -2,17 +2,21 @@ import { type ReactNode } from 'react';
 
 type Props = {
   orderbook?: ReactNode;
+  volumeDistribution?: ReactNode;
   brokers?: ReactNode;
 };
 
-export default function CursorSidebar({ orderbook, brokers }: Props) {
+export default function CursorSidebar({ orderbook, volumeDistribution, brokers }: Props) {
   return (
     <aside
       id="replay-sidebar"
-      className="grid grid-rows-[minmax(624px,2fr)_1.4fr] gap-[var(--space-sm)] p-[var(--space-sm)] bg-bg h-full min-h-0"
+      className="grid grid-rows-[minmax(480px,1.8fr)_minmax(132px,0.5fr)_minmax(180px,1.2fr)] gap-[var(--space-sm)] p-[var(--space-sm)] bg-bg h-full min-h-0"
     >
       <SidebarCard label="10호가" testId="card-orderbook">
         {orderbook ?? <Placeholder />}
+      </SidebarCard>
+      <SidebarCard label="연속체결 매물대 분포" testId="card-volume-distribution">
+        {volumeDistribution ?? <Placeholder />}
       </SidebarCard>
       <SidebarCard label="거래원" testId="card-brokers">
         {brokers ?? <Placeholder />}

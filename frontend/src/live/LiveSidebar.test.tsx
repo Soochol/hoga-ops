@@ -115,6 +115,21 @@ describe('LiveSidebar', () => {
     ).toBeTruthy();
   });
 
+  it('renders the volume distribution card between orderbook and brokers', () => {
+    renderSidebar({ code: '005930' });
+
+    const orderbook = screen.getByTestId('card-orderbook');
+    const volumeDistribution = screen.getByTestId('card-volume-distribution');
+    const brokers = screen.getByTestId('card-brokers');
+
+    expect(
+      orderbook.compareDocumentPosition(volumeDistribution) & Node.DOCUMENT_POSITION_FOLLOWING,
+    ).toBeTruthy();
+    expect(
+      volumeDistribution.compareDocumentPosition(brokers) & Node.DOCUMENT_POSITION_FOLLOWING,
+    ).toBeTruthy();
+  });
+
   it('reads live data from the prop, not from useLiveSeries (LivePage-lift)', () => {
     // Regression guard for the dual-call-site bug: LiveSidebar must NOT
     // open its own SSE / hydrate its own buffer. LivePage owns the single
