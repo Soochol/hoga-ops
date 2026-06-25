@@ -1,6 +1,6 @@
 # 0031 — Retry는 `/items`와 분리된 전용 엔드포인트 (`POST /api/captures/items/retry`)
 
-**Status:** accepted (2026-05-25)
+**Status:** accepted (2026-05-25) — force-preservation semantics superseded by ADR-0081
 
 **Related:**
 - ADR-0006 — captures는 단일 모듈로 유지

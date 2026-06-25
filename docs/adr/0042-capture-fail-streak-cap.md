@@ -1,6 +1,6 @@
 # 0042 — Capture Fail-Streak Cap (per Stock-Date, 5 consecutive failed+skipped → blocked)
 
-**Status:** accepted (2026-05-28); amended (2026-06-03) — 아래 **Amendment** 참조
+**Status:** accepted (2026-05-28); amended (2026-06-03); force references superseded by ADR-0081
 
 **Related:**
 - ADR-0019 — Capture Queue 매니페스트 영속화 (`.queue.json` 패턴의 차용 대상)

@@ -1,6 +1,6 @@
 # 0035 — `phase=done + force_retry=true` Implicit Retry 허용 (인벤토리 재캡처 트리거)
 
-**Status:** accepted (2026-05-26)
+**Status:** accepted (2026-05-26) — superseded by ADR-0081
 
 **Related:**
 - ADR-0033 — `addItems`의 phase별 `_done` dedupe (본 ADR이 확장)

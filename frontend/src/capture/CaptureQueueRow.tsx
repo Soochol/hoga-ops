@@ -64,9 +64,6 @@ export function CaptureQueueRow({
         <span>{item.date}</span>
         <span className="flex items-center gap-1.5 min-w-0 font-normal text-sm text-fg-dim">
           <span className="truncate min-w-0">{symbolName}</span>
-          {item.force_retry && (
-            <StatusBadge tone="warn" title="Force re-capture" className="flex-none">⚠ force</StatusBadge>
-          )}
           {item.attempt > 1 && (
             <StatusBadge tone="dim" title={`Attempt ${item.attempt}`} className="flex-none">×{item.attempt}</StatusBadge>
           )}

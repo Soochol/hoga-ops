@@ -248,8 +248,8 @@ def _record_no_upstream_data(data_dir: Path, code: str, date: str) -> None:
     fired) and writes the sentinel. Does NOT touch parquet_dir — if a
     stale meta.json from a prior successful capture exists, it is
     shadowed by check_disk_state's sentinel-first ordering, not deleted
-    here. force_retry deletes the sentinel before re-running
-    collect_stock_date.
+    here. The next user-triggered capture deletes the sentinel before
+    re-running collect_stock_date.
     """
     raw_dir = data_dir / "raw" / date / code
     raw_dir.mkdir(parents=True, exist_ok=True)
@@ -732,10 +732,8 @@ async def _run_item(state: QueueItemState) -> None:
 
     Disk-state branches (see spec §5.2 + §11 Q16, ADR-0021 for NO_UPSTREAM_DATA):
     - COMPLETE → skipped/already_complete
-    - NO_UPSTREAM_DATA + not force_retry → skipped/no_upstream_data
-    - NO_UPSTREAM_DATA + force_retry → sentinel deleted, fresh capture (resume=False)
-    - SOURCE_PARTIAL + not force_retry → skipped/source_partial
-    - SOURCE_PARTIAL + force_retry → fresh capture (resume=False)
+    - NO_UPSTREAM_DATA → sentinel deleted, fresh capture (resume=False)
+    - SOURCE_PARTIAL → fresh capture (resume=False)
     - INVALID → fresh capture (resume=False)
     - CLIENT_INCOMPLETE → resume=True (continue from existing pages)
     - NONE → fresh capture (resume=False)
@@ -1177,7 +1175,7 @@ async def _retry_items(item_ids: list[str]) -> _RetryResult:
     - Apply (code, date) dedupe against ``_queue ∪ _active ∪ _inflight_paths``.
       Hit → skip ``already_running`` / ``already_in_queue``.
     - Remove from ``_done``; enqueue a new ``QueueItemState`` with
-      ``attempt = prior + 1`` and the same ``force_retry``.
+      ``attempt = prior + 1`` and the same legacy ``force_retry`` wire value.
 
     Duplicate item_ids in the same batch: the first attempt removes the row
     from ``_done``; the second sees ``not_found``.
@@ -1323,8 +1321,7 @@ async def enqueue_items_core(
         # ADR-0042 fail-streak gate. Runs INSIDE the lock (so _fail_streaks is
         # not racing a concurrent _finalize_item) but BEFORE the Q15/ADR-0033
         # dedupe loop, so a blocked (Code, Stock-Date) never reaches Implicit
-        # Retry. force_retry=true does NOT bypass this gate — that's the whole
-        # point of the cap. blocked pairs are removed from the candidate list.
+        # Retry. This cap is the only user-visible retry limiter.
         from hoga.api.fail_streak import ATTEMPT_CAP, streak_key
         unblocked_dates: list[str] = []
         for date in candidate_dates:
@@ -1361,15 +1358,13 @@ async def enqueue_items_core(
                 ))
                 continue
 
-            # Step 3b: ADR-0033 + ADR-0035 _done dedupe — branch by phase + force_retry.
-            # done + force_retry → re-enqueue; decide_capture still skips COMPLETE
-            # disk state at worker time (eligibility.py), so accidental complete
-            # overwrites stay impossible — see ADR-0035 Rationale.
+            # Step 3b: ADR-0033 + ADR-0035 _done dedupe — terminal rows are
+            # re-enqueueable. decide_capture remains the worker-time gate
+            # against accidental COMPLETE overwrites; fail_streak remains the
+            # retry cap above.
             if pair in done_index:
                 idx, old = done_index[pair]
-                if (old.phase in ("failed", "cancelled")
-                        or (old.phase == "skipped" and req.force_retry)
-                        or (old.phase == "done" and req.force_retry)):
+                if old.phase in ("done", "failed", "cancelled", "skipped"):
                     # Auto re-enqueue: remove old, enqueue new with attempt+1.
                     done_indices_to_remove.add(idx)
                     done_dismissed_ids.append(old.item_id)
@@ -1386,15 +1381,6 @@ async def enqueue_items_core(
                     _queue.append(new_state)
                     enqueued.append(new_state)
                     continue
-                # Dedupe as already_complete / already_skipped.
-                reason = (
-                    "already_complete" if old.phase == "done"
-                    else "already_skipped"  # phase == "skipped" and not force_retry
-                )
-                deduped_rows.append(EnqueueDedupedRow(
-                    code=req.code, date=date, reason=reason,
-                ))
-                continue
 
             # Step 3c: fresh enqueue.
             seen_in_request.add(pair)
