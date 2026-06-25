@@ -259,7 +259,12 @@ export function LiveWorkarea({
               borderLeft: '1px solid var(--border)',
             }}
           >
-            <LiveSidebar code={activeCode} live={live} />
+            <LiveSidebar
+              code={activeCode}
+              live={live}
+              bundle={chartBundle ?? bundle}
+              todayKst={todayKst}
+            />
           </div>
         </>
       )}

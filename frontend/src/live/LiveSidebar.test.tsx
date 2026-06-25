@@ -6,6 +6,7 @@ import { useLivePageStore } from '../state/livePage';
 import { useLiveCursorStore } from './useLiveCursorStore';
 import { useLiveAxisStore } from './useLiveAxisStore';
 import type { LiveSeriesData } from '../api/liveSeries';
+import type { RangeBundle } from '../api/types';
 
 const investorTrendEstimateMock = vi.hoisted(() =>
   vi.fn(() => ({ data: undefined, isLoading: false, error: null })),
@@ -26,6 +27,42 @@ const emptyLive: LiveSeriesData = {
   ob: [],
   trade: [],
   broker: [],
+};
+
+const bundleFixture: RangeBundle = {
+  code: '005930',
+  from_date: '20260527',
+  to_date: '20260527',
+  bucket_ms: 60_000,
+  segments: [
+    {
+      date: '20260527',
+      session_open_ms: Date.UTC(2026, 4, 27, 0, 0, 0),
+      session_close_ms: Date.UTC(2026, 4, 27, 6, 30, 0),
+      source: 'hogaplay',
+    },
+  ],
+  candles: [
+    {
+      ts_ms: Date.UTC(2026, 4, 27, 0, 0, 0),
+      open: 70000,
+      high: 70400,
+      low: 70000,
+      close: 70300,
+      vol_a: 100,
+      vol_b: 0,
+    },
+  ],
+  quote_ratio: { bucket_ms: 60_000, points: [] },
+  fill_strength: { bucket_ms: 60_000, points: [] },
+  volume_profile_range: { bin_count: 0, price_min: 0, price_max: 0, bin_width: 0, bins: [] },
+  volume_profile_by_day: [],
+  volume_distributions: [],
+  investorPoints: [],
+  ask_peaks: [],
+  bid_peaks: [],
+  price_level_hits: [],
+  trade_volume_pocs: [],
 };
 
 vi.mock('../api/useLiveCursor', () => ({
@@ -59,13 +96,18 @@ function makeQc(liveSet: string[] = []) {
 }
 
 function renderSidebar(
-  props: { code: string | null; live?: LiveSeriesData },
+  props: { code: string | null; live?: LiveSeriesData; bundle?: RangeBundle | null; todayKst?: string },
   liveSet: string[] = [],
 ) {
   const qc = makeQc(liveSet);
   return render(
     <QueryClientProvider client={qc}>
-      <LiveSidebar code={props.code} live={props.live ?? emptyLive} />
+      <LiveSidebar
+        code={props.code}
+        live={props.live ?? emptyLive}
+        bundle={props.bundle ?? null}
+        todayKst={props.todayKst ?? '20260527'}
+      />
     </QueryClientProvider>,
   );
 }
@@ -76,6 +118,7 @@ describe('LiveSidebar', () => {
     investorTrendEstimateMock.mockReturnValue({ data: undefined, isLoading: false, error: null });
     (cursorHooks.useLiveOrderbookAtCursor as ReturnType<typeof vi.fn>).mockReturnValue(undefined);
     (cursorHooks.useLiveBrokersAtCursor as ReturnType<typeof vi.fn>).mockReturnValue(undefined);
+    useLivePageStore.setState({ volumeDistributionEnabled: true, volumeDistributionRangeCount: 10 });
     useLiveCursorStore.getState().clearCursor();
     useLiveAxisStore.setState({ axis: null });
     vi.mocked(TotalQtyBar).mockClear();
@@ -128,6 +171,76 @@ describe('LiveSidebar', () => {
     expect(
       volumeDistribution.compareDocumentPosition(brokers) & Node.DOCUMENT_POSITION_FOLLOWING,
     ).toBeTruthy();
+  });
+
+  it('renders the persisted volume distribution for the active stock-date', () => {
+    renderSidebar({
+      code: '005930',
+      bundle: {
+        ...bundleFixture,
+        volume_distributions: [
+          {
+            date: '20260527',
+            range_count: 2,
+            price_min: 70000,
+            price_max: 70400,
+            session_open_ms: Date.UTC(2026, 4, 27, 0, 0, 0),
+            session_close_ms: Date.UTC(2026, 4, 27, 6, 30, 0),
+            bins: [
+              { price_low: 70000, price_high: 70200, qty: 150 },
+              { price_low: 70200, price_high: 70400, qty: 300 },
+            ],
+          },
+        ],
+      },
+    });
+
+    expect(screen.getByText('70000-70200')).toBeInTheDocument();
+    expect(screen.getByText('0.3k')).toBeInTheDocument();
+  });
+
+  it('recomputes today volume distribution from live continuous trades and ignores side=0 rows', () => {
+    useLivePageStore.setState({ volumeDistributionRangeCount: 2 });
+    const liveWithTrades: LiveSeriesData = {
+      ...emptyLive,
+      trade: [
+        {
+          t_ms: Date.UTC(2026, 4, 27, 0, 10, 0),
+          kind: 'trade',
+          trades: [
+            { t_ms: Date.UTC(2026, 4, 27, 0, 10, 0), price: 70100, qty: 500, side: 1 },
+            { t_ms: Date.UTC(2026, 4, 27, 0, 11, 0), price: 70120, qty: 990, side: 0 },
+            { t_ms: Date.UTC(2026, 4, 27, 0, 12, 0), price: 70350, qty: 700, side: -1 },
+          ],
+        },
+      ],
+    };
+
+    renderSidebar({
+      code: '005930',
+      live: liveWithTrades,
+      bundle: {
+        ...bundleFixture,
+        volume_distributions: [
+          {
+            date: '20260527',
+            range_count: 2,
+            price_min: 70000,
+            price_max: 70400,
+            session_open_ms: Date.UTC(2026, 4, 27, 0, 0, 0),
+            session_close_ms: Date.UTC(2026, 4, 27, 6, 30, 0),
+            bins: [
+              { price_low: 70000, price_high: 70200, qty: 1 },
+              { price_low: 70200, price_high: 70400, qty: 1 },
+            ],
+          },
+        ],
+      },
+    });
+
+    expect(screen.getByText('0.5k')).toBeInTheDocument();
+    expect(screen.getByText('0.7k')).toBeInTheDocument();
+    expect(screen.queryByText('1k')).toBeNull();
   });
 
   it('reads live data from the prop, not from useLiveSeries (LivePage-lift)', () => {

@@ -701,4 +701,38 @@ describe('buildLiveBundle session-end filter (ADR-0049 / spec §3)', () => {
     const after = bundle.quote_ratio.points.find((p) => p.t === pastTailT + 60_000);
     expect(after?.bid_total).toBe(40);
   });
+
+  it('preserves pastBundle.volume_distributions when no today recompute is involved', () => {
+    const yesterdayOpen = TODAY_OPEN - 86400_000;
+    const yesterdayClose = TODAY_CLOSE - 86400_000;
+    const past = emptyRangeBundle({
+      volume_distributions: [
+        {
+          date: '20260526',
+          range_count: 10,
+          price_min: 70000,
+          price_max: 71000,
+          session_open_ms: yesterdayOpen,
+          session_close_ms: yesterdayClose,
+          bins: [
+            { price_low: 70000, price_high: 70100, qty: 10 },
+            { price_low: 70100, price_high: 70200, qty: 20 },
+          ],
+        },
+      ],
+    });
+
+    const bundle = buildLiveBundle({
+      code: '005930',
+      todayDate: TODAY,
+      todaySession: { open_ms: TODAY_OPEN, close_ms: TODAY_CLOSE },
+      pastBundle: past,
+      sseOb: [],
+      sseTrade: [],
+      kisCandles: [],
+      bucketMs: 60_000,
+    });
+
+    expect(bundle.volume_distributions).toEqual(past.volume_distributions);
+  });
 });

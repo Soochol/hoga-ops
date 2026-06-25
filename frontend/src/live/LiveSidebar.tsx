@@ -4,13 +4,14 @@ import { InvestorTrendEstimateCard } from '../sidebar/InvestorTrendEstimateCard'
 import OrderbookTable from '../sidebar/OrderbookTable';
 import BrokerTrajectoryTable from '../sidebar/BrokerTrajectoryTable';
 import TotalQtyBar from '../sidebar/TotalQtyBar';
+import { VolumeDistributionCard } from '../sidebar/VolumeDistributionCard';
 import type { LiveSeriesData } from '../api/liveSeries';
 import {
   aggregateBrokerSeries,
   latestOrderbookSnapshot,
   orderbookSnapshotAtCursor,
 } from './liveSidebarAdapters';
-import { TIMEFRAME_TO_MS, type Timeframe } from '../api/types';
+import { TIMEFRAME_TO_MS, type DayVolumeDistribution, type RangeBundle, type Timeframe } from '../api/types';
 import { useLiveCursorStore } from './useLiveCursorStore';
 import { useLiveAxisStore } from './useLiveAxisStore';
 import { useLivePageStore } from '../state/livePage';
@@ -22,6 +23,8 @@ import {
 import { useLiveInvestorTrendEstimate } from '../api/liveInvestorTrendEstimate';
 import type { MinuteTimeframe } from '../state/livePage';
 import { isMinuteTimeframe } from '../state/livePage';
+import { realMsToYyyymmdd } from './liveDateTime';
+import { computeContinuousTradeVolumeDistribution } from './continuousTradeVolumeDistribution';
 
 interface Props {
   code: string | null;
@@ -30,6 +33,8 @@ interface Props {
    * SSE connection and a parallel buffer that drifts out of sync on HMR
    * re-mounts. */
   live: LiveSeriesData;
+  bundle?: RangeBundle | null;
+  todayKst?: string;
 }
 
 /**
@@ -47,9 +52,21 @@ interface Props {
  * The third "체결" card was removed 2026-05-28 (ADR-0047). The chart's
  * 체결강도 pane provides equivalent information in compact form.
  */
-export function LiveSidebar({ code, live }: Props) {
+function profileForDate(
+  profiles: readonly DayVolumeDistribution[],
+  date: string | null,
+): DayVolumeDistribution | null {
+  if (!date) return null;
+  return profiles.find((profile) => profile.date === date) ?? null;
+}
+
+export function LiveSidebar({ code, live, bundle = null, todayKst = '' }: Props) {
   const cursorMs = useLiveCursorStore((s) => s.cursorMs);
   const timeframe = useLivePageStore((s) => s.candleTimeframe);
+  const volumeDistributionEnabled = useLivePageStore((s) => s.volumeDistributionEnabled);
+  const volumeDistributionRangeCount = useLivePageStore((s) => s.volumeDistributionRangeCount);
+  const volumeDistributionColor = useLivePageStore((s) => s.volumeDistributionColor);
+  const volumeDistributionMaxColor = useLivePageStore((s) => s.volumeDistributionMaxColor);
   const stockCode = code && !code.startsWith('index:') ? code : null;
 
   // Spot mode is minute-only (ADR-0044): D/W/M have no per-cursor parquet. The
@@ -65,6 +82,7 @@ export function LiveSidebar({ code, live }: Props) {
   const latestBrokerSeries = useMemo(() => aggregateBrokerSeries(broker), [broker]);
   const latestBrokerTs =
     broker.length > 0 ? (broker[broker.length - 1].t_ms as number) : Date.now();
+  const activeBundle = bundle;
 
   // Spot-mode data (dormant when cursorMs null).
   const spotTimeframe: MinuteTimeframe | null =
@@ -102,6 +120,52 @@ export function LiveSidebar({ code, live }: Props) {
     ? spotBrokers
     : (broker.length === 0 ? undefined : latestBrokerSeries);
   const brokerCursorMs = isSpot ? (cursorMs ?? latestBrokerTs) : latestBrokerTs;
+  const activeVolumeDistributionDate = isSpot && cursorMs !== null
+    ? realMsToYyyymmdd(cursorMs)
+    : (activeBundle?.segments[activeBundle.segments.length - 1]?.date ?? todayKst ?? null);
+  const persistedVolumeDistributions = activeBundle?.volume_distributions ?? [];
+  const recomputedTodayVolumeDistribution = useMemo(() => {
+    if (
+      !volumeDistributionEnabled ||
+      !stockCode ||
+      !todayKst ||
+      !isMinuteTimeframe(timeframe) ||
+      !activeBundle
+    ) {
+      return null;
+    }
+    const todaySegment = activeBundle.segments.find((segment) => segment.date === todayKst);
+    if (!todaySegment) return null;
+    const todayCandles = activeBundle.candles.filter((candle) => realMsToYyyymmdd(candle.ts_ms) === todayKst);
+    if (todayCandles.length === 0 || live.trade.length === 0) return null;
+    return computeContinuousTradeVolumeDistribution({
+      date: todayKst,
+      candles: todayCandles,
+      trades: live.trade.flatMap((snapshot) =>
+        snapshot.trades.map((trade) => ({
+          t_ms: trade.t_ms ?? snapshot.t_ms,
+          price: trade.price ?? NaN,
+          qty: trade.qty,
+          side: trade.side,
+        })),
+      ),
+      rangeCount: volumeDistributionRangeCount,
+      segment: todaySegment,
+    });
+  }, [volumeDistributionEnabled, stockCode, todayKst, timeframe, activeBundle, live.trade, volumeDistributionRangeCount]);
+  const activeVolumeDistribution = useMemo(() => {
+    if (!volumeDistributionEnabled) return undefined;
+    if (activeVolumeDistributionDate === todayKst && recomputedTodayVolumeDistribution) {
+      return recomputedTodayVolumeDistribution;
+    }
+    return profileForDate(persistedVolumeDistributions, activeVolumeDistributionDate);
+  }, [
+    volumeDistributionEnabled,
+    activeVolumeDistributionDate,
+    todayKst,
+    recomputedTodayVolumeDistribution,
+    persistedVolumeDistributions,
+  ]);
 
   // T14b: "다음 가용: HH:MM" hint above orderbook table when spot orderbook
   // has no snapshot yet AND the SSE buffer can't fill it either (a genuine gap,
@@ -144,6 +208,14 @@ export function LiveSidebar({ code, live }: Props) {
               <OrderbookTable snapshot={orderbookForCard} />
               <TotalQtyBar snapshot={orderbookForCard} maskRatio={maskRatio} />
             </>
+          }
+          volumeDistribution={
+            <VolumeDistributionCard
+              profile={activeVolumeDistribution}
+              cursorMs={isSpot ? cursorMs : brokerCursorMs}
+              color={volumeDistributionColor}
+              maxColor={volumeDistributionMaxColor}
+            />
           }
           brokers={
             <BrokerTrajectoryTable series={brokerSeriesForCard} cursorMs={brokerCursorMs} />
