@@ -57,6 +57,30 @@ describe('studyTabs store', () => {
     expect(state.tabs[0]).toMatchObject({ viewId: 'view2', name: '마감' });
   });
 
+  it('focuses an existing tab instead of replacing the active tab for the same saved view', () => {
+    useStudyTabsStore.getState().openSaveInNewTab(save);
+    useStudyTabsStore.getState().openSaveInNewTab({ ...save, id: 'view2', name: '마감' });
+    const [firstTab, secondTab] = useStudyTabsStore.getState().tabs;
+
+    useStudyTabsStore.getState().openSaveInActiveTab(save);
+
+    const state = useStudyTabsStore.getState();
+    expect(state.tabs.map((tab) => tab.viewId)).toEqual(['view1', 'view2']);
+    expect(state.activeTabId).toBe(firstTab.id);
+    expect(state.tabs.find((tab) => tab.id === secondTab.id)).toMatchObject({ viewId: 'view2', name: '마감' });
+  });
+
+  it('treats same-code same-name saves as distinct tabs when their saved view ids differ', () => {
+    useStudyTabsStore.getState().openSaveInNewTab(save);
+    const firstTabId = useStudyTabsStore.getState().activeTabId;
+    useStudyTabsStore.getState().openSaveInActiveTab({ ...save, id: 'view2' });
+
+    const state = useStudyTabsStore.getState();
+    expect(state.tabs).toHaveLength(1);
+    expect(state.activeTabId).toBe(firstTabId);
+    expect(state.tabs[0]).toMatchObject({ viewId: 'view2', code: '005930', name: '장초반' });
+  });
+
   it('opens Ctrl-click saves in a new tab', () => {
     useStudyTabsStore.getState().openSaveInActiveTab(save);
     useStudyTabsStore.getState().openSaveInNewTab({ ...save, id: 'view2', name: '마감' });
