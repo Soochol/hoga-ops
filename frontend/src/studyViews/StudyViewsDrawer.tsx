@@ -494,7 +494,6 @@ export function StudyViewsDrawer() {
               </div>
             )}
           </div>
-          {location.pathname === '/study' && !studySource && <p className="mt-2 text-xs text-fg-dim">학습뷰를 불러온 뒤 저장할 수 있습니다.</p>}
         </div>
         {isLoading && <div className="p-3 text-sm text-fg-dim">불러오는 중</div>}
         {isError && (
