@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 import type { Time } from 'lightweight-charts';
 
 import {
+  BROKER_LATE_ENTRY_MARKER_STYLE,
   brokerLateEntryMarkerXCoordinate,
   isBrokerLateEntryMarkerVisibleInPane,
   shouldUseFullBrokerLateEntryLabels,
@@ -20,6 +21,13 @@ function marker(overrides: Partial<BrokerLateEntryMarkerPoint> = {}): BrokerLate
     ...overrides,
   };
 }
+
+describe('BROKER_LATE_ENTRY_MARKER_STYLE', () => {
+  it('uses slightly larger broker dots and label text for chart readability', () => {
+    expect(BROKER_LATE_ENTRY_MARKER_STYLE.dotRadiusPx).toBe(4);
+    expect(BROKER_LATE_ENTRY_MARKER_STYLE.labelFontPx).toBe(13);
+  });
+});
 
 describe('brokerLateEntryMarkerXCoordinate', () => {
   it('falls back to anchorTime when the event time is not on the chart time scale', () => {

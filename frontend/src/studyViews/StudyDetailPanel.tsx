@@ -71,7 +71,7 @@ export function StudyDetailPanel({ details, candles, segments, programTrade = nu
       if (aRank != null) return -1;
       if (bRank != null) return 1;
       return Math.abs(b.final_net) - Math.abs(a.final_net);
-    });
+    }).slice(0, 10);
   }, [bucketStart, details.brokersByBucketStart, sessionBrokerSeries]);
   const snapshot = orderbook?.available ? orderbook.snapshot : null;
   const activeVolumeDistribution = useMemo(() => {
