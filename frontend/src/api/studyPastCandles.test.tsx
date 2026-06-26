@@ -3,7 +3,12 @@ import { renderHook, waitFor } from '@testing-library/react';
 import type { ReactNode } from 'react';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import * as client from './client';
-import { useStudyPastCandles, useStudyPastDailyCandles } from './studyPastCandles';
+import {
+  studyPastCandlesQueryOptions,
+  studyPastDailyCandlesQueryOptions,
+  useStudyPastCandles,
+  useStudyPastDailyCandles,
+} from './studyPastCandles';
 import type { LivePastCandlesResponse } from './livePastCandles';
 import type { LivePastDailyCandlesResponse } from './livePastDailyCandles';
 
@@ -37,6 +42,40 @@ const dailyResponse: LivePastDailyCandlesResponse = {
 
 describe('study past-candle queries', () => {
   beforeEach(() => vi.restoreAllMocks());
+
+  it('builds reusable minute candle query options', async () => {
+    const spy = vi.spyOn(client, 'apiCall').mockResolvedValue(minuteResponse);
+    const options = studyPastCandlesQueryOptions('005930', '20260616', '20260618', 'KRX');
+
+    expect(options.enabled).toBe(true);
+    expect(options.queryKey).toEqual(['study', 'past-candles', '005930', '20260616', '20260618', 'KRX']);
+    expect(options.staleTime).toBe(Infinity);
+    expect(options.refetchInterval).toBe(false);
+
+    const signal = new AbortController().signal;
+    const queryFn = options.queryFn as (context: { signal: AbortSignal }) => Promise<LivePastCandlesResponse>;
+    await queryFn({ signal });
+    expect(spy).toHaveBeenCalledWith(
+      '/api/live/past-candles?code=005930&from=20260616&to=20260618&venue=KRX',
+      { signal },
+    );
+  });
+
+  it('builds reusable daily candle query options', async () => {
+    const spy = vi.spyOn(client, 'apiCall').mockResolvedValue(dailyResponse);
+    const options = studyPastDailyCandlesQueryOptions('005930', '20260616', '20260618', 'KRX');
+
+    expect(options.enabled).toBe(true);
+    expect(options.queryKey).toEqual(['study', 'past-daily-candles', '005930', '20260616', '20260618', 'KRX']);
+
+    const signal = new AbortController().signal;
+    const queryFn = options.queryFn as (context: { signal: AbortSignal }) => Promise<LivePastDailyCandlesResponse>;
+    await queryFn({ signal });
+    expect(spy).toHaveBeenCalledWith(
+      '/api/live/past-daily-candles?code=005930&from=20260616&to=20260618&venue=KRX',
+      { signal },
+    );
+  });
 
   it('fetches minute candles with static study freshness', async () => {
     const spy = vi.spyOn(client, 'apiCall').mockResolvedValue(minuteResponse);

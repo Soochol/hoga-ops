@@ -1,49 +1,45 @@
 import { useMemo } from 'react';
+import { useQuery } from '@tanstack/react-query';
 
-import { useRange } from '../api/range';
 import {
-  useStudyPastCandles,
-  useStudyPastDailyCandles,
   type LivePastCandlesWarning,
   type LivePastDailyCandlesWarning,
 } from '../api/studyPastCandles';
 import { useLiveVenueStore } from '../state/liveVenue';
 import { useLivePageStore } from '../state/livePage';
+import { useSourcePreferenceStore } from '../state/sourcePreference';
 import type { StudyViewReference } from '../api/studyViews';
 import { buildStudyReferenceBundleModel, studyReferenceQueryInputs } from './studyReferenceBundleModel';
+import { studyReferenceQueryOptions } from './studyReferenceQueries';
 
 export function useStudyReferenceBundle(save: StudyViewReference | null) {
   const venue = useLiveVenueStore((s) => s.venue);
+  const sourcePref = useSourcePreferenceStore((s) => s.sourcePreference);
   const tradeVolumePocEnabled = useLivePageStore((s) => s.tradeVolumePocEnabled);
   const volumeDistributionEnabled = useLivePageStore((s) => s.volumeDistributionEnabled);
   const volumeDistributionRangeCount = useLivePageStore((s) => s.volumeDistributionRangeCount);
   const inputs = useMemo(() => studyReferenceQueryInputs(save), [save]);
+  const queryOptions = useMemo(
+    () => studyReferenceQueryOptions(save, {
+      venue,
+      sourcePref,
+      tradeVolumePocEnabled,
+      volumeDistributionEnabled,
+      volumeDistributionRangeCount,
+    }),
+    [
+      save,
+      sourcePref,
+      tradeVolumePocEnabled,
+      venue,
+      volumeDistributionEnabled,
+      volumeDistributionRangeCount,
+    ],
+  );
 
-  const past = useRange(
-    inputs.range.code,
-    inputs.range.from,
-    inputs.range.to,
-    inputs.range.timeframe,
-    undefined,
-    null,
-    {
-      volumeDistributionBins: volumeDistributionEnabled ? volumeDistributionRangeCount : null,
-      tradeVolumePocBins: tradeVolumePocEnabled ? volumeDistributionRangeCount : null,
-      volumeDistributionPriceRange: null,
-    },
-  );
-  const minuteCandles = useStudyPastCandles(
-    inputs.minuteCandles.code,
-    inputs.minuteCandles.from,
-    inputs.minuteCandles.to,
-    venue,
-  );
-  const dailyCandles = useStudyPastDailyCandles(
-    inputs.dailyCandles.code,
-    inputs.dailyCandles.from,
-    inputs.dailyCandles.to,
-    venue,
-  );
+  const past = useQuery(queryOptions.range);
+  const minuteCandles = useQuery(queryOptions.minuteCandles);
+  const dailyCandles = useQuery(queryOptions.dailyCandles);
 
   const model = useMemo(
     () => buildStudyReferenceBundleModel({

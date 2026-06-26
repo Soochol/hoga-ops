@@ -16,6 +16,7 @@ import { StudyTabBar } from './StudyTabBar';
 import { useStudyKeyboard } from './useStudyKeyboard';
 import { useStudyViewMutations, useStudyViews } from './useStudyViews';
 import { useStudyReferenceBundle } from './useStudyReferenceBundle';
+import { useWarmStudyReferenceTabQueries } from './useWarmStudyReferenceTabQueries';
 import {
   referenceStudyView,
   studyReferenceDetailPanelTestId,
@@ -61,6 +62,7 @@ export function StudyPage() {
   const [isCursorActive, setIsCursorActive] = useState(false);
   const [viewTimeframes, setViewTimeframes] = useState<Record<string, LiveTimeframe>>({});
   const [rememberedMinuteTimeframes, setRememberedMinuteTimeframes] = useState<Record<string, MinuteTimeframe>>({});
+  const [activatedStudyTabIds, setActivatedStudyTabIds] = useState<Set<string>>(() => new Set());
   const savesQuery = useStudyViews();
   const mutations = useStudyViewMutations();
   const [isMemoOpen, setIsMemoOpen] = useState(false);
@@ -84,6 +86,7 @@ export function StudyPage() {
     () => tabs.find((tab) => tab.id === activeTabId) ?? null,
     [activeTabId, tabs],
   );
+  const activatedTabIds = useMemo(() => Array.from(activatedStudyTabIds), [activatedStudyTabIds]);
   const querySave = useMemo(
     () => savesQuery.data?.saves.find((row) => row.id === queryViewId) ?? null,
     [queryViewId, savesQuery.data?.saves],
@@ -129,11 +132,19 @@ export function StudyPage() {
   );
   const isLoadingActiveView = activeViewModel.status === 'loading';
   const isErrorActiveView = activeViewModel.status === 'error';
+  const isStudyPageLoading = savesQuery.isLoading || isLoadingActiveView;
   const captureViewportRef = useRef<() => TabViewport | null>(() => null);
   const draggingEntry = useEntryDragStore((s) => s.draggingCode != null);
   const overStudy = useEntryDragStore((s) => s.overStudy);
   const registerStudyTarget = useEntryDragStore((s) => s.registerStudyTarget);
   const clearStudyTarget = useEntryDragStore((s) => s.clearStudyTarget);
+  const warmTabStatuses = useWarmStudyReferenceTabQueries({
+    tabs,
+    activeTabId,
+    activatedTabIds,
+    saves: savesQuery.data?.saves ?? [],
+    viewTimeframes,
+  });
   const handleViewportCaptureReady = useCallback((capture: () => TabViewport | null) => {
     captureViewportRef.current = capture;
   }, []);
@@ -179,6 +190,26 @@ export function StudyPage() {
       setRememberedMinuteTimeframes((current) => ({ ...current, [activeViewId]: next }));
     }
   }, [activeViewId]);
+
+  useEffect(() => {
+    setActivatedStudyTabIds((current) => {
+      const currentTabIds = new Set(tabs.map((tab) => tab.id));
+      const next = new Set<string>();
+      let changed = false;
+      for (const id of current) {
+        if (currentTabIds.has(id)) {
+          next.add(id);
+        } else {
+          changed = true;
+        }
+      }
+      if (activeTabId && currentTabIds.has(activeTabId) && !next.has(activeTabId)) {
+        next.add(activeTabId);
+        changed = true;
+      }
+      return changed ? next : current;
+    });
+  }, [activeTabId, tabs]);
 
   useEffect(() => {
     if (initialQueryViewIdRef.current === null) return;
@@ -272,7 +303,7 @@ export function StudyPage() {
     );
   }
 
-  if (savesQuery.isLoading || isLoadingActiveView) {
+  if (isStudyPageLoading && !selectedSave && tabs.length === 0) {
     return (
       <section data-testid="study-page-loading" className="h-full min-w-0 bg-[var(--bg)] text-[var(--fg)]">
         <div ref={studyDropTargetRef} data-testid="study-drop-target" className="relative h-full">
@@ -285,7 +316,7 @@ export function StudyPage() {
     );
   }
 
-  if (!selectedSave || isErrorActiveView) {
+  if ((!selectedSave && !isStudyPageLoading) || isErrorActiveView) {
     return (
       <section data-testid="study-page-error" className="h-full min-w-0 bg-[var(--bg)] text-[var(--fg)]">
         <div ref={studyDropTargetRef} data-testid="study-drop-target" className="relative h-full">
@@ -298,6 +329,11 @@ export function StudyPage() {
     );
   }
 
+  const headerLabel = selectedSave?.label ?? activeTab?.label ?? '학습뷰';
+  const headerCode = selectedSave?.code ?? activeTab?.code ?? '';
+  const headerTimeframe = selectedTimeframe ?? selectedSave?.timeframe ?? activeTab?.timeframe ?? null;
+  const headerKindLabel = selectedSave ? studyViewKindLabel(selectedSave) : '복기뷰';
+
   return (
     <section data-testid="study-page" className="grid h-full min-w-0 grid-rows-[auto_auto_minmax(0,1fr)] bg-[var(--bg)] text-[var(--fg)]">
       {tabs.length > 0 && (
@@ -305,7 +341,8 @@ export function StudyPage() {
           <StudyTabBar
             tabs={tabs}
             activeTabId={activeTabId}
-            activeLoading={isLoadingActiveView}
+            activeLoading={isStudyPageLoading}
+            tabStatuses={warmTabStatuses}
             onFocus={handleFocusTab}
             onClose={handleCloseTab}
             onReorder={reorderTabs}
@@ -315,15 +352,15 @@ export function StudyPage() {
       )}
       <header className="flex min-h-12 items-center justify-between gap-3 border-b border-[var(--border)] px-4">
         <div className="min-w-0">
-          <div className="truncate text-sm font-semibold">{selectedSave.label}</div>
+          <div className="truncate text-sm font-semibold">{headerLabel}</div>
           <div className="text-xs text-[var(--fg-dimmer)]">
-            {selectedSave.code} · {selectedTimeframe ?? selectedSave.timeframe} · {studyViewKindLabel(selectedSave)}
+            {headerCode} · {headerTimeframe ?? '-'} · {headerKindLabel}
           </div>
         </div>
         <div className="flex shrink-0 items-center gap-2">
-          {selectedTimeframe && (
+          {headerTimeframe && (
             <TimeframeControl
-              timeframe={selectedTimeframe}
+              timeframe={headerTimeframe}
               rememberedMinute={rememberedMinuteTimeframe}
               onChange={changeTimeframe}
             />
@@ -348,7 +385,11 @@ export function StudyPage() {
         onWheelCapture={handleWheelCapture}
       >
         <div className="min-h-0 min-w-0 overflow-hidden">
-          {activeViewModel.status === 'ready' ? (
+          {isStudyPageLoading ? (
+            <div data-testid="study-page-loading" className="flex h-full items-center justify-center text-sm text-[var(--fg-dimmer)]">
+              학습뷰 불러오는 중...
+            </div>
+          ) : activeViewModel.status === 'ready' ? (
             <LiveChartRoot
               code={activeViewModel.save.code}
               timeframe={activeViewModel.save.timeframe}
@@ -379,7 +420,7 @@ export function StudyPage() {
           ref={detailPanelScrollRef}
           role="complementary"
           aria-label="Study Detail Panel"
-          data-testid={studyReferenceDetailPanelTestId(selectedSave)}
+          data-testid={selectedSave ? studyReferenceDetailPanelTestId(selectedSave) : undefined}
           className="relative z-10 grid min-h-0 grid-rows-[auto_minmax(0,1fr)] overflow-y-auto overflow-x-hidden border-l border-[var(--border)] bg-[var(--bg-card)]"
           style={{ scrollbarGutter: 'stable' }}
         >

@@ -1,27 +1,31 @@
 import { renderHook } from '@testing-library/react';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
+import type { UseQueryOptions, UseQueryResult } from '@tanstack/react-query';
 import type { StudyViewReference } from '../api/studyViews';
 
 const {
-  useRangeMock,
-  useStudyPastCandlesMock,
-  useStudyPastDailyCandlesMock,
+  useQueryMock,
+  studyReferenceQueryOptionsMock,
 } = vi.hoisted(() => ({
-  useRangeMock: vi.fn(),
-  useStudyPastCandlesMock: vi.fn(),
-  useStudyPastDailyCandlesMock: vi.fn(),
+  useQueryMock: vi.fn(),
+  studyReferenceQueryOptionsMock: vi.fn(),
 }));
 
-vi.mock('../api/range', () => ({
-  useRange: useRangeMock,
-}));
+vi.mock('@tanstack/react-query', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('@tanstack/react-query')>();
+  return {
+    ...actual,
+    useQuery: useQueryMock,
+  };
+});
 
-vi.mock('../api/studyPastCandles', () => ({
-  useStudyPastCandles: useStudyPastCandlesMock,
-  useStudyPastDailyCandles: useStudyPastDailyCandlesMock,
+vi.mock('./studyReferenceQueries', () => ({
+  studyReferenceQueryOptions: studyReferenceQueryOptionsMock,
 }));
 
 import { useLivePageStore } from '../state/livePage';
+import { useLiveVenueStore } from '../state/liveVenue';
+import { useSourcePreferenceStore } from '../state/sourcePreference';
 import { useStudyReferenceBundle } from './useStudyReferenceBundle';
 
 const save: StudyViewReference = {
@@ -39,14 +43,40 @@ const save: StudyViewReference = {
   updated_at_ms: 2,
 };
 
+const rangeOptions = { queryKey: ['range-plan'], enabled: true } as unknown as UseQueryOptions;
+const minuteOptions = { queryKey: ['minute-plan'], enabled: true } as unknown as UseQueryOptions;
+const dailyOptions = { queryKey: ['daily-plan'], enabled: false } as unknown as UseQueryOptions;
+
+function queryResultFor(options: UseQueryOptions): Partial<UseQueryResult> {
+  if (options === minuteOptions) {
+    return {
+      data: { candles: [], data_warnings: ['minute-warning'] },
+      isLoading: false,
+      error: null,
+    };
+  }
+  if (options === dailyOptions) {
+    return {
+      data: { candles: [], data_warnings: ['daily-warning'] },
+      isLoading: false,
+      error: null,
+    };
+  }
+  return { data: null, isLoading: false, error: null };
+}
+
 describe('useStudyReferenceBundle', () => {
   beforeEach(() => {
-    useRangeMock.mockReset();
-    useStudyPastCandlesMock.mockReset();
-    useStudyPastDailyCandlesMock.mockReset();
-    useRangeMock.mockReturnValue({ data: null, isLoading: false, error: null });
-    useStudyPastCandlesMock.mockReturnValue({ data: { candles: [], data_warnings: [] }, isLoading: false, error: null });
-    useStudyPastDailyCandlesMock.mockReturnValue({ data: { candles: [], data_warnings: [] }, isLoading: false, error: null });
+    useQueryMock.mockReset();
+    studyReferenceQueryOptionsMock.mockReset();
+    studyReferenceQueryOptionsMock.mockReturnValue({
+      range: rangeOptions,
+      minuteCandles: minuteOptions,
+      dailyCandles: dailyOptions,
+    });
+    useQueryMock.mockImplementation(queryResultFor);
+    useLiveVenueStore.setState({ venue: 'NXT' });
+    useSourcePreferenceStore.setState({ sourcePreference: 'kis_api_first' });
     useLivePageStore.setState({
       tradeVolumePocEnabled: true,
       volumeDistributionEnabled: true,
@@ -54,37 +84,18 @@ describe('useStudyReferenceBundle', () => {
     });
   });
 
-  it('requests volume distribution and trade-volume POC bins from /api/range using current live indicator settings', () => {
+  it('uses the shared study reference query plan for the active 복기뷰', () => {
     renderHook(() => useStudyReferenceBundle(save));
 
-    expect(useRangeMock).toHaveBeenCalledWith(
-      '005930',
-      '20260616',
-      '20260618',
-      '5m',
-      undefined,
-      null,
-      {
-        volumeDistributionBins: 12,
-        tradeVolumePocBins: 12,
-        volumeDistributionPriceRange: null,
-      },
-    );
-  });
-
-  it('omits trade-volume POC bins when the current live setting is disabled', () => {
-    useLivePageStore.setState({ tradeVolumePocEnabled: false });
-
-    renderHook(() => useStudyReferenceBundle(save));
-
-    expect(useRangeMock.mock.calls[0][6]).toMatchObject({ tradeVolumePocBins: null });
-  });
-
-  it('omits volume distribution bins when the current live setting is disabled', () => {
-    useLivePageStore.setState({ volumeDistributionEnabled: false });
-
-    renderHook(() => useStudyReferenceBundle(save));
-
-    expect(useRangeMock.mock.calls[0][6]).toMatchObject({ volumeDistributionBins: null });
+    expect(studyReferenceQueryOptionsMock).toHaveBeenCalledWith(save, {
+      venue: 'NXT',
+      sourcePref: 'kis_api_first',
+      tradeVolumePocEnabled: true,
+      volumeDistributionEnabled: true,
+      volumeDistributionRangeCount: 12,
+    });
+    expect(useQueryMock).toHaveBeenNthCalledWith(1, rangeOptions);
+    expect(useQueryMock).toHaveBeenNthCalledWith(2, minuteOptions);
+    expect(useQueryMock).toHaveBeenNthCalledWith(3, dailyOptions);
   });
 });

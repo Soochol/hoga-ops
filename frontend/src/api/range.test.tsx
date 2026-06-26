@@ -6,6 +6,7 @@ import type { ReactNode } from 'react';
 import {
   buildRangeBundleRequest,
   useRange,
+  rangeBundleQueryOptions,
   rangeFreshnessOptions,
   rangePlaceholderData,
   TODAY_RANGE_REFETCH_MS,
@@ -105,6 +106,52 @@ describe('buildRangeBundleRequest', () => {
       null,
       'hogaplay_first',
     ]);
+  });
+});
+
+describe('rangeBundleQueryOptions', () => {
+  beforeEach(() => vi.restoreAllMocks());
+
+  it('builds reusable range query options with an abortable query function', async () => {
+    const spy = vi.spyOn(client, 'apiCall').mockResolvedValue(fakeBundle);
+    const options = rangeBundleQueryOptions({
+      code: '005930',
+      from: '20260616',
+      to: '20260618',
+      timeframe: '5m',
+      todayKst: null,
+      sourcePref: 'hogaplay_first',
+      options: {
+        volumeDistributionBins: 12,
+        tradeVolumePocBins: 12,
+        volumeDistributionPriceRange: null,
+      },
+    });
+
+    expect(options.enabled).toBe(true);
+    expect(options.queryKey).toEqual([
+      'range',
+      '005930',
+      '20260616',
+      '20260618',
+      300_000,
+      undefined,
+      undefined,
+      null,
+      12,
+      undefined,
+      undefined,
+      12,
+      'hogaplay_first',
+    ]);
+
+    const signal = new AbortController().signal;
+    const queryFn = options.queryFn as (context: { signal: AbortSignal }) => Promise<RangeBundle>;
+    await queryFn({ signal });
+    expect(spy).toHaveBeenCalledWith(
+      '/api/range?code=005930&from=20260616&to=20260618&bucket_ms=300000&volume_distribution_bins=12&trade_volume_poc_bins=12&source_pref=hogaplay_first',
+      { signal },
+    );
   });
 });
 

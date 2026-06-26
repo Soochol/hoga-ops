@@ -1,4 +1,4 @@
-import { useQuery } from '@tanstack/react-query';
+import { useQuery, type UseQueryOptions } from '@tanstack/react-query';
 
 import { apiCall } from './client';
 import type {
@@ -15,14 +15,32 @@ export type { LivePastCandlesWarning, LivePastDailyCandlesWarning };
 
 export const STUDY_PAST_CANDLES_STALE_TIME = Infinity;
 
-export function useStudyPastCandles(
+export type StudyPastCandlesQueryKey = readonly [
+  'study',
+  'past-candles',
+  string | null,
+  string | null,
+  string | null,
+  LiveVenueOption,
+];
+
+export type StudyPastDailyCandlesQueryKey = readonly [
+  'study',
+  'past-daily-candles',
+  string | null,
+  string | null,
+  string | null,
+  LiveVenueOption,
+];
+
+export function studyPastCandlesQueryOptions(
   code: string | null,
   from: string | null,
   to: string | null,
   venue: LiveVenueOption = 'KRX',
-) {
+): UseQueryOptions<LivePastCandlesResponse, Error, LivePastCandlesResponse, StudyPastCandlesQueryKey> {
   const enabled = !!(code && from && to && from <= to);
-  return useQuery({
+  return {
     queryKey: ['study', 'past-candles', code, from, to, venue] as const,
     queryFn: ({ signal }) =>
       apiCall<LivePastCandlesResponse>(
@@ -33,17 +51,17 @@ export function useStudyPastCandles(
     staleTime: STUDY_PAST_CANDLES_STALE_TIME,
     refetchInterval: false,
     placeholderData: (prev) => (prev && prev.code === code && (prev.venue ?? 'KRX') === venue ? prev : undefined),
-  });
+  };
 }
 
-export function useStudyPastDailyCandles(
+export function studyPastDailyCandlesQueryOptions(
   code: string | null,
   from: string | null,
   to: string | null,
   venue: LiveVenueOption = 'KRX',
-) {
+): UseQueryOptions<LivePastDailyCandlesResponse, Error, LivePastDailyCandlesResponse, StudyPastDailyCandlesQueryKey> {
   const enabled = !!(code && from && to && from <= to);
-  return useQuery({
+  return {
     queryKey: ['study', 'past-daily-candles', code, from, to, venue] as const,
     queryFn: ({ signal }) =>
       apiCall<LivePastDailyCandlesResponse>(
@@ -54,5 +72,23 @@ export function useStudyPastDailyCandles(
     staleTime: STUDY_PAST_CANDLES_STALE_TIME,
     refetchInterval: false,
     placeholderData: (prev) => (prev && prev.code === code && (prev.venue ?? 'KRX') === venue ? prev : undefined),
-  });
+  };
+}
+
+export function useStudyPastCandles(
+  code: string | null,
+  from: string | null,
+  to: string | null,
+  venue: LiveVenueOption = 'KRX',
+) {
+  return useQuery(studyPastCandlesQueryOptions(code, from, to, venue));
+}
+
+export function useStudyPastDailyCandles(
+  code: string | null,
+  from: string | null,
+  to: string | null,
+  venue: LiveVenueOption = 'KRX',
+) {
+  return useQuery(studyPastDailyCandlesQueryOptions(code, from, to, venue));
 }

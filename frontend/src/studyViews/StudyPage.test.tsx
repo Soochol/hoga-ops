@@ -13,6 +13,7 @@ const {
   useStudyViewsMock,
   useStudyViewMutationsMock,
   useStudyReferenceBundleMock,
+  useWarmStudyReferenceTabQueriesMock,
   useLiveOrderbookAtCursorMock,
   useLiveBrokersAtCursorMock,
   liveChartRootMock,
@@ -20,6 +21,7 @@ const {
   useStudyViewsMock: vi.fn(),
   useStudyViewMutationsMock: vi.fn(),
   useStudyReferenceBundleMock: vi.fn(),
+  useWarmStudyReferenceTabQueriesMock: vi.fn(),
   useLiveOrderbookAtCursorMock: vi.fn(),
   useLiveBrokersAtCursorMock: vi.fn(),
   liveChartRootMock: vi.fn(),
@@ -32,6 +34,10 @@ vi.mock('./useStudyViews', () => ({
 
 vi.mock('./useStudyReferenceBundle', () => ({
   useStudyReferenceBundle: useStudyReferenceBundleMock,
+}));
+
+vi.mock('./useWarmStudyReferenceTabQueries', () => ({
+  useWarmStudyReferenceTabQueries: useWarmStudyReferenceTabQueriesMock,
 }));
 
 vi.mock('../api/useLiveCursor', () => ({
@@ -166,6 +172,8 @@ beforeEach(() => {
     error: null,
     pastDataWarnings: [],
   });
+  useWarmStudyReferenceTabQueriesMock.mockClear();
+  useWarmStudyReferenceTabQueriesMock.mockReturnValue({});
   useLiveOrderbookAtCursorMock.mockReturnValue(undefined);
   useLiveBrokersAtCursorMock.mockReturnValue(undefined);
   useLiveCursorStore.getState().resetCursor();
@@ -368,6 +376,81 @@ describe('StudyPage', () => {
 
     expect(screen.getByTestId('study-page-loading')).toBeTruthy();
     expect(screen.getByText('학습뷰 불러오는 중...')).toBeTruthy();
+  });
+
+  it('keeps study tabs usable while the reference bundle is loading', () => {
+    useStudyTabsStore.setState({
+      tabs: [
+        {
+          id: 'tab-a',
+          viewId: 'view-ref',
+          code: '005930',
+          label: '삼성전자 · 돌파 복기 · 5m',
+          name: '돌파 복기',
+          timeframe: '5m',
+        },
+        {
+          id: 'tab-b',
+          viewId: 'view-second',
+          code: '000660',
+          label: 'SK하이닉스 · 눌림 복기 · 5m',
+          name: '눌림 복기',
+          timeframe: '5m',
+        },
+      ],
+      activeTabId: 'tab-a',
+    });
+    useStudyReferenceBundleMock.mockReturnValue({
+      bundle: null,
+      chartBundle: null,
+      isLoading: true,
+      error: null,
+      pastDataWarnings: [],
+    });
+
+    renderPage('/study?view=view-ref');
+
+    expect(screen.getByTestId('study-page-loading')).toBeTruthy();
+    expect(screen.getByTitle('삼성전자 · 돌파 복기 · 5m').closest('[role="tab"]')).toHaveAttribute('aria-selected', 'true');
+
+    fireEvent.click(screen.getByTitle('SK하이닉스 · 눌림 복기 · 5m'));
+
+    expect(screen.getByText('학습뷰 불러오는 중...')).toBeTruthy();
+    expect(screen.getByTitle('SK하이닉스 · 눌림 복기 · 5m').closest('[role="tab"]')).toHaveAttribute('aria-selected', 'true');
+  });
+
+  it('keeps previously focused study tabs in the warm query set after switching tabs', () => {
+    useStudyTabsStore.setState({
+      tabs: [
+        {
+          id: 'tab-a',
+          viewId: 'view-ref',
+          code: '005930',
+          label: '삼성전자 · 돌파 복기 · 5m',
+          name: '돌파 복기',
+          timeframe: '5m',
+        },
+        {
+          id: 'tab-b',
+          viewId: 'view-second',
+          code: '000660',
+          label: 'SK하이닉스 · 눌림 복기 · 5m',
+          name: '눌림 복기',
+          timeframe: '5m',
+        },
+      ],
+      activeTabId: 'tab-a',
+    });
+
+    renderPage('/study?view=view-ref');
+
+    fireEvent.click(screen.getByTitle('SK하이닉스 · 눌림 복기 · 5m'));
+
+    expect(useWarmStudyReferenceTabQueriesMock).toHaveBeenLastCalledWith(expect.objectContaining({
+      activeTabId: 'tab-b',
+      activatedTabIds: expect.arrayContaining(['tab-a']),
+      saves: [referenceSave, secondReferenceSave],
+    }));
   });
 
   it('returns to the empty state when the selected view is missing', () => {

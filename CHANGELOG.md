@@ -3,6 +3,15 @@
 All notable changes to this project are documented here.
 The format follows a 4-digit `MAJOR.MINOR.PATCH.MICRO` scheme.
 
+## [0.12.3.0] - 2026-06-26
+
+### Changed
+- **/study 탭 로딩 유지**: 저장 학습뷰를 불러오거나 분봉을 바꾸는 동안에도 열린 탭 바를 유지해, 사용자가 다른 학습 탭으로 바로 이동할 수 있게 했다.
+- **복기뷰 쿼리 워밍 정리**: 이미 활성화한 학습 탭의 데이터 요청을 mounted query observer로 유지해, 탭 전환 중 기존 불러오기가 중단되지 않도록 했다.
+
+### Fixed
+- **학습뷰 로딩 화면 범위 보정**: `학습뷰 불러오는 중...` 상태가 전체 페이지를 덮어 탭까지 사라지던 문제를 차트 영역 로딩으로 좁혔다.
+
 ## [0.12.2.0] - 2026-06-26
 
 ### Added

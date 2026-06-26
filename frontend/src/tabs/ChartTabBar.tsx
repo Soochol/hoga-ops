@@ -14,6 +14,8 @@ type NewTabButtonProps = {
   onClick: () => void;
 };
 
+export type ChartTabStatus = 'idle' | 'loading' | 'ready' | 'error';
+
 type Props<T extends ChartTabLike> = {
   tabs: T[];
   activeTabId: string | null;
@@ -26,12 +28,14 @@ type Props<T extends ChartTabLike> = {
   trailingActions?: ReactNode;
   tabCountLabel?: (count: number) => string;
   tablistAriaLabel?: string;
+  tabStatus?: (tab: T, active: boolean) => ChartTabStatus;
 };
 
 /** 상태점: 활성+로딩=accent pulse(◌), 활성+로드=success(●), 비활성=dimmer outline(○). */
-function statusDotStyle(active: boolean, loading: boolean): CSSProperties {
-  if (active && loading) return { background: 'var(--accent)', animation: 'tab-pulse 1.5s ease-in-out infinite' };
-  if (active) return { background: 'var(--success)', boxShadow: '0 0 4px color-mix(in srgb, var(--success) 50%, transparent)' };
+function statusDotStyle(active: boolean, status: ChartTabStatus): CSSProperties {
+  if (status === 'error') return { background: 'var(--error)', boxShadow: '0 0 4px color-mix(in srgb, var(--error) 50%, transparent)' };
+  if (status === 'loading') return { background: 'var(--accent)', animation: 'tab-pulse 1.5s ease-in-out infinite' };
+  if (status === 'ready' || active) return { background: 'var(--success)', boxShadow: '0 0 4px color-mix(in srgb, var(--success) 50%, transparent)' };
   return { background: 'transparent', border: '1px solid var(--fg-dimmer)' };
 }
 
@@ -47,6 +51,7 @@ export function ChartTabBar<T extends ChartTabLike>({
   trailingActions,
   tabCountLabel = (count) => `${count} open`,
   tablistAriaLabel = '열린 탭',
+  tabStatus,
 }: Props<T>) {
   const activeElRef = useRef<HTMLDivElement | null>(null);
   const activeIdx = Math.max(0, tabs.findIndex((tab) => tab.id === activeTabId));
@@ -76,6 +81,7 @@ export function ChartTabBar<T extends ChartTabLike>({
           const idx = windowStart + offset;
           const active = tab.id === activeTabId;
           const displayLabel = renderLabel(tab);
+          const status = tabStatus?.(tab, active) ?? (active && activeLoading ? 'loading' : active ? 'ready' : 'idle');
           return (
             <div
               key={tab.id}
@@ -118,7 +124,7 @@ export function ChartTabBar<T extends ChartTabLike>({
               {active && (
                 <span className="absolute left-0 right-0 top-0 h-[2px]" style={{ background: 'var(--accent)' }} />
               )}
-              <span className="w-1.5 h-1.5 rounded-full shrink-0" style={statusDotStyle(active, activeLoading)} />
+              <span className="w-1.5 h-1.5 rounded-full shrink-0" style={statusDotStyle(active, status)} />
               <span className="text-sm shrink-0 max-w-36 truncate" title={displayLabel} style={{ color: active ? 'var(--fg)' : 'var(--fg-dim)' }}>{displayLabel}</span>
               <button
                 type="button"
