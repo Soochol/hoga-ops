@@ -66,9 +66,6 @@ export function shouldUseFullBrokerLateEntryLabels(
   paneHeightPx: number,
   labelHeightPx: number,
   labelStackStepPx: number,
-  estimateLabelWidthPx: (label: string) => number = () => 0,
-  minHorizontalGapPx = 0,
-  minVerticalGapPx = 0,
 ): boolean {
   if (markers.length <= 1) return true;
   const density = paneWidthPx > 0 ? markers.length / paneWidthPx : Number.POSITIVE_INFINITY;
@@ -83,36 +80,6 @@ export function shouldUseFullBrokerLateEntryLabels(
   const stackHeight = labelHeightPx + (tallestStack - 1) * labelStackStepPx;
   if (density > 0.035 || stackHeight > paneHeightPx * 0.6) return false;
 
-  const stackOffsets = new Map<number, number>();
-  const boxes = markers.flatMap((marker) => {
-    const coord = plotted.get(marker);
-    if (!coord) return [];
-    const key = Math.round(coord.x);
-    const stackIndex = stackOffsets.get(key) ?? 0;
-    stackOffsets.set(key, stackIndex + 1);
-    const left = coord.x + LABEL_CHIP_GAP_X_PX;
-    const top = coord.y - LABEL_OFFSET_Y_PX - stackIndex * labelStackStepPx - labelHeightPx / 2;
-    return [{
-      key,
-      left,
-      right: left + estimateLabelWidthPx(marker.label),
-      top,
-      bottom: top + labelHeightPx,
-    }];
-  });
-
-  for (let i = 0; i < boxes.length; i += 1) {
-    for (let j = i + 1; j < boxes.length; j += 1) {
-      const a = boxes[i];
-      const b = boxes[j];
-      if (a.key === b.key) continue;
-      const overlaps = a.left <= b.right + minHorizontalGapPx
-        && b.left <= a.right + minHorizontalGapPx
-        && a.top <= b.bottom + minVerticalGapPx
-        && b.top <= a.bottom + minVerticalGapPx;
-      if (overlaps) return false;
-    }
-  }
   return true;
 }
 
@@ -214,9 +181,6 @@ class BrokerLateEntryMarkersRenderer implements IPrimitivePaneRenderer {
         scope.bitmapSize.height,
         labelHeight,
         labelStackStep,
-        (label) => ctx.measureText(label).width + 10 * hr,
-        LABEL_MIN_HORIZONTAL_GAP_PX * hr,
-        LABEL_MIN_VERTICAL_GAP_PX * vr,
       );
       const groups = layoutBrokerLateEntryLabels(visibleMarkers, {
         minHorizontalGapPx: LABEL_MIN_HORIZONTAL_GAP_PX * hr,
@@ -229,6 +193,7 @@ class BrokerLateEntryMarkersRenderer implements IPrimitivePaneRenderer {
       }).groups;
 
       const stackByX = new Map<number, number>();
+      const placedLabelBoxes: Array<{ left: number; right: number; top: number; bottom: number }> = [];
       for (const group of groups) {
         const coordinates = group.markers
           .map((marker) => plotted.get(marker))
@@ -252,11 +217,31 @@ class BrokerLateEntryMarkersRenderer implements IPrimitivePaneRenderer {
         const chipWidth = textWidth + labelPadX * 2 + (mixed ? accentArea : 0);
         const chipHeight = labelHeight;
         const left = clamp(anchorX, 1, Math.max(1, scope.bitmapSize.width - chipWidth - 1));
-        const top = clamp(
+        let top = clamp(
           anchorY - chipHeight / 2,
           1,
           Math.max(1, scope.bitmapSize.height - chipHeight - 1),
         );
+        if (group.markers.length === 1) {
+          let attempts = 0;
+          while (
+            attempts < 4 &&
+            placedLabelBoxes.some((box) => (
+              left <= box.right + LABEL_MIN_HORIZONTAL_GAP_PX * hr
+              && box.left <= left + chipWidth + LABEL_MIN_HORIZONTAL_GAP_PX * hr
+              && top <= box.bottom + LABEL_MIN_VERTICAL_GAP_PX * vr
+              && box.top <= top + chipHeight + LABEL_MIN_VERTICAL_GAP_PX * vr
+            ))
+          ) {
+            attempts += 1;
+            top = clamp(
+              top - labelStackStep,
+              1,
+              Math.max(1, scope.bitmapSize.height - chipHeight - 1),
+            );
+          }
+        }
+        placedLabelBoxes.push({ left, right: left + chipWidth, top, bottom: top + chipHeight });
 
         ctx.fillStyle = CHIP_BG;
         fillRoundedRect(ctx, left, top, chipWidth, chipHeight, 4 * hr);
