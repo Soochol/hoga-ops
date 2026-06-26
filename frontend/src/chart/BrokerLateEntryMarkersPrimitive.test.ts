@@ -71,7 +71,7 @@ describe('shouldUseFullBrokerLateEntryLabels', () => {
     expect(shouldUseFullBrokerLateEntryLabels(markers, plotted, 600, 240, 15, 14)).toBe(false);
   });
 
-  it('compacts labels when nearby low-density labels would overlap', () => {
+  it('keeps nearby low-density labels individual so they split before heavy zoom-in', () => {
     const markers = [
       marker({ time: 100 as Time, anchorTime: 100 as Time, broker: '긴이름증권', label: '긴이름' }),
       marker({ time: 101 as Time, anchorTime: 101 as Time, broker: '옆자리증권', label: '옆자리' }),
@@ -88,9 +88,6 @@ describe('shouldUseFullBrokerLateEntryLabels', () => {
       240,
       15,
       14,
-      () => 50,
-      6,
-      4,
-    )).toBe(false);
+    )).toBe(true);
   });
 });
