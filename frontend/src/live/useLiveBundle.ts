@@ -160,6 +160,7 @@ export type LiveRangeRequestPlan = {
   timeframe: Timeframe | null;
   todayKst: string | null;
   options: {
+    brokerLateEntriesEnabled: boolean;
     brokerLateEntryStartHHMM: number | null;
     volumeDistributionBins: number | null;
     tradeVolumePocBins: number | null;
@@ -191,6 +192,7 @@ export function planLiveRangeRequest(args: {
     timeframe: enableMinute ? (args.timeframe as Timeframe) : null,
     todayKst: enableMinute ? args.todayKstYyyymmdd : null,
     options: {
+      brokerLateEntriesEnabled: args.brokerLateEntryEnabled,
       brokerLateEntryStartHHMM: args.brokerLateEntryEnabled ? args.brokerLateEntryStartHHMM : null,
       volumeDistributionBins: args.volumeDistributionEnabled ? args.volumeDistributionRangeCount : null,
       tradeVolumePocBins: args.tradeVolumePocEnabled ? args.volumeDistributionRangeCount : null,

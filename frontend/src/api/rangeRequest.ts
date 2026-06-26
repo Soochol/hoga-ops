@@ -3,6 +3,7 @@ import { TIMEFRAME_TO_MS } from './types';
 import type { SourcePreference } from '../state/sourcePreference';
 
 export type RangeRequestOptions = {
+  brokerLateEntriesEnabled?: boolean | null;
   brokerLateEntryStartHHMM?: number | null;
   volumeDistributionBins?: number | null;
   tradeVolumePocBins?: number | null;
@@ -29,6 +30,7 @@ export type RangeQueryKey = readonly [
   number | null,
   number | undefined,
   number | undefined,
+  boolean | null,
   number | null,
   number | null,
   number | undefined,
@@ -45,7 +47,7 @@ export type RangeBundleRequest = {
   todayKst: string | null;
 };
 
-const PLACEHOLDER_COMPATIBLE_KEY_INDICES = [4, 5, 6, 7, 8, 9, 10, 11, 12, 13] as const;
+const PLACEHOLDER_COMPATIBLE_KEY_INDICES = [4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14] as const;
 
 function addParam(params: URLSearchParams, key: string, value: number | string | null | undefined): void {
   if (value == null) return;
@@ -55,6 +57,7 @@ function addParam(params: URLSearchParams, key: string, value: number | string |
 export function buildRangeBundleRequest(input: RangeBundleRequestInput): RangeBundleRequest {
   const bucketMs = input.timeframe ? TIMEFRAME_TO_MS[input.timeframe] : null;
   const options = input.options ?? {};
+  const brokerLateEntriesEnabled = options.brokerLateEntriesEnabled ?? null;
   const brokerLateEntryStartHHMM = options.brokerLateEntryStartHHMM ?? null;
   const volumeDistributionBins = options.volumeDistributionBins ?? null;
   const tradeVolumePocBins = options.tradeVolumePocBins ?? null;
@@ -70,6 +73,7 @@ export function buildRangeBundleRequest(input: RangeBundleRequestInput): RangeBu
     bucketMs,
     input.priceRange?.min,
     input.priceRange?.max,
+    brokerLateEntriesEnabled,
     brokerLateEntryStartHHMM,
     volumeDistributionBins,
     volumeDistributionPriceRange?.min,
@@ -86,6 +90,8 @@ export function buildRangeBundleRequest(input: RangeBundleRequestInput): RangeBu
   addParam(params, 'bucket_ms', bucketMs);
   addParam(params, 'price_min', input.priceRange?.min);
   addParam(params, 'price_max', input.priceRange?.max);
+  if (brokerLateEntriesEnabled === false) params.set('broker_late_entries_enabled', 'false');
+  if (brokerLateEntriesEnabled === true) params.set('broker_late_entries_enabled', 'true');
   addParam(params, 'broker_late_entry_start_hhmm', brokerLateEntryStartHHMM);
   addParam(params, 'volume_distribution_bins', volumeDistributionBins);
   addParam(params, 'volume_distribution_price_min', volumeDistributionPriceRange?.min);

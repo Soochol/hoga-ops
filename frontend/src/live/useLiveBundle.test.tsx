@@ -134,6 +134,7 @@ describe('planLiveRangeRequest', () => {
       timeframe: '1m',
       todayKst: '20260527',
       options: {
+        brokerLateEntriesEnabled: true,
         brokerLateEntryStartHHMM: 945,
         volumeDistributionBins: 12,
         tradeVolumePocBins: 12,
@@ -161,6 +162,7 @@ describe('planLiveRangeRequest', () => {
       timeframe: null,
       todayKst: null,
       options: {
+        brokerLateEntriesEnabled: false,
         brokerLateEntryStartHHMM: null,
         volumeDistributionBins: null,
         tradeVolumePocBins: null,
@@ -246,6 +248,7 @@ describe('useLiveBundle', () => {
       undefined,
       '20260527',
       {
+        brokerLateEntriesEnabled: false,
         brokerLateEntryStartHHMM: null,
         volumeDistributionBins: 10,
         tradeVolumePocBins: 10,
@@ -269,6 +272,7 @@ describe('useLiveBundle', () => {
       undefined,
       '20260527',
       {
+        brokerLateEntriesEnabled: false,
         brokerLateEntryStartHHMM: null,
         volumeDistributionBins: 10,
         tradeVolumePocBins: 10,
@@ -295,6 +299,7 @@ describe('useLiveBundle', () => {
       undefined,
       '20260527',
       {
+        brokerLateEntriesEnabled: false,
         brokerLateEntryStartHHMM: null,
         volumeDistributionBins: null,
         tradeVolumePocBins: 12,
@@ -321,6 +326,7 @@ describe('useLiveBundle', () => {
       undefined,
       '20260527',
       {
+        brokerLateEntriesEnabled: false,
         brokerLateEntryStartHHMM: null,
         volumeDistributionBins: null,
         tradeVolumePocBins: null,

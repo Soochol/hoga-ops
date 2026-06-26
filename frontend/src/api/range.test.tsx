@@ -71,6 +71,7 @@ describe('buildRangeBundleRequest', () => {
       60_000,
       100,
       200,
+      null,
       945,
       12,
       69900,
@@ -98,6 +99,20 @@ describe('buildRangeBundleRequest', () => {
     expect(request.queryKey.at(-1)).toBe('hoga');
   });
 
+  it('can explicitly disable broker late-entry events', () => {
+    const request = buildRangeBundleRequest({
+      code: '005930',
+      from: '20260512',
+      to: '20260512',
+      timeframe: '1m',
+      sourcePref: 'hogaplay_first',
+      options: { brokerLateEntriesEnabled: false },
+    });
+
+    expect(request.url).toContain('&broker_late_entries_enabled=false');
+    expect(request.queryKey[7]).toBe(false);
+  });
+
   it('keeps disabled requests representable without optional params', () => {
     const request = buildRangeBundleRequest({
       code: null,
@@ -117,6 +132,7 @@ describe('buildRangeBundleRequest', () => {
       null,
       undefined,
       undefined,
+      null,
       null,
       null,
       undefined,
@@ -157,11 +173,13 @@ describe('rangeBundleQueryOptions', () => {
       undefined,
       undefined,
       null,
+      null,
       12,
       undefined,
       undefined,
       12,
       'hogaplay_first',
+      'full',
     ]);
 
     const signal = new AbortController().signal;
@@ -358,6 +376,7 @@ describe('rangePlaceholderData', () => {
     60_000,
     undefined,
     undefined,
+    null,
     930,
     null,
     undefined,
@@ -376,6 +395,7 @@ describe('rangePlaceholderData', () => {
       60_000,
       undefined,
       undefined,
+      null,
       930,
       null,
       undefined,
@@ -397,6 +417,7 @@ describe('rangePlaceholderData', () => {
       60_000,
       undefined,
       undefined,
+      null,
       945,
       null,
       undefined,
