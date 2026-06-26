@@ -9,6 +9,7 @@ from hoga.tables.brokers import (
     PARQUET_SCHEMA,
     PARSERS,
     BrokerRow,
+    query_late_entry_events,
     write_parquet,
 )
 
@@ -96,6 +97,83 @@ def test_write_parquet_roundtrip(tmp_path: Path) -> None:
 
 from hoga.api.models import BrokerSeriesEntry
 from hoga.tables.brokers import query_day_series
+
+
+def test_query_day_series_returns_all_recorded_brokers(tmp_path: Path) -> None:
+    rows: list[BrokerRow] = []
+    for i in range(3):
+        rows.extend(
+            PARSERS[4](
+                _broker_parts_named(
+                    ts_ms=90000000 + i * 100000,
+                    seq=i + 1,
+                    sell_names=[f"S{i}-{j}" for j in range(5)],
+                    sell_today=[100 + j for j in range(5)],
+                    buy_names=[f"B{i}-{j}" for j in range(5)],
+                    buy_today=[200 + j for j in range(5)],
+                )
+            )
+        )
+    out = tmp_path / "brokers.parquet"
+    write_parquet(rows, out)
+    con = duckdb.connect()
+
+    entries = query_day_series(con, path=out)
+
+    assert len(entries) == 30
+    assert [abs(e.final_net) for e in entries] == sorted(
+        [abs(e.final_net) for e in entries],
+        reverse=True,
+    )
+
+
+def test_query_late_entry_events_are_side_specific_and_once(
+    tmp_path: Path,
+) -> None:
+    before = PARSERS[4](
+        _broker_parts_named(
+            ts_ms=92900000,
+            seq=1,
+            sell_names=["S1", "S2", "S3", "S4", "S5"],
+            sell_today=[10, 10, 10, 10, 10],
+            buy_names=["Dual", "B2", "B3", "B4", "B5"],
+            buy_today=[50, 10, 10, 10, 10],
+        )
+    )
+    at_threshold = PARSERS[4](
+        _broker_parts_named(
+            ts_ms=93000000,
+            seq=2,
+            sell_names=["Dual", "NewSell", "S3", "S4", "S5"],
+            sell_today=[70, 30, 10, 10, 10],
+            buy_names=["NewBuy", "B2", "B3", "B4", "B5"],
+            buy_today=[80, 10, 10, 10, 10],
+        )
+    )
+    later = PARSERS[4](
+        _broker_parts_named(
+            ts_ms=94500000,
+            seq=3,
+            sell_names=["Dual", "NewSell", "LaterSell", "S4", "S5"],
+            sell_today=[90, 40, 60, 10, 10],
+            buy_names=["NewBuy", "LaterBuy", "B3", "B4", "B5"],
+            buy_today=[90, 55, 10, 10, 10],
+        )
+    )
+    out = tmp_path / "brokers.parquet"
+    write_parquet(before + at_threshold + later, out)
+    con = duckdb.connect()
+
+    events = query_late_entry_events(con, path=out, threshold_ms=93000000)
+
+    assert [(e.t_ms, e.broker, e.side) for e in events] == [
+        (93000000, "Dual", "sell"),
+        (93000000, "NewBuy", "buy"),
+        (93000000, "NewSell", "sell"),
+        (94500000, "LaterBuy", "buy"),
+        (94500000, "LaterSell", "sell"),
+    ]
+    assert all(e.broker != "Dual" or e.side != "buy" for e in events)
 
 
 def _broker_parts_named(
@@ -264,8 +342,8 @@ def test_query_day_series_collapses_canonical_aliases(tmp_path: Path) -> None:
     assert not any(e.broker == "신한증권" for e in entries)
 
 
-def test_query_day_series_truncates_to_top_10(tmp_path: Path) -> None:
-    """If more than 10 distinct brokers exist, only the top 10 by |final_net| ship."""
+def test_query_day_series_returns_all_brokers(tmp_path: Path) -> None:
+    """If more than 10 distinct brokers exist, every broker still ships."""
     # 5 sell brokers + 5 buy brokers per snapshot = 10 distinct. Use two snapshots
     # with fully disjoint buy lists to push the distinct count to 15.
     s1 = PARSERS[4](
@@ -292,7 +370,7 @@ def test_query_day_series_truncates_to_top_10(tmp_path: Path) -> None:
     write_parquet(s1 + s2, out)
     con = duckdb.connect()
     entries = query_day_series(con, path=out)
-    assert len(entries) == 10  # B6..B10 (small) cut off
+    assert len(entries) == 15
     # First five are the big buyers.
     assert entries[0].broker == "B1"
     assert entries[0].final_net == 1000

@@ -133,8 +133,8 @@ def query_day_series(
 
     Aggregates qty_today * sign(side) per (broker, ts_ms) so a broker on
     both sides at the same snapshot collapses to one signed value, then
-    groups in Python into one BrokerSeriesEntry per broker. Returns at most
-    10 entries sorted by abs(final_net) desc, final_net desc.
+    groups in Python into one BrokerSeriesEntry per broker. Returns all
+    entries sorted by abs(final_net) desc, final_net desc.
 
     Broker names are canonicalized (see ``hoga.broker_names``) before the
     Python-side group so hogaplay and KIS aliases for the same KRX member
@@ -160,7 +160,7 @@ def query_day_series(
         for broker, points in by_broker.items()
     ]
     entries.sort(key=lambda e: (-abs(e.final_net), -e.final_net))
-    return entries[:10]
+    return entries
 
 
 def _query_canonical_series_points(
@@ -198,6 +198,64 @@ def _query_canonical_series_points(
             BrokerSeriesPoint(ts_ms=ts_ms, net=net)
         )
     return by_broker
+
+
+@dataclass(frozen=True)
+class BrokerLateEntryEventRow:
+    t_ms: int
+    broker: str
+    side: BrokerSide
+    net: int
+
+
+def query_late_entry_events(
+    con: duckdb.DuckDBPyConnection,
+    *,
+    path: Path,
+    threshold_ms: int,
+) -> list[BrokerLateEntryEventRow]:
+    """Return first post-threshold appearances per canonical (broker, side).
+
+    ``threshold_ms`` and returned ``t_ms`` use the parquet-native HHMMSSmmm
+    encoding. The API layer converts them to Unix ms.
+    """
+    from hoga.broker_names import canonical
+
+    rows = con.execute(
+        """
+        SELECT
+            broker,
+            side,
+            ts_ms,
+            SUM(CASE WHEN side = 'buy' THEN qty_today ELSE -qty_today END) AS net
+        FROM read_parquet(?)
+        GROUP BY broker, side, ts_ms
+        ORDER BY ts_ms, broker, side
+        """,
+        [str(path)],
+    ).fetchall()
+
+    pre_seen: set[tuple[str, BrokerSide]] = set()
+    first_after: dict[tuple[str, BrokerSide], BrokerLateEntryEventRow] = {}
+    for raw_broker, raw_side, ts_ms_raw, net_raw in rows:
+        broker = canonical(str(raw_broker))
+        side: BrokerSide = "buy" if raw_side == "buy" else "sell"
+        key = (broker, side)
+        ts_ms = int(ts_ms_raw)
+        net = int(net_raw)
+        if ts_ms < threshold_ms:
+            pre_seen.add(key)
+            continue
+        if key in pre_seen or key in first_after:
+            continue
+        first_after[key] = BrokerLateEntryEventRow(
+            t_ms=ts_ms,
+            broker=broker,
+            side=side,
+            net=net,
+        )
+
+    return sorted(first_after.values(), key=lambda e: (e.t_ms, e.broker, e.side))
 
 
 def _final_broker_order(
