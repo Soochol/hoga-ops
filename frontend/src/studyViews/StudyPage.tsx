@@ -1,10 +1,12 @@
 import { useCallback, useEffect, useMemo, useRef, useState, type WheelEvent } from 'react';
 import { useNavigate, useSearchParams } from 'react-router';
 import { LiveChartRoot } from '../live/LiveChartRoot';
+import { TimeframeControl } from '../live/TimeframeControl';
 import { tradeVolumePocsFromWire } from '../live/tradeVolumePocWire';
 import type { TabViewport } from '../live/viewportAnchor';
 import { useEntryDragStore } from '../state/entryDrag';
 import { useStudyTabsStore } from '../state/studyTabs';
+import { isMinuteTimeframe, type LiveTimeframe, type MinuteTimeframe } from '../state/livePage';
 import { StudyMemoPanel } from './StudyMemoPanel';
 import { StudyReferenceDetailPanel } from './StudyReferenceDetailPanel';
 import { StudyTabBar } from './StudyTabBar';
@@ -54,6 +56,8 @@ export function StudyPage() {
   const queryViewId = params.get('view');
   const navigate = useNavigate();
   const [isCursorActive, setIsCursorActive] = useState(false);
+  const [viewTimeframes, setViewTimeframes] = useState<Record<string, LiveTimeframe>>({});
+  const [rememberedMinuteTimeframes, setRememberedMinuteTimeframes] = useState<Record<string, MinuteTimeframe>>({});
   const savesQuery = useStudyViews();
   const mutations = useStudyViewMutations();
   const [isMemoOpen, setIsMemoOpen] = useState(false);
@@ -88,13 +92,27 @@ export function StudyPage() {
     [activeViewId, savesQuery.data?.saves],
   );
   const referenceSave = referenceStudyView(selectedSave);
-  const referenceQuery = useStudyReferenceBundle(referenceSave);
+  const selectedTimeframe = activeViewId && referenceSave
+    ? viewTimeframes[activeViewId] ?? referenceSave.timeframe
+    : null;
+  const rememberedMinuteTimeframe = activeViewId && referenceSave
+    ? rememberedMinuteTimeframes[activeViewId]
+      ?? (isMinuteTimeframe(referenceSave.timeframe) ? referenceSave.timeframe : '1m')
+    : '1m';
+  const displayedReferenceSave = useMemo(
+    () => referenceSave && selectedTimeframe
+      ? { ...referenceSave, timeframe: selectedTimeframe }
+      : null,
+    [referenceSave, selectedTimeframe],
+  );
+  const referenceQuery = useStudyReferenceBundle(displayedReferenceSave);
   const activeViewModel = useMemo(
     () => studyActiveViewModel({
-      selectedSave,
+      selectedSave: displayedReferenceSave ?? selectedSave,
       reference: referenceQuery,
     }),
     [
+      displayedReferenceSave,
       referenceQuery.bundle,
       referenceQuery.chartBundle,
       referenceQuery.error,
@@ -130,6 +148,13 @@ export function StudyPage() {
       },
     );
   }, [activeViewId, mutations.updateMetadata, selectedSave?.memo]);
+  const changeTimeframe = useCallback((next: LiveTimeframe) => {
+    if (!activeViewId) return;
+    setViewTimeframes((current) => ({ ...current, [activeViewId]: next }));
+    if (isMinuteTimeframe(next)) {
+      setRememberedMinuteTimeframes((current) => ({ ...current, [activeViewId]: next }));
+    }
+  }, [activeViewId]);
 
   useEffect(() => {
     if (initialQueryViewIdRef.current === null) return;
@@ -268,16 +293,25 @@ export function StudyPage() {
         <div className="min-w-0">
           <div className="truncate text-sm font-semibold">{selectedSave.label}</div>
           <div className="text-xs text-[var(--fg-dimmer)]">
-            {selectedSave.code} · {selectedSave.timeframe} · {studyViewKindLabel(selectedSave)}
+            {selectedSave.code} · {selectedTimeframe ?? selectedSave.timeframe} · {studyViewKindLabel(selectedSave)}
           </div>
         </div>
-        <button
-          type="button"
-          onClick={() => setIsMemoOpen((value) => !value)}
-          className="shrink-0 rounded border border-border bg-bg-input px-2 py-1 text-xs text-fg-dim hover:bg-bg-input-hover hover:text-fg"
-        >
-          메모
-        </button>
+        <div className="flex shrink-0 items-center gap-2">
+          {selectedTimeframe && (
+            <TimeframeControl
+              timeframe={selectedTimeframe}
+              rememberedMinute={rememberedMinuteTimeframe}
+              onChange={changeTimeframe}
+            />
+          )}
+          <button
+            type="button"
+            onClick={() => setIsMemoOpen((value) => !value)}
+            className="shrink-0 rounded border border-border bg-bg-input px-2 py-1 text-xs text-fg-dim hover:bg-bg-input-hover hover:text-fg"
+          >
+            메모
+          </button>
+        </div>
       </header>
       <div
         ref={studyDropTargetRef}
@@ -290,7 +324,7 @@ export function StudyPage() {
             <LiveChartRoot
               code={activeViewModel.save.code}
               timeframe={activeViewModel.save.timeframe}
-              viewIdentity={activeTabId ? `${activeTabId}:${activeViewId}` : activeViewId}
+              viewIdentity={activeTabId ? `${activeTabId}:${activeViewId}:${activeViewModel.save.timeframe}` : `${activeViewId}:${activeViewModel.save.timeframe}`}
               bundle={activeViewModel.bundle}
               chartBundle={activeViewModel.chartBundle}
               clampEngaged={false}

@@ -2,7 +2,7 @@ import type { StudyViewReference } from '../api/studyViews';
 import { TIMEFRAME_TO_MS, type Candle, type RangeBundle, type Timeframe, type VolumeProfile } from '../api/types';
 import { aggregateCalendar, aggregateCandles } from '../live/aggregateCandles';
 import { buildChartBundle } from '../live/buildLiveBundle';
-import { regularSessionCloseMs, regularSessionOpenMs } from '../live/liveDateTime';
+import { realMsToYyyymmdd, regularSessionCloseMs, regularSessionOpenMs } from '../live/liveDateTime';
 import { liveVenueSessionBoundsMs, liveVenueUsesExtendedMinuteWindow } from '../live/liveVenuePolicy';
 import type { LiveVenueOption } from '../state/liveVenue';
 import { isMinuteTimeframe, type CalendarTimeframe } from '../state/livePage';
@@ -147,7 +147,12 @@ export function buildStudyReferenceBundleModel({
     minuteCandles,
     dailyCandles,
   });
-  const clippedKisCandles = kisCandles.filter((c) => c.ts_ms >= save.range.from_ms && c.ts_ms <= save.range.to_ms);
+  const clippedKisCandles = inputs.isMinute
+    ? kisCandles.filter((c) => c.ts_ms >= save.range.from_ms && c.ts_ms <= save.range.to_ms)
+    : kisCandles.filter((c) => {
+      const date = realMsToYyyymmdd(c.ts_ms);
+      return date >= save.range.from_date && date <= save.range.to_date;
+    });
   const sessionForDate = liveVenueUsesExtendedMinuteWindow(venue)
     ? (yyyymmdd: string) => liveVenueSessionBoundsMs(yyyymmdd, venue)
     : undefined;
