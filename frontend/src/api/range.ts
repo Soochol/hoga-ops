@@ -1,10 +1,12 @@
-import { useQuery } from '@tanstack/react-query';
+import { useQuery, type UseQueryOptions } from '@tanstack/react-query';
 
 import { apiCall } from './client';
 import type { RangeBundle, Timeframe } from './types';
 import {
   buildRangeBundleRequest,
   rangePlaceholderData,
+  type RangeBundleRequestInput,
+  type RangeQueryKey,
   type RangeRequestOptions,
 } from './rangeRequest';
 import { useSourcePreferenceStore } from '../state/sourcePreference';
@@ -52,6 +54,25 @@ export function rangeFreshnessOptions(
     : { staleTime: Infinity, refetchInterval: false };
 }
 
+export type RangeBundleQueryOptionsInput = RangeBundleRequestInput;
+
+export function rangeBundleQueryOptions(
+  input: RangeBundleQueryOptionsInput,
+): UseQueryOptions<RangeBundle, Error, RangeBundle, RangeQueryKey> {
+  const request = buildRangeBundleRequest(input);
+  const { staleTime, refetchInterval } = rangeFreshnessOptions(input.to, request.todayKst);
+  return {
+    queryKey: request.queryKey,
+    queryFn: ({ signal }) =>
+      apiCall<RangeBundle>(request.url, { signal }),
+    enabled: request.enabled,
+    staleTime,
+    refetchInterval,
+    placeholderData: (prev, previousQuery) =>
+      rangePlaceholderData(prev, request.queryKey, previousQuery?.queryKey),
+  };
+}
+
 /**
  * Fetch a Stock-Date Range bundle (ADR-0013, ADR-0014).
  *
@@ -79,35 +100,14 @@ export function useRange(
   options?: RangeRequestOptions,
 ) {
   const sourcePref: SourcePreference = useSourcePreferenceStore((s) => s.sourcePreference);
-  const request = buildRangeBundleRequest({
-      code,
-      from,
-      to,
-      timeframe,
-      priceRange,
-      todayKst,
-      sourcePref,
-      options,
-    });
-  const { staleTime, refetchInterval } = rangeFreshnessOptions(to, request.todayKst);
-
-  return useQuery({
-    queryKey: request.queryKey,
-    queryFn: ({ signal }) =>
-      apiCall<RangeBundle>(request.url, { signal }),
-    enabled: request.enabled,
-    staleTime,
-    refetchInterval,
-    // Code-aware placeholder mirrors livePastCandles.ts: keep the previous
-    // response visible during same-code refetches (e.g., /live extending
-    // historicalFromDate to fetch one more chunk), but DROP it on code
-    // switches. Without this code guard, a watchlist click on /live left
-    // the previous code's segments / quote_ratio / fill_strength in
-    // bundle until /api/range for the new code resolved, which made the
-    // VirtualAxis (built from those segments) stale and projected the
-    // new code's hoga indicator points onto the old code's date layout —
-    // surfaced as "엉뚱한 곳에서 시작하는" charts in /diagnose 2026-05-29.
-    placeholderData: (prev, previousQuery) =>
-      rangePlaceholderData(prev, request.queryKey, previousQuery?.queryKey),
-  });
+  return useQuery(rangeBundleQueryOptions({
+    code,
+    from,
+    to,
+    timeframe,
+    priceRange,
+    todayKst,
+    sourcePref,
+    options,
+  }));
 }
