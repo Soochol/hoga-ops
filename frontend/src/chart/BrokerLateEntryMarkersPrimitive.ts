@@ -36,6 +36,17 @@ type MarkerCoordinate = {
   y: number;
 };
 
+export function isBrokerLateEntryMarkerVisibleInPane(
+  coordinate: MarkerCoordinate,
+  paneWidthPx: number,
+  paneHeightPx: number,
+): boolean {
+  return coordinate.x >= 0
+    && coordinate.x <= paneWidthPx
+    && coordinate.y >= 0
+    && coordinate.y <= paneHeightPx;
+}
+
 export function brokerLateEntryMarkerXCoordinate(
   marker: BrokerLateEntryMarkerPoint,
   timeToCoordinate: (time: Time) => number | null,
@@ -174,6 +185,13 @@ class BrokerLateEntryMarkersRenderer implements IPrimitivePaneRenderer {
         if (x === null || y === null) continue;
         const px = x * hr;
         const py = y * vr;
+        if (!isBrokerLateEntryMarkerVisibleInPane(
+          { x: px, y: py },
+          scope.bitmapSize.width,
+          scope.bitmapSize.height,
+        )) {
+          continue;
+        }
         plotted.set(marker, { x: px, y: py });
         ctx.beginPath();
         ctx.arc(px, py, dotRadius, 0, Math.PI * 2);
