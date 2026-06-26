@@ -6,6 +6,8 @@ import { PROGRAM_TRADE_SPEC, projectProgramTradeNetAmount } from './programTrade
 
 const OPEN = Date.UTC(2026, 4, 12, 0, 0, 0);
 const CLOSE = Date.UTC(2026, 4, 12, 6, 30, 0);
+const EXTENDED_OPEN = Date.UTC(2026, 4, 11, 23, 0, 0);
+const EXTENDED_CLOSE = Date.UTC(2026, 4, 12, 11, 0, 0);
 
 function bundle(points: NonNullable<RangeBundle['program_trade']>['points']): RangeBundle {
   return {
@@ -63,5 +65,19 @@ describe('programTrade projector', () => {
     const b = bundle([]);
     delete b.program_trade;
     expect(projectProgramTradeNetAmount(b, axis)).toEqual([]);
+  });
+
+  it('does not render program points in the NXT extended-hours window', () => {
+    const b = bundle([
+      { t: EXTENDED_OPEN + 30 * 60_000, net_qty: 10, net_amount: 100_000, gap_risk: false },
+      { t: OPEN + 60_000, net_qty: 20, net_amount: 200_000, gap_risk: false },
+      { t: CLOSE + 30 * 60_000, net_qty: 30, net_amount: 300_000, gap_risk: false },
+    ]);
+    b.segments = [{ date: '20260512', session_open_ms: EXTENDED_OPEN, session_close_ms: EXTENDED_CLOSE }];
+    const axis = createVirtualAxis([{ date: '20260512', sessionOpenMs: EXTENDED_OPEN, sessionCloseMs: EXTENDED_CLOSE }], EXTENDED_OPEN);
+
+    expect(projectProgramTradeNetAmount(b, axis)).toEqual([
+      { time: axis.toVirtual(OPEN + 60_000) / 1000, value: 200_000 },
+    ]);
   });
 });
