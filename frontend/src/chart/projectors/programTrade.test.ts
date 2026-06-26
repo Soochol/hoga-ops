@@ -54,6 +54,10 @@ describe('programTrade projector', () => {
     expect(PROGRAM_TRADE_SPEC.series[0].type).toBe(LineSeries);
   });
 
+  it('uses the live bundle because it aligns to hoga time slots', () => {
+    expect(PROGRAM_TRADE_SPEC.live).toBe(true);
+  });
+
   it('maps program_trade.points to signed cumulative net-amount line data', () => {
     const axis = createVirtualAxis([{ date: '20260512', sessionOpenMs: OPEN, sessionCloseMs: CLOSE }], OPEN);
     const out = projectProgramTradeNetAmount(bundle([
