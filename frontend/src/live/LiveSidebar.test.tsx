@@ -554,6 +554,38 @@ describe('LiveSidebar cursor branching (ADR-0044)', () => {
     );
   });
 
+  it('uses latest live sidebar data when the cursor is pinned to the latest candle', () => {
+    const latestCandleMs = bundleFixture.candles[bundleFixture.candles.length - 1].ts_ms;
+    const liveWithData: LiveSeriesData = {
+      ...emptyLive,
+      ob: [
+        {
+          t_ms: latestCandleMs,
+          kind: 'ob',
+          asks: Array.from({ length: 10 }, (_, i) => ({ price: 70010 + i, qty: 10 + i })),
+          bids: Array.from({ length: 10 }, (_, i) => ({ price: 70000 - i, qty: 20 + i })),
+          total_ask_qty: 145,
+          total_bid_qty: 245,
+        },
+      ],
+      broker: [
+        {
+          t_ms: latestCandleMs,
+          kind: 'broker',
+          buy_top: [{ name: '미래에셋증권', qty: 123 }],
+          sell_top: [],
+        },
+      ],
+    };
+
+    act(() => useLiveCursorStore.getState().setCursor(latestCandleMs));
+    renderSidebar({ code: '005930', live: liveWithData, bundle: bundleFixture });
+
+    expect(screen.queryByText('커서 위치 로딩 중…')).toBeNull();
+    expect(screen.getByText('70,010')).toBeInTheDocument();
+    expect(screen.getByText('+123')).toBeInTheDocument();
+  });
+
   it('TotalQtyBar maskRatio=true when cursorMs in closing auction window', () => {
     useLiveAxisStore.setState({ axis: { inClosingAuctionWindow: () => true } as never });
     renderSidebar({ code: '005930' });
