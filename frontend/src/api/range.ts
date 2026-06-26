@@ -44,6 +44,37 @@ export function rangeFreshnessOptions(
     : { staleTime: Infinity, refetchInterval: false };
 }
 
+type RangeQueryKey = readonly [
+  'range',
+  string | null,
+  string | null,
+  string | null,
+  number | null,
+  number | undefined,
+  number | undefined,
+  number | null,
+  number | null,
+  number | undefined,
+  number | undefined,
+  number | null,
+  SourcePreference,
+];
+
+const PLACEHOLDER_COMPATIBLE_KEY_INDICES = [4, 5, 6, 7, 8, 9, 10, 11, 12] as const;
+
+export function rangePlaceholderData(
+  prev: RangeBundle | undefined,
+  currentKey: RangeQueryKey,
+  previousKey: readonly unknown[] | undefined,
+): RangeBundle | undefined {
+  if (!prev || prev.code !== currentKey[1]) return undefined;
+  if (!previousKey) return undefined;
+  for (const index of PLACEHOLDER_COMPATIBLE_KEY_INDICES) {
+    if (previousKey[index] !== currentKey[index]) return undefined;
+  }
+  return prev;
+}
+
 /**
  * Fetch a Stock-Date Range bundle (ADR-0013, ADR-0014).
  *
@@ -97,8 +128,7 @@ export function useRange(
     : '';
   const { staleTime, refetchInterval } = rangeFreshnessOptions(to, todayKst ?? null);
 
-  return useQuery({
-    queryKey: [
+  const queryKey: RangeQueryKey = [
       'range',
       code,
       from,
@@ -112,7 +142,10 @@ export function useRange(
       volumeDistributionPriceRange?.max,
       tradeVolumePocBins,
       sourcePref,
-    ] as const,
+    ];
+
+  return useQuery({
+    queryKey,
     queryFn: ({ signal }) =>
       apiCall<RangeBundle>(
         `/api/range?code=${code}&from=${from}&to=${to}&bucket_ms=${bucketMs}` +
@@ -131,6 +164,7 @@ export function useRange(
     // VirtualAxis (built from those segments) stale and projected the
     // new code's hoga indicator points onto the old code's date layout —
     // surfaced as "엉뚱한 곳에서 시작하는" charts in /diagnose 2026-05-29.
-    placeholderData: (prev) => (prev && prev.code === code ? prev : undefined),
+    placeholderData: (prev, previousQuery) =>
+      rangePlaceholderData(prev, queryKey, previousQuery?.queryKey),
   });
 }

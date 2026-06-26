@@ -256,6 +256,7 @@ describe('RangeSeriesPane', () => {
           data: () => [{ time: 1, value: 10 }] as never,
           labelMarkers: () => [{
             time: 1,
+            anchorTime: 1,
             price: 10,
             broker: '삼성증권',
             label: '삼성',

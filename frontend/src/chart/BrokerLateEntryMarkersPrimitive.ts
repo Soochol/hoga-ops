@@ -36,6 +36,35 @@ type MarkerCoordinate = {
   y: number;
 };
 
+export function brokerLateEntryMarkerXCoordinate(
+  marker: BrokerLateEntryMarkerPoint,
+  timeToCoordinate: (time: Time) => number | null,
+): number | null {
+  return timeToCoordinate(marker.time) ?? timeToCoordinate(marker.anchorTime);
+}
+
+export function shouldUseFullBrokerLateEntryLabels(
+  markers: readonly BrokerLateEntryMarkerPoint[],
+  plotted: ReadonlyMap<BrokerLateEntryMarkerPoint, MarkerCoordinate>,
+  paneWidthPx: number,
+  paneHeightPx: number,
+  labelHeightPx: number,
+  labelStackStepPx: number,
+): boolean {
+  if (markers.length <= 1) return true;
+  const density = paneWidthPx > 0 ? markers.length / paneWidthPx : Number.POSITIVE_INFINITY;
+  const stackCounts = new Map<number, number>();
+  for (const marker of markers) {
+    const coord = plotted.get(marker);
+    if (!coord) continue;
+    const key = Math.round(coord.x);
+    stackCounts.set(key, (stackCounts.get(key) ?? 0) + 1);
+  }
+  const tallestStack = Math.max(1, ...stackCounts.values());
+  const stackHeight = labelHeightPx + (tallestStack - 1) * labelStackStepPx;
+  return density <= 0.035 && stackHeight <= paneHeightPx * 0.6;
+}
+
 function clamp(n: number, min: number, max: number): number {
   return Math.max(min, Math.min(max, n));
 }
@@ -102,7 +131,10 @@ class BrokerLateEntryMarkersRenderer implements IPrimitivePaneRenderer {
       ctx.textAlign = 'left';
 
       for (const marker of markers) {
-        const x = timeScale.timeToCoordinate(marker.time);
+        const x = brokerLateEntryMarkerXCoordinate(
+          marker,
+          (time) => timeScale.timeToCoordinate(time),
+        );
         const y = series.priceToCoordinate(marker.price);
         if (x === null || y === null) continue;
         const px = x * hr;
@@ -117,6 +149,14 @@ class BrokerLateEntryMarkersRenderer implements IPrimitivePaneRenderer {
       if (plotted.size === 0) return;
 
       const visibleMarkers = markers.filter((marker) => plotted.has(marker));
+      const forceFullLabels = shouldUseFullBrokerLateEntryLabels(
+        visibleMarkers,
+        plotted,
+        scope.bitmapSize.width,
+        scope.bitmapSize.height,
+        labelHeight,
+        labelStackStep,
+      );
       const groups = layoutBrokerLateEntryLabels(visibleMarkers, {
         minHorizontalGapPx: LABEL_MIN_HORIZONTAL_GAP_PX * hr,
         minVerticalGapPx: LABEL_MIN_VERTICAL_GAP_PX * vr,
@@ -124,7 +164,7 @@ class BrokerLateEntryMarkersRenderer implements IPrimitivePaneRenderer {
         estimateLabelWidthPx: (label) => ctx.measureText(label).width + 10 * hr,
         getX: (marker) => plotted.get(marker)!.x + labelChipGapX,
         getY: (marker) => plotted.get(marker)!.y - labelOffsetY,
-        forceFull: false,
+        forceFull: forceFullLabels,
       }).groups;
 
       const stackByX = new Map<number, number>();

@@ -87,6 +87,7 @@ describe('projectBrokerLateEntryMarkers', () => {
     expect(markers).toEqual([
       {
         time: axis.toVirtual(OPEN) / 1000,
+        anchorTime: axis.toVirtual(OPEN) / 1000,
         price: -1,
         broker: '삼성증권',
         label: '삼성',
@@ -118,6 +119,7 @@ describe('projectBrokerLateEntryMarkers', () => {
     expect(markers).toEqual([
       {
         time: axis.toVirtual(OPEN + 150_000) / 1000,
+        anchorTime: axis.toVirtual(OPEN + 120_000) / 1000,
         price: 2,
         broker: '후발증권',
         label: '후발',

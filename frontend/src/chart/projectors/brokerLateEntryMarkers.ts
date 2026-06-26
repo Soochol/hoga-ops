@@ -12,6 +12,7 @@ import type { RatioPaneContext } from './ratio';
 
 export type BrokerLateEntryMarkerPoint = {
   time: Time;
+  anchorTime: Time;
   price: number;
   broker: string;
   label: string;
@@ -118,6 +119,7 @@ export function projectBrokerLateEntryMarkers(
     if (!anchor) continue;
     markers.push({
       time: (axis.toVirtual(event.t_ms) / 1000) as UTCTimestamp,
+      anchorTime: (axis.toVirtual(anchor.t) / 1000) as UTCTimestamp,
       price: displayedRatioValue(anchor, ctx),
       broker: event.broker,
       label: brokerDisplayShort(event.broker),

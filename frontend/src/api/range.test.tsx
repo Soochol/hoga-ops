@@ -3,7 +3,12 @@ import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { describe, expect, it, vi, beforeEach } from 'vitest';
 import type { ReactNode } from 'react';
 
-import { useRange, rangeFreshnessOptions, TODAY_RANGE_REFETCH_MS } from './range';
+import {
+  useRange,
+  rangeFreshnessOptions,
+  rangePlaceholderData,
+  TODAY_RANGE_REFETCH_MS,
+} from './range';
 import * as client from './client';
 import type { RangeBundle } from './types';
 import { useSourcePreferenceStore } from '../state/sourcePreference';
@@ -200,5 +205,63 @@ describe('rangeFreshnessOptions (review C1 — pastMaxQrT advance)', () => {
       staleTime: Infinity,
       refetchInterval: false,
     });
+  });
+});
+
+describe('rangePlaceholderData', () => {
+  const baseKey: Parameters<typeof rangePlaceholderData>[1] = [
+    'range',
+    '005930',
+    '20260512',
+    '20260512',
+    60_000,
+    undefined,
+    undefined,
+    930,
+    null,
+    undefined,
+    undefined,
+    null,
+    'hogaplay_first',
+  ];
+
+  it('keeps previous same-code data for date extension when option-sensitive fields are unchanged', () => {
+    const currentKey: Parameters<typeof rangePlaceholderData>[1] = [
+      'range',
+      '005930',
+      '20260510',
+      '20260512',
+      60_000,
+      undefined,
+      undefined,
+      930,
+      null,
+      undefined,
+      undefined,
+      null,
+      'hogaplay_first',
+    ];
+
+    expect(rangePlaceholderData(fakeBundle, currentKey, baseKey)).toBe(fakeBundle);
+  });
+
+  it('drops previous broker late-entry events when the threshold option changes', () => {
+    const currentKey: Parameters<typeof rangePlaceholderData>[1] = [
+      'range',
+      '005930',
+      '20260512',
+      '20260512',
+      60_000,
+      undefined,
+      undefined,
+      945,
+      null,
+      undefined,
+      undefined,
+      null,
+      'hogaplay_first',
+    ];
+
+    expect(rangePlaceholderData(fakeBundle, currentKey, baseKey)).toBeUndefined();
   });
 });
