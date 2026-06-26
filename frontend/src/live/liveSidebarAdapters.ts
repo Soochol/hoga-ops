@@ -103,8 +103,8 @@ export function orderbookSnapshotAtCursor(
  * Walk all broker snapshots in the live buffer, accumulating signed-net
  * time series per broker. Buy-side brokers contribute positive net;
  * sell-side contribute negative net. Returns BrokerSeriesEntry[] sorted
- * by abs(final_net) desc and capped at 10 — matches the wire shape
- * BrokerTrajectoryTable expects (ADR-0023).
+ * by abs(final_net) desc and includes all recorded broker identities —
+ * matches the wire shape BrokerTrajectoryTable expects (ADR-0023).
  *
  * Note: live broker snapshots are per-cycle top-5 lists, so the same
  * broker may drop in and out of the top-5 across snapshots. The
@@ -150,5 +150,5 @@ export function aggregateBrokerSeries(broker: readonly RawSnapshot[]): BrokerSer
   }
 
   entries.sort((a, b) => Math.abs(b.final_net) - Math.abs(a.final_net));
-  return entries.slice(0, 10);
+  return entries;
 }
