@@ -6,14 +6,13 @@ import { describe, expect, it, vi } from 'vitest';
 vi.mock('../api/studyViews', () => ({
   createStudyView: vi.fn(),
   deleteStudyView: vi.fn(async () => undefined),
-  getStudyViewSnapshot: vi.fn(),
   listStudyViews: vi.fn(),
   updateStudyViewMetadata: vi.fn(),
   updateStudyView: vi.fn(),
 }));
 
 import { deleteStudyView, updateStudyViewMetadata } from '../api/studyViews';
-import { STUDY_VIEW_SAVES_QUERY, studyViewSnapshotQuery, useStudyViewMutations } from './useStudyViews';
+import { STUDY_VIEW_SAVES_QUERY, useStudyViewMutations } from './useStudyViews';
 
 function wrap(qc: QueryClient) {
   return ({ children }: { children: ReactNode }) => (
@@ -38,10 +37,10 @@ describe('useStudyViewMutations', () => {
 
     expect(mutateAsync).toHaveBeenCalledWith('a', { name: '새 이름' });
     expect(invalidateSpy).toHaveBeenCalledWith({ queryKey: STUDY_VIEW_SAVES_QUERY });
-    expect(invalidateSpy).not.toHaveBeenCalledWith({ queryKey: studyViewSnapshotQuery('a') });
+    expect(invalidateSpy).toHaveBeenCalledTimes(1);
   });
 
-  it('removes the deleted view snapshot query after delete succeeds', async () => {
+  it('invalidates the saves list after delete succeeds', async () => {
     const qc = new QueryClient({
       defaultOptions: {
         queries: { retry: false },
@@ -49,7 +48,6 @@ describe('useStudyViewMutations', () => {
       },
     });
     qc.setQueryData(STUDY_VIEW_SAVES_QUERY, { schema_version: 1, saves: [{ id: 'view1' }] });
-    qc.setQueryData(studyViewSnapshotQuery('view1'), { schema_version: 1, code: '005930' });
 
     const { result } = renderHook(() => useStudyViewMutations(), { wrapper: wrap(qc) });
 
@@ -57,7 +55,6 @@ describe('useStudyViewMutations', () => {
 
     await waitFor(() => expect(deleteStudyView).toHaveBeenCalled());
     expect(vi.mocked(deleteStudyView).mock.calls[0][0]).toBe('view1');
-    await waitFor(() => expect(qc.getQueryData(studyViewSnapshotQuery('view1'))).toBeUndefined());
     expect(qc.getQueryState(STUDY_VIEW_SAVES_QUERY)?.isInvalidated).toBe(true);
   });
 });

@@ -3,7 +3,7 @@ import { fireEvent, render, screen, waitFor, within } from '@testing-library/rea
 import userEvent from '@testing-library/user-event';
 import { MemoryRouter, Route, Routes, useLocation } from 'react-router';
 import { beforeEach, expect, it, vi } from 'vitest';
-import type { ParquetStudySnapshot, ParquetStudyView } from '../api/studyViews';
+import type { StudyViewReference } from '../api/studyViews';
 import { useEntryDragStore } from '../state/entryDrag';
 import { useStudyTabsStore } from '../state/studyTabs';
 import type { CurrentStudySaveSource } from './studySaveSource';
@@ -72,10 +72,11 @@ const updateMutate = vi.fn();
 const updateMetadataMutate = vi.fn();
 const removeMutate = vi.fn();
 let saveSource: CurrentStudySaveSource | null = null;
-let mockedSaves: ParquetStudyView[] = [];
+let mockedSaves: StudyViewReference[] = [];
 
-const saves: ParquetStudyView[] = [
+const saves: StudyViewReference[] = [
   {
+    schema_version: 2,
     id: 'a',
     name: '급등 이후',
     code: '005930',
@@ -83,27 +84,13 @@ const saves: ParquetStudyView[] = [
     timeframe: '5m',
     memo: 'memo one',
     tags: [],
-    snapshot_from_ms: 1_000,
-    snapshot_to_ms: 2_000,
+    range: { from_date: '20260616', to_date: '20260616', from_ms: 1_000, to_ms: 2_000 },
     viewport: { right_edge_ms: 2_000, bar_span: 200, at_live_edge: false },
-    indicator_state: {
-      volume_enabled: true,
-      quote_totals_enabled: true,
-      ratio_enabled: true,
-      fill_strength_enabled: true,
-      aggregation_basis: 'close',
-      auction_window_mask: true,
-      ratio_outlier_filter_enabled: true,
-      ratio_outlier_threshold: 50,
-    },
-    provenance: { saved_from_route: '/study', data_provenance: 'study_snapshot' },
-    snapshot_schema_version: 1,
-    snapshot_path: 'a.json',
-    snapshot_size_bytes: 100,
     created_at_ms: 1,
     updated_at_ms: 1,
   },
   {
+    schema_version: 2,
     id: 'b',
     name: '눌림',
     code: '000660',
@@ -111,23 +98,8 @@ const saves: ParquetStudyView[] = [
     timeframe: 'D',
     memo: 'space memo',
     tags: [],
-    snapshot_from_ms: 1_000,
-    snapshot_to_ms: 2_000,
+    range: { from_date: '20260616', to_date: '20260616', from_ms: 1_000, to_ms: 2_000 },
     viewport: { right_edge_ms: 2_000, bar_span: 200, at_live_edge: false },
-    indicator_state: {
-      volume_enabled: true,
-      quote_totals_enabled: true,
-      ratio_enabled: true,
-      fill_strength_enabled: true,
-      aggregation_basis: 'close',
-      auction_window_mask: true,
-      ratio_outlier_filter_enabled: true,
-      ratio_outlier_threshold: 50,
-    },
-    provenance: { saved_from_route: '/study', data_provenance: 'study_snapshot' },
-    snapshot_schema_version: 1,
-    snapshot_path: 'b.json',
-    snapshot_size_bytes: 100,
     created_at_ms: 1,
     updated_at_ms: 1,
   },
@@ -151,39 +123,6 @@ vi.mock('./useStudyViews', () => ({
 vi.mock('./studySaveSource', () => ({
   useCurrentStudySaveSource: () => saveSource,
 }));
-
-function snapshotFixture(): ParquetStudySnapshot {
-  return {
-    schema_version: 1,
-    source_policy: 'fixed',
-    code: '005930',
-    label: '삼성전자',
-    timeframe: '5m',
-    snapshot_from_ms: 1_000,
-    snapshot_to_ms: 2_000,
-    bucket_kind: '5m',
-    viewport: { right_edge_ms: 2_000, bar_span: 200, at_live_edge: false },
-    indicator_state: saves[0].indicator_state,
-    provenance: { saved_from_route: '/study', data_provenance: 'study_snapshot' },
-    bundle: {
-      code: '005930',
-      timeframe: '5m',
-      snapshot_from_ms: 1_000,
-      snapshot_to_ms: 2_000,
-      segments: [{ date: '20260616', session_open_ms: 1_000, session_close_ms: 2_000 }],
-      candles: [
-        { t: 1_000, open: 1, high: 2, low: 1, close: 2, volume: 10 },
-        { t: 2_000, open: 2, high: 3, low: 2, close: 3, volume: 11 },
-      ],
-      quote_totals: [{ t: 1_000, bid_total: 100, ask_total: 90, visible: true }],
-      ratio: [{ t: 1_000, value: 0.1, visible: true }],
-      fill_strength: [{ t: 1_000, buy_qty: 5, sell_qty: 4, visible: true }],
-      ask_peaks: [],
-      data_warnings: [],
-    },
-    captured_at_ms: 3_000,
-  };
-}
 
 function rangeBundleFixture() {
   return {
@@ -432,7 +371,6 @@ it('moves the live save action out of the drawer', () => {
     label: '삼성전자',
     timeframe: '5m',
     bundle: rangeBundleFixture(),
-    indicatorState: saves[0].indicator_state,
     captureViewport: () => ({ rightEdgeMs: 2_000, barSpan: 2, atLiveEdge: true }),
   };
   renderDrawer('/live');
@@ -442,11 +380,10 @@ it('moves the live save action out of the drawer', () => {
 });
 
 it('does not show the secondary new-save action in the drawer body', () => {
-  const snapshot = snapshotFixture();
   saveSource = {
-    origin: 'study',
+    origin: 'study-reference',
     viewId: 'a',
-    snapshot,
+    save: saves[0],
     bundle: rangeBundleFixture(),
     captureViewport: () => ({ rightEdgeMs: 2_000, barSpan: 2, atLiveEdge: false }),
   };
@@ -457,9 +394,9 @@ it('does not show the secondary new-save action in the drawer body', () => {
 
 it('opens overwrite dialog from current study view primary action', async () => {
   saveSource = {
-    origin: 'study',
+    origin: 'study-reference',
     viewId: 'a',
-    snapshot: snapshotFixture(),
+    save: saves[0],
     bundle: rangeBundleFixture(),
     captureViewport: () => null,
   };
@@ -477,9 +414,9 @@ it('opens overwrite dialog from current study view primary action', async () => 
 it('overwrites the current study source even when the saves list is missing the row', async () => {
   mockedSaves = [saves[1]];
   saveSource = {
-    origin: 'study',
+    origin: 'study-reference',
     viewId: 'missing-current',
-    snapshot: snapshotFixture(),
+    save: saves[0],
     bundle: rangeBundleFixture(),
     captureViewport: () => null,
   };
@@ -492,7 +429,7 @@ it('overwrites the current study source even when the saves list is missing the 
   expect(updateMutate).toHaveBeenCalledTimes(1);
   expect(createMutate).not.toHaveBeenCalled();
   expect(updateMutate.mock.calls[0][0].id).toBe('missing-current');
-  expect(updateMutate.mock.calls[0][0].body.name).toBe('삼성전자 5m 저장뷰');
+  expect(updateMutate.mock.calls[0][0].body.name).toBe('급등 이후');
 });
 
 it('clicking the saved view title navigates to the study route', async () => {
@@ -653,9 +590,9 @@ it('deletes a saved view directly from the row context menu', async () => {
 
 it('navigates away after deleting the active study view', async () => {
   saveSource = {
-    origin: 'study',
+    origin: 'study-reference',
     viewId: 'a',
-    snapshot: snapshotFixture(),
+    save: saves[0],
     bundle: rangeBundleFixture(),
     captureViewport: () => null,
   };

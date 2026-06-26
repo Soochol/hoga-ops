@@ -1,5 +1,5 @@
 import { useSyncExternalStore } from 'react';
-import type { ParquetStudySnapshot, StudyIndicatorState, StudyViewReference } from '../api/studyViews';
+import type { StudyViewReference } from '../api/studyViews';
 import type { RangeBundle } from '../api/types';
 import type { LiveTimeframe } from '../state/livePage';
 import type { TabViewport } from '../live/viewportAnchor';
@@ -9,15 +9,6 @@ export type LiveStudySaveSource = {
   code: string;
   label: string;
   timeframe: LiveTimeframe;
-  bundle: RangeBundle;
-  indicatorState: StudyIndicatorState;
-  captureViewport: () => TabViewport | null;
-};
-
-export type StoredStudySaveSource = {
-  origin: 'study';
-  viewId: string;
-  snapshot: ParquetStudySnapshot;
   bundle: RangeBundle;
   captureViewport: () => TabViewport | null;
 };
@@ -30,7 +21,7 @@ export type ReferenceStudySaveSource = {
   captureViewport: () => TabViewport | null;
 };
 
-export type CurrentStudySaveSource = LiveStudySaveSource | StoredStudySaveSource | ReferenceStudySaveSource;
+export type CurrentStudySaveSource = LiveStudySaveSource | ReferenceStudySaveSource;
 
 let currentStudySaveSource: CurrentStudySaveSource | null = null;
 const studySaveSourceListeners = new Set<() => void>();

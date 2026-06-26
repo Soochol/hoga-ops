@@ -13,7 +13,6 @@ import {
   createStudyView,
   deleteStudyView,
   getStudyView,
-  getStudyViewSnapshot,
   listStudyViews,
   updateStudyView,
 } from './studyViews';
@@ -25,9 +24,6 @@ beforeEach(() => {
     const path = String(url);
     if (path === '/api/study-views/saves' && !init) {
       return new Response(JSON.stringify({ schema_version: 1, saves: [] }), { status: 200 });
-    }
-    if (path.endsWith('/snapshot')) {
-      return new Response(JSON.stringify({ schema_version: 1, code: '005930' }), { status: 200 });
     }
     if (init?.method === 'DELETE') {
       return new Response(null, { status: 204 });
@@ -47,11 +43,6 @@ it('calls study view endpoints', async () => {
   expect(fetchMock).toHaveBeenCalledTimes(1);
   expect(fetchMock.mock.calls[0][0]).toBe('/api/study-views/saves');
   expect(fetchMock.mock.calls[0][1]).toBeUndefined();
-
-  fetchMock.mockClear();
-
-  await expect(getStudyViewSnapshot('view1')).resolves.toMatchObject({ code: '005930' });
-  expect(fetchMock).toHaveBeenCalledWith('/api/study-views/saves/view1/snapshot', undefined);
 
   fetchMock.mockClear();
 

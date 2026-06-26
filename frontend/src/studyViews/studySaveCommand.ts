@@ -28,19 +28,16 @@ export type StudySaveCommand = {
 };
 
 function sourceCode(source: CurrentStudySaveSource): string {
-  if (source.origin === 'study') return source.snapshot.code;
   if (source.origin === 'study-reference') return source.save.code;
   return source.code;
 }
 
 function sourceLabel(source: CurrentStudySaveSource): string {
-  if (source.origin === 'study') return source.snapshot.label;
   if (source.origin === 'study-reference') return source.save.label;
   return source.label;
 }
 
 function sourceTimeframe(source: CurrentStudySaveSource) {
-  if (source.origin === 'study') return source.snapshot.timeframe;
   if (source.origin === 'study-reference') return source.save.timeframe;
   return source.timeframe;
 }
@@ -50,7 +47,6 @@ function sourceBundle(source: CurrentStudySaveSource): RangeBundle {
 }
 
 function sourceFallbackViewport(source: CurrentStudySaveSource) {
-  if (source.origin === 'study') return source.snapshot.viewport;
   if (source.origin === 'study-reference') return source.save.viewport;
   return fallbackViewport(source.bundle);
 }

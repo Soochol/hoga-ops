@@ -1,16 +1,6 @@
-import { describe, expect, it, vi } from 'vitest';
-import type { ParquetStudySnapshot, StudyViewListRow, StudyViewReference } from '../api/studyViews';
+import { describe, expect, it } from 'vitest';
+import type { StudyViewReference } from '../api/studyViews';
 import type { RangeBundle } from '../api/types';
-
-const { studySnapshotRenderModelMock, legacyRenderModel } = vi.hoisted(() => ({
-  studySnapshotRenderModelMock: vi.fn(),
-  legacyRenderModel: { chartInput: { bundle: { candles: [] } } },
-}));
-
-vi.mock('./studySnapshotAdapter', () => ({
-  studySnapshotRenderModel: studySnapshotRenderModelMock,
-}));
-
 import { studyActiveViewModel } from './studyActiveViewModel';
 
 const referenceSave: StudyViewReference = {
@@ -44,7 +34,6 @@ describe('studyActiveViewModel', () => {
         error: null,
         pastDataWarnings: [{ reason: 'partial' }],
       },
-      snapshot: { snapshot: null, isLoading: false, isError: false },
     });
 
     expect(model).toMatchObject({
@@ -67,36 +56,13 @@ describe('studyActiveViewModel', () => {
         error: null,
         pastDataWarnings: [],
       },
-      snapshot: { snapshot: null, isLoading: false, isError: false },
     })).toEqual({ status: 'error' });
   });
 
-  it('builds the legacy snapshot render model behind the model Module', () => {
-    studySnapshotRenderModelMock.mockReturnValueOnce(legacyRenderModel);
-    const snapshot = { code: '005930' } as ParquetStudySnapshot;
-    const legacySave = {
-      id: 'legacy1',
-      name: '스냅샷',
-      code: '005930',
-      label: '삼성전자',
-      timeframe: 'D',
-      memo: '',
-      tags: [],
-    } as unknown as StudyViewListRow;
-
-    const model = studyActiveViewModel({
-      selectedSave: legacySave,
+  it('returns idle with no selected save', () => {
+    expect(studyActiveViewModel({
+      selectedSave: null,
       reference: { bundle: null, chartBundle: null, isLoading: false, error: null, pastDataWarnings: [] },
-      snapshot: { snapshot, isLoading: false, isError: false },
-    });
-
-    expect(studySnapshotRenderModelMock).toHaveBeenCalledWith(snapshot);
-    expect(model).toMatchObject({
-      status: 'ready',
-      variant: 'legacy-snapshot',
-      save: legacySave,
-      snapshot,
-      renderModel: legacyRenderModel,
-    });
+    })).toEqual({ status: 'idle' });
   });
 });

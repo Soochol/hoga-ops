@@ -1,7 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useSearchParams } from 'react-router';
 import { isMinuteTimeframe, useLivePageStore } from '../state/livePage';
-import type { StudyIndicatorState } from '../api/studyViews';
 import { useLiveStatus } from '../api/liveStatus';
 import { useLiveStatusProjection } from './liveStatusProjection';
 import { LiveHeader } from './LiveHeader';
@@ -21,7 +20,6 @@ import type { AskPeak, BidPeak, Candle, RangeBundle, TradeVolumePocWire } from '
 import type { ObSnapshot, TradeSnapshot } from './bucketHogaSeries';
 import type { TabViewport } from './viewportAnchor';
 import { initialHistoricalDaysFor, subtractDaysKst, todayKstYyyymmdd } from './liveDateTime';
-import { useChartPrefsStore } from '../state/chartPrefs';
 import { useLiveVenueStore } from '../state/liveVenue';
 import {
   clearCurrentStudySaveSource,
@@ -148,26 +146,6 @@ export function LivePage() {
   const liveVenue = useLiveVenueStore((s) => s.venue);
   const foreignNetEnabled = useLivePageStore((s) => s.foreignNetEnabled);
   const institutionNetEnabled = useLivePageStore((s) => s.institutionNetEnabled);
-  const volumeEnabled = useLivePageStore((s) => s.volumeEnabled);
-  const quoteTotalsEnabled = useLivePageStore((s) => s.quoteTotalsEnabled);
-  const ratioEnabled = useLivePageStore((s) => s.ratioEnabled);
-  const fillStrengthEnabled = useLivePageStore((s) => s.fillStrengthEnabled);
-  const dailyMovingAverages = useLivePageStore((s) => s.dailyMovingAverages);
-  const dailyMovingAverageEnabled = useLivePageStore((s) => s.dailyMovingAverageEnabled);
-  const dailyMovingAverageHidden = useLivePageStore((s) => s.dailyMovingAverageHidden);
-  const programTradeEnabled = useLivePageStore((s) => s.programTradeEnabled);
-  const tradeVolumePocEnabled = useLivePageStore((s) => s.tradeVolumePocEnabled);
-  const tradeVolumePocBandPct = useLivePageStore((s) => s.tradeVolumePocBandPct);
-  const tradeVolumePocColor = useLivePageStore((s) => s.tradeVolumePocColor);
-  const tradeVolumePocOpacity = useLivePageStore((s) => s.tradeVolumePocOpacity);
-  const volumeDistributionEnabled = useLivePageStore((s) => s.volumeDistributionEnabled);
-  const volumeDistributionRangeCount = useLivePageStore((s) => s.volumeDistributionRangeCount);
-  const volumeDistributionColor = useLivePageStore((s) => s.volumeDistributionColor);
-  const volumeDistributionMaxColor = useLivePageStore((s) => s.volumeDistributionMaxColor);
-  const auctionWindowMask = useChartPrefsStore((s) => s.auctionWindowMask);
-  const ratioIntraMax = useChartPrefsStore((s) => s.ratioIntraMax);
-  const ratioOutlierFilterEnabled = useChartPrefsStore((s) => s.ratioOutlierFilterEnabled);
-  const ratioOutlierThreshold = useChartPrefsStore((s) => s.ratioOutlierThreshold);
   useDocumentTitle(activeCode);
   const [indicatorPanelOpen, setIndicatorPanelOpen] = useState(false);
   const [settingsOpen, setSettingsOpen] = useState(false);
@@ -219,56 +197,6 @@ export function LivePage() {
       investorPoints: indexInvestorNet.data?.points ?? [],
     });
   }, [activeIndexId, timeframe, indexCandles.data, indexInvestorNet.data?.points]);
-  const indicatorState = useMemo<StudyIndicatorState>(() => ({
-    volume_enabled: volumeEnabled,
-    quote_totals_enabled: quoteTotalsEnabled,
-    ratio_enabled: ratioEnabled,
-    fill_strength_enabled: fillStrengthEnabled,
-    aggregation_basis: ratioIntraMax ? 'intra_period_max' : 'close',
-    auction_window_mask: auctionWindowMask,
-    ratio_outlier_filter_enabled: ratioOutlierFilterEnabled,
-    ratio_outlier_threshold: ratioOutlierThreshold,
-    daily_moving_averages: dailyMovingAverages.map((m) => ({
-      id: m.id,
-      enabled: m.enabled,
-      period: m.period,
-      color: m.color,
-      line_width: m.lineWidth,
-      source: m.source,
-    })),
-    daily_moving_average_enabled: dailyMovingAverageEnabled,
-    daily_moving_average_hidden: dailyMovingAverageHidden,
-    program_trade_enabled: programTradeEnabled,
-    trade_volume_poc_enabled: tradeVolumePocEnabled,
-    trade_volume_poc_band_pct: tradeVolumePocBandPct,
-    trade_volume_poc_color: tradeVolumePocColor,
-    trade_volume_poc_opacity: tradeVolumePocOpacity,
-    volume_distribution_enabled: volumeDistributionEnabled,
-    volume_distribution_range_count: volumeDistributionRangeCount,
-    volume_distribution_color: volumeDistributionColor,
-    volume_distribution_max_color: volumeDistributionMaxColor,
-  }), [
-    auctionWindowMask,
-    dailyMovingAverageEnabled,
-    dailyMovingAverageHidden,
-    dailyMovingAverages,
-    fillStrengthEnabled,
-    quoteTotalsEnabled,
-    ratioEnabled,
-    ratioIntraMax,
-    ratioOutlierFilterEnabled,
-    ratioOutlierThreshold,
-    programTradeEnabled,
-    tradeVolumePocBandPct,
-    tradeVolumePocColor,
-    tradeVolumePocEnabled,
-    tradeVolumePocOpacity,
-    volumeDistributionColor,
-    volumeDistributionEnabled,
-    volumeDistributionMaxColor,
-    volumeDistributionRangeCount,
-    volumeEnabled,
-  ]);
   const activeTab = tabs.find((t) => t.id === activeTabId);
   const askPeakOb = isMinuteTimeframe(timeframe) ? live.ob : EMPTY_OB_SNAPSHOTS;
   const askPeakTrade = isMinuteTimeframe(timeframe) ? live.trade : EMPTY_TRADE_SNAPSHOTS;
@@ -356,14 +284,13 @@ export function LivePage() {
       label: activeTab?.label || activeCode,
       timeframe,
       bundle: liveSaveBundle,
-      indicatorState,
       captureViewport: () => viewportCaptureRef.current(),
     };
     setCurrentStudySaveSource(source);
     return () => {
       clearCurrentStudySaveSource(source);
     };
-  }, [activeCode, activeTab?.label, indicatorState, liveSaveBundle, timeframe]);
+  }, [activeCode, activeTab?.label, liveSaveBundle, timeframe]);
 
   return (
     <div
