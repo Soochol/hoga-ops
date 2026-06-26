@@ -37,6 +37,7 @@ export function projectProgramTradeNetAmount(
   const points = bundle.program_trade?.points ?? [];
   for (const p of points) {
     if (p.net_amount == null) continue;
+    if (!isKrxRegularProgramTime(bundle, p.t)) continue;
     const t = bucketTime(bundle, p.t);
     if (t == null || !axis.contains(t)) continue;
     byBucket.set(t, p.net_amount);
@@ -54,6 +55,23 @@ function bucketTime(bundle: RangeBundle, t: number): number | null {
   if (!segment) return null;
   const bucketMs = Math.max(1, bundle.bucket_ms || 1);
   return segment.session_open_ms + Math.floor((t - segment.session_open_ms) / bucketMs) * bucketMs;
+}
+
+function regularSessionBoundsForDate(yyyymmdd: string): { open: number; close: number } | null {
+  if (!/^\d{8}$/.test(yyyymmdd)) return null;
+  const y = Number(yyyymmdd.slice(0, 4));
+  const m = Number(yyyymmdd.slice(4, 6));
+  const d = Number(yyyymmdd.slice(6, 8));
+  const open = Date.UTC(y, m - 1, d, 0, 0, 0);
+  return { open, close: open + 6.5 * 3600 * 1000 };
+}
+
+function isKrxRegularProgramTime(bundle: RangeBundle, t: number): boolean {
+  const segment = bundle.segments.find((s) => s.session_open_ms <= t && t <= s.session_close_ms);
+  if (!segment) return false;
+  const regular = regularSessionBoundsForDate(segment.date);
+  if (!regular) return true;
+  return t >= regular.open && t <= regular.close;
 }
 
 export const PROGRAM_TRADE_SPEC = {
