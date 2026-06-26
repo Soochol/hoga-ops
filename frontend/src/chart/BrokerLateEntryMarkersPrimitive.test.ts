@@ -3,6 +3,7 @@ import type { Time } from 'lightweight-charts';
 
 import {
   brokerLateEntryMarkerXCoordinate,
+  isBrokerLateEntryMarkerVisibleInPane,
   shouldUseFullBrokerLateEntryLabels,
 } from './BrokerLateEntryMarkersPrimitive';
 import type { BrokerLateEntryMarkerPoint } from './projectors/brokerLateEntryMarkers';
@@ -29,6 +30,16 @@ describe('brokerLateEntryMarkerXCoordinate', () => {
       if (time === m.anchorTime) return 42;
       return null;
     })).toBe(42);
+  });
+});
+
+describe('isBrokerLateEntryMarkerVisibleInPane', () => {
+  it('does not keep offscreen-future broker labels sticky on the right edge', () => {
+    expect(isBrokerLateEntryMarkerVisibleInPane({ x: 620, y: 80 }, 600, 240)).toBe(false);
+  });
+
+  it('keeps broker labels visible when their anchor point is inside the pane', () => {
+    expect(isBrokerLateEntryMarkerVisibleInPane({ x: 320, y: 80 }, 600, 240)).toBe(true);
   });
 });
 
