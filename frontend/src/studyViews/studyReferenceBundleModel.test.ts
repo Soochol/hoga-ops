@@ -38,6 +38,7 @@ function pastBundle(): RangeBundle {
     investorPoints: [],
     ask_peaks: [],
     bid_peaks: [],
+    broker_late_entries: [],
     price_level_hits: [],
     trade_volume_pocs: [],
   };
@@ -79,6 +80,7 @@ describe('studyReferenceBundleModel', () => {
     expect(model.chartBundle?.candles.map((c) => c.ts_ms)).toEqual([0]);
     expect(model.bundle?.quote_ratio).toBe(past.quote_ratio);
     expect(model.bundle?.fill_strength).toBe(past.fill_strength);
+    expect(model.bundle?.broker_late_entries).toEqual([]);
     expect(model.bundle?.from_date).toBe('20260616');
     expect(model.bundle?.to_date).toBe('20260618');
   });

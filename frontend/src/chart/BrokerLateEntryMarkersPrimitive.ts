@@ -16,8 +16,13 @@ import {
   type BrokerLateEntryMarkerPoint,
 } from './projectors/brokerLateEntryMarkers';
 
-const DOT_RADIUS_PX = 3;
-const LABEL_FONT_PX = 11;
+export const BROKER_LATE_ENTRY_MARKER_STYLE = {
+  dotRadiusPx: 4,
+  labelFontPx: 13,
+} as const;
+
+const DOT_RADIUS_PX = BROKER_LATE_ENTRY_MARKER_STYLE.dotRadiusPx;
+const LABEL_FONT_PX = BROKER_LATE_ENTRY_MARKER_STYLE.labelFontPx;
 const LABEL_OFFSET_Y_PX = 12;
 const LABEL_STACK_STEP_PX = 14;
 const LABEL_CHIP_GAP_X_PX = 6;

@@ -171,6 +171,7 @@ function makeRangeBundle(): RangeBundle {
     investorPoints: [],
     ask_peaks: [],
     bid_peaks: [],
+    broker_late_entries: [],
     price_level_hits: [],
     trade_volume_pocs: [],
   };
@@ -304,6 +305,49 @@ describe('StudyPage', () => {
     expect(props.dailyMovingAverageOverride).toBeUndefined();
     expect(props.tradeVolumePocOverride).toBeUndefined();
     expect(screen.getByTestId('study-reference-detail-panel')).toBeTruthy();
+  });
+
+  it('keeps hoga panes forced on for reference study views', () => {
+    const refSave = makeReferenceSave();
+    const bundle = {
+      ...makeRangeBundle(),
+      quote_ratio: {
+        bucket_ms: 300_000,
+        points: [{
+          t: 1_000,
+          bid_total: 100,
+          ask_total: 120,
+          bid_max: 100,
+          ask_max: 120,
+          imb_max_bid: 100,
+          imb_max_ask: 120,
+        }],
+      },
+      fill_strength: {
+        bucket_ms: 300_000,
+        points: [{ t: 1_000, buy_qty: 10, sell_qty: 5 }],
+      },
+    };
+    useStudyViewsMock.mockReturnValue({
+      data: { schema_version: 1, saves: [refSave] },
+      isLoading: false,
+      isError: false,
+    });
+    useStudyViewSnapshotMock.mockReturnValue({ data: undefined, isLoading: false, isError: false });
+    useStudyReferenceBundleMock.mockReturnValue({
+      bundle,
+      chartBundle: bundle,
+      isLoading: false,
+      error: null,
+      pastDataWarnings: [],
+    });
+
+    renderAt('/study?view=view-ref');
+
+    const props = liveChartRootMock.mock.calls[0][0] as ComponentProps<typeof LiveChartRoot>;
+    expect(props.forceHogaPanes).toBe(true);
+    expect(props.bundle?.quote_ratio.points).toHaveLength(1);
+    expect(props.bundle?.fill_strength.points).toHaveLength(1);
   });
 
   it('scrolls the study detail panel when Alt+wheel is used over the chart', () => {
