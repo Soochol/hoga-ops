@@ -172,7 +172,16 @@ function makeRangeBundle(): RangeBundle {
     ask_peaks: [],
     bid_peaks: [],
     price_level_hits: [],
-    trade_volume_pocs: [],
+    trade_volume_pocs: [{
+      date: '20260616',
+      center_price: 70_000,
+      low_price: 69_500,
+      high_price: 70_500,
+      qty: 12_345,
+      t_ms: 1_000,
+      band_pct: 0.005,
+    }],
+    broker_late_entries: [],
   };
 }
 
@@ -303,6 +312,15 @@ describe('StudyPage', () => {
     expect(props.paneTogglesOverride).toBeUndefined();
     expect(props.dailyMovingAverageOverride).toBeUndefined();
     expect(props.tradeVolumePocOverride).toBeUndefined();
+    expect(props.tradeVolumePocs).toEqual([{
+      date: '20260616',
+      centerPrice: 70_000,
+      lowPrice: 69_500,
+      highPrice: 70_500,
+      qty: 12_345,
+      t_ms: 1_000,
+      bandPct: 0.005,
+    }]);
     expect(screen.getByTestId('study-reference-detail-panel')).toBeTruthy();
   });
 
@@ -981,7 +999,7 @@ describe('StudyPage', () => {
       useLiveCursorStore.getState().setCursor(1_500);
     });
 
-    expect(container.querySelectorAll('[data-testid="broker-row"]')).toHaveLength(10);
+    expect(container.querySelectorAll('[data-testid="broker-row"]')).toHaveLength(11);
     expect(container.querySelector('[title="현재증권"]')).toBeTruthy();
     expect(screen.getByText('+1')).toBeTruthy();
   });

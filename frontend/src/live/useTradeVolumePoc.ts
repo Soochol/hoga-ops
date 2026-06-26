@@ -3,23 +3,12 @@ import type { Candle, RangeSegment, TradeVolumePocWire } from '../api/types';
 import { useLivePageStore } from '../state/livePage';
 import type { TradeSnapshot } from './bucketHogaSeries';
 import { computeCandleVolumePocs, computeTradeVolumePoc, type TradeVolumePoc } from './tradeVolumePoc';
+import { tradeVolumePocFromWire } from './tradeVolumePocWire';
 
 const LEGACY_TRADE_VOLUME_POC_BAND_PCT = 0.005;
 
 function matchesBandPct(value: number, target: number): boolean {
   return Math.abs(value - target) < 1e-9;
-}
-
-function fromWire(poc: TradeVolumePocWire): TradeVolumePoc {
-  return {
-    date: poc.date,
-    centerPrice: poc.center_price,
-    lowPrice: poc.low_price,
-    highPrice: poc.high_price,
-    qty: poc.qty,
-    t_ms: poc.t_ms,
-    bandPct: poc.band_pct,
-  };
 }
 
 function seedByDate(
@@ -60,7 +49,7 @@ export function useTradeVolumePocs(
   );
   return useMemo(() => {
     const seedsByDate = seedByDate(seeds);
-    const out = Array.from(seedsByDate.values()).filter((p) => p.date !== todayKst).map(fromWire);
+    const out = Array.from(seedsByDate.values()).filter((p) => p.date !== todayKst).map(tradeVolumePocFromWire);
     const seenDates = new Set(out.map((p) => p.date));
     const todaySegment = segments.find((segment) => segment.date === todayKst);
     const todayCandles = todaySegment
@@ -71,7 +60,7 @@ export function useTradeVolumePocs(
       : computeTradeVolumePoc(trades, { date: todayKst, bandPct: LEGACY_TRADE_VOLUME_POC_BAND_PCT });
     const todaySeed = seedsByDate.get(todayKst);
     if (todayLive) out.push(todayLive);
-    else if (todaySeed) out.push(fromWire(todaySeed));
+    else if (todaySeed) out.push(tradeVolumePocFromWire(todaySeed));
     if (todayLive || todaySeed) seenDates.add(todayKst);
     for (const poc of candleFallbacks) {
       if (seenDates.has(poc.date)) continue;

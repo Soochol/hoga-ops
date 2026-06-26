@@ -8,11 +8,14 @@ import {
   type LivePastDailyCandlesWarning,
 } from '../api/studyPastCandles';
 import { useLiveVenueStore } from '../state/liveVenue';
+import { useLivePageStore } from '../state/livePage';
 import type { StudyViewReference } from '../api/studyViews';
 import { buildStudyReferenceBundleModel, studyReferenceQueryInputs } from './studyReferenceBundleModel';
 
 export function useStudyReferenceBundle(save: StudyViewReference | null) {
   const venue = useLiveVenueStore((s) => s.venue);
+  const tradeVolumePocEnabled = useLivePageStore((s) => s.tradeVolumePocEnabled);
+  const volumeDistributionRangeCount = useLivePageStore((s) => s.volumeDistributionRangeCount);
   const inputs = useMemo(() => studyReferenceQueryInputs(save), [save]);
 
   const past = useRange(
@@ -22,7 +25,11 @@ export function useStudyReferenceBundle(save: StudyViewReference | null) {
     inputs.range.timeframe,
     undefined,
     null,
-    { volumeDistributionBins: null, tradeVolumePocBins: null, volumeDistributionPriceRange: null },
+    {
+      volumeDistributionBins: null,
+      tradeVolumePocBins: tradeVolumePocEnabled ? volumeDistributionRangeCount : null,
+      volumeDistributionPriceRange: null,
+    },
   );
   const minuteCandles = useStudyPastCandles(
     inputs.minuteCandles.code,
