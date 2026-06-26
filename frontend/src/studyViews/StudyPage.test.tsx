@@ -237,6 +237,34 @@ describe('StudyPage', () => {
     expect(screen.getByText('+1억')).toBeTruthy();
   });
 
+  it('lets long reference detail indicators grow downward while the whole detail panel scrolls', () => {
+    useLiveBrokersAtCursorMock.mockReturnValue(
+      Array.from({ length: 18 }, (_, index) => ({
+        broker: `거래원${index + 1}`,
+        final_net: index * 100,
+        dominant_side: 'buy',
+        points: [{ ts_ms: HOVER_MS, net: index * 100 }],
+      })),
+    );
+    useLiveCursorStore.getState().setCursor(HOVER_MS);
+
+    renderPage('/study?view=view-ref');
+
+    const props = liveChartRootMock.mock.calls[0][0];
+    act(() => {
+      props.onCursorActiveChange?.(true);
+    });
+
+    const stack = screen.getByTestId('study-reference-detail-cards');
+    expect(stack).toHaveClass('min-h-full');
+    expect(stack.getAttribute('style') ?? '').toContain('auto auto auto auto');
+    for (const key of ['orderbook', 'volume-distribution', 'brokers', 'program']) {
+      expect(screen.getByTestId(`study-detail-card-${key}`)).not.toHaveClass('overflow-hidden');
+      expect(screen.getByTestId(`study-detail-content-${key}`)).not.toHaveClass('overflow-y-auto');
+      expect(screen.getByTestId(`study-detail-content-${key}`)).not.toHaveClass('overflow-hidden');
+    }
+  });
+
   it('shows loading while the reference bundle is loading', () => {
     useStudyReferenceBundleMock.mockReturnValue({
       bundle: null,
