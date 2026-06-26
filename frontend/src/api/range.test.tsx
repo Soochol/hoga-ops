@@ -4,6 +4,7 @@ import { describe, expect, it, vi, beforeEach } from 'vitest';
 import type { ReactNode } from 'react';
 
 import {
+  buildRangeBundleRequest,
   useRange,
   rangeFreshnessOptions,
   rangePlaceholderData,
@@ -32,6 +33,80 @@ const fakeBundle: RangeBundle = {
   ask_peaks: [],
   broker_late_entries: [],
 };
+
+describe('buildRangeBundleRequest', () => {
+  it('projects one request shape into enabled, URL params, and query key', () => {
+    const request = buildRangeBundleRequest({
+      code: '005930',
+      from: '20260512',
+      to: '20260512',
+      timeframe: '1m',
+      priceRange: { min: 100, max: 200 },
+      todayKst: '20260512',
+      sourcePref: 'kis_ws_first',
+      options: {
+        brokerLateEntryStartHHMM: 945,
+        volumeDistributionBins: 12,
+        volumeDistributionPriceRange: { min: 69900, max: 70100 },
+        tradeVolumePocBins: 12,
+      },
+    });
+
+    expect(request.enabled).toBe(true);
+    expect(request.url).toBe(
+      '/api/range?code=005930&from=20260512&to=20260512&bucket_ms=60000'
+        + '&price_min=100&price_max=200'
+        + '&broker_late_entry_start_hhmm=945'
+        + '&volume_distribution_bins=12'
+        + '&volume_distribution_price_min=69900&volume_distribution_price_max=70100'
+        + '&trade_volume_poc_bins=12'
+        + '&source_pref=kis_ws_first',
+    );
+    expect(request.queryKey).toEqual([
+      'range',
+      '005930',
+      '20260512',
+      '20260512',
+      60_000,
+      100,
+      200,
+      945,
+      12,
+      69900,
+      70100,
+      12,
+      'kis_ws_first',
+    ]);
+  });
+
+  it('keeps disabled requests representable without optional params', () => {
+    const request = buildRangeBundleRequest({
+      code: null,
+      from: '20260512',
+      to: '20260512',
+      timeframe: null,
+      sourcePref: 'hogaplay_first',
+    });
+
+    expect(request.enabled).toBe(false);
+    expect(request.url).toBe('/api/range?from=20260512&to=20260512&source_pref=hogaplay_first');
+    expect(request.queryKey).toEqual([
+      'range',
+      null,
+      '20260512',
+      '20260512',
+      null,
+      undefined,
+      undefined,
+      null,
+      null,
+      undefined,
+      undefined,
+      null,
+      'hogaplay_first',
+    ]);
+  });
+});
 
 describe('useRange', () => {
   beforeEach(() => {

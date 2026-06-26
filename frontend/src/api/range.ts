@@ -1,9 +1,17 @@
 import { useQuery } from '@tanstack/react-query';
 
 import { apiCall } from './client';
-import { TIMEFRAME_TO_MS, type RangeBundle, type Timeframe } from './types';
+import type { RangeBundle, Timeframe } from './types';
+import {
+  buildRangeBundleRequest,
+  rangePlaceholderData,
+  type RangeRequestOptions,
+} from './rangeRequest';
 import { useSourcePreferenceStore } from '../state/sourcePreference';
 import type { SourcePreference } from '../state/sourcePreference';
+
+export { buildRangeBundleRequest, rangePlaceholderData };
+export type { RangeBundleRequest, RangeBundleRequestInput, RangeQueryKey, RangeRequestOptions } from './rangeRequest';
 
 /**
  * Refetch cadence for a today-inclusive range query (ms).
@@ -44,37 +52,6 @@ export function rangeFreshnessOptions(
     : { staleTime: Infinity, refetchInterval: false };
 }
 
-type RangeQueryKey = readonly [
-  'range',
-  string | null,
-  string | null,
-  string | null,
-  number | null,
-  number | undefined,
-  number | undefined,
-  number | null,
-  number | null,
-  number | undefined,
-  number | undefined,
-  number | null,
-  SourcePreference,
-];
-
-const PLACEHOLDER_COMPATIBLE_KEY_INDICES = [4, 5, 6, 7, 8, 9, 10, 11, 12] as const;
-
-export function rangePlaceholderData(
-  prev: RangeBundle | undefined,
-  currentKey: RangeQueryKey,
-  previousKey: readonly unknown[] | undefined,
-): RangeBundle | undefined {
-  if (!prev || prev.code !== currentKey[1]) return undefined;
-  if (!previousKey) return undefined;
-  for (const index of PLACEHOLDER_COMPATIBLE_KEY_INDICES) {
-    if (previousKey[index] !== currentKey[index]) return undefined;
-  }
-  return prev;
-}
-
 /**
  * Fetch a Stock-Date Range bundle (ADR-0013, ADR-0014).
  *
@@ -99,60 +76,26 @@ export function useRange(
   timeframe: Timeframe | null,
   priceRange?: { min: number; max: number },
   todayKst?: string | null,
-  options?: {
-    brokerLateEntryStartHHMM?: number | null;
-    volumeDistributionBins?: number | null;
-    tradeVolumePocBins?: number | null;
-    volumeDistributionPriceRange?: { min: number; max: number } | null;
-  },
+  options?: RangeRequestOptions,
 ) {
-  const bucketMs = timeframe ? TIMEFRAME_TO_MS[timeframe] : null;
-  const enabled = !!(code && from && to && bucketMs);
   const sourcePref: SourcePreference = useSourcePreferenceStore((s) => s.sourcePreference);
-  const priceQs = priceRange ? `&price_min=${priceRange.min}&price_max=${priceRange.max}` : '';
-  const volumeDistributionBins = options?.volumeDistributionBins ?? null;
-  const tradeVolumePocBins = options?.tradeVolumePocBins ?? null;
-  const brokerLateEntryStartHHMM = options?.brokerLateEntryStartHHMM ?? null;
-  const volumeDistributionPriceRange = options?.volumeDistributionPriceRange ?? null;
-  const brokerLateEntryQs = brokerLateEntryStartHHMM != null
-    ? `&broker_late_entry_start_hhmm=${brokerLateEntryStartHHMM}`
-    : '';
-  const volumeDistributionQs = volumeDistributionBins != null
-    ? `&volume_distribution_bins=${volumeDistributionBins}`
-    : '';
-  const volumeDistributionPriceQs = volumeDistributionPriceRange != null
-    ? `&volume_distribution_price_min=${volumeDistributionPriceRange.min}&volume_distribution_price_max=${volumeDistributionPriceRange.max}`
-    : '';
-  const tradeVolumePocQs = tradeVolumePocBins != null
-    ? `&trade_volume_poc_bins=${tradeVolumePocBins}`
-    : '';
-  const { staleTime, refetchInterval } = rangeFreshnessOptions(to, todayKst ?? null);
-
-  const queryKey: RangeQueryKey = [
-      'range',
+  const request = buildRangeBundleRequest({
       code,
       from,
       to,
-      bucketMs,
-      priceRange?.min,
-      priceRange?.max,
-      brokerLateEntryStartHHMM,
-      volumeDistributionBins,
-      volumeDistributionPriceRange?.min,
-      volumeDistributionPriceRange?.max,
-      tradeVolumePocBins,
+      timeframe,
+      priceRange,
+      todayKst,
       sourcePref,
-    ];
+      options,
+    });
+  const { staleTime, refetchInterval } = rangeFreshnessOptions(to, request.todayKst);
 
   return useQuery({
-    queryKey,
+    queryKey: request.queryKey,
     queryFn: ({ signal }) =>
-      apiCall<RangeBundle>(
-        `/api/range?code=${code}&from=${from}&to=${to}&bucket_ms=${bucketMs}` +
-          `${priceQs}${brokerLateEntryQs}${volumeDistributionQs}${volumeDistributionPriceQs}${tradeVolumePocQs}&source_pref=${sourcePref}`,
-        { signal },
-      ),
-    enabled,
+      apiCall<RangeBundle>(request.url, { signal }),
+    enabled: request.enabled,
     staleTime,
     refetchInterval,
     // Code-aware placeholder mirrors livePastCandles.ts: keep the previous
@@ -165,6 +108,6 @@ export function useRange(
     // new code's hoga indicator points onto the old code's date layout —
     // surfaced as "엉뚱한 곳에서 시작하는" charts in /diagnose 2026-05-29.
     placeholderData: (prev, previousQuery) =>
-      rangePlaceholderData(prev, queryKey, previousQuery?.queryKey),
+      rangePlaceholderData(prev, request.queryKey, previousQuery?.queryKey),
   });
 }
