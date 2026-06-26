@@ -110,12 +110,14 @@ Add fields to the `/live` indicator slice:
 ```ts
 brokerLateEntryEnabled: boolean; // default false
 brokerLateEntryStartHHMM: number; // default 930
+brokerLateEntryColor: string; // default '#f59e0b'
 ```
 
 Validation:
 
 - Accept integer HHMM values in the regular-session range, recommended `900` through `1520`.
 - Invalid persisted values fall back to `930`.
+- Accept CSS hex colors for `brokerLateEntryColor`; invalid persisted values fall back to `#f59e0b`.
 - The UI label should describe this as 기준 시각, not as a fixed "09:30" rule.
 
 ### Indicator Modal
@@ -127,7 +129,9 @@ Add one item to the existing `거래원 지표` group in `IndicatorPanel`:
 - Detail pane:
   - Short title: `신규 거래원 등장`
   - Numeric input: `기준 시각 (HHMM)`
+  - Color swatch/input: `표시 색상`
   - Default visible value: `930`
+  - Default color: amber `#f59e0b`
 
 This is what "거래원 지표 그룹에 추가" means: it is a selectable/togglable row inside the existing `지표` modal group, not a new sidebar card or a new chart pane.
 
@@ -142,6 +146,8 @@ Implementation shape:
 - The marker x-position comes from `axis.toVirtual(event.t_ms)`.
 - The marker y-position uses the displayed ratio value at the same bucket/time: same close-vs-intra-max basis, same Outlier Mask behavior (`value = 0` when clamped), and same Auction Mask behavior (skip marker when the ratio point is emitted as hidden/whitespace). If the exact ratio point is absent, use the nearest earlier displayed ratio point in the same session. If no displayed ratio value exists, skip the marker.
 - Draw a small dot at the ratio value and a compact broker label near it.
+- Use one user-configured display color for both the dot and the label. The dot is a filled circle in that color. The label text uses the same color, with a subtle semi-transparent chart-background chip behind it so the broker name remains readable without hiding the ratio line.
+- Recommended first-pass geometry: dot radius `3px`; label offset `6px` right and `-8px` up from the dot; label font `11px` medium-weight; chip padding `3px 5px`; chip border uses the configured color at low opacity.
 - Use `brokerDisplayShort()` for the visible label and keep the full canonical name available in marker data for future tooltip work.
 
 Collision handling:
@@ -186,6 +192,7 @@ These are the grilled decisions after applying the `plan-eng-review` lens:
 | Where should event data live? | `/api/range` / `RangeBundle`, not a separate per-date frontend fetch fan-out. | Preserves ADR-0013 single read-path and keeps the marker aligned with the same Stock-Date/source segments as the ratio line. |
 | Which source should broker events use? | The segment's resolved source from `source_pref`. | Avoids source mixing where the ratio line is KIS but broker markers are hogaplay, or vice versa. |
 | What y-value should markers use? | The displayed ratio value after ratio projector policy. | Users see a marker on the line they are actually looking at; hidden auction points do not get floating labels. |
+| How should dot and label colors work? | One persisted color setting controls both the dot and the label. | Keeps the indicator visually coherent and avoids extra UI knobs for a marker whose purpose is quick discovery. |
 | How generic should marker plumbing be? | Add a narrow labelled-marker primitive path. | More complete than hacking DOM labels outside the chart, less overbuilt than a full primitive plugin registry. |
 | Should missing broker parquet exclude a date? | No. Emit no marker events for that date. | The marker is optional annotation; missing it must not blank otherwise valid hoga charts. |
 
@@ -212,6 +219,7 @@ CODE PATHS                                                   USER FLOWS
 
 [+] frontend/src/chart/RangeSeriesPane.tsx
   ├── [GAP] labelled primitive attach/update/detach lifecycle
+  ├── [GAP] marker color setting applies to dot + label
   └── [GAP] teardown safe when chart already removed
 ```
 
@@ -231,7 +239,9 @@ CODE PATHS                                                   USER FLOWS
 | Late-entry detection uses resolved source | same date has `hogaplay` and `kis_live` with different broker first times | events match selected/fallback source segment |
 | Missing broker parquet is non-fatal | valid candles/snapshots but no `brokers.parquet` | range response succeeds with no broker late-entry events for that date |
 | HHMM persistence sanitizes invalid values | persisted `brokerLateEntryStartHHMM: 800` | store uses `930` |
+| Color persistence sanitizes invalid values | persisted `brokerLateEntryColor: "hot"` | store uses `#f59e0b` |
 | Indicator modal row | render `IndicatorPanel` | `신규 거래원 등장` appears under `거래원 지표` and toggles store state |
+| Indicator modal color control | change `표시 색상` | marker dot and label use the selected color |
 | Ratio marker projection | bundle has ratio point and late-entry event at same bucket | marker uses ratio value and broker label |
 | Ratio marker follows Outlier Mask | ratio point is clamped by outlier threshold | marker y-value is displayed `0` |
 | Ratio marker respects Auction Mask | ratio point falls in hidden closing auction window | no marker emitted |
