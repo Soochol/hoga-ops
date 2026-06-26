@@ -1,14 +1,14 @@
 # /live 신규 거래원 호가비 마커 — Design
 
 **Date**: 2026-06-26
-**Status**: Approved for implementation planning
+**Status**: Grilled + engineering-reviewed for implementation planning
 **Scope**: `hoga/tables/brokers.py`, `hoga/api/routes.py`, `hoga/api/models.py`, `frontend/src/api/types.ts`, `frontend/src/state/liveIndicatorsPersistence.ts`, `frontend/src/state/livePage.ts`, `frontend/src/live/LivePage.tsx`, `frontend/src/live/useLiveBundle.ts`, `frontend/src/live/indicators/IndicatorPanel.tsx`, `frontend/src/chart/projectors/ratio.ts`, `frontend/src/chart/RangeSeriesPane.tsx`, `frontend/src/sidebar/BrokerTrajectoryTable.tsx`, `frontend/src/live/liveSidebarAdapters.ts`
 
 ## Problem
 
-The `/live` broker sidebar and broker day-series API currently cap displayed brokers at 10. The user wants every recorded broker to be visible, not only the top 10.
+The `/live` broker sidebar and broker day-series API currently cap displayed brokers at 10. The user wants every recorded broker to be visible, not only the top 10. "Recorded broker" means a broker present in the stored top-5 buy plus top-5 sell broker snapshots; the system cannot infer brokers outside those recorded snapshots.
 
-The user also wants a new broker-related indicator: brokers that were not recorded before a configurable time, default `09:30`, and first appear after that time should be shown directly on the existing `호가비` (ask/bid ratio) chart indicator. The marker should appear at the first appearance time, with a dot and the broker name as a label.
+The user also wants a new broker-related indicator: **기록상 신규 거래원**. These are brokers that were not recorded before a configurable time, default `09:30`, and first appear at or after that time in the recorded broker snapshots. They should be shown directly on the existing `호가비` (ask/bid ratio) chart indicator. The marker should appear at the first appearance time, with a dot and the broker name as a label.
 
 ## Invariants
 
@@ -16,7 +16,9 @@ The user also wants a new broker-related indicator: brokers that were not record
 - **Broker series ordering**: broker series are sorted by `abs(final_net)` descending, with signed `final_net` preserved. 근거: `hoga/tables/brokers.py::query_day_series`.
 - **Observed-points only**: broker series points are observed snapshots only; gaps are not forward-filled. 근거: `BrokerTrajectoryTable.tsx` gap rendering and ADR-0023 design.
 - **Ratio pane ownership**: the `ratio` pane is mounted by `paneSpecsForTimeframe` and uses `RATIO_SPEC`; indicator overlays on that pane must not create a new chart pane.
+- **Ratio display-coordinate truth**: markers on the `호가비` pane must sit on the displayed ratio value, after the same intra-bar basis and mask rules that the line uses. 근거: `frontend/src/chart/projectors/ratio.ts`, ADR-0026, ADR-0029.
 - **Minute-frame hoga gate**: hoga panes, including `ratio`, are minute-frame indicators unless snapshot restore explicitly forces hoga panes. 근거: `frontend/src/live/paneSpecsForTimeframe.ts`.
+- **Source preference per Stock-Date**: `/api/range` resolves a Source per Stock-Date according to `source_pref`; derived range fields should use that segment's resolved source, not a separate fallback policy. 근거: ADR-0039 and `hoga/api/bundle.py::build_range_bundle`.
 - **Indicator persistence single source**: `/live` indicator fields are persisted through `PersistedIndicators` and `live.indicators.v1`. 근거: `frontend/src/state/liveIndicatorsPersistence.ts`.
 
 ## Invariant Impact
@@ -27,7 +29,9 @@ The user also wants a new broker-related indicator: brokers that were not record
 | Broker series ordering | preserves | The top-10 slice is removed, but sort order remains unchanged. |
 | Observed-points only | preserves | Late-entry detection uses first observed point; it does not synthesize missing broker states. |
 | Ratio pane ownership | preserves | Markers attach to the existing ratio pane/series. No new pane is added. |
+| Ratio display-coordinate truth | preserves | Marker y-values are derived from the same projected ratio data that the line renders; auction-hidden points produce no marker. |
 | Minute-frame hoga gate | preserves | The new marker only renders when ratio pane data exists. |
+| Source preference per Stock-Date | preserves | Late-entry events are computed from the same resolved source directory as the segment's other range data. |
 | Indicator persistence single source | preserves | New enabled/time fields are added to the existing persistence slice and merge validator. |
 
 ## Goals
@@ -35,7 +39,7 @@ The user also wants a new broker-related indicator: brokers that were not record
 - Remove the broker identity cap so `/api/brokers/series`, the `/live` latest broker sidebar, and `BrokerTrajectoryTable` show every recorded broker.
 - Add a `지표` modal item under the existing `거래원 지표` section, labelled `신규 거래원 등장`.
 - Add a configurable 기준 시각 parameter in HHMM format. Default: `930`.
-- Detect brokers whose first observed point is at or after the 기준 시각 and who have no observed point before that time on the same trading day.
+- Detect **기록상 신규 거래원**: brokers whose first observed point is at or after the 기준 시각 and who have no observed point before that time on the same trading day.
 - Render those first-appearance events as dots plus broker labels on the existing `호가비` pane.
 - Keep marker rendering optional via the new indicator toggle.
 
@@ -65,7 +69,7 @@ The backend builds events from `brokers.parquet` after canonical broker-name col
 
 1. Build each broker's observed points for the day using the same signed net logic as `query_day_series`.
 2. Convert the configured 기준 시각 HHMM into the day's KST Unix-ms threshold.
-3. A broker qualifies when its first observed point has `ts_ms >= threshold`.
+3. A broker qualifies when its first observed point has `ts_ms >= threshold`. This intentionally treats exactly `09:30:00.000` as "09:30 이후" because Korean "이후" is inclusive in this UI.
 4. The event time is that first observed `ts_ms`; `net` is the signed net at that point.
 
 The route layer should convert broker timestamps from the parquet HHMMSSmmm encoding to Unix ms before the frontend sees them, matching the existing broker series behavior.
@@ -77,6 +81,23 @@ broker_late_entry_start_hhmm=930
 ```
 
 When the indicator is disabled, the frontend may omit this parameter and the backend may return an empty `broker_late_entries` array. When enabled, `LivePage` / `useLiveBundle` threads the persisted `brokerLateEntryStartHHMM` value into the range request so the server emits events using the user-selected threshold.
+
+Each date's events are computed from the same source directory that `build_range_bundle` resolved for that Stock-Date. If the resolved source has candles/orderbook data but no `brokers.parquet`, the backend emits no late-entry events for that date and does not exclude the segment. That keeps this optional marker from making an otherwise valid chart disappear.
+
+Data-flow target:
+
+```text
+IndicatorPanel
+  └─ brokerLateEntryEnabled + brokerLateEntryStartHHMM
+       └─ useLiveBundle / useRange query key
+            └─ GET /api/range?...&broker_late_entry_start_hhmm=930
+                 └─ build_range_bundle
+                      ├─ resolve_source_result(date, code, source_pref)
+                      ├─ quote_ratio / fill_strength from resolved source
+                      └─ broker_late_entries from same resolved source's brokers.parquet
+                           └─ RangeBundle.broker_late_entries
+                                └─ RATIO_SPEC label marker primitive
+```
 
 ### Config and Persistence
 
@@ -112,10 +133,10 @@ The marker renders on the existing `호가비` pane.
 
 Implementation shape:
 
-- Extend `RangeSeriesPane` marker support or add a dedicated primitive path that can attach to the ratio pane's primary series.
+- Extend `RangeSeriesPane` with a narrow labelled-marker primitive path, parallel to the existing `markers` support used by `SurgeMarkersPrimitive`. Do not introduce a broad arbitrary plugin registry for this single marker family.
 - Create a broker late-entry marker primitive, similar in spirit to `SurgeMarkersPrimitive`, because lightweight-charts built-in series markers do not provide enough control over y-position and label stacking.
 - The marker x-position comes from `axis.toVirtual(event.t_ms)`.
-- The marker y-position should use the ratio value at the same bucket/time. If the exact ratio point is absent, use the nearest earlier ratio point in the same session. If no ratio value exists, skip the marker.
+- The marker y-position uses the displayed ratio value at the same bucket/time: same close-vs-intra-max basis, same Outlier Mask behavior (`value = 0` when clamped), and same Auction Mask behavior (skip marker when the ratio point is emitted as hidden/whitespace). If the exact ratio point is absent, use the nearest earlier displayed ratio point in the same session. If no displayed ratio value exists, skip the marker.
 - Draw a small dot at the ratio value and a compact broker label near it.
 - Use `brokerDisplayShort()` for the visible label and keep the full canonical name available in marker data for future tooltip work.
 
@@ -149,6 +170,44 @@ For latest/live buffer mode:
 1. The live broker buffer still feeds the sidebar.
 2. The chart marker should use the same range/live chart bundle path as other hoga panes. If today's promoted parquet lags the live edge, current live-buffer-only broker appearances may not show as markers until the bundle updates. That is acceptable for the first version unless a later implementation finds a clean live overlay path.
 
+### Engineering Review Decisions
+
+These are the grilled decisions after applying the `plan-eng-review` lens:
+
+| Question | Decision | Why |
+|----------|----------|-----|
+| What does "new broker" mean? | Use **기록상 신규 거래원** in docs/tests; keep UI label `신규 거래원 등장`. | Prevents the false claim that the broker was absent from the market; we only know it was absent from recorded top-5/top-5 snapshots. |
+| Does `09:30 이후` include exactly 09:30? | Yes, `first_ts >= threshold`. | Inclusive semantics match the Korean UI phrase and avoid a one-millisecond edge case. |
+| Where should event data live? | `/api/range` / `RangeBundle`, not a separate per-date frontend fetch fan-out. | Preserves ADR-0013 single read-path and keeps the marker aligned with the same Stock-Date/source segments as the ratio line. |
+| Which source should broker events use? | The segment's resolved source from `source_pref`. | Avoids source mixing where the ratio line is KIS but broker markers are hogaplay, or vice versa. |
+| What y-value should markers use? | The displayed ratio value after ratio projector policy. | Users see a marker on the line they are actually looking at; hidden auction points do not get floating labels. |
+| How generic should marker plumbing be? | Add a narrow labelled-marker primitive path. | More complete than hacking DOM labels outside the chart, less overbuilt than a full primitive plugin registry. |
+| Should missing broker parquet exclude a date? | No. Emit no marker events for that date. | The marker is optional annotation; missing it must not blank otherwise valid hoga charts. |
+
+### Test Coverage Diagram
+
+```text
+CODE PATHS                                                   USER FLOWS
+[+] hoga/tables/brokers.py                                   [+] Enable marker from 지표 modal
+  ├── [GAP] query_day_series returns all sorted brokers         ├── [GAP] toggle on/off persists
+  ├── [GAP] canonical alias collapse before first-ts check      ├── [GAP] HHMM edit refetches /api/range
+  └── [GAP] missing brokers.parquet -> [] events                └── [GAP] invalid HHMM falls back to 930
+
+[+] hoga/api/routes.py / bundle.py                           [+] Read marker on 호가비 pane
+  ├── [GAP] broker_late_entry_start_hhmm validation             ├── [GAP] dot + short label at first appearance
+  ├── [GAP] source_pref-resolved source per segment             ├── [GAP] same-bucket labels stack visibly
+  └── [GAP] no source mixing across segments                    └── [GAP] no marker during Auction Mask whitespace
+
+[+] frontend/src/chart/projectors/ratio.ts                   [+] Sidebar long broker list
+  ├── [GAP] displayed-value marker projection                   ├── [GAP] >10 recorded brokers visible
+  ├── [GAP] Outlier Mask marker sits at displayed 0             └── [GAP] latest mode >10 brokers visible
+  └── [GAP] nearest-earlier same-session fallback
+
+[+] frontend/src/chart/RangeSeriesPane.tsx
+  ├── [GAP] labelled primitive attach/update/detach lifecycle
+  └── [GAP] teardown safe when chart already removed
+```
+
 ## Testing
 
 ### Unit Tests
@@ -159,10 +218,15 @@ For latest/live buffer mode:
 | Sidebar renders all brokers | `BrokerTrajectoryTable` receives 12 series entries | 12 broker rows render |
 | Live aggregator returns all brokers | live broker buffer contains 12 broker identities | `aggregateBrokerSeries` returns 12 entries |
 | Late-entry detection includes first-after-threshold | broker first point at `09:31`, threshold `930` | event emitted |
+| Late-entry detection includes exact threshold | broker first point at `09:30:00.000`, threshold `930` | event emitted |
 | Late-entry detection excludes before-threshold | broker point at `09:20`, later point at `10:00` | no event emitted |
+| Late-entry detection uses resolved source | same date has `hogaplay` and `kis_live` with different broker first times | events match selected/fallback source segment |
+| Missing broker parquet is non-fatal | valid candles/snapshots but no `brokers.parquet` | range response succeeds with no broker late-entry events for that date |
 | HHMM persistence sanitizes invalid values | persisted `brokerLateEntryStartHHMM: 800` | store uses `930` |
 | Indicator modal row | render `IndicatorPanel` | `신규 거래원 등장` appears under `거래원 지표` and toggles store state |
 | Ratio marker projection | bundle has ratio point and late-entry event at same bucket | marker uses ratio value and broker label |
+| Ratio marker follows Outlier Mask | ratio point is clamped by outlier threshold | marker y-value is displayed `0` |
+| Ratio marker respects Auction Mask | ratio point falls in hidden closing auction window | no marker emitted |
 | Label stacking | two events share one bucket | labels have distinct vertical offsets |
 
 ### Manual Verification
