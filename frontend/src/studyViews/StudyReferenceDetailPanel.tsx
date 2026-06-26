@@ -85,6 +85,12 @@ export function StudyReferenceDetailPanel({ save, bundle, isCursorActive }: Prop
           <TotalQtyBar snapshot={isCursorActive ? spotOrderbook?.snapshot : null} maskRatio={false} />
         </>
       </StudyDetailCard>
+      <StudyDetailCard label="거래원" testId="brokers">
+        <BrokerTrajectoryTable
+          series={isCursorActive ? spotBrokers : null}
+          cursorMs={detailCursorMs}
+        />
+      </StudyDetailCard>
       <StudyDetailCard label="연속체결 매물대 분포" testId="volume-distribution">
         <VolumeDistributionCard
           profile={volumeDistribution}
@@ -92,12 +98,6 @@ export function StudyReferenceDetailPanel({ save, bundle, isCursorActive }: Prop
           closePoints={volumeClosePoints}
           color={volumeDistributionColor}
           maxColor={volumeDistributionMaxColor}
-        />
-      </StudyDetailCard>
-      <StudyDetailCard label="거래원" testId="brokers">
-        <BrokerTrajectoryTable
-          series={isCursorActive ? spotBrokers : null}
-          cursorMs={detailCursorMs}
         />
       </StudyDetailCard>
       <StudyDetailCard label="프로그램" testId="program">
