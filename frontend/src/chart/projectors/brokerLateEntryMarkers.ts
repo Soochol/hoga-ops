@@ -112,7 +112,7 @@ export function projectBrokerLateEntryMarkers(
   const ratioPoints = quoteRatioPointsForBundle(bundle);
   const markers: BrokerLateEntryMarkerPoint[] = [];
 
-  for (const event of bundle.broker_late_entries ?? []) {
+  for (const event of bundle.broker_late_entries) {
     if (!sideAllowed(event.side, ctx.sideMode)) continue;
     const anchor = findMarkerAnchorPoint(ratioPoints, event, axis, ctx);
     if (!anchor) continue;

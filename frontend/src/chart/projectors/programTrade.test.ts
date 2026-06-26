@@ -45,6 +45,7 @@ function bundle(
     investorPoints: [],
     ask_peaks: [],
     volume_distributions: [],
+    broker_late_entries: [],
     program_trade: { points },
   };
 }

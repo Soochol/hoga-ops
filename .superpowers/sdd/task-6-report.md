@@ -64,3 +64,20 @@ Notes / Concerns
 - I kept the existing surge-marker path untouched and parallelized the new label path exactly as requested.
 - The new label primitive recomputes grouping from live chart coordinates on every draw, so grouping responds to zoom/pan without caching stale time-only clusters.
 - The only type-level compatibility change outside the task-owned chart files was making `RangeBundle.broker_late_entries` optional so pre-existing fixtures that omit the field continue to build.
+
+## Task 6 Fix Report
+
+Summary
+- Restored `RangeBundle.broker_late_entries` to a required field in `frontend/src/api/types.ts`.
+- Removed the fallback masking from `projectBrokerLateEntryMarkers(...)` so the projector reads `bundle.broker_late_entries` directly.
+- Added `broker_late_entries: []` to synthetic/test `RangeBundle` fixtures that were missing the field.
+
+Verification
+- `cd frontend && npm test -- --run src/chart/projectors/brokerLateEntryMarkers.test.ts src/chart/projectors/ratio.test.ts src/chart/RangeSeriesPane.test.tsx`
+  - Result: pass (`3` files, `30` tests).
+- `cd frontend && npm run build`
+  - Result: success (`tsc -b && vite build`).
+
+Notes / Concerns
+- This supersedes the earlier Task 6 note that made `broker_late_entries` optional for fixture compatibility.
+- `vite build` still emits the pre-existing large-chunk warning for the main bundle, but the build completes successfully.
