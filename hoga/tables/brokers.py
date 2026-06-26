@@ -215,7 +215,7 @@ def query_late_entry_events(
     path: Path,
     threshold_ms: int,
 ) -> list[BrokerLateEntryEventRow]:
-    """Return first appearances inside the post-threshold observation window.
+    """Return post-threshold broker-side entry transitions.
 
     ``threshold_ms`` and returned ``t_ms`` use the parquet-native HHMMSSmmm
     encoding. The API layer converts them to Unix ms.
@@ -245,21 +245,28 @@ def query_late_entry_events(
         key = (broker, side, int(ts_ms_raw))
         collapsed[key] = collapsed.get(key, 0) + int(net_raw)
 
-    first_after: dict[tuple[str, BrokerSide], BrokerLateEntryEventRow] = {}
-    for (broker, side, ts_ms), net in sorted(collapsed.items()):
-        key = (broker, side)
-        if ts_ms < threshold_ms:
-            continue
-        if key in first_after:
-            continue
-        first_after[key] = BrokerLateEntryEventRow(
-            t_ms=ts_ms,
-            broker=broker,
-            side=side,
-            net=net,
-        )
+    previous_present: set[tuple[str, BrokerSide]] = {
+        (broker, side) for broker, side, ts_ms in collapsed if ts_ms < threshold_ms
+    }
+    by_ts: dict[int, dict[tuple[str, BrokerSide], int]] = {}
+    for (broker, side, ts_ms), net in collapsed.items():
+        if ts_ms >= threshold_ms:
+            by_ts.setdefault(ts_ms, {})[(broker, side)] = net
 
-    return sorted(first_after.values(), key=lambda e: (e.t_ms, e.broker, e.side))
+    events: list[BrokerLateEntryEventRow] = []
+    for ts_ms in sorted(by_ts):
+        current = by_ts[ts_ms]
+        current_present = set(current)
+        for broker, side in sorted(current_present - previous_present):
+            events.append(BrokerLateEntryEventRow(
+                t_ms=ts_ms,
+                broker=broker,
+                side=side,
+                net=current[(broker, side)],
+            ))
+        previous_present = current_present
+
+    return events
 
 
 def _final_broker_order(

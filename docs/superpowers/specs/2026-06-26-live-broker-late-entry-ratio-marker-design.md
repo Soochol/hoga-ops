@@ -8,7 +8,7 @@
 
 The `/live` broker sidebar and broker day-series API currently cap displayed brokers at 10. The user wants every recorded broker to be visible, not only the top 10. "Recorded broker" means a broker present in the stored top-5 buy plus top-5 sell broker snapshots; the system cannot infer brokers outside those recorded snapshots.
 
-The user also wants a new broker-related indicator: **기록상 신규 거래원**. Starting from a configurable time, default `09:30`, the indicator should treat that time as the start of a fresh observation window and show each buy-side or sell-side broker pair at its first recorded appearance within that window. This deliberately treats "present in the first recorded broker snapshot at or after 09:30" and "newly appearing later after 09:30" as one user-facing concept: **기준시각 이후 첫 등장 거래원**. Each broker-side pair should be shown once, directly on the existing `호가비` (ask/bid ratio) chart indicator, at that pair's first observed appearance time, with a dot and the broker name as a label.
+The user also wants a new broker-related indicator: **기록상 신규 거래원**. Starting from a configurable time, default `09:30`, broker-side pairs observed before that time are treated as the initial known state. From the threshold onward, the indicator emits an event whenever a buy-side or sell-side broker pair is present in the current snapshot but was absent from the previous snapshot. This includes genuinely new post-threshold broker-side pairs and broker-side pairs that disappeared and later reappeared. Events are drawn directly on the existing `호가비` (ask/bid ratio) chart indicator, with a dot and broker label at the event time.
 
 ## Invariants
 
@@ -39,8 +39,8 @@ The user also wants a new broker-related indicator: **기록상 신규 거래원
 - Remove the broker identity cap so `/api/brokers/series`, the `/live` latest broker sidebar, and `BrokerTrajectoryTable` show every recorded broker.
 - Add a `지표` modal item under the existing `거래원 지표` section, labelled `신규 거래원 등장`.
 - Add a configurable 기준 시각 parameter in HHMM format. Default: `930`.
-- Detect **기록상 신규 거래원** with one unified rule over broker-side pairs: `(broker, buy)` or `(broker, sell)` pairs are selected once at their first observed point at or after the 기준 시각.
-- Render those first-appearance events as dots plus broker labels on the existing `호가비` pane.
+- Detect **기록상 신규 거래원** with one unified rule over broker-side pairs: start from the set seen before the 기준 시각, then emit `(broker, buy)` or `(broker, sell)` whenever that pair transitions from absent to present in later snapshots.
+- Render those entry-transition events as dots plus broker labels on the existing `호가비` pane.
 - Keep marker rendering optional via the new indicator toggle.
 
 ## Non-Goals
@@ -68,14 +68,14 @@ type BrokerLateEntryEvent = {
 
 The backend builds events from `brokers.parquet` after canonical broker-name collapse:
 
-1. Build each broker-side pair's observed points for the day from the long-format broker rows, after canonical broker-name collapse.
+1. Build each timestamp's observed broker-side set for the day from the long-format broker rows, after canonical broker-name collapse.
 2. Convert the configured 기준 시각 HHMM into the day's KST Unix-ms threshold.
-3. Build `pre_seen = broker-side pairs with any observed point ts_ms < threshold`.
-4. For each broker-side pair, find its first observed point where `ts_ms >= threshold`. This intentionally treats exactly `09:30:00.000` as included because Korean "이후" is inclusive in this UI.
-5. Emit one event if the broker-side pair is not in `pre_seen` and such a first at-or-after-threshold point exists.
-6. The event time is that first observed `ts_ms`; `side` is the observed broker row side; `net` is the broker's signed net at that timestamp for context.
+3. Build the initial previous-present set from broker-side pairs with any observed point `ts_ms < threshold`.
+4. For each snapshot at `ts_ms >= threshold`, compute `current_present - previous_present`.
+5. Emit one event for each broker-side pair in that difference, then set `previous_present = current_present`.
+6. The event time is the transition snapshot's `ts_ms`; `side` is the observed broker row side; `net` is the broker's signed net at that timestamp for context.
 
-This simpler model is the intended product behavior: the user is not asking to distinguish "already visible in the first 09:30+ snapshot" from "appeared later"; they want to notice buy brokers and sell brokers that were not recorded on that side before the 기준 시각 and then first show up from that point onward. If one broker appeared on the buy side before the threshold but first appears on the sell side after the threshold, the sell-side appearance is still a valid late-entry event.
+This transition model is the intended product behavior: pre-threshold broker-side pairs are the baseline, first post-threshold appearances are included only when they were not already known before the threshold, and broker-side pairs that disappear and later reappear are included again. If one broker appeared on the buy side before the threshold but first appears on the sell side after the threshold, the sell-side appearance is still a valid entry event.
 
 The route layer should convert broker timestamps from the parquet HHMMSSmmm encoding to Unix ms before the frontend sees them, matching the existing broker series behavior.
 
@@ -199,8 +199,8 @@ These are the grilled decisions after applying the `plan-eng-review` lens:
 |----------|----------|-----|
 | What does "new broker" mean? | Use **기록상 신규 거래원** in docs/tests; keep UI label `신규 거래원 등장`. | Prevents the false claim that the broker was absent from the market; we only know it was absent from recorded top-5/top-5 snapshots. |
 | Is "new" broker-level or side-level? | Side-level: compute first appearance for `(broker, buy)` and `(broker, sell)` separately. | The user wants both buy and sell broker arrivals; a broker can be known on one side and newly meaningful on the other. |
-| Does `09:30 이후` include exactly 09:30? | Yes. A broker whose first observed point is exactly at the threshold is included. | Keeps the UI inclusive and intuitive: 기준시각부터 새롭게 보인 거래원을 표시한다. |
-| Should the UI distinguish "present at first 09:30+ snapshot" from "appeared later"? | No. Use one marker concept and one event type. | The user's goal is discovery of brokers newly visible after the 기준 시각, not cohort analysis. A single rule is easier to trust and explain. |
+| Does `09:30 이후` include exactly 09:30? | Yes, but only for broker-side pairs absent from the pre-threshold baseline. | Prevents all brokers already known before 09:30 from being marked at the first post-threshold snapshot. |
+| Should reappearing broker-side pairs be included? | Yes. If a pair disappears from one snapshot and appears again later, emit another entry event. | Matches the user's "사라졌다가 다시 생성" interpretation. |
 | Where should event data live? | `/api/range` / `RangeBundle`, not a separate per-date frontend fetch fan-out. | Preserves ADR-0013 single read-path and keeps the marker aligned with the same Stock-Date/source segments as the ratio line. |
 | Which source should broker events use? | The segment's resolved source from `source_pref`. | Avoids source mixing where the ratio line is KIS but broker markers are hogaplay, or vice versa. |
 | What y-value should markers use? | The displayed ratio value after ratio projector policy. | Users see a marker on the line they are actually looking at; hidden auction points do not get floating labels. |
@@ -218,7 +218,7 @@ CODE PATHS                                                   USER FLOWS
   ├── [GAP] query_day_series returns all sorted brokers         ├── [GAP] toggle on/off persists
   ├── [GAP] canonical alias collapse before first-ts check      ├── [GAP] HHMM edit refetches /api/range
   ├── [GAP] side-specific baseline-before-threshold exclusion   ├── [GAP] side mode switches without refetch
-  ├── [GAP] first at-or-after-threshold appearance emits once per side
+  ├── [GAP] absent-to-present transitions emit, including reappearance
   └── [GAP] missing brokers.parquet -> [] events                └── [GAP] invalid HHMM falls back to 930
 
 [+] hoga/api/routes.py / bundle.py                           [+] Read marker on 호가비 pane
@@ -249,10 +249,10 @@ CODE PATHS                                                   USER FLOWS
 | API returns all brokers | broker parquet with more than 10 canonical brokers | `/api/brokers/series` returns all sorted brokers, not 10 |
 | Sidebar renders all brokers | `BrokerTrajectoryTable` receives 12 series entries | 12 broker rows render |
 | Live aggregator returns all brokers | live broker buffer contains 12 broker identities | `aggregateBrokerSeries` returns 12 entries |
-| Late-entry detection excludes pre-seen broker-side pairs | broker A is on buy side before `09:30`, then buy side again at `10:00` | A buy emits no event |
-| Late-entry detection includes exact threshold | broker B first appears on sell side at `09:30:00.000`, threshold `930` | B sell emits one event at `09:30:00.000` |
+| Late-entry detection excludes continuously present pre-seen broker-side pairs | broker A is on buy side before `09:30`, then remains on buy side at `09:30` | A buy emits no event |
+| Late-entry detection includes exact threshold new entries | broker B first appears on sell side at `09:30:00.000`, threshold `930` | B sell emits one event at `09:30:00.000` |
 | Late-entry detection includes later first appearance | broker C first appears on buy side later than `09:30` | C buy emits one event at that first observed point |
-| Late-entry detection emits once per broker-side pair | broker D first appears on sell side at `09:45`, then appears again at `10:10` | D sell emits only the `09:45` event |
+| Late-entry detection includes reappearance | broker D appears on sell side before `09:30`, disappears at `09:30`, then appears again at `10:10` | D sell emits at `10:10` |
 | Late-entry detection is side-specific | broker E appears on buy side before `09:30`, first appears on sell side at `10:00` | E buy emits no event; E sell emits one event at `10:00` |
 | Late-entry detection uses resolved source | same date has `hogaplay` and `kis_live` with different broker first times | events match selected/fallback source segment |
 | Missing broker parquet is non-fatal | valid candles/snapshots but no `brokers.parquet` | range response succeeds with no broker late-entry events for that date |
