@@ -51,4 +51,27 @@ describe('shouldUseFullBrokerLateEntryLabels', () => {
 
     expect(shouldUseFullBrokerLateEntryLabels(markers, plotted, 600, 240, 15, 14)).toBe(false);
   });
+
+  it('compacts labels when nearby low-density labels would overlap', () => {
+    const markers = [
+      marker({ time: 100 as Time, anchorTime: 100 as Time, broker: '긴이름증권', label: '긴이름' }),
+      marker({ time: 101 as Time, anchorTime: 101 as Time, broker: '옆자리증권', label: '옆자리' }),
+    ];
+    const plotted = new Map([
+      [markers[0], { x: 100, y: 80 }],
+      [markers[1], { x: 122, y: 80 }],
+    ]);
+
+    expect(shouldUseFullBrokerLateEntryLabels(
+      markers,
+      plotted,
+      900,
+      240,
+      15,
+      14,
+      () => 50,
+      6,
+      4,
+    )).toBe(false);
+  });
 });

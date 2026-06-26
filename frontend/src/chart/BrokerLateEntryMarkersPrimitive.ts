@@ -50,6 +50,9 @@ export function shouldUseFullBrokerLateEntryLabels(
   paneHeightPx: number,
   labelHeightPx: number,
   labelStackStepPx: number,
+  estimateLabelWidthPx: (label: string) => number = () => 0,
+  minHorizontalGapPx = 0,
+  minVerticalGapPx = 0,
 ): boolean {
   if (markers.length <= 1) return true;
   const density = paneWidthPx > 0 ? markers.length / paneWidthPx : Number.POSITIVE_INFINITY;
@@ -62,7 +65,39 @@ export function shouldUseFullBrokerLateEntryLabels(
   }
   const tallestStack = Math.max(1, ...stackCounts.values());
   const stackHeight = labelHeightPx + (tallestStack - 1) * labelStackStepPx;
-  return density <= 0.035 && stackHeight <= paneHeightPx * 0.6;
+  if (density > 0.035 || stackHeight > paneHeightPx * 0.6) return false;
+
+  const stackOffsets = new Map<number, number>();
+  const boxes = markers.flatMap((marker) => {
+    const coord = plotted.get(marker);
+    if (!coord) return [];
+    const key = Math.round(coord.x);
+    const stackIndex = stackOffsets.get(key) ?? 0;
+    stackOffsets.set(key, stackIndex + 1);
+    const left = coord.x + LABEL_CHIP_GAP_X_PX;
+    const top = coord.y - LABEL_OFFSET_Y_PX - stackIndex * labelStackStepPx - labelHeightPx / 2;
+    return [{
+      key,
+      left,
+      right: left + estimateLabelWidthPx(marker.label),
+      top,
+      bottom: top + labelHeightPx,
+    }];
+  });
+
+  for (let i = 0; i < boxes.length; i += 1) {
+    for (let j = i + 1; j < boxes.length; j += 1) {
+      const a = boxes[i];
+      const b = boxes[j];
+      if (a.key === b.key) continue;
+      const overlaps = a.left <= b.right + minHorizontalGapPx
+        && b.left <= a.right + minHorizontalGapPx
+        && a.top <= b.bottom + minVerticalGapPx
+        && b.top <= a.bottom + minVerticalGapPx;
+      if (overlaps) return false;
+    }
+  }
+  return true;
 }
 
 function clamp(n: number, min: number, max: number): number {
@@ -156,6 +191,9 @@ class BrokerLateEntryMarkersRenderer implements IPrimitivePaneRenderer {
         scope.bitmapSize.height,
         labelHeight,
         labelStackStep,
+        (label) => ctx.measureText(label).width + 10 * hr,
+        LABEL_MIN_HORIZONTAL_GAP_PX * hr,
+        LABEL_MIN_VERTICAL_GAP_PX * vr,
       );
       const groups = layoutBrokerLateEntryLabels(visibleMarkers, {
         minHorizontalGapPx: LABEL_MIN_HORIZONTAL_GAP_PX * hr,
