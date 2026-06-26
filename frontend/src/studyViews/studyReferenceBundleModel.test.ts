@@ -38,9 +38,9 @@ function pastBundle(): RangeBundle {
     investorPoints: [],
     ask_peaks: [],
     bid_peaks: [],
-    broker_late_entries: [],
     price_level_hits: [],
     trade_volume_pocs: [],
+    broker_late_entries: [],
   };
 }
 

@@ -8,10 +8,6 @@ import { realMsToYyyymmdd } from '../live/liveDateTime';
 import { chooseSnapshotWindow } from './snapshotWindow';
 import type { LiveStudySaveSource } from './studySaveSource';
 
-export function studySnapshotByteSize(value: unknown): number {
-  return new TextEncoder().encode(JSON.stringify(value)).length;
-}
-
 export function defaultStudyViewName(row: StudyViewListRow | undefined, label: string, timeframe: string): string {
   return row?.name ?? `${label} ${timeframe} 저장뷰`;
 }

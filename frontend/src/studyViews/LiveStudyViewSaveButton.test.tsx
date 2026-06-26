@@ -7,17 +7,6 @@ import { LiveStudyViewSaveButton } from './LiveStudyViewSaveButton';
 const createMutate = vi.fn();
 let saveSource: CurrentStudySaveSource | null = null;
 
-const indicatorState = {
-  volume_enabled: true,
-  quote_totals_enabled: true,
-  ratio_enabled: true,
-  fill_strength_enabled: true,
-  aggregation_basis: 'close' as const,
-  auction_window_mask: true,
-  ratio_outlier_filter_enabled: true,
-  ratio_outlier_threshold: 50,
-};
-
 vi.mock('./useStudyViews', () => ({
   useStudyViewMutations: () => ({
     create: { mutate: createMutate },
@@ -74,7 +63,6 @@ it('opens create dialog and creates from the live source', async () => {
     label: '삼성전자',
     timeframe: '5m',
     bundle: rangeBundleFixture(),
-    indicatorState,
     captureViewport: () => ({ rightEdgeMs: 2_000, barSpan: 2, atLiveEdge: true }),
   };
   render(<LiveStudyViewSaveButton />);

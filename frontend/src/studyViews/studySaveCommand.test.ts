@@ -1,19 +1,8 @@
 import { describe, expect, it } from 'vitest';
-import type { ParquetStudySnapshot, ParquetStudyView, StudyIndicatorState } from '../api/studyViews';
+import type { StudyViewReference } from '../api/studyViews';
 import type { RangeBundle } from '../api/types';
-import type { LiveStudySaveSource, StoredStudySaveSource } from './studySaveSource';
+import type { LiveStudySaveSource, ReferenceStudySaveSource } from './studySaveSource';
 import { makeStudySaveCommand, studySaveCommandBody } from './studySaveCommand';
-
-const indicatorState: StudyIndicatorState = {
-  volume_enabled: true,
-  quote_totals_enabled: true,
-  ratio_enabled: true,
-  fill_strength_enabled: true,
-  aggregation_basis: 'close',
-  auction_window_mask: true,
-  ratio_outlier_filter_enabled: true,
-  ratio_outlier_threshold: 50,
-};
 
 function bundle(overrides: Partial<RangeBundle> = {}): RangeBundle {
   return {
@@ -42,8 +31,9 @@ function bundle(overrides: Partial<RangeBundle> = {}): RangeBundle {
   };
 }
 
-function savedView(overrides: Partial<ParquetStudyView> = {}): ParquetStudyView {
+function savedView(overrides: Partial<StudyViewReference> = {}): StudyViewReference {
   return {
+    schema_version: 2,
     id: 'view1',
     name: '기존 저장뷰',
     code: '005930',
@@ -51,47 +41,11 @@ function savedView(overrides: Partial<ParquetStudyView> = {}): ParquetStudyView 
     timeframe: '5m',
     memo: '기존 메모',
     tags: [],
-    snapshot_from_ms: 1_000,
-    snapshot_to_ms: 3_000,
+    range: { from_date: '19700101', to_date: '19700101', from_ms: 1_000, to_ms: 3_000 },
     viewport: { right_edge_ms: 3_000, bar_span: 2, at_live_edge: false },
-    indicator_state: indicatorState,
-    provenance: { saved_from_route: '/study', data_provenance: 'study_snapshot' },
-    snapshot_schema_version: 1,
-    snapshot_path: 'study_views/snapshots/view1.json',
-    snapshot_size_bytes: 100,
     created_at_ms: 1,
     updated_at_ms: 2,
     ...overrides,
-  };
-}
-
-function snapshot(): ParquetStudySnapshot {
-  return {
-    schema_version: 1,
-    source_policy: 'fixed',
-    code: '005930',
-    label: '삼성전자',
-    timeframe: '5m',
-    snapshot_from_ms: 1_000,
-    snapshot_to_ms: 3_000,
-    bucket_kind: '5m',
-    viewport: { right_edge_ms: 3_000, bar_span: 2, at_live_edge: false },
-    indicator_state: indicatorState,
-    provenance: { saved_from_route: '/study', data_provenance: 'study_snapshot' },
-    bundle: {
-      code: '005930',
-      timeframe: '5m',
-      snapshot_from_ms: 1_000,
-      snapshot_to_ms: 3_000,
-      segments: [{ date: '20260616', session_open_ms: 1_000, session_close_ms: 4_000 }],
-      candles: [],
-      quote_totals: [],
-      ratio: [],
-      fill_strength: [],
-      ask_peaks: [],
-      data_warnings: [],
-    },
-    captured_at_ms: 4_000,
   };
 }
 
@@ -103,7 +57,6 @@ describe('makeStudySaveCommand', () => {
       label: '삼성전자',
       timeframe: '5m',
       bundle: bundle(),
-      indicatorState,
       captureViewport: () => ({ rightEdgeMs: 3_000, barSpan: 2, atLiveEdge: true }),
     };
 
@@ -137,16 +90,17 @@ describe('makeStudySaveCommand', () => {
     });
   });
 
-  it('builds an overwrite command from a study source carrying existing name and memo', () => {
-    const source: StoredStudySaveSource = {
-      origin: 'study',
+  it('builds an overwrite command from a study reference source carrying existing name and memo', () => {
+    const save = savedView();
+    const source: ReferenceStudySaveSource = {
+      origin: 'study-reference',
       viewId: 'view1',
-      snapshot: snapshot(),
+      save,
       bundle: bundle(),
       captureViewport: () => ({ rightEdgeMs: 2_000, barSpan: 1, atLiveEdge: false }),
     };
 
-    const command = makeStudySaveCommand({ mode: 'overwrite', source, existingSave: savedView() });
+    const command = makeStudySaveCommand({ mode: 'overwrite', source, existingSave: save });
 
     expect(command).toMatchObject({
       mode: 'overwrite',
@@ -177,7 +131,6 @@ describe('makeStudySaveCommand', () => {
       label: '삼성전자',
       timeframe: '5m',
       bundle: bundle({ candles: [] }),
-      indicatorState,
       captureViewport: () => null,
     };
 

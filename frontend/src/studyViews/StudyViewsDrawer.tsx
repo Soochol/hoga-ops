@@ -197,7 +197,7 @@ export function StudyViewsDrawer() {
   );
   const dialogMutation = dialog?.mode === 'overwrite' ? mutations.update : mutations.create;
   const dialogError = dialogMutation?.error instanceof Error ? dialogMutation.error.message : null;
-  const studySource = saveSource?.origin === 'study' ? saveSource : null;
+  const studySource = saveSource?.origin === 'study-reference' ? saveSource : null;
   const overwriteStudyViewId = location.pathname === '/study' ? studySource?.viewId ?? currentStudyViewId ?? undefined : undefined;
   const canSaveStudy = location.pathname === '/study' && !!studySource;
   const sensors = useSensors(useSensor(PointerSensor, { activationConstraint: { distance: 5 } }));
@@ -235,7 +235,7 @@ export function StudyViewsDrawer() {
 
   const openSaveDialog = (mode: 'create' | 'overwrite', id?: string) => {
     if (!studySource) return;
-    const row = id ? data?.saves.find((save) => save.id === id) : currentStudyRow;
+    const row = (id ? data?.saves.find((save) => save.id === id) : currentStudyRow) ?? studySource.save;
     const command = makeStudySaveCommand({ mode, source: studySource, existingSave: row });
     if (command) setDialog({ ...command, id: id ?? command.id });
   };

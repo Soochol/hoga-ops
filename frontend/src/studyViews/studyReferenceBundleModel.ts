@@ -71,9 +71,9 @@ function emptyRangeBundle(code: string, fromDate: string, toDate: string, bucket
     investorPoints: [],
     ask_peaks: [],
     bid_peaks: [],
-    broker_late_entries: [],
     price_level_hits: [],
     trade_volume_pocs: [],
+    broker_late_entries: [],
   };
 }
 
@@ -192,9 +192,9 @@ export function buildStudyReferenceBundleModel({
       volume_distributions: pastBundle.volume_distributions,
       ask_peaks: pastBundle.ask_peaks,
       bid_peaks: pastBundle.bid_peaks ?? [],
-      broker_late_entries: pastBundle.broker_late_entries ?? [],
       price_level_hits: pastBundle.price_level_hits ?? [],
       trade_volume_pocs: pastBundle.trade_volume_pocs ?? [],
+      broker_late_entries: pastBundle.broker_late_entries ?? [],
     },
   };
 }
