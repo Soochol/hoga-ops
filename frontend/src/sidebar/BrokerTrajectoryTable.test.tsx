@@ -131,6 +131,24 @@ describe('BrokerTrajectoryTable — sparkline', () => {
     expect(dashed.length).toBeGreaterThanOrEqual(1);
   });
 
+  it('keeps dashed gap segments as vivid as solid broker trajectory segments', () => {
+    const big_gap = GAP_THRESHOLD_MS + 1;
+    const series: BrokerSeriesEntry[] = [
+      entry('A', [
+        { ts_ms: 0, net: 10 },
+        { ts_ms: big_gap, net: 50 },
+      ]),
+    ];
+    const { container } = render(
+      <BrokerTrajectoryTable series={series} cursorMs={null} />,
+    );
+
+    const dashed = container.querySelector('polyline[stroke-dasharray]');
+    expect(dashed).not.toBeNull();
+    expect(dashed).toHaveAttribute('stroke', 'var(--price-up)');
+    expect(dashed).not.toHaveAttribute('opacity');
+  });
+
   it('does NOT render the cursor marker when cursorMs lies outside the day range', () => {
     const series: BrokerSeriesEntry[] = [
       entry('A', [

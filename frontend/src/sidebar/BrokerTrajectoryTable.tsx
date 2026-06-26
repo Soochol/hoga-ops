@@ -205,7 +205,6 @@ function Sparkline({
             stroke={stroke}
             strokeWidth={1.2}
             strokeDasharray="1.5,1.5"
-            opacity={0.4}
             points={seg.points}
           />
         );
