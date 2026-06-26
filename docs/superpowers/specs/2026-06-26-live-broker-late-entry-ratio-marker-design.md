@@ -161,10 +161,12 @@ Implementation shape:
 
 Collision handling:
 
-- Multiple brokers at the same bucket should stack labels vertically with a small fixed offset.
-- If labels would exceed the pane top, shift the stack downward.
-- If labels would exceed the pane bottom, shift the stack upward.
-- The first version can keep labels short and simple; no interactive tooltip is required.
+- The marker primitive should adapt labels to zoom density. When the time scale is zoomed in enough that labels have room, render every broker label. When the chart is zoomed out and same-bucket or nearby labels would collide, collapse that local cluster into a compact group label.
+- Full-label mode: multiple brokers at the same bucket stack vertically with a small fixed offset. If labels would exceed the pane top, shift the stack downward; if labels would exceed the pane bottom, shift the stack upward.
+- Compact group mode: draw the dots for the underlying events, but render one group label near the cluster, for example `삼성 +2`. The first broker label is the shortest visible representative after existing sort/group ordering, and `+N` counts the remaining hidden labels in that local cluster.
+- Mode selection is view-dependent and recomputed from the current chart coordinates, not persisted user state. A practical first pass is to compare label bounding boxes in pixel coordinates after projection; if any same-bucket or nearby labels overlap horizontally/vertically, group that cluster. Zooming in naturally restores full-label mode once bounding boxes no longer collide.
+- Grouping should preserve side color signal: if a compact group contains only buy events, use the buy color; if only sell events, use the sell color; if mixed, use a neutral chip with small buy/sell colored dots or a split accent. Avoid adding verbose `매수/매도` text inside the label.
+- No interactive tooltip is required in the first version, but the primitive should keep the grouped broker names in marker data so a tooltip can be added later without changing the event model.
 
 ### All Recorded Brokers
 
@@ -204,6 +206,7 @@ These are the grilled decisions after applying the `plan-eng-review` lens:
 | What y-value should markers use? | The displayed ratio value after ratio projector policy. | Users see a marker on the line they are actually looking at; hidden auction points do not get floating labels. |
 | How should dot and label colors work? | Two persisted colors: one for buy-side late entries and one for sell-side late entries. | The marker needs to show whether the new appearance is on the buy or sell broker list. Within each side, the dot and label share one color. |
 | Where should the `매수만/매도만/둘다` option apply? | Frontend marker filtering after the backend returns both side events. | Keeps side-mode switching instant and avoids refetching the range bundle for a purely visual preference. |
+| How should label collisions work across zoom levels? | Adaptive labels: zoomed-in views show all labels; zoomed-out collision clusters collapse into compact group labels like `삼성 +2`. | Preserves detail when the user inspects a moment, but keeps the ratio pane readable when zoomed out. |
 | How generic should marker plumbing be? | Add a narrow labelled-marker primitive path. | More complete than hacking DOM labels outside the chart, less overbuilt than a full primitive plugin registry. |
 | Should missing broker parquet exclude a date? | No. Emit no marker events for that date. | The marker is optional annotation; missing it must not blank otherwise valid hoga charts. |
 
@@ -220,7 +223,8 @@ CODE PATHS                                                   USER FLOWS
 
 [+] hoga/api/routes.py / bundle.py                           [+] Read marker on 호가비 pane
   ├── [GAP] broker_late_entry_start_hhmm validation             ├── [GAP] dot + short label at first appearance
-  ├── [GAP] source_pref-resolved source per segment             ├── [GAP] same-bucket labels stack visibly
+  ├── [GAP] source_pref-resolved source per segment             ├── [GAP] zoom-in shows all colliding labels
+  │                                                               ├── [GAP] zoom-out groups colliding labels
   └── [GAP] no source mixing across segments                    └── [GAP] no marker during Auction Mask whitespace
 
 [+] frontend/src/chart/projectors/ratio.ts                   [+] Sidebar long broker list
@@ -230,6 +234,7 @@ CODE PATHS                                                   USER FLOWS
 
 [+] frontend/src/chart/RangeSeriesPane.tsx
   ├── [GAP] labelled primitive attach/update/detach lifecycle
+  ├── [GAP] adaptive label grouping responds to zoom changes
   ├── [GAP] side mode filters buy-only / sell-only / both
   ├── [GAP] buy/sell color settings apply to dot + label
   └── [GAP] teardown safe when chart already removed
@@ -261,7 +266,9 @@ CODE PATHS                                                   USER FLOWS
 | Ratio marker projection | bundle has ratio point and late-entry event at same bucket | marker uses ratio value and broker label |
 | Ratio marker follows Outlier Mask | ratio point is clamped by outlier threshold | marker y-value is displayed `0` |
 | Ratio marker respects Auction Mask | ratio point falls in hidden closing auction window | no marker emitted |
-| Label stacking | two events share one bucket | labels have distinct vertical offsets |
+| Zoomed-in label stacking | two events share one bucket and projected labels do not collide | labels have distinct vertical offsets |
+| Zoomed-out compact grouping | several events in the same local pixel cluster would collide | renderer shows compact group label such as `삼성 +2` |
+| Compact group side color | group contains buy-only, sell-only, or mixed events | buy-only uses buy color, sell-only uses sell color, mixed uses neutral chip with side accents |
 
 ### Manual Verification
 
@@ -270,6 +277,7 @@ CODE PATHS                                                   USER FLOWS
 - Set 기준 시각 to `930`.
 - Switch `표시 방향` between `둘다`, `매수만`, and `매도만`; confirm marker visibility changes immediately.
 - Confirm buy-side and sell-side broker appearances first observed at or after `09:30` appear as dots and labels on the `호가비` pane.
+- Zoom out until marker labels would overlap; confirm labels collapse into compact group labels. Zoom back in; confirm individual broker labels return.
 - Confirm broker-side pairs observed before `09:30` do not get late-entry markers even if they reappear later.
 - Confirm the broker sidebar can show more than 10 recorded brokers.
 - Switch to daily/weekly/monthly and confirm the new marker does not create an empty pane.
