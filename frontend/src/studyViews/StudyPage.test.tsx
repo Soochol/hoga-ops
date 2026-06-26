@@ -367,6 +367,45 @@ describe('StudyPage', () => {
     expect(props.bundle?.fill_strength.points).toHaveLength(1);
   });
 
+  it('renders the vertical detail cards for reference study views', () => {
+    const refSave = makeReferenceSave();
+    const bundle = {
+      ...makeRangeBundle(),
+      volume_distributions: [{
+        date: '20260616',
+        range_count: 10,
+        price_min: 69_000,
+        price_max: 71_000,
+        session_open_ms: 1_000,
+        session_close_ms: 2_000,
+        bins: [{ price_low: 69_000, price_high: 69_200, qty: 100 }],
+      }],
+    };
+    useStudyViewsMock.mockReturnValue({
+      data: { schema_version: 1, saves: [refSave] },
+      isLoading: false,
+      isError: false,
+    });
+    useStudyViewSnapshotMock.mockReturnValue({ data: undefined, isLoading: false, isError: false });
+    useStudyReferenceBundleMock.mockReturnValue({
+      bundle,
+      chartBundle: bundle,
+      isLoading: false,
+      error: null,
+      pastDataWarnings: [],
+    });
+
+    renderAt('/study?view=view-ref');
+
+    expect(screen.getByTestId('study-detail-panel')).toBeTruthy();
+    expect(screen.getByTestId('card-orderbook')).toHaveTextContent('10호가');
+    expect(screen.getByText('호가 데이터 없음')).toBeTruthy();
+    expect(screen.getByTestId('card-volume-distribution')).toHaveTextContent('연속체결 매물대 분포');
+    expect(screen.getByTestId('volume-distribution-card')).toBeTruthy();
+    expect(screen.getByTestId('card-brokers')).toHaveTextContent('거래원');
+    expect(screen.getByText('거래원 정보 없음')).toBeTruthy();
+  });
+
   it('scrolls the study detail panel when Alt+wheel is used over the chart', () => {
     useStudyViewSnapshotMock.mockImplementation((viewId: string | null) => ({
       data: viewId ? makeSnapshot(viewId) : undefined,

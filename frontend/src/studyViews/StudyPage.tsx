@@ -19,6 +19,7 @@ import {
   studyViewKindLabel,
 } from './studyViewVariant';
 import { studyActiveViewModel } from './studyActiveViewModel';
+import { studyReferenceDetails } from './studySnapshotAdapter';
 import {
   clearCurrentStudySaveSource,
   setCurrentStudySaveSource,
@@ -119,6 +120,12 @@ export function StudyPage() {
   );
   const isLoadingActiveView = activeViewModel.status === 'loading';
   const isErrorActiveView = activeViewModel.status === 'error';
+  const referenceDetails = useMemo(
+    () => activeViewModel.status === 'ready' && activeViewModel.variant === 'reference'
+      ? studyReferenceDetails(activeViewModel.bundle)
+      : null,
+    [activeViewModel],
+  );
   const captureViewportRef = useRef<() => TabViewport | null>(() => null);
   const draggingEntry = useEntryDragStore((s) => s.draggingCode != null);
   const overStudy = useEntryDragStore((s) => s.overStudy);
@@ -387,6 +394,16 @@ export function StudyPage() {
               segments={activeViewModel.renderModel.chartInput.bundle.segments}
               programTrade={activeViewModel.renderModel.chartInput.bundle.program_trade ?? null}
               bucketMs={activeViewModel.renderModel.bucketMs}
+              cursorMs={isCursorActive ? cursorMs : null}
+            />
+          )}
+          {activeViewModel.status === 'ready' && activeViewModel.variant === 'reference' && referenceDetails && (
+            <StudyDetailPanel
+              details={referenceDetails}
+              candles={activeViewModel.bundle.candles}
+              segments={activeViewModel.bundle.segments}
+              programTrade={activeViewModel.bundle.program_trade ?? null}
+              bucketMs={activeViewModel.bundle.bucket_ms}
               cursorMs={isCursorActive ? cursorMs : null}
             />
           )}

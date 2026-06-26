@@ -90,6 +90,18 @@ export function studySnapshotDetails(
   };
 }
 
+export function studyReferenceDetails(bundle: RangeBundle): StudySnapshotDetailInput {
+  return {
+    orderbookByBucketStart: new Map(),
+    brokersByBucketStart: new Map(),
+    detailWarnings: [],
+    volumeDistributionEnabled: true,
+    volumeDistributionColor: '#64748B',
+    volumeDistributionMaxColor: '#EAB308',
+    volumeDistributions: bundle.volume_distributions ?? [],
+  };
+}
+
 export function studyBrokerBucketsToSeries(
   brokersByBucketStart: Map<number, StudyBrokerBucket>,
   range?: { fromMs: number; toMs: number } | null,
