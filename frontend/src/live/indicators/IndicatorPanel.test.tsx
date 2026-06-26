@@ -1,10 +1,11 @@
 import { describe, it, expect, vi } from 'vitest';
 import { render, screen, fireEvent } from '@testing-library/react';
+import userEvent from '@testing-library/user-event';
 import IndicatorPanel from './IndicatorPanel';
 import { useLivePageStore } from '../../state/livePage';
 
 describe('IndicatorPanel', () => {
-  it('활성 12개 체크박스(비활성 0), 10호가·프로그램·거래원 지표 포함', () => {
+  it('활성 13개 체크박스(비활성 0), 10호가·프로그램·거래원 지표 포함', () => {
     useLivePageStore.setState({
       quoteTotalsEnabled: true,
       ratioEnabled: true,
@@ -14,7 +15,7 @@ describe('IndicatorPanel', () => {
     });
     render(<IndicatorPanel onClose={() => {}} />);
     const checkboxes = screen.getAllByRole('checkbox');
-    expect(checkboxes).toHaveLength(13); // 상단 3 + 10호가 7 + 프로그램 1 + 거래원 2
+    expect(checkboxes).toHaveLength(14); // 상단 3 + 10호가 7 + 프로그램 1 + 거래원 3
     expect(checkboxes.filter((c) => (c as HTMLButtonElement).disabled)).toHaveLength(0);
     for (const name of ['총잔량', '호가비', '체결강도', '연속체결 매물대 분포', '프로그램 순매수', '당일 최대 매물대']) {
       const cb = screen.getByRole('checkbox', { name }) as HTMLButtonElement;
@@ -110,6 +111,18 @@ describe('IndicatorPanel', () => {
     render(<IndicatorPanel onClose={() => {}} />);
     fireEvent.click(screen.getByRole('button', { name: '호가비' }));
     expect(screen.getByTestId('settings-toggle-ratioOutlierFilterEnabled')).toBeTruthy();
+  });
+
+  it('renders broker late-entry controls under 거래원 지표', async () => {
+    render(<IndicatorPanel onClose={() => {}} />);
+    await userEvent.click(screen.getByText('신규 거래원 등장'));
+    expect(screen.getByText('기준 시각 (HHMM)')).toBeTruthy();
+    expect(screen.getByText('표시 방향')).toBeTruthy();
+    expect(screen.getByRole('button', { name: '둘다' })).toBeTruthy();
+    expect(screen.getByRole('button', { name: '매수만' })).toBeTruthy();
+    expect(screen.getByRole('button', { name: '매도만' })).toBeTruthy();
+    expect(screen.getByText('매수 색상')).toBeTruthy();
+    expect(screen.getByText('매도 색상')).toBeTruthy();
   });
 
   it('clicking 외국인 순매수량 toggles foreignNetEnabled', async () => {

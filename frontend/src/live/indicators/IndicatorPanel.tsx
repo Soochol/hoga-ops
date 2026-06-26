@@ -12,6 +12,7 @@ import RatioConfig from './RatioConfig';
 import FillStrengthConfig from './FillStrengthConfig';
 import { MA_COLOR_ROWS } from './MAStylePicker';
 import ProgramTradeConfig from './ProgramTradeConfig';
+import BrokerLateEntryConfig from './BrokerLateEntryConfig';
 import { ModalShell } from '../../ui/ModalShell';
 import { CheckIcon } from '../../ui/CheckIcon';
 import { STOCK_CAPABILITIES, type LiveInstrumentCapabilities } from '../liveInstrumentCapabilities';
@@ -29,6 +30,7 @@ type CategoryId =
   | 'quote-totals'
   | 'ratio'
   | 'fill-strength'
+  | 'broker-late-entry'
   | 'program-trade';
 
 type GroupId = 'top' | 'hoga' | 'program' | 'broker';
@@ -52,6 +54,7 @@ const CATEGORIES: ReadonlyArray<{ id: CategoryId; label: string; group: GroupId 
   { id: 'bid-peak',        label: '당일 매수 최대벽', group: 'hoga' },
   { id: 'foreign-net',     label: '외국인 순매수량',  group: 'broker'  },
   { id: 'institution-net', label: '기관 순매수량',    group: 'broker'  },
+  { id: 'broker-late-entry', label: '신규 거래원 등장', group: 'broker' },
   { id: 'program-trade',   label: '프로그램 순매수',  group: 'program' },
 ];
 
@@ -90,6 +93,8 @@ export default function IndicatorPanel({ onClose, capabilities = STOCK_CAPABILIT
   const setRatio = useLivePageStore((s) => s.setRatioEnabled);
   const fillStrength = useLivePageStore((s) => s.fillStrengthEnabled);
   const setFillStrength = useLivePageStore((s) => s.setFillStrengthEnabled);
+  const brokerLateEntryEnabled = useLivePageStore((s) => s.brokerLateEntryEnabled);
+  const setBrokerLateEntryEnabled = useLivePageStore((s) => s.setBrokerLateEntryEnabled);
   const programTrade = useLivePageStore((s) => s.programTradeEnabled);
   const setProgramTrade = useLivePageStore((s) => s.setProgramTradeEnabled);
 
@@ -122,6 +127,7 @@ export default function IndicatorPanel({ onClose, capabilities = STOCK_CAPABILIT
       case 'quote-totals': return quoteTotals;
       case 'ratio': return ratio;
       case 'fill-strength': return fillStrength;
+      case 'broker-late-entry': return brokerLateEntryEnabled;
       case 'program-trade': return programTrade;
       default: return false;
     }
@@ -140,6 +146,7 @@ export default function IndicatorPanel({ onClose, capabilities = STOCK_CAPABILIT
       case 'quote-totals': return () => setQuoteTotals(!quoteTotals);
       case 'ratio': return () => setRatio(!ratio);
       case 'fill-strength': return () => setFillStrength(!fillStrength);
+      case 'broker-late-entry': return () => setBrokerLateEntryEnabled(!brokerLateEntryEnabled);
       case 'program-trade': return () => setProgramTrade(!programTrade);
       default: return null;
     }
@@ -196,6 +203,7 @@ export default function IndicatorPanel({ onClose, capabilities = STOCK_CAPABILIT
           {selected === 'volume' && <VolumeConfig />}
           {selected === 'foreign-net' && <InvestorNetConfig which="foreign" />}
           {selected === 'institution-net' && <InvestorNetConfig which="institution" />}
+          {selected === 'broker-late-entry' && <BrokerLateEntryConfig />}
           {selected === 'ask-peak' && <AskPeakConfig />}
           {selected === 'bid-peak' && <BidPeakConfig />}
           {selected === 'trade-volume-poc' && <TradeVolumePocConfig />}

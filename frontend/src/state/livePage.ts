@@ -10,7 +10,9 @@ import {
   TRADE_VOLUME_POC_DEFAULT_BAND_PCT,
   TRADE_VOLUME_POC_DEFAULT_COLOR,
   TRADE_VOLUME_POC_DEFAULT_OPACITY,
+  BROKER_LATE_ENTRY_DEFAULT_START_HHMM,
   type LiveMAConfig,
+  type BrokerLateEntrySideMode,
   type PersistedIndicators,
 } from './liveIndicatorsPersistence';
 import {
@@ -35,7 +37,7 @@ export {
   TRADE_VOLUME_POC_DEFAULT_COLOR,
   TRADE_VOLUME_POC_DEFAULT_OPACITY,
 };
-export type { LiveMAConfig };
+export type { BrokerLateEntrySideMode, LiveMAConfig };
 
 /** Timeframes the live page supports.
  *
@@ -150,6 +152,10 @@ type Store = Persisted & PersistedIndicators & {
   setRatioEnabled: (enabled: boolean) => void;
   setFillStrengthEnabled: (enabled: boolean) => void;
   setProgramTradeEnabled: (enabled: boolean) => void;
+  setBrokerLateEntryEnabled: (enabled: boolean) => void;
+  setBrokerLateEntryStartHHMM: (value: number) => void;
+  setBrokerLateEntrySideMode: (mode: BrokerLateEntrySideMode) => void;
+  setBrokerLateEntryStyle: (patch: { buyColor?: string; sellColor?: string }) => void;
   setDailyMovingAverage: (id: string, patch: Partial<LiveMAConfig>) => void;
   addDailyMovingAverage: () => void;
   removeDailyMovingAverage: (id: string) => void;
@@ -267,6 +273,11 @@ function snapshotIndicators(get: () => Store): PersistedIndicators {
     ratioEnabled: s.ratioEnabled,
     fillStrengthEnabled: s.fillStrengthEnabled,
     programTradeEnabled: s.programTradeEnabled,
+    brokerLateEntryEnabled: s.brokerLateEntryEnabled,
+    brokerLateEntryStartHHMM: s.brokerLateEntryStartHHMM,
+    brokerLateEntrySideMode: s.brokerLateEntrySideMode,
+    brokerLateEntryBuyColor: s.brokerLateEntryBuyColor,
+    brokerLateEntrySellColor: s.brokerLateEntrySellColor,
     dailyMovingAverages: s.dailyMovingAverages,
     dailyMovingAverageEnabled: s.dailyMovingAverageEnabled,
     dailyMovingAverageHidden: s.dailyMovingAverageHidden,
@@ -284,6 +295,15 @@ function readIndicatorsStorage(): PersistedIndicators {
 
 function clamp(n: number, min: number, max: number): number {
   return Math.max(min, Math.min(max, n));
+}
+
+function normalizeBrokerLateEntryStartHHMM(value: number): number {
+  const next = Math.trunc(value);
+  const hh = Math.floor(next / 100);
+  const mm = next % 100;
+  return hh < 9 || hh > 15 || mm < 0 || mm > 59 || (hh === 15 && mm > 20)
+    ? BROKER_LATE_ENTRY_DEFAULT_START_HHMM
+    : next;
 }
 
 function nextSlotId(existing: readonly LiveMAConfig[], prefix = 'ma'): string {
@@ -501,6 +521,35 @@ export const useLivePageStore = create<Store>((set, get) => ({
 
   setProgramTradeEnabled: (enabled) => {
     set({ programTradeEnabled: enabled });
+    persistIndicators(snapshotIndicators(get));
+  },
+
+  setBrokerLateEntryEnabled: (enabled) => {
+    set({ brokerLateEntryEnabled: enabled });
+    persistIndicators(snapshotIndicators(get));
+  },
+
+  setBrokerLateEntryStartHHMM: (value) => {
+    if (!Number.isFinite(value)) {
+      set({ brokerLateEntryStartHHMM: BROKER_LATE_ENTRY_DEFAULT_START_HHMM });
+      persistIndicators(snapshotIndicators(get));
+      return;
+    }
+    set({ brokerLateEntryStartHHMM: normalizeBrokerLateEntryStartHHMM(value) });
+    persistIndicators(snapshotIndicators(get));
+  },
+
+  setBrokerLateEntrySideMode: (mode) => {
+    if (mode !== 'both' && mode !== 'buy' && mode !== 'sell') return;
+    set({ brokerLateEntrySideMode: mode });
+    persistIndicators(snapshotIndicators(get));
+  },
+
+  setBrokerLateEntryStyle: (patch) => {
+    set((s) => ({
+      brokerLateEntryBuyColor: patch.buyColor ?? s.brokerLateEntryBuyColor,
+      brokerLateEntrySellColor: patch.sellColor ?? s.brokerLateEntrySellColor,
+    }));
     persistIndicators(snapshotIndicators(get));
   },
 

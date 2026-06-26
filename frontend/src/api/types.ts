@@ -116,8 +116,15 @@ export type BrokerSeriesEntry = {
 
 export type BrokerSeriesResponse = {
   date: string;                   // YYYYMMDD KST, echoed
-  brokers: BrokerSeriesEntry[];   // sorted by abs(final_net) desc, ≤ 10 entries
+  brokers: BrokerSeriesEntry[];   // sorted by abs(final_net) desc, all recorded brokers
   source: SourceName;             // ADR-0044 — echoed by backend after resolve_source()
+};
+
+export type BrokerLateEntryEvent = {
+  t_ms: number;
+  broker: string;
+  side: 'buy' | 'sell';
+  net: number;
 };
 
 // Wire shape for SSE trade events emitted by hoga/live/poller.py.
@@ -563,4 +570,5 @@ export type RangeBundle = {
   price_level_hits?: PriceLevelHit[];
   /** 거래일별 정규장 체결량 최다 가격대(연속체결 매물대 분포의 max bar와 동일한 bin). */
   trade_volume_pocs?: TradeVolumePocWire[];
+  broker_late_entries: BrokerLateEntryEvent[];
 };

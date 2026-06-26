@@ -69,6 +69,7 @@ export function useRange(
   priceRange?: { min: number; max: number },
   todayKst?: string | null,
   options?: {
+    brokerLateEntryStartHHMM?: number | null;
     volumeDistributionBins?: number | null;
     tradeVolumePocBins?: number | null;
     volumeDistributionPriceRange?: { min: number; max: number } | null;
@@ -80,7 +81,11 @@ export function useRange(
   const priceQs = priceRange ? `&price_min=${priceRange.min}&price_max=${priceRange.max}` : '';
   const volumeDistributionBins = options?.volumeDistributionBins ?? null;
   const tradeVolumePocBins = options?.tradeVolumePocBins ?? null;
+  const brokerLateEntryStartHHMM = options?.brokerLateEntryStartHHMM ?? null;
   const volumeDistributionPriceRange = options?.volumeDistributionPriceRange ?? null;
+  const brokerLateEntryQs = brokerLateEntryStartHHMM != null
+    ? `&broker_late_entry_start_hhmm=${brokerLateEntryStartHHMM}`
+    : '';
   const volumeDistributionQs = volumeDistributionBins != null
     ? `&volume_distribution_bins=${volumeDistributionBins}`
     : '';
@@ -101,6 +106,7 @@ export function useRange(
       bucketMs,
       priceRange?.min,
       priceRange?.max,
+      brokerLateEntryStartHHMM,
       volumeDistributionBins,
       volumeDistributionPriceRange?.min,
       volumeDistributionPriceRange?.max,
@@ -110,7 +116,7 @@ export function useRange(
     queryFn: ({ signal }) =>
       apiCall<RangeBundle>(
         `/api/range?code=${code}&from=${from}&to=${to}&bucket_ms=${bucketMs}` +
-          `${priceQs}${volumeDistributionQs}${volumeDistributionPriceQs}${tradeVolumePocQs}&source_pref=${sourcePref}`,
+          `${priceQs}${brokerLateEntryQs}${volumeDistributionQs}${volumeDistributionPriceQs}${tradeVolumePocQs}&source_pref=${sourcePref}`,
         { signal },
       ),
     enabled,

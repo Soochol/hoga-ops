@@ -25,6 +25,7 @@ const fakeBundle: RangeBundle = {
   volume_distributions: [],
   investorPoints: [],
   ask_peaks: [],
+  broker_late_entries: [],
 };
 
 describe('useRange', () => {
@@ -132,6 +133,32 @@ describe('useRange', () => {
     );
     await waitFor(() => expect(spy).toHaveBeenCalled());
     expect(spy.mock.calls[0][0]).toContain('&trade_volume_poc_bins=12');
+  });
+
+  it('threads broker_late_entry_start_hhmm into query string and query key', async () => {
+    const spy = vi.spyOn(client, 'apiCall').mockResolvedValue(fakeBundle);
+    const { rerender } = renderHook(
+      ({ brokerLateEntryStartHHMM }) => useRange(
+        '005930',
+        '20260512',
+        '20260512',
+        '1m',
+        undefined,
+        null,
+        { brokerLateEntryStartHHMM },
+      ),
+      {
+        wrapper: makeWrapper(),
+        initialProps: { brokerLateEntryStartHHMM: 945 },
+      },
+    );
+
+    await waitFor(() => expect(spy).toHaveBeenCalledTimes(1));
+    expect(spy.mock.calls[0][0]).toContain('&broker_late_entry_start_hhmm=945');
+
+    rerender({ brokerLateEntryStartHHMM: 950 });
+    await waitFor(() => expect(spy).toHaveBeenCalledTimes(2));
+    expect(spy.mock.calls[1][0]).toContain('&broker_late_entry_start_hhmm=950');
   });
 });
 

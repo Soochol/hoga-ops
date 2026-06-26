@@ -170,6 +170,8 @@ export function useLiveBundle(
 ): UseLiveBundleResult {
   const historicalFromDate = useLivePageStore((s) => s.historicalFromDate);
   const tradeVolumePocEnabled = useLivePageStore((s) => s.tradeVolumePocEnabled);
+  const brokerLateEntryEnabled = useLivePageStore((s) => s.brokerLateEntryEnabled);
+  const brokerLateEntryStartHHMM = useLivePageStore((s) => s.brokerLateEntryStartHHMM);
   const volumeDistributionEnabled = useLivePageStore((s) => s.volumeDistributionEnabled);
   const volumeDistributionRangeCount = useLivePageStore((s) => s.volumeDistributionRangeCount);
   const venue = options.venue ?? 'KRX';
@@ -269,6 +271,7 @@ export function useLiveBundle(
     // swap → does not set isExtending, so today's right edge is untouched.
     todayKstYyyymmdd,
     {
+      brokerLateEntryStartHHMM: brokerLateEntryEnabled ? brokerLateEntryStartHHMM : null,
       volumeDistributionBins: volumeDistributionEnabled ? volumeDistributionRangeCount : null,
       tradeVolumePocBins: tradeVolumePocEnabled ? volumeDistributionRangeCount : null,
       volumeDistributionPriceRange,
