@@ -699,7 +699,7 @@ describe('LivePage shell', () => {
     });
   });
 
-  it('captures daily MA and trade volume POC settings/data in the live study save source', async () => {
+  it('publishes raw chart data in the live study save source without indicator copies', async () => {
     livePageMocks.liveBundleResult.bundle = rangeBundleFixture({
       from_date: '20260615',
       to_date: '20260616',
@@ -734,17 +734,6 @@ describe('LivePage shell', () => {
     await waitFor(() => {
       expect(livePageMocks.currentStudySaveSource).toMatchObject({
         origin: 'live',
-        indicatorState: {
-          daily_moving_average_enabled: true,
-          daily_moving_average_hidden: true,
-          daily_moving_averages: [
-            { id: 'dma-20', enabled: true, period: 20, color: '#EAB308', line_width: 2, source: 'close' },
-          ],
-          trade_volume_poc_enabled: true,
-          trade_volume_poc_band_pct: 0.0025,
-          trade_volume_poc_color: '#22C55E',
-          trade_volume_poc_opacity: 0.28,
-        },
         bundle: {
           trade_volume_pocs: [{
             date: '20260616',
@@ -757,6 +746,7 @@ describe('LivePage shell', () => {
           }],
         },
       });
+      expect('indicatorState' in (livePageMocks.currentStudySaveSource as Record<string, unknown>)).toBe(false);
     });
   });
 });

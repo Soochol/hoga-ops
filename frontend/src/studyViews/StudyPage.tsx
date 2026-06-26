@@ -2,18 +2,15 @@ import { useCallback, useEffect, useMemo, useRef, useState, type WheelEvent } fr
 import { useNavigate, useSearchParams } from 'react-router';
 import { LiveChartRoot } from '../live/LiveChartRoot';
 import { tradeVolumePocsFromWire } from '../live/tradeVolumePocWire';
-import { useLiveCursorStore } from '../live/useLiveCursorStore';
 import type { TabViewport } from '../live/viewportAnchor';
 import { useEntryDragStore } from '../state/entryDrag';
 import { useStudyTabsStore } from '../state/studyTabs';
-import { StudyDetailPanel } from './StudyDetailPanel';
 import { StudyMemoPanel } from './StudyMemoPanel';
 import { StudyTabBar } from './StudyTabBar';
 import { useStudyKeyboard } from './useStudyKeyboard';
-import { useStudyViewMutations, useStudyViews, useStudyViewSnapshot } from './useStudyViews';
+import { useStudyViewMutations, useStudyViews } from './useStudyViews';
 import { useStudyReferenceBundle } from './useStudyReferenceBundle';
 import {
-  legacyStudySnapshotId,
   referenceStudyView,
   studyReferenceDetailPanelTestId,
   studyViewKindLabel,
@@ -23,7 +20,6 @@ import {
   clearCurrentStudySaveSource,
   setCurrentStudySaveSource,
   type ReferenceStudySaveSource,
-  type StoredStudySaveSource,
 } from './studySaveSource';
 
 function StudyDropOverlay() {
@@ -56,8 +52,7 @@ export function StudyPage() {
   const [params] = useSearchParams();
   const queryViewId = params.get('view');
   const navigate = useNavigate();
-  const cursorMs = useLiveCursorStore((s) => s.cursorMs);
-  const [isCursorActive, setIsCursorActive] = useState(false);
+  const [, setIsCursorActive] = useState(false);
   const savesQuery = useStudyViews();
   const mutations = useStudyViewMutations();
   const [isMemoOpen, setIsMemoOpen] = useState(false);
@@ -92,18 +87,11 @@ export function StudyPage() {
     [activeViewId, savesQuery.data?.saves],
   );
   const referenceSave = referenceStudyView(selectedSave);
-  const legacySnapshotId = legacyStudySnapshotId(selectedSave);
-  const snapshotQuery = useStudyViewSnapshot(legacySnapshotId);
   const referenceQuery = useStudyReferenceBundle(referenceSave);
   const activeViewModel = useMemo(
     () => studyActiveViewModel({
       selectedSave,
       reference: referenceQuery,
-      snapshot: {
-        snapshot: snapshotQuery.data,
-        isLoading: snapshotQuery.isLoading,
-        isError: snapshotQuery.isError,
-      },
     }),
     [
       referenceQuery.bundle,
@@ -112,9 +100,6 @@ export function StudyPage() {
       referenceQuery.isLoading,
       referenceQuery.pastDataWarnings,
       selectedSave,
-      snapshotQuery.data,
-      snapshotQuery.isError,
-      snapshotQuery.isLoading,
     ],
   );
   const isLoadingActiveView = activeViewModel.status === 'loading';
@@ -196,7 +181,7 @@ export function StudyPage() {
       setCurrentStudySaveSource(null);
       return undefined;
     }
-    if (activeViewModel.status === 'ready' && activeViewModel.variant === 'reference') {
+    if (activeViewModel.status === 'ready') {
       const source: ReferenceStudySaveSource = {
         origin: 'study-reference',
         viewId: activeViewId,
@@ -209,21 +194,8 @@ export function StudyPage() {
         clearCurrentStudySaveSource(source);
       };
     }
-    if (activeViewModel.status !== 'ready' || activeViewModel.variant !== 'legacy-snapshot') {
-      setCurrentStudySaveSource(null);
-      return undefined;
-    }
-    const source: StoredStudySaveSource = {
-      origin: 'study',
-      viewId: activeViewId,
-      snapshot: activeViewModel.snapshot,
-      bundle: activeViewModel.renderModel.chartInput.bundle,
-      captureViewport: () => captureViewportRef.current(),
-    };
-    setCurrentStudySaveSource(source);
-    return () => {
-      clearCurrentStudySaveSource(source);
-    };
+    setCurrentStudySaveSource(null);
+    return undefined;
   }, [activeViewId, activeViewModel, captureViewportRef]);
 
   useEffect(() => {
@@ -313,7 +285,7 @@ export function StudyPage() {
         onWheelCapture={handleWheelCapture}
       >
         <div className="min-h-0 min-w-0 overflow-hidden">
-          {activeViewModel.status === 'ready' && activeViewModel.variant === 'reference' ? (
+          {activeViewModel.status === 'ready' ? (
             <LiveChartRoot
               code={activeViewModel.save.code}
               timeframe={activeViewModel.save.timeframe}
@@ -337,30 +309,6 @@ export function StudyPage() {
               onViewportCaptureReady={handleViewportCaptureReady}
               onCursorActiveChange={setIsCursorActive}
             />
-          ) : activeViewModel.status === 'ready' && activeViewModel.variant === 'legacy-snapshot' ? (
-            <LiveChartRoot
-              code={activeViewModel.snapshot.code}
-              timeframe={activeViewModel.snapshot.timeframe}
-              viewIdentity={activeTabId ? `${activeTabId}:${activeViewId}` : activeViewId}
-              bundle={activeViewModel.renderModel.chartInput.bundle}
-              chartBundle={activeViewModel.renderModel.chartInput.chartBundle}
-              ratioBundle={activeViewModel.renderModel.chartInput.ratioBundle}
-              clampEngaged={false}
-              isPastCandlesLoading={false}
-              isExtending={false}
-              pastDataWarnings={[]}
-              restoreViewport={activeViewModel.renderModel.restoreViewport}
-              dayAskPeaks={activeViewModel.renderModel.chartInput.bundle.ask_peaks}
-              dayBidPeaks={activeViewModel.renderModel.chartInput.bundle.bid_peaks}
-              todayKst={activeViewModel.renderModel.todayKst}
-              tradeVolumePocs={activeViewModel.renderModel.tradeVolumePocs}
-              forceHogaPanes
-              paneTogglesOverride={activeViewModel.renderModel.paneTogglesOverride}
-              dailyMovingAverageOverride={activeViewModel.renderModel.dailyMovingAverageOverride}
-              tradeVolumePocOverride={activeViewModel.renderModel.tradeVolumePocOverride}
-              onViewportCaptureReady={handleViewportCaptureReady}
-              onCursorActiveChange={setIsCursorActive}
-            />
           ) : null}
         </div>
         <aside
@@ -378,16 +326,6 @@ export function StudyPage() {
               errorMessage={memoError}
               onClose={() => setIsMemoOpen(false)}
               onCommit={commitMemo}
-            />
-          )}
-          {activeViewModel.status === 'ready' && activeViewModel.variant === 'legacy-snapshot' && (
-            <StudyDetailPanel
-              details={activeViewModel.renderModel.details}
-              candles={activeViewModel.renderModel.chartInput.bundle.candles}
-              segments={activeViewModel.renderModel.chartInput.bundle.segments}
-              programTrade={activeViewModel.renderModel.chartInput.bundle.program_trade ?? null}
-              bucketMs={activeViewModel.renderModel.bucketMs}
-              cursorMs={isCursorActive ? cursorMs : null}
             />
           )}
         </aside>

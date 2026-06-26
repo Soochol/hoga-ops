@@ -1,19 +1,7 @@
 import { act, renderHook } from '@testing-library/react';
 import { afterEach, expect, it, vi } from 'vitest';
-import type { StudyIndicatorState } from '../api/studyViews';
 import type { RangeBundle } from '../api/types';
 import { clearCurrentStudySaveSource, setCurrentStudySaveSource, useCurrentStudySaveSource } from './studySaveSource';
-
-const indicatorState: StudyIndicatorState = {
-  volume_enabled: true,
-  quote_totals_enabled: true,
-  ratio_enabled: true,
-  fill_strength_enabled: true,
-  aggregation_basis: 'close',
-  auction_window_mask: false,
-  ratio_outlier_filter_enabled: false,
-  ratio_outlier_threshold: 50,
-};
 
 function rangeBundle(): RangeBundle {
   return {
@@ -48,7 +36,6 @@ it('publishes one current save source regardless of route adapter', () => {
     label: '삼성전자',
     timeframe: '5m' as const,
     bundle: rangeBundle(),
-    indicatorState,
     captureViewport: vi.fn(() => ({ rightEdgeMs: 1_000, barSpan: 1, atLiveEdge: true })),
   };
 
@@ -66,7 +53,6 @@ it('does not clear a newer source from a stale route adapter cleanup', () => {
     label: '삼성전자',
     timeframe: '5m' as const,
     bundle: rangeBundle(),
-    indicatorState,
     captureViewport: vi.fn(() => null),
   };
   const next = {
