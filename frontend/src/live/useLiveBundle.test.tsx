@@ -226,6 +226,34 @@ describe('useLiveBundle', () => {
     expect(bundle!.quote_ratio.points.length).toBe(1); // live overlay carries the point
   });
 
+  it('requests a lightweight hoga range separately from the full sidecar range', () => {
+    renderHook(() => useLiveBundle('005930', '1m', '20260527', liveFixture), { wrapper });
+
+    expect(useRangeSpy).toHaveBeenCalledWith(
+      '005930',
+      '20260520',
+      '20260527',
+      '1m',
+      undefined,
+      '20260527',
+      { mode: 'hoga' },
+    );
+    expect(useRangeSpy).toHaveBeenCalledWith(
+      '005930',
+      '20260520',
+      '20260527',
+      '1m',
+      undefined,
+      '20260527',
+      {
+        brokerLateEntryStartHHMM: null,
+        volumeDistributionBins: 10,
+        tradeVolumePocBins: 10,
+        volumeDistributionPriceRange: null,
+      },
+    );
+  });
+
   it('clamps pastFrom to 249 days before today when historicalFromDate is older', () => {
     useLivePageStore.setState({ historicalFromDate: '20250101' });
     renderHook(() => useLiveBundle('005930', '1m', '20260527', liveFixture), { wrapper });
@@ -244,7 +272,7 @@ describe('useLiveBundle', () => {
         brokerLateEntryStartHHMM: null,
         volumeDistributionBins: 10,
         tradeVolumePocBins: 10,
-        volumeDistributionPriceRange: { min: 69900, max: 70100 },
+        volumeDistributionPriceRange: null,
       },
     );
   });

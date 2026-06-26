@@ -77,7 +77,25 @@ describe('buildRangeBundleRequest', () => {
       70100,
       12,
       'kis_ws_first',
+      'full',
     ]);
+  });
+
+  it('adds mode=hoga only for the lightweight hoga request', () => {
+    const request = buildRangeBundleRequest({
+      code: '005930',
+      from: '20260512',
+      to: '20260512',
+      timeframe: '1m',
+      sourcePref: 'hogaplay_first',
+      options: { mode: 'hoga' },
+    });
+
+    expect(request.url).toBe(
+      '/api/range?code=005930&from=20260512&to=20260512&bucket_ms=60000'
+        + '&source_pref=hogaplay_first&mode=hoga',
+    );
+    expect(request.queryKey.at(-1)).toBe('hoga');
   });
 
   it('keeps disabled requests representable without optional params', () => {
@@ -105,6 +123,7 @@ describe('buildRangeBundleRequest', () => {
       undefined,
       null,
       'hogaplay_first',
+      'full',
     ]);
   });
 });
@@ -345,6 +364,7 @@ describe('rangePlaceholderData', () => {
     undefined,
     null,
     'hogaplay_first',
+    'full',
   ];
 
   it('keeps previous same-code data for date extension when option-sensitive fields are unchanged', () => {
@@ -362,6 +382,7 @@ describe('rangePlaceholderData', () => {
       undefined,
       null,
       'hogaplay_first',
+      'full',
     ];
 
     expect(rangePlaceholderData(fakeBundle, currentKey, baseKey)).toBe(fakeBundle);
@@ -382,6 +403,7 @@ describe('rangePlaceholderData', () => {
       undefined,
       null,
       'hogaplay_first',
+      'full',
     ];
 
     expect(rangePlaceholderData(fakeBundle, currentKey, baseKey)).toBeUndefined();
