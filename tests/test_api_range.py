@@ -14,6 +14,7 @@ def _build_range_bundle_stub(
     to_date,
     bucket_ms,
     source_pref="hogaplay",
+    broker_late_entries_enabled=True,
     broker_late_entry_start_hhmm=None,
     volume_distribution_bins=None,
     volume_distribution_price_min=None,
@@ -138,6 +139,25 @@ def test_range_defaults_broker_late_entry_threshold_to_930(
             "net": 42,
         }
     ]
+
+
+def test_range_can_disable_broker_late_entries(
+    app_client: TestClient,
+) -> None:
+    captured: list[bool] = []
+
+    def _stub(engine, **kw):
+        captured.append(kw["broker_late_entries_enabled"])
+        return _build_range_bundle_stub(**kw)
+
+    with patch("hoga.api.routes.build_range_bundle", side_effect=_stub):
+        r = app_client.get(
+            "/api/range?code=003490&from=20260519&to=20260519"
+            "&bucket_ms=60000&broker_late_entries_enabled=false"
+        )
+
+    assert r.status_code == 200, r.text
+    assert captured == [False]
 
 
 def test_range_rejects_invalid_broker_late_entry_threshold(
@@ -302,6 +322,7 @@ def test_api_range_source_pref_threads_through(app_client: TestClient) -> None:
         to_date,
         bucket_ms,
         source_pref="hogaplay",
+        broker_late_entries_enabled=True,
         broker_late_entry_start_hhmm=None,
         volume_distribution_bins=None,
         volume_distribution_price_min=None,
@@ -344,6 +365,7 @@ def test_api_range_source_pref_defaults_to_hogaplay(app_client: TestClient) -> N
         to_date,
         bucket_ms,
         source_pref="hogaplay",
+        broker_late_entries_enabled=True,
         broker_late_entry_start_hhmm=None,
         volume_distribution_bins=None,
         volume_distribution_price_min=None,
