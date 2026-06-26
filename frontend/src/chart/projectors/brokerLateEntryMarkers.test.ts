@@ -259,7 +259,7 @@ describe('layoutBrokerLateEntryLabels', () => {
       { time: 10, price: 100, broker: '삼성증권', label: '삼성', side: 'buy' as const, color: '#ef4444' },
       { time: 12, price: 100, broker: '키움증권', label: '키움', side: 'buy' as const, color: '#ef4444' },
       { time: 14, price: 100, broker: '미래에셋증권', label: '미래', side: 'buy' as const, color: '#ef4444' },
-    ];
+    ] as any;
 
     const layout = layoutBrokerLateEntryLabels(markers, {
       minHorizontalGapPx: 4,
@@ -280,7 +280,7 @@ describe('layoutBrokerLateEntryLabels', () => {
     const markers = [
       { time: 10, price: 100, broker: '삼성증권', label: '삼성', side: 'buy' as const, color: '#ef4444' },
       { time: 12, price: 100, broker: '키움증권', label: '키움', side: 'sell' as const, color: '#3b82f6' },
-    ];
+    ] as any;
 
     expect(layoutBrokerLateEntryLabels(markers, {
       minHorizontalGapPx: 4,

@@ -95,7 +95,15 @@ function makeBoundaryGapBundle() {
   return { axis, bundle };
 }
 
-const CTX_MASKED: RatioPaneContext = { auctionWindowMask: true, outlierFilterEnabled: true, outlierThreshold: 100 };
+const CTX_MASKED: RatioPaneContext = {
+  auctionWindowMask: true,
+  outlierFilterEnabled: true,
+  outlierThreshold: 100,
+  brokerLateEntryEnabled: false,
+  brokerLateEntrySideMode: 'both',
+  brokerLateEntryBuyColor: '#ef4444',
+  brokerLateEntrySellColor: '#3b82f6',
+};
 
 describe('makePastCachedProjector — 과거/당일 분리 캐시가 풀 투영과 동일 (P0)', () => {
   const getQR = (b: any) => b.quote_ratio.points;
@@ -129,7 +137,15 @@ describe('makePastCachedProjector — 과거/당일 분리 캐시가 풀 투영�
     const cached = makePastCachedProjector(projectRatioPoints, getQR);
     const { axis, bundle } = makeAxisAndBundle(3);
     cached(bundle, axis, CTX_MASKED); // 마스킹 켜진 상태로 워밍
-    const ctxOff: RatioPaneContext = { auctionWindowMask: false, outlierFilterEnabled: false, outlierThreshold: 100 };
+    const ctxOff: RatioPaneContext = {
+      auctionWindowMask: false,
+      outlierFilterEnabled: false,
+      outlierThreshold: 100,
+      brokerLateEntryEnabled: false,
+      brokerLateEntrySideMode: 'both',
+      brokerLateEntryBuyColor: '#ef4444',
+      brokerLateEntrySellColor: '#3b82f6',
+    };
     expect(cached(bundle, axis, ctxOff)).toEqual(projectRatio(bundle, axis, ctxOff));
   });
 
@@ -203,6 +219,10 @@ describe('makePastCachedProjector — day split 경계의 synthetic hoga gap sen
       auctionWindowMask: false,
       outlierFilterEnabled: false,
       outlierThreshold: 100,
+      brokerLateEntryEnabled: false,
+      brokerLateEntrySideMode: 'both',
+      brokerLateEntryBuyColor: '#ef4444',
+      brokerLateEntrySellColor: '#3b82f6',
     };
 
     const cached = RATIO_SPEC.series[0].data(bundle, axis, ctx) as any[];
@@ -306,8 +326,26 @@ describe('Split Cache 등가 — Intra-Bar Max 필드 포함, intraMax ON/OFF �
   const getQR = (b: any) => b.quote_ratio.points;
   const bidProj = (im: boolean) => (pts: any, ax: any, mask: boolean) => projectBidPoints(pts, ax, mask, im);
   const askProj = (im: boolean) => (pts: any, ax: any, mask: boolean) => projectAskPoints(pts, ax, mask, im);
-  const CTX_RATIO_OFF: RatioPaneContext = { auctionWindowMask: true, outlierFilterEnabled: true, outlierThreshold: 100, intraMax: false };
-  const CTX_RATIO_ON: RatioPaneContext = { auctionWindowMask: true, outlierFilterEnabled: true, outlierThreshold: 100, intraMax: true };
+  const CTX_RATIO_OFF: RatioPaneContext = {
+    auctionWindowMask: true,
+    outlierFilterEnabled: true,
+    outlierThreshold: 100,
+    intraMax: false,
+    brokerLateEntryEnabled: false,
+    brokerLateEntrySideMode: 'both',
+    brokerLateEntryBuyColor: '#ef4444',
+    brokerLateEntrySellColor: '#3b82f6',
+  };
+  const CTX_RATIO_ON: RatioPaneContext = {
+    auctionWindowMask: true,
+    outlierFilterEnabled: true,
+    outlierThreshold: 100,
+    intraMax: true,
+    brokerLateEntryEnabled: false,
+    brokerLateEntrySideMode: 'both',
+    brokerLateEntryBuyColor: '#ef4444',
+    brokerLateEntrySellColor: '#3b82f6',
+  };
 
   it.each([false, true])('projectBid 분리-캐시 == 풀 (intraMax=%s)', (im) => {
     const { axis, bundle } = makeAxisAndBundle(3);

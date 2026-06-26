@@ -10,6 +10,10 @@ import {
 import type { RangeBundle } from '../api/types';
 import { type VirtualAxis } from '../util/virtualAxis';
 import { classifyDataChange, syncSeriesData } from './seriesDataDiff';
+import {
+  BrokerLateEntryMarkersPrimitive,
+} from './BrokerLateEntryMarkersPrimitive';
+import type { BrokerLateEntryMarkerPoint } from './projectors/brokerLateEntryMarkers';
 import { SurgeMarkersPrimitive, type SurgeMarkerPoint } from './SurgeMarkersPrimitive';
 
 /**
@@ -40,6 +44,9 @@ export type SeriesSpec<Ctx = void> = {
    *  when this series is shorter than the timeScale (sparse past quote_ratio vs
    *  candles). The primitive draws by `timeToCoordinate`, immune to that. */
   markers?: (bundle: RangeBundle, axis: VirtualAxis, ctx: Ctx) => SurgeMarkerPoint[];
+  /** Optional: labelled late-entry markers drawn by a separate primitive so
+   *  surge dots keep their existing renderer and lifecycle. */
+  labelMarkers?: (bundle: RangeBundle, axis: VirtualAxis, ctx: Ctx) => BrokerLateEntryMarkerPoint[];
   afterAdd?: (series: ISeriesApi<SeriesType>) => void;
 };
 
@@ -123,6 +130,10 @@ function RangeSeriesPaneInner<Ctx>({
   // projector). Attached/detached alongside the series in the lifecycle effect;
   // updated in the data effect via setMarkers (same cadence as data).
   const markersRef = useRef<(SurgeMarkersPrimitive | null)[]>([]);
+  // Per-series labelled marker primitive (null for series without a
+  // `labelMarkers` projector). Managed independently so surge markers keep
+  // their existing primitive and behaviour.
+  const labelMarkersRef = useRef<(BrokerLateEntryMarkersPrimitive | null)[]>([]);
   // Lifecycle effect: create LineSeries once per (chart, paneIndex, spec)
   // tuple and tear them down on unmount. Does NOT depend on ctx/bundle/axis,
   // so prefs edits (e.g. Moving Average period bump) don't churn series
@@ -145,19 +156,35 @@ function RangeSeriesPaneInner<Ctx>({
       seriesList[i].attachPrimitive(prim);
       return prim;
     });
+    labelMarkersRef.current = spec.series.map((s, i) => {
+      if (!s.labelMarkers) return null;
+      const prim = new BrokerLateEntryMarkersPrimitive();
+      seriesList[i].attachPrimitive(prim);
+      return prim;
+    });
     if (seriesList.length > 0) onPrimarySeriesReady?.(seriesList[0], spec.name);
     return () => {
       if (seriesList.length > 0) onPrimarySeriesGone?.(spec.name);
       seriesList.forEach((series, i) => {
         const prim = markersRef.current[i];
-        if (!prim) return;
-        try {
-          series.detachPrimitive(prim);
-        } catch {
-          // chart already torn down
+        if (prim) {
+          try {
+            series.detachPrimitive(prim);
+          } catch {
+            // chart already torn down
+          }
+        }
+        const labelPrim = labelMarkersRef.current[i];
+        if (labelPrim) {
+          try {
+            series.detachPrimitive(labelPrim);
+          } catch {
+            // chart already torn down
+          }
         }
       });
       markersRef.current = [];
+      labelMarkersRef.current = [];
       // Guard: when a sibling pane throws and ChartErrorBoundary unmounts
       // ChartStage, the parent's chart.remove() may run before this
       // cleanup, leaving the series handle dangling. lightweight-charts
@@ -214,6 +241,7 @@ function RangeSeriesPaneInner<Ctx>({
       // Markers: order vs setData is irrelevant — SurgeMarkersPrimitive draws by
       // timeToCoordinate at render time, not by a snapshotted series index.
       if (s.markers) markersRef.current[i]?.setMarkers(s.markers(bundle, axis, ctx));
+      if (s.labelMarkers) labelMarkersRef.current[i]?.setMarkers(s.labelMarkers(bundle, axis, ctx));
     });
   }, [chart, bundle, axis, ctx, spec, paneIndex, forceSetData]);
   return null;

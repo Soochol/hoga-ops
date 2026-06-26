@@ -19,11 +19,18 @@ export type BrokerLateEntryMarkerPoint = {
   color: string;
 };
 
-export type BrokerLateEntryMarkerContext = RatioPaneContext & {
+type BrokerLateEntryRatioInputs = Pick<
+  RatioPaneContext,
+  'auctionWindowMask' | 'outlierFilterEnabled' | 'outlierThreshold' | 'intraMax'
+>;
+
+export type BrokerLateEntryProjectionContext = BrokerLateEntryRatioInputs & {
   sideMode: BrokerLateEntrySideMode;
   buyColor: string;
   sellColor: string;
 };
+
+export type BrokerLateEntryMarkerContext = BrokerLateEntryProjectionContext;
 
 export type BrokerLateEntryLabelGroup = {
   markers: readonly BrokerLateEntryMarkerPoint[];
@@ -49,7 +56,7 @@ function lowerBoundT(points: readonly QuoteRatioPoint[], t: number): number {
   return lo;
 }
 
-function displayedRatioValue(point: QuoteRatioPoint, ctx: RatioPaneContext): number {
+function displayedRatioValue(point: QuoteRatioPoint, ctx: BrokerLateEntryRatioInputs): number {
   const raw = ctx.intraMax
     ? quoteImbalance(point.imb_max_bid, point.imb_max_ask)
     : quoteImbalance(point.bid_total, point.ask_total);
@@ -59,7 +66,7 @@ function displayedRatioValue(point: QuoteRatioPoint, ctx: RatioPaneContext): num
 function isVisibleRatioPoint(
   point: QuoteRatioPoint,
   axis: VirtualAxis,
-  ctx: RatioPaneContext,
+  ctx: BrokerLateEntryRatioInputs,
 ): boolean {
   return axis.contains(point.t)
     && !isSyntheticHogaGapPoint(point)
@@ -72,7 +79,7 @@ function findMarkerAnchorPoint(
   points: readonly QuoteRatioPoint[],
   event: BrokerLateEntryEvent,
   axis: VirtualAxis,
-  ctx: RatioPaneContext,
+  ctx: BrokerLateEntryRatioInputs,
 ): QuoteRatioPoint | null {
   if (!axis.contains(event.t_ms)) return null;
   if (isAuctionHidden(axis, ctx.auctionWindowMask, event.t_ms)) return null;
@@ -100,12 +107,12 @@ function findMarkerAnchorPoint(
 export function projectBrokerLateEntryMarkers(
   bundle: RangeBundle,
   axis: VirtualAxis,
-  ctx: BrokerLateEntryMarkerContext,
+  ctx: BrokerLateEntryProjectionContext,
 ): BrokerLateEntryMarkerPoint[] {
   const ratioPoints = quoteRatioPointsForBundle(bundle);
   const markers: BrokerLateEntryMarkerPoint[] = [];
 
-  for (const event of bundle.broker_late_entries) {
+  for (const event of bundle.broker_late_entries ?? []) {
     if (!sideAllowed(event.side, ctx.sideMode)) continue;
     const anchor = findMarkerAnchorPoint(ratioPoints, event, axis, ctx);
     if (!anchor) continue;
