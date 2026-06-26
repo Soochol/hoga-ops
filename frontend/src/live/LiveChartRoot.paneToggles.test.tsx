@@ -17,8 +17,9 @@ if (typeof window !== 'undefined' && !window.ResizeObserver) {
 // "store toggle → paneToggles → the pane set that reaches RangeSeriesPane" was
 // never asserted end-to-end. RangeSeriesPane renders null in jsdom (imperative
 // lightweight-charts wrapper), so we replace it with a prop-capturing stub.
-const { mounted, askPeakMounts, bidPeakMounts, chartInstances } = vi.hoisted(() => ({
+const { mounted, paneBundles, askPeakMounts, bidPeakMounts, chartInstances } = vi.hoisted(() => ({
   mounted: [] as string[],
+  paneBundles: [] as Array<{ name: string; bundle: unknown }>,
   askPeakMounts: [] as string[],
   bidPeakMounts: [] as string[],
   chartInstances: [] as Array<{
@@ -32,8 +33,9 @@ const { mounted, askPeakMounts, bidPeakMounts, chartInstances } = vi.hoisted(() 
   }>,
 }));
 vi.mock('../chart/RangeSeriesPane', () => ({
-  default: (props: { spec: { name: string } }) => {
+  default: (props: { spec: { name: string }; bundle: unknown }) => {
     mounted.push(props.spec.name);
+    paneBundles.push({ name: props.spec.name, bundle: props.bundle });
     return null;
   },
 }));
@@ -140,6 +142,7 @@ function renderAt(timeframe: '1m' | 'D' | 'W' | 'M', props: Partial<ComponentPro
 describe('LiveChartRoot — pane 토글 배선 (store → 마운트된 pane 집합)', () => {
   beforeEach(() => {
     mounted.length = 0;
+    paneBundles.length = 0;
     askPeakMounts.length = 0;
     bidPeakMounts.length = 0;
     chartInstances.length = 0;
@@ -206,6 +209,23 @@ describe('LiveChartRoot — pane 토글 배선 (store → 마운트된 pane 집�
       },
     });
     expect(mounted).toEqual(['candle', 'quote-totals', 'fill-strength']);
+  });
+
+  it('quote/ratio/fill panes receive the hoga-only bundle while program-trade stays on the full bundle', () => {
+    const hogaPaneBundle = {
+      ...DEFAULT_BUNDLE,
+      quote_ratio: { bucket_ms: 60_000, points: [{ t: 1748275260000, ask_total: 10, bid_total: 20, ask_max: 10, bid_max: 20, imb_max_ask: 10, imb_max_bid: 20 }] },
+    } satisfies RangeBundle;
+    renderAt('1m', {
+      bundle: DEFAULT_BUNDLE,
+      hogaPaneBundle,
+    });
+
+    const byName = new Map(paneBundles.map((p) => [p.name, p.bundle]));
+    expect(byName.get('quote-totals')).toBe(hogaPaneBundle);
+    expect(byName.get('ratio')).toBe(hogaPaneBundle);
+    expect(byName.get('fill-strength')).toBe(hogaPaneBundle);
+    expect(byName.get('program-trade')).toBe(DEFAULT_BUNDLE);
   });
 
   it('viewIdentity 변경은 같은 code/timeframe에서도 chart identity를 교체한다', async () => {

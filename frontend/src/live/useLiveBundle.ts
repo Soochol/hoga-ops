@@ -135,6 +135,10 @@ export interface UseLiveBundleResult {
    * doesn't churn the candle path (2026-06-09 bundle-split, Phase A). Shares
    * `bundle`'s segments/candles refs (bundle spreads it). */
   chartBundle: RangeBundle | null;
+  /** Hoga indicator panes only (quote totals / ratio / fill strength). Stable
+   * across the slower full sidecar range so those panes can paint from
+   * `mode=hoga` without being re-keyed when volume-distribution sidecars land. */
+  hogaBundle: RangeBundle | null;
   isLoading: boolean;
   error: unknown;
   clampEngaged: boolean;
@@ -523,6 +527,28 @@ export function useLiveBundle(
         : null,
     [chartBundle, hogaSeries, livePriceLevelHits],
   );
+  const hogaBundle = useMemo<RangeBundle | null>(
+    () =>
+      chartBundle
+        ? {
+            ...chartBundle,
+            quote_ratio: hogaSeries.quote_ratio,
+            fill_strength: hogaSeries.fill_strength,
+            broker_late_entries: brokerLateEntryEnabled ? chartBundle.broker_late_entries : [],
+            program_trade: { points: [] },
+          }
+        : null,
+    [
+      chartBundle?.code,
+      chartBundle?.from_date,
+      chartBundle?.to_date,
+      chartBundle?.bucket_ms,
+      chartBundle?.segments,
+      hogaSeries,
+      brokerLateEntryEnabled,
+      brokerLateEntryEnabled ? chartBundle?.broker_late_entries : null,
+    ],
+  );
 
   // Clamp is a minute-path concern only; the daily endpoint has no 250d cap.
   const clampEngaged = isMinute
@@ -538,6 +564,7 @@ export function useLiveBundle(
   return {
     bundle,
     chartBundle,
+    hogaBundle,
     isLoading: live.isLoading || pastHoga.isLoading || past.isLoading || pastCandlesQuery.isLoading || pastDailyCandlesQuery.isLoading,
     error: live.error ?? pastHoga.error ?? past.error ?? pastCandlesQuery.error ?? pastDailyCandlesQuery.error ?? null,
     clampEngaged,

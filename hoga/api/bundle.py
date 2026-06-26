@@ -1283,5 +1283,5 @@ def build_range_bundle(
         price_level_hits=price_level_hits,
         trade_volume_pocs=trade_volume_pocs,
         volume_distributions=volume_distributions,
-        program_trade=ProgramTradeSeries(points=[]) if hoga_only else build_program_trade_series(engine, code=code, dates=included_dates),
+        program_trade=build_program_trade_series(engine, code=code, dates=included_dates),
     )

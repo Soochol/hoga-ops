@@ -162,7 +162,7 @@ export function LivePage() {
   // sidebar's LATEST mode stuck on the empty-buffer state.
   const today = todayKstYyyymmdd();
   const live = useLiveSeries(activeCode ?? '');
-  const { bundle, chartBundle, clampEngaged, isPastCandlesLoading, isExtending, pastDataWarnings } = useLiveBundle(
+  const { bundle, chartBundle, hogaBundle, clampEngaged, isPastCandlesLoading, isExtending, pastDataWarnings } = useLiveBundle(
     activeCode,
     timeframe,
     today,
@@ -269,6 +269,7 @@ export function LivePage() {
   const workareaCode = activeCode ?? (activeIndexId ? `index:${activeIndexId}` : null);
   const workareaBundle = activeIndexId ? indexBundle : bundle;
   const workareaChartBundle = activeIndexId ? indexBundle : chartBundle;
+  const workareaHogaBundle = activeIndexId ? indexBundle : hogaBundle;
   const workareaLoading = activeIndexId ? indexCandles.isLoading : isPastCandlesLoading;
   const indexExtending = activeIndexId ? historicalFromDate !== null && indexCandles.isFetching : false;
   const workareaDataWarnings = activeIndexId ? indexCandles.data?.data_warnings ?? [] : pastDataWarnings;
@@ -329,6 +330,7 @@ export function LivePage() {
         activeInstrument={activeInstrument}
         bundle={workareaBundle}
         chartBundle={workareaChartBundle}
+        hogaBundle={workareaHogaBundle}
         clampEngaged={clampEngaged}
         isPastCandlesLoading={workareaLoading}
         isExtending={activeIndexId ? indexExtending : isExtending}
