@@ -182,7 +182,6 @@ function makeRangeBundle(): RangeBundle {
       t_ms: 1_000,
       band_pct: 0.005,
     }],
-    broker_late_entries: [],
   };
 }
 
@@ -1043,7 +1042,7 @@ describe('StudyPage', () => {
       useLiveCursorStore.getState().setCursor(1_500);
     });
 
-    expect(container.querySelectorAll('[data-testid="broker-row"]')).toHaveLength(11);
+    expect(container.querySelectorAll('[data-testid="broker-row"]')).toHaveLength(10);
     expect(container.querySelector('[title="현재증권"]')).toBeTruthy();
     expect(screen.getByText('+1')).toBeTruthy();
   });
