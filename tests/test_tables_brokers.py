@@ -127,7 +127,7 @@ def test_query_day_series_returns_all_recorded_brokers(tmp_path: Path) -> None:
     )
 
 
-def test_query_late_entry_events_are_side_specific_and_once(
+def test_query_late_entry_events_start_a_new_observation_window(
     tmp_path: Path,
 ) -> None:
     before = PARSERS[4](
@@ -146,8 +146,8 @@ def test_query_late_entry_events_are_side_specific_and_once(
             seq=2,
             sell_names=["Dual", "NewSell", "S3", "S4", "S5"],
             sell_today=[70, 30, 10, 10, 10],
-            buy_names=["NewBuy", "B2", "B3", "B4", "B5"],
-            buy_today=[80, 10, 10, 10, 10],
+            buy_names=["NewBuy", "Dual", "B3", "B4", "B5"],
+            buy_today=[80, 50, 10, 10, 10],
         )
     )
     later = PARSERS[4](
@@ -165,15 +165,16 @@ def test_query_late_entry_events_are_side_specific_and_once(
     con = duckdb.connect()
 
     events = query_late_entry_events(con, path=out, threshold_ms=93000000)
+    triples = [(e.t_ms, e.broker, e.side) for e in events]
 
-    assert [(e.t_ms, e.broker, e.side) for e in events] == [
-        (93000000, "Dual", "sell"),
-        (93000000, "NewBuy", "buy"),
-        (93000000, "NewSell", "sell"),
-        (94500000, "LaterBuy", "buy"),
-        (94500000, "LaterSell", "sell"),
-    ]
-    assert all(e.broker != "Dual" or e.side != "buy" for e in events)
+    assert (93000000, "Dual", "buy") in triples
+    assert (93000000, "Dual", "sell") in triples
+    assert (93000000, "NewBuy", "buy") in triples
+    assert (93000000, "NewSell", "sell") in triples
+    assert (94500000, "LaterBuy", "buy") in triples
+    assert (94500000, "LaterSell", "sell") in triples
+    assert triples.count((93000000, "NewBuy", "buy")) == 1
+    assert not any(t_ms == 94500000 and broker == "NewBuy" for t_ms, broker, _side in triples)
 
 
 def test_query_late_entry_events_collapses_aliases_before_selection(

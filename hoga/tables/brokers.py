@@ -215,7 +215,7 @@ def query_late_entry_events(
     path: Path,
     threshold_ms: int,
 ) -> list[BrokerLateEntryEventRow]:
-    """Return first post-threshold appearances per canonical (broker, side).
+    """Return first appearances inside the post-threshold observation window.
 
     ``threshold_ms`` and returned ``t_ms`` use the parquet-native HHMMSSmmm
     encoding. The API layer converts them to Unix ms.
@@ -245,14 +245,12 @@ def query_late_entry_events(
         key = (broker, side, int(ts_ms_raw))
         collapsed[key] = collapsed.get(key, 0) + int(net_raw)
 
-    pre_seen: set[tuple[str, BrokerSide]] = set()
     first_after: dict[tuple[str, BrokerSide], BrokerLateEntryEventRow] = {}
     for (broker, side, ts_ms), net in sorted(collapsed.items()):
         key = (broker, side)
         if ts_ms < threshold_ms:
-            pre_seen.add(key)
             continue
-        if key in pre_seen or key in first_after:
+        if key in first_after:
             continue
         first_after[key] = BrokerLateEntryEventRow(
             t_ms=ts_ms,
