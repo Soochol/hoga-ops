@@ -16,7 +16,7 @@ export type StudyReferenceQuerySettings = {
   volumeDistributionRangeCount: number;
 };
 
-export function studyReferenceRangeOptions(
+export function studyReferenceHogaRangeOptions(
   save: StudyViewReference | null,
   settings: StudyReferenceQuerySettings,
 ) {
@@ -29,6 +29,25 @@ export function studyReferenceRangeOptions(
     todayKst: null,
     sourcePref: settings.sourcePref,
     options: {
+      mode: 'hoga',
+    },
+  });
+}
+
+export function studyReferenceSidecarRangeOptions(
+  save: StudyViewReference | null,
+  settings: StudyReferenceQuerySettings,
+) {
+  const inputs = studyReferenceQueryInputs(save);
+  return rangeBundleQueryOptions({
+    code: inputs.range.code,
+    from: inputs.range.from,
+    to: inputs.range.to,
+    timeframe: inputs.range.timeframe,
+    todayKst: null,
+    sourcePref: settings.sourcePref,
+    options: {
+      mode: 'sidecar',
       volumeDistributionBins: settings.volumeDistributionEnabled ? settings.volumeDistributionRangeCount : null,
       tradeVolumePocBins: settings.tradeVolumePocEnabled ? settings.volumeDistributionRangeCount : null,
       volumeDistributionPriceRange: null,
@@ -67,7 +86,8 @@ export function studyReferenceQueryOptions(
   settings: StudyReferenceQuerySettings,
 ) {
   return {
-    range: studyReferenceRangeOptions(save, settings),
+    rangeHoga: studyReferenceHogaRangeOptions(save, settings),
+    rangeSidecars: studyReferenceSidecarRangeOptions(save, settings),
     minuteCandles: studyReferenceMinuteCandlesOptions(save, settings),
     dailyCandles: studyReferenceDailyCandlesOptions(save, settings),
   };

@@ -2,13 +2,15 @@ import type { RangeBundle, Timeframe } from './types';
 import { TIMEFRAME_TO_MS } from './types';
 import type { SourcePreference } from '../state/sourcePreference';
 
+export type RangeMode = 'full' | 'hoga' | 'sidecar';
+
 export type RangeRequestOptions = {
   brokerLateEntriesEnabled?: boolean | null;
   brokerLateEntryStartHHMM?: number | null;
   volumeDistributionBins?: number | null;
   tradeVolumePocBins?: number | null;
   volumeDistributionPriceRange?: { min: number; max: number } | null;
-  mode?: 'full' | 'hoga';
+  mode?: RangeMode;
 };
 
 export type RangeBundleRequestInput = {
@@ -37,7 +39,7 @@ export type RangeQueryKey = readonly [
   number | undefined,
   number | null,
   SourcePreference,
-  'full' | 'hoga',
+  RangeMode | null,
 ];
 
 export type RangeBundleRequest = {
@@ -62,8 +64,8 @@ export function buildRangeBundleRequest(input: RangeBundleRequestInput): RangeBu
   const volumeDistributionBins = options.volumeDistributionBins ?? null;
   const tradeVolumePocBins = options.tradeVolumePocBins ?? null;
   const volumeDistributionPriceRange = options.volumeDistributionPriceRange ?? null;
-  const mode = options.mode ?? 'full';
-  const enabled = !!(input.code && input.from && input.to && bucketMs);
+  const mode = options.mode ?? null;
+  const enabled = !!(input.code && input.from && input.to && bucketMs && mode);
 
   const queryKey: RangeQueryKey = [
     'range',
@@ -98,7 +100,7 @@ export function buildRangeBundleRequest(input: RangeBundleRequestInput): RangeBu
   addParam(params, 'volume_distribution_price_max', volumeDistributionPriceRange?.max);
   addParam(params, 'trade_volume_poc_bins', tradeVolumePocBins);
   addParam(params, 'source_pref', input.sourcePref);
-  if (mode !== 'full') addParam(params, 'mode', mode);
+  addParam(params, 'mode', mode);
 
   return {
     enabled,

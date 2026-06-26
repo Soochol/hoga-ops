@@ -46,6 +46,7 @@ describe('buildRangeBundleRequest', () => {
       todayKst: '20260512',
       sourcePref: 'kis_ws_first',
       options: {
+        mode: 'full',
         brokerLateEntryStartHHMM: 945,
         volumeDistributionBins: 12,
         volumeDistributionPriceRange: { min: 69900, max: 70100 },
@@ -61,7 +62,7 @@ describe('buildRangeBundleRequest', () => {
         + '&volume_distribution_bins=12'
         + '&volume_distribution_price_min=69900&volume_distribution_price_max=70100'
         + '&trade_volume_poc_bins=12'
-        + '&source_pref=kis_ws_first',
+        + '&source_pref=kis_ws_first&mode=full',
     );
     expect(request.queryKey).toEqual([
       'range',
@@ -99,6 +100,23 @@ describe('buildRangeBundleRequest', () => {
     expect(request.queryKey.at(-1)).toBe('hoga');
   });
 
+  it('adds mode=sidecar for overlay sidecar requests', () => {
+    const request = buildRangeBundleRequest({
+      code: '005930',
+      from: '20260512',
+      to: '20260512',
+      timeframe: '1m',
+      sourcePref: 'hogaplay_first',
+      options: { mode: 'sidecar' },
+    });
+
+    expect(request.url).toBe(
+      '/api/range?code=005930&from=20260512&to=20260512'
+        + '&bucket_ms=60000&source_pref=hogaplay_first&mode=sidecar',
+    );
+    expect(request.queryKey.at(-1)).toBe('sidecar');
+  });
+
   it('can explicitly disable broker late-entry events', () => {
     const request = buildRangeBundleRequest({
       code: '005930',
@@ -106,7 +124,7 @@ describe('buildRangeBundleRequest', () => {
       to: '20260512',
       timeframe: '1m',
       sourcePref: 'hogaplay_first',
-      options: { brokerLateEntriesEnabled: false },
+      options: { mode: 'full', brokerLateEntriesEnabled: false },
     });
 
     expect(request.url).toContain('&broker_late_entries_enabled=false');
@@ -139,8 +157,25 @@ describe('buildRangeBundleRequest', () => {
       undefined,
       null,
       'hogaplay_first',
-      'full',
+      null,
     ]);
+  });
+
+  it('disables complete-looking requests when mode is omitted', () => {
+    const request = buildRangeBundleRequest({
+      code: '005930',
+      from: '20260512',
+      to: '20260512',
+      timeframe: '1m',
+      sourcePref: 'hogaplay_first',
+    });
+
+    expect(request.enabled).toBe(false);
+    expect(request.url).toBe(
+      '/api/range?code=005930&from=20260512&to=20260512'
+        + '&bucket_ms=60000&source_pref=hogaplay_first',
+    );
+    expect(request.queryKey.at(-1)).toBe(null);
   });
 });
 
@@ -157,6 +192,7 @@ describe('rangeBundleQueryOptions', () => {
       todayKst: null,
       sourcePref: 'hogaplay_first',
       options: {
+        mode: 'full',
         volumeDistributionBins: 12,
         tradeVolumePocBins: 12,
         volumeDistributionPriceRange: null,
@@ -186,7 +222,7 @@ describe('rangeBundleQueryOptions', () => {
     const queryFn = options.queryFn as (context: { signal: AbortSignal }) => Promise<RangeBundle>;
     await queryFn({ signal });
     expect(spy).toHaveBeenCalledWith(
-      '/api/range?code=005930&from=20260616&to=20260618&bucket_ms=300000&volume_distribution_bins=12&trade_volume_poc_bins=12&source_pref=hogaplay_first',
+      '/api/range?code=005930&from=20260616&to=20260618&bucket_ms=300000&volume_distribution_bins=12&trade_volume_poc_bins=12&source_pref=hogaplay_first&mode=full',
       { signal },
     );
   });
@@ -212,7 +248,7 @@ describe('useRange', () => {
   it('calls /api/range with correct query string (bucket_ms from Timeframe)', async () => {
     const spy = vi.spyOn(client, 'apiCall').mockResolvedValue(fakeBundle);
     const { result } = renderHook(
-      () => useRange('005930', '20260512', '20260512', '5m'),
+      () => useRange('005930', '20260512', '20260512', '5m', undefined, undefined, { mode: 'full' }),
       { wrapper: makeWrapper() },
     );
     await waitFor(() => expect(result.current.isSuccess).toBe(true));
@@ -225,7 +261,7 @@ describe('useRange', () => {
   it('appends price_min/price_max when priceRange given', async () => {
     const spy = vi.spyOn(client, 'apiCall').mockResolvedValue(fakeBundle);
     renderHook(
-      () => useRange('005930', '20260512', '20260512', '1m', { min: 100, max: 200 }),
+      () => useRange('005930', '20260512', '20260512', '1m', { min: 100, max: 200 }, undefined, { mode: 'full' }),
       { wrapper: makeWrapper() },
     );
     await waitFor(() => expect(spy).toHaveBeenCalled());
@@ -242,12 +278,22 @@ describe('useRange', () => {
     expect(spy).not.toHaveBeenCalled();
   });
 
+  it('disabled if mode is omitted even with complete inputs', () => {
+    const spy = vi.spyOn(client, 'apiCall');
+    const { result } = renderHook(
+      () => useRange('005930', '20260512', '20260512', '1m'),
+      { wrapper: makeWrapper() },
+    );
+    expect(result.current.isLoading).toBe(false);
+    expect(spy).not.toHaveBeenCalled();
+  });
+
   it('threads sourcePref into the query string and key', async () => {
     vi.spyOn(client, 'apiCall').mockResolvedValue({} as RangeBundle);
     useSourcePreferenceStore.setState({ sourcePreference: 'kis_api_first' });
 
     renderHook(
-      () => useRange('005930', '20260520', '20260520', '1m'),
+      () => useRange('005930', '20260520', '20260520', '1m', undefined, undefined, { mode: 'full' }),
       { wrapper: makeWrapper() },
     );
     await waitFor(() => expect(client.apiCall).toHaveBeenCalled());
@@ -258,7 +304,7 @@ describe('useRange', () => {
   it('omits volume_distribution_bins when not requested', async () => {
     const spy = vi.spyOn(client, 'apiCall').mockResolvedValue(fakeBundle);
     renderHook(
-      () => useRange('005930', '20260512', '20260512', '1m'),
+      () => useRange('005930', '20260512', '20260512', '1m', undefined, undefined, { mode: 'full' }),
       { wrapper: makeWrapper() },
     );
     await waitFor(() => expect(spy).toHaveBeenCalled());
@@ -269,7 +315,7 @@ describe('useRange', () => {
   it('threads volume_distribution_bins into query string', async () => {
     const spy = vi.spyOn(client, 'apiCall').mockResolvedValue(fakeBundle);
     renderHook(
-      () => useRange('005930', '20260512', '20260512', '1m', undefined, null, { volumeDistributionBins: 20 }),
+      () => useRange('005930', '20260512', '20260512', '1m', undefined, null, { mode: 'full', volumeDistributionBins: 20 }),
       { wrapper: makeWrapper() },
     );
     await waitFor(() => expect(spy).toHaveBeenCalled());
@@ -281,6 +327,7 @@ describe('useRange', () => {
     renderHook(
       () => useRange('005930', '20260512', '20260512', '1m', undefined, null, {
         volumeDistributionBins: 10,
+        mode: 'full',
         volumeDistributionPriceRange: { min: 69900, max: 70100 },
       }),
       { wrapper: makeWrapper() },
@@ -292,7 +339,7 @@ describe('useRange', () => {
   it('threads trade_volume_poc_bins into query string', async () => {
     const spy = vi.spyOn(client, 'apiCall').mockResolvedValue(fakeBundle);
     renderHook(
-      () => useRange('005930', '20260512', '20260512', '1m', undefined, null, { tradeVolumePocBins: 12 }),
+      () => useRange('005930', '20260512', '20260512', '1m', undefined, null, { mode: 'full', tradeVolumePocBins: 12 }),
       { wrapper: makeWrapper() },
     );
     await waitFor(() => expect(spy).toHaveBeenCalled());
@@ -309,7 +356,7 @@ describe('useRange', () => {
         '1m',
         undefined,
         null,
-        { brokerLateEntryStartHHMM },
+        { mode: 'full', brokerLateEntryStartHHMM },
       ),
       {
         wrapper: makeWrapper(),

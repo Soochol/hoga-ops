@@ -402,10 +402,13 @@ def _patch_slice_builders(
         patch.object(bundle_mod, "build_fill_strength_slice", return_value=fs),
         patch.object(bundle_mod, "build_volume_profile_slice", return_value=vp),
     ]
-    if patch_ask_peak:
-        patches.append(patch.object(bundle_mod, "build_ask_peak_slice", return_value=None))
-    if patch_bid_peak:
-        patches.append(patch.object(bundle_mod, "build_bid_peak_slice", return_value=None))
+    if patch_ask_peak and patch_bid_peak:
+        patches.append(patch.object(bundle_mod, "build_ask_bid_peak_slices", return_value=(None, None)))
+    else:
+        if patch_ask_peak:
+            patches.append(patch.object(bundle_mod, "build_ask_peak_slice", return_value=None))
+        if patch_bid_peak:
+            patches.append(patch.object(bundle_mod, "build_bid_peak_slice", return_value=None))
     patches.append(patch.object(bundle_mod, "build_trade_volume_poc_slice", return_value=None))
     return patches
 
@@ -419,6 +422,7 @@ def _engine_with_meta_for_dates(dates):
         "regular_session_open_ms": 90_000_000,
         "regular_session_close_ms": 153_000_000,
     }
+    eng.indicators_cache = None
     return eng
 
 
@@ -663,38 +667,18 @@ def test_build_range_bundle_attaches_program_trade_sidecar_from_disk(tmp_path):
     ]
 
 
-def test_build_range_bundle_hoga_mode_keeps_program_trade_sidecar(tmp_path):
+def test_build_range_bundle_hoga_mode_skips_full_sidecars_and_inventory_scan(tmp_path):
     import contextlib
 
     from hoga.api import bundle as bundle_mod
     from hoga.api.bundle import build_range_bundle
-    from hoga.live.kis_models import ProgramTradeByStockRow
-    from hoga.live.program_trade_store import ProgramTradeStore
-
-    ProgramTradeStore(tmp_path).merge_response(
-        code="005930",
-        date="20260512",
-        observed_at_ms=100,
-        rows=[
-            ProgramTradeByStockRow(
-                code="005930",
-                bsop_hour="090000",
-                t_ms=1_747_006_200_000,
-                price=70000,
-                net_qty=1000,
-                net_amount=70_000_000,
-                buy_qty=None,
-                sell_qty=None,
-                buy_amount=None,
-                sell_amount=None,
-                delta_qty=1000,
-                delta_amount=70_000_000,
-            )
-        ],
-    )
 
     mock_engine = _engine_with_meta_for_dates(["20260512"])
     mock_engine.data_dir = tmp_path
+    mock_engine.list_stock_dates.side_effect = AssertionError(
+        "mode=hoga must not scan the full stock-date inventory"
+    )
+
     with contextlib.ExitStack() as stack:
         for pcm in _patch_slice_builders(bundle_mod):
             stack.enter_context(pcm)
@@ -708,10 +692,110 @@ def test_build_range_bundle_hoga_mode_keeps_program_trade_sidecar(tmp_path):
         )
 
     assert rb.candles == []
-    assert rb.program_trade.source == "kis_program_trade"
-    assert [(p.t, p.net_amount) for p in rb.program_trade.points] == [
-        (1_747_006_200_000, 70_000_000)
+    assert rb.volume_profile_by_day == []
+    assert rb.volume_profile_range.bins == []
+    assert rb.ask_peaks == []
+    assert rb.bid_peaks == []
+    assert rb.broker_late_entries == []
+    assert rb.price_level_hits == []
+    assert rb.trade_volume_pocs == []
+    assert rb.volume_distributions == []
+    assert rb.program_trade.points == []
+    mock_engine.list_stock_dates.assert_not_called()
+
+
+def test_build_range_bundle_sidecar_mode_builds_overlay_sidecars_only(tmp_path):
+    import contextlib
+
+    from hoga.api import bundle as bundle_mod
+    from hoga.api.bundle import build_range_bundle
+    from hoga.api.models import AskPeak, BidPeak, BrokerLateEntryEvent, TradeVolumePoc
+    from hoga.tables.candles import ApiCandle
+
+    mock_engine = _engine_with_meta_for_dates(["20260512"])
+    mock_engine.data_dir = tmp_path
+    raw_candles = [
+        ApiCandle(ts_ms=1, open=70_000, close=70_100, high=70_200, low=69_900, vol_a=1, vol_b=0),
     ]
+    ask = AskPeak(date="20260512", price=70_200, qty=5000, t_ms=1, max_price=70_200, max_qty=5000, max_t_ms=1)
+    bid = BidPeak(date="20260512", price=69_900, qty=4000, t_ms=1, max_price=69_900, max_qty=4000, max_t_ms=1)
+    broker = BrokerLateEntryEvent(t_ms=1_747_006_200_000, broker="NH투자증권", side="buy", net=42)
+    poc = TradeVolumePoc(
+        date="20260512",
+        center_price=70_100,
+        low_price=69_900,
+        high_price=70_200,
+        qty=123,
+        t_ms=1,
+        band_pct=0.005,
+    )
+
+    with contextlib.ExitStack() as stack:
+        stack.enter_context(patch.object(bundle_mod, "build_candles_slice", return_value=raw_candles))
+        qr_builder = stack.enter_context(patch.object(bundle_mod, "build_quote_ratio_slice"))
+        fs_builder = stack.enter_context(patch.object(bundle_mod, "build_fill_strength_slice"))
+        volume_profile_builder = stack.enter_context(patch.object(bundle_mod, "build_volume_profile_slice"))
+        volume_profile_range_builder = stack.enter_context(patch.object(bundle_mod, "build_volume_profile_range"))
+        program_builder = stack.enter_context(patch.object(bundle_mod, "build_program_trade_series"))
+        stack.enter_context(patch.object(bundle_mod, "build_ask_bid_peak_slices", return_value=(ask, bid)))
+        stack.enter_context(patch.object(bundle_mod, "build_broker_late_entries_slice", return_value=[broker]))
+        stack.enter_context(patch.object(bundle_mod, "build_trade_volume_poc_slice", return_value=poc))
+
+        rb = build_range_bundle(
+            mock_engine,
+            code="005930",
+            from_date="20260512",
+            to_date="20260512",
+            bucket_ms=60_000,
+            mode="sidecar",
+            broker_late_entries_enabled=True,
+            trade_volume_poc_bins=10,
+        )
+
+    assert rb.candles == []
+    assert rb.quote_ratio.points == []
+    assert rb.fill_strength.points == []
+    assert rb.volume_profile_by_day == []
+    assert rb.volume_profile_range.bins == []
+    assert rb.program_trade.points == []
+    assert rb.ask_peaks == [ask]
+    assert rb.bid_peaks == [bid]
+    assert rb.broker_late_entries == [broker]
+    assert rb.trade_volume_pocs == [poc]
+    qr_builder.assert_not_called()
+    fs_builder.assert_not_called()
+    volume_profile_builder.assert_not_called()
+    volume_profile_range_builder.assert_not_called()
+    program_builder.assert_not_called()
+
+
+def test_build_range_bundle_uses_combined_ask_bid_peak_builder():
+    import contextlib
+
+    from hoga.api import bundle as bundle_mod
+    from hoga.api.bundle import build_range_bundle
+    from hoga.api.models import AskPeak, BidPeak, VolumeProfile
+
+    mock_engine = _engine_with_meta_for_dates(["20260512"])
+    ask = AskPeak(date="20260512", price=100, qty=10, t_ms=1, max_price=100, max_qty=10, max_t_ms=1)
+    bid = BidPeak(date="20260512", price=90, qty=9, t_ms=1, max_price=90, max_qty=9, max_t_ms=1)
+
+    with contextlib.ExitStack() as stack:
+        for pcm in _patch_slice_builders(bundle_mod, patch_ask_peak=False, patch_bid_peak=False):
+            stack.enter_context(pcm)
+        stack.enter_context(patch.object(bundle_mod, "build_volume_profile_range", return_value=VolumeProfile(bin_count=0, price_min=0, price_max=0, bin_width=0, bins=[])))
+        combined = stack.enter_context(patch.object(bundle_mod, "build_ask_bid_peak_slices", return_value=(ask, bid)))
+        rb = build_range_bundle(
+            mock_engine,
+            code="005930",
+            from_date="20260512",
+            to_date="20260512",
+            bucket_ms=60_000,
+        )
+
+    combined.assert_called_once()
+    assert rb.ask_peaks == [ask]
+    assert rb.bid_peaks == [bid]
 
 
 def test_build_volume_distribution_slice_returns_unix_session_bounds(tmp_path):
@@ -1600,19 +1684,20 @@ def test_build_range_bundle_includes_bid_peaks(monkeypatch, tmp_path) -> None:
     eng.parquet_dir.side_effect = lambda d, c, src="hogaplay": tmp_path
     eng.conn = duckdb.connect()
     eng.indicators_cache = None
-    patches = _patch_slice_builders(bundle_mod, patch_ask_peak=True) + [
+    bid = BidPeak(
+        date=FIXTURE_DATE,
+        price=70000,
+        qty=5000,
+        t_ms=1,
+        max_price=70000,
+        max_qty=5000,
+        max_t_ms=1,
+    )
+    patches = _patch_slice_builders(bundle_mod, patch_ask_peak=False, patch_bid_peak=False) + [
         patch.object(
             bundle_mod,
-            "build_bid_peak_slice",
-            return_value=BidPeak(
-                date=FIXTURE_DATE,
-                price=70000,
-                qty=5000,
-                t_ms=1,
-                max_price=70000,
-                max_qty=5000,
-                max_t_ms=1,
-            ),
+            "build_ask_bid_peak_slices",
+            return_value=(None, bid),
         ),
         patch.object(
             bundle_mod,

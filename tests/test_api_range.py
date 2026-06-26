@@ -60,6 +60,7 @@ def test_api_range_happy_path(app_client: TestClient) -> None:
     ):
         r = app_client.get(
             "/api/range?code=005930&from=20260512&to=20260512&bucket_ms=60000"
+            "&mode=full"
         )
     assert r.status_code == 200, r.text
     body = r.json()
@@ -71,10 +72,35 @@ def test_api_range_happy_path(app_client: TestClient) -> None:
     assert "volume_profile_by_day" in body
 
 
+def test_api_range_requires_mode(app_client: TestClient) -> None:
+    r = app_client.get(
+        "/api/range?code=005930&from=20260512&to=20260512&bucket_ms=60000"
+    )
+    assert r.status_code == 422
+
+
+def test_api_range_accepts_sidecar_mode(app_client: TestClient) -> None:
+    captured: list[str] = []
+
+    def _stub(engine, **kw):
+        captured.append(kw["mode"])
+        return _build_range_bundle_stub(**kw)
+
+    with patch("hoga.api.routes.build_range_bundle", side_effect=_stub):
+        r = app_client.get(
+            "/api/range?code=005930&from=20260512&to=20260512"
+            "&bucket_ms=60000&mode=sidecar"
+        )
+
+    assert r.status_code == 200, r.text
+    assert captured == ["sidecar"]
+
+
 def test_api_range_400_on_invalid_bucket_ms(app_client: TestClient) -> None:
     # validate_bucket_ms raises ValueError → 400 BEFORE calling build_range_bundle.
     r = app_client.get(
         "/api/range?code=005930&from=20260512&to=20260512&bucket_ms=42000"
+        "&mode=full"
     )
     assert r.status_code == 400
 
@@ -83,6 +109,7 @@ def test_api_range_400_on_from_gt_to(app_client: TestClient) -> None:
     # build_range_bundle raises HTTPException(400) for from > to.
     r = app_client.get(
         "/api/range?code=005930&from=20260520&to=20260512&bucket_ms=60000"
+        "&mode=full"
     )
     assert r.status_code == 400
 
@@ -92,7 +119,7 @@ def test_range_accepts_broker_late_entry_threshold_and_returns_field(
 ) -> None:
     r = app_client.get(
         "/api/range?code=003490&from=20260519&to=20260519"
-        "&bucket_ms=60000&broker_late_entry_start_hhmm=930"
+        "&bucket_ms=60000&broker_late_entry_start_hhmm=930&mode=full"
     )
     assert r.status_code == 200, r.text
     body = r.json()
@@ -127,6 +154,7 @@ def test_range_defaults_broker_late_entry_threshold_to_930(
     with patch("hoga.api.routes.build_range_bundle", side_effect=_stub):
         r = app_client.get(
             "/api/range?code=003490&from=20260519&to=20260519&bucket_ms=60000"
+            "&mode=full"
         )
 
     assert r.status_code == 200, r.text
@@ -153,7 +181,7 @@ def test_range_can_disable_broker_late_entries(
     with patch("hoga.api.routes.build_range_bundle", side_effect=_stub):
         r = app_client.get(
             "/api/range?code=003490&from=20260519&to=20260519"
-            "&bucket_ms=60000&broker_late_entries_enabled=false"
+            "&bucket_ms=60000&broker_late_entries_enabled=false&mode=full"
         )
 
     assert r.status_code == 200, r.text
@@ -165,7 +193,7 @@ def test_range_rejects_invalid_broker_late_entry_threshold(
 ) -> None:
     r = app_client.get(
         "/api/range?code=003490&from=20260519&to=20260519"
-        "&bucket_ms=60000&broker_late_entry_start_hhmm=800"
+        "&bucket_ms=60000&broker_late_entry_start_hhmm=800&mode=full"
     )
     assert r.status_code == 400
     assert "broker_late_entry_start_hhmm" in r.text
@@ -181,6 +209,7 @@ def test_api_range_empty_inventory_returns_empty_bundle(app_client: TestClient) 
     ):
         r = app_client.get(
             "/api/range?code=005930&from=20260512&to=20260512&bucket_ms=60000"
+            "&mode=full"
         )
     assert r.status_code == 200, r.text
     body = r.json()
@@ -247,6 +276,7 @@ def test_api_range_surfaces_excluded_dates_on_wire(app_client: TestClient) -> No
             stack.enter_context(pcm)
         r = app_client.get(
             "/api/range?code=005930&from=20260518&to=20260521&bucket_ms=60000"
+            "&mode=full"
         )
 
     assert r.status_code == 200, r.text
@@ -277,6 +307,7 @@ def test_api_range_surfaces_data_warnings_on_wire(app_client: TestClient) -> Non
             stack.enter_context(pcm)
         r = app_client.get(
             "/api/range?code=005930&from=20260520&to=20260520&bucket_ms=60000"
+            "&mode=full"
         )
 
     assert r.status_code == 200, r.text
@@ -301,6 +332,7 @@ def test_api_range_all_invalid_returns_empty_bundle_with_excluded(app_client: Te
     ):
         r = app_client.get(
             "/api/range?code=003490&from=20260518&to=20260518&bucket_ms=60000"
+            "&mode=full"
         )
 
     assert r.status_code == 200, r.text
@@ -347,7 +379,7 @@ def test_api_range_source_pref_threads_through(app_client: TestClient) -> None:
     with patch("hoga.api.routes.build_range_bundle", side_effect=_stub):
         r = app_client.get(
             "/api/range?code=005930&from=20260512&to=20260512"
-            "&bucket_ms=60000&source_pref=kis_live"
+            "&bucket_ms=60000&source_pref=kis_live&mode=full"
         )
     assert r.status_code == 200, r.text
     assert captured == ["kis_live"]
@@ -390,6 +422,7 @@ def test_api_range_source_pref_defaults_to_hogaplay(app_client: TestClient) -> N
     with patch("hoga.api.routes.build_range_bundle", side_effect=_stub):
         r = app_client.get(
             "/api/range?code=005930&from=20260512&to=20260512&bucket_ms=60000"
+            "&mode=full"
         )
     assert r.status_code == 200, r.text
     assert captured == ["hogaplay"]
@@ -403,7 +436,10 @@ def test_api_range_omits_volume_distribution_by_default(app_client: TestClient) 
         return _build_range_bundle_stub(**kw)
 
     with patch("hoga.api.routes.build_range_bundle", side_effect=_stub):
-        r = app_client.get("/api/range?code=005930&from=20260512&to=20260512&bucket_ms=60000")
+        r = app_client.get(
+            "/api/range?code=005930&from=20260512&to=20260512&bucket_ms=60000"
+            "&mode=full"
+        )
 
     assert r.status_code == 200, r.text
     assert captured == [None]
@@ -420,7 +456,7 @@ def test_api_range_threads_volume_distribution_bins(app_client: TestClient) -> N
     with patch("hoga.api.routes.build_range_bundle", side_effect=_stub):
         r = app_client.get(
             "/api/range?code=005930&from=20260512&to=20260512"
-            "&bucket_ms=60000&volume_distribution_bins=10"
+            "&bucket_ms=60000&volume_distribution_bins=10&mode=full"
         )
 
     assert r.status_code == 200, r.text
@@ -441,7 +477,7 @@ def test_api_range_threads_volume_distribution_price_range(app_client: TestClien
         r = app_client.get(
             "/api/range?code=005930&from=20260512&to=20260512"
             "&bucket_ms=60000&volume_distribution_price_min=69900"
-            "&volume_distribution_price_max=70100"
+            "&volume_distribution_price_max=70100&mode=full"
         )
 
     assert r.status_code == 200, r.text
@@ -451,7 +487,7 @@ def test_api_range_threads_volume_distribution_price_range(app_client: TestClien
 def test_api_range_rejects_incomplete_volume_distribution_price_range(app_client: TestClient) -> None:
     r = app_client.get(
         "/api/range?code=005930&from=20260512&to=20260512"
-        "&bucket_ms=60000&volume_distribution_price_min=69900"
+        "&bucket_ms=60000&volume_distribution_price_min=69900&mode=full"
     )
     assert r.status_code == 400
 
@@ -460,7 +496,7 @@ def test_api_range_rejects_reversed_volume_distribution_price_range(app_client: 
     r = app_client.get(
         "/api/range?code=005930&from=20260512&to=20260512"
         "&bucket_ms=60000&volume_distribution_price_min=70100"
-        "&volume_distribution_price_max=69900"
+        "&volume_distribution_price_max=69900&mode=full"
     )
     assert r.status_code == 400
 
@@ -475,7 +511,7 @@ def test_api_range_threads_trade_volume_poc_bins(app_client: TestClient) -> None
     with patch("hoga.api.routes.build_range_bundle", side_effect=_stub):
         r = app_client.get(
             "/api/range?code=005930&from=20260512&to=20260512"
-            "&bucket_ms=60000&trade_volume_poc_bins=12"
+            "&bucket_ms=60000&trade_volume_poc_bins=12&mode=full"
         )
 
     assert r.status_code == 200, r.text
@@ -486,7 +522,7 @@ def test_api_range_rejects_invalid_volume_distribution_bins(app_client: TestClie
     for value in ("4", "31"):
         r = app_client.get(
             "/api/range?code=005930&from=20260512&to=20260512"
-            f"&bucket_ms=60000&volume_distribution_bins={value}"
+            f"&bucket_ms=60000&volume_distribution_bins={value}&mode=full"
         )
         assert r.status_code in (400, 422)
 
@@ -495,7 +531,7 @@ def test_api_range_rejects_invalid_trade_volume_poc_bins(app_client: TestClient)
     for value in ("4", "31"):
         r = app_client.get(
             "/api/range?code=005930&from=20260512&to=20260512"
-            f"&bucket_ms=60000&trade_volume_poc_bins={value}"
+            f"&bucket_ms=60000&trade_volume_poc_bins={value}&mode=full"
         )
         assert r.status_code in (400, 422)
 
@@ -518,6 +554,7 @@ def test_parser_output_visible_as_hogaplay_source(app_client: TestClient) -> Non
     """
     r = app_client.get(
         "/api/range?code=003490&from=20260519&to=20260519&bucket_ms=60000"
+        "&mode=full"
     )
     assert r.status_code == 200, r.text
     body = r.json()

@@ -57,7 +57,7 @@ export function useWarmStudyReferenceTabQueries({
       if (!save) return [];
       const timeframe = viewTimeframes[save.id] ?? save.timeframe;
       const options = studyReferenceQueryOptions({ ...save, timeframe }, settings);
-      return [options.range, options.minuteCandles, options.dailyCandles]
+      return [options.rangeHoga, options.rangeSidecars, options.minuteCandles, options.dailyCandles]
         .filter((query) => query.enabled)
         .map((query) => ({ tabId: tab.id, query }));
     });

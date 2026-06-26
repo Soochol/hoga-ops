@@ -335,8 +335,9 @@ export function useLiveBundle(
     rangePlan.todayKst,
     hogaRangeOptions,
   );
-  const fullRangeOptions = useMemo(
+  const sidecarRangeOptions = useMemo(
     () => ({
+      mode: 'sidecar' as const,
       ...rangePlan.options,
       // KIS candles arrive on a separate fast path. Feeding their derived
       // price range back into /api/range re-keys the slow request right after
@@ -345,7 +346,7 @@ export function useLiveBundle(
     }),
     [rangePlan.options],
   );
-  const past = useRange(
+  const pastSidecars = useRange(
     rangePlan.code,
     rangePlan.from,
     rangePlan.to,
@@ -357,7 +358,7 @@ export function useLiveBundle(
     // frozen. A periodic refetch keeps the same query key → no placeholderData
     // swap → does not set isExtending, so today's right edge is untouched.
     rangePlan.todayKst,
-    fullRangeOptions,
+    sidecarRangeOptions,
   );
   const liveCandles = useMemo<Candle[]>(
     () => (isMinute ? overlayLiveTradesOnCandles(kisCandles, live.trade, bucketMs, venue) : kisCandles),
@@ -400,13 +401,20 @@ export function useLiveBundle(
       code,
       todayDate: todayKstYyyymmdd,
       todaySession: todayChartSession,
-      pastBundle: past.data ?? pastHoga.data ?? null,
+      pastBundle: pastHoga.data ?? null,
       kisCandles: liveCandles,
       bucketMs,
       hasTodayObSignal,
       investorPoints,
       sessionBoundsForDate,
     });
+    const sidecarSource = pastSidecars.data ?? null;
+    if (sidecarSource) {
+      built.ask_peaks = sidecarSource.ask_peaks ?? [];
+      built.bid_peaks = sidecarSource.bid_peaks ?? [];
+      built.broker_late_entries = sidecarSource.broker_late_entries ?? [];
+      built.trade_volume_pocs = sidecarSource.trade_volume_pocs ?? [];
+    }
 
     // Segments-identity stabilization (eng review C1): buildChartBundle allocates
     // a fresh `segments` array each call even when no trading date changed.
@@ -432,7 +440,7 @@ export function useLiveBundle(
     }
 
     return built;
-  }, [code, todayKstYyyymmdd, todayChartSession, past.data, pastHoga.data, liveCandles, bucketMs, hasTodayObSignal, investorPoints, sessionBoundsForDate]);
+  }, [code, todayKstYyyymmdd, todayChartSession, pastHoga.data, pastSidecars.data, liveCandles, bucketMs, hasTodayObSignal, investorPoints, sessionBoundsForDate]);
 
   // HOGA side (quote_ratio / fill_strength). Deps INCLUDE ob/trade — this is the
   // ONLY half that rebuilds on an SSE tick.
@@ -444,12 +452,12 @@ export function useLiveBundle(
     () =>
       hogaSeriesBuilderRef.current!({
         todaySession: defaultKrxSession,
-        pastBundle: pastHoga.data ?? past.data ?? null,
+        pastBundle: pastHoga.data ?? null,
         sseOb: isMinute ? live.ob : [],
         sseTrade: isMinute ? live.trade : [],
         bucketMs,
       }),
-    [defaultKrxSession, pastHoga.data, past.data, isMinute, live.ob, live.trade, bucketMs],
+    [defaultKrxSession, pastHoga.data, isMinute, live.ob, live.trade, bucketMs],
   );
   const livePriceLevelHits = useMemo(
     () => (isMinute ? buildLivePriceLevelHits(liveCandles, todayKstYyyymmdd) : []),
@@ -496,7 +504,6 @@ export function useLiveBundle(
   // history, not watching the live edge.
   const extending = historicalFromDate != null && (isMinute
     ? (pastHoga.isPlaceholderData && pastHoga.isFetching) ||
-      (past.isPlaceholderData && past.isFetching) ||
       (pastCandlesQuery.isPlaceholderData && pastCandlesQuery.isFetching)
     : pastDailyCandlesQuery.isPlaceholderData && pastDailyCandlesQuery.isFetching);
   // The gate holds the CHART side (candle/segment prepend atomicity is what it
@@ -565,8 +572,8 @@ export function useLiveBundle(
     bundle,
     chartBundle,
     hogaBundle,
-    isLoading: live.isLoading || pastHoga.isLoading || past.isLoading || pastCandlesQuery.isLoading || pastDailyCandlesQuery.isLoading,
-    error: live.error ?? pastHoga.error ?? past.error ?? pastCandlesQuery.error ?? pastDailyCandlesQuery.error ?? null,
+    isLoading: live.isLoading || pastHoga.isLoading || pastCandlesQuery.isLoading || pastDailyCandlesQuery.isLoading,
+    error: live.error ?? pastHoga.error ?? pastCandlesQuery.error ?? pastDailyCandlesQuery.error ?? pastSidecars.error ?? null,
     clampEngaged,
     isPastCandlesLoading: pastCandlesQuery.isLoading || pastDailyCandlesQuery.isLoading || (enableInvestor && investorQuery.isLoading),
     isExtending: extending,
