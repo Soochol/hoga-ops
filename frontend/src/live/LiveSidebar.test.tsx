@@ -160,7 +160,7 @@ describe('LiveSidebar', () => {
     expect(screen.getByTestId('investor-trend-estimate-card')).toBeInTheDocument();
   });
 
-  it('renders the volume distribution card between orderbook and brokers', () => {
+  it('renders brokers above the volume distribution card', () => {
     renderSidebar({ code: '005930' });
 
     const orderbook = screen.getByTestId('card-orderbook');
@@ -168,10 +168,10 @@ describe('LiveSidebar', () => {
     const brokers = screen.getByTestId('card-brokers');
 
     expect(
-      orderbook.compareDocumentPosition(volumeDistribution) & Node.DOCUMENT_POSITION_FOLLOWING,
+      orderbook.compareDocumentPosition(brokers) & Node.DOCUMENT_POSITION_FOLLOWING,
     ).toBeTruthy();
     expect(
-      volumeDistribution.compareDocumentPosition(brokers) & Node.DOCUMENT_POSITION_FOLLOWING,
+      brokers.compareDocumentPosition(volumeDistribution) & Node.DOCUMENT_POSITION_FOLLOWING,
     ).toBeTruthy();
   });
 
@@ -554,35 +554,34 @@ describe('LiveSidebar cursor branching (ADR-0044)', () => {
     );
   });
 
-  it('uses latest live sidebar data when the cursor is pinned to the latest candle', () => {
+  it('uses cursor spot data when the cursor is pinned to the latest candle', () => {
     const latestCandleMs = bundleFixture.candles[bundleFixture.candles.length - 1].ts_ms;
-    const liveWithData: LiveSeriesData = {
-      ...emptyLive,
-      ob: [
-        {
-          t_ms: latestCandleMs,
-          kind: 'ob',
-          asks: Array.from({ length: 10 }, (_, i) => ({ price: 70010 + i, qty: 10 + i })),
-          bids: Array.from({ length: 10 }, (_, i) => ({ price: 70000 - i, qty: 20 + i })),
-          total_ask_qty: 145,
-          total_bid_qty: 245,
-        },
-      ],
-      broker: [
-        {
-          t_ms: latestCandleMs,
-          kind: 'broker',
-          buy_top: [{ name: '미래에셋증권', qty: 123 }],
-          sell_top: [],
-        },
-      ],
-    };
+    (cursorHooks.useLiveOrderbookAtCursor as ReturnType<typeof vi.fn>).mockReturnValue({
+      snapshot: {
+        ts_ms: latestCandleMs,
+        seq: 0,
+        ask: Array.from({ length: 10 }, (_, i) => ({ price: 71010 + i, qty: 10 + i })),
+        bid: Array.from({ length: 10 }, (_, i) => ({ price: 71000 - i, qty: 20 + i })),
+        tot_ask: 145,
+        tot_bid: 245,
+      },
+      available_from: null,
+      source: 'hogaplay',
+    });
+    (cursorHooks.useLiveBrokersAtCursor as ReturnType<typeof vi.fn>).mockReturnValue([
+      {
+        broker: '미래에셋증권',
+        final_net: 123,
+        dominant_side: 'buy',
+        points: [{ ts_ms: latestCandleMs, net: 123 }],
+      },
+    ]);
 
     act(() => useLiveCursorStore.getState().setCursor(latestCandleMs));
-    renderSidebar({ code: '005930', live: liveWithData, bundle: bundleFixture });
+    renderSidebar({ code: '005930', live: emptyLive, bundle: bundleFixture });
 
     expect(screen.queryByText('커서 위치 로딩 중…')).toBeNull();
-    expect(screen.getByText('70,010')).toBeInTheDocument();
+    expect(screen.getByText('71,010')).toBeInTheDocument();
     expect(screen.getByText('+123')).toBeInTheDocument();
   });
 
