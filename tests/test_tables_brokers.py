@@ -127,7 +127,7 @@ def test_query_day_series_returns_all_recorded_brokers(tmp_path: Path) -> None:
     )
 
 
-def test_query_late_entry_events_start_a_new_observation_window(
+def test_query_late_entry_events_use_pre_threshold_brokers_as_initial_state(
     tmp_path: Path,
 ) -> None:
     before = PARSERS[4](
@@ -167,23 +167,78 @@ def test_query_late_entry_events_start_a_new_observation_window(
     events = query_late_entry_events(con, path=out, threshold_ms=93000000)
     triples = [(e.t_ms, e.broker, e.side) for e in events]
 
-    assert (93000000, "Dual", "buy") in triples
+    assert (93000000, "Dual", "buy") not in triples
     assert (93000000, "Dual", "sell") in triples
     assert (93000000, "NewBuy", "buy") in triples
     assert (93000000, "NewSell", "sell") in triples
     assert (94500000, "LaterBuy", "buy") in triples
     assert (94500000, "LaterSell", "sell") in triples
-    assert triples.count((93000000, "NewBuy", "buy")) == 1
+    assert not any(t_ms == 94500000 and broker == "NewBuy" for t_ms, broker, _side in triples)
+    assert not any(t_ms == 94500000 and broker == "Dual" for t_ms, broker, _side in triples)
+
+
+def test_query_late_entry_events_include_reappearing_broker_side_pairs(
+    tmp_path: Path,
+) -> None:
+    before = PARSERS[4](
+        _broker_parts_named(
+            ts_ms=92900000,
+            seq=1,
+            sell_names=["S1", "S2", "S3", "S4", "S5"],
+            sell_today=[10, 10, 10, 10, 10],
+            buy_names=["ReBuy", "B2", "B3", "B4", "B5"],
+            buy_today=[50, 10, 10, 10, 10],
+        )
+    )
+    gone = PARSERS[4](
+        _broker_parts_named(
+            ts_ms=93000000,
+            seq=2,
+            sell_names=["S1", "S2", "S3", "S4", "S5"],
+            sell_today=[10, 10, 10, 10, 10],
+            buy_names=["NewBuy", "B2", "B3", "B4", "B5"],
+            buy_today=[80, 10, 10, 10, 10],
+        )
+    )
+    returned = PARSERS[4](
+        _broker_parts_named(
+            ts_ms=94500000,
+            seq=3,
+            sell_names=["S1", "S2", "S3", "S4", "S5"],
+            sell_today=[10, 10, 10, 10, 10],
+            buy_names=["ReBuy", "NewBuy", "B3", "B4", "B5"],
+            buy_today=[90, 90, 10, 10, 10],
+        )
+    )
+    out = tmp_path / "brokers.parquet"
+    write_parquet(before + gone + returned, out)
+    con = duckdb.connect()
+
+    events = query_late_entry_events(con, path=out, threshold_ms=93000000)
+    triples = [(e.t_ms, e.broker, e.side) for e in events]
+
+    assert (93000000, "NewBuy", "buy") in triples
+    assert (94500000, "ReBuy", "buy") in triples
     assert not any(t_ms == 94500000 and broker == "NewBuy" for t_ms, broker, _side in triples)
 
 
 def test_query_late_entry_events_collapses_aliases_before_selection(
     tmp_path: Path,
 ) -> None:
-    s1 = PARSERS[4](
+    baseline = PARSERS[4](
         _broker_parts_named(
             ts_ms=93000000,
             seq=1,
+            sell_names=["S1", "S2", "S3", "S4", "S5"],
+            sell_today=[10, 10, 10, 10, 10],
+            buy_names=["B1", "B2", "B3", "B4", "B5"],
+            buy_today=[10, 10, 10, 10, 10],
+        )
+    )
+    later = PARSERS[4](
+        _broker_parts_named(
+            ts_ms=93100000,
+            seq=2,
             sell_names=["신한증권", "신한투자증권", "S3", "S4", "S5"],
             sell_today=[40, 60, 10, 10, 10],
             buy_names=["B1", "B2", "B3", "B4", "B5"],
@@ -191,7 +246,7 @@ def test_query_late_entry_events_collapses_aliases_before_selection(
         )
     )
     out = tmp_path / "brokers.parquet"
-    write_parquet(s1, out)
+    write_parquet(baseline + later, out)
     con = duckdb.connect()
 
     events = query_late_entry_events(con, path=out, threshold_ms=93000000)
@@ -199,7 +254,7 @@ def test_query_late_entry_events_collapses_aliases_before_selection(
     shinhan = [e for e in events if e.broker == "신한투자증권"]
     assert len(shinhan) == 1
     assert shinhan[0].side == "sell"
-    assert shinhan[0].t_ms == 93000000
+    assert shinhan[0].t_ms == 93100000
     assert shinhan[0].net == -100
     assert not any(e.broker == "신한증권" for e in events)
 
