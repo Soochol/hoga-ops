@@ -120,4 +120,21 @@ describe('programTrade projector', () => {
       { time: axis.toVirtual(OPEN + 180_000) / 1000, value: 200_000 },
     ]);
   });
+
+  it('matches program points to hoga time slots by display bucket', () => {
+    const b = bundle([
+      { t: OPEN + 60_006, net_qty: 10, net_amount: 100_000, gap_risk: false },
+      { t: OPEN + 120_006, net_qty: 20, net_amount: 200_000, gap_risk: false },
+    ], []);
+    b.quote_ratio.points = [
+      quotePoint(OPEN + 60_004),
+      quotePoint(OPEN + 120_004),
+    ];
+    const axis = createVirtualAxis([{ date: '20260512', sessionOpenMs: OPEN, sessionCloseMs: CLOSE }], OPEN);
+
+    expect(projectProgramTradeNetAmount(b, axis)).toEqual([
+      { time: axis.toVirtual(OPEN + 60_000) / 1000, value: 100_000 },
+      { time: axis.toVirtual(OPEN + 120_000) / 1000, value: 200_000 },
+    ]);
+  });
 });
