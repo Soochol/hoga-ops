@@ -214,8 +214,9 @@ def query_late_entry_events(
     *,
     path: Path,
     threshold_ms: int,
+    absence_window_ms: int = 30 * 60 * 1000,
 ) -> list[BrokerLateEntryEventRow]:
-    """Return post-threshold broker-side entry transitions.
+    """Return post-threshold broker-side entries absent for a rolling window.
 
     ``threshold_ms`` and returned ``t_ms`` use the parquet-native HHMMSSmmm
     encoding. The API layer converts them to Unix ms.
@@ -245,28 +246,48 @@ def query_late_entry_events(
         key = (broker, side, int(ts_ms_raw))
         collapsed[key] = collapsed.get(key, 0) + int(net_raw)
 
-    previous_present: set[tuple[str, BrokerSide]] = {
-        (broker, side) for broker, side, ts_ms in collapsed if ts_ms < threshold_ms
-    }
+    first_seen_ms = min((_hhmmssms_to_midnight_ms(ts_ms) for _, _, ts_ms in collapsed), default=0)
+    last_seen: dict[tuple[str, BrokerSide], int] = {}
     by_ts: dict[int, dict[tuple[str, BrokerSide], int]] = {}
     for (broker, side, ts_ms), net in collapsed.items():
-        if ts_ms >= threshold_ms:
-            by_ts.setdefault(ts_ms, {})[(broker, side)] = net
+        by_ts.setdefault(ts_ms, {})[(broker, side)] = net
 
     events: list[BrokerLateEntryEventRow] = []
+    previous_present: set[tuple[str, BrokerSide]] = set()
     for ts_ms in sorted(by_ts):
+        ts_midnight_ms = _hhmmssms_to_midnight_ms(ts_ms)
         current = by_ts[ts_ms]
         current_present = set(current)
-        for broker, side in sorted(current_present - previous_present):
-            events.append(BrokerLateEntryEventRow(
-                t_ms=ts_ms,
-                broker=broker,
-                side=side,
-                net=current[(broker, side)],
-            ))
+        if ts_ms >= threshold_ms:
+            for broker, side in sorted(current_present - previous_present):
+                previous_ts = last_seen.get((broker, side))
+                absent_long_enough = (
+                    previous_ts is None
+                    and ts_midnight_ms - first_seen_ms >= absence_window_ms
+                ) or (
+                    previous_ts is not None
+                    and ts_midnight_ms - previous_ts >= absence_window_ms
+                )
+                if absent_long_enough:
+                    events.append(BrokerLateEntryEventRow(
+                        t_ms=ts_ms,
+                        broker=broker,
+                        side=side,
+                        net=current[(broker, side)],
+                    ))
+        for broker, side in current_present:
+            last_seen[(broker, side)] = ts_midnight_ms
         previous_present = current_present
 
     return events
+
+
+def _hhmmssms_to_midnight_ms(value: int) -> int:
+    hh = value // 10_000_000
+    mm = (value // 100_000) % 100
+    ss = (value // 1_000) % 100
+    ms = value % 1_000
+    return ((hh * 60 + mm) * 60 + ss) * 1_000 + ms
 
 
 def _final_broker_order(

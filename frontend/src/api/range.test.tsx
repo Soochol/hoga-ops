@@ -48,6 +48,7 @@ describe('buildRangeBundleRequest', () => {
       options: {
         mode: 'full',
         brokerLateEntryStartHHMM: 945,
+        brokerLateEntryWindowMinutes: 30,
         volumeDistributionBins: 12,
         volumeDistributionPriceRange: { min: 69900, max: 70100 },
         tradeVolumePocBins: 12,
@@ -59,6 +60,7 @@ describe('buildRangeBundleRequest', () => {
       '/api/range?code=005930&from=20260512&to=20260512&bucket_ms=60000'
         + '&price_min=100&price_max=200'
         + '&broker_late_entry_start_hhmm=945'
+        + '&broker_late_entry_window_minutes=30'
         + '&volume_distribution_bins=12'
         + '&volume_distribution_price_min=69900&volume_distribution_price_max=70100'
         + '&trade_volume_poc_bins=12'
@@ -74,6 +76,7 @@ describe('buildRangeBundleRequest', () => {
       200,
       null,
       945,
+      30,
       12,
       69900,
       70100,
@@ -153,6 +156,7 @@ describe('buildRangeBundleRequest', () => {
       null,
       null,
       null,
+      null,
       undefined,
       undefined,
       null,
@@ -208,6 +212,7 @@ describe('rangeBundleQueryOptions', () => {
       300_000,
       undefined,
       undefined,
+      null,
       null,
       null,
       12,
@@ -371,6 +376,32 @@ describe('useRange', () => {
     await waitFor(() => expect(spy).toHaveBeenCalledTimes(2));
     expect(spy.mock.calls[1][0]).toContain('&broker_late_entry_start_hhmm=950');
   });
+
+  it('threads broker_late_entry_window_minutes into query string and query key', async () => {
+    const spy = vi.spyOn(client, 'apiCall').mockResolvedValue(fakeBundle);
+    const { rerender } = renderHook(
+      ({ brokerLateEntryWindowMinutes }) => useRange(
+        '005930',
+        '20260512',
+        '20260512',
+        '1m',
+        undefined,
+        null,
+        { mode: 'full', brokerLateEntryWindowMinutes },
+      ),
+      {
+        wrapper: makeWrapper(),
+        initialProps: { brokerLateEntryWindowMinutes: 30 },
+      },
+    );
+
+    await waitFor(() => expect(spy).toHaveBeenCalledTimes(1));
+    expect(spy.mock.calls[0][0]).toContain('&broker_late_entry_window_minutes=30');
+
+    rerender({ brokerLateEntryWindowMinutes: 45 });
+    await waitFor(() => expect(spy).toHaveBeenCalledTimes(2));
+    expect(spy.mock.calls[1][0]).toContain('&broker_late_entry_window_minutes=45');
+  });
 });
 
 describe('rangeFreshnessOptions (review C1 — pastMaxQrT advance)', () => {
@@ -426,6 +457,7 @@ describe('rangePlaceholderData', () => {
     null,
     930,
     null,
+    null,
     undefined,
     undefined,
     null,
@@ -444,6 +476,7 @@ describe('rangePlaceholderData', () => {
       undefined,
       null,
       930,
+      null,
       null,
       undefined,
       undefined,
@@ -466,6 +499,7 @@ describe('rangePlaceholderData', () => {
       undefined,
       null,
       945,
+      null,
       null,
       undefined,
       undefined,
