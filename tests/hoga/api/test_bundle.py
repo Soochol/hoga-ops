@@ -663,6 +663,57 @@ def test_build_range_bundle_attaches_program_trade_sidecar_from_disk(tmp_path):
     ]
 
 
+def test_build_range_bundle_hoga_mode_keeps_program_trade_sidecar(tmp_path):
+    import contextlib
+
+    from hoga.api import bundle as bundle_mod
+    from hoga.api.bundle import build_range_bundle
+    from hoga.live.kis_models import ProgramTradeByStockRow
+    from hoga.live.program_trade_store import ProgramTradeStore
+
+    ProgramTradeStore(tmp_path).merge_response(
+        code="005930",
+        date="20260512",
+        observed_at_ms=100,
+        rows=[
+            ProgramTradeByStockRow(
+                code="005930",
+                bsop_hour="090000",
+                t_ms=1_747_006_200_000,
+                price=70000,
+                net_qty=1000,
+                net_amount=70_000_000,
+                buy_qty=None,
+                sell_qty=None,
+                buy_amount=None,
+                sell_amount=None,
+                delta_qty=1000,
+                delta_amount=70_000_000,
+            )
+        ],
+    )
+
+    mock_engine = _engine_with_meta_for_dates(["20260512"])
+    mock_engine.data_dir = tmp_path
+    with contextlib.ExitStack() as stack:
+        for pcm in _patch_slice_builders(bundle_mod):
+            stack.enter_context(pcm)
+        rb = build_range_bundle(
+            mock_engine,
+            code="005930",
+            from_date="20260512",
+            to_date="20260512",
+            bucket_ms=60_000,
+            mode="hoga",
+        )
+
+    assert rb.candles == []
+    assert rb.program_trade.source == "kis_program_trade"
+    assert [(p.t, p.net_amount) for p in rb.program_trade.points] == [
+        (1_747_006_200_000, 70_000_000)
+    ]
+
+
 def test_build_volume_distribution_slice_returns_unix_session_bounds(tmp_path):
     from hoga.api import bundle as bundle_mod
     from hoga.api.bundle import build_volume_distribution_slice

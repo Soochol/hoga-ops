@@ -117,6 +117,9 @@ interface Props {
    * doesn't churn the candle path. Optional + falls back to `bundle` so existing
    * single-bundle callers/tests keep working unchanged. */
   chartBundle?: RangeBundle | null;
+  /** Quote/ratio/fill panes read this hoga-only bundle so their first paint and
+   * tick path are independent from slower full sidecar slices. */
+  hogaPaneBundle?: RangeBundle | null;
   /** Optional pane-specific bundle for ratio display when the source is already display-locked. */
   ratioBundle?: RangeBundle | null;
   clampEngaged: boolean;
@@ -182,7 +185,7 @@ export function shouldShowTradeVolumePocOverlay(
 /** /live's single-chart root. Mounts the timeframe-appropriate pane set
  * (see `paneSpecsForTimeframe`) inside one createChart instance so
  * timeScale is shared across candle/volume/(hoga) panes. */
-export function LiveChartRoot({ code, timeframe, venue = 'KRX', viewIdentity, bundle, chartBundle, ratioBundle, clampEngaged, isPastCandlesLoading, isExtending = false, pastDataWarnings, restoreViewport = null, dayAskPeaks = EMPTY_ASK_PEAKS, todayAllPriceAskPeak = null, dayBidPeaks = EMPTY_BID_PEAKS, todayAllPriceBidPeak = null, todayKst = '', tradeVolumePocs = [], forceHogaPanes = false, paneTogglesOverride, dailyMovingAverageOverride, tradeVolumePocOverride, onViewportCaptureReady, onCursorActiveChange, onCandleBasisHover, onCandleBasisClick }: Props) {
+export function LiveChartRoot({ code, timeframe, venue = 'KRX', viewIdentity, bundle, chartBundle, hogaPaneBundle, ratioBundle, clampEngaged, isPastCandlesLoading, isExtending = false, pastDataWarnings, restoreViewport = null, dayAskPeaks = EMPTY_ASK_PEAKS, todayAllPriceAskPeak = null, dayBidPeaks = EMPTY_BID_PEAKS, todayAllPriceBidPeak = null, todayKst = '', tradeVolumePocs = [], forceHogaPanes = false, paneTogglesOverride, dailyMovingAverageOverride, tradeVolumePocOverride, onViewportCaptureReady, onCursorActiveChange, onCandleBasisHover, onCandleBasisClick }: Props) {
   const containerRef = useRef<HTMLDivElement>(null);
   // 과거 fetch 경고 요약 — rate-limit 지연(빈칸 문구 전환)과 일부 구간 누락(부분로딩 칩)
   // 표시에 쓴다. summarizeWarnings는 null/빈배열을 {count:0,hasRateLimit:false}로 접는다.
@@ -203,7 +206,8 @@ export function LiveChartRoot({ code, timeframe, venue = 'KRX', viewIdentity, bu
   // candle path's props referentially identical.
   const cb = chartBundle ?? bundle;
   const hogaBundle = bundle ?? cb;
-  const paneRatioBundle = ratioBundle ?? hogaBundle;
+  const paneHogaBundle = hogaPaneBundle ?? hogaBundle;
+  const paneRatioBundle = ratioBundle ?? paneHogaBundle;
   // Load identity for the per-view chart remount and the reveal cover.
   const viewKey = viewIdentity ? `${code ?? ''}|${timeframe}|${viewIdentity}` : `${code ?? ''}|${timeframe}`;
   // Chart identity is KEYED by the view it was created for. On a viewKey
@@ -938,7 +942,15 @@ export function LiveChartRoot({ code, timeframe, venue = 'KRX', viewIdentity, bu
               chart={chart}
               // hoga panes (spec.live) get the live bundle; candle/volume/investor
               // panes get the stable chartBundle so an SSE tick doesn't re-setData them.
-              bundle={spec.name === 'ratio' ? (paneRatioBundle ?? cb) : spec.live ? (bundle ?? cb) : cb}
+              bundle={
+                spec.name === 'ratio'
+                  ? (paneRatioBundle ?? cb)
+                  : (spec.name === 'quote-totals' || spec.name === 'fill-strength')
+                    ? (paneHogaBundle ?? cb)
+                    : spec.live
+                      ? (bundle ?? cb)
+                      : cb
+              }
               axis={axis}
               paneIndex={i}
               spec={spec}
