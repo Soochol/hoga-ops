@@ -106,6 +106,26 @@ describe('programTrade projector', () => {
     ]);
   });
 
+  it('does not render program points in the closing auction window', () => {
+    const auctionStart = CLOSE - 10 * 60_000;
+    const b = bundle([
+      { t: auctionStart - 60_000, net_qty: 10, net_amount: 100_000, gap_risk: false },
+      { t: auctionStart, net_qty: 20, net_amount: 200_000, gap_risk: false },
+      { t: auctionStart + 60_000, net_qty: 30, net_amount: 300_000, gap_risk: false },
+      { t: CLOSE, net_qty: 40, net_amount: 400_000, gap_risk: false },
+    ], [
+      auctionStart - 60_000,
+      auctionStart,
+      auctionStart + 60_000,
+      CLOSE,
+    ]);
+    const axis = createVirtualAxis([{ date: '20260512', sessionOpenMs: OPEN, sessionCloseMs: CLOSE }], OPEN);
+
+    expect(projectProgramTradeNetAmount(b, axis)).toEqual([
+      { time: axis.toVirtual(auctionStart - 60_000) / 1000, value: 100_000 },
+    ]);
+  });
+
   it('breaks the connector across hoga gap sentinels like quote totals', () => {
     const b = bundle([
       { t: OPEN + 60_000, net_qty: 10, net_amount: 100_000, gap_risk: false },

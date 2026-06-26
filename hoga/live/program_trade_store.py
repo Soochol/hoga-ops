@@ -10,6 +10,7 @@ from pydantic import BaseModel, Field, ValidationError
 
 from hoga.api.timeenc import hhmmssms_to_unix_ms
 from hoga.api._atomic_write import atomic_write_json
+from hoga.live.kis_client import KIS_KST
 from hoga.live.kis_models import ProgramTradeByStockRow
 
 log = logging.getLogger(__name__)
@@ -86,16 +87,30 @@ class ProgramTradeStore:
         new_newest = incoming[-1].bsop_hour
 
         if previous_latest is not None and previous_latest > new_newest:
-            current.anomaly_events.append({
-                "kind": "stale_or_out_of_order",
-                "previous_latest": previous_latest,
-                "new_oldest": new_oldest,
-                "new_newest": new_newest,
-                "observed_at_ms": observed_at_ms,
-            })
-            current.updated_at_ms = observed_at_ms
-            self._write(current)
-            return current
+            if _is_future_sidecar(
+                date=date,
+                observed_at_ms=observed_at_ms,
+                previous_latest=previous_latest,
+                new_newest=new_newest,
+            ):
+                self._quarantine(current)
+                current = ProgramTradeDayFile(
+                    code=code,
+                    date=date,
+                    poll_interval_ms=self._poll_interval_ms,
+                )
+                previous_latest = None
+            else:
+                current.anomaly_events.append({
+                    "kind": "stale_or_out_of_order",
+                    "previous_latest": previous_latest,
+                    "new_oldest": new_oldest,
+                    "new_newest": new_newest,
+                    "observed_at_ms": observed_at_ms,
+                })
+                current.updated_at_ms = observed_at_ms
+                self._write(current)
+                return current
 
         if (
             previous_latest is not None
@@ -127,8 +142,33 @@ class ProgramTradeStore:
     def _write(self, day: ProgramTradeDayFile) -> None:
         atomic_write_json(self.path(day.code, day.date), day.model_dump())
 
+    def _quarantine(self, day: ProgramTradeDayFile) -> None:
+        path = self.path(day.code, day.date)
+        if not path.exists():
+            return
+        stamp = dt.datetime.now().strftime("%Y%m%dT%H%M%S")
+        backup = path.with_name(f"{path.name}.poisoned-{stamp}")
+        try:
+            path.rename(backup)
+        except OSError:
+            log.exception("could not quarantine poisoned program-trade file path=%s", path)
+
 
 def _row_time_ms(*, date: str, bsop_hour: str, t_ms: int) -> int:
     if t_ms > 0:
         return t_ms
     return hhmmssms_to_unix_ms(date, int(bsop_hour) * 1000)
+
+
+def _is_future_sidecar(
+    *,
+    date: str,
+    observed_at_ms: int,
+    previous_latest: str,
+    new_newest: str,
+) -> bool:
+    observed = dt.datetime.fromtimestamp(observed_at_ms / 1000, tz=KIS_KST)
+    if observed.strftime("%Y%m%d") != date:
+        return False
+    observed_hhmmss = f"{observed.hour:02d}{observed.minute:02d}{observed.second:02d}"
+    return previous_latest > observed_hhmmss and new_newest <= observed_hhmmss
