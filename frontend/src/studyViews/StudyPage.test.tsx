@@ -310,6 +310,15 @@ describe('StudyPage', () => {
     expect(useLiveOrderbookAtCursorMock).toHaveBeenCalledWith({ code: '005930', timeframe: '5m' });
     expect(useLiveBrokersAtCursorMock).toHaveBeenCalledWith({ code: '005930', timeframe: '5m' });
     expect(screen.getByTestId('study-reference-detail-panel')).toBeTruthy();
+    const orderbookCard = screen.getByTestId('study-detail-card-orderbook');
+    const brokersCard = screen.getByTestId('study-detail-card-brokers');
+    const volumeDistributionCard = screen.getByTestId('study-detail-card-volume-distribution');
+    expect(
+      orderbookCard.compareDocumentPosition(brokersCard) & Node.DOCUMENT_POSITION_FOLLOWING,
+    ).toBeTruthy();
+    expect(
+      brokersCard.compareDocumentPosition(volumeDistributionCard) & Node.DOCUMENT_POSITION_FOLLOWING,
+    ).toBeTruthy();
     expect(screen.getByText('70,100')).toBeTruthy();
     expect(screen.getByLabelText('매도총잔량 145')).toBeTruthy();
     expect(screen.getByText('키움')).toBeTruthy();
