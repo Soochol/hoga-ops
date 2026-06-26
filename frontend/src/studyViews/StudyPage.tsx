@@ -3,7 +3,9 @@ import { useNavigate, useSearchParams } from 'react-router';
 import { LiveChartRoot } from '../live/LiveChartRoot';
 import { tradeVolumePocsFromWire } from '../live/tradeVolumePocWire';
 import { useLiveCursorStore } from '../live/useLiveCursorStore';
+import { isMinuteTimeframe, type MinuteTimeframe } from '../state/livePage';
 import type { TabViewport } from '../live/viewportAnchor';
+import { useLiveOrderbookAtCursor, useLiveBrokersAtCursor } from '../api/useLiveCursor';
 import { useEntryDragStore } from '../state/entryDrag';
 import { useStudyTabsStore } from '../state/studyTabs';
 import { StudyDetailPanel } from './StudyDetailPanel';
@@ -120,11 +122,39 @@ export function StudyPage() {
   );
   const isLoadingActiveView = activeViewModel.status === 'loading';
   const isErrorActiveView = activeViewModel.status === 'error';
+  const referenceSpotTimeframe: MinuteTimeframe | null =
+    activeViewModel.status === 'ready' &&
+    activeViewModel.variant === 'reference' &&
+    isMinuteTimeframe(activeViewModel.save.timeframe)
+      ? activeViewModel.save.timeframe
+      : null;
+  const referenceSpotCode =
+    activeViewModel.status === 'ready' && activeViewModel.variant === 'reference'
+      ? activeViewModel.save.code
+      : null;
+  const referenceSpotOrderbook = useLiveOrderbookAtCursor({
+    code: referenceSpotCode,
+    timeframe: referenceSpotTimeframe,
+  });
+  const referenceSpotBrokers = useLiveBrokersAtCursor({
+    code: referenceSpotCode,
+    timeframe: referenceSpotTimeframe,
+  });
   const referenceDetails = useMemo(
     () => activeViewModel.status === 'ready' && activeViewModel.variant === 'reference'
-      ? studyReferenceDetails(activeViewModel.bundle)
+      ? studyReferenceDetails(activeViewModel.bundle, {
+        cursorMs: isCursorActive ? cursorMs : null,
+        orderbook: referenceSpotOrderbook?.snapshot,
+        brokers: referenceSpotBrokers,
+      })
       : null,
-    [activeViewModel],
+    [
+      activeViewModel,
+      cursorMs,
+      isCursorActive,
+      referenceSpotBrokers,
+      referenceSpotOrderbook?.snapshot,
+    ],
   );
   const captureViewportRef = useRef<() => TabViewport | null>(() => null);
   const draggingEntry = useEntryDragStore((s) => s.draggingCode != null);

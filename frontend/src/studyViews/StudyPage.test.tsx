@@ -9,7 +9,17 @@ import type { RangeBundle } from '../api/types';
 import type { LiveChartRoot } from '../live/LiveChartRoot';
 import { useStudyTabsStore } from '../state/studyTabs';
 
-const { useStudyViewSnapshotMock, useStudyViewsMock, useStudyViewMutationsMock, useStudyReferenceBundleMock, liveChartRootMock, useLiveBundleMock, useRangeMock } = vi.hoisted(() => ({
+const {
+  useStudyViewSnapshotMock,
+  useStudyViewsMock,
+  useStudyViewMutationsMock,
+  useStudyReferenceBundleMock,
+  liveChartRootMock,
+  useLiveBundleMock,
+  useRangeMock,
+  useLiveOrderbookAtCursorMock,
+  useLiveBrokersAtCursorMock,
+} = vi.hoisted(() => ({
   useStudyViewSnapshotMock: vi.fn(),
   useStudyViewsMock: vi.fn(),
   useStudyViewMutationsMock: vi.fn(),
@@ -17,6 +27,8 @@ const { useStudyViewSnapshotMock, useStudyViewsMock, useStudyViewMutationsMock, 
   liveChartRootMock: vi.fn(),
   useLiveBundleMock: vi.fn(),
   useRangeMock: vi.fn(),
+  useLiveOrderbookAtCursorMock: vi.fn(),
+  useLiveBrokersAtCursorMock: vi.fn(),
 }));
 
 vi.mock('./useStudyViews', () => ({
@@ -42,6 +54,11 @@ vi.mock('../live/useLiveBundle', () => ({
 
 vi.mock('../api/range', () => ({
   useRange: useRangeMock,
+}));
+
+vi.mock('../api/useLiveCursor', () => ({
+  useLiveOrderbookAtCursor: useLiveOrderbookAtCursorMock,
+  useLiveBrokersAtCursor: useLiveBrokersAtCursorMock,
 }));
 
 import { StudyPage } from './StudyPage';
@@ -257,6 +274,8 @@ describe('StudyPage', () => {
       error: null,
       pastDataWarnings: [],
     });
+    useLiveOrderbookAtCursorMock.mockReturnValue(undefined);
+    useLiveBrokersAtCursorMock.mockReturnValue(undefined);
     useLiveCursorStore.getState().resetCursor();
     (useEntryDragStore.setState as unknown as (state: Record<string, unknown>) => void)({
       draggingCode: null,
@@ -404,6 +423,60 @@ describe('StudyPage', () => {
     expect(screen.getByTestId('volume-distribution-card')).toBeTruthy();
     expect(screen.getByTestId('card-brokers')).toHaveTextContent('거래원');
     expect(screen.getByText('거래원 정보 없음')).toBeTruthy();
+  });
+
+  it('hydrates reference study detail cards from cursor spot data on hover', () => {
+    const refSave = makeReferenceSave();
+    const bundle = {
+      ...makeRangeBundle(),
+      candles: [{ ts_ms: 1_000, open: 1, high: 2, low: 1, close: 2, vol_a: 10, vol_b: 0 }],
+    };
+    useStudyViewsMock.mockReturnValue({
+      data: { schema_version: 1, saves: [refSave] },
+      isLoading: false,
+      isError: false,
+    });
+    useStudyViewSnapshotMock.mockReturnValue({ data: undefined, isLoading: false, isError: false });
+    useStudyReferenceBundleMock.mockReturnValue({
+      bundle,
+      chartBundle: bundle,
+      isLoading: false,
+      error: null,
+      pastDataWarnings: [],
+    });
+    useLiveOrderbookAtCursorMock.mockReturnValue({
+      available_from: null,
+      source: 'hogaplay',
+      snapshot: {
+        ts_ms: 1_999,
+        seq: 7,
+        ask: Array.from({ length: 10 }, (_, i) => ({ price: 71_000 + i, qty: 10 + i })),
+        bid: Array.from({ length: 10 }, (_, i) => ({ price: 70_900 - i, qty: 20 + i })),
+        tot_ask: 145,
+        tot_bid: 245,
+      },
+    });
+    useLiveBrokersAtCursorMock.mockReturnValue([
+      {
+        broker: '키움증권',
+        final_net: 100,
+        dominant_side: 'buy',
+        points: [{ ts_ms: 1_000, net: 100 }],
+      },
+    ]);
+
+    renderAt('/study?view=view-ref');
+    const props = liveChartRootMock.mock.calls[0][0] as ComponentProps<typeof LiveChartRoot>;
+    act(() => {
+      props.onCursorActiveChange?.(true);
+      useLiveCursorStore.getState().setCursor(1_500);
+    });
+
+    expect(screen.getByRole('group', { name: '총잔량' })).toBeTruthy();
+    expect(screen.getByLabelText('매도총잔량 145')).toBeInTheDocument();
+    expect(screen.getByLabelText('매수총잔량 245')).toBeInTheDocument();
+    expect(screen.getByText('키움')).toBeTruthy();
+    expect(screen.getByText('+100')).toBeTruthy();
   });
 
   it('scrolls the study detail panel when Alt+wheel is used over the chart', () => {

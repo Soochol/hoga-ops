@@ -1,4 +1,4 @@
-import type { BrokerSeriesEntry, BrokerSeriesPoint, RangeBundle, VolumeProfile } from '../api/types';
+import type { BrokerSeriesEntry, BrokerSeriesPoint, OrderbookSnapshot, RangeBundle, VolumeProfile } from '../api/types';
 import type {
   ParquetStudySnapshot,
   StudyBrokerBucket,
@@ -90,10 +90,56 @@ export function studySnapshotDetails(
   };
 }
 
-export function studyReferenceDetails(bundle: RangeBundle): StudySnapshotDetailInput {
+function brokerNetAtCursor(points: readonly BrokerSeriesPoint[], cursorMs: number): number {
+  let net = 0;
+  for (const point of points) {
+    if (point.ts_ms > cursorMs) break;
+    net = point.net;
+  }
+  return net;
+}
+
+export function studyReferenceDetails(
+  bundle: RangeBundle,
+  spot?: {
+    cursorMs: number | null;
+    orderbook?: OrderbookSnapshot | null;
+    brokers?: BrokerSeriesEntry[];
+  },
+): StudySnapshotDetailInput {
+  const bucketStart = spot?.cursorMs == null
+    ? null
+    : bucketStartForCursor(bundle.candles, bundle.bucket_ms, spot.cursorMs);
+  const orderbookByBucketStart = new Map<number, StudyOrderbookBucket>();
+  const brokersByBucketStart = new Map<number, StudyBrokerBucket>();
+
+  if (bucketStart != null && spot) {
+    if (spot.orderbook) {
+      orderbookByBucketStart.set(bucketStart, {
+        t: bucketStart,
+        snapshot: spot.orderbook,
+        available: true,
+      });
+    }
+    if (spot.brokers) {
+      const brokers = spot.brokers
+        .map((broker) => ({
+          broker: broker.broker,
+          net: brokerNetAtCursor(broker.points, spot.cursorMs ?? bucketStart),
+          dominant_side: broker.dominant_side,
+        }))
+        .filter((broker) => broker.net !== 0);
+      brokersByBucketStart.set(bucketStart, {
+        t: bucketStart,
+        brokers,
+        available: brokers.length > 0,
+      });
+    }
+  }
+
   return {
-    orderbookByBucketStart: new Map(),
-    brokersByBucketStart: new Map(),
+    orderbookByBucketStart,
+    brokersByBucketStart,
     detailWarnings: [],
     volumeDistributionEnabled: true,
     volumeDistributionColor: '#64748B',
