@@ -19,6 +19,7 @@ def _build_range_bundle_stub(
     volume_distribution_price_min=None,
     volume_distribution_price_max=None,
     trade_volume_poc_bins=None,
+    mode="full",
 ):
     """Return a minimal valid RangeBundle for happy-path tests."""
     from hoga.api.models import (
@@ -306,6 +307,7 @@ def test_api_range_source_pref_threads_through(app_client: TestClient) -> None:
         volume_distribution_price_min=None,
         volume_distribution_price_max=None,
         trade_volume_poc_bins=None,
+        mode="full",
     ):
         captured.append(source_pref)
         return _build_range_bundle_stub(
@@ -318,6 +320,7 @@ def test_api_range_source_pref_threads_through(app_client: TestClient) -> None:
             volume_distribution_price_min=volume_distribution_price_min,
             volume_distribution_price_max=volume_distribution_price_max,
             trade_volume_poc_bins=trade_volume_poc_bins,
+            mode=mode,
         )
 
     with patch("hoga.api.routes.build_range_bundle", side_effect=_stub):
@@ -346,6 +349,7 @@ def test_api_range_source_pref_defaults_to_hogaplay(app_client: TestClient) -> N
         volume_distribution_price_min=None,
         volume_distribution_price_max=None,
         trade_volume_poc_bins=None,
+        mode="full",
     ):
         captured.append(source_pref)
         return _build_range_bundle_stub(
@@ -358,6 +362,7 @@ def test_api_range_source_pref_defaults_to_hogaplay(app_client: TestClient) -> N
             volume_distribution_price_min=volume_distribution_price_min,
             volume_distribution_price_max=volume_distribution_price_max,
             trade_volume_poc_bins=trade_volume_poc_bins,
+            mode=mode,
         )
 
     with patch("hoga.api.routes.build_range_bundle", side_effect=_stub):

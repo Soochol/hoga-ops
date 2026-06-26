@@ -78,6 +78,10 @@ DEFAULT_TRADE_VOLUME_POC_BINS = 10
 _ONE_MINUTE_MS = 60_000
 
 
+def _empty_volume_profile() -> VolumeProfile:
+    return VolumeProfile(bin_count=0, price_min=0, price_max=0, bin_width=0, bins=[])
+
+
 def _resolve_source(engine: QueryEngine, date: str, code: str, pref: str) -> str:
     """Backward-compatible source-name helper for older unit tests."""
     return resolve_source_result(engine, date, code, pref).source
@@ -981,7 +985,7 @@ def _empty_range_bundle(
         candles=[],
         quote_ratio=QuoteRatio(bucket_ms=bucket_ms, points=[]),
         fill_strength=FillStrength(bucket_ms=bucket_ms, points=[]),
-        volume_profile_range=VolumeProfile(bin_count=0, price_min=0, price_max=0, bin_width=0, bins=[]),
+        volume_profile_range=_empty_volume_profile(),
         volume_profile_by_day=[],
         excluded_dates=excluded,
         data_warnings=[],
@@ -1031,6 +1035,7 @@ def build_range_bundle(
     trade_volume_poc_bins: int | None = None,
     volume_distribution_price_min: int | None = None,
     volume_distribution_price_max: int | None = None,
+    mode: str = "full",
 ) -> RangeBundle:
     """Build the Wire Model for a Stock-Date Range (ADR-0013, ADR-0014).
 
@@ -1102,6 +1107,8 @@ def build_range_bundle(
         )
         prev_close = row.today_close
 
+    hoga_only = mode == "hoga"
+
     for d in dates:
         resolution = resolve_source_result(engine, d, code, source_pref)
         source = resolution.source
@@ -1128,28 +1135,33 @@ def build_range_bundle(
                 date=d, warnings=[v.to_model() for v in c.warnings],
             ))
 
-        raw_candles = build_candles_slice(engine, code=code, date=d, source=source)
-        raw_lows = [c.low for c in raw_candles]
-        raw_highs = [c.high for c in raw_candles]
-        candle_price_range = (
-            (min(raw_lows), max(raw_highs))
-            if raw_lows and raw_highs
-            else None
-        )
-        supplied_trade_price_range = (
-            (volume_distribution_price_min, volume_distribution_price_max)
-            if volume_distribution_price_min is not None and volume_distribution_price_max is not None
-            else None
-        )
-        price_range = candle_price_range or supplied_trade_price_range
-        trade_indicator_source = _resolve_trade_indicator_source(
-            engine,
-            date=d,
-            code=code,
-            source_pref=source_pref,
-            selected_source=source,
-        )
-        candles_d = downsample_candles(raw_candles, bucket_ms=bucket_ms)
+        raw_candles = [] if hoga_only else build_candles_slice(engine, code=code, date=d, source=source)
+        if hoga_only:
+            price_range = None
+            trade_indicator_source = source
+            candles_d = []
+        else:
+            raw_lows = [c.low for c in raw_candles]
+            raw_highs = [c.high for c in raw_candles]
+            candle_price_range = (
+                (min(raw_lows), max(raw_highs))
+                if raw_lows and raw_highs
+                else None
+            )
+            supplied_trade_price_range = (
+                (volume_distribution_price_min, volume_distribution_price_max)
+                if volume_distribution_price_min is not None and volume_distribution_price_max is not None
+                else None
+            )
+            price_range = candle_price_range or supplied_trade_price_range
+            trade_indicator_source = _resolve_trade_indicator_source(
+                engine,
+                date=d,
+                code=code,
+                source_pref=source_pref,
+                selected_source=source,
+            )
+            candles_d = downsample_candles(raw_candles, bucket_ms=bucket_ms)
         qr_d = build_quote_ratio_slice(
             engine, code=code, date=d, bucket_ms=bucket_ms, source=source,
             session_close_ms=meta["regular_session_close_ms"],
@@ -1159,22 +1171,22 @@ def build_range_bundle(
             engine, code=code, date=d, bucket_ms=bucket_ms, source=source,
             cache=indicators_cache, today_kst=today_kst,
         )
-        vp_d = build_volume_profile_slice(engine, code=code, date=d, source=source)
+        vp_d = None if hoga_only else build_volume_profile_slice(engine, code=code, date=d, source=source)
 
         norm_meta, _ = normalize_session_bounds(meta)   # value-conversion only (notes handled by classify)
-        ap_d = build_ask_peak_slice(
+        ap_d = None if hoga_only else build_ask_peak_slice(
             engine, code=code, date=d, bucket_ms=bucket_ms, source=source,
             session_open_ms=norm_meta["regular_session_open_ms"],
             session_close_ms=meta["regular_session_close_ms"],
             cache=indicators_cache, today_kst=today_kst,
         )
-        bp_d = build_bid_peak_slice(
+        bp_d = None if hoga_only else build_bid_peak_slice(
             engine, code=code, date=d, bucket_ms=bucket_ms, source=source,
             session_open_ms=norm_meta["regular_session_open_ms"],
             session_close_ms=meta["regular_session_close_ms"],
             cache=indicators_cache, today_kst=today_kst,
         )
-        tvp_d = build_trade_volume_poc_slice(
+        tvp_d = None if hoga_only else build_trade_volume_poc_slice(
             engine, code=code, date=d, source=trade_indicator_source,
             session_open_ms=norm_meta["regular_session_open_ms"],
             session_close_ms=meta["regular_session_close_ms"],
@@ -1200,8 +1212,9 @@ def build_range_bundle(
         candles.extend(candles_d)
         ratio_pts.extend(qr_d.points)
         fill_pts.extend(fs_d.points)
-        profiles_by_day.append(vp_d)
-        if volume_distribution_bins is not None:
+        if vp_d is not None:
+            profiles_by_day.append(vp_d)
+        if not hoga_only and volume_distribution_bins is not None:
             profile = build_volume_distribution_slice(
                 engine,
                 code=code,
@@ -1221,15 +1234,16 @@ def build_range_bundle(
             bid_peaks.append(bp_d)
         if tvp_d is not None:
             trade_volume_pocs.append(tvp_d)
-        vi_base_open = raw_candles[0].open if raw_candles else int(meta.get("today_open") or 0)
-        price_level_hits.extend(
-            build_price_level_hits_slice(
-                date=d,
-                candles=candles_d,
-                vi_base_open=vi_base_open,
-                limit_base_prev_close=prev_close_by_date.get(d) or None,
-            ),
-        )
+        if not hoga_only:
+            vi_base_open = raw_candles[0].open if raw_candles else int(meta.get("today_open") or 0)
+            price_level_hits.extend(
+                build_price_level_hits_slice(
+                    date=d,
+                    candles=candles_d,
+                    vi_base_open=vi_base_open,
+                    limit_base_prev_close=prev_close_by_date.get(d) or None,
+                ),
+            )
 
     if not segments:
         # Spec 2026-05-27 §4.3: every in-range date is INVALID → return an
@@ -1242,7 +1256,11 @@ def build_range_bundle(
     # INVALID Stock-Dates whose data is corrupt or incomplete, contaminating
     # the range-wide histogram or raising a DuckDB read error.
     dates_with_sources = [(s.date, s.source) for s in segments]
-    profile_range = build_volume_profile_range(engine, code=code, dates_with_sources=dates_with_sources)
+    profile_range = (
+        _empty_volume_profile()
+        if hoga_only
+        else build_volume_profile_range(engine, code=code, dates_with_sources=dates_with_sources)
+    )
 
     return RangeBundle(
         code=code,
@@ -1263,5 +1281,5 @@ def build_range_bundle(
         price_level_hits=price_level_hits,
         trade_volume_pocs=trade_volume_pocs,
         volume_distributions=volume_distributions,
-        program_trade=build_program_trade_series(engine, code=code, dates=included_dates),
+        program_trade=ProgramTradeSeries(points=[]) if hoga_only else build_program_trade_series(engine, code=code, dates=included_dates),
     )

@@ -316,6 +316,29 @@ export function useLiveBundle(
     volumeDistributionRangeCount,
     volumeDistributionPriceRange,
   });
+  const hogaRangeOptions = useMemo(
+    () => ({ mode: 'hoga' as const }),
+    [],
+  );
+  const pastHoga = useRange(
+    rangePlan.code,
+    rangePlan.from,
+    rangePlan.to,
+    rangePlan.timeframe,
+    undefined,
+    rangePlan.todayKst,
+    hogaRangeOptions,
+  );
+  const fullRangeOptions = useMemo(
+    () => ({
+      ...rangePlan.options,
+      // KIS candles arrive on a separate fast path. Feeding their derived
+      // price range back into /api/range re-keys the slow request right after
+      // candles load, so hoga panes end up waiting for the second request.
+      volumeDistributionPriceRange: null,
+    }),
+    [rangePlan.options],
+  );
   const past = useRange(
     rangePlan.code,
     rangePlan.from,
@@ -328,7 +351,7 @@ export function useLiveBundle(
     // frozen. A periodic refetch keeps the same query key → no placeholderData
     // swap → does not set isExtending, so today's right edge is untouched.
     rangePlan.todayKst,
-    rangePlan.options,
+    fullRangeOptions,
   );
   const liveCandles = useMemo<Candle[]>(
     () => (isMinute ? overlayLiveTradesOnCandles(kisCandles, live.trade, bucketMs, venue) : kisCandles),
@@ -371,7 +394,7 @@ export function useLiveBundle(
       code,
       todayDate: todayKstYyyymmdd,
       todaySession: todayChartSession,
-      pastBundle: past.data ?? null,
+      pastBundle: past.data ?? pastHoga.data ?? null,
       kisCandles: liveCandles,
       bucketMs,
       hasTodayObSignal,
@@ -403,7 +426,7 @@ export function useLiveBundle(
     }
 
     return built;
-  }, [code, todayKstYyyymmdd, todayChartSession, past.data, liveCandles, bucketMs, hasTodayObSignal, investorPoints, sessionBoundsForDate]);
+  }, [code, todayKstYyyymmdd, todayChartSession, past.data, pastHoga.data, liveCandles, bucketMs, hasTodayObSignal, investorPoints, sessionBoundsForDate]);
 
   // HOGA side (quote_ratio / fill_strength). Deps INCLUDE ob/trade — this is the
   // ONLY half that rebuilds on an SSE tick.
@@ -415,12 +438,12 @@ export function useLiveBundle(
     () =>
       hogaSeriesBuilderRef.current!({
         todaySession: defaultKrxSession,
-        pastBundle: past.data ?? null,
+        pastBundle: pastHoga.data ?? past.data ?? null,
         sseOb: isMinute ? live.ob : [],
         sseTrade: isMinute ? live.trade : [],
         bucketMs,
       }),
-    [defaultKrxSession, past.data, isMinute, live.ob, live.trade, bucketMs],
+    [defaultKrxSession, pastHoga.data, past.data, isMinute, live.ob, live.trade, bucketMs],
   );
   const livePriceLevelHits = useMemo(
     () => (isMinute ? buildLivePriceLevelHits(liveCandles, todayKstYyyymmdd) : []),
@@ -466,7 +489,8 @@ export function useLiveBundle(
   // pausing today's right edge — acceptable because the user is panned into
   // history, not watching the live edge.
   const extending = historicalFromDate != null && (isMinute
-    ? (past.isPlaceholderData && past.isFetching) ||
+    ? (pastHoga.isPlaceholderData && pastHoga.isFetching) ||
+      (past.isPlaceholderData && past.isFetching) ||
       (pastCandlesQuery.isPlaceholderData && pastCandlesQuery.isFetching)
     : pastDailyCandlesQuery.isPlaceholderData && pastDailyCandlesQuery.isFetching);
   // The gate holds the CHART side (candle/segment prepend atomicity is what it
@@ -512,8 +536,8 @@ export function useLiveBundle(
   return {
     bundle,
     chartBundle,
-    isLoading: live.isLoading || past.isLoading || pastCandlesQuery.isLoading || pastDailyCandlesQuery.isLoading,
-    error: live.error ?? past.error ?? pastCandlesQuery.error ?? pastDailyCandlesQuery.error ?? null,
+    isLoading: live.isLoading || pastHoga.isLoading || past.isLoading || pastCandlesQuery.isLoading || pastDailyCandlesQuery.isLoading,
+    error: live.error ?? pastHoga.error ?? past.error ?? pastCandlesQuery.error ?? pastDailyCandlesQuery.error ?? null,
     clampEngaged,
     isPastCandlesLoading: pastCandlesQuery.isLoading || pastDailyCandlesQuery.isLoading || (enableInvestor && investorQuery.isLoading),
     isExtending: extending,
