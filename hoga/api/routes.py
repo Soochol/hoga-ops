@@ -298,7 +298,7 @@ def build_router(engine: QueryEngine) -> APIRouter:
         volume_distribution_price_min: int | None = Query(None, ge=0),
         volume_distribution_price_max: int | None = Query(None, ge=0),
         trade_volume_poc_bins: int | None = Query(None, ge=5, le=30),
-        mode: str = Query("full", pattern="^(full|hoga)$"),
+        mode: str = Query(..., pattern="^(full|hoga|sidecar)$"),
     ) -> RangeBundle:
         try:
             validate_bucket_ms(bucket_ms)

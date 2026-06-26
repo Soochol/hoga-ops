@@ -2,6 +2,7 @@ import { renderHook } from '@testing-library/react';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import type { UseQueryOptions, UseQueryResult } from '@tanstack/react-query';
 import type { StudyViewReference } from '../api/studyViews';
+import type { RangeBundle } from '../api/types';
 
 const {
   useQueryMock,
@@ -43,11 +44,44 @@ const save: StudyViewReference = {
   updated_at_ms: 2,
 };
 
-const rangeOptions = { queryKey: ['range-plan'], enabled: true } as unknown as UseQueryOptions;
+const rangeHogaOptions = { queryKey: ['range-hoga-plan'], enabled: true } as unknown as UseQueryOptions;
+const rangeSidecarOptions = { queryKey: ['range-sidecar-plan'], enabled: true } as unknown as UseQueryOptions;
 const minuteOptions = { queryKey: ['minute-plan'], enabled: true } as unknown as UseQueryOptions;
 const dailyOptions = { queryKey: ['daily-plan'], enabled: false } as unknown as UseQueryOptions;
 
+function rangeBundleFixture(overrides: Partial<RangeBundle> = {}): RangeBundle {
+  return {
+    code: '005930',
+    from_date: '20260616',
+    to_date: '20260618',
+    bucket_ms: 300_000,
+    segments: [
+      { date: '20260616', session_open_ms: 1_000, session_close_ms: 2_000, source: 'hogaplay' },
+    ],
+    candles: [],
+    quote_ratio: { bucket_ms: 300_000, points: [] },
+    fill_strength: { bucket_ms: 300_000, points: [] },
+    volume_profile_range: { bin_count: 0, price_min: 0, price_max: 0, bin_width: 0, bins: [] },
+    volume_profile_by_day: [],
+    volume_distributions: [],
+    investorPoints: [],
+    ask_peaks: [],
+    bid_peaks: [],
+    broker_late_entries: [],
+    price_level_hits: [],
+    trade_volume_pocs: [],
+    program_trade: { points: [] },
+    ...overrides,
+  };
+}
+
 function queryResultFor(options: UseQueryOptions): Partial<UseQueryResult> {
+  if (options === rangeHogaOptions) {
+    return { data: null, isLoading: false, error: null };
+  }
+  if (options === rangeSidecarOptions) {
+    return { data: null, isLoading: false, error: null };
+  }
   if (options === minuteOptions) {
     return {
       data: { candles: [], data_warnings: ['minute-warning'] },
@@ -70,7 +104,8 @@ describe('useStudyReferenceBundle', () => {
     useQueryMock.mockReset();
     studyReferenceQueryOptionsMock.mockReset();
     studyReferenceQueryOptionsMock.mockReturnValue({
-      range: rangeOptions,
+      rangeHoga: rangeHogaOptions,
+      rangeSidecars: rangeSidecarOptions,
       minuteCandles: minuteOptions,
       dailyCandles: dailyOptions,
     });
@@ -94,8 +129,51 @@ describe('useStudyReferenceBundle', () => {
       volumeDistributionEnabled: true,
       volumeDistributionRangeCount: 12,
     });
-    expect(useQueryMock).toHaveBeenNthCalledWith(1, rangeOptions);
-    expect(useQueryMock).toHaveBeenNthCalledWith(2, minuteOptions);
-    expect(useQueryMock).toHaveBeenNthCalledWith(3, dailyOptions);
+    expect(useQueryMock).toHaveBeenNthCalledWith(1, rangeHogaOptions);
+    expect(useQueryMock).toHaveBeenNthCalledWith(2, rangeSidecarOptions);
+    expect(useQueryMock).toHaveBeenNthCalledWith(3, minuteOptions);
+    expect(useQueryMock).toHaveBeenNthCalledWith(4, dailyOptions);
+  });
+
+  it('merges sidecar overlays into the hoga study bundle without waiting on sidecar loading', () => {
+    const broker = { t_ms: 1_779_840_000_000, broker: 'NH투자증권', side: 'buy' as const, net: 42 };
+    useQueryMock.mockImplementation((options: UseQueryOptions) => {
+      if (options === rangeHogaOptions) {
+        return {
+          data: rangeBundleFixture({
+            quote_ratio: {
+              bucket_ms: 300_000,
+              points: [
+                {
+                  t: 1_000,
+                  bid_total: 10,
+                  ask_total: 5,
+                  bid_max: 4,
+                  ask_max: 3,
+                  imb_max_bid: 4,
+                  imb_max_ask: 3,
+                },
+              ],
+            },
+          }),
+          isLoading: false,
+          error: null,
+        };
+      }
+      if (options === rangeSidecarOptions) {
+        return {
+          data: rangeBundleFixture({ broker_late_entries: [broker] }),
+          isLoading: true,
+          error: null,
+        };
+      }
+      return queryResultFor(options);
+    });
+
+    const { result } = renderHook(() => useStudyReferenceBundle(save));
+
+    expect(result.current.isLoading).toBe(false);
+    expect(result.current.bundle?.quote_ratio.points).toHaveLength(1);
+    expect(result.current.bundle?.broker_late_entries).toEqual([broker]);
   });
 });

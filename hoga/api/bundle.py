@@ -46,6 +46,7 @@ from hoga.api.models import (
     VolumeProfileBin,
     validate_bucket_ms,
 )
+from hoga.api.past_indicators_cache import CACHE_MISS
 from hoga.api.queries import QueryEngine, StockDateNotFound
 from hoga.api.sources import ordered_sources, resolve_source_result
 from hoga.api.timeenc import (
@@ -599,6 +600,54 @@ def build_ask_peak_slice(
     return peak
 
 
+def _unix_or_none(date: str, intra_ms: int | None) -> int | None:
+    return ms_from_midnight_to_unix_ms(date, intra_ms) if intra_ms is not None else None
+
+
+def _ask_candidate(date: str, c: snapshots_tbl.AskPeakCandidateRow) -> dict[str, int]:
+    return {
+        "price": c.price,
+        "qty": c.qty,
+        "t_ms": ms_from_midnight_to_unix_ms(date, c.intra_ms),
+    }
+
+
+def _ask_peak_from_dual_row(date: str, row: snapshots_tbl.AskPeakDualRow) -> AskPeak:
+    return AskPeak(
+        date=date, price=row.price, qty=row.qty,
+        t_ms=ms_from_midnight_to_unix_ms(date, row.intra_ms),
+        max_price=row.max_price, max_qty=row.max_qty,
+        max_t_ms=ms_from_midnight_to_unix_ms(date, row.max_intra_ms),
+        traded_peaks=[_ask_candidate(date, c) for c in row.traded_peaks],
+        traded_max_peaks=[_ask_candidate(date, c) for c in row.traded_max_peaks],
+        all_price=row.all_price, all_qty=row.all_qty,
+        all_t_ms=_unix_or_none(date, row.all_intra_ms),
+        all_max_price=row.all_max_price, all_max_qty=row.all_max_qty,
+        all_max_t_ms=_unix_or_none(date, row.all_max_intra_ms),
+        untraded_price=row.untraded_price, untraded_qty=row.untraded_qty,
+        untraded_t_ms=_unix_or_none(date, row.untraded_intra_ms),
+        untraded_max_price=row.untraded_max_price, untraded_max_qty=row.untraded_max_qty,
+        untraded_max_t_ms=_unix_or_none(date, row.untraded_max_intra_ms),
+    )
+
+
+def _bid_peak_from_dual_row(date: str, row: snapshots_tbl.BidPeakDualRow) -> BidPeak:
+    return BidPeak(
+        date=date, price=row.price, qty=row.qty,
+        t_ms=ms_from_midnight_to_unix_ms(date, row.intra_ms),
+        max_price=row.max_price, max_qty=row.max_qty,
+        max_t_ms=ms_from_midnight_to_unix_ms(date, row.max_intra_ms),
+        all_price=row.all_price, all_qty=row.all_qty,
+        all_t_ms=_unix_or_none(date, row.all_intra_ms),
+        all_max_price=row.all_max_price, all_max_qty=row.all_max_qty,
+        all_max_t_ms=_unix_or_none(date, row.all_max_intra_ms),
+        untraded_price=row.untraded_price, untraded_qty=row.untraded_qty,
+        untraded_t_ms=_unix_or_none(date, row.untraded_intra_ms),
+        untraded_max_price=row.untraded_max_price, untraded_max_qty=row.untraded_max_qty,
+        untraded_max_t_ms=_unix_or_none(date, row.untraded_max_intra_ms),
+    )
+
+
 def _compute_ask_peak(
     engine: QueryEngine,
     *,
@@ -623,32 +672,7 @@ def _compute_ask_peak(
         )
         if row is None:
             return None
-        def _unix_or_none(intra_ms: int | None) -> int | None:
-            return ms_from_midnight_to_unix_ms(date, intra_ms) if intra_ms is not None else None
-
-        def _candidate(c: snapshots_tbl.AskPeakCandidateRow) -> dict[str, int]:
-            return {
-                "price": c.price,
-                "qty": c.qty,
-                "t_ms": ms_from_midnight_to_unix_ms(date, c.intra_ms),
-            }
-
-        return AskPeak(
-            date=date, price=row.price, qty=row.qty,
-            t_ms=ms_from_midnight_to_unix_ms(date, row.intra_ms),
-            max_price=row.max_price, max_qty=row.max_qty,
-            max_t_ms=ms_from_midnight_to_unix_ms(date, row.max_intra_ms),
-            traded_peaks=[_candidate(c) for c in row.traded_peaks],
-            traded_max_peaks=[_candidate(c) for c in row.traded_max_peaks],
-            all_price=row.all_price, all_qty=row.all_qty,
-            all_t_ms=_unix_or_none(row.all_intra_ms),
-            all_max_price=row.all_max_price, all_max_qty=row.all_max_qty,
-            all_max_t_ms=_unix_or_none(row.all_max_intra_ms),
-            untraded_price=row.untraded_price, untraded_qty=row.untraded_qty,
-            untraded_t_ms=_unix_or_none(row.untraded_intra_ms),
-            untraded_max_price=row.untraded_max_price, untraded_max_qty=row.untraded_max_qty,
-            untraded_max_t_ms=_unix_or_none(row.untraded_max_intra_ms),
-        )
+        return _ask_peak_from_dual_row(date, row)
     row = snapshots_tbl.query_day_ask_peak(
         engine.conn, path=path_obj, bucket_ms=bucket_ms,
         session_open_ms=session_open_ms, session_close_ms=session_close_ms,
@@ -711,24 +735,7 @@ def _compute_bid_peak(
         )
         if row is None:
             return None
-
-        def _unix_or_none(intra_ms: int | None) -> int | None:
-            return ms_from_midnight_to_unix_ms(date, intra_ms) if intra_ms is not None else None
-
-        return BidPeak(
-            date=date, price=row.price, qty=row.qty,
-            t_ms=ms_from_midnight_to_unix_ms(date, row.intra_ms),
-            max_price=row.max_price, max_qty=row.max_qty,
-            max_t_ms=ms_from_midnight_to_unix_ms(date, row.max_intra_ms),
-            all_price=row.all_price, all_qty=row.all_qty,
-            all_t_ms=_unix_or_none(row.all_intra_ms),
-            all_max_price=row.all_max_price, all_max_qty=row.all_max_qty,
-            all_max_t_ms=_unix_or_none(row.all_max_intra_ms),
-            untraded_price=row.untraded_price, untraded_qty=row.untraded_qty,
-            untraded_t_ms=_unix_or_none(row.untraded_intra_ms),
-            untraded_max_price=row.untraded_max_price, untraded_max_qty=row.untraded_max_qty,
-            untraded_max_t_ms=_unix_or_none(row.untraded_max_intra_ms),
-        )
+        return _bid_peak_from_dual_row(date, row)
     row = snapshots_tbl.query_day_bid_peak(
         engine.conn, path=path_obj, bucket_ms=bucket_ms,
         session_open_ms=session_open_ms, session_close_ms=session_close_ms,
@@ -743,6 +750,89 @@ def _compute_bid_peak(
     )
 
 
+def build_ask_bid_peak_slices(
+    engine: QueryEngine,
+    *,
+    code: str,
+    date: str,
+    bucket_ms: int,
+    source: str = "hogaplay",
+    session_open_ms: int | None = None,
+    session_close_ms: int | None = None,
+    cache: PastIndicatorsCache | None = None,
+    today_kst: str | None = None,
+) -> tuple[AskPeak | None, BidPeak | None]:
+    ask_cached = (
+        cache is not None
+        and today_kst is not None
+        and date != today_kst
+        and cache.has_ask_peak(code, date, source, bucket_ms)
+    )
+    bid_cached = (
+        cache is not None
+        and today_kst is not None
+        and date != today_kst
+        and cache.has_bid_peak(code, date, source, bucket_ms)
+    )
+    ask = cache.get_ask_peak(code, date, source, bucket_ms) if ask_cached and cache is not None else None
+    bid = cache.get_bid_peak(code, date, source, bucket_ms) if bid_cached and cache is not None else None
+    if ask_cached and bid_cached:
+        return ask, bid
+
+    try:
+        path_obj = engine.parquet_dir(date, code, source) / "snapshots.parquet"
+    except (FileNotFoundError, StockDateNotFound):
+        return ask, bid
+    if not path_obj.exists():
+        return ask, bid
+    trades_path = path_obj.parent / "trades.parquet"
+    if not trades_path.exists():
+        if not ask_cached:
+            ask = build_ask_peak_slice(
+                engine,
+                code=code,
+                date=date,
+                bucket_ms=bucket_ms,
+                source=source,
+                session_open_ms=session_open_ms,
+                session_close_ms=session_close_ms,
+                cache=cache,
+                today_kst=today_kst,
+            )
+        if not bid_cached:
+            bid = build_bid_peak_slice(
+                engine,
+                code=code,
+                date=date,
+                bucket_ms=bucket_ms,
+                source=source,
+                session_open_ms=session_open_ms,
+                session_close_ms=session_close_ms,
+                cache=cache,
+                today_kst=today_kst,
+            )
+        return ask, bid
+
+    ask_row, bid_row = snapshots_tbl.query_day_ask_bid_peak_dual(
+        engine.conn,
+        path=path_obj,
+        trades_path=trades_path,
+        bucket_ms=bucket_ms,
+        session_open_ms=session_open_ms,
+        session_close_ms=session_close_ms,
+    )
+    if ask_row is not None and not ask_cached:
+        ask = _ask_peak_from_dual_row(date, ask_row)
+    if bid_row is not None and not bid_cached:
+        bid = _bid_peak_from_dual_row(date, bid_row)
+    if cache is not None and today_kst is not None and date != today_kst:
+        if not ask_cached:
+            cache.store_ask_peak(code, date, source, bucket_ms, ask)
+        if not bid_cached:
+            cache.store_bid_peak(code, date, source, bucket_ms, bid)
+    return ask, bid
+
+
 def build_trade_volume_poc_slice(
     engine: QueryEngine,
     *,
@@ -754,12 +844,21 @@ def build_trade_volume_poc_slice(
     range_count: int,
     price_range: tuple[int, int] | None = None,
     band_pct: float = 0.005,
+    cache: PastIndicatorsCache | None = None,
+    today_kst: str | None = None,
 ) -> TradeVolumePoc | None:
     code_dir = engine.parquet_dir(date, code, source)
     trades_path = code_dir / "trades.parquet"
     if price_range is None or not trades_path.exists():
         return None
     price_min, price_max = price_range
+    cacheable = cache is not None and today_kst is not None and date < today_kst
+    if cacheable:
+        cached = cache.get_trade_volume_poc(
+            code, date, source, range_count, price_min, price_max,
+        )
+        if cached is not CACHE_MISS:
+            return cached  # type: ignore[return-value]
     row = trades_tbl.query_trade_volume_poc(
         engine.conn,
         path=trades_path,
@@ -770,8 +869,12 @@ def build_trade_volume_poc_slice(
         session_close_ms=session_close_ms,
     )
     if row is None:
+        if cacheable:
+            cache.store_trade_volume_poc(
+                code, date, source, range_count, price_min, price_max, None,
+            )
         return None
-    return TradeVolumePoc(
+    poc = TradeVolumePoc(
         date=date,
         center_price=row.center_price,
         low_price=row.low_price,
@@ -780,6 +883,11 @@ def build_trade_volume_poc_slice(
         t_ms=ms_from_midnight_to_unix_ms(date, row.intra_ms),
         band_pct=band_pct,
     )
+    if cacheable:
+        cache.store_trade_volume_poc(
+            code, date, source, range_count, price_min, price_max, poc,
+        )
+    return poc
 
 
 def _krx_stock_tick_size(price: int) -> int:
@@ -1061,6 +1169,10 @@ def build_range_bundle(
     if d_to < d_from:
         raise HTTPException(400, "from > to")
 
+    hoga_only = mode == "hoga"
+    sidecar_only = mode == "sidecar"
+    full_mode = mode == "full"
+
     dates = engine.list_stock_dates_in_range(
         code=code, from_date=from_date, to_date=to_date,
         source_pref=source_pref,
@@ -1096,19 +1208,18 @@ def build_range_bundle(
     # re-aggregated on later pans; today_kst gates today out (still promoting).
     indicators_cache = engine.indicators_cache
     today_kst = _today_kst_yyyymmdd()
-    stock_dates_for_code = sorted(
-        (row for row in engine.list_stock_dates() if row.code == code),
-        key=lambda row: row.date,
-    )
     prev_close_by_date: dict[str, int] = {}
-    prev_close: int | None = None
-    for row in stock_dates_for_code:
-        prev_close_by_date[row.date] = (
-            prev_close if prev_close is not None and prev_close > 0 else 0
+    if full_mode:
+        stock_dates_for_code = sorted(
+            (row for row in engine.list_stock_dates() if row.code == code),
+            key=lambda row: row.date,
         )
-        prev_close = row.today_close
-
-    hoga_only = mode == "hoga"
+        prev_close: int | None = None
+        for row in stock_dates_for_code:
+            prev_close_by_date[row.date] = (
+                prev_close if prev_close is not None and prev_close > 0 else 0
+            )
+            prev_close = row.today_close
 
     for d in dates:
         resolution = resolve_source_result(engine, d, code, source_pref)
@@ -1162,37 +1273,45 @@ def build_range_bundle(
                 source_pref=source_pref,
                 selected_source=source,
             )
-            candles_d = downsample_candles(raw_candles, bucket_ms=bucket_ms)
-        qr_d = build_quote_ratio_slice(
-            engine, code=code, date=d, bucket_ms=bucket_ms, source=source,
-            session_close_ms=meta["regular_session_close_ms"],
-            cache=indicators_cache, today_kst=today_kst,
+            candles_d = [] if sidecar_only else downsample_candles(raw_candles, bucket_ms=bucket_ms)
+        qr_d = (
+            QuoteRatio(bucket_ms=bucket_ms, points=[])
+            if sidecar_only
+            else build_quote_ratio_slice(
+                engine, code=code, date=d, bucket_ms=bucket_ms, source=source,
+                session_close_ms=meta["regular_session_close_ms"],
+                cache=indicators_cache, today_kst=today_kst,
+            )
         )
-        fs_d = build_fill_strength_slice(
-            engine, code=code, date=d, bucket_ms=bucket_ms, source=source,
-            cache=indicators_cache, today_kst=today_kst,
+        fs_d = (
+            FillStrength(bucket_ms=bucket_ms, points=[])
+            if sidecar_only
+            else build_fill_strength_slice(
+                engine, code=code, date=d, bucket_ms=bucket_ms, source=source,
+                cache=indicators_cache, today_kst=today_kst,
+            )
         )
-        vp_d = None if hoga_only else build_volume_profile_slice(engine, code=code, date=d, source=source)
+        vp_d = build_volume_profile_slice(engine, code=code, date=d, source=source) if full_mode else None
 
         norm_meta, _ = normalize_session_bounds(meta)   # value-conversion only (notes handled by classify)
-        ap_d = None if hoga_only else build_ask_peak_slice(
-            engine, code=code, date=d, bucket_ms=bucket_ms, source=source,
-            session_open_ms=norm_meta["regular_session_open_ms"],
-            session_close_ms=meta["regular_session_close_ms"],
-            cache=indicators_cache, today_kst=today_kst,
-        )
-        bp_d = None if hoga_only else build_bid_peak_slice(
-            engine, code=code, date=d, bucket_ms=bucket_ms, source=source,
-            session_open_ms=norm_meta["regular_session_open_ms"],
-            session_close_ms=meta["regular_session_close_ms"],
-            cache=indicators_cache, today_kst=today_kst,
-        )
+        if hoga_only:
+            ap_d = None
+            bp_d = None
+        else:
+            ap_d, bp_d = build_ask_bid_peak_slices(
+                engine, code=code, date=d, bucket_ms=bucket_ms, source=source,
+                session_open_ms=norm_meta["regular_session_open_ms"],
+                session_close_ms=meta["regular_session_close_ms"],
+                cache=indicators_cache, today_kst=today_kst,
+            )
         tvp_d = None if hoga_only else build_trade_volume_poc_slice(
             engine, code=code, date=d, source=trade_indicator_source,
             session_open_ms=norm_meta["regular_session_open_ms"],
             session_close_ms=meta["regular_session_close_ms"],
             range_count=trade_volume_poc_bins or DEFAULT_TRADE_VOLUME_POC_BINS,
             price_range=price_range,
+            cache=indicators_cache,
+            today_kst=today_kst,
         )
         segments.append(RangeSegment(
             date=d,
@@ -1216,7 +1335,7 @@ def build_range_bundle(
         fill_pts.extend(fs_d.points)
         if vp_d is not None:
             profiles_by_day.append(vp_d)
-        if not hoga_only and volume_distribution_bins is not None:
+        if full_mode and volume_distribution_bins is not None:
             profile = build_volume_distribution_slice(
                 engine,
                 code=code,
@@ -1236,7 +1355,7 @@ def build_range_bundle(
             bid_peaks.append(bp_d)
         if tvp_d is not None:
             trade_volume_pocs.append(tvp_d)
-        if not hoga_only:
+        if full_mode:
             vi_base_open = raw_candles[0].open if raw_candles else int(meta.get("today_open") or 0)
             price_level_hits.extend(
                 build_price_level_hits_slice(
@@ -1259,9 +1378,9 @@ def build_range_bundle(
     # the range-wide histogram or raising a DuckDB read error.
     dates_with_sources = [(s.date, s.source) for s in segments]
     profile_range = (
-        _empty_volume_profile()
-        if hoga_only
-        else build_volume_profile_range(engine, code=code, dates_with_sources=dates_with_sources)
+        build_volume_profile_range(engine, code=code, dates_with_sources=dates_with_sources)
+        if full_mode
+        else _empty_volume_profile()
     )
 
     return RangeBundle(
@@ -1283,5 +1402,9 @@ def build_range_bundle(
         price_level_hits=price_level_hits,
         trade_volume_pocs=trade_volume_pocs,
         volume_distributions=volume_distributions,
-        program_trade=build_program_trade_series(engine, code=code, dates=included_dates),
+        program_trade=(
+            build_program_trade_series(engine, code=code, dates=included_dates)
+            if full_mode
+            else ProgramTradeSeries(points=[])
+        ),
     )

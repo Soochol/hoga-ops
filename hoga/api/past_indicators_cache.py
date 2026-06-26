@@ -28,14 +28,15 @@ import json
 import logging
 import time
 from pathlib import Path
-from typing import TYPE_CHECKING, Literal
+from typing import TYPE_CHECKING, Literal, TypeVar
 
 from hoga.api._atomic_write import atomic_write_json
+from hoga.api.models import AskPeak, BidPeak, TradeVolumePoc
 from hoga.tables.snapshots import QuoteRatioRow
 from hoga.tables.trades import FillStrengthRow
 
 if TYPE_CHECKING:
-    from hoga.api.models import AskPeak, BidPeak
+    from pydantic import BaseModel
 
 _log = logging.getLogger(__name__)
 
@@ -44,6 +45,9 @@ _log = logging.getLogger(__name__)
 SCHEMA_VERSION = 2
 
 Kind = Literal["ratio", "fill"]
+_CACHE_MISS = object()
+CACHE_MISS = _CACHE_MISS
+_ModelT = TypeVar("_ModelT", bound="BaseModel")
 
 
 class PastIndicatorsCache:
@@ -55,11 +59,13 @@ class PastIndicatorsCache:
         # In-memory hot cache (avoids re-reading disk within a process).
         self._mem_ratio: dict[tuple[str, str, str], list[QuoteRatioRow]] = {}
         self._mem_fill: dict[tuple[str, str, str], list[FillStrengthRow]] = {}
-        # 매도 최대벽 — 값이 작고 과거일 불변이라 in-memory만(디스크 미사용). None도 유효한
-        # 캐시 값(데이터 없는 날)이라 has_/get_ 분리로 미스 구분. 키에 bucket_ms 포함 —
-        # 버킷 대표 위에서 집계하므로 분봉(bucket_ms)이 바뀌면 결과도 달라진다.
-        self._mem_ask_peak: dict[tuple[str, str, str, int], "AskPeak | None"] = {}
-        self._mem_bid_peak: dict[tuple[str, str, str, int], "BidPeak | None"] = {}
+        # None is a valid cached result for empty/no-data days, so has_/get_
+        # remain separate for peak caches.
+        self._mem_ask_peak: dict[tuple[str, str, str, int], AskPeak | None] = {}
+        self._mem_bid_peak: dict[tuple[str, str, str, int], BidPeak | None] = {}
+        self._mem_trade_volume_poc: dict[
+            tuple[str, str, str, int, int, int], TradeVolumePoc | None
+        ] = {}
 
     def _path(self, code: str, date: str, source: str, kind: Kind) -> Path:
         return self._data_dir / "kis-past-indicators" / code / source / f"{date}.{kind}.json"
@@ -114,29 +120,173 @@ class PastIndicatorsCache:
         self._write(code, date, source, "fill", triples)
         self._mem_fill[(code, date, source)] = rows
 
-    # ── ask_peak (매도 최대벽) — in-memory only ────────────────────────────────
+    # ── ask/bid peak (매도/매수 최대벽) ───────────────────────────────────────
+
+    def _model_path(
+        self,
+        code: str,
+        date: str,
+        source: str,
+        suffix: str,
+    ) -> Path:
+        return self._data_dir / "kis-past-indicators" / code / source / f"{date}.{suffix}.json"
+
+    def _peak_path(self, code: str, date: str, source: str, kind: Literal["ask_peak", "bid_peak"], bucket_ms: int) -> Path:
+        return self._model_path(code, date, source, f"{kind}.{bucket_ms}")
+
+    def _poc_path(
+        self,
+        code: str,
+        date: str,
+        source: str,
+        range_count: int,
+        price_min: int,
+        price_max: int,
+    ) -> Path:
+        return self._model_path(
+            code,
+            date,
+            source,
+            f"trade_volume_poc.{range_count}.{price_min}.{price_max}",
+        )
+
+    def _read_model_cache(
+        self,
+        path: Path,
+        model_type: type[_ModelT],
+    ) -> _ModelT | None | object:
+        if not path.exists():
+            return _CACHE_MISS
+        try:
+            body = json.loads(path.read_text(encoding="utf-8"))
+        except (OSError, json.JSONDecodeError):
+            _log.warning("past_indicators_cache.corrupt path=%s", path, exc_info=True)
+            return _CACHE_MISS
+        if body.get("version") != SCHEMA_VERSION:
+            return _CACHE_MISS
+        value = body.get("value")
+        if value is None:
+            return None
+        try:
+            return model_type.model_validate(value)
+        except ValueError:
+            _log.warning("past_indicators_cache.invalid_model path=%s", path, exc_info=True)
+            return _CACHE_MISS
+
+    def _write_model_cache(self, path: Path, value: "BaseModel | None") -> None:
+        payload = {
+            "version": SCHEMA_VERSION,
+            "value": None if value is None else value.model_dump(mode="json"),
+            "fetched_at_ms": int(time.time() * 1000),
+        }
+        try:
+            atomic_write_json(path, payload)
+        except OSError:
+            _log.warning("past_indicators_cache.write_failed path=%s", path, exc_info=True)
 
     def has_ask_peak(self, code: str, date: str, source: str, bucket_ms: int) -> bool:
-        return (code, date, source, bucket_ms) in self._mem_ask_peak
+        key = (code, date, source, bucket_ms)
+        if key in self._mem_ask_peak:
+            return True
+        value = self._read_model_cache(
+            self._peak_path(code, date, source, "ask_peak", bucket_ms),
+            AskPeak,
+        )
+        if value is _CACHE_MISS:
+            return False
+        self._mem_ask_peak[key] = value  # type: ignore[assignment]
+        return True
 
-    def get_ask_peak(self, code: str, date: str, source: str, bucket_ms: int) -> "AskPeak | None":
-        return self._mem_ask_peak.get((code, date, source, bucket_ms))
+    def get_ask_peak(self, code: str, date: str, source: str, bucket_ms: int) -> AskPeak | None:
+        key = (code, date, source, bucket_ms)
+        if key in self._mem_ask_peak:
+            return self._mem_ask_peak[key]
+        value = self._read_model_cache(
+            self._peak_path(code, date, source, "ask_peak", bucket_ms),
+            AskPeak,
+        )
+        if value is _CACHE_MISS:
+            return None
+        self._mem_ask_peak[key] = value  # type: ignore[assignment]
+        return self._mem_ask_peak[key]
 
     def store_ask_peak(
-        self, code: str, date: str, source: str, bucket_ms: int, peak: "AskPeak | None"
+        self, code: str, date: str, source: str, bucket_ms: int, peak: AskPeak | None
     ) -> None:
         self._mem_ask_peak[(code, date, source, bucket_ms)] = peak
+        self._write_model_cache(self._peak_path(code, date, source, "ask_peak", bucket_ms), peak)
 
     def has_bid_peak(self, code: str, date: str, source: str, bucket_ms: int) -> bool:
-        return (code, date, source, bucket_ms) in self._mem_bid_peak
+        key = (code, date, source, bucket_ms)
+        if key in self._mem_bid_peak:
+            return True
+        value = self._read_model_cache(
+            self._peak_path(code, date, source, "bid_peak", bucket_ms),
+            BidPeak,
+        )
+        if value is _CACHE_MISS:
+            return False
+        self._mem_bid_peak[key] = value  # type: ignore[assignment]
+        return True
 
-    def get_bid_peak(self, code: str, date: str, source: str, bucket_ms: int) -> "BidPeak | None":
-        return self._mem_bid_peak.get((code, date, source, bucket_ms))
+    def get_bid_peak(self, code: str, date: str, source: str, bucket_ms: int) -> BidPeak | None:
+        key = (code, date, source, bucket_ms)
+        if key in self._mem_bid_peak:
+            return self._mem_bid_peak[key]
+        value = self._read_model_cache(
+            self._peak_path(code, date, source, "bid_peak", bucket_ms),
+            BidPeak,
+        )
+        if value is _CACHE_MISS:
+            return None
+        self._mem_bid_peak[key] = value  # type: ignore[assignment]
+        return self._mem_bid_peak[key]
 
     def store_bid_peak(
-        self, code: str, date: str, source: str, bucket_ms: int, peak: "BidPeak | None"
+        self, code: str, date: str, source: str, bucket_ms: int, peak: BidPeak | None
     ) -> None:
         self._mem_bid_peak[(code, date, source, bucket_ms)] = peak
+        self._write_model_cache(self._peak_path(code, date, source, "bid_peak", bucket_ms), peak)
+
+    # ── trade_volume_poc ─────────────────────────────────────────────────────
+
+    def get_trade_volume_poc(
+        self,
+        code: str,
+        date: str,
+        source: str,
+        range_count: int,
+        price_min: int,
+        price_max: int,
+    ) -> TradeVolumePoc | None | object:
+        key = (code, date, source, range_count, price_min, price_max)
+        if key in self._mem_trade_volume_poc:
+            return self._mem_trade_volume_poc[key]
+        value = self._read_model_cache(
+            self._poc_path(code, date, source, range_count, price_min, price_max),
+            TradeVolumePoc,
+        )
+        if value is _CACHE_MISS:
+            return _CACHE_MISS
+        self._mem_trade_volume_poc[key] = value  # type: ignore[assignment]
+        return self._mem_trade_volume_poc[key]
+
+    def store_trade_volume_poc(
+        self,
+        code: str,
+        date: str,
+        source: str,
+        range_count: int,
+        price_min: int,
+        price_max: int,
+        poc: TradeVolumePoc | None,
+    ) -> None:
+        key = (code, date, source, range_count, price_min, price_max)
+        self._mem_trade_volume_poc[key] = poc
+        self._write_model_cache(
+            self._poc_path(code, date, source, range_count, price_min, price_max),
+            poc,
+        )
 
     # ── disk I/O ──────────────────────────────────────────────────────────────
 

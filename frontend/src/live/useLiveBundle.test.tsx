@@ -98,7 +98,7 @@ vi.mock('../api/livePastInvestorNet', () => ({
 }));
 
 const rangeMock = { isPlaceholderData: false, isFetching: false };
-const useRangeSpy = vi.fn(() => ({
+const useRangeSpy = vi.fn<(...args: unknown[]) => any>(() => ({
   data: null,
   isLoading: false,
   error: null,
@@ -228,7 +228,7 @@ describe('useLiveBundle', () => {
     expect(bundle!.quote_ratio.points.length).toBe(1); // live overlay carries the point
   });
 
-  it('requests a lightweight hoga range separately from the full sidecar range', () => {
+  it('loads hoga panes and overlay sidecars through separate lightweight range requests', () => {
     renderHook(() => useLiveBundle('005930', '1m', '20260527', liveFixture), { wrapper });
 
     expect(useRangeSpy).toHaveBeenCalledWith(
@@ -247,14 +247,46 @@ describe('useLiveBundle', () => {
       '1m',
       undefined,
       '20260527',
-      {
+      expect.objectContaining({
+        mode: 'sidecar',
         brokerLateEntriesEnabled: false,
         brokerLateEntryStartHHMM: null,
         volumeDistributionBins: 10,
         tradeVolumePocBins: 10,
         volumeDistributionPriceRange: null,
-      },
+      }),
     );
+  });
+
+  it('merges sidecar broker late entries into the hoga pane bundle', () => {
+    useLivePageStore.setState({ brokerLateEntryEnabled: true });
+    const sidecarBundle = {
+      code: '005930',
+      from_date: '20260520',
+      to_date: '20260527',
+      bucket_ms: 60000,
+      segments: [],
+      candles: [],
+      quote_ratio: { bucket_ms: 60000, points: [] },
+      fill_strength: { bucket_ms: 60000, points: [] },
+      volume_profile_range: { bin_count: 0, price_min: 0, price_max: 0, bin_width: 0, bins: [] },
+      volume_profile_by_day: [],
+      volume_distributions: [],
+      investorPoints: [],
+      ask_peaks: [],
+      bid_peaks: [],
+      broker_late_entries: [{ t_ms: 1_779_840_000_000, broker: 'NH투자증권', side: 'buy', net: 42 }],
+      price_level_hits: [],
+      trade_volume_pocs: [],
+      program_trade: { points: [] },
+    };
+    useRangeSpy
+      .mockReturnValueOnce({ data: null, isLoading: false, error: null, isPlaceholderData: false, isFetching: false })
+      .mockReturnValueOnce({ data: sidecarBundle, isLoading: false, error: null, isPlaceholderData: false, isFetching: false });
+
+    const { result } = renderHook(() => useLiveBundle('005930', '1m', '20260527', liveFixture), { wrapper });
+
+    expect(result.current.hogaBundle?.broker_late_entries).toEqual(sidecarBundle.broker_late_entries);
   });
 
   it('clamps pastFrom to 249 days before today when historicalFromDate is older', () => {
@@ -271,13 +303,12 @@ describe('useLiveBundle', () => {
       '1m',
       undefined,
       '20260527',
-      {
-        brokerLateEntriesEnabled: false,
-        brokerLateEntryStartHHMM: null,
+      expect.objectContaining({
+        mode: 'sidecar',
         volumeDistributionBins: 10,
         tradeVolumePocBins: 10,
         volumeDistributionPriceRange: null,
-      },
+      }),
     );
   });
 
@@ -298,13 +329,12 @@ describe('useLiveBundle', () => {
       '1m',
       undefined,
       '20260527',
-      {
-        brokerLateEntriesEnabled: false,
-        brokerLateEntryStartHHMM: null,
+      expect.objectContaining({
+        mode: 'sidecar',
         volumeDistributionBins: null,
         tradeVolumePocBins: 12,
         volumeDistributionPriceRange: null,
-      },
+      }),
     );
   });
 
@@ -325,13 +355,12 @@ describe('useLiveBundle', () => {
       '1m',
       undefined,
       '20260527',
-      {
-        brokerLateEntriesEnabled: false,
-        brokerLateEntryStartHHMM: null,
+      expect.objectContaining({
+        mode: 'sidecar',
         volumeDistributionBins: null,
         tradeVolumePocBins: null,
         volumeDistributionPriceRange: null,
-      },
+      }),
     );
   });
 

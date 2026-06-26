@@ -20,6 +20,7 @@ from hoga.tables.snapshots import (
     SnapshotValidationError,
     query_at,
     query_day_ask_peak_dual,
+    query_day_ask_bid_peak_dual,
     query_day_ask_peak,
     query_day_bid_peak,
     query_day_bid_peak_dual,
@@ -800,6 +801,63 @@ def _trade(ts_ms: int, price: int, side: int = 1) -> Trade:
         cum_vol=1, cum_trades=1, low_so_far=price, high_so_far=price,
         net_pressure=0, unknown_14=0, unknown_16=0, unknown_17=0, unknown_18=0,
     )
+
+
+def test_query_day_ask_bid_peak_dual_matches_existing_separate_queries(tmp_path: Path) -> None:
+    snapshots = tmp_path / "snapshots.parquet"
+    trades = tmp_path / "trades.parquet"
+    obs = [
+        replace(
+            _ob_ap(
+            90001000,
+            [50, 300, 10, 40, 5, 6, 7, 8, 9, 1],
+            ask_p=[25100, 25200, 25300, 25400, 25500, 25600, 25700, 25800, 25900, 26000],
+            ),
+            bid_p=(24950, 24900, 24850, 24800, 24750, 24700, 24650, 24600, 24550, 24500),
+            bid_q=(900, 80, 70, 60, 50, 40, 30, 20, 10, 1),
+        ),
+        replace(
+            _ob_ap(
+            90061000,
+            [60, 100, 500, 40, 5, 6, 7, 8, 9, 1],
+            ask_p=[26100, 26200, 26300, 26400, 26500, 26600, 26700, 26800, 26900, 27000],
+            ),
+            bid_p=(24950, 24900, 24850, 24800, 24750, 24700, 24650, 24600, 24550, 24500),
+            bid_q=(1000, 80, 70, 60, 50, 40, 30, 20, 10, 1),
+        ),
+    ]
+    write_parquet(obs, snapshots)
+    write_trades([_trade(90010000, 25200), _trade(90020000, 24950, side=-1)], trades)
+
+    con = _con_for(snapshots)
+    expected_ask = query_day_ask_peak_dual(
+        con,
+        path=snapshots,
+        trades_path=trades,
+        bucket_ms=60_000,
+        session_open_ms=90_000_000,
+        session_close_ms=153_000_000,
+    )
+    expected_bid = query_day_bid_peak_dual(
+        con,
+        path=snapshots,
+        trades_path=trades,
+        bucket_ms=60_000,
+        session_open_ms=90_000_000,
+        session_close_ms=153_000_000,
+    )
+
+    actual_ask, actual_bid = query_day_ask_bid_peak_dual(
+        con,
+        path=snapshots,
+        trades_path=trades,
+        bucket_ms=60_000,
+        session_open_ms=90_000_000,
+        session_close_ms=153_000_000,
+    )
+
+    assert actual_ask == expected_ask
+    assert actual_bid == expected_bid
 
 
 def test_query_day_ask_peak_dual_splits_traded_and_all_price_peaks(tmp_path) -> None:

@@ -4,7 +4,7 @@ from __future__ import annotations
 import json
 from pathlib import Path
 
-from hoga.api.models import AskPeak, BidPeak
+from hoga.api.models import AskPeak, BidPeak, TradeVolumePoc
 from hoga.api.past_indicators_cache import PastIndicatorsCache
 from hoga.tables.snapshots import QuoteRatioRow
 from hoga.tables.trades import FillStrengthRow
@@ -118,3 +118,36 @@ def test_bid_peak_cache_is_independent_from_ask_peak(tmp_path: Path) -> None:
 
     assert cache.get_ask_peak("005930", "20260619", "hogaplay", 60_000) == ask
     assert cache.get_bid_peak("005930", "20260619", "hogaplay", 60_000) == bid
+
+
+def test_ask_bid_peak_cache_survives_new_cache_instance(tmp_path: Path) -> None:
+    cache = PastIndicatorsCache(tmp_path)
+    ask = AskPeak(
+        date="20260619", price=70000, qty=1000, t_ms=1, max_price=70000, max_qty=1000, max_t_ms=1
+    )
+    bid = BidPeak(
+        date="20260619", price=69000, qty=900, t_ms=2, max_price=69000, max_qty=900, max_t_ms=2
+    )
+    cache.store_ask_peak("005930", "20260619", "hogaplay", 60_000, ask)
+    cache.store_bid_peak("005930", "20260619", "hogaplay", 60_000, bid)
+
+    reloaded = PastIndicatorsCache(tmp_path)
+    assert reloaded.get_ask_peak("005930", "20260619", "hogaplay", 60_000) == ask
+    assert reloaded.get_bid_peak("005930", "20260619", "hogaplay", 60_000) == bid
+
+
+def test_trade_volume_poc_cache_survives_new_cache_instance(tmp_path: Path) -> None:
+    cache = PastIndicatorsCache(tmp_path)
+    poc = TradeVolumePoc(
+        date="20260619",
+        center_price=70000,
+        low_price=69900,
+        high_price=70100,
+        qty=123,
+        t_ms=1,
+        band_pct=0.005,
+    )
+    cache.store_trade_volume_poc("005930", "20260619", "hogaplay", 10, 69900, 70100, poc)
+
+    reloaded = PastIndicatorsCache(tmp_path)
+    assert reloaded.get_trade_volume_poc("005930", "20260619", "hogaplay", 10, 69900, 70100) == poc

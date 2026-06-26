@@ -26,11 +26,15 @@ const settings = {
 };
 
 describe('studyReferenceQueryOptions', () => {
-  it('builds range and minute candle options for minute study views', () => {
+  it('builds split range and minute candle options for minute study views', () => {
     const options = studyReferenceQueryOptions(save, settings);
 
-    expect(options.range.enabled).toBe(true);
-    expect(options.range.queryKey[0]).toBe('range');
+    expect(options.rangeHoga.enabled).toBe(true);
+    expect(options.rangeHoga.queryKey[0]).toBe('range');
+    expect(options.rangeHoga.queryKey.at(-1)).toBe('hoga');
+    expect(options.rangeSidecars.enabled).toBe(true);
+    expect(options.rangeSidecars.queryKey[0]).toBe('range');
+    expect(options.rangeSidecars.queryKey.at(-1)).toBe('sidecar');
     expect(options.minuteCandles.enabled).toBe(true);
     expect(options.minuteCandles.queryKey).toEqual(['study', 'past-candles', '005930', '20260616', '20260618', 'KRX']);
     expect(options.dailyCandles.enabled).toBe(false);
@@ -39,7 +43,8 @@ describe('studyReferenceQueryOptions', () => {
   it('builds daily candle options and disables range for daily study views', () => {
     const options = studyReferenceQueryOptions({ ...save, timeframe: 'D' }, settings);
 
-    expect(options.range.enabled).toBe(false);
+    expect(options.rangeHoga.enabled).toBe(false);
+    expect(options.rangeSidecars.enabled).toBe(false);
     expect(options.minuteCandles.enabled).toBe(false);
     expect(options.dailyCandles.enabled).toBe(true);
     expect(options.dailyCandles.queryKey).toEqual(['study', 'past-daily-candles', '005930', '20260616', '20260618', 'KRX']);
