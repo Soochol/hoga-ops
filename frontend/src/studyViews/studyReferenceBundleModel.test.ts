@@ -40,6 +40,7 @@ function pastBundle(): RangeBundle {
     bid_peaks: [],
     price_level_hits: [],
     trade_volume_pocs: [],
+    broker_late_entries: [],
   };
 }
 

@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState, type WheelEvent } from 'react';
 import { useNavigate, useSearchParams } from 'react-router';
 import { LiveChartRoot } from '../live/LiveChartRoot';
+import { tradeVolumePocsFromWire } from '../live/tradeVolumePocWire';
 import { useLiveCursorStore } from '../live/useLiveCursorStore';
 import type { TabViewport } from '../live/viewportAnchor';
 import { useEntryDragStore } from '../state/entryDrag';
@@ -331,6 +332,7 @@ export function StudyPage() {
               dayAskPeaks={activeViewModel.bundle.ask_peaks}
               dayBidPeaks={activeViewModel.bundle.bid_peaks}
               todayKst={activeViewModel.save.range.to_date}
+              tradeVolumePocs={tradeVolumePocsFromWire(activeViewModel.bundle.trade_volume_pocs)}
               forceHogaPanes
               onViewportCaptureReady={handleViewportCaptureReady}
               onCursorActiveChange={setIsCursorActive}
