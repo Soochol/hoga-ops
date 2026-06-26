@@ -27,6 +27,7 @@ type Props = {
 
 type CardProps = {
   label: string;
+  testId: string;
   children: ReactNode;
 };
 
@@ -73,14 +74,18 @@ export function StudyReferenceDetailPanel({ save, bundle, isCursorActive }: Prop
   );
 
   return (
-    <div data-testid="study-reference-detail-cards" className="grid min-h-full gap-2 bg-bg p-[var(--space-sm)]">
-      <StudyDetailCard label="10호가">
+    <div
+      data-testid="study-reference-detail-cards"
+      className="grid min-h-full gap-2 bg-bg p-[var(--space-sm)]"
+      style={{ gridTemplateRows: 'auto auto auto auto' }}
+    >
+      <StudyDetailCard label="10호가" testId="orderbook">
         <>
           <OrderbookTable snapshot={isCursorActive ? spotOrderbook?.snapshot : null} />
           <TotalQtyBar snapshot={isCursorActive ? spotOrderbook?.snapshot : null} maskRatio={false} />
         </>
       </StudyDetailCard>
-      <StudyDetailCard label="연속체결 매물대 분포">
+      <StudyDetailCard label="연속체결 매물대 분포" testId="volume-distribution">
         <VolumeDistributionCard
           profile={volumeDistribution}
           cursorMs={detailCursorMs}
@@ -89,13 +94,13 @@ export function StudyReferenceDetailPanel({ save, bundle, isCursorActive }: Prop
           maxColor={volumeDistributionMaxColor}
         />
       </StudyDetailCard>
-      <StudyDetailCard label="거래원">
+      <StudyDetailCard label="거래원" testId="brokers">
         <BrokerTrajectoryTable
           series={isCursorActive ? spotBrokers : null}
           cursorMs={detailCursorMs}
         />
       </StudyDetailCard>
-      <StudyDetailCard label="프로그램">
+      <StudyDetailCard label="프로그램" testId="program">
         <ProgramTradeSummaryCard
           series={bundle.program_trade}
           cursorMs={detailCursorMs}
@@ -105,13 +110,19 @@ export function StudyReferenceDetailPanel({ save, bundle, isCursorActive }: Prop
   );
 }
 
-function StudyDetailCard({ label, children }: CardProps) {
+function StudyDetailCard({ label, testId, children }: CardProps) {
   return (
-    <section className="flex min-h-[96px] flex-col rounded border bg-bg-card">
+    <section
+      data-testid={`study-detail-card-${testId}`}
+      className="flex flex-col rounded border bg-bg-card"
+    >
       <header className="border-b px-3 py-2 text-xs font-semibold uppercase tracking-wider text-fg-dimmer">
         {label}
       </header>
-      <div className="min-h-0 flex-1">
+      <div
+        data-testid={`study-detail-content-${testId}`}
+        className="flex-1"
+      >
         {children}
       </div>
     </section>
