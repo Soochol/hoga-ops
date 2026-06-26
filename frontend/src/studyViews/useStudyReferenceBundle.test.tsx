@@ -140,7 +140,22 @@ describe('useStudyReferenceBundle', () => {
     useQueryMock.mockImplementation((options: UseQueryOptions) => {
       if (options === rangeHogaOptions) {
         return {
-          data: rangeBundleFixture({ quote_ratio: { bucket_ms: 300_000, points: [{ t: 1_000, bid_total: 10, ask_total: 5, bid_max: 4, ask_max: 3 }] } }),
+          data: rangeBundleFixture({
+            quote_ratio: {
+              bucket_ms: 300_000,
+              points: [
+                {
+                  t: 1_000,
+                  bid_total: 10,
+                  ask_total: 5,
+                  bid_max: 4,
+                  ask_max: 3,
+                  imb_max_bid: 4,
+                  imb_max_ask: 3,
+                },
+              ],
+            },
+          }),
           isLoading: false,
           error: null,
         };

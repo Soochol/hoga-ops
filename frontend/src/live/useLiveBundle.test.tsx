@@ -98,7 +98,7 @@ vi.mock('../api/livePastInvestorNet', () => ({
 }));
 
 const rangeMock = { isPlaceholderData: false, isFetching: false };
-const useRangeSpy = vi.fn(() => ({
+const useRangeSpy = vi.fn<(...args: unknown[]) => any>(() => ({
   data: null,
   isLoading: false,
   error: null,
