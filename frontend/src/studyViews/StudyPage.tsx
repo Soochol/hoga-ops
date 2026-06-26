@@ -6,6 +6,7 @@ import type { TabViewport } from '../live/viewportAnchor';
 import { useEntryDragStore } from '../state/entryDrag';
 import { useStudyTabsStore } from '../state/studyTabs';
 import { StudyMemoPanel } from './StudyMemoPanel';
+import { StudyReferenceDetailPanel } from './StudyReferenceDetailPanel';
 import { StudyTabBar } from './StudyTabBar';
 import { useStudyKeyboard } from './useStudyKeyboard';
 import { useStudyViewMutations, useStudyViews } from './useStudyViews';
@@ -52,7 +53,7 @@ export function StudyPage() {
   const [params] = useSearchParams();
   const queryViewId = params.get('view');
   const navigate = useNavigate();
-  const [, setIsCursorActive] = useState(false);
+  const [isCursorActive, setIsCursorActive] = useState(false);
   const savesQuery = useStudyViews();
   const mutations = useStudyViewMutations();
   const [isMemoOpen, setIsMemoOpen] = useState(false);
@@ -319,6 +320,13 @@ export function StudyPage() {
           className="relative z-10 grid min-h-0 grid-rows-[auto_minmax(0,1fr)] overflow-y-auto overflow-x-hidden border-l border-[var(--border)] bg-[var(--bg-card)]"
           style={{ scrollbarGutter: 'stable' }}
         >
+          {activeViewModel.status === 'ready' && (
+            <StudyReferenceDetailPanel
+              save={activeViewModel.save}
+              bundle={activeViewModel.bundle}
+              isCursorActive={isCursorActive}
+            />
+          )}
           {isMemoOpen && selectedSave && (
             <StudyMemoPanel
               memo={selectedSave.memo}

@@ -1,10 +1,11 @@
-import { render, screen } from '@testing-library/react';
+import { act, render, screen } from '@testing-library/react';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { MemoryRouter } from 'react-router';
 import type { ComponentProps } from 'react';
 import type { StudyViewReference } from '../api/studyViews';
 import type { RangeBundle } from '../api/types';
 import type { LiveChartRoot } from '../live/LiveChartRoot';
+import { useLiveCursorStore } from '../live/useLiveCursorStore';
 import { useStudyTabsStore } from '../state/studyTabs';
 import { useEntryDragStore } from '../state/entryDrag';
 
@@ -12,11 +13,15 @@ const {
   useStudyViewsMock,
   useStudyViewMutationsMock,
   useStudyReferenceBundleMock,
+  useLiveOrderbookAtCursorMock,
+  useLiveBrokersAtCursorMock,
   liveChartRootMock,
 } = vi.hoisted(() => ({
   useStudyViewsMock: vi.fn(),
   useStudyViewMutationsMock: vi.fn(),
   useStudyReferenceBundleMock: vi.fn(),
+  useLiveOrderbookAtCursorMock: vi.fn(),
+  useLiveBrokersAtCursorMock: vi.fn(),
   liveChartRootMock: vi.fn(),
 }));
 
@@ -29,6 +34,11 @@ vi.mock('./useStudyReferenceBundle', () => ({
   useStudyReferenceBundle: useStudyReferenceBundleMock,
 }));
 
+vi.mock('../api/useLiveCursor', () => ({
+  useLiveOrderbookAtCursor: useLiveOrderbookAtCursorMock,
+  useLiveBrokersAtCursor: useLiveBrokersAtCursorMock,
+}));
+
 vi.mock('../live/LiveChartRoot', () => ({
   LiveChartRoot: (props: ComponentProps<typeof LiveChartRoot>) => {
     liveChartRootMock(props);
@@ -37,6 +47,8 @@ vi.mock('../live/LiveChartRoot', () => ({
 }));
 
 import { StudyPage } from './StudyPage';
+
+const HOVER_MS = Date.UTC(2026, 5, 16, 1, 0, 0);
 
 const referenceSave: StudyViewReference = {
   schema_version: 2,
@@ -71,11 +83,27 @@ function bundle(): RangeBundle {
     fill_strength: { bucket_ms: 300_000, points: [{ t: 1_000, buy_qty: 5, sell_qty: 4 }] },
     volume_profile_range: { bin_count: 0, price_min: 0, price_max: 0, bin_width: 0, bins: [] },
     volume_profile_by_day: [],
-    volume_distributions: [],
+    volume_distributions: [{
+      date: '20260616',
+      range_count: 2,
+      price_min: 1,
+      price_max: 3,
+      session_open_ms: 1_000,
+      session_close_ms: 2_000,
+      last_trade_ms: 2_000,
+      bins: [
+        { price_low: 1, price_high: 2, qty: 10 },
+        { price_low: 2, price_high: 3, qty: 20 },
+      ],
+    }],
     investorPoints: [],
     ask_peaks: [],
     bid_peaks: [],
     broker_late_entries: [],
+    program_trade: {
+      points: [{ t: 1_000, net_qty: 10, net_amount: 100_000_000, delta_qty: 10, delta_amount: 100_000_000, gap_risk: false }],
+      source: 'kis_program_trade',
+    },
     trade_volume_pocs: [{
       date: '20260616',
       center_price: 70_000,
@@ -113,6 +141,9 @@ beforeEach(() => {
     error: null,
     pastDataWarnings: [],
   });
+  useLiveOrderbookAtCursorMock.mockReturnValue(undefined);
+  useLiveBrokersAtCursorMock.mockReturnValue(undefined);
+  useLiveCursorStore.getState().resetCursor();
   useStudyTabsStore.setState({ tabs: [], activeTabId: null });
   useEntryDragStore.setState({ draggingCode: null, overStudy: false });
 });
@@ -139,6 +170,47 @@ describe('StudyPage', () => {
     expect(props.paneTogglesOverride).toBeUndefined();
     expect(props.dailyMovingAverageOverride).toBeUndefined();
     expect(props.tradeVolumePocOverride).toBeUndefined();
+  });
+
+  it('hydrates reference detail indicators from cursor spot data on hover', () => {
+    useLiveOrderbookAtCursorMock.mockReturnValue({
+      snapshot: {
+        ts_ms: HOVER_MS,
+        seq: 1,
+        ask: Array.from({ length: 10 }, (_, index) => ({ price: 70_100 + index, qty: 10 + index })),
+        bid: Array.from({ length: 10 }, (_, index) => ({ price: 70_000 - index, qty: 20 + index })),
+        tot_ask: 145,
+        tot_bid: 245,
+      },
+      available_from: null,
+      source: 'hogaplay',
+    });
+    useLiveBrokersAtCursorMock.mockReturnValue([
+      {
+        broker: '키움증권',
+        final_net: 1_200,
+        dominant_side: 'buy',
+        points: [{ ts_ms: HOVER_MS, net: 1_200 }],
+      },
+    ]);
+    useLiveCursorStore.getState().setCursor(HOVER_MS);
+
+    renderPage('/study?view=view-ref');
+
+    const props = liveChartRootMock.mock.calls[0][0];
+    act(() => {
+      props.onCursorActiveChange?.(true);
+    });
+
+    expect(useLiveOrderbookAtCursorMock).toHaveBeenCalledWith({ code: '005930', timeframe: '5m' });
+    expect(useLiveBrokersAtCursorMock).toHaveBeenCalledWith({ code: '005930', timeframe: '5m' });
+    expect(screen.getByTestId('study-reference-detail-panel')).toBeTruthy();
+    expect(screen.getByText('70,100')).toBeTruthy();
+    expect(screen.getByLabelText('매도총잔량 145')).toBeTruthy();
+    expect(screen.getByText('키움')).toBeTruthy();
+    expect(screen.getByText('+1,200')).toBeTruthy();
+    expect(screen.getByTestId('volume-distribution-card')).toBeTruthy();
+    expect(screen.getByText('+1억')).toBeTruthy();
   });
 
   it('shows loading while the reference bundle is loading', () => {
