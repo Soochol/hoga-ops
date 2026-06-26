@@ -100,7 +100,31 @@ describe('aggregateBrokerSeries', () => {
     expect(kiwoom?.dominant_side).toBe('sell');
   });
 
-  it('sorts by abs(final_net) desc and returns all broker identities', () => {
+  it('sorts by final_net desc from strongest net buy to strongest net sell', () => {
+    const broker = [
+      {
+        t_ms: 1000,
+        buy_top: [
+          { name: '순매수2위', qty: 200 },
+          { name: '순매수1위', qty: 500 },
+        ],
+        sell_top: [
+          { name: '순매도1위', qty: 900 },
+          { name: '순매도2위', qty: 300 },
+        ],
+      },
+    ];
+    const series = aggregateBrokerSeries(broker);
+    expect(series.map((entry) => entry.broker)).toEqual([
+      '순매수1위',
+      '순매수2위',
+      '순매도2위',
+      '순매도1위',
+    ]);
+    expect(series.map((entry) => entry.final_net)).toEqual([500, 200, -300, -900]);
+  });
+
+  it('returns all broker identities', () => {
     const broker = [
       {
         t_ms: 1000,
@@ -115,8 +139,6 @@ describe('aggregateBrokerSeries', () => {
     ];
     const series = aggregateBrokerSeries(broker);
     expect(series).toHaveLength(14);
-    // First entry has largest abs(final_net)
-    expect(Math.abs(series[0].final_net)).toBeGreaterThanOrEqual(Math.abs(series[1].final_net));
   });
 
   it('aggregateBrokerSeries returns more than ten broker identities', () => {

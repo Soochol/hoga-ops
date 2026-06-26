@@ -121,8 +121,8 @@ def test_query_day_series_returns_all_recorded_brokers(tmp_path: Path) -> None:
     entries = query_day_series(con, path=out)
 
     assert len(entries) == 30
-    assert [abs(e.final_net) for e in entries] == sorted(
-        [abs(e.final_net) for e in entries],
+    assert [e.final_net for e in entries] == sorted(
+        [e.final_net for e in entries],
         reverse=True,
     )
 
@@ -230,8 +230,8 @@ def _broker_parts_named(
     )
 
 
-def test_query_day_series_orders_by_abs_final_net_desc(tmp_path: Path) -> None:
-    """Top entry is the broker with the largest |final_net| at the last snapshot."""
+def test_query_day_series_orders_by_final_net_desc(tmp_path: Path) -> None:
+    """Entries run from strongest net buy to strongest net sell."""
     # Snapshot 1 (early in the day) and snapshot 2 (later — wins for final_net).
     early = PARSERS[4](
         _broker_parts_named(
@@ -257,12 +257,16 @@ def test_query_day_series_orders_by_abs_final_net_desc(tmp_path: Path) -> None:
     write_parquet(early + late, out)
     con = duckdb.connect()
     entries = query_day_series(con, path=out)
-    # Top entry is KB증권 (|−86579 + 0| = 86579 dominates).
     assert isinstance(entries[0], BrokerSeriesEntry)
-    assert entries[0].broker == "KB증권"
-    assert entries[0].final_net == -86579
-    assert entries[0].dominant_side == "sell"
-    # JP모간 is the heaviest pure-buyer (+79523).
+    assert entries[0].broker == "JP모간"
+    assert entries[0].final_net == 79523
+    assert entries[0].dominant_side == "buy"
+    # KB증권 has the largest magnitude, but it is a net seller, so it belongs
+    # after all net-buy brokers in final_net-desc order.
+    kb = next(e for e in entries if e.broker == "KB증권")
+    assert kb.final_net == -86579
+    assert kb.dominant_side == "sell"
+    assert entries.index(kb) > entries.index(entries[0])
     jp = next(e for e in entries if e.broker == "JP모간")
     assert jp.final_net == 79523
     assert jp.dominant_side == "buy"
@@ -462,12 +466,12 @@ def test_query_cumulative_details_at_returns_top10_at_each_cursor(tmp_path: Path
         out = query_cumulative_details_at(con, path=path, t_values=[90_000_000, 90_060_000])
 
     assert [(r.broker, r.net, r.dominant_side) for r in out[90_000_000]] == [
-        ("JP모간", -80, "sell"),
         ("키움증권", 100, "buy"),
+        ("JP모간", -80, "sell"),
     ]
-    assert out[90_060_000][0].broker == "JP모간"
-    assert out[90_060_000][0].net == -200
-    assert out[90_060_000][0].dominant_side == "sell"
+    assert out[90_060_000][0].broker == "키움증권"
+    assert out[90_060_000][0].net == 120
+    assert out[90_060_000][0].dominant_side == "buy"
 
 
 def test_query_cumulative_details_at_dedupes_cursors_and_returns_empty_before_first_row(
@@ -562,8 +566,8 @@ def test_query_cumulative_details_at_keeps_final_day_order_at_earlier_cursor(
         out = query_cumulative_details_at(con, path=path, t_values=[90_000_000])
 
     assert [(r.broker, r.net, r.dominant_side) for r in out[90_000_000]] == [
-        ("B증권", 100, "buy"),
         ("A증권", 500, "buy"),
+        ("B증권", 100, "buy"),
     ]
 
 

@@ -116,7 +116,7 @@ export type BrokerSeriesEntry = {
 
 export type BrokerSeriesResponse = {
   date: string;                   // YYYYMMDD KST, echoed
-  brokers: BrokerSeriesEntry[];   // sorted by abs(final_net) desc, all recorded brokers
+  brokers: BrokerSeriesEntry[];   // sorted by final_net desc, all recorded brokers
   source: SourceName;             // ADR-0044 — echoed by backend after resolve_source()
 };
 
