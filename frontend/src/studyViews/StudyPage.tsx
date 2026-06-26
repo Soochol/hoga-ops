@@ -1,7 +1,10 @@
 import { useCallback, useEffect, useMemo, useRef, useState, type WheelEvent } from 'react';
 import { useNavigate, useSearchParams } from 'react-router';
+import IndicatorPanel from '../live/indicators/IndicatorPanel';
 import { LiveChartRoot } from '../live/LiveChartRoot';
+import LiveSettingsModal from '../live/LiveSettingsModal';
 import { TimeframeControl } from '../live/TimeframeControl';
+import { LiveChartActionButtons } from '../live/LiveToolbar';
 import { tradeVolumePocsFromWire } from '../live/tradeVolumePocWire';
 import type { TabViewport } from '../live/viewportAnchor';
 import { useEntryDragStore } from '../state/entryDrag';
@@ -61,6 +64,8 @@ export function StudyPage() {
   const savesQuery = useStudyViews();
   const mutations = useStudyViewMutations();
   const [isMemoOpen, setIsMemoOpen] = useState(false);
+  const [indicatorPanelOpen, setIndicatorPanelOpen] = useState(false);
+  const [settingsOpen, setSettingsOpen] = useState(false);
   const [memoError, setMemoError] = useState<string | null>(null);
   const tabs = useStudyTabsStore((state) => state.tabs);
   const activeTabId = useStudyTabsStore((state) => state.activeTabId);
@@ -323,6 +328,10 @@ export function StudyPage() {
               onChange={changeTimeframe}
             />
           )}
+          <LiveChartActionButtons
+            onOpenIndicators={() => setIndicatorPanelOpen(true)}
+            onOpenSettings={() => setSettingsOpen(true)}
+          />
           <button
             type="button"
             onClick={() => setIsMemoOpen((value) => !value)}
@@ -393,6 +402,12 @@ export function StudyPage() {
         </aside>
         {draggingEntry && overStudy && <StudyDropOverlay />}
       </div>
+      {indicatorPanelOpen && (
+        <IndicatorPanel onClose={() => setIndicatorPanelOpen(false)} />
+      )}
+      {settingsOpen && (
+        <LiveSettingsModal onClose={() => setSettingsOpen(false)} />
+      )}
     </section>
   );
 }
