@@ -68,15 +68,11 @@ export function LiveSidebar({ code, live, bundle = null, todayKst = '', programT
   const volumeDistributionMaxColor = useLivePageStore((s) => s.volumeDistributionMaxColor);
   const stockCode = code && !code.startsWith('index:') ? code : null;
   const activeBundle = bundle;
-  const latestCandleMs =
-    activeBundle?.candles.length ? activeBundle.candles[activeBundle.candles.length - 1].ts_ms : null;
-  const cursorOnLatestCandle =
-    cursorMs !== null && latestCandleMs !== null && cursorMs >= latestCandleMs;
 
   // Spot mode is minute-only (ADR-0044): D/W/M have no per-cursor parquet. The
   // chart still publishes cursorMs on D for the Pane Legend, so gate spot entry
   // on the timeframe here — NOT on cursorMs alone.
-  const isSpot = cursorMs !== null && isMinuteTimeframe(timeframe) && !cursorOnLatestCandle;
+  const isSpot = cursorMs !== null && isMinuteTimeframe(timeframe);
 
   // Latest-mode data flows through `live` — LivePage owns the single
   // useLiveSeries call site. useSpot hooks in spot mode sit dormant when

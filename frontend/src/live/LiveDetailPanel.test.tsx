@@ -14,7 +14,7 @@ describe('LiveDetailPanel', () => {
     });
   });
 
-  it('renders the fixed indicator slots in order, with volume distribution separate from orderbook', () => {
+  it('renders the fixed indicator slots in order, with brokers above volume distribution', () => {
     render(
       <LiveDetailPanel
         orderbook={<div>orderbook</div>}
@@ -31,13 +31,13 @@ describe('LiveDetailPanel', () => {
     const brokers = screen.getByTestId('live-detail-card-brokers');
     const investor = screen.getByTestId('live-detail-card-investor');
     expect(
-      orderbook.compareDocumentPosition(volumeDistribution) & Node.DOCUMENT_POSITION_FOLLOWING,
+      orderbook.compareDocumentPosition(brokers) & Node.DOCUMENT_POSITION_FOLLOWING,
     ).toBeTruthy();
     expect(
-      volumeDistribution.compareDocumentPosition(brokers) & Node.DOCUMENT_POSITION_FOLLOWING,
+      brokers.compareDocumentPosition(volumeDistribution) & Node.DOCUMENT_POSITION_FOLLOWING,
     ).toBeTruthy();
     expect(
-      brokers.compareDocumentPosition(program) & Node.DOCUMENT_POSITION_FOLLOWING,
+      volumeDistribution.compareDocumentPosition(program) & Node.DOCUMENT_POSITION_FOLLOWING,
     ).toBeTruthy();
     expect(
       program.compareDocumentPosition(investor) & Node.DOCUMENT_POSITION_FOLLOWING,
@@ -56,13 +56,13 @@ describe('LiveDetailPanel', () => {
     );
 
     expect(
-      screen.getByRole('separator', { name: '10호가 / 매물대 크기 조절' }),
+      screen.getByRole('separator', { name: '10호가 / 거래원 크기 조절' }),
     ).toHaveAttribute('aria-orientation', 'horizontal');
     expect(
-      screen.getByRole('separator', { name: '매물대 / 거래원 크기 조절' }),
+      screen.getByRole('separator', { name: '거래원 / 매물대 크기 조절' }),
     ).toHaveAttribute('aria-orientation', 'horizontal');
     expect(
-      screen.getByRole('separator', { name: '거래원 / 프로그램 순매수 크기 조절' }),
+      screen.getByRole('separator', { name: '매물대 / 프로그램 순매수 크기 조절' }),
     ).toHaveAttribute('aria-orientation', 'horizontal');
     expect(
       screen.getByRole('separator', { name: '프로그램 순매수 / 잠정투자자 크기 조절' }),
@@ -139,12 +139,12 @@ describe('LiveDetailPanel', () => {
     const panel = screen.getByTestId('live-detail-panel');
     Object.defineProperty(panel, 'clientHeight', { configurable: true, value: 1000 });
 
-    const separator = screen.getByTestId('live-detail-resizer-orderbook-volumeDistribution');
+    const separator = screen.getByTestId('live-detail-resizer-orderbook-brokers');
     const PointerEvt = window.PointerEvent ?? MouseEvent;
     const nextWeights = {
       ...DEFAULT_CARD_WEIGHTS,
       orderbook: 58.2432432432,
-      volumeDistribution: 2.7567567568,
+      brokers: 2.7567567568,
     };
     const resizeSpy = vi
       .spyOn(liveLayout, 'resizeAdjacentWeights')
@@ -162,15 +162,15 @@ describe('LiveDetailPanel', () => {
     expect(document.body.style.cursor).toBe('row-resize');
     expect(document.body.style.userSelect).toBe('none');
     const movedWeights = useLiveLayoutStore.getState().rightCardWeights;
-    expect(movedWeights.brokers).toBe(DEFAULT_CARD_WEIGHTS.brokers);
+    expect(movedWeights.volumeDistribution).toBe(DEFAULT_CARD_WEIGHTS.volumeDistribution);
     expect(movedWeights.investor).toBe(DEFAULT_CARD_WEIGHTS.investor);
     expect(movedWeights).toEqual(nextWeights);
     expect(resizeSpy).toHaveBeenCalledWith(
       DEFAULT_CARD_WEIGHTS,
       'orderbook',
-      'volumeDistribution',
+      'brokers',
       expect.any(Number),
-      503.36,
+      542.08,
     );
 
     act(() => {
@@ -203,7 +203,7 @@ describe('LiveDetailPanel', () => {
     const panel = screen.getByTestId('live-detail-panel');
     Object.defineProperty(panel, 'clientHeight', { configurable: true, value: 1000 });
 
-    const separator = screen.getByTestId('live-detail-resizer-orderbook-volumeDistribution');
+    const separator = screen.getByTestId('live-detail-resizer-orderbook-brokers');
     Object.defineProperty(separator, 'setPointerCapture', { configurable: true, value: vi.fn() });
     Object.defineProperty(separator, 'releasePointerCapture', { configurable: true, value: vi.fn() });
     Object.defineProperty(separator, 'hasPointerCapture', { configurable: true, value: vi.fn(() => true) });
@@ -213,13 +213,13 @@ describe('LiveDetailPanel', () => {
 
     const { rightCardWeights } = useLiveLayoutStore.getState();
     expect(rightCardWeights.orderbook).not.toBe(DEFAULT_CARD_WEIGHTS.orderbook);
-    expect(rightCardWeights.volumeDistribution).not.toBe(DEFAULT_CARD_WEIGHTS.volumeDistribution);
-    expect(rightCardWeights.orderbook + rightCardWeights.volumeDistribution).toBeCloseTo(
-      DEFAULT_CARD_WEIGHTS.orderbook + DEFAULT_CARD_WEIGHTS.volumeDistribution,
+    expect(rightCardWeights.brokers).not.toBe(DEFAULT_CARD_WEIGHTS.brokers);
+    expect(rightCardWeights.orderbook + rightCardWeights.brokers).toBeCloseTo(
+      DEFAULT_CARD_WEIGHTS.orderbook + DEFAULT_CARD_WEIGHTS.brokers,
       6,
     );
     expect(
-      screen.getByRole('separator', { name: '10호가 / 매물대 크기 조절' }),
+      screen.getByRole('separator', { name: '10호가 / 거래원 크기 조절' }),
     ).toHaveAttribute('aria-orientation', 'horizontal');
 
     fireEvent.pointerUp(window, { pointerId: 1, clientY: 550 });

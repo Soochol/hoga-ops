@@ -845,8 +845,18 @@ export function LiveChartRoot({ code, timeframe, venue = 'KRX', viewIdentity, bu
         const t = typeof param.time === 'number'
           ? param.time
           : chart.timeScale().coordinateToTime(point.x);
-        // No usable time (defensive) → not on a bar → latest mode.
+        const lastMs = lastCandleMsRef.current;
+        // No usable time while still inside the chart surface means the pointer
+        // is over an internal blank band, not outside the chart. Keep sidebar
+        // spot indicators on the latest concrete candle; only mouse-leave
+        // (point == null above) returns to latest streaming mode.
         if (typeof t !== 'number' || axis.segments.length === 0) {
+          if (lastMs !== null) {
+            onCandleBasisHover?.(kstDateFromMs(lastMs));
+            onCursorActiveChange?.(true);
+            store.setCursor(lastMs);
+            return;
+          }
           onCursorActiveChange?.(false);
           store.clearCursor();
           return;
@@ -863,7 +873,6 @@ export function LiveChartRoot({ code, timeframe, venue = 'KRX', viewIdentity, bu
         // concrete candle so sidebar cards keep showing candle-basis detail.
         // (verified 2026-06-11: coordinateToTime jumps 14:53 → 15:20 across the
         // whitespace boundary while the live edge was 14:54).
-        const lastMs = lastCandleMsRef.current;
         if (lastMs !== null && realMs > lastMs) {
           realMs = lastMs;
         }
