@@ -20,8 +20,8 @@ def test_brokers_series_happy_path_returns_per_broker_trajectories(
     for key in ("broker", "final_net", "dominant_side", "points"):
         assert key in first
     assert first["dominant_side"] in ("buy", "sell")
-    # Sorted by abs(final_net) desc.
-    nets = [abs(e["final_net"]) for e in body["brokers"]]
+    # Sorted by final_net desc: strongest net buyers first, strongest net sellers last.
+    nets = [e["final_net"] for e in body["brokers"]]
     assert nets == sorted(nets, reverse=True)
     # Points are ts ascending and carry Unix-ms (per ADR-0003: ts >= 2020).
     for entry in body["brokers"]:

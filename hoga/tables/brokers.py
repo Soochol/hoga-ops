@@ -134,7 +134,8 @@ def query_day_series(
     Aggregates qty_today * sign(side) per (broker, ts_ms) so a broker on
     both sides at the same snapshot collapses to one signed value, then
     groups in Python into one BrokerSeriesEntry per broker. Returns all
-    entries sorted by abs(final_net) desc, final_net desc.
+    entries sorted by final_net desc: strongest net buyers first, strongest
+    net sellers last.
 
     Broker names are canonicalized (see ``hoga.broker_names``) before the
     Python-side group so hogaplay and KIS aliases for the same KRX member
@@ -159,7 +160,7 @@ def query_day_series(
         )
         for broker, points in by_broker.items()
     ]
-    entries.sort(key=lambda e: (-abs(e.final_net), -e.final_net))
+    entries.sort(key=lambda e: -e.final_net)
     return entries
 
 
@@ -272,10 +273,7 @@ def _final_broker_order(
     """Return top broker names ordered by the same final net as live series."""
     by_broker = _query_canonical_series_points(con, path=path)
 
-    ordered = sorted(
-        by_broker.items(),
-        key=lambda item: (-abs(item[1][-1].net), -item[1][-1].net),
-    )
+    ordered = sorted(by_broker.items(), key=lambda item: -item[1][-1].net)
     return [broker for broker, _points in ordered[:limit]]
 
 
