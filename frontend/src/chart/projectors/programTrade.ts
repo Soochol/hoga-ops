@@ -9,6 +9,8 @@ import { type VirtualAxis } from '../../util/virtualAxis';
 import { resolveTokens } from '../../util/tokens';
 import { formatKoreanWonEok } from '../../util/koreanNumber';
 import type { PaneSpec } from '../RangeSeriesPane';
+import { isSyntheticHogaGapPoint } from '../util/hogaGapHide';
+import { LINE_HIDDEN_COLOR, maskOutgoingConnector } from '../util/auctionHide';
 
 const TOKEN_SPEC = {
   line: ['--accent', '#14B8A6'],
@@ -35,6 +37,7 @@ export function projectProgramTradeNetAmount(
 ): LineData<Time>[] {
   const byBucket = new Map<number, number>();
   const points = bundle.program_trade?.points ?? [];
+  if (points.length === 0) return [];
   for (const p of points) {
     if (p.net_amount == null) continue;
     if (!isKrxRegularProgramTime(bundle, p.t)) continue;
@@ -42,12 +45,24 @@ export function projectProgramTradeNetAmount(
     if (t == null || !axis.contains(t)) continue;
     byBucket.set(t, p.net_amount);
   }
-  return [...byBucket.entries()]
-    .sort(([a], [b]) => a - b)
-    .map(([t, value]) => ({
-      time: (axis.toVirtual(t) / 1000) as UTCTimestamp,
-      value,
-    }));
+  const out: LineData<Time>[] = [];
+  const hogaPoints = [...bundle.quote_ratio.points].sort((a, b) => a.t - b.t);
+  const seenHogaT = new Set<number>();
+  for (const p of hogaPoints) {
+    if (seenHogaT.has(p.t)) continue;
+    seenHogaT.add(p.t);
+    if (!axis.contains(p.t)) continue;
+    const time = (axis.toVirtual(p.t) / 1000) as UTCTimestamp;
+    if (isSyntheticHogaGapPoint(p)) {
+      maskOutgoingConnector(out, LINE_HIDDEN_COLOR);
+      out.push({ time, value: 0, ...LINE_HIDDEN_COLOR });
+      continue;
+    }
+    const value = byBucket.get(p.t);
+    if (value == null) continue;
+    out.push({ time, value });
+  }
+  return out;
 }
 
 function bucketTime(bundle: RangeBundle, t: number): number | null {
