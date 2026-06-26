@@ -12,6 +12,7 @@ from hoga.api.watchlist_projection import capture_ordered_codes
 
 from . import kis_access
 from .program_trade_store import ProgramTradeStore
+from .session_gate import ws_capture_window
 
 log = logging.getLogger(__name__)
 
@@ -32,12 +33,14 @@ class ProgramTradeCollector:
         data_dir: Path,
         date_fn: Callable[[], str],
         now_ms_fn: Callable[[], int],
+        should_collect_fn: Callable[[int], bool] = ws_capture_window,
         poll_interval_s: float = 30.0,
     ) -> None:
         self.data_dir = data_dir
         self.store = ProgramTradeStore(data_dir, poll_interval_ms=int(poll_interval_s * 1000))
         self._date_fn = date_fn
         self._now_ms_fn = now_ms_fn
+        self._should_collect_fn = should_collect_fn
         self._poll_interval_s = poll_interval_s
         self.status = ProgramTradeCollectorStatus()
         self._task: asyncio.Task | None = None
@@ -75,6 +78,9 @@ class ProgramTradeCollector:
         self.status.last_error_count = 0
         date = self._date_fn()
         observed_at_ms = self._now_ms_fn()
+        if not self._should_collect_fn(observed_at_ms):
+            self.status.last_cycle_ms = observed_at_ms
+            return
 
         for code in codes:
             try:

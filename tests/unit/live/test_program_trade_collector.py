@@ -82,3 +82,37 @@ async def test_program_trade_collector_polls_capture_candidates_and_skips_failed
     stored = collector.store.load("005930", "20260625")
     assert [r.bsop_hour for r in stored.rows] == ["090000"]
     assert collector.status.last_error_count == 1
+
+
+@pytest.mark.asyncio
+async def test_program_trade_collector_skips_fetches_when_market_window_is_closed(tmp_path, monkeypatch):
+    from hoga.live.program_trade_collector import ProgramTradeCollector
+
+    calls: list[str] = []
+
+    async def fake_fetch_for_role(role, data_dir, fn):
+        calls.append(role)
+        raise AssertionError("collector should not fetch while the market window is closed")
+
+    monkeypatch.setattr(
+        "hoga.live.program_trade_collector.load_document",
+        lambda _data_dir: _watchlist_doc(),
+    )
+    monkeypatch.setattr(
+        "hoga.live.program_trade_collector.kis_access.fetch_for_role",
+        fake_fetch_for_role,
+    )
+
+    collector = ProgramTradeCollector(
+        data_dir=tmp_path,
+        date_fn=lambda: "20260626",
+        now_ms_fn=lambda: 1000,
+        should_collect_fn=lambda _now_ms: False,
+    )
+
+    await collector.run_once()
+
+    assert calls == []
+    assert collector.status.targets == ("005930", "000660")
+    assert collector.status.last_cycle_ms == 1000
+    assert collector.store.path("005930", "20260626").exists() is False

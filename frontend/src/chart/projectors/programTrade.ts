@@ -87,7 +87,8 @@ function isKrxRegularProgramTime(bundle: RangeBundle, t: number): boolean {
   if (!segment) return false;
   const regular = regularSessionBoundsForDate(segment.date);
   if (!regular) return true;
-  return t >= regular.open && t <= regular.close;
+  const closingAuctionStart = regular.close - 10 * 60_000;
+  return t >= regular.open && t < closingAuctionStart;
 }
 
 export const PROGRAM_TRADE_SPEC = {
