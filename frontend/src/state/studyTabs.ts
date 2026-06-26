@@ -1,12 +1,13 @@
 import { nanoid } from 'nanoid';
 import { create } from 'zustand';
-import type { ParquetStudyView } from '../api/studyViews';
+import type { LiveTimeframe } from './livePage';
+import type { StudyViewListRow } from '../api/studyViews';
 import { formatStudyTabLabel } from '../studyViews/studyViewSelection';
 import { attachPersistence } from './persistentSubscriber';
 
 const STORAGE_KEY = 'study.tabs.v1';
 
-type SaveTabFields = Pick<ParquetStudyView, 'id' | 'code' | 'label' | 'name' | 'timeframe'>;
+type SaveTabFields = Pick<StudyViewListRow, 'id' | 'code' | 'label' | 'name' | 'timeframe'>;
 
 export type StudyTab = {
   id: string;
@@ -14,7 +15,7 @@ export type StudyTab = {
   code: string;
   label: string;
   name: string;
-  timeframe: ParquetStudyView['timeframe'];
+  timeframe: LiveTimeframe;
 };
 
 type StudyTabSnapshot = Omit<StudyTab, 'id'>;

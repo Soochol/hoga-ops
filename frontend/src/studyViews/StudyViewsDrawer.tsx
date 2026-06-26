@@ -12,12 +12,11 @@ import {
 } from '@dnd-kit/core';
 import { SortableContext, useSortable, verticalListSortingStrategy } from '@dnd-kit/sortable';
 import { CSS } from '@dnd-kit/utilities';
-import type { ParquetStudyView, ParquetStudyViewWriteRequest } from '../api/studyViews';
+import type { StudyViewListRow } from '../api/studyViews';
 import { dropPoint, isPointOnStudy, useEntryDragStore } from '../state/entryDrag';
 import { useStudyTabsStore } from '../state/studyTabs';
 import { useCurrentStudySaveSource } from './studySaveSource';
-import { studySnapshotByteSize } from './studySaveRequest';
-import { makeStudySaveCommand } from './studySaveCommand';
+import { makeStudySaveCommand, studySaveCommandBody, type StudySaveCommand } from './studySaveCommand';
 import { StudyViewSaveDialog } from './StudyViewSaveDialog';
 import { latestStudyViewForCode } from './studyViewSelection';
 import { useStudyViewMutations, useStudyViews } from './useStudyViews';
@@ -38,14 +37,6 @@ export function filterStudyViews<T extends { name: string; code: string; memo: s
   if (!q) return rows;
   return rows.filter((row) => [row.name, row.code, row.memo].some((v) => normalizeStudyViewQuery(v).includes(q)));
 }
-
-type SaveDialogState = {
-  mode: 'create' | 'overwrite';
-  id?: string;
-  request: ParquetStudyViewWriteRequest;
-  defaultName: string;
-  defaultMemo: string;
-};
 
 function CollapseAllIcon({ className }: { className?: string }) {
   return (
@@ -147,7 +138,7 @@ function SortableStudyViewRow({
   disabled,
   children,
 }: {
-  row: ParquetStudyView;
+  row: StudyViewListRow;
   groupKey: string;
   disabled: boolean;
   children: ReactNode;
@@ -177,8 +168,8 @@ export function StudyViewsDrawer() {
   const { data, isLoading, isError, refetch } = useStudyViews();
   const mutations = useStudyViewMutations();
   const saveSource = useCurrentStudySaveSource();
-  const [dialog, setDialog] = useState<SaveDialogState | null>(null);
-  const [rowMenu, setRowMenu] = useState<{ row: ParquetStudyView; left: number; top: number } | null>(null);
+  const [dialog, setDialog] = useState<StudySaveCommand | null>(null);
+  const [rowMenu, setRowMenu] = useState<{ row: StudyViewListRow; left: number; top: number } | null>(null);
   const [renameState, setRenameState] = useState<{ id: string; value: string; error: string | null } | null>(null);
   const renameCommittingRef = useRef(false);
   const renameInputRef = useRef<HTMLInputElement>(null);
@@ -246,20 +237,12 @@ export function StudyViewsDrawer() {
     if (!studySource) return;
     const row = id ? data?.saves.find((save) => save.id === id) : currentStudyRow;
     const command = makeStudySaveCommand({ mode, source: studySource, existingSave: row });
-    if (command) {
-      setDialog({
-        mode: command.mode,
-        id: id ?? command.id,
-        request: command.request,
-        defaultName: command.defaultName,
-        defaultMemo: command.defaultMemo,
-      });
-    }
+    if (command) setDialog({ ...command, id: id ?? command.id });
   };
 
   const handleDialogSubmit = ({ name, memo }: { name: string; memo: string }) => {
     if (!dialog) return;
-    const body = { ...dialog.request, name, memo };
+    const body = studySaveCommandBody(dialog, { name, memo });
     if (dialog.mode === 'overwrite' && dialog.id) {
       mutations.update.mutate({ id: dialog.id, body }, { onSuccess: () => setDialog(null) });
       return;
@@ -272,7 +255,7 @@ export function StudyViewsDrawer() {
     });
   };
 
-  const startRename = (row: ParquetStudyView) => {
+  const startRename = (row: StudyViewListRow) => {
     setRenameState({ id: row.id, value: row.name, error: null });
   };
 
@@ -287,31 +270,31 @@ export function StudyViewsDrawer() {
     navigateClickTimerRef.current = null;
   }
 
-  function navigateToStudyView(row: ParquetStudyView) {
+  function navigateToStudyView(row: StudyViewListRow) {
     cancelPendingStudyViewNavigation();
     navigate(`/study?view=${row.id}`);
   }
 
-  function openSaveInActiveTab(row: ParquetStudyView) {
+  function openSaveInActiveTab(row: StudyViewListRow) {
     useStudyTabsStore.getState().openSaveInActiveTab(row);
   }
 
-  function openSaveInNewTab(row: ParquetStudyView) {
+  function openSaveInNewTab(row: StudyViewListRow) {
     useStudyTabsStore.getState().openSaveInNewTab(row);
   }
 
-  function openStudyViewInActiveTab(row: ParquetStudyView) {
+  function openStudyViewInActiveTab(row: StudyViewListRow) {
     openSaveInActiveTab(row);
     navigateToStudyView(row);
   }
 
-  function openStudyViewInNewTab(row: ParquetStudyView) {
+  function openStudyViewInNewTab(row: StudyViewListRow) {
     cancelPendingStudyViewNavigation();
     openSaveInNewTab(row);
     navigate(`/study?view=${row.id}`);
   }
 
-  function scheduleStudyViewNavigation(row: ParquetStudyView) {
+  function scheduleStudyViewNavigation(row: StudyViewListRow) {
     cancelPendingStudyViewNavigation();
     navigateClickTimerRef.current = window.setTimeout(() => {
       navigateClickTimerRef.current = null;
@@ -319,7 +302,7 @@ export function StudyViewsDrawer() {
     }, 180);
   }
 
-  const commitRename = (row: ParquetStudyView) => {
+  const commitRename = (row: StudyViewListRow) => {
     if (!renameState || renameState.id !== row.id || renameCommittingRef.current) return;
     const name = renameState.value.trim();
     if (!name || name === row.name) {
@@ -341,7 +324,7 @@ export function StudyViewsDrawer() {
     );
   };
 
-  const deleteSave = (row: ParquetStudyView) => {
+  const deleteSave = (row: StudyViewListRow) => {
     const deletedId = row.id;
     mutations.remove.mutate(deletedId, {
       onSuccess: () => {
@@ -389,7 +372,7 @@ export function StudyViewsDrawer() {
     reorderRow(intent.groupKey, intent.activeId, intent.overId);
   };
 
-  const renderStudyViewRow = (row: ParquetStudyView) => (
+  const renderStudyViewRow = (row: StudyViewListRow) => (
     <div
       key={row.id}
       role={renameState?.id === row.id ? undefined : 'button'}
@@ -605,10 +588,9 @@ export function StudyViewsDrawer() {
       {dialog && (
         <StudyViewSaveDialog
           mode={dialog.mode}
-          defaultName={dialog.defaultName}
-          defaultMemo={dialog.defaultMemo}
-          barCount={dialog.request.snapshot.bundle.candles.length}
-          sizeBytes={studySnapshotByteSize(dialog.request.snapshot)}
+          defaultName={dialog.dialog.defaultName}
+          defaultMemo={dialog.dialog.defaultMemo}
+          rangeLabel={dialog.dialog.rangeLabel}
           isSubmitting={dialogMutation.isPending}
           errorMessage={dialogError}
           onCancel={() => setDialog(null)}

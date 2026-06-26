@@ -28,9 +28,17 @@ _Avoid_: "index stock", "synthetic Code", or applying hoga/quote-derived indicat
 The stock-only **Code** projection of the current **LiveInstrument**. `useLivePageStore.activeInstrument` is the canonical `/live` subject; `activeCode` is a compatibility field for stock-only hooks and is `null` for **Representative Index** charts. The active **Live Tab** is its single writer (`useLiveTabsStore.setActiveTabCode` / `setActiveTabInstrument` → `applyTabToPage`; ADR-0069 revised 2026-06-12): selecting a stock or index in the header search, clicking a row in the **Watchlist Panel** / **Screener Panel** / **Heatmap** (which also navigates to `/live` if elsewhere), or **dragging a Watchlist or Screener Panel row onto the `/live` chart** all **replace the active tab's subject in place** — they do NOT open a new per-stock tab. New tabs come only from the tab bar's `+` (a blank tab that focuses the header search); on mount with no restored tabs a default blank tab is seeded. A `/live?code=` or `/live?index=` deep link seeds the active tab one-shot on first load (store writes thereafter always win). Distinct from the **Watchlist** (a set of Codes) — activeCode is one selected stock projection, not a saved list.
 _Avoid_: "selected ticker", "current symbol" (use **Code** vocabulary); conflating with **Watchlist** (list vs single active view).
 
-**저장 학습뷰 (Parquet Study View)**:
-A user-named study snapshot for one **Code** that opens a saved chart context — **Timeframe**, visible candle window, viewport zoom/scroll, indicator state, and the saved candle/indicator data needed to restore that view. It is opened from the Right Rail's 저장뷰 panel into the `/study` route, not normal `/live`. The Right Rail 저장뷰 panel may render these snapshots as a **저장뷰 트리**: a UI-only tree keyed internally by **Code** and labeled visibly by stock name; this does not introduce folders, membership, or a new saved-view domain model. Newer snapshots may also carry bucket-representative 10-level orderbook detail and broker detail for the saved visible candle buckets, so hover inspection can be restored without live SSE or parquet refetches. Older snapshots that lack detail arrays remain valid chart snapshots; `/study` does not repair them from parquet during load.
-_Avoid_: "캡처" (this saves view state, not a market-data collection job), "북마크" alone (too generic), "Saved Chart View" when the `/study` snapshot-restore contract matters; treating **저장뷰 트리** as a persisted folder model or Watchlist-style membership structure.
+**저장 학습뷰**:
+A user-named saved `/study` entry for one **Code**; v2 entries are **복기뷰** references, while v1 entries are legacy **스냅샷 학습뷰** artifacts. It is opened from the Right Rail's 저장뷰 panel into the `/study` route, not normal `/live`. The Right Rail 저장뷰 panel may render these entries as a **저장뷰 트리**: a UI-only tree keyed internally by **Code** and labeled visibly by stock name; this does not introduce folders, membership, or a new saved-view domain model.
+_Avoid_: "캡처" (this saves study context, not a market-data collection job), "북마크" alone (too generic), treating **저장뷰 트리** as a persisted folder model or Watchlist-style membership structure.
+
+**복기뷰 (Reference Study View)**:
+A v2 **저장 학습뷰** that stores one **Code**, **Timeframe**, saved period, viewport zoom/scroll, memo, and tags so `/study` can reload that period and analyze it with the current `/live` indicator settings.
+_Avoid_: "snapshot", "fixed view", "captured chart"; saying it restores saved indicator state.
+
+**스냅샷 학습뷰 (Legacy Parquet Study Snapshot)**:
+A v1 **저장 학습뷰** artifact that carries saved candle/indicator data and optional bucket-representative 10-level orderbook and broker detail arrays needed to reopen the chart as it was saved.
+_Avoid_: using this term for new saves; expecting `/study` to repair missing legacy detail arrays from parquet during load.
 
 **Stock-Date**:
 The unit of capture and storage: one (Code, YYYYMMDD) pair. All paths and queries are scoped to a Stock-Date.

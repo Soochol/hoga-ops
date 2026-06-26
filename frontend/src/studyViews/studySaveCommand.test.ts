@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest';
 import type { ParquetStudySnapshot, ParquetStudyView, StudyIndicatorState } from '../api/studyViews';
 import type { RangeBundle } from '../api/types';
 import type { LiveStudySaveSource, StoredStudySaveSource } from './studySaveSource';
-import { makeStudySaveCommand } from './studySaveCommand';
+import { makeStudySaveCommand, studySaveCommandBody } from './studySaveCommand';
 
 const indicatorState: StudyIndicatorState = {
   volume_enabled: true,
@@ -111,17 +111,28 @@ describe('makeStudySaveCommand', () => {
     expect(command).toMatchObject({
       mode: 'create',
       id: undefined,
-      defaultName: '',
-      defaultMemo: '',
+      dialog: {
+        defaultName: '',
+        defaultMemo: '',
+        rangeLabel: '19700101 ~ 19700101',
+      },
     });
     expect(command?.request).toMatchObject({
       name: '삼성전자 5m 저장뷰',
       code: '005930',
       label: '삼성전자',
-      provenance: { saved_from_route: '/live', data_provenance: 'live_mixed' },
       viewport: { right_edge_ms: 3_000, bar_span: 2, at_live_edge: true },
-      snapshot_from_ms: 1_000,
-      snapshot_to_ms: 3_000,
+      range: {
+        from_ms: 1_000,
+        to_ms: 3_000,
+      },
+    });
+    expect('snapshot' in command!.request).toBe(false);
+    expect('indicator_state' in command!.request).toBe(false);
+    expect(studySaveCommandBody(command!, { name: '복기', memo: '메모' })).toMatchObject({
+      name: '복기',
+      memo: '메모',
+      range: command!.request.range,
     });
   });
 
@@ -139,17 +150,23 @@ describe('makeStudySaveCommand', () => {
     expect(command).toMatchObject({
       mode: 'overwrite',
       id: 'view1',
-      defaultName: '기존 저장뷰',
-      defaultMemo: '기존 메모',
+      dialog: {
+        defaultName: '기존 저장뷰',
+        defaultMemo: '기존 메모',
+        rangeLabel: '19700101 ~ 19700101',
+      },
     });
     expect(command?.request).toMatchObject({
       name: '기존 저장뷰',
       memo: '기존 메모',
-      provenance: { saved_from_route: '/study', data_provenance: 'study_snapshot' },
       viewport: { right_edge_ms: 2_000, bar_span: 1, at_live_edge: false },
-      snapshot_from_ms: 1_000,
-      snapshot_to_ms: 3_000,
+      range: {
+        from_ms: 1_000,
+        to_ms: 3_000,
+      },
     });
+    expect('snapshot' in command!.request).toBe(false);
+    expect('indicator_state' in command!.request).toBe(false);
   });
 
   it('returns null when no viewport can be captured or inferred', () => {

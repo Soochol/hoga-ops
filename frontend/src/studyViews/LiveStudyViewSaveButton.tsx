@@ -1,6 +1,5 @@
 import { useState } from 'react';
-import { studySnapshotByteSize } from './studySaveRequest';
-import { makeStudySaveCommand, type StudySaveCommand } from './studySaveCommand';
+import { makeStudySaveCommand, studySaveCommandBody, type StudySaveCommand } from './studySaveCommand';
 import { useCurrentStudySaveSource } from './studySaveSource';
 import { StudyViewSaveDialog } from './StudyViewSaveDialog';
 import { useStudyViewMutations } from './useStudyViews';
@@ -37,16 +36,15 @@ export function LiveStudyViewSaveButton() {
       {command && (
         <StudyViewSaveDialog
           mode="create"
-          defaultName={command.defaultName}
-          defaultMemo={command.defaultMemo}
-          barCount={command.request.snapshot.bundle.candles.length}
-          sizeBytes={studySnapshotByteSize(command.request.snapshot)}
+          defaultName={command.dialog.defaultName}
+          defaultMemo={command.dialog.defaultMemo}
+          rangeLabel={command.dialog.rangeLabel}
           isSubmitting={mutations.create.isPending}
           errorMessage={createError}
           onCancel={() => setCommand(null)}
           onSubmit={({ name, memo }) => {
             mutations.create.mutate(
-              { ...command.request, name, memo },
+              studySaveCommandBody(command, { name, memo }),
               { onSuccess: () => setCommand(null) },
             );
           }}

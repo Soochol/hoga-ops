@@ -122,6 +122,7 @@ export type ParquetStudySnapshot = {
 };
 
 export type ParquetStudyView = {
+  schema_version?: 1;
   id: string;
   name: string;
   code: string;
@@ -141,7 +142,31 @@ export type ParquetStudyView = {
   updated_at_ms: number;
 };
 
-export type StudyViewsFile = { schema_version: number; saves: ParquetStudyView[] };
+export type StudyViewRange = {
+  from_date: string;
+  to_date: string;
+  from_ms: number;
+  to_ms: number;
+};
+
+export type StudyViewReference = {
+  schema_version: 2;
+  id: string;
+  name: string;
+  code: string;
+  label: string;
+  timeframe: LiveTimeframe;
+  range: StudyViewRange;
+  viewport: StudyViewport;
+  memo: string;
+  tags: string[];
+  created_at_ms: number;
+  updated_at_ms: number;
+};
+
+export type StudyViewListRow = ParquetStudyView | StudyViewReference;
+export type StudyViewsFile = { schema_version: number; saves: StudyViewListRow[] };
+
 export type ParquetStudyViewWriteRequest = {
   name: string;
   code: string;
@@ -157,10 +182,23 @@ export type ParquetStudyViewWriteRequest = {
   snapshot: ParquetStudySnapshot;
 };
 
+export type StudyViewWriteRequest = {
+  name: string;
+  code: string;
+  label: string;
+  timeframe: LiveTimeframe;
+  range: StudyViewRange;
+  viewport: StudyViewport;
+  memo?: string;
+  tags?: string[];
+};
+
 export type StudyViewMetadataUpdateRequest = {
   name?: string;
   memo?: string;
 };
+
+export type StudyViewSaveWriteRequest = ParquetStudyViewWriteRequest | StudyViewWriteRequest;
 
 const json = (body: unknown): RequestInit => ({
   headers: { 'Content-Type': 'application/json' },
@@ -168,14 +206,14 @@ const json = (body: unknown): RequestInit => ({
 });
 
 export const listStudyViews = () => apiCall<StudyViewsFile>('/api/study-views/saves');
-export const createStudyView = (body: ParquetStudyViewWriteRequest) =>
-  apiCall<ParquetStudyView>('/api/study-views/saves', { method: 'POST', ...json(body) });
-export const getStudyView = (id: string) => apiCall<ParquetStudyView>(`/api/study-views/saves/${id}`);
+export const createStudyView = (body: StudyViewSaveWriteRequest) =>
+  apiCall<StudyViewListRow>('/api/study-views/saves', { method: 'POST', ...json(body) });
+export const getStudyView = (id: string) => apiCall<StudyViewListRow>(`/api/study-views/saves/${id}`);
 export const getStudyViewSnapshot = (id: string) =>
   apiCall<ParquetStudySnapshot>(`/api/study-views/saves/${id}/snapshot`);
-export const updateStudyView = (id: string, body: ParquetStudyViewWriteRequest) =>
-  apiCall<ParquetStudyView>(`/api/study-views/saves/${id}`, { method: 'PUT', ...json(body) });
+export const updateStudyView = (id: string, body: StudyViewSaveWriteRequest) =>
+  apiCall<StudyViewListRow>(`/api/study-views/saves/${id}`, { method: 'PUT', ...json(body) });
 export const updateStudyViewMetadata = (id: string, body: StudyViewMetadataUpdateRequest) =>
-  apiCall<ParquetStudyView>(`/api/study-views/saves/${id}/metadata`, { method: 'PATCH', ...json(body) });
+  apiCall<StudyViewListRow>(`/api/study-views/saves/${id}/metadata`, { method: 'PATCH', ...json(body) });
 export const deleteStudyView = (id: string) =>
   apiAction(`/api/study-views/saves/${id}`, { method: 'DELETE' });

@@ -1,42 +1,48 @@
-import type { ParquetStudyView, ParquetStudyViewWriteRequest, StudySavedFromRoute } from '../api/studyViews';
+import type { StudyViewListRow, StudyViewWriteRequest } from '../api/studyViews';
 import type { RangeBundle } from '../api/types';
 import type { CurrentStudySaveSource } from './studySaveSource';
 import {
   defaultStudyViewName,
   fallbackViewport,
+  rangeForWindow,
   viewportFromCapture,
   visibleWindow,
 } from './studySaveRequest';
-import { buildStudySnapshotRequest } from './useStudySnapshotCapture';
 
 export type StudySaveCommandMode = 'create' | 'overwrite';
+
+export type StudySaveDialogValues = {
+  name: string;
+  memo: string;
+};
 
 export type StudySaveCommand = {
   mode: StudySaveCommandMode;
   id?: string;
-  request: ParquetStudyViewWriteRequest;
-  defaultName: string;
-  defaultMemo: string;
+  request: StudyViewWriteRequest;
+  dialog: {
+    defaultName: string;
+    defaultMemo: string;
+    rangeLabel: string;
+  };
 };
 
-function sourceRoute(source: CurrentStudySaveSource): StudySavedFromRoute {
-  return source.origin === 'study' ? '/study' : '/live';
-}
-
 function sourceCode(source: CurrentStudySaveSource): string {
-  return source.origin === 'study' ? source.snapshot.code : source.code;
+  if (source.origin === 'study') return source.snapshot.code;
+  if (source.origin === 'study-reference') return source.save.code;
+  return source.code;
 }
 
 function sourceLabel(source: CurrentStudySaveSource): string {
-  return source.origin === 'study' ? source.snapshot.label : source.label;
+  if (source.origin === 'study') return source.snapshot.label;
+  if (source.origin === 'study-reference') return source.save.label;
+  return source.label;
 }
 
 function sourceTimeframe(source: CurrentStudySaveSource) {
-  return source.origin === 'study' ? source.snapshot.timeframe : source.timeframe;
-}
-
-function sourceIndicatorState(source: CurrentStudySaveSource) {
-  return source.origin === 'study' ? source.snapshot.indicator_state : source.indicatorState;
+  if (source.origin === 'study') return source.snapshot.timeframe;
+  if (source.origin === 'study-reference') return source.save.timeframe;
+  return source.timeframe;
 }
 
 function sourceBundle(source: CurrentStudySaveSource): RangeBundle {
@@ -44,7 +50,9 @@ function sourceBundle(source: CurrentStudySaveSource): RangeBundle {
 }
 
 function sourceFallbackViewport(source: CurrentStudySaveSource) {
-  return source.origin === 'study' ? source.snapshot.viewport : fallbackViewport(source.bundle);
+  if (source.origin === 'study') return source.snapshot.viewport;
+  if (source.origin === 'study-reference') return source.save.viewport;
+  return fallbackViewport(source.bundle);
 }
 
 function commandDefaultName({
@@ -67,7 +75,7 @@ export function makeStudySaveCommand({
 }: {
   mode: StudySaveCommandMode;
   source: CurrentStudySaveSource;
-  existingSave: ParquetStudyView | null | undefined;
+  existingSave: StudyViewListRow | null | undefined;
 }): StudySaveCommand | null {
   const bundle = sourceBundle(source);
   const viewport = viewportFromCapture(source.captureViewport, sourceFallbackViewport(source));
@@ -79,26 +87,34 @@ export function makeStudySaveCommand({
   const window = visibleWindow(bundle, viewport);
   const name = defaultStudyViewName(mode === 'overwrite' ? existingSave ?? undefined : undefined, label, timeframe);
   const memo = mode === 'overwrite' ? existingSave?.memo ?? '' : '';
-  const route = sourceRoute(source);
-  const request = buildStudySnapshotRequest({
+  const range = rangeForWindow(bundle, window.fromIndex, window.toIndex);
+  if (!range) return null;
+  const request: StudyViewWriteRequest = {
     name,
     memo,
-    route,
     code,
     label,
     timeframe,
+    range,
     viewport,
-    indicatorState: sourceIndicatorState(source),
-    bundle,
-    fromIndex: window.fromIndex,
-    toIndex: window.toIndex,
-  });
+    tags: existingSave?.tags ?? [],
+  };
 
   return {
     mode,
-    id: mode === 'overwrite' && source.origin === 'study' ? source.viewId : undefined,
+    id: mode === 'overwrite' && source.origin !== 'live' ? source.viewId : undefined,
     request,
-    defaultName: commandDefaultName({ mode, source, requestName: request.name }),
-    defaultMemo: request.memo ?? '',
+    dialog: {
+      defaultName: commandDefaultName({ mode, source, requestName: request.name }),
+      defaultMemo: request.memo ?? '',
+      rangeLabel: `${request.range.from_date} ~ ${request.range.to_date}`,
+    },
   };
+}
+
+export function studySaveCommandBody(
+  command: StudySaveCommand,
+  values: StudySaveDialogValues,
+): StudyViewWriteRequest {
+  return { ...command.request, name: values.name, memo: values.memo };
 }

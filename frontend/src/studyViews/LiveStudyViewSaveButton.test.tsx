@@ -89,6 +89,8 @@ it('opens create dialog and creates from the live source', async () => {
   expect(body.name).toBe('라이브 저장');
   expect(body.code).toBe('005930');
   expect(body.label).toBe('삼성전자');
-  expect(body.provenance.saved_from_route).toBe('/live');
+  expect(body.range).toMatchObject({ from_ms: 1_000, to_ms: 2_000 });
+  expect('snapshot' in body).toBe(false);
+  expect('indicator_state' in body).toBe(false);
   expect(body.viewport.at_live_edge).toBe(true);
 });

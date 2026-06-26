@@ -5,7 +5,9 @@ module (``hoga/tables/{trades,snapshots,brokers,candles}.py``).
 from __future__ import annotations
 
 import math
+from datetime import datetime
 from typing import Annotated, Literal, Union
+from zoneinfo import ZoneInfo
 
 from pydantic import BaseModel, Field, field_validator, model_validator
 
@@ -1456,6 +1458,54 @@ class ParquetStudyViewWriteRequest(BaseModel):
         return self
 
 
+class StudyViewRange(BaseModel):
+    from_date: str = Field(pattern=r"^\d{8}$")
+    to_date: str = Field(pattern=r"^\d{8}$")
+    from_ms: int
+    to_ms: int
+
+    @model_validator(mode="after")
+    def _valid_range(self):
+        if self.from_date > self.to_date:
+            raise ValueError("from_date must be <= to_date")
+        if self.from_ms > self.to_ms:
+            raise ValueError("from_ms must be <= to_ms")
+        kst = ZoneInfo("Asia/Seoul")
+        from_ms_date = datetime.fromtimestamp(self.from_ms / 1000, tz=kst).strftime("%Y%m%d")
+        to_ms_date = datetime.fromtimestamp(self.to_ms / 1000, tz=kst).strftime("%Y%m%d")
+        if not (self.from_date <= from_ms_date <= self.to_date):
+            raise ValueError("from_ms must fall within from_date/to_date")
+        if not (self.from_date <= to_ms_date <= self.to_date):
+            raise ValueError("to_ms must fall within from_date/to_date")
+        return self
+
+
+class StudyViewReferenceWriteRequest(BaseModel):
+    name: str
+    code: str = Field(pattern=CODE_PATTERN)
+    label: str
+    timeframe: LiveTimeframeModel
+    range: StudyViewRange
+    viewport: StudyViewport
+    memo: str = ""
+    tags: list[str] = Field(default_factory=list)
+
+    @field_validator("name")
+    @classmethod
+    def _strip_name(cls, v: str) -> str:
+        return _strip_nonblank_name(v)
+
+    @field_validator("memo", mode="before")
+    @classmethod
+    def _default_memo(cls, v: str | None) -> str:
+        return "" if v is None else str(v).strip()
+
+    @field_validator("tags", mode="before")
+    @classmethod
+    def _default_tags(cls, v: list[str] | None) -> list[str]:
+        return [] if v is None else v
+
+
 class StudyViewMetadataUpdateRequest(BaseModel):
     name: str | None = None
     memo: str | None = None
@@ -1482,6 +1532,7 @@ class StudyViewMetadataUpdateRequest(BaseModel):
 
 
 class ParquetStudyView(BaseModel):
+    schema_version: Literal[1] = 1
     id: str
     name: str
     code: str = Field(pattern=CODE_PATTERN)
@@ -1512,6 +1563,47 @@ class ParquetStudyView(BaseModel):
         return self
 
 
+class StudyViewReference(BaseModel):
+    schema_version: Literal[2] = 2
+    id: str
+    name: str
+    code: str = Field(pattern=CODE_PATTERN)
+    label: str
+    timeframe: LiveTimeframeModel
+    range: StudyViewRange
+    viewport: StudyViewport
+    memo: str = ""
+    tags: list[str] = Field(default_factory=list)
+    created_at_ms: int
+    updated_at_ms: int
+
+    @field_validator("name")
+    @classmethod
+    def _strip_name(cls, v: str) -> str:
+        return _strip_nonblank_name(v)
+
+
+StudyViewListRow = Annotated[
+    Union[ParquetStudyView, StudyViewReference],
+    Field(discriminator="schema_version"),
+]
+
+
 class StudyViewsFile(BaseModel):
     schema_version: int = 1
-    saves: list[ParquetStudyView] = Field(default_factory=list)
+    saves: list[StudyViewListRow] = Field(default_factory=list)
+
+    @model_validator(mode="before")
+    @classmethod
+    def _default_legacy_save_schema_version(cls, data):
+        if isinstance(data, dict):
+            saves = data.get("saves")
+            if isinstance(saves, list):
+                data = dict(data)
+                data["saves"] = [
+                    {**save, "schema_version": 1}
+                    if isinstance(save, dict) and "schema_version" not in save
+                    else save
+                    for save in saves
+                ]
+        return data

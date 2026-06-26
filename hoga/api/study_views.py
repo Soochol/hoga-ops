@@ -10,7 +10,10 @@ from hoga.api._atomic_write import atomic_write_json
 from hoga.api.models import (
     ParquetStudySnapshot,
     ParquetStudyView,
+    StudyViewListRow,
     StudyViewMetadataUpdateRequest,
+    StudyViewReference,
+    StudyViewReferenceWriteRequest,
     ParquetStudyViewWriteRequest,
     StudyViewsFile,
 )
@@ -30,6 +33,10 @@ class StudyViewSnapshotMissingError(Exception):
 
 
 class StudyViewSnapshotInvalidError(Exception):
+    pass
+
+
+class StudyViewSnapshotNotApplicableError(Exception):
     pass
 
 
@@ -73,7 +80,9 @@ def load_snapshot(data_dir: Path, *, id: str) -> ParquetStudySnapshot:
 
 
 def load_restorable_snapshot(data_dir: Path, *, id: str) -> ParquetStudySnapshot:
-    get_save_sync(data_dir, id=id)
+    save = get_save_sync(data_dir, id=id)
+    if isinstance(save, StudyViewReference):
+        raise StudyViewSnapshotNotApplicableError(id)
     p = _snapshot_path(data_dir, id)
     if not p.exists():
         raise StudyViewSnapshotMissingError(id)
@@ -120,11 +129,33 @@ def _view_from_req(
     )
 
 
-def list_saves_sync(data_dir: Path) -> list[ParquetStudyView]:
+def _reference_from_req(
+    *,
+    req: StudyViewReferenceWriteRequest,
+    id: str,
+    created_at_ms: int,
+    updated_at_ms: int,
+) -> StudyViewReference:
+    return StudyViewReference(
+        id=id,
+        name=req.name,
+        code=req.code,
+        label=req.label,
+        timeframe=req.timeframe,
+        range=req.range,
+        viewport=req.viewport,
+        memo=req.memo,
+        tags=req.tags,
+        created_at_ms=created_at_ms,
+        updated_at_ms=updated_at_ms,
+    )
+
+
+def list_saves_sync(data_dir: Path) -> list[StudyViewListRow]:
     return load_saves(data_dir).saves
 
 
-def get_save_sync(data_dir: Path, *, id: str) -> ParquetStudyView:
+def get_save_sync(data_dir: Path, *, id: str) -> StudyViewListRow:
     for save in load_saves(data_dir).saves:
         if save.id == id:
             return save
@@ -148,6 +179,17 @@ def create_save_sync(
         with suppress(OSError):
             snapshot_path.unlink(missing_ok=True)
         raise
+    return save
+
+
+def create_reference_save_sync(
+    data_dir: Path, *, req: StudyViewReferenceWriteRequest, id: str, now_ms: int
+) -> StudyViewReference:
+    file = load_saves(data_dir)
+    save = _reference_from_req(req=req, id=id, created_at_ms=now_ms, updated_at_ms=now_ms)
+    file.saves.append(save)
+    file.saves.sort(key=lambda s: s.updated_at_ms, reverse=True)
+    save_saves(data_dir, file)
     return save
 
 
@@ -189,9 +231,36 @@ def update_save_sync(
     raise StudyViewNotFoundError(id)
 
 
+def update_reference_save_sync(
+    data_dir: Path, *, id: str, req: StudyViewReferenceWriteRequest, now_ms: int
+) -> StudyViewReference:
+    file = load_saves(data_dir)
+    for idx, old in enumerate(file.saves):
+        if old.id == id:
+            save = _reference_from_req(
+                req=req,
+                id=id,
+                created_at_ms=old.created_at_ms,
+                updated_at_ms=now_ms,
+            )
+            old_file = file.model_copy(deep=True)
+            file.saves[idx] = save
+            file.saves.sort(key=lambda s: s.updated_at_ms, reverse=True)
+            save_saves(data_dir, file)
+            try:
+                _snapshot_path(data_dir, id).unlink()
+            except FileNotFoundError:
+                pass
+            except OSError:
+                save_saves(data_dir, old_file)
+                raise
+            return save
+    raise StudyViewNotFoundError(id)
+
+
 def update_save_metadata_sync(
     data_dir: Path, *, id: str, req: StudyViewMetadataUpdateRequest, now_ms: int
-) -> ParquetStudyView:
+) -> StudyViewListRow:
     file = load_saves(data_dir)
     for idx, old in enumerate(file.saves):
         if old.id == id:
@@ -231,6 +300,13 @@ async def create_save(
         return create_save_sync(data_dir, req=req, id=id, now_ms=now_ms)
 
 
+async def create_reference_save(
+    data_dir: Path, *, req: StudyViewReferenceWriteRequest, id: str, now_ms: int
+) -> StudyViewReference:
+    async with _lock:
+        return create_reference_save_sync(data_dir, req=req, id=id, now_ms=now_ms)
+
+
 async def update_save(
     data_dir: Path, *, id: str, req: ParquetStudyViewWriteRequest, now_ms: int
 ) -> ParquetStudyView:
@@ -238,9 +314,16 @@ async def update_save(
         return update_save_sync(data_dir, id=id, req=req, now_ms=now_ms)
 
 
+async def update_reference_save(
+    data_dir: Path, *, id: str, req: StudyViewReferenceWriteRequest, now_ms: int
+) -> StudyViewReference:
+    async with _lock:
+        return update_reference_save_sync(data_dir, id=id, req=req, now_ms=now_ms)
+
+
 async def update_save_metadata(
     data_dir: Path, *, id: str, req: StudyViewMetadataUpdateRequest, now_ms: int
-) -> ParquetStudyView:
+) -> StudyViewListRow:
     async with _lock:
         return update_save_metadata_sync(data_dir, id=id, req=req, now_ms=now_ms)
 

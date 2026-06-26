@@ -4,6 +4,7 @@ export function StudyViewSaveDialog({
   mode,
   defaultName,
   defaultMemo,
+  rangeLabel,
   barCount,
   sizeBytes,
   isSubmitting = false,
@@ -14,8 +15,9 @@ export function StudyViewSaveDialog({
   mode: 'create' | 'overwrite';
   defaultName: string;
   defaultMemo: string;
-  barCount: number;
-  sizeBytes: number;
+  rangeLabel?: string;
+  barCount?: number;
+  sizeBytes?: number;
   isSubmitting?: boolean;
   errorMessage?: string | null;
   onCancel: () => void;
@@ -37,9 +39,13 @@ export function StudyViewSaveDialog({
       >
         <h2 className="text-sm font-semibold">{mode === 'overwrite' ? '덮어쓰기' : '저장 뷰 만들기'}</h2>
         {mode === 'overwrite' && (
-          <p className="text-xs text-fg-dim">기존 저장뷰를 현재 차트 스냅샷으로 덮어쓰기합니다.</p>
+          <p className="text-xs text-fg-dim">기존 저장뷰를 현재 복기 구간으로 덮어쓰기합니다.</p>
         )}
-        <p className="text-xs text-fg-dim">{barCount}개 봉 · 약 {Math.ceil(sizeBytes / 1024)}KB</p>
+        {rangeLabel ? (
+          <p className="text-xs text-fg-dim">기간 참조 · {rangeLabel}</p>
+        ) : barCount != null && sizeBytes != null ? (
+          <p className="text-xs text-fg-dim">{barCount}개 봉 · 약 {Math.ceil(sizeBytes / 1024)}KB</p>
+        ) : null}
         <label className="block text-xs">
           이름
           <input
@@ -58,7 +64,7 @@ export function StudyViewSaveDialog({
             className="mt-1 min-h-20 w-full rounded border bg-bg-input px-2 py-1 text-sm"
           />
         </label>
-        <p className="text-xs text-fg-dim">저장 학습뷰는 현재 화면의 계산된 차트 데이터를 스냅샷으로 저장합니다.</p>
+        <p className="text-xs text-fg-dim">저장 학습뷰는 현재 화면의 기간을 저장하고 다시 불러와 분석합니다.</p>
         {errorMessage && (
           <p role="alert" className="text-xs text-red-500">{errorMessage}</p>
         )}

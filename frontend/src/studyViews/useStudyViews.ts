@@ -7,7 +7,7 @@ import {
   updateStudyViewMetadata,
   updateStudyView,
   type StudyViewMetadataUpdateRequest,
-  type ParquetStudyViewWriteRequest,
+  type StudyViewSaveWriteRequest,
 } from '../api/studyViews';
 
 export const STUDY_VIEW_SAVES_QUERY = ['study-view-saves'] as const;
@@ -30,11 +30,11 @@ export function useStudyViewMutations() {
   const invalidate = () => qc.invalidateQueries({ queryKey: STUDY_VIEW_SAVES_QUERY });
   return {
     create: useMutation({
-      mutationFn: (body: ParquetStudyViewWriteRequest) => createStudyView(body),
+      mutationFn: (body: StudyViewSaveWriteRequest) => createStudyView(body),
       onSuccess: invalidate,
     }),
     update: useMutation({
-      mutationFn: ({ id, body }: { id: string; body: ParquetStudyViewWriteRequest }) => updateStudyView(id, body),
+      mutationFn: ({ id, body }: { id: string; body: StudyViewSaveWriteRequest }) => updateStudyView(id, body),
       onSuccess: (_save, vars) => {
         invalidate();
         qc.invalidateQueries({ queryKey: studyViewSnapshotQuery(vars.id) });
