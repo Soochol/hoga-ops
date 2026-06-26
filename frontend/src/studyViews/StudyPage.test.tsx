@@ -46,6 +46,22 @@ vi.mock('../live/LiveChartRoot', () => ({
   },
 }));
 
+vi.mock('../live/indicators/IndicatorPanel', () => ({
+  default: ({ onClose }: { onClose: () => void }) => (
+    <div role="dialog" aria-label="보조지표">
+      <button type="button" onClick={onClose}>닫기</button>
+    </div>
+  ),
+}));
+
+vi.mock('../live/LiveSettingsModal', () => ({
+  default: ({ onClose }: { onClose: () => void }) => (
+    <div role="dialog" aria-label="설정">
+      <button type="button" onClick={onClose}>닫기</button>
+    </div>
+  ),
+}));
+
 import { StudyPage } from './StudyPage';
 
 const HOVER_MS = Date.UTC(2026, 5, 16, 1, 0, 0);
@@ -203,6 +219,21 @@ describe('StudyPage', () => {
       timeframe: '15m',
     }));
     expect(liveChartRootMock.mock.calls.at(-1)?.[0].timeframe).toBe('15m');
+  });
+
+  it('renders live chart action controls in the study header', () => {
+    renderPage('/study?view=view-ref');
+
+    expect(screen.getByTestId('live-indicators-button')).toBeTruthy();
+    expect(screen.getByTestId('live-settings-button')).toBeTruthy();
+    expect(screen.getByRole('button', { name: '그리기' })).toBeTruthy();
+
+    fireEvent.click(screen.getByTestId('live-indicators-button'));
+    expect(screen.getByRole('dialog', { name: '보조지표' })).toBeTruthy();
+
+    fireEvent.click(screen.getByRole('button', { name: '닫기' }));
+    fireEvent.click(screen.getByTestId('live-settings-button'));
+    expect(screen.getByRole('dialog', { name: '설정' })).toBeTruthy();
   });
 
   it('captures the active study tab viewport before switching tabs and restores it on return', () => {

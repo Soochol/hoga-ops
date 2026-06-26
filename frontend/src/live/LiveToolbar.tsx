@@ -9,22 +9,15 @@ type Props = {
   studySaveControl?: ReactNode;
 };
 
-export function LiveToolbar({ onOpenIndicators, onOpenSettings, studySaveControl }: Props) {
-  const tf = useLivePageStore((s) => s.candleTimeframe);
-  const setTf = useLivePageStore((s) => s.setCandleTimeframe);
-  const rememberedMinute = useLivePageStore((s) => s.lastMinuteTimeframe);
+type ActionButtonsProps = {
+  onOpenIndicators: () => void;
+  onOpenSettings: () => void;
+  studySaveControl?: ReactNode;
+};
 
+export function LiveChartActionButtons({ onOpenIndicators, onOpenSettings, studySaveControl }: ActionButtonsProps) {
   return (
-    <div
-      data-testid="live-toolbar"
-      className="flex items-center gap-2 border-b px-3 overflow-x-auto flex-nowrap"
-      style={{
-        height: 'var(--h-toolbar)',
-        borderColor: 'var(--border)',
-        background: 'var(--bg-card)',
-      }}
-    >
-      <TimeframeControl timeframe={tf} rememberedMinute={rememberedMinute} onChange={setTf} />
+    <>
       <button
         type="button"
         data-testid="live-indicators-button"
@@ -65,6 +58,31 @@ export function LiveToolbar({ onOpenIndicators, onOpenSettings, studySaveControl
       </button>
       <LiveDrawingMenu />
       {studySaveControl}
+    </>
+  );
+}
+
+export function LiveToolbar({ onOpenIndicators, onOpenSettings, studySaveControl }: Props) {
+  const tf = useLivePageStore((s) => s.candleTimeframe);
+  const setTf = useLivePageStore((s) => s.setCandleTimeframe);
+  const rememberedMinute = useLivePageStore((s) => s.lastMinuteTimeframe);
+
+  return (
+    <div
+      data-testid="live-toolbar"
+      className="flex items-center gap-2 border-b px-3 overflow-x-auto flex-nowrap"
+      style={{
+        height: 'var(--h-toolbar)',
+        borderColor: 'var(--border)',
+        background: 'var(--bg-card)',
+      }}
+    >
+      <TimeframeControl timeframe={tf} rememberedMinute={rememberedMinute} onChange={setTf} />
+      <LiveChartActionButtons
+        onOpenIndicators={onOpenIndicators}
+        onOpenSettings={onOpenSettings}
+        studySaveControl={studySaveControl}
+      />
     </div>
   );
 }
