@@ -8,7 +8,7 @@
 
 The `/live` broker sidebar and broker day-series API currently cap displayed brokers at 10. The user wants every recorded broker to be visible, not only the top 10. "Recorded broker" means a broker present in the stored top-5 buy plus top-5 sell broker snapshots; the system cannot infer brokers outside those recorded snapshots.
 
-The user also wants a new broker-related indicator: **기록상 신규 거래원**. Starting from a configurable time, default `09:30`, the indicator should show brokers whose first recorded appearance is at or after that time and who were not recorded before that time. This deliberately treats "present in the first recorded broker snapshot at or after 09:30" and "newly appearing later after 09:30" as one user-facing concept: **기준시각 이후 첫 등장 거래원**. Each broker should be shown once, directly on the existing `호가비` (ask/bid ratio) chart indicator, at that broker's first observed appearance time, with a dot and the broker name as a label.
+The user also wants a new broker-related indicator: **기록상 신규 거래원**. Starting from a configurable time, default `09:30`, the indicator should show buy-side or sell-side broker appearances whose first recorded appearance is at or after that time and whose same broker-side pair was not recorded before that time. This deliberately treats "present in the first recorded broker snapshot at or after 09:30" and "newly appearing later after 09:30" as one user-facing concept: **기준시각 이후 첫 등장 거래원**. Each broker-side pair should be shown once, directly on the existing `호가비` (ask/bid ratio) chart indicator, at that pair's first observed appearance time, with a dot and the broker name as a label.
 
 ## Invariants
 
@@ -39,7 +39,7 @@ The user also wants a new broker-related indicator: **기록상 신규 거래원
 - Remove the broker identity cap so `/api/brokers/series`, the `/live` latest broker sidebar, and `BrokerTrajectoryTable` show every recorded broker.
 - Add a `지표` modal item under the existing `거래원 지표` section, labelled `신규 거래원 등장`.
 - Add a configurable 기준 시각 parameter in HHMM format. Default: `930`.
-- Detect **기록상 신규 거래원** with one unified rule: brokers with no observed point before the 기준 시각 and a first observed point at or after the 기준 시각.
+- Detect **기록상 신규 거래원** with one unified rule over broker-side pairs: `(broker, buy)` or `(broker, sell)` pairs with no observed point before the 기준 시각 and a first observed point at or after the 기준 시각.
 - Render those first-appearance events as dots plus broker labels on the existing `호가비` pane.
 - Keep marker rendering optional via the new indicator toggle.
 
@@ -61,20 +61,21 @@ Extend the `/api/range` response with a compact late-entry event list, for examp
 type BrokerLateEntryEvent = {
   t_ms: number;
   broker: string;
+  side: 'buy' | 'sell';
   net: number;
 };
 ```
 
 The backend builds events from `brokers.parquet` after canonical broker-name collapse:
 
-1. Build each broker's observed points for the day using the same signed net logic as `query_day_series`.
+1. Build each broker-side pair's observed points for the day from the long-format broker rows, after canonical broker-name collapse.
 2. Convert the configured 기준 시각 HHMM into the day's KST Unix-ms threshold.
-3. Build `pre_seen = brokers with any observed point ts_ms < threshold`.
-4. For each broker, find its first observed point where `ts_ms >= threshold`. This intentionally treats exactly `09:30:00.000` as included because Korean "이후" is inclusive in this UI.
-5. Emit one event if the broker is not in `pre_seen` and such a first at-or-after-threshold point exists.
-6. The event time is that first observed `ts_ms`; `net` is the signed net at that point.
+3. Build `pre_seen = broker-side pairs with any observed point ts_ms < threshold`.
+4. For each broker-side pair, find its first observed point where `ts_ms >= threshold`. This intentionally treats exactly `09:30:00.000` as included because Korean "이후" is inclusive in this UI.
+5. Emit one event if the broker-side pair is not in `pre_seen` and such a first at-or-after-threshold point exists.
+6. The event time is that first observed `ts_ms`; `side` is the observed broker row side; `net` is the broker's signed net at that timestamp for context.
 
-This simpler model is the intended product behavior: the user is not asking to distinguish "already visible in the first 09:30+ snapshot" from "appeared later"; they want to notice brokers that were not recorded before the 기준 시각 and then first show up from that point onward.
+This simpler model is the intended product behavior: the user is not asking to distinguish "already visible in the first 09:30+ snapshot" from "appeared later"; they want to notice buy brokers and sell brokers that were not recorded on that side before the 기준 시각 and then first show up from that point onward. If one broker appeared on the buy side before the threshold but first appears on the sell side after the threshold, the sell-side appearance is still a valid late-entry event.
 
 The route layer should convert broker timestamps from the parquet HHMMSSmmm encoding to Unix ms before the frontend sees them, matching the existing broker series behavior.
 
@@ -110,14 +111,15 @@ Add fields to the `/live` indicator slice:
 ```ts
 brokerLateEntryEnabled: boolean; // default false
 brokerLateEntryStartHHMM: number; // default 930
-brokerLateEntryColor: string; // default '#f59e0b'
+brokerLateEntryBuyColor: string; // default '#ef4444'
+brokerLateEntrySellColor: string; // default '#3b82f6'
 ```
 
 Validation:
 
 - Accept integer HHMM values in the regular-session range, recommended `900` through `1520`.
 - Invalid persisted values fall back to `930`.
-- Accept CSS hex colors for `brokerLateEntryColor`; invalid persisted values fall back to `#f59e0b`.
+- Accept CSS hex colors for `brokerLateEntryBuyColor` and `brokerLateEntrySellColor`; invalid persisted values fall back to `#ef4444` and `#3b82f6`.
 - The UI label should describe this as 기준 시각, not as a fixed "09:30" rule.
 
 ### Indicator Modal
@@ -129,9 +131,11 @@ Add one item to the existing `거래원 지표` group in `IndicatorPanel`:
 - Detail pane:
   - Short title: `신규 거래원 등장`
   - Numeric input: `기준 시각 (HHMM)`
-  - Color swatch/input: `표시 색상`
+  - Color swatch/input: `매수 색상`
+  - Color swatch/input: `매도 색상`
   - Default visible value: `930`
-  - Default color: amber `#f59e0b`
+  - Default buy color: red `#ef4444`
+  - Default sell color: blue `#3b82f6`
 
 This is what "거래원 지표 그룹에 추가" means: it is a selectable/togglable row inside the existing `지표` modal group, not a new sidebar card or a new chart pane.
 
@@ -146,9 +150,9 @@ Implementation shape:
 - The marker x-position comes from `axis.toVirtual(event.t_ms)`.
 - The marker y-position uses the displayed ratio value at the same bucket/time: same close-vs-intra-max basis, same Outlier Mask behavior (`value = 0` when clamped), and same Auction Mask behavior (skip marker when the ratio point is emitted as hidden/whitespace). If the exact ratio point is absent, use the nearest earlier displayed ratio point in the same session. If no displayed ratio value exists, skip the marker.
 - Draw a small dot at the ratio value and a compact broker label near it.
-- Use one user-configured display color for both the dot and the label. The dot is a filled circle in that color. The label text uses the same color, with a subtle semi-transparent chart-background chip behind it so the broker name remains readable without hiding the ratio line.
+- Use the event side to choose the display color. Buy-side late entries use `brokerLateEntryBuyColor`; sell-side late entries use `brokerLateEntrySellColor`. The dot is a filled circle in that side color. The label text uses the same side color, with a subtle semi-transparent chart-background chip behind it so the broker name remains readable without hiding the ratio line.
 - Recommended first-pass geometry: dot radius `3px`; label offset `6px` right and `-8px` up from the dot; label font `11px` medium-weight; chip padding `3px 5px`; chip border uses the configured color at low opacity.
-- Use `brokerDisplayShort()` for the visible label and keep the full canonical name available in marker data for future tooltip work.
+- Use `brokerDisplayShort()` for the visible label and keep the full canonical name and `side` available in marker data for future tooltip work. The label itself should stay compact; side is primarily communicated by color, not by adding "매수/매도" text to every label.
 
 Collision handling:
 
@@ -187,12 +191,13 @@ These are the grilled decisions after applying the `plan-eng-review` lens:
 | Question | Decision | Why |
 |----------|----------|-----|
 | What does "new broker" mean? | Use **기록상 신규 거래원** in docs/tests; keep UI label `신규 거래원 등장`. | Prevents the false claim that the broker was absent from the market; we only know it was absent from recorded top-5/top-5 snapshots. |
+| Is "new" broker-level or side-level? | Side-level: compute first appearance for `(broker, buy)` and `(broker, sell)` separately. | The user wants both buy and sell broker arrivals; a broker can be known on one side and newly meaningful on the other. |
 | Does `09:30 이후` include exactly 09:30? | Yes. A broker whose first observed point is exactly at the threshold is included. | Keeps the UI inclusive and intuitive: 기준시각부터 새롭게 보인 거래원을 표시한다. |
 | Should the UI distinguish "present at first 09:30+ snapshot" from "appeared later"? | No. Use one marker concept and one event type. | The user's goal is discovery of brokers newly visible after the 기준 시각, not cohort analysis. A single rule is easier to trust and explain. |
 | Where should event data live? | `/api/range` / `RangeBundle`, not a separate per-date frontend fetch fan-out. | Preserves ADR-0013 single read-path and keeps the marker aligned with the same Stock-Date/source segments as the ratio line. |
 | Which source should broker events use? | The segment's resolved source from `source_pref`. | Avoids source mixing where the ratio line is KIS but broker markers are hogaplay, or vice versa. |
 | What y-value should markers use? | The displayed ratio value after ratio projector policy. | Users see a marker on the line they are actually looking at; hidden auction points do not get floating labels. |
-| How should dot and label colors work? | One persisted color setting controls both the dot and the label. | Keeps the indicator visually coherent and avoids extra UI knobs for a marker whose purpose is quick discovery. |
+| How should dot and label colors work? | Two persisted colors: one for buy-side late entries and one for sell-side late entries. | The marker needs to show whether the new appearance is on the buy or sell broker list. Within each side, the dot and label share one color. |
 | How generic should marker plumbing be? | Add a narrow labelled-marker primitive path. | More complete than hacking DOM labels outside the chart, less overbuilt than a full primitive plugin registry. |
 | Should missing broker parquet exclude a date? | No. Emit no marker events for that date. | The marker is optional annotation; missing it must not blank otherwise valid hoga charts. |
 
@@ -203,8 +208,8 @@ CODE PATHS                                                   USER FLOWS
 [+] hoga/tables/brokers.py                                   [+] Enable marker from 지표 modal
   ├── [GAP] query_day_series returns all sorted brokers         ├── [GAP] toggle on/off persists
   ├── [GAP] canonical alias collapse before first-ts check      ├── [GAP] HHMM edit refetches /api/range
-  ├── [GAP] baseline-before-threshold exclusion                 └── [GAP] invalid HHMM falls back to 930
-  ├── [GAP] first at-or-after-threshold appearance emits once
+  ├── [GAP] side-specific baseline-before-threshold exclusion   └── [GAP] invalid HHMM falls back to 930
+  ├── [GAP] first at-or-after-threshold appearance emits once per side
   └── [GAP] missing brokers.parquet -> [] events
 
 [+] hoga/api/routes.py / bundle.py                           [+] Read marker on 호가비 pane
@@ -219,7 +224,7 @@ CODE PATHS                                                   USER FLOWS
 
 [+] frontend/src/chart/RangeSeriesPane.tsx
   ├── [GAP] labelled primitive attach/update/detach lifecycle
-  ├── [GAP] marker color setting applies to dot + label
+  ├── [GAP] buy/sell color settings apply to dot + label
   └── [GAP] teardown safe when chart already removed
 ```
 
@@ -232,16 +237,18 @@ CODE PATHS                                                   USER FLOWS
 | API returns all brokers | broker parquet with more than 10 canonical brokers | `/api/brokers/series` returns all sorted brokers, not 10 |
 | Sidebar renders all brokers | `BrokerTrajectoryTable` receives 12 series entries | 12 broker rows render |
 | Live aggregator returns all brokers | live broker buffer contains 12 broker identities | `aggregateBrokerSeries` returns 12 entries |
-| Late-entry detection excludes pre-seen brokers | broker A before `09:30`, then again at `10:00` | A emits no event |
-| Late-entry detection includes exact threshold | broker B first appears at `09:30:00.000`, threshold `930` | B emits one event at `09:30:00.000` |
-| Late-entry detection includes later first appearance | broker C first appears later than `09:30` | C emits one event at that first observed point |
-| Late-entry detection emits once per broker | broker D first appears at `09:45`, then appears again at `10:10` | D emits only the `09:45` event |
+| Late-entry detection excludes pre-seen broker-side pairs | broker A is on buy side before `09:30`, then buy side again at `10:00` | A buy emits no event |
+| Late-entry detection includes exact threshold | broker B first appears on sell side at `09:30:00.000`, threshold `930` | B sell emits one event at `09:30:00.000` |
+| Late-entry detection includes later first appearance | broker C first appears on buy side later than `09:30` | C buy emits one event at that first observed point |
+| Late-entry detection emits once per broker-side pair | broker D first appears on sell side at `09:45`, then appears again at `10:10` | D sell emits only the `09:45` event |
+| Late-entry detection is side-specific | broker E appears on buy side before `09:30`, first appears on sell side at `10:00` | E buy emits no event; E sell emits one event at `10:00` |
 | Late-entry detection uses resolved source | same date has `hogaplay` and `kis_live` with different broker first times | events match selected/fallback source segment |
 | Missing broker parquet is non-fatal | valid candles/snapshots but no `brokers.parquet` | range response succeeds with no broker late-entry events for that date |
 | HHMM persistence sanitizes invalid values | persisted `brokerLateEntryStartHHMM: 800` | store uses `930` |
-| Color persistence sanitizes invalid values | persisted `brokerLateEntryColor: "hot"` | store uses `#f59e0b` |
+| Buy color persistence sanitizes invalid values | persisted `brokerLateEntryBuyColor: "hot"` | store uses `#ef4444` for buy color |
+| Sell color persistence sanitizes invalid values | persisted `brokerLateEntrySellColor: "cold"` | store uses `#3b82f6` for sell color |
 | Indicator modal row | render `IndicatorPanel` | `신규 거래원 등장` appears under `거래원 지표` and toggles store state |
-| Indicator modal color control | change `표시 색상` | marker dot and label use the selected color |
+| Indicator modal color controls | change `매수 색상` and `매도 색상` | buy markers use buy color; sell markers use sell color |
 | Ratio marker projection | bundle has ratio point and late-entry event at same bucket | marker uses ratio value and broker label |
 | Ratio marker follows Outlier Mask | ratio point is clamped by outlier threshold | marker y-value is displayed `0` |
 | Ratio marker respects Auction Mask | ratio point falls in hidden closing auction window | no marker emitted |
@@ -252,8 +259,8 @@ CODE PATHS                                                   USER FLOWS
 - Open `/live` on a minute timeframe with `호가비` enabled.
 - Open `지표`, find `거래원 지표`, enable `신규 거래원 등장`.
 - Set 기준 시각 to `930`.
-- Confirm brokers first observed at or after `09:30` appear as dots and labels on the `호가비` pane.
-- Confirm brokers observed before `09:30` do not get late-entry markers even if they reappear later.
+- Confirm buy-side and sell-side broker appearances first observed at or after `09:30` appear as dots and labels on the `호가비` pane.
+- Confirm broker-side pairs observed before `09:30` do not get late-entry markers even if they reappear later.
 - Confirm the broker sidebar can show more than 10 recorded brokers.
 - Switch to daily/weekly/monthly and confirm the new marker does not create an empty pane.
 
@@ -266,6 +273,6 @@ CODE PATHS                                                   USER FLOWS
 ## Out of Scope (Backlog)
 
 - Tooltip with full broker name, first time, and first net value.
-- User-selectable marker color or label visibility modes.
+- Label visibility modes.
 - Per-broker include/exclude filters.
 - Reusing late-entry markers in `/study` saved views.
