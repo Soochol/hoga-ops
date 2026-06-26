@@ -57,6 +57,7 @@ vi.mock('lightweight-charts', async () => {
         getVisibleRange: vi.fn(() => null),
         setVisibleRange: vi.fn(),
         timeToCoordinate: vi.fn(() => null),
+        coordinateToTime: vi.fn(() => null),
         width: vi.fn(() => 800),
       })),
       panes: vi.fn(() => []),
@@ -2173,6 +2174,34 @@ describe('LiveChartRoot crosshair → cursor store (ADR-0044)', () => {
     act(() => fire({ time: whitespaceTimeSec, point: { x: 9999 } }));
     await flush();
     expect(useLiveCursorStore.getState().cursorMs).toBe(lastCandleMs);
+  });
+
+  it('crosshair over a pane separator keeps spot indicators on the candle at that x-coordinate', async () => {
+    render(
+      <LiveChartRoot
+        code="005930"
+        timeframe="1m"
+        bundle={TODAY_ONLY_BUNDLE}
+        clampEngaged={false}
+        isPastCandlesLoading={false}
+      />,
+      { wrapper },
+    );
+    const chart = vi.mocked(createChartEx).mock.results[0].value;
+    const ts = chart.timeScale();
+    vi.mocked(chart.timeScale).mockReturnValue(ts);
+    vi.mocked(ts.coordinateToTime).mockReturnValue((TODAY_OPEN_MS + 120_000) / 1000);
+    const fire = (p: { time?: unknown; point?: { x: number } | null }) =>
+      chart.subscribeCrosshairMove.mock.calls.forEach(
+        ([h]: [(p: { time?: unknown; point?: { x: number } | null }) => void]) => h(p),
+      );
+    const flush = () => act(() => new Promise((r) => requestAnimationFrame(() => r(null))));
+
+    act(() => fire({ point: { x: 240 } }));
+    await flush();
+
+    expect(ts.coordinateToTime).toHaveBeenCalledWith(240);
+    expect(useLiveCursorStore.getState().cursorMs).toBe(TODAY_OPEN_MS + 60_000);
   });
 
   it('clears cursor when timeframe switches from minute to calendar', () => {

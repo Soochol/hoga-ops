@@ -838,10 +838,13 @@ export function LiveChartRoot({ code, timeframe, venue = 'KRX', viewIdentity, bu
         return;
       }
       if (pending !== null) cancelAnimationFrame(pending);
+      const point = param.point;
       pending = requestAnimationFrame(() => {
         pending = null;
         const store = useLiveCursorStore.getState();
-        const t = param.time;
+        const t = typeof param.time === 'number'
+          ? param.time
+          : chart.timeScale().coordinateToTime(point.x);
         // No usable time (defensive) → not on a bar → latest mode.
         if (typeof t !== 'number' || axis.segments.length === 0) {
           onCursorActiveChange?.(false);
