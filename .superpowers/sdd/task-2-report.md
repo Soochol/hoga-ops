@@ -29,3 +29,17 @@ Files changed:
 
 Concerns:
 - None.
+
+## Task 2 Fix Report
+
+Summary:
+- Defaulted `/api/range` and `build_range_bundle()` to `broker_late_entry_start_hhmm=930`, so omitted params still flow through the broker late-entry slice while explicit invalid values still return 400.
+- Added a range route test that proves the omitted query param uses the default `930` path and still returns `broker_late_entries`.
+- Replaced the tautological broker-series length assertion with response shape, source, ordering, and timestamp checks.
+- Updated mocked range slice tests to stub `build_broker_late_entries_slice()` now that the default path is always active.
+
+Test command:
+- `uv run --extra dev pytest tests/test_tables_brokers.py tests/test_api_brokers_series.py tests/test_api_range.py -q`
+
+Test result:
+- Passed: `43 passed in 0.60s`

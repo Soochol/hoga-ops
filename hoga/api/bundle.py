@@ -1026,7 +1026,7 @@ def build_range_bundle(
     to_date: str,
     bucket_ms: int,
     source_pref: str = "hogaplay",  # ADR-0039
-    broker_late_entry_start_hhmm: int | None = None,
+    broker_late_entry_start_hhmm: int = 930,
     volume_distribution_bins: int | None = None,
     trade_volume_poc_bins: int | None = None,
     volume_distribution_price_min: int | None = None,
@@ -1188,16 +1188,15 @@ def build_range_bundle(
             source=source,
         ))
         included_dates.append(d)
-        if broker_late_entry_start_hhmm is not None:
-            broker_late_entries.extend(
-                build_broker_late_entries_slice(
-                    engine,
-                    code=code,
-                    date=d,
-                    source=source,
-                    start_hhmm=broker_late_entry_start_hhmm,
-                )
+        broker_late_entries.extend(
+            build_broker_late_entries_slice(
+                engine,
+                code=code,
+                date=d,
+                source=source,
+                start_hhmm=broker_late_entry_start_hhmm,
             )
+        )
         candles.extend(candles_d)
         ratio_pts.extend(qr_d.points)
         fill_pts.extend(fs_d.points)

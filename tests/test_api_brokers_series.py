@@ -13,22 +13,21 @@ def test_brokers_series_happy_path_returns_per_broker_trajectories(
     assert r.status_code == 200, r.text
     body = r.json()
     assert body["date"] == "20260519"
+    assert body["source"] == "hogaplay"
     assert isinstance(body["brokers"], list)
-    # All recorded broker entries are returned; no API-level top-10 cap remains.
-    assert len(body["brokers"]) >= 0
-    if body["brokers"]:
-        first = body["brokers"][0]
-        for key in ("broker", "final_net", "dominant_side", "points"):
-            assert key in first
-        assert first["dominant_side"] in ("buy", "sell")
-        # Sorted by abs(final_net) desc.
-        nets = [abs(e["final_net"]) for e in body["brokers"]]
-        assert nets == sorted(nets, reverse=True)
-        # Points are ts ascending and carry Unix-ms (per ADR-0003: ts >= 2020).
-        for p in first["points"]:
-            assert p["ts_ms"] >= 1_577_836_800_000  # 2020-01-01 UTC
-        ts_list = [p["ts_ms"] for p in first["points"]]
+    assert body["brokers"]
+    first = body["brokers"][0]
+    for key in ("broker", "final_net", "dominant_side", "points"):
+        assert key in first
+    assert first["dominant_side"] in ("buy", "sell")
+    # Sorted by abs(final_net) desc.
+    nets = [abs(e["final_net"]) for e in body["brokers"]]
+    assert nets == sorted(nets, reverse=True)
+    # Points are ts ascending and carry Unix-ms (per ADR-0003: ts >= 2020).
+    for entry in body["brokers"]:
+        ts_list = [p["ts_ms"] for p in entry["points"]]
         assert ts_list == sorted(ts_list)
+        assert all(ts >= 1_577_836_800_000 for ts in ts_list)
 
 
 def test_brokers_series_returns_empty_response_for_unknown_stock_date(
