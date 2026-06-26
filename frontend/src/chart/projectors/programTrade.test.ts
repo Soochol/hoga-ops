@@ -6,6 +6,8 @@ import { PROGRAM_TRADE_SPEC, projectProgramTradeNetAmount } from './programTrade
 
 const OPEN = Date.UTC(2026, 4, 12, 0, 0, 0);
 const CLOSE = Date.UTC(2026, 4, 12, 6, 30, 0);
+const NEXT_OPEN = Date.UTC(2026, 4, 13, 0, 0, 0);
+const NEXT_CLOSE = Date.UTC(2026, 4, 13, 6, 30, 0);
 const EXTENDED_OPEN = Date.UTC(2026, 4, 11, 23, 0, 0);
 const EXTENDED_CLOSE = Date.UTC(2026, 4, 12, 11, 0, 0);
 const HIDDEN_COLOR = 'rgba(0,0,0,0)';
@@ -142,6 +144,31 @@ describe('programTrade projector', () => {
       { time: axis.toVirtual(OPEN + 60_000) / 1000, value: 100_000, color: HIDDEN_COLOR },
       { time: axis.toVirtual(OPEN + 120_000) / 1000, value: 0, color: HIDDEN_COLOR },
       { time: axis.toVirtual(OPEN + 180_000) / 1000, value: 200_000 },
+    ]);
+  });
+
+  it('breaks the connector across trading-day boundaries', () => {
+    const b = bundle([
+      { t: OPEN + 60_000, net_qty: 10, net_amount: 100_000, gap_risk: false },
+      { t: NEXT_OPEN + 60_000, net_qty: 20, net_amount: 200_000, gap_risk: false },
+    ], []);
+    b.to_date = '20260513';
+    b.segments = [
+      { date: '20260512', session_open_ms: OPEN, session_close_ms: CLOSE },
+      { date: '20260513', session_open_ms: NEXT_OPEN, session_close_ms: NEXT_CLOSE },
+    ];
+    b.quote_ratio.points = [
+      quotePoint(OPEN + 60_000),
+      quotePoint(NEXT_OPEN + 60_000),
+    ];
+    const axis = createVirtualAxis([
+      { date: '20260512', sessionOpenMs: OPEN, sessionCloseMs: CLOSE },
+      { date: '20260513', sessionOpenMs: NEXT_OPEN, sessionCloseMs: NEXT_CLOSE },
+    ], OPEN);
+
+    expect(projectProgramTradeNetAmount(b, axis)).toEqual([
+      { time: axis.toVirtual(OPEN + 60_000) / 1000, value: 100_000, color: HIDDEN_COLOR },
+      { time: axis.toVirtual(NEXT_OPEN + 60_000) / 1000, value: 200_000 },
     ]);
   });
 

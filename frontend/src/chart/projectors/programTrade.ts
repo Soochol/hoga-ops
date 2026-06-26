@@ -48,6 +48,7 @@ export function projectProgramTradeNetAmount(
   const out: LineData<Time>[] = [];
   const hogaPoints = [...bundle.quote_ratio.points].sort((a, b) => a.t - b.t);
   const seenHogaT = new Set<number>();
+  let lastEmittedDate: string | null = null;
   for (const p of hogaPoints) {
     const hogaT = bucketTime(bundle, p.t);
     if (hogaT == null || seenHogaT.has(hogaT)) continue;
@@ -61,7 +62,12 @@ export function projectProgramTradeNetAmount(
     }
     const value = byBucket.get(hogaT);
     if (value == null) continue;
+    const date = segmentDate(bundle, hogaT);
+    if (lastEmittedDate != null && date != null && date !== lastEmittedDate) {
+      maskOutgoingConnector(out, LINE_HIDDEN_COLOR);
+    }
     out.push({ time, value });
+    lastEmittedDate = date;
   }
   return out;
 }
@@ -71,6 +77,10 @@ function bucketTime(bundle: RangeBundle, t: number): number | null {
   if (!segment) return null;
   const bucketMs = Math.max(1, bundle.bucket_ms || 1);
   return segment.session_open_ms + Math.floor((t - segment.session_open_ms) / bucketMs) * bucketMs;
+}
+
+function segmentDate(bundle: RangeBundle, t: number): string | null {
+  return bundle.segments.find((s) => s.session_open_ms <= t && t <= s.session_close_ms)?.date ?? null;
 }
 
 function regularSessionBoundsForDate(yyyymmdd: string): { open: number; close: number } | null {
