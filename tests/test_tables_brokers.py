@@ -130,6 +130,16 @@ def test_query_day_series_returns_all_recorded_brokers(tmp_path: Path) -> None:
 def test_query_late_entry_events_use_pre_threshold_brokers_as_initial_state(
     tmp_path: Path,
 ) -> None:
+    baseline = PARSERS[4](
+        _broker_parts_named(
+            ts_ms=90000000,
+            seq=0,
+            sell_names=["S1", "S2", "S3", "S4", "S5"],
+            sell_today=[10, 10, 10, 10, 10],
+            buy_names=["Dual", "B2", "B3", "B4", "B5"],
+            buy_today=[50, 10, 10, 10, 10],
+        )
+    )
     before = PARSERS[4](
         _broker_parts_named(
             ts_ms=92900000,
@@ -161,7 +171,7 @@ def test_query_late_entry_events_use_pre_threshold_brokers_as_initial_state(
         )
     )
     out = tmp_path / "brokers.parquet"
-    write_parquet(before + at_threshold + later, out)
+    write_parquet(baseline + before + at_threshold + later, out)
     con = duckdb.connect()
 
     events = query_late_entry_events(con, path=out, threshold_ms=93000000)
@@ -177,9 +187,19 @@ def test_query_late_entry_events_use_pre_threshold_brokers_as_initial_state(
     assert not any(t_ms == 94500000 and broker == "Dual" for t_ms, broker, _side in triples)
 
 
-def test_query_late_entry_events_include_reappearing_broker_side_pairs(
+def test_query_late_entry_events_skip_reappearing_broker_side_pairs_within_absence_window(
     tmp_path: Path,
 ) -> None:
+    baseline = PARSERS[4](
+        _broker_parts_named(
+            ts_ms=90000000,
+            seq=0,
+            sell_names=["S1", "S2", "S3", "S4", "S5"],
+            sell_today=[10, 10, 10, 10, 10],
+            buy_names=["B1", "B2", "B3", "B4", "B5"],
+            buy_today=[50, 10, 10, 10, 10],
+        )
+    )
     before = PARSERS[4](
         _broker_parts_named(
             ts_ms=92900000,
@@ -211,15 +231,107 @@ def test_query_late_entry_events_include_reappearing_broker_side_pairs(
         )
     )
     out = tmp_path / "brokers.parquet"
-    write_parquet(before + gone + returned, out)
+    write_parquet(baseline + before + gone + returned, out)
     con = duckdb.connect()
 
-    events = query_late_entry_events(con, path=out, threshold_ms=93000000)
+    events = query_late_entry_events(
+        con,
+        path=out,
+        threshold_ms=93000000,
+        absence_window_ms=30 * 60 * 1000,
+    )
     triples = [(e.t_ms, e.broker, e.side) for e in events]
 
     assert (93000000, "NewBuy", "buy") in triples
-    assert (94500000, "ReBuy", "buy") in triples
+    assert (94500000, "ReBuy", "buy") not in triples
     assert not any(t_ms == 94500000 and broker == "NewBuy" for t_ms, broker, _side in triples)
+
+
+def test_query_late_entry_events_include_reappearing_broker_side_pairs_after_absence_window(
+    tmp_path: Path,
+) -> None:
+    baseline = PARSERS[4](
+        _broker_parts_named(
+            ts_ms=90000000,
+            seq=0,
+            sell_names=["S1", "S2", "S3", "S4", "S5"],
+            sell_today=[10, 10, 10, 10, 10],
+            buy_names=["B1", "B2", "B3", "B4", "B5"],
+            buy_today=[50, 10, 10, 10, 10],
+        )
+    )
+    before = PARSERS[4](
+        _broker_parts_named(
+            ts_ms=92900000,
+            seq=1,
+            sell_names=["S1", "S2", "S3", "S4", "S5"],
+            sell_today=[10, 10, 10, 10, 10],
+            buy_names=["ReBuy", "B2", "B3", "B4", "B5"],
+            buy_today=[50, 10, 10, 10, 10],
+        )
+    )
+    gone = PARSERS[4](
+        _broker_parts_named(
+            ts_ms=93000000,
+            seq=2,
+            sell_names=["S1", "S2", "S3", "S4", "S5"],
+            sell_today=[10, 10, 10, 10, 10],
+            buy_names=["NewBuy", "B2", "B3", "B4", "B5"],
+            buy_today=[80, 10, 10, 10, 10],
+        )
+    )
+    returned = PARSERS[4](
+        _broker_parts_named(
+            ts_ms=100000000,
+            seq=3,
+            sell_names=["S1", "S2", "S3", "S4", "S5"],
+            sell_today=[10, 10, 10, 10, 10],
+            buy_names=["ReBuy", "NewBuy", "B3", "B4", "B5"],
+            buy_today=[90, 90, 10, 10, 10],
+        )
+    )
+    out = tmp_path / "brokers.parquet"
+    write_parquet(baseline + before + gone + returned, out)
+    con = duckdb.connect()
+
+    events = query_late_entry_events(
+        con,
+        path=out,
+        threshold_ms=93000000,
+        absence_window_ms=30 * 60 * 1000,
+    )
+    triples = [(e.t_ms, e.broker, e.side) for e in events]
+
+    assert (93000000, "NewBuy", "buy") in triples
+    assert (100000000, "ReBuy", "buy") in triples
+    assert not any(t_ms == 100000000 and broker == "NewBuy" for t_ms, broker, _side in triples)
+
+
+def test_query_late_entry_events_do_not_emit_before_absence_window_can_be_proven(
+    tmp_path: Path,
+) -> None:
+    early = PARSERS[4](
+        _broker_parts_named(
+            ts_ms=90500000,
+            seq=1,
+            sell_names=["S1", "S2", "S3", "S4", "S5"],
+            sell_today=[10, 10, 10, 10, 10],
+            buy_names=["EarlyBuy", "B2", "B3", "B4", "B5"],
+            buy_today=[50, 10, 10, 10, 10],
+        )
+    )
+    out = tmp_path / "brokers.parquet"
+    write_parquet(early, out)
+    con = duckdb.connect()
+
+    events = query_late_entry_events(
+        con,
+        path=out,
+        threshold_ms=90000000,
+        absence_window_ms=30 * 60 * 1000,
+    )
+
+    assert events == []
 
 
 def test_query_late_entry_events_collapses_aliases_before_selection(
@@ -249,7 +361,12 @@ def test_query_late_entry_events_collapses_aliases_before_selection(
     write_parquet(baseline + later, out)
     con = duckdb.connect()
 
-    events = query_late_entry_events(con, path=out, threshold_ms=93000000)
+    events = query_late_entry_events(
+        con,
+        path=out,
+        threshold_ms=93000000,
+        absence_window_ms=60 * 1000,
+    )
 
     shinhan = [e for e in events if e.broker == "신한투자증권"]
     assert len(shinhan) == 1

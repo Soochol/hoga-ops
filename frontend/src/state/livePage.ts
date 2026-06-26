@@ -11,6 +11,7 @@ import {
   TRADE_VOLUME_POC_DEFAULT_COLOR,
   TRADE_VOLUME_POC_DEFAULT_OPACITY,
   BROKER_LATE_ENTRY_DEFAULT_START_HHMM,
+  BROKER_LATE_ENTRY_DEFAULT_WINDOW_MINUTES,
   type LiveMAConfig,
   type BrokerLateEntrySideMode,
   type PersistedIndicators,
@@ -154,6 +155,7 @@ type Store = Persisted & PersistedIndicators & {
   setProgramTradeEnabled: (enabled: boolean) => void;
   setBrokerLateEntryEnabled: (enabled: boolean) => void;
   setBrokerLateEntryStartHHMM: (value: number) => void;
+  setBrokerLateEntryWindowMinutes: (value: number) => void;
   setBrokerLateEntrySideMode: (mode: BrokerLateEntrySideMode) => void;
   setBrokerLateEntryStyle: (patch: { buyColor?: string; sellColor?: string }) => void;
   setDailyMovingAverage: (id: string, patch: Partial<LiveMAConfig>) => void;
@@ -275,6 +277,7 @@ function snapshotIndicators(get: () => Store): PersistedIndicators {
     programTradeEnabled: s.programTradeEnabled,
     brokerLateEntryEnabled: s.brokerLateEntryEnabled,
     brokerLateEntryStartHHMM: s.brokerLateEntryStartHHMM,
+    brokerLateEntryWindowMinutes: s.brokerLateEntryWindowMinutes,
     brokerLateEntrySideMode: s.brokerLateEntrySideMode,
     brokerLateEntryBuyColor: s.brokerLateEntryBuyColor,
     brokerLateEntrySellColor: s.brokerLateEntrySellColor,
@@ -304,6 +307,10 @@ function normalizeBrokerLateEntryStartHHMM(value: number): number {
   return hh < 9 || hh > 15 || mm < 0 || mm > 59 || (hh === 15 && mm > 20)
     ? BROKER_LATE_ENTRY_DEFAULT_START_HHMM
     : next;
+}
+
+function normalizeBrokerLateEntryWindowMinutes(value: number): number {
+  return clamp(Math.trunc(value), 1, 240);
 }
 
 function nextSlotId(existing: readonly LiveMAConfig[], prefix = 'ma'): string {
@@ -536,6 +543,16 @@ export const useLivePageStore = create<Store>((set, get) => ({
       return;
     }
     set({ brokerLateEntryStartHHMM: normalizeBrokerLateEntryStartHHMM(value) });
+    persistIndicators(snapshotIndicators(get));
+  },
+
+  setBrokerLateEntryWindowMinutes: (value) => {
+    if (!Number.isFinite(value)) {
+      set({ brokerLateEntryWindowMinutes: BROKER_LATE_ENTRY_DEFAULT_WINDOW_MINUTES });
+      persistIndicators(snapshotIndicators(get));
+      return;
+    }
+    set({ brokerLateEntryWindowMinutes: normalizeBrokerLateEntryWindowMinutes(value) });
     persistIndicators(snapshotIndicators(get));
   },
 

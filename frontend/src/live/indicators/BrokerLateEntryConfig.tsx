@@ -57,10 +57,12 @@ function ColorGrid({
 
 export default function BrokerLateEntryConfig() {
   const start = useLivePageStore((s) => s.brokerLateEntryStartHHMM);
+  const windowMinutes = useLivePageStore((s) => s.brokerLateEntryWindowMinutes);
   const sideMode = useLivePageStore((s) => s.brokerLateEntrySideMode);
   const buyColor = useLivePageStore((s) => s.brokerLateEntryBuyColor);
   const sellColor = useLivePageStore((s) => s.brokerLateEntrySellColor);
   const setStart = useLivePageStore((s) => s.setBrokerLateEntryStartHHMM);
+  const setWindowMinutes = useLivePageStore((s) => s.setBrokerLateEntryWindowMinutes);
   const setSideMode = useLivePageStore((s) => s.setBrokerLateEntrySideMode);
   const setStyle = useLivePageStore((s) => s.setBrokerLateEntryStyle);
 
@@ -79,6 +81,21 @@ export default function BrokerLateEntryConfig() {
             className="w-[84px] text-right text-sm bg-bg-input border border-border rounded-[4px] px-2 py-1 tabular-nums"
             value={start}
             onChange={(event) => setStart(Number(event.currentTarget.value))}
+          />
+        </label>
+      </div>
+      <div className="mb-3">
+        <label className="flex items-center justify-between gap-3 text-sm text-fg">
+          <span>부재 시간 (분)</span>
+          <input
+            type="number"
+            min={1}
+            max={240}
+            step={1}
+            aria-label="신규 거래원 등장 부재 시간"
+            className="w-[84px] text-right text-sm bg-bg-input border border-border rounded-[4px] px-2 py-1 tabular-nums"
+            value={windowMinutes}
+            onChange={(event) => setWindowMinutes(Number(event.currentTarget.value))}
           />
         </label>
       </div>

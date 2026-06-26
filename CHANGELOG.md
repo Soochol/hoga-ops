@@ -3,6 +3,12 @@
 All notable changes to this project are documented here.
 The format follows a 4-digit `MAJOR.MINOR.PATCH.MICRO` scheme.
 
+## [0.12.5.0] - 2026-06-27
+
+### Changed
+- **신규 거래원 등장 기준 변경**: `/live` 신규 거래원 등장을 직전 스냅 대비 신규 진입이 아니라, 설정된 시간 동안 보이지 않다가 다시 나타난 거래원으로 판정하도록 바꿨다. 기본 부재 시간은 30분이다.
+- **신규 거래원 등장 옵션 추가**: 보조지표 설정에서 신규 거래원 등장 부재 시간을 분 단위로 조정할 수 있게 하고, 해당 값이 `/api/range` 요청과 캐시 키에 반영되도록 했다.
+
 ## [0.12.4.0] - 2026-06-27
 
 ### Changed
