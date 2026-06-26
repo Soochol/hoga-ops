@@ -97,6 +97,7 @@ const INDEX_BUNDLE: RangeBundle = {
   volume_distributions: [],
   investorPoints: [],
   ask_peaks: [],
+  broker_late_entries: [],
 };
 
 const INDEX_BUNDLE_WITH_LAST_CANDLE: RangeBundle = {

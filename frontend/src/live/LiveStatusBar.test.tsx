@@ -32,6 +32,7 @@ const EMPTY_BUNDLE: RangeBundle = {
   volume_distributions: [],
   investorPoints: [],
   ask_peaks: [],
+  broker_late_entries: [],
 };
 
 function renderBar(

@@ -52,5 +52,6 @@ export function buildIndexBundle(input: {
     investorPoints: input.investorPoints ?? [],
     ask_peaks: [],
     bid_peaks: [],
+    broker_late_entries: [],
   };
 }

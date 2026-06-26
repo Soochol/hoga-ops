@@ -66,3 +66,19 @@ Results:
 ## Concerns
 
 - None at the task-brief level.
+
+## Task 3 Fix Report
+
+- Fixed frontend `RangeBundle` synthesis/fixture sites that still omitted required `broker_late_entries`, including the study snapshot restore adapter and live/index bundle builders.
+- Added `broker_late_entries: []` defaults where restored or synthetic bundles are created, and preserved the field when cloning/restoring bundles.
+- Tightened the study snapshot adapter test to assert restored bundles include `broker_late_entries: []`.
+
+Test command run from `frontend/`:
+
+```bash
+npm test -- --run src/studyViews/studySnapshotAdapter.test.ts src/live/buildIndexBundle.test.ts src/studyViews/studySaveSource.test.tsx src/studyViews/studySaveCommand.test.ts src/studyViews/useStudySnapshotCapture.test.ts src/live/LiveStatusBar.test.tsx src/live/LiveSidebar.test.tsx src/live/LiveWorkarea.test.tsx src/studyViews/studySnapshotAdapter.test.ts src/live/buildLiveBundle.test.ts src/live/useLiveBundle.test.tsx src/state/liveIndicatorsPersistence.test.ts src/api/range.test.tsx src/live/indicators/IndicatorPanel.test.tsx
+```
+
+Result:
+
+- PASS: 13 test files, 234 tests passed

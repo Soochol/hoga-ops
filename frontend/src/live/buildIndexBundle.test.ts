@@ -26,6 +26,7 @@ describe('buildIndexBundle', () => {
       { t_ms: 1_781_830_800_000, foreign_net: -3519, institution_net: 17184 },
     ]);
     expect(bundle.ask_peaks).toEqual([]);
+    expect(bundle.broker_late_entries).toEqual([]);
     expect(bundle.segments[0].date).toBe('20260619');
   });
 });

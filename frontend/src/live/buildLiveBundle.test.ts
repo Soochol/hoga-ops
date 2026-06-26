@@ -29,6 +29,7 @@ function emptyRangeBundle(overrides: Partial<RangeBundle> = {}): RangeBundle {
     investorPoints: [],
     ask_peaks: [],
     bid_peaks: [],
+    broker_late_entries: [],
     ...overrides,
   };
 }
@@ -55,6 +56,7 @@ describe('buildLiveBundle', () => {
       investorPoints: [],
       ask_peaks: [],
       bid_peaks: [],
+      broker_late_entries: [],
       price_level_hits: [],
       trade_volume_pocs: [{
         date: '20260527',
@@ -103,6 +105,7 @@ describe('buildLiveBundle', () => {
     expect(bundle.candles).toEqual([]);
     expect(bundle.quote_ratio.points).toEqual([]);
     expect(bundle.fill_strength.points).toEqual([]);
+    expect(bundle.broker_late_entries).toEqual([]);
   });
 
   it('today-only: SSE + candles produce a single today segment tagged kis_live', () => {

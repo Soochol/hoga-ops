@@ -185,6 +185,7 @@ describe('useLiveBundle', () => {
       undefined,
       '20260527',
       {
+        brokerLateEntryStartHHMM: null,
         volumeDistributionBins: 10,
         tradeVolumePocBins: 10,
         volumeDistributionPriceRange: { min: 69900, max: 70100 },
@@ -210,6 +211,7 @@ describe('useLiveBundle', () => {
       undefined,
       '20260527',
       {
+        brokerLateEntryStartHHMM: null,
         volumeDistributionBins: null,
         tradeVolumePocBins: 12,
         volumeDistributionPriceRange: null,
@@ -235,6 +237,7 @@ describe('useLiveBundle', () => {
       undefined,
       '20260527',
       {
+        brokerLateEntryStartHHMM: null,
         volumeDistributionBins: null,
         tradeVolumePocBins: null,
         volumeDistributionPriceRange: null,
