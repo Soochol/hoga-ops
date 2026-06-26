@@ -4,6 +4,7 @@ import type { LiveTimeframe } from './livePage';
 import type { StudyViewListRow } from '../api/studyViews';
 import { formatStudyTabLabel } from '../studyViews/studyViewSelection';
 import { attachPersistence } from './persistentSubscriber';
+import type { TabViewport } from '../live/viewportAnchor';
 
 const STORAGE_KEY = 'study.tabs.v1';
 
@@ -16,9 +17,10 @@ export type StudyTab = {
   label: string;
   name: string;
   timeframe: LiveTimeframe;
+  viewport?: TabViewport | null;
 };
 
-type StudyTabSnapshot = Omit<StudyTab, 'id'>;
+type StudyTabSnapshot = Omit<StudyTab, 'id' | 'viewport'>;
 type StudyTabsSnapshot = {
   version: 1;
   activeIndex: number;
@@ -35,6 +37,7 @@ type StudyTabsStore = {
   closeTab: (id: string) => void;
   closeTabsByViewId: (viewId: string) => StudyTab | null;
   reorderTabs: (from: number, to: number) => void;
+  updateTabViewport: (id: string, viewport: TabViewport | null) => void;
 };
 
 function isStudyTabSnapshot(value: unknown): value is StudyTabSnapshot {
@@ -69,10 +72,13 @@ function loadStudyTabs(): { tabs: StudyTab[]; activeTabId: string | null } {
     if (!snapshot || !Array.isArray(snapshot.tabs) || snapshot.tabs.length === 0) {
       return { tabs: [], activeTabId: null };
     }
-    const tabs = snapshot.tabs.filter(isStudyTabSnapshot).map((tab) => ({
-      ...tab,
-      id: nanoid(8),
-    }));
+    const tabs = snapshot.tabs.filter(isStudyTabSnapshot).map((tab) => {
+      const { viewport: _viewport, ...fields } = tab as StudyTabSnapshot & { viewport?: unknown };
+      return {
+        ...fields,
+        id: nanoid(8),
+      };
+    });
     if (tabs.length === 0) return { tabs: [], activeTabId: null };
     const rawActiveIndex = Number.isInteger(snapshot.activeIndex) ? snapshot.activeIndex as number : 0;
     const activeIndex = Math.min(Math.max(0, rawActiveIndex), tabs.length - 1);
@@ -89,7 +95,7 @@ export function toStudyTabsSnapshot(
   return {
     version: 1,
     activeIndex,
-    tabs: state.tabs.map(({ id: _id, ...tab }) => tab),
+    tabs: state.tabs.map(({ id: _id, viewport: _viewport, ...tab }) => tab),
   };
 }
 
@@ -174,6 +180,12 @@ export const useStudyTabsStore = create<StudyTabsStore>((set, get) => ({
     const [moved] = next.splice(from, 1);
     next.splice(to, 0, moved);
     set({ tabs: next });
+  },
+
+  updateTabViewport: (id, viewport) => {
+    const { tabs } = get();
+    if (!tabs.some((tab) => tab.id === id)) return;
+    set({ tabs: tabs.map((tab) => (tab.id === id ? { ...tab, viewport } : tab)) });
   },
 }));
 

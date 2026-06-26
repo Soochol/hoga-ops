@@ -65,6 +65,15 @@ const referenceSave: StudyViewReference = {
   updated_at_ms: 2,
 };
 
+const secondReferenceSave: StudyViewReference = {
+  ...referenceSave,
+  id: 'view-second',
+  name: '눌림 복기',
+  code: '000660',
+  label: 'SK하이닉스',
+  viewport: { right_edge_ms: 5_000, bar_span: 80, at_live_edge: false },
+};
+
 function bundle(): RangeBundle {
   return {
     code: '005930',
@@ -127,7 +136,7 @@ function renderPage(initialEntry = '/study') {
 beforeEach(() => {
   liveChartRootMock.mockClear();
   useStudyViewsMock.mockReturnValue({
-    data: { schema_version: 1, saves: [referenceSave] },
+    data: { schema_version: 1, saves: [referenceSave, secondReferenceSave] },
     isLoading: false,
     isError: false,
   });
@@ -194,6 +203,47 @@ describe('StudyPage', () => {
       timeframe: '15m',
     }));
     expect(liveChartRootMock.mock.calls.at(-1)?.[0].timeframe).toBe('15m');
+  });
+
+  it('captures the active study tab viewport before switching tabs and restores it on return', () => {
+    useStudyTabsStore.setState({
+      tabs: [
+        {
+          id: 'tab-a',
+          viewId: 'view-ref',
+          code: '005930',
+          label: '삼성전자 · 돌파 복기 · 5m',
+          name: '돌파 복기',
+          timeframe: '5m',
+        },
+        {
+          id: 'tab-b',
+          viewId: 'view-second',
+          code: '000660',
+          label: 'SK하이닉스 · 눌림 복기 · 5m',
+          name: '눌림 복기',
+          timeframe: '5m',
+        },
+      ],
+      activeTabId: 'tab-a',
+    });
+    const capturedViewport = { rightEdgeMs: 9_000, barSpan: 42, atLiveEdge: false };
+
+    renderPage('/study?view=view-ref');
+    act(() => {
+      liveChartRootMock.mock.calls.at(-1)?.[0].onViewportCaptureReady?.(() => capturedViewport);
+    });
+
+    fireEvent.click(screen.getByTitle('SK하이닉스 · 눌림 복기 · 5m'));
+    expect(liveChartRootMock.mock.calls.at(-1)?.[0].restoreViewport).toEqual({
+      rightEdgeMs: 5_000,
+      barSpan: 80,
+      atLiveEdge: false,
+    });
+
+    fireEvent.click(screen.getByTitle('삼성전자 · 돌파 복기 · 5m'));
+
+    expect(liveChartRootMock.mock.calls.at(-1)?.[0].restoreViewport).toEqual(capturedViewport);
   });
 
   it('hydrates reference detail indicators from cursor spot data on hover', () => {
