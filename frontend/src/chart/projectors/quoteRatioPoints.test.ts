@@ -35,6 +35,7 @@ function bundle(overrides: Partial<RangeBundle> = {}): RangeBundle {
     ask_peaks: [],
     bid_peaks: [],
     trade_volume_pocs: [],
+    broker_late_entries: [],
     ...overrides,
   };
 }

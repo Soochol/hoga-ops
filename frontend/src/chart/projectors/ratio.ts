@@ -6,7 +6,10 @@ import {
   type Time,
   type UTCTimestamp,
 } from 'lightweight-charts';
+import { useMemo } from 'react';
 import type { RangeBundle, QuoteRatioPoint } from '../../api/types';
+import type { BrokerLateEntrySideMode } from '../../state/liveIndicatorsPersistence';
+import { useLivePageStore } from '../../state/livePage';
 import { type VirtualAxis } from '../../util/virtualAxis';
 import { isSyntheticHogaGapPoint } from '../util/hogaGapHide';
 import { quoteImbalance } from '../../util/imbalance';
@@ -17,6 +20,7 @@ import type { PaneSpec } from '../RangeSeriesPane';
 import { addZeroBaselineGuide } from '../util/zeroBaseline';
 import { isAuctionHidden, BASELINE_HIDDEN_COLORS, maskOutgoingConnector } from '../util/auctionHide';
 import { makePastCachedProjector } from './pastCachedProjector';
+import { projectBrokerLateEntryMarkers } from './brokerLateEntryMarkers';
 import { quoteRatioPointsForBundle, quoteRatioPointsForSlice } from './quoteRatioPoints';
 
 const TOKEN_SPEC = {
@@ -64,6 +68,10 @@ export type RatioPaneContext = {
   outlierThreshold: number;
   /** ratioIntraMax — 호가비 분봉 내 |불균형| 극값(부호 유지) 기준. 미지정 = 종가. */
   intraMax?: boolean;
+  brokerLateEntryEnabled: boolean;
+  brokerLateEntrySideMode: BrokerLateEntrySideMode;
+  brokerLateEntryBuyColor: string;
+  brokerLateEntrySellColor: string;
 };
 
 export function projectRatio(
@@ -129,8 +137,8 @@ export function projectRatioPoints(
 // render, whose setData triggers chart range subscribers that round-trip
 // into React state, producing "Maximum update depth exceeded". Same
 // pattern as useCursor.ts.
-const useRatioContext = (): RatioPaneContext =>
-  useActivePrefs(
+const useRatioContext = (): RatioPaneContext => {
+  const chartPrefs = useActivePrefs(
     useShallow((p) => ({
       auctionWindowMask: p.auctionWindowMask,
       outlierFilterEnabled: p.ratioOutlierFilterEnabled,
@@ -138,6 +146,32 @@ const useRatioContext = (): RatioPaneContext =>
       intraMax: p.ratioIntraMax,
     })),
   );
+  const brokerPrefs = useLivePageStore(
+    useShallow((s) => ({
+      brokerLateEntryEnabled: s.brokerLateEntryEnabled,
+      brokerLateEntrySideMode: s.brokerLateEntrySideMode,
+      brokerLateEntryBuyColor: s.brokerLateEntryBuyColor,
+      brokerLateEntrySellColor: s.brokerLateEntrySellColor,
+    })),
+  );
+
+  return useMemo(
+    () => ({
+      ...chartPrefs,
+      ...brokerPrefs,
+    }),
+    [
+      chartPrefs.auctionWindowMask,
+      chartPrefs.outlierFilterEnabled,
+      chartPrefs.outlierThreshold,
+      chartPrefs.intraMax,
+      brokerPrefs.brokerLateEntryEnabled,
+      brokerPrefs.brokerLateEntrySideMode,
+      brokerPrefs.brokerLateEntryBuyColor,
+      brokerPrefs.brokerLateEntrySellColor,
+    ],
+  );
+};
 
 // 틱당 풀-배열 재투영 제거(P0): 과거 슬라이스 투영은 캐시, 당일만 재투영. 출력은
 // projectRatio와 바이트 동일(pastCachedProjector.test.ts). 모듈 레벨 1개 인스턴스 —
@@ -187,6 +221,19 @@ export const RATIO_SPEC = {
         priceFormat,
       },
       data: ratioCachedData,
+      labelMarkers: (bundle, axis, ctx) => (
+        ctx.brokerLateEntryEnabled
+          ? projectBrokerLateEntryMarkers(bundle, axis, {
+              auctionWindowMask: ctx.auctionWindowMask,
+              outlierFilterEnabled: ctx.outlierFilterEnabled,
+              outlierThreshold: ctx.outlierThreshold,
+              intraMax: ctx.intraMax,
+              sideMode: ctx.brokerLateEntrySideMode,
+              buyColor: ctx.brokerLateEntryBuyColor,
+              sellColor: ctx.brokerLateEntrySellColor,
+            })
+          : []
+      ),
       afterAdd: (series) => {
         // 0-baseline reference line. Drawn explicitly because BaselineSeries
         // switches color at baseValue but does not paint a visible line there.

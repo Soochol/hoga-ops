@@ -70,6 +70,10 @@ const VALID_TRADE_VOLUME_POC_BAND_PCTS = new Set([0.0025, 0.005, 0.01]);
 export const VOLUME_DISTRIBUTION_DEFAULT_COLOR = '#64748B';
 export const VOLUME_DISTRIBUTION_DEFAULT_MAX_COLOR = '#EAB308';
 export const VOLUME_DISTRIBUTION_DEFAULT_RANGE_COUNT = 10;
+export type BrokerLateEntrySideMode = 'both' | 'buy' | 'sell';
+export const BROKER_LATE_ENTRY_DEFAULT_START_HHMM = 930;
+export const BROKER_LATE_ENTRY_BUY_DEFAULT_COLOR = '#ef4444';
+export const BROKER_LATE_ENTRY_SELL_DEFAULT_COLOR = '#3b82f6';
 
 export type PersistedIndicators = {
   movingAverages: LiveMAConfig[];
@@ -134,6 +138,16 @@ export type PersistedIndicators = {
   fillStrengthEnabled: boolean;
   /** 프로그램 순매수 pane on/off. Default TRUE. */
   programTradeEnabled: boolean;
+  /** 신규 거래원 등장 마커 on/off. opt-in(기본 false). */
+  brokerLateEntryEnabled: boolean;
+  /** 신규 거래원 등장 기준 시각(HHMM). 기본 930. */
+  brokerLateEntryStartHHMM: number;
+  /** 신규 거래원 등장 표시 방향. 기본 both. */
+  brokerLateEntrySideMode: BrokerLateEntrySideMode;
+  /** 신규 거래원 등장 매수 마커 색상(hex). 기본 #ef4444. */
+  brokerLateEntryBuyColor: string;
+  /** 신규 거래원 등장 매도 마커 색상(hex). 기본 #3b82f6. */
+  brokerLateEntrySellColor: string;
   /** 일봉 이동평균선 슬롯(현재봉 movingAverages와 별개, ADR-0073). */
   dailyMovingAverages: LiveMAConfig[];
   /** 일봉 MA 마스터 토글. opt-in(기본 false). */
@@ -167,6 +181,21 @@ function normalizeVolumeDistributionRangeCount(value: unknown): number {
   const n = typeof value === 'number' ? Math.trunc(value) : Number.NaN;
   if (!Number.isFinite(n)) return VOLUME_DISTRIBUTION_DEFAULT_RANGE_COUNT;
   return Math.min(30, Math.max(5, n));
+}
+
+function normalizeHHMM(value: unknown): number {
+  const n = typeof value === 'number' ? Math.trunc(value) : Number.NaN;
+  if (!Number.isFinite(n)) return BROKER_LATE_ENTRY_DEFAULT_START_HHMM;
+  const hh = Math.floor(n / 100);
+  const mm = n % 100;
+  if (hh < 9 || hh > 15 || mm < 0 || mm > 59 || (hh === 15 && mm > 20)) {
+    return BROKER_LATE_ENTRY_DEFAULT_START_HHMM;
+  }
+  return n;
+}
+
+function normalizeBrokerLateEntrySideMode(value: unknown): BrokerLateEntrySideMode {
+  return value === 'buy' || value === 'sell' || value === 'both' ? value : 'both';
 }
 
 /** Merge persisted state with defaults. If the input is structurally
@@ -236,6 +265,17 @@ export function mergeLiveIndicatorPrefs(
     obj?.volumeDistributionMaxColor,
     VOLUME_DISTRIBUTION_DEFAULT_MAX_COLOR,
   );
+  const brokerLateEntryEnabled = obj?.brokerLateEntryEnabled === true;
+  const brokerLateEntryStartHHMM = normalizeHHMM(obj?.brokerLateEntryStartHHMM);
+  const brokerLateEntrySideMode = normalizeBrokerLateEntrySideMode(obj?.brokerLateEntrySideMode);
+  const brokerLateEntryBuyColor = normalizeHexColor(
+    obj?.brokerLateEntryBuyColor,
+    BROKER_LATE_ENTRY_BUY_DEFAULT_COLOR,
+  );
+  const brokerLateEntrySellColor = normalizeHexColor(
+    obj?.brokerLateEntrySellColor,
+    BROKER_LATE_ENTRY_SELL_DEFAULT_COLOR,
+  );
   // daily MA — opt-in(기본 false), 슬롯 검증·cap·기본값 전략 movingAverages와 동일.
   const dEnabled = obj?.dailyMovingAverageEnabled === true;
   const dHidden = obj?.dailyMovingAverageHidden === true;
@@ -281,6 +321,11 @@ export function mergeLiveIndicatorPrefs(
     ratioEnabled: ratio,
     fillStrengthEnabled: fill,
     programTradeEnabled: programTrade,
+    brokerLateEntryEnabled,
+    brokerLateEntryStartHHMM,
+    brokerLateEntrySideMode,
+    brokerLateEntryBuyColor,
+    brokerLateEntrySellColor,
     dailyMovingAverages: dMas,
     dailyMovingAverageEnabled: dEnabled,
     dailyMovingAverageHidden: dHidden,

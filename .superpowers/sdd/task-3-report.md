@@ -1,42 +1,84 @@
 # Task 3 Report
 
-## Live Resizable Workarea
+## Status
 
-Status: done
+DONE
 
-Commits:
-- `cc757b37` `feat(live): move toolbar into resizable chart panel`
-- `feae9fe5` `fix(live): preserve empty workarea drop target`
-- `26df3abb` `fix(live): clamp persisted detail panel width`
+## Scope completed
 
-Tests:
-- `cd frontend && npx vitest run src/live/LiveWorkarea.test.tsx src/live/LivePage.test.tsx`
-- Result: 2 files passed, 39 tests passed
-- `cd frontend && npx vitest run src/live/LiveWorkarea.test.tsx src/live/LivePage.test.tsx`
-- Result: 2 files passed, 41 tests passed
-- `cd frontend && npx vitest run src/live/LiveWorkarea.test.tsx src/live/LivePage.test.tsx src/state/liveLayout.test.ts`
-- Result: 3 files passed, 47 tests passed
+- Added frontend wire support for `broker_late_entries` and the new `BrokerLateEntryEvent` type.
+- Threaded `brokerLateEntryStartHHMM` through `useRange(...)` query key and request URL.
+- Added persisted broker late-entry indicator prefs, normalization, and live-page store setters.
+- Added the broker late-entry config pane and hooked it into `IndicatorPanel`.
+- Passed the broker late-entry range option from `useLiveBundle` only when the indicator is enabled.
 
-Concerns:
-- None blocking. Empty tabs mount the same chart-panel drop target wrapper used by the active workarea, active hit testing stays bounded to the left chart panel and excludes the splitter/detail side, and detail width is clamped against the workarea.
+## TDD flow
 
-## Continuous Trade Volume Distribution
+1. Added failing tests to:
+   - `frontend/src/state/liveIndicatorsPersistence.test.ts`
+   - `frontend/src/api/range.test.tsx`
+   - `frontend/src/live/indicators/IndicatorPanel.test.tsx`
+2. Ran the brief's frontend test command.
+3. Hit an environment blocker first: `npm test` failed because `frontend/node_modules` was absent and `vitest` was not installed on PATH.
+4. Ran `npm ci` in `frontend` to restore the checked-in dependency set.
+5. Re-ran the target tests and confirmed the new cases failed for the expected missing feature surface:
+   - missing broker late-entry persisted fields
+   - missing range query param / key threading
+   - missing indicator panel UI
+6. Implemented the minimal production changes to satisfy those failures.
+7. Re-ran the target tests and got green.
+8. Ran one extra neighboring store test file, `src/state/livePage.test.ts`, to catch persistence/snapshot omissions after the store changes.
 
-Status: DONE
+## Files changed
 
-Summary:
-- Added `DayVolumeDistribution` and `RangeBundle.volume_distributions`.
-- Extended `useRange(..., options)` to optionally send `volume_distribution_bins`.
-- Added persisted live indicator settings for enable/range-count/colors.
-- Wired the new indicator into `IndicatorPanel`.
-- Threaded the setting through `/live` so minute-range queries request distributions only when enabled.
-- Extended study snapshot save/restore types so indicator settings and `volume_distributions` round-trip.
+- `frontend/src/api/types.ts`
+- `frontend/src/api/range.ts`
+- `frontend/src/state/liveIndicatorsPersistence.ts`
+- `frontend/src/state/livePage.ts`
+- `frontend/src/live/indicators/BrokerLateEntryConfig.tsx`
+- `frontend/src/live/indicators/IndicatorPanel.tsx`
+- `frontend/src/live/useLiveBundle.ts`
+- `frontend/src/state/liveIndicatorsPersistence.test.ts`
+- `frontend/src/api/range.test.tsx`
+- `frontend/src/live/indicators/IndicatorPanel.test.tsx`
 
-Verification:
-- `cd frontend && npm test -- range.test.tsx liveIndicatorsPersistence.test.ts IndicatorPanel.test.tsx LivePage.test.tsx useStudySnapshotCapture.test.ts studySnapshotAdapter.test.ts`
-- Result: 6 test files passed, 122 tests passed
+## Tests run
 
-Review follow-up:
-- Removed premature study restore plumbing for volume-distribution settings while keeping Task 3 deliverables intact.
-- `cd frontend && npm test -- range.test.tsx liveIndicatorsPersistence.test.ts IndicatorPanel.test.tsx StudyPage.test.tsx`
-- Result: 4 test files passed, 102 tests passed
+From `frontend/`:
+
+```bash
+npm test -- --run src/state/liveIndicatorsPersistence.test.ts src/api/range.test.tsx src/live/indicators/IndicatorPanel.test.tsx
+npm test -- --run src/state/livePage.test.ts
+```
+
+Results:
+
+- `src/state/liveIndicatorsPersistence.test.ts`: PASS
+- `src/api/range.test.tsx`: PASS
+- `src/live/indicators/IndicatorPanel.test.tsx`: PASS
+- `src/state/livePage.test.ts`: PASS
+
+## Notes
+
+- The pre-existing indicator count assertion in `IndicatorPanel.test.tsx` needed to move from 13 to 14 because the new broker indicator adds one more category toggle in the left nav.
+- I did not refetch on side-mode changes; only the broker late-entry start HHMM is threaded into `/api/range`, and only while the indicator is enabled, matching the task brief.
+
+## Concerns
+
+- None at the task-brief level.
+
+## Task 3 Fix Report
+
+- Fixed frontend `RangeBundle` synthesis/fixture sites that still omitted required `broker_late_entries`, including the study snapshot restore adapter and live/index bundle builders.
+- Added `broker_late_entries: []` defaults where restored or synthetic bundles are created, and preserved the field when cloning/restoring bundles.
+- Tightened the study snapshot adapter test to assert restored bundles include `broker_late_entries: []`.
+
+Test command run from `frontend/`:
+
+```bash
+npm test -- --run src/studyViews/studySnapshotAdapter.test.ts src/live/buildIndexBundle.test.ts src/studyViews/studySaveSource.test.tsx src/studyViews/studySaveCommand.test.ts src/studyViews/useStudySnapshotCapture.test.ts src/live/LiveStatusBar.test.tsx src/live/LiveSidebar.test.tsx src/live/LiveWorkarea.test.tsx src/studyViews/studySnapshotAdapter.test.ts src/live/buildLiveBundle.test.ts src/live/useLiveBundle.test.tsx src/state/liveIndicatorsPersistence.test.ts src/api/range.test.tsx src/live/indicators/IndicatorPanel.test.tsx
+```
+
+Result:
+
+- PASS: 13 test files, 234 tests passed

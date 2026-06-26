@@ -37,6 +37,7 @@ function bundle(overrides: Partial<RangeBundle> = {}): RangeBundle {
     volume_distributions: overrides.volume_distributions ?? [],
     investorPoints: [],
     ask_peaks: [],
+    broker_late_entries: [],
     ...overrides,
   };
 }

@@ -1,11 +1,7 @@
-Status: done
+Status: DONE
 
-Commits:
-- `test(live): cover workarea splitter interactions`
+Commit: ae2eb661
 
-Tests:
-- `cd frontend && npx vitest run src/state/liveLayout.test.ts src/live/LiveDetailPanel.test.tsx src/live/LiveWorkarea.test.tsx`
-- Result: passed (`3` files, `28` tests)
+Test summary: `cd frontend && npm test -- --run src/sidebar/BrokerTrajectoryTable.test.tsx src/live/liveSidebarAdapters.test.ts` passed (2 files, 31 tests).
 
-Concerns:
-- None at the task scope. Vertical and horizontal splitter drags now verify live store updates during drag, persisted state on release, separator labels, and body text-selection cleanup.
+Concerns: None.

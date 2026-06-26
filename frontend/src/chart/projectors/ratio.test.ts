@@ -11,6 +11,10 @@ const baseCtx: RatioPaneContext = {
   auctionWindowMask: false,
   outlierFilterEnabled: false,
   outlierThreshold: 100,
+  brokerLateEntryEnabled: false,
+  brokerLateEntrySideMode: 'both',
+  brokerLateEntryBuyColor: '#ef4444',
+  brokerLateEntrySellColor: '#3b82f6',
 };
 
 describe('projectRatio', () => {
@@ -157,6 +161,10 @@ describe('projectRatio', () => {
       auctionWindowMask: false,
       outlierFilterEnabled: true,
       outlierThreshold: 100,
+      brokerLateEntryEnabled: false,
+      brokerLateEntrySideMode: 'both',
+      brokerLateEntryBuyColor: '#ef4444',
+      brokerLateEntrySellColor: '#3b82f6',
     };
     const data = projectRatio(bundle, axis, ctx) as { time: number; value: number }[];
     // Below threshold → kept
@@ -177,6 +185,45 @@ describe('projectRatio', () => {
     };
     const data = projectRatio(bundle, axis, baseCtx) as { time: number; value: number }[];
     expect(data[0].value).toBeCloseTo(199, 5);
+  });
+
+  it('projects broker late-entry label markers from the ratio spec when enabled', () => {
+    const bundle: any = {
+      bucket_ms: 60_000,
+      quote_ratio: {
+        points: [
+          {
+            t: sessionOpenMs,
+            bid_total: 200,
+            ask_total: 100,
+            bid_max: 200,
+            ask_max: 100,
+            imb_max_bid: 200,
+            imb_max_ask: 100,
+          },
+        ],
+      },
+      broker_late_entries: [
+        { t_ms: sessionOpenMs, broker: '삼성증권', side: 'buy' },
+      ],
+    };
+
+    const markers = (RATIO_SPEC.series[0] as any).labelMarkers?.(bundle, axis, {
+      auctionWindowMask: false,
+      outlierFilterEnabled: false,
+      outlierThreshold: 10,
+      intraMax: false,
+      brokerLateEntryEnabled: true,
+      brokerLateEntrySideMode: 'both',
+      brokerLateEntryBuyColor: '#ef4444',
+      brokerLateEntrySellColor: '#3b82f6',
+    });
+
+    expect(markers?.[0]).toMatchObject({
+      broker: '삼성증권',
+      side: 'buy',
+      color: '#ef4444',
+    });
   });
 });
 

@@ -65,6 +65,7 @@ function makeBundle(candleCount: number): RangeBundle {
     volume_distributions: [],
     investorPoints: [],
     ask_peaks: [],
+    broker_late_entries: [],
   };
 }
 

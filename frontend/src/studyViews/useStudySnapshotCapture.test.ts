@@ -70,6 +70,7 @@ function bundle(overrides: Partial<RangeBundle> = {}): RangeBundle {
       },
     ],
     investorPoints: [],
+    broker_late_entries: [],
     ask_peaks: [
       {
         date: '20260616',

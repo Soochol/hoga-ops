@@ -215,6 +215,7 @@ function rangeBundleFixture(overrides: Partial<RangeBundle> = {}): RangeBundle {
     investorPoints: [],
     ask_peaks: [],
     bid_peaks: [],
+    broker_late_entries: [],
     ...overrides,
   };
 }

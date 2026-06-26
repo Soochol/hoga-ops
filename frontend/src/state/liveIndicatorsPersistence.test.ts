@@ -37,6 +37,11 @@ describe('mergeLiveIndicatorPrefs', () => {
       ratioEnabled: true,
       fillStrengthEnabled: true,
       programTradeEnabled: true,
+      brokerLateEntryEnabled: false,
+      brokerLateEntryStartHHMM: 930,
+      brokerLateEntrySideMode: 'both',
+      brokerLateEntryBuyColor: '#ef4444',
+      brokerLateEntrySellColor: '#3b82f6',
       dailyMovingAverages: DEFAULT_DAILY_MAS.map((m) => ({ ...m })),
       dailyMovingAverageEnabled: false,
       dailyMovingAverageHidden: false,
@@ -151,6 +156,31 @@ describe('mergeLiveIndicatorPrefs', () => {
       movingAverages: DEFAULT_LIVE_MAS.map((x) => ({ ...x })),
     } as unknown as PersistedIndicators);
     expect(m.movingAverageHidden).toBe(false);
+  });
+
+  it('normalizes broker late-entry defaults and invalid persisted values', () => {
+    expect(mergeLiveIndicatorPrefs(undefined)).toMatchObject({
+      brokerLateEntryEnabled: false,
+      brokerLateEntryStartHHMM: 930,
+      brokerLateEntrySideMode: 'both',
+      brokerLateEntryBuyColor: '#ef4444',
+      brokerLateEntrySellColor: '#3b82f6',
+    });
+
+    expect(mergeLiveIndicatorPrefs({
+      movingAverages: DEFAULT_LIVE_MAS.map((m) => ({ ...m })),
+      brokerLateEntryEnabled: true,
+      brokerLateEntryStartHHMM: 800,
+      brokerLateEntrySideMode: 'ask',
+      brokerLateEntryBuyColor: 'hot',
+      brokerLateEntrySellColor: '#12345g',
+    } as unknown as PersistedIndicators)).toMatchObject({
+      brokerLateEntryEnabled: true,
+      brokerLateEntryStartHHMM: 930,
+      brokerLateEntrySideMode: 'both',
+      brokerLateEntryBuyColor: '#ef4444',
+      brokerLateEntrySellColor: '#3b82f6',
+    });
   });
 });
 

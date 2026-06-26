@@ -652,6 +652,7 @@ class RangeBundle(BaseModel):
     # D·W·M/무데이터는 빈 리스트. 기본 []라 기존 클라 무영향.
     ask_peaks: list["AskPeak"] = []
     bid_peaks: list["BidPeak"] = Field(default_factory=list)
+    broker_late_entries: list["BrokerLateEntryEvent"] = Field(default_factory=list)
     price_level_hits: list[PriceLevelHit] = Field(default_factory=list)
     trade_volume_pocs: list[TradeVolumePoc] = Field(default_factory=list)
     volume_distributions: list[DayVolumeDistribution] = Field(default_factory=list)
@@ -681,6 +682,13 @@ class BrokerSeriesResponse(BaseModel):
     date: str
     brokers: list[BrokerSeriesEntry]
     source: SourceName
+
+
+class BrokerLateEntryEvent(BaseModel):
+    t_ms: int
+    broker: str
+    side: Literal["buy", "sell"]
+    net: int
 
 
 # --- Watchlist (see spec 2026-05-26 and ADR-0034) --------------------------

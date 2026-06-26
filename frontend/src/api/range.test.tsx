@@ -3,7 +3,13 @@ import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { describe, expect, it, vi, beforeEach } from 'vitest';
 import type { ReactNode } from 'react';
 
-import { useRange, rangeFreshnessOptions, TODAY_RANGE_REFETCH_MS } from './range';
+import {
+  buildRangeBundleRequest,
+  useRange,
+  rangeFreshnessOptions,
+  rangePlaceholderData,
+  TODAY_RANGE_REFETCH_MS,
+} from './range';
 import * as client from './client';
 import type { RangeBundle } from './types';
 import { useSourcePreferenceStore } from '../state/sourcePreference';
@@ -25,7 +31,82 @@ const fakeBundle: RangeBundle = {
   volume_distributions: [],
   investorPoints: [],
   ask_peaks: [],
+  broker_late_entries: [],
 };
+
+describe('buildRangeBundleRequest', () => {
+  it('projects one request shape into enabled, URL params, and query key', () => {
+    const request = buildRangeBundleRequest({
+      code: '005930',
+      from: '20260512',
+      to: '20260512',
+      timeframe: '1m',
+      priceRange: { min: 100, max: 200 },
+      todayKst: '20260512',
+      sourcePref: 'kis_ws_first',
+      options: {
+        brokerLateEntryStartHHMM: 945,
+        volumeDistributionBins: 12,
+        volumeDistributionPriceRange: { min: 69900, max: 70100 },
+        tradeVolumePocBins: 12,
+      },
+    });
+
+    expect(request.enabled).toBe(true);
+    expect(request.url).toBe(
+      '/api/range?code=005930&from=20260512&to=20260512&bucket_ms=60000'
+        + '&price_min=100&price_max=200'
+        + '&broker_late_entry_start_hhmm=945'
+        + '&volume_distribution_bins=12'
+        + '&volume_distribution_price_min=69900&volume_distribution_price_max=70100'
+        + '&trade_volume_poc_bins=12'
+        + '&source_pref=kis_ws_first',
+    );
+    expect(request.queryKey).toEqual([
+      'range',
+      '005930',
+      '20260512',
+      '20260512',
+      60_000,
+      100,
+      200,
+      945,
+      12,
+      69900,
+      70100,
+      12,
+      'kis_ws_first',
+    ]);
+  });
+
+  it('keeps disabled requests representable without optional params', () => {
+    const request = buildRangeBundleRequest({
+      code: null,
+      from: '20260512',
+      to: '20260512',
+      timeframe: null,
+      sourcePref: 'hogaplay_first',
+    });
+
+    expect(request.enabled).toBe(false);
+    expect(request.url).toBe('/api/range?from=20260512&to=20260512&source_pref=hogaplay_first');
+    expect(request.queryKey).toEqual([
+      'range',
+      null,
+      '20260512',
+      '20260512',
+      null,
+      undefined,
+      undefined,
+      null,
+      null,
+      undefined,
+      undefined,
+      null,
+      'hogaplay_first',
+    ]);
+  });
+});
 
 describe('useRange', () => {
   beforeEach(() => {
@@ -133,6 +214,32 @@ describe('useRange', () => {
     await waitFor(() => expect(spy).toHaveBeenCalled());
     expect(spy.mock.calls[0][0]).toContain('&trade_volume_poc_bins=12');
   });
+
+  it('threads broker_late_entry_start_hhmm into query string and query key', async () => {
+    const spy = vi.spyOn(client, 'apiCall').mockResolvedValue(fakeBundle);
+    const { rerender } = renderHook(
+      ({ brokerLateEntryStartHHMM }) => useRange(
+        '005930',
+        '20260512',
+        '20260512',
+        '1m',
+        undefined,
+        null,
+        { brokerLateEntryStartHHMM },
+      ),
+      {
+        wrapper: makeWrapper(),
+        initialProps: { brokerLateEntryStartHHMM: 945 },
+      },
+    );
+
+    await waitFor(() => expect(spy).toHaveBeenCalledTimes(1));
+    expect(spy.mock.calls[0][0]).toContain('&broker_late_entry_start_hhmm=945');
+
+    rerender({ brokerLateEntryStartHHMM: 950 });
+    await waitFor(() => expect(spy).toHaveBeenCalledTimes(2));
+    expect(spy.mock.calls[1][0]).toContain('&broker_late_entry_start_hhmm=950');
+  });
 });
 
 describe('rangeFreshnessOptions (review C1 — pastMaxQrT advance)', () => {
@@ -173,5 +280,63 @@ describe('rangeFreshnessOptions (review C1 — pastMaxQrT advance)', () => {
       staleTime: Infinity,
       refetchInterval: false,
     });
+  });
+});
+
+describe('rangePlaceholderData', () => {
+  const baseKey: Parameters<typeof rangePlaceholderData>[1] = [
+    'range',
+    '005930',
+    '20260512',
+    '20260512',
+    60_000,
+    undefined,
+    undefined,
+    930,
+    null,
+    undefined,
+    undefined,
+    null,
+    'hogaplay_first',
+  ];
+
+  it('keeps previous same-code data for date extension when option-sensitive fields are unchanged', () => {
+    const currentKey: Parameters<typeof rangePlaceholderData>[1] = [
+      'range',
+      '005930',
+      '20260510',
+      '20260512',
+      60_000,
+      undefined,
+      undefined,
+      930,
+      null,
+      undefined,
+      undefined,
+      null,
+      'hogaplay_first',
+    ];
+
+    expect(rangePlaceholderData(fakeBundle, currentKey, baseKey)).toBe(fakeBundle);
+  });
+
+  it('drops previous broker late-entry events when the threshold option changes', () => {
+    const currentKey: Parameters<typeof rangePlaceholderData>[1] = [
+      'range',
+      '005930',
+      '20260512',
+      '20260512',
+      60_000,
+      undefined,
+      undefined,
+      945,
+      null,
+      undefined,
+      undefined,
+      null,
+      'hogaplay_first',
+    ];
+
+    expect(rangePlaceholderData(fakeBundle, currentKey, baseKey)).toBeUndefined();
   });
 });

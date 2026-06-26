@@ -12,6 +12,11 @@ vi.mock('./SurgeMarkersPrimitive', () => ({
     setMarkers(m: unknown[]) { markerSetCalls.push(m); }
   },
 }));
+vi.mock('./BrokerLateEntryMarkersPrimitive', () => ({
+  BrokerLateEntryMarkersPrimitive: class {
+    setMarkers() {}
+  },
+}));
 
 // Each addSeries returns a fresh stub so we can assert which series instance
 // received setData after a re-create.
@@ -237,5 +242,37 @@ describe('RangeSeriesPane', () => {
     // primitive가 series에 attach되고, 마커 페이로드(time·price·color)가 전달된다.
     expect(created[0].attachPrimitive).toHaveBeenCalledTimes(1);
     expect(markerSetCalls.at(-1)).toEqual([{ time: 1, price: 10, color: '#fff' }]);
+  });
+
+  it('labelMarkers 프로젝터가 있으면 label primitive를 attach하고 unmount에서 detach한다', () => {
+    const { chart, created } = makeChart();
+    const labelMarkerSpec = {
+      name: 'with-label-markers',
+      stretch: 1,
+      series: [
+        {
+          type: {} as never,
+          options: {} as never,
+          data: () => [{ time: 1, value: 10 }] as never,
+          labelMarkers: () => [{
+            time: 1,
+            anchorTime: 1,
+            price: 10,
+            broker: '삼성증권',
+            label: '삼성',
+            side: 'buy',
+            color: '#ef4444',
+          }] as never,
+        },
+      ],
+    } as PaneSpec;
+    const { unmount } = render(
+      <RangeSeriesPane chart={chart} bundle={bundle} axis={axis} paneIndex={0} spec={labelMarkerSpec} />,
+    );
+
+    expect(created[0].attachPrimitive).toHaveBeenCalledTimes(1);
+
+    unmount();
+    expect(created[0].detachPrimitive).toHaveBeenCalledTimes(1);
   });
 });

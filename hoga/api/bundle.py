@@ -27,6 +27,7 @@ from hoga.api.invariants import normalize_session_bounds
 from hoga.api.models import (
     AskPeak,
     BidPeak,
+    BrokerLateEntryEvent,
     DateWarning,
     DayVolumeDistribution,
     ExcludedDate,
@@ -51,6 +52,7 @@ from hoga.api.timeenc import (
     hhmmssms_to_unix_ms,
     ms_from_midnight_to_unix_ms,
 )
+from hoga.tables import brokers as brokers_tbl
 from hoga.tables import candles as candles_tbl
 from hoga.tables import fills as fills_tbl
 from hoga.tables import snapshots as snapshots_tbl
@@ -115,6 +117,16 @@ def _resolve_trade_indicator_source(
 
 def _today_kst_yyyymmdd() -> str:
     return datetime.now(_KST).strftime("%Y%m%d")
+
+
+def _hhmm_to_hhmmssms(value: int) -> int:
+    hh = value // 100
+    mm = value % 100
+    if hh < 9 or hh > 15 or mm < 0 or mm > 59:
+        raise ValueError("broker_late_entry_start_hhmm must be between 900 and 1520")
+    if hh == 15 and mm > 20:
+        raise ValueError("broker_late_entry_start_hhmm must be between 900 and 1520")
+    return hh * 10_000_000 + mm * 100_000
 
 
 def _indicator_cacheable(
@@ -209,6 +221,33 @@ def build_candles_slice(
     return [
         r.model_copy(update={"ts_ms": ms_from_midnight_to_unix_ms(date, r.ts_ms)})
         for r in rows
+    ]
+
+
+def build_broker_late_entries_slice(
+    engine: QueryEngine,
+    *,
+    code: str,
+    date: str,
+    source: str,
+    start_hhmm: int,
+) -> list[BrokerLateEntryEvent]:
+    path = engine.parquet_dir(date, code, source) / "brokers.parquet"
+    if not path.exists():
+        return []
+    threshold_ms = _hhmm_to_hhmmssms(start_hhmm)
+    return [
+        BrokerLateEntryEvent(
+            t_ms=hhmmssms_to_unix_ms(date, row.t_ms),
+            broker=row.broker,
+            side=row.side,
+            net=row.net,
+        )
+        for row in brokers_tbl.query_late_entry_events(
+            engine.conn,
+            path=path,
+            threshold_ms=threshold_ms,
+        )
     ]
 
 
@@ -948,6 +987,7 @@ def _empty_range_bundle(
         data_warnings=[],
         ask_peaks=[],
         bid_peaks=[],
+        broker_late_entries=[],
         price_level_hits=[],
         volume_distributions=[],
         program_trade=ProgramTradeSeries(points=[]),
@@ -986,6 +1026,7 @@ def build_range_bundle(
     to_date: str,
     bucket_ms: int,
     source_pref: str = "hogaplay",  # ADR-0039
+    broker_late_entry_start_hhmm: int = 930,
     volume_distribution_bins: int | None = None,
     trade_volume_poc_bins: int | None = None,
     volume_distribution_price_min: int | None = None,
@@ -1040,6 +1081,7 @@ def build_range_bundle(
     # bucket_ms 버킷 대표 + 동시호가 배제. 과거일은 indicators_cache로 1회 계산(N일 재스캔 회피).
     ask_peaks: list[AskPeak] = []
     bid_peaks: list[BidPeak] = []
+    broker_late_entries: list[BrokerLateEntryEvent] = []
     price_level_hits: list[PriceLevelHit] = []
     trade_volume_pocs: list[TradeVolumePoc] = []
     included_dates: list[str] = []
@@ -1146,6 +1188,15 @@ def build_range_bundle(
             source=source,
         ))
         included_dates.append(d)
+        broker_late_entries.extend(
+            build_broker_late_entries_slice(
+                engine,
+                code=code,
+                date=d,
+                source=source,
+                start_hhmm=broker_late_entry_start_hhmm,
+            )
+        )
         candles.extend(candles_d)
         ratio_pts.extend(qr_d.points)
         fill_pts.extend(fs_d.points)
@@ -1208,6 +1259,7 @@ def build_range_bundle(
         data_warnings=warnings_list,
         ask_peaks=ask_peaks,
         bid_peaks=bid_peaks,
+        broker_late_entries=broker_late_entries,
         price_level_hits=price_level_hits,
         trade_volume_pocs=trade_volume_pocs,
         volume_distributions=volume_distributions,

@@ -2,7 +2,7 @@ import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { renderHook } from '@testing-library/react';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import type { ReactNode } from 'react';
-import { useLiveBundle } from './useLiveBundle';
+import { planLiveRangeRequest, useLiveBundle } from './useLiveBundle';
 import { useLivePageStore } from '../state/livePage';
 import { useSourcePreferenceStore } from '../state/sourcePreference';
 import type { LiveSeriesData } from '../api/liveSeries';
@@ -114,6 +114,62 @@ const wrapper = ({ children }: { children: ReactNode }) => {
   return <QueryClientProvider client={client}>{children}</QueryClientProvider>;
 };
 
+describe('planLiveRangeRequest', () => {
+  it('plans the minute /api/range request with indicator-controlled optional slices', () => {
+    expect(planLiveRangeRequest({
+      code: '005930',
+      timeframe: '1m',
+      todayKstYyyymmdd: '20260527',
+      historicalFromDate: '20260501',
+      tradeVolumePocEnabled: true,
+      brokerLateEntryEnabled: true,
+      brokerLateEntryStartHHMM: 945,
+      volumeDistributionEnabled: true,
+      volumeDistributionRangeCount: 12,
+      volumeDistributionPriceRange: { min: 69900, max: 70100 },
+    })).toEqual({
+      code: '005930',
+      from: '20260501',
+      to: '20260527',
+      timeframe: '1m',
+      todayKst: '20260527',
+      options: {
+        brokerLateEntryStartHHMM: 945,
+        volumeDistributionBins: 12,
+        tradeVolumePocBins: 12,
+        volumeDistributionPriceRange: { min: 69900, max: 70100 },
+      },
+    });
+  });
+
+  it('disables /api/range for calendar timeframes and gates disabled optional slices', () => {
+    expect(planLiveRangeRequest({
+      code: '005930',
+      timeframe: 'D',
+      todayKstYyyymmdd: '20260527',
+      historicalFromDate: '20200101',
+      tradeVolumePocEnabled: false,
+      brokerLateEntryEnabled: false,
+      brokerLateEntryStartHHMM: 945,
+      volumeDistributionEnabled: false,
+      volumeDistributionRangeCount: 12,
+      volumeDistributionPriceRange: { min: 69900, max: 70100 },
+    })).toEqual({
+      code: null,
+      from: null,
+      to: null,
+      timeframe: null,
+      todayKst: null,
+      options: {
+        brokerLateEntryStartHHMM: null,
+        volumeDistributionBins: null,
+        tradeVolumePocBins: null,
+        volumeDistributionPriceRange: null,
+      },
+    });
+  });
+});
+
 describe('useLiveBundle', () => {
   beforeEach(() => {
     livePastCandlesSpy.mockClear();
@@ -185,6 +241,7 @@ describe('useLiveBundle', () => {
       undefined,
       '20260527',
       {
+        brokerLateEntryStartHHMM: null,
         volumeDistributionBins: 10,
         tradeVolumePocBins: 10,
         volumeDistributionPriceRange: { min: 69900, max: 70100 },
@@ -210,6 +267,7 @@ describe('useLiveBundle', () => {
       undefined,
       '20260527',
       {
+        brokerLateEntryStartHHMM: null,
         volumeDistributionBins: null,
         tradeVolumePocBins: 12,
         volumeDistributionPriceRange: null,
@@ -235,6 +293,7 @@ describe('useLiveBundle', () => {
       undefined,
       '20260527',
       {
+        brokerLateEntryStartHHMM: null,
         volumeDistributionBins: null,
         tradeVolumePocBins: null,
         volumeDistributionPriceRange: null,

@@ -153,6 +153,52 @@ type UseLiveBundleOptions = {
   venue?: LiveVenueOption;
 };
 
+export type LiveRangeRequestPlan = {
+  code: string | null;
+  from: string | null;
+  to: string | null;
+  timeframe: Timeframe | null;
+  todayKst: string | null;
+  options: {
+    brokerLateEntryStartHHMM: number | null;
+    volumeDistributionBins: number | null;
+    tradeVolumePocBins: number | null;
+    volumeDistributionPriceRange: { min: number; max: number } | null;
+  };
+};
+
+export function planLiveRangeRequest(args: {
+  code: string | null;
+  timeframe: LiveTimeframe;
+  todayKstYyyymmdd: string;
+  historicalFromDate: string | null;
+  tradeVolumePocEnabled: boolean;
+  brokerLateEntryEnabled: boolean;
+  brokerLateEntryStartHHMM: number;
+  volumeDistributionEnabled: boolean;
+  volumeDistributionRangeCount: number;
+  volumeDistributionPriceRange: { min: number; max: number } | null;
+}): LiveRangeRequestPlan {
+  const isMinute = isMinuteTimeframe(args.timeframe);
+  const seedFrom = args.historicalFromDate
+    ?? subtractDaysKst(args.todayKstYyyymmdd, initialHistoricalDaysFor(args.timeframe));
+  const minutePastFrom = laterDate(seedFrom, earliestAllowedMinuteDate(args.todayKstYyyymmdd));
+  const enableMinute = !!(args.code && isMinute && minutePastFrom <= args.todayKstYyyymmdd);
+  return {
+    code: enableMinute ? args.code : null,
+    from: enableMinute ? minutePastFrom : null,
+    to: enableMinute ? args.todayKstYyyymmdd : null,
+    timeframe: enableMinute ? (args.timeframe as Timeframe) : null,
+    todayKst: enableMinute ? args.todayKstYyyymmdd : null,
+    options: {
+      brokerLateEntryStartHHMM: args.brokerLateEntryEnabled ? args.brokerLateEntryStartHHMM : null,
+      volumeDistributionBins: args.volumeDistributionEnabled ? args.volumeDistributionRangeCount : null,
+      tradeVolumePocBins: args.tradeVolumePocEnabled ? args.volumeDistributionRangeCount : null,
+      volumeDistributionPriceRange: args.volumeDistributionEnabled ? args.volumeDistributionPriceRange : null,
+    },
+  };
+}
+
 /** Orchestrate live SSE + KIS past-candles + /api/range hoga indicators into a
  * single RangeBundle for LiveChartRoot. ADR-0040 — KIS candles are the single
  * candle source via the dedicated `/api/live/past-candles` endpoint.
@@ -170,6 +216,8 @@ export function useLiveBundle(
 ): UseLiveBundleResult {
   const historicalFromDate = useLivePageStore((s) => s.historicalFromDate);
   const tradeVolumePocEnabled = useLivePageStore((s) => s.tradeVolumePocEnabled);
+  const brokerLateEntryEnabled = useLivePageStore((s) => s.brokerLateEntryEnabled);
+  const brokerLateEntryStartHHMM = useLivePageStore((s) => s.brokerLateEntryStartHHMM);
   const volumeDistributionEnabled = useLivePageStore((s) => s.volumeDistributionEnabled);
   const volumeDistributionRangeCount = useLivePageStore((s) => s.volumeDistributionRangeCount);
   const venue = options.venue ?? 'KRX';
@@ -256,23 +304,31 @@ export function useLiveBundle(
         : null,
     [isMinute, volumeDistributionEnabled, kisCandles, todayKstYyyymmdd],
   );
+  const rangePlan = planLiveRangeRequest({
+    code,
+    timeframe,
+    todayKstYyyymmdd,
+    historicalFromDate,
+    tradeVolumePocEnabled,
+    brokerLateEntryEnabled,
+    brokerLateEntryStartHHMM,
+    volumeDistributionEnabled,
+    volumeDistributionRangeCount,
+    volumeDistributionPriceRange,
+  });
   const past = useRange(
-    enableMinute ? code : null,
-    enableMinute ? minutePastFrom : null,
-    enableMinute ? minutePastTo : null,
-    enableMinute ? (timeframe as Timeframe) : null,
+    rangePlan.code,
+    rangePlan.from,
+    rangePlan.to,
+    rangePlan.timeframe,
     undefined,
     // /live's minutePastTo is always today (line 83), so this enables the
     // 5-min refetch that advances pastMaxQrT (review C1 — seam hole). The gate
     // lives in rangeFreshnessOptions: past-only callers (no todayKst) stay
     // frozen. A periodic refetch keeps the same query key → no placeholderData
     // swap → does not set isExtending, so today's right edge is untouched.
-    todayKstYyyymmdd,
-    {
-      volumeDistributionBins: volumeDistributionEnabled ? volumeDistributionRangeCount : null,
-      tradeVolumePocBins: tradeVolumePocEnabled ? volumeDistributionRangeCount : null,
-      volumeDistributionPriceRange,
-    },
+    rangePlan.todayKst,
+    rangePlan.options,
   );
   const liveCandles = useMemo<Candle[]>(
     () => (isMinute ? overlayLiveTradesOnCandles(kisCandles, live.trade, bucketMs, venue) : kisCandles),

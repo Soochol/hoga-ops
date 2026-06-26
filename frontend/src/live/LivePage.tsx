@@ -334,6 +334,7 @@ export function LivePage() {
       investorPoints: base.investorPoints,
       ask_peaks: dayAskPeaks,
       bid_peaks: dayBidPeaks,
+      broker_late_entries: base.broker_late_entries ?? [],
       trade_volume_pocs: tradeVolumePocsToWire(tradeVolumePocs),
     };
   }, [bundle, chartBundle, dayAskPeaks, dayBidPeaks, tradeVolumePocs]);

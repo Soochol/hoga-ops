@@ -1,9 +1,17 @@
 import { useQuery } from '@tanstack/react-query';
 
 import { apiCall } from './client';
-import { TIMEFRAME_TO_MS, type RangeBundle, type Timeframe } from './types';
+import type { RangeBundle, Timeframe } from './types';
+import {
+  buildRangeBundleRequest,
+  rangePlaceholderData,
+  type RangeRequestOptions,
+} from './rangeRequest';
 import { useSourcePreferenceStore } from '../state/sourcePreference';
 import type { SourcePreference } from '../state/sourcePreference';
+
+export { buildRangeBundleRequest, rangePlaceholderData };
+export type { RangeBundleRequest, RangeBundleRequestInput, RangeQueryKey, RangeRequestOptions } from './rangeRequest';
 
 /**
  * Refetch cadence for a today-inclusive range query (ms).
@@ -68,52 +76,26 @@ export function useRange(
   timeframe: Timeframe | null,
   priceRange?: { min: number; max: number },
   todayKst?: string | null,
-  options?: {
-    volumeDistributionBins?: number | null;
-    tradeVolumePocBins?: number | null;
-    volumeDistributionPriceRange?: { min: number; max: number } | null;
-  },
+  options?: RangeRequestOptions,
 ) {
-  const bucketMs = timeframe ? TIMEFRAME_TO_MS[timeframe] : null;
-  const enabled = !!(code && from && to && bucketMs);
   const sourcePref: SourcePreference = useSourcePreferenceStore((s) => s.sourcePreference);
-  const priceQs = priceRange ? `&price_min=${priceRange.min}&price_max=${priceRange.max}` : '';
-  const volumeDistributionBins = options?.volumeDistributionBins ?? null;
-  const tradeVolumePocBins = options?.tradeVolumePocBins ?? null;
-  const volumeDistributionPriceRange = options?.volumeDistributionPriceRange ?? null;
-  const volumeDistributionQs = volumeDistributionBins != null
-    ? `&volume_distribution_bins=${volumeDistributionBins}`
-    : '';
-  const volumeDistributionPriceQs = volumeDistributionPriceRange != null
-    ? `&volume_distribution_price_min=${volumeDistributionPriceRange.min}&volume_distribution_price_max=${volumeDistributionPriceRange.max}`
-    : '';
-  const tradeVolumePocQs = tradeVolumePocBins != null
-    ? `&trade_volume_poc_bins=${tradeVolumePocBins}`
-    : '';
-  const { staleTime, refetchInterval } = rangeFreshnessOptions(to, todayKst ?? null);
-
-  return useQuery({
-    queryKey: [
-      'range',
+  const request = buildRangeBundleRequest({
       code,
       from,
       to,
-      bucketMs,
-      priceRange?.min,
-      priceRange?.max,
-      volumeDistributionBins,
-      volumeDistributionPriceRange?.min,
-      volumeDistributionPriceRange?.max,
-      tradeVolumePocBins,
+      timeframe,
+      priceRange,
+      todayKst,
       sourcePref,
-    ] as const,
+      options,
+    });
+  const { staleTime, refetchInterval } = rangeFreshnessOptions(to, request.todayKst);
+
+  return useQuery({
+    queryKey: request.queryKey,
     queryFn: ({ signal }) =>
-      apiCall<RangeBundle>(
-        `/api/range?code=${code}&from=${from}&to=${to}&bucket_ms=${bucketMs}` +
-          `${priceQs}${volumeDistributionQs}${volumeDistributionPriceQs}${tradeVolumePocQs}&source_pref=${sourcePref}`,
-        { signal },
-      ),
-    enabled,
+      apiCall<RangeBundle>(request.url, { signal }),
+    enabled: request.enabled,
     staleTime,
     refetchInterval,
     // Code-aware placeholder mirrors livePastCandles.ts: keep the previous
@@ -125,6 +107,7 @@ export function useRange(
     // VirtualAxis (built from those segments) stale and projected the
     // new code's hoga indicator points onto the old code's date layout —
     // surfaced as "엉뚱한 곳에서 시작하는" charts in /diagnose 2026-05-29.
-    placeholderData: (prev) => (prev && prev.code === code ? prev : undefined),
+    placeholderData: (prev, previousQuery) =>
+      rangePlaceholderData(prev, request.queryKey, previousQuery?.queryKey),
   });
 }

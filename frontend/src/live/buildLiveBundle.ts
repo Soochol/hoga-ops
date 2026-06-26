@@ -508,6 +508,7 @@ export function buildChartBundle(input: BuildChartBundleInput): RangeBundle {
     // useDayAskPeaks가 live.ob ratchet으로 추가; segments엔 todaySegment가 있어 매핑된다.)
     ask_peaks: pastBundle?.ask_peaks ?? [],
     bid_peaks: pastBundle?.bid_peaks ?? [],
+    broker_late_entries: pastBundle?.broker_late_entries ?? [],
     price_level_hits: pastBundle?.price_level_hits ?? [],
     trade_volume_pocs: pastBundle?.trade_volume_pocs ?? [],
   };

@@ -193,6 +193,7 @@ export function studySnapshotBundleToRangeBundle(snapshot: StudySnapshotBundle):
     investorPoints: [],
     ask_peaks: snapshot.ask_peaks ?? [],
     bid_peaks: snapshot.bid_peaks ?? [],
+    broker_late_entries: [],
     trade_volume_pocs: snapshot.trade_volume_pocs ?? [],
   };
 }
@@ -233,6 +234,7 @@ function rangeBundleWithoutStudyRatio(bundle: StudySnapshotRangeBundle): RangeBu
     investorPoints: bundle.investorPoints,
     ask_peaks: bundle.ask_peaks,
     bid_peaks: bundle.bid_peaks,
+    broker_late_entries: bundle.broker_late_entries,
     trade_volume_pocs: bundle.trade_volume_pocs,
   };
 }

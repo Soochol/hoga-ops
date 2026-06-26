@@ -135,6 +135,7 @@ describe('studySnapshotBundleToRangeBundle', () => {
     expect(bundle.volume_profile_by_day).toEqual([]);
     expect(bundle.volume_distributions).toEqual([]);
     expect(bundle.investorPoints).toEqual([]);
+    expect(bundle.broker_late_entries).toEqual([]);
     expect(bundle.ask_peaks).toEqual([{
       date: '20260616',
       price: 70_500,

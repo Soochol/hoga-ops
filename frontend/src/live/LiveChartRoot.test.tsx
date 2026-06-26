@@ -86,6 +86,7 @@ const DEFAULT_BUNDLE: RangeBundle = {
   volume_distributions: [],
   investorPoints: [],
   ask_peaks: [],
+  broker_late_entries: [],
 };
 
 const wrapper = ({ children }: { children: ReactNode }) => {
@@ -1014,6 +1015,7 @@ const TODAY_ONLY_BUNDLE: RangeBundle = {
   volume_distributions: [],
   investorPoints: [],
   ask_peaks: [],
+  broker_late_entries: [],
 };
 
 const TWO_SEGMENT_BUNDLE: RangeBundle = {
@@ -1036,6 +1038,7 @@ const TWO_SEGMENT_BUNDLE: RangeBundle = {
   volume_distributions: [],
   investorPoints: [],
   ask_peaks: [],
+  broker_late_entries: [],
 };
 
 describe('LiveChartRoot lazy fetch trigger', () => {

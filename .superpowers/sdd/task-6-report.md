@@ -1,67 +1,83 @@
-# Task 6 Report: Study Snapshot Round-Trip
+Task 6 Report: Labelled Marker Primitive And Ratio Integration
 
-Status: DONE
+Summary
+- Added a dedicated `BrokerLateEntryMarkersPrimitive` for ratio-pane broker late-entry dots + grouped labels.
+- Extended `RangeSeriesPane` with a narrow `labelMarkers` path that lives alongside existing `markers` without changing `SurgeMarkersPrimitive`.
+- Wired ratio context/spec so broker late-entry labels are produced only when `brokerLateEntryEnabled` is true, while keeping the returned context stable across renders.
 
-## What changed
+TDD Log
+1. Red
+   - Added a failing ratio-spec test in `frontend/src/chart/projectors/ratio.test.ts` for `RATIO_SPEC.series[0].labelMarkers`.
+   - Added a failing lifecycle test in `frontend/src/chart/RangeSeriesPane.test.tsx` asserting attach/detach for a `labelMarkers` series.
+   - Ran:
+     - `cd frontend && npm test -- --run src/chart/projectors/ratio.test.ts src/chart/RangeSeriesPane.test.tsx`
+   - Observed the expected failures:
+     - `labelMarkers` missing from the ratio spec.
+     - label primitive not attached/detached by `RangeSeriesPane`.
 
-- Added the missing backend snapshot model fields for saved volume-distribution indicator state:
-  - `StudyIndicatorState.volume_distribution_enabled`
-  - `StudyIndicatorState.volume_distribution_range_count`
-  - `StudyIndicatorState.volume_distribution_color`
-  - `StudyIndicatorState.volume_distribution_max_color`
-- Added the missing backend snapshot bundle field:
-  - `StudySnapshotBundle.volume_distributions`
-- Extended `studySnapshotDetails(...)` to carry saved volume-distribution settings and saved `volume_distributions` into study detail rendering.
-- Wired `StudyDetailPanel` to render `VolumeDistributionCard` from restored snapshot data, selecting the profile by the active segment date.
-- Used the active hover time when present (`cursorMs`), otherwise the active bucket start, for the card’s vertical marker.
-- Kept live behavior unchanged; the new wiring is study-only and uses already-existing shared types/fields where present.
+2. Green
+   - Implemented `frontend/src/chart/BrokerLateEntryMarkersPrimitive.ts` with:
+     - per-marker chart/series coordinate lookup on each draw,
+     - dot rendering,
+     - adaptive regrouping via `layoutBrokerLateEntryLabels(...)`,
+     - stacked full labels for shared x positions,
+     - mixed-side grouped chips with buy/sell accent dots.
+   - Extended `RangeSeriesPane` with:
+     - `SeriesSpec.labelMarkers`,
+     - `labelMarkersRef`,
+     - attach/detach/update lifecycle mirroring the existing marker primitive,
+     - independent cleanup so label primitives detach even when surge markers are absent.
+   - Extended `ratio.ts` with:
+     - broker late-entry fields on `RatioPaneContext`,
+     - stable combined context from `useActivePrefs` + `useLivePageStore`,
+     - ratio-spec `labelMarkers` gated by `brokerLateEntryEnabled`.
 
-## TDD flow
+3. Build fixes required by the task changes
+   - Narrowed `projectBrokerLateEntryMarkers(...)` context typing so it only requires the ratio fields it actually consumes.
+   - Made `RangeBundle.broker_late_entries` optional and defaulted to `[]` in the projector so older fixtures/tests still compile cleanly.
+   - Updated ratio-context test fixtures to satisfy the expanded `RatioPaneContext`.
 
-1. Added backend tests for volume-distribution snapshot round-trip and indicator-state validation.
-2. Added a new `StudyDetailPanel` test proving the restored study detail card:
-   - picks the saved profile for the active segment date
-   - ignores profiles from other dates
-   - shows the cursor marker
-   - uses the saved max-bar color
-3. Ran the new tests first and observed the expected frontend failure (`StudyDetailPanel` was still rendering the placeholder).
-4. Implemented the minimal production changes to satisfy the failing tests.
-5. Re-ran the required verification commands.
+Files Changed
+- Added: `frontend/src/chart/BrokerLateEntryMarkersPrimitive.ts`
+- Modified:
+  - `frontend/src/chart/RangeSeriesPane.tsx`
+  - `frontend/src/chart/projectors/ratio.ts`
+  - `frontend/src/chart/RangeSeriesPane.test.tsx`
+  - `frontend/src/chart/projectors/ratio.test.ts`
+  - `frontend/src/chart/projectors/brokerLateEntryMarkers.ts`
+  - `frontend/src/chart/projectors/brokerLateEntryMarkers.test.ts`
+  - `frontend/src/chart/projectors/pastCachedProjector.test.ts`
+  - `frontend/src/chart/projectors/ratio.intramax.test.ts`
+  - `frontend/src/api/types.ts`
 
-## Files changed
+Verification
+- Targeted red/green test:
+  - `cd frontend && npm test -- --run src/chart/projectors/ratio.test.ts src/chart/RangeSeriesPane.test.tsx`
+- Required task test suite:
+  - `cd frontend && npm test -- --run src/chart/projectors/brokerLateEntryMarkers.test.ts src/chart/projectors/ratio.test.ts src/chart/RangeSeriesPane.test.tsx`
+  - Result: 3 files passed, 30 tests passed.
+- Build:
+  - `cd frontend && npm run build`
+  - Result: success (`tsc -b && vite build`)
 
-- `/home/dev/.codex/worktrees/6352/hoga-ops/hoga/api/models.py`
-- `/home/dev/.codex/worktrees/6352/hoga-ops/frontend/src/studyViews/studySnapshotAdapter.ts`
-- `/home/dev/.codex/worktrees/6352/hoga-ops/frontend/src/studyViews/StudyDetailPanel.tsx`
-- `/home/dev/.codex/worktrees/6352/hoga-ops/frontend/src/studyViews/StudyPage.tsx`
-- `/home/dev/.codex/worktrees/6352/hoga-ops/tests/api/test_study_views.py`
-- `/home/dev/.codex/worktrees/6352/hoga-ops/frontend/src/studyViews/StudyDetailPanel.test.tsx`
+Notes / Concerns
+- I kept the existing surge-marker path untouched and parallelized the new label path exactly as requested.
+- The new label primitive recomputes grouping from live chart coordinates on every draw, so grouping responds to zoom/pan without caching stale time-only clusters.
+- The only type-level compatibility change outside the task-owned chart files was making `RangeBundle.broker_late_entries` optional so pre-existing fixtures that omit the field continue to build.
 
-## Verification
+## Task 6 Fix Report
 
-- `uv run pytest tests/api/test_study_views.py -k volume_distribution -v`
-  - 5 passed
-- `cd frontend && npm test -- useStudySnapshotCapture.test.ts studySnapshotAdapter.test.ts StudyDetailPanel`
-  - 21 passed
-- Extra regression check:
-  - `cd frontend && npm test -- StudyPage.test.tsx`
-  - 24 passed
+Summary
+- Restored `RangeBundle.broker_late_entries` to a required field in `frontend/src/api/types.ts`.
+- Removed the fallback masking from `projectBrokerLateEntryMarkers(...)` so the projector reads `bundle.broker_late_entries` directly.
+- Added `broker_late_entries: []` to synthetic/test `RangeBundle` fixtures that were missing the field.
 
-## Notes
+Verification
+- `cd frontend && npm test -- --run src/chart/projectors/brokerLateEntryMarkers.test.ts src/chart/projectors/ratio.test.ts src/chart/RangeSeriesPane.test.tsx`
+  - Result: pass (`3` files, `30` tests).
+- `cd frontend && npm run build`
+  - Result: success (`tsc -b && vite build`).
 
-- The frontend capture and adapter paths already had the `volume_distributions` round-trip in place from earlier work, so Task 6 focused on filling the remaining backend model gap and completing the restored study-detail rendering path.
-- The card respects saved indicator enablement: disabled snapshots continue to show the sidebar placeholder instead of forcing the card visible.
-
-## Review Fix Addendum
-
-- Adjusted `StudyDetailPanel` so saved `volume_distributions` are selected from the hovered/latest segment time instead of the active candle bucket. This keeps the saved profile visible when `cursorMs` is inside a session segment but between saved candle intervals, while leaving orderbook and broker lookups bucket-based.
-- Added a frontend regression in `StudyDetailPanel.test.tsx` covering a cursor positioned between saved candles inside the same segment.
-- Added a backend save/load regression in `tests/api/test_study_views.py` to prove `bundle.volume_distributions` and volume-distribution indicator settings survive `create_save_sync(...)` and `load_snapshot(...)`.
-
-### Review fix verification
-
-- `cd frontend && npm test -- useStudySnapshotCapture.test.ts studySnapshotAdapter.test.ts StudyDetailPanel`
-  - `Test Files  3 passed (3)`
-  - `Tests  21 passed (21)`
-- `uv run pytest tests/api/test_study_views.py -k volume_distribution -v`
-  - `6 passed, 60 deselected in 0.11s`
+Notes / Concerns
+- This supersedes the earlier Task 6 note that made `broker_late_entries` optional for fixture compatibility.
+- `vite build` still emits the pre-existing large-chunk warning for the main bundle, but the build completes successfully.

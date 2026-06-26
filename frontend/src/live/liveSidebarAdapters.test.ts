@@ -100,18 +100,32 @@ describe('aggregateBrokerSeries', () => {
     expect(kiwoom?.dominant_side).toBe('sell');
   });
 
-  it('sorts by abs(final_net) desc and caps at 10', () => {
+  it('sorts by abs(final_net) desc and returns all broker identities', () => {
     const broker = [
       {
         t_ms: 1000,
         buy_top: Array.from({ length: 5 }, (_, i) => ({ name: `B${i}`, qty: (i + 1) * 100 })),
         sell_top: Array.from({ length: 5 }, (_, i) => ({ name: `S${i}`, qty: (i + 1) * 50 })),
       },
+      {
+        t_ms: 2000,
+        buy_top: Array.from({ length: 2 }, (_, i) => ({ name: `B${i + 5}`, qty: (i + 6) * 100 })),
+        sell_top: Array.from({ length: 2 }, (_, i) => ({ name: `S${i + 5}`, qty: (i + 6) * 50 })),
+      },
     ];
     const series = aggregateBrokerSeries(broker);
-    expect(series).toHaveLength(10);
+    expect(series).toHaveLength(14);
     // First entry has largest abs(final_net)
     expect(Math.abs(series[0].final_net)).toBeGreaterThanOrEqual(Math.abs(series[1].final_net));
+  });
+
+  it('aggregateBrokerSeries returns more than ten broker identities', () => {
+    const broker = Array.from({ length: 12 }, (_, i) => ({
+      t_ms: 1_800_000_000_000 + i,
+      buy_top: [{ name: `Broker${i}`, qty: 100 + i }],
+      sell_top: [],
+    }));
+    expect(aggregateBrokerSeries(broker)).toHaveLength(12);
   });
 });
 
@@ -167,4 +181,3 @@ describe('orderbookSnapshotAtCursor (ADR-0044 amendment — SSE buffer fallback)
     expect(orderbookSnapshotAtCursor(ob, 95_000, 60_000)!.ts_ms).toBe(80_000);
   });
 });
-
