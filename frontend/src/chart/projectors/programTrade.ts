@@ -49,16 +49,17 @@ export function projectProgramTradeNetAmount(
   const hogaPoints = [...bundle.quote_ratio.points].sort((a, b) => a.t - b.t);
   const seenHogaT = new Set<number>();
   for (const p of hogaPoints) {
-    if (seenHogaT.has(p.t)) continue;
-    seenHogaT.add(p.t);
-    if (!axis.contains(p.t)) continue;
-    const time = (axis.toVirtual(p.t) / 1000) as UTCTimestamp;
+    const hogaT = bucketTime(bundle, p.t);
+    if (hogaT == null || seenHogaT.has(hogaT)) continue;
+    seenHogaT.add(hogaT);
+    if (!axis.contains(hogaT)) continue;
+    const time = (axis.toVirtual(hogaT) / 1000) as UTCTimestamp;
     if (isSyntheticHogaGapPoint(p)) {
       maskOutgoingConnector(out, LINE_HIDDEN_COLOR);
       out.push({ time, value: 0, ...LINE_HIDDEN_COLOR });
       continue;
     }
-    const value = byBucket.get(p.t);
+    const value = byBucket.get(hogaT);
     if (value == null) continue;
     out.push({ time, value });
   }
