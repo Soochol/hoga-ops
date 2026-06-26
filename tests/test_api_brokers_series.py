@@ -14,8 +14,8 @@ def test_brokers_series_happy_path_returns_per_broker_trajectories(
     body = r.json()
     assert body["date"] == "20260519"
     assert isinstance(body["brokers"], list)
-    # At most 10 entries.
-    assert len(body["brokers"]) <= 10
+    # All recorded broker entries are returned; no API-level top-10 cap remains.
+    assert len(body["brokers"]) >= 0
     if body["brokers"]:
         first = body["brokers"][0]
         for key in ("broker", "final_net", "dominant_side", "points"):

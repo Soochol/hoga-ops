@@ -292,6 +292,7 @@ def build_router(engine: QueryEngine) -> APIRouter:
         to_date: str = Query(..., alias="to"),
         bucket_ms: int = Query(...),
         source_pref: str = Query("hogaplay"),
+        broker_late_entry_start_hhmm: int | None = Query(None),
         volume_distribution_bins: int | None = Query(None, ge=5, le=30),
         volume_distribution_price_min: int | None = Query(None, ge=0),
         volume_distribution_price_max: int | None = Query(None, ge=0),
@@ -309,6 +310,14 @@ def build_router(engine: QueryEngine) -> APIRouter:
             and volume_distribution_price_max < volume_distribution_price_min
         ):
             raise HTTPException(400, "volume_distribution_price_max < volume_distribution_price_min")
+        if broker_late_entry_start_hhmm is not None:
+            hh = broker_late_entry_start_hhmm // 100
+            mm = broker_late_entry_start_hhmm % 100
+            if hh < 9 or hh > 15 or mm < 0 or mm > 59 or (hh == 15 and mm > 20):
+                raise HTTPException(
+                    400,
+                    "broker_late_entry_start_hhmm must be between 900 and 1520",
+                )
         source_pref = _validate_source_policy(source_pref)
         return build_range_bundle(
             engine,
@@ -317,6 +326,7 @@ def build_router(engine: QueryEngine) -> APIRouter:
             to_date=to_date,
             bucket_ms=bucket_ms,
             source_pref=source_pref,
+            broker_late_entry_start_hhmm=broker_late_entry_start_hhmm,
             volume_distribution_bins=volume_distribution_bins,
             volume_distribution_price_min=volume_distribution_price_min,
             volume_distribution_price_max=volume_distribution_price_max,

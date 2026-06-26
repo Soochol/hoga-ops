@@ -14,6 +14,7 @@ def _build_range_bundle_stub(
     to_date,
     bucket_ms,
     source_pref="hogaplay",
+    broker_late_entry_start_hhmm=None,
     volume_distribution_bins=None,
     volume_distribution_price_min=None,
     volume_distribution_price_max=None,
@@ -82,6 +83,34 @@ def test_api_range_400_on_from_gt_to(app_client: TestClient) -> None:
         "/api/range?code=005930&from=20260520&to=20260512&bucket_ms=60000"
     )
     assert r.status_code == 400
+
+
+def test_range_accepts_broker_late_entry_threshold_and_returns_field(
+    app_client: TestClient,
+) -> None:
+    r = app_client.get(
+        "/api/range?code=003490&from=20260519&to=20260519"
+        "&bucket_ms=60000&broker_late_entry_start_hhmm=930"
+    )
+    assert r.status_code == 200, r.text
+    body = r.json()
+    assert "broker_late_entries" in body
+    assert isinstance(body["broker_late_entries"], list)
+    for event in body["broker_late_entries"]:
+        assert set(event) == {"t_ms", "broker", "side", "net"}
+        assert event["side"] in ("buy", "sell")
+        assert event["t_ms"] >= 1_577_836_800_000
+
+
+def test_range_rejects_invalid_broker_late_entry_threshold(
+    app_client: TestClient,
+) -> None:
+    r = app_client.get(
+        "/api/range?code=003490&from=20260519&to=20260519"
+        "&bucket_ms=60000&broker_late_entry_start_hhmm=800"
+    )
+    assert r.status_code == 400
+    assert "broker_late_entry_start_hhmm" in r.text
 
 
 def test_api_range_empty_inventory_returns_empty_bundle(app_client: TestClient) -> None:
@@ -234,6 +263,7 @@ def test_api_range_source_pref_threads_through(app_client: TestClient) -> None:
         to_date,
         bucket_ms,
         source_pref="hogaplay",
+        broker_late_entry_start_hhmm=None,
         volume_distribution_bins=None,
         volume_distribution_price_min=None,
         volume_distribution_price_max=None,
@@ -273,6 +303,7 @@ def test_api_range_source_pref_defaults_to_hogaplay(app_client: TestClient) -> N
         to_date,
         bucket_ms,
         source_pref="hogaplay",
+        broker_late_entry_start_hhmm=None,
         volume_distribution_bins=None,
         volume_distribution_price_min=None,
         volume_distribution_price_max=None,
