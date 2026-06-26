@@ -4,14 +4,16 @@ import userEvent from '@testing-library/user-event';
 import { fireEvent } from '@testing-library/react';
 import { MemoryRouter, useLocation, useNavigate } from 'react-router';
 import type { ComponentProps } from 'react';
-import type { ParquetStudySnapshot } from '../api/studyViews';
+import type { ParquetStudySnapshot, StudyViewReference } from '../api/studyViews';
+import type { RangeBundle } from '../api/types';
 import type { LiveChartRoot } from '../live/LiveChartRoot';
 import { useStudyTabsStore } from '../state/studyTabs';
 
-const { useStudyViewSnapshotMock, useStudyViewsMock, useStudyViewMutationsMock, liveChartRootMock, useLiveBundleMock, useRangeMock } = vi.hoisted(() => ({
+const { useStudyViewSnapshotMock, useStudyViewsMock, useStudyViewMutationsMock, useStudyReferenceBundleMock, liveChartRootMock, useLiveBundleMock, useRangeMock } = vi.hoisted(() => ({
   useStudyViewSnapshotMock: vi.fn(),
   useStudyViewsMock: vi.fn(),
   useStudyViewMutationsMock: vi.fn(),
+  useStudyReferenceBundleMock: vi.fn(),
   liveChartRootMock: vi.fn(),
   useLiveBundleMock: vi.fn(),
   useRangeMock: vi.fn(),
@@ -21,6 +23,10 @@ vi.mock('./useStudyViews', () => ({
   useStudyViewSnapshot: useStudyViewSnapshotMock,
   useStudyViews: useStudyViewsMock,
   useStudyViewMutations: useStudyViewMutationsMock,
+}));
+
+vi.mock('./useStudyReferenceBundle', () => ({
+  useStudyReferenceBundle: useStudyReferenceBundleMock,
 }));
 
 vi.mock('../live/LiveChartRoot', () => ({
@@ -149,6 +155,44 @@ function makeSnapshot(viewId: string): ParquetStudySnapshot {
   };
 }
 
+function makeRangeBundle(): RangeBundle {
+  return {
+    code: '005930',
+    from_date: '20260616',
+    to_date: '20260618',
+    bucket_ms: 300_000,
+    segments: [{ date: '20260616', session_open_ms: 1_000, session_close_ms: 2_000, source: 'hogaplay' }],
+    candles: [{ ts_ms: 1_000, open: 1, high: 2, low: 1, close: 2, vol_a: 10, vol_b: 0 }],
+    quote_ratio: { bucket_ms: 300_000, points: [] },
+    fill_strength: { bucket_ms: 300_000, points: [] },
+    volume_profile_range: { bin_count: 0, price_min: 0, price_max: 0, bin_width: 0, bins: [] },
+    volume_profile_by_day: [],
+    volume_distributions: [],
+    investorPoints: [],
+    ask_peaks: [],
+    bid_peaks: [],
+    price_level_hits: [],
+    trade_volume_pocs: [],
+  };
+}
+
+function makeReferenceSave(): StudyViewReference {
+  return {
+    schema_version: 2,
+    id: 'view-ref',
+    name: '복기',
+    code: '005930',
+    label: '삼성전자',
+    timeframe: '5m',
+    range: { from_date: '20260616', to_date: '20260618', from_ms: 1_000, to_ms: 2_000 },
+    viewport: { right_edge_ms: 2_000, bar_span: 120, at_live_edge: false },
+    memo: '',
+    tags: [],
+    created_at_ms: 1,
+    updated_at_ms: 2,
+  };
+}
+
 function LocationProbe() {
   const location = useLocation();
   return <div data-testid="location-probe">{location.pathname}{location.search}</div>;
@@ -177,6 +221,7 @@ describe('StudyPage', () => {
     useStudyViewSnapshotMock.mockReset();
     useStudyViewsMock.mockReset();
     useStudyViewMutationsMock.mockReset();
+    useStudyReferenceBundleMock.mockReset();
     liveChartRootMock.mockReset();
     useLiveBundleMock.mockReset();
     useRangeMock.mockReset();
@@ -195,6 +240,13 @@ describe('StudyPage', () => {
     });
     useStudyViewMutationsMock.mockReturnValue({
       updateMetadata: { mutate: vi.fn(), isPending: false, error: null },
+    });
+    useStudyReferenceBundleMock.mockReturnValue({
+      bundle: null,
+      chartBundle: null,
+      isLoading: false,
+      error: null,
+      pastDataWarnings: [],
     });
     useLiveCursorStore.getState().resetCursor();
     (useEntryDragStore.setState as unknown as (state: Record<string, unknown>) => void)({
@@ -222,6 +274,36 @@ describe('StudyPage', () => {
     expect(state.tabs).toHaveLength(1);
     expect(state.tabs[0]).toMatchObject({ viewId: 'view1' });
     expect(state.activeTabId).toBe(state.tabs[0].id);
+  });
+
+  it('renders a reference study view with current live indicator settings', () => {
+    const refSave = makeReferenceSave();
+    const bundle = makeRangeBundle();
+    useStudyViewsMock.mockReturnValue({
+      data: { schema_version: 1, saves: [refSave] },
+      isLoading: false,
+      isError: false,
+    });
+    useStudyViewSnapshotMock.mockReturnValue({ data: undefined, isLoading: false, isError: false });
+    useStudyReferenceBundleMock.mockReturnValue({
+      bundle,
+      chartBundle: bundle,
+      isLoading: false,
+      error: null,
+      pastDataWarnings: [],
+    });
+
+    renderAt('/study?view=view-ref');
+
+    expect(useStudyReferenceBundleMock).toHaveBeenCalledWith(refSave);
+    expect(useStudyViewSnapshotMock).not.toHaveBeenCalledWith('view-ref');
+    const props = liveChartRootMock.mock.calls[0][0] as ComponentProps<typeof LiveChartRoot>;
+    expect(props.code).toBe('005930');
+    expect(props.timeframe).toBe('5m');
+    expect(props.paneTogglesOverride).toBeUndefined();
+    expect(props.dailyMovingAverageOverride).toBeUndefined();
+    expect(props.tradeVolumePocOverride).toBeUndefined();
+    expect(screen.getByTestId('study-reference-detail-panel')).toBeTruthy();
   });
 
   it('scrolls the study detail panel when Alt+wheel is used over the chart', () => {
@@ -268,7 +350,7 @@ describe('StudyPage', () => {
     expect(state.activeTabId).toBe(initialActiveTabId);
     expect(state.tabs[0]).toMatchObject({ viewId: 'view2' });
     expect(screen.getByRole('tab', { name: /삼성전자 · 마감 · D/i })).toHaveAttribute('aria-selected', 'true');
-    expect(screen.getByText('삼성전자 view2')).toBeTruthy();
+    expect(screen.getByText('삼성전자')).toBeTruthy();
     expect(screen.getByTestId('location-probe')).toHaveTextContent('/study?view=view2');
   });
 

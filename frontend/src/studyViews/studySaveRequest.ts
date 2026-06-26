@@ -1,14 +1,18 @@
-import type { ParquetStudyView, ParquetStudyViewWriteRequest, StudyViewport } from '../api/studyViews';
+import type {
+  StudyViewListRow,
+  StudyViewWriteRequest,
+  StudyViewport,
+} from '../api/studyViews';
 import type { RangeBundle } from '../api/types';
+import { realMsToYyyymmdd } from '../live/liveDateTime';
 import { chooseSnapshotWindow } from './snapshotWindow';
 import type { LiveStudySaveSource } from './studySaveSource';
-import { buildStudySnapshotRequest } from './useStudySnapshotCapture';
 
 export function studySnapshotByteSize(value: unknown): number {
   return new TextEncoder().encode(JSON.stringify(value)).length;
 }
 
-export function defaultStudyViewName(row: ParquetStudyView | undefined, label: string, timeframe: string): string {
+export function defaultStudyViewName(row: StudyViewListRow | undefined, label: string, timeframe: string): string {
   return row?.name ?? `${label} ${timeframe} 저장뷰`;
 }
 
@@ -46,21 +50,34 @@ export function visibleWindow(bundle: RangeBundle, viewport: StudyViewport) {
   return chooseSnapshotWindow(candles, visibleFrom, visibleTo);
 }
 
-export function buildLiveStudySaveRequest(liveSource: LiveStudySaveSource): ParquetStudyViewWriteRequest | null {
+export function rangeForWindow(bundle: RangeBundle, fromIndex: number, toIndex: number) {
+  const fromCandle = bundle.candles[Math.max(0, fromIndex)];
+  const toCandle = bundle.candles[Math.max(0, toIndex)];
+  if (!fromCandle || !toCandle) return null;
+  return {
+    from_date: realMsToYyyymmdd(fromCandle.ts_ms),
+    to_date: realMsToYyyymmdd(toCandle.ts_ms),
+    from_ms: fromCandle.ts_ms,
+    to_ms: toCandle.ts_ms,
+  };
+}
+
+export function buildStudyReferenceSaveRequest(liveSource: LiveStudySaveSource): StudyViewWriteRequest | null {
   const viewport = viewportFromCapture(liveSource.captureViewport, fallbackViewport(liveSource.bundle));
   if (!viewport) return null;
   const window = visibleWindow(liveSource.bundle, viewport);
-  return buildStudySnapshotRequest({
+  const range = rangeForWindow(liveSource.bundle, window.fromIndex, window.toIndex);
+  if (!range) return null;
+  return {
     name: defaultStudyViewName(undefined, liveSource.label, liveSource.timeframe),
     memo: '',
-    route: '/live',
     code: liveSource.code,
     label: liveSource.label,
     timeframe: liveSource.timeframe,
+    range,
     viewport,
-    indicatorState: liveSource.indicatorState,
-    bundle: liveSource.bundle,
-    fromIndex: window.fromIndex,
-    toIndex: window.toIndex,
-  });
+    tags: [],
+  };
 }
+
+export const buildLiveStudySaveRequest = buildStudyReferenceSaveRequest;

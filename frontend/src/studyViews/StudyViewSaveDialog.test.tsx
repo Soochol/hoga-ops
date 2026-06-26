@@ -38,7 +38,7 @@ it('requires confirmation wording for overwrite mode', () => {
     />,
   );
   expect(screen.getByRole('heading', { name: '덮어쓰기' })).toBeTruthy();
-  expect(screen.getByText(/기존 저장뷰를 현재 차트 스냅샷/)).toBeTruthy();
+  expect(screen.getByText(/기존 저장뷰를 현재 복기 구간/)).toBeTruthy();
 });
 
 it('shows save progress and backend errors', () => {

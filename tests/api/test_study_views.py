@@ -11,6 +11,8 @@ from hoga.api.models import (
     ParquetStudySnapshot,
     ParquetStudyView,
     ParquetStudyViewWriteRequest,
+    StudyViewReference,
+    StudyViewReferenceWriteRequest,
     StudyViewsFile,
 )
 from hoga.api.study_snapshot_contract import prepare_restorable_snapshot
@@ -79,6 +81,28 @@ def _req(**overrides):
         "indicator_state": snap["indicator_state"],
         "snapshot": snap,
         "provenance": snap["provenance"],
+    }
+    base.update(overrides)
+    return base
+
+
+def _ref_req(**overrides):
+    from_ms = hhmmssms_to_unix_ms("20260616", 90_000_000)
+    to_ms = hhmmssms_to_unix_ms("20260618", 153_000_000)
+    base = {
+        "name": "삼성전자 복기",
+        "code": "005930",
+        "label": "삼성전자",
+        "timeframe": "5m",
+        "range": {
+            "from_date": "20260616",
+            "to_date": "20260618",
+            "from_ms": from_ms,
+            "to_ms": to_ms,
+        },
+        "viewport": {"right_edge_ms": to_ms, "bar_span": 200, "at_live_edge": False},
+        "memo": "돌파 복기",
+        "tags": ["breakout"],
     }
     base.update(overrides)
     return base
@@ -158,6 +182,68 @@ def test_study_view_write_request_rejects_snapshot_metadata_mismatch():
     bad = _req(snapshot=_snapshot(code="000660"))
     with pytest.raises(ValidationError):
         ParquetStudyViewWriteRequest.model_validate(bad)
+
+
+def test_study_view_reference_write_request_trims_name_and_defaults():
+    req = StudyViewReferenceWriteRequest.model_validate(_ref_req(name="  내 복기  ", memo=None, tags=None))
+
+    assert req.name == "내 복기"
+    assert req.memo == ""
+    assert req.tags == []
+    assert req.range.from_date == "20260616"
+
+
+@pytest.mark.parametrize(
+    "patch",
+    [
+        {"name": "   "},
+        {"code": "bad"},
+        {
+            "range": {
+                "from_date": "20260619",
+                "to_date": "20260618",
+                "from_ms": hhmmssms_to_unix_ms("20260618", 90_000_000),
+                "to_ms": hhmmssms_to_unix_ms("20260618", 153_000_000),
+            },
+        },
+        {
+            "range": {
+                "from_date": "20260616",
+                "to_date": "20260618",
+                "from_ms": hhmmssms_to_unix_ms("20260618", 153_000_000),
+                "to_ms": hhmmssms_to_unix_ms("20260616", 90_000_000),
+            },
+        },
+        {
+            "range": {
+                "from_date": "20260616",
+                "to_date": "20260618",
+                "from_ms": 0,
+                "to_ms": hhmmssms_to_unix_ms("20260618", 153_000_000),
+            },
+        },
+    ],
+)
+def test_study_view_reference_write_request_rejects_invalid_values(patch):
+    raw = _ref_req()
+    raw.update(patch)
+
+    with pytest.raises(ValidationError):
+        StudyViewReferenceWriteRequest.model_validate(raw)
+
+
+def test_study_view_reference_manifest_shape():
+    row = StudyViewReference.model_validate({
+        **_ref_req(),
+        "schema_version": 2,
+        "id": "view1",
+        "created_at_ms": 10,
+        "updated_at_ms": 20,
+    })
+
+    assert row.schema_version == 2
+    assert row.range.to_date == "20260618"
+    assert row.memo == "돌파 복기"
 
 
 def test_study_snapshot_allows_hidden_indicator_without_numeric_value():
@@ -581,6 +667,41 @@ def test_study_view_routes_crud(study_client):
     assert study_client.get(f"/api/study-views/saves/{sid}").status_code == 404
 
 
+def test_study_view_reference_routes_crud(study_client):
+    r = study_client.post("/api/study-views/saves", json=_ref_req())
+    assert r.status_code == 201
+    row = r.json()
+    sid = row["id"]
+    assert row["schema_version"] == 2
+    assert row["range"]["from_date"] == "20260616"
+    assert "indicator_state" not in row
+    assert "snapshot_path" not in row
+
+    listed = study_client.get("/api/study-views/saves").json()["saves"]
+    assert listed[0]["id"] == sid
+    assert listed[0]["schema_version"] == 2
+
+    fetched = study_client.get(f"/api/study-views/saves/{sid}").json()
+    assert fetched["range"]["to_date"] == "20260618"
+
+    updated_from_ms = hhmmssms_to_unix_ms("20260617", 90_000_000)
+    updated_to_ms = hhmmssms_to_unix_ms("20260618", 153_000_000)
+    updated_body = _ref_req(name="수정", range={
+        "from_date": "20260617",
+        "to_date": "20260618",
+        "from_ms": updated_from_ms,
+        "to_ms": updated_to_ms,
+    })
+    r2 = study_client.put(f"/api/study-views/saves/{sid}", json=updated_body)
+    assert r2.status_code == 200
+    assert r2.json()["name"] == "수정"
+    assert r2.json()["range"]["from_date"] == "20260617"
+
+    snapshot_response = study_client.get(f"/api/study-views/saves/{sid}/snapshot")
+    assert snapshot_response.status_code == 409
+    assert snapshot_response.json()["detail"]["code"] == "study_view_snapshot_not_applicable"
+
+
 def test_study_view_routes_missing_ids_return_study_specific_404(study_client):
     r = study_client.get("/api/study-views/saves/missing")
     assert r.status_code == 404
@@ -650,6 +771,26 @@ def test_study_views_create_writes_manifest_and_snapshot(tmp_path):
     assert (tmp_path / "study_views" / "saves.json").exists()
     assert (tmp_path / "study_views" / "snapshots" / "view1.json").exists()
     assert sv.load_snapshot(tmp_path, id="view1").code == "005930"
+
+
+def test_study_view_reference_persistence_does_not_write_snapshot_file(tmp_path):
+    row = sv.create_reference_save_sync(
+        tmp_path,
+        req=StudyViewReferenceWriteRequest.model_validate(_ref_req()),
+        id="ref1",
+        now_ms=10,
+    )
+
+    assert row.schema_version == 2
+    assert not (tmp_path / "study_views" / "snapshots" / "ref1.json").exists()
+
+
+def test_study_views_file_defaults_legacy_rows_to_schema_version_one():
+    raw = {"schema_version": 1, "saves": [_view()]}
+
+    parsed = StudyViewsFile.model_validate(raw)
+
+    assert parsed.saves[0].schema_version == 1
 
 
 def test_study_views_create_uses_snapshot_contract_module(tmp_path, monkeypatch):

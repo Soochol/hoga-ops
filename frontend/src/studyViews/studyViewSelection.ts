@@ -1,9 +1,9 @@
-import type { ParquetStudyView } from '../api/studyViews';
+import type { StudyViewListRow } from '../api/studyViews';
 
 export function latestStudyViewForCode(
-  saves: readonly ParquetStudyView[],
+  saves: readonly StudyViewListRow[],
   code: string,
-): ParquetStudyView | null {
+): StudyViewListRow | null {
   const matches = saves.filter((save) => save.code === code);
   if (matches.length === 0) return null;
   return matches.slice().sort((a, b) => {
@@ -14,7 +14,7 @@ export function latestStudyViewForCode(
 }
 
 export function formatStudyTabLabel(
-  save: Pick<ParquetStudyView, 'label' | 'name' | 'timeframe'>,
+  save: Pick<StudyViewListRow, 'label' | 'name' | 'timeframe'>,
 ): string {
   return `${save.label} · ${save.name} · ${save.timeframe}`;
 }

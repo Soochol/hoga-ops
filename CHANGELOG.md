@@ -3,6 +3,18 @@
 All notable changes to this project are documented here.
 The format follows a 4-digit `MAJOR.MINOR.PATCH.MICRO` scheme.
 
+## [0.12.2.0] - 2026-06-26
+
+### Added
+- **복기뷰 저장 방식 추가**: 새 `/study` 저장뷰는 차트 스냅샷 대신 종목, 타임프레임, 저장 기간, 뷰포트, 메모를 저장하고, 복기 시 현재 도구 설정으로 해당 기간을 다시 불러와 분석한다.
+
+### Changed
+- **/study 렌더링 경로 분리**: v2 복기뷰는 원본 기간 데이터를 다시 가져와 렌더링하고, 기존 v1 스냅샷 학습뷰는 레거시 경로로 계속 열리도록 분기했다.
+- **저장 명령 구조 정리**: 저장 dialog와 drawer가 요청 내부 구조를 직접 보지 않고 저장 command Module을 통해 생성/덮어쓰기 요청을 제출하도록 정리했다.
+
+### Fixed
+- **복기뷰 지표 설정 일관성 보정**: 새 복기뷰는 저장 당시 지표 스냅샷을 쓰지 않고 `/live`의 현재 보조지표 토글 설정을 그대로 따르도록 했다.
+
 ## [0.12.1.0] - 2026-06-25
 
 ### Fixed
