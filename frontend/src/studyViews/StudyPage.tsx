@@ -69,6 +69,7 @@ export function StudyPage() {
   const focusTab = useStudyTabsStore((state) => state.focusTab);
   const closeTab = useStudyTabsStore((state) => state.closeTab);
   const reorderTabs = useStudyTabsStore((state) => state.reorderTabs);
+  const updateTabViewport = useStudyTabsStore((state) => state.updateTabViewport);
   const initialQueryViewIdRef = useRef(queryViewId);
   const handledQueryViewIdRef = useRef(queryViewId);
   const routeSyncPendingRef = useRef(false);
@@ -131,6 +132,24 @@ export function StudyPage() {
   const handleViewportCaptureReady = useCallback((capture: () => TabViewport | null) => {
     captureViewportRef.current = capture;
   }, []);
+  const captureActiveTabViewport = useCallback(() => {
+    if (!activeTabId) return;
+    const viewport = captureViewportRef.current();
+    if (!viewport) return;
+    updateTabViewport(activeTabId, viewport);
+  }, [activeTabId, updateTabViewport]);
+  const handleFocusTab = useCallback((id: string) => {
+    if (id !== activeTabId) captureActiveTabViewport();
+    focusTab(id);
+  }, [activeTabId, captureActiveTabViewport, focusTab]);
+  const handleCloseTab = useCallback((id: string) => {
+    if (id === activeTabId) captureActiveTabViewport();
+    closeTab(id);
+  }, [activeTabId, captureActiveTabViewport, closeTab]);
+  const openSaveInActiveTabWithViewportCapture = useCallback((save: Parameters<typeof openSaveInActiveTab>[0]) => {
+    captureActiveTabViewport();
+    openSaveInActiveTab(save);
+  }, [captureActiveTabViewport, openSaveInActiveTab]);
   const handleWheelCapture = useCallback((event: WheelEvent<HTMLDivElement>) => {
     if (!event.altKey) return;
     const scroller = detailPanelScrollRef.current;
@@ -175,8 +194,8 @@ export function StudyPage() {
     if (!querySave) return;
     if (activeTab?.viewId === querySave.id) return;
     routeSyncPendingRef.current = true;
-    openSaveInActiveTab(querySave);
-  }, [activeTab?.viewId, openSaveInActiveTab, querySave, queryViewId]);
+    openSaveInActiveTabWithViewportCapture(querySave);
+  }, [activeTab?.viewId, openSaveInActiveTabWithViewportCapture, querySave, queryViewId]);
 
   useEffect(() => {
     setIsCursorActive(false);
@@ -198,7 +217,7 @@ export function StudyPage() {
   useStudyKeyboard({
     onSelectTabIndex: (index) => {
       const nextTab = tabs[index];
-      if (nextTab) focusTab(nextTab.id);
+      if (nextTab) handleFocusTab(nextTab.id);
     },
   });
 
@@ -282,8 +301,8 @@ export function StudyPage() {
             tabs={tabs}
             activeTabId={activeTabId}
             activeLoading={isLoadingActiveView}
-            onFocus={focusTab}
-            onClose={closeTab}
+            onFocus={handleFocusTab}
+            onClose={handleCloseTab}
             onReorder={reorderTabs}
             onNewTab={() => {}}
           />
@@ -332,9 +351,10 @@ export function StudyPage() {
               isExtending={false}
               pastDataWarnings={activeViewModel.pastDataWarnings}
               restoreViewport={{
-                rightEdgeMs: activeViewModel.save.viewport.right_edge_ms,
-                barSpan: activeViewModel.save.viewport.bar_span,
-                atLiveEdge: activeViewModel.save.viewport.at_live_edge,
+                rightEdgeMs: activeTab?.viewport?.rightEdgeMs ?? activeViewModel.save.viewport.right_edge_ms,
+                barSpan: activeTab?.viewport?.barSpan ?? activeViewModel.save.viewport.bar_span,
+                atLiveEdge: activeTab?.viewport?.atLiveEdge ?? activeViewModel.save.viewport.at_live_edge,
+                ...(activeTab?.viewport?.userAdjusted !== undefined ? { userAdjusted: activeTab.viewport.userAdjusted } : {}),
               }}
               dayAskPeaks={activeViewModel.bundle.ask_peaks}
               dayBidPeaks={activeViewModel.bundle.bid_peaks}
