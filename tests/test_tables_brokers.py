@@ -176,6 +176,33 @@ def test_query_late_entry_events_are_side_specific_and_once(
     assert all(e.broker != "Dual" or e.side != "buy" for e in events)
 
 
+def test_query_late_entry_events_collapses_aliases_before_selection(
+    tmp_path: Path,
+) -> None:
+    s1 = PARSERS[4](
+        _broker_parts_named(
+            ts_ms=93000000,
+            seq=1,
+            sell_names=["신한증권", "신한투자증권", "S3", "S4", "S5"],
+            sell_today=[40, 60, 10, 10, 10],
+            buy_names=["B1", "B2", "B3", "B4", "B5"],
+            buy_today=[10, 10, 10, 10, 10],
+        )
+    )
+    out = tmp_path / "brokers.parquet"
+    write_parquet(s1, out)
+    con = duckdb.connect()
+
+    events = query_late_entry_events(con, path=out, threshold_ms=93000000)
+
+    shinhan = [e for e in events if e.broker == "신한투자증권"]
+    assert len(shinhan) == 1
+    assert shinhan[0].side == "sell"
+    assert shinhan[0].t_ms == 93000000
+    assert shinhan[0].net == -100
+    assert not any(e.broker == "신한증권" for e in events)
+
+
 def _broker_parts_named(
     ts_ms: int,
     seq: int,

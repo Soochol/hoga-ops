@@ -20,3 +20,16 @@ Verification:
 Notes:
 
 - The environment did not have a globally installed `pytest`, so I used `uv run --extra dev pytest ...` to execute the tests inside the project environment.
+
+## Task 1 Fix Report
+
+Fixed the late-entry broker query so it canonicalizes broker names before the final collapse step. This prevents two raw aliases for the same canonical broker on the same side and timestamp from being split into separate rows or from masking each other's net.
+
+Test coverage added:
+
+- a same-side, same-timestamp alias pair now collapses into one late-entry event with summed net
+
+Verification:
+
+- `uv run --extra dev pytest tests/test_tables_brokers.py -q`
+- Result: `19 passed in 0.24s`

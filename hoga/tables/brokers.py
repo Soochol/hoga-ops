@@ -235,14 +235,19 @@ def query_late_entry_events(
         [str(path)],
     ).fetchall()
 
-    pre_seen: set[tuple[str, BrokerSide]] = set()
-    first_after: dict[tuple[str, BrokerSide], BrokerLateEntryEventRow] = {}
+    # Canonicalize first, then re-collapse so raw aliases for the same firm
+    # at the same side/timestamp do not split or mask one another.
+    collapsed: dict[tuple[str, BrokerSide, int], int] = {}
     for raw_broker, raw_side, ts_ms_raw, net_raw in rows:
         broker = canonical(str(raw_broker))
         side: BrokerSide = "buy" if raw_side == "buy" else "sell"
+        key = (broker, side, int(ts_ms_raw))
+        collapsed[key] = collapsed.get(key, 0) + int(net_raw)
+
+    pre_seen: set[tuple[str, BrokerSide]] = set()
+    first_after: dict[tuple[str, BrokerSide], BrokerLateEntryEventRow] = {}
+    for (broker, side, ts_ms), net in sorted(collapsed.items()):
         key = (broker, side)
-        ts_ms = int(ts_ms_raw)
-        net = int(net_raw)
         if ts_ms < threshold_ms:
             pre_seen.add(key)
             continue
