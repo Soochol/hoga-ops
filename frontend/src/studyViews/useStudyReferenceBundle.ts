@@ -15,6 +15,7 @@ import { buildStudyReferenceBundleModel, studyReferenceQueryInputs } from './stu
 export function useStudyReferenceBundle(save: StudyViewReference | null) {
   const venue = useLiveVenueStore((s) => s.venue);
   const tradeVolumePocEnabled = useLivePageStore((s) => s.tradeVolumePocEnabled);
+  const volumeDistributionEnabled = useLivePageStore((s) => s.volumeDistributionEnabled);
   const volumeDistributionRangeCount = useLivePageStore((s) => s.volumeDistributionRangeCount);
   const inputs = useMemo(() => studyReferenceQueryInputs(save), [save]);
 
@@ -26,7 +27,7 @@ export function useStudyReferenceBundle(save: StudyViewReference | null) {
     undefined,
     null,
     {
-      volumeDistributionBins: null,
+      volumeDistributionBins: volumeDistributionEnabled ? volumeDistributionRangeCount : null,
       tradeVolumePocBins: tradeVolumePocEnabled ? volumeDistributionRangeCount : null,
       volumeDistributionPriceRange: null,
     },

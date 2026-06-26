@@ -49,11 +49,12 @@ describe('useStudyReferenceBundle', () => {
     useStudyPastDailyCandlesMock.mockReturnValue({ data: { candles: [], data_warnings: [] }, isLoading: false, error: null });
     useLivePageStore.setState({
       tradeVolumePocEnabled: true,
+      volumeDistributionEnabled: true,
       volumeDistributionRangeCount: 12,
     });
   });
 
-  it('requests trade-volume POC bins from /api/range using current live indicator settings', () => {
+  it('requests volume distribution and trade-volume POC bins from /api/range using current live indicator settings', () => {
     renderHook(() => useStudyReferenceBundle(save));
 
     expect(useRangeMock).toHaveBeenCalledWith(
@@ -64,7 +65,7 @@ describe('useStudyReferenceBundle', () => {
       undefined,
       null,
       {
-        volumeDistributionBins: null,
+        volumeDistributionBins: 12,
         tradeVolumePocBins: 12,
         volumeDistributionPriceRange: null,
       },
@@ -77,5 +78,13 @@ describe('useStudyReferenceBundle', () => {
     renderHook(() => useStudyReferenceBundle(save));
 
     expect(useRangeMock.mock.calls[0][6]).toMatchObject({ tradeVolumePocBins: null });
+  });
+
+  it('omits volume distribution bins when the current live setting is disabled', () => {
+    useLivePageStore.setState({ volumeDistributionEnabled: false });
+
+    renderHook(() => useStudyReferenceBundle(save));
+
+    expect(useRangeMock.mock.calls[0][6]).toMatchObject({ volumeDistributionBins: null });
   });
 });
