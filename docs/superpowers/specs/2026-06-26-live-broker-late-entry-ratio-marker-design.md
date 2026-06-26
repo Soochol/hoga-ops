@@ -8,7 +8,7 @@
 
 The `/live` broker sidebar and broker day-series API currently cap displayed brokers at 10. The user wants every recorded broker to be visible, not only the top 10. "Recorded broker" means a broker present in the stored top-5 buy plus top-5 sell broker snapshots; the system cannot infer brokers outside those recorded snapshots.
 
-The user also wants a new broker-related indicator: **기록상 신규 거래원**. Starting from a configurable time, default `09:30`, the indicator should show buy-side or sell-side broker appearances whose first recorded appearance is at or after that time and whose same broker-side pair was not recorded before that time. This deliberately treats "present in the first recorded broker snapshot at or after 09:30" and "newly appearing later after 09:30" as one user-facing concept: **기준시각 이후 첫 등장 거래원**. Each broker-side pair should be shown once, directly on the existing `호가비` (ask/bid ratio) chart indicator, at that pair's first observed appearance time, with a dot and the broker name as a label.
+The user also wants a new broker-related indicator: **기록상 신규 거래원**. Starting from a configurable time, default `09:30`, the indicator should treat that time as the start of a fresh observation window and show each buy-side or sell-side broker pair at its first recorded appearance within that window. This deliberately treats "present in the first recorded broker snapshot at or after 09:30" and "newly appearing later after 09:30" as one user-facing concept: **기준시각 이후 첫 등장 거래원**. Each broker-side pair should be shown once, directly on the existing `호가비` (ask/bid ratio) chart indicator, at that pair's first observed appearance time, with a dot and the broker name as a label.
 
 ## Invariants
 
@@ -39,7 +39,7 @@ The user also wants a new broker-related indicator: **기록상 신규 거래원
 - Remove the broker identity cap so `/api/brokers/series`, the `/live` latest broker sidebar, and `BrokerTrajectoryTable` show every recorded broker.
 - Add a `지표` modal item under the existing `거래원 지표` section, labelled `신규 거래원 등장`.
 - Add a configurable 기준 시각 parameter in HHMM format. Default: `930`.
-- Detect **기록상 신규 거래원** with one unified rule over broker-side pairs: `(broker, buy)` or `(broker, sell)` pairs with no observed point before the 기준 시각 and a first observed point at or after the 기준 시각.
+- Detect **기록상 신규 거래원** with one unified rule over broker-side pairs: `(broker, buy)` or `(broker, sell)` pairs are selected once at their first observed point at or after the 기준 시각.
 - Render those first-appearance events as dots plus broker labels on the existing `호가비` pane.
 - Keep marker rendering optional via the new indicator toggle.
 
