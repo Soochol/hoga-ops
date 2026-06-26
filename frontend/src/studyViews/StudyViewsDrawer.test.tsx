@@ -392,6 +392,13 @@ it('does not show the secondary new-save action in the drawer body', () => {
   expect(screen.queryByRole('button', { name: '새 저장본 만들기' })).toBeNull();
 });
 
+it('does not show the load-before-save hint in the study drawer', () => {
+  saveSource = null;
+  renderDrawer('/study');
+
+  expect(screen.queryByText('학습뷰를 불러온 뒤 저장할 수 있습니다.')).toBeNull();
+});
+
 it('opens overwrite dialog from current study view primary action', async () => {
   saveSource = {
     origin: 'study-reference',
