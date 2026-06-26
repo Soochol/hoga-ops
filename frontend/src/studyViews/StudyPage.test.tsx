@@ -1,4 +1,4 @@
-import { act, render, screen } from '@testing-library/react';
+import { act, fireEvent, render, screen, within } from '@testing-library/react';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { MemoryRouter } from 'react-router';
 import type { ComponentProps } from 'react';
@@ -160,7 +160,7 @@ describe('StudyPage', () => {
     renderPage('/study?view=view-ref');
 
     expect(screen.getByTestId('live-chart-root-stub')).toBeTruthy();
-    expect(useStudyReferenceBundleMock).toHaveBeenCalledWith(referenceSave);
+    expect(useStudyReferenceBundleMock).toHaveBeenCalledWith(expect.objectContaining(referenceSave));
     const props = liveChartRootMock.mock.calls[0][0];
     expect(props.code).toBe('005930');
     expect(props.timeframe).toBe('5m');
@@ -170,6 +170,30 @@ describe('StudyPage', () => {
     expect(props.paneTogglesOverride).toBeUndefined();
     expect(props.dailyMovingAverageOverride).toBeUndefined();
     expect(props.tradeVolumePocOverride).toBeUndefined();
+  });
+
+  it('switches the study reference timeframe with the live timeframe controls', () => {
+    renderPage('/study?view=view-ref');
+
+    fireEvent.click(screen.getByRole('button', { name: '일' }));
+
+    expect(screen.getByText('005930 · D · 복기뷰')).toBeTruthy();
+    expect(useStudyReferenceBundleMock).toHaveBeenLastCalledWith(expect.objectContaining({
+      id: 'view-ref',
+      timeframe: 'D',
+    }));
+    expect(liveChartRootMock.mock.calls.at(-1)?.[0].timeframe).toBe('D');
+
+    fireEvent.click(screen.getByRole('button', { name: '5분봉으로 전환' }));
+    fireEvent.click(screen.getByRole('button', { name: '분봉 선택 열기: 5분' }));
+    fireEvent.click(within(screen.getByRole('menu', { name: '분봉 목록' })).getByRole('menuitemradio', { name: '15분' }));
+
+    expect(screen.getByText('005930 · 15m · 복기뷰')).toBeTruthy();
+    expect(useStudyReferenceBundleMock).toHaveBeenLastCalledWith(expect.objectContaining({
+      id: 'view-ref',
+      timeframe: '15m',
+    }));
+    expect(liveChartRootMock.mock.calls.at(-1)?.[0].timeframe).toBe('15m');
   });
 
   it('hydrates reference detail indicators from cursor spot data on hover', () => {

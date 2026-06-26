@@ -91,7 +91,7 @@ describe('studyReferenceBundleModel', () => {
       venue: 'KRX',
       pastBundle: null,
       minuteCandles: [],
-      dailyCandles: [{ t_ms: 2_000, open: 1, high: 2, low: 1, close: 2, volume: 10 }],
+      dailyCandles: [{ t_ms: Date.UTC(2026, 5, 16, 0, 0), open: 1, high: 2, low: 1, close: 2, volume: 10 }],
     });
 
     expect(model.bundle?.candles).toHaveLength(1);
