@@ -3,6 +3,11 @@
 All notable changes to this project are documented here.
 The format follows a 4-digit `MAJOR.MINOR.PATCH.MICRO` scheme.
 
+## [0.12.7.0] - 2026-06-27
+
+### Fixed
+- **매물대 분포 sidecar 생성 복구**: `/api/range?mode=sidecar`에서도 `volume_distribution_bins` 요청 시 `volume_distributions`를 생성하도록 해, `/live`와 `/study`의 연속체결 매물대 분포 카드가 실제 데이터를 받을 수 있게 했다.
+
 ## [0.12.6.0] - 2026-06-27
 
 ### Fixed
