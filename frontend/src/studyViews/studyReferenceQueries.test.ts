@@ -20,6 +20,8 @@ const save: StudyViewReference = {
 const settings = {
   venue: 'KRX' as const,
   sourcePref: 'hogaplay_first' as const,
+  brokerLateEntryEnabled: true,
+  brokerLateEntryStartHHMM: 1000,
   volumeDistributionEnabled: true,
   tradeVolumePocEnabled: true,
   volumeDistributionRangeCount: 12,
@@ -35,9 +37,21 @@ describe('studyReferenceQueryOptions', () => {
     expect(options.rangeSidecars.enabled).toBe(true);
     expect(options.rangeSidecars.queryKey[0]).toBe('range');
     expect(options.rangeSidecars.queryKey.at(-1)).toBe('sidecar');
+    expect(options.rangeSidecars.queryKey).toContain(true);
+    expect(options.rangeSidecars.queryKey).toContain(1000);
     expect(options.minuteCandles.enabled).toBe(true);
     expect(options.minuteCandles.queryKey).toEqual(['study', 'past-candles', '005930', '20260616', '20260618', 'KRX']);
     expect(options.dailyCandles.enabled).toBe(false);
+  });
+
+  it('requests no broker late-entry sidecars when the indicator is disabled', () => {
+    const options = studyReferenceQueryOptions(save, {
+      ...settings,
+      brokerLateEntryEnabled: false,
+    });
+
+    expect(options.rangeSidecars.queryKey).toContain(false);
+    expect(options.rangeSidecars.queryKey).not.toContain(1000);
   });
 
   it('builds daily candle options and disables range for daily study views', () => {

@@ -32,6 +32,8 @@ function mergeStudyRangeBundles(
 export function useStudyReferenceBundle(save: StudyViewReference | null) {
   const venue = useLiveVenueStore((s) => s.venue);
   const sourcePref = useSourcePreferenceStore((s) => s.sourcePreference);
+  const brokerLateEntryEnabled = useLivePageStore((s) => s.brokerLateEntryEnabled);
+  const brokerLateEntryStartHHMM = useLivePageStore((s) => s.brokerLateEntryStartHHMM);
   const tradeVolumePocEnabled = useLivePageStore((s) => s.tradeVolumePocEnabled);
   const volumeDistributionEnabled = useLivePageStore((s) => s.volumeDistributionEnabled);
   const volumeDistributionRangeCount = useLivePageStore((s) => s.volumeDistributionRangeCount);
@@ -40,12 +42,16 @@ export function useStudyReferenceBundle(save: StudyViewReference | null) {
     () => studyReferenceQueryOptions(save, {
       venue,
       sourcePref,
+      brokerLateEntryEnabled,
+      brokerLateEntryStartHHMM,
       tradeVolumePocEnabled,
       volumeDistributionEnabled,
       volumeDistributionRangeCount,
     }),
     [
       save,
+      brokerLateEntryEnabled,
+      brokerLateEntryStartHHMM,
       sourcePref,
       tradeVolumePocEnabled,
       venue,
