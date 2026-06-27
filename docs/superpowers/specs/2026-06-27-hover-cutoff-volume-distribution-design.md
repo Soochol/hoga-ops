@@ -105,6 +105,15 @@ The returned `last_trade_ms` reflects the last included trade, so the card can s
 
 Keep the existing final range bundle as the baseline.
 
+Add `volumeDistributionHoverCutoffEnabled` to the existing indicator preference slice:
+
+- Type and defaults: `frontend/src/state/liveIndicatorsPersistence.ts`
+- Store setter and persistence snapshot: `frontend/src/state/livePage.ts`
+- UI control: `frontend/src/live/indicators/IndicatorPanel.tsx`
+- Default: `false`
+
+Do not create a second settings store. This preference belongs beside `volumeDistributionEnabled`, `volumeDistributionRangeCount`, `volumeDistributionColor`, and `volumeDistributionMaxColor`.
+
 When the new toggle is on and a minute-timeframe cursor is active:
 
 1. Determine the active distribution date from `cursorMs`.
@@ -122,9 +131,13 @@ When the new toggle is on and a minute-timeframe cursor is active:
 
 Do not merge cutoff profiles into the main range bundle. They are cursor-specific read models and should stay local to the detail panel selection path. The main bundle remains the final-profile baseline used when the toggle is off or the cutoff query is not ready.
 
-For `/live` today, the same sidecar path provides exact behavior for promoted/parquet trades. To keep the live edge exact before the next promotion, merge the SSE trade tail into the cutoff profile using the existing bin grid. Include only continuous trades where `profile.last_trade_ms < trade.t_ms <= cursorMs`. The existing live SSE recompute remains a fallback for today's latest/final behavior when the cutoff toggle is off or the sidecar has not returned yet.
+For `/live` today, the same sidecar path provides exact behavior for promoted/parquet trades. To keep the live edge exact before the next promotion, expose a pure helper in `continuousTradeVolumeDistribution.ts` that merges a bounded SSE trade tail into an existing profile using the profile's bin grid. Include only continuous trades where `profile.last_trade_ms < trade.t_ms <= cursorMs`. The existing live SSE recompute remains a fallback for today's latest/final behavior when the cutoff toggle is off or the sidecar has not returned yet.
+
+If the sidecar cutoff profile is missing and today has only live SSE trades, compute a cutoff profile from live trades with the same full-day price grid and `trade.t_ms <= cursorMs`. This is a fallback for startup/live-edge gaps, not the primary historical path.
 
 For v2 `/study` **복기뷰**, `StudyReferenceDetailPanel` uses the same cutoff sidecar query keyed by the saved view's code/timeframe/source inputs and the active cursor. Legacy **스냅샷 학습뷰** remains out of scope and falls back to its saved/final distribution payload.
+
+Use one shared frontend hook for the cutoff sidecar selection so `/live` and v2 `/study` cannot drift. The hook should accept the Code, timeframe, source preference, cursor timestamp, selected date, range count, price range, toggle state, and final profile fallback, then return the best profile to render.
 
 ## Rendering
 
@@ -149,6 +162,52 @@ Do not precompute all cutoff distributions in the main bundle. That would make n
 
 ## Testing
 
+Engineering review scope check:
+
+- Existing code already solves most seams: `/api/range?mode=sidecar`, `build_volume_distribution_slice`, `query_continuous_trade_volume_distribution`, `useRange`, and the shared `/live` + `/study` `VolumeDistributionCard`.
+- Minimum viable change is parameterizing the existing range sidecar rather than creating a new endpoint.
+- `TODOS.md` has a larger `/api/range` query redesign item, but it is not a prerequisite. This feature should stay a single-date sidecar addition and avoid the full-window refactor.
+- No new deployable artifact is introduced.
+
+Coverage sketch:
+
+```text
+BACKEND
+/api/range
+  ├── no volume_distribution_cutoff_ms
+  │   └── existing final profile path [regression test]
+  ├── cutoff present + from == to
+  │   └── build_range_bundle -> build_volume_distribution_slice(cutoff_ms)
+  │       └── query_continuous_trade_volume_distribution(effective_upper_bound)
+  │           ├── side ±1, valid price/qty, time <= cutoff [unit/API test]
+  │           ├── side 0 excluded [unit/API test]
+  │           ├── exact cutoff timestamp included [unit/API test]
+  │           └── later trades excluded [unit/API test]
+  └── cutoff present + from != to
+      └── reject as ambiguous [API test]
+
+FRONTEND
+Indicator settings
+  ├── volumeDistributionHoverCutoffEnabled default false [store test]
+  └── persisted true/false survives merge [store test]
+
+Range request
+  ├── cutoff in query key [unit test]
+  └── cutoff in URL [unit test]
+
+Shared cutoff profile hook
+  ├── toggle off -> final profile [unit/component test]
+  ├── toggle on + no cursor -> final profile [unit/component test]
+  ├── toggle on + cursor -> sidecar profile [unit/component test]
+  ├── sidecar loading -> previous cutoff or final profile [unit/component test]
+  └── /live today -> sidecar + bounded SSE tail [unit test]
+
+Rendering
+  ├── bars receive selected final/cutoff profile [component test]
+  ├── closePoints remain full selected date [component test]
+  └── marker remains based on cursorMs [existing + regression test]
+```
+
 Backend tests:
 
 - `/api/range` final distribution is unchanged when `volume_distribution_cutoff_ms` is absent.
@@ -162,8 +221,10 @@ Frontend tests:
 
 - The indicator settings store persists the new toggle.
 - `buildRangeBundleRequest` includes `volume_distribution_cutoff_ms` in URL and query key.
+- The pure tail-merge helper ignores `side=0`, invalid prices/qty, trades at or before `last_trade_ms`, and trades after `cursorMs`.
 - `/live` with toggle off passes the final profile.
 - `/live` with toggle on and cursor active prefers the cutoff sidecar profile.
+- `/live` with toggle on merges only the SSE tail at or before the cursor.
 - v2 `/study` 복기뷰 with toggle on and cursor active prefers the cutoff sidecar profile.
 - Legacy 스냅샷 학습뷰 does not issue cutoff sidecar requests.
 - The close graph still receives full selected-date close points in both modes.
@@ -171,3 +232,19 @@ Frontend tests:
 ## Rollout Notes
 
 Default the toggle to off so existing users see identical behavior until they opt in. This also reduces extra sidecar traffic for users who do not need the cumulative hover view.
+
+## GSTACK REVIEW REPORT
+
+| Run | Status | Findings |
+| --- | --- | --- |
+| grill-with-docs | PASS | `CONTEXT.md` conflicted with the new cumulative behavior; resolved by keeping **연속체결 매물대 분포** as the parent term and adding **호버 시점 누적 매물대** as the optional mode. |
+| plan-eng-review Step 0 | PASS | Existing sidecar/range/read-model paths solve most of the problem. The minimum complete change is a cutoff-aware single-date sidecar, not a new endpoint or full range-query redesign. |
+| Architecture | PASS | Cursor-specific profiles stay out of the main range bundle. Single-date cutoff requests avoid ambiguous multi-day semantics and cache pollution. |
+| Code Quality | PASS | One shared frontend cutoff-profile hook is required so `/live` and v2 `/study` do not duplicate sidecar selection and fallback logic. |
+| Tests | PASS | Backend, request-key, settings persistence, shared hook, live-tail merge, and close-line regression tests are listed in the coverage sketch. |
+| Performance | PASS | No debounce by default. Query keys are candle-timestamp scoped, prior cutoff/final profile remains visible during fetch, and precomputing every cutoff distribution is explicitly rejected. |
+| ADR check | SKIP | No ADR created. The choice is documented in this spec and is reversible: the API parameter and shared hook can be replaced later without changing stored market data. |
+
+VERDICT: APPROVED_TO_PLAN. The spec is implementation-ready after the grilling updates. The main remaining implementation risk is request churn while scrubbing; the plan mitigates it with candle-keyed caching and visible fallback, then leaves debounce as a measured follow-up only.
+
+NO UNRESOLVED DECISIONS
