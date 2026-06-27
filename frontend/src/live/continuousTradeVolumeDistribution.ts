@@ -16,9 +16,10 @@ function profileForDate(
   return profiles.find((profile) => profile.date === date) ?? null;
 }
 
-function mergeVolumeDistributionDelta(
+export function mergeVolumeDistributionTail(
   profile: DayVolumeDistribution,
   trades: readonly ContinuousTradeLike[],
+  cursorMs: number | null,
 ): DayVolumeDistribution {
   if (profile.last_trade_ms == null || profile.bins.length === 0) return profile;
   const rangeCount = profile.bins.length;
@@ -29,6 +30,7 @@ function mergeVolumeDistributionDelta(
 
   for (const trade of trades) {
     if (trade.t_ms <= profile.last_trade_ms) continue;
+    if (cursorMs != null && trade.t_ms > cursorMs) continue;
     if (trade.t_ms < profile.session_open_ms || trade.t_ms >= profile.session_close_ms) continue;
     if (trade.side !== 1 && trade.side !== -1) continue;
     if (!Number.isFinite(trade.price) || trade.price <= 0) continue;
@@ -71,7 +73,9 @@ export function selectVolumeDistributionProfile(args: {
     if (isToday && persistedProfile.bins.length !== args.rangeCount && args.recomputedToday) {
       return args.recomputedToday;
     }
-    return isToday ? mergeVolumeDistributionDelta(persistedProfile, args.liveTrades) : persistedProfile;
+    return isToday
+      ? mergeVolumeDistributionTail(persistedProfile, args.liveTrades, null)
+      : persistedProfile;
   }
   return isToday ? args.recomputedToday : null;
 }
@@ -93,8 +97,9 @@ export function computeContinuousTradeVolumeDistribution(args: {
   trades: readonly ContinuousTradeLike[];
   rangeCount: number;
   segment: RangeSegment;
+  cutoffMs?: number | null;
 }): DayVolumeDistribution | null {
-  const { date, candles, trades, rangeCount, segment } = args;
+  const { date, candles, trades, rangeCount, segment, cutoffMs } = args;
   if (!Number.isInteger(rangeCount) || rangeCount <= 0) return null;
 
   const lows = candles.map((candle) => candle.low).filter(Number.isFinite);
@@ -109,6 +114,7 @@ export function computeContinuousTradeVolumeDistribution(args: {
   let lastTradeMs: number | null = null;
 
   for (const trade of trades) {
+    if (cutoffMs != null && trade.t_ms > cutoffMs) continue;
     if (trade.side !== 1 && trade.side !== -1) continue;
     if (!Number.isFinite(trade.price) || trade.price <= 0) continue;
     if (!Number.isFinite(trade.qty) || trade.qty <= 0) continue;
