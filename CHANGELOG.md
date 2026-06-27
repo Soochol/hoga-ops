@@ -3,6 +3,14 @@
 All notable changes to this project are documented here.
 The format follows a 4-digit `MAJOR.MINOR.PATCH.MICRO` scheme.
 
+## [0.12.8.3] - 2026-06-27
+
+### Added
+- **호버 시점 누적 매물대 분포 옵션**: `/live`와 `/study` reference 학습뷰의 `연속체결 매물대 분포`에 `호버 시점 누적` 토글을 추가해, ON일 때 캔들 hover 시점까지의 연속체결 데이터만으로 매물대 bar를 다시 그리도록 했다.
+
+### Fixed
+- **매물대 분포 cutoff sidecar 검증**: `volume_distribution_cutoff_ms`는 단일 Stock-Date의 `mode=sidecar` 요청에서만 허용하고, full range bundle은 항상 최종 전체 분포를 유지하도록 보호했다.
+
 ## [0.12.8.2] - 2026-06-27
 
 ### Fixed
