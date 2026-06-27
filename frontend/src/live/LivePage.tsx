@@ -245,6 +245,7 @@ export function LivePage() {
     activeCode,
     isMinuteTimeframe(timeframe) ? ((chartBundle ?? bundle)?.candles ?? EMPTY_CANDLES) : EMPTY_CANDLES,
     isMinuteTimeframe(timeframe) ? ((chartBundle ?? bundle)?.segments ?? []) : [],
+    isMinuteTimeframe(timeframe) ? live.ob : EMPTY_OB_SNAPSHOTS,
   );
   const liveSaveBundle = useMemo<RangeBundle | null>(() => {
     if (!bundle) return null;
