@@ -1,7 +1,8 @@
 import { useMemo } from 'react';
 import type { Candle, RangeSegment, TradeVolumePocWire } from '../api/types';
 import { useLivePageStore } from '../state/livePage';
-import type { TradeSnapshot } from './bucketHogaSeries';
+import { firstTrailingSinglePriceBookMs } from './continuousTradeVolumeDistribution';
+import type { ObSnapshot, TradeSnapshot } from './bucketHogaSeries';
 import { computeCandleVolumePocs, computeTradeVolumePoc, type TradeVolumePoc } from './tradeVolumePoc';
 import { tradeVolumePocFromWire } from './tradeVolumePocWire';
 
@@ -37,6 +38,7 @@ export function useTradeVolumePocs(
   code: string | null,
   candles: readonly Candle[] = [],
   segments: readonly RangeSegment[] = [],
+  orderbooks: readonly ObSnapshot[] = [],
 ): TradeVolumePoc[] {
   const rangeCount = useLivePageStore((s) => s.volumeDistributionRangeCount);
   const candleFallbacks = useMemo(
@@ -52,12 +54,26 @@ export function useTradeVolumePocs(
     const out = Array.from(seedsByDate.values()).filter((p) => p.date !== todayKst).map(tradeVolumePocFromWire);
     const seenDates = new Set(out.map((p) => p.date));
     const todaySegment = segments.find((segment) => segment.date === todayKst);
+    const todayContinuousBeforeMs = todaySegment
+      ? firstTrailingSinglePriceBookMs(orderbooks, todaySegment.session_close_ms)
+      : null;
     const todayCandles = todaySegment
       ? candles.filter((candle) => candle.ts_ms >= todaySegment.session_open_ms && candle.ts_ms < todaySegment.session_close_ms)
       : [];
     const todayLive = todaySegment
-      ? computeTradeVolumePoc(trades, { date: todayKst, bandPct: LEGACY_TRADE_VOLUME_POC_BAND_PCT, candles: todayCandles, rangeCount, segment: todaySegment })
-      : computeTradeVolumePoc(trades, { date: todayKst, bandPct: LEGACY_TRADE_VOLUME_POC_BAND_PCT });
+      ? computeTradeVolumePoc(trades, {
+        date: todayKst,
+        bandPct: LEGACY_TRADE_VOLUME_POC_BAND_PCT,
+        candles: todayCandles,
+        rangeCount,
+        segment: todaySegment,
+        continuousBeforeMs: todayContinuousBeforeMs,
+      })
+      : computeTradeVolumePoc(trades, {
+        date: todayKst,
+        bandPct: LEGACY_TRADE_VOLUME_POC_BAND_PCT,
+        continuousBeforeMs: todayContinuousBeforeMs,
+      });
     const todaySeed = seedsByDate.get(todayKst);
     if (todayLive) out.push(todayLive);
     else if (todaySeed) out.push(tradeVolumePocFromWire(todaySeed));
@@ -68,5 +84,5 @@ export function useTradeVolumePocs(
       seenDates.add(poc.date);
     }
     return out;
-  }, [trades, seeds, todayKst, code, candles, segments, rangeCount, candleFallbacks]);
+  }, [trades, seeds, todayKst, code, candles, segments, rangeCount, candleFallbacks, orderbooks]);
 }
