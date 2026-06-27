@@ -50,6 +50,7 @@ from hoga.api.past_indicators_cache import CACHE_MISS
 from hoga.api.queries import QueryEngine, StockDateNotFound
 from hoga.api.sources import ordered_sources, resolve_source_result
 from hoga.api.timeenc import (
+    hhmmssms_to_intra_ms_sql,
     hhmmssms_to_unix_ms,
     ms_from_midnight_to_unix_ms,
     unix_ms_to_hhmmssms,
@@ -912,7 +913,8 @@ def _first_trailing_single_price_book_hhmmssms(
     source: str,
     session_close_ms: int,
 ) -> int | None:
-    snapshots_path = engine.parquet_dir(date, code, source) / "snapshots.parquet"
+    code_dir = engine.parquet_dir(date, code, source)
+    snapshots_path = code_dir / "snapshots.parquet"
     if not snapshots_path.exists():
         return None
     intra_ms = snapshots_tbl.query_first_trailing_single_price_book_intra_ms(
@@ -922,6 +924,19 @@ def _first_trailing_single_price_book_hhmmssms(
     )
     if intra_ms is None:
         return None
+    trades_path = code_dir / "trades.parquet"
+    if trades_path.exists():
+        intra_ms_expr = hhmmssms_to_intra_ms_sql("ts_ms")
+        close_intra_sql = hhmmssms_to_intra_ms_sql(str(int(session_close_ms)))
+        row = engine.conn.execute(
+            f"SELECT count(*) FROM read_parquet(?) "
+            f"WHERE side IN (1, -1) "
+            f"AND {intra_ms_expr} > ? "
+            f"AND {intra_ms_expr} < {close_intra_sql}",
+            [str(trades_path), intra_ms],
+        ).fetchone()
+        if row is not None and int(row[0] or 0) > 0:
+            return None
     h = intra_ms // 3_600_000
     m = (intra_ms // 60_000) % 60
     s = (intra_ms // 1000) % 60

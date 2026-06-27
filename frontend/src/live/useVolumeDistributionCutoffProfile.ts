@@ -1,4 +1,4 @@
-import { useMemo } from 'react';
+import { useMemo, useRef } from 'react';
 
 import { useRange } from '../api/range';
 import type { Candle, DayVolumeDistribution, RangeSegment, Timeframe } from '../api/types';
@@ -28,12 +28,24 @@ export function useVolumeDistributionCutoffProfile(args: {
   candles?: readonly Candle[];
   segment?: RangeSegment | null;
 }): DayVolumeDistribution | null | undefined {
+  const lastCutoffProfileRef = useRef<{
+    scope: string;
+    profile: DayVolumeDistribution;
+  } | null>(null);
   const queryEnabled = args.enabled && !!(
     args.code
     && args.timeframe
     && args.date
     && args.cursorMs != null
   );
+  const scope = [
+    args.code ?? '',
+    args.timeframe ?? '',
+    args.date ?? '',
+    args.rangeCount,
+    args.priceRange?.min ?? '',
+    args.priceRange?.max ?? '',
+  ].join('|');
   const query = useRange(
     queryEnabled ? args.code : null,
     queryEnabled ? args.date : null,
@@ -50,14 +62,19 @@ export function useVolumeDistributionCutoffProfile(args: {
   );
 
   return useMemo(() => {
-    if (!args.enabled || !queryEnabled) return args.finalProfile;
+    if (!args.enabled || !queryEnabled) {
+      lastCutoffProfileRef.current = null;
+      return args.finalProfile;
+    }
 
     const date = args.date;
     const sidecarProfile = query.data?.volume_distributions.find((profile) => profile.date === date) ?? null;
     const liveTrades = args.liveTrades ?? [];
 
     if (sidecarProfile) {
-      return mergeVolumeDistributionTail(sidecarProfile, liveTrades, args.cursorMs);
+      const profile = mergeVolumeDistributionTail(sidecarProfile, liveTrades, args.cursorMs);
+      lastCutoffProfileRef.current = { scope, profile };
+      return profile;
     }
 
     if (
@@ -76,9 +93,14 @@ export function useVolumeDistributionCutoffProfile(args: {
         segment: args.segment,
         cutoffMs: args.cursorMs,
       });
-      return computedProfile?.last_trade_ms != null
-        ? computedProfile
-        : args.finalProfile;
+      if (computedProfile?.last_trade_ms != null) {
+        lastCutoffProfileRef.current = { scope, profile: computedProfile };
+        return computedProfile;
+      }
+    }
+
+    if ((query.isFetching || query.data === undefined) && lastCutoffProfileRef.current?.scope === scope) {
+      return lastCutoffProfileRef.current.profile;
     }
 
     return args.finalProfile;
@@ -93,6 +115,8 @@ export function useVolumeDistributionCutoffProfile(args: {
     args.segment,
     args.todayKst,
     query.data,
+    query.isFetching,
     queryEnabled,
+    scope,
   ]);
 }
