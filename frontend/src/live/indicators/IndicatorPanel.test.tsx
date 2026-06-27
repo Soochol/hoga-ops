@@ -126,6 +126,21 @@ describe('IndicatorPanel', () => {
     expect(screen.getByText('매도 색상')).toBeTruthy();
   });
 
+  it('allows entering broker late-entry start time as four HHMM digits', async () => {
+    useLivePageStore.setState({ brokerLateEntryStartHHMM: 930 });
+    render(<IndicatorPanel onClose={() => {}} />);
+    await userEvent.click(screen.getByText('신규 거래원 등장'));
+
+    const input = screen.getByRole('textbox', { name: '신규 거래원 등장 기준 시각' }) as HTMLInputElement;
+    await userEvent.clear(input);
+    await userEvent.type(input, '0900');
+
+    expect(input.value).toBe('0900');
+    fireEvent.blur(input);
+    expect(useLivePageStore.getState().brokerLateEntryStartHHMM).toBe(900);
+    expect(input.value).toBe('0900');
+  });
+
   it('clicking 외국인 순매수량 toggles foreignNetEnabled', async () => {
     const { useLivePageStore } = await import('../../state/livePage');
     useLivePageStore.setState({ foreignNetEnabled: false });

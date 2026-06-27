@@ -3,6 +3,12 @@
 All notable changes to this project are documented here.
 The format follows a 4-digit `MAJOR.MINOR.PATCH.MICRO` scheme.
 
+## [0.12.8.1] - 2026-06-27
+
+### Fixed
+- **신규 거래원 등장 기준 보정**: 기준 시각 이전에 같은 side에 이미 있었던 거래원은 기준 시각 이후 다시 보여도 신규로 잡지 않도록, 매수/매도별 과거 거래원 기록을 baseline으로 반영했다.
+- **기준 시각 입력 UX 복구**: `0900`처럼 네 자리 HHMM 값을 입력하는 중간에 기본값 `930`으로 되돌아가던 문제를 고쳐, blur/Enter 시점에만 검증하고 저장하도록 했다.
+
 ## [0.12.8.0] - 2026-06-27
 
 ### Changed
