@@ -527,6 +527,47 @@ def test_build_range_bundle_volume_distributions_are_opt_in():
     assert rb.volume_distributions == [profile]
 
 
+def test_build_range_bundle_sidecar_mode_includes_requested_volume_distributions():
+    import contextlib
+    from hoga.api import bundle as bundle_mod
+    from hoga.api.bundle import build_range_bundle
+    from hoga.api.models import DayVolumeDistribution, VolumeDistributionBin
+
+    mock_engine = _engine_with_meta_for_dates(["20260512"])
+    profile = DayVolumeDistribution(
+        date="20260512",
+        range_count=10,
+        price_min=70_000,
+        price_max=71_000,
+        session_open_ms=90_000_000,
+        session_close_ms=153_000_000,
+        bins=[VolumeDistributionBin(price_low=70_000, price_high=71_000, qty=123)],
+    )
+
+    with contextlib.ExitStack() as stack:
+        for pcm in _patch_slice_builders(bundle_mod):
+            stack.enter_context(pcm)
+        dist_builder = stack.enter_context(
+            patch.object(bundle_mod, "build_volume_distribution_slice", return_value=profile)
+        )
+
+        rb = build_range_bundle(
+            mock_engine,
+            code="005930",
+            from_date="20260512",
+            to_date="20260512",
+            bucket_ms=60_000,
+            mode="sidecar",
+            volume_distribution_bins=10,
+        )
+
+    assert dist_builder.call_count == 1
+    assert rb.volume_distributions == [profile]
+    assert rb.candles == []
+    assert rb.quote_ratio.points == []
+    assert rb.fill_strength.points == []
+
+
 def test_build_range_bundle_builds_trade_volume_poc_by_default_from_candle_range():
     import contextlib
     from hoga.api import bundle as bundle_mod

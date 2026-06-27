@@ -1335,7 +1335,7 @@ def build_range_bundle(
         fill_pts.extend(fs_d.points)
         if vp_d is not None:
             profiles_by_day.append(vp_d)
-        if full_mode and volume_distribution_bins is not None:
+        if not hoga_only and volume_distribution_bins is not None:
             profile = build_volume_distribution_slice(
                 engine,
                 code=code,
