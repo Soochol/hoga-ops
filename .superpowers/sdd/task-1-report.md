@@ -1,35 +1,34 @@
 # Task 1 Report
 
-Implemented backend broker table support for:
+STATUS: DONE
 
-- `query_day_series(con, *, path) -> list[BrokerSeriesEntry]` returning all recorded brokers, sorted by absolute final net.
-- `BrokerLateEntryEventRow(t_ms: int, broker: str, side: BrokerSide, net: int)`.
-- `query_late_entry_events(con, *, path: Path, threshold_ms: int) -> list[BrokerLateEntryEventRow]` with native HHMMSSmmm timestamps and side-specific first-post-threshold events.
+Commits:
+- `feat: support cutoff volume distribution query`
 
-Tests added and updated in `tests/test_tables_brokers.py` to cover:
+Files changed:
+- `hoga/tables/trades.py`
+- `hoga/api/bundle.py`
+- `tests/unit/api/test_range_volume_distribution_cutoff.py`
+- `.superpowers/sdd/task-1-report.md`
 
-- all recorded broker series entries
-- side-specific late-entry events
-- the previous top-10 truncation case now returning all brokers
+Tests run with outputs:
+- `uv run --extra dev python -m pytest tests/unit/api/test_range_volume_distribution_cutoff.py -q`
+  - RED before implementation: `1 failed, 1 passed`; failing test was `TypeError: build_volume_distribution_slice() got an unexpected keyword argument 'cutoff_ms'`.
+- `uv run pytest tests/unit/api/test_range_volume_distribution_cutoff.py -q`
+  - GREEN after implementation: `2 passed in 0.07s`.
+- `uv run --extra dev python -m pytest tests/test_tables_trades.py::test_continuous_trade_volume_distribution_filters_side_and_session tests/test_tables_trades.py::test_continuous_trade_volume_distribution_folds_high_price_into_last_bin tests/hoga/api/test_bundle.py::test_build_volume_distribution_slice_returns_unix_session_bounds tests/hoga/api/test_bundle.py::test_build_volume_distribution_slice_uses_supplied_price_range_without_candles_parquet -q`
+  - Nearby regression check: `4 passed in 0.07s`.
+- `uv run ruff check tests/unit/api/test_range_volume_distribution_cutoff.py`
+  - `All checks passed!`
+- `uv run ruff check hoga/tables/trades.py hoga/api/bundle.py tests/unit/api/test_range_volume_distribution_cutoff.py`
+  - Failed on pre-existing lint violations in `hoga/api/bundle.py` and `hoga/tables/trades.py`; new test file linted cleanly.
 
-Verification:
+Self-review notes:
+- Added `upper_bound_ms` to `query_continuous_trade_volume_distribution` and used it as an effective upper intra-day bound capped by session close.
+- Added `cutoff_ms` to `build_volume_distribution_slice`; it converts Unix ms to HHMMSSmmm for the Stock-Date, decodes with the table-local session-bound convention, and adds `+1` so the exact cutoff trade remains included under the SQL `< upper` predicate.
+- Did not add route query parameter validation or thread the new argument through routes; that is Task 2.
+- The brief's route scaffold used `volume_distribution_bins=2`, but `DayVolumeDistribution.range_count` is already constrained to `ge=5`. The new tests keep exact two-bin assertions at the table/query level and use a model-valid `range_count=5` for the bundle path.
 
-- `uv run --extra dev pytest tests/test_tables_brokers.py::test_query_day_series_returns_all_recorded_brokers tests/test_tables_brokers.py::test_query_late_entry_events_are_side_specific_and_once -q`
-- `uv run --extra dev pytest tests/test_tables_brokers.py -q`
-
-Notes:
-
-- The environment did not have a globally installed `pytest`, so I used `uv run --extra dev pytest ...` to execute the tests inside the project environment.
-
-## Task 1 Fix Report
-
-Fixed the late-entry broker query so it canonicalizes broker names before the final collapse step. This prevents two raw aliases for the same canonical broker on the same side and timestamp from being split into separate rows or from masking each other's net.
-
-Test coverage added:
-
-- a same-side, same-timestamp alias pair now collapses into one late-entry event with summed net
-
-Verification:
-
-- `uv run --extra dev pytest tests/test_tables_brokers.py -q`
-- Result: `19 passed in 0.24s`
+Concerns:
+- `uv run pytest ...` initially failed before `--extra dev` populated the venv because pytest is a dev extra; after that, the exact brief command passed.
+- Broader ruff on the two existing backend files still reports unrelated pre-existing issues.
