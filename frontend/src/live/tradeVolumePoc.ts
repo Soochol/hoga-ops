@@ -162,6 +162,7 @@ export function computeTradeVolumePoc(
     candles?: readonly Candle[];
     rangeCount?: number;
     segment?: RangeSegment;
+    continuousBeforeMs?: number | null;
   } = {},
 ): TradeVolumePoc | null {
   const bandPct = options.bandPct ?? DEFAULT_BAND_PCT;
@@ -174,6 +175,7 @@ export function computeTradeVolumePoc(
       for (const event of snapshot.trades) {
         const tMs = event.t_ms ?? snapshot.t_ms;
         if (tMs < options.segment.session_open_ms || tMs >= options.segment.session_close_ms) continue;
+        if (options.continuousBeforeMs != null && tMs >= options.continuousBeforeMs) continue;
         if (!isRegularContinuousTrade(tMs)) continue;
         if (!isEligibleSide(event.side)) continue;
         const rawPrice = event.price;
@@ -199,6 +201,7 @@ export function computeTradeVolumePoc(
     for (const event of snapshot.trades) {
       const tMs = event.t_ms ?? snapshot.t_ms;
       if (!isRegularContinuousTrade(tMs)) continue;
+      if (options.continuousBeforeMs != null && tMs >= options.continuousBeforeMs) continue;
       if (!isEligibleSide(event.side)) continue;
       const rawPrice = event.price;
       const qty = event.qty;
