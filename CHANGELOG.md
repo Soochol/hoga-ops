@@ -3,6 +3,11 @@
 All notable changes to this project are documented here.
 The format follows a 4-digit `MAJOR.MINOR.PATCH.MICRO` scheme.
 
+## [0.12.6.0] - 2026-06-27
+
+### Fixed
+- **매물대 분포 사이드카 병합 복구**: `/live`와 `/study`의 분리 range 요청에서 내려온 `volume_distributions`를 최종 번들에 병합해, 10호가·거래원 아래 연속체결 매물대 분포 카드가 다시 데이터를 표시하도록 했다.
+
 ## [0.12.5.0] - 2026-06-27
 
 ### Changed
