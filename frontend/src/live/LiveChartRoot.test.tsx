@@ -2204,6 +2204,56 @@ describe('LiveChartRoot crosshair → cursor store (ADR-0044)', () => {
     expect(useLiveCursorStore.getState().cursorMs).toBe(TODAY_OPEN_MS + 60_000);
   });
 
+  it('crosshair over an indicator series uses the seriesData time instead of pinning to the latest candle', async () => {
+    render(
+      <LiveChartRoot
+        code="005930"
+        timeframe="1m"
+        bundle={{
+          ...TODAY_ONLY_BUNDLE,
+          candles: Array.from({ length: 4 }, (_, i) => ({
+            ts_ms: TODAY_OPEN_MS + i * 60_000,
+            open: 100,
+            high: 101,
+            low: 99,
+            close: 100,
+            vol_a: 1,
+            vol_b: 0,
+          })),
+        }}
+        clampEngaged={false}
+        isPastCandlesLoading={false}
+      />,
+      { wrapper },
+    );
+    const chart = vi.mocked(createChartEx).mock.results[0].value;
+    const ts = chart.timeScale();
+    vi.mocked(chart.timeScale).mockReturnValue(ts);
+    vi.mocked(ts.coordinateToTime).mockReturnValue(null);
+    const fire = (p: {
+      time?: unknown;
+      point?: { x: number } | null;
+      seriesData?: Map<unknown, unknown>;
+    }) =>
+      chart.subscribeCrosshairMove.mock.calls.forEach(
+        ([h]: [(p: {
+          time?: unknown;
+          point?: { x: number } | null;
+          seriesData?: Map<unknown, unknown>;
+        }) => void]) => h(p),
+      );
+    const flush = () => act(() => new Promise((r) => requestAnimationFrame(() => r(null))));
+
+    act(() => fire({
+      point: { x: 240 },
+      seriesData: new Map([[{}, { time: (TODAY_OPEN_MS + 120_000) / 1000, value: 100 }]]),
+    }));
+    await flush();
+
+    expect(ts.coordinateToTime).not.toHaveBeenCalled();
+    expect(useLiveCursorStore.getState().cursorMs).toBe(TODAY_OPEN_MS + 120_000);
+  });
+
   it('crosshair inside chart whitespace with no resolvable time pins spot indicators to the latest candle', async () => {
     render(
       <LiveChartRoot

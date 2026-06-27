@@ -75,6 +75,17 @@ function kstDateFromMs(realMs: number): string {
   return `${d.getUTCFullYear()}${pad(d.getUTCMonth() + 1)}${pad(d.getUTCDate())}`;
 }
 
+function readNumericCrosshairTimeFromSeriesData(seriesData: unknown): number | null {
+  if (!(seriesData instanceof Map)) return null;
+  for (const value of seriesData.values()) {
+    if (value && typeof value === 'object' && 'time' in value) {
+      const time = (value as { time?: unknown }).time;
+      if (typeof time === 'number') return time;
+    }
+  }
+  return null;
+}
+
 /** Empty axis used while the bundle is loading. timeFormatter / tickMarkFormatter
  * read through `axisRef.current` to convert virtual seconds back to real KST;
  * before the real axis arrives they need a working `.toReal()` to return
@@ -830,7 +841,11 @@ export function LiveChartRoot({ code, timeframe, venue = 'KRX', viewIdentity, bu
       return;
     }
     let pending: number | null = null;
-    const handler = (param: { time?: unknown; point?: { x: number } | null }) => {
+    const handler = (param: {
+      time?: unknown;
+      point?: { x: number } | null;
+      seriesData?: unknown;
+    }) => {
       // Cursor left the chart pane entirely (mouse-leave) → return the sidebar
       // to latest mode. Cancel any pending valid-hover write so a queued rAF
       // can't re-set the cursor after the pointer is already off-chart.
@@ -848,7 +863,8 @@ export function LiveChartRoot({ code, timeframe, venue = 'KRX', viewIdentity, bu
         const store = useLiveCursorStore.getState();
         const t = typeof param.time === 'number'
           ? param.time
-          : chart.timeScale().coordinateToTime(point.x);
+          : (readNumericCrosshairTimeFromSeriesData(param.seriesData)
+            ?? chart.timeScale().coordinateToTime(point.x));
         const lastMs = lastCandleMsRef.current;
         // No usable time while still inside the chart surface means the pointer
         // is over an internal blank band, not outside the chart. Keep sidebar
