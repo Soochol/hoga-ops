@@ -62,11 +62,9 @@ class LiveRestPoller:
         interval_s: float = 2.0,
         phase_fn: Callable[[], str] | None = None,
     ) -> None:
-        # 고정 client가 아니라 resolver를 받는다(계정 분리 2026-06-09): 매 사이클
-        # 호출해 현재 background 계정의 KisClient를 동적 선택한다 — account 1 WS
-        # 저하 시 다음 사이클에 account 0로 폴백(별도 상태 동기화 불필요). None을
-        # 반환하면(creds 소실 등) 그 사이클을 우아하게 skip. 구조적 타입(_KisRestProto)
-        # 유지 → 테스트는 lambda: fake로 주입(env 불필요).
+        # 고정 client가 아니라 resolver를 받는다. 운영에서는 scheduler-backed proxy를,
+        # 테스트에서는 lambda: fake를 주입할 수 있다. None을 반환하면(creds 소실 등)
+        # 그 사이클을 우아하게 skip한다.
         self._resolve_kis = kis_resolver
         self._buffer = buffer
         self._interval_s = interval_s
@@ -141,8 +139,8 @@ class LiveRestPoller:
         각 종목 처리를 try/except로 감싸 한 실패가 다른 종목 처리를 막지 않게 함.
         last_cycle_ms는 사이클 완료 후 갱신 (ADR-0064: 성공 신호, finally 아님).
         """
-        # 사이클 시작 시 background 계정 KisClient를 동적 선택(계정 분리). None이면
-        # (creds 소실 등) 이 사이클은 폴링 불가 → 우아하게 skip(다음 사이클 재시도).
+        # 사이클 시작 시 resolver에서 KIS REST adapter를 얻는다. None이면(creds 소실 등)
+        # 이 사이클은 폴링 불가 -> 우아하게 skip(다음 사이클 재시도).
         kis = self._resolve_kis()
         if kis is None:
             self.last_cycle_ms = _now_ms()  # 사이클은 정상 완료(폴링할 client 부재일 뿐)
@@ -177,8 +175,8 @@ class LiveRestPoller:
     async def _fetch_and_publish(self, code: str, kis: _KisRestProto) -> None:
         """단일 종목: fetch_* 3개 → B3 변환 → buffer.publish.
 
-        kis는 _poll_once가 사이클 시작에 resolve한 background 계정 client(계정 분리) —
-        한 사이클 내 모든 종목이 동일 client를 공유해 일관성 유지.
+        kis는 _poll_once가 사이클 시작에 resolve한 KIS REST adapter다. scheduler-backed
+        proxy일 수도 있고 테스트 fake일 수도 있다.
         - 저장 함수(writer.append / promote / to_jsonl) 절대 불호출.
         - now_ms를 한 번 계산해 brokers_to_snapshot(now_ms=...) + publish(now_ms=...) 공유.
         """

@@ -80,7 +80,6 @@ async def test_rest_only_stops_ws_and_starts_api_recorder(tmp_path, monkeypatch)
     )
     monkeypatch.setattr("hoga.live.kis_runtime.configured_account_ids", lambda data_dir: [0])
     monkeypatch.setattr("hoga.live.kis_runtime.ensure_kis_client_from_env", lambda data_dir: object())
-    monkeypatch.setattr("hoga.live.kis_access.kis_for_role", lambda role, data_dir: object())
     monkeypatch.setattr("hoga.live.rest30_recorder.Rest30sRecorder", FakeRest30Recorder)
 
     assert await lifecycle.start_live_stream(data_dir=tmp_path) is True
@@ -135,7 +134,6 @@ async def test_ws_plus_rest_excludes_ws_targets_from_api_recorder(tmp_path, monk
     monkeypatch.setattr("hoga.live.coverage._PER_ACCOUNT_MAX", 1)
     monkeypatch.setattr("hoga.live.kis_runtime.configured_account_ids", lambda data_dir: [0])
     monkeypatch.setattr("hoga.live.kis_runtime.ensure_kis_client_from_env", lambda data_dir: object())
-    monkeypatch.setattr("hoga.live.kis_access.kis_for_role", lambda role, data_dir: object())
     monkeypatch.setattr("hoga.live.rest30_recorder.Rest30sRecorder", FakeRest30Recorder)
 
     def fake_build_conn(account_id, codes, data_dir):

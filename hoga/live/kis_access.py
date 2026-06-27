@@ -1,36 +1,103 @@
-"""Role-routed KIS access — "내 role에 맞는 KisClient를 다오"의 단일 seam (계정 분리 2026-06-10).
+"""KIS REST access seam for capacity-scheduled requests.
 
-계정 분리로 foreground(사용자가 차트 그려지길 기다리는 past-candles/daily)는 account 0
-전용, background(rest_poller·quotes·investor·Screener)는 account 1(유휴였던 REST 버킷)으로
-간다. 이 라우팅 정책 + FM5 폴백을 *한 곳*에 모은다 — 이전엔 api `_kis_for_background`,
-poller resolver 람다, screener 직접 호출, kis_runtime.kis_for_role로 5가지 모양에 흩어졌다.
+Capacity-scheduled callers should enter through `run_with_capacity`: that lets
+the scheduler choose a healthy account from the dynamic pool, coalesce duplicate
+requests, reserve capacity for user-visible work, and cool down accounts after a
+KIS rate-limit response.
+
+`kis_for_role` / `fetch_for_role` remain only for legacy compatibility tests and
+emergency fallback code. New production callers should not use them directly.
 
 레이어 분리:
   - kis_runtime = 리소스 소유(account별 KisClient 싱글톤 dict, ensure_*, env creds).
   - account_health = "account N degraded?"(REST 토큰 latch ∪ WS 저하).
-  - kis_access(이 모듈) = role→account 라우팅 + 인증 폴백. 둘을 소비, 양쪽을 import(순환 0).
+  - kis_access(이 모듈) = semantic endpoint enum + scheduler adapter + legacy fallback.
 """
 from __future__ import annotations
 
-from collections.abc import Awaitable, Callable
+from collections.abc import Awaitable, Callable, Hashable
+from enum import StrEnum
 from pathlib import Path
-from typing import TypeVar
+from typing import Literal, Protocol, TypeVar
 
 from . import account_health, kis_runtime
 from .kis_client import KisAuthError, KisClient
 
 _T = TypeVar("_T")
+KisRequestPriority = Literal["user_visible", "background"]
+KisLegacyRole = Literal["foreground", "background"]
+
+
+class KisRestEndpoint(StrEnum):
+    """Semantic KIS REST request names used by the capacity scheduler.
+
+    Keep these values stable: they are part of scheduler cooldown keys, status
+    snapshots, logs, and tests. Add a value here before introducing a new
+    scheduled KIS REST caller.
+    """
+
+    INDEX_DAILY = "index-daily"
+    INDEX_INVESTOR_NET = "index-investor-net"
+    INDEX_MINUTE = "index-minute"
+    LIVE_BROKERS = "live-brokers"
+    LIVE_ORDERBOOK = "live-orderbook"
+    LIVE_TRADES = "live-trades"
+    INVESTOR_NET = "investor-net"
+    INVESTOR_TREND_ESTIMATE = "investor-trend-estimate"
+    PAST_DAILY = "past-daily"
+    PAST_MINUTE = "past-minute"
+    PROGRAM_TRADE = "program-trade"
+    QUOTES = "quotes"
+    SCREENER_DAILY = "screener-daily"
+
+
+def _endpoint_value(endpoint: KisRestEndpoint) -> str:
+    if not isinstance(endpoint, KisRestEndpoint):
+        raise TypeError("endpoint must be a KisRestEndpoint")
+    return endpoint.value
+
+
+def has_rest_capacity(data_dir: Path) -> bool:
+    """Return whether at least one KIS REST account can be resolved.
+
+    This preserves the old "skip when creds are absent" behavior for background
+    jobs while avoiding a direct legacy background-role reservation before handing
+    the request to the capacity scheduler.
+    """
+    if kis_runtime.configured_account_ids(data_dir):
+        return True
+    if kis_runtime.get_kis_client(0) is not None:
+        return True
+    return kis_runtime.ensure_kis_client_from_env(data_dir) is not None
+
+
+class _KisCapacityScheduler(Protocol):
+    async def submit(
+        self,
+        *,
+        key: Hashable,
+        endpoint: str,
+        priority: KisRequestPriority,
+        call: Callable[[KisClient], Awaitable[_T]],
+        cooldown_scope: Hashable | None = None,
+    ) -> _T: ...
 
 # background 라운드로빈 커서 — account 1..N-1을 per-call 회전(부하 분산). 단일워커
 # (ADR-0038)라 프로세스 전역 가변상태가 안전. N=2면 후보 1개라 항상 account 1(불변).
 _bg_round_robin: int = 0
 
 
-def kis_for_role(role: str, data_dir: Path) -> KisClient | None:
-    """role('foreground'|'background')에 따라 account별 KisClient를 반환한다(호출 시점
-    평가 → degraded 동적 폴백, 별도 상태 동기화 불필요).
+def kis_for_role(role: KisLegacyRole, data_dir: Path) -> KisClient | None:
+    """Legacy role-routed client resolver.
 
-    - foreground: 항상 account 0(사용자 전용 15/s, 백그라운드와 경합 없음).
+    Capacity-scheduled production callers should use `run_with_capacity`.
+    This remains for legacy compatibility tests and fallback paths where no
+    scheduler can be injected yet.
+
+    role('foreground'|'background')에 따라 account별 KisClient를 반환한다(호출 시점
+    평가 -> degraded 동적 폴백, 별도 상태 동기화 불필요).
+
+    - foreground: 항상 account 0(legacy foreground behavior).
     - background: account 1..N-1을 라운드로빈(N계좌 확장 — 인덱스 고정 탈피, 2026-06-10).
       REST-degraded(토큰 발급 실패)만 스킵한다 — **WS 저하(sub_failed)는 무관**(캡처 건강과
       REST 라우팅은 직교; account_health.is_rest_degraded). 후보가 비면 account 0 폴백.
@@ -63,15 +130,15 @@ def kis_for_role(role: str, data_dir: Path) -> KisClient | None:
 
 
 async def fetch_for_role(
-    role: str, data_dir: Path, fetch_fn: Callable[[KisClient], Awaitable[_T]]
+    role: KisLegacyRole, data_dir: Path, fetch_fn: Callable[[KisClient], Awaitable[_T]]
 ) -> _T:
-    """role의 client로 fetch_fn을 실행하되, KisAuthError면 role을 *재해결*해 1회 재시도(FM5).
+    """Legacy role fallback executor.
 
-    background에서 account 1 REST 토큰 실패 시 첫 호출이 provider 콜백으로 acct1을 latch한
-    뒤, 재해결이 account 0를 반환해 그 fetch를 살린다. 스크리너 배치(client를 한 번 해결해
-    여러 코드 재사용)용 — run_update의 gather가 첫 실패에 배치를 중단시키므로 per-call 폴백이
-    필요하다. 폴러/quotes/investor는 매 사이클·요청 재해결이라 latch만으로 self-heal → 이
-    헬퍼 불필요. foreground는 재해결이 동일 account 0 client라 폴백 없이 전파(폴백 대상 없음).
+    Prefer `run_with_capacity` for background production requests. This helper
+    runs `fetch_fn` with the role-resolved client and, on `KisAuthError`, resolves
+    the role once more before retrying. That preserves the old FM5 behavior:
+    when account 1 token issuance latches that account as REST-degraded, a
+    second background resolution can fall back to account 0.
 
     client 미해결(creds 전무) 또는 재해결이 동일 client(N=1/이미 account 0)면 KisAuthError를
     전파한다 — 호출부가 침묵 사망 없이 실패를 표면화하도록."""
@@ -85,3 +152,32 @@ async def fetch_for_role(
         if client2 is None or client2 is client:
             raise
         return await fetch_fn(client2)
+
+
+async def run_with_capacity(
+    scheduler: _KisCapacityScheduler | None,
+    *,
+    data_dir: Path,
+    role: KisLegacyRole,
+    key: Hashable,
+    endpoint: KisRestEndpoint,
+    priority: KisRequestPriority,
+    fetch_fn: Callable[[KisClient], Awaitable[_T]],
+    cooldown_scope: Hashable | None = None,
+) -> _T:
+    """Run a KIS fetch through the capacity scheduler.
+
+    Production callers pass a scheduler so account-pool allocation owns the
+    client choice. `scheduler=None` is retained only as a legacy test/fallback
+    path and keeps the old role-routed auth-fallback behavior.
+    """
+    endpoint_value = _endpoint_value(endpoint)
+    if scheduler is None:
+        return await fetch_for_role(role, data_dir, fetch_fn)
+    return await scheduler.submit(
+        key=key,
+        endpoint=endpoint_value,
+        priority=priority,
+        cooldown_scope=cooldown_scope,
+        call=fetch_fn,
+    )

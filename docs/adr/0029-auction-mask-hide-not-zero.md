@@ -122,3 +122,18 @@ ADR-0029의 Auction Mask는 *표시 레이어*(시작이 [15:20,15:30]에 든 �
 tail 버킷을 양방향으로 오분류하던 것을 해소. 표시 마스크의 hide 동작·토글 의미는
 불변(v1, 계산 레이어). 결정 상세는 ADR-0062. 참조:
 `docs/superpowers/specs/2026-06-03-auction-structural-boundary-design.md`.
+
+## Amendment — 2026-06-27 (체결 기반 매물대의 동시호가 제외 경계)
+
+**연속체결 매물대 분포**와 **체결 거래량 POC**도 고정 `15:20` 또는
+`session_close - 10min` 대신 호가창 구조에서 닫는 경계를 얻는다. 다만 체결 누적의
+상한은 `last_continuous_ms` inclusive가 아니라, 종가 전 마지막 정상 10호가 뒤에 처음
+나타나는 **trailing 단일가 3호가 스냅샷 시각** exclusive로 둔다:
+`session_open <= trade.t < first_trailing_single_price_book_ms`.
+
+이 선택은 마지막 정상 호가 스냅샷과 첫 단일가 호가 스냅샷 사이에 들어온 정상 체결을
+버리지 않기 위한 것이다. 장중 VI는 이 기능에서 제외하지 않는다. 따라서 하루 중 첫
+3호가 스냅샷을 쓰지 않고, 장 마감 전 마지막 정상 호가 이후의 trailing 단일가 run만
+closing Auction Window로 본다. 구조 경계를 찾지 못하면 기존 세션 종료 상한을 유지해
+데이터를 과하게 버리지 않는다. 구현 계획:
+`docs/superpowers/plans/2026-06-27-volume-distribution-closing-auction-cutoff.md`.

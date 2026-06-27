@@ -3,14 +3,16 @@ from __future__ import annotations
 
 import asyncio
 import logging
-from collections.abc import Callable
+from collections.abc import Awaitable, Callable, Hashable
 from dataclasses import dataclass
 from pathlib import Path
+from typing import Protocol
 
 from hoga.api.watchlist import load_document
 from hoga.api.watchlist_projection import capture_ordered_codes
 
 from . import kis_access
+from .kis_client import KisClient
 from .program_trade_store import ProgramTradeStore
 from .session_gate import ws_capture_window
 
@@ -26,6 +28,18 @@ class ProgramTradeCollectorStatus:
     last_error_count: int = 0
 
 
+class KisRestScheduler(Protocol):
+    async def submit(
+        self,
+        *,
+        key: Hashable,
+        endpoint: str,
+        priority: kis_access.KisRequestPriority,
+        call: Callable[[KisClient], Awaitable],
+        cooldown_scope: Hashable | None = None,
+    ): ...
+
+
 class ProgramTradeCollector:
     def __init__(
         self,
@@ -33,6 +47,7 @@ class ProgramTradeCollector:
         data_dir: Path,
         date_fn: Callable[[], str],
         now_ms_fn: Callable[[], int],
+        scheduler: KisRestScheduler | None = None,
         should_collect_fn: Callable[[int], bool] = ws_capture_window,
         poll_interval_s: float = 30.0,
     ) -> None:
@@ -40,6 +55,7 @@ class ProgramTradeCollector:
         self.store = ProgramTradeStore(data_dir, poll_interval_ms=int(poll_interval_s * 1000))
         self._date_fn = date_fn
         self._now_ms_fn = now_ms_fn
+        self._scheduler = scheduler
         self._should_collect_fn = should_collect_fn
         self._poll_interval_s = poll_interval_s
         self.status = ProgramTradeCollectorStatus()
@@ -84,10 +100,15 @@ class ProgramTradeCollector:
 
         for code in codes:
             try:
-                rows = await kis_access.fetch_for_role(
-                    "background",
-                    self.data_dir,
-                    lambda client, code=code: client.fetch_program_trade_by_stock(code),
+                rows = await kis_access.run_with_capacity(
+                    self._scheduler,
+                    data_dir=self.data_dir,
+                    role="background",
+                    key=("program-trade", code),
+                    endpoint=kis_access.KisRestEndpoint.PROGRAM_TRADE,
+                    priority="background",
+                    cooldown_scope="program-trade",
+                    fetch_fn=lambda client, code=code: client.fetch_program_trade_by_stock(code),
                 )
                 self.store.merge_response(
                     code=code,

@@ -1,7 +1,9 @@
 import polars as pl
 from pathlib import Path
 from fastapi.testclient import TestClient
+from datetime import datetime
 from hoga.api.screener_store import last_raw_date, append_rows, write_status, read_status
+from hoga.api.screener_store import DailyBar
 from hoga.api import screener as _screener_mod
 
 
@@ -128,3 +130,71 @@ def test_manual_screener_update_still_calls_trigger_update(tmp_path: Path, monke
     assert resp.status_code == 200
     assert resp.json() == {"updated": 2}
     assert calls == [(tmp_path, None)]
+
+
+async def test_trigger_update_fetches_daily_rows_through_capacity_scheduler(tmp_path: Path, monkeypatch):
+    sdir = tmp_path / "screener"
+    sdir.mkdir()
+    pl.DataFrame({
+        "code": ["005930"],
+        "date": ["2026-06-26"],
+        "open": [1.0],
+        "high": [1.0],
+        "low": [1.0],
+        "close": [1.0],
+        "volume": [1],
+    }).with_columns(pl.col("date").str.to_date()).write_parquet(sdir / "daily_unadjusted.parquet")
+    pl.DataFrame({"code": ["005930"]}).write_parquet(sdir / "stocks.parquet")
+
+    scheduler = object()
+    calls = []
+
+    async def fake_run_update(sdir, *, codes, fetch_one, trading_days, now_ms):
+        assert codes == ["005930"]
+        assert trading_days == ["20260627"]
+        rows = await fetch_one("005930", "20260627", "20260627")
+        return len(rows)
+
+    async def fake_run_with_capacity(
+        scheduler_arg,
+        *,
+        data_dir,
+        role,
+        key,
+        endpoint,
+        priority,
+        fetch_fn,
+        cooldown_scope=None,
+    ):
+        calls.append({
+            "scheduler": scheduler_arg,
+            "data_dir": data_dir,
+            "role": role,
+            "key": key,
+            "endpoint": str(endpoint),
+            "priority": priority,
+            "cooldown_scope": cooldown_scope,
+        })
+        return await fetch_fn(object())
+
+    async def fake_kis_fetch_one(_client, code, frm, to):
+        return [DailyBar(code, datetime(2026, 6, 27).date(), 1.0, 2.0, 1.0, 2.0, 10)]
+
+    monkeypatch.setattr(_screener_mod, "now_kst", lambda: datetime(2026, 6, 27))
+    monkeypatch.setattr(_screener_mod, "trading_days_in_range", lambda _f, _t: ["20260627"])
+    monkeypatch.setattr(_screener_mod.screener_store, "run_update", fake_run_update)
+    monkeypatch.setattr(_screener_mod.kis_access, "has_rest_capacity", lambda data_dir: True)
+    monkeypatch.setattr(_screener_mod, "ensure_kis_capacity_scheduler", lambda data_dir: scheduler)
+    monkeypatch.setattr(_screener_mod.kis_access, "run_with_capacity", fake_run_with_capacity)
+    monkeypatch.setattr(_screener_mod, "_kis_fetch_one", fake_kis_fetch_one)
+
+    assert await _screener_mod.trigger_update(tmp_path) == 1
+    assert calls == [{
+        "scheduler": scheduler,
+        "data_dir": tmp_path,
+        "role": "background",
+        "key": ("screener-update", "005930", "20260627", "20260627"),
+        "endpoint": "screener-daily",
+        "priority": "background",
+        "cooldown_scope": "screener-daily",
+    }]

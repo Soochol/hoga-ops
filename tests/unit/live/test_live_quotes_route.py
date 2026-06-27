@@ -10,10 +10,11 @@ from hoga.live.kis_client import KisQuote
 
 @pytest.fixture(autouse=True)
 def _hermetic_kis_env(monkeypatch):
-    """배경 /quotes 라우트는 data_dir 배선 시 kis_for_role → configured_account_ids로
-    ambient env를 읽는다(계정 분리 2026-06-09). 실제 creds export/load_env 오염으로부터
-    격리(N=0 → account 0 폴백) + 프로세스 전역 KisClient dict 리셋(라우트가 dict를 읽으므로
-    교차 테스트 누수 방지). N=2 라우팅 테스트만 명시적으로 setenv."""
+    """Keep KIS route tests hermetic unless a test explicitly opts into accounts.
+
+    Scheduler/account-pool construction reads configured accounts from ambient
+    env, so developer creds or load_env side effects must not leak into tests.
+    """
     for _k in ("KIS_APP_KEY", "KIS_APP_SECRET", "KIS_APP_KEY_2", "KIS_APP_SECRET_2"):
         monkeypatch.delenv(_k, raising=False)
     lifecycle.reset_for_tests()
@@ -102,8 +103,8 @@ def test_quotes_lazy_inits_kis_when_singleton_absent(monkeypatch, tmp_path):
     fake = _FakeKis(QUOTES)
     monkeypatch.setattr(kis_runtime, "ensure_kis_client_from_env", lambda data_dir: fake)
     app = FastAPI()
-    # 싱글톤 미주입(autouse hermetic 리셋이 dict를 비움) + data_dir 배선 → kis_for_role이
-    # env에서 지연 생성(C1b: get_kis_client 주입 없이도 동일 lazy-init 경로).
+    # 싱글톤 미주입(autouse hermetic 리셋이 dict를 비움) + data_dir 배선 -> capacity
+    # gate가 env에서 지연 생성(C1b: get_kis_client 주입 없이도 동일 lazy-init 경로).
     app.include_router(build_router(
         get_status=lifecycle.get_status,
         data_dir=tmp_path,
@@ -220,29 +221,28 @@ def _two_account_quotes_app(tmp_path, monkeypatch, fake0, fake1):
     return app
 
 
-def test_quotes_routes_background_to_account1(monkeypatch, tmp_path):
-    """N=2 정상: /quotes(배경 폴링)가 account 1(유휴였던 REST 버킷)을 쓴다 — account 0 무호출."""
+def test_quotes_uses_shared_capacity_pool_first_healthy_account(monkeypatch, tmp_path):
+    """N=2 정상: /quotes는 역할 고정이 아니라 공유 capacity pool의 least-loaded 후보를 쓴다."""
     monkeypatch.setattr(live_api, "_quote_phase", lambda now: "open")
     monkeypatch.setattr("hoga.live.account_health._ws_probe", lambda: set())
     fake0, fake1 = _CountingFakeKis(QUOTES), _CountingFakeKis(QUOTES)
     app = _two_account_quotes_app(tmp_path, monkeypatch, fake0, fake1)
     r = TestClient(app).get("/api/live/quotes", params={"codes": "005930,000660"})
     assert r.status_code == 200
-    assert fake1.calls == 1, "background /quotes가 account 1을 쓰지 않음"
-    assert fake0.calls == 0, "account 0(foreground 전용)이 background에 침범"
+    assert fake0.calls == 1
+    assert fake1.calls == 0
 
 
-def test_quotes_account1_degraded_falls_back_to_account0(monkeypatch, tmp_path):
-    """N=2이지만 account 1 REST 토큰 저하 → /quotes가 account 0로 폴백.
+def test_quotes_skips_degraded_account(monkeypatch, tmp_path):
+    """N=2이지만 account 1 REST 토큰 저하 -> /quotes scheduler pool에서 제외된다.
 
-    REST 라우팅은 REST 토큰 latch(is_rest_degraded)만 본다(WS sub_failed는 직교 — 폴백 무관,
-    2026-06-10). 그래서 degraded를 mark_rest_auth_degraded(1)로 위조한다. _two_account_quotes_app가
-    내부에서 reset_for_tests로 latch를 비우므로 app 구성 *후*에 마킹한다."""
+    REST pool health는 REST 토큰 latch(is_rest_degraded)만 본다(WS sub_failed는 직교).
+    _two_account_quotes_app가 내부에서 reset_for_tests로 latch를 비우므로 app 구성 *후*에 마킹한다."""
     monkeypatch.setattr(live_api, "_quote_phase", lambda now: "open")
     fake0, fake1 = _CountingFakeKis(QUOTES), _CountingFakeKis(QUOTES)
     app = _two_account_quotes_app(tmp_path, monkeypatch, fake0, fake1)
     account_health.mark_rest_auth_degraded(1)
     r = TestClient(app).get("/api/live/quotes", params={"codes": "005930,000660"})
     assert r.status_code == 200
-    assert fake0.calls == 1, "degraded인데 account 0로 폴백 안 됨"
-    assert fake1.calls == 0, "degraded account 1을 그대로 사용"
+    assert fake0.calls == 1, "scheduler did not use remaining healthy account"
+    assert fake1.calls == 0, "scheduler used degraded account 1"

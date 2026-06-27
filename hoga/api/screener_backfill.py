@@ -240,23 +240,31 @@ async def run_backfill(data_dir: Path) -> dict:
     from datetime import datetime
 
     from hoga.live import kis_access
+    from hoga.live.kis_capacity_runtime import ensure_kis_capacity_scheduler
     from hoga.live.kis_client import KIS_KST
 
     sdir = data_dir / "screener"
-    # 전체 백필도 배경 배치(계정 분리 2026-06-09): background 계정으로 라우팅 → 마감 후
-    # 사용자 차트(account 0 foreground)와 경합 제거. creds 게이트만 먼저(없으면 loud raise).
-    if kis_access.kis_for_role("background", data_dir) is None:
+    # 전체 백필도 배경 배치이므로 Capacity Scheduler에 맡긴다. creds 게이트만 먼저
+    # 유지해서 기존처럼 백필은 조용히 skip하지 않고 loud fail 한다.
+    if not kis_access.has_rest_capacity(data_dir):
         raise RuntimeError("KIS creds missing (KIS_APP_KEY/SECRET) — cannot backfill")
+    scheduler = ensure_kis_capacity_scheduler(data_dir)
 
-    # FM5: client를 한 번 캡처하면 acct1 토큰 실패 시 reconcile/factor의 per-code except가
-    # 모든 코드를 조용히 skip(데이터 0인 '성공'). 그래서 fetch마다 헬퍼로 재해결 + account 0
-    # 폴백(첫 코드가 latch를 켜면 이후는 곧장 account 0).
     async def fetch_adj(code: str, frm: str, to: str):
         async def _do(client):
             res = await client.fetch_past_daily_candles(code, frm, to, adjust=True)   # 수정주가
             return [(datetime.fromtimestamp(c.t_ms / 1000, tz=KIS_KST).date(), float(c.close))
                     for c in res.candles]
-        return await kis_access.fetch_for_role("background", data_dir, _do)
+        return await kis_access.run_with_capacity(
+            scheduler,
+            data_dir=data_dir,
+            role="background",
+            key=("screener-backfill-adj", code, frm, to),
+            endpoint=kis_access.KisRestEndpoint.SCREENER_DAILY,
+            priority="background",
+            cooldown_scope="screener-daily",
+            fetch_fn=_do,
+        )
 
     async def fetch_raw(code: str, frm: str, to: str):
         async def _do(client):
@@ -264,6 +272,15 @@ async def run_backfill(data_dir: Path) -> dict:
             return [DailyBar(code, datetime.fromtimestamp(c.t_ms / 1000, tz=KIS_KST).date(),
                              float(c.open), float(c.high), float(c.low), float(c.close), c.volume)
                     for c in res.candles]
-        return await kis_access.fetch_for_role("background", data_dir, _do)
+        return await kis_access.run_with_capacity(
+            scheduler,
+            data_dir=data_dir,
+            role="background",
+            key=("screener-backfill-raw", code, frm, to),
+            endpoint=kis_access.KisRestEndpoint.SCREENER_DAILY,
+            priority="background",
+            cooldown_scope="screener-daily",
+            fetch_fn=_do,
+        )
 
     return await run_backfill_with(sdir, fetch_adj=fetch_adj, fetch_raw=fetch_raw)

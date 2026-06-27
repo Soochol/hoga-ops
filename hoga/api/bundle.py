@@ -427,6 +427,7 @@ def build_volume_distribution_slice(
     price_min: int | None = None,
     price_max: int | None = None,
     cutoff_ms: int | None = None,
+    continuous_before_ms: int | None = None,
 ) -> DayVolumeDistribution | None:
     code_dir = engine.parquet_dir(date, code, source)
     candles_path = code_dir / "candles.parquet"
@@ -456,6 +457,7 @@ def build_volume_distribution_slice(
         session_open_ms=session_open_ms,
         session_close_ms=session_close_ms,
         **dist_kwargs,
+        continuous_before_ms=continuous_before_ms,
     )
     return DayVolumeDistribution(
         date=date,
@@ -853,6 +855,7 @@ def build_trade_volume_poc_slice(
     session_close_ms: int,
     range_count: int,
     price_range: tuple[int, int] | None = None,
+    continuous_before_ms: int | None = None,
     band_pct: float = 0.005,
     cache: PastIndicatorsCache | None = None,
     today_kst: str | None = None,
@@ -877,6 +880,7 @@ def build_trade_volume_poc_slice(
         bins=range_count,
         session_open_ms=session_open_ms,
         session_close_ms=session_close_ms,
+        continuous_before_ms=continuous_before_ms,
     )
     if row is None:
         if cacheable:
@@ -898,6 +902,31 @@ def build_trade_volume_poc_slice(
             code, date, source, range_count, price_min, price_max, poc,
         )
     return poc
+
+
+def _first_trailing_single_price_book_hhmmssms(
+    engine: QueryEngine,
+    *,
+    code: str,
+    date: str,
+    source: str,
+    session_close_ms: int,
+) -> int | None:
+    snapshots_path = engine.parquet_dir(date, code, source) / "snapshots.parquet"
+    if not snapshots_path.exists():
+        return None
+    intra_ms = snapshots_tbl.query_first_trailing_single_price_book_intra_ms(
+        engine.conn,
+        path=snapshots_path,
+        session_close_ms=session_close_ms,
+    )
+    if intra_ms is None:
+        return None
+    h = intra_ms // 3_600_000
+    m = (intra_ms // 60_000) % 60
+    s = (intra_ms // 1000) % 60
+    ms = intra_ms % 1000
+    return h * 10_000_000 + m * 100_000 + s * 1000 + ms
 
 
 def _krx_stock_tick_size(price: int) -> int:
@@ -1308,6 +1337,17 @@ def build_range_bundle(
         vp_d = build_volume_profile_slice(engine, code=code, date=d, source=source) if full_mode else None
 
         norm_meta, _ = normalize_session_bounds(meta)   # value-conversion only (notes handled by classify)
+        continuous_before_ms = (
+            None
+            if hoga_only
+            else _first_trailing_single_price_book_hhmmssms(
+                engine,
+                code=code,
+                date=d,
+                source=trade_indicator_source,
+                session_close_ms=int(meta["regular_session_close_ms"]),
+            )
+        )
         if hoga_only:
             ap_d = None
             bp_d = None
@@ -1324,6 +1364,7 @@ def build_range_bundle(
             session_close_ms=meta["regular_session_close_ms"],
             range_count=trade_volume_poc_bins or DEFAULT_TRADE_VOLUME_POC_BINS,
             price_range=price_range,
+            continuous_before_ms=continuous_before_ms,
             cache=indicators_cache,
             today_kst=today_kst,
         )
@@ -1361,6 +1402,7 @@ def build_range_bundle(
                 price_min=price_range[0] if price_range is not None else None,
                 price_max=price_range[1] if price_range is not None else None,
                 cutoff_ms=volume_distribution_slice_cutoff_ms,
+                continuous_before_ms=continuous_before_ms,
             )
             if profile is not None:
                 volume_distributions.append(profile)

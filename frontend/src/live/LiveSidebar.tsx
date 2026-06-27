@@ -28,6 +28,7 @@ import { LiveDetailPanel } from './LiveDetailPanel';
 import { realMsToYyyymmdd } from './liveDateTime';
 import {
   computeContinuousTradeVolumeDistribution,
+  firstTrailingSinglePriceBookMs,
   selectVolumeDistributionProfile,
   volumeDistributionClosePoints,
 } from './continuousTradeVolumeDistribution';
@@ -140,6 +141,12 @@ export function LiveSidebar({ code, live, bundle = null, todayKst = '', programT
     ),
     [live.trade],
   );
+  const todayContinuousBeforeMs = useMemo(() => {
+    if (!activeBundle || !todayKst) return null;
+    const todaySegment = activeBundle.segments.find((segment) => segment.date === todayKst);
+    if (!todaySegment) return null;
+    return firstTrailingSinglePriceBookMs(ob, todaySegment.session_close_ms);
+  }, [activeBundle, todayKst, ob]);
   const recomputedTodayVolumeDistribution = useMemo(() => {
     if (
       !volumeDistributionEnabled ||
@@ -160,8 +167,18 @@ export function LiveSidebar({ code, live, bundle = null, todayKst = '', programT
       trades: liveDistributionTrades,
       rangeCount: volumeDistributionRangeCount,
       segment: todaySegment,
+      continuousBeforeMs: todayContinuousBeforeMs,
     });
-  }, [volumeDistributionEnabled, stockCode, todayKst, timeframe, activeBundle, liveDistributionTrades, volumeDistributionRangeCount]);
+  }, [
+    volumeDistributionEnabled,
+    stockCode,
+    todayKst,
+    timeframe,
+    activeBundle,
+    liveDistributionTrades,
+    volumeDistributionRangeCount,
+    todayContinuousBeforeMs,
+  ]);
   const activeVolumeDistribution = useMemo(() => {
     return selectVolumeDistributionProfile({
       enabled: volumeDistributionEnabled,
@@ -171,6 +188,7 @@ export function LiveSidebar({ code, live, bundle = null, todayKst = '', programT
       persistedProfiles: persistedVolumeDistributions,
       recomputedToday: recomputedTodayVolumeDistribution,
       liveTrades: liveDistributionTrades,
+      continuousBeforeMs: todayContinuousBeforeMs,
     });
   }, [
     volumeDistributionEnabled,
@@ -180,6 +198,7 @@ export function LiveSidebar({ code, live, bundle = null, todayKst = '', programT
     recomputedTodayVolumeDistribution,
     persistedVolumeDistributions,
     liveDistributionTrades,
+    todayContinuousBeforeMs,
   ]);
   const cutoffVolumeDistribution = useVolumeDistributionCutoffProfile({
     enabled: volumeDistributionEnabled && volumeDistributionHoverCutoffEnabled && isSpot,

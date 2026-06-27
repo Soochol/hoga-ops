@@ -1,6 +1,36 @@
 import pytest
 
 
+class _RecordingScheduler:
+    def __init__(self, rows_by_code):
+        self.rows_by_code = rows_by_code
+        self.calls: list[dict] = []
+
+    async def submit(
+        self,
+        *,
+        key,
+        endpoint,
+        priority,
+        call,
+        cooldown_scope=None,
+    ):
+        self.calls.append(
+            {
+                "key": key,
+                "endpoint": endpoint,
+                "priority": priority,
+                "cooldown_scope": cooldown_scope,
+            }
+        )
+
+        class FakeClient:
+            async def fetch_program_trade_by_stock(inner_self, code):
+                return self.rows_by_code.get(code, [])
+
+        return await call(FakeClient())
+
+
 def _watchlist_doc():
     from hoga.api.models import WatchlistDocument, WatchlistEntry, WatchlistFolder
 
@@ -36,7 +66,24 @@ async def test_program_trade_collector_polls_capture_candidates_and_skips_failed
 
     calls: list[str] = []
 
-    async def fake_fetch_for_role(role, data_dir, fn):
+    async def fake_run_with_capacity(
+        scheduler,
+        *,
+        data_dir,
+        role,
+        key,
+        endpoint,
+        priority,
+        cooldown_scope,
+        fetch_fn,
+    ):
+        assert scheduler is None
+        assert role == "background"
+        assert endpoint == "program-trade"
+        assert priority == "background"
+        assert cooldown_scope == "program-trade"
+        assert key[0] == "program-trade"
+
         class FakeClient:
             async def fetch_program_trade_by_stock(self, code):
                 calls.append(code)
@@ -59,15 +106,15 @@ async def test_program_trade_collector_polls_capture_candidates_and_skips_failed
                     )
                 ]
 
-        return await fn(FakeClient())
+        return await fetch_fn(FakeClient())
 
     monkeypatch.setattr(
         "hoga.live.program_trade_collector.load_document",
         lambda _data_dir: _watchlist_doc(),
     )
     monkeypatch.setattr(
-        "hoga.live.program_trade_collector.kis_access.fetch_for_role",
-        fake_fetch_for_role,
+        "hoga.live.program_trade_collector.kis_access.run_with_capacity",
+        fake_run_with_capacity,
     )
 
     collector = ProgramTradeCollector(
@@ -85,13 +132,64 @@ async def test_program_trade_collector_polls_capture_candidates_and_skips_failed
 
 
 @pytest.mark.asyncio
+async def test_program_trade_collector_uses_capacity_scheduler(tmp_path, monkeypatch):
+    from hoga.live.kis_models import ProgramTradeByStockRow
+    from hoga.live.program_trade_collector import ProgramTradeCollector
+
+    row = ProgramTradeByStockRow(
+        code="005930",
+        bsop_hour="090000",
+        t_ms=1,
+        price=70000,
+        net_qty=1,
+        net_amount=70000,
+        buy_qty=None,
+        sell_qty=None,
+        buy_amount=None,
+        sell_amount=None,
+        delta_qty=1,
+        delta_amount=70000,
+    )
+    scheduler = _RecordingScheduler({"005930": [row], "000660": []})
+    monkeypatch.setattr(
+        "hoga.live.program_trade_collector.load_document",
+        lambda _data_dir: _watchlist_doc(),
+    )
+    collector = ProgramTradeCollector(
+        data_dir=tmp_path,
+        date_fn=lambda: "20260625",
+        now_ms_fn=lambda: 1000,
+        scheduler=scheduler,
+    )
+
+    await collector.run_once()
+
+    assert scheduler.calls == [
+        {
+            "key": ("program-trade", "005930"),
+            "endpoint": "program-trade",
+            "priority": "background",
+            "cooldown_scope": "program-trade",
+        },
+        {
+            "key": ("program-trade", "000660"),
+            "endpoint": "program-trade",
+            "priority": "background",
+            "cooldown_scope": "program-trade",
+        },
+    ]
+    stored = collector.store.load("005930", "20260625")
+    assert [r.bsop_hour for r in stored.rows] == ["090000"]
+
+
+@pytest.mark.asyncio
 async def test_program_trade_collector_skips_fetches_when_market_window_is_closed(tmp_path, monkeypatch):
     from hoga.live.program_trade_collector import ProgramTradeCollector
 
     calls: list[str] = []
 
-    async def fake_fetch_for_role(role, data_dir, fn):
-        calls.append(role)
+    async def fake_run_with_capacity(*_args, **_kwargs):
+        calls.append("called")
         raise AssertionError("collector should not fetch while the market window is closed")
 
     monkeypatch.setattr(
@@ -99,8 +197,8 @@ async def test_program_trade_collector_skips_fetches_when_market_window_is_close
         lambda _data_dir: _watchlist_doc(),
     )
     monkeypatch.setattr(
-        "hoga.live.program_trade_collector.kis_access.fetch_for_role",
-        fake_fetch_for_role,
+        "hoga.live.program_trade_collector.kis_access.run_with_capacity",
+        fake_run_with_capacity,
     )
 
     collector = ProgramTradeCollector(

@@ -3,11 +3,27 @@
 All notable changes to this project are documented here.
 The format follows a 4-digit `MAJOR.MINOR.PATCH.MICRO` scheme.
 
-## [0.12.8.4] - 2026-06-27
+## [0.12.9.2] - 2026-06-27
 
 ### Fixed
 - **매물대 분포 종가 그래프 유지**: 호버 시점 누적 모드에서 bar profile의 cutoff 시각 때문에 종가 그래프까지 잘리던 문제를 고쳐, 종가 라인은 당일 마지막 close point까지 계속 표시되도록 했다.
 - **호버 시점 누적 설정 UI 정렬**: `연속체결 매물대 분포`의 `호버 시점 누적` 설정을 다른 지표 설정과 같은 토글 버튼으로 바꿨다.
+
+## [0.12.9.1] - 2026-06-27
+
+### Fixed
+- **연속체결 매물대 동시호가 제외 경계 보정**: 고정 `15:20`이나 `session_close - 10min` 대신 호가창 구조에서 마지막 정상 10호가 뒤 첫 trailing 단일가 3호가 시각을 찾아, 그 시각 이후 체결을 매물대 분포와 체결 거래량 POC에서 제외한다. 장중 VI는 제외하지 않고, 오늘 live buffer도 같은 구조 경계를 사용한다.
+
+## [0.12.9.0] - 2026-06-27
+
+### Added
+- **KIS Capacity Scheduler 도입**: 사용자 요청과 백그라운드 KIS REST 호출을 계정 풀 기반 scheduler로 통합해, 계정별 rate limit을 분산하고 user-visible 요청을 우선 처리하도록 했다.
+
+### Changed
+- **Live KIS REST 호출 경로 정리**: 캔들, 지수, 투자자 동향, 현재가, 스크리너, REST capture/poller 호출을 scheduler-backed access 경로로 모으고 legacy role routing은 호환 fallback으로 축소했다.
+
+### Fixed
+- **KIS REST 우회 방지 가드 추가**: production caller가 scheduler를 우회해 `kis_for_role` 또는 `run_with_capacity(None, ...)`를 쓰지 못하도록 ADR invariant 테스트를 추가했다.
 
 ## [0.12.8.3] - 2026-06-27
 

@@ -80,6 +80,7 @@ async def test_startup_runtime_starts_safe_default_tasks(tmp_path: Path) -> None
             start_today_promoter=start_today_promoter,
             stop_today_promoter=lambda task: _record_async(calls, "stop-promoter", task),
             stop_live_stream=lambda: _record_async(calls, "stop-live", None),
+            aclose_kis_capacity_scheduler=lambda: _record_async(calls, "close-kis-capacity", None),
             aclose_kis_client=lambda: _record_async(calls, "close-kis", None),
             get_active_codes=lambda: ["005930"],
             load_symbol_disk_state=load_symbol_disk_state,
@@ -99,7 +100,9 @@ async def test_startup_runtime_starts_safe_default_tasks(tmp_path: Path) -> None
     assert not any(call[0] == "symbols-refresh" for call in calls)
     assert ("stop-promoter", None) in calls
     assert ("stop-live", None) in calls
+    assert ("close-kis-capacity", None) in calls
     assert ("close-kis", None) in calls
+    assert calls.index(("close-kis-capacity", None)) < calls.index(("close-kis", None))
 
 
 @pytest.mark.asyncio
@@ -148,6 +151,7 @@ async def test_startup_runtime_can_opt_into_live_and_symbol_refresh(tmp_path: Pa
             start_today_promoter=start_today_promoter,
             stop_today_promoter=lambda task: _record_async(calls, "stop-promoter", task),
             stop_live_stream=lambda: _record_async(calls, "stop-live", None),
+            aclose_kis_capacity_scheduler=lambda: _record_async(calls, "close-kis-capacity", None),
             aclose_kis_client=lambda: _record_async(calls, "close-kis", None),
             get_active_codes=lambda: [],
             load_symbol_disk_state=load_symbol_disk_state,
@@ -205,6 +209,7 @@ async def test_startup_runtime_cleans_up_partial_start_on_failure(tmp_path: Path
                 start_today_promoter=start_today_promoter,
                 stop_today_promoter=lambda task: _record_async(calls, "stop-promoter", task),
                 stop_live_stream=lambda: _record_async(calls, "stop-live", None),
+                aclose_kis_capacity_scheduler=lambda: _record_async(calls, "close-kis-capacity", None),
                 aclose_kis_client=lambda: _record_async(calls, "close-kis", None),
                 get_active_codes=lambda: [],
                 load_symbol_disk_state=lambda **_kwargs: None,
@@ -218,7 +223,9 @@ async def test_startup_runtime_cleans_up_partial_start_on_failure(tmp_path: Path
     assert scheduler_task.cancelled()
     assert ("stop-promoter", None) in calls
     assert ("stop-live", None) in calls
+    assert ("close-kis-capacity", None) in calls
     assert ("close-kis", None) in calls
+    assert calls.index(("close-kis-capacity", None)) < calls.index(("close-kis", None))
 
 
 async def _record_async(calls: list[Any], name: str, value: Any) -> None:
