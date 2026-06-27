@@ -348,12 +348,14 @@ async def test_past_candles_disk_cache_hit_on_second_call(tmp_path) -> None:
 
 
 @pytest.mark.asyncio
-async def test_past_candles_today_memory_cache(tmp_path) -> None:
+async def test_past_candles_today_memory_cache(tmp_path, monkeypatch) -> None:
+    from hoga.live import api as live_api
+
+    monkeypatch.setattr(live_api, "_today_kst_date", lambda: datetime.date(2026, 6, 26))
     fake = _FakeKisForPast()
     app = _past_app(tmp_path, fake)
     with TestClient(app) as c:
-        kst = datetime.timezone(datetime.timedelta(hours=9))
-        today = datetime.datetime.now(kst).strftime("%Y%m%d")
+        today = "20260626"
         c.get(f"/api/live/past-candles?code=005930&from={today}&to={today}")
         assert fake.calls == [today]
         r = c.get(f"/api/live/past-candles?code=005930&from={today}&to={today}")
@@ -388,7 +390,7 @@ async def test_past_candles_partial_failure_kis_api_error(tmp_path) -> None:
 
 @pytest.mark.asyncio
 async def test_past_candles_fetches_uncached_dates_concurrently(tmp_path) -> None:
-    """spec 2026-06-08 §4: 미캐시 과거 날짜는 동시 fetch(상한 5) — 순차 구현은
+    """spec 2026-06-08 §4: 미캐시 과거 날짜는 동시 fetch(상한 3) — 순차 구현은
     max_inflight==1이라 실패한다. 완료 순서를 의도적으로 뒤섞어(늦은 날짜가
     빨리 응답) 응답 candles의 날짜 오름차순 보장(§5 테스트 4)도 함께 핀한다."""
     import asyncio as _asyncio
@@ -422,7 +424,7 @@ async def test_past_candles_fetches_uncached_dates_concurrently(tmp_path) -> Non
         assert r.status_code == 200
         body = r.json()
     assert fake.max_inflight >= 2, "병렬화 안 됨 — 순차 fetch"
-    assert fake.max_inflight <= 5, "동시 상한(_PAST_CANDLES_CONCURRENCY=5) 초과"
+    assert fake.max_inflight <= 3, "동시 상한(_PAST_CANDLES_CONCURRENCY=3) 초과"
     t_list = [cd["t_ms"] for cd in body["candles"]]
     assert t_list == sorted(t_list), "응답 candles가 날짜 오름차순이 아님"
     assert body["fresh_dates"] == [f"2026050{i}" for i in range(1, 9)]
@@ -469,9 +471,9 @@ async def test_past_candles_rate_limit_blocks_unstarted_fetches(tmp_path) -> Non
     않으므로 "미시작 콜 0"으로 대체. '레이트리밋된 원격을 더 때리지 않는다'는
     원 의도는 보존된다.)
 
-    결정성: 8날짜·슬롯 5 → D1-D5 동시 진입, D2가 0.01s에 실패(Event set은
-    semaphore 해제보다 먼저 실행됨) → D6-D8은 슬롯 획득 시점에 Event를 보고
-    스킵. D1·D3-D5는 0.1s sleep 중(in-flight)이라 완주."""
+    결정성: 8날짜·슬롯 3 → D1-D3 동시 진입, D2가 0.01s에 실패(Event set은
+    semaphore 해제보다 먼저 실행됨) → D4-D8은 슬롯 획득 시점에 Event를 보고
+    스킵. D1·D3는 0.1s sleep 중(in-flight)이라 완주."""
     import asyncio as _asyncio
 
     from hoga.live.kis_client import KisRateLimitError
@@ -495,18 +497,25 @@ async def test_past_candles_rate_limit_blocks_unstarted_fetches(tmp_path) -> Non
         r = c.get("/api/live/past-candles?code=005930&from=20260501&to=20260508")
         assert r.status_code == 200
         body = r.json()
-    # 미시작(D6-D8)은 KIS에 도달하지 않는다 — 원 방어의 핵심.
+    # 미시작(D4-D8)은 KIS에 도달하지 않는다 — 원 방어의 핵심.
     assert sorted(fake.calls) == [
-        "20260501", "20260502", "20260503", "20260504", "20260505",
+        "20260501", "20260502", "20260503",
     ]
-    # in-flight 완주: 실패한 D2를 제외한 첫 배치 4건은 서빙된다.
+    # in-flight 완주: 실패한 D2를 제외한 첫 배치 2건은 서빙된다.
     assert body["fresh_dates"] == [
-        "20260501", "20260503", "20260504", "20260505",
+        "20260501", "20260503",
     ]
-    assert len(body["candles"]) == 4
+    assert len(body["candles"]) == 2
     warns = {w["date"]: w["reason"] for w in body["data_warnings"]}
     assert warns["20260502"] == "kis_rate_limit"
-    assert warns["20260506"] == warns["20260507"] == warns["20260508"] == "rate_limit_aborted"
+    assert (
+        warns["20260504"]
+        == warns["20260505"]
+        == warns["20260506"]
+        == warns["20260507"]
+        == warns["20260508"]
+        == "rate_limit_aborted"
+    )
 
 
 @pytest.mark.asyncio
@@ -565,6 +574,34 @@ async def test_past_candles_rate_limit_still_serves_later_cache_hits(tmp_path) -
 
 
 @pytest.mark.asyncio
+async def test_past_candles_rate_limit_cooldown_blocks_immediate_followup(tmp_path) -> None:
+    """After an exhausted EGW00201, an immediate follow-up request should not
+    start another KIS candle fetch burst. The user gets a rate-limit warning
+    quickly instead of waiting through another retry wall."""
+    from hoga.live.kis_client import KisRateLimitError
+
+    class _RateLimitedFakeKis:
+        def __init__(self):
+            self.calls: list[str] = []
+
+        async def fetch_past_minute_candles(self, code, date_yyyymmdd, **_kw):
+            self.calls.append(date_yyyymmdd)
+            raise KisRateLimitError("EGW00201 rate limited")
+
+    fake = _RateLimitedFakeKis()
+    app = _past_app(tmp_path, fake)
+    with TestClient(app) as c:
+        r1 = c.get("/api/live/past-candles?code=005930&from=20260501&to=20260501")
+        r2 = c.get("/api/live/past-candles?code=005930&from=20260502&to=20260502")
+
+    assert r1.status_code == 200
+    assert r2.status_code == 200
+    assert fake.calls == ["20260501"]
+    assert r1.json()["data_warnings"][0]["reason"] == "kis_rate_limit"
+    assert r2.json()["data_warnings"][0]["reason"] == "rate_limit_aborted"
+
+
+@pytest.mark.asyncio
 async def test_past_candles_weekend_empty_response(tmp_path) -> None:
     """KIS returns [] for non-trading days (weekends, holidays). Endpoint
     should accept that as a normal zero-candle date — no warning."""
@@ -608,9 +645,10 @@ async def test_past_candles_disk_cache_survives_router_rebuild(tmp_path) -> None
         assert r.json()["cached_dates"] == [yesterday]
 
 
-def test_minute_today_non_trading_day_negative_caches(tmp_path) -> None:
+def test_minute_today_non_trading_day_negative_caches(tmp_path, monkeypatch) -> None:
     """When today's KIS minute fetch returns empty, the cache stores a
     negative sentinel so a follow-up request within the TTL skips KIS."""
+    from hoga.live import api as live_api
 
     class _EmptyTodayKis:
         def __init__(self):
@@ -618,15 +656,42 @@ def test_minute_today_non_trading_day_negative_caches(tmp_path) -> None:
 
         async def fetch_past_minute_candles(self, code, date_yyyymmdd, **_kw):
             self.calls += 1
-            return []  # simulate Saturday / holiday today
+            return []  # simulate weekday holiday today
 
+    monkeypatch.setattr(live_api, "_today_kst_date", lambda: datetime.date(2026, 6, 26))
     fake = _EmptyTodayKis()
     app = _past_app(tmp_path, fake)
-    today = _today_kst_yyyymmdd()
+    today = "20260626"
     with TestClient(app) as c:
         c.get(f"/api/live/past-candles?code=005930&from={today}&to={today}")
         c.get(f"/api/live/past-candles?code=005930&from={today}&to={today}")
         assert fake.calls == 1  # second call skipped via negative cache
+
+
+def test_minute_today_weekend_skips_kis_and_negative_caches(tmp_path, monkeypatch) -> None:
+    """On weekends, today's minute candles are known-empty before hitting KIS."""
+    from hoga.live import api as live_api
+
+    class _CountingKis:
+        def __init__(self):
+            self.calls = 0
+
+        async def fetch_past_minute_candles(self, code, date_yyyymmdd, **_kw):
+            self.calls += 1
+            return [KisCandle(t_ms=1, open=100, high=110, low=95, close=105, volume=10)]
+
+    monkeypatch.setattr(live_api, "_today_kst_date", lambda: datetime.date(2026, 6, 27))
+    fake = _CountingKis()
+    app = _past_app(tmp_path, fake)
+    with TestClient(app) as c:
+        r1 = c.get("/api/live/past-candles?code=005930&from=20260627&to=20260627")
+        r2 = c.get("/api/live/past-candles?code=005930&from=20260627&to=20260627")
+
+    assert r1.status_code == 200
+    assert r2.status_code == 200
+    assert fake.calls == 0
+    assert r1.json()["candles"] == []
+    assert r1.json()["data_warnings"] == []
 
 
 def test_past_candles_threads_explicit_venue_to_kis_and_response(tmp_path) -> None:

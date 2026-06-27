@@ -71,13 +71,12 @@ log = logging.getLogger(__name__)
 _PAST_MAX_DAYS = 250
 
 # past-candles 미캐시 날짜 병렬 fetch 동시 상한 (spec 2026-06-08 §4.1).
-# 산식: RTT ~200ms → 슬롯당 ~5콜/초 → 3슬롯이 토큰버킷(15콜/초, kis_client.
-# _TokenBucket — 동시 acquirer 안전 설계) 포화점, +2는 RTT 변동 흡수 여유.
-# 6+는 처리량 무이득(버킷이 천장)이고 EGW00201 시 동시 재시도(최대 동시수×4,
-# ADR-0050)만 증폭. 운용: 로그에 kis_rate_limit/rate_limit_aborted가 자주
-# 보이면 3으로 하향. 8 초과 금지 — 버킷 가득 시작이라 첫 순간 15콜 버스트
-# 가능, KIS 통상 한도(인용 20/초) 대비 여유 25% 보존.
-_PAST_CANDLES_CONCURRENCY = 5
+# 산식: RTT ~200ms → 슬롯당 ~5콜/초 → 3슬롯이 token bucket(15콜/초)의
+# 자연 포화점. 5슬롯은 평시 처리량 여유가 있었지만 한 날짜가 내부적으로
+# 여러 분봉 페이지를 호출하는 구조라 EGW00201 상황에서 동시 retry 폭을 키웠다.
+_PAST_CANDLES_CONCURRENCY = 3
+_PAST_CANDLES_RATE_LIMIT_COOLDOWN_S = 10.0
+_WEEKEND_START_WEEKDAY = 5
 _CODE_RE = re.compile(CODE_PATTERN)
 _KST = timezone(timedelta(hours=9))
 _INVESTOR_ESTIMATE_MAX_CODES_PER_DAY = 256
@@ -1350,7 +1349,27 @@ def build_router(
     # KIS 콜로 공유 — 두 탭/60초 refetch 경합의 쿼터 절약(파일 안전성은
     # atomic_write_json이 이미 보장하므로 목적이 아님). ADR-0038 단일 워커라
     # in-process dict로 충분. done_callback이 항상 entry를 회수한다.
-    _past_inflight: dict[tuple[KisVenue, str, str], asyncio.Task[tuple[list[dict], str | None]]] = {}
+    _past_inflight: dict[
+        tuple[KisVenue, str, str],
+        asyncio.Task[tuple[list[dict], str | None]],
+    ] = {}
+    _past_rate_limit_until = 0.0
+
+    def _past_rate_limited_now() -> bool:
+        return monotonic_time.monotonic() < _past_rate_limit_until
+
+    def _mark_past_rate_limited() -> None:
+        nonlocal _past_rate_limit_until
+        _past_rate_limit_until = max(
+            _past_rate_limit_until,
+            monotonic_time.monotonic() + _PAST_CANDLES_RATE_LIMIT_COOLDOWN_S,
+        )
+
+    def _past_rate_limit_aborted_warning(date_s: str) -> dict:
+        return {
+            "date": date_s, "reason": "rate_limit_aborted",
+            "msg": "KIS rate limit cooldown active",
+        }
 
     async def _fetch_past_shared(
         kis: KisClient, venue: KisVenue, code: str, date_s: str
@@ -1442,16 +1461,14 @@ def build_router(
 
             async def _one(date_s: str) -> None:
                 async with _past_fetch_sem:
-                    if blocked.is_set():
-                        warnings_by_date[date_s] = {
-                            "date": date_s, "reason": "rate_limit_aborted",
-                            "msg": "previous date hit rate limit",
-                        }
+                    if blocked.is_set() or _past_rate_limited_now():
+                        warnings_by_date[date_s] = _past_rate_limit_aborted_warning(date_s)
                         return
                     try:
                         bars, write_err = await _fetch_past_shared(kis, kis_venue, code, date_s)
                     except KisRateLimitError as e:
                         blocked.set()
+                        _mark_past_rate_limited()
                         warnings_by_date[date_s] = {
                             "date": date_s, "reason": "kis_rate_limit", "msg": str(e),
                         }
@@ -1493,8 +1510,11 @@ def build_router(
                     elif state == "negative":
                         bars = []
                     else:
-                        if kis_blocked:
-                            warnings.append({"date": date_s, "reason": "rate_limit_aborted", "msg": "previous date hit rate limit"})
+                        if today_d.weekday() >= _WEEKEND_START_WEEKDAY:
+                            cache.store_today(kis_venue, code, None)
+                            continue
+                        if kis_blocked or _past_rate_limited_now():
+                            warnings.append(_past_rate_limit_aborted_warning(date_s))
                             continue
                         raw = await kis.fetch_past_minute_candles(
                             code, date_s, venue=kis_venue, foreground=True,
@@ -1508,6 +1528,7 @@ def build_router(
                     candles_all.extend(bars)
                 except KisRateLimitError as e:
                     warnings.append({"date": date_s, "reason": "kis_rate_limit", "msg": str(e)})
+                    _mark_past_rate_limited()
                     kis_blocked = True
                 except KisApiError as e:
                     warnings.append({"date": date_s, "reason": "kis_api_error", "msg": e.msg_cd})
