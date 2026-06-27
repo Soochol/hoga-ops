@@ -313,11 +313,18 @@ def build_router(engine: QueryEngine) -> APIRouter:
             and volume_distribution_price_max < volume_distribution_price_min
         ):
             raise HTTPException(400, "volume_distribution_price_max < volume_distribution_price_min")
-        if volume_distribution_cutoff_ms is not None and from_date != to_date:
-            raise HTTPException(
-                400,
-                "volume_distribution_cutoff_ms requires a single Stock-Date range",
-            )
+        if volume_distribution_cutoff_ms is not None:
+            if mode != "sidecar":
+                raise HTTPException(
+                    400,
+                    "volume_distribution_cutoff_ms requires mode=sidecar",
+                )
+            if from_date != to_date:
+                raise HTTPException(
+                    400,
+                    "volume_distribution_cutoff_ms requires a single Stock-Date range",
+                )
+            _cursor_to_native(from_date, volume_distribution_cutoff_ms)
         hh = broker_late_entry_start_hhmm // 100
         mm = broker_late_entry_start_hhmm % 100
         if hh < 9 or hh > 15 or mm < 0 or mm > 59 or (hh == 15 and mm > 20):

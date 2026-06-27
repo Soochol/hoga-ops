@@ -8,7 +8,7 @@ from fastapi.testclient import TestClient
 from hoga.api.app import create_app
 from hoga.api.bundle import build_volume_distribution_slice
 from hoga.api.queries import QueryEngine
-from hoga.api.timeenc import hhmmssms_to_unix_ms, ms_from_midnight_to_unix_ms
+from hoga.api.timeenc import hhmmssms_to_unix_ms
 from hoga.tables.trades import query_continuous_trade_volume_distribution
 
 
@@ -187,7 +187,7 @@ def test_volume_distribution_without_cutoff_preserves_final_profile(tmp_path: Pa
 
 def test_volume_distribution_cutoff_requires_single_stock_date(tmp_path: Path) -> None:
     client = _client(tmp_path)
-    cutoff_ms = ms_from_midnight_to_unix_ms("20260625", 90_001_000)
+    cutoff_ms = hhmmssms_to_unix_ms("20260625", 90_001_000)
 
     resp = client.get(
         "/api/range",
@@ -205,3 +205,78 @@ def test_volume_distribution_cutoff_requires_single_stock_date(tmp_path: Path) -
 
     assert resp.status_code == 400
     assert "single Stock-Date" in resp.text
+
+
+def test_volume_distribution_cutoff_requires_sidecar_mode(tmp_path: Path) -> None:
+    client = _client(tmp_path)
+    cutoff_ms = hhmmssms_to_unix_ms("20260625", 90_001_000)
+
+    resp = client.get(
+        "/api/range",
+        params={
+            "code": "005930",
+            "from": "20260625",
+            "to": "20260625",
+            "bucket_ms": 60_000,
+            "mode": "full",
+            "source_pref": "hogaplay",
+            "volume_distribution_bins": 5,
+            "volume_distribution_cutoff_ms": cutoff_ms,
+        },
+    )
+
+    assert resp.status_code == 400
+    assert "mode=sidecar" in resp.text
+
+
+def test_volume_distribution_cutoff_rejects_epoch_outside_stock_date(
+    tmp_path: Path,
+) -> None:
+    client = _client(tmp_path)
+    cutoff_ms = hhmmssms_to_unix_ms("20260624", 90_001_000)
+
+    resp = client.get(
+        "/api/range",
+        params={
+            "code": "005930",
+            "from": "20260625",
+            "to": "20260625",
+            "bucket_ms": 60_000,
+            "mode": "sidecar",
+            "source_pref": "hogaplay",
+            "volume_distribution_bins": 5,
+            "volume_distribution_cutoff_ms": cutoff_ms,
+        },
+    )
+
+    assert resp.status_code == 400
+    assert "not within Stock-Date" in resp.text
+
+
+def test_volume_distribution_cutoff_sidecar_route_returns_cutoff_profile(
+    tmp_path: Path,
+) -> None:
+    client = _client(tmp_path)
+    cutoff_ms = hhmmssms_to_unix_ms("20260625", 90_001_000)
+
+    resp = client.get(
+        "/api/range",
+        params={
+            "code": "005930",
+            "from": "20260625",
+            "to": "20260625",
+            "bucket_ms": 60_000,
+            "mode": "sidecar",
+            "source_pref": "hogaplay",
+            "volume_distribution_bins": 5,
+            "volume_distribution_cutoff_ms": cutoff_ms,
+        },
+    )
+
+    assert resp.status_code == 200
+    body = resp.json()
+    assert body["candles"] == []
+    assert len(body["volume_distributions"]) == 1
+    profile = body["volume_distributions"][0]
+    assert profile["last_trade_ms"] == cutoff_ms
+    assert sum(bin_["qty"] for bin_ in profile["bins"]) == 30
