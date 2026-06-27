@@ -1,5 +1,6 @@
 import type { Candle, DayVolumeDistribution, RangeSegment } from '../api/types';
 import { realMsToYyyymmdd } from './liveDateTime';
+import { isContinuousBook, type ObSnapshot } from './bucketHogaSeries';
 
 type ContinuousTradeLike = {
   t_ms: number;
@@ -20,6 +21,7 @@ export function mergeVolumeDistributionTail(
   profile: DayVolumeDistribution,
   trades: readonly ContinuousTradeLike[],
   cursorMs: number | null,
+  continuousBeforeMs?: number | null,
 ): DayVolumeDistribution {
   if (profile.last_trade_ms == null || profile.bins.length === 0) return profile;
   const rangeCount = profile.bins.length;
@@ -27,11 +29,12 @@ export function mergeVolumeDistributionTail(
   const binWidth = rawBinWidth > 0 ? rawBinWidth : 1;
   const bins = profile.bins.map((bin) => ({ ...bin }));
   let lastTradeMs = profile.last_trade_ms;
+  const upperBoundMs = continuousBeforeMs ?? profile.session_close_ms;
 
   for (const trade of trades) {
     if (trade.t_ms <= profile.last_trade_ms) continue;
     if (cursorMs != null && trade.t_ms > cursorMs) continue;
-    if (trade.t_ms < profile.session_open_ms || trade.t_ms >= profile.session_close_ms) continue;
+    if (trade.t_ms < profile.session_open_ms || trade.t_ms >= upperBoundMs) continue;
     if (trade.side !== 1 && trade.side !== -1) continue;
     if (!Number.isFinite(trade.price) || trade.price <= 0) continue;
     if (!Number.isFinite(trade.qty) || trade.qty <= 0) continue;
@@ -62,6 +65,7 @@ export function selectVolumeDistributionProfile(args: {
   persistedProfiles: readonly DayVolumeDistribution[];
   recomputedToday: DayVolumeDistribution | null;
   liveTrades: readonly ContinuousTradeLike[];
+  continuousBeforeMs?: number | null;
 }): DayVolumeDistribution | null | undefined {
   if (!args.enabled) return undefined;
   const persistedProfile = profileForDate(args.persistedProfiles, args.date);
@@ -74,10 +78,37 @@ export function selectVolumeDistributionProfile(args: {
       return args.recomputedToday;
     }
     return isToday
-      ? mergeVolumeDistributionTail(persistedProfile, args.liveTrades, null)
+      ? mergeVolumeDistributionTail(persistedProfile, args.liveTrades, null, args.continuousBeforeMs)
       : persistedProfile;
   }
   return isToday ? args.recomputedToday : null;
+}
+
+export function firstTrailingSinglePriceBookMs(
+  snapshots: readonly ObSnapshot[],
+  sessionCloseMs: number,
+): number | null {
+  let lastContinuous: number | null = null;
+  for (const snapshot of snapshots) {
+    if (snapshot.t_ms <= sessionCloseMs && isContinuousBook(snapshot)) {
+      lastContinuous =
+        lastContinuous == null ? snapshot.t_ms : Math.max(lastContinuous, snapshot.t_ms);
+    }
+  }
+  if (lastContinuous == null) return null;
+
+  let firstSinglePrice: number | null = null;
+  for (const snapshot of snapshots) {
+    if (
+      snapshot.t_ms > lastContinuous &&
+      snapshot.t_ms <= sessionCloseMs &&
+      !isContinuousBook(snapshot)
+    ) {
+      firstSinglePrice =
+        firstSinglePrice == null ? snapshot.t_ms : Math.min(firstSinglePrice, snapshot.t_ms);
+    }
+  }
+  return firstSinglePrice;
 }
 
 export function volumeDistributionClosePoints(args: {
@@ -98,6 +129,7 @@ export function computeContinuousTradeVolumeDistribution(args: {
   rangeCount: number;
   segment: RangeSegment;
   cutoffMs?: number | null;
+  continuousBeforeMs?: number | null;
 }): DayVolumeDistribution | null {
   const { date, candles, trades, rangeCount, segment, cutoffMs } = args;
   if (!Number.isInteger(rangeCount) || rangeCount <= 0) return null;
@@ -112,13 +144,14 @@ export function computeContinuousTradeVolumeDistribution(args: {
   const binWidth = rawBinWidth > 0 ? rawBinWidth : 1;
   const qtyByBin = Array.from({ length: rangeCount }, () => 0);
   let lastTradeMs: number | null = null;
+  const upperBoundMs = args.continuousBeforeMs ?? segment.session_close_ms;
 
   for (const trade of trades) {
     if (cutoffMs != null && trade.t_ms > cutoffMs) continue;
     if (trade.side !== 1 && trade.side !== -1) continue;
     if (!Number.isFinite(trade.price) || trade.price <= 0) continue;
     if (!Number.isFinite(trade.qty) || trade.qty <= 0) continue;
-    if (trade.t_ms < segment.session_open_ms || trade.t_ms >= segment.session_close_ms) continue;
+    if (trade.t_ms < segment.session_open_ms || trade.t_ms >= upperBoundMs) continue;
     if (trade.price < priceMin || trade.price > priceMax) continue;
 
     const idx = Math.floor((trade.price - priceMin) / binWidth);

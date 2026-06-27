@@ -3,6 +3,11 @@
 All notable changes to this project are documented here.
 The format follows a 4-digit `MAJOR.MINOR.PATCH.MICRO` scheme.
 
+## [0.12.9.1] - 2026-06-27
+
+### Fixed
+- **연속체결 매물대 동시호가 제외 경계 보정**: 고정 `15:20`이나 `session_close - 10min` 대신 호가창 구조에서 마지막 정상 10호가 뒤 첫 trailing 단일가 3호가 시각을 찾아, 그 시각 이후 체결을 매물대 분포와 체결 거래량 POC에서 제외한다. 장중 VI는 제외하지 않고, 오늘 live buffer도 같은 구조 경계를 사용한다.
+
 ## [0.12.9.0] - 2026-06-27
 
 ### Added

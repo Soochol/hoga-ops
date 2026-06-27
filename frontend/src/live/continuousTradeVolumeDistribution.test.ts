@@ -3,10 +3,12 @@ import { describe, expect, it } from 'vitest';
 import {
   computeContinuousTradeVolumeDistribution,
   mergeVolumeDistributionTail,
+  firstTrailingSinglePriceBookMs,
   selectVolumeDistributionProfile,
   volumeDistributionClosePoints,
 } from './continuousTradeVolumeDistribution';
 import type { DayVolumeDistribution } from '../api/types';
+import type { ObSnapshot } from './bucketHogaSeries';
 
 const profile = (overrides: Partial<DayVolumeDistribution> = {}): DayVolumeDistribution => ({
   date: '20260625',
@@ -20,6 +22,22 @@ const profile = (overrides: Partial<DayVolumeDistribution> = {}): DayVolumeDistr
     { price_low: 110, price_high: 120, qty: 20 },
   ],
   ...overrides,
+});
+
+const normalBook = (t_ms: number): ObSnapshot => ({
+  t_ms,
+  total_ask_qty: 100,
+  total_bid_qty: 100,
+  asks: Array.from({ length: 10 }, (_, idx) => ({ price: 101 + idx, qty: 10 })),
+  bids: Array.from({ length: 10 }, (_, idx) => ({ price: 100 - idx, qty: 10 })),
+});
+
+const singlePriceBook = (t_ms: number): ObSnapshot => ({
+  t_ms,
+  total_ask_qty: 30,
+  total_bid_qty: 30,
+  asks: Array.from({ length: 10 }, (_, idx) => ({ price: 101 + idx, qty: idx < 3 ? 10 : 0 })),
+  bids: Array.from({ length: 10 }, (_, idx) => ({ price: 100 - idx, qty: idx < 3 ? 10 : 0 })),
 });
 
 describe('computeContinuousTradeVolumeDistribution', () => {
@@ -98,6 +116,33 @@ describe('computeContinuousTradeVolumeDistribution', () => {
     expect(profile?.last_trade_ms).toBe(152_999_999);
   });
 
+  it('excludes live trades at and after the first trailing single-price orderbook snapshot', () => {
+    const profile = computeContinuousTradeVolumeDistribution({
+      date: '20260625',
+      candles: [{ ts_ms: 1, open: 100, high: 120, low: 100, close: 110, vol_a: 0, vol_b: 0 }],
+      trades: [
+        { t_ms: 90_000_000, price: 100, qty: 10, side: 1 },
+        { t_ms: 152_001_000, price: 110, qty: 999, side: 1 },
+      ],
+      rangeCount: 2,
+      segment: { date: '20260625', session_open_ms: 90_000_000, session_close_ms: 153_000_000 },
+      continuousBeforeMs: 152_001_000,
+    });
+
+    expect(profile?.bins.map((bin) => bin.qty)).toEqual([10, 0]);
+  });
+
+  it('finds the first single-price book after the final normal book before close', () => {
+    expect(firstTrailingSinglePriceBookMs([
+      normalBook(90_000_000),
+      singlePriceBook(110_000_000),
+      normalBook(111_000_000),
+      normalBook(151_959_000),
+      singlePriceBook(152_001_000),
+      singlePriceBook(152_002_000),
+    ], 153_000_000)).toBe(152_001_000);
+  });
+
   it('selects a saved profile for study-style readouts by date only', () => {
     const selected = selectVolumeDistributionProfile({
       enabled: true,
@@ -130,6 +175,24 @@ describe('computeContinuousTradeVolumeDistribution', () => {
 
     expect(selected?.bins.map((bin) => bin.qty)).toEqual([17, 31]);
     expect(selected?.last_trade_ms).toBe(90_003_000);
+  });
+
+  it('merges only newer live trades before the continuous cutoff', () => {
+    const selected = selectVolumeDistributionProfile({
+      enabled: true,
+      date: '20260625',
+      todayKst: '20260625',
+      rangeCount: 2,
+      persistedProfiles: [profile({ last_trade_ms: 90_001_000 })],
+      recomputedToday: null,
+      liveTrades: [
+        { t_ms: 90_002_000, price: 105, qty: 7, side: 1 },
+        { t_ms: 152_001_000, price: 115, qty: 999, side: 1 },
+      ],
+      continuousBeforeMs: 152_001_000,
+    });
+
+    expect(selected?.bins.map((bin) => bin.qty)).toEqual([17, 20]);
   });
 
   it('uses recomputed today profile when persisted bins are empty or range count changed', () => {

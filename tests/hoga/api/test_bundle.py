@@ -883,6 +883,7 @@ def test_build_volume_distribution_slice_returns_unix_session_bounds(tmp_path):
         bins=10,
         session_open_ms=90_000_000,
         session_close_ms=153_000_000,
+        continuous_before_ms=None,
     )
     assert profile is not None
     assert profile.session_open_ms == hhmmssms_to_unix_ms("20260512", 90_000_000)
@@ -935,6 +936,7 @@ def test_build_volume_distribution_slice_uses_supplied_price_range_without_candl
         bins=10,
         session_open_ms=90_000_000,
         session_close_ms=153_000_000,
+        continuous_before_ms=None,
     )
     assert profile is not None
     assert [bin.qty for bin in profile.bins][1] == 456
@@ -1012,6 +1014,89 @@ def test_build_range_bundle_falls_back_to_trade_source_with_supplied_distributio
     assert dist_builder.call_args.kwargs["price_min"] == 69_900
     assert dist_builder.call_args.kwargs["price_max"] == 70_100
     assert poc_builder.call_args.kwargs["source"] == "kis_api"
+
+
+def test_range_volume_distribution_uses_first_single_price_book_cutoff(tmp_path):
+    import json
+
+    from hoga.api.queries import QueryEngine
+    from hoga.api.bundle import build_range_bundle
+    from hoga.tables.candles import Candle, write_parquet as candles_write_parquet
+    from hoga.tables.snapshots import Orderbook, write_parquet as snapshots_write_parquet
+    from hoga.tables.trades import Trade, write_parquet as trades_write_parquet
+
+    date = "20260625"
+    code = "005930"
+    source_dir = tmp_path / "parquet" / date / code / "hogaplay"
+    source_dir.mkdir(parents=True)
+    (source_dir / "meta.json").write_text(json.dumps(_meta()), encoding="utf-8")
+
+    z = tuple([0] * 10)
+    ask_p = tuple(101 + i for i in range(10))
+    bid_p = tuple(100 - i for i in range(10))
+    normal_q = tuple([10] * 10)
+    shallow_q = (10, 10, 10, 0, 0, 0, 0, 0, 0, 0)
+    snapshots_write_parquet([
+        Orderbook(
+            ts_ms=151_959_000,
+            seq=1,
+            ask_p=ask_p,
+            ask_q=normal_q,
+            ask_d=z,
+            bid_p=bid_p,
+            bid_q=normal_q,
+            bid_d=z,
+            tot_ask=sum(normal_q),
+            tot_ask_d=0,
+            tot_bid=sum(normal_q),
+            tot_bid_d=0,
+        ),
+        Orderbook(
+            ts_ms=152_001_000,
+            seq=2,
+            ask_p=ask_p,
+            ask_q=shallow_q,
+            ask_d=z,
+            bid_p=bid_p,
+            bid_q=shallow_q,
+            bid_d=z,
+            tot_ask=sum(shallow_q),
+            tot_ask_d=0,
+            tot_bid=sum(shallow_q),
+            tot_bid_d=0,
+        ),
+    ], source_dir / "snapshots.parquet")
+    candles_write_parquet([
+        Candle(ts_ms=90_000_000, open_=110, close_=110, high=120, low=100, vol_a=1, vol_b=1),
+    ], source_dir / "candles.parquet")
+    trades_write_parquet([
+        Trade(ts_ms=151_959_000, seq=1, price=110, change_pct=0, qty=20, side=1,
+              cum_vol=20, cum_trades=1, low_so_far=110, high_so_far=110,
+              net_pressure=20, unknown_14=0, unknown_16=0, unknown_17=0, unknown_18=0),
+        Trade(ts_ms=152_001_000, seq=2, price=100, change_pct=0, qty=999, side=1,
+              cum_vol=1019, cum_trades=2, low_so_far=100, high_so_far=110,
+              net_pressure=1019, unknown_14=0, unknown_16=0, unknown_17=0, unknown_18=0),
+    ], source_dir / "trades.parquet")
+
+    engine = QueryEngine(tmp_path)
+    try:
+        bundle = build_range_bundle(
+            engine,
+            code=code,
+            from_date=date,
+            to_date=date,
+            bucket_ms=60_000,
+            volume_distribution_bins=5,
+            trade_volume_poc_bins=5,
+        )
+    finally:
+        engine.close()
+
+    assert len(bundle.volume_distributions) == 1
+    assert [bin.qty for bin in bundle.volume_distributions[0].bins] == [0, 0, 20, 0, 0]
+    assert len(bundle.trade_volume_pocs) == 1
+    assert bundle.trade_volume_pocs[0].qty == 20
+    assert bundle.trade_volume_pocs[0].low_price == 108
 
 
 def test_expand_distribution_bins_single_price_day_stays_on_candle_range():
