@@ -297,6 +297,7 @@ def build_router(engine: QueryEngine) -> APIRouter:
         volume_distribution_bins: int | None = Query(None, ge=5, le=30),
         volume_distribution_price_min: int | None = Query(None, ge=0),
         volume_distribution_price_max: int | None = Query(None, ge=0),
+        volume_distribution_cutoff_ms: int | None = Query(None, ge=0),
         trade_volume_poc_bins: int | None = Query(None, ge=5, le=30),
         mode: str = Query(..., pattern="^(full|hoga|sidecar)$"),
     ) -> RangeBundle:
@@ -312,6 +313,11 @@ def build_router(engine: QueryEngine) -> APIRouter:
             and volume_distribution_price_max < volume_distribution_price_min
         ):
             raise HTTPException(400, "volume_distribution_price_max < volume_distribution_price_min")
+        if volume_distribution_cutoff_ms is not None and from_date != to_date:
+            raise HTTPException(
+                400,
+                "volume_distribution_cutoff_ms requires a single Stock-Date range",
+            )
         hh = broker_late_entry_start_hhmm // 100
         mm = broker_late_entry_start_hhmm % 100
         if hh < 9 or hh > 15 or mm < 0 or mm > 59 or (hh == 15 and mm > 20):
@@ -332,6 +338,7 @@ def build_router(engine: QueryEngine) -> APIRouter:
             volume_distribution_bins=volume_distribution_bins,
             volume_distribution_price_min=volume_distribution_price_min,
             volume_distribution_price_max=volume_distribution_price_max,
+            volume_distribution_cutoff_ms=volume_distribution_cutoff_ms,
             trade_volume_poc_bins=trade_volume_poc_bins,
             mode=mode,
         )

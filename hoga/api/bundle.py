@@ -1154,6 +1154,7 @@ def build_range_bundle(
     trade_volume_poc_bins: int | None = None,
     volume_distribution_price_min: int | None = None,
     volume_distribution_price_max: int | None = None,
+    volume_distribution_cutoff_ms: int | None = None,
     mode: str = "full",
 ) -> RangeBundle:
     """Build the Wire Model for a Stock-Date Range (ADR-0013, ADR-0014).
@@ -1356,6 +1357,7 @@ def build_range_bundle(
                 range_count=volume_distribution_bins,
                 price_min=price_range[0] if price_range is not None else None,
                 price_max=price_range[1] if price_range is not None else None,
+                cutoff_ms=volume_distribution_cutoff_ms,
             )
             if profile is not None:
                 volume_distributions.append(profile)
