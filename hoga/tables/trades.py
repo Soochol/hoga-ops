@@ -364,6 +364,7 @@ def query_trade_volume_poc(
     bins: int,
     session_open_ms: int,
     session_close_ms: int,
+    continuous_before_ms: int | None = None,
 ) -> TradeVolumePocRow | None:
     """Return the strongest regular-session distribution bin for a day.
 
@@ -378,6 +379,11 @@ def query_trade_volume_poc(
     intra_ms_expr = hhmmssms_to_intra_ms_sql("ts_ms")
     session_open_intra_ms = _session_bound_to_intra_ms(session_open_ms)
     session_close_intra_ms = _session_bound_to_intra_ms(session_close_ms)
+    upper_bound_intra_ms = (
+        _session_bound_to_intra_ms(continuous_before_ms)
+        if continuous_before_ms is not None
+        else session_close_intra_ms
+    )
     rows = con.execute(
         f"""
         WITH regular AS (
@@ -404,7 +410,7 @@ def query_trade_volume_poc(
             price_lo,
             bin_width,
             session_open_intra_ms,
-            session_close_intra_ms,
+            upper_bound_intra_ms,
             price_lo,
             price_hi,
         ],
@@ -566,6 +572,7 @@ def query_continuous_trade_volume_distribution(
     session_open_ms: int,
     session_close_ms: int,
     upper_bound_ms: int | None = None,
+    continuous_before_ms: int | None = None,
 ) -> VolumeProfileBinning:
     """Bin continuous-trading qty into a caller-supplied candle price range.
 
@@ -579,10 +586,15 @@ def query_continuous_trade_volume_distribution(
     intra_ms_expr = hhmmssms_to_intra_ms_sql("ts_ms")
     session_open_intra_ms = _session_bound_to_intra_ms(session_open_ms)
     session_close_intra_ms = _session_bound_to_intra_ms(session_close_ms)
-    effective_upper_intra_ms = (
-        min(session_close_intra_ms, upper_bound_ms)
-        if upper_bound_ms is not None
-        else session_close_intra_ms
+    structural_upper_intra_ms = (
+        _session_bound_to_intra_ms(continuous_before_ms)
+        if continuous_before_ms is not None
+        else None
+    )
+    effective_upper_intra_ms = min(
+        bound
+        for bound in (session_close_intra_ms, upper_bound_ms, structural_upper_intra_ms)
+        if bound is not None
     )
     rows = con.execute(
         f"""

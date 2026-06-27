@@ -360,6 +360,34 @@ def test_query_trade_volume_poc_excludes_auction_side_and_outside_session(tmp_pa
     assert row.qty == 30
 
 
+def test_query_trade_volume_poc_uses_continuous_before_cutoff(tmp_path: Path) -> None:
+    import duckdb
+
+    from hoga.tables.trades import query_trade_volume_poc
+
+    p = tmp_path / "trades.parquet"
+    write_parquet([
+        _price_trade(ts_ms=151_900_000, seq=1, price=72_100, qty=20, side=1),
+        _price_trade(ts_ms=152_001_000, seq=2, price=70_000, qty=1_000, side=1),
+    ], p)
+
+    row = query_trade_volume_poc(
+        duckdb.connect(),
+        path=p,
+        price_lo=70_000,
+        price_hi=72_100,
+        bins=2,
+        session_open_ms=90_000_000,
+        session_close_ms=153_000_000,
+        continuous_before_ms=152_001_000,
+    )
+
+    assert row is not None
+    assert row.low_price == 71_050
+    assert row.high_price == 72_100
+    assert row.qty == 20
+
+
 def test_query_trade_volume_poc_clamps_high_price_trade_to_last_bin(tmp_path: Path) -> None:
     import duckdb
 
@@ -684,6 +712,36 @@ def test_continuous_trade_volume_distribution_filters_side_and_session(tmp_path:
     assert got.price_max == 120
     assert got.bins == [(0, 10), (1, 20)]
     assert got.max_intra_ms == 32_460_000
+
+
+def test_continuous_trade_volume_distribution_uses_continuous_before_cutoff(tmp_path: Path) -> None:
+    import duckdb
+
+    from hoga.tables.trades import query_continuous_trade_volume_distribution
+
+    path = tmp_path / "trades.parquet"
+    write_parquet([
+        Trade(ts_ms=151_959_000, seq=1, price=110, change_pct=0, qty=20, side=1,
+              cum_vol=20, cum_trades=1, low_so_far=110, high_so_far=110,
+              net_pressure=20, unknown_14=0, unknown_16=0, unknown_17=0, unknown_18=0),
+        Trade(ts_ms=152_001_000, seq=2, price=100, change_pct=0, qty=999, side=1,
+              cum_vol=1019, cum_trades=2, low_so_far=100, high_so_far=110,
+              net_pressure=1019, unknown_14=0, unknown_16=0, unknown_17=0, unknown_18=0),
+    ], path)
+
+    got = query_continuous_trade_volume_distribution(
+        duckdb.connect(),
+        path=path,
+        price_lo=100,
+        price_hi=120,
+        bins=2,
+        session_open_ms=90_000_000,
+        session_close_ms=153_000_000,
+        continuous_before_ms=152_001_000,
+    )
+
+    assert got.bins == [(1, 20)]
+    assert got.max_intra_ms == 55_199_000
 
 
 def test_continuous_trade_volume_distribution_folds_high_price_into_last_bin(tmp_path: Path) -> None:

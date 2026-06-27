@@ -311,6 +311,36 @@ def _last_continuous_intra_ms(
     return int(row[0])
 
 
+def query_first_trailing_single_price_book_intra_ms(
+    con: duckdb.DuckDBPyConnection,
+    *,
+    path: Path,
+    session_close_ms: int | None,
+) -> int | None:
+    """Return the first shallow book after the final deep book before close."""
+    if session_close_ms is None:
+        return None
+    last_continuous = _last_continuous_intra_ms(
+        con,
+        path=path,
+        session_close_ms=session_close_ms,
+    )
+    if last_continuous is None:
+        return None
+    intra_ms_expr = hhmmssms_to_intra_ms_sql("ts_ms")
+    close_intra_sql = hhmmssms_to_intra_ms_sql(str(int(session_close_ms)))
+    row = con.execute(
+        f"SELECT min({intra_ms_expr}) FROM read_parquet(?) "
+        f"WHERE NOT ({_DEEP_BOOK_SQL}) "
+        f"AND {intra_ms_expr} > ? "
+        f"AND {intra_ms_expr} <= {close_intra_sql}",
+        [str(path), last_continuous],
+    ).fetchone()
+    if row is None or row[0] is None:
+        return None
+    return int(row[0])
+
+
 def query_first_ts(con: duckdb.DuckDBPyConnection, *, path: Path) -> int | None:
     """Return min ts_ms or None."""
     bounds = query_time_bounds(con, path=path)
