@@ -33,7 +33,7 @@ describe('krxStockTickSize', () => {
 });
 
 describe('computeTradeVolumePoc', () => {
-  it('excludes live trades at and after a structural continuous-before cutoff', () => {
+  it('includes live trades between the fixed auction time and a later structural cutoff in distribution bins', () => {
     const segment = {
       date: '20260624',
       session_open_ms: atKst(9, 0),
@@ -42,23 +42,39 @@ describe('computeTradeVolumePoc', () => {
     };
 
     const poc = computeTradeVolumePoc([
-      trade(atKst(14, 59), 110, 20),
-      trade(atKst(15, 5), 100, 1_000),
-      trade(atKst(15, 6), 100, 1_000),
+      trade(atKst(9, 1), 100, 10),
+      trade(atKst(15, 25), 120, 50),
+      trade(atKst(15, 30), 120, 500),
+      trade(atKst(15, 31), 110, 500),
     ], {
       date: '20260624',
       candles: [{ ts_ms: atKst(9, 1), open: 100, high: 120, low: 100, close: 110, vol_a: 0, vol_b: 0 }],
       rangeCount: 2,
       segment,
-      continuousBeforeMs: atKst(15, 5),
+      continuousBeforeMs: atKst(15, 30),
     });
 
     expectPoc(poc, {
       centerPrice: 115,
       lowPrice: 110,
       highPrice: 120,
-      qty: 20,
-      t_ms: atKst(14, 59),
+      qty: 50,
+      t_ms: atKst(15, 25),
+    });
+  });
+
+  it('keeps the fixed 15:20 gate when no structural cutoff is provided', () => {
+    const poc = computeTradeVolumePoc([
+      trade(atKst(9, 1), 100, 10),
+      trade(atKst(15, 25), 120, 500),
+    ]);
+
+    expectPoc(poc, {
+      centerPrice: 100,
+      lowPrice: 99,
+      highPrice: 101,
+      qty: 10,
+      t_ms: atKst(9, 1),
     });
   });
 

@@ -102,6 +102,16 @@ function isEligibleSide(side: number): boolean {
   return side === -1 || side === 1;
 }
 
+function isTradeTimeEligible(
+  tMs: number,
+  options: { openMinute: number; continuousBeforeMs?: number | null },
+): boolean {
+  if (options.continuousBeforeMs != null) {
+    return kstMinuteOfDay(tMs) >= options.openMinute && tMs < options.continuousBeforeMs;
+  }
+  return isRegularContinuousTrade(tMs);
+}
+
 function priceRangeFromCandles(candles: readonly Candle[]): { min: number; max: number } | null {
   const lows = candles.map((candle) => candle.low).filter(Number.isFinite);
   const highs = candles.map((candle) => candle.high).filter(Number.isFinite);
@@ -171,12 +181,12 @@ export function computeTradeVolumePoc(
     const range = priceRangeFromCandles(options.candles);
     if (range === null) return null;
     const buckets = emptyDistributionBuckets(range.min, range.max, rangeCount);
+    const openMinute = kstMinuteOfDay(options.segment.session_open_ms);
     for (const snapshot of trades) {
       for (const event of snapshot.trades) {
         const tMs = event.t_ms ?? snapshot.t_ms;
         if (tMs < options.segment.session_open_ms || tMs >= options.segment.session_close_ms) continue;
-        if (options.continuousBeforeMs != null && tMs >= options.continuousBeforeMs) continue;
-        if (!isRegularContinuousTrade(tMs)) continue;
+        if (!isTradeTimeEligible(tMs, { openMinute, continuousBeforeMs: options.continuousBeforeMs })) continue;
         if (!isEligibleSide(event.side)) continue;
         const rawPrice = event.price;
         const qty = event.qty;
@@ -200,8 +210,7 @@ export function computeTradeVolumePoc(
   for (const snapshot of trades) {
     for (const event of snapshot.trades) {
       const tMs = event.t_ms ?? snapshot.t_ms;
-      if (!isRegularContinuousTrade(tMs)) continue;
-      if (options.continuousBeforeMs != null && tMs >= options.continuousBeforeMs) continue;
+      if (!isTradeTimeEligible(tMs, { openMinute: REGULAR_OPEN_MIN, continuousBeforeMs: options.continuousBeforeMs })) continue;
       if (!isEligibleSide(event.side)) continue;
       const rawPrice = event.price;
       const qty = event.qty;
