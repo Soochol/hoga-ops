@@ -166,7 +166,6 @@ export type LiveRangeRequestPlan = {
   options: {
     brokerLateEntriesEnabled: boolean;
     brokerLateEntryStartHHMM: number | null;
-    brokerLateEntryWindowMinutes: number | null;
     volumeDistributionBins: number | null;
     tradeVolumePocBins: number | null;
     volumeDistributionPriceRange: { min: number; max: number } | null;
@@ -181,7 +180,6 @@ export function planLiveRangeRequest(args: {
   tradeVolumePocEnabled: boolean;
   brokerLateEntryEnabled: boolean;
   brokerLateEntryStartHHMM: number;
-  brokerLateEntryWindowMinutes: number;
   volumeDistributionEnabled: boolean;
   volumeDistributionRangeCount: number;
   volumeDistributionPriceRange: { min: number; max: number } | null;
@@ -200,7 +198,6 @@ export function planLiveRangeRequest(args: {
     options: {
       brokerLateEntriesEnabled: args.brokerLateEntryEnabled,
       brokerLateEntryStartHHMM: args.brokerLateEntryEnabled ? args.brokerLateEntryStartHHMM : null,
-      brokerLateEntryWindowMinutes: args.brokerLateEntryEnabled ? args.brokerLateEntryWindowMinutes : null,
       volumeDistributionBins: args.volumeDistributionEnabled ? args.volumeDistributionRangeCount : null,
       tradeVolumePocBins: args.tradeVolumePocEnabled ? args.volumeDistributionRangeCount : null,
       volumeDistributionPriceRange: args.volumeDistributionEnabled ? args.volumeDistributionPriceRange : null,
@@ -227,7 +224,6 @@ export function useLiveBundle(
   const tradeVolumePocEnabled = useLivePageStore((s) => s.tradeVolumePocEnabled);
   const brokerLateEntryEnabled = useLivePageStore((s) => s.brokerLateEntryEnabled);
   const brokerLateEntryStartHHMM = useLivePageStore((s) => s.brokerLateEntryStartHHMM);
-  const brokerLateEntryWindowMinutes = useLivePageStore((s) => s.brokerLateEntryWindowMinutes);
   const volumeDistributionEnabled = useLivePageStore((s) => s.volumeDistributionEnabled);
   const volumeDistributionRangeCount = useLivePageStore((s) => s.volumeDistributionRangeCount);
   const venue = options.venue ?? 'KRX';
@@ -322,7 +318,6 @@ export function useLiveBundle(
     tradeVolumePocEnabled,
     brokerLateEntryEnabled,
     brokerLateEntryStartHHMM,
-    brokerLateEntryWindowMinutes,
     volumeDistributionEnabled,
     volumeDistributionRangeCount,
     volumeDistributionPriceRange,

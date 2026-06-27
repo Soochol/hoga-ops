@@ -72,7 +72,6 @@ export const VOLUME_DISTRIBUTION_DEFAULT_MAX_COLOR = '#EAB308';
 export const VOLUME_DISTRIBUTION_DEFAULT_RANGE_COUNT = 10;
 export type BrokerLateEntrySideMode = 'both' | 'buy' | 'sell';
 export const BROKER_LATE_ENTRY_DEFAULT_START_HHMM = 930;
-export const BROKER_LATE_ENTRY_DEFAULT_WINDOW_MINUTES = 30;
 export const BROKER_LATE_ENTRY_BUY_DEFAULT_COLOR = '#ef4444';
 export const BROKER_LATE_ENTRY_SELL_DEFAULT_COLOR = '#3b82f6';
 
@@ -143,8 +142,6 @@ export type PersistedIndicators = {
   brokerLateEntryEnabled: boolean;
   /** 신규 거래원 등장 기준 시각(HHMM). 기본 930. */
   brokerLateEntryStartHHMM: number;
-  /** 신규 거래원 등장 부재 시간(분). 기본 30. */
-  brokerLateEntryWindowMinutes: number;
   /** 신규 거래원 등장 표시 방향. 기본 both. */
   brokerLateEntrySideMode: BrokerLateEntrySideMode;
   /** 신규 거래원 등장 매수 마커 색상(hex). 기본 #ef4444. */
@@ -194,13 +191,6 @@ function normalizeHHMM(value: unknown): number {
   if (hh < 9 || hh > 15 || mm < 0 || mm > 59 || (hh === 15 && mm > 20)) {
     return BROKER_LATE_ENTRY_DEFAULT_START_HHMM;
   }
-  return n;
-}
-
-function normalizeBrokerLateEntryWindowMinutes(value: unknown): number {
-  const n = typeof value === 'number' ? Math.trunc(value) : Number.NaN;
-  if (!Number.isFinite(n)) return BROKER_LATE_ENTRY_DEFAULT_WINDOW_MINUTES;
-  if (n < 1 || n > 240) return BROKER_LATE_ENTRY_DEFAULT_WINDOW_MINUTES;
   return n;
 }
 
@@ -277,7 +267,6 @@ export function mergeLiveIndicatorPrefs(
   );
   const brokerLateEntryEnabled = obj?.brokerLateEntryEnabled === true;
   const brokerLateEntryStartHHMM = normalizeHHMM(obj?.brokerLateEntryStartHHMM);
-  const brokerLateEntryWindowMinutes = normalizeBrokerLateEntryWindowMinutes(obj?.brokerLateEntryWindowMinutes);
   const brokerLateEntrySideMode = normalizeBrokerLateEntrySideMode(obj?.brokerLateEntrySideMode);
   const brokerLateEntryBuyColor = normalizeHexColor(
     obj?.brokerLateEntryBuyColor,
@@ -334,7 +323,6 @@ export function mergeLiveIndicatorPrefs(
     programTradeEnabled: programTrade,
     brokerLateEntryEnabled,
     brokerLateEntryStartHHMM,
-    brokerLateEntryWindowMinutes,
     brokerLateEntrySideMode,
     brokerLateEntryBuyColor,
     brokerLateEntrySellColor,
