@@ -3,6 +3,13 @@
 All notable changes to this project are documented here.
 The format follows a 4-digit `MAJOR.MINOR.PATCH.MICRO` scheme.
 
+## [0.12.9.3] - 2026-06-27
+
+### Fixed
+- **연속체결 매물대 호버 깜빡임 완화**: 캔들 hover cutoff 매물대 요청이 갱신되는 짧은 순간 마지막 캔들 기준 분포로 되돌아가던 문제를 막고, 새 cutoff 데이터가 도착할 때까지 직전 hover 분포를 유지하도록 했다.
+- **보조지표 위 crosshair 기준 보정**: 이동평균선 같은 indicator series 위에 마우스가 있을 때도 `seriesData.time`을 사용해 현재 x축 캔들 기준을 유지하도록 했다.
+- **동시호가 구조 컷오프 오탐 방지**: 장중 얇은 호가창 구조가 마지막 동시호가로 잘못 잡히지 않도록, 후보 cutoff 이후 정상 체결이 있으면 구조 컷오프를 거부한다.
+
 ## [0.12.9.2] - 2026-06-27
 
 ### Fixed
