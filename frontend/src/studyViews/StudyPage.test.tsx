@@ -3,11 +3,12 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { MemoryRouter } from 'react-router';
 import type { ComponentProps } from 'react';
 import type { StudyViewReference } from '../api/studyViews';
-import type { RangeBundle } from '../api/types';
+import type { DayVolumeDistribution, RangeBundle } from '../api/types';
 import type { LiveChartRoot } from '../live/LiveChartRoot';
 import { useLiveCursorStore } from '../live/useLiveCursorStore';
 import { useStudyTabsStore } from '../state/studyTabs';
 import { useEntryDragStore } from '../state/entryDrag';
+import { useLivePageStore } from '../state/livePage';
 
 const {
   useStudyViewsMock,
@@ -16,6 +17,7 @@ const {
   useWarmStudyReferenceTabQueriesMock,
   useLiveOrderbookAtCursorMock,
   useLiveBrokersAtCursorMock,
+  useVolumeDistributionCutoffProfileMock,
   liveChartRootMock,
 } = vi.hoisted(() => ({
   useStudyViewsMock: vi.fn(),
@@ -24,6 +26,7 @@ const {
   useWarmStudyReferenceTabQueriesMock: vi.fn(),
   useLiveOrderbookAtCursorMock: vi.fn(),
   useLiveBrokersAtCursorMock: vi.fn(),
+  useVolumeDistributionCutoffProfileMock: vi.fn((args: { finalProfile: DayVolumeDistribution | null | undefined }) => args.finalProfile),
   liveChartRootMock: vi.fn(),
 }));
 
@@ -43,6 +46,10 @@ vi.mock('./useWarmStudyReferenceTabQueries', () => ({
 vi.mock('../api/useLiveCursor', () => ({
   useLiveOrderbookAtCursor: useLiveOrderbookAtCursorMock,
   useLiveBrokersAtCursor: useLiveBrokersAtCursorMock,
+}));
+
+vi.mock('../live/useVolumeDistributionCutoffProfile', () => ({
+  useVolumeDistributionCutoffProfile: useVolumeDistributionCutoffProfileMock,
 }));
 
 vi.mock('../live/LiveChartRoot', () => ({
@@ -71,6 +78,21 @@ vi.mock('../live/LiveSettingsModal', () => ({
 import { StudyPage } from './StudyPage';
 
 const HOVER_MS = Date.UTC(2026, 5, 16, 1, 0, 0);
+
+const cutoffDistribution: DayVolumeDistribution = {
+  date: '20260616',
+  range_count: 2,
+  price_min: 1,
+  price_max: 4,
+  session_open_ms: 1_000,
+  session_close_ms: 2_000,
+  last_trade_ms: HOVER_MS,
+  bins: [
+    { price_low: 1, price_high: 2, qty: 30 },
+    { price_low: 2, price_high: 3, qty: 20 },
+    { price_low: 3, price_high: 4, qty: 10 },
+  ],
+};
 
 const referenceSave: StudyViewReference = {
   schema_version: 2,
@@ -176,7 +198,16 @@ beforeEach(() => {
   useWarmStudyReferenceTabQueriesMock.mockReturnValue({});
   useLiveOrderbookAtCursorMock.mockReturnValue(undefined);
   useLiveBrokersAtCursorMock.mockReturnValue(undefined);
+  useVolumeDistributionCutoffProfileMock.mockClear();
+  useVolumeDistributionCutoffProfileMock.mockImplementation(
+    (args: { finalProfile: DayVolumeDistribution | null | undefined }) => args.finalProfile,
+  );
   useLiveCursorStore.getState().resetCursor();
+  useLivePageStore.setState({
+    volumeDistributionEnabled: true,
+    volumeDistributionHoverCutoffEnabled: false,
+    volumeDistributionRangeCount: 2,
+  });
   useStudyTabsStore.setState({ tabs: [], activeTabId: null });
   useEntryDragStore.setState({ draggingCode: null, overStudy: false });
 });
@@ -333,6 +364,33 @@ describe('StudyPage', () => {
     expect(screen.getByText('+1,200')).toBeTruthy();
     expect(screen.getByTestId('volume-distribution-card')).toBeTruthy();
     expect(screen.getByText('+1억')).toBeTruthy();
+  });
+
+  it('uses hover-cutoff volume distribution for reference study views when enabled', () => {
+    useLivePageStore.setState({
+      volumeDistributionEnabled: true,
+      volumeDistributionHoverCutoffEnabled: true,
+      volumeDistributionRangeCount: 2,
+    });
+    useVolumeDistributionCutoffProfileMock.mockReturnValue(cutoffDistribution);
+    useLiveCursorStore.getState().setCursor(HOVER_MS);
+
+    renderPage('/study?view=view-ref');
+
+    act(() => {
+      liveChartRootMock.mock.calls[0][0].onCursorActiveChange?.(true);
+    });
+
+    expect(useVolumeDistributionCutoffProfileMock).toHaveBeenLastCalledWith(expect.objectContaining({
+      enabled: true,
+      code: '005930',
+      timeframe: '5m',
+      date: '20260616',
+      cursorMs: HOVER_MS,
+      rangeCount: 2,
+    }));
+    expect(screen.getByTestId('volume-distribution-card')).toBeTruthy();
+    expect(screen.getAllByTestId('volume-distribution-row')).toHaveLength(3);
   });
 
   it('lets long reference detail indicators grow downward while the whole detail panel scrolls', () => {

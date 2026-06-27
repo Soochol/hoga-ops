@@ -146,6 +146,7 @@ type Store = Persisted & PersistedIndicators & {
   setTradeVolumePocBandPct: (bandPct: number) => void;
   setTradeVolumePocStyle: (patch: { color?: string; opacity?: number }) => void;
   setVolumeDistributionEnabled: (enabled: boolean) => void;
+  setVolumeDistributionHoverCutoffEnabled: (enabled: boolean) => void;
   setVolumeDistributionRangeCount: (count: number) => void;
   setVolumeDistributionStyle: (patch: { color?: string; maxColor?: string }) => void;
   setQuoteTotalsEnabled: (enabled: boolean) => void;
@@ -266,6 +267,7 @@ function snapshotIndicators(get: () => Store): PersistedIndicators {
     tradeVolumePocColor: s.tradeVolumePocColor,
     tradeVolumePocOpacity: s.tradeVolumePocOpacity,
     volumeDistributionEnabled: s.volumeDistributionEnabled,
+    volumeDistributionHoverCutoffEnabled: s.volumeDistributionHoverCutoffEnabled,
     volumeDistributionRangeCount: s.volumeDistributionRangeCount,
     volumeDistributionColor: s.volumeDistributionColor,
     volumeDistributionMaxColor: s.volumeDistributionMaxColor,
@@ -487,6 +489,11 @@ export const useLivePageStore = create<Store>((set, get) => ({
 
   setVolumeDistributionEnabled: (enabled) => {
     set({ volumeDistributionEnabled: enabled });
+    persistIndicators(snapshotIndicators(get));
+  },
+
+  setVolumeDistributionHoverCutoffEnabled: (enabled) => {
+    set({ volumeDistributionHoverCutoffEnabled: enabled });
     persistIndicators(snapshotIndicators(get));
   },
 

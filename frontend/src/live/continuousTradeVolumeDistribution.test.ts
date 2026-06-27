@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 
 import {
   computeContinuousTradeVolumeDistribution,
+  mergeVolumeDistributionTail,
   selectVolumeDistributionProfile,
   volumeDistributionClosePoints,
 } from './continuousTradeVolumeDistribution';
@@ -22,6 +23,36 @@ const profile = (overrides: Partial<DayVolumeDistribution> = {}): DayVolumeDistr
 });
 
 describe('computeContinuousTradeVolumeDistribution', () => {
+  it('merges only continuous live tail trades after last_trade_ms and at or before cursor', () => {
+    const selected = mergeVolumeDistributionTail(profile({ last_trade_ms: 90_001_000 }), [
+      { t_ms: 90_000_000, price: 105, qty: 999, side: 1 },
+      { t_ms: 90_002_000, price: 105, qty: 7, side: 1 },
+      { t_ms: 90_003_000, price: 115, qty: 11, side: -1 },
+      { t_ms: 90_004_000, price: 115, qty: 999, side: 1 },
+      { t_ms: 90_002_000, price: 115, qty: 999, side: 0 },
+    ], 90_003_000);
+
+    expect(selected.bins.map((bin) => bin.qty)).toEqual([17, 31]);
+    expect(selected.last_trade_ms).toBe(90_003_000);
+  });
+
+  it('computes a live fallback distribution only up to cutoffMs', () => {
+    const selected = computeContinuousTradeVolumeDistribution({
+      date: '20260625',
+      candles: [{ ts_ms: 1, open: 100, high: 120, low: 100, close: 110, vol_a: 0, vol_b: 0 }],
+      trades: [
+        { t_ms: 90_000_000, price: 100, qty: 10, side: 1 },
+        { t_ms: 90_001_000, price: 110, qty: 20, side: -1 },
+        { t_ms: 90_002_000, price: 120, qty: 30, side: 1 },
+      ],
+      rangeCount: 2,
+      segment: { date: '20260625', session_open_ms: 90_000_000, session_close_ms: 153_000_000 },
+      cutoffMs: 90_001_000,
+    });
+
+    expect(selected?.bins.map((bin) => bin.qty)).toEqual([10, 20]);
+  });
+
   it('bins side +/-1 trades and excludes side 0', () => {
     const profile = computeContinuousTradeVolumeDistribution({
       date: '20260625',

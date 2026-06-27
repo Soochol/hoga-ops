@@ -10,6 +10,7 @@ export type RangeRequestOptions = {
   volumeDistributionBins?: number | null;
   tradeVolumePocBins?: number | null;
   volumeDistributionPriceRange?: { min: number; max: number } | null;
+  volumeDistributionCutoffMs?: number | null;
   mode?: RangeMode;
 };
 
@@ -40,6 +41,7 @@ export type RangeQueryKey = readonly [
   number | null,
   SourcePreference,
   RangeMode | null,
+  number | null,
 ];
 
 export type RangeBundleRequest = {
@@ -49,7 +51,7 @@ export type RangeBundleRequest = {
   todayKst: string | null;
 };
 
-const PLACEHOLDER_COMPATIBLE_KEY_INDICES = [4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14] as const;
+const PLACEHOLDER_COMPATIBLE_KEY_INDICES = [4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15] as const;
 
 function addParam(params: URLSearchParams, key: string, value: number | string | null | undefined): void {
   if (value == null) return;
@@ -64,6 +66,7 @@ export function buildRangeBundleRequest(input: RangeBundleRequestInput): RangeBu
   const volumeDistributionBins = options.volumeDistributionBins ?? null;
   const tradeVolumePocBins = options.tradeVolumePocBins ?? null;
   const volumeDistributionPriceRange = options.volumeDistributionPriceRange ?? null;
+  const volumeDistributionCutoffMs = options.volumeDistributionCutoffMs ?? null;
   const mode = options.mode ?? null;
   const enabled = !!(input.code && input.from && input.to && bucketMs && mode);
 
@@ -83,6 +86,7 @@ export function buildRangeBundleRequest(input: RangeBundleRequestInput): RangeBu
     tradeVolumePocBins,
     input.sourcePref,
     mode,
+    volumeDistributionCutoffMs,
   ];
 
   const params = new URLSearchParams();
@@ -98,6 +102,7 @@ export function buildRangeBundleRequest(input: RangeBundleRequestInput): RangeBu
   addParam(params, 'volume_distribution_bins', volumeDistributionBins);
   addParam(params, 'volume_distribution_price_min', volumeDistributionPriceRange?.min);
   addParam(params, 'volume_distribution_price_max', volumeDistributionPriceRange?.max);
+  addParam(params, 'volume_distribution_cutoff_ms', volumeDistributionCutoffMs);
   addParam(params, 'trade_volume_poc_bins', tradeVolumePocBins);
   addParam(params, 'source_pref', input.sourcePref);
   addParam(params, 'mode', mode);

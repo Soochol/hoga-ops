@@ -52,7 +52,9 @@ from hoga.api.sources import ordered_sources, resolve_source_result
 from hoga.api.timeenc import (
     hhmmssms_to_unix_ms,
     ms_from_midnight_to_unix_ms,
+    unix_ms_to_hhmmssms,
 )
+from hoga.live.program_trade_store import ProgramTradeStore
 from hoga.tables import brokers as brokers_tbl
 from hoga.tables import candles as candles_tbl
 from hoga.tables import fills as fills_tbl
@@ -60,7 +62,6 @@ from hoga.tables import snapshots as snapshots_tbl
 from hoga.tables import trades as trades_tbl
 from hoga.tables.candles import ApiCandle
 from hoga.tables.trades import FillStrengthRow
-from hoga.live.program_trade_store import ProgramTradeStore
 
 if TYPE_CHECKING:
     from hoga.api.past_indicators_cache import PastIndicatorsCache
@@ -425,6 +426,7 @@ def build_volume_distribution_slice(
     range_count: int,
     price_min: int | None = None,
     price_max: int | None = None,
+    cutoff_ms: int | None = None,
 ) -> DayVolumeDistribution | None:
     code_dir = engine.parquet_dir(date, code, source)
     candles_path = code_dir / "candles.parquet"
@@ -438,6 +440,13 @@ def build_volume_distribution_slice(
         if price_range is None:
             return None
         price_min, price_max = price_range
+    upper_bound_ms = None
+    if cutoff_ms is not None:
+        cutoff_hhmmssms = unix_ms_to_hhmmssms(date, cutoff_ms)
+        upper_bound_ms = trades_tbl._session_bound_to_intra_ms(cutoff_hhmmssms) + 1
+    dist_kwargs = {}
+    if upper_bound_ms is not None:
+        dist_kwargs["upper_bound_ms"] = upper_bound_ms
     binning = trades_tbl.query_continuous_trade_volume_distribution(
         engine.conn,
         path=trades_path,
@@ -446,6 +455,7 @@ def build_volume_distribution_slice(
         bins=range_count,
         session_open_ms=session_open_ms,
         session_close_ms=session_close_ms,
+        **dist_kwargs,
     )
     return DayVolumeDistribution(
         date=date,
@@ -1144,6 +1154,7 @@ def build_range_bundle(
     trade_volume_poc_bins: int | None = None,
     volume_distribution_price_min: int | None = None,
     volume_distribution_price_max: int | None = None,
+    volume_distribution_cutoff_ms: int | None = None,
     mode: str = "full",
 ) -> RangeBundle:
     """Build the Wire Model for a Stock-Date Range (ADR-0013, ADR-0014).
@@ -1172,6 +1183,9 @@ def build_range_bundle(
     hoga_only = mode == "hoga"
     sidecar_only = mode == "sidecar"
     full_mode = mode == "full"
+    volume_distribution_slice_cutoff_ms = (
+        volume_distribution_cutoff_ms if sidecar_only else None
+    )
 
     dates = engine.list_stock_dates_in_range(
         code=code, from_date=from_date, to_date=to_date,
@@ -1346,6 +1360,7 @@ def build_range_bundle(
                 range_count=volume_distribution_bins,
                 price_min=price_range[0] if price_range is not None else None,
                 price_max=price_range[1] if price_range is not None else None,
+                cutoff_ms=volume_distribution_slice_cutoff_ms,
             )
             if profile is not None:
                 volume_distributions.append(profile)

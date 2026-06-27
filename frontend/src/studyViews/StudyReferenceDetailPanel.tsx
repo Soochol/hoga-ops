@@ -10,6 +10,7 @@ import {
   selectVolumeDistributionProfile,
   volumeDistributionClosePoints,
 } from '../live/continuousTradeVolumeDistribution';
+import { useVolumeDistributionCutoffProfile } from '../live/useVolumeDistributionCutoffProfile';
 import OrderbookTable from '../sidebar/OrderbookTable';
 import BrokerTrajectoryTable from '../sidebar/BrokerTrajectoryTable';
 import ProgramTradeSummaryCard from '../sidebar/ProgramTradeSummaryCard';
@@ -34,6 +35,7 @@ type CardProps = {
 export function StudyReferenceDetailPanel({ save, bundle, isCursorActive }: Props) {
   const cursorMs = useLiveCursorStore((s) => s.cursorMs);
   const volumeDistributionEnabled = useLivePageStore((s) => s.volumeDistributionEnabled);
+  const volumeDistributionHoverCutoffEnabled = useLivePageStore((s) => s.volumeDistributionHoverCutoffEnabled);
   const volumeDistributionRangeCount = useLivePageStore((s) => s.volumeDistributionRangeCount);
   const volumeDistributionColor = useLivePageStore((s) => s.volumeDistributionColor);
   const volumeDistributionMaxColor = useLivePageStore((s) => s.volumeDistributionMaxColor);
@@ -65,6 +67,20 @@ export function StudyReferenceDetailPanel({ save, bundle, isCursorActive }: Prop
       volumeDistributionRangeCount,
     ],
   );
+  const cutoffVolumeDistribution = useVolumeDistributionCutoffProfile({
+    enabled: volumeDistributionEnabled && volumeDistributionHoverCutoffEnabled && detailCursorMs !== null,
+    code: save.code,
+    timeframe: minuteTimeframe,
+    date: volumeDistributionDate,
+    cursorMs: detailCursorMs,
+    todayKst: null,
+    rangeCount: volumeDistributionRangeCount,
+    finalProfile: volumeDistribution,
+    priceRange: null,
+    liveTrades: [],
+    candles: bundle.candles,
+    segment: bundle.segments.find((segment) => segment.date === volumeDistributionDate) ?? null,
+  });
   const volumeClosePoints = useMemo(
     () => volumeDistributionClosePoints({
       date: volumeDistributionDate,
@@ -93,7 +109,7 @@ export function StudyReferenceDetailPanel({ save, bundle, isCursorActive }: Prop
       </StudyDetailCard>
       <StudyDetailCard label="연속체결 매물대 분포" testId="volume-distribution">
         <VolumeDistributionCard
-          profile={volumeDistribution}
+          profile={cutoffVolumeDistribution}
           cursorMs={detailCursorMs}
           closePoints={volumeClosePoints}
           color={volumeDistributionColor}

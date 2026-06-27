@@ -82,6 +82,8 @@ export default function IndicatorPanel({ onClose, capabilities = STOCK_CAPABILIT
   const setTradeVolumePocEnabled = useLivePageStore((s) => s.setTradeVolumePocEnabled);
   const volumeDistributionEnabled = useLivePageStore((s) => s.volumeDistributionEnabled);
   const setVolumeDistributionEnabled = useLivePageStore((s) => s.setVolumeDistributionEnabled);
+  const volumeDistributionHoverCutoffEnabled = useLivePageStore((s) => s.volumeDistributionHoverCutoffEnabled);
+  const setVolumeDistributionHoverCutoffEnabled = useLivePageStore((s) => s.setVolumeDistributionHoverCutoffEnabled);
   const volumeDistributionRangeCount = useLivePageStore((s) => s.volumeDistributionRangeCount);
   const volumeDistributionColor = useLivePageStore((s) => s.volumeDistributionColor);
   const volumeDistributionMaxColor = useLivePageStore((s) => s.volumeDistributionMaxColor);
@@ -225,6 +227,16 @@ export default function IndicatorPanel({ onClose, capabilities = STOCK_CAPABILIT
                     className="w-[84px] text-right text-sm bg-bg-input border border-border rounded-[4px] px-2 py-1 tabular-nums"
                     value={volumeDistributionRangeCount}
                     onChange={(event) => setVolumeDistributionRangeCount(Number(event.currentTarget.value))}
+                  />
+                </label>
+              </div>
+              <div className="mb-3">
+                <label className="flex items-center justify-between gap-3 rounded border border-border-subtle bg-bg-input px-3 py-2 text-xs text-fg">
+                  <span>호버 시점 누적</span>
+                  <input
+                    type="checkbox"
+                    checked={volumeDistributionHoverCutoffEnabled}
+                    onChange={(event) => setVolumeDistributionHoverCutoffEnabled(event.currentTarget.checked)}
                   />
                 </label>
               </div>

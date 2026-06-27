@@ -31,6 +31,7 @@ import {
   selectVolumeDistributionProfile,
   volumeDistributionClosePoints,
 } from './continuousTradeVolumeDistribution';
+import { useVolumeDistributionCutoffProfile } from './useVolumeDistributionCutoffProfile';
 
 interface Props {
   code: string | null;
@@ -63,6 +64,7 @@ export function LiveSidebar({ code, live, bundle = null, todayKst = '', programT
   const cursorMs = useLiveCursorStore((s) => s.cursorMs);
   const timeframe = useLivePageStore((s) => s.candleTimeframe);
   const volumeDistributionEnabled = useLivePageStore((s) => s.volumeDistributionEnabled);
+  const volumeDistributionHoverCutoffEnabled = useLivePageStore((s) => s.volumeDistributionHoverCutoffEnabled);
   const volumeDistributionRangeCount = useLivePageStore((s) => s.volumeDistributionRangeCount);
   const volumeDistributionColor = useLivePageStore((s) => s.volumeDistributionColor);
   const volumeDistributionMaxColor = useLivePageStore((s) => s.volumeDistributionMaxColor);
@@ -122,6 +124,10 @@ export function LiveSidebar({ code, live, bundle = null, todayKst = '', programT
   const activeVolumeDistributionDate = isSpot && cursorMs !== null
     ? realMsToYyyymmdd(cursorMs)
     : (activeBundle?.segments[activeBundle.segments.length - 1]?.date ?? todayKst ?? null);
+  const activeVolumeDistributionCandles = useMemo(() => {
+    if (!activeBundle || !activeVolumeDistributionDate) return [];
+    return activeBundle.candles.filter((candle) => realMsToYyyymmdd(candle.ts_ms) === activeVolumeDistributionDate);
+  }, [activeBundle, activeVolumeDistributionDate]);
   const persistedVolumeDistributions = activeBundle?.volume_distributions ?? [];
   const liveDistributionTrades = useMemo(
     () => live.trade.flatMap((snapshot) =>
@@ -175,12 +181,26 @@ export function LiveSidebar({ code, live, bundle = null, todayKst = '', programT
     persistedVolumeDistributions,
     liveDistributionTrades,
   ]);
+  const cutoffVolumeDistribution = useVolumeDistributionCutoffProfile({
+    enabled: volumeDistributionEnabled && volumeDistributionHoverCutoffEnabled && isSpot,
+    code: stockCode,
+    timeframe: spotTimeframe,
+    date: activeVolumeDistributionDate,
+    cursorMs,
+    todayKst,
+    rangeCount: volumeDistributionRangeCount,
+    finalProfile: activeVolumeDistribution,
+    priceRange: null,
+    liveTrades: liveDistributionTrades,
+    candles: activeVolumeDistributionCandles,
+    segment: activeBundle?.segments.find((segment) => segment.date === activeVolumeDistributionDate) ?? null,
+  });
   const activeVolumeDistributionClosePoints = useMemo(() => {
     return volumeDistributionClosePoints({
       date: activeVolumeDistributionDate,
-      candles: activeBundle?.candles ?? [],
+      candles: activeVolumeDistributionCandles,
     });
-  }, [activeBundle, activeVolumeDistributionDate]);
+  }, [activeVolumeDistributionCandles, activeVolumeDistributionDate]);
 
   // T14b: "다음 가용: HH:MM" hint above orderbook table when spot orderbook
   // has no snapshot yet AND the SSE buffer can't fill it either (a genuine gap,
@@ -227,7 +247,7 @@ export function LiveSidebar({ code, live, bundle = null, todayKst = '', programT
           }
           volumeDistribution={
             <VolumeDistributionCard
-              profile={activeVolumeDistribution}
+              profile={cutoffVolumeDistribution}
               cursorMs={isSpot ? cursorMs : brokerCursorMs}
               closePoints={activeVolumeDistributionClosePoints}
               color={volumeDistributionColor}

@@ -6,14 +6,21 @@ import { useLivePageStore } from '../state/livePage';
 import { useLiveCursorStore } from './useLiveCursorStore';
 import { useLiveAxisStore } from './useLiveAxisStore';
 import type { LiveSeriesData } from '../api/liveSeries';
-import type { RangeBundle } from '../api/types';
+import type { DayVolumeDistribution, RangeBundle } from '../api/types';
 
 const investorTrendEstimateMock = vi.hoisted(() =>
   vi.fn(() => ({ data: undefined, isLoading: false, error: null })),
 );
+const volumeDistributionCutoffProfileMock = vi.hoisted(() =>
+  vi.fn((args: { finalProfile: DayVolumeDistribution | null | undefined }) => args.finalProfile),
+);
 
 vi.mock('../api/liveInvestorTrendEstimate', () => ({
   useLiveInvestorTrendEstimate: investorTrendEstimateMock,
+}));
+
+vi.mock('./useVolumeDistributionCutoffProfile', () => ({
+  useVolumeDistributionCutoffProfile: volumeDistributionCutoffProfileMock,
 }));
 
 import { LiveSidebar } from './LiveSidebar';
@@ -64,6 +71,44 @@ const bundleFixture: RangeBundle = {
   broker_late_entries: [],
   price_level_hits: [],
   trade_volume_pocs: [],
+};
+
+const finalDistribution: DayVolumeDistribution = {
+  date: '20260527',
+  range_count: 2,
+  price_min: 70000,
+  price_max: 70400,
+  session_open_ms: Date.UTC(2026, 4, 27, 0, 0, 0),
+  session_close_ms: Date.UTC(2026, 4, 27, 6, 30, 0),
+  bins: [
+    { price_low: 70000, price_high: 70200, qty: 150 },
+    { price_low: 70200, price_high: 70400, qty: 300 },
+  ],
+};
+
+const bundleWithFinalDistribution: RangeBundle = {
+  ...bundleFixture,
+  candles: [
+    ...bundleFixture.candles,
+    {
+      ts_ms: Date.UTC(2026, 4, 27, 0, 1, 0),
+      open: 70300,
+      high: 70400,
+      low: 70000,
+      close: 70100,
+      vol_a: 100,
+      vol_b: 0,
+    },
+  ],
+  volume_distributions: [finalDistribution],
+};
+
+const cutoffDistribution: DayVolumeDistribution = {
+  ...finalDistribution,
+  bins: [
+    { price_low: 70000, price_high: 70200, qty: 300 },
+    { price_low: 70200, price_high: 70400, qty: 0 },
+  ],
 };
 
 vi.mock('../api/useLiveCursor', () => ({
@@ -117,9 +162,16 @@ describe('LiveSidebar', () => {
   beforeEach(() => {
     investorTrendEstimateMock.mockClear();
     investorTrendEstimateMock.mockReturnValue({ data: undefined, isLoading: false, error: null });
+    volumeDistributionCutoffProfileMock.mockClear();
+    volumeDistributionCutoffProfileMock.mockImplementation((args) => args.finalProfile);
     (cursorHooks.useLiveOrderbookAtCursor as ReturnType<typeof vi.fn>).mockReturnValue(undefined);
     (cursorHooks.useLiveBrokersAtCursor as ReturnType<typeof vi.fn>).mockReturnValue(undefined);
-    useLivePageStore.setState({ volumeDistributionEnabled: true, volumeDistributionRangeCount: 10 });
+    useLivePageStore.setState({
+      candleTimeframe: '1m',
+      volumeDistributionEnabled: true,
+      volumeDistributionHoverCutoffEnabled: false,
+      volumeDistributionRangeCount: 10,
+    });
     useLiveCursorStore.getState().clearCursor();
     useLiveAxisStore.setState({ axis: null });
     vi.mocked(TotalQtyBar).mockClear();
@@ -258,6 +310,92 @@ describe('LiveSidebar', () => {
 
     expect(screen.getByTestId('volume-distribution-time-axis')).toHaveTextContent('');
     expect(screen.getByTestId('volume-distribution-bar')).toHaveStyle({ width: '50%' });
+  });
+
+  it('uses final volume distribution when hover cutoff mode is off', () => {
+    useLivePageStore.setState({
+      volumeDistributionEnabled: true,
+      volumeDistributionHoverCutoffEnabled: false,
+      volumeDistributionRangeCount: 2,
+    });
+    act(() => useLiveCursorStore.getState().setCursor(Date.UTC(2026, 4, 27, 0, 1, 0)));
+
+    renderSidebar({ code: '005930', bundle: bundleWithFinalDistribution });
+
+    expect(screen.getByTestId('volume-distribution-bar')).toHaveStyle({ width: '50%' });
+  });
+
+  it('uses hover-cutoff distribution when hover cutoff mode is on', () => {
+    useLivePageStore.setState({
+      volumeDistributionEnabled: true,
+      volumeDistributionHoverCutoffEnabled: true,
+      volumeDistributionRangeCount: 2,
+    });
+    volumeDistributionCutoffProfileMock.mockReturnValue(cutoffDistribution);
+    act(() => useLiveCursorStore.getState().setCursor(Date.UTC(2026, 4, 27, 0, 1, 0)));
+
+    renderSidebar({ code: '005930', bundle: bundleWithFinalDistribution });
+
+    expect(volumeDistributionCutoffProfileMock).toHaveBeenCalledWith(expect.objectContaining({
+      enabled: true,
+      code: '005930',
+      timeframe: '1m',
+      date: '20260527',
+      cursorMs: Date.UTC(2026, 4, 27, 0, 1, 0),
+      finalProfile: finalDistribution,
+    }));
+    expect(screen.getByTestId('volume-distribution-max-bar')).toHaveStyle({ width: '100%' });
+  });
+
+  it('passes only the active stock-date candles to the hover-cutoff fallback hook', () => {
+    useLivePageStore.setState({
+      volumeDistributionEnabled: true,
+      volumeDistributionHoverCutoffEnabled: true,
+      volumeDistributionRangeCount: 2,
+    });
+    act(() => useLiveCursorStore.getState().setCursor(Date.UTC(2026, 4, 27, 0, 1, 0)));
+
+    const selectedDateCandle = {
+      ts_ms: Date.UTC(2026, 4, 27, 0, 1, 0),
+      open: 70300,
+      high: 70400,
+      low: 70000,
+      close: 70100,
+      vol_a: 100,
+      vol_b: 0,
+    };
+    const previousDateCandle = {
+      ts_ms: Date.UTC(2026, 4, 26, 0, 1, 0),
+      open: 103000,
+      high: 104000,
+      low: 102000,
+      close: 103500,
+      vol_a: 100,
+      vol_b: 0,
+    };
+
+    renderSidebar({
+      code: '005930',
+      bundle: {
+        ...bundleWithFinalDistribution,
+        from_date: '20260526',
+        segments: [
+          {
+            date: '20260526',
+            session_open_ms: Date.UTC(2026, 4, 26, 0, 0, 0),
+            session_close_ms: Date.UTC(2026, 4, 26, 6, 30, 0),
+            source: 'hogaplay',
+          },
+          ...bundleWithFinalDistribution.segments,
+        ],
+        candles: [previousDateCandle, selectedDateCandle],
+      },
+    });
+
+    expect(volumeDistributionCutoffProfileMock).toHaveBeenCalledWith(expect.objectContaining({
+      date: '20260527',
+      candles: [selectedDateCandle],
+    }));
   });
 
   it('merges newer live continuous trades into the persisted today volume distribution', () => {

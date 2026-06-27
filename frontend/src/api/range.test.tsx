@@ -80,6 +80,7 @@ describe('buildRangeBundleRequest', () => {
       12,
       'kis_ws_first',
       'full',
+      null,
     ]);
   });
 
@@ -97,7 +98,8 @@ describe('buildRangeBundleRequest', () => {
       '/api/range?code=005930&from=20260512&to=20260512&bucket_ms=60000'
         + '&source_pref=hogaplay_first&mode=hoga',
     );
-    expect(request.queryKey.at(-1)).toBe('hoga');
+    expect(request.queryKey[14]).toBe('hoga');
+    expect(request.queryKey.at(-1)).toBe(null);
   });
 
   it('adds mode=sidecar for overlay sidecar requests', () => {
@@ -114,7 +116,25 @@ describe('buildRangeBundleRequest', () => {
       '/api/range?code=005930&from=20260512&to=20260512'
         + '&bucket_ms=60000&source_pref=hogaplay_first&mode=sidecar',
     );
-    expect(request.queryKey.at(-1)).toBe('sidecar');
+    expect(request.queryKey[14]).toBe('sidecar');
+    expect(request.queryKey.at(-1)).toBe(null);
+  });
+
+  it('includes volumeDistributionCutoffMs in the range query key', () => {
+    const request = buildRangeBundleRequest({
+      code: '005930',
+      from: '20260625',
+      to: '20260625',
+      timeframe: '1m',
+      sourcePref: 'hogaplay_first',
+      options: {
+        mode: 'sidecar',
+        volumeDistributionBins: 10,
+        volumeDistributionCutoffMs: 1_772_000_001_000,
+      },
+    });
+
+    expect(request.queryKey).toContain(1_772_000_001_000);
   });
 
   it('can explicitly disable broker late-entry events', () => {
@@ -158,6 +178,7 @@ describe('buildRangeBundleRequest', () => {
       null,
       'hogaplay_first',
       null,
+      null,
     ]);
   });
 
@@ -175,6 +196,7 @@ describe('buildRangeBundleRequest', () => {
       '/api/range?code=005930&from=20260512&to=20260512'
         + '&bucket_ms=60000&source_pref=hogaplay_first',
     );
+    expect(request.queryKey[14]).toBe(null);
     expect(request.queryKey.at(-1)).toBe(null);
   });
 });
@@ -216,6 +238,7 @@ describe('rangeBundleQueryOptions', () => {
       12,
       'hogaplay_first',
       'full',
+      null,
     ]);
 
     const signal = new AbortController().signal;
@@ -320,6 +343,20 @@ describe('useRange', () => {
     );
     await waitFor(() => expect(spy).toHaveBeenCalled());
     expect(spy.mock.calls[0][0]).toContain('&volume_distribution_bins=20');
+  });
+
+  it('threads volume_distribution_cutoff_ms into query string', async () => {
+    const spy = vi.spyOn(client, 'apiCall').mockResolvedValue(fakeBundle);
+    renderHook(
+      () => useRange('005930', '20260625', '20260625', '1m', undefined, null, {
+        mode: 'sidecar',
+        volumeDistributionBins: 10,
+        volumeDistributionCutoffMs: 1_772_000_001_000,
+      }),
+      { wrapper: makeWrapper() },
+    );
+    await waitFor(() => expect(spy).toHaveBeenCalled());
+    expect(spy.mock.calls[0][0]).toContain('&volume_distribution_cutoff_ms=1772000001000');
   });
 
   it('threads volume_distribution_price_min/max into query string', async () => {
@@ -432,6 +469,7 @@ describe('rangePlaceholderData', () => {
     null,
     'hogaplay_first',
     'full',
+    null,
   ];
 
   it('keeps previous same-code data for date extension when option-sensitive fields are unchanged', () => {
@@ -451,6 +489,7 @@ describe('rangePlaceholderData', () => {
       null,
       'hogaplay_first',
       'full',
+      null,
     ];
 
     expect(rangePlaceholderData(fakeBundle, currentKey, baseKey)).toBe(fakeBundle);
@@ -473,8 +512,50 @@ describe('rangePlaceholderData', () => {
       null,
       'hogaplay_first',
       'full',
+      null,
     ];
 
     expect(rangePlaceholderData(fakeBundle, currentKey, baseKey)).toBeUndefined();
+  });
+
+  it('drops previous sidecar data when the volume distribution cutoff changes', () => {
+    const previousKey: Parameters<typeof rangePlaceholderData>[1] = [
+      'range',
+      '005930',
+      '20260512',
+      '20260512',
+      60_000,
+      undefined,
+      undefined,
+      null,
+      null,
+      10,
+      undefined,
+      undefined,
+      null,
+      'hogaplay_first',
+      'sidecar',
+      1_772_000_001_000,
+    ];
+    const currentKey: Parameters<typeof rangePlaceholderData>[1] = [
+      'range',
+      '005930',
+      '20260512',
+      '20260512',
+      60_000,
+      undefined,
+      undefined,
+      null,
+      null,
+      10,
+      undefined,
+      undefined,
+      null,
+      'hogaplay_first',
+      'sidecar',
+      null,
+    ];
+
+    expect(rangePlaceholderData(fakeBundle, currentKey, previousKey)).toBeUndefined();
   });
 });

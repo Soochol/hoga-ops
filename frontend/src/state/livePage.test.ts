@@ -270,6 +270,10 @@ describe('useLivePageStore.movingAverages', () => {
     useLivePageStore.getState().setMovingAverage(id, { period: 7 });
     const raw = localStorage.getItem('live.indicators.v1');
     expect(raw).toContain('"period":7');
+
+    useLivePageStore.getState().setVolumeDistributionHoverCutoffEnabled(true);
+    const persisted = JSON.parse(localStorage.getItem('live.indicators.v1')!);
+    expect(persisted.volumeDistributionHoverCutoffEnabled).toBe(true);
   });
 });
 

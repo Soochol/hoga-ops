@@ -30,6 +30,7 @@ describe('mergeLiveIndicatorPrefs', () => {
       tradeVolumePocColor: '#A855F7',
       tradeVolumePocOpacity: 0.12,
       volumeDistributionEnabled: true,
+      volumeDistributionHoverCutoffEnabled: false,
       volumeDistributionRangeCount: 10,
       volumeDistributionColor: '#64748B',
       volumeDistributionMaxColor: '#EAB308',
@@ -268,6 +269,14 @@ describe('mergeLiveIndicatorPrefs — 호가 토글', () => {
     expect(invalid.volumeDistributionMaxColor).toBe('#EAB308');
     expect(mergeLiveIndicatorPrefs({ volumeDistributionRangeCount: 1 }).volumeDistributionRangeCount).toBe(5);
     expect(mergeLiveIndicatorPrefs({ volumeDistributionRangeCount: '12.8' as never }).volumeDistributionRangeCount).toBe(10);
+  });
+
+  it('defaults hover cutoff volume distribution mode to false and preserves persisted values', () => {
+    const defaults = mergeLiveIndicatorPrefs({});
+    expect(defaults.volumeDistributionHoverCutoffEnabled).toBe(false);
+
+    expect(mergeLiveIndicatorPrefs({ volumeDistributionHoverCutoffEnabled: true }).volumeDistributionHoverCutoffEnabled).toBe(true);
+    expect(mergeLiveIndicatorPrefs({ volumeDistributionHoverCutoffEnabled: false }).volumeDistributionHoverCutoffEnabled).toBe(false);
   });
 });
 

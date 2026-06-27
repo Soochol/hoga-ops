@@ -565,6 +565,7 @@ def query_continuous_trade_volume_distribution(
     bins: int,
     session_open_ms: int,
     session_close_ms: int,
+    upper_bound_ms: int | None = None,
 ) -> VolumeProfileBinning:
     """Bin continuous-trading qty into a caller-supplied candle price range.
 
@@ -578,6 +579,11 @@ def query_continuous_trade_volume_distribution(
     intra_ms_expr = hhmmssms_to_intra_ms_sql("ts_ms")
     session_open_intra_ms = _session_bound_to_intra_ms(session_open_ms)
     session_close_intra_ms = _session_bound_to_intra_ms(session_close_ms)
+    effective_upper_intra_ms = (
+        min(session_close_intra_ms, upper_bound_ms)
+        if upper_bound_ms is not None
+        else session_close_intra_ms
+    )
     rows = con.execute(
         f"""
         WITH continuous AS (
@@ -605,7 +611,7 @@ def query_continuous_trade_volume_distribution(
         FROM filtered, stats
         GROUP BY 1, 3 ORDER BY 1
         """,
-        [str(path), session_open_intra_ms, session_close_intra_ms],
+        [str(path), session_open_intra_ms, effective_upper_intra_ms],
     ).fetchall()
     return VolumeProfileBinning(
         price_min=price_lo,

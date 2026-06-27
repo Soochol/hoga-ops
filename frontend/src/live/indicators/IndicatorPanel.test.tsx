@@ -294,6 +294,14 @@ describe('IndicatorPanel', () => {
     expect(useLivePageStore.getState().volumeDistributionMaxColor).toBe('#EF4444');
   });
 
+  it('toggles hover-cutoff mode for volume distribution', () => {
+    useLivePageStore.setState({ volumeDistributionHoverCutoffEnabled: false });
+    render(<IndicatorPanel onClose={() => {}} />);
+    fireEvent.click(screen.getByRole('button', { name: '연속체결 매물대 분포' }));
+    fireEvent.click(screen.getByRole('checkbox', { name: '호버 시점 누적' }));
+    expect(useLivePageStore.getState().volumeDistributionHoverCutoffEnabled).toBe(true);
+  });
+
   it('당일 최대 매물대 선택 시 분포 최대 구간 설명 표시', () => {
     useLivePageStore.setState({ volumeDistributionRangeCount: 18 });
     render(<IndicatorPanel onClose={() => {}} />);
