@@ -19,6 +19,7 @@ def _build_range_bundle_stub(
     volume_distribution_bins=None,
     volume_distribution_price_min=None,
     volume_distribution_price_max=None,
+    volume_distribution_cutoff_ms=None,
     trade_volume_poc_bins=None,
     mode="full",
 ):
@@ -359,6 +360,7 @@ def test_api_range_source_pref_threads_through(app_client: TestClient) -> None:
         volume_distribution_bins=None,
         volume_distribution_price_min=None,
         volume_distribution_price_max=None,
+        volume_distribution_cutoff_ms=None,
         trade_volume_poc_bins=None,
         mode="full",
     ):
@@ -372,6 +374,7 @@ def test_api_range_source_pref_threads_through(app_client: TestClient) -> None:
             volume_distribution_bins=volume_distribution_bins,
             volume_distribution_price_min=volume_distribution_price_min,
             volume_distribution_price_max=volume_distribution_price_max,
+            volume_distribution_cutoff_ms=volume_distribution_cutoff_ms,
             trade_volume_poc_bins=trade_volume_poc_bins,
             mode=mode,
         )
@@ -396,12 +399,13 @@ def test_api_range_source_pref_defaults_to_hogaplay(app_client: TestClient) -> N
         from_date,
         to_date,
         bucket_ms,
-            source_pref="hogaplay",
-            broker_late_entries_enabled=True,
-            broker_late_entry_start_hhmm=None,
-            volume_distribution_bins=None,
+        source_pref="hogaplay",
+        broker_late_entries_enabled=True,
+        broker_late_entry_start_hhmm=None,
+        volume_distribution_bins=None,
         volume_distribution_price_min=None,
         volume_distribution_price_max=None,
+        volume_distribution_cutoff_ms=None,
         trade_volume_poc_bins=None,
         mode="full",
     ):
@@ -415,6 +419,7 @@ def test_api_range_source_pref_defaults_to_hogaplay(app_client: TestClient) -> N
             volume_distribution_bins=volume_distribution_bins,
             volume_distribution_price_min=volume_distribution_price_min,
             volume_distribution_price_max=volume_distribution_price_max,
+            volume_distribution_cutoff_ms=volume_distribution_cutoff_ms,
             trade_volume_poc_bins=trade_volume_poc_bins,
             mode=mode,
         )
