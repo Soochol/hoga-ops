@@ -127,7 +127,7 @@ def test_query_day_series_returns_all_recorded_brokers(tmp_path: Path) -> None:
     )
 
 
-def test_query_late_entry_events_start_seen_history_at_threshold(
+def test_query_late_entry_events_use_pre_threshold_same_side_history(
     tmp_path: Path,
 ) -> None:
     before = PARSERS[4](
@@ -167,16 +167,9 @@ def test_query_late_entry_events_start_seen_history_at_threshold(
     events = query_late_entry_events(con, path=out, threshold_ms=93000000)
 
     assert [(e.t_ms, e.broker, e.side) for e in events] == [
-        (93000000, "B3", "buy"),
-        (93000000, "B4", "buy"),
-        (93000000, "B5", "buy"),
-        (93000000, "Dual", "buy"),
         (93000000, "Dual", "sell"),
         (93000000, "NewBuy", "buy"),
         (93000000, "NewSell", "sell"),
-        (93000000, "S3", "sell"),
-        (93000000, "S4", "sell"),
-        (93000000, "S5", "sell"),
         (94500000, "LaterBuy", "buy"),
         (94500000, "LaterSell", "sell"),
     ]

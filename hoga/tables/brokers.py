@@ -230,11 +230,10 @@ def query_late_entry_events(
             ts_ms,
             SUM(CASE WHEN side = 'buy' THEN qty_today ELSE -qty_today END) AS net
         FROM read_parquet(?)
-        WHERE ts_ms >= ?
         GROUP BY broker, side, ts_ms
         ORDER BY ts_ms, broker, side
         """,
-        [str(path), threshold_ms],
+        [str(path)],
     ).fetchall()
 
     # Canonicalize first, then re-collapse so raw aliases for the same firm
@@ -254,6 +253,9 @@ def query_late_entry_events(
     seen: set[tuple[str, BrokerSide]] = set()
     for ts_ms in sorted(by_ts):
         current = by_ts[ts_ms]
+        if ts_ms < threshold_ms:
+            seen.update(current)
+            continue
         for broker, side in sorted(current):
             key = (broker, side)
             if key in seen:
