@@ -11,6 +11,8 @@ import { studyReferenceQueryInputs } from './studyReferenceBundleModel';
 export type StudyReferenceQuerySettings = {
   venue: LiveVenueOption;
   sourcePref: SourcePreference;
+  brokerLateEntryEnabled: boolean;
+  brokerLateEntryStartHHMM: number;
   volumeDistributionEnabled: boolean;
   tradeVolumePocEnabled: boolean;
   volumeDistributionRangeCount: number;
@@ -48,6 +50,8 @@ export function studyReferenceSidecarRangeOptions(
     sourcePref: settings.sourcePref,
     options: {
       mode: 'sidecar',
+      brokerLateEntriesEnabled: settings.brokerLateEntryEnabled,
+      brokerLateEntryStartHHMM: settings.brokerLateEntryEnabled ? settings.brokerLateEntryStartHHMM : null,
       volumeDistributionBins: settings.volumeDistributionEnabled ? settings.volumeDistributionRangeCount : null,
       tradeVolumePocBins: settings.tradeVolumePocEnabled ? settings.volumeDistributionRangeCount : null,
       volumeDistributionPriceRange: null,

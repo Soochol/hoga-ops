@@ -113,6 +113,8 @@ describe('useStudyReferenceBundle', () => {
     useLiveVenueStore.setState({ venue: 'NXT' });
     useSourcePreferenceStore.setState({ sourcePreference: 'kis_api_first' });
     useLivePageStore.setState({
+      brokerLateEntryEnabled: true,
+      brokerLateEntryStartHHMM: 1000,
       tradeVolumePocEnabled: true,
       volumeDistributionEnabled: true,
       volumeDistributionRangeCount: 12,
@@ -125,6 +127,8 @@ describe('useStudyReferenceBundle', () => {
     expect(studyReferenceQueryOptionsMock).toHaveBeenCalledWith(save, {
       venue: 'NXT',
       sourcePref: 'kis_api_first',
+      brokerLateEntryEnabled: true,
+      brokerLateEntryStartHHMM: 1000,
       tradeVolumePocEnabled: true,
       volumeDistributionEnabled: true,
       volumeDistributionRangeCount: 12,

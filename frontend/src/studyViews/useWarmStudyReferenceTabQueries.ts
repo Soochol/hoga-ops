@@ -32,6 +32,8 @@ export function useWarmStudyReferenceTabQueries({
 }: UseWarmStudyReferenceTabQueriesArgs): Record<string, StudyTabQueryStatus> {
   const venue = useLiveVenueStore((s) => s.venue);
   const sourcePref = useSourcePreferenceStore((s) => s.sourcePreference);
+  const brokerLateEntryEnabled = useLivePageStore((s) => s.brokerLateEntryEnabled);
+  const brokerLateEntryStartHHMM = useLivePageStore((s) => s.brokerLateEntryStartHHMM);
   const tradeVolumePocEnabled = useLivePageStore((s) => s.tradeVolumePocEnabled);
   const volumeDistributionEnabled = useLivePageStore((s) => s.volumeDistributionEnabled);
   const volumeDistributionRangeCount = useLivePageStore((s) => s.volumeDistributionRangeCount);
@@ -47,6 +49,8 @@ export function useWarmStudyReferenceTabQueries({
     const settings = {
       venue,
       sourcePref,
+      brokerLateEntryEnabled,
+      brokerLateEntryStartHHMM,
       tradeVolumePocEnabled,
       volumeDistributionEnabled,
       volumeDistributionRangeCount,
@@ -63,6 +67,8 @@ export function useWarmStudyReferenceTabQueries({
     });
   }, [
     saves,
+    brokerLateEntryEnabled,
+    brokerLateEntryStartHHMM,
     sourcePref,
     tabs,
     tradeVolumePocEnabled,

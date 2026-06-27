@@ -3,6 +3,11 @@
 All notable changes to this project are documented here.
 The format follows a 4-digit `MAJOR.MINOR.PATCH.MICRO` scheme.
 
+## [0.12.8.2] - 2026-06-27
+
+### Fixed
+- **/study 신규 거래원 기준 시각 동기화**: 저장 학습뷰의 sidecar 요청도 `/live`와 동일하게 신규 거래원 등장 토글과 기준 시각(HHMM)을 전달하도록 해, 사용자가 `1000`으로 설정하면 `/study`에서도 10:00 기준으로 신규 거래원을 계산한다.
+
 ## [0.12.8.1] - 2026-06-27
 
 ### Fixed
