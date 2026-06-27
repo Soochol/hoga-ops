@@ -80,6 +80,8 @@ describe('useWarmStudyReferenceTabQueries', () => {
     useLiveVenueStore.setState({ venue: 'KRX' });
     useSourcePreferenceStore.setState({ sourcePreference: 'hogaplay_first' });
     useLivePageStore.setState({
+      brokerLateEntryEnabled: true,
+      brokerLateEntryStartHHMM: 1000,
       tradeVolumePocEnabled: true,
       volumeDistributionEnabled: true,
       volumeDistributionRangeCount: 12,
@@ -117,6 +119,7 @@ describe('useWarmStudyReferenceTabQueries', () => {
     });
     const urls = vi.mocked(apiCall).mock.calls.map(([url]) => String(url));
     expect(urls.some((url) => url.includes('code=035420'))).toBe(false);
+    expect(urls.some((url) => url.includes('broker_late_entry_start_hhmm=1000'))).toBe(true);
     await waitFor(() => expect(result.current['tab-a']).toBe('ready'));
     expect(result.current['tab-b']).toBe('ready');
     expect(result.current['tab-c']).toBe('idle');

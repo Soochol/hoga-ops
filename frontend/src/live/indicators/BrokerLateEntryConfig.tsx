@@ -1,3 +1,5 @@
+import { useEffect, useState } from 'react';
+
 import { useLivePageStore, type BrokerLateEntrySideMode } from '../../state/livePage';
 import { MA_COLOR_ROWS } from './MAStylePicker';
 
@@ -6,6 +8,19 @@ const SIDE_OPTIONS: Array<{ value: BrokerLateEntrySideMode; label: string }> = [
   { value: 'buy', label: '매수만' },
   { value: 'sell', label: '매도만' },
 ];
+
+function formatHHMM(value: number): string {
+  return String(value).padStart(4, '0');
+}
+
+function parseValidHHMM(value: string): number | null {
+  if (!/^\d{3,4}$/.test(value)) return null;
+  const n = Number(value);
+  const hh = Math.floor(n / 100);
+  const mm = n % 100;
+  if (hh < 9 || hh > 15 || mm > 59 || (hh === 15 && mm > 20)) return null;
+  return n;
+}
 
 function ColorGrid({
   label,
@@ -63,6 +78,21 @@ export default function BrokerLateEntryConfig() {
   const setStart = useLivePageStore((s) => s.setBrokerLateEntryStartHHMM);
   const setSideMode = useLivePageStore((s) => s.setBrokerLateEntrySideMode);
   const setStyle = useLivePageStore((s) => s.setBrokerLateEntryStyle);
+  const [startDraft, setStartDraft] = useState(() => formatHHMM(start));
+
+  useEffect(() => {
+    setStartDraft(formatHHMM(start));
+  }, [start]);
+
+  const commitStartDraft = () => {
+    const parsed = parseValidHHMM(startDraft);
+    if (parsed == null) {
+      setStartDraft(formatHHMM(start));
+      return;
+    }
+    setStart(parsed);
+    setStartDraft(formatHHMM(parsed));
+  };
 
   return (
     <div>
@@ -71,14 +101,23 @@ export default function BrokerLateEntryConfig() {
         <label className="flex items-center justify-between gap-3 text-sm text-fg">
           <span>기준 시각 (HHMM)</span>
           <input
-            type="number"
-            min={900}
-            max={1520}
-            step={1}
+            type="text"
+            inputMode="numeric"
+            maxLength={4}
             aria-label="신규 거래원 등장 기준 시각"
             className="w-[84px] text-right text-sm bg-bg-input border border-border rounded-[4px] px-2 py-1 tabular-nums"
-            value={start}
-            onChange={(event) => setStart(Number(event.currentTarget.value))}
+            value={startDraft}
+            onBlur={commitStartDraft}
+            onChange={(event) => {
+              const next = event.currentTarget.value;
+              if (/^\d{0,4}$/.test(next)) setStartDraft(next);
+            }}
+            onKeyDown={(event) => {
+              if (event.key === 'Enter') {
+                commitStartDraft();
+                event.currentTarget.blur();
+              }
+            }}
           />
         </label>
       </div>
