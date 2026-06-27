@@ -13,6 +13,7 @@ import FillStrengthConfig from './FillStrengthConfig';
 import { MA_COLOR_ROWS } from './MAStylePicker';
 import ProgramTradeConfig from './ProgramTradeConfig';
 import BrokerLateEntryConfig from './BrokerLateEntryConfig';
+import ToggleRow from '../settings/ToggleRow';
 import { ModalShell } from '../../ui/ModalShell';
 import { CheckIcon } from '../../ui/CheckIcon';
 import { STOCK_CAPABILITIES, type LiveInstrumentCapabilities } from '../liveInstrumentCapabilities';
@@ -231,14 +232,13 @@ export default function IndicatorPanel({ onClose, capabilities = STOCK_CAPABILIT
                 </label>
               </div>
               <div className="mb-3">
-                <label className="flex items-center justify-between gap-3 rounded border border-border-subtle bg-bg-input px-3 py-2 text-xs text-fg">
-                  <span>호버 시점 누적</span>
-                  <input
-                    type="checkbox"
-                    checked={volumeDistributionHoverCutoffEnabled}
-                    onChange={(event) => setVolumeDistributionHoverCutoffEnabled(event.currentTarget.checked)}
-                  />
-                </label>
+                <ToggleRow
+                  label="호버 시점 누적"
+                  description="캔들 hover 시점까지의 연속체결만 누적해 매물대 bar를 표시합니다."
+                  checked={volumeDistributionHoverCutoffEnabled}
+                  onToggle={() => setVolumeDistributionHoverCutoffEnabled(!volumeDistributionHoverCutoffEnabled)}
+                  testId="settings-toggle-volumeDistributionHoverCutoff"
+                />
               </div>
               <div className="mb-3">
                 <div className="text-xs text-fg-dim mb-1.5">색상</div>

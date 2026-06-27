@@ -298,7 +298,8 @@ describe('IndicatorPanel', () => {
     useLivePageStore.setState({ volumeDistributionHoverCutoffEnabled: false });
     render(<IndicatorPanel onClose={() => {}} />);
     fireEvent.click(screen.getByRole('button', { name: '연속체결 매물대 분포' }));
-    fireEvent.click(screen.getByRole('checkbox', { name: '호버 시점 누적' }));
+    expect(screen.getByTestId('settings-toggle-volumeDistributionHoverCutoff')).toBeTruthy();
+    fireEvent.click(screen.getByRole('switch', { name: '호버 시점 누적' }));
     expect(useLivePageStore.getState().volumeDistributionHoverCutoffEnabled).toBe(true);
   });
 

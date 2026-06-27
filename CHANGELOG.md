@@ -3,6 +3,12 @@
 All notable changes to this project are documented here.
 The format follows a 4-digit `MAJOR.MINOR.PATCH.MICRO` scheme.
 
+## [0.12.9.2] - 2026-06-27
+
+### Fixed
+- **매물대 분포 종가 그래프 유지**: 호버 시점 누적 모드에서 bar profile의 cutoff 시각 때문에 종가 그래프까지 잘리던 문제를 고쳐, 종가 라인은 당일 마지막 close point까지 계속 표시되도록 했다.
+- **호버 시점 누적 설정 UI 정렬**: `연속체결 매물대 분포`의 `호버 시점 누적` 설정을 다른 지표 설정과 같은 토글 버튼으로 바꿨다.
+
 ## [0.12.9.1] - 2026-06-27
 
 ### Fixed
