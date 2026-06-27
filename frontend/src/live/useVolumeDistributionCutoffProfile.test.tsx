@@ -1,7 +1,7 @@
 import { renderHook } from '@testing-library/react';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
-import type { DayVolumeDistribution, RangeBundle } from '../api/types';
+import type { Candle, DayVolumeDistribution, RangeBundle, RangeSegment } from '../api/types';
 import { useRange } from '../api/range';
 import { useVolumeDistributionCutoffProfile } from './useVolumeDistributionCutoffProfile';
 
@@ -47,6 +47,24 @@ const emptyBundle: RangeBundle = {
   broker_late_entries: [],
 };
 
+const segment: RangeSegment = {
+  date: '20260625',
+  session_open_ms: 90_000_000,
+  session_close_ms: 153_000_000,
+};
+
+const candles: Candle[] = [
+  {
+    ts_ms: 90_000_000,
+    open: 100,
+    high: 120,
+    low: 100,
+    close: 110,
+    vol_a: 0,
+    vol_b: 0,
+  },
+];
+
 describe('useVolumeDistributionCutoffProfile', () => {
   beforeEach(() => {
     mockedUseRange.mockReset();
@@ -64,7 +82,6 @@ describe('useVolumeDistributionCutoffProfile', () => {
       cursorMs: 90_001_000,
       todayKst: null,
       rangeCount: 2,
-      sourcePref: 'hogaplay',
       finalProfile,
       priceRange: null,
     }));
@@ -92,7 +109,6 @@ describe('useVolumeDistributionCutoffProfile', () => {
       cursorMs: 90_001_000,
       todayKst: null,
       rangeCount: 2,
-      sourcePref: 'hogaplay',
       finalProfile: profile(),
       priceRange: null,
     }));
@@ -104,5 +120,91 @@ describe('useVolumeDistributionCutoffProfile', () => {
       volumeDistributionPriceRange: null,
     });
     expect(result.current).toBe(cutoffProfile);
+  });
+
+  it('merges valid live-edge trades after a sidecar cutoff profile', () => {
+    const cutoffProfile = profile({ last_trade_ms: 90_001_000 });
+    mockedUseRange.mockReturnValue({
+      data: { ...emptyBundle, volume_distributions: [cutoffProfile] },
+      isLoading: false,
+    } as ReturnType<typeof useRange>);
+
+    const { result } = renderHook(() => useVolumeDistributionCutoffProfile({
+      enabled: true,
+      code: '005930',
+      timeframe: '1m',
+      date: '20260625',
+      cursorMs: 90_003_000,
+      todayKst: '20260625',
+      rangeCount: 2,
+      finalProfile: profile(),
+      priceRange: null,
+      liveTrades: [
+        { t_ms: 90_002_000, price: 115, qty: 5, side: 1 },
+        { t_ms: 90_004_000, price: 105, qty: 99, side: 1 },
+      ],
+    }));
+
+    expect(result.current).toEqual({
+      ...cutoffProfile,
+      last_trade_ms: 90_002_000,
+      bins: [
+        { price_low: 100, price_high: 110, qty: 10 },
+        { price_low: 110, price_high: 120, qty: 25 },
+      ],
+    });
+  });
+
+  it('keeps final profile when fallback recompute has no valid live trades', () => {
+    mockedUseRange.mockReturnValue({
+      data: emptyBundle,
+      isLoading: false,
+    } as ReturnType<typeof useRange>);
+    const finalProfile = profile();
+
+    const { result } = renderHook(() => useVolumeDistributionCutoffProfile({
+      enabled: true,
+      code: '005930',
+      timeframe: '1m',
+      date: '20260625',
+      cursorMs: 90_001_000,
+      todayKst: '20260625',
+      rangeCount: 2,
+      finalProfile,
+      priceRange: null,
+      candles,
+      segment,
+      liveTrades: [
+        { t_ms: 90_001_000, price: 115, qty: 10, side: 0 },
+        { t_ms: 90_001_000, price: 125, qty: 10, side: 1 },
+      ],
+    }));
+
+    expect(result.current).toBe(finalProfile);
+  });
+
+  it('returns final profile and sends no cutoff request when required inputs are invalid', () => {
+    mockedUseRange.mockReturnValue({ data: undefined, isLoading: false } as ReturnType<typeof useRange>);
+    const finalProfile = profile();
+
+    const { result } = renderHook(() => useVolumeDistributionCutoffProfile({
+      enabled: true,
+      code: null,
+      timeframe: '1m',
+      date: '20260625',
+      cursorMs: 90_001_000,
+      todayKst: '20260625',
+      rangeCount: 2,
+      finalProfile,
+      priceRange: null,
+    }));
+
+    expect(mockedUseRange).toHaveBeenCalledWith(null, null, null, null, undefined, '20260625', {
+      mode: 'sidecar',
+      volumeDistributionBins: 2,
+      volumeDistributionCutoffMs: null,
+      volumeDistributionPriceRange: null,
+    });
+    expect(result.current).toBe(finalProfile);
   });
 });

@@ -2,7 +2,6 @@ import { useMemo } from 'react';
 
 import { useRange } from '../api/range';
 import type { Candle, DayVolumeDistribution, RangeSegment, Timeframe } from '../api/types';
-import type { SourcePreference } from '../state/sourcePreference';
 import {
   computeContinuousTradeVolumeDistribution,
   mergeVolumeDistributionTail,
@@ -23,7 +22,6 @@ export function useVolumeDistributionCutoffProfile(args: {
   cursorMs: number | null;
   todayKst: string | null;
   rangeCount: number;
-  sourcePref: SourcePreference;
   finalProfile: DayVolumeDistribution | null | undefined;
   priceRange: { min: number; max: number } | null;
   liveTrades?: readonly ContinuousTradeLike[];
@@ -68,14 +66,17 @@ export function useVolumeDistributionCutoffProfile(args: {
       && liveTrades.length > 0
       && args.cursorMs != null
     ) {
-      return computeContinuousTradeVolumeDistribution({
+      const computedProfile = computeContinuousTradeVolumeDistribution({
         date: args.date,
         candles: args.candles,
         trades: liveTrades,
         rangeCount: args.rangeCount,
         segment: args.segment,
         cutoffMs: args.cursorMs,
-      }) ?? args.finalProfile;
+      });
+      return computedProfile?.last_trade_ms != null
+        ? computedProfile
+        : args.finalProfile;
     }
 
     return args.finalProfile;
@@ -88,7 +89,6 @@ export function useVolumeDistributionCutoffProfile(args: {
     args.liveTrades,
     args.rangeCount,
     args.segment,
-    args.sourcePref,
     args.todayKst,
     query.data,
     queryEnabled,
