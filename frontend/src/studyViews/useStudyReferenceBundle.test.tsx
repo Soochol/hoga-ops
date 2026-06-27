@@ -137,6 +137,15 @@ describe('useStudyReferenceBundle', () => {
 
   it('merges sidecar overlays into the hoga study bundle without waiting on sidecar loading', () => {
     const broker = { t_ms: 1_779_840_000_000, broker: 'NH투자증권', side: 'buy' as const, net: 42 };
+    const distribution = {
+      date: '20260618',
+      range_count: 1,
+      price_min: 69900,
+      price_max: 70100,
+      session_open_ms: 1_779_840_000_000,
+      session_close_ms: 1_779_863_400_000,
+      bins: [{ price_low: 69900, price_high: 70100, qty: 123 }],
+    };
     useQueryMock.mockImplementation((options: UseQueryOptions) => {
       if (options === rangeHogaOptions) {
         return {
@@ -162,7 +171,10 @@ describe('useStudyReferenceBundle', () => {
       }
       if (options === rangeSidecarOptions) {
         return {
-          data: rangeBundleFixture({ broker_late_entries: [broker] }),
+          data: rangeBundleFixture({
+            broker_late_entries: [broker],
+            volume_distributions: [distribution],
+          }),
           isLoading: true,
           error: null,
         };
@@ -175,5 +187,6 @@ describe('useStudyReferenceBundle', () => {
     expect(result.current.isLoading).toBe(false);
     expect(result.current.bundle?.quote_ratio.points).toHaveLength(1);
     expect(result.current.bundle?.broker_late_entries).toEqual([broker]);
+    expect(result.current.bundle?.volume_distributions).toEqual([distribution]);
   });
 });

@@ -293,6 +293,46 @@ describe('useLiveBundle', () => {
     expect(result.current.hogaBundle?.broker_late_entries).toEqual(sidecarBundle.broker_late_entries);
   });
 
+  it('merges sidecar volume distributions into the live bundle', () => {
+    const distribution = {
+      date: '20260527',
+      range_count: 1,
+      price_min: 69900,
+      price_max: 70100,
+      session_open_ms: 1_779_840_000_000,
+      session_close_ms: 1_779_863_400_000,
+      bins: [{ price_low: 69900, price_high: 70100, qty: 123 }],
+    };
+    const sidecarBundle = {
+      code: '005930',
+      from_date: '20260520',
+      to_date: '20260527',
+      bucket_ms: 60000,
+      segments: [],
+      candles: [],
+      quote_ratio: { bucket_ms: 60000, points: [] },
+      fill_strength: { bucket_ms: 60000, points: [] },
+      volume_profile_range: { bin_count: 0, price_min: 0, price_max: 0, bin_width: 0, bins: [] },
+      volume_profile_by_day: [],
+      volume_distributions: [distribution],
+      investorPoints: [],
+      ask_peaks: [],
+      bid_peaks: [],
+      broker_late_entries: [],
+      price_level_hits: [],
+      trade_volume_pocs: [],
+      program_trade: { points: [] },
+    };
+    useRangeSpy
+      .mockReturnValueOnce({ data: null, isLoading: false, error: null, isPlaceholderData: false, isFetching: false })
+      .mockReturnValueOnce({ data: sidecarBundle, isLoading: false, error: null, isPlaceholderData: false, isFetching: false });
+
+    const { result } = renderHook(() => useLiveBundle('005930', '1m', '20260527', liveFixture), { wrapper });
+
+    expect(result.current.bundle?.volume_distributions).toEqual([distribution]);
+    expect(result.current.chartBundle?.volume_distributions).toEqual([distribution]);
+  });
+
   it('clamps pastFrom to 249 days before today when historicalFromDate is older', () => {
     useLivePageStore.setState({ historicalFromDate: '20250101' });
     renderHook(() => useLiveBundle('005930', '1m', '20260527', liveFixture), { wrapper });

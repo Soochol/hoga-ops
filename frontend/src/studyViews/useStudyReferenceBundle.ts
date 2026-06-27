@@ -25,6 +25,7 @@ function mergeStudyRangeBundles(
     bid_peaks: sidecars.bid_peaks ?? [],
     broker_late_entries: sidecars.broker_late_entries ?? [],
     trade_volume_pocs: sidecars.trade_volume_pocs ?? [],
+    volume_distributions: sidecars.volume_distributions ?? [],
   };
 }
 

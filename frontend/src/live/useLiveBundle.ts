@@ -419,6 +419,7 @@ export function useLiveBundle(
       built.bid_peaks = sidecarSource.bid_peaks ?? [];
       built.broker_late_entries = sidecarSource.broker_late_entries ?? [];
       built.trade_volume_pocs = sidecarSource.trade_volume_pocs ?? [];
+      built.volume_distributions = sidecarSource.volume_distributions ?? [];
     }
 
     // Segments-identity stabilization (eng review C1): buildChartBundle allocates
