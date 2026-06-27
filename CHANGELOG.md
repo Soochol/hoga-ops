@@ -3,6 +3,17 @@
 All notable changes to this project are documented here.
 The format follows a 4-digit `MAJOR.MINOR.PATCH.MICRO` scheme.
 
+## [0.12.9.0] - 2026-06-27
+
+### Added
+- **KIS Capacity Scheduler 도입**: 사용자 요청과 백그라운드 KIS REST 호출을 계정 풀 기반 scheduler로 통합해, 계정별 rate limit을 분산하고 user-visible 요청을 우선 처리하도록 했다.
+
+### Changed
+- **Live KIS REST 호출 경로 정리**: 캔들, 지수, 투자자 동향, 현재가, 스크리너, REST capture/poller 호출을 scheduler-backed access 경로로 모으고 legacy role routing은 호환 fallback으로 축소했다.
+
+### Fixed
+- **KIS REST 우회 방지 가드 추가**: production caller가 scheduler를 우회해 `kis_for_role` 또는 `run_with_capacity(None, ...)`를 쓰지 못하도록 ADR invariant 테스트를 추가했다.
+
 ## [0.12.8.3] - 2026-06-27
 
 ### Added

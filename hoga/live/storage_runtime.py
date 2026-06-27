@@ -9,9 +9,11 @@ from typing import Protocol
 
 from hoga.api.models import LiveStoragePolicy
 
-from . import kis_access, kis_runtime
+from . import kis_runtime
 from .buffer import LiveBuffer
 from .coverage import _compute_capture_candidates, plan_storage_targets
+from .kis_capacity_runtime import ensure_kis_capacity_scheduler
+from .live_rest_capture_access import ScheduledLiveRestCaptureClient
 from .settings import load_live_settings
 
 
@@ -53,8 +55,13 @@ def _ensure_rest30_recorder(
         return state.rest30_recorder
     if kis_runtime.ensure_kis_client_from_env(data_dir) is None:
         return None
+    capture_client = ScheduledLiveRestCaptureClient(
+        data_dir=data_dir,
+        scheduler=ensure_kis_capacity_scheduler(data_dir),
+        source="live-rest30-recorder",
+    )
     recorder = Rest30sRecorder(
-        kis_resolver=lambda: kis_access.kis_for_role("background", data_dir),
+        kis_resolver=lambda: capture_client,
         buffer=buffer,
         data_dir=data_dir,
         date_fn=date_fn,
@@ -81,6 +88,7 @@ def _ensure_program_trade_collector(
         data_dir=data_dir,
         date_fn=date_fn,
         now_ms_fn=now_ms_fn,
+        scheduler=ensure_kis_capacity_scheduler(data_dir),
     )
     state.program_trade_collector = collector
     return collector

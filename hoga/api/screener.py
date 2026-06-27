@@ -23,6 +23,7 @@ from hoga.api.models import (
 from hoga.api.symbols import _RefreshCoordinator
 from hoga.collector.orchestrator import next_kst_day, now_kst
 from hoga.live import kis_access
+from hoga.live.kis_capacity_runtime import ensure_kis_capacity_scheduler
 from hoga.live.kis_client import KIS_KST
 
 log = logging.getLogger(__name__)
@@ -81,20 +82,25 @@ async def trigger_update(data_dir: Path, *, bus=None) -> int:
     stocks_df = await asyncio.to_thread(pl.read_parquet, sdir / "stocks.parquet")
     codes = stocks_df["code"].to_list()   # 무거운 read 는 스레드로; 인메모리 추출만 루프
 
-    # EOD 갭 캐치업은 배경 배치(장 마감 후, 종목 다수 daily fetch) → background 계정으로
-    # 라우팅(계정 분리 2026-06-09): N=2면 account 1(유휴 REST 버킷)을 써서, 마감 후
-    # 사용자가 차트를 보면(account 0 foreground) 경합하지 않게 한다. N=1/저하면 account 0.
-    # 게이트: creds 존재만 확인(없으면 skip). 실제 client는 fetch_one이 per-code로 재해결.
-    if kis_access.kis_for_role("background", data_dir) is None:
+    # EOD 갭 캐치업은 배경 배치(종목 다수 daily fetch)이므로 Capacity Scheduler에 맡긴다.
+    # creds가 없으면 기존처럼 skip하고, 있으면 per-code 요청이 계정풀/쿨다운/예약용량 정책을 탄다.
+    if not kis_access.has_rest_capacity(data_dir):
         log.warning("screener update: KIS creds missing, skipping")
         return 0
 
+    scheduler = ensure_kis_capacity_scheduler(data_dir)
+
     async def fetch_one(c: str, f: str, t: str) -> list[DailyBar]:
-        # background 계정으로 fetch, account 1 토큰 실패 시 account 0 폴백(FM5 — 공유 헬퍼).
-        # run_update는 gather(return_exceptions 없음)라 한 코드 실패가 배치 전체를 중단시키므로,
-        # 첫 코드가 acct1 latch를 켜고 이 호출이 account 0로 살린다(이후 코드는 곧장 account 0).
-        return await kis_access.fetch_for_role(
-            "background", data_dir, lambda client: _kis_fetch_one(client, c, f, t))
+        return await kis_access.run_with_capacity(
+            scheduler,
+            data_dir=data_dir,
+            role="background",
+            key=("screener-update", c, f, t),
+            endpoint=kis_access.KisRestEndpoint.SCREENER_DAILY,
+            priority="background",
+            cooldown_scope="screener-daily",
+            fetch_fn=lambda client: _kis_fetch_one(client, c, f, t),
+        )
 
     async def _do() -> int:
         n = await screener_store.run_update(

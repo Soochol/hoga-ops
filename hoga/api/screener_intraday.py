@@ -8,6 +8,7 @@ from pathlib import Path
 import polars as pl
 
 from hoga.live import kis_access
+from hoga.live.kis_capacity_runtime import ensure_kis_capacity_scheduler
 
 _SCHEMA = {
     "code": pl.Utf8,
@@ -77,12 +78,20 @@ async def build_intraday_overlay(
         if cached is not None and cached_at is not None and now_ms - cached_at <= ttl_ms:
             return cached
 
-        kis = kis_access.kis_for_role("background", data_dir)
-        if kis is None:
+        if not kis_access.has_rest_capacity(data_dir):
             return _empty(["intraday_kis_unavailable"])
 
         try:
-            quotes = await kis.fetch_multi_price(list(unique_codes))
+            quotes = await kis_access.run_with_capacity(
+                ensure_kis_capacity_scheduler(data_dir),
+                data_dir=data_dir,
+                role="background",
+                key=("screener-intraday", today, unique_codes),
+                endpoint=kis_access.KisRestEndpoint.QUOTES,
+                priority="background",
+                cooldown_scope="quotes",
+                fetch_fn=lambda client: client.fetch_multi_price(list(unique_codes)),
+            )
         except Exception:
             return _empty(["intraday_quote_fetch_failed"])
 

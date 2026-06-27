@@ -304,3 +304,96 @@ async def test_fetch_background_fallback_raises_when_no_client(tmp_path, monkeyp
 
     with pytest.raises(KisAuthError):
         await kis_access.fetch_for_role("background", tmp_path, fetch_fn)
+
+
+def test_has_rest_capacity_accepts_injected_account0_client(tmp_path, monkeypatch):
+    for name in ("KIS_APP_KEY", "KIS_APP_SECRET", "KIS_APP_KEY_2", "KIS_APP_SECRET_2"):
+        monkeypatch.delenv(name, raising=False)
+    sentinel = object()
+    kis_runtime.set_kis_client(sentinel)
+
+    assert kis_access.has_rest_capacity(tmp_path) is True
+
+
+async def test_run_with_capacity_invokes_scheduler_with_background_priority(tmp_path):
+    seen = {}
+    fake_client = object()
+
+    class _Scheduler:
+        async def submit(
+            self,
+            *,
+            key,
+            endpoint,
+            priority,
+            call,
+            cooldown_scope=None,
+        ):
+            seen["key"] = key
+            seen["endpoint"] = endpoint
+            seen["priority"] = priority
+            seen["cooldown_scope"] = cooldown_scope
+            return await call(fake_client)
+
+    async def fetch_fn(client):
+        seen["client"] = client
+        return "ok"
+
+    result = await kis_access.run_with_capacity(
+        _Scheduler(),
+        data_dir=tmp_path,
+        role="background",
+        key=("screener", "005930"),
+        endpoint=kis_access.KisRestEndpoint.SCREENER_DAILY,
+        priority="background",
+        cooldown_scope="daily",
+        fetch_fn=fetch_fn,
+    )
+
+    assert result == "ok"
+    assert seen == {
+        "key": ("screener", "005930"),
+        "endpoint": "screener-daily",
+        "priority": "background",
+        "cooldown_scope": "daily",
+        "client": fake_client,
+    }
+
+
+async def test_run_with_capacity_none_keeps_legacy_role_fallback(tmp_path, monkeypatch):
+    _set_one_account(monkeypatch)
+    c0 = kis_runtime.ensure_kis_client_for_account(0, tmp_path)
+    seen = []
+
+    async def fetch_fn(client):
+        seen.append(client)
+        return "ok"
+
+    result = await kis_access.run_with_capacity(
+        None,
+        data_dir=tmp_path,
+        role="background",
+        key=("legacy", "005930"),
+        endpoint=kis_access.KisRestEndpoint.SCREENER_DAILY,
+        priority="background",
+        fetch_fn=fetch_fn,
+    )
+
+    assert result == "ok"
+    assert seen == [c0]
+
+
+async def test_run_with_capacity_rejects_raw_endpoint_string(tmp_path):
+    async def fetch_fn(client):
+        return "unreachable"
+
+    with pytest.raises(TypeError, match="KisRestEndpoint"):
+        await kis_access.run_with_capacity(
+            None,
+            data_dir=tmp_path,
+            role="background",
+            key=("legacy", "005930"),
+            endpoint="screener-daily",  # type: ignore[arg-type]
+            priority="background",
+            fetch_fn=fetch_fn,
+        )

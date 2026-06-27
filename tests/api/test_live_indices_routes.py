@@ -28,6 +28,38 @@ def _client() -> TestClient:
     return TestClient(app)
 
 
+def _patch_kis_capacity(monkeypatch, fake_kis):
+    scheduler = object()
+    calls = []
+    monkeypatch.setattr(live_api, "ensure_kis_capacity_scheduler", lambda data_dir: scheduler)
+    monkeypatch.setattr(live_api.kis_access, "has_rest_capacity", lambda data_dir: True)
+
+    async def fake_run_with_capacity(
+        scheduler_arg,
+        *,
+        data_dir,
+        role,
+        key,
+        endpoint,
+        priority,
+        fetch_fn,
+        cooldown_scope=None,
+    ):
+        calls.append({
+            "scheduler": scheduler_arg,
+            "data_dir": data_dir,
+            "role": role,
+            "key": key,
+            "endpoint": str(endpoint),
+            "priority": priority,
+            "cooldown_scope": cooldown_scope,
+        })
+        return await fetch_fn(fake_kis)
+
+    monkeypatch.setattr(live_api.kis_access, "run_with_capacity", fake_run_with_capacity)
+    return scheduler, calls
+
+
 def test_live_indices_route_lists_only_enabled_representative_indices() -> None:
     res = _client().get("/api/live/indices")
 
@@ -75,7 +107,7 @@ def test_index_candles_returns_fake_kis_daily_rows(tmp_path, monkeypatch) -> Non
                 ],
             )
 
-    monkeypatch.setattr(live_api.kis_access, "kis_for_role", lambda role, data_dir: FakeKis())
+    scheduler, calls = _patch_kis_capacity(monkeypatch, FakeKis())
 
     app = FastAPI()
     app.include_router(build_router(get_status=lifecycle.get_status, data_dir=tmp_path))
@@ -95,6 +127,15 @@ def test_index_candles_returns_fake_kis_daily_rows(tmp_path, monkeypatch) -> Non
             "volume": 450000000,
         },
     ]
+    assert calls == [{
+        "scheduler": scheduler,
+        "data_dir": tmp_path,
+        "role": "foreground",
+        "key": ("index-daily", "KOSPI", "D", "20260601", "20260619"),
+        "endpoint": "index-daily",
+        "priority": "user_visible",
+        "cooldown_scope": ("index-daily", "KOSPI", "D"),
+    }]
 
 
 def test_index_daily_candles_reuses_cached_newer_range_for_broader_scrollback(
@@ -123,7 +164,7 @@ def test_index_daily_candles_reuses_cached_newer_range_for_broader_scrollback(
     async def no_windowing(from_s, to_s, period, fetch_batch, *, max_concurrency=3):
         return await fetch_batch(from_s, to_s)
 
-    monkeypatch.setattr(live_api.kis_access, "kis_for_role", lambda role, data_dir: FakeKis())
+    _patch_kis_capacity(monkeypatch, FakeKis())
     monkeypatch.setattr(live_api, "fetch_index_daily_candles_windowed", no_windowing, raising=False)
     monkeypatch.setattr(live_api, "index_candles_cache_instance", None, raising=False)
 
@@ -167,7 +208,7 @@ def test_index_candles_returns_fake_kis_minute_rows(tmp_path, monkeypatch) -> No
                 ],
             )
 
-    monkeypatch.setattr(live_api.kis_access, "kis_for_role", lambda role, data_dir: FakeKis())
+    scheduler, calls = _patch_kis_capacity(monkeypatch, FakeKis())
 
     app = FastAPI()
     app.include_router(build_router(get_status=lifecycle.get_status, data_dir=tmp_path))
@@ -188,6 +229,15 @@ def test_index_candles_returns_fake_kis_minute_rows(tmp_path, monkeypatch) -> No
             "volume": 123456,
         },
     ]
+    assert calls == [{
+        "scheduler": scheduler,
+        "data_dir": tmp_path,
+        "role": "foreground",
+        "key": ("index-minute", "KOSPI", "1m", 60, "20260619", "20260619"),
+        "endpoint": "index-minute",
+        "priority": "user_visible",
+        "cooldown_scope": ("index-minute", "KOSPI", "1m"),
+    }]
 
 
 def test_index_minute_candles_repeated_request_uses_cache(tmp_path, monkeypatch) -> None:
@@ -211,7 +261,7 @@ def test_index_minute_candles_repeated_request_uses_cache(tmp_path, monkeypatch)
                 violations=[],
             )
 
-    monkeypatch.setattr(live_api.kis_access, "kis_for_role", lambda role, data_dir: FakeKis())
+    _patch_kis_capacity(monkeypatch, FakeKis())
     monkeypatch.setattr(live_api, "index_minute_candles_cache_instance", None, raising=False)
 
     app = FastAPI()
@@ -250,7 +300,7 @@ def test_index_minute_candles_warn_when_request_starts_before_returned_depth(tmp
                 violations=[],
             )
 
-    monkeypatch.setattr(live_api.kis_access, "kis_for_role", lambda role, data_dir: FakeKis())
+    _patch_kis_capacity(monkeypatch, FakeKis())
     monkeypatch.setattr(live_api, "index_minute_candles_cache_instance", None, raising=False)
 
     app = FastAPI()
@@ -283,7 +333,7 @@ def test_index_investor_net_returns_market_rows_for_kospi(tmp_path, monkeypatch)
                 ],
             )
 
-    monkeypatch.setattr(live_api.kis_access, "kis_for_role", lambda role, data_dir: FakeKis())
+    _patch_kis_capacity(monkeypatch, FakeKis())
 
     app = FastAPI()
     app.include_router(build_router(get_status=lifecycle.get_status, data_dir=tmp_path))

@@ -80,7 +80,7 @@ def _make_poller(
     kis = FakeKisClient(raise_for=raise_for)
     buf = LiveBuffer()
     poller = LiveRestPoller(
-        lambda: kis,  # resolver: 매 사이클 동일 fake 반환(계정 분리 2026-06-09)
+        lambda: kis,  # resolver: 매 사이클 동일 fake 반환
         buf,
         interval_s=interval_s,
         phase_fn=phase_fn or (lambda: "regular"),
@@ -411,30 +411,27 @@ async def test_poll_regular_polls_every_cycle_regression():
     assert kis.calls["fetch_orderbook"].count("005930") == 2
 
 
-# ── 계정 분리: background resolver 동적 라우팅 (2026-06-09) ──────────────────────
+# ── Resolver freshness: no fixed KIS REST adapter cache ──────────────────────
 
 
 @pytest.mark.asyncio
 async def test_poll_resolves_background_client_each_cycle():
-    """resolver를 매 사이클 호출해 현재 background 계정 client를 동적 선택한다 —
-    account 1(healthy)→account 0(degraded) 전환이 다음 사이클에 반영(별도 동기화 불필요).
-    여기선 resolver가 사이클마다 다른 fake를 반환하게 해 시점-평가를 검증한다."""
-    acct1 = FakeKisClient()  # N=2 healthy: background = account 1
-    acct0 = FakeKisClient()  # degraded 폴백: background = account 0
-    current = {"kis": acct1}
+    """resolver를 매 사이클 호출해 scheduler proxy/fake 교체가 즉시 반영된다."""
+    first = FakeKisClient()
+    second = FakeKisClient()
+    current = {"kis": first}
     buf = LiveBuffer()
     poller = LiveRestPoller(
         lambda: current["kis"], buf, interval_s=0.02, phase_fn=lambda: "regular"
     )
     poller.on_subscribe("005930")
-    await poller._poll_once()  # account 1로 폴링
-    assert acct1.calls["fetch_orderbook"] == ["005930"]
-    assert acct0.calls["fetch_orderbook"] == []
-    # account 1 저하 → resolver가 account 0 반환(시뮬레이션)
-    current["kis"] = acct0
-    await poller._poll_once()  # 이제 account 0로 폴링(고정 캐시 아님)
-    assert acct1.calls["fetch_orderbook"] == ["005930"], "저하 후에도 account 1 계속 사용"
-    assert acct0.calls["fetch_orderbook"] == ["005930"], "account 0로 폴백 안 됨"
+    await poller._poll_once()
+    assert first.calls["fetch_orderbook"] == ["005930"]
+    assert second.calls["fetch_orderbook"] == []
+    current["kis"] = second
+    await poller._poll_once()
+    assert first.calls["fetch_orderbook"] == ["005930"], "poller kept using stale adapter"
+    assert second.calls["fetch_orderbook"] == ["005930"], "poller did not re-resolve adapter"
 
 
 @pytest.mark.asyncio

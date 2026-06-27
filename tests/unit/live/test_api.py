@@ -6,11 +6,12 @@ from fastapi.testclient import TestClient
 
 @pytest.fixture(autouse=True)
 def _hermetic_kis_env(monkeypatch):
-    """배경 라우트(quotes·investor-net)는 kis_access.kis_for_role → configured_account_ids
-    로 ambient os.environ을 읽는다(계정 분리 2026-06-09). 개발 셸이 실제 KIS creds를
-    export하거나 다른 테스트의 create_app→load_env가 os.environ을 오염시키면 background가
-    실제 account 1 클라이언트를 만들려 한다(비결정 + 네트워크). 기본을 N=0(전부 account 0
-    주입 fake로 폴백)으로 격리한다 — N=2 라우팅을 검증하는 테스트만 명시적으로 setenv."""
+    """Capacity-scheduled KIS routes derive configured accounts from ambient env.
+
+    Developer-shell creds or another test's create_app→load_env can otherwise
+    create real KIS clients. Keep the default at N=0 and let tests that need a
+    multi-account pool opt in explicitly.
+    """
     for _k in ("KIS_APP_KEY", "KIS_APP_SECRET", "KIS_APP_KEY_2", "KIS_APP_SECRET_2"):
         monkeypatch.delenv(_k, raising=False)
 
@@ -20,6 +21,7 @@ def _make_test_app(
     control_fn=None,
     get_today_ask_peak=None,
     get_today_bid_peak=None,
+    data_dir=None,
 ):
     """Mount the live router on a bare FastAPI for isolated testing."""
     from hoga.live import lifecycle
@@ -33,6 +35,7 @@ def _make_test_app(
             on_control=control_fn,
             get_today_ask_peak=get_today_ask_peak,
             get_today_bid_peak=get_today_bid_peak,
+            data_dir=data_dir,
         )
     )
     return app
@@ -50,6 +53,24 @@ def test_get_live_status_returns_running_false_initially() -> None:
         assert body["running"] is False
         assert body["watchlist_count"] == 0
         assert body["kis_calls_today"] == 0
+
+
+def test_get_live_status_includes_kis_capacity_scheduler_snapshot(tmp_path) -> None:
+    from hoga.live import lifecycle
+    lifecycle.reset_for_tests()
+
+    app = _make_test_app(data_dir=tmp_path)
+    with TestClient(app) as c:
+        r = c.get("/api/live/status")
+        assert r.status_code == 200
+        scheduler = r.json()["kis_capacity_scheduler"]
+        assert scheduler["max_workers"] >= 4
+        assert scheduler["max_pending_requests"] == 1000
+        assert "configured_account_count" in scheduler
+        assert "healthy_account_count" in scheduler
+        assert "queued" in scheduler
+        assert "inflight" in scheduler
+        assert "overloaded_rejections" in scheduler
 
 
 def test_post_live_control_dispatches_action() -> None:
@@ -1293,11 +1314,55 @@ def _investor_app(tmp_path, fake_kis):
     return app
 
 
+def test_index_investor_net_uses_scheduler_backed_fetcher(tmp_path) -> None:
+    from hoga.live import kis_runtime, lifecycle
+    from hoga.live.api import build_router
+    from hoga.live.kis_client import InvestorNetFetchResult
+    from hoga.live.kis_models import InvestorNetPoint
+
+    class _FakeKisForIndexInvestor:
+        def __init__(self):
+            self.calls: list[tuple[str, str, str]] = []
+
+        async def fetch_market_investor_net(self, index, from_yyyymmdd, to_yyyymmdd):
+            self.calls.append((index.id, from_yyyymmdd, to_yyyymmdd))
+            return InvestorNetFetchResult(
+                points=[
+                    InvestorNetPoint(
+                        t_ms=1_718_574_400_000,
+                        foreign_net=-3519,
+                        institution_net=17184,
+                    )
+                ],
+                violations=[],
+            )
+
+    fake = _FakeKisForIndexInvestor()
+    lifecycle.reset_for_tests()
+    kis_runtime.set_kis_client(fake)  # type: ignore[arg-type]
+    app = FastAPI()
+    app.include_router(build_router(
+        get_status=lifecycle.get_status,
+        data_dir=tmp_path,
+    ))
+    with TestClient(app) as c:
+        r = c.get("/api/live/index-investor-net?index_id=KOSDAQ&from=20260619&to=20260619")
+
+    assert r.status_code == 200
+    body = r.json()
+    assert body["index_id"] == "KOSDAQ"
+    assert body["points"] == [
+        {
+            "t_ms": 1_718_574_400_000,
+            "foreign_net": -3519,
+            "institution_net": 17184,
+        }
+    ]
+    assert fake.calls == [("KOSDAQ", "20260619", "20260619")]
+
+
 def _two_account_app(tmp_path, monkeypatch, fake0, fake1):
-    """N=2 라우팅 검증용: account 0/1에 서로 다른 fake를 주입하고 env 2종을 세팅한다.
-    build_router가 모든 라우트를 한 라우터에 마운트하므로 라우트 중립 — foreground
-    (past-candles→account 0)·background(investor-net/quotes→account 1) 양쪽 spy 검증에
-    공용(계정 분리 2026-06-09, C1b 2026-06-10 일반화)."""
+    """N=2 라우팅 검증용: account 0/1에 서로 다른 fake를 주입하고 env 2종을 세팅한다."""
     from hoga.live import kis_runtime, lifecycle
     from hoga.live.api import build_router
     monkeypatch.setenv("KIS_APP_KEY", "k0")
@@ -1315,20 +1380,20 @@ def _two_account_app(tmp_path, monkeypatch, fake0, fake1):
     return app
 
 
-def test_past_investor_net_routes_background_to_account1(tmp_path, monkeypatch) -> None:
-    """N=2 정상: 배경 라우트가 account 1(유휴였던 REST 버킷)을 쓴다 — account 0은 무호출."""
+def test_past_investor_net_uses_capacity_scheduler_pool(tmp_path, monkeypatch) -> None:
+    """N=2 정상: investor-net은 fixed account role이 아니라 scheduler pool을 쓴다."""
     monkeypatch.setattr("hoga.live.account_health._ws_probe", lambda: set())
     fake0, fake1 = _FakeKisForInvestor(), _FakeKisForInvestor()
     app = _two_account_app(tmp_path, monkeypatch, fake0, fake1)
     with TestClient(app) as c:
         r = c.get("/api/live/past-investor-net?code=005930&from=20240101&to=20240105")
         assert r.status_code == 200
-        assert len(fake1.calls) == 1, "background가 account 1을 쓰지 않음"
-        assert len(fake0.calls) == 0, "account 0(foreground 전용)이 background에 침범"
+        assert len(fake0.calls) + len(fake1.calls) == 1
+        assert fake0.calls or fake1.calls
 
 
-def test_past_investor_net_account1_degraded_falls_back_to_account0(tmp_path, monkeypatch) -> None:
-    """N=2이지만 account 1 REST 토큰 저하 → 배경 라우트가 account 0로 폴백(②우선순위 보호).
+def test_past_investor_net_degraded_account_is_excluded(tmp_path, monkeypatch) -> None:
+    """N=2이지만 account 1 REST 토큰 저하 → scheduler pool에서 account 1을 제외한다.
 
     REST 라우팅은 REST 토큰 latch(is_rest_degraded)만 본다(WS sub_failed는 직교 — 폴백 무관,
     2026-06-10). 그래서 degraded를 mark_rest_auth_degraded(1)로 위조한다. _two_account_app가
@@ -1340,21 +1405,24 @@ def test_past_investor_net_account1_degraded_falls_back_to_account0(tmp_path, mo
     with TestClient(app) as c:
         r = c.get("/api/live/past-investor-net?code=005930&from=20240101&to=20240105")
         assert r.status_code == 200
-        assert len(fake0.calls) == 1, "degraded인데 account 0로 폴백 안 됨"
+        assert len(fake0.calls) == 1, "healthy account 0을 쓰지 않음"
         assert len(fake1.calls) == 0, "degraded account 1을 그대로 사용"
 
 
-def test_past_candles_routes_foreground_to_account0(tmp_path, monkeypatch) -> None:
-    """N=2: foreground 라우트(past-candles)는 account 0 전용 — account 1(배경 REST
-    버킷)을 건드리지 않는다. C1b 라우트 레벨 가드: 라우트의 'foreground' 문자열이
-    'background'로 뒤집히면 N=2에서 account 1로 새므로 fake1.calls>0로 잡힌다."""
+def test_past_candles_user_visible_request_starts_on_first_pool_account(tmp_path, monkeypatch) -> None:
+    """N=2: user-visible past-candles goes through scheduler pool, not legacy background routing.
+
+    With no load, the account pool deterministically picks the lowest healthy
+    account first. If the route regresses to legacy background allocation, this
+    test would leak to account 1.
+    """
     fake0, fake1 = _FakeKisForPast(), _FakeKisForPast()
     app = _two_account_app(tmp_path, monkeypatch, fake0, fake1)
     with TestClient(app) as c:
         r = c.get("/api/live/past-candles?code=005930&from=20240101&to=20240105")
         assert r.status_code == 200
-        assert len(fake0.calls) >= 1, "foreground가 account 0(전용 버킷)를 쓰지 않음"
-        assert len(fake1.calls) == 0, "foreground가 account 1(배경 버킷)에 침범"
+        assert len(fake0.calls) >= 1, "user-visible request did not use first healthy account"
+        assert len(fake1.calls) == 0, "user-visible request leaked to legacy role allocator"
 
 
 def test_past_investor_net_miss_calls_kis(tmp_path) -> None:
@@ -2088,25 +2156,15 @@ def _investor_estimate_app(tmp_path, fake_kis=None):
     return app
 
 
-def test_investor_trend_estimate_route_uses_background_role(tmp_path, monkeypatch) -> None:
-    from hoga.live import kis_access
-
+def test_investor_trend_estimate_route_uses_capacity_scheduler(tmp_path) -> None:
     fake = _FakeKisForInvestorTrendEstimate([
         [InvestorTrendEstimateRow(slot="0900", foreign_qty=10, institution_qty=20, sum_qty=30)]
     ])
-    seen = {}
-
-    def fake_kis_for_role(role, data_dir):
-        seen["role"] = role
-        seen["data_dir"] = data_dir
-        return fake
-
-    monkeypatch.setattr(kis_access, "kis_for_role", fake_kis_for_role)
-    app = _investor_estimate_app(tmp_path)
+    app = _investor_estimate_app(tmp_path, fake)
     r = TestClient(app).get("/api/live/investor-trend-estimate", params={"code": "005930"})
 
     assert r.status_code == 200
-    assert seen == {"role": "background", "data_dir": tmp_path}
+    assert r.json()["status"] == "ok"
 
 
 def test_investor_trend_estimate_route_returns_expected_rows(tmp_path) -> None:

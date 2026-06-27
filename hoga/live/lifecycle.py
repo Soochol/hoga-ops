@@ -30,8 +30,10 @@ from pydantic import BaseModel, Field
 
 from hoga.api.models import LiveStoragePolicy
 
-from . import account_health, kis_access, kis_runtime  # health probe / role 라우팅 / 리소스
+from . import account_health, kis_runtime  # health probe / 리소스
 from .buffer import LiveBuffer
+from .kis_capacity_runtime import ensure_kis_capacity_scheduler
+from .live_rest_capture_access import ScheduledLiveRestCaptureClient
 from .live_session import (  # noqa: F401 — C3 재export(호출부·테스트 호환) + LiveSession 사용
     _PER_ACCOUNT_MAX,
     KIS_WS_MAX_REGISTRATIONS,
@@ -92,6 +94,7 @@ class LiveStatus(BaseModel):
     kis_api_last_error: str | None = None
     kis_api_last_error_count: int = 0
     kis_api_degraded: bool = False
+    kis_capacity_scheduler: dict[str, object] | None = None
 
 
 # ── State ──────────────────────────────────────────────────────────────────────
@@ -511,15 +514,18 @@ def _ensure_poller(data_dir: Path) -> LiveRestPoller | None:
 
     if _state.rest_poller is not None:
         return _state.rest_poller
-    # account 0 creds 게이트: 없으면 폴러 미생성(완전 오프라인). 있으면 account 0
-    # client를 미리 확보(부팅 비용·재사용)하되, 폴러엔 *고정* client가 아니라 background
-    # resolver를 준다(계정 분리 2026-06-09): 매 사이클 kis_for_role('background')로 account
-    # 1(유휴 REST 버킷)을 동적 선택, 저하 시 account 0 폴백. 폴러는 1회 생성·재사용이라
-    # resolver 클로저가 라우팅을 시점-평가하므로 재시작/저하 전환에 별도 동기화 불필요.
+    # account 0 creds 게이트: 없으면 폴러 미생성(완전 오프라인). 있으면 REST 표시
+    # 폴러에는 KisClient 고정 참조가 아니라 scheduler-backed proxy를 준다. 계정 선택,
+    # health filtering, EGW00201 cooldown은 KIS Capacity Scheduler가 소유한다.
     if kis_runtime.ensure_kis_client_from_env(data_dir) is None:  # account 0
         return None
+    capture_client = ScheduledLiveRestCaptureClient(
+        data_dir=data_dir,
+        scheduler=ensure_kis_capacity_scheduler(data_dir),
+        source="live-rest-poller",
+    )
     poller = LiveRestPoller(
-        lambda: kis_access.kis_for_role("background", data_dir), _buffer
+        lambda: capture_client, _buffer
     )
     poller.start()
     return poller

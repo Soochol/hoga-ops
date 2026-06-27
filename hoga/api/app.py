@@ -35,6 +35,7 @@ from hoga.collector.client import HogaplayClient
 from hoga.config import Config, resolve_data_dir, resolve_symbol_master_path
 from hoga.env import load_env
 from hoga.live.api import build_router as build_live_router
+from hoga.live.kis_capacity_runtime import aclose_kis_capacity_scheduler
 from hoga.live.kis_runtime import aclose_kis_client
 from hoga.live.lifecycle import (
     get_active_codes,
@@ -114,6 +115,7 @@ def create_app(data_dir: Path) -> FastAPI:
                 start_today_promoter=start_today_promoter,
                 stop_today_promoter=stop_today_promoter,
                 stop_live_stream=stop_live_stream,
+                aclose_kis_capacity_scheduler=aclose_kis_capacity_scheduler,
                 aclose_kis_client=aclose_kis_client,
                 get_active_codes=get_active_codes,
                 load_symbol_disk_state=_symbols_module.load_disk_state,
