@@ -3,6 +3,11 @@
 All notable changes to this project are documented here.
 The format follows a 4-digit `MAJOR.MINOR.PATCH.MICRO` scheme.
 
+## [0.12.9.4] - 2026-06-27
+
+### Fixed
+- **당일 최대 매물대 동시호가 제외 기준 통일**: 오늘 live 계산도 연속체결 매물대 분포와 같은 호가 구조 기반 cutoff를 사용해, 마감 동시호가 체결이 당일 최대 매물대 구간을 뒤집지 않도록 했다.
+
 ## [0.12.9.3] - 2026-06-27
 
 ### Fixed
