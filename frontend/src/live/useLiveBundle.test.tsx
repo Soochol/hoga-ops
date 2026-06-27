@@ -124,7 +124,6 @@ describe('planLiveRangeRequest', () => {
       tradeVolumePocEnabled: true,
       brokerLateEntryEnabled: true,
       brokerLateEntryStartHHMM: 945,
-      brokerLateEntryWindowMinutes: 30,
       volumeDistributionEnabled: true,
       volumeDistributionRangeCount: 12,
       volumeDistributionPriceRange: { min: 69900, max: 70100 },
@@ -137,7 +136,6 @@ describe('planLiveRangeRequest', () => {
       options: {
         brokerLateEntriesEnabled: true,
         brokerLateEntryStartHHMM: 945,
-        brokerLateEntryWindowMinutes: 30,
         volumeDistributionBins: 12,
         tradeVolumePocBins: 12,
         volumeDistributionPriceRange: { min: 69900, max: 70100 },
@@ -154,7 +152,6 @@ describe('planLiveRangeRequest', () => {
       tradeVolumePocEnabled: false,
       brokerLateEntryEnabled: false,
       brokerLateEntryStartHHMM: 945,
-      brokerLateEntryWindowMinutes: 30,
       volumeDistributionEnabled: false,
       volumeDistributionRangeCount: 12,
       volumeDistributionPriceRange: { min: 69900, max: 70100 },
@@ -167,7 +164,6 @@ describe('planLiveRangeRequest', () => {
       options: {
         brokerLateEntriesEnabled: false,
         brokerLateEntryStartHHMM: null,
-        brokerLateEntryWindowMinutes: null,
         volumeDistributionBins: null,
         tradeVolumePocBins: null,
         volumeDistributionPriceRange: null,

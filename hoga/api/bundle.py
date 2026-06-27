@@ -236,7 +236,6 @@ def build_broker_late_entries_slice(
     date: str,
     source: str,
     start_hhmm: int,
-    window_minutes: int = 30,
 ) -> list[BrokerLateEntryEvent]:
     path = engine.parquet_dir(date, code, source) / "brokers.parquet"
     if not path.exists():
@@ -253,7 +252,6 @@ def build_broker_late_entries_slice(
             engine.conn,
             path=path,
             threshold_ms=threshold_ms,
-            absence_window_ms=window_minutes * 60 * 1000,
         )
     ]
 
@@ -1142,7 +1140,6 @@ def build_range_bundle(
     source_pref: str = "hogaplay",  # ADR-0039
     broker_late_entries_enabled: bool = True,
     broker_late_entry_start_hhmm: int = 930,
-    broker_late_entry_window_minutes: int = 30,
     volume_distribution_bins: int | None = None,
     trade_volume_poc_bins: int | None = None,
     volume_distribution_price_min: int | None = None,
@@ -1331,7 +1328,6 @@ def build_range_bundle(
                     date=d,
                     source=source,
                     start_hhmm=broker_late_entry_start_hhmm,
-                    window_minutes=broker_late_entry_window_minutes,
                 )
             )
         candles.extend(candles_d)

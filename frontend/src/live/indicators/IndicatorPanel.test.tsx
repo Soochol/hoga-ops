@@ -117,7 +117,7 @@ describe('IndicatorPanel', () => {
     render(<IndicatorPanel onClose={() => {}} />);
     await userEvent.click(screen.getByText('신규 거래원 등장'));
     expect(screen.getByText('기준 시각 (HHMM)')).toBeTruthy();
-    expect(screen.getByText('부재 시간 (분)')).toBeTruthy();
+    expect(screen.queryByText(new RegExp(['부재', '시간'].join(' ')))).toBeNull();
     expect(screen.getByText('표시 방향')).toBeTruthy();
     expect(screen.getByRole('button', { name: '둘다' })).toBeTruthy();
     expect(screen.getByRole('button', { name: '매수만' })).toBeTruthy();
