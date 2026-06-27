@@ -124,6 +124,8 @@ export type PersistedIndicators = {
   tradeVolumePocOpacity: number;
   /** 연속체결 매물대 분포 on/off. Default TRUE. */
   volumeDistributionEnabled: boolean;
+  /** 연속체결 매물대 분포 hover cutoff mode. Default FALSE. */
+  volumeDistributionHoverCutoffEnabled: boolean;
   /** 연속체결 매물대 분포 가격 구간 수(5~30). Default 10. */
   volumeDistributionRangeCount: number;
   /** 연속체결 매물대 분포 기본 막대 색(hex). 기본 #64748B. */
@@ -259,6 +261,7 @@ export function mergeLiveIndicatorPrefs(
     ? tvpOpacityRaw
     : TRADE_VOLUME_POC_DEFAULT_OPACITY;
   const volumeDistributionEnabled = obj?.volumeDistributionEnabled !== false;
+  const volumeDistributionHoverCutoffEnabled = obj?.volumeDistributionHoverCutoffEnabled === true;
   const volumeDistributionRangeCount = normalizeVolumeDistributionRangeCount(obj?.volumeDistributionRangeCount);
   const volumeDistributionColor = normalizeHexColor(obj?.volumeDistributionColor, VOLUME_DISTRIBUTION_DEFAULT_COLOR);
   const volumeDistributionMaxColor = normalizeHexColor(
@@ -314,6 +317,7 @@ export function mergeLiveIndicatorPrefs(
     tradeVolumePocColor: tvpColor,
     tradeVolumePocOpacity: tvpOpacity,
     volumeDistributionEnabled,
+    volumeDistributionHoverCutoffEnabled,
     volumeDistributionRangeCount,
     volumeDistributionColor,
     volumeDistributionMaxColor,
