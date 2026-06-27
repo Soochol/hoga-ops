@@ -1183,6 +1183,9 @@ def build_range_bundle(
     hoga_only = mode == "hoga"
     sidecar_only = mode == "sidecar"
     full_mode = mode == "full"
+    volume_distribution_slice_cutoff_ms = (
+        volume_distribution_cutoff_ms if sidecar_only else None
+    )
 
     dates = engine.list_stock_dates_in_range(
         code=code, from_date=from_date, to_date=to_date,
@@ -1357,7 +1360,7 @@ def build_range_bundle(
                 range_count=volume_distribution_bins,
                 price_min=price_range[0] if price_range is not None else None,
                 price_max=price_range[1] if price_range is not None else None,
-                cutoff_ms=volume_distribution_cutoff_ms,
+                cutoff_ms=volume_distribution_slice_cutoff_ms,
             )
             if profile is not None:
                 volume_distributions.append(profile)
