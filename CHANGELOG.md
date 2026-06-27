@@ -3,6 +3,12 @@
 All notable changes to this project are documented here.
 The format follows a 4-digit `MAJOR.MINOR.PATCH.MICRO` scheme.
 
+## [0.12.8.0] - 2026-06-27
+
+### Changed
+- **신규 거래원 등장 기준 단순화**: `/live` 신규 거래원 등장 지표가 기준 시각 이후 매수/매도 거래원 각각의 첫 등장만 포착하도록 바꿨다. 같은 거래원이 사라졌다가 다시 나타나도 같은 side에서는 다시 표시하지 않는다.
+- **신규 거래원 부재 시간 옵션 제거**: 보조지표 설정의 `부재 시간 (분)` 입력과 `broker_late_entry_window_minutes` 요청/저장 필드를 제거해 기준 시각만으로 동작하게 했다.
+
 ## [0.12.7.0] - 2026-06-27
 
 ### Fixed
