@@ -105,6 +105,30 @@ describe('VolumeDistributionCard', () => {
     expect(screen.getByTestId('volume-distribution-cursor-marker')).toHaveStyle({ left: '50%' });
   });
 
+  it('keeps the close graph axis through the final close point for cutoff profiles', () => {
+    render(
+      <VolumeDistributionCard
+        profile={{
+          ...profile,
+          last_trade_ms: cursorMs,
+        }}
+        cursorMs={cursorMs}
+        closePoints={[
+          { t_ms: sessionOpenMs, close: 100 },
+          { t_ms: cursorMs, close: 110 },
+          { t_ms: Date.UTC(2026, 5, 25, 2, 0, 0), close: 120 },
+        ]}
+        color="#64748B"
+        maxColor="#EAB308"
+      />,
+    );
+
+    expect(screen.getByTestId('volume-distribution-close-graph').querySelector('path')).toHaveAttribute(
+      'd',
+      'M 0.00 100.00 L 50.00 50.00 L 100.00 0.00',
+    );
+  });
+
   it('does not emit duplicate-key warnings for single-price profiles', () => {
     const consoleError = vi.spyOn(console, 'error').mockImplementation(() => {});
 

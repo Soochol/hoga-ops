@@ -38,7 +38,7 @@ export function VolumeDistributionCard({
     }, cursorMs);
   const markerVisible = cursorMs != null && (cursorPhase === 'regular' || cursorPhase === 'auction');
   const lastCloseMs = closePoints.length > 0 ? closePoints[closePoints.length - 1]?.t_ms : null;
-  const axisEndMs = Math.max(profile.session_open_ms, profile.last_trade_ms ?? lastCloseMs ?? profile.session_close_ms);
+  const axisEndMs = Math.max(profile.session_open_ms, lastCloseMs ?? profile.last_trade_ms ?? profile.session_close_ms);
   const markerPct = markerVisible && axisEndMs > profile.session_open_ms
     ? ((cursorMs - profile.session_open_ms) / (axisEndMs - profile.session_open_ms)) * 100
     : 0;
