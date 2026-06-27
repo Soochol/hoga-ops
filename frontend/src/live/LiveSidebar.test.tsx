@@ -347,6 +347,57 @@ describe('LiveSidebar', () => {
     expect(screen.getByTestId('volume-distribution-max-bar')).toHaveStyle({ width: '100%' });
   });
 
+  it('passes only the active stock-date candles to the hover-cutoff fallback hook', () => {
+    useLivePageStore.setState({
+      volumeDistributionEnabled: true,
+      volumeDistributionHoverCutoffEnabled: true,
+      volumeDistributionRangeCount: 2,
+    });
+    act(() => useLiveCursorStore.getState().setCursor(Date.UTC(2026, 4, 27, 0, 1, 0)));
+
+    const selectedDateCandle = {
+      ts_ms: Date.UTC(2026, 4, 27, 0, 1, 0),
+      open: 70300,
+      high: 70400,
+      low: 70000,
+      close: 70100,
+      vol_a: 100,
+      vol_b: 0,
+    };
+    const previousDateCandle = {
+      ts_ms: Date.UTC(2026, 4, 26, 0, 1, 0),
+      open: 103000,
+      high: 104000,
+      low: 102000,
+      close: 103500,
+      vol_a: 100,
+      vol_b: 0,
+    };
+
+    renderSidebar({
+      code: '005930',
+      bundle: {
+        ...bundleWithFinalDistribution,
+        from_date: '20260526',
+        segments: [
+          {
+            date: '20260526',
+            session_open_ms: Date.UTC(2026, 4, 26, 0, 0, 0),
+            session_close_ms: Date.UTC(2026, 4, 26, 6, 30, 0),
+            source: 'hogaplay',
+          },
+          ...bundleWithFinalDistribution.segments,
+        ],
+        candles: [previousDateCandle, selectedDateCandle],
+      },
+    });
+
+    expect(volumeDistributionCutoffProfileMock).toHaveBeenCalledWith(expect.objectContaining({
+      date: '20260527',
+      candles: [selectedDateCandle],
+    }));
+  });
+
   it('merges newer live continuous trades into the persisted today volume distribution', () => {
     useLivePageStore.setState({ volumeDistributionRangeCount: 2 });
     const liveWithTrades: LiveSeriesData = {

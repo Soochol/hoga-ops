@@ -52,7 +52,8 @@ export function useVolumeDistributionCutoffProfile(args: {
   return useMemo(() => {
     if (!args.enabled || !queryEnabled) return args.finalProfile;
 
-    const sidecarProfile = query.data?.volume_distributions.find((profile) => profile.date === args.date) ?? null;
+    const date = args.date;
+    const sidecarProfile = query.data?.volume_distributions.find((profile) => profile.date === date) ?? null;
     const liveTrades = args.liveTrades ?? [];
 
     if (sidecarProfile) {
@@ -60,14 +61,15 @@ export function useVolumeDistributionCutoffProfile(args: {
     }
 
     if (
-      args.date === args.todayKst
+      date
+      && date === args.todayKst
       && args.segment
       && args.candles
       && liveTrades.length > 0
       && args.cursorMs != null
     ) {
       const computedProfile = computeContinuousTradeVolumeDistribution({
-        date: args.date,
+        date,
         candles: args.candles,
         trades: liveTrades,
         rangeCount: args.rangeCount,

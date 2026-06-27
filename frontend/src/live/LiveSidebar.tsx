@@ -124,6 +124,10 @@ export function LiveSidebar({ code, live, bundle = null, todayKst = '', programT
   const activeVolumeDistributionDate = isSpot && cursorMs !== null
     ? realMsToYyyymmdd(cursorMs)
     : (activeBundle?.segments[activeBundle.segments.length - 1]?.date ?? todayKst ?? null);
+  const activeVolumeDistributionCandles = useMemo(() => {
+    if (!activeBundle || !activeVolumeDistributionDate) return [];
+    return activeBundle.candles.filter((candle) => realMsToYyyymmdd(candle.ts_ms) === activeVolumeDistributionDate);
+  }, [activeBundle, activeVolumeDistributionDate]);
   const persistedVolumeDistributions = activeBundle?.volume_distributions ?? [];
   const liveDistributionTrades = useMemo(
     () => live.trade.flatMap((snapshot) =>
@@ -188,15 +192,15 @@ export function LiveSidebar({ code, live, bundle = null, todayKst = '', programT
     finalProfile: activeVolumeDistribution,
     priceRange: null,
     liveTrades: liveDistributionTrades,
-    candles: activeBundle?.candles ?? [],
+    candles: activeVolumeDistributionCandles,
     segment: activeBundle?.segments.find((segment) => segment.date === activeVolumeDistributionDate) ?? null,
   });
   const activeVolumeDistributionClosePoints = useMemo(() => {
     return volumeDistributionClosePoints({
       date: activeVolumeDistributionDate,
-      candles: activeBundle?.candles ?? [],
+      candles: activeVolumeDistributionCandles,
     });
-  }, [activeBundle, activeVolumeDistributionDate]);
+  }, [activeVolumeDistributionCandles, activeVolumeDistributionDate]);
 
   // T14b: "다음 가용: HH:MM" hint above orderbook table when spot orderbook
   // has no snapshot yet AND the SSE buffer can't fill it either (a genuine gap,
