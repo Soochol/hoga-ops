@@ -41,6 +41,7 @@ class StartupRuntimeDeps:
     start_today_promoter: Callable[..., Awaitable[TaskOrNone]]
     stop_today_promoter: Callable[[TaskOrNone], Awaitable[None]]
     stop_live_stream: Callable[[], Awaitable[None]]
+    aclose_kis_capacity_scheduler: Callable[[], Awaitable[None]]
     aclose_kis_client: Callable[[], Awaitable[None]]
     get_active_codes: Callable[[], Sequence[str]]
     load_symbol_disk_state: Callable[..., None]
@@ -72,6 +73,7 @@ class AppStartupRuntime:
             except Exception:  # noqa: BLE001
                 log.exception("scheduler task crashed during shutdown")
 
+        await self.deps.aclose_kis_capacity_scheduler()
         await self.deps.aclose_kis_client()
 
 

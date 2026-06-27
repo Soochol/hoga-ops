@@ -95,7 +95,6 @@ def _patch_common(monkeypatch):
         "hoga.live.kis_runtime.ensure_kis_client_from_env",
         lambda data_dir: object(),
     )
-    monkeypatch.setattr("hoga.live.kis_access.kis_for_role", lambda role, data_dir: object())
     monkeypatch.setattr("hoga.live.rest30_recorder.Rest30sRecorder", FakeRest30Recorder)
     monkeypatch.setattr(
         "hoga.live.program_trade_collector.ProgramTradeCollector",

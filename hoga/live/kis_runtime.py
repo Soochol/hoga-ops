@@ -95,8 +95,8 @@ def ensure_kis_client(
     """Return the per-account KisClient singleton, creating it once.
 
     "one app key = one 15/s bucket" holds PER ACCOUNT — each account_id has at
-    most one client. account 0 carries the data bucket (REST poller / quotes /
-    holiday / screener); account k>0 is used ONLY for WS approval keys (spec §4).
+    most one client. REST capacity scheduling may lease any configured account;
+    WS approval keys also reuse these per-account clients.
     Closed at process shutdown via aclose_kis_client — a stream/conn stop must NOT
     close it (R1).
     """
@@ -178,8 +178,8 @@ def ensure_kis_client_for_account(account_id: int, data_dir: Path) -> KisClient 
 def ensure_kis_client_from_env(data_dir: Path) -> KisClient | None:
     """account-0 KisClient singleton, or None when creds absent.
 
-    Backcompat alias for ensure_kis_client_for_account(0, ...) — the shared
-    15/s-bucket client used by REST poller / quotes / holiday / screener.
+    Backcompat alias for ensure_kis_client_for_account(0, ...) — useful for
+    legacy account-0 fallback and single-account installs.
     """
     return ensure_kis_client_for_account(0, data_dir)
 

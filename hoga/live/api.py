@@ -26,14 +26,21 @@ from hoga.live.kis_client import (
     KisRateLimitError,
     KisTransportError,
 )
+from hoga.live.kis_capacity_runtime import ensure_kis_capacity_scheduler
+from hoga.live.kis_capacity_scheduler import (
+    KisCapacityCooldown,
+    KisCapacityOverloaded,
+)
 from hoga.live.kis_models import InvestorTrendEstimateRow
 from hoga.live.kis_venue import (
-    AUTO_DAILY_USES_INTEGRATED_WARNING,
     KisVenue,
-    daily_venue_for_policy,
-    merge_auto_minute_bars,
     parse_live_venue_policy,
 )
+from hoga.live.live_daily_candle_backfill import LiveDailyCandleBackfill
+from hoga.live.live_candle_backfill import LiveMinuteCandleBackfill
+from hoga.live.live_index_investor_net import LiveIndexInvestorNetFetcher
+from hoga.live.live_index_sector_intraday import LiveIndexSectorIntradayOverlay
+from hoga.live.live_investor_net_backfill import LiveInvestorNetBackfill
 from hoga.live.index_candles_cache import (
     IndexCandlesCache,
     collect_index_candles_with_cache,
@@ -56,7 +63,6 @@ from .buffer import LiveBuffer
 from .index_sector_rankings import (
     IndexSectorRankingResponse,
     build_index_sector_rankings,
-    list_index_sector_ranking_codes,
 )
 from .lifecycle import LiveStatus, refresh_live_stream
 from .settings import load_live_settings, update_live_settings
@@ -76,7 +82,6 @@ _PAST_MAX_DAYS = 250
 # 여러 분봉 페이지를 호출하는 구조라 EGW00201 상황에서 동시 retry 폭을 키웠다.
 _PAST_CANDLES_CONCURRENCY = 3
 _PAST_CANDLES_RATE_LIMIT_COOLDOWN_S = 10.0
-_WEEKEND_START_WEEKDAY = 5
 _CODE_RE = re.compile(CODE_PATTERN)
 _KST = timezone(timedelta(hours=9))
 _INVESTOR_ESTIMATE_MAX_CODES_PER_DAY = 256
@@ -105,13 +110,6 @@ def _parse_yyyymmdd(s: str) -> date | None:
         return None
 
 
-def _date_iter(frm: date, to: date):
-    cur = frm
-    while cur <= to:
-        yield cur.strftime("%Y%m%d")
-        cur = cur + timedelta(days=1)
-
-
 def _candle_to_dict(c) -> dict:
     return {
         "t_ms": c.t_ms, "open": c.open, "high": c.high, "low": c.low,
@@ -121,10 +119,6 @@ def _candle_to_dict(c) -> dict:
 
 def _candle_date_yyyymmdd(c) -> str:
     return datetime.fromtimestamp(c.t_ms / 1000, tz=_KST).strftime("%Y%m%d")
-
-
-def _hhmmss_from_t_ms(t_ms: int) -> str:
-    return datetime.fromtimestamp(t_ms / 1000, tz=_KST).strftime("%H%M%S")
 
 
 def _investor_point_to_dict(p) -> dict:
@@ -215,53 +209,6 @@ def _kis_error_to_warning(reason: str, msg: str, batch_label: str) -> dict:
     batch range, not a single date (companion to `_violation_to_warning`).
     """
     return {"batch": batch_label, "reason": reason, "msg": msg}
-
-
-def _daily_fallback_to_krx_warning(primary_venue: KisVenue, batch_label: str) -> dict:
-    return {
-        "batch": batch_label,
-        "reason": "daily_fallback_to_krx",
-        "msg": (
-            f"{primary_venue} daily returned no candles; using KRX daily candles "
-            "for this batch"
-        ),
-    }
-
-
-def _daily_partial_fallback_to_krx_warning(primary_venue: KisVenue, batch_label: str) -> dict:
-    return {
-        "batch": batch_label,
-        "reason": "daily_fallback_to_krx",
-        "msg": (
-            f"{primary_venue} daily returned a partial range; filling missing daily "
-            "candles from KRX for this batch"
-        ),
-    }
-
-
-def _daily_candle_date(candle) -> date:
-    return datetime.fromtimestamp(candle.t_ms / 1000, tz=_KST).date()
-
-
-def _needs_krx_daily_fill(candles: list, from_s: str, to_s: str) -> bool:
-    if not candles:
-        return True
-    from_d = datetime.strptime(from_s, "%Y%m%d").date()
-    to_d = datetime.strptime(to_s, "%Y%m%d").date()
-    dates = sorted({_daily_candle_date(c) for c in candles})
-    # A few calendar days of edge slack avoids fallback for weekend/holiday
-    # request edges. Month-scale holes (observed 089030 NXT/UN) must be filled.
-    if dates[0] > from_d + timedelta(days=10):
-        return True
-    if dates[-1] < to_d - timedelta(days=10):
-        return True
-    return any((b - a).days > 10 for a, b in zip(dates, dates[1:]))
-
-
-def _merge_daily_fallback(primary: list, fallback: list) -> list:
-    by_ts = {c.t_ms: c for c in fallback}
-    by_ts.update({c.t_ms: c for c in primary})
-    return [by_ts[t] for t in sorted(by_ts)]
 
 
 def _compute_daily_gaps(
@@ -1050,10 +997,21 @@ def build_router(
             bid-peak-today snapshot for a code. None → /series returns null.
     """
     router = APIRouter(prefix="/api/live")
+    _kis_scheduler = ensure_kis_capacity_scheduler(data_dir) if data_dir is not None else None
+
+    def _has_kis_capacity_candidate() -> bool:
+        if data_dir is None:
+            return False
+        return kis_access.has_rest_capacity(data_dir)
 
     @router.get("/status", response_model=LiveStatus)
     async def _get_status() -> LiveStatus:
-        return get_status()
+        status = get_status()
+        if _kis_scheduler is None:
+            return status
+        return status.model_copy(
+            update={"kis_capacity_scheduler": _kis_scheduler.snapshot()}
+        )
 
     @router.get("/settings", response_model=LiveSettingsResponse)
     async def _get_settings() -> LiveSettingsResponse:
@@ -1099,8 +1057,9 @@ def build_router(
         index = _validate_index_range(index_id, from_, to)
         if data_dir is None:
             raise HTTPException(503, "KIS client not wired")
-        kis = kis_access.kis_for_role("foreground", data_dir)
-        if kis is None:
+        if _kis_scheduler is None:
+            raise HTTPException(503, "KIS scheduler not wired")
+        if not kis_access.has_rest_capacity(data_dir):
             raise HTTPException(503, "KIS client not initialized")
         if timeframe in {"D", "W", "M"}:
             if index_candles_cache_instance is None:
@@ -1108,12 +1067,21 @@ def build_router(
 
             async def fetch_batch(from_s: str, to_s: str):
                 async def direct_fetch(inner_from_s: str, inner_to_s: str):
-                    return await kis.fetch_index_daily_candles(
-                        index,
-                        inner_from_s,
-                        inner_to_s,
-                        period=timeframe,
-                        foreground=True,
+                    return await kis_access.run_with_capacity(
+                        _kis_scheduler,
+                        data_dir=data_dir,
+                        role="foreground",
+                        key=("index-daily", index.id, timeframe, inner_from_s, inner_to_s),
+                        endpoint=kis_access.KisRestEndpoint.INDEX_DAILY,
+                        priority="user_visible",
+                        cooldown_scope=("index-daily", index.id, timeframe),
+                        fetch_fn=lambda kis: kis.fetch_index_daily_candles(
+                            index,
+                            inner_from_s,
+                            inner_to_s,
+                            period=timeframe,
+                            foreground=True,
+                        ),
                     )
 
                 return await fetch_index_daily_candles_windowed(
@@ -1143,12 +1111,21 @@ def build_router(
                 raise HTTPException(503, "index-minute-candles cache not wired (data_dir missing)")
 
             async def fetch_batch(from_s: str, to_s: str):
-                return await kis.fetch_index_minute_candles(
-                    index,
-                    from_s,
-                    to_s,
-                    bucket_seconds=bucket_seconds,
-                    foreground=True,
+                return await kis_access.run_with_capacity(
+                    _kis_scheduler,
+                    data_dir=data_dir,
+                    role="foreground",
+                    key=("index-minute", index.id, timeframe, bucket_seconds, from_s, to_s),
+                    endpoint=kis_access.KisRestEndpoint.INDEX_MINUTE,
+                    priority="user_visible",
+                    cooldown_scope=("index-minute", index.id, timeframe),
+                    fetch_fn=lambda kis: kis.fetch_index_minute_candles(
+                        index,
+                        from_s,
+                        to_s,
+                        bucket_seconds=bucket_seconds,
+                        foreground=True,
+                    ),
                 )
 
             result = await collect_index_minute_candles_with_cache(
@@ -1198,22 +1175,17 @@ def build_router(
                     "msg": f"{index.id} does not support market investor net",
                 },
             )
-        if data_dir is None:
-            raise HTTPException(503, "KIS client not wired")
-        kis = kis_access.kis_for_role("background", data_dir)
-        if kis is None:
+        if _kis_scheduler is None:
+            raise HTTPException(503, "KIS scheduler not wired")
+        if not _has_kis_capacity_candidate():
             raise HTTPException(503, "KIS client not initialized")
-        result = await kis.fetch_market_investor_net(index, from_, to)
-        batch_label = f"{from_}__{to}"
-        return {
-            "index_id": index.id,
-            "from": from_,
-            "to": to,
-            "points": [_investor_point_to_dict(p) for p in result.points],
-            "data_warnings": [
-                _violation_to_warning(v, batch_label) for v in result.violations
-            ],
-        }
+        if _index_investor_net_fetcher is None:
+            raise HTTPException(503, "index-investor-net fetcher not wired")
+        return await _index_investor_net_fetcher.fetch(
+            index=index,
+            from_label=from_,
+            to_label=to,
+        )
 
     @router.get("/index-sector-rankings", response_model=IndexSectorRankingResponse)
     async def _get_index_sector_rankings(date: str = Query(...)) -> IndexSectorRankingResponse:
@@ -1226,19 +1198,10 @@ def build_router(
         if data_dir is None:
             raise HTTPException(503, "live data dir not wired")
         intraday_prices: dict[str, int] | None = {} if date == today else None
-        if date == today:
-            kis = _kis_for_background()
-            if kis is not None:
-                try:
-                    codes = list_index_sector_ranking_codes(data_dir)
-                    quotes = await _quote_fetcher.fetch_and_gate(
-                        kis,
-                        codes,
-                        _quote_phase(datetime.now(_KST)),
-                    )
-                    intraday_prices = {quote.code: quote.price for quote in quotes}
-                except Exception as exc:  # noqa: BLE001 - ranking must degrade to daily corpus.
-                    log.warning("index sector intraday quote fetch failed: %s", exc)
+        if date == today and _index_sector_intraday_overlay is not None:
+            intraday_prices = await _index_sector_intraday_overlay.fetch_prices(
+                phase=_quote_phase(datetime.now(_KST)),
+            )
         return build_index_sector_rankings(
             data_dir,
             date,
@@ -1295,17 +1258,20 @@ def build_router(
             else None
         )
     )
-
-    def _kis_for_background() -> "KisClient | None":
-        """배경 REST(quotes·investor-net·investor-trend-estimate)용 KisClient — N=2면 account 1(직전엔 유휴였던
-        REST 버킷), 아니면 account 0 폴백(kis_access.kis_for_role, 계정 분리 2026-06-09).
-        foreground(past-candles/daily)는 account 0 전용이라 이 헬퍼를 쓰지 않는다.
-        data_dir 미배선(베어 단위테스트)이면 None — kis_for_role은 env/싱글톤(프로세스
-        전역)을 보므로 data_dir이 client 라우팅 활성화 신호다(C1b 2026-06-10: 이중 주입
-        seam을 role 하나로 접어 get_kis_client else 폴백 잔재 소멸)."""
-        if data_dir is None:
-            return None
-        return kis_access.kis_for_role("background", data_dir)
+    _index_investor_net_fetcher: LiveIndexInvestorNetFetcher | None = (
+        LiveIndexInvestorNetFetcher(data_dir=data_dir, scheduler=_kis_scheduler)
+        if data_dir is not None and _kis_scheduler is not None
+        else None
+    )
+    _index_sector_intraday_overlay: LiveIndexSectorIntradayOverlay | None = (
+        LiveIndexSectorIntradayOverlay(
+            data_dir=data_dir,
+            scheduler=_kis_scheduler,
+            quote_fetcher=_quote_fetcher,
+        )
+        if data_dir is not None and _kis_scheduler is not None
+        else None
+    )
 
     @router.get("/quotes", response_model=LiveQuotesResponse)
     async def _get_quotes(codes: str = Query(...)) -> LiveQuotesResponse:
@@ -1313,13 +1279,33 @@ def build_router(
         code_list = [c for c in codes.split(",") if _CODE_RE.match(c)]
         if not code_list:
             return LiveQuotesResponse(phase=phase, quotes=[])
-        # 배경 라우트: N=2면 account 1, 아니면 account 0(env 지연 생성 포함, kis_for_role).
-        kis = _kis_for_background()
-        if kis is None:
+        if _kis_scheduler is None:
             return LiveQuotesResponse(phase=phase, quotes=[])
+        try:
+            quotes = await asyncio.wait_for(
+                asyncio.shield(
+                    kis_access.run_with_capacity(
+                        _kis_scheduler,
+                        data_dir=data_dir,
+                        role="background",
+                        key=("quotes", tuple(sorted(code_list)), phase),
+                        endpoint=kis_access.KisRestEndpoint.QUOTES,
+                        priority="background",
+                        cooldown_scope="quotes",
+                        fetch_fn=lambda kis: _quote_fetcher.fetch_and_gate(
+                            kis,
+                            code_list,
+                            phase,
+                        ),
+                    )
+                ),
+                timeout=1.0,
+            )
+        except (asyncio.TimeoutError, KisCapacityCooldown, KisCapacityOverloaded):
+            quotes = []
         return LiveQuotesResponse(
             phase=phase,
-            quotes=await _quote_fetcher.fetch_and_gate(kis, code_list, phase),
+            quotes=quotes,
         )
 
     @router.get(
@@ -1334,74 +1320,60 @@ def build_router(
                 422,
                 {"code": "invalid_code", "msg": "code must be 6 digits"},
             )
-        kis = _kis_for_background()
-        if kis is None:
+        if _kis_scheduler is None:
             return _investor_estimate_fetcher.credentials_missing(code)
-        return await _investor_estimate_fetcher.fetch(kis, code)
-
-    # past-candles 병렬 fetch의 총량 제어 — 라우터(=프로세스, ADR-0038 단일
-    # 워커) 수준 공유: 동시 요청 2건이 떠도 KIS in-flight 합계 ≤ 5.
-    # py3.11의 asyncio.Semaphore는 첫 acquire에서 루프를 lazy-bind하므로
-    # 앱 생성 시점(루프 밖) 생성이 안전하다.
-    _past_fetch_sem = asyncio.Semaphore(_PAST_CANDLES_CONCURRENCY)
-
-    # 싱글플라이트(spec 2026-06-08 §4.3): 같은 (code, date)의 동시 fetch를 한
-    # KIS 콜로 공유 — 두 탭/60초 refetch 경합의 쿼터 절약(파일 안전성은
-    # atomic_write_json이 이미 보장하므로 목적이 아님). ADR-0038 단일 워커라
-    # in-process dict로 충분. done_callback이 항상 entry를 회수한다.
-    _past_inflight: dict[
-        tuple[KisVenue, str, str],
-        asyncio.Task[tuple[list[dict], str | None]],
-    ] = {}
-    _past_rate_limit_until = 0.0
-
-    def _past_rate_limited_now() -> bool:
-        return monotonic_time.monotonic() < _past_rate_limit_until
-
-    def _mark_past_rate_limited() -> None:
-        nonlocal _past_rate_limit_until
-        _past_rate_limit_until = max(
-            _past_rate_limit_until,
-            monotonic_time.monotonic() + _PAST_CANDLES_RATE_LIMIT_COOLDOWN_S,
-        )
-
-    def _past_rate_limit_aborted_warning(date_s: str) -> dict:
-        return {
-            "date": date_s, "reason": "rate_limit_aborted",
-            "msg": "KIS rate limit cooldown active",
-        }
-
-    async def _fetch_past_shared(
-        kis: KisClient, venue: KisVenue, code: str, date_s: str
-    ) -> tuple[list[dict], str | None]:
-        """(bars, cache_write_failed_msg) 반환. 진행 중인 동일 키 fetch가 있으면
-        그 결과를 공유한다. 예외(KisRateLimitError 등)는 공유자 전원에 동일
-        전파 — 각 요청의 except 분기가 각자 warning을 만든다. 리더 요청이
-        취소돼도 create_task로 분리된 공유 task는 완주한다."""
-        key = (venue, code, date_s)
-        task = _past_inflight.get(key)
-        if task is None:
-            async def _do() -> tuple[list[dict], str | None]:
-                raw = await kis.fetch_past_minute_candles(
-                    code, date_s, venue=venue, foreground=True,
-                )
-                bars = [_candle_to_dict(c) for c in raw]
-                try:
-                    cache_instance.store_past(venue, code, date_s, bars)  # type: ignore[union-attr]
-                except OSError as e:
-                    return bars, str(e)
-                return bars, None
-
-            task = asyncio.create_task(_do())
-            _past_inflight[key] = task
-            task.add_done_callback(lambda _t, k=key: _past_inflight.pop(k, None))
-        return await task
+        if not _has_kis_capacity_candidate():
+            return _investor_estimate_fetcher.credentials_missing(code)
+        try:
+            return await asyncio.wait_for(
+                asyncio.shield(
+                    kis_access.run_with_capacity(
+                        _kis_scheduler,
+                        data_dir=data_dir,
+                        role="background",
+                        key=("investor-trend-estimate", code),
+                        endpoint=kis_access.KisRestEndpoint.INVESTOR_TREND_ESTIMATE,
+                        priority="background",
+                        cooldown_scope="investor-trend-estimate",
+                        fetch_fn=lambda kis: _investor_estimate_fetcher.fetch(kis, code),
+                    )
+                ),
+                timeout=1.5,
+            )
+        except (asyncio.TimeoutError, KisCapacityCooldown, KisCapacityOverloaded):
+            return _investor_estimate_fetcher._error_response(
+                code,
+                _investor_estimate_fetcher._today_fn(),
+                "kis_rate_limit",
+                "KIS capacity scheduler unavailable",
+            )
 
     cache_instance: PastCandlesCache | None = (
         PastCandlesCache(data_dir=data_dir) if data_dir is not None else None
     )
+    minute_backfill: LiveMinuteCandleBackfill | None = (
+        LiveMinuteCandleBackfill(
+            data_dir=data_dir,
+            cache=cache_instance,
+            scheduler=_kis_scheduler,
+            concurrency=_PAST_CANDLES_CONCURRENCY,
+            rate_limit_cooldown_s=_PAST_CANDLES_RATE_LIMIT_COOLDOWN_S,
+        )
+        if data_dir is not None and cache_instance is not None and _kis_scheduler is not None
+        else None
+    )
     daily_cache_instance: PastDailyCandlesCache | None = (
         PastDailyCandlesCache() if data_dir is not None else None
+    )
+    daily_backfill: LiveDailyCandleBackfill | None = (
+        LiveDailyCandleBackfill(
+            data_dir=data_dir,
+            cache=daily_cache_instance,
+            scheduler=_kis_scheduler,
+            walkback=batched_daily_walkback,
+        )
+        if data_dir is not None and daily_cache_instance is not None and _kis_scheduler is not None
+        else None
     )
     global index_candles_cache_instance
     if data_dir is not None and index_candles_cache_instance is None:
@@ -1414,6 +1386,16 @@ def build_router(
     investor_cache_instance: PastDailyCandlesCache | None = (
         PastDailyCandlesCache() if data_dir is not None else None
     )
+    investor_net_backfill: LiveInvestorNetBackfill | None = (
+        LiveInvestorNetBackfill(
+            data_dir=data_dir,
+            cache=investor_cache_instance,
+            scheduler=_kis_scheduler,
+            walkback=batched_daily_walkback,
+        )
+        if data_dir is not None and investor_cache_instance is not None and _kis_scheduler is not None
+        else None
+    )
 
     @router.get("/past-candles")
     async def _get_past_candles(
@@ -1423,145 +1405,25 @@ def build_router(
         venue: str | None = Query("KRX"),
     ) -> dict:
         frm, too, today_d = _validate_past_request(code, from_, to)
-        today_s = today_d.strftime("%Y%m%d")
         try:
             policy = parse_live_venue_policy(venue)
         except ValueError as e:
             raise HTTPException(422, {"code": "invalid_venue", "msg": str(e)}) from e
-        # foreground(사용자 차트 백필): account 0 전용(15/s, 배경과 비경합). C1b 2026-06-10:
-        # get_kis_client 주입 대신 kis_access 단일 seam 경유(data_dir이 라우팅 신호).
-        if data_dir is None:
-            raise HTTPException(503, "KIS client not wired")
-        kis = kis_access.kis_for_role("foreground", data_dir)
-        if kis is None:
+        if _kis_scheduler is None:
+            raise HTTPException(503, "KIS scheduler not wired")
+        if not _has_kis_capacity_candidate():
             raise HTTPException(503, "KIS client not initialized")
-        if cache_instance is None:
+        if minute_backfill is None:
             raise HTTPException(503, "past-candles cache not wired (data_dir missing)")
-        cache = cache_instance
 
-        async def _collect_for_venue(kis_venue: KisVenue) -> dict:
-            # ── 1차 패스(동기, KIS 콜 없음): 캐시 히트 수집 + 병렬 fetch 대상 분류.
-            rows: dict[str, list[dict]] = {}
-            cached_dates: list[str] = []
-            pending: list[str] = []
-            warnings_by_date: dict[str, dict] = {}
-            fresh: set[str] = set()
-
-            for date_s in _date_iter(frm, too):
-                if date_s >= today_s:
-                    continue
-                bars = cache.get_past(kis_venue, code, date_s)
-                if bars is None:
-                    pending.append(date_s)
-                else:
-                    rows[date_s] = bars
-                    cached_dates.append(date_s)
-
-            blocked = asyncio.Event()
-
-            async def _one(date_s: str) -> None:
-                async with _past_fetch_sem:
-                    if blocked.is_set() or _past_rate_limited_now():
-                        warnings_by_date[date_s] = _past_rate_limit_aborted_warning(date_s)
-                        return
-                    try:
-                        bars, write_err = await _fetch_past_shared(kis, kis_venue, code, date_s)
-                    except KisRateLimitError as e:
-                        blocked.set()
-                        _mark_past_rate_limited()
-                        warnings_by_date[date_s] = {
-                            "date": date_s, "reason": "kis_rate_limit", "msg": str(e),
-                        }
-                        return
-                    except KisApiError as e:
-                        warnings_by_date[date_s] = {
-                            "date": date_s, "reason": "kis_api_error", "msg": e.msg_cd,
-                        }
-                        return
-                    rows[date_s] = bars
-                    fresh.add(date_s)
-                    if write_err is not None:
-                        warnings_by_date[date_s] = {
-                            "date": date_s, "reason": "cache_write_failed", "msg": write_err,
-                        }
-
-            await asyncio.gather(*(_one(d) for d in pending))
-
-            candles_all: list[dict] = []
-            fresh_dates: list[str] = []
-            warnings: list[dict] = []
-            kis_blocked = blocked.is_set()
-
-            for date_s in _date_iter(frm, too):
-                if date_s < today_s:
-                    if date_s in rows:
-                        candles_all.extend(rows[date_s])
-                        if date_s in fresh:
-                            fresh_dates.append(date_s)
-                    if date_s in warnings_by_date:
-                        warnings.append(warnings_by_date[date_s])
-                    continue
-                try:
-                    state, today_bars = cache.get_today_tri(kis_venue, code)
-                    if state == "hit":
-                        assert today_bars is not None
-                        bars = today_bars
-                        cached_dates.append(date_s)
-                    elif state == "negative":
-                        bars = []
-                    else:
-                        if today_d.weekday() >= _WEEKEND_START_WEEKDAY:
-                            cache.store_today(kis_venue, code, None)
-                            continue
-                        if kis_blocked or _past_rate_limited_now():
-                            warnings.append(_past_rate_limit_aborted_warning(date_s))
-                            continue
-                        raw = await kis.fetch_past_minute_candles(
-                            code, date_s, venue=kis_venue, foreground=True,
-                        )
-                        bars = [_candle_to_dict(c) for c in raw]
-                        if bars:
-                            cache.store_today(kis_venue, code, bars)
-                            fresh_dates.append(date_s)
-                        else:
-                            cache.store_today(kis_venue, code, None)
-                    candles_all.extend(bars)
-                except KisRateLimitError as e:
-                    warnings.append({"date": date_s, "reason": "kis_rate_limit", "msg": str(e)})
-                    _mark_past_rate_limited()
-                    kis_blocked = True
-                except KisApiError as e:
-                    warnings.append({"date": date_s, "reason": "kis_api_error", "msg": e.msg_cd})
-
-            return {
-                "candles": candles_all,
-                "cached_dates": cached_dates,
-                "fresh_dates": fresh_dates,
-                "data_warnings": warnings,
-            }
-
-        if policy == "AUTO":
-            krx_out, nxt_out = await asyncio.gather(
-                _collect_for_venue("KRX"),
-                _collect_for_venue("NXT"),
-            )
-            return {
-                "code": code,
-                "from": from_,
-                "to": to,
-                "venue": policy,
-                "candles": merge_auto_minute_bars(
-                    krx_out["candles"],
-                    nxt_out["candles"],
-                    hhmmss_for_t_ms=_hhmmss_from_t_ms,
-                ),
-                "cached_dates": sorted(set(krx_out["cached_dates"]) | set(nxt_out["cached_dates"])),
-                "fresh_dates": sorted(set(krx_out["fresh_dates"]) | set(nxt_out["fresh_dates"])),
-                "data_warnings": krx_out["data_warnings"] + nxt_out["data_warnings"],
-            }
-
-        out = await _collect_for_venue(policy)
-        return {"code": code, "from": from_, "to": to, "venue": policy, **out}
+        out = await minute_backfill.collect_minute(
+            code=code,
+            frm=frm,
+            too=too,
+            today_d=today_d,
+            policy=policy,
+        )
+        return {"code": code, "from": from_, "to": to, "venue": policy, **out.model_dump()}
 
     @router.get("/past-daily-candles")
     async def _get_past_daily_candles(
@@ -1575,77 +1437,21 @@ def build_router(
             policy = parse_live_venue_policy(venue)
         except ValueError as e:
             raise HTTPException(422, {"code": "invalid_venue", "msg": str(e)}) from e
-        kis_venue = daily_venue_for_policy(policy)
-        # foreground(사용자 일봉 백필): account 0 전용. C1b 2026-06-10: kis_access 단일 seam.
-        if data_dir is None:
-            raise HTTPException(503, "KIS client not wired")
-        kis = kis_access.kis_for_role("foreground", data_dir)
-        if kis is None:
+        if _kis_scheduler is None:
+            raise HTTPException(503, "KIS scheduler not wired")
+        if not _has_kis_capacity_candidate():
             raise HTTPException(503, "KIS client not initialized")
-        if daily_cache_instance is None:
+        if daily_backfill is None:
             raise HTTPException(503, "past-daily-candles cache not wired (data_dir missing)")
-
-        fallback_warnings: list[dict] = []
-
-        async def fetch_batch(code_: str, from_s: str, to_s: str):
-            # foreground=True: 사용자 일봉 차트 백필 (우선순위 레인). 스크리너 EOD
-            # 배치(screener*.py)는 default background로 사용자 fetch에 양보.
-            result = await kis.fetch_past_daily_candles(
-                code_, from_s, to_s, venue=kis_venue, foreground=True,
-            )
-            if kis_venue != "KRX" and not result.violations and _needs_krx_daily_fill(
-                result.candles, from_s, to_s
-            ):
-                fallback = await kis.fetch_past_daily_candles(
-                    code_, from_s, to_s, venue="KRX", foreground=True,
-                )
-                if fallback.candles:
-                    batch = f"{from_s}__{to_s}"
-                    if result.candles:
-                        fallback_warnings.append(
-                            _daily_partial_fallback_to_krx_warning(kis_venue, batch)
-                        )
-                        result = type(result)(
-                            candles=_merge_daily_fallback(result.candles, fallback.candles),
-                            violations=result.violations,
-                        )
-                    else:
-                        fallback_warnings.append(
-                            _daily_fallback_to_krx_warning(kis_venue, batch)
-                        )
-                        result = fallback
-            return [_candle_to_dict(c) for c in result.candles], result.violations
-
-        class _VenueDailyCacheAdapter:
-            def __init__(self, inner: PastDailyCandlesCache, venue_: KisVenue) -> None:
-                self._inner = inner
-                self._venue = venue_
-
-            def list_batches(self, code_: str):
-                return self._inner.list_batches(self._venue, code_)
-
-            def append_batch(self, code_: str, frm_: date, to_: date, bars: list[dict]) -> None:
-                self._inner.append_batch(self._venue, code_, frm_, to_, bars)
-
-            def get_today(self, code_: str):
-                return self._inner.get_today(self._venue, code_)
-
-            def store_today(self, code_: str, bar: dict | None) -> None:
-                self._inner.store_today(self._venue, code_, bar)
-
-        out = await batched_daily_walkback(
-            cache=_VenueDailyCacheAdapter(daily_cache_instance, kis_venue),  # type: ignore[arg-type]
-            fetch_batch=fetch_batch,
-            output_key="candles",
-            code=code, frm=frm, too=too, today_d=today_d,
+        return await daily_backfill.collect_daily(
+            code=code,
+            frm=frm,
+            too=too,
+            today_d=today_d,
+            policy=policy,
+            from_label=from_,
+            to_label=to,
         )
-        out["venue"] = policy
-        out["data_warnings"].extend(fallback_warnings)
-        if policy == "AUTO":
-            warning = AUTO_DAILY_USES_INTEGRATED_WARNING.copy()
-            warning["batch"] = f"{from_}__{to}"
-            out["data_warnings"].append(warning)
-        return out
 
     @router.get("/past-investor-net")
     async def _get_past_investor_net(
@@ -1661,20 +1467,17 @@ def build_router(
         signed (+ buy / − sell). Today's row is provisional until ~15:40 (가집계).
         """
         frm, too, today_d = _validate_past_request(code, from_, to, max_days=None)
-        # 배경 라우트(2차 오버레이): N=2면 account 1, 아니면 account 0 폴백.
-        kis = _kis_for_background()
-        if kis is None:
+        if _kis_scheduler is None:
+            raise HTTPException(503, "KIS scheduler not wired")
+        if not _has_kis_capacity_candidate():
             raise HTTPException(503, "KIS client not initialized")
-        if investor_cache_instance is None:
+        if investor_net_backfill is None:
             raise HTTPException(503, "past-investor-net cache not wired (data_dir missing)")
-
-        async def fetch_batch(code_: str, from_s: str, to_s: str):
-            result = await kis.fetch_investor_net(code_, from_s, to_s)
-            return [_investor_point_to_dict(p) for p in result.points], result.violations
-
-        return await batched_daily_walkback(
-            cache=investor_cache_instance, fetch_batch=fetch_batch, output_key="points",
-            code=code, frm=frm, too=too, today_d=today_d,
+        return await investor_net_backfill.collect(
+            code=code,
+            frm=frm,
+            too=too,
+            today_d=today_d,
         )
 
     return router

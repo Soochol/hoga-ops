@@ -388,12 +388,27 @@ async def test_empty_watchlist_view_subscribe_polls(tmp_path, monkeypatch):
     monkeypatch.setenv("KIS_APP_KEY", "K")
     monkeypatch.setenv("KIS_APP_SECRET", "S")
 
+    from hoga.live.kis_models import KisBrokers, KisOrderbook, OrderbookLevel
+
     class _FakeKis:
         _creds = type("C", (), {"app_key": "k0"})()
         async def get_approval_key(self):
             return "A"
         async def aclose(self):
             pass
+        async def fetch_orderbook(self, code):
+            return KisOrderbook(
+                code=code,
+                asks=[OrderbookLevel(price=101, qty=1)],
+                bids=[OrderbookLevel(price=100, qty=1)],
+                total_ask_qty=1,
+                total_bid_qty=1,
+                t_ms=1770000000000,
+            )
+        async def fetch_trades(self, code):
+            return []
+        async def fetch_brokers(self, code):
+            return KisBrokers(code=code, buy_top=[], sell_top=[])
 
     monkeypatch.setattr(kis_runtime, "ensure_kis_client_from_env", lambda d: _FakeKis())
 

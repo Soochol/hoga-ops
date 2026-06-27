@@ -80,10 +80,10 @@ class KisTokenProvider:
         # monotonic clock so NTP steps / DST don't confuse the cooldown.
         self._last_issued_monotonic_ms: Optional[int] = None
         self._lock = threading.Lock()
-        # FM5(계정 분리 2026-06-09): REST bearer 토큰 발급 실패 시 호출되는 콜백.
-        # kis_runtime이 account_id에 바인딩해 주입 → background 계정 토큰이 처음
-        # 발급 실패하면 그 계정을 REST-degraded로 latch(이후 kis_for_role가 account 0
-        # 폴백). 토큰 발급 chokepoint에서 감지하므로 호출부는 account를 몰라도 된다.
+        # REST bearer 토큰 발급 실패 시 호출되는 콜백. kis_runtime이 account_id에
+        # 바인딩해 주입하므로, scheduler/account pool은 해당 계정을 REST-degraded로
+        # 보고 제외할 수 있다. 토큰 발급 chokepoint에서 감지하므로 호출부는 account를
+        # 몰라도 된다.
         self._on_issue_failure = on_issue_failure
 
     def close(self) -> None:
