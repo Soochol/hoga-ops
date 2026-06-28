@@ -40,6 +40,7 @@ describe('RailShell primitives', () => {
     const button = screen.getByRole('button', { name: '관심' });
     expect(button).toHaveAttribute('aria-pressed', 'true');
     expect(button).toHaveClass('bg-tint-selection');
+    expect(button).toHaveClass('border-l-2');
   });
 
   it('renders drawer states by tone', () => {

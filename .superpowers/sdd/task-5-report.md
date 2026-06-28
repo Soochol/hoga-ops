@@ -1,21 +1,79 @@
-Status: DONE
+# Task 5 Report
 
-Commit: recorded in the task response
+## Status
 
-What changed:
-- Added `frontend/src/chart/projectors/brokerLateEntryMarkers.ts` with a pure broker late-entry marker projector for the ratio pane.
-- Matched ratio-pane y-value rules by reusing quote-ratio point preparation, skipping synthetic gap / auction-hidden buckets, and applying the same outlier clamp logic as `projectRatio`.
-- Implemented fallback-to-earlier-anchor only when the exact ratio bucket is absent, and kept that fallback constrained to the same axis session.
-- Added `layoutBrokerLateEntryLabels(...)` as a pure grouping helper with deterministic ordering, compact mixed-side grouping, and optional coordinate accessors for Task 6 integration.
-- Added `frontend/src/chart/projectors/brokerLateEntryMarkers.test.ts` covering side filtering, color selection, missing-bucket fallback, hidden-bucket skips, outlier clamping, session-boundary behavior, and compact/full label grouping.
+Completed.
 
-TDD record:
-- RED: `cd frontend && npm test -- --run src/chart/projectors/brokerLateEntryMarkers.test.ts` failed because `./brokerLateEntryMarkers` did not exist.
-- GREEN: the same command passed after implementing the projector/helper.
+## Scope
 
-Verification:
-- `cd frontend && npm test -- --run src/chart/projectors/brokerLateEntryMarkers.test.ts`
-- Result: 1 file passed, 8 tests passed, 0 failures.
+- Implemented the new active-state theme on left navigation items.
+- Implemented the rail active-state spine on `RailButton`.
+- Added/updated focused tests for the nav and rail active states.
 
-Concerns:
-- None for Task 5. The helper exposes optional `getX` / `getY` hooks so Task 6 can feed real chart pixel coordinates without changing the event model.
+## Files Changed
+
+- `frontend/src/nav/LeftNav.test.tsx`
+- `frontend/src/nav/NavItem.tsx`
+- `frontend/src/ui/RailShell.test.tsx`
+- `frontend/src/ui/RailShell.tsx`
+
+## Deviation From Brief
+
+The brief named additional drawer and right-rail files, but no code changes were required there after inspection:
+
+- `RightRail` already consumes `RailButton`, so the active-state update landed through the shared primitive.
+- `WatchlistDrawer`, `ScreenerDrawer`, and `StudyViewsDrawer` were already using `RailDrawerHeader`, `RailDrawerSection`, and `RailDrawerBody`, and did not contain nested `PanelCard` usage that needed cleanup.
+
+No adjacent files outside the brief were modified.
+
+## Verification
+
+### RED step
+
+Ran:
+
+```bash
+cd frontend
+npm test -- LeftNav.test.tsx RailShell.test.tsx RightRail.test.tsx --run
+```
+
+Observed expected failures for:
+
+- left nav active-state assertion
+- rail button left-spine assertion
+
+### Final tests
+
+Ran:
+
+```bash
+cd frontend
+npm test -- LeftNav.test.tsx RailShell.test.tsx RightRail.test.tsx WatchlistDrawer.test.tsx ScreenerDrawer.test.tsx StudyViewsDrawer.test.tsx --run
+npm run build
+```
+
+Results:
+
+- `7` test files passed
+- `112` tests passed
+- Vite production build succeeded
+
+### Browser QA
+
+Ran a headless browser sanity check against `/live` on a local Vite dev server.
+
+Verified:
+
+- active right-rail button carries `border-accent bg-tint-selection text-fg`
+- watchlist, screener, and saved-view drawers render as a single `bg-bg-card` rail surface with `border-l`
+- no nested rounded card wrappers were detected in the watchlist drawer during the check
+
+## Self-Review
+
+- The `LeftNav` test now sets the route to `/live`, which matches the intended active-state assertion instead of depending on router defaults.
+- `NavItem` keeps the new left-spine treatment localized to the active state and leaves inactive behavior unchanged apart from border transparency.
+- `RailButton` updates the shared primitive so right-rail consumers inherit the new active styling consistently.
+
+## Commit
+
+Created after verification.

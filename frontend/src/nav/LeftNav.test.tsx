@@ -13,7 +13,7 @@ it('renders Study directly below Live in the workspace nav', () => {
 
   render(
     <QueryClientProvider client={qc}>
-      <MemoryRouter>
+      <MemoryRouter initialEntries={['/live']}>
         <LeftNav />
       </MemoryRouter>
     </QueryClientProvider>,
@@ -23,4 +23,5 @@ it('renders Study directly below Live in the workspace nav', () => {
 
   expect(labels.slice(0, 3)).toEqual(['Live', 'Study', 'Heatmap']);
   expect(screen.getByRole('link', { name: 'Study' })).toHaveAttribute('href', '/study');
+  expect(screen.getByRole('link', { name: 'Live' })).toHaveClass('text-fg');
 });

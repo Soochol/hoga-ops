@@ -141,8 +141,10 @@ export function RailButton({
       type="button"
       aria-pressed={active}
       {...props}
-      className={`w-full py-3 flex flex-col items-center gap-1 ${
-        active ? 'bg-tint-selection text-fg font-medium' : 'text-fg-dim hover:bg-bg-input-hover hover:text-fg'
+      className={`w-full border-l-2 py-3 flex flex-col items-center gap-1 transition-colors ${
+        active
+          ? 'border-accent bg-tint-selection text-fg font-medium'
+          : 'border-transparent text-fg-dim hover:bg-bg-input-hover hover:text-fg'
       } ${className}`.trim()}
     >
       {children}
