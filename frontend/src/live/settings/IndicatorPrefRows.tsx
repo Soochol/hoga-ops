@@ -31,7 +31,6 @@ export default function IndicatorPrefRows({
         ));
         return (
           <Fragment key={toggle.key}>
-            {idx > 0 && <div className="border-b border-border my-2" />}
             <ToggleRow
               label={toggle.label}
               description={toggle.description}
@@ -46,6 +45,7 @@ export default function IndicatorPrefRows({
                 ))}
               </div>
             )}
+            {idx < toggles.length - 1 && <div className="my-1" />}
           </Fragment>
         );
       })}

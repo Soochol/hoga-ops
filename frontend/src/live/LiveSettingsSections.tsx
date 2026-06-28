@@ -20,6 +20,7 @@ import MAStylePicker from './indicators/MAStylePicker';
 import IndicatorPrefRows from './settings/IndicatorPrefRows';
 import { SettingsRow, ToggleSwitch } from './settings/SettingsRow';
 import SourcePreferenceRadio from './settings/SourcePreferenceRadio';
+import { DataSection } from '../ui/DataSurface';
 
 /**
  * The live settings body — mirrors `IndicatorPanel`'s two-column layout (left
@@ -275,8 +276,8 @@ export default function LiveSettingsSections() {
   const [selected, setSelected] = useState<NavId>(navIds[0]);
 
   return (
-    <div className="flex">
-      <nav className="w-[200px] py-2 border-r border-border" aria-label="설정 카테고리">
+    <div className="grid min-h-0 grid-cols-[200px_minmax(0,1fr)]">
+      <nav className="overflow-y-auto py-2 border-r border-border bg-bg-card" aria-label="설정 카테고리">
         {navIds.map((id) => (
           <button
             key={id}
@@ -284,20 +285,24 @@ export default function LiveSettingsSections() {
             data-testid={`settings-nav-${id}`}
             aria-current={selected === id ? 'true' : undefined}
             onClick={() => setSelected(id)}
-            className={`block w-full text-left pl-4 pr-2 py-2 text-sm text-fg cursor-pointer ${
-              selected === id ? 'bg-bg-input' : 'hover:bg-bg-input'
+            className={`flex w-full items-center justify-between rounded-none border-l-2 px-4 py-2 text-left text-sm transition-colors ${
+              selected === id
+                ? 'border-accent bg-tint-selection text-fg'
+                : 'border-transparent text-fg-dim hover:bg-bg-input-hover hover:text-fg'
             }`}
           >
             {LABEL[id]}
           </button>
         ))}
       </nav>
-      <div className="flex-1 px-5 py-4" data-settings-detail={selected}>
-        {selected === 'data-source'
-          ? <DataSourceDetail />
-          : selected === 'study-views'
-            ? <StudyViewsDetail />
-            : <CategoryDetail category={selected} />}
+      <div className="min-h-0 overflow-y-auto" data-settings-detail={selected}>
+        <DataSection title={LABEL[selected]} contentClassName="space-y-3 p-4">
+          {selected === 'data-source'
+            ? <DataSourceDetail />
+            : selected === 'study-views'
+              ? <StudyViewsDetail />
+              : <CategoryDetail category={selected} />}
+        </DataSection>
       </div>
     </div>
   );

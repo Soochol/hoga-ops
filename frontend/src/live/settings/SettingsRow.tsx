@@ -18,9 +18,9 @@ export function SettingsRow({
   return (
     <div
       data-testid={testId}
-      className={`flex items-center justify-between py-2 ${disabled ? 'opacity-50' : ''} ${className}`.trim()}
+      className={`flex items-start justify-between gap-4 border-b border-border py-3 last:border-b-0 ${disabled ? 'opacity-50' : ''} ${className}`.trim()}
     >
-      <div className="flex-1 pr-4">
+      <div className="min-w-0 flex-1">
         <div className="text-fg text-sm">{label}</div>
         {description !== undefined && (
           <div className="text-fg-dim text-xs mt-0.5">{description}</div>
@@ -47,8 +47,8 @@ export function ToggleSwitch({
       aria-checked={checked}
       aria-label={label}
       {...props}
-      className={`relative inline-flex h-5 w-9 items-center rounded-full transition-colors disabled:opacity-50 ${
-        checked ? 'bg-accent' : 'bg-bg-input-hover'
+      className={`relative inline-flex h-5 w-9 shrink-0 items-center rounded-full border transition-colors disabled:opacity-50 ${
+        checked ? 'border-accent bg-accent' : 'border-border bg-bg-input-hover'
       } ${className}`.trim()}
     >
       <span

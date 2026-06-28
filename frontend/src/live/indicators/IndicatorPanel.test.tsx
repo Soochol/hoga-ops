@@ -33,10 +33,18 @@ describe('IndicatorPanel', () => {
 
   it('지표 그룹 서브헤더를 렌더', () => {
     render(<IndicatorPanel onClose={() => {}} />);
-    expect(screen.getByText('상단 지표')).toBeTruthy();
-    expect(screen.getByText('10호가 지표')).toBeTruthy();
-    expect(screen.getByText('프로그램 지표')).toBeTruthy();
-    expect(screen.getByText('거래원 지표')).toBeTruthy();
+    expect(screen.getAllByText('상단 지표').length).toBeGreaterThan(0);
+    expect(screen.getAllByText('10호가 지표').length).toBeGreaterThan(0);
+    expect(screen.getAllByText('프로그램 지표').length).toBeGreaterThan(0);
+    expect(screen.getAllByText('거래원 지표').length).toBeGreaterThan(0);
+  });
+
+  it('uses a flat section layout for indicator settings', () => {
+    render(<IndicatorPanel onClose={() => {}} capabilities={{ hogaPanes: true, investorNet: 'stock', studySave: false }} />);
+
+    expect(screen.getByRole('dialog')).toHaveClass('bg-bg-card');
+    expect(screen.getByRole('navigation', { name: '지표 카테고리' })).toHaveClass('border-r');
+    expect(screen.getByText('10호가 지표')).toHaveClass('uppercase');
   });
 
   it('index capabilities hide every hoga and program indicator category', () => {

@@ -35,6 +35,13 @@ describe('LiveSettingsSections (2단 nav+detail)', () => {
     expect(screen.getByTestId('settings-toggle-auctionWindowMask')).toBeTruthy();
   });
 
+  it('uses a flat section surface for the detail pane', () => {
+    render(<LiveSettingsSections />);
+
+    expect(screen.getByRole('navigation', { name: '설정 카테고리' })).toHaveClass('border-r');
+    expect(screen.getByRole('region', { name: '차트' })).not.toHaveClass('bg-bg-card');
+  });
+
   it('차트 설정에 날짜 구분선 토글이 보인다', () => {
     render(<LiveSettingsSections />);
     expect(screen.getByTestId('settings-toggle-dayBoundaryEnabled')).toBeTruthy();
