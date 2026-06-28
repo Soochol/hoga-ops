@@ -3,6 +3,17 @@
 All notable changes to this project are documented here.
 The format follows a 4-digit `MAJOR.MINOR.PATCH.MICRO` scheme.
 
+## [0.12.11.0] - 2026-06-28
+
+### Added
+- **프론트엔드 공통 UI 셸 도입**: 페이지, 라이브/스터디 작업 영역, 우측 레일 패널에서 재사용할 수 있는 `PageShell`, `WorkspaceShell`, `RailShell` 기반 UI primitive를 추가했다.
+
+### Changed
+- **주요 화면 레이아웃 공통화**: Settings, Capture, Inventory, Heatmap, Screener 화면의 상단 컨트롤과 상태 표시를 공통 page shell 패턴으로 정리했다.
+- **Live/Study 작업 영역 정리**: 라이브 헤더·툴바와 스터디 페이지의 작업 영역 구조를 같은 workspace shell 위에 맞춰 화면 간 레이아웃 일관성을 높였다.
+- **Right Rail 패널 디자인 시스템화**: Screener, Watchlist, Study Views 우측 패널과 레일 버튼의 배경, 보더, 헤더, empty/error/loading 상태를 공통 rail shell로 통일했다.
+- **스크리너 화면 정돈**: 저장 다이얼로그, 기준 선택, 경고 상태를 공통 버튼·상태·패널 primitive로 맞춰 화면 코드의 직접 스타일 조합을 줄였다.
+
 ## [0.12.10.3] - 2026-06-28
 
 ### Fixed
