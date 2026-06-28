@@ -313,6 +313,15 @@ describe('StudyPage', () => {
     }));
     expect(liveChartRootMock.mock.calls.at(-1)?.[0].timeframe).toBe('D');
 
+    fireEvent.click(screen.getByRole('button', { name: '분봉으로 전환: 5분' }));
+
+    expect(screen.getByText('005930 · 5m · 복기뷰')).toBeTruthy();
+    expect(useStudyReferenceBundleMock).toHaveBeenLastCalledWith(expect.objectContaining({
+      id: 'view-ref',
+      timeframe: '5m',
+    }));
+    expect(liveChartRootMock.mock.calls.at(-1)?.[0].timeframe).toBe('5m');
+
     fireEvent.click(screen.getByRole('button', { name: '분봉 선택 열기: 5분' }));
     fireEvent.click(within(screen.getByRole('menu', { name: '분봉 목록' })).getByRole('menuitemradio', { name: '15분' }));
 
@@ -346,8 +355,7 @@ describe('StudyPage', () => {
       restoreViewport: null,
     });
 
-    fireEvent.click(screen.getByRole('button', { name: '분봉 선택 열기: 5분' }));
-    fireEvent.click(within(screen.getByRole('menu', { name: '분봉 목록' })).getByRole('menuitemradio', { name: '5분' }));
+    fireEvent.click(screen.getByRole('button', { name: '분봉으로 전환: 5분' }));
     expect(liveChartRootMock.mock.calls.at(-1)?.[0]).toMatchObject({
       timeframe: '5m',
       restoreViewport: { rightEdgeMs: 2_000, barSpan: 120, atLiveEdge: false },
