@@ -2,7 +2,13 @@ import type { StudyViewReference } from '../api/studyViews';
 import { TIMEFRAME_TO_MS, type Candle, type RangeBundle, type Timeframe, type VolumeProfile } from '../api/types';
 import { aggregateCalendar, aggregateCandles } from '../live/aggregateCandles';
 import { buildChartBundle } from '../live/buildLiveBundle';
-import { realMsToYyyymmdd, regularSessionCloseMs, regularSessionOpenMs } from '../live/liveDateTime';
+import {
+  initialHistoricalDaysFor,
+  realMsToYyyymmdd,
+  regularSessionCloseMs,
+  regularSessionOpenMs,
+  subtractDaysKst,
+} from '../live/liveDateTime';
 import { liveVenueSessionBoundsMs, liveVenueUsesExtendedMinuteWindow } from '../live/liveVenuePolicy';
 import type { LiveVenueOption } from '../state/liveVenue';
 import { isMinuteTimeframe, type CalendarTimeframe } from '../state/livePage';
@@ -50,6 +56,10 @@ const EMPTY_VOLUME_PROFILE: VolumeProfile = {
   bins: [],
 };
 
+function laterDate(a: string, b: string): string {
+  return a >= b ? a : b;
+}
+
 function kisBarToCandle(c: StudyReferenceKisBar): Candle {
   return { ts_ms: c.t_ms, open: c.open, high: c.high, low: c.low, close: c.close, vol_a: c.volume, vol_b: 0 };
 }
@@ -81,6 +91,9 @@ export function studyReferenceQueryInputs(save: StudyViewReference | null): Stud
   const timeframe = save?.timeframe ?? null;
   const isMinute = timeframe ? isMinuteTimeframe(timeframe) : false;
   const bucketMs = timeframe && isMinute ? TIMEFRAME_TO_MS[timeframe as Timeframe] : 60_000;
+  const dailyFrom = save && !isMinute
+    ? laterDate(save.range.from_date, subtractDaysKst(save.range.to_date, initialHistoricalDaysFor(save.timeframe)))
+    : null;
 
   return {
     isMinute,
@@ -98,7 +111,7 @@ export function studyReferenceQueryInputs(save: StudyViewReference | null): Stud
     },
     dailyCandles: {
       code: save && !isMinute ? save.code : null,
-      from: save && !isMinute ? save.range.from_date : null,
+      from: dailyFrom,
       to: save && !isMinute ? save.range.to_date : null,
     },
   };

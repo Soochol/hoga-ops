@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import type { StudyViewReference } from '../api/studyViews';
 import type { RangeBundle } from '../api/types';
+import { initialHistoricalDaysFor, subtractDaysKst } from '../live/liveDateTime';
 import { buildStudyReferenceBundleModel, studyReferenceQueryInputs } from './studyReferenceBundleModel';
 
 const save: StudyViewReference = {
@@ -61,6 +62,21 @@ describe('studyReferenceBundleModel', () => {
       range: { code: null, from: null, to: null, timeframe: null },
       minuteCandles: { code: null, from: null, to: null },
       dailyCandles: { code: '005930', from: '20260616', to: '20260618' },
+    });
+  });
+
+  it('limits daily study candle requests to the live initial calendar window', () => {
+    const to = '20260618';
+    expect(studyReferenceQueryInputs({
+      ...save,
+      timeframe: 'D',
+      range: { ...save.range, from_date: '20200101', to_date: to },
+    })).toMatchObject({
+      dailyCandles: {
+        code: '005930',
+        from: subtractDaysKst(to, initialHistoricalDaysFor('D')),
+        to,
+      },
     });
   });
 
