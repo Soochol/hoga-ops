@@ -28,6 +28,7 @@ describe('WorkspaceShell primitives', () => {
     );
     expect(screen.getByTestId('header')).toHaveClass('border-b');
     expect(screen.getByTestId('header')).toHaveStyle({ height: 'var(--h-live-header)' });
+    expect(screen.getByTestId('toolbar')).toHaveClass('border-b');
     expect(screen.getByTestId('toolbar')).toHaveClass('overflow-x-auto');
     expect(screen.getByTestId('toolbar')).toHaveStyle({ height: 'var(--h-toolbar)' });
   });

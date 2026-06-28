@@ -31,7 +31,7 @@ The design system has a **single density dial** at `:root font-size`.
 
 ## Aesthetic Direction
 
-- **Direction:** Industrial/Utilitarian × Modern Professional ("Modern Trading Lab")
+- **Direction:** Industrial/Utilitarian × Modern Professional ("Quiet Trading Terminal")
 - **Decoration level:** Minimal-intentional — typography does the work. Single accent color. No patterns, textures, gradients, or decorative blobs.
 - **Mood:** Serious. Information-first. The product should feel like a precision tool, not a SaaS dashboard. Closer in spirit to Linear than to a Y Combinator startup landing page.
 - **Reference points:** TradingView (chart syntax), Linear (UI restraint), Vercel (typography), Bloomberg (data density — but without the 1990s color palette).
@@ -164,6 +164,7 @@ The design system has a **single density dial** at `:root font-size`.
 - **Replay Viewer workarea:** `grid-template-columns: 1fr 12px <sidebarPx>` (chart + splitter + Cursor Sidebar). `--sidebar-w` seeds the default `sidebarPx`; runtime width and the collapsed flag are owned by `frontend/src/state/replayLayout.ts` and persisted to `localStorage['replay.layout']`. When collapsed, the grid collapses to `1fr` and a floating right-edge handle plus a Toolbar toggle let the user re-expand. Double-click on the splitter reads the *current* token value via `getComputedStyle`, so future density-mode changes reseed automatically. Trade-off captured in ADR-0022.
 - **Chart stage:** `grid-template-rows: 1fr 0.5fr 1fr 0.6fr` (candles+vol / ratio / intensity / fill).
 - **Max content width:** No cap. App fills the viewport (desktop-only).
+- Dense tool panels use one outer surface with internal dividers; avoid nested cards inside sidebars, drawers, modals, and detail panels.
 - **Border radius:**
   - `sm` 2px (rarely used)
   - `md` 4px (presets, small buttons)

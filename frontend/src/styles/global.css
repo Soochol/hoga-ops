@@ -41,20 +41,6 @@ body {
 /* /live concept: Quiet Trading Terminal.
    Scoped to the LivePage root so other routes keep the current design system. */
 [data-live-theme='quiet-terminal'] {
-  --bg: #090b0f;
-  --bg-card: #10151b;
-  --bg-subtle: #0b0f15;
-  --bg-input: #0c1117;
-  --bg-input-hover: #151b23;
-  --border: #1a2431;
-  --border-strong: #253040;
-  --fg: #e6edf5;
-  --fg-dim: #91a0b4;
-  --fg-dimmer: #59677a;
-  --accent: #2dd4bf;
-  --accent-shade: #13998c;
-  --tint-selection: rgba(45, 212, 191, 0.12);
-  --grid: #17202b;
   background:
     linear-gradient(180deg, rgba(21, 27, 35, 0.76), rgba(9, 11, 15, 0) 9rem),
     var(--bg);
