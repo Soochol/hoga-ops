@@ -56,3 +56,10 @@
 ### Concerns
 
 - No open concerns after the focused tests and production build pass.
+
+---
+
+## 2026-06-28 Token Hygiene Follow-up
+
+- Replaced the remaining `CheckIcon` `--accent-fg` fallback with `#07100f`.
+- Updated a screener regression assertion to check the token class instead of retaining the old teal literal in test source.

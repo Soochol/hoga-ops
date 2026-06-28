@@ -387,7 +387,7 @@ it('does not lie "clean" when the builder is edited while a create is in flight 
   expect((await screen.findAllByText('수정됨')).length).toBeGreaterThanOrEqual(1);
   const row = screen.getAllByText('레이스').map((el) => el.closest('[role="button"]')).find(Boolean) as HTMLElement;
   expect(row.className)
-    .not.toContain('bg-[rgba(20,184,166,0.14)]');
+    .not.toContain('bg-tint-selection');
 });
 
 it('starts with an empty builder (no default 신고가 condition)', async () => {

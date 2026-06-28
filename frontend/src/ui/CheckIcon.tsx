@@ -12,7 +12,7 @@ export function CheckIcon({ filled, size = 18 }: { filled: boolean; size?: numbe
         <circle cx="12" cy="12" r="10" fill="var(--accent)" />
         <path
           d="M7.5 12.5l3 3 6-6"
-          stroke="var(--accent-fg, #0A0A12)"
+          stroke="var(--accent-fg, #07100f)"
           strokeWidth="2.5"
           strokeLinecap="round"
           strokeLinejoin="round"
