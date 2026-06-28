@@ -79,6 +79,32 @@ def test_multiple_batches_kept_in_insertion_order() -> None:
     assert out[1][0] == date(2023, 1, 1)
 
 
+def test_daily_past_batches_evict_lru_key_when_bounded() -> None:
+    cache = PastDailyCandlesCache(max_past_keys=2)
+
+    cache.append_batch("005930", date(2024, 1, 1), date(2024, 1, 31), [_bar(1)])
+    cache.append_batch("000660", date(2024, 1, 1), date(2024, 1, 31), [_bar(2)])
+    assert cache.list_batches("005930")
+    cache.append_batch("035720", date(2024, 1, 1), date(2024, 1, 31), [_bar(3)])
+
+    assert ("KRX", "000660") not in cache._per_key
+    assert ("KRX", "005930") in cache._per_key
+    assert ("KRX", "035720") in cache._per_key
+
+
+def test_daily_today_cache_evicts_lru_when_bounded() -> None:
+    cache = PastDailyCandlesCache(max_today_keys=2)
+
+    cache.store_today("005930", _bar(1))
+    cache.store_today("000660", _bar(2))
+    assert cache.get_today("005930")[0] == "hit"
+    cache.store_today("035720", _bar(3))
+
+    assert ("KRX", "000660") not in cache._today_mem
+    assert ("KRX", "005930") in cache._today_mem
+    assert ("KRX", "035720") in cache._today_mem
+
+
 def test_today_hit_returns_dict() -> None:
     cache = PastDailyCandlesCache()
     bar = _bar(1000)

@@ -3,6 +3,11 @@
 All notable changes to this project are documented here.
 The format follows a 4-digit `MAJOR.MINOR.PATCH.MICRO` scheme.
 
+## [0.12.10.1] - 2026-06-28
+
+### Changed
+- **라이브 백엔드 부하 추가 완화**: 커서 기반 거래량 분포 cutoff 조회가 필요한 sidecar만 계산하도록 줄이고, 과거 KIS 캔들 메모리 캐시에 LRU 상한을 둬 장시간 여러 종목을 탐색할 때 백엔드 메모리가 계속 늘어나는 일을 막았다.
+
 ## [0.12.10.0] - 2026-06-28
 
 ### Changed

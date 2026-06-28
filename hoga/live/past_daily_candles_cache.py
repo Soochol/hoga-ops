@@ -11,6 +11,7 @@ because 1-minute data at scale exceeds memory.
 from __future__ import annotations
 
 import time
+from collections import OrderedDict
 from datetime import date, datetime
 from typing import Literal
 
@@ -18,6 +19,8 @@ from hoga.live.kis_venue import KIS_KST, KisVenue
 
 # TTL for today's bar (and negative cache for non-trading-day today).
 TODAY_TTL_SECONDS = 60.0
+DEFAULT_PAST_KEY_MAX_ENTRIES = 256
+DEFAULT_TODAY_KEY_MAX_ENTRIES = 256
 
 TodayState = Literal["hit", "miss", "negative"]
 
@@ -30,11 +33,30 @@ class PastDailyCandlesCache:
       "negative" (fetched, no data — non-trading day).
     """
 
-    def __init__(self, *, today_ttl_seconds: float = TODAY_TTL_SECONDS) -> None:
+    def __init__(
+        self,
+        *,
+        today_ttl_seconds: float = TODAY_TTL_SECONDS,
+        max_past_keys: int = DEFAULT_PAST_KEY_MAX_ENTRIES,
+        max_today_keys: int = DEFAULT_TODAY_KEY_MAX_ENTRIES,
+    ) -> None:
         self._today_ttl = today_ttl_seconds
-        self._per_key: dict[tuple[KisVenue, str], list[tuple[date, date, list[dict]]]] = {}
+        self._max_past_keys = max(0, int(max_past_keys))
+        self._max_today_keys = max(0, int(max_today_keys))
+        self._per_key: OrderedDict[
+            tuple[KisVenue, str],
+            list[tuple[date, date, list[dict]]],
+        ] = OrderedDict()
         # value: (fetched_at_monotonic, dict | None)
-        self._today_mem: dict[tuple[KisVenue, str], tuple[float, dict | None]] = {}
+        self._today_mem: OrderedDict[
+            tuple[KisVenue, str],
+            tuple[float, dict | None],
+        ] = OrderedDict()
+
+    @staticmethod
+    def _trim_lru(cache: OrderedDict, max_entries: int) -> None:
+        while max_entries >= 0 and len(cache) > max_entries:
+            cache.popitem(last=False)
 
     # --- batches ---
 
@@ -70,9 +92,13 @@ class PastDailyCandlesCache:
 
     def list_batches(self, *args: str) -> list[tuple[date, date, list[dict]]]:
         venue, code = self._parse_code_args(args)
+        key = (venue, code)
+        batches = self._per_key.get(key, [])
+        if key in self._per_key:
+            self._per_key.move_to_end(key)
         return [
             self._normalize_batch(frm, to, bars)
-            for frm, to, bars in self._per_key.get((venue, code), [])
+            for frm, to, bars in batches
         ]
 
     def append_batch(
@@ -84,9 +110,12 @@ class PastDailyCandlesCache:
             venue, code, frm, to, bars = args
         else:
             raise TypeError("expected (code, frm, to, bars) or (venue, code, frm, to, bars)")
-        self._per_key.setdefault((venue, code), []).append(
+        key = (venue, code)
+        self._per_key.setdefault(key, []).append(
             self._normalize_batch(frm, to, bars)
         )
+        self._per_key.move_to_end(key)
+        self._trim_lru(self._per_key, self._max_past_keys)
 
     # --- today ---
 
@@ -97,7 +126,9 @@ class PastDailyCandlesCache:
             return "miss", None
         fetched_at, value = entry
         if time.monotonic() - fetched_at >= self._today_ttl:
+            self._today_mem.pop((venue, code), None)
             return "miss", None
+        self._today_mem.move_to_end((venue, code))
         if value is None:
             return "negative", None
         return "hit", value
@@ -109,4 +140,7 @@ class PastDailyCandlesCache:
             venue, code, bar = args
         else:
             raise TypeError("expected (code, bar) or (venue, code, bar)")
-        self._today_mem[(venue, code)] = (time.monotonic(), bar)
+        key = (venue, code)
+        self._today_mem[key] = (time.monotonic(), bar)
+        self._today_mem.move_to_end(key)
+        self._trim_lru(self._today_mem, self._max_today_keys)

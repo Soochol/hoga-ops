@@ -1227,6 +1227,7 @@ def build_range_bundle(
     hoga_only = mode == "hoga"
     sidecar_only = mode == "sidecar"
     full_mode = mode == "full"
+    cutoff_sidecar = sidecar_only and volume_distribution_cutoff_ms is not None
     volume_distribution_slice_cutoff_ms = (
         volume_distribution_cutoff_ms if sidecar_only else None
     )
@@ -1363,7 +1364,7 @@ def build_range_bundle(
                 session_close_ms=int(meta["regular_session_close_ms"]),
             )
         )
-        if hoga_only:
+        if hoga_only or cutoff_sidecar:
             ap_d = None
             bp_d = None
         else:
@@ -1373,15 +1374,19 @@ def build_range_bundle(
                 session_close_ms=meta["regular_session_close_ms"],
                 cache=indicators_cache, today_kst=today_kst,
             )
-        tvp_d = None if hoga_only else build_trade_volume_poc_slice(
-            engine, code=code, date=d, source=trade_indicator_source,
-            session_open_ms=norm_meta["regular_session_open_ms"],
-            session_close_ms=meta["regular_session_close_ms"],
-            range_count=trade_volume_poc_bins or DEFAULT_TRADE_VOLUME_POC_BINS,
-            price_range=price_range,
-            continuous_before_ms=continuous_before_ms,
-            cache=indicators_cache,
-            today_kst=today_kst,
+        tvp_d = (
+            None
+            if hoga_only or cutoff_sidecar
+            else build_trade_volume_poc_slice(
+                engine, code=code, date=d, source=trade_indicator_source,
+                session_open_ms=norm_meta["regular_session_open_ms"],
+                session_close_ms=meta["regular_session_close_ms"],
+                range_count=trade_volume_poc_bins or DEFAULT_TRADE_VOLUME_POC_BINS,
+                price_range=price_range,
+                continuous_before_ms=continuous_before_ms,
+                cache=indicators_cache,
+                today_kst=today_kst,
+            )
         )
         segments.append(RangeSegment(
             date=d,
@@ -1390,7 +1395,7 @@ def build_range_bundle(
             source=source,
         ))
         included_dates.append(d)
-        if not hoga_only and broker_late_entries_enabled:
+        if not hoga_only and not cutoff_sidecar and broker_late_entries_enabled:
             broker_late_entries.extend(
                 build_broker_late_entries_slice(
                     engine,

@@ -810,6 +810,64 @@ def test_build_range_bundle_sidecar_mode_builds_overlay_sidecars_only(tmp_path):
     program_builder.assert_not_called()
 
 
+def test_build_range_bundle_cutoff_sidecar_skips_unneeded_overlay_sidecars(tmp_path):
+    import contextlib
+
+    from hoga.api import bundle as bundle_mod
+    from hoga.api.bundle import build_range_bundle
+    from hoga.api.models import DayVolumeDistribution, VolumeDistributionBin
+    from hoga.tables.candles import ApiCandle
+
+    mock_engine = _engine_with_meta_for_dates(["20260512"])
+    mock_engine.data_dir = tmp_path
+    profile = DayVolumeDistribution(
+        date="20260512",
+        range_count=10,
+        price_min=70_000,
+        price_max=70_200,
+        session_open_ms=90_000_000,
+        session_close_ms=153_000_000,
+        bins=[VolumeDistributionBin(price_low=70_000, price_high=70_200, qty=123)],
+    )
+
+    with contextlib.ExitStack() as stack:
+        stack.enter_context(
+            patch.object(
+                bundle_mod,
+                "build_candles_slice",
+                return_value=[
+                    ApiCandle(ts_ms=1, open=70_000, close=70_100, high=70_200, low=69_900, vol_a=1, vol_b=0),
+                ],
+            )
+        )
+        stack.enter_context(patch.object(bundle_mod, "build_volume_distribution_slice", return_value=profile))
+        ask_bid_builder = stack.enter_context(patch.object(bundle_mod, "build_ask_bid_peak_slices", return_value=(None, None)))
+        broker_builder = stack.enter_context(patch.object(bundle_mod, "build_broker_late_entries_slice", return_value=[]))
+        poc_builder = stack.enter_context(patch.object(bundle_mod, "build_trade_volume_poc_slice", return_value=None))
+
+        rb = build_range_bundle(
+            mock_engine,
+            code="005930",
+            from_date="20260512",
+            to_date="20260512",
+            bucket_ms=60_000,
+            mode="sidecar",
+            broker_late_entries_enabled=True,
+            trade_volume_poc_bins=10,
+            volume_distribution_bins=10,
+            volume_distribution_cutoff_ms=1_747_006_260_000,
+        )
+
+    assert rb.volume_distributions == [profile]
+    assert rb.ask_peaks == []
+    assert rb.bid_peaks == []
+    assert rb.broker_late_entries == []
+    assert rb.trade_volume_pocs == []
+    ask_bid_builder.assert_not_called()
+    broker_builder.assert_not_called()
+    poc_builder.assert_not_called()
+
+
 def test_build_range_bundle_uses_combined_ask_bid_peak_builder():
     import contextlib
 

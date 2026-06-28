@@ -112,6 +112,32 @@ def test_past_mem_side_cache_avoids_disk_reread(tmp_path: Path) -> None:
     assert cache.get_past("005930", "20260520") == bars
 
 
+def test_past_mem_side_cache_evicts_lru_when_bounded(tmp_path: Path) -> None:
+    cache = PastCandlesCache(data_dir=tmp_path, max_past_mem_entries=2)
+
+    cache.store_past("005930", "20260520", _bars_for("20260520", n=1))
+    cache.store_past("005930", "20260521", _bars_for("20260521", n=1))
+    assert cache.get_past("005930", "20260520") is not None
+    cache.store_past("005930", "20260522", _bars_for("20260522", n=1))
+
+    assert ("KRX", "005930", "20260521") not in cache._past_mem
+    assert ("KRX", "005930", "20260520") in cache._past_mem
+    assert ("KRX", "005930", "20260522") in cache._past_mem
+
+
+def test_today_memory_cache_evicts_lru_when_bounded(tmp_path: Path) -> None:
+    cache = PastCandlesCache(data_dir=tmp_path, max_today_mem_entries=2)
+
+    cache.store_today("005930", _bars([1]))
+    cache.store_today("000660", _bars([2]))
+    assert cache.get_today_tri("005930")[0] == "hit"
+    cache.store_today("035720", _bars([3]))
+
+    assert ("KRX", "000660") not in cache._today_mem
+    assert ("KRX", "005930") in cache._today_mem
+    assert ("KRX", "035720") in cache._today_mem
+
+
 def test_past_corrupt_cache_treated_as_miss_and_heals_on_store(
     tmp_path: Path, caplog
 ) -> None:
