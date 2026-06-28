@@ -20,6 +20,7 @@ import { VolumeDistributionCard } from '../sidebar/VolumeDistributionCard';
 import { isMinuteTimeframe, type MinuteTimeframe } from '../state/livePage';
 import { useLivePageStore } from '../state/livePage';
 import type { StudyViewReference } from '../api/studyViews';
+import { DataSection } from '../ui/DataSurface';
 
 type Props = {
   save: StudyViewReference;
@@ -134,20 +135,15 @@ export function StudyReferenceDetailPanel({ save, bundle, isCursorActive }: Prop
 
 function StudyDetailSection({ label, testId, children }: SectionProps) {
   return (
-    <section
-      aria-label={label}
+    <div
       data-testid={`study-detail-card-${testId}`}
       className="flex flex-col border-t border-border first:border-t-0"
     >
-      <header className="border-b border-border px-3 py-2 text-xs font-semibold uppercase tracking-[0.08em] text-fg-dimmer">
-        {label}
-      </header>
-      <div
-        data-testid={`study-detail-content-${testId}`}
-        className="flex-1"
-      >
-        {children}
-      </div>
-    </section>
+      <DataSection title={label} className="flex flex-1 flex-col border-t-0" contentClassName="flex-1">
+        <div data-testid={`study-detail-content-${testId}`} className="flex-1">
+          {children}
+        </div>
+      </DataSection>
+    </div>
   );
 }
