@@ -2,6 +2,12 @@ import type {
   LiveInvestorTrendEstimateResponse,
   LiveInvestorTrendEstimateRow,
 } from '../api/liveInvestorTrendEstimate';
+import {
+  SidebarCard,
+  SidebarCardFooter,
+  SidebarCardHeader,
+  SidebarState,
+} from './SidebarSurface';
 
 type QueryLike = {
   data?: LiveInvestorTrendEstimateResponse;
@@ -22,14 +28,11 @@ export function InvestorTrendEstimateCard({ query }: Props) {
   const stateText = getStateText({ isLoadingFirstFetch, isError, data, hasRows });
 
   return (
-    <section
-      data-testid="investor-trend-estimate-card"
-      className="mx-[var(--space-sm)] mb-[var(--space-sm)] flex flex-col bg-bg-card border rounded overflow-hidden"
-    >
-      <header className="flex items-center justify-between gap-2 px-3 py-2 border-b text-xs">
-        <h2 className="font-semibold text-fg">외인·기관 추정</h2>
-        {hasRows && stateText && <span className="font-mono text-fg-dimmer">{stateText}</span>}
-      </header>
+    <SidebarCard testId="investor-trend-estimate-card">
+      <SidebarCardHeader
+        title="외인·기관 추정"
+        meta={hasRows && stateText ? stateText : undefined}
+      />
 
       {hasRows ? (
         <div className="overflow-hidden">
@@ -64,18 +67,16 @@ export function InvestorTrendEstimateCard({ query }: Props) {
           </table>
         </div>
       ) : (
-        <div className="grid min-h-[72px] place-items-center px-3 py-4 text-xs text-fg-dimmer">
+        <SidebarState className="min-h-[72px] px-3 py-4">
           {stateText}
-        </div>
+        </SidebarState>
       )}
 
-      <footer className="flex items-center justify-between gap-2 border-t px-3 py-2 text-[11px] text-fg-dimmer">
-        <span>KIS 장중 가집계 · 수량 기준</span>
-        {hasRows && data?.fetched_at_ms ? (
-          <span className="font-mono">최근 조회 {formatHourMinute(data.fetched_at_ms)}</span>
-        ) : null}
-      </footer>
-    </section>
+      <SidebarCardFooter
+        left="KIS 장중 가집계 · 수량 기준"
+        right={hasRows && data?.fetched_at_ms ? `최근 조회 ${formatHourMinute(data.fetched_at_ms)}` : undefined}
+      />
+    </SidebarCard>
   );
 }
 

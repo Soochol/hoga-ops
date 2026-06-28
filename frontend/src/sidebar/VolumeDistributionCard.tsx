@@ -1,5 +1,6 @@
 import type { DayVolumeDistribution } from '../api/types';
 import { classifyWithinSegment } from '../util/sessionTime';
+import { SidebarState } from './SidebarSurface';
 
 type Props = {
   profile: DayVolumeDistribution | null | undefined;
@@ -22,10 +23,10 @@ export function VolumeDistributionCard({
   maxColor,
 }: Props) {
   if (profile === undefined) {
-    return <div className="grid h-full place-items-center text-xs text-fg-dimmer">—</div>;
+    return <SidebarState>—</SidebarState>;
   }
   if (profile === null || profile.bins.length === 0) {
-    return <div className="grid h-full place-items-center text-xs text-fg-dimmer">매물대 분포 없음</div>;
+    return <SidebarState>매물대 분포 없음</SidebarState>;
   }
 
   const maxQty = Math.max(0, ...profile.bins.map((bin) => bin.qty));

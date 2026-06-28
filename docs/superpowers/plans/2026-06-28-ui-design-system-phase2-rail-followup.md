@@ -82,6 +82,24 @@ Expected: PASS.
 
 ### Task 4: Final Verification
 
+### Task 4: Add Sidebar Surface Primitives
+
+**Files:**
+- Create: `frontend/src/sidebar/SidebarSurface.test.tsx`
+- Create: `frontend/src/sidebar/SidebarSurface.tsx`
+- Modify: selected sidebar cards with repeated empty/card shell styling.
+
+**Interfaces:**
+- Produces: `SidebarState`, `SidebarCard`, `SidebarCardHeader`, `SidebarCardFooter`.
+- Preserves: chart-adjacent row geometry, sparkline rendering, and depth-bar math.
+
+- [x] **Step 1: Write failing SidebarSurface tests**
+- [x] **Step 2: Implement sidebar primitives**
+- [x] **Step 3: Apply only state/card shell wrappers**
+- [x] **Step 4: Verify targeted sidebar tests**
+
+### Task 5: Final Verification
+
 - [x] **Step 1: Re-measure className distribution**
 - [x] **Step 2: Run full frontend tests**
 - [x] **Step 3: Run frontend build**

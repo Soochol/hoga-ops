@@ -1,5 +1,6 @@
 import type { ProgramTradePoint, ProgramTradeSeries } from '../api/types';
 import { formatKoreanInt, formatKoreanWonEok } from '../util/koreanNumber';
+import { SidebarState } from './SidebarSurface';
 
 type Props = {
   series?: ProgramTradeSeries | null;
@@ -11,9 +12,9 @@ export default function ProgramTradeSummaryCard({ series, cursorMs = null }: Pro
 
   if (!point) {
     return (
-      <div className="grid h-full min-h-[88px] place-items-center px-3 py-4 text-xs text-fg-dimmer">
+      <SidebarState className="min-h-[88px] px-3 py-4">
         프로그램 순매수 데이터 없음
-      </div>
+      </SidebarState>
     );
   }
 

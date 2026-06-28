@@ -6,6 +6,7 @@ import {
   regularSessionOpenMs,
 } from '../live/liveDateTime';
 import { brokerDisplayShort } from './brokerDisplayNames';
+import { SidebarState } from './SidebarSurface';
 
 /** Gap detection threshold (ms). Consecutive points farther apart are
  *  rendered with a dashed segment indicating the broker was outside top-5
@@ -49,16 +50,16 @@ export default function BrokerTrajectoryTable({ series, cursorMs, gapThresholdMs
 
   if (series === undefined) {
     return (
-      <div className="grid place-items-center h-full text-fg-dimmer text-xs">
+      <SidebarState>
         커서 위치 로딩 중…
-      </div>
+      </SidebarState>
     );
   }
   if (series === null || series.length === 0 || rows.length === 0) {
     return (
-      <div className="grid place-items-center h-full text-fg-dimmer text-xs">
+      <SidebarState>
         거래원 정보 없음
-      </div>
+      </SidebarState>
     );
   }
 
