@@ -26,12 +26,15 @@ type StudyTabsSnapshot = {
   activeIndex: number;
   tabs: StudyTabSnapshot[];
 };
+type OpenSaveOptions = {
+  timeframeOverride?: LiveTimeframe;
+};
 
 type StudyTabsStore = {
   tabs: StudyTab[];
   activeTabId: string | null;
-  openSaveInActiveTab: (save: SaveTabFields) => void;
-  openSaveInNewTab: (save: SaveTabFields) => void;
+  openSaveInActiveTab: (save: SaveTabFields, options?: OpenSaveOptions) => void;
+  openSaveInNewTab: (save: SaveTabFields, options?: OpenSaveOptions) => void;
   ensureQuerySeed: (save: SaveTabFields) => void;
   focusTab: (id: string) => void;
   closeTab: (id: string) => void;
@@ -53,14 +56,19 @@ function isStudyTabSnapshot(value: unknown): value is StudyTabSnapshot {
 }
 
 export function studyTabFromSave(save: SaveTabFields): StudyTab {
+  const label = formatStudyTabLabel(save);
   return {
     id: nanoid(8),
     viewId: save.id,
     code: save.code,
-    label: formatStudyTabLabel(save),
+    label,
     name: save.name,
     timeframe: save.timeframe,
   };
+}
+
+function saveWithOpenOptions(save: SaveTabFields, options?: OpenSaveOptions): SaveTabFields {
+  return options?.timeframeOverride ? { ...save, timeframe: options.timeframeOverride } : save;
 }
 
 function loadStudyTabs(): { tabs: StudyTab[]; activeTabId: string | null } {
@@ -102,14 +110,20 @@ export function toStudyTabsSnapshot(
 export const useStudyTabsStore = create<StudyTabsStore>((set, get) => ({
   ...loadStudyTabs(),
 
-  openSaveInActiveTab: (save) => {
+  openSaveInActiveTab: (save, options) => {
+    const effectiveSave = saveWithOpenOptions(save, options);
     const { tabs, activeTabId } = get();
     const existing = tabs.find((tab) => tab.viewId === save.id);
     if (existing) {
-      set({ activeTabId: existing.id });
+      set({
+        tabs: tabs.map((tab) => (tab.id === existing.id
+          ? { ...tab, ...studyTabFromSave(effectiveSave), id: tab.id, viewport: tab.viewport }
+          : tab)),
+        activeTabId: existing.id,
+      });
       return;
     }
-    const next = studyTabFromSave(save);
+    const next = studyTabFromSave(effectiveSave);
     const active = tabs.find((tab) => tab.id === activeTabId);
     if (!active) {
       set({ tabs: [...tabs, next], activeTabId: next.id });
@@ -121,8 +135,8 @@ export const useStudyTabsStore = create<StudyTabsStore>((set, get) => ({
     });
   },
 
-  openSaveInNewTab: (save) => {
-    const next = studyTabFromSave(save);
+  openSaveInNewTab: (save, options) => {
+    const next = studyTabFromSave(saveWithOpenOptions(save, options));
     set({ tabs: [...get().tabs, next], activeTabId: next.id });
   },
 

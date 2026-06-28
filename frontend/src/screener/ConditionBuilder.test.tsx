@@ -41,6 +41,24 @@ describe('ConditionBuilder', () => {
     expect(screen.getAllByText('기간내 신고가')).toHaveLength(2);
   });
 
+  it('reorders conditions by dragging one row onto another', () => {
+    const onConditions = vi.fn();
+    const conditions = [
+      { id: 'a', type: 'trade_value', params: { min_eok: 1000 } },
+      { id: 'b', type: 'new_high', params: { lookback: 250, period: 250 } },
+      { id: 'c', type: 'ma', params: { source: 'high', op: 'above', period: 20 } },
+    ] as any;
+
+    render(<ConditionBuilder conditions={conditions} universe={{}} onConditionsChange={onConditions} onUniverseChange={vi.fn()} />);
+
+    const handles = screen.getAllByRole('button', { name: '조건 순서 변경' });
+    fireEvent.dragStart(handles[2]);
+    fireEvent.dragOver(handles[0]);
+    fireEvent.drop(handles[0]);
+
+    expect(onConditions).toHaveBeenCalledWith([conditions[2], conditions[0], conditions[1]]);
+  });
+
   it('delegates universe editing to the 사전필터 modal (header button → modal → onUniverseChange)', () => {
     // 인라인 시장 토글이 UniverseFilterModal 로 이동(전역 사전필터 → 센터 모달).
     // ConditionBuilder 는 헤더 버튼만 두고 onUniverseChange 를 위임한다.
