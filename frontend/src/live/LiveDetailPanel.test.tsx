@@ -97,6 +97,23 @@ describe('LiveDetailPanel', () => {
     }
   });
 
+  it('renders detail sections as flat sections inside the outer panel', () => {
+    render(
+      <LiveDetailPanel
+        orderbook={<div>orderbook</div>}
+        brokers={<div>brokers</div>}
+        volumeDistribution={<div>volume</div>}
+        program={<div>program</div>}
+        investor={<div>investor</div>}
+      />,
+    );
+
+    const orderbook = screen.getByTestId('live-detail-card-orderbook');
+    expect(orderbook).not.toHaveClass('rounded');
+    expect(orderbook).not.toHaveClass('bg-bg-card');
+    expect(orderbook).not.toHaveClass('overflow-hidden');
+  });
+
   it('stacks detail cards compactly instead of stretching them to fill tall chart panes', () => {
     render(
       <LiveDetailPanel

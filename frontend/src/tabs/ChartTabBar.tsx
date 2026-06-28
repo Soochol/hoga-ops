@@ -70,8 +70,13 @@ export function ChartTabBar<T extends ChartTabLike>({
   }, [activeTabId]);
 
   return (
-    <div className="flex items-end gap-1 h-full px-2 font-ui min-w-0" style={{ background: 'var(--bg-subtle)' }}>
-      <div role="tablist" aria-label={tablistAriaLabel} className="flex items-end gap-0.5 min-w-0 flex-1 overflow-x-auto overflow-y-hidden">
+    <div className="flex h-full min-w-0 items-end gap-1 px-2 font-ui" style={{ background: 'var(--bg-subtle)' }}>
+      <div
+        role="tablist"
+        aria-label={tablistAriaLabel}
+        className="flex min-w-0 flex-1 items-end gap-0.5 overflow-x-auto overflow-y-hidden"
+        style={{ scrollbarWidth: 'none' }}
+      >
         {windowStart > 0 && (
           <div aria-hidden="true" className="h-8 px-1.5 flex items-center shrink-0 text-xs" style={{ color: 'var(--fg-dimmer)' }}>
             …
@@ -115,10 +120,11 @@ export function ChartTabBar<T extends ChartTabLike>({
                 active ? 'bg-bg-card' : 'bg-bg-input hover:bg-bg-input-hover'
               }`}
               style={{
-                borderTop: active ? 'none' : '1px solid var(--border)',
-                borderRight: active ? 'none' : '1px solid var(--border)',
-                borderLeft: active ? 'none' : '1px solid var(--border)',
-                borderBottom: 'none',
+                borderTop: `1px solid ${active ? 'color-mix(in srgb, var(--accent) 32%, var(--border))' : 'var(--border)'}`,
+                borderRight: `1px solid ${active ? 'color-mix(in srgb, var(--accent) 32%, var(--border))' : 'var(--border)'}`,
+                borderLeft: `1px solid ${active ? 'color-mix(in srgb, var(--accent) 32%, var(--border))' : 'var(--border)'}`,
+                borderBottom: `1px solid ${active ? 'var(--bg-card)' : 'transparent'}`,
+                boxShadow: active ? '0 0 0 1px rgba(45, 212, 191, 0.04)' : 'none',
               }}
             >
               {active && (

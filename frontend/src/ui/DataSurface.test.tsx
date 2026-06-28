@@ -1,6 +1,7 @@
 import { render, screen } from '@testing-library/react';
 import { describe, expect, it } from 'vitest';
 import {
+  DataSection,
   DataTableHeader,
   DataTableRow,
   DataTableShell,
@@ -11,6 +12,36 @@ import {
 } from './DataSurface';
 
 describe('DataSurface primitives', () => {
+  it('renders flat data sections without nested card chrome', () => {
+    render(<DataSection title="10호가">rows</DataSection>);
+
+    const section = screen.getByRole('region', { name: '10호가' });
+    expect(section).toHaveClass('border-t');
+    expect(section).not.toHaveClass('rounded-lg');
+    expect(section).not.toHaveClass('bg-bg-card');
+    expect(screen.getByText('10호가')).toHaveClass('uppercase');
+  });
+
+  it('labels data sections with non-string titles from the rendered heading', () => {
+    render(
+      <DataSection
+        title={
+          <>
+            실시간 <strong>10호가</strong>
+          </>
+        }
+      >
+        rows
+      </DataSection>,
+    );
+
+    const section = screen.getByRole('region', { name: '실시간 10호가' });
+    expect(section).toBeInTheDocument();
+    const emphasizedTitle = screen.getByText('10호가');
+    expect(emphasizedTitle).toBeInTheDocument();
+    expect(emphasizedTitle.closest('header')).toHaveClass('uppercase');
+  });
+
   it('renders token-backed data table shell, header, and rows', () => {
     render(
       <DataTableShell minWidth="640px">
@@ -60,5 +91,6 @@ describe('DataSurface primitives', () => {
     expect(screen.getByText('실패')).toHaveClass('text-error');
     expect(screen.getByText('주의')).toHaveStyle({ color: 'var(--warn)' });
     expect(screen.getByText('완료')).toHaveStyle({ color: 'var(--accent)' });
+    expect(screen.getByText('완료')).toHaveStyle({ background: 'var(--tint-selection)' });
   });
 });

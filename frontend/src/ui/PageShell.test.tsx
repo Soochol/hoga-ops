@@ -15,7 +15,9 @@ describe('PageShell primitives', () => {
     const panel = screen.getByText('body');
     expect(panel).toHaveClass('bg-bg-card');
     expect(panel).toHaveClass('border');
+    expect(panel).toHaveClass('border-border');
     expect(panel).toHaveClass('rounded-lg');
+    expect(panel).toHaveClass('shadow-[0_18px_60px_rgba(0,0,0,0.22)]');
     expect(panel).toHaveClass('min-h-0');
   });
 

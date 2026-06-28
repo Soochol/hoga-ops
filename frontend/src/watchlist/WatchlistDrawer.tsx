@@ -37,7 +37,7 @@ import { CSS } from '@dnd-kit/utilities';
 import type { WatchlistEntry } from '../api/watchlist';
 import { resolveDrag, resolveFolderDrag, entrySortableId, parseEntrySortableId } from './dragHandlers';
 import { useEntryDragStore, isPointOnChart, dropPoint } from '../state/entryDrag';
-import { RailDrawer, RailDrawerBody, RailDrawerHeader, RailState } from '../ui/RailShell';
+import { RailDrawer, RailDrawerBody, RailDrawerHeader, RailDrawerSection, RailState } from '../ui/RailShell';
 
 // v1는 기존 전역 정렬 값 마이그레이션 입력으로만 유지.
 const LEGACY_SORT_MODE_STORAGE_KEY = 'watchlist.sortMode.v1';
@@ -573,36 +573,38 @@ export function WatchlistDrawer() {
       </RailDrawerBody>
 
       {/* 푸터: 전체수집 결과 배너 + 다음 수집 카운트다운 + 전체 수집 */}
-      {recentAction?.kind === 'caught_up_all' && (() => {
-        const s = summarizeCaughtUpAll(recentAction.summary);
-        return (
-          <div className="px-3 py-2 border-t border-border">
-            <Banner kind={s.failed.length > 0 ? 'error' : 'success'}>
-              <div>{formatCaughtUpAllHeader(s)}</div>
-              {s.failed.length > 0 && (
-                <ul className="mt-1 text-xs">
-                  {s.failed.map((r) => (
-                    <li key={r.code}>{r.code} {r.name}: {r.error?.code ?? 'failed'}</li>
-                  ))}
-                </ul>
-              )}
-            </Banner>
-          </div>
-        );
-      })()}
-      <div className="flex items-center justify-between gap-2 border-t border-border px-md py-sm text-xs text-fg-dim">
-        <span className="flex items-center gap-1">다음 수집{' '}
-          {data && <span className="text-accent"><Countdown targetMs={data.next_run_at_ms} /></span>}</span>
-        <button type="button"
-          onClick={() => catchupAllM.mutate(undefined, {
-            onSuccess: (r) => setRecentAction({ kind: 'caught_up_all', summary: r.results }),
-          })}
-          disabled={catchupAllM.isPending || (data?.entries.length ?? 0) === 0}
-          className="px-2 py-0.5 rounded border border-border hover:text-accent hover:border-accent disabled:opacity-40">
-          {/* spin only the glyph, not the text label (DESIGN.md motion) */}
-          <span className={`inline-block ${catchupAllM.isPending ? 'animate-spin' : ''}`}>↻</span> 전체 수집
-        </button>
-      </div>
+      <RailDrawerSection className="border-b-0 border-t p-0">
+        {recentAction?.kind === 'caught_up_all' && (() => {
+          const s = summarizeCaughtUpAll(recentAction.summary);
+          return (
+            <div className="px-3 py-2">
+              <Banner kind={s.failed.length > 0 ? 'error' : 'success'}>
+                <div>{formatCaughtUpAllHeader(s)}</div>
+                {s.failed.length > 0 && (
+                  <ul className="mt-1 text-xs">
+                    {s.failed.map((r) => (
+                      <li key={r.code}>{r.code} {r.name}: {r.error?.code ?? 'failed'}</li>
+                    ))}
+                  </ul>
+                )}
+              </Banner>
+            </div>
+          );
+        })()}
+        <div className="flex items-center justify-between gap-2 px-md py-sm text-xs text-fg-dim">
+          <span className="flex items-center gap-1">다음 수집{' '}
+            {data && <span className="text-accent"><Countdown targetMs={data.next_run_at_ms} /></span>}</span>
+          <button type="button"
+            onClick={() => catchupAllM.mutate(undefined, {
+              onSuccess: (r) => setRecentAction({ kind: 'caught_up_all', summary: r.results }),
+            })}
+            disabled={catchupAllM.isPending || (data?.entries.length ?? 0) === 0}
+            className="px-2 py-0.5 rounded border border-border hover:text-accent hover:border-accent disabled:opacity-40">
+            {/* spin only the glyph, not the text label (DESIGN.md motion) */}
+            <span className={`inline-block ${catchupAllM.isPending ? 'animate-spin' : ''}`}>↻</span> 전체 수집
+          </button>
+        </div>
+      </RailDrawerSection>
 
       {menu && (
         <WatchlistRowMenu x={menu.x} y={menu.y} name={menu.name}

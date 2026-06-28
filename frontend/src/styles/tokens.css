@@ -12,28 +12,28 @@
   font-size: 20px;
 
   /* ───── Color · Surfaces ───── */
-  --bg: #0E0E14;
-  --bg-card: #13131C;
-  --bg-subtle: #0A0A12;
-  --bg-input: #1A1A26;
-  --bg-input-hover: #22222F;
+  --bg: #090b0f;
+  --bg-card: #10151b;
+  --bg-subtle: #0b0f15;
+  --bg-input: #0c1117;
+  --bg-input-hover: #151b23;
 
   /* ───── Color · Borders ───── */
-  --border: #1F1F2A;
-  --border-strong: #2A2A38;
+  --border: #1a2431;
+  --border-strong: #253040;
 
   /* ───── Color · Foreground ───── */
-  --fg: #E2E8F0;
-  --fg-dim: #94A3B8;
-  --fg-dimmer: #64748B;
+  --fg: #e6edf5;
+  --fg-dim: #91a0b4;
+  --fg-dimmer: #59677a;
 
   /* ───── Color · Accent + Semantic ───── */
-  --accent: #14B8A6;
-  --accent-fg: #0A0A12;
+  --accent: #2dd4bf;
+  --accent-fg: #07100f;
   /* Sanctioned brand-mark gradient stop — DESIGN.md's "no gradients" rule
      has a single mockup-approved exception: the 24x24 H brand logo in LeftNav.
      Do not extend this exception to any other UI chrome. */
-  --accent-shade: #0D7A6F;
+  --accent-shade: #13998c;
   /* Status semantic — UI feedback (success/error). Distinct from price direction. */
   --success: #22C55E;
   --error:   #F43F5E;
@@ -43,9 +43,9 @@
   --price-down: #2563EB;
 
   /* ───── Color · Chart & Heatmap ───── */
-  --grid: #1A1A26;
-  --heat-lo: #0E1A1A;
-  --heat-hi: #14B8A6;
+  --grid: #17202b;
+  --heat-lo: #0b1518;
+  --heat-hi: #2dd4bf;
 
   /* ───── Color · Moving Average ─────
      Per spec docs/superpowers/specs/2026-05-23-replay-moving-average-design.md §5.
@@ -63,7 +63,7 @@
   --ma-8: #94A3B8; /* slate — extension slot 8 */
 
   /* ───── Tint backgrounds ───── */
-  --tint-selection:  rgba(20, 184, 166, 0.12);
+  --tint-selection:  rgba(45, 212, 191, 0.12);
   --tint-success:    rgba(34, 197, 94, 0.10);
   --tint-error:      rgba(244, 63, 94, 0.10);
   --tint-success-border: rgba(34, 197, 94, 0.30);  /* banner/chip borders */

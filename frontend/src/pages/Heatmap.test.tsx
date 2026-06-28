@@ -81,6 +81,10 @@ beforeEach(() => {
 
 it('폴더·종목·phase 배지 렌더 + 색 범례 제거됨(#6)', async () => {
   renderPage();
+  const routeShell = await screen.findByTestId('heatmap-page-primary');
+  expect(routeShell).toHaveClass('bg-bg-card');
+  expect(routeShell).toHaveClass('border');
+  expect(await screen.findByTestId('heatmap-board')).toBeInTheDocument();
   expect((await screen.findAllByText('반도체')).length).toBeGreaterThanOrEqual(2);
   expect(screen.getByText('삼성전자')).toBeInTheDocument();
   expect(screen.getByText('● 장중')).toBeInTheDocument();

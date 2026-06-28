@@ -59,7 +59,7 @@ export default function NumericPrefRow({ def }: { def: NumericPrefDef }) {
         }}
         aria-label={def.label}
         data-testid={`settings-numeric-${def.key}`}
-        className="w-[72px] text-right text-sm bg-bg-input border border-border rounded-[4px] px-2 py-1 tabular-nums disabled:cursor-not-allowed"
+        className="w-[72px] rounded-md border border-border-strong bg-bg-input px-2 py-1 text-right text-sm tabular-nums text-fg focus:border-accent focus:outline-none disabled:cursor-not-allowed"
       />
     </SettingsRow>
   );

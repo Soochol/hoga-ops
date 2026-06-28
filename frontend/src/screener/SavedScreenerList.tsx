@@ -114,7 +114,7 @@ export function SavedScreenerList({ anchorId, dirty, onLoad, onNewDraft, onSaveA
   };
 
   return (
-    <div ref={rootRef} className="bg-bg-card border rounded-lg p-md flex flex-col gap-sm min-h-0 overflow-auto">
+    <div ref={rootRef} className="flex h-full flex-col gap-sm min-h-0 overflow-auto p-md">
       <div className="flex items-center gap-1.5">
         <span className="text-[10.5px] font-semibold uppercase tracking-[0.08em] text-fg-dimmer">저장한 조건검색</span>
         <button type="button" aria-label="새 조건검색"
@@ -131,7 +131,7 @@ export function SavedScreenerList({ anchorId, dirty, onLoad, onNewDraft, onSaveA
           </ListRow>
         )}
         {visibleSaves.map((s) => {
-          // anchor+clean → teal fill + bar; anchor+dirty → bar only + 수정됨.
+          // anchor+clean -> selection tint + bar; anchor+dirty -> bar only + 수정됨.
           const isAnchor = s.id === anchorId;
           const clean = isAnchor && !dirty;
           const isRenaming = editing?.mode === 'rename' && editing.id === s.id;
@@ -140,7 +140,7 @@ export function SavedScreenerList({ anchorId, dirty, onLoad, onNewDraft, onSaveA
               onClick={() => { if (!isRenaming) onLoad(s); }}
               onKeyDown={(e) => { if (!isRenaming && (e.key === 'Enter' || e.key === ' ')) onLoad(s); }}
               className={`group relative flex items-center gap-2 px-2.5 py-2 cursor-pointer ${
-                clean ? 'bg-[rgba(20,184,166,0.14)] text-fg shadow-[inset_2px_0_0_var(--accent)]'
+                clean ? 'bg-tint-selection text-fg shadow-[inset_2px_0_0_var(--accent)]'
                   : isAnchor ? 'bg-bg-input text-fg shadow-[inset_2px_0_0_var(--accent)]'
                     : 'bg-bg-input text-fg-dim hover:bg-bg-input-hover'}`}>
               {isRenaming ? (

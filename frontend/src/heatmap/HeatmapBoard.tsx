@@ -36,7 +36,7 @@ export function HeatmapBoard({ groups, quoteByCode, sortMode, onPick, onReorder,
     // auto)을 분리한다. 같은 요소에 overflow-y-auto + column-width 를 두면 높이
     // 고정 multicol 이 칼럼을 세로로 꽉 채우다 가로 오버플로/단일 칼럼으로 깨진다.
     // 바깥이 세로 스크롤, 안쪽이 콘텐츠 높이 기준 신문형 균형 패킹.
-    <div className="flex-1 overflow-y-auto p-2">
+    <div data-testid="heatmap-board" className="flex-1 overflow-y-auto p-2">
       <div style={{ columnWidth: '16.5rem', columnGap: '0.5rem' }}>
         {visible.map((g) => (
           <HeatmapFolder

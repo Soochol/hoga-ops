@@ -5,6 +5,7 @@ import { getSymbolMasterInfo, refreshSymbols } from '../api/symbols';
 import { SYMBOLS_QUERY_KEY } from '../capture/useSymbols';
 import { symbolMasterSettingsHints } from '../api/upstream-hints';
 import { PageContainer } from '../layout/PageContainer';
+import { DataSection } from '../ui/DataSurface';
 import { DefinitionRow, PanelCard, ToolbarButton } from '../ui/PageShell';
 
 const VERSION = 'v0.1.0';
@@ -33,13 +34,19 @@ export default function Settings() {
 
   return (
     <PageContainer className="grid grid-cols-[minmax(0,42rem)] content-start">
-      <PanelCard as="section" className="p-md flex flex-col gap-md text-sm">
-        <DefinitionRow label="API URL" value={config?.api_url ?? '…'} />
-        <DefinitionRow label="Version" value={VERSION} />
-        <SymbolMasterSection />
-        <p className="text-xs text-fg-dimmer pt-sm border-t border-border">
-          편집 가능한 설정은 v1+1에서 `/api/config` 라우트와 함께 제공 예정.
-        </p>
+      <PanelCard as="section" data-testid="settings-page-primary" className="flex flex-col overflow-hidden text-sm">
+        <DataSection title="앱 정보" contentClassName="space-y-3 p-md">
+          <DefinitionRow label="API URL" value={config?.api_url ?? '…'} />
+          <DefinitionRow label="Version" value={VERSION} />
+        </DataSection>
+        <DataSection title="Symbol Master" contentClassName="space-y-3 p-md">
+          <SymbolMasterSection />
+        </DataSection>
+        <DataSection title="로드맵" contentClassName="p-md">
+          <p className="text-xs text-fg-dimmer">
+            편집 가능한 설정은 v1+1에서 `/api/config` 라우트와 함께 제공 예정.
+          </p>
+        </DataSection>
       </PanelCard>
     </PageContainer>
   );
@@ -66,8 +73,7 @@ function SymbolMasterSection() {
   };
 
   return (
-    <section className="space-y-2 pt-md border-t border-border">
-      <h3 className="text-sm font-semibold">Symbol Master</h3>
+    <section className="space-y-2">
       <DefinitionRow label="Items" value={data ? data.count.toLocaleString() : (isLoading ? '…' : '0')} />
       <DefinitionRow label="Last fetched" value={formatRelative(data?.fetched_at_ms)} />
       <DefinitionRow label="Status" value={data?.status ?? '…'} />

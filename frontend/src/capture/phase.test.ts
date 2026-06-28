@@ -24,10 +24,10 @@ describe('PHASE descriptor table', () => {
     expect(PHASE.queued.icon).toBe('○');
   });
 
-  it('chipColor: teal tint for in-progress, up tint for done, down tint for failed', () => {
-    expect(PHASE.capturing.chipColor).toContain('20,184,166');
-    expect(PHASE.parsing.chipColor).toContain('20,184,166');
-    expect(PHASE.deciding.chipColor).toContain('20,184,166');
+  it('chipColor: shared selection tint for in-progress, up tint for done, down tint for failed', () => {
+    expect(PHASE.capturing.chipColor).toBe('var(--tint-selection)');
+    expect(PHASE.parsing.chipColor).toBe('var(--tint-selection)');
+    expect(PHASE.deciding.chipColor).toBe('var(--tint-selection)');
     expect(PHASE.done.chipColor).toContain('34,197,94');
     expect(PHASE.failed.chipColor).toContain('244,63,94');
   });

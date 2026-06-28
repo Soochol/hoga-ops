@@ -3,6 +3,14 @@
 All notable changes to this project are documented here.
 The format follows a 4-digit `MAJOR.MINOR.PATCH.MICRO` scheme.
 
+## [0.12.15.0] - 2026-06-28
+
+### Changed
+- **Quiet Trading Terminal 전면 적용**: `/live`에서 검증한 조용한 다크 터미널 톤을 전체 프론트엔드로 확장해 Live, Capture, Inventory, Screener, Settings, Study, Heatmap 화면이 같은 작업형 UI 언어를 쓰도록 정리했다.
+- **단일 outer surface 구조 정착**: 페이지 셸, 우측 레일, drawer, modal, detail panel 안의 중첩 카드 표현을 줄이고 `DataSection` divider 기반의 밀도 높은 패널 구조로 맞췄다.
+- **전역 토큰과 accent 사용 정리**: 글로벌 dark token, selection tint, focus/active teal accent를 정리하고 KRX red/blue 가격 의미와 UI accent 의미가 섞이지 않도록 보강했다.
+- **route-level 회귀 테스트 보강**: Heatmap, Inventory, Study detail rail, Screener, Capture 등 주요 화면의 surface hierarchy와 token-backed state를 테스트로 고정했다.
+
 ## [0.12.14.1] - 2026-06-28
 
 ### Changed

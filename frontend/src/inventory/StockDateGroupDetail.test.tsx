@@ -77,6 +77,10 @@ describe('StockDateGroupDetail — header and existing behavior', () => {
       [row('005930', '삼성전자', '20260522'), row('005930', '삼성전자', '20260521')],
       '005930', qc,
     );
+    const root = screen.getByTestId('stock-date-group-detail-root');
+    expect(root).not.toHaveClass('bg-bg-card');
+    expect(root).not.toHaveClass('border');
+    expect(root).not.toHaveClass('rounded-lg');
     expect(screen.getByText('005930')).toBeTruthy();
     expect(screen.getByText('삼성전자')).toBeTruthy();
     expect(screen.getByText(/2 dates/)).toBeTruthy();

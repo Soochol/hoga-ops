@@ -61,7 +61,7 @@ export function ConditionBuilder({ conditions, universe, onConditionsChange, onU
   ];
 
   return (
-    <div className="bg-bg-card border rounded-lg p-md flex flex-col gap-sm min-h-0 overflow-auto">
+    <div className="flex h-full flex-col gap-sm min-h-0 overflow-auto p-md">
       {/* Header: [조건 추가 (flex-1)] [사전필터 버튼]. 전역 사전필터는 버튼이 여는
           UniverseFilterModal 로 이동(빌더 카드 정리). */}
       <div className="flex gap-sm items-stretch">

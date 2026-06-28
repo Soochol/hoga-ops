@@ -19,7 +19,7 @@ export function CalendarCell({ date, status, selected = false, inRange = false, 
 
   let background: string = 'transparent';
   if (selected) background = 'var(--accent)';
-  else if (inRange) background = 'rgba(20,184,166,0.18)';
+  else if (inRange) background = 'var(--tint-selection)';
   else if (hovered && !disabled) background = 'var(--bg-input-hover)';   // F1
 
   const color: string = selected ? 'var(--bg)' : descriptor.baseColorVar;

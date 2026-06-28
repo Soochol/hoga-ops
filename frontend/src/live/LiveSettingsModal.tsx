@@ -1,28 +1,49 @@
-import { ModalShell } from '../ui/ModalShell';
+import { useEffect } from 'react';
 import LiveSettingsSections from './LiveSettingsSections';
 
 type Props = {
   onClose: () => void;
 };
 
-/**
- * 차트/보조지표/총잔량 급증/데이터소스 설정 모달. `IndicatorPanel`과 동일한 2단
- * (왼쪽 카테고리 nav + 오른쪽 상세) 레이아웃을 `LiveSettingsSections`로 렌더하고,
- * ModalShell(백드롭·Escape·✕·title)로 감싼다.
- */
 export default function LiveSettingsModal({ onClose }: Props) {
+  useEffect(() => {
+    const onKey = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') onClose();
+    };
+    document.addEventListener('keydown', onKey);
+    return () => document.removeEventListener('keydown', onKey);
+  }, [onClose]);
+
   return (
-    <ModalShell ariaLabel="설정" title="설정" onClose={onClose}>
-      <LiveSettingsSections />
-      <div className="flex justify-end px-4 py-3 border-t border-border">
-        <button
-          type="button"
-          onClick={onClose}
-          className="px-3 py-1.5 text-sm bg-bg-input hover:bg-bg-input-hover text-fg rounded"
-        >
-          닫기
-        </button>
+    <div
+      role="dialog"
+      aria-modal="true"
+      aria-label="설정"
+      onClick={onClose}
+      className="fixed inset-0 z-[60] grid place-items-center bg-black/45"
+    >
+      <div
+        data-testid="live-settings-modal-shell"
+        onClick={(event) => event.stopPropagation()}
+        className="grid max-h-[min(820px,calc(100vh-48px))] w-[min(1040px,calc(100vw-48px))] grid-rows-[auto_minmax(0,1fr)_auto] overflow-hidden rounded-lg border border-border bg-bg-card shadow-[0_24px_80px_rgba(0,0,0,0.45)]"
+      >
+        <div className="flex items-center justify-between border-b border-border px-4 py-3">
+          <h2 className="text-base font-medium text-fg">설정</h2>
+          <button type="button" aria-label="닫기" onClick={onClose} className="text-lg leading-none text-fg-dim hover:text-fg">
+            ✕
+          </button>
+        </div>
+        <LiveSettingsSections />
+        <div className="flex justify-end border-t border-border px-4 py-3">
+          <button
+            type="button"
+            onClick={onClose}
+            className="rounded-md border border-border bg-bg-input px-3 py-1.5 text-sm text-fg hover:bg-bg-input-hover"
+          >
+            닫기
+          </button>
+        </div>
       </div>
-    </ModalShell>
+    </div>
   );
 }

@@ -65,14 +65,17 @@ describe('CalendarCell', () => {
     expect(container.querySelector('[data-testid="calendar-cell-20260518"]')).toBeTruthy();
   });
 
+  it('uses the shared selection tint for in-range dates', () => {
+    render(<CalendarCell {...baseProps} inRange />);
+    expect(screen.getByTestId('calendar-cell-20260518')).toHaveStyle({ background: 'var(--tint-selection)' });
+  });
+
   // F1 (design review): hover state uses DESIGN.md --bg-input-hover token
   it('applies --bg-input-hover background on hover (enabled cells only)', () => {
-    const { container, rerender } = render(<CalendarCell {...baseProps} status="none" />);
-    const btn = container.querySelector('button')!;
-    btn.dispatchEvent(new MouseEvent('mouseenter', { bubbles: true }));
-    // jsdom doesn't compute styles, but the inline style updates synchronously.
-    // Use fireEvent for React's synthetic event consistency.
-    rerender(<CalendarCell {...baseProps} status="none" />);
+    render(<CalendarCell {...baseProps} status="none" />);
+    const btn = screen.getByTestId('calendar-cell-20260518');
+    fireEvent.mouseEnter(btn);
+    expect(btn).toHaveStyle({ background: 'var(--bg-input-hover)' });
   });
 
   // F2 (design review): tooltip text matches spec §4.2 vocabulary

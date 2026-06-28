@@ -6,12 +6,12 @@ import type { CalendarStatus, CapturePhase, SkipReason } from '../api/types';
  */
 export interface PhaseDescriptor {
   icon: string;          // ○ ● ✓ ✕ ⚠
-  chipColor: string;     // rgba(...) tint for the phase chip background
+  chipColor: string;     // CSS color for the phase chip background
   group: 'active' | 'queued' | 'terminal';
   terminal: boolean;
 }
 
-const TEAL_TINT = 'rgba(20,184,166,0.12)';
+const TEAL_TINT = 'var(--tint-selection)';
 const UP_TINT = 'rgba(34,197,94,0.10)';
 const DOWN_TINT = 'rgba(244,63,94,0.10)';
 const NEUTRAL_TINT = 'rgba(148,163,184,0.10)';

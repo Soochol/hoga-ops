@@ -31,7 +31,7 @@ The design system has a **single density dial** at `:root font-size`.
 
 ## Aesthetic Direction
 
-- **Direction:** Industrial/Utilitarian × Modern Professional ("Modern Trading Lab")
+- **Direction:** Industrial/Utilitarian × Modern Professional ("Quiet Trading Terminal")
 - **Decoration level:** Minimal-intentional — typography does the work. Single accent color. No patterns, textures, gradients, or decorative blobs.
 - **Mood:** Serious. Information-first. The product should feel like a precision tool, not a SaaS dashboard. Closer in spirit to Linear than to a Y Combinator startup landing page.
 - **Reference points:** TradingView (chart syntax), Linear (UI restraint), Vercel (typography), Bloomberg (data density — but without the 1990s color palette).
@@ -69,24 +69,24 @@ The design system has a **single density dial** at `:root font-size`.
 
   | Token | Hex | Use |
   |---|---|---|
-  | `--bg` | `#0E0E14` | App background |
-  | `--bg-card` | `#13131C` | Panes, cards, toolbars |
-  | `--bg-subtle` | `#0A0A12` | Nav, price strip, dropdown headers |
-  | `--bg-input` | `#1A1A26` | Inputs, comboboxes, default tab |
-  | `--bg-input-hover` | `#22222F` | Hover state |
-  | `--border` | `#1F1F2A` | Default borders, dividers |
-  | `--border-strong` | `#2A2A38` | Active borders, vertical dividers |
-  | `--fg` | `#E2E8F0` | Primary text |
-  | `--fg-dim` | `#94A3B8` | Secondary text, dim labels |
-  | `--fg-dimmer` | `#64748B` | Tertiary text, disabled |
-  | `--accent` | `#14B8A6` | Teal — UI states only (buttons, focus, crosshair, active tab, primary CTAs) |
+  | `--bg` | `#090B0F` | App background |
+  | `--bg-card` | `#10151B` | Panes, cards, toolbars |
+  | `--bg-subtle` | `#0B0F15` | Nav, price strip, dropdown headers |
+  | `--bg-input` | `#0C1117` | Inputs, comboboxes, default tab |
+  | `--bg-input-hover` | `#151B23` | Hover state |
+  | `--border` | `#1A2431` | Default borders, dividers |
+  | `--border-strong` | `#253040` | Active borders, vertical dividers |
+  | `--fg` | `#E6EDF5` | Primary text |
+  | `--fg-dim` | `#91A0B4` | Secondary text, dim labels |
+  | `--fg-dimmer` | `#59677A` | Tertiary text, disabled |
+  | `--accent` | `#2DD4BF` | Teal — UI states only (buttons, focus, crosshair, active tab, primary CTAs) |
   | `--success` | `#22C55E` | UI 상태 semantic — 캡처 완료, 양호 상태, 체크리스트 done |
   | `--error` | `#F43F5E` | UI 상태 semantic — 실패, 에러 메시지, 비정상 상태 |
   | `--price-up` | `#DC2626` | 시장 데이터 — 상승, 매수, KRX 빨강 컨벤션 |
   | `--price-down` | `#2563EB` | 시장 데이터 — 하락, 매도, KRX 파랑 컨벤션 |
-  | `--grid` | `#1A1A26` | Chart grid lines, table row borders |
-  | `--heat-lo` | `#0E1A1A` | Heatmap low intensity (depth intensity pane) |
-  | `--heat-hi` | `#14B8A6` | Heatmap high intensity (teal ramp) |
+  | `--grid` | `#17202B` | Chart grid lines, table row borders |
+  | `--heat-lo` | `#0B1518` | Heatmap low intensity (depth intensity pane) |
+  | `--heat-hi` | `#2DD4BF` | Heatmap high intensity (teal ramp) |
 
 - **Discipline rule:** Three mutually-exclusive color categories.
   - **UI state** (teal `--accent`): buttons, focus rings, active tabs, crosshair, primary CTAs. Never for data.
@@ -95,7 +95,7 @@ The design system has a **single density dial** at `:root font-size`.
   - This three-way separation prevents the "is this red because it failed, or because it's up?" ambiguity.
 
 - **Tint backgrounds (alpha-tinted chip / hover):**
-  - Selection tint: `rgba(20,184,166,0.12)` — active nav, active tab, primary hover
+  - Selection tint: `rgba(45,212,191,0.12)` — active nav, active tab, primary hover
   - Success tint: `rgba(34,197,94,0.10)` — completion chip background
   - Error tint: `rgba(244,63,94,0.10)` — error chip background
   - Success border: `rgba(34,197,94,0.30)` — `--tint-success-border` (banner/chip borders)
@@ -164,6 +164,7 @@ The design system has a **single density dial** at `:root font-size`.
 - **Replay Viewer workarea:** `grid-template-columns: 1fr 12px <sidebarPx>` (chart + splitter + Cursor Sidebar). `--sidebar-w` seeds the default `sidebarPx`; runtime width and the collapsed flag are owned by `frontend/src/state/replayLayout.ts` and persisted to `localStorage['replay.layout']`. When collapsed, the grid collapses to `1fr` and a floating right-edge handle plus a Toolbar toggle let the user re-expand. Double-click on the splitter reads the *current* token value via `getComputedStyle`, so future density-mode changes reseed automatically. Trade-off captured in ADR-0022.
 - **Chart stage:** `grid-template-rows: 1fr 0.5fr 1fr 0.6fr` (candles+vol / ratio / intensity / fill).
 - **Max content width:** No cap. App fills the viewport (desktop-only).
+- Dense tool panels use one outer surface with internal dividers; avoid nested cards inside sidebars, drawers, modals, and detail panels.
 - **Border radius:**
   - `sm` 2px (rarely used)
   - `md` 4px (presets, small buttons)
@@ -178,6 +179,10 @@ Every feature route except the chart workspace follows one shell:
 - **Content framing:** primary content sits in `bg-bg-card border rounded-lg` cards. Multi-pane pages (master-detail, splitter) use one card per pane; single-content pages use one card. Never nest cards.
 - **No redundant page title:** the left nav is the page label, so a page never repeats its own name. Pages expose a *title-less* control bar (search / counts / actions) at the top of their card. (See the `/live` header: search only, with the active symbol shown in the status bar below.)
 - **Full-bleed exception:** only the chart workspace (`/live`) is full-bleed (no `PageContainer`, no card) — the chart must fill the viewport. Its sidebar still uses `--bg-card` to match other panels.
+
+### Migration Status
+
+Quiet Trading Terminal migration completed across app shell, route surfaces, rail drawers, live dialogs, and dense data panels. Nested-card chrome is prohibited in sidebars, drawers, modals, and detail panels; use `DataSection` dividers inside a single outer surface.
 
 ## Motion
 
@@ -230,7 +235,7 @@ Every feature route except the chart workspace follows one shell:
 
 ### Primary CTA (Load button)
 - Background: `--accent`
-- Text: `--accent-fg` (`#0A0A12`, dark bg color)
+- Text: `--accent-fg` (`#07100f`, dark bg color)
 - Padding: 9px × 18px
 - Font: 13px / 600 weight Geist Sans
 - Hover: filter brightness 1.1

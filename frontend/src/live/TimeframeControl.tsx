@@ -74,13 +74,11 @@ export function TimeframeControl({ timeframe, rememberedMinute, onChange }: Prop
           aria-label={minuteButtonLabel}
           aria-haspopup={isMinuteTimeframe(timeframe) ? 'menu' : undefined}
           aria-expanded={isMinuteTimeframe(timeframe) ? minuteMenuOpen : undefined}
-          className="inline-flex items-center gap-1 rounded font-mono hover:opacity-90 transition-opacity"
+          className="inline-flex min-h-6 items-center gap-1 rounded-[7px] border font-mono text-xs transition-colors hover:bg-bg-input-hover hover:text-fg"
           style={{
             padding: '4px 10px',
             background: isMinuteTimeframe(timeframe) ? 'var(--tint-selection)' : 'var(--bg-input)',
             color: isMinuteTimeframe(timeframe) ? 'var(--accent)' : 'var(--fg-dim)',
-            fontSize: 'var(--text-xs)',
-            border: '1px solid',
             borderColor: isMinuteTimeframe(timeframe) ? 'var(--accent)' : 'var(--border)',
           }}
         >
@@ -126,12 +124,10 @@ export function TimeframeControl({ timeframe, rememberedMinute, onChange }: Prop
             type="button"
             onClick={() => pickCalendar(calendar)}
             aria-pressed={active}
-            className="px-2 py-1 rounded font-mono hover:opacity-90 transition-opacity"
+            className="min-h-6 rounded-[7px] border px-2 py-1 font-mono text-xs transition-colors hover:bg-bg-input-hover hover:text-fg"
             style={{
               background: active ? 'var(--tint-selection)' : 'var(--bg-input)',
               color: active ? 'var(--accent)' : 'var(--fg-dim)',
-              fontSize: 'var(--text-xs)',
-              border: '1px solid',
               borderColor: active ? 'var(--accent)' : 'var(--border)',
             }}
           >

@@ -1,10 +1,20 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useState, type ReactNode } from 'react';
 import { useStockDates } from '../api/stock-dates';
 import { StockDateGroupList } from '../inventory/StockDateGroupList';
 import { StockDateGroupDetail } from '../inventory/StockDateGroupDetail';
 import { useStockDateGroups, selectGroup } from '../inventory/useStockDateGroups';
 import { PageContainer } from '../layout/PageContainer';
-import { PageState } from '../ui/PageShell';
+import { PageState, PanelCard } from '../ui/PageShell';
+
+function InventoryStateShell({ children }: { children: ReactNode }) {
+  return (
+    <PageContainer className="grid grid-cols-[minmax(0,42rem)] content-start">
+      <PanelCard data-testid="inventory-page-primary">
+        <PageState>{children}</PageState>
+      </PanelCard>
+    </PageContainer>
+  );
+}
 
 export default function Inventory() {
   const { data: rows = [], isLoading } = useStockDates();
@@ -24,18 +34,10 @@ export default function Inventory() {
   );
 
   if (isLoading) {
-    return (
-      <PageContainer>
-        <PageState>Loading inventory…</PageState>
-      </PageContainer>
-    );
+    return <InventoryStateShell>Loading inventory…</InventoryStateShell>;
   }
   if (rows.length === 0) {
-    return (
-      <PageContainer>
-        <PageState>캡처된 데이터가 없습니다.</PageState>
-      </PageContainer>
-    );
+    return <InventoryStateShell>캡처된 데이터가 없습니다.</InventoryStateShell>;
   }
 
   return (
@@ -43,8 +45,12 @@ export default function Inventory() {
       className="grid gap-md"
       style={{ gridTemplateColumns: 'var(--sidebar-w) 1fr' }}
     >
-      <StockDateGroupList rows={rows} selectedCode={selectedCode} onSelect={setSelectedCode} />
-      <StockDateGroupDetail group={selectedGroup} />
+      <PanelCard data-testid="inventory-list-pane" className="flex min-h-0 flex-col overflow-hidden">
+        <StockDateGroupList rows={rows} selectedCode={selectedCode} onSelect={setSelectedCode} />
+      </PanelCard>
+      <PanelCard data-testid="inventory-detail-pane" className="flex min-h-0 flex-col overflow-hidden">
+        <StockDateGroupDetail group={selectedGroup} />
+      </PanelCard>
     </PageContainer>
   );
 }

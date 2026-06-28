@@ -11,6 +11,7 @@ interface Props {
   onActivate: (code: string, name?: string, options?: { disposition?: LiveOpenDisposition }) => void;
   sortMode?: ScreenerResultSortMode;
   onSortChange?: (mode: ScreenerResultSortMode) => void;
+  embedded?: boolean;
 }
 
 const COLS = 'grid-cols-[3.5rem_1fr_4rem_6rem_5rem_6rem_2.4rem]';
@@ -51,9 +52,12 @@ function SortHeader({ field, label, align, sortMode = 'default', onSortChange }:
   );
 }
 
-export function ResultTable({ rows, onActivate, sortMode = 'default', onSortChange }: Props) {
+export function ResultTable({ rows, onActivate, sortMode = 'default', onSortChange, embedded = false }: Props) {
   return (
-    <DataTableShell minWidth="640px">
+    <DataTableShell
+      minWidth="640px"
+      className={embedded ? 'flex-1 border-0 rounded-none bg-transparent' : ''}
+    >
       <DataTableHeader columns={COLS}>
         {HEADERS.map((header) => (
           <SortHeader key={header.field} {...header} sortMode={sortMode} onSortChange={onSortChange} />

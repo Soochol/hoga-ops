@@ -5,6 +5,7 @@ import {
   resizeAdjacentWeights,
   useLiveLayoutStore,
 } from '../state/liveLayout';
+import { DataSection } from '../ui/DataSurface';
 
 type Props = {
   orderbook: ReactNode;
@@ -144,17 +145,17 @@ export function LiveDetailPanel({ orderbook, volumeDistribution, program, broker
     <aside
       ref={panelRef}
       data-testid="live-detail-panel"
-      className="grid min-h-full bg-bg p-[var(--space-sm)]"
+      className="grid min-h-full bg-bg-card"
       style={{
         gridTemplateRows: cards.map(() => 'auto').join(' 8px '),
       }}
     >
       {cards.map((card, index) => (
         <div key={card.key} style={{ display: 'contents' }}>
-          <section
+          <div
             data-testid={card.testId}
             data-card={card.key}
-            className="flex flex-col rounded border bg-bg-card"
+            className={`flex flex-col ${index === 0 ? '' : 'border-t border-border'}`.trim()}
             style={{
               minHeight: Math.max(
                 LIVE_CARD_MIN_HEIGHT_PX[card.key],
@@ -162,13 +163,12 @@ export function LiveDetailPanel({ orderbook, volumeDistribution, program, broker
               ),
             }}
           >
-            <header className="border-b px-3 py-2 text-xs font-semibold uppercase tracking-wider text-fg-dimmer">
-              {card.label}
-            </header>
-            <div data-testid={`live-detail-content-${card.key}`} className="flex-1">
-              <div data-testid={card.contentTestId}>{card.content}</div>
-            </div>
-          </section>
+            <DataSection title={card.label} className="flex flex-1 flex-col border-t-0" contentClassName="flex-1">
+              <div data-testid={`live-detail-content-${card.key}`} className="flex-1">
+                <div data-testid={card.contentTestId}>{card.content}</div>
+              </div>
+            </DataSection>
+          </div>
           {index < RESIZER_PAIRS.length ? (
             <div
               role="separator"

@@ -5,6 +5,36 @@ import type {
   LabelHTMLAttributes,
   ReactNode,
 } from 'react';
+import { useId } from 'react';
+
+export function DataSection({
+  title,
+  children,
+  className = '',
+  contentClassName = '',
+}: {
+  title: ReactNode;
+  children: ReactNode;
+  className?: string;
+  contentClassName?: string;
+}) {
+  const headerId = useId();
+  return (
+    <section
+      aria-label={typeof title === 'string' ? title : undefined}
+      aria-labelledby={headerId}
+      className={`border-t border-border first:border-t-0 ${className}`.trim()}
+    >
+      <header
+        id={headerId}
+        className="border-b border-border px-3 py-2 text-xs font-semibold uppercase tracking-[0.08em] text-fg-dimmer"
+      >
+        {title}
+      </header>
+      <div className={contentClassName}>{children}</div>
+    </section>
+  );
+}
 
 type DataTableShellProps = {
   children: ReactNode;
@@ -144,7 +174,7 @@ const INLINE_TONE = {
 } as const;
 
 const INLINE_STYLE: Partial<Record<keyof typeof INLINE_TONE, CSSProperties>> = {
-  accent: { background: 'rgba(20,184,166,0.10)', color: 'var(--accent)' },
+  accent: { background: 'var(--tint-selection)', color: 'var(--accent)' },
   warn: { background: 'rgba(245,158,11,0.10)', color: 'var(--warn)' },
 };
 

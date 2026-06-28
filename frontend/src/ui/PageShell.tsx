@@ -2,6 +2,7 @@ import type {
   ButtonHTMLAttributes,
   CSSProperties,
   ElementType,
+  HTMLAttributes,
   ReactNode,
 } from 'react';
 
@@ -10,13 +11,14 @@ type PanelCardProps = {
   className?: string;
   style?: CSSProperties;
   children: ReactNode;
-};
+} & Omit<HTMLAttributes<HTMLElement>, 'className' | 'children' | 'style'>;
 
-export function PanelCard({ as = 'div', className = '', style, children }: PanelCardProps) {
+export function PanelCard({ as = 'div', className = '', style, children, ...props }: PanelCardProps) {
   const Tag = as as ElementType;
   return (
     <Tag
-      className={`bg-bg-card border rounded-lg min-w-0 ${className}`.trim()}
+      {...props}
+      className={`bg-bg-card border border-border rounded-lg min-w-0 shadow-[0_18px_60px_rgba(0,0,0,0.22)] ${className}`.trim()}
       style={style}
     >
       {children}

@@ -17,6 +17,7 @@ describe('RailShell primitives', () => {
     render(<RailDrawer id="panel" testId="panel">body</RailDrawer>);
     const drawer = screen.getByTestId('panel');
     expect(drawer).toHaveClass('h-full');
+    expect(drawer).toHaveClass('border-l');
     expect(drawer).toHaveClass('bg-bg-card');
     expect(drawer).toHaveStyle({ width: 'var(--watchlist-panel-w)' });
   });
@@ -39,6 +40,7 @@ describe('RailShell primitives', () => {
     const button = screen.getByRole('button', { name: '관심' });
     expect(button).toHaveAttribute('aria-pressed', 'true');
     expect(button).toHaveClass('bg-tint-selection');
+    expect(button).toHaveClass('border-l-2');
   });
 
   it('renders drawer states by tone', () => {

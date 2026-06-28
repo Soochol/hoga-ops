@@ -5,14 +5,15 @@ export default function NavItem({ to, label }: { to: string; label: string }) {
     <NavLink
       to={to}
       className={({ isActive }) =>
-        `flex items-center gap-3 px-3.5 py-2.5 rounded ${
+        `relative grid h-9 grid-cols-[24px_1fr] items-center gap-2 rounded-md border px-2 text-sm transition-colors ${
           isActive
-            ? 'bg-tint-selection text-fg font-medium'
-            : 'text-fg-dim hover:bg-bg-input-hover hover:text-fg'
+            ? 'border-border-strong bg-tint-selection text-fg before:absolute before:left-[-1px] before:top-2 before:bottom-2 before:w-[2px] before:rounded before:bg-accent'
+            : 'border-transparent text-fg-dim hover:bg-bg-input-hover hover:text-fg'
         }`
       }
     >
-      {label}
+      <span aria-hidden className="h-4 w-4" />
+      <span>{label}</span>
     </NavLink>
   );
 }

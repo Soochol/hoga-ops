@@ -54,6 +54,10 @@ describe('Capture page', () => {
     const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } });
     render(<Capture />, { wrapper: W(qc) });
     await new Promise((r) => setTimeout(r, 30));
+    expect(screen.getByTestId('capture-form-pane')).toHaveClass('bg-bg-card');
+    expect(screen.getByTestId('capture-form-pane')).toHaveClass('border');
+    expect(screen.getByTestId('capture-queue-pane')).toHaveClass('bg-bg-card');
+    expect(screen.getByTestId('capture-queue-pane')).toHaveClass('border');
     expect(screen.getByPlaceholderText(/종목/i)).toBeTruthy();
     expect(screen.getByRole('button', { name: /Start/i })).toBeTruthy();
     // Queue side hidden by empty-state when no rows. Check that empty state

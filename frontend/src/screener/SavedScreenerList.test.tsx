@@ -11,7 +11,7 @@ vi.mock('../api/savedScreeners', () => ({
     { id: 's2', name: '눌림목', conditions: [], universe: {}, created_at_ms: 1, updated_at_ms: 1 }] })),
 }));
 
-const FILL = 'bg-[rgba(20,184,166,0.14)]';
+const FILL = 'bg-tint-selection';
 const BAR = 'shadow-[inset_2px_0_0_var(--accent)]';
 
 type Props = React.ComponentProps<typeof SavedScreenerList>;
