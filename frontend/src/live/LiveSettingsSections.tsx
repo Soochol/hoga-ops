@@ -18,6 +18,7 @@ import { MINUTE_TIMEFRAMES, useLivePageStore, type MinuteTimeframe } from '../st
 import { useStudyViewOpenPrefsStore, type StudyViewOpenTimeframe } from '../state/studyViewOpenPrefs';
 import MAStylePicker from './indicators/MAStylePicker';
 import IndicatorPrefRows from './settings/IndicatorPrefRows';
+import { SettingsRow, ToggleSwitch } from './settings/SettingsRow';
 import SourcePreferenceRadio from './settings/SourcePreferenceRadio';
 
 /**
@@ -74,13 +75,10 @@ function DayBoundaryStyleRow() {
   const setStyle = useChartPrefsStore((s) => s.setDayBoundaryStyle);
 
   return (
-    <div className="flex items-center justify-between py-2">
-      <div className="flex-1 pr-4">
-        <div className="text-fg text-sm">날짜 구분선 스타일</div>
-        <div className="text-fg-dim text-xs mt-0.5">
-          거래일 경계를 표시하는 세로 점선의 색상과 두께입니다.
-        </div>
-      </div>
+    <SettingsRow
+      label="날짜 구분선 스타일"
+      description="거래일 경계를 표시하는 세로 점선의 색상과 두께입니다."
+    >
       <MAStylePicker
         color={color}
         lineWidth={lineWidth}
@@ -88,7 +86,7 @@ function DayBoundaryStyleRow() {
         label="날짜 구분선"
         extraColors={[DAY_BOUNDARY_COLOR_DEFAULT]}
       />
-    </div>
+    </SettingsRow>
   );
 }
 
@@ -98,20 +96,17 @@ function ViLimitPriceLineStyleRow() {
   const setStyle = useLivePageStore((s) => s.setViLimitPriceLineStyle);
 
   return (
-    <div className="flex items-center justify-between py-2">
-      <div className="flex-1 pr-4">
-        <div className="text-fg text-sm">VI/상하한가 선 스타일</div>
-        <div className="text-fg-dim text-xs mt-0.5">
-          VI 가격대와 상한가·하한가 가격선을 표시하는 색상과 두께입니다.
-        </div>
-      </div>
+    <SettingsRow
+      label="VI/상하한가 선 스타일"
+      description="VI 가격대와 상한가·하한가 가격선을 표시하는 색상과 두께입니다."
+    >
       <MAStylePicker
         color={color}
         lineWidth={lineWidth}
         onChange={setStyle}
         label="VI/상하한가 선"
       />
-    </div>
+    </SettingsRow>
   );
 }
 
@@ -140,38 +135,22 @@ function DataSourceDetail() {
           <StoragePolicyRadio key={opt} value={opt} />
         ))}
       </div>
-      <div className="flex items-center justify-between py-2 mb-3" data-testid="program-trade-storage-row">
-        <div className="flex-1 pr-4">
-          <div className="text-fg text-sm">프로그램 순매수 저장</div>
-          <div className="text-fg-dim text-xs mt-0.5">
-            캡처 활성 관심그룹 종목의 프로그램 순매수 시계열을 저장합니다.
-          </div>
-        </div>
-        <button
-          type="button"
-          role="switch"
-          aria-checked={programTradeEnabled && restAllowed}
-          aria-label="프로그램 순매수 저장"
+      <SettingsRow
+        label="프로그램 순매수 저장"
+        description="캡처 활성 관심그룹 종목의 프로그램 순매수 시계열을 저장합니다."
+        className="mb-3"
+        testId="program-trade-storage-row"
+      >
+        <ToggleSwitch
+          label="프로그램 순매수 저장"
+          checked={programTradeEnabled && restAllowed}
           disabled={!restAllowed}
           onClick={() => patch.mutate({
             storage_policy: storagePolicy,
             program_trade_storage_enabled: !(programTradeEnabled && restAllowed),
           })}
-          className={
-            programTradeEnabled && restAllowed
-              ? 'relative inline-flex h-5 w-9 items-center rounded-full bg-accent transition-colors disabled:opacity-50'
-              : 'relative inline-flex h-5 w-9 items-center rounded-full bg-bg-input-hover transition-colors disabled:opacity-50'
-          }
-        >
-          <span
-            className={
-              programTradeEnabled && restAllowed
-                ? 'inline-block h-4 w-4 transform rounded-full bg-accent-fg translate-x-[18px] transition-transform'
-                : 'inline-block h-4 w-4 transform rounded-full bg-fg-dim translate-x-[2px] transition-transform'
-            }
-          />
-        </button>
-      </div>
+        />
+      </SettingsRow>
       <div style={{ fontSize: 'var(--text-sm)', color: 'var(--fg-dim)', marginBottom: 'var(--space-xs)' }}>
         데이터 표현 기준 <span style={{ color: 'var(--fg-dimmer)' }}>(모든 차트 공통)</span>
       </div>

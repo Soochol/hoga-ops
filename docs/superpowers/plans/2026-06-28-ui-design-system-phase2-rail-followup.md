@@ -62,6 +62,26 @@ Expected: PASS.
 
 ### Task 3: Final Verification
 
+### Task 3: Add Settings Row Primitives
+
+**Files:**
+- Create: `frontend/src/live/settings/SettingsRow.test.tsx`
+- Create: `frontend/src/live/settings/SettingsRow.tsx`
+- Modify: `frontend/src/live/settings/ToggleRow.tsx`
+- Modify: `frontend/src/live/settings/NumericPrefRow.tsx`
+- Modify: `frontend/src/live/LiveSettingsSections.tsx`
+
+**Interfaces:**
+- Produces: `SettingsRow`, `ToggleSwitch`.
+- Preserves: existing `role="switch"` behavior and `data-testid` contracts.
+
+- [x] **Step 1: Write failing SettingsRow tests**
+- [x] **Step 2: Implement SettingsRow and ToggleSwitch**
+- [x] **Step 3: Apply to toggle, numeric, and live settings rows**
+- [x] **Step 4: Verify targeted settings tests**
+
+### Task 4: Final Verification
+
 - [ ] **Step 1: Re-measure className distribution**
 - [ ] **Step 2: Run full frontend tests**
 - [ ] **Step 3: Run frontend build**
