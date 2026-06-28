@@ -260,6 +260,35 @@ describe('StudyPage', () => {
     expect(liveChartRootMock.mock.calls.at(-1)?.[0].timeframe).toBe('15m');
   });
 
+  it('does not reuse a saved minute viewport after switching the study chart to D/W/M', () => {
+    renderPage('/study?view=view-ref');
+
+    fireEvent.click(screen.getByRole('button', { name: '일' }));
+
+    expect(liveChartRootMock.mock.calls.at(-1)?.[0]).toMatchObject({
+      timeframe: 'D',
+      restoreViewport: null,
+    });
+
+    fireEvent.click(screen.getByRole('button', { name: '주' }));
+    expect(liveChartRootMock.mock.calls.at(-1)?.[0]).toMatchObject({
+      timeframe: 'W',
+      restoreViewport: null,
+    });
+
+    fireEvent.click(screen.getByRole('button', { name: '월' }));
+    expect(liveChartRootMock.mock.calls.at(-1)?.[0]).toMatchObject({
+      timeframe: 'M',
+      restoreViewport: null,
+    });
+
+    fireEvent.click(screen.getByRole('button', { name: '5분봉으로 전환' }));
+    expect(liveChartRootMock.mock.calls.at(-1)?.[0]).toMatchObject({
+      timeframe: '5m',
+      restoreViewport: { rightEdgeMs: 2_000, barSpan: 120, atLiveEdge: false },
+    });
+  });
+
   it('renders live chart action controls in the study header', () => {
     renderPage('/study?view=view-ref');
 
