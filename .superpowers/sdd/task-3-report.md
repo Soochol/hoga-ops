@@ -1,84 +1,15 @@
-# Task 3 Report
+Status: done
 
-## Status
+Summary:
+- Replaced the `/live` detail-card section markup with `DataSection` while preserving the existing `data-testid`, `data-card`, and min-height behavior through a thin wrapper because `DataSection` does not currently accept arbitrary section props.
+- Added the flat-section regression test requested in the brief.
+- Moved the quiet-terminal surface styling out of `global.css` into `LivePage`, `LiveWorkarea`, `WorkspaceShell`, `ChartTabBar`, `TimeframeControl`, and `LiveStatusBar`, then removed the one-off live theme selectors.
 
-DONE
+Verification:
+- `cd frontend && npm test -- LiveDetailPanel.test.tsx --run`
+- `cd frontend && npm test -- LiveDetailPanel.test.tsx LiveToolbar.test.tsx LiveStatusBar.test.tsx LivePage.test.tsx --run`
+- `cd frontend && npm run build`
+- Browser QA on `http://127.0.0.1:5176/live?code=005930` (5174/5175 were already occupied): verified one outer detail surface, flat inner sections, matching surface family across header/tab/status/toolbar/chart/detail, and no toolbar text overlap at the checked viewport.
 
-## Scope completed
-
-- Added frontend wire support for `broker_late_entries` and the new `BrokerLateEntryEvent` type.
-- Threaded `brokerLateEntryStartHHMM` through `useRange(...)` query key and request URL.
-- Added persisted broker late-entry indicator prefs, normalization, and live-page store setters.
-- Added the broker late-entry config pane and hooked it into `IndicatorPanel`.
-- Passed the broker late-entry range option from `useLiveBundle` only when the indicator is enabled.
-
-## TDD flow
-
-1. Added failing tests to:
-   - `frontend/src/state/liveIndicatorsPersistence.test.ts`
-   - `frontend/src/api/range.test.tsx`
-   - `frontend/src/live/indicators/IndicatorPanel.test.tsx`
-2. Ran the brief's frontend test command.
-3. Hit an environment blocker first: `npm test` failed because `frontend/node_modules` was absent and `vitest` was not installed on PATH.
-4. Ran `npm ci` in `frontend` to restore the checked-in dependency set.
-5. Re-ran the target tests and confirmed the new cases failed for the expected missing feature surface:
-   - missing broker late-entry persisted fields
-   - missing range query param / key threading
-   - missing indicator panel UI
-6. Implemented the minimal production changes to satisfy those failures.
-7. Re-ran the target tests and got green.
-8. Ran one extra neighboring store test file, `src/state/livePage.test.ts`, to catch persistence/snapshot omissions after the store changes.
-
-## Files changed
-
-- `frontend/src/api/types.ts`
-- `frontend/src/api/range.ts`
-- `frontend/src/state/liveIndicatorsPersistence.ts`
-- `frontend/src/state/livePage.ts`
-- `frontend/src/live/indicators/BrokerLateEntryConfig.tsx`
-- `frontend/src/live/indicators/IndicatorPanel.tsx`
-- `frontend/src/live/useLiveBundle.ts`
-- `frontend/src/state/liveIndicatorsPersistence.test.ts`
-- `frontend/src/api/range.test.tsx`
-- `frontend/src/live/indicators/IndicatorPanel.test.tsx`
-
-## Tests run
-
-From `frontend/`:
-
-```bash
-npm test -- --run src/state/liveIndicatorsPersistence.test.ts src/api/range.test.tsx src/live/indicators/IndicatorPanel.test.tsx
-npm test -- --run src/state/livePage.test.ts
-```
-
-Results:
-
-- `src/state/liveIndicatorsPersistence.test.ts`: PASS
-- `src/api/range.test.tsx`: PASS
-- `src/live/indicators/IndicatorPanel.test.tsx`: PASS
-- `src/state/livePage.test.ts`: PASS
-
-## Notes
-
-- The pre-existing indicator count assertion in `IndicatorPanel.test.tsx` needed to move from 13 to 14 because the new broker indicator adds one more category toggle in the left nav.
-- I did not refetch on side-mode changes; only the broker late-entry start HHMM is threaded into `/api/range`, and only while the indicator is enabled, matching the task brief.
-
-## Concerns
-
-- None at the task-brief level.
-
-## Task 3 Fix Report
-
-- Fixed frontend `RangeBundle` synthesis/fixture sites that still omitted required `broker_late_entries`, including the study snapshot restore adapter and live/index bundle builders.
-- Added `broker_late_entries: []` defaults where restored or synthetic bundles are created, and preserved the field when cloning/restoring bundles.
-- Tightened the study snapshot adapter test to assert restored bundles include `broker_late_entries: []`.
-
-Test command run from `frontend/`:
-
-```bash
-npm test -- --run src/studyViews/studySnapshotAdapter.test.ts src/live/buildIndexBundle.test.ts src/studyViews/studySaveSource.test.tsx src/studyViews/studySaveCommand.test.ts src/studyViews/useStudySnapshotCapture.test.ts src/live/LiveStatusBar.test.tsx src/live/LiveSidebar.test.tsx src/live/LiveWorkarea.test.tsx src/studyViews/studySnapshotAdapter.test.ts src/live/buildLiveBundle.test.ts src/live/useLiveBundle.test.tsx src/state/liveIndicatorsPersistence.test.ts src/api/range.test.tsx src/live/indicators/IndicatorPanel.test.tsx
-```
-
-Result:
-
-- PASS: 13 test files, 234 tests passed
+Concerns:
+- Dev browser QA was limited by existing localhost API CORS failures in this environment, so the visual pass used the shell with `?code=005930` and empty-data states rather than live backend data.

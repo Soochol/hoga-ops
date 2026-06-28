@@ -300,6 +300,10 @@ export function LiveWorkarea({
     overflow: 'hidden',
     display: 'flex',
     flexDirection: 'column',
+    border: '1px solid var(--border)',
+    borderRadius: 8,
+    background: 'var(--bg-card)',
+    boxShadow: '0 18px 60px rgba(0, 0, 0, 0.35)',
   };
   const detailPanelVisible = !isIndexInstrument;
   const renderedRightPanelWidthPx = workareaWidthPx != null
@@ -323,7 +327,7 @@ export function LiveWorkarea({
     <div
       ref={workareaRef}
       data-testid="live-workarea"
-      className="h-full flex"
+      className="flex h-full gap-1 p-1"
       onWheelCapture={handleWheelCapture}
       style={{
         position: 'relative',
@@ -401,13 +405,13 @@ export function LiveWorkarea({
                 data-testid="live-workarea-splitter"
                 onPointerDown={beginWidthResize}
                 style={{
-                  width: LIVE_WORKAREA_SPLITTER_WIDTH_PX,
+                  width: 8,
                   cursor: 'col-resize',
                   display: 'grid',
                   placeItems: 'center',
                 }}
               >
-                <div aria-hidden style={{ width: 1, height: '100%', background: 'var(--border)' }} />
+                <div aria-hidden style={{ width: 1, height: '100%', background: 'var(--border-strong)', opacity: 0.75 }} />
               </div>
               <div
                 role="complementary"
@@ -419,7 +423,10 @@ export function LiveWorkarea({
                   minHeight: 0,
                   overflowY: 'auto',
                   overflowX: 'hidden',
-                  borderLeft: '1px solid var(--border)',
+                  border: '1px solid var(--border)',
+                  borderRadius: 8,
+                  background: 'var(--bg-card)',
+                  boxShadow: '0 18px 60px rgba(0, 0, 0, 0.35)',
                   scrollbarGutter: 'stable',
                 }}
               >

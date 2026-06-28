@@ -296,9 +296,10 @@ export function LivePage() {
 
   return (
     <div
-      data-live-theme="quiet-terminal"
       className="h-full grid"
       style={{
+        background:
+          'linear-gradient(180deg, rgba(21, 27, 35, 0.76), rgba(9, 11, 15, 0) 9rem), var(--bg)',
         // minmax(0, 1fr) on the workarea row prevents the chart canvas's
         // intrinsic size from pushing the row past viewport height.
         gridTemplateRows:

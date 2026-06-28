@@ -5,6 +5,7 @@ import {
   resizeAdjacentWeights,
   useLiveLayoutStore,
 } from '../state/liveLayout';
+import { DataSection } from '../ui/DataSurface';
 
 type Props = {
   orderbook: ReactNode;
@@ -151,25 +152,23 @@ export function LiveDetailPanel({ orderbook, volumeDistribution, program, broker
     >
       {cards.map((card, index) => (
         <div key={card.key} style={{ display: 'contents' }}>
-          <section
+          <div
             data-testid={card.testId}
             data-card={card.key}
-            className="flex flex-col border-border"
+            className={`flex flex-col ${index === 0 ? '' : 'border-t border-border'}`.trim()}
             style={{
-              borderTop: index === 0 ? 'none' : '1px solid var(--border)',
               minHeight: Math.max(
                 LIVE_CARD_MIN_HEIGHT_PX[card.key],
                 Math.round(weights[card.key] * WEIGHT_TO_MIN_HEIGHT_PX),
               ),
             }}
           >
-            <header className="border-b px-3 py-2 text-xs font-semibold uppercase tracking-wider text-fg-dimmer">
-              {card.label}
-            </header>
-            <div data-testid={`live-detail-content-${card.key}`} className="flex-1">
-              <div data-testid={card.contentTestId}>{card.content}</div>
-            </div>
-          </section>
+            <DataSection title={card.label} className="flex flex-1 flex-col border-t-0" contentClassName="flex-1">
+              <div data-testid={`live-detail-content-${card.key}`} className="flex-1">
+                <div data-testid={card.contentTestId}>{card.content}</div>
+              </div>
+            </DataSection>
+          </div>
           {index < RESIZER_PAIRS.length ? (
             <div
               role="separator"

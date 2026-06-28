@@ -77,7 +77,7 @@ export function LiveStatusBar({ activeCode, captureHealth, bundle, venue = 'KRX'
   return (
     <div
       data-testid="live-status-bar"
-      className="flex items-center gap-3 border-b px-3"
+      className="flex items-center gap-2 border-b px-3"
       style={{
         height: 'var(--h-pricestrip)',
         borderColor: 'var(--border)',
@@ -85,9 +85,10 @@ export function LiveStatusBar({ activeCode, captureHealth, bundle, venue = 'KRX'
         fontSize: 'var(--text-sm)',
         color: 'var(--fg-dim)',
         fontVariantNumeric: 'tabular-nums',
+        boxShadow: 'inset 0 -1px 0 rgba(255, 255, 255, 0.015)',
       }}
     >
-      <span className="inline-flex items-center gap-1">
+      <span className="inline-flex min-h-[1.2rem] items-center gap-1">
         <CollectionDot status={collection.displayStatus} />
         <span className="font-mono" style={{ color: 'var(--fg)' }}>
           {symbolLabel}
@@ -101,7 +102,7 @@ export function LiveStatusBar({ activeCode, captureHealth, bundle, venue = 'KRX'
         <span
           data-testid="live-current-price"
           className="font-mono"
-          style={{ color: 'var(--fg)', fontWeight: 600 }}
+          style={{ color: 'var(--fg)', fontWeight: 600, fontSize: 'var(--text-lg)', letterSpacing: 0 }}
         >
           {currentPrice.toLocaleString('ko-KR')}
         </span>

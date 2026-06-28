@@ -31,7 +31,7 @@ export function WorkspaceHeader({
   return (
     <header
       data-testid={testId}
-      className={`flex items-center gap-3 border-b border-border bg-bg-subtle/80 px-3 backdrop-blur ${className}`.trim()}
+      className={`flex items-center gap-3 border-b border-border bg-bg-card/80 px-4 backdrop-blur ${className}`.trim()}
       style={{ height: 'var(--h-live-header)' }}
     >
       {children}
@@ -52,7 +52,7 @@ export function WorkspaceToolbar({
     <div
       data-testid={testId}
       className={`flex items-center gap-2 overflow-x-auto border-b border-border bg-bg-card/80 px-3 backdrop-blur ${className}`.trim()}
-      style={{ height: 'var(--h-toolbar)' }}
+      style={{ height: '2.375rem' }}
     >
       {children}
     </div>
