@@ -26,7 +26,7 @@ type Props = {
   isCursorActive: boolean;
 };
 
-type CardProps = {
+type SectionProps = {
   label: string;
   testId: string;
   children: ReactNode;
@@ -92,22 +92,22 @@ export function StudyReferenceDetailPanel({ save, bundle, isCursorActive }: Prop
   return (
     <div
       data-testid="study-reference-detail-cards"
-      className="grid min-h-full gap-2 bg-bg p-[var(--space-sm)]"
+      className="grid min-h-full bg-bg-card"
       style={{ gridTemplateRows: 'auto auto auto auto' }}
     >
-      <StudyDetailCard label="10호가" testId="orderbook">
+      <StudyDetailSection label="10호가" testId="orderbook">
         <>
           <OrderbookTable snapshot={isCursorActive ? spotOrderbook?.snapshot : null} />
           <TotalQtyBar snapshot={isCursorActive ? spotOrderbook?.snapshot : null} maskRatio={false} />
         </>
-      </StudyDetailCard>
-      <StudyDetailCard label="거래원" testId="brokers">
+      </StudyDetailSection>
+      <StudyDetailSection label="거래원" testId="brokers">
         <BrokerTrajectoryTable
           series={isCursorActive ? spotBrokers : null}
           cursorMs={detailCursorMs}
         />
-      </StudyDetailCard>
-      <StudyDetailCard label="연속체결 매물대 분포" testId="volume-distribution">
+      </StudyDetailSection>
+      <StudyDetailSection label="연속체결 매물대 분포" testId="volume-distribution">
         <VolumeDistributionCard
           profile={cutoffVolumeDistribution}
           cursorMs={detailCursorMs}
@@ -115,24 +115,25 @@ export function StudyReferenceDetailPanel({ save, bundle, isCursorActive }: Prop
           color={volumeDistributionColor}
           maxColor={volumeDistributionMaxColor}
         />
-      </StudyDetailCard>
-      <StudyDetailCard label="프로그램" testId="program">
+      </StudyDetailSection>
+      <StudyDetailSection label="프로그램" testId="program">
         <ProgramTradeSummaryCard
           series={bundle.program_trade}
           cursorMs={detailCursorMs}
         />
-      </StudyDetailCard>
+      </StudyDetailSection>
     </div>
   );
 }
 
-function StudyDetailCard({ label, testId, children }: CardProps) {
+function StudyDetailSection({ label, testId, children }: SectionProps) {
   return (
     <section
+      aria-label={label}
       data-testid={`study-detail-card-${testId}`}
-      className="flex flex-col rounded border bg-bg-card"
+      className="flex flex-col border-t border-border first:border-t-0"
     >
-      <header className="border-b px-3 py-2 text-xs font-semibold uppercase tracking-wider text-fg-dimmer">
+      <header className="border-b border-border px-3 py-2 text-xs font-semibold uppercase tracking-[0.08em] text-fg-dimmer">
         {label}
       </header>
       <div

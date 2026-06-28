@@ -91,5 +91,6 @@ describe('DataSurface primitives', () => {
     expect(screen.getByText('실패')).toHaveClass('text-error');
     expect(screen.getByText('주의')).toHaveStyle({ color: 'var(--warn)' });
     expect(screen.getByText('완료')).toHaveStyle({ color: 'var(--accent)' });
+    expect(screen.getByText('완료')).toHaveStyle({ background: 'var(--tint-selection)' });
   });
 });

@@ -425,6 +425,22 @@ describe('StudyPage', () => {
     expect(screen.getByText('+1억')).toBeTruthy();
   });
 
+  it('renders study detail sections as flat dividers inside the outer detail rail', () => {
+    renderPage('/study?view=view-ref');
+
+    const stack = screen.getByTestId('study-reference-detail-cards');
+    expect(stack).toHaveClass('bg-bg-card');
+
+    for (const key of ['orderbook', 'brokers', 'volume-distribution', 'program'] as const) {
+      const section = screen.getByTestId(`study-detail-card-${key}`);
+      expect(section).not.toHaveClass('rounded');
+      expect(section).not.toHaveClass('border');
+      expect(section).not.toHaveClass('bg-bg-card');
+    }
+
+    expect(screen.getByTestId('study-detail-card-brokers')).toHaveClass('border-t');
+  });
+
   it('uses hover-cutoff volume distribution for reference study views when enabled', () => {
     useLivePageStore.setState({
       volumeDistributionEnabled: true,

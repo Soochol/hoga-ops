@@ -235,7 +235,7 @@ Quiet Trading Terminal migration completed across app shell, route surfaces, rai
 
 ### Primary CTA (Load button)
 - Background: `--accent`
-- Text: `--accent-fg` (`#0A0A12`, dark bg color)
+- Text: `--accent-fg` (`#07100f`, dark bg color)
 - Padding: 9px × 18px
 - Font: 13px / 600 weight Geist Sans
 - Hover: filter brightness 1.1

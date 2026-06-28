@@ -174,7 +174,7 @@ const INLINE_TONE = {
 } as const;
 
 const INLINE_STYLE: Partial<Record<keyof typeof INLINE_TONE, CSSProperties>> = {
-  accent: { background: 'rgba(20,184,166,0.10)', color: 'var(--accent)' },
+  accent: { background: 'var(--tint-selection)', color: 'var(--accent)' },
   warn: { background: 'rgba(245,158,11,0.10)', color: 'var(--warn)' },
 };
 

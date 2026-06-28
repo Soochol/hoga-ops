@@ -131,7 +131,7 @@ export function SavedScreenerList({ anchorId, dirty, onLoad, onNewDraft, onSaveA
           </ListRow>
         )}
         {visibleSaves.map((s) => {
-          // anchor+clean → teal fill + bar; anchor+dirty → bar only + 수정됨.
+          // anchor+clean -> selection tint + bar; anchor+dirty -> bar only + 수정됨.
           const isAnchor = s.id === anchorId;
           const clean = isAnchor && !dirty;
           const isRenaming = editing?.mode === 'rename' && editing.id === s.id;
@@ -140,7 +140,7 @@ export function SavedScreenerList({ anchorId, dirty, onLoad, onNewDraft, onSaveA
               onClick={() => { if (!isRenaming) onLoad(s); }}
               onKeyDown={(e) => { if (!isRenaming && (e.key === 'Enter' || e.key === ' ')) onLoad(s); }}
               className={`group relative flex items-center gap-2 px-2.5 py-2 cursor-pointer ${
-                clean ? 'bg-[rgba(20,184,166,0.14)] text-fg shadow-[inset_2px_0_0_var(--accent)]'
+                clean ? 'bg-tint-selection text-fg shadow-[inset_2px_0_0_var(--accent)]'
                   : isAnchor ? 'bg-bg-input text-fg shadow-[inset_2px_0_0_var(--accent)]'
                     : 'bg-bg-input text-fg-dim hover:bg-bg-input-hover'}`}>
               {isRenaming ? (
