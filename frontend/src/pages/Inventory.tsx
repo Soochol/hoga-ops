@@ -4,6 +4,7 @@ import { StockDateGroupList } from '../inventory/StockDateGroupList';
 import { StockDateGroupDetail } from '../inventory/StockDateGroupDetail';
 import { useStockDateGroups, selectGroup } from '../inventory/useStockDateGroups';
 import { PageContainer } from '../layout/PageContainer';
+import { PageState } from '../ui/PageShell';
 
 export default function Inventory() {
   const { data: rows = [], isLoading } = useStockDates();
@@ -23,10 +24,18 @@ export default function Inventory() {
   );
 
   if (isLoading) {
-    return <div className="p-8 text-fg-dim">Loading inventory…</div>;
+    return (
+      <PageContainer>
+        <PageState>Loading inventory…</PageState>
+      </PageContainer>
+    );
   }
   if (rows.length === 0) {
-    return <div className="p-8 text-fg-dim">캡처된 데이터가 없습니다.</div>;
+    return (
+      <PageContainer>
+        <PageState>캡처된 데이터가 없습니다.</PageState>
+      </PageContainer>
+    );
   }
 
   return (

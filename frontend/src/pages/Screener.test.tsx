@@ -80,6 +80,12 @@ it('조회 결과 액션에는 관심 그룹 하트만 표시한다', async () =
   expect(within(row).queryByRole('button', { name: '캡처 페이지 열기' })).not.toBeInTheDocument();
 });
 
+it('renders shared top action buttons without changing the screener workflow', async () => {
+  renderPage();
+  expect(await screen.findByRole('button', { name: '조회' })).toBeInTheDocument();
+  expect(screen.getByRole('button', { name: '저장' })).toHaveClass('bg-bg-input');
+});
+
 it('runs scan and renders row; click sets the active tab code', async () => {
   renderPage();
   fireEvent.click(screen.getByText('조회'));
@@ -99,7 +105,14 @@ it('shows an EOD fallback warning when intraday scan falls back', async () => {
   vi.mocked(runScan).mockResolvedValueOnce({ status: 'ok', warnings: ['intraday_fallback_eod'], rows: [] });
   renderPage();
   fireEvent.click(screen.getByText('조회'));
-  expect(await screen.findByText('장중 조회 불가 · 전일 확정 데이터로 표시 중')).toBeInTheDocument();
+  expect(await screen.findByText('장중 조회 불가 · 전일 확정 데이터로 표시 중')).toHaveClass('p-md');
+});
+
+it('uses shared action styling in the save dialog', async () => {
+  renderPage();
+  fireEvent.click(await screen.findByRole('button', { name: '저장' }));
+  const dialog = await screen.findByRole('dialog', { name: '조건검색 저장' });
+  expect(within(dialog).getByRole('button', { name: '저장' })).toHaveClass('bg-accent');
 });
 
 it('Ctrl-clicking a row opens the result in a new live tab', async () => {

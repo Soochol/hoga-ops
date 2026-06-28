@@ -50,6 +50,8 @@ describe('WatchlistDrawer', () => {
     vi.spyOn(watchlistApi, 'getWatchlist').mockResolvedValue(DATA);
     const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } });
     render(<WatchlistDrawer />, { wrapper: wrap(qc, '/inventory') });
+    expect(screen.getByTestId('watchlist-panel')).toHaveClass('bg-bg-card');
+    expect(screen.getByTestId('watchlist-panel')).toHaveClass('border-l');
     await waitFor(() => expect(screen.getByTestId('watchlist-row-005930')).toBeInTheDocument());
     expect(screen.getByText(/스윙/)).toBeInTheDocument();
     expect(screen.getByText(/미분류/)).toBeInTheDocument();

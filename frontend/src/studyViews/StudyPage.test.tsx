@@ -216,8 +216,17 @@ describe('StudyPage', () => {
   it('renders an empty state without a selected view', () => {
     renderPage();
 
-    expect(screen.getByTestId('study-page-empty')).toBeTruthy();
+    expect(screen.getByTestId('study-page-empty')).toHaveClass('bg-bg');
+    expect(screen.getByTestId('study-page-empty')).toHaveClass('text-fg');
     expect(screen.getByText('저장된 학습뷰를 선택하세요.')).toBeTruthy();
+  });
+
+  it('renders the shared drop overlay while dragging over the study workspace', () => {
+    useEntryDragStore.setState({ draggingCode: '005930', overStudy: true });
+
+    renderPage();
+
+    expect(screen.getByText('여기에 놓아 학습뷰 열기')).toHaveClass('font-semibold');
   });
 
   it('renders a v2 reference view from raw range data without snapshot overrides', () => {

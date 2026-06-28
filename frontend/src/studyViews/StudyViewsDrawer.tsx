@@ -21,6 +21,7 @@ import { makeStudySaveCommand, studySaveCommandBody, type StudySaveCommand } fro
 import { StudyViewSaveDialog } from './StudyViewSaveDialog';
 import { latestStudyViewForCode } from './studyViewSelection';
 import { useStudyViewMutations, useStudyViews } from './useStudyViews';
+import { RailDrawer, RailDrawerBody, RailDrawerHeader, RailDrawerSection, RailState } from '../ui/RailShell';
 import {
   normalizeStudyViewQuery,
   type StudyViewTreeSortDirection,
@@ -450,24 +451,23 @@ export function StudyViewsDrawer() {
   );
 
   return (
-    <aside id="right-rail-saved-views-panel" className="h-full min-w-0 overflow-hidden border-l bg-bg">
-      <div className="h-full flex flex-col">
-        <header className="px-3 py-2 border-b flex items-center justify-between">
-          <h2 className="text-sm font-semibold">저장 뷰</h2>
-          {location.pathname === '/study' && (
+    <RailDrawer id="right-rail-saved-views-panel" ariaLabel="저장 뷰">
+      <RailDrawerHeader
+        title="저장 뷰"
+        actions={location.pathname === '/study' && (
             <button
               type="button"
               disabled={!canSaveStudy}
               onClick={() => overwriteStudyViewId
                 ? openSaveDialog('overwrite', overwriteStudyViewId)
                 : openSaveDialog('create')}
-              className="text-xs px-2 py-1 border rounded disabled:opacity-50"
+              className="rounded border border-border px-2 py-1 text-xs text-fg-dim hover:border-accent hover:text-accent disabled:opacity-50"
             >
               {overwriteStudyViewId ? '덮어쓰기' : '현재 뷰 저장'}
             </button>
-          )}
-        </header>
-        <div className="p-3 border-b">
+        )}
+      />
+      <RailDrawerSection className="p-3">
           <div className="flex items-center gap-1">
             <input
               aria-label="저장 뷰 검색"
@@ -502,21 +502,21 @@ export function StudyViewsDrawer() {
               </div>
             )}
           </div>
-        </div>
-        {isLoading && <div className="p-3 text-sm text-fg-dim">불러오는 중</div>}
+      </RailDrawerSection>
+        {isLoading && <RailState>불러오는 중</RailState>}
         {isError && (
-          <div className="p-3 text-sm">
+          <RailState tone="error">
             <p>저장 뷰를 불러오지 못했습니다.</p>
             <button type="button" onClick={() => refetch()} className="mt-2 underline">다시 시도</button>
-          </div>
+          </RailState>
         )}
         {!isLoading && !isError && (data?.saves.length ?? 0) === 0 && (
-          <div className="p-3 text-sm text-fg-dim">저장된 뷰가 없습니다.</div>
+          <RailState>저장된 뷰가 없습니다.</RailState>
         )}
         {!isLoading && !isError && (data?.saves.length ?? 0) > 0 && visibleGroups.length === 0 && (
-          <div className="p-3 text-sm text-fg-dim">검색 결과가 없습니다.</div>
+          <RailState>검색 결과가 없습니다.</RailState>
         )}
-        <div className="min-h-0 flex-1 overflow-auto">
+        <RailDrawerBody>
           <DndContext
             sensors={sensors}
             collisionDetection={studyViewTreeCollision}
@@ -569,8 +569,7 @@ export function StudyViewsDrawer() {
               })}
             </SortableContext>
           </DndContext>
-        </div>
-      </div>
+        </RailDrawerBody>
       {rowMenu && (
         <div
           role="menu"
@@ -604,6 +603,6 @@ export function StudyViewsDrawer() {
           onSubmit={handleDialogSubmit}
         />
       )}
-    </aside>
+    </RailDrawer>
   );
 }

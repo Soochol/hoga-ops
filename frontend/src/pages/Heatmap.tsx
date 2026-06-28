@@ -14,6 +14,7 @@ import { visibleFolderGroups } from '../heatmap/visibleGroups';
 import { avgPct, orderFolderGroups, makePctOf } from '../heatmap/heat';
 import { useFrozenWhileDragging } from '../heatmap/useFrozenWhileDragging';
 import { GroupNameModal } from '../watchlist/GroupNameModal';
+import { ControlBar, PageState, SegmentedControl, ToolbarButton } from '../ui/PageShell';
 
 const PHASE_LABEL: Record<string, string> = { pre_open: '장전', open: '● 장중', closed: '장마감' };
 const segBtn = (active: boolean) =>
@@ -69,9 +70,9 @@ export function Heatmap() {
     ? new Date(dataUpdatedAt).toLocaleTimeString('ko-KR') : '—';
   const visibleCount = visibleFolderGroups(groups)
     .reduce((n, g) => n + g.entries.length, 0);
-  if (isLoading) return <div className="p-4 text-fg-dim">히트맵 불러오는 중…</div>;
-  if (error) return <div className="p-4 text-error">히트맵을 불러오지 못했습니다.</div>;
-  if (entries.length === 0) return <div className="p-4 text-fg-dim">히트맵이 비어 있습니다.</div>;
+  if (isLoading) return <PageState>히트맵 불러오는 중…</PageState>;
+  if (error) return <PageState tone="error">히트맵을 불러오지 못했습니다.</PageState>;
+  if (entries.length === 0) return <PageState>히트맵이 비어 있습니다.</PageState>;
 
   return (
     <div className="flex flex-col h-full overflow-hidden">
@@ -80,43 +81,46 @@ export function Heatmap() {
         {phase && <span className="text-xs font-mono text-fg-dim">{PHASE_LABEL[phase] ?? phase}</span>}
         <span className="text-xs font-mono text-fg-dimmer">{updated} 갱신 · {visibleCount}종목</span>
         <div className="flex-1" />
-        <button className="text-xs px-2 py-1 rounded border border-border text-fg-dim hover:text-accent"
-          onClick={() => setShowNewGroup(true)}>＋ 새 그룹</button>
-        {/* 행 정렬(그룹 내 종목 순서). 스코프어 '행'은 버튼 밖 span — 버튼 accessible name 보존. */}
-        <span className="flex items-center gap-1 text-xs">
-          <span className="text-fg-dim">행</span>
-          <span className="flex border border-border rounded overflow-hidden">
-            <button
-              className={segBtn(sortMode === 'change')}
-              onClick={() => setSortMode('change')}
-            >등락률 ↓</button>
-            <button
-              className={segBtn(sortMode === 'manual')}
-              onClick={() => setSortMode('manual')}
-            >수동</button>
+        <ControlBar className="gap-sm">
+          <ToolbarButton className="text-xs px-2 py-1 rounded" onClick={() => setShowNewGroup(true)}>
+            ＋ 새 그룹
+          </ToolbarButton>
+          {/* 행 정렬(그룹 내 종목 순서). 스코프어 '행'은 버튼 밖 span — 버튼 accessible name 보존. */}
+          <span className="flex items-center gap-1 text-xs">
+            <span className="text-fg-dim">행</span>
+            <SegmentedControl aria-label="행 정렬" className="rounded">
+              <button
+                className={segBtn(sortMode === 'change')}
+                onClick={() => setSortMode('change')}
+              >등락률 ↓</button>
+              <button
+                className={segBtn(sortMode === 'manual')}
+                onClick={() => setSortMode('manual')}
+              >수동</button>
+            </SegmentedControl>
           </span>
-        </span>
-        {/* 그룹 정렬(폴더 순서) — 행 정렬과 직교. 버튼 의미는 aria-label(visible '등락률 ↓' 가 행과 겹침). */}
-        <span className="flex items-center gap-1 text-xs">
-          <span className="text-fg-dim">그룹</span>
-          <span className="flex border border-border rounded overflow-hidden">
-            <button
-              aria-label="그룹을 평균 등락률 높은 순으로"
-              className={segBtn(groupSort === 'desc')}
-              onClick={() => setGroupSort('desc')}
-            >등락률 ↓</button>
-            <button
-              aria-label="그룹을 평균 등락률 낮은 순으로"
-              className={segBtn(groupSort === 'asc')}
-              onClick={() => setGroupSort('asc')}
-            >등락률 ↑</button>
-            <button
-              aria-label="그룹 수동 순서"
-              className={segBtn(groupSort === 'manual')}
-              onClick={() => setGroupSort('manual')}
-            >수동</button>
+          {/* 그룹 정렬(폴더 순서) — 행 정렬과 직교. 버튼 의미는 aria-label(visible '등락률 ↓' 가 행과 겹침). */}
+          <span className="flex items-center gap-1 text-xs">
+            <span className="text-fg-dim">그룹</span>
+            <SegmentedControl aria-label="그룹 정렬" className="rounded">
+              <button
+                aria-label="그룹을 평균 등락률 높은 순으로"
+                className={segBtn(groupSort === 'desc')}
+                onClick={() => setGroupSort('desc')}
+              >등락률 ↓</button>
+              <button
+                aria-label="그룹을 평균 등락률 낮은 순으로"
+                className={segBtn(groupSort === 'asc')}
+                onClick={() => setGroupSort('asc')}
+              >등락률 ↑</button>
+              <button
+                aria-label="그룹 수동 순서"
+                className={segBtn(groupSort === 'manual')}
+                onClick={() => setGroupSort('manual')}
+              >수동</button>
+            </SegmentedControl>
           </span>
-        </span>
+        </ControlBar>
       </header>
       <SectorTempStrip groups={groups} quoteByCode={quoteByCode} onJump={scrollToFolder} />
       {showNewGroup && (

@@ -121,6 +121,8 @@ describe('ScreenerDrawer', () => {
   it('lists saved screeners in the dropdown', async () => {
     vi.spyOn(savesApi, 'listSaves').mockResolvedValue({ schema_version: 1, saves: [SAVE] });
     render(<ScreenerDrawer />, { wrapper: wrap(qc(), '/live') });
+    expect(screen.getByTestId('screener-panel')).toHaveClass('bg-bg-card');
+    expect(screen.getByTestId('screener-panel')).toHaveClass('border-l');
     await waitFor(() => expect(screen.getByRole('option', { name: '돌파+거래대금' })).toBeInTheDocument());
   });
 
