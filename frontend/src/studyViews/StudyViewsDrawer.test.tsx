@@ -7,7 +7,6 @@ import type { StudyViewReference } from '../api/studyViews';
 import { useEntryDragStore } from '../state/entryDrag';
 import { useStudyTabsStore } from '../state/studyTabs';
 import { useStudyViewOpenPrefsStore } from '../state/studyViewOpenPrefs';
-import type { CurrentStudySaveSource } from './studySaveSource';
 import { StudyViewsDrawer, filterStudyViews } from './StudyViewsDrawer';
 
 type DndHandlers = {
@@ -72,7 +71,6 @@ const createMutate = vi.fn();
 const updateMutate = vi.fn();
 const updateMetadataMutate = vi.fn();
 const removeMutate = vi.fn();
-let saveSource: CurrentStudySaveSource | null = null;
 let mockedSaves: StudyViewReference[] = [];
 
 const saves: StudyViewReference[] = [
@@ -121,36 +119,6 @@ vi.mock('./useStudyViews', () => ({
   }),
 }));
 
-vi.mock('./studySaveSource', () => ({
-  useCurrentStudySaveSource: () => saveSource,
-}));
-
-function rangeBundleFixture() {
-  return {
-    code: '005930',
-    from_date: '20260616',
-    to_date: '20260616',
-    bucket_ms: 300_000,
-    segments: [{ date: '20260616', session_open_ms: 1_000, session_close_ms: 2_000 }],
-    candles: [
-      { ts_ms: 1_000, open: 1, high: 2, low: 1, close: 2, vol_a: 10, vol_b: 0 },
-      { ts_ms: 2_000, open: 2, high: 3, low: 2, close: 3, vol_a: 11, vol_b: 0 },
-    ],
-    quote_ratio: {
-      bucket_ms: 300_000,
-      points: [{ t: 1_000, bid_total: 100, ask_total: 90, bid_max: 0, ask_max: 0, imb_max_bid: 0, imb_max_ask: 0 }],
-    },
-    study_ratio: { bucket_ms: 300_000, points: [{ t: 1_000, value: 0.1 }] },
-    fill_strength: { bucket_ms: 300_000, points: [{ t: 1_000, buy_qty: 5, sell_qty: 4 }] },
-    volume_profile_range: { bin_count: 0, price_min: 0, price_max: 0, bin_width: 0, bins: [] },
-    volume_profile_by_day: [],
-    volume_distributions: [],
-    investorPoints: [],
-    ask_peaks: [],
-    broker_late_entries: [],
-  };
-}
-
 function renderDrawer(path: string) {
   const qc = new QueryClient();
   const Location = () => <div data-testid="loc">{useLocation().pathname}{useLocation().search}</div>;
@@ -182,7 +150,6 @@ beforeEach(() => {
   dnd.onDragMove = null;
   dnd.onDragEnd = null;
   dnd.onDragCancel = null;
-  saveSource = null;
   mockedSaves = saves;
   useStudyViewOpenPrefsStore.setState({ defaultTimeframe: '3m' });
   useStudyTabsStore.setState({ tabs: [], activeTabId: null });
@@ -214,6 +181,23 @@ it('renders list and no-match state', async () => {
   await userEvent.type(screen.getByLabelText('저장 뷰 검색'), '없음');
   expect(screen.getByText('검색 결과가 없습니다.')).toBeTruthy();
   expect(screen.queryByText('차트 화면에서 저장할 수 있습니다.')).toBeNull();
+});
+
+it('clears the saved-view search with the inline clear button', async () => {
+  renderDrawer('/inventory');
+  const search = screen.getByLabelText('저장 뷰 검색') as HTMLInputElement;
+
+  expect(screen.queryByRole('button', { name: '검색어 지우기' })).toBeNull();
+
+  await userEvent.type(search, '없음');
+  expect(search.value).toBe('없음');
+  expect(screen.getByText('검색 결과가 없습니다.')).toBeTruthy();
+
+  await userEvent.click(screen.getByRole('button', { name: '검색어 지우기' }));
+
+  expect(search.value).toBe('');
+  expect(screen.queryByRole('button', { name: '검색어 지우기' })).toBeNull();
+  expect(screen.getByText('급등 이후')).toBeTruthy();
 });
 
 it('renders saved views as Code-keyed stock-name tree groups', () => {
@@ -369,14 +353,6 @@ it('bulk controls affect filtered visible groups without changing hidden groups'
 });
 
 it('moves the live save action out of the drawer', () => {
-  saveSource = {
-    origin: 'live',
-    code: '005930',
-    label: '삼성전자',
-    timeframe: '5m',
-    bundle: rangeBundleFixture(),
-    captureViewport: () => ({ rightEdgeMs: 2_000, barSpan: 2, atLiveEdge: true }),
-  };
   renderDrawer('/live');
 
   expect(screen.queryByRole('button', { name: '현재 뷰 저장' })).toBeNull();
@@ -384,63 +360,34 @@ it('moves the live save action out of the drawer', () => {
 });
 
 it('does not show the secondary new-save action in the drawer body', () => {
-  saveSource = {
-    origin: 'study-reference',
-    viewId: 'a',
-    save: saves[0],
-    bundle: rangeBundleFixture(),
-    captureViewport: () => ({ rightEdgeMs: 2_000, barSpan: 2, atLiveEdge: false }),
-  };
   renderDrawer('/study?view=a');
 
   expect(screen.queryByRole('button', { name: '새 저장본 만들기' })).toBeNull();
 });
 
 it('does not show the load-before-save hint in the study drawer', () => {
-  saveSource = null;
   renderDrawer('/study');
 
   expect(screen.queryByText('학습뷰를 불러온 뒤 저장할 수 있습니다.')).toBeNull();
 });
 
-it('opens overwrite dialog from current study view primary action', async () => {
-  saveSource = {
-    origin: 'study-reference',
-    viewId: 'a',
-    save: saves[0],
-    bundle: rangeBundleFixture(),
-    captureViewport: () => null,
-  };
+it('does not show overwrite action in the study saved-view drawer', () => {
   renderDrawer('/study?view=a');
 
-  await userEvent.click(screen.getByRole('button', { name: '덮어쓰기' }));
-  expect(screen.getByRole('dialog', { name: '저장뷰 덮어쓰기' })).toBeTruthy();
-  await userEvent.click(screen.getByRole('button', { name: '저장' }));
-
-  expect(updateMutate).toHaveBeenCalledTimes(1);
-  expect(updateMutate.mock.calls[0][0].id).toBe('a');
-  expect(updateMutate.mock.calls[0][0].body.name).toBe('급등 이후');
+  expect(screen.queryByRole('button', { name: '덮어쓰기' })).toBeNull();
+  expect(screen.queryByRole('button', { name: '현재 뷰 저장' })).toBeNull();
+  expect(screen.queryByRole('dialog', { name: '저장뷰 덮어쓰기' })).toBeNull();
+  expect(updateMutate).not.toHaveBeenCalled();
 });
 
-it('overwrites the current study source even when the saves list is missing the row', async () => {
+it('does not expose overwrite when the current study save is missing from the drawer list', () => {
   mockedSaves = [saves[1]];
-  saveSource = {
-    origin: 'study-reference',
-    viewId: 'missing-current',
-    save: saves[0],
-    bundle: rangeBundleFixture(),
-    captureViewport: () => null,
-  };
   renderDrawer('/study?view=missing-current');
 
-  await userEvent.click(screen.getByRole('button', { name: '덮어쓰기' }));
-  expect(screen.getByRole('dialog', { name: '저장뷰 덮어쓰기' })).toBeTruthy();
-  await userEvent.click(screen.getByRole('button', { name: '저장' }));
-
-  expect(updateMutate).toHaveBeenCalledTimes(1);
+  expect(screen.queryByRole('button', { name: '덮어쓰기' })).toBeNull();
+  expect(screen.queryByRole('dialog', { name: '저장뷰 덮어쓰기' })).toBeNull();
+  expect(updateMutate).not.toHaveBeenCalled();
   expect(createMutate).not.toHaveBeenCalled();
-  expect(updateMutate.mock.calls[0][0].id).toBe('missing-current');
-  expect(updateMutate.mock.calls[0][0].body.name).toBe('급등 이후');
 });
 
 it('clicking the saved view title navigates to the study route', async () => {
@@ -631,13 +578,6 @@ it('deletes a saved view directly from the row context menu', async () => {
 });
 
 it('navigates away after deleting the active study view', async () => {
-  saveSource = {
-    origin: 'study-reference',
-    viewId: 'a',
-    save: saves[0],
-    bundle: rangeBundleFixture(),
-    captureViewport: () => null,
-  };
   removeMutate.mockImplementation((_id, opts) => opts.onSuccess());
   renderDrawer('/study?view=a');
 
