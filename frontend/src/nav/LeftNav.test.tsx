@@ -20,8 +20,22 @@ it('renders Study directly below Live in the workspace nav', () => {
   );
 
   const labels = screen.getAllByRole('link').map((link) => link.textContent);
+  const liveLink = screen.getByRole('link', { name: 'Live' });
 
   expect(labels.slice(0, 3)).toEqual(['Live', 'Study', 'Heatmap']);
   expect(screen.getByRole('link', { name: 'Study' })).toHaveAttribute('href', '/study');
-  expect(screen.getByRole('link', { name: 'Live' })).toHaveClass('text-fg');
+  expect(liveLink).toHaveClass(
+    'relative',
+    'grid',
+    'border-border-strong',
+    'bg-tint-selection',
+    'text-fg',
+    'before:absolute',
+    'before:left-[-1px]',
+    'before:top-2',
+    'before:bottom-2',
+    'before:w-[2px]',
+    'before:rounded',
+    'before:bg-accent',
+  );
 });

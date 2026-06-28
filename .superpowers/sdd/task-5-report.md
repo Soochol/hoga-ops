@@ -77,3 +77,25 @@ Verified:
 ## Commit
 
 Created after verification.
+
+## Review Findings Fix Addendum
+
+### Fixed Items
+
+1. Updated `frontend/src/watchlist/WatchlistDrawer.tsx` to use `RailDrawerSection` for the non-scrolling footer/control area, while preserving the existing banner, countdown, and catch-up action layout.
+2. Strengthened `frontend/src/nav/LeftNav.test.tsx` so the active `Live` link now asserts the full active-state contract by class token: `relative`, `grid`, `border-border-strong`, `bg-tint-selection`, and the `before:*` left-spine classes.
+
+### Verification
+
+Ran on June 28, 2026:
+
+```bash
+cd frontend && npm test -- LeftNav.test.tsx WatchlistDrawer.test.tsx RailShell.test.tsx RightRail.test.tsx ScreenerDrawer.test.tsx StudyViewsDrawer.test.tsx --run
+cd frontend && npm run build
+```
+
+Results:
+
+- `7` test files passed
+- `112` tests passed
+- production build succeeded
