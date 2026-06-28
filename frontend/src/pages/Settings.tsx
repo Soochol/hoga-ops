@@ -4,6 +4,8 @@ import { loadConfig, type AppConfig } from '../config';
 import { getSymbolMasterInfo, refreshSymbols } from '../api/symbols';
 import { SYMBOLS_QUERY_KEY } from '../capture/useSymbols';
 import { symbolMasterSettingsHints } from '../api/upstream-hints';
+import { PageContainer } from '../layout/PageContainer';
+import { DefinitionRow, PanelCard, ToolbarButton } from '../ui/PageShell';
 
 const VERSION = 'v0.1.0';
 const SYMBOLS_INFO_QUERY_KEY = ['symbols', 'info'] as const;
@@ -30,15 +32,16 @@ export default function Settings() {
   }, []);
 
   return (
-    <div className="p-8 max-w-2xl space-y-4 text-sm">
-      <h2 className="text-md font-semibold">Settings</h2>
-      <Row label="API URL" value={config?.api_url ?? '…'} />
-      <Row label="Version" value={VERSION} />
-      <SymbolMasterSection />
-      <p className="text-xs text-fg-dimmer pt-4">
-        편집 가능한 설정은 v1+1에서 `/api/config` 라우트와 함께 제공 예정.
-      </p>
-    </div>
+    <PageContainer className="grid grid-cols-[minmax(0,42rem)] content-start">
+      <PanelCard as="section" className="p-md flex flex-col gap-md text-sm">
+        <DefinitionRow label="API URL" value={config?.api_url ?? '…'} />
+        <DefinitionRow label="Version" value={VERSION} />
+        <SymbolMasterSection />
+        <p className="text-xs text-fg-dimmer pt-sm border-t border-border">
+          편집 가능한 설정은 v1+1에서 `/api/config` 라우트와 함께 제공 예정.
+        </p>
+      </PanelCard>
+    </PageContainer>
   );
 }
 
@@ -63,31 +66,22 @@ function SymbolMasterSection() {
   };
 
   return (
-    <section className="space-y-2 pt-4 border-t border-border">
+    <section className="space-y-2 pt-md border-t border-border">
       <h3 className="text-sm font-semibold">Symbol Master</h3>
-      <Row label="Items" value={data ? data.count.toLocaleString() : (isLoading ? '…' : '0')} />
-      <Row label="Last fetched" value={formatRelative(data?.fetched_at_ms)} />
-      <Row label="Status" value={data?.status ?? '…'} />
+      <DefinitionRow label="Items" value={data ? data.count.toLocaleString() : (isLoading ? '…' : '0')} />
+      <DefinitionRow label="Last fetched" value={formatRelative(data?.fetched_at_ms)} />
+      <DefinitionRow label="Status" value={data?.status ?? '…'} />
       {data?.reason && (
         <div className="text-xs text-error">{symbolMasterSettingsHints[data.reason]}</div>
       )}
-      <button
+      <ToolbarButton
         type="button"
         onClick={handleUpdate}
         disabled={updating || isLoading}
-        className="mt-2 bg-bg-input border border-border rounded-md px-sm py-xs text-fg hover:text-fg cursor-pointer font-[inherit] text-sm disabled:opacity-50 disabled:cursor-not-allowed"
+        className="mt-2"
       >
         {updating ? 'Updating… (~30-120s)' : 'Update Now'}
-      </button>
+      </ToolbarButton>
     </section>
-  );
-}
-
-function Row({ label, value }: { label: string; value: string }) {
-  return (
-    <div className="grid grid-cols-[120px_1fr] gap-3 items-center">
-      <span className="text-xs uppercase tracking-wider text-fg-dimmer">{label}</span>
-      <span className="font-mono text-xs">{value}</span>
-    </div>
   );
 }

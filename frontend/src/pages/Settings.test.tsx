@@ -123,4 +123,21 @@ describe('Settings — Symbol Master section', () => {
     expect(screen.queryByTestId('settings-force-retry-default')).toBeNull();
     expect(screen.queryByText(/force/i)).toBeNull();
   });
+
+  it('uses the feature page shell without repeating the nav page title', async () => {
+    vi.spyOn(symbolsApi, 'getSymbolMasterInfo').mockResolvedValue({
+      count: 0,
+      fetched_at_ms: null,
+      status: 'unavailable',
+      reason: 'symbol_master_not_initialized',
+    });
+
+    renderWithQuery(<Settings />);
+
+    await waitFor(() => {
+      expect(screen.getByText(/Symbol Master/i)).toBeInTheDocument();
+    });
+    expect(screen.queryByRole('heading', { name: 'Settings' })).toBeNull();
+    expect(screen.getByText('API URL').closest('.bg-bg-card')).not.toBeNull();
+  });
 });

@@ -59,6 +59,8 @@ describe('Capture page', () => {
     // Queue side hidden by empty-state when no rows. Check that empty state
     // marker renders — this confirms CaptureQueue mounted on the right.
     expect(screen.getByTestId('queue-empty')).toBeTruthy();
+    expect(screen.getByPlaceholderText(/종목/i).closest('.bg-bg-card')).not.toBeNull();
+    expect(screen.getByTestId('queue-empty').closest('.bg-bg-card')).not.toBeNull();
   });
 
   it('prefills the symbol from the active live stock tab when capture has no code query', async () => {
