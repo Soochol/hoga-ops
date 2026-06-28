@@ -7,9 +7,13 @@ Each event type 2 row is a full state snapshot. In-memory the entity uses
 
 from __future__ import annotations
 
+from bisect import bisect_right
+from collections import OrderedDict
 from collections.abc import Callable, Iterable
 from dataclasses import dataclass
 from pathlib import Path
+from threading import Lock
+from typing import Any
 
 import duckdb
 import pyarrow as pa
@@ -220,6 +224,61 @@ _QUERY_COLS: tuple[str, ...] = _build_query_cols()
 _SELECT: str = ", ".join(_QUERY_COLS)
 
 
+@dataclass(frozen=True)
+class _SnapshotQueryIndex:
+    mtime_ns: int
+    size: int
+    ts_values: tuple[int, ...]
+    intra_values: tuple[int, ...]
+    continuous_values: tuple[bool, ...]
+    rows: tuple[tuple, ...]
+
+
+_QUERY_AT_CACHE_MAX = 32
+_query_at_cache: OrderedDict[str, _SnapshotQueryIndex] = OrderedDict()
+_query_at_cache_lock = Lock()
+
+
+def _load_query_index(path: Path) -> _SnapshotQueryIndex:
+    stat = path.stat()
+    key = str(path)
+    with _query_at_cache_lock:
+        cached = _query_at_cache.get(key)
+        if (
+            cached is not None
+            and cached.mtime_ns == stat.st_mtime_ns
+            and cached.size == stat.st_size
+        ):
+            _query_at_cache.move_to_end(key)
+            return cached
+
+    table = pq.read_table(path, columns=list(_QUERY_COLS))
+    cols = [table.column(name).to_pylist() for name in _QUERY_COLS]
+    rows = tuple(zip(*cols, strict=True))
+    ts_values = tuple(row[0] for row in rows)
+    intra_values = tuple(_hhmmssms_to_intra_ms(row[0]) for row in rows)
+    continuous_values = tuple(
+        sum(row[i] for i in _ASK_DEEP_Q_INDEXES) > 0
+        and sum(row[i] for i in _BID_DEEP_Q_INDEXES) > 0
+        for row in rows
+    )
+    index = _SnapshotQueryIndex(
+        mtime_ns=stat.st_mtime_ns,
+        size=stat.st_size,
+        ts_values=ts_values,
+        intra_values=intra_values,
+        continuous_values=continuous_values,
+        rows=rows,
+    )
+
+    with _query_at_cache_lock:
+        _query_at_cache[key] = index
+        _query_at_cache.move_to_end(key)
+        while len(_query_at_cache) > _QUERY_AT_CACHE_MAX:
+            _query_at_cache.popitem(last=False)
+    return index
+
+
 def _row_to_api_snapshot(row: tuple) -> ApiOrderbookSnapshot:
     """Unflatten a ``SELECT _SELECT`` row into an ApiOrderbookSnapshot. Shared by
     the point-in-time (`query_at`) and bucket-representative
@@ -265,6 +324,35 @@ def _is_continuous_snapshot(
     return ask_deep > 0 and bid_deep > 0
 
 
+def _last_continuous_intra_ms_from_index(
+    index: _SnapshotQueryIndex,
+    *,
+    session_close_ms: int | None,
+) -> int | None:
+    if session_close_ms is None:
+        return None
+    close_intra_ms = _hhmmssms_to_intra_ms(int(session_close_ms))
+    for intra_ms, is_continuous in zip(
+        reversed(index.intra_values),
+        reversed(index.continuous_values),
+        strict=True,
+    ):
+        if is_continuous and intra_ms <= close_intra_ms:
+            return intra_ms
+    return None
+
+
+def _row_is_representative_candidate(
+    index: _SnapshotQueryIndex,
+    pos: int,
+    *,
+    last_continuous_ms: int | None,
+) -> bool:
+    if not index.continuous_values[pos]:
+        return False
+    return last_continuous_ms is None or index.intra_values[pos] <= last_continuous_ms
+
+
 def _continuous_representative_pred_sql(*, intra_ms_expr: str, last_continuous_ms: int | None) -> str:
     if last_continuous_ms is None:
         return _DEEP_BOOK_SQL
@@ -276,10 +364,12 @@ def query_at(
 ) -> ApiOrderbookSnapshot | None:
     """Return the latest snapshot at ts_ms <= t_ms as an ApiOrderbookSnapshot, or None
     if before any data."""
-    row = con.execute(
-        f"SELECT {_SELECT} FROM read_parquet(?) WHERE ts_ms <= ? ORDER BY ts_ms DESC LIMIT 1",
-        [str(path), t_ms],
-    ).fetchone()
+    del con  # retained for the public table-query signature used by callers.
+    index = _load_query_index(path)
+    pos = bisect_right(index.ts_values, t_ms) - 1
+    if pos < 0:
+        return None
+    row = index.rows[pos]
     return _row_to_api_snapshot(row) if row is not None else None
 
 
@@ -369,6 +459,14 @@ _BID_DEEP_SUM: str = " + ".join(
 # 연속거래 호가창 술어 — query_bucketed_ratio의 deep_book_sql과 동일(단일진실원).
 # 클라 isContinuousBook(bucketHogaSeries.ts)과도 글자 그대로 같은 정의.
 _DEEP_BOOK_SQL: str = f"(({_ASK_DEEP_SUM}) > 0 AND ({_BID_DEEP_SUM}) > 0)"
+_ASK_DEEP_Q_INDEXES: tuple[int, ...] = tuple(
+    _QUERY_COLS.index(f"ask_q{i}")
+    for i in range(_AUCTION_BOOK_DEPTH + 1, ORDERBOOK_LEVELS + 1)
+)
+_BID_DEEP_Q_INDEXES: tuple[int, ...] = tuple(
+    _QUERY_COLS.index(f"bid_q{i}")
+    for i in range(_AUCTION_BOOK_DEPTH + 1, ORDERBOOK_LEVELS + 1)
+)
 
 
 @dataclass(frozen=True)
@@ -657,22 +755,31 @@ def query_bucket_representative(
     depth requirement still applies. Returns None when no qualifying continuous
     snapshot falls in the window.
     """
-    intra_ms_expr = hhmmssms_to_intra_ms_sql("ts_ms")
-    last_continuous_ms = _last_continuous_intra_ms(
-        con, path=path, session_close_ms=session_close_ms
+    del con  # retained for the public table-query signature used by callers.
+    index = _load_query_index(path)
+    last_continuous_ms = _last_continuous_intra_ms_from_index(
+        index, session_close_ms=session_close_ms
     )
-    continuous_pred = _continuous_representative_pred_sql(
-        intra_ms_expr=intra_ms_expr,
-        last_continuous_ms=last_continuous_ms,
-    )
-    where_parts = ["ts_ms >= ?", "ts_ms <= ?", continuous_pred]
-    row = con.execute(
-        f"SELECT {_SELECT} FROM read_parquet(?) "
-        f"WHERE {' AND '.join(where_parts)} "
-        f"ORDER BY {_REPRESENTATIVE_ORDER_SQL} LIMIT 1",
-        [str(path), lo_native, hi_native],
-    ).fetchone()
-    return _row_to_api_snapshot(row) if row is not None else None
+    pos = bisect_right(index.ts_values, hi_native) - 1
+    best_row: tuple[Any, ...] | None = None
+    best_key: tuple[int, int] | None = None
+    while pos >= 0 and index.ts_values[pos] >= lo_native:
+        if best_key is not None and index.ts_values[pos] < best_key[0]:
+            break
+        if _row_is_representative_candidate(
+            index,
+            pos,
+            last_continuous_ms=last_continuous_ms,
+        ):
+            row = index.rows[pos]
+            key = (int(row[0]), int(row[1]))
+            if best_key is None or key > best_key:
+                best_key = key
+                best_row = row
+        pos -= 1
+    if best_row is None:
+        return None
+    return _row_to_api_snapshot(best_row)
 
 
 def query_bucket_representatives(

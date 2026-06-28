@@ -127,6 +127,34 @@ def test_query_at_returns_none_before_first(tmp_path: Path) -> None:
     assert query_at(con, path=out, t_ms=80000000) is None
 
 
+def test_query_at_uses_path_index_without_duckdb_for_repeated_cursor_reads(
+    tmp_path: Path,
+) -> None:
+    """The hover orderbook path is latency-sensitive: cursor movement can call
+    query_at many times for the same snapshots.parquet. It should answer from a
+    file-backed in-memory index instead of running a DuckDB parquet scan per
+    cursor tick.
+    """
+    obs = [
+        PARSERS[2](_ob_parts(ts_ms=t, seq=i))
+        for i, t in enumerate([90000000, 90001000, 90002000], start=1)
+    ]
+    out = tmp_path / "snapshots.parquet"
+    write_parquet(obs, out)
+
+    class NoDuckDB:
+        def execute(self, *_args, **_kwargs):  # pragma: no cover - failure path
+            raise AssertionError("query_at should not execute DuckDB scans")
+
+    first = query_at(NoDuckDB(), path=out, t_ms=90001500)
+    second = query_at(NoDuckDB(), path=out, t_ms=90002500)
+
+    assert first is not None
+    assert second is not None
+    assert first.ts_ms == 90001000
+    assert second.ts_ms == 90002000
+
+
 def test_query_time_bounds(tmp_path: Path) -> None:
     obs = [
         PARSERS[2](_ob_parts(ts_ms=t, seq=i))
@@ -441,6 +469,35 @@ def test_query_bucket_representative_empty_window_returns_none(tmp_path: Path) -
     assert snap is None
 
 
+def test_query_bucket_representative_uses_path_index_without_duckdb(
+    tmp_path: Path,
+) -> None:
+    from hoga.tables.snapshots import query_bucket_representative
+
+    obs = [
+        _ob(ts_ms=151_958_000, seq=1, ask_q=(10, 20, 30, 40), bid_q=(5, 5, 5, 5)),
+        _ob(ts_ms=152_000_000, seq=2, ask_q=(10, 20, 30, 40), bid_q=(6, 6, 6, 6)),
+        _ob(ts_ms=152_058_000, seq=3, ask_q=(99, 98, 97), bid_q=(8, 8, 8)),
+    ]
+    out = tmp_path / "snapshots.parquet"
+    write_parquet(obs, out)
+
+    class NoDuckDB:
+        def execute(self, *_args, **_kwargs):  # pragma: no cover - failure path
+            raise AssertionError("query_bucket_representative should use cached index")
+
+    snap = query_bucket_representative(
+        NoDuckDB(),
+        path=out,
+        lo_native=151_958_000,
+        hi_native=152_059_999,
+        session_close_ms=153_000_000,
+    )
+
+    assert snap is not None
+    assert snap.seq == 2
+
+
 def test_query_bucket_representatives_prefer_last_continuous_book_over_later_shallow_row(
     tmp_path: Path,
 ) -> None:
@@ -553,6 +610,31 @@ def test_query_bucket_representative_and_batch_share_seq_tiebreak(tmp_path: Path
     assert single is not None
     assert batch[151_800_000].seq == 2
     assert single.seq == batch[151_800_000].seq == 2
+
+
+def test_query_bucket_representative_uses_seq_tiebreak_independent_of_write_order(
+    tmp_path: Path,
+) -> None:
+    from hoga.tables.snapshots import query_bucket_representative
+
+    obs = [
+        _ob(ts_ms=151_958_000, seq=2, ask_q=(11, 21, 31, 41), bid_q=(6, 6, 6, 6)),
+        _ob(ts_ms=151_958_000, seq=1, ask_q=(10, 20, 30, 40), bid_q=(5, 5, 5, 5)),
+    ]
+    out = tmp_path / "snapshots.parquet"
+    write_parquet(obs, out)
+
+    with duckdb.connect(":memory:") as con:
+        snap = query_bucket_representative(
+            con,
+            path=out,
+            lo_native=151_800_000,
+            hi_native=152_059_999,
+            session_close_ms=153_000_000,
+        )
+
+    assert snap is not None
+    assert snap.seq == 2
 
 
 def test_query_bucket_representatives_matches_single_query_for_multiple_buckets(
