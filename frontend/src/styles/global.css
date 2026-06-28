@@ -37,3 +37,143 @@ body {
 
 /* Firefox 폴백 — 폭/색만 제어 가능 */
 * { scrollbar-width: thin; scrollbar-color: var(--border-strong) transparent; }
+
+/* /live concept: Quiet Trading Terminal.
+   Scoped to the LivePage root so other routes keep the current design system. */
+[data-live-theme='quiet-terminal'] {
+  --bg: #090b0f;
+  --bg-card: #10151b;
+  --bg-subtle: #0b0f15;
+  --bg-input: #0c1117;
+  --bg-input-hover: #151b23;
+  --border: #1a2431;
+  --border-strong: #253040;
+  --fg: #e6edf5;
+  --fg-dim: #91a0b4;
+  --fg-dimmer: #59677a;
+  --accent: #2dd4bf;
+  --accent-shade: #13998c;
+  --tint-selection: rgba(45, 212, 191, 0.12);
+  --grid: #17202b;
+  background:
+    linear-gradient(180deg, rgba(21, 27, 35, 0.76), rgba(9, 11, 15, 0) 9rem),
+    var(--bg);
+}
+
+[data-live-theme='quiet-terminal'] [data-testid='live-header'],
+[data-live-theme='quiet-terminal'] [data-testid='live-status-bar'],
+[data-live-theme='quiet-terminal'] [data-testid='live-toolbar'] {
+  border-color: var(--border);
+  background: rgba(16, 21, 27, 0.78) !important;
+  backdrop-filter: blur(14px);
+}
+
+[data-live-theme='quiet-terminal'] [data-testid='live-header'] {
+  padding-inline: var(--space-md);
+}
+
+[data-live-theme='quiet-terminal'] [data-testid='live-header'] button,
+[data-live-theme='quiet-terminal'] [data-testid='live-header'] input,
+[data-live-theme='quiet-terminal'] [data-testid='live-toolbar'] button {
+  border-color: var(--border-strong) !important;
+  background: var(--bg-input) !important;
+}
+
+[data-live-theme='quiet-terminal'] [data-testid='live-header'] button:hover,
+[data-live-theme='quiet-terminal'] [data-testid='live-toolbar'] button:hover {
+  background: var(--bg-input-hover) !important;
+}
+
+[data-live-theme='quiet-terminal'] [role='tablist'] {
+  scrollbar-width: none;
+}
+
+[data-live-theme='quiet-terminal'] [role='tablist']::-webkit-scrollbar {
+  display: none;
+}
+
+[data-live-theme='quiet-terminal'] [role='tab'] {
+  border-color: var(--border) !important;
+  border-bottom-color: transparent !important;
+  background: var(--bg-input) !important;
+  box-shadow: none;
+}
+
+[data-live-theme='quiet-terminal'] [role='tab'][aria-selected='true'] {
+  border-color: color-mix(in srgb, var(--accent) 32%, var(--border)) !important;
+  border-bottom-color: var(--bg-card) !important;
+  background: var(--bg-card) !important;
+  box-shadow:
+    inset 0 2px 0 var(--accent),
+    0 0 0 1px rgba(45, 212, 191, 0.04);
+}
+
+[data-live-theme='quiet-terminal'] [data-testid='live-status-bar'] {
+  gap: var(--space-sm) !important;
+  box-shadow: inset 0 -1px 0 rgba(255, 255, 255, 0.015);
+}
+
+[data-live-theme='quiet-terminal'] [data-testid='live-status-bar'] > span {
+  min-height: 1.2rem;
+}
+
+[data-live-theme='quiet-terminal'] [data-testid='live-current-price'] {
+  font-size: var(--text-lg);
+  letter-spacing: 0;
+}
+
+[data-live-theme='quiet-terminal'] [data-testid='live-workarea'] {
+  gap: var(--space-xs);
+  padding: var(--space-xs);
+  background: var(--bg) !important;
+}
+
+[data-live-theme='quiet-terminal'] [data-testid='live-chart-panel'] {
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: var(--bg-card);
+  box-shadow: 0 18px 60px rgba(0, 0, 0, 0.35);
+}
+
+[data-live-theme='quiet-terminal'] [data-testid='live-toolbar'] {
+  height: 2.375rem !important;
+  padding-inline: var(--space-sm);
+}
+
+[data-live-theme='quiet-terminal'] [data-testid='live-toolbar'] button {
+  min-height: 1.5rem;
+  border-radius: 7px;
+  color: var(--fg-dim);
+}
+
+[data-live-theme='quiet-terminal'] [data-testid='live-toolbar'] button[aria-pressed='true'],
+[data-live-theme='quiet-terminal'] [data-testid='live-toolbar'] button[data-state='active'] {
+  border-color: color-mix(in srgb, var(--accent) 32%, var(--border-strong)) !important;
+  background: var(--tint-selection) !important;
+  color: var(--fg);
+}
+
+[data-live-theme='quiet-terminal'] [data-testid='live-workarea-splitter'] {
+  width: 8px !important;
+}
+
+[data-live-theme='quiet-terminal'] [data-testid='live-workarea-splitter'] > div {
+  background: var(--border-strong) !important;
+  opacity: 0.75;
+}
+
+[data-live-theme='quiet-terminal'] [role='complementary'][aria-label='Live Detail Panel'] {
+  margin-left: 0;
+  border: 1px solid var(--border) !important;
+  border-radius: 8px;
+  background: var(--bg-card);
+  box-shadow: 0 18px 60px rgba(0, 0, 0, 0.35);
+}
+
+[data-live-theme='quiet-terminal'] [data-testid='live-sidebar'] {
+  background: var(--bg-card) !important;
+}
+
+[data-live-theme='quiet-terminal'] table {
+  font-variant-numeric: tabular-nums;
+}

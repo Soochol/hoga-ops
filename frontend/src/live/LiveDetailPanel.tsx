@@ -144,7 +144,7 @@ export function LiveDetailPanel({ orderbook, volumeDistribution, program, broker
     <aside
       ref={panelRef}
       data-testid="live-detail-panel"
-      className="grid min-h-full bg-bg p-[var(--space-sm)]"
+      className="grid min-h-full bg-bg-card"
       style={{
         gridTemplateRows: cards.map(() => 'auto').join(' 8px '),
       }}
@@ -154,8 +154,9 @@ export function LiveDetailPanel({ orderbook, volumeDistribution, program, broker
           <section
             data-testid={card.testId}
             data-card={card.key}
-            className="flex flex-col rounded border bg-bg-card"
+            className="flex flex-col border-border"
             style={{
+              borderTop: index === 0 ? 'none' : '1px solid var(--border)',
               minHeight: Math.max(
                 LIVE_CARD_MIN_HEIGHT_PX[card.key],
                 Math.round(weights[card.key] * WEIGHT_TO_MIN_HEIGHT_PX),

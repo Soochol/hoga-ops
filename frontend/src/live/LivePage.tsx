@@ -296,6 +296,7 @@ export function LivePage() {
 
   return (
     <div
+      data-live-theme="quiet-terminal"
       className="h-full grid"
       style={{
         // minmax(0, 1fr) on the workarea row prevents the chart canvas's
