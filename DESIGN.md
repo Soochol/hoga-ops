@@ -180,6 +180,10 @@ Every feature route except the chart workspace follows one shell:
 - **No redundant page title:** the left nav is the page label, so a page never repeats its own name. Pages expose a *title-less* control bar (search / counts / actions) at the top of their card. (See the `/live` header: search only, with the active symbol shown in the status bar below.)
 - **Full-bleed exception:** only the chart workspace (`/live`) is full-bleed (no `PageContainer`, no card) — the chart must fill the viewport. Its sidebar still uses `--bg-card` to match other panels.
 
+### Migration Status
+
+Quiet Trading Terminal migration completed across app shell, route surfaces, rail drawers, live dialogs, and dense data panels. Nested-card chrome is prohibited in sidebars, drawers, modals, and detail panels; use `DataSection` dividers inside a single outer surface.
+
 ## Motion
 
 - **Approach:** Minimal-functional. Only motion that aids comprehension.
