@@ -3,6 +3,11 @@
 All notable changes to this project are documented here.
 The format follows a 4-digit `MAJOR.MINOR.PATCH.MICRO` scheme.
 
+## [0.12.9.6] - 2026-06-28
+
+### Fixed
+- **/study 일·주·월봉 캔들 표시 복구**: 분봉으로 저장한 학습뷰에서 일봉·주봉·월봉으로 전환할 때 분봉 viewport를 재사용하지 않도록 해, calendar 봉이 얇게 찌그러져 보이지 않고 기본 가시 범위로 열리게 했다.
+
 ## [0.12.9.5] - 2026-06-28
 
 ### Added

@@ -350,6 +350,15 @@ export function StudyPage() {
   const headerCode = selectedSave?.code ?? activeTab?.code ?? '';
   const headerTimeframe = selectedTimeframe ?? selectedSave?.timeframe ?? activeTab?.timeframe ?? null;
   const headerKindLabel = selectedSave ? studyViewKindLabel(selectedSave) : '복기뷰';
+  const restoreViewport =
+    activeViewModel.status === 'ready' && activeViewModel.save.timeframe === (selectedSave?.timeframe ?? activeTab?.timeframe)
+      ? {
+          rightEdgeMs: activeTab?.viewport?.rightEdgeMs ?? activeViewModel.save.viewport.right_edge_ms,
+          barSpan: activeTab?.viewport?.barSpan ?? activeViewModel.save.viewport.bar_span,
+          atLiveEdge: activeTab?.viewport?.atLiveEdge ?? activeViewModel.save.viewport.at_live_edge,
+          ...(activeTab?.viewport?.userAdjusted !== undefined ? { userAdjusted: activeTab.viewport.userAdjusted } : {}),
+        }
+      : null;
 
   return (
     <section data-testid="study-page" className="grid h-full min-w-0 grid-rows-[auto_auto_minmax(0,1fr)] bg-[var(--bg)] text-[var(--fg)]">
@@ -417,12 +426,7 @@ export function StudyPage() {
               isPastCandlesLoading={false}
               isExtending={false}
               pastDataWarnings={activeViewModel.pastDataWarnings}
-              restoreViewport={{
-                rightEdgeMs: activeTab?.viewport?.rightEdgeMs ?? activeViewModel.save.viewport.right_edge_ms,
-                barSpan: activeTab?.viewport?.barSpan ?? activeViewModel.save.viewport.bar_span,
-                atLiveEdge: activeTab?.viewport?.atLiveEdge ?? activeViewModel.save.viewport.at_live_edge,
-                ...(activeTab?.viewport?.userAdjusted !== undefined ? { userAdjusted: activeTab.viewport.userAdjusted } : {}),
-              }}
+              restoreViewport={restoreViewport}
               dayAskPeaks={activeViewModel.bundle.ask_peaks}
               dayBidPeaks={activeViewModel.bundle.bid_peaks}
               todayKst={activeViewModel.save.range.to_date}
