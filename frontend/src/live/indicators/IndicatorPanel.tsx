@@ -171,9 +171,10 @@ export default function IndicatorPanel({ onClose, capabilities = STOCK_CAPABILIT
       aria-modal="true"
       aria-label="지표"
       onClick={onClose}
-      className="fixed inset-0 z-50 grid place-items-center bg-black/45 bg-bg-card"
+      className="fixed inset-0 z-[60] grid place-items-center bg-black/45"
     >
       <div
+        data-testid="indicator-panel-shell"
         onClick={(event) => event.stopPropagation()}
         className="grid max-h-[min(820px,calc(100vh-48px))] w-[min(1040px,calc(100vw-48px))] grid-rows-[auto_minmax(0,1fr)_auto] overflow-hidden rounded-lg border border-border bg-bg-card shadow-[0_24px_80px_rgba(0,0,0,0.45)]"
       >

@@ -25,7 +25,9 @@ describe('LiveSettingsModal (2단)', () => {
   it('uses the quiet terminal modal surface', () => {
     render(<LiveSettingsModal onClose={() => {}} />);
 
-    expect(screen.getByRole('dialog')).toHaveClass('bg-bg-card');
+    expect(screen.getByRole('dialog')).not.toHaveClass('bg-bg-card');
+    expect(screen.getByRole('dialog')).toHaveClass('z-[60]');
+    expect(screen.getByTestId('live-settings-modal-shell')).toHaveClass('bg-bg-card');
     expect(screen.getByRole('navigation', { name: '설정 카테고리' })).toHaveClass('border-r');
   });
 

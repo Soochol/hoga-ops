@@ -28,3 +28,12 @@
 
 ## Notes
 - The brief's sample `capabilities` prop was adapted to the real `LiveInstrumentCapabilities` shape by including `studySave: false` in the new indicator layout test.
+
+## Review Fixes
+- Split the backdrop and surface responsibilities in `frontend/src/live/LiveSettingsModal.tsx` and `frontend/src/live/indicators/IndicatorPanel.tsx` so the outer `role="dialog"` layer is only the fixed tinted backdrop/grid container.
+- Restored the shared modal stacking priority by moving both outer dialog layers to `z-[60]`.
+- Added shell test hooks and updated modal structure assertions so the outer dialog must not carry `bg-bg-card` while the inner shell must.
+
+## Test Output Summary
+- `cd frontend && npm test -- IndicatorPanel.test.tsx LiveSettingsModal.test.tsx LiveSettingsSections.test.tsx --run` -> 3 files passed, 60 tests passed.
+- `cd frontend && npm run build` -> success (`vite build` completed).
