@@ -105,7 +105,14 @@ it('shows an EOD fallback warning when intraday scan falls back', async () => {
   vi.mocked(runScan).mockResolvedValueOnce({ status: 'ok', warnings: ['intraday_fallback_eod'], rows: [] });
   renderPage();
   fireEvent.click(screen.getByText('조회'));
-  expect(await screen.findByText('장중 조회 불가 · 전일 확정 데이터로 표시 중')).toBeInTheDocument();
+  expect(await screen.findByText('장중 조회 불가 · 전일 확정 데이터로 표시 중')).toHaveClass('p-md');
+});
+
+it('uses shared action styling in the save dialog', async () => {
+  renderPage();
+  fireEvent.click(await screen.findByRole('button', { name: '저장' }));
+  const dialog = await screen.findByRole('dialog', { name: '조건검색 저장' });
+  expect(within(dialog).getByRole('button', { name: '저장' })).toHaveClass('bg-accent');
 });
 
 it('Ctrl-clicking a row opens the result in a new live tab', async () => {

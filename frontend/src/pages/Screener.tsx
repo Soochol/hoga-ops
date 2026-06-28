@@ -11,7 +11,7 @@ import { StalenessChip } from '../screener/StalenessChip';
 import { useSavedScreenerEditor } from '../screener/useSavedScreenerEditor';
 import { useScreenerRowsLive } from '../screener/useScreenerRowsLive';
 import { ModalShell } from '../ui/ModalShell';
-import { ControlBar, ToolbarButton } from '../ui/PageShell';
+import { ControlBar, PageState, PanelCard, SegmentedControl, ToolbarButton } from '../ui/PageShell';
 import { ScreenerResultSortControl } from '../screener/ScreenerResultSortControl';
 import { sortScreenerRows, type ScreenerResultSortMode } from '../screener/sortResults';
 import type { ScanBasis } from '../api/screener';
@@ -38,14 +38,11 @@ function SaveNameDialog({ initialName, onSubmit, onClose }: {
             className="bg-bg-input border border-border rounded-md px-2 py-1.5 text-fg" />
         </label>
       </div>
-      <div className="flex justify-end gap-2 px-4 py-3 border-t border-border">
-        <button type="button" onClick={onClose}
-          className="px-3 py-1.5 text-sm bg-bg-input hover:bg-bg-input-hover text-fg rounded">취소</button>
-        <button type="button" disabled={!trimmed} onClick={() => onSubmit(trimmed)}
-          className="px-3 py-1.5 text-sm rounded font-semibold disabled:opacity-50"
-          style={{ background: 'var(--accent)', color: 'var(--accent-fg)' }}>
+      <div className="flex justify-end gap-2 border-t border-border px-4 py-3">
+        <ToolbarButton type="button" onClick={onClose}>취소</ToolbarButton>
+        <ToolbarButton type="button" tone="primary" disabled={!trimmed} onClick={() => onSubmit(trimmed)}>
           저장
-        </button>
+        </ToolbarButton>
       </div>
     </ModalShell>
   );
@@ -115,7 +112,7 @@ export function Screener() {
         <ToolbarButton onClick={() => setSaveDialog('save-as')} disabled={editor.isSaving}>
           다른 이름으로 저장
         </ToolbarButton>
-        <div className="inline-flex rounded-lg border border-border bg-bg-input overflow-hidden" role="group" aria-label="스크리너 기준">
+        <SegmentedControl aria-label="스크리너 기준">
           {(['intraday', 'eod'] as const).map((value) => (
             <button
               key={value}
@@ -126,7 +123,7 @@ export function Screener() {
               {value === 'intraday' ? '오늘 장중' : '전일 확정'}
             </button>
           ))}
-        </div>
+        </SegmentedControl>
         <ToolbarButton tone="primary" onClick={runScan} disabled={screener.isPending || notSeeded}
           className="px-lg py-sm text-base">
           {screener.isPending ? '조회 중…' : '조회'}
@@ -163,28 +160,32 @@ export function Screener() {
       </div>
 
       {notSeeded ? (
-        <div className="min-w-0 bg-bg-card border rounded-lg p-md flex flex-col gap-sm text-sm text-fg-dim">
+        <PanelCard className="flex flex-col gap-sm p-md text-sm text-fg-dim">
           <span className="font-semibold" style={{ color: 'var(--warn)' }}>시드 필요</span>
           <span>스크리너 인덱스가 아직 시드되지 않았습니다. 운영자 CLI로 일회성 시드를 수행한 뒤 다시 조회하세요.</span>
-        </div>
+        </PanelCard>
       ) : screener.isError ? (
-        <div className="min-w-0 bg-bg-card border rounded-lg p-md flex flex-col gap-sm text-sm">
+        <PanelCard className="flex flex-col gap-sm p-md text-sm">
           <span className="font-semibold" style={{ color: 'var(--error)' }}>조회 실패 — 조건을 확인하세요</span>
           {screener.error instanceof Error && screener.error.message && (
             <span className="text-fg-dim">{screener.error.message}</span>
           )}
-        </div>
+        </PanelCard>
       ) : (
         <div className="min-w-0 min-h-0 flex flex-col gap-sm">
           {resultsStale && (
-            <div className="bg-bg-card border rounded-lg px-md py-sm text-sm" style={{ color: 'var(--warn)' }}>
+            <PanelCard>
+              <PageState tone="warn">
               조건 변경됨 · 다시 조회 필요
-            </div>
+              </PageState>
+            </PanelCard>
           )}
           {intradayFallback && (
-            <div className="bg-bg-card border rounded-lg px-md py-sm text-sm" style={{ color: 'var(--warn)' }}>
+            <PanelCard>
+              <PageState tone="warn">
               장중 조회 불가 · 전일 확정 데이터로 표시 중
-            </div>
+              </PageState>
+            </PanelCard>
           )}
           <div className="flex justify-end">
             <ScreenerResultSortControl mode={sortMode} onChange={setSortMode} disabled={rows.length === 0} />
