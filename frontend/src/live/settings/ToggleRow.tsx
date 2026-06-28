@@ -2,6 +2,8 @@
  *  Stateless — owner passes the current checked value and a click handler.
  *  Shared (both via `IndicatorPrefRows`) by `LiveSettingsSections` (⚙️ Settings
  *  modal) and the 「지표」 modal's hoga Configs, so one row style serves both. */
+import { SettingsRow, ToggleSwitch } from './SettingsRow';
+
 export default function ToggleRow({
   label,
   description,
@@ -18,31 +20,8 @@ export default function ToggleRow({
   testId?: string;
 }) {
   return (
-    <div className="flex items-center justify-between py-2" data-testid={testId}>
-      <div className="flex-1 pr-4">
-        <div className="text-fg text-sm">{label}</div>
-        <div className="text-fg-dim text-xs mt-0.5">{description}</div>
-      </div>
-      <button
-        type="button"
-        role="switch"
-        aria-checked={checked}
-        aria-label={label}
-        onClick={onToggle}
-        className={
-          checked
-            ? 'relative inline-flex h-5 w-9 items-center rounded-full bg-accent transition-colors'
-            : 'relative inline-flex h-5 w-9 items-center rounded-full bg-bg-input-hover transition-colors'
-        }
-      >
-        <span
-          className={
-            checked
-              ? 'inline-block h-4 w-4 transform rounded-full bg-accent-fg translate-x-[18px] transition-transform'
-              : 'inline-block h-4 w-4 transform rounded-full bg-fg-dim translate-x-[2px] transition-transform'
-          }
-        />
-      </button>
-    </div>
+    <SettingsRow label={label} description={description} testId={testId}>
+      <ToggleSwitch label={label} checked={checked} onClick={onToggle} />
+    </SettingsRow>
   );
 }

@@ -8,6 +8,7 @@ import { enqueueErrorHints } from '../api/upstream-hints';
 import type { ApiError } from '../api/client';
 import type { BlockedItem, EnqueueResponse, SymbolHit, UpstreamCode } from '../api/types';
 import { legendText } from './calendarStatus';
+import { FormField, InlineState } from '../ui/DataSurface';
 
 function formatBlockedMessage(items: BlockedItem[]): string {
   // Noun-phrase + em-dash + cause, matching the existing tone from
@@ -102,13 +103,11 @@ export function CaptureForm({ referenceYear, referenceMonth, initialCode = null 
 
   return (
     <div className="flex flex-col gap-4 font-ui">
-      <section>
-        <Label>Symbol</Label>
+      <FormField label="Symbol">
         <SymbolSearch value={symbol} onChange={setSymbol} />
-      </section>
+      </FormField>
 
-      <section>
-        <Label>Date Range</Label>
+      <FormField label="Date Range">
         <DateRangePicker
           code={symbol?.code ?? null}
           referenceYear={referenceYear}
@@ -116,7 +115,7 @@ export function CaptureForm({ referenceYear, referenceMonth, initialCode = null 
           value={range}
           onChange={setRange}
         />
-      </section>
+      </FormField>
 
       <button
         type="button"
@@ -132,36 +131,32 @@ export function CaptureForm({ referenceYear, referenceMonth, initialCode = null 
       </button>
 
       {error !== null && (
-        <div role="alert" className="text-xs text-error">{error}</div>
+        <InlineState role="alert" tone="error" className="border-0 bg-transparent p-0 text-xs">{error}</InlineState>
       )}
 
       {blockedMessage !== null && (
-        <div
+        <InlineState
           role="alert"
-          className="mt-2 px-3 py-2 rounded border border-error bg-tint-error text-error text-sm"
+          tone="error"
+          className="mt-2"
         >
           {blockedMessage}
-        </div>
+        </InlineState>
       )}
 
       {inlineError !== null && (
-        <div
+        <InlineState
           role="alert"
-          className="mt-2 px-3 py-2 rounded border bg-bg-input text-error text-sm"
+          tone="neutral"
+          className="mt-2 text-error"
         >
           {inlineError}
-        </div>
+        </InlineState>
       )}
 
       <div className="mt-3 text-xs text-fg-dim">
         {legendText()}
       </div>
     </div>
-  );
-}
-
-function Label({ children }: { children: string }) {
-  return (
-    <div className="font-semibold text-xs tracking-widest uppercase text-fg-dim mb-1.5">{children}</div>
   );
 }

@@ -6,7 +6,10 @@ import {
   RailDrawerBody,
   RailDrawerHeader,
   RailDrawerSection,
+  RailGroupHeader,
   RailState,
+  RailToolbarIconButton,
+  RailTreeRow,
 } from './RailShell';
 
 describe('RailShell primitives', () => {
@@ -49,5 +52,28 @@ describe('RailShell primitives', () => {
     expect(screen.getByText('empty')).toHaveClass('text-fg-dim');
     expect(screen.getByText('failed')).toHaveClass('text-error');
     expect(screen.getByText('warning')).toHaveStyle({ color: 'var(--warn)' });
+  });
+
+  it('renders drawer tree toolbar buttons, group headers, and tree rows', () => {
+    render(
+      <>
+        <RailToolbarIconButton active aria-label="전체 접기">C</RailToolbarIconButton>
+        <RailGroupHeader
+          aria-label="삼성전자 005930 접기"
+          aria-expanded="true"
+          leading={<span>▼</span>}
+          count={2}
+        >
+          삼성전자
+        </RailGroupHeader>
+        <RailTreeRow role="button" tabIndex={0}>급등 이후</RailTreeRow>
+      </>,
+    );
+
+    expect(screen.getByRole('button', { name: '전체 접기' })).toHaveClass('h-7');
+    expect(screen.getByRole('button', { name: '전체 접기' })).toHaveClass('bg-bg-input');
+    expect(screen.getByRole('button', { name: '삼성전자 005930 접기' })).toHaveClass('sticky');
+    expect(screen.getByText('2')).toHaveClass('text-fg-dimmer');
+    expect(screen.getByText('급등 이후')).toHaveClass('pl-10');
   });
 });

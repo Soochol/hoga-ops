@@ -5,6 +5,7 @@ import {
   type NumericPrefDef,
   type NumericPrefKey,
 } from '../../state/chartPrefs';
+import { SettingsRow } from './SettingsRow';
 
 export default function NumericPrefRow({ def }: { def: NumericPrefDef }) {
   const value = useChartPrefsStore((s) => s[def.key as NumericPrefKey]);
@@ -36,19 +37,11 @@ export default function NumericPrefRow({ def }: { def: NumericPrefDef }) {
   };
 
   return (
-    <div
-      className={
-        gateEnabled
-          ? 'flex items-center justify-between py-2'
-          : 'flex items-center justify-between py-2 opacity-50'
-      }
+    <SettingsRow
+      label={def.label}
+      description={`${def.description} (${def.min.toLocaleString()}–${def.max.toLocaleString()})`}
+      disabled={!gateEnabled}
     >
-      <div className="flex-1 pr-4">
-        <div className="text-fg text-sm">{def.label}</div>
-        <div className="text-fg-dim text-xs mt-0.5">
-          {def.description} ({def.min.toLocaleString()}–{def.max.toLocaleString()})
-        </div>
-      </div>
       <input
         type="number"
         min={def.min}
@@ -68,6 +61,6 @@ export default function NumericPrefRow({ def }: { def: NumericPrefDef }) {
         data-testid={`settings-numeric-${def.key}`}
         className="w-[72px] text-right text-sm bg-bg-input border border-border rounded-[4px] px-2 py-1 tabular-nums disabled:cursor-not-allowed"
       />
-    </div>
+    </SettingsRow>
   );
 }

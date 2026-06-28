@@ -3,6 +3,12 @@
 All notable changes to this project are documented here.
 The format follows a 4-digit `MAJOR.MINOR.PATCH.MICRO` scheme.
 
+## [0.12.13.0] - 2026-06-28
+
+### Changed
+- **프론트엔드 세부 UI primitive 정리**: Screener, Inventory, Capture, Study Views, Live Settings, Sidebar 카드의 반복 테이블·리스트·빈 상태·설정 행 스타일을 `DataSurface`, `RailShell`, `SettingsRow`, `SidebarSurface` primitive로 흡수했다.
+- **프론트엔드 번들 분할**: Vite manual chunk 설정으로 live workspace, chart, dnd, study view 등 큰 묶음을 분리해 production build의 chunk-size warning을 제거했다.
+
 ## [0.12.12.0] - 2026-06-28
 
 ### Fixed

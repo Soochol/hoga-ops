@@ -5,6 +5,7 @@ import { ConfirmModal } from './ConfirmModal';
 import { suggestSaveName } from './suggestName';
 import { useClampedFixedPosition } from '../util/useClampedFixedPosition';
 import { useDismissablePopover } from '../util/useDismissablePopover';
+import { EmptyState, ListRow } from '../ui/DataSurface';
 
 type Editing =
   | { mode: 'create'; initial: string }
@@ -125,9 +126,9 @@ export function SavedScreenerList({ anchorId, dirty, onLoad, onNewDraft, onSaveA
         className="w-full bg-bg-input border border-border rounded-md px-2 py-1 text-sm text-fg placeholder:text-fg-dimmer" />
       <div className="flex flex-col gap-1">
         {editing?.mode === 'create' && (
-          <div className="flex items-center gap-2 px-2.5 py-2 rounded-md bg-bg-input">
+          <ListRow className="flex items-center gap-2 px-2.5 py-2 bg-bg-input text-fg">
             <NameRowInput initial={editing.initial} onCommit={commitCreate} onCancel={() => setEditing(null)} />
-          </div>
+          </ListRow>
         )}
         {visibleSaves.map((s) => {
           // anchor+clean → teal fill + bar; anchor+dirty → bar only + 수정됨.
@@ -135,10 +136,10 @@ export function SavedScreenerList({ anchorId, dirty, onLoad, onNewDraft, onSaveA
           const clean = isAnchor && !dirty;
           const isRenaming = editing?.mode === 'rename' && editing.id === s.id;
           return (
-            <div key={s.id} role="button" tabIndex={0}
+            <ListRow key={s.id} role="button" tabIndex={0}
               onClick={() => { if (!isRenaming) onLoad(s); }}
               onKeyDown={(e) => { if (!isRenaming && (e.key === 'Enter' || e.key === ' ')) onLoad(s); }}
-              className={`group relative flex items-center gap-2 px-2.5 py-2 rounded-md text-sm cursor-pointer ${
+              className={`group relative flex items-center gap-2 px-2.5 py-2 cursor-pointer ${
                 clean ? 'bg-[rgba(20,184,166,0.14)] text-fg shadow-[inset_2px_0_0_var(--accent)]'
                   : isAnchor ? 'bg-bg-input text-fg shadow-[inset_2px_0_0_var(--accent)]'
                     : 'bg-bg-input text-fg-dim hover:bg-bg-input-hover'}`}>
@@ -170,14 +171,18 @@ export function SavedScreenerList({ anchorId, dirty, onLoad, onNewDraft, onSaveA
                   onDelete={() => { setMenu(null); setConfirm({ kind: 'delete', save: s }); }}
                 />
               )}
-            </div>
+            </ListRow>
           );
         })}
         {saves.length === 0 && editing?.mode !== 'create' && (
-          <div className="text-fg-dimmer text-xs px-1 py-2">저장된 조건검색이 없습니다. ＋ 로 현재 조건을 저장하세요.</div>
+          <EmptyState className="h-auto items-start justify-start gap-0 px-1 py-2 text-left text-xs text-fg-dimmer">
+            저장된 조건검색이 없습니다. ＋ 로 현재 조건을 저장하세요.
+          </EmptyState>
         )}
         {saves.length > 0 && visibleSaves.length === 0 && (
-          <div className="text-fg-dimmer text-xs px-1 py-2">검색 결과가 없습니다.</div>
+          <EmptyState className="h-auto items-start justify-start gap-0 px-1 py-2 text-left text-xs text-fg-dimmer">
+            검색 결과가 없습니다.
+          </EmptyState>
         )}
       </div>
 

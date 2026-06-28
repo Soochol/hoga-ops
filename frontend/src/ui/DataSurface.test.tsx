@@ -1,0 +1,64 @@
+import { render, screen } from '@testing-library/react';
+import { describe, expect, it } from 'vitest';
+import {
+  DataTableHeader,
+  DataTableRow,
+  DataTableShell,
+  EmptyState,
+  FormField,
+  InlineState,
+  ListRow,
+} from './DataSurface';
+
+describe('DataSurface primitives', () => {
+  it('renders token-backed data table shell, header, and rows', () => {
+    render(
+      <DataTableShell minWidth="640px">
+        <DataTableHeader columns="grid-cols-[1fr_2fr]">
+          <span>코드</span>
+          <span>종목명</span>
+        </DataTableHeader>
+        <DataTableRow columns="grid-cols-[1fr_2fr]" className="custom-row">
+          <span>005930</span>
+          <span>삼성전자</span>
+        </DataTableRow>
+      </DataTableShell>,
+    );
+
+    expect(screen.getByText('코드').parentElement).toHaveClass('border-b');
+    expect(screen.getByText('005930').parentElement).toHaveClass('h-orderbook-row');
+    expect(screen.getByText('005930').parentElement).toHaveClass('custom-row');
+  });
+
+  it('renders selectable list rows with active and inactive states', () => {
+    render(
+      <>
+        <ListRow active>Active</ListRow>
+        <ListRow>Inactive</ListRow>
+      </>,
+    );
+
+    expect(screen.getByText('Active')).toHaveClass('bg-tint-selection');
+    expect(screen.getByText('Inactive')).toHaveClass('hover:bg-bg-input-hover');
+  });
+
+  it('renders empty states, form fields, and inline state tones', () => {
+    render(
+      <>
+        <EmptyState title="비어 있음">다시 선택하세요.</EmptyState>
+        <FormField label="Symbol">
+          <input aria-label="Symbol input" />
+        </FormField>
+        <InlineState tone="error">실패</InlineState>
+        <InlineState tone="warn">주의</InlineState>
+        <InlineState tone="accent">완료</InlineState>
+      </>,
+    );
+
+    expect(screen.getByText('비어 있음')).toHaveClass('text-fg');
+    expect(screen.getByText('Symbol')).toHaveClass('uppercase');
+    expect(screen.getByText('실패')).toHaveClass('text-error');
+    expect(screen.getByText('주의')).toHaveStyle({ color: 'var(--warn)' });
+    expect(screen.getByText('완료')).toHaveStyle({ color: 'var(--accent)' });
+  });
+});

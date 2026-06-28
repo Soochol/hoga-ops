@@ -1,6 +1,7 @@
 import { fmtSize } from './format';
 import type { StockDateGroup } from './types';
 import { aggregateDiskState, DiskStateDot } from './DiskStateBadge';
+import { ListRow } from '../ui/DataSurface';
 
 type Props = {
   group: StockDateGroup;
@@ -13,12 +14,10 @@ export function StockDateGroupListItem({ group, active, onClick }: Props) {
   const last = lastCapturedShort(group.lastCapturedAt);
   const aggState = aggregateDiskState(group.dates.map((d) => d.disk_state));
   return (
-    <div
+    <ListRow
+      active={active}
       onClick={() => onClick(group.code)}
-      className={[
-        'px-3 py-2 cursor-pointer rounded select-none',
-        active ? 'bg-tint-selection text-fg' : 'text-fg-dim hover:bg-bg-input-hover',
-      ].join(' ')}
+      className="px-3 py-2 cursor-pointer rounded select-none"
     >
       <div className="flex justify-between items-baseline">
         <span className="flex items-center gap-1.5">
@@ -32,7 +31,7 @@ export function StockDateGroupListItem({ group, active, onClick }: Props) {
         <span>최근 {last}</span>
         <span className="font-mono tabular-nums">{fmtSize(group.totalSizeBytes)}</span>
       </div>
-    </div>
+    </ListRow>
   );
 }
 

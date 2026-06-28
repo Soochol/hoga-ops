@@ -7,6 +7,7 @@ import { CaptureQueueRow } from './CaptureQueueRow';
 import { GROUP_ORDER, getPhase } from './phase';
 import { useStockDates } from '../api/stock-dates';
 import type { EnqueueDedupedRow, EnqueueResponse, QueueItem, QueueSnapshot } from '../api/types';
+import { EmptyState, InlineState } from '../ui/DataSurface';
 
 /** Human label per dedupe reason — order here is the display order in the banner. */
 const DEDUPE_REASON_LABEL: Record<EnqueueDedupedRow['reason'], string> = {
@@ -119,23 +120,15 @@ export function CaptureQueue() {
   };
 
   if (queue === undefined) {
-    return <div className="p-3 text-fg-dim">Loading queue…</div>;
+    return <InlineState className="border-0 bg-transparent p-3">Loading queue…</InlineState>;
   }
 
   const totalRows = queue.active.length + queue.queued.length + queue.done.length;
   if (totalRows === 0 && !queue.paused) {
     return (
-      <div
-        data-testid="queue-empty"
-        className="h-full flex flex-col items-center justify-center gap-2 p-6 text-fg-dim font-normal text-sm text-center"
-      >
-        <div className="font-medium text-base text-fg">
-          큐가 비어 있습니다
-        </div>
-        <div>
-          왼쪽에서 종목과 날짜 범위를 선택하고 Start 를 누르면 캡처가 시작됩니다.
-        </div>
-      </div>
+      <EmptyState testId="queue-empty" title="큐가 비어 있습니다">
+        왼쪽에서 종목과 날짜 범위를 선택하고 Start 를 누르면 캡처가 시작됩니다.
+      </EmptyState>
     );
   }
 
@@ -185,11 +178,11 @@ export function CaptureQueue() {
       </div>
 
       {showDedupedBanner && lastAddItems !== undefined && (
-        <div
+        <InlineState
           data-testid="deduped-banner"
           role="status"
-          className="py-sm px-3 flex items-center gap-3 font-medium text-sm font-mono rounded-md border border-[--accent]"
-          style={{ background: 'rgba(20,184,166,0.10)', color: 'var(--accent)' }}
+          tone="accent"
+          className="py-sm flex items-center gap-3 font-medium font-mono"
         >
           <span aria-hidden>ⓘ</span>
           <span className="flex-1">{summarizeDedupeReasons(lastDedupedRows)}</span>
@@ -199,16 +192,15 @@ export function CaptureQueue() {
             onClick={() => setDismissedSubmittedAt(lastAddItems.submittedAt)}
             style={ghostButton()}
           >Dismiss</button>
-        </div>
+        </InlineState>
       )}
 
       {queue.paused && (
-        <div role="alert" className="py-sm px-3 flex items-center gap-3 font-medium text-sm font-mono rounded-md border border-[--warn]"
-          style={{ background: 'rgba(245,158,11,0.10)', color: 'var(--warn)' }}>
+        <InlineState role="alert" tone="warn" className="py-sm flex items-center gap-3 font-medium font-mono">
           <span className="flex-1">Cookie expired · refresh .cookie on disk, then resume</span>
           <button type="button" onClick={() => resumeQueue.mutate()} style={ghostButton()}>Refresh &amp; Resume</button>
           <button type="button" onClick={() => cancelAll.mutate()} style={ghostButton()}>Cancel All</button>
-        </div>
+        </InlineState>
       )}
 
       <div

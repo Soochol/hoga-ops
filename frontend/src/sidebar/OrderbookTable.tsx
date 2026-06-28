@@ -1,20 +1,21 @@
 import type { OrderbookSnapshot } from '../api/types';
+import { SidebarState } from './SidebarSurface';
 
 type Props = { snapshot: OrderbookSnapshot | null | undefined };
 
 export default function OrderbookTable({ snapshot }: Props) {
   if (snapshot === undefined) {
     return (
-      <div className="grid place-items-center h-full text-fg-dimmer text-xs">
+      <SidebarState>
         커서 위치 로딩 중…
-      </div>
+      </SidebarState>
     );
   }
   if (snapshot === null) {
     return (
-      <div className="grid place-items-center h-full text-fg-dimmer text-xs">
+      <SidebarState>
         호가 데이터 없음
-      </div>
+      </SidebarState>
     );
   }
   // Wire shape per ADR-0004: ask/bid each ship as length-10 arrays with
