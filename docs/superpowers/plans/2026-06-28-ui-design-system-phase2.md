@@ -69,15 +69,15 @@ git commit -m "refactor: add data surface ui primitives"
 - Consumes: Task 1 primitives.
 - Produces: Same screener sort, activate, save-list edit/menu behavior.
 
-- [ ] **Step 1: Add or preserve tests around row activation, sorting, empty states, and saved-list empty search states**
+- [x] **Step 1: Add or preserve tests around row activation, sorting, empty states, and saved-list empty search states**
 
 Run targeted screener tests after each file change.
 
-- [ ] **Step 2: Replace repeated card/table/list row classes**
+- [x] **Step 2: Replace repeated card/table/list row classes**
 
 Use `DataTableShell`, `DataTableHeader`, `DataTableRow`, `ListRow`, and `EmptyState`; leave domain-specific column grids and menu positioning intact.
 
-- [ ] **Step 3: Verify**
+- [x] **Step 3: Verify**
 
 Run: `cd frontend && npm run test -- --run src/screener/ResultTable.test.tsx src/screener/SavedScreenerList.test.tsx`
 Expected: PASS.
