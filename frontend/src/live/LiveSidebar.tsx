@@ -27,10 +27,11 @@ import { isMinuteTimeframe } from '../state/livePage';
 import { LiveDetailPanel } from './LiveDetailPanel';
 import { realMsToYyyymmdd } from './liveDateTime';
 import {
+  buildCandleDateIndex,
   computeContinuousTradeVolumeDistribution,
   firstTrailingSinglePriceBookMs,
   selectVolumeDistributionProfile,
-  volumeDistributionClosePoints,
+  volumeDistributionClosePointsFromCandles,
 } from './continuousTradeVolumeDistribution';
 import { useVolumeDistributionCutoffProfile } from './useVolumeDistributionCutoffProfile';
 
@@ -125,10 +126,14 @@ export function LiveSidebar({ code, live, bundle = null, todayKst = '', programT
   const activeVolumeDistributionDate = isSpot && cursorMs !== null
     ? realMsToYyyymmdd(cursorMs)
     : (activeBundle?.segments[activeBundle.segments.length - 1]?.date ?? todayKst ?? null);
+  const candleDateIndex = useMemo(
+    () => buildCandleDateIndex(activeBundle?.candles ?? []),
+    [activeBundle?.candles],
+  );
   const activeVolumeDistributionCandles = useMemo(() => {
     if (!activeBundle || !activeVolumeDistributionDate) return [];
-    return activeBundle.candles.filter((candle) => realMsToYyyymmdd(candle.ts_ms) === activeVolumeDistributionDate);
-  }, [activeBundle, activeVolumeDistributionDate]);
+    return candleDateIndex.get(activeVolumeDistributionDate) ?? [];
+  }, [activeBundle, activeVolumeDistributionDate, candleDateIndex]);
   const persistedVolumeDistributions = activeBundle?.volume_distributions ?? [];
   const liveDistributionTrades = useMemo(
     () => live.trade.flatMap((snapshot) =>
@@ -159,7 +164,7 @@ export function LiveSidebar({ code, live, bundle = null, todayKst = '', programT
     }
     const todaySegment = activeBundle.segments.find((segment) => segment.date === todayKst);
     if (!todaySegment) return null;
-    const todayCandles = activeBundle.candles.filter((candle) => realMsToYyyymmdd(candle.ts_ms) === todayKst);
+    const todayCandles = candleDateIndex.get(todayKst) ?? [];
     if (todayCandles.length === 0) return null;
     return computeContinuousTradeVolumeDistribution({
       date: todayKst,
@@ -175,6 +180,7 @@ export function LiveSidebar({ code, live, bundle = null, todayKst = '', programT
     todayKst,
     timeframe,
     activeBundle,
+    candleDateIndex,
     liveDistributionTrades,
     volumeDistributionRangeCount,
     todayContinuousBeforeMs,
@@ -215,10 +221,9 @@ export function LiveSidebar({ code, live, bundle = null, todayKst = '', programT
     segment: activeBundle?.segments.find((segment) => segment.date === activeVolumeDistributionDate) ?? null,
   });
   const activeVolumeDistributionClosePoints = useMemo(() => {
-    return volumeDistributionClosePoints({
-      date: activeVolumeDistributionDate,
-      candles: activeVolumeDistributionCandles,
-    });
+    return activeVolumeDistributionDate
+      ? volumeDistributionClosePointsFromCandles(activeVolumeDistributionCandles)
+      : [];
   }, [activeVolumeDistributionCandles, activeVolumeDistributionDate]);
 
   // T14b: "다음 가용: HH:MM" hint above orderbook table when spot orderbook

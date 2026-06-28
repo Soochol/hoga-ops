@@ -116,8 +116,31 @@ export function volumeDistributionClosePoints(args: {
   candles: readonly Candle[];
 }): { t_ms: number; close: number }[] {
   if (!args.date) return [];
-  return args.candles
-    .filter((candle) => realMsToYyyymmdd(candle.ts_ms) === args.date)
+  return volumeDistributionClosePointsFromCandles(
+    args.candles.filter((candle) => realMsToYyyymmdd(candle.ts_ms) === args.date),
+  );
+}
+
+export function buildCandleDateIndex(
+  candles: readonly Candle[],
+): Map<string, Candle[]> {
+  const byDate = new Map<string, Candle[]>();
+  for (const candle of candles) {
+    const date = realMsToYyyymmdd(candle.ts_ms);
+    const bucket = byDate.get(date);
+    if (bucket) {
+      bucket.push(candle);
+    } else {
+      byDate.set(date, [candle]);
+    }
+  }
+  return byDate;
+}
+
+export function volumeDistributionClosePointsFromCandles(
+  candles: readonly Candle[],
+): { t_ms: number; close: number }[] {
+  return [...candles]
     .sort((a, b) => a.ts_ms - b.ts_ms)
     .map((candle) => ({ t_ms: candle.ts_ms, close: candle.close }));
 }

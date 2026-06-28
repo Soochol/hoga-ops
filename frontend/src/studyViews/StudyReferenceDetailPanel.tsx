@@ -7,8 +7,9 @@ import type { RangeBundle } from '../api/types';
 import { useLiveCursorStore } from '../live/useLiveCursorStore';
 import { realMsToYyyymmdd } from '../live/liveDateTime';
 import {
+  buildCandleDateIndex,
   selectVolumeDistributionProfile,
-  volumeDistributionClosePoints,
+  volumeDistributionClosePointsFromCandles,
 } from '../live/continuousTradeVolumeDistribution';
 import { useVolumeDistributionCutoffProfile } from '../live/useVolumeDistributionCutoffProfile';
 import OrderbookTable from '../sidebar/OrderbookTable';
@@ -50,6 +51,14 @@ export function StudyReferenceDetailPanel({ save, bundle, isCursorActive }: Prop
   const volumeDistributionDate = detailCursorMs !== null
     ? realMsToYyyymmdd(detailCursorMs)
     : save.range.to_date;
+  const candleDateIndex = useMemo(
+    () => buildCandleDateIndex(bundle.candles),
+    [bundle.candles],
+  );
+  const volumeDistributionCandles = useMemo(
+    () => candleDateIndex.get(volumeDistributionDate) ?? [],
+    [candleDateIndex, volumeDistributionDate],
+  );
   const volumeDistribution = useMemo(
     () => selectVolumeDistributionProfile({
       enabled: volumeDistributionEnabled,
@@ -78,15 +87,12 @@ export function StudyReferenceDetailPanel({ save, bundle, isCursorActive }: Prop
     finalProfile: volumeDistribution,
     priceRange: null,
     liveTrades: [],
-    candles: bundle.candles,
+    candles: volumeDistributionCandles,
     segment: bundle.segments.find((segment) => segment.date === volumeDistributionDate) ?? null,
   });
   const volumeClosePoints = useMemo(
-    () => volumeDistributionClosePoints({
-      date: volumeDistributionDate,
-      candles: bundle.candles,
-    }),
-    [bundle.candles, volumeDistributionDate],
+    () => volumeDistributionClosePointsFromCandles(volumeDistributionCandles),
+    [volumeDistributionCandles],
   );
 
   return (

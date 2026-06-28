@@ -86,6 +86,21 @@ function readNumericCrosshairTimeFromSeriesData(seriesData: unknown): number | n
   return null;
 }
 
+function nearestCandleMs(realMs: number, candleMs: readonly number[], bucketMs: number): number {
+  if (candleMs.length === 0 || bucketMs <= 0) return realMs;
+  let lo = 0;
+  let hi = candleMs.length - 1;
+  while (lo < hi) {
+    const mid = Math.floor((lo + hi) / 2);
+    if (candleMs[mid] < realMs) lo = mid + 1;
+    else hi = mid;
+  }
+  const next = candleMs[lo];
+  const prev = lo > 0 ? candleMs[lo - 1] : next;
+  const nearest = Math.abs(prev - realMs) <= Math.abs(next - realMs) ? prev : next;
+  return Math.abs(nearest - realMs) <= bucketMs / 2 ? nearest : realMs;
+}
+
 /** Empty axis used while the bundle is loading. timeFormatter / tickMarkFormatter
  * read through `axisRef.current` to convert virtual seconds back to real KST;
  * before the real axis arrives they need a working `.toReal()` to return
@@ -94,6 +109,7 @@ const EMPTY_AXIS: VirtualAxis = createVirtualAxis([]);
 /** 안정 빈 배열 — 기본값이 매 렌더 새 []를 만들지 않게. */
 const EMPTY_ASK_PEAKS: readonly AskPeak[] = [];
 const EMPTY_BID_PEAKS: readonly BidPeak[] = [];
+const EMPTY_CANDLE_MS: readonly number[] = [];
 const HIGH_LOW_AVOID_BASELINE_STYLE = { color: '', lineWidth: 1 };
 const DAILY_MIN_EFFECTIVE_BAR_SPACING = 3.5;
 const CALENDAR_MIN_VIEWPORT_WIDTH_PX = 120;
@@ -308,6 +324,17 @@ export function LiveChartRoot({ code, timeframe, venue = 'KRX', viewIdentity, bu
   const lastCandleMsRef = useRef<number | null>(null);
   lastCandleMsRef.current =
     cb && cb.candles.length > 0 ? cb.candles[cb.candles.length - 1].ts_ms : null;
+  const candleMs = useMemo(
+    () => (cb ? cb.candles.map((candle) => candle.ts_ms) : EMPTY_CANDLE_MS),
+    [cb],
+  );
+  const candleMsRef = useRef<readonly number[]>(EMPTY_CANDLE_MS);
+  candleMsRef.current = candleMs;
+  const bucketMsRef = useRef<number>(cb?.bucket_ms ?? 0);
+  bucketMsRef.current = cb?.bucket_ms ?? 0;
+  const publishedCursorMsRef = useRef<number | null>(null);
+  const publishedBasisDateRef = useRef<string | null>(null);
+  const publishedCursorActiveRef = useRef<boolean | null>(null);
 
   // chartRef bridges the live chart instance to the viewport-capture callback
   // (registered once, reads refs) so the tabs store can snapshot the OUTGOING
@@ -845,6 +872,21 @@ export function LiveChartRoot({ code, timeframe, venue = 'KRX', viewIdentity, bu
     (virtualTime: unknown, pointX?: number): void => {
       if (!chart) return;
       const store = useLiveCursorStore.getState();
+      const publishBasisHover = (date: string | null) => {
+        if (publishedBasisDateRef.current === date) return;
+        publishedBasisDateRef.current = date;
+        onCandleBasisHover?.(date);
+      };
+      const publishCursorActive = (active: boolean) => {
+        if (publishedCursorActiveRef.current === active) return;
+        publishedCursorActiveRef.current = active;
+        onCursorActiveChange?.(active);
+      };
+      const publishCursorMs = (cursorMs: number) => {
+        if (publishedCursorMsRef.current === cursorMs && store.cursorMs === cursorMs) return;
+        publishedCursorMsRef.current = cursorMs;
+        store.setCursor(cursorMs);
+      };
       const t = typeof virtualTime === 'number'
         ? virtualTime
         : (typeof pointX === 'number' ? chart.timeScale().coordinateToTime(pointX) : null);
@@ -855,13 +897,14 @@ export function LiveChartRoot({ code, timeframe, venue = 'KRX', viewIdentity, bu
       // returns to latest streaming mode.
       if (typeof t !== 'number' || axis.segments.length === 0) {
         if (lastMs !== null) {
-          onCandleBasisHover?.(kstDateFromMs(lastMs));
-          onCursorActiveChange?.(true);
-          store.setCursor(lastMs);
+          publishBasisHover(kstDateFromMs(lastMs));
+          publishCursorActive(true);
+          publishCursorMs(lastMs);
           return;
         }
-        onCursorActiveChange?.(false);
+        publishCursorActive(false);
         store.clearCursor();
+        publishedCursorMsRef.current = null;
         return;
       }
       // ChartStage.tsx:197 pattern — param.time is virtual-axis seconds.
@@ -872,9 +915,10 @@ export function LiveChartRoot({ code, timeframe, venue = 'KRX', viewIdentity, bu
       if (lastMs !== null && realMs > lastMs) {
         realMs = lastMs;
       }
-      onCandleBasisHover?.(kstDateFromMs(realMs));
-      onCursorActiveChange?.(true);
-      store.setCursor(realMs);
+      const cursorMs = nearestCandleMs(realMs, candleMsRef.current, bucketMsRef.current);
+      publishBasisHover(kstDateFromMs(cursorMs));
+      publishCursorActive(true);
+      publishCursorMs(cursorMs);
     },
     [axis, chart, onCandleBasisHover, onCursorActiveChange],
   );
@@ -913,7 +957,12 @@ export function LiveChartRoot({ code, timeframe, venue = 'KRX', viewIdentity, bu
     if (!chart) {
       // Session transition safety: when chart instance disappears (view/key
       // change or page unmount), clear sticky state too.
-      onCursorActiveChange?.(false);
+      if (publishedCursorActiveRef.current !== false) {
+        publishedCursorActiveRef.current = false;
+        onCursorActiveChange?.(false);
+      }
+      publishedBasisDateRef.current = null;
+      publishedCursorMsRef.current = null;
       useLiveCursorStore.getState().resetCursor();
       return;
     }
@@ -928,8 +977,15 @@ export function LiveChartRoot({ code, timeframe, venue = 'KRX', viewIdentity, bu
       // can't re-set the cursor after the pointer is already off-chart.
       if (param.point == null) {
         if (pending !== null) { cancelAnimationFrame(pending); pending = null; }
-        onCursorActiveChange?.(false);
-        onCandleBasisHover?.(null);
+        if (publishedCursorActiveRef.current !== false) {
+          publishedCursorActiveRef.current = false;
+          onCursorActiveChange?.(false);
+        }
+        if (publishedBasisDateRef.current !== null) {
+          publishedBasisDateRef.current = null;
+          onCandleBasisHover?.(null);
+        }
+        publishedCursorMsRef.current = null;
         useLiveCursorStore.getState().clearCursor();
         return;
       }
@@ -948,10 +1004,15 @@ export function LiveChartRoot({ code, timeframe, venue = 'KRX', viewIdentity, bu
     return () => {
       chart.unsubscribeCrosshairMove(handler);
       if (pending !== null) cancelAnimationFrame(pending);
+      publishedBasisDateRef.current = null;
       onCandleBasisHover?.(null);
       // Preserve user context only while the chart instance is active; on teardown
       // (view key / timeframe navigation) reset both cursor states.
-      onCursorActiveChange?.(false);
+      if (publishedCursorActiveRef.current !== false) {
+        publishedCursorActiveRef.current = false;
+        onCursorActiveChange?.(false);
+      }
+      publishedCursorMsRef.current = null;
       useLiveCursorStore.getState().resetCursor();
     };
   }, [chart, axis, timeframe, onCursorActiveChange, onCandleBasisHover, publishCursorHover]);
