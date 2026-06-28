@@ -32,6 +32,7 @@ export function TimeframeControl({ timeframe, rememberedMinute, onChange }: Prop
   const minuteWrapRef = useRef<HTMLDivElement>(null);
   const minuteButtonRef = useRef<HTMLButtonElement>(null);
   const [anchorRect, setAnchorRect] = useState<DOMRect | null>(null);
+  const isCurrentMinute = isMinuteTimeframe(timeframe);
   const displayedMinute = isMinuteTimeframe(timeframe) ? timeframe : rememberedMinute;
 
   const closeMinuteMenu = useCallback(() => setMinuteMenuOpen(false), []);
@@ -42,6 +43,12 @@ export function TimeframeControl({ timeframe, rememberedMinute, onChange }: Prop
   );
 
   const onMinuteSelectorClick = () => {
+    if (!isCurrentMinute) {
+      setMinuteMenuOpen(false);
+      onChange(rememberedMinute);
+      return;
+    }
+
     setAnchorRect(minuteButtonRef.current?.getBoundingClientRect() ?? null);
     setMinuteMenuOpen((open) => !open);
   };
@@ -56,7 +63,9 @@ export function TimeframeControl({ timeframe, rememberedMinute, onChange }: Prop
     onChange(next);
   };
 
-  const minuteButtonLabel = `분봉 선택 열기: ${minuteLabel(displayedMinute)}`;
+  const minuteButtonLabel = isCurrentMinute
+    ? `분봉 선택 열기: ${minuteLabel(displayedMinute)}`
+    : `분봉으로 전환: ${minuteLabel(displayedMinute)}`;
   const minuteMenu = minuteMenuOpen && anchorRect ? (
     <div
       ref={menuPositionRef}
@@ -102,9 +111,9 @@ export function TimeframeControl({ timeframe, rememberedMinute, onChange }: Prop
           className="inline-flex min-h-6 items-center gap-1 rounded-[7px] border font-mono text-xs transition-colors hover:bg-bg-input-hover hover:text-fg"
           style={{
             padding: '4px 10px',
-            background: isMinuteTimeframe(timeframe) ? 'var(--tint-selection)' : 'var(--bg-input)',
-            color: isMinuteTimeframe(timeframe) ? 'var(--accent)' : 'var(--fg-dim)',
-            borderColor: isMinuteTimeframe(timeframe) ? 'var(--accent)' : 'var(--border)',
+            background: isCurrentMinute ? 'var(--tint-selection)' : 'var(--bg-input)',
+            color: isCurrentMinute ? 'var(--accent)' : 'var(--fg-dim)',
+            borderColor: isCurrentMinute ? 'var(--accent)' : 'var(--border)',
           }}
         >
           <span>{minuteLabel(displayedMinute)}</span>

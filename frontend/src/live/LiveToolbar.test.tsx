@@ -71,7 +71,7 @@ describe('LiveToolbar', () => {
     expect(screen.queryByRole('menu', { name: '분봉 목록' })).toBeNull();
   });
 
-  it('from calendar timeframe, minute selector opens the remembered minute list', () => {
+  it('from calendar timeframe, minute selector immediately switches to the remembered minute', () => {
     renderToolbar();
 
     fireEvent.click(screen.getByRole('button', { name: '분봉 선택 열기: 1분' }));
@@ -79,14 +79,17 @@ describe('LiveToolbar', () => {
     fireEvent.click(screen.getByRole('button', { name: '일' }));
     expect(useLivePageStore.getState().candleTimeframe).toBe('D');
 
-    fireEvent.click(screen.getByRole('button', { name: '분봉 선택 열기: 5분' }));
+    fireEvent.click(screen.getByRole('button', { name: '분봉으로 전환: 5분' }));
 
-    const menu = screen.getByRole('menu', { name: '분봉 목록' });
-    expect(useLivePageStore.getState().candleTimeframe).toBe('D');
-    expect(within(menu).getByRole('menuitemradio', { name: '5분' })).toHaveAttribute('aria-checked', 'true');
+    expect(useLivePageStore.getState().candleTimeframe).toBe('5m');
+    expect(screen.queryByRole('menu', { name: '분봉 목록' })).toBeNull();
+    expect(screen.getByRole('button', { name: '분봉 선택 열기: 5분' })).toHaveAttribute(
+      'aria-expanded',
+      'false',
+    );
   });
 
-  it('from calendar timeframe, selecting from the minute list uses shared lastMinuteTimeframe', () => {
+  it('from calendar timeframe, minute selector uses shared lastMinuteTimeframe', () => {
     useLivePageStore.setState({
       candleTimeframe: 'D',
       lastMinuteTimeframe: '10m',
@@ -94,11 +97,11 @@ describe('LiveToolbar', () => {
     });
     renderToolbar();
 
-    fireEvent.click(screen.getByRole('button', { name: '분봉 선택 열기: 10분' }));
-    fireEvent.click(within(screen.getByRole('menu', { name: '분봉 목록' })).getByRole('menuitemradio', { name: '10분' }));
+    fireEvent.click(screen.getByRole('button', { name: '분봉으로 전환: 10분' }));
 
     expect(useLivePageStore.getState().candleTimeframe).toBe('10m');
     expect(useLivePageStore.getState().lastMinuteTimeframe).toBe('10m');
+    expect(screen.queryByRole('menu', { name: '분봉 목록' })).toBeNull();
   });
 
   it('selecting a minute option updates shared lastMinuteTimeframe', () => {
