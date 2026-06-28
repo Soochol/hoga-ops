@@ -116,10 +116,48 @@ describe('useVolumeDistributionCutoffProfile', () => {
     expect(mockedUseRange).toHaveBeenCalledWith('005930', '20260625', '20260625', '1m', undefined, null, {
       mode: 'sidecar',
       volumeDistributionBins: 2,
-      volumeDistributionCutoffMs: 90_001_000,
+      volumeDistributionCutoffMs: 90_000_000,
       volumeDistributionPriceRange: null,
     });
     expect(result.current).toBe(cutoffProfile);
+  });
+
+  it('aligns hover cutoff requests to the timeframe bucket', () => {
+    mockedUseRange.mockReturnValue({
+      data: undefined,
+      isFetching: true,
+    } as ReturnType<typeof useRange>);
+
+    const { rerender } = renderHook(
+      ({ cursorMs }) => useVolumeDistributionCutoffProfile({
+        enabled: true,
+        code: '005930',
+        timeframe: '1m',
+        date: '20260625',
+        cursorMs,
+        todayKst: null,
+        rangeCount: 2,
+        finalProfile: profile(),
+        priceRange: null,
+      }),
+      { initialProps: { cursorMs: 90_001_234 } },
+    );
+
+    expect(mockedUseRange).toHaveBeenLastCalledWith('005930', '20260625', '20260625', '1m', undefined, null, {
+      mode: 'sidecar',
+      volumeDistributionBins: 2,
+      volumeDistributionCutoffMs: 90_000_000,
+      volumeDistributionPriceRange: null,
+    });
+
+    rerender({ cursorMs: 90_029_999 });
+
+    expect(mockedUseRange).toHaveBeenLastCalledWith('005930', '20260625', '20260625', '1m', undefined, null, {
+      mode: 'sidecar',
+      volumeDistributionBins: 2,
+      volumeDistributionCutoffMs: 90_000_000,
+      volumeDistributionPriceRange: null,
+    });
   });
 
   it('keeps the previous cutoff profile while the next hover cutoff request is loading', () => {
@@ -247,6 +285,46 @@ describe('useVolumeDistributionCutoffProfile', () => {
         { price_low: 110, price_high: 120, qty: 25 },
       ],
     });
+  });
+
+  it('uses the raw cursor for live fallback computation after aligning the sidecar request', () => {
+    mockedUseRange.mockReturnValue({
+      data: emptyBundle,
+      isLoading: false,
+      isFetching: false,
+    } as ReturnType<typeof useRange>);
+
+    const { result } = renderHook(() => useVolumeDistributionCutoffProfile({
+      enabled: true,
+      code: '005930',
+      timeframe: '1m',
+      date: '20260625',
+      cursorMs: 90_001_234,
+      todayKst: '20260625',
+      rangeCount: 2,
+      finalProfile: profile({ bins: [] }),
+      priceRange: null,
+      candles,
+      segment,
+      liveTrades: [
+        { t_ms: 90_001_000, price: 115, qty: 5, side: 1 },
+        { t_ms: 90_002_000, price: 115, qty: 99, side: 1 },
+      ],
+    }));
+
+    expect(mockedUseRange).toHaveBeenCalledWith('005930', '20260625', '20260625', '1m', undefined, '20260625', {
+      mode: 'sidecar',
+      volumeDistributionBins: 2,
+      volumeDistributionCutoffMs: 90_000_000,
+      volumeDistributionPriceRange: null,
+    });
+    expect(result.current).toEqual(expect.objectContaining({
+      last_trade_ms: 90_001_000,
+      bins: [
+        { price_low: 100, price_high: 110, qty: 0 },
+        { price_low: 110, price_high: 120, qty: 5 },
+      ],
+    }));
   });
 
   it('keeps final profile when fallback recompute has no valid live trades', () => {

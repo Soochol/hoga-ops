@@ -3,6 +3,11 @@
 All notable changes to this project are documented here.
 The format follows a 4-digit `MAJOR.MINOR.PATCH.MICRO` scheme.
 
+## [0.12.14.0] - 2026-06-28
+
+### Changed
+- **/live 호버 매물대 cutoff 요청 경량화**: 같은 분봉 안에서 차트 커서를 움직일 때 매번 새 cutoff sidecar를 요청하지 않고 분봉 시작 시각으로 묶어, 매물대 hover cutoff 모드를 켠 상태의 잔렉을 줄였다.
+
 ## [0.12.13.0] - 2026-06-28
 
 ### Changed

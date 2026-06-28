@@ -1,7 +1,7 @@
 import { useMemo, useRef } from 'react';
 
 import { useRange } from '../api/range';
-import type { Candle, DayVolumeDistribution, RangeSegment, Timeframe } from '../api/types';
+import { TIMEFRAME_TO_MS, type Candle, type DayVolumeDistribution, type RangeSegment, type Timeframe } from '../api/types';
 import {
   computeContinuousTradeVolumeDistribution,
   mergeVolumeDistributionTail,
@@ -38,6 +38,11 @@ export function useVolumeDistributionCutoffProfile(args: {
     && args.date
     && args.cursorMs != null
   );
+  const bucketMs = args.timeframe ? TIMEFRAME_TO_MS[args.timeframe] : null;
+  const alignedCursorMs =
+    args.cursorMs != null && bucketMs != null
+      ? Math.floor(args.cursorMs / bucketMs) * bucketMs
+      : null;
   const scope = [
     args.code ?? '',
     args.timeframe ?? '',
@@ -56,7 +61,7 @@ export function useVolumeDistributionCutoffProfile(args: {
     {
       mode: 'sidecar',
       volumeDistributionBins: args.rangeCount,
-      volumeDistributionCutoffMs: queryEnabled ? args.cursorMs : null,
+      volumeDistributionCutoffMs: queryEnabled ? alignedCursorMs : null,
       volumeDistributionPriceRange: args.priceRange,
     },
   );
@@ -114,6 +119,7 @@ export function useVolumeDistributionCutoffProfile(args: {
     args.rangeCount,
     args.segment,
     args.todayKst,
+    alignedCursorMs,
     query.data,
     query.isFetching,
     queryEnabled,
