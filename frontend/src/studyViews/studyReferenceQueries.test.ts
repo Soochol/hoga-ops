@@ -33,10 +33,10 @@ describe('studyReferenceQueryOptions', () => {
 
     expect(options.rangeHoga.enabled).toBe(true);
     expect(options.rangeHoga.queryKey[0]).toBe('range');
-    expect(options.rangeHoga.queryKey.at(-1)).toBe('hoga');
+    expect(options.rangeHoga.queryKey[14]).toBe('hoga');
     expect(options.rangeSidecars.enabled).toBe(true);
     expect(options.rangeSidecars.queryKey[0]).toBe('range');
-    expect(options.rangeSidecars.queryKey.at(-1)).toBe('sidecar');
+    expect(options.rangeSidecars.queryKey[14]).toBe('sidecar');
     expect(options.rangeSidecars.queryKey).toContain(true);
     expect(options.rangeSidecars.queryKey).toContain(1000);
     expect(options.minuteCandles.enabled).toBe(true);

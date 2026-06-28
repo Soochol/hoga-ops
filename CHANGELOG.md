@@ -3,6 +3,11 @@
 All notable changes to this project are documented here.
 The format follows a 4-digit `MAJOR.MINOR.PATCH.MICRO` scheme.
 
+## [0.12.10.2] - 2026-06-28
+
+### Fixed
+- **/study 일봉 캔들 폭 복구**: 저장 학습뷰에서 일봉으로 전환할 때 `/live`와 같은 초기 일봉 조회 범위를 사용하도록 해, 긴 저장 기간 때문에 캔들 몸통이 심지처럼 압축되어 보이는 문제를 줄였다.
+
 ## [0.12.10.1] - 2026-06-28
 
 ### Changed
