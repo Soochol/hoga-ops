@@ -6,6 +6,7 @@ import { beforeEach, expect, it, vi } from 'vitest';
 import type { StudyViewReference } from '../api/studyViews';
 import { useEntryDragStore } from '../state/entryDrag';
 import { useStudyTabsStore } from '../state/studyTabs';
+import { useStudyViewOpenPrefsStore } from '../state/studyViewOpenPrefs';
 import type { CurrentStudySaveSource } from './studySaveSource';
 import { StudyViewsDrawer, filterStudyViews } from './StudyViewsDrawer';
 
@@ -183,6 +184,7 @@ beforeEach(() => {
   dnd.onDragCancel = null;
   saveSource = null;
   mockedSaves = saves;
+  useStudyViewOpenPrefsStore.setState({ defaultTimeframe: '3m' });
   useStudyTabsStore.setState({ tabs: [], activeTabId: null });
   (useEntryDragStore.setState as unknown as (state: Record<string, unknown>) => void)({
     draggingCode: null,
@@ -458,7 +460,38 @@ it('normal row click replaces the current study tab instead of opening only the 
   const state = useStudyTabsStore.getState();
   expect(state.tabs).toHaveLength(1);
   expect(state.activeTabId).toBe(activeTabId);
-  expect(state.tabs[0]).toMatchObject({ viewId: 'a', name: '급등 이후' });
+  expect(state.tabs[0]).toMatchObject({ viewId: 'a', name: '급등 이후', timeframe: '3m' });
+  expect(state.tabs[0].label).toBe('삼성전자 · 급등 이후 · 3m');
+});
+
+it('uses the configured saved-view side-panel timeframe when opening a saved view', async () => {
+  useStudyViewOpenPrefsStore.setState({ defaultTimeframe: '5m' });
+  mockedSaves = [{ ...saves[0], timeframe: '10m' }];
+  renderDrawer('/inventory');
+
+  await userEvent.click(screen.getByRole('button', { name: '급등 이후 저장뷰 열기' }));
+
+  await waitFor(() => expect(screen.getByTestId('loc').textContent).toBe('/study?view=a'));
+  expect(useStudyTabsStore.getState().tabs[0]).toMatchObject({
+    viewId: 'a',
+    timeframe: '5m',
+    label: '삼성전자 · 급등 이후 · 5m',
+  });
+});
+
+it('keeps the saved timeframe when the saved-view side-panel option is saved timeframe', async () => {
+  useStudyViewOpenPrefsStore.setState({ defaultTimeframe: 'saved' });
+  mockedSaves = [{ ...saves[0], timeframe: '10m' }];
+  renderDrawer('/inventory');
+
+  await userEvent.click(screen.getByRole('button', { name: '급등 이후 저장뷰 열기' }));
+
+  await waitFor(() => expect(screen.getByTestId('loc').textContent).toBe('/study?view=a'));
+  expect(useStudyTabsStore.getState().tabs[0]).toMatchObject({
+    viewId: 'a',
+    timeframe: '10m',
+    label: '삼성전자 · 급등 이후 · 10m',
+  });
 });
 
 it('clicking the saved view name text navigates to the study route', async () => {

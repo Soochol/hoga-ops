@@ -1,6 +1,7 @@
 import { beforeEach, describe, expect, it } from 'vitest';
 import type { StudyViewReference } from '../api/studyViews';
 import { studyTabFromSave, toStudyTabsSnapshot, useStudyTabsStore } from './studyTabs';
+import { useStudyViewOpenPrefsStore } from './studyViewOpenPrefs';
 
 const save = {
   schema_version: 2,
@@ -20,6 +21,7 @@ const save = {
 describe('studyTabs store', () => {
   beforeEach(() => {
     window.localStorage.clear();
+    useStudyViewOpenPrefsStore.setState({ defaultTimeframe: '3m' });
     useStudyTabsStore.setState({ tabs: [], activeTabId: null });
   });
 
@@ -41,6 +43,34 @@ describe('studyTabs store', () => {
     expect(state.tabs).toHaveLength(1);
     expect(state.activeTabId).toBe(first);
     expect(state.tabs[0]).toMatchObject({ viewId: 'view2', name: '마감' });
+  });
+
+  it('opens saved views from the side panel with the configured default minute timeframe', () => {
+    useStudyTabsStore.getState().openSaveInActiveTab({ ...save, timeframe: '10m' }, { timeframeOverride: '3m' });
+    expect(useStudyTabsStore.getState().tabs[0]).toMatchObject({
+      timeframe: '3m',
+      label: '삼성전자 · 장초반 · 3m',
+    });
+  });
+
+  it('updates an existing saved-view tab to the configured side-panel timeframe when clicked again', () => {
+    useStudyTabsStore.getState().openSaveInActiveTab({ ...save, timeframe: '10m' });
+    useStudyTabsStore.getState().openSaveInActiveTab({ ...save, timeframe: '10m' }, { timeframeOverride: '3m' });
+
+    expect(useStudyTabsStore.getState().tabs).toHaveLength(1);
+    expect(useStudyTabsStore.getState().tabs[0]).toMatchObject({
+      timeframe: '3m',
+      label: '삼성전자 · 장초반 · 3m',
+    });
+  });
+
+  it('keeps the saved view timeframe when no side-panel override is provided', () => {
+    useStudyTabsStore.getState().openSaveInActiveTab({ ...save, timeframe: '10m' });
+
+    expect(useStudyTabsStore.getState().tabs[0]).toMatchObject({
+      timeframe: '10m',
+      label: '삼성전자 · 장초반 · 10m',
+    });
   });
 
   it('focuses an existing tab instead of replacing the active tab for the same saved view', () => {

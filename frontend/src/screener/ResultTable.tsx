@@ -2,11 +2,14 @@ import type { ScreenerRowLive } from './useScreenerRowsLive';
 import { dispositionFromMouseEvent, type LiveOpenDisposition } from '../live/liveActivation';
 import { ChangeCell } from './ChangeCell';
 import { WatchlistHeartButton } from '../watchlist/WatchlistHeartButton';
+import { nextScreenerSortMode, type ScreenerResultSortField, type ScreenerResultSortMode } from './sortResults';
 
 interface Props {
   /** Live Quote 가 이미 머지된 결과 행(useScreenerRowsLive). 표시만 하면 된다. */
   rows: ScreenerRowLive[];
   onActivate: (code: string, name?: string, options?: { disposition?: LiveOpenDisposition }) => void;
+  sortMode?: ScreenerResultSortMode;
+  onSortChange?: (mode: ScreenerResultSortMode) => void;
 }
 
 const COLS = 'grid-cols-[3.5rem_1fr_4rem_6rem_5rem_6rem_2.4rem]';
@@ -14,14 +17,48 @@ const COLS = 'grid-cols-[3.5rem_1fr_4rem_6rem_5rem_6rem_2.4rem]';
  *  unit (거래대금 하한 is entered in 억). */
 const toEok = (won: number) => Math.round(won / 1e8).toLocaleString('ko-KR');
 
-export function ResultTable({ rows, onActivate }: Props) {
+const HEADERS: Array<{ field: ScreenerResultSortField; label: string; align?: 'right' }> = [
+  { field: 'code', label: '코드' },
+  { field: 'name', label: '종목명' },
+  { field: 'market', label: '시장' },
+  { field: 'price', label: '현재가', align: 'right' },
+  { field: 'change_pct', label: '등락률', align: 'right' },
+  { field: 'trade_value_won', label: '거래대금(억)', align: 'right' },
+];
+
+function SortHeader({ field, label, align, sortMode = 'default', onSortChange }: {
+  field: ScreenerResultSortField;
+  label: string;
+  align?: 'right';
+  sortMode?: ScreenerResultSortMode;
+  onSortChange?: (mode: ScreenerResultSortMode) => void;
+}) {
+  const active = sortMode !== 'default' && sortMode.field === field;
+  const arrow = active ? (sortMode.direction === 'asc' ? '▲' : '▼') : '↕';
+  return (
+    <button
+      type="button"
+      aria-label={`${label} 정렬`}
+      onClick={() => onSortChange?.(nextScreenerSortMode(sortMode, field))}
+      className={`min-w-0 inline-flex items-center gap-1 bg-transparent border-0 p-0 text-xs font-semibold uppercase tracking-[0.06em] ${
+        align === 'right' ? 'justify-end text-right' : 'justify-start text-left'
+      } ${active ? 'text-accent' : 'text-fg-dimmer hover:text-fg'}`}
+    >
+      <span className="truncate">{label}</span>
+      <span className="font-mono text-[10px]" aria-hidden="true">{arrow}</span>
+    </button>
+  );
+}
+
+export function ResultTable({ rows, onActivate, sortMode = 'default', onSortChange }: Props) {
   return (
     <div className="min-w-0 bg-bg-card border rounded-lg flex flex-col min-h-0 overflow-auto">
       <div className="min-w-[640px] flex min-h-full flex-col">
-        <div className={`grid ${COLS} items-center gap-2 px-sm py-1 border-b text-xs font-semibold uppercase tracking-[0.06em] text-fg-dimmer`}>
-          <span>코드</span><span>종목명</span><span>시장</span>
-          <span className="text-right">현재가</span><span className="text-right">등락률</span>
-          <span className="text-right">거래대금(억)</span><span className="text-right">액션</span>
+        <div className={`grid ${COLS} items-center gap-2 px-sm py-1 border-b`}>
+          {HEADERS.map((header) => (
+            <SortHeader key={header.field} {...header} sortMode={sortMode} onSortChange={onSortChange} />
+          ))}
+          <span className="text-right text-xs font-semibold uppercase tracking-[0.06em] text-fg-dimmer">액션</span>
         </div>
         <div className="flex-1 min-h-0">
           {rows.length === 0 ? (

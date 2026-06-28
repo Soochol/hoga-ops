@@ -192,6 +192,23 @@ export function StudyPage() {
   }, [activeViewId]);
 
   useEffect(() => {
+    if (!activeTab) return;
+    setViewTimeframes((current) => (
+      current[activeTab.viewId] === activeTab.timeframe
+        ? current
+        : { ...current, [activeTab.viewId]: activeTab.timeframe }
+    ));
+    const tabTimeframe = activeTab.timeframe;
+    if (isMinuteTimeframe(tabTimeframe)) {
+      setRememberedMinuteTimeframes((current) => (
+        current[activeTab.viewId] === tabTimeframe
+          ? current
+          : { ...current, [activeTab.viewId]: tabTimeframe }
+      ));
+    }
+  }, [activeTab]);
+
+  useEffect(() => {
     setActivatedStudyTabIds((current) => {
       const currentTabIds = new Set(tabs.map((tab) => tab.id));
       const next = new Set<string>();

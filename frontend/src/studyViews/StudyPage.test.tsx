@@ -236,6 +236,25 @@ describe('StudyPage', () => {
     expect(props.tradeVolumePocOverride).toBeUndefined();
   });
 
+  it('uses the active saved-view tab timeframe over the saved reference timeframe', () => {
+    useStudyTabsStore.setState({
+      tabs: [{
+        id: 'tab-ref',
+        viewId: 'view-ref',
+        code: '005930',
+        label: '삼성전자 · 돌파 복기 · 3m',
+        name: '돌파 복기',
+        timeframe: '3m',
+      }],
+      activeTabId: 'tab-ref',
+    });
+
+    renderPage('/study?view=view-ref');
+
+    expect(liveChartRootMock.mock.calls.at(-1)?.[0].timeframe).toBe('3m');
+    expect(screen.getByText('005930 · 3m · 복기뷰')).toBeTruthy();
+  });
+
   it('switches the study reference timeframe with the live timeframe controls', () => {
     renderPage('/study?view=view-ref');
 

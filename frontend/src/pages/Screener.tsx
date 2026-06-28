@@ -191,7 +191,7 @@ export function Screener() {
           <div className="flex justify-end">
             <ScreenerResultSortControl mode={sortMode} onChange={setSortMode} disabled={rows.length === 0} />
           </div>
-          <ResultTable rows={sortedLiveRows} onActivate={openLive} />
+          <ResultTable rows={sortedLiveRows} onActivate={openLive} sortMode={sortMode} onSortChange={setSortMode} />
         </div>
       )}
       {saveDialog && (

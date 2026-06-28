@@ -14,7 +14,8 @@ import {
   type LiveVenueOption,
 } from '../state/liveVenue';
 import { useLiveSettings, usePatchLiveSettings, type LiveStoragePolicy } from '../api/liveSettings';
-import { useLivePageStore } from '../state/livePage';
+import { MINUTE_TIMEFRAMES, useLivePageStore, type MinuteTimeframe } from '../state/livePage';
+import { useStudyViewOpenPrefsStore, type StudyViewOpenTimeframe } from '../state/studyViewOpenPrefs';
 import MAStylePicker from './indicators/MAStylePicker';
 import IndicatorPrefRows from './settings/IndicatorPrefRows';
 import SourcePreferenceRadio from './settings/SourcePreferenceRadio';
@@ -26,13 +27,14 @@ import SourcePreferenceRadio from './settings/SourcePreferenceRadio';
  * toggles are excluded (they live in the 「지표」 modal instead). Adding
  * a toggle/pref stays a one-line registry edit.
  */
-type NavId = ChartToggleCategory | 'data-source';
+type NavId = ChartToggleCategory | 'data-source' | 'study-views';
 
 const CATEGORY_ORDER: ChartToggleCategory[] = ['chart'];
 const LABEL: Record<NavId, string> = {
   chart: '차트',
   'indicator-modal': '지표', // never rendered — not in CATEGORY_ORDER; kept for Record<NavId> exhaustiveness
   'data-source': '데이터소스',
+  'study-views': '저장뷰',
 };
 
 const STORAGE_POLICY_LABEL: Record<LiveStoragePolicy, string> = {
@@ -185,6 +187,54 @@ function DataSourceDetail() {
   );
 }
 
+function minuteLabel(value: MinuteTimeframe): string {
+  return `${value.slice(0, -1)}분`;
+}
+
+function studyViewOpenTimeframeLabel(value: StudyViewOpenTimeframe): string {
+  return value === 'saved' ? '저장된 분봉' : minuteLabel(value);
+}
+
+function StudyViewsDetail() {
+  const defaultTimeframe = useStudyViewOpenPrefsStore((s) => s.defaultTimeframe);
+  const setDefaultTimeframe = useStudyViewOpenPrefsStore((s) => s.setDefaultTimeframe);
+
+  return (
+    <>
+      <div className="mb-1 text-sm text-fg-dim">저장뷰 사이드 메뉴</div>
+      <div className="mb-md text-xs text-fg-dimmer">
+        오른쪽 저장뷰 패널에서 저장뷰를 열 때 적용할 기본 분봉입니다.
+      </div>
+      <div className="flex flex-wrap gap-2">
+        {(['saved', ...MINUTE_TIMEFRAMES] as StudyViewOpenTimeframe[]).map((value) => {
+          const checked = defaultTimeframe === value;
+          return (
+            <label
+              key={value}
+              className="inline-flex items-center gap-2 rounded border px-3 py-1.5 text-sm cursor-pointer focus-within:outline focus-within:outline-2 focus-within:outline-offset-2"
+              style={{
+                borderColor: checked ? 'var(--accent)' : 'var(--border)',
+                background: checked ? 'var(--bg-input)' : 'transparent',
+                color: checked ? 'var(--fg)' : 'var(--fg-dim)',
+                outlineColor: 'var(--accent)',
+              }}
+            >
+              <input
+                type="radio"
+                name="study-view-open-timeframe"
+                value={value}
+                checked={checked}
+                onChange={() => setDefaultTimeframe(value)}
+              />
+              <span>{studyViewOpenTimeframeLabel(value)}</span>
+            </label>
+          );
+        })}
+      </div>
+    </>
+  );
+}
+
 function StoragePolicyRadio({ value }: { value: LiveStoragePolicy }) {
   const { data } = useLiveSettings();
   const patch = usePatchLiveSettings();
@@ -241,6 +291,7 @@ export default function LiveSettingsSections() {
   const navIds: NavId[] = [
     ...CATEGORY_ORDER.filter((c) => CHART_TOGGLES.some((t) => categoryOf(t) === c)),
     'data-source',
+    'study-views',
   ];
   const [selected, setSelected] = useState<NavId>(navIds[0]);
 
@@ -263,7 +314,11 @@ export default function LiveSettingsSections() {
         ))}
       </nav>
       <div className="flex-1 px-5 py-4" data-settings-detail={selected}>
-        {selected === 'data-source' ? <DataSourceDetail /> : <CategoryDetail category={selected} />}
+        {selected === 'data-source'
+          ? <DataSourceDetail />
+          : selected === 'study-views'
+            ? <StudyViewsDetail />
+            : <CategoryDetail category={selected} />}
       </div>
     </div>
   );
