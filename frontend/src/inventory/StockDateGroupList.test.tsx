@@ -28,6 +28,10 @@ const rows: StockDate[] = [
 describe('StockDateGroupList', () => {
   it('renders the header summary (groups count and dates count)', () => {
     render(<StockDateGroupList rows={rows} selectedCode={null} onSelect={() => {}} />);
+    const root = screen.getByTestId('stock-date-group-list-root');
+    expect(root).not.toHaveClass('bg-bg-card');
+    expect(root).not.toHaveClass('border');
+    expect(root).not.toHaveClass('rounded-lg');
     expect(screen.getByText(/종목 3개/)).toBeTruthy();
     expect(screen.getByText(/캡처 4건/)).toBeTruthy();
   });

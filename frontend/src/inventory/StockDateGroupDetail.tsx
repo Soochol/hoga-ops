@@ -45,7 +45,7 @@ export function StockDateGroupDetail({ group }: Props) {
 
   if (group === null) {
     return (
-      <section className="p-md text-fg-dim">
+      <section data-testid="stock-date-group-detail-root" className="p-md text-fg-dim">
         종목을 선택하세요
       </section>
     );
@@ -74,7 +74,10 @@ export function StockDateGroupDetail({ group }: Props) {
   const handleRecaptureAll = () => recapture(group.code, recapturableDates);
 
   return (
-    <section className="flex h-full flex-col min-h-0 overflow-hidden">
+    <section
+      data-testid="stock-date-group-detail-root"
+      className="flex h-full flex-col min-h-0 overflow-hidden"
+    >
       <header className="px-4 py-3 border-b flex items-baseline justify-between gap-4">
         <h2 className="text-md font-semibold shrink-0">
           <span className="text-accent font-mono">{group.code}</span>{' '}

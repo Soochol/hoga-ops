@@ -16,7 +16,10 @@ export function StockDateGroupList({ rows, selectedCode, onSelect }: Props) {
   const isSearching = search.trim().length > 0;
 
   return (
-    <section className="flex h-full flex-col min-h-0 overflow-hidden">
+    <section
+      data-testid="stock-date-group-list-root"
+      className="flex h-full flex-col min-h-0 overflow-hidden"
+    >
       <header className="px-3 py-2 border-b text-xs uppercase tracking-wider text-fg-dimmer font-semibold">
         종목 {allGroupsCount}개 · 캡처 {rows.length}건
       </header>

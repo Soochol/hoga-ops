@@ -66,3 +66,31 @@ These were the minimal child edits needed because page-level primitives alone wo
 - Inspected `/live`, `/capture`, `/screener`, and `/settings` visually.
 - Confirmed no button text overflow at the current desktop width in the inspected routes.
 - `/inventory`, `/study`, and `/heatmap` were backend-limited in this environment and stayed on loading states, but those loading shells were updated to use the same route-level surfaces.
+
+## Review findings fixup
+
+- Strengthened `frontend/src/pages/Heatmap.test.tsx` so it now asserts the real route shell (`heatmap-page-primary`) carries the surfaced `bg-bg-card` + `border` classes and still renders `heatmap-board`.
+- Added stable child-root hooks to `frontend/src/inventory/StockDateGroupList.tsx` and `frontend/src/inventory/StockDateGroupDetail.tsx`, then extended their focused tests to assert those flattened roots do not regain `bg-bg-card`, `border`, or `rounded-lg`.
+- Kept the Inventory route test lightweight; the new child-root assertions are what now catch a future card-in-card regression in the actual list/detail implementations.
+
+## Fix verification
+
+- Requested test slice rerun:
+  - `cd frontend && npm test -- Capture.test.tsx Inventory.test.tsx StockDateGroupList.test.tsx StockDateGroupDetail.test.tsx Settings.test.tsx Screener.test.tsx Heatmap.test.tsx StudyPage.test.tsx --run`
+  - Result: `9 passed, 86 passed`
+- Requested build rerun:
+  - `cd frontend && npm run build`
+  - Result: success
+
+## Browser / DOM evidence (follow-up)
+
+- Re-ran route QA locally via Vite dev server at `http://127.0.0.1:4173/`.
+- `/heatmap`
+  - Browser snapshot reached the route and rendered the surfaced main-state message `히트맵을 불러오지 못했습니다.` inside `main`.
+  - Test DOM evidence now asserts `heatmap-page-primary` has `bg-bg-card` + `border`, and `heatmap-board` remains present when data loads.
+- `/inventory`
+  - Browser snapshot reached the route and rendered the surfaced main-state message `캡처된 데이터가 없습니다.` inside `main`.
+  - Focused child tests now assert `stock-date-group-list-root` and `stock-date-group-detail-root` stay flattened with no `bg-bg-card`, `border`, or `rounded-lg`.
+- `/settings`
+  - Browser snapshot confirmed the surfaced primary pane and its `앱 정보`, `Symbol Master`, and `로드맵` regions render together in `main`, with no obvious nested-card structure at the route level.
+- Backend/API errors were still present in this environment during browser QA, so route-state DOM evidence was captured from the surfaced error/empty shells plus the strengthened test assertions above.
