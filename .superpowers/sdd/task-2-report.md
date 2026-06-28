@@ -3,43 +3,34 @@ Task 2 report
 Status: DONE
 
 Summary:
-- Added `BrokerLateEntryEvent` to the API wire models and exposed `RangeBundle.broker_late_entries`.
-- Wired `/api/range` to accept `broker_late_entry_start_hhmm`, validate `900..1520`, and thread it into `build_range_bundle`.
-- Added `build_broker_late_entries_slice()` in `hoga/api/bundle.py` to query broker late-entry events and convert native HHMMSSmmm timestamps to Unix ms.
-- Updated range tests for the new field/validation and adjusted broker-series expectation to remove the API-level top-10 cap assumption.
-- Kept route-level test doubles in sync with the new range builder signature.
+- Added `DataSection` to `frontend/src/ui/DataSurface.tsx` as the new flat divider-based dense section primitive.
+- Updated `PanelCard` to use the quiet palette border token and the specified outer shadow.
+- Updated `WorkspaceHeader`, `WorkspaceToolbar`, and `IconToolbarButton` to the translucent command-row styling with blur and stronger input borders.
+- Extended primitive tests to lock the new `DataSection`, panel shadow, header/toolbar blur, and icon-button border contracts.
 
 TDD evidence:
 1. Red:
-   - `uv run --extra dev pytest tests/test_api_range.py::test_range_accepts_broker_late_entry_threshold_and_returns_field tests/test_api_range.py::test_range_rejects_invalid_broker_late_entry_threshold -q`
-   - Result: 2 failing tests (`broker_late_entries` missing, invalid threshold still returned 200).
+   - `cd frontend && npm test -- DataSurface.test.tsx --run`
+   - Result: failed because `DataSection` was undefined/not exported.
 2. Green:
-   - Same targeted command after implementation.
-   - Result: 2 passed.
-3. Full verification:
-   - `uv run --extra dev pytest tests/test_tables_brokers.py tests/test_api_brokers_series.py tests/test_api_range.py -q`
-   - Result: 42 passed.
+   - `cd frontend && npm test -- PageShell.test.tsx RailShell.test.tsx WorkspaceShell.test.tsx DataSurface.test.tsx --run`
+   - Result: `4 passed`, `20 passed`.
+3. Build verification:
+   - `cd frontend && npm run build`
+   - Result: Vite production build succeeded.
 
 Files changed:
-- `hoga/api/models.py`
-- `hoga/api/bundle.py`
-- `hoga/api/routes.py`
-- `tests/test_api_range.py`
-- `tests/test_api_brokers_series.py`
+- `frontend/src/ui/DataSurface.tsx`
+- `frontend/src/ui/DataSurface.test.tsx`
+- `frontend/src/ui/PageShell.tsx`
+- `frontend/src/ui/PageShell.test.tsx`
+- `frontend/src/ui/WorkspaceShell.tsx`
+- `frontend/src/ui/WorkspaceShell.test.tsx`
+
+Self-review:
+- Confirmed the brief’s explicit class contracts are present where required.
+- Confirmed existing exports are preserved and only `DataSection` was added.
+- Confirmed no feature pages or unrelated UI files were changed.
 
 Concerns:
-- None.
-
-## Task 2 Fix Report
-
-Summary:
-- Defaulted `/api/range` and `build_range_bundle()` to `broker_late_entry_start_hhmm=930`, so omitted params still flow through the broker late-entry slice while explicit invalid values still return 400.
-- Added a range route test that proves the omitted query param uses the default `930` path and still returns `broker_late_entries`.
-- Replaced the tautological broker-series length assertion with response shape, source, ordering, and timestamp checks.
-- Updated mocked range slice tests to stub `build_broker_late_entries_slice()` now that the default path is always active.
-
-Test command:
-- `uv run --extra dev pytest tests/test_tables_brokers.py tests/test_api_brokers_series.py tests/test_api_range.py -q`
-
-Test result:
-- Passed: `43 passed in 0.60s`
+- `RailShell.tsx` and `RailShell.test.tsx` already matched the brief, so they were verified but did not require edits.

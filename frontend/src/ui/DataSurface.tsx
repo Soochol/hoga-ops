@@ -6,6 +6,30 @@ import type {
   ReactNode,
 } from 'react';
 
+export function DataSection({
+  title,
+  children,
+  className = '',
+  contentClassName = '',
+}: {
+  title: ReactNode;
+  children: ReactNode;
+  className?: string;
+  contentClassName?: string;
+}) {
+  return (
+    <section
+      aria-label={typeof title === 'string' ? title : undefined}
+      className={`border-t border-border first:border-t-0 ${className}`.trim()}
+    >
+      <header className="border-b border-border px-3 py-2 text-xs font-semibold uppercase tracking-[0.08em] text-fg-dimmer">
+        {title}
+      </header>
+      <div className={contentClassName}>{children}</div>
+    </section>
+  );
+}
+
 type DataTableShellProps = {
   children: ReactNode;
   className?: string;

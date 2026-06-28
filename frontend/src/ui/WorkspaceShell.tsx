@@ -31,7 +31,7 @@ export function WorkspaceHeader({
   return (
     <header
       data-testid={testId}
-      className={`flex items-center gap-3 border-b border-border bg-bg-subtle px-3 ${className}`.trim()}
+      className={`flex items-center gap-3 border-b border-border bg-bg-subtle/80 px-3 backdrop-blur ${className}`.trim()}
       style={{ height: 'var(--h-live-header)' }}
     >
       {children}
@@ -51,7 +51,7 @@ export function WorkspaceToolbar({
   return (
     <div
       data-testid={testId}
-      className={`flex items-center gap-2 overflow-x-auto border-b border-border bg-bg-card px-3 ${className}`.trim()}
+      className={`flex items-center gap-2 overflow-x-auto border-b border-border bg-bg-card/80 px-3 backdrop-blur ${className}`.trim()}
       style={{ height: 'var(--h-toolbar)' }}
     >
       {children}
@@ -71,7 +71,7 @@ export function IconToolbarButton({
     <button
       type="button"
       {...props}
-      className={`inline-flex items-center gap-1 rounded border border-border bg-bg-input px-2 py-1 text-xs text-fg-dim transition-opacity hover:text-fg hover:opacity-90 disabled:opacity-50 ${className}`.trim()}
+      className={`inline-flex items-center gap-1 rounded-md border border-border-strong bg-bg-input px-2 py-1 text-xs text-fg-dim transition-colors hover:bg-bg-input-hover hover:text-fg disabled:opacity-50 ${className}`.trim()}
     >
       {icon}
       {children}

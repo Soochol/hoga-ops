@@ -27,8 +27,10 @@ describe('WorkspaceShell primitives', () => {
       </>,
     );
     expect(screen.getByTestId('header')).toHaveClass('border-b');
+    expect(screen.getByTestId('header')).toHaveClass('backdrop-blur');
     expect(screen.getByTestId('header')).toHaveStyle({ height: 'var(--h-live-header)' });
     expect(screen.getByTestId('toolbar')).toHaveClass('border-b');
+    expect(screen.getByTestId('toolbar')).toHaveClass('backdrop-blur');
     expect(screen.getByTestId('toolbar')).toHaveClass('overflow-x-auto');
     expect(screen.getByTestId('toolbar')).toHaveStyle({ height: 'var(--h-toolbar)' });
   });
@@ -37,6 +39,7 @@ describe('WorkspaceShell primitives', () => {
     render(<IconToolbarButton aria-label="설정">설정</IconToolbarButton>);
     const button = screen.getByRole('button', { name: '설정' });
     expect(button).toHaveClass('bg-bg-input');
+    expect(button).toHaveClass('border-border-strong');
     expect(button).toHaveClass('text-fg-dim');
   });
 

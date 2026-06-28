@@ -1,6 +1,7 @@
 import { render, screen } from '@testing-library/react';
 import { describe, expect, it } from 'vitest';
 import {
+  DataSection,
   DataTableHeader,
   DataTableRow,
   DataTableShell,
@@ -11,6 +12,16 @@ import {
 } from './DataSurface';
 
 describe('DataSurface primitives', () => {
+  it('renders flat data sections without nested card chrome', () => {
+    render(<DataSection title="10호가">rows</DataSection>);
+
+    const section = screen.getByRole('region', { name: '10호가' });
+    expect(section).toHaveClass('border-t');
+    expect(section).not.toHaveClass('rounded-lg');
+    expect(section).not.toHaveClass('bg-bg-card');
+    expect(screen.getByText('10호가')).toHaveClass('uppercase');
+  });
+
   it('renders token-backed data table shell, header, and rows', () => {
     render(
       <DataTableShell minWidth="640px">
