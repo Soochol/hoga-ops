@@ -11,6 +11,7 @@ import { StalenessChip } from '../screener/StalenessChip';
 import { useSavedScreenerEditor } from '../screener/useSavedScreenerEditor';
 import { useScreenerRowsLive } from '../screener/useScreenerRowsLive';
 import { ModalShell } from '../ui/ModalShell';
+import { ControlBar, ToolbarButton } from '../ui/PageShell';
 import { ScreenerResultSortControl } from '../screener/ScreenerResultSortControl';
 import { sortScreenerRows, type ScreenerResultSortMode } from '../screener/sortResults';
 import type { ScanBasis } from '../api/screener';
@@ -99,7 +100,7 @@ export function Screener() {
     <PageContainer className="grid gap-md min-h-0"
       style={{ gridTemplateColumns: '236px 336px minmax(0, 1fr)', gridTemplateRows: 'auto 1fr' }}>
       {/* Title-less control bar spanning all panes (DESIGN.md page shell). */}
-      <div className="col-span-3 min-w-0 flex items-center gap-md bg-bg-card border rounded-lg px-md py-sm">
+      <ControlBar className="col-span-3 bg-bg-card border rounded-lg px-md py-sm">
         <div className="min-w-0">
           <div className="flex items-center gap-2">
             <span className="font-semibold text-fg truncate">{currentTitle}</span>
@@ -108,14 +109,12 @@ export function Screener() {
           </div>
           {editor.saveError && <div className="text-xs" style={{ color: 'var(--error)' }}>저장 실패: {editor.saveError.message}</div>}
         </div>
-        <button type="button" onClick={saveCurrent} disabled={editor.isSaving}
-          className="px-3 py-[7px] rounded-lg bg-bg-input border text-fg text-sm hover:bg-bg-input-hover disabled:opacity-50 disabled:cursor-not-allowed">
+        <ToolbarButton onClick={saveCurrent} disabled={editor.isSaving} className="text-fg">
           {editor.isSaving ? '저장 중…' : '저장'}
-        </button>
-        <button type="button" onClick={() => setSaveDialog('save-as')} disabled={editor.isSaving}
-          className="px-3 py-[7px] rounded-lg bg-bg-input border text-fg-dim text-sm hover:bg-bg-input-hover disabled:opacity-50 disabled:cursor-not-allowed">
+        </ToolbarButton>
+        <ToolbarButton onClick={() => setSaveDialog('save-as')} disabled={editor.isSaving}>
           다른 이름으로 저장
-        </button>
+        </ToolbarButton>
         <div className="inline-flex rounded-lg border border-border bg-bg-input overflow-hidden" role="group" aria-label="스크리너 기준">
           {(['intraday', 'eod'] as const).map((value) => (
             <button
@@ -128,15 +127,14 @@ export function Screener() {
             </button>
           ))}
         </div>
-        <button type="button" onClick={runScan} disabled={screener.isPending || notSeeded}
-          className="px-lg py-sm rounded-lg bg-accent text-accent-fg font-semibold text-base hover:brightness-110 disabled:opacity-50 disabled:cursor-not-allowed">
+        <ToolbarButton tone="primary" onClick={runScan} disabled={screener.isPending || notSeeded}
+          className="px-lg py-sm text-base">
           {screener.isPending ? '조회 중…' : '조회'}
-        </button>
+        </ToolbarButton>
         {!notSeeded && (
-          <button type="button" aria-label="데이터 갱신" onClick={() => update.mutate()} disabled={update.isPending}
-            className="px-3 py-[7px] rounded-lg bg-bg-input border text-fg-dim text-sm hover:bg-bg-input-hover disabled:opacity-50 disabled:cursor-not-allowed">
+          <ToolbarButton aria-label="데이터 갱신" onClick={() => update.mutate()} disabled={update.isPending}>
             {update.isPending ? '갱신 중…' : '갱신'}
-          </button>
+          </ToolbarButton>
         )}
         {update.isError && (
           <span className="text-sm" style={{ color: 'var(--error)' }}>갱신 실패</span>
@@ -151,7 +149,7 @@ export function Screener() {
           </span>
         )}
         <StalenessChip status={status} />
-      </div>
+      </ControlBar>
 
       <div className="min-w-0 min-h-0">
         <SavedScreenerList anchorId={editor.anchorId} dirty={editor.dirty}

@@ -80,6 +80,12 @@ it('조회 결과 액션에는 관심 그룹 하트만 표시한다', async () =
   expect(within(row).queryByRole('button', { name: '캡처 페이지 열기' })).not.toBeInTheDocument();
 });
 
+it('renders shared top action buttons without changing the screener workflow', async () => {
+  renderPage();
+  expect(await screen.findByRole('button', { name: '조회' })).toBeInTheDocument();
+  expect(screen.getByRole('button', { name: '저장' })).toHaveClass('bg-bg-input');
+});
+
 it('runs scan and renders row; click sets the active tab code', async () => {
   renderPage();
   fireEvent.click(screen.getByText('조회'));
