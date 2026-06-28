@@ -3,6 +3,7 @@ import { render, screen, cleanup, fireEvent, waitFor } from '@testing-library/re
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import LiveSettingsSections from './LiveSettingsSections';
 import { useLiveVenueStore } from '../state/liveVenue';
+import { useStudyViewOpenPrefsStore } from '../state/studyViewOpenPrefs';
 import * as liveSettingsApi from '../api/liveSettings';
 import * as apiClient from '../api/client';
 
@@ -17,12 +18,14 @@ describe('LiveSettingsSections (2단 nav+detail)', () => {
     vi.restoreAllMocks();
     localStorage.clear();
     useLiveVenueStore.setState({ venue: 'KRX' });
+    useStudyViewOpenPrefsStore.setState({ defaultTimeframe: '3m' });
   });
 
-  it('카테고리 nav를 렌더 (차트·데이터소스만 — 보조지표·총잔량 급증은 지표 모달로 이동)', () => {
+  it('카테고리 nav를 렌더 (차트·데이터소스·저장뷰 — 보조지표·총잔량 급증은 지표 모달로 이동)', () => {
     render(<LiveSettingsSections />);
     expect(screen.getByTestId('settings-nav-chart')).toBeTruthy();
     expect(screen.getByTestId('settings-nav-data-source')).toBeTruthy();
+    expect(screen.getByTestId('settings-nav-study-views')).toBeTruthy();
     expect(screen.queryByTestId('settings-nav-indicators')).toBeNull();
     expect(screen.queryByTestId('settings-nav-surge')).toBeNull();
   });
@@ -167,5 +170,20 @@ describe('LiveSettingsSections (2단 nav+detail)', () => {
     fireEvent.click(screen.getByTestId('settings-nav-data-source'));
 
     expect(await screen.findByRole('switch', { name: '프로그램 순매수 저장' })).toBeDisabled();
+  });
+
+  it('저장뷰 상세에서 사이드 메뉴 기본 분봉을 선택한다', () => {
+    render(<LiveSettingsSections />);
+    fireEvent.click(screen.getByTestId('settings-nav-study-views'));
+
+    expect(screen.getByRole('radio', { name: '저장된 분봉' })).toBeInTheDocument();
+    expect(screen.getByRole('radio', { name: '3분' })).toBeChecked();
+    fireEvent.click(screen.getByRole('radio', { name: '5분' }));
+
+    expect(useStudyViewOpenPrefsStore.getState().defaultTimeframe).toBe('5m');
+    expect(localStorage.getItem('studyView.openPrefs.v1')).toContain('5m');
+
+    fireEvent.click(screen.getByRole('radio', { name: '저장된 분봉' }));
+    expect(useStudyViewOpenPrefsStore.getState().defaultTimeframe).toBe('saved');
   });
 });

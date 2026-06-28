@@ -1,4 +1,4 @@
-import { useRef, useState } from 'react';
+import { useRef, useState, type DragEvent } from 'react';
 import type { ConditionLeaf, ConditionType, ScreenerUniverse } from '../api/screener';
 import { CONDITION_CATALOG, makeLeaf } from './catalog';
 import { ConditionRow } from './ConditionRow';
@@ -12,6 +12,7 @@ export function ConditionBuilder({ conditions, universe, onConditionsChange, onU
 }) {
   const [menuOpen, setMenuOpen] = useState(false);
   const [anchorRect, setAnchorRect] = useState<DOMRect | null>(null);
+  const [draggingId, setDraggingId] = useState<string | null>(null);
   const wrapRef = useRef<HTMLDivElement>(null);
   const btnRef = useRef<HTMLButtonElement>(null);
   // Outside-mousedown / Escape dismissal for the add-condition menu only.
@@ -30,6 +31,26 @@ export function ConditionBuilder({ conditions, universe, onConditionsChange, onU
   const add = (t: ConditionType) => { onConditionsChange([...conditions, makeLeaf(t)]); setMenuOpen(false); };
   const replace = (id: string, next: ConditionLeaf) => onConditionsChange(conditions.map((c) => c.id === id ? next : c));
   const remove = (id: string) => onConditionsChange(conditions.filter((c) => c.id !== id));
+  const moveTo = (targetId: string) => {
+    if (!draggingId || draggingId === targetId) return;
+    const from = conditions.findIndex((c) => c.id === draggingId);
+    const to = conditions.findIndex((c) => c.id === targetId);
+    if (from < 0 || to < 0) return;
+    const next = [...conditions];
+    const [moved] = next.splice(from, 1);
+    next.splice(to, 0, moved);
+    onConditionsChange(next);
+    setDraggingId(null);
+  };
+  const handleDragStart = (id: string, event: DragEvent<HTMLButtonElement>) => {
+    setDraggingId(id);
+    event.dataTransfer?.setData('text/plain', id);
+    if (event.dataTransfer) event.dataTransfer.effectAllowed = 'move';
+  };
+  const handleDragOver = (event: DragEvent<HTMLDivElement>) => {
+    event.preventDefault();
+    if (event.dataTransfer) event.dataTransfer.dropEffect = 'move';
+  };
 
   const grouped: Array<[string, ConditionType[]]> = [
     ['가격', ['price_range']],
@@ -74,7 +95,15 @@ export function ConditionBuilder({ conditions, universe, onConditionsChange, onU
         <div className="text-[10px] tracking-[0.06em] text-fg-dimmer text-center">모두 충족 · AND</div>
       )}
       {conditions.map((leaf) => (
-        <ConditionRow key={leaf.id} leaf={leaf} onChange={(n) => replace(leaf.id, n)} onRemove={() => remove(leaf.id)} />
+        <ConditionRow key={leaf.id} leaf={leaf}
+          draggable={conditions.length > 1}
+          dragging={draggingId === leaf.id}
+          onDragStart={(event) => handleDragStart(leaf.id, event)}
+          onDragOver={handleDragOver}
+          onDrop={() => moveTo(leaf.id)}
+          onDragEnd={() => setDraggingId(null)}
+          onChange={(n) => replace(leaf.id, n)}
+          onRemove={() => remove(leaf.id)} />
       ))}
     </div>
   );

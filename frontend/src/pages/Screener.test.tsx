@@ -197,6 +197,33 @@ it('sorts by overlayed live change_pct when present', async () => {
   ]);
 });
 
+it('sorts full-page screener results by clicking table headers', async () => {
+  renderPage();
+  fireEvent.click(screen.getByRole('button', { name: '조회' }));
+  await screen.findByText('삼성전자');
+
+  fireEvent.click(screen.getByRole('button', { name: '현재가 정렬' }));
+  expect(resultNames()).toEqual([
+    '삼성전자 005930 호가창 열기',
+    'SK하이닉스 000660 호가창 열기',
+    'NAVER 035420 호가창 열기',
+  ]);
+
+  fireEvent.click(screen.getByRole('button', { name: '현재가 정렬' }));
+  expect(resultNames()).toEqual([
+    'NAVER 035420 호가창 열기',
+    'SK하이닉스 000660 호가창 열기',
+    '삼성전자 005930 호가창 열기',
+  ]);
+
+  fireEvent.click(screen.getByRole('button', { name: '코드 정렬' }));
+  expect(resultNames()).toEqual([
+    'SK하이닉스 000660 호가창 열기',
+    '삼성전자 005930 호가창 열기',
+    'NAVER 035420 호가창 열기',
+  ]);
+});
+
 it('keeps the full-page sort control disabled for empty scan results', async () => {
   vi.mocked(runScan).mockResolvedValueOnce({ status: 'ok', warnings: [], rows: [] });
 

@@ -15,6 +15,7 @@ import { CSS } from '@dnd-kit/utilities';
 import type { StudyViewListRow } from '../api/studyViews';
 import { dropPoint, isPointOnStudy, useEntryDragStore } from '../state/entryDrag';
 import { useStudyTabsStore } from '../state/studyTabs';
+import { useStudyViewOpenPrefsStore } from '../state/studyViewOpenPrefs';
 import { useCurrentStudySaveSource } from './studySaveSource';
 import { makeStudySaveCommand, studySaveCommandBody, type StudySaveCommand } from './studySaveCommand';
 import { StudyViewSaveDialog } from './StudyViewSaveDialog';
@@ -204,6 +205,7 @@ export function StudyViewsDrawer() {
   const startEntryDrag = useEntryDragStore((s) => s.startDrag);
   const setOverStudy = useEntryDragStore((s) => s.setOverStudy);
   const endEntryDrag = useEntryDragStore((s) => s.endDrag);
+  const defaultOpenTimeframe = useStudyViewOpenPrefsStore((s) => s.defaultTimeframe);
 
   useEffect(() => () => {
     if (navigateClickTimerRef.current === null) return;
@@ -276,11 +278,17 @@ export function StudyViewsDrawer() {
   }
 
   function openSaveInActiveTab(row: StudyViewListRow) {
-    useStudyTabsStore.getState().openSaveInActiveTab(row);
+    useStudyTabsStore.getState().openSaveInActiveTab(
+      row,
+      defaultOpenTimeframe === 'saved' ? undefined : { timeframeOverride: defaultOpenTimeframe },
+    );
   }
 
   function openSaveInNewTab(row: StudyViewListRow) {
-    useStudyTabsStore.getState().openSaveInNewTab(row);
+    useStudyTabsStore.getState().openSaveInNewTab(
+      row,
+      defaultOpenTimeframe === 'saved' ? undefined : { timeframeOverride: defaultOpenTimeframe },
+    );
   }
 
   function openStudyViewInActiveTab(row: StudyViewListRow) {
