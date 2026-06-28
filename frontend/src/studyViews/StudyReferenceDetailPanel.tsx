@@ -99,7 +99,7 @@ export function StudyReferenceDetailPanel({ save, bundle, isCursorActive }: Prop
   return (
     <div
       data-testid="study-reference-detail-cards"
-      className="grid min-h-full bg-bg-card"
+      className="grid min-h-full content-start gap-2 bg-bg-subtle/40 p-2"
       style={{ gridTemplateRows: 'auto auto auto auto' }}
     >
       <StudyDetailSection label="10호가" testId="orderbook">
@@ -137,7 +137,7 @@ function StudyDetailSection({ label, testId, children }: SectionProps) {
   return (
     <div
       data-testid={`study-detail-card-${testId}`}
-      className="flex flex-col border-t border-border first:border-t-0"
+      className="flex flex-col rounded-md border border-border bg-bg-card"
     >
       <DataSection title={label} className="flex flex-1 flex-col border-t-0" contentClassName="flex-1">
         <div data-testid={`study-detail-content-${testId}`} className="flex-1">
