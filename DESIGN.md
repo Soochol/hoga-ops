@@ -69,24 +69,24 @@ The design system has a **single density dial** at `:root font-size`.
 
   | Token | Hex | Use |
   |---|---|---|
-  | `--bg` | `#0E0E14` | App background |
-  | `--bg-card` | `#13131C` | Panes, cards, toolbars |
-  | `--bg-subtle` | `#0A0A12` | Nav, price strip, dropdown headers |
-  | `--bg-input` | `#1A1A26` | Inputs, comboboxes, default tab |
-  | `--bg-input-hover` | `#22222F` | Hover state |
-  | `--border` | `#1F1F2A` | Default borders, dividers |
-  | `--border-strong` | `#2A2A38` | Active borders, vertical dividers |
-  | `--fg` | `#E2E8F0` | Primary text |
-  | `--fg-dim` | `#94A3B8` | Secondary text, dim labels |
-  | `--fg-dimmer` | `#64748B` | Tertiary text, disabled |
-  | `--accent` | `#14B8A6` | Teal — UI states only (buttons, focus, crosshair, active tab, primary CTAs) |
+  | `--bg` | `#090B0F` | App background |
+  | `--bg-card` | `#10151B` | Panes, cards, toolbars |
+  | `--bg-subtle` | `#0B0F15` | Nav, price strip, dropdown headers |
+  | `--bg-input` | `#0C1117` | Inputs, comboboxes, default tab |
+  | `--bg-input-hover` | `#151B23` | Hover state |
+  | `--border` | `#1A2431` | Default borders, dividers |
+  | `--border-strong` | `#253040` | Active borders, vertical dividers |
+  | `--fg` | `#E6EDF5` | Primary text |
+  | `--fg-dim` | `#91A0B4` | Secondary text, dim labels |
+  | `--fg-dimmer` | `#59677A` | Tertiary text, disabled |
+  | `--accent` | `#2DD4BF` | Teal — UI states only (buttons, focus, crosshair, active tab, primary CTAs) |
   | `--success` | `#22C55E` | UI 상태 semantic — 캡처 완료, 양호 상태, 체크리스트 done |
   | `--error` | `#F43F5E` | UI 상태 semantic — 실패, 에러 메시지, 비정상 상태 |
   | `--price-up` | `#DC2626` | 시장 데이터 — 상승, 매수, KRX 빨강 컨벤션 |
   | `--price-down` | `#2563EB` | 시장 데이터 — 하락, 매도, KRX 파랑 컨벤션 |
-  | `--grid` | `#1A1A26` | Chart grid lines, table row borders |
-  | `--heat-lo` | `#0E1A1A` | Heatmap low intensity (depth intensity pane) |
-  | `--heat-hi` | `#14B8A6` | Heatmap high intensity (teal ramp) |
+  | `--grid` | `#17202B` | Chart grid lines, table row borders |
+  | `--heat-lo` | `#0B1518` | Heatmap low intensity (depth intensity pane) |
+  | `--heat-hi` | `#2DD4BF` | Heatmap high intensity (teal ramp) |
 
 - **Discipline rule:** Three mutually-exclusive color categories.
   - **UI state** (teal `--accent`): buttons, focus rings, active tabs, crosshair, primary CTAs. Never for data.
@@ -95,7 +95,7 @@ The design system has a **single density dial** at `:root font-size`.
   - This three-way separation prevents the "is this red because it failed, or because it's up?" ambiguity.
 
 - **Tint backgrounds (alpha-tinted chip / hover):**
-  - Selection tint: `rgba(20,184,166,0.12)` — active nav, active tab, primary hover
+  - Selection tint: `rgba(45,212,191,0.12)` — active nav, active tab, primary hover
   - Success tint: `rgba(34,197,94,0.10)` — completion chip background
   - Error tint: `rgba(244,63,94,0.10)` — error chip background
   - Success border: `rgba(34,197,94,0.30)` — `--tint-success-border` (banner/chip borders)

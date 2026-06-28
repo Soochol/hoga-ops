@@ -39,7 +39,7 @@ body {
 * { scrollbar-width: thin; scrollbar-color: var(--border-strong) transparent; }
 
 /* /live concept: Quiet Trading Terminal.
-   Scoped to the LivePage root so other routes keep the current design system. */
+   Scoped to the LivePage root for live-only structural polish; palette comes from global tokens. */
 [data-live-theme='quiet-terminal'] {
   background:
     linear-gradient(180deg, rgba(21, 27, 35, 0.76), rgba(9, 11, 15, 0) 9rem),

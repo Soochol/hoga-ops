@@ -18,3 +18,11 @@ Self-review:
 - Scope stayed within the brief’s owned files.
 - Price and status tokens were left unchanged.
 - `/live` keeps only the background selector-level difference while inheriting the new global palette.
+
+Fixes for review findings:
+- Updated `DESIGN.md` to match the quiet global palette in `frontend/src/styles/tokens.css`, including the surface, border, foreground, accent, grid, heat, and selection tint values.
+- Clarified the `frontend/src/styles/global.css` live-theme comment so it now describes live-only structural polish rather than route-exclusive palette ownership.
+
+Verification after review fixes:
+- `cd frontend && npm test -- PageShell.test.tsx RailShell.test.tsx WorkspaceShell.test.tsx DataSurface.test.tsx --run`
+- `cd frontend && npm run build`
