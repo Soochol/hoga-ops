@@ -1,4 +1,5 @@
 import { useState } from 'react';
+import { createPortal } from 'react-dom';
 
 export function StudyViewSaveDialog({
   mode,
@@ -28,7 +29,7 @@ export function StudyViewSaveDialog({
   const valid = name.trim().length > 0;
   const title = mode === 'overwrite' ? '저장뷰 덮어쓰기' : '저장뷰 만들기';
 
-  return (
+  return createPortal(
     <div role="dialog" aria-modal="true" aria-label={title} className="fixed inset-0 z-50 grid place-items-center bg-black/40">
       <form
         className="w-[360px] max-w-[calc(100vw-24px)] space-y-3 rounded border bg-bg p-4 shadow-lg"
@@ -75,6 +76,7 @@ export function StudyViewSaveDialog({
           </button>
         </div>
       </form>
-    </div>
+    </div>,
+    document.body,
   );
 }

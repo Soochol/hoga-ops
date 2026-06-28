@@ -24,6 +24,22 @@ it('shows snapshot summary and submits edited name and memo', async () => {
   expect(onSubmit).toHaveBeenCalledWith({ name: '내 저장뷰', memo: '중요' });
 });
 
+it('renders in a body portal so workspace layers cannot cover it', () => {
+  render(
+    <StudyViewSaveDialog
+      mode="create"
+      defaultName="삼성전자 5분봉 2026.06.16"
+      defaultMemo=""
+      barCount={220}
+      sizeBytes={12000}
+      onCancel={() => {}}
+      onSubmit={() => {}}
+    />,
+  );
+
+  expect(screen.getByRole('dialog', { name: '저장뷰 만들기' }).parentElement).toBe(document.body);
+});
+
 it('requires confirmation wording for overwrite mode', () => {
   const onSubmit = vi.fn();
   render(
