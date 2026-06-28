@@ -71,6 +71,13 @@ describe('LiveSymbolSearch', () => {
     expect(document.activeElement).toBe(input);
   });
 
+  it('renders the search popover in a body portal so app shells cannot clip it', () => {
+    renderSearch();
+    fireEvent.keyDown(window, { key: '/' });
+
+    expect(screen.getByRole('dialog', { name: '종목 검색' }).parentElement).toBe(document.body);
+  });
+
   it('selecting a result sets activeCode', () => {
     renderSearch();
     const input = openSearchPopover();

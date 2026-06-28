@@ -1,4 +1,5 @@
 import { useCallback, useRef, useState } from 'react';
+import { createPortal } from 'react-dom';
 import {
   CALENDAR_TIMEFRAMES,
   MINUTE_TIMEFRAMES,
@@ -41,13 +42,8 @@ export function TimeframeControl({ timeframe, rememberedMinute, onChange }: Prop
   );
 
   const onMinuteSelectorClick = () => {
-    if (isMinuteTimeframe(timeframe)) {
-      setAnchorRect(minuteButtonRef.current?.getBoundingClientRect() ?? null);
-      setMinuteMenuOpen((open) => !open);
-      return;
-    }
-    setMinuteMenuOpen(false);
-    onChange(rememberedMinute);
+    setAnchorRect(minuteButtonRef.current?.getBoundingClientRect() ?? null);
+    setMinuteMenuOpen((open) => !open);
   };
 
   const pickMinute = (next: MinuteTimeframe) => {
@@ -60,9 +56,38 @@ export function TimeframeControl({ timeframe, rememberedMinute, onChange }: Prop
     onChange(next);
   };
 
-  const minuteButtonLabel = isMinuteTimeframe(timeframe)
-    ? `분봉 선택 열기: ${minuteLabel(displayedMinute)}`
-    : `${minuteLabel(rememberedMinute)}봉으로 전환`;
+  const minuteButtonLabel = `분봉 선택 열기: ${minuteLabel(displayedMinute)}`;
+  const minuteMenu = minuteMenuOpen && anchorRect ? (
+    <div
+      ref={menuPositionRef}
+      role="menu"
+      aria-label="분봉 목록"
+      onMouseDown={(event) => event.stopPropagation()}
+      className="w-24 bg-bg-card border border-border rounded shadow-lg z-50 py-1"
+      style={{ position: 'fixed', left, top }}
+    >
+      {MINUTE_TIMEFRAMES.map((minute) => {
+        const selected = displayedMinute === minute;
+        return (
+          <button
+            key={minute}
+            type="button"
+            role="menuitemradio"
+            aria-checked={selected}
+            onClick={() => pickMinute(minute)}
+            className={
+              (selected
+                ? 'bg-bg-input-hover text-accent'
+                : 'text-fg-dim hover:text-fg hover:bg-bg-input-hover') +
+              ' w-full text-left px-3 py-1.5 text-sm font-mono'
+            }
+          >
+            {minuteLabel(minute)}
+          </button>
+        );
+      })}
+    </div>
+  ) : null;
 
   return (
     <div className="flex gap-1" role="group" aria-label="LiveTimeframe">
@@ -72,8 +97,8 @@ export function TimeframeControl({ timeframe, rememberedMinute, onChange }: Prop
           type="button"
           onClick={onMinuteSelectorClick}
           aria-label={minuteButtonLabel}
-          aria-haspopup={isMinuteTimeframe(timeframe) ? 'menu' : undefined}
-          aria-expanded={isMinuteTimeframe(timeframe) ? minuteMenuOpen : undefined}
+          aria-haspopup="menu"
+          aria-expanded={minuteMenuOpen}
           className="inline-flex min-h-6 items-center gap-1 rounded-[7px] border font-mono text-xs transition-colors hover:bg-bg-input-hover hover:text-fg"
           style={{
             padding: '4px 10px',
@@ -85,36 +110,7 @@ export function TimeframeControl({ timeframe, rememberedMinute, onChange }: Prop
           <span>{minuteLabel(displayedMinute)}</span>
           <span aria-hidden="true">⌄</span>
         </button>
-        {minuteMenuOpen && anchorRect && (
-          <div
-            ref={menuPositionRef}
-            role="menu"
-            aria-label="분봉 목록"
-            className="w-24 bg-bg-card border border-border rounded shadow-lg z-30 py-1"
-            style={{ position: 'fixed', left, top }}
-          >
-            {MINUTE_TIMEFRAMES.map((minute) => {
-              const selected = timeframe === minute;
-              return (
-                <button
-                  key={minute}
-                  type="button"
-                  role="menuitemradio"
-                  aria-checked={selected}
-                  onClick={() => pickMinute(minute)}
-                  className={
-                    (selected
-                      ? 'bg-bg-input-hover text-accent'
-                      : 'text-fg-dim hover:text-fg hover:bg-bg-input-hover') +
-                    ' w-full text-left px-3 py-1.5 text-sm font-mono'
-                  }
-                >
-                  {minuteLabel(minute)}
-                </button>
-              );
-            })}
-          </div>
-        )}
+        {minuteMenu && createPortal(minuteMenu, document.body)}
       </div>
       {CALENDAR_TIMEFRAMES.map((calendar) => {
         const active = timeframe === calendar;
