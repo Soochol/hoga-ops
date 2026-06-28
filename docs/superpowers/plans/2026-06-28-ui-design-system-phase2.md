@@ -101,15 +101,15 @@ git commit -m "refactor: reuse data surfaces in screener"
 - Consumes: Task 1 primitives.
 - Produces: Same inventory selection, capture enqueue, queue empty/loading/banner behavior.
 
-- [ ] **Step 1: Preserve tests**
+- [x] **Step 1: Preserve tests**
 
 Run targeted tests before and after each area.
 
-- [ ] **Step 2: Replace repeated list/form/state classes**
+- [x] **Step 2: Replace repeated list/form/state classes**
 
 Use `ListRow` for selectable inventory rows, `FormField` for capture labels, `EmptyState` for queue-empty, and `InlineState` for capture/queue alerts.
 
-- [ ] **Step 3: Verify**
+- [x] **Step 3: Verify**
 
 Run: `cd frontend && npm run test -- --run src/inventory/StockDateGroupListItem.test.tsx src/capture/Capture.test.tsx src/capture/CaptureQueue.test.tsx`
 Expected: PASS, adjusting command if file names differ.
