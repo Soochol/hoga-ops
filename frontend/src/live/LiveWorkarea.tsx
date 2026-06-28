@@ -405,7 +405,7 @@ export function LiveWorkarea({
                 data-testid="live-workarea-splitter"
                 onPointerDown={beginWidthResize}
                 style={{
-                  width: 8,
+                  width: LIVE_WORKAREA_SPLITTER_WIDTH_PX,
                   cursor: 'col-resize',
                   display: 'grid',
                   placeItems: 'center',
