@@ -28,31 +28,10 @@ import {
   setCurrentStudySaveSource,
   type ReferenceStudySaveSource,
 } from './studySaveSource';
+import { DropOverlay, IconToolbarButton, WorkspaceHeader, WorkspaceRoot, WorkspaceState } from '../ui/WorkspaceShell';
 
 function StudyDropOverlay() {
-  return (
-    <div
-      aria-hidden
-      className="absolute inset-0 z-20 flex items-center justify-center"
-      style={{
-        pointerEvents: 'none',
-        background: 'var(--tint-selection)',
-        border: '2px dashed var(--accent)',
-      }}
-    >
-      <span
-        className="rounded-md font-ui text-sm font-semibold"
-        style={{
-          padding: 'var(--space-sm) var(--space-md)',
-          background: 'var(--accent)',
-          color: 'var(--accent-fg)',
-          boxShadow: '0 8px 24px rgba(0,0,0,0.4)',
-        }}
-      >
-        여기에 놓아 학습뷰 열기
-      </span>
-    </div>
-  );
+  return <DropOverlay>여기에 놓아 학습뷰 열기</DropOverlay>;
 }
 
 export function StudyPage() {
@@ -309,40 +288,38 @@ export function StudyPage() {
 
   if (!activeViewId) {
     return (
-      <section data-testid="study-page-empty" className="h-full min-w-0 bg-[var(--bg)] text-[var(--fg)]">
-        <div ref={studyDropTargetRef} data-testid="study-drop-target" className="relative h-full">
-          <div className="flex h-full items-center justify-center text-sm text-[var(--fg-dimmer)]">
-            저장된 학습뷰를 선택하세요.
-          </div>
-          {draggingEntry && overStudy && <StudyDropOverlay />}
-        </div>
-      </section>
+      <WorkspaceState
+        testId="study-page-empty"
+        dropTargetRef={studyDropTargetRef}
+        showDropOverlay={draggingEntry && overStudy}
+      >
+        저장된 학습뷰를 선택하세요.
+      </WorkspaceState>
     );
   }
 
   if (isStudyPageLoading && !selectedSave && tabs.length === 0) {
     return (
-      <section data-testid="study-page-loading" className="h-full min-w-0 bg-[var(--bg)] text-[var(--fg)]">
-        <div ref={studyDropTargetRef} data-testid="study-drop-target" className="relative h-full">
-          <div className="flex h-full items-center justify-center text-sm text-[var(--fg-dimmer)]">
-            학습뷰 불러오는 중...
-          </div>
-          {draggingEntry && overStudy && <StudyDropOverlay />}
-        </div>
-      </section>
+      <WorkspaceState
+        testId="study-page-loading"
+        dropTargetRef={studyDropTargetRef}
+        showDropOverlay={draggingEntry && overStudy}
+      >
+        학습뷰 불러오는 중...
+      </WorkspaceState>
     );
   }
 
   if ((!selectedSave && !isStudyPageLoading) || isErrorActiveView) {
     return (
-      <section data-testid="study-page-error" className="h-full min-w-0 bg-[var(--bg)] text-[var(--fg)]">
-        <div ref={studyDropTargetRef} data-testid="study-drop-target" className="relative h-full">
-          <div className="flex h-full items-center justify-center text-sm text-[var(--fg-dimmer)]">
-            학습뷰를 찾을 수 없습니다.
-          </div>
-          {draggingEntry && overStudy && <StudyDropOverlay />}
-        </div>
-      </section>
+      <WorkspaceState
+        testId="study-page-error"
+        tone="error"
+        dropTargetRef={studyDropTargetRef}
+        showDropOverlay={draggingEntry && overStudy}
+      >
+        학습뷰를 찾을 수 없습니다.
+      </WorkspaceState>
     );
   }
 
@@ -361,7 +338,7 @@ export function StudyPage() {
       : null;
 
   return (
-    <section data-testid="study-page" className="grid h-full min-w-0 grid-rows-[auto_auto_minmax(0,1fr)] bg-[var(--bg)] text-[var(--fg)]">
+    <WorkspaceRoot testId="study-page" className="grid grid-rows-[auto_auto_minmax(0,1fr)]">
       {tabs.length > 0 && (
         <div className="min-w-0 border-b border-[var(--border)]">
           <StudyTabBar
@@ -376,7 +353,7 @@ export function StudyPage() {
           />
         </div>
       )}
-      <header className="flex min-h-12 items-center justify-between gap-3 border-b border-[var(--border)] px-4">
+      <WorkspaceHeader className="min-h-12 justify-between px-4">
         <div className="min-w-0">
           <div className="truncate text-sm font-semibold">{headerLabel}</div>
           <div className="text-xs text-[var(--fg-dimmer)]">
@@ -395,15 +372,11 @@ export function StudyPage() {
             onOpenIndicators={() => setIndicatorPanelOpen(true)}
             onOpenSettings={() => setSettingsOpen(true)}
           />
-          <button
-            type="button"
-            onClick={() => setIsMemoOpen((value) => !value)}
-            className="shrink-0 rounded border border-border bg-bg-input px-2 py-1 text-xs text-fg-dim hover:bg-bg-input-hover hover:text-fg"
-          >
+          <IconToolbarButton onClick={() => setIsMemoOpen((value) => !value)} className="shrink-0">
             메모
-          </button>
+          </IconToolbarButton>
         </div>
-      </header>
+      </WorkspaceHeader>
       <div
         ref={studyDropTargetRef}
         data-testid="study-drop-target"
@@ -470,7 +443,7 @@ export function StudyPage() {
       {settingsOpen && (
         <LiveSettingsModal onClose={() => setSettingsOpen(false)} />
       )}
-    </section>
+    </WorkspaceRoot>
   );
 }
 
