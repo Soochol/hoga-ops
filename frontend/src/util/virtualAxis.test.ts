@@ -374,6 +374,32 @@ describe('createVirtualAxis — real-anchored origin (originMs)', () => {
   });
 });
 
+describe('createVirtualAxis — calendar mode', () => {
+  const ORIGIN = DAY1_OPEN;
+  const axis = createVirtualAxis(RAW_3, ORIGIN, { mode: 'calendar' });
+
+  it('places each calendar segment on one contiguous logical step', () => {
+    expect(axis.segments[0].virtualStart).toBe(ORIGIN);
+    expect(axis.segments[1].virtualStart).toBe(ORIGIN + GAP_MS);
+    expect(axis.segments[2].virtualStart).toBe(ORIGIN + 2 * GAP_MS);
+    expect(axis.toVirtual(DAY1_OPEN)).toBe(ORIGIN);
+    expect(axis.toVirtual(DAY2_OPEN)).toBe(ORIGIN + GAP_MS);
+    expect(axis.toVirtual(DAY3_OPEN)).toBe(ORIGIN + 2 * GAP_MS);
+  });
+
+  it('maps each calendar point back to its real session open for labels and tooltips', () => {
+    expect(axis.toReal(ORIGIN)).toBe(DAY1_OPEN);
+    expect(axis.toReal(ORIGIN + GAP_MS)).toBe(DAY2_OPEN);
+    expect(axis.toReal(ORIGIN + 2 * GAP_MS)).toBe(DAY3_OPEN);
+  });
+
+  it('keeps real-session predicates based on the source segment bounds', () => {
+    expect(axis.contains(DAY1_OPEN + 60_000)).toBe(true);
+    expect(axis.inClosingAuctionWindow(DAY1_CLOSE)).toBe(true);
+    expect(axis.isInGap(DAY1_CLOSE + 1)).toBe(true);
+  });
+});
+
 describe('classifyAndProject == contains+inAuction+toVirtual', () => {
   const DAY = 24 * 60 * 60 * 1000;
   const FULL = 6.5 * 60 * 60 * 1000;

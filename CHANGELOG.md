@@ -3,6 +3,11 @@
 All notable changes to this project are documented here.
 The format follows a 4-digit `MAJOR.MINOR.PATCH.MICRO` scheme.
 
+## [0.12.12.0] - 2026-06-28
+
+### Fixed
+- **/study 일·주·월봉 캔들 표시 구조 개선**: 저장 학습뷰에서 일봉·주봉·월봉으로 전환할 때 거래일 간 실제 시간 공백을 화면 간격으로 쓰지 않고, `/live`처럼 각 봉을 연속된 calendar 구간으로 배치해 캔들 몸통이 비정상적으로 얇아지는 문제를 고쳤다.
+
 ## [0.12.11.0] - 2026-06-28
 
 ### Added

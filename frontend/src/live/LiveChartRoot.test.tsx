@@ -384,6 +384,44 @@ describe('LiveChartRoot', () => {
     return { ...TODAY_ONLY_BUNDLE, candles: makeCandles(n) };
   }
 
+  function kstDateFromMsForTest(ms: number): string {
+    const d = new Date(ms + 9 * 3600_000);
+    const yyyy = d.getUTCFullYear();
+    const mm = String(d.getUTCMonth() + 1).padStart(2, '0');
+    const dd = String(d.getUTCDate()).padStart(2, '0');
+    return `${yyyy}${mm}${dd}`;
+  }
+
+  function makeDailyCalendarBundle(n: number): RangeBundle {
+    const dayMs = 86_400_000;
+    const sessionLen = 6.5 * 3600_000;
+    const segments = Array.from({ length: n }, (_, i) => {
+      const open = TODAY_OPEN_MS + i * dayMs;
+      return {
+        date: kstDateFromMsForTest(open),
+        session_open_ms: open,
+        session_close_ms: open + sessionLen,
+        source: 'kis_live' as const,
+      };
+    });
+    const candles = segments.map((s) => ({
+      ts_ms: s.session_open_ms,
+      open: 100,
+      high: 101,
+      low: 99,
+      close: 100,
+      vol_a: 1,
+      vol_b: 0,
+    }));
+    return {
+      ...TODAY_ONLY_BUNDLE,
+      from_date: segments[0]?.date ?? TODAY_ONLY_BUNDLE.from_date,
+      to_date: segments[segments.length - 1]?.date ?? TODAY_ONLY_BUNDLE.to_date,
+      segments,
+      candles,
+    };
+  }
+
   function buildChartMockWithStableTS() {
     const ts = {
       subscribeVisibleTimeRangeChange: vi.fn(),
@@ -495,11 +533,67 @@ describe('LiveChartRoot', () => {
     expect(ts.setVisibleLogicalRange).toHaveBeenLastCalledWith({ from: 300, to: 479 });
   });
 
+  it('D timeframe: re-applies the daily window after an initially narrow time scale width', () => {
+    useLivePageStore.setState({ historicalFromDate: null });
+    const { chart, ts } = buildChartMockWithStableTS();
+    ts.width
+      .mockReturnValueOnce(24)
+      .mockReturnValue(800);
+    vi.mocked(createChartEx).mockImplementationOnce(() => chart as never);
+
+    const { rerender } = render(
+      <LiveChartRoot
+        code="005930"
+        timeframe="D"
+        bundle={makeBundleWithCandles(60)}
+        clampEngaged={false}
+        isPastCandlesLoading={false}
+      />,
+      { wrapper },
+    );
+
+    expect(ts.setVisibleLogicalRange).not.toHaveBeenCalled();
+
+    rerender(
+      <LiveChartRoot
+        code="005930"
+        timeframe="D"
+        bundle={makeBundleWithCandles(60)}
+        clampEngaged={false}
+        isPastCandlesLoading={false}
+      />,
+    );
+
+    expect(ts.setVisibleLogicalRange).toHaveBeenLastCalledWith({ from: 0, to: 75 });
+  });
+
+  it('D timeframe: keeps the daily viewport contiguous when raw segment dates are sparse', () => {
+    useLivePageStore.setState({ historicalFromDate: null });
+    const { chart, ts } = buildChartMockWithStableTS();
+    ts.timeToIndex
+      .mockReturnValueOnce(0)
+      .mockReturnValueOnce(649);
+    vi.mocked(createChartEx).mockImplementationOnce(() => chart as never);
+
+    render(
+      <LiveChartRoot
+        code="005930"
+        timeframe="D"
+        bundle={makeBundleWithCandles(60)}
+        clampEngaged={false}
+        isPastCandlesLoading={false}
+      />,
+      { wrapper },
+    );
+
+    expect(ts.setVisibleLogicalRange).toHaveBeenLastCalledWith({ from: 0, to: 75 });
+  });
+
   it('D timeframe: captures the actual live-edge viewport without daily clamping', () => {
     useLivePageStore.setState({ historicalFromDate: null });
     const { chart, ts } = buildChartMockWithStableTS();
-    const candles = makeCandles(250);
-    const last = candles[candles.length - 1];
+    const bundle = makeDailyCalendarBundle(250);
+    const last = bundle.candles[bundle.candles.length - 1];
     let capture: () => unknown = () => null;
     ts.getVisibleLogicalRange.mockReturnValue({ from: 100, to: 178.25 });
     ts.getVisibleRange.mockReturnValue({ from: TODAY_OPEN_MS / 1000, to: last.ts_ms / 1000 });
@@ -509,7 +603,7 @@ describe('LiveChartRoot', () => {
       <LiveChartRoot
         code="005930"
         timeframe="D"
-        bundle={{ ...TODAY_ONLY_BUNDLE, candles }}
+        bundle={bundle}
         clampEngaged={false}
         isPastCandlesLoading={false}
         onViewportCaptureReady={(fn) => { capture = fn; }}
@@ -523,8 +617,8 @@ describe('LiveChartRoot', () => {
   it('D timeframe: does not add a synthetic userAdjusted flag to captures', () => {
     useLivePageStore.setState({ historicalFromDate: null });
     const { chart, ts } = buildChartMockWithStableTS();
-    const candles = makeCandles(250);
-    const last = candles[candles.length - 1];
+    const bundle = makeDailyCalendarBundle(250);
+    const last = bundle.candles[bundle.candles.length - 1];
     let capture: () => unknown = () => null;
     ts.getVisibleLogicalRange.mockReturnValue({ from: 242, to: 255 });
     ts.getVisibleRange.mockReturnValue({ from: TODAY_OPEN_MS / 1000, to: last.ts_ms / 1000 });
@@ -536,7 +630,7 @@ describe('LiveChartRoot', () => {
       <LiveChartRoot
         code="005930"
         timeframe="D"
-        bundle={{ ...TODAY_ONLY_BUNDLE, candles }}
+        bundle={bundle}
         clampEngaged={false}
         isPastCandlesLoading={false}
         onViewportCaptureReady={(fn) => { capture = fn; }}

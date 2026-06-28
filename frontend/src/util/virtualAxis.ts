@@ -29,7 +29,7 @@
  * - Virtual time = monotonic ms offset that skips inter-session gaps.
  */
 
-import { buildSegments, type Segment } from './time';
+import { buildSegments, INTER_SEGMENT_GAP_MS, type Segment } from './time';
 import { isClosingAuction, isRegularSession, locateSegment } from './sessionTime';
 
 export type DayBoundary = Readonly<{
@@ -40,6 +40,8 @@ export type DayBoundary = Readonly<{
 }>;
 
 export type VirtualAxis = Readonly<{
+  /** Projection mode: intraday preserves session time; calendar maps one bar per segment. */
+  mode: VirtualAxisMode;
   /** Frozen list of stitched segments, ordered by date ascending. */
   segments: readonly Segment[];
   /**
@@ -97,6 +99,30 @@ export type VirtualAxis = Readonly<{
   classifyAndProject(realMs: number): { contained: boolean; inAuction: boolean; virtual: number };
 }>;
 
+export type VirtualAxisMode = 'intraday' | 'calendar';
+
+export type VirtualAxisOptions = Readonly<{
+  mode?: VirtualAxisMode;
+}>;
+
+function buildCalendarSegments(
+  raw: Array<{ date: string; sessionOpenMs: number; sessionCloseMs: number }>,
+  originMs: number,
+): Segment[] {
+  const out: Segment[] = [];
+  let cursor = originMs;
+  for (const r of raw) {
+    out.push({
+      date: r.date,
+      sessionOpenMs: r.sessionOpenMs,
+      sessionCloseMs: r.sessionOpenMs,
+      virtualStart: cursor,
+    });
+    cursor += INTER_SEGMENT_GAP_MS;
+  }
+  return out;
+}
+
 /**
  * Construct a `VirtualAxis` from raw session open/close pairs. The input is
  * assumed to be sorted by date ascending; the internal `buildSegments` walks
@@ -136,8 +162,17 @@ export type VirtualAxis = Readonly<{
 export function createVirtualAxis(
   rawSegments: Array<{ date: string; sessionOpenMs: number; sessionCloseMs: number }>,
   originMs = 0,
+  options: VirtualAxisOptions = {},
 ): VirtualAxis {
-  const segments = Object.freeze(buildSegments(rawSegments, originMs));
+  const mode = options.mode ?? 'intraday';
+  const segments = Object.freeze(
+    mode === 'calendar'
+      ? buildCalendarSegments(rawSegments, originMs)
+      : buildSegments(rawSegments, originMs),
+  );
+  const realSegments = mode === 'calendar'
+    ? Object.freeze(buildSegments(rawSegments, originMs))
+    : segments;
   const dayBoundaries = Object.freeze(
     segments.slice(1).map<DayBoundary>((seg) =>
       Object.freeze({ date: seg.date, virtualStart: seg.virtualStart }),
@@ -166,14 +201,14 @@ export function createVirtualAxis(
   }
 
   function findByReal(realMs: number): number {
-    if (segments.length === 0) return -1;
-    if (realMs < segments[0].sessionOpenMs) return -1;
+    if (realSegments.length === 0) return -1;
+    if (realMs < realSegments[0].sessionOpenMs) return -1;
     let lo = 0;
-    let hi = segments.length - 1;
+    let hi = realSegments.length - 1;
     let ans = 0;
     while (lo <= hi) {
       const mid = (lo + hi) >>> 1;
-      if (segments[mid].sessionOpenMs <= realMs) {
+      if (realSegments[mid].sessionOpenMs <= realMs) {
         ans = mid;
         lo = mid + 1;
       } else {
@@ -197,6 +232,16 @@ export function createVirtualAxis(
    */
   function toVirtual(realMs: number): number {
     if (segments.length === 0) return 0;
+    if (mode === 'calendar') {
+      const first = realSegments[0];
+      if (realMs <= first.sessionOpenMs) return segments[0].virtualStart;
+      const idx = findByReal(realMs);
+      if (idx < 0) return segments[0].virtualStart;
+      const realSeg = realSegments[idx];
+      if (realMs <= realSeg.sessionCloseMs) return segments[idx].virtualStart;
+      const next = segments[idx + 1];
+      return next ? next.virtualStart : segments[idx].virtualStart;
+    }
     const first = segments[0];
     if (realMs <= first.sessionOpenMs) return first.virtualStart;
     // realMs > first open ⇒ findByReal returns the last segment whose open
@@ -225,6 +270,7 @@ export function createVirtualAxis(
     if (virtualMs <= segments[0].virtualStart) return segments[0].sessionOpenMs;
     const idx = findByVirtual(virtualMs);
     if (idx < 0) return segments[0].sessionOpenMs;
+    if (mode === 'calendar') return realSegments[idx].sessionOpenMs;
     const seg = segments[idx];
     const offset = virtualMs - seg.virtualStart;
     const sessionLen = seg.sessionCloseMs - seg.sessionOpenMs;
@@ -239,17 +285,17 @@ export function createVirtualAxis(
   function contains(realMs: number): boolean {
     // Delegates to the single domain source. Kept here for backward
     // compatibility with the many projectors that already call axis.contains.
-    return isRegularSession(segments, realMs);
+    return isRegularSession(realSegments, realMs);
   }
 
   function isInGap(realMs: number): boolean {
-    if (segments.length === 0) return false;
-    if (realMs < segments[0].sessionOpenMs) return false;
-    for (let i = 0; i < segments.length; i++) {
-      const seg = segments[i];
+    if (realSegments.length === 0) return false;
+    if (realMs < realSegments[0].sessionOpenMs) return false;
+    for (let i = 0; i < realSegments.length; i++) {
+      const seg = realSegments[i];
       if (realMs >= seg.sessionOpenMs && realMs <= seg.sessionCloseMs) return false;
       if (realMs > seg.sessionCloseMs) {
-        const next = segments[i + 1];
+        const next = realSegments[i + 1];
         if (!next) return true;
         if (realMs < next.sessionOpenMs) return true;
       }
@@ -261,22 +307,25 @@ export function createVirtualAxis(
     // Delegates to the single domain source. The legacy local logic is
     // gone; sessionTime.isClosingAuction handles half-day sessions (anchors
     // to sessionCloseMs - 10min) and pre-axis / gap rejection in one place.
-    return isClosingAuction(segments, realMs);
+    return isClosingAuction(realSegments, realMs);
   }
 
   function classifyAndProject(realMs: number): { contained: boolean; inAuction: boolean; virtual: number } {
-    const { idx, phase } = locateSegment(segments, realMs);
+    const { idx, phase } = locateSegment(realSegments, realMs);
     const contained = phase === 'regular' || phase === 'auction';
     if (!contained) return { contained: false, inAuction: false, virtual: 0 };
-    const seg = segments[idx];
+    const seg = realSegments[idx];
     return {
       contained: true,
       inAuction: phase === 'auction',
-      virtual: seg.virtualStart + (realMs - seg.sessionOpenMs),
+      virtual: mode === 'calendar'
+        ? segments[idx].virtualStart
+        : seg.virtualStart + (realMs - seg.sessionOpenMs),
     };
   }
 
   return Object.freeze({
+    mode,
     segments,
     dayBoundaries,
     toVirtual,

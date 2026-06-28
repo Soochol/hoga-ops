@@ -96,6 +96,7 @@ const EMPTY_ASK_PEAKS: readonly AskPeak[] = [];
 const EMPTY_BID_PEAKS: readonly BidPeak[] = [];
 const HIGH_LOW_AVOID_BASELINE_STYLE = { color: '', lineWidth: 1 };
 const DAILY_MIN_EFFECTIVE_BAR_SPACING = 3.5;
+const CALENDAR_MIN_VIEWPORT_WIDTH_PX = 120;
 
 function dailyLogicalRange(
   totalBars: number,
@@ -248,15 +249,17 @@ export function LiveChartRoot({ code, timeframe, venue = 'KRX', viewIdentity, bu
   // the per-viewKey chart remount below.
   const axis: VirtualAxis = useMemo(() => {
     if (!cb || cb.segments.length === 0) return EMPTY_AXIS;
+    const rawSegments = cb.segments.map((s) => ({
+      date: s.date,
+      sessionOpenMs: s.session_open_ms,
+      sessionCloseMs: s.session_close_ms,
+    }));
     return createVirtualAxis(
-      cb.segments.map((s) => ({
-        date: s.date,
-        sessionOpenMs: s.session_open_ms,
-        sessionCloseMs: s.session_close_ms,
-      })),
-      cb.segments[0].session_open_ms,
+      rawSegments,
+      rawSegments[0].sessionOpenMs,
+      { mode: isCalendarTimeframe(timeframe) ? 'calendar' : 'intraday' },
     );
-  }, [cb?.segments]);
+  }, [cb?.segments, timeframe]);
 
   // Drawing-host concerns (paneSeries registry, activeCode binding,
   // panel-anchor computation) live in their own hook so this file stays
@@ -396,7 +399,9 @@ export function LiveChartRoot({ code, timeframe, venue = 'KRX', viewIdentity, bu
   // SSE bundle churn (revealedKey already === viewKey short-circuits).
   // `revealRafRef` lets the key-change effect cancel a still-pending reveal.
   const [revealedKey, setRevealedKey] = useState<string | null>(null);
+  const [viewportLayoutTick, setViewportLayoutTick] = useState(0);
   const revealRafRef = useRef<number | null>(null);
+  const calendarViewportRetryRafRef = useRef<number | null>(null);
   const chartReady = revealedKey === viewKey;
   useEffect(() => {
     lastAppliedCountRef.current = null;
@@ -404,10 +409,15 @@ export function LiveChartRoot({ code, timeframe, venue = 'KRX', viewIdentity, bu
       cancelAnimationFrame(revealRafRef.current);
       revealRafRef.current = null;
     }
+    if (calendarViewportRetryRafRef.current !== null) {
+      cancelAnimationFrame(calendarViewportRetryRafRef.current);
+      calendarViewportRetryRafRef.current = null;
+    }
   }, [viewKey]);
   // Cancel a pending reveal rAF on unmount so it can't setState after teardown.
   useEffect(() => () => {
     if (revealRafRef.current !== null) cancelAnimationFrame(revealRafRef.current);
+    if (calendarViewportRetryRafRef.current !== null) cancelAnimationFrame(calendarViewportRetryRafRef.current);
   }, []);
 
   // Leftward-pan historical backfill + staleness-free viewport repositioning
@@ -564,20 +574,24 @@ export function LiveChartRoot({ code, timeframe, venue = 'KRX', viewIdentity, bu
         // Use a width-derived span with the standard rightOffset so D/W/M all
         // open with visible candles plus the same empty area on the right.
         if (applied === totalBars) { reveal(); return; }
-        const lastMs = cb.candles[cb.candles.length - 1]?.ts_ms;
-        let latestLogicalIndex: number | null = null;
-        if (lastMs != null && typeof ts.timeToIndex === 'function') {
-          const idx = ts.timeToIndex(realMsToVirtualSeconds(axisRef.current, lastMs) as Time, true);
-          if (typeof idx === 'number' && Number.isFinite(idx)) latestLogicalIndex = idx;
+        const plotWidth = Math.max(ts.width(), containerRef.current?.clientWidth ?? 0);
+        if (plotWidth < CALENDAR_MIN_VIEWPORT_WIDTH_PX) {
+          if (calendarViewportRetryRafRef.current === null) {
+            calendarViewportRetryRafRef.current = requestAnimationFrame(() => {
+              calendarViewportRetryRafRef.current = null;
+              setViewportLayoutTick((value) => value + 1);
+            });
+          }
+          return;
         }
-        ts.setVisibleLogicalRange(dailyLogicalRange(totalBars, ts.width(), latestLogicalIndex));
+        ts.setVisibleLogicalRange(dailyLogicalRange(totalBars, plotWidth, null));
         lastAppliedCountRef.current = totalBars;
         reveal();
       }
     } catch {
       // chart torn down between effect runs
     }
-  }, [chart, cb, timeframe, venue, isPastCandlesLoading, viewKey, revealedKey, restoreViewport]);
+  }, [chart, cb, timeframe, venue, isPastCandlesLoading, viewKey, revealedKey, restoreViewport, viewportLayoutTick]);
 
   useEffect(() => {
     const el = containerRef.current;
