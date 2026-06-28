@@ -3,6 +3,11 @@
 All notable changes to this project are documented here.
 The format follows a 4-digit `MAJOR.MINOR.PATCH.MICRO` scheme.
 
+## [0.12.10.0] - 2026-06-28
+
+### Changed
+- **호가창 호버 응답 속도 개선**: 차트 커서를 움직일 때 `/api/orderbook`이 같은 `snapshots.parquet`를 매번 다시 스캔하지 않고 메모리 인덱스를 재사용하도록 해, 과거 호가창 조회가 훨씬 가볍게 응답한다.
+
 ## [0.12.9.6] - 2026-06-28
 
 ### Fixed
