@@ -17,6 +17,7 @@ import ToggleRow from '../settings/ToggleRow';
 import { ModalShell } from '../../ui/ModalShell';
 import { CheckIcon } from '../../ui/CheckIcon';
 import { STOCK_CAPABILITIES, type LiveInstrumentCapabilities } from '../liveInstrumentCapabilities';
+import { ListRow } from '../../ui/DataSurface';
 
 type CategoryId =
   | 'moving-average'
@@ -168,7 +169,6 @@ export default function IndicatorPanel({ onClose, capabilities = STOCK_CAPABILIT
             const onToggle = toggleFor(c.id);
             const isSelected = selected === c.id;
             const showHeader = i === 0 || categories[i - 1].group !== c.group;
-            const rowBase = 'flex w-full items-center justify-between pl-4 pr-2 text-sm';
             return (
               <Fragment key={c.id}>
                 {showHeader && (
@@ -176,7 +176,7 @@ export default function IndicatorPanel({ onClose, capabilities = STOCK_CAPABILIT
                     {GROUP_LABEL[c.group]}
                   </div>
                 )}
-                <div className={`${rowBase} ${isSelected ? 'bg-bg-input' : 'hover:bg-bg-input'}`}>
+                <ListRow className={`flex w-full items-center justify-between pl-4 pr-2 rounded-none text-fg ${isSelected ? 'bg-bg-input' : 'hover:bg-bg-input'}`}>
                   <button
                     type="button"
                     onClick={() => setSelected(c.id)}
@@ -195,7 +195,7 @@ export default function IndicatorPanel({ onClose, capabilities = STOCK_CAPABILIT
                   >
                     <CheckIcon filled={checked} />
                   </button>
-                </div>
+                </ListRow>
               </Fragment>
             );
           })}

@@ -131,11 +131,11 @@ git commit -m "refactor: reuse data surfaces in inventory and capture"
 - Consumes: Task 1 `ListRow`.
 - Produces: Same category selection and checkbox toggles.
 
-- [ ] **Step 1: Replace category row class assembly**
+- [x] **Step 1: Replace category row class assembly**
 
 Keep group headers and detail pane rendering unchanged.
 
-- [ ] **Step 2: Verify**
+- [x] **Step 2: Verify**
 
 Run relevant indicator/live tests.
 
