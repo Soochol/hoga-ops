@@ -3,12 +3,13 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { MemoryRouter } from 'react-router';
 import type { ComponentProps } from 'react';
 import type { StudyViewReference } from '../api/studyViews';
-import type { DayVolumeDistribution, RangeBundle } from '../api/types';
+import type { DayVolumeDistribution, RangeBundle, SymbolHit } from '../api/types';
 import type { LiveChartRoot } from '../live/LiveChartRoot';
 import { useLiveCursorStore } from '../live/useLiveCursorStore';
 import { useStudyTabsStore } from '../state/studyTabs';
 import { useEntryDragStore } from '../state/entryDrag';
 import { useLivePageStore } from '../state/livePage';
+import { useLiveTabsStore } from '../state/liveTabs';
 
 const {
   useStudyViewsMock,
@@ -18,6 +19,8 @@ const {
   useLiveOrderbookAtCursorMock,
   useLiveBrokersAtCursorMock,
   useVolumeDistributionCutoffProfileMock,
+  useSymbolSearchMock,
+  useLiveIndicesMock,
   liveChartRootMock,
 } = vi.hoisted(() => ({
   useStudyViewsMock: vi.fn(),
@@ -27,6 +30,8 @@ const {
   useLiveOrderbookAtCursorMock: vi.fn(),
   useLiveBrokersAtCursorMock: vi.fn(),
   useVolumeDistributionCutoffProfileMock: vi.fn((args: { finalProfile: DayVolumeDistribution | null | undefined }) => args.finalProfile),
+  useSymbolSearchMock: vi.fn(),
+  useLiveIndicesMock: vi.fn(),
   liveChartRootMock: vi.fn(),
 }));
 
@@ -50,6 +55,14 @@ vi.mock('../api/useLiveCursor', () => ({
 
 vi.mock('../live/useVolumeDistributionCutoffProfile', () => ({
   useVolumeDistributionCutoffProfile: useVolumeDistributionCutoffProfileMock,
+}));
+
+vi.mock('../capture/useSymbols', () => ({
+  useSymbolSearch: useSymbolSearchMock,
+}));
+
+vi.mock('../api/liveIndices', () => ({
+  useLiveIndices: useLiveIndicesMock,
 }));
 
 vi.mock('../live/LiveChartRoot', () => ({
@@ -116,6 +129,14 @@ const secondReferenceSave: StudyViewReference = {
   code: '000660',
   label: 'SK하이닉스',
   viewport: { right_edge_ms: 5_000, bar_span: 80, at_live_edge: false },
+};
+
+const searchHit: SymbolHit = {
+  code: '005930',
+  name: '삼성전자',
+  market: 'KOSPI',
+  captured_count: 1,
+  captured_breakdown: { complete: 1, source_partial: 0, client_incomplete: 0, invalid: 0 },
 };
 
 function bundle(): RangeBundle {
@@ -198,11 +219,14 @@ beforeEach(() => {
   useWarmStudyReferenceTabQueriesMock.mockReturnValue({});
   useLiveOrderbookAtCursorMock.mockReturnValue(undefined);
   useLiveBrokersAtCursorMock.mockReturnValue(undefined);
+  useSymbolSearchMock.mockReturnValue([searchHit]);
+  useLiveIndicesMock.mockReturnValue({ data: [] });
   useVolumeDistributionCutoffProfileMock.mockClear();
   useVolumeDistributionCutoffProfileMock.mockImplementation(
     (args: { finalProfile: DayVolumeDistribution | null | undefined }) => args.finalProfile,
   );
   useLiveCursorStore.getState().resetCursor();
+  useLiveTabsStore.setState({ tabs: [], activeTabId: null });
   useLivePageStore.setState({
     volumeDistributionEnabled: true,
     volumeDistributionHoverCutoffEnabled: false,
@@ -219,6 +243,17 @@ describe('StudyPage', () => {
     expect(screen.getByTestId('study-page-empty')).toHaveClass('bg-bg');
     expect(screen.getByTestId('study-page-empty')).toHaveClass('text-fg');
     expect(screen.getByText('저장된 학습뷰를 선택하세요.')).toBeTruthy();
+  });
+
+  it('opens the symbol search dialog from the empty study page when "/" is pressed', () => {
+    renderPage();
+
+    expect(screen.queryByRole('dialog', { name: '종목 검색' })).toBeNull();
+
+    fireEvent.keyDown(window, { key: '/' });
+
+    expect(screen.getByRole('dialog', { name: '종목 검색' })).toBeInTheDocument();
+    expect(document.activeElement).toBe(screen.getByPlaceholderText('검색어를 입력해주세요'));
   });
 
   it('renders the shared drop overlay while dragging over the study workspace', () => {
@@ -425,20 +460,31 @@ describe('StudyPage', () => {
     expect(screen.getByText('+1억')).toBeTruthy();
   });
 
-  it('renders study detail sections as flat dividers inside the outer detail rail', () => {
+  it('renders study detail sections as separated cards inside the outer detail rail', () => {
     renderPage('/study?view=view-ref');
 
     const stack = screen.getByTestId('study-reference-detail-cards');
-    expect(stack).toHaveClass('bg-bg-card');
+    expect(stack).toHaveClass('bg-bg-subtle/40');
+    expect(stack).toHaveClass('gap-2');
+    expect(stack).toHaveClass('p-2');
 
     for (const key of ['orderbook', 'brokers', 'volume-distribution', 'program'] as const) {
       const section = screen.getByTestId(`study-detail-card-${key}`);
-      expect(section).not.toHaveClass('rounded');
-      expect(section).not.toHaveClass('border');
-      expect(section).not.toHaveClass('bg-bg-card');
+      expect(section).toHaveClass('rounded-md');
+      expect(section).toHaveClass('border');
+      expect(section).toHaveClass('bg-bg-card');
     }
+  });
 
-    expect(screen.getByTestId('study-detail-card-brokers')).toHaveClass('border-t');
+  it('opens the symbol search dialog from the study header when "/" is pressed', () => {
+    renderPage('/study?view=view-ref');
+
+    expect(screen.queryByRole('dialog', { name: '종목 검색' })).toBeNull();
+
+    fireEvent.keyDown(window, { key: '/' });
+
+    expect(screen.getByRole('dialog', { name: '종목 검색' })).toBeInTheDocument();
+    expect(document.activeElement).toBe(screen.getByPlaceholderText('검색어를 입력해주세요'));
   });
 
   it('uses hover-cutoff volume distribution for reference study views when enabled', () => {
@@ -523,8 +569,12 @@ describe('StudyPage', () => {
 
     const stack = screen.getByTestId('study-reference-detail-cards');
     expect(stack).toHaveClass('min-h-full');
+    expect(stack).toHaveClass('gap-2');
+    expect(stack).toHaveClass('p-2');
     expect(stack.getAttribute('style') ?? '').toContain('auto auto auto auto');
     for (const key of ['orderbook', 'volume-distribution', 'brokers', 'program']) {
+      expect(screen.getByTestId(`study-detail-card-${key}`)).toHaveClass('rounded-md');
+      expect(screen.getByTestId(`study-detail-card-${key}`)).toHaveClass('bg-bg-card');
       expect(screen.getByTestId(`study-detail-card-${key}`)).not.toHaveClass('overflow-hidden');
       expect(screen.getByTestId(`study-detail-content-${key}`)).not.toHaveClass('overflow-y-auto');
       expect(screen.getByTestId(`study-detail-content-${key}`)).not.toHaveClass('overflow-hidden');

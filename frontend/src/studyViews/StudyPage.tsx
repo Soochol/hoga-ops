@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode, type WheelEvent } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode, type RefObject, type WheelEvent } from 'react';
 import { useNavigate, useSearchParams } from 'react-router';
 import { PageContainer } from '../layout/PageContainer';
 import IndicatorPanel from '../live/indicators/IndicatorPanel';
@@ -6,6 +6,7 @@ import { LiveChartRoot } from '../live/LiveChartRoot';
 import LiveSettingsModal from '../live/LiveSettingsModal';
 import { TimeframeControl } from '../live/TimeframeControl';
 import { LiveChartActionButtons } from '../live/LiveToolbar';
+import { LiveSymbolSearch } from '../live/LiveSymbolSearch';
 import { tradeVolumePocsFromWire } from '../live/tradeVolumePocWire';
 import type { TabViewport } from '../live/viewportAnchor';
 import { useEntryDragStore } from '../state/entryDrag';
@@ -34,6 +35,53 @@ import { DropOverlay, IconToolbarButton, WorkspaceHeader, WorkspaceRoot, Workspa
 
 function StudyDropOverlay() {
   return <DropOverlay>여기에 놓아 학습뷰 열기</DropOverlay>;
+}
+
+function StudySearchHeader({
+  label = '학습뷰',
+  description = '저장된 복기뷰를 선택하세요.',
+}: {
+  label?: string;
+  description?: string;
+}) {
+  return (
+    <WorkspaceHeader className="min-h-12 px-4">
+      <div className="min-w-0">
+        <div className="truncate text-sm font-semibold">{label}</div>
+        <div className="text-xs text-[var(--fg-dimmer)]">{description}</div>
+      </div>
+      <LiveSymbolSearch />
+    </WorkspaceHeader>
+  );
+}
+
+function StudyStateWorkspace({
+  children,
+  tone = 'neutral',
+  testId,
+  dropTargetRef,
+  showDropOverlay,
+}: {
+  children: ReactNode;
+  tone?: 'neutral' | 'error';
+  testId: string;
+  dropTargetRef: RefObject<HTMLDivElement>;
+  showDropOverlay: boolean;
+}) {
+  return (
+    <WorkspaceRoot className="grid h-full grid-rows-[auto_minmax(0,1fr)] bg-transparent">
+      <StudySearchHeader />
+      <WorkspaceState
+        testId={testId}
+        tone={tone}
+        className="min-h-0"
+        dropTargetRef={dropTargetRef}
+        showDropOverlay={showDropOverlay}
+      >
+        {children}
+      </WorkspaceState>
+    </WorkspaceRoot>
+  );
 }
 
 function StudyPageStateShell({
@@ -309,13 +357,13 @@ export function StudyPage() {
     return (
       <StudyPageStateShell
         workspace={(
-          <WorkspaceState
+          <StudyStateWorkspace
             testId="study-page-empty"
             dropTargetRef={studyDropTargetRef}
             showDropOverlay={draggingEntry && overStudy}
           >
             저장된 학습뷰를 선택하세요.
-          </WorkspaceState>
+          </StudyStateWorkspace>
         )}
       >
         {indicatorPanelOpen && (
@@ -332,13 +380,13 @@ export function StudyPage() {
     return (
       <StudyPageStateShell
         workspace={(
-          <WorkspaceState
+          <StudyStateWorkspace
             testId="study-page-loading"
             dropTargetRef={studyDropTargetRef}
             showDropOverlay={draggingEntry && overStudy}
           >
             학습뷰 불러오는 중...
-          </WorkspaceState>
+          </StudyStateWorkspace>
         )}
       >
         {indicatorPanelOpen && (
@@ -355,14 +403,14 @@ export function StudyPage() {
     return (
       <StudyPageStateShell
         workspace={(
-          <WorkspaceState
+          <StudyStateWorkspace
             testId="study-page-error"
             tone="error"
             dropTargetRef={studyDropTargetRef}
             showDropOverlay={draggingEntry && overStudy}
           >
             학습뷰를 찾을 수 없습니다.
-          </WorkspaceState>
+          </StudyStateWorkspace>
         )}
       >
         {indicatorPanelOpen && (
@@ -407,13 +455,14 @@ export function StudyPage() {
               />
             </div>
           )}
-          <WorkspaceHeader className="min-h-12 justify-between px-4">
+          <WorkspaceHeader className="min-h-12 px-4">
             <div className="min-w-0">
               <div className="truncate text-sm font-semibold">{headerLabel}</div>
               <div className="text-xs text-[var(--fg-dimmer)]">
                 {headerCode} · {headerTimeframe ?? '-'} · {headerKindLabel}
               </div>
             </div>
+            <LiveSymbolSearch />
             <div className="flex shrink-0 items-center gap-2">
               {headerTimeframe && (
                 <TimeframeControl
