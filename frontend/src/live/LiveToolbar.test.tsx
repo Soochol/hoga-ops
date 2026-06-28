@@ -146,6 +146,8 @@ describe('LiveToolbar', () => {
     const onOpenSettings = vi.fn();
     render(<LiveToolbar onOpenIndicators={() => {}} onOpenSettings={onOpenSettings} />);
     const btn = screen.getByTestId('live-settings-button');
+    expect(btn).toHaveClass('bg-bg-input');
+    expect(btn).toHaveClass('text-fg-dim');
     fireEvent.click(btn);
     expect(onOpenSettings).toHaveBeenCalledOnce();
   });
@@ -153,7 +155,10 @@ describe('LiveToolbar', () => {
   it('renders indicators button and calls onOpenIndicators on click', () => {
     const onOpenIndicators = vi.fn();
     render(<LiveToolbar onOpenIndicators={onOpenIndicators} onOpenSettings={() => {}} />);
-    fireEvent.click(screen.getByTestId('live-indicators-button'));
+    const btn = screen.getByTestId('live-indicators-button');
+    expect(btn).toHaveClass('bg-bg-input');
+    expect(btn).toHaveClass('text-fg-dim');
+    fireEvent.click(btn);
     expect(onOpenIndicators).toHaveBeenCalledOnce();
   });
 
