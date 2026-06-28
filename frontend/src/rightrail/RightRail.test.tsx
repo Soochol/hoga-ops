@@ -31,9 +31,11 @@ describe('RightRail', () => {
   it('관심 item opens the watchlist panel', () => {
     render(<RightRail />);
     const btn = screen.getByLabelText('관심종목 패널 토글');
+    expect(btn).toHaveClass('text-fg-dim');
     expect(btn.getAttribute('aria-pressed')).toBe('false');
     fireEvent.click(btn);
     expect(useRightRailStore.getState().activePanel).toBe('watchlist');
+    expect(btn).toHaveClass('bg-tint-selection');
     expect(btn.getAttribute('aria-pressed')).toBe('true');
   });
 

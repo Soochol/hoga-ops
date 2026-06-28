@@ -2,6 +2,7 @@ import { useRightRailStore } from '../state/rightRail';
 import { HeartIcon } from '../ui/HeartIcon';
 import { FunnelIcon } from '../ui/FunnelIcon';
 import { BookmarkIcon } from '../ui/BookmarkIcon';
+import { RailButton } from '../ui/RailShell';
 
 /**
  * Global Right Rail (ADR-0052) — fixed thin right-edge chrome on every route.
@@ -69,18 +70,14 @@ function RailItem({
   // Active = tint bg + neutral text, matching NavItem (no triple-teal). The icon
   // fill (currentColor=fg) is a shape signal, not a 2nd accent.
   return (
-    <button
-      type="button"
+    <RailButton
       onClick={onClick}
-      aria-pressed={active}
+      active={active}
       aria-controls={controls}
       aria-label={ariaLabel}
-      className={`w-full py-3 flex flex-col items-center gap-1 ${
-        active ? 'bg-tint-selection text-fg font-medium' : 'text-fg-dim hover:bg-bg-input-hover hover:text-fg'
-      }`}
     >
       {icon}
       <span className="text-[10px] leading-tight">{label}</span>
-    </button>
+    </RailButton>
   );
 }

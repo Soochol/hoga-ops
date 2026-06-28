@@ -27,6 +27,8 @@ import { WatchlistHeartButton } from '../watchlist/WatchlistHeartButton';
 import { ScreenerResultSortControl } from './ScreenerResultSortControl';
 import { sortScreenerRows, type ScreenerResultSortMode } from './sortResults';
 import type { ScanBasis } from '../api/screener';
+import { RailDrawer, RailDrawerBody, RailDrawerHeader, RailDrawerSection, RailState } from '../ui/RailShell';
+import { ToolbarButton } from '../ui/PageShell';
 
 const SCREENER_ENTRY_TYPE = 'screener-entry';
 const SCREENER_DRAG_SENSOR_OPTIONS = { activationConstraint: { distance: 5 } };
@@ -160,34 +162,17 @@ export function ScreenerDrawer() {
   };
 
   return (
-    <div
+    <RailDrawer
       id="right-rail-screener-panel"
-      data-testid="screener-panel"
-      style={{
-        width: 'var(--watchlist-panel-w)', height: '100%', background: 'var(--bg-card)',
-        borderLeft: '1px solid var(--border)', overflow: 'hidden',
-        display: 'flex', flexDirection: 'column',
-      }}
+      testId="screener-panel"
     >
       {/* Header: label + freshness chip */}
-      <div
-        style={{
-          padding: 'var(--space-sm) var(--space-md)', borderBottom: '1px solid var(--border)',
-          display: 'flex', alignItems: 'center', gap: 'var(--space-sm)',
-        }}
-      >
-        <span style={{
-          fontSize: 'var(--text-xs)', color: 'var(--fg-dim)', fontFamily: 'monospace',
-          textTransform: 'uppercase', letterSpacing: '0.08em',
-        }}>스크리너</span>
-        <span style={{ flex: 1 }} />
-        <StalenessChip status={status} />
-      </div>
+      <RailDrawerHeader title="스크리너" actions={<StalenessChip status={status} />} />
 
       {/* Controls: dropdown + 조회 + 갱신 */}
-      <div className="flex flex-col gap-sm p-md border-b">
+      <RailDrawerSection className="flex flex-col gap-sm">
         {saves.length === 0 ? (
-          <div className="text-fg-dimmer text-sm">저장된 조건이 없습니다 — Screener 페이지에서 만드세요</div>
+          <RailState className="p-0">저장된 조건이 없습니다 — Screener 페이지에서 만드세요</RailState>
         ) : (
           <select
             aria-label="저장한 조건검색 선택"
@@ -199,43 +184,45 @@ export function ScreenerDrawer() {
           </select>
         )}
         <div className="flex items-center gap-2">
-          <button
-            type="button" onClick={runScan}
+          <ToolbarButton
+            tone="primary"
+            onClick={runScan}
             disabled={screener.isPending || notSeeded || !selected}
-            className="flex-1 px-3 py-1.5 rounded-lg bg-accent text-accent-fg font-semibold text-sm hover:brightness-110 disabled:opacity-50 disabled:cursor-not-allowed"
+            className="flex-1 py-1.5"
           >
             {screener.isPending ? '조회 중…' : '조회'}
-          </button>
-          <button
-            type="button" aria-label="데이터 갱신" onClick={() => update.mutate()}
+          </ToolbarButton>
+          <ToolbarButton
+            aria-label="데이터 갱신"
+            onClick={() => update.mutate()}
             disabled={update.isPending || notSeeded}
-            className="px-2.5 py-1.5 rounded-lg bg-bg-input border text-fg-dim text-sm hover:bg-bg-input-hover disabled:opacity-50 disabled:cursor-not-allowed"
+            className="px-2.5 py-1.5"
           >
             {update.isPending ? '갱신 중…' : '갱신'}
-          </button>
+          </ToolbarButton>
         </div>
         {update.isError && (
-          <div className="text-sm" style={{ color: 'var(--error)' }}>갱신 실패 — 잠시 후 다시 시도하세요</div>
+          <RailState tone="error" className="p-0">갱신 실패 — 잠시 후 다시 시도하세요</RailState>
         )}
         {notSeeded && (
-          <div className="text-sm" style={{ color: 'var(--warn)' }}>시드 필요 — 운영자 CLI로 시드 후 조회하세요</div>
+          <RailState tone="warn" className="p-0">시드 필요 — 운영자 CLI로 시드 후 조회하세요</RailState>
         )}
         {!notSeeded && (
           <div className="text-xs text-fg-dimmer" title="저장 조건 조회 시 오늘 KIS quote를 일봉 위에 임시 반영합니다">
             오늘 장중: KIS quote 반영
           </div>
         )}
-      </div>
+      </RailDrawerSection>
 
       {/* Results */}
-      <div data-testid="screener-scroll" className="flex-1 min-h-0 overflow-auto">
+      <RailDrawerBody testId="screener-scroll">
         {screener.isError ? (
-          <div className="p-md text-sm">
+          <RailState tone="error">
             <div className="font-semibold" style={{ color: 'var(--error)' }}>조회 실패</div>
             {screener.error instanceof Error && screener.error.message && (
               <div className="text-fg-dim">{screener.error.message}</div>
             )}
-          </div>
+          </RailState>
         ) : lastScan ? (
           <>
             {(lastScan.warnings ?? []).includes('intraday_fallback_eod') && (
@@ -255,7 +242,7 @@ export function ScreenerDrawer() {
               <ScreenerResultSortControl mode={sortMode} onChange={setSortMode} disabled={lastScan.rows.length === 0} />
             </div>
             {lastScan.rows.length === 0 ? (
-              <div className="p-md text-fg-dim text-sm">조건에 맞는 종목이 없습니다.</div>
+              <RailState>조건에 맞는 종목이 없습니다.</RailState>
             ) : (
               <DndContext
                 sensors={sensors}
@@ -278,9 +265,9 @@ export function ScreenerDrawer() {
             )}
           </>
         ) : (
-          <div className="p-md text-fg-dimmer text-sm">조건을 선택하고 조회하세요.</div>
+          <RailState>조건을 선택하고 조회하세요.</RailState>
         )}
-      </div>
-    </div>
+      </RailDrawerBody>
+    </RailDrawer>
   );
 }

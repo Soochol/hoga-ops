@@ -49,9 +49,17 @@ export function RailDrawerSection({ className = '', children }: { className?: st
   );
 }
 
-export function RailDrawerBody({ className = '', children }: { className?: string; children: ReactNode }) {
+export function RailDrawerBody({
+  className = '',
+  testId,
+  children,
+}: {
+  className?: string;
+  testId?: string;
+  children: ReactNode;
+}) {
   return (
-    <div className={`min-h-0 flex-1 overflow-auto ${className}`.trim()}>
+    <div data-testid={testId} className={`min-h-0 flex-1 overflow-auto ${className}`.trim()}>
       {children}
     </div>
   );
