@@ -81,6 +81,8 @@ beforeEach(() => {
 
 it('폴더·종목·phase 배지 렌더 + 색 범례 제거됨(#6)', async () => {
   renderPage();
+  expect(await screen.findByTestId('heatmap-board')).toBeInTheDocument();
+  expect(screen.queryByTestId('heatmap-nested-card')).not.toBeInTheDocument();
   expect((await screen.findAllByText('반도체')).length).toBeGreaterThanOrEqual(2);
   expect(screen.getByText('삼성전자')).toBeInTheDocument();
   expect(screen.getByText('● 장중')).toBeInTheDocument();

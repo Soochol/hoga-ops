@@ -138,6 +138,7 @@ describe('Settings — Symbol Master section', () => {
       expect(screen.getByText(/Symbol Master/i)).toBeInTheDocument();
     });
     expect(screen.queryByRole('heading', { name: 'Settings' })).toBeNull();
-    expect(screen.getByText('API URL').closest('.bg-bg-card')).not.toBeNull();
+    expect(screen.getByTestId('settings-page-primary')).toHaveClass('bg-bg-card');
+    expect(screen.getByTestId('settings-page-primary')).toHaveClass('border');
   });
 });

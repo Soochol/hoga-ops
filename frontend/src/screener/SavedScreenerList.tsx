@@ -114,7 +114,7 @@ export function SavedScreenerList({ anchorId, dirty, onLoad, onNewDraft, onSaveA
   };
 
   return (
-    <div ref={rootRef} className="bg-bg-card border rounded-lg p-md flex flex-col gap-sm min-h-0 overflow-auto">
+    <div ref={rootRef} className="flex h-full flex-col gap-sm min-h-0 overflow-auto p-md">
       <div className="flex items-center gap-1.5">
         <span className="text-[10.5px] font-semibold uppercase tracking-[0.08em] text-fg-dimmer">저장한 조건검색</span>
         <button type="button" aria-label="새 조건검색"

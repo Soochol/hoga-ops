@@ -1,83 +1,68 @@
-Task 6 Report: Labelled Marker Primitive And Ratio Integration
+# Task 6 Report
 
-Summary
-- Added a dedicated `BrokerLateEntryMarkersPrimitive` for ratio-pane broker late-entry dots + grouped labels.
-- Extended `RangeSeriesPane` with a narrow `labelMarkers` path that lives alongside existing `markers` without changing `SurgeMarkersPrimitive`.
-- Wired ratio context/spec so broker late-entry labels are produced only when `brokerLateEntryEnabled` is true, while keeping the returned context stable across renders.
+## Outcome
 
-TDD Log
-1. Red
-   - Added a failing ratio-spec test in `frontend/src/chart/projectors/ratio.test.ts` for `RATIO_SPEC.series[0].labelMarkers`.
-   - Added a failing lifecycle test in `frontend/src/chart/RangeSeriesPane.test.tsx` asserting attach/detach for a `labelMarkers` series.
-   - Ran:
-     - `cd frontend && npm test -- --run src/chart/projectors/ratio.test.ts src/chart/RangeSeriesPane.test.tsx`
-   - Observed the expected failures:
-     - `labelMarkers` missing from the ratio spec.
-     - label primitive not attached/detached by `RangeSeriesPane`.
+Applied route-level surfaces across `Capture`, `Inventory`, `Screener`, `Settings`, `Study`, and `Heatmap` using the shared page-shell primitives added in earlier tasks.
 
-2. Green
-   - Implemented `frontend/src/chart/BrokerLateEntryMarkersPrimitive.ts` with:
-     - per-marker chart/series coordinate lookup on each draw,
-     - dot rendering,
-     - adaptive regrouping via `layoutBrokerLateEntryLabels(...)`,
-     - stacked full labels for shared x positions,
-     - mixed-side grouped chips with buy/sell accent dots.
-   - Extended `RangeSeriesPane` with:
-     - `SeriesSpec.labelMarkers`,
-     - `labelMarkersRef`,
-     - attach/detach/update lifecycle mirroring the existing marker primitive,
-     - independent cleanup so label primitives detach even when surge markers are absent.
-   - Extended `ratio.ts` with:
-     - broker late-entry fields on `RatioPaneContext`,
-     - stable combined context from `useActivePrefs` + `useLivePageStore`,
-     - ratio-spec `labelMarkers` gated by `brokerLateEntryEnabled`.
+## What changed
 
-3. Build fixes required by the task changes
-   - Narrowed `projectBrokerLateEntryMarkers(...)` context typing so it only requires the ratio fields it actually consumes.
-   - Made `RangeBundle.broker_late_entries` optional and defaulted to `[]` in the projector so older fixtures/tests still compile cleanly.
-   - Updated ratio-context test fixtures to satisfy the expanded `RatioPaneContext`.
+- `Capture`
+  - Kept the splitter layout, added explicit page-level `PanelCard` test hooks per pane.
+  - Wrapped each pane body in `DataSection` so the route now uses dense divider-based section framing instead of ad hoc inner spacing.
 
-Files Changed
-- Added: `frontend/src/chart/BrokerLateEntryMarkersPrimitive.ts`
-- Modified:
-  - `frontend/src/chart/RangeSeriesPane.tsx`
-  - `frontend/src/chart/projectors/ratio.ts`
-  - `frontend/src/chart/RangeSeriesPane.test.tsx`
-  - `frontend/src/chart/projectors/ratio.test.ts`
-  - `frontend/src/chart/projectors/brokerLateEntryMarkers.ts`
-  - `frontend/src/chart/projectors/brokerLateEntryMarkers.test.ts`
-  - `frontend/src/chart/projectors/pastCachedProjector.test.ts`
-  - `frontend/src/chart/projectors/ratio.intramax.test.ts`
-  - `frontend/src/api/types.ts`
+- `Inventory`
+  - Added page-level `PanelCard` surfaces for list/detail panes.
+  - Wrapped loading/empty states in the same route shell so the page stays surfaced even when data is absent.
 
-Verification
-- Targeted red/green test:
-  - `cd frontend && npm test -- --run src/chart/projectors/ratio.test.ts src/chart/RangeSeriesPane.test.tsx`
-- Required task test suite:
-  - `cd frontend && npm test -- --run src/chart/projectors/brokerLateEntryMarkers.test.ts src/chart/projectors/ratio.test.ts src/chart/RangeSeriesPane.test.tsx`
-  - Result: 3 files passed, 30 tests passed.
+- `Screener`
+  - Converted the three-column route to one surfaced pane per column.
+  - Moved the results actions into the right pane surface and replaced nested warning cards with inline states.
+  - Kept the results table readable by embedding the table shell inside the pane rather than stacking another visible card.
+
+- `Settings`
+  - Kept a single route-level `PanelCard`.
+  - Reorganized the body into `DataSection` blocks (`앱 정보`, `Symbol Master`, `로드맵`) to match the dense flat-section rule.
+
+- `Study`
+  - Added a route-level `PanelCard` wrapper for the active workspace.
+  - Also wrapped empty/loading/error states in the same surfaced shell so `/study` follows the non-live route rule consistently.
+
+- `Heatmap`
+  - Added a route-level `PanelCard` wrapper while preserving the transparent flat folder treatment inside the board.
+  - Added a stable `heatmap-board` hook for route QA/tests.
+
+## Adjacent child-component deviations
+
+These were the minimal child edits needed because page-level primitives alone would have created card-in-card:
+
+- `frontend/src/inventory/StockDateGroupList.tsx`
+  - Flattened the root shell so the page-level `PanelCard` owns the surface.
+- `frontend/src/inventory/StockDateGroupDetail.tsx`
+  - Flattened the root shell and placeholder state for the same reason.
+- `frontend/src/screener/SavedScreenerList.tsx`
+  - Flattened the root shell so the left route pane owns the surface.
+- `frontend/src/screener/ConditionBuilder.tsx`
+  - Flattened the root shell so the center route pane owns the surface.
+- `frontend/src/screener/ResultTable.tsx`
+  - Added an embedded mode so the results table can live inside the right pane without introducing another visible card.
+- `frontend/src/heatmap/HeatmapBoard.tsx`
+  - Added a route-level QA/test hook (`data-testid="heatmap-board"`).
+- `frontend/src/ui/PageShell.tsx`
+  - Widened `PanelCard` props to forward DOM attributes required for route test hooks.
+
+## Verification
+
+- Route tests:
+  - `cd frontend && npm test -- Capture.test.tsx Inventory.test.tsx Settings.test.tsx Screener.test.tsx Heatmap.test.tsx StudyPage.test.tsx --run`
+  - Result: `7 passed, 64 passed`
+
 - Build:
   - `cd frontend && npm run build`
-  - Result: success (`tsc -b && vite build`)
+  - Result: success
 
-Notes / Concerns
-- I kept the existing surge-marker path untouched and parallelized the new label path exactly as requested.
-- The new label primitive recomputes grouping from live chart coordinates on every draw, so grouping responds to zoom/pan without caching stale time-only clusters.
-- The only type-level compatibility change outside the task-owned chart files was making `RangeBundle.broker_late_entries` optional so pre-existing fixtures that omit the field continue to build.
+## Browser QA
 
-## Task 6 Fix Report
-
-Summary
-- Restored `RangeBundle.broker_late_entries` to a required field in `frontend/src/api/types.ts`.
-- Removed the fallback masking from `projectBrokerLateEntryMarkers(...)` so the projector reads `bundle.broker_late_entries` directly.
-- Added `broker_late_entries: []` to synthetic/test `RangeBundle` fixtures that were missing the field.
-
-Verification
-- `cd frontend && npm test -- --run src/chart/projectors/brokerLateEntryMarkers.test.ts src/chart/projectors/ratio.test.ts src/chart/RangeSeriesPane.test.tsx`
-  - Result: pass (`3` files, `30` tests).
-- `cd frontend && npm run build`
-  - Result: success (`tsc -b && vite build`).
-
-Notes / Concerns
-- This supersedes the earlier Task 6 note that made `broker_late_entries` optional for fixture compatibility.
-- `vite build` still emits the pre-existing large-chunk warning for the main bundle, but the build completes successfully.
+- Dev server ports `5174` and `5175` were already occupied, so QA ran against `http://127.0.0.1:5176/`.
+- Inspected `/live`, `/capture`, `/screener`, and `/settings` visually.
+- Confirmed no button text overflow at the current desktop width in the inspected routes.
+- `/inventory`, `/study`, and `/heatmap` were backend-limited in this environment and stayed on loading states, but those loading shells were updated to use the same route-level surfaces.

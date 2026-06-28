@@ -82,6 +82,12 @@ it('조회 결과 액션에는 관심 그룹 하트만 표시한다', async () =
 
 it('renders shared top action buttons without changing the screener workflow', async () => {
   renderPage();
+  expect(screen.getByTestId('screener-saves-pane')).toHaveClass('bg-bg-card');
+  expect(screen.getByTestId('screener-saves-pane')).toHaveClass('border');
+  expect(screen.getByTestId('screener-builder-pane')).toHaveClass('bg-bg-card');
+  expect(screen.getByTestId('screener-builder-pane')).toHaveClass('border');
+  expect(screen.getByTestId('screener-results-pane')).toHaveClass('bg-bg-card');
+  expect(screen.getByTestId('screener-results-pane')).toHaveClass('border');
   expect(await screen.findByRole('button', { name: '조회' })).toBeInTheDocument();
   expect(screen.getByRole('button', { name: '저장' })).toHaveClass('bg-bg-input');
 });
@@ -105,7 +111,7 @@ it('shows an EOD fallback warning when intraday scan falls back', async () => {
   vi.mocked(runScan).mockResolvedValueOnce({ status: 'ok', warnings: ['intraday_fallback_eod'], rows: [] });
   renderPage();
   fireEvent.click(screen.getByText('조회'));
-  expect(await screen.findByText('장중 조회 불가 · 전일 확정 데이터로 표시 중')).toHaveClass('p-md');
+  expect(await screen.findByText('장중 조회 불가 · 전일 확정 데이터로 표시 중')).toBeInTheDocument();
 });
 
 it('uses shared action styling in the save dialog', async () => {

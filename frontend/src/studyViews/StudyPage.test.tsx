@@ -232,6 +232,8 @@ describe('StudyPage', () => {
   it('renders a v2 reference view from raw range data without snapshot overrides', () => {
     renderPage('/study?view=view-ref');
 
+    expect(screen.getByTestId('study-page-primary')).toHaveClass('bg-bg-card');
+    expect(screen.getByTestId('study-page-primary')).toHaveClass('border');
     expect(screen.getByTestId('live-chart-root-stub')).toBeTruthy();
     expect(useStudyReferenceBundleMock).toHaveBeenCalledWith(expect.objectContaining(referenceSave));
     const props = liveChartRootMock.mock.calls[0][0];

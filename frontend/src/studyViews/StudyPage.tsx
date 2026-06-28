@@ -1,5 +1,6 @@
-import { useCallback, useEffect, useMemo, useRef, useState, type WheelEvent } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode, type WheelEvent } from 'react';
 import { useNavigate, useSearchParams } from 'react-router';
+import { PageContainer } from '../layout/PageContainer';
 import IndicatorPanel from '../live/indicators/IndicatorPanel';
 import { LiveChartRoot } from '../live/LiveChartRoot';
 import LiveSettingsModal from '../live/LiveSettingsModal';
@@ -28,10 +29,28 @@ import {
   setCurrentStudySaveSource,
   type ReferenceStudySaveSource,
 } from './studySaveSource';
+import { PanelCard } from '../ui/PageShell';
 import { DropOverlay, IconToolbarButton, WorkspaceHeader, WorkspaceRoot, WorkspaceState } from '../ui/WorkspaceShell';
 
 function StudyDropOverlay() {
   return <DropOverlay>여기에 놓아 학습뷰 열기</DropOverlay>;
+}
+
+function StudyPageStateShell({
+  children,
+  workspace,
+}: {
+  children: ReactNode;
+  workspace: ReactNode;
+}) {
+  return (
+    <PageContainer className="min-h-0">
+      <PanelCard data-testid="study-page-primary" className="flex h-full min-h-0 flex-col overflow-hidden">
+        {workspace}
+        {children}
+      </PanelCard>
+    </PageContainer>
+  );
 }
 
 export function StudyPage() {
@@ -288,38 +307,71 @@ export function StudyPage() {
 
   if (!activeViewId) {
     return (
-      <WorkspaceState
-        testId="study-page-empty"
-        dropTargetRef={studyDropTargetRef}
-        showDropOverlay={draggingEntry && overStudy}
+      <StudyPageStateShell
+        workspace={(
+          <WorkspaceState
+            testId="study-page-empty"
+            dropTargetRef={studyDropTargetRef}
+            showDropOverlay={draggingEntry && overStudy}
+          >
+            저장된 학습뷰를 선택하세요.
+          </WorkspaceState>
+        )}
       >
-        저장된 학습뷰를 선택하세요.
-      </WorkspaceState>
+        {indicatorPanelOpen && (
+          <IndicatorPanel onClose={() => setIndicatorPanelOpen(false)} />
+        )}
+        {settingsOpen && (
+          <LiveSettingsModal onClose={() => setSettingsOpen(false)} />
+        )}
+      </StudyPageStateShell>
     );
   }
 
   if (isStudyPageLoading && !selectedSave && tabs.length === 0) {
     return (
-      <WorkspaceState
-        testId="study-page-loading"
-        dropTargetRef={studyDropTargetRef}
-        showDropOverlay={draggingEntry && overStudy}
+      <StudyPageStateShell
+        workspace={(
+          <WorkspaceState
+            testId="study-page-loading"
+            dropTargetRef={studyDropTargetRef}
+            showDropOverlay={draggingEntry && overStudy}
+          >
+            학습뷰 불러오는 중...
+          </WorkspaceState>
+        )}
       >
-        학습뷰 불러오는 중...
-      </WorkspaceState>
+        {indicatorPanelOpen && (
+          <IndicatorPanel onClose={() => setIndicatorPanelOpen(false)} />
+        )}
+        {settingsOpen && (
+          <LiveSettingsModal onClose={() => setSettingsOpen(false)} />
+        )}
+      </StudyPageStateShell>
     );
   }
 
   if ((!selectedSave && !isStudyPageLoading) || isErrorActiveView) {
     return (
-      <WorkspaceState
-        testId="study-page-error"
-        tone="error"
-        dropTargetRef={studyDropTargetRef}
-        showDropOverlay={draggingEntry && overStudy}
+      <StudyPageStateShell
+        workspace={(
+          <WorkspaceState
+            testId="study-page-error"
+            tone="error"
+            dropTargetRef={studyDropTargetRef}
+            showDropOverlay={draggingEntry && overStudy}
+          >
+            학습뷰를 찾을 수 없습니다.
+          </WorkspaceState>
+        )}
       >
-        학습뷰를 찾을 수 없습니다.
-      </WorkspaceState>
+        {indicatorPanelOpen && (
+          <IndicatorPanel onClose={() => setIndicatorPanelOpen(false)} />
+        )}
+        {settingsOpen && (
+          <LiveSettingsModal onClose={() => setSettingsOpen(false)} />
+        )}
+      </StudyPageStateShell>
     );
   }
 
@@ -338,112 +390,116 @@ export function StudyPage() {
       : null;
 
   return (
-    <WorkspaceRoot testId="study-page" className="grid grid-rows-[auto_auto_minmax(0,1fr)]">
-      {tabs.length > 0 && (
-        <div className="min-w-0 border-b border-[var(--border)]">
-          <StudyTabBar
-            tabs={tabs}
-            activeTabId={activeTabId}
-            activeLoading={isStudyPageLoading}
-            tabStatuses={warmTabStatuses}
-            onFocus={handleFocusTab}
-            onClose={handleCloseTab}
-            onReorder={reorderTabs}
-            onNewTab={() => {}}
-          />
-        </div>
-      )}
-      <WorkspaceHeader className="min-h-12 justify-between px-4">
-        <div className="min-w-0">
-          <div className="truncate text-sm font-semibold">{headerLabel}</div>
-          <div className="text-xs text-[var(--fg-dimmer)]">
-            {headerCode} · {headerTimeframe ?? '-'} · {headerKindLabel}
-          </div>
-        </div>
-        <div className="flex shrink-0 items-center gap-2">
-          {headerTimeframe && (
-            <TimeframeControl
-              timeframe={headerTimeframe}
-              rememberedMinute={rememberedMinuteTimeframe}
-              onChange={changeTimeframe}
-            />
-          )}
-          <LiveChartActionButtons
-            onOpenIndicators={() => setIndicatorPanelOpen(true)}
-            onOpenSettings={() => setSettingsOpen(true)}
-          />
-          <IconToolbarButton onClick={() => setIsMemoOpen((value) => !value)} className="shrink-0">
-            메모
-          </IconToolbarButton>
-        </div>
-      </WorkspaceHeader>
-      <div
-        ref={studyDropTargetRef}
-        data-testid="study-drop-target"
-        className="relative grid min-h-0 grid-cols-[minmax(0,1fr)_var(--sidebar-w)]"
-        onWheelCapture={handleWheelCapture}
-      >
-        <div className="min-h-0 min-w-0 overflow-hidden">
-          {isStudyPageLoading ? (
-            <div data-testid="study-page-loading" className="flex h-full items-center justify-center text-sm text-[var(--fg-dimmer)]">
-              학습뷰 불러오는 중...
+    <PageContainer className="min-h-0">
+      <PanelCard data-testid="study-page-primary" className="flex h-full min-h-0 flex-col overflow-hidden">
+        <WorkspaceRoot testId="study-page" className="grid flex-1 grid-rows-[auto_auto_minmax(0,1fr)] bg-transparent">
+          {tabs.length > 0 && (
+            <div className="min-w-0 border-b border-[var(--border)]">
+              <StudyTabBar
+                tabs={tabs}
+                activeTabId={activeTabId}
+                activeLoading={isStudyPageLoading}
+                tabStatuses={warmTabStatuses}
+                onFocus={handleFocusTab}
+                onClose={handleCloseTab}
+                onReorder={reorderTabs}
+                onNewTab={() => {}}
+              />
             </div>
-          ) : activeViewModel.status === 'ready' ? (
-            <LiveChartRoot
-              code={activeViewModel.save.code}
-              timeframe={activeViewModel.save.timeframe}
-              viewIdentity={activeTabId ? `${activeTabId}:${activeViewId}:${activeViewModel.save.timeframe}` : `${activeViewId}:${activeViewModel.save.timeframe}`}
-              bundle={activeViewModel.bundle}
-              chartBundle={activeViewModel.chartBundle}
-              clampEngaged={false}
-              isPastCandlesLoading={false}
-              isExtending={false}
-              pastDataWarnings={activeViewModel.pastDataWarnings}
-              restoreViewport={restoreViewport}
-              dayAskPeaks={activeViewModel.bundle.ask_peaks}
-              dayBidPeaks={activeViewModel.bundle.bid_peaks}
-              todayKst={activeViewModel.save.range.to_date}
-              tradeVolumePocs={tradeVolumePocsFromWire(activeViewModel.bundle.trade_volume_pocs)}
-              forceHogaPanes
-              onViewportCaptureReady={handleViewportCaptureReady}
-              onCursorActiveChange={setIsCursorActive}
-            />
-          ) : null}
-        </div>
-        <aside
-          ref={detailPanelScrollRef}
-          role="complementary"
-          aria-label="Study Detail Panel"
-          data-testid={selectedSave ? studyReferenceDetailPanelTestId(selectedSave) : undefined}
-          className="relative z-10 grid min-h-0 grid-rows-[auto_minmax(0,1fr)] overflow-y-auto overflow-x-hidden border-l border-[var(--border)] bg-[var(--bg-card)]"
-          style={{ scrollbarGutter: 'stable' }}
-        >
-          {activeViewModel.status === 'ready' && (
-            <StudyReferenceDetailPanel
-              save={activeViewModel.save}
-              bundle={activeViewModel.bundle}
-              isCursorActive={isCursorActive}
-            />
           )}
-          {isMemoOpen && selectedSave && (
-            <StudyMemoPanel
-              memo={selectedSave.memo}
-              isSaving={mutations.updateMetadata.isPending}
-              errorMessage={memoError}
-              onClose={() => setIsMemoOpen(false)}
-              onCommit={commitMemo}
-            />
+          <WorkspaceHeader className="min-h-12 justify-between px-4">
+            <div className="min-w-0">
+              <div className="truncate text-sm font-semibold">{headerLabel}</div>
+              <div className="text-xs text-[var(--fg-dimmer)]">
+                {headerCode} · {headerTimeframe ?? '-'} · {headerKindLabel}
+              </div>
+            </div>
+            <div className="flex shrink-0 items-center gap-2">
+              {headerTimeframe && (
+                <TimeframeControl
+                  timeframe={headerTimeframe}
+                  rememberedMinute={rememberedMinuteTimeframe}
+                  onChange={changeTimeframe}
+                />
+              )}
+              <LiveChartActionButtons
+                onOpenIndicators={() => setIndicatorPanelOpen(true)}
+                onOpenSettings={() => setSettingsOpen(true)}
+              />
+              <IconToolbarButton onClick={() => setIsMemoOpen((value) => !value)} className="shrink-0">
+                메모
+              </IconToolbarButton>
+            </div>
+          </WorkspaceHeader>
+          <div
+            ref={studyDropTargetRef}
+            data-testid="study-drop-target"
+            className="relative grid min-h-0 grid-cols-[minmax(0,1fr)_var(--sidebar-w)]"
+            onWheelCapture={handleWheelCapture}
+          >
+            <div className="min-h-0 min-w-0 overflow-hidden">
+              {isStudyPageLoading ? (
+                <div data-testid="study-page-loading" className="flex h-full items-center justify-center text-sm text-[var(--fg-dimmer)]">
+                  학습뷰 불러오는 중...
+                </div>
+              ) : activeViewModel.status === 'ready' ? (
+                <LiveChartRoot
+                  code={activeViewModel.save.code}
+                  timeframe={activeViewModel.save.timeframe}
+                  viewIdentity={activeTabId ? `${activeTabId}:${activeViewId}:${activeViewModel.save.timeframe}` : `${activeViewId}:${activeViewModel.save.timeframe}`}
+                  bundle={activeViewModel.bundle}
+                  chartBundle={activeViewModel.chartBundle}
+                  clampEngaged={false}
+                  isPastCandlesLoading={false}
+                  isExtending={false}
+                  pastDataWarnings={activeViewModel.pastDataWarnings}
+                  restoreViewport={restoreViewport}
+                  dayAskPeaks={activeViewModel.bundle.ask_peaks}
+                  dayBidPeaks={activeViewModel.bundle.bid_peaks}
+                  todayKst={activeViewModel.save.range.to_date}
+                  tradeVolumePocs={tradeVolumePocsFromWire(activeViewModel.bundle.trade_volume_pocs)}
+                  forceHogaPanes
+                  onViewportCaptureReady={handleViewportCaptureReady}
+                  onCursorActiveChange={setIsCursorActive}
+                />
+              ) : null}
+            </div>
+            <aside
+              ref={detailPanelScrollRef}
+              role="complementary"
+              aria-label="Study Detail Panel"
+              data-testid={selectedSave ? studyReferenceDetailPanelTestId(selectedSave) : undefined}
+              className="relative z-10 grid min-h-0 grid-rows-[auto_minmax(0,1fr)] overflow-y-auto overflow-x-hidden border-l border-[var(--border)] bg-bg-subtle/40"
+              style={{ scrollbarGutter: 'stable' }}
+            >
+              {activeViewModel.status === 'ready' && (
+                <StudyReferenceDetailPanel
+                  save={activeViewModel.save}
+                  bundle={activeViewModel.bundle}
+                  isCursorActive={isCursorActive}
+                />
+              )}
+              {isMemoOpen && selectedSave && (
+                <StudyMemoPanel
+                  memo={selectedSave.memo}
+                  isSaving={mutations.updateMetadata.isPending}
+                  errorMessage={memoError}
+                  onClose={() => setIsMemoOpen(false)}
+                  onCommit={commitMemo}
+                />
+              )}
+            </aside>
+            {draggingEntry && overStudy && <StudyDropOverlay />}
+          </div>
+          {indicatorPanelOpen && (
+            <IndicatorPanel onClose={() => setIndicatorPanelOpen(false)} />
           )}
-        </aside>
-        {draggingEntry && overStudy && <StudyDropOverlay />}
-      </div>
-      {indicatorPanelOpen && (
-        <IndicatorPanel onClose={() => setIndicatorPanelOpen(false)} />
-      )}
-      {settingsOpen && (
-        <LiveSettingsModal onClose={() => setSettingsOpen(false)} />
-      )}
-    </WorkspaceRoot>
+          {settingsOpen && (
+            <LiveSettingsModal onClose={() => setSettingsOpen(false)} />
+          )}
+        </WorkspaceRoot>
+      </PanelCard>
+    </PageContainer>
   );
 }
 
