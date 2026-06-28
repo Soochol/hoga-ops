@@ -1,10 +1,12 @@
 import { describe, expect, it } from 'vitest';
 
 import {
+  buildCandleDateIndex,
   computeContinuousTradeVolumeDistribution,
   mergeVolumeDistributionTail,
   firstTrailingSinglePriceBookMs,
   selectVolumeDistributionProfile,
+  volumeDistributionClosePointsFromCandles,
   volumeDistributionClosePoints,
 } from './continuousTradeVolumeDistribution';
 import type { DayVolumeDistribution } from '../api/types';
@@ -233,6 +235,30 @@ describe('computeContinuousTradeVolumeDistribution', () => {
         { ts_ms: Date.UTC(2026, 5, 25, 0, 1), open: 1, high: 1, low: 1, close: 101, vol_a: 0, vol_b: 0 },
       ],
     });
+
+    expect(points).toEqual([
+      { t_ms: Date.UTC(2026, 5, 25, 0, 1), close: 101 },
+      { t_ms: Date.UTC(2026, 5, 25, 0, 2), close: 102 },
+    ]);
+  });
+
+  it('indexes candles by KST date for repeated hover lookups', () => {
+    const previousDateCandle = { ts_ms: Date.UTC(2026, 5, 24, 0, 1), open: 1, high: 1, low: 1, close: 999, vol_a: 0, vol_b: 0 };
+    const firstSelected = { ts_ms: Date.UTC(2026, 5, 25, 0, 2), open: 1, high: 1, low: 1, close: 102, vol_a: 0, vol_b: 0 };
+    const secondSelected = { ts_ms: Date.UTC(2026, 5, 25, 0, 1), open: 1, high: 1, low: 1, close: 101, vol_a: 0, vol_b: 0 };
+
+    const index = buildCandleDateIndex([previousDateCandle, firstSelected, secondSelected]);
+
+    expect(index.get('20260624')).toEqual([previousDateCandle]);
+    expect(index.get('20260625')).toEqual([firstSelected, secondSelected]);
+    expect(index.get('20260626')).toBeUndefined();
+  });
+
+  it('builds sorted close points from already-selected candles without date filtering', () => {
+    const points = volumeDistributionClosePointsFromCandles([
+      { ts_ms: Date.UTC(2026, 5, 25, 0, 2), open: 1, high: 1, low: 1, close: 102, vol_a: 0, vol_b: 0 },
+      { ts_ms: Date.UTC(2026, 5, 25, 0, 1), open: 1, high: 1, low: 1, close: 101, vol_a: 0, vol_b: 0 },
+    ]);
 
     expect(points).toEqual([
       { t_ms: Date.UTC(2026, 5, 25, 0, 1), close: 101 },

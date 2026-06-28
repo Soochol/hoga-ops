@@ -2348,6 +2348,53 @@ describe('LiveChartRoot crosshair → cursor store (ADR-0044)', () => {
     expect(useLiveCursorStore.getState().cursorMs).toBe(TODAY_OPEN_MS + 120_000);
   });
 
+  it('snaps repeated crosshair movement inside the same candle to one cursor update', async () => {
+    const onCandleBasisHover = vi.fn();
+    const onCursorActiveChange = vi.fn();
+    const bundle = {
+      ...TODAY_ONLY_BUNDLE,
+      candles: [
+        { ts_ms: TODAY_OPEN_MS + 60_000, open: 100, high: 101, low: 99, close: 100, vol_a: 1, vol_b: 0 },
+        { ts_ms: TODAY_OPEN_MS + 120_000, open: 101, high: 102, low: 100, close: 101, vol_a: 1, vol_b: 0 },
+      ],
+    };
+    render(
+      <LiveChartRoot
+        code="005930"
+        timeframe="1m"
+        bundle={bundle}
+        clampEngaged={false}
+        isPastCandlesLoading={false}
+        onCandleBasisHover={onCandleBasisHover}
+        onCursorActiveChange={onCursorActiveChange}
+      />,
+      { wrapper },
+    );
+    const chart = vi.mocked(createChartEx).mock.results[0].value;
+    onCandleBasisHover.mockClear();
+    onCursorActiveChange.mockClear();
+    const cursorChanges: Array<number | null> = [];
+    const unsubscribe = useLiveCursorStore.subscribe((state) => {
+      cursorChanges.push(state.cursorMs);
+    });
+    const fire = (p: { time?: unknown; point?: { x: number } | null }) =>
+      chart.subscribeCrosshairMove.mock.calls.forEach(
+        ([h]: [(p: { time?: unknown; point?: { x: number } | null }) => void]) => h(p),
+      );
+    const flush = () => act(() => new Promise((r) => requestAnimationFrame(() => r(null))));
+
+    act(() => fire({ time: (TODAY_OPEN_MS + 61_000) / 1000, point: { x: 10 } }));
+    await flush();
+    act(() => fire({ time: (TODAY_OPEN_MS + 62_000) / 1000, point: { x: 11 } }));
+    await flush();
+    unsubscribe();
+
+    expect(useLiveCursorStore.getState().cursorMs).toBe(TODAY_OPEN_MS + 60_000);
+    expect(cursorChanges).toEqual([TODAY_OPEN_MS + 60_000]);
+    expect(onCandleBasisHover).toHaveBeenCalledTimes(1);
+    expect(onCursorActiveChange).toHaveBeenCalledTimes(1);
+  });
+
   it('crosshair inside chart whitespace with no resolvable time pins spot indicators to the latest candle', async () => {
     render(
       <LiveChartRoot

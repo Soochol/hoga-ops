@@ -447,6 +447,40 @@ describe('StudyPage', () => {
       volumeDistributionHoverCutoffEnabled: true,
       volumeDistributionRangeCount: 2,
     });
+    const previousDateCandle = {
+      ts_ms: Date.UTC(2026, 5, 15, 1, 0, 0),
+      open: 1,
+      high: 2,
+      low: 1,
+      close: 2,
+      vol_a: 10,
+      vol_b: 0,
+    };
+    const selectedDateCandle = {
+      ts_ms: HOVER_MS,
+      open: 2,
+      high: 3,
+      low: 2,
+      close: 3,
+      vol_a: 11,
+      vol_b: 0,
+    };
+    const referenceBundle = {
+      ...bundle(),
+      from_date: '20260615',
+      segments: [
+        { date: '20260615', session_open_ms: Date.UTC(2026, 5, 15, 0, 0, 0), session_close_ms: Date.UTC(2026, 5, 15, 6, 30, 0) },
+        { date: '20260616', session_open_ms: Date.UTC(2026, 5, 16, 0, 0, 0), session_close_ms: Date.UTC(2026, 5, 16, 6, 30, 0) },
+      ],
+      candles: [previousDateCandle, selectedDateCandle],
+    };
+    useStudyReferenceBundleMock.mockReturnValue({
+      bundle: referenceBundle,
+      chartBundle: referenceBundle,
+      isLoading: false,
+      error: null,
+      pastDataWarnings: [],
+    });
     useVolumeDistributionCutoffProfileMock.mockReturnValue(cutoffDistribution);
     useLiveCursorStore.getState().setCursor(HOVER_MS);
 
@@ -463,6 +497,7 @@ describe('StudyPage', () => {
       date: '20260616',
       cursorMs: HOVER_MS,
       rangeCount: 2,
+      candles: [selectedDateCandle],
     }));
     expect(screen.getByTestId('volume-distribution-card')).toBeTruthy();
     expect(screen.getAllByTestId('volume-distribution-row')).toHaveLength(3);
