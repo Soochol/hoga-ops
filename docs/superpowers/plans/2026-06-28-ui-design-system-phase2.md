@@ -151,18 +151,18 @@ git commit -m "refactor: reuse list rows in indicator panel"
 **Files:**
 - Modify only if a small, low-risk bundle improvement is obvious from build output.
 
-- [ ] **Step 1: Measure remaining className distribution**
+- [x] **Step 1: Measure remaining className distribution**
 
 Run: `rg "className=" frontend/src -g "*.tsx" --count`
 
-- [ ] **Step 2: Run full frontend tests**
+- [x] **Step 2: Run full frontend tests**
 
 Run: `cd frontend && npm run test -- --run`
 
-- [ ] **Step 3: Run frontend build**
+- [x] **Step 3: Run frontend build**
 
 Run: `cd frontend && npm run build`
 
-- [ ] **Step 4: Summarize remaining direct className areas and next steps**
+- [x] **Step 4: Summarize remaining direct className areas and next steps**
 
 Include bundle warning status from build output.
