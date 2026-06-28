@@ -4,16 +4,19 @@ export function RailDrawer({
   id,
   testId,
   className = '',
+  ariaLabel,
   children,
 }: {
   id: string;
   testId?: string;
   className?: string;
+  ariaLabel?: string;
   children: ReactNode;
 }) {
   return (
     <aside
       id={id}
+      aria-label={ariaLabel}
       data-testid={testId}
       className={`h-full min-w-0 overflow-hidden border-l border-border bg-bg-card ${className}`.trim()}
       style={{ width: 'var(--watchlist-panel-w)' }}

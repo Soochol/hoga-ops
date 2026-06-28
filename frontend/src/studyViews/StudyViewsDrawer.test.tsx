@@ -208,6 +208,8 @@ it('filters by name, code, and memo ignoring whitespace and case', () => {
 
 it('renders list and no-match state', async () => {
   renderDrawer('/inventory');
+  expect(screen.getByRole('complementary', { name: '저장 뷰' })).toHaveClass('bg-bg-card');
+  expect(screen.getByRole('complementary', { name: '저장 뷰' })).toHaveClass('border-l');
   expect(screen.getByText('급등 이후')).toBeTruthy();
   await userEvent.type(screen.getByLabelText('저장 뷰 검색'), '없음');
   expect(screen.getByText('검색 결과가 없습니다.')).toBeTruthy();

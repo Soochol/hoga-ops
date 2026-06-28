@@ -37,6 +37,7 @@ import { CSS } from '@dnd-kit/utilities';
 import type { WatchlistEntry } from '../api/watchlist';
 import { resolveDrag, resolveFolderDrag, entrySortableId, parseEntrySortableId } from './dragHandlers';
 import { useEntryDragStore, isPointOnChart, dropPoint } from '../state/entryDrag';
+import { RailDrawer, RailDrawerBody, RailDrawerHeader, RailState } from '../ui/RailShell';
 
 // v1는 기존 전역 정렬 값 마이그레이션 입력으로만 유지.
 const LEGACY_SORT_MODE_STORAGE_KEY = 'watchlist.sortMode.v1';
@@ -465,44 +466,39 @@ export function WatchlistDrawer() {
   };
 
   return (
-    <div id="right-rail-watchlist-panel" data-testid="watchlist-panel"
-      style={{ width: 'var(--watchlist-panel-w)', height: '100%', background: 'var(--bg-card)',
-               borderLeft: '1px solid var(--border)', display: 'flex', flexDirection: 'column' }}>
-      {/* 헤더: 관심종목 라벨 + 편집 메뉴 (종목 추가는 편집 모달에서 — 빠른 추가 제거) */}
-      <div style={{ borderBottom: '1px solid var(--border)' }}>
-        <div style={{ padding: 'var(--space-sm) var(--space-md)',
-                      display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-          <span style={{ fontSize: 'var(--text-xs)', color: 'var(--fg-dim)', fontFamily: 'monospace',
-                         textTransform: 'uppercase', letterSpacing: '0.08em' }}>관심종목</span>
-          <div className="flex items-center gap-1">
-            <div className="relative" ref={editMenuRef}>
-              <button type="button" aria-label="관심종목 편집 메뉴" aria-haspopup="menu" aria-expanded={editMenu}
-                      onClick={() => setEditMenu((v) => !v)}
-                      className="text-fg-dim hover:text-accent text-xs">편집</button>
-              {editMenu && (
-                <AnchoredMenu label="관심">
-                  <button type="button" role="menuitem"
-                          onClick={() => { setEditMenu(false); setEditOpen(true); }}
-                          className="block w-full text-left px-3 py-1.5 text-sm text-fg hover:bg-bg-input-hover">
-                    관심 편집
-                  </button>
-                  <button type="button" role="menuitem"
-                          onClick={() => { setEditMenu(false); setAddGroupOpen(true); }}
-                          className="block w-full text-left px-3 py-1.5 text-sm text-fg hover:bg-bg-input-hover">
-                    새 그룹 만들기
-                  </button>
-                </AnchoredMenu>
-              )}
-            </div>
-          </div>
+    <RailDrawer id="right-rail-watchlist-panel" testId="watchlist-panel" ariaLabel="관심종목">
+      <RailDrawerHeader
+        title="관심종목"
+        actions={(
+          <div className="relative" ref={editMenuRef}>
+            <button type="button" aria-label="관심종목 편집 메뉴" aria-haspopup="menu" aria-expanded={editMenu}
+                    onClick={() => setEditMenu((v) => !v)}
+                    className="text-xs text-fg-dim hover:text-accent">
+              편집
+            </button>
+            {editMenu && (
+              <AnchoredMenu label="관심">
+                <button type="button" role="menuitem"
+                        onClick={() => { setEditMenu(false); setEditOpen(true); }}
+                        className="block w-full px-3 py-1.5 text-left text-sm text-fg hover:bg-bg-input-hover">
+                  관심 편집
+                </button>
+                <button type="button" role="menuitem"
+                        onClick={() => { setEditMenu(false); setAddGroupOpen(true); }}
+                        className="block w-full px-3 py-1.5 text-left text-sm text-fg hover:bg-bg-input-hover">
+                  새 그룹 만들기
+                </button>
+              </AnchoredMenu>
+            )}
         </div>
-      </div>
+        )}
+      />
 
-      <div data-testid="watchlist-scroll" style={{ flex: 1, overflow: 'auto' }}>
-        {isLoading && <div className="p-3 text-fg-dimmer text-sm">불러오는 중</div>}
-        {error && <div className="p-3 text-error text-sm">관심종목을 불러올 수 없습니다</div>}
+      <RailDrawerBody testId="watchlist-scroll">
+        {isLoading && <RailState>불러오는 중</RailState>}
+        {error && <RailState tone="error">관심종목을 불러올 수 없습니다</RailState>}
         {!isLoading && !error && (data?.entries.length ?? 0) === 0 && (data?.folders.length ?? 0) === 0 && (
-          <div className="p-3 text-fg-dimmer text-sm">관심종목이 없습니다</div>
+          <RailState>관심종목이 없습니다</RailState>
         )}
         <DndContext sensors={sensors} collisionDetection={typeAwareCollision}
           onDragStart={onDragStart} onDragMove={onDragMove} onDragEnd={onDragEnd} onDragCancel={onDragCancel}>
@@ -574,7 +570,7 @@ export function WatchlistDrawer() {
             })}
           </SortableContext>
         </DndContext>
-      </div>
+      </RailDrawerBody>
 
       {/* 푸터: 전체수집 결과 배너 + 다음 수집 카운트다운 + 전체 수집 */}
       {recentAction?.kind === 'caught_up_all' && (() => {
@@ -594,8 +590,7 @@ export function WatchlistDrawer() {
           </div>
         );
       })()}
-      <div style={{ borderTop: '1px solid var(--border)', padding: 'var(--space-sm) var(--space-md)' }}
-           className="text-xs text-fg-dim flex items-center justify-between gap-2">
+      <div className="flex items-center justify-between gap-2 border-t border-border px-md py-sm text-xs text-fg-dim">
         <span className="flex items-center gap-1">다음 수집{' '}
           {data && <span className="text-accent"><Countdown targetMs={data.next_run_at_ms} /></span>}</span>
         <button type="button"
@@ -630,6 +625,6 @@ export function WatchlistDrawer() {
           onSubmit={async (name) => { await renameM.mutateAsync({ folderId: renameTarget.id, name }); }}
           onClose={() => setRenameTarget(null)} />
       )}
-    </div>
+    </RailDrawer>
   );
 }
