@@ -68,9 +68,10 @@ type Props = {
   chart: IChartApi;
   axis: VirtualAxis;
   paneSeries: PaneSeriesMap;
+  onChartHoverPassthrough?: (point: { x: number; y: number }) => void;
 };
 
-export default function DrawingOverlay({ chart, axis, paneSeries }: Props) {
+export default function DrawingOverlay({ chart, axis, paneSeries, onChartHoverPassthrough }: Props) {
   const containerRef = useRef<HTMLDivElement>(null);
   const canvasRef = useRef<HTMLCanvasElement>(null);
 
@@ -290,6 +291,11 @@ export default function DrawingOverlay({ chart, axis, paneSeries }: Props) {
     TOOLS[activeTool].onPointerDown?.(buildCtx(e));
   };
   const onPointerMove = (e: React.PointerEvent<HTMLDivElement>) => {
+    const rect = (e.currentTarget as HTMLDivElement).getBoundingClientRect();
+    onChartHoverPassthrough?.({
+      x: e.clientX - rect.left,
+      y: e.clientY - rect.top,
+    });
     TOOLS[activeTool].onPointerMove?.(buildCtx(e));
   };
   const onPointerUp = (e: React.PointerEvent<HTMLDivElement>) => {

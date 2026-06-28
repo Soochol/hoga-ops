@@ -827,6 +827,69 @@ export function LiveChartRoot({ code, timeframe, venue = 'KRX', viewIdentity, bu
     todayKst,
   ]);
 
+  const publishCursorHover = useCallback(
+    (virtualTime: unknown, pointX?: number): void => {
+      if (!chart) return;
+      const store = useLiveCursorStore.getState();
+      const t = typeof virtualTime === 'number'
+        ? virtualTime
+        : (typeof pointX === 'number' ? chart.timeScale().coordinateToTime(pointX) : null);
+      const lastMs = lastCandleMsRef.current;
+      // No usable time while still inside the chart surface means the pointer
+      // is over an internal blank band, not outside the chart. Keep sidebar
+      // spot indicators on the latest concrete candle; only mouse-leave
+      // returns to latest streaming mode.
+      if (typeof t !== 'number' || axis.segments.length === 0) {
+        if (lastMs !== null) {
+          onCandleBasisHover?.(kstDateFromMs(lastMs));
+          onCursorActiveChange?.(true);
+          store.setCursor(lastMs);
+          return;
+        }
+        onCursorActiveChange?.(false);
+        store.clearCursor();
+        return;
+      }
+      // ChartStage.tsx:197 pattern — param.time is virtual-axis seconds.
+      // Convert to virtual-ms, then real Unix-ms via axis.toReal().
+      let realMs = axis.toReal(t * 1000);
+      // Right-offset whitespace past the last candle: keep the sidebar pinned
+      // to the last concrete candle instead of a future no-data slot.
+      if (lastMs !== null && realMs > lastMs) {
+        realMs = lastMs;
+      }
+      onCandleBasisHover?.(kstDateFromMs(realMs));
+      onCursorActiveChange?.(true);
+      store.setCursor(realMs);
+    },
+    [axis, chart, onCandleBasisHover, onCursorActiveChange],
+  );
+
+  const drawingHoverRafRef = useRef<number | null>(null);
+  const drawingHoverPointRef = useRef<{ x: number; y: number } | null>(null);
+  const handleDrawingOverlayHover = useCallback(
+    (point: { x: number; y: number }) => {
+      if (!chart) return;
+      drawingHoverPointRef.current = point;
+      if (drawingHoverRafRef.current !== null) return;
+      drawingHoverRafRef.current = requestAnimationFrame(() => {
+        drawingHoverRafRef.current = null;
+        const latest = drawingHoverPointRef.current;
+        drawingHoverPointRef.current = null;
+        if (!latest) return;
+        publishCursorHover(chart.timeScale().coordinateToTime(latest.x), latest.x);
+      });
+    },
+    [chart, publishCursorHover],
+  );
+
+  useEffect(() => () => {
+    if (drawingHoverRafRef.current !== null) {
+      cancelAnimationFrame(drawingHoverRafRef.current);
+      drawingHoverRafRef.current = null;
+    }
+  }, []);
+
   // ADR-0044: hover → cursor store. Only mount on minute timeframes —
   // calendar timeframes (D/W/M) don't have backing parquet on /live.
   // rAF-coalesce to one update per frame (matches ChartStage's pattern).
@@ -860,45 +923,11 @@ export function LiveChartRoot({ code, timeframe, venue = 'KRX', viewIdentity, bu
       const point = param.point;
       pending = requestAnimationFrame(() => {
         pending = null;
-        const store = useLiveCursorStore.getState();
         const t = typeof param.time === 'number'
           ? param.time
           : (readNumericCrosshairTimeFromSeriesData(param.seriesData)
             ?? chart.timeScale().coordinateToTime(point.x));
-        const lastMs = lastCandleMsRef.current;
-        // No usable time while still inside the chart surface means the pointer
-        // is over an internal blank band, not outside the chart. Keep sidebar
-        // spot indicators on the latest concrete candle; only mouse-leave
-        // (point == null above) returns to latest streaming mode.
-        if (typeof t !== 'number' || axis.segments.length === 0) {
-          if (lastMs !== null) {
-            onCandleBasisHover?.(kstDateFromMs(lastMs));
-            onCursorActiveChange?.(true);
-            store.setCursor(lastMs);
-            return;
-          }
-          onCursorActiveChange?.(false);
-          store.clearCursor();
-          return;
-        }
-        // ChartStage.tsx:197 pattern — param.time is virtual-axis seconds.
-        // Convert to virtual-ms, then real Unix-ms via axis.toReal().
-        let realMs = axis.toReal(t * 1000);
-        // Right-offset whitespace past the last candle: with CrosshairMode.Normal
-        // lwc does NOT report an empty time there — it extrapolates the (gap-
-        // compressed) virtual axis forward, so `realMs` lands on the session tail
-        // (15:20–15:30 closing-auction window), a FUTURE no-data time. Left as a
-        // cursor it pinned the sidebar to a slot parquet/SSE can't serve → blank.
-        // Treat "cursor past the last real candle" as a hover on the last
-        // concrete candle so sidebar cards keep showing candle-basis detail.
-        // (verified 2026-06-11: coordinateToTime jumps 14:53 → 15:20 across the
-        // whitespace boundary while the live edge was 14:54).
-        if (lastMs !== null && realMs > lastMs) {
-          realMs = lastMs;
-        }
-        onCandleBasisHover?.(kstDateFromMs(realMs));
-        onCursorActiveChange?.(true);
-        store.setCursor(realMs);
+        publishCursorHover(t, point.x);
       });
     };
     chart.subscribeCrosshairMove(handler);
@@ -911,7 +940,7 @@ export function LiveChartRoot({ code, timeframe, venue = 'KRX', viewIdentity, bu
       onCursorActiveChange?.(false);
       useLiveCursorStore.getState().resetCursor();
     };
-  }, [chart, axis, timeframe, onCursorActiveChange, onCandleBasisHover]);
+  }, [chart, axis, timeframe, onCursorActiveChange, onCandleBasisHover, publishCursorHover]);
 
   useEffect(() => {
     if (!chart || !onCandleBasisClick) return;
@@ -1011,7 +1040,12 @@ export function LiveChartRoot({ code, timeframe, venue = 'KRX', viewIdentity, bu
               override={tradeVolumePocOverride}
             />
           )}
-          <DrawingOverlay chart={chart} axis={axis} paneSeries={paneSeries} />
+          <DrawingOverlay
+            chart={chart}
+            axis={axis}
+            paneSeries={paneSeries}
+            onChartHoverPassthrough={handleDrawingOverlayHover}
+          />
           {/* After DrawingOverlay so the legend's ✕/eye buttons paint above the
               drawing canvas; the container is pointer-transparent so the
               crosshair + drawing hover still work underneath it. */}
