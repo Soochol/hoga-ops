@@ -45,8 +45,16 @@ describe('IndicatorPanel', () => {
     expect(screen.getByRole('dialog')).not.toHaveClass('bg-bg-card');
     expect(screen.getByRole('dialog')).toHaveClass('z-[60]');
     expect(screen.getByTestId('indicator-panel-shell')).toHaveClass('bg-bg-card');
-    expect(screen.getByRole('navigation', { name: '지표 카테고리' })).toHaveClass('border-r');
+    const nav = screen.getByRole('navigation', { name: '지표 카테고리' });
+    expect(nav).toHaveClass('border-r');
+    expect(nav.parentElement).toHaveClass('grid-cols-[240px_minmax(0,1fr)]');
     expect(screen.getByText('10호가 지표')).toHaveClass('uppercase');
+  });
+
+  it('keeps long category labels on one line in the side nav', () => {
+    render(<IndicatorPanel onClose={() => {}} />);
+
+    expect(screen.getByRole('button', { name: '연속체결 매물대 분포' })).toHaveClass('whitespace-nowrap');
   });
 
   it('index capabilities hide every hoga and program indicator category', () => {

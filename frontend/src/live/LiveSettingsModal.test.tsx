@@ -28,6 +28,7 @@ describe('LiveSettingsModal (2단)', () => {
     expect(screen.getByRole('dialog')).not.toHaveClass('bg-bg-card');
     expect(screen.getByRole('dialog')).toHaveClass('z-[60]');
     expect(screen.getByTestId('live-settings-modal-shell')).toHaveClass('bg-bg-card');
+    expect(screen.getByTestId('live-settings-modal-shell')).toHaveClass('h-[min(820px,calc(100vh-48px))]');
     expect(screen.getByRole('navigation', { name: '설정 카테고리' })).toHaveClass('border-r');
   });
 

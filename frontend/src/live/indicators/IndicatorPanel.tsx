@@ -184,7 +184,7 @@ export default function IndicatorPanel({ onClose, capabilities = STOCK_CAPABILIT
             ✕
           </button>
         </div>
-        <div className="grid min-h-0 grid-cols-[200px_minmax(0,1fr)]">
+        <div className="grid min-h-0 grid-cols-[240px_minmax(0,1fr)]">
           <nav className="overflow-y-auto py-2 border-r border-border bg-bg-card" aria-label="지표 카테고리">
           {categories.map((c, i) => {
             const checked = checkedFor(c.id);
@@ -209,7 +209,7 @@ export default function IndicatorPanel({ onClose, capabilities = STOCK_CAPABILIT
                     type="button"
                     onClick={() => setSelected(c.id)}
                     aria-current={isSelected ? 'true' : undefined}
-                    className={`flex-1 text-left cursor-pointer ${isSelected ? 'text-fg' : 'text-inherit'}`}
+                    className={`min-w-0 flex-1 cursor-pointer whitespace-nowrap text-left ${isSelected ? 'text-fg' : 'text-inherit'}`}
                   >
                     {c.label}
                   </button>
