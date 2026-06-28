@@ -19,6 +19,7 @@ from __future__ import annotations
 import json
 import logging
 import time
+from collections import OrderedDict
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from typing import Literal
@@ -36,6 +37,8 @@ _log = logging.getLogger(__name__)
 
 # Default TTL for today's memory cache.
 TODAY_TTL_SECONDS = 60.0
+DEFAULT_PAST_MEM_MAX_ENTRIES = 512
+DEFAULT_TODAY_MEM_MAX_ENTRIES = 256
 
 # Cache file metadata constant.
 _KIS_TR_ID = "FHKST03010230"
@@ -46,15 +49,32 @@ TodayState = Literal["hit", "miss", "negative"]
 class PastCandlesCache:
     """Disk-backed past + memory-only today cache for KIS minute candles."""
 
-    def __init__(self, data_dir: Path, *, today_ttl_seconds: float = TODAY_TTL_SECONDS):
+    def __init__(
+        self,
+        data_dir: Path,
+        *,
+        today_ttl_seconds: float = TODAY_TTL_SECONDS,
+        max_past_mem_entries: int = DEFAULT_PAST_MEM_MAX_ENTRIES,
+        max_today_mem_entries: int = DEFAULT_TODAY_MEM_MAX_ENTRIES,
+    ):
         self._data_dir = data_dir
         self._today_ttl = today_ttl_seconds
+        self._max_past_mem_entries = max(0, int(max_past_mem_entries))
+        self._max_today_mem_entries = max(0, int(max_today_mem_entries))
         # In-memory hot cache for past dates (avoids re-reading disk).
-        self._past_mem: dict[tuple[KisVenue, str, str], list[dict]] = {}
+        self._past_mem: OrderedDict[tuple[KisVenue, str, str], list[dict]] = OrderedDict()
         # Today: (venue, code) -> (fetched_at_monotonic, bars-or-None).
         # value=None encodes the negative cache (known non-trading-day today)
         # so a follow-up request within TTL skips KIS.
-        self._today_mem: dict[tuple[KisVenue, str], tuple[float, list[dict] | None]] = {}
+        self._today_mem: OrderedDict[
+            tuple[KisVenue, str],
+            tuple[float, list[dict] | None],
+        ] = OrderedDict()
+
+    @staticmethod
+    def _trim_lru(cache: OrderedDict, max_entries: int) -> None:
+        while max_entries >= 0 and len(cache) > max_entries:
+            cache.popitem(last=False)
 
     # --- past ---
 
@@ -93,6 +113,7 @@ class PastCandlesCache:
                 # a fresh fetch upstream.
                 self._past_mem.pop(key, None)
             else:
+                self._past_mem.move_to_end(key)
                 return bars
         p = self._past_path(venue, code, date)
         if not p.exists():
@@ -120,6 +141,8 @@ class PastCandlesCache:
                 pass
             return None
         self._past_mem[key] = bars
+        self._past_mem.move_to_end(key)
+        self._trim_lru(self._past_mem, self._max_past_mem_entries)
         return bars
 
     @staticmethod
@@ -152,6 +175,8 @@ class PastCandlesCache:
         }
         atomic_write_json(p, payload)
         self._past_mem[(venue, code, date)] = bars
+        self._past_mem.move_to_end((venue, code, date))
+        self._trim_lru(self._past_mem, self._max_past_mem_entries)
 
     # --- today ---
 
@@ -174,7 +199,9 @@ class PastCandlesCache:
             return "miss", None
         fetched_at, value = entry
         if time.monotonic() - fetched_at >= self._today_ttl:
+            self._today_mem.pop((venue, code), None)
             return "miss", None
+        self._today_mem.move_to_end((venue, code))
         if value is None:
             return "negative", None
         return "hit", value
@@ -188,4 +215,7 @@ class PastCandlesCache:
             venue, code, bars = args
         else:
             raise TypeError("expected (code, bars) or (venue, code, bars)")
-        self._today_mem[(venue, code)] = (time.monotonic(), bars)
+        key = (venue, code)
+        self._today_mem[key] = (time.monotonic(), bars)
+        self._today_mem.move_to_end(key)
+        self._trim_lru(self._today_mem, self._max_today_mem_entries)
