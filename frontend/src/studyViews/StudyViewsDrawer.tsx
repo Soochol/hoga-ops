@@ -21,7 +21,16 @@ import { makeStudySaveCommand, studySaveCommandBody, type StudySaveCommand } fro
 import { StudyViewSaveDialog } from './StudyViewSaveDialog';
 import { latestStudyViewForCode } from './studyViewSelection';
 import { useStudyViewMutations, useStudyViews } from './useStudyViews';
-import { RailDrawer, RailDrawerBody, RailDrawerHeader, RailDrawerSection, RailState } from '../ui/RailShell';
+import {
+  RailDrawer,
+  RailDrawerBody,
+  RailDrawerHeader,
+  RailDrawerSection,
+  RailGroupHeader,
+  RailState,
+  RailToolbarIconButton,
+  RailTreeRow,
+} from '../ui/RailShell';
 import {
   normalizeStudyViewQuery,
   type StudyViewTreeSortDirection,
@@ -94,13 +103,6 @@ function NameSortIcon({ direction, className }: { direction: StudyViewTreeSortDi
       )}
     </svg>
   );
-}
-
-function treeToolbarButtonClass(active = false): string {
-  return [
-    'grid h-7 w-7 place-items-center rounded border text-fg-dim transition-colors',
-    active ? 'border-line-strong bg-bg-input text-fg' : 'border-line hover:bg-bg-input hover:text-fg',
-  ].join(' ');
 }
 
 function SortableStudyViewGroup({
@@ -382,7 +384,7 @@ export function StudyViewsDrawer() {
   };
 
   const renderStudyViewRow = (row: StudyViewListRow) => (
-    <div
+    <RailTreeRow
       key={row.id}
       role={renameState?.id === row.id ? undefined : 'button'}
       tabIndex={renameState?.id === row.id ? undefined : 0}
@@ -404,7 +406,6 @@ export function StudyViewsDrawer() {
         e.preventDefault();
         openStudyViewInActiveTab(row);
       }}
-      className="flex cursor-pointer items-center gap-2 border-b border-border pl-10 pr-md py-sm hover:bg-bg-input-hover focus:outline-none focus:ring-1 focus:ring-inset focus:ring-line"
     >
       {renameState?.id === row.id ? (
         <div className="min-w-0 flex-1 space-y-1">
@@ -447,7 +448,7 @@ export function StudyViewsDrawer() {
           </div>
         </div>
       )}
-    </div>
+    </RailTreeRow>
   );
 
   return (
@@ -478,27 +479,26 @@ export function StudyViewsDrawer() {
             />
             {visibleGroups.length > 0 && (
               <div className="flex shrink-0 gap-1">
-                <button
+                <RailToolbarIconButton
                   type="button"
                   onClick={toggleVisibleGroups}
                   aria-label={visibleGroupsCollapsed ? '전체 펼치기' : '전체 접기'}
                   title={visibleGroupsCollapsed ? '전체 펼치기' : '전체 접기'}
-                  className={treeToolbarButtonClass()}
                 >
                   {visibleGroupsCollapsed
                     ? <ExpandAllIcon className="h-4 w-4" />
                     : <CollapseAllIcon className="h-4 w-4" />}
-                </button>
-                <button
+                </RailToolbarIconButton>
+                <RailToolbarIconButton
                   type="button"
                   onClick={cycleSortMode}
                   aria-label={sortAction.label}
                   aria-pressed={sortAction.pressed}
+                  active={sortAction.pressed}
                   title={sortAction.label}
-                  className={treeToolbarButtonClass(sortAction.pressed)}
                 >
                   <NameSortIcon direction={sortAction.direction} className="h-4 w-4" />
-                </button>
+                </RailToolbarIconButton>
               </div>
             )}
           </div>
@@ -532,7 +532,7 @@ export function StudyViewsDrawer() {
                   <SortableStudyViewGroup key={group.key} id={group.key} code={group.code} disabled={!dragEnabled}>
                     {(groupDragListeners) => (
                       <section aria-label={`${group.label} ${group.code} 저장뷰`}>
-                        <button
+                        <RailGroupHeader
                           type="button"
                           {...(groupDragListeners ?? {})}
                           aria-label={`${group.label} ${group.code} ${groupCollapsed ? '펼치기' : '접기'}`}
@@ -547,12 +547,12 @@ export function StudyViewsDrawer() {
                             }
                             toggleGroup(group.key);
                           }}
-                          className={`sticky top-0 z-10 flex w-full items-center gap-2 border-b bg-bg-card px-3 py-1.5 text-left text-xs text-fg hover:bg-bg-input-hover ${dragEnabled ? 'cursor-grab active:cursor-grabbing' : ''}`}
+                          className={dragEnabled ? 'cursor-grab active:cursor-grabbing' : ''}
+                          leading={<span className="w-3 text-xs" aria-hidden>{groupCollapsed ? '▶' : '▼'}</span>}
+                          count={group.rows.length}
                         >
-                          <span className="w-3 text-xs" aria-hidden>{groupCollapsed ? '▶' : '▼'}</span>
-                          <span className="min-w-0 flex-1 truncate">{group.label}</span>
-                          <span className="text-xs font-normal text-fg-dimmer">{group.rows.length}</span>
-                        </button>
+                          {group.label}
+                        </RailGroupHeader>
                         {!groupCollapsed && (
                           <SortableContext items={group.rows.map((row) => studyViewRowDndId(row.id))} strategy={verticalListSortingStrategy}>
                             {group.rows.map((row) => (
