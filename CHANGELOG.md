@@ -3,6 +3,12 @@
 All notable changes to this project are documented here.
 The format follows a 4-digit `MAJOR.MINOR.PATCH.MICRO` scheme.
 
+## [0.12.14.1] - 2026-06-28
+
+### Changed
+- **/live 호버 렌더 경량화**: 차트 커서 이동을 가까운 실제 캔들 시각으로 정규화하고 같은 캔들 내부의 중복 cursor/basis 발행을 줄여, `/live`와 live study detail의 마우스 호버 잔렉을 완화했다.
+- **/live·/study 매물대 날짜 필터 캐싱**: 캔들을 KST 날짜별로 한 번 인덱싱해 호버 매물대와 종가 라인 계산이 매번 전체 캔들을 다시 훑지 않도록 했다.
+
 ## [0.12.14.0] - 2026-06-28
 
 ### Changed
