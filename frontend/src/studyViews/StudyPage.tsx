@@ -6,7 +6,6 @@ import { LiveChartRoot } from '../live/LiveChartRoot';
 import LiveSettingsModal from '../live/LiveSettingsModal';
 import { TimeframeControl } from '../live/TimeframeControl';
 import { LiveChartActionButtons } from '../live/LiveToolbar';
-import { LiveSymbolSearch } from '../live/LiveSymbolSearch';
 import { tradeVolumePocsFromWire } from '../live/tradeVolumePocWire';
 import type { TabViewport } from '../live/viewportAnchor';
 import { useEntryDragStore } from '../state/entryDrag';
@@ -50,7 +49,6 @@ function StudySearchHeader({
         <div className="truncate text-sm font-semibold">{label}</div>
         <div className="text-xs text-[var(--fg-dimmer)]">{description}</div>
       </div>
-      <LiveSymbolSearch />
     </WorkspaceHeader>
   );
 }
@@ -462,7 +460,6 @@ export function StudyPage() {
                 {headerCode} · {headerTimeframe ?? '-'} · {headerKindLabel}
               </div>
             </div>
-            <LiveSymbolSearch />
             <div className="flex shrink-0 items-center gap-2">
               {headerTimeframe && (
                 <TimeframeControl

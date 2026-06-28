@@ -50,6 +50,14 @@ describe('LiveToolbar', () => {
     );
   });
 
+  it('renders the minute list in a body portal so chart layers cannot cover it', () => {
+    renderToolbar();
+
+    fireEvent.click(screen.getByRole('button', { name: '분봉 선택 열기: 1분' }));
+
+    expect(screen.getByRole('menu', { name: '분봉 목록' }).parentElement).toBe(document.body);
+  });
+
   it('clicking the active minute selector again closes the minute list', () => {
     renderToolbar();
 
@@ -63,7 +71,7 @@ describe('LiveToolbar', () => {
     expect(screen.queryByRole('menu', { name: '분봉 목록' })).toBeNull();
   });
 
-  it('from calendar timeframe, minute selector switches directly to remembered minute without opening menu', () => {
+  it('from calendar timeframe, minute selector opens the remembered minute list', () => {
     renderToolbar();
 
     fireEvent.click(screen.getByRole('button', { name: '분봉 선택 열기: 1분' }));
@@ -71,13 +79,14 @@ describe('LiveToolbar', () => {
     fireEvent.click(screen.getByRole('button', { name: '일' }));
     expect(useLivePageStore.getState().candleTimeframe).toBe('D');
 
-    fireEvent.click(screen.getByRole('button', { name: '5분봉으로 전환' }));
+    fireEvent.click(screen.getByRole('button', { name: '분봉 선택 열기: 5분' }));
 
-    expect(useLivePageStore.getState().candleTimeframe).toBe('5m');
-    expect(screen.queryByRole('menu', { name: '분봉 목록' })).toBeNull();
+    const menu = screen.getByRole('menu', { name: '분봉 목록' });
+    expect(useLivePageStore.getState().candleTimeframe).toBe('D');
+    expect(within(menu).getByRole('menuitemradio', { name: '5분' })).toHaveAttribute('aria-checked', 'true');
   });
 
-  it('from calendar timeframe, minute selector uses shared lastMinuteTimeframe', () => {
+  it('from calendar timeframe, selecting from the minute list uses shared lastMinuteTimeframe', () => {
     useLivePageStore.setState({
       candleTimeframe: 'D',
       lastMinuteTimeframe: '10m',
@@ -85,7 +94,8 @@ describe('LiveToolbar', () => {
     });
     renderToolbar();
 
-    fireEvent.click(screen.getByRole('button', { name: '10분봉으로 전환' }));
+    fireEvent.click(screen.getByRole('button', { name: '분봉 선택 열기: 10분' }));
+    fireEvent.click(within(screen.getByRole('menu', { name: '분봉 목록' })).getByRole('menuitemradio', { name: '10분' }));
 
     expect(useLivePageStore.getState().candleTimeframe).toBe('10m');
     expect(useLivePageStore.getState().lastMinuteTimeframe).toBe('10m');

@@ -245,15 +245,15 @@ describe('StudyPage', () => {
     expect(screen.getByText('저장된 학습뷰를 선택하세요.')).toBeTruthy();
   });
 
-  it('opens the symbol search dialog from the empty study page when "/" is pressed', () => {
+  it('does not open the symbol search dialog from the empty study page when "/" is pressed', () => {
     renderPage();
 
     expect(screen.queryByRole('dialog', { name: '종목 검색' })).toBeNull();
 
     fireEvent.keyDown(window, { key: '/' });
 
-    expect(screen.getByRole('dialog', { name: '종목 검색' })).toBeInTheDocument();
-    expect(document.activeElement).toBe(screen.getByPlaceholderText('검색어를 입력해주세요'));
+    expect(screen.queryByRole('dialog', { name: '종목 검색' })).toBeNull();
+    expect(screen.queryByPlaceholderText('검색어를 입력해주세요')).toBeNull();
   });
 
   it('renders the shared drop overlay while dragging over the study workspace', () => {
@@ -313,7 +313,6 @@ describe('StudyPage', () => {
     }));
     expect(liveChartRootMock.mock.calls.at(-1)?.[0].timeframe).toBe('D');
 
-    fireEvent.click(screen.getByRole('button', { name: '5분봉으로 전환' }));
     fireEvent.click(screen.getByRole('button', { name: '분봉 선택 열기: 5분' }));
     fireEvent.click(within(screen.getByRole('menu', { name: '분봉 목록' })).getByRole('menuitemradio', { name: '15분' }));
 
@@ -347,7 +346,8 @@ describe('StudyPage', () => {
       restoreViewport: null,
     });
 
-    fireEvent.click(screen.getByRole('button', { name: '5분봉으로 전환' }));
+    fireEvent.click(screen.getByRole('button', { name: '분봉 선택 열기: 5분' }));
+    fireEvent.click(within(screen.getByRole('menu', { name: '분봉 목록' })).getByRole('menuitemradio', { name: '5분' }));
     expect(liveChartRootMock.mock.calls.at(-1)?.[0]).toMatchObject({
       timeframe: '5m',
       restoreViewport: { rightEdgeMs: 2_000, barSpan: 120, atLiveEdge: false },
@@ -476,15 +476,15 @@ describe('StudyPage', () => {
     }
   });
 
-  it('opens the symbol search dialog from the study header when "/" is pressed', () => {
+  it('does not open the symbol search dialog from the study header when "/" is pressed', () => {
     renderPage('/study?view=view-ref');
 
     expect(screen.queryByRole('dialog', { name: '종목 검색' })).toBeNull();
 
     fireEvent.keyDown(window, { key: '/' });
 
-    expect(screen.getByRole('dialog', { name: '종목 검색' })).toBeInTheDocument();
-    expect(document.activeElement).toBe(screen.getByPlaceholderText('검색어를 입력해주세요'));
+    expect(screen.queryByRole('dialog', { name: '종목 검색' })).toBeNull();
+    expect(screen.queryByPlaceholderText('검색어를 입력해주세요')).toBeNull();
   });
 
   it('uses hover-cutoff volume distribution for reference study views when enabled', () => {

@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react';
+import { createPortal } from 'react-dom';
 import { useSymbolSearch } from '../capture/useSymbols';
 import { useCombobox } from '../util/useCombobox';
 import { useLiveTabsStore } from '../state/liveTabs';
@@ -122,6 +123,93 @@ export function LiveSymbolSearch() {
 
   const showingRecent = open && q.length === 0 && recentItems.length > 0;
   const listVisible = query.trim().length >= 1 || showingRecent;
+  const searchPopover = open ? (
+    <div
+      ref={wrapperRef}
+      role="dialog"
+      aria-label="종목 검색"
+      style={{ boxShadow: '0 18px 50px rgba(0,0,0,0.45)' }}
+      className="fixed left-1/2 top-[12vh] z-50 w-[min(960px,calc(100vw-32px))] -translate-x-1/2 rounded-xl border border-border-strong bg-bg-card p-4 font-ui"
+    >
+      <div className="flex items-center gap-2.5 h-11 px-3 rounded-xl bg-bg-input">
+        <svg aria-hidden viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="text-fg-dimmer w-[18px] h-[18px] shrink-0">
+          <circle cx="11" cy="11" r="7" />
+          <line x1="21" y1="21" x2="16.65" y2="16.65" />
+        </svg>
+        <input
+          ref={inputRef}
+          role="combobox"
+          aria-expanded={listVisible}
+          aria-controls="live-symbol-search-list"
+          type="text"
+          placeholder="검색어를 입력해주세요"
+          className="min-w-0 flex-1 bg-transparent text-sm text-fg outline-none placeholder:text-fg-dimmer"
+          {...inputProps}
+        />
+      </div>
+
+      {listVisible && (
+        <div
+          id="live-symbol-search-list"
+          {...listProps}
+          className="mt-5 max-h-[50vh] overflow-y-auto"
+        >
+          {items.length === 0 ? (
+            <div className="py-3 px-2.5 text-sm text-fg-dim">검색 결과가 없습니다.</div>
+          ) : showingRecent ? (
+            <>
+              <div className="mb-3 px-1 text-sm font-semibold text-fg">
+                최근 검색
+              </div>
+              <div className="flex flex-wrap gap-3">
+                {items.map((item, i) => item.kind === 'stock' && (
+                  <button
+                    key={`recent:${item.hit.code}`}
+                    type="button"
+                    role="option"
+                    {...getOptionProps(i)}
+                    onClick={() => { selectItem(item); setOpen(false); }}
+                    style={{ background: i === highlightedIndex ? 'var(--tint-selection)' : 'var(--bg-input)' }}
+                    className="inline-flex max-w-full items-center gap-1.5 rounded-full px-3 py-1.5 text-sm font-semibold text-fg"
+                  >
+                    <span className="truncate">{item.hit.name}</span>
+                    <span aria-hidden className="text-fg-dimmer">×</span>
+                  </button>
+                ))}
+              </div>
+            </>
+          ) : (
+            items.map((item, i) => (
+              <div
+                key={item.kind === 'stock' ? `stock:${item.hit.code}` : `index:${item.index.id}`}
+                role="option"
+                {...getOptionProps(i)}
+                onClick={() => { selectItem(item); setOpen(false); }}
+                style={{ background: i === highlightedIndex ? 'var(--tint-selection)' : 'transparent' }}
+                className="grid grid-cols-[1fr_auto_auto_auto] gap-2.5 items-center rounded-lg py-2 px-2.5 cursor-pointer"
+              >
+                {item.kind === 'stock' ? (
+                  <>
+                    <span className="text-sm text-fg">{item.hit.name}</span>
+                    <span className="text-sm font-mono text-fg-dim tabular-nums">{item.hit.code}</span>
+                    <span className="border border-border-strong rounded px-1 text-badge font-semibold tracking-wider text-fg-dim">{item.hit.market}</span>
+                    <WatchlistHeartButton code={item.hit.code} name={item.hit.name} />
+                  </>
+                ) : (
+                  <>
+                    <span className="text-sm text-fg">{item.index.label}</span>
+                    <span className="text-sm font-mono text-fg-dim tabular-nums">{item.index.id}</span>
+                    <span className="border border-border-strong rounded px-1 text-badge font-semibold tracking-wider text-fg-dim">지수</span>
+                    <span aria-hidden />
+                  </>
+                )}
+              </div>
+            ))
+          )}
+        </div>
+      )}
+    </div>
+  ) : null;
 
   return (
     <div className="relative flex-1 max-w-[360px] font-ui">
@@ -143,93 +231,7 @@ export function LiveSymbolSearch() {
         </span>
       </button>
 
-      {open && (
-        <div
-          ref={wrapperRef}
-          role="dialog"
-          aria-label="종목 검색"
-          style={{ boxShadow: '0 18px 50px rgba(0,0,0,0.45)' }}
-          className="fixed left-1/2 top-[12vh] z-50 w-[min(960px,calc(100vw-32px))] -translate-x-1/2 rounded-xl border border-border-strong bg-bg-card p-4 font-ui"
-        >
-          <div className="flex items-center gap-2.5 h-11 px-3 rounded-xl bg-bg-input">
-            <svg aria-hidden viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="text-fg-dimmer w-[18px] h-[18px] shrink-0">
-              <circle cx="11" cy="11" r="7" />
-              <line x1="21" y1="21" x2="16.65" y2="16.65" />
-            </svg>
-            <input
-              ref={inputRef}
-              role="combobox"
-              aria-expanded={listVisible}
-              aria-controls="live-symbol-search-list"
-              type="text"
-              placeholder="검색어를 입력해주세요"
-              className="min-w-0 flex-1 bg-transparent text-sm text-fg outline-none placeholder:text-fg-dimmer"
-              {...inputProps}
-            />
-          </div>
-
-          {listVisible && (
-            <div
-              id="live-symbol-search-list"
-              {...listProps}
-              className="mt-5 max-h-[50vh] overflow-y-auto"
-            >
-              {items.length === 0 ? (
-                <div className="py-3 px-2.5 text-sm text-fg-dim">검색 결과가 없습니다.</div>
-              ) : showingRecent ? (
-                <>
-                  <div className="mb-3 px-1 text-sm font-semibold text-fg">
-                    최근 검색
-                  </div>
-                  <div className="flex flex-wrap gap-3">
-                    {items.map((item, i) => item.kind === 'stock' && (
-                      <button
-                        key={`recent:${item.hit.code}`}
-                        type="button"
-                        role="option"
-                        {...getOptionProps(i)}
-                        onClick={() => { selectItem(item); setOpen(false); }}
-                        style={{ background: i === highlightedIndex ? 'var(--tint-selection)' : 'var(--bg-input)' }}
-                        className="inline-flex max-w-full items-center gap-1.5 rounded-full px-3 py-1.5 text-sm font-semibold text-fg"
-                      >
-                        <span className="truncate">{item.hit.name}</span>
-                        <span aria-hidden className="text-fg-dimmer">×</span>
-                      </button>
-                    ))}
-                  </div>
-                </>
-              ) : (
-                items.map((item, i) => (
-                  <div
-                    key={item.kind === 'stock' ? `stock:${item.hit.code}` : `index:${item.index.id}`}
-                    role="option"
-                    {...getOptionProps(i)}
-                    onClick={() => { selectItem(item); setOpen(false); }}
-                    style={{ background: i === highlightedIndex ? 'var(--tint-selection)' : 'transparent' }}
-                    className="grid grid-cols-[1fr_auto_auto_auto] gap-2.5 items-center rounded-lg py-2 px-2.5 cursor-pointer"
-                  >
-                    {item.kind === 'stock' ? (
-                      <>
-                        <span className="text-sm text-fg">{item.hit.name}</span>
-                        <span className="text-sm font-mono text-fg-dim tabular-nums">{item.hit.code}</span>
-                        <span className="border border-border-strong rounded px-1 text-badge font-semibold tracking-wider text-fg-dim">{item.hit.market}</span>
-                        <WatchlistHeartButton code={item.hit.code} name={item.hit.name} />
-                      </>
-                    ) : (
-                      <>
-                        <span className="text-sm text-fg">{item.index.label}</span>
-                        <span className="text-sm font-mono text-fg-dim tabular-nums">{item.index.id}</span>
-                        <span className="border border-border-strong rounded px-1 text-badge font-semibold tracking-wider text-fg-dim">지수</span>
-                        <span aria-hidden />
-                      </>
-                    )}
-                  </div>
-                ))
-              )}
-            </div>
-          )}
-        </div>
-      )}
+      {searchPopover && createPortal(searchPopover, document.body)}
     </div>
   );
 }
