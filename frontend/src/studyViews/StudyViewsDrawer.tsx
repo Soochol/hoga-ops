@@ -16,9 +16,6 @@ import type { StudyViewListRow } from '../api/studyViews';
 import { dropPoint, isPointOnStudy, useEntryDragStore } from '../state/entryDrag';
 import { useStudyTabsStore } from '../state/studyTabs';
 import { useStudyViewOpenPrefsStore } from '../state/studyViewOpenPrefs';
-import { useCurrentStudySaveSource } from './studySaveSource';
-import { makeStudySaveCommand, studySaveCommandBody, type StudySaveCommand } from './studySaveCommand';
-import { StudyViewSaveDialog } from './StudyViewSaveDialog';
 import { latestStudyViewForCode } from './studyViewSelection';
 import { useStudyViewMutations, useStudyViews } from './useStudyViews';
 import {
@@ -105,6 +102,15 @@ function NameSortIcon({ direction, className }: { direction: StudyViewTreeSortDi
   );
 }
 
+function ClearSearchIcon({ className }: { className?: string }) {
+  return (
+    <svg className={className} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+      <path d="M18 6 6 18" />
+      <path d="m6 6 12 12" />
+    </svg>
+  );
+}
+
 function SortableStudyViewGroup({
   id,
   code,
@@ -171,8 +177,6 @@ function SortableStudyViewRow({
 export function StudyViewsDrawer() {
   const { data, isLoading, isError, refetch } = useStudyViews();
   const mutations = useStudyViewMutations();
-  const saveSource = useCurrentStudySaveSource();
-  const [dialog, setDialog] = useState<StudySaveCommand | null>(null);
   const [rowMenu, setRowMenu] = useState<{ row: StudyViewListRow; left: number; top: number } | null>(null);
   const [renameState, setRenameState] = useState<{ id: string; value: string; error: string | null } | null>(null);
   const renameCommittingRef = useRef(false);
@@ -195,15 +199,6 @@ export function StudyViewsDrawer() {
     reorderRow,
   } = useStudyViewTreeState(data?.saves ?? []);
   const currentStudyViewId = useMemo(() => new URLSearchParams(location.search).get('view'), [location.search]);
-  const currentStudyRow = useMemo(
-    () => data?.saves.find((row) => row.id === currentStudyViewId),
-    [currentStudyViewId, data?.saves],
-  );
-  const dialogMutation = dialog?.mode === 'overwrite' ? mutations.update : mutations.create;
-  const dialogError = dialogMutation?.error instanceof Error ? dialogMutation.error.message : null;
-  const studySource = saveSource?.origin === 'study-reference' ? saveSource : null;
-  const overwriteStudyViewId = location.pathname === '/study' ? studySource?.viewId ?? currentStudyViewId ?? undefined : undefined;
-  const canSaveStudy = location.pathname === '/study' && !!studySource;
   const sensors = useSensors(useSensor(PointerSensor, { activationConstraint: { distance: 5 } }));
   const startEntryDrag = useEntryDragStore((s) => s.startDrag);
   const setOverStudy = useEntryDragStore((s) => s.setOverStudy);
@@ -237,28 +232,6 @@ export function StudyViewsDrawer() {
       document.removeEventListener('keydown', closeOnEscape);
     };
   }, [rowMenu]);
-
-  const openSaveDialog = (mode: 'create' | 'overwrite', id?: string) => {
-    if (!studySource) return;
-    const row = (id ? data?.saves.find((save) => save.id === id) : currentStudyRow) ?? studySource.save;
-    const command = makeStudySaveCommand({ mode, source: studySource, existingSave: row });
-    if (command) setDialog({ ...command, id: id ?? command.id });
-  };
-
-  const handleDialogSubmit = ({ name, memo }: { name: string; memo: string }) => {
-    if (!dialog) return;
-    const body = studySaveCommandBody(dialog, { name, memo });
-    if (dialog.mode === 'overwrite' && dialog.id) {
-      mutations.update.mutate({ id: dialog.id, body }, { onSuccess: () => setDialog(null) });
-      return;
-    }
-    mutations.create.mutate(body, {
-      onSuccess: (created) => {
-        setDialog(null);
-        if (location.pathname === '/study') navigate(`/study?view=${created.id}`);
-      },
-    });
-  };
 
   const startRename = (row: StudyViewListRow) => {
     setRenameState({ id: row.id, value: row.name, error: null });
@@ -340,8 +313,7 @@ export function StudyViewsDrawer() {
     mutations.remove.mutate(deletedId, {
       onSuccess: () => {
         const nextActiveTab = useStudyTabsStore.getState().closeTabsByViewId(deletedId);
-        setDialog(null);
-        if (location.pathname === '/study' && (currentStudyViewId === deletedId || studySource?.viewId === deletedId)) {
+        if (location.pathname === '/study' && currentStudyViewId === deletedId) {
           navigate(nextActiveTab ? `/study?view=${nextActiveTab.viewId}` : '/study');
         }
       },
@@ -455,28 +427,29 @@ export function StudyViewsDrawer() {
     <RailDrawer id="right-rail-saved-views-panel" ariaLabel="저장 뷰">
       <RailDrawerHeader
         title="저장 뷰"
-        actions={location.pathname === '/study' && (
-            <button
-              type="button"
-              disabled={!canSaveStudy}
-              onClick={() => overwriteStudyViewId
-                ? openSaveDialog('overwrite', overwriteStudyViewId)
-                : openSaveDialog('create')}
-              className="rounded border border-border px-2 py-1 text-xs text-fg-dim hover:border-accent hover:text-accent disabled:opacity-50"
-            >
-              {overwriteStudyViewId ? '덮어쓰기' : '현재 뷰 저장'}
-            </button>
-        )}
       />
       <RailDrawerSection className="p-3">
           <div className="flex items-center gap-1">
-            <input
-              aria-label="저장 뷰 검색"
-              placeholder="검색하세요"
-              value={query}
-              onChange={(e) => setQuery(e.target.value)}
-              className="min-w-0 flex-1 bg-bg-input border rounded px-2 py-1 text-sm"
-            />
+            <div className="relative min-w-0 flex-1">
+              <input
+                aria-label="저장 뷰 검색"
+                placeholder="검색하세요"
+                value={query}
+                onChange={(e) => setQuery(e.target.value)}
+                className="w-full bg-bg-input border rounded py-1 pl-2 pr-8 text-sm"
+              />
+              {query && (
+                <button
+                  type="button"
+                  aria-label="검색어 지우기"
+                  title="검색어 지우기"
+                  onClick={() => setQuery('')}
+                  className="absolute right-1 top-1/2 flex h-6 w-6 -translate-y-1/2 items-center justify-center rounded text-fg-dim hover:bg-bg-input-hover hover:text-fg focus-visible:outline focus-visible:outline-1 focus-visible:outline-accent"
+                >
+                  <ClearSearchIcon className="h-3.5 w-3.5" />
+                </button>
+              )}
+            </div>
             {visibleGroups.length > 0 && (
               <div className="flex shrink-0 gap-1">
                 <RailToolbarIconButton
@@ -590,18 +563,6 @@ export function StudyViewsDrawer() {
             삭제
           </button>
         </div>
-      )}
-      {dialog && (
-        <StudyViewSaveDialog
-          mode={dialog.mode}
-          defaultName={dialog.dialog.defaultName}
-          defaultMemo={dialog.dialog.defaultMemo}
-          rangeLabel={dialog.dialog.rangeLabel}
-          isSubmitting={dialogMutation.isPending}
-          errorMessage={dialogError}
-          onCancel={() => setDialog(null)}
-          onSubmit={handleDialogSubmit}
-        />
       )}
     </RailDrawer>
   );
