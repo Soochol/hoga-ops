@@ -3,6 +3,11 @@
 All notable changes to this project are documented here.
 The format follows a 4-digit `MAJOR.MINOR.PATCH.MICRO` scheme.
 
+## [0.12.10.3] - 2026-06-28
+
+### Fixed
+- **/live 그리기 hover 사이드바 복구**: 캔들 위에 그린 선이나 드로잉에 마우스를 올려도 10호가·거래원·프로그램 카드가 캔들 hover 기준 데이터를 계속 보여주도록 했다.
+
 ## [0.12.10.2] - 2026-06-28
 
 ### Fixed
