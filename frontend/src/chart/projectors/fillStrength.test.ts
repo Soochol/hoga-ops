@@ -62,6 +62,9 @@ describe('projectCumulativeNetFill — single-day', () => {
   const singleDayAxis = createVirtualAxis([
     { date: '20260518', sessionOpenMs: day1Open, sessionCloseMs: day1Open + sessionDurationMs },
   ]);
+  const singleDayCalendarAxis = createVirtualAxis([
+    { date: '20260518', sessionOpenMs: day1Open, sessionCloseMs: day1Open + sessionDurationMs },
+  ], day1Open, { mode: 'calendar' });
 
   it('runs the sum monotonically and emits per-bucket cumulative values', () => {
     const bundle: any = {
@@ -79,6 +82,19 @@ describe('projectCumulativeNetFill — single-day', () => {
       { time: 1, value: 10 },
       { time: 2, value: 10 },
     ]);
+  });
+
+  it('returns [] on calendar axes because cumulative fill is intraday-only', () => {
+    const bundle: any = {
+      segments: [{ date: '20260518', session_open_ms: day1Open, session_close_ms: day1Open + sessionDurationMs }],
+      fill_strength: {
+        points: [
+          { t: day1Open, buy_qty: 100, sell_qty: 30 },
+          { t: day1Open + 1000, buy_qty: 20, sell_qty: 80 },
+        ],
+      },
+    };
+    expect(projectCumulativeNetFill(bundle, singleDayCalendarAxis, false)).toEqual([]);
   });
 
   it('returns [] for an empty fill_strength.points list', () => {

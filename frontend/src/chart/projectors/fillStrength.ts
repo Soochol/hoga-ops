@@ -158,6 +158,7 @@ export function projectCumulativeNetFill(
   axis: VirtualAxis,
   auctionWindowMask: boolean,
 ): (LineData<Time> | WhitespaceData<Time>)[] {
+  if (axis.mode === 'calendar') return [];
   const out: (LineData<Time> | WhitespaceData<Time>)[] = [];
   bundle.segments.forEach((seg, segIdx) => {
     const segOut = projectCumulativeSegment(
@@ -298,6 +299,7 @@ export function makeCumulativeCachedProjector(): (
     { mask: boolean; pastLen: number; pastLastT: number; pastData: (LineData<Time> | WhitespaceData<Time>)[] }
   >();
   return (bundle, axis, mask) => {
+    if (axis.mode === 'calendar') return [];
     const segs = bundle.segments;
     if (segs.length < 2) return projectCumulativeNetFill(bundle, axis, mask);
 
