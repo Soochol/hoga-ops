@@ -22,6 +22,26 @@ describe('DataSurface primitives', () => {
     expect(screen.getByText('10호가')).toHaveClass('uppercase');
   });
 
+  it('labels data sections with non-string titles from the rendered heading', () => {
+    render(
+      <DataSection
+        title={
+          <>
+            실시간 <strong>10호가</strong>
+          </>
+        }
+      >
+        rows
+      </DataSection>,
+    );
+
+    const section = screen.getByRole('region', { name: '실시간 10호가' });
+    expect(section).toBeInTheDocument();
+    const emphasizedTitle = screen.getByText('10호가');
+    expect(emphasizedTitle).toBeInTheDocument();
+    expect(emphasizedTitle.closest('header')).toHaveClass('uppercase');
+  });
+
   it('renders token-backed data table shell, header, and rows', () => {
     render(
       <DataTableShell minWidth="640px">

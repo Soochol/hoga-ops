@@ -5,6 +5,7 @@ import type {
   LabelHTMLAttributes,
   ReactNode,
 } from 'react';
+import { useId } from 'react';
 
 export function DataSection({
   title,
@@ -17,12 +18,17 @@ export function DataSection({
   className?: string;
   contentClassName?: string;
 }) {
+  const headerId = useId();
   return (
     <section
       aria-label={typeof title === 'string' ? title : undefined}
+      aria-labelledby={headerId}
       className={`border-t border-border first:border-t-0 ${className}`.trim()}
     >
-      <header className="border-b border-border px-3 py-2 text-xs font-semibold uppercase tracking-[0.08em] text-fg-dimmer">
+      <header
+        id={headerId}
+        className="border-b border-border px-3 py-2 text-xs font-semibold uppercase tracking-[0.08em] text-fg-dimmer"
+      >
         {title}
       </header>
       <div className={contentClassName}>{children}</div>

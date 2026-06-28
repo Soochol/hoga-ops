@@ -34,3 +34,18 @@ Self-review:
 
 Concerns:
 - `RailShell.tsx` and `RailShell.test.tsx` already matched the brief, so they were verified but did not require edits.
+
+---
+
+Review fix addendum:
+
+- Addressed the `DataSection` accessibility finding by keeping the section named through the rendered header for non-string `title` content and locking that behavior with a dedicated test.
+- Adjusted the new non-string-title test to assert against the header wrapper instead of the nested `<strong>` node.
+
+Verification:
+1. `cd frontend && npm test -- DataSurface.test.tsx --run`
+   - Result: passed (`1 passed`, `5 passed`).
+2. `cd frontend && npm test -- PageShell.test.tsx RailShell.test.tsx WorkspaceShell.test.tsx DataSurface.test.tsx --run`
+   - Result: passed (`4 passed`, `21 passed`).
+3. `cd frontend && npm run build`
+   - Result: Vite production build succeeded.
