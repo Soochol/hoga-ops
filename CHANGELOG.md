@@ -6,6 +6,7 @@ The format follows a 4-digit `MAJOR.MINOR.PATCH.MICRO` scheme.
 ## [0.12.15.1] - 2026-06-29
 
 ### Fixed
+- Screener/live quote change rates now validate KIS `prdy_ctrt` against the adjusted daily baseline, preventing corporate-action days from showing unadjusted spikes such as `+682.48%` after stock consolidation.
 - **/live 플로팅 메뉴 레이어 복구**: 종목 검색 팝오버와 분봉 목록을 body 포털로 띄워 차트 canvas나 workspace overflow 뒤에 깔리지 않게 했다.
 - **/study 종목 검색 제거 및 분봉 목록 동작 복구**: 저장 학습뷰 헤더에서 불필요한 종목 검색 UI를 제거하고, 일·주·월봉 상태에서도 분봉 버튼 한 번으로 분봉 목록이 열리도록 고쳤다.
 
