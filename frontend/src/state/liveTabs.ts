@@ -10,6 +10,7 @@ import {
   stockInstrument,
   type LiveInstrument,
 } from '../live/liveInstrument';
+import type { TabViewport } from '../live/viewportAnchor';
 
 export type LiveTab = {
   id: string;
@@ -18,6 +19,7 @@ export type LiveTab = {
   label: string;
   timeframe: LiveTimeframe;
   historicalFromDate: string | null;
+  viewport?: TabViewport | null;
 };
 
 type TabsStore = {
@@ -37,6 +39,7 @@ type TabsStore = {
   focusTab: (id: string) => void;
   closeTab: (id: string) => void;
   reorderTabs: (from: number, to: number) => void;
+  updateTabViewport: (id: string, viewport: TabViewport | null) => void;
 };
 
 /** Project the active Live Tab's view-state onto the page in one atomic write.
@@ -199,6 +202,7 @@ export const useLiveTabsStore = create<TabsStore>((set, get) => ({
       code: fields.code,
       label: fields.label,
       historicalFromDate: null,
+      viewport: null,
     };
     set({ tabs: tabs.map((t) => (t.id === active.id ? updated : t)) });
     applyTabToPage(updated);
@@ -250,6 +254,12 @@ export const useLiveTabsStore = create<TabsStore>((set, get) => ({
     next.splice(to, 0, moved);
     set({ tabs: next });
   },
+
+  updateTabViewport: (id, viewport) => {
+    const { tabs } = get();
+    if (!tabs.some((t) => t.id === id)) return;
+    set({ tabs: tabs.map((t) => (t.id === id ? { ...t, viewport } : t)) });
+  },
 }));
 
 // Live wiring (persistence + page→tab mirror) is OPT-IN via initLiveTabsSync(),
@@ -265,9 +275,9 @@ export function initLiveTabsSync(): () => void {
     storageKey: STORAGE_KEY,
     toSnapshot: (s) => toTabsSnapshot(s),
   });
-  // page→tab mirror: user-initiated timeframe changes flow into the active tab.
-  // Pan/scrollback is intentionally not mirrored, so tab switches always return
-  // to the latest-candle default fit.
+  // page→tab mirror: user-initiated timeframe and pan changes flow into the
+  // active tab. The chart viewport itself is captured explicitly before tab
+  // switches; timeframe changes clear that viewport because the x-axis changed.
   const unsubMirror = useLivePageStore.subscribe((state, prev) => {
     if (state.candleTimeframe === prev.candleTimeframe && state.historicalFromDate === prev.historicalFromDate) return;
     const { tabs, activeTabId } = useLiveTabsStore.getState();

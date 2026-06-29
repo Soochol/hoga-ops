@@ -21,6 +21,7 @@ import {
   stockInstrument,
   type LiveInstrument,
 } from '../live/liveInstrument';
+import type { TabViewport } from '../live/viewportAnchor';
 export type { MASource };
 
 // Re-export so existing imports from `./livePage` keep working — single
@@ -117,9 +118,11 @@ export type ActiveViewProjection = {
   code: string | null;
   timeframe: LiveTimeframe;
   historicalFromDate: string | null;
+  viewport?: TabViewport | null;
 };
 
 type Store = Persisted & PersistedIndicators & {
+  activeViewport: TabViewport | null;
   projectActiveView: (view: ActiveViewProjection) => void;
   setActiveCode: (code: string | null) => void;
   setCandleTimeframe: (tf: LiveTimeframe) => void;
@@ -338,6 +341,7 @@ export const useLivePageStore = create<Store>((set, get) => ({
   ...DEFAULTS,
   ...readStorage(),
   ...readIndicatorsStorage(),
+  activeViewport: null,
 
   setMovingAverage: (id, patch) => {
     const current = get().movingAverages;
@@ -613,7 +617,7 @@ export const useLivePageStore = create<Store>((set, get) => ({
     persistIndicators(snapshotIndicators(get));
   },
 
-  projectActiveView: ({ instrument, code, timeframe, historicalFromDate }) => {
+  projectActiveView: ({ instrument, code, timeframe, historicalFromDate, viewport }) => {
     // One atomic write — no reset-then-restore. tf is clamped like setCandleTimeframe
     // (belt-and-suspenders; tabs already carry validated timeframes).
     const tf = LIVE_TIMEFRAMES.includes(timeframe) ? timeframe : get().candleTimeframe;
@@ -628,6 +632,7 @@ export const useLivePageStore = create<Store>((set, get) => ({
       candleTimeframe: tf,
       lastMinuteTimeframe: isMinuteTimeframe(tf) ? tf : get().lastMinuteTimeframe,
       historicalFromDate,
+      activeViewport: viewport ?? null,
     };
     set(next);
     persist({ ...get(), ...next });
@@ -635,7 +640,7 @@ export const useLivePageStore = create<Store>((set, get) => ({
 
   setActiveCode: (code) => {
     const activeInstrument = code ? stockInstrument(code) : null;
-    set({ activeInstrument, activeCode: code, historicalFromDate: null });
+    set({ activeInstrument, activeCode: code, historicalFromDate: null, activeViewport: null });
     persist({ ...get(), activeInstrument, activeCode: code, historicalFromDate: null });
   },
 
@@ -645,6 +650,7 @@ export const useLivePageStore = create<Store>((set, get) => ({
       candleTimeframe: tf,
       lastMinuteTimeframe: isMinuteTimeframe(tf) ? tf : get().lastMinuteTimeframe,
       historicalFromDate: null,
+      activeViewport: null,
     };
     set(next);
     persist({ ...get(), ...next });
@@ -658,7 +664,7 @@ export const useLivePageStore = create<Store>((set, get) => ({
   },
 
   resetHistoricalRange: () => {
-    set({ historicalFromDate: null });
+    set({ historicalFromDate: null, activeViewport: null });
     persist({ ...get(), historicalFromDate: null });
   },
 
@@ -667,6 +673,6 @@ export const useLivePageStore = create<Store>((set, get) => ({
     const merged = { ...DEFAULTS, ...stored };
     const lastMinuteTimeframe = stored.lastMinuteTimeframe
       ?? (isMinuteTimeframe(merged.candleTimeframe) ? merged.candleTimeframe : DEFAULTS.lastMinuteTimeframe);
-    set({ ...merged, lastMinuteTimeframe });
+    set({ ...merged, lastMinuteTimeframe, activeViewport: null });
   },
 }));

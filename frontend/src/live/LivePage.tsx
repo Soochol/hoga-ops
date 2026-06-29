@@ -105,6 +105,7 @@ export function LivePage() {
   const focusTab = useLiveTabsStore((s) => s.focusTab);
   const closeTab = useLiveTabsStore((s) => s.closeTab);
   const reorderTabs = useLiveTabsStore((s) => s.reorderTabs);
+  const updateTabViewport = useLiveTabsStore((s) => s.updateTabViewport);
 
   // 1회: URL ?code= 시드는 현재 탭에 적용, 없으면 복원된 활성 탭을 page에 동기화,
   // 복원된 탭이 하나도 없으면 기본 빈 탭 1개를 만든다 — 항상 현재 탭이 존재해
@@ -123,22 +124,6 @@ export function LivePage() {
   const liveStatus = useLiveStatusProjection(status);
   const banner = liveStatus.banner;
 
-  // Keyboard shortcuts (Addendum 9.y / Design B7).
-  // j/k traversal callbacks will be supplied by Stage 11 when the watchlist
-  // panel is wired up; for now they're no-ops.
-  // Tab switching (ADR-0069 / D6): ] next, [ prev, 1-9 jump to tab N.
-  const activeIdx = tabs.findIndex((t) => t.id === activeTabId);
-  useLiveKeyboard({
-    onNextTab: () => { if (tabs.length) focusTab(tabs[(activeIdx + 1 + tabs.length) % tabs.length].id); },
-    onPrevTab: () => { if (tabs.length) focusTab(tabs[(activeIdx - 1 + tabs.length) % tabs.length].id); },
-    onSelectTabIndex: (i) => { if (i < tabs.length) focusTab(tabs[i].id); },
-    onSelectTimeframeShortcut: (slot) => {
-      const page = useLivePageStore.getState();
-      const next = slot === 'minute' ? page.lastMinuteTimeframe : slot;
-      page.setCandleTimeframe(next);
-    },
-  });
-
   const activeCode = useLivePageStore((s) => s.activeCode);
   const activeInstrument = useLivePageStore((s) => s.activeInstrument);
   const timeframe = useLivePageStore((s) => s.candleTimeframe);
@@ -153,6 +138,40 @@ export function LivePage() {
   const handleViewportCaptureReady = useCallback((capture: () => TabViewport | null) => {
     viewportCaptureRef.current = capture;
   }, []);
+  const captureActiveTabViewport = useCallback(() => {
+    if (!activeTabId) return;
+    const viewport = viewportCaptureRef.current();
+    if (!viewport) return;
+    updateTabViewport(activeTabId, viewport);
+  }, [activeTabId, updateTabViewport]);
+  const focusLiveTab = useCallback((id: string) => {
+    if (id !== activeTabId) captureActiveTabViewport();
+    focusTab(id);
+  }, [activeTabId, captureActiveTabViewport, focusTab]);
+  const closeLiveTab = useCallback((id: string) => {
+    if (id === activeTabId) captureActiveTabViewport();
+    closeTab(id);
+  }, [activeTabId, captureActiveTabViewport, closeTab]);
+  const addLiveBlankTab = useCallback(() => {
+    captureActiveTabViewport();
+    addBlankTab();
+  }, [addBlankTab, captureActiveTabViewport]);
+
+  // Keyboard shortcuts (Addendum 9.y / Design B7).
+  // j/k traversal callbacks will be supplied by Stage 11 when the watchlist
+  // panel is wired up; for now they're no-ops.
+  // Tab switching (ADR-0069 / D6): ] next, [ prev, 1-9 jump to tab N.
+  const activeIdx = tabs.findIndex((t) => t.id === activeTabId);
+  useLiveKeyboard({
+    onNextTab: () => { if (tabs.length) focusLiveTab(tabs[(activeIdx + 1 + tabs.length) % tabs.length].id); },
+    onPrevTab: () => { if (tabs.length) focusLiveTab(tabs[(activeIdx - 1 + tabs.length) % tabs.length].id); },
+    onSelectTabIndex: (i) => { if (i < tabs.length) focusLiveTab(tabs[i].id); },
+    onSelectTimeframeShortcut: (slot) => {
+      const page = useLivePageStore.getState();
+      const next = slot === 'minute' ? page.lastMinuteTimeframe : slot;
+      page.setCandleTimeframe(next);
+    },
+  });
 
   // Single live source for the page: useLiveSeries owns the SSE connection
   // and ring buffer; useLiveBundle composes it with KIS past-candles for the
@@ -309,12 +328,12 @@ export function LivePage() {
         tabs={tabs}
         activeTabId={activeTabId}
         activeLoading={isPastCandlesLoading}
-        onFocus={focusTab}
-        onClose={closeTab}
+        onFocus={focusLiveTab}
+        onClose={closeLiveTab}
         onReorder={reorderTabs}
         // + 버튼: 빈 탭을 만들고 검색창에 포커스 → 사용자가 바로 종목을 타이핑해 채운다(spec D5).
         // 마운트 시 기본 탭(위 시드)은 의도적으로 검색 포커스를 주지 않는다(로드마다 포커스 탈취 방지).
-        onNewTab={() => { addBlankTab(); focusLiveSearch(); }}
+        onNewTab={() => { addLiveBlankTab(); focusLiveSearch(); }}
       />
       <LiveStateBanner
         primary={workareaCode && banner.primary === 'watchlist_empty' ? null : banner.primary}
@@ -336,7 +355,7 @@ export function LivePage() {
         isPastCandlesLoading={workareaLoading}
         isExtending={activeIndexId ? indexExtending : isExtending}
         pastDataWarnings={workareaDataWarnings}
-        restoreViewport={null}
+        restoreViewport={activeTab?.viewport ?? null}
         viewIdentity={activeTabId ? `${activeTabId}:${liveVenue}` : liveVenue}
         venue={liveVenue}
         live={live}

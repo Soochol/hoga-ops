@@ -19,12 +19,15 @@ function tab(overrides: Partial<LiveTab> = {}): LiveTab {
 }
 
 describe('live tab projection policy', () => {
-  it('projects a tab into the active page view while resetting pan to latest fit', () => {
-    expect(projectTabToActiveView(tab({ timeframe: 'D', historicalFromDate: '2026-01-02' }), '1m')).toEqual({
+  it('projects a tab into the active page view with its saved viewport', () => {
+    const viewport = { rightEdgeMs: 1_781_000_000_000, barSpan: 240, atLiveEdge: false };
+
+    expect(projectTabToActiveView(tab({ timeframe: 'D', historicalFromDate: '2026-01-02', viewport }), '1m')).toEqual({
       instrument: { kind: 'stock', code: '005930', label: '삼성전자' },
       code: '005930',
       timeframe: 'D',
       historicalFromDate: null,
+      viewport,
     });
   });
 
@@ -34,11 +37,13 @@ describe('live tab projection policy', () => {
       code: null,
       timeframe: 'D',
       historicalFromDate: null,
+      viewport: null,
     });
   });
 
-  it('mirrors page timeframe into the active tab while dropping pan', () => {
-    const tabs = [tab(), tab({ id: 'tab-b', code: '000660', label: 'SK하이닉스', timeframe: 'D' })];
+  it('mirrors page timeframe into the active tab while dropping pan and viewport', () => {
+    const viewport = { rightEdgeMs: 1_781_000_000_000, barSpan: 240, atLiveEdge: false };
+    const tabs = [tab({ viewport }), tab({ id: 'tab-b', code: '000660', label: 'SK하이닉스', timeframe: 'D' })];
 
     expect(
       mirrorPageViewToActiveTab(tabs, 'tab-a', {
@@ -46,7 +51,7 @@ describe('live tab projection policy', () => {
         historicalFromDate: '2026-01-02',
       }),
     ).toEqual([
-      { ...tabs[0], timeframe: 'D', historicalFromDate: null },
+      { ...tabs[0], timeframe: 'D', historicalFromDate: null, viewport: null },
       tabs[1],
     ]);
   });

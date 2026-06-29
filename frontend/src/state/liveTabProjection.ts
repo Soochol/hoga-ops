@@ -1,12 +1,14 @@
 import type { LiveTimeframe } from './livePage';
 import type { LiveTab } from './liveTabs';
 import { stockInstrument, type LiveInstrument } from '../live/liveInstrument';
+import type { TabViewport } from '../live/viewportAnchor';
 
 export type ActiveViewProjection = {
   instrument: LiveInstrument | null;
   code: string | null;
   timeframe: LiveTimeframe;
   historicalFromDate: string | null;
+  viewport: TabViewport | null;
 };
 
 export type PageViewMirror = {
@@ -23,6 +25,7 @@ export function projectTabToActiveView(
     code: tab?.code ?? null,
     timeframe: tab?.timeframe ?? currentPageTimeframe,
     historicalFromDate: null,
+    viewport: tab?.viewport ?? null,
   };
 }
 
@@ -35,14 +38,16 @@ export function mirrorPageViewToActiveTab(
   const activeTab = tabs.find((t) => t.id === activeTabId);
   if (!activeTab) return tabs;
   const userChangedTimeframe = page.candleTimeframe !== activeTab.timeframe;
-  if (!userChangedTimeframe) return tabs;
+  const userChangedPan = page.historicalFromDate !== activeTab.historicalFromDate;
+  if (!userChangedTimeframe && !userChangedPan) return tabs;
 
   return tabs.map((t) =>
     t.id === activeTabId
       ? {
           ...t,
           timeframe: page.candleTimeframe,
-          historicalFromDate: null,
+          historicalFromDate: userChangedTimeframe ? null : page.historicalFromDate,
+          viewport: userChangedTimeframe ? null : t.viewport,
         }
       : t,
   );
