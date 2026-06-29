@@ -429,15 +429,30 @@ export function StudyPage() {
   const headerCode = selectedSave?.code ?? activeTab?.code ?? '';
   const headerTimeframe = selectedTimeframe ?? selectedSave?.timeframe ?? activeTab?.timeframe ?? null;
   const headerKindLabel = selectedSave ? studyViewKindLabel(selectedSave) : '복기뷰';
-  const restoreViewport =
-    activeViewModel.status === 'ready' && activeViewModel.save.timeframe === (selectedSave?.timeframe ?? activeTab?.timeframe)
-      ? {
-          rightEdgeMs: activeTab?.viewport?.rightEdgeMs ?? activeViewModel.save.viewport.right_edge_ms,
-          barSpan: activeTab?.viewport?.barSpan ?? activeViewModel.save.viewport.bar_span,
-          atLiveEdge: activeTab?.viewport?.atLiveEdge ?? activeViewModel.save.viewport.at_live_edge,
-          ...(activeTab?.viewport?.userAdjusted !== undefined ? { userAdjusted: activeTab.viewport.userAdjusted } : {}),
-        }
+  const activeViewTimeframe = activeViewModel.status === 'ready' ? activeViewModel.save.timeframe : null;
+  const activeTabViewport =
+    activeTab?.viewId === activeViewId && activeTab.timeframe === activeViewTimeframe
+      ? activeTab.viewport
       : null;
+  const canUseSavedViewport =
+    activeViewModel.status === 'ready' &&
+    activeViewModel.save.timeframe === selectedSave?.timeframe;
+  const restoreViewport = activeViewModel.status === 'ready'
+    ? activeTabViewport
+      ? {
+          rightEdgeMs: activeTabViewport.rightEdgeMs,
+          barSpan: activeTabViewport.barSpan,
+          atLiveEdge: activeTabViewport.atLiveEdge,
+          ...(activeTabViewport.userAdjusted !== undefined ? { userAdjusted: activeTabViewport.userAdjusted } : {}),
+        }
+      : canUseSavedViewport
+        ? {
+            rightEdgeMs: activeViewModel.save.viewport.right_edge_ms,
+            barSpan: activeViewModel.save.viewport.bar_span,
+            atLiveEdge: activeViewModel.save.viewport.at_live_edge,
+          }
+        : null
+    : null;
 
   return (
     <PageContainer className="min-h-0">

@@ -64,6 +64,23 @@ describe('studyTabs store', () => {
     });
   });
 
+  it('clears an existing saved-view tab viewport when reopening it with a different timeframe', () => {
+    useStudyTabsStore.getState().openSaveInActiveTab({ ...save, timeframe: '10m' });
+    const tabId = useStudyTabsStore.getState().activeTabId!;
+    useStudyTabsStore.getState().updateTabViewport(tabId, {
+      rightEdgeMs: 9_000,
+      barSpan: 42,
+      atLiveEdge: false,
+    });
+
+    useStudyTabsStore.getState().openSaveInActiveTab({ ...save, timeframe: '10m' }, { timeframeOverride: '3m' });
+
+    expect(useStudyTabsStore.getState().tabs[0]).toMatchObject({
+      timeframe: '3m',
+      viewport: null,
+    });
+  });
+
   it('keeps the saved view timeframe when no side-panel override is provided', () => {
     useStudyTabsStore.getState().openSaveInActiveTab({ ...save, timeframe: '10m' });
 

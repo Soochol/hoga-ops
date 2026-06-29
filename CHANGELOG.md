@@ -3,6 +3,12 @@
 All notable changes to this project are documented here.
 The format follows a 4-digit `MAJOR.MINOR.PATCH.MICRO` scheme.
 
+## [0.12.18.0] - 2026-06-29
+
+### Fixed
+- **/study 탭별 차트 상태 복원**: 저장 학습뷰 탭을 오갈 때 탭마다 선택한 분봉·일봉과 줌/스크롤 위치를 유지해, 다시 돌아오면 보던 차트 구간에서 이어서 볼 수 있게 했다.
+- **/study timeframe 변경 시 stale viewport 차단**: 같은 저장뷰를 다른 봉 타입으로 다시 열 때 이전 봉의 viewport를 재사용하지 않아, 일봉/분봉 전환 후 차트가 엉뚱한 구간이나 과도한 줌으로 열리지 않게 했다.
+
 ## [0.12.17.2] - 2026-06-29
 
 ### Changed

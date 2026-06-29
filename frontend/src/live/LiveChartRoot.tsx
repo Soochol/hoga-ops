@@ -509,7 +509,7 @@ export function LiveChartRoot({ code, timeframe, venue = 'KRX', viewIdentity, bu
     // applied from to >= 0). One-shot via lastAppliedCountRef (like the minute
     // branch) so SSE pushes don't re-snap. Runs BEFORE the historicalFromDate
     // gate so a scrolled-back tab (hfd != null) also restores and reveals here.
-    if (restoreViewport && timeframe !== 'D' && lastAppliedCountRef.current === null) {
+    if (restoreViewport && lastAppliedCountRef.current === null) {
       const tsR = chart.timeScale();
       const totalBarsR = cb.candles.length;
       try {
@@ -535,7 +535,19 @@ export function LiveChartRoot({ code, timeframe, venue = 'KRX', viewIdentity, bu
           : undefined;
         const range = computeRestoreRange(restoreViewport, totalBarsR, idx, restoreRightOffset);
         if (range) {
-          tsR.setVisibleLogicalRange({ from: range.from, to: range.to });
+          if (timeframe === 'D' && restoreViewport.atLiveEdge) {
+            const rightOffset = CHART_TIMESCALE_OPTIONS.rightOffset ?? 0;
+            const plotWidth = Math.max(tsR.width(), containerRef.current?.clientWidth ?? 0);
+            const maxLegibleSpan =
+              plotWidth > 0
+                ? Math.max(1, Math.floor(plotWidth / DAILY_MIN_EFFECTIVE_BAR_SPACING))
+                : 260;
+            const span = Math.min(totalBarsR + rightOffset, Math.max(1, Math.round(restoreViewport.barSpan)), maxLegibleSpan);
+            const to = totalBarsR + rightOffset;
+            tsR.setVisibleLogicalRange({ from: Math.max(0, to - span), to });
+          } else {
+            tsR.setVisibleLogicalRange({ from: range.from, to: range.to });
+          }
           if (range.scrollToRight) tsR.scrollToPosition(0, false);
           lastAppliedCountRef.current = totalBarsR;
           reveal();
