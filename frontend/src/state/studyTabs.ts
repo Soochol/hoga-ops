@@ -40,6 +40,7 @@ type StudyTabsStore = {
   closeTab: (id: string) => void;
   closeTabsByViewId: (viewId: string) => StudyTab | null;
   reorderTabs: (from: number, to: number) => void;
+  updateTabTimeframe: (id: string, timeframe: LiveTimeframe) => void;
   updateTabViewport: (id: string, viewport: TabViewport | null) => void;
 };
 
@@ -69,6 +70,14 @@ export function studyTabFromSave(save: SaveTabFields): StudyTab {
 
 function saveWithOpenOptions(save: SaveTabFields, options?: OpenSaveOptions): SaveTabFields {
   return options?.timeframeOverride ? { ...save, timeframe: options.timeframeOverride } : save;
+}
+
+function retimeStudyTabLabel(tab: StudyTab, timeframe: LiveTimeframe): string {
+  return formatStudyTabLabel({
+    label: tab.label.split(' · ')[0] ?? tab.label,
+    name: tab.name,
+    timeframe,
+  });
 }
 
 function loadStudyTabs(): { tabs: StudyTab[]; activeTabId: string | null } {
@@ -194,6 +203,18 @@ export const useStudyTabsStore = create<StudyTabsStore>((set, get) => ({
     const [moved] = next.splice(from, 1);
     next.splice(to, 0, moved);
     set({ tabs: next });
+  },
+
+  updateTabTimeframe: (id, timeframe) => {
+    const { tabs } = get();
+    if (!tabs.some((tab) => tab.id === id)) return;
+    set({
+      tabs: tabs.map((tab) => (
+        tab.id === id
+          ? { ...tab, timeframe, label: retimeStudyTabLabel(tab, timeframe), viewport: null }
+          : tab
+      )),
+    });
   },
 
   updateTabViewport: (id, viewport) => {
