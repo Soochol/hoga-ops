@@ -71,6 +71,14 @@ describe('LiveSymbolSearch', () => {
     expect(document.activeElement).toBe(input);
   });
 
+  it('opens the search popover when the slash search button is clicked', () => {
+    renderSearch();
+    expect(screen.queryByRole('dialog', { name: '종목 검색' })).toBeNull();
+    fireEvent.click(screen.getByRole('button', { name: '종목 검색 열기' }));
+    expect(screen.getByRole('dialog', { name: '종목 검색' })).toBeInTheDocument();
+    expect(document.activeElement).toBe(screen.getByPlaceholderText('검색어를 입력해주세요'));
+  });
+
   it('renders the search popover in a body portal so app shells cannot clip it', () => {
     renderSearch();
     fireEvent.keyDown(window, { key: '/' });

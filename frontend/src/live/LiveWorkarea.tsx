@@ -116,6 +116,7 @@ interface Props {
   };
   onOpenIndicators?: () => void;
   onOpenSettings?: () => void;
+  onOpenSearch?: () => void;
   studySaveControl?: ReactNode;
   /** LivePage save flows keep this callback and invoke it at save time. */
   onViewportCaptureReady?: (capture: () => TabViewport | null) => void;
@@ -147,6 +148,7 @@ export function LiveWorkarea({
   paneTogglesOverride,
   onOpenIndicators,
   onOpenSettings,
+  onOpenSearch,
   studySaveControl,
   onViewportCaptureReady,
   activeInstrument = null,
@@ -342,7 +344,7 @@ export function LiveWorkarea({
           data-testid="live-chart-panel"
           style={chartPanelStyle}
         >
-          <LiveEmptyState cause="no_active_code" />
+          <LiveEmptyState cause="no_active_code" onOpenSearch={onOpenSearch} />
         </div>
       ) : (
         <>

@@ -348,6 +348,7 @@ export function LivePage() {
         tradeVolumePocs={tradeVolumePocs}
         onOpenIndicators={() => setIndicatorPanelOpen(true)}
         onOpenSettings={() => setSettingsOpen(true)}
+        onOpenSearch={focusLiveSearch}
         studySaveControl={<LiveStudyViewSaveButton />}
         onViewportCaptureReady={handleViewportCaptureReady}
         paneTogglesOverride={{
