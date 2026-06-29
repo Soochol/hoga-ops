@@ -80,6 +80,11 @@ describe('computeRestoreRange', () => {
     expect(computeRestoreRange(liveEdge, 200, null)).toEqual({ from: 150, to: 215, scrollToRight: false });
   });
 
+  it('user-adjusted live-edge: pins the explicit time anchor instead of the latest bar', () => {
+    const adjustedLiveEdge: TabViewport = { ...liveEdge, userAdjusted: true };
+    expect(computeRestoreRange(adjustedLiveEdge, 200, 120)).toEqual({ from: 70, to: 120, scrollToRight: false });
+  });
+
   it('live-edge: clamps from to >= 0 when fewer bars than the saved span', () => {
     expect(computeRestoreRange(liveEdge, 30, null)).toEqual({ from: 0, to: 45, scrollToRight: false });
   });

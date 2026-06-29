@@ -16,7 +16,7 @@ import { CHART_TIMESCALE_OPTIONS } from '../util/chartScale';
  *   ──────────────────              ──────────────────────────────
  *   getVisibleRange().to ─toReal→   rightEdgeMs ─toVirtual→timeToIndex→ idx
  *   getVisibleLogicalRange span     {from: idx-span, to: idx}
- *   right edge ≈ last candle?        atLiveEdge → pin latest (follow live)
+ *   right edge ≈ last candle?        atLiveEdge → pin latest unless userAdjusted
  */
 export interface TabViewport {
   /** Real KST ms at the right edge of the visible range (getVisibleRange().to). */
@@ -109,7 +109,7 @@ export function computeRestoreRange(
 ): RestoreRange | null {
   const span = Math.max(1, Math.round(anchor.barSpan));
   const rightOffset = rightOffsetOverride ?? (CHART_TIMESCALE_OPTIONS.rightOffset ?? 0);
-  if (anchor.atLiveEdge) {
+  if (anchor.atLiveEdge && anchor.userAdjusted !== true) {
     // Follow live: keep the saved zoom while preserving the standard right
     // whitespace band after the latest bar.
     return { from: Math.max(0, totalBars - span), to: totalBars + rightOffset, scrollToRight: false };

@@ -3,6 +3,11 @@
 All notable changes to this project are documented here.
 The format follows a 4-digit `MAJOR.MINOR.PATCH.MICRO` scheme.
 
+## [0.12.19.0] - 2026-06-29
+
+### Fixed
+- **/study 탭별 차트 시간 위치 복원**: 사용자가 휠/드래그로 차트 위치를 조정한 탭은 최신 봉 근처에 있어도 다시 돌아왔을 때 저장된 x축 시간 위치와 줌을 함께 복원하도록 했다.
+
 ## [0.12.18.1] - 2026-06-29
 
 ### Changed
