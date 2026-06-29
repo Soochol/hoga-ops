@@ -217,6 +217,23 @@ describe('useLiveTabsStore', () => {
     expect(useLivePageStore.getState().historicalFromDate).toBeNull();
   });
 
+  it('stores a runtime viewport on the active tab and restores it when focused again', () => {
+    const viewport = {
+      rightEdgeMs: 1_781_000_000_000,
+      barSpan: 331,
+      atLiveEdge: false,
+    };
+    openTab('005930', '삼성전자');
+    const tabA = useLiveTabsStore.getState().activeTabId!;
+    useLiveTabsStore.getState().updateTabViewport(tabA, viewport);
+    openTab('000660', 'SK하이닉스');
+
+    useLiveTabsStore.getState().focusTab(tabA);
+
+    expect(useLiveTabsStore.getState().tabs.find((t) => t.id === tabA)?.viewport).toEqual(viewport);
+    expect(useLivePageStore.getState().activeViewport).toEqual(viewport);
+  });
+
 });
 
 describe('liveTabs persistence', () => {
@@ -303,7 +320,7 @@ describe('liveTabs persistence', () => {
     expect(loadTabs()).toEqual({ tabs: [], activeTabId: null });
   });
 
-  it('toTabsSnapshot keeps persisted fields and drops runtime-only id', () => {
+  it('toTabsSnapshot keeps persisted fields and drops runtime-only id and viewport', () => {
     const snap = toTabsSnapshot({
       tabs: [{
         id: 'abc',
@@ -312,6 +329,7 @@ describe('liveTabs persistence', () => {
         label: '삼성전자',
         timeframe: '1m',
         historicalFromDate: null,
+        viewport: { rightEdgeMs: 1, barSpan: 2, atLiveEdge: false },
       }],
       activeTabId: 'abc',
     } as never);
@@ -343,7 +361,7 @@ describe('liveTabs persistence', () => {
     expect(snap.activeIndex).toBe(999);
   });
 
-  it('ignores legacy viewport fields on load', () => {
+  it('ignores persisted viewport fields on load', () => {
     localStorage.setItem('live.tabs.v1', JSON.stringify({
       version: 1, activeIndex: 0,
       tabs: [
@@ -372,6 +390,20 @@ describe('liveTabs ↔ page mirror', () => {
     expect(active.timeframe).toBe('5m');
   });
 
+  it('toolbar timeframe change clears the active tab viewport', () => {
+    openTab('005930', '삼성전자');
+    const tabId = useLiveTabsStore.getState().activeTabId!;
+    useLiveTabsStore.getState().updateTabViewport(tabId, {
+      rightEdgeMs: 1_781_000_000_000,
+      barSpan: 331,
+      atLiveEdge: true,
+    });
+
+    useLivePageStore.getState().setCandleTimeframe('5m');
+
+    expect(useLiveTabsStore.getState().tabs[0].viewport).toBeNull();
+  });
+
   it('switching tabs restores each tab timeframe', () => {
     const s = useLiveTabsStore.getState();
     openTab('005930', '삼성전자');
@@ -383,10 +415,11 @@ describe('liveTabs ↔ page mirror', () => {
     expect(useLivePageStore.getState().candleTimeframe).toBe('5m'); // A restored
   });
 
-  it('pan changes are not mirrored into the active tab', () => {
+  it('pan changes are mirrored into the active tab without changing viewport', () => {
     openTab('005930', '삼성전자');
     useLivePageStore.getState().extendHistoricalRange('20260601');
-    expect(useLiveTabsStore.getState().tabs[0].historicalFromDate).toBeNull();
+    expect(useLiveTabsStore.getState().tabs[0].historicalFromDate).toBe('20260601');
+    expect(useLiveTabsStore.getState().tabs[0].viewport).toBeNull();
   });
 
   it('projecting a tab is idempotent on the active tab and does not churn its fields (mirror works without the guard)', () => {

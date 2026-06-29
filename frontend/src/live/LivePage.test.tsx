@@ -584,6 +584,47 @@ describe('LivePage shell', () => {
     });
   });
 
+  it('captures the outgoing live tab viewport and restores it when returning to that tab', async () => {
+    const capturedViewport = {
+      rightEdgeMs: 1_781_000_000_000,
+      barSpan: 331,
+      atLiveEdge: false,
+    };
+    useLiveTabsStore.setState({
+      tabs: [
+        { id: 'tab-a', code: '005930', label: '삼성전자', timeframe: '1m', historicalFromDate: null },
+        { id: 'tab-b', code: '000660', label: 'SK하이닉스', timeframe: 'D', historicalFromDate: null },
+      ],
+      activeTabId: 'tab-b',
+    });
+
+    renderWithRouter();
+    await waitFor(() => expect(livePageMocks.liveChartRootProps.at(-1)).toMatchObject({
+      code: '000660',
+      timeframe: 'D',
+      restoreViewport: null,
+    }));
+    act(() => {
+      livePageMocks.liveChartRootProps.at(-1)?.onViewportCaptureReady?.(() => capturedViewport);
+    });
+
+    act(() => {
+      screen.getByRole('tab', { name: /삼성전자 1분봉/ }).click();
+    });
+
+    expect(useLiveTabsStore.getState().tabs.find((tab) => tab.id === 'tab-b')?.viewport).toEqual(capturedViewport);
+
+    act(() => {
+      screen.getByRole('tab', { name: /SK하이닉스 일봉/ }).click();
+    });
+
+    await waitFor(() => expect(livePageMocks.liveChartRootProps.at(-1)).toMatchObject({
+      code: '000660',
+      timeframe: 'D',
+      restoreViewport: capturedViewport,
+    }));
+  });
+
   it('does not restore logical viewport across minute timeframe changes', async () => {
     const capturedViewport = {
       rightEdgeMs: 1_781_000_000_000,

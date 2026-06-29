@@ -3,6 +3,11 @@
 All notable changes to this project are documented here.
 The format follows a 4-digit `MAJOR.MINOR.PATCH.MICRO` scheme.
 
+## [0.12.20.1] - 2026-06-29
+
+### Fixed
+- **/live 탭별 차트 상태 복원**: 라이브 탭을 오갈 때 탭마다 선택한 분봉·일봉·주봉·월봉과 줌/x축 시간 위치를 유지해, 다시 돌아오면 보던 차트 구간에서 이어서 볼 수 있게 했다.
+
 ## [0.12.20.0] - 2026-06-29
 
 ### Fixed
