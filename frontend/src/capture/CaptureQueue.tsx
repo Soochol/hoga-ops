@@ -141,7 +141,7 @@ export function CaptureQueue() {
   const shouldVirtualize = allRows.length > VIRTUALIZE_THRESHOLD;
 
   return (
-    <div className="flex flex-col gap-2 h-full">
+    <div className="flex min-h-0 h-full flex-col gap-2">
       <div className="flex items-center gap-3 px-sm">
         <div className="flex-1 font-medium text-sm font-mono text-fg-dim tabular-nums">
           {summary.done} of {summary.total} done · {summary.failed} failed · {summary.capturing} capturing
@@ -206,7 +206,7 @@ export function CaptureQueue() {
       <div
         data-testid="queue-list"
         data-virtualized={shouldVirtualize}
-        className="flex-1 overflow-y-auto border rounded-md"
+        className="min-h-0 flex-1 overflow-y-auto border rounded-md"
       >
         {shouldVirtualize
           ? <VirtualList

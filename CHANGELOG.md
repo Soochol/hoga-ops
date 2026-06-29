@@ -3,6 +3,11 @@
 All notable changes to this project are documented here.
 The format follows a 4-digit `MAJOR.MINOR.PATCH.MICRO` scheme.
 
+## [0.12.17.1] - 2026-06-29
+
+### Fixed
+- **캡처 대기열 스크롤 복구**: 긴 런처/캡처 대기열이 우측 카드 밖에서 잘리지 않고 카드 안에서 세로 스크롤되도록 했다.
+
 ## [0.12.17.0] - 2026-06-29
 
 ### Changed
