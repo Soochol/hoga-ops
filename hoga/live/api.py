@@ -14,7 +14,7 @@ from pathlib import Path
 from typing import TYPE_CHECKING, Literal
 
 from fastapi import APIRouter, HTTPException, Query
-from pydantic import BaseModel, ValidationError
+from pydantic import BaseModel, Field, ValidationError
 
 from hoga.api._atomic_write import atomic_write_json
 from hoga.api.models import LiveSettingsResponse, LiveSettingsUpdate
@@ -57,6 +57,7 @@ from hoga.live.index_registry import (
 )
 from hoga.live.past_candles_cache import PastCandlesCache
 from hoga.live.past_daily_candles_cache import PastDailyCandlesCache
+from hoga.live.quote_change_resolver import QuoteChangeResolver
 
 from . import kis_access
 from .buffer import LiveBuffer
@@ -389,6 +390,10 @@ class LiveQuote(BaseModel):
     open: int | None = None
     high: int | None = None
     low: int | None = None
+    baseline_price: int | None = None
+    baseline_date: str | None = None
+    change_pct_source: str | None = None
+    warnings: list[str] = Field(default_factory=list)
 
 
 class LiveQuotesResponse(BaseModel):
@@ -609,9 +614,27 @@ class LiveQuoteFetcher:
     (여기선 캐시·게이팅만 소유). 마지막-시세는 표시 전용·디스크 미영속(ADR-0056),
     단일 워커라 dict 로 충분(ADR-0038). FastAPI 없이 fake kis 로 단독 테스트 가능."""
 
-    def __init__(self) -> None:
+    def __init__(self, *, change_resolver: QuoteChangeResolver | None = None) -> None:
         # 장중 마지막 quotes — closed 서빙용(스펙 2026-06-08 ⑧ '마지막 시세 유지').
         self._last_quotes: dict[str, KisQuote] = {}
+        self._change_resolver = change_resolver or QuoteChangeResolver(adjusted_daily_path=None)
+
+    def _to_live_quote(self, q: KisQuote, *, phase: str) -> LiveQuote:
+        resolved = self._change_resolver.resolve_quote(q, phase=phase)
+        pre = phase == "pre_open"
+        return LiveQuote(
+            code=q.code,
+            price=q.price,
+            change_pct=resolved.change_pct,
+            change_won=resolved.change_won,
+            open=(None if pre else q.open),
+            high=(None if pre else q.high),
+            low=(None if pre else q.low),
+            baseline_price=resolved.baseline_price,
+            baseline_date=resolved.baseline_date,
+            change_pct_source=resolved.change_pct_source,
+            warnings=resolved.warnings,
+        )
 
     async def fetch_and_gate(
         self, kis: KisClient, code_list: list[str], phase: str,
@@ -631,9 +654,7 @@ class LiveQuoteFetcher:
                     log.warning("live quotes cold fetch failed (%d codes): %s",
                                 len(code_list), e)
             return [
-                LiveQuote(code=q.code, price=q.price,
-                          change_pct=q.change_pct, change_won=q.change_won,
-                          open=q.open, high=q.high, low=q.low)
+                self._to_live_quote(q, phase=phase)
                 for c in code_list
                 if (q := self._last_quotes.get(c)) is not None
             ]
@@ -646,16 +667,7 @@ class LiveQuoteFetcher:
             return []
         for q in quotes:
             self._last_quotes[q.code] = q
-        pre = phase == "pre_open"
-        return [
-            LiveQuote(code=q.code, price=q.price,
-                      change_pct=(None if pre else q.change_pct),
-                      change_won=(None if pre else q.change_won),
-                      open=(None if pre else q.open),
-                      high=(None if pre else q.high),
-                      low=(None if pre else q.low))
-            for q in quotes
-        ]
+        return [self._to_live_quote(q, phase=phase) for q in quotes]
 
 
 def _investor_estimate_row_to_wire(
@@ -1250,7 +1262,14 @@ def build_router(
 
     # 시세 오버레이 fetch+캐시+게이팅은 LiveQuoteFetcher 가 소유. build_router 호출마다
     # 새 인스턴스라 마지막-시세 캐시 스코프는 종전(per-router 클로저)과 동일.
-    _quote_fetcher = LiveQuoteFetcher()
+    quote_change_resolver = QuoteChangeResolver(
+        adjusted_daily_path=(
+            data_dir / "screener" / "daily_adjusted.parquet"
+            if data_dir is not None
+            else None
+        )
+    )
+    _quote_fetcher = LiveQuoteFetcher(change_resolver=quote_change_resolver)
     _investor_estimate_fetcher = LiveInvestorEstimateFetcher(
         observed_at_store_path=(
             data_dir / "live" / "investor-trend-estimate-observed-at.json"
