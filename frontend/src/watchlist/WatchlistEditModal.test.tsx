@@ -2,6 +2,34 @@ import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { render, screen, fireEvent, waitFor, cleanup } from '@testing-library/react';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import * as api from '../api/watchlist';
+
+const h = vi.hoisted(() => ({ onDragEnd: null as null | ((e: unknown) => void) }));
+vi.mock('@dnd-kit/core', async (orig) => {
+  const actual = await orig<typeof import('@dnd-kit/core')>();
+  return {
+    ...actual,
+    DndContext: ({ children, onDragEnd }: { children: React.ReactNode; onDragEnd: (e: unknown) => void }) => {
+      h.onDragEnd = onDragEnd;
+      return <>{children}</>;
+    },
+    useSensor: () => ({}),
+    useSensors: () => [],
+    useDroppable: () => ({ setNodeRef: () => {}, isOver: false }),
+    PointerSensor: class {},
+  };
+});
+vi.mock('@dnd-kit/sortable', async (orig) => {
+  const actual = await orig<typeof import('@dnd-kit/sortable')>();
+  return {
+    ...actual,
+    SortableContext: ({ children }: { children: React.ReactNode }) => <>{children}</>,
+    useSortable: () => ({
+      setNodeRef: () => {}, listeners: {}, attributes: {},
+      transform: null, transition: undefined, isDragging: false,
+    }),
+  };
+});
+
 import { WatchlistEditModal } from './WatchlistEditModal';
 
 function wrap(qc: QueryClient) {
@@ -15,13 +43,14 @@ const DATA = {
 };
 
 describe('WatchlistEditModal', () => {
-  beforeEach(() => { cleanup(); vi.restoreAllMocks(); });
-  it('renders dialog with folder list (v3: no 미분류, no 모든 종목)', async () => {
+  beforeEach(() => { cleanup(); h.onDragEnd = null; vi.restoreAllMocks(); });
+  it('renders dialog with folder list and opens the first group by default', async () => {
     vi.spyOn(api, 'getWatchlist').mockResolvedValue(DATA);
     const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } });
     render(<WatchlistEditModal onClose={() => {}} />, { wrapper: wrap(qc) });
     expect(await screen.findByRole('dialog', { name: '관심종목 편집' })).toBeInTheDocument();
     await waitFor(() => expect(screen.getByText('스윙')).toBeInTheDocument());
+    expect(screen.getByText('삼성전자')).toBeInTheDocument();
     expect(screen.queryByText('미분류')).not.toBeInTheDocument();   // v3: 미분류 폐지
     expect(screen.queryByText('모든 종목')).not.toBeInTheDocument();
   });
@@ -42,8 +71,8 @@ describe('WatchlistEditModal', () => {
 
     expect(name).toHaveAttribute('title', '길게 만든 관심 그룹 이름');
     expect(row).toHaveClass('relative');
-    expect(selectButton).toHaveClass('group-hover:pr-24');
-    expect(selectButton).toHaveClass('group-focus-within:pr-24');
+    expect(selectButton).toHaveClass('group-hover:pr-12');
+    expect(selectButton).toHaveClass('group-focus-within:pr-12');
     expect(actions).toHaveClass('absolute');
     expect(actions).toHaveClass('right-2');
   });
@@ -67,14 +96,19 @@ describe('WatchlistEditModal', () => {
     expect(onClose).toHaveBeenCalled();
   });
 
-  it('renames and deletes a folder via its row actions', async () => {
+  it('renames a folder by double-clicking its name and leaves only delete as the row icon action', async () => {
     vi.spyOn(api, 'getWatchlist').mockResolvedValue(DATA);
     const ren = vi.spyOn(api, 'renameFolder').mockResolvedValue();
     const del = vi.spyOn(api, 'deleteFolder').mockResolvedValue();
     const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } });
     render(<WatchlistEditModal onClose={() => {}} />, { wrapper: wrap(qc) });
     await screen.findByText('스윙');
-    fireEvent.click(screen.getByLabelText('스윙 이름변경'));
+    expect(screen.queryByLabelText('스윙 위로')).not.toBeInTheDocument();
+    expect(screen.queryByLabelText('스윙 아래로')).not.toBeInTheDocument();
+    expect(screen.queryByLabelText('스윙 이름변경')).not.toBeInTheDocument();
+    expect(screen.getByTestId('folder-drag-handle-f_a')).toHaveTextContent('⠿');
+
+    fireEvent.doubleClick(screen.getByText('스윙'));
     const input = screen.getByDisplayValue('스윙');
     fireEvent.change(input, { target: { value: '단타' } });
     fireEvent.blur(input);
@@ -90,7 +124,7 @@ describe('WatchlistEditModal', () => {
     const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } });
     render(<WatchlistEditModal onClose={onClose} />, { wrapper: wrap(qc) });
     await screen.findByText('스윙');
-    fireEvent.click(screen.getByLabelText('스윙 이름변경'));
+    fireEvent.doubleClick(screen.getByText('스윙'));
     const input = screen.getByDisplayValue('스윙');
     fireEvent.change(input, { target: { value: '단타' } });
     fireEvent.keyDown(input, { key: 'Escape' });
@@ -100,7 +134,7 @@ describe('WatchlistEditModal', () => {
     expect(onClose).not.toHaveBeenCalled();
   });
 
-  it('reorders folders via ▼ (move down) — authoritative ordered_ids', async () => {
+  it('reorders folders by dragging the group handle — authoritative ordered_ids', async () => {
     vi.spyOn(api, 'getWatchlist').mockResolvedValue({
       folders: [
         { id: 'f_a', name: '스윙', order: 0, capture_enabled: true },
@@ -112,16 +146,22 @@ describe('WatchlistEditModal', () => {
     const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } });
     render(<WatchlistEditModal onClose={() => {}} />, { wrapper: wrap(qc) });
     await screen.findByText('스윙');
-    fireEvent.click(screen.getByLabelText('스윙 아래로'));
+    h.onDragEnd!({
+      active: { id: 'f_a', data: { current: { type: 'folder' } } },
+      over: { id: 'f_b', data: { current: { type: 'folder' } } },
+    });
     await waitFor(() => expect(ro).toHaveBeenCalledWith(['f_b', 'f_a']));
   });
 
-  it('resets selection to 미분류 when the currently-selected folder is deleted', async () => {
+  it('selects the next real group when the currently-selected folder is deleted', async () => {
     vi.spyOn(api, 'getWatchlist').mockResolvedValue({
-      folders: [{ id: 'f_a', name: '스윙', order: 0, capture_enabled: true }],
+      folders: [
+        { id: 'f_a', name: '스윙', order: 0, capture_enabled: true },
+        { id: 'f_b', name: '장기', order: 1, capture_enabled: true },
+      ],
       entries: [
         { code: '005930', name: '삼성전자', registered_at_kst_date: '20260101', last_success_date: null, folder_id: 'f_a', order: 0 },
-        { code: '000660', name: 'SK하이닉스', registered_at_kst_date: '20260101', last_success_date: null, folder_id: null, order: 0 },
+        { code: '000660', name: 'SK하이닉스', registered_at_kst_date: '20260101', last_success_date: null, folder_id: 'f_b', order: 0 },
       ],
       next_run_at_ms: 0,
     });
@@ -129,10 +169,10 @@ describe('WatchlistEditModal', () => {
     const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } });
     render(<WatchlistEditModal onClose={() => {}} />, { wrapper: wrap(qc) });
     await screen.findByText('스윙');
-    // select 스윙 → pane filters to its member only (미분류 000660 hidden)
+    // select 스윙 → pane filters to its member only (장기 member 000660 hidden)
     fireEvent.click(screen.getByText('스윙'));
     await waitFor(() => expect(screen.queryByText('SK하이닉스')).not.toBeInTheDocument());
-    // delete the selected folder → selection falls back to 미분류 (not a stale empty pane):
+    // delete the selected folder → selection moves to the next real group:
     // its member (000660) shows; the deleted folder's member (005930) does not.
     fireEvent.click(screen.getByLabelText('스윙 삭제'));
     await waitFor(() => expect(screen.getByText('SK하이닉스')).toBeInTheDocument());
