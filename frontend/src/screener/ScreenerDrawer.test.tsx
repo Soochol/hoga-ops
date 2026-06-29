@@ -150,11 +150,45 @@ describe('ScreenerDrawer', () => {
 
     render(<ScreenerDrawer />, { wrapper: wrap(qc(), '/live') });
 
-    await waitFor(() => expect(screen.getByText('오늘 장중: KIS quote 반영')).toBeInTheDocument());
+    await waitFor(() => expect(screen.queryByText('오늘 장중: KIS quote 반영')).not.toBeInTheDocument());
     await waitFor(() => expect(useScreenerPanelStore.getState().selectedSavedId).toBe('s1'));
     fireEvent.click(screen.getByRole('button', { name: '조회' }));
 
     await waitFor(() => expect(screen.getByText('장중 조회 불가 · 전일 확정 데이터로 표시 중')).toBeInTheDocument());
+  });
+
+  it('keeps the result summary and sort control outside the scroll body', async () => {
+    vi.spyOn(savesApi, 'listSaves').mockResolvedValue({ schema_version: 1, saves: [SAVE] });
+    useScreenerPanelStore.setState({
+      selectedSavedId: 's1',
+      lastScan: { savedId: 's1', savedName: '돌파+거래대금', rows: ROWS, scanStatus: 'ok', warnings: [] },
+    });
+
+    render(<ScreenerDrawer />, { wrapper: wrap(qc(), '/live') });
+
+    await waitFor(() => expect(screen.getByText('결과 2 · 돌파+거래대금')).toBeInTheDocument());
+    const scrollBody = screen.getByTestId('screener-scroll');
+    expect(within(scrollBody).queryByText('결과 2 · 돌파+거래대금')).not.toBeInTheDocument();
+    expect(within(scrollBody).queryByRole('button', { name: '스크리너 결과 정렬' })).not.toBeInTheDocument();
+    expect(sortButton()).toBeInTheDocument();
+  });
+
+  it('hides stale result controls when a later scan fails', async () => {
+    vi.spyOn(savesApi, 'listSaves').mockResolvedValue({ schema_version: 1, saves: [SAVE] });
+    vi.spyOn(screenerApi, 'runScan').mockRejectedValue(new Error('boom'));
+    useScreenerPanelStore.setState({
+      selectedSavedId: 's1',
+      lastScan: { savedId: 's1', savedName: '돌파+거래대금', rows: ROWS, scanStatus: 'ok', warnings: [] },
+    });
+
+    render(<ScreenerDrawer />, { wrapper: wrap(qc(), '/live') });
+
+    await waitFor(() => expect(screen.getByText('결과 2 · 돌파+거래대금')).toBeInTheDocument());
+    await waitFor(() => expect(screen.getByRole('option', { name: '돌파+거래대금' })).toBeInTheDocument());
+    fireEvent.click(screen.getByRole('button', { name: '조회' }));
+    await waitFor(() => expect(screen.getByText('조회 실패')).toBeInTheDocument());
+    expect(screen.queryByText('결과 2 · 돌파+거래대금')).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: '스크리너 결과 정렬' })).not.toBeInTheDocument();
   });
 
   it('clicking a result row sets activeCode and navigates to /live from elsewhere', async () => {

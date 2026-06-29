@@ -207,9 +207,17 @@ export function ScreenerDrawer() {
         {notSeeded && (
           <RailState tone="warn" className="p-0">시드 필요 — 운영자 CLI로 시드 후 조회하세요</RailState>
         )}
-        {!notSeeded && (
-          <div className="text-xs text-fg-dimmer" title="저장 조건 조회 시 오늘 KIS quote를 일봉 위에 임시 반영합니다">
-            오늘 장중: KIS quote 반영
+        {lastScan && !screener.isError && (
+          <div className="flex items-center gap-2 border-t border-border pt-sm text-xs uppercase tracking-[0.08em] text-fg-dimmer">
+            <div className="min-w-0 flex-1 truncate">
+              결과 {lastScan.rows.length} · {lastScan.savedName}
+              {selectedSavedId !== lastScan.savedId && (
+                <span className="ml-1 normal-case tracking-normal" style={{ color: 'var(--warn)' }}>
+                  · 선택한 조건과 다름 — 조회로 갱신
+                </span>
+              )}
+            </div>
+            <ScreenerResultSortControl mode={sortMode} onChange={setSortMode} disabled={lastScan.rows.length === 0} />
           </div>
         )}
       </RailDrawerSection>
@@ -230,17 +238,6 @@ export function ScreenerDrawer() {
                 장중 조회 불가 · 전일 확정 데이터로 표시 중
               </div>
             )}
-            <div className="px-md pt-sm pb-1 flex items-center gap-2 text-xs uppercase tracking-[0.08em] text-fg-dimmer">
-              <div className="min-w-0 flex-1 truncate">
-                결과 {lastScan.rows.length} · {lastScan.savedName}
-                {selectedSavedId !== lastScan.savedId && (
-                  <span className="ml-1 normal-case tracking-normal" style={{ color: 'var(--warn)' }}>
-                    · 선택한 조건과 다름 — 조회로 갱신
-                  </span>
-                )}
-              </div>
-              <ScreenerResultSortControl mode={sortMode} onChange={setSortMode} disabled={lastScan.rows.length === 0} />
-            </div>
             {lastScan.rows.length === 0 ? (
               <RailState>조건에 맞는 종목이 없습니다.</RailState>
             ) : (

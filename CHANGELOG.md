@@ -3,6 +3,14 @@
 All notable changes to this project are documented here.
 The format follows a 4-digit `MAJOR.MINOR.PATCH.MICRO` scheme.
 
+## [0.12.17.0] - 2026-06-29
+
+### Changed
+- **우측 스크리너 결과 헤더 고정**: 조회 결과 수, 조건명, 선택 조건 불일치 안내, 등락률 정렬 버튼을 결과 스크롤 영역 밖의 컨트롤 섹션으로 옮겨 긴 결과 목록을 스크롤해도 계속 보이도록 했다.
+
+### Fixed
+- **우측 스크리너 조회 실패 상태 정리**: 이전 조회 결과가 남아있는 상태에서 다음 조회가 실패하면 stale 결과 요약과 정렬 버튼이 실패 메시지와 함께 보이지 않도록 했다.
+
 ## [0.12.16.1] - 2026-06-29
 
 ### Fixed
