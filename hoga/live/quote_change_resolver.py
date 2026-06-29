@@ -37,10 +37,17 @@ class _Baseline:
     close: int
 
 
+@dataclass(frozen=True)
+class _AdjustedDailySignature:
+    mtime_ns: int
+    size: int
+
+
 class QuoteChangeResolver:
     def __init__(self, *, adjusted_daily_path: Path | None) -> None:
         self._adjusted_daily_path = adjusted_daily_path
         self._baseline_cache: dict[str, _Baseline | None] = {}
+        self._baseline_cache_signature: _AdjustedDailySignature | None = None
 
     def resolve_quote(self, q: KisQuote, *, phase: str) -> QuoteChangeResolution:
         baseline = self._baseline_for(q.code)
@@ -110,27 +117,44 @@ class QuoteChangeResolver:
         )
 
     def _baseline_for(self, code: str) -> _Baseline | None:
+        signature = self._adjusted_daily_signature()
+        if signature is None:
+            self._baseline_cache.clear()
+            self._baseline_cache_signature = None
+            return None
+        if signature != self._baseline_cache_signature:
+            self._baseline_cache.clear()
+            self._baseline_cache_signature = signature
         if code in self._baseline_cache:
             return self._baseline_cache[code]
         baseline = self._load_baseline(code)
         self._baseline_cache[code] = baseline
         return baseline
 
+    def _adjusted_daily_signature(self) -> _AdjustedDailySignature | None:
+        if self._adjusted_daily_path is None:
+            return None
+        try:
+            stat = self._adjusted_daily_path.stat()
+        except FileNotFoundError:
+            return None
+        return _AdjustedDailySignature(mtime_ns=stat.st_mtime_ns, size=stat.st_size)
+
     def _load_baseline(self, code: str) -> _Baseline | None:
         if self._adjusted_daily_path is None or not self._adjusted_daily_path.exists():
             return None
         try:
-            con = duckdb.connect(":memory:")
-            row = con.execute(
-                f"""
-                SELECT CAST(date AS VARCHAR) AS date_s, close
-                FROM '{self._adjusted_daily_path}'
-                WHERE code = ? AND close > 0
-                ORDER BY date DESC
-                LIMIT 1
-                """,
-                [code],
-            ).fetchone()
+            with duckdb.connect(":memory:") as con:
+                row = con.execute(
+                    f"""
+                    SELECT CAST(date AS VARCHAR) AS date_s, close
+                    FROM '{self._adjusted_daily_path}'
+                    WHERE code = ? AND close > 0
+                    ORDER BY date DESC
+                    LIMIT 1
+                    """,
+                    [code],
+                ).fetchone()
         except Exception:
             return None
         if row is None:
