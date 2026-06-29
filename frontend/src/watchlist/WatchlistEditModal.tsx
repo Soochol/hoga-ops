@@ -1,16 +1,19 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import {
   DndContext, PointerSensor, useSensor, useSensors, useDroppable, closestCenter,
-  type DragEndEvent,
+  type CollisionDetection, type DragEndEvent, type DraggableSyntheticListeners,
 } from '@dnd-kit/core';
+import { SortableContext, useSortable, verticalListSortingStrategy } from '@dnd-kit/sortable';
+import { CSS } from '@dnd-kit/utilities';
 import {
   useWatchlist, useCreateFolder, useReorderEntries, useMoveMember,
   useRenameFolder, useDeleteFolder, useReorderFolders, useSetFolderCaptureEnabled,
 } from './useWatchlist';
 import { WatchlistEntryPane } from './WatchlistEntryPane';
-import { resolveDrag, folderDroppableId } from './dragHandlers';
-import { selectVisibleEntries, swapFolderOrder, type Selected } from './grouping';
+import { resolveDrag, resolveFolderDrag, folderDroppableId } from './dragHandlers';
+import { selectVisibleEntries, type Selected } from './grouping';
 import { ModalShell } from '../ui/ModalShell';
+import { TrashIcon } from '../ui/TrashIcon';
 
 const DEFAULT_CAPTURE_ENABLED = true;
 
@@ -20,20 +23,27 @@ const DEFAULT_CAPTURE_ENABLED = true;
 // buttons are NOT nested in the selection button (invalid DOM + click bubbling); they reveal
 // on hover via `group-hover`.
 function FolderRow(props: {
-  id: string; name: string; idx: number; count: number;
+  id: string; name: string; count: number;
   captureEnabled: boolean;
-  isSelected: boolean; isEditing: boolean; isLast: boolean; editName: string;
+  isSelected: boolean; isEditing: boolean; editName: string;
   onSelect: () => void; onStartEdit: () => void; onDelete: () => void;
   onToggleCapture: () => void;
-  onMoveUp: () => void; onMoveDown: () => void;
   onEditNameChange: (v: string) => void; onCommit: () => void; onCancelEdit: () => void;
+  dragListeners?: DraggableSyntheticListeners;
 }) {
-  const { setNodeRef, isOver } = useDroppable({ id: folderDroppableId(props.id) });
+  const { setNodeRef, isOver } = useDroppable({
+    id: folderDroppableId(props.id),
+    data: { type: 'entry-target' },
+  });
   return (
     <div ref={setNodeRef} data-testid={`folder-row-${props.id}`}
-      className={`group relative flex items-center gap-1 pl-3 pr-2 py-1.5 rounded text-sm ${
+      className={`group relative flex items-center gap-1 pl-2 pr-2 py-1.5 rounded text-sm ${
         props.isSelected ? 'bg-bg-input text-fg' : 'text-fg-dim hover:bg-bg-input-hover'} ${
         isOver ? 'ring-1 ring-accent bg-bg-input-hover' : ''}`}>
+      <span {...(props.dragListeners ?? {})} aria-hidden data-testid={`folder-drag-handle-${props.id}`}
+        className="shrink-0 cursor-grab select-none touch-none px-1 leading-none text-fg-dimmer">
+        ⠿
+      </span>
       {props.isEditing ? (
         <input autoFocus value={props.editName} maxLength={40}
           onChange={(e) => props.onEditNameChange(e.target.value)}
@@ -44,8 +54,8 @@ function FolderRow(props: {
           }}
           className="flex-1 min-w-0 px-1 py-0.5 rounded bg-bg-input text-sm border border-border" />
       ) : (
-        <button type="button" onClick={props.onSelect}
-          className="flex-1 min-w-0 flex items-center justify-between text-left pr-2 group-hover:pr-24 group-focus-within:pr-24">
+        <button type="button" onClick={props.onSelect} onDoubleClick={props.onStartEdit}
+          className="flex-1 min-w-0 flex items-center justify-between text-left pr-2 group-hover:pr-12 group-focus-within:pr-12">
           <span className="truncate" title={props.name}>{props.name}</span>
           <span className="shrink-0 font-mono tabular-nums text-fg-dimmer text-xs">{props.count}</span>
         </button>
@@ -77,23 +87,45 @@ function FolderRow(props: {
               }`}
             />
           </button>
-          <button type="button" aria-label={`${props.name} 위로`} disabled={props.idx === 0}
-            onClick={props.onMoveUp}
-            className="px-1 leading-none hover:text-fg disabled:opacity-40">▲</button>
-          <button type="button" aria-label={`${props.name} 아래로`} disabled={props.isLast}
-            onClick={props.onMoveDown}
-            className="px-1 leading-none hover:text-fg disabled:opacity-40">▼</button>
-          <button type="button" aria-label={`${props.name} 이름변경`}
-            onClick={props.onStartEdit}
-            className="px-1 leading-none hover:text-accent">✎</button>
           <button type="button" aria-label={`${props.name} 삭제`}
             onClick={props.onDelete}
-            className="px-1 leading-none hover:text-error">🗑</button>
+            className="px-1 leading-none hover:text-error">
+            <TrashIcon className="w-[1em] h-[1em]" />
+          </button>
         </div>
       )}
     </div>
   );
 }
+
+function SortableFolderRow(props: Parameters<typeof FolderRow>[0]) {
+  const { setNodeRef, transform, transition, listeners, isDragging } =
+    useSortable({ id: props.id, data: { type: 'folder' } });
+  const style: React.CSSProperties = {
+    transform: CSS.Transform.toString(transform),
+    transition,
+    opacity: isDragging ? 0.6 : undefined,
+  };
+  return (
+    <div ref={setNodeRef} style={style}>
+      <FolderRow {...props} dragListeners={listeners} />
+    </div>
+  );
+}
+
+const modalCollision: CollisionDetection = (args) => {
+  const type = args.active.data.current?.type;
+  if (type === 'folder') {
+    return closestCenter({
+      ...args,
+      droppableContainers: args.droppableContainers.filter((c) => c.data.current?.type === 'folder'),
+    });
+  }
+  return closestCenter({
+    ...args,
+    droppableContainers: args.droppableContainers.filter((c) => c.data.current?.type !== 'folder'),
+  });
+};
 
 export function WatchlistEditModal({ onClose }: { onClose: () => void }) {
   const { data } = useWatchlist();
@@ -104,31 +136,47 @@ export function WatchlistEditModal({ onClose }: { onClose: () => void }) {
   const deleteM = useDeleteFolder();
   const reorderFoldersM = useReorderFolders();
   const captureM = useSetFolderCaptureEnabled();
-  const [selected, setSelected] = useState<Selected>(null);
+  const [selected, setSelected] = useState<Selected | undefined>(undefined);
   const [adding, setAdding] = useState(false);
   const [newName, setNewName] = useState('');
   const [editingId, setEditingId] = useState<string | null>(null);
   const [editName, setEditName] = useState('');
 
-  // distance constraint so a click on the ⠿ handle still fires checkbox/↻ buttons.
+  // distance constraint so selecting a group and starting a group drag stay distinct.
   const sensors = useSensors(useSensor(PointerSensor, { activationConstraint: { distance: 5 } }));
 
   const folders = [...(data?.folders ?? [])].sort((a, b) => a.order - b.order);
   const countIn = (id: string | null) => (data?.entries ?? []).filter((e) => e.folder_id === id).length;
 
+  useEffect(() => {
+    if (selected === undefined && folders.length > 0) setSelected(folders[0].id);
+    else if (selected !== undefined && selected !== null && !folders.some((f) => f.id === selected)) {
+      setSelected(folders[0]?.id ?? null);
+    }
+  }, [folders, selected]);
+
   // Same derivation the pane renders (selectVisibleEntries) so resolveDrag's row
   // indices line up with the pane — the parallelism is now structural (one helper).
-  const visible = selectVisibleEntries(data?.entries ?? [], selected);
+  const selectedFolder = selected === undefined ? folders[0]?.id ?? null : selected;
+  const visible = selectVisibleEntries(data?.entries ?? [], selectedFolder);
 
   const onDragEnd = (ev: DragEndEvent) => {
     if (!ev.over) return;
-    const r = resolveDrag(visible, selected, String(ev.active.id), String(ev.over.id));
+    if (ev.active.data.current?.type === 'folder') {
+      const overFolderId = ev.over.data.current?.type === 'folder' ? String(ev.over.id) : null;
+      if (!overFolderId) return;
+      const r = resolveFolderDrag(folders.map((f) => f.id), String(ev.active.id), overFolderId);
+      if (r.kind === 'reorder') reorderFoldersM.mutate(r.orderedIds);
+      return;
+    }
+
+    const r = resolveDrag(visible, selectedFolder, String(ev.active.id), String(ev.over.id));
     if (r.kind === 'reorder' && r.folderId !== null) {
       reorderM.mutate({ folderId: r.folderId, orderedCodes: r.orderedCodes });
-    } else if (r.kind === 'move' && selected !== null && r.folderId !== null) {
+    } else if (r.kind === 'move' && selectedFolder !== null && r.folderId !== null) {
       // v3: 폴더 간 드래그 = 멤버십 이동(대상 추가 후 출처 제거).
       const target = r.folderId;
-      for (const code of r.codes) void moveMember({ code, from: selected, to: target });
+      for (const code of r.codes) void moveMember({ code, from: selectedFolder, to: target });
     }
   };
 
@@ -146,12 +194,6 @@ export function WatchlistEditModal({ onClose }: { onClose: () => void }) {
     setEditingId(null);
   };
 
-  // Authoritative ordered_ids 계약은 swapFolderOrder(grouping.ts)에 — 패널 ⋯ 메뉴와 공유.
-  const moveFolder = (folderId: string, dir: -1 | 1) => {
-    const ids = swapFolderOrder(folders, folderId, dir);
-    if (ids) reorderFoldersM.mutate(ids);
-  };
-
   // Aligned with the 보조지표 modal (IndicatorPanel): shared ModalShell chrome
   // (backdrop/Escape/title/✕), a left nav with a small-caps section header + rows,
   // and a footer-anchored 닫기. Folder CRUD + the right entry pane are unchanged;
@@ -160,7 +202,7 @@ export function WatchlistEditModal({ onClose }: { onClose: () => void }) {
   return (
     <ModalShell ariaLabel="관심종목 편집" title="관심종목 편집"
       width="w-[860px]" height="h-[600px] max-h-[88vh]" onClose={onClose}>
-      <DndContext sensors={sensors} collisionDetection={closestCenter} onDragEnd={onDragEnd}>
+      <DndContext sensors={sensors} collisionDetection={modalCollision} onDragEnd={onDragEnd}>
         <div className="flex-1 grid grid-cols-[220px_1fr] min-h-0">
           {/* 좌: 폴더 pane — 보조지표 nav 패턴(섹션 헤더 + 행)과 정렬 */}
           <div className="border-r border-border flex flex-col min-h-0">
@@ -186,32 +228,37 @@ export function WatchlistEditModal({ onClose }: { onClose: () => void }) {
               )}
             </div>
             <div className="flex-1 overflow-auto px-2 pb-2 flex flex-col gap-px">
-              {folders.map((f, idx) => {
-                const captureEnabled = f.capture_enabled ?? DEFAULT_CAPTURE_ENABLED;
-                return (
-                  <FolderRow key={f.id} id={f.id} name={f.name} idx={idx} count={countIn(f.id)}
-                    captureEnabled={captureEnabled}
-                    isSelected={selected === f.id} isEditing={editingId === f.id}
-                    isLast={idx === folders.length - 1} editName={editName}
-                    onSelect={() => setSelected(f.id)}
-                    onStartEdit={() => { setEditingId(f.id); setEditName(f.name); }}
-                    onDelete={() => { deleteM.mutate(f.id); if (selected === f.id) setSelected(null); }}
-                    onToggleCapture={() => captureM.mutate({
-                      folderId: f.id,
-                      captureEnabled: !captureEnabled,
-                    })}
-                    onMoveUp={() => moveFolder(f.id, -1)}
-                    onMoveDown={() => moveFolder(f.id, +1)}
-                    onEditNameChange={setEditName}
-                    onCommit={() => commitRename(f.id)}
-                    onCancelEdit={() => setEditingId(null)} />
-                );
-              })}
+              <SortableContext items={folders.map((f) => f.id)} strategy={verticalListSortingStrategy}>
+                {folders.map((f) => {
+                  const captureEnabled = f.capture_enabled ?? DEFAULT_CAPTURE_ENABLED;
+                  return (
+                    <SortableFolderRow key={f.id} id={f.id} name={f.name} count={countIn(f.id)}
+                      captureEnabled={captureEnabled}
+                      isSelected={selected === f.id} isEditing={editingId === f.id}
+                      editName={editName}
+                      onSelect={() => setSelected(f.id)}
+                      onStartEdit={() => { setEditingId(f.id); setEditName(f.name); }}
+                      onDelete={() => {
+                        deleteM.mutate(f.id);
+                        if (selected === f.id) {
+                          setSelected(folders.find((candidate) => candidate.id !== f.id)?.id ?? null);
+                        }
+                      }}
+                      onToggleCapture={() => captureM.mutate({
+                        folderId: f.id,
+                        captureEnabled: !captureEnabled,
+                      })}
+                      onEditNameChange={setEditName}
+                      onCommit={() => commitRename(f.id)}
+                      onCancelEdit={() => setEditingId(null)} />
+                  );
+                })}
+              </SortableContext>
             </div>
           </div>
 
           {/* 우: entry pane (F7) */}
-          <WatchlistEntryPane selected={selected} />
+          <WatchlistEntryPane selected={selectedFolder} />
         </div>
       </DndContext>
 

@@ -3,6 +3,12 @@
 All notable changes to this project are documented here.
 The format follows a 4-digit `MAJOR.MINOR.PATCH.MICRO` scheme.
 
+## [0.12.17.2] - 2026-06-29
+
+### Changed
+- **관심종목 편집 그룹 조작 정리**: 편집 창을 열면 첫 번째 관심 그룹의 종목을 바로 볼 수 있고, 그룹 순서는 그룹명 왼쪽의 `⠿` 핸들을 드래그해 바꾸도록 했다.
+- **관심 그룹 이름 편집 간소화**: 그룹명 더블클릭으로 이름을 바로 수정하고, hover 액션은 저장 대상 토글과 삭제만 남겨 그룹 행 조작을 단순화했다.
+
 ## [0.12.17.1] - 2026-06-29
 
 ### Fixed
