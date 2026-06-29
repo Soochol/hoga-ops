@@ -2,9 +2,10 @@ import { Link } from 'react-router';
 
 interface Props {
   cause: 'no_active_code' | 'watchlist_empty';
+  onOpenSearch?: () => void;
 }
 
-export function LiveEmptyState({ cause }: Props) {
+export function LiveEmptyState({ cause, onOpenSearch }: Props) {
   if (cause === 'watchlist_empty') {
     return (
       <div
@@ -45,7 +46,14 @@ export function LiveEmptyState({ cause }: Props) {
     >
       <div className="text-center">
         <p style={{ fontSize: 'var(--text-md)', color: 'var(--fg-dim)' }}>
-          <kbd className="bg-bg-input border border-border rounded px-1.5 py-0.5 font-mono">/</kbd>
+          <button
+            type="button"
+            aria-label="종목 검색 열기"
+            onClick={onOpenSearch}
+            className="bg-bg-input border border-border rounded px-1.5 py-0.5 font-mono text-fg transition-colors hover:bg-bg-input-hover"
+          >
+            /
+          </button>
           {' '}를 눌러 종목을 검색하세요
         </p>
         <p style={{ fontSize: 'var(--text-sm)', marginTop: 'var(--space-sm)' }}>

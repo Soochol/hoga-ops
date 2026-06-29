@@ -3,6 +3,11 @@
 All notable changes to this project are documented here.
 The format follows a 4-digit `MAJOR.MINOR.PATCH.MICRO` scheme.
 
+## [0.12.15.2] - 2026-06-29
+
+### Fixed
+- **/live 빈 화면 종목 검색 버튼 복구**: 활성 종목이 없을 때 보이는 `/` 버튼을 클릭하면 종목 검색 창이 열리고 입력창에 바로 포커스되도록 고쳤다.
+
 ## [0.12.15.1] - 2026-06-29
 
 ### Fixed
