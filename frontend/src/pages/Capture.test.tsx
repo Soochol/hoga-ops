@@ -67,6 +67,15 @@ describe('Capture page', () => {
     expect(screen.getByTestId('queue-empty').closest('.bg-bg-card')).not.toBeNull();
   });
 
+  it('lets the queue section shrink inside the fixed capture viewport', async () => {
+    const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+    render(<Capture />, { wrapper: W(qc) });
+    await new Promise((r) => setTimeout(r, 30));
+
+    const queueSection = screen.getByRole('region', { name: '캡처 대기열' });
+    expect(queueSection).toHaveClass('min-h-0');
+  });
+
   it('prefills the symbol from the active live stock tab when capture has no code query', async () => {
     useLiveTabsStore.setState({
       tabs: [{

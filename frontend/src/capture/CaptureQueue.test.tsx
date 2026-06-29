@@ -76,6 +76,16 @@ describe('CaptureQueue', () => {
     expect(screen.getByTestId('queue-row-d1')).toBeTruthy();
   });
 
+  it('lets the queue list shrink inside the capture panel so it can scroll', async () => {
+    const qc = setup();
+    render(<CaptureQueue />, { wrapper: W(qc) });
+    await new Promise((r) => setTimeout(r, 30));
+
+    const queueList = screen.getByTestId('queue-list');
+    expect(queueList).toHaveClass('min-h-0');
+    expect(queueList.parentElement).toHaveClass('min-h-0');
+  });
+
   it('Cancel All first click arms confirmation; second click POSTs cancel-all', async () => {
     const qc = setup();
     const fetchMock = vi.spyOn(globalThis, 'fetch' as 'fetch').mockImplementation(async (url: RequestInfo | URL) => {
