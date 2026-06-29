@@ -614,7 +614,7 @@ describe('LiveChartRoot', () => {
     expect(capture()).toMatchObject({ barSpan: 78.25, atLiveEdge: true });
   });
 
-  it('D timeframe: does not add a synthetic userAdjusted flag to captures', () => {
+  it('D timeframe: marks captures as user-adjusted after wheel viewport changes', () => {
     useLivePageStore.setState({ historicalFromDate: null });
     const { chart, ts } = buildChartMockWithStableTS();
     const bundle = makeDailyCalendarBundle(250);
@@ -650,7 +650,7 @@ describe('LiveChartRoot', () => {
       );
     });
 
-    expect(capture()).toEqual({ rightEdgeMs: last.ts_ms, barSpan: 13, atLiveEdge: true });
+    expect(capture()).toEqual({ rightEdgeMs: last.ts_ms, barSpan: 13, atLiveEdge: true, userAdjusted: true });
   });
 
   it('D timeframe: replaces candle data fully when the latest daily OHLC changes', () => {
@@ -1698,6 +1698,30 @@ describe('LiveChartRoot historical-prepend viewport preservation', () => {
       { wrapper },
     );
     expect(ts.setVisibleLogicalRange).toHaveBeenLastCalledWith({ from: 50, to: 115 });
+    expect(ts.scrollToPosition).not.toHaveBeenCalled();
+  });
+
+  it('restore: a user-adjusted live-edge tab preserves the saved time anchor', () => {
+    const handlers: Array<(r: unknown) => void> = [];
+    const ts = makeTs(handlers);
+    vi.mocked(createChartEx).mockImplementationOnce(() => buildStableCapturingMock(ts) as any);
+
+    const rightEdgeMs = TODAY_OPEN_MS + 100 * 60_000;
+    const barSpan = 50;
+    render(
+      <LiveChartRoot code="005930" timeframe="1m"
+        bundle={todayBundle(Array.from({ length: 120 }, (_, i) => TODAY_OPEN_MS + (i + 1) * 60_000))}
+        clampEngaged={false} isPastCandlesLoading={false}
+        restoreViewport={{ rightEdgeMs, barSpan, atLiveEdge: true, userAdjusted: true }} />,
+      { wrapper },
+    );
+
+    const axis = createVirtualAxis(
+      [{ date: '20260527', sessionOpenMs: TODAY_OPEN_MS, sessionCloseMs: TODAY_CLOSE_MS }],
+      TODAY_OPEN_MS,
+    );
+    const idx = realMsToVirtualSeconds(axis, rightEdgeMs);
+    expect(ts.setVisibleLogicalRange).toHaveBeenLastCalledWith({ from: idx - barSpan, to: idx });
     expect(ts.scrollToPosition).not.toHaveBeenCalled();
   });
 

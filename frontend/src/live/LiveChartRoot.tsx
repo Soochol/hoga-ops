@@ -317,6 +317,15 @@ export function LiveChartRoot({ code, timeframe, venue = 'KRX', viewIdentity, bu
   axisRef.current = axis;
   const timeframeRef: MutableRefObject<LiveTimeframe> = useRef<LiveTimeframe>(timeframe);
   timeframeRef.current = timeframe;
+  const userAdjustedViewportRef = useRef(false);
+  const userAdjustedViewportKeyRef = useRef<string | null>(null);
+  if (userAdjustedViewportKeyRef.current !== viewKey) {
+    userAdjustedViewportKeyRef.current = viewKey;
+    userAdjustedViewportRef.current = restoreViewport?.userAdjusted === true;
+  }
+  const markViewportUserAdjusted = useCallback(() => {
+    userAdjustedViewportRef.current = true;
+  }, []);
   // Last real candle's real-ms, read by the crosshair handler to detect the
   // right-offset whitespace (cursor past the last bar) without making the
   // handler effect depend on every SSE bundle. Written during render (like
@@ -359,7 +368,7 @@ export function LiveChartRoot({ code, timeframe, venue = 'KRX', viewIdentity, bu
         lastCandleMsRef.current,
       );
       if (!vp) return null;
-      return vp;
+      return userAdjustedViewportRef.current ? { ...vp, userAdjusted: true } : vp;
     } catch {
       return null;
     }
@@ -471,7 +480,49 @@ export function LiveChartRoot({ code, timeframe, venue = 'KRX', viewIdentity, bu
       ? minuteRightOffsetBars(visibleBars, plotWidth)
       : (CHART_TIMESCALE_OPTIONS.rightOffset ?? 0)
   ), [timeframe]);
-  useWheelInteractions(chart, containerRef, cb, axis, undefined, getLiveRightOffsetBars);
+  useWheelInteractions(chart, containerRef, cb, axis, markViewportUserAdjusted, getLiveRightOffsetBars);
+  useEffect(() => {
+    const container = containerRef.current;
+    const target = container?.parentElement ?? container;
+    if (!chart || !target) return;
+    const ts = chart.timeScale();
+    let dragStart: { x: number; y: number } | null = null;
+    let pendingUserDragRangeChange = false;
+    const onPointerDown = (event: PointerEvent) => {
+      if (event.button !== 0) return;
+      dragStart = { x: event.clientX, y: event.clientY };
+    };
+    const onPointerMove = (event: PointerEvent) => {
+      if (!dragStart) return;
+      const dx = event.clientX - dragStart.x;
+      const dy = event.clientY - dragStart.y;
+      if (Math.hypot(dx, dy) >= 4) {
+        pendingUserDragRangeChange = true;
+        dragStart = null;
+      }
+    };
+    const clearDrag = () => {
+      dragStart = null;
+      pendingUserDragRangeChange = false;
+    };
+    const onVisibleLogicalRangeChange = () => {
+      if (!pendingUserDragRangeChange) return;
+      pendingUserDragRangeChange = false;
+      markViewportUserAdjusted();
+    };
+    target.addEventListener('pointerdown', onPointerDown);
+    window.addEventListener('pointermove', onPointerMove, true);
+    window.addEventListener('pointerup', clearDrag);
+    window.addEventListener('pointercancel', clearDrag);
+    ts.subscribeVisibleLogicalRangeChange(onVisibleLogicalRangeChange);
+    return () => {
+      target.removeEventListener('pointerdown', onPointerDown);
+      window.removeEventListener('pointermove', onPointerMove, true);
+      window.removeEventListener('pointerup', clearDrag);
+      window.removeEventListener('pointercancel', clearDrag);
+      ts.unsubscribeVisibleLogicalRangeChange(onVisibleLogicalRangeChange);
+    };
+  }, [chart, containerRef, markViewportUserAdjusted]);
   useEffect(() => {
     // Reveal the chart two rAFs after the viewport is applied, so lightweight-
     // charts' one-frame-late barSpacing settle (the cold-load zoom flash) lands
@@ -521,8 +572,11 @@ export function LiveChartRoot({ code, timeframe, venue = 'KRX', viewIdentity, bu
         // being within loaded data so an off-left anchor yields idx=null →
         // null range → fall through to the default view. (cb.candles is
         // ascending, so [0] is the earliest.)
+        const shouldUseTimeAnchor =
+          !restoreViewport.atLiveEdge ||
+          restoreViewport.userAdjusted === true;
         const anchorInRange =
-          !restoreViewport.atLiveEdge &&
+          shouldUseTimeAnchor &&
           restoreViewport.rightEdgeMs >= cb.candles[0].ts_ms;
         const idx = anchorInRange
           ? tsR.timeToIndex(
@@ -535,7 +589,7 @@ export function LiveChartRoot({ code, timeframe, venue = 'KRX', viewIdentity, bu
           : undefined;
         const range = computeRestoreRange(restoreViewport, totalBarsR, idx, restoreRightOffset);
         if (range) {
-          if (timeframe === 'D' && restoreViewport.atLiveEdge) {
+          if (timeframe === 'D' && restoreViewport.atLiveEdge && restoreViewport.userAdjusted !== true) {
             const rightOffset = CHART_TIMESCALE_OPTIONS.rightOffset ?? 0;
             const plotWidth = Math.max(tsR.width(), containerRef.current?.clientWidth ?? 0);
             const maxLegibleSpan =
