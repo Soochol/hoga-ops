@@ -333,6 +333,31 @@ describe('StudyPage', () => {
     expect(liveChartRootMock.mock.calls.at(-1)?.[0].timeframe).toBe('15m');
   });
 
+  it('keeps a study tab on the selected minute after switching from calendar timeframe', () => {
+    useStudyTabsStore.setState({
+      tabs: [{
+        id: 'tab-ref',
+        viewId: 'view-ref',
+        code: '005930',
+        label: '삼성전자 · 돌파 복기 · D',
+        name: '돌파 복기',
+        timeframe: 'D',
+      }],
+      activeTabId: 'tab-ref',
+    });
+
+    renderPage('/study?view=view-ref');
+
+    fireEvent.click(screen.getByRole('button', { name: '분봉으로 전환: 5분' }));
+
+    expect(screen.getByText('005930 · 5m · 복기뷰')).toBeTruthy();
+    expect(useStudyTabsStore.getState().tabs[0]).toMatchObject({
+      timeframe: '5m',
+      label: '삼성전자 · 돌파 복기 · 5m',
+    });
+    expect(liveChartRootMock.mock.calls.at(-1)?.[0].timeframe).toBe('5m');
+  });
+
   it('does not reuse a saved minute viewport after switching the study chart to D/W/M', () => {
     renderPage('/study?view=view-ref');
 

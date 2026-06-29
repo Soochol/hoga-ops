@@ -3,10 +3,15 @@
 All notable changes to this project are documented here.
 The format follows a 4-digit `MAJOR.MINOR.PATCH.MICRO` scheme.
 
-## [0.12.15.2] - 2026-06-29
+## [0.12.16.1] - 2026-06-29
 
 ### Fixed
 - **/live 빈 화면 종목 검색 버튼 복구**: 활성 종목이 없을 때 보이는 `/` 버튼을 클릭하면 종목 검색 창이 열리고 입력창에 바로 포커스되도록 고쳤다.
+
+## [0.12.16.0] - 2026-06-29
+
+### Fixed
+- **/study 분봉 전환 유지 복구**: 저장 학습뷰 탭에서 일·주·월봉 상태로 분봉 버튼을 누르면 차트뿐 아니라 활성 study 탭의 timeframe과 탭 라벨도 함께 갱신해, 다음 렌더에서 다시 일·주·월봉으로 되돌아가지 않게 했다.
 
 ## [0.12.15.1] - 2026-06-29
 
