@@ -15,6 +15,14 @@ export interface LiveQuote {
   open?: number | null;
   high?: number | null;
   low?: number | null;
+  /** 검증 기준가. corporate action 방어용 adjusted daily baseline. */
+  baseline_price?: number | null;
+  /** 검증 기준가 날짜(YYYY-MM-DD). */
+  baseline_date?: string | null;
+  /** change_pct 최종 소스: kis, adjusted_daily, hidden_pre_open, unavailable. */
+  change_pct_source?: string | null;
+  /** quote validation warnings such as kis_change_pct_rejected. */
+  warnings?: string[];
 }
 
 export interface LiveQuotesResponse {

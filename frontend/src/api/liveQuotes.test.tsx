@@ -1,7 +1,7 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { renderHook, waitFor, act } from '@testing-library/react';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
-import { useQuoteByCode, useLiveQuoteOverlay, quotesRefetchInterval } from './liveQuotes';
+import { getQuotes, useQuoteByCode, useLiveQuoteOverlay, quotesRefetchInterval } from './liveQuotes';
 import * as client from './client';
 
 function wrap() {
@@ -10,6 +10,33 @@ function wrap() {
     <QueryClientProvider client={qc}>{children}</QueryClientProvider>
   );
 }
+
+it('accepts validated quote provenance fields', async () => {
+  vi.spyOn(client, 'apiCall').mockResolvedValueOnce({
+    phase: 'open',
+    quotes: [{
+      code: '049080',
+      price: 7770,
+      change_pct: -21.75,
+      change_won: -2160,
+      open: 7770,
+      high: 7770,
+      low: 7770,
+      baseline_price: 9930,
+      baseline_date: '2026-06-26',
+      change_pct_source: 'adjusted_daily',
+      warnings: ['kis_change_pct_rejected'],
+    }],
+  });
+
+  const res = await getQuotes(['049080']);
+
+  expect(res.quotes[0].change_pct).toBe(-21.75);
+  expect(res.quotes[0].baseline_price).toBe(9930);
+  expect(res.quotes[0].baseline_date).toBe('2026-06-26');
+  expect(res.quotes[0].change_pct_source).toBe('adjusted_daily');
+  expect(res.quotes[0].warnings).toEqual(['kis_change_pct_rejected']);
+});
 
 describe('useQuoteByCode', () => {
   beforeEach(() => {

@@ -1,5 +1,7 @@
+import datetime as dt
 from datetime import datetime
 
+import duckdb
 import pytest
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
@@ -50,7 +52,9 @@ def test_quotes_open_returns_change_pct(monkeypatch, tmp_path):
     body = r.json()
     assert body["phase"] == "open"
     assert body["quotes"][0] == {"code": "005930", "price": 72400, "change_pct": 1.2,
-                                 "change_won": 750, "open": None, "high": None, "low": None}
+                                 "change_won": 750, "open": None, "high": None, "low": None,
+                                 "baseline_price": None, "baseline_date": None,
+                                 "change_pct_source": "kis", "warnings": []}
     assert body["quotes"][1]["change_pct"] == -0.8
     assert body["quotes"][1]["change_won"] == -1500
 
@@ -62,6 +66,47 @@ def test_quotes_open_serves_today_ohlc(monkeypatch, tmp_path):
     r = c.get("/api/live/quotes", params={"codes": "005930"})
     q0 = r.json()["quotes"][0]
     assert (q0["open"], q0["high"], q0["low"]) == (72000, 73000, 71500)
+
+
+def _seed_quote_adjusted_daily(tmp_path, rows):
+    sdir = tmp_path / "screener"
+    sdir.mkdir(parents=True, exist_ok=True)
+    daily = sdir / "daily_adjusted.parquet"
+    with duckdb.connect(":memory:") as con:
+        con.execute(
+            "CREATE TABLE d(code VARCHAR, date DATE, open DOUBLE, high DOUBLE, low DOUBLE, close DOUBLE, volume BIGINT)"
+        )
+        con.executemany(
+            "INSERT INTO d VALUES (?,?,?,?,?,?,?)",
+            [
+                (code, dt.date.fromisoformat(date_s), open_, high, low, close, volume)
+                for code, date_s, open_, high, low, close, volume in rows
+            ],
+        )
+        con.execute(f"COPY d TO '{daily}' (FORMAT parquet)")
+    return daily
+
+
+def test_quotes_recomputes_change_pct_when_kis_uses_unadjusted_baseline(monkeypatch, tmp_path):
+    monkeypatch.setattr(live_api, "_quote_phase", lambda now: "open")
+    _seed_quote_adjusted_daily(
+        tmp_path,
+        [("049080", "2026-06-26", 9930, 9930, 9930, 9930, 100)],
+    )
+    quotes = [KisQuote("049080", 7770, 682.48, None)]
+    c = TestClient(_app(quotes, tmp_path))
+
+    r = c.get("/api/live/quotes", params={"codes": "049080"})
+
+    assert r.status_code == 200
+    q0 = r.json()["quotes"][0]
+    assert q0["price"] == 7770
+    assert q0["change_pct"] == -21.75
+    assert q0["change_won"] == -2160
+    assert q0["baseline_price"] == 9930
+    assert q0["baseline_date"] == "2026-06-26"
+    assert q0["change_pct_source"] == "adjusted_daily"
+    assert q0["warnings"] == ["kis_change_pct_rejected"]
 
 
 def test_quotes_pre_open_nulls_change_pct(monkeypatch, tmp_path):
@@ -189,6 +234,36 @@ def test_quotes_closed_serves_last_seen_without_kis(monkeypatch, tmp_path):
     assert body["quotes"][0]["price"] == 72400
     assert body["quotes"][0]["change_pct"] == 1.2   # closed는 등락률 유지
     assert body["quotes"][1]["change_won"] == -1500
+
+
+def test_quotes_closed_cached_quotes_use_adjusted_change_pct_without_kis(monkeypatch, tmp_path):
+    _seed_quote_adjusted_daily(
+        tmp_path,
+        [("049080", "2026-06-26", 9930, 9930, 9930, 9930, 100)],
+    )
+    fake = _CountingFakeKis([KisQuote("049080", 7770, 682.48, None)])
+    c = TestClient(_counting_app(fake, tmp_path))
+    monkeypatch.setattr(live_api, "_quote_phase", lambda now: "open")
+    r1 = c.get("/api/live/quotes", params={"codes": "049080"})
+    assert r1.status_code == 200
+    assert fake.calls == 1
+    assert r1.json()["quotes"][0]["change_pct"] == -21.75
+
+    monkeypatch.setattr(live_api, "_quote_phase", lambda now: "closed")
+    r2 = c.get("/api/live/quotes", params={"codes": "049080"})
+
+    assert r2.status_code == 200
+    assert fake.calls == 1, "closed cached quote should not call KIS again"
+    body = r2.json()
+    assert body["phase"] == "closed"
+    q0 = body["quotes"][0]
+    assert q0["price"] == 7770
+    assert q0["change_pct"] == -21.75
+    assert q0["change_won"] == -2160
+    assert q0["baseline_price"] == 9930
+    assert q0["baseline_date"] == "2026-06-26"
+    assert q0["change_pct_source"] == "adjusted_daily"
+    assert q0["warnings"] == ["kis_change_pct_rejected"]
 
 
 def test_quotes_closed_cold_start_fetches_once(monkeypatch, tmp_path):
