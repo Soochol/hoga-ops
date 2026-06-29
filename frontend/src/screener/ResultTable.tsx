@@ -1,9 +1,9 @@
 import type { ScreenerRowLive } from './useScreenerRowsLive';
 import { dispositionFromMouseEvent, type LiveOpenDisposition } from '../live/liveActivation';
-import { ChangeCell } from './ChangeCell';
 import { WatchlistHeartButton } from '../watchlist/WatchlistHeartButton';
 import { nextScreenerSortMode, type ScreenerResultSortField, type ScreenerResultSortMode } from './sortResults';
 import { DataTableHeader, DataTableRow, DataTableShell, EmptyState } from '../ui/DataSurface';
+import { priceDirClass } from '../ui/priceDir';
 
 interface Props {
   /** Live Quote 가 이미 머지된 결과 행(useScreenerRowsLive). 표시만 하면 된다. */
@@ -14,23 +14,28 @@ interface Props {
   embedded?: boolean;
 }
 
-const COLS = 'grid-cols-[3.5rem_1fr_4rem_6rem_5rem_6rem_2.4rem]';
+const COLS = 'grid-cols-[3.5rem_1fr_4rem_8.5rem_6rem_2.4rem]';
 /** Won → 억 (100M), rounded to whole 억 for the table — matches the filter
  *  unit (거래대금 하한 is entered in 억). */
 const toEok = (won: number) => Math.round(won / 1e8).toLocaleString('ko-KR');
 
-const HEADERS: Array<{ field: ScreenerResultSortField; label: string; align?: 'right' }> = [
+const HEADERS: Array<{ field: ScreenerResultSortField; label: string; sortLabel?: string; align?: 'right' }> = [
   { field: 'code', label: '코드' },
   { field: 'name', label: '종목명' },
   { field: 'market', label: '시장' },
-  { field: 'price', label: '현재가', align: 'right' },
-  { field: 'change_pct', label: '등락률', align: 'right' },
+  { field: 'price', label: '현재가(등락률)', sortLabel: '현재가', align: 'right' },
   { field: 'trade_value_won', label: '거래대금(억)', align: 'right' },
 ];
 
-function SortHeader({ field, label, align, sortMode = 'default', onSortChange }: {
+function formatPct(pct: number | null): string {
+  if (pct === null) return '—';
+  return `${pct > 0 ? '+' : ''}${pct.toFixed(2)}%`;
+}
+
+function SortHeader({ field, label, sortLabel = label, align, sortMode = 'default', onSortChange }: {
   field: ScreenerResultSortField;
   label: string;
+  sortLabel?: string;
   align?: 'right';
   sortMode?: ScreenerResultSortMode;
   onSortChange?: (mode: ScreenerResultSortMode) => void;
@@ -40,7 +45,7 @@ function SortHeader({ field, label, align, sortMode = 'default', onSortChange }:
   return (
     <button
       type="button"
-      aria-label={`${label} 정렬`}
+      aria-label={`${sortLabel} 정렬`}
       onClick={() => onSortChange?.(nextScreenerSortMode(sortMode, field))}
       className={`min-w-0 inline-flex items-center gap-1 bg-transparent border-0 p-0 text-xs font-semibold uppercase tracking-[0.06em] ${
         align === 'right' ? 'justify-end text-right' : 'justify-start text-left'
@@ -79,8 +84,9 @@ export function ResultTable({ rows, onActivate, sortMode = 'default', onSortChan
               <span className="font-mono tabular-nums text-fg-dim">{r.code}</span>
               <span className="truncate">{r.name}</span>
               <span className="font-mono text-xs text-fg-dim">{r.market}</span>
-              <span className="font-mono tabular-nums text-right">{r.price.toLocaleString('ko-KR')}</span>
-              <span className="font-mono tabular-nums text-right"><ChangeCell pct={r.change_pct} /></span>
+              <span className={`font-mono tabular-nums text-right ${r.change_pct === null ? '' : priceDirClass(r.change_pct)}`}>
+                {r.price.toLocaleString('ko-KR')} ({formatPct(r.change_pct)})
+              </span>
               <span className="font-mono tabular-nums text-right text-fg-dim">{toEok(r.trade_value_won)}</span>
               <span className="flex items-center justify-end gap-2">
                 <WatchlistHeartButton code={r.code} name={r.name} variant="row" />

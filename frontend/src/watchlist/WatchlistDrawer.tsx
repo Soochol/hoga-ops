@@ -249,7 +249,6 @@ function SortableQuoteRow(props: {
   onDelete: () => void;
   collectionBadge?: React.ReactNode;
   collectionLabel?: string;
-  metadata?: React.ReactNode;
   dragEnabled?: boolean;
 }) {
   const { entry } = props;
@@ -273,7 +272,6 @@ function SortableQuoteRow(props: {
       dragListeners={props.dragEnabled === false ? undefined : listeners}
       dragging={props.dragEnabled === false ? false : isDragging}
       trailingAction={props.collectionBadge}
-      metadata={props.metadata}
     />
   );
 }
@@ -539,7 +537,6 @@ export function WatchlistDrawer() {
                           onDelete={() => removeM.mutate(entry.code)}
                           collectionBadge={badge}
                           collectionLabel={collection.ariaLabel}
-                          metadata={<span className="text-xs text-fg-dimmer">{collection.storageLabel}</span>}
                           dragEnabled={rowDragEnabled}
                         />
                       );

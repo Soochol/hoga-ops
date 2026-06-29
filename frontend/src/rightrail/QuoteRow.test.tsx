@@ -15,16 +15,16 @@ function row(props: Partial<React.ComponentProps<typeof QuoteRow>> = {}) {
 }
 
 describe('QuoteRow', () => {
-  it('renders name, price (ko-KR, 원), and 전일대비 등락액 + %', () => {
+  it('renders name and price plus change percent on one line', () => {
     row();
     expect(screen.getByText('삼성전자')).toBeInTheDocument();
-    expect(screen.getByText('72,400원')).toBeInTheDocument();
-    expect(screen.getByText('+750원 (1.20%)')).toBeInTheDocument();
+    expect(screen.getByText('72,400원 (+1.20%)')).toBeInTheDocument();
+    expect(screen.queryByText('+750원 (1.20%)')).not.toBeInTheDocument();
   });
 
   it('renders — for null change (장전/무데이터)', () => {
     row({ pct: null, changeWon: null });
-    expect(screen.getByText('—')).toBeInTheDocument();
+    expect(screen.getByText('72,400원 (—)')).toBeInTheDocument();
   });
 
   it('Enter key triggers onClick (keyboard a11y)', () => {

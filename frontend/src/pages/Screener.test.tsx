@@ -406,7 +406,6 @@ it('현재가·등락률을 라이브 quote 로 덮는다 (EOD 코퍼스 위 오
   renderPage();
   fireEvent.click(screen.getByText('조회'));
   await screen.findByText('삼성전자');
-  expect(screen.getByText('80,000')).toBeInTheDocument();     // 라이브 현재가 (ResultTable: 원 suffix 없음)
-  expect(screen.getByText('▲ +7.70%')).toBeInTheDocument();   // 라이브 등락률 (ChangeCell)
+  expect(screen.getByText('80,000 (+7.70%)')).toBeInTheDocument(); // 라이브 현재가+등락률
   expect(screen.queryByText('74,200')).not.toBeInTheDocument(); // 코퍼스 현재가는 덮여 사라짐
 });

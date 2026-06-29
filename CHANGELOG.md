@@ -3,6 +3,11 @@
 All notable changes to this project are documented here.
 The format follows a 4-digit `MAJOR.MINOR.PATCH.MICRO` scheme.
 
+## [0.12.18.1] - 2026-06-29
+
+### Changed
+- **우측 관심종목·스크리너 행 한 줄 표시**: 관심종목과 스크리너 조회 리스트에서 `종목명 현재가(등락률)`을 한 줄로 합치고, 관심종목의 `KIS WS 저장 중` 같은 저장 문구는 우측 수집 LED로만 표현하도록 정리했다.
+
 ## [0.12.18.0] - 2026-06-29
 
 ### Fixed

@@ -42,4 +42,12 @@ describe('ResultTable', () => {
     expect(screen.queryByRole('button', { name: '액션 정렬' })).not.toBeInTheDocument();
     expect(screen.getByText('액션')).toBeInTheDocument();
   });
+
+  it('renders price and change percent together in one quote cell', () => {
+    renderTable();
+
+    const row = screen.getByRole('button', { name: '삼성전자 005930 호가창 열기' });
+    expect(within(row).getByText('74,200 (+5.80%)')).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: '등락률 정렬' })).not.toBeInTheDocument();
+  });
 });
