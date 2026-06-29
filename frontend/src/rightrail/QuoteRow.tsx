@@ -1,9 +1,9 @@
 import type { DraggableAttributes, DraggableSyntheticListeners } from '@dnd-kit/core';
 import { dispositionFromMouseEvent, type LiveOpenDisposition } from '../live/liveActivation';
-import { QuoteChange } from './QuoteChange';
+import { priceDirClass } from '../ui/priceDir';
 
-/** 관심종목·스크리너 드로어 공용 행: 종목명(좌) │ 현재가·전일대비 2줄 스택(우) │ (선택) 트레일링 액션.
- *  ScreenerResultRow 의 시각/키보드 계약을 그대로 가져오고 현재가+등락 셀을 우측에 스택.
+/** 관심종목·스크리너 드로어 공용 행: 종목명(좌) │ 현재가(+등락률)(우) │ (선택) 트레일링 액션.
+ *  ScreenerResultRow 의 시각/키보드 계약을 그대로 가져오고 quote 셀을 우측에 둔다.
  *  trailingAction: 패널이 주입하는 행 우측 affordance(하트/휴지통). 자체적으로
  *  stopPropagation/aria 를 책임진다. <li> 는 group 이라 액션이 group-hover/
  *  group-focus-within 로 등장 처리를 할 수 있다. */
@@ -17,7 +17,6 @@ export interface QuoteRowProps {
   testId: string;
   onClick: (options?: { disposition?: LiveOpenDisposition }) => void;
   trailingAction?: React.ReactNode;
-  metadata?: React.ReactNode;
   // --- drag (선택 패널용; 미전달 시 비-드래그 동작) ---
   sortableRef?: (node: HTMLElement | null) => void;
   sortableStyle?: Pick<React.CSSProperties, 'transform' | 'transition'>;
@@ -33,11 +32,17 @@ export interface QuoteRowProps {
   indented?: boolean;
 }
 
+function formatPct(pct: number | null): string {
+  if (pct === null) return '—';
+  return `${pct > 0 ? '+' : ''}${pct.toFixed(2)}%`;
+}
+
 export function QuoteRow({
-  name, price, pct, changeWon, active, ariaLabel, testId, onClick, trailingAction, metadata,
+  name, price, pct, changeWon: _changeWon, active, ariaLabel, testId, onClick, trailingAction,
   sortableRef, sortableStyle, dragListeners, dragAttributes, dragging,
   onContextMenu, onDelete, indented,
 }: QuoteRowProps) {
+  void _changeWon;
   const onKeyDown = (e: React.KeyboardEvent<HTMLLIElement>) => {
     // 중첩 버튼(trailingAction)에서 올라온 keydown 은 무시 — 행이 직접
     // 포커스됐을 때만 동작한다.
@@ -84,17 +89,11 @@ export function QuoteRow({
     >
       {/* 종목명은 가격(text-sm)보다 의도적으로 작게(text-xs) — 그룹 헤더(text-sm/600) >
           종목명 크기 위계 + 가격이 1차 콘텐츠. 등락(text-xs)과는 서체(mono)·색으로 구분. */}
-      <span className="flex-1 min-w-0 flex flex-col leading-tight">
+      <span className="flex-1 min-w-0 leading-tight">
         <span className="truncate text-xs text-fg">{name}</span>
-        {metadata}
       </span>
-      <span className="flex flex-col items-end leading-tight">
-        <span className="font-mono tabular-nums text-sm text-fg">
-          {price != null ? `${price.toLocaleString('ko-KR')}원` : '—'}
-        </span>
-        <span className="font-mono tabular-nums text-xs">
-          <QuoteChange won={changeWon} pct={pct} />
-        </span>
+      <span className={`font-mono tabular-nums text-sm text-right leading-tight ${pct === null ? 'text-fg' : priceDirClass(pct)}`}>
+        {price != null ? `${price.toLocaleString('ko-KR')}원` : '—'} ({formatPct(pct)})
       </span>
       {trailingAction != null && (
         <span className="flex items-center justify-center" style={{ minWidth: '1.25rem' }}>

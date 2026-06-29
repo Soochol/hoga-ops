@@ -425,8 +425,8 @@ describe('ScreenerDrawer', () => {
     });
     render(<ScreenerDrawer />, { wrapper: wrap(qc(), '/live') });
     await waitFor(() => expect(screen.getByText('삼성전자')).toBeInTheDocument());
-    await waitFor(() => expect(screen.getByText('72,400원')).toBeInTheDocument()); // live price
-    expect(screen.getByText('+2,380원 (3.40%)')).toBeInTheDocument();             // live 전일대비+pct (not corpus)
+    await waitFor(() => expect(screen.getByText('72,400원 (+3.40%)')).toBeInTheDocument()); // live quote
+    expect(screen.queryByText('+2,380원 (3.40%)')).not.toBeInTheDocument();                 // no change-won line
     expect(screen.getByTestId('screener-row-005930')).toBeInTheDocument();        // testid preserved (regression)
   });
 
@@ -456,8 +456,8 @@ describe('ScreenerDrawer', () => {
       lastScan: { savedId: 's1', savedName: '돌파+거래대금', rows: ROWS, scanStatus: 'ok', warnings: [] },
     });
     render(<ScreenerDrawer />, { wrapper: wrap(qc(), '/live') });
-    await waitFor(() => expect(screen.getByText('72,400원')).toBeInTheDocument()); // live price (005930)
-    expect(screen.getByText('180,000원')).toBeInTheDocument();                     // corpus price (000660), not —
+    await waitFor(() => expect(screen.getByText('72,400원 (+3.40%)')).toBeInTheDocument()); // live quote (005930)
+    expect(screen.getByText('180,000원 (-1.20%)')).toBeInTheDocument();                     // corpus quote (000660), not —
   });
 
   it('surfaces 갱신 실패 when the update mutation errors', async () => {
@@ -514,7 +514,7 @@ describe('ScreenerDrawer', () => {
     // 행은 EOD(1,000원)로 먼저 렌더되고 라이브 quote 가 비동기로 덮는다. cap 이
     // 살아있다면 100030 은 요청조차 안 돼 영영 1,000원 — 99,999원 도달이 cap 제거 증명.
     await waitFor(() =>
-      expect(within(screen.getByTestId('screener-row-100030')).getByText('99,999원')).toBeInTheDocument(),
+      expect(within(screen.getByTestId('screener-row-100030')).getByText('99,999원 (+7.70%)')).toBeInTheDocument(),
     );
   });
 

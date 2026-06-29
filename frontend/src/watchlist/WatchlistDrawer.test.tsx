@@ -140,7 +140,7 @@ describe('WatchlistDrawer', () => {
     expect(screen.getByTestId('watchlist-row-000660').getAttribute('aria-current')).toBe('true');
   });
 
-  it('renders live price (원) and 전일대비 from useQuotes', async () => {
+  it('renders live price and change percent on one line from useQuotes', async () => {
     vi.spyOn(watchlistApi, 'getWatchlist').mockResolvedValue(DATA);
     vi.spyOn(client, 'apiCall').mockResolvedValue({
       phase: 'open',
@@ -151,9 +151,10 @@ describe('WatchlistDrawer', () => {
     });
     const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } });
     render(<WatchlistDrawer />, { wrapper: wrap(qc, '/inventory') });
-    await waitFor(() => expect(screen.getByText('72,400원')).toBeInTheDocument());
-    expect(screen.getByText('+850원 (1.20%)')).toBeInTheDocument();
-    expect(screen.getByText('-1,500원 (0.80%)')).toBeInTheDocument();
+    await waitFor(() => expect(screen.getByText('72,400원 (+1.20%)')).toBeInTheDocument());
+    expect(screen.getByText('183,500원 (-0.80%)')).toBeInTheDocument();
+    expect(screen.queryByText('+850원 (1.20%)')).not.toBeInTheDocument();
+    expect(screen.queryByText('-1,500원 (0.80%)')).not.toBeInTheDocument();
   });
 
   it('cycles a folder sort mode by clicking the group sort icon', async () => {
@@ -612,7 +613,7 @@ describe('WatchlistDrawer', () => {
     expect(row000660.getAttribute('aria-label')).toContain('관심종목 대기 중');
   });
 
-  it('renders WS/API/excluded/waiting storage labels per row', async () => {
+  it('uses the trailing LED as the only per-row collection indicator', async () => {
     vi.spyOn(watchlistApi, 'getWatchlist').mockResolvedValue({
       folders: [
         { id: 'f_enabled', name: '저장', order: 0, capture_enabled: true },
@@ -645,13 +646,18 @@ describe('WatchlistDrawer', () => {
     render(<WatchlistDrawer />, { wrapper: wrap(qc, '/inventory') });
     await waitFor(() => expect(screen.getByText('삼성전자')).toBeInTheDocument());
 
-    expect(screen.getByTestId('watchlist-row-005930')).toHaveTextContent('KIS WS 저장 중');
-    expect(screen.getByTestId('watchlist-row-000660')).toHaveTextContent('KIS API 30초 저장 중');
-    expect(screen.getByTestId('watchlist-row-035420')).toHaveTextContent('대기');
-    expect(screen.getByTestId('watchlist-row-051910')).toHaveTextContent('저장 제외');
+    expect(screen.getByTestId('watchlist-row-005930')).toHaveTextContent('삼성전자');
+    expect(screen.getByTestId('watchlist-row-005930')).toHaveTextContent('—');
+    expect(screen.getByTestId('watchlist-row-005930')).not.toHaveTextContent('KIS WS 저장 중');
+    expect(screen.getByTestId('watchlist-row-000660')).not.toHaveTextContent('KIS API 30초 저장 중');
+    expect(screen.getByTestId('watchlist-row-035420')).not.toHaveTextContent('대기');
+    expect(screen.getByTestId('watchlist-row-051910')).not.toHaveTextContent('저장 제외');
+    expect(screen.getByTestId('watchlist-row-005930').querySelector('[data-testid="collection-dot-realtime"]')).toBeInTheDocument();
+    expect(screen.getByTestId('watchlist-row-000660').querySelector('[data-testid="collection-dot-waiting_eod"]')).toBeInTheDocument();
+    expect(screen.getByTestId('watchlist-row-035420').querySelector('[data-testid="collection-dot-waiting_eod"]')).toBeInTheDocument();
   });
 
-  it('uses backend-projected capture candidate for storage label', async () => {
+  it('does not render storage labels even when capture candidates differ by folder', async () => {
     vi.spyOn(watchlistApi, 'getWatchlist').mockResolvedValue({
       folders: [
         { id: 'f_enabled', name: '저장', order: 0, capture_enabled: true },
@@ -685,9 +691,10 @@ describe('WatchlistDrawer', () => {
     await waitFor(() => expect(screen.getAllByTestId('watchlist-row-005930')).toHaveLength(2));
 
     for (const row of screen.getAllByTestId('watchlist-row-005930')) {
-      expect(row).toHaveTextContent('대기');
+      expect(row).toHaveTextContent('삼성전자');
+      expect(row).not.toHaveTextContent('대기');
       expect(row).not.toHaveTextContent('저장 제외');
     }
-    expect(screen.getByTestId('watchlist-row-000660')).toHaveTextContent('대기');
+    expect(screen.getByTestId('watchlist-row-000660')).not.toHaveTextContent('대기');
   });
 });
