@@ -1481,7 +1481,7 @@ def build_range_bundle(
         volume_distributions=volume_distributions,
         program_trade=(
             build_program_trade_series(engine, code=code, dates=included_dates)
-            if full_mode
+            if full_mode or sidecar_only
             else ProgramTradeSeries(points=[])
         ),
     )

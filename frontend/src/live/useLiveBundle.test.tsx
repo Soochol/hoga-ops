@@ -329,6 +329,45 @@ describe('useLiveBundle', () => {
     expect(result.current.chartBundle?.volume_distributions).toEqual([distribution]);
   });
 
+  it('merges sidecar program trade into the chart and live bundles', () => {
+    const programPoint = {
+      t: 1_779_840_060_000,
+      net_qty: 1000,
+      net_amount: 70_000_000,
+      delta_qty: 1000,
+      delta_amount: 70_000_000,
+      gap_risk: false,
+    };
+    const sidecarBundle = {
+      code: '005930',
+      from_date: '20260520',
+      to_date: '20260527',
+      bucket_ms: 60000,
+      segments: [],
+      candles: [],
+      quote_ratio: { bucket_ms: 60000, points: [] },
+      fill_strength: { bucket_ms: 60000, points: [] },
+      volume_profile_range: { bin_count: 0, price_min: 0, price_max: 0, bin_width: 0, bins: [] },
+      volume_profile_by_day: [],
+      volume_distributions: [],
+      investorPoints: [],
+      ask_peaks: [],
+      bid_peaks: [],
+      broker_late_entries: [],
+      price_level_hits: [],
+      trade_volume_pocs: [],
+      program_trade: { points: [programPoint], source: 'kis_program_trade' as const },
+    };
+    useRangeSpy
+      .mockReturnValueOnce({ data: null, isLoading: false, error: null, isPlaceholderData: false, isFetching: false })
+      .mockReturnValueOnce({ data: sidecarBundle, isLoading: false, error: null, isPlaceholderData: false, isFetching: false });
+
+    const { result } = renderHook(() => useLiveBundle('005930', '1m', '20260527', liveFixture), { wrapper });
+
+    expect(result.current.chartBundle?.program_trade?.points).toEqual([programPoint]);
+    expect(result.current.bundle?.program_trade?.points).toEqual([programPoint]);
+  });
+
   it('clamps pastFrom to 249 days before today when historicalFromDate is older', () => {
     useLivePageStore.setState({ historicalFromDate: '20250101' });
     renderHook(() => useLiveBundle('005930', '1m', '20260527', liveFixture), { wrapper });

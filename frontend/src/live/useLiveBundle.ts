@@ -13,7 +13,7 @@ import {
   type Candle,
   type InvestorNetPoint,
 } from '../api/types';
-import { buildChartBundle, createIncrementalHogaSeriesBuilder, type HogaSeries } from './buildLiveBundle';
+import { buildChartBundle, createIncrementalHogaSeriesBuilder, filterProgramTradeForCandles, type HogaSeries } from './buildLiveBundle';
 import type { LiveDataWarning } from './liveDataWarnings';
 import type { TradeSnapshot } from './bucketHogaSeries';
 import { aggregateCandles, aggregateCalendar } from './aggregateCandles';
@@ -415,6 +415,7 @@ export function useLiveBundle(
       built.broker_late_entries = sidecarSource.broker_late_entries ?? [];
       built.trade_volume_pocs = sidecarSource.trade_volume_pocs ?? [];
       built.volume_distributions = sidecarSource.volume_distributions ?? [];
+      built.program_trade = filterProgramTradeForCandles(sidecarSource.program_trade, liveCandles);
     }
 
     // Segments-identity stabilization (eng review C1): buildChartBundle allocates

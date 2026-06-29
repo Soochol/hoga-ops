@@ -77,7 +77,7 @@ interface PastHogaSeries {
   pastMaxFsT: number;
 }
 
-function filterProgramTradeForCandles(
+export function filterProgramTradeForCandles(
   series: ProgramTradeSeries | undefined,
   candles: readonly Candle[],
 ): ProgramTradeSeries {

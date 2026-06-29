@@ -3,6 +3,11 @@
 All notable changes to this project are documented here.
 The format follows a 4-digit `MAJOR.MINOR.PATCH.MICRO` scheme.
 
+## [0.12.20.0] - 2026-06-29
+
+### Fixed
+- **/live 프로그램 순매수 표시 복구**: 프로그램 순매수 sidecar 데이터가 있으면 `/live` 상세 카드와 차트 pane에 다시 표시되도록 했다.
+
 ## [0.12.19.0] - 2026-06-29
 
 ### Fixed

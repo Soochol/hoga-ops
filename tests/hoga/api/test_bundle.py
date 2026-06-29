@@ -777,7 +777,17 @@ def test_build_range_bundle_sidecar_mode_builds_overlay_sidecars_only(tmp_path):
         fs_builder = stack.enter_context(patch.object(bundle_mod, "build_fill_strength_slice"))
         volume_profile_builder = stack.enter_context(patch.object(bundle_mod, "build_volume_profile_slice"))
         volume_profile_range_builder = stack.enter_context(patch.object(bundle_mod, "build_volume_profile_range"))
-        program_builder = stack.enter_context(patch.object(bundle_mod, "build_program_trade_series"))
+        program = bundle_mod.ProgramTradeSeries(points=[
+            bundle_mod.ProgramTradePoint(
+                t=1_747_006_200_000,
+                net_qty=1000,
+                net_amount=70_000_000,
+                delta_qty=1000,
+                delta_amount=70_000_000,
+                gap_risk=False,
+            )
+        ])
+        program_builder = stack.enter_context(patch.object(bundle_mod, "build_program_trade_series", return_value=program))
         stack.enter_context(patch.object(bundle_mod, "build_ask_bid_peak_slices", return_value=(ask, bid)))
         stack.enter_context(patch.object(bundle_mod, "build_broker_late_entries_slice", return_value=[broker]))
         stack.enter_context(patch.object(bundle_mod, "build_trade_volume_poc_slice", return_value=poc))
@@ -798,7 +808,7 @@ def test_build_range_bundle_sidecar_mode_builds_overlay_sidecars_only(tmp_path):
     assert rb.fill_strength.points == []
     assert rb.volume_profile_by_day == []
     assert rb.volume_profile_range.bins == []
-    assert rb.program_trade.points == []
+    assert rb.program_trade == program
     assert rb.ask_peaks == [ask]
     assert rb.bid_peaks == [bid]
     assert rb.broker_late_entries == [broker]
@@ -807,7 +817,7 @@ def test_build_range_bundle_sidecar_mode_builds_overlay_sidecars_only(tmp_path):
     fs_builder.assert_not_called()
     volume_profile_builder.assert_not_called()
     volume_profile_range_builder.assert_not_called()
-    program_builder.assert_not_called()
+    program_builder.assert_called_once_with(mock_engine, code="005930", dates=["20260512"])
 
 
 def test_build_range_bundle_cutoff_sidecar_skips_unneeded_overlay_sidecars(tmp_path):
