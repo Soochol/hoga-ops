@@ -126,7 +126,12 @@ export const useStudyTabsStore = create<StudyTabsStore>((set, get) => ({
     if (existing) {
       set({
         tabs: tabs.map((tab) => (tab.id === existing.id
-          ? { ...tab, ...studyTabFromSave(effectiveSave), id: tab.id, viewport: tab.viewport }
+          ? {
+              ...tab,
+              ...studyTabFromSave(effectiveSave),
+              id: tab.id,
+              viewport: tab.timeframe === effectiveSave.timeframe ? tab.viewport : null,
+            }
           : tab)),
         activeTabId: existing.id,
       });

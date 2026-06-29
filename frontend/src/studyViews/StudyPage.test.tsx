@@ -443,6 +443,88 @@ describe('StudyPage', () => {
     expect(liveChartRootMock.mock.calls.at(-1)?.[0].restoreViewport).toEqual(capturedViewport);
   });
 
+  it('restores a study tab viewport after the tab timeframe differs from the saved view timeframe', () => {
+    useStudyTabsStore.setState({
+      tabs: [
+        {
+          id: 'tab-a',
+          viewId: 'view-ref',
+          code: '005930',
+          label: '삼성전자 · 돌파 복기 · 15m',
+          name: '돌파 복기',
+          timeframe: '15m',
+        },
+        {
+          id: 'tab-b',
+          viewId: 'view-second',
+          code: '000660',
+          label: 'SK하이닉스 · 눌림 복기 · 5m',
+          name: '눌림 복기',
+          timeframe: '5m',
+        },
+      ],
+      activeTabId: 'tab-a',
+    });
+    const capturedViewport = { rightEdgeMs: 12_000, barSpan: 64, atLiveEdge: false };
+
+    renderPage('/study?view=view-ref');
+    act(() => {
+      liveChartRootMock.mock.calls.at(-1)?.[0].onViewportCaptureReady?.(() => capturedViewport);
+    });
+
+    fireEvent.click(screen.getByTitle('SK하이닉스 · 눌림 복기 · 5m'));
+    fireEvent.click(screen.getByTitle('삼성전자 · 돌파 복기 · 15m'));
+
+    expect(liveChartRootMock.mock.calls.at(-1)?.[0]).toMatchObject({
+      timeframe: '15m',
+      restoreViewport: capturedViewport,
+    });
+  });
+
+  it('restores a captured calendar timeframe viewport without reusing the saved minute viewport', () => {
+    useStudyTabsStore.setState({
+      tabs: [
+        {
+          id: 'tab-a',
+          viewId: 'view-ref',
+          code: '005930',
+          label: '삼성전자 · 돌파 복기 · D',
+          name: '돌파 복기',
+          timeframe: 'D',
+        },
+        {
+          id: 'tab-b',
+          viewId: 'view-second',
+          code: '000660',
+          label: 'SK하이닉스 · 눌림 복기 · 5m',
+          name: '눌림 복기',
+          timeframe: '5m',
+        },
+      ],
+      activeTabId: 'tab-a',
+    });
+    const capturedDailyViewport = { rightEdgeMs: 22_000, barSpan: 33, atLiveEdge: false };
+
+    renderPage('/study?view=view-ref');
+
+    expect(liveChartRootMock.mock.calls.at(-1)?.[0]).toMatchObject({
+      timeframe: 'D',
+      restoreViewport: null,
+    });
+
+    act(() => {
+      liveChartRootMock.mock.calls.at(-1)?.[0].onViewportCaptureReady?.(() => capturedDailyViewport);
+    });
+
+    fireEvent.click(screen.getByTitle('SK하이닉스 · 눌림 복기 · 5m'));
+    fireEvent.click(screen.getByTitle('삼성전자 · 돌파 복기 · D'));
+
+    expect(liveChartRootMock.mock.calls.at(-1)?.[0]).toMatchObject({
+      timeframe: 'D',
+      restoreViewport: capturedDailyViewport,
+    });
+  });
+
   it('hydrates reference detail indicators from cursor spot data on hover', () => {
     useLiveOrderbookAtCursorMock.mockReturnValue({
       snapshot: {

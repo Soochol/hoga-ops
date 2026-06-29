@@ -1701,7 +1701,7 @@ describe('LiveChartRoot historical-prepend viewport preservation', () => {
     expect(ts.scrollToPosition).not.toHaveBeenCalled();
   });
 
-  it('restore: D timeframe ignores stale saved viewport and applies the legible daily window', () => {
+  it('restore: D timeframe reprojects an explicit saved time anchor to a logical range', () => {
     const handlers: Array<(r: unknown) => void> = [];
     const ts = makeTs(handlers);
     ts.timeToIndex.mockReturnValue(249);
@@ -1720,11 +1720,11 @@ describe('LiveChartRoot historical-prepend viewport preservation', () => {
       { wrapper },
     );
     expect(ts.fitContent).not.toHaveBeenCalled();
-    expect(ts.setVisibleLogicalRange).toHaveBeenLastCalledWith({ from: 37, to: 265 });
+    expect(ts.setVisibleLogicalRange).toHaveBeenLastCalledWith({ from: 241, to: 249 });
     expect(ts.scrollToPosition).not.toHaveBeenCalled();
   });
 
-  it('restore: D live-edge historical tab normalizes an over-wide saved span', () => {
+  it('restore: D live-edge historical tab caps an over-wide saved span to the legible daily window', () => {
     useLivePageStore.setState({ historicalFromDate: '20240718' });
     const handlers: Array<(r: unknown) => void> = [];
     const ts = makeTs(handlers);
@@ -1753,6 +1753,7 @@ describe('LiveChartRoot historical-prepend viewport preservation', () => {
     useLivePageStore.setState({ historicalFromDate: '20240718' });
     const handlers: Array<(r: unknown) => void> = [];
     const ts = makeTs(handlers);
+    ts.timeToIndex.mockReturnValue(200);
     vi.mocked(createChartEx).mockImplementationOnce(() => buildStableCapturingMock(ts) as any);
 
     render(
@@ -1768,7 +1769,7 @@ describe('LiveChartRoot historical-prepend viewport preservation', () => {
     );
 
     expect(ts.fitContent).not.toHaveBeenCalled();
-    expect(ts.setVisibleLogicalRange).not.toHaveBeenCalled();
+    expect(ts.setVisibleLogicalRange).toHaveBeenLastCalledWith({ from: 40, to: 200 });
     expect(ts.scrollToPosition).not.toHaveBeenCalled();
   });
 
