@@ -1,40 +1,28 @@
 Status: DONE
 
-What I implemented:
-- Added `hoga/live/quote_change_resolver.py` with `QuoteChangeResolver`, `QuoteChangeResolution`, `ChangePctSource`, and adjusted-daily baseline loading.
-- Resolver validates KIS `change_pct` against the most recent positive adjusted daily close for the quote code.
-- Resolver rejects materially mismatched KIS rates and returns the adjusted-daily rate with `kis_change_pct_rejected`.
-- Resolver accepts matching KIS rates while still exposing baseline metadata.
-- Resolver hides change fields during `pre_open`.
-- Resolver falls back to KIS when the adjusted file is missing without warning.
-- Resolver falls back to KIS with `adjusted_baseline_unavailable` when an adjusted file exists but no valid positive baseline is available, matching the clarified task expectation.
-- Added the verbatim unit tests from the task brief in `tests/unit/live/test_quote_change_resolver.py`.
+Implemented Task 1 within the owned file boundary:
+- Promoted the quiet palette into the global dark tokens in `frontend/src/styles/tokens.css`.
+- Removed duplicated `/live` quiet-terminal token overrides from `frontend/src/styles/global.css`, keeping the scoped background and structural live-only rules.
+- Updated `DESIGN.md` aesthetic naming to `Quiet Trading Terminal` and added the dense-panel guidance sentence under Layout.
+- Added the missing class-contract assertions in `frontend/src/ui/RailShell.test.tsx` and `frontend/src/ui/WorkspaceShell.test.tsx`.
 
-Tests and results:
-- `uv run pytest tests/unit/live/test_quote_change_resolver.py -v`
-- Result: PASS, 5 passed in 0.12s.
+Notes:
+- `frontend/src/ui/PageShell.test.tsx` already contained the required `bg-bg-card` and `bg-bg-input` assertions.
+- `frontend/src/ui/DataSurface.test.tsx` already contained the required `border-b` assertion.
 
-RED evidence:
-- After adding only the test file, `uv run pytest tests/unit/live/test_quote_change_resolver.py -v` initially failed before collection because the local uv environment did not yet include pytest.
-- Reran with dev dependencies: `uv run --extra dev python -m pytest tests/unit/live/test_quote_change_resolver.py -v`.
-- Expected RED result: collection error with `ModuleNotFoundError: No module named 'hoga.live.quote_change_resolver'`.
-
-GREEN evidence:
-- After implementing the resolver, `uv run --extra dev python -m pytest tests/unit/live/test_quote_change_resolver.py -v` passed: 5 passed in 0.15s.
-- After dev dependencies were installed, the exact brief command `uv run pytest tests/unit/live/test_quote_change_resolver.py -v` passed: 5 passed in 0.12s.
-
-Files changed:
-- `hoga/live/quote_change_resolver.py`
-- `tests/unit/live/test_quote_change_resolver.py`
-- `.superpowers/sdd/task-1-report.md`
+Verification:
+- `cd frontend && npm test -- PageShell.test.tsx RailShell.test.tsx WorkspaceShell.test.tsx DataSurface.test.tsx --run`
+- `cd frontend && npm run build`
 
 Self-review:
-- Scope of product/test implementation stayed within the requested resolver and unit test files.
-- The untracked plan file under `docs/superpowers/plans/` was not modified or staged.
-- Baseline cache stores successful and unavailable lookups per code to avoid repeated DuckDB reads.
-- Missing adjusted file and invalid adjusted baseline are intentionally distinguished to satisfy the warning contract.
-- Pre-open output includes baseline metadata when available but suppresses change fields and KIS warnings.
+- Scope stayed within the brief’s owned files.
+- Price and status tokens were left unchanged.
+- `/live` keeps only the background selector-level difference while inheriting the new global palette.
 
-Concerns:
-- The focused test command required dev dependencies in this fresh uv environment before the exact brief command could run.
-- Missing code rows in an existing adjusted file currently produce the same `adjusted_baseline_unavailable` warning as invalid zero-close baselines.
+Fixes for review findings:
+- Updated `DESIGN.md` to match the quiet global palette in `frontend/src/styles/tokens.css`, including the surface, border, foreground, accent, grid, heat, and selection tint values.
+- Clarified the `frontend/src/styles/global.css` live-theme comment so it now describes live-only structural polish rather than route-exclusive palette ownership.
+
+Verification after review fixes:
+- `cd frontend && npm test -- PageShell.test.tsx RailShell.test.tsx WorkspaceShell.test.tsx DataSurface.test.tsx --run`
+- `cd frontend && npm run build`

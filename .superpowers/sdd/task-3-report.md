@@ -1,52 +1,33 @@
-# Task 3 Report: Update Frontend Quote Types
+Status: done
 
-## What I Implemented
+Summary:
+- Replaced the `/live` detail-card section markup with `DataSection` while preserving the existing `data-testid`, `data-card`, and min-height behavior through a thin wrapper because `DataSection` does not currently accept arbitrary section props.
+- Added the flat-section regression test requested in the brief.
+- Moved the quiet-terminal surface styling out of `global.css` into `LivePage`, `LiveWorkarea`, `WorkspaceShell`, `ChartTabBar`, `TimeframeControl`, and `LiveStatusBar`, then removed the one-off live theme selectors.
 
-- Added a focused `getQuotes` test in `frontend/src/api/liveQuotes.test.tsx` that accepts backend-validated quote provenance fields:
-  - `baseline_price`
-  - `baseline_date`
-  - `change_pct_source`
-  - `warnings`
-- Extended the frontend `LiveQuote` interface in `frontend/src/api/liveQuotes.ts` with those provenance fields as optional properties so older mocks and callers remain compatible.
-- Kept the existing optional OHLC shape unchanged.
-
-## Tests and Results
-
-- `cd frontend && npx vitest run src/api/liveQuotes.test.tsx`
-  - PASS: 1 file, 9 tests.
-- `cd frontend && npx vitest run src/screener/useScreenerRowsLive.test.tsx src/screener/ResultTable.test.tsx`
-  - PASS: 2 files, 8 tests.
+Verification:
+- `cd frontend && npm test -- LiveDetailPanel.test.tsx --run`
+- `cd frontend && npm test -- LiveDetailPanel.test.tsx LiveToolbar.test.tsx LiveStatusBar.test.tsx LivePage.test.tsx --run`
 - `cd frontend && npm run build`
-  - PASS: `tsc -b && vite build`.
+- Browser QA on `http://127.0.0.1:5176/live?code=005930` (5174/5175 were already occupied): verified one outer detail surface, flat inner sections, matching surface family across header/tab/status/toolbar/chart/detail, and no toolbar text overlap at the checked viewport.
 
-## RED/GREEN Evidence
+Concerns:
+- Dev browser QA was limited by existing localhost API CORS failures in this environment, so the visual pass used the shell with `?code=005930` and empty-data states rather than live backend data.
 
-- RED:
-  - After adding the test and before updating `LiveQuote`, `cd frontend && npm run build` failed with:
-    - `Property 'baseline_price' does not exist on type 'LiveQuote'.`
-    - `Property 'baseline_date' does not exist on type 'LiveQuote'.`
-    - `Property 'change_pct_source' does not exist on type 'LiveQuote'.`
-    - `Property 'warnings' does not exist on type 'LiveQuote'.`
-  - `vitest` itself passed at runtime before the type update, matching the brief's note that the type failure may only appear through build/typecheck.
-- GREEN:
-  - After extending `LiveQuote`, the targeted quote tests, screener tests, and frontend build all passed.
+---
 
-## Files Changed
+Fix follow-up (review findings only):
 
-- `frontend/src/api/liveQuotes.ts`
-- `frontend/src/api/liveQuotes.test.tsx`
-- `.superpowers/sdd/task-3-report.md`
+Summary:
+- Removed the decorative gradient background from `frontend/src/live/LivePage.tsx` so the live root no longer paints a visual gradient.
+- Updated `frontend/src/live/LiveWorkarea.tsx` to render the splitter with `LIVE_WORKAREA_SPLITTER_WIDTH_PX`, aligning the DOM width with the clamp and resize math.
+- Restored `frontend/src/ui/WorkspaceShell.tsx` to the Task 2 primitive contract: `WorkspaceHeader` uses `bg-bg-subtle/80 px-3`, and `WorkspaceToolbar` height is `var(--h-toolbar)`.
+- No additional test expectation changes were needed; the existing primitive test already encoded the Task 2 toolbar height.
 
-## Self-Review
+Verification:
+- `cd frontend && npm test -- WorkspaceShell.test.tsx --run` -> PASS (1 file, 5 tests)
+- `cd frontend && npm test -- LiveDetailPanel.test.tsx LiveToolbar.test.tsx LiveStatusBar.test.tsx LivePage.test.tsx WorkspaceShell.test.tsx --run` -> PASS (5 files, 69 tests)
+- `cd frontend && npm run build` -> PASS
 
-- Confirmed provenance fields are optional, preserving compatibility with existing quote mocks that omit them.
-- Adapted the brief's test to local style by mocking `client.apiCall`, because `getQuotes` uses `apiCall` rather than calling `fetch` directly.
-- Verified the change does not affect screener live merge tests.
-- Did not modify backend files or revert any existing unrelated work.
-
-## Concerns
-
-- `npm ci` reported one high severity vulnerability in the frontend dependency tree. I did not run `npm audit fix` because that is outside this task's scope.
-- Pre-existing unrelated working tree changes remain:
-  - modified `.superpowers/sdd/task-2-report.md`
-  - untracked `docs/superpowers/plans/2026-06-29-screener-validated-change-rate.md`
+Concerns:
+- None beyond the previously noted browser-QA/API limitations; these review-only fixes were covered by the required test/build verification.
