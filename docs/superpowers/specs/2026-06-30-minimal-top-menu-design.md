@@ -40,6 +40,7 @@ The final approved direction is a minimal top menu inspired by the attached refe
 - Keep the app shell visually quiet and terminal-like.
 - Make the top menu feel close to the reference: brand, simple text links, muted inactive items, active item by text emphasis only.
 - Preserve all existing routes, document-title behavior, right rail behavior, and drawer behavior.
+- Clean up vertical-nav-only code instead of leaving unused shell components behind.
 - Keep the implementation narrow enough to verify with focused component tests plus a shell-level visual/manual pass.
 
 ## Non-Goals
@@ -81,6 +82,20 @@ Introduce a top-oriented nav component named `TopNav`, and retire `LeftNav` from
 
 The brand must not include the old `orderbook replay` subtitle.
 
+### Existing code cleanup
+
+Move shared navigation data out of the retiring `LeftNav` module before deleting or replacing it:
+
+- Create `frontend/src/nav/items.ts`, exporting `WORKSPACE_NAV_ITEMS` and `SYSTEM_NAV_ITEMS`.
+- Update `App` and `TopNav` to import route labels from that module.
+- Remove `LeftNav.tsx` once `App` no longer renders it and no tests import it.
+- Remove `NavItem.tsx` if it is only used by `LeftNav` after the migration.
+- Replace `CaptureStatusPill.tsx` with `CaptureInlineStatus.tsx`; if queue/status derivation would otherwise be duplicated, extract only that derivation into a small helper and keep presentation top-nav-specific.
+- Rename or replace both `LeftNav.test.tsx` files with `TopNav` tests. Do not keep stale left-nav tests that assert vertical active bars, icon placeholders, or section labels.
+- Update comments that name `LeftNav` only because of the old shell, including token comments and right-rail comments. Keep comments that still describe right-rail behavior.
+
+This cleanup is intentionally limited to code made obsolete by moving the global navigation to the top. It must not become a broad shell refactor or a `/live` workspace refactor.
+
 ### Nav item styling
 
 Top nav links are plain text links:
@@ -119,6 +134,7 @@ Update `DESIGN.md`:
 - App shell now uses a top menu row and no left nav column.
 - Replace "left nav is the page label" with "active top menu item is the page label."
 - Mark `--nav-w` as retired if no remaining code consumes it, or remove it from `SIZE_TOKENS` if that is safe after checking references.
+- Update older comments that say active rail state "matches LeftNav"; the new comparison should be to the app-shell active state or removed if unnecessary.
 
 ### Error handling
 
@@ -133,6 +149,8 @@ No new data-fetching errors are introduced. Capture status should preserve the c
 | Top nav route order | Render top nav under `MemoryRouter` | Links appear as `Live`, `Study`, `Heatmap`, `Screener`, `Inventory`, `Capture`, `Settings`. |
 | Text-only active state | Render top nav at `/live` | `Live` has active text classes; it has no underline, left bar, border, or tint background classes. |
 | Brand subtitle removed | Render top nav | `hoga-ops` is present and `orderbook replay` is absent. |
+| Retired vertical nav removed | Search/import check after migration | `App` no longer imports `LeftNav`; no production code imports `NavItem` unless it has been deliberately repurposed. |
+| Left nav tests replaced | Test tree after migration | `LeftNav` tests are removed or renamed to `TopNav` tests; no expectations mention vertical active bars. |
 | App shell grid without panel | Render `App` with no active panel | Root has two shell rows; content grid columns are `1fr var(--rail-w)`. |
 | App shell grid with panel | Set `activePanel` to `watchlist` | Content grid includes `var(--watchlist-panel-w)` before `var(--rail-w)`. |
 | Document title behavior | Existing App title tests | `/live` still leaves title ownership to LivePage; non-live routes still use nav labels. |
@@ -152,6 +170,7 @@ No new data-fetching errors are introduced. Capture status should preserve the c
 - If viewport width is narrow, seven text links plus utilities may crowd. This pass does not add responsive overflow; if crowding appears in manual QA, reduce gaps before adding a menu system.
 - `CaptureStatusPill` currently couples status display to a card layout. It may need a small presentational split so left-nav-specific chrome does not leak into top nav.
 - `--nav-w` may still be referenced in generated tokens or docs. Implementation should remove or retire it only after reference search.
+- Deleting `LeftNav` and `NavItem` will touch tests and comments across the frontend; the implementation should keep those edits mechanical and avoid unrelated shell polish.
 
 ## Out of Scope (Backlog)
 
