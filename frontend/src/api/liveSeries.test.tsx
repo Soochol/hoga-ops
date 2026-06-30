@@ -78,6 +78,26 @@ describe('useLiveSeries', () => {
     expect(result.current.trade).toHaveLength(1);
   });
 
+  it('ignores a stale initial series payload for a previous code', async () => {
+    vi.spyOn(client, 'apiCall').mockResolvedValue({
+      code: '005930',
+      date: '20260527',
+      session_open_ms: 1000,
+      session_close_ms: null,
+      is_open: true,
+      snapshots: [{ t_ms: 50, kind: 'ob', total_ask_qty: 12345 }],
+      trades: [{ t_ms: 50, kind: 'trade', trades: [] }],
+      brokers: [{ t_ms: 50, kind: 'broker', broker: 'stale' }],
+    });
+    const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+    const { result } = renderHook(() => useLiveSeries('000660'), { wrapper: wrap(qc) });
+    await waitFor(() => expect(result.current.isLoading).toBe(false));
+    expect(result.current.initial).toBeUndefined();
+    expect(result.current.ob).toEqual([]);
+    expect(result.current.trade).toEqual([]);
+    expect(result.current.broker).toEqual([]);
+  });
+
   it('unsubscribes the code on unmount', async () => {
     vi.spyOn(client, 'apiCall').mockResolvedValue({
       code: '005930', date: '20260527', session_open_ms: 1000,
