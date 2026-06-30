@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { buildCandleTooltip } from './candleTooltipModel';
+import { buildCandleTooltip, formatTooltipQtyK } from './candleTooltipModel';
 import type { Candle } from '../api/types';
 
 // ts_ms 는 실 Unix ms (ADR-0003). 09:00 KST = baseMs.
@@ -79,6 +79,44 @@ describe('buildCandleTooltip', () => {
   it('vol_a + vol_b 합을 거래량으로', () => {
     const split = [C(baseMs, 1, 1, 1, 1, 3, 4)];
     expect(buildCandleTooltip(split, 0, '1m')!.volume).toBe(7);
+  });
+
+  it('호가 총잔량과 ask/bid ratio 를 툴팁 모델에 포함한다', () => {
+    const m = buildCandleTooltip(bars, 1, '1m', {
+      t: bars[1].ts_ms,
+      ask_total: 32_500,
+      bid_total: 900,
+      ask_max: 32_500,
+      bid_max: 900,
+      imb_max_ask: 32_500,
+      imb_max_bid: 900,
+    })!;
+    expect(m.quoteAskTotal).toBe(32_500);
+    expect(m.quoteBidTotal).toBe(900);
+    expect(m.askBidRatio).toBeCloseTo(36.111, 3);
+    expect(m.askBidBiasLabel).toBe('매도우위');
+  });
+
+  it('매수 총잔량이 0이면 ask/bid ratio 는 null 로 둔다', () => {
+    const m = buildCandleTooltip(bars, 1, '1m', {
+      t: bars[1].ts_ms,
+      ask_total: 32_500,
+      bid_total: 0,
+      ask_max: 32_500,
+      bid_max: 0,
+      imb_max_ask: 32_500,
+      imb_max_bid: 0,
+    })!;
+    expect(m.askBidRatio).toBeNull();
+    expect(m.askBidBiasLabel).toBeNull();
+  });
+});
+
+describe('formatTooltipQtyK', () => {
+  it('항상 k 단위 소수 1자리로 표시한다', () => {
+    expect(formatTooltipQtyK(32_500)).toBe('32.5k');
+    expect(formatTooltipQtyK(900)).toBe('0.9k');
+    expect(formatTooltipQtyK(257_000)).toBe('257.0k');
   });
 });
 
