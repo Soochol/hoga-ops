@@ -3,6 +3,11 @@
 All notable changes to this project are documented here.
 The format follows a 4-digit `MAJOR.MINOR.PATCH.MICRO` scheme.
 
+## [0.12.21.3] - 2026-06-30
+
+### Changed
+- **관심종목 드래그 위치 표시 정리**: 관심종목 행 전체를 드래그 표면으로 쓰고, 기존 왼쪽 `⠿` 핸들을 제거했다. 재정렬 중에는 기존 종목 테두리가 아니라 리스트 사이 삽입 위치에 파란 라인 1개와 원형 marker만 표시해 어느 줄 사이에 들어갈지 명확하게 보이도록 했다.
+
 ## [0.12.21.2] - 2026-06-30
 
 ### Fixed
