@@ -38,6 +38,10 @@ const livePageMocks = vi.hoisted(() => {
       isExtending?: boolean;
       pastDataWarnings?: Array<{ reason: string; msg?: string }>;
       paneTogglesOverride?: { hogaPanes?: boolean };
+      dayAskPeaks?: unknown[];
+      todayAllPriceAskPeak?: unknown;
+      dayBidPeaks?: unknown[];
+      todayAllPriceBidPeak?: unknown;
     }>,
     liveBundleCalls: [] as Array<{ code: unknown; timeframe: unknown; options: { venue?: string } }>,
     liveBundleResult: {
@@ -104,8 +108,8 @@ vi.mock('./LiveChartRoot', () => ({
 // LiveSidebar reads live status via useLiveSeries (EventSource), which isn't
 // available in jsdom. Mock the hook so the shell tests stay unit-level.
 vi.mock('../api/liveSeries', () => ({
-  useLiveSeries: () => ({
-    initial: { ask_peak_today: livePageMocks.todayAskPeak, bid_peak_today: null }, isLoading: false, error: null,
+  useLiveSeries: (code: string) => ({
+    initial: { code, ask_peak_today: livePageMocks.todayAskPeak, bid_peak_today: null }, isLoading: false, error: null,
     ob: livePageMocks.liveOb, trade: livePageMocks.liveTrade, broker: [],
   }),
 }));
@@ -733,6 +737,26 @@ describe('LivePage shell', () => {
     renderWithRouter('/live?code=005930');
     expect(livePageMocks.dayAskPeakTodayArgs.at(-1)).toBe(livePageMocks.todayAskPeak);
     expect(livePageMocks.allPriceTodayArgs.at(-1)).toBe(livePageMocks.todayAskPeak);
+  });
+
+  it('does not pass stale ask-peak seeds from a bundle whose code differs from the active tab', async () => {
+    const staleAskPeaks = [
+      { date: '20260616', price: 53000, qty: 21_000, t_ms: 1, max_price: 53000, max_qty: 21_000, max_t_ms: 1 },
+    ];
+    livePageMocks.liveBundleResult.bundle = rangeBundleFixture({
+      code: '005930',
+      ask_peaks: staleAskPeaks,
+    });
+    livePageMocks.liveBundleResult.chartBundle = rangeBundleFixture({
+      code: '005930',
+      ask_peaks: staleAskPeaks,
+    });
+
+    renderWithRouter('/live?code=000660');
+
+    await waitFor(() => expect(livePageMocks.liveChartRootProps.at(-1)?.code).toBe('000660'));
+    expect(livePageMocks.dayAskPeakTodayArgs.at(-1)).toBe(livePageMocks.todayAskPeak);
+    expect(livePageMocks.liveChartRootProps.at(-1)?.dayAskPeaks).toEqual([]);
   });
 
   it('preserves rendered bid_peaks in the live study save bundle when chartBundle is present', async () => {

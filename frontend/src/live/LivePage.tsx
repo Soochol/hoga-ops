@@ -200,6 +200,10 @@ export function LivePage() {
     live,
     { investorNetEnabled: foreignNetEnabled || institutionNetEnabled, venue: liveVenue },
   );
+  const liveInitial = live.initial?.code === activeCode ? live.initial : undefined;
+  const stockBundle = activeCode && bundle?.code === activeCode ? bundle : null;
+  const stockChartBundle = activeCode && chartBundle?.code === activeCode ? chartBundle : null;
+  const stockHogaBundle = activeCode && hogaBundle?.code === activeCode ? hogaBundle : null;
   const activeIndexId = activeInstrument?.kind === 'index' ? activeInstrument.id : null;
   const capabilities = useMemo(() => capabilitiesForInstrument(activeInstrument), [activeInstrument]);
   const indexFrom = historicalFromDate ?? subtractDaysKst(today, initialHistoricalDaysFor(timeframe));
@@ -231,15 +235,15 @@ export function LivePage() {
   const activeTab = tabs.find((t) => t.id === activeTabId);
   const askPeakOb = isMinuteTimeframe(timeframe) ? live.ob : EMPTY_OB_SNAPSHOTS;
   const askPeakTrade = isMinuteTimeframe(timeframe) ? live.trade : EMPTY_TRADE_SNAPSHOTS;
-  const askPeakSeeds = (chartBundle ?? bundle)?.ask_peaks ?? EMPTY_ASK_PEAKS;
-  const askPeakCandles = isMinuteTimeframe(timeframe) ? ((chartBundle ?? bundle)?.candles ?? EMPTY_CANDLES) : EMPTY_CANDLES;
+  const askPeakSeeds = (stockChartBundle ?? stockBundle)?.ask_peaks ?? EMPTY_ASK_PEAKS;
+  const askPeakCandles = isMinuteTimeframe(timeframe) ? ((stockChartBundle ?? stockBundle)?.candles ?? EMPTY_CANDLES) : EMPTY_CANDLES;
   const dayAskPeaks = useDayAskPeaks(
     askPeakOb,
     askPeakTrade,
     askPeakSeeds,
     today,
     activeCode,
-    live.initial?.ask_peak_today ?? null,
+    liveInitial?.ask_peak_today ?? null,
     askPeakCandles,
   );
   const todayAllPriceAskPeak = useTodayAllPriceAskPeak(
@@ -247,19 +251,19 @@ export function LivePage() {
     askPeakSeeds,
     today,
     activeCode,
-    live.initial?.ask_peak_today ?? null,
+    liveInitial?.ask_peak_today ?? null,
   );
   const bidPeakOb = isMinuteTimeframe(timeframe) ? live.ob : EMPTY_OB_SNAPSHOTS;
   const bidPeakTrade = isMinuteTimeframe(timeframe) ? live.trade : EMPTY_TRADE_SNAPSHOTS;
-  const bidPeakSeeds = (chartBundle ?? bundle)?.bid_peaks ?? EMPTY_BID_PEAKS;
-  const bidPeakCandles = isMinuteTimeframe(timeframe) ? ((chartBundle ?? bundle)?.candles ?? EMPTY_CANDLES) : EMPTY_CANDLES;
+  const bidPeakSeeds = (stockChartBundle ?? stockBundle)?.bid_peaks ?? EMPTY_BID_PEAKS;
+  const bidPeakCandles = isMinuteTimeframe(timeframe) ? ((stockChartBundle ?? stockBundle)?.candles ?? EMPTY_CANDLES) : EMPTY_CANDLES;
   const dayBidPeaks = useDayBidPeaks(
     bidPeakOb,
     bidPeakTrade,
     bidPeakSeeds,
     today,
     activeCode,
-    live.initial?.bid_peak_today ?? null,
+    liveInitial?.bid_peak_today ?? null,
     bidPeakCandles,
   );
   const todayAllPriceBidPeak = useTodayAllPriceBidPeak(
@@ -267,22 +271,22 @@ export function LivePage() {
     bidPeakSeeds,
     today,
     activeCode,
-    live.initial?.bid_peak_today ?? null,
+    liveInitial?.bid_peak_today ?? null,
   );
   const tradeVolumePocs = useTradeVolumePocs(
     isMinuteTimeframe(timeframe) ? live.trade : EMPTY_TRADE_SNAPSHOTS,
-    (chartBundle ?? bundle)?.trade_volume_pocs ?? [],
+    (stockChartBundle ?? stockBundle)?.trade_volume_pocs ?? [],
     today,
     activeCode,
-    isMinuteTimeframe(timeframe) ? ((chartBundle ?? bundle)?.candles ?? EMPTY_CANDLES) : EMPTY_CANDLES,
-    isMinuteTimeframe(timeframe) ? ((chartBundle ?? bundle)?.segments ?? []) : [],
+    isMinuteTimeframe(timeframe) ? ((stockChartBundle ?? stockBundle)?.candles ?? EMPTY_CANDLES) : EMPTY_CANDLES,
+    isMinuteTimeframe(timeframe) ? ((stockChartBundle ?? stockBundle)?.segments ?? []) : [],
     isMinuteTimeframe(timeframe) ? live.ob : EMPTY_OB_SNAPSHOTS,
   );
   const liveSaveBundle = useMemo<RangeBundle | null>(() => {
-    if (!bundle) return null;
-    const base = chartBundle ?? bundle;
+    if (!stockBundle) return null;
+    const base = stockChartBundle ?? stockBundle;
     return {
-      ...bundle,
+      ...stockBundle,
       from_date: base.from_date,
       to_date: base.to_date,
       bucket_ms: base.bucket_ms,
@@ -297,11 +301,11 @@ export function LivePage() {
       broker_late_entries: base.broker_late_entries ?? [],
       trade_volume_pocs: tradeVolumePocsToWire(tradeVolumePocs),
     };
-  }, [bundle, chartBundle, dayAskPeaks, dayBidPeaks, tradeVolumePocs]);
+  }, [stockBundle, stockChartBundle, dayAskPeaks, dayBidPeaks, tradeVolumePocs]);
   const workareaCode = activeCode ?? (activeIndexId ? `index:${activeIndexId}` : null);
-  const workareaBundle = activeIndexId ? indexBundle : bundle;
-  const workareaChartBundle = activeIndexId ? indexBundle : chartBundle;
-  const workareaHogaBundle = activeIndexId ? indexBundle : hogaBundle;
+  const workareaBundle = activeIndexId ? indexBundle : stockBundle;
+  const workareaChartBundle = activeIndexId ? indexBundle : stockChartBundle;
+  const workareaHogaBundle = activeIndexId ? indexBundle : stockHogaBundle;
   const workareaLoading = activeIndexId ? indexCandles.isLoading : isPastCandlesLoading;
   const indexExtending = activeIndexId ? historicalFromDate !== null && indexCandles.isFetching : false;
   const workareaDataWarnings = activeIndexId ? indexCandles.data?.data_warnings ?? [] : pastDataWarnings;
