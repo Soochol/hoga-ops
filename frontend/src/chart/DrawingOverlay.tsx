@@ -88,9 +88,8 @@ export default function DrawingOverlay({ chart, axis, paneSeries, onChartHoverPa
   const dragRef = useRef<DragMode | null>(null);
   const scheduleRef = useRef<() => void>(() => {});
 
-  // Post-commit revert: tool calls this after adding a drawing.
-  // Sets the new drawing as selected and returns to select mode so the user
-  // can immediately inspect or move it. See ADR-0032.
+  // Legacy post-commit hook. Current drawing tools keep their active tool and
+  // call setSelected(id) directly; Escape is the explicit return to select mode.
   const revertToSelectMode = useCallback((newId: string) => {
     useDrawingsStore.getState().setActiveTool('select');
     useDrawingsStore.getState().setSelected(newId);

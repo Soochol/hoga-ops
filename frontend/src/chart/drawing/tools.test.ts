@@ -109,12 +109,13 @@ describe('hlineTool.onPointerDown', () => {
     expect(ctx.add).not.toHaveBeenCalled();
   });
 
-  it('calls revertToSelectMode with the new drawing id after add', () => {
+  it('keeps hline active after add', () => {
     const ctx = makeCtx();
     hlineTool.onPointerDown!(ctx);
-    expect(ctx.revertToSelectMode).toHaveBeenCalledOnce();
+    expect(ctx.add).toHaveBeenCalledOnce();
     const addedId = ((ctx.add as ReturnType<typeof vi.fn>).mock.calls[0][0] as Drawing).id;
-    expect(ctx.revertToSelectMode).toHaveBeenCalledWith(addedId);
+    expect(ctx.setSelected).toHaveBeenCalledWith(addedId);
+    expect(ctx.revertToSelectMode).not.toHaveBeenCalled();
   });
 
   it('new hline inherits color/width/lineStyle from ctx.defaults', () => {
@@ -184,7 +185,7 @@ describe('trendlineTool — drag commits a 2-point segment', () => {
     expect(ctx.add).not.toHaveBeenCalled();
   });
 
-  it('calls revertToSelectMode with the new drawing id on pointer-up commit', () => {
+  it('keeps trendline active after pointer-up commit', () => {
     const a: Point = { realMs: 1_000, price: 100 };
     const b: Point = { realMs: 2_000, price: 200 };
     const downCtx = makeCtx({ pixelToData: vi.fn(() => a) });
@@ -194,9 +195,10 @@ describe('trendlineTool — drag commits a 2-point segment', () => {
       trendlineDraft: downCtx.trendlineDraft,
     });
     trendlineTool.onPointerUp!(upCtx);
-    expect(upCtx.revertToSelectMode).toHaveBeenCalledOnce();
+    expect(upCtx.add).toHaveBeenCalledOnce();
     const addedId = ((upCtx.add as ReturnType<typeof vi.fn>).mock.calls[0][0] as Drawing).id;
-    expect(upCtx.revertToSelectMode).toHaveBeenCalledWith(addedId);
+    expect(upCtx.setSelected).toHaveBeenCalledWith(addedId);
+    expect(upCtx.revertToSelectMode).not.toHaveBeenCalled();
   });
 
   it('new trendline inherits color/width/lineStyle from ctx.defaults', () => {
@@ -248,14 +250,15 @@ describe('eraserTool', () => {
 });
 
 describe('pencilTool commit', () => {
-  it('calls revertToSelectMode with the new drawing id on pointer-up commit', () => {
+  it('keeps pencil active after pointer-up commit', () => {
     const ctx = makeCtx();
     pencilTool.onPointerDown!(ctx);
     ctx.pencilDraft.current!.points.push({ realMs: 1_700_000_000_001, price: 70_010 });
     pencilTool.onPointerUp!(ctx);
-    expect(ctx.revertToSelectMode).toHaveBeenCalledOnce();
+    expect(ctx.add).toHaveBeenCalledOnce();
     const addedId = ((ctx.add as ReturnType<typeof vi.fn>).mock.calls[0][0] as Drawing).id;
-    expect(ctx.revertToSelectMode).toHaveBeenCalledWith(addedId);
+    expect(ctx.setSelected).toHaveBeenCalledWith(addedId);
+    expect(ctx.revertToSelectMode).not.toHaveBeenCalled();
   });
 
   it('new pencil inherits color/width/lineStyle from ctx.defaults', () => {
@@ -433,12 +436,12 @@ describe('matchShortcut', () => {
     expect(matchShortcut(key({ key: 'h', altKey: true }))).toBe('hline');
   });
 
-  it('matches Alt+T → trendline', () => {
-    expect(matchShortcut(key({ key: 't', altKey: true }))).toBe('trendline');
+  it('matches Alt+J → trendline', () => {
+    expect(matchShortcut(key({ key: 'j', altKey: true }))).toBe('trendline');
   });
 
-  it('matches Alt+P → pencil', () => {
-    expect(matchShortcut(key({ key: 'p', altKey: true }))).toBe('pencil');
+  it('matches Alt+B → pencil', () => {
+    expect(matchShortcut(key({ key: 'b', altKey: true }))).toBe('pencil');
   });
 
   it('matches Alt+E → eraser', () => {
