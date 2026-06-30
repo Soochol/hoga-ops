@@ -9,7 +9,10 @@ import { useEntryDragStore } from '../state/entryDrag';
 
 // ADR-0057: 패널 드래그의 wiring contract만 검증 — 실제 dnd-kit 포인터/충돌은 e2e가 담당.
 // DndContext를 passthrough로 모킹해 주입된 onDragEnd를 캡처하고, useSortable은 no-op으로 둔다.
-const h = vi.hoisted(() => ({ onDragEnd: null as null | ((e: unknown) => void) }));
+const h = vi.hoisted(() => ({
+  onDragEnd: null as null | ((e: unknown) => void),
+  onPointerDown: vi.fn(),
+}));
 vi.mock('@dnd-kit/core', async (orig) => {
   const actual = await orig<typeof import('@dnd-kit/core')>();
   return {
@@ -29,7 +32,9 @@ vi.mock('@dnd-kit/sortable', async (orig) => {
     ...actual,
     SortableContext: ({ children }: { children: React.ReactNode }) => <>{children}</>,
     useSortable: () => ({
-      setNodeRef: () => {}, listeners: {}, attributes: {},
+      setNodeRef: () => {},
+      listeners: { onPointerDown: h.onPointerDown },
+      attributes: { role: 'button' },
       transform: null, transition: undefined, isDragging: false,
     }),
   };
@@ -60,10 +65,28 @@ describe('WatchlistDrawer drag wiring', () => {
     cleanup();
     window.localStorage.clear();
     h.onDragEnd = null;
+    h.onPointerDown.mockClear();
     useLivePageStore.setState({ activeCode: null, candleTimeframe: '1m' });
     vi.restoreAllMocks();
     vi.spyOn(client, 'apiCall').mockResolvedValue({ phase: 'open', quotes: [] });
     vi.spyOn(watchlistApi, 'getWatchlist').mockResolvedValue(DATA);
+  });
+
+  it('renders an entry drag handle beside the stock name and wires drag only there', async () => {
+    const qc = new QueryClient({ defaultOptions: { queries: { retry: false }, mutations: { retry: false } } });
+    render(<WatchlistDrawer />, { wrapper: wrap(qc) });
+    await waitFor(() => expect(screen.getByText('삼성전자')).toBeInTheDocument());
+
+    const row = screen.getByTestId('watchlist-row-005930');
+    const handle = screen.getByTestId('drag-handle-watchlist-row-005930');
+    expect(handle).toHaveTextContent('⠿');
+
+    fireEvent.pointerDown(handle);
+    expect(h.onPointerDown).toHaveBeenCalledOnce();
+
+    h.onPointerDown.mockClear();
+    fireEvent.pointerDown(row);
+    expect(h.onPointerDown).not.toHaveBeenCalled();
   });
 
   it('entry-drag onDragEnd → reorderEntries(folderId, orderedCodes)', async () => {
