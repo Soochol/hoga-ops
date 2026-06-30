@@ -49,7 +49,7 @@ function monthOf(date8: string): number { return parseInt(date8.slice(4, 6), 10)
  *  the app root (App.tsx) alongside useEventStream / the origins cleanup hook.
  *
  *  Previously this subscription lived inside useCaptureQueue, which is mounted
- *  by ~5 components (CaptureStatusPill in the always-on nav, CaptureForm,
+ *  by ~5 components (CaptureInlineStatus in the always-on top nav, CaptureForm,
  *  CaptureQueue, StockDateGroupDetail, useInventoryRecapture). The shared
  *  /api/ws connection was already a singleton (ADR-0053), but each mount
  *  registered its own capture-event callback, so every push ran N identical

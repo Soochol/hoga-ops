@@ -153,13 +153,13 @@ The design system has a **single density dial** at `:root font-size`.
 - **Card padding:** 12–14px standard. Sidebar cards 12px. Pane bodies 4–6px (info density priority) (base intent — rendered ×1.25 at default density).
 - **Pane gap:** 8px between chart panes (base intent — rendered ×1.25 at default density).
 - **Sidebar width:** 320px base intent / 400px rendered (token: --sidebar-w).
-- **Nav width:** 210px base intent / 262.5px rendered (token: --nav-w).
+- **Top nav height:** 32px base intent / 40px rendered (token: --h-top-nav).
 
 ## Layout
 
 - **Approach:** Grid-disciplined hybrid — strict grid for the app shell, looser composition inside chart panes.
 - **App shell:**
-  - Top-level: `grid-template-columns: 210px 1fr` (nav + main); rows: `grid-template-rows: minmax(0, 1fr)` — explicit row contract so panel content can never grow the row (or the `/live` chart) past the viewport; long Watchlist/Screener lists scroll inside the panel (v0.6.3.0, rationale in `App.tsx`).
+  - Top-level: rows `var(--h-top-nav) minmax(0, 1fr)` (minimal top menu + content); content columns are `1fr var(--rail-w)` plus an optional `var(--watchlist-panel-w)` before the rail when a right-rail panel is open. The explicit content row contract keeps panel content from growing the row (or the `/live` chart) past the viewport.
   - Main: `grid-template-rows: 40px 60px 52px 1fr` (tabs + toolbar + price strip + workarea) for Replay Viewer; stub pages have only the workarea row.
 - **Replay Viewer workarea:** `grid-template-columns: 1fr 12px <sidebarPx>` (chart + splitter + Cursor Sidebar). `--sidebar-w` seeds the default `sidebarPx`; runtime width and the collapsed flag are owned by `frontend/src/state/replayLayout.ts` and persisted to `localStorage['replay.layout']`. When collapsed, the grid collapses to `1fr` and a floating right-edge handle plus a Toolbar toggle let the user re-expand. Double-click on the splitter reads the *current* token value via `getComputedStyle`, so future density-mode changes reseed automatically. Trade-off captured in ADR-0022.
 - **Chart stage:** `grid-template-rows: 1fr 0.5fr 1fr 0.6fr` (candles+vol / ratio / intensity / fill).
@@ -177,7 +177,7 @@ Every feature route except the chart workspace follows one shell:
 
 - **Outer padding:** wrap the route in `<PageContainer>` (`frontend/src/layout/PageContainer.tsx`) — the single source of the page padding token (`p-md`). Never hardcode `p-4`/`p-8` at the page root.
 - **Content framing:** primary content sits in `bg-bg-card border rounded-lg` cards. Multi-pane pages (master-detail, splitter) use one card per pane; single-content pages use one card. Never nest cards.
-- **No redundant page title:** the left nav is the page label, so a page never repeats its own name. Pages expose a *title-less* control bar (search / counts / actions) at the top of their card. (See the `/live` header: search only, with the active symbol shown in the status bar below.)
+- **No redundant page title:** the active top menu item is the page label, so a page never repeats its own name. Pages expose a *title-less* control bar (search / counts / actions) at the top of their card. (See the `/live` header: search only, with the active symbol shown in the status bar below.)
 - **Full-bleed exception:** only the chart workspace (`/live`) is full-bleed (no `PageContainer`, no card) — the chart must fill the viewport. Its sidebar still uses `--bg-card` to match other panels.
 
 ### Migration Status
@@ -280,7 +280,7 @@ Two layers, each with one shared owner. Use them; do **not** hand-roll a dismiss
 | 2026-05-20 | Tab status pulse dot | Multi-tab async state needs to be visible. One small animation is worth the tradeoff. |
 | 2026-05-20 | Monospace 100% for numbers | Tabular-nums is required for orderbook column alignment. Two-font cost (~50 KB extra) is negligible on localhost. |
 | 2026-05-23 | Adopted KRX market convention (up=red `#DC2626`, down=blue `#2563EB`) | Single-user Korean analyst — Western up=green is counter-intuitive. Renamed `--up`/`--down` → `--success`/`--error` to disambiguate status semantic from price direction; introduced `--price-up`/`--price-down`. Removed `--ratio-ask` (folded into `--price-down`). All chart series now hide both `priceLineVisible` and `lastValueVisible` — analysts read latest values via crosshair. |
-| 2026-05-30 | Global Right Rail (fixed; single 관심 item, heart icon) replaces the `/live` ★ watchlist drawer; the chevron `»`/`«` and the 관심 item both show/hide the Watchlist Panel; chrome state in a dedicated `rightRail` store (ADR-0052) | Watchlist reachable from every page. Rail does not collapse — only the panel opens. Active state = tint bg + neutral text (no triple-teal, matches LeftNav). `--rail-w` added via `design-tokens.ts` (ADR-0012). |
+| 2026-05-30 | Global Right Rail (fixed; single 관심 item, heart icon) replaces the `/live` ★ watchlist drawer; the chevron `»`/`«` and the 관심 item both show/hide the Watchlist Panel; chrome state in a dedicated `rightRail` store (ADR-0052) | Watchlist reachable from every page. Rail does not collapse — only the panel opens. Active state = tint bg + neutral text (no triple-teal, matches the app-shell active state). `--rail-w` added via `design-tokens.ts` (ADR-0012). |
 | 2026-06-08 | 관심종목 그룹 헤더 위계: 크기 교환(그룹 sm/600, 종목명 xs) + 개수 인라인 + chevron 좌측 ▼/▶ + sticky | 그룹·종목이 같은 "좌 텍스트 + 우 mono 숫자" 패턴으로 오독되던 문제. 디자인 컴패니언 4안 비교로 색 추가 없는 A안 선택 — 틸 라벨은 색상 규율(UI 상태 전용) 이탈로 기각. |
 
 ## App-shell & live tokens (ADR-0039, ADR-0052)
@@ -291,6 +291,7 @@ Layout and source-identity tokens beyond the core scale. The Right Rail tokens (
 |---|---|---|---|
 | `--rail-w` | 48px | 60px | Right Rail icon column width (app shell, all routes; fixed — does not collapse) |
 | `--watchlist-panel-w` | 280px | 350px | Watchlist Panel width — opened from the Right Rail (global) |
+| `--h-top-nav` | 32px | 40px | Global top navigation row |
 | `--h-live-header` | 32px | 40px | Live page header row (page title) |
 
 **Source identity chips** — neither UI state nor status nor price direction, but data provenance.
