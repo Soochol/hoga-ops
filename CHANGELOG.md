@@ -3,6 +3,11 @@
 All notable changes to this project are documented here.
 The format follows a 4-digit `MAJOR.MINOR.PATCH.MICRO` scheme.
 
+## [0.12.21.4] - 2026-06-30
+
+### Changed
+- **관심종목 편집 드래그 UX 통일**: 관심종목 편집 창의 관심그룹과 그룹 내 종목 리스트도 행 전체를 드래그 표면으로 쓰고, 기존 `⠿` 핸들을 제거했다. 재정렬 중에는 리스트 사이 삽입 위치에 파란 라인 1개와 원형 marker만 표시하도록 우측 패널과 같은 시각 규칙을 공유한다.
+
 ## [0.12.21.3] - 2026-06-30
 
 ### Changed
