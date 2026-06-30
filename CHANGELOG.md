@@ -3,6 +3,12 @@
 All notable changes to this project are documented here.
 The format follows a 4-digit `MAJOR.MINOR.PATCH.MICRO` scheme.
 
+## [0.12.20.2] - 2026-06-30
+
+### Fixed
+- **/live 탭별 차트 위치 영구 복원**: 새로고침하거나 다시 들어와도 라이브 탭마다 보던 줌/x축 시간 위치를 유지해, 탭 전환 후에도 같은 구간에서 이어서 볼 수 있게 했다.
+- **범위 API 회귀 테스트 안정화**: full range 응답 테스트가 parquet 파일 없이도 새 trailing-book 보조 조회를 안전하게 우회하도록 스텁을 보강했다.
+
 ## [0.12.20.1] - 2026-06-29
 
 ### Fixed

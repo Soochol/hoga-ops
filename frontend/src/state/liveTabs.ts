@@ -55,6 +55,7 @@ export function applyTabToPage(tab: LiveTab | null): void {
 const STORAGE_KEY = 'live.tabs.v2';
 const LEGACY_STORAGE_KEY = 'live.tabs.v1';
 const MAX_PERSISTED_TABS = 1000;
+const MAX_PERSISTED_BAR_SPAN = 100_000;
 
 type TabSnapshot = {
   instrument?: LiveInstrument | null;
@@ -62,11 +63,24 @@ type TabSnapshot = {
   timeframe: LiveTimeframe;
   historicalFromDate: string | null;
   label: string;
+  viewport?: TabViewport | null;
 };
 type TabsSnapshot = { version: 2; activeIndex: number; tabs: TabSnapshot[] };
 
 function isTimeframe(v: unknown): v is LiveTimeframe {
   return typeof v === 'string' && (LIVE_TIMEFRAMES as readonly string[]).includes(v);
+}
+
+function isViewport(v: unknown): v is TabViewport {
+  if (!v || typeof v !== 'object') return false;
+  const o = v as Record<string, unknown>;
+  return (
+    typeof o.rightEdgeMs === 'number' && Number.isFinite(o.rightEdgeMs) &&
+    typeof o.barSpan === 'number' && Number.isFinite(o.barSpan) &&
+    o.barSpan > 0 && o.barSpan <= MAX_PERSISTED_BAR_SPAN &&
+    typeof o.atLiveEdge === 'boolean' &&
+    (o.userAdjusted === undefined || typeof o.userAdjusted === 'boolean')
+  );
 }
 
 export function toTabsSnapshot(state: Pick<TabsStore, 'tabs' | 'activeTabId'>): TabsSnapshot {
@@ -86,6 +100,7 @@ export function toTabsSnapshot(state: Pick<TabsStore, 'tabs' | 'activeTabId'>): 
       instrument: t.instrument,
       code: t.code, timeframe: t.timeframe, historicalFromDate: t.historicalFromDate,
       label: t.label,
+      viewport: t.viewport ?? null,
     })),
   };
 }
@@ -110,6 +125,7 @@ function makeTab(params: {
   instrument: LiveInstrument | null;
   timeframe: LiveTimeframe;
   historicalFromDate?: string | null;
+  viewport?: TabViewport | null;
 }): LiveTab {
   const fields = tabFieldsFromInstrument(params.instrument);
   return {
@@ -119,16 +135,21 @@ function makeTab(params: {
     label: fields.label,
     timeframe: params.timeframe,
     historicalFromDate: params.historicalFromDate ?? null,
+    viewport: params.viewport ?? null,
   };
 }
 
 export function loadTabs(): { tabs: LiveTab[]; activeTabId: string | null } {
   // 1) live.tabs.v2, then legacy live.tabs.v1
   try {
-    const raw = localStorage.getItem(STORAGE_KEY) ?? localStorage.getItem(LEGACY_STORAGE_KEY);
+    const rawV2 = localStorage.getItem(STORAGE_KEY);
+    const rawLegacy = localStorage.getItem(LEGACY_STORAGE_KEY);
+    const rawSource = rawV2 ? 'v2' : rawLegacy ? 'legacy' : null;
+    const raw = rawSource === 'v2' ? rawV2 : rawLegacy;
     if (raw) {
       const snap = JSON.parse(raw) as Partial<TabsSnapshot>;
       if (snap && Array.isArray(snap.tabs) && snap.tabs.length > 0) {
+        const canHydrateViewport = rawSource === 'v2' && snap.version === 2;
         const rawTabs = snap.tabs;
         // Resolve the active tab by code on the *unfiltered* list (and only for
         // an integer index) so dropping malformed entries below can't shift the
@@ -141,6 +162,7 @@ export function loadTabs(): { tabs: LiveTab[]; activeTabId: string | null } {
             instrument: coerceTabInstrument(t),
             timeframe: isTimeframe(t.timeframe) ? t.timeframe : '1m',
             historicalFromDate: typeof t.historicalFromDate === 'string' ? t.historicalFromDate : null,
+            viewport: canHydrateViewport && isViewport(t.viewport) ? t.viewport : null,
           }));
         if (tabs.length > 0) {
           // findIndex=-1 (active entry was dropped) → first-tab fallback.
@@ -261,6 +283,15 @@ export const useLiveTabsStore = create<TabsStore>((set, get) => ({
     set({ tabs: tabs.map((t) => (t.id === id ? { ...t, viewport } : t)) });
   },
 }));
+
+export function persistLiveTabsNow(): void {
+  if (typeof localStorage === 'undefined') return;
+  try {
+    localStorage.setItem(STORAGE_KEY, JSON.stringify(toTabsSnapshot(useLiveTabsStore.getState())));
+  } catch {
+    /* quota / private mode / serialization — silently ignore */
+  }
+}
 
 // Live wiring (persistence + page→tab mirror) is OPT-IN via initLiveTabsSync(),
 // called once at app entry (main.tsx). Importing this module no longer subscribes

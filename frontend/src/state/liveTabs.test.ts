@@ -1,6 +1,6 @@
 import { describe, it, expect, beforeEach, afterEach } from 'vitest';
 import {
-  useLiveTabsStore, loadTabs, toTabsSnapshot, initLiveTabsSync,
+  useLiveTabsStore, loadTabs, toTabsSnapshot, initLiveTabsSync, persistLiveTabsNow,
 } from './liveTabs';
 import { useLivePageStore } from './livePage';
 import { stockInstrument } from '../live/liveInstrument';
@@ -320,7 +320,8 @@ describe('liveTabs persistence', () => {
     expect(loadTabs()).toEqual({ tabs: [], activeTabId: null });
   });
 
-  it('toTabsSnapshot keeps persisted fields and drops runtime-only id and viewport', () => {
+  it('toTabsSnapshot keeps persisted fields and saved viewport but drops runtime-only id', () => {
+    const viewport = { rightEdgeMs: 1, barSpan: 2, atLiveEdge: false };
     const snap = toTabsSnapshot({
       tabs: [{
         id: 'abc',
@@ -329,7 +330,7 @@ describe('liveTabs persistence', () => {
         label: '삼성전자',
         timeframe: '1m',
         historicalFromDate: null,
-        viewport: { rightEdgeMs: 1, barSpan: 2, atLiveEdge: false },
+        viewport,
       }],
       activeTabId: 'abc',
     } as never);
@@ -341,7 +342,31 @@ describe('liveTabs persistence', () => {
         timeframe: '1m',
         historicalFromDate: null,
         label: '삼성전자',
+        viewport,
       }],
+    });
+  });
+
+  it('persistLiveTabsNow writes the current snapshot synchronously', () => {
+    useLiveTabsStore.setState({
+      tabs: [{
+        id: 'tab-a',
+        instrument: stockInstrument('005930', '삼성전자'),
+        code: '005930',
+        label: '삼성전자',
+        timeframe: '1m',
+        historicalFromDate: null,
+        viewport: { rightEdgeMs: 1, barSpan: 2, atLiveEdge: false },
+      }],
+      activeTabId: 'tab-a',
+    });
+
+    persistLiveTabsNow();
+
+    expect(JSON.parse(localStorage.getItem('live.tabs.v2') ?? '{}')).toMatchObject({
+      version: 2,
+      activeIndex: 0,
+      tabs: [{ code: '005930', viewport: { rightEdgeMs: 1, barSpan: 2, atLiveEdge: false } }],
     });
   });
 
@@ -361,7 +386,19 @@ describe('liveTabs persistence', () => {
     expect(snap.activeIndex).toBe(999);
   });
 
-  it('ignores persisted viewport fields on load', () => {
+  it('loads persisted viewport fields from live.tabs.v2', () => {
+    const viewport = { rightEdgeMs: 1, barSpan: 10, atLiveEdge: false, userAdjusted: true };
+    localStorage.setItem('live.tabs.v2', JSON.stringify({
+      version: 2, activeIndex: 0,
+      tabs: [
+        { code: '005930', timeframe: '1m', historicalFromDate: null, label: 'saved viewport', viewport },
+      ],
+    }));
+    const { tabs } = loadTabs();
+    expect(tabs[0].viewport).toEqual(viewport);
+  });
+
+  it('ignores legacy live.tabs.v1 viewport fields on load', () => {
     localStorage.setItem('live.tabs.v1', JSON.stringify({
       version: 1, activeIndex: 0,
       tabs: [
@@ -369,7 +406,29 @@ describe('liveTabs persistence', () => {
       ],
     }));
     const { tabs } = loadTabs();
-    expect('viewport' in tabs[0]).toBe(false);
+    expect(tabs[0].viewport).toBeNull();
+  });
+
+  it('drops malformed persisted viewport fields on load', () => {
+    localStorage.setItem('live.tabs.v2', JSON.stringify({
+      version: 2, activeIndex: 0,
+      tabs: [
+        { code: '005930', timeframe: '1m', historicalFromDate: null, label: 'bad viewport', viewport: { rightEdgeMs: 1, barSpan: 0, atLiveEdge: false } },
+      ],
+    }));
+    const { tabs } = loadTabs();
+    expect(tabs[0].viewport).toBeNull();
+  });
+
+  it('drops excessive persisted viewport spans on load', () => {
+    localStorage.setItem('live.tabs.v2', JSON.stringify({
+      version: 2, activeIndex: 0,
+      tabs: [
+        { code: '005930', timeframe: '1m', historicalFromDate: null, label: 'huge viewport', viewport: { rightEdgeMs: 1, barSpan: 100_001, atLiveEdge: false } },
+      ],
+    }));
+    const { tabs } = loadTabs();
+    expect(tabs[0].viewport).toBeNull();
   });
 });
 

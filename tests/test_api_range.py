@@ -255,6 +255,7 @@ def _stub_slice_builders():
         patch("hoga.api.bundle.build_volume_profile_range", return_value=vp),
         patch("hoga.api.bundle.build_trade_volume_poc_slice", return_value=None),
         patch("hoga.api.bundle.build_broker_late_entries_slice", return_value=[]),
+        patch("hoga.api.bundle._first_trailing_single_price_book_hhmmssms", return_value=None),
     ]
 
 
