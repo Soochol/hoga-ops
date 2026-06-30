@@ -237,9 +237,8 @@ function SortableGroup({ folderId, children }: {
   );
 }
 
-/** 패널 종목 행 — 행 전체가 드래그 표면(listeners on <li>). PointerSensor distance:5
- *  임계가 클릭(차트 이동)과 드래그를 구분한다. data.type='entry' + folderId 태깅으로
- *  onDragEnd가 폴더 드래그와 구분한다. */
+/** 패널 종목 행 — dnd transform/ref는 행에 두고, listeners는 종목명 왼쪽 핸들에만 둔다.
+ *  행 클릭(차트 이동)·우클릭 메뉴와 드래그 시작 표면이 섞이지 않게 분리한다. */
 function SortableQuoteRow(props: {
   entry: WatchlistEntry;
   price: number | null; pct: number | null; changeWon: number | null;
@@ -252,7 +251,7 @@ function SortableQuoteRow(props: {
   dragEnabled?: boolean;
 }) {
   const { entry } = props;
-  const { setNodeRef, listeners, transform, transition, isDragging } =
+  const { setNodeRef, listeners, attributes, transform, transition, isDragging } =
     useSortable({ id: entrySortableId(entry.folder_id, entry.code), data: { type: 'entry', folderId: entry.folder_id, code: entry.code, name: entry.name } });
   return (
     <QuoteRow
@@ -270,6 +269,7 @@ function SortableQuoteRow(props: {
       sortableRef={props.dragEnabled === false ? undefined : setNodeRef}
       sortableStyle={props.dragEnabled === false ? undefined : { transform: CSS.Transform.toString(transform), transition }}
       dragListeners={props.dragEnabled === false ? undefined : listeners}
+      dragAttributes={props.dragEnabled === false ? undefined : attributes}
       dragging={props.dragEnabled === false ? false : isDragging}
       trailingAction={props.collectionBadge}
     />

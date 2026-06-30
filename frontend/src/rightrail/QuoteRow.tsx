@@ -62,14 +62,8 @@ export function QuoteRow({
     if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); onClick(); }
   };
   return (
-    // dragAttributes/dragListeners 를 명시 핸들러보다 먼저 스프레드한다 — 그래야
-    // 아래 onClick/onKeyDown/onContextMenu(우리 것)가 dnd-kit 이 같은 이름으로 주는
-    // 핸들러를 항상 덮는다. 현재는 PointerSensor 만이라 listeners=onPointerDown 뿐이나,
-    // 훗날 KeyboardSensor 추가 시 onKeyDown 충돌(Enter/Delete 무력화)을 미연에 막는다.
     <li
       ref={sortableRef}
-      {...dragAttributes}
-      {...dragListeners}
       data-testid={testId}
       role="button"
       tabIndex={0}
@@ -87,6 +81,18 @@ export function QuoteRow({
         ...(dragging ? { opacity: 0.6, cursor: 'grabbing', zIndex: 1, position: 'relative' } : {}),
       }}
     >
+      {dragListeners && (
+        <span
+          {...dragAttributes}
+          {...dragListeners}
+          data-testid={`drag-handle-${testId}`}
+          aria-label={`${name} 순서 이동`}
+          onClick={(e) => e.stopPropagation()}
+          className="flex-none -ml-1 h-5 w-4 cursor-grab select-none touch-none grid place-items-center text-fg-dimmer opacity-70 hover:opacity-100 hover:text-fg active:cursor-grabbing"
+        >
+          ⠿
+        </span>
+      )}
       {/* 종목명은 가격(text-sm)보다 의도적으로 작게(text-xs) — 그룹 헤더(text-sm/600) >
           종목명 크기 위계 + 가격이 1차 콘텐츠. 등락(text-xs)과는 서체(mono)·색으로 구분. */}
       <span className="flex-1 min-w-0 leading-tight">

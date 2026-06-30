@@ -1,8 +1,9 @@
 import { describe, it, expect, vi } from 'vitest';
 import { render, screen, fireEvent, within } from '@testing-library/react';
+import type { ComponentProps } from 'react';
 import { QuoteRow } from './QuoteRow';
 
-function row(props: Partial<React.ComponentProps<typeof QuoteRow>> = {}) {
+function row(props: Partial<ComponentProps<typeof QuoteRow>> = {}) {
   const onClick = vi.fn();
   render(
     <ul>
@@ -79,6 +80,26 @@ describe('QuoteRow', () => {
     expect(setRef).toHaveBeenCalledWith(li);
     fireEvent.click(li);
     expect(onClick).toHaveBeenCalledOnce();
+  });
+
+  it('puts drag listeners on the left handle without stealing row clicks', () => {
+    const onPointerDown = vi.fn();
+    const { onClick } = row({
+      dragListeners: { onPointerDown } as ComponentProps<typeof QuoteRow>['dragListeners'],
+      dragAttributes: { role: 'button' } as ComponentProps<typeof QuoteRow>['dragAttributes'],
+    });
+    const li = screen.getByTestId('quote-row-005930');
+    const handle = screen.getByTestId('drag-handle-quote-row-005930');
+
+    expect(handle).toHaveAttribute('aria-label', '삼성전자 순서 이동');
+    fireEvent.pointerDown(handle);
+    expect(onPointerDown).toHaveBeenCalledOnce();
+
+    fireEvent.click(handle);
+    expect(onClick).not.toHaveBeenCalled();
+
+    fireEvent.click(li);
+    expect(onClick).toHaveBeenCalledWith({ disposition: 'current-tab' });
   });
 
   it('right-click calls onContextMenu', () => {
