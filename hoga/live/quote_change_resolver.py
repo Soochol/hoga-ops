@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import datetime as dt
+from collections.abc import Hashable
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Literal
@@ -46,11 +48,17 @@ _BASELINE_SCALE_MISMATCH_RATIO = 3.0
 class QuoteChangeResolver:
     def __init__(self, *, adjusted_daily_path: Path | None) -> None:
         self._adjusted_daily_path = adjusted_daily_path
-        self._baseline_cache: dict[str, _Baseline | None] = {}
+        self._baseline_cache: dict[Hashable, _Baseline | None] = {}
         self._baseline_cache_signature: _AdjustedDailySignature | None = None
 
-    def resolve_quote(self, q: KisQuote, *, phase: str) -> QuoteChangeResolution:
-        baseline = self._baseline_for(q.code)
+    def resolve_quote(
+        self,
+        q: KisQuote,
+        *,
+        phase: str,
+        today: dt.date | None = None,
+    ) -> QuoteChangeResolution:
+        baseline = self._baseline_for(q.code, today=today)
         warnings: list[str] = []
 
         if phase == "pre_open":
@@ -66,6 +74,18 @@ class QuoteChangeResolver:
 
         adjusted_pct = self._adjusted_change_pct(q, baseline)
         if baseline is not None and adjusted_pct is not None:
+            if self._baseline_stale_for_today(baseline, today):
+                warnings.append("adjusted_baseline_stale")
+                return QuoteChangeResolution(
+                    code=q.code,
+                    price=q.price,
+                    change_pct=None,
+                    change_won=None,
+                    baseline_price=baseline.close,
+                    baseline_date=baseline.date,
+                    change_pct_source="unavailable",
+                    warnings=warnings,
+                )
             if self._baseline_scale_mismatch(q, baseline):
                 warnings.append("adjusted_baseline_scale_mismatch")
                 return QuoteChangeResolution(
@@ -115,7 +135,7 @@ class QuoteChangeResolver:
             warnings=warnings,
         )
 
-    def _baseline_for(self, code: str) -> _Baseline | None:
+    def _baseline_for(self, code: str, *, today: dt.date | None) -> _Baseline | None:
         signature = self._adjusted_daily_signature()
         if signature is None:
             self._baseline_cache.clear()
@@ -124,10 +144,11 @@ class QuoteChangeResolver:
         if signature != self._baseline_cache_signature:
             self._baseline_cache.clear()
             self._baseline_cache_signature = signature
-        if code in self._baseline_cache:
-            return self._baseline_cache[code]
-        baseline = self._load_baseline(code)
-        self._baseline_cache[code] = baseline
+        cache_key = (code, today.isoformat() if today is not None else None)
+        if cache_key in self._baseline_cache:
+            return self._baseline_cache[cache_key]
+        baseline = self._load_baseline(code, today=today)
+        self._baseline_cache[cache_key] = baseline
         return baseline
 
     def _adjusted_daily_signature(self) -> _AdjustedDailySignature | None:
@@ -139,20 +160,24 @@ class QuoteChangeResolver:
             return None
         return _AdjustedDailySignature(mtime_ns=stat.st_mtime_ns, size=stat.st_size)
 
-    def _load_baseline(self, code: str) -> _Baseline | None:
+    def _load_baseline(self, code: str, *, today: dt.date | None) -> _Baseline | None:
         if self._adjusted_daily_path is None or not self._adjusted_daily_path.exists():
             return None
         try:
             with duckdb.connect(":memory:") as con:
+                date_guard = "AND date < ?" if today is not None else ""
+                params: list[object] = [code]
+                if today is not None:
+                    params.append(today)
                 row = con.execute(
                     f"""
                     SELECT CAST(date AS VARCHAR) AS date_s, close
                     FROM '{self._adjusted_daily_path}'
-                    WHERE code = ? AND close > 0
+                    WHERE code = ? AND close > 0 {date_guard}
                     ORDER BY date DESC
                     LIMIT 1
                     """,
-                    [code],
+                    params,
                 ).fetchone()
         except Exception:
             return None
@@ -178,3 +203,23 @@ class QuoteChangeResolver:
             baseline.close * _BASELINE_SCALE_MISMATCH_RATIO < quote_min
             or baseline.close / _BASELINE_SCALE_MISMATCH_RATIO > quote_max
         )
+
+    def _baseline_stale_for_today(self, baseline: _Baseline, today: dt.date | None) -> bool:
+        if today is None:
+            return False
+        try:
+            baseline_date = dt.date.fromisoformat(baseline.date)
+        except ValueError:
+            return True
+        age_days = (today - baseline_date).days
+        if age_days < 1:
+            return True
+        return age_days > _max_expected_baseline_age_days(today)
+
+
+def _max_expected_baseline_age_days(today: dt.date) -> int:
+    if today.weekday() == 6:
+        return 2
+    if today.weekday() == 0:
+        return 3
+    return 1
