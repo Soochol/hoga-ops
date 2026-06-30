@@ -64,6 +64,9 @@ export interface LiveSeriesData {
  * slow enough to bound re-render cost when intraday push rates spike to
  * dozens–hundreds/s. See the subscribe effect for the trade-off note. */
 const LIVE_FLUSH_MS = 150;
+const EMPTY_OB_SNAPSHOTS: ReadonlyArray<ObSnapshot> = Object.freeze([]);
+const EMPTY_TRADE_SNAPSHOTS: ReadonlyArray<TradeSnapshot> = Object.freeze([]);
+const EMPTY_BROKER_SNAPSHOTS: ReadonlyArray<Record<string, unknown>> = Object.freeze([]);
 
 /**
  * useLiveSeries — initial REST fetch + WebSocket subscription for live snapshots.
@@ -91,18 +94,21 @@ export function useLiveSeries(code: string): LiveSeriesData {
   });
 
   const bufferRef = useRef(new LiveSnapshotBuffer());
+  const bufferOwnerRef = useRef<string | null>(null);
   const [tick, setTick] = useState(0); // bump to re-read buffer
 
   // Hydrate buffer when initial fetch completes.
   useEffect(() => {
     if (!initial.data) return;
+    if (initial.data.code !== code) return;
+    bufferOwnerRef.current = code;
     bufferRef.current.hydrate({
       ob: initial.data.snapshots as Array<{ t_ms: number; kind: string }>,
       trade: initial.data.trades as Array<{ t_ms: number; kind: string }>,
       broker: initial.data.brokers as Array<{ t_ms: number; kind: string }>,
     });
     setTick((t) => t + 1);
-  }, [initial.data]);
+  }, [initial.data, code]);
 
   // Subscribe to live snapshots over the shared WebSocket (ADR-0053). Pushes are
   // coalesced to one re-read per LIVE_FLUSH_MS window (trailing throttle): every
@@ -118,15 +124,21 @@ export function useLiveSeries(code: string): LiveSeriesData {
   // this path, so it's unaffected).
   useEffect(() => {
     if (!code) return;
+    bufferOwnerRef.current = code;
     let timer: ReturnType<typeof setTimeout> | null = null;
     const flush = () => { timer = null; setTick((t) => t + 1); };
     const unsub = subscribeLive(code, (entry: LiveSnapshotEntry) => {
+      if (bufferOwnerRef.current !== code) {
+        bufferRef.current.clear();
+        bufferOwnerRef.current = code;
+      }
       bufferRef.current.push(entry);
       if (timer === null) timer = setTimeout(flush, LIVE_FLUSH_MS);
     });
     return () => {
       unsub();
       if (timer !== null) { clearTimeout(timer); timer = null; }
+      if (bufferOwnerRef.current === code) bufferOwnerRef.current = null;
       bufferRef.current.clear();
       setTick(0);
     };
@@ -135,16 +147,18 @@ export function useLiveSeries(code: string): LiveSeriesData {
   // `tick` is intentionally passed to readKind so that React re-reads the
   // buffer on every WS push — bump state forces a re-render, readKind then
   // sees the updated buffer contents.
+  const currentInitial = initial.data?.code === code ? initial.data : undefined;
+  const bufferVisible = !!code && bufferOwnerRef.current === code;
   return {
-    initial: initial.data,
+    initial: currentInitial,
     isLoading: initial.isLoading,
     error: initial.error,
     // One structural cast at the buffer boundary: the buffer stores raw
     // {t_ms, kind, ...payload} dicts; the 'ob'/'trade' kinds carry the
     // ObSnapshot/TradeSnapshot fields the poller's typed builders wrote.
-    ob: readKind(bufferRef.current, 'ob', tick) as ReadonlyArray<ObSnapshot>,
-    trade: readKind(bufferRef.current, 'trade', tick) as ReadonlyArray<TradeSnapshot>,
-    broker: readKind(bufferRef.current, 'broker', tick),
+    ob: bufferVisible ? readKind(bufferRef.current, 'ob', tick) as ReadonlyArray<ObSnapshot> : EMPTY_OB_SNAPSHOTS,
+    trade: bufferVisible ? readKind(bufferRef.current, 'trade', tick) as ReadonlyArray<TradeSnapshot> : EMPTY_TRADE_SNAPSHOTS,
+    broker: bufferVisible ? readKind(bufferRef.current, 'broker', tick) : EMPTY_BROKER_SNAPSHOTS,
   };
 }
 
