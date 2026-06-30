@@ -75,14 +75,28 @@ describe('QuoteRow', () => {
     const setRef = vi.fn();
     const { onClick } = row({ dragging: true, sortableRef: setRef });
     const li = screen.getByTestId('quote-row-005930');
-    expect(li.style.opacity).toBe('0.6');
+    expect(li.style.opacity).toBe('0.72');
     expect(li.style.cursor).toBe('grabbing');
+    expect(li.style.background).toContain('color-mix');
+    expect(li.style.boxShadow).not.toContain('var(--accent)');
+    expect(li.className).not.toContain('before:bg-[var(--accent)]');
+    expect(li.className).not.toContain('after:bg-[var(--accent)]');
     expect(setRef).toHaveBeenCalledWith(li);
     fireEvent.click(li);
     expect(onClick).toHaveBeenCalledOnce();
   });
 
-  it('puts drag listeners on the left handle without stealing row clicks', () => {
+  it('renders one insertion line between rows when dropIndicator is provided', () => {
+    row({ dropIndicator: 'after' });
+    const li = screen.getByTestId('quote-row-005930');
+
+    expect(li.className).toContain('after:bg-[var(--accent)]');
+    expect(li.className).toContain('after:bottom-0');
+    expect(li.className).toContain('before:border-[var(--accent)]');
+    expect(li.className).not.toContain('after:top-0');
+  });
+
+  it('puts drag listeners on the whole row without rendering a handle', () => {
     const onPointerDown = vi.fn();
     const setActivatorNodeRef = vi.fn();
     const { onClick } = row({
@@ -91,15 +105,11 @@ describe('QuoteRow', () => {
       dragActivatorRef: setActivatorNodeRef,
     });
     const li = screen.getByTestId('quote-row-005930');
-    const handle = screen.getByTestId('drag-handle-quote-row-005930');
 
-    expect(handle).toHaveAttribute('aria-label', '삼성전자 순서 이동');
-    expect(setActivatorNodeRef).toHaveBeenCalledWith(handle);
-    fireEvent.pointerDown(handle);
+    expect(screen.queryByTestId('drag-handle-quote-row-005930')).not.toBeInTheDocument();
+    expect(setActivatorNodeRef).toHaveBeenCalledWith(li);
+    fireEvent.pointerDown(li);
     expect(onPointerDown).toHaveBeenCalledOnce();
-
-    fireEvent.click(handle);
-    expect(onClick).not.toHaveBeenCalled();
 
     fireEvent.click(li);
     expect(onClick).toHaveBeenCalledWith({ disposition: 'current-tab' });

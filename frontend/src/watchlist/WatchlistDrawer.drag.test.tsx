@@ -75,21 +75,17 @@ describe('WatchlistDrawer drag wiring', () => {
     vi.spyOn(watchlistApi, 'getWatchlist').mockResolvedValue(DATA);
   });
 
-  it('renders an entry drag handle beside the stock name and wires drag only there', async () => {
+  it('wires entry drag to the whole stock row without rendering a row handle', async () => {
     const qc = new QueryClient({ defaultOptions: { queries: { retry: false }, mutations: { retry: false } } });
     render(<WatchlistDrawer />, { wrapper: wrap(qc) });
     await waitFor(() => expect(screen.getByText('삼성전자')).toBeInTheDocument());
 
     const row = screen.getByTestId('watchlist-row-005930');
-    const handle = screen.getByTestId('drag-handle-watchlist-row-005930');
-    expect(handle).toHaveTextContent('⠿');
+    expect(screen.queryByTestId('drag-handle-watchlist-row-005930')).not.toBeInTheDocument();
+    expect(h.setActivatorNodeRef).toHaveBeenCalledWith(row);
 
-    fireEvent.pointerDown(handle);
-    expect(h.onPointerDown).toHaveBeenCalledOnce();
-
-    h.onPointerDown.mockClear();
     fireEvent.pointerDown(row);
-    expect(h.onPointerDown).not.toHaveBeenCalled();
+    expect(h.onPointerDown).toHaveBeenCalledOnce();
   });
 
   it('wires drag handles for every folder group, not only the first group', async () => {
