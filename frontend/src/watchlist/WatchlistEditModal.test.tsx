@@ -3,7 +3,17 @@ import { render, screen, fireEvent, waitFor, cleanup } from '@testing-library/re
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import * as api from '../api/watchlist';
 
-const h = vi.hoisted(() => ({ onDragEnd: null as null | ((e: unknown) => void) }));
+const h = vi.hoisted(() => ({
+  onDragEnd: null as null | ((e: unknown) => void),
+  onPointerDown: vi.fn(),
+  setActivatorNodeRef: vi.fn(),
+  sortableState: {} as Record<string, Partial<{
+    activeIndex: number;
+    overIndex: number;
+    index: number;
+    isDragging: boolean;
+  }>>,
+}));
 vi.mock('@dnd-kit/core', async (orig) => {
   const actual = await orig<typeof import('@dnd-kit/core')>();
   return {
@@ -23,9 +33,17 @@ vi.mock('@dnd-kit/sortable', async (orig) => {
   return {
     ...actual,
     SortableContext: ({ children }: { children: React.ReactNode }) => <>{children}</>,
-    useSortable: () => ({
-      setNodeRef: () => {}, listeners: {}, attributes: {},
-      transform: null, transition: undefined, isDragging: false,
+    useSortable: ({ id }: { id: string }) => ({
+      setNodeRef: () => {},
+      setActivatorNodeRef: h.setActivatorNodeRef,
+      listeners: { onPointerDown: h.onPointerDown },
+      attributes: { role: 'button' },
+      transform: null,
+      transition: undefined,
+      isDragging: h.sortableState[id]?.isDragging ?? false,
+      activeIndex: h.sortableState[id]?.activeIndex ?? -1,
+      overIndex: h.sortableState[id]?.overIndex ?? -1,
+      index: h.sortableState[id]?.index ?? -1,
     }),
   };
 });
@@ -43,7 +61,14 @@ const DATA = {
 };
 
 describe('WatchlistEditModal', () => {
-  beforeEach(() => { cleanup(); h.onDragEnd = null; vi.restoreAllMocks(); });
+  beforeEach(() => {
+    cleanup();
+    h.onDragEnd = null;
+    h.onPointerDown.mockClear();
+    h.setActivatorNodeRef.mockClear();
+    h.sortableState = {};
+    vi.restoreAllMocks();
+  });
   it('renders dialog with folder list and opens the first group by default', async () => {
     vi.spyOn(api, 'getWatchlist').mockResolvedValue(DATA);
     const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } });
@@ -106,7 +131,7 @@ describe('WatchlistEditModal', () => {
     expect(screen.queryByLabelText('스윙 위로')).not.toBeInTheDocument();
     expect(screen.queryByLabelText('스윙 아래로')).not.toBeInTheDocument();
     expect(screen.queryByLabelText('스윙 이름변경')).not.toBeInTheDocument();
-    expect(screen.getByTestId('folder-drag-handle-f_a')).toHaveTextContent('⠿');
+    expect(screen.queryByTestId('folder-drag-handle-f_a')).not.toBeInTheDocument();
 
     fireEvent.doubleClick(screen.getByText('스윙'));
     const input = screen.getByDisplayValue('스윙');
@@ -115,6 +140,62 @@ describe('WatchlistEditModal', () => {
     await waitFor(() => expect(ren).toHaveBeenCalledWith('f_a', '단타'));
     fireEvent.click(screen.getByLabelText('스윙 삭제'));
     await waitFor(() => expect(del).toHaveBeenCalledWith('f_a'));
+  });
+
+  it('uses the whole folder row as the drag surface and draws one between-row indicator', async () => {
+    h.sortableState = {
+      f_a: { activeIndex: 0, overIndex: 1, index: 0, isDragging: true },
+      f_b: { activeIndex: 0, overIndex: 1, index: 1 },
+    };
+    vi.spyOn(api, 'getWatchlist').mockResolvedValue({
+      folders: [
+        { id: 'f_a', name: '스윙', order: 0, capture_enabled: true },
+        { id: 'f_b', name: '장기', order: 1, capture_enabled: true },
+      ],
+      entries: [],
+      next_run_at_ms: 0,
+    });
+    const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+
+    render(<WatchlistEditModal onClose={() => {}} />, { wrapper: wrap(qc) });
+
+    const first = await screen.findByTestId('folder-row-f_a');
+    const second = screen.getByTestId('folder-row-f_b');
+    expect(screen.queryByTestId('folder-drag-handle-f_a')).not.toBeInTheDocument();
+    expect(h.setActivatorNodeRef).toHaveBeenCalledWith(first);
+    fireEvent.pointerDown(first);
+    expect(h.onPointerDown).toHaveBeenCalledOnce();
+    expect(first.className).not.toContain('after:bg-[var(--accent)]');
+    expect(second.className).toContain('after:bg-[var(--accent)]');
+    expect(second.className).toContain('after:bottom-0');
+  });
+
+  it('uses the whole entry row as the drag surface and draws one between-row indicator', async () => {
+    h.sortableState = {
+      '005930': { activeIndex: 0, overIndex: 1, index: 0, isDragging: true },
+      '000660': { activeIndex: 0, overIndex: 1, index: 1 },
+    };
+    vi.spyOn(api, 'getWatchlist').mockResolvedValue({
+      folders: [{ id: 'f_a', name: '스윙', order: 0, capture_enabled: true }],
+      entries: [
+        { code: '005930', name: '삼성전자', registered_at_kst_date: '20260101', last_success_date: null, folder_id: 'f_a', order: 0 },
+        { code: '000660', name: 'SK하이닉스', registered_at_kst_date: '20260101', last_success_date: null, folder_id: 'f_a', order: 1 },
+      ],
+      next_run_at_ms: 0,
+    });
+    const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+
+    render(<WatchlistEditModal onClose={() => {}} />, { wrapper: wrap(qc) });
+
+    const first = await screen.findByTestId('edit-row-005930');
+    const second = screen.getByTestId('edit-row-000660');
+    expect(first).not.toHaveTextContent('⠿');
+    expect(h.setActivatorNodeRef).toHaveBeenCalledWith(first);
+    fireEvent.pointerDown(first);
+    expect(h.onPointerDown).toHaveBeenCalledOnce();
+    expect(first.className).not.toContain('after:bg-[var(--accent)]');
+    expect(second.className).toContain('after:bg-[var(--accent)]');
+    expect(second.className).toContain('after:bottom-0');
   });
 
   it('Escape during folder rename cancels the rename without closing the modal', async () => {

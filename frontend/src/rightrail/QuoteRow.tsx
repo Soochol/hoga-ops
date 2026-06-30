@@ -1,6 +1,7 @@
 import type { DraggableAttributes, DraggableSyntheticListeners } from '@dnd-kit/core';
 import { dispositionFromMouseEvent, type LiveOpenDisposition } from '../live/liveActivation';
 import { priceDirClass } from '../ui/priceDir';
+import { dropIndicatorClass, sortableDraggingStyle, type DropIndicator } from '../ui/sortableDragVisuals';
 
 /** 관심종목·스크리너 드로어 공용 행: 종목명(좌) │ 현재가(+등락률)(우) │ (선택) 트레일링 액션.
  *  ScreenerResultRow 의 시각/키보드 계약을 그대로 가져오고 quote 셀을 우측에 둔다.
@@ -24,7 +25,7 @@ export interface QuoteRowProps {
   dragAttributes?: DraggableAttributes;
   dragActivatorRef?: (node: HTMLElement | null) => void;
   dragging?: boolean;
-  dropIndicator?: 'before' | 'after';
+  dropIndicator?: DropIndicator;
   // --- 관심종목 패널 전용 우클릭/Delete (미전달 시 무동작) ---
   onContextMenu?: (e: React.MouseEvent<HTMLLIElement>) => void;
   onDelete?: () => void;
@@ -82,24 +83,13 @@ export function QuoteRow({
       onKeyDown={onKeyDown}
       onContextMenu={onContextMenu}
       className={`group cursor-pointer touch-none ${indented ? 'pl-10' : 'pl-md'} pr-md py-sm flex items-center gap-2 border-b outline-none hover:bg-bg-input-hover focus-visible:bg-bg-input-hover ${
-        dropIndicator === 'before'
-          ? "before:content-[''] before:absolute before:left-[-4px] before:top-[-5px] before:z-10 before:h-3 before:w-3 before:rounded-full before:border-2 before:border-[var(--accent)] before:bg-bg-card after:content-[''] after:absolute after:left-0 after:right-0 after:top-0 after:z-10 after:h-0.5 after:bg-[var(--accent)]"
-          : dropIndicator === 'after'
-            ? "before:content-[''] before:absolute before:left-[-4px] before:bottom-[-5px] before:z-10 before:h-3 before:w-3 before:rounded-full before:border-2 before:border-[var(--accent)] before:bg-bg-card after:content-[''] after:absolute after:left-0 after:right-0 after:bottom-0 after:z-10 after:h-0.5 after:bg-[var(--accent)]"
-            : ''
+        dropIndicatorClass(dropIndicator)
       }`}
       style={{
         background: active ? 'var(--tint-selection)' : 'transparent',
         borderLeft: `2px solid ${active ? 'var(--accent)' : 'transparent'}`,
         ...sortableStyle,
-        ...(dragging ? {
-          opacity: 0.72,
-          cursor: 'grabbing',
-          zIndex: 1,
-          position: 'relative',
-          background: 'color-mix(in srgb, var(--accent) 18%, var(--bg-card))',
-          boxShadow: '0 8px 18px rgba(0, 0, 0, 0.14)',
-        } : {}),
+        ...(dragging ? sortableDraggingStyle(18) : {}),
         ...(dropIndicator ? { position: 'relative' } : {}),
       }}
     >

@@ -11,6 +11,7 @@ import { LastSuccessBadge } from './rowFormat';
 import { formatCaughtUpOneMessage, symbolLabel } from './banners';
 import { selectVisibleEntries, type Selected } from './grouping';
 import type { WatchlistEntry } from '../api/watchlist';
+import { dropIndicatorClass, sortableDraggingStyle } from '../ui/sortableDragVisuals';
 
 export function WatchlistEntryPane({ selected }: { selected: Selected }) {
   const { data } = useWatchlist();
@@ -114,7 +115,7 @@ export function WatchlistEntryPane({ selected }: { selected: Selected }) {
         </div>
       )}
 
-      {/* list — drag-reorder within the selected folder / 미분류 (⠿ handle) */}
+      {/* list — drag-reorder within the selected folder / 미분류 */}
       <ul className="flex-1 overflow-auto" style={{ listStyle: 'none', margin: 0, padding: 0 }}>
         <SortableContext items={entries.map((e) => e.code)} strategy={verticalListSortingStrategy}>
           {entries.map((e) => (
@@ -137,32 +138,37 @@ type RowProps = {
 // 1st col 16px = CheckIcon size (보조지표 IndicatorPanel과 같은 glyph; 행 밀도 때문에 18 대신 16).
 // 종목코드는 표시하지 않음 — 체크박스 aria-label(`{code} 선택`)에만 남는다(이름과 달리 유일).
 const ROW_CLASS =
-  'grid grid-cols-[16px_1ch_1fr_8ch_2.5ch] items-center gap-2 px-3 py-2 border-b border-border text-sm hover:bg-bg-input';
+  'relative grid grid-cols-[16px_1fr_8ch_2.5ch] items-center gap-2 px-3 py-2 border-b border-border text-sm hover:bg-bg-input touch-none';
 
-/** Sortable row. ⠿ is the drag handle (listeners on the handle only,
- *  so the checkbox / ↻ button stay clickable). */
 function SortableEntryRow(props: RowProps) {
   const { entry } = props;
-  // listeners-only on the handle (no `attributes`): keeps ⠿ a clean decorative,
-  // non-focusable span (matches the original) — pointer-dnd only, no keyboard-dnd.
-  const { listeners, setNodeRef, transform, transition, isDragging } =
+  const { listeners, attributes, setNodeRef, setActivatorNodeRef, transform, transition, isDragging, activeIndex, overIndex, index } =
     useSortable({ id: entry.code });
+  const dropIndicator = activeIndex !== -1 && overIndex !== -1 && index === overIndex && index !== activeIndex
+    ? (activeIndex < overIndex ? 'after' : 'before')
+    : undefined;
   const style: React.CSSProperties = {
     transform: CSS.Transform.toString(transform),
     transition,
-    opacity: isDragging ? 0.5 : undefined,
+    ...(isDragging ? sortableDraggingStyle() : {}),
+    ...(dropIndicator ? { position: 'relative' } : {}),
   };
   return (
-    <li ref={setNodeRef} style={style} data-testid={`edit-row-${entry.code}`} className={ROW_CLASS}>
+    <li ref={(node) => { setNodeRef(node); setActivatorNodeRef(node); }}
+      {...attributes}
+      {...listeners}
+      style={style}
+      data-testid={`edit-row-${entry.code}`}
+      className={`${ROW_CLASS} ${dropIndicatorClass(dropIndicator)}`}>
       <button type="button" role="checkbox" aria-checked={props.checked} aria-label={`${entry.code} 선택`}
+        onPointerDown={(e) => e.stopPropagation()}
         onClick={props.onToggle} className="flex items-center cursor-pointer">
         <CheckIcon filled={props.checked} size={16} />
       </button>
-      <span {...listeners} aria-hidden
-        className="text-fg-dimmer cursor-grab select-none touch-none">⠿</span>
       <span className="truncate">{entry.name}</span>
       <LastSuccessBadge date={entry.last_success_date} />
       <button type="button" aria-label={`${entry.name} 수집`} onClick={props.onCatchup} disabled={props.catchingUp}
+        onPointerDown={(e) => e.stopPropagation()}
         className={`text-fg-dimmer hover:text-accent disabled:opacity-40 ${props.catchingUp ? 'animate-spin' : ''}`}>↻</button>
     </li>
   );
