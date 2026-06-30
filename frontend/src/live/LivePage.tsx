@@ -8,7 +8,7 @@ import { LiveStatusBar } from './LiveStatusBar';
 import { LiveWorkarea } from './LiveWorkarea';
 import { LiveStateBanner } from './LiveStateBanner';
 import { LiveTabBar } from './LiveTabBar';
-import { useLiveTabsStore } from '../state/liveTabs';
+import { persistLiveTabsNow, useLiveTabsStore } from '../state/liveTabs';
 import { focusLiveSearch } from './liveSearchFocus';
 import { useLiveKeyboard } from './useLiveKeyboard';
 import { useLiveBundle } from './useLiveBundle';
@@ -139,11 +139,23 @@ export function LivePage() {
     viewportCaptureRef.current = capture;
   }, []);
   const captureActiveTabViewport = useCallback(() => {
-    if (!activeTabId) return;
+    if (!activeTabId) return false;
     const viewport = viewportCaptureRef.current();
-    if (!viewport) return;
+    if (!viewport) return false;
     updateTabViewport(activeTabId, viewport);
+    return true;
   }, [activeTabId, updateTabViewport]);
+  useEffect(() => {
+    const flushActiveViewport = () => {
+      if (captureActiveTabViewport()) persistLiveTabsNow();
+    };
+    window.addEventListener('pagehide', flushActiveViewport);
+    window.addEventListener('beforeunload', flushActiveViewport);
+    return () => {
+      window.removeEventListener('pagehide', flushActiveViewport);
+      window.removeEventListener('beforeunload', flushActiveViewport);
+    };
+  }, [captureActiveTabViewport]);
   const focusLiveTab = useCallback((id: string) => {
     if (id !== activeTabId) captureActiveTabViewport();
     focusTab(id);

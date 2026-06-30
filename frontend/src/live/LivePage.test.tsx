@@ -625,6 +625,35 @@ describe('LivePage shell', () => {
     }));
   });
 
+  it('flushes the active live tab viewport on pagehide before the debounce can drop it', async () => {
+    const capturedViewport = {
+      rightEdgeMs: 1_781_000_000_000,
+      barSpan: 331,
+      atLiveEdge: false,
+    };
+    useLiveTabsStore.setState({
+      tabs: [
+        { id: 'tab-a', code: '005930', label: '삼성전자', timeframe: '1m', historicalFromDate: null },
+      ],
+      activeTabId: 'tab-a',
+    });
+
+    renderWithRouter();
+    await waitFor(() => expect(livePageMocks.liveChartRootProps.at(-1)).toMatchObject({
+      code: '005930',
+    }));
+    act(() => {
+      livePageMocks.liveChartRootProps.at(-1)?.onViewportCaptureReady?.(() => capturedViewport);
+    });
+
+    act(() => {
+      window.dispatchEvent(new Event('pagehide'));
+    });
+
+    const persisted = JSON.parse(localStorage.getItem('live.tabs.v2') ?? '{}');
+    expect(persisted.tabs[0].viewport).toEqual(capturedViewport);
+  });
+
   it('does not restore logical viewport across minute timeframe changes', async () => {
     const capturedViewport = {
       rightEdgeMs: 1_781_000_000_000,
