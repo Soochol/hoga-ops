@@ -15,9 +15,6 @@ ChangePctSource = Literal[
     "unavailable",
 ]
 
-_REJECT_DIFF_PCT_POINTS = 5.0
-_EXTREME_KIS_ABS_PCT = 30.0
-
 
 @dataclass(frozen=True)
 class QuoteChangeResolution:
@@ -65,19 +62,17 @@ class QuoteChangeResolver:
             )
 
         adjusted_pct = self._adjusted_change_pct(q, baseline)
-        if baseline is not None and adjusted_pct is not None and q.change_pct is not None:
-            if self._should_reject_kis(kis_pct=q.change_pct, adjusted_pct=adjusted_pct):
-                warnings.append("kis_change_pct_rejected")
-                return QuoteChangeResolution(
-                    code=q.code,
-                    price=q.price,
-                    change_pct=adjusted_pct,
-                    change_won=round(q.price - baseline.close),
-                    baseline_price=baseline.close,
-                    baseline_date=baseline.date,
-                    change_pct_source="adjusted_daily",
-                    warnings=warnings,
-                )
+        if baseline is not None and adjusted_pct is not None:
+            return QuoteChangeResolution(
+                code=q.code,
+                price=q.price,
+                change_pct=adjusted_pct,
+                change_won=round(q.price - baseline.close),
+                baseline_price=baseline.close,
+                baseline_date=baseline.date,
+                change_pct_source="adjusted_daily",
+                warnings=warnings,
+            )
 
         if q.change_pct is not None:
             if self._adjusted_daily_path is not None and self._adjusted_daily_path.exists():
@@ -92,17 +87,6 @@ class QuoteChangeResolver:
                 baseline_date=baseline.date if baseline else None,
                 change_pct_source="kis",
                 warnings=warnings,
-            )
-
-        if adjusted_pct is not None and baseline is not None:
-            return QuoteChangeResolution(
-                code=q.code,
-                price=q.price,
-                change_pct=adjusted_pct,
-                change_won=round(q.price - baseline.close),
-                baseline_price=baseline.close,
-                baseline_date=baseline.date,
-                change_pct_source="adjusted_daily",
             )
 
         if self._adjusted_daily_path is not None and self._adjusted_daily_path.exists():
@@ -165,11 +149,3 @@ class QuoteChangeResolver:
         if baseline is None or baseline.close <= 0 or q.price <= 0:
             return None
         return round((q.price / baseline.close - 1.0) * 100.0, 2)
-
-    def _should_reject_kis(self, *, kis_pct: float, adjusted_pct: float) -> bool:
-        diff = abs(kis_pct - adjusted_pct)
-        if diff < _REJECT_DIFF_PCT_POINTS:
-            return False
-        if abs(kis_pct) >= _EXTREME_KIS_ABS_PCT:
-            return True
-        return diff >= _REJECT_DIFF_PCT_POINTS

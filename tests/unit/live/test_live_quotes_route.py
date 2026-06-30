@@ -106,7 +106,29 @@ def test_quotes_recomputes_change_pct_when_kis_uses_unadjusted_baseline(monkeypa
     assert q0["baseline_price"] == 9930
     assert q0["baseline_date"] == "2026-06-26"
     assert q0["change_pct_source"] == "adjusted_daily"
-    assert q0["warnings"] == ["kis_change_pct_rejected"]
+    assert q0["warnings"] == []
+
+
+def test_quotes_recomputes_small_stale_kis_change_pct(monkeypatch, tmp_path):
+    monkeypatch.setattr(live_api, "_quote_phase", lambda now: "open")
+    _seed_quote_adjusted_daily(
+        tmp_path,
+        [("005930", "2026-06-26", 100, 100, 100, 100, 100)],
+    )
+    quotes = [KisQuote("005930", 105, 2.1, 2)]
+    c = TestClient(_app(quotes, tmp_path))
+
+    r = c.get("/api/live/quotes", params={"codes": "005930"})
+
+    assert r.status_code == 200
+    q0 = r.json()["quotes"][0]
+    assert q0["price"] == 105
+    assert q0["change_pct"] == 5.0
+    assert q0["change_won"] == 5
+    assert q0["baseline_price"] == 100
+    assert q0["baseline_date"] == "2026-06-26"
+    assert q0["change_pct_source"] == "adjusted_daily"
+    assert q0["warnings"] == []
 
 
 def test_quotes_pre_open_nulls_change_pct(monkeypatch, tmp_path):
@@ -263,7 +285,7 @@ def test_quotes_closed_cached_quotes_use_adjusted_change_pct_without_kis(monkeyp
     assert q0["baseline_price"] == 9930
     assert q0["baseline_date"] == "2026-06-26"
     assert q0["change_pct_source"] == "adjusted_daily"
-    assert q0["warnings"] == ["kis_change_pct_rejected"]
+    assert q0["warnings"] == []
 
 
 def test_quotes_closed_cold_start_fetches_once(monkeypatch, tmp_path):
