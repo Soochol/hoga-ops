@@ -97,6 +97,26 @@ describe('buildCandleTooltip', () => {
     expect(m.askBidBiasLabel).toBe('매도우위');
   });
 
+  it('분봉 내 최댓값 설정에 따라 총잔량은 ask_max/bid_max, A/B는 imb_max 쌍을 쓴다', () => {
+    const m = buildCandleTooltip(bars, 1, '1m', {
+      t: bars[1].ts_ms,
+      ask_total: 32_500,
+      bid_total: 900,
+      ask_max: 80_000,
+      bid_max: 2_000,
+      imb_max_ask: 500,
+      imb_max_bid: 10_000,
+    }, {
+      quoteTotalsIntraMax: true,
+      ratioIntraMax: true,
+    })!;
+
+    expect(m.quoteAskTotal).toBe(80_000);
+    expect(m.quoteBidTotal).toBe(2_000);
+    expect(m.askBidRatio).toBeCloseTo(0.05, 6);
+    expect(m.askBidBiasLabel).toBe('매수우위');
+  });
+
   it('매수 총잔량이 0이면 ask/bid ratio 는 null 로 둔다', () => {
     const m = buildCandleTooltip(bars, 1, '1m', {
       t: bars[1].ts_ms,

@@ -75,6 +75,8 @@ function Row({ k, children }: { k: string; children: React.ReactNode }) {
 
 function CandleTooltip({ chart, bundle, quoteBundle, axis, paneSeries, timeframe }: Props) {
   const enabled = useActivePrefs((p) => p.candleTooltipEnabled);
+  const quoteTotalsIntraMax = useActivePrefs((p) => p.quoteTotalsIntraMax);
+  const ratioIntraMax = useActivePrefs((p) => p.ratioIntraMax);
   const tipRef = useRef<HTMLDivElement>(null);
   const hoverRef = useRef<{ tsMs: number; left: number; top: number } | null>(null);
   // 호버 "키"는 절대 ts_ms 로 저장한다(가상시각 X). 가상시각은 axis 리베이스(과거 거래일
@@ -174,7 +176,10 @@ function CandleTooltip({ chart, bundle, quoteBundle, axis, paneSeries, timeframe
   const renderedHover = hoverRef.current?.tsMs === hover.tsMs ? hoverRef.current : hover;
   const idx = tsMsToIndex.get(renderedHover.tsMs);
   if (idx === undefined) return null;
-  const m = buildCandleTooltip(drawn, idx, timeframe, quoteByTs.get(renderedHover.tsMs));
+  const m = buildCandleTooltip(drawn, idx, timeframe, quoteByTs.get(renderedHover.tsMs), {
+    quoteTotalsIntraMax,
+    ratioIntraMax,
+  });
   if (!m) return null;
   return (
     <div ref={tipRef} data-testid="candle-tooltip" style={{ ...boxStyle, left: renderedHover.left, top: renderedHover.top }}>
