@@ -149,9 +149,9 @@ export type ToolCtx = {
   update(id: string, patch: Partial<Drawing>): void;
   remove(id: string): void;
   setSelected(id: string | null): void;
-  /** Returns the overlay to select mode with the just-added drawing selected,
-   *  so the property panel attaches to the new shape. See ADR-0032 (supersedes
-   *  ADR-0030's "clears selection" semantic). */
+  /** Legacy post-commit hook kept in the context for compatibility with older
+   *  tests/callers. Current drawing tools keep their active tool after commit
+   *  and select the new drawing through `setSelected` instead. */
   revertToSelectMode(newId: string): void;
 };
 
@@ -319,7 +319,7 @@ export const hlineTool: DrawingToolSpec = {
       lineStyle: ctx.defaults.lineStyle,
       paneId,
     });
-    ctx.revertToSelectMode(id);
+    ctx.setSelected(id);
   },
 };
 
@@ -329,7 +329,7 @@ export const trendlineTool: DrawingToolSpec = {
   label: '추세선',
   glyph: '╱',
   cursor: 'crosshair',
-  shortcut: { alt: true, key: 't' },
+  shortcut: { alt: true, key: 'j' },
   onPointerDown(ctx) {
     const paneId = ctx.paneIdAtY(ctx.py);
     const data = ctx.pixelToData(ctx.px, ctx.py, paneId);
@@ -367,7 +367,7 @@ export const trendlineTool: DrawingToolSpec = {
       lineStyle: ctx.defaults.lineStyle,
       paneId: draft.paneId,
     });
-    ctx.revertToSelectMode(id);
+    ctx.setSelected(id);
   },
 };
 
@@ -377,7 +377,7 @@ export const pencilTool: DrawingToolSpec = {
   label: '연필',
   glyph: '✎',
   cursor: 'crosshair',
-  shortcut: { alt: true, key: 'p' },
+  shortcut: { alt: true, key: 'b' },
   onPointerDown(ctx) {
     const paneId = ctx.paneIdAtY(ctx.py);
     const data = ctx.pixelToData(ctx.px, ctx.py, paneId);
@@ -421,7 +421,7 @@ export const pencilTool: DrawingToolSpec = {
       lineStyle: ctx.defaults.lineStyle,
       paneId: draft.paneId,
     });
-    ctx.revertToSelectMode(id);
+    ctx.setSelected(id);
   },
 };
 
