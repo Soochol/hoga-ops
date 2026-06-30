@@ -77,6 +77,33 @@ def test_recomputes_change_rate_from_adjusted_baseline_even_when_kis_diff_is_sma
     assert out.warnings == []
 
 
+def test_hides_change_rate_when_adjusted_baseline_scale_mismatches_quote(tmp_path):
+    daily = tmp_path / "daily_adjusted.parquet"
+    _write_adjusted_daily(
+        daily,
+        [("049080", "2026-06-26", 993, 993, 993, 993, 100)],
+    )
+    resolver = QuoteChangeResolver(adjusted_daily_path=daily)
+
+    q = KisQuote(
+        code="049080",
+        price=6290,
+        change_pct=533.43,
+        change_won=5297,
+        open=7550,
+        high=7660,
+        low=6080,
+    )
+    out = resolver.resolve_quote(q, phase="open")
+
+    assert out.change_pct is None
+    assert out.change_won is None
+    assert out.change_pct_source == "unavailable"
+    assert out.baseline_price == 993
+    assert out.baseline_date == "2026-06-26"
+    assert out.warnings == ["adjusted_baseline_scale_mismatch"]
+
+
 def test_missing_adjusted_file_falls_back_to_kis_without_warning(tmp_path):
     resolver = QuoteChangeResolver(adjusted_daily_path=tmp_path / "missing.parquet")
 

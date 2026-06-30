@@ -3,6 +3,11 @@
 All notable changes to this project are documented here.
 The format follows a 4-digit `MAJOR.MINOR.PATCH.MICRO` scheme.
 
+## [0.12.21.1] - 2026-06-30
+
+### Fixed
+- **실시간 등락률 기준가 스케일 검증**: 보정 일봉 기준가가 현재가/장중 OHLC와 명백히 다른 가격 스케일이면 KIS 등락률로 fallback하지 않고 등락률을 표시하지 않도록 해, 잘못된 기준가로 `+533.43%` 같은 값이 관심종목·스크리너·히트맵에 노출되지 않게 했다.
+
 ## [0.12.21.0] - 2026-06-30
 
 ### Fixed
