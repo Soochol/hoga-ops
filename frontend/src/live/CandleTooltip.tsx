@@ -12,6 +12,7 @@ import { buildCandleTooltip, formatTooltipQtyK, placeTooltip } from './candleToo
 type Props = {
   chart: IChartApi;
   bundle: RangeBundle;
+  quoteBundle?: RangeBundle | null;
   axis: VirtualAxis;
   paneSeries: PaneSeriesMap;
   timeframe: LiveTimeframe;
@@ -72,7 +73,7 @@ function Row({ k, children }: { k: string; children: React.ReactNode }) {
   );
 }
 
-function CandleTooltip({ chart, bundle, axis, paneSeries, timeframe }: Props) {
+function CandleTooltip({ chart, bundle, quoteBundle, axis, paneSeries, timeframe }: Props) {
   const enabled = useActivePrefs((p) => p.candleTooltipEnabled);
   const tipRef = useRef<HTMLDivElement>(null);
   const hoverRef = useRef<{ tsMs: number; left: number; top: number } | null>(null);
@@ -116,11 +117,11 @@ function CandleTooltip({ chart, bundle, axis, paneSeries, timeframe }: Props) {
 
   const quoteByTs = useMemo(() => {
     const map = new Map<number, NonNullable<RangeBundle['quote_ratio']['points'][number]>>();
-    for (const p of bundle.quote_ratio?.points ?? []) {
+    for (const p of (quoteBundle ?? bundle).quote_ratio?.points ?? []) {
       map.set(p.t, p);
     }
     return map;
-  }, [bundle.quote_ratio?.points]);
+  }, [bundle, quoteBundle]);
 
   // 핸들러가 읽는 최신 데이터(drawn·vsecToIndex·paneSeries)는 ref 로 — 구독 effect 가
   // [chart, enabled] 에만 의존하게 해, 데이터 틱·pane 등록 변화로 재구독(→ 툴팁 소멸)되지
