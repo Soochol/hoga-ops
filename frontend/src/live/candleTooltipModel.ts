@@ -23,6 +23,11 @@ export interface CandleTooltipModel {
   askBidBiasLabel: '매도우위' | '매수우위' | '균형' | null;
 }
 
+export interface CandleTooltipHogaMode {
+  quoteTotalsIntraMax?: boolean;
+  ratioIntraMax?: boolean;
+}
+
 function pad(n: number): string {
   return String(n).padStart(2, '0');
 }
@@ -64,6 +69,7 @@ export function buildCandleTooltip(
   index: number,
   timeframe: LiveTimeframe,
   quotePoint?: QuoteRatioPoint | null,
+  hogaMode: CandleTooltipHogaMode = {},
 ): CandleTooltipModel | null {
   if (index < 0 || index >= candles.length) return null;
   const c = candles[index];
@@ -74,11 +80,21 @@ export function buildCandleTooltip(
   const basis = prev && prev.close > 0 ? prev.close : null;
   const pct = (v: number): number | null => (basis === null ? null : (v / basis - 1) * 100);
   const prevVol = prev ? prev.vol_a + prev.vol_b : 0;
-  const quoteAskTotal = quotePoint?.ask_total ?? null;
-  const quoteBidTotal = quotePoint?.bid_total ?? null;
+  const quoteAskTotal = quotePoint
+    ? hogaMode.quoteTotalsIntraMax ? quotePoint.ask_max : quotePoint.ask_total
+    : null;
+  const quoteBidTotal = quotePoint
+    ? hogaMode.quoteTotalsIntraMax ? quotePoint.bid_max : quotePoint.bid_total
+    : null;
+  const ratioAskTotal = quotePoint
+    ? hogaMode.ratioIntraMax ? quotePoint.imb_max_ask : quotePoint.ask_total
+    : null;
+  const ratioBidTotal = quotePoint
+    ? hogaMode.ratioIntraMax ? quotePoint.imb_max_bid : quotePoint.bid_total
+    : null;
   const askBidRatio =
-    quoteAskTotal !== null && quoteBidTotal !== null && quoteBidTotal > 0
-      ? quoteAskTotal / quoteBidTotal
+    ratioAskTotal !== null && ratioBidTotal !== null && ratioBidTotal > 0
+      ? ratioAskTotal / ratioBidTotal
       : null;
   return {
     tsMs: c.ts_ms,
@@ -99,8 +115,8 @@ export function buildCandleTooltip(
     quoteBidTotal,
     askBidRatio,
     askBidBiasLabel:
-      quoteAskTotal !== null && quoteBidTotal !== null && askBidRatio !== null
-        ? askBidBiasLabel(quoteAskTotal, quoteBidTotal)
+      ratioAskTotal !== null && ratioBidTotal !== null && askBidRatio !== null
+        ? askBidBiasLabel(ratioAskTotal, ratioBidTotal)
         : null,
   };
 }

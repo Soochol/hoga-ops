@@ -9,7 +9,11 @@ const origRAF = globalThis.requestAnimationFrame;
 beforeEach(() => {
   // rAF 동기 실행
   globalThis.requestAnimationFrame = ((cb: FrameRequestCallback) => { cb(0); return 0; }) as never;
-  useChartPrefsStore.setState({ candleTooltipEnabled: true });
+  useChartPrefsStore.setState({
+    candleTooltipEnabled: true,
+    quoteTotalsIntraMax: false,
+    ratioIntraMax: false,
+  });
 });
 afterEach(() => { globalThis.requestAnimationFrame = origRAF; cleanup(); });
 
@@ -102,6 +106,34 @@ describe('CandleTooltip', () => {
     const tip = screen.getByTestId('candle-tooltip');
     expect(tip).toHaveTextContent('총잔량매도 32.5k / 매수 0.9k');
     expect(tip).toHaveTextContent('A/B36.1x 매도우위');
+  });
+
+  it('분봉 내 최댓값 토글에 맞춰 총잔량과 A/B 기준을 바꾼다', () => {
+    useChartPrefsStore.setState({
+      quoteTotalsIntraMax: true,
+      ratioIntraMax: true,
+    });
+    const { chart, fire } = makeChart();
+    const b = {
+      candles: baseCandles,
+      quote_ratio: {
+        bucket_ms: 60_000,
+        points: [{
+          t: 1_060_000,
+          ask_total: 32_500,
+          bid_total: 900,
+          ask_max: 80_000,
+          bid_max: 2_000,
+          imb_max_ask: 500,
+          imb_max_bid: 10_000,
+        }],
+      },
+    } as never;
+    render(<CandleTooltip chart={chart} bundle={b} axis={axis} paneSeries={new Map() as never} timeframe="1m" />);
+    fire({ point: { x: 100, y: 50 }, time: 1060 });
+    const tip = screen.getByTestId('candle-tooltip');
+    expect(tip).toHaveTextContent('총잔량매도 80.0k / 매수 2.0k');
+    expect(tip).toHaveTextContent('A/B0.1x 매수우위');
   });
 
   it('반올림으로 0.00% 가 되는 미세 양수 % 는 중립색(빨강 아님)', () => {
