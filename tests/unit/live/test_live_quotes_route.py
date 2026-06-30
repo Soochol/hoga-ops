@@ -87,11 +87,23 @@ def _seed_quote_adjusted_daily(tmp_path, rows):
     return daily
 
 
+def _previous_weekday(today: dt.date) -> dt.date:
+    d = today - dt.timedelta(days=1)
+    while d.weekday() >= 5:
+        d -= dt.timedelta(days=1)
+    return d
+
+
+def _route_baseline_date() -> str:
+    return _previous_weekday(datetime.now(_KST).date()).isoformat()
+
+
 def test_quotes_recomputes_change_pct_when_kis_uses_unadjusted_baseline(monkeypatch, tmp_path):
     monkeypatch.setattr(live_api, "_quote_phase", lambda now: "open")
+    baseline_date = _route_baseline_date()
     _seed_quote_adjusted_daily(
         tmp_path,
-        [("049080", "2026-06-26", 9930, 9930, 9930, 9930, 100)],
+        [("049080", baseline_date, 9930, 9930, 9930, 9930, 100)],
     )
     quotes = [KisQuote("049080", 7770, 682.48, None)]
     c = TestClient(_app(quotes, tmp_path))
@@ -104,16 +116,17 @@ def test_quotes_recomputes_change_pct_when_kis_uses_unadjusted_baseline(monkeypa
     assert q0["change_pct"] == -21.75
     assert q0["change_won"] == -2160
     assert q0["baseline_price"] == 9930
-    assert q0["baseline_date"] == "2026-06-26"
+    assert q0["baseline_date"] == baseline_date
     assert q0["change_pct_source"] == "adjusted_daily"
     assert q0["warnings"] == []
 
 
 def test_quotes_recomputes_small_stale_kis_change_pct(monkeypatch, tmp_path):
     monkeypatch.setattr(live_api, "_quote_phase", lambda now: "open")
+    baseline_date = _route_baseline_date()
     _seed_quote_adjusted_daily(
         tmp_path,
-        [("005930", "2026-06-26", 100, 100, 100, 100, 100)],
+        [("005930", baseline_date, 100, 100, 100, 100, 100)],
     )
     quotes = [KisQuote("005930", 105, 2.1, 2)]
     c = TestClient(_app(quotes, tmp_path))
@@ -126,16 +139,17 @@ def test_quotes_recomputes_small_stale_kis_change_pct(monkeypatch, tmp_path):
     assert q0["change_pct"] == 5.0
     assert q0["change_won"] == 5
     assert q0["baseline_price"] == 100
-    assert q0["baseline_date"] == "2026-06-26"
+    assert q0["baseline_date"] == baseline_date
     assert q0["change_pct_source"] == "adjusted_daily"
     assert q0["warnings"] == []
 
 
 def test_quotes_hides_change_pct_when_adjusted_baseline_scale_mismatches_quote(monkeypatch, tmp_path):
     monkeypatch.setattr(live_api, "_quote_phase", lambda now: "open")
+    baseline_date = _route_baseline_date()
     _seed_quote_adjusted_daily(
         tmp_path,
-        [("049080", "2026-06-26", 993, 993, 993, 993, 100)],
+        [("049080", baseline_date, 993, 993, 993, 993, 100)],
     )
     quotes = [KisQuote("049080", 6290, 533.43, 5297, open=7550, high=7660, low=6080)]
     c = TestClient(_app(quotes, tmp_path))
@@ -149,9 +163,37 @@ def test_quotes_hides_change_pct_when_adjusted_baseline_scale_mismatches_quote(m
     assert q0["change_won"] is None
     assert (q0["open"], q0["high"], q0["low"]) == (7550, 7660, 6080)
     assert q0["baseline_price"] == 993
-    assert q0["baseline_date"] == "2026-06-26"
+    assert q0["baseline_date"] == baseline_date
     assert q0["change_pct_source"] == "unavailable"
     assert q0["warnings"] == ["adjusted_baseline_scale_mismatch"]
+
+
+def test_quotes_hides_change_pct_when_adjusted_baseline_is_stale(monkeypatch, tmp_path):
+    class _FixedDatetime(datetime):
+        @classmethod
+        def now(cls, tz=None):  # noqa: ANN001
+            return datetime(2026, 6, 30, 10, 0, tzinfo=tz)
+
+    monkeypatch.setattr(live_api, "datetime", _FixedDatetime)
+    monkeypatch.setattr(live_api, "_quote_phase", lambda now: "open")
+    _seed_quote_adjusted_daily(
+        tmp_path,
+        [("005930", "2026-06-26", 100, 100, 100, 100, 100)],
+    )
+    quotes = [KisQuote("005930", 105, 2.1, 2)]
+    c = TestClient(_app(quotes, tmp_path))
+
+    r = c.get("/api/live/quotes", params={"codes": "005930"})
+
+    assert r.status_code == 200
+    q0 = r.json()["quotes"][0]
+    assert q0["price"] == 105
+    assert q0["change_pct"] is None
+    assert q0["change_won"] is None
+    assert q0["baseline_price"] == 100
+    assert q0["baseline_date"] == "2026-06-26"
+    assert q0["change_pct_source"] == "unavailable"
+    assert q0["warnings"] == ["adjusted_baseline_stale"]
 
 
 def test_quotes_pre_open_nulls_change_pct(monkeypatch, tmp_path):
@@ -282,9 +324,10 @@ def test_quotes_closed_serves_last_seen_without_kis(monkeypatch, tmp_path):
 
 
 def test_quotes_closed_cached_quotes_use_adjusted_change_pct_without_kis(monkeypatch, tmp_path):
+    baseline_date = _route_baseline_date()
     _seed_quote_adjusted_daily(
         tmp_path,
-        [("049080", "2026-06-26", 9930, 9930, 9930, 9930, 100)],
+        [("049080", baseline_date, 9930, 9930, 9930, 9930, 100)],
     )
     fake = _CountingFakeKis([KisQuote("049080", 7770, 682.48, None)])
     c = TestClient(_counting_app(fake, tmp_path))
@@ -306,7 +349,7 @@ def test_quotes_closed_cached_quotes_use_adjusted_change_pct_without_kis(monkeyp
     assert q0["change_pct"] == -21.75
     assert q0["change_won"] == -2160
     assert q0["baseline_price"] == 9930
-    assert q0["baseline_date"] == "2026-06-26"
+    assert q0["baseline_date"] == baseline_date
     assert q0["change_pct_source"] == "adjusted_daily"
     assert q0["warnings"] == []
 

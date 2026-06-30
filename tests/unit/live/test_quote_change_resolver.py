@@ -104,6 +104,66 @@ def test_hides_change_rate_when_adjusted_baseline_scale_mismatches_quote(tmp_pat
     assert out.warnings == ["adjusted_baseline_scale_mismatch"]
 
 
+def test_hides_change_rate_when_adjusted_baseline_is_stale_for_today(tmp_path):
+    daily = tmp_path / "daily_adjusted.parquet"
+    _write_adjusted_daily(
+        daily,
+        [("005930", "2026-06-26", 100, 100, 100, 100, 100)],
+    )
+    resolver = QuoteChangeResolver(adjusted_daily_path=daily)
+
+    q = KisQuote(code="005930", price=105, change_pct=2.1, change_won=2)
+    out = resolver.resolve_quote(q, phase="open", today=dt.date(2026, 6, 30))
+
+    assert out.change_pct is None
+    assert out.change_won is None
+    assert out.change_pct_source == "unavailable"
+    assert out.baseline_price == 100
+    assert out.baseline_date == "2026-06-26"
+    assert out.warnings == ["adjusted_baseline_stale"]
+
+
+def test_friday_adjusted_baseline_is_valid_on_monday(tmp_path):
+    daily = tmp_path / "daily_adjusted.parquet"
+    _write_adjusted_daily(
+        daily,
+        [("005930", "2026-06-26", 100, 100, 100, 100, 100)],
+    )
+    resolver = QuoteChangeResolver(adjusted_daily_path=daily)
+
+    q = KisQuote(code="005930", price=105, change_pct=2.1, change_won=2)
+    out = resolver.resolve_quote(q, phase="open", today=dt.date(2026, 6, 29))
+
+    assert out.change_pct == 5.0
+    assert out.change_won == 5
+    assert out.change_pct_source == "adjusted_daily"
+    assert out.baseline_price == 100
+    assert out.baseline_date == "2026-06-26"
+    assert out.warnings == []
+
+
+def test_ignores_same_day_adjusted_row_when_selecting_baseline(tmp_path):
+    daily = tmp_path / "daily_adjusted.parquet"
+    _write_adjusted_daily(
+        daily,
+        [
+            ("005930", "2026-06-29", 100, 100, 100, 100, 100),
+            ("005930", "2026-06-30", 105, 105, 105, 105, 100),
+        ],
+    )
+    resolver = QuoteChangeResolver(adjusted_daily_path=daily)
+
+    q = KisQuote(code="005930", price=110, change_pct=1.0, change_won=1)
+    out = resolver.resolve_quote(q, phase="open", today=dt.date(2026, 6, 30))
+
+    assert out.change_pct == 10.0
+    assert out.change_won == 10
+    assert out.change_pct_source == "adjusted_daily"
+    assert out.baseline_price == 100
+    assert out.baseline_date == "2026-06-29"
+    assert out.warnings == []
+
+
 def test_missing_adjusted_file_falls_back_to_kis_without_warning(tmp_path):
     resolver = QuoteChangeResolver(adjusted_daily_path=tmp_path / "missing.parquet")
 

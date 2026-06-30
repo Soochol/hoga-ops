@@ -619,8 +619,14 @@ class LiveQuoteFetcher:
         self._last_quotes: dict[str, KisQuote] = {}
         self._change_resolver = change_resolver or QuoteChangeResolver(adjusted_daily_path=None)
 
-    def _to_live_quote(self, q: KisQuote, *, phase: str) -> LiveQuote:
-        resolved = self._change_resolver.resolve_quote(q, phase=phase)
+    def _to_live_quote(
+        self,
+        q: KisQuote,
+        *,
+        phase: str,
+        today: date | None = None,
+    ) -> LiveQuote:
+        resolved = self._change_resolver.resolve_quote(q, phase=phase, today=today)
         pre = phase == "pre_open"
         return LiveQuote(
             code=q.code,
@@ -637,7 +643,11 @@ class LiveQuoteFetcher:
         )
 
     async def fetch_and_gate(
-        self, kis: KisClient, code_list: list[str], phase: str,
+        self,
+        kis: KisClient,
+        code_list: list[str],
+        phase: str,
+        today: date | None = None,
     ) -> list[LiveQuote]:
         """code_list 의 시세를 phase 에 맞춰 반환. closed=마지막 시세(캐시 미스면 1회 채움),
         open=라이브, pre_open=등락률 숨김. KIS 실패는 절대 전파하지 않는다(오버레이는 500 금지)."""
@@ -654,7 +664,7 @@ class LiveQuoteFetcher:
                     log.warning("live quotes cold fetch failed (%d codes): %s",
                                 len(code_list), e)
             return [
-                self._to_live_quote(q, phase=phase)
+                self._to_live_quote(q, phase=phase, today=today)
                 for c in code_list
                 if (q := self._last_quotes.get(c)) is not None
             ]
@@ -667,7 +677,7 @@ class LiveQuoteFetcher:
             return []
         for q in quotes:
             self._last_quotes[q.code] = q
-        return [self._to_live_quote(q, phase=phase) for q in quotes]
+        return [self._to_live_quote(q, phase=phase, today=today) for q in quotes]
 
 
 def _investor_estimate_row_to_wire(
@@ -1294,7 +1304,8 @@ def build_router(
 
     @router.get("/quotes", response_model=LiveQuotesResponse)
     async def _get_quotes(codes: str = Query(...)) -> LiveQuotesResponse:
-        phase = _quote_phase(datetime.now(_KST))
+        now = datetime.now(_KST)
+        phase = _quote_phase(now)
         code_list = [c for c in codes.split(",") if _CODE_RE.match(c)]
         if not code_list:
             return LiveQuotesResponse(phase=phase, quotes=[])
@@ -1315,6 +1326,7 @@ def build_router(
                             kis,
                             code_list,
                             phase,
+                            today=now.date(),
                         ),
                     )
                 ),

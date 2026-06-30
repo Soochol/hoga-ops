@@ -3,6 +3,11 @@
 All notable changes to this project are documented here.
 The format follows a 4-digit `MAJOR.MINOR.PATCH.MICRO` scheme.
 
+## [0.12.21.2] - 2026-06-30
+
+### Fixed
+- **실시간 등락률 stale 기준가 차단**: 보정 일봉 기준가가 오늘 기준 직전 영업일보다 오래됐거나 오늘 일봉을 가리키면 등락률 계산과 KIS fallback을 모두 막아, 일봉 업데이트가 하루 밀린 상태에서 관심종목·스크리너·히트맵에 전일 누적 등락률이 노출되지 않게 했다.
+
 ## [0.12.21.1] - 2026-06-30
 
 ### Fixed
