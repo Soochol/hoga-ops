@@ -57,7 +57,7 @@ The final approved direction is a minimal top menu inspired by the attached refe
 
 Replace the current left-nav grid with a two-row app shell:
 
-- Row 1: `var(--top-nav-h)` minimal top menu.
+- Row 1: `var(--h-top-nav)` minimal top menu.
 - Row 2: main content grid.
 
 The content grid keeps the existing right-side behavior:
@@ -125,7 +125,7 @@ The status must not look like a primary nav item or a card.
 
 Add a top-nav height token:
 
-- `--top-nav-h`: 2rem token, 32px base intent / 40px rendered at default density.
+- `--h-top-nav`: 2rem token, 32px base intent / 40px rendered at default density.
 
 Update generated token artifacts through `npm run gen:tokens` if token source changes.
 

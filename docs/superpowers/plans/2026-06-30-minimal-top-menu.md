@@ -10,7 +10,7 @@
 
 ## Global Constraints
 
-- Top bar height is `--top-nav-h`: 2rem token, 32px base intent / 40px rendered at default density.
+- Top bar height is `--h-top-nav`: 2rem token, 32px base intent / 40px rendered at default density.
 - Brand is logo plus `hoga-ops` only; `orderbook replay` must not render.
 - Active nav state is text color and weight only: no underline, active bar, pill background, border, or icon placeholder.
 - Right rail and right-side drawers remain unchanged.
@@ -503,7 +503,7 @@ git commit -m "feat: add inline capture status"
 **Interfaces:**
 - Consumes: `TopNav` default export from `frontend/src/nav/TopNav.tsx`
 - Consumes: nav item arrays from `frontend/src/nav/items.ts`
-- Produces: App shell grid with root rows `var(--top-nav-h) minmax(0, 1fr)`
+- Produces: App shell grid with root rows `var(--h-top-nav) minmax(0, 1fr)`
 - Produces: content grid columns `1fr var(--rail-w)` or `1fr var(--watchlist-panel-w) var(--rail-w)`
 
 - [ ] **Step 1: Add focused App shell layout tests**
@@ -535,7 +535,7 @@ describe('App shell layout', () => {
     const contentGrid = screen.getByTestId('app-content-grid');
 
     expect(screen.getByRole('navigation', { name: '주요 메뉴' })).toBeInTheDocument();
-    expect(shell.style.gridTemplateRows).toBe('var(--top-nav-h) minmax(0, 1fr)');
+    expect(shell.style.gridTemplateRows).toBe('var(--h-top-nav) minmax(0, 1fr)');
     expect(shell.style.gridTemplateColumns).toBe('');
     expect(contentGrid).toHaveStyle({ gridTemplateColumns: '1fr var(--rail-w)' });
   });
@@ -602,7 +602,7 @@ Then replace the shell return with:
     <div
       className="grid h-screen w-screen overflow-hidden"
       style={{
-        gridTemplateRows: 'var(--top-nav-h) minmax(0, 1fr)',
+        gridTemplateRows: 'var(--h-top-nav) minmax(0, 1fr)',
       }}
     >
       {staticTitle !== null && <StaticDocumentTitle title={staticTitle} />}
@@ -653,10 +653,10 @@ cd frontend
 npm run gen:tokens
 ```
 
-Expected: `frontend/src/styles/tokens.css`, `frontend/src/styles/tokens.generated.ts`, and `DESIGN.md` update. Confirm `--top-nav-h` exists and `--nav-w` is gone if no longer referenced:
+Expected: `frontend/src/styles/tokens.css`, `frontend/src/styles/tokens.generated.ts`, and `DESIGN.md` update. Confirm `--h-top-nav` exists and `--nav-w` is gone if no longer referenced:
 
 ```bash
-rg -n "top-nav-h|nav-w|--nav-w" src/styles ../DESIGN.md
+rg -n "h-top-nav|--h-top-nav|nav-w|--nav-w" src/styles ../DESIGN.md
 ```
 
 - [ ] **Step 6: Update DESIGN.md prose**
@@ -665,7 +665,7 @@ Edit `DESIGN.md` so the layout section says:
 
 ```md
 - **App shell:**
-  - Top-level: rows `var(--top-nav-h) minmax(0, 1fr)` (minimal top menu + content); content columns are `1fr var(--rail-w)` plus an optional `var(--watchlist-panel-w)` before the rail when a right-rail panel is open.
+  - Top-level: rows `var(--h-top-nav) minmax(0, 1fr)` (minimal top menu + content); content columns are `1fr var(--rail-w)` plus an optional `var(--watchlist-panel-w)` before the rail when a right-rail panel is open.
 ```
 
 Replace the page-title sentence with:

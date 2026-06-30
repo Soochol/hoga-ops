@@ -32,9 +32,9 @@ export const TAILWIND_THEME = {
     "orderbook-row": "var(--h-orderbook-row)",
     "capture-row": "var(--h-capture-row)",
     "live-header": "var(--h-live-header)",
+    "top-nav": "var(--h-top-nav)",
   },
   width: {
-    "nav": "var(--nav-w)",
     "sidebar": "var(--sidebar-w)",
     "watchlist-panel": "var(--watchlist-panel-w)",
     "rail": "var(--rail-w)",
