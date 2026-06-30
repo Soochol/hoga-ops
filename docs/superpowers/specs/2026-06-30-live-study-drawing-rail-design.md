@@ -18,6 +18,7 @@ Create a shared `LiveDrawingRail` component and mount it inside the chart area o
 - `/live`: in `LiveWorkarea`, below `LiveToolbar`, wrap the chart body in a two-column layout: drawing rail on the left, chart root on the right.
 - `/study`: in `StudyPage`, wrap the ready-state `LiveChartRoot` in the same two-column layout.
 - Remove `LiveDrawingMenu` from `LiveChartActionButtons`, so the old top-toolbar drawing button disappears on both pages.
+- Delete the old menu component and its menu-specific tests after the rail is wired. The replacement should leave no dead imports, no unused portal/popover helpers, and no duplicate drawing tool list.
 
 This keeps the rail local to the chart interaction surface, avoids overlaying controls on top of candles, and lets `/live` and `/study` share one implementation.
 
@@ -34,6 +35,16 @@ The rail is a narrow vertical control strip using existing design tokens:
 
 The rail does not introduce new drawing primitives, style controls, persistence rules, or keyboard shortcuts.
 
+## Code Cleanup
+
+The implementation should clean the existing drawing UI path while preserving drawing behavior:
+
+- Replace `LiveDrawingMenu` with `LiveDrawingRail` instead of keeping both UIs in parallel.
+- Keep tool labels, glyphs, and ordering sourced from `TOOLS` / `DRAWABLE_TOOLS_ORDER`.
+- Extract a small shared chart-body wrapper if it prevents `/live` and `/study` from carrying near-identical `grid-cols-[44px_minmax(0,1fr)]` layout code.
+- Remove menu-only code paths, tests, imports, and comments after the rail is wired.
+- Do not refactor `DrawingOverlay`, drawing persistence, coordinate conversion, or tool behavior unless a test failure shows the rail integration exposed a real coupling issue.
+
 ## Data Flow
 
 `LiveDrawingRail` reads `activeTool` from `useDrawingsStore` and writes tool choices through `setActiveTool`. It reads labels/glyphs from the existing `TOOLS` registry, so tool metadata remains single-sourced with drawing behavior. Existing `DrawingOverlay`, `DrawingPropertyPanel`, persistence, selection, and per-code drawing loading remain unchanged.
@@ -48,6 +59,7 @@ Add focused frontend tests:
 
 - `LiveDrawingRail` renders current tools, switches `activeTool`, highlights the active tool, and clears drawings through the store.
 - `LiveToolbar` no longer renders the "그리기" button and still renders indicators, settings, timeframe controls, and study save controls.
+- Removed menu tests should be replaced by rail tests rather than disabled.
 - Existing `/live` and `/study` shell tests should continue to pass after the chart-body wrapper changes.
 
 Run the targeted Vitest files touched by the change. Run the frontend build before declaring implementation complete.
