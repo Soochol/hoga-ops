@@ -1,4 +1,4 @@
-import type { Candle } from '../api/types';
+import type { Candle, QuoteRatioPoint } from '../api/types';
 import { isCalendarTimeframe, type LiveTimeframe } from '../state/livePage';
 
 export interface CandleTooltipModel {
@@ -17,6 +17,10 @@ export interface CandleTooltipModel {
   closePct: number | null;        // = 직전대비 변동률 (종가)
   barOverBarWon: number | null;   // close − prev.close (직전대비 금액)
   volumeRatioPct: number | null;  // (volume/prevVolume) × 100, prevVolume===0 → null
+  quoteAskTotal: number | null;
+  quoteBidTotal: number | null;
+  askBidRatio: number | null;
+  askBidBiasLabel: '매도우위' | '매수우위' | '균형' | null;
 }
 
 function pad(n: number): string {
@@ -37,6 +41,19 @@ function kstLabels(
   return { dateLabel: md, timeLabel: `${pad(d.getUTCHours())}:${pad(d.getUTCMinutes())}` };
 }
 
+export function formatTooltipQtyK(qty: number): string {
+  return `${(qty / 1000).toFixed(1)}k`;
+}
+
+function askBidBiasLabel(
+  askTotal: number,
+  bidTotal: number,
+): CandleTooltipModel['askBidBiasLabel'] {
+  if (askTotal > bidTotal) return '매도우위';
+  if (askTotal < bidTotal) return '매수우위';
+  return '균형';
+}
+
 /**
  * 호버된 봉과 그 직전 봉만으로 툴팁 모델을 만든다. 순수 함수 — 차트/axis API 미접근.
  * `candles` 는 컴포넌트가 넘기는 "그려진(axis.contains 필터된, 타임프레임 집계된)"
@@ -46,6 +63,7 @@ export function buildCandleTooltip(
   candles: Candle[],
   index: number,
   timeframe: LiveTimeframe,
+  quotePoint?: QuoteRatioPoint | null,
 ): CandleTooltipModel | null {
   if (index < 0 || index >= candles.length) return null;
   const c = candles[index];
@@ -56,6 +74,12 @@ export function buildCandleTooltip(
   const basis = prev && prev.close > 0 ? prev.close : null;
   const pct = (v: number): number | null => (basis === null ? null : (v / basis - 1) * 100);
   const prevVol = prev ? prev.vol_a + prev.vol_b : 0;
+  const quoteAskTotal = quotePoint?.ask_total ?? null;
+  const quoteBidTotal = quotePoint?.bid_total ?? null;
+  const askBidRatio =
+    quoteAskTotal !== null && quoteBidTotal !== null && quoteBidTotal > 0
+      ? quoteAskTotal / quoteBidTotal
+      : null;
   return {
     tsMs: c.ts_ms,
     dateLabel,
@@ -71,6 +95,13 @@ export function buildCandleTooltip(
     closePct: pct(c.close),
     barOverBarWon: basis === null ? null : c.close - basis,
     volumeRatioPct: prev && prevVol > 0 ? (volume / prevVol) * 100 : null,
+    quoteAskTotal,
+    quoteBidTotal,
+    askBidRatio,
+    askBidBiasLabel:
+      quoteAskTotal !== null && quoteBidTotal !== null && askBidRatio !== null
+        ? askBidBiasLabel(quoteAskTotal, quoteBidTotal)
+        : null,
   };
 }
 

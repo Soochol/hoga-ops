@@ -24,8 +24,11 @@ const axis = {
   contains: () => true,
 } as never;
 
+const baseCandles = [C(1_000_000, 100, 105, 99, 102, 10), C(1_060_000, 102, 108, 101, 107, 20)];
+
 const bundle = {
-  candles: [C(1_000_000, 100, 105, 99, 102, 10), C(1_060_000, 102, 108, 101, 107, 20)],
+  candles: baseCandles,
+  quote_ratio: { bucket_ms: 60_000, points: [] },
 } as never;
 
 function makeChart(paneHeights: number[] = [400]) {
@@ -75,6 +78,30 @@ describe('CandleTooltip', () => {
     expect(tip).toHaveTextContent('+4.90%');    // 종 % = 107/102
     expect(tip).toHaveTextContent('+5');        // 직전대비 금액 = 107-102 (원, % 없음)
     expect(tip).toHaveTextContent('200%');      // 거래량비 = 20/10*100
+  });
+
+  it('호버 캔들의 총잔량과 ask/bid ratio 를 k 단위로 표시한다', () => {
+    const { chart, fire } = makeChart();
+    const b = {
+      candles: baseCandles,
+      quote_ratio: {
+        bucket_ms: 60_000,
+        points: [{
+          t: 1_060_000,
+          ask_total: 32_500,
+          bid_total: 900,
+          ask_max: 32_500,
+          bid_max: 900,
+          imb_max_ask: 32_500,
+          imb_max_bid: 900,
+        }],
+      },
+    } as never;
+    render(<CandleTooltip chart={chart} bundle={b} axis={axis} paneSeries={new Map() as never} timeframe="1m" />);
+    fire({ point: { x: 100, y: 50 }, time: 1060 });
+    const tip = screen.getByTestId('candle-tooltip');
+    expect(tip).toHaveTextContent('총잔량매도 32.5k / 매수 0.9k');
+    expect(tip).toHaveTextContent('A/B36.1x 매도우위');
   });
 
   it('반올림으로 0.00% 가 되는 미세 양수 % 는 중립색(빨강 아님)', () => {

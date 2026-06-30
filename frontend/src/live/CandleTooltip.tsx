@@ -7,7 +7,7 @@ import { useActivePrefs } from '../state/chartPrefs';
 import { paneIdAtY, type PaneSeriesMap } from '../chart/drawing/chartCoordinates';
 import { priceDirClass } from '../ui/priceDir';
 import { formatKoreanInt } from '../util/koreanNumber';
-import { buildCandleTooltip, placeTooltip } from './candleTooltipModel';
+import { buildCandleTooltip, formatTooltipQtyK, placeTooltip } from './candleTooltipModel';
 
 type Props = {
   chart: IChartApi;
@@ -114,6 +114,14 @@ function CandleTooltip({ chart, bundle, axis, paneSeries, timeframe }: Props) {
     return { drawn: drawnArr, vsecToIndex: vmap, tsMsToIndex: tmap };
   }, [bundle.candles, axis]);
 
+  const quoteByTs = useMemo(() => {
+    const map = new Map<number, NonNullable<RangeBundle['quote_ratio']['points'][number]>>();
+    for (const p of bundle.quote_ratio?.points ?? []) {
+      map.set(p.t, p);
+    }
+    return map;
+  }, [bundle.quote_ratio?.points]);
+
   // 핸들러가 읽는 최신 데이터(drawn·vsecToIndex·paneSeries)는 ref 로 — 구독 effect 가
   // [chart, enabled] 에만 의존하게 해, 데이터 틱·pane 등록 변화로 재구독(→ 툴팁 소멸)되지
   // 않도록(스펙 §거동, ADR-0059). 매 렌더 커밋 후 sync → 다음 크로스헤어 이벤트엔 항상 최신.
@@ -165,7 +173,7 @@ function CandleTooltip({ chart, bundle, axis, paneSeries, timeframe }: Props) {
   const renderedHover = hoverRef.current?.tsMs === hover.tsMs ? hoverRef.current : hover;
   const idx = tsMsToIndex.get(renderedHover.tsMs);
   if (idx === undefined) return null;
-  const m = buildCandleTooltip(drawn, idx, timeframe);
+  const m = buildCandleTooltip(drawn, idx, timeframe, quoteByTs.get(renderedHover.tsMs));
   if (!m) return null;
   return (
     <div ref={tipRef} data-testid="candle-tooltip" style={{ ...boxStyle, left: renderedHover.left, top: renderedHover.top }}>
@@ -186,6 +194,20 @@ function CandleTooltip({ chart, bundle, axis, paneSeries, timeframe }: Props) {
       <Row k="거래량비">
         <span style={valStyle}>{m.volumeRatioPct == null ? '—' : `${Math.round(m.volumeRatioPct)}%`}</span>
       </Row>
+      {m.quoteAskTotal !== null && m.quoteBidTotal !== null && (
+        <>
+          <Row k="총잔량">
+            <span style={valStyle}>
+              매도 {formatTooltipQtyK(m.quoteAskTotal)} / 매수 {formatTooltipQtyK(m.quoteBidTotal)}
+            </span>
+          </Row>
+          <Row k="A/B">
+            <span style={valStyle}>
+              {m.askBidRatio == null ? '—' : `${m.askBidRatio.toFixed(1)}x ${m.askBidBiasLabel ?? ''}`}
+            </span>
+          </Row>
+        </>
+      )}
     </div>
   );
 }
