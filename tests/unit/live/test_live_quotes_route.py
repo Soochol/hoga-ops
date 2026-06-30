@@ -131,6 +131,29 @@ def test_quotes_recomputes_small_stale_kis_change_pct(monkeypatch, tmp_path):
     assert q0["warnings"] == []
 
 
+def test_quotes_hides_change_pct_when_adjusted_baseline_scale_mismatches_quote(monkeypatch, tmp_path):
+    monkeypatch.setattr(live_api, "_quote_phase", lambda now: "open")
+    _seed_quote_adjusted_daily(
+        tmp_path,
+        [("049080", "2026-06-26", 993, 993, 993, 993, 100)],
+    )
+    quotes = [KisQuote("049080", 6290, 533.43, 5297, open=7550, high=7660, low=6080)]
+    c = TestClient(_app(quotes, tmp_path))
+
+    r = c.get("/api/live/quotes", params={"codes": "049080"})
+
+    assert r.status_code == 200
+    q0 = r.json()["quotes"][0]
+    assert q0["price"] == 6290
+    assert q0["change_pct"] is None
+    assert q0["change_won"] is None
+    assert (q0["open"], q0["high"], q0["low"]) == (7550, 7660, 6080)
+    assert q0["baseline_price"] == 993
+    assert q0["baseline_date"] == "2026-06-26"
+    assert q0["change_pct_source"] == "unavailable"
+    assert q0["warnings"] == ["adjusted_baseline_scale_mismatch"]
+
+
 def test_quotes_pre_open_nulls_change_pct(monkeypatch, tmp_path):
     monkeypatch.setattr(live_api, "_quote_phase", lambda now: "pre_open")
     c = TestClient(_app(QUOTES, tmp_path))

@@ -40,6 +40,9 @@ class _AdjustedDailySignature:
     size: int
 
 
+_BASELINE_SCALE_MISMATCH_RATIO = 3.0
+
+
 class QuoteChangeResolver:
     def __init__(self, *, adjusted_daily_path: Path | None) -> None:
         self._adjusted_daily_path = adjusted_daily_path
@@ -63,6 +66,18 @@ class QuoteChangeResolver:
 
         adjusted_pct = self._adjusted_change_pct(q, baseline)
         if baseline is not None and adjusted_pct is not None:
+            if self._baseline_scale_mismatch(q, baseline):
+                warnings.append("adjusted_baseline_scale_mismatch")
+                return QuoteChangeResolution(
+                    code=q.code,
+                    price=q.price,
+                    change_pct=None,
+                    change_won=None,
+                    baseline_price=baseline.close,
+                    baseline_date=baseline.date,
+                    change_pct_source="unavailable",
+                    warnings=warnings,
+                )
             return QuoteChangeResolution(
                 code=q.code,
                 price=q.price,
@@ -149,3 +164,17 @@ class QuoteChangeResolver:
         if baseline is None or baseline.close <= 0 or q.price <= 0:
             return None
         return round((q.price / baseline.close - 1.0) * 100.0, 2)
+
+    def _baseline_scale_mismatch(self, q: KisQuote, baseline: _Baseline) -> bool:
+        quote_prices = [
+            value for value in (q.price, q.open, q.high, q.low)
+            if value is not None and value > 0
+        ]
+        if not quote_prices or baseline.close <= 0:
+            return False
+        quote_min = min(quote_prices)
+        quote_max = max(quote_prices)
+        return (
+            baseline.close * _BASELINE_SCALE_MISMATCH_RATIO < quote_min
+            or baseline.close / _BASELINE_SCALE_MISMATCH_RATIO > quote_max
+        )
