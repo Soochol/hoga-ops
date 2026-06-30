@@ -258,8 +258,11 @@ function SortableQuoteRow(props: {
   dragEnabled?: boolean;
 }) {
   const { entry } = props;
-  const { setNodeRef, setActivatorNodeRef, listeners, attributes, transform, transition, isDragging } =
+  const { setNodeRef, setActivatorNodeRef, listeners, attributes, transform, transition, isDragging, activeIndex, overIndex, index } =
     useSortable({ id: entrySortableId(entry.folder_id, entry.code), data: { type: 'entry', folderId: entry.folder_id, code: entry.code, name: entry.name } });
+  const dropIndicator = activeIndex !== -1 && overIndex !== -1 && index === overIndex && index !== activeIndex
+    ? (activeIndex < overIndex ? 'after' : 'before')
+    : undefined;
   return (
     <QuoteRow
       name={entry.name}
@@ -279,6 +282,7 @@ function SortableQuoteRow(props: {
       dragAttributes={props.dragEnabled === false ? undefined : attributes}
       dragActivatorRef={props.dragEnabled === false ? undefined : setActivatorNodeRef}
       dragging={props.dragEnabled === false ? false : isDragging}
+      dropIndicator={props.dragEnabled === false ? undefined : dropIndicator}
       trailingAction={props.collectionBadge}
     />
   );

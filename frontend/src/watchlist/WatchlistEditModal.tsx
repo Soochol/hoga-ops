@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react';
 import {
   DndContext, PointerSensor, useSensor, useSensors, useDroppable, closestCenter,
-  type CollisionDetection, type DragEndEvent, type DraggableSyntheticListeners,
+  type CollisionDetection, type DragEndEvent, type DraggableAttributes, type DraggableSyntheticListeners,
 } from '@dnd-kit/core';
 import { SortableContext, useSortable, verticalListSortingStrategy } from '@dnd-kit/sortable';
 import { CSS } from '@dnd-kit/utilities';
@@ -14,6 +14,7 @@ import { resolveDrag, resolveFolderDrag, folderDroppableId } from './dragHandler
 import { selectVisibleEntries, type Selected } from './grouping';
 import { ModalShell } from '../ui/ModalShell';
 import { TrashIcon } from '../ui/TrashIcon';
+import { dropIndicatorClass, sortableDraggingStyle, type DropIndicator } from '../ui/sortableDragVisuals';
 
 const DEFAULT_CAPTURE_ENABLED = true;
 
@@ -30,20 +31,30 @@ function FolderRow(props: {
   onToggleCapture: () => void;
   onEditNameChange: (v: string) => void; onCommit: () => void; onCancelEdit: () => void;
   dragListeners?: DraggableSyntheticListeners;
+  dragAttributes?: DraggableAttributes;
+  dragActivatorRef?: (node: HTMLElement | null) => void;
+  dragging?: boolean;
+  dropIndicator?: DropIndicator;
 }) {
-  const { setNodeRef, isOver } = useDroppable({
+  const { setNodeRef: setDroppableNodeRef, isOver } = useDroppable({
     id: folderDroppableId(props.id),
     data: { type: 'entry-target' },
   });
+  const setRowRef = (node: HTMLDivElement | null) => {
+    setDroppableNodeRef(node);
+    props.dragActivatorRef?.(node);
+  };
   return (
-    <div ref={setNodeRef} data-testid={`folder-row-${props.id}`}
-      className={`group relative flex items-center gap-1 pl-2 pr-2 py-1.5 rounded text-sm ${
+    <div ref={setRowRef} data-testid={`folder-row-${props.id}`}
+      {...props.dragAttributes}
+      {...props.dragListeners}
+      className={`group relative flex items-center gap-1 pl-2 pr-2 py-1.5 rounded text-sm touch-none ${
         props.isSelected ? 'bg-bg-input text-fg' : 'text-fg-dim hover:bg-bg-input-hover'} ${
-        isOver ? 'ring-1 ring-accent bg-bg-input-hover' : ''}`}>
-      <span {...(props.dragListeners ?? {})} aria-hidden data-testid={`folder-drag-handle-${props.id}`}
-        className="shrink-0 cursor-grab select-none touch-none px-1 leading-none text-fg-dimmer">
-        ⠿
-      </span>
+        isOver ? 'ring-1 ring-accent bg-bg-input-hover' : ''} ${dropIndicatorClass(props.dropIndicator)}`}
+      style={{
+        ...(props.dragging ? sortableDraggingStyle() : {}),
+        ...(props.dropIndicator ? { position: 'relative' } : {}),
+      }}>
       {props.isEditing ? (
         <input autoFocus value={props.editName} maxLength={40}
           onChange={(e) => props.onEditNameChange(e.target.value)}
@@ -99,16 +110,23 @@ function FolderRow(props: {
 }
 
 function SortableFolderRow(props: Parameters<typeof FolderRow>[0]) {
-  const { setNodeRef, transform, transition, listeners, isDragging } =
+  const { setNodeRef, setActivatorNodeRef, transform, transition, listeners, attributes, isDragging, activeIndex, overIndex, index } =
     useSortable({ id: props.id, data: { type: 'folder' } });
+  const dropIndicator = activeIndex !== -1 && overIndex !== -1 && index === overIndex && index !== activeIndex
+    ? (activeIndex < overIndex ? 'after' : 'before')
+    : undefined;
   const style: React.CSSProperties = {
     transform: CSS.Transform.toString(transform),
     transition,
-    opacity: isDragging ? 0.6 : undefined,
   };
   return (
     <div ref={setNodeRef} style={style}>
-      <FolderRow {...props} dragListeners={listeners} />
+      <FolderRow {...props}
+        dragListeners={listeners}
+        dragAttributes={attributes}
+        dragActivatorRef={setActivatorNodeRef}
+        dragging={isDragging}
+        dropIndicator={dropIndicator} />
     </div>
   );
 }

@@ -1,6 +1,7 @@
 import type { DraggableAttributes, DraggableSyntheticListeners } from '@dnd-kit/core';
 import { dispositionFromMouseEvent, type LiveOpenDisposition } from '../live/liveActivation';
 import { priceDirClass } from '../ui/priceDir';
+import { dropIndicatorClass, sortableDraggingStyle, type DropIndicator } from '../ui/sortableDragVisuals';
 
 /** 관심종목·스크리너 드로어 공용 행: 종목명(좌) │ 현재가(+등락률)(우) │ (선택) 트레일링 액션.
  *  ScreenerResultRow 의 시각/키보드 계약을 그대로 가져오고 quote 셀을 우측에 둔다.
@@ -24,6 +25,7 @@ export interface QuoteRowProps {
   dragAttributes?: DraggableAttributes;
   dragActivatorRef?: (node: HTMLElement | null) => void;
   dragging?: boolean;
+  dropIndicator?: DropIndicator;
   // --- 관심종목 패널 전용 우클릭/Delete (미전달 시 무동작) ---
   onContextMenu?: (e: React.MouseEvent<HTMLLIElement>) => void;
   onDelete?: () => void;
@@ -40,10 +42,14 @@ function formatPct(pct: number | null): string {
 
 export function QuoteRow({
   name, price, pct, changeWon: _changeWon, active, ariaLabel, testId, onClick, trailingAction,
-  sortableRef, sortableStyle, dragListeners, dragAttributes, dragActivatorRef, dragging,
+  sortableRef, sortableStyle, dragListeners, dragAttributes, dragActivatorRef, dragging, dropIndicator,
   onContextMenu, onDelete, indented,
 }: QuoteRowProps) {
   void _changeWon;
+  const setRowRef = (node: HTMLElement | null) => {
+    sortableRef?.(node);
+    if (dragListeners) dragActivatorRef?.(node);
+  };
   const onKeyDown = (e: React.KeyboardEvent<HTMLLIElement>) => {
     // 중첩 버튼(trailingAction)에서 올라온 keydown 은 무시 — 행이 직접
     // 포커스됐을 때만 동작한다.
@@ -64,7 +70,9 @@ export function QuoteRow({
   };
   return (
     <li
-      ref={sortableRef}
+      ref={setRowRef}
+      {...dragAttributes}
+      {...dragListeners}
       data-testid={testId}
       role="button"
       tabIndex={0}
@@ -74,27 +82,17 @@ export function QuoteRow({
       onClick={(e) => onClick({ disposition: dispositionFromMouseEvent(e) })}
       onKeyDown={onKeyDown}
       onContextMenu={onContextMenu}
-      className={`group cursor-pointer ${indented ? 'pl-10' : 'pl-md'} pr-md py-sm flex items-center gap-2 border-b outline-none hover:bg-bg-input-hover focus-visible:bg-bg-input-hover`}
+      className={`group cursor-pointer touch-none ${indented ? 'pl-10' : 'pl-md'} pr-md py-sm flex items-center gap-2 border-b outline-none hover:bg-bg-input-hover focus-visible:bg-bg-input-hover ${
+        dropIndicatorClass(dropIndicator)
+      }`}
       style={{
         background: active ? 'var(--tint-selection)' : 'transparent',
         borderLeft: `2px solid ${active ? 'var(--accent)' : 'transparent'}`,
         ...sortableStyle,
-        ...(dragging ? { opacity: 0.6, cursor: 'grabbing', zIndex: 1, position: 'relative' } : {}),
+        ...(dragging ? sortableDraggingStyle(18) : {}),
+        ...(dropIndicator ? { position: 'relative' } : {}),
       }}
     >
-      {dragListeners && (
-        <span
-          ref={dragActivatorRef}
-          {...dragAttributes}
-          {...dragListeners}
-          data-testid={`drag-handle-${testId}`}
-          aria-label={`${name} 순서 이동`}
-          onClick={(e) => e.stopPropagation()}
-          className="flex-none -ml-1 h-5 w-4 cursor-grab select-none touch-none grid place-items-center text-fg-dimmer opacity-70 hover:opacity-100 hover:text-fg active:cursor-grabbing"
-        >
-          ⠿
-        </span>
-      )}
       {/* 종목명은 가격(text-sm)보다 의도적으로 작게(text-xs) — 그룹 헤더(text-sm/600) >
           종목명 크기 위계 + 가격이 1차 콘텐츠. 등락(text-xs)과는 서체(mono)·색으로 구분. */}
       <span className="flex-1 min-w-0 leading-tight">
