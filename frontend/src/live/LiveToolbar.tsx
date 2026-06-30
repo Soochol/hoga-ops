@@ -1,6 +1,5 @@
 import type { ReactNode } from 'react';
 import { useLivePageStore } from '../state/livePage';
-import LiveDrawingMenu from './LiveDrawingMenu';
 import { TimeframeControl } from './TimeframeControl';
 import { IconToolbarButton, WorkspaceToolbar } from '../ui/WorkspaceShell';
 
@@ -46,7 +45,6 @@ export function LiveChartActionButtons({ onOpenIndicators, onOpenSettings, study
       >
         <span>설정</span>
       </IconToolbarButton>
-      <LiveDrawingMenu />
       {studySaveControl}
     </>
   );

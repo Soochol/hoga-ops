@@ -276,6 +276,7 @@ describe('LiveWorkarea gate', () => {
 
     const chartPanel = screen.getByTestId('live-chart-panel');
     expect(chartPanel).toContainElement(screen.getByTestId('live-toolbar'));
+    expect(chartPanel).toContainElement(screen.getByTestId('live-drawing-rail'));
     expect(screen.getByTestId('live-workarea-splitter')).toHaveAttribute('aria-orientation', 'vertical');
     expect(screen.getByTestId('sidebar-stub')).toBeInTheDocument();
   });

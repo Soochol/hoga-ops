@@ -4,6 +4,7 @@ import { PageContainer } from '../layout/PageContainer';
 import IndicatorPanel from '../live/indicators/IndicatorPanel';
 import { LiveChartRoot } from '../live/LiveChartRoot';
 import LiveSettingsModal from '../live/LiveSettingsModal';
+import { ChartDrawingShell } from '../live/ChartDrawingShell';
 import { TimeframeControl } from '../live/TimeframeControl';
 import { LiveChartActionButtons } from '../live/LiveToolbar';
 import { tradeVolumePocsFromWire } from '../live/tradeVolumePocWire';
@@ -508,25 +509,27 @@ export function StudyPage() {
                   학습뷰 불러오는 중...
                 </div>
               ) : activeViewModel.status === 'ready' ? (
-                <LiveChartRoot
-                  code={activeViewModel.save.code}
-                  timeframe={activeViewModel.save.timeframe}
-                  viewIdentity={activeTabId ? `${activeTabId}:${activeViewId}:${activeViewModel.save.timeframe}` : `${activeViewId}:${activeViewModel.save.timeframe}`}
-                  bundle={activeViewModel.bundle}
-                  chartBundle={activeViewModel.chartBundle}
-                  clampEngaged={false}
-                  isPastCandlesLoading={false}
-                  isExtending={false}
-                  pastDataWarnings={activeViewModel.pastDataWarnings}
-                  restoreViewport={restoreViewport}
-                  dayAskPeaks={activeViewModel.bundle.ask_peaks}
-                  dayBidPeaks={activeViewModel.bundle.bid_peaks}
-                  todayKst={activeViewModel.save.range.to_date}
-                  tradeVolumePocs={tradeVolumePocsFromWire(activeViewModel.bundle.trade_volume_pocs)}
-                  forceHogaPanes
-                  onViewportCaptureReady={handleViewportCaptureReady}
-                  onCursorActiveChange={setIsCursorActive}
-                />
+                <ChartDrawingShell>
+                  <LiveChartRoot
+                    code={activeViewModel.save.code}
+                    timeframe={activeViewModel.save.timeframe}
+                    viewIdentity={activeTabId ? `${activeTabId}:${activeViewId}:${activeViewModel.save.timeframe}` : `${activeViewId}:${activeViewModel.save.timeframe}`}
+                    bundle={activeViewModel.bundle}
+                    chartBundle={activeViewModel.chartBundle}
+                    clampEngaged={false}
+                    isPastCandlesLoading={false}
+                    isExtending={false}
+                    pastDataWarnings={activeViewModel.pastDataWarnings}
+                    restoreViewport={restoreViewport}
+                    dayAskPeaks={activeViewModel.bundle.ask_peaks}
+                    dayBidPeaks={activeViewModel.bundle.bid_peaks}
+                    todayKst={activeViewModel.save.range.to_date}
+                    tradeVolumePocs={tradeVolumePocsFromWire(activeViewModel.bundle.trade_volume_pocs)}
+                    forceHogaPanes
+                    onViewportCaptureReady={handleViewportCaptureReady}
+                    onCursorActiveChange={setIsCursorActive}
+                  />
+                </ChartDrawingShell>
               ) : null}
             </div>
             <aside

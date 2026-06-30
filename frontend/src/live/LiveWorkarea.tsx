@@ -15,6 +15,7 @@ import { LiveEmptyState } from './LiveEmptyState';
 import { IndexSectorRankingPane } from './IndexSectorRankingPane';
 import { LiveSidebar } from './LiveSidebar';
 import { LiveToolbar } from './LiveToolbar';
+import { ChartDrawingShell } from './ChartDrawingShell';
 import type { LiveInstrument } from './liveInstrument';
 import type { AskPeak, BidPeak, RangeBundle } from '../api/types';
 import type { LiveSeriesData } from '../api/liveSeries';
@@ -361,30 +362,32 @@ export function LiveWorkarea({
               />
             )}
             <div style={{ flex: 1, minHeight: 0, overflow: 'hidden' }}>
-              <LiveChartRoot
-                code={activeCode}
-                timeframe={timeframe}
-                venue={venue}
-                bundle={bundle}
-                chartBundle={chartBundle}
-                hogaPaneBundle={hogaBundle}
-                clampEngaged={clampEngaged}
-                isPastCandlesLoading={isPastCandlesLoading}
-                isExtending={isExtending}
-                pastDataWarnings={pastDataWarnings}
-                restoreViewport={restoreViewport}
-                viewIdentity={viewIdentity ?? undefined}
-                dayAskPeaks={dayAskPeaks}
-                todayAllPriceAskPeak={todayAllPriceAskPeak}
-                dayBidPeaks={dayBidPeaks}
-                todayAllPriceBidPeak={todayAllPriceBidPeak}
-                todayKst={todayKst}
-                tradeVolumePocs={tradeVolumePocs}
-                paneTogglesOverride={paneTogglesOverride}
-                onViewportCaptureReady={onViewportCaptureReady}
-                onCandleBasisHover={rankingAllowed ? handleCandleBasisHover : undefined}
-                onCandleBasisClick={rankingAllowed ? handleCandleBasisClick : undefined}
-              />
+              <ChartDrawingShell>
+                <LiveChartRoot
+                  code={activeCode}
+                  timeframe={timeframe}
+                  venue={venue}
+                  bundle={bundle}
+                  chartBundle={chartBundle}
+                  hogaPaneBundle={hogaBundle}
+                  clampEngaged={clampEngaged}
+                  isPastCandlesLoading={isPastCandlesLoading}
+                  isExtending={isExtending}
+                  pastDataWarnings={pastDataWarnings}
+                  restoreViewport={restoreViewport}
+                  viewIdentity={viewIdentity ?? undefined}
+                  dayAskPeaks={dayAskPeaks}
+                  todayAllPriceAskPeak={todayAllPriceAskPeak}
+                  dayBidPeaks={dayBidPeaks}
+                  todayAllPriceBidPeak={todayAllPriceBidPeak}
+                  todayKst={todayKst}
+                  tradeVolumePocs={tradeVolumePocs}
+                  paneTogglesOverride={paneTogglesOverride}
+                  onViewportCaptureReady={onViewportCaptureReady}
+                  onCandleBasisHover={rankingAllowed ? handleCandleBasisHover : undefined}
+                  onCandleBasisClick={rankingAllowed ? handleCandleBasisClick : undefined}
+                />
+              </ChartDrawingShell>
             </div>
             {rankingAllowed && (
               <IndexSectorRankingPane

@@ -8,8 +8,8 @@ import { clampToViewport } from './clampToViewport';
  * 동기 → 깜빡임 없음, 매직넘버 없음). 반환한 `ref` 를 레이어 요소에, `{left, top}` 을
  * 그 `style` 에 연결한다.
  *
- * 측정+클램프+state 의 dance 를 한 곳에 모은다(LiveDrawingMenu·ConditionBuilder·
- * WatchlistRowMenu 공용) — 호출부는 raw 앵커(커서 clientX/Y 또는 anchorRect 파생)만
+ * 측정+클램프+state 의 dance 를 한 곳에 모은다(ConditionBuilder·WatchlistRowMenu
+ * 공용) — 호출부는 raw 앵커(커서 clientX/Y 또는 anchorRect 파생)만
  * 계산하면 된다. 클램프 수학은 순수 `clampToViewport` 로 분리돼 단위 테스트된다.
  */
 export function useClampedFixedPosition<T extends HTMLElement = HTMLElement>(
