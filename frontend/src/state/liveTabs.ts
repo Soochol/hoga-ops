@@ -78,6 +78,12 @@ function isViewport(v: unknown): v is TabViewport {
     typeof o.rightEdgeMs === 'number' && Number.isFinite(o.rightEdgeMs) &&
     typeof o.barSpan === 'number' && Number.isFinite(o.barSpan) &&
     o.barSpan > 0 && o.barSpan <= MAX_PERSISTED_BAR_SPAN &&
+    (o.rightOffset === undefined || (
+      typeof o.rightOffset === 'number' &&
+      Number.isFinite(o.rightOffset) &&
+      o.rightOffset > 0 &&
+      o.rightOffset <= MAX_PERSISTED_BAR_SPAN
+    )) &&
     typeof o.atLiveEdge === 'boolean' &&
     (o.userAdjusted === undefined || typeof o.userAdjusted === 'boolean')
   );

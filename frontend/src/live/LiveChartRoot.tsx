@@ -361,11 +361,25 @@ export function LiveChartRoot({ code, timeframe, venue = 'KRX', viewIdentity, bu
     if (!c) return null;
     try {
       const ts = c.timeScale();
+      const logicalRange = ts.getVisibleLogicalRange();
+      let rightOffset: number | undefined;
+      const lastMs = lastCandleMsRef.current;
+      if (logicalRange && lastMs !== null && axisRef.current.segments.length > 0) {
+        const lastIndex = ts.timeToIndex(
+          realMsToVirtualSeconds(axisRef.current, lastMs) as Time,
+          true,
+        );
+        if (typeof lastIndex === 'number' && Number.isFinite(lastIndex)) {
+          const offset = logicalRange.to - (lastIndex + 1);
+          if (Number.isFinite(offset) && offset > 0) rightOffset = offset;
+        }
+      }
       const vp = viewportFromRanges(
-        ts.getVisibleLogicalRange(),
+        logicalRange,
         ts.getVisibleRange(),
         axisRef.current,
-        lastCandleMsRef.current,
+        lastMs,
+        rightOffset,
       );
       if (!vp) return null;
       return userAdjustedViewportRef.current ? { ...vp, userAdjusted: true } : vp;
@@ -574,13 +588,18 @@ export function LiveChartRoot({ code, timeframe, venue = 'KRX', viewIdentity, bu
         // ascending, so [0] is the earliest.)
         const shouldUseTimeAnchor =
           !restoreViewport.atLiveEdge ||
-          restoreViewport.userAdjusted === true;
+          restoreViewport.userAdjusted === true ||
+          restoreViewport.rightOffset !== undefined;
         const anchorInRange =
           shouldUseTimeAnchor &&
           restoreViewport.rightEdgeMs >= cb.candles[0].ts_ms;
+        const anchorMs =
+          restoreViewport.atLiveEdge && restoreViewport.rightOffset !== undefined
+            ? cb.candles[cb.candles.length - 1]?.ts_ms
+            : restoreViewport.rightEdgeMs;
         const idx = anchorInRange
           ? tsR.timeToIndex(
-              realMsToVirtualSeconds(axisRef.current, restoreViewport.rightEdgeMs) as Time,
+              realMsToVirtualSeconds(axisRef.current, anchorMs) as Time,
               true,
             )
           : null;
@@ -590,7 +609,10 @@ export function LiveChartRoot({ code, timeframe, venue = 'KRX', viewIdentity, bu
         const range = computeRestoreRange(restoreViewport, totalBarsR, idx, restoreRightOffset);
         if (range) {
           if (timeframe === 'D' && restoreViewport.atLiveEdge && restoreViewport.userAdjusted !== true) {
-            const rightOffset = CHART_TIMESCALE_OPTIONS.rightOffset ?? 0;
+            const rightOffset = Math.max(
+              0,
+              Math.round(restoreViewport.rightOffset ?? (CHART_TIMESCALE_OPTIONS.rightOffset ?? 0)),
+            );
             const plotWidth = Math.max(tsR.width(), containerRef.current?.clientWidth ?? 0);
             const maxLegibleSpan =
               plotWidth > 0

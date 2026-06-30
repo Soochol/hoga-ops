@@ -3,6 +3,11 @@
 All notable changes to this project are documented here.
 The format follows a 4-digit `MAJOR.MINOR.PATCH.MICRO` scheme.
 
+## [0.12.21.3] - 2026-06-30
+
+### Fixed
+- **캔들 차트 우측 빈 영역 복원**: `/live`와 `/study` 탭을 오갈 때 캔들 차트 오른쪽에 만들어 둔 빈 여백도 탭별 viewport 상태에 포함해, 다시 돌아오면 마지막으로 보던 차트 화면이 여백까지 그대로 복원되도록 했다.
+
 ## [0.12.21.2] - 2026-06-30
 
 ### Fixed

@@ -221,6 +221,7 @@ describe('useLiveTabsStore', () => {
     const viewport = {
       rightEdgeMs: 1_781_000_000_000,
       barSpan: 331,
+      rightOffset: 28,
       atLiveEdge: false,
     };
     openTab('005930', '삼성전자');
@@ -321,7 +322,7 @@ describe('liveTabs persistence', () => {
   });
 
   it('toTabsSnapshot keeps persisted fields and saved viewport but drops runtime-only id', () => {
-    const viewport = { rightEdgeMs: 1, barSpan: 2, atLiveEdge: false };
+    const viewport = { rightEdgeMs: 1, barSpan: 2, rightOffset: 3, atLiveEdge: false };
     const snap = toTabsSnapshot({
       tabs: [{
         id: 'abc',
@@ -356,7 +357,7 @@ describe('liveTabs persistence', () => {
         label: '삼성전자',
         timeframe: '1m',
         historicalFromDate: null,
-        viewport: { rightEdgeMs: 1, barSpan: 2, atLiveEdge: false },
+        viewport: { rightEdgeMs: 1, barSpan: 2, rightOffset: 3, atLiveEdge: false },
       }],
       activeTabId: 'tab-a',
     });
@@ -366,7 +367,7 @@ describe('liveTabs persistence', () => {
     expect(JSON.parse(localStorage.getItem('live.tabs.v2') ?? '{}')).toMatchObject({
       version: 2,
       activeIndex: 0,
-      tabs: [{ code: '005930', viewport: { rightEdgeMs: 1, barSpan: 2, atLiveEdge: false } }],
+      tabs: [{ code: '005930', viewport: { rightEdgeMs: 1, barSpan: 2, rightOffset: 3, atLiveEdge: false } }],
     });
   });
 
@@ -387,7 +388,7 @@ describe('liveTabs persistence', () => {
   });
 
   it('loads persisted viewport fields from live.tabs.v2', () => {
-    const viewport = { rightEdgeMs: 1, barSpan: 10, atLiveEdge: false, userAdjusted: true };
+    const viewport = { rightEdgeMs: 1, barSpan: 10, rightOffset: 12, atLiveEdge: false, userAdjusted: true };
     localStorage.setItem('live.tabs.v2', JSON.stringify({
       version: 2, activeIndex: 0,
       tabs: [

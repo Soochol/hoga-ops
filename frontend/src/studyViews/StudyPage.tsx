@@ -442,6 +442,7 @@ export function StudyPage() {
       ? {
           rightEdgeMs: activeTabViewport.rightEdgeMs,
           barSpan: activeTabViewport.barSpan,
+          ...(activeTabViewport.rightOffset !== undefined ? { rightOffset: activeTabViewport.rightOffset } : {}),
           atLiveEdge: activeTabViewport.atLiveEdge,
           ...(activeTabViewport.userAdjusted !== undefined ? { userAdjusted: activeTabViewport.userAdjusted } : {}),
         }

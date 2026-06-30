@@ -424,7 +424,7 @@ describe('StudyPage', () => {
       ],
       activeTabId: 'tab-a',
     });
-    const capturedViewport = { rightEdgeMs: 9_000, barSpan: 42, atLiveEdge: false };
+    const capturedViewport = { rightEdgeMs: 9_000, barSpan: 42, rightOffset: 18, atLiveEdge: false };
 
     renderPage('/study?view=view-ref');
     act(() => {
@@ -465,7 +465,7 @@ describe('StudyPage', () => {
       ],
       activeTabId: 'tab-a',
     });
-    const capturedViewport = { rightEdgeMs: 12_000, barSpan: 64, atLiveEdge: false };
+    const capturedViewport = { rightEdgeMs: 12_000, barSpan: 64, rightOffset: 18, atLiveEdge: false };
 
     renderPage('/study?view=view-ref');
     act(() => {
@@ -503,7 +503,7 @@ describe('StudyPage', () => {
       ],
       activeTabId: 'tab-a',
     });
-    const capturedDailyViewport = { rightEdgeMs: 22_000, barSpan: 33, atLiveEdge: false };
+    const capturedDailyViewport = { rightEdgeMs: 22_000, barSpan: 33, rightOffset: 18, atLiveEdge: false };
 
     renderPage('/study?view=view-ref');
 

@@ -592,6 +592,7 @@ describe('LivePage shell', () => {
     const capturedViewport = {
       rightEdgeMs: 1_781_000_000_000,
       barSpan: 331,
+      rightOffset: 28,
       atLiveEdge: false,
     };
     useLiveTabsStore.setState({
@@ -633,6 +634,7 @@ describe('LivePage shell', () => {
     const capturedViewport = {
       rightEdgeMs: 1_781_000_000_000,
       barSpan: 331,
+      rightOffset: 28,
       atLiveEdge: false,
     };
     useLiveTabsStore.setState({

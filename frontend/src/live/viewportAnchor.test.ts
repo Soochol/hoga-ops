@@ -27,6 +27,25 @@ describe('viewportFromRanges', () => {
     expect(vp!.atLiveEdge).toBe(false); // right edge 4h before the last candle
   });
 
+  it('captures right-offset whitespace as part of the tab viewport', () => {
+    const lastMs = OPEN_MS + 2 * 3600_000;
+    const rightOffset = 24;
+    const vrToSec = (lastMs + rightOffset * 60_000) / 1000;
+    const vp = viewportFromRanges(
+      { from: 100, to: 400 + rightOffset },
+      { to: vrToSec },
+      axis,
+      lastMs,
+      rightOffset,
+    );
+    expect(vp).toMatchObject({
+      rightEdgeMs: lastMs + rightOffset * 60_000,
+      barSpan: 300 + rightOffset,
+      rightOffset,
+      atLiveEdge: true,
+    });
+  });
+
   it('flags atLiveEdge when the right edge is at/after the last candle (within 1s)', () => {
     const lastMs = OPEN_MS + 2 * 3600_000;
     const vrToSec = lastMs / 1000;
@@ -80,9 +99,30 @@ describe('computeRestoreRange', () => {
     expect(computeRestoreRange(liveEdge, 200, null)).toEqual({ from: 150, to: 215, scrollToRight: false });
   });
 
+  it('live-edge: restores the captured right-offset whitespace when present', () => {
+    expect(computeRestoreRange({ ...liveEdge, rightOffset: 32 }, 200, 180)).toEqual({
+      from: 163,
+      to: 213,
+      scrollToRight: false,
+    });
+  });
+
+  it('live-edge with right-offset: falls back to candle count when latest index is unavailable', () => {
+    expect(computeRestoreRange({ ...liveEdge, rightOffset: 32 }, 200, null)).toEqual({
+      from: 182,
+      to: 232,
+      scrollToRight: false,
+    });
+  });
+
   it('user-adjusted live-edge: pins the explicit time anchor instead of the latest bar', () => {
     const adjustedLiveEdge: TabViewport = { ...liveEdge, userAdjusted: true };
     expect(computeRestoreRange(adjustedLiveEdge, 200, 120)).toEqual({ from: 70, to: 120, scrollToRight: false });
+  });
+
+  it('user-adjusted live-edge with right-offset: pins the explicit anchor and restores whitespace', () => {
+    const adjustedLiveEdge: TabViewport = { ...liveEdge, barSpan: 74, rightOffset: 24, userAdjusted: true };
+    expect(computeRestoreRange(adjustedLiveEdge, 200, 120)).toEqual({ from: 71, to: 145, scrollToRight: false });
   });
 
   it('live-edge: clamps from to >= 0 when fewer bars than the saved span', () => {

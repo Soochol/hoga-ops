@@ -614,6 +614,32 @@ describe('LiveChartRoot', () => {
     expect(capture()).toMatchObject({ barSpan: 78.25, atLiveEdge: true });
   });
 
+  it('captures right-offset whitespace in the viewport snapshot', () => {
+    useLivePageStore.setState({ historicalFromDate: null });
+    const { chart, ts } = buildChartMockWithStableTS();
+    const bundle = makeDailyCalendarBundle(250);
+    const last = bundle.candles[bundle.candles.length - 1];
+    let capture: () => unknown = () => null;
+    ts.getVisibleLogicalRange.mockReturnValue({ from: 100, to: 274.25 });
+    ts.getVisibleRange.mockReturnValue({ from: TODAY_OPEN_MS / 1000, to: last.ts_ms / 1000 });
+    ts.timeToIndex.mockReturnValue(249);
+    vi.mocked(createChartEx).mockImplementationOnce(() => chart as never);
+
+    render(
+      <LiveChartRoot
+        code="005930"
+        timeframe="D"
+        bundle={bundle}
+        clampEngaged={false}
+        isPastCandlesLoading={false}
+        onViewportCaptureReady={(fn) => { capture = fn; }}
+      />,
+      { wrapper },
+    );
+
+    expect(capture()).toMatchObject({ barSpan: 174.25, rightOffset: 24.25, atLiveEdge: true });
+  });
+
   it('D timeframe: marks captures as user-adjusted after wheel viewport changes', () => {
     useLivePageStore.setState({ historicalFromDate: null });
     const { chart, ts } = buildChartMockWithStableTS();
@@ -650,7 +676,13 @@ describe('LiveChartRoot', () => {
       );
     });
 
-    expect(capture()).toEqual({ rightEdgeMs: last.ts_ms, barSpan: 13, atLiveEdge: true, userAdjusted: true });
+    expect(capture()).toEqual({
+      rightEdgeMs: last.ts_ms,
+      barSpan: 13,
+      rightOffset: 5,
+      atLiveEdge: true,
+      userAdjusted: true,
+    });
   });
 
   it('D timeframe: replaces candle data fully when the latest daily OHLC changes', () => {
@@ -1701,6 +1733,28 @@ describe('LiveChartRoot historical-prepend viewport preservation', () => {
     expect(ts.scrollToPosition).not.toHaveBeenCalled();
   });
 
+  it('restore: a live-edge tab preserves captured custom right-offset whitespace', () => {
+    const handlers: Array<(r: unknown) => void> = [];
+    const ts = makeTs(handlers);
+    ts.timeToIndex.mockReturnValue(99);
+    vi.mocked(createChartEx).mockImplementationOnce(() => buildStableCapturingMock(ts) as any);
+
+    render(
+      <LiveChartRoot code="005930" timeframe="1m"
+        bundle={todayBundle(Array.from({ length: 100 }, (_, i) => TODAY_OPEN_MS + (i + 1) * 60_000))}
+        clampEngaged={false} isPastCandlesLoading={false}
+        restoreViewport={{
+          rightEdgeMs: TODAY_OPEN_MS + 100 * 60_000,
+          barSpan: 74,
+          rightOffset: 24,
+          atLiveEdge: true,
+        }} />,
+      { wrapper },
+    );
+    expect(ts.setVisibleLogicalRange).toHaveBeenLastCalledWith({ from: 50, to: 124 });
+    expect(ts.scrollToPosition).not.toHaveBeenCalled();
+  });
+
   it('restore: a user-adjusted live-edge tab preserves the saved time anchor', () => {
     const handlers: Array<(r: unknown) => void> = [];
     const ts = makeTs(handlers);
@@ -1770,6 +1824,30 @@ describe('LiveChartRoot historical-prepend viewport preservation', () => {
 
     expect(ts.fitContent).not.toHaveBeenCalled();
     expect(ts.setVisibleLogicalRange).toHaveBeenLastCalledWith({ from: 300, to: 479 });
+    expect(ts.scrollToPosition).not.toHaveBeenCalled();
+  });
+
+  it('restore: D live-edge tab preserves captured custom right-offset whitespace', () => {
+    const handlers: Array<(r: unknown) => void> = [];
+    const ts = makeTs(handlers);
+    ts.width.mockReturnValue(800);
+    ts.timeToIndex.mockReturnValue(99);
+    vi.mocked(createChartEx).mockImplementationOnce(() => buildStableCapturingMock(ts) as any);
+
+    render(
+      <LiveChartRoot code="005930" timeframe="D"
+        bundle={todayBundle(Array.from({ length: 100 }, (_, i) => TODAY_OPEN_MS + (i + 1) * 60_000))}
+        clampEngaged={false} isPastCandlesLoading={false}
+        restoreViewport={{
+          rightEdgeMs: TODAY_OPEN_MS + 100 * 60_000,
+          barSpan: 74,
+          rightOffset: 24,
+          atLiveEdge: true,
+        }} />,
+      { wrapper },
+    );
+
+    expect(ts.setVisibleLogicalRange).toHaveBeenLastCalledWith({ from: 50, to: 124 });
     expect(ts.scrollToPosition).not.toHaveBeenCalled();
   });
 
