@@ -3,6 +3,11 @@
 All notable changes to this project are documented here.
 The format follows a 4-digit `MAJOR.MINOR.PATCH.MICRO` scheme.
 
+## [0.12.21.3] - 2026-07-01
+
+### Changed
+- **/live·/study 그리기 툴 좌측 레일화**: 기존 상단 "그리기" 메뉴를 제거하고 차트 좌측 44px 레일에 현재 지원 도구(선택·수평선·추세선·연필·지우개·모두 지우기)를 공통 배치했다.
+
 ## [0.12.21.2] - 2026-06-30
 
 ### Fixed

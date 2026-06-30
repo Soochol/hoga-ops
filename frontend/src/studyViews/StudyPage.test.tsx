@@ -270,6 +270,7 @@ describe('StudyPage', () => {
     expect(screen.getByTestId('study-page-primary')).toHaveClass('bg-bg-card');
     expect(screen.getByTestId('study-page-primary')).toHaveClass('border');
     expect(screen.getByTestId('live-chart-root-stub')).toBeTruthy();
+    expect(screen.getByTestId('live-drawing-rail')).toBeInTheDocument();
     expect(useStudyReferenceBundleMock).toHaveBeenCalledWith(expect.objectContaining(referenceSave));
     const props = liveChartRootMock.mock.calls[0][0];
     expect(props.code).toBe('005930');
@@ -392,7 +393,7 @@ describe('StudyPage', () => {
 
     expect(screen.getByTestId('live-indicators-button')).toBeTruthy();
     expect(screen.getByTestId('live-settings-button')).toBeTruthy();
-    expect(screen.getByRole('button', { name: '그리기' })).toBeTruthy();
+    expect(screen.queryByRole('button', { name: '그리기' })).toBeNull();
 
     fireEvent.click(screen.getByTestId('live-indicators-button'));
     expect(screen.getByRole('dialog', { name: '보조지표' })).toBeTruthy();

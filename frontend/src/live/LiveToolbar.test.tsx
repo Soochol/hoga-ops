@@ -175,13 +175,14 @@ describe('LiveToolbar', () => {
     expect(onOpenIndicators).toHaveBeenCalledOnce();
   });
 
-  it('places current-view save next to the drawing button', () => {
+  it('renders current-view save after chart action buttons without the old drawing menu', () => {
     const studySaveControl = <button type="button">현재 뷰 저장</button>;
     render(<LiveToolbar onOpenIndicators={() => {}} onOpenSettings={() => {}} studySaveControl={studySaveControl} />);
 
-    const drawing = screen.getByRole('button', { name: '그리기' });
+    expect(screen.queryByRole('button', { name: '그리기' })).toBeNull();
+    const settings = screen.getByTestId('live-settings-button');
     const save = screen.getByRole('button', { name: '현재 뷰 저장' });
 
-    expect(drawing.compareDocumentPosition(save) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+    expect(settings.compareDocumentPosition(save) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
   });
 });
