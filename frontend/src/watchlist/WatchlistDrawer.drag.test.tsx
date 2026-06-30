@@ -12,6 +12,7 @@ import { useEntryDragStore } from '../state/entryDrag';
 const h = vi.hoisted(() => ({
   onDragEnd: null as null | ((e: unknown) => void),
   onPointerDown: vi.fn(),
+  setActivatorNodeRef: vi.fn(),
 }));
 vi.mock('@dnd-kit/core', async (orig) => {
   const actual = await orig<typeof import('@dnd-kit/core')>();
@@ -33,6 +34,7 @@ vi.mock('@dnd-kit/sortable', async (orig) => {
     SortableContext: ({ children }: { children: React.ReactNode }) => <>{children}</>,
     useSortable: () => ({
       setNodeRef: () => {},
+      setActivatorNodeRef: h.setActivatorNodeRef,
       listeners: { onPointerDown: h.onPointerDown },
       attributes: { role: 'button' },
       transform: null, transition: undefined, isDragging: false,
@@ -66,6 +68,7 @@ describe('WatchlistDrawer drag wiring', () => {
     window.localStorage.clear();
     h.onDragEnd = null;
     h.onPointerDown.mockClear();
+    h.setActivatorNodeRef.mockClear();
     useLivePageStore.setState({ activeCode: null, candleTimeframe: '1m' });
     vi.restoreAllMocks();
     vi.spyOn(client, 'apiCall').mockResolvedValue({ phase: 'open', quotes: [] });
@@ -87,6 +90,21 @@ describe('WatchlistDrawer drag wiring', () => {
     h.onPointerDown.mockClear();
     fireEvent.pointerDown(row);
     expect(h.onPointerDown).not.toHaveBeenCalled();
+  });
+
+  it('wires drag handles for every folder group, not only the first group', async () => {
+    const qc = new QueryClient({ defaultOptions: { queries: { retry: false }, mutations: { retry: false } } });
+    render(<WatchlistDrawer />, { wrapper: wrap(qc) });
+    await waitFor(() => expect(screen.getByText('장기')).toBeInTheDocument());
+
+    const handles = screen.getAllByTestId('group-drag-handle');
+    expect(handles).toHaveLength(2);
+
+    fireEvent.pointerDown(handles[0]);
+    fireEvent.pointerDown(handles[1]);
+    expect(h.onPointerDown).toHaveBeenCalledTimes(2);
+    expect(h.setActivatorNodeRef).toHaveBeenCalledWith(handles[0]);
+    expect(h.setActivatorNodeRef).toHaveBeenCalledWith(handles[1]);
   });
 
   it('entry-drag onDragEnd → reorderEntries(folderId, orderedCodes)', async () => {

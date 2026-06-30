@@ -30,7 +30,7 @@ import { summarizeCaughtUpAll, formatCaughtUpAllHeader } from './banners';
 import {
   DndContext, PointerSensor, useSensor, useSensors, closestCenter,
   type DragStartEvent, type DragMoveEvent, type DragEndEvent,
-  type CollisionDetection, type DraggableSyntheticListeners,
+  type CollisionDetection, type DraggableAttributes, type DraggableSyntheticListeners,
 } from '@dnd-kit/core';
 import { SortableContext, useSortable, verticalListSortingStrategy } from '@dnd-kit/sortable';
 import { CSS } from '@dnd-kit/utilities';
@@ -132,7 +132,10 @@ function GroupHeader(props: {
         // 그룹 드래그 핸들 — hover/focus 시 노출(⋯ 메뉴와 같은 관용구), 포인터 전용.
         // aria-hidden + listeners-only(편집 모달 ⠿ 행 핸들과 동일). 헤더 클릭(토글)과
         // 충돌하지 않게 핸들에만 listeners를 건다.
-        <span {...props.dragHandle.listeners} aria-hidden data-testid="group-drag-handle"
+        <span ref={props.dragHandle.setActivatorNodeRef}
+          {...props.dragHandle.attributes}
+          {...props.dragHandle.listeners}
+          aria-hidden data-testid="group-drag-handle"
           className="cursor-grab select-none touch-none px-1 leading-none text-fg-dimmer opacity-0 group-hover:opacity-100 group-focus-within:opacity-100">
           ⠿
         </span>
@@ -215,7 +218,11 @@ const typeAwareCollision: CollisionDetection = (args) => {
 
 /** 그룹 헤더에 부착할 드래그 핸들 — listeners만(포인터 전용; KeyboardSensor 미도입,
  *  편집 모달 ⠿ 핸들과 동일 계약). */
-type GroupDragHandle = { listeners: DraggableSyntheticListeners };
+type GroupDragHandle = {
+  listeners: DraggableSyntheticListeners;
+  attributes: DraggableAttributes;
+  setActivatorNodeRef: (node: HTMLElement | null) => void;
+};
 
 /** 폴더(그룹)의 sortable 단위 = 그룹 블록 전체(헤더 + 종목들). setNodeRef/transform은
  *  컨테이너 div에, listeners는 children render-prop으로 헤더 ⠿ 핸들에 전달한다 —
@@ -224,7 +231,7 @@ function SortableGroup({ folderId, children }: {
   folderId: string;
   children: (handle: GroupDragHandle) => React.ReactNode;
 }) {
-  const { setNodeRef, transform, transition, listeners, isDragging } =
+  const { setNodeRef, setActivatorNodeRef, transform, transition, listeners, attributes, isDragging } =
     useSortable({ id: folderId, data: { type: 'folder' } });
   return (
     <div ref={setNodeRef} data-testid={`watchlist-group-${folderId}`}
@@ -232,7 +239,7 @@ function SortableGroup({ folderId, children }: {
         transform: CSS.Transform.toString(transform), transition,
         ...(isDragging ? { opacity: 0.6, position: 'relative', zIndex: 1 } : {}),
       }}>
-      {children({ listeners })}
+      {children({ listeners, attributes, setActivatorNodeRef })}
     </div>
   );
 }
@@ -251,7 +258,7 @@ function SortableQuoteRow(props: {
   dragEnabled?: boolean;
 }) {
   const { entry } = props;
-  const { setNodeRef, listeners, attributes, transform, transition, isDragging } =
+  const { setNodeRef, setActivatorNodeRef, listeners, attributes, transform, transition, isDragging } =
     useSortable({ id: entrySortableId(entry.folder_id, entry.code), data: { type: 'entry', folderId: entry.folder_id, code: entry.code, name: entry.name } });
   return (
     <QuoteRow
@@ -270,6 +277,7 @@ function SortableQuoteRow(props: {
       sortableStyle={props.dragEnabled === false ? undefined : { transform: CSS.Transform.toString(transform), transition }}
       dragListeners={props.dragEnabled === false ? undefined : listeners}
       dragAttributes={props.dragEnabled === false ? undefined : attributes}
+      dragActivatorRef={props.dragEnabled === false ? undefined : setActivatorNodeRef}
       dragging={props.dragEnabled === false ? false : isDragging}
       trailingAction={props.collectionBadge}
     />

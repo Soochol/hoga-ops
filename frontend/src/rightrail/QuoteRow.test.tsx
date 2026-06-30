@@ -84,14 +84,17 @@ describe('QuoteRow', () => {
 
   it('puts drag listeners on the left handle without stealing row clicks', () => {
     const onPointerDown = vi.fn();
+    const setActivatorNodeRef = vi.fn();
     const { onClick } = row({
       dragListeners: { onPointerDown } as ComponentProps<typeof QuoteRow>['dragListeners'],
       dragAttributes: { role: 'button' } as ComponentProps<typeof QuoteRow>['dragAttributes'],
+      dragActivatorRef: setActivatorNodeRef,
     });
     const li = screen.getByTestId('quote-row-005930');
     const handle = screen.getByTestId('drag-handle-quote-row-005930');
 
     expect(handle).toHaveAttribute('aria-label', '삼성전자 순서 이동');
+    expect(setActivatorNodeRef).toHaveBeenCalledWith(handle);
     fireEvent.pointerDown(handle);
     expect(onPointerDown).toHaveBeenCalledOnce();
 

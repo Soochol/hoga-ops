@@ -22,6 +22,7 @@ export interface QuoteRowProps {
   sortableStyle?: Pick<React.CSSProperties, 'transform' | 'transition'>;
   dragListeners?: DraggableSyntheticListeners;
   dragAttributes?: DraggableAttributes;
+  dragActivatorRef?: (node: HTMLElement | null) => void;
   dragging?: boolean;
   // --- 관심종목 패널 전용 우클릭/Delete (미전달 시 무동작) ---
   onContextMenu?: (e: React.MouseEvent<HTMLLIElement>) => void;
@@ -39,7 +40,7 @@ function formatPct(pct: number | null): string {
 
 export function QuoteRow({
   name, price, pct, changeWon: _changeWon, active, ariaLabel, testId, onClick, trailingAction,
-  sortableRef, sortableStyle, dragListeners, dragAttributes, dragging,
+  sortableRef, sortableStyle, dragListeners, dragAttributes, dragActivatorRef, dragging,
   onContextMenu, onDelete, indented,
 }: QuoteRowProps) {
   void _changeWon;
@@ -83,6 +84,7 @@ export function QuoteRow({
     >
       {dragListeners && (
         <span
+          ref={dragActivatorRef}
           {...dragAttributes}
           {...dragListeners}
           data-testid={`drag-handle-${testId}`}
