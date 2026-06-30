@@ -27,7 +27,7 @@ export default function App() {
 
   // The top row is fixed; the content row owns main + optional right panel +
   // fixed rail. Keeping this as a nested grid prevents panel content from
-  // inflating the chart row and returns the retired left-nav width to main.
+  // inflating the chart row and returns the retired side-menu width to main.
   const contentCols = `1fr${activePanel ? ' var(--watchlist-panel-w)' : ''} var(--rail-w)`;
   const { pathname } = useLocation();
   const staticTitle = pathname === '/live' ? null : STATIC_ROUTE_TITLES.get(pathname) ?? 'hoga-ops';

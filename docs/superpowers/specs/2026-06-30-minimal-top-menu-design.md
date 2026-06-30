@@ -21,7 +21,7 @@ The final approved direction is a minimal top menu inspired by the attached refe
 - **Right rail fixed column**: The global right rail remains a fixed `--rail-w` column on every route; opening a right-rail panel adds exactly one panel column between main content and the rail. 근거: [frontend/src/App.tsx](../../../frontend/src/App.tsx), [DESIGN.md](../../../DESIGN.md).
 - **Panel exclusivity**: Only one right-rail panel can be open at a time through `activePanel`. 근거: [frontend/src/state/rightRail.ts](../../../frontend/src/state/rightRail.ts).
 - **Live document title ownership**: `/live` keeps its own title writer; static shell title writing applies to non-`/live` routes. 근거: [frontend/src/App.tsx](../../../frontend/src/App.tsx), [frontend/src/App.test.tsx](../../../frontend/src/App.test.tsx).
-- **Route order**: Workspace navigation remains `Live`, `Study`, `Heatmap`, `Screener`, `Inventory`, `Capture`; system navigation remains `Settings`. 근거: [frontend/src/nav/LeftNav.tsx](../../../frontend/src/nav/LeftNav.tsx), [frontend/src/nav/LeftNav.test.tsx](../../../frontend/src/nav/LeftNav.test.tsx).
+- **Route order**: Workspace navigation remains `Live`, `Study`, `Heatmap`, `Screener`, `Inventory`, `Capture`; system navigation remains `Settings`. 근거: [frontend/src/nav/items.ts](../../../frontend/src/nav/items.ts), [frontend/src/nav/TopNav.test.tsx](../../../frontend/src/nav/TopNav.test.tsx).
 - **No duplicate route title**: Feature pages continue to avoid repeating their own title in the page body; the active top menu item remains the shell-level route label. 근거: [DESIGN.md](../../../DESIGN.md).
 
 ## Invariant impact

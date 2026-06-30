@@ -67,8 +67,8 @@ function RailItem({
   label: string; ariaLabel: string; controls: string;
   active: boolean; onClick: () => void; icon: React.ReactNode;
 }) {
-  // Active = tint bg + neutral text, matching NavItem (no triple-teal). The icon
-  // fill (currentColor=fg) is a shape signal, not a 2nd accent.
+  // Active = tint bg + neutral text. The icon fill (currentColor=fg) is a shape
+  // signal, not a 2nd accent.
   return (
     <RailButton
       onClick={onClick}

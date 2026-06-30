@@ -99,7 +99,7 @@ describe('App document title', () => {
 });
 
 describe('App shell layout', () => {
-  it('renders a two-row shell with top nav and no left nav column', () => {
+  it('renders a two-row shell with top nav and no side-menu column', () => {
     const { container } = wrap(<div>Heatmap</div>, '/heatmap');
     const shell = container.firstElementChild as HTMLElement;
     const contentGrid = screen.getByTestId('app-content-grid');
