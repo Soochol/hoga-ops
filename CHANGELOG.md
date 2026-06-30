@@ -3,6 +3,11 @@
 All notable changes to this project are documented here.
 The format follows a 4-digit `MAJOR.MINOR.PATCH.MICRO` scheme.
 
+## [0.12.21.0] - 2026-06-30
+
+### Fixed
+- **관심종목·스크리너·히트맵 등락률 보정**: 보정 일봉 기준가가 있으면 KIS 등락률 대신 앱이 직접 계산한 등락률을 항상 표시해, KIS가 전일 등락률을 그대로 보내는 경우에도 stale 값이 화면에 남지 않게 했다.
+
 ## [0.12.20.2] - 2026-06-30
 
 ### Fixed

@@ -21,7 +21,7 @@ def _write_adjusted_daily(path, rows):
         con.execute(f"COPY d TO '{path}' (FORMAT parquet)")
 
 
-def test_rejects_kis_change_rate_when_adjusted_baseline_disagrees(tmp_path):
+def test_uses_adjusted_baseline_when_kis_change_rate_disagrees(tmp_path):
     daily = tmp_path / "daily_adjusted.parquet"
     _write_adjusted_daily(
         daily,
@@ -36,10 +36,10 @@ def test_rejects_kis_change_rate_when_adjusted_baseline_disagrees(tmp_path):
     assert out.change_pct_source == "adjusted_daily"
     assert out.baseline_price == 9930
     assert out.baseline_date == "2026-06-26"
-    assert out.warnings == ["kis_change_pct_rejected"]
+    assert out.warnings == []
 
 
-def test_accepts_kis_change_rate_when_it_matches_adjusted_baseline(tmp_path):
+def test_uses_adjusted_baseline_without_warning_when_kis_matches(tmp_path):
     daily = tmp_path / "daily_adjusted.parquet"
     _write_adjusted_daily(
         daily,
@@ -52,7 +52,26 @@ def test_accepts_kis_change_rate_when_it_matches_adjusted_baseline(tmp_path):
 
     assert out.change_pct == 3.0
     assert out.change_won == 3
-    assert out.change_pct_source == "kis"
+    assert out.change_pct_source == "adjusted_daily"
+    assert out.baseline_price == 100
+    assert out.baseline_date == "2026-06-26"
+    assert out.warnings == []
+
+
+def test_recomputes_change_rate_from_adjusted_baseline_even_when_kis_diff_is_small(tmp_path):
+    daily = tmp_path / "daily_adjusted.parquet"
+    _write_adjusted_daily(
+        daily,
+        [("005930", "2026-06-26", 100, 100, 100, 100, 100)],
+    )
+    resolver = QuoteChangeResolver(adjusted_daily_path=daily)
+
+    q = KisQuote(code="005930", price=105, change_pct=2.1, change_won=2)
+    out = resolver.resolve_quote(q, phase="open")
+
+    assert out.change_pct == 5.0
+    assert out.change_won == 5
+    assert out.change_pct_source == "adjusted_daily"
     assert out.baseline_price == 100
     assert out.baseline_date == "2026-06-26"
     assert out.warnings == []

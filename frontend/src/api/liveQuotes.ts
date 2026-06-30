@@ -21,7 +21,7 @@ export interface LiveQuote {
   baseline_date?: string | null;
   /** change_pct 최종 소스: kis, adjusted_daily, hidden_pre_open, unavailable. */
   change_pct_source?: string | null;
-  /** quote validation warnings such as kis_change_pct_rejected. */
+  /** quote validation warnings such as adjusted_baseline_unavailable. */
   warnings?: string[];
 }
 
