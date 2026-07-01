@@ -325,6 +325,25 @@ def test_quotes_route_auto_uses_nxt_before_regular_session(monkeypatch, tmp_path
     assert fake.venues == ["NXT"]
 
 
+def test_quotes_route_auto_uses_nxt_after_regular_session(monkeypatch, tmp_path):
+    class _FixedDatetime(datetime):
+        @classmethod
+        def now(cls, tz=None):  # noqa: ANN001
+            return datetime(2026, 7, 1, 16, 30, tzinfo=tz)
+
+    monkeypatch.setattr(live_api, "datetime", _FixedDatetime)
+    fake = _FakeKis(QUOTES)
+    kis_runtime.set_kis_client(fake, 0)  # type: ignore[arg-type]
+    app = FastAPI()
+    app.include_router(build_router(get_status=lifecycle.get_status, data_dir=tmp_path))
+
+    r = TestClient(app).get("/api/live/quotes", params={"codes": "005930", "venue": "AUTO"})
+
+    assert r.status_code == 200
+    assert r.json()["phase"] == "open"
+    assert fake.venues == ["NXT"]
+
+
 def test_quotes_route_rejects_invalid_venue(tmp_path):
     app = FastAPI()
     app.include_router(build_router(get_status=lifecycle.get_status, data_dir=tmp_path))
@@ -406,6 +425,30 @@ def test_quotes_closed_cached_quotes_use_adjusted_change_pct_without_kis(monkeyp
     assert q0["baseline_date"] == baseline_date
     assert q0["change_pct_source"] == "adjusted_daily"
     assert q0["warnings"] == []
+
+
+def test_quotes_route_nxt_zero_price_stays_unavailable(monkeypatch, tmp_path):
+    baseline_date = _route_baseline_date()
+    _seed_quote_adjusted_daily(
+        tmp_path,
+        [("067310", baseline_date, 48650, 48650, 48650, 48650, 100)],
+    )
+    fake = _FakeKis([KisQuote("067310", 0, None, None)])
+    kis_runtime.set_kis_client(fake, 0)  # type: ignore[arg-type]
+    monkeypatch.setattr(live_api, "_quote_phase", lambda now, venue_policy="KRX": "open")
+    app = FastAPI()
+    app.include_router(build_router(get_status=lifecycle.get_status, data_dir=tmp_path))
+
+    r = TestClient(app).get("/api/live/quotes", params={"codes": "067310", "venue": "NXT"})
+
+    assert r.status_code == 200
+    q0 = r.json()["quotes"][0]
+    assert q0["price"] == 0
+    assert q0["change_pct"] is None
+    assert q0["change_won"] is None
+    assert q0["change_pct_source"] == "unavailable"
+    assert q0["warnings"] == ["adjusted_baseline_unavailable"]
+    assert fake.venues == ["NXT"]
 
 
 def test_quotes_closed_cold_start_fetches_once(monkeypatch, tmp_path):
