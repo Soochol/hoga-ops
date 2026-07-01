@@ -4,6 +4,7 @@ import type { RangeBundle } from '../api/types';
 import type { PaneId } from '../chart/drawing/types';
 import type { PaneSeriesMap } from '../chart/drawing/chartCoordinates';
 import { useQuoteByCode } from '../api/liveQuotes';
+import { useLiveVenueStore } from '../state/liveVenue';
 import { resolveTokens } from '../util/tokens';
 import { deriveCurrentPriceLine } from './deriveCurrentPriceLine';
 
@@ -30,7 +31,8 @@ type Props = {
  */
 function LiveCurrentPriceLine({ paneSeries, bundle, code }: Props) {
   const series = paneSeries.get('candle' as PaneId);
-  const quote = useQuoteByCode(code ? [code] : []).get(code ?? '');
+  const venue = useLiveVenueStore((s) => s.venue);
+  const quote = useQuoteByCode(code ? [code] : [], venue).get(code ?? '');
   const model = deriveCurrentPriceLine(bundle, quote, TOKENS);
   const lineRef = useRef<IPriceLine | null>(null);
 

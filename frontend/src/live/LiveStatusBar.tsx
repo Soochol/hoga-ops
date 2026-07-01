@@ -14,7 +14,7 @@ import { QuoteChange } from '../rightrail/QuoteChange';
 import { useLiveStatus } from '../api/liveStatus';
 import { deriveCollectionView } from './collectionStatus';
 import { CollectionDot } from './CollectionDot';
-import type { LiveVenueOption } from '../state/liveVenue';
+import { useLiveVenueStore, type LiveVenueOption } from '../state/liveVenue';
 import { liveVenueDisplayLabel, liveVenueKeepsHogaKrx } from './liveVenuePolicy';
 import type { CaptureHealthView } from './liveStatusProjection';
 
@@ -27,7 +27,7 @@ interface Props {
   venue?: LiveVenueOption;
 }
 
-export function LiveStatusBar({ activeCode, captureHealth, bundle, venue = 'KRX' }: Props) {
+export function LiveStatusBar({ activeCode, captureHealth, bundle, venue }: Props) {
   // Threshold MUST exceed the 30s server ping so a connected-but-idle
   // socket (e.g. market closed) stays realtime; only a real disconnect
   // (no frame for >35s) flips it to disconnected. (plan-review cross-task flag)
@@ -62,7 +62,9 @@ export function LiveStatusBar({ activeCode, captureHealth, bundle, venue = 'KRX'
 
   // 종목명·현재가 옆 전일대비(등락액·등락률) — 관심/스크리너 패널과 동일한
   // 라이브 quote 단일 출처(ADR-0056). 현재가는 bundle(WS) 이라 별개.
-  const quoteByCode = useQuoteByCode(activeCode ? [activeCode] : []);
+  const liveVenue = useLiveVenueStore((s) => s.venue);
+  const selectedVenue = venue ?? liveVenue;
+  const quoteByCode = useQuoteByCode(activeCode ? [activeCode] : [], selectedVenue);
   const quote = activeCode ? quoteByCode.get(activeCode) : undefined;
 
   // ADR-0039: surface the active source through the last segment's tag.
@@ -121,9 +123,9 @@ export function LiveStatusBar({ activeCode, captureHealth, bundle, venue = 'KRX'
         <span>{timeframe}</span>
         <span aria-hidden>·</span>
         <span data-testid="live-venue-label" title="KIS 캔들 기준" className="min-w-0 truncate">
-          캔들 {liveVenueDisplayLabel(venue)}
+          캔들 {liveVenueDisplayLabel(selectedVenue)}
         </span>
-        {liveVenueKeepsHogaKrx(venue) && (
+        {liveVenueKeepsHogaKrx(selectedVenue) && (
           <>
             <span aria-hidden>·</span>
             <span data-testid="live-venue-ws-note" style={{ color: 'var(--fg-dimmer)' }}>

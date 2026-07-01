@@ -22,8 +22,9 @@ function seedQuote(
   qc: QueryClient,
   code: string,
   quote: { price: number; change_pct: number | null; change_won: number | null },
+  venue: 'KRX' | 'NXT' | 'UN' | 'AUTO' = 'KRX',
 ) {
-  qc.setQueryData(liveQuotesQueryKey([code]), {
+  qc.setQueryData(liveQuotesQueryKey([code], venue), {
     phase: 'open',
     quotes: [{ code, ...quote }],
   });
@@ -131,7 +132,7 @@ describe('useDocumentTitle', () => {
     renderHook(() => useDocumentTitle('005930'), { wrapper: wrap(qc) });
     expect(document.title).toBe('삼성전자');
 
-    qc.setQueryData(liveQuotesQueryKey(['005930']), {
+    qc.setQueryData(liveQuotesQueryKey(['005930'], 'KRX'), {
       phase: 'open',
       quotes: [{ code: '005930', price: 71200, change_pct: 1.23, change_won: 860 }],
     });

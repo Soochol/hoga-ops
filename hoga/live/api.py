@@ -34,7 +34,9 @@ from hoga.live.kis_capacity_scheduler import (
 from hoga.live.kis_models import InvestorTrendEstimateRow
 from hoga.live.kis_venue import (
     KisVenue,
+    LiveVenuePolicy,
     parse_live_venue_policy,
+    quote_venue_for_policy,
 )
 from hoga.live.live_daily_candle_backfill import LiveDailyCandleBackfill
 from hoga.live.live_candle_backfill import LiveMinuteCandleBackfill
@@ -584,7 +586,7 @@ class _InvestorEstimateObservedAtStore:
             log.warning("failed to persist investor estimate observed_at store", exc_info=True)
 
 
-def _quote_phase(now: datetime) -> Literal["pre_open", "open", "closed"]:
+def _quote_phase(now: datetime, venue_policy: LiveVenuePolicy = "KRX") -> Literal["pre_open", "open", "closed"]:
     """/quotes 오버레이의 폴링·표시 게이트(스펙 2026-06-08 ⑧).
 
     closed: 주말 또는 평일 08:50 이전·16:00 이후 — 프론트가 폴링을 600s로
@@ -596,6 +598,10 @@ def _quote_phase(now: datetime) -> Literal["pre_open", "open", "closed"]:
     if now.weekday() >= 5:  # noqa: PLR2004 — 토/일
         return "closed"
     t = now.time()
+    if venue_policy in ("NXT", "UN", "AUTO"):
+        if t < time(8, 0) or t >= time(20, 0):
+            return "closed"
+        return "open"
     if t < time(8, 50) or t >= time(16, 0):
         return "closed"
     return "pre_open" if t < time(9, 0) else "open"
@@ -648,6 +654,8 @@ class LiveQuoteFetcher:
         code_list: list[str],
         phase: str,
         today: date | None = None,
+        *,
+        venue: KisVenue = "KRX",
     ) -> list[LiveQuote]:
         """code_list 의 시세를 phase 에 맞춰 반환. closed=마지막 시세(캐시 미스면 1회 채움),
         open=라이브, pre_open=등락률 숨김. KIS 실패는 절대 전파하지 않는다(오버레이는 500 금지)."""
@@ -658,7 +666,7 @@ class LiveQuoteFetcher:
             missing = [c for c in code_list if c not in self._last_quotes]
             if missing:
                 try:
-                    for q in await kis.fetch_multi_price(code_list):
+                    for q in await kis.fetch_multi_price(code_list, venue=venue):
                         self._last_quotes[q.code] = q
                 except Exception as e:  # noqa: BLE001 — 오버레이는 절대 500 금지
                     log.warning("live quotes cold fetch failed (%d codes): %s",
@@ -669,7 +677,7 @@ class LiveQuoteFetcher:
                 if (q := self._last_quotes.get(c)) is not None
             ]
         try:
-            quotes = await kis.fetch_multi_price(code_list)
+            quotes = await kis.fetch_multi_price(code_list, venue=venue)
         except Exception as e:  # noqa: BLE001 — 10초 폴링 오버레이는 절대 500 금지;
             # KIS rate-limit/api-error/네트워크 타임아웃 등 무엇이든 빈 결과로 graceful
             # (프론트는 '—' 표시). retry-exhausted 신호는 warning 으로만 남긴다.
@@ -1303,9 +1311,17 @@ def build_router(
     )
 
     @router.get("/quotes", response_model=LiveQuotesResponse)
-    async def _get_quotes(codes: str = Query(...)) -> LiveQuotesResponse:
+    async def _get_quotes(
+        codes: str = Query(...),
+        venue: str | None = Query("KRX"),
+    ) -> LiveQuotesResponse:
         now = datetime.now(_KST)
-        phase = _quote_phase(now)
+        try:
+            venue_policy = parse_live_venue_policy(venue)
+        except ValueError as e:
+            raise HTTPException(422, {"code": "invalid_venue", "msg": str(e)}) from e
+        quote_venue = quote_venue_for_policy(venue_policy, now)
+        phase = _quote_phase(now, venue_policy)
         code_list = [c for c in codes.split(",") if _CODE_RE.match(c)]
         if not code_list:
             return LiveQuotesResponse(phase=phase, quotes=[])
@@ -1318,15 +1334,16 @@ def build_router(
                         _kis_scheduler,
                         data_dir=data_dir,
                         role="background",
-                        key=("quotes", tuple(sorted(code_list)), phase),
+                        key=("quotes", quote_venue, tuple(sorted(code_list)), phase),
                         endpoint=kis_access.KisRestEndpoint.QUOTES,
                         priority="background",
-                        cooldown_scope="quotes",
+                        cooldown_scope=f"quotes:{quote_venue}",
                         fetch_fn=lambda kis: _quote_fetcher.fetch_and_gate(
                             kis,
                             code_list,
                             phase,
                             today=now.date(),
+                            venue=quote_venue,
                         ),
                     )
                 ),

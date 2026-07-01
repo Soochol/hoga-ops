@@ -14,10 +14,12 @@ class _FakeKis:
     def __init__(self, quotes: list[KisQuote], *, fail: bool = False) -> None:
         self._quotes = quotes
         self.calls = 0
+        self.venues: list[str] = []
         self._fail = fail
 
-    async def fetch_multi_price(self, codes: list[str]) -> list[KisQuote]:
+    async def fetch_multi_price(self, codes: list[str], *, venue: str = "KRX") -> list[KisQuote]:
         self.calls += 1
+        self.venues.append(venue)
         if self._fail:
             raise RuntimeError("kis down")
         want = set(codes)
@@ -32,6 +34,15 @@ async def test_open_returns_live_and_caches() -> None:
     assert (out[0].open, out[0].high, out[0].low) == (72000, 73000, 71500)  # open 경로 OHLC 통과
     # 캐시에 적재됨(closed 서빙용).
     assert f._last_quotes["005930"].price == 72400
+
+
+async def test_open_threads_quote_venue() -> None:
+    f = LiveQuoteFetcher()
+    kis = _FakeKis(Q)
+
+    await f.fetch_and_gate(kis, ["005930"], "open", venue="NXT")  # type: ignore[arg-type]
+
+    assert kis.venues == ["NXT"]
 
 
 async def test_pre_open_hides_change_keeps_price() -> None:
@@ -52,6 +63,15 @@ async def test_closed_cold_fetches_once_then_serves_cache() -> None:
     out2 = await f.fetch_and_gate(kis, ["005930", "000660"], "closed")  # type: ignore[arg-type]
     assert kis.calls == 1
     assert {q.code for q in out2} == {"005930", "000660"}
+
+
+async def test_closed_cold_fetch_threads_quote_venue() -> None:
+    f = LiveQuoteFetcher()
+    kis = _FakeKis(Q)
+
+    await f.fetch_and_gate(kis, ["005930"], "closed", venue="UN")  # type: ignore[arg-type]
+
+    assert kis.venues == ["UN"]
 
 
 async def test_closed_omits_uncached_code() -> None:

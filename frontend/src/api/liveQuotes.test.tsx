@@ -1,7 +1,7 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { renderHook, waitFor, act } from '@testing-library/react';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
-import { getQuotes, useQuoteByCode, useLiveQuoteOverlay, quotesRefetchInterval } from './liveQuotes';
+import { getQuotes, liveQuotesQueryKey, useQuoteByCode, useLiveQuoteOverlay, quotesRefetchInterval } from './liveQuotes';
 import * as client from './client';
 
 function wrap() {
@@ -36,6 +36,18 @@ it('accepts validated quote provenance fields', async () => {
   expect(res.quotes[0].baseline_date).toBe('2026-06-26');
   expect(res.quotes[0].change_pct_source).toBe('adjusted_daily');
   expect(res.quotes[0].warnings).toEqual(['kis_change_pct_rejected']);
+});
+
+it('includes venue in the request URL and query key', async () => {
+  const spy = vi.spyOn(client, 'apiCall').mockResolvedValueOnce({
+    phase: 'open',
+    quotes: [],
+  });
+
+  await getQuotes(['005930'], 'NXT');
+
+  expect(spy).toHaveBeenCalledWith('/api/live/quotes?codes=005930&venue=NXT');
+  expect(liveQuotesQueryKey(['005930'], 'NXT')).toEqual(['live-quotes', '005930', 'NXT']);
 });
 
 describe('useQuoteByCode', () => {

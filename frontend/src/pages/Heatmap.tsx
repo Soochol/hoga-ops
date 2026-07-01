@@ -7,6 +7,7 @@ import { groupByFolder } from '../watchlist/grouping';
 import { useLiveQuoteOverlay } from '../api/liveQuotes';
 import { useJumpToLive } from '../live/useJumpToLive';
 import { useHeatmapPrefsStore } from '../state/heatmapPrefs';
+import { useLiveVenueStore } from '../state/liveVenue';
 import { HeatmapBoard } from '../heatmap/HeatmapBoard';
 import { SectorTempStrip } from '../heatmap/SectorTempStrip';
 import { HeatmapRowMenu } from '../heatmap/HeatmapRowMenu';
@@ -29,8 +30,9 @@ export function Heatmap() {
   const entries = useMemo(() => data?.entries ?? [], [data]);
   const folders = useMemo(() => data?.folders ?? [], [data]);
   const codes = useMemo(() => entries.map((e) => e.code), [entries]);
+  const venue = useLiveVenueStore((s) => s.venue);
 
-  const { quoteByCode, phase, dataUpdatedAt } = useLiveQuoteOverlay(codes);
+  const { quoteByCode, phase, dataUpdatedAt } = useLiveQuoteOverlay(codes, venue);
   const groups = useMemo(() => groupByFolder(folders, entries), [folders, entries]);
   const onPick = useJumpToLive();
   const sortMode = useHeatmapPrefsStore((s) => s.sortMode);

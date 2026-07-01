@@ -72,6 +72,13 @@ def daily_venue_for_policy(policy: LiveVenuePolicy) -> KisVenue:
     return policy
 
 
+def quote_venue_for_policy(policy: LiveVenuePolicy, now: datetime) -> KisVenue:
+    """Return the concrete KIS Venue for live quote overlay requests."""
+    if policy != "AUTO":
+        return policy
+    return auto_minute_venue_for_hhmmss(now.astimezone(KIS_KST).strftime("%H%M%S"))
+
+
 AUTO_DAILY_USES_INTEGRATED_WARNING = {
     "reason": "auto_daily_uses_integrated",
     "msg": "AUTO daily candles use KIS integrated venue because daily bars cannot be split by intraday KRX/NXT time windows",
