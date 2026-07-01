@@ -253,7 +253,30 @@ describe('useLiveBundle', () => {
         brokerLateEntryStartHHMM: null,
         volumeDistributionBins: 10,
         tradeVolumePocBins: 10,
-        volumeDistributionPriceRange: null,
+        volumeDistributionPriceRange: { min: 69900, max: 70100 },
+      }),
+    );
+  });
+
+  it('passes the KIS candle price range to the volume-distribution sidecar', () => {
+    candlesMock.candles = [
+      { t_ms: 1779840000000, open: 70000, high: 70200, low: 69900, close: 70050, volume: 1000 },
+      { t_ms: 1779840060000, open: 70050, high: 70350, low: 70020, close: 70300, volume: 1500 },
+    ];
+
+    renderHook(() => useLiveBundle('005930', '1m', '20260527', liveFixture), { wrapper });
+
+    expect(useRangeSpy).toHaveBeenCalledWith(
+      '005930',
+      '20260520',
+      '20260527',
+      '1m',
+      undefined,
+      '20260527',
+      expect.objectContaining({
+        mode: 'sidecar',
+        volumeDistributionBins: 10,
+        volumeDistributionPriceRange: { min: 69900, max: 70350 },
       }),
     );
   });
@@ -386,7 +409,7 @@ describe('useLiveBundle', () => {
         mode: 'sidecar',
         volumeDistributionBins: 10,
         tradeVolumePocBins: 10,
-        volumeDistributionPriceRange: null,
+        volumeDistributionPriceRange: { min: 69900, max: 70100 },
       }),
     );
   });

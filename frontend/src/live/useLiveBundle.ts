@@ -339,10 +339,11 @@ export function useLiveBundle(
     () => ({
       mode: 'sidecar' as const,
       ...rangePlan.options,
-      // KIS candles arrive on a separate fast path. Feeding their derived
-      // price range back into /api/range re-keys the slow request right after
-      // candles load, so hoga panes end up waiting for the second request.
-      volumeDistributionPriceRange: null,
+      // KIS candles arrive on a separate fast path, but today's promoted
+      // trades can exist before a matching candles.parquet. The sidecar needs
+      // the KIS candle low/high grid to build the dense 10-bin distribution
+      // instead of making the sidebar fall back to the short live trade tail.
+      volumeDistributionPriceRange: rangePlan.options.volumeDistributionPriceRange,
     }),
     [rangePlan.options],
   );

@@ -1202,6 +1202,7 @@ export function LiveChartRoot({ code, timeframe, venue = 'KRX', viewIdentity, bu
               candles={cb.candles}
               todayKst={todayKst}
               override={tradeVolumePocOverride}
+              behindSeries={candleAlwaysOnTop}
             />
           )}
           <DrawingOverlay
