@@ -17,12 +17,13 @@ if (typeof window !== 'undefined' && !window.ResizeObserver) {
 // "store toggle → paneToggles → the pane set that reaches RangeSeriesPane" was
 // never asserted end-to-end. RangeSeriesPane renders null in jsdom (imperative
 // lightweight-charts wrapper), so we replace it with a prop-capturing stub.
-const { mounted, paneBundles, candleTooltipProps, askPeakMounts, bidPeakMounts, chartInstances } = vi.hoisted(() => ({
+const { mounted, paneBundles, candleTooltipProps, askPeakMounts, bidPeakMounts, dockedLabelMounts, chartInstances } = vi.hoisted(() => ({
   mounted: [] as string[],
   paneBundles: [] as Array<{ name: string; bundle: unknown }>,
   candleTooltipProps: [] as Array<{ bundle: unknown; quoteBundle?: unknown }>,
   askPeakMounts: [] as string[],
   bidPeakMounts: [] as string[],
+  dockedLabelMounts: [] as string[],
   chartInstances: [] as Array<{
     remove: ReturnType<typeof vi.fn>;
     timeScaleApi: {
@@ -58,6 +59,13 @@ vi.mock('./LiveAskPeakSegments', () => ({
 vi.mock('./LiveBidPeakSegments', () => ({
   default: () => {
     bidPeakMounts.push('mounted');
+    return null;
+  },
+}));
+
+vi.mock('./LivePeakWallDockedLabels', () => ({
+  default: () => {
+    dockedLabelMounts.push('mounted');
     return null;
   },
 }));
@@ -154,6 +162,7 @@ describe('LiveChartRoot — pane 토글 배선 (store → 마운트된 pane 집�
     candleTooltipProps.length = 0;
     askPeakMounts.length = 0;
     bidPeakMounts.length = 0;
+    dockedLabelMounts.length = 0;
     chartInstances.length = 0;
     // Deterministic baseline: all togglable panes ON, investor OFF.
     useLivePageStore.setState({
@@ -316,5 +325,16 @@ describe('LiveChartRoot — pane 토글 배선 (store → 마운트된 pane 집�
     bidPeakMounts.length = 0;
     renderAt('D');
     expect(bidPeakMounts).toHaveLength(0);
+  });
+
+  it('mounts one shared peak-wall docked label overlay for minute charts', async () => {
+    useLivePageStore.setState({ askPeakEnabled: true, bidPeakEnabled: true });
+    renderAt('1m');
+
+    await waitFor(() => {
+      expect(askPeakMounts).toHaveLength(1);
+      expect(bidPeakMounts).toHaveLength(1);
+      expect(dockedLabelMounts).toHaveLength(1);
+    });
   });
 });

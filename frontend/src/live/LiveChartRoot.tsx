@@ -47,6 +47,7 @@ import DailyMovingAverageOverlay from './indicators/DailyMovingAverageOverlay';
 import LiveCurrentPriceLine from './LiveCurrentPriceLine';
 import LiveAskPeakSegments, { buildAskPeakOverlaySegments } from './LiveAskPeakSegments';
 import LiveBidPeakSegments, { buildBidPeakOverlaySegments } from './LiveBidPeakSegments';
+import LivePeakWallDockedLabels from './LivePeakWallDockedLabels';
 import TradeVolumePocOverlay from './TradeVolumePocOverlay';
 import AuctionWindowOverlay from '../chart/AuctionWindowOverlay';
 import DrawingOverlay from '../chart/DrawingOverlay';
@@ -1256,6 +1257,19 @@ export function LiveChartRoot({ code, timeframe, venue = 'KRX', viewIdentity, bu
             <LiveBidPeakSegments
               paneSeries={paneSeries}
               axis={axis}
+              dayBidPeaks={dayBidPeaks}
+              todayAllPriceBidPeak={todayAllPriceBidPeak}
+              segments={cb.segments}
+              candles={cb.candles}
+              todayKst={todayKst}
+            />
+          )}
+          {isMinuteTimeframe(timeframe) && (
+            <LivePeakWallDockedLabels
+              paneSeries={paneSeries}
+              axis={axis}
+              dayAskPeaks={dayAskPeaks}
+              todayAllPriceAskPeak={todayAllPriceAskPeak}
               dayBidPeaks={dayBidPeaks}
               todayAllPriceBidPeak={todayAllPriceBidPeak}
               segments={cb.segments}
