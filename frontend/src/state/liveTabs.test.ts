@@ -372,7 +372,7 @@ describe('liveTabs persistence', () => {
     expect(loadTabs()).toEqual({ tabs: [], activeTabId: null });
   });
 
-  it('toTabsSnapshot keeps persisted fields and saved viewport but drops runtime-only id', () => {
+  it('toTabsSnapshot keeps persisted fields but drops runtime-only id and viewport', () => {
     const viewport = { rightEdgeMs: 1, barSpan: 2, atLiveEdge: false };
     const snap = toTabsSnapshot({
       tabs: [{
@@ -395,13 +395,12 @@ describe('liveTabs persistence', () => {
         timeframe: '1m',
         historicalFromDate: null,
         label: '삼성전자',
-        viewport,
         pinned: true,
       }],
     });
   });
 
-  it('persistLiveTabsNow writes the current snapshot synchronously', () => {
+  it('persistLiveTabsNow writes the current snapshot synchronously without runtime viewport', () => {
     useLiveTabsStore.setState({
       tabs: [{
         id: 'tab-a',
@@ -417,11 +416,13 @@ describe('liveTabs persistence', () => {
 
     persistLiveTabsNow();
 
-    expect(JSON.parse(localStorage.getItem('live.tabs.v2') ?? '{}')).toMatchObject({
+    const snapshot = JSON.parse(localStorage.getItem('live.tabs.v2') ?? '{}');
+    expect(snapshot).toMatchObject({
       version: 2,
       activeIndex: 0,
-      tabs: [{ code: '005930', viewport: { rightEdgeMs: 1, barSpan: 2, atLiveEdge: false } }],
+      tabs: [{ code: '005930' }],
     });
+    expect(snapshot.tabs[0]).not.toHaveProperty('viewport');
   });
 
   it('toTabsSnapshot persists a bounded active-centered window for pathological tab counts', () => {
@@ -440,7 +441,7 @@ describe('liveTabs persistence', () => {
     expect(snap.activeIndex).toBe(999);
   });
 
-  it('loads persisted viewport fields from live.tabs.v2', () => {
+  it('ignores persisted viewport fields from live.tabs.v2 so refresh clears chart zoom', () => {
     const viewport = { rightEdgeMs: 1, barSpan: 10, atLiveEdge: false, userAdjusted: true };
     localStorage.setItem('live.tabs.v2', JSON.stringify({
       version: 2, activeIndex: 0,
@@ -449,7 +450,7 @@ describe('liveTabs persistence', () => {
       ],
     }));
     const { tabs } = loadTabs();
-    expect(tabs[0].viewport).toEqual(viewport);
+    expect(tabs[0].viewport).toBeNull();
   });
 
   it('ignores legacy live.tabs.v1 viewport fields on load', () => {

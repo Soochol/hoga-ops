@@ -19,6 +19,7 @@ export type LiveTab = {
   label: string;
   timeframe: LiveTimeframe;
   historicalFromDate: string | null;
+  /** Runtime-only chart viewport. Keeps tab switches warm; intentionally excluded from persisted snapshots. */
   viewport?: TabViewport | null;
   pinned?: boolean;
 };
@@ -57,7 +58,6 @@ export function applyTabToPage(tab: LiveTab | null): void {
 const STORAGE_KEY = 'live.tabs.v2';
 const LEGACY_STORAGE_KEY = 'live.tabs.v1';
 const MAX_PERSISTED_TABS = 1000;
-const MAX_PERSISTED_BAR_SPAN = 100_000;
 
 type TabSnapshot = {
   instrument?: LiveInstrument | null;
@@ -65,7 +65,6 @@ type TabSnapshot = {
   timeframe: LiveTimeframe;
   historicalFromDate: string | null;
   label: string;
-  viewport?: TabViewport | null;
   pinned?: boolean;
 };
 type TabsSnapshot = { version: 2; activeIndex: number; tabs: TabSnapshot[] };
@@ -80,18 +79,6 @@ function samePinGroup(a: { pinned?: boolean }, b: { pinned?: boolean }): boolean
 
 function isTimeframe(v: unknown): v is LiveTimeframe {
   return typeof v === 'string' && (LIVE_TIMEFRAMES as readonly string[]).includes(v);
-}
-
-function isViewport(v: unknown): v is TabViewport {
-  if (!v || typeof v !== 'object') return false;
-  const o = v as Record<string, unknown>;
-  return (
-    typeof o.rightEdgeMs === 'number' && Number.isFinite(o.rightEdgeMs) &&
-    typeof o.barSpan === 'number' && Number.isFinite(o.barSpan) &&
-    o.barSpan > 0 && o.barSpan <= MAX_PERSISTED_BAR_SPAN &&
-    typeof o.atLiveEdge === 'boolean' &&
-    (o.userAdjusted === undefined || typeof o.userAdjusted === 'boolean')
-  );
 }
 
 export function toTabsSnapshot(state: Pick<TabsStore, 'tabs' | 'activeTabId'>): TabsSnapshot {
@@ -111,7 +98,6 @@ export function toTabsSnapshot(state: Pick<TabsStore, 'tabs' | 'activeTabId'>): 
       instrument: t.instrument,
       code: t.code, timeframe: t.timeframe, historicalFromDate: t.historicalFromDate,
       label: t.label,
-      viewport: t.viewport ?? null,
       ...(t.pinned ? { pinned: true } : {}),
     })),
   };
@@ -163,7 +149,6 @@ export function loadTabs(): { tabs: LiveTab[]; activeTabId: string | null } {
     if (raw) {
       const snap = JSON.parse(raw) as Partial<TabsSnapshot>;
       if (snap && Array.isArray(snap.tabs) && snap.tabs.length > 0) {
-        const canHydrateViewport = rawSource === 'v2' && snap.version === 2;
         const rawTabs = snap.tabs;
         // Resolve the active tab by code on the *unfiltered* list (and only for
         // an integer index) so dropping malformed entries below can't shift the
@@ -176,7 +161,6 @@ export function loadTabs(): { tabs: LiveTab[]; activeTabId: string | null } {
             instrument: coerceTabInstrument(t),
             timeframe: isTimeframe(t.timeframe) ? t.timeframe : '1m',
             historicalFromDate: typeof t.historicalFromDate === 'string' ? t.historicalFromDate : null,
-            viewport: canHydrateViewport && isViewport(t.viewport) ? t.viewport : null,
             pinned: t.pinned === true,
           }));
         if (tabs.length > 0) {
