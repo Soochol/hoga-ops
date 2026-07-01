@@ -110,8 +110,8 @@ function LivePeakWallDockedLabels({
       })
       : [];
     prim.setLabels([
-      ...livePeakWallDockedLabelsFromSegments(askStyled),
-      ...livePeakWallDockedLabelsFromSegments(bidSegments),
+      ...livePeakWallDockedLabelsFromSegments(askStyled, visibleRange),
+      ...livePeakWallDockedLabelsFromSegments(bidSegments, visibleRange),
     ]);
   }, [
     askAllPriceColor,

@@ -1,5 +1,6 @@
 import type {
   IChartApi,
+  IRange,
   IPrimitivePaneRenderer,
   IPrimitivePaneView,
   ISeriesApi,
@@ -43,11 +44,29 @@ export interface PeakWallDockedLabel {
   color: string;
 }
 
+type VisibleTimeRange = IRange<Time> | null;
+
+function segmentOverlapsVisibleRange(segment: AskPeakSegment, visibleRange: VisibleTimeRange): boolean {
+  if (!visibleRange) return true;
+  const visibleFrom = visibleRange.from as unknown as number;
+  const visibleTo = visibleRange.to as unknown as number;
+  const from = Math.min(visibleFrom, visibleTo);
+  const to = Math.max(visibleFrom, visibleTo);
+  const s0 = segment.time0 as unknown as number;
+  const s1 = segment.time1 as unknown as number;
+  return Math.max(Math.min(s0, s1), from) <= Math.min(Math.max(s0, s1), to);
+}
+
 export function livePeakWallDockedLabelsFromSegments(
   segments: readonly AskPeakSegment[],
+  visibleRange: VisibleTimeRange = null,
 ): PeakWallDockedLabel[] {
   return segments
-    .filter((segment) => segment.live === true && segment.label !== '')
+    .filter((segment) => (
+      segment.live === true
+      && segment.label !== ''
+      && segmentOverlapsVisibleRange(segment, visibleRange)
+    ))
     .map((segment) => ({
       price: segment.price,
       label: segment.label,
