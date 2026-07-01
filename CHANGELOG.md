@@ -3,6 +3,11 @@
 All notable changes to this project are documented here.
 The format follows a 4-digit `MAJOR.MINOR.PATCH.MICRO` scheme.
 
+## [0.12.23.5] - 2026-07-01
+
+### Fixed
+- **/live 캔들 증가 시 탭 패딩 유지**: 일봉·주봉·월봉 탭에서 저장된 viewport를 복원한 뒤 새 캔들이 추가되거나 캔들 수가 늘어날 때, 기본 calendar fit이 우측 빈공간 패딩을 덮지 않고 저장된 패딩/스크롤 상태를 계속 유지하도록 했다.
+
 ## [0.12.23.4] - 2026-07-01
 
 ### Added

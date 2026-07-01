@@ -1843,6 +1843,37 @@ describe('LiveChartRoot historical-prepend viewport preservation', () => {
     expect(ts.scrollToPosition).not.toHaveBeenCalled();
   });
 
+  it('restore: D live-edge tab keeps captured right-side padding when a new candle arrives', () => {
+    const handlers: Array<(r: unknown) => void> = [];
+    const ts = makeTs(handlers);
+    vi.mocked(createChartEx).mockImplementationOnce(() => buildStableCapturingMock(ts) as any);
+
+    const restoreViewport = {
+      rightEdgeMs: TODAY_OPEN_MS + 100 * 60_000,
+      barSpan: 80,
+      atLiveEdge: true,
+      rightPaddingBars: 30,
+    };
+    const initialCandles = Array.from({ length: 100 }, (_, i) => TODAY_OPEN_MS + (i + 1) * 60_000);
+    const { rerender } = render(
+      <LiveChartRoot code="005930" timeframe="D"
+        bundle={todayBundle(initialCandles)}
+        clampEngaged={false} isPastCandlesLoading={false}
+        restoreViewport={restoreViewport} />,
+      { wrapper },
+    );
+    expect(ts.setVisibleLogicalRange).toHaveBeenLastCalledWith({ from: 50, to: 130 });
+
+    rerender(
+      <LiveChartRoot code="005930" timeframe="D"
+        bundle={todayBundle([...initialCandles, TODAY_OPEN_MS + 101 * 60_000])}
+        clampEngaged={false} isPastCandlesLoading={false}
+        restoreViewport={restoreViewport} />,
+    );
+
+    expect(ts.setVisibleLogicalRange).toHaveBeenLastCalledWith({ from: 51, to: 131 });
+  });
+
   it('restore: a user-adjusted live-edge tab preserves the saved time anchor', () => {
     const handlers: Array<(r: unknown) => void> = [];
     const ts = makeTs(handlers);
