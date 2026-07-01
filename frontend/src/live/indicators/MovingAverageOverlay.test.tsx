@@ -56,6 +56,16 @@ describe('MovingAverageOverlay', () => {
     expect(m.addSeries).toHaveBeenCalledTimes(DEFAULT_LIVE_MAS.length);
   });
 
+  it('uses integer price formatting so MA overlays do not add .00 to the candle axis', () => {
+    const m = makeChartMock();
+    render(<MovingAverageOverlay chart={m.chart as never} bundle={bundle} axis={axis} />);
+    const options = m.addSeries.mock.calls[0][1] as {
+      priceFormat?: { minMove?: number; formatter?: (value: number) => string };
+    };
+    expect(options.priceFormat?.minMove).toBe(1);
+    expect(options.priceFormat?.formatter?.(1234.56)).toBe('1,235');
+  });
+
   it('기본값에서는 MA series가 autoscale에 참여한다', () => {
     const m = makeChartMock();
     render(<MovingAverageOverlay chart={m.chart as never} bundle={bundle} axis={axis} />);
