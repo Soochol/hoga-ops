@@ -18,6 +18,7 @@ export type StudyTab = {
   name: string;
   timeframe: LiveTimeframe;
   viewport?: TabViewport | null;
+  pinned?: boolean;
 };
 
 type StudyTabSnapshot = Omit<StudyTab, 'id' | 'viewport'>;
@@ -40,9 +41,18 @@ type StudyTabsStore = {
   closeTab: (id: string) => void;
   closeTabsByViewId: (viewId: string) => StudyTab | null;
   reorderTabs: (from: number, to: number) => void;
+  toggleTabPinned: (id: string) => void;
   updateTabTimeframe: (id: string, timeframe: LiveTimeframe) => void;
   updateTabViewport: (id: string, viewport: TabViewport | null) => void;
 };
+
+function orderPinnedFirst<T extends { pinned?: boolean }>(tabs: T[]): T[] {
+  return [...tabs.filter((tab) => tab.pinned), ...tabs.filter((tab) => !tab.pinned)];
+}
+
+function samePinGroup(a: { pinned?: boolean }, b: { pinned?: boolean }): boolean {
+  return Boolean(a.pinned) === Boolean(b.pinned);
+}
 
 function isStudyTabSnapshot(value: unknown): value is StudyTabSnapshot {
   if (!value || typeof value !== 'object') return false;
@@ -93,6 +103,7 @@ function loadStudyTabs(): { tabs: StudyTab[]; activeTabId: string | null } {
       const { viewport: _viewport, ...fields } = tab as StudyTabSnapshot & { viewport?: unknown };
       return {
         ...fields,
+        pinned: fields.pinned === true ? true : undefined,
         id: nanoid(8),
       };
     });
@@ -112,7 +123,10 @@ export function toStudyTabsSnapshot(
   return {
     version: 1,
     activeIndex,
-    tabs: state.tabs.map(({ id: _id, viewport: _viewport, ...tab }) => tab),
+    tabs: state.tabs.map(({ id: _id, viewport: _viewport, pinned, ...tab }) => ({
+      ...tab,
+      ...(pinned ? { pinned: true } : {}),
+    })),
   };
 }
 
@@ -141,6 +155,18 @@ export const useStudyTabsStore = create<StudyTabsStore>((set, get) => ({
     const active = tabs.find((tab) => tab.id === activeTabId);
     if (!active) {
       set({ tabs: [...tabs, next], activeTabId: next.id });
+      return;
+    }
+    if (active.pinned) {
+      const target = tabs.find((tab) => !tab.pinned);
+      if (target) {
+        set({
+          tabs: tabs.map((tab) => (tab.id === target.id ? { ...next, id: target.id } : tab)),
+          activeTabId: target.id,
+        });
+        return;
+      }
+      set({ tabs: orderPinnedFirst([...tabs, next]), activeTabId: next.id });
       return;
     }
     set({
@@ -172,6 +198,7 @@ export const useStudyTabsStore = create<StudyTabsStore>((set, get) => ({
     const { tabs, activeTabId } = get();
     const index = tabs.findIndex((tab) => tab.id === id);
     if (index === -1) return;
+    if (tabs[index].pinned) return;
     const next = tabs.filter((tab) => tab.id !== id);
     if (activeTabId !== id) {
       set({ tabs: next });
@@ -204,10 +231,21 @@ export const useStudyTabsStore = create<StudyTabsStore>((set, get) => ({
   reorderTabs: (from, to) => {
     const { tabs } = get();
     if (from < 0 || from >= tabs.length || to < 0 || to >= tabs.length || from === to) return;
+    if (!samePinGroup(tabs[from], tabs[to])) return;
     const next = tabs.slice();
     const [moved] = next.splice(from, 1);
     next.splice(to, 0, moved);
     set({ tabs: next });
+  },
+
+  toggleTabPinned: (id) => {
+    const { tabs } = get();
+    if (!tabs.some((tab) => tab.id === id)) return;
+    set({
+      tabs: orderPinnedFirst(tabs.map((tab) => (
+        tab.id === id ? { ...tab, pinned: tab.pinned ? undefined : true } : tab
+      ))),
+    });
   },
 
   updateTabTimeframe: (id, timeframe) => {
