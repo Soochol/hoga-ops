@@ -126,6 +126,6 @@ describe('useSignalAlertEvents', () => {
       'new',
       'existing',
     ]);
-    expect(useSignalAlertInboxStore.getState().unreadCount).toBe(2);
+    expect(useSignalAlertInboxStore.getState().unreadCount).toBe(1);
   });
 });

@@ -16,9 +16,16 @@ export function useSignalAlertEvents(): void {
     return subscribeEvents((event) => {
       if (!isSignalAlert(event)) return;
 
-      useSignalAlertInboxStore.getState().noteIncoming(event);
-      queryClient.setQueryData<SignalAlertRecentResponse>(signalAlertRecentKey(event.date), (current) => {
-        if (!current) {
+      const key = signalAlertRecentKey(event.date);
+      const current = queryClient.getQueryData<SignalAlertRecentResponse>(key);
+      const isDuplicate = current?.alerts.some((alert) => alert.id === event.id) ?? false;
+
+      if (!isDuplicate) {
+        useSignalAlertInboxStore.getState().noteIncoming(event);
+      }
+
+      queryClient.setQueryData<SignalAlertRecentResponse>(key, (cached) => {
+        if (!cached) {
           return {
             date: event.date,
             scope: 'inbox',
@@ -27,8 +34,8 @@ export function useSignalAlertEvents(): void {
           };
         }
 
-        if (current.alerts.some((alert) => alert.id === event.id)) return current;
-        return { ...current, alerts: [event, ...current.alerts] };
+        if (cached.alerts.some((alert) => alert.id === event.id)) return cached;
+        return { ...cached, alerts: [event, ...cached.alerts] };
       });
     });
   }, [queryClient]);
