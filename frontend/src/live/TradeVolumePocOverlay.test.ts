@@ -6,14 +6,16 @@ import type { PaneId } from '../chart/drawing/types';
 import TradeVolumePocOverlay, { buildTradeVolumePocSegments } from './TradeVolumePocOverlay';
 
 const primitiveMocks = vi.hoisted(() => ({
-  instances: [] as Array<{ setSegments: ReturnType<typeof vi.fn> }>,
+  instances: [] as Array<{ setSegments: ReturnType<typeof vi.fn>; options: unknown }>,
 }));
 
 vi.mock('../chart/TradeVolumePocPrimitive', () => ({
   TradeVolumePocPrimitive: class {
     setSegments = vi.fn();
+    options: unknown;
 
-    constructor() {
+    constructor(options: unknown) {
+      this.options = options;
       primitiveMocks.instances.push(this);
     }
   },
@@ -104,5 +106,31 @@ describe('TradeVolumePocOverlay', () => {
         fillColor: 'rgba(168, 85, 247, 0.12)',
       }),
     ]);
+  });
+
+  it('can place the band behind the candle series', () => {
+    primitiveMocks.instances.length = 0;
+    const axis = createVirtualAxis([{
+      date: '20260616',
+      sessionOpenMs: 1_000,
+      sessionCloseMs: 2_000,
+    }]);
+    const series = {
+      attachPrimitive: vi.fn(),
+      detachPrimitive: vi.fn(),
+    };
+
+    render(createElement(TradeVolumePocOverlay, {
+      paneSeries: new Map([['candle' as PaneId, series as never]]) as never,
+      axis,
+      pocs: [],
+      segments: [],
+      candles: [],
+      todayKst: '20260616',
+      override: { enabled: true, color: '#A855F7', opacity: 0.12 },
+      behindSeries: true,
+    }));
+
+    expect(primitiveMocks.instances[0].options).toEqual({ zOrder: 'bottom' });
   });
 });
