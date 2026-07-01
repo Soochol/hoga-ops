@@ -1833,6 +1833,7 @@ describe('LiveChartRoot historical-prepend viewport preservation', () => {
   it('restore: a live-edge tab preserves right-offset whitespace with the saved zoom', () => {
     const handlers: Array<(r: unknown) => void> = [];
     const ts = makeTs(handlers);
+    ts.timeToIndex.mockReturnValue(99);
     vi.mocked(createChartEx).mockImplementationOnce(() => buildStableCapturingMock(ts) as any);
 
     // 100 candles + saved span 50 + rightOffset 15 → from max(0,100-50)=50,
@@ -1852,6 +1853,7 @@ describe('LiveChartRoot historical-prepend viewport preservation', () => {
   it('restore: a live-edge tab preserves captured right-side padding and is not reset by fitting', () => {
     const handlers: Array<(r: unknown) => void> = [];
     const ts = makeTs(handlers);
+    ts.timeToIndex.mockReturnValue(99);
     vi.mocked(createChartEx).mockImplementationOnce(() => buildStableCapturingMock(ts) as any);
 
     render(
@@ -1872,9 +1874,32 @@ describe('LiveChartRoot historical-prepend viewport preservation', () => {
     expect(ts.scrollToPosition).not.toHaveBeenCalled();
   });
 
+  it('restore: a live-edge tab preserves padding from the latest candle logical index when the scale has extra points', () => {
+    const handlers: Array<(r: unknown) => void> = [];
+    const ts = makeTs(handlers);
+    ts.timeToIndex.mockReturnValue(249);
+    vi.mocked(createChartEx).mockImplementationOnce(() => buildStableCapturingMock(ts) as any);
+
+    render(
+      <LiveChartRoot code="005930" timeframe="1m"
+        bundle={todayBundle(Array.from({ length: 200 }, (_, i) => TODAY_OPEN_MS + (i + 1) * 60_000))}
+        clampEngaged={false} isPastCandlesLoading={false}
+        restoreViewport={{
+          rightEdgeMs: TODAY_OPEN_MS + 200 * 60_000,
+          barSpan: 80,
+          atLiveEdge: true,
+          rightPaddingBars: 30,
+        }} />,
+      { wrapper },
+    );
+
+    expect(ts.setVisibleLogicalRange).toHaveBeenLastCalledWith({ from: 200, to: 280 });
+  });
+
   it('restore: D live-edge tab keeps captured right-side padding when a new candle arrives', () => {
     const handlers: Array<(r: unknown) => void> = [];
     const ts = makeTs(handlers);
+    ts.timeToIndex.mockReturnValue(100).mockReturnValueOnce(99).mockReturnValueOnce(99);
     vi.mocked(createChartEx).mockImplementationOnce(() => buildStableCapturingMock(ts) as any);
 
     const restoreViewport = {
@@ -1930,6 +1955,7 @@ describe('LiveChartRoot historical-prepend viewport preservation', () => {
   it('restore: a user-adjusted live-edge tab preserves captured right-side padding', () => {
     const handlers: Array<(r: unknown) => void> = [];
     const ts = makeTs(handlers);
+    ts.timeToIndex.mockReturnValue(119);
     vi.mocked(createChartEx).mockImplementationOnce(() => buildStableCapturingMock(ts) as any);
 
     render(
