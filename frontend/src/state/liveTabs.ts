@@ -18,6 +18,7 @@ export type LiveTab = {
   code: string;
   label: string;
   timeframe: LiveTimeframe;
+  /** Runtime-only historical fetch range. Restored across tab switches, cleared on refresh. */
   historicalFromDate: string | null;
   /** Runtime-only chart viewport. Keeps tab switches warm; intentionally excluded from persisted snapshots. */
   viewport?: TabViewport | null;
@@ -96,7 +97,7 @@ export function toTabsSnapshot(state: Pick<TabsStore, 'tabs' | 'activeTabId'>): 
     activeIndex: Math.max(0, activeIndex - start),
     tabs: tabs.map((t) => ({
       instrument: t.instrument,
-      code: t.code, timeframe: t.timeframe, historicalFromDate: t.historicalFromDate,
+      code: t.code, timeframe: t.timeframe, historicalFromDate: null,
       label: t.label,
       ...(t.pinned ? { pinned: true } : {}),
     })),
@@ -160,7 +161,7 @@ export function loadTabs(): { tabs: LiveTab[]; activeTabId: string | null } {
           .map((t) => makeTab({
             instrument: coerceTabInstrument(t),
             timeframe: isTimeframe(t.timeframe) ? t.timeframe : '1m',
-            historicalFromDate: typeof t.historicalFromDate === 'string' ? t.historicalFromDate : null,
+            historicalFromDate: null,
             pinned: t.pinned === true,
           }));
         if (tabs.length > 0) {
@@ -181,7 +182,7 @@ export function loadTabs(): { tabs: LiveTab[]; activeTabId: string | null } {
         const tab = makeTab({
           instrument: stockInstrument(p.activeCode),
           timeframe: isTimeframe(p.candleTimeframe) ? p.candleTimeframe : '1m',
-          historicalFromDate: typeof p.historicalFromDate === 'string' ? p.historicalFromDate : null,
+          historicalFromDate: null,
         });
         return { tabs: [tab], activeTabId: tab.id };
       }

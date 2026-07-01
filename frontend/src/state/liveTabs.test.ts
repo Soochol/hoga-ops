@@ -240,7 +240,7 @@ describe('useLiveTabsStore', () => {
     expect(useLiveTabsStore.getState().activeTabId).not.toBe(pinnedId);
   });
 
-  it('switching to a tab projects code+timeframe and resets pan to latest fit', () => {
+  it('switching to a tab projects code+timeframe and restores its historical fetch range', () => {
     openTab('005930', '삼성전자');
     useLiveTabsStore.setState((st) => ({
       tabs: st.tabs.map((t) => (t.id === st.activeTabId ? { ...t, timeframe: '5m', historicalFromDate: '20260601' } : t)),
@@ -251,10 +251,10 @@ describe('useLiveTabsStore', () => {
     const page = useLivePageStore.getState();
     expect(page.activeCode).toBe('005930');
     expect(page.candleTimeframe).toBe('5m');
-    expect(page.historicalFromDate).toBeNull(); // pan is not restored; chart starts at latest fit
+    expect(page.historicalFromDate).toBe('20260601');
   });
 
-  it('focusTab ignores stored historicalFromDate so tab switches start at latest fit', () => {
+  it('focusTab restores stored historicalFromDate so deep-scroll candles can be fetched before viewport restore', () => {
     openTab('005930', '삼성전자');
     const tabId = useLiveTabsStore.getState().tabs[0].id;
     useLiveTabsStore.setState({
@@ -266,7 +266,7 @@ describe('useLiveTabsStore', () => {
     useLivePageStore.setState({ historicalFromDate: '20260501' });
     useLiveTabsStore.getState().focusTab(tabId);
 
-    expect(useLivePageStore.getState().historicalFromDate).toBeNull();
+    expect(useLivePageStore.getState().historicalFromDate).toBe('20260601');
   });
 
   it('stores a runtime viewport on the active tab and restores it when focused again', () => {
@@ -299,7 +299,7 @@ describe('liveTabs persistence', () => {
     expect(tabs).toHaveLength(1);
     expect(tabs[0].code).toBe('005930');
     expect(tabs[0].timeframe).toBe('5m');
-    expect(tabs[0].historicalFromDate).toBe('20260601');
+    expect(tabs[0].historicalFromDate).toBeNull();
     expect(activeTabId).toBe(tabs[0].id);
   });
 
@@ -314,6 +314,7 @@ describe('liveTabs persistence', () => {
     const { tabs, activeTabId } = loadTabs();
     expect(tabs.map((t) => t.code)).toEqual(['005930', '000660']);
     expect(tabs[1].timeframe).toBe('D');
+    expect(tabs[1].historicalFromDate).toBeNull();
     expect(activeTabId).toBe(tabs[1].id);
     expect(tabs[0].id).not.toBe('');
   });
@@ -372,7 +373,7 @@ describe('liveTabs persistence', () => {
     expect(loadTabs()).toEqual({ tabs: [], activeTabId: null });
   });
 
-  it('toTabsSnapshot keeps persisted fields but drops runtime-only id and viewport', () => {
+  it('toTabsSnapshot keeps persisted fields but drops runtime-only id, viewport, and historical range', () => {
     const viewport = { rightEdgeMs: 1, barSpan: 2, atLiveEdge: false };
     const snap = toTabsSnapshot({
       tabs: [{
@@ -381,7 +382,7 @@ describe('liveTabs persistence', () => {
         code: '005930',
         label: '삼성전자',
         timeframe: '1m',
-        historicalFromDate: null,
+        historicalFromDate: '20260601',
         viewport,
         pinned: true,
       }],
@@ -400,7 +401,7 @@ describe('liveTabs persistence', () => {
     });
   });
 
-  it('persistLiveTabsNow writes the current snapshot synchronously without runtime viewport', () => {
+  it('persistLiveTabsNow writes the current snapshot synchronously without runtime viewport or historical range', () => {
     useLiveTabsStore.setState({
       tabs: [{
         id: 'tab-a',
@@ -408,7 +409,7 @@ describe('liveTabs persistence', () => {
         code: '005930',
         label: '삼성전자',
         timeframe: '1m',
-        historicalFromDate: null,
+        historicalFromDate: '20260601',
         viewport: { rightEdgeMs: 1, barSpan: 2, atLiveEdge: false },
       }],
       activeTabId: 'tab-a',
@@ -420,7 +421,7 @@ describe('liveTabs persistence', () => {
     expect(snapshot).toMatchObject({
       version: 2,
       activeIndex: 0,
-      tabs: [{ code: '005930' }],
+      tabs: [{ code: '005930', historicalFromDate: null }],
     });
     expect(snapshot.tabs[0]).not.toHaveProperty('viewport');
   });
@@ -441,16 +442,17 @@ describe('liveTabs persistence', () => {
     expect(snap.activeIndex).toBe(999);
   });
 
-  it('ignores persisted viewport fields from live.tabs.v2 so refresh clears chart zoom', () => {
+  it('ignores persisted viewport and historical range fields from live.tabs.v2 so refresh clears chart state', () => {
     const viewport = { rightEdgeMs: 1, barSpan: 10, atLiveEdge: false, userAdjusted: true };
     localStorage.setItem('live.tabs.v2', JSON.stringify({
       version: 2, activeIndex: 0,
       tabs: [
-        { code: '005930', timeframe: '1m', historicalFromDate: null, label: 'saved viewport', viewport },
+        { code: '005930', timeframe: '1m', historicalFromDate: '20260601', label: 'saved viewport', viewport },
       ],
     }));
     const { tabs } = loadTabs();
     expect(tabs[0].viewport).toBeNull();
+    expect(tabs[0].historicalFromDate).toBeNull();
   });
 
   it('ignores legacy live.tabs.v1 viewport fields on load', () => {
