@@ -343,6 +343,7 @@ describe('LiveSidebar', () => {
       date: '20260527',
       cursorMs: Date.UTC(2026, 4, 27, 0, 1, 0),
       finalProfile: finalDistribution,
+      priceRange: { min: 70000, max: 70400 },
     }));
     expect(screen.getByTestId('volume-distribution-max-bar')).toHaveStyle({ width: '100%' });
   });
@@ -395,6 +396,30 @@ describe('LiveSidebar', () => {
     expect(volumeDistributionCutoffProfileMock).toHaveBeenCalledWith(expect.objectContaining({
       date: '20260527',
       candles: [selectedDateCandle],
+    }));
+  });
+
+  it('passes the active candle price range to the hover-cutoff hook when no final profile exists yet', () => {
+    useLivePageStore.setState({
+      volumeDistributionEnabled: true,
+      volumeDistributionHoverCutoffEnabled: true,
+      volumeDistributionRangeCount: 10,
+    });
+    act(() => useLiveCursorStore.getState().setCursor(Date.UTC(2026, 4, 27, 0, 1, 0)));
+
+    renderSidebar({
+      code: '005930',
+      todayKst: '20260528',
+      bundle: {
+        ...bundleWithFinalDistribution,
+        volume_distributions: [],
+      },
+    });
+
+    expect(volumeDistributionCutoffProfileMock).toHaveBeenCalledWith(expect.objectContaining({
+      date: '20260527',
+      finalProfile: null,
+      priceRange: { min: 70000, max: 70400 },
     }));
   });
 
