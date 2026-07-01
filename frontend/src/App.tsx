@@ -5,6 +5,7 @@ import RightRail from './rightrail/RightRail';
 import { WatchlistDrawer } from './watchlist/WatchlistDrawer';
 import { ScreenerDrawer } from './screener/ScreenerDrawer';
 import { StudyViewsDrawer } from './studyViews/StudyViewsDrawer';
+import SignalAlertsDrawer from './signalAlerts/SignalAlertsDrawer';
 import { useRightRailStore } from './state/rightRail';
 import { useEventStream } from './api/eventStream';
 import { useInventoryRecaptureOriginsCleanup } from './inventory/useInventoryRecaptureOrigins';
@@ -50,6 +51,7 @@ export default function App() {
         {activePanel === 'watchlist' && <WatchlistDrawer />}
         {activePanel === 'screener' && <ScreenerDrawer />}
         {activePanel === 'savedViews' && <StudyViewsDrawer />}
+        {activePanel === 'signalAlerts' && <SignalAlertsDrawer />}
         <RightRail />
       </div>
     </div>
