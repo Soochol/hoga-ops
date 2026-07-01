@@ -3,6 +3,11 @@
 All notable changes to this project are documented here.
 The format follows a 4-digit `MAJOR.MINOR.PATCH.MICRO` scheme.
 
+## [0.12.23.9] - 2026-07-01
+
+### Fixed
+- **/live 당일 최대벽 라벨 표시 범위 조정**: 사용자가 과거 차트 구간으로 이동하면 당일 장중 최대 매수·매도벽 docked 라벨을 숨기고, 해당 당일 세그먼트가 화면에 보일 때만 다시 표시해 과거 캔들 가독성을 유지하도록 했다.
+
 ## [0.12.23.8] - 2026-07-01
 
 ### Changed
