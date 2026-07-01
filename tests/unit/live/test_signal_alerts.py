@@ -1,11 +1,12 @@
 from pathlib import Path
+from concurrent.futures import ThreadPoolExecutor
+from threading import Barrier
 
 import pytest
 
 from hoga.api.models import SignalAlertEvent, SignalAlertSettingsUpdate
 from hoga.live.signal_alerts import (
     append_signal_alert,
-    assign_next_seq,
     clear_today_inbox,
     load_signal_alert_settings,
     read_signal_alerts,
@@ -64,13 +65,18 @@ def test_alerts_are_date_partitioned_and_read_newest_first(tmp_path: Path) -> No
     assert [r.code for r in rows] == ["000660", "005930"]
 
 
-def test_assign_next_seq_is_monotonic_from_existing_ledger(tmp_path: Path) -> None:
-    append_signal_alert(tmp_path, event(1))
-    append_signal_alert(tmp_path, event(2))
+def test_append_signal_alert_allocates_increasing_seq_atomically(tmp_path: Path) -> None:
+    start = Barrier(2)
 
-    assigned = assign_next_seq(tmp_path, event(99))
+    def append(code: str) -> int:
+        start.wait()
+        return append_signal_alert(tmp_path, event(0, code)).seq
 
-    assert assigned.seq == 3
+    with ThreadPoolExecutor(max_workers=2) as pool:
+        seqs = sorted(pool.map(append, ["005930", "000660"]))
+
+    assert seqs == [1, 2]
+    assert [r.seq for r in read_signal_alerts(tmp_path, "20260701", limit=10, scope="all")] == [2, 1]
 
 
 def test_invalid_date_is_rejected_before_ledger_path_build(tmp_path: Path) -> None:

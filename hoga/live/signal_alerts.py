@@ -122,12 +122,14 @@ def assign_next_seq(data_dir: Path, event: SignalAlertEvent) -> SignalAlertEvent
     return event.model_copy(update={"seq": seq})
 
 
-def append_signal_alert(data_dir: Path, event: SignalAlertEvent) -> None:
+def append_signal_alert(data_dir: Path, event: SignalAlertEvent) -> SignalAlertEvent:
     with _lock:
+        event = assign_next_seq(data_dir, event)
         path = _ledger_path(data_dir, _validate_date(event.date))
         path.parent.mkdir(parents=True, exist_ok=True)
         with path.open("a", encoding="utf-8") as f:
             f.write(event.model_dump_json() + "\n")
+        return event
 
 
 def read_signal_alerts(

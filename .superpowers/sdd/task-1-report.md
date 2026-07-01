@@ -23,3 +23,11 @@ DONE
 ## Review Fix Verification
 - Ran `uv run pytest tests/unit/live/test_signal_alerts.py -v`
 - Result: 5 passed
+
+## Review Fix Addendum 2
+- Moved per-date sequence assignment into `append_signal_alert(data_dir, event)` so the next seq and append happen under the same lock.
+- Kept `assign_next_seq(data_dir, event)` available as a compatibility helper for callers that still need to precompute the next sequence.
+
+## Review Fix Verification 2
+- Ran `uv run pytest tests/unit/live/test_signal_alerts.py -v`
+- Result: 5 passed
