@@ -5,6 +5,8 @@ import type { PushEvent } from '../api/types';
 import { subscribeEvents } from '../api/ws';
 import { useSignalAlertInboxStore } from '../state/signalAlertInbox';
 
+const seenSignalAlertIds = new Set<string>();
+
 function isSignalAlert(event: PushEvent): event is SignalAlertEvent {
   return event.type === 'signal_alert';
 }
@@ -16,13 +18,13 @@ export function useSignalAlertEvents(): void {
     return subscribeEvents((event) => {
       if (!isSignalAlert(event)) return;
 
-      const key = signalAlertRecentKey(event.date);
-      const current = queryClient.getQueryData<SignalAlertRecentResponse>(key);
-      const isDuplicate = current?.alerts.some((alert) => alert.id === event.id) ?? false;
-
-      if (!isDuplicate) {
+      const isFirstSeen = !seenSignalAlertIds.has(event.id);
+      if (isFirstSeen) {
+        seenSignalAlertIds.add(event.id);
         useSignalAlertInboxStore.getState().noteIncoming(event);
       }
+
+      const key = signalAlertRecentKey(event.date);
 
       queryClient.setQueryData<SignalAlertRecentResponse>(key, (cached) => {
         if (!cached) {

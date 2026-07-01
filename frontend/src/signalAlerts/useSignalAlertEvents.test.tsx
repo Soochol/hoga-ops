@@ -62,6 +62,43 @@ describe('useSignalAlertEvents', () => {
     });
   });
 
+  it('does not increment unread when the same signal_alert replays after cache eviction', () => {
+    const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+
+    renderHook(() => useSignalAlertEvents(), { wrapper: createWrapper(queryClient) });
+
+    const event = {
+      type: 'signal_alert',
+      id: 'b',
+      signal: 'sell_total_renewal',
+      seq: 1,
+      code: '000660',
+      name: 'SK하이닉스',
+      t_ms: 1,
+      date: '20260701',
+      source: 'ws',
+      value: 2000,
+      baseline: 1000,
+      ratio_pct: 200,
+      use_intra_minute_max: true,
+    } as const;
+
+    act(() => {
+      subs[0](event);
+    });
+
+    queryClient.clear();
+
+    act(() => {
+      subs[0](event);
+    });
+
+    expect(useSignalAlertInboxStore.getState().unreadCount).toBe(1);
+    expect(queryClient.getQueryData<SignalAlertRecentResponse>(signalAlertRecentKey('20260701'))?.alerts.map((alert) => alert.id)).toEqual([
+      'b',
+    ]);
+  });
+
   it('prepends new signal alerts without duplicating ids already in cache', () => {
     const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } });
     queryClient.setQueryData<SignalAlertRecentResponse>(signalAlertRecentKey('20260701'), {
@@ -126,6 +163,6 @@ describe('useSignalAlertEvents', () => {
       'new',
       'existing',
     ]);
-    expect(useSignalAlertInboxStore.getState().unreadCount).toBe(1);
+    expect(useSignalAlertInboxStore.getState().unreadCount).toBe(2);
   });
 });
