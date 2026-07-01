@@ -101,6 +101,11 @@ describe('computeRestoreRange', () => {
     expect(computeRestoreRange(padded, 200, null)).toEqual({ from: 150, to: 230, scrollToRight: false });
   });
 
+  it('live-edge: restores saved padding from the latest candle logical index when the shared scale has extra points', () => {
+    const padded: TabViewport = { ...liveEdge, barSpan: 80, rightPaddingBars: 30 };
+    expect(computeRestoreRange(padded, 200, null, undefined, 249)).toEqual({ from: 200, to: 280, scrollToRight: false });
+  });
+
   it('user-adjusted live-edge: captured padding takes precedence over the time anchor', () => {
     const padded: TabViewport = { ...liveEdge, barSpan: 80, rightPaddingBars: 30, userAdjusted: true };
     expect(computeRestoreRange(padded, 200, 120)).toEqual({ from: 150, to: 230, scrollToRight: false });

@@ -613,10 +613,24 @@ export function LiveChartRoot({ code, timeframe, venue = 'KRX', viewIdentity, bu
               true,
             )
           : null;
+        const latestCandleMs = cb.candles[totalBarsR - 1]?.ts_ms ?? null;
+        const latestCandleIdx = latestCandleMs !== null
+          ? tsR.timeToIndex(realMsToVirtualSeconds(axisRef.current, latestCandleMs) as Time, true)
+          : null;
+        const latestCandleLogicalIndex =
+          typeof latestCandleIdx === 'number' && Number.isFinite(latestCandleIdx)
+            ? latestCandleIdx
+            : null;
         const restoreRightOffset = isMinuteTimeframe(timeframe)
           ? minuteRightOffsetBars(restoreViewport.barSpan, tsR.width())
           : undefined;
-        const range = computeRestoreRange(restoreViewport, totalBarsR, idx, restoreRightOffset);
+        const range = computeRestoreRange(
+          restoreViewport,
+          totalBarsR,
+          idx,
+          restoreRightOffset,
+          latestCandleLogicalIndex,
+        );
         if (range) {
           if (timeframe === 'D' && restoreViewport.atLiveEdge && restoreViewport.userAdjusted !== true) {
             const rightPadding =
@@ -629,7 +643,8 @@ export function LiveChartRoot({ code, timeframe, venue = 'KRX', viewIdentity, bu
               plotWidth > 0
                 ? Math.max(1, Math.floor(plotWidth / DAILY_MIN_EFFECTIVE_BAR_SPACING))
                 : 260;
-            const to = totalBarsR + rightPadding;
+            const latestCandleRightEdge = (latestCandleLogicalIndex ?? (totalBarsR - 1)) + 1;
+            const to = latestCandleRightEdge + rightPadding;
             const span = Math.min(to, Math.max(1, Math.round(restoreViewport.barSpan)), maxLegibleSpan);
             tsR.setVisibleLogicalRange({ from: Math.max(0, to - span), to });
           } else {
@@ -658,12 +673,21 @@ export function LiveChartRoot({ code, timeframe, venue = 'KRX', viewIdentity, bu
               ? Math.max(0, restoreViewport.rightPaddingBars!)
               : (CHART_TIMESCALE_OPTIONS.rightOffset ?? 0);
             const tsR = chart.timeScale();
+            const latestCandleMs = cb.candles[totalBarsR - 1]?.ts_ms ?? null;
+            const latestCandleIdx = latestCandleMs !== null
+              ? tsR.timeToIndex(realMsToVirtualSeconds(axisRef.current, latestCandleMs) as Time, true)
+              : null;
+            const latestCandleLogicalIndex =
+              typeof latestCandleIdx === 'number' && Number.isFinite(latestCandleIdx)
+                ? latestCandleIdx
+                : null;
             const plotWidth = Math.max(tsR.width(), containerRef.current?.clientWidth ?? 0);
             const maxLegibleSpan =
               plotWidth > 0
                 ? Math.max(1, Math.floor(plotWidth / DAILY_MIN_EFFECTIVE_BAR_SPACING))
                 : 260;
-            const to = totalBarsR + rightPadding;
+            const latestCandleRightEdge = (latestCandleLogicalIndex ?? (totalBarsR - 1)) + 1;
+            const to = latestCandleRightEdge + rightPadding;
             const span = Math.min(to, Math.max(1, Math.round(restoreViewport.barSpan)), maxLegibleSpan);
             tsR.setVisibleLogicalRange({ from: Math.max(0, to - span), to });
           }
