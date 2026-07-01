@@ -10,6 +10,8 @@ import { useRightRailStore } from './state/rightRail';
 import { useEventStream } from './api/eventStream';
 import { useInventoryRecaptureOriginsCleanup } from './inventory/useInventoryRecaptureOrigins';
 import { useCaptureQueueSync } from './capture/useCaptureQueue';
+import SignalAlertToastHost from './signalAlerts/SignalAlertToastHost';
+import { useSignalAlertEvents } from './signalAlerts/useSignalAlertEvents';
 import { useStaticDocumentTitle } from './util/useDocumentTitle';
 
 const STATIC_ROUTE_TITLES: ReadonlyMap<string, string> = new Map(
@@ -20,6 +22,7 @@ const STATIC_ROUTE_TITLES: ReadonlyMap<string, string> = new Map(
 
 export default function App() {
   useEventStream();
+  useSignalAlertEvents();
   useInventoryRecaptureOriginsCleanup();
   // Single owner of the capture-queue push subscription (was fanned out across
   // ~5 useCaptureQueue mounts); the read side now only reads the shared cache.
@@ -41,6 +44,7 @@ export default function App() {
       }}
     >
       {staticTitle !== null && <StaticDocumentTitle title={staticTitle} />}
+      <SignalAlertToastHost />
       <TopNav />
       <div
         data-testid="app-content-grid"

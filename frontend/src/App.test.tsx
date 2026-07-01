@@ -39,6 +39,14 @@ vi.mock('./studyViews/StudyViewsDrawer', () => ({
   StudyViewsDrawer: () => <aside data-testid="study-views-drawer" />,
 }));
 
+vi.mock('./signalAlerts/SignalAlertToastHost', () => ({
+  default: () => <aside data-testid="signal-alert-toast-host" />,
+}));
+
+vi.mock('./signalAlerts/useSignalAlertEvents', () => ({
+  useSignalAlertEvents: () => {},
+}));
+
 function wrap(ui: ReactNode, initialEntry: string) {
   const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } });
   return render(
