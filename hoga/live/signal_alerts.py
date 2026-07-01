@@ -1,6 +1,8 @@
 from __future__ import annotations
 
+import contextlib
 import json
+import fcntl
 import threading
 from datetime import datetime
 from pathlib import Path
@@ -41,11 +43,35 @@ def _inbox_state_path(data_dir: Path) -> Path:
     return data_dir / "signal_alert_inbox_state.json"
 
 
+def _lock_path(data_dir: Path) -> Path:
+    return data_dir / "signal_alerts.lock"
+
+
 def _validate_date(date: str) -> str:
     normalized = datetime.strptime(date, "%Y%m%d").strftime("%Y%m%d")
     if normalized != date:
         raise ValueError("date must be YYYYMMDD")
     return normalized
+
+
+def _event_id(event: SignalAlertEvent, seq: int) -> str:
+    return f"{event.date}:{event.code}:{event.signal}:{seq}:{event.source}"
+
+
+def _with_assigned_seq(event: SignalAlertEvent, seq: int) -> SignalAlertEvent:
+    return event.model_copy(update={"seq": seq, "id": _event_id(event, seq)})
+
+
+@contextlib.contextmanager
+def _locked_data_dir(data_dir: Path):
+    lock_path = _lock_path(data_dir)
+    lock_path.parent.mkdir(parents=True, exist_ok=True)
+    with lock_path.open("a", encoding="utf-8") as lock_file:
+        fcntl.flock(lock_file.fileno(), fcntl.LOCK_EX)
+        try:
+            yield
+        finally:
+            fcntl.flock(lock_file.fileno(), fcntl.LOCK_UN)
 
 
 def _next_seq_unlocked(data_dir: Path, date: str) -> int:
@@ -119,17 +145,19 @@ def _read_all(data_dir: Path, date: str) -> list[SignalAlertEvent]:
 def assign_next_seq(data_dir: Path, event: SignalAlertEvent) -> SignalAlertEvent:
     with _lock:
         seq = _next_seq_unlocked(data_dir, _validate_date(event.date))
-    return event.model_copy(update={"seq": seq})
+    return _with_assigned_seq(event, seq)
 
 
 def append_signal_alert(data_dir: Path, event: SignalAlertEvent) -> SignalAlertEvent:
-    with _lock:
-        event = assign_next_seq(data_dir, event)
-        path = _ledger_path(data_dir, _validate_date(event.date))
-        path.parent.mkdir(parents=True, exist_ok=True)
-        with path.open("a", encoding="utf-8") as f:
-            f.write(event.model_dump_json() + "\n")
-        return event
+    with _locked_data_dir(data_dir):
+        with _lock:
+            date = _validate_date(event.date)
+            event = _with_assigned_seq(event, _next_seq_unlocked(data_dir, date))
+            path = _ledger_path(data_dir, date)
+            path.parent.mkdir(parents=True, exist_ok=True)
+            with path.open("a", encoding="utf-8") as f:
+                f.write(event.model_dump_json() + "\n")
+            return event
 
 
 def read_signal_alerts(
