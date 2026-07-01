@@ -3,6 +3,12 @@
 All notable changes to this project are documented here.
 The format follows a 4-digit `MAJOR.MINOR.PATCH.MICRO` scheme.
 
+## [0.12.22.0] - 2026-07-01
+
+### Changed
+- **관심종목·히트맵·스크리너 NXT 시세 반영**: 설정의 데이터 소스가 KRX가 아닌 경우 실시간 현재가 조회도 선택한 venue를 따라가도록 해, 장전 NXT 운영시간에 관심종목·히트맵·스크리너가 NXT 기준 시세를 보여준다.
+- **AUTO venue 현재가 라우팅**: AUTO 설정은 정규장 시간에는 KRX, 그 외 NXT 운영시간에는 NXT로 현재가 조회를 전환해 차트와 오버레이 시세가 같은 시장 기준을 쓰도록 했다.
+
 ## [0.12.21.5] - 2026-07-01
 
 ### Changed
