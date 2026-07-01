@@ -4,7 +4,7 @@ import type { LiveTimeframe } from './livePage';
 import type { StudyViewListRow } from '../api/studyViews';
 import { formatStudyTabLabel } from '../studyViews/studyViewSelection';
 import { attachPersistence } from './persistentSubscriber';
-import type { TabViewport } from '../live/viewportAnchor';
+import { mergeTabViewportCapture, type TabViewport } from '../live/viewportAnchor';
 
 const STORAGE_KEY = 'study.tabs.v1';
 
@@ -263,7 +263,7 @@ export const useStudyTabsStore = create<StudyTabsStore>((set, get) => ({
   updateTabViewport: (id, viewport) => {
     const { tabs } = get();
     if (!tabs.some((tab) => tab.id === id)) return;
-    set({ tabs: tabs.map((tab) => (tab.id === id ? { ...tab, viewport } : tab)) });
+    set({ tabs: tabs.map((tab) => (tab.id === id ? { ...tab, viewport: mergeTabViewportCapture(tab.viewport, viewport) } : tab)) });
   },
 }));
 

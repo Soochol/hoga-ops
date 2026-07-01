@@ -286,6 +286,30 @@ describe('useLiveTabsStore', () => {
     expect(useLivePageStore.getState().activeViewport).toEqual(viewport);
   });
 
+  it('keeps a previously captured right padding when a later capture cannot compute it', () => {
+    openTab('005930', '삼성전자');
+    const tabId = useLiveTabsStore.getState().activeTabId!;
+    useLiveTabsStore.getState().updateTabViewport(tabId, {
+      rightEdgeMs: 1_781_000_000_000,
+      barSpan: 331,
+      atLiveEdge: true,
+      rightPaddingBars: 42,
+    });
+
+    useLiveTabsStore.getState().updateTabViewport(tabId, {
+      rightEdgeMs: 1_781_000_000_000,
+      barSpan: 331,
+      atLiveEdge: true,
+    });
+
+    expect(useLiveTabsStore.getState().tabs.find((t) => t.id === tabId)?.viewport).toEqual({
+      rightEdgeMs: 1_781_000_000_000,
+      barSpan: 331,
+      atLiveEdge: true,
+      rightPaddingBars: 42,
+    });
+  });
+
 });
 
 describe('liveTabs persistence', () => {
