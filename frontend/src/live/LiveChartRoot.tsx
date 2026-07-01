@@ -362,11 +362,18 @@ export function LiveChartRoot({ code, timeframe, venue = 'KRX', viewIdentity, bu
     if (!c) return null;
     try {
       const ts = c.timeScale();
+      let lastCandleLogicalIndex: number | null = null;
+      const lastCandleMs = lastCandleMsRef.current;
+      if (lastCandleMs !== null) {
+        const idx = ts.timeToIndex(realMsToVirtualSeconds(axisRef.current, lastCandleMs) as Time, true);
+        if (typeof idx === 'number' && Number.isFinite(idx)) lastCandleLogicalIndex = idx;
+      }
       const vp = viewportFromRanges(
         ts.getVisibleLogicalRange(),
         ts.getVisibleRange(),
         axisRef.current,
-        lastCandleMsRef.current,
+        lastCandleMs,
+        lastCandleLogicalIndex,
       );
       if (!vp) return null;
       return userAdjustedViewportRef.current ? { ...vp, userAdjusted: true } : vp;
@@ -591,14 +598,18 @@ export function LiveChartRoot({ code, timeframe, venue = 'KRX', viewIdentity, bu
         const range = computeRestoreRange(restoreViewport, totalBarsR, idx, restoreRightOffset);
         if (range) {
           if (timeframe === 'D' && restoreViewport.atLiveEdge && restoreViewport.userAdjusted !== true) {
-            const rightOffset = CHART_TIMESCALE_OPTIONS.rightOffset ?? 0;
+            const rightPadding =
+              typeof restoreViewport.rightPaddingBars === 'number' &&
+              Number.isFinite(restoreViewport.rightPaddingBars)
+                ? Math.max(0, restoreViewport.rightPaddingBars)
+                : (CHART_TIMESCALE_OPTIONS.rightOffset ?? 0);
             const plotWidth = Math.max(tsR.width(), containerRef.current?.clientWidth ?? 0);
             const maxLegibleSpan =
               plotWidth > 0
                 ? Math.max(1, Math.floor(plotWidth / DAILY_MIN_EFFECTIVE_BAR_SPACING))
                 : 260;
-            const span = Math.min(totalBarsR + rightOffset, Math.max(1, Math.round(restoreViewport.barSpan)), maxLegibleSpan);
-            const to = totalBarsR + rightOffset;
+            const to = totalBarsR + rightPadding;
+            const span = Math.min(to, Math.max(1, Math.round(restoreViewport.barSpan)), maxLegibleSpan);
             tsR.setVisibleLogicalRange({ from: Math.max(0, to - span), to });
           } else {
             tsR.setVisibleLogicalRange({ from: range.from, to: range.to });

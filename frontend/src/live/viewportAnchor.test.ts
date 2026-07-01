@@ -34,6 +34,22 @@ describe('viewportFromRanges', () => {
     expect(vp!.atLiveEdge).toBe(true);
   });
 
+  it('captures right-side chart padding in bars when the latest candle index is known', () => {
+    const lastMs = OPEN_MS + 2 * 3600_000;
+    const vp = viewportFromRanges(
+      { from: 120, to: 430 },
+      { to: lastMs / 1000 },
+      axis,
+      lastMs,
+      399,
+    );
+    expect(vp).toMatchObject({
+      barSpan: 310,
+      atLiveEdge: true,
+      rightPaddingBars: 30,
+    });
+  });
+
   it('atLiveEdge is false when lastCandleMs is null (no candles)', () => {
     const vp = viewportFromRanges({ from: 0, to: 300 }, { to: OPEN_MS / 1000 }, axis, null);
     expect(vp!.atLiveEdge).toBe(false);
@@ -78,6 +94,16 @@ describe('computeRestoreRange', () => {
 
   it('live-edge: preserves the saved zoom with right-offset whitespace, ignoring the index', () => {
     expect(computeRestoreRange(liveEdge, 200, null)).toEqual({ from: 150, to: 215, scrollToRight: false });
+  });
+
+  it('live-edge: preserves the saved right-side padding exactly when captured', () => {
+    const padded: TabViewport = { ...liveEdge, barSpan: 80, rightPaddingBars: 30 };
+    expect(computeRestoreRange(padded, 200, null)).toEqual({ from: 150, to: 230, scrollToRight: false });
+  });
+
+  it('user-adjusted live-edge: captured padding takes precedence over the time anchor', () => {
+    const padded: TabViewport = { ...liveEdge, barSpan: 80, rightPaddingBars: 30, userAdjusted: true };
+    expect(computeRestoreRange(padded, 200, 120)).toEqual({ from: 150, to: 230, scrollToRight: false });
   });
 
   it('user-adjusted live-edge: pins the explicit time anchor instead of the latest bar', () => {

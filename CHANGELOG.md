@@ -3,6 +3,11 @@
 All notable changes to this project are documented here.
 The format follows a 4-digit `MAJOR.MINOR.PATCH.MICRO` scheme.
 
+## [0.12.23.1] - 2026-07-01
+
+### Fixed
+- **/live 탭별 차트 메모리 복원 정밀화**: 라이브 탭 전환 시 줌·분봉/일봉/주봉/월봉 상태와 함께 우측 차트 패딩 영역을 메모리에만 저장해, 탭으로 돌아왔을 때 fitting/초기 viewport 로직이 보던 빈공간을 덮어쓰지 않도록 했다. 새로고침 후에는 차트 viewport 상태를 복원하지 않는다.
+
 ## [0.12.23.0] - 2026-07-01
 
 ### Added

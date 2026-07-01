@@ -629,7 +629,7 @@ describe('LivePage shell', () => {
     }));
   });
 
-  it('flushes the active live tab viewport on pagehide before the debounce can drop it', async () => {
+  it('captures the active live tab viewport on pagehide but keeps it out of persistence', async () => {
     const capturedViewport = {
       rightEdgeMs: 1_781_000_000_000,
       barSpan: 331,
@@ -654,8 +654,9 @@ describe('LivePage shell', () => {
       window.dispatchEvent(new Event('pagehide'));
     });
 
+    expect(useLiveTabsStore.getState().tabs[0].viewport).toEqual(capturedViewport);
     const persisted = JSON.parse(localStorage.getItem('live.tabs.v2') ?? '{}');
-    expect(persisted.tabs[0].viewport).toEqual(capturedViewport);
+    expect(persisted.tabs[0]).not.toHaveProperty('viewport');
   });
 
   it('does not restore logical viewport across minute timeframe changes', async () => {

@@ -23,6 +23,8 @@ export interface TabViewport {
   rightEdgeMs: number;
   /** Visible width in bars (getVisibleLogicalRange().to - .from); carries zoom. */
   barSpan: number;
+  /** Right-side chart whitespace in logical bars after the latest candle. Runtime-only. */
+  rightPaddingBars?: number;
   /**
    * Captured at the live edge — restore should keep following the latest
    * candle (pin right) rather than pinning the now-stale right-edge bar with
@@ -56,6 +58,7 @@ export function viewportFromRanges(
   vr: VisibleRange | null,
   axis: VirtualAxis,
   lastCandleMs: number | null,
+  lastCandleLogicalIndex?: number | null,
 ): TabViewport | null {
   if (!lr || !vr || axis.segments.length === 0) return null;
   const rightEdgeMs = axis.toReal((vr.to as number) * 1000);
@@ -65,7 +68,16 @@ export function viewportFromRanges(
   // tolerance absorbs the toReal round-trip; a scrolled-back view lands well
   // below lastCandleMs so the check is never borderline there.
   const atLiveEdge = lastCandleMs !== null && rightEdgeMs >= lastCandleMs - 1000;
-  return { rightEdgeMs, barSpan, atLiveEdge };
+  const rightPaddingBars =
+    typeof lastCandleLogicalIndex === 'number' && Number.isFinite(lastCandleLogicalIndex)
+      ? lr.to - (lastCandleLogicalIndex + 1)
+      : null;
+  return {
+    rightEdgeMs,
+    barSpan,
+    atLiveEdge,
+    ...(rightPaddingBars !== null && rightPaddingBars >= 0 ? { rightPaddingBars } : {}),
+  };
 }
 
 /**
@@ -109,6 +121,14 @@ export function computeRestoreRange(
 ): RestoreRange | null {
   const span = Math.max(1, Math.round(anchor.barSpan));
   const rightOffset = rightOffsetOverride ?? (CHART_TIMESCALE_OPTIONS.rightOffset ?? 0);
+  const savedRightPadding =
+    typeof anchor.rightPaddingBars === 'number' && Number.isFinite(anchor.rightPaddingBars)
+      ? Math.max(0, anchor.rightPaddingBars)
+      : null;
+  if (anchor.atLiveEdge && savedRightPadding !== null) {
+    const to = totalBars + savedRightPadding;
+    return { from: Math.max(0, to - span), to, scrollToRight: false };
+  }
   if (anchor.atLiveEdge && anchor.userAdjusted !== true) {
     // Follow live: keep the saved zoom while preserving the standard right
     // whitespace band after the latest bar.
