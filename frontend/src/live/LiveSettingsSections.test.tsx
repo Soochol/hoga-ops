@@ -52,6 +52,11 @@ describe('LiveSettingsSections (2단 nav+detail)', () => {
     expect(screen.getByTestId('settings-toggle-candlePaneCandleOnlyScale')).toBeTruthy();
   });
 
+  it('차트 설정에 캔들이 항상 위 토글이 보인다', () => {
+    render(<LiveSettingsSections />);
+    expect(screen.getByTestId('settings-toggle-candleAlwaysOnTop')).toBeTruthy();
+  });
+
   it('차트 설정에 날짜 구분선 스타일 선택 버튼이 보인다', () => {
     render(<LiveSettingsSections />);
     expect(screen.getByRole('button', { name: '날짜 구분선 스타일 선택' })).toBeTruthy();

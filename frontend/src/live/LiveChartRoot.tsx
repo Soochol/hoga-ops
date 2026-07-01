@@ -810,6 +810,7 @@ export function LiveChartRoot({ code, timeframe, venue = 'KRX', viewIdentity, bu
   const askPeakShowAllPrices = useActivePrefs((s) => s.askPeakShowAllPrices);
   const bidPeakIntraMax = useActivePrefs((s) => s.bidPeakIntraMax);
   const bidPeakShowAllPrices = useActivePrefs((s) => s.bidPeakShowAllPrices);
+  const candleAlwaysOnTop = useActivePrefs((s) => s.candleAlwaysOnTop);
   const effectiveVolumeEnabled = paneTogglesOverride?.volumeEnabled ?? volumeEnabled;
   const effectiveQuoteTotalsEnabled = paneTogglesOverride?.quoteTotalsEnabled ?? quoteTotalsEnabled;
   const effectiveRatioEnabled = paneTogglesOverride?.ratioEnabled ?? ratioEnabled;
@@ -1122,6 +1123,12 @@ export function LiveChartRoot({ code, timeframe, venue = 'KRX', viewIdentity, bu
       />
       {chart && cb && axis.segments.length > 0 && (
         <>
+          {candleAlwaysOnTop && (
+            <>
+              <MovingAverageOverlay chart={chart} bundle={cb} axis={axis} />
+              <DailyMovingAverageOverlay chart={chart} bundle={cb} axis={axis} code={code} timeframe={timeframe} venue={venue} todayKst={todayKst} override={dailyMovingAverageOverride} />
+            </>
+          )}
           {paneSpecsForTimeframe(timeframe, paneToggles).map((spec, i) => (
             <RangeSeriesPane
               key={spec.name}
@@ -1141,12 +1148,17 @@ export function LiveChartRoot({ code, timeframe, venue = 'KRX', viewIdentity, bu
               paneIndex={i}
               spec={spec}
               forceSetData={isCalendarTimeframe(timeframe) && spec.name === 'candle'}
+              candleAlwaysOnTop={candleAlwaysOnTop}
               onPrimarySeriesReady={handleSeriesReady}
               onPrimarySeriesGone={handleSeriesGone}
             />
           ))}
-          <MovingAverageOverlay chart={chart} bundle={cb} axis={axis} />
-          <DailyMovingAverageOverlay chart={chart} bundle={cb} axis={axis} code={code} timeframe={timeframe} venue={venue} todayKst={todayKst} override={dailyMovingAverageOverride} />
+          {!candleAlwaysOnTop && (
+            <>
+              <MovingAverageOverlay chart={chart} bundle={cb} axis={axis} />
+              <DailyMovingAverageOverlay chart={chart} bundle={cb} axis={axis} code={code} timeframe={timeframe} venue={venue} todayKst={todayKst} override={dailyMovingAverageOverride} />
+            </>
+          )}
           <LiveCurrentPriceLine paneSeries={paneSeries} bundle={cb} code={code} />
           {isMinuteTimeframe(timeframe) && (
             <LiveAskPeakSegments
