@@ -697,6 +697,36 @@ describe('LiveChartRoot', () => {
     expect(capture()).toMatchObject({ barSpan: 78.25, atLiveEdge: true });
   });
 
+  it('captures live-edge right padding even when timeToIndex is not settled yet', () => {
+    useLivePageStore.setState({ historicalFromDate: null });
+    const { chart, ts } = buildChartMockWithStableTS();
+    const bundle = makeDailyCalendarBundle(250);
+    const last = bundle.candles[bundle.candles.length - 1];
+    let capture: () => unknown = () => null;
+    ts.getVisibleLogicalRange.mockReturnValue({ from: 200, to: 278.25 });
+    ts.getVisibleRange.mockReturnValue({ from: TODAY_OPEN_MS / 1000, to: last.ts_ms / 1000 });
+    ts.timeToIndex.mockReturnValue(null);
+    vi.mocked(createChartEx).mockImplementationOnce(() => chart as never);
+
+    render(
+      <LiveChartRoot
+        code="005930"
+        timeframe="D"
+        bundle={bundle}
+        clampEngaged={false}
+        isPastCandlesLoading={false}
+        onViewportCaptureReady={(fn) => { capture = fn; }}
+      />,
+      { wrapper },
+    );
+
+    expect(capture()).toMatchObject({
+      barSpan: 78.25,
+      atLiveEdge: true,
+      rightPaddingBars: 28.25,
+    });
+  });
+
   it('D timeframe: marks captures as user-adjusted after wheel viewport changes', () => {
     useLivePageStore.setState({ historicalFromDate: null });
     const { chart, ts } = buildChartMockWithStableTS();

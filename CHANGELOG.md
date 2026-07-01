@@ -3,6 +3,11 @@
 All notable changes to this project are documented here.
 The format follows a 4-digit `MAJOR.MINOR.PATCH.MICRO` scheme.
 
+## [0.12.23.3] - 2026-07-01
+
+### Fixed
+- **/live 우측 패딩 캡처 안정화**: 탭 전환 직전 lightweight-charts의 `timeToIndex`가 아직 마지막 캔들 인덱스를 못 돌려주는 타이밍에도 캔들 배열의 마지막 index로 fallback해, 저장된 우측 빈공간 패딩이 간헐적으로 누락되지 않도록 했다.
+
 ## [0.12.23.2] - 2026-07-01
 
 ### Fixed

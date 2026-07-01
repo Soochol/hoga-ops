@@ -334,6 +334,9 @@ export function LiveChartRoot({ code, timeframe, venue = 'KRX', viewIdentity, bu
   const lastCandleMsRef = useRef<number | null>(null);
   lastCandleMsRef.current =
     cb && cb.candles.length > 0 ? cb.candles[cb.candles.length - 1].ts_ms : null;
+  const lastCandleSeriesIndexRef = useRef<number | null>(null);
+  lastCandleSeriesIndexRef.current =
+    cb && cb.candles.length > 0 ? cb.candles.length - 1 : null;
   const candleMs = useMemo(
     () => (cb ? cb.candles.map((candle) => candle.ts_ms) : EMPTY_CANDLE_MS),
     [cb],
@@ -366,7 +369,11 @@ export function LiveChartRoot({ code, timeframe, venue = 'KRX', viewIdentity, bu
       const lastCandleMs = lastCandleMsRef.current;
       if (lastCandleMs !== null) {
         const idx = ts.timeToIndex(realMsToVirtualSeconds(axisRef.current, lastCandleMs) as Time, true);
-        if (typeof idx === 'number' && Number.isFinite(idx)) lastCandleLogicalIndex = idx;
+        if (typeof idx === 'number' && Number.isFinite(idx)) {
+          lastCandleLogicalIndex = idx;
+        } else {
+          lastCandleLogicalIndex = lastCandleSeriesIndexRef.current;
+        }
       }
       const vp = viewportFromRanges(
         ts.getVisibleLogicalRange(),
