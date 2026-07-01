@@ -3,6 +3,11 @@
 All notable changes to this project are documented here.
 The format follows a 4-digit `MAJOR.MINOR.PATCH.MICRO` scheme.
 
+## [0.12.23.7] - 2026-07-01
+
+### Fixed
+- **/live 탭 우측 패딩 캡처 안정화**: lightweight-charts의 `timeToIndex`가 탭 전환 순간 일시적으로 null을 반환할 때 캔들 배열 index로 부정확한 padding을 만들지 않고, 마지막으로 안정적으로 읽은 logical index 또는 기존 탭 padding을 사용해 우측 빈공간이 간헐적으로 흔들리지 않도록 했다.
+
 ## [0.12.23.6] - 2026-07-01
 
 ### Fixed

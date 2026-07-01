@@ -137,3 +137,19 @@ export function computeRestoreRange(
   if (anchorIndex === null) return null;
   return { from: Math.max(0, anchorIndex - span), to: anchorIndex, scrollToRight: false };
 }
+
+export function mergeTabViewportCapture(
+  previous: TabViewport | null | undefined,
+  next: TabViewport | null,
+): TabViewport | null {
+  if (!next) return null;
+  if (
+    next.atLiveEdge &&
+    next.rightPaddingBars === undefined &&
+    typeof previous?.rightPaddingBars === 'number' &&
+    Number.isFinite(previous.rightPaddingBars)
+  ) {
+    return { ...next, rightPaddingBars: previous.rightPaddingBars };
+  }
+  return next;
+}

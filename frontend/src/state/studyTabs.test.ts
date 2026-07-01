@@ -212,6 +212,30 @@ describe('studyTabs store', () => {
     expect(toStudyTabsSnapshot(useStudyTabsStore.getState()).tabs[0]).not.toHaveProperty('viewport');
   });
 
+  it('keeps a previously captured right padding when a later capture cannot compute it', () => {
+    useStudyTabsStore.getState().openSaveInNewTab(save);
+    const tabId = useStudyTabsStore.getState().activeTabId!;
+    useStudyTabsStore.getState().updateTabViewport(tabId, {
+      rightEdgeMs: 9_000,
+      barSpan: 42,
+      atLiveEdge: true,
+      rightPaddingBars: 12,
+    });
+
+    useStudyTabsStore.getState().updateTabViewport(tabId, {
+      rightEdgeMs: 9_000,
+      barSpan: 42,
+      atLiveEdge: true,
+    });
+
+    expect(useStudyTabsStore.getState().tabs[0].viewport).toEqual({
+      rightEdgeMs: 9_000,
+      barSpan: 42,
+      atLiveEdge: true,
+      rightPaddingBars: 12,
+    });
+  });
+
   it('closes every tab for a deleted study view and focuses a safe neighbor', () => {
     useStudyTabsStore.getState().openSaveInNewTab(save);
     useStudyTabsStore.getState().openSaveInNewTab({ ...save, id: 'view2', name: '마감' });

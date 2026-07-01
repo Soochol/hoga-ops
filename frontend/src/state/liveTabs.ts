@@ -10,7 +10,7 @@ import {
   stockInstrument,
   type LiveInstrument,
 } from '../live/liveInstrument';
-import type { TabViewport } from '../live/viewportAnchor';
+import { mergeTabViewportCapture, type TabViewport } from '../live/viewportAnchor';
 
 export type LiveTab = {
   id: string;
@@ -317,7 +317,7 @@ export const useLiveTabsStore = create<TabsStore>((set, get) => ({
   updateTabViewport: (id, viewport) => {
     const { tabs } = get();
     if (!tabs.some((t) => t.id === id)) return;
-    set({ tabs: tabs.map((t) => (t.id === id ? { ...t, viewport } : t)) });
+    set({ tabs: tabs.map((t) => (t.id === id ? { ...t, viewport: mergeTabViewportCapture(t.viewport, viewport) } : t)) });
   },
 }));
 
