@@ -118,21 +118,30 @@ export function computeRestoreRange(
   totalBars: number,
   anchorIndex: number | null,
   rightOffsetOverride?: number,
+  latestCandleLogicalIndex?: number | null,
 ): RestoreRange | null {
   const span = Math.max(1, Math.round(anchor.barSpan));
   const rightOffset = rightOffsetOverride ?? (CHART_TIMESCALE_OPTIONS.rightOffset ?? 0);
+  const latestCandleRightEdge =
+    typeof latestCandleLogicalIndex === 'number' && Number.isFinite(latestCandleLogicalIndex)
+      ? latestCandleLogicalIndex + 1
+      : totalBars;
   const savedRightPadding =
     typeof anchor.rightPaddingBars === 'number' && Number.isFinite(anchor.rightPaddingBars)
       ? Math.max(0, anchor.rightPaddingBars)
       : null;
   if (anchor.atLiveEdge && savedRightPadding !== null) {
-    const to = totalBars + savedRightPadding;
+    const to = latestCandleRightEdge + savedRightPadding;
     return { from: Math.max(0, to - span), to, scrollToRight: false };
   }
   if (anchor.atLiveEdge && anchor.userAdjusted !== true) {
     // Follow live: keep the saved zoom while preserving the standard right
     // whitespace band after the latest bar.
-    return { from: Math.max(0, totalBars - span), to: totalBars + rightOffset, scrollToRight: false };
+    return {
+      from: Math.max(0, latestCandleRightEdge - span),
+      to: latestCandleRightEdge + rightOffset,
+      scrollToRight: false,
+    };
   }
   if (anchorIndex === null) return null;
   return { from: Math.max(0, anchorIndex - span), to: anchorIndex, scrollToRight: false };
