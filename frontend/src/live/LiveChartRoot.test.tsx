@@ -20,11 +20,12 @@ if (typeof window !== 'undefined' && !window.ResizeObserver) {
 
 import { LiveChartRoot, shouldShowTradeVolumePocOverlay } from './LiveChartRoot';
 import { useLivePageStore } from '../state/livePage';
-import { createChartEx, TickMarkType } from 'lightweight-charts';
+import { CandlestickSeries, createChartEx, LineSeries, TickMarkType } from 'lightweight-charts';
 import { createVirtualAxis } from '../util/virtualAxis';
 import { INTER_SEGMENT_GAP_MS } from '../util/time';
 import { realMsToVirtualSeconds } from './viewportAnchor';
 import type { RangeBundle } from '../api/types';
+import { useChartPrefsStore } from '../state/chartPrefs';
 
 vi.mock('lightweight-charts', async () => {
   const mod = await vi.importActual<typeof import('lightweight-charts')>('lightweight-charts');
@@ -98,6 +99,7 @@ const wrapper = ({ children }: { children: ReactNode }) => {
 describe('LiveChartRoot', () => {
   beforeEach(() => {
     resizeObserverCallbacks.length = 0;
+    useChartPrefsStore.getState().resetToDefaults();
   });
 
   it('renders root container with chart slot', () => {
@@ -119,6 +121,87 @@ describe('LiveChartRoot', () => {
     expect(shouldShowTradeVolumePocOverlay('D', true, 0)).toBe(false);
     expect(shouldShowTradeVolumePocOverlay('D', false, 1)).toBe(false);
     expect(shouldShowTradeVolumePocOverlay('1m', false, 0)).toBe(true);
+  });
+
+  it('creates moving-average overlays before candles when candles are always on top', async () => {
+    useChartPrefsStore.getState().setToggle('candleAlwaysOnTop', true);
+    const addSeries = vi.fn((_type: unknown, _options?: unknown, _paneIndex?: number) => ({
+      setData: vi.fn(),
+      update: vi.fn(),
+      removeSeries: vi.fn(),
+      applyOptions: vi.fn(),
+      priceScale: vi.fn(() => ({ applyOptions: vi.fn() })),
+      createPriceLine: vi.fn(() => ({ applyOptions: vi.fn() })),
+      removePriceLine: vi.fn(),
+      attachPrimitive: vi.fn(),
+      detachPrimitive: vi.fn(),
+      setMarkers: vi.fn(),
+    }));
+    const chart = {
+      addSeries,
+      removeSeries: vi.fn(),
+      timeScale: vi.fn(() => ({
+        subscribeVisibleTimeRangeChange: vi.fn(),
+        unsubscribeVisibleTimeRangeChange: vi.fn(),
+        subscribeVisibleLogicalRangeChange: vi.fn(),
+        unsubscribeVisibleLogicalRangeChange: vi.fn(),
+        applyOptions: vi.fn(),
+        fitContent: vi.fn(),
+        scrollToRealTime: vi.fn(),
+        scrollToPosition: vi.fn(),
+        setVisibleLogicalRange: vi.fn(),
+        getVisibleLogicalRange: vi.fn(() => null),
+        getVisibleRange: vi.fn(() => null),
+        setVisibleRange: vi.fn(),
+        timeToCoordinate: vi.fn(() => null),
+        coordinateToTime: vi.fn(() => null),
+        coordinateToLogical: vi.fn(() => null),
+        timeToIndex: vi.fn(() => 0),
+        width: vi.fn(() => 800),
+      })),
+      panes: vi.fn(() => []),
+      remove: vi.fn(),
+      resize: vi.fn(),
+      applyOptions: vi.fn(),
+      options: vi.fn(() => ({ timeScale: { minBarSpacing: 0.5 } })),
+      subscribeCrosshairMove: vi.fn(),
+      unsubscribeCrosshairMove: vi.fn(),
+      subscribeClick: vi.fn(),
+      unsubscribeClick: vi.fn(),
+      chartElement: vi.fn(() => ({ clientWidth: 800, clientHeight: 400 })),
+    };
+    vi.mocked(createChartEx).mockReturnValueOnce(chart as never);
+    const open = Date.UTC(2026, 5, 19, 0, 0, 0);
+    const bundle: RangeBundle = {
+      ...DEFAULT_BUNDLE,
+      from_date: '20260619',
+      to_date: '20260619',
+      segments: [{ date: '20260619', session_open_ms: open, session_close_ms: open + 23_400_000, source: 'kis_live' }],
+      candles: [
+        { ts_ms: open, open: 100, high: 110, low: 90, close: 105, vol_a: 1, vol_b: 0 },
+        { ts_ms: open + 60_000, open: 105, high: 115, low: 100, close: 112, vol_a: 1, vol_b: 0 },
+      ],
+    };
+
+    render(
+      <LiveChartRoot
+        code="005930"
+        timeframe="1m"
+        bundle={bundle}
+        clampEngaged={false}
+        isPastCandlesLoading={false}
+      />,
+      { wrapper },
+    );
+    await act(async () => {
+      await new Promise((resolve) => requestAnimationFrame(resolve));
+    });
+
+    const seriesTypes = addSeries.mock.calls.map((call) => call[0]);
+    const firstMovingAverageIndex = seriesTypes.findIndex((type) => type === LineSeries);
+    const candleIndex = seriesTypes.findIndex((type) => type === CandlestickSeries);
+    expect(firstMovingAverageIndex).toBeGreaterThanOrEqual(0);
+    expect(candleIndex).toBeGreaterThan(firstMovingAverageIndex);
   });
 
   it('publishes index sector basis hover dates from crosshair movement', async () => {

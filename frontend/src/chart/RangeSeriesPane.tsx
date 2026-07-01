@@ -92,7 +92,20 @@ type Props<Ctx> = {
   /** Force full replacement instead of tail update. Used where lightweight-
    * charts' incremental update path can leave stale candlestick geometry. */
   forceSetData?: boolean;
+  /** When true, create the candle pane primary series after its same-pane
+   * overlays so lightweight-charts paints candle bodies on top. */
+  candleAlwaysOnTop?: boolean;
 };
+
+function creationOrderForSpec(seriesCount: number, candleAlwaysOnTop: boolean): number[] {
+  if (!candleAlwaysOnTop || seriesCount <= 1) {
+    return Array.from({ length: seriesCount }, (_, i) => i);
+  }
+  return [
+    ...Array.from({ length: seriesCount - 1 }, (_, i) => i + 1),
+    0,
+  ];
+}
 
 /**
  * RangeSeriesPane — the deep module that owns chart-pane lifecycle for
@@ -110,6 +123,7 @@ function RangeSeriesPaneInner<Ctx>({
   onPrimarySeriesReady,
   onPrimarySeriesGone,
   forceSetData = false,
+  candleAlwaysOnTop = false,
 }: Props<Ctx>) {
   // Hook position is stable: PaneSpec is a module-level constant per
   // caller (spec.useContext presence never flips between renders), so
@@ -140,10 +154,16 @@ function RangeSeriesPaneInner<Ctx>({
   // handles. Without this split, MA edits visibly redraw the entire MA
   // layer because all 5 LineSeries are removed and re-added.
   useEffect(() => {
-    const seriesList: ISeriesApi<any>[] = spec.series.map((s) => {
+    const seriesList: ISeriesApi<any>[] = new Array(spec.series.length);
+    const creationOrder = creationOrderForSpec(
+      spec.series.length,
+      candleAlwaysOnTop && spec.name === 'candle',
+    );
+    creationOrder.forEach((specIndex) => {
+      const s = spec.series[specIndex];
       const series = chart.addSeries(s.type, s.options, paneIndex);
       s.afterAdd?.(series);
-      return series;
+      seriesList[specIndex] = series;
     });
     seriesRef.current = seriesList;
     // Fresh handles hold no data — clear cached arrays so the data effect's first
@@ -204,7 +224,7 @@ function RangeSeriesPaneInner<Ctx>({
     // the parent (ChartStage uses `useCallback`); intentionally excluded
     // from deps so the effect doesn't churn series on callback re-creation.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [chart, paneIndex, spec]);
+  }, [chart, paneIndex, spec, candleAlwaysOnTop]);
 
   // Data effect: push new projected data into existing series whenever
   // bundle/axis/ctx changes. Cheap (setData on a held handle), so it's

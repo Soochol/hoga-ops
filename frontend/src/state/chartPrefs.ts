@@ -29,6 +29,12 @@ export const CHART_TOGGLES = [
     default: false,
   },
   {
+    key: 'candleAlwaysOnTop',
+    label: '캔들이 항상 위',
+    description: '캔들 pane에서 이동평균선 등 같은 pane의 보조 지표보다 캔들을 위에 그립니다.',
+    default: false,
+  },
+  {
     key: 'ratioOutlierFilterEnabled',
     label: '호가비 극단값 필터',
     description:

@@ -3,6 +3,11 @@
 All notable changes to this project are documented here.
 The format follows a 4-digit `MAJOR.MINOR.PATCH.MICRO` scheme.
 
+## [0.12.22.4] - 2026-07-01
+
+### Changed
+- **/live·/study 캔들 최상단 옵션**: 설정 > 차트에 `캔들이 항상 위` 토글을 추가해, 켜면 이동평균선 등 캔들 pane overlay보다 캔들을 위에 그리도록 했다.
+
 ## [0.12.22.3] - 2026-07-01
 
 ### Changed
