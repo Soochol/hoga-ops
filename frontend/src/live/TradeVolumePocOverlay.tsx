@@ -34,6 +34,7 @@ type Props = {
     color?: string;
     opacity?: number;
   };
+  behindSeries?: boolean;
 };
 
 export function buildTradeVolumePocSegments(
@@ -73,7 +74,7 @@ export function buildTradeVolumePocSegments(
   return out;
 }
 
-function TradeVolumePocOverlay({ paneSeries, axis, pocs, segments, candles, todayKst, override }: Props) {
+function TradeVolumePocOverlay({ paneSeries, axis, pocs, segments, candles, todayKst, override, behindSeries = false }: Props) {
   const series = paneSeries.get('candle' as PaneId) as ISeriesApi<SeriesType> | undefined;
   const storeEnabled = useLivePageStore((s) => s.tradeVolumePocEnabled);
   const storeColor = useLivePageStore((s) => s.tradeVolumePocColor);
@@ -90,7 +91,7 @@ function TradeVolumePocOverlay({ paneSeries, axis, pocs, segments, candles, toda
 
   useEffect(() => {
     if (!series) return undefined;
-    const primitive = new TradeVolumePocPrimitive();
+    const primitive = new TradeVolumePocPrimitive({ zOrder: behindSeries ? 'bottom' : 'normal' });
     series.attachPrimitive(primitive);
     primitiveRef.current = primitive;
     return () => {
@@ -101,11 +102,11 @@ function TradeVolumePocOverlay({ paneSeries, axis, pocs, segments, candles, toda
       }
       primitiveRef.current = null;
     };
-  }, [series]);
+  }, [series, behindSeries]);
 
   useEffect(() => {
     primitiveRef.current?.setSegments(enabled ? segment : []);
-  }, [enabled, segment, series]);
+  }, [enabled, segment, series, behindSeries]);
 
   return null;
 }

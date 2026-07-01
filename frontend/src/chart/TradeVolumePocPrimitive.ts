@@ -4,6 +4,7 @@ import type {
   IPrimitivePaneView,
   ISeriesApi,
   ISeriesPrimitive,
+  PrimitivePaneViewZOrder,
   SeriesAttachedParameter,
   SeriesType,
   Time,
@@ -16,6 +17,10 @@ export type TradeVolumePocSegment = {
   lowPrice: number;
   highPrice: number;
   fillColor: string;
+};
+
+export type TradeVolumePocPrimitiveOptions = {
+  zOrder?: PrimitivePaneViewZOrder;
 };
 
 class TradeVolumePocRenderer implements IPrimitivePaneRenderer {
@@ -56,14 +61,20 @@ class TradeVolumePocRenderer implements IPrimitivePaneRenderer {
 }
 
 class TradeVolumePocPaneView implements IPrimitivePaneView {
+  private readonly source: TradeVolumePocPrimitive;
   private readonly rendererRef: TradeVolumePocRenderer;
 
   constructor(source: TradeVolumePocPrimitive) {
+    this.source = source;
     this.rendererRef = new TradeVolumePocRenderer(source);
   }
 
   renderer(): IPrimitivePaneRenderer {
     return this.rendererRef;
+  }
+
+  zOrder(): PrimitivePaneViewZOrder {
+    return this.source.zOrder();
   }
 }
 
@@ -73,8 +84,10 @@ export class TradeVolumePocPrimitive implements ISeriesPrimitive<Time> {
   private series: ISeriesApi<SeriesType> | null = null;
   private requestUpdate?: () => void;
   private readonly paneView: TradeVolumePocPaneView;
+  private readonly paneZOrder: PrimitivePaneViewZOrder;
 
-  constructor() {
+  constructor(options: TradeVolumePocPrimitiveOptions = {}) {
+    this.paneZOrder = options.zOrder ?? 'normal';
     this.paneView = new TradeVolumePocPaneView(this);
   }
 
@@ -113,5 +126,9 @@ export class TradeVolumePocPrimitive implements ISeriesPrimitive<Time> {
 
   seriesApi(): ISeriesApi<SeriesType> | null {
     return this.series;
+  }
+
+  zOrder(): PrimitivePaneViewZOrder {
+    return this.paneZOrder;
   }
 }
