@@ -3022,6 +3022,7 @@ describe('LiveChartRoot per-view chart remount (cross-view staleness guard)', ()
 
 describe('LiveChartRoot wheel interactions wiring', () => {
   beforeEach(() => {
+    useChartPrefsStore.getState().resetToDefaults();
     useLivePageStore.setState({ historicalFromDate: null });
     vi.mocked(createChartEx).mockClear();
   });
@@ -3058,6 +3059,61 @@ describe('LiveChartRoot wheel interactions wiring', () => {
     };
     expect(options.layout?.panes?.separatorColor).toBeTruthy();
     expect(options.layout?.panes?.separatorHoverColor).toBeTruthy();
+  });
+
+  it('initializes chart grid visibility from saved settings', () => {
+    useChartPrefsStore.getState().setToggle('horizontalGridLinesEnabled', false);
+    useChartPrefsStore.getState().setToggle('verticalGridLinesEnabled', false);
+
+    render(
+      <LiveChartRoot
+        code="005930"
+        timeframe="1m"
+        bundle={DEFAULT_BUNDLE}
+        clampEngaged={false}
+        isPastCandlesLoading={false}
+      />,
+      { wrapper },
+    );
+
+    const options = vi.mocked(createChartEx).mock.calls.at(-1)![2] as {
+      grid?: {
+        vertLines?: { visible?: boolean };
+        horzLines?: { visible?: boolean };
+      };
+    };
+    expect(options.grid?.horzLines?.visible).toBe(false);
+    expect(options.grid?.vertLines?.visible).toBe(false);
+  });
+
+  it('applies grid visibility changes without recreating the chart', async () => {
+    render(
+      <LiveChartRoot
+        code="005930"
+        timeframe="1m"
+        bundle={DEFAULT_BUNDLE}
+        clampEngaged={false}
+        isPastCandlesLoading={false}
+      />,
+      { wrapper },
+    );
+
+    const chart = vi.mocked(createChartEx).mock.results.at(-1)!.value as {
+      applyOptions: ReturnType<typeof vi.fn>;
+    };
+    chart.applyOptions.mockClear();
+
+    await act(async () => {
+      useChartPrefsStore.getState().setToggle('horizontalGridLinesEnabled', false);
+    });
+
+    expect(createChartEx).toHaveBeenCalledTimes(1);
+    expect(chart.applyOptions).toHaveBeenLastCalledWith({
+      grid: {
+        vertLines: expect.objectContaining({ visible: true }),
+        horzLines: expect.objectContaining({ visible: false }),
+      },
+    });
   });
 
   it('container wheel → right-edge-anchored zoom via setVisibleLogicalRange', () => {

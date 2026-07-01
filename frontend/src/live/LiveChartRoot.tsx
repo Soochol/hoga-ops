@@ -25,7 +25,7 @@ import {
   isMinuteTimeframe,
   isCalendarTimeframe,
 } from '../state/livePage';
-import { useActivePrefs } from '../state/chartPrefs';
+import { useActivePrefs, useChartPrefsStore } from '../state/chartPrefs';
 import type { LiveVenueOption } from '../state/liveVenue';
 import type { AskPeak, BidPeak, RangeBundle } from '../api/types';
 import { PAST_CANDLES_MAX_DAYS } from './liveDateTime';
@@ -66,6 +66,17 @@ const TOKEN_SPEC = {
   border: ['--border', '#1F1F2A'],
   borderStrong: ['--border-strong', '#253040'],
 } as const;
+
+function chartGridOptions(
+  gridColor: string,
+  horizontalEnabled: boolean,
+  verticalEnabled: boolean,
+) {
+  return {
+    vertLines: { color: gridColor, visible: verticalEnabled },
+    horzLines: { color: gridColor, visible: horizontalEnabled },
+  };
+}
 
 function pad(n: number): string {
   return String(n).padStart(2, '0');
@@ -355,6 +366,8 @@ export function LiveChartRoot({ code, timeframe, venue = 'KRX', viewIdentity, bu
   // Written during render (like axisRef) so it's current before any effect.
   const chartRef = useRef<IChartApi | null>(chart);
   chartRef.current = chart;
+  const horizontalGridLinesEnabled = useActivePrefs((prefs) => prefs.horizontalGridLinesEnabled);
+  const verticalGridLinesEnabled = useActivePrefs((prefs) => prefs.verticalGridLinesEnabled);
 
   // Viewport capture (ADR-0069 A안): read the live chart's visible range + zoom
   // and pin them to a real-time anchor. The tabs store calls this on switch-away
@@ -713,6 +726,7 @@ export function LiveChartRoot({ code, timeframe, venue = 'KRX', viewIdentity, bu
     // infers `unknown` and the IHorzScaleBehavior<Time> instance no longer
     // matches. The behavior's options() override (TimeChartOptions) is what
     // makes timeScale.tickMarkFormatter typecheck below.
+    const gridPrefs = useChartPrefsStore.getState();
     const c = createChartEx<Time, ReturnType<typeof createKstHorzScaleBehavior>>(
       el,
       createKstHorzScaleBehavior(axisRef),
@@ -728,7 +742,11 @@ export function LiveChartRoot({ code, timeframe, venue = 'KRX', viewIdentity, bu
           separatorHoverColor: tokens.fg,
         },
       },
-      grid: { vertLines: { color: tokens.grid }, horzLines: { color: tokens.grid } },
+      grid: chartGridOptions(
+        tokens.grid,
+        gridPrefs.horizontalGridLinesEnabled,
+        gridPrefs.verticalGridLinesEnabled,
+      ),
       crosshair: CHART_CROSSHAIR_OPTIONS,
       // 라이브러리 내장 휠 줌(마우스 앵커) 비활성 — useWheelInteractions가 wheel을
       // 단독 소유한다(이중 소유권 레이스 방지). handleScale의 나머지 sub-option
@@ -822,6 +840,14 @@ export function LiveChartRoot({ code, timeframe, venue = 'KRX', viewIdentity, bu
     // origin (segments[0] moves → full lwc rebuild). The viewKey reveal cover
     // already masks the swap, so remounting adds no visible flash.
   }, [viewKey]);
+
+  useEffect(() => {
+    if (!chart) return;
+    const tokens = resolveTokens(TOKEN_SPEC);
+    chart.applyOptions({
+      grid: chartGridOptions(tokens.grid, horizontalGridLinesEnabled, verticalGridLinesEnabled),
+    });
+  }, [chart, horizontalGridLinesEnabled, verticalGridLinesEnabled]);
 
   const foreignNetEnabled = useLivePageStore((s) => s.foreignNetEnabled);
   const institutionNetEnabled = useLivePageStore((s) => s.institutionNetEnabled);

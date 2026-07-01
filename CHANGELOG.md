@@ -3,6 +3,11 @@
 All notable changes to this project are documented here.
 The format follows a 4-digit `MAJOR.MINOR.PATCH.MICRO` scheme.
 
+## [0.12.23.4] - 2026-07-01
+
+### Added
+- **/live 차트 구분선 표시 설정**: 설정 > 차트에서 가로 구분선과 세로 구분선을 각각 켜고 끌 수 있게 해, 차트 배경 격자선을 원하는 만큼 줄여 볼 수 있도록 했다.
+
 ## [0.12.23.3] - 2026-07-01
 
 ### Fixed

@@ -172,6 +172,33 @@ describe('날짜 구분선 설정', () => {
   });
 });
 
+describe('차트 배경 구분선 설정', () => {
+  it('defaults horizontal and vertical grid lines on', () => {
+    expect(DEFAULT_PREFS.horizontalGridLinesEnabled).toBe(true);
+    expect(DEFAULT_PREFS.verticalGridLinesEnabled).toBe(true);
+  });
+
+  it('mergePrefs preserves persisted grid line toggles', () => {
+    const merged = mergePrefs({
+      horizontalGridLinesEnabled: false,
+      verticalGridLinesEnabled: false,
+    });
+
+    expect(merged.horizontalGridLinesEnabled).toBe(false);
+    expect(merged.verticalGridLinesEnabled).toBe(false);
+  });
+
+  it('registers grid line toggles in the chart settings category', () => {
+    const horizontal = CHART_TOGGLES.find((t) => t.key === 'horizontalGridLinesEnabled');
+    const vertical = CHART_TOGGLES.find((t) => t.key === 'verticalGridLinesEnabled');
+
+    expect(horizontal?.label).toBe('가로 구분선');
+    expect(vertical?.label).toBe('세로 구분선');
+    expect(categoryOf(horizontal!)).toBe('chart');
+    expect(categoryOf(vertical!)).toBe('chart');
+  });
+});
+
 describe('ask peak all-price toggle', () => {
   it('defaults on and belongs to the indicator modal', () => {
     expect(DEFAULT_PREFS.askPeakShowAllPrices).toBe(true);
