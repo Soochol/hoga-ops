@@ -645,6 +645,35 @@ export function LiveChartRoot({ code, timeframe, venue = 'KRX', viewIdentity, bu
         // chart torn down / API threw → fall through to default initial view.
       }
     }
+    if (restoreViewport && lastAppliedCountRef.current !== null && isCalendarTimeframe(timeframe)) {
+      const totalBarsR = cb.candles.length;
+      if (lastAppliedCountRef.current !== totalBarsR) {
+        try {
+          const hasSavedPadding =
+            typeof restoreViewport.rightPaddingBars === 'number' &&
+            Number.isFinite(restoreViewport.rightPaddingBars);
+          if (restoreViewport.atLiveEdge && (restoreViewport.userAdjusted !== true || hasSavedPadding)) {
+            const rightPadding = hasSavedPadding
+              ? Math.max(0, restoreViewport.rightPaddingBars!)
+              : (CHART_TIMESCALE_OPTIONS.rightOffset ?? 0);
+            const tsR = chart.timeScale();
+            const plotWidth = Math.max(tsR.width(), containerRef.current?.clientWidth ?? 0);
+            const maxLegibleSpan =
+              plotWidth > 0
+                ? Math.max(1, Math.floor(plotWidth / DAILY_MIN_EFFECTIVE_BAR_SPACING))
+                : 260;
+            const to = totalBarsR + rightPadding;
+            const span = Math.min(to, Math.max(1, Math.round(restoreViewport.barSpan)), maxLegibleSpan);
+            tsR.setVisibleLogicalRange({ from: Math.max(0, to - span), to });
+          }
+          lastAppliedCountRef.current = totalBarsR;
+        } catch {
+          // chart torn down between effect runs
+        }
+      }
+      reveal();
+      return;
+    }
     const historicalFromDate = useLivePageStore.getState().historicalFromDate;
     if (timeframe === 'D') {
       const shouldPreserveScrolledBackDaily =
