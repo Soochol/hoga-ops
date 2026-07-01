@@ -135,7 +135,7 @@ function SignalAlertSettingsSection() {
   const commitThreshold = () => {
     const trimmed = threshold.trim();
     const next = Number(trimmed);
-    if (!trimmed || !Number.isFinite(next) || !Number.isInteger(next)) {
+    if (!trimmed || !Number.isFinite(next) || !Number.isInteger(next) || next < 50 || next > 150) {
       setThreshold(String(draftRule.threshold_pct));
       return;
     }
@@ -155,6 +155,8 @@ function SignalAlertSettingsSection() {
       <SettingsRow label="기준 시각">
         <input
           type="time"
+          min="09:00"
+          max="15:20"
           step={60}
           aria-label="기준 시각"
           value={startTime}
@@ -172,6 +174,8 @@ function SignalAlertSettingsSection() {
       <SettingsRow label="기준 최대값 대비 문턱 (%)">
         <input
           type="number"
+          min={50}
+          max={150}
           inputMode="numeric"
           aria-label="기준 최대값 대비 문턱 (%)"
           value={threshold}
@@ -215,6 +219,9 @@ function parseTimeInput(value: string): number | null {
     minutes < 0 ||
     minutes > 59
   ) {
+    return null;
+  }
+  if (hours < 9 || hours > 15 || (hours === 15 && minutes > 20)) {
     return null;
   }
   return hours * 100 + minutes;
