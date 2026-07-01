@@ -133,6 +133,15 @@ def test_build_multi_price_params_numbered_keys():
     assert "FID_INPUT_ISCD_3" not in p
 
 
+def test_build_multi_price_params_uses_selected_venue():
+    p = _build_multi_price_params(["005930", "000660"], venue="NXT")
+    assert p["FID_COND_MRKT_DIV_CODE_1"] == "NX"
+    assert p["FID_COND_MRKT_DIV_CODE_2"] == "NX"
+
+    integrated = _build_multi_price_params(["005930"], venue="UN")
+    assert integrated["FID_COND_MRKT_DIV_CODE_1"] == "UN"
+
+
 @pytest.mark.asyncio
 async def test_fetch_multi_price_chunks_over_30():
     calls: list[dict] = []
@@ -154,8 +163,25 @@ async def test_fetch_multi_price_chunks_over_30():
     quotes = await _fetch_multi_price(fake_get, codes)
 
     assert len(calls) == 2  # 청킹
+    assert all(call["FID_COND_MRKT_DIV_CODE_1"] == "J" for call in calls)
     assert {q.code for q in quotes} == set(codes)
     assert all(q.change_pct == 1.0 for q in quotes)
+
+
+@pytest.mark.asyncio
+async def test_fetch_multi_price_threads_selected_venue():
+    calls: list[dict] = []
+
+    async def fake_get(*, path, tr_id, params):
+        calls.append(params)
+        return {"output": [
+            {"inter_shrn_iscd": "005930", "inter2_prpr": "100", "prdy_ctrt": "1.00", "prdy_vrss_sign": "2"}
+        ]}
+
+    quotes = await _fetch_multi_price(fake_get, ["005930"], venue="NXT")
+
+    assert quotes[0].code == "005930"
+    assert calls[0]["FID_COND_MRKT_DIV_CODE_1"] == "NX"
 
 
 @pytest.mark.asyncio

@@ -3,7 +3,7 @@ import { render, screen, cleanup, fireEvent } from '@testing-library/react';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { LiveStatusBar } from './LiveStatusBar';
 import type { RangeBundle } from '../api/types';
-import type { LiveVenueOption } from '../state/liveVenue';
+import { useLiveVenueStore, type LiveVenueOption } from '../state/liveVenue';
 import { projectCaptureHealth } from './liveStatusProjection';
 
 // useConnectionLiveness reads module-level WS state (_lastHeartbeatMs=0 in tests),
@@ -49,7 +49,7 @@ function renderBar(
     next_run_at_ms: 0,
   });
   if (props.activeCode && quote) {
-    qc.setQueryData(['live-quotes', props.activeCode], {
+    qc.setQueryData(['live-quotes', props.activeCode, props.venue ?? 'KRX'], {
       phase: 'open', quotes: [{ code: props.activeCode, ...quote }],
     });
   }
@@ -81,6 +81,7 @@ describe('LiveStatusBar', () => {
   beforeEach(() => {
     cleanup();
     mockLiveness.mockReturnValue(false);
+    useLiveVenueStore.setState({ venue: 'KRX' });
   });
 
   it('shows em-dash when activeCode is null', () => {
@@ -116,6 +117,40 @@ describe('LiveStatusBar', () => {
       ['005930'],
       { price: 361000, change_pct: 0.29, change_won: 1000 },
     );
+    expect(screen.getByTestId('live-change').textContent).toBe('+0.29%');
+  });
+
+  it('uses selected store venue for quote lookup when venue prop is omitted', () => {
+    useLiveVenueStore.setState({ venue: 'NXT' });
+    const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+    qc.setQueryData(['watchlist'], { entries: [], next_run_at_ms: 0 });
+    qc.setQueryData(['live-quotes', '005930', 'NXT'], {
+      phase: 'open',
+      quotes: [{ code: '005930', price: 361000, change_pct: 0.29, change_won: 1000 }],
+    });
+    qc.setQueryData(['live', 'status'], {
+      running: true,
+      started_at_ms: 1,
+      last_tick_ms: 1,
+      cycle_lag_ms: 0,
+      capture_healthy: true,
+      capture_reason: 'healthy',
+      watchlist_count: 0,
+      kis_calls_today: 0,
+      kis_rate_limit_remaining: null,
+      live_set: [],
+    });
+
+    render(
+      <QueryClientProvider client={qc}>
+        <LiveStatusBar
+          activeCode="005930"
+          captureHealth={projectCaptureHealth(true, 'healthy')}
+          bundle={EMPTY_BUNDLE}
+        />
+      </QueryClientProvider>,
+    );
+
     expect(screen.getByTestId('live-change').textContent).toBe('+0.29%');
   });
 

@@ -1,6 +1,7 @@
 import { useEffect } from 'react';
 import { useSymbols } from '../capture/useSymbols';
 import { useQuoteByCode, type LiveQuote } from '../api/liveQuotes';
+import { useLiveVenueStore } from '../state/liveVenue';
 
 const DEFAULT_TITLE = 'hoga-ops';
 
@@ -31,7 +32,8 @@ function formatTitleBase(base: string, quote: LiveQuote | undefined): string {
 export function useDocumentTitle(code: string | null | undefined): void {
   const trimmed = code?.trim() || null;
   const { data } = useSymbols();
-  const quoteByCode = useQuoteByCode(trimmed ? [trimmed] : []);
+  const venue = useLiveVenueStore((s) => s.venue);
+  const quoteByCode = useQuoteByCode(trimmed ? [trimmed] : [], venue);
   const quote = trimmed ? quoteByCode.get(trimmed) : undefined;
 
   useEffect(() => {

@@ -76,7 +76,7 @@ class _FakeKis:
         self.quotes = quotes
         self.seen_codes: list[str] = []
 
-    async def fetch_multi_price(self, codes: list[str]) -> list[KisQuote]:
+    async def fetch_multi_price(self, codes: list[str], **_kw) -> list[KisQuote]:
         self.seen_codes = codes
         by_code = {quote.code: quote for quote in self.quotes}
         return [by_code[code] for code in codes if code in by_code]

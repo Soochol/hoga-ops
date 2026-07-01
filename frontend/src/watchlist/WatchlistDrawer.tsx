@@ -27,6 +27,7 @@ import { useDismissablePopover } from '../util/useDismissablePopover';
 import { TrashIcon } from '../ui/TrashIcon';
 import { QuoteRow } from '../rightrail/QuoteRow';
 import { summarizeCaughtUpAll, formatCaughtUpAllHeader } from './banners';
+import { useLiveVenueStore } from '../state/liveVenue';
 import {
   DndContext, PointerSensor, useSensor, useSensors, closestCenter,
   type DragStartEvent, type DragMoveEvent, type DragEndEvent,
@@ -331,7 +332,8 @@ export function WatchlistDrawer() {
 
   // 다중 소속이라 한 코드가 여러 폴더 행으로 등장 → quote 폴링용 코드는 dedup.
   const codes = useMemo(() => [...new Set(data?.entries.map((e) => e.code) ?? [])], [data]);
-  const quoteByCode = useQuoteByCode(codes);
+  const venue = useLiveVenueStore((s) => s.venue);
+  const quoteByCode = useQuoteByCode(codes, venue);
 
   // ADR-0067: 행별 수집상태 배지 — live_set을 한 번 읽어 공유 (행마다 재계산 없음).
   const { data: liveStatusData } = useLiveStatus();

@@ -1,15 +1,18 @@
 """Tests for hoga.live.kis_venue."""
 
 import pytest
+from datetime import datetime
 
 from hoga.live.kis_venue import (
     AUTO_DAILY_USES_INTEGRATED_WARNING,
+    KIS_KST,
     auto_minute_venue_for_hhmmss,
     daily_venue_for_policy,
     kis_venue_div,
     merge_auto_minute_bars,
     parse_kis_venue,
     previous_empty_page_anchor_hhmmss,
+    quote_venue_for_policy,
     session_window_hhmmss,
 )
 
@@ -64,6 +67,20 @@ def test_daily_venue_for_policy_uses_integrated_for_auto() -> None:
     assert daily_venue_for_policy("UN") == "UN"
     assert daily_venue_for_policy("AUTO") == "UN"
     assert AUTO_DAILY_USES_INTEGRATED_WARNING["reason"] == "auto_daily_uses_integrated"
+
+
+def test_quote_venue_for_policy_maps_explicit_values() -> None:
+    now = datetime(2026, 7, 1, 8, 30, tzinfo=KIS_KST)
+    assert quote_venue_for_policy("KRX", now) == "KRX"
+    assert quote_venue_for_policy("NXT", now) == "NXT"
+    assert quote_venue_for_policy("UN", now) == "UN"
+
+
+def test_quote_venue_for_policy_auto_uses_nxt_outside_regular_and_krx_inside() -> None:
+    assert quote_venue_for_policy("AUTO", datetime(2026, 7, 1, 8, 30, tzinfo=KIS_KST)) == "NXT"
+    assert quote_venue_for_policy("AUTO", datetime(2026, 7, 1, 9, 0, tzinfo=KIS_KST)) == "KRX"
+    assert quote_venue_for_policy("AUTO", datetime(2026, 7, 1, 15, 30, tzinfo=KIS_KST)) == "KRX"
+    assert quote_venue_for_policy("AUTO", datetime(2026, 7, 1, 15, 31, tzinfo=KIS_KST)) == "NXT"
 
 
 def test_merge_auto_minute_bars_applies_policy_by_timestamp() -> None:

@@ -7,6 +7,7 @@ import { useLivePageStore } from '../state/livePage';
 import { useLiveTabsStore } from '../state/liveTabs';
 import { useScreenerPanelStore, type PanelScan } from '../state/screenerPanel';
 import { useEntryDragStore } from '../state/entryDrag';
+import { useLiveVenueStore } from '../state/liveVenue';
 import * as savesApi from '../api/savedScreeners';
 import * as screenerApi from '../api/screener';
 import * as client from '../api/client';
@@ -114,6 +115,11 @@ function sortButton() {
   return screen.getByRole('button', { name: '스크리너 결과 정렬' });
 }
 
+function liveQuoteCodesFromPath(path: string): string[] {
+  const url = new URL(path, 'http://localhost');
+  return (url.searchParams.get('codes') ?? '').split(',').filter(Boolean);
+}
+
 describe('ScreenerDrawer', () => {
   beforeEach(() => {
     cleanup();
@@ -125,6 +131,7 @@ describe('ScreenerDrawer', () => {
     useEntryDragStore.setState({ draggingCode: null, overChart: false, hitTestChart: null });
     useLivePageStore.setState({ activeCode: null, candleTimeframe: '1m', historicalFromDate: null });
     useLiveTabsStore.setState({ tabs: [], activeTabId: null });
+    useLiveVenueStore.setState({ venue: 'KRX' });
     useScreenerPanelStore.setState({
       selectedSavedId: null,
       lastScan: null,
@@ -258,7 +265,7 @@ describe('ScreenerDrawer', () => {
     ];
     vi.spyOn(screenerApi, 'runScan').mockResolvedValue({ status: 'ok', rows, warnings: [] });
     vi.spyOn(client, 'apiCall').mockImplementation(async (path: string) => {
-      const codes = (path.split('codes=')[1] ?? '').split(',').filter(Boolean);
+      const codes = liveQuoteCodesFromPath(path);
       const quoteByCode: Record<string, { price: number; change_pct: number; change_won: number }> = {
         '005930': { price: 70100, change_pct: 2.1, change_won: 100 },
         '000660': { price: 179000, change_pct: -1.2, change_won: -1000 },
@@ -610,7 +617,7 @@ describe('ScreenerDrawer', () => {
       price: 1000, trade_value_won: 1e10, change_pct: 0.5,
     }));
     vi.spyOn(client, 'apiCall').mockImplementation((path: string) => {
-      const codes = (path.split('codes=')[1] ?? '').split(',').filter(Boolean);
+      const codes = liveQuoteCodesFromPath(path);
       return Promise.resolve({
         phase: 'open',
         quotes: codes.map((c) => ({ code: c, price: 99999, change_pct: 7.7, change_won: 5000 })),

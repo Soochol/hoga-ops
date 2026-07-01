@@ -178,6 +178,22 @@ class PastCandlesCache:
         self._past_mem.move_to_end((venue, code, date))
         self._trim_lru(self._past_mem, self._max_past_mem_entries)
 
+    def delete_past(self, *args: str) -> None:
+        venue, code, date = self._parse_past_args(args)
+        self._past_mem.pop((venue, code, date), None)
+        try:
+            self._past_path(venue, code, date).unlink()
+        except FileNotFoundError:
+            pass
+        except OSError:
+            _log.warning(
+                "past_candles_cache.delete_failed venue=%s code=%s date=%s",
+                venue,
+                code,
+                date,
+                exc_info=True,
+            )
+
     # --- today ---
 
     def get_today_tri(self, *args: str) -> tuple[TodayState, list[dict] | None]:
