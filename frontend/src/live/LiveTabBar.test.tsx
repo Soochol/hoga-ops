@@ -195,6 +195,32 @@ it('drag-and-drop reorders via onReorder(from, to)', () => {
   expect(p.onReorder).toHaveBeenCalledWith(0, 1);
 });
 
+it('applies the shared sortable drag visuals while dragging tabs', () => {
+  setup();
+  const elA = screen.getByText('삼성전자 1분봉').closest('[data-tab-id]')!;
+  const elB = screen.getByText('SK하이닉스 1분봉').closest('[data-tab-id]')!;
+  const store: Record<string, string> = {};
+  const dataTransfer = {
+    setData: (k: string, v: string) => { store[k] = v; },
+    getData: (k: string) => store[k] ?? '',
+    types: ['text/tab-index'],
+    effectAllowed: '',
+  };
+
+  fireEvent.dragStart(elA, { dataTransfer });
+  expect((elA as HTMLElement).style.opacity).toBe('0.72');
+  expect((elA as HTMLElement).style.cursor).toBe('grabbing');
+  expect((elA as HTMLElement).style.background).toContain('color-mix');
+
+  fireEvent.dragOver(elB, { dataTransfer });
+  expect(elB.className).toContain('after:right-0');
+  expect(elB.className).toContain('after:w-0.5');
+  expect(elB.className).toContain('before:right-[-5px]');
+
+  fireEvent.dragEnd(elA);
+  expect((elA as HTMLElement).style.opacity).toBe('');
+});
+
 it('ignores a foreign drop (no tab-index payload)', () => {
   const p = setup();
   const elB = screen.getByText('SK하이닉스 1분봉').closest('[data-tab-id]')!; // idx 1
