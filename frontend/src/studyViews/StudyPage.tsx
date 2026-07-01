@@ -121,6 +121,7 @@ export function StudyPage() {
   const focusTab = useStudyTabsStore((state) => state.focusTab);
   const closeTab = useStudyTabsStore((state) => state.closeTab);
   const reorderTabs = useStudyTabsStore((state) => state.reorderTabs);
+  const toggleTabPinned = useStudyTabsStore((state) => state.toggleTabPinned);
   const updateTabTimeframe = useStudyTabsStore((state) => state.updateTabTimeframe);
   const updateTabViewport = useStudyTabsStore((state) => state.updateTabViewport);
   const initialQueryViewIdRef = useRef(queryViewId);
@@ -469,6 +470,7 @@ export function StudyPage() {
                 onFocus={handleFocusTab}
                 onClose={handleCloseTab}
                 onReorder={reorderTabs}
+                onTogglePin={toggleTabPinned}
                 onNewTab={() => {}}
               />
             </div>
