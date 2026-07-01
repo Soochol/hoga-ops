@@ -57,7 +57,7 @@ describe('makeStudySaveCommand', () => {
       label: '삼성전자',
       timeframe: '5m',
       bundle: bundle(),
-      captureViewport: () => ({ rightEdgeMs: 3_000, barSpan: 2, atLiveEdge: true }),
+      captureViewport: () => ({ rightEdgeMs: 3_000, barSpan: 2, atLiveEdge: true, rightPaddingBars: 18 }),
     };
 
     const command = makeStudySaveCommand({ mode: 'create', source, existingSave: null });
@@ -75,7 +75,7 @@ describe('makeStudySaveCommand', () => {
       name: '삼성전자 5m 저장뷰',
       code: '005930',
       label: '삼성전자',
-      viewport: { right_edge_ms: 3_000, bar_span: 2, at_live_edge: true },
+      viewport: { right_edge_ms: 3_000, bar_span: 2, at_live_edge: true, right_padding_bars: 18 },
       range: {
         from_ms: 1_000,
         to_ms: 3_000,
@@ -97,7 +97,7 @@ describe('makeStudySaveCommand', () => {
       viewId: 'view1',
       save,
       bundle: bundle(),
-      captureViewport: () => ({ rightEdgeMs: 2_000, barSpan: 1, atLiveEdge: false }),
+      captureViewport: () => ({ rightEdgeMs: 2_000, barSpan: 1, atLiveEdge: false, rightPaddingBars: 7 }),
     };
 
     const command = makeStudySaveCommand({ mode: 'overwrite', source, existingSave: save });
@@ -114,7 +114,7 @@ describe('makeStudySaveCommand', () => {
     expect(command?.request).toMatchObject({
       name: '기존 저장뷰',
       memo: '기존 메모',
-      viewport: { right_edge_ms: 2_000, bar_span: 1, at_live_edge: false },
+      viewport: { right_edge_ms: 2_000, bar_span: 1, at_live_edge: false, right_padding_bars: 7 },
       range: {
         from_ms: 1_000,
         to_ms: 3_000,

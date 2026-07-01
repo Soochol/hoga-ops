@@ -453,6 +453,9 @@ export function StudyPage() {
             rightEdgeMs: activeViewModel.save.viewport.right_edge_ms,
             barSpan: activeViewModel.save.viewport.bar_span,
             atLiveEdge: activeViewModel.save.viewport.at_live_edge,
+            ...(activeViewModel.save.viewport.right_padding_bars !== undefined && activeViewModel.save.viewport.right_padding_bars !== null
+              ? { rightPaddingBars: activeViewModel.save.viewport.right_padding_bars }
+              : {}),
           }
         : null
     : null;

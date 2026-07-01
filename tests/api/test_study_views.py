@@ -52,6 +52,31 @@ def test_reference_write_request_strips_name_and_defaults_optional_fields():
     assert req.tags == []
 
 
+def test_reference_write_request_preserves_right_padding_bars():
+    raw = _ref_req(
+        viewport={
+            **_ref_req()["viewport"],
+            "right_padding_bars": 24.5,
+        },
+    )
+
+    req = StudyViewReferenceWriteRequest.model_validate(raw)
+
+    assert req.viewport.right_padding_bars == 24.5
+
+
+def test_reference_write_request_rejects_negative_right_padding_bars():
+    raw = _ref_req(
+        viewport={
+            **_ref_req()["viewport"],
+            "right_padding_bars": -1,
+        },
+    )
+
+    with pytest.raises(ValidationError):
+        StudyViewReferenceWriteRequest.model_validate(raw)
+
+
 def test_reference_write_request_rejects_blank_name():
     with pytest.raises(ValidationError):
         StudyViewReferenceWriteRequest.model_validate(_ref_req(name="   "))
@@ -114,7 +139,10 @@ def test_study_views_file_rejects_legacy_rows_without_schema_version():
 
 
 def test_study_view_routes_crud(study_client):
-    create = study_client.post("/api/study-views/saves", json=_ref_req())
+    create = study_client.post(
+        "/api/study-views/saves",
+        json=_ref_req(viewport={**_ref_req()["viewport"], "right_padding_bars": 11}),
+    )
 
     assert create.status_code == 201
     created = create.json()
@@ -122,6 +150,7 @@ def test_study_view_routes_crud(study_client):
     assert created["schema_version"] == 2
     assert "snapshot_path" not in created
     assert "indicator_state" not in created
+    assert created["viewport"]["right_padding_bars"] == 11
 
     listed = study_client.get("/api/study-views/saves").json()["saves"]
     assert [row["id"] for row in listed] == [sid]

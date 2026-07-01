@@ -347,6 +347,11 @@ export function LiveChartRoot({ code, timeframe, venue = 'KRX', viewIdentity, bu
   lastCandleMsRef.current =
     cb && cb.candles.length > 0 ? cb.candles[cb.candles.length - 1].ts_ms : null;
   const lastStableCandleLogicalIndexRef = useRef<number | null>(null);
+  const rememberLatestCandleLogicalIndex = (idx: number | null) => {
+    if (typeof idx === 'number' && Number.isFinite(idx)) {
+      lastStableCandleLogicalIndexRef.current = idx;
+    }
+  };
   const candleMs = useMemo(
     () => (cb ? cb.candles.map((candle) => candle.ts_ms) : EMPTY_CANDLE_MS),
     [cb],
@@ -621,6 +626,7 @@ export function LiveChartRoot({ code, timeframe, venue = 'KRX', viewIdentity, bu
           typeof latestCandleIdx === 'number' && Number.isFinite(latestCandleIdx)
             ? latestCandleIdx
             : null;
+        rememberLatestCandleLogicalIndex(latestCandleLogicalIndex);
         const restoreRightOffset = isMinuteTimeframe(timeframe)
           ? minuteRightOffsetBars(restoreViewport.barSpan, tsR.width())
           : undefined;
@@ -681,6 +687,7 @@ export function LiveChartRoot({ code, timeframe, venue = 'KRX', viewIdentity, bu
               typeof latestCandleIdx === 'number' && Number.isFinite(latestCandleIdx)
                 ? latestCandleIdx
                 : null;
+            rememberLatestCandleLogicalIndex(latestCandleLogicalIndex);
             const plotWidth = Math.max(tsR.width(), containerRef.current?.clientWidth ?? 0);
             const maxLegibleSpan =
               plotWidth > 0
@@ -739,6 +746,7 @@ export function LiveChartRoot({ code, timeframe, venue = 'KRX', viewIdentity, bu
           const idx = ts.timeToIndex(realMsToVirtualSeconds(axisRef.current, lastMs) as Time, true);
           if (typeof idx === 'number' && Number.isFinite(idx)) latestLogicalIndex = idx;
         }
+        rememberLatestCandleLogicalIndex(latestLogicalIndex);
         const latest = latestLogicalIndex ?? totalBars - 1;
         const target = initialVisibleMinuteBarsFor(timeframe, venue);
         const visibleBars = Math.min(totalBars, target);
