@@ -6,6 +6,7 @@ type ChartTabLike = {
   id: string;
   code: string;
   label: string;
+  pinned?: boolean;
 };
 
 type NewTabButtonProps = {
@@ -29,6 +30,7 @@ type Props<T extends ChartTabLike> = {
   tabCountLabel?: (count: number) => string;
   tablistAriaLabel?: string;
   tabStatus?: (tab: T, active: boolean) => ChartTabStatus;
+  onTogglePin?: (id: string) => void;
 };
 
 /** 상태점: 활성+로딩=accent pulse(◌), 활성+로드=success(●), 비활성=dimmer outline(○). */
@@ -52,6 +54,7 @@ export function ChartTabBar<T extends ChartTabLike>({
   tabCountLabel = (count) => `${count} open`,
   tablistAriaLabel = '열린 탭',
   tabStatus,
+  onTogglePin,
 }: Props<T>) {
   const activeElRef = useRef<HTMLDivElement | null>(null);
   const activeIdx = Math.max(0, tabs.findIndex((tab) => tab.id === activeTabId));
@@ -87,6 +90,7 @@ export function ChartTabBar<T extends ChartTabLike>({
           const active = tab.id === activeTabId;
           const displayLabel = renderLabel(tab);
           const status = tabStatus?.(tab, active) ?? (active && activeLoading ? 'loading' : active ? 'ready' : 'idle');
+          const pinned = tab.pinned === true;
           return (
             <div
               key={tab.id}
@@ -96,7 +100,7 @@ export function ChartTabBar<T extends ChartTabLike>({
               aria-selected={active}
               onClick={() => onFocus(tab.id)}
               onMouseDown={(e) => {
-                if (e.button === 1) {
+                if (e.button === 1 && !pinned) {
                   e.preventDefault();
                   onClose(tab.id);
                 }
@@ -114,7 +118,15 @@ export function ChartTabBar<T extends ChartTabLike>({
                 const raw = e.dataTransfer.getData('text/tab-index');
                 if (raw === '') return;
                 const from = Number(raw);
-                if (Number.isInteger(from) && from !== idx) onReorder(from, idx);
+                if (
+                  Number.isInteger(from) &&
+                  from >= 0 &&
+                  from < tabs.length &&
+                  from !== idx &&
+                  Boolean(tabs[from]?.pinned) === pinned
+                ) {
+                  onReorder(from, idx);
+                }
               }}
               className={`relative flex items-center gap-1.5 h-8 px-2.5 rounded-t-md cursor-pointer select-none group shrink-0 ${
                 active ? 'bg-bg-card' : 'bg-bg-input hover:bg-bg-input-hover'
@@ -132,21 +144,41 @@ export function ChartTabBar<T extends ChartTabLike>({
               )}
               <span className="w-1.5 h-1.5 rounded-full shrink-0" style={statusDotStyle(active, status)} />
               <span className="text-sm shrink-0 max-w-36 truncate" title={displayLabel} style={{ color: active ? 'var(--fg)' : 'var(--fg-dim)' }}>{displayLabel}</span>
-              <button
-                type="button"
-                draggable={false}
-                aria-label={`${tab.code} 닫기`}
-                onClick={(e) => {
-                  e.stopPropagation();
-                  onClose(tab.id);
-                }}
-                className="ml-1 w-[18px] h-[18px] flex items-center justify-center rounded opacity-0 group-hover:opacity-100"
-                style={{ color: 'var(--fg-dimmer)' }}
-              >
-                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" className="w-[11px] h-[11px]">
-                  <line x1="18" y1="6" x2="6" y2="18" /><line x1="6" y1="6" x2="18" y2="18" />
-                </svg>
-              </button>
+              {onTogglePin && (
+                <button
+                  type="button"
+                  draggable={false}
+                  aria-label={pinned ? `${displayLabel} 고정 해제` : `${displayLabel} 고정`}
+                  title={pinned ? '고정 해제' : '고정'}
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    onTogglePin(tab.id);
+                  }}
+                  className="ml-0.5 w-[18px] h-[18px] flex items-center justify-center rounded"
+                  style={{ color: pinned ? 'var(--accent)' : 'var(--fg-dimmer)', opacity: pinned ? 1 : 0.68 }}
+                >
+                  <svg viewBox="0 0 24 24" fill={pinned ? 'currentColor' : 'none'} stroke="currentColor" strokeWidth="2" className="w-[12px] h-[12px]" aria-hidden="true">
+                    <path d="M14 3l7 7-3 1-4 4v5l-2 2-3-6-6-3 2-2h5l4-4 1-3z" />
+                  </svg>
+                </button>
+              )}
+              {!pinned && (
+                <button
+                  type="button"
+                  draggable={false}
+                  aria-label={`${tab.code} 닫기`}
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    onClose(tab.id);
+                  }}
+                  className="ml-1 w-[18px] h-[18px] flex items-center justify-center rounded opacity-0 group-hover:opacity-100"
+                  style={{ color: 'var(--fg-dimmer)' }}
+                >
+                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" className="w-[11px] h-[11px]" aria-hidden="true">
+                    <line x1="18" y1="6" x2="6" y2="18" /><line x1="6" y1="6" x2="18" y2="18" />
+                  </svg>
+                </button>
+              )}
             </div>
           );
         })}

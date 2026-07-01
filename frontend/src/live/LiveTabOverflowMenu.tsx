@@ -66,6 +66,7 @@ export function LiveTabOverflowMenu({ tabs, activeTabId, onFocus, onClose }: Pro
             {visible.map((t) => {
               const active = t.id === activeTabId;
               const displayLabel = formatLiveViewLabel(t.label, t.timeframe);
+              const pinned = t.pinned === true;
               return (
                 <div
                   key={t.id}
@@ -88,18 +89,31 @@ export function LiveTabOverflowMenu({ tabs, activeTabId, onFocus, onClose }: Pro
                       <span className="font-mono text-xs shrink-0" style={{ color: 'var(--fg-dimmer)' }}>{t.code}</span>
                     )}
                   </button>
-                  <button
-                    type="button"
-                    aria-label={`탭 닫기: ${displayLabel}`}
-                    title="탭 닫기"
-                    onClick={() => onClose(t.id)}
-                    className="w-7 h-7 flex items-center justify-center rounded shrink-0"
-                    style={{ color: 'var(--fg-dimmer)' }}
-                  >
-                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" className="w-[11px] h-[11px]" aria-hidden="true">
-                      <line x1="18" y1="6" x2="6" y2="18" /><line x1="6" y1="6" x2="18" y2="18" />
-                    </svg>
-                  </button>
+                  {pinned ? (
+                    <span
+                      aria-label={`고정된 탭: ${displayLabel}`}
+                      title="고정됨"
+                      className="w-7 h-7 flex items-center justify-center rounded shrink-0"
+                      style={{ color: 'var(--accent)' }}
+                    >
+                      <svg viewBox="0 0 24 24" fill="currentColor" stroke="currentColor" strokeWidth="2" className="w-[12px] h-[12px]" aria-hidden="true">
+                        <path d="M14 3l7 7-3 1-4 4v5l-2 2-3-6-6-3 2-2h5l4-4 1-3z" />
+                      </svg>
+                    </span>
+                  ) : (
+                    <button
+                      type="button"
+                      aria-label={`탭 닫기: ${displayLabel}`}
+                      title="탭 닫기"
+                      onClick={() => onClose(t.id)}
+                      className="w-7 h-7 flex items-center justify-center rounded shrink-0"
+                      style={{ color: 'var(--fg-dimmer)' }}
+                    >
+                      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" className="w-[11px] h-[11px]" aria-hidden="true">
+                        <line x1="18" y1="6" x2="6" y2="18" /><line x1="6" y1="6" x2="18" y2="18" />
+                      </svg>
+                    </button>
+                  )}
                 </div>
               );
             })}

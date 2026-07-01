@@ -12,9 +12,10 @@ interface Props {
   onClose: (id: string) => void;
   onReorder: (from: number, to: number) => void; // Task 8 드래그 핸들러가 사용
   onNewTab: () => void;
+  onTogglePin?: (id: string) => void;
 }
 
-export function LiveTabBar({ tabs, activeTabId, activeLoading, onFocus, onClose, onReorder, onNewTab }: Props) {
+export function LiveTabBar({ tabs, activeTabId, activeLoading, onFocus, onClose, onReorder, onNewTab, onTogglePin }: Props) {
   return (
     <ChartTabBar
       tabs={tabs}
@@ -23,6 +24,7 @@ export function LiveTabBar({ tabs, activeTabId, activeLoading, onFocus, onClose,
       onFocus={onFocus}
       onClose={onClose}
       onReorder={onReorder}
+      onTogglePin={onTogglePin}
       renderLabel={(tab) => formatLiveViewLabel(tab.label, tab.timeframe)}
       newTabButton={{ ariaLabel: '새 탭', onClick: onNewTab }}
       trailingActions={<LiveTabOverflowMenu tabs={tabs} activeTabId={activeTabId} onFocus={onFocus} onClose={onClose} />}

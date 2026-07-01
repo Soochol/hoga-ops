@@ -12,7 +12,7 @@ const tabs: LiveTab[] = [
 function setup(over: Partial<ComponentProps<typeof LiveTabBar>> = {}) {
   const props: ComponentProps<typeof LiveTabBar> = {
     tabs, activeTabId: 'a', activeLoading: false,
-    onFocus: vi.fn(), onClose: vi.fn(), onReorder: vi.fn(), onNewTab: vi.fn(),
+    onFocus: vi.fn(), onClose: vi.fn(), onReorder: vi.fn(), onNewTab: vi.fn(), onTogglePin: vi.fn(),
     ...over,
   };
   render(<LiveTabBar {...props} />);
@@ -46,10 +46,35 @@ it('clicking the close button calls onClose, not onFocus', () => {
   expect(p.onFocus).not.toHaveBeenCalled();
 });
 
+it('clicking the pin button calls onTogglePin, not onFocus', () => {
+  const p = setup();
+  fireEvent.click(screen.getByLabelText('삼성전자 1분봉 고정'));
+  expect(p.onTogglePin).toHaveBeenCalledWith('a');
+  expect(p.onFocus).not.toHaveBeenCalled();
+});
+
+it('does not render a close button for pinned tabs', () => {
+  setup({
+    tabs: [{ ...tabs[0], pinned: true }],
+    activeTabId: 'a',
+  });
+  expect(screen.getByLabelText('삼성전자 1분봉 고정 해제')).toBeInTheDocument();
+  expect(screen.queryByLabelText('005930 닫기')).toBeNull();
+});
+
 it('middle-click closes the tab', () => {
   const p = setup();
   fireEvent.mouseDown(screen.getByText('SK하이닉스 1분봉').closest('[data-tab-id]')!, { button: 1 });
   expect(p.onClose).toHaveBeenCalledWith('b');
+});
+
+it('does not middle-click close a pinned tab', () => {
+  const p = setup({
+    tabs: [{ ...tabs[0], pinned: true }],
+    activeTabId: 'a',
+  });
+  fireEvent.mouseDown(screen.getByText('삼성전자 1분봉').closest('[data-tab-id]')!, { button: 1 });
+  expect(p.onClose).not.toHaveBeenCalled();
 });
 
 it('the new-tab button calls onNewTab', () => {
@@ -85,6 +110,7 @@ it('scrolls the active tab into view when activeTabId changes', () => {
         onClose={vi.fn()}
         onReorder={vi.fn()}
         onNewTab={vi.fn()}
+        onTogglePin={vi.fn()}
       />
     );
     scrollIntoView.mockClear();
@@ -97,6 +123,7 @@ it('scrolls the active tab into view when activeTabId changes', () => {
         onClose={vi.fn()}
         onReorder={vi.fn()}
         onNewTab={vi.fn()}
+        onTogglePin={vi.fn()}
       />
     );
     const activeTab = screen.getByText('SK하이닉스 1분봉').closest('[data-tab-id]')!;
