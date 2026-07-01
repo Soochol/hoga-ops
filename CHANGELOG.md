@@ -3,6 +3,11 @@
 All notable changes to this project are documented here.
 The format follows a 4-digit `MAJOR.MINOR.PATCH.MICRO` scheme.
 
+## [0.12.23.10] - 2026-07-01
+
+### Changed
+- **/live 당일 최대벽 라벨 위치 조정**: 당일 장중 최대 매수·매도벽 라벨을 고정 y축 lane이 아니라 각 라인의 우측 끝 빈 차트 패딩 영역에 붙여, 캔들 위를 덮지 않으면서 라인과 라벨의 연결감을 높였다.
+
 ## [0.12.23.9] - 2026-07-01
 
 ### Fixed
