@@ -1,33 +1,28 @@
-# Task 1 Report
+Status: DONE
 
-## Status
-DONE
+Implemented Task 1 within the owned file boundary:
+- Promoted the quiet palette into the global dark tokens in `frontend/src/styles/tokens.css`.
+- Removed duplicated `/live` quiet-terminal token overrides from `frontend/src/styles/global.css`, keeping the scoped background and structural live-only rules.
+- Updated `DESIGN.md` aesthetic naming to `Quiet Trading Terminal` and added the dense-panel guidance sentence under Layout.
+- Added the missing class-contract assertions in `frontend/src/ui/RailShell.test.tsx` and `frontend/src/ui/WorkspaceShell.test.tsx`.
 
-## What I changed
-- Added signal alert model types and settings models to `hoga/api/models.py`.
-- Created `hoga/live/signal_alerts.py` with the persistent settings store, date-partitioned alert ledger, inbox clear state, and read helpers.
-- Added focused persistence tests in `tests/unit/live/test_signal_alerts.py`.
+Notes:
+- `frontend/src/ui/PageShell.test.tsx` already contained the required `bg-bg-card` and `bg-bg-input` assertions.
+- `frontend/src/ui/DataSurface.test.tsx` already contained the required `border-b` assertion.
 
-## Verification
-- Ran `uv run pytest tests/unit/live/test_signal_alerts.py -v`
-- Result: 3 passed
+Verification:
+- `cd frontend && npm test -- PageShell.test.tsx RailShell.test.tsx WorkspaceShell.test.tsx DataSurface.test.tsx --run`
+- `cd frontend && npm run build`
 
-## Notes
-- The implementation stays within the backend model/store scope from the brief.
-- No concerns to report.
+Self-review:
+- Scope stayed within the brief’s owned files.
+- Price and status tokens were left unchanged.
+- `/live` keeps only the background selector-level difference while inheriting the new global palette.
 
-## Review Fix Addendum
-- Added `assign_next_seq(data_dir, event)` to allocate the next per-date sequence from the existing ledger before append.
-- Validated signal-alert ledger dates at the path boundary so invalid or traversal-style strings are rejected before interpolation.
+Fixes for review findings:
+- Updated `DESIGN.md` to match the quiet global palette in `frontend/src/styles/tokens.css`, including the surface, border, foreground, accent, grid, heat, and selection tint values.
+- Clarified the `frontend/src/styles/global.css` live-theme comment so it now describes live-only structural polish rather than route-exclusive palette ownership.
 
-## Review Fix Verification
-- Ran `uv run pytest tests/unit/live/test_signal_alerts.py -v`
-- Result: 5 passed
-
-## Review Fix Addendum 2
-- Moved per-date sequence assignment into `append_signal_alert(data_dir, event)` so the next seq and append happen under the same lock.
-- Kept `assign_next_seq(data_dir, event)` available as a compatibility helper for callers that still need to precompute the next sequence.
-
-## Review Fix Verification 2
-- Ran `uv run pytest tests/unit/live/test_signal_alerts.py -v`
-- Result: 5 passed
+Verification after review fixes:
+- `cd frontend && npm test -- PageShell.test.tsx RailShell.test.tsx WorkspaceShell.test.tsx DataSurface.test.tsx --run`
+- `cd frontend && npm run build`
