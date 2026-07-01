@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo } from 'react';
 import {
   DndContext,
   PointerSensor,
@@ -86,7 +86,14 @@ export function ScreenerDrawer() {
   const setSelectedSavedId = useScreenerPanelStore((s) => s.setSelectedSavedId);
   const lastScan = useScreenerPanelStore((s) => s.lastScan);
   const setLastScan = useScreenerPanelStore((s) => s.setLastScan);
-  const [sortMode, setSortMode] = useState<ScreenerResultSortMode>('default');
+  const sortMode = useScreenerPanelStore((s) => s.sortMode);
+  const setSortMode = useScreenerPanelStore((s) => s.setSortMode);
+  const setUpdatePending = useScreenerPanelStore((s) => s.setUpdatePending);
+  const setUpdateSuccess = useScreenerPanelStore((s) => s.setUpdateSuccess);
+  const setUpdateError = useScreenerPanelStore((s) => s.setUpdateError);
+  const markLastScanDataStale = useScreenerPanelStore((s) => s.markLastScanDataStale);
+  const clearExpiredScan = useScreenerPanelStore((s) => s.clearExpiredScan);
+  const updateState = useScreenerPanelStore((s) => s.updateState);
 
   const { data: savesData, isSuccess: savesLoaded } = useSavedScreeners();
   const saves = useMemo(() => savesData?.saves ?? [], [savesData]);
@@ -107,8 +114,21 @@ export function ScreenerDrawer() {
     if (!saves.some((s) => s.id === selectedSavedId)) setSelectedSavedId(saves[0].id);
   }, [savesLoaded, saves, selectedSavedId, setSelectedSavedId]);
 
+  useEffect(() => {
+    clearExpiredScan();
+    const timer = window.setInterval(() => clearExpiredScan(), 60_000);
+    return () => window.clearInterval(timer);
+  }, [clearExpiredScan]);
+
   const selected = saves.find((s) => s.id === selectedSavedId) ?? null;
   const notSeeded = status?.status === 'not_seeded' || lastScan?.scanStatus === 'not_seeded';
+  const lastScanStaleReason = (() => {
+    if (!lastScan) return null;
+    if (selectedSavedId !== lastScan.savedId) return '선택한 조건과 다름';
+    if (selected && selected.updated_at_ms !== lastScan.savedUpdatedAtMs) return '조건 저장본 변경됨';
+    if (lastScan.dataStale) return '데이터 갱신됨';
+    return null;
+  })();
 
   const runScan = () => {
     if (!selected) return;
@@ -117,13 +137,40 @@ export function ScreenerDrawer() {
       {
         onSuccess: (res) => {
           setLastScan({
-            savedId: selected.id, savedName: selected.name,
-            rows: res.rows, scanStatus: res.status, warnings: res.warnings,
+            savedId: selected.id,
+            savedName: selected.name,
+            savedUpdatedAtMs: selected.updated_at_ms,
+            rows: res.rows,
+            scanStatus: res.status,
+            warnings: res.warnings,
+            scannedAtMs: Date.now(),
+            basis: DRAWER_SCAN_BASIS,
+            dataStale: false,
           });
           setSortMode('default');
         },
       },
     );
+  };
+
+  const handleSortChange = (mode: ScreenerResultSortMode) => {
+    setSortMode(mode);
+  };
+
+  const updatePending = updateState.status === 'pending' || update.isPending;
+  const updateErrorMessage = updateState.status === 'error' ? updateState.message : null;
+  const runUpdate = () => {
+    const startedAtMs = Date.now();
+    setUpdatePending(startedAtMs);
+    update.mutate(undefined, {
+      onSuccess: () => {
+        setUpdateSuccess(Date.now());
+        markLastScanDataStale();
+      },
+      onError: (error) => {
+        setUpdateError(error instanceof Error && error.message ? error.message : '갱신 실패', Date.now());
+      },
+    });
   };
 
   // 결과 전 종목에 Live Quote 오버레이(ADR-0056 개정 2026-06-03 — 상위 30 cap 제거).
@@ -193,16 +240,16 @@ export function ScreenerDrawer() {
             {screener.isPending ? '조회 중…' : '조회'}
           </ToolbarButton>
           <ToolbarButton
-            aria-label="데이터 갱신"
-            onClick={() => update.mutate()}
-            disabled={update.isPending || notSeeded}
+            aria-label={updatePending ? '갱신 중…' : '데이터 갱신'}
+            onClick={runUpdate}
+            disabled={updatePending || notSeeded}
             className="px-2.5 py-1.5"
           >
-            {update.isPending ? '갱신 중…' : '갱신'}
+            {updatePending ? '갱신 중…' : '갱신'}
           </ToolbarButton>
         </div>
-        {update.isError && (
-          <RailState tone="error" className="p-0">갱신 실패 — 잠시 후 다시 시도하세요</RailState>
+        {updateErrorMessage && (
+          <RailState tone="error" className="p-0">갱신 실패 — {updateErrorMessage}</RailState>
         )}
         {notSeeded && (
           <RailState tone="warn" className="p-0">시드 필요 — 운영자 CLI로 시드 후 조회하세요</RailState>
@@ -211,13 +258,13 @@ export function ScreenerDrawer() {
           <div className="flex items-center gap-2 border-t border-border pt-sm text-xs uppercase tracking-[0.08em] text-fg-dimmer">
             <div className="min-w-0 flex-1 truncate">
               결과 {lastScan.rows.length} · {lastScan.savedName}
-              {selectedSavedId !== lastScan.savedId && (
+              {lastScanStaleReason && (
                 <span className="ml-1 normal-case tracking-normal" style={{ color: 'var(--warn)' }}>
-                  · 선택한 조건과 다름 — 조회로 갱신
+                  · {lastScanStaleReason} — 조회로 갱신
                 </span>
               )}
             </div>
-            <ScreenerResultSortControl mode={sortMode} onChange={setSortMode} disabled={lastScan.rows.length === 0} />
+            <ScreenerResultSortControl mode={sortMode} onChange={handleSortChange} disabled={lastScan.rows.length === 0} />
           </div>
         )}
       </RailDrawerSection>
