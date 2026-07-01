@@ -3,6 +3,17 @@
 All notable changes to this project are documented here.
 The format follows a 4-digit `MAJOR.MINOR.PATCH.MICRO` scheme.
 
+## [0.12.22.2] - 2026-07-01
+
+### Fixed
+- **우측 스크리너 조회 상태 유지**: 우측 레일 스크리너의 최근 조회 결과, 정렬, 갱신 상태를 세션 store에 저장해 페이지 이동·패널 재마운트·짧은 reload 후에도 유지하고, 오래된/손상된 스냅샷은 TTL과 검증으로 복원하지 않도록 했다.
+
+## [0.12.22.1] - 2026-07-01
+
+### Fixed
+- **비 KRX 설정 분봉 렌더링 복구**: NXT/통합(UN) 분봉이 비어 있는 종목도 KRX 분봉으로 필요한 날짜만 채워 차트가 빈 화면으로 남지 않게 했다.
+- **NXT 지원 변경 대응**: KRX fallback으로 채운 날짜는 비어 있던 NXT/UN 캐시를 영구 보존하지 않아, 분기별 지원 종목 변경 후에도 다음 요청에서 primary venue를 다시 확인한다.
+
 ## [0.12.22.0] - 2026-07-01
 
 ### Changed

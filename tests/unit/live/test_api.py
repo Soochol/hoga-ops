@@ -716,13 +716,16 @@ def test_minute_today_weekend_skips_kis_and_negative_caches(tmp_path, monkeypatc
 
 
 def test_past_candles_threads_explicit_venue_to_kis_and_response(tmp_path) -> None:
+    kst = datetime.timezone(datetime.timedelta(hours=9))
+    t_ms = int(datetime.datetime(2026, 5, 18, 9, 0, tzinfo=kst).timestamp() * 1000)
+
     class _VenueFakeKis:
         def __init__(self):
             self.kwargs: list[dict] = []
 
         async def fetch_past_minute_candles(self, code, date_yyyymmdd, **kw):
             self.kwargs.append(kw)
-            return [KisCandle(t_ms=1, open=100, high=110, low=95, close=105, volume=10)]
+            return [KisCandle(t_ms=t_ms, open=100, high=110, low=95, close=105, volume=10)]
 
     fake = _VenueFakeKis()
     app = _past_app(tmp_path, fake)
@@ -818,6 +821,235 @@ def test_past_candles_integrated_uses_single_kis_un_call(tmp_path) -> None:
     assert body["candles"][0]["high"] == 112
     assert body["candles"][0]["low"] == 95
     assert body["candles"][0]["close"] == 106
+
+
+@pytest.mark.parametrize("venue", ["NXT", "UN"])
+def test_past_candles_non_krx_empty_falls_back_to_krx(tmp_path, venue: str) -> None:
+    kst = datetime.timezone(datetime.timedelta(hours=9))
+
+    def ts(hh: int, mm: int) -> int:
+        return int(datetime.datetime(2026, 5, 18, hh, mm, tzinfo=kst).timestamp() * 1000)
+
+    class _NoNonKrxMinuteKis:
+        def __init__(self):
+            self.kwargs: list[dict] = []
+
+        async def fetch_past_minute_candles(self, code, date_yyyymmdd, **kw):
+            self.kwargs.append(kw)
+            if kw["venue"] in ("NXT", "UN"):
+                return []
+            return [
+                KisCandle(
+                    t_ms=ts(9, 0),
+                    open=100,
+                    high=110,
+                    low=95,
+                    close=105,
+                    volume=10,
+                )
+            ]
+
+    fake = _NoNonKrxMinuteKis()
+    app = _past_app(tmp_path, fake)
+    with TestClient(app) as c:
+        r = c.get(
+            f"/api/live/past-candles?code=005930&from=20260518"
+            f"&to=20260518&venue={venue}"
+        )
+        assert r.status_code == 200
+        body = r.json()
+
+    assert body["venue"] == venue
+    assert [candle["close"] for candle in body["candles"]] == [105]
+    assert fake.kwargs == [
+        {"venue": venue, "foreground": True},
+        {"venue": "KRX", "foreground": True},
+    ]
+    assert any(
+        w["reason"] == "minute_fallback_to_krx"
+        and w["date"] == "20260518"
+        for w in body["data_warnings"]
+    )
+
+
+def test_past_candles_non_krx_partial_range_fills_empty_dates_from_krx(tmp_path) -> None:
+    kst = datetime.timezone(datetime.timedelta(hours=9))
+
+    def ts(date_s: str, close: int) -> KisCandle:
+        y, m, d = int(date_s[:4]), int(date_s[4:6]), int(date_s[6:8])
+        return KisCandle(
+            t_ms=int(datetime.datetime(y, m, d, 9, 0, tzinfo=kst).timestamp() * 1000),
+            open=close - 1,
+            high=close + 1,
+            low=close - 2,
+            close=close,
+            volume=10,
+        )
+
+    class _PartialNxtMinuteKis:
+        def __init__(self):
+            self.calls: list[tuple[str, str]] = []
+
+        async def fetch_past_minute_candles(self, code, date_yyyymmdd, **kw):
+            venue = kw["venue"]
+            self.calls.append((venue, date_yyyymmdd))
+            if venue == "NXT":
+                if date_yyyymmdd == "20260520":
+                    return [ts(date_yyyymmdd, 220)]
+                return []
+            return [ts(date_yyyymmdd, 105)]
+
+    fake = _PartialNxtMinuteKis()
+    app = _past_app(tmp_path, fake)
+    with TestClient(app) as c:
+        r = c.get("/api/live/past-candles?code=005930&from=20260518&to=20260520&venue=NXT")
+        assert r.status_code == 200
+        body = r.json()
+
+    assert [candle["close"] for candle in body["candles"]] == [105, 105, 220]
+    assert fake.calls == [
+        ("NXT", "20260518"),
+        ("NXT", "20260519"),
+        ("NXT", "20260520"),
+        ("KRX", "20260518"),
+        ("KRX", "20260519"),
+    ]
+    assert any(
+        w["reason"] == "minute_fallback_to_krx"
+        and w["date"] == "20260518__20260519"
+        for w in body["data_warnings"]
+    )
+
+
+def test_past_candles_non_krx_fallback_rechecks_primary_on_next_request(tmp_path) -> None:
+    kst = datetime.timezone(datetime.timedelta(hours=9))
+
+    def ts(close: int) -> KisCandle:
+        return KisCandle(
+            t_ms=int(datetime.datetime(2026, 5, 18, 9, 0, tzinfo=kst).timestamp() * 1000),
+            open=close - 1,
+            high=close + 1,
+            low=close - 2,
+            close=close,
+            volume=10,
+        )
+
+    class _NxtSupportChangesKis:
+        def __init__(self):
+            self.calls: list[tuple[str, str]] = []
+            self.nxt_calls = 0
+
+        async def fetch_past_minute_candles(self, code, date_yyyymmdd, **kw):
+            venue = kw["venue"]
+            self.calls.append((venue, date_yyyymmdd))
+            if venue == "NXT":
+                self.nxt_calls += 1
+                if self.nxt_calls == 1:
+                    return []
+                return [ts(205)]
+            return [ts(105)]
+
+    fake = _NxtSupportChangesKis()
+    app = _past_app(tmp_path, fake)
+    with TestClient(app) as c:
+        r1 = c.get("/api/live/past-candles?code=005930&from=20260518&to=20260518&venue=NXT")
+        r2 = c.get("/api/live/past-candles?code=005930&from=20260518&to=20260518&venue=NXT")
+
+    assert r1.status_code == 200
+    assert r2.status_code == 200
+    assert [candle["close"] for candle in r1.json()["candles"]] == [105]
+    assert [candle["close"] for candle in r2.json()["candles"]] == [205]
+    assert fake.calls == [
+        ("NXT", "20260518"),
+        ("KRX", "20260518"),
+        ("NXT", "20260518"),
+    ]
+    assert not any(
+        w["reason"] == "minute_fallback_to_krx"
+        for w in r2.json()["data_warnings"]
+    )
+
+
+def test_past_candles_non_krx_fallback_warning_dates_only_used_krx(tmp_path) -> None:
+    kst = datetime.timezone(datetime.timedelta(hours=9))
+
+    def ts(date_s: str, close: int) -> KisCandle:
+        y, m, d = int(date_s[:4]), int(date_s[4:6]), int(date_s[6:8])
+        return KisCandle(
+            t_ms=int(datetime.datetime(y, m, d, 9, 0, tzinfo=kst).timestamp() * 1000),
+            open=close - 1,
+            high=close + 1,
+            low=close - 2,
+            close=close,
+            volume=10,
+        )
+
+    class _WeekendAndWeekdayGapKis:
+        async def fetch_past_minute_candles(self, code, date_yyyymmdd, **kw):
+            if kw["venue"] == "NXT":
+                if date_yyyymmdd == "20260519":
+                    return [ts(date_yyyymmdd, 219)]
+                return []
+            if date_yyyymmdd == "20260518":
+                return [ts(date_yyyymmdd, 105)]
+            return []
+
+    app = _past_app(tmp_path, _WeekendAndWeekdayGapKis())
+    with TestClient(app) as c:
+        r = c.get("/api/live/past-candles?code=005930&from=20260516&to=20260519&venue=NXT")
+        assert r.status_code == 200
+        body = r.json()
+
+    assert [candle["close"] for candle in body["candles"]] == [105, 219]
+    assert any(
+        w["reason"] == "minute_fallback_to_krx"
+        and w["date"] == "20260518"
+        for w in body["data_warnings"]
+    )
+
+
+def test_past_candles_non_krx_fallback_does_not_replace_present_dates(tmp_path) -> None:
+    kst = datetime.timezone(datetime.timedelta(hours=9))
+
+    def ts(date_s: str, close: int) -> KisCandle:
+        y, m, d = int(date_s[:4]), int(date_s[4:6]), int(date_s[6:8])
+        return KisCandle(
+            t_ms=int(datetime.datetime(y, m, d, 9, 0, tzinfo=kst).timestamp() * 1000),
+            open=close - 1,
+            high=close + 1,
+            low=close - 2,
+            close=close,
+            volume=10,
+        )
+
+    class _WeekendGapNxtMinuteKis:
+        def __init__(self):
+            self.calls: list[tuple[str, str]] = []
+
+        async def fetch_past_minute_candles(self, code, date_yyyymmdd, **kw):
+            venue = kw["venue"]
+            self.calls.append((venue, date_yyyymmdd))
+            if venue == "NXT":
+                if "20260518" <= date_yyyymmdd <= "20260522":
+                    return [ts(date_yyyymmdd, int(date_yyyymmdd[-2:]) + 200)]
+                return []
+            if date_yyyymmdd in {"20260516", "20260517", "20260523", "20260524"}:
+                return []
+            return [ts(date_yyyymmdd, int(date_yyyymmdd[-2:]) + 100)]
+
+    fake = _WeekendGapNxtMinuteKis()
+    app = _past_app(tmp_path, fake)
+    with TestClient(app) as c:
+        r = c.get("/api/live/past-candles?code=005930&from=20260516&to=20260524&venue=NXT")
+        assert r.status_code == 200
+        body = r.json()
+
+    assert [candle["close"] for candle in body["candles"]] == [218, 219, 220, 221, 222]
+    assert ("KRX", "20260518") not in fake.calls
+    assert not any(
+        w["reason"] == "minute_fallback_to_krx"
+        for w in body["data_warnings"]
+    )
 
 
 # ----- /api/live/past-daily-candles validation -----

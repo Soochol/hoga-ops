@@ -4,7 +4,7 @@ import asyncio
 import time as monotonic_time
 from collections.abc import Awaitable, Callable, Hashable
 from dataclasses import dataclass
-from datetime import date, datetime, time, timedelta, timezone
+from datetime import date, datetime, timedelta, timezone
 from typing import Protocol
 
 from hoga.live import kis_access
@@ -98,6 +98,88 @@ class LiveMinuteCandleBackfill:
                 cached_dates=sorted(set(krx_out.cached_dates) | set(nxt_out.cached_dates)),
                 fresh_dates=sorted(set(krx_out.fresh_dates) | set(nxt_out.fresh_dates)),
                 data_warnings=krx_out.data_warnings + nxt_out.data_warnings,
+            )
+        if policy != "KRX":
+            primary_out = await self._collect_for_venue(
+                policy,
+                code=code,
+                frm=frm,
+                too=too,
+                today_d=today_d,
+            )
+            dates = list(_date_iter(frm, too))
+            primary_dates = _dates_for_candles(primary_out.candles)
+            warning_dates = _fallback_blocking_warning_dates(primary_out.data_warnings)
+            missing_dates = [
+                date_s
+                for date_s in dates
+                if date_s not in primary_dates and date_s not in warning_dates
+            ]
+            if not missing_dates:
+                return primary_out
+            missing_set = set(missing_dates)
+            fallback_outs = await asyncio.gather(
+                *(
+                    self._collect_for_venue(
+                        "KRX",
+                        code=code,
+                        frm=run_start,
+                        too=run_end,
+                        today_d=today_d,
+                    )
+                    for run_start, run_end in _contiguous_date_ranges(missing_dates)
+                )
+            )
+            fallback_candles = [
+                candle
+                for fallback_out in fallback_outs
+                for candle in fallback_out.candles
+                if _date_from_t_ms(candle["t_ms"]) in missing_set
+            ]
+            fallback_warnings = [
+                warning
+                for fallback_out in fallback_outs
+                for warning in fallback_out.data_warnings
+            ]
+            if not fallback_candles:
+                return LiveMinuteCandleBackfillResult(
+                    candles=primary_out.candles,
+                    cached_dates=primary_out.cached_dates,
+                    fresh_dates=primary_out.fresh_dates,
+                    data_warnings=primary_out.data_warnings + fallback_warnings,
+                )
+            used_fallback_dates = _dates_for_candles(fallback_candles)
+            for date_s in used_fallback_dates:
+                self._cache.delete_past(policy, code, date_s)
+            cached_dates = sorted(
+                set(primary_out.cached_dates)
+                | {
+                    date_s
+                    for fallback_out in fallback_outs
+                    for date_s in fallback_out.cached_dates
+                    if date_s in used_fallback_dates
+                }
+            )
+            fresh_dates = sorted(
+                set(primary_out.fresh_dates)
+                | {
+                    date_s
+                    for fallback_out in fallback_outs
+                    for date_s in fallback_out.fresh_dates
+                    if date_s in used_fallback_dates
+                }
+            )
+            return LiveMinuteCandleBackfillResult(
+                candles=_merge_minute_fallback(
+                    primary_out.candles,
+                    fallback_candles,
+                    fallback_dates=missing_set,
+                ),
+                cached_dates=cached_dates,
+                fresh_dates=fresh_dates,
+                data_warnings=primary_out.data_warnings + fallback_warnings + [
+                    _minute_fallback_to_krx_warning(policy, sorted(used_fallback_dates))
+                ],
             )
         return await self._collect_for_venue(
             policy,
@@ -333,6 +415,22 @@ def _date_iter(frm: date, to: date):
         cur = cur + timedelta(days=1)
 
 
+def _contiguous_date_ranges(date_strings: list[str]) -> list[tuple[date, date]]:
+    dates = [datetime.strptime(date_s, "%Y%m%d").date() for date_s in date_strings]
+    if not dates:
+        return []
+    ranges: list[tuple[date, date]] = []
+    start = prev = dates[0]
+    for cur in dates[1:]:
+        if cur == prev + timedelta(days=1):
+            prev = cur
+            continue
+        ranges.append((start, prev))
+        start = prev = cur
+    ranges.append((start, prev))
+    return ranges
+
+
 def _candle_to_dict(c) -> dict:
     return {
         "t_ms": c.t_ms,
@@ -348,9 +446,77 @@ def _hhmmss_from_t_ms(t_ms: int) -> str:
     return datetime.fromtimestamp(t_ms / 1000, tz=_KST).strftime("%H%M%S")
 
 
+def _date_from_t_ms(t_ms: int) -> str:
+    return datetime.fromtimestamp(t_ms / 1000, tz=_KST).strftime("%Y%m%d")
+
+
+def _dates_for_candles(candles: list[dict]) -> set[str]:
+    return {
+        _date_from_t_ms(t_ms)
+        for candle in candles
+        if isinstance((t_ms := candle.get("t_ms")), int)
+    }
+
+
+def _merge_minute_fallback(
+    primary: list[dict],
+    fallback: list[dict],
+    *,
+    fallback_dates: set[str],
+) -> list[dict]:
+    out = [
+        candle
+        for candle in primary
+        if _date_from_t_ms(candle["t_ms"]) not in fallback_dates
+    ]
+    out.extend(
+        candle
+        for candle in fallback
+        if _date_from_t_ms(candle["t_ms"]) in fallback_dates
+    )
+    return sorted(out, key=lambda candle: candle["t_ms"])
+
+
+def _fallback_blocking_warning_dates(warnings: list[dict]) -> set[str]:
+    blocking_reasons = {
+        "capacity_overloaded",
+        "kis_api_error",
+        "kis_rate_limit",
+        "rate_limit_aborted",
+    }
+    return {
+        str(warning.get("date", ""))
+        for warning in warnings
+        if warning.get("reason") in blocking_reasons
+    }
+
+
 def _capacity_overloaded_warning(date_s: str) -> dict:
     return {
         "date": date_s,
         "reason": "capacity_overloaded",
         "msg": "KIS capacity scheduler pending request limit reached",
     }
+
+
+def _minute_fallback_to_krx_warning(primary_venue: KisVenue, dates: list[str]) -> dict:
+    label = _format_date_label(dates)
+    return {
+        "date": label,
+        "reason": "minute_fallback_to_krx",
+        "msg": (
+            f"{primary_venue} minute returned no candles; using KRX minute "
+            "candles for this request"
+        ),
+    }
+
+
+def _format_date_label(dates: list[str]) -> str:
+    if not dates:
+        return ""
+    if len(dates) == 1:
+        return dates[0]
+    ranges = _contiguous_date_ranges(dates)
+    if len(ranges) == 1:
+        return f"{dates[0]}__{dates[-1]}"
+    return ",".join(dates)
