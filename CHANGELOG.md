@@ -3,6 +3,11 @@
 All notable changes to this project are documented here.
 The format follows a 4-digit `MAJOR.MINOR.PATCH.MICRO` scheme.
 
+## [0.12.23.6] - 2026-07-01
+
+### Fixed
+- **/study 탭 우측 패딩 복원 보강**: LiveChartRoot를 공유하는 학습뷰 탭에서도 런타임으로 캡처한 `rightPaddingBars`를 복원 props에 전달해, 탭 복귀 시 우측 빈공간이 /live와 동일하게 유지되도록 했다.
+
 ## [0.12.23.5] - 2026-07-01
 
 ### Fixed

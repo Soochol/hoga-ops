@@ -445,6 +445,7 @@ export function StudyPage() {
           rightEdgeMs: activeTabViewport.rightEdgeMs,
           barSpan: activeTabViewport.barSpan,
           atLiveEdge: activeTabViewport.atLiveEdge,
+          ...(activeTabViewport.rightPaddingBars !== undefined ? { rightPaddingBars: activeTabViewport.rightPaddingBars } : {}),
           ...(activeTabViewport.userAdjusted !== undefined ? { userAdjusted: activeTabViewport.userAdjusted } : {}),
         }
       : canUseSavedViewport

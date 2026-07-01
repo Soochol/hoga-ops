@@ -425,7 +425,7 @@ describe('StudyPage', () => {
       ],
       activeTabId: 'tab-a',
     });
-    const capturedViewport = { rightEdgeMs: 9_000, barSpan: 42, atLiveEdge: false };
+    const capturedViewport = { rightEdgeMs: 9_000, barSpan: 42, atLiveEdge: false, rightPaddingBars: 17 };
 
     renderPage('/study?view=view-ref');
     act(() => {
