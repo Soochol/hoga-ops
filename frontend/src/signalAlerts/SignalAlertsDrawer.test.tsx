@@ -59,6 +59,21 @@ describe('SignalAlertsDrawer', () => {
           ratio_pct: 122.5,
           use_intra_minute_max: true,
         },
+        {
+          type: 'signal_alert',
+          id: 'after-clear',
+          signal: 'sell_total_renewal',
+          seq: 8,
+          code: '005930',
+          name: '삼성전자',
+          t_ms: 1_719_819_310_000,
+          date: '20260701',
+          source: 'ws',
+          value: 3_000_000,
+          baseline: 2_000_000,
+          ratio_pct: 150,
+          use_intra_minute_max: true,
+        },
       ],
     });
     vi.mocked(signalAlerts.useClearSignalAlertToday).mockReturnValue({
@@ -75,10 +90,10 @@ describe('SignalAlertsDrawer', () => {
     await waitFor(() => {
       expect(qc.getQueryData(signalAlerts.signalAlertRecentKey('20260701'))).toMatchObject({
         cleared_through_seq: 7,
-        alerts: [],
+        alerts: [{ id: 'after-clear', seq: 8 }],
       });
     });
-    expect(screen.getByText('오늘 알림이 없습니다.')).toBeInTheDocument();
+    expect(screen.queryByText('오늘 알림이 없습니다.')).not.toBeInTheDocument();
     expect(useSignalAlertInboxStore.getState().unreadCount).toBe(0);
   });
 });

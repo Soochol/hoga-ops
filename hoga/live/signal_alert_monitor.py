@@ -1,11 +1,11 @@
 from __future__ import annotations
 
-from collections.abc import Callable
+from collections.abc import Callable, Mapping
 from dataclasses import dataclass
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
-from hoga.api.models import SignalAlertEvent, SignalAlertSource
+from hoga.api.models import SellTotalRenewalSettings, SignalAlertEvent, SignalAlertSource
 from hoga.live.signal_alerts import append_signal_alert, load_signal_alert_settings
 
 _KST = timezone(timedelta(hours=9))
@@ -53,11 +53,22 @@ class SignalAlertMonitor:
         self._data_dir = data_dir
         self._publish = publish
         self._date_fn = date_fn or _date_from_ms
+        self._settings = load_signal_alert_settings(data_dir).sell_total_renewal
         self._targets: set[str] = set()
+        self._target_names: dict[str, str] = {}
         self._state: dict[str, _CodeState] = {}
 
-    def set_targets(self, codes: set[str]) -> None:
-        self._targets = set(codes)
+    def refresh_settings(self) -> SellTotalRenewalSettings:
+        self._settings = load_signal_alert_settings(self._data_dir).sell_total_renewal
+        return self._settings
+
+    def set_targets(self, targets: set[str] | Mapping[str, str]) -> None:
+        if isinstance(targets, Mapping):
+            self._targets = set(targets)
+            self._target_names = {code: name or code for code, name in targets.items()}
+        else:
+            self._targets = set(targets)
+            self._target_names = {code: self._target_names.get(code, code) for code in targets}
         self._state = {
             code: state for code, state in self._state.items() if code in self._targets
         }
@@ -73,7 +84,7 @@ class SignalAlertMonitor:
         if code not in self._targets or total_ask_qty <= 0:
             return None
 
-        settings = load_signal_alert_settings(self._data_dir).sell_total_renewal
+        settings = self._settings
         if not settings.enabled:
             return None
 
@@ -110,7 +121,7 @@ class SignalAlertMonitor:
                     signal="sell_total_renewal",
                     seq=0,
                     code=code,
-                    name=name,
+                    name=self._target_names.get(code, name),
                     t_ms=t_ms,
                     date=date,
                     source=source,

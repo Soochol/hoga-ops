@@ -67,7 +67,7 @@ export default function SignalAlertsDrawer({ today = todayKst() }: { today?: str
           return {
             ...current,
             cleared_through_seq: result.cleared_through_seq,
-            alerts: [],
+            alerts: current.alerts.filter((alert) => alert.seq > result.cleared_through_seq),
           };
         });
         setConfirmingClear(false);

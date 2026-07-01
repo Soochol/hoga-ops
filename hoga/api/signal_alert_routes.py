@@ -35,7 +35,13 @@ def build_router(*, data_dir: Path) -> APIRouter:
 
     @router.patch("/settings", response_model=SignalAlertSettings)
     async def patch_settings(req: SignalAlertSettingsUpdate) -> SignalAlertSettings:
-        return update_signal_alert_settings(data_dir, req)
+        settings = update_signal_alert_settings(data_dir, req)
+        from hoga.live.lifecycle import get_signal_alert_monitor  # noqa: PLC0415
+
+        monitor = get_signal_alert_monitor()
+        if monitor is not None:
+            monitor.refresh_settings()
+        return settings
 
     @router.get("/recent", response_model=SignalAlertRecentResponse)
     async def get_recent(

@@ -19,15 +19,12 @@ export function useSignalAlertEvents(): void {
       if (!isSignalAlert(event)) return;
 
       const isFirstSeen = !seenSignalAlertIds.has(event.id);
-      if (isFirstSeen) {
-        seenSignalAlertIds.add(event.id);
-        useSignalAlertInboxStore.getState().noteIncoming(event);
-      }
-
       const key = signalAlertRecentKey(event.date);
+      let shouldCountUnread = false;
 
       queryClient.setQueryData<SignalAlertRecentResponse>(key, (cached) => {
         if (!cached) {
+          shouldCountUnread = isFirstSeen;
           return {
             date: event.date,
             scope: 'inbox',
@@ -36,9 +33,14 @@ export function useSignalAlertEvents(): void {
           };
         }
 
+        if (event.seq <= cached.cleared_through_seq) return cached;
         if (cached.alerts.some((alert) => alert.id === event.id)) return cached;
+        shouldCountUnread = isFirstSeen;
         return { ...cached, alerts: [event, ...cached.alerts] };
       });
+
+      if (isFirstSeen) seenSignalAlertIds.add(event.id);
+      if (shouldCountUnread) useSignalAlertInboxStore.getState().noteIncoming(event);
     });
   }, [queryClient]);
 }

@@ -1,5 +1,6 @@
 from pathlib import Path
 
+import hoga.live.signal_alert_monitor as monitor_module
 from hoga.api.models import SellTotalRenewalSettings, SignalAlertSettingsUpdate
 from hoga.live.signal_alert_monitor import SignalAlertMonitor
 from hoga.live.signal_alerts import read_signal_alerts, update_signal_alert_settings
@@ -78,3 +79,29 @@ def test_set_targets_removes_stale_state(tmp_path: Path) -> None:
     monitor.set_targets({"000660"})
 
     assert monitor.ingest_orderbook("005930", "삼성전자", 11_00_00, 1_000, "ws") is None
+
+
+def test_ingest_uses_cached_settings(tmp_path: Path, monkeypatch) -> None:
+    monitor = SignalAlertMonitor(tmp_path, publish=lambda _event: None, date_fn=date_fn)
+    monitor.set_targets({"005930"})
+
+    def fail_load(_data_dir: Path):
+        raise AssertionError("settings should not be loaded on each tick")
+
+    monkeypatch.setattr(monitor_module, "load_signal_alert_settings", fail_load)
+
+    monitor.ingest_orderbook("005930", "삼성전자", 10_00_00, 1_000, "ws")
+    event = monitor.ingest_orderbook("005930", "삼성전자", 11_00_00, 1_000, "ws")
+
+    assert event is not None
+
+
+def test_target_name_map_overrides_tick_name(tmp_path: Path) -> None:
+    monitor = SignalAlertMonitor(tmp_path, publish=lambda _event: None, date_fn=date_fn)
+    monitor.set_targets({"005930": "삼성전자"})
+
+    monitor.ingest_orderbook("005930", "005930", 10_00_00, 1_000, "ws")
+    event = monitor.ingest_orderbook("005930", "005930", 11_00_00, 1_000, "ws")
+
+    assert event is not None
+    assert event.name == "삼성전자"

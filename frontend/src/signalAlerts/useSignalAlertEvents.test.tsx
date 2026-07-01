@@ -99,6 +99,39 @@ describe('useSignalAlertEvents', () => {
     ]);
   });
 
+  it('ignores replayed alerts at or below the cached clear boundary', () => {
+    const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+    queryClient.setQueryData<SignalAlertRecentResponse>(signalAlertRecentKey('20260701'), {
+      date: '20260701',
+      scope: 'inbox',
+      cleared_through_seq: 7,
+      alerts: [],
+    });
+
+    renderHook(() => useSignalAlertEvents(), { wrapper: createWrapper(queryClient) });
+
+    act(() => {
+      subs[0]({
+        type: 'signal_alert',
+        id: 'cleared',
+        signal: 'sell_total_renewal',
+        seq: 7,
+        code: '005930',
+        name: '삼성전자',
+        t_ms: 1,
+        date: '20260701',
+        source: 'ws',
+        value: 1000,
+        baseline: 1000,
+        ratio_pct: 100,
+        use_intra_minute_max: true,
+      });
+    });
+
+    expect(useSignalAlertInboxStore.getState().unreadCount).toBe(0);
+    expect(queryClient.getQueryData<SignalAlertRecentResponse>(signalAlertRecentKey('20260701'))?.alerts).toEqual([]);
+  });
+
   it('prepends new signal alerts without duplicating ids already in cache', () => {
     const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } });
     queryClient.setQueryData<SignalAlertRecentResponse>(signalAlertRecentKey('20260701'), {
@@ -163,6 +196,6 @@ describe('useSignalAlertEvents', () => {
       'new',
       'existing',
     ]);
-    expect(useSignalAlertInboxStore.getState().unreadCount).toBe(2);
+    expect(useSignalAlertInboxStore.getState().unreadCount).toBe(1);
   });
 });
