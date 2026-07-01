@@ -2960,6 +2960,24 @@ describe('LiveChartRoot wheel interactions wiring', () => {
     expect(options).toMatchObject({ handleScale: { mouseWheel: false } });
   });
 
+  it('sets a visible pane separator color for candle/volume boundaries', () => {
+    render(
+      <LiveChartRoot
+        code="005930"
+        timeframe="1m"
+        bundle={DEFAULT_BUNDLE}
+        clampEngaged={false}
+        isPastCandlesLoading={false}
+      />,
+      { wrapper },
+    );
+    const options = vi.mocked(createChartEx).mock.calls.at(-1)![2] as {
+      layout?: { panes?: { separatorColor?: string; separatorHoverColor?: string } };
+    };
+    expect(options.layout?.panes?.separatorColor).toBeTruthy();
+    expect(options.layout?.panes?.separatorHoverColor).toBeTruthy();
+  });
+
   it('container wheel → right-edge-anchored zoom via setVisibleLogicalRange', () => {
     // useWheelInteractions가 읽는 getVisibleLogicalRange / coordinateToLogical을
     // 갖춘 ts mock (기본 모듈 mock에는 둘 다 없다).

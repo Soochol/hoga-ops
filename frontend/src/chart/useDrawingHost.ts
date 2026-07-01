@@ -22,6 +22,13 @@ export type DrawingHost = {
   computeAnchor: (d: Drawing) => { x: number; y: number } | null;
 };
 
+type PaneSeriesState = {
+  chart: IChartApi | null;
+  paneSeries: Map<PaneId, ISeriesApi<'Line'>>;
+};
+
+const EMPTY_PANE_SERIES = new Map<PaneId, ISeriesApi<'Line'>>();
+
 /**
  * Drawing-host concerns extracted from LiveChartRoot: paneSeries registry,
  * activeCode binding to useDrawingsStore, and the panel-anchor computation.
@@ -36,29 +43,32 @@ export function useDrawingHost(
   code: string | null,
   containerRef: RefObject<HTMLDivElement | null>,
 ): DrawingHost {
-  const [paneSeries, setPaneSeries] = useState<Map<PaneId, ISeriesApi<'Line'>>>(
-    () => new Map(),
+  const [paneSeriesState, setPaneSeriesState] = useState<PaneSeriesState>(
+    () => ({ chart: null, paneSeries: new Map() }),
   );
+  const paneSeries =
+    paneSeriesState.chart === chart ? paneSeriesState.paneSeries : EMPTY_PANE_SERIES;
 
   const registerPaneSeries = useCallback(
     (paneId: PaneId, series: ISeriesApi<'Line'>) => {
-      setPaneSeries((prev) => {
-        const next = new Map(prev);
+      setPaneSeriesState((prev) => {
+        const base = prev.chart === chart ? prev.paneSeries : EMPTY_PANE_SERIES;
+        const next = new Map(base);
         next.set(paneId, series);
-        return next;
+        return { chart, paneSeries: next };
       });
     },
-    [],
+    [chart],
   );
 
   const unregisterPaneSeries = useCallback((paneId: PaneId) => {
-    setPaneSeries((prev) => {
-      if (!prev.has(paneId)) return prev;
-      const next = new Map(prev);
+    setPaneSeriesState((prev) => {
+      if (prev.chart !== chart || !prev.paneSeries.has(paneId)) return prev;
+      const next = new Map(prev.paneSeries);
       next.delete(paneId);
-      return next;
+      return { chart, paneSeries: next };
     });
-  }, []);
+  }, [chart]);
 
   useEffect(() => {
     useDrawingsStore.getState().setActiveCode(code);

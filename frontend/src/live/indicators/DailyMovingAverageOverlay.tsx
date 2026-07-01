@@ -28,6 +28,11 @@ type LineApi = ISeriesApi<'Line'>;
 const excludeFromAutoscale: AutoscaleInfoProvider = () => null;
 const includeInAutoscale: AutoscaleInfoProvider = (original) => original();
 const EMPTY_DAILY: never[] = [];
+const priceFormat = {
+  type: 'custom' as const,
+  formatter: (p: number) => Math.round(p).toLocaleString('ko-KR'),
+  minMove: 1,
+};
 
 /** 일봉 이동평균선 오버레이 — 일봉 종가 SMA를 분봉 축에 거래일-계단으로 투영
  *  (ADR-0073). 현재봉 MovingAverageOverlay의 series-reconcile 패턴을 미러링하되,
@@ -75,6 +80,7 @@ function DailyMovingAverageOverlay({ chart, bundle, axis, code, timeframe, venue
             priceLineVisible: false,
             lastValueVisible: false,
             crosshairMarkerVisible: false,
+            priceFormat,
             ...createScaleOptions,
           }, 0); // paneIndex 0 — candle pane overlay
           map.set(cfg.id, s);

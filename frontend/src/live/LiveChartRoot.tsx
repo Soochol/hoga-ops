@@ -64,6 +64,7 @@ const TOKEN_SPEC = {
   fg: ['--fg', '#E2E8F0'],
   grid: ['--grid', '#1A1A26'],
   border: ['--border', '#1F1F2A'],
+  borderStrong: ['--border-strong', '#253040'],
 } as const;
 
 function pad(n: number): string {
@@ -701,7 +702,14 @@ export function LiveChartRoot({ code, timeframe, venue = 'KRX', viewIdentity, bu
       ...CHART_LAYOUT_OPTIONS,
       width: el.clientWidth,
       height: el.clientHeight,
-      layout: { background: { color: tokens.bgCard }, textColor: tokens.fg },
+      layout: {
+        background: { color: tokens.bgCard },
+        textColor: tokens.fg,
+        panes: {
+          separatorColor: tokens.borderStrong,
+          separatorHoverColor: tokens.fg,
+        },
+      },
       grid: { vertLines: { color: tokens.grid }, horzLines: { color: tokens.grid } },
       crosshair: CHART_CROSSHAIR_OPTIONS,
       // 라이브러리 내장 휠 줌(마우스 앵커) 비활성 — useWheelInteractions가 wheel을
