@@ -77,6 +77,14 @@ def test_parse_multi_price_quote_includes_intraday_ohlcv_and_volume():
     assert q.volume == 1_234_567
 
 
+def test_parse_quote_includes_previous_close():
+    q = _parse_quote({"inter_shrn_iscd": "005930", "inter2_prpr": "80100",
+                      "inter2_prdy_clpr": "80000",
+                      "prdy_ctrt": "0.12", "prdy_vrss_sign": "2"})
+    assert q is not None
+    assert q.previous_close == 80000
+
+
 def test_parse_quote_ohlc_kept_when_change_bails_out():
     # 빈 prdy_ctrt → change=None 이어도 OHLC는 채워진다(단일 return 검증; 4-return 함정 방지).
     q = _parse_quote({"inter_shrn_iscd": "005930", "inter2_prpr": "298000",
