@@ -26,9 +26,11 @@ export type PeakWallDockedLabelInput = PeakWallDockedLabel;
 export function peakWallDockedLabelCandidates(
   labels: readonly PeakWallDockedLabelInput[],
   priceToY: (price: number) => number | null,
-  xRight: number,
+  paneRight: number,
   measureText: (text: string) => number,
   labelGapPx: number = LABEL_GAP_PX,
+  timeToX?: (time: Time) => number | null,
+  labelXGapPx: number = LABEL_GAP_PX,
 ): AskPeakLabelCandidate[] {
   const candidates: AskPeakLabelCandidate[] = [];
   for (let i = 0; i < labels.length; i += 1) {
@@ -36,11 +38,19 @@ export function peakWallDockedLabelCandidates(
     if (label.label === '') continue;
     const y = priceToY(label.price);
     if (y === null) continue;
+    const width = measureText(label.label);
+    let xRight = paneRight;
+    if (timeToX) {
+      const lineEndX = timeToX(label.time1);
+      if (lineEndX === null) continue;
+      xRight = lineEndX + labelXGapPx + width;
+      if (xRight > paneRight) continue;
+    }
     candidates.push({
       index: i,
       xRight,
       yLine: y - labelGapPx,
-      width: measureText(label.label),
+      width,
       segmentWidth: Number.POSITIVE_INFINITY,
     });
   }
@@ -55,8 +65,9 @@ class PeakWallDockedLabelsRenderer implements IPrimitivePaneRenderer {
   }
 
   draw(target: CanvasRenderingTarget2D): void {
+    const chart = this._source.chartApi();
     const series = this._source.seriesApi();
-    if (!series) return;
+    if (!chart || !series) return;
     const labels = this._source.labelsData();
     if (labels.length === 0) return;
 
@@ -76,6 +87,11 @@ class PeakWallDockedLabelsRenderer implements IPrimitivePaneRenderer {
         xRight,
         (text) => ctx.measureText(text).width,
         LABEL_GAP_PX * vr,
+        (time) => {
+          const x = chart.timeScale().timeToCoordinate(time);
+          return x === null ? null : x * hr;
+        },
+        6 * hr,
       );
       if (candidates.length === 0) return;
 

@@ -42,6 +42,7 @@ export interface PeakWallDockedLabel {
   price: number;
   label: string;
   color: string;
+  time1: Time;
 }
 
 type VisibleTimeRange = IRange<Time> | null;
@@ -71,6 +72,7 @@ export function livePeakWallDockedLabelsFromSegments(
       price: segment.price,
       label: segment.label,
       color: segment.color,
+      time1: segment.time1,
     }));
 }
 

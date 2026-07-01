@@ -96,7 +96,7 @@ describe('live peak-wall docked label helpers', () => {
     ]);
 
     expect(out).toEqual([
-      { price: 23500, label: '23,500, 17.2k', color: '#ec4899' },
+      { price: 23500, label: '23,500, 17.2k', color: '#ec4899', time1: 2 },
     ]);
   });
 
@@ -107,7 +107,7 @@ describe('live peak-wall docked label helpers', () => {
     );
 
     expect(out).toEqual([
-      { price: 23500, label: '23,500, 17.2k', color: '#f97316' },
+      { price: 23500, label: '23,500, 17.2k', color: '#f97316', time1: 200 },
     ]);
   });
 
@@ -127,7 +127,7 @@ describe('live peak-wall docked label helpers', () => {
     );
 
     expect(out).toEqual([
-      { price: 23500, label: '23,500, 17.2k', color: '#f97316' },
+      { price: 23500, label: '23,500, 17.2k', color: '#f97316', time1: 200 },
     ]);
   });
 
