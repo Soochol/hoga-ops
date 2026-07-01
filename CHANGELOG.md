@@ -3,6 +3,12 @@
 All notable changes to this project are documented here.
 The format follows a 4-digit `MAJOR.MINOR.PATCH.MICRO` scheme.
 
+## [0.12.22.3] - 2026-07-01
+
+### Changed
+- **KIS venue 정책 고정**: KRX/NXT/통합/AUTO 현재가 정책을 설계·실행 플랜으로 정리해, 통합은 KIS `UN`을 쓰고 AUTO는 정규장 KRX·장전/장후 NXT를 쓰는 기준을 명확히 했다.
+- **NXT 미지원 종목 회귀 방지**: AUTO 장후 NXT 조회와 NXT 미지원 종목의 `-` 표시 경로를 테스트로 고정해, KRX 값으로 조용히 대체되거나 0원 기준 등락률이 계산되지 않도록 했다.
+
 ## [0.12.22.2] - 2026-07-01
 
 ### Fixed
