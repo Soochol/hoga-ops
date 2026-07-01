@@ -1,4 +1,5 @@
-import { useEffect, useRef, type CSSProperties, type ReactNode } from 'react';
+import { useEffect, useRef, useState, type CSSProperties, type ReactNode } from 'react';
+import { dropIndicatorClass, sortableDraggingStyle, type DropIndicator } from '../ui/sortableDragVisuals';
 
 const MAX_RENDERED_TABS = 24;
 
@@ -57,6 +58,8 @@ export function ChartTabBar<T extends ChartTabLike>({
   onTogglePin,
 }: Props<T>) {
   const activeElRef = useRef<HTMLDivElement | null>(null);
+  const [draggingTab, setDraggingTab] = useState<{ id: string; index: number; pinned: boolean } | null>(null);
+  const [dropTargetId, setDropTargetId] = useState<string | null>(null);
   const activeIdx = Math.max(0, tabs.findIndex((tab) => tab.id === activeTabId));
   const windowStart = tabs.length <= MAX_RENDERED_TABS
     ? 0
@@ -72,6 +75,11 @@ export function ChartTabBar<T extends ChartTabLike>({
     }
   }, [activeTabId]);
 
+  const clearDragVisuals = () => {
+    setDraggingTab(null);
+    setDropTargetId(null);
+  };
+
   return (
     <div className="flex h-full min-w-0 items-end gap-1 px-2 font-ui" style={{ background: 'var(--bg-subtle)' }}>
       <div
@@ -79,6 +87,9 @@ export function ChartTabBar<T extends ChartTabLike>({
         aria-label={tablistAriaLabel}
         className="flex min-w-0 flex-1 items-end gap-0.5 overflow-x-auto overflow-y-hidden"
         style={{ scrollbarWidth: 'none' }}
+        onDragLeave={(e) => {
+          if (!e.currentTarget.contains(e.relatedTarget as Node | null)) setDropTargetId(null);
+        }}
       >
         {windowStart > 0 && (
           <div aria-hidden="true" className="h-8 px-1.5 flex items-center shrink-0 text-xs" style={{ color: 'var(--fg-dimmer)' }}>
@@ -91,6 +102,14 @@ export function ChartTabBar<T extends ChartTabLike>({
           const displayLabel = renderLabel(tab);
           const status = tabStatus?.(tab, active) ?? (active && activeLoading ? 'loading' : active ? 'ready' : 'idle');
           const pinned = tab.pinned === true;
+          const isDragging = draggingTab?.id === tab.id;
+          const dropIndicator: DropIndicator | undefined =
+            draggingTab != null &&
+            dropTargetId === tab.id &&
+            draggingTab.index !== idx &&
+            draggingTab.pinned === pinned
+              ? (draggingTab.index < idx ? 'after' : 'before')
+              : undefined;
           return (
             <div
               key={tab.id}
@@ -109,12 +128,18 @@ export function ChartTabBar<T extends ChartTabLike>({
               onDragStart={(e) => {
                 e.dataTransfer.setData('text/tab-index', String(idx));
                 e.dataTransfer.effectAllowed = 'move';
+                setDraggingTab({ id: tab.id, index: idx, pinned });
+                setDropTargetId(null);
               }}
+              onDragEnd={clearDragVisuals}
               onDragOver={(e) => {
-                if (e.dataTransfer.types.includes('text/tab-index')) e.preventDefault();
+                if (!e.dataTransfer.types.includes('text/tab-index')) return;
+                e.preventDefault();
+                setDropTargetId(draggingTab?.pinned === pinned ? tab.id : null);
               }}
               onDrop={(e) => {
                 e.preventDefault();
+                clearDragVisuals();
                 const raw = e.dataTransfer.getData('text/tab-index');
                 if (raw === '') return;
                 const from = Number(raw);
@@ -130,13 +155,14 @@ export function ChartTabBar<T extends ChartTabLike>({
               }}
               className={`relative flex items-center gap-1.5 h-8 px-2.5 rounded-t-md cursor-pointer select-none group shrink-0 ${
                 active ? 'bg-bg-card' : 'bg-bg-input hover:bg-bg-input-hover'
-              }`}
+              } ${dropIndicatorClass(dropIndicator, 'horizontal')}`}
               style={{
                 borderTop: `1px solid ${active ? 'color-mix(in srgb, var(--accent) 32%, var(--border))' : 'var(--border)'}`,
                 borderRight: `1px solid ${active ? 'color-mix(in srgb, var(--accent) 32%, var(--border))' : 'var(--border)'}`,
                 borderLeft: `1px solid ${active ? 'color-mix(in srgb, var(--accent) 32%, var(--border))' : 'var(--border)'}`,
                 borderBottom: `1px solid ${active ? 'var(--bg-card)' : 'transparent'}`,
                 boxShadow: active ? '0 0 0 1px rgba(45, 212, 191, 0.04)' : 'none',
+                ...(isDragging ? sortableDraggingStyle(18) : {}),
               }}
             >
               {active && (
