@@ -5,6 +5,7 @@ import {
   useClearSignalAlertToday,
   useSignalAlertRecent,
   type SignalAlertEvent,
+  type SignalAlertRecentResponse,
 } from '../api/signalAlerts';
 import { useJumpToLive } from '../live/useJumpToLive';
 import { useSignalAlertInboxStore } from '../state/signalAlertInbox';
@@ -68,14 +69,16 @@ export default function SignalAlertsDrawer({ today = todayKst() }: { today?: str
 
   const clearVisibleInbox = () => {
     clearToday.mutate(undefined, {
-      onSuccess: () => {
+      onSuccess: (result) => {
         resetForClear(today);
         setClearedLocally(true);
-        queryClient.setQueryData(signalAlertRecentKey(today), {
-          date: today,
-          scope: 'inbox',
-          cleared_through_seq: data?.cleared_through_seq ?? 0,
-          alerts: [],
+        queryClient.setQueryData<SignalAlertRecentResponse>(signalAlertRecentKey(today), (current) => {
+          if (!current) return current;
+          return {
+            ...current,
+            cleared_through_seq: result.cleared_through_seq,
+            alerts: [],
+          };
         });
         setConfirmingClear(false);
       },
