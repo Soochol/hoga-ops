@@ -68,3 +68,13 @@ def test_rearm_suppresses_repeated_alerts(tmp_path: Path) -> None:
     assert first is not None
     assert duplicate is None
     assert second is not None
+
+
+def test_set_targets_removes_stale_state(tmp_path: Path) -> None:
+    monitor = SignalAlertMonitor(tmp_path, publish=lambda _event: None, date_fn=date_fn)
+    monitor.set_targets({"005930"})
+    monitor.ingest_orderbook("005930", "삼성전자", 10_00_00, 1_000, "ws")
+
+    monitor.set_targets({"000660"})
+
+    assert monitor.ingest_orderbook("005930", "삼성전자", 11_00_00, 1_000, "ws") is None

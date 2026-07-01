@@ -39,6 +39,7 @@ from hoga.live.api import build_router as build_live_router
 from hoga.live.kis_capacity_runtime import aclose_kis_capacity_scheduler
 from hoga.live.kis_runtime import aclose_kis_client
 from hoga.live.lifecycle import (
+    configure_signal_alert_monitor,
     get_active_codes,
     start_live_stream,
     start_live_stream_watchdog,
@@ -63,6 +64,7 @@ from hoga.live.migrate import migrate_to_v2_layout
 def create_app(data_dir: Path) -> FastAPI:
     engine = QueryEngine(data_dir)
     bus, observer, inv_handler = build_event_bus(data_dir / "parquet")
+    configure_signal_alert_monitor(data_dir, bus.publish)
 
     def _real_client_factory():
         cfg = Config.from_cwd()

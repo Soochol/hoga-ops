@@ -48,6 +48,7 @@ from .live_session import (  # noqa: F401 — C3 재export(호출부·테스트 
     partition_live_set,
 )
 from .promote import promote_api_today, promote_today
+from .signal_alert_monitor import SignalAlertMonitor
 from .settings import load_live_settings
 from .storage_runtime import stop_storage_runtime, sync_storage_runtime
 
@@ -157,6 +158,7 @@ class _State:
 
 _state = _State()
 _buffer = LiveBuffer()
+_signal_alert_monitor: SignalAlertMonitor | None = None
 
 # Task 11 리뷰 이월: start/stop/refresh의 await 경계에서 _state 교체가 interleave
 # 되지 않도록 직렬화. start가 내부에서 stop을 부르므로(재진입) 잠금 없는
@@ -204,6 +206,17 @@ def get_api_codes() -> list[str]:
 
 def get_buffer() -> LiveBuffer:
     return _buffer
+
+
+def configure_signal_alert_monitor(
+    data_dir: Path, publish: Callable[[dict], None],
+) -> None:
+    global _signal_alert_monitor
+    _signal_alert_monitor = SignalAlertMonitor(data_dir, publish=publish)
+
+
+def get_signal_alert_monitor() -> SignalAlertMonitor | None:
+    return _signal_alert_monitor
 
 
 def get_today_ask_peak(code: str) -> dict | None:
@@ -551,6 +564,9 @@ async def _sync_storage_targets(
         now_ms_fn=_now_ms,
         n_configured=n_configured,
     )
+    monitor = get_signal_alert_monitor()
+    if monitor is not None:
+        monitor.set_targets(set(snapshot.ws_targets) | set(snapshot.kis_api_targets))
     return list(snapshot.ws_targets), snapshot.kis_api_targets
 
 
