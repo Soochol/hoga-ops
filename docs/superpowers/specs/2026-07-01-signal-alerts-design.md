@@ -56,6 +56,8 @@ stock in `/live`.
 - Persist alert settings and same-day alert history across browser refreshes.
 - Surface alerts immediately as app toasts and in a right-side alert inbox.
 - Let users click an alert row to open or focus that stock in `/live`.
+- Let users clear today's alert inbox from the right rail, with the cleared
+  state persisted to disk.
 - Follow existing UI structure: Settings for parameters, RightRail/RailShell for
   the alert inbox.
 
@@ -168,6 +170,13 @@ API:
 - `GET /api/signal-alerts/settings`
 - `PATCH /api/signal-alerts/settings`
 - `GET /api/signal-alerts/recent?date=YYYYMMDD&limit=100`
+- `POST /api/signal-alerts/clear-today`
+
+`clear-today` clears today's persisted alert history, not only the current
+browser view. It must acquire the same alert-store lock used by the persistence
+queue, atomically replace `<data_dir>/signal_alerts/YYYYMMDD.jsonl` with an
+empty file, and return the cleared date plus count cleared. Alerts emitted after
+the clear are appended to the fresh file and appear normally after refresh.
 
 Event:
 
@@ -214,6 +223,7 @@ Panel content:
 
 - header: `시그널 알림`
 - status line: today's count and last received time
+- header action: clear today's alerts
 - alert list, newest first
 - empty state when no alerts today
 
@@ -237,6 +247,19 @@ Unread state:
 - The right rail alert button shows an unread dot or count while the alert
   panel is not active.
 - Opening the panel marks currently loaded alerts as seen in local UI state.
+- Clearing alerts also resets unread state for the cleared date.
+
+Clear action:
+
+- Use the existing compact panel-header action style, with a trash/clear icon
+  button and accessible label `오늘 알림 비우기`.
+- Disable the button when today's list is empty.
+- On click, show an existing confirmation modal/popover pattern with copy:
+  `오늘 시그널 알림 내역을 비울까요?`
+- On confirm, call `POST /api/signal-alerts/clear-today`.
+- On success, remove all rows for that date from the panel, reset today's count
+  and unread badge, and keep listening for new `signal_alert` events.
+- On failure, leave the list unchanged and show an app-local error toast.
 
 ### Toasts
 
@@ -280,6 +303,8 @@ No system notification or sound in this scope.
 - Right rail alert panel renders loaded history.
 - Incoming `signal_alert` prepends a row and increments unread count.
 - Clicking a row opens/focuses the live stock tab.
+- Clearing today's alerts empties the right rail list, resets unread state, and
+  persists across a reload.
 - Settings `시그널 알림` category renders the four controls and no history list.
 
 ### Manual verification
@@ -290,6 +315,8 @@ No system notification or sound in this scope.
 4. Open the right rail **알림** panel and click a row.
 5. Confirm `/live` opens the expected stock.
 6. Refresh the browser and confirm today's alert history still loads.
+7. Clear today's alerts, refresh again, and confirm the list stays empty until
+   a new alert arrives.
 
 ## Risks / Open Questions
 
@@ -306,5 +333,4 @@ No system notification or sound in this scope.
 - Alert rule builder for additional indicators.
 - User-configurable rearm threshold.
 - Filtering alert inbox by folder, source, or signal type.
-- Clearing or archiving today's alert history.
 - Centering the live chart viewport around the alert timestamp.
