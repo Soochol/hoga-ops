@@ -55,4 +55,11 @@ describe('rightRail store', () => {
     const { useRightRailStore: fresh } = await import('./rightRail');
     expect(fresh.getState().activePanel).toBeNull();
   });
+
+  it('accepts signalAlerts as a persisted panel', async () => {
+    localStorage.setItem('rightRail.layout', JSON.stringify({ activePanel: 'signalAlerts' }));
+    vi.resetModules();
+    const { useRightRailStore: fresh } = await import('./rightRail');
+    expect(fresh.getState().activePanel).toBe('signalAlerts');
+  });
 });

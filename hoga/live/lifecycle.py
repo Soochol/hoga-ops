@@ -49,6 +49,7 @@ from .live_session import (  # noqa: F401 — C3 재export(호출부·테스트 
 )
 from .promote import promote_api_today, promote_today
 from .settings import load_live_settings
+from .signal_alert_monitor import SignalAlertMonitor
 from .storage_runtime import stop_storage_runtime, sync_storage_runtime
 
 _log = logging.getLogger(__name__)
@@ -157,6 +158,7 @@ class _State:
 
 _state = _State()
 _buffer = LiveBuffer()
+_signal_alert_monitor: SignalAlertMonitor | None = None
 
 # Task 11 리뷰 이월: start/stop/refresh의 await 경계에서 _state 교체가 interleave
 # 되지 않도록 직렬화. start가 내부에서 stop을 부르므로(재진입) 잠금 없는
@@ -204,6 +206,17 @@ def get_api_codes() -> list[str]:
 
 def get_buffer() -> LiveBuffer:
     return _buffer
+
+
+def configure_signal_alert_monitor(
+    data_dir: Path, publish: Callable[[dict], None],
+) -> None:
+    global _signal_alert_monitor  # noqa: PLW0603 - process singleton owned by lifecycle
+    _signal_alert_monitor = SignalAlertMonitor(data_dir, publish=publish)
+
+
+def get_signal_alert_monitor() -> SignalAlertMonitor | None:
+    return _signal_alert_monitor
 
 
 def get_today_ask_peak(code: str) -> dict | None:
@@ -538,6 +551,13 @@ def _sync_exclusion(poller: LiveRestPoller | None, live_set: tuple[str, ...]) ->
         poller.set_excluded_codes(set(live_set))
 
 
+def _signal_alert_target_names(data_dir: Path, codes: set[str]) -> dict[str, str]:
+    from hoga.api.watchlist import load_document  # noqa: PLC0415
+
+    by_code = {entry.code: entry.name for entry in load_document(data_dir).entries}
+    return {code: by_code.get(code, code) for code in codes}
+
+
 async def _sync_storage_targets(
     data_dir: Path,
     *,
@@ -551,6 +571,10 @@ async def _sync_storage_targets(
         now_ms_fn=_now_ms,
         n_configured=n_configured,
     )
+    monitor = get_signal_alert_monitor()
+    if monitor is not None:
+        targets = set(snapshot.ws_targets) | set(snapshot.kis_api_targets)
+        monitor.set_targets(_signal_alert_target_names(data_dir, targets))
     return list(snapshot.ws_targets), snapshot.kis_api_targets
 
 

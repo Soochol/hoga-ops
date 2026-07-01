@@ -18,6 +18,7 @@ from pathlib import Path
 from .ask_peak_state import TodayAskPeakState, TodayBidPeakState
 from .buffer import LiveBuffer
 from .downsampler import TickDownsampler
+from .lifecycle import get_signal_alert_monitor
 from .session_gate import market_phase, ws_capture_window_async
 from .snapshot import LiveSnapshot, SnapshotKind
 from .writer import LiveWriter
@@ -309,6 +310,34 @@ class LiveStream:
         await self._buffer.publish(tick.code, [snap], now_ms=_now_ms())
         self._ingest_ask_peak(tick)
         self._ingest_bid_peak(tick)
+        if tick.kind is SnapshotKind.OB:
+            asks = tick.payload.get("asks")
+            valid_asks = (
+                [ask for ask in asks if isinstance(ask, Mapping)]
+                if isinstance(asks, Sequence) and not isinstance(asks, (str, bytes))
+                else []
+            )
+            bids = tick.payload.get("bids")
+            valid_bids = (
+                [bid for bid in bids if isinstance(bid, Mapping)]
+                if isinstance(bids, Sequence) and not isinstance(bids, (str, bytes))
+                else []
+            )
+            total_ask = tick.payload.get("total_ask_qty")
+            if (
+                market_phase(tick.t_ms) == "regular"
+                and _is_continuous_book(valid_asks, valid_bids)
+                and type(total_ask) is int
+            ):
+                monitor = get_signal_alert_monitor()
+                if monitor is not None:
+                    monitor.ingest_orderbook(
+                        code=tick.code,
+                        name=tick.code,
+                        t_ms=tick.t_ms,
+                        total_ask_qty=total_ask,
+                        source="ws",
+                    )
         # 저장 경로만 게이트 — 15:30 이후 잔여 틱이 다운샘플러에 누적돼 밤을
         # 넘기는 것을 차단(리뷰 C1 벡터 1). 판정은 flush 루프가 유지하는
         # 플래그(리뷰 R2 — per-tick 달력 평가 금지); 닫힘 직후 ≤10s의 잔여

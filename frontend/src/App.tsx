@@ -5,10 +5,13 @@ import RightRail from './rightrail/RightRail';
 import { WatchlistDrawer } from './watchlist/WatchlistDrawer';
 import { ScreenerDrawer } from './screener/ScreenerDrawer';
 import { StudyViewsDrawer } from './studyViews/StudyViewsDrawer';
+import SignalAlertsDrawer from './signalAlerts/SignalAlertsDrawer';
 import { useRightRailStore } from './state/rightRail';
 import { useEventStream } from './api/eventStream';
 import { useInventoryRecaptureOriginsCleanup } from './inventory/useInventoryRecaptureOrigins';
 import { useCaptureQueueSync } from './capture/useCaptureQueue';
+import SignalAlertToastHost from './signalAlerts/SignalAlertToastHost';
+import { useSignalAlertEvents } from './signalAlerts/useSignalAlertEvents';
 import { useStaticDocumentTitle } from './util/useDocumentTitle';
 
 const STATIC_ROUTE_TITLES: ReadonlyMap<string, string> = new Map(
@@ -19,6 +22,7 @@ const STATIC_ROUTE_TITLES: ReadonlyMap<string, string> = new Map(
 
 export default function App() {
   useEventStream();
+  useSignalAlertEvents();
   useInventoryRecaptureOriginsCleanup();
   // Single owner of the capture-queue push subscription (was fanned out across
   // ~5 useCaptureQueue mounts); the read side now only reads the shared cache.
@@ -40,6 +44,7 @@ export default function App() {
       }}
     >
       {staticTitle !== null && <StaticDocumentTitle title={staticTitle} />}
+      <SignalAlertToastHost />
       <TopNav />
       <div
         data-testid="app-content-grid"
@@ -50,6 +55,7 @@ export default function App() {
         {activePanel === 'watchlist' && <WatchlistDrawer />}
         {activePanel === 'screener' && <ScreenerDrawer />}
         {activePanel === 'savedViews' && <StudyViewsDrawer />}
+        {activePanel === 'signalAlerts' && <SignalAlertsDrawer />}
         <RightRail />
       </div>
     </div>

@@ -821,6 +821,73 @@ class LiveSettingsUpdate(BaseModel):
     program_trade_storage_enabled: bool | None = None
 
 
+SignalAlertSource = Literal["ws", "rest"]
+SignalAlertName = Literal["sell_total_renewal"]
+SignalAlertScope = Literal["inbox", "all"]
+
+
+class SellTotalRenewalSettings(BaseModel):
+    enabled: bool = True
+    start_hhmm: int = 1100
+    threshold_pct: int = 100
+    use_intra_minute_max: bool = True
+
+    @field_validator("start_hhmm")
+    @classmethod
+    def _valid_hhmm(cls, value: int) -> int:
+        hh = value // 100
+        mm = value % 100
+        if hh < 9 or hh > 15 or mm < 0 or mm > 59 or (hh == 15 and mm > 20):
+            raise ValueError("start_hhmm must be between 0900 and 1520 KST")
+        return value
+
+    @field_validator("threshold_pct")
+    @classmethod
+    def _valid_threshold(cls, value: int) -> int:
+        if value < 50 or value > 150:
+            raise ValueError("threshold_pct must be between 50 and 150")
+        return value
+
+
+class SignalAlertSettings(BaseModel):
+    schema_version: int = 1
+    sell_total_renewal: SellTotalRenewalSettings = Field(
+        default_factory=SellTotalRenewalSettings
+    )
+
+
+class SignalAlertSettingsUpdate(BaseModel):
+    sell_total_renewal: SellTotalRenewalSettings
+
+
+class SignalAlertEvent(BaseModel):
+    type: Literal["signal_alert"] = "signal_alert"
+    id: str
+    signal: SignalAlertName
+    seq: int
+    code: str
+    name: str
+    t_ms: int
+    date: str
+    source: SignalAlertSource
+    value: int
+    baseline: int
+    ratio_pct: float
+    use_intra_minute_max: bool
+
+
+class SignalAlertRecentResponse(BaseModel):
+    date: str
+    scope: SignalAlertScope
+    cleared_through_seq: int
+    alerts: list[SignalAlertEvent]
+
+
+class SignalAlertClearResponse(BaseModel):
+    date: str
+    cleared_through_seq: int
+
+
 # Code lists below validate against params.CODE_PATTERN (6-char alphanumeric +
 # Q-prefixed ETN) — same boundary rule as every other code input, so the
 # folder endpoints can't smuggle arbitrary strings into watchlist storage.

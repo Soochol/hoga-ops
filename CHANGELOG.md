@@ -3,6 +3,13 @@
 All notable changes to this project are documented here.
 The format follows a 4-digit `MAJOR.MINOR.PATCH.MICRO` scheme.
 
+## [0.12.23.11] - 2026-07-02
+
+### Added
+- **시그널 알림**: 관심 그룹 종목의 11시 이후 매도 총잔량 갱신을 감지해 토스트와 우측 레일 알림 내역으로 확인하고, 알림 행을 눌러 해당 종목의 live chart로 바로 이동할 수 있게 했다.
+- **시그널 알림 설정**: 설정에서 알림 ON/OFF, 기준 시각, 갱신 문턱, 분봉 내 최대 매도 총잔량 기준을 조정할 수 있게 했다.
+- **날짜별 알림 저장**: 알림 내역을 날짜별 JSONL ledger로 디스크에 보존하고, 우측 레일의 클리어는 현재 inbox만 숨겨 나중에 날짜별 조회에 쓸 기록을 남기도록 했다.
+
 ## [0.12.23.10] - 2026-07-01
 
 ### Changed

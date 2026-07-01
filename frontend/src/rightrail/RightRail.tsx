@@ -2,6 +2,7 @@ import { useRightRailStore } from '../state/rightRail';
 import { HeartIcon } from '../ui/HeartIcon';
 import { FunnelIcon } from '../ui/FunnelIcon';
 import { BookmarkIcon } from '../ui/BookmarkIcon';
+import { BellIcon } from '../ui/BellIcon';
 import { RailButton } from '../ui/RailShell';
 
 /**
@@ -26,7 +27,7 @@ export default function RightRail() {
         type="button"
         onClick={toggleCollapse}
         aria-expanded={open}
-        aria-controls="right-rail-watchlist-panel right-rail-screener-panel right-rail-saved-views-panel"
+        aria-controls="right-rail-watchlist-panel right-rail-screener-panel right-rail-saved-views-panel right-rail-signal-alerts-panel"
         aria-label={open ? '우측 패널 닫기' : '우측 패널 열기'}
         className="w-full py-2 grid place-items-center text-fg-dim hover:text-fg hover:bg-bg-input-hover"
       >
@@ -56,6 +57,14 @@ export default function RightRail() {
         active={activePanel === 'savedViews'}
         onClick={() => togglePanel('savedViews')}
         icon={<BookmarkIcon filled={activePanel === 'savedViews'} className="w-[1.125em] h-[1.125em]" />}
+      />
+      <RailItem
+        label="알림"
+        ariaLabel="시그널 알림 패널 토글"
+        controls="right-rail-signal-alerts-panel"
+        active={activePanel === 'signalAlerts'}
+        onClick={() => togglePanel('signalAlerts')}
+        icon={<BellIcon className="w-[1.125em] h-[1.125em]" />}
       />
     </nav>
   );

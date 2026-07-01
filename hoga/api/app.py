@@ -25,6 +25,7 @@ from hoga.api.queries import QueryEngine
 from hoga.api.routes import build_router
 from hoga.api.scheduler import start_scheduler
 from hoga.api.screener import build_router as build_screener_router
+from hoga.api.signal_alert_routes import build_router as build_signal_alert_router
 from hoga.api.startup_runtime import StartupRuntimeDeps, start_app_runtime
 from hoga.api.symbols import build_router as build_symbols_router
 from hoga.api.test_routes import build_test_router
@@ -38,6 +39,7 @@ from hoga.live.api import build_router as build_live_router
 from hoga.live.kis_capacity_runtime import aclose_kis_capacity_scheduler
 from hoga.live.kis_runtime import aclose_kis_client
 from hoga.live.lifecycle import (
+    configure_signal_alert_monitor,
     get_active_codes,
     start_live_stream,
     start_live_stream_watchdog,
@@ -62,6 +64,7 @@ from hoga.live.migrate import migrate_to_v2_layout
 def create_app(data_dir: Path) -> FastAPI:
     engine = QueryEngine(data_dir)
     bus, observer, inv_handler = build_event_bus(data_dir / "parquet")
+    configure_signal_alert_monitor(data_dir, bus.publish)
 
     def _real_client_factory():
         cfg = Config.from_cwd()
@@ -173,6 +176,7 @@ def create_app(data_dir: Path) -> FastAPI:
     app.include_router(build_watchlist_router(data_dir=data_dir))
     app.include_router(build_heatmap_router(data_dir=data_dir))
     app.include_router(build_screener_router(data_dir=data_dir, bus=bus))
+    app.include_router(build_signal_alert_router(data_dir=data_dir))
     app.include_router(build_study_view_router(data_dir=data_dir))
     app.include_router(
         build_live_router(

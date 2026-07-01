@@ -21,6 +21,20 @@ describe('RightRail', () => {
     expect(screen.getByRole('button', { name: '저장뷰 패널 토글' })).toBeTruthy();
   });
 
+  it('renders alerts below saved views and toggles the signal alerts panel', () => {
+    render(<RightRail />);
+    const buttons = screen.getAllByRole('button');
+    const savedViewsButton = screen.getByRole('button', { name: '저장뷰 패널 토글' });
+    const alertsButton = screen.getByRole('button', { name: '시그널 알림 패널 토글' });
+
+    expect(buttons.indexOf(alertsButton)).toBeGreaterThan(buttons.indexOf(savedViewsButton));
+    expect(alertsButton).toHaveAttribute('aria-controls', 'right-rail-signal-alerts-panel');
+
+    fireEvent.click(alertsButton);
+
+    expect(useRightRailStore.getState().activePanel).toBe('signalAlerts');
+  });
+
   it('accepts savedViews from persisted right rail state', async () => {
     localStorage.setItem('rightRail.layout', JSON.stringify({ activePanel: 'savedViews' }));
     vi.resetModules();

@@ -13,6 +13,7 @@ from typing import Protocol, runtime_checkable
 from hoga.live.buffer import LiveBuffer
 from hoga.live.kis_client import KisApiError, KisAuthError, KisRateLimitError
 from hoga.live.kis_models import KisBrokers, KisOrderbook, KisTrade
+from hoga.live.lifecycle import get_signal_alert_monitor
 from hoga.live.rest30_writer import make_rest30_writer
 from hoga.live.rest_buffer_build import brokers_to_snapshot, ob_to_snapshot, trades_to_snapshots
 
@@ -180,6 +181,15 @@ class Rest30sRecorder:
         date = self._date_fn()
 
         ob = await kis.fetch_orderbook(code)
+        monitor = get_signal_alert_monitor()
+        if monitor is not None:
+            monitor.ingest_orderbook(
+                code=code,
+                name=code,
+                t_ms=ob.t_ms,
+                total_ask_qty=ob.total_ask_qty,
+                source="rest",
+            )
         trades = await kis.fetch_trades(code)
         brokers = await kis.fetch_brokers(code)
         trades = self._dedupe_trades(code, date, trades)
