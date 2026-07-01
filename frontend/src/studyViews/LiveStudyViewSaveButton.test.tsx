@@ -63,7 +63,7 @@ it('opens create dialog and creates from the live source', async () => {
     label: '삼성전자',
     timeframe: '5m',
     bundle: rangeBundleFixture(),
-    captureViewport: () => ({ rightEdgeMs: 2_000, barSpan: 2, atLiveEdge: true }),
+    captureViewport: () => ({ rightEdgeMs: 2_000, barSpan: 2, atLiveEdge: true, rightPaddingBars: 13 }),
   };
   render(<LiveStudyViewSaveButton />);
 
@@ -82,4 +82,5 @@ it('opens create dialog and creates from the live source', async () => {
   expect('snapshot' in body).toBe(false);
   expect('indicator_state' in body).toBe(false);
   expect(body.viewport.at_live_edge).toBe(true);
+  expect(body.viewport.right_padding_bars).toBe(13);
 });

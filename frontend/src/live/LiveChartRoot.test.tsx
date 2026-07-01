@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
-import { render, screen, act } from '@testing-library/react';
+import { render, screen, act, waitFor } from '@testing-library/react';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import type { ReactNode } from 'react';
 
@@ -751,6 +751,34 @@ describe('LiveChartRoot', () => {
     );
     expect(capture()).toMatchObject({ rightPaddingBars: 30 });
 
+    ts.timeToIndex.mockReturnValue(null);
+
+    expect(capture()).toMatchObject({ rightPaddingBars: 30 });
+  });
+
+  it('reuses the initial viewport latest-candle index when the first live-tab capture is unsettled', async () => {
+    useLivePageStore.setState({ historicalFromDate: null });
+    const { chart, ts } = buildChartMockWithStableTS();
+    const bundle = makeBundleWithCandles(250);
+    const last = bundle.candles[bundle.candles.length - 1];
+    let capture: () => unknown = () => null;
+    ts.getVisibleLogicalRange.mockReturnValue({ from: 200, to: 291 });
+    ts.getVisibleRange.mockReturnValue({ from: TODAY_OPEN_MS / 1000, to: last.ts_ms / 1000 });
+    ts.timeToIndex.mockReturnValue(260);
+    vi.mocked(createChartEx).mockImplementationOnce(() => chart as never);
+
+    render(
+      <LiveChartRoot
+        code="005930"
+        timeframe="1m"
+        bundle={bundle}
+        clampEngaged={false}
+        isPastCandlesLoading={false}
+        onViewportCaptureReady={(fn) => { capture = fn; }}
+      />,
+      { wrapper },
+    );
+    await waitFor(() => expect(ts.setVisibleLogicalRange).toHaveBeenCalled());
     ts.timeToIndex.mockReturnValue(null);
 
     expect(capture()).toMatchObject({ rightPaddingBars: 30 });

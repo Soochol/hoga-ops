@@ -1183,16 +1183,21 @@ class StudyViewport(BaseModel):
     right_edge_ms: int
     bar_span: float
     at_live_edge: bool
+    right_padding_bars: float | None = None
 
-    @field_validator("right_edge_ms", "bar_span")
+    @field_validator("right_edge_ms", "bar_span", "right_padding_bars")
     @classmethod
-    def _finite(cls, v: int | float):
+    def _finite(cls, v: int | float | None):
+        if v is None:
+            return None
         return _ensure_finite(v)
 
     @model_validator(mode="after")
-    def _bar_span_positive(self):
+    def _valid_viewport(self):
         if self.bar_span <= 0:
             raise ValueError("bar_span must be positive")
+        if self.right_padding_bars is not None and self.right_padding_bars < 0:
+            raise ValueError("right_padding_bars must be non-negative")
         return self
 
 
