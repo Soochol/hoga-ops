@@ -100,6 +100,37 @@ describe('live peak-wall docked label helpers', () => {
     ]);
   });
 
+  it('keeps live docked labels whose segment overlaps the visible range', () => {
+    const out = livePeakWallDockedLabelsFromSegments(
+      [segment({ live: true, time0: 100 as never, time1: 200 as never })],
+      { from: 150 as never, to: 250 as never },
+    );
+
+    expect(out).toEqual([
+      { price: 23500, label: '23,500, 17.2k', color: '#f97316' },
+    ]);
+  });
+
+  it('hides live docked labels whose segment is outside the visible range', () => {
+    const out = livePeakWallDockedLabelsFromSegments(
+      [segment({ live: true, time0: 100 as never, time1: 200 as never })],
+      { from: 10 as never, to: 90 as never },
+    );
+
+    expect(out).toEqual([]);
+  });
+
+  it('keeps current behavior when the visible range is unavailable', () => {
+    const out = livePeakWallDockedLabelsFromSegments(
+      [segment({ live: true, time0: 100 as never, time1: 200 as never })],
+      null,
+    );
+
+    expect(out).toEqual([
+      { price: 23500, label: '23,500, 17.2k', color: '#f97316' },
+    ]);
+  });
+
   it('removes only live inline label text while preserving historical labels and geometry', () => {
     const past = segment({ live: false, label: '24,500, 16.6k', price: 24500 });
     const live = segment({ live: true, label: '23,500, 17.2k', price: 23500 });
