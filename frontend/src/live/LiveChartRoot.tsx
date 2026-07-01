@@ -793,7 +793,7 @@ export function LiveChartRoot({ code, timeframe, venue = 'KRX', viewIdentity, bu
         textColor: tokens.fg,
         panes: {
           separatorColor: tokens.borderStrong,
-          separatorHoverColor: tokens.fg,
+          separatorHoverColor: tokens.borderStrong,
         },
       },
       grid: chartGridOptions(
