@@ -7,6 +7,7 @@ import type { RangeBundle } from '../api/types';
 import { realMsToYyyymmdd } from '../live/liveDateTime';
 import { chooseSnapshotWindow } from './snapshotWindow';
 import type { LiveStudySaveSource } from './studySaveSource';
+import type { TabViewport } from '../live/viewportAnchor';
 
 export function defaultStudyViewName(row: StudyViewListRow | undefined, label: string, timeframe: string): string {
   return row?.name ?? `${label} ${timeframe} 저장뷰`;
@@ -23,7 +24,7 @@ export function fallbackViewport(bundle: RangeBundle): StudyViewport | null {
 }
 
 export function viewportFromCapture(
-  captureViewport: () => { rightEdgeMs: number; barSpan: number; atLiveEdge: boolean } | null,
+  captureViewport: () => TabViewport | null,
   fallback: StudyViewport | null,
 ): StudyViewport | null {
   const captured = captureViewport();
@@ -32,6 +33,9 @@ export function viewportFromCapture(
     right_edge_ms: captured.rightEdgeMs,
     bar_span: captured.barSpan,
     at_live_edge: captured.atLiveEdge,
+    ...(typeof captured.rightPaddingBars === 'number' && Number.isFinite(captured.rightPaddingBars)
+      ? { right_padding_bars: Math.max(0, captured.rightPaddingBars) }
+      : {}),
   };
 }
 

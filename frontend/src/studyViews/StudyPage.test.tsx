@@ -115,7 +115,7 @@ const referenceSave: StudyViewReference = {
   label: '삼성전자',
   timeframe: '5m',
   range: { from_date: '20260616', to_date: '20260616', from_ms: 1_000, to_ms: 2_000 },
-  viewport: { right_edge_ms: 2_000, bar_span: 120, at_live_edge: false },
+  viewport: { right_edge_ms: 2_000, bar_span: 120, at_live_edge: false, right_padding_bars: 21 },
   memo: 'memo',
   tags: [],
   created_at_ms: 1,
@@ -275,7 +275,12 @@ describe('StudyPage', () => {
     const props = liveChartRootMock.mock.calls[0][0];
     expect(props.code).toBe('005930');
     expect(props.timeframe).toBe('5m');
-    expect(props.restoreViewport).toEqual({ rightEdgeMs: 2_000, barSpan: 120, atLiveEdge: false });
+    expect(props.restoreViewport).toEqual({
+      rightEdgeMs: 2_000,
+      barSpan: 120,
+      atLiveEdge: false,
+      rightPaddingBars: 21,
+    });
     expect(props.todayKst).toBe('20260616');
     expect(props.tradeVolumePocs).toHaveLength(1);
     expect(props.paneTogglesOverride).toBeUndefined();
@@ -384,7 +389,7 @@ describe('StudyPage', () => {
     fireEvent.click(screen.getByRole('button', { name: '분봉으로 전환: 5분' }));
     expect(liveChartRootMock.mock.calls.at(-1)?.[0]).toMatchObject({
       timeframe: '5m',
-      restoreViewport: { rightEdgeMs: 2_000, barSpan: 120, atLiveEdge: false },
+      restoreViewport: { rightEdgeMs: 2_000, barSpan: 120, atLiveEdge: false, rightPaddingBars: 21 },
     });
   });
 

@@ -5,6 +5,7 @@ export type StudyViewport = {
   right_edge_ms: number;
   bar_span: number;
   at_live_edge: boolean;
+  right_padding_bars?: number | null;
 };
 
 export type StudyViewRange = {
