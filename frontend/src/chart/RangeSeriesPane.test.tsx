@@ -28,18 +28,20 @@ function makeChart() {
     attachPrimitive: ReturnType<typeof vi.fn>;
     detachPrimitive: ReturnType<typeof vi.fn>;
   }> = [];
+  const addSeries = vi.fn((_type: unknown, _opts: unknown, paneIndex: number) => {
+    const series = {
+      setData: vi.fn(), update: vi.fn(), paneIndex,
+      attachPrimitive: vi.fn(), detachPrimitive: vi.fn(),
+    };
+    created.push(series);
+    return series;
+  });
+  const removeSeries = vi.fn();
   const chart = {
-    addSeries: vi.fn((_type: unknown, _opts: unknown, paneIndex: number) => {
-      const series = {
-        setData: vi.fn(), update: vi.fn(), paneIndex,
-        attachPrimitive: vi.fn(), detachPrimitive: vi.fn(),
-      };
-      created.push(series);
-      return series;
-    }),
-    removeSeries: vi.fn(),
+    addSeries,
+    removeSeries,
   } as never;
-  return { chart, created };
+  return { chart, created, addSeries, removeSeries };
 }
 
 const SPEC: PaneSpec = {
@@ -96,6 +98,47 @@ describe('RangeSeriesPane', () => {
     expect(created).toHaveLength(2);
     expect(created[1].paneIndex).toBe(1);
     expect(created[1].setData).toHaveBeenCalledTimes(1); // data re-pushed into the new series
+  });
+
+  it('creates the candle primary series last when candleAlwaysOnTop is enabled', () => {
+    const { chart, created, addSeries } = makeChart();
+    const primaryType = { name: 'candles' } as never;
+    const overlayType = { name: 'overlay' } as never;
+    const candlePaneSpec: PaneSpec = {
+      name: 'candle',
+      stretch: 1,
+      series: [
+        {
+          type: primaryType,
+          options: {} as never,
+          data: () => [{ time: 1, open: 10, high: 12, low: 9, close: 11 }] as never,
+        },
+        {
+          type: overlayType,
+          options: {} as never,
+          data: () => [{ time: 1, value: 11 }] as never,
+        },
+      ],
+    };
+    const onPrimarySeriesReady = vi.fn();
+
+    render(
+      <RangeSeriesPane
+        chart={chart}
+        bundle={bundle}
+        axis={axis}
+        paneIndex={0}
+        spec={candlePaneSpec}
+        candleAlwaysOnTop
+        onPrimarySeriesReady={onPrimarySeriesReady}
+      />,
+    );
+
+    expect(addSeries).toHaveBeenNthCalledWith(1, overlayType, {}, 0);
+    expect(addSeries).toHaveBeenNthCalledWith(2, primaryType, {}, 0);
+    expect(created[0].setData).toHaveBeenCalledWith([{ time: 1, value: 11 }]);
+    expect(created[1].setData).toHaveBeenCalledWith([{ time: 1, open: 10, high: 12, low: 9, close: 11 }]);
+    expect(onPrimarySeriesReady).toHaveBeenCalledWith(created[1], 'candle');
   });
 
   it('re-pushes data after a chart change re-creates the series (per-view remount)', () => {
