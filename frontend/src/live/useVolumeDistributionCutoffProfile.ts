@@ -82,6 +82,13 @@ export function useVolumeDistributionCutoffProfile(args: {
       return profile;
     }
 
+    if (query.isFetching || query.data === undefined) {
+      if (lastCutoffProfileRef.current?.scope === scope) {
+        return lastCutoffProfileRef.current.profile;
+      }
+      return args.finalProfile;
+    }
+
     if (
       date
       && date === args.todayKst
@@ -102,10 +109,6 @@ export function useVolumeDistributionCutoffProfile(args: {
         lastCutoffProfileRef.current = { scope, profile: computedProfile };
         return computedProfile;
       }
-    }
-
-    if ((query.isFetching || query.data === undefined) && lastCutoffProfileRef.current?.scope === scope) {
-      return lastCutoffProfileRef.current.profile;
     }
 
     return args.finalProfile;

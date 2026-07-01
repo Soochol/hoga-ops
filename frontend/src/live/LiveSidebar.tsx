@@ -206,6 +206,20 @@ export function LiveSidebar({ code, live, bundle = null, todayKst = '', programT
     liveDistributionTrades,
     todayContinuousBeforeMs,
   ]);
+  const activeVolumeDistributionPriceRange = useMemo(() => {
+    if (
+      activeVolumeDistribution
+      && Number.isFinite(activeVolumeDistribution.price_min)
+      && Number.isFinite(activeVolumeDistribution.price_max)
+      && activeVolumeDistribution.price_min < activeVolumeDistribution.price_max
+    ) {
+      return {
+        min: activeVolumeDistribution.price_min,
+        max: activeVolumeDistribution.price_max,
+      };
+    }
+    return candlePriceRange(activeVolumeDistributionCandles);
+  }, [activeVolumeDistribution, activeVolumeDistributionCandles]);
   const cutoffVolumeDistribution = useVolumeDistributionCutoffProfile({
     enabled: volumeDistributionEnabled && volumeDistributionHoverCutoffEnabled && isSpot,
     code: stockCode,
@@ -215,7 +229,7 @@ export function LiveSidebar({ code, live, bundle = null, todayKst = '', programT
     todayKst,
     rangeCount: volumeDistributionRangeCount,
     finalProfile: activeVolumeDistribution,
-    priceRange: null,
+    priceRange: activeVolumeDistributionPriceRange,
     liveTrades: liveDistributionTrades,
     candles: activeVolumeDistributionCandles,
     segment: activeBundle?.segments.find((segment) => segment.date === activeVolumeDistributionDate) ?? null,
@@ -305,4 +319,14 @@ function formatTime(ts_ms: number): string {
     second: '2-digit',
     hour12: false,
   });
+}
+
+function candlePriceRange(candles: readonly { low: number; high: number }[]): { min: number; max: number } | null {
+  let min = Number.POSITIVE_INFINITY;
+  let max = Number.NEGATIVE_INFINITY;
+  for (const candle of candles) {
+    if (Number.isFinite(candle.low)) min = Math.min(min, candle.low);
+    if (Number.isFinite(candle.high)) max = Math.max(max, candle.high);
+  }
+  return Number.isFinite(min) && Number.isFinite(max) && min < max ? { min, max } : null;
 }

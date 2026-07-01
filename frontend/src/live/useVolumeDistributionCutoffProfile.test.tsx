@@ -254,6 +254,38 @@ describe('useVolumeDistributionCutoffProfile', () => {
     expect(result.current).toBe(firstCutoffProfile);
   });
 
+  it('keeps the final profile while the first hover cutoff request is loading', () => {
+    mockedUseRange.mockReturnValue({
+      data: undefined,
+      isFetching: true,
+    } as ReturnType<typeof useRange>);
+    const finalProfile = profile({
+      bins: [
+        { price_low: 100, price_high: 110, qty: 100 },
+        { price_low: 110, price_high: 120, qty: 200 },
+      ],
+    });
+
+    const { result } = renderHook(() => useVolumeDistributionCutoffProfile({
+      enabled: true,
+      code: '005930',
+      timeframe: '1m',
+      date: '20260625',
+      cursorMs: 90_001_000,
+      todayKst: '20260625',
+      rangeCount: 2,
+      finalProfile,
+      priceRange: null,
+      candles,
+      segment,
+      liveTrades: [
+        { t_ms: 90_001_000, price: 115, qty: 5, side: 1 },
+      ],
+    }));
+
+    expect(result.current).toBe(finalProfile);
+  });
+
   it('merges valid live-edge trades after a sidecar cutoff profile', () => {
     const cutoffProfile = profile({ last_trade_ms: 90_001_000 });
     mockedUseRange.mockReturnValue({
