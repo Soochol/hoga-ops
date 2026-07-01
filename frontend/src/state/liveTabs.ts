@@ -20,6 +20,7 @@ export type LiveTab = {
   timeframe: LiveTimeframe;
   historicalFromDate: string | null;
   viewport?: TabViewport | null;
+  pinned?: boolean;
 };
 
 type TabsStore = {
@@ -39,6 +40,7 @@ type TabsStore = {
   focusTab: (id: string) => void;
   closeTab: (id: string) => void;
   reorderTabs: (from: number, to: number) => void;
+  toggleTabPinned: (id: string) => void;
   updateTabViewport: (id: string, viewport: TabViewport | null) => void;
 };
 
@@ -64,8 +66,17 @@ type TabSnapshot = {
   historicalFromDate: string | null;
   label: string;
   viewport?: TabViewport | null;
+  pinned?: boolean;
 };
 type TabsSnapshot = { version: 2; activeIndex: number; tabs: TabSnapshot[] };
+
+function orderPinnedFirst<T extends { pinned?: boolean }>(tabs: T[]): T[] {
+  return [...tabs.filter((tab) => tab.pinned), ...tabs.filter((tab) => !tab.pinned)];
+}
+
+function samePinGroup(a: { pinned?: boolean }, b: { pinned?: boolean }): boolean {
+  return Boolean(a.pinned) === Boolean(b.pinned);
+}
 
 function isTimeframe(v: unknown): v is LiveTimeframe {
   return typeof v === 'string' && (LIVE_TIMEFRAMES as readonly string[]).includes(v);
@@ -101,6 +112,7 @@ export function toTabsSnapshot(state: Pick<TabsStore, 'tabs' | 'activeTabId'>): 
       code: t.code, timeframe: t.timeframe, historicalFromDate: t.historicalFromDate,
       label: t.label,
       viewport: t.viewport ?? null,
+      ...(t.pinned ? { pinned: true } : {}),
     })),
   };
 }
@@ -126,6 +138,7 @@ function makeTab(params: {
   timeframe: LiveTimeframe;
   historicalFromDate?: string | null;
   viewport?: TabViewport | null;
+  pinned?: boolean;
 }): LiveTab {
   const fields = tabFieldsFromInstrument(params.instrument);
   return {
@@ -136,6 +149,7 @@ function makeTab(params: {
     timeframe: params.timeframe,
     historicalFromDate: params.historicalFromDate ?? null,
     viewport: params.viewport ?? null,
+    ...(params.pinned ? { pinned: true } : {}),
   };
 }
 
@@ -163,6 +177,7 @@ export function loadTabs(): { tabs: LiveTab[]; activeTabId: string | null } {
             timeframe: isTimeframe(t.timeframe) ? t.timeframe : '1m',
             historicalFromDate: typeof t.historicalFromDate === 'string' ? t.historicalFromDate : null,
             viewport: canHydrateViewport && isViewport(t.viewport) ? t.viewport : null,
+            pinned: t.pinned === true,
           }));
         if (tabs.length > 0) {
           // findIndex=-1 (active entry was dropped) → first-tab fallback.
@@ -218,6 +233,31 @@ export const useLiveTabsStore = create<TabsStore>((set, get) => ({
     // pan(historicalFromDate)은 새 종목의 기본 뷰를 위해 초기화한다. projectActiveView에
     // historicalFromDate: null을 직접 전달하므로 page와 tab 양쪽이 일관된다.
     const fields = tabFieldsFromInstrument(instrument);
+    if (active.pinned) {
+      const target = tabs.find((t) => !t.pinned);
+      if (target) {
+        const updated: LiveTab = {
+          ...target,
+          instrument,
+          code: fields.code,
+          label: fields.label,
+          timeframe: active.timeframe,
+          historicalFromDate: null,
+          viewport: null,
+        };
+        set({ tabs: tabs.map((t) => (t.id === target.id ? updated : t)), activeTabId: updated.id });
+        applyTabToPage(updated);
+        return;
+      }
+      const tab = makeTab({
+        instrument,
+        timeframe: active.timeframe,
+        historicalFromDate: null,
+      });
+      set({ tabs: orderPinnedFirst([...tabs, tab]), activeTabId: tab.id });
+      applyTabToPage(tab);
+      return;
+    }
     const updated: LiveTab = {
       ...active,
       instrument,
@@ -261,6 +301,7 @@ export const useLiveTabsStore = create<TabsStore>((set, get) => ({
     const { tabs, activeTabId } = get();
     const idx = tabs.findIndex((t) => t.id === id);
     if (idx === -1) return;
+    if (tabs[idx].pinned) return;
     const next = tabs.filter((t) => t.id !== id);
     if (activeTabId !== id) { set({ tabs: next }); return; }
     const nextActiveId = next[idx]?.id ?? next[idx - 1]?.id ?? null;
@@ -271,10 +312,21 @@ export const useLiveTabsStore = create<TabsStore>((set, get) => ({
   reorderTabs: (from, to) => {
     const { tabs } = get();
     if (from < 0 || from >= tabs.length || to < 0 || to >= tabs.length || from === to) return;
+    if (!samePinGroup(tabs[from], tabs[to])) return;
     const next = tabs.slice();
     const [moved] = next.splice(from, 1);
     next.splice(to, 0, moved);
     set({ tabs: next });
+  },
+
+  toggleTabPinned: (id) => {
+    const { tabs } = get();
+    if (!tabs.some((t) => t.id === id)) return;
+    set({
+      tabs: orderPinnedFirst(tabs.map((t) => (
+        t.id === id ? { ...t, pinned: !t.pinned || undefined } : t
+      ))),
+    });
   },
 
   updateTabViewport: (id, viewport) => {
