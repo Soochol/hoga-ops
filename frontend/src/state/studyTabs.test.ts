@@ -133,6 +133,67 @@ describe('studyTabs store', () => {
     });
   });
 
+  it('persists pinned state in study tab snapshots', () => {
+    useStudyTabsStore.getState().openSaveInNewTab(save);
+    const id = useStudyTabsStore.getState().activeTabId!;
+
+    useStudyTabsStore.getState().toggleTabPinned(id);
+
+    expect(toStudyTabsSnapshot(useStudyTabsStore.getState()).tabs[0]).toMatchObject({
+      viewId: save.id,
+      pinned: true,
+    });
+  });
+
+  it('keeps pinned study tabs before unpinned tabs when toggled', () => {
+    useStudyTabsStore.getState().openSaveInNewTab(save);
+    useStudyTabsStore.getState().openSaveInNewTab({ ...save, id: 'view2', name: '마감' });
+    const second = useStudyTabsStore.getState().tabs[1].id;
+
+    useStudyTabsStore.getState().toggleTabPinned(second);
+
+    expect(useStudyTabsStore.getState().tabs.map((t) => [t.viewId, Boolean(t.pinned)])).toEqual([
+      ['view2', true],
+      ['view1', false],
+    ]);
+  });
+
+  it('does not close pinned study tabs', () => {
+    useStudyTabsStore.getState().openSaveInNewTab(save);
+    const id = useStudyTabsStore.getState().activeTabId!;
+    useStudyTabsStore.getState().toggleTabPinned(id);
+
+    useStudyTabsStore.getState().closeTab(id);
+
+    expect(useStudyTabsStore.getState().tabs).toHaveLength(1);
+    expect(useStudyTabsStore.getState().tabs[0].id).toBe(id);
+  });
+
+  it('does not drag study tabs across the pinned boundary', () => {
+    useStudyTabsStore.getState().openSaveInNewTab(save);
+    useStudyTabsStore.getState().openSaveInNewTab({ ...save, id: 'view2', name: '마감' });
+    const first = useStudyTabsStore.getState().tabs[0].id;
+    useStudyTabsStore.getState().toggleTabPinned(first);
+
+    useStudyTabsStore.getState().reorderTabs(0, 1);
+
+    expect(useStudyTabsStore.getState().tabs.map((t) => t.viewId)).toEqual(['view1', 'view2']);
+  });
+
+  it('opens an unpinned study tab when the active pinned tab would be replaced', () => {
+    useStudyTabsStore.getState().openSaveInNewTab(save);
+    const pinnedId = useStudyTabsStore.getState().activeTabId!;
+    useStudyTabsStore.getState().toggleTabPinned(pinnedId);
+
+    useStudyTabsStore.getState().openSaveInActiveTab({ ...save, id: 'view2', name: '마감' });
+
+    expect(useStudyTabsStore.getState().tabs.map((t) => [t.viewId, Boolean(t.pinned)])).toEqual([
+      ['view1', true],
+      ['view2', false],
+    ]);
+    expect(useStudyTabsStore.getState().activeTabId).not.toBe(pinnedId);
+  });
+
   it('keeps tab viewport in memory but excludes it from the persisted snapshot', () => {
     useStudyTabsStore.getState().openSaveInNewTab(save);
     const tabId = useStudyTabsStore.getState().activeTabId!;

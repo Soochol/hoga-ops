@@ -188,6 +188,58 @@ describe('useLiveTabsStore', () => {
     expect(useLiveTabsStore.getState().tabs.map((t) => t.code)).toEqual(original);
   });
 
+  it('toggleTabPinned keeps pinned live tabs before unpinned tabs', () => {
+    openTab('A00001', 'A');
+    openTab('B00002', 'B');
+    openTab('C00003', 'C');
+    const b = useLiveTabsStore.getState().tabs[1].id;
+
+    useLiveTabsStore.getState().toggleTabPinned(b);
+
+    expect(useLiveTabsStore.getState().tabs.map((t) => [t.code, Boolean(t.pinned)])).toEqual([
+      ['B00002', true],
+      ['A00001', false],
+      ['C00003', false],
+    ]);
+  });
+
+  it('closeTab does not close pinned live tabs', () => {
+    openTab('005930', '삼성전자');
+    const id = useLiveTabsStore.getState().activeTabId!;
+    useLiveTabsStore.getState().toggleTabPinned(id);
+
+    useLiveTabsStore.getState().closeTab(id);
+
+    expect(useLiveTabsStore.getState().tabs).toHaveLength(1);
+    expect(useLiveTabsStore.getState().tabs[0].id).toBe(id);
+  });
+
+  it('reorderTabs does not move live tabs across the pinned boundary', () => {
+    openTab('A00001', 'A');
+    openTab('B00002', 'B');
+    openTab('C00003', 'C');
+    const a = useLiveTabsStore.getState().tabs[0].id;
+    useLiveTabsStore.getState().toggleTabPinned(a);
+
+    useLiveTabsStore.getState().reorderTabs(0, 2);
+
+    expect(useLiveTabsStore.getState().tabs.map((t) => t.code)).toEqual(['A00001', 'B00002', 'C00003']);
+  });
+
+  it('setActiveTabCode replaces an unpinned live tab when the active tab is pinned', () => {
+    openTab('005930', '삼성전자');
+    const pinnedId = useLiveTabsStore.getState().activeTabId!;
+    useLiveTabsStore.getState().toggleTabPinned(pinnedId);
+
+    useLiveTabsStore.getState().setActiveTabCode('000660', 'SK하이닉스');
+
+    expect(useLiveTabsStore.getState().tabs.map((t) => [t.code, Boolean(t.pinned)])).toEqual([
+      ['005930', true],
+      ['000660', false],
+    ]);
+    expect(useLiveTabsStore.getState().activeTabId).not.toBe(pinnedId);
+  });
+
   it('switching to a tab projects code+timeframe and resets pan to latest fit', () => {
     openTab('005930', '삼성전자');
     useLiveTabsStore.setState((st) => ({
@@ -331,6 +383,7 @@ describe('liveTabs persistence', () => {
         timeframe: '1m',
         historicalFromDate: null,
         viewport,
+        pinned: true,
       }],
       activeTabId: 'abc',
     } as never);
@@ -343,6 +396,7 @@ describe('liveTabs persistence', () => {
         historicalFromDate: null,
         label: '삼성전자',
         viewport,
+        pinned: true,
       }],
     });
   });

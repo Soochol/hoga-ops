@@ -3,6 +3,11 @@
 All notable changes to this project are documented here.
 The format follows a 4-digit `MAJOR.MINOR.PATCH.MICRO` scheme.
 
+## [0.12.23.0] - 2026-07-01
+
+### Added
+- **/live·/study 탭 고정**: 탭에 핀 아이콘을 추가해 중요한 Live/Study 탭을 앞쪽에 고정하고, 고정 탭은 닫기·일반 열기 덮어쓰기·다른 그룹으로의 드래그 이동에서 보호되도록 했다. 고정 상태는 새로고침 후에도 유지된다.
+
 ## [0.12.22.4] - 2026-07-01
 
 ### Changed

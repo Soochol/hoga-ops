@@ -105,6 +105,7 @@ export function LivePage() {
   const focusTab = useLiveTabsStore((s) => s.focusTab);
   const closeTab = useLiveTabsStore((s) => s.closeTab);
   const reorderTabs = useLiveTabsStore((s) => s.reorderTabs);
+  const toggleTabPinned = useLiveTabsStore((s) => s.toggleTabPinned);
   const updateTabViewport = useLiveTabsStore((s) => s.updateTabViewport);
 
   // 1회: URL ?code= 시드는 현재 탭에 적용, 없으면 복원된 활성 탭을 page에 동기화,
@@ -347,6 +348,7 @@ export function LivePage() {
         onFocus={focusLiveTab}
         onClose={closeLiveTab}
         onReorder={reorderTabs}
+        onTogglePin={toggleTabPinned}
         // + 버튼: 빈 탭을 만들고 검색창에 포커스 → 사용자가 바로 종목을 타이핑해 채운다(spec D5).
         // 마운트 시 기본 탭(위 시드)은 의도적으로 검색 포커스를 주지 않는다(로드마다 포커스 탈취 방지).
         onNewTab={() => { addLiveBlankTab(); focusLiveSearch(); }}

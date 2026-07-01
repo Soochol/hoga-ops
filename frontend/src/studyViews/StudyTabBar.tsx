@@ -10,9 +10,10 @@ type Props = {
   onClose: (id: string) => void;
   onReorder: (from: number, to: number) => void;
   onNewTab: () => void;
+  onTogglePin?: (id: string) => void;
 };
 
-export function StudyTabBar({ tabs, activeTabId, activeLoading, tabStatuses, onFocus, onClose, onReorder, onNewTab: _onNewTab }: Props) {
+export function StudyTabBar({ tabs, activeTabId, activeLoading, tabStatuses, onFocus, onClose, onReorder, onNewTab: _onNewTab, onTogglePin }: Props) {
   return (
     <ChartTabBar
       tabs={tabs}
@@ -21,6 +22,7 @@ export function StudyTabBar({ tabs, activeTabId, activeLoading, tabStatuses, onF
       onFocus={onFocus}
       onClose={onClose}
       onReorder={onReorder}
+      onTogglePin={onTogglePin}
       renderLabel={(tab) => tab.label}
       tabStatus={(tab, active) => tabStatuses?.[tab.id] ?? (active && activeLoading ? 'loading' : active ? 'ready' : 'idle')}
       newTabButton={null}
