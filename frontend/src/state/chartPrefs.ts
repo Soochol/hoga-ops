@@ -23,6 +23,18 @@ export const CHART_TOGGLES = [
     default: true,
   },
   {
+    key: 'horizontalGridLinesEnabled',
+    label: '가로 구분선',
+    description: '차트 배경의 가격축 방향 가로 격자선을 표시합니다.',
+    default: true,
+  },
+  {
+    key: 'verticalGridLinesEnabled',
+    label: '세로 구분선',
+    description: '차트 배경의 시간축 방향 세로 격자선을 표시합니다.',
+    default: true,
+  },
+  {
     key: 'candlePaneCandleOnlyScale',
     label: '캔들 기준 Y축',
     description: '캔들 pane의 가격축을 캔들 고가·저가 기준으로만 맞춥니다. 이동평균선 등 상단 지표는 축 범위를 넓히지 않습니다.',
