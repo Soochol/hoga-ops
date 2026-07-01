@@ -3,6 +3,11 @@
 All notable changes to this project are documented here.
 The format follows a 4-digit `MAJOR.MINOR.PATCH.MICRO` scheme.
 
+## [0.12.22.2] - 2026-07-01
+
+### Fixed
+- **우측 스크리너 조회 상태 유지**: 우측 레일 스크리너의 최근 조회 결과, 정렬, 갱신 상태를 세션 store에 저장해 페이지 이동·패널 재마운트·짧은 reload 후에도 유지하고, 오래된/손상된 스냅샷은 TTL과 검증으로 복원하지 않도록 했다.
+
 ## [0.12.22.1] - 2026-07-01
 
 ### Fixed

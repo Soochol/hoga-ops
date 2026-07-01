@@ -5,8 +5,9 @@ import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { MemoryRouter, Routes, Route, useLocation } from 'react-router';
 import { useLivePageStore } from '../state/livePage';
 import { useLiveTabsStore } from '../state/liveTabs';
-import { useScreenerPanelStore } from '../state/screenerPanel';
+import { useScreenerPanelStore, type PanelScan } from '../state/screenerPanel';
 import { useEntryDragStore } from '../state/entryDrag';
+import { useLiveVenueStore } from '../state/liveVenue';
 import * as savesApi from '../api/savedScreeners';
 import * as screenerApi from '../api/screener';
 import * as client from '../api/client';
@@ -91,6 +92,20 @@ const ROWS = [
   { code: '005930', name: '삼성전자', market: 'KOSPI' as const, price: 70000, trade_value_won: 1e11, change_pct: 2.1 },
   { code: '000660', name: 'SK하이닉스', market: 'KOSPI' as const, price: 180000, trade_value_won: 2e11, change_pct: -1.2 },
 ];
+function makeScan(overrides: Partial<PanelScan> = {}): PanelScan {
+  return {
+    savedId: 's1',
+    savedName: '돌파+거래대금',
+    savedUpdatedAtMs: 0,
+    rows: ROWS,
+    scanStatus: 'ok',
+    warnings: [],
+    scannedAtMs: Date.now(),
+    basis: 'intraday',
+    dataStale: false,
+    ...overrides,
+  };
+}
 
 function qc() {
   return new QueryClient({ defaultOptions: { queries: { retry: false } } });
@@ -98,6 +113,11 @@ function qc() {
 
 function sortButton() {
   return screen.getByRole('button', { name: '스크리너 결과 정렬' });
+}
+
+function liveQuoteCodesFromPath(path: string): string[] {
+  const url = new URL(path, 'http://localhost');
+  return (url.searchParams.get('codes') ?? '').split(',').filter(Boolean);
 }
 
 describe('ScreenerDrawer', () => {
@@ -111,7 +131,13 @@ describe('ScreenerDrawer', () => {
     useEntryDragStore.setState({ draggingCode: null, overChart: false, hitTestChart: null });
     useLivePageStore.setState({ activeCode: null, candleTimeframe: '1m', historicalFromDate: null });
     useLiveTabsStore.setState({ tabs: [], activeTabId: null });
-    useScreenerPanelStore.setState({ selectedSavedId: null, lastScan: null });
+    useLiveVenueStore.setState({ venue: 'KRX' });
+    useScreenerPanelStore.setState({
+      selectedSavedId: null,
+      lastScan: null,
+      updateState: { status: 'idle' },
+      sortMode: 'default',
+    });
     vi.restoreAllMocks();
     vi.spyOn(screenerApi, 'getScreenerStatus').mockResolvedValue({ status: 'ok', last_raw_date: '20260530', days_behind: 0 });
     vi.spyOn(client, 'apiCall').mockResolvedValue({ phase: 'open', quotes: [] });
@@ -161,7 +187,7 @@ describe('ScreenerDrawer', () => {
     vi.spyOn(savesApi, 'listSaves').mockResolvedValue({ schema_version: 1, saves: [SAVE] });
     useScreenerPanelStore.setState({
       selectedSavedId: 's1',
-      lastScan: { savedId: 's1', savedName: '돌파+거래대금', rows: ROWS, scanStatus: 'ok', warnings: [] },
+      lastScan: makeScan(),
     });
 
     render(<ScreenerDrawer />, { wrapper: wrap(qc(), '/live') });
@@ -178,7 +204,7 @@ describe('ScreenerDrawer', () => {
     vi.spyOn(screenerApi, 'runScan').mockRejectedValue(new Error('boom'));
     useScreenerPanelStore.setState({
       selectedSavedId: 's1',
-      lastScan: { savedId: 's1', savedName: '돌파+거래대금', rows: ROWS, scanStatus: 'ok', warnings: [] },
+      lastScan: makeScan(),
     });
 
     render(<ScreenerDrawer />, { wrapper: wrap(qc(), '/live') });
@@ -223,14 +249,14 @@ describe('ScreenerDrawer', () => {
     const scan = vi.spyOn(screenerApi, 'runScan').mockResolvedValue({ status: 'ok', rows: ROWS, warnings: [] });
     useScreenerPanelStore.setState({
       selectedSavedId: 's1',
-      lastScan: { savedId: 's1', savedName: '돌파+거래대금', rows: ROWS, scanStatus: 'ok', warnings: [] },
+      lastScan: makeScan(),
     });
     render(<ScreenerDrawer />, { wrapper: wrap(qc(), '/live') });
     await waitFor(() => expect(screen.getByText('삼성전자')).toBeInTheDocument());
     expect(scan).not.toHaveBeenCalled();
   });
 
-  it('sorts drawer results by displayed change_pct without persisting sort mode', async () => {
+  it('sorts drawer results by displayed change_pct and restores sort after remount', async () => {
     vi.spyOn(savesApi, 'listSaves').mockResolvedValue({ schema_version: 1, saves: [SAVE] });
     const rows = [
       { code: '005930', name: '삼성전자', market: 'KOSPI' as const, price: 70000, trade_value_won: 1e11, change_pct: 0.1 },
@@ -239,7 +265,7 @@ describe('ScreenerDrawer', () => {
     ];
     vi.spyOn(screenerApi, 'runScan').mockResolvedValue({ status: 'ok', rows, warnings: [] });
     vi.spyOn(client, 'apiCall').mockImplementation(async (path: string) => {
-      const codes = (path.split('codes=')[1] ?? '').split(',').filter(Boolean);
+      const codes = liveQuoteCodesFromPath(path);
       const quoteByCode: Record<string, { price: number; change_pct: number; change_won: number }> = {
         '005930': { price: 70100, change_pct: 2.1, change_won: 100 },
         '000660': { price: 179000, change_pct: -1.2, change_won: -1000 },
@@ -251,7 +277,8 @@ describe('ScreenerDrawer', () => {
       };
     });
 
-    render(<ScreenerDrawer />, { wrapper: wrap(qc(), '/live') });
+    const clientForRender = qc();
+    const rendered = render(<ScreenerDrawer />, { wrapper: wrap(clientForRender, '/live') });
     await waitFor(() => expect(useScreenerPanelStore.getState().selectedSavedId).toBe('s1'));
     fireEvent.click(screen.getByRole('button', { name: '조회' }));
     await waitFor(() => expect(screen.getByText('NAVER')).toBeInTheDocument());
@@ -263,31 +290,26 @@ describe('ScreenerDrawer', () => {
       'screener-row-000660',
       'screener-row-035420',
     ]));
-    expect(JSON.parse(localStorage.getItem('screenerPanel.v1') ?? '{}')).toEqual({ selectedSavedId: 's1' });
-
     fireEvent.click(sortButton());
     await waitFor(() => expect(rowOrder()).toEqual([
       'screener-row-035420',
       'screener-row-005930',
       'screener-row-000660',
     ]));
-    expect(JSON.parse(localStorage.getItem('screenerPanel.v1') ?? '{}')).toEqual({ selectedSavedId: 's1' });
-
     fireEvent.click(sortButton());
     await waitFor(() => expect(rowOrder()).toEqual([
       'screener-row-000660',
       'screener-row-005930',
       'screener-row-035420',
     ]));
-    expect(JSON.parse(localStorage.getItem('screenerPanel.v1') ?? '{}')).toEqual({ selectedSavedId: 's1' });
+    rendered.unmount();
+    render(<ScreenerDrawer />, { wrapper: wrap(clientForRender, '/inventory') });
 
-    fireEvent.click(screen.getByRole('button', { name: '조회' }));
     await waitFor(() => expect(rowOrder()).toEqual([
-      'screener-row-005930',
       'screener-row-000660',
+      'screener-row-005930',
       'screener-row-035420',
     ]));
-    expect(within(sortButton()).getByTestId('sort-icon-default')).toBeInTheDocument();
   });
 
   it('preserves a persisted non-first selection when saves load', async () => {
@@ -306,6 +328,71 @@ describe('ScreenerDrawer', () => {
     await waitFor(() => expect(useScreenerPanelStore.getState().selectedSavedId).toBe('s1'));
     fireEvent.click(screen.getByRole('button', { name: '데이터 갱신' }));
     await waitFor(() => expect(upd).toHaveBeenCalled());
+  });
+
+  it('keeps update pending status in the screener panel store', async () => {
+    vi.spyOn(savesApi, 'listSaves').mockResolvedValue({ schema_version: 1, saves: [SAVE] });
+    let resolveUpdate!: () => void;
+    vi.spyOn(screenerApi, 'triggerScreenerUpdate').mockImplementation(
+      () => new Promise((resolve) => {
+        resolveUpdate = () => resolve(undefined);
+      }),
+    );
+
+    render(<ScreenerDrawer />, { wrapper: wrap(qc(), '/live') });
+    await waitFor(() => expect(useScreenerPanelStore.getState().selectedSavedId).toBe('s1'));
+    fireEvent.click(screen.getByRole('button', { name: '데이터 갱신' }));
+
+    expect(useScreenerPanelStore.getState().updateState.status).toBe('pending');
+    expect(screen.getByRole('button', { name: '갱신 중…' })).toBeDisabled();
+
+    await waitFor(() => expect(resolveUpdate).toBeTypeOf('function'));
+    resolveUpdate();
+
+    await waitFor(() => expect(useScreenerPanelStore.getState().updateState.status).toBe('success'));
+  });
+
+  it('marks existing scan results stale after data update succeeds', async () => {
+    vi.spyOn(savesApi, 'listSaves').mockResolvedValue({ schema_version: 1, saves: [SAVE] });
+    vi.spyOn(screenerApi, 'triggerScreenerUpdate').mockResolvedValue(undefined as never);
+    useScreenerPanelStore.setState({
+      selectedSavedId: 's1',
+      sortMode: 'default',
+      updateState: { status: 'idle' },
+      lastScan: {
+        savedId: 's1',
+        savedName: '돌파+거래대금',
+        savedUpdatedAtMs: SAVE.updated_at_ms,
+        rows: ROWS,
+        scanStatus: 'ok',
+        warnings: [],
+        scannedAtMs: Date.now(),
+        basis: 'intraday',
+        dataStale: false,
+      },
+    });
+
+    render(<ScreenerDrawer />, { wrapper: wrap(qc(), '/live') });
+    await waitFor(() => expect(screen.getByText('삼성전자')).toBeInTheDocument());
+    fireEvent.click(screen.getByRole('button', { name: '데이터 갱신' }));
+
+    await waitFor(() => expect(screen.getByText(/데이터 갱신됨/)).toBeInTheDocument());
+    expect(useScreenerPanelStore.getState().lastScan?.dataStale).toBe(true);
+  });
+
+  it('shows stored update errors after the mutation rejects', async () => {
+    vi.spyOn(savesApi, 'listSaves').mockResolvedValue({ schema_version: 1, saves: [SAVE] });
+    vi.spyOn(screenerApi, 'triggerScreenerUpdate').mockRejectedValue(new Error('network down'));
+
+    render(<ScreenerDrawer />, { wrapper: wrap(qc(), '/live') });
+    await waitFor(() => expect(useScreenerPanelStore.getState().selectedSavedId).toBe('s1'));
+    fireEvent.click(screen.getByRole('button', { name: '데이터 갱신' }));
+
+    await waitFor(() => expect(screen.getByText(/갱신 실패/)).toBeInTheDocument());
+    expect(useScreenerPanelStore.getState().updateState).toMatchObject({
+      status: 'error',
+      message: 'network down',
+    });
   });
 
   it('shows 조회 실패 when the scan errors', async () => {
@@ -355,7 +442,7 @@ describe('ScreenerDrawer', () => {
     useLivePageStore.setState({ activeCode: '000660', candleTimeframe: '1m', historicalFromDate: null });
     useScreenerPanelStore.setState({
       selectedSavedId: 's1',
-      lastScan: { savedId: 's1', savedName: '돌파+거래대금', rows: ROWS, scanStatus: 'ok', warnings: [] },
+      lastScan: makeScan(),
     });
 
     render(<ScreenerDrawer />, { wrapper: wrap(qc(), '/inventory') });
@@ -386,7 +473,7 @@ describe('ScreenerDrawer', () => {
     useLivePageStore.setState({ activeCode: '000660', candleTimeframe: '1m', historicalFromDate: null });
     useScreenerPanelStore.setState({
       selectedSavedId: 's1',
-      lastScan: { savedId: 's1', savedName: '돌파+거래대금', rows: ROWS, scanStatus: 'ok', warnings: [] },
+      lastScan: makeScan(),
     });
 
     render(<ScreenerDrawer />, { wrapper: wrap(qc(), '/inventory') });
@@ -407,10 +494,40 @@ describe('ScreenerDrawer', () => {
     vi.spyOn(savesApi, 'listSaves').mockResolvedValue({ schema_version: 1, saves: [SAVE, SAVE2] });
     useScreenerPanelStore.setState({
       selectedSavedId: 's2',
-      lastScan: { savedId: 's1', savedName: '돌파+거래대금', rows: ROWS, scanStatus: 'ok', warnings: [] },
+      lastScan: makeScan({ savedId: 's1' }),
     });
     render(<ScreenerDrawer />, { wrapper: wrap(qc(), '/live') });
     await waitFor(() => expect(screen.getByText(/선택한 조건과 다름/)).toBeInTheDocument());
+  });
+
+  it('flags the last result when the saved screener definition changed after the scan', async () => {
+    vi.spyOn(savesApi, 'listSaves').mockResolvedValue({
+      schema_version: 1,
+      saves: [{ ...SAVE, updated_at_ms: 20 }],
+    });
+    useScreenerPanelStore.setState({
+      selectedSavedId: 's1',
+      sortMode: 'default',
+      updateState: { status: 'idle' },
+      lastScan: makeScan({ savedUpdatedAtMs: 10 }),
+    });
+
+    render(<ScreenerDrawer />, { wrapper: wrap(qc(), '/live') });
+
+    await waitFor(() => expect(screen.getByText(/조건 저장본 변경됨/)).toBeInTheDocument());
+  });
+
+  it('flags the last result when the update mutation succeeds', async () => {
+    vi.spyOn(savesApi, 'listSaves').mockResolvedValue({ schema_version: 1, saves: [SAVE] });
+    vi.spyOn(screenerApi, 'triggerScreenerUpdate').mockResolvedValue(undefined as never);
+    useScreenerPanelStore.setState({ selectedSavedId: 's1', lastScan: makeScan() });
+
+    render(<ScreenerDrawer />, { wrapper: wrap(qc(), '/live') });
+
+    fireEvent.click(screen.getByRole('button', { name: '데이터 갱신' }));
+
+    await waitFor(() => expect(useScreenerPanelStore.getState().lastScan?.dataStale).toBe(true));
+    await waitFor(() => expect(screen.getByText(/데이터 갱신됨/)).toBeInTheDocument());
   });
 
   it('overlays live price + 전일대비 on result rows, overriding corpus pct', async () => {
@@ -421,7 +538,7 @@ describe('ScreenerDrawer', () => {
     });
     useScreenerPanelStore.setState({
       selectedSavedId: 's1',
-      lastScan: { savedId: 's1', savedName: '돌파+거래대금', rows: ROWS, scanStatus: 'ok', warnings: [] },
+      lastScan: makeScan(),
     });
     render(<ScreenerDrawer />, { wrapper: wrap(qc(), '/live') });
     await waitFor(() => expect(screen.getByText('삼성전자')).toBeInTheDocument());
@@ -434,7 +551,7 @@ describe('ScreenerDrawer', () => {
     vi.spyOn(savesApi, 'listSaves').mockResolvedValue({ schema_version: 1, saves: [SAVE] });
     useScreenerPanelStore.setState({
       selectedSavedId: 's1',
-      lastScan: { savedId: 's1', savedName: '돌파+거래대금', rows: ROWS, scanStatus: 'ok', warnings: [] },
+      lastScan: makeScan(),
     });
     render(<ScreenerDrawer />, { wrapper: wrap(qc(), '/live') });
     await waitFor(() => expect(screen.getByText('삼성전자')).toBeInTheDocument());
@@ -453,7 +570,7 @@ describe('ScreenerDrawer', () => {
     });
     useScreenerPanelStore.setState({
       selectedSavedId: 's1',
-      lastScan: { savedId: 's1', savedName: '돌파+거래대금', rows: ROWS, scanStatus: 'ok', warnings: [] },
+      lastScan: makeScan(),
     });
     render(<ScreenerDrawer />, { wrapper: wrap(qc(), '/live') });
     await waitFor(() => expect(screen.getByText('72,400원 (+3.40%)')).toBeInTheDocument()); // live quote (005930)
@@ -478,7 +595,7 @@ describe('ScreenerDrawer', () => {
     });
     useScreenerPanelStore.setState({
       selectedSavedId: 's1',
-      lastScan: { savedId: 's1', savedName: '돌파+거래대금', rows: ROWS, scanStatus: 'ok', warnings: [] },
+      lastScan: makeScan(),
     });
     render(<ScreenerDrawer />, { wrapper: wrap(qc(), '/live') });
     // 멤버십은 watchlist 쿼리(비동기) 로드 후 반영 → aria-pressed를 waitFor.
@@ -500,7 +617,7 @@ describe('ScreenerDrawer', () => {
       price: 1000, trade_value_won: 1e10, change_pct: 0.5,
     }));
     vi.spyOn(client, 'apiCall').mockImplementation((path: string) => {
-      const codes = (path.split('codes=')[1] ?? '').split(',').filter(Boolean);
+      const codes = liveQuoteCodesFromPath(path);
       return Promise.resolve({
         phase: 'open',
         quotes: codes.map((c) => ({ code: c, price: 99999, change_pct: 7.7, change_won: 5000 })),
@@ -508,7 +625,7 @@ describe('ScreenerDrawer', () => {
     });
     useScreenerPanelStore.setState({
       selectedSavedId: 's1',
-      lastScan: { savedId: 's1', savedName: '돌파+거래대금', rows, scanStatus: 'ok', warnings: [] },
+      lastScan: makeScan({ rows, savedUpdatedAtMs: 0 }),
     });
     render(<ScreenerDrawer />, { wrapper: wrap(qc(), '/live') });
     // 행은 EOD(1,000원)로 먼저 렌더되고 라이브 quote 가 비동기로 덮는다. cap 이
@@ -522,7 +639,7 @@ describe('ScreenerDrawer', () => {
     vi.spyOn(savesApi, 'listSaves').mockResolvedValue({ schema_version: 1, saves: [SAVE] });
     useScreenerPanelStore.setState({
       selectedSavedId: 's1',
-      lastScan: { savedId: 's1', savedName: '돌파+거래대금', rows: ROWS, scanStatus: 'ok', warnings: [] },
+      lastScan: makeScan(),
     });
     const hitTest = (clientX: number) => clientX < 800;
     useEntryDragStore.getState().registerChartTarget(hitTest);
@@ -565,7 +682,7 @@ describe('ScreenerDrawer', () => {
     ];
     useScreenerPanelStore.setState({
       selectedSavedId: 's1',
-      lastScan: { savedId: 's1', savedName: '돌파+거래대금', rows, scanStatus: 'ok', warnings: [] },
+      lastScan: makeScan({ rows, savedUpdatedAtMs: 0 }),
     });
     const hitTest = (clientX: number) => clientX < 800;
     useEntryDragStore.getState().registerChartTarget(hitTest);
@@ -604,7 +721,7 @@ describe('ScreenerDrawer', () => {
     vi.spyOn(savesApi, 'listSaves').mockResolvedValue({ schema_version: 1, saves: [SAVE] });
     useScreenerPanelStore.setState({
       selectedSavedId: 's1',
-      lastScan: { savedId: 's1', savedName: '돌파+거래대금', rows: ROWS, scanStatus: 'ok', warnings: [] },
+      lastScan: makeScan(),
     });
     const hitTest = (clientX: number) => clientX < 800;
     useEntryDragStore.getState().registerChartTarget(hitTest);
@@ -633,7 +750,7 @@ describe('ScreenerDrawer', () => {
     vi.spyOn(savesApi, 'listSaves').mockResolvedValue({ schema_version: 1, saves: [SAVE] });
     useScreenerPanelStore.setState({
       selectedSavedId: 's1',
-      lastScan: { savedId: 's1', savedName: '돌파+거래대금', rows: ROWS, scanStatus: 'ok', warnings: [] },
+      lastScan: makeScan(),
     });
     render(<ScreenerDrawer />, { wrapper: wrap(qc(), '/live') });
     await waitFor(() => expect(screen.getByText('삼성전자')).toBeInTheDocument());
@@ -652,7 +769,7 @@ describe('ScreenerDrawer', () => {
     vi.spyOn(savesApi, 'listSaves').mockResolvedValue({ schema_version: 1, saves: [SAVE] });
     useScreenerPanelStore.setState({
       selectedSavedId: 's1',
-      lastScan: { savedId: 's1', savedName: '돌파+거래대금', rows: ROWS, scanStatus: 'ok', warnings: [] },
+      lastScan: makeScan(),
     });
     render(<ScreenerDrawer />, { wrapper: wrap(qc(), '/live') });
     await waitFor(() => expect(screen.getByText('삼성전자')).toBeInTheDocument());
@@ -680,7 +797,7 @@ describe('ScreenerDrawer', () => {
     vi.spyOn(savesApi, 'listSaves').mockResolvedValue({ schema_version: 1, saves: [SAVE] });
     useScreenerPanelStore.setState({
       selectedSavedId: 's1',
-      lastScan: { savedId: 's1', savedName: '돌파+거래대금', rows: ROWS, scanStatus: 'ok', warnings: [] },
+      lastScan: makeScan(),
     });
     const hitTest = () => true;
     useEntryDragStore.getState().registerChartTarget(hitTest);
