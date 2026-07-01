@@ -1,6 +1,6 @@
 from pathlib import Path
 
-from hoga.api.models import SignalAlertSettingsUpdate, SellTotalRenewalSettings
+from hoga.api.models import SellTotalRenewalSettings, SignalAlertSettingsUpdate
 from hoga.live.signal_alert_monitor import SignalAlertMonitor
 from hoga.live.signal_alerts import read_signal_alerts, update_signal_alert_settings
 

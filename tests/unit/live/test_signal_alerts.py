@@ -1,6 +1,6 @@
+from concurrent.futures import ThreadPoolExecutor
 from multiprocessing import get_context
 from pathlib import Path
-from concurrent.futures import ThreadPoolExecutor
 from threading import Barrier
 
 import pytest
@@ -34,10 +34,6 @@ def event(seq: int, code: str = "005930") -> SignalAlertEvent:
 
 
 def _append_worker(data_dir: str, code: str, ready, out_queue) -> None:
-    from pathlib import Path
-
-    from hoga.live.signal_alerts import append_signal_alert
-
     ready.wait()
     result = append_signal_alert(Path(data_dir), event(0, code))
     out_queue.put((result.seq, result.id))
@@ -92,7 +88,9 @@ def test_append_signal_alert_allocates_increasing_seq_atomically(tmp_path: Path)
         _id == f"20260701:{_id.split(':')[1]}:sell_total_renewal:{seq}:ws"
         for seq, _id in results
     )
-    assert [r.seq for r in read_signal_alerts(tmp_path, "20260701", limit=10, scope="all")] == [2, 1]
+    assert [
+        r.seq for r in read_signal_alerts(tmp_path, "20260701", limit=10, scope="all")
+    ] == [2, 1]
 
 
 def test_append_signal_alert_rewrites_id_to_assigned_seq(tmp_path: Path) -> None:
@@ -144,7 +142,9 @@ def test_clear_today_hides_inbox_without_truncating_ledger(tmp_path: Path) -> No
     assert cleared.date == "20260701"
     assert cleared.cleared_through_seq == 2
     assert read_signal_alerts(tmp_path, "20260701", limit=10, scope="inbox") == []
-    assert [r.seq for r in read_signal_alerts(tmp_path, "20260701", limit=10, scope="all")] == [2, 1]
+    assert [
+        r.seq for r in read_signal_alerts(tmp_path, "20260701", limit=10, scope="all")
+    ] == [2, 1]
 
     append_signal_alert(tmp_path, event(3))
     assert [r.seq for r in read_signal_alerts(tmp_path, "20260701", limit=10, scope="inbox")] == [3]

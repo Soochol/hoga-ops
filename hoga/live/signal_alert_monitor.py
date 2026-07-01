@@ -102,29 +102,25 @@ class SignalAlertMonitor:
 
         if candidate < state.baseline * _REARM_RATIO:
             state.armed = True
-            return None
-        if not state.armed:
-            return None
-        if candidate < (state.baseline * settings.threshold_pct / 100):
-            return None
-
-        event = append_signal_alert(
-            self._data_dir,
-            SignalAlertEvent(
-                id=f"{date}:{code}:sell_total_renewal:0:{source}",
-                signal="sell_total_renewal",
-                seq=0,
-                code=code,
-                name=name,
-                t_ms=t_ms,
-                date=date,
-                source=source,
-                value=candidate,
-                baseline=state.baseline,
-                ratio_pct=round(candidate / state.baseline * 100, 1),
-                use_intra_minute_max=settings.use_intra_minute_max,
-            ),
-        )
-        self._publish(event.model_dump(mode="json"))
-        state.armed = False
-        return event
+        elif state.armed and candidate >= (state.baseline * settings.threshold_pct / 100):
+            event = append_signal_alert(
+                self._data_dir,
+                SignalAlertEvent(
+                    id=f"{date}:{code}:sell_total_renewal:0:{source}",
+                    signal="sell_total_renewal",
+                    seq=0,
+                    code=code,
+                    name=name,
+                    t_ms=t_ms,
+                    date=date,
+                    source=source,
+                    value=candidate,
+                    baseline=state.baseline,
+                    ratio_pct=round(candidate / state.baseline * 100, 1),
+                    use_intra_minute_max=settings.use_intra_minute_max,
+                ),
+            )
+            self._publish(event.model_dump(mode="json"))
+            state.armed = False
+            return event
+        return None

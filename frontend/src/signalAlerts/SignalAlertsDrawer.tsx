@@ -51,27 +51,17 @@ export default function SignalAlertsDrawer({ today = todayKst() }: { today?: str
   const markPanelSeen = useSignalAlertInboxStore((state) => state.markPanelSeen);
   const resetForClear = useSignalAlertInboxStore((state) => state.resetForClear);
   const [confirmingClear, setConfirmingClear] = useState(false);
-  const [clearedLocally, setClearedLocally] = useState(false);
   const alerts = useMemo(() => data?.alerts ?? [], [data?.alerts]);
-  const visibleAlerts = clearedLocally ? [] : alerts;
+  const visibleAlerts = alerts;
 
   useEffect(() => {
     markPanelSeen();
   }, [markPanelSeen]);
 
-  useEffect(() => {
-    setClearedLocally(false);
-  }, [today]);
-
-  useEffect(() => {
-    if (alerts.length > 0) setClearedLocally(false);
-  }, [alerts.length]);
-
   const clearVisibleInbox = () => {
     clearToday.mutate(undefined, {
       onSuccess: (result) => {
         resetForClear(today);
-        setClearedLocally(true);
         queryClient.setQueryData<SignalAlertRecentResponse>(signalAlertRecentKey(today), (current) => {
           if (!current) return current;
           return {

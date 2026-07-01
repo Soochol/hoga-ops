@@ -1,7 +1,11 @@
 import { useEffect, useState } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { loadConfig, type AppConfig } from '../config';
-import { usePatchSignalAlertSettings, useSignalAlertSettings } from '../api/signalAlerts';
+import {
+  usePatchSignalAlertSettings,
+  useSignalAlertSettings,
+  type SignalAlertSettings,
+} from '../api/signalAlerts';
 import { getSymbolMasterInfo, refreshSymbols } from '../api/symbols';
 import { SYMBOLS_QUERY_KEY } from '../capture/useSymbols';
 import { symbolMasterSettingsHints } from '../api/upstream-hints';
@@ -12,12 +16,14 @@ import { SettingsRow, ToggleSwitch } from '../live/settings/SettingsRow';
 
 const VERSION = 'v0.1.0';
 const SYMBOLS_INFO_QUERY_KEY = ['symbols', 'info'] as const;
-const DEFAULT_SIGNAL_ALERT_RULE = {
+type SignalAlertRule = SignalAlertSettings['sell_total_renewal'];
+
+const DEFAULT_SIGNAL_ALERT_RULE: SignalAlertRule = {
   enabled: true,
   start_hhmm: 1100,
   threshold_pct: 100,
   use_intra_minute_max: true,
-} as const;
+};
 
 function formatRelative(ms: number | null | undefined): string {
   if (ms === null || ms === undefined) return 'Never';
@@ -105,17 +111,22 @@ function SymbolMasterSection() {
 
 function SignalAlertSettingsSection() {
   const { data } = useSignalAlertSettings();
-  const patch = usePatchSignalAlertSettings();
   const serverRule = data?.sell_total_renewal ?? DEFAULT_SIGNAL_ALERT_RULE;
+  const editorKey = [
+    serverRule.enabled,
+    serverRule.start_hhmm,
+    serverRule.threshold_pct,
+    serverRule.use_intra_minute_max,
+  ].join(':');
+
+  return <SignalAlertSettingsEditor key={editorKey} serverRule={serverRule} />;
+}
+
+function SignalAlertSettingsEditor({ serverRule }: { serverRule: SignalAlertRule }) {
+  const patch = usePatchSignalAlertSettings();
   const [draftRule, setDraftRule] = useState(serverRule);
   const [startTime, setStartTime] = useState(() => formatHhmm(serverRule.start_hhmm));
   const [threshold, setThreshold] = useState(() => String(serverRule.threshold_pct));
-
-  useEffect(() => {
-    setDraftRule(serverRule);
-    setStartTime(formatHhmm(serverRule.start_hhmm));
-    setThreshold(String(serverRule.threshold_pct));
-  }, [serverRule]);
 
   const update = (next: typeof draftRule) => {
     setDraftRule(next);

@@ -12,7 +12,7 @@ type Store = {
 export const useSignalAlertInboxStore = create<Store>((set) => ({
   unreadCount: 0,
   lastSeenAtMs: 0,
-  noteIncoming: (_event) => set((state) => ({ unreadCount: state.unreadCount + 1 })),
+  noteIncoming: () => set((state) => ({ unreadCount: state.unreadCount + 1 })),
   markPanelSeen: () => set({ unreadCount: 0, lastSeenAtMs: Date.now() }),
-  resetForClear: (_date) => set({ unreadCount: 0, lastSeenAtMs: Date.now() }),
+  resetForClear: () => set({ unreadCount: 0, lastSeenAtMs: Date.now() }),
 }));

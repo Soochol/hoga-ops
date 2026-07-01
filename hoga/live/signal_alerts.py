@@ -1,8 +1,8 @@
 from __future__ import annotations
 
 import contextlib
-import json
 import fcntl
+import json
 import threading
 from datetime import datetime
 from pathlib import Path
@@ -149,15 +149,14 @@ def assign_next_seq(data_dir: Path, event: SignalAlertEvent) -> SignalAlertEvent
 
 
 def append_signal_alert(data_dir: Path, event: SignalAlertEvent) -> SignalAlertEvent:
-    with _locked_data_dir(data_dir):
-        with _lock:
-            date = _validate_date(event.date)
-            event = _with_assigned_seq(event, _next_seq_unlocked(data_dir, date))
-            path = _ledger_path(data_dir, date)
-            path.parent.mkdir(parents=True, exist_ok=True)
-            with path.open("a", encoding="utf-8") as f:
-                f.write(event.model_dump_json() + "\n")
-            return event
+    with _locked_data_dir(data_dir), _lock:
+        date = _validate_date(event.date)
+        event = _with_assigned_seq(event, _next_seq_unlocked(data_dir, date))
+        path = _ledger_path(data_dir, date)
+        path.parent.mkdir(parents=True, exist_ok=True)
+        with path.open("a", encoding="utf-8") as f:
+            f.write(event.model_dump_json() + "\n")
+        return event
 
 
 def read_signal_alerts(

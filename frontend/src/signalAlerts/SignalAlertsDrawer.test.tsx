@@ -64,7 +64,7 @@ describe('SignalAlertsDrawer', () => {
     vi.mocked(signalAlerts.useClearSignalAlertToday).mockReturnValue({
       mutate: clearToday,
       isPending: false,
-    } as ReturnType<typeof signalAlerts.useClearSignalAlertToday>);
+    } as unknown as ReturnType<typeof signalAlerts.useClearSignalAlertToday>);
 
     const { qc } = renderWithProviders(<SignalAlertsDrawer today="20260701" />);
 
