@@ -24,7 +24,7 @@ export function projectTabToActiveView(
     instrument: tab?.instrument ?? (tab?.code ? stockInstrument(tab.code, tab.label) : null),
     code: tab?.code ?? null,
     timeframe: tab?.timeframe ?? currentPageTimeframe,
-    historicalFromDate: null,
+    historicalFromDate: tab?.historicalFromDate ?? null,
     viewport: tab?.viewport ?? null,
   };
 }

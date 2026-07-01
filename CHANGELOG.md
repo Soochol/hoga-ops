@@ -3,6 +3,11 @@
 All notable changes to this project are documented here.
 The format follows a 4-digit `MAJOR.MINOR.PATCH.MICRO` scheme.
 
+## [0.12.23.2] - 2026-07-01
+
+### Fixed
+- **/live 과거 캔들 범위 탭 복원**: 과거로 이동해 추가 캔들을 불러온 탭은 전환 후 복귀 시 메모리에 저장된 historical range를 먼저 되살려, 보던 과거 구간·줌·우측 패딩 복원이 기본 데이터 범위 부족이나 fitting 로직에 의해 최신 구간으로 밀리지 않도록 했다. 새로고침 후에는 이 범위도 복원하지 않는다.
+
 ## [0.12.23.1] - 2026-07-01
 
 ### Fixed

@@ -26,7 +26,7 @@ describe('live tab projection policy', () => {
       instrument: { kind: 'stock', code: '005930', label: '삼성전자' },
       code: '005930',
       timeframe: 'D',
-      historicalFromDate: null,
+      historicalFromDate: '2026-01-02',
       viewport,
     });
   });
