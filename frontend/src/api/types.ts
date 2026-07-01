@@ -1,3 +1,5 @@
+import type { SignalAlertEvent } from './signalAlerts';
+
 // Mirrors hoga/api/models.py — keep in sync by hand.
 
 /** Per ADR-0020 — backend `DiskState` values surfaced as a string.
@@ -245,6 +247,7 @@ export interface CaptureEventBase {
 export type PushEvent =
   | { type: 'inventory_added'; code: string; date: string }
   | { type: 'inventory_removed'; code: string; date: string }
+  | SignalAlertEvent
   | (CaptureEventBase & { type: 'capture_progress'; progress: CaptureProgress })
   | (CaptureEventBase & { type: 'capture_phase' })
   | (CaptureEventBase & {
