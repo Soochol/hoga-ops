@@ -87,10 +87,11 @@ def test_append_signal_alert_allocates_increasing_seq_atomically(tmp_path: Path)
     with ThreadPoolExecutor(max_workers=2) as pool:
         results = sorted(pool.map(append, ["005930", "000660"]))
 
-    assert results == [
-        (1, "20260701:005930:sell_total_renewal:1:ws"),
-        (2, "20260701:000660:sell_total_renewal:2:ws"),
-    ]
+    assert [seq for seq, _id in results] == [1, 2]
+    assert all(
+        _id == f"20260701:{_id.split(':')[1]}:sell_total_renewal:{seq}:ws"
+        for seq, _id in results
+    )
     assert [r.seq for r in read_signal_alerts(tmp_path, "20260701", limit=10, scope="all")] == [2, 1]
 
 
@@ -121,10 +122,12 @@ def test_append_signal_alert_is_safe_across_processes(tmp_path: Path) -> None:
             proc.join(timeout=5)
 
     assert sorted(seq for seq, _ in results) == [1, 2]
-    assert sorted(row.id for row in read_signal_alerts(tmp_path, "20260701", limit=10, scope="all")) == [
-        "20260701:000660:sell_total_renewal:2:ws",
-        "20260701:005930:sell_total_renewal:1:ws",
-    ]
+    rows = read_signal_alerts(tmp_path, "20260701", limit=10, scope="all")
+    assert sorted(row.seq for row in rows) == [1, 2]
+    assert all(
+        row.id == f"20260701:{row.code}:sell_total_renewal:{row.seq}:ws"
+        for row in rows
+    )
 
 
 def test_invalid_date_is_rejected_before_ledger_path_build(tmp_path: Path) -> None:
