@@ -1,8 +1,11 @@
 from pathlib import Path
 
+import pytest
+
 from hoga.api.models import SignalAlertEvent, SignalAlertSettingsUpdate
 from hoga.live.signal_alerts import (
     append_signal_alert,
+    assign_next_seq,
     clear_today_inbox,
     load_signal_alert_settings,
     read_signal_alerts,
@@ -59,6 +62,20 @@ def test_alerts_are_date_partitioned_and_read_newest_first(tmp_path: Path) -> No
 
     assert [r.seq for r in rows] == [2, 1]
     assert [r.code for r in rows] == ["000660", "005930"]
+
+
+def test_assign_next_seq_is_monotonic_from_existing_ledger(tmp_path: Path) -> None:
+    append_signal_alert(tmp_path, event(1))
+    append_signal_alert(tmp_path, event(2))
+
+    assigned = assign_next_seq(tmp_path, event(99))
+
+    assert assigned.seq == 3
+
+
+def test_invalid_date_is_rejected_before_ledger_path_build(tmp_path: Path) -> None:
+    with pytest.raises(ValueError):
+        append_signal_alert(tmp_path, event(1).model_copy(update={"date": "../20260701"}))
 
 
 def test_clear_today_hides_inbox_without_truncating_ledger(tmp_path: Path) -> None:
