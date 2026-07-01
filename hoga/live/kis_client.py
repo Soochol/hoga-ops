@@ -316,6 +316,7 @@ class KisQuote:
     high: int | None = None
     low: int | None = None
     volume: int | None = None
+    previous_close: int | None = None
 
 
 @dataclass(frozen=True)
@@ -1677,6 +1678,7 @@ def _parse_quote(row: dict) -> KisQuote | None:
         high=_parse_ohlc_field(row.get("inter2_hgpr")),
         low=_parse_ohlc_field(row.get("inter2_lwpr")),
         volume=_parse_optional_int_field(row.get("acml_vol")),
+        previous_close=_parse_ohlc_field(row.get("inter2_prdy_clpr")),
     )
 
 

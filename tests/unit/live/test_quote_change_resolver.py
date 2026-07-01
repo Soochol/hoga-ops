@@ -39,6 +39,25 @@ def test_uses_adjusted_baseline_when_kis_change_rate_disagrees(tmp_path):
     assert out.warnings == []
 
 
+def test_uses_kis_previous_close_before_adjusted_daily(tmp_path):
+    daily = tmp_path / "daily_adjusted.parquet"
+    _write_adjusted_daily(
+        daily,
+        [("005930", "2026-06-26", 100, 100, 100, 100, 100)],
+    )
+    resolver = QuoteChangeResolver(adjusted_daily_path=daily)
+
+    q = KisQuote(code="005930", price=111, change_pct=99.0, change_won=99, previous_close=110)
+    out = resolver.resolve_quote(q, phase="open")
+
+    assert out.change_pct == 0.91
+    assert out.change_won == 1
+    assert out.change_pct_source == "kis"
+    assert out.baseline_price == 110
+    assert out.baseline_date is None
+    assert out.warnings == []
+
+
 def test_uses_adjusted_baseline_without_warning_when_kis_matches(tmp_path):
     daily = tmp_path / "daily_adjusted.parquet"
     _write_adjusted_daily(

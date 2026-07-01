@@ -62,14 +62,30 @@ class QuoteChangeResolver:
         warnings: list[str] = []
 
         if phase == "pre_open":
+            previous_close = self._valid_previous_close(q)
+            baseline_price = previous_close if previous_close is not None else (baseline.close if baseline else None)
+            baseline_date = None if previous_close is not None else (baseline.date if baseline else None)
             return QuoteChangeResolution(
                 code=q.code,
                 price=q.price,
                 change_pct=None,
                 change_won=None,
-                baseline_price=baseline.close if baseline else None,
-                baseline_date=baseline.date if baseline else None,
+                baseline_price=baseline_price,
+                baseline_date=baseline_date,
                 change_pct_source="hidden_pre_open",
+            )
+
+        previous_close = self._valid_previous_close(q)
+        if previous_close is not None:
+            return QuoteChangeResolution(
+                code=q.code,
+                price=q.price,
+                change_pct=round((q.price / previous_close - 1.0) * 100.0, 2),
+                change_won=round(q.price - previous_close),
+                baseline_price=previous_close,
+                baseline_date=None,
+                change_pct_source="kis",
+                warnings=warnings,
             )
 
         adjusted_pct = self._adjusted_change_pct(q, baseline)
@@ -189,6 +205,11 @@ class QuoteChangeResolver:
         if baseline is None or baseline.close <= 0 or q.price <= 0:
             return None
         return round((q.price / baseline.close - 1.0) * 100.0, 2)
+
+    def _valid_previous_close(self, q: KisQuote) -> int | None:
+        if q.previous_close is None or q.previous_close <= 0 or q.price <= 0:
+            return None
+        return q.previous_close
 
     def _baseline_scale_mismatch(self, q: KisQuote, baseline: _Baseline) -> bool:
         quote_prices = [
