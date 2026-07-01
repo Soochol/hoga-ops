@@ -3129,7 +3129,7 @@ describe('LiveChartRoot wheel interactions wiring', () => {
     expect(options).toMatchObject({ handleScale: { mouseWheel: false } });
   });
 
-  it('sets a visible pane separator color for candle/volume boundaries', () => {
+  it('keeps pane separator hover color subdued for candle/volume boundaries', () => {
     render(
       <LiveChartRoot
         code="005930"
@@ -3141,10 +3141,11 @@ describe('LiveChartRoot wheel interactions wiring', () => {
       { wrapper },
     );
     const options = vi.mocked(createChartEx).mock.calls.at(-1)![2] as {
-      layout?: { panes?: { separatorColor?: string; separatorHoverColor?: string } };
+      layout?: { textColor?: string; panes?: { separatorColor?: string; separatorHoverColor?: string } };
     };
-    expect(options.layout?.panes?.separatorColor).toBeTruthy();
-    expect(options.layout?.panes?.separatorHoverColor).toBeTruthy();
+    expect(options.layout?.panes?.separatorColor).toBe('#253040');
+    expect(options.layout?.panes?.separatorHoverColor).toBe('#253040');
+    expect(options.layout?.panes?.separatorHoverColor).not.toBe(options.layout?.textColor);
   });
 
   it('initializes chart grid visibility from saved settings', () => {
