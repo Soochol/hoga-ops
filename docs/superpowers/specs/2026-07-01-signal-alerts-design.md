@@ -56,8 +56,8 @@ stock in `/live`.
 - Persist alert settings and same-day alert history across browser refreshes.
 - Surface alerts immediately as app toasts and in a right-side alert inbox.
 - Let users click an alert row to open or focus that stock in `/live`.
-- Let users clear today's alert inbox from the right rail, with the cleared
-  state persisted to disk.
+- Let users clear today's visible alert inbox from the right rail while keeping
+  the date-partitioned alert history on disk for later lookup.
 - Follow existing UI structure: Settings for parameters, RightRail/RailShell for
   the alert inbox.
 
@@ -164,19 +164,42 @@ Files:
 
 - `<data_dir>/signal_alert_settings.json`
 - `<data_dir>/signal_alerts/YYYYMMDD.jsonl`
+- `<data_dir>/signal_alert_inbox_state.json`
+
+`signal_alerts/YYYYMMDD.jsonl` is the append-only alert ledger for that date.
+Inbox clear actions must not delete or truncate these files, because a later
+date-based history view will read the full ledger.
+
+`signal_alert_inbox_state.json` stores the right-rail inbox projection state:
+
+```json
+{
+  "schema_version": 1,
+  "cleared_through_seq_by_date": {
+    "20260701": 42
+  }
+}
+```
 
 API:
 
 - `GET /api/signal-alerts/settings`
 - `PATCH /api/signal-alerts/settings`
-- `GET /api/signal-alerts/recent?date=YYYYMMDD&limit=100`
+- `GET /api/signal-alerts/recent?date=YYYYMMDD&limit=100&scope=inbox`
 - `POST /api/signal-alerts/clear-today`
 
-`clear-today` clears today's persisted alert history, not only the current
-browser view. It must acquire the same alert-store lock used by the persistence
-queue, atomically replace `<data_dir>/signal_alerts/YYYYMMDD.jsonl` with an
-empty file, and return the cleared date plus count cleared. Alerts emitted after
-the clear are appended to the fresh file and appear normally after refresh.
+`scope=inbox` returns only alerts whose `seq` is greater than that date's
+`cleared_through_seq`. This is the right-rail default. A later date-history UI
+can add `scope=all` to read the full date ledger without changing the storage
+format.
+
+`clear-today` clears today's visible inbox only. It must acquire the same
+alert-store lock used by the persistence queue, read today's latest alert `seq`,
+write that value to `signal_alert_inbox_state.json` as
+`cleared_through_seq_by_date[YYYYMMDD]`, and return the cleared date plus
+`cleared_through_seq`. Alerts emitted after the clear receive larger `seq`
+values, remain appended to the same date ledger, and appear normally after
+refresh.
 
 Event:
 
@@ -185,6 +208,7 @@ Event:
   "type": "signal_alert",
   "id": "20260701:005930:sell_total_renewal:1779851250000:ws",
   "signal": "sell_total_renewal",
+  "seq": 43,
   "code": "005930",
   "name": "삼성전자",
   "t_ms": 1779851250000,
@@ -198,6 +222,8 @@ Event:
 ```
 
 Backend writes the event to JSONL before publishing to the WebSocket event bus.
+`seq` is monotonically increasing within each date ledger and is the stable
+boundary used by inbox clear state.
 
 ### Settings UI
 
@@ -223,7 +249,7 @@ Panel content:
 
 - header: `시그널 알림`
 - status line: today's count and last received time
-- header action: clear today's alerts
+- header action: clear today's inbox
 - alert list, newest first
 - empty state when no alerts today
 
@@ -247,18 +273,19 @@ Unread state:
 - The right rail alert button shows an unread dot or count while the alert
   panel is not active.
 - Opening the panel marks currently loaded alerts as seen in local UI state.
-- Clearing alerts also resets unread state for the cleared date.
+- Clearing the inbox also resets unread state for the cleared date.
 
 Clear action:
 
-- Use the existing compact panel-header action style, with a trash/clear icon
-  button and accessible label `오늘 알림 비우기`.
+- Use the existing compact panel-header action style, with a clear icon button
+  and accessible label `오늘 인박스 비우기`.
 - Disable the button when today's list is empty.
 - On click, show an existing confirmation modal/popover pattern with copy:
-  `오늘 시그널 알림 내역을 비울까요?`
+  `오늘 시그널 알림 인박스를 비울까요? 기록은 날짜별 내역에 보관됩니다.`
 - On confirm, call `POST /api/signal-alerts/clear-today`.
-- On success, remove all rows for that date from the panel, reset today's count
-  and unread badge, and keep listening for new `signal_alert` events.
+- On success, remove rows with `seq <= cleared_through_seq` for that date from
+  the panel, reset today's visible count and unread badge, and keep listening
+  for new `signal_alert` events.
 - On failure, leave the list unchanged and show an app-local error toast.
 
 ### Toasts
@@ -303,8 +330,8 @@ No system notification or sound in this scope.
 - Right rail alert panel renders loaded history.
 - Incoming `signal_alert` prepends a row and increments unread count.
 - Clicking a row opens/focuses the live stock tab.
-- Clearing today's alerts empties the right rail list, resets unread state, and
-  persists across a reload.
+- Clearing today's inbox hides existing rows, resets unread state, persists
+  across a reload, and does not remove the date JSONL ledger.
 - Settings `시그널 알림` category renders the four controls and no history list.
 
 ### Manual verification
@@ -315,8 +342,9 @@ No system notification or sound in this scope.
 4. Open the right rail **알림** panel and click a row.
 5. Confirm `/live` opens the expected stock.
 6. Refresh the browser and confirm today's alert history still loads.
-7. Clear today's alerts, refresh again, and confirm the list stays empty until
-   a new alert arrives.
+7. Clear today's inbox, refresh again, and confirm the right rail stays empty
+   until a new alert arrives.
+8. Inspect the date JSONL and confirm cleared alerts remain on disk.
 
 ## Risks / Open Questions
 
@@ -333,4 +361,5 @@ No system notification or sound in this scope.
 - Alert rule builder for additional indicators.
 - User-configurable rearm threshold.
 - Filtering alert inbox by folder, source, or signal type.
+- Date-based full alert history browser using the preserved JSONL ledgers.
 - Centering the live chart viewport around the alert timestamp.
