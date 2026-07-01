@@ -9,6 +9,7 @@ import { useActivePrefs } from '../state/chartPrefs';
 import { formatQtyCompact } from '../util/formatQtyCompact';
 import {
   AskPeakSegmentsPrimitive,
+  inlinePeakWallSegmentsForDocking,
   type AskPeakSegment,
 } from '../chart/AskPeakSegmentsPrimitive';
 
@@ -117,6 +118,20 @@ export function styleVisibleMaxAskPeakSegments(
     highlighted.has(index)
       ? { ...segment, color: style.color, lineWidth: style.lineWidth }
       : segment
+  ));
+}
+
+export function prepareAskPeakSegmentsForRender(
+  segments: readonly AskPeakSegment[],
+  visibleRange: IRange<Time> | null,
+  visibleMaxStyle: { color: string; lineWidth: number },
+  visibleMaxRankLimit: 1 | 2 | 3,
+): AskPeakSegment[] {
+  return inlinePeakWallSegmentsForDocking(styleVisibleMaxAskPeakSegments(
+    segments,
+    visibleRange,
+    visibleMaxStyle,
+    visibleMaxRankLimit,
   ));
 }
 
@@ -327,7 +342,7 @@ function LiveAskPeakSegments({ paneSeries, axis, dayAskPeaks, todayAllPriceAskPe
       allPriceRankLimit: allPriceRankLimit as 1 | 2 | 3,
     });
     const visibleRange = prim.chartApi()?.timeScale().getVisibleRange() ?? null;
-    prim.setSegments(styleVisibleMaxAskPeakSegments(
+    prim.setSegments(prepareAskPeakSegmentsForRender(
       rawSegments,
       visibleRange,
       { color: visibleMaxColor, lineWidth: visibleMaxLineWidth },

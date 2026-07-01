@@ -2,9 +2,13 @@ import { describe, it, expect } from 'vitest';
 import {
   buildAskPeakSegments,
   buildAskPeakOverlaySegments,
+  prepareAskPeakSegmentsForRender,
   styleVisibleMaxAskPeakSegments,
 } from './LiveAskPeakSegments';
-import { buildBidPeakOverlaySegments } from './LiveBidPeakSegments';
+import {
+  buildBidPeakOverlaySegments,
+  prepareBidPeakSegmentsForRender,
+} from './LiveBidPeakSegments';
 import type { AskPeak, BidPeak, RangeSegment, Candle } from '../api/types';
 import type { VirtualAxis } from '../util/virtualAxis';
 import type { Time } from 'lightweight-charts';
@@ -716,5 +720,81 @@ describe('buildAskPeakOverlaySegments', () => {
     expect(out).toHaveLength(2);
     expect(out.map((s) => s.price)).toEqual([100, 110]);
     expect(out[1]).toMatchObject({ color: '#F97316', lineWidth: 1 });
+  });
+});
+
+describe('live peak-wall inline label suppression', () => {
+  it('suppresses only today ask inline labels after ask styling is applied', () => {
+    const raw = buildAskPeakOverlaySegments({
+      dayAskPeaks: [
+        peak({ date: '20260612', price: 100, qty: 50, t_ms: 120000 }),
+        peak({ date: '20260613', price: 110, qty: 80, t_ms: 180000 }),
+      ],
+      todayAllPriceAskPeak: null,
+      segments: [seg('20260612', 60000, 240000), seg('20260613', 60000, 240000)],
+      candles: [candle(60000), candle(120000), candle(180000)],
+      axis,
+      todayKst: '20260613',
+      baselineStyle: { color: '#1D4ED8', lineWidth: 2 },
+      allPriceStyle: { color: '#F97316', lineWidth: 1 },
+      intraMax: false,
+      showAllPrices: false,
+    });
+
+    const inline = prepareAskPeakSegmentsForRender(
+      raw,
+      { from: t(1), to: t(999) },
+      { color: '#EAB308', lineWidth: 3 },
+      1,
+    );
+    expect(inline[0].live).toBe(false);
+    expect(inline[0].label).toBe('100, 0.1k');
+    expect(inline[1].live).toBe(true);
+    expect(inline[1]).toMatchObject({
+      price: 110,
+      label: '',
+      color: '#EAB308',
+      lineWidth: 3,
+    });
+  });
+
+  it('suppresses only today bid inline labels', () => {
+    const pastBid: BidPeak = {
+      date: '20260612',
+      price: 100,
+      qty: 50,
+      t_ms: 120000,
+      max_price: 100,
+      max_qty: 50,
+      max_t_ms: 120000,
+    };
+    const todayBid: BidPeak = {
+      date: '20260613',
+      price: 90,
+      qty: 80,
+      t_ms: 180000,
+      max_price: 90,
+      max_qty: 80,
+      max_t_ms: 180000,
+    };
+    const raw = buildBidPeakOverlaySegments({
+      dayBidPeaks: [pastBid, todayBid],
+      todayAllPriceBidPeak: null,
+      segments: [seg('20260612', 60000, 240000), seg('20260613', 60000, 240000)],
+      candles: [candle(60000), candle(120000), candle(180000)],
+      axis,
+      todayKst: '20260613',
+      baselineStyle: { color: '#2563EB', lineWidth: 2 },
+      allPriceStyle: { color: '#F97316', lineWidth: 1 },
+      intraMax: false,
+      showAllPrices: false,
+    });
+
+    const inline = prepareBidPeakSegmentsForRender(raw);
+
+    expect(inline[0].live).toBe(false);
+    expect(inline[0].label).toBe('100, 0.1k');
+    expect(inline[1].live).toBe(true);
+    expect(inline[1]).toMatchObject({ price: 90, label: '', color: '#2563EB', lineWidth: 2 });
   });
 });

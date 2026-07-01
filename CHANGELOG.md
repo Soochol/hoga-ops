@@ -3,6 +3,11 @@
 All notable changes to this project are documented here.
 The format follows a 4-digit `MAJOR.MINOR.PATCH.MICRO` scheme.
 
+## [0.12.23.8] - 2026-07-01
+
+### Changed
+- **/live 당일 최대 매수·매도벽 라벨 도킹**: 장중 오늘 구간의 최대 매수벽/매도벽 가격 라벨은 캔들 위에 직접 겹쳐 그리지 않고 우측 chart pane 라벨 레인에 표시해, 캔들과 거래량 막대 가독성을 유지하도록 했다. 과거 일자 라벨은 기존 위치를 유지한다.
+
 ## [0.12.23.7] - 2026-07-01
 
 ### Fixed

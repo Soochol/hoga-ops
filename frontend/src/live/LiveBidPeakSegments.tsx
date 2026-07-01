@@ -10,6 +10,7 @@ import { formatQtyCompact } from '../util/formatQtyCompact';
 import { realMsToYyyymmdd } from './liveDateTime';
 import {
   AskPeakSegmentsPrimitive,
+  inlinePeakWallSegmentsForDocking,
   type AskPeakSegment,
 } from '../chart/AskPeakSegmentsPrimitive';
 
@@ -181,6 +182,12 @@ export function buildBidPeakOverlaySegments({
   ));
 }
 
+export function prepareBidPeakSegmentsForRender(
+  segments: readonly AskPeakSegment[],
+): AskPeakSegment[] {
+  return inlinePeakWallSegmentsForDocking(segments);
+}
+
 type Props = {
   paneSeries: PaneSeriesMap;
   axis: VirtualAxis;
@@ -228,22 +235,21 @@ function LiveBidPeakSegments({ paneSeries, axis, dayBidPeaks, todayAllPriceBidPe
   useEffect(() => {
     const prim = primRef.current;
     if (!prim) return;
-    prim.setSegments(
-      enabled
-        ? buildBidPeakOverlaySegments({
-          dayBidPeaks,
-          todayAllPriceBidPeak,
-          segments,
-          candles,
-          axis,
-          todayKst,
-          baselineStyle: { color, lineWidth },
-          allPriceStyle: { color: allPriceColor, lineWidth: allPriceLineWidth },
-          intraMax,
-          showAllPrices,
-        })
-        : [],
-    );
+    const nextSegments = enabled
+      ? buildBidPeakOverlaySegments({
+        dayBidPeaks,
+        todayAllPriceBidPeak,
+        segments,
+        candles,
+        axis,
+        todayKst,
+        baselineStyle: { color, lineWidth },
+        allPriceStyle: { color: allPriceColor, lineWidth: allPriceLineWidth },
+        intraMax,
+        showAllPrices,
+      })
+      : [];
+    prim.setSegments(prepareBidPeakSegmentsForRender(nextSegments));
   }, [
     dayBidPeaks,
     todayAllPriceBidPeak,

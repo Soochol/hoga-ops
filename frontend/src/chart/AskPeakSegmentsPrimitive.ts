@@ -37,14 +37,42 @@ export interface AskPeakSegment {
   live?: boolean;
 }
 
-const PEAK_DOT_RADIUS_PX = 3.5;
-const LABEL_GAP_PX = 3;
-const LABEL_FONT_PX = 11;
-const LABEL_ROW_GAP_PX = 5;
-const LABEL_EDGE_PAD_PX = 4;
-const LABEL_SEGMENT_PAD_PX = 8;
-const LABEL_BOX_X_PAD_PX = 4;
-const LABEL_BOX_Y_PAD_PX = 1;
+export interface PeakWallDockedLabel {
+  price: number;
+  label: string;
+  color: string;
+}
+
+export function livePeakWallDockedLabelsFromSegments(
+  segments: readonly AskPeakSegment[],
+): PeakWallDockedLabel[] {
+  return segments
+    .filter((segment) => segment.live === true && segment.label !== '')
+    .map((segment) => ({
+      price: segment.price,
+      label: segment.label,
+      color: segment.color,
+    }));
+}
+
+export function inlinePeakWallSegmentsForDocking(
+  segments: readonly AskPeakSegment[],
+): AskPeakSegment[] {
+  return segments.map((segment) => (
+    segment.live === true && segment.label !== ''
+      ? { ...segment, label: '' }
+      : segment
+  ));
+}
+
+export const PEAK_DOT_RADIUS_PX = 3.5;
+export const LABEL_GAP_PX = 3;
+export const LABEL_FONT_PX = 11;
+export const LABEL_ROW_GAP_PX = 5;
+export const LABEL_EDGE_PAD_PX = 4;
+export const LABEL_SEGMENT_PAD_PX = 8;
+export const LABEL_BOX_X_PAD_PX = 4;
+export const LABEL_BOX_Y_PAD_PX = 1;
 
 export type AskPeakLabelCandidate = {
   index: number;
