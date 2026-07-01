@@ -1,28 +1,25 @@
+## Task 1 Report
+
 Status: DONE
 
-Implemented Task 1 within the owned file boundary:
-- Promoted the quiet palette into the global dark tokens in `frontend/src/styles/tokens.css`.
-- Removed duplicated `/live` quiet-terminal token overrides from `frontend/src/styles/global.css`, keeping the scoped background and structural live-only rules.
-- Updated `DESIGN.md` aesthetic naming to `Quiet Trading Terminal` and added the dense-panel guidance sentence under Layout.
-- Added the missing class-contract assertions in `frontend/src/ui/RailShell.test.tsx` and `frontend/src/ui/WorkspaceShell.test.tsx`.
+Scope completed:
+- Implemented the pure helper interface and functions in `frontend/src/chart/AskPeakSegmentsPrimitive.ts`:
+  - Added/exported `PeakWallDockedLabel`
+  - Added/exported `livePeakWallDockedLabelsFromSegments`
+  - Added/exported `inlinePeakWallSegmentsForDocking`
+- Exported constants exactly as requested:
+  - `PEAK_DOT_RADIUS_PX`, `LABEL_GAP_PX`, `LABEL_FONT_PX`, `LABEL_ROW_GAP_PX`, `LABEL_EDGE_PAD_PX`, `LABEL_SEGMENT_PAD_PX`, `LABEL_BOX_X_PAD_PX`, `LABEL_BOX_Y_PAD_PX`
+- Appended focused tests to `frontend/src/chart/AskPeakSegmentsPrimitive.test.ts` for:
+  - `livePeakWallDockedLabelsFromSegments`
+  - `inlinePeakWallSegmentsForDocking`
 
-Notes:
-- `frontend/src/ui/PageShell.test.tsx` already contained the required `bg-bg-card` and `bg-bg-input` assertions.
-- `frontend/src/ui/DataSurface.test.tsx` already contained the required `border-b` assertion.
+TDD RED evidence:
+- Command: `cd frontend && npm test -- AskPeakSegmentsPrimitive.test.ts`
+- Failure (expected): two helper tests failed because helper exports were absent (`TypeError: ... is not a function`).
 
-Verification:
-- `cd frontend && npm test -- PageShell.test.tsx RailShell.test.tsx WorkspaceShell.test.tsx DataSurface.test.tsx --run`
-- `cd frontend && npm run build`
+TDD GREEN evidence:
+- Command: `cd frontend && npm test -- AskPeakSegmentsPrimitive.test.ts`
+- Result: `Test Files  1 passed (1), Tests 7 passed (7)`.
 
-Self-review:
-- Scope stayed within the brief’s owned files.
-- Price and status tokens were left unchanged.
-- `/live` keeps only the background selector-level difference while inheriting the new global palette.
-
-Fixes for review findings:
-- Updated `DESIGN.md` to match the quiet global palette in `frontend/src/styles/tokens.css`, including the surface, border, foreground, accent, grid, heat, and selection tint values.
-- Clarified the `frontend/src/styles/global.css` live-theme comment so it now describes live-only structural polish rather than route-exclusive palette ownership.
-
-Verification after review fixes:
-- `cd frontend && npm test -- PageShell.test.tsx RailShell.test.tsx WorkspaceShell.test.tsx DataSurface.test.tsx --run`
-- `cd frontend && npm run build`
+Commit:
+- `feat: split live peak wall labels`

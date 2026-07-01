@@ -1,8 +1,11 @@
 import { describe, expect, it } from 'vitest';
 import {
   layoutAskPeakLabels,
+  inlinePeakWallSegmentsForDocking,
+  livePeakWallDockedLabelsFromSegments,
   visibleAskPeakLabelCandidates,
   type AskPeakLabelCandidate,
+  type AskPeakSegment,
 } from './AskPeakSegmentsPrimitive';
 
 const candidate = (
@@ -68,5 +71,51 @@ describe('visibleAskPeakLabelCandidates', () => {
     ], 8);
 
     expect(out.map((l) => l.index)).toEqual([0]);
+  });
+});
+
+const segment = (overrides: Partial<AskPeakSegment> = {}): AskPeakSegment => ({
+  time0: 1 as never,
+  time1: 2 as never,
+  peakTime: 1.5 as never,
+  price: 23500,
+  qty: 17200,
+  label: '23,500, 17.2k',
+  color: '#f97316',
+  lineWidth: 2,
+  live: false,
+  ...overrides,
+});
+
+describe('live peak-wall docked label helpers', () => {
+  it('extracts labels only from live segments with visible label text', () => {
+    const out = livePeakWallDockedLabelsFromSegments([
+      segment({ live: false, label: '24,500, 16.6k', price: 24500, color: '#f97316' }),
+      segment({ live: true, label: '23,500, 17.2k', price: 23500, color: '#ec4899' }),
+      segment({ live: true, label: '', price: 23000, color: '#60a5fa' }),
+    ]);
+
+    expect(out).toEqual([
+      { price: 23500, label: '23,500, 17.2k', color: '#ec4899' },
+    ]);
+  });
+
+  it('removes only live inline label text while preserving historical labels and geometry', () => {
+    const past = segment({ live: false, label: '24,500, 16.6k', price: 24500 });
+    const live = segment({ live: true, label: '23,500, 17.2k', price: 23500 });
+    const out = inlinePeakWallSegmentsForDocking([past, live]);
+
+    expect(out[0]).toEqual(past);
+    expect(out[1]).toEqual({ ...live, label: '' });
+    expect(out[1]).toMatchObject({
+      time0: live.time0,
+      time1: live.time1,
+      peakTime: live.peakTime,
+      price: live.price,
+      qty: live.qty,
+      color: live.color,
+      lineWidth: live.lineWidth,
+      live: true,
+    });
   });
 });
