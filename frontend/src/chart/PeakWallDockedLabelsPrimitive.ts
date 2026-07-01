@@ -28,6 +28,7 @@ export function peakWallDockedLabelCandidates(
   priceToY: (price: number) => number | null,
   xRight: number,
   measureText: (text: string) => number,
+  labelGapPx: number = LABEL_GAP_PX,
 ): AskPeakLabelCandidate[] {
   const candidates: AskPeakLabelCandidate[] = [];
   for (let i = 0; i < labels.length; i += 1) {
@@ -38,7 +39,7 @@ export function peakWallDockedLabelCandidates(
     candidates.push({
       index: i,
       xRight,
-      yLine: y - LABEL_GAP_PX,
+      yLine: y - labelGapPx,
       width: measureText(label.label),
       segmentWidth: Number.POSITIVE_INFINITY,
     });
@@ -74,6 +75,7 @@ class PeakWallDockedLabelsRenderer implements IPrimitivePaneRenderer {
         },
         xRight,
         (text) => ctx.measureText(text).width,
+        LABEL_GAP_PX * vr,
       );
       if (candidates.length === 0) return;
 

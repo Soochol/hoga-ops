@@ -35,4 +35,18 @@ describe('peakWallDockedLabelCandidates', () => {
 
     expect(out.map((candidate) => candidate.index)).toEqual([0]);
   });
+
+  it('supports bitmap-scaled y coordinates by taking a scaled gap', () => {
+    const out = peakWallDockedLabelCandidates(
+      labels.slice(0, 1),
+      () => 100,
+      780,
+      () => 42,
+      6,
+    );
+
+    expect(out).toEqual([
+      { index: 0, xRight: 780, yLine: 94, width: 42, segmentWidth: Number.POSITIVE_INFINITY },
+    ]);
+  });
 });
