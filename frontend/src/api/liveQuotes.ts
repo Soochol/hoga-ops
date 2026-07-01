@@ -2,6 +2,7 @@ import { useMemo } from 'react';
 import { useQuery } from '@tanstack/react-query';
 
 import { apiCall } from './client';
+import type { LiveVenueOption } from '../state/liveVenue';
 
 export interface LiveQuote {
   code: string;
@@ -38,22 +39,25 @@ export function quotesRefetchInterval(phase: string | undefined): number {
   return phase === 'closed' ? 600_000 : 10_000;
 }
 
-export function getQuotes(codes: string[]): Promise<LiveQuotesResponse> {
-  return apiCall<LiveQuotesResponse>(`/api/live/quotes?codes=${codes.join(',')}`);
+export function getQuotes(codes: string[], venue: LiveVenueOption = 'KRX'): Promise<LiveQuotesResponse> {
+  return apiCall<LiveQuotesResponse>(`/api/live/quotes?codes=${codes.join(',')}&venue=${venue}`);
 }
 
-export function liveQuotesQueryKey(codes: string[]): readonly ['live-quotes', string] {
-  return ['live-quotes', [...codes].sort().join(',')] as const;
+export function liveQuotesQueryKey(
+  codes: string[],
+  venue: LiveVenueOption = 'KRX',
+): readonly ['live-quotes', string, LiveVenueOption] {
+  return ['live-quotes', [...codes].sort().join(','), venue] as const;
 }
 
 /** 코드 목록의 현재가+등락률을 10초 폴링. codes 비면 비활성. */
-export function useQuotes(codes: string[]) {
+export function useQuotes(codes: string[], venue: LiveVenueOption = 'KRX') {
   // 순서 무관 캐시 키: 관심종목 재정렬(같은 집합·다른 순서)이 queryKey 를 바꿔
   // 전 종목 시세를 불필요하게 재요청하지 않도록 정렬한 키를 쓴다. 백엔드 응답은
   // 코드 집합에만 의존하므로 요청 자체는 원래 순서 그대로 보낸다.
   return useQuery({
-    queryKey: liveQuotesQueryKey(codes),
-    queryFn: () => getQuotes(codes),
+    queryKey: liveQuotesQueryKey(codes, venue),
+    queryFn: () => getQuotes(codes, venue),
     enabled: codes.length > 0,
     staleTime: 10_000,
     refetchInterval: (q) => quotesRefetchInterval(q.state.data?.phase),
@@ -77,8 +81,8 @@ export interface LiveQuoteOverlay {
  *  오버레이를 {quoteByCode, phase, dataUpdatedAt} 한 인터페이스로 노출한다. Map 조립
  *  + null-가드 + 쿼리 메타(phase·신선도)를 한 곳에 모아, 셋 다 필요한 소비자(관심맵)가
  *  인라인으로 Map 을 다시 만들지 않게 한다. Map 만 필요하면 useQuoteByCode(thin view). */
-export function useLiveQuoteOverlay(codes: string[]): LiveQuoteOverlay {
-  const q = useQuotes(codes);
+export function useLiveQuoteOverlay(codes: string[], venue: LiveVenueOption = 'KRX'): LiveQuoteOverlay {
+  const q = useQuotes(codes, venue);
   const quoteByCode = useMemo(
     () => new Map<string, LiveQuote>((q.data?.quotes ?? []).map((x) => [x.code, x])),
     [q.data],
@@ -89,6 +93,6 @@ export function useLiveQuoteOverlay(codes: string[]): LiveQuoteOverlay {
 /** codes 의 Live Quote 를 코드→quote 조회 Map 으로 묶는다 — useLiveQuoteOverlay 의
  *  thin view. Map 만 필요한 관심종목/스크리너 패널·라이브 상태바가 쓴다(시그니처·
  *  동작·메모 안정성 불변). 없는 코드는 .get → undefined. */
-export function useQuoteByCode(codes: string[]): Map<string, LiveQuote> {
-  return useLiveQuoteOverlay(codes).quoteByCode;
+export function useQuoteByCode(codes: string[], venue: LiveVenueOption = 'KRX'): Map<string, LiveQuote> {
+  return useLiveQuoteOverlay(codes, venue).quoteByCode;
 }

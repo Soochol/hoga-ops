@@ -1,6 +1,7 @@
 import { useMemo } from 'react';
 import type { ScreenerRow } from '../api/screener';
 import { useQuoteByCode } from '../api/liveQuotes';
+import { useLiveVenueStore } from '../state/liveVenue';
 
 /** 스크리너 결과 행에 Live Quote 를 덮은 행. change_won 은 라이브 전용(EOD 없음). */
 export interface ScreenerRowLive extends ScreenerRow {
@@ -18,7 +19,8 @@ export interface ScreenerRowLive extends ScreenerRow {
  */
 export function useScreenerRowsLive(rows: ScreenerRow[]): ScreenerRowLive[] {
   const codes = useMemo(() => rows.map((r) => r.code), [rows]);
-  const quoteByCode = useQuoteByCode(codes);
+  const venue = useLiveVenueStore((s) => s.venue);
+  const quoteByCode = useQuoteByCode(codes, venue);
   return useMemo(
     () =>
       rows.map((r) => {

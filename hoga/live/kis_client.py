@@ -24,7 +24,7 @@ log = logging.getLogger(__name__)
 import httpx
 
 from hoga.live.kis_market import KisMarket, kis_market_div, session_window_hhmmss
-from hoga.live.kis_venue import previous_empty_page_anchor_hhmmss
+from hoga.live.kis_venue import KisVenue, kis_venue_div, previous_empty_page_anchor_hhmmss
 from hoga.live.index_registry import RepresentativeIndex
 from hoga.live.kis_models import (
     IndexCandlePoint,
@@ -1288,11 +1288,12 @@ class KisClient:
     # fetch_multi_price (FHKST11300006, intstock-multprice)
     # ------------------------------------------------------------------
 
-    async def fetch_multi_price(self, codes: list[str]) -> list[KisQuote]:
+    async def fetch_multi_price(self, codes: list[str], *, venue: KisVenue = "KRX") -> list[KisQuote]:
         """관심종목/스크리너 결과 코드들의 현재가+등락률 (intstock-multprice)."""
         return await _fetch_multi_price(
             lambda *, path, tr_id, params: self._get(path=path, tr_id=tr_id, params=params),
             codes,
+            venue=venue,
         )
 
     # ------------------------------------------------------------------
@@ -1598,11 +1599,12 @@ class KisClient:
 _MULTI_PRICE_CHUNK = 30  # intstock-multprice: 최대 30종목/콜 (FHKST11300006)
 
 
-def _build_multi_price_params(codes_chunk: list[str]) -> dict[str, str]:
+def _build_multi_price_params(codes_chunk: list[str], *, venue: KisVenue = "KRX") -> dict[str, str]:
     """FID_COND_MRKT_DIV_CODE_N / FID_INPUT_ISCD_N (N=1..30) 번호 키 빌드."""
+    market_div = kis_venue_div(venue)
     params: dict[str, str] = {}
     for n, c in enumerate(codes_chunk, start=1):
-        params[f"FID_COND_MRKT_DIV_CODE_{n}"] = _STOCK_MRKT_DIV  # "J"
+        params[f"FID_COND_MRKT_DIV_CODE_{n}"] = market_div
         params[f"FID_INPUT_ISCD_{n}"] = c
     return params
 
@@ -1690,7 +1692,7 @@ def _parse_change_won(raw: str | None, mult: float) -> int | None:
     return int(mult * abs(v))
 
 
-async def _fetch_multi_price(get, codes: list[str]) -> list["KisQuote"]:
+async def _fetch_multi_price(get, codes: list[str], *, venue: KisVenue = "KRX") -> list["KisQuote"]:
     """get: async (*, path, tr_id, params)->dict (KisClient._get 와 동일 시그니처).
     30개씩 청크해 intstock-multprice 호출. 청크는 동시 호출(직렬 RTT 제거; 15/s 버킷은
     _get 가 캡). 각 행을 **응답 자신의 inter_shrn_iscd** 로 매핑(위치 의존 X — 누락/
@@ -1700,7 +1702,7 @@ async def _fetch_multi_price(get, codes: list[str]) -> list["KisQuote"]:
         get(
             path="/uapi/domestic-stock/v1/quotations/intstock-multprice",
             tr_id="FHKST11300006",
-            params=_build_multi_price_params(chunk),
+            params=_build_multi_price_params(chunk, venue=venue),
         )
         for chunk in chunks
     ))

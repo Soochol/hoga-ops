@@ -23,8 +23,13 @@ def _hermetic_kis_env(monkeypatch):
 
 
 class _FakeKis:
-    def __init__(self, quotes): self._quotes = quotes
-    async def fetch_multi_price(self, codes): return self._quotes
+    def __init__(self, quotes):
+        self._quotes = quotes
+        self.venues: list[str] = []
+
+    async def fetch_multi_price(self, codes, *, venue="KRX"):
+        self.venues.append(venue)
+        return self._quotes
 
 
 def _app(quotes, tmp_path, kis=True):
@@ -45,7 +50,7 @@ QUOTES = [KisQuote("005930", 72400, 1.2, 750), KisQuote("000660", 183500, -0.8, 
 
 
 def test_quotes_open_returns_change_pct(monkeypatch, tmp_path):
-    monkeypatch.setattr(live_api, "_quote_phase", lambda now: "open")
+    monkeypatch.setattr(live_api, "_quote_phase", lambda now, venue_policy="KRX": "open")
     c = TestClient(_app(QUOTES, tmp_path))
     r = c.get("/api/live/quotes", params={"codes": "005930,000660"})
     assert r.status_code == 200
@@ -60,7 +65,7 @@ def test_quotes_open_returns_change_pct(monkeypatch, tmp_path):
 
 
 def test_quotes_open_serves_today_ohlc(monkeypatch, tmp_path):
-    monkeypatch.setattr(live_api, "_quote_phase", lambda now: "open")
+    monkeypatch.setattr(live_api, "_quote_phase", lambda now, venue_policy="KRX": "open")
     quotes = [KisQuote("005930", 72400, 1.2, 750, open=72000, high=73000, low=71500)]
     c = TestClient(_app(quotes, tmp_path))
     r = c.get("/api/live/quotes", params={"codes": "005930"})
@@ -99,7 +104,7 @@ def _route_baseline_date() -> str:
 
 
 def test_quotes_recomputes_change_pct_when_kis_uses_unadjusted_baseline(monkeypatch, tmp_path):
-    monkeypatch.setattr(live_api, "_quote_phase", lambda now: "open")
+    monkeypatch.setattr(live_api, "_quote_phase", lambda now, venue_policy="KRX": "open")
     baseline_date = _route_baseline_date()
     _seed_quote_adjusted_daily(
         tmp_path,
@@ -122,7 +127,7 @@ def test_quotes_recomputes_change_pct_when_kis_uses_unadjusted_baseline(monkeypa
 
 
 def test_quotes_recomputes_small_stale_kis_change_pct(monkeypatch, tmp_path):
-    monkeypatch.setattr(live_api, "_quote_phase", lambda now: "open")
+    monkeypatch.setattr(live_api, "_quote_phase", lambda now, venue_policy="KRX": "open")
     baseline_date = _route_baseline_date()
     _seed_quote_adjusted_daily(
         tmp_path,
@@ -145,7 +150,7 @@ def test_quotes_recomputes_small_stale_kis_change_pct(monkeypatch, tmp_path):
 
 
 def test_quotes_hides_change_pct_when_adjusted_baseline_scale_mismatches_quote(monkeypatch, tmp_path):
-    monkeypatch.setattr(live_api, "_quote_phase", lambda now: "open")
+    monkeypatch.setattr(live_api, "_quote_phase", lambda now, venue_policy="KRX": "open")
     baseline_date = _route_baseline_date()
     _seed_quote_adjusted_daily(
         tmp_path,
@@ -175,7 +180,7 @@ def test_quotes_hides_change_pct_when_adjusted_baseline_is_stale(monkeypatch, tm
             return datetime(2026, 6, 30, 10, 0, tzinfo=tz)
 
     monkeypatch.setattr(live_api, "datetime", _FixedDatetime)
-    monkeypatch.setattr(live_api, "_quote_phase", lambda now: "open")
+    monkeypatch.setattr(live_api, "_quote_phase", lambda now, venue_policy="KRX": "open")
     _seed_quote_adjusted_daily(
         tmp_path,
         [("005930", "2026-06-26", 100, 100, 100, 100, 100)],
@@ -197,7 +202,7 @@ def test_quotes_hides_change_pct_when_adjusted_baseline_is_stale(monkeypatch, tm
 
 
 def test_quotes_pre_open_nulls_change_pct(monkeypatch, tmp_path):
-    monkeypatch.setattr(live_api, "_quote_phase", lambda now: "pre_open")
+    monkeypatch.setattr(live_api, "_quote_phase", lambda now, venue_policy="KRX": "pre_open")
     c = TestClient(_app(QUOTES, tmp_path))
     r = c.get("/api/live/quotes", params={"codes": "005930,000660"})
     body = r.json()
@@ -208,7 +213,7 @@ def test_quotes_pre_open_nulls_change_pct(monkeypatch, tmp_path):
 
 
 def test_quotes_no_kis_graceful_empty(monkeypatch, tmp_path):
-    monkeypatch.setattr(live_api, "_quote_phase", lambda now: "open")
+    monkeypatch.setattr(live_api, "_quote_phase", lambda now, venue_policy="KRX": "open")
     c = TestClient(_app(QUOTES, tmp_path, kis=False))
     r = c.get("/api/live/quotes", params={"codes": "005930"})
     assert r.status_code == 200
@@ -218,8 +223,8 @@ def test_quotes_no_kis_graceful_empty(monkeypatch, tmp_path):
 def test_quotes_filters_invalid_codes(monkeypatch, tmp_path):
     seen = {}
     class _Rec(_FakeKis):
-        async def fetch_multi_price(self, codes): seen["codes"] = codes; return []
-    monkeypatch.setattr(live_api, "_quote_phase", lambda now: "open")
+        async def fetch_multi_price(self, codes, *, venue="KRX"): seen["codes"] = codes; return []
+    monkeypatch.setattr(live_api, "_quote_phase", lambda now, venue_policy="KRX": "open")
     kis_runtime.set_kis_client(_Rec([]), 0)  # type: ignore[arg-type]
     app = FastAPI()
     app.include_router(build_router(get_status=lifecycle.get_status, data_dir=tmp_path))
@@ -231,7 +236,7 @@ def test_quotes_lazy_inits_kis_when_singleton_absent(monkeypatch, tmp_path):
     # _kis_client singleton never seeded (empty watchlist + no-gap day) but the
     # route is wired with data_dir → it resolves a client from env on demand
     # instead of silently returning empty quotes (code-review #2).
-    monkeypatch.setattr(live_api, "_quote_phase", lambda now: "open")
+    monkeypatch.setattr(live_api, "_quote_phase", lambda now, venue_policy="KRX": "open")
     fake = _FakeKis(QUOTES)
     monkeypatch.setattr(kis_runtime, "ensure_kis_client_from_env", lambda data_dir: fake)
     app = FastAPI()
@@ -252,7 +257,7 @@ def test_quotes_creds_absent_graceful_empty(monkeypatch, tmp_path):
     # seam으로 옮긴다. ensure_kis_client_from_env를 monkeypatch하지 *않고* 실제로 돌려
     # hermetic env(creds delenv'd)에서 None을 반환하게 한다 — 동작이 깨지면 client 생성
     # (dict 비어있지 않음)·500·비빈 결과 중 하나로 실패하는 진짜 가드(green ≠ 검증).
-    monkeypatch.setattr(live_api, "_quote_phase", lambda now: "open")
+    monkeypatch.setattr(live_api, "_quote_phase", lambda now, venue_policy="KRX": "open")
     app = FastAPI()
     app.include_router(build_router(get_status=lifecycle.get_status, data_dir=tmp_path))
     r = TestClient(app).get("/api/live/quotes", params={"codes": "005930"})
@@ -281,12 +286,61 @@ def test_quote_phase_clock_boundaries_closed():
     assert _quote_phase(datetime(2026, 6, 13, 10, 0, tzinfo=_KST)) == "closed"
 
 
+def test_quote_phase_auto_treats_nxt_preopen_as_open():
+    assert _quote_phase(datetime(2026, 7, 1, 8, 30, tzinfo=_KST), "AUTO") == "open"
+    assert _quote_phase(datetime(2026, 7, 1, 8, 30, tzinfo=_KST), "NXT") == "open"
+    assert _quote_phase(datetime(2026, 7, 1, 8, 30, tzinfo=_KST), "UN") == "open"
+    assert _quote_phase(datetime(2026, 7, 1, 8, 30, tzinfo=_KST), "KRX") == "closed"
+
+
+def test_quotes_route_threads_explicit_nxt_venue(monkeypatch, tmp_path):
+    monkeypatch.setattr(live_api, "_quote_phase", lambda now, venue_policy="KRX": "open")
+    fake = _FakeKis(QUOTES)
+    kis_runtime.set_kis_client(fake, 0)  # type: ignore[arg-type]
+    app = FastAPI()
+    app.include_router(build_router(get_status=lifecycle.get_status, data_dir=tmp_path))
+
+    r = TestClient(app).get("/api/live/quotes", params={"codes": "005930", "venue": "NXT"})
+
+    assert r.status_code == 200
+    assert fake.venues == ["NXT"]
+
+
+def test_quotes_route_auto_uses_nxt_before_regular_session(monkeypatch, tmp_path):
+    class _FixedDatetime(datetime):
+        @classmethod
+        def now(cls, tz=None):  # noqa: ANN001
+            return datetime(2026, 7, 1, 8, 30, tzinfo=tz)
+
+    monkeypatch.setattr(live_api, "datetime", _FixedDatetime)
+    fake = _FakeKis(QUOTES)
+    kis_runtime.set_kis_client(fake, 0)  # type: ignore[arg-type]
+    app = FastAPI()
+    app.include_router(build_router(get_status=lifecycle.get_status, data_dir=tmp_path))
+
+    r = TestClient(app).get("/api/live/quotes", params={"codes": "005930", "venue": "AUTO"})
+
+    assert r.status_code == 200
+    assert r.json()["phase"] == "open"
+    assert fake.venues == ["NXT"]
+
+
+def test_quotes_route_rejects_invalid_venue(tmp_path):
+    app = FastAPI()
+    app.include_router(build_router(get_status=lifecycle.get_status, data_dir=tmp_path))
+
+    r = TestClient(app).get("/api/live/quotes", params={"codes": "005930", "venue": "BAD"})
+
+    assert r.status_code == 422
+    assert r.json()["detail"]["code"] == "invalid_venue"
+
+
 class _CountingFakeKis:
     def __init__(self, quotes):
         self._quotes = quotes
         self.calls = 0
 
-    async def fetch_multi_price(self, codes):
+    async def fetch_multi_price(self, codes, *, venue="KRX"):
         self.calls += 1
         return self._quotes
 
@@ -309,11 +363,11 @@ def test_quotes_closed_serves_last_seen_without_kis(monkeypatch, tmp_path):
     다름)."""
     fake = _CountingFakeKis(QUOTES)
     c = TestClient(_counting_app(fake, tmp_path))
-    monkeypatch.setattr(live_api, "_quote_phase", lambda now: "open")
+    monkeypatch.setattr(live_api, "_quote_phase", lambda now, venue_policy="KRX": "open")
     r1 = c.get("/api/live/quotes", params={"codes": "005930,000660"})
     assert r1.json()["quotes"][0]["price"] == 72400
     assert fake.calls == 1
-    monkeypatch.setattr(live_api, "_quote_phase", lambda now: "closed")
+    monkeypatch.setattr(live_api, "_quote_phase", lambda now, venue_policy="KRX": "closed")
     r2 = c.get("/api/live/quotes", params={"codes": "005930,000660"})
     body = r2.json()
     assert fake.calls == 1, "closed에서 캐시 보유 코드에 KIS 호출 발생"
@@ -331,13 +385,13 @@ def test_quotes_closed_cached_quotes_use_adjusted_change_pct_without_kis(monkeyp
     )
     fake = _CountingFakeKis([KisQuote("049080", 7770, 682.48, None)])
     c = TestClient(_counting_app(fake, tmp_path))
-    monkeypatch.setattr(live_api, "_quote_phase", lambda now: "open")
+    monkeypatch.setattr(live_api, "_quote_phase", lambda now, venue_policy="KRX": "open")
     r1 = c.get("/api/live/quotes", params={"codes": "049080"})
     assert r1.status_code == 200
     assert fake.calls == 1
     assert r1.json()["quotes"][0]["change_pct"] == -21.75
 
-    monkeypatch.setattr(live_api, "_quote_phase", lambda now: "closed")
+    monkeypatch.setattr(live_api, "_quote_phase", lambda now, venue_policy="KRX": "closed")
     r2 = c.get("/api/live/quotes", params={"codes": "049080"})
 
     assert r2.status_code == 200
@@ -359,7 +413,7 @@ def test_quotes_closed_cold_start_fetches_once(monkeypatch, tmp_path):
     불러 채우고(KIS는 장외에도 종가 반환), 이후 요청은 캐시 서빙."""
     fake = _CountingFakeKis(QUOTES)
     c = TestClient(_counting_app(fake, tmp_path))
-    monkeypatch.setattr(live_api, "_quote_phase", lambda now: "closed")
+    monkeypatch.setattr(live_api, "_quote_phase", lambda now, venue_policy="KRX": "closed")
     r1 = c.get("/api/live/quotes", params={"codes": "005930,000660"})
     assert fake.calls == 1
     assert r1.json()["quotes"][0]["price"] == 72400
@@ -386,7 +440,7 @@ def _two_account_quotes_app(tmp_path, monkeypatch, fake0, fake1):
 
 def test_quotes_uses_shared_capacity_pool_first_healthy_account(monkeypatch, tmp_path):
     """N=2 정상: /quotes는 역할 고정이 아니라 공유 capacity pool의 least-loaded 후보를 쓴다."""
-    monkeypatch.setattr(live_api, "_quote_phase", lambda now: "open")
+    monkeypatch.setattr(live_api, "_quote_phase", lambda now, venue_policy="KRX": "open")
     monkeypatch.setattr("hoga.live.account_health._ws_probe", lambda: set())
     fake0, fake1 = _CountingFakeKis(QUOTES), _CountingFakeKis(QUOTES)
     app = _two_account_quotes_app(tmp_path, monkeypatch, fake0, fake1)
@@ -401,7 +455,7 @@ def test_quotes_skips_degraded_account(monkeypatch, tmp_path):
 
     REST pool health는 REST 토큰 latch(is_rest_degraded)만 본다(WS sub_failed는 직교).
     _two_account_quotes_app가 내부에서 reset_for_tests로 latch를 비우므로 app 구성 *후*에 마킹한다."""
-    monkeypatch.setattr(live_api, "_quote_phase", lambda now: "open")
+    monkeypatch.setattr(live_api, "_quote_phase", lambda now, venue_policy="KRX": "open")
     fake0, fake1 = _CountingFakeKis(QUOTES), _CountingFakeKis(QUOTES)
     app = _two_account_quotes_app(tmp_path, monkeypatch, fake0, fake1)
     account_health.mark_rest_auth_degraded(1)
