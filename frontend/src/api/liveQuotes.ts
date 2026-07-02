@@ -1,4 +1,4 @@
-import { useMemo } from 'react';
+import { useMemo, useRef } from 'react';
 import { useQuery } from '@tanstack/react-query';
 
 import { apiCall } from './client';
@@ -77,16 +77,44 @@ export interface LiveQuoteOverlay {
   dataUpdatedAt: number;
 }
 
+function withLastGoodChangeFields(current: LiveQuote, previous: LiveQuote | undefined): LiveQuote {
+  if (
+    current.change_pct_source !== 'unavailable'
+    || previous == null
+    || current.change_pct !== null
+  ) {
+    return current;
+  }
+  return {
+    ...current,
+    change_pct: previous.change_pct,
+    change_won: current.change_won ?? previous.change_won,
+  };
+}
+
 /** Live Quote 오버레이(ADR-0056 단일 merge seam)의 deep 접근자: codes 의 현재가
  *  오버레이를 {quoteByCode, phase, dataUpdatedAt} 한 인터페이스로 노출한다. Map 조립
  *  + null-가드 + 쿼리 메타(phase·신선도)를 한 곳에 모아, 셋 다 필요한 소비자(관심맵)가
  *  인라인으로 Map 을 다시 만들지 않게 한다. Map 만 필요하면 useQuoteByCode(thin view). */
 export function useLiveQuoteOverlay(codes: string[], venue: LiveVenueOption = 'KRX'): LiveQuoteOverlay {
   const q = useQuotes(codes, venue);
-  const quoteByCode = useMemo(
-    () => new Map<string, LiveQuote>((q.data?.quotes ?? []).map((x) => [x.code, x])),
-    [q.data],
-  );
+  const lastGoodByCodeRef = useRef(new Map<string, LiveQuote>());
+  const quoteByCode = useMemo(() => {
+    const currentQuotes = q.data?.quotes;
+    if (currentQuotes == null) return new Map<string, LiveQuote>();
+    const next = new Map<string, LiveQuote>();
+    for (const quote of currentQuotes) {
+      const merged = withLastGoodChangeFields(quote, lastGoodByCodeRef.current.get(quote.code));
+      next.set(quote.code, merged);
+      lastGoodByCodeRef.current.set(quote.code, merged);
+    }
+    for (const code of codes) {
+      if (next.has(code)) continue;
+      const previous = lastGoodByCodeRef.current.get(code);
+      if (previous != null) next.set(code, previous);
+    }
+    return next;
+  }, [codes, q.data]);
   return { quoteByCode, phase: q.data?.phase, dataUpdatedAt: q.dataUpdatedAt };
 }
 

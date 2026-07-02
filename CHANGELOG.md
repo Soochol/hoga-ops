@@ -3,6 +3,11 @@
 All notable changes to this project are documented here.
 The format follows a 4-digit `MAJOR.MINOR.PATCH.MICRO` scheme.
 
+## [0.12.24.1] - 2026-07-02
+
+### Fixed
+- **관심종목·히트맵 등락률 순간 결측 유지**: 실시간 quote 응답에서 등락률이 일시적으로 unavailable로 내려와도 관심종목 리스트와 히트맵은 마지막 정상 등락률/등락액을 유지해 `— (—)`로 깜빡이지 않도록 했다.
+
 ## [0.12.24.0] - 2026-07-02
 
 ### Fixed
