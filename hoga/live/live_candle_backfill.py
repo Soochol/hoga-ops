@@ -16,7 +16,7 @@ from hoga.live.kis_client import KisApiError, KisClient, KisRateLimitError
 from hoga.live.kis_venue import (
     KisVenue,
     LiveVenuePolicy,
-    merge_auto_minute_bars,
+    session_window_hhmmss,
 )
 from hoga.live.past_candles_cache import PastCandlesCache
 
@@ -42,6 +42,7 @@ class LiveMinuteCandleBackfillResult:
     cached_dates: list[str]
     fresh_dates: list[str]
     data_warnings: list[dict]
+    effective_sessions: list[dict]
 
     def model_dump(self) -> dict:
         return {
@@ -49,6 +50,7 @@ class LiveMinuteCandleBackfillResult:
             "cached_dates": self.cached_dates,
             "fresh_dates": self.fresh_dates,
             "data_warnings": self.data_warnings,
+            "effective_sessions": self.effective_sessions,
         }
 
 
@@ -84,21 +86,6 @@ class LiveMinuteCandleBackfill:
         today_d: date,
         policy: LiveVenuePolicy,
     ) -> LiveMinuteCandleBackfillResult:
-        if policy == "AUTO":
-            krx_out, nxt_out = await asyncio.gather(
-                self._collect_for_venue("KRX", code=code, frm=frm, too=too, today_d=today_d),
-                self._collect_for_venue("NXT", code=code, frm=frm, too=too, today_d=today_d),
-            )
-            return LiveMinuteCandleBackfillResult(
-                candles=merge_auto_minute_bars(
-                    krx_out.candles,
-                    nxt_out.candles,
-                    hhmmss_for_t_ms=_hhmmss_from_t_ms,
-                ),
-                cached_dates=sorted(set(krx_out.cached_dates) | set(nxt_out.cached_dates)),
-                fresh_dates=sorted(set(krx_out.fresh_dates) | set(nxt_out.fresh_dates)),
-                data_warnings=krx_out.data_warnings + nxt_out.data_warnings,
-            )
         if policy != "KRX":
             primary_out = await self._collect_for_venue(
                 policy,
@@ -147,6 +134,7 @@ class LiveMinuteCandleBackfill:
                     cached_dates=primary_out.cached_dates,
                     fresh_dates=primary_out.fresh_dates,
                     data_warnings=primary_out.data_warnings + fallback_warnings,
+                    effective_sessions=primary_out.effective_sessions,
                 )
             used_fallback_dates = _dates_for_candles(fallback_candles)
             for date_s in used_fallback_dates:
@@ -180,6 +168,15 @@ class LiveMinuteCandleBackfill:
                 data_warnings=primary_out.data_warnings + fallback_warnings + [
                     _minute_fallback_to_krx_warning(policy, sorted(used_fallback_dates))
                 ],
+                effective_sessions=_merge_effective_sessions(
+                    primary_out.effective_sessions,
+                    [
+                        row
+                        for fallback_out in fallback_outs
+                        for row in fallback_out.effective_sessions
+                    ],
+                    fallback_dates=used_fallback_dates,
+                ),
             )
         return await self._collect_for_venue(
             policy,
@@ -323,6 +320,7 @@ class LiveMinuteCandleBackfill:
             cached_dates=cached_dates,
             fresh_dates=fresh_dates,
             data_warnings=warnings,
+            effective_sessions=_effective_sessions_for_candles(candles_all, venue),
         )
 
     async def _fetch_past_shared(
@@ -442,10 +440,6 @@ def _candle_to_dict(c) -> dict:
     }
 
 
-def _hhmmss_from_t_ms(t_ms: int) -> str:
-    return datetime.fromtimestamp(t_ms / 1000, tz=_KST).strftime("%H%M%S")
-
-
 def _date_from_t_ms(t_ms: int) -> str:
     return datetime.fromtimestamp(t_ms / 1000, tz=_KST).strftime("%Y%m%d")
 
@@ -456,6 +450,55 @@ def _dates_for_candles(candles: list[dict]) -> set[str]:
         for candle in candles
         if isinstance((t_ms := candle.get("t_ms")), int)
     }
+
+
+def _session_bound_ms(date_s: str, hhmmss: str) -> int:
+    return int(
+        datetime(
+            int(date_s[:4]),
+            int(date_s[4:6]),
+            int(date_s[6:8]),
+            int(hhmmss[:2]),
+            int(hhmmss[2:4]),
+            int(hhmmss[4:6]),
+            tzinfo=_KST,
+        ).timestamp() * 1000
+    )
+
+
+def _effective_session(date_s: str, venue: KisVenue) -> dict:
+    open_hhmmss, close_hhmmss = session_window_hhmmss(venue)
+    return {
+        "date": date_s,
+        "venue": venue,
+        "open_ms": _session_bound_ms(date_s, open_hhmmss),
+        "close_ms": _session_bound_ms(date_s, close_hhmmss),
+    }
+
+
+def _effective_sessions_for_candles(candles: list[dict], venue: KisVenue) -> list[dict]:
+    return [
+        _effective_session(date_s, venue)
+        for date_s in sorted(_dates_for_candles(candles))
+    ]
+
+
+def _merge_effective_sessions(
+    primary: list[dict],
+    fallback: list[dict],
+    *,
+    fallback_dates: set[str],
+) -> list[dict]:
+    by_date = {
+        str(row["date"]): row
+        for row in primary
+        if str(row.get("date", "")) not in fallback_dates
+    }
+    for row in fallback:
+        date_s = str(row.get("date", ""))
+        if date_s in fallback_dates:
+            by_date[date_s] = row
+    return [by_date[date_s] for date_s in sorted(by_date)]
 
 
 def _merge_minute_fallback(

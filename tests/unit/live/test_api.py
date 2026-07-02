@@ -749,42 +749,16 @@ def test_past_candles_rejects_invalid_venue_before_kis(tmp_path) -> None:
     assert fake.calls == []
 
 
-def test_past_candles_auto_merges_krx_regular_and_nxt_extended(tmp_path) -> None:
-    kst = datetime.timezone(datetime.timedelta(hours=9))
-
-    def ts(hh: int, mm: int) -> int:
-        return int(datetime.datetime(2026, 5, 18, hh, mm, tzinfo=kst).timestamp() * 1000)
-
-    class _AutoFakeKis:
-        def __init__(self):
-            self.venues: list[str] = []
-
-        async def fetch_past_minute_candles(self, code, date_yyyymmdd, **kw):
-            venue = kw["venue"]
-            self.venues.append(venue)
-            if venue == "KRX":
-                return [
-                    KisCandle(t_ms=ts(9, 0), open=100, high=110, low=95, close=105, volume=10),
-                    KisCandle(t_ms=ts(15, 31), open=999, high=999, low=999, close=999, volume=999),
-                ]
-            return [
-                KisCandle(t_ms=ts(8, 0), open=80, high=81, low=79, close=80, volume=8),
-                KisCandle(t_ms=ts(15, 31), open=1531, high=1532, low=1530, close=1531, volume=15),
-            ]
-
-    fake = _AutoFakeKis()
+def test_past_candles_legacy_auto_maps_to_integrated(tmp_path) -> None:
+    fake = _FakeKisForPast()
     app = _past_app(tmp_path, fake)
     with TestClient(app) as c:
         r = c.get("/api/live/past-candles?code=005930&from=20260518&to=20260518&venue=AUTO")
         assert r.status_code == 200
         body = r.json()
 
-    assert sorted(fake.venues) == ["KRX", "NXT"]
-    assert body["venue"] == "AUTO"
-    assert [datetime.datetime.fromtimestamp(c["t_ms"] / 1000, tz=kst).strftime("%H%M") for c in body["candles"]] == [
-        "0800", "0900", "1531",
-    ]
-    assert [c["close"] for c in body["candles"]] == [80, 105, 1531]
+    assert body["venue"] == "UN"
+    assert fake.calls == ["20260518"]
 
 
 def test_past_candles_integrated_uses_single_kis_un_call(tmp_path) -> None:
@@ -821,6 +795,14 @@ def test_past_candles_integrated_uses_single_kis_un_call(tmp_path) -> None:
     assert body["candles"][0]["high"] == 112
     assert body["candles"][0]["low"] == 95
     assert body["candles"][0]["close"] == 106
+    assert body["effective_sessions"] == [
+        {
+            "date": "20260518",
+            "venue": "UN",
+            "open_ms": ts(8, 0),
+            "close_ms": ts(20, 0),
+        }
+    ]
 
 
 @pytest.mark.parametrize("venue", ["NXT", "UN"])
@@ -870,6 +852,14 @@ def test_past_candles_non_krx_empty_falls_back_to_krx(tmp_path, venue: str) -> N
         and w["date"] == "20260518"
         for w in body["data_warnings"]
     )
+    assert body["effective_sessions"] == [
+        {
+            "date": "20260518",
+            "venue": "KRX",
+            "open_ms": ts(9, 0),
+            "close_ms": ts(15, 30),
+        }
+    ]
 
 
 def test_past_candles_non_krx_partial_range_fills_empty_dates_from_krx(tmp_path) -> None:
@@ -885,6 +875,10 @@ def test_past_candles_non_krx_partial_range_fills_empty_dates_from_krx(tmp_path)
             close=close,
             volume=10,
         )
+
+    def at(date_s: str, hh: int, mm: int) -> int:
+        y, m, d = int(date_s[:4]), int(date_s[4:6]), int(date_s[6:8])
+        return int(datetime.datetime(y, m, d, hh, mm, tzinfo=kst).timestamp() * 1000)
 
     class _PartialNxtMinuteKis:
         def __init__(self):
@@ -919,6 +913,11 @@ def test_past_candles_non_krx_partial_range_fills_empty_dates_from_krx(tmp_path)
         and w["date"] == "20260518__20260519"
         for w in body["data_warnings"]
     )
+    assert body["effective_sessions"] == [
+        {"date": "20260518", "venue": "KRX", "open_ms": at("20260518", 9, 0), "close_ms": at("20260518", 15, 30)},
+        {"date": "20260519", "venue": "KRX", "open_ms": at("20260519", 9, 0), "close_ms": at("20260519", 15, 30)},
+        {"date": "20260520", "venue": "NXT", "open_ms": at("20260520", 8, 0), "close_ms": at("20260520", 20, 0)},
+    ]
 
 
 def test_past_candles_non_krx_fallback_rechecks_primary_on_next_request(tmp_path) -> None:
@@ -1222,7 +1221,7 @@ def test_past_daily_threads_explicit_venue_to_kis_and_response(tmp_path) -> None
     assert fake.kwargs == [{"venue": "UN", "foreground": True}]
 
 
-def test_past_daily_auto_uses_integrated_venue_with_warning(tmp_path) -> None:
+def test_past_daily_legacy_auto_maps_to_integrated(tmp_path) -> None:
     fake = _FakeKisForDaily()
     app = _daily_app(tmp_path, fake)
     with TestClient(app) as c:
@@ -1230,16 +1229,11 @@ def test_past_daily_auto_uses_integrated_venue_with_warning(tmp_path) -> None:
         assert r.status_code == 200
         body = r.json()
 
-    assert body["venue"] == "AUTO"
+    assert body["venue"] == "UN"
     assert fake.kwargs == [{"venue": "UN", "foreground": True}]
-    assert any(
-        w["reason"] == "auto_daily_uses_integrated"
-        and w["batch"] == "20240101__20240105"
-        for w in body["data_warnings"]
-    )
 
 
-@pytest.mark.parametrize("venue,primary_venue", [("NXT", "NXT"), ("UN", "UN"), ("AUTO", "UN")])
+@pytest.mark.parametrize("venue,primary_venue", [("NXT", "NXT"), ("UN", "UN")])
 def test_past_daily_non_krx_empty_falls_back_to_krx(tmp_path, venue: str, primary_venue: str) -> None:
     class _NoNxtDailyKis(_FakeKisForDaily):
         async def fetch_past_daily_candles(

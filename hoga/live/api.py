@@ -598,7 +598,7 @@ def _quote_phase(now: datetime, venue_policy: LiveVenuePolicy = "KRX") -> Litera
     if now.weekday() >= 5:  # noqa: PLR2004 — 토/일
         return "closed"
     t = now.time()
-    if venue_policy in ("NXT", "UN", "AUTO"):
+    if venue_policy in ("NXT", "UN"):
         if t < time(8, 0) or t >= time(20, 0):
             return "closed"
         return "open"

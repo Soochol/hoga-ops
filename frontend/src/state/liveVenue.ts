@@ -1,13 +1,12 @@
 import { create } from 'zustand';
 
-export const LIVE_VENUE_OPTIONS = ['KRX', 'NXT', 'UN', 'AUTO'] as const;
+export const LIVE_VENUE_OPTIONS = ['KRX', 'NXT', 'UN'] as const;
 export type LiveVenueOption = (typeof LIVE_VENUE_OPTIONS)[number];
 
 export const LIVE_VENUE_LABELS: Record<LiveVenueOption, string> = {
   KRX: 'KRX',
   NXT: 'NXT',
   UN: '통합',
-  AUTO: '자동',
 };
 
 const STORAGE_KEY = 'live.venue.v1';

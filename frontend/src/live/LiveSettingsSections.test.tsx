@@ -105,11 +105,11 @@ describe('LiveSettingsSections (2단 nav+detail)', () => {
     expect(screen.getByLabelText('KRX')).toBeChecked();
     expect(screen.getByLabelText('NXT')).toBeInTheDocument();
     expect(screen.getByLabelText('통합')).toBeInTheDocument();
-    expect(screen.getByLabelText('자동')).toBeInTheDocument();
+    expect(screen.queryByLabelText('자동')).toBeNull();
 
-    fireEvent.click(screen.getByLabelText('자동'));
-    expect(useLiveVenueStore.getState().venue).toBe('AUTO');
-    expect(localStorage.getItem('live.venue.v1')).toContain('AUTO');
+    fireEvent.click(screen.getByLabelText('통합'));
+    expect(useLiveVenueStore.getState().venue).toBe('UN');
+    expect(localStorage.getItem('live.venue.v1')).toContain('UN');
   });
 
   it('renders storage policy and display priority separately', async () => {

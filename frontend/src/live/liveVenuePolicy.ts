@@ -1,5 +1,6 @@
 import { isMinuteTimeframe, type LiveTimeframe } from '../state/livePage';
 import { LIVE_VENUE_LABELS, type LiveVenueOption } from '../state/liveVenue';
+import type { LiveEffectiveSession } from '../api/livePastCandles';
 import {
   isKrxRegularSessionNow,
   realMsToYyyymmdd,
@@ -27,7 +28,7 @@ function isKstWeekday(yyyymmdd: string): boolean {
   return wd !== 0 && wd !== 6;
 }
 
-/** NXT/Integrated/AUTO minute display window (08:00-20:00 KST). */
+/** NXT/Integrated minute display window (08:00-20:00 KST). */
 export function extendedVenueSessionOpenMs(yyyymmdd: string): number {
   return regularSessionOpenMs(yyyymmdd) - 60 * 60 * 1000;
 }
@@ -46,6 +47,23 @@ export function liveVenueSessionBoundsMs(
   return { open_ms: extendedVenueSessionOpenMs(yyyymmdd), close_ms: extendedVenueSessionCloseMs(yyyymmdd) };
 }
 
+export function effectiveSessionBoundsByDate(
+  effectiveSessions: readonly LiveEffectiveSession[] | undefined,
+): Map<string, { open_ms: number; close_ms: number }> {
+  const out = new Map<string, { open_ms: number; close_ms: number }>();
+  for (const session of effectiveSessions ?? []) {
+    if (
+      typeof session.date === 'string' &&
+      Number.isFinite(session.open_ms) &&
+      Number.isFinite(session.close_ms) &&
+      session.open_ms < session.close_ms
+    ) {
+      out.set(session.date, { open_ms: session.open_ms, close_ms: session.close_ms });
+    }
+  }
+  return out;
+}
+
 export function isLiveVenueSessionNow(venue: LiveVenueOption, nowMs: number = Date.now()): boolean {
   if (venue === 'KRX') return isKrxRegularSessionNow(nowMs);
   const today = realMsToYyyymmdd(nowMs);
@@ -58,11 +76,8 @@ export function liveVenueRefetchInterval(venue: LiveVenueOption): 60_000 | false
   return isLiveVenueSessionNow(venue) ? 60_000 : false;
 }
 
-export function liveVenueAllowsKrxTradeOverlay(venue: LiveVenueOption, tMs: number): boolean {
-  if (venue === 'KRX') return true;
-  if (venue !== 'AUTO') return false;
-  const tradeDate = realMsToYyyymmdd(tMs);
-  return tMs >= regularSessionOpenMs(tradeDate) && tMs <= regularSessionCloseMs(tradeDate);
+export function liveVenueAllowsKrxTradeOverlay(venue: LiveVenueOption, _tMs: number): boolean {
+  return venue === 'KRX';
 }
 
 export function initialVisibleMinuteBarsFor(

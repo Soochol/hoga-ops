@@ -11,7 +11,6 @@ from hoga.live.kis_capacity_scheduler import (
 )
 from hoga.live.kis_client import KisClient, KisRateLimitError
 from hoga.live.kis_venue import (
-    AUTO_DAILY_USES_INTEGRATED_WARNING,
     KisVenue,
     LiveVenuePolicy,
     daily_venue_for_policy,
@@ -114,10 +113,6 @@ class LiveDailyCandleBackfill:
         )
         out["venue"] = policy
         out["data_warnings"].extend(fallback_warnings)
-        if policy == "AUTO":
-            warning = AUTO_DAILY_USES_INTEGRATED_WARNING.copy()
-            warning["batch"] = f"{from_label}__{to_label}"
-            out["data_warnings"].append(warning)
         return out
 
     async def _fetch_primary_batch(

@@ -76,8 +76,9 @@ export function useStudyReferenceBundle(save: StudyViewReference | null) {
       pastBundle,
       minuteCandles: minuteCandles.data?.candles ?? [],
       dailyCandles: dailyCandles.data?.candles ?? [],
+      minuteEffectiveSessions: minuteCandles.data?.effective_sessions ?? [],
     }),
-    [dailyCandles.data?.candles, minuteCandles.data?.candles, pastBundle, save, venue],
+    [dailyCandles.data?.candles, minuteCandles.data?.candles, minuteCandles.data?.effective_sessions, pastBundle, save, venue],
   );
 
   const warnings: Array<LivePastCandlesWarning | LivePastDailyCandlesWarning> = inputs.isMinute

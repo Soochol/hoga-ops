@@ -4,13 +4,11 @@ import pytest
 from datetime import datetime
 
 from hoga.live.kis_venue import (
-    AUTO_DAILY_USES_INTEGRATED_WARNING,
     KIS_KST,
-    auto_minute_venue_for_hhmmss,
     daily_venue_for_policy,
     kis_venue_div,
-    merge_auto_minute_bars,
     parse_kis_venue,
+    parse_live_venue_policy,
     previous_empty_page_anchor_hhmmss,
     quote_venue_for_policy,
     session_window_hhmmss,
@@ -50,23 +48,14 @@ def test_session_window_rejects_non_concrete_runtime_values() -> None:
         session_window_hhmmss("AUTO")  # type: ignore[arg-type]
 
 
-def test_auto_minute_venue_for_hhmmss() -> None:
-    assert auto_minute_venue_for_hhmmss("075959") == "NXT"
-    assert auto_minute_venue_for_hhmmss("080000") == "NXT"
-    assert auto_minute_venue_for_hhmmss("085959") == "NXT"
-    assert auto_minute_venue_for_hhmmss("090000") == "KRX"
-    assert auto_minute_venue_for_hhmmss("152000") == "KRX"
-    assert auto_minute_venue_for_hhmmss("153000") == "KRX"
-    assert auto_minute_venue_for_hhmmss("153001") == "NXT"
-    assert auto_minute_venue_for_hhmmss("200000") == "NXT"
+def test_parse_live_venue_policy_maps_legacy_auto_to_integrated() -> None:
+    assert parse_live_venue_policy("AUTO") == "UN"
 
 
-def test_daily_venue_for_policy_uses_integrated_for_auto() -> None:
+def test_daily_venue_for_policy_maps_explicit_values() -> None:
     assert daily_venue_for_policy("KRX") == "KRX"
     assert daily_venue_for_policy("NXT") == "NXT"
     assert daily_venue_for_policy("UN") == "UN"
-    assert daily_venue_for_policy("AUTO") == "UN"
-    assert AUTO_DAILY_USES_INTEGRATED_WARNING["reason"] == "auto_daily_uses_integrated"
 
 
 def test_quote_venue_for_policy_maps_explicit_values() -> None:
@@ -74,30 +63,6 @@ def test_quote_venue_for_policy_maps_explicit_values() -> None:
     assert quote_venue_for_policy("KRX", now) == "KRX"
     assert quote_venue_for_policy("NXT", now) == "NXT"
     assert quote_venue_for_policy("UN", now) == "UN"
-
-
-def test_quote_venue_for_policy_auto_uses_nxt_outside_regular_and_krx_inside() -> None:
-    assert quote_venue_for_policy("AUTO", datetime(2026, 7, 1, 8, 30, tzinfo=KIS_KST)) == "NXT"
-    assert quote_venue_for_policy("AUTO", datetime(2026, 7, 1, 9, 0, tzinfo=KIS_KST)) == "KRX"
-    assert quote_venue_for_policy("AUTO", datetime(2026, 7, 1, 15, 30, tzinfo=KIS_KST)) == "KRX"
-    assert quote_venue_for_policy("AUTO", datetime(2026, 7, 1, 15, 31, tzinfo=KIS_KST)) == "NXT"
-
-
-def test_merge_auto_minute_bars_applies_policy_by_timestamp() -> None:
-    krx = [
-        {"t_ms": 900, "close": "krx-regular"},
-        {"t_ms": 1531, "close": "krx-after"},
-    ]
-    nxt = [
-        {"t_ms": 800, "close": "nxt-before"},
-        {"t_ms": 900, "close": "nxt-regular"},
-        {"t_ms": 1531, "close": "nxt-after"},
-    ]
-    hhmmss = {800: "080000", 900: "090000", 1531: "153100"}
-
-    merged = merge_auto_minute_bars(krx, nxt, hhmmss_for_t_ms=hhmmss.__getitem__)
-
-    assert [row["close"] for row in merged] == ["nxt-before", "krx-regular", "nxt-after"]
 
 
 def test_previous_empty_page_anchor_stops_for_krx() -> None:

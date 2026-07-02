@@ -22,7 +22,7 @@ function seedQuote(
   qc: QueryClient,
   code: string,
   quote: { price: number; change_pct: number | null; change_won: number | null },
-  venue: 'KRX' | 'NXT' | 'UN' | 'AUTO' = 'KRX',
+  venue: 'KRX' | 'NXT' | 'UN' = 'KRX',
 ) {
   qc.setQueryData(liveQuotesQueryKey([code], venue), {
     phase: 'open',
