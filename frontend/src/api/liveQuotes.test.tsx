@@ -99,6 +99,40 @@ describe('useQuoteByCode', () => {
     // Previous data is retained during the new key's in-flight window.
     expect(result.current.get('005930')?.price).toBe(72400);
   });
+
+  it('keeps last good change fields when a transient response marks them unavailable', async () => {
+    const spy = vi.spyOn(client, 'apiCall')
+      .mockResolvedValueOnce({
+        phase: 'open',
+        quotes: [{ code: '005930', price: 72400, change_pct: 1.2, change_won: 100 }],
+      })
+      .mockResolvedValueOnce({
+        phase: 'open',
+        quotes: [{
+          code: '005930',
+          price: 72500,
+          change_pct: null,
+          change_won: null,
+          change_pct_source: 'unavailable',
+        }],
+      });
+    const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+    const wrapper = ({ children }: { children: React.ReactNode }) => (
+      <QueryClientProvider client={qc}>{children}</QueryClientProvider>
+    );
+
+    const { result } = renderHook(() => useQuoteByCode(['005930']), { wrapper });
+    await waitFor(() => expect(result.current.get('005930')?.price).toBe(72400));
+
+    await act(async () => {
+      await qc.refetchQueries({ queryKey: liveQuotesQueryKey(['005930']) });
+    });
+
+    expect(spy).toHaveBeenCalledTimes(2);
+    await waitFor(() => expect(result.current.get('005930')?.price).toBe(72500));
+    expect(result.current.get('005930')?.change_pct).toBe(1.2);
+    expect(result.current.get('005930')?.change_won).toBe(100);
+  });
 });
 
 describe('useLiveQuoteOverlay', () => {
