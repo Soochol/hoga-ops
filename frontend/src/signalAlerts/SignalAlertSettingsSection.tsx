@@ -71,10 +71,9 @@ function SignalAlertSettingsEditor({ serverRule }: { serverRule: SignalAlertRule
       </SettingsRow>
       <SettingsRow label="기준 시각">
         <input
-          type="time"
-          min="09:00"
-          max="15:20"
-          step={60}
+          type="text"
+          inputMode="numeric"
+          maxLength={5}
           aria-label="기준 시각"
           value={startTime}
           onChange={(event) => setStartTime(event.currentTarget.value)}
@@ -125,9 +124,21 @@ function formatHhmm(hhmm: number): string {
 }
 
 function parseTimeInput(value: string): number | null {
-  const [hoursRaw, minutesRaw] = value.split(':');
+  const trimmed = value.trim();
+  if (/^\d{3,4}$/.test(trimmed)) {
+    const hhmm = Number(trimmed);
+    const hours = Math.floor(hhmm / 100);
+    const minutes = hhmm % 100;
+    return validateHhmm(hours, minutes);
+  }
+
+  const [hoursRaw, minutesRaw] = trimmed.split(':');
   const hours = Number(hoursRaw);
   const minutes = Number(minutesRaw);
+  return validateHhmm(hours, minutes);
+}
+
+function validateHhmm(hours: number, minutes: number): number | null {
   if (
     !Number.isInteger(hours) ||
     !Number.isInteger(minutes) ||
