@@ -1,3 +1,4 @@
+import { useState } from 'react';
 import { Outlet, useLocation } from 'react-router';
 import TopNav from './nav/TopNav';
 import { SYSTEM_NAV_ITEMS, WORKSPACE_NAV_ITEMS } from './nav/items';
@@ -13,6 +14,8 @@ import { useCaptureQueueSync } from './capture/useCaptureQueue';
 import SignalAlertToastHost from './signalAlerts/SignalAlertToastHost';
 import { useSignalAlertEvents } from './signalAlerts/useSignalAlertEvents';
 import { useStaticDocumentTitle } from './util/useDocumentTitle';
+import { ModalShell } from './ui/ModalShell';
+import { SettingsPanel } from './pages/Settings';
 
 const STATIC_ROUTE_TITLES: ReadonlyMap<string, string> = new Map(
   [...WORKSPACE_NAV_ITEMS, ...SYSTEM_NAV_ITEMS]
@@ -35,6 +38,7 @@ export default function App() {
   const contentCols = `1fr${activePanel ? ' var(--watchlist-panel-w)' : ''} var(--rail-w)`;
   const { pathname } = useLocation();
   const staticTitle = pathname === '/live' ? null : STATIC_ROUTE_TITLES.get(pathname) ?? 'hoga-ops';
+  const [settingsOpen, setSettingsOpen] = useState(false);
 
   return (
     <div
@@ -45,7 +49,20 @@ export default function App() {
     >
       {staticTitle !== null && <StaticDocumentTitle title={staticTitle} />}
       <SignalAlertToastHost />
-      <TopNav />
+      <TopNav onOpenSettings={() => setSettingsOpen(true)} />
+      {settingsOpen && (
+        <ModalShell
+          ariaLabel="Settings"
+          title="Settings"
+          width="w-[min(720px,calc(100vw-48px))]"
+          height="h-[min(720px,calc(100vh-80px))]"
+          onClose={() => setSettingsOpen(false)}
+        >
+          <div className="min-h-0 overflow-auto p-md">
+            <SettingsPanel />
+          </div>
+        </ModalShell>
+      )}
       <div
         data-testid="app-content-grid"
         className="grid min-h-0 min-w-0 overflow-hidden"
