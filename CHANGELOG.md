@@ -3,6 +3,11 @@
 All notable changes to this project are documented here.
 The format follows a 4-digit `MAJOR.MINOR.PATCH.MICRO` scheme.
 
+## [0.12.24.0] - 2026-07-02
+
+### Fixed
+- **/live NXT 캔들 표시**: NXT/UN/AUTO 데이터 소스에서도 최근 캔들이 회색 auction 스타일로 바뀌거나 초기 차트 간격이 과하게 넓어지지 않고 일반 캔들과 같은 방식으로 보이도록 했다.
+
 ## [0.12.23.13] - 2026-07-02
 
 ### Changed

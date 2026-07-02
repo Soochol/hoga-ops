@@ -446,6 +446,21 @@ describe('LiveChartRoot', () => {
     expect(screen.getByTestId('auction-window-overlay')).toBeTruthy();
   });
 
+  it('does not render the auction-window overlay for NXT candle views', () => {
+    render(
+      <LiveChartRoot
+        code="005930"
+        timeframe="1m"
+        venue="NXT"
+        bundle={DEFAULT_BUNDLE}
+        clampEngaged={false}
+        isPastCandlesLoading={false}
+      />,
+      { wrapper },
+    );
+    expect(screen.queryByTestId('auction-window-overlay')).toBeNull();
+  });
+
   // ─────────────────────────────────────────────────────────────────────────
   // Initial-view application across (code, timeframe) and candle-count growth.
   //
@@ -980,7 +995,7 @@ describe('LiveChartRoot', () => {
     expect(ts.scrollToPosition).not.toHaveBeenCalled();
   });
 
-  it('1m timeframe: NXT initial view spans the extended 08:00-20:00 session', () => {
+  it('1m timeframe: NXT initial view keeps the standard 300-bar viewport', () => {
     useLivePageStore.setState({ historicalFromDate: null });
     const { chart, ts } = buildChartMockWithStableTS();
     vi.mocked(createChartEx).mockImplementationOnce(() => chart as never);
@@ -998,7 +1013,7 @@ describe('LiveChartRoot', () => {
     );
 
     expect(ts.setVisibleLogicalRange).toHaveBeenCalledTimes(1);
-    expect(ts.setVisibleLogicalRange).toHaveBeenLastCalledWith({ from: 180, to: 1110 });
+    expect(ts.setVisibleLogicalRange).toHaveBeenLastCalledWith({ from: 600, to: 988 });
   });
 
   it('1m timeframe: code change re-applies setVisibleLogicalRange with new count', () => {

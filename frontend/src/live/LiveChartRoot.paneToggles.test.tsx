@@ -17,9 +17,10 @@ if (typeof window !== 'undefined' && !window.ResizeObserver) {
 // "store toggle → paneToggles → the pane set that reaches RangeSeriesPane" was
 // never asserted end-to-end. RangeSeriesPane renders null in jsdom (imperative
 // lightweight-charts wrapper), so we replace it with a prop-capturing stub.
-const { mounted, paneBundles, candleTooltipProps, askPeakMounts, bidPeakMounts, dockedLabelMounts, chartInstances } = vi.hoisted(() => ({
+const { mounted, paneBundles, paneContexts, candleTooltipProps, askPeakMounts, bidPeakMounts, dockedLabelMounts, chartInstances } = vi.hoisted(() => ({
   mounted: [] as string[],
   paneBundles: [] as Array<{ name: string; bundle: unknown }>,
+  paneContexts: [] as Array<{ name: string; contextOverride: unknown }>,
   candleTooltipProps: [] as Array<{ bundle: unknown; quoteBundle?: unknown }>,
   askPeakMounts: [] as string[],
   bidPeakMounts: [] as string[],
@@ -35,9 +36,10 @@ const { mounted, paneBundles, candleTooltipProps, askPeakMounts, bidPeakMounts, 
   }>,
 }));
 vi.mock('../chart/RangeSeriesPane', () => ({
-  default: (props: { spec: { name: string }; bundle: unknown }) => {
+  default: (props: { spec: { name: string }; bundle: unknown; contextOverride?: unknown }) => {
     mounted.push(props.spec.name);
     paneBundles.push({ name: props.spec.name, bundle: props.bundle });
+    paneContexts.push({ name: props.spec.name, contextOverride: props.contextOverride });
     return null;
   },
 }));
@@ -159,6 +161,7 @@ describe('LiveChartRoot — pane 토글 배선 (store → 마운트된 pane 집�
   beforeEach(() => {
     mounted.length = 0;
     paneBundles.length = 0;
+    paneContexts.length = 0;
     candleTooltipProps.length = 0;
     askPeakMounts.length = 0;
     bidPeakMounts.length = 0;
@@ -180,6 +183,13 @@ describe('LiveChartRoot — pane 토글 배선 (store → 마운트된 pane 집�
   it('기본(전부 ON) 1m → 6 pane 마운트', () => {
     renderAt('1m');
     expect(mounted).toEqual(['candle', 'volume', 'quote-totals', 'ratio', 'fill-strength', 'program-trade']);
+  });
+
+  it('passes the venue-specific candle auction style context from props', () => {
+    renderAt('1m', { venue: 'NXT' });
+    expect(paneContexts.find((pane) => pane.name === 'candle')?.contextOverride).toEqual({
+      muteAuctionCandles: false,
+    });
   });
 
   it('quoteTotalsEnabled=false → 총잔량 pane 미마운트', () => {

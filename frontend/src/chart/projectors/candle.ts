@@ -17,18 +17,28 @@ const TOKEN_SPEC = {
 
 const { up, down, muted } = resolveTokens(TOKEN_SPEC);
 
+export type CandlePaneContext = {
+  muteAuctionCandles: boolean;
+};
+
+const DEFAULT_CONTEXT: CandlePaneContext = { muteAuctionCandles: true };
+
 const priceFormat = {
   type: 'custom' as const,
   formatter: (p: number) => Math.round(p).toLocaleString('ko-KR'),
   minMove: 1,
 };
 
-export function projectCandle(bundle: RangeBundle, axis: VirtualAxis): CandlestickData<Time>[] {
+export function projectCandle(
+  bundle: RangeBundle,
+  axis: VirtualAxis,
+  ctx: CandlePaneContext = DEFAULT_CONTEXT,
+): CandlestickData<Time>[] {
   const out: CandlestickData<Time>[] = [];
   for (const c of bundle.candles) {
     const { contained, inAuction, virtual } = axis.classifyAndProject(c.ts_ms);
     if (!contained) continue;
-    const color = inAuction ? muted : c.close >= c.open ? up : down;
+    const color = ctx.muteAuctionCandles && inAuction ? muted : c.close >= c.open ? up : down;
     out.push({
       time: (virtual / 1000) as UTCTimestamp,
       open: c.open,
@@ -62,4 +72,4 @@ export const CANDLE_SPEC = {
       data: projectCandle,
     },
   ],
-} satisfies PaneSpec;
+} satisfies PaneSpec<CandlePaneContext>;

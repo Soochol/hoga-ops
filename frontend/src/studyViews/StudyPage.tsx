@@ -519,6 +519,7 @@ export function StudyPage() {
                   <LiveChartRoot
                     code={activeViewModel.save.code}
                     timeframe={activeViewModel.save.timeframe}
+                    venue={referenceQuery.venue}
                     viewIdentity={activeTabId ? `${activeTabId}:${activeViewId}:${activeViewModel.save.timeframe}` : `${activeViewId}:${activeViewModel.save.timeframe}`}
                     bundle={activeViewModel.bundle}
                     chartBundle={activeViewModel.chartBundle}

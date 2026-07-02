@@ -90,5 +90,6 @@ export function useStudyReferenceBundle(save: StudyViewReference | null) {
     isLoading: pastHoga.isLoading || minuteCandles.isLoading || dailyCandles.isLoading,
     error: pastHoga.error ?? minuteCandles.error ?? dailyCandles.error ?? pastSidecars.error ?? null,
     pastDataWarnings: warnings,
+    venue,
   };
 }

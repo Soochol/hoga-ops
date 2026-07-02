@@ -141,6 +141,33 @@ describe('RangeSeriesPane', () => {
     expect(onPrimarySeriesReady).toHaveBeenCalledWith(created[1], 'candle');
   });
 
+  it('uses contextOverride instead of the spec context value', () => {
+    const { chart, created } = makeChart();
+    const data = vi.fn((_bundle, _axis, ctx: { value: string }) => [{ time: 1, value: ctx.value.length }]);
+    const useContext = vi.fn(() => ({ value: 'hook' }));
+    const spec: PaneSpec<{ value: string }> = {
+      name: 'volume',
+      stretch: 1,
+      useContext,
+      series: [{ type: {} as never, options: {} as never, data: data as never }],
+    };
+
+    render(
+      <RangeSeriesPane
+        chart={chart}
+        bundle={bundle}
+        axis={axis}
+        paneIndex={0}
+        spec={spec}
+        contextOverride={{ value: 'override' }}
+      />,
+    );
+
+    expect(useContext).toHaveBeenCalledOnce();
+    expect(data).toHaveBeenCalledWith(bundle, axis, { value: 'override' });
+    expect(created[0].setData).toHaveBeenCalledWith([{ time: 1, value: 8 }]);
+  });
+
   it('re-pushes data after a chart change re-creates the series (per-view remount)', () => {
     // Regression: /live remounts the lwc chart per (code, timeframe) view
     // (LiveChartRoot's per-viewKey effect). The lifecycle effect re-creates
