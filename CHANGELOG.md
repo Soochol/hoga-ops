@@ -3,6 +3,11 @@
 All notable changes to this project are documented here.
 The format follows a 4-digit `MAJOR.MINOR.PATCH.MICRO` scheme.
 
+## [0.12.24.2] - 2026-07-03
+
+### Fixed
+- **시그널 알림 기준 시각 입력**: 알림 설정에서 `1000`처럼 콜론 없는 네 자리 값을 입력해도 `10:00`으로, `1500`은 `15:00`으로 인식해 저장하도록 했다.
+
 ## [0.12.24.1] - 2026-07-02
 
 ### Fixed

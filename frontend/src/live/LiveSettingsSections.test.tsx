@@ -255,4 +255,63 @@ describe('LiveSettingsSections (2단 nav+detail)', () => {
       });
     });
   });
+
+  it('알림 기준 시각은 네 자리 HHMM 입력을 HH:MM으로 해석해 저장한다', async () => {
+    vi.spyOn(signalAlertsApi, 'getSignalAlertSettings').mockResolvedValue({
+      schema_version: 1,
+      sell_total_renewal: {
+        enabled: true,
+        start_hhmm: 1100,
+        threshold_pct: 100,
+        use_intra_minute_max: true,
+      },
+    });
+    const mutate = vi.fn();
+    vi.spyOn(signalAlertsApi, 'usePatchSignalAlertSettings').mockReturnValue({
+      mutate,
+      mutateAsync: vi.fn(),
+      reset: vi.fn(),
+      status: 'idle',
+      isIdle: true,
+      isPending: false,
+      isSuccess: false,
+      isError: false,
+      isPaused: false,
+      failureCount: 0,
+      failureReason: null,
+      submittedAt: 0,
+      variables: undefined,
+      data: undefined,
+      error: null,
+      context: undefined,
+    } as never);
+
+    render(<LiveSettingsSections />, { wrapper: wrap(new QueryClient({ defaultOptions: { queries: { retry: false } } })) });
+    fireEvent.click(screen.getByTestId('settings-nav-alerts'));
+    const startTime = await screen.findByLabelText('기준 시각') as HTMLInputElement;
+
+    fireEvent.change(startTime, { target: { value: '1000' } });
+    fireEvent.blur(startTime);
+    expect(startTime.value).toBe('10:00');
+    expect(mutate).toHaveBeenLastCalledWith({
+      sell_total_renewal: {
+        enabled: true,
+        start_hhmm: 1000,
+        threshold_pct: 100,
+        use_intra_minute_max: true,
+      },
+    });
+
+    fireEvent.change(startTime, { target: { value: '1500' } });
+    fireEvent.blur(startTime);
+    expect(startTime.value).toBe('15:00');
+    expect(mutate).toHaveBeenLastCalledWith({
+      sell_total_renewal: {
+        enabled: true,
+        start_hhmm: 1500,
+        threshold_pct: 100,
+        use_intra_minute_max: true,
+      },
+    });
+  });
 });
