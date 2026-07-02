@@ -5,6 +5,7 @@ import LiveSettingsSections from './LiveSettingsSections';
 import { useLiveVenueStore } from '../state/liveVenue';
 import { useStudyViewOpenPrefsStore } from '../state/studyViewOpenPrefs';
 import * as liveSettingsApi from '../api/liveSettings';
+import * as signalAlertsApi from '../api/signalAlerts';
 import * as apiClient from '../api/client';
 
 function wrap(qc: QueryClient) {
@@ -21,11 +22,12 @@ describe('LiveSettingsSections (2단 nav+detail)', () => {
     useStudyViewOpenPrefsStore.setState({ defaultTimeframe: '3m' });
   });
 
-  it('카테고리 nav를 렌더 (차트·데이터소스·저장뷰 — 보조지표·총잔량 급증은 지표 모달로 이동)', () => {
+  it('카테고리 nav를 렌더 (차트·데이터소스·저장뷰·알림 — 보조지표·총잔량 급증은 지표 모달로 이동)', () => {
     render(<LiveSettingsSections />);
     expect(screen.getByTestId('settings-nav-chart')).toBeTruthy();
     expect(screen.getByTestId('settings-nav-data-source')).toBeTruthy();
     expect(screen.getByTestId('settings-nav-study-views')).toBeTruthy();
+    expect(screen.getByTestId('settings-nav-alerts')).toBeTruthy();
     expect(screen.queryByTestId('settings-nav-indicators')).toBeNull();
     expect(screen.queryByTestId('settings-nav-surge')).toBeNull();
   });
@@ -197,5 +199,60 @@ describe('LiveSettingsSections (2단 nav+detail)', () => {
 
     fireEvent.click(screen.getByRole('radio', { name: '저장된 분봉' }));
     expect(useStudyViewOpenPrefsStore.getState().defaultTimeframe).toBe('saved');
+  });
+
+  it('알림 상세에서 시그널 알림 설정을 수정한다', async () => {
+    vi.spyOn(signalAlertsApi, 'getSignalAlertSettings').mockResolvedValue({
+      schema_version: 1,
+      sell_total_renewal: {
+        enabled: true,
+        start_hhmm: 1100,
+        threshold_pct: 100,
+        use_intra_minute_max: true,
+      },
+    });
+    const mutate = vi.fn();
+    vi.spyOn(signalAlertsApi, 'usePatchSignalAlertSettings').mockReturnValue({
+      mutate,
+      mutateAsync: vi.fn(),
+      reset: vi.fn(),
+      status: 'idle',
+      isIdle: true,
+      isPending: false,
+      isSuccess: false,
+      isError: false,
+      isPaused: false,
+      failureCount: 0,
+      failureReason: null,
+      submittedAt: 0,
+      variables: undefined,
+      data: undefined,
+      error: null,
+      context: undefined,
+    } as never);
+
+    render(<LiveSettingsSections />, { wrapper: wrap(new QueryClient({ defaultOptions: { queries: { retry: false } } })) });
+    fireEvent.click(screen.getByTestId('settings-nav-alerts'));
+
+    expect(await screen.findByRole('switch', { name: '알림 사용' })).toHaveAttribute('aria-checked', 'true');
+    const startTime = screen.getByLabelText('기준 시각');
+    const threshold = screen.getByLabelText('기준 최대값 대비 문턱 (%)');
+
+    fireEvent.change(startTime, { target: { value: '11:15' } });
+    fireEvent.blur(startTime);
+    fireEvent.change(threshold, { target: { value: '95' } });
+    fireEvent.blur(threshold);
+    fireEvent.click(screen.getByRole('switch', { name: '분봉 내 최대 매도 총잔량으로 판정' }));
+
+    await waitFor(() => {
+      expect(mutate).toHaveBeenCalledWith({
+        sell_total_renewal: {
+          enabled: true,
+          start_hhmm: 1115,
+          threshold_pct: 95,
+          use_intra_minute_max: false,
+        },
+      });
+    });
   });
 });

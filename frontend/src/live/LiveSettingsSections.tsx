@@ -21,6 +21,7 @@ import IndicatorPrefRows from './settings/IndicatorPrefRows';
 import { SettingsRow, ToggleSwitch } from './settings/SettingsRow';
 import SourcePreferenceRadio from './settings/SourcePreferenceRadio';
 import { DataSection } from '../ui/DataSurface';
+import SignalAlertSettingsSection from '../signalAlerts/SignalAlertSettingsSection';
 
 /**
  * The live settings body — mirrors `IndicatorPanel`'s two-column layout (left
@@ -29,7 +30,7 @@ import { DataSection } from '../ui/DataSurface';
  * toggles are excluded (they live in the 「지표」 modal instead). Adding
  * a toggle/pref stays a one-line registry edit.
  */
-type NavId = ChartToggleCategory | 'data-source' | 'study-views';
+type NavId = ChartToggleCategory | 'data-source' | 'study-views' | 'alerts';
 
 const CATEGORY_ORDER: ChartToggleCategory[] = ['chart'];
 const LABEL: Record<NavId, string> = {
@@ -37,6 +38,7 @@ const LABEL: Record<NavId, string> = {
   'indicator-modal': '지표', // never rendered — not in CATEGORY_ORDER; kept for Record<NavId> exhaustiveness
   'data-source': '데이터소스',
   'study-views': '저장뷰',
+  alerts: '알림',
 };
 
 const STORAGE_POLICY_LABEL: Record<LiveStoragePolicy, string> = {
@@ -272,6 +274,7 @@ export default function LiveSettingsSections() {
     ...CATEGORY_ORDER.filter((c) => CHART_TOGGLES.some((t) => categoryOf(t) === c)),
     'data-source',
     'study-views',
+    'alerts',
   ];
   const [selected, setSelected] = useState<NavId>(navIds[0]);
 
@@ -301,7 +304,9 @@ export default function LiveSettingsSections() {
             ? <DataSourceDetail />
             : selected === 'study-views'
               ? <StudyViewsDetail />
-              : <CategoryDetail category={selected} />}
+              : selected === 'alerts'
+                ? <SignalAlertSettingsSection />
+                : <CategoryDetail category={selected} />}
         </DataSection>
       </div>
     </div>

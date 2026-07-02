@@ -3,6 +3,11 @@
 All notable changes to this project are documented here.
 The format follows a 4-digit `MAJOR.MINOR.PATCH.MICRO` scheme.
 
+## [0.12.23.12] - 2026-07-02
+
+### Changed
+- **/live 시그널 알림 설정 위치 이동**: 시그널 알림 설정을 전역 Settings 페이지에서 /live 설정 모달의 신규 `알림` 메뉴로 옮겨, 라이브 차트 작업 중 바로 알림 조건을 조정할 수 있게 했다.
+
 ## [0.12.23.11] - 2026-07-02
 
 ### Added
