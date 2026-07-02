@@ -19,6 +19,13 @@ export interface LivePastCandlesWarning {
   msg: string;
 }
 
+export interface LiveEffectiveSession {
+  date: string;
+  venue: LiveVenueOption;
+  open_ms: number;
+  close_ms: number;
+}
+
 export interface LivePastCandlesResponse {
   code: string;
   from: string;
@@ -28,6 +35,7 @@ export interface LivePastCandlesResponse {
   cached_dates: string[];
   fresh_dates: string[];
   data_warnings: LivePastCandlesWarning[];
+  effective_sessions?: LiveEffectiveSession[];
 }
 
 export function useLivePastCandles(

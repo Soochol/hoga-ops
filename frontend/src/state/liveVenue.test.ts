@@ -23,9 +23,15 @@ describe('useLiveVenueStore', () => {
   });
 
   it('hydrates from localStorage', () => {
+    localStorage.setItem('live.venue.v1', JSON.stringify({ venue: 'UN' }));
+    useLiveVenueStore.getState().hydrateFromStorage();
+    expect(useLiveVenueStore.getState().venue).toBe('UN');
+  });
+
+  it('ignores persisted AUTO venue during hydration', () => {
     localStorage.setItem('live.venue.v1', JSON.stringify({ venue: 'AUTO' }));
     useLiveVenueStore.getState().hydrateFromStorage();
-    expect(useLiveVenueStore.getState().venue).toBe('AUTO');
+    expect(useLiveVenueStore.getState().venue).toBe('KRX');
   });
 
   it('ignores corrupt stored JSON during hydration', () => {
@@ -41,6 +47,6 @@ describe('useLiveVenueStore', () => {
   });
 
   it('exposes the requested UI labels', () => {
-    expect(LIVE_VENUE_OPTIONS.map((v) => LIVE_VENUE_LABELS[v])).toEqual(['KRX', 'NXT', '통합', '자동']);
+    expect(LIVE_VENUE_OPTIONS.map((v) => LIVE_VENUE_LABELS[v])).toEqual(['KRX', 'NXT', '통합']);
   });
 });

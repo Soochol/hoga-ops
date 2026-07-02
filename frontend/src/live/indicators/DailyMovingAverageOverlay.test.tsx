@@ -75,8 +75,8 @@ describe('DailyMovingAverageOverlay', () => {
 
   it('threads the chart venue into the daily candle query', () => {
     const m = makeChartMock();
-    renderOverlay(m, { venue: 'AUTO' });
-    expect(mockUseDaily).toHaveBeenLastCalledWith('005930', '20250822', '20260613', 'AUTO');
+    renderOverlay(m, { venue: 'UN' });
+    expect(mockUseDaily).toHaveBeenLastCalledWith('005930', '20250822', '20260613', 'UN');
   });
 
   it('uses integer price formatting so daily MA overlays do not add .00 to the candle axis', () => {

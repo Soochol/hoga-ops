@@ -25,6 +25,7 @@ import {
   earliestAllowedMinuteDate,
 } from './liveDateTime';
 import {
+  effectiveSessionBoundsByDate,
   liveVenueAllowsKrxTradeOverlay,
   liveVenueSessionBoundsMs,
   liveVenueUsesExtendedMinuteWindow,
@@ -373,18 +374,36 @@ export function useLiveBundle(
         : { open_ms: regularSessionOpenMs(todayKstYyyymmdd), close_ms: regularSessionCloseMs(todayKstYyyymmdd) },
     [live.initial, todayKstYyyymmdd],
   );
+  const effectiveSessionByDate = useMemo(
+    () => effectiveSessionBoundsByDate(pastCandlesQuery.data?.effective_sessions),
+    [pastCandlesQuery.data?.effective_sessions],
+  );
   // Chart session follows the selected KIS Venue for minute candles. HOGA/WS
   // side remains KRX-only, so buildHogaSeries keeps the default KRX bounds.
   const todayChartSession = useMemo(
-    () => (isMinute && liveVenueUsesExtendedMinuteWindow(venue) ? liveVenueSessionBoundsMs(todayKstYyyymmdd, venue) : defaultKrxSession),
-    [defaultKrxSession, isMinute, todayKstYyyymmdd, venue],
+    () => {
+      if (!isMinute) return defaultKrxSession;
+      const effective = effectiveSessionByDate.get(todayKstYyyymmdd);
+      if (effective) return effective;
+      return liveVenueUsesExtendedMinuteWindow(venue)
+        ? liveVenueSessionBoundsMs(todayKstYyyymmdd, venue)
+        : defaultKrxSession;
+    },
+    [defaultKrxSession, effectiveSessionByDate, isMinute, todayKstYyyymmdd, venue],
   );
   const sessionBoundsForDate = useMemo(
     () =>
-      isMinute && liveVenueUsesExtendedMinuteWindow(venue)
-        ? (yyyymmdd: string) => liveVenueSessionBoundsMs(yyyymmdd, venue)
+      isMinute
+        ? (yyyymmdd: string) =>
+            effectiveSessionByDate.get(yyyymmdd) ??
+            (liveVenueUsesExtendedMinuteWindow(venue)
+              ? liveVenueSessionBoundsMs(yyyymmdd, venue)
+              : {
+                  open_ms: regularSessionOpenMs(yyyymmdd),
+                  close_ms: regularSessionCloseMs(yyyymmdd),
+                })
         : undefined,
-    [isMinute, venue],
+    [effectiveSessionByDate, isMinute, venue],
   );
 
   // CHART side (candles + segments + investor). Deps deliberately EXCLUDE the

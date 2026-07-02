@@ -21,8 +21,8 @@ describe('liveVenuePolicy', () => {
     expect(initialVisibleMinuteBarsFor('1m', 'KRX')).toBe(300);
   });
 
-  it('uses the extended minute window for NXT, integrated, and AUTO', () => {
-    for (const venue of ['NXT', 'UN', 'AUTO'] as const) {
+  it('uses the extended minute window for NXT and integrated', () => {
+    for (const venue of ['NXT', 'UN'] as const) {
       expect(liveVenueSessionBoundsMs('20260518', venue)).toEqual({
         open_ms: MON_OPEN_MS - HOUR,
         close_ms: MON_OPEN_MS + 11 * HOUR,
@@ -36,14 +36,12 @@ describe('liveVenuePolicy', () => {
     expect(liveVenueDisplayLabel('KRX')).toBe('KRX');
     expect(liveVenueDisplayLabel('NXT')).toBe('NXT');
     expect(liveVenueDisplayLabel('UN')).toBe('통합');
-    expect(liveVenueDisplayLabel('AUTO')).toBe('자동');
   });
 
   it('uses venue-specific session windows for live refetch freshness', () => {
     expect(isLiveVenueSessionNow('KRX', MON_OPEN_MS - HOUR)).toBe(false);
     expect(isLiveVenueSessionNow('NXT', MON_OPEN_MS - HOUR)).toBe(true);
     expect(isLiveVenueSessionNow('UN', MON_OPEN_MS + 9 * HOUR)).toBe(true);
-    expect(isLiveVenueSessionNow('AUTO', MON_OPEN_MS + 9 * HOUR)).toBe(true);
     expect(isLiveVenueSessionNow('NXT', MON_OPEN_MS + 12 * HOUR)).toBe(false);
   });
 
@@ -58,8 +56,5 @@ describe('liveVenuePolicy', () => {
     expect(liveVenueAllowsKrxTradeOverlay('KRX', MON_OPEN_MS + HOUR)).toBe(true);
     expect(liveVenueAllowsKrxTradeOverlay('NXT', MON_OPEN_MS + HOUR)).toBe(false);
     expect(liveVenueAllowsKrxTradeOverlay('UN', MON_OPEN_MS + HOUR)).toBe(false);
-    expect(liveVenueAllowsKrxTradeOverlay('AUTO', MON_OPEN_MS + HOUR)).toBe(true);
-    expect(liveVenueAllowsKrxTradeOverlay('AUTO', MON_OPEN_MS - HOUR)).toBe(false);
-    expect(liveVenueAllowsKrxTradeOverlay('AUTO', MON_OPEN_MS + 9 * HOUR)).toBe(false);
   });
 });

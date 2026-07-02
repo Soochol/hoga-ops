@@ -32,7 +32,7 @@ describe('summarizeWarnings', () => {
     const w = [
       { reason: 'kis_api_error', msg: 'x' },
       { reason: 'invariant_violation', msg: 'y' },
-      { reason: 'auto_daily_uses_integrated', msg: 'z' },
+      { reason: 'cache_write_failed', msg: 'z' },
     ];
     expect(summarizeWarnings(w)).toEqual({ count: 3, hasRateLimit: false });
   });

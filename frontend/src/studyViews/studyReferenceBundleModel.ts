@@ -1,4 +1,5 @@
 import type { StudyViewReference } from '../api/studyViews';
+import type { LiveEffectiveSession } from '../api/livePastCandles';
 import { TIMEFRAME_TO_MS, type Candle, type RangeBundle, type Timeframe, type VolumeProfile } from '../api/types';
 import { aggregateCalendar, aggregateCandles } from '../live/aggregateCandles';
 import { buildChartBundle } from '../live/buildLiveBundle';
@@ -9,7 +10,11 @@ import {
   regularSessionOpenMs,
   subtractDaysKst,
 } from '../live/liveDateTime';
-import { liveVenueSessionBoundsMs, liveVenueUsesExtendedMinuteWindow } from '../live/liveVenuePolicy';
+import {
+  effectiveSessionBoundsByDate,
+  liveVenueSessionBoundsMs,
+  liveVenueUsesExtendedMinuteWindow,
+} from '../live/liveVenuePolicy';
 import type { LiveVenueOption } from '../state/liveVenue';
 import { isMinuteTimeframe, type CalendarTimeframe } from '../state/livePage';
 
@@ -144,12 +149,14 @@ export function buildStudyReferenceBundleModel({
   pastBundle,
   minuteCandles,
   dailyCandles,
+  minuteEffectiveSessions = [],
 }: {
   save: StudyViewReference | null;
   venue: LiveVenueOption;
   pastBundle: RangeBundle | null;
   minuteCandles: readonly StudyReferenceKisBar[];
   dailyCandles: readonly StudyReferenceKisBar[];
+  minuteEffectiveSessions?: readonly LiveEffectiveSession[];
 }): StudyReferenceBundleModel {
   if (!save) return { bundle: null, chartBundle: null };
 
@@ -166,8 +173,16 @@ export function buildStudyReferenceBundleModel({
       const date = realMsToYyyymmdd(c.ts_ms);
       return date >= save.range.from_date && date <= save.range.to_date;
     });
-  const sessionForDate = liveVenueUsesExtendedMinuteWindow(venue)
-    ? (yyyymmdd: string) => liveVenueSessionBoundsMs(yyyymmdd, venue)
+  const effectiveSessionByDate = effectiveSessionBoundsByDate(minuteEffectiveSessions);
+  const sessionForDate = inputs.isMinute
+    ? (yyyymmdd: string) =>
+        effectiveSessionByDate.get(yyyymmdd) ??
+        (liveVenueUsesExtendedMinuteWindow(venue)
+          ? liveVenueSessionBoundsMs(yyyymmdd, venue)
+          : {
+              open_ms: regularSessionOpenMs(yyyymmdd),
+              close_ms: regularSessionCloseMs(yyyymmdd),
+            })
     : undefined;
   const chartBundle = {
     ...buildChartBundle({

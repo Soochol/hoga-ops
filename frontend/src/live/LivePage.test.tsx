@@ -683,7 +683,7 @@ describe('LivePage shell', () => {
   });
 
   it('includes the selected venue in bundle options, status text, and chart identity', () => {
-    useLiveVenueStore.setState({ venue: 'AUTO' });
+    useLiveVenueStore.setState({ venue: 'UN' });
     useLiveTabsStore.setState({
       tabs: [{ id: 'tab-a', code: '005930', label: '삼성전자', timeframe: '1m', historicalFromDate: null }],
       activeTabId: 'tab-a',
@@ -691,9 +691,9 @@ describe('LivePage shell', () => {
 
     renderWithRouter();
 
-    expect(livePageMocks.liveBundleCalls.at(-1)?.options.venue).toBe('AUTO');
-    expect(screen.getByTestId('live-venue-label').textContent).toBe('캔들 자동');
-    expect(livePageMocks.liveChartRootProps.at(-1)?.viewIdentity).toBe('tab-a:AUTO');
+    expect(livePageMocks.liveBundleCalls.at(-1)?.options.venue).toBe('UN');
+    expect(screen.getByTestId('live-venue-label').textContent).toBe('캔들 통합');
+    expect(livePageMocks.liveChartRootProps.at(-1)?.viewIdentity).toBe('tab-a:UN');
   });
 
   it('shows empty-state placeholder when no activeCode anywhere', () => {

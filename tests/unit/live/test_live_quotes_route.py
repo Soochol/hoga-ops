@@ -286,8 +286,7 @@ def test_quote_phase_clock_boundaries_closed():
     assert _quote_phase(datetime(2026, 6, 13, 10, 0, tzinfo=_KST)) == "closed"
 
 
-def test_quote_phase_auto_treats_nxt_preopen_as_open():
-    assert _quote_phase(datetime(2026, 7, 1, 8, 30, tzinfo=_KST), "AUTO") == "open"
+def test_quote_phase_extended_venues_treat_nxt_preopen_as_open():
     assert _quote_phase(datetime(2026, 7, 1, 8, 30, tzinfo=_KST), "NXT") == "open"
     assert _quote_phase(datetime(2026, 7, 1, 8, 30, tzinfo=_KST), "UN") == "open"
     assert _quote_phase(datetime(2026, 7, 1, 8, 30, tzinfo=_KST), "KRX") == "closed"
@@ -306,13 +305,8 @@ def test_quotes_route_threads_explicit_nxt_venue(monkeypatch, tmp_path):
     assert fake.venues == ["NXT"]
 
 
-def test_quotes_route_auto_uses_nxt_before_regular_session(monkeypatch, tmp_path):
-    class _FixedDatetime(datetime):
-        @classmethod
-        def now(cls, tz=None):  # noqa: ANN001
-            return datetime(2026, 7, 1, 8, 30, tzinfo=tz)
-
-    monkeypatch.setattr(live_api, "datetime", _FixedDatetime)
+def test_quotes_route_legacy_auto_maps_to_integrated(monkeypatch, tmp_path):
+    monkeypatch.setattr(live_api, "_quote_phase", lambda now, venue_policy="KRX": "open")
     fake = _FakeKis(QUOTES)
     kis_runtime.set_kis_client(fake, 0)  # type: ignore[arg-type]
     app = FastAPI()
@@ -321,27 +315,7 @@ def test_quotes_route_auto_uses_nxt_before_regular_session(monkeypatch, tmp_path
     r = TestClient(app).get("/api/live/quotes", params={"codes": "005930", "venue": "AUTO"})
 
     assert r.status_code == 200
-    assert r.json()["phase"] == "open"
-    assert fake.venues == ["NXT"]
-
-
-def test_quotes_route_auto_uses_nxt_after_regular_session(monkeypatch, tmp_path):
-    class _FixedDatetime(datetime):
-        @classmethod
-        def now(cls, tz=None):  # noqa: ANN001
-            return datetime(2026, 7, 1, 16, 30, tzinfo=tz)
-
-    monkeypatch.setattr(live_api, "datetime", _FixedDatetime)
-    fake = _FakeKis(QUOTES)
-    kis_runtime.set_kis_client(fake, 0)  # type: ignore[arg-type]
-    app = FastAPI()
-    app.include_router(build_router(get_status=lifecycle.get_status, data_dir=tmp_path))
-
-    r = TestClient(app).get("/api/live/quotes", params={"codes": "005930", "venue": "AUTO"})
-
-    assert r.status_code == 200
-    assert r.json()["phase"] == "open"
-    assert fake.venues == ["NXT"]
+    assert fake.venues == ["UN"]
 
 
 def test_quotes_route_rejects_invalid_venue(tmp_path):

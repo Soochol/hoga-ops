@@ -3,6 +3,15 @@
 All notable changes to this project are documented here.
 The format follows a 4-digit `MAJOR.MINOR.PATCH.MICRO` scheme.
 
+## [0.12.25.0] - 2026-07-03
+
+### Changed
+- **/live 데이터 소스 선택 정리**: AUTO 선택지를 제거하고 KRX, NXT, 통합만 표시하도록 했다.
+- **/live NXT/통합 차트 세션 폭 보정**: NXT/통합으로 조회했지만 해당 종목이 KRX 캔들로 fallback된 날짜는 장전·장후 빈 영역 없이 KRX 정규장 폭으로 표시하도록 했다.
+
+### Fixed
+- **구버전 AUTO 요청 호환성**: 캐시된 구버전 클라이언트가 `venue=AUTO`를 보내도 422로 실패하지 않고 통합 venue로 처리되도록 했다.
+
 ## [0.12.24.2] - 2026-07-03
 
 ### Fixed

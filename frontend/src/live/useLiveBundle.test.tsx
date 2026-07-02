@@ -42,6 +42,7 @@ const candlesMock = {
   isPlaceholderData: false,
   isFetching: false,
   warnings: [] as Array<{ date?: string; reason: string; msg: string }>,
+  effectiveSessions: [] as Array<{ date: string; venue: 'KRX' | 'NXT' | 'UN'; open_ms: number; close_ms: number }>,
 };
 const livePastCandlesSpy = vi.fn(() => ({
   data: {
@@ -52,6 +53,7 @@ const livePastCandlesSpy = vi.fn(() => ({
     cached_dates: [],
     fresh_dates: [],
     data_warnings: candlesMock.warnings,
+    effective_sessions: candlesMock.effectiveSessions,
   },
   isLoading: false,
   error: null,
@@ -182,6 +184,7 @@ describe('useLiveBundle', () => {
     candlesMock.isPlaceholderData = false;
     candlesMock.isFetching = false;
     candlesMock.warnings = [];
+    candlesMock.effectiveSessions = [];
     dailyCandlesMock.warnings = [];
     rangeMock.isPlaceholderData = false;
     rangeMock.isFetching = false;
@@ -532,35 +535,6 @@ describe('useLiveBundle', () => {
     });
   });
 
-  it('overlays KRX live trade ticks onto AUTO only during the KRX-owned regular window', () => {
-    const liveWithTrade: LiveSeriesData = {
-      ...liveFixture,
-      trade: [
-        {
-          t_ms: 1779840030000,
-          kind: 'trade',
-          trades: [
-            { t_ms: 1779840030000, price: 70150, qty: 7, side: 1 },
-            { t_ms: 1779867000000, price: 80000, qty: 99, side: 1 },
-          ],
-        },
-      ],
-    };
-
-    const { result } = renderHook(
-      () => useLiveBundle('005930', '1m', '20260527', liveWithTrade, { venue: 'AUTO' }),
-      { wrapper },
-    );
-
-    expect(result.current.chartBundle!.candles).toHaveLength(1);
-    expect(result.current.chartBundle!.candles[0]).toMatchObject({
-      ts_ms: 1779840000000,
-      high: 70150,
-      close: 70150,
-      vol_a: 1007,
-    });
-  });
-
   it('appends a new forming candle when live trade ticks move into the next bucket', () => {
     const liveWithTrade: LiveSeriesData = {
       ...liveFixture,
@@ -652,18 +626,6 @@ describe('useLiveBundle', () => {
     expect(result.current.pastDataWarnings).toEqual([]); // daily spy의 data_warnings=[]
   });
 
-  it('D/W/M: AUTO daily integrated fallback warning을 pastDataWarnings로 노출', () => {
-    dailyCandlesMock.warnings = [
-      { reason: 'auto_daily_uses_integrated', msg: 'AUTO daily candles use KIS integrated venue' },
-    ];
-    const { result } = renderHook(
-      () => useLiveBundle('005930', 'D', '20260527', liveFixture, { venue: 'AUTO' }),
-      { wrapper },
-    );
-    expect(result.current.pastDataWarnings).toEqual([
-      { reason: 'auto_daily_uses_integrated', msg: 'AUTO daily candles use KIS integrated venue' },
-    ]);
-  });
 });
 
 describe('useLiveBundle daily/minute branching (ADR-0048)', () => {
@@ -730,6 +692,26 @@ describe('useLiveBundle daily/minute branching (ADR-0048)', () => {
     expect(seg.session_close_ms).toBe(1779879600000);
     const lastMinuteCall = livePastCandlesSpy.mock.calls.at(-1) as unknown as unknown[];
     expect(lastMinuteCall[3]).toBe('NXT');
+  });
+
+  it('NXT minute venue narrows fallback dates to KRX effective sessions', () => {
+    candlesMock.effectiveSessions = [
+      {
+        date: '20260527',
+        venue: 'KRX',
+        open_ms: 1779840000000,
+        close_ms: 1779863400000,
+      },
+    ];
+
+    const { result } = renderHook(
+      () => useLiveBundle('005930', '1m', '20260527', liveFixture, { venue: 'NXT' }),
+      { wrapper },
+    );
+
+    const seg = result.current.chartBundle!.segments[0];
+    expect(seg.session_open_ms).toBe(1779840000000);
+    expect(seg.session_close_ms).toBe(1779863400000);
   });
 
   it('clampEngaged is false on D when historicalFromDate is very old', () => {

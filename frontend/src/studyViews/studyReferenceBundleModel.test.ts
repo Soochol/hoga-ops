@@ -101,6 +101,40 @@ describe('studyReferenceBundleModel', () => {
     expect(model.bundle?.to_date).toBe('20260618');
   });
 
+  it('uses effective KRX sessions for NXT fallback study reference minute charts', () => {
+    const model = buildStudyReferenceBundleModel({
+      save: {
+        ...save,
+        range: {
+          ...save.range,
+          from_date: '20260616',
+          to_date: '20260616',
+          from_ms: 0,
+          to_ms: Date.UTC(2026, 5, 16, 6, 30),
+        },
+      },
+      venue: 'NXT',
+      pastBundle: pastBundle(),
+      minuteCandles: [
+        { t_ms: Date.UTC(2026, 5, 16, 0, 0), open: 1, high: 2, low: 1, close: 2, volume: 10 },
+      ],
+      dailyCandles: [],
+      minuteEffectiveSessions: [
+        {
+          date: '20260616',
+          venue: 'KRX',
+          open_ms: Date.UTC(2026, 5, 16, 0, 0),
+          close_ms: Date.UTC(2026, 5, 16, 6, 30),
+        },
+      ],
+    });
+
+    expect(model.chartBundle?.segments.find((s) => s.date === '20260616')).toMatchObject({
+      session_open_ms: Date.UTC(2026, 5, 16, 0, 0),
+      session_close_ms: Date.UTC(2026, 5, 16, 6, 30),
+    });
+  });
+
   it('builds calendar bundles without requiring /api/range data', () => {
     const model = buildStudyReferenceBundleModel({
       save: { ...save, timeframe: 'D' },

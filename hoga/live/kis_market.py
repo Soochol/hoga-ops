@@ -1,14 +1,10 @@
-"""KIS market routing for /live candle backfill.
-
-The UI exposes four policies, but the KIS client only accepts concrete KIS
-markets. AUTO is expanded at the route layer before calling KisClient.
-"""
+"""KIS market routing for /live candle backfill."""
 from __future__ import annotations
 
 from typing import Literal, cast
 
 KisMarket = Literal["KRX", "NXT", "UN"]
-LiveMarketPolicy = Literal["KRX", "NXT", "UN", "AUTO"]
+LiveMarketPolicy = Literal["KRX", "NXT", "UN"]
 
 _KIS_DIV: dict[KisMarket, str] = {
     "KRX": "J",
@@ -32,9 +28,9 @@ def parse_kis_market(value: str) -> KisMarket:
 def parse_live_market_policy(value: str | None) -> LiveMarketPolicy:
     if value is None or value == "":
         return "KRX"
-    if value in ("KRX", "NXT", "UN", "AUTO"):
+    if value in ("KRX", "NXT", "UN"):
         return cast(LiveMarketPolicy, value)
-    raise ValueError("market must be one of KRX, NXT, UN, AUTO")
+    raise ValueError("market must be one of KRX, NXT, UN")
 
 
 def kis_market_div(market: KisMarket) -> str:
