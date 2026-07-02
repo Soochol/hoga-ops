@@ -1,4 +1,3 @@
-import { TIMEFRAME_TO_MS } from '../api/types';
 import { isMinuteTimeframe, type LiveTimeframe } from '../state/livePage';
 import { LIVE_VENUE_LABELS, type LiveVenueOption } from '../state/liveVenue';
 import {
@@ -7,8 +6,6 @@ import {
   regularSessionCloseMs,
   regularSessionOpenMs,
 } from './liveDateTime';
-
-const EXTENDED_SESSION_MINUTES = 12 * 60;
 
 export function liveVenueDisplayLabel(venue: LiveVenueOption): string {
   return LIVE_VENUE_LABELS[venue];
@@ -70,10 +67,8 @@ export function liveVenueAllowsKrxTradeOverlay(venue: LiveVenueOption, tMs: numb
 
 export function initialVisibleMinuteBarsFor(
   tf: LiveTimeframe,
-  venue: LiveVenueOption,
+  _venue: LiveVenueOption,
 ): number {
   if (!isMinuteTimeframe(tf)) return 300;
-  if (!liveVenueUsesExtendedMinuteWindow(venue)) return 300;
-  const tfMinutes = TIMEFRAME_TO_MS[tf] / 60_000;
-  return Math.ceil(EXTENDED_SESSION_MINUTES / tfMinutes);
+  return 300;
 }

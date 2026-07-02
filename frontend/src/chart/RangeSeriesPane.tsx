@@ -95,6 +95,8 @@ type Props<Ctx> = {
   /** When true, create the candle pane primary series after its same-pane
    * overlays so lightweight-charts paints candle bodies on top. */
   candleAlwaysOnTop?: boolean;
+  /** Optional caller-owned context for specs whose rendering depends on parent props. */
+  contextOverride?: Ctx;
 };
 
 function creationOrderForSpec(seriesCount: number, candleAlwaysOnTop: boolean): number[] {
@@ -124,13 +126,15 @@ function RangeSeriesPaneInner<Ctx>({
   onPrimarySeriesGone,
   forceSetData = false,
   candleAlwaysOnTop = false,
+  contextOverride,
 }: Props<Ctx>) {
   // Hook position is stable: PaneSpec is a module-level constant per
   // caller (spec.useContext presence never flips between renders), so
   // this conditional call doesn't violate rules-of-hooks. See PaneSpec
   // JSDoc for the full justification.
   // eslint-disable-next-line react-hooks/rules-of-hooks
-  const ctx = spec.useContext ? spec.useContext() : (undefined as Ctx);
+  const specContext = spec.useContext ? spec.useContext() : (undefined as Ctx);
+  const ctx = contextOverride !== undefined ? contextOverride : specContext;
   const seriesRef = useRef<ISeriesApi<any>[]>([]);
   // Last data array pushed to each series (by index). The data effect diffs the
   // new projection against this (classifyDataChange) to decide skip / update(tail)

@@ -48,6 +48,22 @@ describe('projectCandle', () => {
     expect(projectCandle(sameSlot, axis)[0].color).toBe(data[1].color);
   });
 
+  it('keeps normal up/down candle colors when auction muting is disabled', () => {
+    const auctionStartMs = sessionOpenMs + 22_800_000;
+    const bundle: any = {
+      candles: [
+        { ts_ms: sessionOpenMs + 60_000, open: 100, close: 110, high: 115, low: 95, vol_a: 0, vol_b: 0 },
+        { ts_ms: auctionStartMs + 60_000, open: 110, close: 115, high: 116, low: 109, vol_a: 0, vol_b: 0 },
+        { ts_ms: auctionStartMs + 120_000, open: 115, close: 105, high: 116, low: 100, vol_a: 0, vol_b: 0 },
+      ],
+    };
+
+    const normal = projectCandle(bundle, axis, { muteAuctionCandles: false });
+
+    expect(normal[1].color).toBe(normal[0].color);
+    expect(normal[2].color).not.toBe(normal[0].color);
+  });
+
   it('drops candles outside the segment via axis.contains', () => {
     const bundle: any = {
       candles: [

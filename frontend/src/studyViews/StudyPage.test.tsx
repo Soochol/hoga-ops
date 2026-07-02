@@ -214,6 +214,7 @@ beforeEach(() => {
     isLoading: false,
     error: null,
     pastDataWarnings: [],
+    venue: 'KRX',
   });
   useWarmStudyReferenceTabQueriesMock.mockClear();
   useWarmStudyReferenceTabQueriesMock.mockReturnValue({});
@@ -275,6 +276,7 @@ describe('StudyPage', () => {
     const props = liveChartRootMock.mock.calls[0][0];
     expect(props.code).toBe('005930');
     expect(props.timeframe).toBe('5m');
+    expect(props.venue).toBe('KRX');
     expect(props.restoreViewport).toEqual({
       rightEdgeMs: 2_000,
       barSpan: 120,
@@ -286,6 +288,21 @@ describe('StudyPage', () => {
     expect(props.paneTogglesOverride).toBeUndefined();
     expect(props.dailyMovingAverageOverride).toBeUndefined();
     expect(props.tradeVolumePocOverride).toBeUndefined();
+  });
+
+  it('passes the reference bundle venue into LiveChartRoot', () => {
+    useStudyReferenceBundleMock.mockReturnValue({
+      bundle: bundle(),
+      chartBundle: bundle(),
+      isLoading: false,
+      error: null,
+      pastDataWarnings: [],
+      venue: 'NXT',
+    });
+
+    renderPage('/study?view=view-ref');
+
+    expect(liveChartRootMock.mock.calls[0][0].venue).toBe('NXT');
   });
 
   it('uses the active saved-view tab timeframe over the saved reference timeframe', () => {

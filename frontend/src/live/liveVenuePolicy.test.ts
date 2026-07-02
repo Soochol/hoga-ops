@@ -27,7 +27,7 @@ describe('liveVenuePolicy', () => {
         open_ms: MON_OPEN_MS - HOUR,
         close_ms: MON_OPEN_MS + 11 * HOUR,
       });
-      expect(initialVisibleMinuteBarsFor('1m', venue)).toBe(720);
+      expect(initialVisibleMinuteBarsFor('1m', venue)).toBe(300);
       expect(liveVenueKeepsHogaKrx(venue)).toBe(true);
     }
   });

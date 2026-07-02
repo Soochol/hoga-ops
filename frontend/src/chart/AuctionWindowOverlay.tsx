@@ -7,6 +7,7 @@ import { AUCTION_WINDOW_LENGTH_MS } from '../util/sessionTime';
 type Props = {
   chart: IChartApi;
   axis: VirtualAxis;
+  enabled?: boolean;
 };
 
 /**
@@ -20,7 +21,7 @@ type Props = {
  * + ResizeObserver path as DayBoundaryOverlay so pan/zoom/resize stay
  * smooth.
  */
-function AuctionWindowOverlay({ chart, axis }: Props) {
+function AuctionWindowOverlay({ chart, axis, enabled = true }: Props) {
   const containerRef = useRef<HTMLDivElement>(null);
   const [, force] = useState(0);
   const auctionWindowMask = useActivePrefs((p) => p.auctionWindowMask);
@@ -44,7 +45,7 @@ function AuctionWindowOverlay({ chart, axis }: Props) {
     };
   }, [chart]);
 
-  if (!auctionWindowMask) return null;
+  if (!enabled || !auctionWindowMask) return null;
   if (axis.segments.length === 0) return null;
 
   const ts = chart.timeScale();

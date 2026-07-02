@@ -56,6 +56,7 @@ import PaneLegendOverlay from './PaneLegendOverlay';
 import CandleTooltip from './CandleTooltip';
 import HighLowAnnotationOverlay from './HighLowAnnotationOverlay';
 import PriceLevelDotsOverlay from './PriceLevelDotsOverlay';
+import type { CandlePaneContext } from '../chart/projectors/candle';
 import type { PaneId } from '../chart/drawing/types';
 import { useDrawingHost } from '../chart/useDrawingHost';
 import type { TradeVolumePoc } from './tradeVolumePoc';
@@ -959,6 +960,10 @@ export function LiveChartRoot({ code, timeframe, venue = 'KRX', viewIdentity, bu
       forceHogaPanes,
     ],
   );
+  const candlePaneContext = useMemo<CandlePaneContext>(
+    () => ({ muteAuctionCandles: venue === 'KRX' }),
+    [venue],
+  );
 
   useEffect(() => {
     if (!chart || !cb) return;
@@ -1261,6 +1266,7 @@ export function LiveChartRoot({ code, timeframe, venue = 'KRX', viewIdentity, bu
               axis={axis}
               paneIndex={i}
               spec={spec}
+              contextOverride={spec.name === 'candle' ? candlePaneContext : undefined}
               forceSetData={isCalendarTimeframe(timeframe) && spec.name === 'candle'}
               candleAlwaysOnTop={candleAlwaysOnTop}
               onPrimarySeriesReady={handleSeriesReady}
@@ -1361,7 +1367,7 @@ export function LiveChartRoot({ code, timeframe, venue = 'KRX', viewIdentity, bu
               visual parity (gray band over 15:20–15:30 KST) with the
               data masking the same toggle applies to RatioPane /
               FillStrength / TotalQtyBar. */}
-          <AuctionWindowOverlay chart={chart} axis={axis} />
+          <AuctionWindowOverlay chart={chart} axis={axis} enabled={venue === 'KRX'} />
         </>
       )}
       {/* Reveal cover — masks the chart + its overlays while the initial
