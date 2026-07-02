@@ -3,7 +3,12 @@ import TopNavItem from './TopNavItem';
 import { CaptureInlineStatus } from './CaptureInlineStatus';
 import StatusDot from './StatusDot';
 
-export default function TopNav() {
+const NAV_BUTTON_CLASS = [
+  'h-full inline-flex items-center whitespace-nowrap transition-colors',
+  'text-sm text-fg-dim font-semibold hover:text-fg',
+].join(' ');
+
+export default function TopNav({ onOpenSettings }: { onOpenSettings: () => void }) {
   return (
     <nav
       aria-label="주요 메뉴"
@@ -29,7 +34,18 @@ export default function TopNav() {
         <div className="flex min-w-max items-center gap-lg text-xs font-semibold text-fg-dim">
           <CaptureInlineStatus />
           {SYSTEM_NAV_ITEMS.map((item) => (
-            <TopNavItem key={item.to} to={item.to} label={item.label} />
+            item.to === '/settings'
+              ? (
+                <button
+                  key={item.to}
+                  type="button"
+                  onClick={onOpenSettings}
+                  className={NAV_BUTTON_CLASS}
+                >
+                  {item.label}
+                </button>
+              )
+              : <TopNavItem key={item.to} to={item.to} label={item.label} />
           ))}
           <StatusDot />
         </div>

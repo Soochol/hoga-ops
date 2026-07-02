@@ -21,6 +21,14 @@ function formatRelative(ms: number | null | undefined): string {
 }
 
 export default function Settings() {
+  return (
+    <PageContainer className="grid grid-cols-[minmax(0,42rem)] content-start">
+      <SettingsPanel />
+    </PageContainer>
+  );
+}
+
+export function SettingsPanel() {
   const [config, setConfig] = useState<AppConfig | null>(null);
   useEffect(() => {
     let cancelled = false;
@@ -33,22 +41,20 @@ export default function Settings() {
   }, []);
 
   return (
-    <PageContainer className="grid grid-cols-[minmax(0,42rem)] content-start">
-      <PanelCard as="section" data-testid="settings-page-primary" className="flex flex-col overflow-hidden text-sm">
-        <DataSection title="앱 정보" contentClassName="space-y-3 p-md">
-          <DefinitionRow label="API URL" value={config?.api_url ?? '…'} />
-          <DefinitionRow label="Version" value={VERSION} />
-        </DataSection>
-        <DataSection title="Symbol Master" contentClassName="space-y-3 p-md">
-          <SymbolMasterSection />
-        </DataSection>
-        <DataSection title="로드맵" contentClassName="p-md">
-          <p className="text-xs text-fg-dimmer">
-            편집 가능한 설정은 v1+1에서 `/api/config` 라우트와 함께 제공 예정.
-          </p>
-        </DataSection>
-      </PanelCard>
-    </PageContainer>
+    <PanelCard as="section" data-testid="settings-page-primary" className="flex flex-col overflow-hidden text-sm">
+      <DataSection title="앱 정보" contentClassName="space-y-3 p-md">
+        <DefinitionRow label="API URL" value={config?.api_url ?? '…'} />
+        <DefinitionRow label="Version" value={VERSION} />
+      </DataSection>
+      <DataSection title="Symbol Master" contentClassName="space-y-3 p-md">
+        <SymbolMasterSection />
+      </DataSection>
+      <DataSection title="로드맵" contentClassName="p-md">
+        <p className="text-xs text-fg-dimmer">
+          편집 가능한 설정은 v1+1에서 `/api/config` 라우트와 함께 제공 예정.
+        </p>
+      </DataSection>
+    </PanelCard>
   );
 }
 

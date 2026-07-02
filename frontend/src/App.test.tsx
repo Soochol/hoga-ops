@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { render, screen } from '@testing-library/react';
+import { fireEvent, render, screen, within } from '@testing-library/react';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { MemoryRouter, Route, Routes } from 'react-router';
 import type { ReactNode } from 'react';
@@ -45,6 +45,11 @@ vi.mock('./signalAlerts/SignalAlertToastHost', () => ({
 
 vi.mock('./signalAlerts/useSignalAlertEvents', () => ({
   useSignalAlertEvents: () => {},
+}));
+
+vi.mock('./pages/Settings', () => ({
+  SettingsPanel: () => <div>settings panel body</div>,
+  default: () => <div>settings page route</div>,
 }));
 
 function wrap(ui: ReactNode, initialEntry: string) {
@@ -127,5 +132,26 @@ describe('App shell layout', () => {
       gridTemplateColumns: '1fr var(--watchlist-panel-w) var(--rail-w)',
     });
     expect(screen.getByTestId('watchlist-drawer')).toBeInTheDocument();
+  });
+
+  it('opens Settings as a centered popover without leaving the current page', () => {
+    wrap(<div>unused</div>, '/live');
+
+    fireEvent.click(screen.getByRole('button', { name: 'Settings' }));
+
+    const dialog = screen.getByRole('dialog', { name: 'Settings' });
+    expect(dialog).toHaveClass('fixed', 'inset-0', 'items-center', 'justify-center');
+    expect(within(dialog).getByText('settings panel body')).toBeInTheDocument();
+    expect(screen.getByText('live page')).toBeInTheDocument();
+  });
+
+  it('closes the Settings popover with Escape', () => {
+    wrap(<div>unused</div>, '/live');
+
+    fireEvent.click(screen.getByRole('button', { name: 'Settings' }));
+    fireEvent.keyDown(document, { key: 'Escape' });
+
+    expect(screen.queryByRole('dialog', { name: 'Settings' })).toBeNull();
+    expect(screen.getByText('live page')).toBeInTheDocument();
   });
 });

@@ -3,6 +3,11 @@
 All notable changes to this project are documented here.
 The format follows a 4-digit `MAJOR.MINOR.PATCH.MICRO` scheme.
 
+## [0.12.23.13] - 2026-07-02
+
+### Changed
+- **Settings 메뉴 중앙 popover**: 상단 Settings 메뉴를 페이지 이동 대신 화면 중앙 설정 popover로 열어, 현재 작업 화면을 유지한 채 앱 설정을 확인할 수 있게 했다.
+
 ## [0.12.23.12] - 2026-07-02
 
 ### Changed
