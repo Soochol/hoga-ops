@@ -593,22 +593,23 @@ describe('LivePage shell', () => {
 
   it('renders the live tab label as stock name, change percent, and active hoga ratio multiple', async () => {
     vi.spyOn(client, 'apiCall').mockImplementation(async (path: string) => {
-      if (path.startsWith('/api/live/quotes')) {
+      if (path.startsWith('/api/live/tab-metrics')) {
         return {
           phase: 'open',
-          quotes: [{ code: '005930', price: 72400, change_pct: 2.14, change_won: 1510 }],
+          metrics: [{
+            code: '005930',
+            change_pct: 2.14,
+            hoga_ratio_x: 1.32,
+            hoga_available: true,
+            hoga_reason: null,
+            source: 'live',
+          }],
         };
       }
       if (path === '/api/symbols/all') {
         return { symbols: [], status: 'fresh', fetched_at_ms: 1 };
       }
       return {};
-    });
-    livePageMocks.liveBundleResult.hogaBundle = rangeBundleFixture({
-      quote_ratio: {
-        bucket_ms: 300_000,
-        points: [{ t: 2_000, bid_total: 100, ask_total: 132, bid_max: 0, ask_max: 0, imb_max_bid: 0, imb_max_ask: 0 }],
-      },
     });
     useLiveTabsStore.setState({
       tabs: [{ id: 'tab-a', code: '005930', label: '삼성전자', timeframe: '1m', historicalFromDate: null }],
@@ -619,6 +620,50 @@ describe('LivePage shell', () => {
 
     await waitFor(() => expect(screen.getByText('삼성전자 +2.14% · 1.32x')).toBeInTheDocument());
     expect(useLiveTabsStore.getState().tabs[0].label).toBe('삼성전자');
+  });
+
+  it('renders metrics on inactive stock tabs as well as the active tab', async () => {
+    vi.spyOn(client, 'apiCall').mockImplementation(async (path: string) => {
+      if (path.startsWith('/api/live/tab-metrics')) {
+        return {
+          phase: 'open',
+          metrics: [
+            {
+              code: '005930',
+              change_pct: 2.14,
+              hoga_ratio_x: 1.32,
+              hoga_available: true,
+              hoga_reason: null,
+              source: 'live',
+            },
+            {
+              code: '000660',
+              change_pct: -0.8,
+              hoga_ratio_x: 1.11,
+              hoga_available: true,
+              hoga_reason: null,
+              source: 'live',
+            },
+          ],
+        };
+      }
+      if (path === '/api/symbols/all') {
+        return { symbols: [], status: 'fresh', fetched_at_ms: 1 };
+      }
+      return {};
+    });
+    useLiveTabsStore.setState({
+      tabs: [
+        { id: 'tab-a', code: '005930', label: '삼성전자', timeframe: '1m', historicalFromDate: null },
+        { id: 'tab-b', code: '000660', label: 'SK하이닉스', timeframe: '1m', historicalFromDate: null },
+      ],
+      activeTabId: 'tab-a',
+    });
+
+    renderWithRouter();
+
+    await waitFor(() => expect(screen.getByText('삼성전자 +2.14% · 1.32x')).toBeInTheDocument());
+    expect(screen.getByText('SK하이닉스 -0.80% · 1.11x')).toBeInTheDocument();
   });
 
   it('captures the outgoing live tab viewport and restores it when returning to that tab', async () => {
