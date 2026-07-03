@@ -18,6 +18,12 @@ type NewTabButtonProps = {
 
 export type ChartTabStatus = 'idle' | 'loading' | 'ready' | 'error';
 
+export type ChartTabLabelParts = {
+  primary: string;
+  detail?: string;
+  full: string;
+};
+
 type Props<T extends ChartTabLike> = {
   tabs: T[];
   activeTabId: string | null;
@@ -26,6 +32,7 @@ type Props<T extends ChartTabLike> = {
   onClose: (id: string) => void;
   onReorder: (from: number, to: number) => void;
   renderLabel: (tab: T) => string;
+  renderLabelParts?: (tab: T) => ChartTabLabelParts;
   newTabButton?: NewTabButtonProps | null;
   trailingActions?: ReactNode;
   tabCountLabel?: (count: number) => string;
@@ -50,6 +57,7 @@ export function ChartTabBar<T extends ChartTabLike>({
   onClose,
   onReorder,
   renderLabel,
+  renderLabelParts,
   newTabButton,
   trailingActions,
   tabCountLabel = (count) => `${count} open`,
@@ -99,7 +107,8 @@ export function ChartTabBar<T extends ChartTabLike>({
         {visibleTabs.map((tab, offset) => {
           const idx = windowStart + offset;
           const active = tab.id === activeTabId;
-          const displayLabel = renderLabel(tab);
+          const labelParts = renderLabelParts?.(tab);
+          const displayLabel = labelParts?.full ?? renderLabel(tab);
           const status = tabStatus?.(tab, active) ?? (active && activeLoading ? 'loading' : active ? 'ready' : 'idle');
           const pinned = tab.pinned === true;
           const isDragging = draggingTab?.id === tab.id;
@@ -117,6 +126,7 @@ export function ChartTabBar<T extends ChartTabLike>({
               data-tab-id={tab.id}
               role="tab"
               aria-selected={active}
+              aria-label={displayLabel}
               onClick={() => onFocus(tab.id)}
               onMouseDown={(e) => {
                 if (e.button === 1 && !pinned) {
@@ -164,12 +174,24 @@ export function ChartTabBar<T extends ChartTabLike>({
                 boxShadow: active ? '0 0 0 1px rgba(45, 212, 191, 0.04)' : 'none',
                 ...(isDragging ? sortableDraggingStyle(18) : {}),
               }}
+              title={displayLabel}
             >
               {active && (
                 <span className="absolute left-0 right-0 top-0 h-[2px]" style={{ background: 'var(--accent)' }} />
               )}
               <span className="w-1.5 h-1.5 rounded-full shrink-0" style={statusDotStyle(active, status)} />
-              <span className="text-sm shrink-0 max-w-36 truncate" title={displayLabel} style={{ color: active ? 'var(--fg)' : 'var(--fg-dim)' }}>{displayLabel}</span>
+              {labelParts ? (
+                <span className="flex min-w-0 max-w-[190px] items-baseline gap-1.5 text-sm" style={{ color: active ? 'var(--fg)' : 'var(--fg-dim)' }}>
+                  <span className="min-w-0 max-w-36 truncate">{labelParts.primary}</span>
+                  {labelParts.detail && (
+                    <span className="shrink-0 whitespace-nowrap font-mono text-xs" style={{ color: active ? 'var(--fg)' : 'var(--fg-dim)' }}>
+                      {labelParts.detail}
+                    </span>
+                  )}
+                </span>
+              ) : (
+                <span className="text-sm shrink-0 max-w-36 truncate" title={displayLabel} style={{ color: active ? 'var(--fg)' : 'var(--fg-dim)' }}>{displayLabel}</span>
+              )}
               {onTogglePin && (
                 <button
                   type="button"

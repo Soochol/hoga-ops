@@ -618,7 +618,7 @@ describe('LivePage shell', () => {
 
     renderWithRouter();
 
-    await waitFor(() => expect(screen.getByText('삼성전자 +2.14% · 1.32x')).toBeInTheDocument());
+    await waitFor(() => expect(screen.getByRole('tab', { name: '삼성전자 +2.14% · 1.32x' })).toBeInTheDocument());
     expect(useLiveTabsStore.getState().tabs[0].label).toBe('삼성전자');
   });
 
@@ -662,8 +662,8 @@ describe('LivePage shell', () => {
 
     renderWithRouter();
 
-    await waitFor(() => expect(screen.getByText('삼성전자 +2.14% · 1.32x')).toBeInTheDocument());
-    expect(screen.getByText('SK하이닉스 -0.80% · 1.11x')).toBeInTheDocument();
+    await waitFor(() => expect(screen.getByRole('tab', { name: '삼성전자 +2.14% · 1.32x' })).toBeInTheDocument());
+    expect(screen.getByRole('tab', { name: 'SK하이닉스 -0.80% · 1.11x' })).toBeInTheDocument();
   });
 
   it('captures the outgoing live tab viewport and restores it when returning to that tab', async () => {

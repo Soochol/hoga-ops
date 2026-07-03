@@ -33,9 +33,31 @@ it('renders live metric tab labels without persisting them into the tab label', 
     },
   });
 
-  expect(screen.getByText('삼성전자 +2.14% · 1.32x')).toBeInTheDocument();
-  expect(screen.getByText('SK하이닉스 -0.80%')).toBeInTheDocument();
+  const samsung = screen.getByRole('tab', { name: '삼성전자 +2.14% · 1.32x' });
+  const hynix = screen.getByRole('tab', { name: 'SK하이닉스 -0.80%' });
+
+  expect(within(samsung).getByText('삼성전자')).toBeInTheDocument();
+  expect(within(samsung).getByText('+2.14% · 1.32x')).toBeInTheDocument();
+  expect(within(hynix).getByText('SK하이닉스')).toBeInTheDocument();
+  expect(within(hynix).getByText('-0.80%')).toBeInTheDocument();
   expect(tabs[0].label).toBe('삼성전자');
+});
+
+it('keeps live metrics visible when the stock name is long', () => {
+  setup({
+    tabs: [{ id: 'long', code: '123456', label: '아주긴종목이름우선주', timeframe: '1m', historicalFromDate: null }],
+    activeTabId: 'long',
+    tabMetrics: { long: { changePct: 2.14, ratioX: 1.32 } },
+  });
+
+  const tab = screen.getByRole('tab', { name: /아주긴종목이름우선주 \+2\.14% · 1\.32x/ });
+  const name = within(tab).getByText('아주긴종목이름우선주');
+  const metrics = within(tab).getByText('+2.14% · 1.32x');
+
+  expect(name).toHaveClass('truncate');
+  expect(name).toHaveClass('min-w-0');
+  expect(metrics).toHaveClass('shrink-0');
+  expect(tab).toHaveAttribute('title', '아주긴종목이름우선주 +2.14% · 1.32x');
 });
 
 it('renders only the stock name when live metrics are unavailable', () => {

@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { formatLiveViewLabel, formatTimeframeLabel } from './liveViewLabel';
+import { formatLiveViewLabel, formatLiveViewLabelParts, formatTimeframeLabel } from './liveViewLabel';
 
 describe('liveViewLabel', () => {
   it('formats minute and calendar timeframe labels', () => {
@@ -23,5 +23,13 @@ describe('liveViewLabel', () => {
   it('omits the timeframe and metric suffix when live tab metrics are unavailable', () => {
     expect(formatLiveViewLabel('삼성전자', '1m', {})).toBe('삼성전자');
     expect(formatLiveViewLabel('삼성전자', '1m', { changePct: null, ratioX: 1.32 })).toBe('삼성전자');
+  });
+
+  it('splits live tab labels into truncatable name and fixed metric detail', () => {
+    expect(formatLiveViewLabelParts('아주긴종목이름우선주', '1m', { changePct: 2.14, ratioX: 1.32 })).toEqual({
+      primary: '아주긴종목이름우선주',
+      detail: '+2.14% · 1.32x',
+      full: '아주긴종목이름우선주 +2.14% · 1.32x',
+    });
   });
 });
