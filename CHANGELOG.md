@@ -3,6 +3,11 @@
 All notable changes to this project are documented here.
 The format follows a 4-digit `MAJOR.MINOR.PATCH.MICRO` scheme.
 
+## [0.12.26.2] - 2026-07-03
+
+### Fixed
+- **/live·/study 당일 최대벽 라벨 여백 보정**: 당일 매수·매도 최대벽 docked 라벨을 최신 캔들 중심보다 반 칸 더 오른쪽에 배치해, 장중 진행 중인 마지막 캔들을 가리지 않도록 했다.
+
 ## [0.12.26.0] - 2026-07-03
 
 ### Changed
