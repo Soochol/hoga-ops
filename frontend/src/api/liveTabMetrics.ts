@@ -1,4 +1,4 @@
-import { useMemo } from 'react';
+import { useMemo, useRef } from 'react';
 import { useQuery } from '@tanstack/react-query';
 
 import { apiCall } from './client';
@@ -43,6 +43,19 @@ function tabMetricsRefetchInterval(phase: string | undefined): number {
   return phase === 'closed' ? 600_000 : 10_000;
 }
 
+function finiteNumber(value: number | null | undefined): value is number {
+  return typeof value === 'number' && Number.isFinite(value);
+}
+
+function withLastGoodMetric(current: LiveTabMetric, previous: LiveTabMetric | undefined): LiveTabMetric {
+  if (previous == null) return current;
+  return {
+    ...current,
+    change_pct: finiteNumber(current.change_pct) ? current.change_pct : previous.change_pct,
+    hoga_ratio_x: finiteNumber(current.hoga_ratio_x) && current.hoga_ratio_x > 0 ? current.hoga_ratio_x : previous.hoga_ratio_x,
+  };
+}
+
 export function useLiveTabMetrics(codes: string[], venue: LiveVenueOption = 'KRX') {
   const sortedCodes = useMemo(() => uniqueSortedCodes(codes), [codes]);
   return useQuery({
@@ -60,11 +73,21 @@ export function useLiveTabMetricsByCode(
   venue: LiveVenueOption = 'KRX',
 ): Map<string, LiveTabMetric> {
   const q = useLiveTabMetrics(codes, venue);
+  const lastGoodByCodeRef = useRef(new Map<string, LiveTabMetric>());
   return useMemo(() => {
+    const currentMetrics = q.data?.metrics;
+    if (currentMetrics == null) return new Map<string, LiveTabMetric>();
     const next = new Map<string, LiveTabMetric>();
-    for (const metric of q.data?.metrics ?? []) {
-      next.set(metric.code, metric);
+    for (const metric of currentMetrics) {
+      const merged = withLastGoodMetric(metric, lastGoodByCodeRef.current.get(metric.code));
+      next.set(metric.code, merged);
+      lastGoodByCodeRef.current.set(metric.code, merged);
+    }
+    for (const code of uniqueSortedCodes(codes)) {
+      if (next.has(code)) continue;
+      const previous = lastGoodByCodeRef.current.get(code);
+      if (previous != null) next.set(code, previous);
     }
     return next;
-  }, [q.data]);
+  }, [codes, q.data]);
 }
