@@ -9,6 +9,7 @@ import type { RangeBundle, QuoteRatioPoint } from '../../api/types';
 import { type VirtualAxis } from '../../util/virtualAxis';
 import { isSyntheticHogaGapPoint } from '../util/hogaGapHide';
 import { resolveTokens } from '../../util/tokens';
+import { quoteImbalance } from '../../util/imbalance';
 import { useActivePrefs } from '../../state/chartPrefs';
 import type { PaneSpec } from '../RangeSeriesPane';
 import type { SurgeMarkerPoint } from '../SurgeMarkersPrimitive';
@@ -23,6 +24,25 @@ const TOKEN_SPEC = {
 } as const;
 
 const { bid, ask } = resolveTokens(TOKEN_SPEC);
+
+function rgba(hex: string, a: number): string {
+  const r = parseInt(hex.slice(1, 3), 16);
+  const g = parseInt(hex.slice(3, 5), 16);
+  const b = parseInt(hex.slice(5, 7), 16);
+  return `rgba(${r}, ${g}, ${b}, ${a})`;
+}
+
+const bidMuted = rgba(bid, 0.34);
+const askMuted = rgba(ask, 0.34);
+
+function ratioSideColors(p: QuoteRatioPoint, intraMax: boolean): { bidColor: string; askColor: string } {
+  const imbalance = intraMax
+    ? quoteImbalance(p.imb_max_bid, p.imb_max_ask)
+    : quoteImbalance(p.bid_total, p.ask_total);
+  if (imbalance < 0) return { bidColor: bid, askColor: askMuted };
+  if (imbalance > 0) return { bidColor: bidMuted, askColor: ask };
+  return { bidColor: bidMuted, askColor: askMuted };
+}
 
 const priceFormat = {
   type: 'custom' as const,
@@ -63,7 +83,11 @@ export function projectBidPoints(
       out.push({ time, value: 0, ...LINE_HIDDEN_COLOR });
       continue;
     }
-    out.push({ time, value: intraMax ? p.bid_max : p.bid_total });
+    out.push({
+      time,
+      value: intraMax ? p.bid_max : p.bid_total,
+      color: ratioSideColors(p, intraMax).bidColor,
+    });
   }
   return out;
 }
@@ -97,7 +121,11 @@ export function projectAskPoints(
       out.push({ time, value: 0, ...LINE_HIDDEN_COLOR });
       continue;
     }
-    out.push({ time, value: intraMax ? p.ask_max : p.ask_total });
+    out.push({
+      time,
+      value: intraMax ? p.ask_max : p.ask_total,
+      color: ratioSideColors(p, intraMax).askColor,
+    });
   }
   return out;
 }
@@ -211,7 +239,7 @@ export const QUOTE_TOTALS_SPEC = {
     {
       type: LineSeries,
       options: {
-        color: bid, lineWidth: 1, priceFormat, priceLineVisible: false,
+        color: bid, lineWidth: 3, priceFormat, priceLineVisible: false,
         lastValueVisible: false, crosshairMarkerBackgroundColor: bid,
       },
       data: bidCachedData,
@@ -220,7 +248,7 @@ export const QUOTE_TOTALS_SPEC = {
     {
       type: LineSeries,
       options: {
-        color: ask, lineWidth: 1, priceFormat, priceLineVisible: false,
+        color: ask, lineWidth: 3, priceFormat, priceLineVisible: false,
         lastValueVisible: false, crosshairMarkerBackgroundColor: ask,
       },
       data: askCachedData,
