@@ -3,6 +3,11 @@
 All notable changes to this project are documented here.
 The format follows a 4-digit `MAJOR.MINOR.PATCH.MICRO` scheme.
 
+## [0.12.27.0] - 2026-07-03
+
+### Fixed
+- **/live 긴 탭 라벨 지표 가독성 유지**: 종목명이 길어져도 등락률과 호가비 배수는 잘리지 않고 계속 보이도록 탭 라벨을 종목명과 지표 영역으로 분리했다.
+
 ## [0.12.26.3] - 2026-07-03
 
 ### Changed

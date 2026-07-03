@@ -5,6 +5,12 @@ export type LiveTabMetrics = {
   ratioX?: number | null;
 };
 
+export type LiveViewLabelParts = {
+  primary: string;
+  detail?: string;
+  full: string;
+};
+
 export function formatTimeframeLabel(timeframe: LiveTimeframe): string {
   if (timeframe === 'D') return '일봉';
   if (timeframe === 'W') return '주봉';
@@ -30,12 +36,22 @@ export function formatLiveViewLabel(
   timeframe: LiveTimeframe | null | undefined,
   metrics?: LiveTabMetrics,
 ): string {
+  return formatLiveViewLabelParts(nameOrCode, timeframe, metrics).full;
+}
+
+export function formatLiveViewLabelParts(
+  nameOrCode: string,
+  timeframe: LiveTimeframe | null | undefined,
+  metrics?: LiveTabMetrics,
+): LiveViewLabelParts {
   if (metrics !== undefined) {
-    if (!finiteNumber(metrics.changePct)) return nameOrCode;
+    if (!finiteNumber(metrics.changePct)) return { primary: nameOrCode, full: nameOrCode };
     const ratioSuffix = finiteNumber(metrics.ratioX) && metrics.ratioX > 0
       ? ` · ${formatRatioX(metrics.ratioX)}`
       : '';
-    return `${nameOrCode} ${formatChangePct(metrics.changePct)}${ratioSuffix}`;
+    const detail = `${formatChangePct(metrics.changePct)}${ratioSuffix}`;
+    return { primary: nameOrCode, detail, full: `${nameOrCode} ${detail}` };
   }
-  return timeframe ? `${nameOrCode} ${formatTimeframeLabel(timeframe)}` : nameOrCode;
+  const full = timeframe ? `${nameOrCode} ${formatTimeframeLabel(timeframe)}` : nameOrCode;
+  return { primary: full, full };
 }

@@ -1,7 +1,7 @@
 import type { LiveTab } from '../state/liveTabs';
 import { ChartTabBar } from '../tabs/ChartTabBar';
 import { LiveTabOverflowMenu } from './LiveTabOverflowMenu';
-import { formatLiveViewLabel, type LiveTabMetrics } from './liveViewLabel';
+import { formatLiveViewLabel, formatLiveViewLabelParts, type LiveTabMetrics } from './liveViewLabel';
 
 interface Props {
   tabs: LiveTab[];
@@ -27,6 +27,7 @@ export function LiveTabBar({ tabs, activeTabId, tabMetrics, activeLoading, onFoc
       onReorder={onReorder}
       onTogglePin={onTogglePin}
       renderLabel={(tab) => formatLiveViewLabel(tab.label, tab.timeframe, tabMetrics?.[tab.id])}
+      renderLabelParts={(tab) => formatLiveViewLabelParts(tab.label, tab.timeframe, tabMetrics?.[tab.id])}
       newTabButton={{ ariaLabel: '새 탭', onClick: onNewTab }}
       trailingActions={<LiveTabOverflowMenu tabs={tabs} activeTabId={activeTabId} tabMetrics={tabMetrics} onFocus={onFocus} onClose={onClose} />}
     />
