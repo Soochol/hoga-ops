@@ -50,6 +50,22 @@ it('includes venue in the request URL and query key', async () => {
   expect(liveQuotesQueryKey(['005930'], 'NXT')).toEqual(['live-quotes', '005930', 'NXT']);
 });
 
+it('dedupes codes before requesting quotes and building the query key', async () => {
+  const spy = vi.spyOn(client, 'apiCall').mockResolvedValueOnce({
+    phase: 'open',
+    quotes: [],
+  });
+
+  await getQuotes(['005930', '000660', '005930'], 'KRX');
+
+  expect(spy).toHaveBeenCalledWith('/api/live/quotes?codes=000660,005930&venue=KRX');
+  expect(liveQuotesQueryKey(['005930', '000660', '005930'], 'KRX')).toEqual([
+    'live-quotes',
+    '000660,005930',
+    'KRX',
+  ]);
+});
+
 describe('useQuoteByCode', () => {
   beforeEach(() => {
     vi.restoreAllMocks();

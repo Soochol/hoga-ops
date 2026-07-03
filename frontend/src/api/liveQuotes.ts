@@ -39,15 +39,19 @@ export function quotesRefetchInterval(phase: string | undefined): number {
   return phase === 'closed' ? 600_000 : 10_000;
 }
 
+function uniqueSortedCodes(codes: string[]): string[] {
+  return [...new Set(codes)].sort();
+}
+
 export function getQuotes(codes: string[], venue: LiveVenueOption = 'KRX'): Promise<LiveQuotesResponse> {
-  return apiCall<LiveQuotesResponse>(`/api/live/quotes?codes=${codes.join(',')}&venue=${venue}`);
+  return apiCall<LiveQuotesResponse>(`/api/live/quotes?codes=${uniqueSortedCodes(codes).join(',')}&venue=${venue}`);
 }
 
 export function liveQuotesQueryKey(
   codes: string[],
   venue: LiveVenueOption = 'KRX',
 ): readonly ['live-quotes', string, LiveVenueOption] {
-  return ['live-quotes', [...codes].sort().join(','), venue] as const;
+  return ['live-quotes', uniqueSortedCodes(codes).join(','), venue] as const;
 }
 
 /** 코드 목록의 현재가+등락률을 10초 폴링. codes 비면 비활성. */
