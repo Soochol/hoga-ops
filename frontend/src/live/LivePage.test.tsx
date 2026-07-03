@@ -9,6 +9,7 @@ import { useLiveTabsStore } from '../state/liveTabs';
 import { useLiveVenueStore } from '../state/liveVenue';
 import { DEFAULT_CARD_WEIGHTS, DEFAULT_RIGHT_PANEL_WIDTH_PX, useLiveLayoutStore } from '../state/liveLayout';
 import * as liveStatus from '../api/liveStatus';
+import * as client from '../api/client';
 import { initialHistoricalDaysFor, subtractDaysKst, todayKstYyyymmdd } from './liveDateTime';
 import type { LiveTimeframe } from '../state/livePage';
 
@@ -47,6 +48,7 @@ const livePageMocks = vi.hoisted(() => {
     liveBundleResult: {
       bundle: null as RangeBundle | null,
       chartBundle: null as RangeBundle | null,
+      hogaBundle: null as RangeBundle | null,
     },
     indexCandlesCalls: [] as unknown[],
     indexCandlesResult: {
@@ -247,6 +249,7 @@ describe('LivePage shell', () => {
     livePageMocks.liveBundleCalls.length = 0;
     livePageMocks.liveBundleResult.bundle = null;
     livePageMocks.liveBundleResult.chartBundle = null;
+    livePageMocks.liveBundleResult.hogaBundle = null;
     livePageMocks.indexCandlesCalls.length = 0;
     livePageMocks.indexCandlesResult.data = undefined;
     livePageMocks.indexCandlesResult.isLoading = false;
@@ -588,6 +591,36 @@ describe('LivePage shell', () => {
     });
   });
 
+  it('renders the live tab label as stock name, change percent, and active hoga ratio multiple', async () => {
+    vi.spyOn(client, 'apiCall').mockImplementation(async (path: string) => {
+      if (path.startsWith('/api/live/quotes')) {
+        return {
+          phase: 'open',
+          quotes: [{ code: '005930', price: 72400, change_pct: 2.14, change_won: 1510 }],
+        };
+      }
+      if (path === '/api/symbols/all') {
+        return { symbols: [], status: 'fresh', fetched_at_ms: 1 };
+      }
+      return {};
+    });
+    livePageMocks.liveBundleResult.hogaBundle = rangeBundleFixture({
+      quote_ratio: {
+        bucket_ms: 300_000,
+        points: [{ t: 2_000, bid_total: 100, ask_total: 132, bid_max: 0, ask_max: 0, imb_max_bid: 0, imb_max_ask: 0 }],
+      },
+    });
+    useLiveTabsStore.setState({
+      tabs: [{ id: 'tab-a', code: '005930', label: '삼성전자', timeframe: '1m', historicalFromDate: null }],
+      activeTabId: 'tab-a',
+    });
+
+    renderWithRouter();
+
+    await waitFor(() => expect(screen.getByText('삼성전자 +2.14% · 1.32x')).toBeInTheDocument());
+    expect(useLiveTabsStore.getState().tabs[0].label).toBe('삼성전자');
+  });
+
   it('captures the outgoing live tab viewport and restores it when returning to that tab', async () => {
     const capturedViewport = {
       rightEdgeMs: 1_781_000_000_000,
@@ -613,13 +646,13 @@ describe('LivePage shell', () => {
     });
 
     act(() => {
-      screen.getByRole('tab', { name: /삼성전자 1분봉/ }).click();
+      screen.getByRole('tab', { name: /삼성전자/ }).click();
     });
 
     expect(useLiveTabsStore.getState().tabs.find((tab) => tab.id === 'tab-b')?.viewport).toEqual(capturedViewport);
 
     act(() => {
-      screen.getByRole('tab', { name: /SK하이닉스 일봉/ }).click();
+      screen.getByRole('tab', { name: /SK하이닉스/ }).click();
     });
 
     await waitFor(() => expect(livePageMocks.liveChartRootProps.at(-1)).toMatchObject({

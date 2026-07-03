@@ -1,11 +1,12 @@
 import type { LiveTab } from '../state/liveTabs';
 import { ChartTabBar } from '../tabs/ChartTabBar';
 import { LiveTabOverflowMenu } from './LiveTabOverflowMenu';
-import { formatLiveViewLabel } from './liveViewLabel';
+import { formatLiveViewLabel, type LiveTabMetrics } from './liveViewLabel';
 
 interface Props {
   tabs: LiveTab[];
   activeTabId: string | null;
+  tabMetrics?: Record<string, LiveTabMetrics>;
   /** 활성 탭의 차트 데이터 로딩 중 여부 (상태점). */
   activeLoading: boolean;
   onFocus: (id: string) => void;
@@ -15,7 +16,7 @@ interface Props {
   onTogglePin?: (id: string) => void;
 }
 
-export function LiveTabBar({ tabs, activeTabId, activeLoading, onFocus, onClose, onReorder, onNewTab, onTogglePin }: Props) {
+export function LiveTabBar({ tabs, activeTabId, tabMetrics, activeLoading, onFocus, onClose, onReorder, onNewTab, onTogglePin }: Props) {
   return (
     <ChartTabBar
       tabs={tabs}
@@ -25,9 +26,9 @@ export function LiveTabBar({ tabs, activeTabId, activeLoading, onFocus, onClose,
       onClose={onClose}
       onReorder={onReorder}
       onTogglePin={onTogglePin}
-      renderLabel={(tab) => formatLiveViewLabel(tab.label, tab.timeframe)}
+      renderLabel={(tab) => formatLiveViewLabel(tab.label, tab.timeframe, tabMetrics?.[tab.id])}
       newTabButton={{ ariaLabel: '새 탭', onClick: onNewTab }}
-      trailingActions={<LiveTabOverflowMenu tabs={tabs} activeTabId={activeTabId} onFocus={onFocus} onClose={onClose} />}
+      trailingActions={<LiveTabOverflowMenu tabs={tabs} activeTabId={activeTabId} tabMetrics={tabMetrics} onFocus={onFocus} onClose={onClose} />}
     />
   );
 }

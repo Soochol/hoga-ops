@@ -1,18 +1,19 @@
 import { useCallback, useMemo, useRef, useState } from 'react';
 import type { LiveTab } from '../state/liveTabs';
 import { useDismissablePopover } from '../util/useDismissablePopover';
-import { formatLiveViewLabel } from './liveViewLabel';
+import { formatLiveViewLabel, type LiveTabMetrics } from './liveViewLabel';
 
 const MAX_RENDERED_RESULTS = 200;
 
 interface Props {
   tabs: LiveTab[];
   activeTabId: string | null;
+  tabMetrics?: Record<string, LiveTabMetrics>;
   onFocus: (id: string) => void;
   onClose: (id: string) => void;
 }
 
-export function LiveTabOverflowMenu({ tabs, activeTabId, onFocus, onClose }: Props) {
+export function LiveTabOverflowMenu({ tabs, activeTabId, tabMetrics, onFocus, onClose }: Props) {
   const [open, setOpen] = useState(false);
   const [query, setQuery] = useState('');
   const rootRef = useRef<HTMLDivElement | null>(null);
@@ -24,10 +25,10 @@ export function LiveTabOverflowMenu({ tabs, activeTabId, onFocus, onClose }: Pro
     const q = query.trim().toLowerCase();
     if (!q) return tabs;
     return tabs.filter((t) => {
-      const displayLabel = formatLiveViewLabel(t.label, t.timeframe).toLowerCase();
+      const displayLabel = formatLiveViewLabel(t.label, t.timeframe, tabMetrics?.[t.id]).toLowerCase();
       return displayLabel.includes(q) || t.label.toLowerCase().includes(q) || t.code.toLowerCase().includes(q);
     });
-  }, [query, tabs]);
+  }, [query, tabs, tabMetrics]);
   const visible = filtered.slice(0, MAX_RENDERED_RESULTS);
 
   return (
@@ -65,7 +66,7 @@ export function LiveTabOverflowMenu({ tabs, activeTabId, onFocus, onClose }: Pro
           <div className="mt-2 max-h-80 overflow-y-auto">
             {visible.map((t) => {
               const active = t.id === activeTabId;
-              const displayLabel = formatLiveViewLabel(t.label, t.timeframe);
+              const displayLabel = formatLiveViewLabel(t.label, t.timeframe, tabMetrics?.[t.id]);
               const pinned = t.pinned === true;
               return (
                 <div
