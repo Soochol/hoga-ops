@@ -8,8 +8,6 @@ const axis = createVirtualAxis([
 ]);
 const bid = '#DC2626';
 const ask = '#2563EB';
-const bidMuted = 'rgba(220, 38, 38, 0.34)';
-const askMuted = 'rgba(37, 99, 235, 0.34)';
 
 describe('projectBid', () => {
   it('maps quote_ratio.points to {time, bid_total} in virtual seconds', () => {
@@ -22,8 +20,8 @@ describe('projectBid', () => {
       },
     };
     expect(projectBid(bundle, axis, false)).toEqual([
-      { time: 0, value: 100, color: bidMuted },
-      { time: 1, value: 150, color: bidMuted },
+      { time: 0, value: 100, color: bid },
+      { time: 1, value: 150, color: bid },
     ]);
   });
 
@@ -57,7 +55,7 @@ describe('projectAsk', () => {
     ]);
   });
 
-  it('colors the dominant ratio side brightly and the weaker side muted', () => {
+  it('keeps both quote-total sides bright regardless of ratio dominance', () => {
     const bundle: any = {
       quote_ratio: {
         points: [
@@ -67,8 +65,8 @@ describe('projectAsk', () => {
         ],
       },
     };
-    expect(projectBid(bundle, axis, false).map((p) => p.color)).toEqual([bid, bidMuted, bidMuted]);
-    expect(projectAsk(bundle, axis, false).map((p) => p.color)).toEqual([askMuted, ask, askMuted]);
+    expect(projectBid(bundle, axis, false).map((p) => p.color)).toEqual([bid, bid, bid]);
+    expect(projectAsk(bundle, axis, false).map((p) => p.color)).toEqual([ask, ask, ask]);
   });
 });
 
@@ -147,7 +145,7 @@ describe('closing-auction-window hide', () => {
       },
     };
     expect(projectBid(bundle, axis, false)).toEqual([
-      { time: (auctionStartMs + 60_000 - sessionOpenMs) / 1000, value: 500, color: bidMuted },
+      { time: (auctionStartMs + 60_000 - sessionOpenMs) / 1000, value: 500, color: bid },
     ]);
     expect(projectAsk(bundle, axis, false)).toEqual([
       { time: (auctionStartMs + 60_000 - sessionOpenMs) / 1000, value: 900, color: ask },
@@ -252,7 +250,7 @@ describe('hoga data gaps', () => {
     expect(projectBid(bundle, axis, false)).toEqual([
       { time: 0, value: 100, color: 'rgba(0,0,0,0)' },
       { time: 60, value: 0, color: 'rgba(0,0,0,0)' },
-      { time: 120, value: 150, color: bidMuted },
+      { time: 120, value: 150, color: bid },
     ]);
     expect(projectAsk(bundle, axis, false)).toEqual([
       { time: 0, value: 200, color: 'rgba(0,0,0,0)' },
@@ -311,7 +309,7 @@ describe('hoga data gaps', () => {
     expect(QUOTE_TOTALS_SPEC.series[0].data(bundle, axis, ctx)).toEqual([
       { time: 0, value: 100, color: 'rgba(0,0,0,0)' },
       { time: 60, value: 0, color: 'rgba(0,0,0,0)' },
-      { time: 120, value: 150, color: bidMuted },
+      { time: 120, value: 150, color: bid },
     ]);
     expect(QUOTE_TOTALS_SPEC.series[1].data(bundle, axis, ctx)).toEqual([
       { time: 0, value: 200, color: 'rgba(0,0,0,0)' },

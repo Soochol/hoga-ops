@@ -28,10 +28,10 @@ describe('총잔량 Intra-Bar Max 스위치', () => {
     expect(projectAskPoints([pt], axis, false, true)[0].value).toBe(800);
   });
 
-  it('intraMax=true면 색상도 호가비 intra-max 기준을 따른다', () => {
+  it('intraMax=true여도 양쪽 색상을 모두 밝게 유지한다', () => {
     const bid = projectBidPoints([pt], axis, false, true)[0];
     const ask = projectAskPoints([pt], axis, false, true)[0];
     expect(bid.color).toBe('#DC2626');
-    expect(ask.color).toBe('rgba(37, 99, 235, 0.34)');
+    expect(ask.color).toBe('#2563EB');
   });
 });
