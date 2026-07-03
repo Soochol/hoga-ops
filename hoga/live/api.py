@@ -403,6 +403,29 @@ class LiveQuotesResponse(BaseModel):
     quotes: list[LiveQuote]
 
 
+LiveTabMetricHogaReason = Literal[
+    "not_collected",
+    "stale",
+    "index",
+    "pre_open",
+    "invalid_book",
+]
+
+
+class LiveTabMetric(BaseModel):
+    code: str
+    change_pct: float | None
+    hoga_ratio_x: float | None
+    hoga_available: bool
+    hoga_reason: LiveTabMetricHogaReason | None = None
+    source: Literal["live", "quote_cache"]
+
+
+class LiveTabMetricsResponse(BaseModel):
+    phase: Literal["pre_open", "open", "closed"]
+    metrics: list[LiveTabMetric]
+
+
 class LiveIndexEntry(BaseModel):
     kind: Literal["index"] = "index"
     id: str
@@ -686,6 +709,27 @@ class LiveQuoteFetcher:
         for q in quotes:
             self._last_quotes[q.code] = q
         return [self._to_live_quote(q, phase=phase, today=today) for q in quotes]
+
+
+_TAB_METRIC_HOGA_STALE_MS = 15_000
+
+
+def _extract_tab_hoga_ratio(
+    latest_ob: dict | None,
+    *,
+    now_ms: int,
+    stale_ms: int = _TAB_METRIC_HOGA_STALE_MS,
+) -> tuple[float | None, bool, LiveTabMetricHogaReason | None]:
+    if latest_ob is None:
+        return None, False, "not_collected"
+    age_ms = now_ms - int(latest_ob.get("t_ms") or 0)
+    if age_ms > stale_ms:
+        return None, False, "stale"
+    bid_total = int(latest_ob.get("total_bid_qty") or 0)
+    ask_total = int(latest_ob.get("total_ask_qty") or 0)
+    if bid_total <= 0 or ask_total <= 0:
+        return None, False, "invalid_book"
+    return max(bid_total, ask_total) / min(bid_total, ask_total), True, None
 
 
 def _investor_estimate_row_to_wire(
@@ -1355,6 +1399,71 @@ def build_router(
             phase=phase,
             quotes=quotes,
         )
+
+    @router.get("/tab-metrics", response_model=LiveTabMetricsResponse)
+    async def _get_tab_metrics(
+        codes: str = Query(...),
+        venue: str | None = Query("KRX"),
+    ) -> LiveTabMetricsResponse:
+        now = datetime.now(_KST)
+        now_ms = int(now.timestamp() * 1000)
+        try:
+            venue_policy = parse_live_venue_policy(venue)
+        except ValueError as e:
+            raise HTTPException(422, {"code": "invalid_venue", "msg": str(e)}) from e
+        quote_venue = quote_venue_for_policy(venue_policy, now)
+        phase = _quote_phase(now, venue_policy)
+        code_list = list(dict.fromkeys(c for c in codes.split(",") if _CODE_RE.match(c)))
+        if not code_list:
+            return LiveTabMetricsResponse(phase=phase, metrics=[])
+
+        quotes: list[LiveQuote] = []
+        if _kis_scheduler is not None:
+            try:
+                quotes = await asyncio.wait_for(
+                    asyncio.shield(
+                        kis_access.run_with_capacity(
+                            _kis_scheduler,
+                            data_dir=data_dir,
+                            role="background",
+                            key=("tab-metrics-quotes", quote_venue, tuple(sorted(code_list)), phase),
+                            endpoint=kis_access.KisRestEndpoint.QUOTES,
+                            priority="background",
+                            cooldown_scope=f"quotes:{quote_venue}",
+                            fetch_fn=lambda kis: _quote_fetcher.fetch_and_gate(
+                                kis,
+                                code_list,
+                                phase,
+                                today=now.date(),
+                                venue=quote_venue,
+                            ),
+                        )
+                    ),
+                    timeout=1.0,
+                )
+            except (asyncio.TimeoutError, KisCapacityCooldown, KisCapacityOverloaded):
+                quotes = []
+        quote_by_code = {quote.code: quote for quote in quotes}
+
+        buf = get_buffer() if get_buffer is not None else None
+        metrics: list[LiveTabMetric] = []
+        for code in code_list:
+            quote = quote_by_code.get(code)
+            series = await buf.get_series(code) if buf is not None else None
+            snapshots = series.get("snapshots", []) if series is not None else []
+            latest_ob = snapshots[-1] if snapshots else None
+            ratio, hoga_available, hoga_reason = _extract_tab_hoga_ratio(latest_ob, now_ms=now_ms)
+            metrics.append(
+                LiveTabMetric(
+                    code=code,
+                    change_pct=quote.change_pct if quote is not None else None,
+                    hoga_ratio_x=ratio,
+                    hoga_available=hoga_available,
+                    hoga_reason=hoga_reason,
+                    source="quote_cache" if phase == "closed" else "live",
+                )
+            )
+        return LiveTabMetricsResponse(phase=phase, metrics=metrics)
 
     @router.get(
         "/investor-trend-estimate",

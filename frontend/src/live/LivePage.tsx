@@ -13,7 +13,7 @@ import { focusLiveSearch } from './liveSearchFocus';
 import { useLiveKeyboard } from './useLiveKeyboard';
 import { useLiveBundle } from './useLiveBundle';
 import { useLiveSeries } from '../api/liveSeries';
-import { useQuoteByCode } from '../api/liveQuotes';
+import { useLiveTabMetricsByCode } from '../api/liveTabMetrics';
 import { useDayAskPeaks, useTodayAllPriceAskPeak } from './useDayAskPeaks';
 import { useDayBidPeaks, useTodayAllPriceBidPeak } from './useDayBidPeaks';
 import { useTradeVolumePocs } from './useTradeVolumePoc';
@@ -76,17 +76,6 @@ function tradeVolumePocsToWire(pocs: readonly {
   }));
 }
 
-function latestRatioMultiple(bundle: RangeBundle | null): number | null {
-  const points = bundle?.quote_ratio.points ?? [];
-  for (let i = points.length - 1; i >= 0; i -= 1) {
-    const point = points[i];
-    const bid = point.bid_total;
-    const ask = point.ask_total;
-    if (bid > 0 && ask > 0) return Math.max(bid, ask) / Math.min(bid, ask);
-  }
-  return null;
-}
-
 /**
  * /live page — KIS-based real-time indicator chart.
  *
@@ -145,8 +134,22 @@ export function LivePage() {
   const liveVenue = useLiveVenueStore((s) => s.venue);
   const foreignNetEnabled = useLivePageStore((s) => s.foreignNetEnabled);
   const institutionNetEnabled = useLivePageStore((s) => s.institutionNetEnabled);
-  const activeQuoteCodes = useMemo(() => (activeCode ? [activeCode] : []), [activeCode]);
-  const activeQuoteByCode = useQuoteByCode(activeQuoteCodes, liveVenue);
+  const stockTabCodes = useMemo(() => {
+    const codes: string[] = [];
+    const seen = new Set<string>();
+    for (const tab of tabs) {
+      const code = tab.instrument?.kind === 'stock'
+        ? tab.instrument.code
+        : tab.instrument == null
+          ? tab.code
+          : null;
+      if (!code || seen.has(code)) continue;
+      seen.add(code);
+      codes.push(code);
+    }
+    return codes;
+  }, [tabs]);
+  const tabMetricByCode = useLiveTabMetricsByCode(stockTabCodes, liveVenue);
   useDocumentTitle(activeCode);
   const [indicatorPanelOpen, setIndicatorPanelOpen] = useState(false);
   const [settingsOpen, setSettingsOpen] = useState(false);
@@ -249,18 +252,22 @@ export function LivePage() {
     });
   }, [activeIndexId, timeframe, indexCandles.data, indexInvestorNet.data?.points]);
   const activeTab = tabs.find((t) => t.id === activeTabId);
-  const activeTabRatioX = useMemo(() => latestRatioMultiple(stockHogaBundle), [stockHogaBundle]);
   const tabMetrics = useMemo<Record<string, LiveTabMetrics>>(() => {
     const next: Record<string, LiveTabMetrics> = {};
     for (const tab of tabs) {
-      const active = tab.id === activeTabId;
+      const code = tab.instrument?.kind === 'stock'
+        ? tab.instrument.code
+        : tab.instrument == null
+          ? tab.code
+          : null;
+      const metric = code ? tabMetricByCode.get(code) : undefined;
       next[tab.id] = {
-        changePct: active && activeCode ? (activeQuoteByCode.get(activeCode)?.change_pct ?? null) : null,
-        ratioX: active ? activeTabRatioX : null,
+        changePct: metric?.change_pct ?? null,
+        ratioX: metric?.hoga_ratio_x ?? null,
       };
     }
     return next;
-  }, [activeCode, activeQuoteByCode, activeTabId, activeTabRatioX, tabs]);
+  }, [tabMetricByCode, tabs]);
   const askPeakOb = isMinuteTimeframe(timeframe) ? live.ob : EMPTY_OB_SNAPSHOTS;
   const askPeakTrade = isMinuteTimeframe(timeframe) ? live.trade : EMPTY_TRADE_SNAPSHOTS;
   const askPeakSeeds = (stockChartBundle ?? stockBundle)?.ask_peaks ?? EMPTY_ASK_PEAKS;

@@ -7,7 +7,9 @@ from fastapi import FastAPI
 from fastapi.testclient import TestClient
 from hoga.live import account_health, kis_runtime, lifecycle, api as live_api
 from hoga.live.api import build_router, _quote_phase, _KST
+from hoga.live.buffer import LiveBuffer
 from hoga.live.kis_client import KisQuote
+from hoga.live.snapshot import LiveSnapshot, SnapshotKind
 
 
 @pytest.fixture(autouse=True)
@@ -62,6 +64,66 @@ def test_quotes_open_returns_change_pct(monkeypatch, tmp_path):
                                  "change_pct_source": "kis", "warnings": []}
     assert body["quotes"][1]["change_pct"] == -0.8
     assert body["quotes"][1]["change_won"] == -1500
+
+
+def test_tab_metrics_batches_quotes_and_latest_hoga(monkeypatch, tmp_path):
+    monkeypatch.setattr(live_api, "_quote_phase", lambda now, venue_policy="KRX": "open")
+    kis_runtime.set_kis_client(_FakeKis(QUOTES), 0)  # type: ignore[arg-type]
+    buf = LiveBuffer()
+    app = FastAPI()
+    app.include_router(build_router(
+        get_status=lifecycle.get_status,
+        get_buffer=lambda: buf,
+        data_dir=tmp_path,
+    ))
+
+    async def seed_orderbooks() -> None:
+        await buf.publish(
+            "005930",
+            [LiveSnapshot(
+                t_ms=1_800_000_000_000,
+                kind=SnapshotKind.OB,
+                payload={"total_bid_qty": 132, "total_ask_qty": 100, "phase": "regular"},
+            )],
+            now_ms=1_800_000_000_000,
+        )
+        await buf.publish(
+            "000660",
+            [LiveSnapshot(
+                t_ms=1_800_000_000_000,
+                kind=SnapshotKind.OB,
+                payload={"total_bid_qty": 90, "total_ask_qty": 100, "phase": "regular"},
+            )],
+            now_ms=1_800_000_000_000,
+        )
+
+    with TestClient(app) as c:
+        assert c.portal is not None
+        c.portal.call(seed_orderbooks)
+
+        r = c.get("/api/live/tab-metrics", params={"codes": "005930,000660"})
+
+    assert r.status_code == 200
+    body = r.json()
+    assert body["phase"] == "open"
+    assert body["metrics"] == [
+        {
+            "code": "005930",
+            "change_pct": 1.2,
+            "hoga_ratio_x": 1.32,
+            "hoga_available": True,
+            "hoga_reason": None,
+            "source": "live",
+        },
+        {
+            "code": "000660",
+            "change_pct": -0.8,
+            "hoga_ratio_x": 1.1111111111111112,
+            "hoga_available": True,
+            "hoga_reason": None,
+            "source": "live",
+        },
+    ]
 
 
 def test_quotes_open_serves_today_ohlc(monkeypatch, tmp_path):
