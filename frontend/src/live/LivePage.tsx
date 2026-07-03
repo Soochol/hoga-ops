@@ -13,6 +13,7 @@ import { focusLiveSearch } from './liveSearchFocus';
 import { useLiveKeyboard } from './useLiveKeyboard';
 import { useLiveBundle } from './useLiveBundle';
 import { useLiveSeries } from '../api/liveSeries';
+import { useQuoteByCode } from '../api/liveQuotes';
 import { useDayAskPeaks, useTodayAllPriceAskPeak } from './useDayAskPeaks';
 import { useDayBidPeaks, useTodayAllPriceBidPeak } from './useDayBidPeaks';
 import { useTradeVolumePocs } from './useTradeVolumePoc';
@@ -34,6 +35,7 @@ import { indexInstrument, isLiveIndexId } from './liveInstrument';
 import { useLiveIndexCandles, useLiveIndexInvestorNet } from '../api/liveIndices';
 import { buildIndexBundle } from './buildIndexBundle';
 import { capabilitiesForInstrument } from './liveInstrumentCapabilities';
+import type { LiveTabMetrics } from './liveViewLabel';
 
 /** 안정 빈 배열 — 매 렌더 새 [] 가 useDayAskPeaks의 메모 deps를 churn하지 않게. */
 const EMPTY_ASK_PEAKS: readonly AskPeak[] = [];
@@ -72,6 +74,17 @@ function tradeVolumePocsToWire(pocs: readonly {
     t_ms: poc.t_ms,
     band_pct: poc.bandPct,
   }));
+}
+
+function latestRatioMultiple(bundle: RangeBundle | null): number | null {
+  const points = bundle?.quote_ratio.points ?? [];
+  for (let i = points.length - 1; i >= 0; i -= 1) {
+    const point = points[i];
+    const bid = point.bid_total;
+    const ask = point.ask_total;
+    if (bid > 0 && ask > 0) return Math.max(bid, ask) / Math.min(bid, ask);
+  }
+  return null;
 }
 
 /**
@@ -132,6 +145,8 @@ export function LivePage() {
   const liveVenue = useLiveVenueStore((s) => s.venue);
   const foreignNetEnabled = useLivePageStore((s) => s.foreignNetEnabled);
   const institutionNetEnabled = useLivePageStore((s) => s.institutionNetEnabled);
+  const activeQuoteCodes = useMemo(() => (activeCode ? [activeCode] : []), [activeCode]);
+  const activeQuoteByCode = useQuoteByCode(activeQuoteCodes, liveVenue);
   useDocumentTitle(activeCode);
   const [indicatorPanelOpen, setIndicatorPanelOpen] = useState(false);
   const [settingsOpen, setSettingsOpen] = useState(false);
@@ -234,6 +249,18 @@ export function LivePage() {
     });
   }, [activeIndexId, timeframe, indexCandles.data, indexInvestorNet.data?.points]);
   const activeTab = tabs.find((t) => t.id === activeTabId);
+  const activeTabRatioX = useMemo(() => latestRatioMultiple(stockHogaBundle), [stockHogaBundle]);
+  const tabMetrics = useMemo<Record<string, LiveTabMetrics>>(() => {
+    const next: Record<string, LiveTabMetrics> = {};
+    for (const tab of tabs) {
+      const active = tab.id === activeTabId;
+      next[tab.id] = {
+        changePct: active && activeCode ? (activeQuoteByCode.get(activeCode)?.change_pct ?? null) : null,
+        ratioX: active ? activeTabRatioX : null,
+      };
+    }
+    return next;
+  }, [activeCode, activeQuoteByCode, activeTabId, activeTabRatioX, tabs]);
   const askPeakOb = isMinuteTimeframe(timeframe) ? live.ob : EMPTY_OB_SNAPSHOTS;
   const askPeakTrade = isMinuteTimeframe(timeframe) ? live.trade : EMPTY_TRADE_SNAPSHOTS;
   const askPeakSeeds = (stockChartBundle ?? stockBundle)?.ask_peaks ?? EMPTY_ASK_PEAKS;
@@ -344,6 +371,7 @@ export function LivePage() {
       <LiveTabBar
         tabs={tabs}
         activeTabId={activeTabId}
+        tabMetrics={tabMetrics}
         activeLoading={isPastCandlesLoading}
         onFocus={focusLiveTab}
         onClose={closeLiveTab}

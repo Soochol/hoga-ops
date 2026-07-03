@@ -3,6 +3,11 @@
 All notable changes to this project are documented here.
 The format follows a 4-digit `MAJOR.MINOR.PATCH.MICRO` scheme.
 
+## [0.12.25.1] - 2026-07-03
+
+### Changed
+- **/live 탭 실시간 요약 표시**: 활성 탭에 종목명, 등락률, 호가비 배수를 `삼성전자 +2.14% · 1.32x` 형식으로 표시하고, 등락률은 기존 active quote 캐시를 재사용하며 호가비는 로드된 hoga bundle에서 계산하도록 했다.
+
 ## [0.12.25.0] - 2026-07-03
 
 ### Changed

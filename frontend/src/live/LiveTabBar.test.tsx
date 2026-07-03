@@ -25,6 +25,25 @@ it('renders the stock name with timeframe (code hidden when the name is known)',
   expect(screen.queryByText('005930')).toBeNull();
 });
 
+it('renders live metric tab labels without persisting them into the tab label', () => {
+  setup({
+    tabMetrics: {
+      a: { changePct: 2.14, ratioX: 1.32 },
+      b: { changePct: -0.8 },
+    },
+  });
+
+  expect(screen.getByText('삼성전자 +2.14% · 1.32x')).toBeInTheDocument();
+  expect(screen.getByText('SK하이닉스 -0.80%')).toBeInTheDocument();
+  expect(tabs[0].label).toBe('삼성전자');
+});
+
+it('renders only the stock name when live metrics are unavailable', () => {
+  setup({ tabMetrics: { a: {}, b: {} } });
+  expect(screen.getByText('삼성전자')).toBeInTheDocument();
+  expect(screen.queryByText('삼성전자 1분봉')).toBeNull();
+});
+
 it('falls back to the code when the name is unknown (label === code)', () => {
   setup({
     tabs: [{ id: 'x', code: '123456', label: '123456', timeframe: 'D', historicalFromDate: null }],
