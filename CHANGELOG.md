@@ -3,6 +3,11 @@
 All notable changes to this project are documented here.
 The format follows a 4-digit `MAJOR.MINOR.PATCH.MICRO` scheme.
 
+## [0.12.27.1] - 2026-07-03
+
+### Fixed
+- **/live 탭 지표 순간 결측 유지**: 탭 지표 API가 등락률이나 호가비를 잠깐 비워 보내도 마지막 정상 값을 유지해, 탭 이름이 종목명만 남았다가 다시 지표를 표시하는 깜빡임을 막았다.
+
 ## [0.12.27.0] - 2026-07-03
 
 ### Fixed
