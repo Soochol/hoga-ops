@@ -6,6 +6,10 @@ const sessionOpenMs = 1_779_062_400_000;
 const axis = createVirtualAxis([
   { date: '20260518', sessionOpenMs, sessionCloseMs: sessionOpenMs + 23_400_000 },
 ]);
+const bid = '#DC2626';
+const ask = '#2563EB';
+const bidMuted = 'rgba(220, 38, 38, 0.34)';
+const askMuted = 'rgba(37, 99, 235, 0.34)';
 
 describe('projectBid', () => {
   it('maps quote_ratio.points to {time, bid_total} in virtual seconds', () => {
@@ -18,8 +22,8 @@ describe('projectBid', () => {
       },
     };
     expect(projectBid(bundle, axis, false)).toEqual([
-      { time: 0, value: 100 },
-      { time: 1, value: 150 },
+      { time: 0, value: 100, color: bidMuted },
+      { time: 1, value: 150, color: bidMuted },
     ]);
   });
 
@@ -48,9 +52,23 @@ describe('projectAsk', () => {
       },
     };
     expect(projectAsk(bundle, axis, false)).toEqual([
-      { time: 0, value: 200 },
-      { time: 1, value: 180 },
+      { time: 0, value: 200, color: ask },
+      { time: 1, value: 180, color: ask },
     ]);
+  });
+
+  it('colors the dominant ratio side brightly and the weaker side muted', () => {
+    const bundle: any = {
+      quote_ratio: {
+        points: [
+          { t: sessionOpenMs, bid_total: 300, ask_total: 100 },
+          { t: sessionOpenMs + 1000, bid_total: 100, ask_total: 300 },
+          { t: sessionOpenMs + 2000, bid_total: 100, ask_total: 100 },
+        ],
+      },
+    };
+    expect(projectBid(bundle, axis, false).map((p) => p.color)).toEqual([bid, bidMuted, bidMuted]);
+    expect(projectAsk(bundle, axis, false).map((p) => p.color)).toEqual([askMuted, ask, askMuted]);
   });
 });
 
@@ -129,10 +147,10 @@ describe('closing-auction-window hide', () => {
       },
     };
     expect(projectBid(bundle, axis, false)).toEqual([
-      { time: (auctionStartMs + 60_000 - sessionOpenMs) / 1000, value: 500 },
+      { time: (auctionStartMs + 60_000 - sessionOpenMs) / 1000, value: 500, color: bidMuted },
     ]);
     expect(projectAsk(bundle, axis, false)).toEqual([
-      { time: (auctionStartMs + 60_000 - sessionOpenMs) / 1000, value: 900 },
+      { time: (auctionStartMs + 60_000 - sessionOpenMs) / 1000, value: 900, color: ask },
     ]);
   });
 });
@@ -153,6 +171,10 @@ describe('QUOTE_TOTALS_SPEC crosshair marker', () => {
       expect(c).toBeTruthy();
       expect(c).not.toBe('rgba(0,0,0,0)');
     }
+  });
+
+  it('uses a thicker stroke to match the clearer ratio pane treatment', () => {
+    expect(QUOTE_TOTALS_SPEC.series.map((s) => (s.options as { lineWidth?: number }).lineWidth)).toEqual([3, 3]);
   });
 });
 
@@ -230,12 +252,12 @@ describe('hoga data gaps', () => {
     expect(projectBid(bundle, axis, false)).toEqual([
       { time: 0, value: 100, color: 'rgba(0,0,0,0)' },
       { time: 60, value: 0, color: 'rgba(0,0,0,0)' },
-      { time: 120, value: 150 },
+      { time: 120, value: 150, color: bidMuted },
     ]);
     expect(projectAsk(bundle, axis, false)).toEqual([
       { time: 0, value: 200, color: 'rgba(0,0,0,0)' },
       { time: 60, value: 0, color: 'rgba(0,0,0,0)' },
-      { time: 120, value: 250 },
+      { time: 120, value: 250, color: ask },
     ]);
   });
 
@@ -289,12 +311,12 @@ describe('hoga data gaps', () => {
     expect(QUOTE_TOTALS_SPEC.series[0].data(bundle, axis, ctx)).toEqual([
       { time: 0, value: 100, color: 'rgba(0,0,0,0)' },
       { time: 60, value: 0, color: 'rgba(0,0,0,0)' },
-      { time: 120, value: 150 },
+      { time: 120, value: 150, color: bidMuted },
     ]);
     expect(QUOTE_TOTALS_SPEC.series[1].data(bundle, axis, ctx)).toEqual([
       { time: 0, value: 200, color: 'rgba(0,0,0,0)' },
       { time: 60, value: 0, color: 'rgba(0,0,0,0)' },
-      { time: 120, value: 250 },
+      { time: 120, value: 250, color: ask },
     ]);
   });
 });
