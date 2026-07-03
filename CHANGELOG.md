@@ -3,6 +3,11 @@
 All notable changes to this project are documented here.
 The format follows a 4-digit `MAJOR.MINOR.PATCH.MICRO` scheme.
 
+## [0.12.26.3] - 2026-07-03
+
+### Changed
+- **/live·/study 총잔량 색상 유지**: 총잔량 지표의 매수·매도 라인을 호가비 우위와 관계없이 모두 밝은 빨강/파랑으로 표시해 두 잔량 흐름을 동시에 선명하게 볼 수 있도록 했다.
+
 ## [0.12.26.2] - 2026-07-03
 
 ### Fixed
