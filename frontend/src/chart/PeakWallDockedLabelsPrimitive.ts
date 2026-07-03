@@ -31,8 +31,12 @@ export function peakWallDockedLabelCandidates(
   labelGapPx: number = LABEL_GAP_PX,
   timeToX?: (time: Time) => number | null,
   labelXGapPx: number = LABEL_GAP_PX,
+  labelAnchorShiftPx: number = 0,
 ): AskPeakLabelCandidate[] {
   const candidates: AskPeakLabelCandidate[] = [];
+  const safeAnchorShiftPx = Number.isFinite(labelAnchorShiftPx)
+    ? Math.max(0, labelAnchorShiftPx)
+    : 0;
   for (let i = 0; i < labels.length; i += 1) {
     const label = labels[i];
     if (label.label === '') continue;
@@ -43,7 +47,7 @@ export function peakWallDockedLabelCandidates(
     if (timeToX) {
       const lineEndX = timeToX(label.time1);
       if (lineEndX === null) continue;
-      xRight = lineEndX + labelXGapPx + width;
+      xRight = lineEndX + labelXGapPx + safeAnchorShiftPx + width;
       if (xRight > paneRight) continue;
     }
     candidates.push({
@@ -77,6 +81,11 @@ class PeakWallDockedLabelsRenderer implements IPrimitivePaneRenderer {
       const vr = scope.verticalPixelRatio;
       const xRight = scope.bitmapSize.width - LABEL_EDGE_PAD_PX * hr;
       ctx.font = `${LABEL_FONT_PX * vr}px sans-serif`;
+      const visibleLogicalRange = chart.timeScale().getVisibleLogicalRange();
+      const logicalSpan = visibleLogicalRange
+        ? Math.abs(visibleLogicalRange.to - visibleLogicalRange.from)
+        : 0;
+      const halfBarSpacing = logicalSpan > 0 ? (scope.bitmapSize.width / logicalSpan) * 0.5 : 0;
 
       const candidates = peakWallDockedLabelCandidates(
         labels,
@@ -92,6 +101,7 @@ class PeakWallDockedLabelsRenderer implements IPrimitivePaneRenderer {
           return x === null ? null : x * hr;
         },
         6 * hr,
+        halfBarSpacing,
       );
       if (candidates.length === 0) return;
 

@@ -29,6 +29,39 @@ describe('peakWallDockedLabelCandidates', () => {
     ]);
   });
 
+  it('can shift docked labels past the latest candle body before measuring room', () => {
+    const width = '24,500, 16.6k'.length * 5;
+    const out = peakWallDockedLabelCandidates(
+      labels.slice(0, 1),
+      () => 100,
+      780,
+      (text) => text.length * 5,
+      3,
+      () => 650,
+      6,
+      7,
+    );
+
+    expect(out).toEqual([
+      { index: 0, xRight: 650 + 6 + 7 + width, yLine: 97, width, segmentWidth: Number.POSITIVE_INFINITY },
+    ]);
+  });
+
+  it('hides shifted labels when the latest candle plus label leaves no right-padding room', () => {
+    const out = peakWallDockedLabelCandidates(
+      labels.slice(0, 1),
+      () => 100,
+      700,
+      () => 40,
+      3,
+      () => 650,
+      6,
+      8,
+    );
+
+    expect(out).toEqual([]);
+  });
+
   it('hides labels when the line endpoint leaves no right-padding room', () => {
     const out = peakWallDockedLabelCandidates(
       labels.slice(0, 1),
