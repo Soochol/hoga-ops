@@ -1235,10 +1235,6 @@ def query_day_bid_peak_dual(
     untraded_max = pick("cont", mode="untraded")
     if all_max is None or traded_max is None:
         return None
-    if not traded_peaks:
-        traded_peaks = (AskPeakCandidateRow(price=int(all_close[0]), qty=int(all_close[1]), intra_ms=int(all_close[2])),)
-    if not traded_max_peaks:
-        traded_max_peaks = (AskPeakCandidateRow(price=int(all_max[0]), qty=int(all_max[1]), intra_ms=int(all_max[2])),)
     return BidPeakDualRow(
         price=int(traded_close[0]), qty=int(traded_close[1]), intra_ms=int(traded_close[2]),
         max_price=int(traded_max[0]), max_qty=int(traded_max[1]), max_intra_ms=int(traded_max[2]),
@@ -1505,10 +1501,6 @@ def query_day_ask_bid_peak_dual(
         bid_traded_max = single.get("bid_traded_max") or bid_all_max
         bid_traded_peaks = tuple(many["bid_traded_peak"])
         bid_traded_max_peaks = tuple(many["bid_traded_max_peak"])
-        if not bid_traded_peaks:
-            bid_traded_peaks = (AskPeakCandidateRow(price=bid_all_close[0], qty=bid_all_close[1], intra_ms=bid_all_close[2]),)
-        if not bid_traded_max_peaks:
-            bid_traded_max_peaks = (AskPeakCandidateRow(price=bid_all_max[0], qty=bid_all_max[1], intra_ms=bid_all_max[2]),)
         bid_untraded_close = single.get("bid_untraded_close")
         bid_untraded_max = single.get("bid_untraded_max")
         bid_row = BidPeakDualRow(

@@ -1948,6 +1948,11 @@ def test_build_bid_peak_slice_wires_ranked_candidates(tmp_path) -> None:
         {"price": 69800, "qty": 7100, "t_ms": 1781049720000},
         {"price": 69700, "qty": 6000, "t_ms": 1781049660000},
     ]
+    assert [c.model_dump() for c in p.traded_max_peaks] == [
+        {"price": 69900, "qty": 9000, "t_ms": 1781049660000},
+        {"price": 69800, "qty": 7100, "t_ms": 1781049720000},
+        {"price": 69700, "qty": 6000, "t_ms": 1781049660000},
+    ]
 
 
 def test_range_bundle_ask_peak_field_defaults_none() -> None:

@@ -1069,6 +1069,42 @@ def test_query_day_ask_bid_peak_dual_returns_top_three_bid_traded_price_peaks(tm
     )
 
 
+def test_query_day_ask_bid_peak_dual_leaves_bid_candidate_arrays_empty_when_trades_miss_bid_levels(tmp_path) -> None:
+    """체결가와 겹치는 bid 가격이 없으면 후보 배열은 비어 있어야 한다."""
+    obs = [
+        _ob_bp(
+            90100000,
+            [1000, 9000, 7000, 6000, 500, 6, 7, 8, 9, 1],
+            bid_p=[25000, 24900, 24800, 24700, 24600, 24500, 24400, 24300, 24200, 24100],
+        ),
+        _ob_bp(
+            90200000,
+            [3000, 8000, 7100, 100, 500, 6, 7, 8, 9, 1],
+            bid_p=[25000, 24900, 24800, 24700, 24600, 24500, 24400, 24300, 24200, 24100],
+        ),
+    ]
+    snapshots_path = tmp_path / "snapshots.parquet"
+    trades_path = tmp_path / "trades.parquet"
+    write_parquet(obs, snapshots_path)
+    write_trades([
+        _trade(90050000, 26000),
+        _trade(90060000, 26100),
+    ], trades_path)
+
+    _ask, bid = query_day_ask_bid_peak_dual(
+        _con_for(snapshots_path),
+        path=snapshots_path,
+        trades_path=trades_path,
+        bucket_ms=60_000,
+        session_open_ms=90000000,
+        session_close_ms=153000000,
+    )
+
+    assert bid is not None
+    assert bid.traded_peaks == ()
+    assert bid.traded_max_peaks == ()
+
+
 def test_query_day_ask_peak_dual_untraded_excludes_prices_at_or_below_day_high(tmp_path) -> None:
     """미체결 최대벽은 당일 고가 이하 가격을 절대 후보로 쓰지 않는다.
 
