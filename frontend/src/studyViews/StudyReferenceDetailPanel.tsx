@@ -46,7 +46,8 @@ export function StudyReferenceDetailPanel({ save, bundle, isCursorActive }: Prop
     : null;
   const spotOrderbook = useLiveOrderbookAtCursor({ code: save.code, timeframe: minuteTimeframe });
   const spotBrokers = useLiveBrokersAtCursor({ code: save.code, timeframe: minuteTimeframe });
-  const detailCursorMs = isCursorActive && cursorMs !== null && minuteTimeframe !== null
+  const cursorStillPresent = isCursorActive || cursorMs !== null;
+  const detailCursorMs = cursorStillPresent && cursorMs !== null && minuteTimeframe !== null
     ? cursorMs
     : null;
   const volumeDistributionDate = detailCursorMs !== null
@@ -104,13 +105,13 @@ export function StudyReferenceDetailPanel({ save, bundle, isCursorActive }: Prop
     >
       <StudyDetailSection label="10호가" testId="orderbook">
         <>
-          <OrderbookTable snapshot={isCursorActive ? spotOrderbook?.snapshot : null} />
-          <TotalQtyBar snapshot={isCursorActive ? spotOrderbook?.snapshot : null} maskRatio={false} />
+          <OrderbookTable snapshot={detailCursorMs !== null ? spotOrderbook?.snapshot : null} />
+          <TotalQtyBar snapshot={detailCursorMs !== null ? spotOrderbook?.snapshot : null} maskRatio={false} />
         </>
       </StudyDetailSection>
       <StudyDetailSection label="거래원" testId="brokers">
         <BrokerTrajectoryTable
-          series={isCursorActive ? spotBrokers : null}
+          series={detailCursorMs !== null ? spotBrokers : null}
           cursorMs={detailCursorMs}
         />
       </StudyDetailSection>
