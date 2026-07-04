@@ -167,6 +167,24 @@ describe('useDayAskPeaks', () => {
     ]);
   });
 
+  it('live traded ask candidates keep earlier same-price observations for cutoff recalculation', () => {
+    const { result } = renderHook(() => useDayAskPeaks(
+      [
+        deep(atKst(9, 11), 1200, 26000),
+        deep(atKst(9, 12), 9000, 26000),
+      ],
+      [trade(atKst(9, 10), [{ t_ms: atKst(9, 10), side: 1, price: 26000, qty: 10 }])],
+      [],
+      '20260613',
+      '005930',
+    ));
+
+    expect(result.current).toEqual([
+      { date: '20260613', price: 26000, qty: 9000, t_ms: atKst(9, 12), max_price: 26000, max_qty: 9000, max_t_ms: atKst(9, 12) },
+      { date: '20260613', price: 26000, qty: 1200, t_ms: atKst(9, 11), max_price: 26000, max_qty: 1200, max_t_ms: atKst(9, 11) },
+    ]);
+  });
+
   it('backend today payload에 traded peak가 없으면 오늘 기준선을 만들지 않는다', () => {
     const restPeak = todayAskPeak({
       traded_price: null,
@@ -431,6 +449,24 @@ describe('useDayAskPeaks', () => {
         { price: 26600, qty: 7000, t_ms: atKst(9, 30) },
       ],
     });
+  });
+
+  it('live all-price ask candidates keep earlier same-price observations for cutoff recalculation', () => {
+    const { result } = renderHook(() => useTodayAllPriceAskPeak(
+      [
+        deep(atKst(9, 11), 1200, 26000),
+        deep(atKst(9, 12), 9000, 26000),
+      ],
+      [],
+      '20260613',
+      '005930',
+    ));
+
+    expect(result.current).toMatchObject({ price: 26000, qty: 9000 });
+    expect(result.current?.all_peaks?.slice(0, 2)).toEqual([
+      { price: 26000, qty: 9000, t_ms: atKst(9, 12) },
+      { price: 26000, qty: 1200, t_ms: atKst(9, 11) },
+    ]);
   });
 
   it('all-price peak ignores collapsed 3-level auction/VI books', () => {

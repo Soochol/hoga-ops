@@ -1014,16 +1014,57 @@ def test_query_day_ask_peak_dual_returns_all_traded_price_candidates(tmp_path) -
     assert peak is not None
     assert peak.traded_peaks == (
         AskPeakCandidateRow(price=26000, qty=9000, intra_ms=32460000),
+        AskPeakCandidateRow(price=26000, qty=8000, intra_ms=32520000),
         AskPeakCandidateRow(price=27000, qty=7100, intra_ms=32520000),
+        AskPeakCandidateRow(price=27000, qty=7000, intra_ms=32460000),
         AskPeakCandidateRow(price=28000, qty=6000, intra_ms=32460000),
         AskPeakCandidateRow(price=25000, qty=3000, intra_ms=32520000),
+        AskPeakCandidateRow(price=25000, qty=1000, intra_ms=32460000),
+        AskPeakCandidateRow(price=28000, qty=100, intra_ms=32520000),
     )
     assert peak.traded_max_peaks == (
         AskPeakCandidateRow(price=26000, qty=9000, intra_ms=32460000),
+        AskPeakCandidateRow(price=26000, qty=8000, intra_ms=32520000),
         AskPeakCandidateRow(price=27000, qty=7100, intra_ms=32520000),
+        AskPeakCandidateRow(price=27000, qty=7000, intra_ms=32460000),
         AskPeakCandidateRow(price=28000, qty=6000, intra_ms=32460000),
         AskPeakCandidateRow(price=25000, qty=3000, intra_ms=32520000),
+        AskPeakCandidateRow(price=25000, qty=1000, intra_ms=32460000),
+        AskPeakCandidateRow(price=28000, qty=100, intra_ms=32520000),
     )
+
+
+def test_query_day_ask_peak_dual_preserves_same_price_temporal_candidates(tmp_path) -> None:
+    """과거 cutoff 재계산은 같은 가격의 full-day 최대 이전 후보도 필요하다."""
+    obs = [
+        _ob_ap(
+            90100000,
+            [1200, 100, 90, 80, 70, 60, 50, 40, 30, 20],
+            ask_p=[25000, 26000, 27000, 28000, 29000, 29100, 29200, 29300, 29400, 29500],
+        ),
+        _ob_ap(
+            90200000,
+            [9000, 100, 90, 80, 70, 60, 50, 40, 30, 20],
+            ask_p=[25000, 26000, 27000, 28000, 29000, 29100, 29200, 29300, 29400, 29500],
+        ),
+    ]
+    snapshots_path = tmp_path / "snapshots.parquet"
+    trades_path = tmp_path / "trades.parquet"
+    write_parquet(obs, snapshots_path)
+    write_trades([_trade(90050000, 25000)], trades_path)
+
+    peak = query_day_ask_peak_dual(
+        _con_for(snapshots_path),
+        path=snapshots_path,
+        trades_path=trades_path,
+        bucket_ms=60_000,
+        session_open_ms=90000000,
+        session_close_ms=153000000,
+    )
+
+    assert peak is not None
+    assert AskPeakCandidateRow(price=25000, qty=1200, intra_ms=32460000) in peak.traded_peaks
+    assert AskPeakCandidateRow(price=25000, qty=9000, intra_ms=32520000) in peak.traded_peaks
 
 
 def test_query_day_ask_bid_peak_dual_returns_all_bid_traded_price_candidates(tmp_path) -> None:
@@ -1062,15 +1103,23 @@ def test_query_day_ask_bid_peak_dual_returns_all_bid_traded_price_candidates(tmp
     assert bid is not None
     assert bid.traded_peaks == (
         AskPeakCandidateRow(price=24900, qty=9000, intra_ms=32460000),
+        AskPeakCandidateRow(price=24900, qty=8000, intra_ms=32520000),
         AskPeakCandidateRow(price=24800, qty=7100, intra_ms=32520000),
+        AskPeakCandidateRow(price=24800, qty=7000, intra_ms=32460000),
         AskPeakCandidateRow(price=24700, qty=6000, intra_ms=32460000),
         AskPeakCandidateRow(price=25000, qty=3000, intra_ms=32520000),
+        AskPeakCandidateRow(price=25000, qty=1000, intra_ms=32460000),
+        AskPeakCandidateRow(price=24700, qty=100, intra_ms=32520000),
     )
     assert bid.traded_max_peaks == (
         AskPeakCandidateRow(price=24900, qty=9000, intra_ms=32460000),
+        AskPeakCandidateRow(price=24900, qty=8000, intra_ms=32520000),
         AskPeakCandidateRow(price=24800, qty=7100, intra_ms=32520000),
+        AskPeakCandidateRow(price=24800, qty=7000, intra_ms=32460000),
         AskPeakCandidateRow(price=24700, qty=6000, intra_ms=32460000),
         AskPeakCandidateRow(price=25000, qty=3000, intra_ms=32520000),
+        AskPeakCandidateRow(price=25000, qty=1000, intra_ms=32460000),
+        AskPeakCandidateRow(price=24700, qty=100, intra_ms=32520000),
     )
 
 
@@ -1361,8 +1410,14 @@ def test_query_day_bid_peak_dual_populates_below_low_untraded(tmp_path) -> None:
     assert peak is not None
     assert (peak.price, peak.qty, peak.intra_ms) == (70000, 5000, 9 * 60 * 60 * 1000 + 60_000)
     assert (peak.max_price, peak.max_qty, peak.max_intra_ms) == (70000, 5000, 9 * 60 * 60 * 1000 + 60_000)
-    assert peak.traded_peaks == (AskPeakCandidateRow(price=70000, qty=5000, intra_ms=32460000),)
-    assert peak.traded_max_peaks == (AskPeakCandidateRow(price=70000, qty=5000, intra_ms=32460000),)
+    assert peak.traded_peaks == (
+        AskPeakCandidateRow(price=70000, qty=5000, intra_ms=32460000),
+        AskPeakCandidateRow(price=70000, qty=1000, intra_ms=32400000),
+    )
+    assert peak.traded_max_peaks == (
+        AskPeakCandidateRow(price=70000, qty=5000, intra_ms=32460000),
+        AskPeakCandidateRow(price=70000, qty=1000, intra_ms=32400000),
+    )
     assert (peak.all_price, peak.all_qty, peak.all_intra_ms) == (68900, 12000, 9 * 60 * 60 * 1000 + 60_000)
     assert (peak.all_max_price, peak.all_max_qty, peak.all_max_intra_ms) == (68900, 12000, 9 * 60 * 60 * 1000 + 60_000)
     assert peak.all_peaks[0] == AskPeakCandidateRow(price=68900, qty=12000, intra_ms=32460000)

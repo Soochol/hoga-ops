@@ -1844,9 +1844,13 @@ def test_build_ask_peak_slice_wires_traded_peak_candidates(tmp_path) -> None:
     assert p is not None
     assert [c.model_dump() for c in p.traded_peaks] == [
         {"price": 26000, "qty": 9000, "t_ms": 1781049660000},
+        {"price": 26000, "qty": 8000, "t_ms": 1781049720000},
         {"price": 27000, "qty": 7100, "t_ms": 1781049720000},
+        {"price": 27000, "qty": 7000, "t_ms": 1781049660000},
         {"price": 28000, "qty": 6000, "t_ms": 1781049660000},
         {"price": 25000, "qty": 3000, "t_ms": 1781049720000},
+        {"price": 25000, "qty": 1000, "t_ms": 1781049660000},
+        {"price": 28000, "qty": 100, "t_ms": 1781049720000},
     ]
 
 
@@ -1946,15 +1950,23 @@ def test_build_bid_peak_slice_wires_ranked_candidates(tmp_path) -> None:
     assert p is not None
     assert [c.model_dump() for c in p.traded_peaks] == [
         {"price": 69900, "qty": 9000, "t_ms": 1781049660000},
+        {"price": 69900, "qty": 8000, "t_ms": 1781049720000},
         {"price": 69800, "qty": 7100, "t_ms": 1781049720000},
+        {"price": 69800, "qty": 7000, "t_ms": 1781049660000},
         {"price": 69700, "qty": 6000, "t_ms": 1781049660000},
         {"price": 70000, "qty": 3000, "t_ms": 1781049720000},
+        {"price": 70000, "qty": 1000, "t_ms": 1781049660000},
+        {"price": 69700, "qty": 100, "t_ms": 1781049720000},
     ]
     assert [c.model_dump() for c in p.traded_max_peaks] == [
         {"price": 69900, "qty": 9000, "t_ms": 1781049660000},
+        {"price": 69900, "qty": 8000, "t_ms": 1781049720000},
         {"price": 69800, "qty": 7100, "t_ms": 1781049720000},
+        {"price": 69800, "qty": 7000, "t_ms": 1781049660000},
         {"price": 69700, "qty": 6000, "t_ms": 1781049660000},
         {"price": 70000, "qty": 3000, "t_ms": 1781049720000},
+        {"price": 70000, "qty": 1000, "t_ms": 1781049660000},
+        {"price": 69700, "qty": 100, "t_ms": 1781049720000},
     ]
 
 
