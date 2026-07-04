@@ -116,6 +116,23 @@ describe('live peak-wall docked label helpers', () => {
     expect(out.map((label) => label.price)).toEqual([101, 102]);
   });
 
+  it('treats same-price docked-label candidates as one visible wall rank', () => {
+    const out = livePeakWallDockedLabelsFromSegments(
+      [
+        segment({ live: false, time0: 100 as never, time1: 200 as never, price: 100, qty: 300, label: '100, 0.3k' }),
+        segment({ live: false, time0: 100 as never, time1: 200 as never, price: 100, qty: 250, label: '100, 0.25k' }),
+        segment({ live: false, time0: 100 as never, time1: 200 as never, price: 101, qty: 200, label: '101, 0.2k' }),
+      ],
+      { from: 100 as never, to: 200 as never },
+      2,
+    );
+
+    expect(out.map((label) => [label.price, label.label])).toEqual([
+      [100, '100, 0.3k'],
+      [101, '101, 0.2k'],
+    ]);
+  });
+
   it('extracts labels only from live segments with visible label text', () => {
     const out = livePeakWallDockedLabelsFromSegments([
       segment({ live: false, label: '24,500, 16.6k', price: 24500, color: '#f97316' }),
