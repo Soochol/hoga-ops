@@ -8,6 +8,7 @@ import { useSourcePreferenceStore } from '../state/sourcePreference';
 import type { LiveSeriesData } from '../api/liveSeries';
 import { createVirtualAxis } from '../util/virtualAxis';
 import { projectVolume } from '../chart/projectors/volume';
+import { projectCandle } from '../chart/projectors/candle';
 
 // Live fixture — used to be a mock of useLiveSeries when useLiveBundle owned
 // the hook call. After the LivePage-lift refactor, `live` is a prop passed
@@ -806,6 +807,59 @@ describe('useLiveBundle daily/minute branching (ADR-0048)', () => {
     expect(result.current.chartBundle!.candles).toEqual([
       { ts_ms: 1779840000000, open: 70000, high: 70300, low: 69900, close: 70250, vol_a: 330, vol_b: 0 },
     ]);
+  });
+
+  it('D timeframe fallback ignores pre-open hogaplay bars so daily candles render on the calendar axis', () => {
+    useSourcePreferenceStore.setState({ sourcePreference: 'hogaplay_first' });
+    dailyCandlesMock.candles = [];
+    dailyCandlesMock.warnings = [{ reason: 'kis_transport', msg: 'TRANSPORT/ConnectError' }];
+    const day1Open = 1779753600000;
+    const day2Open = 1779840000000;
+    const preOpenOffset = 30 * 60_000;
+    const hogaplayFallback = {
+      code: '005930',
+      from_date: '20240507',
+      to_date: '20260527',
+      bucket_ms: 60000,
+      segments: [],
+      candles: [
+        { ts_ms: day1Open - preOpenOffset, open: 69000, high: 69100, low: 68900, close: 69050, vol_a: 10, vol_b: 0 },
+        { ts_ms: day1Open, open: 70000, high: 70100, low: 69900, close: 70050, vol_a: 100, vol_b: 0 },
+        { ts_ms: day2Open - preOpenOffset, open: 71000, high: 71100, low: 70900, close: 71050, vol_a: 10, vol_b: 0 },
+        { ts_ms: day2Open, open: 72000, high: 72100, low: 71900, close: 72050, vol_a: 100, vol_b: 0 },
+      ],
+      quote_ratio: { bucket_ms: 60000, points: [] },
+      fill_strength: { bucket_ms: 60000, points: [] },
+      volume_profile_range: { bin_count: 0, price_min: 0, price_max: 0, bin_width: 0, bins: [] },
+      volume_profile_by_day: [],
+      volume_distributions: [],
+      investorPoints: [],
+      ask_peaks: [],
+      bid_peaks: [],
+      broker_late_entries: [],
+      price_level_hits: [],
+      trade_volume_pocs: [],
+      program_trade: { points: [] },
+    };
+    useRangeSpy
+      .mockReturnValueOnce(rangeResult(hogaplayFallback))
+      .mockReturnValueOnce(rangeResult())
+      .mockReturnValueOnce(rangeResult());
+
+    const { result } = renderHook(() => useLiveBundle('005930', 'D', '20260527', liveFixture), { wrapper });
+
+    const chartBundle = result.current.chartBundle!;
+    const axis = createVirtualAxis(
+      chartBundle.segments.map((s) => ({
+        date: s.date,
+        sessionOpenMs: s.session_open_ms,
+        sessionCloseMs: s.session_close_ms,
+      })),
+      chartBundle.segments[0]!.session_open_ms,
+      { mode: 'calendar' },
+    );
+    expect(chartBundle.candles.map((c) => c.ts_ms)).toEqual([day1Open, day2Open]);
+    expect(projectCandle(chartBundle, axis)).toHaveLength(2);
   });
 
   it('W/M timeframes do not fall back to hogaplay 1m aggregation when daily KIS returns no candles', () => {
