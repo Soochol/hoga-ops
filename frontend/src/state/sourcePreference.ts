@@ -5,12 +5,11 @@ import {
 } from '../api/sourceCapabilities';
 
 /**
- * Source Preference (ADR-0039) — global per-user setting that drives the
- * source selection on `/api/range` requests.
+ * Orderflow Source Preference (ADR-0039) — global per-user setting that drives
+ * source selection for hoga/orderbook/trade-derived read paths such as
+ * `/api/range`, `/api/orderbook`, and `/api/brokers/series`.
  *
- * Default: 'hogaplay_first' (the higher-resolution capture source). Falls back
- * according to display priority when the preferred source is missing — see backend
- * `build_range_bundle(source_pref=...)` and ADR-0039 semantics.
+ * Storage key stays `chart.sourcePreference.v1` for backward compatibility.
  */
 export { SOURCE_PREFERENCE_OPTIONS as SOURCE_OPTIONS, type SourcePreference };
 

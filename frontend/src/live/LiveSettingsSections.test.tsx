@@ -105,14 +105,13 @@ describe('LiveSettingsSections (2단 nav+detail)', () => {
     expect(screen.getByLabelText('KRX')).toBeChecked();
     expect(screen.getByLabelText('NXT')).toBeInTheDocument();
     expect(screen.getByLabelText('통합')).toBeInTheDocument();
-    expect(screen.queryByLabelText('자동')).toBeNull();
 
     fireEvent.click(screen.getByLabelText('통합'));
     expect(useLiveVenueStore.getState().venue).toBe('UN');
     expect(localStorage.getItem('live.venue.v1')).toContain('UN');
   });
 
-  it('renders storage policy and display priority separately', async () => {
+  it('데이터소스 상세를 캔들/호가체결/스크리너 일봉으로 구조화한다', async () => {
     vi.spyOn(liveSettingsApi, 'getLiveSettings').mockResolvedValue({
       schema_version: 1,
       storage_policy: 'ws_plus_rest',
@@ -128,13 +127,16 @@ describe('LiveSettingsSections (2단 nav+detail)', () => {
     fireEvent.click(screen.getByTestId('settings-nav-data-source'));
 
     expect(await screen.findByText('데이터 저장 방식')).toBeInTheDocument();
-    expect(screen.getByText('데이터 표현 기준')).toBeInTheDocument();
+    expect(screen.getByText('캔들 데이터 기준')).toBeInTheDocument();
+    expect(screen.getByText('호가·체결 데이터 기준')).toBeInTheDocument();
+    expect(screen.getByText('스크리너 일봉 데이터')).toBeInTheDocument();
     expect(screen.getByRole('radio', { name: 'WS만 저장' })).toBeInTheDocument();
     expect(screen.getByRole('radio', { name: 'WS 우선 + 나머지 REST 저장' })).toBeChecked();
     expect(screen.getByRole('radio', { name: 'REST만 저장' })).toBeInTheDocument();
-    expect(screen.getByRole('radio', { name: 'hogaplay 우선' })).toBeInTheDocument();
+    expect(screen.getByRole('radio', { name: '자동' })).toBeInTheDocument();
+    expect(screen.getAllByRole('radio', { name: 'hogaplay 우선' })).toHaveLength(2);
     expect(screen.getByRole('radio', { name: 'KIS WS 우선' })).toBeInTheDocument();
-    expect(screen.getByRole('radio', { name: 'KIS API 우선' })).toBeInTheDocument();
+    expect(screen.getAllByRole('radio', { name: 'KIS API 우선' })).toHaveLength(2);
   });
 
   it('데이터소스 상세에서 프로그램 순매수 저장 토글을 REST 허용 정책에서만 켠다', async () => {

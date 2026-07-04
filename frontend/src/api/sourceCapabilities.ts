@@ -46,6 +46,10 @@ export function getSourceCapability(source: SourceName): SourceCapability {
   return SOURCE_CAPABILITIES[source];
 }
 
-export function getSourcePreferenceLabel(value: SourcePreference): string {
+export function getOrderflowSourcePreferenceLabel(value: SourcePreference): string {
   return `${SOURCE_CAPABILITIES[SOURCE_PREFERENCE_PRIMARY_SOURCE[value]].label} 우선`;
+}
+
+export function getSourcePreferenceLabel(value: SourcePreference): string {
+  return getOrderflowSourcePreferenceLabel(value);
 }

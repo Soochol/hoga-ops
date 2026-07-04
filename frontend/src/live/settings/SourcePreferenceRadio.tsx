@@ -1,5 +1,5 @@
 // frontend/src/live/settings/SourcePreferenceRadio.tsx
-import { getSourcePreferenceLabel } from '../../api/sourceCapabilities';
+import { getOrderflowSourcePreferenceLabel } from '../../api/sourceCapabilities';
 import { useSourcePreferenceStore, type SourcePreference } from '../../state/sourcePreference';
 
 export default function SourcePreferenceRadio({ value }: { value: SourcePreference }) {
@@ -14,7 +14,7 @@ export default function SourcePreferenceRadio({ value }: { value: SourcePreferen
         checked={current === value}
         onChange={() => setPref(value)}
       />
-      <span style={{ fontSize: 'var(--text-sm)', color: 'var(--fg)' }}>{getSourcePreferenceLabel(value)}</span>
+      <span style={{ fontSize: 'var(--text-sm)', color: 'var(--fg)' }}>{getOrderflowSourcePreferenceLabel(value)}</span>
     </label>
   );
 }

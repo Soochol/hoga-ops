@@ -4,6 +4,7 @@ import {
   SOURCE_PREFERENCE_OPTIONS,
   SOURCE_PREFERENCE_PRIMARY_SOURCE,
   getSourceCapability,
+  getOrderflowSourcePreferenceLabel,
   getSourcePreferenceLabel,
 } from './sourceCapabilities';
 
@@ -25,8 +26,11 @@ describe('sourceCapabilities', () => {
     });
   });
 
-  it('derives labels from source capabilities', () => {
+  it('derives orderflow labels from source capabilities', () => {
     expect(getSourceCapability('kis_api').resolutionLabel).toBe('30s');
+    expect(getOrderflowSourcePreferenceLabel('hogaplay_first')).toBe('hogaplay 우선');
+    expect(getOrderflowSourcePreferenceLabel('kis_ws_first')).toBe('KIS WS 우선');
+    expect(getOrderflowSourcePreferenceLabel('kis_api_first')).toBe('KIS API 우선');
     expect(getSourcePreferenceLabel('kis_ws_first')).toBe('KIS WS 우선');
   });
 });
