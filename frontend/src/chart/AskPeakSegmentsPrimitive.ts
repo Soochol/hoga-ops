@@ -61,18 +61,26 @@ function segmentOverlapsVisibleRange(segment: AskPeakSegment, visibleRange: Visi
 export function livePeakWallDockedLabelsFromSegments(
   segments: readonly AskPeakSegment[],
   visibleRange: VisibleTimeRange = null,
+  rankLimit?: 1 | 2 | 3,
 ): PeakWallDockedLabel[] {
-  return segments
-    .filter((segment) => (
-      segment.live === true
-      && segment.label !== ''
-      && segmentOverlapsVisibleRange(segment, visibleRange)
-    ))
+  const candidates = segments
+    .map((segment, index) => ({ segment, index }))
+    .filter(({ segment }) => (
+      segment.label !== ''
+      && (visibleRange ? segmentOverlapsVisibleRange(segment, visibleRange) : segment.live === true)
+    ));
+  const ranked = rankLimit
+    ? candidates
+      .slice()
+      .sort((a, b) => b.segment.qty - a.segment.qty || a.index - b.index)
+      .slice(0, rankLimit)
+    : candidates;
+  return ranked
     .map((segment) => ({
-      price: segment.price,
-      label: segment.label,
-      color: segment.color,
-      time1: segment.time1,
+      price: segment.segment.price,
+      label: segment.segment.label,
+      color: segment.segment.color,
+      time1: segment.segment.time1,
     }));
 }
 
@@ -80,7 +88,7 @@ export function inlinePeakWallSegmentsForDocking(
   segments: readonly AskPeakSegment[],
 ): AskPeakSegment[] {
   return segments.map((segment) => (
-    segment.live === true && segment.label !== ''
+    segment.label !== ''
       ? { ...segment, label: '' }
       : segment
   ));

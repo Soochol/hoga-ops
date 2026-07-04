@@ -225,6 +225,17 @@ describe('ask peak all-price toggle', () => {
     expect(mergePrefs({ askPeakVisibleMaxRankLimit: 0 }).askPeakVisibleMaxRankLimit)
       .toBe(DEFAULT_PREFS.askPeakVisibleMaxRankLimit);
   });
+
+  it('bid rank limits default to 1 and persist valid 1..3 values', () => {
+    expect(DEFAULT_PREFS.bidPeakAllPriceRankLimit).toBe(1);
+    expect(DEFAULT_PREFS.bidPeakVisibleMaxRankLimit).toBe(1);
+    expect(mergePrefs({ bidPeakAllPriceRankLimit: 2 }).bidPeakAllPriceRankLimit).toBe(2);
+    expect(mergePrefs({ bidPeakVisibleMaxRankLimit: 3 }).bidPeakVisibleMaxRankLimit).toBe(3);
+    expect(mergePrefs({ bidPeakAllPriceRankLimit: 4 }).bidPeakAllPriceRankLimit)
+      .toBe(DEFAULT_PREFS.bidPeakAllPriceRankLimit);
+    expect(mergePrefs({ bidPeakVisibleMaxRankLimit: 0 }).bidPeakVisibleMaxRankLimit)
+      .toBe(DEFAULT_PREFS.bidPeakVisibleMaxRankLimit);
+  });
 });
 
 describe('peak wall visible-time cutoff toggles', () => {

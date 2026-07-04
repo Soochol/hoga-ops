@@ -265,6 +265,22 @@ export const CHART_NUMERIC_PREFS = [
     min: 1,
     max: 3,
   },
+  {
+    key: 'bidPeakAllPriceRankLimit',
+    label: '매수 체결가격 기준 최대벽 표시 개수',
+    description: '체결가격 기준 매수 최대벽 후보를 수량순으로 몇 등까지 차트에 표시할지 선택합니다.',
+    default: 1,
+    min: 1,
+    max: 3,
+  },
+  {
+    key: 'bidPeakVisibleMaxRankLimit',
+    label: '매수 보이는 영역 최대벽 라벨 개수',
+    description: '현재 보이는 캔들 영역 안에서 매수 최대벽 라벨을 수량순으로 몇 순위까지 표시할지 선택합니다.',
+    default: 1,
+    min: 1,
+    max: 3,
+  },
 ] as const satisfies readonly NumericPrefDef[];
 
 export type NumericPrefKey = (typeof CHART_NUMERIC_PREFS)[number]['key'];

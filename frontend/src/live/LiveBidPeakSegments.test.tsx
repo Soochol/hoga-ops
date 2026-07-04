@@ -42,6 +42,53 @@ describe('buildBidPeakOverlaySegments', () => {
     expect(segments[0]).toMatchObject({ price: 99, qty: 90 });
   });
 
+  it('renders top-N bid baseline candidates through the visible-time cutoff', () => {
+    const day = '20260613';
+    const open = Date.UTC(2026, 5, 13, 0, 0);
+    const peak = {
+      date: day,
+      price: 100,
+      qty: 100,
+      t_ms: open + 60_000,
+      max_price: 100,
+      max_qty: 100,
+      max_t_ms: open + 60_000,
+      traded_peaks: [
+        { price: 100, qty: 100, t_ms: open + 60_000 },
+        { price: 99, qty: 300, t_ms: open + 120_000 },
+        { price: 98, qty: 200, t_ms: open + 180_000 },
+        { price: 97, qty: 900, t_ms: open + 300_000 },
+      ],
+      traded_max_peaks: [
+        { price: 100, qty: 100, t_ms: open + 60_000 },
+        { price: 99, qty: 300, t_ms: open + 120_000 },
+        { price: 98, qty: 200, t_ms: open + 180_000 },
+        { price: 97, qty: 900, t_ms: open + 300_000 },
+      ],
+    };
+
+    const segments = buildBidPeakOverlaySegments({
+      dayBidPeaks: [peak],
+      todayAllPriceBidPeak: null,
+      segments: [{ date: day, session_open_ms: open, session_close_ms: open + 3600_000 }],
+      candles: [
+        { ts_ms: open + 60_000, open: 2, high: 2, low: 1, close: 1, vol_a: 1, vol_b: 0 },
+        { ts_ms: open + 120_000, open: 2, high: 2, low: 1, close: 1, vol_a: 1, vol_b: 0 },
+        { ts_ms: open + 180_000, open: 2, high: 2, low: 1, close: 1, vol_a: 1, vol_b: 0 },
+      ],
+      axis: createVirtualAxis([{ date: day, sessionOpenMs: open, sessionCloseMs: open + 3600_000 }], open),
+      todayKst: day,
+      baselineStyle: { color: '#fff', lineWidth: 1 },
+      allPriceStyle: { color: '#f00', lineWidth: 1 },
+      intraMax: false,
+      showAllPrices: false,
+      visibleTimeCutoff: { date: day, tMs: open + 180_000 },
+      allPriceRankLimit: 3,
+    });
+
+    expect(segments.map((segment) => segment.price)).toEqual([99, 98, 100]);
+  });
+
   it('omits bid baseline when cutoff mode receives explicit empty ranked candidates', () => {
     const day = '20260613';
     const open = Date.UTC(2026, 5, 13, 0, 0);
