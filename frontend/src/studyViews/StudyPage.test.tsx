@@ -618,6 +618,28 @@ describe('StudyPage', () => {
     expect(within(orderbookCard).queryByText('호가 데이터 없음')).toBeNull();
   });
 
+  it('keeps study cursor indicators visible through transient inactive callbacks while cursor remains set', () => {
+    useLiveOrderbookAtCursorMock.mockReturnValue(undefined);
+    useLiveBrokersAtCursorMock.mockReturnValue(undefined);
+    useLiveCursorStore.getState().setCursor(HOVER_MS);
+
+    renderPage('/study?view=view-ref');
+
+    act(() => {
+      liveChartRootMock.mock.calls[0][0].onCursorActiveChange?.(true);
+    });
+    act(() => {
+      liveChartRootMock.mock.calls.at(-1)?.[0].onCursorActiveChange?.(false);
+    });
+
+    const orderbookCard = screen.getByTestId('study-detail-card-orderbook');
+    const brokersCard = screen.getByTestId('study-detail-card-brokers');
+    expect(within(orderbookCard).getByText('커서 위치 로딩 중…')).toBeTruthy();
+    expect(within(orderbookCard).queryByText('호가 데이터 없음')).toBeNull();
+    expect(within(brokersCard).getByText('커서 위치 로딩 중…')).toBeTruthy();
+    expect(within(brokersCard).queryByText('거래원 정보 없음')).toBeNull();
+  });
+
   it('renders study detail sections as separated cards inside the outer detail rail', () => {
     renderPage('/study?view=view-ref');
 
