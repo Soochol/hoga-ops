@@ -70,19 +70,26 @@ export function livePeakWallDockedLabelsFromSegments(
       && (visibleRange ? segmentOverlapsVisibleRange(segment, visibleRange) : segment.live === true)
     ));
   const uniqueByPrice = (items: typeof candidates): typeof candidates => {
-    const seenPrices = new Set<number>();
-    return items.filter(({ segment }) => {
-      if (seenPrices.has(segment.price)) return false;
-      seenPrices.add(segment.price);
-      return true;
-    });
+    const bestByPrice = new Map<number, typeof candidates[number]>();
+    for (const item of items) {
+      const previous = bestByPrice.get(item.segment.price);
+      if (
+        !previous
+        || item.segment.qty > previous.segment.qty
+        || (item.segment.qty === previous.segment.qty && item.index < previous.index)
+      ) {
+        bestByPrice.set(item.segment.price, item);
+      }
+    }
+    return items.filter((item) => bestByPrice.get(item.segment.price) === item);
   };
+  const uniqueCandidates = uniqueByPrice(candidates);
   const rankedCandidates = rankLimit
-    ? candidates.slice().sort((a, b) => b.segment.qty - a.segment.qty || a.index - b.index)
-    : candidates;
+    ? uniqueCandidates.slice().sort((a, b) => b.segment.qty - a.segment.qty || a.index - b.index)
+    : uniqueCandidates;
   const ranked = rankLimit
-    ? uniqueByPrice(rankedCandidates).slice(0, rankLimit)
-    : uniqueByPrice(rankedCandidates);
+    ? rankedCandidates.slice(0, rankLimit)
+    : rankedCandidates;
   return ranked
     .map((segment) => ({
       price: segment.segment.price,
