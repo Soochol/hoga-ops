@@ -1191,8 +1191,26 @@ export function LiveChartRoot({ code, timeframe, venue = 'KRX', viewIdentity, bu
     const handler = (param: {
       time?: unknown;
       point?: { x: number } | null;
+      sourceEvent?: { localX?: unknown };
       seriesData?: unknown;
     }) => {
+      const separatorX =
+        typeof param.sourceEvent?.localX === 'number'
+          && Number.isFinite(param.sourceEvent.localX)
+          ? param.sourceEvent.localX
+          : null;
+      if (param.point == null && separatorX !== null) {
+        if (pending !== null) cancelAnimationFrame(pending);
+        pending = requestAnimationFrame(() => {
+          pending = null;
+          const t = typeof param.time === 'number'
+            ? param.time
+            : (readNumericCrosshairTimeFromSeriesData(param.seriesData)
+              ?? chart.timeScale().coordinateToTime(separatorX));
+          publishCursorHover(t, separatorX);
+        });
+        return;
+      }
       // Cursor left the chart pane entirely (mouse-leave) → return the sidebar
       // to latest mode. Cancel any pending valid-hover write so a queued rAF
       // can't re-set the cursor after the pointer is already off-chart.

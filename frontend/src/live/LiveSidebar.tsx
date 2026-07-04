@@ -99,7 +99,7 @@ export function LiveSidebar({ code, live, bundle = null, todayKst = '', programT
   const maskRatio = useAuctionMaskActive(axis, isSpot ? cursorMs : null);
 
   // Branch on spot vs latest.
-  const spotSnap = spotOrderbook?.snapshot ?? null;
+  const spotSnap = spotOrderbook === undefined ? undefined : spotOrderbook.snapshot;
   const spotAvailableFrom = spotOrderbook?.available_from ?? null;
   // ADR-0044 amendment (2026-06-11): the promoted-parquet spot path lags the
   // live edge by ~2–5 min (Today Promotion cadence, ADR-0043), so hovering a
@@ -118,7 +118,9 @@ export function LiveSidebar({ code, live, bundle = null, todayKst = '', programT
         : null,
     [isSpot, spotSnap, spotTimeframe, cursorMs, ob],
   );
-  const orderbookForCard = isSpot ? (spotSnap ?? bufferSnap) : latestOrderbook;
+  const orderbookForCard = isSpot
+    ? (spotSnap === undefined ? undefined : (spotSnap ?? bufferSnap))
+    : latestOrderbook;
   const brokerSeriesForCard = isSpot
     ? spotBrokers
     : (broker.length === 0 ? undefined : latestBrokerSeries);
