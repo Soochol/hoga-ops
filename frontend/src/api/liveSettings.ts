@@ -7,11 +7,13 @@ export interface LiveSettings {
   schema_version: number;
   storage_policy: LiveStoragePolicy;
   program_trade_storage_enabled: boolean;
+  kis_rest_bypass_enabled: boolean;
 }
 
 export type LiveSettingsPatch = {
-  storage_policy: LiveStoragePolicy;
+  storage_policy?: LiveStoragePolicy;
   program_trade_storage_enabled?: boolean;
+  kis_rest_bypass_enabled?: boolean;
 };
 
 export const LIVE_SETTINGS_KEY = ['live', 'settings'] as const;

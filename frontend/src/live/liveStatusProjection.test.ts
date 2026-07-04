@@ -21,6 +21,7 @@ const baseStatus: LiveStatus = {
   kis_api_last_error: null,
   kis_api_last_error_count: 0,
   kis_api_degraded: false,
+  kis_rest_bypass_enabled: false,
 };
 
 function project(input: Partial<LiveStatusProjectionInput>) {

@@ -29,6 +29,7 @@ export interface LiveStatus {
   kis_api_last_error: string | null;
   kis_api_last_error_count: number;
   kis_api_degraded: boolean;
+  kis_rest_bypass_enabled: boolean;
 }
 
 /**

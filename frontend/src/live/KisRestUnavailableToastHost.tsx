@@ -1,10 +1,28 @@
+import { useEffect } from 'react';
+import { useLiveSettings, usePatchLiveSettings } from '../api/liveSettings';
 import { ToggleSwitch } from './settings/SettingsRow';
-import { useKisRestModeStore } from '../state/kisRestMode';
+import {
+  markLegacyKisRestBypassMigrated,
+  readLegacyKisRestBypass,
+  useKisRestModeStore,
+} from '../state/kisRestMode';
 
 export default function KisRestUnavailableToastHost() {
-  const kisRestBypassEnabled = useKisRestModeStore((s) => s.kisRestBypassEnabled);
-  const setKisRestBypassEnabled = useKisRestModeStore((s) => s.setKisRestBypassEnabled);
+  const { data: settings } = useLiveSettings();
+  const patch = usePatchLiveSettings();
   const lastToastAtMs = useKisRestModeStore((s) => s.lastToastAtMs);
+  const kisRestBypassEnabled = settings?.kis_rest_bypass_enabled ?? false;
+
+  useEffect(() => {
+    if (!settings || settings.kis_rest_bypass_enabled) return;
+    const legacy = readLegacyKisRestBypass();
+    if (legacy?.kisRestBypassEnabled) {
+      patch.mutate(
+        { kis_rest_bypass_enabled: true },
+        { onSettled: () => markLegacyKisRestBypassMigrated() },
+      );
+    }
+  }, [settings, patch]);
 
   if (lastToastAtMs == null) return null;
 
@@ -20,13 +38,11 @@ export default function KisRestUnavailableToastHost() {
           외부 KIS API에 연결할 수 없습니다. 저장 데이터로 표시할 수 있습니다.
         </div>
         <div className="mt-3 flex items-center justify-between gap-3">
-          <div className="text-xs text-fg-dim">
-            {kisRestBypassEnabled ? '저장 데이터로 표시 중' : 'KIS API 재시도'}
-          </div>
+          <div className="text-xs text-fg-dim">{kisRestBypassEnabled ? 'KIS REST 우회 중' : 'KIS API 재시도'}</div>
           <ToggleSwitch
             label="KIS API 우회"
             checked={kisRestBypassEnabled}
-            onClick={() => setKisRestBypassEnabled(!kisRestBypassEnabled)}
+            onClick={() => patch.mutate({ kis_rest_bypass_enabled: !kisRestBypassEnabled })}
           />
         </div>
       </div>

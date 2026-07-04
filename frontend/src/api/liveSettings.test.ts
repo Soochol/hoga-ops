@@ -21,6 +21,7 @@ describe('liveSettings api', () => {
       schema_version: 1,
       storage_policy: 'rest_only',
       program_trade_storage_enabled: true,
+      kis_rest_bypass_enabled: false,
     });
 
     const result = await patchLiveSettings({
@@ -38,5 +39,23 @@ describe('liveSettings api', () => {
     });
     expect(result.storage_policy).toBe('rest_only');
     expect(result.program_trade_storage_enabled).toBe(true);
+  });
+
+  it('patches only kis_rest_bypass_enabled', async () => {
+    const { patchLiveSettings } = await import('./liveSettings');
+    const spy = vi.spyOn(client, 'apiCall').mockResolvedValue({
+      schema_version: 1,
+      storage_policy: 'ws_plus_rest',
+      program_trade_storage_enabled: false,
+      kis_rest_bypass_enabled: true,
+    });
+
+    const result = await patchLiveSettings({ kis_rest_bypass_enabled: true });
+
+    expect(spy).toHaveBeenCalledWith('/api/live/settings', expect.objectContaining({
+      method: 'PATCH',
+      body: JSON.stringify({ kis_rest_bypass_enabled: true }),
+    }));
+    expect(result.kis_rest_bypass_enabled).toBe(true);
   });
 });

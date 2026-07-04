@@ -2,6 +2,8 @@ import { beforeEach, describe, expect, it } from 'vitest';
 import {
   KIS_REST_FAILURE_TOAST_COOLDOWN_MS,
   kisRestWarningIndicatesUnavailable,
+  markLegacyKisRestBypassMigrated,
+  readLegacyKisRestBypass,
   useKisRestModeStore,
 } from './kisRestMode';
 
@@ -9,27 +11,28 @@ describe('kisRestMode', () => {
   beforeEach(() => {
     localStorage.clear();
     useKisRestModeStore.setState({
-      kisRestBypassEnabled: false,
       lastFailureAtMs: null,
       lastToastAtMs: null,
     });
   });
 
-  it('defaults to KIS REST enabled and persists bypass changes', () => {
-    expect(useKisRestModeStore.getState().kisRestBypassEnabled).toBe(false);
+  it('keeps toast timing state without owning backend bypass truth', () => {
+    expect(useKisRestModeStore.getState().lastFailureAtMs).toBeNull();
 
-    useKisRestModeStore.getState().setKisRestBypassEnabled(true);
+    useKisRestModeStore.getState().notifyFailure(1_000);
 
-    expect(useKisRestModeStore.getState().kisRestBypassEnabled).toBe(true);
-    expect(localStorage.getItem('chart.kisRestMode.v1')).toContain('true');
+    expect(useKisRestModeStore.getState().lastFailureAtMs).toBe(1_000);
+    expect(useKisRestModeStore.getState().lastToastAtMs).toBe(1_000);
   });
 
-  it('hydrates the persisted bypass state', () => {
+  it('reads legacy true once for backend migration', () => {
     localStorage.setItem('chart.kisRestMode.v1', JSON.stringify({ kisRestBypassEnabled: true }));
 
-    useKisRestModeStore.getState().hydrateFromStorage();
+    expect(readLegacyKisRestBypass()).toEqual({ kisRestBypassEnabled: true });
 
-    expect(useKisRestModeStore.getState().kisRestBypassEnabled).toBe(true);
+    markLegacyKisRestBypassMigrated();
+
+    expect(readLegacyKisRestBypass()).toBeNull();
   });
 
   it('dedupes failure toasts inside the cooldown window', () => {
