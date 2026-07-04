@@ -198,6 +198,10 @@ function renderPage(initialEntry = '/study') {
   );
 }
 
+function getStudyTab(label: string) {
+  return screen.getByRole('tab', { name: label });
+}
+
 beforeEach(() => {
   liveChartRootMock.mockClear();
   useStudyViewsMock.mockReturnValue({
@@ -454,14 +458,14 @@ describe('StudyPage', () => {
       liveChartRootMock.mock.calls.at(-1)?.[0].onViewportCaptureReady?.(() => capturedViewport);
     });
 
-    fireEvent.click(screen.getByTitle('SK하이닉스 · 눌림 복기 · 5m'));
+    fireEvent.click(getStudyTab('SK하이닉스 · 눌림 복기 · 5m'));
     expect(liveChartRootMock.mock.calls.at(-1)?.[0].restoreViewport).toEqual({
       rightEdgeMs: 5_000,
       barSpan: 80,
       atLiveEdge: false,
     });
 
-    fireEvent.click(screen.getByTitle('삼성전자 · 돌파 복기 · 5m'));
+    fireEvent.click(getStudyTab('삼성전자 · 돌파 복기 · 5m'));
 
     expect(liveChartRootMock.mock.calls.at(-1)?.[0].restoreViewport).toEqual(capturedViewport);
   });
@@ -495,8 +499,8 @@ describe('StudyPage', () => {
       liveChartRootMock.mock.calls.at(-1)?.[0].onViewportCaptureReady?.(() => capturedViewport);
     });
 
-    fireEvent.click(screen.getByTitle('SK하이닉스 · 눌림 복기 · 5m'));
-    fireEvent.click(screen.getByTitle('삼성전자 · 돌파 복기 · 15m'));
+    fireEvent.click(getStudyTab('SK하이닉스 · 눌림 복기 · 5m'));
+    fireEvent.click(getStudyTab('삼성전자 · 돌파 복기 · 15m'));
 
     expect(liveChartRootMock.mock.calls.at(-1)?.[0]).toMatchObject({
       timeframe: '15m',
@@ -539,8 +543,8 @@ describe('StudyPage', () => {
       liveChartRootMock.mock.calls.at(-1)?.[0].onViewportCaptureReady?.(() => capturedDailyViewport);
     });
 
-    fireEvent.click(screen.getByTitle('SK하이닉스 · 눌림 복기 · 5m'));
-    fireEvent.click(screen.getByTitle('삼성전자 · 돌파 복기 · D'));
+    fireEvent.click(getStudyTab('SK하이닉스 · 눌림 복기 · 5m'));
+    fireEvent.click(getStudyTab('삼성전자 · 돌파 복기 · D'));
 
     expect(liveChartRootMock.mock.calls.at(-1)?.[0]).toMatchObject({
       timeframe: 'D',
@@ -596,6 +600,22 @@ describe('StudyPage', () => {
     expect(screen.getByText('+1,200')).toBeTruthy();
     expect(screen.getByTestId('volume-distribution-card')).toBeTruthy();
     expect(screen.getByText('+1억')).toBeTruthy();
+  });
+
+  it('shows orderbook loading instead of no-data while study cursor spot orderbook is fetching', () => {
+    useLiveOrderbookAtCursorMock.mockReturnValue(undefined);
+    useLiveBrokersAtCursorMock.mockReturnValue([]);
+    useLiveCursorStore.getState().setCursor(HOVER_MS);
+
+    renderPage('/study?view=view-ref');
+
+    act(() => {
+      liveChartRootMock.mock.calls[0][0].onCursorActiveChange?.(true);
+    });
+
+    const orderbookCard = screen.getByTestId('study-detail-card-orderbook');
+    expect(within(orderbookCard).getByText('커서 위치 로딩 중…')).toBeTruthy();
+    expect(within(orderbookCard).queryByText('호가 데이터 없음')).toBeNull();
   });
 
   it('renders study detail sections as separated cards inside the outer detail rail', () => {
@@ -767,12 +787,12 @@ describe('StudyPage', () => {
     renderPage('/study?view=view-ref');
 
     expect(screen.getByTestId('study-page-loading')).toBeTruthy();
-    expect(screen.getByTitle('삼성전자 · 돌파 복기 · 5m').closest('[role="tab"]')).toHaveAttribute('aria-selected', 'true');
+    expect(getStudyTab('삼성전자 · 돌파 복기 · 5m')).toHaveAttribute('aria-selected', 'true');
 
-    fireEvent.click(screen.getByTitle('SK하이닉스 · 눌림 복기 · 5m'));
+    fireEvent.click(getStudyTab('SK하이닉스 · 눌림 복기 · 5m'));
 
     expect(screen.getByText('학습뷰 불러오는 중...')).toBeTruthy();
-    expect(screen.getByTitle('SK하이닉스 · 눌림 복기 · 5m').closest('[role="tab"]')).toHaveAttribute('aria-selected', 'true');
+    expect(getStudyTab('SK하이닉스 · 눌림 복기 · 5m')).toHaveAttribute('aria-selected', 'true');
   });
 
   it('keeps previously focused study tabs in the warm query set after switching tabs', () => {
@@ -800,7 +820,7 @@ describe('StudyPage', () => {
 
     renderPage('/study?view=view-ref');
 
-    fireEvent.click(screen.getByTitle('SK하이닉스 · 눌림 복기 · 5m'));
+    fireEvent.click(getStudyTab('SK하이닉스 · 눌림 복기 · 5m'));
 
     expect(useWarmStudyReferenceTabQueriesMock).toHaveBeenLastCalledWith(expect.objectContaining({
       activeTabId: 'tab-b',
