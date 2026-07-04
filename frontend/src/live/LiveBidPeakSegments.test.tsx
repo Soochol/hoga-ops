@@ -89,6 +89,57 @@ describe('buildBidPeakOverlaySegments', () => {
     expect(segments.map((segment) => segment.price)).toEqual([99, 98, 100]);
   });
 
+  it('treats same-price bid candidates as one wall for top-N ranks', () => {
+    const day = '20260613';
+    const open = Date.UTC(2026, 5, 13, 0, 0);
+    const peak = {
+      date: day,
+      price: 100400,
+      qty: 22_300,
+      t_ms: open + 60_000,
+      max_price: 100400,
+      max_qty: 22_300,
+      max_t_ms: open + 60_000,
+      traded_peaks: [
+        { price: 100400, qty: 22_300, t_ms: open + 60_000 },
+        { price: 100400, qty: 22_800, t_ms: open + 120_000 },
+        { price: 100300, qty: 21_000, t_ms: open + 180_000 },
+        { price: 100200, qty: 20_000, t_ms: open + 240_000 },
+      ],
+      traded_max_peaks: [
+        { price: 100400, qty: 22_300, t_ms: open + 60_000 },
+        { price: 100400, qty: 22_800, t_ms: open + 120_000 },
+        { price: 100300, qty: 21_000, t_ms: open + 180_000 },
+        { price: 100200, qty: 20_000, t_ms: open + 240_000 },
+      ],
+    };
+
+    const segments = buildBidPeakOverlaySegments({
+      dayBidPeaks: [peak],
+      todayAllPriceBidPeak: null,
+      segments: [{ date: day, session_open_ms: open, session_close_ms: open + 3600_000 }],
+      candles: [
+        { ts_ms: open + 60_000, open: 2, high: 2, low: 1, close: 1, vol_a: 1, vol_b: 0 },
+        { ts_ms: open + 120_000, open: 2, high: 2, low: 1, close: 1, vol_a: 1, vol_b: 0 },
+        { ts_ms: open + 180_000, open: 2, high: 2, low: 1, close: 1, vol_a: 1, vol_b: 0 },
+        { ts_ms: open + 240_000, open: 2, high: 2, low: 1, close: 1, vol_a: 1, vol_b: 0 },
+      ],
+      axis: createVirtualAxis([{ date: day, sessionOpenMs: open, sessionCloseMs: open + 3600_000 }], open),
+      todayKst: day,
+      baselineStyle: { color: '#fff', lineWidth: 1 },
+      allPriceStyle: { color: '#f00', lineWidth: 1 },
+      intraMax: false,
+      showAllPrices: false,
+      allPriceRankLimit: 3,
+    });
+
+    expect(segments.map((segment) => [segment.price, segment.qty])).toEqual([
+      [100400, 22_800],
+      [100300, 21_000],
+      [100200, 20_000],
+    ]);
+  });
+
   it('omits bid baseline when cutoff mode receives explicit empty ranked candidates', () => {
     const day = '20260613';
     const open = Date.UTC(2026, 5, 13, 0, 0);

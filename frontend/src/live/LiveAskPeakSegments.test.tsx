@@ -645,6 +645,49 @@ describe('buildAskPeakOverlaySegments', () => {
     expect(out.map((s) => s.color)).toEqual(['#1D4ED8', '#1D4ED8', '#F97316']);
   });
 
+  it('체결가격 기준 top-N은 같은 가격 후보를 하나의 벽으로만 취급한다', () => {
+    const day = '20260613';
+    const out = buildAskPeakOverlaySegments({
+      dayAskPeaks: [{
+        date: day,
+        price: 100400,
+        qty: 22_300,
+        t_ms: 60_000,
+        max_price: 100400,
+        max_qty: 22_300,
+        max_t_ms: 60_000,
+        traded_peaks: [
+          { price: 100400, qty: 22_300, t_ms: 60_000 },
+          { price: 100400, qty: 22_800, t_ms: 120_000 },
+          { price: 100300, qty: 21_000, t_ms: 180_000 },
+          { price: 100200, qty: 20_000, t_ms: 240_000 },
+        ],
+        traded_max_peaks: [
+          { price: 100400, qty: 22_300, t_ms: 60_000 },
+          { price: 100400, qty: 22_800, t_ms: 120_000 },
+          { price: 100300, qty: 21_000, t_ms: 180_000 },
+          { price: 100200, qty: 20_000, t_ms: 240_000 },
+        ],
+      }],
+      todayAllPriceAskPeak: null,
+      segments: [seg(day, 0, 360_000)],
+      candles: [candle(60_000), candle(120_000), candle(180_000), candle(240_000)],
+      axis,
+      todayKst: day,
+      baselineStyle: { color: '#1D4ED8', lineWidth: 2 },
+      allPriceStyle: { color: '#F97316', lineWidth: 1 },
+      intraMax: false,
+      showAllPrices: false,
+      allPriceRankLimit: 3,
+    });
+
+    expect(out.map((segment) => [segment.price, segment.qty])).toEqual([
+      [100400, 22_800],
+      [100300, 21_000],
+      [100200, 20_000],
+    ]);
+  });
+
   it('과거 날짜도 체결가격 기준 후보를 rank limit만큼 그린다', () => {
     const past: AskPeak = {
       ...peak({ date: '20260612', price: 100, qty: 100, t_ms: 120000 }),

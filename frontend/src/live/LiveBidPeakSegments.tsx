@@ -165,6 +165,9 @@ function expandBaselineBidPeaks(
   return [...byDate.values()].flatMap((items) => items
     .slice()
     .sort((a, b) => selectedQty(b, intraMax) - selectedQty(a, intraMax) || a.t_ms - b.t_ms || a.price - b.price)
+    .filter((item, index, sorted) => sorted.findIndex((candidate) =>
+      selectedPrice(candidate, intraMax) === selectedPrice(item, intraMax),
+    ) === index)
     .slice(0, limit));
 }
 
