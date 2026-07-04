@@ -88,6 +88,7 @@ function LivePeakWallDockedLabels({
   const updateLabels = useCallback(() => {
     const prim = primRef.current;
     if (!prim) return;
+    const askPeakRankLimit = maxPeakRankLimit(askAllPriceRankLimit, askVisibleMaxRankLimit);
     const askRaw = askPeakEnabled
       ? buildAskPeakOverlaySegments({
         dayAskPeaks,
@@ -100,7 +101,7 @@ function LivePeakWallDockedLabels({
         allPriceStyle: { color: askAllPriceColor, lineWidth: askAllPriceLineWidth },
         intraMax: askIntraMax,
         showAllPrices: askShowAllPrices,
-        allPriceRankLimit: maxPeakRankLimit(askAllPriceRankLimit, askVisibleMaxRankLimit),
+        allPriceRankLimit: askPeakRankLimit,
         visibleTimeCutoff: askVisibleTimeCutoff,
       })
       : [];
@@ -128,7 +129,7 @@ function LivePeakWallDockedLabels({
       })
       : [];
     prim.setLabels([
-      ...livePeakWallDockedLabelsFromSegments(askStyled, visibleRange, toPeakRankLimit(askVisibleMaxRankLimit)),
+      ...livePeakWallDockedLabelsFromSegments(askStyled, visibleRange, askPeakRankLimit),
       ...livePeakWallDockedLabelsFromSegments(bidSegments, visibleRange, toPeakRankLimit(bidVisibleMaxRankLimit)),
     ]);
   }, [

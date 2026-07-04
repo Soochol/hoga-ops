@@ -69,12 +69,20 @@ export function livePeakWallDockedLabelsFromSegments(
       segment.label !== ''
       && (visibleRange ? segmentOverlapsVisibleRange(segment, visibleRange) : segment.live === true)
     ));
-  const ranked = rankLimit
-    ? candidates
-      .slice()
-      .sort((a, b) => b.segment.qty - a.segment.qty || a.index - b.index)
-      .slice(0, rankLimit)
+  const uniqueByPrice = (items: typeof candidates): typeof candidates => {
+    const seenPrices = new Set<number>();
+    return items.filter(({ segment }) => {
+      if (seenPrices.has(segment.price)) return false;
+      seenPrices.add(segment.price);
+      return true;
+    });
+  };
+  const rankedCandidates = rankLimit
+    ? candidates.slice().sort((a, b) => b.segment.qty - a.segment.qty || a.index - b.index)
     : candidates;
+  const ranked = rankLimit
+    ? uniqueByPrice(rankedCandidates).slice(0, rankLimit)
+    : uniqueByPrice(rankedCandidates);
   return ranked
     .map((segment) => ({
       price: segment.segment.price,
