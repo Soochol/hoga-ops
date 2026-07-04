@@ -37,6 +37,7 @@ export function rightmostVisibleCandleCutoff(
   candles: readonly Candle[],
   visibleRange: IRange<Time> | null,
   axis: VirtualAxis,
+  bucketMs?: number,
 ): VisibleTimeCutoff | null {
   if (!visibleRange || candles.length === 0) return null;
   const visibleTo = Number(visibleRange.to) * 1000;
@@ -57,7 +58,10 @@ export function rightmostVisibleCandleCutoff(
   if (ans < 0) return null;
   const selected = candles[ans];
   if (!selected) return null;
-  return { date: realMsToYyyymmdd(selected.ts_ms), tMs: selected.ts_ms };
+  const bucketEndMs = bucketMs && bucketMs > 0
+    ? selected.ts_ms + bucketMs - 1
+    : selected.ts_ms;
+  return { date: realMsToYyyymmdd(selected.ts_ms), tMs: bucketEndMs };
 }
 
 function candidateFromPeak(peak: PeakBase, intraMax: boolean): AskPeakCandidate {
