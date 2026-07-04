@@ -3,6 +3,13 @@
 All notable changes to this project are documented here.
 The format follows a 4-digit `MAJOR.MINOR.PATCH.MICRO` scheme.
 
+## [0.12.27.2] - 2026-07-04
+
+### Fixed
+- **/live KIS 점검 중 캔들 보강**: KIS 분봉이나 일봉 데이터가 비어도 hogaplay에 저장된 캔들이 있으면 분봉과 일봉 차트를 채워 표시하도록 했다.
+- **/live 데이터 source 표시 보정**: hogaplay fallback으로 채워진 날짜는 차트 상단 source 칩에도 실제 표시 기준인 `hogaplay`가 보이도록 했다.
+- **/live 주봉·월봉 fallback 성능 보호**: 주봉과 월봉은 무거운 1분봉 집계 fallback을 실행하지 않도록 해 KIS 점검 상황에서 과도한 로딩을 막았다.
+
 ## [0.12.27.1] - 2026-07-03
 
 ### Fixed

@@ -6,12 +6,14 @@ import { useLivePastInvestorNet } from '../api/livePastInvestorNet';
 import { useRange } from '../api/range';
 import { useLivePageStore, type LiveTimeframe, isMinuteTimeframe } from '../state/livePage';
 import type { LiveVenueOption } from '../state/liveVenue';
+import { useSourcePreferenceStore } from '../state/sourcePreference';
 import {
   TIMEFRAME_TO_MS,
   type Timeframe,
   type RangeBundle,
   type Candle,
   type InvestorNetPoint,
+  type SourceName,
 } from '../api/types';
 import { buildChartBundle, createIncrementalHogaSeriesBuilder, filterProgramTradeForCandles, type HogaSeries } from './buildLiveBundle';
 import type { LiveDataWarning } from './liveDataWarnings';
@@ -20,6 +22,7 @@ import { aggregateCandles, aggregateCalendar } from './aggregateCandles';
 import {
   regularSessionOpenMs,
   regularSessionCloseMs,
+  realMsToYyyymmdd,
   subtractDaysKst,
   initialHistoricalDaysFor,
   earliestAllowedMinuteDate,
@@ -46,6 +49,28 @@ function kisBarToCandle(b: { t_ms: number; open: number; high: number; low: numb
     vol_a: b.volume,
     vol_b: 0,
   };
+}
+
+function candleVolume(c: Candle): number {
+  return (Number.isFinite(c.vol_a) ? c.vol_a : 0) + (Number.isFinite(c.vol_b) ? c.vol_b : 0);
+}
+
+function mergeCandlesPreferPrimary(primary: readonly Candle[], fallback: readonly Candle[]): Candle[] {
+  if (fallback.length === 0) return [...primary];
+  if (primary.length === 0) return [...fallback].sort((a, b) => a.ts_ms - b.ts_ms);
+  const primaryDates = new Set(primary.map((c) => realMsToYyyymmdd(c.ts_ms)));
+  return [
+    ...primary,
+    ...fallback.filter((c) => !primaryDates.has(realMsToYyyymmdd(c.ts_ms))),
+  ].sort((a, b) => a.ts_ms - b.ts_ms);
+}
+
+function candleDateSet(candles: readonly Candle[]): Set<string> {
+  return new Set(candles.map((c) => realMsToYyyymmdd(c.ts_ms)));
+}
+
+function segmentSourceByDate(bundle: RangeBundle | null | undefined, date: string): SourceName | undefined {
+  return bundle?.segments.find((s) => s.date === date)?.source;
 }
 
 function bucketStartMs(tMs: number, bucketMs: number): number {
@@ -227,6 +252,7 @@ export function useLiveBundle(
   const brokerLateEntryStartHHMM = useLivePageStore((s) => s.brokerLateEntryStartHHMM);
   const volumeDistributionEnabled = useLivePageStore((s) => s.volumeDistributionEnabled);
   const volumeDistributionRangeCount = useLivePageStore((s) => s.volumeDistributionRangeCount);
+  const sourcePreference = useSourcePreferenceStore((s) => s.sourcePreference);
   const venue = options.venue ?? 'KRX';
 
   const isMinute = isMinuteTimeframe(timeframe);
@@ -286,24 +312,103 @@ export function useLiveBundle(
     [enableInvestor, investorQuery.data],
   );
 
+  const candleFallbackNeeded = !!(code && (
+    isMinute
+      ? pastCandlesQuery.data != null && pastCandlesQuery.data.data_warnings.length > 0
+      : timeframe === 'D' &&
+        pastDailyCandlesQuery.data != null &&
+        (pastDailyCandlesQuery.data.data_warnings.length > 0 || pastDailyCandlesQuery.data.candles.length === 0)
+  ));
+  const candleFallbackOptions = useMemo(
+    () => ({
+      mode: 'full' as const,
+      brokerLateEntriesEnabled: false,
+      brokerLateEntryStartHHMM: null,
+      volumeDistributionBins: null,
+      tradeVolumePocBins: null,
+      volumeDistributionPriceRange: null,
+    }),
+    [],
+  );
+  const candleFallback = useRange(
+    candleFallbackNeeded ? code : null,
+    candleFallbackNeeded ? (isMinute ? minutePastFrom : dailyPastFrom) : null,
+    candleFallbackNeeded ? (isMinute ? minutePastTo : dailyPastTo) : null,
+    candleFallbackNeeded ? (isMinute ? (timeframe as Timeframe) : '1m') : null,
+    undefined,
+    candleFallbackNeeded ? todayKstYyyymmdd : null,
+    candleFallbackOptions,
+  );
+  const hogaplayCandleFallbackNeeded = candleFallbackNeeded && sourcePreference !== 'hogaplay_first';
+  const hogaplayCandleFallback = useRange(
+    hogaplayCandleFallbackNeeded ? code : null,
+    hogaplayCandleFallbackNeeded ? (isMinute ? minutePastFrom : dailyPastFrom) : null,
+    hogaplayCandleFallbackNeeded ? (isMinute ? minutePastTo : dailyPastTo) : null,
+    hogaplayCandleFallbackNeeded ? (isMinute ? (timeframe as Timeframe) : '1m') : null,
+    undefined,
+    hogaplayCandleFallbackNeeded ? todayKstYyyymmdd : null,
+    candleFallbackOptions,
+    'hogaplay_first',
+  );
+
   const kisCandles = useMemo<Candle[]>(() => {
     if (isMinute) {
       const raw = pastCandlesQuery.data?.candles ?? [];
-      if (raw.length === 0) return [];
+      const fallback = mergeCandlesPreferPrimary(
+        candleFallback.data?.candles ?? [],
+        hogaplayCandleFallback.data?.candles ?? [],
+      );
+      if (raw.length === 0) return mergeCandlesPreferPrimary([], fallback);
       // Minute timeframes: epoch-floor bucket via aggregateCandles (also dedupes
       // within-bucket duplicates from pre-f63ed15 KIS cache files).
       const bars = aggregateCandles(raw, TIMEFRAME_TO_MS[timeframe as Timeframe] / 1000);
-      return bars.map(kisBarToCandle);
+      return mergeCandlesPreferPrimary(bars.map(kisBarToCandle), fallback);
     }
     // D/W/M: bars come from the daily endpoint. For 'D' the call is
     // identity-ish (one bucket per bar); for 'W'/'M' aggregateCalendar groups
     // by ISO week / calendar month using the bar's first 1m bar t_ms so
     // axis.contains admits it inside that Segment.
     const raw = pastDailyCandlesQuery.data?.candles ?? [];
-    if (raw.length === 0) return [];
+    const fallbackCandles = mergeCandlesPreferPrimary(
+      candleFallback.data?.candles ?? [],
+      hogaplayCandleFallback.data?.candles ?? [],
+    );
+    const fallbackRaw = fallbackCandles.map((c) => ({
+      t_ms: c.ts_ms,
+      open: c.open,
+      high: c.high,
+      low: c.low,
+      close: c.close,
+      volume: candleVolume(c),
+    }));
+    const fallbackBars = fallbackRaw.length === 0
+      ? []
+      : aggregateCalendar(fallbackRaw, timeframe as 'D' | 'W' | 'M');
+    const fallback = fallbackBars.map(kisBarToCandle);
+    if (raw.length === 0) return fallback;
     const bars = timeframe === 'D' ? raw : aggregateCalendar(raw, timeframe as 'W' | 'M');
-    return bars.map(kisBarToCandle);
-  }, [isMinute, timeframe, pastCandlesQuery.data, pastDailyCandlesQuery.data]);
+    return mergeCandlesPreferPrimary(bars.map(kisBarToCandle), fallback);
+  }, [isMinute, timeframe, pastCandlesQuery.data, pastDailyCandlesQuery.data, candleFallback.data, hogaplayCandleFallback.data]);
+  const candleSourceByDate = useMemo(() => {
+    const primaryDates = isMinute
+      ? new Set((pastCandlesQuery.data?.candles ?? []).map((c) => realMsToYyyymmdd(c.t_ms)))
+      : new Set((pastDailyCandlesQuery.data?.candles ?? []).map((c) => realMsToYyyymmdd(c.t_ms)));
+    const selectedFallbackDates = candleDateSet(candleFallback.data?.candles ?? []);
+    const sourceByDate = new Map<string, SourceName>();
+
+    for (const date of selectedFallbackDates) {
+      if (primaryDates.has(date)) continue;
+      const source = segmentSourceByDate(candleFallback.data, date);
+      if (source) sourceByDate.set(date, source);
+    }
+
+    for (const date of candleDateSet(hogaplayCandleFallback.data?.candles ?? [])) {
+      if (primaryDates.has(date) || selectedFallbackDates.has(date)) continue;
+      sourceByDate.set(date, 'hogaplay');
+    }
+
+    return sourceByDate.size > 0 ? sourceByDate : undefined;
+  }, [isMinute, pastCandlesQuery.data, pastDailyCandlesQuery.data, candleFallback.data, hogaplayCandleFallback.data]);
   const volumeDistributionPriceRange = useMemo(
     () =>
       isMinute && volumeDistributionEnabled
@@ -423,6 +528,7 @@ export function useLiveBundle(
       todaySession: todayChartSession,
       pastBundle: pastHoga.data ?? null,
       kisCandles: liveCandles,
+      candleSourceByDate,
       bucketMs,
       hasTodayObSignal,
       investorPoints,
@@ -462,7 +568,7 @@ export function useLiveBundle(
     }
 
     return built;
-  }, [code, todayKstYyyymmdd, todayChartSession, pastHoga.data, pastSidecars.data, liveCandles, bucketMs, hasTodayObSignal, investorPoints, sessionBoundsForDate]);
+  }, [code, todayKstYyyymmdd, todayChartSession, pastHoga.data, pastSidecars.data, liveCandles, candleSourceByDate, bucketMs, hasTodayObSignal, investorPoints, sessionBoundsForDate]);
 
   // HOGA side (quote_ratio / fill_strength). Deps INCLUDE ob/trade — this is the
   // ONLY half that rebuilds on an SSE tick.
@@ -594,10 +700,10 @@ export function useLiveBundle(
     bundle,
     chartBundle,
     hogaBundle,
-    isLoading: live.isLoading || pastHoga.isLoading || pastCandlesQuery.isLoading || pastDailyCandlesQuery.isLoading,
-    error: live.error ?? pastHoga.error ?? pastCandlesQuery.error ?? pastDailyCandlesQuery.error ?? pastSidecars.error ?? null,
+    isLoading: live.isLoading || pastHoga.isLoading || pastCandlesQuery.isLoading || pastDailyCandlesQuery.isLoading || (candleFallbackNeeded && candleFallback.isLoading) || (hogaplayCandleFallbackNeeded && hogaplayCandleFallback.isLoading),
+    error: live.error ?? pastHoga.error ?? pastCandlesQuery.error ?? pastDailyCandlesQuery.error ?? pastSidecars.error ?? candleFallback.error ?? hogaplayCandleFallback.error ?? null,
     clampEngaged,
-    isPastCandlesLoading: pastCandlesQuery.isLoading || pastDailyCandlesQuery.isLoading || (enableInvestor && investorQuery.isLoading),
+    isPastCandlesLoading: pastCandlesQuery.isLoading || pastDailyCandlesQuery.isLoading || (candleFallbackNeeded && candleFallback.isLoading) || (hogaplayCandleFallbackNeeded && hogaplayCandleFallback.isLoading) || (enableInvestor && investorQuery.isLoading),
     isExtending: extending,
     pastDataWarnings,
   };
