@@ -149,9 +149,9 @@ async def test_promote_today_midnight_race_picks_today_once(
 async def test_promote_today_does_not_create_candles_parquet(tmp_path: Path) -> None:
     """ADR-0040/0043 invariant — promote_today는 candles.parquet 안 만듦.
 
-    Candles는 Live Candle Backfill의 별도 캐시(`~/.local/.../kis-past-candles/`)가
-    담당. promote_today가 candles.parquet을 만들면 read path가 어느 source를
-    신뢰해야 할지 모호해짐.
+    Candles는 별도 캐시 파이프라인이 있으나, 현재 런타임 브랜치는 KIS 분/일 봉
+    캐시를 process-memory-only로 운영한다. `~/.local/.../kis-past-candles/`
+    아래 파일은 과거 디스크 캐시 유산(레거시 아티팩트)이다.
     """
     today = _today_kst_yyyymmdd()
     jsonl = tmp_path / "live" / today / "003490.jsonl"

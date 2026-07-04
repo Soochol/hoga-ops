@@ -5,10 +5,12 @@ bucketed quote_ratio / fill_strength from the raw snapshots/trades parquet on
 every request — for a liquid stock that is ~5.7 MB/day re-read + re-bucketed per
 pan step, the dominant /live deep-scroll backfill cost (511–989 ms scaling with
 depth). The computed result is only ~60 KB/day and, for a completed past day, is
-IMMUTABLE — so it is cached exactly like past candles
-(`kis-past-candles/<code>/<date>.json`):
+IMMUTABLE — so it is cached under this module's indicator store path:
 
     <data_dir>/kis-past-indicators/<code>/<source>/<YYYYMMDD>.<kind>.json
+
+This branch keeps KIS minute/day candle caches in memory only; legacy
+`kis-past-candles/<code>/<date>.json` artifacts are not runtime cache input.
 
 Stored at 1-minute granularity; coarser timeframes re-aggregate on read
 (`indicator_reaggregate`, proven equal to a direct `bucket_ms=N` query). The key

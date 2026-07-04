@@ -5,8 +5,9 @@ Backs GET /api/live/past-daily-candles. Daily data is small enough
 process restart is the natural cache invalidation event.
 
 ADR-0048 — parallel to ADR-0040; daily cache lives in memory only and has
-no disk artifact. The minute path's PastCandlesCache keeps disk persistence
-because 1-minute data at scale exceeds memory.
+no disk artifact. The minute path's `PastCandlesCache` is also memory-only in
+this branch; historical `kis-past-candles/<code>/<date>.json` files are legacy
+artifacts, not runtime cache.
 """
 from __future__ import annotations
 

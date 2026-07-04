@@ -353,7 +353,7 @@ async def test_past_candles_happy_path_single_date(tmp_path) -> None:
 
 
 @pytest.mark.asyncio
-async def test_past_candles_disk_cache_hit_on_second_call(tmp_path) -> None:
+async def test_past_candles_memory_cache_hit_on_second_call(tmp_path) -> None:
     fake = _FakeKisForPast()
     app = _past_app(tmp_path, fake)
     with TestClient(app) as c:
@@ -543,7 +543,7 @@ async def test_past_candles_rate_limit_blocks_unstarted_fetches(tmp_path) -> Non
 @pytest.mark.asyncio
 async def test_past_candles_rate_limit_still_serves_later_cache_hits(tmp_path) -> None:
     """When KIS rate-limits mid-range, dates AFTER the abort that are already
-    on disk must still be served. Regression for the "candles all disappear
+    in memory must still be served. Regression for the "candles all disappear
     when scrolling to past" bug: backend used to skip every subsequent date
     unconditionally, so cached dates were dropped from the response and the
     frontend's `kisCandles` shrank while `past.data.segments` (independent of
