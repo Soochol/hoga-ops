@@ -210,12 +210,13 @@ type Props = {
   candles: readonly Candle[];
   /** 오늘(KST YYYYMMDD) — 이 날 세그먼트만 라이브 엣지까지 연장·점 표시. */
   todayKst: string;
+  visibleTimeCutoff?: VisibleTimeCutoff | null;
 };
 
 /** 거래일별 매수 최대벽 오버레이. candle series에 커스텀 primitive를 걸어 각 날의 수평 세그먼트를
  *  그린다(풀-너비 price line이 아니라 그날 구간만 → 여러 날 동시 표시). 색·두께·on/off는 스토어.
  *  형제: LiveCurrentPriceLine(현재가 풀-너비 점선). */
-function LiveBidPeakSegments({ paneSeries, axis, dayBidPeaks, todayAllPriceBidPeak = null, segments, candles, todayKst }: Props) {
+function LiveBidPeakSegments({ paneSeries, axis, dayBidPeaks, todayAllPriceBidPeak = null, segments, candles, todayKst, visibleTimeCutoff = null }: Props) {
   const series = paneSeries.get('candle' as PaneId) as ISeriesApi<SeriesType> | undefined;
   const enabled = useLivePageStore((s) => s.bidPeakEnabled);
   const color = useLivePageStore((s) => s.bidPeakColor);
@@ -258,6 +259,7 @@ function LiveBidPeakSegments({ paneSeries, axis, dayBidPeaks, todayAllPriceBidPe
         allPriceStyle: { color: allPriceColor, lineWidth: allPriceLineWidth },
         intraMax,
         showAllPrices,
+        visibleTimeCutoff,
       })
       : [];
     prim.setSegments(prepareBidPeakSegmentsForRender(nextSegments));
@@ -275,6 +277,7 @@ function LiveBidPeakSegments({ paneSeries, axis, dayBidPeaks, todayAllPriceBidPe
     enabled,
     intraMax,
     showAllPrices,
+    visibleTimeCutoff,
     series,
   ]);
 

@@ -296,12 +296,13 @@ type Props = {
   candles: readonly Candle[];
   /** 오늘(KST YYYYMMDD) — 이 날 세그먼트만 라이브 엣지까지 연장·점 표시. */
   todayKst: string;
+  visibleTimeCutoff?: VisibleTimeCutoff | null;
 };
 
 /** 거래일별 매도 최대벽 오버레이. candle series에 커스텀 primitive를 걸어 각 날의 수평 세그먼트를
  *  그린다(풀-너비 price line이 아니라 그날 구간만 → 여러 날 동시 표시). 색·두께·on/off는 스토어.
  *  형제: LiveCurrentPriceLine(현재가 풀-너비 점선). */
-function LiveAskPeakSegments({ paneSeries, axis, dayAskPeaks, todayAllPriceAskPeak = null, segments, candles, todayKst }: Props) {
+function LiveAskPeakSegments({ paneSeries, axis, dayAskPeaks, todayAllPriceAskPeak = null, segments, candles, todayKst, visibleTimeCutoff = null }: Props) {
   const series = paneSeries.get('candle' as PaneId) as ISeriesApi<SeriesType> | undefined;
   const enabled = useLivePageStore((s) => s.askPeakEnabled);
   const color = useLivePageStore((s) => s.askPeakColor);
@@ -351,6 +352,7 @@ function LiveAskPeakSegments({ paneSeries, axis, dayAskPeaks, todayAllPriceAskPe
       intraMax,
       showAllPrices,
       allPriceRankLimit: allPriceRankLimit as 1 | 2 | 3,
+      visibleTimeCutoff,
     });
     const visibleRange = prim.chartApi()?.timeScale().getVisibleRange() ?? null;
     prim.setSegments(prepareAskPeakSegmentsForRender(
@@ -377,6 +379,7 @@ function LiveAskPeakSegments({ paneSeries, axis, dayAskPeaks, todayAllPriceAskPe
     showAllPrices,
     allPriceRankLimit,
     visibleMaxRankLimit,
+    visibleTimeCutoff,
   ]);
 
   // 갱신: dayAskPeaks·segments·candles·축·스타일·토글 변화 시 세그먼트 재계산.

@@ -48,6 +48,10 @@ import LiveCurrentPriceLine from './LiveCurrentPriceLine';
 import LiveAskPeakSegments, { buildAskPeakOverlaySegments } from './LiveAskPeakSegments';
 import LiveBidPeakSegments, { buildBidPeakOverlaySegments } from './LiveBidPeakSegments';
 import LivePeakWallDockedLabels from './LivePeakWallDockedLabels';
+import {
+  rightmostVisibleCandleCutoff,
+  type VisibleTimeCutoff,
+} from './peakWallVisibleCutoff';
 import TradeVolumePocOverlay from './TradeVolumePocOverlay';
 import AuctionWindowOverlay from '../chart/AuctionWindowOverlay';
 import DrawingOverlay from '../chart/DrawingOverlay';
@@ -923,9 +927,35 @@ export function LiveChartRoot({ code, timeframe, venue = 'KRX', viewIdentity, bu
   const bidPeakEnabled = useLivePageStore((s) => s.bidPeakEnabled);
   const askPeakIntraMax = useActivePrefs((s) => s.askPeakIntraMax);
   const askPeakShowAllPrices = useActivePrefs((s) => s.askPeakShowAllPrices);
+  const askPeakVisibleTimeCutoff = useActivePrefs((s) => s.askPeakVisibleTimeCutoff);
   const bidPeakIntraMax = useActivePrefs((s) => s.bidPeakIntraMax);
   const bidPeakShowAllPrices = useActivePrefs((s) => s.bidPeakShowAllPrices);
+  const bidPeakVisibleTimeCutoff = useActivePrefs((s) => s.bidPeakVisibleTimeCutoff);
   const candleAlwaysOnTop = useActivePrefs((s) => s.candleAlwaysOnTop);
+  const [visibleTimeCutoff, setVisibleTimeCutoff] = useState<VisibleTimeCutoff | null>(null);
+
+  useEffect(() => {
+    if (!chart || !cb || !isMinuteTimeframe(timeframe)) {
+      setVisibleTimeCutoff(null);
+      return undefined;
+    }
+    const timeScale = chart.timeScale();
+    const update = () => {
+      setVisibleTimeCutoff(rightmostVisibleCandleCutoff(
+        cb.candles,
+        timeScale.getVisibleRange(),
+        axis,
+      ));
+    };
+    update();
+    timeScale.subscribeVisibleTimeRangeChange(update);
+    return () => {
+      timeScale.unsubscribeVisibleTimeRangeChange(update);
+    };
+  }, [chart, cb, cb?.candles, axis, timeframe]);
+
+  const askVisibleTimeCutoffForRender = askPeakVisibleTimeCutoff ? visibleTimeCutoff : null;
+  const bidVisibleTimeCutoffForRender = bidPeakVisibleTimeCutoff ? visibleTimeCutoff : null;
   const effectiveVolumeEnabled = paneTogglesOverride?.volumeEnabled ?? volumeEnabled;
   const effectiveQuoteTotalsEnabled = paneTogglesOverride?.quoteTotalsEnabled ?? quoteTotalsEnabled;
   const effectiveRatioEnabled = paneTogglesOverride?.ratioEnabled ?? ratioEnabled;
@@ -1011,6 +1041,7 @@ export function LiveChartRoot({ code, timeframe, venue = 'KRX', viewIdentity, bu
           allPriceStyle: HIGH_LOW_AVOID_BASELINE_STYLE,
           intraMax: askPeakIntraMax,
           showAllPrices: askPeakShowAllPrices,
+          visibleTimeCutoff: askVisibleTimeCutoffForRender,
         })
         : []),
       ...(bidPeakEnabled
@@ -1025,6 +1056,7 @@ export function LiveChartRoot({ code, timeframe, venue = 'KRX', viewIdentity, bu
           allPriceStyle: HIGH_LOW_AVOID_BASELINE_STYLE,
           intraMax: bidPeakIntraMax,
           showAllPrices: bidPeakShowAllPrices,
+          visibleTimeCutoff: bidVisibleTimeCutoffForRender,
         })
         : []),
     ];
@@ -1040,10 +1072,12 @@ export function LiveChartRoot({ code, timeframe, venue = 'KRX', viewIdentity, bu
     askPeakEnabled,
     askPeakIntraMax,
     askPeakShowAllPrices,
+    askVisibleTimeCutoffForRender,
     axis,
     bidPeakEnabled,
     bidPeakIntraMax,
     bidPeakShowAllPrices,
+    bidVisibleTimeCutoffForRender,
     cb,
     dayAskPeaks,
     dayBidPeaks,
@@ -1289,6 +1323,7 @@ export function LiveChartRoot({ code, timeframe, venue = 'KRX', viewIdentity, bu
               segments={cb.segments}
               candles={cb.candles}
               todayKst={todayKst}
+              visibleTimeCutoff={askVisibleTimeCutoffForRender}
             />
           )}
           {isMinuteTimeframe(timeframe) && (
@@ -1300,6 +1335,7 @@ export function LiveChartRoot({ code, timeframe, venue = 'KRX', viewIdentity, bu
               segments={cb.segments}
               candles={cb.candles}
               todayKst={todayKst}
+              visibleTimeCutoff={bidVisibleTimeCutoffForRender}
             />
           )}
           {isMinuteTimeframe(timeframe) && (

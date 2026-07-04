@@ -446,6 +446,156 @@ describe('LiveChartRoot', () => {
     expect(screen.getByTestId('auction-window-overlay')).toBeTruthy();
   });
 
+  it('passes rightmost visible candle cutoff to peak wall overlays when cutoff toggles are enabled', async () => {
+    const previousAskPeakEnabled = useLivePageStore.getState().askPeakEnabled;
+    const previousBidPeakEnabled = useLivePageStore.getState().bidPeakEnabled;
+    const attachedPeakWallPrimitives: Array<{ segmentsForTest: () => Array<{ price: number }> }> = [];
+    const ts = {
+      subscribeVisibleTimeRangeChange: vi.fn(),
+      unsubscribeVisibleTimeRangeChange: vi.fn(),
+      subscribeVisibleLogicalRangeChange: vi.fn(),
+      unsubscribeVisibleLogicalRangeChange: vi.fn(),
+      applyOptions: vi.fn(),
+      fitContent: vi.fn(),
+      scrollToRealTime: vi.fn(),
+      scrollToPosition: vi.fn(),
+      setVisibleLogicalRange: vi.fn(),
+      getVisibleLogicalRange: vi.fn(() => null),
+      getVisibleRange: vi.fn(() => ({
+        from: TODAY_OPEN_MS / 1000,
+        to: (TODAY_OPEN_MS + 120_000) / 1000,
+      })),
+      setVisibleRange: vi.fn(),
+      timeToCoordinate: vi.fn(() => null),
+      coordinateToTime: vi.fn(() => null),
+      coordinateToLogical: vi.fn(() => null),
+      timeToIndex: vi.fn(() => 0),
+      width: vi.fn(() => 800),
+    };
+    const makeSeries = (chart: {
+      timeScale: () => typeof ts;
+    }) => {
+      const series = {
+        setData: vi.fn(),
+        update: vi.fn(),
+        removeSeries: vi.fn(),
+        applyOptions: vi.fn(),
+        priceScale: vi.fn(() => ({ applyOptions: vi.fn() })),
+        priceToCoordinate: vi.fn((price: number) => price),
+        createPriceLine: vi.fn(() => ({ applyOptions: vi.fn() })),
+        removePriceLine: vi.fn(),
+        attachPrimitive: vi.fn((primitive: {
+          attached?: (param: unknown) => void;
+          segmentsData?: () => Array<{ price: number }>;
+        }) => {
+          primitive.attached?.({ chart, series, requestUpdate: vi.fn() });
+          attachedPeakWallPrimitives.push({
+            segmentsForTest: () => primitive.segmentsData?.() ?? [],
+          });
+        }),
+        detachPrimitive: vi.fn((primitive: { detached?: () => void }) => {
+          primitive.detached?.();
+        }),
+        setMarkers: vi.fn(),
+      };
+      return series;
+    };
+    const chart = {
+      addSeries: vi.fn(),
+      removeSeries: vi.fn(),
+      timeScale: vi.fn(() => ts),
+      panes: vi.fn(() => []),
+      remove: vi.fn(),
+      resize: vi.fn(),
+      applyOptions: vi.fn(),
+      options: vi.fn(() => ({ timeScale: { minBarSpacing: 0.5 } })),
+      subscribeCrosshairMove: vi.fn(),
+      unsubscribeCrosshairMove: vi.fn(),
+      subscribeClick: vi.fn(),
+      unsubscribeClick: vi.fn(),
+      chartElement: vi.fn(() => ({ clientWidth: 800, clientHeight: 400 })),
+    };
+    chart.addSeries.mockImplementation(() => makeSeries(chart));
+    vi.mocked(createChartEx).mockImplementationOnce(() => chart as never);
+
+    useChartPrefsStore.getState().setToggle('askPeakVisibleTimeCutoff', true);
+    useChartPrefsStore.getState().setToggle('bidPeakVisibleTimeCutoff', true);
+    useChartPrefsStore.getState().setToggle('bidPeakShowAllPrices', true);
+    useLivePageStore.setState({ askPeakEnabled: true, bidPeakEnabled: true });
+
+    const candles = [
+      { ts_ms: TODAY_OPEN_MS, open: 100, high: 101, low: 100, close: 100, vol_a: 1, vol_b: 0 },
+      { ts_ms: TODAY_OPEN_MS + 60_000, open: 100, high: 101, low: 100, close: 100, vol_a: 1, vol_b: 0 },
+      { ts_ms: TODAY_OPEN_MS + 120_000, open: 100, high: 101, low: 99, close: 100, vol_a: 1, vol_b: 0 },
+    ];
+    const bundle: RangeBundle = {
+      ...TODAY_ONLY_BUNDLE,
+      from_date: '20260527',
+      to_date: '20260527',
+      candles,
+      ask_peaks: [{
+        date: '20260527',
+        price: 100,
+        qty: 100,
+        t_ms: TODAY_OPEN_MS + 60_000,
+        max_price: 100,
+        max_qty: 100,
+        max_t_ms: TODAY_OPEN_MS + 60_000,
+        traded_peaks: [
+          { price: 100, qty: 100, t_ms: TODAY_OPEN_MS + 60_000 },
+          { price: 101, qty: 900, t_ms: TODAY_OPEN_MS + 180_000 },
+        ],
+      }],
+    };
+
+    try {
+      render(
+        <LiveChartRoot
+          code="005930"
+          timeframe="1m"
+          bundle={bundle}
+          chartBundle={bundle}
+          clampEngaged={false}
+          isPastCandlesLoading={false}
+          todayKst="20260527"
+          dayAskPeaks={bundle.ask_peaks}
+          dayBidPeaks={[{
+            date: '20260527',
+            price: 99,
+            qty: 90,
+            t_ms: TODAY_OPEN_MS + 60_000,
+            max_price: 99,
+            max_qty: 90,
+            max_t_ms: TODAY_OPEN_MS + 60_000,
+          }]}
+          todayAllPriceBidPeak={{
+            date: '20260527',
+            price: 98,
+            qty: 900,
+            t_ms: TODAY_OPEN_MS + 180_000,
+            max_price: 98,
+            max_qty: 900,
+            max_t_ms: TODAY_OPEN_MS + 180_000,
+          }}
+        />,
+        { wrapper },
+      );
+
+      await waitFor(() => expect(attachedPeakWallPrimitives.length).toBeGreaterThanOrEqual(2));
+      const renderedPrices = attachedPeakWallPrimitives.flatMap((primitive) =>
+        primitive.segmentsForTest().map((segment) => segment.price));
+      expect(renderedPrices).toContain(100);
+      expect(renderedPrices).toContain(99);
+      expect(renderedPrices).not.toContain(101);
+      expect(renderedPrices).not.toContain(98);
+    } finally {
+      useLivePageStore.setState({
+        askPeakEnabled: previousAskPeakEnabled,
+        bidPeakEnabled: previousBidPeakEnabled,
+      });
+    }
+  });
+
   it('does not render the auction-window overlay for NXT candle views', () => {
     render(
       <LiveChartRoot
