@@ -166,8 +166,8 @@ class LiveRestPoller:
         while True:
             try:
                 await self._poll_once()
-            except Exception:  # noqa: BLE001 — 사이클 전체 예외 격리
-                _log.exception("live.rest_poller.cycle_failed")
+            except Exception as e:  # noqa: BLE001 — 사이클 전체 예외 격리
+                self._record_cycle_error(e)
             await asyncio.sleep(self._interval_s)
 
     async def _poll_once(self) -> None:
@@ -207,7 +207,7 @@ class LiveRestPoller:
         last_error_kind: str | None = None
         last_error_code: str | None = None
 
-        for code in targets:
+        for code in sorted(targets):
             try:
                 await self._fetch_and_publish(code, kis)
                 # 성공한 종목만 1회-표식에 추가(실패는 다음 사이클 재시도).
@@ -240,6 +240,20 @@ class LiveRestPoller:
 
         # 사이클이 정상 완료됐음을 기록 (stall 감지용 신호)
         self.last_cycle_ms = _now_ms()
+
+    def _record_cycle_error(self, exc: Exception) -> None:
+        policy = classify_live_error(exc, internal=True)
+        self._last_error = format_live_error(exc)
+        self._last_error_kind = policy.kind
+        self._last_error_code = policy.code
+        self._last_error_count = 1
+        self._degraded = policy.degraded
+        self._backoff_remaining = max(self._backoff_remaining, policy.backoff_cycles)
+        log_msg = "live.rest_poller.cycle_failed kind=%s error=%s"
+        if policy.include_traceback:
+            _log.error(log_msg, policy.kind, policy.code, exc_info=True)
+        else:
+            _log.warning(log_msg, policy.kind, policy.code)
 
     async def _fetch_and_publish(self, code: str, kis: _KisRestProto) -> None:
         """단일 종목: fetch_* 3개 → B3 변환 → buffer.publish.

@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import asyncio
 from pathlib import Path
 
 import httpx
@@ -388,3 +389,53 @@ async def test_rest30_recorder_unexpected_failures_keep_traceback(
     )
     assert recorder.status().last_error_kind == "unexpected"
     assert recorder.status().last_error_code == "RuntimeError"
+
+
+@pytest.mark.asyncio
+async def test_rest30_recorder_cycle_failure_sets_internal_kind_code(
+    tmp_path: Path,
+    caplog: pytest.LogCaptureFixture,
+) -> None:
+    from hoga.live.buffer import LiveBuffer
+    from hoga.live.rest30_recorder import Rest30sRecorder
+
+    async def fail_fsync() -> None:
+        raise RuntimeError("fsync failed")
+
+    recorder = Rest30sRecorder(
+        kis_resolver=lambda: FakeKis(),
+        buffer=LiveBuffer(),
+        data_dir=tmp_path,
+        date_fn=lambda: "20260622",
+        now_ms_fn=lambda: 1770000000000,
+        phase_fn=lambda: "regular",
+        interval_s=60.0,
+    )
+    recorder.set_targets({"005930"})
+    recorder._writer.fsync_all = fail_fsync
+
+    with caplog.at_level("ERROR", logger="hoga.live.rest30_recorder"):
+        recorder.start()
+        try:
+            for _ in range(50):
+                await asyncio.sleep(0.01)
+                if recorder.status().last_error_kind == "internal":
+                    break
+
+            status = recorder.status()
+            assert status.running is True
+            assert status.degraded is True
+            assert status.last_error == "RuntimeError: fsync failed"
+            assert status.last_error_kind == "internal"
+            assert status.last_error_code == "RuntimeError"
+            assert status.last_error_count == 1
+            assert status.backoff_remaining == 0
+        finally:
+            await recorder.stop()
+
+    records = [r for r in caplog.records if r.name == "hoga.live.rest30_recorder"]
+    assert len(records) == 1
+    assert records[0].exc_info is not None
+    assert records[0].getMessage() == (
+        "live.rest30.cycle_failed kind=internal error=RuntimeError"
+    )

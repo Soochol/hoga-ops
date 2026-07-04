@@ -1,3 +1,5 @@
+import asyncio
+
 import pytest
 
 import httpx
@@ -162,6 +164,52 @@ async def test_program_trade_collector_clears_stale_error_state_when_load_docume
     assert collector.status.last_error_kind is None
     assert collector.status.last_error_code is None
     assert collector.status.last_error_count == 0
+
+
+@pytest.mark.asyncio
+async def test_program_trade_collector_loop_failure_sets_internal_kind_code(
+    tmp_path,
+    monkeypatch,
+    caplog,
+) -> None:
+    from hoga.live.program_trade_collector import ProgramTradeCollector
+
+    def _load_document_fails(_data_dir):
+        raise RuntimeError("load failed")
+
+    monkeypatch.setattr(
+        "hoga.live.program_trade_collector.load_document",
+        _load_document_fails,
+    )
+    collector = ProgramTradeCollector(
+        data_dir=tmp_path,
+        date_fn=lambda: "20260625",
+        now_ms_fn=lambda: 1000,
+        poll_interval_s=60.0,
+    )
+
+    with caplog.at_level("ERROR", logger="hoga.live.program_trade_collector"):
+        collector.start()
+        try:
+            for _ in range(50):
+                await asyncio.sleep(0.01)
+                if collector.status.last_error_kind == "internal":
+                    break
+
+            assert collector.status.running is True
+            assert collector.status.last_error == "RuntimeError: load failed"
+            assert collector.status.last_error_kind == "internal"
+            assert collector.status.last_error_code == "RuntimeError"
+            assert collector.status.last_error_count == 1
+        finally:
+            await collector.stop()
+
+    records = [r for r in caplog.records if r.name == "hoga.live.program_trade_collector"]
+    assert len(records) == 1
+    assert records[0].exc_info is not None
+    assert records[0].getMessage() == (
+        "program_trade.collector.cycle_failed kind=internal error=RuntimeError"
+    )
 
 
 @pytest.mark.asyncio

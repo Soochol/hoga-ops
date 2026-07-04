@@ -116,11 +116,22 @@ class Rest30sRecorder:
         while True:
             try:
                 await self.poll_once()
-            except Exception:
-                _log.exception("live.rest30.cycle_failed")
-                self._last_error = "cycle_failed"
-                self._last_error_count = max(1, self._last_error_count)
+            except Exception as e:
+                self._record_cycle_error(e)
             await asyncio.sleep(self._interval_s)
+
+    def _record_cycle_error(self, exc: Exception) -> None:
+        policy = classify_live_error(exc, internal=True)
+        self._last_error = format_live_error(exc)
+        self._last_error_kind = policy.kind
+        self._last_error_code = policy.code
+        self._last_error_count = 1
+        self._backoff_remaining = max(self._backoff_remaining, policy.backoff_cycles)
+        log_msg = "live.rest30.cycle_failed kind=%s error=%s"
+        if policy.include_traceback:
+            _log.error(log_msg, policy.kind, policy.code, exc_info=True)
+        else:
+            _log.warning(log_msg, policy.kind, policy.code)
 
     async def poll_once(self) -> None:
         if self._backoff_remaining > 0:

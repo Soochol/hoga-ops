@@ -531,6 +531,41 @@ async def test_unexpected_failure_logs_with_traceback_and_no_backoff(caplog):
 
 
 @pytest.mark.asyncio
+async def test_cycle_failure_sets_internal_status_and_keeps_loop_alive(caplog):
+    def broken_phase() -> str:
+        raise RuntimeError("phase failed")
+
+    _, _, poller = _make_poller(interval_s=60.0, phase_fn=broken_phase)
+    poller.on_subscribe("005930")
+
+    with caplog.at_level("ERROR", logger="hoga.live.rest_poller"):
+        poller.start()
+        try:
+            for _ in range(50):
+                await asyncio.sleep(0.01)
+                if poller.status().last_error_kind == "internal":
+                    break
+
+            assert poller.alive is True
+            status = poller.status()
+            assert status.degraded is True
+            assert status.last_error == "RuntimeError: phase failed"
+            assert status.last_error_kind == "internal"
+            assert status.last_error_code == "RuntimeError"
+            assert status.last_error_count == 1
+            assert status.backoff_remaining == 0
+        finally:
+            await poller.stop()
+
+    records = [r for r in caplog.records if r.name == "hoga.live.rest_poller"]
+    assert len(records) == 1
+    assert records[0].exc_info is not None
+    assert records[0].getMessage() == (
+        "live.rest_poller.cycle_failed kind=internal error=RuntimeError"
+    )
+
+
+@pytest.mark.asyncio
 async def test_successful_cycle_clears_degraded_status_after_failure():
     class FirstBrokenThenHealthy(FakeKisClient):
         def __init__(self) -> None:
