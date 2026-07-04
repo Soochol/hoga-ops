@@ -2692,8 +2692,40 @@ describe('LiveChartRoot crosshair → cursor store (ADR-0044)', () => {
     expect(onCursorActiveChange).toHaveBeenLastCalledWith(true);
 
     act(() => fire({ time: undefined, point: null }));
+    expect(useLiveCursorStore.getState().cursorMs).toBe(SESSION_OPEN);
+    await act(() => new Promise((r) => setTimeout(() => r(null), 140)));
     expect(useLiveCursorStore.getState().cursorMs).toBeNull();
     expect(onCursorActiveChange).toHaveBeenLastCalledWith(false);
+  });
+
+  it('transient crosshair clear without coordinates does not blank spot indicators before the next hover', async () => {
+    render(
+      <LiveChartRoot
+        code="005930"
+        timeframe="1m"
+        bundle={TODAY_ONLY_BUNDLE}
+        clampEngaged={false}
+        isPastCandlesLoading={false}
+      />,
+      { wrapper },
+    );
+    const chart = vi.mocked(createChartEx).mock.results[0].value;
+    const fire = (p: { time?: unknown; point?: { x: number } | null }) =>
+      chart.subscribeCrosshairMove.mock.calls.forEach(
+        ([h]: [(p: { time?: unknown; point?: { x: number } | null }) => void]) => h(p),
+      );
+    const flush = () => act(() => new Promise((r) => requestAnimationFrame(() => r(null))));
+
+    act(() => fire({ time: 0, point: { x: 1 } }));
+    await flush();
+    expect(useLiveCursorStore.getState().cursorMs).toBe(TODAY_ONLY_BUNDLE.segments[0].session_open_ms);
+
+    act(() => fire({ point: null }));
+    expect(useLiveCursorStore.getState().cursorMs).toBe(TODAY_ONLY_BUNDLE.segments[0].session_open_ms);
+
+    act(() => fire({ time: (TODAY_OPEN_MS + 120_000) / 1000, point: { x: 24 } }));
+    await flush();
+    expect(useLiveCursorStore.getState().cursorMs).toBe(TODAY_OPEN_MS + 60_000);
   });
 
   it('crosshair into the right-offset whitespace (numeric time past the last candle) → pins the sidebar to the last candle', async () => {

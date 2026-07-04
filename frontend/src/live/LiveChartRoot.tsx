@@ -128,6 +128,7 @@ const EMPTY_AXIS: VirtualAxis = createVirtualAxis([]);
 const EMPTY_ASK_PEAKS: readonly AskPeak[] = [];
 const EMPTY_BID_PEAKS: readonly BidPeak[] = [];
 const EMPTY_CANDLE_MS: readonly number[] = [];
+const CURSOR_LEAVE_CLEAR_DELAY_MS = 120;
 const HIGH_LOW_AVOID_BASELINE_STYLE = { color: '', lineWidth: 1 };
 const DAILY_MIN_EFFECTIVE_BAR_SPACING = 3.5;
 const CALENDAR_MIN_VIEWPORT_WIDTH_PX = 120;
@@ -1188,6 +1189,25 @@ export function LiveChartRoot({ code, timeframe, venue = 'KRX', viewIdentity, bu
       return;
     }
     let pending: number | null = null;
+    let pendingLeaveClear: number | null = null;
+    const cancelPendingLeaveClear = () => {
+      if (pendingLeaveClear === null) return;
+      window.clearTimeout(pendingLeaveClear);
+      pendingLeaveClear = null;
+    };
+    const clearCursorForLeave = () => {
+      if (pending !== null) { cancelAnimationFrame(pending); pending = null; }
+      if (publishedCursorActiveRef.current !== false) {
+        publishedCursorActiveRef.current = false;
+        onCursorActiveChange?.(false);
+      }
+      if (publishedBasisDateRef.current !== null) {
+        publishedBasisDateRef.current = null;
+        onCandleBasisHover?.(null);
+      }
+      publishedCursorMsRef.current = null;
+      useLiveCursorStore.getState().clearCursor();
+    };
     const handler = (param: {
       time?: unknown;
       point?: { x: number } | null;
@@ -1200,6 +1220,7 @@ export function LiveChartRoot({ code, timeframe, venue = 'KRX', viewIdentity, bu
           ? param.sourceEvent.localX
           : null;
       if (param.point == null && separatorX !== null) {
+        cancelPendingLeaveClear();
         if (pending !== null) cancelAnimationFrame(pending);
         pending = requestAnimationFrame(() => {
           pending = null;
@@ -1216,18 +1237,14 @@ export function LiveChartRoot({ code, timeframe, venue = 'KRX', viewIdentity, bu
       // can't re-set the cursor after the pointer is already off-chart.
       if (param.point == null) {
         if (pending !== null) { cancelAnimationFrame(pending); pending = null; }
-        if (publishedCursorActiveRef.current !== false) {
-          publishedCursorActiveRef.current = false;
-          onCursorActiveChange?.(false);
-        }
-        if (publishedBasisDateRef.current !== null) {
-          publishedBasisDateRef.current = null;
-          onCandleBasisHover?.(null);
-        }
-        publishedCursorMsRef.current = null;
-        useLiveCursorStore.getState().clearCursor();
+        cancelPendingLeaveClear();
+        pendingLeaveClear = window.setTimeout(() => {
+          pendingLeaveClear = null;
+          clearCursorForLeave();
+        }, CURSOR_LEAVE_CLEAR_DELAY_MS);
         return;
       }
+      cancelPendingLeaveClear();
       if (pending !== null) cancelAnimationFrame(pending);
       const point = param.point;
       pending = requestAnimationFrame(() => {
@@ -1243,6 +1260,7 @@ export function LiveChartRoot({ code, timeframe, venue = 'KRX', viewIdentity, bu
     return () => {
       chart.unsubscribeCrosshairMove(handler);
       if (pending !== null) cancelAnimationFrame(pending);
+      cancelPendingLeaveClear();
       publishedBasisDateRef.current = null;
       onCandleBasisHover?.(null);
       // Preserve user context only while the chart instance is active; on teardown
