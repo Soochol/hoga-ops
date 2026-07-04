@@ -144,15 +144,28 @@ class TodayBidPeakState:
 
         traded = self.traded_peak
         all_peak = self.all_peak
+        all_peaks = _top_peaks(self.observed_price_peaks.values())
+        traded_peaks = _top_peaks(
+            p for price, p in self.observed_price_peaks.items()
+            if price in self.traded_prices
+        )
         return {
             "coverage": self.coverage,
             "traded_prices": sorted(self.traded_prices),
             "traded_price": traded.price if traded is not None else None,
             "traded_qty": traded.qty if traded is not None else None,
             "traded_t_ms": traded.t_ms if traded is not None else None,
+            "traded_peaks": [
+                {"price": p.price, "qty": p.qty, "t_ms": p.t_ms}
+                for p in traded_peaks
+            ],
             "all_price": all_peak.price,
             "all_qty": all_peak.qty,
             "all_t_ms": all_peak.t_ms,
+            "all_peaks": [
+                {"price": p.price, "qty": p.qty, "t_ms": p.t_ms}
+                for p in all_peaks
+            ],
         }
 
 

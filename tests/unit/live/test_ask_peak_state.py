@@ -165,6 +165,12 @@ def test_today_bid_peak_tracks_traded_and_all_bid_peaks():
         "all_price": 68_900,
         "all_qty": 12_000,
         "all_t_ms": 2,
+        "traded_peaks": [{"price": 70_000, "qty": 5_000, "t_ms": 2}],
+        "all_peaks": [
+            {"price": 68_900, "qty": 12_000, "t_ms": 2},
+            {"price": 69_000, "qty": 9_000, "t_ms": 1},
+            {"price": 70_000, "qty": 5_000, "t_ms": 2},
+        ],
     }
 
 

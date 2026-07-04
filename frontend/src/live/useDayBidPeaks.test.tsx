@@ -86,7 +86,7 @@ describe('useDayBidPeaks', () => {
       [candle(atKst(10, 42), 23700, 23900)],
     ));
 
-    expect(byDate(result.current)['20260613']).toEqual({
+    expect(byDate(result.current)['20260613']).toMatchObject({
       date: '20260613',
       price: 23800,
       qty: 12000,
@@ -94,6 +94,36 @@ describe('useDayBidPeaks', () => {
       max_price: 23800,
       max_qty: 12000,
       max_t_ms: atKst(10, 42),
+      traded_peaks: [{ price: 23800, qty: 12000, t_ms: atKst(10, 42) }],
+    });
+  });
+
+  it('preserves REST traded bid candidates for current-day cutoff recalculation', () => {
+    const restPeak = todayBidPeak({
+      traded_price: 23800,
+      traded_qty: 20000,
+      traded_t_ms: atKst(10, 0),
+      traded_peaks: [
+        { price: 23900, qty: 9000, t_ms: atKst(9, 10) },
+        { price: 23800, qty: 20000, t_ms: atKst(10, 0) },
+      ],
+    });
+
+    const { result } = renderHook(() => useDayBidPeaks(
+      [],
+      [],
+      [],
+      '20260613',
+      '005930',
+      restPeak,
+    ));
+
+    expect(byDate(result.current)['20260613']).toMatchObject({
+      price: 23800,
+      traded_peaks: [
+        { price: 23800, qty: 20000, t_ms: atKst(10, 0) },
+        { price: 23900, qty: 9000, t_ms: atKst(9, 10) },
+      ],
     });
   });
 
@@ -190,7 +220,7 @@ describe('useTodayAllPriceBidPeak', () => {
       todayBidPeak({ all_price: 23800, all_qty: 12000, all_t_ms: atKst(9, 11) }),
     ));
 
-    expect(result.current).toEqual({
+    expect(result.current).toMatchObject({
       date: '20260613',
       price: 23800,
       qty: 12000,
@@ -198,6 +228,7 @@ describe('useTodayAllPriceBidPeak', () => {
       max_price: 23800,
       max_qty: 12000,
       max_t_ms: atKst(9, 11),
+      all_peaks: [{ price: 23800, qty: 12000, t_ms: atKst(9, 11) }],
     });
   });
 
@@ -220,7 +251,10 @@ describe('useTodayAllPriceBidPeak', () => {
       null,
     ));
 
-    expect(result.current).toEqual(seed);
+    expect(result.current).toMatchObject({
+      ...seed,
+      all_peaks: [{ price: 23900, qty: 5000, t_ms: atKst(9, 5) }],
+    });
   });
 
   it('ratchets larger live bid walls and resets on code/date changes', () => {
@@ -249,5 +283,33 @@ describe('useTodayAllPriceBidPeak', () => {
 
     rerender({ ob: [], todayKst: '20260614', code: '000660' });
     expect(result.current).toBeNull();
+  });
+
+  it('preserves REST all-price bid candidates for current-day cutoff recalculation', () => {
+    const restPeak = todayBidPeak({
+      all_price: 23800,
+      all_qty: 20000,
+      all_t_ms: atKst(10, 0),
+      all_peaks: [
+        { price: 23900, qty: 9000, t_ms: atKst(9, 10) },
+        { price: 23800, qty: 20000, t_ms: atKst(10, 0) },
+      ],
+    });
+
+    const { result } = renderHook(() => useTodayAllPriceBidPeak(
+      [],
+      [],
+      '20260613',
+      '005930',
+      restPeak,
+    ));
+
+    expect(result.current).toMatchObject({
+      price: 23800,
+      all_peaks: [
+        { price: 23800, qty: 20000, t_ms: atKst(10, 0) },
+        { price: 23900, qty: 9000, t_ms: atKst(9, 10) },
+      ],
+    });
   });
 });
