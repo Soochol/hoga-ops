@@ -88,6 +88,34 @@ const segment = (overrides: Partial<AskPeakSegment> = {}): AskPeakSegment => ({
 });
 
 describe('live peak-wall docked label helpers', () => {
+  it('extracts labels from historical segments that overlap the visible range', () => {
+    const out = livePeakWallDockedLabelsFromSegments(
+      [
+        segment({ live: false, time0: 100 as never, time1: 200 as never, label: '24,500, 16.6k', price: 24500 }),
+        segment({ live: false, time0: 250 as never, time1: 300 as never, label: '23,500, 17.2k', price: 23500 }),
+      ],
+      { from: 150 as never, to: 220 as never },
+    );
+
+    expect(out).toEqual([
+      { price: 24500, label: '24,500, 16.6k', color: '#f97316', time1: 200 },
+    ]);
+  });
+
+  it('limits docked labels to the top visible qty ranks when requested', () => {
+    const out = livePeakWallDockedLabelsFromSegments(
+      [
+        segment({ live: false, time0: 100 as never, time1: 200 as never, price: 100, qty: 100, label: '100, 0.1k' }),
+        segment({ live: false, time0: 100 as never, time1: 200 as never, price: 101, qty: 300, label: '101, 0.3k' }),
+        segment({ live: false, time0: 100 as never, time1: 200 as never, price: 102, qty: 200, label: '102, 0.2k' }),
+      ],
+      { from: 100 as never, to: 200 as never },
+      2,
+    );
+
+    expect(out.map((label) => label.price)).toEqual([101, 102]);
+  });
+
   it('extracts labels only from live segments with visible label text', () => {
     const out = livePeakWallDockedLabelsFromSegments([
       segment({ live: false, label: '24,500, 16.6k', price: 24500, color: '#f97316' }),
@@ -131,13 +159,23 @@ describe('live peak-wall docked label helpers', () => {
     ]);
   });
 
-  it('removes only live inline label text while preserving historical labels and geometry', () => {
+  it('removes inline label text while preserving segment geometry for docked labels', () => {
     const past = segment({ live: false, label: '24,500, 16.6k', price: 24500 });
     const live = segment({ live: true, label: '23,500, 17.2k', price: 23500 });
     const out = inlinePeakWallSegmentsForDocking([past, live]);
 
-    expect(out[0]).toEqual(past);
+    expect(out[0]).toEqual({ ...past, label: '' });
     expect(out[1]).toEqual({ ...live, label: '' });
+    expect(out[0]).toMatchObject({
+      time0: past.time0,
+      time1: past.time1,
+      peakTime: past.peakTime,
+      price: past.price,
+      qty: past.qty,
+      color: past.color,
+      lineWidth: past.lineWidth,
+      live: false,
+    });
     expect(out[1]).toMatchObject({
       time0: live.time0,
       time1: live.time1,

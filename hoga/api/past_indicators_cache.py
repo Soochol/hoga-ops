@@ -42,7 +42,7 @@ _log = logging.getLogger(__name__)
 
 # Bump when the bucketing/representative semantics of the underlying table
 # queries change, so stale 1m caches are ignored rather than served wrong.
-SCHEMA_VERSION = 2
+SCHEMA_VERSION = 3
 
 Kind = Literal["ratio", "fill"]
 _CACHE_MISS = object()

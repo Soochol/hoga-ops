@@ -881,7 +881,7 @@ describe('buildAskPeakOverlaySegments', () => {
 });
 
 describe('live peak-wall inline label suppression', () => {
-  it('suppresses only today ask inline labels after ask styling is applied', () => {
+  it('suppresses ask inline labels after ask styling is applied', () => {
     const raw = buildAskPeakOverlaySegments({
       dayAskPeaks: [
         peak({ date: '20260612', price: 100, qty: 50, t_ms: 120000 }),
@@ -905,7 +905,7 @@ describe('live peak-wall inline label suppression', () => {
       1,
     );
     expect(inline[0].live).toBe(false);
-    expect(inline[0].label).toBe('100, 0.1k');
+    expect(inline[0].label).toBe('');
     expect(inline[1].live).toBe(true);
     expect(inline[1]).toMatchObject({
       price: 110,
@@ -915,7 +915,7 @@ describe('live peak-wall inline label suppression', () => {
     });
   });
 
-  it('suppresses only today bid inline labels', () => {
+  it('suppresses bid inline labels', () => {
     const pastBid: BidPeak = {
       date: '20260612',
       price: 100,
@@ -950,7 +950,7 @@ describe('live peak-wall inline label suppression', () => {
     const inline = prepareBidPeakSegmentsForRender(raw);
 
     expect(inline[0].live).toBe(false);
-    expect(inline[0].label).toBe('100, 0.1k');
+    expect(inline[0].label).toBe('');
     expect(inline[1].live).toBe(true);
     expect(inline[1]).toMatchObject({ price: 90, label: '', color: '#2563EB', lineWidth: 2 });
   });

@@ -1,6 +1,6 @@
 import { memo, useEffect, useRef } from 'react';
 import type { ISeriesApi, SeriesType, Time } from 'lightweight-charts';
-import type { BidPeak, Candle, RangeSegment } from '../api/types';
+import type { AskPeakCandidate, BidPeak, Candle, RangeSegment } from '../api/types';
 import type { PaneId } from '../chart/drawing/types';
 import type { PaneSeriesMap } from '../chart/drawing/chartCoordinates';
 import type { VirtualAxis } from '../util/virtualAxis';
@@ -40,6 +40,14 @@ function snapPeakMsToCandle(tMs: number, candles: readonly Candle[]): number | n
 function formatBidPeakLabel(price: number, qty: number): string {
   const priceStr = Math.round(price).toLocaleString('ko-KR');
   return `${priceStr}, ${formatQtyCompact(qty)}`;
+}
+
+function toPeakRankLimit(value: number): 1 | 2 | 3 {
+  return value === 2 || value === 3 ? value : 1;
+}
+
+function maxPeakRankLimit(a: number, b: number): 1 | 2 | 3 {
+  return Math.max(toPeakRankLimit(a), toPeakRankLimit(b)) as 1 | 2 | 3;
 }
 
 /** 거래일별 매수 최대벽(dayBidPeaks)을 그날 구간의 수평 세그먼트 좌표로 변환(순수). 각 peak.date를
@@ -100,6 +108,7 @@ type BuildBidPeakOverlaySegmentsArgs = {
   allPriceStyle: BidPeakLineStyle;
   intraMax: boolean;
   showAllPrices: boolean;
+  allPriceRankLimit?: 1 | 2 | 3;
   visibleTimeCutoff?: VisibleTimeCutoff | null;
 };
 
@@ -109,6 +118,54 @@ function selectedQty(p: BidPeak, intraMax: boolean): number {
 
 function selectedPrice(p: BidPeak, intraMax: boolean): number {
   return intraMax ? p.max_price : p.price;
+}
+
+function bidPeakFromCandidates(
+  base: BidPeak,
+  closeCandidate: AskPeakCandidate,
+  maxCandidate: AskPeakCandidate,
+): BidPeak {
+  return {
+    ...base,
+    price: closeCandidate.price,
+    qty: closeCandidate.qty,
+    t_ms: closeCandidate.t_ms,
+    max_price: maxCandidate.price,
+    max_qty: maxCandidate.qty,
+    max_t_ms: maxCandidate.t_ms,
+  };
+}
+
+function expandBaselineBidPeaks(
+  peaks: readonly BidPeak[],
+  limit: 1 | 2 | 3,
+  intraMax: boolean,
+): BidPeak[] {
+  const byDate = new Map<string, BidPeak[]>();
+  for (const p of peaks) {
+    const closeCandidates = p.traded_peaks?.length
+      ? p.traded_peaks
+      : [{ price: p.price, qty: p.qty, t_ms: p.t_ms }];
+    const maxCandidates = p.traded_max_peaks?.length
+      ? p.traded_max_peaks
+      : closeCandidates.map((candidate, idx) => (
+        p.traded_peaks?.length
+          ? { price: candidate.price, qty: candidate.qty, t_ms: candidate.t_ms }
+          : { price: idx === 0 ? p.max_price : candidate.price, qty: idx === 0 ? p.max_qty : candidate.qty, t_ms: idx === 0 ? p.max_t_ms : candidate.t_ms }
+      ));
+    const count = Math.max(closeCandidates.length, maxCandidates.length);
+    const expanded = byDate.get(p.date) ?? [];
+    for (let i = 0; i < count; i += 1) {
+      const close = closeCandidates[i] ?? closeCandidates[closeCandidates.length - 1];
+      const max = maxCandidates[i] ?? maxCandidates[maxCandidates.length - 1] ?? close;
+      expanded.push(bidPeakFromCandidates(p, close, max));
+    }
+    byDate.set(p.date, expanded);
+  }
+  return [...byDate.values()].flatMap((items) => items
+    .slice()
+    .sort((a, b) => selectedQty(b, intraMax) - selectedQty(a, intraMax) || a.t_ms - b.t_ms || a.price - b.price)
+    .slice(0, limit));
 }
 
 function peakVisibleAtCutoff(p: BidPeak, cutoff: VisibleTimeCutoff | null | undefined, intraMax: boolean): boolean {
@@ -185,14 +242,16 @@ export function buildBidPeakOverlaySegments({
   allPriceStyle,
   intraMax,
   showAllPrices,
+  allPriceRankLimit = 1,
   visibleTimeCutoff,
 }: BuildBidPeakOverlaySegmentsArgs): AskPeakSegment[] {
   const cutoffPeaks = applyPeakVisibleTimeCutoff(dayBidPeaks, visibleTimeCutoff ?? null, {
     side: 'bid',
     intraMax,
   });
+  const baselinePeaks = expandBaselineBidPeaks(cutoffPeaks, allPriceRankLimit, intraMax);
   const baseline = buildBidPeakSegments(
-    cutoffPeaks,
+    baselinePeaks,
     segments,
     candles,
     axis,
@@ -209,7 +268,9 @@ export function buildBidPeakOverlaySegments({
     ? todayAllPriceBidPeak
     : null;
   const untradedPeaks: BidPeak[] = [];
-  for (const p of cutoffPeaks) {
+  const addedUntradedDates = new Set<string>();
+  for (const p of baselinePeaks) {
+    if (addedUntradedDates.has(p.date)) continue;
     const todayAllPriceSource = p.date === todayKst && todayAllPriceBidPeak?.date === todayKst
       ? todayAllPriceBidPeak
       : p;
@@ -236,6 +297,7 @@ export function buildBidPeakOverlaySegments({
     if (p.date === todayKst && (todayLow === null || selectedPrice(untradedPeak, intraMax) >= todayLow)) continue;
     if (selectedQty(untradedPeak, intraMax) <= selectedQty(p, intraMax)) continue;
     untradedPeaks.push(untradedPeak);
+    addedUntradedDates.add(p.date);
   }
   if (untradedPeaks.length === 0) return baseline;
 
@@ -283,6 +345,8 @@ function LiveBidPeakSegments({ paneSeries, axis, dayBidPeaks, todayAllPriceBidPe
   const allPriceLineWidth = useLivePageStore((s) => s.bidPeakAllPriceLineWidth);
   const intraMax = useActivePrefs((s) => s.bidPeakIntraMax);
   const showAllPrices = useActivePrefs((s) => s.bidPeakShowAllPrices);
+  const allPriceRankLimit = useActivePrefs((s) => s.bidPeakAllPriceRankLimit);
+  const visibleMaxRankLimit = useActivePrefs((s) => s.bidPeakVisibleMaxRankLimit);
   const primRef = useRef<AskPeakSegmentsPrimitive | null>(null);
 
   // 생성: series 핸들당 1회(LiveCurrentPriceLine과 동일 — tf·종목 전환에도 핸들 유지).
@@ -305,6 +369,7 @@ function LiveBidPeakSegments({ paneSeries, axis, dayBidPeaks, todayAllPriceBidPe
   useEffect(() => {
     const prim = primRef.current;
     if (!prim) return;
+    const baselineRankLimit = maxPeakRankLimit(allPriceRankLimit, visibleMaxRankLimit);
     const nextSegments = enabled
       ? buildBidPeakOverlaySegments({
         dayBidPeaks,
@@ -317,6 +382,7 @@ function LiveBidPeakSegments({ paneSeries, axis, dayBidPeaks, todayAllPriceBidPe
         allPriceStyle: { color: allPriceColor, lineWidth: allPriceLineWidth },
         intraMax,
         showAllPrices,
+        allPriceRankLimit: baselineRankLimit,
         visibleTimeCutoff,
       })
       : [];
@@ -335,6 +401,8 @@ function LiveBidPeakSegments({ paneSeries, axis, dayBidPeaks, todayAllPriceBidPe
     enabled,
     intraMax,
     showAllPrices,
+    allPriceRankLimit,
+    visibleMaxRankLimit,
     visibleTimeCutoff,
     series,
   ]);

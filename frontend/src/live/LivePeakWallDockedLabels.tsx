@@ -26,6 +26,14 @@ type Props = {
   bidVisibleTimeCutoff?: VisibleTimeCutoff | null;
 };
 
+function toPeakRankLimit(value: number): 1 | 2 | 3 {
+  return value === 2 || value === 3 ? value : 1;
+}
+
+function maxPeakRankLimit(a: number, b: number): 1 | 2 | 3 {
+  return Math.max(toPeakRankLimit(a), toPeakRankLimit(b)) as 1 | 2 | 3;
+}
+
 function LivePeakWallDockedLabels({
   paneSeries,
   axis,
@@ -58,6 +66,8 @@ function LivePeakWallDockedLabels({
   const askVisibleMaxRankLimit = useActivePrefs((s) => s.askPeakVisibleMaxRankLimit);
   const bidIntraMax = useActivePrefs((s) => s.bidPeakIntraMax);
   const bidShowAllPrices = useActivePrefs((s) => s.bidPeakShowAllPrices);
+  const bidAllPriceRankLimit = useActivePrefs((s) => s.bidPeakAllPriceRankLimit);
+  const bidVisibleMaxRankLimit = useActivePrefs((s) => s.bidPeakVisibleMaxRankLimit);
   const primRef = useRef<PeakWallDockedLabelsPrimitive | null>(null);
 
   useEffect(() => {
@@ -90,7 +100,7 @@ function LivePeakWallDockedLabels({
         allPriceStyle: { color: askAllPriceColor, lineWidth: askAllPriceLineWidth },
         intraMax: askIntraMax,
         showAllPrices: askShowAllPrices,
-        allPriceRankLimit: askAllPriceRankLimit as 1 | 2 | 3,
+        allPriceRankLimit: maxPeakRankLimit(askAllPriceRankLimit, askVisibleMaxRankLimit),
         visibleTimeCutoff: askVisibleTimeCutoff,
       })
       : [];
@@ -113,12 +123,13 @@ function LivePeakWallDockedLabels({
         allPriceStyle: { color: bidAllPriceColor, lineWidth: bidAllPriceLineWidth },
         intraMax: bidIntraMax,
         showAllPrices: bidShowAllPrices,
+        allPriceRankLimit: maxPeakRankLimit(bidAllPriceRankLimit, bidVisibleMaxRankLimit),
         visibleTimeCutoff: bidVisibleTimeCutoff,
       })
       : [];
     prim.setLabels([
-      ...livePeakWallDockedLabelsFromSegments(askStyled, visibleRange),
-      ...livePeakWallDockedLabelsFromSegments(bidSegments, visibleRange),
+      ...livePeakWallDockedLabelsFromSegments(askStyled, visibleRange, toPeakRankLimit(askVisibleMaxRankLimit)),
+      ...livePeakWallDockedLabelsFromSegments(bidSegments, visibleRange, toPeakRankLimit(bidVisibleMaxRankLimit)),
     ]);
   }, [
     askAllPriceColor,
@@ -136,11 +147,13 @@ function LivePeakWallDockedLabels({
     axis,
     bidAllPriceColor,
     bidAllPriceLineWidth,
+    bidAllPriceRankLimit,
     bidColor,
     bidIntraMax,
     bidLineWidth,
     bidPeakEnabled,
     bidShowAllPrices,
+    bidVisibleMaxRankLimit,
     bidVisibleTimeCutoff,
     candles,
     dayAskPeaks,

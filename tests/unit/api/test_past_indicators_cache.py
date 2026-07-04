@@ -93,15 +93,31 @@ def test_ratio_disk_payload_is_seven_tuples(tmp_path: Path) -> None:
     assert PastIndicatorsCache(tmp_path).get_ratio(CODE, DATE, SRC) == RATIO
 
 
-def test_schema_version_bumped_to_2_invalidates_old_three_tuple(tmp_path: Path) -> None:
-    """SCHEMA_VERSION 1→2: max 필드 없는 구(舊) 3-tuple 캐시는 버전 미스로 무효."""
+def test_schema_version_bumped_to_3_invalidates_peak_candidate_cache(tmp_path: Path) -> None:
+    """SCHEMA_VERSION 2→3: 시간별 후보 배열 없는 peak 캐시는 버전 미스로 무효."""
     from hoga.api import past_indicators_cache as mod
-    assert mod.SCHEMA_VERSION == 2
+    assert mod.SCHEMA_VERSION == 3
     p = tmp_path / "kis-past-indicators" / CODE / SRC / f"{DATE}.ratio.json"
     p.parent.mkdir(parents=True, exist_ok=True)
     p.write_text(json.dumps({"version": 1, "rows": [[0, 10, 20]], "fetched_at_ms": 0}),
                  encoding="utf-8")
     assert PastIndicatorsCache(tmp_path).get_ratio(CODE, DATE, SRC) is None
+
+    ask_path = tmp_path / "kis-past-indicators" / CODE / SRC / f"{DATE}.ask_peak.60000.json"
+    ask_path.write_text(json.dumps({
+        "version": 2,
+        "value": {
+            "date": DATE,
+            "price": 71000,
+            "qty": 1000,
+            "t_ms": 1,
+            "max_price": 71000,
+            "max_qty": 1000,
+            "max_t_ms": 1,
+        },
+        "fetched_at_ms": 0,
+    }), encoding="utf-8")
+    assert PastIndicatorsCache(tmp_path).has_ask_peak(CODE, DATE, SRC, 60_000) is False
 
 
 def test_bid_peak_cache_is_independent_from_ask_peak(tmp_path: Path) -> None:

@@ -91,6 +91,14 @@ type AskPeakLineStyle = {
 
 type VisibleTimeRange = IRange<Time> | null;
 
+function toPeakRankLimit(value: number): 1 | 2 | 3 {
+  return value === 2 || value === 3 ? value : 1;
+}
+
+function maxPeakRankLimit(a: number, b: number): 1 | 2 | 3 {
+  return Math.max(toPeakRankLimit(a), toPeakRankLimit(b)) as 1 | 2 | 3;
+}
+
 function segmentOverlapsVisibleRange(segment: AskPeakSegment, visibleRange: VisibleTimeRange): boolean {
   if (!visibleRange) return false;
   const visibleFrom = visibleRange.from as unknown as number;
@@ -412,6 +420,7 @@ function LiveAskPeakSegments({ paneSeries, axis, dayAskPeaks, todayAllPriceAskPe
       prim.setSegments([]);
       return;
     }
+    const baselineRankLimit = maxPeakRankLimit(allPriceRankLimit, visibleMaxRankLimit);
     const rawSegments = buildAskPeakOverlaySegments({
       dayAskPeaks,
       todayAllPriceAskPeak,
@@ -423,7 +432,7 @@ function LiveAskPeakSegments({ paneSeries, axis, dayAskPeaks, todayAllPriceAskPe
       allPriceStyle: { color: allPriceColor, lineWidth: allPriceLineWidth },
       intraMax,
       showAllPrices,
-      allPriceRankLimit: allPriceRankLimit as 1 | 2 | 3,
+      allPriceRankLimit: baselineRankLimit,
       visibleTimeCutoff,
     });
     const visibleRange = prim.chartApi()?.timeScale().getVisibleRange() ?? null;
