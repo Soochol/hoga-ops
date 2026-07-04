@@ -88,9 +88,9 @@ export type OrderbookSnapshot = {
   tot_bid: number;
 };
 
-/** Source name for ADR-0039 source_pref thread-through. Mirrors
- *  hoga/api/sources.py::SourceName. */
-export type SourceName = 'hogaplay' | 'kis_live' | 'kis_api';
+/** Source name surfaced by the chart source chip. Orderflow sources mirror
+ * hoga/api/sources.py::SourceName; screener_daily is a chart-only daily corpus. */
+export type SourceName = 'hogaplay' | 'kis_live' | 'kis_api' | 'screener_daily';
 
 /** GET /api/orderbook response envelope. */
 export type OrderbookResponse = {

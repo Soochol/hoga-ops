@@ -89,6 +89,24 @@ vi.mock('../api/livePastDailyCandles', () => ({
   useLivePastDailyCandles: (...args: unknown[]) => livePastDailyCandlesSpy(...args as []),
 }));
 
+const screenerDailyCandlesMock = {
+  candles: [] as Array<typeof DEFAULT_CANDLE>,
+};
+const screenerDailyCandlesSpy = vi.fn(() => ({
+  data: {
+    code: '005930',
+    from: '',
+    to: '',
+    source: 'screener_daily',
+    candles: screenerDailyCandlesMock.candles,
+  },
+  isLoading: false,
+  error: null,
+}));
+vi.mock('../api/screenerDailyCandles', () => ({
+  useScreenerDailyCandles: (...args: unknown[]) => screenerDailyCandlesSpy(...args as []),
+}));
+
 const investorMock = {
   isLoading: false,
   points: [] as Array<{ t_ms: number; foreign_net: number; institution_net: number }>,
@@ -764,11 +782,13 @@ describe('useLiveBundle daily/minute branching (ADR-0048)', () => {
   beforeEach(() => {
     livePastCandlesSpy.mockClear();
     livePastDailyCandlesSpy.mockClear();
+    screenerDailyCandlesSpy.mockClear();
     useRangeSpy.mockClear();
     candlesMock.candles = [DEFAULT_CANDLE];
     candlesMock.isPlaceholderData = false;
     candlesMock.isFetching = false;
     candlesMock.warnings = [];
+    screenerDailyCandlesMock.candles = [];
     rangeMock.isPlaceholderData = false;
     rangeMock.isFetching = false;
     useLivePageStore.setState({
@@ -864,6 +884,29 @@ describe('useLiveBundle daily/minute branching (ADR-0048)', () => {
       { ts_ms: 1779840000000, open: 70000, high: 70300, low: 69900, close: 70250, vol_a: 330, vol_b: 0 },
     ]);
   });
+
+  it.each(['auto', 'screener_daily_first'] as const)(
+    'D timeframe uses screener daily candles first when candle preference is %s',
+    (candleDataPreference) => {
+      useCandleDataPreferenceStore.setState({ candleDataPreference });
+      dailyCandlesMock.candles = [
+        { t_ms: 1779840000000, open: 1, high: 1, low: 1, close: 1, volume: 1 },
+      ];
+      screenerDailyCandlesMock.candles = [
+        { t_ms: 1779753600000, open: 69000, high: 69100, low: 68900, close: 69050, volume: 900 },
+        { t_ms: 1779840000000, open: 70000, high: 70100, low: 69900, close: 70050, volume: 1000 },
+      ];
+
+      const { result } = renderHook(() => useLiveBundle('005930', 'D', '20260527', liveFixture), { wrapper });
+
+      expect(screenerDailyCandlesSpy).toHaveBeenCalledWith('005930', '20250611', '20260527');
+      expect(result.current.chartBundle!.candles).toEqual([
+        { ts_ms: 1779753600000, open: 69000, high: 69100, low: 68900, close: 69050, vol_a: 900, vol_b: 0 },
+        { ts_ms: 1779840000000, open: 70000, high: 70100, low: 69900, close: 70050, vol_a: 1000, vol_b: 0 },
+      ]);
+      expect(result.current.chartBundle!.segments.map((s) => s.source)).toEqual(['screener_daily', 'screener_daily']);
+    },
+  );
 
   it('D timeframe fallback ignores pre-open hogaplay bars so daily candles render on the calendar axis', () => {
     useSourcePreferenceStore.setState({ sourcePreference: 'hogaplay_first' });

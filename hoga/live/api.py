@@ -60,6 +60,7 @@ from hoga.live.index_registry import (
 from hoga.live.past_candles_cache import PastCandlesCache
 from hoga.live.past_daily_candles_cache import PastDailyCandlesCache
 from hoga.live.quote_change_resolver import QuoteChangeResolver
+from hoga.live.screener_daily_candles import read_screener_daily_candles
 
 from . import kis_access
 from .buffer import LiveBuffer
@@ -1606,6 +1607,24 @@ def build_router(
             too=too,
             today_d=today_d,
             policy=policy,
+            from_label=from_,
+            to_label=to,
+        )
+
+    @router.get("/screener-daily-candles")
+    async def _get_screener_daily_candles(
+        code: str = Query(...),
+        from_: str = Query(..., alias="from"),
+        to: str = Query(...),
+    ) -> dict:
+        frm, too, _today_d = _validate_past_request(code, from_, to, max_days=None)
+        if data_dir is None:
+            raise HTTPException(503, "screener daily corpus not wired (data_dir missing)")
+        return read_screener_daily_candles(
+            data_dir,
+            code=code,
+            frm=frm,
+            too=too,
             from_label=from_,
             to_label=to,
         )
