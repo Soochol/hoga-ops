@@ -119,13 +119,36 @@ class CaptureCancelled(RuntimeError):
 
 
 class UpstreamNoDataError(RuntimeError):
-    """Raised when hogaplay returns HTTP 200 with an empty body for
-    info.php — the upstream signal that no data exists for this
-    (code, date). See ADR-0021."""
+    """Raised when hogaplay's info.php returns a HTTP 200 no-data status body
+    for a (code, date) that has no replay data — the upstream signal that no
+    data exists. See ADR-0021.
+
+    Two observed no-data body forms, both HTTP 200 (see _is_info_no_data):
+      * an empty / whitespace-only body (ADR-0021, the original signal);
+      * a bare status body of ``"2"`` — the newly-observed variant for
+        suspended / no-replay stocks (confirmed stable across retries on
+        2025-04-24 258540 and 2025-08-11 086460, 2026-07-04).
+    """
     def __init__(self, code: str, date: str) -> None:
-        super().__init__(f"hogaplay returned empty info.php for {code}/{date}")
+        super().__init__(f"hogaplay returned no-data info.php for {code}/{date}")
         self.code = code
         self.date = date
+
+
+# hogaplay signals "no replay data for this (code, date)" from info.php in two
+# observed forms, both HTTP 200: an empty/whitespace-only body (ADR-0021) and a
+# bare status body of "2" (suspended / no-replay stocks). Both must be caught at
+# the collector boundary — otherwise the status body is persisted verbatim as a
+# garbage 1-byte info.tsv that fails parsing forever with FieldCountError and is
+# re-fetched on every watchlist pass (34 such dirs found+deleted 2026-07-04).
+# A genuine info row is a long tab-separated record whose first field is "1", so
+# these bare single-token bodies never collide with real data.
+_INFO_NO_DATA_STATUS_BODIES: frozenset[str] = frozenset({"", "2"})
+
+
+def _is_info_no_data(info_body: str) -> bool:
+    """True when an info.php body is one of hogaplay's no-data status bodies."""
+    return info_body.strip() in _INFO_NO_DATA_STATUS_BODIES
 
 
 class CancelToken:
@@ -543,9 +566,10 @@ def collect_stock_date(
     raw_dir.mkdir(parents=True, exist_ok=True)
     started_at = now.isoformat()
 
-    # 1. info.php — hogaplay signals "no data for this (code, date)" via
-    # HTTP 200 + empty body (see ADR-0021). Detect at the collector boundary
-    # before zero-byte artifacts pollute disk.
+    # 1. info.php — hogaplay signals "no data for this (code, date)" via a
+    # HTTP 200 no-data status body: an empty body (ADR-0021) or a bare "2"
+    # (see _is_info_no_data). Detect at the collector boundary before the
+    # status body is persisted as a garbage 1-byte info.tsv.
     info_path = raw_dir / "info.tsv"
     if not (resume and info_path.exists()):
         if collector is not None:
@@ -553,7 +577,7 @@ def collect_stock_date(
                 info_body = client.fetch_info(code, date)
         else:
             info_body = client.fetch_info(code, date)
-        if not info_body.strip():
+        if _is_info_no_data(info_body):
             raise UpstreamNoDataError(code, date)
         if collector is not None:
             with collector.phase("disk_write"):
