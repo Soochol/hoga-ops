@@ -66,6 +66,19 @@ describe('rightmostVisibleCandleCutoff', () => {
     });
   });
 
+  it('uses the full rightmost visible candle bucket as the cutoff', () => {
+    const candles = [candle(day1Open), candle(day1Open + 60_000), candle(day1Open + 120_000)];
+    const visibleRange: IRange<Time> = {
+      from: (axis.toVirtual(day1Open) / 1000) as Time,
+      to: (axis.toVirtual(day1Open + 120_000) / 1000) as Time,
+    };
+
+    expect(rightmostVisibleCandleCutoff(candles, visibleRange, axis, 60_000)).toEqual({
+      date: '20260610',
+      tMs: day1Open + 180_000 - 1,
+    });
+  });
+
   it('returns null when the visible range ends before the first loaded candle', () => {
     const candles = [candle(day1Open + 60_000), candle(day1Open + 120_000)];
     const visibleRange: IRange<Time> = {

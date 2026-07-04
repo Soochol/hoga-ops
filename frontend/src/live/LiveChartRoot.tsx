@@ -27,7 +27,7 @@ import {
 } from '../state/livePage';
 import { useActivePrefs, useChartPrefsStore } from '../state/chartPrefs';
 import type { LiveVenueOption } from '../state/liveVenue';
-import type { AskPeak, BidPeak, RangeBundle } from '../api/types';
+import { TIMEFRAME_TO_MS, type AskPeak, type BidPeak, type RangeBundle } from '../api/types';
 import { PAST_CANDLES_MAX_DAYS } from './liveDateTime';
 import { initialVisibleMinuteBarsFor } from './liveVenuePolicy';
 import { minuteRightOffsetBars } from './minuteViewportPolicy';
@@ -945,6 +945,7 @@ export function LiveChartRoot({ code, timeframe, venue = 'KRX', viewIdentity, bu
         cb.candles,
         timeScale.getVisibleRange(),
         axis,
+        TIMEFRAME_TO_MS[timeframe],
       ));
     };
     update();
