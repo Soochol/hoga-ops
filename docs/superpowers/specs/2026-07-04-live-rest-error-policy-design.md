@@ -27,8 +27,8 @@ for logging, degraded status, and backoff decisions.
   KIS response parsing.
 - Do not add new retry attempts inside `KisClient`; existing retry behavior stays
   the transport/API adapter's responsibility.
-- Do not redesign frontend status UI in this change. Backend status fields may
-  be added so UI work can follow separately.
+- Do not redesign frontend status UI in this change. Additive backend status
+  fields are introduced so UI work can follow separately.
 - Do not hide internal bugs. Parser, model conversion, invariant, and unexpected
   application errors must still preserve traceback logs.
 
@@ -70,7 +70,7 @@ Initial categories:
 | kind | Source | Log | Degraded | Backoff |
 | --- | --- | --- | --- | --- |
 | `transport` | `KisTransportError` | warning, no traceback | yes | yes |
-| `rate_limit` | `KisRateLimitError` | warning, no traceback | yes | yes |
+| `rate_limit` | `KisRateLimitError` | warning, no traceback | yes | no by default |
 | `auth` | `KisAuthError` | warning, no traceback | yes | yes |
 | `kis_api` | other `KisApiError` | warning, no traceback | yes | no by default |
 | `internal` | supervisor-marked local conversion/model errors | error, traceback | yes | no |
@@ -106,6 +106,8 @@ Changes:
 - Apply suggested backoff by skipping future cycles while updating
   `last_cycle_ms`.
 - Clear degraded status after a cycle completes with zero target errors.
+- Expose the display-only poller state through additive `/api/live/status` fields
+  prefixed with `rest_poller_`.
 
 ### Rest30sRecorder
 
@@ -121,8 +123,8 @@ Changes:
   - `backoff_remaining`
 - Replace local `isinstance` branches with `classify_live_error`.
 - Preserve current behavior that KIS API errors log warning without traceback.
-- Preserve existing backoff behavior for auth/rate-limit style failures, while
-  allowing the shared policy to provide the suggested cycle count.
+- Preserve auth-style supervisor backoff while letting KIS rate-limit throttling
+  stay owned by `KisClient` retry and **KIS Capacity Scheduler** cooldown.
 
 ### ProgramTradeCollector
 
@@ -135,7 +137,8 @@ Changes:
 - Add `last_error_kind` and `last_error_code` to `ProgramTradeCollectorStatus`.
 - Use policy logging rules so KIS operational failures do not emit traceback,
   while unexpected local errors still do.
-- Do not introduce a new scheduler or retry model for program trade collection.
+- Do not introduce supervisor backoff, scheduler changes, retry changes, or store
+  behavior changes for program trade collection.
 
 ### Backfill/Route Orchestrators
 
@@ -144,6 +147,22 @@ scope. They often combine cache fallback, API response modeling, and warning
 projection, so moving them to the shared policy should be handled after the
 supervisor loop migration proves stable. Do not change cache, fallback, or
 route response behavior in this implementation.
+
+### Lifecycle Status
+
+Expose `LiveRestPoller.status()` through `/api/live/status` using additive fields:
+
+- `rest_poller_degraded`
+- `rest_poller_last_error`
+- `rest_poller_last_error_kind`
+- `rest_poller_last_error_code`
+- `rest_poller_last_error_count`
+- `rest_poller_backoff_remaining`
+
+Use the `rest_poller_` prefix deliberately. Do not reuse the existing
+`kis_api_*` fields because those describe the persistent `Rest30sRecorder`
+capture path, while `LiveRestPoller` is display-only. These fields must not
+affect `capture_healthy`, `capture_reason`, or `degraded_accounts`.
 
 ## Logging Contract
 
@@ -170,13 +189,23 @@ exc_info=True)`.
 Status fields are append-only for compatibility. Existing fields must not be
 removed or renamed.
 
-`last_error` remains a compact string that can be displayed directly.
-`last_error_kind` and `last_error_code` are stable machine-readable fields for
-API/UI logic. `degraded` is true when the last completed or skipped cycle still
-has an active error condition.
+`last_error` remains a compatibility string close to the current
+`f"{type(exc).__name__}: {exc}"` shape. It is displayable but not stable for
+machine decisions. `last_error_kind` and `last_error_code` are the stable
+machine-readable fields for API/UI logic. `degraded` is true when the last
+completed or skipped cycle still has an active error condition.
 
 Backoff skips are observable: a supervisor in backoff updates `last_cycle_ms`,
 retains the last error fields, and reports `backoff_remaining > 0`.
+Supervisor backoff is only a loop-noise/load guard for failures that are unlikely
+to recover on the next immediate cycle. It must not duplicate **KIS Capacity
+Scheduler** cooldown ownership for exhausted KIS rate-limit errors.
+`ProgramTradeCollector` adopts shared classification/logging/status fields only;
+it does not gain a new backoff loop in this implementation.
+
+`/api/live/status` gains only additive `rest_poller_*` fields. Their meaning is
+limited to the display-only **LiveRestPoller** and must not be interpreted as
+global capture health or account health.
 
 ## Testing Strategy
 
@@ -185,7 +214,8 @@ Use TDD.
 Add focused unit tests for `hoga.live.error_policy`:
 
 - `KisTransportError` maps to `transport`, no traceback, degraded, with backoff.
-- `KisRateLimitError` maps to `rate_limit`, no traceback, degraded, with backoff.
+- `KisRateLimitError` maps to `rate_limit`, no traceback, degraded, without
+  supervisor backoff.
 - `KisAuthError` maps to `auth`, no traceback, degraded, with backoff.
 - Generic `KisApiError` maps to `kis_api`, no traceback, degraded.
 - Generic `RuntimeError` maps to `unexpected`, traceback enabled.
@@ -195,11 +225,14 @@ Add supervisor tests:
 - `LiveRestPoller` logs `KisTransportError` as one warning without traceback.
 - `LiveRestPoller` logs unexpected local errors with traceback.
 - `LiveRestPoller.status()` reports kind/code/count/degraded/backoff.
+- `/api/live/status` exposes `rest_poller_*` fields from `LiveRestPoller.status()`
+  without changing `capture_healthy`, `capture_reason`, or `degraded_accounts`.
 - A successful `LiveRestPoller` cycle clears degraded fields.
 - `Rest30sRecorder` preserves current transport warning behavior via shared
   policy.
 - `ProgramTradeCollector` preserves current status count behavior while adopting
-  compact KIS failure logs and the new kind/code fields.
+  compact KIS failure logs and the new kind/code fields, without changing its
+  collection cadence.
 
 Run targeted tests first, then the relevant live unit test subset.
 
@@ -220,7 +253,7 @@ Backfill and route orchestrators remain follow-up work.
 Use conservative initial backoff defaults:
 
 - transport: 3 cycles
-- rate_limit: 3 cycles
+- rate_limit: 0 cycles
 - auth: 3 cycles
 - generic kis_api: 0 cycles
 - unexpected: 0 cycles
