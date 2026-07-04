@@ -8,6 +8,7 @@ import {
 } from '../state/chartPrefs';
 import { SOURCE_OPTIONS } from '../state/sourcePreference';
 import { CANDLE_DATA_PREFERENCE_OPTIONS } from '../state/candleDataPreference';
+import { useKisRestModeStore } from '../state/kisRestMode';
 import {
   LIVE_VENUE_LABELS,
   LIVE_VENUE_OPTIONS,
@@ -136,6 +137,8 @@ function ViLimitPriceLineStyleRow() {
 function DataSourceDetail() {
   const { data } = useLiveSettings();
   const patch = usePatchLiveSettings();
+  const kisRestBypassEnabled = useKisRestModeStore((s) => s.kisRestBypassEnabled);
+  const setKisRestBypassEnabled = useKisRestModeStore((s) => s.setKisRestBypassEnabled);
   const storagePolicy = data?.storage_policy ?? 'ws_plus_rest';
   const restAllowed = data != null && storagePolicy !== 'ws_only';
   const programTradeEnabled = data?.program_trade_storage_enabled ?? false;
@@ -150,6 +153,18 @@ function DataSourceDetail() {
           <LiveVenueRadio key={opt} value={opt} />
         ))}
       </div>
+      <SettingsRow
+        label="KIS API 우회"
+        description="KIS REST 연결이 불안정할 때 분봉·일봉 캔들 API 호출을 건너뛰고 저장 데이터로 표시합니다."
+        className="mb-3"
+        testId="kis-rest-bypass-row"
+      >
+        <ToggleSwitch
+          label="KIS API 우회"
+          checked={kisRestBypassEnabled}
+          onClick={() => setKisRestBypassEnabled(!kisRestBypassEnabled)}
+        />
+      </SettingsRow>
       <div style={{ fontSize: 'var(--text-sm)', color: 'var(--fg-dim)', marginBottom: 'var(--space-xs)' }}>
         데이터 저장 방식
       </div>

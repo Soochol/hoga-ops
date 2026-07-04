@@ -12,6 +12,7 @@ import { useEventStream } from './api/eventStream';
 import { useInventoryRecaptureOriginsCleanup } from './inventory/useInventoryRecaptureOrigins';
 import { useCaptureQueueSync } from './capture/useCaptureQueue';
 import SignalAlertToastHost from './signalAlerts/SignalAlertToastHost';
+import KisRestUnavailableToastHost from './live/KisRestUnavailableToastHost';
 import { useSignalAlertEvents } from './signalAlerts/useSignalAlertEvents';
 import { useStaticDocumentTitle } from './util/useDocumentTitle';
 import { ModalShell } from './ui/ModalShell';
@@ -49,6 +50,7 @@ export default function App() {
     >
       {staticTitle !== null && <StaticDocumentTitle title={staticTitle} />}
       <SignalAlertToastHost />
+      <KisRestUnavailableToastHost />
       <TopNav onOpenSettings={() => setSettingsOpen(true)} />
       {settingsOpen && (
         <ModalShell

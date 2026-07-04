@@ -10,6 +10,10 @@ import type { LiveVenueOption } from '../state/liveVenue';
 import { useSourcePreferenceStore } from '../state/sourcePreference';
 import { useCandleDataPreferenceStore } from '../state/candleDataPreference';
 import {
+  kisRestWarningIndicatesUnavailable,
+  useKisRestModeStore,
+} from '../state/kisRestMode';
+import {
   TIMEFRAME_TO_MS,
   type Timeframe,
   type RangeBundle,
@@ -254,6 +258,8 @@ export function useLiveBundle(
   const volumeDistributionRangeCount = useLivePageStore((s) => s.volumeDistributionRangeCount);
   const sourcePreference = useSourcePreferenceStore((s) => s.sourcePreference);
   const candleDataPreference = useCandleDataPreferenceStore((s) => s.candleDataPreference);
+  const kisRestBypassEnabled = useKisRestModeStore((s) => s.kisRestBypassEnabled);
+  const notifyKisRestFailure = useKisRestModeStore((s) => s.notifyFailure);
   const venue = options.venue ?? 'KRX';
   const preferHogaplayCandles = candleDataPreference === 'hogaplay_first';
   const preferScreenerDailyCandles = candleDataPreference === 'auto' || candleDataPreference === 'screener_daily_first';
@@ -277,7 +283,7 @@ export function useLiveBundle(
 
   // Minute-only gate: both /api/range (hoga indicators) and
   // /api/live/past-candles fire on the same condition.
-  const enableMinute = !!(code && isMinute && minutePastFrom <= minutePastTo);
+  const enableMinute = !!(code && isMinute && minutePastFrom <= minutePastTo && !kisRestBypassEnabled);
   const pastCandlesQuery = useLivePastCandles(
     enableMinute ? code : null,
     enableMinute ? minutePastFrom : null,
@@ -286,7 +292,7 @@ export function useLiveBundle(
   );
 
   // KIS daily past-candles — only enabled for D/W/M timeframes (ADR-0048).
-  const enableDaily = !!(code && !isMinute);
+  const enableDaily = !!(code && !isMinute && !kisRestBypassEnabled);
   const dailyPastFrom = seedFrom;
   const dailyPastTo = todayKstYyyymmdd;
   const pastDailyCandlesQuery = useLivePastDailyCandles(
@@ -320,7 +326,22 @@ export function useLiveBundle(
     [enableInvestor, investorQuery.data],
   );
 
+  useEffect(() => {
+    const warnings = isMinute
+      ? pastCandlesQuery.data?.data_warnings ?? []
+      : pastDailyCandlesQuery.data?.data_warnings ?? [];
+    if (warnings.some(kisRestWarningIndicatesUnavailable)) {
+      notifyKisRestFailure();
+    }
+  }, [
+    isMinute,
+    notifyKisRestFailure,
+    pastCandlesQuery.data?.data_warnings,
+    pastDailyCandlesQuery.data?.data_warnings,
+  ]);
+
   const candleFallbackNeeded = !!(code && (
+    (kisRestBypassEnabled && (isMinute || timeframe === 'D')) ||
     (preferHogaplayCandles && (isMinute || timeframe === 'D')) ||
     (isMinute
       ? pastCandlesQuery.data != null && pastCandlesQuery.data.data_warnings.length > 0
@@ -367,7 +388,7 @@ export function useLiveBundle(
       hogaplayCandleFallback.data?.candles ?? [],
     );
     if (isMinute) {
-      const raw = pastCandlesQuery.data?.candles ?? [];
+      const raw = kisRestBypassEnabled ? [] : pastCandlesQuery.data?.candles ?? [];
       if (raw.length === 0) return selectedRangeFallback;
       // Minute timeframes: epoch-floor bucket via aggregateCandles (also dedupes
       // within-bucket duplicates from pre-f63ed15 KIS cache files).
@@ -381,7 +402,7 @@ export function useLiveBundle(
     // identity-ish (one bucket per bar); for 'W'/'M' aggregateCalendar groups
     // by ISO week / calendar month using the bar's first 1m bar t_ms so
     // axis.contains admits it inside that Segment.
-    const raw = pastDailyCandlesQuery.data?.candles ?? [];
+    const raw = kisRestBypassEnabled ? [] : pastDailyCandlesQuery.data?.candles ?? [];
     const screenerRaw = screenerDailyCandlesQuery.data?.candles ?? [];
     const fallbackRaw = selectedRangeFallback.map((c) => ({
       t_ms: c.ts_ms,
