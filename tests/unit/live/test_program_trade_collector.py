@@ -134,6 +134,37 @@ async def test_program_trade_collector_polls_capture_candidates_and_skips_failed
 
 
 @pytest.mark.asyncio
+async def test_program_trade_collector_clears_stale_error_state_when_load_document_fails(tmp_path, monkeypatch):
+    from hoga.live.program_trade_collector import ProgramTradeCollector
+
+    def _load_document_fails(_data_dir):
+        raise RuntimeError("load failed")
+
+    monkeypatch.setattr(
+        "hoga.live.program_trade_collector.load_document",
+        _load_document_fails,
+    )
+
+    collector = ProgramTradeCollector(
+        data_dir=tmp_path,
+        date_fn=lambda: "20260625",
+        now_ms_fn=lambda: 1000,
+    )
+    collector.status.last_error = "previous error"
+    collector.status.last_error_kind = "previous kind"
+    collector.status.last_error_code = "previous code"
+    collector.status.last_error_count = 3
+
+    with pytest.raises(RuntimeError, match="load failed"):
+        await collector.run_once()
+
+    assert collector.status.last_error is None
+    assert collector.status.last_error_kind is None
+    assert collector.status.last_error_code is None
+    assert collector.status.last_error_count == 0
+
+
+@pytest.mark.asyncio
 async def test_program_trade_collector_uses_capacity_scheduler(tmp_path, monkeypatch):
     from hoga.live.kis_models import ProgramTradeByStockRow
     from hoga.live.program_trade_collector import ProgramTradeCollector

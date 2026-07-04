@@ -90,13 +90,13 @@ class ProgramTradeCollector:
             await asyncio.sleep(self._poll_interval_s)
 
     async def run_once(self) -> None:
-        doc = load_document(self.data_dir)
-        codes = capture_ordered_codes(doc)
-        self.status.targets = tuple(codes)
         self.status.last_error = None
         self.status.last_error_kind = None
         self.status.last_error_code = None
         self.status.last_error_count = 0
+        doc = load_document(self.data_dir)
+        codes = capture_ordered_codes(doc)
+        self.status.targets = tuple(codes)
         date = self._date_fn()
         observed_at_ms = self._now_ms_fn()
         if not self._should_collect_fn(observed_at_ms):
