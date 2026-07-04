@@ -348,12 +348,12 @@ async def test_past_candles_happy_path_single_date(tmp_path) -> None:
         assert body["fresh_dates"] == [yesterday]
         assert body["cached_dates"] == []
         assert body["data_warnings"] == []
-        # Disk file written under tmp_path
-        assert (tmp_path / "kis-past-candles" / "005930" / f"{yesterday}.json").exists()
+        # Past candles are stored in-memory only.
+        assert not (tmp_path / "kis-past-candles").exists()
 
 
 @pytest.mark.asyncio
-async def test_past_candles_disk_cache_hit_on_second_call(tmp_path) -> None:
+async def test_past_candles_memory_cache_hit_on_second_call(tmp_path) -> None:
     fake = _FakeKisForPast()
     app = _past_app(tmp_path, fake)
     with TestClient(app) as c:
@@ -543,24 +543,12 @@ async def test_past_candles_rate_limit_blocks_unstarted_fetches(tmp_path) -> Non
 @pytest.mark.asyncio
 async def test_past_candles_rate_limit_still_serves_later_cache_hits(tmp_path) -> None:
     """When KIS rate-limits mid-range, dates AFTER the abort that are already
-    on disk must still be served. Regression for the "candles all disappear
+    in memory must still be served. Regression for the "candles all disappear
     when scrolling to past" bug: backend used to skip every subsequent date
     unconditionally, so cached dates were dropped from the response and the
     frontend's `kisCandles` shrank while `past.data.segments` (independent of
     KIS) kept full coverage — leaving the candle pane empty over a wide axis."""
     from hoga.live.kis_client import KisRateLimitError
-    from hoga.live.past_candles_cache import PastCandlesCache
-
-    # Pre-populate the cache for the date AFTER the rate-limited one, so it
-    # would be served as a hit if the loop checks the cache instead of bailing.
-    # t_ms must match the requested date (KST) or PastCandlesCache's
-    # date-match guard evicts the entry as stale.
-    kst = datetime.timezone(datetime.timedelta(hours=9))
-    cached_t_ms = int(datetime.datetime(2026, 5, 3, 9, 0, tzinfo=kst).timestamp() * 1000)
-    pre_cache = PastCandlesCache(data_dir=tmp_path)
-    pre_cache.store_past("005930", "20260503", [
-        {"t_ms": cached_t_ms, "open": 200, "high": 210, "low": 195, "close": 205, "volume": 50},
-    ])
 
     class _RateLimitedFakeKis:
         def __init__(self):
@@ -570,11 +558,21 @@ async def test_past_candles_rate_limit_still_serves_later_cache_hits(tmp_path) -
             self.calls.append(date_yyyymmdd)
             if date_yyyymmdd == "20260502":
                 raise KisRateLimitError("EGW00201 rate limited")
-            return [KisCandle(t_ms=1, open=100, high=110, low=95, close=105, volume=10)]
+            kst = datetime.timezone(datetime.timedelta(hours=9))
+            y, m, d = (
+                int(date_yyyymmdd[:4]),
+                int(date_yyyymmdd[4:6]),
+                int(date_yyyymmdd[6:8]),
+            )
+            t_ms = int(
+                datetime.datetime(y, m, d, 9, 0, tzinfo=kst).timestamp() * 1000
+            )
+            return [KisCandle(t_ms=t_ms, open=100, high=110, low=95, close=105, volume=10)]
 
     fake = _RateLimitedFakeKis()
     app = _past_app(tmp_path, fake)
     with TestClient(app) as c:
+        c.get("/api/live/past-candles?code=005930&from=20260503&to=20260503")
         r = c.get("/api/live/past-candles?code=005930&from=20260501&to=20260503")
         assert r.status_code == 200
         body = r.json()
@@ -587,7 +585,8 @@ async def test_past_candles_rate_limit_still_serves_later_cache_hits(tmp_path) -
         # invariant — don't hammer the rate-limited remote). The fake raises
         # once on 20260502; client retry is opaque to it (covered by
         # test_kis_client.py tests).
-        assert fake.calls == ["20260501", "20260502"]
+        assert sorted(fake.calls) == ["20260501", "20260502", "20260503"]
+        assert fake.calls.count("20260503") == 1
         # The aborted-warning is now only emitted when there was no cache to
         # fall back on. 20260503 was cached, so it should NOT carry a warning.
         warn_dates = [w["date"] for w in body["data_warnings"]]
@@ -644,9 +643,9 @@ async def test_past_candles_weekend_empty_response(tmp_path) -> None:
 
 
 @pytest.mark.asyncio
-async def test_past_candles_disk_cache_survives_router_rebuild(tmp_path) -> None:
-    """Past disk cache must survive a new router/cache instance — simulating
-    a server restart. Builds two apps against the same tmp_path."""
+async def test_past_candles_memory_cache_not_survives_router_rebuild(tmp_path) -> None:
+    """Past memory cache is per-router process state; rebuilding the router
+    starts with a fresh cache."""
     kst = datetime.timezone(datetime.timedelta(hours=9))
     yesterday = (datetime.datetime.now(kst) - datetime.timedelta(days=1)).strftime("%Y%m%d")
 
@@ -656,15 +655,15 @@ async def test_past_candles_disk_cache_survives_router_rebuild(tmp_path) -> None
         c.get(f"/api/live/past-candles?code=005930&from={yesterday}&to={yesterday}")
         assert fake1.calls == [yesterday]
 
-    # Second router with a *fresh* cache instance (simulating restart). KIS
-    # must not be called again — disk hit only.
+    # Second router with a *fresh* cache instance (simulating restart) must fetch again.
     fake2 = _FakeKisForPast()
     app2 = _past_app(tmp_path, fake2)
     with TestClient(app2) as c:
         r = c.get(f"/api/live/past-candles?code=005930&from={yesterday}&to={yesterday}")
         assert r.status_code == 200
-        assert fake2.calls == []
-        assert r.json()["cached_dates"] == [yesterday]
+        assert fake2.calls == [yesterday]
+        assert r.json()["cached_dates"] == []
+        assert r.json()["fresh_dates"] == [yesterday]
 
 
 def test_minute_today_non_trading_day_negative_caches(tmp_path, monkeypatch) -> None:

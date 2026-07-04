@@ -157,3 +157,57 @@ async def test_ws_plus_rest_excludes_ws_targets_from_api_recorder(tmp_path, monk
     assert lifecycle.get_status().live_set == ["005930"]
     assert lifecycle.get_status().kis_api_targets == ["000660"]
     await lifecycle.stop_live_stream()
+
+
+@pytest.mark.asyncio
+async def test_kis_rest_bypass_prevents_api_recorder_start(tmp_path, monkeypatch):
+    from hoga.api.models import WatchlistDocument, WatchlistEntry, WatchlistFolder
+    from hoga.api.watchlist import save_document
+    from hoga.live.settings import LiveSettings, save_live_settings
+    from hoga.live import lifecycle
+
+    lifecycle.reset_for_tests()
+    FakeRest30Recorder.created.clear()
+    save_live_settings(
+        tmp_path,
+        LiveSettings(storage_policy="rest_only", kis_rest_bypass_enabled=True),
+    )
+    save_document(
+        tmp_path,
+        WatchlistDocument(
+            folders=[
+                WatchlistFolder(
+                    id="f_0000000a",
+                    name="스윙",
+                    order=0,
+                    member_codes=["005930", "000660"],
+                    capture_enabled=True,
+                )
+            ],
+            entries=[
+                WatchlistEntry(code="005930", name="삼성전자", registered_at_kst_date="20260601"),
+                WatchlistEntry(code="000660", name="SK하이닉스", registered_at_kst_date="20260601"),
+            ],
+        ),
+    )
+
+    class Hit:
+        def __init__(self, code):
+            self.code = code
+
+    monkeypatch.setattr(
+        "hoga.api.symbols.search",
+        lambda _query, limit=10_000: [Hit("005930"), Hit("000660")],
+    )
+    monkeypatch.setattr("hoga.live.kis_runtime.configured_account_ids", lambda data_dir: [0])
+    monkeypatch.setattr("hoga.live.kis_runtime.ensure_kis_client_from_env", lambda data_dir: object())
+    monkeypatch.setattr("hoga.live.rest30_recorder.Rest30sRecorder", FakeRest30Recorder)
+
+    assert await lifecycle.start_live_stream(data_dir=tmp_path) is True
+
+    status = lifecycle.get_status()
+    assert status.storage_policy == "rest_only"
+    assert status.kis_rest_bypass_enabled is True
+    assert status.kis_api_targets == []
+    assert status.kis_api_running is False
+    assert FakeRest30Recorder.created == []

@@ -100,7 +100,8 @@ def test_past_candles_bypass_uses_cached_krx_fallback_for_non_krx_request(
 ) -> None:
     fake = _CountingKis()
     date_s = "20240102"
-    PastCandlesCache(tmp_path).store_past(
+    cache = PastCandlesCache(tmp_path)
+    cache.store_past(
         "KRX",
         "005930",
         date_s,
@@ -115,6 +116,7 @@ def test_past_candles_bypass_uses_cached_krx_fallback_for_non_krx_request(
             }
         ],
     )
+    monkeypatch.setattr(live_api, "PastCandlesCache", lambda data_dir: cache)
     app = _bypass_app(tmp_path, fake)
     run_with_capacity_calls = 0
 

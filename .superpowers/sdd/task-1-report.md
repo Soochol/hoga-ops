@@ -1,39 +1,53 @@
 Status: DONE
 
-Task: Backend Live Settings Become Partial and Persist Bypass
+Task: Convert Minute Candle Cache to Memory Only
 
-Implemented:
-- Added `kis_rest_bypass_enabled: bool = False` to `LiveSettingsResponse`.
-- Made `LiveSettingsUpdate` partial for `storage_policy`, `program_trade_storage_enabled`, and `kis_rest_bypass_enabled`.
-- Updated `update_live_settings(...)` to preserve omitted fields while still forcing program-trade storage off under `ws_only`.
-- Wired `/api/live/settings` PATCH to pass through `kis_rest_bypass_enabled`.
-- Replaced `tests/unit/live/test_settings.py` with the brief-specified red/green coverage for default, partial patch, `ws_only`, and corrupt-file fallback behavior.
+Scope:
+- Updated `hoga/live/past_candles_cache.py` to use in-process storage only for past candles.
+- Updated `tests/unit/live/test_past_candles_cache.py` to remove disk-cache assumptions and assert the new memory-only behavior.
 
-TDD record:
-1. Added the new settings tests first.
-2. Red: `uv run --extra dev pytest tests/unit/live/test_settings.py -q`
-   - Failed for the expected reasons: missing `kis_rest_bypass_enabled` and missing partial update support.
-3. Green: implemented the backend model/persistence/route changes.
-4. Verification: `uv run --extra dev pytest tests/unit/live/test_settings.py tests/unit/live/test_storage_runtime.py -q`
+Changes:
+- Replaced past-cache tests with:
+  - `test_past_memory_miss_then_store_then_hit_without_disk_write`
+  - `test_past_cache_does_not_read_legacy_json_files`
+- Removed/replaced legacy disk-specific tests for past cache:
+  - `test_past_disk_miss_then_store_then_hit`
+  - `test_past_corrupt_cache_treated_as_miss_and_heals_on_store`
+  - `test_past_stale_cache_with_wrong_date_treated_as_miss_and_evicted`
+  - `test_past_empty_cache_for_non_trading_day_is_valid`
+  - `test_past_mem_with_wrong_date_evicts_and_falls_through_to_disk`
+- Changed `get_past` to read only `_past_mem` and validate date via `_bars_match_date`.
+- Changed `store_past` to update only `_past_mem` and LRU size.
+- Changed `delete_past` to evict only `_past_mem`.
+- Updated module docstring for memory-only intent and removed disk persistence imports/paths.
 
-Verification result:
-- `tests/unit/live/test_settings.py`: 4 passed
-- `tests/unit/live/test_storage_runtime.py`: 5 passed
+Verification:
+- `uv run --extra dev pytest tests/unit/live/test_past_candles_cache.py -q`  
+  - `13 passed in 0.08s`
+- `uv run --extra dev ruff check hoga/live/past_candles_cache.py tests/unit/live/test_past_candles_cache.py`
+  - `All checks passed!`
 
-Scope / constraints:
-- Left existing unrelated docs/spec/plan worktree changes untouched and unstaged.
-- Staged only Task 1 files for commit.
+Follow-up review finding fix:
+- Updated `tests/unit/live/test_api.py` at `test_past_candles_happy_path_single_date`:
+  - Replaced disk-file existence assertion with memory-only assertion:
+    `assert not (tmp_path / "kis-past-candles").exists()`.
+- Adjusted two additional API cache-behavior tests to align with in-memory-only cache semantics:
+  - `test_past_candles_rate_limit_still_serves_later_cache_hits`
+  - `test_past_candles_disk_cache_survives_router_rebuild` (renamed to
+    `test_past_candles_memory_cache_not_survives_router_rebuild`)
 
-Commit:
-- `feat: persist KIS REST bypass setting`
+Verification:
+- `uv run --extra dev pytest tests/unit/live/test_api.py -q`  
+  - `107 passed in 3.51s`
+- `uv run --extra dev pytest tests/unit/live/test_past_candles_cache.py tests/unit/live/test_api.py -q`
+  - `120 passed in 3.20s`
 
-Concern:
-- Existing route tests in `tests/unit/live/test_api.py` still assert the old `/api/live/settings` JSON shape and were not updated here because the task brief scoped owned files to the three backend modules plus `tests/unit/live/test_settings.py`. They may need follow-up once that task owns API test updates.
+Review finding follow-up:
+- Fixed `tests/unit/live/test_api_kis_rest_bypass_candles.py` to match the memory-only cache seam:
+  - `test_past_candles_bypass_uses_cached_krx_fallback_for_non_krx_request` now creates a seeded `PastCandlesCache` instance and monkeypatches `live_api.PastCandlesCache` before `_bypass_app()`, so the router uses the same cache instance.
 
-Review fix (Important):
-- Updated `tests/unit/live/test_api.py` route expectations to include `kis_rest_bypass_enabled` in the `/api/live/settings` response shape.
-- Added route coverage proving `PATCH /api/live/settings` can set `kis_rest_bypass_enabled` without sending `storage_policy`, preserving the partial patch contract.
-
-Review-fix verification:
-- `uv run --extra dev pytest tests/unit/live/test_api.py -q -k live_settings` -> 4 passed
-- `uv run --extra dev pytest tests/unit/live/test_settings.py tests/unit/live/test_storage_runtime.py -q` -> 9 passed
+Verification:
+- `uv run --extra dev pytest tests/unit/live/test_api_kis_rest_bypass_candles.py -q`
+  - `6 passed in 0.22s`
+- `uv run --extra dev pytest tests/unit/live/test_past_candles_cache.py tests/unit/live/test_api.py tests/unit/live/test_api_kis_rest_bypass_candles.py -q`
+  - `126 passed in 3.22s`
