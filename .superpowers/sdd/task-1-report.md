@@ -26,3 +26,18 @@ Verification:
   - `13 passed in 0.08s`
 - `uv run --extra dev ruff check hoga/live/past_candles_cache.py tests/unit/live/test_past_candles_cache.py`
   - `All checks passed!`
+
+Follow-up review finding fix:
+- Updated `tests/unit/live/test_api.py` at `test_past_candles_happy_path_single_date`:
+  - Replaced disk-file existence assertion with memory-only assertion:
+    `assert not (tmp_path / "kis-past-candles").exists()`.
+- Adjusted two additional API cache-behavior tests to align with in-memory-only cache semantics:
+  - `test_past_candles_rate_limit_still_serves_later_cache_hits`
+  - `test_past_candles_disk_cache_survives_router_rebuild` (renamed to
+    `test_past_candles_memory_cache_not_survives_router_rebuild`)
+
+Verification:
+- `uv run --extra dev pytest tests/unit/live/test_api.py -q`  
+  - `107 passed in 3.51s`
+- `uv run --extra dev pytest tests/unit/live/test_past_candles_cache.py tests/unit/live/test_api.py -q`
+  - `120 passed in 3.20s`
