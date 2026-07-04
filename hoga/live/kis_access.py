@@ -21,7 +21,8 @@ from pathlib import Path
 from typing import Literal, Protocol, TypeVar
 
 from . import account_health, kis_runtime
-from .kis_client import KisAuthError, KisClient
+from .kis_client import KisApiError, KisAuthError, KisClient
+from .settings import load_live_settings
 
 _T = TypeVar("_T")
 KisRequestPriority = Literal["user_visible", "background"]
@@ -51,10 +52,27 @@ class KisRestEndpoint(StrEnum):
     SCREENER_DAILY = "screener-daily"
 
 
+class KisRestBypassedError(KisApiError):
+    def __init__(self) -> None:
+        super().__init__(
+            msg_cd="KIS_REST_BYPASSED",
+            msg1="KIS REST bypass is enabled",
+        )
+
+
 def _endpoint_value(endpoint: KisRestEndpoint) -> str:
     if not isinstance(endpoint, KisRestEndpoint):
         raise TypeError("endpoint must be a KisRestEndpoint")
     return endpoint.value
+
+
+def kis_rest_bypass_enabled(data_dir: Path) -> bool:
+    return load_live_settings(data_dir).kis_rest_bypass_enabled
+
+
+def _raise_if_bypassed(data_dir: Path) -> None:
+    if kis_rest_bypass_enabled(data_dir):
+        raise KisRestBypassedError()
 
 
 def has_rest_capacity(data_dir: Path) -> bool:
@@ -142,6 +160,7 @@ async def fetch_for_role(
 
     client 미해결(creds 전무) 또는 재해결이 동일 client(N=1/이미 account 0)면 KisAuthError를
     전파한다 — 호출부가 침묵 사망 없이 실패를 표면화하도록."""
+    _raise_if_bypassed(data_dir)
     client = kis_for_role(role, data_dir)
     if client is None:
         raise KisAuthError(f"no KIS client available for role={role} (creds missing)")
@@ -171,6 +190,7 @@ async def run_with_capacity(
     client choice. `scheduler=None` is retained only as a legacy test/fallback
     path and keeps the old role-routed auth-fallback behavior.
     """
+    _raise_if_bypassed(data_dir)
     endpoint_value = _endpoint_value(endpoint)
     if scheduler is None:
         return await fetch_for_role(role, data_dir, fetch_fn)
