@@ -1,13 +1,15 @@
-# Task 4 Report: Rest30sRecorder Policy Migration
+# Task 4 Report: Cache-Only Candle and Index Endpoints
 
 ## Scope
 
-Implemented only Task 4 in:
+Implemented Task 4 only:
 
-- `hoga/live/rest30_recorder.py`
-- `tests/unit/live/test_rest30_recorder.py`
+- `hoga/live/live_candle_backfill.py`
+- `hoga/live/live_daily_candle_backfill.py`
+- `hoga/live/api.py`
+- `tests/unit/live/test_api_kis_rest_bypass_candles.py`
 
-Did not modify `ProgramTradeCollector` or any backfill route.
+Unrelated documentation, plan, and progress files already present in the worktree were not reverted or staged.
 
 ## TDD Evidence
 
@@ -16,90 +18,165 @@ Did not modify `ProgramTradeCollector` or any backfill route.
 Command:
 
 ```bash
-/home/dev/code/hoga-ops/.venv/bin/python -m pytest tests/unit/live/test_rest30_recorder.py::test_rest30_recorder_logs_transport_failures_without_traceback tests/unit/live/test_rest30_recorder.py::test_rest30_recorder_rate_limit_does_not_supervisor_backoff tests/unit/live/test_rest30_recorder.py::test_rest30_recorder_unexpected_failures_keep_traceback -q
+uv run pytest tests/unit/live/test_api_kis_rest_bypass_candles.py -q
 ```
 
 Result:
 
 - Exit code: `1`
-- `3` tests failed as expected
-- Failures showed:
-  - transport log message missing `kind=transport`
-  - rate-limit path still skipped the second poll due to supervisor backoff
-  - unexpected error log message missing `kind=unexpected error=RuntimeError`
+- `3` tests failed as expected.
+- Minute and daily endpoints returned `kis_api_error` instead of `kis_rest_bypassed`.
+- Index daily endpoint returned HTTP 500 under bypass.
 
 ### GREEN
 
 Command:
 
 ```bash
-/home/dev/code/hoga-ops/.venv/bin/python -m pytest tests/unit/live/test_rest30_recorder.py::test_rest30_recorder_logs_transport_failures_without_traceback tests/unit/live/test_rest30_recorder.py::test_rest30_recorder_rate_limit_does_not_supervisor_backoff tests/unit/live/test_rest30_recorder.py::test_rest30_recorder_unexpected_failures_keep_traceback -q
+uv run pytest tests/unit/live/test_api_kis_rest_bypass_candles.py -q
 ```
 
 Result:
 
 - Exit code: `0`
-- `3 passed in 0.03s`
+- `4 passed in 0.15s`
+- Tests assert bypass responses return HTTP 200, first warning reason is `kis_rest_bypassed`, `kis_access.run_with_capacity` is not called, and fake KIS fetch counts stay at 0.
 
-### Full File Verification
+## Implementation Summary
+
+- Added `LiveMinuteCandleBackfill.collect_minute_cache_only`.
+  - Reads past disk cache and today memory cache only.
+  - Returns cached rows, empty `fresh_dates`, existing response shape, and per-date `kis_rest_bypassed` warnings for misses.
+- Added `LiveDailyCandleBackfill.collect_daily_cache_only`.
+  - Reads daily batch cache and today memory cache only.
+  - Computes uncovered gaps and emits `kis_rest_bypassed` batch warnings.
+  - Preserves `cached_batches`, `fresh_batches`, `venue`, and candle sorting/deduping.
+- Added router-local cache-only builders for `/index-candles`.
+  - Daily index candles read intersecting cached batches and warn for uncovered date ranges.
+  - Minute index candles read exact cache hits and warn on exact misses.
+- Moved bypass branches in `/past-candles`, `/past-daily-candles`, and `/index-candles` before normal REST capacity checks and fetch closures.
+
+## Verification
+
+Targeted Task 4 tests:
+
+```bash
+uv run pytest tests/unit/live/test_api_kis_rest_bypass_candles.py -q
+```
+
+Result: `4 passed in 0.15s`
+
+Nearby regression tests:
+
+```bash
+uv run pytest tests/unit/live/test_api.py tests/unit/live/test_live_daily_candle_backfill.py tests/unit/live/test_index_candles_cache.py tests/unit/live/test_index_minute_candles_cache.py -q
+```
+
+Result: `118 passed in 3.19s`
+
+New test file lint:
+
+```bash
+uv run ruff check tests/unit/live/test_api_kis_rest_bypass_candles.py
+```
+
+Result: `All checks passed!`
+
+Whole changed-file lint was also attempted:
+
+```bash
+uv run ruff check hoga/live/api.py hoga/live/live_candle_backfill.py hoga/live/live_daily_candle_backfill.py tests/unit/live/test_api_kis_rest_bypass_candles.py
+```
+
+Result: exit code `1` due to existing broad lint findings in long-lived live modules, plus route complexity from the existing large router structure. The new test file passes lint independently.
+
+## Concerns
+
+- No known functional concerns.
+- The live router remains large and already trips broad Ruff complexity checks; Task 4 kept changes scoped rather than refactoring that module.
+
+## P1 Review Fix: Non-KRX Minute Bypass KRX Fallback Cache
+
+### Finding
+
+Non-KRX `/past-candles` bypass requests only checked the requested venue cache. Normal non-bypass fallback can store already-fetched fallback rows under KRX cache keys, so bypass needed to serve those KRX cache rows instead of warning as a miss.
+
+### RED
 
 Command:
 
 ```bash
-/home/dev/code/hoga-ops/.venv/bin/python -m pytest tests/unit/live/test_rest30_recorder.py -q
+uv run pytest tests/unit/live/test_api_kis_rest_bypass_candles.py -q
 ```
 
 Result:
 
-- Exit code: `0`
-- `10 passed in 0.06s`
-
-## Implementation Summary
-
-- Migrated `Rest30sRecorder` to shared live error policy helpers:
-  - `classify_live_error`
-  - `format_live_error`
-- Added additive `Rest30sStatus` fields:
-  - `last_error_kind`
-  - `last_error_code`
-  - `backoff_remaining`
-- Tracked `_last_error_kind` and `_last_error_code` on the recorder instance.
-- Cleared error kind/code on no-target cycles.
-- Marked unavailable KIS client as:
-  - `last_error_kind="auth"`
-  - `last_error_code="kis_unavailable"`
-- Applied policy-driven logging:
-  - warning without traceback for policy cases that suppress traceback
-  - error with traceback for unexpected failures
-- Applied policy-driven backoff:
-  - transport errors keep supervisor backoff
-  - rate-limit errors do not add supervisor backoff because policy backoff is `0`
-
-## Commit
-
-Created commit:
-
-- `feat: apply error policy to rest30 recorder`
-
-## Task 4 Review Fix: Rest30sStatus Compatibility
+- Exit code: `1`
+- `test_past_candles_bypass_uses_cached_krx_fallback_for_non_krx_request` failed with an empty `candles` response even though the KRX cache had the row.
 
 ### Fix
 
-- Made the newly added `Rest30sStatus` fields backward-compatible by adding defaults:
-  - `last_error_kind: str | None = None`
-  - `last_error_code: str | None = None`
-  - `backoff_remaining: int = 0`
-- Reordered the dataclass fields to keep `Rest30sStatus` constructible without those arguments while preserving existing status data population semantics.
+- Updated `LiveMinuteCandleBackfill.collect_minute_cache_only` so non-KRX policy misses try the KRX past cache before emitting `kis_rest_bypassed`.
+- Applied the same fallback lookup to today memory cache misses.
+- Preserved effective session venue based on the cache source, so KRX fallback rows retain KRX session metadata.
+- Added regression coverage for bypass ON, `venue=NXT`, requested venue miss, KRX fallback cache hit, no miss warning for the date, no `run_with_capacity`, and no KIS fetch.
 
-### Validation
+### Verification
 
-Ran required targeted test command:
+Targeted Task 4 tests:
 
 ```bash
-/home/dev/code/hoga-ops/.venv/bin/python -m pytest tests/unit/live/test_rest30_recorder.py tests/unit/live/test_lifecycle_rest30_recorder.py -q
+uv run pytest tests/unit/live/test_api_kis_rest_bypass_candles.py -q
+```
+
+Result: `5 passed in 0.18s`
+
+Requested nearby regression tests:
+
+```bash
+uv run pytest tests/unit/live/test_api.py tests/unit/live/test_live_daily_candle_backfill.py tests/unit/live/test_index_candles_cache.py tests/unit/live/test_index_minute_candles_cache.py -q
+```
+
+Result: `118 passed in 3.13s`
+
+## P1 Re-review Fix: Non-KRX Today Negative With KRX Today Cache
+
+### Finding
+
+Non-KRX `/past-candles` bypass requests still skipped cached KRX today fallback rows when the requested venue had a negative today-cache entry. The helper only checked KRX today data after requested-venue `miss`, not requested-venue `negative`.
+
+### RED
+
+Command:
+
+```bash
+uv run pytest tests/unit/live/test_api_kis_rest_bypass_candles.py -q
 ```
 
 Result:
 
-- Exit code: `0`
-- `12 passed`
+- Exit code: `1`
+- `test_past_candles_bypass_uses_krx_today_cache_after_non_krx_negative` failed with an empty `candles` response even though requested venue had a negative today cache entry and KRX had today rows cached.
+
+### Fix
+
+- Updated `LiveMinuteCandleBackfill.collect_minute_cache_only` so non-KRX requested-venue today state `negative` also tries KRX today cache before treating the date as unavailable.
+- Added route-level regression coverage for bypass ON, `venue=NXT`, requested-venue today negative cache, KRX today rows cached, no false miss warning, no `run_with_capacity`, and no KIS fetch.
+
+### Verification
+
+Targeted Task 4 tests:
+
+```bash
+uv run pytest tests/unit/live/test_api_kis_rest_bypass_candles.py -q
+```
+
+Result: `6 passed in 0.20s`
+
+Requested nearby regression tests:
+
+```bash
+uv run pytest tests/unit/live/test_api.py tests/unit/live/test_live_daily_candle_backfill.py tests/unit/live/test_index_candles_cache.py tests/unit/live/test_index_minute_candles_cache.py -q
+```
+
+Result: `118 passed in 3.07s`
