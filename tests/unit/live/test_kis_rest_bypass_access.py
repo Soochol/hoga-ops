@@ -46,7 +46,14 @@ async def test_run_with_capacity_blocks_before_scheduler_when_bypass_on(tmp_path
 @pytest.mark.asyncio
 async def test_run_with_capacity_blocks_legacy_fallback_when_bypass_on(tmp_path, monkeypatch):
     save_live_settings(tmp_path, LiveSettingsResponse(kis_rest_bypass_enabled=True))
-    monkeypatch.setattr(kis_access, "kis_for_role", lambda role, data_dir: object())
+    kis_for_role_called = False
+
+    def fake_kis_for_role(role, data_dir):
+        nonlocal kis_for_role_called
+        kis_for_role_called = True
+        return object()
+
+    monkeypatch.setattr(kis_access, "kis_for_role", fake_kis_for_role)
 
     with pytest.raises(kis_access.KisRestBypassedError):
         await kis_access.run_with_capacity(
@@ -58,6 +65,8 @@ async def test_run_with_capacity_blocks_legacy_fallback_when_bypass_on(tmp_path,
             priority="background",
             fetch_fn=lambda _kis: "not awaited",
         )
+
+    assert kis_for_role_called is False
 
 
 @pytest.mark.asyncio
