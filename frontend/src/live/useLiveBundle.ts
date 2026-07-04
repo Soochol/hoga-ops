@@ -69,6 +69,13 @@ function candleDateSet(candles: readonly Candle[]): Set<string> {
   return new Set(candles.map((c) => realMsToYyyymmdd(c.ts_ms)));
 }
 
+function keepRegularSessionCandles<T extends { t_ms: number }>(candles: readonly T[]): T[] {
+  return candles.filter((c) => {
+    const date = realMsToYyyymmdd(c.t_ms);
+    return c.t_ms >= regularSessionOpenMs(date) && c.t_ms <= regularSessionCloseMs(date);
+  });
+}
+
 function segmentSourceByDate(bundle: RangeBundle | null | undefined, date: string): SourceName | undefined {
   return bundle?.segments.find((s) => s.date === date)?.source;
 }
@@ -381,9 +388,10 @@ export function useLiveBundle(
       close: c.close,
       volume: candleVolume(c),
     }));
-    const fallbackBars = fallbackRaw.length === 0
+    const fallbackInput = timeframe === 'D' ? keepRegularSessionCandles(fallbackRaw) : fallbackRaw;
+    const fallbackBars = fallbackInput.length === 0
       ? []
-      : aggregateCalendar(fallbackRaw, timeframe as 'D' | 'W' | 'M');
+      : aggregateCalendar(fallbackInput, timeframe as 'D' | 'W' | 'M');
     const fallback = fallbackBars.map(kisBarToCandle);
     if (raw.length === 0) return fallback;
     const bars = timeframe === 'D' ? raw : aggregateCalendar(raw, timeframe as 'W' | 'M');

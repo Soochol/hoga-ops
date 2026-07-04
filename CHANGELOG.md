@@ -3,6 +3,11 @@
 All notable changes to this project are documented here.
 The format follows a 4-digit `MAJOR.MINOR.PATCH.MICRO` scheme.
 
+## [0.12.27.3] - 2026-07-04
+
+### Fixed
+- **/live hogaplay 일봉 fallback 표시**: hogaplay 1분봉에 장전 데이터가 섞여 있어도 일봉 캔들이 정규장 축에 맞게 집계되어 여러 날짜가 정상 표시되도록 했다.
+
 ## [0.12.27.2] - 2026-07-04
 
 ### Fixed
