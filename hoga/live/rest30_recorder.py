@@ -34,11 +34,11 @@ class Rest30sStatus:
     targets: tuple[str, ...]
     last_cycle_ms: int | None
     last_error: str | None
-    last_error_kind: str | None
-    last_error_code: str | None
     last_error_count: int
-    backoff_remaining: int
     degraded: bool
+    last_error_kind: str | None = None
+    last_error_code: str | None = None
+    backoff_remaining: int = 0
 
 
 class Rest30sRecorder:

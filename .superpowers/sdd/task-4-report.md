@@ -1,39 +1,105 @@
-# Task 4 Report
+# Task 4 Report: Rest30sRecorder Policy Migration
 
-## Summary
-- Redesigned `IndicatorPanel` and `LiveSettingsModal` with local quiet-terminal modal shells matching the task brief surface language.
-- Converted left navigation rows in both dialogs to flat bordered list rows with accent selection treatment.
-- Wrapped settings/detail panes in `DataSection` so the modal content reads as flat sections instead of nested cards.
-- Updated shared settings rows and numeric inputs to use the quieter row/input treatments required by the brief.
-- Added modal/layout regression coverage for the new surface structure.
+## Scope
 
-## Files Changed
-- `frontend/src/live/indicators/IndicatorPanel.tsx`
-- `frontend/src/live/indicators/IndicatorPanel.test.tsx`
-- `frontend/src/live/LiveSettingsModal.tsx`
-- `frontend/src/live/LiveSettingsModal.test.tsx`
-- `frontend/src/live/LiveSettingsSections.tsx`
-- `frontend/src/live/LiveSettingsSections.test.tsx`
-- `frontend/src/live/settings/SettingsRow.tsx`
-- `frontend/src/live/settings/NumericPrefRow.tsx`
-- `frontend/src/live/settings/IndicatorPrefRows.tsx`
+Implemented only Task 4 in:
 
-## Verification
-- `cd frontend && npm test -- IndicatorPanel.test.tsx LiveSettingsModal.test.tsx LiveSettingsSections.test.tsx --run`
-- `cd frontend && npm run build`
+- `hoga/live/rest30_recorder.py`
+- `tests/unit/live/test_rest30_recorder.py`
 
-## Browser QA
-- Attempted QA on `http://127.0.0.1:4173/live` and `http://localhost:4173/live`.
-- Blocked from opening the in-page `보조지표` and `설정` dialogs because local backend requests to `localhost:8000` were CORS-blocked in this environment, leaving `/live` in the empty/offline shell state without a loaded symbol workspace.
+Did not modify `ProgramTradeCollector` or any backfill route.
 
-## Notes
-- The brief's sample `capabilities` prop was adapted to the real `LiveInstrumentCapabilities` shape by including `studySave: false` in the new indicator layout test.
+## TDD Evidence
 
-## Review Fixes
-- Split the backdrop and surface responsibilities in `frontend/src/live/LiveSettingsModal.tsx` and `frontend/src/live/indicators/IndicatorPanel.tsx` so the outer `role="dialog"` layer is only the fixed tinted backdrop/grid container.
-- Restored the shared modal stacking priority by moving both outer dialog layers to `z-[60]`.
-- Added shell test hooks and updated modal structure assertions so the outer dialog must not carry `bg-bg-card` while the inner shell must.
+### RED
 
-## Test Output Summary
-- `cd frontend && npm test -- IndicatorPanel.test.tsx LiveSettingsModal.test.tsx LiveSettingsSections.test.tsx --run` -> 3 files passed, 60 tests passed.
-- `cd frontend && npm run build` -> success (`vite build` completed).
+Command:
+
+```bash
+/home/dev/code/hoga-ops/.venv/bin/python -m pytest tests/unit/live/test_rest30_recorder.py::test_rest30_recorder_logs_transport_failures_without_traceback tests/unit/live/test_rest30_recorder.py::test_rest30_recorder_rate_limit_does_not_supervisor_backoff tests/unit/live/test_rest30_recorder.py::test_rest30_recorder_unexpected_failures_keep_traceback -q
+```
+
+Result:
+
+- Exit code: `1`
+- `3` tests failed as expected
+- Failures showed:
+  - transport log message missing `kind=transport`
+  - rate-limit path still skipped the second poll due to supervisor backoff
+  - unexpected error log message missing `kind=unexpected error=RuntimeError`
+
+### GREEN
+
+Command:
+
+```bash
+/home/dev/code/hoga-ops/.venv/bin/python -m pytest tests/unit/live/test_rest30_recorder.py::test_rest30_recorder_logs_transport_failures_without_traceback tests/unit/live/test_rest30_recorder.py::test_rest30_recorder_rate_limit_does_not_supervisor_backoff tests/unit/live/test_rest30_recorder.py::test_rest30_recorder_unexpected_failures_keep_traceback -q
+```
+
+Result:
+
+- Exit code: `0`
+- `3 passed in 0.03s`
+
+### Full File Verification
+
+Command:
+
+```bash
+/home/dev/code/hoga-ops/.venv/bin/python -m pytest tests/unit/live/test_rest30_recorder.py -q
+```
+
+Result:
+
+- Exit code: `0`
+- `10 passed in 0.06s`
+
+## Implementation Summary
+
+- Migrated `Rest30sRecorder` to shared live error policy helpers:
+  - `classify_live_error`
+  - `format_live_error`
+- Added additive `Rest30sStatus` fields:
+  - `last_error_kind`
+  - `last_error_code`
+  - `backoff_remaining`
+- Tracked `_last_error_kind` and `_last_error_code` on the recorder instance.
+- Cleared error kind/code on no-target cycles.
+- Marked unavailable KIS client as:
+  - `last_error_kind="auth"`
+  - `last_error_code="kis_unavailable"`
+- Applied policy-driven logging:
+  - warning without traceback for policy cases that suppress traceback
+  - error with traceback for unexpected failures
+- Applied policy-driven backoff:
+  - transport errors keep supervisor backoff
+  - rate-limit errors do not add supervisor backoff because policy backoff is `0`
+
+## Commit
+
+Created commit:
+
+- `feat: apply error policy to rest30 recorder`
+
+## Task 4 Review Fix: Rest30sStatus Compatibility
+
+### Fix
+
+- Made the newly added `Rest30sStatus` fields backward-compatible by adding defaults:
+  - `last_error_kind: str | None = None`
+  - `last_error_code: str | None = None`
+  - `backoff_remaining: int = 0`
+- Reordered the dataclass fields to keep `Rest30sStatus` constructible without those arguments while preserving existing status data population semantics.
+
+### Validation
+
+Ran required targeted test command:
+
+```bash
+/home/dev/code/hoga-ops/.venv/bin/python -m pytest tests/unit/live/test_rest30_recorder.py tests/unit/live/test_lifecycle_rest30_recorder.py -q
+```
+
+Result:
+
+- Exit code: `0`
+- `12 passed`
