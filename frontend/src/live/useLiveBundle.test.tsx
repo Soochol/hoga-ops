@@ -5,6 +5,7 @@ import type { ReactNode } from 'react';
 import { planLiveRangeRequest, useLiveBundle } from './useLiveBundle';
 import { useLivePageStore } from '../state/livePage';
 import { useSourcePreferenceStore } from '../state/sourcePreference';
+import { useCandleDataPreferenceStore } from '../state/candleDataPreference';
 import type { LiveSeriesData } from '../api/liveSeries';
 import { createVirtualAxis } from '../util/virtualAxis';
 import { projectVolume } from '../chart/projectors/volume';
@@ -208,6 +209,7 @@ describe('useLiveBundle', () => {
       volumeDistributionRangeCount: 10,
     });
     useSourcePreferenceStore.setState({ sourcePreference: 'kis_ws_first' });
+    useCandleDataPreferenceStore.setState({ candleDataPreference: 'auto' });
   });
 
   it('builds a today-only bundle when historicalFromDate is null', () => {
@@ -569,6 +571,7 @@ describe('useLiveBundle', () => {
       undefined,
       '20260527',
       expect.objectContaining({ mode: 'full', brokerLateEntriesEnabled: false }),
+      undefined,
     );
     expect(useRangeSpy).toHaveBeenCalledWith(
       '005930',
@@ -584,6 +587,57 @@ describe('useLiveBundle', () => {
       { ts_ms: yesterdayOpen, open: 69000, high: 69100, low: 68900, close: 69050, vol_a: 900, vol_b: 0 },
       { ts_ms: 1779840000000, open: 70000, high: 70200, low: 69900, close: 70150, vol_a: 0, vol_b: 1200 },
     ]);
+    expect(result.current.chartBundle!.segments.at(-1)?.source).toBe('hogaplay');
+  });
+
+  it('candleDataPreference=hogaplay_first uses range candles before KIS warnings', () => {
+    useCandleDataPreferenceStore.setState({ candleDataPreference: 'hogaplay_first' });
+    useSourcePreferenceStore.setState({ sourcePreference: 'kis_ws_first' });
+    candlesMock.candles = [
+      { t_ms: 1779840000000, open: 1, high: 1, low: 1, close: 1, volume: 1 },
+    ];
+    candlesMock.warnings = [];
+    const hogaplayFallback = {
+      code: '005930',
+      from_date: '20260520',
+      to_date: '20260527',
+      bucket_ms: 60000,
+      segments: [{ date: '20260527', session_open_ms: 1779840000000, session_close_ms: 1779863400000, source: 'hogaplay' as const }],
+      candles: [
+        { ts_ms: 1779840000000, open: 70000, high: 70100, low: 69900, close: 70050, vol_a: 100, vol_b: 0 },
+        { ts_ms: 1779840060000, open: 70050, high: 70200, low: 70050, close: 70200, vol_a: 200, vol_b: 0 },
+      ],
+      quote_ratio: { bucket_ms: 60000, points: [] },
+      fill_strength: { bucket_ms: 60000, points: [] },
+      volume_profile_range: { bin_count: 0, price_min: 0, price_max: 0, bin_width: 0, bins: [] },
+      volume_profile_by_day: [],
+      volume_distributions: [],
+      investorPoints: [],
+      ask_peaks: [],
+      bid_peaks: [],
+      broker_late_entries: [],
+      price_level_hits: [],
+      trade_volume_pocs: [],
+      program_trade: { points: [] },
+    };
+    useRangeSpy
+      .mockReturnValueOnce(rangeResult(hogaplayFallback))
+      .mockReturnValueOnce(rangeResult())
+      .mockReturnValueOnce(rangeResult());
+
+    const { result } = renderHook(() => useLiveBundle('005930', '1m', '20260527', liveFixture), { wrapper });
+
+    expect(useRangeSpy).toHaveBeenCalledWith(
+      '005930',
+      '20260520',
+      '20260527',
+      '1m',
+      undefined,
+      '20260527',
+      expect.objectContaining({ mode: 'full', brokerLateEntriesEnabled: false }),
+      'hogaplay_first',
+    );
+    expect(result.current.chartBundle!.candles).toEqual(hogaplayFallback.candles);
     expect(result.current.chartBundle!.segments.at(-1)?.source).toBe('hogaplay');
   });
 
@@ -723,6 +777,7 @@ describe('useLiveBundle daily/minute branching (ADR-0048)', () => {
       historicalFromDate: null,
     });
     useSourcePreferenceStore.setState({ sourcePreference: 'kis_ws_first' });
+    useCandleDataPreferenceStore.setState({ candleDataPreference: 'auto' });
   });
 
   it('D timeframe calls daily hook with non-null code, minute hook with null code', () => {
@@ -793,6 +848,7 @@ describe('useLiveBundle daily/minute branching (ADR-0048)', () => {
       undefined,
       '20260527',
       expect.objectContaining({ mode: 'full', brokerLateEntriesEnabled: false }),
+      undefined,
     );
     expect(useRangeSpy).toHaveBeenCalledWith(
       '005930',
@@ -1053,6 +1109,7 @@ describe('useLiveBundle isExtending', () => {
       historicalFromDate: null,
     });
     useSourcePreferenceStore.setState({ sourcePreference: 'kis_ws_first' });
+    useCandleDataPreferenceStore.setState({ candleDataPreference: 'auto' });
   });
 
   it('is true during a historical extension (placeholderData + isFetching, historicalFromDate set)', () => {

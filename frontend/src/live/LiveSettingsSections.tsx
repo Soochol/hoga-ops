@@ -1,4 +1,4 @@
-import { Fragment, useState } from 'react';
+import { Fragment, useState, type ReactNode } from 'react';
 import {
   CHART_TOGGLES,
   DAY_BOUNDARY_COLOR_DEFAULT,
@@ -7,6 +7,7 @@ import {
   type ChartToggleCategory,
 } from '../state/chartPrefs';
 import { SOURCE_OPTIONS } from '../state/sourcePreference';
+import { CANDLE_DATA_PREFERENCE_OPTIONS } from '../state/candleDataPreference';
 import {
   LIVE_VENUE_LABELS,
   LIVE_VENUE_OPTIONS,
@@ -19,6 +20,7 @@ import { useStudyViewOpenPrefsStore, type StudyViewOpenTimeframe } from '../stat
 import MAStylePicker from './indicators/MAStylePicker';
 import IndicatorPrefRows from './settings/IndicatorPrefRows';
 import { SettingsRow, ToggleSwitch } from './settings/SettingsRow';
+import CandleDataPreferenceRadio from './settings/CandleDataPreferenceRadio';
 import SourcePreferenceRadio from './settings/SourcePreferenceRadio';
 import { DataSection } from '../ui/DataSurface';
 import SignalAlertSettingsSection from '../signalAlerts/SignalAlertSettingsSection';
@@ -48,6 +50,24 @@ const STORAGE_POLICY_LABEL: Record<LiveStoragePolicy, string> = {
 };
 
 const STORAGE_POLICY_OPTIONS: LiveStoragePolicy[] = ['ws_only', 'ws_plus_rest', 'rest_only'];
+
+function RoleSourceGroup({
+  title,
+  description,
+  children,
+}: {
+  title: string;
+  description: string;
+  children: ReactNode;
+}) {
+  return (
+    <section className="border-t border-border pt-3 first:border-t-0 first:pt-0">
+      <div className="mb-1 text-sm font-medium text-fg">{title}</div>
+      <div className="mb-2 text-xs text-fg-dimmer">{description}</div>
+      {children}
+    </section>
+  );
+}
 
 function CategoryDetail({ category }: { category: ChartToggleCategory }) {
   const keys = CHART_TOGGLES
@@ -154,16 +174,36 @@ function DataSourceDetail() {
           })}
         />
       </SettingsRow>
-      <div style={{ fontSize: 'var(--text-sm)', color: 'var(--fg-dim)', marginBottom: 'var(--space-xs)' }}>
-        데이터 표현 기준 <span style={{ color: 'var(--fg-dimmer)' }}>(모든 차트 공통)</span>
-      </div>
-      <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--space-xs)' }}>
-        {SOURCE_OPTIONS.map((opt) => (
-          <SourcePreferenceRadio key={opt} value={opt} />
-        ))}
-      </div>
-      <div style={{ fontSize: 'var(--text-xs)', color: 'var(--fg-dimmer)', marginTop: 'var(--space-xs)' }}>
-        현재 source는 차트 상단 칩에 표시됩니다.
+      <RoleSourceGroup
+        title="캔들 데이터 기준"
+        description="분봉·일봉·주봉·월봉 캔들에 적용됩니다. 자동은 현재 안정적인 디스크 데이터를 먼저 사용합니다."
+      >
+        <div className="flex flex-col gap-2">
+          {CANDLE_DATA_PREFERENCE_OPTIONS.map((opt) => (
+            <CandleDataPreferenceRadio key={opt} value={opt} />
+          ))}
+        </div>
+      </RoleSourceGroup>
+      <RoleSourceGroup
+        title="호가·체결 데이터 기준"
+        description="호가창, 체결, 거래원, 호가비, 체결강도 같은 보조 데이터에 적용됩니다."
+      >
+        <div className="flex flex-col gap-2">
+          {SOURCE_OPTIONS.map((opt) => (
+            <SourcePreferenceRadio key={opt} value={opt} />
+          ))}
+        </div>
+      </RoleSourceGroup>
+      <RoleSourceGroup
+        title="스크리너 일봉 데이터"
+        description="스크리너 갱신으로 저장되는 KIS 일봉 parquet입니다. 조건검색과 섹터 랭킹의 기준 데이터로 사용됩니다."
+      >
+        <div className="text-sm text-fg-dim">
+          갱신은 스크리너 화면의 데이터 갱신 버튼에서 실행합니다.
+        </div>
+      </RoleSourceGroup>
+      <div className="text-xs text-fg-dimmer">
+        차트 상단 칩은 실제 렌더링에 사용된 source를 표시합니다.
       </div>
     </>
   );
