@@ -324,6 +324,28 @@ describe('useRange', () => {
     expect(calledWith).toContain('source_pref=kis_api_first');
   });
 
+  it('allows a caller to override the global source preference for one range query', async () => {
+    vi.spyOn(client, 'apiCall').mockResolvedValue({} as RangeBundle);
+    useSourcePreferenceStore.setState({ sourcePreference: 'kis_api_first' });
+
+    renderHook(
+      () => useRange(
+        '005930',
+        '20260520',
+        '20260520',
+        '1m',
+        undefined,
+        undefined,
+        { mode: 'full' },
+        'hogaplay_first',
+      ),
+      { wrapper: makeWrapper() },
+    );
+    await waitFor(() => expect(client.apiCall).toHaveBeenCalled());
+    const calledWith = (client.apiCall as ReturnType<typeof vi.spyOn>).mock.calls[0][0] as string;
+    expect(calledWith).toContain('source_pref=hogaplay_first');
+  });
+
   it('omits volume_distribution_bins when not requested', async () => {
     const spy = vi.spyOn(client, 'apiCall').mockResolvedValue(fakeBundle);
     renderHook(

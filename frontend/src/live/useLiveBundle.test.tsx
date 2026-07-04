@@ -65,6 +65,9 @@ vi.mock('../api/livePastCandles', () => ({
 }));
 
 const dailyCandlesMock = {
+  candles: [
+    { t_ms: 1779840000000, open: 70000, high: 70100, low: 69900, close: 70050, volume: 1000 },
+  ],
   warnings: [] as Array<{ date?: string; reason: string; msg: string }>,
 };
 const livePastDailyCandlesSpy = vi.fn(() => ({
@@ -72,9 +75,7 @@ const livePastDailyCandlesSpy = vi.fn(() => ({
     code: '005930',
     from: '',
     to: '',
-    candles: [
-      { t_ms: 1779840000000, open: 70000, high: 70100, low: 69900, close: 70050, volume: 1000 },
-    ],
+    candles: dailyCandlesMock.candles,
     cached_batches: [],
     fresh_batches: [],
     data_warnings: dailyCandlesMock.warnings,
@@ -110,6 +111,10 @@ const useRangeSpy = vi.fn<(...args: unknown[]) => any>(() => ({
 vi.mock('../api/range', () => ({
   useRange: (...args: unknown[]) => useRangeSpy(...args as []),
 }));
+
+function rangeResult(data: unknown = null) {
+  return { data, isLoading: false, error: null, isPlaceholderData: false, isFetching: false };
+}
 
 const wrapper = ({ children }: { children: ReactNode }) => {
   const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
@@ -185,6 +190,9 @@ describe('useLiveBundle', () => {
     candlesMock.isFetching = false;
     candlesMock.warnings = [];
     candlesMock.effectiveSessions = [];
+    dailyCandlesMock.candles = [
+      { t_ms: 1779840000000, open: 70000, high: 70100, low: 69900, close: 70050, volume: 1000 },
+    ];
     dailyCandlesMock.warnings = [];
     rangeMock.isPlaceholderData = false;
     rangeMock.isFetching = false;
@@ -307,8 +315,10 @@ describe('useLiveBundle', () => {
       program_trade: { points: [] },
     };
     useRangeSpy
-      .mockReturnValueOnce({ data: null, isLoading: false, error: null, isPlaceholderData: false, isFetching: false })
-      .mockReturnValueOnce({ data: sidecarBundle, isLoading: false, error: null, isPlaceholderData: false, isFetching: false });
+      .mockReturnValueOnce(rangeResult())
+      .mockReturnValueOnce(rangeResult())
+      .mockReturnValueOnce(rangeResult())
+      .mockReturnValueOnce(rangeResult(sidecarBundle));
 
     const { result } = renderHook(() => useLiveBundle('005930', '1m', '20260527', liveFixture), { wrapper });
 
@@ -346,8 +356,10 @@ describe('useLiveBundle', () => {
       program_trade: { points: [] },
     };
     useRangeSpy
-      .mockReturnValueOnce({ data: null, isLoading: false, error: null, isPlaceholderData: false, isFetching: false })
-      .mockReturnValueOnce({ data: sidecarBundle, isLoading: false, error: null, isPlaceholderData: false, isFetching: false });
+      .mockReturnValueOnce(rangeResult())
+      .mockReturnValueOnce(rangeResult())
+      .mockReturnValueOnce(rangeResult())
+      .mockReturnValueOnce(rangeResult(sidecarBundle));
 
     const { result } = renderHook(() => useLiveBundle('005930', '1m', '20260527', liveFixture), { wrapper });
 
@@ -385,8 +397,10 @@ describe('useLiveBundle', () => {
       program_trade: { points: [programPoint], source: 'kis_program_trade' as const },
     };
     useRangeSpy
-      .mockReturnValueOnce({ data: null, isLoading: false, error: null, isPlaceholderData: false, isFetching: false })
-      .mockReturnValueOnce({ data: sidecarBundle, isLoading: false, error: null, isPlaceholderData: false, isFetching: false });
+      .mockReturnValueOnce(rangeResult())
+      .mockReturnValueOnce(rangeResult())
+      .mockReturnValueOnce(rangeResult())
+      .mockReturnValueOnce(rangeResult(sidecarBundle));
 
     const { result } = renderHook(() => useLiveBundle('005930', '1m', '20260527', liveFixture), { wrapper });
 
@@ -507,6 +521,69 @@ describe('useLiveBundle', () => {
       vol_a: 1007,
       vol_b: 0,
     });
+  });
+
+  it('fills missing KIS minute dates from hogaplay range candles when KIS returns warnings', () => {
+    const yesterdayOpen = 1779753600000;
+    candlesMock.candles = [
+      { t_ms: yesterdayOpen, open: 69000, high: 69100, low: 68900, close: 69050, volume: 900 },
+    ];
+    candlesMock.warnings = [{ date: '20260527', reason: 'kis_api_error', msg: 'TRANSPORT/ConnectError' }];
+    const hogaplayFallback = {
+      code: '005930',
+      from_date: '20260520',
+      to_date: '20260527',
+      bucket_ms: 60000,
+      segments: [],
+      candles: [
+        { ts_ms: yesterdayOpen, open: 1, high: 1, low: 1, close: 1, vol_a: 1, vol_b: 0 },
+        { ts_ms: 1779840000000, open: 70000, high: 70200, low: 69900, close: 70150, vol_a: 0, vol_b: 1200 },
+      ],
+      quote_ratio: { bucket_ms: 60000, points: [] },
+      fill_strength: { bucket_ms: 60000, points: [] },
+      volume_profile_range: { bin_count: 0, price_min: 0, price_max: 0, bin_width: 0, bins: [] },
+      volume_profile_by_day: [],
+      volume_distributions: [],
+      investorPoints: [],
+      ask_peaks: [],
+      bid_peaks: [],
+      broker_late_entries: [],
+      price_level_hits: [],
+      trade_volume_pocs: [],
+      program_trade: { points: [] },
+    };
+    useRangeSpy
+      .mockReturnValueOnce(rangeResult({ ...hogaplayFallback, candles: [] }))
+      .mockReturnValueOnce(rangeResult(hogaplayFallback))
+      .mockReturnValueOnce(rangeResult())
+      .mockReturnValueOnce(rangeResult());
+
+    const { result } = renderHook(() => useLiveBundle('005930', '1m', '20260527', liveFixture), { wrapper });
+
+    expect(useRangeSpy).toHaveBeenCalledWith(
+      '005930',
+      '20260520',
+      '20260527',
+      '1m',
+      undefined,
+      '20260527',
+      expect.objectContaining({ mode: 'full', brokerLateEntriesEnabled: false }),
+    );
+    expect(useRangeSpy).toHaveBeenCalledWith(
+      '005930',
+      '20260520',
+      '20260527',
+      '1m',
+      undefined,
+      '20260527',
+      expect.objectContaining({ mode: 'full', brokerLateEntriesEnabled: false }),
+      'hogaplay_first',
+    );
+    expect(result.current.chartBundle!.candles).toEqual([
+      { ts_ms: yesterdayOpen, open: 69000, high: 69100, low: 68900, close: 69050, vol_a: 900, vol_b: 0 },
+      { ts_ms: 1779840000000, open: 70000, high: 70200, low: 69900, close: 70150, vol_a: 0, vol_b: 1200 },
+    ]);
+    expect(result.current.chartBundle!.segments.at(-1)?.source).toBe('hogaplay');
   });
 
   it('does not overlay KRX live trade ticks onto an NXT candle view', () => {
@@ -671,6 +748,94 @@ describe('useLiveBundle daily/minute branching (ADR-0048)', () => {
     const lastInvestorCall = livePastInvestorNetSpy.mock.calls.at(-1) as unknown as unknown[];
     expect(lastInvestorCall[0]).toBe('005930');
     expect(result.current.isPastCandlesLoading).toBe(true);
+  });
+
+  it('D timeframe falls back to hogaplay range candles when daily KIS returns no candles', () => {
+    dailyCandlesMock.candles = [];
+    dailyCandlesMock.warnings = [{ reason: 'kis_transport', msg: 'TRANSPORT/ConnectError' }];
+    const hogaplayFallback = {
+      code: '005930',
+      from_date: '20240507',
+      to_date: '20260527',
+      bucket_ms: 60000,
+      segments: [],
+      candles: [
+        { ts_ms: 1779840000000, open: 70000, high: 70100, low: 69900, close: 70050, vol_a: 100, vol_b: 10 },
+        { ts_ms: 1779840060000, open: 70050, high: 70300, low: 70000, close: 70250, vol_a: 200, vol_b: 20 },
+      ],
+      quote_ratio: { bucket_ms: 60000, points: [] },
+      fill_strength: { bucket_ms: 60000, points: [] },
+      volume_profile_range: { bin_count: 0, price_min: 0, price_max: 0, bin_width: 0, bins: [] },
+      volume_profile_by_day: [],
+      volume_distributions: [],
+      investorPoints: [],
+      ask_peaks: [],
+      bid_peaks: [],
+      broker_late_entries: [],
+      price_level_hits: [],
+      trade_volume_pocs: [],
+      program_trade: { points: [] },
+    };
+    useRangeSpy
+      .mockReturnValueOnce(rangeResult({ ...hogaplayFallback, candles: [] }))
+      .mockReturnValueOnce(rangeResult(hogaplayFallback))
+      .mockReturnValueOnce(rangeResult())
+      .mockReturnValueOnce(rangeResult());
+
+    const { result } = renderHook(() => useLiveBundle('005930', 'D', '20260527', liveFixture), { wrapper });
+
+    expect(useRangeSpy).toHaveBeenCalledWith(
+      '005930',
+      '20250611',
+      '20260527',
+      '1m',
+      undefined,
+      '20260527',
+      expect.objectContaining({ mode: 'full', brokerLateEntriesEnabled: false }),
+    );
+    expect(useRangeSpy).toHaveBeenCalledWith(
+      '005930',
+      '20250611',
+      '20260527',
+      '1m',
+      undefined,
+      '20260527',
+      expect.objectContaining({ mode: 'full', brokerLateEntriesEnabled: false }),
+      'hogaplay_first',
+    );
+    expect(result.current.chartBundle!.candles).toEqual([
+      { ts_ms: 1779840000000, open: 70000, high: 70300, low: 69900, close: 70250, vol_a: 330, vol_b: 0 },
+    ]);
+  });
+
+  it('W/M timeframes do not fall back to hogaplay 1m aggregation when daily KIS returns no candles', () => {
+    dailyCandlesMock.candles = [];
+    dailyCandlesMock.warnings = [{ reason: 'kis_transport', msg: 'TRANSPORT/ConnectError' }];
+
+    const { result: week } = renderHook(() => useLiveBundle('005930', 'W', '20260527', liveFixture), { wrapper });
+    expect(week.current.chartBundle!.candles).toEqual([]);
+    expect(useRangeSpy).not.toHaveBeenCalledWith(
+      '005930',
+      expect.anything(),
+      '20260527',
+      '1m',
+      undefined,
+      '20260527',
+      expect.objectContaining({ mode: 'full', brokerLateEntriesEnabled: false }),
+    );
+
+    useRangeSpy.mockClear();
+    const { result: month } = renderHook(() => useLiveBundle('005930', 'M', '20260527', liveFixture), { wrapper });
+    expect(month.current.chartBundle!.candles).toEqual([]);
+    expect(useRangeSpy).not.toHaveBeenCalledWith(
+      '005930',
+      expect.anything(),
+      '20260527',
+      '1m',
+      undefined,
+      '20260527',
+      expect.objectContaining({ mode: 'full', brokerLateEntriesEnabled: false }),
+    );
   });
 
   it('1m timeframe calls minute hook with non-null code, daily hook with null code', () => {

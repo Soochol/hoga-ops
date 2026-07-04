@@ -9,6 +9,7 @@ import type {
   InvestorNetPoint,
   QuoteRatioPoint,
   FillStrengthPoint,
+  SourceName,
 } from '../api/types';
 import {
   bucketHogaSeries,
@@ -50,6 +51,7 @@ export interface BuildLiveBundleInput {
    * Candle shape. Single source of truth for the bundle's candle array
    * (ADR-0040 — Live Candle Backfill). */
   kisCandles: Candle[];
+  candleSourceByDate?: ReadonlyMap<string, SourceName>;
   bucketMs: number;
 }
 
@@ -404,6 +406,9 @@ export interface BuildChartBundleInput {
   /** Merged by useLiveBundle; candle-path data (investor pane). */
   investorPoints?: InvestorNetPoint[];
   sessionBoundsForDate?: (yyyymmdd: string) => { open_ms: number; close_ms: number };
+  /** Dates whose candle rows came from a fallback source instead of the primary
+   * KIS candle endpoint. Used only to keep the source chip honest. */
+  candleSourceByDate?: ReadonlyMap<string, SourceName>;
 }
 
 export function buildChartBundle(input: BuildChartBundleInput): RangeBundle {
@@ -417,14 +422,23 @@ export function buildChartBundle(input: BuildChartBundleInput): RangeBundle {
     hasTodayObSignal,
     investorPoints = [],
     sessionBoundsForDate,
+    candleSourceByDate,
   } = input;
 
   const pastSegments = sessionBoundsForDate
     ? (pastBundle?.segments ?? []).map((s) => {
         const bounds = sessionBoundsForDate(s.date);
-        return { ...s, session_open_ms: bounds.open_ms, session_close_ms: bounds.close_ms };
+        return {
+          ...s,
+          session_open_ms: bounds.open_ms,
+          session_close_ms: bounds.close_ms,
+          source: candleSourceByDate?.get(s.date) ?? s.source,
+        };
       })
-    : pastBundle?.segments ?? [];
+    : (pastBundle?.segments ?? []).map((s) => ({
+        ...s,
+        source: candleSourceByDate?.get(s.date) ?? s.source,
+      }));
   const pastQRPoints = pastBundle?.quote_ratio.points ?? [];
 
   // Today segment marker — present if we have any signal for today.
@@ -440,7 +454,7 @@ export function buildChartBundle(input: BuildChartBundleInput): RangeBundle {
         date: todayDate,
         session_open_ms: todaySession.open_ms,
         session_close_ms: todaySession.close_ms,
-        source: 'kis_live',
+        source: candleSourceByDate?.get(todayDate) ?? 'kis_live',
       });
     }
   }
@@ -473,7 +487,7 @@ export function buildChartBundle(input: BuildChartBundleInput): RangeBundle {
         date: d,
         session_open_ms: bounds.open_ms,
         session_close_ms: bounds.close_ms,
-        source: 'kis_live',
+        source: candleSourceByDate?.get(d) ?? 'kis_live',
       };
     });
 
@@ -519,7 +533,7 @@ export function buildChartBundle(input: BuildChartBundleInput): RangeBundle {
  * that wants the full bundle in one call; useLiveBundle instead memoises the two
  * halves separately so an SSE tick only rebuilds the hoga half. */
 export function buildLiveBundle(input: BuildLiveBundleInput): RangeBundle {
-  const { code, todayDate, todaySession, pastBundle, sseOb, sseTrade, kisCandles, bucketMs } = input;
+  const { code, todayDate, todaySession, pastBundle, sseOb, sseTrade, kisCandles, candleSourceByDate, bucketMs } = input;
   const hoga = buildHogaSeries({ todaySession, pastBundle, sseOb, sseTrade, bucketMs });
   const chart = buildChartBundle({
     code,
@@ -527,6 +541,7 @@ export function buildLiveBundle(input: BuildLiveBundleInput): RangeBundle {
     todaySession,
     pastBundle,
     kisCandles,
+    candleSourceByDate,
     bucketMs,
     hasTodayObSignal: sseOb.length > 0,
   });

@@ -98,8 +98,10 @@ export function useRange(
   priceRange?: { min: number; max: number },
   todayKst?: string | null,
   options?: RangeRequestOptions,
+  sourcePrefOverride?: SourcePreference,
 ) {
-  const sourcePref: SourcePreference = useSourcePreferenceStore((s) => s.sourcePreference);
+  const storedSourcePref: SourcePreference = useSourcePreferenceStore((s) => s.sourcePreference);
+  const sourcePref = sourcePrefOverride ?? storedSourcePref;
   return useQuery(rangeBundleQueryOptions({
     code,
     from,
