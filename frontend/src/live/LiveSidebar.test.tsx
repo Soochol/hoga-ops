@@ -748,6 +748,18 @@ describe('LiveSidebar cursor branching (ADR-0044)', () => {
     expect(screen.getByText('+123')).toBeInTheDocument();
   });
 
+  it('shows orderbook loading instead of no-data while cursor spot orderbook is fetching', () => {
+    const latestCandleMs = bundleFixture.candles[bundleFixture.candles.length - 1].ts_ms;
+    (cursorHooks.useLiveOrderbookAtCursor as ReturnType<typeof vi.fn>).mockReturnValue(undefined);
+    (cursorHooks.useLiveBrokersAtCursor as ReturnType<typeof vi.fn>).mockReturnValue([]);
+
+    act(() => useLiveCursorStore.getState().setCursor(latestCandleMs));
+    renderSidebar({ code: '005930', live: emptyLive, bundle: bundleFixture });
+
+    expect(screen.getByText('커서 위치 로딩 중…')).toBeInTheDocument();
+    expect(screen.queryByText('호가 데이터 없음')).toBeNull();
+  });
+
   it('TotalQtyBar maskRatio=true when cursorMs in closing auction window', () => {
     useLiveAxisStore.setState({ axis: { inClosingAuctionWindow: () => true } as never });
     renderSidebar({ code: '005930' });
