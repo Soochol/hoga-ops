@@ -1360,6 +1360,8 @@ def test_query_day_bid_peak_dual_populates_below_low_untraded(tmp_path) -> None:
         max_price=70000,
         max_qty=5000,
         max_intra_ms=9 * 60 * 60 * 1000 + 60_000,
+        traded_peaks=(AskPeakCandidateRow(price=70000, qty=5000, intra_ms=32460000),),
+        traded_max_peaks=(AskPeakCandidateRow(price=70000, qty=5000, intra_ms=32460000),),
         all_price=68900,
         all_qty=12000,
         all_intra_ms=9 * 60 * 60 * 1000 + 60_000,

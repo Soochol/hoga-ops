@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import type { AskPeak, BidPeak, Candle } from '../api/types';
+import type { IRange, Time } from 'lightweight-charts';
 import { createVirtualAxis } from '../util/virtualAxis';
 import {
   applyPeakVisibleTimeCutoff,
@@ -54,9 +55,9 @@ const askPeak = (date: string): AskPeak => ({
 describe('rightmostVisibleCandleCutoff', () => {
   it('uses the rightmost visible candle, clamping right-offset whitespace to the latest candle', () => {
     const candles = [candle(day1Open), candle(day1Open + 60_000), candle(day1Open + 120_000)];
-    const visibleRange = {
-      from: axis.toVirtual(day1Open) / 1000,
-      to: axis.toVirtual(day1Open + 10 * 60_000) / 1000,
+    const visibleRange: IRange<Time> = {
+      from: (axis.toVirtual(day1Open) / 1000) as Time,
+      to: (axis.toVirtual(day1Open + 10 * 60_000) / 1000) as Time,
     };
 
     expect(rightmostVisibleCandleCutoff(candles, visibleRange, axis)).toEqual({
@@ -117,5 +118,38 @@ describe('applyPeakVisibleTimeCutoff', () => {
     });
 
     expect(out).toEqual([expect.objectContaining({ price: 99, qty: 90, t_ms: day2Open + 60_000 })]);
+  });
+
+  it('filters bid all-price fields independently of traded candidates', () => {
+    const bid: BidPeak = {
+      ...askPeak('20260611'),
+      price: 99,
+      max_price: 99,
+      traded_peaks: [{ price: 99, qty: 90, t_ms: day2Open + 60_000 }],
+      traded_max_peaks: [{ price: 99, qty: 95, t_ms: day2Open + 60_000 }],
+      all_price: 97,
+      all_qty: 900,
+      all_t_ms: day2Open + 180_000,
+      all_max_price: 96,
+      all_max_qty: 950,
+      all_max_t_ms: day2Open + 180_000,
+    };
+
+    const out = applyPeakVisibleTimeCutoff([bid], { date: '20260611', tMs: day2Open + 120_000 }, {
+      side: 'bid',
+      intraMax: false,
+    });
+
+    expect(out).toEqual([
+      expect.objectContaining({
+        price: 99,
+        all_price: null,
+        all_qty: null,
+        all_t_ms: null,
+        all_max_price: null,
+        all_max_qty: null,
+        all_max_t_ms: null,
+      }),
+    ]);
   });
 });

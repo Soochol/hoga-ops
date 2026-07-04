@@ -28,7 +28,8 @@ function filterCandidatesByCutoff(
   candidates: readonly AskPeakCandidate[] | undefined,
   cutoff: VisibleTimeCutoff,
 ): AskPeakCandidate[] | undefined {
-  if (!candidates?.length) return candidates;
+  if (!candidates) return candidates;
+  if (candidates.length === 0) return [];
   return candidates.filter((candidate) => candidate.t_ms <= cutoff.tMs);
 }
 
