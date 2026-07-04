@@ -218,7 +218,7 @@ class LiveMinuteCandleBackfill:
 
             state, today_bars = self._cache.get_today_tri(policy, code)
             session_venue = policy
-            if state == "miss" and policy != "KRX":
+            if state in {"miss", "negative"} and policy != "KRX":
                 state, today_bars = self._cache.get_today_tri("KRX", code)
                 session_venue = "KRX"
             if state == "hit":
