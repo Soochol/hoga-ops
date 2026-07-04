@@ -4,7 +4,7 @@
 
 **Goal:** Split the confusing single "data source" setting into user-visible candle, orderbook/trade, and screener daily sections that match the actual disk/data architecture.
 
-**Architecture:** Keep the existing backend `source_pref` contract for `/api/range`, `/api/orderbook`, and `/api/brokers/series`; rename its UI meaning to "호가·체결 데이터 기준". Add a frontend-only candle data preference store for now, use it to control KIS-vs-hogaplay candle fallback order in `/live`, and surface screener daily parquet as a status/update section rather than mixing it into chart source preference. Defer a true backend candles-only screener daily endpoint to a later task because it changes chart data semantics.
+**Architecture:** Keep the existing backend `source_pref` contract for `/api/range`, `/api/orderbook`, and `/api/brokers/series`; rename its UI meaning to "호가·체결 데이터 기준". Add a frontend-only candle data preference store for now, use it to control KIS-vs-hogaplay candle fallback order in `/live`, and surface screener daily parquet as a status/update section rather than mixing it into chart source preference. Candle fallback must be coverage-aware by date, not "first source with any row wins"; defer a true backend candles-only screener daily endpoint to a later task because it changes chart data semantics.
 
 **Tech Stack:** React, TypeScript, Zustand, TanStack Query, Vitest, FastAPI route contracts already exposed through `frontend/src/api/*`.
 
@@ -15,6 +15,10 @@
 - Keep source chips honest: chip source should describe the data actually used in the rendered chart segment.
 - Avoid backend schema changes in Phase 1.
 - Korean UI copy must name user-recognizable data roles: "캔들", "호가·체결", "스크리너 일봉".
+- Candle source selection must fill missing dates from lower-priority sources. Never treat "one row exists" as enough to suppress fallback for the rest of the requested range.
+- Within the same date/timestamp, the higher-priority source wins; lower-priority sources only fill gaps.
+- Do not aggregate W/M candles from long-range hogaplay 1-minute parquet in Phase 1. W/M must use daily-level inputs only: screener daily parquet in Phase 2 or KIS daily cache/API.
+- Hogaplay 1-minute aggregation is allowed only for minute display and D fallback, and only for the requested/missing dates.
 
 ---
 
@@ -26,7 +30,7 @@
 - Modify `frontend/src/live/settings/SourcePreferenceRadio.tsx`: either rename to `OrderflowSourcePreferenceRadio` or keep as wrapper while updating copy.
 - Create `frontend/src/live/settings/CandleDataPreferenceRadio.tsx`: radio controls for candle data policy.
 - Modify `frontend/src/live/LiveSettingsSections.tsx`: restructure Data Source detail into "캔들 데이터", "호가·체결 데이터", "스크리너 일봉 데이터", and keep storage/KIS venue sections.
-- Modify `frontend/src/live/useLiveBundle.ts`: read candle preference and use it when deciding whether to call KIS candle endpoints first or hogaplay fallback first.
+- Modify `frontend/src/live/useLiveBundle.ts`: read candle preference and use it when deciding whether to call KIS candle endpoints first or hogaplay fallback first; merge candle sources by date/timestamp coverage rather than row-count existence.
 - Modify `frontend/src/live/buildLiveBundle.ts` only if source chip labels need additional source names; otherwise leave untouched.
 - Modify tests:
   - `frontend/src/api/sourceCapabilities.test.ts`
@@ -441,13 +445,104 @@ Expected: pass.
 
 **Files:**
 - Modify: `frontend/src/live/useLiveBundle.ts`
+- Create: `frontend/src/live/candleSourceMerge.ts`
 - Test: `frontend/src/live/useLiveBundle.test.tsx`
+- Test: `frontend/src/live/candleSourceMerge.test.ts`
 
 **Interfaces:**
 - Consumes: `useCandleDataPreferenceStore((s) => s.candleDataPreference)`
-- Produces: behavior where `hogaplay_first` starts candle display from `/api/range` candles instead of waiting for KIS warnings.
+- Produces: `mergeCandlesByPriority(primary: Candle[], fallback: Candle[]): Candle[]`
+- Produces: behavior where `hogaplay_first` starts candle display from `/api/range` candles instead of waiting for KIS warnings, while lower-priority sources fill missing dates/timestamps.
 
-- [ ] **Step 1: Add failing tests for hogaplay-first candle behavior**
+- [ ] **Step 1: Add failing unit tests for coverage-aware candle merge**
+
+Create `frontend/src/live/candleSourceMerge.test.ts`:
+
+```ts
+import { describe, expect, it } from 'vitest';
+import { mergeCandlesByPriority } from './candleSourceMerge';
+import type { Candle } from '../api/types';
+
+const c = (ts_ms: number, close = ts_ms): Candle => ({
+  ts_ms,
+  open: close,
+  high: close,
+  low: close,
+  close,
+  vol_a: 0,
+  vol_b: 0,
+});
+
+describe('mergeCandlesByPriority', () => {
+  it('keeps primary candles and fills missing timestamps from fallback', () => {
+    const primary = [c(2, 20)];
+    const fallback = [c(1, 10), c(2, 200), c(3, 30)];
+
+    expect(mergeCandlesByPriority(primary, fallback)).toEqual([
+      c(1, 10),
+      c(2, 20),
+      c(3, 30),
+    ]);
+  });
+
+  it('does not let one primary row suppress a fuller fallback range', () => {
+    const primary = [c(1000, 1)];
+    const fallback = Array.from({ length: 100 }, (_, idx) => c((idx + 1) * 1000, idx + 1));
+
+    const merged = mergeCandlesByPriority(primary, fallback);
+
+    expect(merged).toHaveLength(100);
+    expect(merged.find((row) => row.ts_ms === 1000)?.close).toBe(1);
+    expect(merged.at(-1)?.ts_ms).toBe(100_000);
+  });
+});
+```
+
+- [ ] **Step 2: Run merge tests and verify failure**
+
+Run:
+
+```bash
+cd frontend
+npx vitest run src/live/candleSourceMerge.test.ts
+```
+
+Expected: fail because `candleSourceMerge.ts` does not exist.
+
+- [ ] **Step 3: Implement coverage-aware candle merge**
+
+Create `frontend/src/live/candleSourceMerge.ts`:
+
+```ts
+import type { Candle } from '../api/types';
+
+export function mergeCandlesByPriority(
+  primary: readonly Candle[],
+  fallback: readonly Candle[],
+): Candle[] {
+  const byTs = new Map<number, Candle>();
+  for (const candle of fallback) {
+    byTs.set(candle.ts_ms, candle);
+  }
+  for (const candle of primary) {
+    byTs.set(candle.ts_ms, candle);
+  }
+  return Array.from(byTs.values()).sort((a, b) => a.ts_ms - b.ts_ms);
+}
+```
+
+- [ ] **Step 4: Run merge tests and verify pass**
+
+Run:
+
+```bash
+cd frontend
+npx vitest run src/live/candleSourceMerge.test.ts
+```
+
+Expected: pass.
+
+- [ ] **Step 5: Add failing tests for hogaplay-first candle behavior**
 
 In `frontend/src/live/useLiveBundle.test.tsx`, add a test near existing fallback tests:
 
@@ -463,7 +558,9 @@ it('candleDataPreference=hogaplay_first uses range candles as the candle source 
 
 Use the local mocking style already present in the file; do not introduce a new test harness.
 
-- [ ] **Step 2: Run test and verify failure**
+Also add a regression test where KIS returns one candle and hogaplay returns many candles. Expected behavior: the result includes hogaplay's missing timestamps and keeps KIS for the overlapping timestamp.
+
+- [ ] **Step 6: Run test and verify failure**
 
 Run:
 
@@ -474,12 +571,13 @@ npx vitest run src/live/useLiveBundle.test.tsx
 
 Expected: fail because `useLiveBundle` ignores `candleDataPreference`.
 
-- [ ] **Step 3: Implement preference-derived fallback gating**
+- [ ] **Step 7: Implement preference-derived fallback gating**
 
 In `frontend/src/live/useLiveBundle.ts`, import and read the new store:
 
 ```ts
 import { useCandleDataPreferenceStore } from '../state/candleDataPreference';
+import { mergeCandlesByPriority } from './candleSourceMerge';
 ```
 
 Inside `useLiveBundle`:
@@ -506,22 +604,38 @@ const candleFallbackNeeded = !!(code && (
 Make merge precedence explicit:
 
 ```ts
-const primaryRangeFallback = mergeCandlesPreferPrimary(
+const selectedRangeFallback = mergeCandlesByPriority(
   candleFallback.data?.candles ?? [],
   hogaplayCandleFallback.data?.candles ?? [],
 );
-const fallback = preferHogaplayCandles
-  ? primaryRangeFallback
-  : mergeCandlesPreferPrimary([], primaryRangeFallback);
 ```
 
 Then in the minute and daily branches:
 
-- if `preferHogaplayCandles && fallback.length > 0`, return fallback-derived candles before KIS candles.
-- if `preferKisCandles` or `auto`, preserve current KIS-first behavior.
+- if `preferHogaplayCandles && selectedRangeFallback.length > 0`, return `mergeCandlesByPriority(selectedRangeFallback, kisCandlesFromApi)`.
+- if `preferKisCandles` or `auto`, return `mergeCandlesByPriority(kisCandlesFromApi, selectedRangeFallback)`.
+- do not branch on "primary length > 0" as a terminal condition; use timestamp coverage.
 - treat `screener_daily_first` like `auto` in Phase 1, but add a source warning/comment that true screener-daily chart source needs Phase 2 backend endpoint.
 
-- [ ] **Step 4: Update source-by-date behavior**
+- [ ] **Step 8: Keep W/M off hogaplay 1-minute long-range fallback**
+
+In `frontend/src/live/useLiveBundle.ts`, keep the existing D-only hogaplay fallback condition for calendar frames:
+
+```ts
+const candleFallbackNeeded = !!(code && (
+  preferHogaplayCandles && isMinute ||
+  preferHogaplayCandles && timeframe === 'D' ||
+  (isMinute
+    ? pastCandlesQuery.data != null && pastCandlesQuery.data.data_warnings.length > 0
+    : timeframe === 'D' &&
+      pastDailyCandlesQuery.data != null &&
+      (pastDailyCandlesQuery.data.data_warnings.length > 0 || pastDailyCandlesQuery.data.candles.length === 0))
+));
+```
+
+Do not enable hogaplay 1-minute fallback for `timeframe === 'W'` or `timeframe === 'M'` in Phase 1. W/M should use KIS daily aggregation now and screener daily aggregation in Phase 2.
+
+- [ ] **Step 9: Update source-by-date behavior**
 
 Ensure `candleSourceByDate` marks hogaplay dates as `hogaplay` when `preferHogaplayCandles` is active:
 
@@ -533,13 +647,13 @@ if (preferHogaplayCandles) {
 }
 ```
 
-- [ ] **Step 5: Run tests and verify pass**
+- [ ] **Step 10: Run tests and verify pass**
 
 Run:
 
 ```bash
 cd frontend
-npx vitest run src/live/useLiveBundle.test.tsx src/live/aggregateCandles.test.ts src/chart/projectors/candle.test.ts
+npx vitest run src/live/candleSourceMerge.test.ts src/live/useLiveBundle.test.tsx src/live/aggregateCandles.test.ts src/chart/projectors/candle.test.ts
 ```
 
 Expected: pass.
@@ -634,6 +748,8 @@ Verify:
 - Settings → 데이터소스 shows "캔들 데이터 기준", "호가·체결 데이터 기준", "스크리너 일봉 데이터".
 - Selecting "호가·체결 데이터 기준 → KIS WS 우선" still changes `/api/range` and cursor requests to `source_pref=kis_ws_first`.
 - Selecting "캔들 데이터 기준 → hogaplay 우선" makes daily/minute candles appear from hogaplay when KIS API is unavailable.
+- A one-row higher-priority candle response does not hide lower-priority candles for other timestamps in the requested range.
+- W/M does not trigger long-range hogaplay 1-minute aggregation in Phase 1.
 - The chart source chip still reflects the source used for the visible segment.
 
 ---
@@ -647,9 +763,10 @@ This plan intentionally does not make `/live` D/W/M candles read directly from `
 - Return the same candle wire shape as `/api/live/past-daily-candles`.
 - Update `screener_daily_first` to use that endpoint for D/W/M.
 - Keep minute candles on hogaplay/KIS paths because screener parquet is daily-only.
+- Use daily-level screener/KIS inputs for W/M aggregation. Do not use hogaplay 1-minute parquet to build W/M unless a later performance-specific design adds a candles-only API with explicit range caps.
 
 ## Self-Review
 
-- Spec coverage: The plan separates candle, orderflow, and screener daily UI; preserves existing source_pref; adds candle preference; wires hogaplay-first behavior; leaves screener daily chart source as explicit Phase 2.
-- Placeholder scan: No TBD/TODO/fill-later text remains. The one intentionally open test mocking detail references the existing test harness because the file already contains the required mock patterns.
+- Spec coverage: The plan separates candle, orderflow, and screener daily UI; preserves existing source_pref; adds candle preference; wires hogaplay-first behavior; requires coverage-aware merge instead of "one row wins"; leaves screener daily chart source as explicit Phase 2.
+- Placeholder scan: No placeholder text remains; the test instructions point to the existing local mock harness instead of inventing a second harness.
 - Type consistency: `CandleDataPreference`, `SourcePreference`, and helper names are introduced before use and match across tasks.
