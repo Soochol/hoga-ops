@@ -120,6 +120,25 @@ describe('buildRangeBundleRequest', () => {
     expect(request.queryKey.at(-1)).toBe(null);
   });
 
+  it('adds mode=candles for lightweight candle requests', () => {
+    const request = buildRangeBundleRequest({
+      code: '005930',
+      from: '20260625',
+      to: '20260705',
+      timeframe: '3m',
+      sourcePref: 'hogaplay_first',
+      options: { mode: 'candles' },
+    });
+
+    expect(request.enabled).toBe(true);
+    expect(request.url).toBe(
+      '/api/range?code=005930&from=20260625&to=20260705'
+        + '&bucket_ms=180000&source_pref=hogaplay_first&mode=candles',
+    );
+    expect(request.queryKey[14]).toBe('candles');
+    expect(request.queryKey.at(-1)).toBe(null);
+  });
+
   it('includes volumeDistributionCutoffMs in the range query key', () => {
     const request = buildRangeBundleRequest({
       code: '005930',

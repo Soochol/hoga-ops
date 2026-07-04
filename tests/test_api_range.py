@@ -97,6 +97,23 @@ def test_api_range_accepts_sidecar_mode(app_client: TestClient) -> None:
     assert captured == ["sidecar"]
 
 
+def test_api_range_accepts_candles_mode(app_client: TestClient) -> None:
+    captured: list[str] = []
+
+    def _stub(engine, **kw):
+        captured.append(kw["mode"])
+        return _build_range_bundle_stub(**kw)
+
+    with patch("hoga.api.routes.build_range_bundle", side_effect=_stub):
+        r = app_client.get(
+            "/api/range?code=005930&from=20260512&to=20260512"
+            "&bucket_ms=60000&mode=candles"
+        )
+
+    assert r.status_code == 200, r.text
+    assert captured == ["candles"]
+
+
 def test_api_range_400_on_invalid_bucket_ms(app_client: TestClient) -> None:
     # validate_bucket_ms raises ValueError → 400 BEFORE calling build_range_bundle.
     r = app_client.get(

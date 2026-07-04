@@ -357,7 +357,7 @@ export function useLiveBundle(
   ));
   const candleFallbackOptions = useMemo(
     () => ({
-      mode: 'full' as const,
+      mode: 'candles' as const,
       brokerLateEntriesEnabled: false,
       brokerLateEntryStartHHMM: null,
       volumeDistributionBins: null,

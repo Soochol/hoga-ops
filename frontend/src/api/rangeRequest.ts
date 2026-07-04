@@ -2,7 +2,7 @@ import type { RangeBundle, Timeframe } from './types';
 import { TIMEFRAME_TO_MS } from './types';
 import type { SourcePreference } from '../state/sourcePreference';
 
-export type RangeMode = 'full' | 'hoga' | 'sidecar';
+export type RangeMode = 'full' | 'hoga' | 'sidecar' | 'candles';
 
 export type RangeRequestOptions = {
   brokerLateEntriesEnabled?: boolean | null;
