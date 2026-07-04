@@ -448,6 +448,119 @@ async def test_poll_skips_cycle_when_resolver_returns_none():
     assert await buf.get_latest("005930") is None  # 폴링 안 됨(publish 없음)
 
 
+@pytest.mark.asyncio
+async def test_transport_failure_logs_warning_without_traceback_and_sets_status(caplog):
+    import httpx
+
+    from hoga.live.kis_client import KisTransportError
+
+    class TransportFailureKis(FakeKisClient):
+        async def fetch_orderbook(self, code: str) -> KisOrderbook:
+            self.calls["fetch_orderbook"].append(code)
+            raise KisTransportError(httpx.ConnectError("All connection attempts failed"))
+
+    kis = TransportFailureKis()
+    buf = LiveBuffer()
+    poller = LiveRestPoller(lambda: kis, buf, interval_s=0.02, phase_fn=lambda: "regular")
+    poller.on_subscribe("247540")
+
+    with caplog.at_level("WARNING", logger="hoga.live.rest_poller"):
+        await poller._poll_once()
+
+    records = [r for r in caplog.records if r.name == "hoga.live.rest_poller"]
+    assert len(records) == 1
+    assert records[0].exc_info is None
+    assert records[0].getMessage() == (
+        "live.rest_poller.code_failed code=247540 "
+        "kind=transport error=TRANSPORT/ConnectError"
+    )
+    status = poller.status()
+    assert status.last_error_count == 1
+    assert status.last_error_kind == "transport"
+    assert status.last_error_code == "TRANSPORT/ConnectError"
+    assert status.degraded is True
+    assert status.backoff_remaining == 3
+
+
+@pytest.mark.asyncio
+async def test_transport_backoff_skips_next_cycle_without_refetching():
+    import httpx
+
+    from hoga.live.kis_client import KisTransportError
+
+    class TransportFailureKis(FakeKisClient):
+        async def fetch_orderbook(self, code: str) -> KisOrderbook:
+            self.calls["fetch_orderbook"].append(code)
+            raise KisTransportError(httpx.ConnectError("down"))
+
+    kis = TransportFailureKis()
+    poller = LiveRestPoller(
+        lambda: kis,
+        LiveBuffer(),
+        interval_s=0.02,
+        phase_fn=lambda: "regular",
+    )
+    poller.on_subscribe("005930")
+
+    await poller._poll_once()
+    await poller._poll_once()
+
+    assert kis.calls["fetch_orderbook"] == ["005930"]
+    assert poller.status().backoff_remaining == 2
+    assert poller.last_cycle_ms is not None
+
+
+@pytest.mark.asyncio
+async def test_unexpected_failure_logs_with_traceback_and_no_backoff(caplog):
+    _, _, poller = _make_poller(raise_for={"005930"}, interval_s=0.02)
+    poller.on_subscribe("005930")
+
+    with caplog.at_level("ERROR", logger="hoga.live.rest_poller"):
+        await poller._poll_once()
+
+    records = [r for r in caplog.records if r.name == "hoga.live.rest_poller"]
+    assert len(records) == 1
+    assert records[0].exc_info is not None
+    assert records[0].getMessage() == (
+        "live.rest_poller.code_failed code=005930 kind=unexpected error=RuntimeError"
+    )
+    status = poller.status()
+    assert status.last_error_kind == "unexpected"
+    assert status.last_error_code == "RuntimeError"
+    assert status.backoff_remaining == 0
+
+
+@pytest.mark.asyncio
+async def test_successful_cycle_clears_degraded_status_after_failure():
+    class FirstBrokenThenHealthy(FakeKisClient):
+        def __init__(self) -> None:
+            super().__init__()
+            self.fail = True
+
+        async def fetch_orderbook(self, code: str) -> KisOrderbook:
+            if self.fail:
+                self.calls["fetch_orderbook"].append(code)
+                raise RuntimeError("boom")
+            return await super().fetch_orderbook(code)
+
+    kis = FirstBrokenThenHealthy()
+    poller = LiveRestPoller(lambda: kis, LiveBuffer(), interval_s=0.02, phase_fn=lambda: "regular")
+    poller.on_subscribe("005930")
+
+    await poller._poll_once()
+    assert poller.status().degraded is True
+
+    kis.fail = False
+    await poller._poll_once()
+
+    status = poller.status()
+    assert status.degraded is False
+    assert status.last_error is None
+    assert status.last_error_kind is None
+    assert status.last_error_code is None
+    assert status.last_error_count == 0
+
+
 def test_live_rest_poller_still_has_no_writer_dependency() -> None:
     import inspect
 
