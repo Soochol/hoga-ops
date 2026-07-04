@@ -198,23 +198,34 @@ class LiveMinuteCandleBackfill:
         rows: list[dict] = []
         cached_dates: list[str] = []
         warnings: list[dict] = []
+        effective_session_venues: dict[str, KisVenue] = {}
         today_s = today_d.strftime("%Y%m%d")
 
         for date_s in _date_iter(frm, too):
             if date_s < today_s:
                 bars = self._cache.get_past(policy, code, date_s)
+                session_venue = policy
+                if bars is None and policy != "KRX":
+                    bars = self._cache.get_past("KRX", code, date_s)
+                    session_venue = "KRX"
                 if bars is None:
                     warnings.append(_kis_rest_bypassed_warning(date_s))
                     continue
                 rows.extend(bars)
                 cached_dates.append(date_s)
+                effective_session_venues[date_s] = session_venue
                 continue
 
             state, today_bars = self._cache.get_today_tri(policy, code)
+            session_venue = policy
+            if state == "miss" and policy != "KRX":
+                state, today_bars = self._cache.get_today_tri("KRX", code)
+                session_venue = "KRX"
             if state == "hit":
                 assert today_bars is not None
                 rows.extend(today_bars)
                 cached_dates.append(date_s)
+                effective_session_venues[date_s] = session_venue
             elif state == "miss":
                 warnings.append(_kis_rest_bypassed_warning(date_s))
 
@@ -224,7 +235,10 @@ class LiveMinuteCandleBackfill:
             cached_dates=cached_dates,
             fresh_dates=[],
             data_warnings=warnings,
-            effective_sessions=_effective_sessions_for_candles(rows, policy),
+            effective_sessions=[
+                _effective_session(date_s, venue)
+                for date_s, venue in sorted(effective_session_venues.items())
+            ],
         )
 
     async def _collect_for_venue(
