@@ -16,6 +16,11 @@ import OrderbookTable from '../sidebar/OrderbookTable';
 import BrokerTrajectoryTable from '../sidebar/BrokerTrajectoryTable';
 import ProgramTradeSummaryCard from '../sidebar/ProgramTradeSummaryCard';
 import TotalQtyBar from '../sidebar/TotalQtyBar';
+import {
+  resolveBrokerCardProps,
+  resolveCursorDetailScope,
+  resolveOrderbookCardSnapshot,
+} from '../sidebar/cursorDetailResolver';
 import { VolumeDistributionCard } from '../sidebar/VolumeDistributionCard';
 import { isMinuteTimeframe, type MinuteTimeframe } from '../state/livePage';
 import { useLivePageStore } from '../state/livePage';
@@ -25,7 +30,6 @@ import { DataSection } from '../ui/DataSurface';
 type Props = {
   save: StudyViewReference;
   bundle: RangeBundle;
-  isCursorActive: boolean;
 };
 
 type SectionProps = {
@@ -34,22 +38,37 @@ type SectionProps = {
   children: ReactNode;
 };
 
-export function StudyReferenceDetailPanel({ save, bundle, isCursorActive }: Props) {
+export function StudyReferenceDetailPanel({ save, bundle }: Props) {
   const cursorMs = useLiveCursorStore((s) => s.cursorMs);
   const volumeDistributionEnabled = useLivePageStore((s) => s.volumeDistributionEnabled);
   const volumeDistributionHoverCutoffEnabled = useLivePageStore((s) => s.volumeDistributionHoverCutoffEnabled);
   const volumeDistributionRangeCount = useLivePageStore((s) => s.volumeDistributionRangeCount);
   const volumeDistributionColor = useLivePageStore((s) => s.volumeDistributionColor);
   const volumeDistributionMaxColor = useLivePageStore((s) => s.volumeDistributionMaxColor);
-  const minuteTimeframe: MinuteTimeframe | null = isMinuteTimeframe(save.timeframe)
-    ? save.timeframe
-    : null;
+  const cursorScope = resolveCursorDetailScope({
+    cursorMs,
+    timeframe: save.timeframe,
+  });
+  const detailCursorMs = cursorScope.kind === 'minute-cursor' ? cursorScope.cursorMs : null;
+  const minuteTimeframe: MinuteTimeframe | null = cursorScope.kind === 'minute-cursor'
+    ? cursorScope.minuteTimeframe
+    : isMinuteTimeframe(save.timeframe)
+      ? save.timeframe
+      : null;
   const spotOrderbook = useLiveOrderbookAtCursor({ code: save.code, timeframe: minuteTimeframe });
   const spotBrokers = useLiveBrokersAtCursor({ code: save.code, timeframe: minuteTimeframe });
-  const cursorStillPresent = isCursorActive || cursorMs !== null;
-  const detailCursorMs = cursorStillPresent && cursorMs !== null && minuteTimeframe !== null
-    ? cursorMs
-    : null;
+  const orderbookSnapshot = resolveOrderbookCardSnapshot({
+    scope: cursorScope,
+    spotSnapshot: spotOrderbook?.snapshot,
+    inactiveSnapshot: null,
+    bufferFallbackSnapshot: null,
+  });
+  const brokerCard = resolveBrokerCardProps({
+    scope: cursorScope,
+    spotSeries: spotBrokers,
+    inactiveSeries: null,
+    inactiveCursorMs: null,
+  });
   const volumeDistributionDate = detailCursorMs !== null
     ? realMsToYyyymmdd(detailCursorMs)
     : save.range.to_date;
@@ -105,14 +124,14 @@ export function StudyReferenceDetailPanel({ save, bundle, isCursorActive }: Prop
     >
       <StudyDetailSection label="10호가" testId="orderbook">
         <>
-          <OrderbookTable snapshot={detailCursorMs !== null ? spotOrderbook?.snapshot : null} />
-          <TotalQtyBar snapshot={detailCursorMs !== null ? spotOrderbook?.snapshot : null} maskRatio={false} />
+          <OrderbookTable snapshot={orderbookSnapshot} />
+          <TotalQtyBar snapshot={orderbookSnapshot} maskRatio={false} />
         </>
       </StudyDetailSection>
       <StudyDetailSection label="거래원" testId="brokers">
         <BrokerTrajectoryTable
-          series={detailCursorMs !== null ? spotBrokers : null}
-          cursorMs={detailCursorMs}
+          series={brokerCard.series}
+          cursorMs={brokerCard.cursorMs}
         />
       </StudyDetailSection>
       <StudyDetailSection label="연속체결 매물대 분포" testId="volume-distribution">

@@ -577,11 +577,6 @@ describe('StudyPage', () => {
 
     renderPage('/study?view=view-ref');
 
-    const props = liveChartRootMock.mock.calls[0][0];
-    act(() => {
-      props.onCursorActiveChange?.(true);
-    });
-
     expect(useLiveOrderbookAtCursorMock).toHaveBeenCalledWith({ code: '005930', timeframe: '5m' });
     expect(useLiveBrokersAtCursorMock).toHaveBeenCalledWith({ code: '005930', timeframe: '5m' });
     expect(screen.getByTestId('study-reference-detail-panel')).toBeTruthy();
@@ -602,6 +597,12 @@ describe('StudyPage', () => {
     expect(screen.getByText('+1억')).toBeTruthy();
   });
 
+  it('does not wire transient cursor active callbacks into study detail state', () => {
+    renderPage('/study?view=view-ref');
+
+    expect(liveChartRootMock.mock.calls[0][0].onCursorActiveChange).toBeUndefined();
+  });
+
   it('shows orderbook loading instead of no-data while study cursor spot orderbook is fetching', () => {
     useLiveOrderbookAtCursorMock.mockReturnValue(undefined);
     useLiveBrokersAtCursorMock.mockReturnValue([]);
@@ -609,28 +610,17 @@ describe('StudyPage', () => {
 
     renderPage('/study?view=view-ref');
 
-    act(() => {
-      liveChartRootMock.mock.calls[0][0].onCursorActiveChange?.(true);
-    });
-
     const orderbookCard = screen.getByTestId('study-detail-card-orderbook');
     expect(within(orderbookCard).getByText('커서 위치 로딩 중…')).toBeTruthy();
     expect(within(orderbookCard).queryByText('호가 데이터 없음')).toBeNull();
   });
 
-  it('keeps study cursor indicators visible through transient inactive callbacks while cursor remains set', () => {
+  it('keeps study cursor indicators visible while cursor remains set without relying on active callbacks', () => {
     useLiveOrderbookAtCursorMock.mockReturnValue(undefined);
     useLiveBrokersAtCursorMock.mockReturnValue(undefined);
     useLiveCursorStore.getState().setCursor(HOVER_MS);
 
     renderPage('/study?view=view-ref');
-
-    act(() => {
-      liveChartRootMock.mock.calls[0][0].onCursorActiveChange?.(true);
-    });
-    act(() => {
-      liveChartRootMock.mock.calls.at(-1)?.[0].onCursorActiveChange?.(false);
-    });
 
     const orderbookCard = screen.getByTestId('study-detail-card-orderbook');
     const brokersCard = screen.getByTestId('study-detail-card-brokers');
@@ -712,10 +702,6 @@ describe('StudyPage', () => {
 
     renderPage('/study?view=view-ref');
 
-    act(() => {
-      liveChartRootMock.mock.calls[0][0].onCursorActiveChange?.(true);
-    });
-
     expect(useVolumeDistributionCutoffProfileMock).toHaveBeenLastCalledWith(expect.objectContaining({
       enabled: true,
       code: '005930',
@@ -741,11 +727,6 @@ describe('StudyPage', () => {
     useLiveCursorStore.getState().setCursor(HOVER_MS);
 
     renderPage('/study?view=view-ref');
-
-    const props = liveChartRootMock.mock.calls[0][0];
-    act(() => {
-      props.onCursorActiveChange?.(true);
-    });
 
     const stack = screen.getByTestId('study-reference-detail-cards');
     expect(stack).toHaveClass('min-h-full');
