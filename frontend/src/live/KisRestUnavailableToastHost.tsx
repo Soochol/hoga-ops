@@ -19,7 +19,7 @@ export default function KisRestUnavailableToastHost() {
     if (legacy?.kisRestBypassEnabled) {
       patch.mutate(
         { kis_rest_bypass_enabled: true },
-        { onSettled: () => markLegacyKisRestBypassMigrated() },
+        { onSuccess: () => markLegacyKisRestBypassMigrated() },
       );
     }
   }, [settings, patch]);

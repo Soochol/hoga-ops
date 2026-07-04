@@ -1,13 +1,13 @@
 import { useMemo } from 'react';
 import { useQuery } from '@tanstack/react-query';
 
+import { useLiveSettings } from '../api/liveSettings';
 import {
   type LivePastCandlesWarning,
   type LivePastDailyCandlesWarning,
 } from '../api/studyPastCandles';
 import { useLiveVenueStore } from '../state/liveVenue';
 import { useLivePageStore } from '../state/livePage';
-import { useKisRestModeStore } from '../state/kisRestMode';
 import { useSourcePreferenceStore } from '../state/sourcePreference';
 import type { StudyViewReference } from '../api/studyViews';
 import type { RangeBundle } from '../api/types';
@@ -38,7 +38,8 @@ export function useStudyReferenceBundle(save: StudyViewReference | null) {
   const tradeVolumePocEnabled = useLivePageStore((s) => s.tradeVolumePocEnabled);
   const volumeDistributionEnabled = useLivePageStore((s) => s.volumeDistributionEnabled);
   const volumeDistributionRangeCount = useLivePageStore((s) => s.volumeDistributionRangeCount);
-  const kisRestBypassEnabled = useKisRestModeStore((s) => s.kisRestBypassEnabled);
+  const { data: liveSettings } = useLiveSettings();
+  const kisRestBypassEnabled = liveSettings?.kis_rest_bypass_enabled ?? false;
   const inputs = useMemo(() => studyReferenceQueryInputs(save), [save]);
   const queryOptions = useMemo(
     () => studyReferenceQueryOptions(save, {

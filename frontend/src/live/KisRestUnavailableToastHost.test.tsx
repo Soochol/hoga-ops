@@ -97,4 +97,27 @@ describe('KisRestUnavailableToastHost', () => {
     }));
     await waitFor(() => expect(markSpy).toHaveBeenCalled());
   });
+
+  it('keeps legacy local bypass when backend migration patch fails', async () => {
+    localStorage.setItem('chart.kisRestMode.v1', JSON.stringify({ kisRestBypassEnabled: true }));
+    const apiCall = vi.spyOn(apiClient, 'apiCall').mockRejectedValue(new Error('patch failed'));
+    const markSpy = vi.spyOn(kisRestMode, 'markLegacyKisRestBypassMigrated');
+
+    renderWithClient({
+      schema_version: 1,
+      storage_policy: 'ws_plus_rest',
+      program_trade_storage_enabled: false,
+      kis_rest_bypass_enabled: false,
+    });
+
+    await waitFor(() => expect(apiCall).toHaveBeenCalledWith('/api/live/settings', {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ kis_rest_bypass_enabled: true }),
+    }));
+    await waitFor(() => expect(localStorage.getItem('chart.kisRestMode.v1')).not.toBeNull());
+    expect(localStorage.getItem('chart.kisRestMode.v1')).toContain('true');
+    expect(localStorage.getItem('chart.kisRestMode.v1.migrated')).toBeNull();
+    expect(markSpy).not.toHaveBeenCalled();
+  });
 });

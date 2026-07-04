@@ -1,6 +1,7 @@
 import { renderHook } from '@testing-library/react';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import type { UseQueryOptions, UseQueryResult } from '@tanstack/react-query';
+import { LIVE_SETTINGS_KEY } from '../api/liveSettings';
 import type { StudyViewReference } from '../api/studyViews';
 import type { RangeBundle } from '../api/types';
 
@@ -26,7 +27,6 @@ vi.mock('./studyReferenceQueries', () => ({
 
 import { useLivePageStore } from '../state/livePage';
 import { useLiveVenueStore } from '../state/liveVenue';
-import { useKisRestModeStore } from '../state/kisRestMode';
 import { useSourcePreferenceStore } from '../state/sourcePreference';
 import { useStudyReferenceBundle } from './useStudyReferenceBundle';
 
@@ -49,6 +49,7 @@ const rangeHogaOptions = { queryKey: ['range-hoga-plan'], enabled: true } as unk
 const rangeSidecarOptions = { queryKey: ['range-sidecar-plan'], enabled: true } as unknown as UseQueryOptions;
 const minuteOptions = { queryKey: ['minute-plan'], enabled: true } as unknown as UseQueryOptions;
 const dailyOptions = { queryKey: ['daily-plan'], enabled: false } as unknown as UseQueryOptions;
+let kisRestBypassEnabled = false;
 
 function rangeBundleFixture(overrides: Partial<RangeBundle> = {}): RangeBundle {
   return {
@@ -77,6 +78,19 @@ function rangeBundleFixture(overrides: Partial<RangeBundle> = {}): RangeBundle {
 }
 
 function queryResultFor(options: UseQueryOptions): Partial<UseQueryResult> {
+  if (Array.isArray(options.queryKey) && options.queryKey.length === LIVE_SETTINGS_KEY.length &&
+    options.queryKey.every((value, index) => value === LIVE_SETTINGS_KEY[index])) {
+    return {
+      data: {
+        schema_version: 1,
+        storage_policy: 'ws_plus_rest',
+        program_trade_storage_enabled: false,
+        kis_rest_bypass_enabled: kisRestBypassEnabled,
+      },
+      isLoading: false,
+      error: null,
+    };
+  }
   if (options === rangeHogaOptions) {
     return { data: null, isLoading: false, error: null };
   }
@@ -110,10 +124,10 @@ describe('useStudyReferenceBundle', () => {
       minuteCandles: minuteOptions,
       dailyCandles: dailyOptions,
     });
+    kisRestBypassEnabled = false;
     useQueryMock.mockImplementation(queryResultFor);
     useLiveVenueStore.setState({ venue: 'NXT' });
     useSourcePreferenceStore.setState({ sourcePreference: 'kis_api_first' });
-    useKisRestModeStore.setState({ kisRestBypassEnabled: false, lastFailureAtMs: null, lastToastAtMs: null });
     useLivePageStore.setState({
       brokerLateEntryEnabled: true,
       brokerLateEntryStartHHMM: 1000,
@@ -135,24 +149,30 @@ describe('useStudyReferenceBundle', () => {
       volumeDistributionEnabled: true,
       volumeDistributionRangeCount: 12,
     });
-    expect(useQueryMock).toHaveBeenNthCalledWith(1, rangeHogaOptions);
-    expect(useQueryMock).toHaveBeenNthCalledWith(2, rangeSidecarOptions);
-    expect(useQueryMock).toHaveBeenNthCalledWith(3, minuteOptions);
-    expect(useQueryMock).toHaveBeenNthCalledWith(4, dailyOptions);
+    expect(useQueryMock).toHaveBeenNthCalledWith(1, expect.objectContaining({
+      queryKey: LIVE_SETTINGS_KEY,
+    }));
+    expect(useQueryMock).toHaveBeenNthCalledWith(2, rangeHogaOptions);
+    expect(useQueryMock).toHaveBeenNthCalledWith(3, rangeSidecarOptions);
+    expect(useQueryMock).toHaveBeenNthCalledWith(4, minuteOptions);
+    expect(useQueryMock).toHaveBeenNthCalledWith(5, dailyOptions);
   });
 
   it('disables KIS candle queries when KIS REST bypass is enabled', () => {
-    useKisRestModeStore.setState({ kisRestBypassEnabled: true });
+    kisRestBypassEnabled = true;
 
     renderHook(() => useStudyReferenceBundle(save));
 
-    expect(useQueryMock).toHaveBeenNthCalledWith(1, rangeHogaOptions);
-    expect(useQueryMock).toHaveBeenNthCalledWith(2, rangeSidecarOptions);
-    expect(useQueryMock).toHaveBeenNthCalledWith(3, expect.objectContaining({
+    expect(useQueryMock).toHaveBeenNthCalledWith(1, expect.objectContaining({
+      queryKey: LIVE_SETTINGS_KEY,
+    }));
+    expect(useQueryMock).toHaveBeenNthCalledWith(2, rangeHogaOptions);
+    expect(useQueryMock).toHaveBeenNthCalledWith(3, rangeSidecarOptions);
+    expect(useQueryMock).toHaveBeenNthCalledWith(4, expect.objectContaining({
       ...minuteOptions,
       enabled: false,
     }));
-    expect(useQueryMock).toHaveBeenNthCalledWith(4, expect.objectContaining({
+    expect(useQueryMock).toHaveBeenNthCalledWith(5, expect.objectContaining({
       ...dailyOptions,
       enabled: false,
     }));

@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useRef } from 'react';
 import type { LiveSeriesData } from '../api/liveSeries';
+import { useLiveSettings } from '../api/liveSettings';
 import { useLivePastCandles } from '../api/livePastCandles';
 import { useLivePastDailyCandles } from '../api/livePastDailyCandles';
 import { useLivePastInvestorNet } from '../api/livePastInvestorNet';
@@ -258,7 +259,8 @@ export function useLiveBundle(
   const volumeDistributionRangeCount = useLivePageStore((s) => s.volumeDistributionRangeCount);
   const sourcePreference = useSourcePreferenceStore((s) => s.sourcePreference);
   const candleDataPreference = useCandleDataPreferenceStore((s) => s.candleDataPreference);
-  const kisRestBypassEnabled = useKisRestModeStore((s) => s.kisRestBypassEnabled);
+  const { data: liveSettings } = useLiveSettings();
+  const kisRestBypassEnabled = liveSettings?.kis_rest_bypass_enabled ?? false;
   const notifyKisRestFailure = useKisRestModeStore((s) => s.notifyFailure);
   const venue = options.venue ?? 'KRX';
   const preferHogaplayCandles = candleDataPreference === 'hogaplay_first';
