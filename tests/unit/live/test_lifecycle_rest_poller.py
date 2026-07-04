@@ -18,6 +18,9 @@ from pathlib import Path
 
 import pytest
 
+from hoga.api.models import LiveSettingsResponse
+from hoga.live.settings import save_live_settings
+
 
 # ── Fake poller (LiveRestPoller 인터페이스만 흉내) ─────────────────────────────
 
@@ -253,6 +256,37 @@ async def test_refresh_updates_excluded_codes(
                 await t
             except asyncio.CancelledError:
                 pass
+
+
+def test_status_exposes_kis_rest_bypass_enabled(tmp_path, monkeypatch):
+    from hoga.live import lifecycle
+
+    lifecycle.reset_for_tests()
+    save_live_settings(tmp_path, LiveSettingsResponse(kis_rest_bypass_enabled=True))
+    monkeypatch.setattr(lifecycle, "_data_dir", tmp_path, raising=False)
+    lifecycle.refresh_status_from_settings(tmp_path)
+
+    status = lifecycle.get_status()
+
+    assert status.kis_rest_bypass_enabled is True
+
+
+@pytest.mark.asyncio
+async def test_refresh_bypass_stops_existing_rest_poller(
+    monkeypatch, tmp_path
+) -> None:
+    from hoga.live import lifecycle
+
+    lifecycle.reset_for_tests()
+    fake_poller = _FakePoller()
+    fake_poller.start()
+    lifecycle._state.rest_poller = fake_poller
+    save_live_settings(tmp_path, LiveSettingsResponse(kis_rest_bypass_enabled=True))
+
+    await lifecycle.refresh_live_stream(data_dir=tmp_path)
+
+    assert fake_poller.stopped is True
+    assert lifecycle._state.rest_poller is None
 
 
 @pytest.mark.asyncio

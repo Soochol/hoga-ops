@@ -230,3 +230,64 @@ async def test_storage_runtime_stops_program_trade_collector_under_ws_only(
     )
 
     assert existing.stopped is True
+
+
+@pytest.mark.asyncio
+async def test_storage_runtime_bypass_stops_api_recorder_without_mutating_policy(
+    tmp_path,
+    monkeypatch,
+) -> None:
+    _patch_common(monkeypatch)
+    _seed_watchlist(tmp_path)
+    existing = FakeRest30Recorder()
+    save_live_settings(
+        tmp_path,
+        LiveSettings(storage_policy="rest_only", kis_rest_bypass_enabled=True),
+    )
+    state = FakeStorageState(rest30_recorder=existing)
+
+    snapshot = await sync_storage_runtime(
+        tmp_path,
+        state=state,
+        buffer=object(),  # type: ignore[arg-type]
+        date_fn=lambda: "20260623",
+        now_ms_fn=lambda: 0,
+        n_configured=1,
+    )
+
+    assert snapshot.storage_policy == "rest_only"
+    assert snapshot.ws_targets == ()
+    assert snapshot.kis_api_targets == ()
+    assert existing.targets == set()
+    assert existing.stopped is True
+
+
+@pytest.mark.asyncio
+async def test_storage_runtime_bypass_stops_program_trade_collector(
+    tmp_path,
+    monkeypatch,
+) -> None:
+    _patch_common(monkeypatch)
+    _seed_watchlist(tmp_path)
+    existing = FakeProgramTradeCollector()
+    save_live_settings(
+        tmp_path,
+        LiveSettings(
+            storage_policy="ws_plus_rest",
+            program_trade_storage_enabled=True,
+            kis_rest_bypass_enabled=True,
+        ),
+    )
+    state = FakeStorageState(program_trade_collector=existing)
+
+    snapshot = await sync_storage_runtime(
+        tmp_path,
+        state=state,
+        buffer=object(),  # type: ignore[arg-type]
+        date_fn=lambda: "20260623",
+        now_ms_fn=lambda: 0,
+        n_configured=1,
+    )
+
+    assert snapshot.kis_api_targets == ()
+    assert existing.stopped is True
