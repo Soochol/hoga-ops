@@ -544,6 +544,8 @@ class AskPeakDualRow:
     all_max_price: int
     all_max_qty: int
     all_max_intra_ms: int
+    all_peaks: tuple[AskPeakCandidateRow, ...] = ()
+    all_max_peaks: tuple[AskPeakCandidateRow, ...] = ()
     untraded_price: int | None = None
     untraded_qty: int | None = None
     untraded_intra_ms: int | None = None
@@ -586,12 +588,16 @@ class BidPeakDualRow:
     max_price: int
     max_qty: int
     max_intra_ms: int
+    traded_peaks: tuple[AskPeakCandidateRow, ...]
+    traded_max_peaks: tuple[AskPeakCandidateRow, ...]
     all_price: int
     all_qty: int
     all_intra_ms: int
     all_max_price: int
     all_max_qty: int
     all_max_intra_ms: int
+    all_peaks: tuple[AskPeakCandidateRow, ...] = ()
+    all_max_peaks: tuple[AskPeakCandidateRow, ...] = ()
     untraded_price: int | None = None
     untraded_qty: int | None = None
     untraded_intra_ms: int | None = None
@@ -999,7 +1005,8 @@ def query_day_ask_peak_dual(
             [str(path), str(trades_path), str(trades_path)],
         ).fetchone()
 
-    def pick_many(src: str, *, mode: str, limit: int = 3) -> tuple[AskPeakCandidateRow, ...]:
+    def pick_many(src: str, *, mode: str, limit: int | None = None) -> tuple[AskPeakCandidateRow, ...]:
+        limit_sql = "" if limit is None else f" LIMIT {int(limit)}"
         rows = con.execute(
             f"""
             {base_ctes},
@@ -1018,7 +1025,7 @@ def query_day_ask_peak_dual(
             )
             SELECT price, qty, intra_ms FROM per_price
             WHERE rn = 1
-            ORDER BY qty DESC, intra_ms ASC LIMIT {int(limit)}
+            ORDER BY qty DESC, intra_ms ASC{limit_sql}
             """,
             [str(path), str(trades_path), str(trades_path)],
         ).fetchall()
@@ -1035,6 +1042,8 @@ def query_day_ask_peak_dual(
     traded_max = pick("cont", mode="traded") or all_max
     traded_peaks = pick_many("rep", mode="traded")
     traded_max_peaks = pick_many("cont", mode="traded")
+    all_peaks = pick_many("rep", mode="all", limit=None)
+    all_max_peaks = pick_many("cont", mode="all", limit=None)
     untraded_close = pick("rep", mode="untraded")
     untraded_max = pick("cont", mode="untraded")
     if all_max is None or traded_max is None:
@@ -1052,6 +1061,8 @@ def query_day_ask_peak_dual(
         all_max_price=int(all_max[0]),
         all_max_qty=int(all_max[1]),
         all_max_intra_ms=int(all_max[2]),
+        all_peaks=all_peaks,
+        all_max_peaks=all_max_peaks,
         untraded_price=int(untraded_close[0]) if untraded_close is not None else None,
         untraded_qty=int(untraded_close[1]) if untraded_close is not None else None,
         untraded_intra_ms=int(untraded_close[2]) if untraded_close is not None else None,
@@ -1185,12 +1196,53 @@ def query_day_bid_peak_dual(
             [str(path), str(trades_path), str(trades_path)],
         ).fetchone()
 
+    def pick_many(src: str, *, mode: str, limit: int | None = None) -> tuple[AskPeakCandidateRow, ...]:
+        if mode == "traded":
+            filter_sql = "WHERE price IN (SELECT price FROM traded_prices)"
+        elif mode == "untraded":
+            filter_sql = "WHERE price < (SELECT price FROM day_low)"
+        elif mode == "all":
+            filter_sql = ""
+        else:
+            raise ValueError(f"unknown bid peak pick_many mode: {mode}")
+        limit_sql = "" if limit is None else f" LIMIT {int(limit)}"
+        rows = con.execute(
+            f"""
+            {base_ctes},
+            levels AS ({level_union(src)}),
+            filtered AS (
+              SELECT price, qty, intra_ms FROM levels
+              {filter_sql}
+            ),
+            per_price AS (
+              SELECT price, qty, intra_ms,
+                     ROW_NUMBER() OVER (
+                       PARTITION BY price
+                       ORDER BY qty DESC, intra_ms ASC
+                     ) AS rn
+              FROM filtered
+            )
+            SELECT price, qty, intra_ms FROM per_price
+            WHERE rn = 1
+            ORDER BY qty DESC, intra_ms ASC{limit_sql}
+            """,
+            [str(path), str(trades_path), str(trades_path)],
+        ).fetchall()
+        return tuple(
+            AskPeakCandidateRow(price=int(r[0]), qty=int(r[1]), intra_ms=int(r[2]))
+            for r in rows
+        )
+
     all_close = pick("rep", mode="all")
     if all_close is None:
         return None
     all_max = pick("cont", mode="all")
     traded_close = pick("rep", mode="traded") or all_close
     traded_max = pick("cont", mode="traded") or all_max
+    traded_peaks = pick_many("rep", mode="traded")
+    traded_max_peaks = pick_many("cont", mode="traded")
+    all_peaks = pick_many("rep", mode="all", limit=None)
+    all_max_peaks = pick_many("cont", mode="all", limit=None)
     untraded_close = pick("rep", mode="untraded")
     untraded_max = pick("cont", mode="untraded")
     if all_max is None or traded_max is None:
@@ -1198,10 +1250,14 @@ def query_day_bid_peak_dual(
     return BidPeakDualRow(
         price=int(traded_close[0]), qty=int(traded_close[1]), intra_ms=int(traded_close[2]),
         max_price=int(traded_max[0]), max_qty=int(traded_max[1]), max_intra_ms=int(traded_max[2]),
+        traded_peaks=traded_peaks,
+        traded_max_peaks=traded_max_peaks,
         all_price=int(all_close[0]), all_qty=int(all_close[1]), all_intra_ms=int(all_close[2]),
         all_max_price=int(all_max[0]),
         all_max_qty=int(all_max[1]),
         all_max_intra_ms=int(all_max[2]),
+        all_peaks=all_peaks,
+        all_max_peaks=all_max_peaks,
         untraded_price=int(untraded_close[0]) if untraded_close is not None else None,
         untraded_qty=int(untraded_close[1]) if untraded_close is not None else None,
         untraded_intra_ms=int(untraded_close[2]) if untraded_close is not None else None,
@@ -1306,7 +1362,6 @@ def query_day_ask_bid_peak_dual(
                  ROW_NUMBER() OVER (ORDER BY qty DESC, intra_ms ASC) AS ord
           FROM ask_traded_peak_candidates
           WHERE price_rn = 1
-          QUALIFY ord <= 3
         ),
         ask_traded_max_candidates AS (
           SELECT price, qty, intra_ms,
@@ -1322,7 +1377,34 @@ def query_day_ask_bid_peak_dual(
                  ROW_NUMBER() OVER (ORDER BY qty DESC, intra_ms ASC) AS ord
           FROM ask_traded_max_candidates
           WHERE price_rn = 1
-          QUALIFY ord <= 3
+        ),
+        ask_all_peak_candidates AS (
+          SELECT price, qty, intra_ms,
+                 ROW_NUMBER() OVER (
+                   PARTITION BY price
+                   ORDER BY qty DESC, intra_ms ASC
+                 ) AS price_rn
+          FROM ask_rep_levels
+        ),
+        ask_all_peaks AS (
+          SELECT 'ask_all_peak' AS kind, price, qty, intra_ms,
+                 ROW_NUMBER() OVER (ORDER BY qty DESC, intra_ms ASC) AS ord
+          FROM ask_all_peak_candidates
+          WHERE price_rn = 1
+        ),
+        ask_all_max_peak_candidates AS (
+          SELECT price, qty, intra_ms,
+                 ROW_NUMBER() OVER (
+                   PARTITION BY price
+                   ORDER BY qty DESC, intra_ms ASC
+                 ) AS price_rn
+          FROM ask_cont_levels
+        ),
+        ask_all_max_peaks AS (
+          SELECT 'ask_all_max_peak' AS kind, price, qty, intra_ms,
+                 ROW_NUMBER() OVER (ORDER BY qty DESC, intra_ms ASC) AS ord
+          FROM ask_all_max_peak_candidates
+          WHERE price_rn = 1
         ),
         bid_all_close AS (
           SELECT 'bid_all_close' AS kind, price, qty, intra_ms, 0 AS ord
@@ -1344,6 +1426,64 @@ def query_day_ask_bid_peak_dual(
           WHERE price IN (SELECT price FROM traded_prices)
           ORDER BY qty DESC, intra_ms ASC LIMIT 1
         ),
+        bid_traded_peak_candidates AS (
+          SELECT price, qty, intra_ms,
+                 ROW_NUMBER() OVER (
+                   PARTITION BY price
+                   ORDER BY qty DESC, intra_ms ASC
+                 ) AS price_rn
+          FROM bid_rep_levels
+          WHERE price IN (SELECT price FROM traded_prices)
+        ),
+        bid_traded_peaks AS (
+          SELECT 'bid_traded_peak' AS kind, price, qty, intra_ms,
+                 ROW_NUMBER() OVER (ORDER BY qty DESC, intra_ms ASC) AS ord
+          FROM bid_traded_peak_candidates
+          WHERE price_rn = 1
+        ),
+        bid_traded_max_candidates AS (
+          SELECT price, qty, intra_ms,
+                 ROW_NUMBER() OVER (
+                   PARTITION BY price
+                   ORDER BY qty DESC, intra_ms ASC
+                 ) AS price_rn
+          FROM bid_cont_levels
+          WHERE price IN (SELECT price FROM traded_prices)
+        ),
+        bid_traded_max_peaks AS (
+          SELECT 'bid_traded_max_peak' AS kind, price, qty, intra_ms,
+                 ROW_NUMBER() OVER (ORDER BY qty DESC, intra_ms ASC) AS ord
+          FROM bid_traded_max_candidates
+          WHERE price_rn = 1
+        ),
+        bid_all_peak_candidates AS (
+          SELECT price, qty, intra_ms,
+                 ROW_NUMBER() OVER (
+                   PARTITION BY price
+                   ORDER BY qty DESC, intra_ms ASC
+                 ) AS price_rn
+          FROM bid_rep_levels
+        ),
+        bid_all_peaks AS (
+          SELECT 'bid_all_peak' AS kind, price, qty, intra_ms,
+                 ROW_NUMBER() OVER (ORDER BY qty DESC, intra_ms ASC) AS ord
+          FROM bid_all_peak_candidates
+          WHERE price_rn = 1
+        ),
+        bid_all_max_peak_candidates AS (
+          SELECT price, qty, intra_ms,
+                 ROW_NUMBER() OVER (
+                   PARTITION BY price
+                   ORDER BY qty DESC, intra_ms ASC
+                 ) AS price_rn
+          FROM bid_cont_levels
+        ),
+        bid_all_max_peaks AS (
+          SELECT 'bid_all_max_peak' AS kind, price, qty, intra_ms,
+                 ROW_NUMBER() OVER (ORDER BY qty DESC, intra_ms ASC) AS ord
+          FROM bid_all_max_peak_candidates
+          WHERE price_rn = 1
+        ),
         bid_untraded_close AS (
           SELECT 'bid_untraded_close' AS kind, price, qty, intra_ms, 0 AS ord
           FROM bid_rep_levels
@@ -1364,10 +1504,16 @@ def query_day_ask_bid_peak_dual(
         UNION ALL SELECT * FROM ask_untraded_max
         UNION ALL SELECT * FROM ask_traded_peaks
         UNION ALL SELECT * FROM ask_traded_max_peaks
+        UNION ALL SELECT * FROM ask_all_peaks
+        UNION ALL SELECT * FROM ask_all_max_peaks
         UNION ALL SELECT * FROM bid_all_close
         UNION ALL SELECT * FROM bid_all_max
         UNION ALL SELECT * FROM bid_traded_close
         UNION ALL SELECT * FROM bid_traded_max
+        UNION ALL SELECT * FROM bid_traded_peaks
+        UNION ALL SELECT * FROM bid_traded_max_peaks
+        UNION ALL SELECT * FROM bid_all_peaks
+        UNION ALL SELECT * FROM bid_all_max_peaks
         UNION ALL SELECT * FROM bid_untraded_close
         UNION ALL SELECT * FROM bid_untraded_max
         """,
@@ -1378,6 +1524,12 @@ def query_day_ask_bid_peak_dual(
     many: dict[str, list[AskPeakCandidateRow]] = {
         "ask_traded_peak": [],
         "ask_traded_max_peak": [],
+        "ask_all_peak": [],
+        "ask_all_max_peak": [],
+        "bid_traded_peak": [],
+        "bid_traded_max_peak": [],
+        "bid_all_peak": [],
+        "bid_all_max_peak": [],
     }
     for kind, price, qty, intra_ms, _ord in rows:
         item = (int(price), int(qty), int(intra_ms))
@@ -1394,6 +1546,8 @@ def query_day_ask_bid_peak_dual(
         ask_traded_max = single.get("ask_traded_max") or ask_all_max
         traded_peaks = tuple(many["ask_traded_peak"])
         traded_max_peaks = tuple(many["ask_traded_max_peak"])
+        all_peaks = tuple(many["ask_all_peak"])
+        all_max_peaks = tuple(many["ask_all_max_peak"])
         if not traded_peaks:
             traded_peaks = (AskPeakCandidateRow(price=ask_all_close[0], qty=ask_all_close[1], intra_ms=ask_all_close[2]),)
         if not traded_max_peaks:
@@ -1407,6 +1561,8 @@ def query_day_ask_bid_peak_dual(
             traded_max_peaks=traded_max_peaks,
             all_price=ask_all_close[0], all_qty=ask_all_close[1], all_intra_ms=ask_all_close[2],
             all_max_price=ask_all_max[0], all_max_qty=ask_all_max[1], all_max_intra_ms=ask_all_max[2],
+            all_peaks=all_peaks,
+            all_max_peaks=all_max_peaks,
             untraded_price=ask_untraded_close[0] if ask_untraded_close is not None else None,
             untraded_qty=ask_untraded_close[1] if ask_untraded_close is not None else None,
             untraded_intra_ms=ask_untraded_close[2] if ask_untraded_close is not None else None,
@@ -1421,13 +1577,21 @@ def query_day_ask_bid_peak_dual(
     if bid_all_close is not None and bid_all_max is not None:
         bid_traded_close = single.get("bid_traded_close") or bid_all_close
         bid_traded_max = single.get("bid_traded_max") or bid_all_max
+        bid_traded_peaks = tuple(many["bid_traded_peak"])
+        bid_traded_max_peaks = tuple(many["bid_traded_max_peak"])
+        bid_all_peaks = tuple(many["bid_all_peak"])
+        bid_all_max_peaks = tuple(many["bid_all_max_peak"])
         bid_untraded_close = single.get("bid_untraded_close")
         bid_untraded_max = single.get("bid_untraded_max")
         bid_row = BidPeakDualRow(
             price=bid_traded_close[0], qty=bid_traded_close[1], intra_ms=bid_traded_close[2],
             max_price=bid_traded_max[0], max_qty=bid_traded_max[1], max_intra_ms=bid_traded_max[2],
+            traded_peaks=bid_traded_peaks,
+            traded_max_peaks=bid_traded_max_peaks,
             all_price=bid_all_close[0], all_qty=bid_all_close[1], all_intra_ms=bid_all_close[2],
             all_max_price=bid_all_max[0], all_max_qty=bid_all_max[1], all_max_intra_ms=bid_all_max[2],
+            all_peaks=bid_all_peaks,
+            all_max_peaks=bid_all_max_peaks,
             untraded_price=bid_untraded_close[0] if bid_untraded_close is not None else None,
             untraded_qty=bid_untraded_close[1] if bid_untraded_close is not None else None,
             untraded_intra_ms=bid_untraded_close[2] if bid_untraded_close is not None else None,

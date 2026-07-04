@@ -67,6 +67,14 @@ function toBidPeak(date: string, peak: DayPeak | null): BidPeak | null {
   };
 }
 
+function sameDayPeaks(a: readonly DayPeak[], b: readonly DayPeak[]): boolean {
+  return a.length === b.length && a.every((peak, idx) => (
+    peak.price === b[idx].price
+    && peak.qty === b[idx].qty
+    && peak.t_ms === b[idx].t_ms
+  ));
+}
+
 function isEligibleTradeSide(side: number): boolean {
   return side === 1 || side === -1;
 }
@@ -119,8 +127,47 @@ export function bestTradedObservedPeak(
   return best;
 }
 
+function topTradedObservedPeaks(
+  seeds: readonly DayPeak[],
+  observed: ObservedPricePeaks,
+  tradedPrices: Set<number>,
+  isCandleRangeTraded: (price: number) => boolean = () => false,
+): DayPeak[] {
+  const byPrice = new Map<number, DayPeak>();
+  const put = (peak: DayPeak) => {
+    const current = byPrice.get(peak.price);
+    if (current === undefined || peak.qty > current.qty) {
+      byPrice.set(peak.price, peak);
+    }
+  };
+  for (const seed of seeds) put(seed);
+  for (const [price, peak] of observed) {
+    if (tradedPrices.has(price) || isCandleRangeTraded(price)) put(peak);
+  }
+  return [...byPrice.values()]
+    .sort((a, b) => b.qty - a.qty || a.t_ms - b.t_ms || a.price - b.price);
+}
+
+function topObservedPeaks(seeds: readonly DayPeak[], observed: ObservedPricePeaks): DayPeak[] {
+  const byPrice = new Map<number, DayPeak>();
+  const put = (peak: DayPeak) => {
+    const current = byPrice.get(peak.price);
+    if (current === undefined || peak.qty > current.qty) {
+      byPrice.set(peak.price, peak);
+    }
+  };
+  for (const seed of seeds) put(seed);
+  for (const peak of observed.values()) put(peak);
+  return [...byPrice.values()]
+    .sort((a, b) => b.qty - a.qty || a.t_ms - b.t_ms || a.price - b.price);
+}
+
 function eligibleSeed(peak: DayPeak | null, allowPrice: (price: number) => boolean): DayPeak | null {
   return peak && allowPrice(peak.price) ? peak : null;
+}
+
+function candidatePeaks(peaks: readonly DayPeak[]) {
+  return peaks.map((peak) => ({ price: peak.price, qty: peak.qty, t_ms: peak.t_ms }));
 }
 
 export function buildTodayTradedBidPeak(todayBidPeak: LiveTodayBidPeak | null): BidPeak | null {
@@ -140,7 +187,21 @@ export function buildTodayTradedBidPeak(todayBidPeak: LiveTodayBidPeak | null): 
     max_price: todayBidPeak.traded_price,
     max_qty: todayBidPeak.traded_qty,
     max_t_ms: todayBidPeak.traded_t_ms,
+    traded_peaks: todayBidPeak.traded_peaks,
+    traded_max_peaks: todayBidPeak.traded_peaks,
   };
+}
+
+function buildTodayTradedBidPeakSeeds(todayBidPeak: LiveTodayBidPeak | null): DayPeak[] {
+  if (!todayBidPeak) return [];
+  const peaks = todayBidPeak.traded_peaks;
+  if (peaks && peaks.length > 0) {
+    return peaks
+      .filter((peak) => Number.isFinite(peak.price) && Number.isFinite(peak.qty) && Number.isFinite(peak.t_ms))
+      .map((peak) => ({ price: peak.price, qty: peak.qty, t_ms: peak.t_ms }));
+  }
+  const single = toDayPeak(buildTodayTradedBidPeak(todayBidPeak));
+  return single ? [single] : [];
 }
 
 export function buildTodayAllPriceBidPeak(todayBidPeak: LiveTodayBidPeak | null): BidPeak | null {
@@ -153,6 +214,8 @@ export function buildTodayAllPriceBidPeak(todayBidPeak: LiveTodayBidPeak | null)
     max_price: todayBidPeak.all_price,
     max_qty: todayBidPeak.all_qty,
     max_t_ms: todayBidPeak.all_t_ms,
+    all_peaks: todayBidPeak.all_peaks,
+    all_max_peaks: todayBidPeak.all_peaks,
   };
 }
 
@@ -201,6 +264,10 @@ export function useDayBidPeaks(
     () => toDayPeak(backendTodayPeak),
     [backendTodayPeak],
   );
+  const backendTodayPeaks = useMemo(
+    () => buildTodayTradedBidPeakSeeds(todayBidPeak),
+    [todayBidPeak],
+  );
   const candleRangeTodayPeak = useMemo(
     () => buildTodayCandleRangeBidPeak(todayBidPeak, isCandleRangeTraded),
     [todayBidPeak, isCandleRangeTraded],
@@ -212,6 +279,9 @@ export function useDayBidPeaks(
   const backendTradedPrices = todayBidPeak?.traded_prices ?? [];
 
   const liveSeed = backendTodaySeed;
+  const liveSeeds = backendTodayPeaks.length > 0
+    ? backendTodayPeaks
+    : (backendTodaySeed ? [backendTodaySeed] : []);
 
   const stateRef = useRef<RatchetState>(FRESH_RATCHET);
   const tradePriceRef = useRef<TradePriceState>(
@@ -220,7 +290,7 @@ export function useDayBidPeaks(
   const observedPricePeaksRef = useRef<ObservedPricePeaks>(new Map());
   const tradeCursorRef = useRef<BufferCursor<TradeSnapshot>>(freshCursor());
   const obCursorRef = useRef<BufferCursor<ObSnapshot>>(freshCursor());
-  const [todayPeak, setTodayPeak] = useState<DayPeak | null>(liveSeed);
+  const [todayPeaks, setTodayPeaks] = useState<DayPeak[]>(liveSeeds);
 
   // 종목 전환 → ratchet 리셋·재시드(remount 비의존).
   useEffect(() => {
@@ -229,7 +299,7 @@ export function useDayBidPeaks(
     observedPricePeaksRef.current = new Map();
     tradeCursorRef.current = freshCursor();
     obCursorRef.current = freshCursor();
-    setTodayPeak(liveSeed);
+    setTodayPeaks((current) => (sameDayPeaks(current, liveSeeds) ? current : liveSeeds));
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [code, todayKst, todayBidPeak]);
 
@@ -245,22 +315,33 @@ export function useDayBidPeaks(
     );
     const s = reduceDayBidPeak(stateRef.current, liveSeed, unreadOb, allowPrice);
     stateRef.current = s;
-    setTodayPeak(bestTradedObservedPeak(
+    const bestPeak = bestTradedObservedPeak(
       eligibleSeed(s.peak, allowPrice) ?? eligibleSeed(liveSeed, allowPrice),
       observedPricePeaksRef.current,
       tradePriceRef.current.prices,
       isCandleRangeTraded,
-    ));
+    );
+    const seedPeaks = bestPeak ? [...liveSeeds, bestPeak] : liveSeeds;
+    const nextPeaks = topTradedObservedPeaks(
+      seedPeaks,
+      observedPricePeaksRef.current,
+      tradePriceRef.current.prices,
+      isCandleRangeTraded,
+    );
+    setTodayPeaks((current) => (sameDayPeaks(current, nextPeaks) ? current : nextPeaks));
   }, [ob, trade, liveSeed, todayBidPeak, todayKst, isCandleRangeTraded]);
 
-  // 과거일 seed(그대로) + 오늘 ratchet 결과(date 부착)를 합친 per-day 리스트.
-  // 오늘 entry는 live ratchet 값 하나만 추적하므로 close triple과 max triple을 동일하게 채운다.
+  // 과거일 seed(그대로) + 오늘 후보 목록(date 부착)을 합친 per-day 리스트.
+  // 오늘 후보들은 live ratchet 값이므로 close triple과 max triple을 동일하게 채운다.
   return useMemo(() => {
     const out: BidPeak[] = seeds.filter((p) => p.date !== todayKst);
-    const peak = toBidPeak(todayKst, todayPeak);
-    if (peak) out.push(peak);
+    const peak = toBidPeak(todayKst, todayPeaks[0] ?? null);
+    if (peak) {
+      const candidates = candidatePeaks(todayPeaks);
+      out.push({ ...peak, traded_peaks: candidates, traded_max_peaks: candidates });
+    }
     return out;
-  }, [seeds, todayKst, todayPeak]);
+  }, [seeds, todayKst, todayPeaks]);
 }
 
 export function useTodayAllPriceBidPeak(
@@ -280,24 +361,39 @@ export function useTodayAllPriceBidPeak(
     [seeds, todayKst],
   );
   const liveSeed = todayBidPeak !== null ? backendTodaySeed : todaySeed;
+  const liveSeeds = useMemo(
+    () => backendTodayPeak?.all_peaks?.map((peak) => ({ price: peak.price, qty: peak.qty, t_ms: peak.t_ms }))
+      ?? (liveSeed ? [liveSeed] : []),
+    [backendTodayPeak, liveSeed],
+  );
 
   const stateRef = useRef<RatchetState>(FRESH_RATCHET);
+  const observedPricePeaksRef = useRef<ObservedPricePeaks>(new Map());
   const obCursorRef = useRef<BufferCursor<ObSnapshot>>(freshCursor());
-  const [todayPeak, setTodayPeak] = useState<DayPeak | null>(liveSeed);
+  const [todayPeaks, setTodayPeaks] = useState<DayPeak[]>(liveSeeds);
 
   useEffect(() => {
     stateRef.current = FRESH_RATCHET;
+    observedPricePeaksRef.current = new Map();
     obCursorRef.current = freshCursor();
-    setTodayPeak(liveSeed);
+    setTodayPeaks((current) => (sameDayPeaks(current, liveSeeds) ? current : liveSeeds));
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [code, todayKst, todayBidPeak]);
 
   useEffect(() => {
     const unreadOb = unreadSnapshots(ob, obCursorRef.current);
+    observeBidPricePeaks(observedPricePeaksRef.current, unreadOb);
     const s = reduceDayBidPeak(stateRef.current, liveSeed, unreadOb);
     stateRef.current = s;
-    setTodayPeak(s.peak ?? liveSeed);
-  }, [ob, liveSeed]);
+    const seedPeaks = s.peak ? [...liveSeeds, s.peak] : liveSeeds;
+    const nextPeaks = topObservedPeaks(seedPeaks, observedPricePeaksRef.current);
+    setTodayPeaks((current) => (sameDayPeaks(current, nextPeaks) ? current : nextPeaks));
+  }, [ob, liveSeed, liveSeeds]);
 
-  return useMemo(() => toBidPeak(todayKst, todayPeak), [todayKst, todayPeak]);
+  return useMemo(() => {
+    const peak = toBidPeak(todayKst, todayPeaks[0] ?? null);
+    if (!peak) return null;
+    const candidates = candidatePeaks(todayPeaks);
+    return { ...peak, all_peaks: candidates, all_max_peaks: candidates };
+  }, [todayKst, todayPeaks]);
 }

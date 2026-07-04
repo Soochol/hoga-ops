@@ -10,6 +10,7 @@ import { useLivePageStore } from '../state/livePage';
 import { useActivePrefs } from '../state/chartPrefs';
 import { buildAskPeakOverlaySegments, styleVisibleMaxAskPeakSegments } from './LiveAskPeakSegments';
 import { buildBidPeakOverlaySegments } from './LiveBidPeakSegments';
+import type { VisibleTimeCutoff } from './peakWallVisibleCutoff';
 
 type Props = {
   paneSeries: PaneSeriesMap;
@@ -21,6 +22,8 @@ type Props = {
   segments: readonly RangeSegment[];
   candles: readonly Candle[];
   todayKst: string;
+  askVisibleTimeCutoff?: VisibleTimeCutoff | null;
+  bidVisibleTimeCutoff?: VisibleTimeCutoff | null;
 };
 
 function LivePeakWallDockedLabels({
@@ -33,6 +36,8 @@ function LivePeakWallDockedLabels({
   segments,
   candles,
   todayKst,
+  askVisibleTimeCutoff = null,
+  bidVisibleTimeCutoff = null,
 }: Props) {
   const series = paneSeries.get('candle' as PaneId) as ISeriesApi<SeriesType> | undefined;
   const askPeakEnabled = useLivePageStore((s) => s.askPeakEnabled);
@@ -86,6 +91,7 @@ function LivePeakWallDockedLabels({
         intraMax: askIntraMax,
         showAllPrices: askShowAllPrices,
         allPriceRankLimit: askAllPriceRankLimit as 1 | 2 | 3,
+        visibleTimeCutoff: askVisibleTimeCutoff,
       })
       : [];
     const visibleRange = prim.chartApi()?.timeScale().getVisibleRange() ?? null;
@@ -107,6 +113,7 @@ function LivePeakWallDockedLabels({
         allPriceStyle: { color: bidAllPriceColor, lineWidth: bidAllPriceLineWidth },
         intraMax: bidIntraMax,
         showAllPrices: bidShowAllPrices,
+        visibleTimeCutoff: bidVisibleTimeCutoff,
       })
       : [];
     prim.setLabels([
@@ -125,6 +132,7 @@ function LivePeakWallDockedLabels({
     askVisibleMaxColor,
     askVisibleMaxLineWidth,
     askVisibleMaxRankLimit,
+    askVisibleTimeCutoff,
     axis,
     bidAllPriceColor,
     bidAllPriceLineWidth,
@@ -133,6 +141,7 @@ function LivePeakWallDockedLabels({
     bidLineWidth,
     bidPeakEnabled,
     bidShowAllPrices,
+    bidVisibleTimeCutoff,
     candles,
     dayAskPeaks,
     dayBidPeaks,

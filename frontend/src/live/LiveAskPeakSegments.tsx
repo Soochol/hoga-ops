@@ -7,6 +7,8 @@ import type { VirtualAxis } from '../util/virtualAxis';
 import { useLivePageStore } from '../state/livePage';
 import { useActivePrefs } from '../state/chartPrefs';
 import { formatQtyCompact } from '../util/formatQtyCompact';
+import { applyPeakVisibleTimeCutoff, type VisibleTimeCutoff } from './peakWallVisibleCutoff';
+import { realMsToYyyymmdd } from './liveDateTime';
 import {
   AskPeakSegmentsPrimitive,
   inlinePeakWallSegmentsForDocking,
@@ -147,10 +149,37 @@ type BuildAskPeakOverlaySegmentsArgs = {
   intraMax: boolean;
   showAllPrices: boolean;
   allPriceRankLimit?: 1 | 2 | 3;
+  visibleTimeCutoff?: VisibleTimeCutoff | null;
 };
 
 function selectedQty(p: AskPeak, intraMax: boolean): number {
   return intraMax ? p.max_qty : p.qty;
+}
+
+function selectedPrice(p: AskPeak, intraMax: boolean): number {
+  return intraMax ? p.max_price : p.price;
+}
+
+function peakVisibleAtCutoff(p: AskPeak, cutoff: VisibleTimeCutoff | null | undefined, intraMax: boolean): boolean {
+  if (!cutoff) return true;
+  if (p.date < cutoff.date) return true;
+  if (p.date > cutoff.date) return false;
+  const tMs = intraMax ? p.max_t_ms : p.t_ms;
+  return Number.isFinite(tMs) && tMs <= cutoff.tMs;
+}
+
+function dayHighThroughCutoff(
+  candles: readonly Candle[],
+  date: string,
+  cutoff: VisibleTimeCutoff | null | undefined,
+): number | null {
+  let high: number | null = null;
+  for (const c of candles) {
+    if (realMsToYyyymmdd(c.ts_ms) !== date || !Number.isFinite(c.high)) continue;
+    if (cutoff && date === cutoff.date && c.ts_ms > cutoff.tMs) continue;
+    high = high === null ? c.high : Math.max(high, c.high);
+  }
+  return high;
 }
 
 function untradedPeakFromFields(p: AskPeak, intraMax: boolean): AskPeak | null {
@@ -165,6 +194,32 @@ function untradedPeakFromFields(p: AskPeak, intraMax: boolean): AskPeak | null {
     max_price: p.untraded_max_price ?? p.max_price,
     max_qty: p.untraded_max_qty ?? p.max_qty,
     max_t_ms: p.untraded_max_t_ms ?? p.max_t_ms,
+  };
+}
+
+function untradedPeakFromAllCandidates(
+  p: AskPeak,
+  candles: readonly Candle[],
+  cutoff: VisibleTimeCutoff | null,
+  intraMax: boolean,
+  candidateSource: AskPeak = p,
+): AskPeak | null {
+  if (!cutoff || p.date !== cutoff.date) return null;
+  const dayHigh = dayHighThroughCutoff(candles, p.date, cutoff);
+  if (dayHigh === null) return null;
+  const candidates = intraMax ? candidateSource.all_max_peaks : candidateSource.all_peaks;
+  const selected = candidates
+    ?.filter((candidate) => candidate.t_ms <= cutoff.tMs && candidate.price > dayHigh)
+    .sort((a, b) => b.qty - a.qty || a.t_ms - b.t_ms || a.price - b.price)[0];
+  if (!selected) return null;
+  return {
+    date: p.date,
+    price: selected.price,
+    qty: selected.qty,
+    t_ms: selected.t_ms,
+    max_price: selected.price,
+    max_qty: selected.qty,
+    max_t_ms: selected.t_ms,
   };
 }
 
@@ -228,8 +283,13 @@ export function buildAskPeakOverlaySegments({
   intraMax,
   showAllPrices,
   allPriceRankLimit = 1,
+  visibleTimeCutoff,
 }: BuildAskPeakOverlaySegmentsArgs): AskPeakSegment[] {
-  const baselinePeaks = expandBaselinePeaks(dayAskPeaks, allPriceRankLimit, intraMax);
+  const cutoffPeaks = applyPeakVisibleTimeCutoff(dayAskPeaks, visibleTimeCutoff ?? null, {
+    side: 'ask',
+    intraMax,
+  });
+  const baselinePeaks = expandBaselinePeaks(cutoffPeaks, allPriceRankLimit, intraMax);
   const baseline = buildAskPeakSegments(
     baselinePeaks,
     segments,
@@ -242,14 +302,37 @@ export function buildAskPeakOverlaySegments({
   );
   if (!showAllPrices) return baseline;
 
+  const todayAllPriceCandidate = todayAllPriceAskPeak
+    && peakVisibleAtCutoff(todayAllPriceAskPeak, visibleTimeCutoff, intraMax)
+    ? todayAllPriceAskPeak
+    : null;
   const untradedPeaks: AskPeak[] = [];
   const addedUntradedDates = new Set<string>();
   for (const p of baselinePeaks) {
     if (addedUntradedDates.has(p.date)) continue;
-    const candidates = p.date === todayKst && todayAllPriceAskPeak?.date === todayKst
-      ? [todayAllPriceAskPeak]
-      : [untradedPeakFromFields(p, intraMax)];
-    const seenPrices = new Set([intraMax ? p.max_price : p.price]);
+    const todayAllPriceSource = p.date === todayKst && todayAllPriceAskPeak?.date === todayKst
+      ? todayAllPriceAskPeak
+      : p;
+    const cutoffUntradedPeak = untradedPeakFromAllCandidates(
+      p,
+      candles,
+      visibleTimeCutoff ?? null,
+      intraMax,
+      todayAllPriceSource,
+    );
+    const hasCutoffAllCandidates = visibleTimeCutoff?.date === p.date
+      && (intraMax ? todayAllPriceSource.all_max_peaks !== undefined : todayAllPriceSource.all_peaks !== undefined);
+    let candidates: Array<AskPeak | null>;
+    if (cutoffUntradedPeak) {
+      candidates = [cutoffUntradedPeak];
+    } else if (hasCutoffAllCandidates) {
+      candidates = [null];
+    } else if (p.date === todayKst && todayAllPriceCandidate?.date === todayKst) {
+      candidates = [todayAllPriceCandidate];
+    } else {
+      candidates = [untradedPeakFromFields(p, intraMax)];
+    }
+    const seenPrices = new Set([selectedPrice(p, intraMax)]);
     for (const untradedPeak of candidates) {
       if (!untradedPeak) continue;
       const price = intraMax ? untradedPeak.max_price : untradedPeak.price;
@@ -285,12 +368,13 @@ type Props = {
   candles: readonly Candle[];
   /** 오늘(KST YYYYMMDD) — 이 날 세그먼트만 라이브 엣지까지 연장·점 표시. */
   todayKst: string;
+  visibleTimeCutoff?: VisibleTimeCutoff | null;
 };
 
 /** 거래일별 매도 최대벽 오버레이. candle series에 커스텀 primitive를 걸어 각 날의 수평 세그먼트를
  *  그린다(풀-너비 price line이 아니라 그날 구간만 → 여러 날 동시 표시). 색·두께·on/off는 스토어.
  *  형제: LiveCurrentPriceLine(현재가 풀-너비 점선). */
-function LiveAskPeakSegments({ paneSeries, axis, dayAskPeaks, todayAllPriceAskPeak = null, segments, candles, todayKst }: Props) {
+function LiveAskPeakSegments({ paneSeries, axis, dayAskPeaks, todayAllPriceAskPeak = null, segments, candles, todayKst, visibleTimeCutoff = null }: Props) {
   const series = paneSeries.get('candle' as PaneId) as ISeriesApi<SeriesType> | undefined;
   const enabled = useLivePageStore((s) => s.askPeakEnabled);
   const color = useLivePageStore((s) => s.askPeakColor);
@@ -340,6 +424,7 @@ function LiveAskPeakSegments({ paneSeries, axis, dayAskPeaks, todayAllPriceAskPe
       intraMax,
       showAllPrices,
       allPriceRankLimit: allPriceRankLimit as 1 | 2 | 3,
+      visibleTimeCutoff,
     });
     const visibleRange = prim.chartApi()?.timeScale().getVisibleRange() ?? null;
     prim.setSegments(prepareAskPeakSegmentsForRender(
@@ -366,6 +451,7 @@ function LiveAskPeakSegments({ paneSeries, axis, dayAskPeaks, todayAllPriceAskPe
     showAllPrices,
     allPriceRankLimit,
     visibleMaxRankLimit,
+    visibleTimeCutoff,
   ]);
 
   // 갱신: dayAskPeaks·segments·candles·축·스타일·토글 변화 시 세그먼트 재계산.

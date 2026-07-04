@@ -51,9 +51,6 @@ class TodayAskPeakState:
                 t_ms=t_ms,
             )
             self.all_peak = _larger_peak(self.all_peak, price=price, qty=qty, t_ms=t_ms)
-            self.observed_price_peaks[price] = _larger_peak(
-                self.observed_price_peaks.get(price), price=price, qty=qty, t_ms=t_ms
-            )
             if price in self.traded_prices:
                 self.traded_peak = _larger_peak(
                     self.traded_peak,
@@ -66,8 +63,8 @@ class TodayAskPeakState:
 
         traded = self.traded_peak
         all_peak = self.all_peak
-        all_peaks = _top_peaks(self.observed_price_peaks.values())
-        traded_peaks = _top_peaks(
+        all_peaks = _ranked_peaks(self.observed_price_peaks.values())
+        traded_peaks = _ranked_peaks(
             p for price, p in self.observed_price_peaks.items()
             if price in self.traded_prices
         )
@@ -144,15 +141,28 @@ class TodayBidPeakState:
 
         traded = self.traded_peak
         all_peak = self.all_peak
+        all_peaks = _ranked_peaks(self.observed_price_peaks.values())
+        traded_peaks = _ranked_peaks(
+            p for price, p in self.observed_price_peaks.items()
+            if price in self.traded_prices
+        )
         return {
             "coverage": self.coverage,
             "traded_prices": sorted(self.traded_prices),
             "traded_price": traded.price if traded is not None else None,
             "traded_qty": traded.qty if traded is not None else None,
             "traded_t_ms": traded.t_ms if traded is not None else None,
+            "traded_peaks": [
+                {"price": p.price, "qty": p.qty, "t_ms": p.t_ms}
+                for p in traded_peaks
+            ],
             "all_price": all_peak.price,
             "all_qty": all_peak.qty,
             "all_t_ms": all_peak.t_ms,
+            "all_peaks": [
+                {"price": p.price, "qty": p.qty, "t_ms": p.t_ms}
+                for p in all_peaks
+            ],
         }
 
 
@@ -162,11 +172,11 @@ def _larger_peak(current: Peak | None, *, price: int, qty: int, t_ms: int) -> Pe
     return current
 
 
-def _top_peaks(peaks: Iterable[Peak]) -> list[Peak]:
+def _ranked_peaks(peaks: Iterable[Peak]) -> list[Peak]:
     return sorted(
         peaks,
         key=lambda p: (-p.qty, p.t_ms, p.price),
-    )[:3]
+    )
 
 
 def _positive_int(value: object) -> int | None:

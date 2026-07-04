@@ -135,6 +135,7 @@ async def test_on_tick_updates_today_ask_peak_state(tmp_path):
             {"price": 102, "qty": 9, "t_ms": now + 5_000},
             {"price": 101, "qty": 3, "t_ms": now + 5_000},
             {"price": 103, "qty": 1, "t_ms": now + 5_000},
+            {"price": 104, "qty": 1, "t_ms": now + 5_000},
         ],
     }
 
@@ -158,9 +159,24 @@ async def test_on_tick_updates_today_bid_peak_state(tmp_path):
         "traded_price": 70_000,
         "traded_qty": 5_000,
         "traded_t_ms": now + 5_000,
+        "traded_peaks": [
+            {"price": 70_000, "qty": 5_000, "t_ms": now + 5_000},
+        ],
         "all_price": 68_900,
         "all_qty": 12_000,
         "all_t_ms": now + 5_000,
+        "all_peaks": [
+            {"price": 68_900, "qty": 12_000, "t_ms": now + 5_000},
+            {"price": 70_000, "qty": 5_000, "t_ms": now + 5_000},
+            {"price": 68_450, "qty": 100, "t_ms": now + 5_000},
+            {"price": 68_500, "qty": 100, "t_ms": now + 5_000},
+            {"price": 68_550, "qty": 100, "t_ms": now + 5_000},
+            {"price": 68_600, "qty": 100, "t_ms": now + 5_000},
+            {"price": 68_650, "qty": 100, "t_ms": now + 5_000},
+            {"price": 68_700, "qty": 100, "t_ms": now + 5_000},
+            {"price": 68_750, "qty": 100, "t_ms": now + 5_000},
+            {"price": 68_800, "qty": 100, "t_ms": now + 5_000},
+        ],
     }
 
 
@@ -395,6 +411,7 @@ async def test_seed_ask_peak_from_live_file_loads_full_day_peak_and_full_coverag
             {"price": 10_200, "qty": 900, "t_ms": _kst_ms(9, 10)},
             {"price": 10_400, "qty": 700, "t_ms": _kst_ms(9, 10)},
             {"price": 10_100, "qty": 500, "t_ms": _kst_ms(9, 10)},
+            {"price": 10_300, "qty": 10, "t_ms": _kst_ms(9, 10)},
         ],
     }
 
@@ -441,9 +458,24 @@ async def test_seed_bid_peak_from_live_file_loads_full_day_peak_and_full_coverag
         "traded_price": 70_000,
         "traded_qty": 5_000,
         "traded_t_ms": int(datetime(2026, 6, 19, 9, 1, 5, tzinfo=KST).timestamp() * 1000),
+        "traded_peaks": [
+            {"price": 70_000, "qty": 5_000, "t_ms": int(datetime(2026, 6, 19, 9, 1, 5, tzinfo=KST).timestamp() * 1000)},
+        ],
         "all_price": 68_900,
         "all_qty": 12_000,
         "all_t_ms": int(datetime(2026, 6, 19, 9, 1, 5, tzinfo=KST).timestamp() * 1000),
+        "all_peaks": [
+            {"price": 68_900, "qty": 12_000, "t_ms": int(datetime(2026, 6, 19, 9, 1, 5, tzinfo=KST).timestamp() * 1000)},
+            {"price": 70_000, "qty": 5_000, "t_ms": int(datetime(2026, 6, 19, 9, 1, 5, tzinfo=KST).timestamp() * 1000)},
+            {"price": 68_450, "qty": 100, "t_ms": int(datetime(2026, 6, 19, 9, 1, 5, tzinfo=KST).timestamp() * 1000)},
+            {"price": 68_500, "qty": 100, "t_ms": int(datetime(2026, 6, 19, 9, 1, 5, tzinfo=KST).timestamp() * 1000)},
+            {"price": 68_550, "qty": 100, "t_ms": int(datetime(2026, 6, 19, 9, 1, 5, tzinfo=KST).timestamp() * 1000)},
+            {"price": 68_600, "qty": 100, "t_ms": int(datetime(2026, 6, 19, 9, 1, 5, tzinfo=KST).timestamp() * 1000)},
+            {"price": 68_650, "qty": 100, "t_ms": int(datetime(2026, 6, 19, 9, 1, 5, tzinfo=KST).timestamp() * 1000)},
+            {"price": 68_700, "qty": 100, "t_ms": int(datetime(2026, 6, 19, 9, 1, 5, tzinfo=KST).timestamp() * 1000)},
+            {"price": 68_750, "qty": 100, "t_ms": int(datetime(2026, 6, 19, 9, 1, 5, tzinfo=KST).timestamp() * 1000)},
+            {"price": 68_800, "qty": 100, "t_ms": int(datetime(2026, 6, 19, 9, 1, 5, tzinfo=KST).timestamp() * 1000)},
+        ],
     }
 
 

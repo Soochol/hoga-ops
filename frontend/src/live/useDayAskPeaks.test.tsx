@@ -406,6 +406,33 @@ describe('useDayAskPeaks', () => {
     });
   });
 
+  it('all-price peak preserves REST all-price candidates for current-day cutoff recalculation', () => {
+    const restPeak = todayAskPeak({
+      all_price: 27000,
+      all_qty: 20000,
+      all_t_ms: atKst(10, 0),
+      all_peaks: [
+        { price: 26000, qty: 12000, t_ms: atKst(9, 11) },
+        { price: 27000, qty: 20000, t_ms: atKst(10, 0) },
+        { price: 26500, qty: 8000, t_ms: atKst(9, 20) },
+        { price: 26600, qty: 7000, t_ms: atKst(9, 30) },
+      ],
+    });
+    const { result } = renderHook(
+      () => useTodayAllPriceAskPeak([], [], '20260613', '005930', restPeak),
+    );
+
+    expect(result.current).toMatchObject({
+      price: 27000,
+      all_peaks: [
+        { price: 27000, qty: 20000, t_ms: atKst(10, 0) },
+        { price: 26000, qty: 12000, t_ms: atKst(9, 11) },
+        { price: 26500, qty: 8000, t_ms: atKst(9, 20) },
+        { price: 26600, qty: 7000, t_ms: atKst(9, 30) },
+      ],
+    });
+  });
+
   it('all-price peak ignores collapsed 3-level auction/VI books', () => {
     const restPeak = todayAskPeak();
     const collapsed: ObSnapshot = {

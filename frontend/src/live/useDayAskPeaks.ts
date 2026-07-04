@@ -161,8 +161,25 @@ function topTradedObservedPeaks(
     if (tradedPrices.has(price) || isCandleRangeTraded(price)) put(peak);
   }
   return [...byPrice.values()]
-    .sort((a, b) => b.qty - a.qty || a.t_ms - b.t_ms || a.price - b.price)
-    .slice(0, 3);
+    .sort((a, b) => b.qty - a.qty || a.t_ms - b.t_ms || a.price - b.price);
+}
+
+function topObservedPeaks(seeds: readonly DayPeak[], observed: ObservedPricePeaks): DayPeak[] {
+  const byPrice = new Map<number, DayPeak>();
+  const put = (peak: DayPeak) => {
+    const current = byPrice.get(peak.price);
+    if (current === undefined || peak.qty > current.qty) {
+      byPrice.set(peak.price, peak);
+    }
+  };
+  for (const seed of seeds) put(seed);
+  for (const peak of observed.values()) put(peak);
+  return [...byPrice.values()]
+    .sort((a, b) => b.qty - a.qty || a.t_ms - b.t_ms || a.price - b.price);
+}
+
+function candidatePeaks(peaks: readonly DayPeak[]) {
+  return peaks.map((peak) => ({ price: peak.price, qty: peak.qty, t_ms: peak.t_ms }));
 }
 
 export function buildTodayTradedAskPeak(todayAskPeak: LiveTodayAskPeak | null): AskPeak | null {
@@ -208,6 +225,7 @@ export function buildTodayAllPriceAskPeak(todayAskPeak: LiveTodayAskPeak | null)
     max_qty: todayAskPeak.all_qty,
     max_t_ms: todayAskPeak.all_t_ms,
     all_peaks: todayAskPeak.all_peaks,
+    all_max_peaks: todayAskPeak.all_peaks,
   };
 }
 
@@ -349,24 +367,39 @@ export function useTodayAllPriceAskPeak(
     [seeds, todayKst],
   );
   const liveSeed = todayAskPeak !== null ? backendTodaySeed : todaySeed;
+  const liveSeeds = useMemo(
+    () => backendTodayPeak?.all_peaks?.map((peak) => ({ price: peak.price, qty: peak.qty, t_ms: peak.t_ms }))
+      ?? (liveSeed ? [liveSeed] : []),
+    [backendTodayPeak, liveSeed],
+  );
 
   const stateRef = useRef<RatchetState>(FRESH_RATCHET);
+  const observedPricePeaksRef = useRef<ObservedPricePeaks>(new Map());
   const obCursorRef = useRef<BufferCursor<ObSnapshot>>(freshCursor());
-  const [todayPeak, setTodayPeak] = useState<DayPeak | null>(liveSeed);
+  const [todayPeaks, setTodayPeaks] = useState<DayPeak[]>(liveSeeds);
 
   useEffect(() => {
     stateRef.current = FRESH_RATCHET;
+    observedPricePeaksRef.current = new Map();
     obCursorRef.current = freshCursor();
-    setTodayPeak(liveSeed);
+    setTodayPeaks((current) => (sameDayPeaks(current, liveSeeds) ? current : liveSeeds));
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [code, todayKst, todayAskPeak]);
 
   useEffect(() => {
     const unreadOb = unreadSnapshots(ob, obCursorRef.current);
+    observeAskPricePeaks(observedPricePeaksRef.current, unreadOb);
     const s = reduceDayAskPeak(stateRef.current, liveSeed, unreadOb);
     stateRef.current = s;
-    setTodayPeak(s.peak ?? liveSeed);
-  }, [ob, liveSeed]);
+    const seedPeaks = s.peak ? [...liveSeeds, s.peak] : liveSeeds;
+    const nextPeaks = topObservedPeaks(seedPeaks, observedPricePeaksRef.current);
+    setTodayPeaks((current) => (sameDayPeaks(current, nextPeaks) ? current : nextPeaks));
+  }, [ob, liveSeed, liveSeeds]);
 
-  return useMemo(() => toAskPeak(todayKst, todayPeak), [todayKst, todayPeak]);
+  return useMemo(() => {
+    const peak = toAskPeak(todayKst, todayPeaks[0] ?? null);
+    if (!peak) return null;
+    const candidates = candidatePeaks(todayPeaks);
+    return { ...peak, all_peaks: candidates, all_max_peaks: candidates };
+  }, [todayKst, todayPeaks]);
 }

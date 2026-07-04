@@ -227,6 +227,30 @@ describe('ask peak all-price toggle', () => {
   });
 });
 
+describe('peak wall visible-time cutoff toggles', () => {
+  it('defaults both cutoff toggles off in the indicator modal', () => {
+    const ask = CHART_TOGGLES.find((t) => t.key === 'askPeakVisibleTimeCutoff');
+    const bid = CHART_TOGGLES.find((t) => t.key === 'bidPeakVisibleTimeCutoff');
+
+    expect(DEFAULT_PREFS.askPeakVisibleTimeCutoff).toBe(false);
+    expect(DEFAULT_PREFS.bidPeakVisibleTimeCutoff).toBe(false);
+    expect(ask?.label).toBe('보이는 최신 봉 기준');
+    expect(bid?.label).toBe('보이는 최신 봉 기준');
+    expect(categoryOf(ask!)).toBe('indicator-modal');
+    expect(categoryOf(bid!)).toBe('indicator-modal');
+  });
+
+  it('persists ask and bid cutoff toggles independently', () => {
+    const askOnly = mergePrefs({ askPeakVisibleTimeCutoff: true });
+    expect(askOnly.askPeakVisibleTimeCutoff).toBe(true);
+    expect(askOnly.bidPeakVisibleTimeCutoff).toBe(false);
+
+    const bidOnly = mergePrefs({ bidPeakVisibleTimeCutoff: true });
+    expect(bidOnly.askPeakVisibleTimeCutoff).toBe(false);
+    expect(bidOnly.bidPeakVisibleTimeCutoff).toBe(true);
+  });
+});
+
 describe('bid peak toggles', () => {
   it('defaults and belongs to the indicator modal', () => {
     const intra = CHART_TOGGLES.find((t) => t.key === 'bidPeakIntraMax');

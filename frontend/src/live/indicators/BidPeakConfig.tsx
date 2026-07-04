@@ -35,7 +35,7 @@ export default function BidPeakConfig() {
         </div>
       </div>
       <div className="border-b border-border my-3" />
-      <IndicatorPrefRows toggleKeys={['bidPeakIntraMax', 'bidPeakShowAllPrices']} />
+      <IndicatorPrefRows toggleKeys={['bidPeakIntraMax', 'bidPeakShowAllPrices', 'bidPeakVisibleTimeCutoff']} />
     </div>
   );
 }

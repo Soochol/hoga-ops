@@ -25,7 +25,9 @@ export type LiveTodayAskPeak = LiveTodayPeakBase & {
   all_peaks?: AskPeakCandidate[];
 };
 
-export type LiveTodayBidPeak = LiveTodayPeakBase;
+export type LiveTodayBidPeak = LiveTodayPeakBase & {
+  all_peaks?: AskPeakCandidate[];
+};
 
 export interface LiveSeriesResponse {
   code: string;
