@@ -79,6 +79,17 @@ describe('cursorDetailResolver', () => {
     })).toBe(snapshot);
   });
 
+  it('keeps calendar timeframe cursor out of cursor detail mode', () => {
+    const scope = resolveCursorDetailScope({ cursorMs: 1_000, timeframe: 'D' });
+
+    expect(resolveOrderbookCardSnapshot({
+      scope,
+      spotSnapshot: undefined,
+      inactiveSnapshot: snapshot,
+      bufferFallbackSnapshot: null,
+    })).toBe(snapshot);
+  });
+
   it('uses live buffer fallback only when cursor spot explicitly returned null', () => {
     const scope = resolveCursorDetailScope({ cursorMs: 1_000, timeframe: '5m' });
 

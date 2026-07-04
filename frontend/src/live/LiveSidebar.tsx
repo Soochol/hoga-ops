@@ -4,6 +4,11 @@ import OrderbookTable from '../sidebar/OrderbookTable';
 import BrokerTrajectoryTable from '../sidebar/BrokerTrajectoryTable';
 import ProgramTradeSummaryCard from '../sidebar/ProgramTradeSummaryCard';
 import TotalQtyBar from '../sidebar/TotalQtyBar';
+import {
+  resolveBrokerCardProps,
+  resolveCursorDetailScope,
+  resolveOrderbookCardSnapshot,
+} from '../sidebar/cursorDetailResolver';
 import { VolumeDistributionCard } from '../sidebar/VolumeDistributionCard';
 import type { LiveSeriesData } from '../api/liveSeries';
 import type { ProgramTradeSeries } from '../api/types';
@@ -76,7 +81,9 @@ export function LiveSidebar({ code, live, bundle = null, todayKst = '', programT
   // Spot mode is minute-only (ADR-0044): D/W/M have no per-cursor parquet. The
   // chart still publishes cursorMs on D for the Pane Legend, so gate spot entry
   // on the timeframe here — NOT on cursorMs alone.
-  const isSpot = cursorMs !== null && isMinuteTimeframe(timeframe);
+  const cursorScope = resolveCursorDetailScope({ cursorMs, timeframe });
+  const isSpot = cursorScope.kind === 'minute-cursor';
+  const spotCursorMs = cursorScope.kind === 'minute-cursor' ? cursorScope.cursorMs : null;
 
   // Latest-mode data flows through `live` — LivePage owns the single
   // useLiveSeries call site. useSpot hooks in spot mode sit dormant when
@@ -89,14 +96,18 @@ export function LiveSidebar({ code, live, bundle = null, todayKst = '', programT
 
   // Spot-mode data (dormant when cursorMs null).
   const spotTimeframe: MinuteTimeframe | null =
-    timeframe && isMinuteTimeframe(timeframe) ? timeframe : null;
+    cursorScope.kind === 'minute-cursor'
+      ? cursorScope.minuteTimeframe
+      : timeframe && isMinuteTimeframe(timeframe)
+        ? timeframe
+        : null;
   const spotOrderbook = useLiveOrderbookAtCursor({ code: stockCode, timeframe: spotTimeframe });
   const spotBrokers = useLiveBrokersAtCursor({ code: stockCode, timeframe: spotTimeframe });
   const investorTrendEstimate = useLiveInvestorTrendEstimate(stockCode);
 
   // Axis for Auction Mask in spot mode.
   const axis = useLiveAxisStore((s) => s.axis);
-  const maskRatio = useAuctionMaskActive(axis, isSpot ? cursorMs : null);
+  const maskRatio = useAuctionMaskActive(axis, spotCursorMs);
 
   // Branch on spot vs latest.
   const spotSnap = spotOrderbook === undefined ? undefined : spotOrderbook.snapshot;
@@ -113,20 +124,27 @@ export function LiveSidebar({ code, live, bundle = null, todayKst = '', programT
   // is composed here at the LiveSidebar layer.
   const bufferSnap = useMemo(
     () =>
-      isSpot && spotSnap === null && spotTimeframe !== null && cursorMs !== null
-        ? orderbookSnapshotAtCursor(ob, cursorMs, TIMEFRAME_TO_MS[spotTimeframe as Timeframe])
+      isSpot && spotSnap === null && spotTimeframe !== null && spotCursorMs !== null
+        ? orderbookSnapshotAtCursor(ob, spotCursorMs, TIMEFRAME_TO_MS[spotTimeframe as Timeframe])
         : null,
-    [isSpot, spotSnap, spotTimeframe, cursorMs, ob],
+    [isSpot, spotSnap, spotTimeframe, spotCursorMs, ob],
   );
-  const orderbookForCard = isSpot
-    ? (spotSnap === undefined ? undefined : (spotSnap ?? bufferSnap))
-    : latestOrderbook;
-  const brokerSeriesForCard = isSpot
-    ? spotBrokers
-    : (broker.length === 0 ? undefined : latestBrokerSeries);
-  const brokerCursorMs = isSpot ? (cursorMs ?? latestBrokerTs) : latestBrokerTs;
-  const activeVolumeDistributionDate = isSpot && cursorMs !== null
-    ? realMsToYyyymmdd(cursorMs)
+  const orderbookForCard = resolveOrderbookCardSnapshot({
+    scope: cursorScope,
+    spotSnapshot: spotSnap,
+    inactiveSnapshot: latestOrderbook,
+    bufferFallbackSnapshot: bufferSnap,
+  });
+  const inactiveBrokerSeriesForCard = broker.length === 0 ? undefined : latestBrokerSeries;
+  const brokerCard = resolveBrokerCardProps({
+    scope: cursorScope,
+    spotSeries: spotBrokers,
+    inactiveSeries: inactiveBrokerSeriesForCard,
+    inactiveCursorMs: latestBrokerTs,
+  });
+  const brokerCursorMs = brokerCard.cursorMs;
+  const activeVolumeDistributionDate = spotCursorMs !== null
+    ? realMsToYyyymmdd(spotCursorMs)
     : (activeBundle?.segments[activeBundle.segments.length - 1]?.date ?? todayKst ?? null);
   const candleDateIndex = useMemo(
     () => buildCandleDateIndex(activeBundle?.candles ?? []),
@@ -227,7 +245,7 @@ export function LiveSidebar({ code, live, bundle = null, todayKst = '', programT
     code: stockCode,
     timeframe: spotTimeframe,
     date: activeVolumeDistributionDate,
-    cursorMs,
+    cursorMs: spotCursorMs,
     todayKst,
     rangeCount: volumeDistributionRangeCount,
     finalProfile: activeVolumeDistribution,
@@ -288,7 +306,7 @@ export function LiveSidebar({ code, live, bundle = null, todayKst = '', programT
           volumeDistribution={
             <VolumeDistributionCard
               profile={cutoffVolumeDistribution}
-              cursorMs={isSpot ? cursorMs : brokerCursorMs}
+              cursorMs={isSpot ? spotCursorMs : brokerCursorMs}
               closePoints={activeVolumeDistributionClosePoints}
               color={volumeDistributionColor}
               maxColor={volumeDistributionMaxColor}
@@ -297,11 +315,11 @@ export function LiveSidebar({ code, live, bundle = null, todayKst = '', programT
           program={
             <ProgramTradeSummaryCard
               series={programTrade}
-              cursorMs={isSpot ? cursorMs : null}
+              cursorMs={spotCursorMs}
             />
           }
           brokers={
-            <BrokerTrajectoryTable series={brokerSeriesForCard} cursorMs={brokerCursorMs} />
+            <BrokerTrajectoryTable series={brokerCard.series} cursorMs={brokerCard.cursorMs} />
           }
           investor={<InvestorTrendEstimateCard query={investorTrendEstimate} />}
         />
