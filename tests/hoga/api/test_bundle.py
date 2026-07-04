@@ -568,6 +568,70 @@ def test_build_range_bundle_sidecar_mode_includes_requested_volume_distributions
     assert rb.fill_strength.points == []
 
 
+def test_build_range_bundle_candles_mode_skips_hoga_and_sidecar_builders():
+    import contextlib
+    from hoga.api import bundle as bundle_mod
+    from hoga.api.bundle import build_range_bundle
+    from hoga.api.models import VolumeProfile
+
+    mock_engine = _engine_with_meta_for_dates(["20260625"])
+    raw_candles = [_c(1_772_000_000_000, 100, 110, 90, 105, 1, 2)]
+    downsampled = [_c(1_772_000_000_000, 100, 110, 90, 105, 1, 2)]
+
+    with contextlib.ExitStack() as stack:
+        candles = stack.enter_context(patch.object(bundle_mod, "build_candles_slice", return_value=raw_candles))
+        downsample = stack.enter_context(patch.object(bundle_mod, "downsample_candles", return_value=downsampled))
+        quote_ratio = stack.enter_context(patch.object(bundle_mod, "build_quote_ratio_slice"))
+        fill_strength = stack.enter_context(patch.object(bundle_mod, "build_fill_strength_slice"))
+        volume_profile = stack.enter_context(patch.object(bundle_mod, "build_volume_profile_slice"))
+        volume_profile_range = stack.enter_context(
+            patch.object(
+                bundle_mod,
+                "build_volume_profile_range",
+                return_value=VolumeProfile(bin_count=0, price_min=0, price_max=0, bin_width=0, bins=[]),
+            )
+        )
+        distribution = stack.enter_context(patch.object(bundle_mod, "build_volume_distribution_slice"))
+        poc = stack.enter_context(patch.object(bundle_mod, "build_trade_volume_poc_slice"))
+        ask_bid_peaks = stack.enter_context(patch.object(bundle_mod, "build_ask_bid_peak_slices"))
+        program = stack.enter_context(patch.object(bundle_mod, "build_program_trade_series"))
+        broker_late = stack.enter_context(patch.object(bundle_mod, "build_broker_late_entries_slice"))
+
+        rb = build_range_bundle(
+            mock_engine,
+            code="005930",
+            from_date="20260625",
+            to_date="20260625",
+            bucket_ms=60_000,
+            source_pref="hogaplay_first",
+            mode="candles",
+            broker_late_entries_enabled=True,
+            volume_distribution_bins=10,
+            trade_volume_poc_bins=10,
+        )
+
+    candles.assert_called_once()
+    downsample.assert_called_once_with(raw_candles, bucket_ms=60_000)
+    quote_ratio.assert_not_called()
+    fill_strength.assert_not_called()
+    volume_profile.assert_not_called()
+    volume_profile_range.assert_not_called()
+    distribution.assert_not_called()
+    poc.assert_not_called()
+    ask_bid_peaks.assert_not_called()
+    program.assert_not_called()
+    broker_late.assert_not_called()
+    assert len(rb.segments) == 1
+    assert rb.candles == downsampled
+    assert rb.quote_ratio.points == []
+    assert rb.fill_strength.points == []
+    assert rb.volume_profile_by_day == []
+    assert rb.volume_profile_range.bin_count == 0
+    assert rb.volume_distributions == []
+    assert rb.trade_volume_pocs == []
+    assert rb.program_trade.points == []
+
+
 def test_build_range_bundle_builds_trade_volume_poc_by_default_from_candle_range():
     import contextlib
     from hoga.api import bundle as bundle_mod

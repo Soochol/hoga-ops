@@ -35,6 +35,15 @@
 
 *intentionally breaks: 없음.*
 
+### 2026-07-05 Amendment — Hogaplay Candle Fallback
+
+The original "KIS single candle source" wording is no longer absolute. Normal
+KIS candle flow still uses **Live Candle Backfill** and **KIS Candle Cache** per
+ADR-0040/0048, but `/live` may use **Hogaplay Candle Fallback** from
+`/api/range` when KIS REST is bypassed, unavailable, or the user prefers
+hogaplay candles. The bundle split invariant remains: candle data is still kept
+on the chart side and must not depend on SSE `ob`/`trade` array references.
+
 ## Goals
 
 - ob/trade SSE push만 발생할 때 **candle/volume 패널·axis·candle 오버레이가 재setData·재렌더되지 않는다**(측정: 틱당 candle `setData` = 0, candle 패널 self-render = 0).

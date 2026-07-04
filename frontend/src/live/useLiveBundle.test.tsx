@@ -206,7 +206,7 @@ function renderUseLiveBundle(
   const previousImplementation = useRangeSpy.getMockImplementation();
   useRangeSpy.mockImplementation((...args: unknown[]) => {
     const options = args[6] as { mode?: string } | undefined;
-    if (options?.mode === 'full') {
+    if (options?.mode === 'candles' || options?.mode === 'full') {
       return rangeResult(rangeCandles.length > 0 ? {
         ...fallbackRangeBundle(rangeCandles[rangeCandles.length - 1]?.close ?? 71_234),
         candles: rangeCandles,
@@ -397,6 +397,59 @@ describe('useLiveBundle', () => {
 
     expect(result.bundle?.candles.length).toBeGreaterThan(0);
     expect(screenerDailyCandlesSpy).toHaveBeenLastCalledWith('005930', '20250611', '20260527');
+  });
+
+  it('uses lightweight range candles for minute fallback when KIS REST bypass is enabled', () => {
+    candlesMock.candles = [];
+    useCandleDataPreferenceStore.setState({ candleDataPreference: 'auto' });
+    useSourcePreferenceStore.setState({ sourcePreference: 'hogaplay_first' });
+
+    const result = renderUseLiveBundle({
+      timeframe: '1m',
+      settings: { kis_rest_bypass_enabled: true },
+      rangeCandles: [
+        { ts_ms: 1_779_840_000_000, open: 71_000, high: 71_300, low: 70_900, close: 71_234, vol_a: 1000, vol_b: 0 },
+      ],
+    });
+
+    const modes = useRangeSpy.mock.calls.map((call) => (call[6] as { mode?: string } | undefined)?.mode);
+    expect(modes).toContain('candles');
+    expect(modes).not.toContain('full');
+    expect(result.chartBundle?.candles).toHaveLength(1);
+  });
+
+  it('returns fallback candles before sidecar data arrives', () => {
+    candlesMock.candles = [];
+    useCandleDataPreferenceStore.setState({ candleDataPreference: 'auto' });
+    useSourcePreferenceStore.setState({ sourcePreference: 'hogaplay_first' });
+
+    useRangeSpy.mockImplementation((...args: unknown[]) => {
+      const options = args[6] as { mode?: string } | undefined;
+      if (options?.mode === 'candles') {
+        return rangeResult({
+          ...fallbackRangeBundle(71_234),
+          candles: [
+            { ts_ms: 1_779_840_000_000, open: 71_000, high: 71_300, low: 70_900, close: 71_234, vol_a: 1000, vol_b: 0 },
+          ],
+        });
+      }
+      if (options?.mode === 'hoga') {
+        return rangeResult(fallbackRangeBundle(71_234));
+      }
+      if (options?.mode === 'sidecar') {
+        return { data: null, isLoading: true, error: null, isPlaceholderData: false, isFetching: true };
+      }
+      return rangeResult();
+    });
+
+    const { result } = renderHook(
+      () => useLiveBundle('005930', '1m', '20260527', liveFixture),
+      { wrapper: createWrapper({ kis_rest_bypass_enabled: true }) },
+    );
+
+    expect(result.current.chartBundle?.candles).toHaveLength(1);
+    expect(result.current.chartBundle?.trade_volume_pocs).toEqual([]);
+    expect(result.current.chartBundle?.volume_distributions).toEqual([]);
   });
 
   it('suppresses bypass-time candle warnings but still notifies for non-bypass transport failures', async () => {
@@ -724,7 +777,7 @@ describe('useLiveBundle', () => {
       '1m',
       undefined,
       '20260527',
-      expect.objectContaining({ mode: 'full', brokerLateEntriesEnabled: false }),
+      expect.objectContaining({ mode: 'candles', brokerLateEntriesEnabled: false }),
       undefined,
     );
     expect(useRangeSpy).toHaveBeenCalledWith(
@@ -734,7 +787,7 @@ describe('useLiveBundle', () => {
       '1m',
       undefined,
       '20260527',
-      expect.objectContaining({ mode: 'full', brokerLateEntriesEnabled: false }),
+      expect.objectContaining({ mode: 'candles', brokerLateEntriesEnabled: false }),
       'hogaplay_first',
     );
     expect(result.current.chartBundle!.candles).toEqual([
@@ -766,8 +819,8 @@ describe('useLiveBundle', () => {
     useRangeSpy.mockImplementation((...args: unknown[]) => {
       const from = args[1];
       const options = args[6] as { mode?: string } | undefined;
-      if (options?.mode === 'full' && from === '20260515') return rangeResult(previousDiskBundle);
-      if (options?.mode === 'full') return rangeResult({ ...fallbackRangeBundle(), candles: [] });
+      if (options?.mode === 'candles' && from === '20260515') return rangeResult(previousDiskBundle);
+      if (options?.mode === 'candles') return rangeResult({ ...fallbackRangeBundle(), candles: [] });
       return rangeResult();
     });
 
@@ -783,7 +836,7 @@ describe('useLiveBundle', () => {
       '1m',
       undefined,
       '20260527',
-      expect.objectContaining({ mode: 'full', brokerLateEntriesEnabled: false }),
+      expect.objectContaining({ mode: 'candles', brokerLateEntriesEnabled: false }),
       'hogaplay_first',
     );
     expect(result.current.chartBundle!.candles).toEqual(previousDiskBundle.candles);
@@ -834,7 +887,7 @@ describe('useLiveBundle', () => {
       '1m',
       undefined,
       '20260527',
-      expect.objectContaining({ mode: 'full', brokerLateEntriesEnabled: false }),
+      expect.objectContaining({ mode: 'candles', brokerLateEntriesEnabled: false }),
       'hogaplay_first',
     );
     expect(result.current.chartBundle!.candles).toEqual(hogaplayFallback.candles);
@@ -1049,7 +1102,7 @@ describe('useLiveBundle daily/minute branching (ADR-0048)', () => {
       '1m',
       undefined,
       '20260527',
-      expect.objectContaining({ mode: 'full', brokerLateEntriesEnabled: false }),
+      expect.objectContaining({ mode: 'candles', brokerLateEntriesEnabled: false }),
       undefined,
     );
     expect(useRangeSpy).toHaveBeenCalledWith(
@@ -1059,7 +1112,7 @@ describe('useLiveBundle daily/minute branching (ADR-0048)', () => {
       '1m',
       undefined,
       '20260527',
-      expect.objectContaining({ mode: 'full', brokerLateEntriesEnabled: false }),
+      expect.objectContaining({ mode: 'candles', brokerLateEntriesEnabled: false }),
       'hogaplay_first',
     );
     expect(result.current.chartBundle!.candles).toEqual([
@@ -1156,7 +1209,7 @@ describe('useLiveBundle daily/minute branching (ADR-0048)', () => {
       '1m',
       undefined,
       '20260527',
-      expect.objectContaining({ mode: 'full', brokerLateEntriesEnabled: false }),
+      expect.objectContaining({ mode: 'candles', brokerLateEntriesEnabled: false }),
     );
 
     useRangeSpy.mockClear();
@@ -1169,7 +1222,7 @@ describe('useLiveBundle daily/minute branching (ADR-0048)', () => {
       '1m',
       undefined,
       '20260527',
-      expect.objectContaining({ mode: 'full', brokerLateEntriesEnabled: false }),
+      expect.objectContaining({ mode: 'candles', brokerLateEntriesEnabled: false }),
     );
   });
 

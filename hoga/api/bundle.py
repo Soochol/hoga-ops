@@ -1232,6 +1232,7 @@ def build_range_bundle(
 
     hoga_only = mode == "hoga"
     sidecar_only = mode == "sidecar"
+    candles_only = mode == "candles"
     full_mode = mode == "full"
     cutoff_sidecar = sidecar_only and volume_distribution_cutoff_ms is not None
     volume_distribution_slice_cutoff_ms = (
@@ -1317,6 +1318,10 @@ def build_range_bundle(
             price_range = None
             trade_indicator_source = source
             candles_d = []
+        elif candles_only:
+            price_range = None
+            trade_indicator_source = source
+            candles_d = downsample_candles(raw_candles, bucket_ms=bucket_ms)
         else:
             raw_lows = [c.low for c in raw_candles]
             raw_highs = [c.high for c in raw_candles]
@@ -1341,7 +1346,7 @@ def build_range_bundle(
             candles_d = [] if sidecar_only else downsample_candles(raw_candles, bucket_ms=bucket_ms)
         qr_d = (
             QuoteRatio(bucket_ms=bucket_ms, points=[])
-            if sidecar_only
+            if sidecar_only or candles_only
             else build_quote_ratio_slice(
                 engine, code=code, date=d, bucket_ms=bucket_ms, source=source,
                 session_close_ms=meta["regular_session_close_ms"],
@@ -1350,7 +1355,7 @@ def build_range_bundle(
         )
         fs_d = (
             FillStrength(bucket_ms=bucket_ms, points=[])
-            if sidecar_only
+            if sidecar_only or candles_only
             else build_fill_strength_slice(
                 engine, code=code, date=d, bucket_ms=bucket_ms, source=source,
                 cache=indicators_cache, today_kst=today_kst,
@@ -1361,7 +1366,7 @@ def build_range_bundle(
         norm_meta, _ = normalize_session_bounds(meta)   # value-conversion only (notes handled by classify)
         continuous_before_ms = (
             None
-            if hoga_only
+            if hoga_only or candles_only
             else _first_trailing_single_price_book_hhmmssms(
                 engine,
                 code=code,
@@ -1370,7 +1375,7 @@ def build_range_bundle(
                 session_close_ms=int(meta["regular_session_close_ms"]),
             )
         )
-        if hoga_only or cutoff_sidecar:
+        if hoga_only or cutoff_sidecar or candles_only:
             ap_d = None
             bp_d = None
         else:
@@ -1382,7 +1387,7 @@ def build_range_bundle(
             )
         tvp_d = (
             None
-            if hoga_only or cutoff_sidecar
+            if hoga_only or cutoff_sidecar or candles_only
             else build_trade_volume_poc_slice(
                 engine, code=code, date=d, source=trade_indicator_source,
                 session_open_ms=norm_meta["regular_session_open_ms"],
@@ -1401,7 +1406,7 @@ def build_range_bundle(
             source=source,
         ))
         included_dates.append(d)
-        if not hoga_only and not cutoff_sidecar and broker_late_entries_enabled:
+        if not hoga_only and not cutoff_sidecar and not candles_only and broker_late_entries_enabled:
             broker_late_entries.extend(
                 build_broker_late_entries_slice(
                     engine,
@@ -1416,7 +1421,7 @@ def build_range_bundle(
         fill_pts.extend(fs_d.points)
         if vp_d is not None:
             profiles_by_day.append(vp_d)
-        if not hoga_only and volume_distribution_bins is not None:
+        if not hoga_only and not candles_only and volume_distribution_bins is not None:
             profile = build_volume_distribution_slice(
                 engine,
                 code=code,
