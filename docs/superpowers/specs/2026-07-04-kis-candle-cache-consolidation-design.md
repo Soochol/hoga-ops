@@ -1,8 +1,13 @@
 # KIS Candle Cache Consolidation Design
 
 Date: 2026-07-04
-Status: Draft
+Status: Implemented
 Owner: Codex + user
+
+Implemented by replacing minute KIS candle disk JSON reads/writes with bounded
+process memory and retaining KIS REST Bypass as the central scheduled-call gate.
+Existing `kis-past-candles` files are legacy artifacts and are not read by the
+runtime cache.
 
 ## Problem
 

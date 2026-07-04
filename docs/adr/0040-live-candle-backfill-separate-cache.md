@@ -78,3 +78,10 @@ ADR-0013 ("RangeBundle은 read-path 단일 wire")의 *spirit*과 정합하지 �
   패턴에서 50+ 종목 × 1년 = ~50MB를 초과하면 운영적으로 Parquet (compression) 우위가 명확해진다.
 - **두 path 간 데이터 불일치 사고**: same (code, date)에 대해 cache와 promoted Parquet이 다른 값을 가진 incident가
   발생하면 unification이 강제된다.
+
+## 2026-07-04 Amendment: cache is memory-only
+
+The separate KIS candle endpoint remains, but its cache is no longer disk
+durable. Minute candles now match daily candles as process-memory-only
+temporary results. `kis-past-candles` JSON files are legacy artifacts and are
+not part of runtime cache behavior.
