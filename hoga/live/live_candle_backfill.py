@@ -186,6 +186,47 @@ class LiveMinuteCandleBackfill:
             today_d=today_d,
         )
 
+    async def collect_minute_cache_only(
+        self,
+        *,
+        code: str,
+        frm: date,
+        too: date,
+        today_d: date,
+        policy: LiveVenuePolicy,
+    ) -> LiveMinuteCandleBackfillResult:
+        rows: list[dict] = []
+        cached_dates: list[str] = []
+        warnings: list[dict] = []
+        today_s = today_d.strftime("%Y%m%d")
+
+        for date_s in _date_iter(frm, too):
+            if date_s < today_s:
+                bars = self._cache.get_past(policy, code, date_s)
+                if bars is None:
+                    warnings.append(_kis_rest_bypassed_warning(date_s))
+                    continue
+                rows.extend(bars)
+                cached_dates.append(date_s)
+                continue
+
+            state, today_bars = self._cache.get_today_tri(policy, code)
+            if state == "hit":
+                assert today_bars is not None
+                rows.extend(today_bars)
+                cached_dates.append(date_s)
+            elif state == "miss":
+                warnings.append(_kis_rest_bypassed_warning(date_s))
+
+        rows.sort(key=lambda candle: candle["t_ms"])
+        return LiveMinuteCandleBackfillResult(
+            candles=rows,
+            cached_dates=cached_dates,
+            fresh_dates=[],
+            data_warnings=warnings,
+            effective_sessions=_effective_sessions_for_candles(rows, policy),
+        )
+
     async def _collect_for_venue(
         self,
         venue: KisVenue,
@@ -539,6 +580,14 @@ def _capacity_overloaded_warning(date_s: str) -> dict:
         "date": date_s,
         "reason": "capacity_overloaded",
         "msg": "KIS capacity scheduler pending request limit reached",
+    }
+
+
+def _kis_rest_bypassed_warning(date_s: str) -> dict:
+    return {
+        "date": date_s,
+        "reason": "kis_rest_bypassed",
+        "msg": "KIS REST bypass is enabled; served cache-only data",
     }
 
 

@@ -115,6 +115,59 @@ class LiveDailyCandleBackfill:
         out["data_warnings"].extend(fallback_warnings)
         return out
 
+    async def collect_daily_cache_only(
+        self,
+        *,
+        code: str,
+        frm: date,
+        too: date,
+        today_d: date,
+        policy: LiveVenuePolicy,
+        from_label: str,
+        to_label: str,
+    ) -> dict:
+        venue = daily_venue_for_policy(policy)
+        loaded: list[dict] = []
+        cached_batches: list[str] = []
+        covered: list[tuple[date, date]] = []
+        warnings: list[dict] = []
+
+        for batch_from, batch_to, rows in self._cache.list_batches(venue, code):
+            if batch_to < frm or batch_from > too:
+                continue
+            covered.append((batch_from, batch_to))
+            loaded.extend(rows)
+            cached_batches.append(
+                f"{batch_from.strftime('%Y%m%d')}__{batch_to.strftime('%Y%m%d')}"
+            )
+
+        if too >= today_d:
+            today_s = today_d.strftime("%Y%m%d")
+            state, today_row = self._cache.get_today(venue, code)
+            if state == "hit":
+                loaded.append(today_row)  # type: ignore[arg-type]
+                covered.append((today_d, today_d))
+                cached_batches.append(f"{today_s}__{today_s}")
+            elif state == "negative":
+                covered.append((today_d, today_d))
+
+        for gap_from, gap_to in _compute_gaps(frm, too, covered):
+            gap_from_s = gap_from.strftime("%Y%m%d")
+            gap_to_s = gap_to.strftime("%Y%m%d")
+            warnings.append(_kis_rest_bypassed_warning(f"{gap_from_s}__{gap_to_s}"))
+
+        rows_out = _dedupe_filter_sort(loaded, frm, too)
+        return {
+            "code": code,
+            "from": from_label,
+            "to": to_label,
+            "candles": rows_out,
+            "cached_batches": cached_batches,
+            "fresh_batches": [],
+            "data_warnings": warnings,
+            "venue": policy,
+        }
+
     async def _fetch_primary_batch(
         self,
         *,
@@ -197,6 +250,57 @@ def _candle_to_dict(c) -> dict:
         "low": c.low,
         "close": c.close,
         "volume": c.volume,
+    }
+
+
+def _compute_gaps(
+    frm: date,
+    too: date,
+    existing: list[tuple[date, date]],
+) -> list[tuple[date, date]]:
+    relevant = [(s, e) for s, e in existing if e >= frm and s <= too]
+    if not relevant:
+        return [(frm, too)]
+    relevant.sort()
+    merged: list[tuple[date, date]] = [relevant[0]]
+    for s, e in relevant[1:]:
+        last_s, last_e = merged[-1]
+        if s <= last_e + timedelta(days=1):
+            merged[-1] = (last_s, max(last_e, e))
+        else:
+            merged.append((s, e))
+
+    gaps: list[tuple[date, date]] = []
+    cursor = frm
+    for s, e in merged:
+        if s > cursor:
+            gaps.append((cursor, min(s - timedelta(days=1), too)))
+        cursor = max(cursor, e + timedelta(days=1))
+        if cursor > too:
+            break
+    if cursor <= too:
+        gaps.append((cursor, too))
+    return gaps
+
+
+def _dedupe_filter_sort(rows: list[dict], frm: date, too: date) -> list[dict]:
+    frm_ms = int(datetime(frm.year, frm.month, frm.day, tzinfo=_KST).timestamp() * 1000)
+    too_ms = int(
+        datetime(too.year, too.month, too.day, 23, 59, 59, tzinfo=_KST).timestamp() * 1000
+    )
+    by_ts: dict[int, dict] = {}
+    for row in rows:
+        ts = row.get("t_ms")
+        if isinstance(ts, int) and frm_ms <= ts <= too_ms:
+            by_ts[ts] = row
+    return [by_ts[ts] for ts in sorted(by_ts)]
+
+
+def _kis_rest_bypassed_warning(batch_label: str) -> dict:
+    return {
+        "batch": batch_label,
+        "reason": "kis_rest_bypassed",
+        "msg": "KIS REST bypass is enabled; served cache-only data",
     }
 
 
