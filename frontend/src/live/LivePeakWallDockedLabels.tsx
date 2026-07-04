@@ -129,7 +129,7 @@ function LivePeakWallDockedLabels({
       })
       : [];
     prim.setLabels([
-      ...livePeakWallDockedLabelsFromSegments(askStyled, visibleRange, askPeakRankLimit),
+      ...livePeakWallDockedLabelsFromSegments(askStyled, visibleRange),
       ...livePeakWallDockedLabelsFromSegments(bidSegments, visibleRange, toPeakRankLimit(bidVisibleMaxRankLimit)),
     ]);
   }, [
