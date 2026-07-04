@@ -1,4 +1,8 @@
+import asyncio
+
 import pytest
+
+import httpx
 
 
 class _RecordingScheduler:
@@ -132,6 +136,83 @@ async def test_program_trade_collector_polls_capture_candidates_and_skips_failed
 
 
 @pytest.mark.asyncio
+async def test_program_trade_collector_clears_stale_error_state_when_load_document_fails(tmp_path, monkeypatch):
+    from hoga.live.program_trade_collector import ProgramTradeCollector
+
+    def _load_document_fails(_data_dir):
+        raise RuntimeError("load failed")
+
+    monkeypatch.setattr(
+        "hoga.live.program_trade_collector.load_document",
+        _load_document_fails,
+    )
+
+    collector = ProgramTradeCollector(
+        data_dir=tmp_path,
+        date_fn=lambda: "20260625",
+        now_ms_fn=lambda: 1000,
+    )
+    collector.status.last_error = "previous error"
+    collector.status.last_error_kind = "previous kind"
+    collector.status.last_error_code = "previous code"
+    collector.status.last_error_count = 3
+
+    with pytest.raises(RuntimeError, match="load failed"):
+        await collector.run_once()
+
+    assert collector.status.last_error is None
+    assert collector.status.last_error_kind is None
+    assert collector.status.last_error_code is None
+    assert collector.status.last_error_count == 0
+
+
+@pytest.mark.asyncio
+async def test_program_trade_collector_loop_failure_sets_internal_kind_code(
+    tmp_path,
+    monkeypatch,
+    caplog,
+) -> None:
+    from hoga.live.program_trade_collector import ProgramTradeCollector
+
+    def _load_document_fails(_data_dir):
+        raise RuntimeError("load failed")
+
+    monkeypatch.setattr(
+        "hoga.live.program_trade_collector.load_document",
+        _load_document_fails,
+    )
+    collector = ProgramTradeCollector(
+        data_dir=tmp_path,
+        date_fn=lambda: "20260625",
+        now_ms_fn=lambda: 1000,
+        poll_interval_s=60.0,
+    )
+
+    with caplog.at_level("ERROR", logger="hoga.live.program_trade_collector"):
+        collector.start()
+        try:
+            for _ in range(50):
+                await asyncio.sleep(0.01)
+                if collector.status.last_error_kind == "internal":
+                    break
+
+            assert collector.status.running is True
+            assert collector.status.last_error == "RuntimeError: load failed"
+            assert collector.status.last_error_kind == "internal"
+            assert collector.status.last_error_code == "RuntimeError"
+            assert collector.status.last_error_count == 1
+        finally:
+            await collector.stop()
+
+    records = [r for r in caplog.records if r.name == "hoga.live.program_trade_collector"]
+    assert len(records) == 1
+    assert records[0].exc_info is not None
+    assert records[0].getMessage() == (
+        "program_trade.collector.cycle_failed kind=internal error=RuntimeError"
+    )
+
+
+@pytest.mark.asyncio
 async def test_program_trade_collector_uses_capacity_scheduler(tmp_path, monkeypatch):
     from hoga.live.kis_models import ProgramTradeByStockRow
     from hoga.live.program_trade_collector import ProgramTradeCollector
@@ -214,3 +295,104 @@ async def test_program_trade_collector_skips_fetches_when_market_window_is_close
     assert collector.status.targets == ("005930", "000660")
     assert collector.status.last_cycle_ms == 1000
     assert collector.store.path("005930", "20260626").exists() is False
+
+
+@pytest.mark.asyncio
+async def test_program_trade_collector_logs_transport_without_traceback_and_sets_kind(
+    tmp_path,
+    monkeypatch,
+    caplog,
+) -> None:
+    from hoga.live.kis_client import KisTransportError
+    from hoga.live.program_trade_collector import ProgramTradeCollector
+
+    async def fake_run_with_capacity(
+        scheduler,
+        *,
+        data_dir,
+        role,
+        key,
+        endpoint,
+        priority,
+        cooldown_scope,
+        fetch_fn,
+    ):
+        raise KisTransportError(httpx.ConnectError("down"))
+
+    monkeypatch.setattr(
+        "hoga.live.program_trade_collector.load_document",
+        lambda _data_dir: _watchlist_doc(),
+    )
+    monkeypatch.setattr(
+        "hoga.live.program_trade_collector.kis_access.run_with_capacity",
+        fake_run_with_capacity,
+    )
+    collector = ProgramTradeCollector(
+        data_dir=tmp_path,
+        date_fn=lambda: "20260625",
+        now_ms_fn=lambda: 1000,
+    )
+
+    with caplog.at_level("WARNING", logger="hoga.live.program_trade_collector"):
+        await collector.run_once()
+
+    records = [r for r in caplog.records if r.name == "hoga.live.program_trade_collector"]
+    assert len(records) == 2
+    assert all(r.exc_info is None for r in records)
+    assert records[0].getMessage() == (
+        "program_trade.collector.code_failed code=005930 "
+        "kind=transport error=TRANSPORT/ConnectError"
+    )
+    assert collector.status.last_error_count == 2
+    assert collector.status.last_error_kind == "transport"
+    assert collector.status.last_error_code == "TRANSPORT/ConnectError"
+
+
+@pytest.mark.asyncio
+async def test_program_trade_collector_unexpected_errors_keep_traceback(
+    tmp_path,
+    monkeypatch,
+    caplog,
+) -> None:
+    from hoga.live.program_trade_collector import ProgramTradeCollector
+
+    async def fake_run_with_capacity(
+        scheduler,
+        *,
+        data_dir,
+        role,
+        key,
+        endpoint,
+        priority,
+        cooldown_scope,
+        fetch_fn,
+    ):
+        raise RuntimeError("boom")
+
+    monkeypatch.setattr(
+        "hoga.live.program_trade_collector.load_document",
+        lambda _data_dir: _watchlist_doc(),
+    )
+    monkeypatch.setattr(
+        "hoga.live.program_trade_collector.kis_access.run_with_capacity",
+        fake_run_with_capacity,
+    )
+    collector = ProgramTradeCollector(
+        data_dir=tmp_path,
+        date_fn=lambda: "20260625",
+        now_ms_fn=lambda: 1000,
+    )
+
+    with caplog.at_level("ERROR", logger="hoga.live.program_trade_collector"):
+        await collector.run_once()
+
+    records = [r for r in caplog.records if r.name == "hoga.live.program_trade_collector"]
+    assert len(records) == 2
+    assert all(r.exc_info is not None for r in records)
+    assert records[0].getMessage() == (
+        "program_trade.collector.code_failed code=005930 "
+        "kind=unexpected error=RuntimeError"
+    )
+    assert collector.status.last_error_count == 2
+    assert collector.status.last_error_kind == "unexpected"
+    assert collector.status.last_error_code == "RuntimeError"

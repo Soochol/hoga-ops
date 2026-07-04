@@ -95,6 +95,12 @@ class LiveStatus(BaseModel):
     kis_api_last_error: str | None = None
     kis_api_last_error_count: int = 0
     kis_api_degraded: bool = False
+    rest_poller_degraded: bool = False
+    rest_poller_last_error: str | None = None
+    rest_poller_last_error_kind: str | None = None
+    rest_poller_last_error_code: str | None = None
+    rest_poller_last_error_count: int = 0
+    rest_poller_backoff_remaining: int = 0
     kis_capacity_scheduler: dict[str, object] | None = None
 
 
@@ -375,6 +381,7 @@ def get_status() -> LiveStatus:
         if _state.rest30_recorder is not None
         else None
     )
+    rest_poller_status = poller.status() if poller is not None else None
     now_ms = _now_ms()
     sf = _state.session.status_fields(
         now_ms=now_ms,
@@ -420,6 +427,22 @@ def get_status() -> LiveStatus:
         kis_api_last_error=rest30_status.last_error if rest30_status else None,
         kis_api_last_error_count=rest30_status.last_error_count if rest30_status else 0,
         kis_api_degraded=rest30_status.degraded if rest30_status else False,
+        rest_poller_degraded=bool(rest_poller_status and rest_poller_status.degraded),
+        rest_poller_last_error=(
+            rest_poller_status.last_error if rest_poller_status else None
+        ),
+        rest_poller_last_error_kind=(
+            rest_poller_status.last_error_kind if rest_poller_status else None
+        ),
+        rest_poller_last_error_code=(
+            rest_poller_status.last_error_code if rest_poller_status else None
+        ),
+        rest_poller_last_error_count=(
+            rest_poller_status.last_error_count if rest_poller_status else 0
+        ),
+        rest_poller_backoff_remaining=(
+            rest_poller_status.backoff_remaining if rest_poller_status else 0
+        ),
     )
 
 

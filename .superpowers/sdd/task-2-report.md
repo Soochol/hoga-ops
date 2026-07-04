@@ -3,49 +3,29 @@ Task 2 report
 Status: DONE
 
 Summary:
-- Added `DataSection` to `frontend/src/ui/DataSurface.tsx` as the new flat divider-based dense section primitive.
-- Updated `PanelCard` to use the quiet palette border token and the specified outer shadow.
-- Updated `WorkspaceHeader`, `WorkspaceToolbar`, and `IconToolbarButton` to the translucent command-row styling with blur and stronger input borders.
-- Extended primitive tests to lock the new `DataSection`, panel shadow, header/toolbar blur, and icon-button border contracts.
+- Added `LiveRestPollerStatus` and `LiveRestPoller.status()` to expose supervisor-facing state for running status, targets, last cycle timing, last error metadata, degraded state, and backoff countdown.
+- Integrated `classify_live_error()` and `format_live_error()` into per-code exception handling so transport failures log as warnings without tracebacks, unexpected failures log as errors with tracebacks, and policy-driven backoff is applied locally to the REST poller.
+- Added the four Task 2 regression tests covering warning/error log shape, status population, transport backoff skip behavior, and degraded-state recovery after a successful cycle.
 
 TDD evidence:
 1. Red:
-   - `cd frontend && npm test -- DataSurface.test.tsx --run`
-   - Result: failed because `DataSection` was undefined/not exported.
+   - `/home/dev/code/hoga-ops/.venv/bin/python -m pytest tests/unit/live/test_rest_poller.py::test_transport_failure_logs_warning_without_traceback_and_sets_status tests/unit/live/test_rest_poller.py::test_transport_backoff_skips_next_cycle_without_refetching tests/unit/live/test_rest_poller.py::test_unexpected_failure_logs_with_traceback_and_no_backoff tests/unit/live/test_rest_poller.py::test_successful_cycle_clears_degraded_status_after_failure -q`
+   - Result: `4 failed` with the expected missing behavior: traceback-only logging, no backoff skip, and missing `LiveRestPoller.status()`.
 2. Green:
-   - `cd frontend && npm test -- PageShell.test.tsx RailShell.test.tsx WorkspaceShell.test.tsx DataSurface.test.tsx --run`
-   - Result: `4 passed`, `20 passed`.
-3. Build verification:
-   - `cd frontend && npm run build`
-   - Result: Vite production build succeeded.
+   - `/home/dev/code/hoga-ops/.venv/bin/python -m pytest tests/unit/live/test_rest_poller.py::test_transport_failure_logs_warning_without_traceback_and_sets_status tests/unit/live/test_rest_poller.py::test_transport_backoff_skips_next_cycle_without_refetching tests/unit/live/test_rest_poller.py::test_unexpected_failure_logs_with_traceback_and_no_backoff tests/unit/live/test_rest_poller.py::test_successful_cycle_clears_degraded_status_after_failure -q`
+   - Result: `4 passed`.
+3. Full verification:
+   - `/home/dev/code/hoga-ops/.venv/bin/python -m pytest tests/unit/live/test_rest_poller.py -q`
+   - Result: `28 passed`.
 
 Files changed:
-- `frontend/src/ui/DataSurface.tsx`
-- `frontend/src/ui/DataSurface.test.tsx`
-- `frontend/src/ui/PageShell.tsx`
-- `frontend/src/ui/PageShell.test.tsx`
-- `frontend/src/ui/WorkspaceShell.tsx`
-- `frontend/src/ui/WorkspaceShell.test.tsx`
+- `hoga/live/rest_poller.py`
+- `tests/unit/live/test_rest_poller.py`
 
 Self-review:
-- Confirmed the brief’s explicit class contracts are present where required.
-- Confirmed existing exports are preserved and only `DataSection` was added.
-- Confirmed no feature pages or unrelated UI files were changed.
+- Kept the scope limited to the Task 2-owned files and did not touch lifecycle or other supervisor migrations.
+- Preserved the existing `last_cycle_ms` completion semantics, including backoff-skip and resolver-`None` cycles reporting completion timestamps.
+- Left unrelated workspace changes untouched, including the pre-existing modification to `.superpowers/sdd/task-1-report.md`.
 
 Concerns:
-- `RailShell.tsx` and `RailShell.test.tsx` already matched the brief, so they were verified but did not require edits.
-
----
-
-Review fix addendum:
-
-- Addressed the `DataSection` accessibility finding by keeping the section named through the rendered header for non-string `title` content and locking that behavior with a dedicated test.
-- Adjusted the new non-string-title test to assert against the header wrapper instead of the nested `<strong>` node.
-
-Verification:
-1. `cd frontend && npm test -- DataSurface.test.tsx --run`
-   - Result: passed (`1 passed`, `5 passed`).
-2. `cd frontend && npm test -- PageShell.test.tsx RailShell.test.tsx WorkspaceShell.test.tsx DataSurface.test.tsx --run`
-   - Result: passed (`4 passed`, `21 passed`).
-3. `cd frontend && npm run build`
-   - Result: Vite production build succeeded.
+- None.

@@ -12,6 +12,7 @@
 from __future__ import annotations
 
 import asyncio
+from dataclasses import dataclass
 import json
 from pathlib import Path
 
@@ -45,9 +46,26 @@ class _FakePoller:
     def on_unsubscribe(self, code: str) -> None:
         self.unsubscribed.append(code)
 
+    def status(self) -> _FakePollerStatus:
+        return _FakePollerStatus(running=self.alive)
+
     @property
     def alive(self) -> bool:
         return self.started and not self.stopped
+
+
+@dataclass(frozen=True)
+class _FakePollerStatus:
+    running: bool = True
+    target_count: int = 1
+    targets: tuple[str, ...] = ("247540",)
+    last_cycle_ms: int | None = 1770000000000
+    last_error: str | None = "KisTransportError: KIS api error TRANSPORT/ConnectError: down"
+    last_error_kind: str | None = "transport"
+    last_error_code: str | None = "TRANSPORT/ConnectError"
+    last_error_count: int = 1
+    degraded: bool = True
+    backoff_remaining: int = 2
 
 
 # ── helpers ────────────────────────────────────────────────────────────────────
@@ -419,3 +437,26 @@ async def test_empty_watchlist_view_subscribe_polls(tmp_path, monkeypatch):
     lifecycle.on_view_subscribe("005930")
     assert "005930" in lifecycle._state.rest_poller._subscribed  # 폴링 대상(빈 화면 아님)
     await lifecycle.stop_live_stream()
+
+
+def test_get_status_exposes_rest_poller_fields_without_capture_health_side_effect() -> None:
+    from hoga.live import lifecycle
+    from hoga.live.lifecycle import _State
+
+    lifecycle.reset_for_tests()
+    lifecycle._state = _State(rest_poller=_FakePoller())
+    lifecycle._state.rest_poller.start()
+
+    st = lifecycle.get_status()
+
+    assert st.rest_poller_degraded is True
+    assert st.rest_poller_last_error == (
+        "KisTransportError: KIS api error TRANSPORT/ConnectError: down"
+    )
+    assert st.rest_poller_last_error_kind == "transport"
+    assert st.rest_poller_last_error_code == "TRANSPORT/ConnectError"
+    assert st.rest_poller_last_error_count == 1
+    assert st.rest_poller_backoff_remaining == 2
+    assert st.capture_healthy is True
+    assert st.capture_reason == "idle"
+    assert st.degraded_accounts == []

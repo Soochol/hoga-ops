@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import asyncio
 from pathlib import Path
 
 import httpx
@@ -148,12 +149,17 @@ async def test_rest30_recorder_logs_transport_failures_without_traceback(
     assert records[0].levelname == "WARNING"
     assert records[0].exc_info is None
     assert records[0].getMessage() == (
-        "live.rest30.api_code_failed code=005930 error=TRANSPORT/ConnectTimeout"
+        "live.rest30.api_code_failed code=005930 "
+        "kind=transport error=TRANSPORT/ConnectTimeout"
     )
-    assert recorder.status().last_error_count == 1
-    assert recorder.status().last_error == (
+    status = recorder.status()
+    assert status.last_error_count == 1
+    assert status.last_error == (
         "KisTransportError: KIS api error TRANSPORT/ConnectTimeout: connect timed out"
     )
+    assert status.last_error_kind == "transport"
+    assert status.last_error_code == "TRANSPORT/ConnectTimeout"
+    assert status.backoff_remaining == 3
 
 
 @pytest.mark.asyncio
@@ -315,7 +321,9 @@ async def test_rest30_recorder_repeated_batch_does_not_inflate_seen_count(
 
 
 @pytest.mark.asyncio
-async def test_rest30_recorder_rate_limit_backs_off_next_cycle(tmp_path: Path) -> None:
+async def test_rest30_recorder_rate_limit_does_not_supervisor_backoff(
+    tmp_path: Path,
+) -> None:
     from hoga.live.buffer import LiveBuffer
     from hoga.live.kis_client import KisRateLimitError
     from hoga.live.rest30_recorder import Rest30sRecorder
@@ -340,5 +348,94 @@ async def test_rest30_recorder_rate_limit_backs_off_next_cycle(tmp_path: Path) -
     await recorder.poll_once()
     await recorder.poll_once()
 
-    assert kis.calls == [("orderbook", "005930")]
-    assert recorder.status().degraded is True
+    assert kis.calls == [("orderbook", "005930"), ("orderbook", "005930")]
+    status = recorder.status()
+    assert status.degraded is True
+    assert status.last_error_kind == "rate_limit"
+    assert status.last_error_code == "EGW00201"
+    assert status.backoff_remaining == 0
+
+
+@pytest.mark.asyncio
+async def test_rest30_recorder_unexpected_failures_keep_traceback(
+    tmp_path: Path,
+    caplog: pytest.LogCaptureFixture,
+) -> None:
+    from hoga.live.buffer import LiveBuffer
+    from hoga.live.rest30_recorder import Rest30sRecorder
+
+    class Broken(FakeKis):
+        async def fetch_orderbook(self, code: str):
+            raise RuntimeError("boom")
+
+    recorder = Rest30sRecorder(
+        kis_resolver=lambda: Broken(),
+        buffer=LiveBuffer(),
+        data_dir=tmp_path,
+        date_fn=lambda: "20260622",
+        now_ms_fn=lambda: 1770000000000,
+        phase_fn=lambda: "regular",
+    )
+    recorder.set_targets({"005930"})
+
+    with caplog.at_level("ERROR", logger="hoga.live.rest30_recorder"):
+        await recorder.poll_once()
+
+    records = [r for r in caplog.records if r.name == "hoga.live.rest30_recorder"]
+    assert len(records) == 1
+    assert records[0].exc_info is not None
+    assert records[0].getMessage() == (
+        "live.rest30.code_failed code=005930 kind=unexpected error=RuntimeError"
+    )
+    assert recorder.status().last_error_kind == "unexpected"
+    assert recorder.status().last_error_code == "RuntimeError"
+
+
+@pytest.mark.asyncio
+async def test_rest30_recorder_cycle_failure_sets_internal_kind_code(
+    tmp_path: Path,
+    caplog: pytest.LogCaptureFixture,
+) -> None:
+    from hoga.live.buffer import LiveBuffer
+    from hoga.live.rest30_recorder import Rest30sRecorder
+
+    async def fail_fsync() -> None:
+        raise RuntimeError("fsync failed")
+
+    recorder = Rest30sRecorder(
+        kis_resolver=lambda: FakeKis(),
+        buffer=LiveBuffer(),
+        data_dir=tmp_path,
+        date_fn=lambda: "20260622",
+        now_ms_fn=lambda: 1770000000000,
+        phase_fn=lambda: "regular",
+        interval_s=60.0,
+    )
+    recorder.set_targets({"005930"})
+    recorder._writer.fsync_all = fail_fsync
+
+    with caplog.at_level("ERROR", logger="hoga.live.rest30_recorder"):
+        recorder.start()
+        try:
+            for _ in range(50):
+                await asyncio.sleep(0.01)
+                if recorder.status().last_error_kind == "internal":
+                    break
+
+            status = recorder.status()
+            assert status.running is True
+            assert status.degraded is True
+            assert status.last_error == "RuntimeError: fsync failed"
+            assert status.last_error_kind == "internal"
+            assert status.last_error_code == "RuntimeError"
+            assert status.last_error_count == 1
+            assert status.backoff_remaining == 0
+        finally:
+            await recorder.stop()
+
+    records = [r for r in caplog.records if r.name == "hoga.live.rest30_recorder"]
+    assert len(records) == 1
+    assert records[0].exc_info is not None
+    assert records[0].getMessage() == (
+        "live.rest30.cycle_failed kind=internal error=RuntimeError"
+    )

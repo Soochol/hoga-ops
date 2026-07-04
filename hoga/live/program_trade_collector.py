@@ -13,6 +13,7 @@ from hoga.api.watchlist_projection import capture_ordered_codes
 
 from . import kis_access
 from .kis_client import KisClient
+from .error_policy import classify_live_error, format_live_error
 from .program_trade_store import ProgramTradeStore
 from .session_gate import ws_capture_window
 
@@ -25,6 +26,8 @@ class ProgramTradeCollectorStatus:
     targets: tuple[str, ...] = ()
     last_cycle_ms: int | None = None
     last_error: str | None = None
+    last_error_kind: str | None = None
+    last_error_code: str | None = None
     last_error_count: int = 0
 
 
@@ -82,16 +85,30 @@ class ProgramTradeCollector:
         while True:
             try:
                 await self.run_once()
-            except Exception:
-                log.exception("program_trade.collector.cycle_failed")
+            except Exception as e:
+                self._record_cycle_error(e)
             await asyncio.sleep(self._poll_interval_s)
 
+    def _record_cycle_error(self, exc: Exception) -> None:
+        policy = classify_live_error(exc, internal=True)
+        self.status.last_error = format_live_error(exc)
+        self.status.last_error_kind = policy.kind
+        self.status.last_error_code = policy.code
+        self.status.last_error_count = 1
+        log_msg = "program_trade.collector.cycle_failed kind=%s error=%s"
+        if policy.include_traceback:
+            log.error(log_msg, policy.kind, policy.code, exc_info=True)
+        else:
+            log.warning(log_msg, policy.kind, policy.code)
+
     async def run_once(self) -> None:
+        self.status.last_error = None
+        self.status.last_error_kind = None
+        self.status.last_error_code = None
+        self.status.last_error_count = 0
         doc = load_document(self.data_dir)
         codes = capture_ordered_codes(doc)
         self.status.targets = tuple(codes)
-        self.status.last_error = None
-        self.status.last_error_count = 0
         date = self._date_fn()
         observed_at_ms = self._now_ms_fn()
         if not self._should_collect_fn(observed_at_ms):
@@ -117,8 +134,15 @@ class ProgramTradeCollector:
                     observed_at_ms=observed_at_ms,
                 )
             except Exception as e:  # noqa: BLE001 — per-code failures must stay local.
-                self.status.last_error = f"{code}: {e}"
+                policy = classify_live_error(e)
+                self.status.last_error = f"{code}: {format_live_error(e)}"
+                self.status.last_error_kind = policy.kind
+                self.status.last_error_code = policy.code
                 self.status.last_error_count += 1
-                log.warning("program_trade.collector.code_failed code=%s error=%s", code, e)
+                log_msg = "program_trade.collector.code_failed code=%s kind=%s error=%s"
+                if policy.include_traceback:
+                    log.error(log_msg, code, policy.kind, policy.code, exc_info=True)
+                else:
+                    log.warning(log_msg, code, policy.kind, policy.code)
 
         self.status.last_cycle_ms = observed_at_ms

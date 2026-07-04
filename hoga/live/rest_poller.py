@@ -17,9 +17,11 @@ import asyncio
 import logging
 import time
 from collections.abc import Callable
+from dataclasses import dataclass
 from typing import Protocol, runtime_checkable
 
 from .buffer import LiveBuffer
+from .error_policy import classify_live_error, format_live_error
 from .kis_models import KisBrokers, KisOrderbook, KisTrade
 from .rest_buffer_build import brokers_to_snapshot, ob_to_snapshot, trades_to_snapshots
 from .session_gate import market_phase
@@ -29,6 +31,20 @@ _log = logging.getLogger(__name__)
 
 def _now_ms() -> int:
     return int(time.time() * 1000)
+
+
+@dataclass(frozen=True)
+class LiveRestPollerStatus:
+    running: bool
+    target_count: int
+    targets: tuple[str, ...]
+    last_cycle_ms: int | None
+    last_error: str | None
+    last_error_kind: str | None
+    last_error_code: str | None
+    last_error_count: int
+    degraded: bool
+    backoff_remaining: int
 
 
 @runtime_checkable
@@ -78,6 +94,12 @@ class LiveRestPoller:
 
         self._task: asyncio.Task | None = None  # type: ignore[type-arg]
         self.last_cycle_ms: int | None = None
+        self._last_error: str | None = None
+        self._last_error_kind: str | None = None
+        self._last_error_code: str | None = None
+        self._last_error_count = 0
+        self._degraded = False
+        self._backoff_remaining = 0
 
     # ── Public interface ───────────────────────────────────────────────────────
 
@@ -116,6 +138,21 @@ class LiveRestPoller:
         except asyncio.CancelledError:
             pass
 
+    def status(self) -> LiveRestPollerStatus:
+        targets = self._subscribed - self._excluded
+        return LiveRestPollerStatus(
+            running=self.alive,
+            target_count=len(targets),
+            targets=tuple(sorted(targets)),
+            last_cycle_ms=self.last_cycle_ms,
+            last_error=self._last_error,
+            last_error_kind=self._last_error_kind,
+            last_error_code=self._last_error_code,
+            last_error_count=self._last_error_count,
+            degraded=self._degraded,
+            backoff_remaining=self._backoff_remaining,
+        )
+
     # ── Internal ───────────────────────────────────────────────────────────────
 
     async def _run_loop(self) -> None:
@@ -129,8 +166,8 @@ class LiveRestPoller:
         while True:
             try:
                 await self._poll_once()
-            except Exception:  # noqa: BLE001 — 사이클 전체 예외 격리
-                _log.exception("live.rest_poller.cycle_failed")
+            except Exception as e:  # noqa: BLE001 — 사이클 전체 예외 격리
+                self._record_cycle_error(e)
             await asyncio.sleep(self._interval_s)
 
     async def _poll_once(self) -> None:
@@ -139,6 +176,11 @@ class LiveRestPoller:
         각 종목 처리를 try/except로 감싸 한 실패가 다른 종목 처리를 막지 않게 함.
         last_cycle_ms는 사이클 완료 후 갱신 (ADR-0064: 성공 신호, finally 아님).
         """
+        if self._backoff_remaining > 0:
+            self._backoff_remaining -= 1
+            self.last_cycle_ms = _now_ms()
+            return
+
         # 사이클 시작 시 resolver에서 KIS REST adapter를 얻는다. None이면(creds 소실 등)
         # 이 사이클은 폴링 불가 -> 우아하게 skip(다음 사이클 재시도).
         kis = self._resolve_kis()
@@ -160,17 +202,58 @@ class LiveRestPoller:
         else:
             self._snapshotted_once.clear()
 
-        for code in targets:
+        error_count = 0
+        last_error: str | None = None
+        last_error_kind: str | None = None
+        last_error_code: str | None = None
+
+        for code in sorted(targets):
             try:
                 await self._fetch_and_publish(code, kis)
                 # 성공한 종목만 1회-표식에 추가(실패는 다음 사이클 재시도).
                 if closed:
                     self._snapshotted_once.add(code)
-            except Exception:  # noqa: BLE001 — 종목별 격리
-                _log.exception("live.rest_poller.code_failed code=%s", code)
+            except Exception as e:  # noqa: BLE001 — 종목별 격리
+                policy = classify_live_error(e)
+                error_count += 1
+                last_error = format_live_error(e)
+                last_error_kind = policy.kind
+                last_error_code = policy.code
+                self._backoff_remaining = max(self._backoff_remaining, policy.backoff_cycles)
+                log_msg = "live.rest_poller.code_failed code=%s kind=%s error=%s"
+                if policy.include_traceback:
+                    _log.error(log_msg, code, policy.kind, policy.code, exc_info=True)
+                else:
+                    _log.warning(log_msg, code, policy.kind, policy.code)
+
+        self._last_error_count = error_count
+        if error_count == 0:
+            self._last_error = None
+            self._last_error_kind = None
+            self._last_error_code = None
+            self._degraded = False
+        else:
+            self._last_error = last_error
+            self._last_error_kind = last_error_kind
+            self._last_error_code = last_error_code
+            self._degraded = True
 
         # 사이클이 정상 완료됐음을 기록 (stall 감지용 신호)
         self.last_cycle_ms = _now_ms()
+
+    def _record_cycle_error(self, exc: Exception) -> None:
+        policy = classify_live_error(exc, internal=True)
+        self._last_error = format_live_error(exc)
+        self._last_error_kind = policy.kind
+        self._last_error_code = policy.code
+        self._last_error_count = 1
+        self._degraded = policy.degraded
+        self._backoff_remaining = max(self._backoff_remaining, policy.backoff_cycles)
+        log_msg = "live.rest_poller.cycle_failed kind=%s error=%s"
+        if policy.include_traceback:
+            _log.error(log_msg, policy.kind, policy.code, exc_info=True)
+        else:
+            _log.warning(log_msg, policy.kind, policy.code)
 
     async def _fetch_and_publish(self, code: str, kis: _KisRestProto) -> None:
         """단일 종목: fetch_* 3개 → B3 변환 → buffer.publish.

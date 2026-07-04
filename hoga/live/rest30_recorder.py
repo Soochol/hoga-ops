@@ -11,7 +11,7 @@ from pathlib import Path
 from typing import Protocol, runtime_checkable
 
 from hoga.live.buffer import LiveBuffer
-from hoga.live.kis_client import KisApiError, KisAuthError, KisRateLimitError
+from hoga.live.error_policy import classify_live_error, format_live_error
 from hoga.live.kis_models import KisBrokers, KisOrderbook, KisTrade
 from hoga.live.lifecycle import get_signal_alert_monitor
 from hoga.live.rest30_writer import make_rest30_writer
@@ -36,6 +36,9 @@ class Rest30sStatus:
     last_error: str | None
     last_error_count: int
     degraded: bool
+    last_error_kind: str | None = None
+    last_error_code: str | None = None
+    backoff_remaining: int = 0
 
 
 class Rest30sRecorder:
@@ -63,6 +66,8 @@ class Rest30sRecorder:
         self._task: asyncio.Task[None] | None = None
         self._last_cycle_ms: int | None = None
         self._last_error: str | None = None
+        self._last_error_kind: str | None = None
+        self._last_error_code: str | None = None
         self._last_error_count = 0
         self._closed_snapshotted_once: set[str] = set()
         self._trade_seen: dict[str, tuple[str, Counter[tuple[int, int, int, int]]]] = {}
@@ -86,7 +91,10 @@ class Rest30sRecorder:
             targets=tuple(sorted(self._targets)),
             last_cycle_ms=self._last_cycle_ms,
             last_error=self._last_error,
+            last_error_kind=self._last_error_kind,
+            last_error_code=self._last_error_code,
             last_error_count=self._last_error_count,
+            backoff_remaining=self._backoff_remaining,
             degraded=self._last_error_count > 0,
         )
 
@@ -108,11 +116,22 @@ class Rest30sRecorder:
         while True:
             try:
                 await self.poll_once()
-            except Exception:
-                _log.exception("live.rest30.cycle_failed")
-                self._last_error = "cycle_failed"
-                self._last_error_count = max(1, self._last_error_count)
+            except Exception as e:
+                self._record_cycle_error(e)
             await asyncio.sleep(self._interval_s)
+
+    def _record_cycle_error(self, exc: Exception) -> None:
+        policy = classify_live_error(exc, internal=True)
+        self._last_error = format_live_error(exc)
+        self._last_error_kind = policy.kind
+        self._last_error_code = policy.code
+        self._last_error_count = 1
+        self._backoff_remaining = max(self._backoff_remaining, policy.backoff_cycles)
+        log_msg = "live.rest30.cycle_failed kind=%s error=%s"
+        if policy.include_traceback:
+            _log.error(log_msg, policy.kind, policy.code, exc_info=True)
+        else:
+            _log.warning(log_msg, policy.kind, policy.code)
 
     async def poll_once(self) -> None:
         if self._backoff_remaining > 0:
@@ -132,42 +151,60 @@ class Rest30sRecorder:
             self._last_cycle_ms = self._now_ms()
             self._last_error_count = 0
             self._last_error = None
+            self._last_error_kind = None
+            self._last_error_code = None
             return
 
         kis = self._resolve_kis()
         if kis is None:
             self._last_cycle_ms = self._now_ms()
             self._last_error = "kis_unavailable"
+            self._last_error_kind = "auth"
+            self._last_error_code = "kis_unavailable"
             self._last_error_count = 1 if self._targets else 0
             return
 
         error_count = 0
         last_error: str | None = None
+        last_error_kind: str | None = None
+        last_error_code: str | None = None
         for code in sorted(targets):
             try:
                 await self._fetch_write_publish(code, kis, phase=phase)
                 if closed:
                     self._closed_snapshotted_once.add(code)
             except Exception as e:  # noqa: BLE001
+                policy = classify_live_error(e)
                 error_count += 1
-                last_error = f"{type(e).__name__}: {e}"
-                if isinstance(e, (KisAuthError, KisRateLimitError)):
+                last_error = format_live_error(e)
+                last_error_kind = policy.kind
+                last_error_code = policy.code
+                if policy.backoff_cycles > 0:
                     self._backoff_remaining = max(
                         self._backoff_remaining,
-                        self._backoff_cycles,
+                        max(self._backoff_cycles, policy.backoff_cycles),
                     )
-                if isinstance(e, KisApiError):
-                    _log.warning(
-                        "live.rest30.api_code_failed code=%s error=%s",
+                if policy.include_traceback:
+                    _log.error(
+                        "live.rest30.code_failed code=%s kind=%s error=%s",
                         code,
-                        e.msg_cd,
+                        policy.kind,
+                        policy.code,
+                        exc_info=True,
                     )
                 else:
-                    _log.exception("live.rest30.code_failed code=%s", code)
+                    _log.warning(
+                        "live.rest30.api_code_failed code=%s kind=%s error=%s",
+                        code,
+                        policy.kind,
+                        policy.code,
+                    )
 
         await self._writer.fsync_all()
         self._last_cycle_ms = self._now_ms()
         self._last_error = last_error
+        self._last_error_kind = last_error_kind
+        self._last_error_code = last_error_code
         self._last_error_count = error_count
 
     async def _fetch_write_publish(

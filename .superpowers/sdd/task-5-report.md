@@ -1,101 +1,73 @@
-# Task 5 Report
+# Task 5 Report: ProgramTradeCollector Policy Logging and Status Codes
 
-## Status
+## TDD Evidence
 
-Completed.
+### RED
 
-## Scope
-
-- Implemented the new active-state theme on left navigation items.
-- Implemented the rail active-state spine on `RailButton`.
-- Added/updated focused tests for the nav and rail active states.
-
-## Files Changed
-
-- `frontend/src/nav/LeftNav.test.tsx`
-- `frontend/src/nav/NavItem.tsx`
-- `frontend/src/ui/RailShell.test.tsx`
-- `frontend/src/ui/RailShell.tsx`
-
-## Deviation From Brief
-
-The brief named additional drawer and right-rail files, but no code changes were required there after inspection:
-
-- `RightRail` already consumes `RailButton`, so the active-state update landed through the shared primitive.
-- `WatchlistDrawer`, `ScreenerDrawer`, and `StudyViewsDrawer` were already using `RailDrawerHeader`, `RailDrawerSection`, and `RailDrawerBody`, and did not contain nested `PanelCard` usage that needed cleanup.
-
-No adjacent files outside the brief were modified.
-
-## Verification
-
-### RED step
-
-Ran:
+Command:
 
 ```bash
-cd frontend
-npm test -- LeftNav.test.tsx RailShell.test.tsx RightRail.test.tsx --run
+/home/dev/code/hoga-ops/.venv/bin/python -m pytest tests/unit/live/test_program_trade_collector.py::test_program_trade_collector_logs_transport_without_traceback_and_sets_kind tests/unit/live/test_program_trade_collector.py::test_program_trade_collector_unexpected_errors_keep_traceback -q
 ```
 
-Observed expected failures for:
+Result: `2 failed in 0.06s`
 
-- left nav active-state assertion
-- rail button left-spine assertion
+### GREEN
 
-### Final tests
-
-Ran:
+Command:
 
 ```bash
-cd frontend
-npm test -- LeftNav.test.tsx RailShell.test.tsx RightRail.test.tsx WatchlistDrawer.test.tsx ScreenerDrawer.test.tsx StudyViewsDrawer.test.tsx --run
-npm run build
+/home/dev/code/hoga-ops/.venv/bin/python -m pytest tests/unit/live/test_program_trade_collector.py::test_program_trade_collector_logs_transport_without_traceback_and_sets_kind tests/unit/live/test_program_trade_collector.py::test_program_trade_collector_unexpected_errors_keep_traceback -q
 ```
 
-Results:
+Result: `2 passed in 0.03s`
 
-- `7` test files passed
-- `112` tests passed
-- Vite production build succeeded
+### Full-file verification
 
-### Browser QA
+Command:
 
-Ran a headless browser sanity check against `/live` on a local Vite dev server.
+```bash
+/home/dev/code/hoga-ops/.venv/bin/python -m pytest tests/unit/live/test_program_trade_collector.py -q
+```
 
-Verified:
+Result: `5 passed in 0.03s`
 
-- active right-rail button carries `border-accent bg-tint-selection text-fg`
-- watchlist, screener, and saved-view drawers render as a single `bg-bg-card` rail surface with `border-l`
-- no nested rounded card wrappers were detected in the watchlist drawer during the check
+## Files changed
 
-## Self-Review
+- `hoga/live/program_trade_collector.py`
+- `tests/unit/live/test_program_trade_collector.py`
 
-- The `LeftNav` test now sets the route to `/live`, which matches the intended active-state assertion instead of depending on router defaults.
-- `NavItem` keeps the new left-spine treatment localized to the active state and leaves inactive behavior unchanged apart from border transparency.
-- `RailButton` updates the shared primitive so right-rail consumers inherit the new active styling consistently.
+## Implementation details
+
+- Added `last_error_kind` and `last_error_code` to `ProgramTradeCollectorStatus`.
+- Imported `classify_live_error` and `format_live_error`.
+- Cleared new status fields at the start of each `run_once`.
+- Replaced per-code `except Exception` handling with policy-based logging:
+  - `kind=` and `code=`
+  - traceback included only when `policy.include_traceback` is true
+  - status fields updated for last error kind/code and count.
 
 ## Commit
 
-Created after verification.
+- `79a27c17` — feat: apply error policy to program trade collector
 
-## Review Findings Fix Addendum
+## Task 5 review follow-up: stale status reset on startup failure
 
-### Fixed Items
+### Additional verification
 
-1. Updated `frontend/src/watchlist/WatchlistDrawer.tsx` to use `RailDrawerSection` for the non-scrolling footer/control area, while preserving the existing banner, countdown, and catch-up action layout.
-2. Strengthened `frontend/src/nav/LeftNav.test.tsx` so the active `Live` link now asserts the full active-state contract by class token: `relative`, `grid`, `border-border-strong`, `bg-tint-selection`, and the `before:*` left-spine classes.
-
-### Verification
-
-Ran on June 28, 2026:
+Command:
 
 ```bash
-cd frontend && npm test -- LeftNav.test.tsx WatchlistDrawer.test.tsx RailShell.test.tsx RightRail.test.tsx ScreenerDrawer.test.tsx StudyViewsDrawer.test.tsx --run
-cd frontend && npm run build
+/home/dev/code/hoga-ops/.venv/bin/python -m pytest tests/unit/live/test_program_trade_collector.py -q
 ```
 
-Results:
+Result: `6 passed in 0.05s`
 
-- `7` test files passed
-- `112` tests passed
-- production build succeeded
+### Regression test added
+
+- Added `test_program_trade_collector_clears_stale_error_state_when_load_document_fails` to assert:
+  - stale `last_error`, `last_error_kind`, `last_error_code`, and `last_error_count` are cleared when `load_document` raises `RuntimeError("load failed")`.
+
+### Code change
+
+- Moved clearing of `last_error`, `last_error_kind`, `last_error_code`, and `last_error_count` to the very top of `ProgramTradeCollector.run_once()` before `load_document(self.data_dir)`.
