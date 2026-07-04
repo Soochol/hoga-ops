@@ -285,7 +285,7 @@ export function useLiveBundle(
 
   // Minute-only gate: both /api/range (hoga indicators) and
   // /api/live/past-candles fire on the same condition.
-  const enableMinute = !!(code && isMinute && minutePastFrom <= minutePastTo && !kisRestBypassEnabled);
+  const enableMinute = !!(code && isMinute && minutePastFrom <= minutePastTo);
   const pastCandlesQuery = useLivePastCandles(
     enableMinute ? code : null,
     enableMinute ? minutePastFrom : null,
@@ -294,7 +294,7 @@ export function useLiveBundle(
   );
 
   // KIS daily past-candles — only enabled for D/W/M timeframes (ADR-0048).
-  const enableDaily = !!(code && !isMinute && !kisRestBypassEnabled);
+  const enableDaily = !!(code && !isMinute);
   const dailyPastFrom = seedFrom;
   const dailyPastTo = todayKstYyyymmdd;
   const pastDailyCandlesQuery = useLivePastDailyCandles(
@@ -303,10 +303,11 @@ export function useLiveBundle(
     enableDaily ? dailyPastTo : null,
     venue,
   );
+  const enableScreenerDaily = !!(code && !isMinute);
   const screenerDailyCandlesQuery = useScreenerDailyCandles(
-    enableDaily ? code : null,
-    enableDaily ? dailyPastFrom : null,
-    enableDaily ? dailyPastTo : null,
+    enableScreenerDaily ? code : null,
+    enableScreenerDaily ? dailyPastFrom : null,
+    enableScreenerDaily ? dailyPastTo : null,
   );
 
   // Investor net-buy (foreign/institution) — 'D' (일봉) ONLY. KIS
@@ -390,7 +391,7 @@ export function useLiveBundle(
       hogaplayCandleFallback.data?.candles ?? [],
     );
     if (isMinute) {
-      const raw = kisRestBypassEnabled ? [] : pastCandlesQuery.data?.candles ?? [];
+      const raw = pastCandlesQuery.data?.candles ?? [];
       if (raw.length === 0) return selectedRangeFallback;
       // Minute timeframes: epoch-floor bucket via aggregateCandles (also dedupes
       // within-bucket duplicates from pre-f63ed15 KIS cache files).
@@ -404,7 +405,7 @@ export function useLiveBundle(
     // identity-ish (one bucket per bar); for 'W'/'M' aggregateCalendar groups
     // by ISO week / calendar month using the bar's first 1m bar t_ms so
     // axis.contains admits it inside that Segment.
-    const raw = kisRestBypassEnabled ? [] : pastDailyCandlesQuery.data?.candles ?? [];
+    const raw = pastDailyCandlesQuery.data?.candles ?? [];
     const screenerRaw = screenerDailyCandlesQuery.data?.candles ?? [];
     const fallbackRaw = selectedRangeFallback.map((c) => ({
       t_ms: c.ts_ms,

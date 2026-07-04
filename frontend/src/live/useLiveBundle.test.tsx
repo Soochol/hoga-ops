@@ -186,6 +186,48 @@ function createWrapper(settings?: Partial<LiveSettings>) {
 
 const wrapper = createWrapper();
 
+function renderUseLiveBundle(
+  overrides: {
+    code?: string | null;
+    timeframe?: '1m' | 'D';
+    settings?: Partial<LiveSettings>;
+    rangeCandles?: Array<{ ts_ms: number; open: number; high: number; low: number; close: number; vol_a: number; vol_b: number }>;
+    screenerDailyCandles?: Array<{ t_ms: number; open: number; high: number; low: number; close: number; volume: number }>;
+  } = {},
+) {
+  const {
+    code = '005930',
+    timeframe = '1m',
+    settings,
+    rangeCandles = [],
+    screenerDailyCandles = [],
+  } = overrides;
+  screenerDailyCandlesMock.candles = screenerDailyCandles;
+  const previousImplementation = useRangeSpy.getMockImplementation();
+  useRangeSpy.mockImplementation((...args: unknown[]) => {
+    const options = args[6] as { mode?: string } | undefined;
+    if (options?.mode === 'full') {
+      return rangeResult(rangeCandles.length > 0 ? {
+        ...fallbackRangeBundle(rangeCandles[rangeCandles.length - 1]?.close ?? 71_234),
+        candles: rangeCandles,
+      } : null);
+    }
+    return rangeResult();
+  });
+  const rendered = renderHook(
+    () => useLiveBundle(code, timeframe, '20260527', liveFixture),
+    { wrapper: createWrapper(settings) },
+  );
+  useRangeSpy.mockImplementation(previousImplementation ?? (() => ({
+    data: null,
+    isLoading: false,
+    error: null,
+    isPlaceholderData: rangeMock.isPlaceholderData,
+    isFetching: rangeMock.isFetching,
+  })));
+  return rendered.result.current;
+}
+
 describe('planLiveRangeRequest', () => {
   it('plans the minute /api/range request with indicator-controlled optional slices', () => {
     expect(planLiveRangeRequest({
@@ -250,6 +292,13 @@ describe('useLiveBundle', () => {
     livePastDailyCandlesSpy.mockClear();
     livePastInvestorNetSpy.mockClear();
     useRangeSpy.mockClear();
+    useRangeSpy.mockImplementation(() => ({
+      data: null,
+      isLoading: false,
+      error: null,
+      isPlaceholderData: rangeMock.isPlaceholderData,
+      isFetching: rangeMock.isFetching,
+    }));
     candlesMock.candles = [DEFAULT_CANDLE];
     candlesMock.isPlaceholderData = false;
     candlesMock.isFetching = false;
@@ -339,30 +388,15 @@ describe('useLiveBundle', () => {
     );
   });
 
-  it('skips KIS minute candle query inputs and uses stored fallback when bypass is enabled', () => {
-    useRangeSpy
-      .mockReturnValueOnce(rangeResult(fallbackRangeBundle(71_777)))
-      .mockReturnValueOnce(rangeResult())
-      .mockReturnValueOnce(rangeResult())
-      .mockReturnValueOnce(rangeResult());
+  it('keeps stored range and screener daily fallbacks enabled when bypass is enabled', () => {
+    const result = renderUseLiveBundle({
+      timeframe: 'D',
+      settings: { kis_rest_bypass_enabled: true },
+      screenerDailyCandles: [{ t_ms: 1, open: 1, high: 2, low: 1, close: 2, volume: 100 }],
+    });
 
-    const { result } = renderHook(
-      () => useLiveBundle('005930', '1m', '20260527', liveFixture),
-      { wrapper: createWrapper({ kis_rest_bypass_enabled: true }) },
-    );
-
-    expect(livePastCandlesSpy).toHaveBeenCalledWith(null, null, null, 'KRX');
-    expect(result.current.chartBundle?.candles[0]?.close).toBe(71_777);
-    expect(useRangeSpy).toHaveBeenCalledWith(
-      '005930',
-      '20260520',
-      '20260527',
-      '1m',
-      undefined,
-      '20260527',
-      expect.objectContaining({ mode: 'full' }),
-      undefined,
-    );
+    expect(result.bundle?.candles.length).toBeGreaterThan(0);
+    expect(screenerDailyCandlesSpy).toHaveBeenLastCalledWith('005930', '20250611', '20260527');
   });
 
   it('notifies the KIS REST toast store when past-candles warnings show transport failure', async () => {

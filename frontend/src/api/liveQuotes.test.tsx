@@ -38,6 +38,25 @@ it('accepts validated quote provenance fields', async () => {
   expect(res.quotes[0].warnings).toEqual(['kis_change_pct_rejected']);
 });
 
+it('preserves stale quote flags from the backend', async () => {
+  vi.spyOn(client, 'apiCall').mockResolvedValue({
+    phase: 'open',
+    quotes: [{
+      code: '005930',
+      price: 70000,
+      change_pct: 1.2,
+      change_won: 800,
+      stale: true,
+      stale_reason: 'kis_rest_bypassed',
+    }],
+  });
+
+  const res = await getQuotes(['005930']);
+
+  expect(res.quotes[0].stale).toBe(true);
+  expect(res.quotes[0].stale_reason).toBe('kis_rest_bypassed');
+});
+
 it('includes venue in the request URL and query key', async () => {
   const spy = vi.spyOn(client, 'apiCall').mockResolvedValueOnce({
     phase: 'open',

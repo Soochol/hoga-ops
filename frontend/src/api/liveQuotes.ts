@@ -24,6 +24,8 @@ export interface LiveQuote {
   change_pct_source?: string | null;
   /** quote validation warnings such as adjusted_baseline_unavailable. */
   warnings?: string[];
+  stale?: boolean;
+  stale_reason?: string | null;
 }
 
 export interface LiveQuotesResponse {
