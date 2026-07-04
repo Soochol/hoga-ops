@@ -104,7 +104,6 @@ export function StudyPage() {
   const [params] = useSearchParams();
   const queryViewId = params.get('view');
   const navigate = useNavigate();
-  const [isCursorActive, setIsCursorActive] = useState(false);
   const [viewTimeframes, setViewTimeframes] = useState<Record<string, LiveTimeframe>>({});
   const [rememberedMinuteTimeframes, setRememberedMinuteTimeframes] = useState<Record<string, MinuteTimeframe>>({});
   const [activatedStudyTabIds, setActivatedStudyTabIds] = useState<Set<string>>(() => new Set());
@@ -299,10 +298,6 @@ export function StudyPage() {
     routeSyncPendingRef.current = true;
     openSaveInActiveTabWithViewportCapture(querySave);
   }, [activeTab?.viewId, openSaveInActiveTabWithViewportCapture, querySave, queryViewId]);
-
-  useEffect(() => {
-    setIsCursorActive(false);
-  }, [activeViewId]);
 
   useEffect(() => {
     if (routeSyncPendingRef.current) return;
@@ -534,7 +529,6 @@ export function StudyPage() {
                     tradeVolumePocs={tradeVolumePocsFromWire(activeViewModel.bundle.trade_volume_pocs)}
                     forceHogaPanes
                     onViewportCaptureReady={handleViewportCaptureReady}
-                    onCursorActiveChange={setIsCursorActive}
                   />
                 </ChartDrawingShell>
               ) : null}
@@ -551,7 +545,6 @@ export function StudyPage() {
                 <StudyReferenceDetailPanel
                   save={activeViewModel.save}
                   bundle={activeViewModel.bundle}
-                  isCursorActive={isCursorActive}
                 />
               )}
               {isMemoOpen && selectedSave && (
