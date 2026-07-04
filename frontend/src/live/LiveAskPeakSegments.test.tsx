@@ -799,6 +799,49 @@ describe('buildAskPeakOverlaySegments', () => {
     expect(segments).toHaveLength(1);
     expect(segments[0]).toMatchObject({ price: 100, qty: 100 });
   });
+
+  it('reconstructs historical ask untraded lines using high-through-cutoff instead of full-day high', () => {
+    const day = '20260613';
+    const open = Date.UTC(2026, 5, 13, 0, 0);
+    const peak: AskPeak = {
+      date: day,
+      price: 100,
+      qty: 50,
+      t_ms: open + 60_000,
+      max_price: 100,
+      max_qty: 50,
+      max_t_ms: open + 60_000,
+      all_peaks: [
+        { price: 105, qty: 120, t_ms: open + 60_000 },
+      ],
+      all_max_peaks: [
+        { price: 105, qty: 120, t_ms: open + 60_000 },
+      ],
+      untraded_price: null,
+      untraded_qty: null,
+      untraded_t_ms: null,
+    };
+
+    const out = buildAskPeakOverlaySegments({
+      dayAskPeaks: [peak],
+      todayAllPriceAskPeak: null,
+      segments: [{ date: day, session_open_ms: open, session_close_ms: open + 3600_000 }],
+      candles: [
+        { ts_ms: open + 60_000, open: 100, high: 100, low: 99, close: 100, vol_a: 1, vol_b: 0 },
+        { ts_ms: open + 180_000, open: 110, high: 110, low: 109, close: 110, vol_a: 1, vol_b: 0 },
+      ],
+      axis: createVirtualAxis([{ date: day, sessionOpenMs: open, sessionCloseMs: open + 3600_000 }], open),
+      todayKst: '20260614',
+      baselineStyle: { color: '#1D4ED8', lineWidth: 2 },
+      allPriceStyle: { color: '#F97316', lineWidth: 1 },
+      intraMax: false,
+      showAllPrices: true,
+      visibleTimeCutoff: { date: day, tMs: open + 120_000 },
+    });
+
+    expect(out).toHaveLength(2);
+    expect(out[1]).toMatchObject({ price: 105, qty: 120, color: '#F97316' });
+  });
 });
 
 describe('live peak-wall inline label suppression', () => {

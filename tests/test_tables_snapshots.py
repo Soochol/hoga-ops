@@ -965,16 +965,17 @@ def test_query_day_ask_peak_dual_splits_traded_and_all_price_peaks(tmp_path) -> 
         session_close_ms=153000000,
     )
 
-    assert peak == AskPeakDualRow(
-        price=25000, qty=1000, intra_ms=32460000,
-        max_price=25000, max_qty=1000, max_intra_ms=32460000,
-        traded_peaks=(AskPeakCandidateRow(price=25000, qty=1000, intra_ms=32460000),),
-        traded_max_peaks=(AskPeakCandidateRow(price=25000, qty=1000, intra_ms=32460000),),
-        all_price=26000, all_qty=9000, all_intra_ms=32460000,
-        all_max_price=26000, all_max_qty=9000, all_max_intra_ms=32460000,
-        untraded_price=26000, untraded_qty=9000, untraded_intra_ms=32460000,
-        untraded_max_price=26000, untraded_max_qty=9000, untraded_max_intra_ms=32460000,
-    )
+    assert peak is not None
+    assert (peak.price, peak.qty, peak.intra_ms) == (25000, 1000, 32460000)
+    assert (peak.max_price, peak.max_qty, peak.max_intra_ms) == (25000, 1000, 32460000)
+    assert peak.traded_peaks == (AskPeakCandidateRow(price=25000, qty=1000, intra_ms=32460000),)
+    assert peak.traded_max_peaks == (AskPeakCandidateRow(price=25000, qty=1000, intra_ms=32460000),)
+    assert (peak.all_price, peak.all_qty, peak.all_intra_ms) == (26000, 9000, 32460000)
+    assert (peak.all_max_price, peak.all_max_qty, peak.all_max_intra_ms) == (26000, 9000, 32460000)
+    assert peak.all_peaks[0] == AskPeakCandidateRow(price=26000, qty=9000, intra_ms=32460000)
+    assert peak.all_max_peaks[0] == AskPeakCandidateRow(price=26000, qty=9000, intra_ms=32460000)
+    assert (peak.untraded_price, peak.untraded_qty, peak.untraded_intra_ms) == (26000, 9000, 32460000)
+    assert (peak.untraded_max_price, peak.untraded_max_qty, peak.untraded_max_intra_ms) == (26000, 9000, 32460000)
 
 
 def test_query_day_ask_peak_dual_returns_top_three_traded_price_peaks(tmp_path) -> None:
@@ -1353,28 +1354,17 @@ def test_query_day_bid_peak_dual_populates_below_low_untraded(tmp_path) -> None:
 
     peak = query_day_bid_peak_dual(_con_for(snapshots), path=snapshots, trades_path=trades, bucket_ms=60_000)
 
-    assert peak == BidPeakDualRow(
-        price=70000,
-        qty=5000,
-        intra_ms=9 * 60 * 60 * 1000 + 60_000,
-        max_price=70000,
-        max_qty=5000,
-        max_intra_ms=9 * 60 * 60 * 1000 + 60_000,
-        traded_peaks=(AskPeakCandidateRow(price=70000, qty=5000, intra_ms=32460000),),
-        traded_max_peaks=(AskPeakCandidateRow(price=70000, qty=5000, intra_ms=32460000),),
-        all_price=68900,
-        all_qty=12000,
-        all_intra_ms=9 * 60 * 60 * 1000 + 60_000,
-        all_max_price=68900,
-        all_max_qty=12000,
-        all_max_intra_ms=9 * 60 * 60 * 1000 + 60_000,
-        untraded_price=68900,
-        untraded_qty=12000,
-        untraded_intra_ms=9 * 60 * 60 * 1000 + 60_000,
-        untraded_max_price=68900,
-        untraded_max_qty=12000,
-        untraded_max_intra_ms=9 * 60 * 60 * 1000 + 60_000,
-    )
+    assert peak is not None
+    assert (peak.price, peak.qty, peak.intra_ms) == (70000, 5000, 9 * 60 * 60 * 1000 + 60_000)
+    assert (peak.max_price, peak.max_qty, peak.max_intra_ms) == (70000, 5000, 9 * 60 * 60 * 1000 + 60_000)
+    assert peak.traded_peaks == (AskPeakCandidateRow(price=70000, qty=5000, intra_ms=32460000),)
+    assert peak.traded_max_peaks == (AskPeakCandidateRow(price=70000, qty=5000, intra_ms=32460000),)
+    assert (peak.all_price, peak.all_qty, peak.all_intra_ms) == (68900, 12000, 9 * 60 * 60 * 1000 + 60_000)
+    assert (peak.all_max_price, peak.all_max_qty, peak.all_max_intra_ms) == (68900, 12000, 9 * 60 * 60 * 1000 + 60_000)
+    assert peak.all_peaks[0] == AskPeakCandidateRow(price=68900, qty=12000, intra_ms=32460000)
+    assert peak.all_max_peaks[0] == AskPeakCandidateRow(price=68900, qty=12000, intra_ms=32460000)
+    assert (peak.untraded_price, peak.untraded_qty, peak.untraded_intra_ms) == (68900, 12000, 9 * 60 * 60 * 1000 + 60_000)
+    assert (peak.untraded_max_price, peak.untraded_max_qty, peak.untraded_max_intra_ms) == (68900, 12000, 9 * 60 * 60 * 1000 + 60_000)
 
 
 # ---------------------------------------------------------------------------

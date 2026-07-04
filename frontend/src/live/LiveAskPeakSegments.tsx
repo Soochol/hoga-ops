@@ -8,6 +8,7 @@ import { useLivePageStore } from '../state/livePage';
 import { useActivePrefs } from '../state/chartPrefs';
 import { formatQtyCompact } from '../util/formatQtyCompact';
 import { applyPeakVisibleTimeCutoff, type VisibleTimeCutoff } from './peakWallVisibleCutoff';
+import { realMsToYyyymmdd } from './liveDateTime';
 import {
   AskPeakSegmentsPrimitive,
   inlinePeakWallSegmentsForDocking,
@@ -155,12 +156,30 @@ function selectedQty(p: AskPeak, intraMax: boolean): number {
   return intraMax ? p.max_qty : p.qty;
 }
 
+function selectedPrice(p: AskPeak, intraMax: boolean): number {
+  return intraMax ? p.max_price : p.price;
+}
+
 function peakVisibleAtCutoff(p: AskPeak, cutoff: VisibleTimeCutoff | null | undefined, intraMax: boolean): boolean {
   if (!cutoff) return true;
   if (p.date < cutoff.date) return true;
   if (p.date > cutoff.date) return false;
   const tMs = intraMax ? p.max_t_ms : p.t_ms;
   return Number.isFinite(tMs) && tMs <= cutoff.tMs;
+}
+
+function dayHighThroughCutoff(
+  candles: readonly Candle[],
+  date: string,
+  cutoff: VisibleTimeCutoff | null | undefined,
+): number | null {
+  let high: number | null = null;
+  for (const c of candles) {
+    if (realMsToYyyymmdd(c.ts_ms) !== date || !Number.isFinite(c.high)) continue;
+    if (cutoff && date === cutoff.date && c.ts_ms > cutoff.tMs) continue;
+    high = high === null ? c.high : Math.max(high, c.high);
+  }
+  return high;
 }
 
 function untradedPeakFromFields(p: AskPeak, intraMax: boolean): AskPeak | null {
@@ -175,6 +194,31 @@ function untradedPeakFromFields(p: AskPeak, intraMax: boolean): AskPeak | null {
     max_price: p.untraded_max_price ?? p.max_price,
     max_qty: p.untraded_max_qty ?? p.max_qty,
     max_t_ms: p.untraded_max_t_ms ?? p.max_t_ms,
+  };
+}
+
+function untradedPeakFromAllCandidates(
+  p: AskPeak,
+  candles: readonly Candle[],
+  cutoff: VisibleTimeCutoff | null,
+  intraMax: boolean,
+): AskPeak | null {
+  if (!cutoff || p.date !== cutoff.date) return null;
+  const dayHigh = dayHighThroughCutoff(candles, p.date, cutoff);
+  if (dayHigh === null) return null;
+  const candidates = intraMax ? p.all_max_peaks : p.all_peaks;
+  const selected = candidates
+    ?.filter((candidate) => candidate.t_ms <= cutoff.tMs && candidate.price > dayHigh)
+    .sort((a, b) => b.qty - a.qty || a.t_ms - b.t_ms || a.price - b.price)[0];
+  if (!selected) return null;
+  return {
+    date: p.date,
+    price: selected.price,
+    qty: selected.qty,
+    t_ms: selected.t_ms,
+    max_price: selected.price,
+    max_qty: selected.qty,
+    max_t_ms: selected.t_ms,
   };
 }
 
@@ -265,10 +309,20 @@ export function buildAskPeakOverlaySegments({
   const addedUntradedDates = new Set<string>();
   for (const p of baselinePeaks) {
     if (addedUntradedDates.has(p.date)) continue;
-    const candidates = p.date === todayKst && todayAllPriceCandidate?.date === todayKst
-      ? [todayAllPriceCandidate]
-      : [untradedPeakFromFields(p, intraMax)];
-    const seenPrices = new Set([intraMax ? p.max_price : p.price]);
+    const cutoffUntradedPeak = untradedPeakFromAllCandidates(p, candles, visibleTimeCutoff ?? null, intraMax);
+    const hasCutoffAllCandidates = visibleTimeCutoff?.date === p.date
+      && (intraMax ? p.all_max_peaks !== undefined : p.all_peaks !== undefined);
+    let candidates: Array<AskPeak | null>;
+    if (cutoffUntradedPeak) {
+      candidates = [cutoffUntradedPeak];
+    } else if (hasCutoffAllCandidates) {
+      candidates = [null];
+    } else if (p.date === todayKst && todayAllPriceCandidate?.date === todayKst) {
+      candidates = [todayAllPriceCandidate];
+    } else {
+      candidates = [untradedPeakFromFields(p, intraMax)];
+    }
+    const seenPrices = new Set([selectedPrice(p, intraMax)]);
     for (const untradedPeak of candidates) {
       if (!untradedPeak) continue;
       const price = intraMax ? untradedPeak.max_price : untradedPeak.price;
