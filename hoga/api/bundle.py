@@ -650,6 +650,8 @@ def _bid_peak_from_dual_row(date: str, row: snapshots_tbl.BidPeakDualRow) -> Bid
         t_ms=ms_from_midnight_to_unix_ms(date, row.intra_ms),
         max_price=row.max_price, max_qty=row.max_qty,
         max_t_ms=ms_from_midnight_to_unix_ms(date, row.max_intra_ms),
+        traded_peaks=[_ask_candidate(date, c) for c in row.traded_peaks],
+        traded_max_peaks=[_ask_candidate(date, c) for c in row.traded_max_peaks],
         all_price=row.all_price, all_qty=row.all_qty,
         all_t_ms=_unix_or_none(date, row.all_intra_ms),
         all_max_price=row.all_max_price, all_max_qty=row.all_max_qty,

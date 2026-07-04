@@ -1,4 +1,4 @@
-from hoga.api.models import AskPeak
+from hoga.api.models import AskPeak, AskPeakCandidate
 
 
 def test_ask_peak_accepts_untraded_fields() -> None:
@@ -55,3 +55,22 @@ def test_bid_peak_accepts_untraded_fields() -> None:
 
     assert peak.untraded_price == 69000
     assert peak.untraded_max_qty == 13000
+
+
+def test_bid_peak_model_accepts_ranked_candidates():
+    from hoga.api.models import BidPeak
+
+    peak = BidPeak(
+        date="20260613",
+        price=24900,
+        qty=9000,
+        t_ms=1,
+        max_price=24900,
+        max_qty=9000,
+        max_t_ms=1,
+        traded_peaks=[AskPeakCandidate(price=24900, qty=9000, t_ms=1)],
+        traded_max_peaks=[AskPeakCandidate(price=24900, qty=9000, t_ms=1)],
+    )
+
+    assert peak.traded_peaks[0].price == 24900
+    assert peak.traded_max_peaks[0].qty == 9000

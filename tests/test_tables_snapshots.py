@@ -1023,6 +1023,52 @@ def test_query_day_ask_peak_dual_returns_top_three_traded_price_peaks(tmp_path) 
     )
 
 
+def test_query_day_ask_bid_peak_dual_returns_top_three_bid_traded_price_peaks(tmp_path) -> None:
+    """과거일 매수 최대벽도 가격별 best를 수량순 3등까지 반환한다."""
+    obs = [
+        _ob_bp(
+            90100000,
+            [1000, 9000, 7000, 6000, 500, 6, 7, 8, 9, 1],
+            bid_p=[25000, 24900, 24800, 24700, 24600, 24500, 24400, 24300, 24200, 24100],
+        ),
+        _ob_bp(
+            90200000,
+            [3000, 8000, 7100, 100, 500, 6, 7, 8, 9, 1],
+            bid_p=[25000, 24900, 24800, 24700, 24600, 24500, 24400, 24300, 24200, 24100],
+        ),
+    ]
+    snapshots_path = tmp_path / "snapshots.parquet"
+    trades_path = tmp_path / "trades.parquet"
+    write_parquet(obs, snapshots_path)
+    write_trades([
+        _trade(90050000, 25000),
+        _trade(90060000, 24900),
+        _trade(90070000, 24800),
+        _trade(90080000, 24700),
+    ], trades_path)
+
+    _ask, bid = query_day_ask_bid_peak_dual(
+        _con_for(snapshots_path),
+        path=snapshots_path,
+        trades_path=trades_path,
+        bucket_ms=60_000,
+        session_open_ms=90000000,
+        session_close_ms=153000000,
+    )
+
+    assert bid is not None
+    assert bid.traded_peaks == (
+        AskPeakCandidateRow(price=24900, qty=9000, intra_ms=32460000),
+        AskPeakCandidateRow(price=24800, qty=7100, intra_ms=32520000),
+        AskPeakCandidateRow(price=24700, qty=6000, intra_ms=32460000),
+    )
+    assert bid.traded_max_peaks == (
+        AskPeakCandidateRow(price=24900, qty=9000, intra_ms=32460000),
+        AskPeakCandidateRow(price=24800, qty=7100, intra_ms=32520000),
+        AskPeakCandidateRow(price=24700, qty=6000, intra_ms=32460000),
+    )
+
+
 def test_query_day_ask_peak_dual_untraded_excludes_prices_at_or_below_day_high(tmp_path) -> None:
     """미체결 최대벽은 당일 고가 이하 가격을 절대 후보로 쓰지 않는다.
 

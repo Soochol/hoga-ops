@@ -530,8 +530,11 @@ export type AskPeak = PeakBase & {
   all_peaks?: AskPeakCandidate[];
 };
 
-/** hoga/api/models.py::BidPeak 미러. */
-export type BidPeak = PeakBase;
+/** hoga/api/models.py::BidPeak mirror. Candidate arrays mirror ask for cutoff/ranking. */
+export type BidPeak = PeakBase & {
+  traded_peaks?: AskPeakCandidate[];
+  traded_max_peaks?: AskPeakCandidate[];
+};
 
 export type TradeVolumePocWire = {
   date: string;

@@ -160,6 +160,8 @@ class BidPeak(BaseModel):
     untraded_max_price: int | None = None
     untraded_max_qty: int | None = None
     untraded_max_t_ms: int | None = None
+    traded_peaks: list[AskPeakCandidate] = Field(default_factory=list)
+    traded_max_peaks: list[AskPeakCandidate] = Field(default_factory=list)
 
 
 class QuoteRatioPoint(BaseModel):

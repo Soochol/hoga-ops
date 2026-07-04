@@ -1895,6 +1895,61 @@ def test_build_bid_peak_slice_wires_untraded_peak(tmp_path) -> None:
     assert p.untraded_qty == 12000
 
 
+def test_build_bid_peak_slice_wires_ranked_candidates(tmp_path) -> None:
+    from unittest.mock import MagicMock
+    from hoga.api.bundle import build_bid_peak_slice
+    from hoga.tables.snapshots import Orderbook, write_parquet as snapshots_write_parquet
+    from hoga.tables.trades import Trade, write_parquet as trades_write_parquet
+
+    z = tuple([0] * 10)
+    ap = tuple(70100 + 50 * i for i in range(10))
+    aq = tuple([100] * 10)
+    bp = (70000, 69900, 69800, 69700, 69600, 69500, 69400, 69300, 69200, 69100)
+    ob1 = Orderbook(
+        ts_ms=90100000, seq=1,
+        ask_p=ap, ask_q=aq, ask_d=z,
+        bid_p=bp, bid_q=(1000, 9000, 7000, 6000, 500, 6, 7, 8, 9, 1), bid_d=z,
+        tot_ask=sum(aq), tot_ask_d=0, tot_bid=23531, tot_bid_d=0,
+    )
+    ob2 = Orderbook(
+        ts_ms=90200000, seq=2,
+        ask_p=ap, ask_q=aq, ask_d=z,
+        bid_p=bp, bid_q=(3000, 8000, 7100, 100, 500, 6, 7, 8, 9, 1), bid_d=z,
+        tot_ask=sum(aq), tot_ask_d=0, tot_bid=18731, tot_bid_d=0,
+    )
+    trades = [
+        Trade(ts_ms=90050000, seq=1, price=70000, change_pct=0, qty=1, side=1,
+              cum_vol=1, cum_trades=1, low_so_far=70000, high_so_far=70000,
+              net_pressure=0, unknown_14=0, unknown_16=0, unknown_17=0, unknown_18=0),
+        Trade(ts_ms=90060000, seq=2, price=69900, change_pct=0, qty=1, side=1,
+              cum_vol=2, cum_trades=2, low_so_far=69900, high_so_far=70000,
+              net_pressure=0, unknown_14=0, unknown_16=0, unknown_17=0, unknown_18=0),
+        Trade(ts_ms=90070000, seq=3, price=69800, change_pct=0, qty=1, side=1,
+              cum_vol=3, cum_trades=3, low_so_far=69800, high_so_far=70000,
+              net_pressure=0, unknown_14=0, unknown_16=0, unknown_17=0, unknown_18=0),
+        Trade(ts_ms=90080000, seq=4, price=69700, change_pct=0, qty=1, side=1,
+              cum_vol=4, cum_trades=4, low_so_far=69700, high_so_far=70000,
+              net_pressure=0, unknown_14=0, unknown_16=0, unknown_17=0, unknown_18=0),
+    ]
+    snapshots_write_parquet([ob1, ob2], tmp_path / "snapshots.parquet")
+    trades_write_parquet(trades, tmp_path / "trades.parquet")
+    eng = MagicMock()
+    eng.parquet_dir.side_effect = lambda d, c, src="hogaplay": tmp_path
+    eng.conn = duckdb.connect()
+
+    p = build_bid_peak_slice(
+        eng, code="005930", date="20260610", bucket_ms=60_000,
+        source="hogaplay", session_open_ms=90000000, session_close_ms=153000000,
+    )
+
+    assert p is not None
+    assert [c.model_dump() for c in p.traded_peaks] == [
+        {"price": 69900, "qty": 9000, "t_ms": 1781049660000},
+        {"price": 69800, "qty": 7100, "t_ms": 1781049720000},
+        {"price": 69700, "qty": 6000, "t_ms": 1781049660000},
+    ]
+
+
 def test_range_bundle_ask_peak_field_defaults_none() -> None:
     from hoga.api.models import AskPeak, RangeBundle
     from hoga.api.models import QuoteRatio, FillStrength, VolumeProfile
