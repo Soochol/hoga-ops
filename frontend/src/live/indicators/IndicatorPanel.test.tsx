@@ -132,6 +132,7 @@ describe('IndicatorPanel', () => {
     expect(screen.getByRole('button', { name: '미체결 포함 최대벽 스타일 선택' })).toBeTruthy();
     expect(screen.getByRole('button', { name: '보이는 영역 최대벽 스타일 선택' })).toBeTruthy();
     expect(screen.getByTestId('settings-toggle-askPeakVisibleTimeCutoff')).toBeTruthy();
+    expect(screen.getByTestId('settings-toggle-askPeakLabelEnabled')).toBeTruthy();
   });
 
   it('호가비 라벨 클릭 → 우측에 RatioConfig(극단값 필터 토글) 노출', () => {
@@ -237,6 +238,7 @@ describe('IndicatorPanel', () => {
     render(<IndicatorPanel onClose={() => {}} />);
     fireEvent.click(screen.getByRole('button', { name: '당일 매수 최대벽' }));
     expect(screen.getByTestId('settings-toggle-bidPeakVisibleTimeCutoff')).toBeTruthy();
+    expect(screen.getByTestId('settings-toggle-bidPeakLabelEnabled')).toBeTruthy();
   });
 
   it('거래량 카테고리 이동 후 체결강도 누적 토글이 노출된다', () => {
@@ -387,6 +389,7 @@ describe('IndicatorPanel', () => {
     expect(screen.getByRole('button', { name: '미체결 포함 최대벽 스타일 선택' })).toBeTruthy();
     expect(screen.getByTestId('settings-toggle-bidPeakIntraMax')).toBeTruthy();
     expect(screen.getByTestId('settings-toggle-bidPeakShowAllPrices')).toBeTruthy();
+    expect(screen.getByTestId('settings-toggle-bidPeakLabelEnabled')).toBeTruthy();
   });
 
   it('일봉 이동평균선 체크박스 토글 → dailyMovingAverageEnabled 반전', async () => {

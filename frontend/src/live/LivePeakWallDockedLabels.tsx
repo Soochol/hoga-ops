@@ -62,10 +62,12 @@ function LivePeakWallDockedLabels({
   const bidAllPriceLineWidth = useLivePageStore((s) => s.bidPeakAllPriceLineWidth);
   const askIntraMax = useActivePrefs((s) => s.askPeakIntraMax);
   const askShowAllPrices = useActivePrefs((s) => s.askPeakShowAllPrices);
+  const askLabelEnabled = useActivePrefs((s) => s.askPeakLabelEnabled);
   const askAllPriceRankLimit = useActivePrefs((s) => s.askPeakAllPriceRankLimit);
   const askVisibleMaxRankLimit = useActivePrefs((s) => s.askPeakVisibleMaxRankLimit);
   const bidIntraMax = useActivePrefs((s) => s.bidPeakIntraMax);
   const bidShowAllPrices = useActivePrefs((s) => s.bidPeakShowAllPrices);
+  const bidLabelEnabled = useActivePrefs((s) => s.bidPeakLabelEnabled);
   const bidAllPriceRankLimit = useActivePrefs((s) => s.bidPeakAllPriceRankLimit);
   const bidVisibleMaxRankLimit = useActivePrefs((s) => s.bidPeakVisibleMaxRankLimit);
   const primRef = useRef<PeakWallDockedLabelsPrimitive | null>(null);
@@ -89,7 +91,7 @@ function LivePeakWallDockedLabels({
     const prim = primRef.current;
     if (!prim) return;
     const askPeakRankLimit = maxPeakRankLimit(askAllPriceRankLimit, askVisibleMaxRankLimit);
-    const askRaw = askPeakEnabled
+    const askRaw = askPeakEnabled && askLabelEnabled
       ? buildAskPeakOverlaySegments({
         dayAskPeaks,
         todayAllPriceAskPeak,
@@ -112,7 +114,7 @@ function LivePeakWallDockedLabels({
       { color: askVisibleMaxColor, lineWidth: askVisibleMaxLineWidth },
       askVisibleMaxRankLimit as 1 | 2 | 3,
     );
-    const bidSegments = bidPeakEnabled
+    const bidSegments = bidPeakEnabled && bidLabelEnabled
       ? buildBidPeakOverlaySegments({
         dayBidPeaks,
         todayAllPriceBidPeak,
@@ -138,6 +140,7 @@ function LivePeakWallDockedLabels({
     askAllPriceRankLimit,
     askColor,
     askIntraMax,
+    askLabelEnabled,
     askLineWidth,
     askPeakEnabled,
     askShowAllPrices,
@@ -151,6 +154,7 @@ function LivePeakWallDockedLabels({
     bidAllPriceRankLimit,
     bidColor,
     bidIntraMax,
+    bidLabelEnabled,
     bidLineWidth,
     bidPeakEnabled,
     bidShowAllPrices,

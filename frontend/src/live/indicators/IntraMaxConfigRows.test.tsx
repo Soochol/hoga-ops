@@ -28,6 +28,11 @@ describe('호가 Config Intra-Bar Max 토글 행', () => {
     expect(screen.getByTestId('settings-toggle-askPeakShowAllPrices')).toBeTruthy();
   });
 
+  it('AskPeakConfig에 askPeakLabelEnabled 토글', () => {
+    render(<AskPeakConfig />);
+    expect(screen.getByTestId('settings-toggle-askPeakLabelEnabled')).toBeTruthy();
+  });
+
   it('AskPeakConfig에 미체결 후보 표시 범위 옵션', () => {
     render(<AskPeakConfig />);
     expect(screen.getByRole('button', { name: '1등만' })).toBeTruthy();
@@ -62,5 +67,10 @@ describe('호가 Config Intra-Bar Max 토글 행', () => {
   it('BidPeakConfig에 bidPeakShowAllPrices 토글', () => {
     render(<BidPeakConfig />);
     expect(screen.getByTestId('settings-toggle-bidPeakShowAllPrices')).toBeTruthy();
+  });
+
+  it('BidPeakConfig에 bidPeakLabelEnabled 토글', () => {
+    render(<BidPeakConfig />);
+    expect(screen.getByTestId('settings-toggle-bidPeakLabelEnabled')).toBeTruthy();
   });
 });
