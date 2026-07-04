@@ -3,6 +3,7 @@ import { renderHook, waitFor } from '@testing-library/react';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import type { ReactNode } from 'react';
 import { planLiveRangeRequest, useLiveBundle } from './useLiveBundle';
+import { LIVE_SETTINGS_KEY, type LiveSettings } from '../api/liveSettings';
 import { useLivePageStore } from '../state/livePage';
 import { useSourcePreferenceStore } from '../state/sourcePreference';
 import { useCandleDataPreferenceStore } from '../state/candleDataPreference';
@@ -169,10 +170,63 @@ function fallbackRangeBundle(close = 71_234) {
   };
 }
 
-const wrapper = ({ children }: { children: ReactNode }) => {
-  const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
-  return <QueryClientProvider client={client}>{children}</QueryClientProvider>;
-};
+function createWrapper(settings?: Partial<LiveSettings>) {
+  const client = new QueryClient({ defaultOptions: { queries: { retry: false, staleTime: Infinity } } });
+  client.setQueryData(LIVE_SETTINGS_KEY, {
+    schema_version: 1,
+    storage_policy: 'ws_plus_rest',
+    program_trade_storage_enabled: false,
+    kis_rest_bypass_enabled: false,
+    ...settings,
+  } satisfies LiveSettings);
+  return ({ children }: { children: ReactNode }) => (
+    <QueryClientProvider client={client}>{children}</QueryClientProvider>
+  );
+}
+
+const wrapper = createWrapper();
+
+function renderUseLiveBundle(
+  overrides: {
+    code?: string | null;
+    timeframe?: '1m' | 'D';
+    settings?: Partial<LiveSettings>;
+    rangeCandles?: Array<{ ts_ms: number; open: number; high: number; low: number; close: number; vol_a: number; vol_b: number }>;
+    screenerDailyCandles?: Array<{ t_ms: number; open: number; high: number; low: number; close: number; volume: number }>;
+  } = {},
+) {
+  const {
+    code = '005930',
+    timeframe = '1m',
+    settings,
+    rangeCandles = [],
+    screenerDailyCandles = [],
+  } = overrides;
+  screenerDailyCandlesMock.candles = screenerDailyCandles;
+  const previousImplementation = useRangeSpy.getMockImplementation();
+  useRangeSpy.mockImplementation((...args: unknown[]) => {
+    const options = args[6] as { mode?: string } | undefined;
+    if (options?.mode === 'full') {
+      return rangeResult(rangeCandles.length > 0 ? {
+        ...fallbackRangeBundle(rangeCandles[rangeCandles.length - 1]?.close ?? 71_234),
+        candles: rangeCandles,
+      } : null);
+    }
+    return rangeResult();
+  });
+  const rendered = renderHook(
+    () => useLiveBundle(code, timeframe, '20260527', liveFixture),
+    { wrapper: createWrapper(settings) },
+  );
+  useRangeSpy.mockImplementation(previousImplementation ?? (() => ({
+    data: null,
+    isLoading: false,
+    error: null,
+    isPlaceholderData: rangeMock.isPlaceholderData,
+    isFetching: rangeMock.isFetching,
+  })));
+  return rendered.result.current;
+}
 
 describe('planLiveRangeRequest', () => {
   it('plans the minute /api/range request with indicator-controlled optional slices', () => {
@@ -238,6 +292,13 @@ describe('useLiveBundle', () => {
     livePastDailyCandlesSpy.mockClear();
     livePastInvestorNetSpy.mockClear();
     useRangeSpy.mockClear();
+    useRangeSpy.mockImplementation(() => ({
+      data: null,
+      isLoading: false,
+      error: null,
+      isPlaceholderData: rangeMock.isPlaceholderData,
+      isFetching: rangeMock.isFetching,
+    }));
     candlesMock.candles = [DEFAULT_CANDLE];
     candlesMock.isPlaceholderData = false;
     candlesMock.isFetching = false;
@@ -262,14 +323,13 @@ describe('useLiveBundle', () => {
     useSourcePreferenceStore.setState({ sourcePreference: 'kis_ws_first' });
     useCandleDataPreferenceStore.setState({ candleDataPreference: 'auto' });
     useKisRestModeStore.setState({
-      kisRestBypassEnabled: false,
       lastFailureAtMs: null,
       lastToastAtMs: null,
     });
   });
 
   it('builds a today-only bundle when historicalFromDate is null', () => {
-    const { result } = renderHook(() => useLiveBundle('005930', '1m', '20260527', liveFixture), { wrapper });
+    const { result } = renderHook(() => useLiveBundle('005930', '1m', '20260527', liveFixture), { wrapper: createWrapper() });
     expect(result.current.bundle!.segments.length).toBe(1);
     expect(result.current.bundle!.segments[0].source).toBe('kis_live');
     expect(result.current.bundle!.candles.length).toBe(1);
@@ -277,7 +337,7 @@ describe('useLiveBundle', () => {
   });
 
   it('returns null bundle when code is null', () => {
-    const { result } = renderHook(() => useLiveBundle(null, '1m', '20260527', liveFixture), { wrapper });
+    const { result } = renderHook(() => useLiveBundle(null, '1m', '20260527', liveFixture), { wrapper: createWrapper() });
     expect(result.current.bundle).toBeNull();
     expect(result.current.chartBundle).toBeNull();
   });
@@ -287,7 +347,7 @@ describe('useLiveBundle', () => {
     // (no ob/trade deps → stable across SSE ticks); hoga panes read the full
     // `bundle`. Both share candles + segments refs so the VirtualAxis stays
     // single-build; chartBundle carries only an empty hoga stub.
-    const { result } = renderHook(() => useLiveBundle('005930', '1m', '20260527', liveFixture), { wrapper });
+    const { result } = renderHook(() => useLiveBundle('005930', '1m', '20260527', liveFixture), { wrapper: createWrapper() });
     const { bundle, chartBundle } = result.current;
     expect(bundle).not.toBeNull();
     expect(chartBundle).not.toBeNull();
@@ -299,7 +359,7 @@ describe('useLiveBundle', () => {
   });
 
   it('loads hoga panes and overlay sidecars through separate lightweight range requests', () => {
-    renderHook(() => useLiveBundle('005930', '1m', '20260527', liveFixture), { wrapper });
+    renderHook(() => useLiveBundle('005930', '1m', '20260527', liveFixture), { wrapper: createWrapper() });
 
     expect(useRangeSpy).toHaveBeenCalledWith(
       '005930',
@@ -328,37 +388,41 @@ describe('useLiveBundle', () => {
     );
   });
 
-  it('skips KIS minute candle query inputs and uses stored fallback when bypass is enabled', () => {
-    useKisRestModeStore.setState({ kisRestBypassEnabled: true });
-    useRangeSpy
-      .mockReturnValueOnce(rangeResult(fallbackRangeBundle(71_777)))
-      .mockReturnValueOnce(rangeResult())
-      .mockReturnValueOnce(rangeResult())
-      .mockReturnValueOnce(rangeResult());
+  it('keeps stored range and screener daily fallbacks enabled when bypass is enabled', () => {
+    const result = renderUseLiveBundle({
+      timeframe: 'D',
+      settings: { kis_rest_bypass_enabled: true },
+      screenerDailyCandles: [{ t_ms: 1, open: 1, high: 2, low: 1, close: 2, volume: 100 }],
+    });
 
-    const { result } = renderHook(() => useLiveBundle('005930', '1m', '20260527', liveFixture), { wrapper });
-
-    expect(livePastCandlesSpy).toHaveBeenCalledWith(null, null, null, 'KRX');
-    expect(result.current.chartBundle?.candles[0]?.close).toBe(71_777);
-    expect(useRangeSpy).toHaveBeenCalledWith(
-      '005930',
-      '20260520',
-      '20260527',
-      '1m',
-      undefined,
-      '20260527',
-      expect.objectContaining({ mode: 'full' }),
-      undefined,
-    );
+    expect(result.bundle?.candles.length).toBeGreaterThan(0);
+    expect(screenerDailyCandlesSpy).toHaveBeenLastCalledWith('005930', '20250611', '20260527');
   });
 
-  it('notifies the KIS REST toast store when past-candles warnings show transport failure', async () => {
+  it('suppresses bypass-time candle warnings but still notifies for non-bypass transport failures', async () => {
+    const realNotifyFailure = useKisRestModeStore.getState().notifyFailure;
+    const notifyFailureSpy = vi.fn((nowMs?: number) => realNotifyFailure(nowMs));
+    useKisRestModeStore.setState({
+      lastFailureAtMs: null,
+      lastToastAtMs: null,
+      notifyFailure: notifyFailureSpy,
+    });
     candlesMock.warnings = [{ reason: 'kis_api_error', msg: 'TRANSPORT/ConnectError' }];
 
-    renderHook(() => useLiveBundle('005930', '1m', '20260527', liveFixture), { wrapper });
+    renderHook(() => useLiveBundle('005930', '1m', '20260527', liveFixture), {
+      wrapper: createWrapper({ kis_rest_bypass_enabled: true }),
+    });
+
+    expect(notifyFailureSpy).not.toHaveBeenCalled();
+    expect(useKisRestModeStore.getState().lastFailureAtMs).toBeNull();
+    expect(useKisRestModeStore.getState().lastToastAtMs).toBeNull();
+
+    renderHook(() => useLiveBundle('005930', '1m', '20260527', liveFixture), { wrapper: createWrapper() });
 
     await waitFor(() => {
+      expect(notifyFailureSpy).toHaveBeenCalledTimes(1);
       expect(useKisRestModeStore.getState().lastFailureAtMs).not.toBeNull();
+      expect(useKisRestModeStore.getState().lastToastAtMs).not.toBeNull();
     });
   });
 

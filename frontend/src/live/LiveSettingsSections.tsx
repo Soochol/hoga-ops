@@ -8,7 +8,6 @@ import {
 } from '../state/chartPrefs';
 import { SOURCE_OPTIONS } from '../state/sourcePreference';
 import { CANDLE_DATA_PREFERENCE_OPTIONS } from '../state/candleDataPreference';
-import { useKisRestModeStore } from '../state/kisRestMode';
 import {
   LIVE_VENUE_LABELS,
   LIVE_VENUE_OPTIONS,
@@ -137,8 +136,7 @@ function ViLimitPriceLineStyleRow() {
 function DataSourceDetail() {
   const { data } = useLiveSettings();
   const patch = usePatchLiveSettings();
-  const kisRestBypassEnabled = useKisRestModeStore((s) => s.kisRestBypassEnabled);
-  const setKisRestBypassEnabled = useKisRestModeStore((s) => s.setKisRestBypassEnabled);
+  const kisRestBypassEnabled = data?.kis_rest_bypass_enabled ?? false;
   const storagePolicy = data?.storage_policy ?? 'ws_plus_rest';
   const restAllowed = data != null && storagePolicy !== 'ws_only';
   const programTradeEnabled = data?.program_trade_storage_enabled ?? false;
@@ -162,7 +160,7 @@ function DataSourceDetail() {
         <ToggleSwitch
           label="KIS API 우회"
           checked={kisRestBypassEnabled}
-          onClick={() => setKisRestBypassEnabled(!kisRestBypassEnabled)}
+          onClick={() => patch.mutate({ kis_rest_bypass_enabled: !kisRestBypassEnabled })}
         />
       </SettingsRow>
       <div style={{ fontSize: 'var(--text-sm)', color: 'var(--fg-dim)', marginBottom: 'var(--space-xs)' }}>

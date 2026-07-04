@@ -17,6 +17,11 @@ describe('makePctOf', () => {
     expect(pctOf('b')).toBeNull();   // present-but-null
     expect(pctOf('zzz')).toBeNull(); // map miss
   });
+  it('stale quote change_pct 는 null로 취급한다', () => {
+    const m = new Map<string, LiveQuote>([['a', { code: 'a', price: 0, change_pct: 3.5, change_won: 0, stale: true }]]);
+    const pctOf = makePctOf(m);
+    expect(pctOf('a')).toBeNull();
+  });
 });
 
 describe('heatBg', () => {

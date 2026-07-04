@@ -24,21 +24,27 @@ async def run_screener_scan(
     intraday_rows = None
     now_value = now or now_kst()
     if req.basis == "intraday":
-        codes = await asyncio.to_thread(
-            screener_universe.codes_for_universe,
-            sdir / "stocks.parquet",
-            req.universe,
-        )
-        overlay = await screener_intraday.build_intraday_overlay(
-            data_dir=data_dir,
-            codes=codes,
-            today=now_value.strftime("%Y%m%d"),
-            now_ms=int(time.time() * 1000),
-        )
-        intraday_rows = overlay.rows
-        warnings.extend(overlay.warnings)
-        if overlay.rows.height == 0:
-            warnings.append("intraday_fallback_eod")
+        if screener_intraday.intraday_overlay_bypassed(data_dir):
+            warnings.extend([
+                "kis_rest_bypassed_intraday_overlay_skipped",
+                "intraday_fallback_eod",
+            ])
+        else:
+            codes = await asyncio.to_thread(
+                screener_universe.codes_for_universe,
+                sdir / "stocks.parquet",
+                req.universe,
+            )
+            overlay = await screener_intraday.build_intraday_overlay(
+                data_dir=data_dir,
+                codes=codes,
+                today=now_value.strftime("%Y%m%d"),
+                now_ms=int(time.time() * 1000),
+            )
+            intraday_rows = overlay.rows
+            warnings.extend(overlay.warnings)
+            if overlay.rows.height == 0:
+                warnings.append("intraday_fallback_eod")
 
     rows = await asyncio.to_thread(
         screener_scan.run_scan,

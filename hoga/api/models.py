@@ -820,11 +820,13 @@ class LiveSettingsResponse(BaseModel):
     schema_version: int = 1
     storage_policy: LiveStoragePolicy = "ws_plus_rest"
     program_trade_storage_enabled: bool = False
+    kis_rest_bypass_enabled: bool = False
 
 
 class LiveSettingsUpdate(BaseModel):
-    storage_policy: LiveStoragePolicy
+    storage_policy: LiveStoragePolicy | None = None
     program_trade_storage_enabled: bool | None = None
+    kis_rest_bypass_enabled: bool | None = None
 
 
 SignalAlertSource = Literal["ws", "rest"]

@@ -19,6 +19,7 @@ _SCHEMA = {
     "close": pl.Float64,
     "volume": pl.Int64,
 }
+_CODE_LEN = 6
 
 
 @dataclass(frozen=True)
@@ -39,6 +40,10 @@ def _empty(warnings: list[str] | None = None) -> IntradayDailyOverlay:
         fetched_at_ms=None,
         warnings=warnings or [],
     )
+
+
+def intraday_overlay_bypassed(data_dir: Path) -> bool:
+    return kis_access.kis_rest_bypass_enabled(data_dir)
 
 
 def _date(yyyymmdd: str) -> dt.date:
@@ -62,9 +67,12 @@ async def build_intraday_overlay(
     now_ms: int,
     ttl_ms: int = 15_000,
 ) -> IntradayDailyOverlay:
-    unique_codes = tuple(sorted({c for c in codes if isinstance(c, str) and len(c) == 6}))
-    if not unique_codes:
-        return _empty()
+    unique_codes = tuple(
+        sorted({c for c in codes if isinstance(c, str) and len(c) == _CODE_LEN})
+    )
+    if not unique_codes or intraday_overlay_bypassed(data_dir):
+        warnings = ["kis_rest_bypassed_intraday_overlay_skipped"] if unique_codes else None
+        return _empty(warnings)
     key = (data_dir, today, unique_codes)
     cached = _CACHE.get(key)
     cached_at = _CACHE_AT.get(key)

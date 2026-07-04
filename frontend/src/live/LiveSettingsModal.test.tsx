@@ -75,6 +75,7 @@ describe('LiveSettingsModal (2단)', () => {
       schema_version: 1,
       storage_policy: 'ws_plus_rest',
       program_trade_storage_enabled: false,
+      kis_rest_bypass_enabled: false,
     });
     render(<LiveSettingsModal onClose={() => {}} />, {
       wrapper: wrap(new QueryClient({ defaultOptions: { queries: { retry: false } } })),

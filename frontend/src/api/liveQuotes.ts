@@ -24,11 +24,17 @@ export interface LiveQuote {
   change_pct_source?: string | null;
   /** quote validation warnings such as adjusted_baseline_unavailable. */
   warnings?: string[];
+  stale?: boolean;
+  stale_reason?: string | null;
 }
 
 export interface LiveQuotesResponse {
   phase: 'pre_open' | 'open' | 'closed';
   quotes: LiveQuote[];
+}
+
+export function isStaleLiveQuote(quote: LiveQuote | undefined): boolean {
+  return quote?.stale === true;
 }
 
 /** closed(평일 08:50–16:00 밖·주말)면 600s 하트비트 — `false`로 완전히 끄면
@@ -112,13 +118,8 @@ export function useLiveQuoteOverlay(codes: string[], venue: LiveVenueOption = 'K
       next.set(quote.code, merged);
       lastGoodByCodeRef.current.set(quote.code, merged);
     }
-    for (const code of codes) {
-      if (next.has(code)) continue;
-      const previous = lastGoodByCodeRef.current.get(code);
-      if (previous != null) next.set(code, previous);
-    }
     return next;
-  }, [codes, q.data]);
+  }, [q.data]);
   return { quoteByCode, phase: q.data?.phase, dataUpdatedAt: q.dataUpdatedAt };
 }
 

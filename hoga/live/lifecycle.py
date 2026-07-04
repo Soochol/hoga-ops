@@ -102,6 +102,7 @@ class LiveStatus(BaseModel):
     rest_poller_last_error_count: int = 0
     rest_poller_backoff_remaining: int = 0
     kis_capacity_scheduler: dict[str, object] | None = None
+    kis_rest_bypass_enabled: bool = False
 
 
 # ── State ──────────────────────────────────────────────────────────────────────
@@ -124,6 +125,7 @@ class _State:
         rest30_recorder: Rest30sRecorder | None = None,
         program_trade_collector=None,
         storage_policy: LiveStoragePolicy = "ws_plus_rest",
+        kis_rest_bypass_enabled: bool = False,
         session: LiveSession | None = None,
     ) -> None:
         if session is None:
@@ -139,6 +141,7 @@ class _State:
         self.rest30_recorder = rest30_recorder
         self.program_trade_collector = program_trade_collector
         self.storage_policy = storage_policy
+        self.kis_rest_bypass_enabled = kis_rest_bypass_enabled
 
     # 위임 property — 기존 `_state.X` 접근 호환(streams dict의 in-place 변이도 그대로 통과).
     @property
@@ -443,6 +446,7 @@ def get_status() -> LiveStatus:
         rest_poller_backoff_remaining=(
             rest_poller_status.backoff_remaining if rest_poller_status else 0
         ),
+        kis_rest_bypass_enabled=_state.kis_rest_bypass_enabled,
     )
 
 
@@ -465,6 +469,12 @@ def reset_for_tests() -> None:
     _buffer = LiveBuffer()
     kis_runtime.reset_for_tests()
     _today_promote_last_ms.clear()
+
+
+def refresh_status_from_settings(data_dir: Path) -> None:
+    settings = load_live_settings(data_dir)
+    _state.storage_policy = settings.storage_policy
+    _state.kis_rest_bypass_enabled = settings.kis_rest_bypass_enabled
 
 
 # ── Today Promoter ─────────────────────────────────────────────────────────────
@@ -607,7 +617,10 @@ async def _start_live_stream_locked(*, data_dir: Path) -> bool:
     exclude-then-subscribe 순서를 lifecycle이 봉인(C3 ①): stop → ensure_poller →
     _sync_exclusion → session.start(conn build). poller는 WS 세션 밖이라 lifecycle 소유.
     """
-    _state.storage_policy = load_live_settings(data_dir).storage_policy
+    refresh_status_from_settings(data_dir)
+    if _state.kis_rest_bypass_enabled and _state.rest_poller is not None:
+        await _state.rest_poller.stop()
+        _state.rest_poller = None
 
     # 1. account 0 creds 게이트(완전 오프라인이면 stop만)
     n_configured = len(kis_runtime.configured_account_ids(data_dir))
@@ -618,9 +631,16 @@ async def _start_live_stream_locked(*, data_dir: Path) -> bool:
     await _state.session.stop(_teardown_conn)
 
     # 3. poller 보장(없으면 생성, 있으면 _subscribed 보존)
-    poller = _ensure_poller(data_dir)
-    if poller is None:
-        return False  # account 0 creds 사라짐(레이스) — 오프라인
+    poller = _state.rest_poller
+    if _state.kis_rest_bypass_enabled:
+        if poller is not None:
+            await poller.stop()
+            _state.rest_poller = None
+        poller = None
+    else:
+        poller = _ensure_poller(data_dir)
+        if poller is None:
+            return False  # account 0 creds 사라짐(레이스) — 오프라인
 
     # 4. Storage policy 적용: WS targets + REST 30s recorder targets 산출.
     codes, _rest_targets = await _sync_storage_targets(data_dir)
@@ -701,6 +721,10 @@ async def refresh_live_stream(*, data_dir: Path) -> None:
     part 차면 build, 비면 teardown, 둘 다 있으면 update_codes diff.
     """
     async with _lifecycle_lock:
+        refresh_status_from_settings(data_dir)
+        if _state.kis_rest_bypass_enabled and _state.rest_poller is not None:
+            await _state.rest_poller.stop()
+            _state.rest_poller = None
         if not _state.streams and _state.rest_poller is None:
             # 한 번도 시작 안 됨 → start가 가드(creds/빈 watchlist) 수행
             await _start_live_stream_locked(data_dir=data_dir)

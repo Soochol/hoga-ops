@@ -1,31 +1,48 @@
-Task 2 report
+# Task 2 Report: Central KIS REST Access Guard
 
-Status: DONE
+## Status
 
-Summary:
-- Added `LiveRestPollerStatus` and `LiveRestPoller.status()` to expose supervisor-facing state for running status, targets, last cycle timing, last error metadata, degraded state, and backoff countdown.
-- Integrated `classify_live_error()` and `format_live_error()` into per-code exception handling so transport failures log as warnings without tracebacks, unexpected failures log as errors with tracebacks, and policy-driven backoff is applied locally to the REST poller.
-- Added the four Task 2 regression tests covering warning/error log shape, status population, transport backoff skip behavior, and degraded-state recovery after a successful cycle.
+Completed.
 
-TDD evidence:
-1. Red:
-   - `/home/dev/code/hoga-ops/.venv/bin/python -m pytest tests/unit/live/test_rest_poller.py::test_transport_failure_logs_warning_without_traceback_and_sets_status tests/unit/live/test_rest_poller.py::test_transport_backoff_skips_next_cycle_without_refetching tests/unit/live/test_rest_poller.py::test_unexpected_failure_logs_with_traceback_and_no_backoff tests/unit/live/test_rest_poller.py::test_successful_cycle_clears_degraded_status_after_failure -q`
-   - Result: `4 failed` with the expected missing behavior: traceback-only logging, no backoff skip, and missing `LiveRestPoller.status()`.
-2. Green:
-   - `/home/dev/code/hoga-ops/.venv/bin/python -m pytest tests/unit/live/test_rest_poller.py::test_transport_failure_logs_warning_without_traceback_and_sets_status tests/unit/live/test_rest_poller.py::test_transport_backoff_skips_next_cycle_without_refetching tests/unit/live/test_rest_poller.py::test_unexpected_failure_logs_with_traceback_and_no_backoff tests/unit/live/test_rest_poller.py::test_successful_cycle_clears_degraded_status_after_failure -q`
-   - Result: `4 passed`.
-3. Full verification:
-   - `/home/dev/code/hoga-ops/.venv/bin/python -m pytest tests/unit/live/test_rest_poller.py -q`
-   - Result: `28 passed`.
+## What Changed
 
-Files changed:
-- `hoga/live/rest_poller.py`
-- `tests/unit/live/test_rest_poller.py`
+- Added `KisRestBypassedError(KisApiError)` in [hoga/live/kis_access.py](/home/dev/.codex/worktrees/2486/hoga-ops/hoga/live/kis_access.py).
+- Added `kis_rest_bypass_enabled(data_dir: Path) -> bool` plus internal `_raise_if_bypassed(...)`.
+- Guarded both REST access seams before any client/scheduler work:
+  - `run_with_capacity(...)` now raises immediately when bypass is enabled.
+  - `fetch_for_role(...)` now raises immediately when bypass is enabled.
+- Added focused unit coverage in [tests/unit/live/test_kis_rest_bypass_access.py](/home/dev/.codex/worktrees/2486/hoga-ops/tests/unit/live/test_kis_rest_bypass_access.py) for:
+  - scheduler path blocked before submit
+  - legacy fallback path blocked before client resolution
+  - scheduler path still allowed when bypass is off
 
-Self-review:
-- Kept the scope limited to the Task 2-owned files and did not touch lifecycle or other supervisor migrations.
-- Preserved the existing `last_cycle_ms` completion semantics, including backoff-skip and resolver-`None` cycles reporting completion timestamps.
-- Left unrelated workspace changes untouched, including the pre-existing modification to `.superpowers/sdd/task-1-report.md`.
+## TDD Record
 
-Concerns:
-- None.
+1. Wrote `tests/unit/live/test_kis_rest_bypass_access.py` first.
+2. Ran red phase with `uv run pytest tests/unit/live/test_kis_rest_bypass_access.py -q`.
+3. Verified expected failure: missing `kis_access.KisRestBypassedError`.
+4. Implemented minimal guard in `hoga/live/kis_access.py`.
+5. Ran green verification:
+   - `uv run pytest tests/unit/live/test_kis_rest_bypass_access.py tests/unit/live/test_kis_runtime_accounts.py::test_kis_for_role_n1_all_account0 -q`
+   - Result: 4 passed.
+
+## Notes
+
+- The brief’s example used bare `pytest`, but this workspace required `uv run pytest` because the direct `pytest` entrypoint lacked the module environment.
+- Per instructions, unrelated uncommitted docs/spec/plan changes were left untouched and unstaged.
+
+## Commit
+
+- `feat: block KIS REST data calls when bypassed`
+
+## Concerns
+
+- None from this task’s scope.
+
+## Follow-up Fix
+
+- Review found that the legacy fallback bypass test monkeypatched `kis_for_role` without proving it was never called.
+- Updated `test_run_with_capacity_blocks_legacy_fallback_when_bypass_on` to install a sentinel side effect and assert `kis_for_role_called is False` when bypass is enabled.
+- Re-ran the requested focused suite:
+  - `uv run pytest tests/unit/live/test_kis_rest_bypass_access.py tests/unit/live/test_kis_runtime_accounts.py::test_kis_for_role_n1_all_account0 -q`
+  - Result: 4 passed.

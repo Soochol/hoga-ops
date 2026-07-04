@@ -3,9 +3,10 @@ import datetime as dt
 import polars as pl
 import pytest
 
+from hoga.api import screener_runner
 from hoga.api.models import ScanRequest
 from hoga.api.screener_intraday import IntradayDailyOverlay
-from hoga.api import screener_runner
+from hoga.live.settings import update_live_settings
 
 
 def _seed(tmp_path):
@@ -97,3 +98,28 @@ async def test_runner_intraday_basis_builds_overlay_and_falls_back_with_warning(
     assert seen_codes == ["000001"]
     assert [r.code for r in res.rows] == ["000001"]
     assert res.warnings == ["intraday_kis_unavailable", "intraday_fallback_eod"]
+
+
+@pytest.mark.asyncio
+async def test_runner_intraday_bypass_skips_overlay_and_uses_eod(tmp_path, monkeypatch):
+    _seed(tmp_path)
+    update_live_settings(tmp_path, kis_rest_bypass_enabled=True)
+
+    async def fail_overlay(**kwargs):
+        raise AssertionError("intraday overlay must not be built during KIS REST bypass")
+
+    monkeypatch.setattr(screener_runner.screener_intraday, "build_intraday_overlay", fail_overlay)
+
+    res = await screener_runner.run_screener_scan(
+        data_dir=tmp_path,
+        req=ScanRequest.model_validate({
+            "basis": "intraday",
+            "conditions": [{"id": "a", "type": "price_range", "params": {"min": 100}}],
+            "universe": {"markets": ["KOSPI"]},
+        }),
+        now=dt.datetime(2026, 5, 15, 10, 0),
+    )
+
+    assert [r.code for r in res.rows] == ["000001"]
+    assert "kis_rest_bypassed_intraday_overlay_skipped" in res.warnings
+    assert "intraday_fallback_eod" in res.warnings

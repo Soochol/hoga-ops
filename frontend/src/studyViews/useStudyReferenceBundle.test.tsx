@@ -1,15 +1,18 @@
 import { renderHook } from '@testing-library/react';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import type { UseQueryOptions, UseQueryResult } from '@tanstack/react-query';
+import { LIVE_SETTINGS_KEY } from '../api/liveSettings';
 import type { StudyViewReference } from '../api/studyViews';
 import type { RangeBundle } from '../api/types';
 
 const {
   useQueryMock,
   studyReferenceQueryOptionsMock,
+  useScreenerDailyCandlesMock,
 } = vi.hoisted(() => ({
   useQueryMock: vi.fn(),
   studyReferenceQueryOptionsMock: vi.fn(),
+  useScreenerDailyCandlesMock: vi.fn(),
 }));
 
 vi.mock('@tanstack/react-query', async (importOriginal) => {
@@ -24,9 +27,12 @@ vi.mock('./studyReferenceQueries', () => ({
   studyReferenceQueryOptions: studyReferenceQueryOptionsMock,
 }));
 
+vi.mock('../api/screenerDailyCandles', () => ({
+  useScreenerDailyCandles: useScreenerDailyCandlesMock,
+}));
+
 import { useLivePageStore } from '../state/livePage';
 import { useLiveVenueStore } from '../state/liveVenue';
-import { useKisRestModeStore } from '../state/kisRestMode';
 import { useSourcePreferenceStore } from '../state/sourcePreference';
 import { useStudyReferenceBundle } from './useStudyReferenceBundle';
 
@@ -44,11 +50,33 @@ const save: StudyViewReference = {
   created_at_ms: 1,
   updated_at_ms: 2,
 };
+const minuteSave: StudyViewReference = {
+  ...save,
+  range: {
+    from_date: '20260616',
+    to_date: '20260618',
+    from_ms: 1_781_568_000_000,
+    to_ms: 1_781_568_300_000,
+  },
+};
+const dailySave: StudyViewReference = {
+  ...save,
+  timeframe: 'D',
+  range: {
+    from_date: '20260616',
+    to_date: '20260618',
+    from_ms: 1_781_568_000_000,
+    to_ms: 1_781_741_100_000,
+  },
+};
 
 const rangeHogaOptions = { queryKey: ['range-hoga-plan'], enabled: true } as unknown as UseQueryOptions;
 const rangeSidecarOptions = { queryKey: ['range-sidecar-plan'], enabled: true } as unknown as UseQueryOptions;
 const minuteOptions = { queryKey: ['minute-plan'], enabled: true } as unknown as UseQueryOptions;
 const dailyOptions = { queryKey: ['daily-plan'], enabled: false } as unknown as UseQueryOptions;
+let kisRestBypassEnabled = false;
+let rangeCandlesFixture: Array<{ ts_ms: number; open: number; high: number; low: number; close: number; vol_a: number; vol_b: number }> = [];
+let screenerDailyCandlesFixture: Array<{ t_ms: number; open: number; high: number; low: number; close: number; volume: number }> = [];
 
 function rangeBundleFixture(overrides: Partial<RangeBundle> = {}): RangeBundle {
   return {
@@ -77,15 +105,38 @@ function rangeBundleFixture(overrides: Partial<RangeBundle> = {}): RangeBundle {
 }
 
 function queryResultFor(options: UseQueryOptions): Partial<UseQueryResult> {
+  if (Array.isArray(options.queryKey) && options.queryKey.length === LIVE_SETTINGS_KEY.length &&
+    options.queryKey.every((value, index) => value === LIVE_SETTINGS_KEY[index])) {
+    return {
+      data: {
+        schema_version: 1,
+        storage_policy: 'ws_plus_rest',
+        program_trade_storage_enabled: false,
+        kis_rest_bypass_enabled: kisRestBypassEnabled,
+      },
+      isLoading: false,
+      error: null,
+    };
+  }
   if (options === rangeHogaOptions) {
     return { data: null, isLoading: false, error: null };
   }
   if (options === rangeSidecarOptions) {
     return { data: null, isLoading: false, error: null };
   }
+  if (Array.isArray(options.queryKey) && options.queryKey[0] === 'range' && options.queryKey[14] === 'full') {
+    return {
+      data: rangeCandlesFixture.length > 0 ? rangeBundleFixture({
+        bucket_ms: 180_000,
+        candles: rangeCandlesFixture,
+      }) : null,
+      isLoading: false,
+      error: null,
+    };
+  }
   if (options === minuteOptions) {
     return {
-      data: { candles: [], data_warnings: ['minute-warning'] },
+      data: { candles: [], data_warnings: ['minute-warning'], effective_sessions: [] },
       isLoading: false,
       error: null,
     };
@@ -110,10 +161,17 @@ describe('useStudyReferenceBundle', () => {
       minuteCandles: minuteOptions,
       dailyCandles: dailyOptions,
     });
+    kisRestBypassEnabled = false;
+    rangeCandlesFixture = [];
+    screenerDailyCandlesFixture = [];
     useQueryMock.mockImplementation(queryResultFor);
+    useScreenerDailyCandlesMock.mockImplementation(() => ({
+      data: { candles: screenerDailyCandlesFixture, data_warnings: [] },
+      isLoading: false,
+      error: null,
+    }));
     useLiveVenueStore.setState({ venue: 'NXT' });
     useSourcePreferenceStore.setState({ sourcePreference: 'kis_api_first' });
-    useKisRestModeStore.setState({ kisRestBypassEnabled: false, lastFailureAtMs: null, lastToastAtMs: null });
     useLivePageStore.setState({
       brokerLateEntryEnabled: true,
       brokerLateEntryStartHHMM: 1000,
@@ -135,27 +193,37 @@ describe('useStudyReferenceBundle', () => {
       volumeDistributionEnabled: true,
       volumeDistributionRangeCount: 12,
     });
-    expect(useQueryMock).toHaveBeenNthCalledWith(1, rangeHogaOptions);
-    expect(useQueryMock).toHaveBeenNthCalledWith(2, rangeSidecarOptions);
-    expect(useQueryMock).toHaveBeenNthCalledWith(3, minuteOptions);
-    expect(useQueryMock).toHaveBeenNthCalledWith(4, dailyOptions);
+    expect(useQueryMock).toHaveBeenNthCalledWith(1, expect.objectContaining({
+      queryKey: LIVE_SETTINGS_KEY,
+    }));
+    expect(useQueryMock).toHaveBeenNthCalledWith(2, rangeHogaOptions);
+    expect(useQueryMock).toHaveBeenNthCalledWith(3, rangeSidecarOptions);
+    expect(useQueryMock).toHaveBeenNthCalledWith(4, expect.objectContaining({
+      queryKey: ['range', '005930', '20260616', '20260618', 300000, undefined, undefined, false, null, null, undefined, undefined, null, 'kis_api_first', 'full', null],
+    }));
+    expect(useQueryMock).toHaveBeenNthCalledWith(5, minuteOptions);
+    expect(useQueryMock).toHaveBeenNthCalledWith(6, dailyOptions);
   });
 
-  it('disables KIS candle queries when KIS REST bypass is enabled', () => {
-    useKisRestModeStore.setState({ kisRestBypassEnabled: true });
+  it('uses range full-mode fallback for minute study when KIS REST bypass is enabled', () => {
+    kisRestBypassEnabled = true;
+    rangeCandlesFixture = [{ ts_ms: 1_781_568_000_000, open: 1, high: 2, low: 1, close: 2, vol_a: 100, vol_b: 0 }];
 
-    renderHook(() => useStudyReferenceBundle(save));
+    const { result } = renderHook(() => useStudyReferenceBundle(minuteSave));
 
-    expect(useQueryMock).toHaveBeenNthCalledWith(1, rangeHogaOptions);
-    expect(useQueryMock).toHaveBeenNthCalledWith(2, rangeSidecarOptions);
-    expect(useQueryMock).toHaveBeenNthCalledWith(3, expect.objectContaining({
-      ...minuteOptions,
-      enabled: false,
+    expect(result.current.bundle?.candles).toHaveLength(1);
+    expect(useQueryMock).toHaveBeenCalledWith(expect.objectContaining({
+      queryKey: ['range', '005930', '20260616', '20260618', 300000, undefined, undefined, false, null, null, undefined, undefined, null, 'kis_api_first', 'full', null],
     }));
-    expect(useQueryMock).toHaveBeenNthCalledWith(4, expect.objectContaining({
-      ...dailyOptions,
-      enabled: false,
-    }));
+  });
+
+  it('uses screener daily fallback for stock D/W/M study when KIS REST bypass is enabled', () => {
+    kisRestBypassEnabled = true;
+    screenerDailyCandlesFixture = [{ t_ms: 1_781_568_000_000, open: 1, high: 2, low: 1, close: 2, volume: 100 }];
+    const { result } = renderHook(() => useStudyReferenceBundle(dailySave));
+
+    expect(result.current.bundle?.candles).toHaveLength(1);
+    expect(useScreenerDailyCandlesMock).toHaveBeenCalledWith('005930', '20260616', '20260618');
   });
 
   it('merges sidecar overlays into the hoga study bundle without waiting on sidecar loading', () => {

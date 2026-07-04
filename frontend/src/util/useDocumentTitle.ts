@@ -1,6 +1,6 @@
 import { useEffect } from 'react';
 import { useSymbols } from '../capture/useSymbols';
-import { useQuoteByCode, type LiveQuote } from '../api/liveQuotes';
+import { isStaleLiveQuote, useQuoteByCode, type LiveQuote } from '../api/liveQuotes';
 import { useLiveVenueStore } from '../state/liveVenue';
 
 const DEFAULT_TITLE = 'hoga-ops';
@@ -15,7 +15,7 @@ function formatTitleChangePct(pct: number | null): string | null {
 }
 
 function formatTitleBase(base: string, quote: LiveQuote | undefined): string {
-  if (!quote) return base;
+  if (!quote || isStaleLiveQuote(quote)) return base;
   const parts = [base, formatTitlePrice(quote.price)];
   const pct = formatTitleChangePct(quote.change_pct);
   if (pct) parts.push(pct);

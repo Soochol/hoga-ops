@@ -61,7 +61,8 @@ def test_quotes_open_returns_change_pct(monkeypatch, tmp_path):
     assert body["quotes"][0] == {"code": "005930", "price": 72400, "change_pct": 1.2,
                                  "change_won": 750, "open": None, "high": None, "low": None,
                                  "baseline_price": None, "baseline_date": None,
-                                 "change_pct_source": "kis", "warnings": []}
+                                 "change_pct_source": "kis", "warnings": [],
+                                 "stale": False, "stale_reason": None}
     assert body["quotes"][1]["change_pct"] == -0.8
     assert body["quotes"][1]["change_won"] == -1500
 

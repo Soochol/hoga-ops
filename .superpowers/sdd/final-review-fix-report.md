@@ -63,3 +63,40 @@
 
 - Replaced the remaining `CheckIcon` `--accent-fg` fallback with `#07100f`.
 - Updated a screener regression assertion to check the token class instead of retaining the old teal literal in test source.
+
+---
+
+## 2026-07-04 Final Whole-Branch Review Fixes
+
+- Status: done
+- Commit: `fix(frontend): honor stale live quotes in overlays and ranking`
+
+### Changed Files
+
+- `frontend/src/api/liveQuotes.ts`
+- `frontend/src/api/liveQuotes.test.tsx`
+- `frontend/src/util/useDocumentTitle.ts`
+- `frontend/src/util/useDocumentTitle.test.tsx`
+- `frontend/src/screener/useScreenerRowsLive.ts`
+- `frontend/src/screener/useScreenerRowsLive.test.tsx`
+- `frontend/src/rightrail/quoteSort.ts`
+- `frontend/src/rightrail/quoteSort.test.ts`
+- `frontend/src/heatmap/heat.test.ts`
+
+### Fixed
+
+- Stopped `useLiveQuoteOverlay()` from rehydrating previous client quotes as fresh when `/api/live/quotes` returns an empty batch, while still preserving backend-provided stale flags on rows that are present.
+- Prevented stale live quotes from leaking into the browser tab title as current price or change percent.
+- Kept screener rows on their EOD values and EOD sort inputs when the only available live quote for a row is marked stale.
+- Excluded stale quote `change_pct` values from right-rail ranking and heatmap percentage accessors by treating them as missing.
+
+### Verification
+
+- Focused tests run:
+  - `cd frontend && npm test -- src/api/liveQuotes.test.tsx src/util/useDocumentTitle.test.tsx src/screener/useScreenerRowsLive.test.tsx src/rightrail/quoteSort.test.ts src/heatmap/heat.test.ts`
+- Build run:
+  - `cd frontend && npm run build`
+
+### Concerns
+
+- No open concerns after the focused tests and build pass.

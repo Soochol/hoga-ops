@@ -258,6 +258,148 @@ def _compute_daily_gaps(
     return gaps
 
 
+def _kis_rest_bypassed_batch_warning(batch_label: str) -> dict:
+    return {
+        "batch": batch_label,
+        "reason": "kis_rest_bypassed",
+        "msg": "KIS REST bypass is enabled; served cache-only data",
+    }
+
+
+def _collect_daily_series_cache_only(
+    *,
+    cache: PastDailyCandlesCache,
+    output_key: str,
+    code: str,
+    frm: date,
+    too: date,
+    today_d: date,
+    from_label: str,
+    to_label: str,
+) -> dict:
+    loaded: list[dict] = []
+    cached_batches: list[str] = []
+    covered: list[tuple[date, date]] = []
+
+    for batch_from, batch_to, rows in cache.list_batches(code):
+        if batch_to < frm or batch_from > too:
+            continue
+        covered.append((batch_from, batch_to))
+        loaded.extend(rows)
+        cached_batches.append(f"{batch_from.strftime('%Y%m%d')}__{batch_to.strftime('%Y%m%d')}")
+
+    if too >= today_d:
+        today_s = today_d.strftime("%Y%m%d")
+        state, today_row = cache.get_today(code)
+        if state == "hit":
+            loaded.append(today_row)  # type: ignore[arg-type]
+            covered.append((today_d, today_d))
+            cached_batches.append(f"{today_s}__{today_s}")
+        elif state == "negative":
+            covered.append((today_d, today_d))
+
+    data_warnings = [
+        _kis_rest_bypassed_batch_warning(
+            f"{gap_from.strftime('%Y%m%d')}__{gap_to.strftime('%Y%m%d')}"
+        )
+        for gap_from, gap_to in _compute_daily_gaps(frm, too, covered)
+    ]
+
+    frm_ms = int(datetime.combine(frm, time(0, 0), tzinfo=_KST).timestamp() * 1000)
+    too_ms = int(datetime.combine(too, time(23, 59, 59), tzinfo=_KST).timestamp() * 1000)
+    by_ts: dict[int, dict] = {}
+    for row in loaded:
+        ts = row.get("t_ms")
+        if isinstance(ts, int) and frm_ms <= ts <= too_ms:
+            by_ts[ts] = row
+
+    return {
+        "code": code,
+        "from": from_label,
+        "to": to_label,
+        output_key: [by_ts[t_ms] for t_ms in sorted(by_ts)],
+        "cached_batches": cached_batches,
+        "fresh_batches": [],
+        "data_warnings": data_warnings,
+    }
+
+
+def _collect_index_daily_candles_cache_only(
+    *,
+    cache: IndexCandlesCache,
+    key: tuple[str, str],
+    index_id: str,
+    timeframe: str,
+    from_s: str,
+    to_s: str,
+) -> dict:
+    frm = _parse_yyyymmdd(from_s)
+    too = _parse_yyyymmdd(to_s)
+    assert frm is not None and too is not None
+    covered: list[tuple[date, date]] = []
+    candles = []
+    violations = []
+    for batch_from, batch_to, batch_candles, batch_violations in cache.list_batches(key):
+        if batch_to < frm or batch_from > too:
+            continue
+        covered.append((batch_from, batch_to))
+        candles.extend(batch_candles)
+        violations.extend(batch_violations)
+
+    batch_label = f"{from_s}__{to_s}"
+    data_warnings = [
+        _violation_to_warning(v, batch_label)
+        for v in violations
+        if from_s <= v.date_yyyymmdd <= to_s
+    ]
+    data_warnings.extend(
+        _kis_rest_bypassed_batch_warning(
+            f"{gap_from.strftime('%Y%m%d')}__{gap_to.strftime('%Y%m%d')}"
+        )
+        for gap_from, gap_to in _compute_daily_gaps(frm, too, covered)
+    )
+    by_ts = {
+        candle.t_ms: candle
+        for candle in candles
+        if from_s <= _candle_date_yyyymmdd(candle) <= to_s
+    }
+    return {
+        "index_id": index_id,
+        "from": from_s,
+        "to": to_s,
+        "timeframe": timeframe,
+        "candles": [_candle_to_dict(by_ts[t_ms]) for t_ms in sorted(by_ts)],
+        "data_warnings": data_warnings,
+    }
+
+
+def _collect_index_minute_candles_cache_only(
+    *,
+    cache: IndexMinuteCandlesCache,
+    key: tuple[str, str, int],
+    index_id: str,
+    timeframe: str,
+    from_s: str,
+    to_s: str,
+) -> dict:
+    batch_label = f"{from_s}__{to_s}"
+    result = cache.get_exact(key, from_s, to_s)
+    if result is None:
+        candles = []
+        data_warnings = [_kis_rest_bypassed_batch_warning(batch_label)]
+    else:
+        candles = result.candles
+        data_warnings = [_violation_to_warning(v, batch_label) for v in result.violations]
+    return {
+        "index_id": index_id,
+        "from": from_s,
+        "to": to_s,
+        "timeframe": timeframe,
+        "candles": [_candle_to_dict(c) for c in candles],
+        "data_warnings": data_warnings,
+    }
+
+
 async def batched_daily_walkback(
     *,
     cache: PastDailyCandlesCache,
@@ -397,6 +539,8 @@ class LiveQuote(BaseModel):
     baseline_date: str | None = None
     change_pct_source: str | None = None
     warnings: list[str] = Field(default_factory=list)
+    stale: bool = False
+    stale_reason: str | None = None
 
 
 class LiveQuotesResponse(BaseModel):
@@ -440,6 +584,7 @@ class LiveIndicesResponse(BaseModel):
 
 InvestorEstimateWarningReason = Literal[
     "kis_credentials_missing",
+    "kis_rest_bypassed",
     "kis_rate_limit",
     "kis_api_error",
     "parse_error",
@@ -710,6 +855,27 @@ class LiveQuoteFetcher:
         for q in quotes:
             self._last_quotes[q.code] = q
         return [self._to_live_quote(q, phase=phase, today=today) for q in quotes]
+
+    def stale_last_good(
+        self,
+        code_list: list[str],
+        phase: str,
+        today: date | None = None,
+    ) -> list[LiveQuote]:
+        rows: list[LiveQuote] = []
+        for code in code_list:
+            q = self._last_quotes.get(code)
+            if q is None:
+                continue
+            rows.append(
+                self._to_live_quote(q, phase=phase, today=today).model_copy(
+                    update={
+                        "stale": True,
+                        "stale_reason": "kis_rest_bypassed",
+                    }
+                )
+            )
+        return rows
 
 
 _TAB_METRIC_HOGA_STALE_MS = 15_000
@@ -1102,6 +1268,7 @@ def build_router(
             data_dir,
             storage_policy=req.storage_policy,
             program_trade_storage_enabled=req.program_trade_storage_enabled,
+            kis_rest_bypass_enabled=req.kis_rest_bypass_enabled,
         )
         try:
             await refresh_live_stream(data_dir=data_dir)
@@ -1132,13 +1299,22 @@ def build_router(
         index = _validate_index_range(index_id, from_, to)
         if data_dir is None:
             raise HTTPException(503, "KIS client not wired")
-        if _kis_scheduler is None:
-            raise HTTPException(503, "KIS scheduler not wired")
-        if not kis_access.has_rest_capacity(data_dir):
-            raise HTTPException(503, "KIS client not initialized")
         if timeframe in {"D", "W", "M"}:
             if index_candles_cache_instance is None:
                 raise HTTPException(503, "index-candles cache not wired (data_dir missing)")
+            if kis_access.kis_rest_bypass_enabled(data_dir):
+                return _collect_index_daily_candles_cache_only(
+                    cache=index_candles_cache_instance,
+                    key=(index.id, timeframe),
+                    index_id=index.id,
+                    timeframe=timeframe,
+                    from_s=from_,
+                    to_s=to,
+                )
+            if _kis_scheduler is None:
+                raise HTTPException(503, "KIS scheduler not wired")
+            if not kis_access.has_rest_capacity(data_dir):
+                raise HTTPException(503, "KIS client not initialized")
 
             async def fetch_batch(from_s: str, to_s: str):
                 async def direct_fetch(inner_from_s: str, inner_to_s: str):
@@ -1184,6 +1360,19 @@ def build_router(
             }[timeframe]
             if index_minute_candles_cache_instance is None:
                 raise HTTPException(503, "index-minute-candles cache not wired (data_dir missing)")
+            if kis_access.kis_rest_bypass_enabled(data_dir):
+                return _collect_index_minute_candles_cache_only(
+                    cache=index_minute_candles_cache_instance,
+                    key=(index.id, timeframe, bucket_seconds),
+                    index_id=index.id,
+                    timeframe=timeframe,
+                    from_s=from_,
+                    to_s=to,
+                )
+            if _kis_scheduler is None:
+                raise HTTPException(503, "KIS scheduler not wired")
+            if not kis_access.has_rest_capacity(data_dir):
+                raise HTTPException(503, "KIS client not initialized")
 
             async def fetch_batch(from_s: str, to_s: str):
                 return await kis_access.run_with_capacity(
@@ -1250,6 +1439,16 @@ def build_router(
                     "msg": f"{index.id} does not support market investor net",
                 },
             )
+        if data_dir is not None and kis_access.kis_rest_bypass_enabled(data_dir):
+            return {
+                "index_id": index.id,
+                "from": from_,
+                "to": to,
+                "points": [],
+                "data_warnings": [
+                    _kis_rest_bypassed_batch_warning(f"{from_}__{to}"),
+                ],
+            }
         if _kis_scheduler is None:
             raise HTTPException(503, "KIS scheduler not wired")
         if not _has_kis_capacity_candidate():
@@ -1370,6 +1569,15 @@ def build_router(
         code_list = [c for c in codes.split(",") if _CODE_RE.match(c)]
         if not code_list:
             return LiveQuotesResponse(phase=phase, quotes=[])
+        if data_dir is not None and kis_access.kis_rest_bypass_enabled(data_dir):
+            return LiveQuotesResponse(
+                phase=phase,
+                quotes=_quote_fetcher.stale_last_good(
+                    code_list,
+                    phase,
+                    today=now.date(),
+                ),
+            )
         if _kis_scheduler is None:
             return LiveQuotesResponse(phase=phase, quotes=[])
         try:
@@ -1419,7 +1627,9 @@ def build_router(
             return LiveTabMetricsResponse(phase=phase, metrics=[])
 
         quotes: list[LiveQuote] = []
-        if _kis_scheduler is not None:
+        if data_dir is not None and kis_access.kis_rest_bypass_enabled(data_dir):
+            quotes = []
+        elif _kis_scheduler is not None:
             try:
                 quotes = await asyncio.wait_for(
                     asyncio.shield(
@@ -1477,6 +1687,13 @@ def build_router(
             raise HTTPException(
                 422,
                 {"code": "invalid_code", "msg": "code must be 6 digits"},
+            )
+        if data_dir is not None and kis_access.kis_rest_bypass_enabled(data_dir):
+            return _investor_estimate_fetcher._error_response(
+                code,
+                _investor_estimate_fetcher._today_fn(),
+                "kis_rest_bypassed",
+                "KIS REST bypass is enabled",
             )
         if _kis_scheduler is None:
             return _investor_estimate_fetcher.credentials_missing(code)
@@ -1567,12 +1784,21 @@ def build_router(
             policy = parse_live_venue_policy(venue)
         except ValueError as e:
             raise HTTPException(422, {"code": "invalid_venue", "msg": str(e)}) from e
+        if minute_backfill is None:
+            raise HTTPException(503, "past-candles cache not wired (data_dir missing)")
+        if data_dir is not None and kis_access.kis_rest_bypass_enabled(data_dir):
+            out = await minute_backfill.collect_minute_cache_only(
+                code=code,
+                frm=frm,
+                too=too,
+                today_d=today_d,
+                policy=policy,
+            )
+            return {"code": code, "from": from_, "to": to, "venue": policy, **out.model_dump()}
         if _kis_scheduler is None:
             raise HTTPException(503, "KIS scheduler not wired")
         if not _has_kis_capacity_candidate():
             raise HTTPException(503, "KIS client not initialized")
-        if minute_backfill is None:
-            raise HTTPException(503, "past-candles cache not wired (data_dir missing)")
 
         out = await minute_backfill.collect_minute(
             code=code,
@@ -1595,12 +1821,22 @@ def build_router(
             policy = parse_live_venue_policy(venue)
         except ValueError as e:
             raise HTTPException(422, {"code": "invalid_venue", "msg": str(e)}) from e
+        if daily_backfill is None:
+            raise HTTPException(503, "past-daily-candles cache not wired (data_dir missing)")
+        if data_dir is not None and kis_access.kis_rest_bypass_enabled(data_dir):
+            return await daily_backfill.collect_daily_cache_only(
+                code=code,
+                frm=frm,
+                too=too,
+                today_d=today_d,
+                policy=policy,
+                from_label=from_,
+                to_label=to,
+            )
         if _kis_scheduler is None:
             raise HTTPException(503, "KIS scheduler not wired")
         if not _has_kis_capacity_candidate():
             raise HTTPException(503, "KIS client not initialized")
-        if daily_backfill is None:
-            raise HTTPException(503, "past-daily-candles cache not wired (data_dir missing)")
         return await daily_backfill.collect_daily(
             code=code,
             frm=frm,
@@ -1643,6 +1879,21 @@ def build_router(
         signed (+ buy / − sell). Today's row is provisional until ~15:40 (가집계).
         """
         frm, too, today_d = _validate_past_request(code, from_, to, max_days=None)
+        if (
+            data_dir is not None
+            and investor_cache_instance is not None
+            and kis_access.kis_rest_bypass_enabled(data_dir)
+        ):
+            return _collect_daily_series_cache_only(
+                cache=investor_cache_instance,
+                output_key="points",
+                code=code,
+                frm=frm,
+                too=too,
+                today_d=today_d,
+                from_label=from_,
+                to_label=to,
+            )
         if _kis_scheduler is None:
             raise HTTPException(503, "KIS scheduler not wired")
         if not _has_kis_capacity_candidate():

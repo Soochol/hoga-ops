@@ -3,6 +3,7 @@ import { create } from 'zustand';
 export const KIS_REST_FAILURE_TOAST_COOLDOWN_MS = 5 * 60_000;
 
 const STORAGE_KEY = 'chart.kisRestMode.v1';
+const MIGRATED_KEY = 'chart.kisRestMode.v1.migrated';
 
 type KisRestWarningLike = {
   reason?: string | null;
@@ -10,33 +11,29 @@ type KisRestWarningLike = {
 };
 
 interface Store {
-  kisRestBypassEnabled: boolean;
   lastFailureAtMs: number | null;
   lastToastAtMs: number | null;
-  setKisRestBypassEnabled: (value: boolean) => void;
   notifyFailure: (nowMs?: number) => boolean;
-  hydrateFromStorage: () => void;
 }
 
-function readStorage(): { kisRestBypassEnabled: boolean } | null {
+export function readLegacyKisRestBypass(): { kisRestBypassEnabled: boolean } | null {
   try {
+    if (localStorage.getItem(MIGRATED_KEY) === 'true') return null;
     const raw = localStorage.getItem(STORAGE_KEY);
     if (!raw) return null;
     const parsed = JSON.parse(raw) as { kisRestBypassEnabled?: unknown };
-    if (typeof parsed.kisRestBypassEnabled === 'boolean') {
-      return { kisRestBypassEnabled: parsed.kisRestBypassEnabled };
-    }
-    return null;
+    return parsed.kisRestBypassEnabled === true ? { kisRestBypassEnabled: true } : null;
   } catch {
     return null;
   }
 }
 
-function persist(value: boolean): void {
+export function markLegacyKisRestBypassMigrated(): void {
   try {
-    localStorage.setItem(STORAGE_KEY, JSON.stringify({ kisRestBypassEnabled: value }));
+    localStorage.setItem(MIGRATED_KEY, 'true');
+    localStorage.removeItem(STORAGE_KEY);
   } catch {
-    // localStorage may be unavailable — silent fallback.
+    // localStorage may be unavailable.
   }
 }
 
@@ -50,14 +47,8 @@ export function kisRestWarningIndicatesUnavailable(warning: KisRestWarningLike):
 }
 
 export const useKisRestModeStore = create<Store>((set, get) => ({
-  kisRestBypassEnabled: readStorage()?.kisRestBypassEnabled ?? false,
   lastFailureAtMs: null,
   lastToastAtMs: null,
-
-  setKisRestBypassEnabled: (value) => {
-    set({ kisRestBypassEnabled: value });
-    persist(value);
-  },
 
   notifyFailure: (nowMs = Date.now()) => {
     const lastToastAtMs = get().lastToastAtMs;
@@ -67,10 +58,5 @@ export const useKisRestModeStore = create<Store>((set, get) => ({
     }
     set({ lastToastAtMs: nowMs });
     return true;
-  },
-
-  hydrateFromStorage: () => {
-    const stored = readStorage();
-    if (stored) set({ kisRestBypassEnabled: stored.kisRestBypassEnabled });
   },
 }));
