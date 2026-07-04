@@ -125,6 +125,15 @@ describe('IndicatorPanel', () => {
     expect(screen.getByText(/KIS REST 저장 데이터/)).toBeTruthy();
   });
 
+  it('매도 최대벽 선택 시 스타일 pane과 보이는 최신 봉 기준 토글 표시', () => {
+    render(<IndicatorPanel onClose={() => {}} />);
+    fireEvent.click(screen.getByRole('button', { name: '당일 매도 최대벽' }));
+    expect(screen.getByRole('button', { name: '체결가격 기준 최대벽 스타일 선택' })).toBeTruthy();
+    expect(screen.getByRole('button', { name: '미체결 포함 최대벽 스타일 선택' })).toBeTruthy();
+    expect(screen.getByRole('button', { name: '보이는 영역 최대벽 스타일 선택' })).toBeTruthy();
+    expect(screen.getByTestId('settings-toggle-askPeakVisibleTimeCutoff')).toBeTruthy();
+  });
+
   it('호가비 라벨 클릭 → 우측에 RatioConfig(극단값 필터 토글) 노출', () => {
     render(<IndicatorPanel onClose={() => {}} />);
     fireEvent.click(screen.getByRole('button', { name: '호가비' }));
@@ -222,6 +231,12 @@ describe('IndicatorPanel', () => {
     // 기관 순매수량 → its detail.
     fireEvent.click(screen.getByRole('button', { name: '기관 순매수량' }));
     expect(screen.getByText(/기관.*순매수 수량/)).toBeTruthy();
+  });
+
+  it('매수 최대벽 선택 시 보이는 최신 봉 기준 토글 표시', () => {
+    render(<IndicatorPanel onClose={() => {}} />);
+    fireEvent.click(screen.getByRole('button', { name: '당일 매수 최대벽' }));
+    expect(screen.getByTestId('settings-toggle-bidPeakVisibleTimeCutoff')).toBeTruthy();
   });
 
   it('거래량 카테고리 이동 후 체결강도 누적 토글이 노출된다', () => {
