@@ -51,9 +51,6 @@ class TodayAskPeakState:
                 t_ms=t_ms,
             )
             self.all_peak = _larger_peak(self.all_peak, price=price, qty=qty, t_ms=t_ms)
-            self.observed_price_peaks[price] = _larger_peak(
-                self.observed_price_peaks.get(price), price=price, qty=qty, t_ms=t_ms
-            )
             if price in self.traded_prices:
                 self.traded_peak = _larger_peak(
                     self.traded_peak,
