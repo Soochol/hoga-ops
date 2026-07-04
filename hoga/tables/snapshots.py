@@ -1015,15 +1015,15 @@ def query_day_ask_peak_dual(
               SELECT price, qty, intra_ms FROM levels
               {filter_for_mode(mode)}
             ),
-            per_price AS (
+            per_bucket_price AS (
               SELECT price, qty, intra_ms,
                      ROW_NUMBER() OVER (
-                       PARTITION BY price
+                       PARTITION BY price, (intra_ms // {int(bucket_ms)})
                        ORDER BY qty DESC, intra_ms ASC
                      ) AS rn
               FROM filtered
             )
-            SELECT price, qty, intra_ms FROM per_price
+            SELECT price, qty, intra_ms FROM per_bucket_price
             WHERE rn = 1
             ORDER BY qty DESC, intra_ms ASC{limit_sql}
             """,
@@ -1214,15 +1214,15 @@ def query_day_bid_peak_dual(
               SELECT price, qty, intra_ms FROM levels
               {filter_sql}
             ),
-            per_price AS (
+            per_bucket_price AS (
               SELECT price, qty, intra_ms,
                      ROW_NUMBER() OVER (
-                       PARTITION BY price
+                       PARTITION BY price, (intra_ms // {int(bucket_ms)})
                        ORDER BY qty DESC, intra_ms ASC
                      ) AS rn
               FROM filtered
             )
-            SELECT price, qty, intra_ms FROM per_price
+            SELECT price, qty, intra_ms FROM per_bucket_price
             WHERE rn = 1
             ORDER BY qty DESC, intra_ms ASC{limit_sql}
             """,
@@ -1351,7 +1351,7 @@ def query_day_ask_bid_peak_dual(
         ask_traded_peak_candidates AS (
           SELECT price, qty, intra_ms,
                  ROW_NUMBER() OVER (
-                   PARTITION BY price
+                   PARTITION BY price, (intra_ms // {int(bucket_ms)})
                    ORDER BY qty DESC, intra_ms ASC
                  ) AS price_rn
           FROM ask_rep_levels
@@ -1366,7 +1366,7 @@ def query_day_ask_bid_peak_dual(
         ask_traded_max_candidates AS (
           SELECT price, qty, intra_ms,
                  ROW_NUMBER() OVER (
-                   PARTITION BY price
+                   PARTITION BY price, (intra_ms // {int(bucket_ms)})
                    ORDER BY qty DESC, intra_ms ASC
                  ) AS price_rn
           FROM ask_cont_levels
@@ -1381,7 +1381,7 @@ def query_day_ask_bid_peak_dual(
         ask_all_peak_candidates AS (
           SELECT price, qty, intra_ms,
                  ROW_NUMBER() OVER (
-                   PARTITION BY price
+                   PARTITION BY price, (intra_ms // {int(bucket_ms)})
                    ORDER BY qty DESC, intra_ms ASC
                  ) AS price_rn
           FROM ask_rep_levels
@@ -1395,7 +1395,7 @@ def query_day_ask_bid_peak_dual(
         ask_all_max_peak_candidates AS (
           SELECT price, qty, intra_ms,
                  ROW_NUMBER() OVER (
-                   PARTITION BY price
+                   PARTITION BY price, (intra_ms // {int(bucket_ms)})
                    ORDER BY qty DESC, intra_ms ASC
                  ) AS price_rn
           FROM ask_cont_levels
@@ -1429,7 +1429,7 @@ def query_day_ask_bid_peak_dual(
         bid_traded_peak_candidates AS (
           SELECT price, qty, intra_ms,
                  ROW_NUMBER() OVER (
-                   PARTITION BY price
+                   PARTITION BY price, (intra_ms // {int(bucket_ms)})
                    ORDER BY qty DESC, intra_ms ASC
                  ) AS price_rn
           FROM bid_rep_levels
@@ -1444,7 +1444,7 @@ def query_day_ask_bid_peak_dual(
         bid_traded_max_candidates AS (
           SELECT price, qty, intra_ms,
                  ROW_NUMBER() OVER (
-                   PARTITION BY price
+                   PARTITION BY price, (intra_ms // {int(bucket_ms)})
                    ORDER BY qty DESC, intra_ms ASC
                  ) AS price_rn
           FROM bid_cont_levels
@@ -1459,7 +1459,7 @@ def query_day_ask_bid_peak_dual(
         bid_all_peak_candidates AS (
           SELECT price, qty, intra_ms,
                  ROW_NUMBER() OVER (
-                   PARTITION BY price
+                   PARTITION BY price, (intra_ms // {int(bucket_ms)})
                    ORDER BY qty DESC, intra_ms ASC
                  ) AS price_rn
           FROM bid_rep_levels
@@ -1473,7 +1473,7 @@ def query_day_ask_bid_peak_dual(
         bid_all_max_peak_candidates AS (
           SELECT price, qty, intra_ms,
                  ROW_NUMBER() OVER (
-                   PARTITION BY price
+                   PARTITION BY price, (intra_ms // {int(bucket_ms)})
                    ORDER BY qty DESC, intra_ms ASC
                  ) AS price_rn
           FROM bid_cont_levels

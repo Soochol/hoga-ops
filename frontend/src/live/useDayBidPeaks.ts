@@ -15,7 +15,10 @@ type TradePriceState = {
   prices: Set<number>;
 };
 
-type ObservedPricePeaks = Map<number, DayPeak>;
+type ObservedPricePeaks = {
+  items: DayPeak[];
+  keys: Set<string>;
+};
 
 type BufferCursor<T> = {
   tail: T | null;
@@ -93,18 +96,26 @@ function accumulateTradePrices(state: TradePriceState, trade: ReadonlyArray<Trad
   }
 }
 
-function putLargerPricePeak(peaks: ObservedPricePeaks, peak: DayPeak) {
-  const current = peaks.get(peak.price);
-  if (current === undefined || peak.qty > current.qty) {
-    peaks.set(peak.price, peak);
-  }
+function freshObservedPricePeaks(): ObservedPricePeaks {
+  return { items: [], keys: new Set() };
+}
+
+function dayPeakKey(peak: DayPeak): string {
+  return `${peak.price}:${peak.qty}:${peak.t_ms}`;
+}
+
+function putObservedPricePeak(peaks: ObservedPricePeaks, peak: DayPeak) {
+  const key = dayPeakKey(peak);
+  if (peaks.keys.has(key)) return;
+  peaks.keys.add(key);
+  peaks.items.push(peak);
 }
 
 export function observeBidPricePeaks(peaks: ObservedPricePeaks, obs: ReadonlyArray<ObSnapshot>) {
   for (const ob of obs) {
     if (!isContinuousBook(ob) || !isAfterRegularOpen(ob.t_ms) || !ob.bids) continue;
     for (const lv of ob.bids) {
-      if (lv.qty > 0) putLargerPricePeak(peaks, { price: lv.price, qty: lv.qty, t_ms: ob.t_ms });
+      if (lv.qty > 0) putObservedPricePeak(peaks, { price: lv.price, qty: lv.qty, t_ms: ob.t_ms });
     }
   }
 }
@@ -117,12 +128,13 @@ export function bestTradedObservedPeak(
 ): DayPeak | null {
   let best = seed;
   const eligiblePrices = new Set<number>(tradedPrices);
-  for (const price of observed.keys()) {
+  for (const { price } of observed.items) {
     if (isCandleRangeTraded(price)) eligiblePrices.add(price);
   }
-  for (const price of eligiblePrices) {
-    const peak = observed.get(price);
-    if (peak && (best === null || peak.qty > best.qty)) best = peak;
+  for (const peak of observed.items) {
+    if (eligiblePrices.has(peak.price) && (best === null || peak.qty > best.qty)) {
+      best = peak;
+    }
   }
   return best;
 }
@@ -133,32 +145,15 @@ function topTradedObservedPeaks(
   tradedPrices: Set<number>,
   isCandleRangeTraded: (price: number) => boolean = () => false,
 ): DayPeak[] {
-  const byPrice = new Map<number, DayPeak>();
-  const put = (peak: DayPeak) => {
-    const current = byPrice.get(peak.price);
-    if (current === undefined || peak.qty > current.qty) {
-      byPrice.set(peak.price, peak);
-    }
-  };
-  for (const seed of seeds) put(seed);
-  for (const [price, peak] of observed) {
-    if (tradedPrices.has(price) || isCandleRangeTraded(price)) put(peak);
-  }
-  return [...byPrice.values()]
+  return uniqueDayPeaks([
+    ...seeds,
+    ...observed.items.filter((peak) => tradedPrices.has(peak.price) || isCandleRangeTraded(peak.price)),
+  ])
     .sort((a, b) => b.qty - a.qty || a.t_ms - b.t_ms || a.price - b.price);
 }
 
 function topObservedPeaks(seeds: readonly DayPeak[], observed: ObservedPricePeaks): DayPeak[] {
-  const byPrice = new Map<number, DayPeak>();
-  const put = (peak: DayPeak) => {
-    const current = byPrice.get(peak.price);
-    if (current === undefined || peak.qty > current.qty) {
-      byPrice.set(peak.price, peak);
-    }
-  };
-  for (const seed of seeds) put(seed);
-  for (const peak of observed.values()) put(peak);
-  return [...byPrice.values()]
+  return uniqueDayPeaks([...seeds, ...observed.items])
     .sort((a, b) => b.qty - a.qty || a.t_ms - b.t_ms || a.price - b.price);
 }
 
@@ -168,6 +163,18 @@ function eligibleSeed(peak: DayPeak | null, allowPrice: (price: number) => boole
 
 function candidatePeaks(peaks: readonly DayPeak[]) {
   return peaks.map((peak) => ({ price: peak.price, qty: peak.qty, t_ms: peak.t_ms }));
+}
+
+function uniqueDayPeaks(peaks: readonly DayPeak[]): DayPeak[] {
+  const out: DayPeak[] = [];
+  const keys = new Set<string>();
+  for (const peak of peaks) {
+    const key = dayPeakKey(peak);
+    if (keys.has(key)) continue;
+    keys.add(key);
+    out.push(peak);
+  }
+  return out;
 }
 
 export function buildTodayTradedBidPeak(todayBidPeak: LiveTodayBidPeak | null): BidPeak | null {
@@ -278,16 +285,16 @@ export function useDayBidPeaks(
   );
   const backendTradedPrices = todayBidPeak?.traded_prices ?? [];
 
-  const liveSeed = backendTodaySeed;
   const liveSeeds = backendTodayPeaks.length > 0
     ? backendTodayPeaks
     : (backendTodaySeed ? [backendTodaySeed] : []);
+  const liveSeed = liveSeeds[0] ?? null;
 
   const stateRef = useRef<RatchetState>(FRESH_RATCHET);
   const tradePriceRef = useRef<TradePriceState>(
     freshTradePriceState(backendTradedSeed, backendTradedPrices),
   );
-  const observedPricePeaksRef = useRef<ObservedPricePeaks>(new Map());
+  const observedPricePeaksRef = useRef<ObservedPricePeaks>(freshObservedPricePeaks());
   const tradeCursorRef = useRef<BufferCursor<TradeSnapshot>>(freshCursor());
   const obCursorRef = useRef<BufferCursor<ObSnapshot>>(freshCursor());
   const [todayPeaks, setTodayPeaks] = useState<DayPeak[]>(liveSeeds);
@@ -296,7 +303,7 @@ export function useDayBidPeaks(
   useEffect(() => {
     stateRef.current = FRESH_RATCHET;
     tradePriceRef.current = freshTradePriceState(backendTradedSeed, backendTradedPrices);
-    observedPricePeaksRef.current = new Map();
+    observedPricePeaksRef.current = freshObservedPricePeaks();
     tradeCursorRef.current = freshCursor();
     obCursorRef.current = freshCursor();
     setTodayPeaks((current) => (sameDayPeaks(current, liveSeeds) ? current : liveSeeds));
@@ -368,13 +375,13 @@ export function useTodayAllPriceBidPeak(
   );
 
   const stateRef = useRef<RatchetState>(FRESH_RATCHET);
-  const observedPricePeaksRef = useRef<ObservedPricePeaks>(new Map());
+  const observedPricePeaksRef = useRef<ObservedPricePeaks>(freshObservedPricePeaks());
   const obCursorRef = useRef<BufferCursor<ObSnapshot>>(freshCursor());
   const [todayPeaks, setTodayPeaks] = useState<DayPeak[]>(liveSeeds);
 
   useEffect(() => {
     stateRef.current = FRESH_RATCHET;
-    observedPricePeaksRef.current = new Map();
+    observedPricePeaksRef.current = freshObservedPricePeaks();
     obCursorRef.current = freshCursor();
     setTodayPeaks((current) => (sameDayPeaks(current, liveSeeds) ? current : liveSeeds));
     // eslint-disable-next-line react-hooks/exhaustive-deps

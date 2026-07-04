@@ -131,6 +131,28 @@ describe('useDayBidPeaks', () => {
     });
   });
 
+  it('live traded bid candidates keep earlier same-price observations for cutoff recalculation', () => {
+    const { result } = renderHook(() => useDayBidPeaks(
+      [
+        deep(atKst(9, 11), [[23900, 1200], ...Array(9).fill([1, 1])] as Array<[number, number]>),
+        deep(atKst(9, 12), [[23900, 9000], ...Array(9).fill([1, 1])] as Array<[number, number]>),
+      ],
+      [trade(atKst(9, 10), [{ t_ms: atKst(9, 10), side: 1, price: 23900, qty: 10 }])],
+      [],
+      '20260613',
+      '005930',
+    ));
+
+    expect(byDate(result.current)['20260613']).toMatchObject({
+      price: 23900,
+      qty: 9000,
+      traded_peaks: [
+        { price: 23900, qty: 9000, t_ms: atKst(9, 12) },
+        { price: 23900, qty: 1200, t_ms: atKst(9, 11) },
+      ],
+    });
+  });
+
   it('drops a candle-only live bid peak when the current candle range no longer covers it', () => {
     const ob = [deep(atKst(10, 42), [[23800, 12000], ...Array(9).fill([1, 1])] as Array<[number, number]>)];
     const { result, rerender } = renderHook(
@@ -319,5 +341,23 @@ describe('useTodayAllPriceBidPeak', () => {
         { price: 23600, qty: 7000, t_ms: atKst(9, 30) },
       ],
     });
+  });
+
+  it('live all-price bid candidates keep earlier same-price observations for cutoff recalculation', () => {
+    const { result } = renderHook(() => useTodayAllPriceBidPeak(
+      [
+        deep(atKst(9, 11), [[23900, 1200], ...Array(9).fill([1, 1])] as Array<[number, number]>),
+        deep(atKst(9, 12), [[23900, 9000], ...Array(9).fill([1, 1])] as Array<[number, number]>),
+      ],
+      [],
+      '20260613',
+      '005930',
+    ));
+
+    expect(result.current).toMatchObject({ price: 23900, qty: 9000 });
+    expect(result.current?.all_peaks?.slice(0, 2)).toEqual([
+      { price: 23900, qty: 9000, t_ms: atKst(9, 12) },
+      { price: 23900, qty: 1200, t_ms: atKst(9, 11) },
+    ]);
   });
 });
