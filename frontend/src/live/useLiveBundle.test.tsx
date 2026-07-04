@@ -1,11 +1,12 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { renderHook } from '@testing-library/react';
+import { renderHook, waitFor } from '@testing-library/react';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import type { ReactNode } from 'react';
 import { planLiveRangeRequest, useLiveBundle } from './useLiveBundle';
 import { useLivePageStore } from '../state/livePage';
 import { useSourcePreferenceStore } from '../state/sourcePreference';
 import { useCandleDataPreferenceStore } from '../state/candleDataPreference';
+import { useKisRestModeStore } from '../state/kisRestMode';
 import type { LiveSeriesData } from '../api/liveSeries';
 import { createVirtualAxis } from '../util/virtualAxis';
 import { projectVolume } from '../chart/projectors/volume';
@@ -136,6 +137,38 @@ function rangeResult(data: unknown = null) {
   return { data, isLoading: false, error: null, isPlaceholderData: false, isFetching: false };
 }
 
+function fallbackRangeBundle(close = 71_234) {
+  return {
+    code: '005930',
+    from_date: '20260520',
+    to_date: '20260527',
+    bucket_ms: 60_000,
+    segments: [
+      {
+        date: '20260527',
+        session_open_ms: 1_779_840_000_000,
+        session_close_ms: 1_779_863_400_000,
+        source: 'hogaplay',
+      },
+    ],
+    candles: [
+      { ts_ms: 1_779_840_000_000, open: 71_000, high: 71_300, low: 70_900, close, vol_a: 1000, vol_b: 0 },
+    ],
+    quote_ratio: { bucket_ms: 60_000, points: [] },
+    fill_strength: { bucket_ms: 60_000, points: [] },
+    volume_profile_range: { bin_count: 0, price_min: 0, price_max: 0, bin_width: 0, bins: [] },
+    volume_profile_by_day: [],
+    volume_distributions: [],
+    investorPoints: [],
+    ask_peaks: [],
+    bid_peaks: [],
+    broker_late_entries: [],
+    price_level_hits: [],
+    trade_volume_pocs: [],
+    program_trade: { points: [] },
+  };
+}
+
 const wrapper = ({ children }: { children: ReactNode }) => {
   const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
   return <QueryClientProvider client={client}>{children}</QueryClientProvider>;
@@ -228,6 +261,11 @@ describe('useLiveBundle', () => {
     });
     useSourcePreferenceStore.setState({ sourcePreference: 'kis_ws_first' });
     useCandleDataPreferenceStore.setState({ candleDataPreference: 'auto' });
+    useKisRestModeStore.setState({
+      kisRestBypassEnabled: false,
+      lastFailureAtMs: null,
+      lastToastAtMs: null,
+    });
   });
 
   it('builds a today-only bundle when historicalFromDate is null', () => {
@@ -288,6 +326,40 @@ describe('useLiveBundle', () => {
         volumeDistributionPriceRange: { min: 69900, max: 70100 },
       }),
     );
+  });
+
+  it('skips KIS minute candle query inputs and uses stored fallback when bypass is enabled', () => {
+    useKisRestModeStore.setState({ kisRestBypassEnabled: true });
+    useRangeSpy
+      .mockReturnValueOnce(rangeResult(fallbackRangeBundle(71_777)))
+      .mockReturnValueOnce(rangeResult())
+      .mockReturnValueOnce(rangeResult())
+      .mockReturnValueOnce(rangeResult());
+
+    const { result } = renderHook(() => useLiveBundle('005930', '1m', '20260527', liveFixture), { wrapper });
+
+    expect(livePastCandlesSpy).toHaveBeenCalledWith(null, null, null, 'KRX');
+    expect(result.current.chartBundle?.candles[0]?.close).toBe(71_777);
+    expect(useRangeSpy).toHaveBeenCalledWith(
+      '005930',
+      '20260520',
+      '20260527',
+      '1m',
+      undefined,
+      '20260527',
+      expect.objectContaining({ mode: 'full' }),
+      undefined,
+    );
+  });
+
+  it('notifies the KIS REST toast store when past-candles warnings show transport failure', async () => {
+    candlesMock.warnings = [{ reason: 'kis_api_error', msg: 'TRANSPORT/ConnectError' }];
+
+    renderHook(() => useLiveBundle('005930', '1m', '20260527', liveFixture), { wrapper });
+
+    await waitFor(() => {
+      expect(useKisRestModeStore.getState().lastFailureAtMs).not.toBeNull();
+    });
   });
 
   it('passes the KIS candle price range to the volume-distribution sidecar', () => {

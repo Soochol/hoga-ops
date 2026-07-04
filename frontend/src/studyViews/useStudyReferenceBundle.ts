@@ -7,6 +7,7 @@ import {
 } from '../api/studyPastCandles';
 import { useLiveVenueStore } from '../state/liveVenue';
 import { useLivePageStore } from '../state/livePage';
+import { useKisRestModeStore } from '../state/kisRestMode';
 import { useSourcePreferenceStore } from '../state/sourcePreference';
 import type { StudyViewReference } from '../api/studyViews';
 import type { RangeBundle } from '../api/types';
@@ -37,6 +38,7 @@ export function useStudyReferenceBundle(save: StudyViewReference | null) {
   const tradeVolumePocEnabled = useLivePageStore((s) => s.tradeVolumePocEnabled);
   const volumeDistributionEnabled = useLivePageStore((s) => s.volumeDistributionEnabled);
   const volumeDistributionRangeCount = useLivePageStore((s) => s.volumeDistributionRangeCount);
+  const kisRestBypassEnabled = useKisRestModeStore((s) => s.kisRestBypassEnabled);
   const inputs = useMemo(() => studyReferenceQueryInputs(save), [save]);
   const queryOptions = useMemo(
     () => studyReferenceQueryOptions(save, {
@@ -60,10 +62,23 @@ export function useStudyReferenceBundle(save: StudyViewReference | null) {
     ],
   );
 
+  const minuteCandlesOptions = useMemo(
+    () => kisRestBypassEnabled
+      ? { ...queryOptions.minuteCandles, enabled: false }
+      : queryOptions.minuteCandles,
+    [kisRestBypassEnabled, queryOptions.minuteCandles],
+  );
+  const dailyCandlesOptions = useMemo(
+    () => kisRestBypassEnabled
+      ? { ...queryOptions.dailyCandles, enabled: false }
+      : queryOptions.dailyCandles,
+    [kisRestBypassEnabled, queryOptions.dailyCandles],
+  );
+
   const pastHoga = useQuery(queryOptions.rangeHoga);
   const pastSidecars = useQuery(queryOptions.rangeSidecars);
-  const minuteCandles = useQuery(queryOptions.minuteCandles);
-  const dailyCandles = useQuery(queryOptions.dailyCandles);
+  const minuteCandles = useQuery(minuteCandlesOptions);
+  const dailyCandles = useQuery(dailyCandlesOptions);
   const pastBundle = useMemo(
     () => mergeStudyRangeBundles(pastHoga.data ?? null, pastSidecars.data ?? null),
     [pastHoga.data, pastSidecars.data],
@@ -74,16 +89,24 @@ export function useStudyReferenceBundle(save: StudyViewReference | null) {
       save,
       venue,
       pastBundle,
-      minuteCandles: minuteCandles.data?.candles ?? [],
-      dailyCandles: dailyCandles.data?.candles ?? [],
-      minuteEffectiveSessions: minuteCandles.data?.effective_sessions ?? [],
+      minuteCandles: kisRestBypassEnabled ? [] : minuteCandles.data?.candles ?? [],
+      dailyCandles: kisRestBypassEnabled ? [] : dailyCandles.data?.candles ?? [],
+      minuteEffectiveSessions: kisRestBypassEnabled ? [] : minuteCandles.data?.effective_sessions ?? [],
     }),
-    [dailyCandles.data?.candles, minuteCandles.data?.candles, minuteCandles.data?.effective_sessions, pastBundle, save, venue],
+    [
+      dailyCandles.data?.candles,
+      kisRestBypassEnabled,
+      minuteCandles.data?.candles,
+      minuteCandles.data?.effective_sessions,
+      pastBundle,
+      save,
+      venue,
+    ],
   );
 
   const warnings: Array<LivePastCandlesWarning | LivePastDailyCandlesWarning> = inputs.isMinute
-    ? minuteCandles.data?.data_warnings ?? []
-    : dailyCandles.data?.data_warnings ?? [];
+    ? kisRestBypassEnabled ? [] : minuteCandles.data?.data_warnings ?? []
+    : kisRestBypassEnabled ? [] : dailyCandles.data?.data_warnings ?? [];
 
   return {
     bundle: model.bundle,

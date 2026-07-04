@@ -26,6 +26,7 @@ vi.mock('./studyReferenceQueries', () => ({
 
 import { useLivePageStore } from '../state/livePage';
 import { useLiveVenueStore } from '../state/liveVenue';
+import { useKisRestModeStore } from '../state/kisRestMode';
 import { useSourcePreferenceStore } from '../state/sourcePreference';
 import { useStudyReferenceBundle } from './useStudyReferenceBundle';
 
@@ -112,6 +113,7 @@ describe('useStudyReferenceBundle', () => {
     useQueryMock.mockImplementation(queryResultFor);
     useLiveVenueStore.setState({ venue: 'NXT' });
     useSourcePreferenceStore.setState({ sourcePreference: 'kis_api_first' });
+    useKisRestModeStore.setState({ kisRestBypassEnabled: false, lastFailureAtMs: null, lastToastAtMs: null });
     useLivePageStore.setState({
       brokerLateEntryEnabled: true,
       brokerLateEntryStartHHMM: 1000,
@@ -137,6 +139,23 @@ describe('useStudyReferenceBundle', () => {
     expect(useQueryMock).toHaveBeenNthCalledWith(2, rangeSidecarOptions);
     expect(useQueryMock).toHaveBeenNthCalledWith(3, minuteOptions);
     expect(useQueryMock).toHaveBeenNthCalledWith(4, dailyOptions);
+  });
+
+  it('disables KIS candle queries when KIS REST bypass is enabled', () => {
+    useKisRestModeStore.setState({ kisRestBypassEnabled: true });
+
+    renderHook(() => useStudyReferenceBundle(save));
+
+    expect(useQueryMock).toHaveBeenNthCalledWith(1, rangeHogaOptions);
+    expect(useQueryMock).toHaveBeenNthCalledWith(2, rangeSidecarOptions);
+    expect(useQueryMock).toHaveBeenNthCalledWith(3, expect.objectContaining({
+      ...minuteOptions,
+      enabled: false,
+    }));
+    expect(useQueryMock).toHaveBeenNthCalledWith(4, expect.objectContaining({
+      ...dailyOptions,
+      enabled: false,
+    }));
   });
 
   it('merges sidecar overlays into the hoga study bundle without waiting on sidecar loading', () => {

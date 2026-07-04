@@ -3,6 +3,7 @@ import { render, screen, cleanup, fireEvent, waitFor } from '@testing-library/re
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import LiveSettingsSections from './LiveSettingsSections';
 import { useLiveVenueStore } from '../state/liveVenue';
+import { useKisRestModeStore } from '../state/kisRestMode';
 import { useStudyViewOpenPrefsStore } from '../state/studyViewOpenPrefs';
 import * as liveSettingsApi from '../api/liveSettings';
 import * as signalAlertsApi from '../api/signalAlerts';
@@ -19,6 +20,7 @@ describe('LiveSettingsSections (2단 nav+detail)', () => {
     vi.restoreAllMocks();
     localStorage.clear();
     useLiveVenueStore.setState({ venue: 'KRX' });
+    useKisRestModeStore.setState({ kisRestBypassEnabled: false, lastFailureAtMs: null, lastToastAtMs: null });
     useStudyViewOpenPrefsStore.setState({ defaultTimeframe: '3m' });
   });
 
@@ -137,6 +139,25 @@ describe('LiveSettingsSections (2단 nav+detail)', () => {
     expect(screen.getAllByRole('radio', { name: 'hogaplay 우선' })).toHaveLength(2);
     expect(screen.getByRole('radio', { name: 'KIS WS 우선' })).toBeInTheDocument();
     expect(screen.getAllByRole('radio', { name: 'KIS API 우선' })).toHaveLength(2);
+  });
+
+  it('데이터소스 상세에서 KIS API 우회 토글을 공유 상태에 저장한다', async () => {
+    vi.spyOn(liveSettingsApi, 'getLiveSettings').mockResolvedValue({
+      schema_version: 1,
+      storage_policy: 'ws_plus_rest',
+      program_trade_storage_enabled: false,
+    });
+
+    render(<LiveSettingsSections />, { wrapper: wrap(new QueryClient({ defaultOptions: { queries: { retry: false } } })) });
+    fireEvent.click(screen.getByTestId('settings-nav-data-source'));
+
+    const toggle = await screen.findByRole('switch', { name: 'KIS API 우회' });
+    expect(toggle).toHaveAttribute('aria-checked', 'false');
+
+    fireEvent.click(toggle);
+
+    expect(useKisRestModeStore.getState().kisRestBypassEnabled).toBe(true);
+    expect(localStorage.getItem('chart.kisRestMode.v1')).toContain('true');
   });
 
   it('데이터소스 상세에서 프로그램 순매수 저장 토글을 REST 허용 정책에서만 켠다', async () => {
