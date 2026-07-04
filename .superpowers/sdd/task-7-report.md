@@ -56,9 +56,17 @@ Result:
 
 ## Commit
 
-- Commit hash: `45b6d8d3`
+- Commit hash: `9e30206f`
 
 ## Concerns
 
 - The brief's sample test command uses `frontend/src/...` paths; from the `frontend/` working directory Vitest needed `src/...` paths instead.
 - Study fallback uses stored range data for minute views and screener daily for stock calendar views, matching the Task 7 brief; it does not add new backend behavior.
+
+## Fix: Bypass Warning Toast Gate
+
+- Gated the `notifyKisRestFailure()` effect in `frontend/src/live/useLiveBundle.ts` so bypass-enabled cache-only candle warnings do not refresh or repeat the KIS unavailable toast.
+- Added a focused regression test in `frontend/src/live/useLiveBundle.test.tsx` proving bypass-time candle warnings leave `notifyFailure` and toast timing untouched, while non-bypass transport warnings still notify.
+- Re-ran the required focused tests and frontend build after the fix:
+  - `npm test -- --run src/live/useLiveBundle.test.tsx src/api/liveQuotes.test.tsx src/studyViews/useStudyReferenceBundle.test.tsx`
+  - `npm run build`

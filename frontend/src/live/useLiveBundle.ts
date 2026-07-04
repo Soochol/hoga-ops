@@ -330,6 +330,7 @@ export function useLiveBundle(
   );
 
   useEffect(() => {
+    if (kisRestBypassEnabled) return;
     const warnings = isMinute
       ? pastCandlesQuery.data?.data_warnings ?? []
       : pastDailyCandlesQuery.data?.data_warnings ?? [];
@@ -338,6 +339,7 @@ export function useLiveBundle(
     }
   }, [
     isMinute,
+    kisRestBypassEnabled,
     notifyKisRestFailure,
     pastCandlesQuery.data?.data_warnings,
     pastDailyCandlesQuery.data?.data_warnings,

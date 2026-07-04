@@ -399,13 +399,30 @@ describe('useLiveBundle', () => {
     expect(screenerDailyCandlesSpy).toHaveBeenLastCalledWith('005930', '20250611', '20260527');
   });
 
-  it('notifies the KIS REST toast store when past-candles warnings show transport failure', async () => {
+  it('suppresses bypass-time candle warnings but still notifies for non-bypass transport failures', async () => {
+    const realNotifyFailure = useKisRestModeStore.getState().notifyFailure;
+    const notifyFailureSpy = vi.fn((nowMs?: number) => realNotifyFailure(nowMs));
+    useKisRestModeStore.setState({
+      lastFailureAtMs: null,
+      lastToastAtMs: null,
+      notifyFailure: notifyFailureSpy,
+    });
     candlesMock.warnings = [{ reason: 'kis_api_error', msg: 'TRANSPORT/ConnectError' }];
+
+    renderHook(() => useLiveBundle('005930', '1m', '20260527', liveFixture), {
+      wrapper: createWrapper({ kis_rest_bypass_enabled: true }),
+    });
+
+    expect(notifyFailureSpy).not.toHaveBeenCalled();
+    expect(useKisRestModeStore.getState().lastFailureAtMs).toBeNull();
+    expect(useKisRestModeStore.getState().lastToastAtMs).toBeNull();
 
     renderHook(() => useLiveBundle('005930', '1m', '20260527', liveFixture), { wrapper: createWrapper() });
 
     await waitFor(() => {
+      expect(notifyFailureSpy).toHaveBeenCalledTimes(1);
       expect(useKisRestModeStore.getState().lastFailureAtMs).not.toBeNull();
+      expect(useKisRestModeStore.getState().lastToastAtMs).not.toBeNull();
     });
   });
 
