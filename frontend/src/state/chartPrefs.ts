@@ -127,6 +127,13 @@ export const CHART_TOGGLES = [
     category: 'indicator-modal',
   },
   {
+    key: 'askPeakLabelEnabled',
+    label: '최대벽 라벨 표시',
+    description: '당일 매도 최대벽 라벨을 차트 오른쪽에 표시합니다. 끄면 수평선은 그대로 두고 라벨만 숨깁니다.',
+    default: true,
+    category: 'indicator-modal',
+  },
+  {
     key: 'askPeakVisibleTimeCutoff',
     label: '보이는 최신 봉 기준',
     description: '오른쪽 끝에 보이는 분봉 시각까지의 후보만 사용해 당일 매도 최대벽을 계산합니다.',
@@ -145,6 +152,13 @@ export const CHART_TOGGLES = [
     key: 'bidPeakShowAllPrices',
     label: '미체결 최대 매수벽 표시',
     description: '당일 저가보다 아래에 있는 미체결 추정 매수벽 수량이 체결가격 기준 최대벽 수량보다 클 때만 두 라인을 함께 표시합니다.',
+    default: true,
+    category: 'indicator-modal',
+  },
+  {
+    key: 'bidPeakLabelEnabled',
+    label: '최대벽 라벨 표시',
+    description: '당일 매수 최대벽 라벨을 차트 오른쪽에 표시합니다. 끄면 수평선은 그대로 두고 라벨만 숨깁니다.',
     default: true,
     category: 'indicator-modal',
   },

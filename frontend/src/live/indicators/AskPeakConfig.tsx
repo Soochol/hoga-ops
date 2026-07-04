@@ -64,7 +64,9 @@ export default function AskPeakConfig() {
         </div>
       </div>
       <div className="border-b border-border my-3" />
-      <IndicatorPrefRows toggleKeys={['askPeakIntraMax', 'askPeakShowAllPrices', 'askPeakVisibleTimeCutoff']} />
+      <IndicatorPrefRows
+        toggleKeys={['askPeakIntraMax', 'askPeakShowAllPrices', 'askPeakLabelEnabled', 'askPeakVisibleTimeCutoff']}
+      />
       <div className="border-b border-border my-2" />
       <div>
         <div className="text-sm text-fg mb-2">체결가격 기준 표시 범위</div>

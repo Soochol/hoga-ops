@@ -212,6 +212,20 @@ describe('ask peak all-price toggle', () => {
     expect(mergePrefs({ askPeakShowAllPrices: false }).askPeakShowAllPrices).toBe(false);
   });
 
+  it('label display toggles default on and persist false', () => {
+    const ask = CHART_TOGGLES.find((t) => t.key === 'askPeakLabelEnabled');
+    const bid = CHART_TOGGLES.find((t) => t.key === 'bidPeakLabelEnabled');
+
+    expect(DEFAULT_PREFS.askPeakLabelEnabled).toBe(true);
+    expect(DEFAULT_PREFS.bidPeakLabelEnabled).toBe(true);
+    expect(ask?.label).toBe('최대벽 라벨 표시');
+    expect(bid?.label).toBe('최대벽 라벨 표시');
+    expect(categoryOf(ask!)).toBe('indicator-modal');
+    expect(categoryOf(bid!)).toBe('indicator-modal');
+    expect(mergePrefs({ askPeakLabelEnabled: false }).askPeakLabelEnabled).toBe(false);
+    expect(mergePrefs({ bidPeakLabelEnabled: false }).bidPeakLabelEnabled).toBe(false);
+  });
+
   it('rank limit defaults to 1 and persists valid 1..3 values', () => {
     expect(DEFAULT_PREFS.askPeakAllPriceRankLimit).toBe(1);
     expect(mergePrefs({ askPeakAllPriceRankLimit: 2 }).askPeakAllPriceRankLimit).toBe(2);

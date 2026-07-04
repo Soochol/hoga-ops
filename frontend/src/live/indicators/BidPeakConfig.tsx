@@ -51,7 +51,9 @@ export default function BidPeakConfig() {
         </div>
       </div>
       <div className="border-b border-border my-3" />
-      <IndicatorPrefRows toggleKeys={['bidPeakIntraMax', 'bidPeakShowAllPrices', 'bidPeakVisibleTimeCutoff']} />
+      <IndicatorPrefRows
+        toggleKeys={['bidPeakIntraMax', 'bidPeakShowAllPrices', 'bidPeakLabelEnabled', 'bidPeakVisibleTimeCutoff']}
+      />
       <div className="border-b border-border my-2" />
       <div>
         <div className="text-sm text-fg mb-2">체결가격 기준 표시 범위</div>
