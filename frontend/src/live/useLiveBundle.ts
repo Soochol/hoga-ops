@@ -3,6 +3,7 @@ import type { LiveSeriesData } from '../api/liveSeries';
 import { useLivePastCandles } from '../api/livePastCandles';
 import { useLivePastDailyCandles } from '../api/livePastDailyCandles';
 import { useLivePastInvestorNet } from '../api/livePastInvestorNet';
+import { useScreenerDailyCandles } from '../api/screenerDailyCandles';
 import { useRange } from '../api/range';
 import { useLivePageStore, type LiveTimeframe, isMinuteTimeframe } from '../state/livePage';
 import type { LiveVenueOption } from '../state/liveVenue';
@@ -255,6 +256,7 @@ export function useLiveBundle(
   const candleDataPreference = useCandleDataPreferenceStore((s) => s.candleDataPreference);
   const venue = options.venue ?? 'KRX';
   const preferHogaplayCandles = candleDataPreference === 'hogaplay_first';
+  const preferScreenerDailyCandles = candleDataPreference === 'auto' || candleDataPreference === 'screener_daily_first';
 
   const isMinute = isMinuteTimeframe(timeframe);
   const bucketMs = isMinute ? TIMEFRAME_TO_MS[timeframe] : 60_000;
@@ -292,6 +294,11 @@ export function useLiveBundle(
     enableDaily ? dailyPastFrom : null,
     enableDaily ? dailyPastTo : null,
     venue,
+  );
+  const screenerDailyCandlesQuery = useScreenerDailyCandles(
+    enableDaily ? code : null,
+    enableDaily ? dailyPastFrom : null,
+    enableDaily ? dailyPastTo : null,
   );
 
   // Investor net-buy (foreign/institution) — 'D' (일봉) ONLY. KIS
@@ -375,6 +382,7 @@ export function useLiveBundle(
     // by ISO week / calendar month using the bar's first 1m bar t_ms so
     // axis.contains admits it inside that Segment.
     const raw = pastDailyCandlesQuery.data?.candles ?? [];
+    const screenerRaw = screenerDailyCandlesQuery.data?.candles ?? [];
     const fallbackRaw = selectedRangeFallback.map((c) => ({
       t_ms: c.ts_ms,
       open: c.open,
@@ -388,33 +396,60 @@ export function useLiveBundle(
       ? []
       : aggregateCalendar(fallbackInput, timeframe as 'D' | 'W' | 'M');
     const fallback = fallbackBars.map(kisBarToCandle);
-    if (raw.length === 0) return fallback;
-    const bars = timeframe === 'D' ? raw : aggregateCalendar(raw, timeframe as 'W' | 'M');
+    const screenerBars = screenerRaw.length === 0
+      ? []
+      : timeframe === 'D'
+        ? screenerRaw
+        : aggregateCalendar(screenerRaw, timeframe as 'W' | 'M');
+    const screenerCandles = screenerBars.map(kisBarToCandle);
+    const bars = raw.length === 0 ? [] : timeframe === 'D' ? raw : aggregateCalendar(raw, timeframe as 'W' | 'M');
     const apiCandles = bars.map(kisBarToCandle);
-    return preferHogaplayCandles
-      ? mergeCandlesByPriority(fallback, apiCandles)
-      : mergeCandlesByPriority(apiCandles, fallback);
-  }, [isMinute, timeframe, preferHogaplayCandles, pastCandlesQuery.data, pastDailyCandlesQuery.data, candleFallback.data, hogaplayCandleFallback.data]);
+    if (preferHogaplayCandles) {
+      return mergeCandlesByPriority(
+        fallback,
+        mergeCandlesByPriority(screenerCandles, apiCandles),
+      );
+    }
+    if (preferScreenerDailyCandles) {
+      return mergeCandlesByPriority(
+        screenerCandles,
+        mergeCandlesByPriority(apiCandles, fallback),
+      );
+    }
+    return mergeCandlesByPriority(
+      apiCandles,
+      mergeCandlesByPriority(screenerCandles, fallback),
+    );
+  }, [isMinute, timeframe, preferHogaplayCandles, preferScreenerDailyCandles, pastCandlesQuery.data, pastDailyCandlesQuery.data, screenerDailyCandlesQuery.data, candleFallback.data, hogaplayCandleFallback.data]);
   const candleSourceByDate = useMemo(() => {
     const primaryDates = isMinute
       ? new Set((pastCandlesQuery.data?.candles ?? []).map((c) => realMsToYyyymmdd(c.t_ms)))
       : new Set((pastDailyCandlesQuery.data?.candles ?? []).map((c) => realMsToYyyymmdd(c.t_ms)));
+    const screenerDates = isMinute
+      ? new Set<string>()
+      : new Set((screenerDailyCandlesQuery.data?.candles ?? []).map((c) => realMsToYyyymmdd(c.t_ms)));
     const selectedFallbackDates = candleDateSet(candleFallback.data?.candles ?? []);
     const sourceByDate = new Map<string, SourceName>();
 
+    for (const date of screenerDates) {
+      if (preferHogaplayCandles && selectedFallbackDates.has(date)) continue;
+      if (!preferScreenerDailyCandles && primaryDates.has(date)) continue;
+      sourceByDate.set(date, 'screener_daily');
+    }
+
     for (const date of selectedFallbackDates) {
-      if (!preferHogaplayCandles && primaryDates.has(date)) continue;
+      if (!preferHogaplayCandles && (primaryDates.has(date) || screenerDates.has(date))) continue;
       const source = segmentSourceByDate(candleFallback.data, date);
       if (source) sourceByDate.set(date, source);
     }
 
     for (const date of candleDateSet(hogaplayCandleFallback.data?.candles ?? [])) {
-      if (primaryDates.has(date) || selectedFallbackDates.has(date)) continue;
+      if (primaryDates.has(date) || screenerDates.has(date) || selectedFallbackDates.has(date)) continue;
       sourceByDate.set(date, 'hogaplay');
     }
 
     return sourceByDate.size > 0 ? sourceByDate : undefined;
-  }, [isMinute, preferHogaplayCandles, pastCandlesQuery.data, pastDailyCandlesQuery.data, candleFallback.data, hogaplayCandleFallback.data]);
+  }, [isMinute, preferHogaplayCandles, preferScreenerDailyCandles, pastCandlesQuery.data, pastDailyCandlesQuery.data, screenerDailyCandlesQuery.data, candleFallback.data, hogaplayCandleFallback.data]);
   const volumeDistributionPriceRange = useMemo(
     () =>
       isMinute && volumeDistributionEnabled
@@ -565,7 +600,8 @@ export function useLiveBundle(
         (s, i) =>
           s.date === prev[i].date &&
           s.session_open_ms === prev[i].session_open_ms &&
-          s.session_close_ms === prev[i].session_close_ms,
+          s.session_close_ms === prev[i].session_close_ms &&
+          s.source === prev[i].source,
       );
     if (sameSegments) {
       built.segments = prev;
@@ -639,7 +675,8 @@ export function useLiveBundle(
   const extending = historicalFromDate != null && (isMinute
     ? (pastHoga.isPlaceholderData && pastHoga.isFetching) ||
       (pastCandlesQuery.isPlaceholderData && pastCandlesQuery.isFetching)
-    : pastDailyCandlesQuery.isPlaceholderData && pastDailyCandlesQuery.isFetching);
+    : (pastDailyCandlesQuery.isPlaceholderData && pastDailyCandlesQuery.isFetching) ||
+      (screenerDailyCandlesQuery.isPlaceholderData && screenerDailyCandlesQuery.isFetching));
   // The gate holds the CHART side (candle/segment prepend atomicity is what it
   // protects — the viewport shift is candle-index-based). The hoga overlay
   // follows via the spread below; its points don't drive the viewport, so
@@ -700,16 +737,19 @@ export function useLiveBundle(
   // past-daily-candles. (다른 경로 쿼리는 enabled=false라 data가 없거나 스테일.)
   const pastDataWarnings: LiveDataWarning[] = isMinute
     ? pastCandlesQuery.data?.data_warnings ?? []
-    : pastDailyCandlesQuery.data?.data_warnings ?? [];
+    : [
+        ...(pastDailyCandlesQuery.data?.data_warnings ?? []),
+        ...(screenerDailyCandlesQuery.data?.data_warnings ?? []),
+      ];
 
   return {
     bundle,
     chartBundle,
     hogaBundle,
-    isLoading: live.isLoading || pastHoga.isLoading || pastCandlesQuery.isLoading || pastDailyCandlesQuery.isLoading || (candleFallbackNeeded && candleFallback.isLoading) || (hogaplayCandleFallbackNeeded && hogaplayCandleFallback.isLoading),
-    error: live.error ?? pastHoga.error ?? pastCandlesQuery.error ?? pastDailyCandlesQuery.error ?? pastSidecars.error ?? candleFallback.error ?? hogaplayCandleFallback.error ?? null,
+    isLoading: live.isLoading || pastHoga.isLoading || pastCandlesQuery.isLoading || pastDailyCandlesQuery.isLoading || screenerDailyCandlesQuery.isLoading || (candleFallbackNeeded && candleFallback.isLoading) || (hogaplayCandleFallbackNeeded && hogaplayCandleFallback.isLoading),
+    error: live.error ?? pastHoga.error ?? pastCandlesQuery.error ?? pastDailyCandlesQuery.error ?? screenerDailyCandlesQuery.error ?? pastSidecars.error ?? candleFallback.error ?? hogaplayCandleFallback.error ?? null,
     clampEngaged,
-    isPastCandlesLoading: pastCandlesQuery.isLoading || pastDailyCandlesQuery.isLoading || (candleFallbackNeeded && candleFallback.isLoading) || (hogaplayCandleFallbackNeeded && hogaplayCandleFallback.isLoading) || (enableInvestor && investorQuery.isLoading),
+    isPastCandlesLoading: pastCandlesQuery.isLoading || pastDailyCandlesQuery.isLoading || screenerDailyCandlesQuery.isLoading || (candleFallbackNeeded && candleFallback.isLoading) || (hogaplayCandleFallbackNeeded && hogaplayCandleFallback.isLoading) || (enableInvestor && investorQuery.isLoading),
     isExtending: extending,
     pastDataWarnings,
   };

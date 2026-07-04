@@ -28,6 +28,12 @@ export const SOURCE_CAPABILITIES: Record<SourceName, SourceCapability> = {
     resolutionLabel: '30s',
     cssTokenName: 'kis-api',
   },
+  screener_daily: {
+    source: 'screener_daily',
+    label: '스크리너',
+    resolutionLabel: '1D',
+    cssTokenName: 'screener-daily',
+  },
 };
 
 export const SOURCE_PREFERENCE_OPTIONS = [

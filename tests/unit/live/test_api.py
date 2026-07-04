@@ -2,6 +2,7 @@
 import pytest
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
+import polars as pl
 
 
 @pytest.fixture(autouse=True)
@@ -1483,6 +1484,39 @@ def test_past_daily_today_negative_cache_skips_kis_within_ttl(tmp_path) -> None:
         c.get(f"/api/live/past-daily-candles?code=005930&from={today}&to={today}")
         c.get(f"/api/live/past-daily-candles?code=005930&from={today}&to={today}")
         assert len(fake.calls) == 1
+
+
+def test_screener_daily_candles_reads_adjusted_parquet_without_kis(tmp_path) -> None:
+    sdir = tmp_path / "screener"
+    sdir.mkdir()
+    pl.DataFrame({
+        "code": ["005930", "005930", "000660"],
+        "date": [
+            datetime.date(2024, 1, 2),
+            datetime.date(2024, 1, 3),
+            datetime.date(2024, 1, 2),
+        ],
+        "open": [70000.0, 70100.0, 100000.0],
+        "high": [71000.0, 71100.0, 101000.0],
+        "low": [69000.0, 69100.0, 99000.0],
+        "close": [70500.0, 70600.0, 100500.0],
+        "volume": [1000, 1100, 2000],
+    }).write_parquet(sdir / "daily_adjusted.parquet")
+
+    fake = _FakeKisForDaily()
+    app = _daily_app(tmp_path, fake)
+    with TestClient(app) as c:
+        r = c.get("/api/live/screener-daily-candles?code=005930&from=20240101&to=20240104")
+
+    assert r.status_code == 200
+    body = r.json()
+    assert body["source"] == "screener_daily"
+    assert body["code"] == "005930"
+    assert [row["close"] for row in body["candles"]] == [70500.0, 70600.0]
+    assert body["candles"][0]["t_ms"] == int(
+        datetime.datetime(2024, 1, 2, 9, 0, tzinfo=datetime.timezone(datetime.timedelta(hours=9))).timestamp() * 1000
+    )
+    assert fake.calls == []
 
 
 # ----- /api/live/past-investor-net -----

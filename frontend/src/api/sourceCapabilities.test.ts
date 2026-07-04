@@ -14,6 +14,7 @@ describe('sourceCapabilities', () => {
       hogaplay: expect.objectContaining({ label: 'hogaplay', resolutionLabel: 'tick', cssTokenName: 'hogaplay' }),
       kis_live: expect.objectContaining({ label: 'KIS WS', resolutionLabel: '10s', cssTokenName: 'kis-live' }),
       kis_api: expect.objectContaining({ label: 'KIS API', resolutionLabel: '30s', cssTokenName: 'kis-api' }),
+      screener_daily: expect.objectContaining({ label: '스크리너', resolutionLabel: '1D', cssTokenName: 'screener-daily' }),
     });
   });
 

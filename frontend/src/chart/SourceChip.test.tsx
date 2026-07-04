@@ -21,6 +21,12 @@ describe('SourceChip', () => {
     expect(screen.getByText(/30s/)).toBeInTheDocument();
   });
 
+  it('renders screener_daily variant with 1D suffix', () => {
+    render(<SourceChip source="screener_daily" />);
+    expect(screen.getByText('스크리너')).toBeInTheDocument();
+    expect(screen.getByText(/1D/)).toBeInTheDocument();
+  });
+
   it('renders empty (returns null) when source is undefined', () => {
     const { container } = render(<SourceChip source={undefined} />);
     expect(container.firstChild).toBeNull();
@@ -36,5 +42,8 @@ describe('SourceChip', () => {
     rerender(<SourceChip source="kis_api" />);
     const chip3 = container.firstChild as HTMLElement;
     expect(chip3.style.background).toMatch(/var\(--source-kis-api-bg\)/);
+    rerender(<SourceChip source="screener_daily" />);
+    const chip4 = container.firstChild as HTMLElement;
+    expect(chip4.style.background).toMatch(/var\(--source-screener-daily-bg\)/);
   });
 });
