@@ -10,12 +10,13 @@ const entries: WatchlistEntry[] = [
   { code: '051910', name: 'LG화학', registered_at_kst_date: '20260101', last_success_date: null, folder_id: 'f_0000000a', order: 3 },
 ];
 
-function quotes(items: Array<Pick<LiveQuote, 'code' | 'change_pct'>>): Map<string, LiveQuote> {
+function quotes(items: Array<Pick<LiveQuote, 'code' | 'change_pct' | 'stale'>>): Map<string, LiveQuote> {
   return new Map(items.map((x) => [x.code, {
     code: x.code,
     price: 1000,
     change_pct: x.change_pct,
     change_won: null,
+    stale: x.stale,
   }]));
 }
 
@@ -50,5 +51,16 @@ describe('sortEntriesByChangePct', () => {
     ]);
     expect(sortEntriesByChangePct(entries, makeChangePctOf(tied), 'change_pct_desc').map((e) => e.code))
       .toEqual(['005930', '000660', '035420', '051910']);
+  });
+
+  it('treats stale change_pct values as missing for ranking', () => {
+    const mixed = quotes([
+      { code: '005930', change_pct: 9.9, stale: true },
+      { code: '000660', change_pct: -0.8 },
+      { code: '035420', change_pct: 3.4 },
+      { code: '051910', change_pct: null },
+    ]);
+    expect(sortEntriesByChangePct(entries, makeChangePctOf(mixed), 'change_pct_desc').map((e) => e.code))
+      .toEqual(['035420', '000660', '005930', '051910']);
   });
 });

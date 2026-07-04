@@ -49,6 +49,27 @@ describe('useScreenerRowsLive', () => {
     });
   });
 
+  it('stale live quotes do not overwrite EOD display fields or sort inputs', () => {
+    vi.spyOn(liveQuotes, 'useQuoteByCode').mockReturnValue(new Map([
+      ['005930', {
+        code: '005930',
+        price: 72000,
+        change_pct: 9.9,
+        change_won: 6300,
+        stale: true,
+        stale_reason: 'kis_rest_bypassed',
+      }],
+    ]));
+    const { result } = renderHook(() => useScreenerRowsLive(ROWS));
+    expect(result.current[0]).toMatchObject({
+      code: '005930',
+      price: 70000,
+      change_pct: 2.1,
+      change_won: null,
+      change_pct_sort: 2.1,
+    });
+  });
+
   it('uses EOD as the sort value only before any live batch is available', () => {
     vi.spyOn(liveQuotes, 'useQuoteByCode').mockReturnValue(new Map());
     const { result } = renderHook(() => useScreenerRowsLive(ROWS));

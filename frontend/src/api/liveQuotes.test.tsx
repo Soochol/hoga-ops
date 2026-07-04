@@ -191,6 +191,53 @@ describe('useLiveQuoteOverlay', () => {
     expect(result.current.quoteByCode.size).toBe(0);
     expect(result.current.phase).toBeUndefined();
   });
+
+  it('does not rehydrate a previous quote as fresh when the backend returns an empty batch', async () => {
+    const spy = vi.spyOn(client, 'apiCall')
+      .mockResolvedValueOnce({
+        phase: 'open',
+        quotes: [{ code: '005930', price: 72400, change_pct: 1.2, change_won: 100 }],
+      })
+      .mockResolvedValueOnce({
+        phase: 'open',
+        quotes: [],
+      });
+    const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+    const wrapper = ({ children }: { children: React.ReactNode }) => (
+      <QueryClientProvider client={qc}>{children}</QueryClientProvider>
+    );
+
+    const { result } = renderHook(() => useLiveQuoteOverlay(['005930']), { wrapper });
+    await waitFor(() => expect(result.current.quoteByCode.get('005930')?.price).toBe(72400));
+
+    await act(async () => {
+      await qc.refetchQueries({ queryKey: liveQuotesQueryKey(['005930']) });
+    });
+
+    expect(spy).toHaveBeenCalledTimes(2);
+    await waitFor(() => expect(result.current.quoteByCode.get('005930')).toBeUndefined());
+  });
+
+  it('preserves backend stale flags when the overlay refreshes a quote', async () => {
+    vi.spyOn(client, 'apiCall').mockResolvedValue({
+      phase: 'open',
+      quotes: [{
+        code: '005930',
+        price: 70000,
+        change_pct: 1.2,
+        change_won: 800,
+        stale: true,
+        stale_reason: 'kis_rest_bypassed',
+      }],
+    });
+
+    const { result } = renderHook(() => useLiveQuoteOverlay(['005930']), { wrapper: wrap() });
+
+    await waitFor(() => expect(result.current.quoteByCode.get('005930')).toMatchObject({
+      stale: true,
+      stale_reason: 'kis_rest_bypassed',
+    }));
+  });
 });
 
 describe('quotesRefetchInterval', () => {

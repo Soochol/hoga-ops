@@ -1,6 +1,6 @@
 import { useMemo } from 'react';
 import type { ScreenerRow } from '../api/screener';
-import { useQuoteByCode } from '../api/liveQuotes';
+import { isStaleLiveQuote, useQuoteByCode } from '../api/liveQuotes';
 import { useLiveVenueStore } from '../state/liveVenue';
 
 /** 스크리너 결과 행에 Live Quote 를 덮은 행. change_won 은 라이브 전용(EOD 없음). */
@@ -21,11 +21,17 @@ export function useScreenerRowsLive(rows: ScreenerRow[]): ScreenerRowLive[] {
   const codes = useMemo(() => rows.map((r) => r.code), [rows]);
   const venue = useLiveVenueStore((s) => s.venue);
   const quoteByCode = useQuoteByCode(codes, venue);
+  const hasFreshLiveBatch = useMemo(
+    () => [...quoteByCode.values()].some((quote) => !isStaleLiveQuote(quote)),
+    [quoteByCode],
+  );
   return useMemo(
     () =>
       rows.map((r) => {
         const q = quoteByCode.get(r.code);
-        const hasLiveBatch = quoteByCode.size > 0;
+        if (isStaleLiveQuote(q)) {
+          return { ...r, change_won: null, change_pct_sort: r.change_pct };
+        }
         // quote 존재 여부로 분기(값의 null 여부가 아니라). 라이브가 도착하면 현재가·
         // 등락률·등락액을 그대로 쓴다 — 장전·파싱실패로 change_pct=null 이면 그 null 을
         // 유지해 '—' 로 표시(관심종목과 동일 기준). quote 미도착 행만 EOD 로 폴백한다.
@@ -35,8 +41,8 @@ export function useScreenerRowsLive(rows: ScreenerRow[]): ScreenerRowLive[] {
         // 초기 정렬을 허용한다.
         return q
           ? { ...r, price: q.price, change_pct: q.change_pct, change_won: q.change_won, change_pct_sort: q.change_pct }
-          : { ...r, change_won: null, change_pct_sort: hasLiveBatch ? null : r.change_pct };
+          : { ...r, change_won: null, change_pct_sort: hasFreshLiveBatch ? null : r.change_pct };
       }),
-    [rows, quoteByCode],
+    [hasFreshLiveBatch, rows, quoteByCode],
   );
 }

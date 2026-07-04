@@ -21,7 +21,7 @@ const HITS: SymbolHit[] = [
 function seedQuote(
   qc: QueryClient,
   code: string,
-  quote: { price: number; change_pct: number | null; change_won: number | null },
+  quote: { price: number; change_pct: number | null; change_won: number | null; stale?: boolean; stale_reason?: string | null },
   venue: 'KRX' | 'NXT' | 'UN' = 'KRX',
 ) {
   qc.setQueryData(liveQuotesQueryKey([code], venue), {
@@ -102,6 +102,19 @@ describe('useDocumentTitle', () => {
     seedQuote(qc, '005930', { price: 70000, change_pct: null, change_won: null });
     renderHook(() => useDocumentTitle('005930'), { wrapper: wrap(qc) });
     expect(document.title).toBe('삼성전자 70,000');
+  });
+
+  it('does not present stale live quote values in the browser title as current truth', () => {
+    const qc = makeQc({ symbols: HITS, status: 'fresh', fetched_at_ms: 1 });
+    seedQuote(qc, '005930', {
+      price: 70000,
+      change_pct: 2.34,
+      change_won: 1600,
+      stale: true,
+      stale_reason: 'kis_rest_bypassed',
+    });
+    renderHook(() => useDocumentTitle('005930'), { wrapper: wrap(qc) });
+    expect(document.title).toBe('삼성전자');
   });
 
   it('falls back to the raw code when Symbol Master has no match', () => {

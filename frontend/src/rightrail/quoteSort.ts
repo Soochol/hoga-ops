@@ -1,4 +1,4 @@
-import type { LiveQuote } from '../api/liveQuotes';
+import { isStaleLiveQuote, type LiveQuote } from '../api/liveQuotes';
 
 export type QuoteSortMode = 'default' | 'change_pct_asc' | 'change_pct_desc';
 export interface QuoteSortableEntry {
@@ -8,7 +8,9 @@ export interface QuoteSortableEntry {
 
 export function makeChangePctOf(quoteByCode: Map<string, LiveQuote>): (code: string) => number | null {
   return (code) => {
-    const pct = quoteByCode.get(code)?.change_pct;
+    const quote = quoteByCode.get(code);
+    if (isStaleLiveQuote(quote)) return null;
+    const pct = quote?.change_pct;
     return typeof pct === 'number' && Number.isFinite(pct) ? pct : null;
   };
 }

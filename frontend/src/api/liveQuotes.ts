@@ -33,6 +33,10 @@ export interface LiveQuotesResponse {
   quotes: LiveQuote[];
 }
 
+export function isStaleLiveQuote(quote: LiveQuote | undefined): boolean {
+  return quote?.stale === true;
+}
+
 /** closed(평일 08:50–16:00 밖·주말)면 600s 하트비트 — `false`로 완전히 끄면
  *  React Query가 재평가할 계기가 없어 다음 개장에 폴링이 재개되지 않는다.
  *  600s는 08:50 후 최대 10분 내 자동 복귀하면서 일일 폴링 ~69% 절감
@@ -114,13 +118,8 @@ export function useLiveQuoteOverlay(codes: string[], venue: LiveVenueOption = 'K
       next.set(quote.code, merged);
       lastGoodByCodeRef.current.set(quote.code, merged);
     }
-    for (const code of codes) {
-      if (next.has(code)) continue;
-      const previous = lastGoodByCodeRef.current.get(code);
-      if (previous != null) next.set(code, previous);
-    }
     return next;
-  }, [codes, q.data]);
+  }, [q.data]);
   return { quoteByCode, phase: q.data?.phase, dataUpdatedAt: q.dataUpdatedAt };
 }
 
