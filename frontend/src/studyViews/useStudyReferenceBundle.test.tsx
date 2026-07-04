@@ -124,7 +124,7 @@ function queryResultFor(options: UseQueryOptions): Partial<UseQueryResult> {
   if (options === rangeSidecarOptions) {
     return { data: null, isLoading: false, error: null };
   }
-  if (Array.isArray(options.queryKey) && options.queryKey[0] === 'range' && options.queryKey[14] === 'full') {
+  if (Array.isArray(options.queryKey) && options.queryKey[0] === 'range' && options.queryKey[14] === 'candles') {
     return {
       data: rangeCandlesFixture.length > 0 ? rangeBundleFixture({
         bucket_ms: 180_000,
@@ -199,13 +199,13 @@ describe('useStudyReferenceBundle', () => {
     expect(useQueryMock).toHaveBeenNthCalledWith(2, rangeHogaOptions);
     expect(useQueryMock).toHaveBeenNthCalledWith(3, rangeSidecarOptions);
     expect(useQueryMock).toHaveBeenNthCalledWith(4, expect.objectContaining({
-      queryKey: ['range', '005930', '20260616', '20260618', 300000, undefined, undefined, false, null, null, undefined, undefined, null, 'kis_api_first', 'full', null],
+      queryKey: ['range', '005930', '20260616', '20260618', 300000, undefined, undefined, false, null, null, undefined, undefined, null, 'kis_api_first', 'candles', null],
     }));
     expect(useQueryMock).toHaveBeenNthCalledWith(5, minuteOptions);
     expect(useQueryMock).toHaveBeenNthCalledWith(6, dailyOptions);
   });
 
-  it('uses range full-mode fallback for minute study when KIS REST bypass is enabled', () => {
+  it('uses lightweight range candle fallback for minute study when KIS REST bypass is enabled', () => {
     kisRestBypassEnabled = true;
     rangeCandlesFixture = [{ ts_ms: 1_781_568_000_000, open: 1, high: 2, low: 1, close: 2, vol_a: 100, vol_b: 0 }];
 
@@ -213,7 +213,7 @@ describe('useStudyReferenceBundle', () => {
 
     expect(result.current.bundle?.candles).toHaveLength(1);
     expect(useQueryMock).toHaveBeenCalledWith(expect.objectContaining({
-      queryKey: ['range', '005930', '20260616', '20260618', 300000, undefined, undefined, false, null, null, undefined, undefined, null, 'kis_api_first', 'full', null],
+      queryKey: ['range', '005930', '20260616', '20260618', 300000, undefined, undefined, false, null, null, undefined, undefined, null, 'kis_api_first', 'candles', null],
     }));
   });
 

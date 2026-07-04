@@ -83,7 +83,7 @@ export function useStudyReferenceBundle(save: StudyViewReference | null) {
       todayKst: null,
       sourcePref,
       options: {
-        mode: 'full',
+        mode: 'candles',
         brokerLateEntriesEnabled: false,
         brokerLateEntryStartHHMM: null,
         volumeDistributionBins: null,
