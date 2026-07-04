@@ -34,6 +34,7 @@ import {
   subtractDaysKst,
   initialHistoricalDaysFor,
   earliestAllowedMinuteDate,
+  stepChunkDays,
 } from './liveDateTime';
 import {
   effectiveSessionBoundsByDate,
@@ -386,12 +387,45 @@ export function useLiveBundle(
     candleFallbackOptions,
     'hogaplay_first',
   );
-
-  const kisCandles = useMemo<Candle[]>(() => {
-    const selectedRangeFallback = mergeCandlesByPriority(
+  const latestFallbackCandles = useMemo(
+    () => mergeCandlesByPriority(
       candleFallback.data?.candles ?? [],
       hogaplayCandleFallback.data?.candles ?? [],
-    );
+    ),
+    [candleFallback.data?.candles, hogaplayCandleFallback.data?.candles],
+  );
+  const previousDiskTo = isMinute ? subtractDaysKst(minutePastFrom, 1) : null;
+  const previousDiskFrom = isMinute
+    ? laterDate(subtractDaysKst(minutePastFrom, stepChunkDays(timeframe)), earliestAllowedMinute)
+    : null;
+  const previousDiskFallbackNeeded = !!(
+    code &&
+    isMinute &&
+    candleFallbackNeeded &&
+    pastCandlesQuery.data != null &&
+    pastCandlesQuery.data.candles.length === 0 &&
+    latestFallbackCandles.length === 0 &&
+    !candleFallback.isLoading &&
+    !hogaplayCandleFallback.isLoading &&
+    previousDiskFrom &&
+    previousDiskTo &&
+    previousDiskFrom <= previousDiskTo
+  );
+  const previousDiskCandleFallback = useRange(
+    previousDiskFallbackNeeded ? code : null,
+    previousDiskFallbackNeeded ? previousDiskFrom : null,
+    previousDiskFallbackNeeded ? previousDiskTo : null,
+    previousDiskFallbackNeeded ? (timeframe as Timeframe) : null,
+    undefined,
+    previousDiskFallbackNeeded ? todayKstYyyymmdd : null,
+    candleFallbackOptions,
+    'hogaplay_first',
+  );
+
+  const kisCandles = useMemo<Candle[]>(() => {
+    const selectedRangeFallback = latestFallbackCandles.length > 0
+      ? latestFallbackCandles
+      : previousDiskCandleFallback.data?.candles ?? [];
     if (isMinute) {
       const raw = pastCandlesQuery.data?.candles ?? [];
       if (raw.length === 0) return selectedRangeFallback;
@@ -446,7 +480,7 @@ export function useLiveBundle(
       apiCandles,
       mergeCandlesByPriority(screenerCandles, fallback),
     );
-  }, [isMinute, timeframe, preferHogaplayCandles, preferScreenerDailyCandles, pastCandlesQuery.data, pastDailyCandlesQuery.data, screenerDailyCandlesQuery.data, candleFallback.data, hogaplayCandleFallback.data]);
+  }, [isMinute, timeframe, preferHogaplayCandles, preferScreenerDailyCandles, latestFallbackCandles, previousDiskCandleFallback.data, pastCandlesQuery.data, pastDailyCandlesQuery.data, screenerDailyCandlesQuery.data]);
   const candleSourceByDate = useMemo(() => {
     const primaryDates = isMinute
       ? new Set((pastCandlesQuery.data?.candles ?? []).map((c) => realMsToYyyymmdd(c.t_ms)))
@@ -474,8 +508,18 @@ export function useLiveBundle(
       sourceByDate.set(date, 'hogaplay');
     }
 
+    for (const date of candleDateSet(previousDiskCandleFallback.data?.candles ?? [])) {
+      if (
+        primaryDates.has(date) ||
+        screenerDates.has(date) ||
+        selectedFallbackDates.has(date) ||
+        sourceByDate.has(date)
+      ) continue;
+      sourceByDate.set(date, 'hogaplay');
+    }
+
     return sourceByDate.size > 0 ? sourceByDate : undefined;
-  }, [isMinute, preferHogaplayCandles, preferScreenerDailyCandles, pastCandlesQuery.data, pastDailyCandlesQuery.data, screenerDailyCandlesQuery.data, candleFallback.data, hogaplayCandleFallback.data]);
+  }, [isMinute, preferHogaplayCandles, preferScreenerDailyCandles, pastCandlesQuery.data, pastDailyCandlesQuery.data, screenerDailyCandlesQuery.data, candleFallback.data, previousDiskCandleFallback.data, hogaplayCandleFallback.data]);
   const volumeDistributionPriceRange = useMemo(
     () =>
       isMinute && volumeDistributionEnabled
@@ -772,10 +816,10 @@ export function useLiveBundle(
     bundle,
     chartBundle,
     hogaBundle,
-    isLoading: live.isLoading || pastHoga.isLoading || pastCandlesQuery.isLoading || pastDailyCandlesQuery.isLoading || screenerDailyCandlesQuery.isLoading || (candleFallbackNeeded && candleFallback.isLoading) || (hogaplayCandleFallbackNeeded && hogaplayCandleFallback.isLoading),
-    error: live.error ?? pastHoga.error ?? pastCandlesQuery.error ?? pastDailyCandlesQuery.error ?? screenerDailyCandlesQuery.error ?? pastSidecars.error ?? candleFallback.error ?? hogaplayCandleFallback.error ?? null,
+    isLoading: live.isLoading || pastHoga.isLoading || pastCandlesQuery.isLoading || pastDailyCandlesQuery.isLoading || screenerDailyCandlesQuery.isLoading || (candleFallbackNeeded && candleFallback.isLoading) || (hogaplayCandleFallbackNeeded && hogaplayCandleFallback.isLoading) || (previousDiskFallbackNeeded && previousDiskCandleFallback.isLoading),
+    error: live.error ?? pastHoga.error ?? pastCandlesQuery.error ?? pastDailyCandlesQuery.error ?? screenerDailyCandlesQuery.error ?? pastSidecars.error ?? candleFallback.error ?? hogaplayCandleFallback.error ?? previousDiskCandleFallback.error ?? null,
     clampEngaged,
-    isPastCandlesLoading: pastCandlesQuery.isLoading || pastDailyCandlesQuery.isLoading || screenerDailyCandlesQuery.isLoading || (candleFallbackNeeded && candleFallback.isLoading) || (hogaplayCandleFallbackNeeded && hogaplayCandleFallback.isLoading) || (enableInvestor && investorQuery.isLoading),
+    isPastCandlesLoading: pastCandlesQuery.isLoading || pastDailyCandlesQuery.isLoading || screenerDailyCandlesQuery.isLoading || (candleFallbackNeeded && candleFallback.isLoading) || (hogaplayCandleFallbackNeeded && hogaplayCandleFallback.isLoading) || (previousDiskFallbackNeeded && previousDiskCandleFallback.isLoading) || (enableInvestor && investorQuery.isLoading),
     isExtending: extending,
     pastDataWarnings,
   };

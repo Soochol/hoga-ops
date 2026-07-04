@@ -744,6 +744,52 @@ describe('useLiveBundle', () => {
     expect(result.current.chartBundle!.segments.at(-1)?.source).toBe('hogaplay');
   });
 
+  it('uses the previous disk candle window when the latest minute window is empty', () => {
+    candlesMock.candles = [];
+    candlesMock.warnings = [{ date: '20260527', reason: 'kis_rest_bypassed', msg: 'cache only' }];
+    const previousDiskBundle = {
+      ...fallbackRangeBundle(68_500),
+      from_date: '20260515',
+      to_date: '20260519',
+      segments: [
+        {
+          date: '20260519',
+          session_open_ms: 1779148800000,
+          session_close_ms: 1779172200000,
+          source: 'hogaplay' as const,
+        },
+      ],
+      candles: [
+        { ts_ms: 1779148800000, open: 68_000, high: 68_700, low: 67_900, close: 68_500, vol_a: 1200, vol_b: 0 },
+      ],
+    };
+    useRangeSpy.mockImplementation((...args: unknown[]) => {
+      const from = args[1];
+      const options = args[6] as { mode?: string } | undefined;
+      if (options?.mode === 'full' && from === '20260515') return rangeResult(previousDiskBundle);
+      if (options?.mode === 'full') return rangeResult({ ...fallbackRangeBundle(), candles: [] });
+      return rangeResult();
+    });
+
+    const { result } = renderHook(
+      () => useLiveBundle('005930', '1m', '20260527', liveFixture),
+      { wrapper: createWrapper({ kis_rest_bypass_enabled: true }) },
+    );
+
+    expect(useRangeSpy).toHaveBeenCalledWith(
+      '005930',
+      '20260515',
+      '20260519',
+      '1m',
+      undefined,
+      '20260527',
+      expect.objectContaining({ mode: 'full', brokerLateEntriesEnabled: false }),
+      'hogaplay_first',
+    );
+    expect(result.current.chartBundle!.candles).toEqual(previousDiskBundle.candles);
+    expect(result.current.chartBundle!.segments).toContainEqual(previousDiskBundle.segments[0]);
+  });
+
   it('candleDataPreference=hogaplay_first uses range candles before KIS warnings', () => {
     useCandleDataPreferenceStore.setState({ candleDataPreference: 'hogaplay_first' });
     useSourcePreferenceStore.setState({ sourcePreference: 'kis_ws_first' });
