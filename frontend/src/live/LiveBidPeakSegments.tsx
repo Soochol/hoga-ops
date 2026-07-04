@@ -111,6 +111,14 @@ function selectedPrice(p: BidPeak, intraMax: boolean): number {
   return intraMax ? p.max_price : p.price;
 }
 
+function peakVisibleAtCutoff(p: BidPeak, cutoff: VisibleTimeCutoff | null | undefined, intraMax: boolean): boolean {
+  if (!cutoff) return true;
+  if (p.date < cutoff.date) return true;
+  if (p.date > cutoff.date) return false;
+  const tMs = intraMax ? p.max_t_ms : p.t_ms;
+  return Number.isFinite(tMs) && tMs <= cutoff.tMs;
+}
+
 function todayDayLow(candles: readonly Candle[], todayKst: string): number | null {
   let low: number | null = null;
   for (const c of candles) {
@@ -166,7 +174,7 @@ export function buildBidPeakOverlaySegments({
 
   const dayLow = todayDayLow(candles, todayKst);
   const todayAllPriceCandidate = todayAllPriceBidPeak
-    && (!visibleTimeCutoff || todayAllPriceBidPeak.t_ms <= visibleTimeCutoff.tMs)
+    && peakVisibleAtCutoff(todayAllPriceBidPeak, visibleTimeCutoff, intraMax)
     ? todayAllPriceBidPeak
     : null;
   const untradedPeaks: BidPeak[] = [];

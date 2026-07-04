@@ -543,6 +543,38 @@ describe('buildAskPeakOverlaySegments', () => {
     expect(out[1]).toMatchObject({ label: '110, 0.1k', color: '#F97316', lineWidth: 1 });
   });
 
+  it('오늘 live all-price는 intraMax cutoff에서 max_t_ms가 cutoff 뒤면 제외한다', () => {
+    const traded: AskPeak = {
+      ...peak({ date: '20260613', price: 100, qty: 50, t_ms: 60000 }),
+      max_price: 100,
+      max_qty: 50,
+      max_t_ms: 60000,
+    };
+    const allPrice: AskPeak = {
+      ...peak({ date: '20260613', price: 110, qty: 80, t_ms: 60000 }),
+      max_price: 115,
+      max_qty: 120,
+      max_t_ms: 180000,
+    };
+
+    const out = buildAskPeakOverlaySegments({
+      dayAskPeaks: [traded],
+      todayAllPriceAskPeak: allPrice,
+      segments: [seg('20260613', 60000, 240000)],
+      candles: [candle(60000), candle(120000), candle(180000)],
+      axis,
+      todayKst: '20260613',
+      baselineStyle: { color: '#1D4ED8', lineWidth: 2 },
+      allPriceStyle: { color: '#F97316', lineWidth: 1 },
+      intraMax: true,
+      showAllPrices: true,
+      visibleTimeCutoff: { date: '20260613', tMs: 120000 },
+    });
+
+    expect(out).toHaveLength(1);
+    expect(out[0]).toMatchObject({ price: 100, color: '#1D4ED8' });
+  });
+
   it('오늘 체결가격 기준 후보는 rank limit만큼 그리고 미체결 후보는 1개만 추가한다', () => {
     const traded = [
       peak({ date: '20260613', price: 100, qty: 100, t_ms: 120000 }),

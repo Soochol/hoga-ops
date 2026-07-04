@@ -65,6 +65,16 @@ describe('rightmostVisibleCandleCutoff', () => {
       tMs: day1Open + 120_000,
     });
   });
+
+  it('returns null when the visible range ends before the first loaded candle', () => {
+    const candles = [candle(day1Open + 60_000), candle(day1Open + 120_000)];
+    const visibleRange: IRange<Time> = {
+      from: (axis.toVirtual(day1Open) / 1000) as Time,
+      to: (axis.toVirtual(day1Open) / 1000) as Time,
+    };
+
+    expect(rightmostVisibleCandleCutoff(candles, visibleRange, axis)).toBeNull();
+  });
 });
 
 describe('applyPeakVisibleTimeCutoff', () => {
@@ -118,6 +128,25 @@ describe('applyPeakVisibleTimeCutoff', () => {
     });
 
     expect(out).toEqual([expect.objectContaining({ price: 99, qty: 90, t_ms: day2Open + 60_000 })]);
+  });
+
+  it('omits bid peaks with explicit empty ranked candidates instead of falling back to full-day fields', () => {
+    const bid: BidPeak = {
+      ...askPeak('20260611'),
+      price: 99,
+      qty: 900,
+      t_ms: day2Open + 180_000,
+      max_price: 99,
+      max_qty: 900,
+      max_t_ms: day2Open + 180_000,
+      traded_peaks: [],
+      traded_max_peaks: [],
+    };
+
+    expect(applyPeakVisibleTimeCutoff([bid], { date: '20260611', tMs: day2Open + 120_000 }, {
+      side: 'bid',
+      intraMax: false,
+    })).toEqual([]);
   });
 
   it('filters bid all-price fields independently of traded candidates', () => {

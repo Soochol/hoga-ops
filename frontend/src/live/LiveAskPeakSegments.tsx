@@ -155,6 +155,14 @@ function selectedQty(p: AskPeak, intraMax: boolean): number {
   return intraMax ? p.max_qty : p.qty;
 }
 
+function peakVisibleAtCutoff(p: AskPeak, cutoff: VisibleTimeCutoff | null | undefined, intraMax: boolean): boolean {
+  if (!cutoff) return true;
+  if (p.date < cutoff.date) return true;
+  if (p.date > cutoff.date) return false;
+  const tMs = intraMax ? p.max_t_ms : p.t_ms;
+  return Number.isFinite(tMs) && tMs <= cutoff.tMs;
+}
+
 function untradedPeakFromFields(p: AskPeak, intraMax: boolean): AskPeak | null {
   const hasCloseTriple = p.untraded_price != null && p.untraded_qty != null && p.untraded_t_ms != null;
   const hasMaxTriple = p.untraded_max_price != null && p.untraded_max_qty != null && p.untraded_max_t_ms != null;
@@ -250,7 +258,7 @@ export function buildAskPeakOverlaySegments({
   if (!showAllPrices) return baseline;
 
   const todayAllPriceCandidate = todayAllPriceAskPeak
-    && (!visibleTimeCutoff || todayAllPriceAskPeak.t_ms <= visibleTimeCutoff.tMs)
+    && peakVisibleAtCutoff(todayAllPriceAskPeak, visibleTimeCutoff, intraMax)
     ? todayAllPriceAskPeak
     : null;
   const untradedPeaks: AskPeak[] = [];

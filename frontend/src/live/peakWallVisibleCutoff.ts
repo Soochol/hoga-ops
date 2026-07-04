@@ -54,7 +54,8 @@ export function rightmostVisibleCandleCutoff(
       hi = mid - 1;
     }
   }
-  const selected = candles[ans >= 0 ? ans : 0];
+  if (ans < 0) return null;
+  const selected = candles[ans];
   if (!selected) return null;
   return { date: realMsToYyyymmdd(selected.ts_ms), tMs: selected.ts_ms };
 }
@@ -76,12 +77,12 @@ function chooseCandidate(
   cutoff: VisibleTimeCutoff,
   intraMax: boolean,
 ): { close: AskPeakCandidate; max: AskPeakCandidate } | null {
-  const closeCandidates = peak.traded_peaks?.length
-    ? peak.traded_peaks
-    : [candidateFromPeak(peak, false)];
-  const maxCandidates = peak.traded_max_peaks?.length
-    ? peak.traded_max_peaks
-    : [maxCandidateFromPeak(peak, true)];
+  const closeCandidates = peak.traded_peaks === undefined
+    ? [candidateFromPeak(peak, false)]
+    : peak.traded_peaks;
+  const maxCandidates = peak.traded_max_peaks === undefined
+    ? [maxCandidateFromPeak(peak, true)]
+    : peak.traded_max_peaks;
   const sourceCandidates = intraMax ? maxCandidates : closeCandidates;
   const selected = sourceCandidates
     .filter((candidate) => candidate.t_ms <= cutoff.tMs)

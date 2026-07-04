@@ -1349,6 +1349,8 @@ export function LiveChartRoot({ code, timeframe, venue = 'KRX', viewIdentity, bu
               segments={cb.segments}
               candles={cb.candles}
               todayKst={todayKst}
+              askVisibleTimeCutoff={askVisibleTimeCutoffForRender}
+              bidVisibleTimeCutoff={bidVisibleTimeCutoffForRender}
             />
           )}
           {showTradeVolumePocOverlay && (
