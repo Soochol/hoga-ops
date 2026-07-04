@@ -11,6 +11,7 @@ import {
 } from './LiveBidPeakSegments';
 import type { AskPeak, BidPeak, RangeSegment, Candle } from '../api/types';
 import type { VirtualAxis } from '../util/virtualAxis';
+import { createVirtualAxis } from '../util/virtualAxis';
 import type { Time } from 'lightweight-charts';
 
 // 항등 축: toVirtual(ms)=ms → time = ms/1000.
@@ -720,6 +721,51 @@ describe('buildAskPeakOverlaySegments', () => {
     expect(out).toHaveLength(2);
     expect(out.map((s) => s.price)).toEqual([100, 110]);
     expect(out[1]).toMatchObject({ color: '#F97316', lineWidth: 1 });
+  });
+
+  it('filters ask baseline and untraded candidates by visible-time cutoff', () => {
+    const day = '20260613';
+    const open = Date.UTC(2026, 5, 13, 0, 0);
+    const peak = {
+      date: day,
+      price: 100,
+      qty: 100,
+      t_ms: open + 60_000,
+      max_price: 100,
+      max_qty: 100,
+      max_t_ms: open + 60_000,
+      traded_peaks: [
+        { price: 100, qty: 100, t_ms: open + 60_000 },
+        { price: 101, qty: 900, t_ms: open + 180_000 },
+      ],
+      traded_max_peaks: [
+        { price: 100, qty: 100, t_ms: open + 60_000 },
+        { price: 101, qty: 900, t_ms: open + 180_000 },
+      ],
+      untraded_price: 102,
+      untraded_qty: 950,
+      untraded_t_ms: open + 180_000,
+      untraded_max_price: null,
+      untraded_max_qty: null,
+      untraded_max_t_ms: null,
+    } as never;
+
+    const segments = buildAskPeakOverlaySegments({
+      dayAskPeaks: [peak],
+      todayAllPriceAskPeak: null,
+      segments: [{ date: day, session_open_ms: open, session_close_ms: open + 3600_000 }],
+      candles: [{ ts_ms: open, open: 1, high: 2, low: 1, close: 2, vol_a: 1, vol_b: 0 }],
+      axis: createVirtualAxis([{ date: day, sessionOpenMs: open, sessionCloseMs: open + 3600_000 }], open),
+      todayKst: day,
+      baselineStyle: { color: '#fff', lineWidth: 1 },
+      allPriceStyle: { color: '#f00', lineWidth: 1 },
+      intraMax: false,
+      showAllPrices: true,
+      visibleTimeCutoff: { date: day, tMs: open + 120_000 },
+    });
+
+    expect(segments).toHaveLength(1);
+    expect(segments[0]).toMatchObject({ price: 100, qty: 100 });
   });
 });
 

@@ -8,6 +8,7 @@ import { useLivePageStore } from '../state/livePage';
 import { useActivePrefs } from '../state/chartPrefs';
 import { formatQtyCompact } from '../util/formatQtyCompact';
 import { realMsToYyyymmdd } from './liveDateTime';
+import { applyPeakVisibleTimeCutoff, type VisibleTimeCutoff } from './peakWallVisibleCutoff';
 import {
   AskPeakSegmentsPrimitive,
   inlinePeakWallSegmentsForDocking,
@@ -99,6 +100,7 @@ type BuildBidPeakOverlaySegmentsArgs = {
   allPriceStyle: BidPeakLineStyle;
   intraMax: boolean;
   showAllPrices: boolean;
+  visibleTimeCutoff?: VisibleTimeCutoff | null;
 };
 
 function selectedQty(p: BidPeak, intraMax: boolean): number {
@@ -144,9 +146,14 @@ export function buildBidPeakOverlaySegments({
   allPriceStyle,
   intraMax,
   showAllPrices,
+  visibleTimeCutoff,
 }: BuildBidPeakOverlaySegmentsArgs): AskPeakSegment[] {
+  const cutoffPeaks = applyPeakVisibleTimeCutoff(dayBidPeaks, visibleTimeCutoff ?? null, {
+    side: 'bid',
+    intraMax,
+  });
   const baseline = buildBidPeakSegments(
-    dayBidPeaks,
+    cutoffPeaks,
     segments,
     candles,
     axis,
@@ -158,10 +165,14 @@ export function buildBidPeakOverlaySegments({
   if (!showAllPrices) return baseline;
 
   const dayLow = todayDayLow(candles, todayKst);
+  const todayAllPriceCandidate = todayAllPriceBidPeak
+    && (!visibleTimeCutoff || todayAllPriceBidPeak.t_ms <= visibleTimeCutoff.tMs)
+    ? todayAllPriceBidPeak
+    : null;
   const untradedPeaks: BidPeak[] = [];
-  for (const p of dayBidPeaks) {
-    const untradedPeak = p.date === todayKst && todayAllPriceBidPeak?.date === todayKst
-      ? todayAllPriceBidPeak
+  for (const p of cutoffPeaks) {
+    const untradedPeak = p.date === todayKst && todayAllPriceCandidate?.date === todayKst
+      ? todayAllPriceCandidate
       : untradedPeakFromFields(p, intraMax);
     if (!untradedPeak) continue;
     if (p.date === todayKst && (dayLow === null || selectedPrice(untradedPeak, intraMax) >= dayLow)) continue;

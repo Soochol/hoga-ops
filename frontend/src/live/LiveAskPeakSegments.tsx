@@ -7,6 +7,7 @@ import type { VirtualAxis } from '../util/virtualAxis';
 import { useLivePageStore } from '../state/livePage';
 import { useActivePrefs } from '../state/chartPrefs';
 import { formatQtyCompact } from '../util/formatQtyCompact';
+import { applyPeakVisibleTimeCutoff, type VisibleTimeCutoff } from './peakWallVisibleCutoff';
 import {
   AskPeakSegmentsPrimitive,
   inlinePeakWallSegmentsForDocking,
@@ -147,6 +148,7 @@ type BuildAskPeakOverlaySegmentsArgs = {
   intraMax: boolean;
   showAllPrices: boolean;
   allPriceRankLimit?: 1 | 2 | 3;
+  visibleTimeCutoff?: VisibleTimeCutoff | null;
 };
 
 function selectedQty(p: AskPeak, intraMax: boolean): number {
@@ -228,8 +230,13 @@ export function buildAskPeakOverlaySegments({
   intraMax,
   showAllPrices,
   allPriceRankLimit = 1,
+  visibleTimeCutoff,
 }: BuildAskPeakOverlaySegmentsArgs): AskPeakSegment[] {
-  const baselinePeaks = expandBaselinePeaks(dayAskPeaks, allPriceRankLimit, intraMax);
+  const cutoffPeaks = applyPeakVisibleTimeCutoff(dayAskPeaks, visibleTimeCutoff ?? null, {
+    side: 'ask',
+    intraMax,
+  });
+  const baselinePeaks = expandBaselinePeaks(cutoffPeaks, allPriceRankLimit, intraMax);
   const baseline = buildAskPeakSegments(
     baselinePeaks,
     segments,
@@ -242,12 +249,16 @@ export function buildAskPeakOverlaySegments({
   );
   if (!showAllPrices) return baseline;
 
+  const todayAllPriceCandidate = todayAllPriceAskPeak
+    && (!visibleTimeCutoff || todayAllPriceAskPeak.t_ms <= visibleTimeCutoff.tMs)
+    ? todayAllPriceAskPeak
+    : null;
   const untradedPeaks: AskPeak[] = [];
   const addedUntradedDates = new Set<string>();
   for (const p of baselinePeaks) {
     if (addedUntradedDates.has(p.date)) continue;
-    const candidates = p.date === todayKst && todayAllPriceAskPeak?.date === todayKst
-      ? [todayAllPriceAskPeak]
+    const candidates = p.date === todayKst && todayAllPriceCandidate?.date === todayKst
+      ? [todayAllPriceCandidate]
       : [untradedPeakFromFields(p, intraMax)];
     const seenPrices = new Set([intraMax ? p.max_price : p.price]);
     for (const untradedPeak of candidates) {
