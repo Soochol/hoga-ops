@@ -41,3 +41,13 @@ Verification:
   - `107 passed in 3.51s`
 - `uv run --extra dev pytest tests/unit/live/test_past_candles_cache.py tests/unit/live/test_api.py -q`
   - `120 passed in 3.20s`
+
+Review finding follow-up:
+- Fixed `tests/unit/live/test_api_kis_rest_bypass_candles.py` to match the memory-only cache seam:
+  - `test_past_candles_bypass_uses_cached_krx_fallback_for_non_krx_request` now creates a seeded `PastCandlesCache` instance and monkeypatches `live_api.PastCandlesCache` before `_bypass_app()`, so the router uses the same cache instance.
+
+Verification:
+- `uv run --extra dev pytest tests/unit/live/test_api_kis_rest_bypass_candles.py -q`
+  - `6 passed in 0.22s`
+- `uv run --extra dev pytest tests/unit/live/test_past_candles_cache.py tests/unit/live/test_api.py tests/unit/live/test_api_kis_rest_bypass_candles.py -q`
+  - `126 passed in 3.22s`
