@@ -106,6 +106,8 @@ describe('useDayBidPeaks', () => {
       traded_peaks: [
         { price: 23900, qty: 9000, t_ms: atKst(9, 10) },
         { price: 23800, qty: 20000, t_ms: atKst(10, 0) },
+        { price: 23700, qty: 8000, t_ms: atKst(9, 20) },
+        { price: 23600, qty: 7000, t_ms: atKst(9, 30) },
       ],
     });
 
@@ -123,6 +125,8 @@ describe('useDayBidPeaks', () => {
       traded_peaks: [
         { price: 23800, qty: 20000, t_ms: atKst(10, 0) },
         { price: 23900, qty: 9000, t_ms: atKst(9, 10) },
+        { price: 23700, qty: 8000, t_ms: atKst(9, 20) },
+        { price: 23600, qty: 7000, t_ms: atKst(9, 30) },
       ],
     });
   });
@@ -293,6 +297,8 @@ describe('useTodayAllPriceBidPeak', () => {
       all_peaks: [
         { price: 23900, qty: 9000, t_ms: atKst(9, 10) },
         { price: 23800, qty: 20000, t_ms: atKst(10, 0) },
+        { price: 23700, qty: 8000, t_ms: atKst(9, 20) },
+        { price: 23600, qty: 7000, t_ms: atKst(9, 30) },
       ],
     });
 
@@ -309,6 +315,8 @@ describe('useTodayAllPriceBidPeak', () => {
       all_peaks: [
         { price: 23800, qty: 20000, t_ms: atKst(10, 0) },
         { price: 23900, qty: 9000, t_ms: atKst(9, 10) },
+        { price: 23700, qty: 8000, t_ms: atKst(9, 20) },
+        { price: 23600, qty: 7000, t_ms: atKst(9, 30) },
       ],
     });
   });

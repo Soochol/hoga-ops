@@ -153,11 +153,12 @@ function untradedPeakFromAllCandidates(
   candles: readonly Candle[],
   cutoff: VisibleTimeCutoff | null,
   intraMax: boolean,
+  candidateSource: BidPeak = p,
 ): BidPeak | null {
   if (!cutoff || p.date !== cutoff.date) return null;
   const dayLow = dayLowThroughCutoff(candles, p.date, cutoff);
   if (dayLow === null) return null;
-  const candidates = intraMax ? p.all_max_peaks : p.all_peaks;
+  const candidates = intraMax ? candidateSource.all_max_peaks : candidateSource.all_peaks;
   const selected = candidates
     ?.filter((candidate) => candidate.t_ms <= cutoff.tMs && candidate.price < dayLow)
     .sort((a, b) => b.qty - a.qty || a.t_ms - b.t_ms || a.price - b.price)[0];
@@ -209,9 +210,18 @@ export function buildBidPeakOverlaySegments({
     : null;
   const untradedPeaks: BidPeak[] = [];
   for (const p of cutoffPeaks) {
-    const cutoffUntradedPeak = untradedPeakFromAllCandidates(p, candles, visibleTimeCutoff ?? null, intraMax);
+    const todayAllPriceSource = p.date === todayKst && todayAllPriceBidPeak?.date === todayKst
+      ? todayAllPriceBidPeak
+      : p;
+    const cutoffUntradedPeak = untradedPeakFromAllCandidates(
+      p,
+      candles,
+      visibleTimeCutoff ?? null,
+      intraMax,
+      todayAllPriceSource,
+    );
     const hasCutoffAllCandidates = visibleTimeCutoff?.date === p.date
-      && (intraMax ? p.all_max_peaks !== undefined : p.all_peaks !== undefined);
+      && (intraMax ? todayAllPriceSource.all_max_peaks !== undefined : todayAllPriceSource.all_peaks !== undefined);
     let untradedPeak: BidPeak | null;
     if (cutoffUntradedPeak) {
       untradedPeak = cutoffUntradedPeak;

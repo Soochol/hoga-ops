@@ -414,6 +414,8 @@ describe('useDayAskPeaks', () => {
       all_peaks: [
         { price: 26000, qty: 12000, t_ms: atKst(9, 11) },
         { price: 27000, qty: 20000, t_ms: atKst(10, 0) },
+        { price: 26500, qty: 8000, t_ms: atKst(9, 20) },
+        { price: 26600, qty: 7000, t_ms: atKst(9, 30) },
       ],
     });
     const { result } = renderHook(
@@ -425,6 +427,8 @@ describe('useDayAskPeaks', () => {
       all_peaks: [
         { price: 27000, qty: 20000, t_ms: atKst(10, 0) },
         { price: 26000, qty: 12000, t_ms: atKst(9, 11) },
+        { price: 26500, qty: 8000, t_ms: atKst(9, 20) },
+        { price: 26600, qty: 7000, t_ms: atKst(9, 30) },
       ],
     });
   });

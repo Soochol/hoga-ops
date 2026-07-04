@@ -978,8 +978,8 @@ def test_query_day_ask_peak_dual_splits_traded_and_all_price_peaks(tmp_path) -> 
     assert (peak.untraded_max_price, peak.untraded_max_qty, peak.untraded_max_intra_ms) == (26000, 9000, 32460000)
 
 
-def test_query_day_ask_peak_dual_returns_top_three_traded_price_peaks(tmp_path) -> None:
-    """과거일 체결가격 기준 후보도 가격별 best를 수량순 3등까지 반환한다."""
+def test_query_day_ask_peak_dual_returns_all_traded_price_candidates(tmp_path) -> None:
+    """과거일 체결가격 기준 후보는 cutoff 재계산용으로 3등 밖 후보도 보존한다."""
     obs = [
         _ob_ap(
             90100000,
@@ -1016,16 +1016,18 @@ def test_query_day_ask_peak_dual_returns_top_three_traded_price_peaks(tmp_path) 
         AskPeakCandidateRow(price=26000, qty=9000, intra_ms=32460000),
         AskPeakCandidateRow(price=27000, qty=7100, intra_ms=32520000),
         AskPeakCandidateRow(price=28000, qty=6000, intra_ms=32460000),
+        AskPeakCandidateRow(price=25000, qty=3000, intra_ms=32520000),
     )
     assert peak.traded_max_peaks == (
         AskPeakCandidateRow(price=26000, qty=9000, intra_ms=32460000),
         AskPeakCandidateRow(price=27000, qty=7100, intra_ms=32520000),
         AskPeakCandidateRow(price=28000, qty=6000, intra_ms=32460000),
+        AskPeakCandidateRow(price=25000, qty=3000, intra_ms=32520000),
     )
 
 
-def test_query_day_ask_bid_peak_dual_returns_top_three_bid_traded_price_peaks(tmp_path) -> None:
-    """과거일 매수 최대벽도 가격별 best를 수량순 3등까지 반환한다."""
+def test_query_day_ask_bid_peak_dual_returns_all_bid_traded_price_candidates(tmp_path) -> None:
+    """과거일 매수 최대벽 후보도 cutoff 재계산용으로 3등 밖 후보를 보존한다."""
     obs = [
         _ob_bp(
             90100000,
@@ -1062,11 +1064,13 @@ def test_query_day_ask_bid_peak_dual_returns_top_three_bid_traded_price_peaks(tm
         AskPeakCandidateRow(price=24900, qty=9000, intra_ms=32460000),
         AskPeakCandidateRow(price=24800, qty=7100, intra_ms=32520000),
         AskPeakCandidateRow(price=24700, qty=6000, intra_ms=32460000),
+        AskPeakCandidateRow(price=25000, qty=3000, intra_ms=32520000),
     )
     assert bid.traded_max_peaks == (
         AskPeakCandidateRow(price=24900, qty=9000, intra_ms=32460000),
         AskPeakCandidateRow(price=24800, qty=7100, intra_ms=32520000),
         AskPeakCandidateRow(price=24700, qty=6000, intra_ms=32460000),
+        AskPeakCandidateRow(price=25000, qty=3000, intra_ms=32520000),
     )
 
 

@@ -1794,7 +1794,7 @@ def test_build_ask_peak_slice_wires_all_price_peak(tmp_path) -> None:
 
 
 def test_build_ask_peak_slice_wires_traded_peak_candidates(tmp_path) -> None:
-    """과거 AskPeak은 날짜별 체결가격 기준 후보를 3등까지 싣는다."""
+    """과거 AskPeak은 cutoff 재계산용 체결가격 기준 후보를 3등 밖까지 싣는다."""
     from unittest.mock import MagicMock
     from hoga.api.bundle import build_ask_peak_slice
     from hoga.tables.snapshots import Orderbook, write_parquet as snapshots_write_parquet
@@ -1846,6 +1846,7 @@ def test_build_ask_peak_slice_wires_traded_peak_candidates(tmp_path) -> None:
         {"price": 26000, "qty": 9000, "t_ms": 1781049660000},
         {"price": 27000, "qty": 7100, "t_ms": 1781049720000},
         {"price": 28000, "qty": 6000, "t_ms": 1781049660000},
+        {"price": 25000, "qty": 3000, "t_ms": 1781049720000},
     ]
 
 
@@ -1947,11 +1948,13 @@ def test_build_bid_peak_slice_wires_ranked_candidates(tmp_path) -> None:
         {"price": 69900, "qty": 9000, "t_ms": 1781049660000},
         {"price": 69800, "qty": 7100, "t_ms": 1781049720000},
         {"price": 69700, "qty": 6000, "t_ms": 1781049660000},
+        {"price": 70000, "qty": 3000, "t_ms": 1781049720000},
     ]
     assert [c.model_dump() for c in p.traded_max_peaks] == [
         {"price": 69900, "qty": 9000, "t_ms": 1781049660000},
         {"price": 69800, "qty": 7100, "t_ms": 1781049720000},
         {"price": 69700, "qty": 6000, "t_ms": 1781049660000},
+        {"price": 70000, "qty": 3000, "t_ms": 1781049720000},
     ]
 
 

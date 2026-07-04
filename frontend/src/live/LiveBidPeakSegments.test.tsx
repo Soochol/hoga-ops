@@ -160,6 +160,57 @@ describe('buildBidPeakOverlaySegments', () => {
     expect(segments[1]).toMatchObject({ price: 99, qty: 1_000, color: '#f00' });
   });
 
+  it('renders earlier today all-price bid candidates when the scalar winner is after cutoff', () => {
+    const day = '20260613';
+    const open = Date.UTC(2026, 5, 13, 0, 0);
+    const baseline = {
+      date: day,
+      price: 100,
+      qty: 90,
+      t_ms: open + 60_000,
+      max_price: 100,
+      max_qty: 90,
+      max_t_ms: open + 60_000,
+    };
+    const allPrice = {
+      ...baseline,
+      price: 97,
+      qty: 2_000,
+      t_ms: open + 180_000,
+      max_price: 97,
+      max_qty: 2_000,
+      max_t_ms: open + 180_000,
+      all_peaks: [
+        { price: 99, qty: 1_000, t_ms: open + 60_000 },
+        { price: 97, qty: 2_000, t_ms: open + 180_000 },
+      ],
+      all_max_peaks: [
+        { price: 99, qty: 1_000, t_ms: open + 60_000 },
+        { price: 97, qty: 2_000, t_ms: open + 180_000 },
+      ],
+    };
+
+    const segments = buildBidPeakOverlaySegments({
+      dayBidPeaks: [baseline],
+      todayAllPriceBidPeak: allPrice,
+      segments: [{ date: day, session_open_ms: open, session_close_ms: open + 3600_000 }],
+      candles: [
+        { ts_ms: open + 60_000, open: 101, high: 101, low: 100, close: 100, vol_a: 1, vol_b: 0 },
+        { ts_ms: open + 180_000, open: 98, high: 99, low: 98, close: 98, vol_a: 1, vol_b: 0 },
+      ],
+      axis: createVirtualAxis([{ date: day, sessionOpenMs: open, sessionCloseMs: open + 3600_000 }], open),
+      todayKst: day,
+      baselineStyle: { color: '#fff', lineWidth: 1 },
+      allPriceStyle: { color: '#f00', lineWidth: 1 },
+      intraMax: false,
+      showAllPrices: true,
+      visibleTimeCutoff: { date: day, tMs: open + 120_000 },
+    });
+
+    expect(segments).toHaveLength(2);
+    expect(segments[1]).toMatchObject({ price: 99, qty: 1_000, color: '#f00' });
+  });
+
   it('reconstructs historical bid all-price lines using low-through-cutoff instead of full-day low', () => {
     const day = '20260613';
     const open = Date.UTC(2026, 5, 13, 0, 0);

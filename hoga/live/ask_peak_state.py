@@ -66,8 +66,8 @@ class TodayAskPeakState:
 
         traded = self.traded_peak
         all_peak = self.all_peak
-        all_peaks = _top_peaks(self.observed_price_peaks.values())
-        traded_peaks = _top_peaks(
+        all_peaks = _ranked_peaks(self.observed_price_peaks.values())
+        traded_peaks = _ranked_peaks(
             p for price, p in self.observed_price_peaks.items()
             if price in self.traded_prices
         )
@@ -144,8 +144,8 @@ class TodayBidPeakState:
 
         traded = self.traded_peak
         all_peak = self.all_peak
-        all_peaks = _top_peaks(self.observed_price_peaks.values())
-        traded_peaks = _top_peaks(
+        all_peaks = _ranked_peaks(self.observed_price_peaks.values())
+        traded_peaks = _ranked_peaks(
             p for price, p in self.observed_price_peaks.items()
             if price in self.traded_prices
         )
@@ -175,11 +175,11 @@ def _larger_peak(current: Peak | None, *, price: int, qty: int, t_ms: int) -> Pe
     return current
 
 
-def _top_peaks(peaks: Iterable[Peak]) -> list[Peak]:
+def _ranked_peaks(peaks: Iterable[Peak]) -> list[Peak]:
     return sorted(
         peaks,
         key=lambda p: (-p.qty, p.t_ms, p.price),
-    )[:3]
+    )
 
 
 def _positive_int(value: object) -> int | None:

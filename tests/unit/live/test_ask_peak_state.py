@@ -174,7 +174,7 @@ def test_today_bid_peak_tracks_traded_and_all_bid_peaks():
     }
 
 
-def test_snapshot_returns_top_three_all_price_peaks_by_qty():
+def test_snapshot_returns_all_price_peaks_by_qty_without_truncating():
     state = TodayAskPeakState()
 
     state.ingest_orderbook(
@@ -201,6 +201,8 @@ def test_snapshot_returns_top_three_all_price_peaks_by_qty():
         {"price": 10_000, "qty": 950, "t_ms": 2_000},
         {"price": 10_050, "qty": 900, "t_ms": 1_000},
         {"price": 10_150, "qty": 800, "t_ms": 2_000},
+        {"price": 10_100, "qty": 700, "t_ms": 1_000},
+        {"price": 10_200, "qty": 600, "t_ms": 2_000},
     ]
 
 

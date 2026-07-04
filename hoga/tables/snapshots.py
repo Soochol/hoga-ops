@@ -1005,7 +1005,7 @@ def query_day_ask_peak_dual(
             [str(path), str(trades_path), str(trades_path)],
         ).fetchone()
 
-    def pick_many(src: str, *, mode: str, limit: int | None = 3) -> tuple[AskPeakCandidateRow, ...]:
+    def pick_many(src: str, *, mode: str, limit: int | None = None) -> tuple[AskPeakCandidateRow, ...]:
         limit_sql = "" if limit is None else f" LIMIT {int(limit)}"
         rows = con.execute(
             f"""
@@ -1196,7 +1196,7 @@ def query_day_bid_peak_dual(
             [str(path), str(trades_path), str(trades_path)],
         ).fetchone()
 
-    def pick_many(src: str, *, mode: str, limit: int | None = 3) -> tuple[AskPeakCandidateRow, ...]:
+    def pick_many(src: str, *, mode: str, limit: int | None = None) -> tuple[AskPeakCandidateRow, ...]:
         if mode == "traded":
             filter_sql = "WHERE price IN (SELECT price FROM traded_prices)"
         elif mode == "untraded":
@@ -1362,7 +1362,6 @@ def query_day_ask_bid_peak_dual(
                  ROW_NUMBER() OVER (ORDER BY qty DESC, intra_ms ASC) AS ord
           FROM ask_traded_peak_candidates
           WHERE price_rn = 1
-          QUALIFY ord <= 3
         ),
         ask_traded_max_candidates AS (
           SELECT price, qty, intra_ms,
@@ -1378,7 +1377,6 @@ def query_day_ask_bid_peak_dual(
                  ROW_NUMBER() OVER (ORDER BY qty DESC, intra_ms ASC) AS ord
           FROM ask_traded_max_candidates
           WHERE price_rn = 1
-          QUALIFY ord <= 3
         ),
         ask_all_peak_candidates AS (
           SELECT price, qty, intra_ms,
@@ -1442,7 +1440,6 @@ def query_day_ask_bid_peak_dual(
                  ROW_NUMBER() OVER (ORDER BY qty DESC, intra_ms ASC) AS ord
           FROM bid_traded_peak_candidates
           WHERE price_rn = 1
-          QUALIFY ord <= 3
         ),
         bid_traded_max_candidates AS (
           SELECT price, qty, intra_ms,
@@ -1458,7 +1455,6 @@ def query_day_ask_bid_peak_dual(
                  ROW_NUMBER() OVER (ORDER BY qty DESC, intra_ms ASC) AS ord
           FROM bid_traded_max_candidates
           WHERE price_rn = 1
-          QUALIFY ord <= 3
         ),
         bid_all_peak_candidates AS (
           SELECT price, qty, intra_ms,

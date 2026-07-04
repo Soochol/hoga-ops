@@ -145,8 +145,7 @@ function topTradedObservedPeaks(
     if (tradedPrices.has(price) || isCandleRangeTraded(price)) put(peak);
   }
   return [...byPrice.values()]
-    .sort((a, b) => b.qty - a.qty || a.t_ms - b.t_ms || a.price - b.price)
-    .slice(0, 3);
+    .sort((a, b) => b.qty - a.qty || a.t_ms - b.t_ms || a.price - b.price);
 }
 
 function topObservedPeaks(seeds: readonly DayPeak[], observed: ObservedPricePeaks): DayPeak[] {
@@ -160,8 +159,7 @@ function topObservedPeaks(seeds: readonly DayPeak[], observed: ObservedPricePeak
   for (const seed of seeds) put(seed);
   for (const peak of observed.values()) put(peak);
   return [...byPrice.values()]
-    .sort((a, b) => b.qty - a.qty || a.t_ms - b.t_ms || a.price - b.price)
-    .slice(0, 3);
+    .sort((a, b) => b.qty - a.qty || a.t_ms - b.t_ms || a.price - b.price);
 }
 
 function eligibleSeed(peak: DayPeak | null, allowPrice: (price: number) => boolean): DayPeak | null {
