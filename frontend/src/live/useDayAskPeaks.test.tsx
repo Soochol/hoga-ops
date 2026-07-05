@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest';
 import { renderHook } from '@testing-library/react';
-import { useDayAskPeaks, useTodayAllPriceAskPeak } from './useDayAskPeaks';
+import { deriveDayAskPeaks, useDayAskPeaks, useTodayAllPriceAskPeak } from './useDayAskPeaks';
 import type { AskPeak, Candle } from '../api/types';
 import type { LiveTodayAskPeak } from '../api/liveSeries';
 import type { ObSnapshot, TradeSnapshot } from './bucketHogaSeries';
@@ -318,6 +318,39 @@ describe('useDayAskPeaks', () => {
       qty: 20000,
       t_ms: sameSecond,
     });
+  });
+
+  it('keeps a pre-cutoff ask wall in untraded_peaks when the touch happens only after the cutoff', () => {
+    const wallT = atKst(9, 10);
+    const cutoff = { date: '20260613', tMs: Date.UTC(2026, 5, 13, 0, 10, 59, 999) };
+    const peaks = deriveDayAskPeaks(
+      [
+        deep(atKst(9, 9), 1000, 25900),
+        deep(wallT, 1200, 26000),
+      ],
+      [
+        trade(atKst(9, 9, ), [{ t_ms: atKst(9, 9), side: 1, price: 25900, qty: 10 }]),
+        trade(atKst(9, 12), [{ t_ms: atKst(9, 12), side: 1, price: 26000, qty: 10 }]),
+      ],
+      [],
+      '20260613',
+      '005930',
+      null,
+      [],
+      cutoff,
+    );
+
+    expect(byDate(peaks)['20260613']).toMatchObject({
+      price: 25900,
+      qty: 1000,
+      t_ms: atKst(9, 9),
+      untraded_price: 26000,
+      untraded_qty: 1200,
+      untraded_t_ms: wallT,
+    });
+    expect(byDate(peaks)['20260613'].untraded_peaks).toEqual(
+      expect.arrayContaining([{ price: 26000, qty: 1200, t_ms: wallT }]),
+    );
   });
 
   it('omits today traded baseline when no traded peak exists even though all-price REST data exists', () => {

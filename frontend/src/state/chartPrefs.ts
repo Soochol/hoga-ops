@@ -122,7 +122,7 @@ export const CHART_TOGGLES = [
   {
     key: 'askPeakShowAllPrices',
     label: '미체결 최대 매도벽 표시',
-    description: '미체결된 벽 수량이 체결된 벽 수량보다 클 때만 두 라인을 함께 표시합니다.',
+    description: '체결된 벽과 미체결된 벽을 각각 표시합니다.',
     default: true,
     category: 'indicator-modal',
   },
@@ -151,7 +151,7 @@ export const CHART_TOGGLES = [
   {
     key: 'bidPeakShowAllPrices',
     label: '미체결 최대 매수벽 표시',
-    description: '미체결된 벽 수량이 체결된 벽 수량보다 클 때만 두 라인을 함께 표시합니다.',
+    description: '체결된 벽과 미체결된 벽을 각각 표시합니다.',
     default: true,
     category: 'indicator-modal',
   },

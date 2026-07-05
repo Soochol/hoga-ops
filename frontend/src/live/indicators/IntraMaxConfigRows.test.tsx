@@ -51,10 +51,10 @@ describe('호가 Config Intra-Bar Max 토글 행', () => {
 
   it('AskPeakConfig에 세 매도 최대벽 스타일 컨트롤', () => {
     render(<AskPeakConfig />);
-    expect(screen.getByText('체결가격 기준 최대벽')).toBeTruthy();
-    expect(screen.getByRole('button', { name: '체결가격 기준 최대벽 스타일 선택' })).toBeTruthy();
-    expect(screen.getByText('미체결 포함 최대벽')).toBeTruthy();
-    expect(screen.getByRole('button', { name: '미체결 포함 최대벽 스타일 선택' })).toBeTruthy();
+    expect(screen.getByText('체결된 벽')).toBeTruthy();
+    expect(screen.getByRole('button', { name: '체결된 벽 스타일 선택' })).toBeTruthy();
+    expect(screen.getByText('미체결된 벽')).toBeTruthy();
+    expect(screen.getByRole('button', { name: '미체결된 벽 스타일 선택' })).toBeTruthy();
     expect(screen.getByText('보이는 영역 최대벽')).toBeTruthy();
     expect(screen.getByRole('button', { name: '보이는 영역 최대벽 스타일 선택' })).toBeTruthy();
   });

@@ -1,4 +1,4 @@
-from hoga.live.ask_peak_state import TodayAskPeakState, TodayBidPeakState
+from hoga.live.ask_peak_state import Peak, TodayAskPeakState, TodayBidPeakState
 
 
 def test_trade_tick_adds_price_only_for_continuous_sides():
@@ -183,6 +183,56 @@ def test_bid_same_t_ms_trade_without_seq_touches_wall():
         t_ms=1_000,
         bids=[{"price": 70_000, "qty": 5_000}],
     )
+
+    assert state.snapshot() == {
+        "coverage": "partial",
+        "traded_prices": [70_000],
+        "traded_price": 70_000,
+        "traded_qty": 5_000,
+        "traded_t_ms": 1_000,
+        "traded_peaks": [{"price": 70_000, "qty": 5_000, "t_ms": 1_000}],
+        "untraded_price": None,
+        "untraded_qty": None,
+        "untraded_t_ms": None,
+        "untraded_peaks": [],
+        "all_price": 70_000,
+        "all_qty": 5_000,
+        "all_t_ms": 1_000,
+        "all_peaks": [{"price": 70_000, "qty": 5_000, "t_ms": 1_000}],
+    }
+
+
+def test_ask_equal_t_ms_and_seq_touches_wall():
+    state = TodayAskPeakState()
+    state.observed_peak_events[(10_100, 1_000, 7, "ask", "test")] = Peak(
+        price=10_100, qty=500, t_ms=1_000, seq=7
+    )
+    state.ingest_trade(price=10_100, side=1, t_ms=1_000, seq=7)
+
+    assert state.snapshot() == {
+        "coverage": "partial",
+        "traded_prices": [10_100],
+        "traded_price": 10_100,
+        "traded_qty": 500,
+        "traded_t_ms": 1_000,
+        "traded_peaks": [{"price": 10_100, "qty": 500, "t_ms": 1_000}],
+        "untraded_price": None,
+        "untraded_qty": None,
+        "untraded_t_ms": None,
+        "untraded_peaks": [],
+        "all_price": 10_100,
+        "all_qty": 500,
+        "all_t_ms": 1_000,
+        "all_peaks": [{"price": 10_100, "qty": 500, "t_ms": 1_000}],
+    }
+
+
+def test_bid_equal_t_ms_and_seq_touches_wall():
+    state = TodayBidPeakState()
+    state.observed_peak_events[(70_000, 1_000, 7, "bid", "test")] = Peak(
+        price=70_000, qty=5_000, t_ms=1_000, seq=7
+    )
+    state.ingest_trade(price=70_000, side=1, t_ms=1_000, seq=7)
 
     assert state.snapshot() == {
         "coverage": "partial",

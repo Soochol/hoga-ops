@@ -2,6 +2,7 @@ import { useMemo } from 'react';
 import type { AskPeak, AskPeakCandidate, Candle } from '../api/types';
 import type { LiveTodayAskPeak } from '../api/liveSeries';
 import type { ObSnapshot, TradeSnapshot } from './bucketHogaSeries';
+import type { VisibleTimeCutoff } from './peakWallVisibleCutoff';
 import {
   classifyAskWallEvents,
   rankPeakCandidates,
@@ -122,16 +123,47 @@ function mergedAskFamilies(
   ob: ReadonlyArray<ObSnapshot>,
   trade: ReadonlyArray<TradeSnapshot>,
   todayAskPeak: LiveTodayAskPeak | null,
+  visibleTimeCutoff: VisibleTimeCutoff | null = null,
 ): PeakFamilies {
   const backend = backendPeakFamilies(todayAskPeak);
-  const touchTicks = toTouchTicksFromTrades(trade);
+  const filteredOb = visibleTimeCutoff
+    ? ob.filter((snapshot) => snapshot.t_ms <= visibleTimeCutoff.tMs)
+    : ob;
+  const filteredTrade = visibleTimeCutoff
+    ? trade
+      .map((snapshot) => {
+        const trades = snapshot.trades.filter((item) => {
+          const tMs = isFiniteNumber(item.t_ms) ? item.t_ms : snapshot.t_ms;
+          return isFiniteNumber(tMs) && tMs <= visibleTimeCutoff.tMs;
+        });
+        return trades.length > 0 ? { ...snapshot, trades } : null;
+      })
+      .filter((snapshot): snapshot is TradeSnapshot => snapshot !== null)
+    : trade;
+  const filterCandidates = (candidates: readonly AskPeakCandidate[]) =>
+    visibleTimeCutoff
+      ? candidates.filter((candidate) => candidate.t_ms <= visibleTimeCutoff.tMs)
+      : candidates;
+  const touchTicks = toTouchTicksFromTrades(filteredTrade);
   const sourceEvents = uniqueCandidates([
-    ...toWallEventsFromOrderbooks(ob, 'ask'),
-    ...backend.all,
-    ...backend.traded,
-    ...backend.untraded,
+    ...toWallEventsFromOrderbooks(filteredOb, 'ask'),
+    ...filterCandidates(backend.all),
+    ...filterCandidates(backend.traded),
+    ...filterCandidates(backend.untraded),
   ]);
   const classified = classifyAskWallEvents(sourceEvents, touchTicks);
+  if (visibleTimeCutoff) {
+    const traded = rankPeakCandidates(classified.postTouch);
+    const tradedKeys = new Set(traded.map(candidateKey));
+    const untraded = rankUniqueCandidates(
+      classified.postUntouched.filter((candidate) => !tradedKeys.has(candidateKey(candidate))),
+    );
+    return {
+      traded,
+      untraded,
+      all: rankPeakCandidates(classified.all),
+    };
+  }
   const traded = mergeRankedCandidates(classified.postTouch, backend.traded);
   const tradedKeys = new Set(traded.map(candidateKey));
   const untraded = rankUniqueCandidates(
@@ -164,6 +196,26 @@ export function buildTodayAllPriceAskPeak(todayAskPeak: LiveTodayAskPeak | null)
   return attachFamilies(askPeakFromCandidate(date, all), families);
 }
 
+export function deriveDayAskPeaks(
+  ob: ReadonlyArray<ObSnapshot>,
+  trade: ReadonlyArray<TradeSnapshot>,
+  seeds: readonly AskPeak[],
+  todayKst: string,
+  code: string | null,
+  todayAskPeak: LiveTodayAskPeak | null = null,
+  todayCandles: readonly Candle[] = EMPTY_CANDLES,
+  visibleTimeCutoff: VisibleTimeCutoff | null = null,
+): AskPeak[] {
+  void code;
+  void todayCandles;
+  const families = mergedAskFamilies(ob, trade, todayAskPeak, visibleTimeCutoff);
+  const out = seeds.filter((peak) => peak.date !== todayKst);
+  const traded = families.traded[0];
+  if (!traded) return out;
+  out.push(attachFamilies(askPeakFromCandidate(todayKst, traded), families));
+  return out;
+}
+
 export function useDayAskPeaks(
   ob: ReadonlyArray<ObSnapshot>,
   trade: ReadonlyArray<TradeSnapshot>,
@@ -173,20 +225,45 @@ export function useDayAskPeaks(
   todayAskPeak: LiveTodayAskPeak | null = null,
   todayCandles: readonly Candle[] = EMPTY_CANDLES,
 ): AskPeak[] {
-  void code;
-  void todayCandles;
-  const families = useMemo(
-    () => mergedAskFamilies(ob, trade, todayAskPeak),
-    [ob, trade, todayAskPeak],
+  return useMemo(
+    () => deriveDayAskPeaks(ob, trade, seeds, todayKst, code, todayAskPeak, todayCandles),
+    [ob, trade, seeds, todayKst, code, todayAskPeak, todayCandles],
   );
+}
 
-  return useMemo(() => {
-    const out = seeds.filter((peak) => peak.date !== todayKst);
-    const traded = families.traded[0];
-    if (!traded) return out;
-    out.push(attachFamilies(askPeakFromCandidate(todayKst, traded), families));
-    return out;
-  }, [families, seeds, todayKst]);
+export function deriveTodayAllPriceAskPeak(
+  ob: ReadonlyArray<ObSnapshot>,
+  seeds: readonly AskPeak[],
+  todayKst: string,
+  code: string | null,
+  todayAskPeak: LiveTodayAskPeak | null = null,
+  visibleTimeCutoff: VisibleTimeCutoff | null = null,
+): AskPeak | null {
+  void code;
+  const backend = backendPeakFamilies(todayAskPeak);
+  const todaySeed = historicalTodaySeed(seeds, todayKst);
+  const filterCandidates = (candidates: readonly AskPeakCandidate[]) =>
+    visibleTimeCutoff
+      ? candidates.filter((candidate) => candidate.t_ms <= visibleTimeCutoff.tMs)
+      : candidates;
+  const filteredOb = visibleTimeCutoff
+    ? ob.filter((snapshot) => snapshot.t_ms <= visibleTimeCutoff.tMs)
+    : ob;
+  const allCandidates = mergeRankedCandidates(
+    toWallEventsFromOrderbooks(filteredOb, 'ask'),
+    filterCandidates(backend.all),
+    todayAskPeak === null && todaySeed ? [todaySeed] : [],
+  );
+  const all = allCandidates[0];
+  if (!all) return null;
+  return attachFamilies(
+    askPeakFromCandidate(todayKst, all),
+    {
+      traded: [...filterCandidates(backend.traded)],
+      untraded: [...filterCandidates(backend.untraded)],
+      all: allCandidates,
+    },
+  );
 }
 
 export function useTodayAllPriceAskPeak(
@@ -196,28 +273,8 @@ export function useTodayAllPriceAskPeak(
   code: string | null,
   todayAskPeak: LiveTodayAskPeak | null = null,
 ): AskPeak | null {
-  void code;
-  const backend = useMemo(() => backendPeakFamilies(todayAskPeak), [todayAskPeak]);
-  const todaySeed = useMemo(() => historicalTodaySeed(seeds, todayKst), [seeds, todayKst]);
-  const allCandidates = useMemo(
-    () => mergeRankedCandidates(
-      toWallEventsFromOrderbooks(ob, 'ask'),
-      backend.all,
-      todayAskPeak === null && todaySeed ? [todaySeed] : [],
-    ),
-    [ob, backend.all, todayAskPeak, todaySeed],
+  return useMemo(
+    () => deriveTodayAllPriceAskPeak(ob, seeds, todayKst, code, todayAskPeak),
+    [ob, seeds, todayKst, code, todayAskPeak],
   );
-
-  return useMemo(() => {
-    const all = allCandidates[0];
-    if (!all) return null;
-    return attachFamilies(
-      askPeakFromCandidate(todayKst, all),
-      {
-        traded: backend.traded,
-        untraded: backend.untraded,
-        all: allCandidates,
-      },
-    );
-  }, [allCandidates, backend.traded, backend.untraded, todayKst]);
 }

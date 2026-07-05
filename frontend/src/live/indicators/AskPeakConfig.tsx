@@ -31,21 +31,21 @@ export default function AskPeakConfig() {
       </h3>
       <p className="text-fg-dim text-xs mb-3">
         차트에 보이는 거래일마다, 그 날 매도 10호가 중 한 단계에 가장 크게 걸렸던 물량의 가격에 그날 구간만큼
-        수평선을 그립니다. 미체결 포함 최대벽은 체결가격 기준 최대벽보다 물량이 클 때만 함께 표시됩니다.
+        수평선을 그립니다. 체결된 벽과 미체결된 벽을 각각 표시합니다.
         분봉 차트에서만 표시됩니다.
       </p>
       <div className="space-y-2">
         <div className="flex items-center gap-2">
-          <span className="text-sm text-fg">체결가격 기준 최대벽</span>
-          <MAStylePicker color={color} lineWidth={lineWidth} onChange={setStyle} label="체결가격 기준 최대벽" />
+          <span className="text-sm text-fg">체결된 벽</span>
+          <MAStylePicker color={color} lineWidth={lineWidth} onChange={setStyle} label="체결된 벽" />
         </div>
         <div className="flex items-center gap-2">
-          <span className="text-sm text-fg">미체결 포함 최대벽</span>
+          <span className="text-sm text-fg">미체결된 벽</span>
           <MAStylePicker
             color={allPriceColor}
             lineWidth={allPriceLineWidth}
             onChange={setAllPriceStyle}
-            label="미체결 포함 최대벽"
+            label="미체결된 벽"
           />
         </div>
         <div className="flex items-center gap-2">

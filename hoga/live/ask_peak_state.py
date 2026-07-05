@@ -203,7 +203,7 @@ def _event_order_key(t_ms: int, seq: int | None) -> tuple[int, int]:
 def _touch_is_after_wall(touch: TouchTick, peak: Peak) -> bool:
     if touch.seq is None or peak.seq is None:
         return touch.t_ms >= peak.t_ms
-    return _event_order_key(touch.t_ms, touch.seq) > _event_order_key(peak.t_ms, peak.seq)
+    return _event_order_key(touch.t_ms, touch.seq) >= _event_order_key(peak.t_ms, peak.seq)
 
 
 def _seq_sort_key(seq: int | None) -> int:

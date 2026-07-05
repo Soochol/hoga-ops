@@ -133,8 +133,8 @@ describe('IndicatorPanel', () => {
   it('매도 최대벽 선택 시 스타일 pane과 보이는 최신 봉 기준 토글 표시', () => {
     render(<IndicatorPanel onClose={() => {}} />);
     fireEvent.click(screen.getByRole('button', { name: '당일 매도 최대벽' }));
-    expect(screen.getByRole('button', { name: '체결가격 기준 최대벽 스타일 선택' })).toBeTruthy();
-    expect(screen.getByRole('button', { name: '미체결 포함 최대벽 스타일 선택' })).toBeTruthy();
+    expect(screen.getByRole('button', { name: '체결된 벽 스타일 선택' })).toBeTruthy();
+    expect(screen.getByRole('button', { name: '미체결된 벽 스타일 선택' })).toBeTruthy();
     expect(screen.getByRole('button', { name: '보이는 영역 최대벽 스타일 선택' })).toBeTruthy();
     expect(screen.getByTestId('settings-toggle-askPeakVisibleTimeCutoff')).toBeTruthy();
     expect(screen.getByTestId('settings-toggle-askPeakLabelEnabled')).toBeTruthy();
@@ -430,8 +430,8 @@ describe('IndicatorPanel', () => {
   it('매도 최대벽 선택 시 스타일 pane(MAStylePicker) 표시', () => {
     render(<IndicatorPanel onClose={() => {}} />);
     fireEvent.click(screen.getByRole('button', { name: '당일 매도 최대벽' }));
-    expect(screen.getByRole('button', { name: '체결가격 기준 최대벽 스타일 선택' })).toBeTruthy();
-    expect(screen.getByRole('button', { name: '미체결 포함 최대벽 스타일 선택' })).toBeTruthy();
+    expect(screen.getByRole('button', { name: '체결된 벽 스타일 선택' })).toBeTruthy();
+    expect(screen.getByRole('button', { name: '미체결된 벽 스타일 선택' })).toBeTruthy();
     expect(screen.getByRole('button', { name: '보이는 영역 최대벽 스타일 선택' })).toBeTruthy();
   });
 
@@ -446,8 +446,8 @@ describe('IndicatorPanel', () => {
   it('매수 최대벽 선택 시 스타일 pane과 토글 표시', () => {
     render(<IndicatorPanel onClose={() => {}} />);
     fireEvent.click(screen.getByRole('button', { name: '당일 매수 최대벽' }));
-    expect(screen.getByRole('button', { name: '체결가격 기준 최대벽 스타일 선택' })).toBeTruthy();
-    expect(screen.getByRole('button', { name: '미체결 포함 최대벽 스타일 선택' })).toBeTruthy();
+    expect(screen.getByRole('button', { name: '체결된 벽 스타일 선택' })).toBeTruthy();
+    expect(screen.getByRole('button', { name: '미체결된 벽 스타일 선택' })).toBeTruthy();
     expect(screen.getByTestId('settings-toggle-bidPeakIntraMax')).toBeTruthy();
     expect(screen.getByTestId('settings-toggle-bidPeakShowAllPrices')).toBeTruthy();
     expect(screen.getByTestId('settings-toggle-bidPeakLabelEnabled')).toBeTruthy();
