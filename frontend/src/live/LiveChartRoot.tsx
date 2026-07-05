@@ -1479,6 +1479,7 @@ export function LiveChartRoot({
   return (
     <div
       data-testid="live-chart-root"
+      onContextMenu={(event) => event.preventDefault()}
       style={{ position: 'relative', width: '100%', height: '100%' }}
     >
       <div
