@@ -141,13 +141,15 @@ describe('IndicatorPanel', () => {
 
     expect(screen.getByText('체결된 벽 표시 개수')).toBeTruthy();
     expect(screen.getByText('미체결된 벽 표시 개수')).toBeTruthy();
+    expect(screen.getByText('보이는 영역 최대벽 강조 개수')).toBeTruthy();
 
     const groups = screen.getAllByRole('group');
     expect(groups.some((group) => group.getAttribute('aria-label') === '체결된 벽 표시 개수')).toBe(true);
     expect(groups.some((group) => group.getAttribute('aria-label') === '미체결된 벽 표시 개수')).toBe(true);
+    expect(groups.some((group) => group.getAttribute('aria-label') === '보이는 영역 최대벽 강조 개수')).toBe(true);
 
     for (const name of ['1', '2', '3']) {
-      expect(screen.getAllByRole('button', { name }).length).toBeGreaterThanOrEqual(2);
+      expect(screen.getAllByRole('button', { name }).length).toBeGreaterThanOrEqual(3);
     }
   });
 
@@ -263,13 +265,15 @@ describe('IndicatorPanel', () => {
 
     expect(screen.getByText('체결된 벽 표시 개수')).toBeTruthy();
     expect(screen.getByText('미체결된 벽 표시 개수')).toBeTruthy();
+    expect(screen.getByText('보이는 영역 최대벽 강조 개수')).toBeTruthy();
 
     const groups = screen.getAllByRole('group');
     expect(groups.some((group) => group.getAttribute('aria-label') === '체결된 벽 표시 개수')).toBe(true);
     expect(groups.some((group) => group.getAttribute('aria-label') === '미체결된 벽 표시 개수')).toBe(true);
+    expect(groups.some((group) => group.getAttribute('aria-label') === '보이는 영역 최대벽 강조 개수')).toBe(true);
 
     for (const name of ['1', '2', '3']) {
-      expect(screen.getAllByRole('button', { name }).length).toBeGreaterThanOrEqual(2);
+      expect(screen.getAllByRole('button', { name }).length).toBeGreaterThanOrEqual(3);
     }
   });
 

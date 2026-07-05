@@ -22,6 +22,7 @@ export default function AskPeakConfig() {
   const setVisibleMaxStyle = useLivePageStore((s) => s.setAskPeakVisibleMaxStyle);
   const postTouchRankLimit = useChartPrefsStore((s) => s.askPeakAllPriceRankLimit);
   const untradedRankLimit = useChartPrefsStore((s) => s.askPeakUntradedRankLimit);
+  const visibleMaxRankLimit = useChartPrefsStore((s) => s.askPeakVisibleMaxRankLimit);
   const setNumericPref = useChartPrefsStore((s) => s.setNumericPref);
   return (
     <div>
@@ -95,6 +96,28 @@ export default function AskPeakConfig() {
                 type="button"
                 aria-pressed={selected}
                 onClick={() => setNumericPref('askPeakUntradedRankLimit', option.value)}
+                className={[
+                  'px-3 py-1.5 text-xs border-r border-border last:border-r-0 transition-colors',
+                  selected ? 'bg-accent text-accent-fg' : 'bg-bg-elevated text-fg-dim hover:text-fg',
+                ].join(' ')}
+              >
+                {option.label}
+              </button>
+            );
+          })}
+        </div>
+      </div>
+      <div className="mt-3">
+        <div className="text-sm text-fg mb-2">보이는 영역 최대벽 강조 개수</div>
+        <div className="inline-flex rounded-md border border-border overflow-hidden" role="group" aria-label="보이는 영역 최대벽 강조 개수">
+          {RANK_OPTIONS.map((option) => {
+            const selected = visibleMaxRankLimit === option.value;
+            return (
+              <button
+                key={option.value}
+                type="button"
+                aria-pressed={selected}
+                onClick={() => setNumericPref('askPeakVisibleMaxRankLimit', option.value)}
                 className={[
                   'px-3 py-1.5 text-xs border-r border-border last:border-r-0 transition-colors',
                   selected ? 'bg-accent text-accent-fg' : 'bg-bg-elevated text-fg-dim hover:text-fg',
