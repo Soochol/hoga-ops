@@ -1143,6 +1143,35 @@ describe('useLiveBundle daily/minute branching (ADR-0048)', () => {
     },
   );
 
+  it('D timeframe dedupes primary and screener candles by KST date before projecting onto the calendar axis', () => {
+    useCandleDataPreferenceStore.setState({ candleDataPreference: 'auto' });
+    const dayOpen = 1779840000000;
+    dailyCandlesMock.candles = [
+      { t_ms: dayOpen + 60_000, open: 1, high: 1, low: 1, close: 1, volume: 1 },
+    ];
+    screenerDailyCandlesMock.candles = [
+      { t_ms: dayOpen, open: 70000, high: 70100, low: 69900, close: 70050, volume: 1000 },
+    ];
+
+    const { result } = renderHook(() => useLiveBundle('005930', 'D', '20260527', liveFixture), { wrapper });
+    const chartBundle = result.current.chartBundle!;
+    const axis = createVirtualAxis(
+      chartBundle.segments.map((s) => ({
+        date: s.date,
+        sessionOpenMs: s.session_open_ms,
+        sessionCloseMs: s.session_close_ms,
+      })),
+      chartBundle.segments[0]!.session_open_ms,
+      { mode: 'calendar' },
+    );
+
+    expect(chartBundle.candles).toEqual([
+      { ts_ms: dayOpen, open: 70000, high: 70100, low: 69900, close: 70050, vol_a: 1000, vol_b: 0 },
+    ]);
+    const projected = projectCandle(chartBundle, axis);
+    expect(projected).toHaveLength(1);
+  });
+
   it('D timeframe fallback ignores pre-open hogaplay bars so daily candles render on the calendar axis', () => {
     useSourcePreferenceStore.setState({ sourcePreference: 'hogaplay_first' });
     dailyCandlesMock.candles = [];

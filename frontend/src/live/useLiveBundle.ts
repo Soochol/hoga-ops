@@ -26,7 +26,7 @@ import { buildChartBundle, createIncrementalHogaSeriesBuilder, filterProgramTrad
 import type { LiveDataWarning } from './liveDataWarnings';
 import type { TradeSnapshot } from './bucketHogaSeries';
 import { aggregateCandles, aggregateCalendar } from './aggregateCandles';
-import { mergeCandlesByPriority } from './candleSourceMerge';
+import { mergeCalendarCandlesByPriority, mergeCandlesByPriority } from './candleSourceMerge';
 import {
   regularSessionOpenMs,
   regularSessionCloseMs,
@@ -465,20 +465,23 @@ export function useLiveBundle(
     const bars = raw.length === 0 ? [] : timeframe === 'D' ? raw : aggregateCalendar(raw, timeframe as 'W' | 'M');
     const apiCandles = bars.map(kisBarToCandle);
     if (preferHogaplayCandles) {
-      return mergeCandlesByPriority(
+      return mergeCalendarCandlesByPriority(
         fallback,
-        mergeCandlesByPriority(screenerCandles, apiCandles),
+        mergeCalendarCandlesByPriority(screenerCandles, apiCandles, timeframe as 'D' | 'W' | 'M'),
+        timeframe as 'D' | 'W' | 'M',
       );
     }
     if (preferScreenerDailyCandles) {
-      return mergeCandlesByPriority(
+      return mergeCalendarCandlesByPriority(
         screenerCandles,
-        mergeCandlesByPriority(apiCandles, fallback),
+        mergeCalendarCandlesByPriority(apiCandles, fallback, timeframe as 'D' | 'W' | 'M'),
+        timeframe as 'D' | 'W' | 'M',
       );
     }
-    return mergeCandlesByPriority(
+    return mergeCalendarCandlesByPriority(
       apiCandles,
-      mergeCandlesByPriority(screenerCandles, fallback),
+      mergeCalendarCandlesByPriority(screenerCandles, fallback, timeframe as 'D' | 'W' | 'M'),
+      timeframe as 'D' | 'W' | 'M',
     );
   }, [isMinute, timeframe, preferHogaplayCandles, preferScreenerDailyCandles, latestFallbackCandles, previousDiskCandleFallback.data, pastCandlesQuery.data, pastDailyCandlesQuery.data, screenerDailyCandlesQuery.data]);
   const candleSourceByDate = useMemo(() => {
