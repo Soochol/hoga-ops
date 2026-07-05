@@ -287,6 +287,7 @@ export default function DrawingOverlay({ chart, axis, paneSeries, onChartHoverPa
   };
 
   const onPointerDown = (e: React.PointerEvent<HTMLDivElement>) => {
+    if (e.button !== 0) return;
     TOOLS[activeTool].onPointerDown?.(buildCtx(e));
   };
   const onPointerMove = (e: React.PointerEvent<HTMLDivElement>) => {
@@ -299,6 +300,13 @@ export default function DrawingOverlay({ chart, axis, paneSeries, onChartHoverPa
   };
   const onPointerUp = (e: React.PointerEvent<HTMLDivElement>) => {
     TOOLS[activeTool].onPointerUp?.(buildCtx(e));
+  };
+  const onContextMenu = (e: React.MouseEvent<HTMLDivElement>) => {
+    e.preventDefault();
+    trendlineDraft.current = null;
+    pencilDraft.current = null;
+    dragRef.current = null;
+    useDrawingsStore.getState().setActiveTool('select');
   };
 
   // ── pointer-events gating ──────────────────────────────────────────────
@@ -385,6 +393,7 @@ export default function DrawingOverlay({ chart, axis, paneSeries, onChartHoverPa
       onPointerDown={onPointerDown}
       onPointerMove={onPointerMove}
       onPointerUp={onPointerUp}
+      onContextMenu={onContextMenu}
     >
       <canvas ref={canvasRef} className="absolute inset-0" />
     </div>
