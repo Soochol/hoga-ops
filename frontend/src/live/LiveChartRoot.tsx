@@ -1603,7 +1603,13 @@ export function LiveChartRoot({
           {/* P1: `cb`(캔들 경로 번들)를 memo 신선화 신호로 전달. SSE 호가 틱엔 `cb`
               식별자가 안정(2026-06-09 bundle-split)이라 레전드 재렌더가 차단되고, 캔들
               갱신 때만 새 ref가 돼 latest 값을 신선화한다. ref-during-render 불필요. */}
-          <PaneLegendOverlay chart={chart} timeframe={timeframe} paneSeries={paneSeries} dataEpoch={cb} />
+          <PaneLegendOverlay
+            chart={chart}
+            timeframe={timeframe}
+            paneSeries={paneSeries}
+            paneToggles={activePaneToggles}
+            dataEpoch={cb}
+          />
           <CandleTooltip chart={chart} bundle={cb} quoteBundle={paneRatioBundle} axis={axis} paneSeries={paneSeries} timeframe={timeframe} />
           {/* 고저 극값 라벨 — 보이는 범위의 최고/최저봉에 극값 대비율 라벨. cb(안정)·viewport
               구독이라 SSE 틱엔 미재렌더, 팬/줌·캔들 갱신 시에만 재계산. 토글 self-gate. */}

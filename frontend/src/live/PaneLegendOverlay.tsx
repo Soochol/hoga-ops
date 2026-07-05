@@ -17,7 +17,7 @@ import { memo, useEffect, useReducer, useRef, type CSSProperties } from 'react';
 import type { IChartApi, MouseEventParams } from 'lightweight-charts';
 import { useLivePageStore, type LiveTimeframe } from '../state/livePage';
 import { useMaSeriesRegistry } from './indicators/maSeriesRegistry';
-import { paneSpecsForTimeframe } from './paneSpecsForTimeframe';
+import { paneSpecsForTimeframe, type PaneToggles } from './paneSpecsForTimeframe';
 import { buildLegendRows, readSeriesValue, type LegendRow } from './legendRows';
 import { formatKoreanInt } from '../util/koreanNumber';
 import type { PaneId } from '../chart/drawing/types';
@@ -27,6 +27,7 @@ type Props = {
   chart: IChartApi;
   timeframe: LiveTimeframe;
   paneSeries: PaneSeriesMap;
+  paneToggles: PaneToggles;
   /** P1: 캔들-경로 데이터 신선화 토큰. /live가 SSE 호가 틱마다 부모(LiveChartRoot)를
    *  재렌더하지만 이 레전드의 값(MA/거래량/투자자 = 캔들 경로)은 그때 안 바뀐다.
    *  memo + 이 prop으로 호가 틱 재렌더는 차단하고, 캔들 갱신(chartBundle 식별자 변경)
@@ -189,19 +190,29 @@ function MaLegendRow({ row }: { row: Extract<LegendRow, { paneId: 'candle' }> })
   );
 }
 
-function SingleLegendRow({ row }: { row: Exclude<LegendRow, { paneId: 'candle' }> }) {
-  const setVolumeEnabled = useLivePageStore((s) => s.setVolumeEnabled);
-  const setForeign = useLivePageStore((s) => s.setForeignNetEnabled);
-  const setInstitution = useLivePageStore((s) => s.setInstitutionNetEnabled);
+function SingleLegendRow({
+  row,
+  timeframe,
+}: {
+  row: Exclude<LegendRow, { paneId: 'candle' }>;
+  timeframe: LiveTimeframe;
+}) {
+  const setPanePrefForTimeframe = useLivePageStore((s) => s.setPanePrefForTimeframe);
   const turnOff = () => {
-    // Exhaustive over the single-pane variants — a future 4th single pane added
-    // to LegendRow fails to compile here instead of silently routing its ✕ to
-    // setInstitution.
     switch (row.paneId) {
-      case 'volume': setVolumeEnabled(false); break;
-      case 'investor-foreign': setForeign(false); break;
-      case 'investor-institution': setInstitution(false); break;
-      default: { const _exhaustive: never = row; void _exhaustive; }
+      case 'volume':
+        setPanePrefForTimeframe(timeframe, 'volumeEnabled', false);
+        break;
+      case 'investor-foreign':
+        setPanePrefForTimeframe(timeframe, 'foreignNetEnabled', false);
+        break;
+      case 'investor-institution':
+        setPanePrefForTimeframe(timeframe, 'institutionNetEnabled', false);
+        break;
+      default: {
+        const _exhaustive: never = row;
+        void _exhaustive;
+      }
     }
   };
   return (
@@ -215,7 +226,7 @@ function SingleLegendRow({ row }: { row: Exclude<LegendRow, { paneId: 'candle' }
   );
 }
 
-function PaneLegendOverlay({ chart, timeframe, paneSeries }: Props) {
+function PaneLegendOverlay({ chart, timeframe, paneSeries, paneToggles }: Props) {
   const containerRef = useRef<HTMLDivElement>(null);
   // Last crosshair param (null = cursor away → latest-fallback). Mutated by the
   // subscription, read during render; a tick (below) re-renders after each
@@ -226,9 +237,6 @@ function PaneLegendOverlay({ chart, timeframe, paneSeries }: Props) {
   const movingAverages = useLivePageStore((s) => s.movingAverages);
   const movingAverageEnabled = useLivePageStore((s) => s.movingAverageEnabled);
   const movingAverageHidden = useLivePageStore((s) => s.movingAverageHidden);
-  const volumeEnabled = useLivePageStore((s) => s.volumeEnabled);
-  const foreignNetEnabled = useLivePageStore((s) => s.foreignNetEnabled);
-  const institutionNetEnabled = useLivePageStore((s) => s.institutionNetEnabled);
   const maSeries = useMaSeriesRegistry((s) => s.series);
 
   // Crosshair → values; ResizeObserver + range change → pane geometry. All
@@ -277,11 +285,11 @@ function PaneLegendOverlay({ chart, timeframe, paneSeries }: Props) {
     movingAverageEnabled,
     movingAverageHidden,
     maValues,
-    volumeEnabled,
+    volumeEnabled: paneToggles.volumeEnabled !== false,
     volumeValue: valueFor('volume'),
-    foreignNetEnabled,
+    foreignNetEnabled: paneToggles.foreignNet,
     foreignValue: valueFor('investor-foreign'),
-    institutionNetEnabled,
+    institutionNetEnabled: paneToggles.institutionNet,
     institutionValue: valueFor('investor-institution'),
   });
 
@@ -300,11 +308,7 @@ function PaneLegendOverlay({ chart, timeframe, paneSeries }: Props) {
       acc += p.getHeight();
     }
   }
-  const specs = paneSpecsForTimeframe(timeframe, {
-    foreignNet: foreignNetEnabled,
-    institutionNet: institutionNetEnabled,
-    volumeEnabled,
-  });
+  const specs = paneSpecsForTimeframe(timeframe, paneToggles);
   const indexByPaneId = new Map<string, number>();
   specs.forEach((s, i) => indexByPaneId.set(s.name, i));
 
@@ -322,11 +326,18 @@ function PaneLegendOverlay({ chart, timeframe, paneSeries }: Props) {
         // next tick once chart.panes() includes it.
         if (idx == null || idx >= paneTops.length) return null;
         return (
-          <div key={row.paneId} style={{ ...boxStyle, top: `calc(${paneTops[idx]}px + ${LEGEND_INSET})`, left: LEGEND_INSET }}>
+          <div
+            key={row.paneId}
+            style={{
+              ...boxStyle,
+              top: `calc(${paneTops[idx]}px + ${LEGEND_INSET})`,
+              left: LEGEND_INSET,
+            }}
+          >
             {row.paneId === 'candle' ? (
               <MaLegendRow row={row} />
             ) : (
-              <SingleLegendRow row={row} />
+              <SingleLegendRow row={row} timeframe={timeframe} />
             )}
           </div>
         );
