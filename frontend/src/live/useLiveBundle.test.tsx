@@ -235,9 +235,12 @@ describe('planLiveRangeRequest', () => {
       timeframe: '1m',
       todayKstYyyymmdd: '20260527',
       historicalFromDate: '20260501',
+      askPeakEnabled: false,
+      bidPeakEnabled: true,
       tradeVolumePocEnabled: true,
       brokerLateEntryEnabled: true,
       brokerLateEntryStartHHMM: 945,
+      programTradeEnabled: true,
       volumeDistributionEnabled: true,
       volumeDistributionRangeCount: 12,
       volumeDistributionPriceRange: { min: 69900, max: 70100 },
@@ -248,8 +251,12 @@ describe('planLiveRangeRequest', () => {
       timeframe: '1m',
       todayKst: '20260527',
       options: {
+        askPeaksEnabled: false,
+        bidPeaksEnabled: true,
         brokerLateEntriesEnabled: true,
         brokerLateEntryStartHHMM: 945,
+        programTradeEnabled: true,
+        tradeVolumePocEnabled: true,
         volumeDistributionBins: 12,
         tradeVolumePocBins: 12,
         volumeDistributionPriceRange: { min: 69900, max: 70100 },
@@ -263,9 +270,12 @@ describe('planLiveRangeRequest', () => {
       timeframe: 'D',
       todayKstYyyymmdd: '20260527',
       historicalFromDate: '20200101',
+      askPeakEnabled: true,
+      bidPeakEnabled: true,
       tradeVolumePocEnabled: false,
       brokerLateEntryEnabled: false,
       brokerLateEntryStartHHMM: 945,
+      programTradeEnabled: true,
       volumeDistributionEnabled: false,
       volumeDistributionRangeCount: 12,
       volumeDistributionPriceRange: { min: 69900, max: 70100 },
@@ -276,8 +286,12 @@ describe('planLiveRangeRequest', () => {
       timeframe: null,
       todayKst: null,
       options: {
+        askPeaksEnabled: false,
+        bidPeaksEnabled: false,
         brokerLateEntriesEnabled: false,
         brokerLateEntryStartHHMM: null,
+        programTradeEnabled: false,
+        tradeVolumePocEnabled: false,
         volumeDistributionBins: null,
         tradeVolumePocBins: null,
         volumeDistributionPriceRange: null,
@@ -372,6 +386,10 @@ describe('useLiveBundle', () => {
       tradeVolumePocEnabled: true,
       volumeDistributionEnabled: true,
       volumeDistributionRangeCount: 10,
+      askPeakEnabled: false,
+      bidPeakEnabled: false,
+      programTradeEnabled: true,
+      brokerLateEntryEnabled: false,
     });
     useSourcePreferenceStore.setState({ sourcePreference: 'kis_ws_first' });
     useCandleDataPreferenceStore.setState({ candleDataPreference: 'auto' });
@@ -432,11 +450,57 @@ describe('useLiveBundle', () => {
       '20260527',
       expect.objectContaining({
         mode: 'sidecar',
+        askPeaksEnabled: false,
+        bidPeaksEnabled: false,
+        programTradeEnabled: true,
+        tradeVolumePocEnabled: true,
         brokerLateEntriesEnabled: false,
         brokerLateEntryStartHHMM: null,
         volumeDistributionBins: 10,
         tradeVolumePocBins: 10,
         volumeDistributionPriceRange: { min: 69900, max: 70100 },
+      }),
+    );
+  });
+
+  it('disables the sidecar range request when every sidecar indicator is off', () => {
+    useLivePageStore.setState({
+      askPeakEnabled: false,
+      bidPeakEnabled: false,
+      brokerLateEntryEnabled: false,
+      programTradeEnabled: false,
+      tradeVolumePocEnabled: false,
+      volumeDistributionEnabled: false,
+      volumeDistributionRangeCount: 12,
+    });
+
+    renderHook(() => useLiveBundle('005930', '1m', '20260527', liveFixture), { wrapper: createWrapper() });
+
+    expect(useRangeSpy).toHaveBeenCalledWith(
+      '005930',
+      '20260520',
+      '20260527',
+      '1m',
+      undefined,
+      '20260527',
+      { mode: 'hoga' },
+    );
+    expect(useRangeSpy).toHaveBeenCalledWith(
+      null,
+      null,
+      null,
+      null,
+      undefined,
+      null,
+      expect.objectContaining({
+        mode: 'sidecar',
+        askPeaksEnabled: false,
+        bidPeaksEnabled: false,
+        programTradeEnabled: false,
+        tradeVolumePocEnabled: false,
+        brokerLateEntriesEnabled: false,
+        volumeDistributionBins: null,
+        tradeVolumePocBins: null,
       }),
     );
   });

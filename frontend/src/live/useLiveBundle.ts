@@ -204,8 +204,12 @@ export type LiveRangeRequestPlan = {
   timeframe: Timeframe | null;
   todayKst: string | null;
   options: {
+    askPeaksEnabled: boolean;
+    bidPeaksEnabled: boolean;
     brokerLateEntriesEnabled: boolean;
     brokerLateEntryStartHHMM: number | null;
+    programTradeEnabled: boolean;
+    tradeVolumePocEnabled: boolean;
     volumeDistributionBins: number | null;
     tradeVolumePocBins: number | null;
     volumeDistributionPriceRange: { min: number; max: number } | null;
@@ -217,9 +221,12 @@ export function planLiveRangeRequest(args: {
   timeframe: LiveTimeframe;
   todayKstYyyymmdd: string;
   historicalFromDate: string | null;
+  askPeakEnabled: boolean;
+  bidPeakEnabled: boolean;
   tradeVolumePocEnabled: boolean;
   brokerLateEntryEnabled: boolean;
   brokerLateEntryStartHHMM: number;
+  programTradeEnabled: boolean;
   volumeDistributionEnabled: boolean;
   volumeDistributionRangeCount: number;
   volumeDistributionPriceRange: { min: number; max: number } | null;
@@ -236,8 +243,12 @@ export function planLiveRangeRequest(args: {
     timeframe: enableMinute ? (args.timeframe as Timeframe) : null,
     todayKst: enableMinute ? args.todayKstYyyymmdd : null,
     options: {
+      askPeaksEnabled: enableMinute && args.askPeakEnabled,
+      bidPeaksEnabled: enableMinute && args.bidPeakEnabled,
       brokerLateEntriesEnabled: args.brokerLateEntryEnabled,
       brokerLateEntryStartHHMM: args.brokerLateEntryEnabled ? args.brokerLateEntryStartHHMM : null,
+      programTradeEnabled: enableMinute && args.programTradeEnabled,
+      tradeVolumePocEnabled: enableMinute && args.tradeVolumePocEnabled,
       volumeDistributionBins: args.volumeDistributionEnabled ? args.volumeDistributionRangeCount : null,
       tradeVolumePocBins: args.tradeVolumePocEnabled ? args.volumeDistributionRangeCount : null,
       volumeDistributionPriceRange: args.volumeDistributionEnabled ? args.volumeDistributionPriceRange : null,
@@ -261,9 +272,12 @@ export function useLiveBundle(
   options: UseLiveBundleOptions = {},
 ): UseLiveBundleResult {
   const historicalFromDate = useLivePageStore((s) => s.historicalFromDate);
+  const askPeakEnabled = useLivePageStore((s) => s.askPeakEnabled);
+  const bidPeakEnabled = useLivePageStore((s) => s.bidPeakEnabled);
   const tradeVolumePocEnabled = useLivePageStore((s) => s.tradeVolumePocEnabled);
   const brokerLateEntryEnabled = useLivePageStore((s) => s.brokerLateEntryEnabled);
   const brokerLateEntryStartHHMM = useLivePageStore((s) => s.brokerLateEntryStartHHMM);
+  const programTradeEnabled = useLivePageStore((s) => s.programTradeEnabled);
   const volumeDistributionEnabled = useLivePageStore((s) => s.volumeDistributionEnabled);
   const volumeDistributionRangeCount = useLivePageStore((s) => s.volumeDistributionRangeCount);
   const sourcePreference = useSourcePreferenceStore((s) => s.sourcePreference);
@@ -549,9 +563,12 @@ export function useLiveBundle(
     timeframe,
     todayKstYyyymmdd,
     historicalFromDate,
+    askPeakEnabled,
+    bidPeakEnabled,
     tradeVolumePocEnabled,
     brokerLateEntryEnabled,
     brokerLateEntryStartHHMM,
+    programTradeEnabled,
     volumeDistributionEnabled,
     volumeDistributionRangeCount,
     volumeDistributionPriceRange,
@@ -581,18 +598,29 @@ export function useLiveBundle(
     }),
     [rangePlan.options],
   );
+  const sidecarEnabled = !!(
+    rangePlan.code &&
+    (
+      rangePlan.options.askPeaksEnabled ||
+      rangePlan.options.bidPeaksEnabled ||
+      rangePlan.options.brokerLateEntriesEnabled ||
+      rangePlan.options.programTradeEnabled ||
+      rangePlan.options.tradeVolumePocEnabled ||
+      rangePlan.options.volumeDistributionBins != null
+    )
+  );
   const pastSidecars = useRange(
-    rangePlan.code,
-    rangePlan.from,
-    rangePlan.to,
-    rangePlan.timeframe,
+    sidecarEnabled ? rangePlan.code : null,
+    sidecarEnabled ? rangePlan.from : null,
+    sidecarEnabled ? rangePlan.to : null,
+    sidecarEnabled ? rangePlan.timeframe : null,
     undefined,
     // /live's minutePastTo is always today (line 83), so this enables the
     // 5-min refetch that advances pastMaxQrT (review C1 — seam hole). The gate
     // lives in rangeFreshnessOptions: past-only callers (no todayKst) stay
     // frozen. A periodic refetch keeps the same query key → no placeholderData
     // swap → does not set isExtending, so today's right edge is untouched.
-    rangePlan.todayKst,
+    sidecarEnabled ? rangePlan.todayKst : null,
     sidecarRangeOptions,
   );
   const liveCandles = useMemo<Candle[]>(

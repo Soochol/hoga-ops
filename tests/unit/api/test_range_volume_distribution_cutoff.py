@@ -231,6 +231,31 @@ def test_volume_distribution_cutoff_requires_single_stock_date(tmp_path: Path) -
     assert "single Stock-Date" in resp.text
 
 
+def test_sidecar_indicator_gates_can_disable_heavy_slices(tmp_path: Path) -> None:
+    engine = _engine(tmp_path)
+
+    bundle = build_range_bundle(
+        engine,
+        code="005930",
+        from_date="20260625",
+        to_date="20260625",
+        bucket_ms=60_000,
+        mode="sidecar",
+        source_pref="hogaplay",
+        ask_peaks_enabled=False,
+        bid_peaks_enabled=False,
+        program_trade_enabled=False,
+        trade_volume_poc_enabled=False,
+    )
+
+    assert bundle.segments
+    assert bundle.ask_peaks == []
+    assert bundle.bid_peaks == []
+    assert bundle.trade_volume_pocs == []
+    assert bundle.program_trade is not None
+    assert bundle.program_trade.points == []
+
+
 def test_volume_distribution_cutoff_requires_sidecar_mode(tmp_path: Path) -> None:
     client = _client(tmp_path)
     cutoff_ms = hhmmssms_to_unix_ms("20260625", 90_001_000)

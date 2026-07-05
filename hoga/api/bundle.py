@@ -1234,6 +1234,10 @@ def build_range_bundle(
     volume_distribution_price_max: int | None = None,
     volume_distribution_cutoff_ms: int | None = None,
     mode: str = "full",
+    ask_peaks_enabled: bool = True,
+    bid_peaks_enabled: bool = True,
+    program_trade_enabled: bool = True,
+    trade_volume_poc_enabled: bool = True,
 ) -> RangeBundle:
     """Build the Wire Model for a Stock-Date Range (ADR-0013, ADR-0014).
 
@@ -1266,6 +1270,11 @@ def build_range_bundle(
     volume_distribution_slice_cutoff_ms = (
         volume_distribution_cutoff_ms if sidecar_only else None
     )
+    include_optional_sidecar_slices = not hoga_only and not cutoff_sidecar and not candles_only
+    include_ask_peaks = include_optional_sidecar_slices and ask_peaks_enabled
+    include_bid_peaks = include_optional_sidecar_slices and bid_peaks_enabled
+    include_trade_volume_pocs = include_optional_sidecar_slices and trade_volume_poc_enabled
+    include_program_trade = program_trade_enabled and (full_mode or sidecar_only)
 
     dates = engine.list_stock_dates_in_range(
         code=code, from_date=from_date, to_date=to_date,
@@ -1341,7 +1350,13 @@ def build_range_bundle(
                 date=d, warnings=[v.to_model() for v in c.warnings],
             ))
 
-        raw_candles = [] if hoga_only else build_candles_slice(engine, code=code, date=d, source=source)
+        needs_trade_price_range = volume_distribution_bins is not None or include_trade_volume_pocs
+        needs_raw_candles = not hoga_only and (not sidecar_only or needs_trade_price_range)
+        raw_candles = (
+            build_candles_slice(engine, code=code, date=d, source=source)
+            if needs_raw_candles
+            else []
+        )
         if hoga_only:
             price_range = None
             trade_indicator_source = source
@@ -1364,12 +1379,16 @@ def build_range_bundle(
                 else None
             )
             price_range = candle_price_range or supplied_trade_price_range
-            trade_indicator_source = _resolve_trade_indicator_source(
-                engine,
-                date=d,
-                code=code,
-                source_pref=source_pref,
-                selected_source=source,
+            trade_indicator_source = (
+                _resolve_trade_indicator_source(
+                    engine,
+                    date=d,
+                    code=code,
+                    source_pref=source_pref,
+                    selected_source=source,
+                )
+                if needs_trade_price_range
+                else source
             )
             candles_d = [] if sidecar_only else downsample_candles(raw_candles, bucket_ms=bucket_ms)
         qr_d = (
@@ -1392,31 +1411,34 @@ def build_range_bundle(
         vp_d = build_volume_profile_slice(engine, code=code, date=d, source=source) if full_mode else None
 
         norm_meta, _ = normalize_session_bounds(meta)   # value-conversion only (notes handled by classify)
+        continuous_before_needed = needs_trade_price_range and not hoga_only and not candles_only
         continuous_before_ms = (
-            None
-            if hoga_only or candles_only
-            else _first_trailing_single_price_book_hhmmssms(
+            _first_trailing_single_price_book_hhmmssms(
                 engine,
                 code=code,
                 date=d,
                 source=trade_indicator_source,
                 session_close_ms=int(meta["regular_session_close_ms"]),
             )
+            if continuous_before_needed
+            else None
         )
-        if hoga_only or cutoff_sidecar or candles_only:
-            ap_d = None
-            bp_d = None
-        else:
+        if include_ask_peaks or include_bid_peaks:
             ap_d, bp_d = build_ask_bid_peak_slices(
                 engine, code=code, date=d, bucket_ms=bucket_ms, source=source,
                 session_open_ms=norm_meta["regular_session_open_ms"],
                 session_close_ms=meta["regular_session_close_ms"],
                 cache=indicators_cache, today_kst=today_kst,
             )
+            if not include_ask_peaks:
+                ap_d = None
+            if not include_bid_peaks:
+                bp_d = None
+        else:
+            ap_d = None
+            bp_d = None
         tvp_d = (
-            None
-            if hoga_only or cutoff_sidecar or candles_only
-            else build_trade_volume_poc_slice(
+            build_trade_volume_poc_slice(
                 engine, code=code, date=d, source=trade_indicator_source,
                 session_open_ms=norm_meta["regular_session_open_ms"],
                 session_close_ms=meta["regular_session_close_ms"],
@@ -1426,6 +1448,8 @@ def build_range_bundle(
                 cache=indicators_cache,
                 today_kst=today_kst,
             )
+            if include_trade_volume_pocs
+            else None
         )
         segments.append(RangeSegment(
             date=d,
@@ -1520,7 +1544,7 @@ def build_range_bundle(
         volume_distributions=volume_distributions,
         program_trade=(
             build_program_trade_series(engine, code=code, dates=included_dates)
-            if full_mode or sidecar_only
+            if include_program_trade
             else ProgramTradeSeries(points=[])
         ),
     )
