@@ -13,7 +13,7 @@ from collections.abc import Callable, Iterable
 from dataclasses import dataclass
 from pathlib import Path
 from threading import Lock
-from typing import Any
+from typing import Any, Literal
 
 import duckdb
 import pyarrow as pa
@@ -532,6 +532,129 @@ class AskPeakCandidateRow:
     price: int
     qty: int
     intra_ms: int
+
+
+@dataclass(frozen=True)
+class _PeakWallEvent:
+    side: str
+    source: str
+    price: int
+    qty: int
+    intra_ms: int
+    ts_ms: int
+    seq: int
+    bucket_id: int | None
+
+
+@dataclass(frozen=True)
+class _TradeTouch:
+    price: int
+    ts_ms: int
+    seq: int
+
+
+@dataclass(frozen=True)
+class _ClassifiedPeakWalls:
+    traded: tuple[AskPeakCandidateRow, ...]
+    untraded: tuple[AskPeakCandidateRow, ...]
+    all: tuple[AskPeakCandidateRow, ...]
+
+
+def _event_sort_key(event: _PeakWallEvent) -> tuple[int, int, str, int]:
+    return (event.ts_ms, event.seq, event.source, event.price)
+
+
+def _touch_sort_key(touch: _TradeTouch) -> tuple[int, int]:
+    return (touch.ts_ms, touch.seq)
+
+
+def _candidate_sort_key(row: AskPeakCandidateRow) -> tuple[int, int, int]:
+    return (-row.qty, row.intra_ms, row.price)
+
+
+def _better_event(current: _PeakWallEvent | None, event: _PeakWallEvent) -> _PeakWallEvent:
+    if current is None:
+        return event
+    current_key = (
+        -current.qty,
+        current.intra_ms,
+        current.ts_ms,
+        current.seq,
+        current.source,
+        current.price,
+    )
+    event_key = (-event.qty, event.intra_ms, event.ts_ms, event.seq, event.source, event.price)
+    return event if event_key < current_key else current
+
+
+def _event_to_candidate(event: _PeakWallEvent) -> AskPeakCandidateRow:
+    return AskPeakCandidateRow(price=event.price, qty=event.qty, intra_ms=event.intra_ms)
+
+
+def _touches_price(side: Literal["ask", "bid"], touch_price: int, wall_price: int) -> bool:
+    return touch_price >= wall_price if side == "ask" else touch_price <= wall_price
+
+
+def _classify_peak_wall_events(
+    events: Iterable[_PeakWallEvent],
+    touches: Iterable[_TradeTouch],
+    *,
+    side: Literal["ask", "bid"],
+    emit_limit: int = 3,
+) -> _ClassifiedPeakWalls:
+    sorted_events = sorted(events, key=_event_sort_key)
+    sorted_touches = sorted(touches, key=_touch_sort_key)
+
+    active_by_price: dict[int, _PeakWallEvent] = {}
+    all_best_by_bucket: dict[tuple[int, int | None], _PeakWallEvent] = {}
+    traded_events: list[_PeakWallEvent] = []
+    event_i = 0
+
+    for touch in sorted_touches:
+        while event_i < len(sorted_events):
+            event = sorted_events[event_i]
+            if event.ts_ms > touch.ts_ms or (event.ts_ms == touch.ts_ms and event.seq > touch.seq):
+                break
+            active_by_price[event.price] = _better_event(active_by_price.get(event.price), event)
+            bucket_key = (event.price, event.bucket_id)
+            all_best_by_bucket[bucket_key] = _better_event(
+                all_best_by_bucket.get(bucket_key),
+                event,
+            )
+            event_i += 1
+
+        touched_prices = [
+            price
+            for price in active_by_price
+            if _touches_price(side, touch.price, price)
+        ]
+        for price in touched_prices:
+            traded_events.append(active_by_price.pop(price))
+
+    for event in sorted_events[event_i:]:
+        active_by_price[event.price] = _better_event(active_by_price.get(event.price), event)
+        bucket_key = (event.price, event.bucket_id)
+        all_best_by_bucket[bucket_key] = _better_event(
+            all_best_by_bucket.get(bucket_key),
+            event,
+        )
+
+    candidate_rows = [_event_to_candidate(event) for event in traded_events]
+    traded = tuple(
+        row
+        for row in sorted(candidate_rows, key=_candidate_sort_key)
+    )[:emit_limit]
+    candidate_rows = [_event_to_candidate(event) for event in active_by_price.values()]
+    untraded = tuple(
+        row
+        for row in sorted(candidate_rows, key=_candidate_sort_key)
+    )[:emit_limit]
+    candidate_rows = [_event_to_candidate(event) for event in all_best_by_bucket.values()]
+    all_candidates = tuple(
+        row
+        for row in sorted(candidate_rows, key=_candidate_sort_key)
+    )[:emit_limit]
+    return _ClassifiedPeakWalls(traded=traded, untraded=untraded, all=all_candidates)
 
 
 @dataclass(frozen=True)

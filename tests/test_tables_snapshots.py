@@ -1645,6 +1645,50 @@ def test_query_day_bid_peak_dual_populates_below_low_untraded(tmp_path) -> None:
     )
 
 
+def test_classify_peak_wall_events_resets_same_price_after_touch() -> None:
+    from hoga.tables.snapshots import (
+        _PeakWallEvent,
+        _TradeTouch,
+        _classify_peak_wall_events,
+    )
+
+    events = [
+        _PeakWallEvent("ask", "rep", 50000, 100000, 36_000_000, 100000000, 1, 600),
+        _PeakWallEvent("ask", "rep", 50000, 200000, 37_200_000, 110000000, 3, 620),
+    ]
+    touches = [_TradeTouch(50000, 100300000, 2)]
+
+    out = _classify_peak_wall_events(events, touches, side="ask")
+
+    assert out.traded == (
+        AskPeakCandidateRow(price=50000, qty=100000, intra_ms=36_000_000),
+    )
+    assert out.untraded == (
+        AskPeakCandidateRow(price=50000, qty=200000, intra_ms=37_200_000),
+    )
+
+
+def test_classify_peak_wall_events_keeps_one_best_same_price_before_touch() -> None:
+    from hoga.tables.snapshots import (
+        _PeakWallEvent,
+        _TradeTouch,
+        _classify_peak_wall_events,
+    )
+
+    events = [
+        _PeakWallEvent("ask", "rep", 50000, 100000, 36_000_000, 100000000, 1, 600),
+        _PeakWallEvent("ask", "rep", 50000, 150000, 36_060_000, 100060000, 2, 601),
+    ]
+    touches = [_TradeTouch(50000, 100300000, 3)]
+
+    out = _classify_peak_wall_events(events, touches, side="ask")
+
+    assert out.traded == (
+        AskPeakCandidateRow(price=50000, qty=150000, intra_ms=36_060_000),
+    )
+    assert out.untraded == ()
+
+
 # ---------------------------------------------------------------------------
 # P5 회귀: Intra-Bar Max 상계 불변식
 # ---------------------------------------------------------------------------

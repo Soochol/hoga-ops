@@ -1,53 +1,36 @@
-Status: DONE
+# Task 1 Report: Add Historical Classifier Unit Surface
 
-Task: Convert Minute Candle Cache to Memory Only
+## What changed
+- Added a pure peak-wall classification surface in `hoga/tables/snapshots.py`.
+- Introduced `_PeakWallEvent`, `_TradeTouch`, and `_ClassifiedPeakWalls` dataclasses.
+- Added `_classify_peak_wall_events(...)` plus small sort / ranking helpers.
+- Kept the existing public query functions unchanged for this task.
+- Added focused unit tests in `tests/test_tables_snapshots.py` for same-price lifecycle reset behavior and best-per-price selection before touch.
 
-Scope:
-- Updated `hoga/live/past_candles_cache.py` to use in-process storage only for past candles.
-- Updated `tests/unit/live/test_past_candles_cache.py` to remove disk-cache assumptions and assert the new memory-only behavior.
+## Tests and results
+- Focused red-green tests:
+  - `tests/test_tables_snapshots.py::test_classify_peak_wall_events_resets_same_price_after_touch`
+  - `tests/test_tables_snapshots.py::test_classify_peak_wall_events_keeps_one_best_same_price_before_touch`
+- Full snapshot module verification:
+  - `tests/test_tables_snapshots.py`
 
-Changes:
-- Replaced past-cache tests with:
-  - `test_past_memory_miss_then_store_then_hit_without_disk_write`
-  - `test_past_cache_does_not_read_legacy_json_files`
-- Removed/replaced legacy disk-specific tests for past cache:
-  - `test_past_disk_miss_then_store_then_hit`
-  - `test_past_corrupt_cache_treated_as_miss_and_heals_on_store`
-  - `test_past_stale_cache_with_wrong_date_treated_as_miss_and_evicted`
-  - `test_past_empty_cache_for_non_trading_day_is_valid`
-  - `test_past_mem_with_wrong_date_evicts_and_falls_through_to_disk`
-- Changed `get_past` to read only `_past_mem` and validate date via `_bars_match_date`.
-- Changed `store_past` to update only `_past_mem` and LRU size.
-- Changed `delete_past` to evict only `_past_mem`.
-- Updated module docstring for memory-only intent and removed disk persistence imports/paths.
+## RED evidence
+- First focused run failed as expected with:
+  - `ImportError: cannot import name '_PeakWallEvent' from 'hoga.tables.snapshots'`
+  - `ImportError: cannot import name '_classify_peak_wall_events' from 'hoga.tables.snapshots'`
 
-Verification:
-- `uv run --extra dev pytest tests/unit/live/test_past_candles_cache.py -q`  
-  - `13 passed in 0.08s`
-- `uv run --extra dev ruff check hoga/live/past_candles_cache.py tests/unit/live/test_past_candles_cache.py`
-  - `All checks passed!`
+## GREEN evidence
+- Focused tests passed after implementation: `2 passed`
+- Full snapshot module passed after implementation: `66 passed`
 
-Follow-up review finding fix:
-- Updated `tests/unit/live/test_api.py` at `test_past_candles_happy_path_single_date`:
-  - Replaced disk-file existence assertion with memory-only assertion:
-    `assert not (tmp_path / "kis-past-candles").exists()`.
-- Adjusted two additional API cache-behavior tests to align with in-memory-only cache semantics:
-  - `test_past_candles_rate_limit_still_serves_later_cache_hits`
-  - `test_past_candles_disk_cache_survives_router_rebuild` (renamed to
-    `test_past_candles_memory_cache_not_survives_router_rebuild`)
+## Files changed
+- `hoga/tables/snapshots.py`
+- `tests/test_tables_snapshots.py`
 
-Verification:
-- `uv run --extra dev pytest tests/unit/live/test_api.py -q`  
-  - `107 passed in 3.51s`
-- `uv run --extra dev pytest tests/unit/live/test_past_candles_cache.py tests/unit/live/test_api.py -q`
-  - `120 passed in 3.20s`
+## Self-review findings
+- The helper is pure and isolated, which matches the task goal and leaves query behavior untouched.
+- The classifier sorts and dedupes candidates deterministically, with same-timestamp / same-seq events counted as touched.
+- The implementation is intentionally conservative and does not wire into the existing query paths yet.
 
-Review finding follow-up:
-- Fixed `tests/unit/live/test_api_kis_rest_bypass_candles.py` to match the memory-only cache seam:
-  - `test_past_candles_bypass_uses_cached_krx_fallback_for_non_krx_request` now creates a seeded `PastCandlesCache` instance and monkeypatches `live_api.PastCandlesCache` before `_bypass_app()`, so the router uses the same cache instance.
-
-Verification:
-- `uv run --extra dev pytest tests/unit/live/test_api_kis_rest_bypass_candles.py -q`
-  - `6 passed in 0.22s`
-- `uv run --extra dev pytest tests/unit/live/test_past_candles_cache.py tests/unit/live/test_api.py tests/unit/live/test_api_kis_rest_bypass_candles.py -q`
-  - `126 passed in 3.22s`
+## Concerns
+- None for this task. Later wiring work may want to validate that the query-side lifecycle logic and this helper stay aligned.
