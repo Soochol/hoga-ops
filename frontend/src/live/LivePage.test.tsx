@@ -28,6 +28,7 @@ const livePageMocks = vi.hoisted(() => {
   return {
     liveOb,
     liveTrade,
+    indicatorPanelProps: [] as Array<{ timeframe: LiveTimeframe }>,
     liveChartRootProps: [] as Array<{
       code?: string | null;
       timeframe?: string;
@@ -44,7 +45,11 @@ const livePageMocks = vi.hoisted(() => {
       dayBidPeaks?: unknown[];
       todayAllPriceBidPeak?: unknown;
     }>,
-    liveBundleCalls: [] as Array<{ code: unknown; timeframe: unknown; options: { venue?: string } }>,
+    liveBundleCalls: [] as Array<{
+      code: unknown;
+      timeframe: unknown;
+      options: { investorNetEnabled?: boolean; venue?: string };
+    }>,
     liveBundleResult: {
       bundle: null as RangeBundle | null,
       chartBundle: null as RangeBundle | null,
@@ -172,7 +177,13 @@ vi.mock('../api/liveIndices', () => ({
 // LivePage now owns the single useLiveBundle call. Mock to avoid TanStack
 // queries hitting real endpoints in the shell test.
 vi.mock('./useLiveBundle', () => ({
-  useLiveBundle: (code: unknown, timeframe: unknown, _today: unknown, _live: unknown, options?: { venue?: string }) => {
+  useLiveBundle: (
+    code: unknown,
+    timeframe: unknown,
+    _today: unknown,
+    _live: unknown,
+    options?: { investorNetEnabled?: boolean; venue?: string },
+  ) => {
     livePageMocks.liveBundleCalls.push({ code, timeframe, options: options ?? {} });
     return {
       ...livePageMocks.liveBundleResult,
@@ -181,6 +192,17 @@ vi.mock('./useLiveBundle', () => ({
       clampEngaged: false,
       isPastCandlesLoading: false,
     };
+  },
+}));
+
+vi.mock('./indicators/IndicatorPanel', () => ({
+  default: ({ onClose, timeframe }: { onClose: () => void; timeframe: LiveTimeframe }) => {
+    livePageMocks.indicatorPanelProps.push({ timeframe });
+    return (
+      <div role="dialog" aria-label="지표">
+        <button type="button" onClick={onClose}>닫기</button>
+      </div>
+    );
   },
 }));
 
@@ -247,6 +269,7 @@ describe('LivePage shell', () => {
     livePageMocks.dayAskPeakTradeArgs.length = 0;
     livePageMocks.liveChartRootProps.length = 0;
     livePageMocks.liveBundleCalls.length = 0;
+    livePageMocks.indicatorPanelProps.length = 0;
     livePageMocks.liveBundleResult.bundle = null;
     livePageMocks.liveBundleResult.chartBundle = null;
     livePageMocks.liveBundleResult.hogaBundle = null;
@@ -304,6 +327,36 @@ describe('LivePage shell', () => {
     expect(screen.getByTestId('live-toolbar')).toBeInTheDocument();
     expect(screen.getByTestId('live-workarea')).toBeInTheDocument();
     expect(screen.getByTestId('live-chart-panel')).toContainElement(screen.getByTestId('live-toolbar'));
+  });
+
+  it('passes the active live timeframe into IndicatorPanel', async () => {
+    useLivePageStore.setState({ candleTimeframe: 'D' });
+
+    renderWithRouter('/live?code=000660');
+    act(() => {
+      screen.getByTestId('live-indicators-button').click();
+    });
+
+    await waitFor(() => expect(livePageMocks.indicatorPanelProps.at(-1)?.timeframe).toBe('D'));
+    expect(screen.getByRole('dialog', { name: '지표' })).toBeInTheDocument();
+  });
+
+  it('enables stock investor net fetches from the active D pane profile even when legacy flat flags stay false', async () => {
+    useLivePageStore.setState({
+      candleTimeframe: 'D',
+      foreignNetEnabled: false,
+      institutionNetEnabled: false,
+      panePrefsByTimeframe: {
+        D: { foreignNetEnabled: true },
+      },
+    });
+
+    renderWithRouter('/live?code=000660');
+
+    await waitFor(() => expect(livePageMocks.liveBundleCalls.some((call) =>
+      call.code === '000660'
+      && call.timeframe === 'D'
+      && call.options.investorNetEnabled === true)).toBe(true));
   });
 
   it('reads activeCode from ?code= query param', () => {
@@ -516,13 +569,17 @@ describe('LivePage shell', () => {
     useLivePageStore.setState({
       candleTimeframe: 'D',
       historicalFromDate: '20260619',
-      foreignNetEnabled: true,
+      foreignNetEnabled: false,
       institutionNetEnabled: false,
+      panePrefsByTimeframe: {
+        D: { foreignNetEnabled: true },
+      },
     });
 
     renderWithRouter('/live?index=KOSPI');
 
     await waitFor(() => expect(livePageMocks.indexInvestorNetCalls.length).toBeGreaterThan(0));
+    expect(livePageMocks.liveBundleCalls.at(-1)?.options.investorNetEnabled).toBe(true);
     const lastInvestorCall = livePageMocks.indexInvestorNetCalls.at(-1) as unknown[] | undefined;
     expect(lastInvestorCall?.[0]).toBe('KOSPI');
     expect(lastInvestorCall?.[1]).toBe('20260619');

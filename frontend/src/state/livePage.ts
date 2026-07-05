@@ -16,6 +16,12 @@ import {
   type PersistedIndicators,
 } from './liveIndicatorsPersistence';
 import {
+  normalizePanePrefsByTimeframe,
+  profileKeyForTimeframe,
+  type PanePrefKey,
+  type PersistedPanePrefsByTimeframe,
+} from '../live/indicators/indicatorPaneProfiles';
+import {
   instrumentToActiveCode,
   isLiveInstrument,
   stockInstrument,
@@ -135,6 +141,7 @@ type Store = Persisted & PersistedIndicators & {
   setMovingAverageEnabled: (enabled: boolean) => void;
   setForeignNetEnabled: (enabled: boolean) => void;
   setInstitutionNetEnabled: (enabled: boolean) => void;
+  setPanePrefForTimeframe: (timeframe: LiveTimeframe, key: PanePrefKey, enabled: boolean) => void;
   setVolumeEnabled: (enabled: boolean) => void;
   setMovingAverageHidden: (hidden: boolean) => void;
   setAskPeakEnabled: (enabled: boolean) => void;
@@ -286,6 +293,7 @@ function snapshotIndicators(get: () => Store): PersistedIndicators {
     dailyMovingAverages: s.dailyMovingAverages,
     dailyMovingAverageEnabled: s.dailyMovingAverageEnabled,
     dailyMovingAverageHidden: s.dailyMovingAverageHidden,
+    panePrefsByTimeframe: s.panePrefsByTimeframe,
   };
 }
 
@@ -399,6 +407,20 @@ export const useLivePageStore = create<Store>((set, get) => ({
 
   setInstitutionNetEnabled: (enabled) => {
     set({ institutionNetEnabled: enabled });
+    persistIndicators(snapshotIndicators(get));
+  },
+
+  setPanePrefForTimeframe: (timeframe, key, enabled) => {
+    const profileKey = profileKeyForTimeframe(timeframe);
+    const current = normalizePanePrefsByTimeframe(get().panePrefsByTimeframe);
+    const next: PersistedPanePrefsByTimeframe = {
+      ...current,
+      [profileKey]: {
+        ...(current[profileKey] ?? {}),
+        [key]: enabled,
+      },
+    };
+    set({ panePrefsByTimeframe: next });
     persistIndicators(snapshotIndicators(get));
   },
 

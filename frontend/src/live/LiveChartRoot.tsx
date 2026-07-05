@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState, type MutableRefObject } from 'react';
+import { useShallow } from 'zustand/react/shallow';
 import {
   createChartEx,
   TickMarkType,
@@ -17,6 +18,7 @@ import {
 import { createVirtualAxis, type VirtualAxis } from '../util/virtualAxis';
 import RangeSeriesPane from '../chart/RangeSeriesPane';
 import { paneSpecsForTimeframe } from './paneSpecsForTimeframe';
+import { resolvePaneTogglesForTimeframe } from './indicators/indicatorPaneProfiles';
 import DayBoundaryOverlay from '../chart/DayBoundaryOverlay';
 import {
   useLivePageStore,
@@ -25,6 +27,7 @@ import {
   isMinuteTimeframe,
   isCalendarTimeframe,
 } from '../state/livePage';
+import type { PersistedIndicators } from '../state/liveIndicatorsPersistence';
 import { useActivePrefs, useChartPrefsStore, type ChartViewPrefs } from '../state/chartPrefs';
 import type { LiveVenueOption } from '../state/liveVenue';
 import type { LiveTodayAskPeak, LiveTodayBidPeak } from '../api/liveSeries';
@@ -970,13 +973,21 @@ export function LiveChartRoot({
     });
   }, [chart, horizontalGridLinesEnabled, verticalGridLinesEnabled]);
 
-  const foreignNetEnabled = useLivePageStore((s) => s.foreignNetEnabled);
-  const institutionNetEnabled = useLivePageStore((s) => s.institutionNetEnabled);
-  const volumeEnabled = useLivePageStore((s) => s.volumeEnabled);
-  const quoteTotalsEnabled = useLivePageStore((s) => s.quoteTotalsEnabled);
-  const ratioEnabled = useLivePageStore((s) => s.ratioEnabled);
-  const fillStrengthEnabled = useLivePageStore((s) => s.fillStrengthEnabled);
-  const programTradeEnabled = useLivePageStore((s) => s.programTradeEnabled);
+  const indicatorPrefs = useLivePageStore(
+    useShallow((s) => ({
+      movingAverages: s.movingAverages,
+      movingAverageEnabled: s.movingAverageEnabled,
+      movingAverageHidden: s.movingAverageHidden,
+      volumeEnabled: s.volumeEnabled,
+      quoteTotalsEnabled: s.quoteTotalsEnabled,
+      ratioEnabled: s.ratioEnabled,
+      fillStrengthEnabled: s.fillStrengthEnabled,
+      programTradeEnabled: s.programTradeEnabled,
+      foreignNetEnabled: s.foreignNetEnabled,
+      institutionNetEnabled: s.institutionNetEnabled,
+      panePrefsByTimeframe: s.panePrefsByTimeframe,
+    })),
+  );
   const askPeakEnabled = useLivePageStore((s) => s.askPeakEnabled);
   const bidPeakEnabled = useLivePageStore((s) => s.bidPeakEnabled);
   const askPeakIntraMax = useActivePrefs((s) => s.askPeakIntraMax);
@@ -1128,38 +1139,40 @@ export function LiveChartRoot({
       todayKst,
     ],
   );
-  const effectiveVolumeEnabled = paneTogglesOverride?.volumeEnabled ?? volumeEnabled;
-  const effectiveQuoteTotalsEnabled = paneTogglesOverride?.quoteTotalsEnabled ?? quoteTotalsEnabled;
-  const effectiveRatioEnabled = paneTogglesOverride?.ratioEnabled ?? ratioEnabled;
-  const effectiveFillStrengthEnabled = paneTogglesOverride?.fillStrengthEnabled ?? fillStrengthEnabled;
-  const effectiveProgramTradeEnabled = paneTogglesOverride?.programTradeEnabled ?? programTradeEnabled;
-  const effectiveHogaPanes = paneTogglesOverride?.hogaPanes;
-
-  // Single source for the pane-mount toggles, consumed by BOTH the stretch
-  // effect and the render-side paneSpecsForTimeframe call. Building it once
-  // removes the risk of the two call sites drifting (one updated, one not).
-  const paneToggles = useMemo(
-    () => ({
-      foreignNet: foreignNetEnabled,
-      institutionNet: institutionNetEnabled,
-      volumeEnabled: effectiveVolumeEnabled,
-      quoteTotalsEnabled: effectiveQuoteTotalsEnabled,
-      ratioEnabled: effectiveRatioEnabled,
-      fillStrengthEnabled: effectiveFillStrengthEnabled,
-      programTradeEnabled: effectiveProgramTradeEnabled,
-      hogaPanes: effectiveHogaPanes,
+  const activePaneToggles = useMemo(
+    () => resolvePaneTogglesForTimeframe({
+      indicators: indicatorPrefs as PersistedIndicators,
+      timeframe,
       forceHogaPanes,
+      hogaPanes: paneTogglesOverride?.hogaPanes,
+      override: {
+        ...(paneTogglesOverride?.volumeEnabled !== undefined
+          ? { volumeEnabled: paneTogglesOverride.volumeEnabled }
+          : {}),
+        ...(paneTogglesOverride?.quoteTotalsEnabled !== undefined
+          ? { quoteTotalsEnabled: paneTogglesOverride.quoteTotalsEnabled }
+          : {}),
+        ...(paneTogglesOverride?.ratioEnabled !== undefined
+          ? { ratioEnabled: paneTogglesOverride.ratioEnabled }
+          : {}),
+        ...(paneTogglesOverride?.fillStrengthEnabled !== undefined
+          ? { fillStrengthEnabled: paneTogglesOverride.fillStrengthEnabled }
+          : {}),
+        ...(paneTogglesOverride?.programTradeEnabled !== undefined
+          ? { programTradeEnabled: paneTogglesOverride.programTradeEnabled }
+          : {}),
+      },
     }),
     [
-      foreignNetEnabled,
-      institutionNetEnabled,
-      effectiveVolumeEnabled,
-      effectiveQuoteTotalsEnabled,
-      effectiveRatioEnabled,
-      effectiveFillStrengthEnabled,
-      effectiveProgramTradeEnabled,
-      effectiveHogaPanes,
       forceHogaPanes,
+      indicatorPrefs,
+      timeframe,
+      paneTogglesOverride?.hogaPanes,
+      paneTogglesOverride?.volumeEnabled,
+      paneTogglesOverride?.quoteTotalsEnabled,
+      paneTogglesOverride?.ratioEnabled,
+      paneTogglesOverride?.fillStrengthEnabled,
+      paneTogglesOverride?.programTradeEnabled,
     ],
   );
   const candlePaneContext = useMemo<CandlePaneContext>(
@@ -1169,7 +1182,7 @@ export function LiveChartRoot({
 
   useEffect(() => {
     if (!chart || !cb) return;
-    const specs = paneSpecsForTimeframe(timeframe, paneToggles);
+    const specs = paneSpecsForTimeframe(timeframe, activePaneToggles);
     let cancelled = false;
     const apply = () => {
       if (cancelled) return;
@@ -1194,7 +1207,7 @@ export function LiveChartRoot({
       cancelled = true;
       cancelAnimationFrame(raf);
     };
-  }, [chart, cb, timeframe, paneToggles]);
+  }, [chart, activePaneToggles, cb, timeframe]);
 
   const highLowAvoidLabelYLines = useMemo(() => {
     if (!cb || !isMinuteTimeframe(timeframe)) return [];
@@ -1494,7 +1507,7 @@ export function LiveChartRoot({
               <DailyMovingAverageOverlay chart={chart} bundle={cb} axis={axis} code={code} timeframe={timeframe} venue={venue} todayKst={todayKst} override={dailyMovingAverageOverride} />
             </>
           )}
-          {paneSpecsForTimeframe(timeframe, paneToggles).map((spec, i) => (
+          {paneSpecsForTimeframe(timeframe, activePaneToggles).map((spec, i) => (
             <RangeSeriesPane
               key={spec.name}
               chart={chart}
@@ -1591,7 +1604,13 @@ export function LiveChartRoot({
           {/* P1: `cb`(캔들 경로 번들)를 memo 신선화 신호로 전달. SSE 호가 틱엔 `cb`
               식별자가 안정(2026-06-09 bundle-split)이라 레전드 재렌더가 차단되고, 캔들
               갱신 때만 새 ref가 돼 latest 값을 신선화한다. ref-during-render 불필요. */}
-          <PaneLegendOverlay chart={chart} timeframe={timeframe} paneSeries={paneSeries} dataEpoch={cb} />
+          <PaneLegendOverlay
+            chart={chart}
+            timeframe={timeframe}
+            paneSeries={paneSeries}
+            paneToggles={activePaneToggles}
+            dataEpoch={cb}
+          />
           <CandleTooltip chart={chart} bundle={cb} quoteBundle={paneRatioBundle} axis={axis} paneSeries={paneSeries} timeframe={timeframe} />
           {/* 고저 극값 라벨 — 보이는 범위의 최고/최저봉에 극값 대비율 라벨. cb(안정)·viewport
               구독이라 SSE 틱엔 미재렌더, 팬/줌·캔들 갱신 시에만 재계산. 토글 self-gate. */}

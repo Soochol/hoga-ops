@@ -1,22 +1,28 @@
-Status: DONE
+## Task 3 Report: Store Setter And Snapshot Wiring
 
-Task: Guard Background REST Capture Under Bypass
+## Status
 
-Scope:
-- Added a regression test in `tests/unit/live/test_lifecycle_rest30_recorder.py`.
-- No production code changed; the existing `sync_storage_runtime()` and lifecycle behavior already satisfied the invariant once covered by the test.
+DONE
 
-Changes:
-- Added `test_kis_rest_bypass_prevents_api_recorder_start`.
-- The test persists `LiveSettings(storage_policy="rest_only", kis_rest_bypass_enabled=True)`.
-- It starts the live stream and asserts:
-  - `status.kis_rest_bypass_enabled is True`
-  - `status.kis_api_targets == []`
-  - `status.kis_api_running is False`
-  - `FakeRest30Recorder.created == []`
+## Files Changed
 
-Verification:
-- Implementer run:
+- `frontend/src/state/livePage.ts`
+
+## Changes
+
+1. Added imports from `frontend/src/live/indicators/indicatorPaneProfiles`:
+   - `normalizePanePrefsByTimeframe`
+   - `profileKeyForTimeframe`
+   - `PanePrefKey`
+   - `PersistedPanePrefsByTimeframe`
+2. Extended `Store` with:
+   - `setPanePrefForTimeframe: (timeframe: LiveTimeframe, key: PanePrefKey, enabled: boolean) => void`
+3. Implemented `setPanePrefForTimeframe` in the store object near existing pane toggles.
+4. Kept existing `snapshotIndicators(get)` persistence slice including `panePrefsByTimeframe: s.panePrefsByTimeframe` intact (already present from Task 2).
+
+## Validation
+
+- `cd frontend && npm run build` — PASS
   - `uv run --extra dev pytest tests/unit/live/test_lifecycle_rest30_recorder.py tests/unit/live/test_lifecycle_rest_poller.py -q`
   - `19 passed`
 - Controller verification after review clarification:

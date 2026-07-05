@@ -21,6 +21,7 @@ const {
   useVolumeDistributionCutoffProfileMock,
   useSymbolSearchMock,
   useLiveIndicesMock,
+  indicatorPanelMockProps,
   liveChartRootMock,
 } = vi.hoisted(() => ({
   useStudyViewsMock: vi.fn(),
@@ -32,6 +33,7 @@ const {
   useVolumeDistributionCutoffProfileMock: vi.fn((args: { finalProfile: DayVolumeDistribution | null | undefined }) => args.finalProfile),
   useSymbolSearchMock: vi.fn(),
   useLiveIndicesMock: vi.fn(),
+  indicatorPanelMockProps: [] as Array<{ timeframe: string }>,
   liveChartRootMock: vi.fn(),
 }));
 
@@ -73,11 +75,14 @@ vi.mock('../live/LiveChartRoot', () => ({
 }));
 
 vi.mock('../live/indicators/IndicatorPanel', () => ({
-  default: ({ onClose }: { onClose: () => void }) => (
-    <div role="dialog" aria-label="보조지표">
-      <button type="button" onClick={onClose}>닫기</button>
-    </div>
-  ),
+  default: ({ onClose, timeframe }: { onClose: () => void; timeframe: string }) => {
+    indicatorPanelMockProps.push({ timeframe });
+    return (
+      <div role="dialog" aria-label="보조지표">
+        <button type="button" onClick={onClose}>닫기</button>
+      </div>
+    );
+  },
 }));
 
 vi.mock('../live/LiveSettingsModal', () => ({
@@ -203,6 +208,7 @@ function getStudyTab(label: string) {
 }
 
 beforeEach(() => {
+  indicatorPanelMockProps.length = 0;
   liveChartRootMock.mockClear();
   useStudyViewsMock.mockReturnValue({
     data: { schema_version: 1, saves: [referenceSave, secondReferenceSave] },
@@ -427,6 +433,44 @@ describe('StudyPage', () => {
     fireEvent.click(screen.getByRole('button', { name: '닫기' }));
     fireEvent.click(screen.getByTestId('live-settings-button'));
     expect(screen.getByRole('dialog', { name: '설정' })).toBeTruthy();
+  });
+
+  it('passes the active study timeframe into IndicatorPanel', () => {
+    renderPage('/study?view=view-ref');
+
+    fireEvent.click(screen.getByRole('button', { name: '일' }));
+    fireEvent.click(screen.getByTestId('live-indicators-button'));
+
+    expect(indicatorPanelMockProps.at(-1)?.timeframe).toBe('D');
+    expect(screen.getByRole('dialog', { name: '보조지표' })).toBeTruthy();
+  });
+
+  it('passes the active study timeframe into IndicatorPanel while the reference bundle is loading', () => {
+    useStudyTabsStore.setState({
+      tabs: [{
+        id: 'tab-ref',
+        viewId: 'view-ref',
+        code: '005930',
+        label: '삼성전자 · 돌파 복기 · D',
+        name: '돌파 복기',
+        timeframe: 'D',
+      }],
+      activeTabId: 'tab-ref',
+    });
+    useStudyReferenceBundleMock.mockReturnValue({
+      bundle: null,
+      chartBundle: null,
+      isLoading: true,
+      error: null,
+      pastDataWarnings: [],
+    });
+
+    renderPage('/study?view=view-ref');
+
+    fireEvent.click(screen.getByTestId('live-indicators-button'));
+
+    expect(indicatorPanelMockProps.at(-1)?.timeframe).toBe('D');
+    expect(screen.getByRole('dialog', { name: '보조지표' })).toBeTruthy();
   });
 
   it('captures the active study tab viewport before switching tabs and restores it on return', () => {

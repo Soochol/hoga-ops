@@ -179,6 +179,9 @@ export function StudyPage() {
   const isLoadingActiveView = activeViewModel.status === 'loading';
   const isErrorActiveView = activeViewModel.status === 'error';
   const isStudyPageLoading = savesQuery.isLoading || isLoadingActiveView;
+  const indicatorPanelTimeframe = activeViewModel.status === 'ready'
+    ? activeViewModel.save.timeframe
+    : activeTab?.timeframe ?? selectedTimeframe ?? '1m';
   const captureViewportRef = useRef<() => TabViewport | null>(() => null);
   const draggingEntry = useEntryDragStore((s) => s.draggingCode != null);
   const overStudy = useEntryDragStore((s) => s.overStudy);
@@ -366,7 +369,10 @@ export function StudyPage() {
         )}
       >
         {indicatorPanelOpen && (
-          <IndicatorPanel onClose={() => setIndicatorPanelOpen(false)} />
+          <IndicatorPanel
+            onClose={() => setIndicatorPanelOpen(false)}
+            timeframe={indicatorPanelTimeframe}
+          />
         )}
         {settingsOpen && (
           <LiveSettingsModal onClose={() => setSettingsOpen(false)} />
@@ -389,7 +395,10 @@ export function StudyPage() {
         )}
       >
         {indicatorPanelOpen && (
-          <IndicatorPanel onClose={() => setIndicatorPanelOpen(false)} />
+          <IndicatorPanel
+            onClose={() => setIndicatorPanelOpen(false)}
+            timeframe={indicatorPanelTimeframe}
+          />
         )}
         {settingsOpen && (
           <LiveSettingsModal onClose={() => setSettingsOpen(false)} />
@@ -413,7 +422,10 @@ export function StudyPage() {
         )}
       >
         {indicatorPanelOpen && (
-          <IndicatorPanel onClose={() => setIndicatorPanelOpen(false)} />
+          <IndicatorPanel
+            onClose={() => setIndicatorPanelOpen(false)}
+            timeframe={indicatorPanelTimeframe}
+          />
         )}
         {settingsOpen && (
           <LiveSettingsModal onClose={() => setSettingsOpen(false)} />
@@ -560,7 +572,10 @@ export function StudyPage() {
             {draggingEntry && overStudy && <StudyDropOverlay />}
           </div>
           {indicatorPanelOpen && (
-            <IndicatorPanel onClose={() => setIndicatorPanelOpen(false)} />
+            <IndicatorPanel
+              onClose={() => setIndicatorPanelOpen(false)}
+              timeframe={indicatorPanelTimeframe}
+            />
           )}
           {settingsOpen && (
             <LiveSettingsModal onClose={() => setSettingsOpen(false)} />

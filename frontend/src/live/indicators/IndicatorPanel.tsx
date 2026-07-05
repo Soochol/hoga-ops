@@ -13,10 +13,18 @@ import FillStrengthConfig from './FillStrengthConfig';
 import { MA_COLOR_ROWS } from './MAStylePicker';
 import ProgramTradeConfig from './ProgramTradeConfig';
 import BrokerLateEntryConfig from './BrokerLateEntryConfig';
+import {
+  panePrefsForTimeframe,
+  profileKeyForTimeframe,
+  type IndicatorPaneProfileKey,
+  type PanePrefKey,
+  type PanePrefsIndicatorSource,
+} from './indicatorPaneProfiles';
 import ToggleRow from '../settings/ToggleRow';
 import { CheckIcon } from '../../ui/CheckIcon';
 import { STOCK_CAPABILITIES, type LiveInstrumentCapabilities } from '../liveInstrumentCapabilities';
 import { DataSection, ListRow } from '../../ui/DataSurface';
+import type { LiveTimeframe } from '../../state/livePage';
 
 type CategoryId =
   | 'moving-average'
@@ -59,22 +67,37 @@ const CATEGORIES: ReadonlyArray<{ id: CategoryId; label: string; group: GroupId 
   { id: 'program-trade',   label: '프로그램 순매수',  group: 'program' },
 ];
 
+const PROFILE_SELECTOR_OPTIONS: ReadonlyArray<{
+  key: IndicatorPaneProfileKey;
+  label: string;
+}> = [
+  { key: 'minute', label: '분봉' },
+  { key: 'D', label: '일봉' },
+  { key: 'W', label: '주봉' },
+  { key: 'M', label: '월봉' },
+];
+
+const PANE_CATEGORY_TO_KEY: Partial<Record<CategoryId, PanePrefKey>> = {
+  volume: 'volumeEnabled',
+  'quote-totals': 'quoteTotalsEnabled',
+  ratio: 'ratioEnabled',
+  'fill-strength': 'fillStrengthEnabled',
+  'program-trade': 'programTradeEnabled',
+  'foreign-net': 'foreignNetEnabled',
+  'institution-net': 'institutionNetEnabled',
+};
+
 type Props = {
   onClose: () => void;
   capabilities?: LiveInstrumentCapabilities;
+  timeframe: LiveTimeframe;
 };
 
-export default function IndicatorPanel({ onClose, capabilities = STOCK_CAPABILITIES }: Props) {
+export default function IndicatorPanel({ onClose, capabilities = STOCK_CAPABILITIES, timeframe }: Props) {
   const maEnabled = useLivePageStore((s) => s.movingAverageEnabled);
   const setMaEnabled = useLivePageStore((s) => s.setMovingAverageEnabled);
   const dailyMaEnabled = useLivePageStore((s) => s.dailyMovingAverageEnabled);
   const setDailyMaEnabled = useLivePageStore((s) => s.setDailyMovingAverageEnabled);
-  const foreignNet = useLivePageStore((s) => s.foreignNetEnabled);
-  const setForeignNet = useLivePageStore((s) => s.setForeignNetEnabled);
-  const institutionNet = useLivePageStore((s) => s.institutionNetEnabled);
-  const setInstitutionNet = useLivePageStore((s) => s.setInstitutionNetEnabled);
-  const volumeEnabled = useLivePageStore((s) => s.volumeEnabled);
-  const setVolumeEnabled = useLivePageStore((s) => s.setVolumeEnabled);
   const askPeakEnabled = useLivePageStore((s) => s.askPeakEnabled);
   const setAskPeakEnabled = useLivePageStore((s) => s.setAskPeakEnabled);
   const bidPeakEnabled = useLivePageStore((s) => s.bidPeakEnabled);
@@ -90,20 +113,30 @@ export default function IndicatorPanel({ onClose, capabilities = STOCK_CAPABILIT
   const volumeDistributionMaxColor = useLivePageStore((s) => s.volumeDistributionMaxColor);
   const setVolumeDistributionRangeCount = useLivePageStore((s) => s.setVolumeDistributionRangeCount);
   const setVolumeDistributionStyle = useLivePageStore((s) => s.setVolumeDistributionStyle);
-  const quoteTotals = useLivePageStore((s) => s.quoteTotalsEnabled);
-  const setQuoteTotals = useLivePageStore((s) => s.setQuoteTotalsEnabled);
-  const ratio = useLivePageStore((s) => s.ratioEnabled);
-  const setRatio = useLivePageStore((s) => s.setRatioEnabled);
-  const fillStrength = useLivePageStore((s) => s.fillStrengthEnabled);
-  const setFillStrength = useLivePageStore((s) => s.setFillStrengthEnabled);
   const brokerLateEntryEnabled = useLivePageStore((s) => s.brokerLateEntryEnabled);
   const setBrokerLateEntryEnabled = useLivePageStore((s) => s.setBrokerLateEntryEnabled);
-  const programTrade = useLivePageStore((s) => s.programTradeEnabled);
-  const setProgramTrade = useLivePageStore((s) => s.setProgramTradeEnabled);
+  const paneIndicators = useLivePageStore((s): PanePrefsIndicatorSource => ({
+    volumeEnabled: s.volumeEnabled,
+    quoteTotalsEnabled: s.quoteTotalsEnabled,
+    ratioEnabled: s.ratioEnabled,
+    fillStrengthEnabled: s.fillStrengthEnabled,
+    programTradeEnabled: s.programTradeEnabled,
+    foreignNetEnabled: s.foreignNetEnabled,
+    institutionNetEnabled: s.institutionNetEnabled,
+    panePrefsByTimeframe: s.panePrefsByTimeframe,
+  }));
+  const setPanePrefForTimeframe = useLivePageStore((s) => s.setPanePrefForTimeframe);
 
   // Which category's detail pane shows on the right. Clicking a category label
   // navigates here; the checkbox icon toggles its master switch separately.
   const [selected, setSelected] = useState<CategoryId>('moving-average');
+  const [selectedProfile, setSelectedProfile] = useState<IndicatorPaneProfileKey>(
+    () => profileKeyForTimeframe(timeframe),
+  );
+
+  useEffect(() => {
+    setSelectedProfile(profileKeyForTimeframe(timeframe));
+  }, [timeframe]);
 
   useEffect(() => {
     const onKey = (event: KeyboardEvent) => {
@@ -120,45 +153,44 @@ export default function IndicatorPanel({ onClose, capabilities = STOCK_CAPABILIT
     }
     return true;
   });
+  const selectedProfileTimeframe: LiveTimeframe =
+    selectedProfile === 'minute' ? '1m' : selectedProfile;
+  const selectedPanePrefs = panePrefsForTimeframe(paneIndicators, selectedProfileTimeframe);
 
   // Each category maps to a master on/off toggle. Investor bars have an
   // informational detail pane (legend + daily note) but no per-slot config,
   // so the left checkbox is the whole control for them.
   const checkedFor = (id: CategoryId): boolean => {
+    const paneKey = PANE_CATEGORY_TO_KEY[id];
+    if (paneKey) return selectedPanePrefs[paneKey];
     switch (id) {
       case 'moving-average': return maEnabled;
       case 'daily-moving-average': return dailyMaEnabled;
-      case 'foreign-net': return foreignNet;
-      case 'institution-net': return institutionNet;
-      case 'volume': return volumeEnabled;
       case 'ask-peak': return askPeakEnabled;
       case 'bid-peak': return bidPeakEnabled;
       case 'trade-volume-poc': return tradeVolumePocEnabled;
       case 'volume-distribution': return volumeDistributionEnabled;
-      case 'quote-totals': return quoteTotals;
-      case 'ratio': return ratio;
-      case 'fill-strength': return fillStrength;
       case 'broker-late-entry': return brokerLateEntryEnabled;
-      case 'program-trade': return programTrade;
       default: return false;
     }
   };
   const toggleFor = (id: CategoryId): (() => void) | null => {
+    const paneKey = PANE_CATEGORY_TO_KEY[id];
+    if (paneKey) {
+      return () => setPanePrefForTimeframe(
+        selectedProfileTimeframe,
+        paneKey,
+        !selectedPanePrefs[paneKey],
+      );
+    }
     switch (id) {
       case 'moving-average': return () => setMaEnabled(!maEnabled);
       case 'daily-moving-average': return () => setDailyMaEnabled(!dailyMaEnabled);
-      case 'foreign-net': return () => setForeignNet(!foreignNet);
-      case 'institution-net': return () => setInstitutionNet(!institutionNet);
-      case 'volume': return () => setVolumeEnabled(!volumeEnabled);
       case 'ask-peak': return () => setAskPeakEnabled(!askPeakEnabled);
       case 'bid-peak': return () => setBidPeakEnabled(!bidPeakEnabled);
       case 'trade-volume-poc': return () => setTradeVolumePocEnabled(!tradeVolumePocEnabled);
       case 'volume-distribution': return () => setVolumeDistributionEnabled(!volumeDistributionEnabled);
-      case 'quote-totals': return () => setQuoteTotals(!quoteTotals);
-      case 'ratio': return () => setRatio(!ratio);
-      case 'fill-strength': return () => setFillStrength(!fillStrength);
       case 'broker-late-entry': return () => setBrokerLateEntryEnabled(!brokerLateEntryEnabled);
-      case 'program-trade': return () => setProgramTrade(!programTrade);
       default: return null;
     }
   };
@@ -176,13 +208,30 @@ export default function IndicatorPanel({ onClose, capabilities = STOCK_CAPABILIT
       <div
         data-testid="indicator-panel-shell"
         onClick={(event) => event.stopPropagation()}
-        className="grid max-h-[min(820px,calc(100vh-48px))] w-[min(1040px,calc(100vw-48px))] grid-rows-[auto_minmax(0,1fr)_auto] overflow-hidden rounded-lg border border-border bg-bg-card shadow-[0_24px_80px_rgba(0,0,0,0.45)]"
+        className="grid max-h-[min(820px,calc(100vh-48px))] w-[min(1040px,calc(100vw-48px))] grid-rows-[auto_auto_minmax(0,1fr)_auto] overflow-hidden rounded-lg border border-border bg-bg-card shadow-[0_24px_80px_rgba(0,0,0,0.45)]"
       >
         <div className="flex items-center justify-between border-b border-border px-4 py-3">
           <h2 className="text-base font-medium text-fg">지표</h2>
           <button type="button" aria-label="닫기" onClick={onClose} className="text-lg leading-none text-fg-dim hover:text-fg">
             ✕
           </button>
+        </div>
+        <div className="flex items-center gap-1 border-b border-border px-4 py-2" aria-label="시간봉별 pane profile">
+          {PROFILE_SELECTOR_OPTIONS.map(({ key, label }) => (
+            <button
+              key={key}
+              type="button"
+              aria-pressed={selectedProfile === key}
+              onClick={() => setSelectedProfile(key)}
+              className={`rounded-md px-2.5 py-1 text-xs ${
+                selectedProfile === key
+                  ? 'bg-accent text-bg'
+                  : 'bg-bg-input text-fg-dim hover:bg-bg-input-hover hover:text-fg'
+              }`}
+            >
+              {label}
+            </button>
+          ))}
         </div>
         <div className="grid min-h-0 grid-cols-[240px_minmax(0,1fr)]">
           <nav className="overflow-y-auto py-2 border-r border-border bg-bg-card" aria-label="지표 카테고리">

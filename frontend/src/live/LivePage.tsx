@@ -29,6 +29,7 @@ import {
 } from '../studyViews/studySaveSource';
 import { LiveStudyViewSaveButton } from '../studyViews/LiveStudyViewSaveButton';
 import IndicatorPanel from './indicators/IndicatorPanel';
+import { panePrefsForTimeframe, type PanePrefsIndicatorSource } from './indicators/indicatorPaneProfiles';
 import LiveSettingsModal from './LiveSettingsModal';
 import { useDocumentTitle } from '../util/useDocumentTitle';
 import { indexInstrument, isLiveIndexId } from './liveInstrument';
@@ -132,8 +133,21 @@ export function LivePage() {
   const timeframe = useLivePageStore((s) => s.candleTimeframe);
   const historicalFromDate = useLivePageStore((s) => s.historicalFromDate);
   const liveVenue = useLiveVenueStore((s) => s.venue);
-  const foreignNetEnabled = useLivePageStore((s) => s.foreignNetEnabled);
-  const institutionNetEnabled = useLivePageStore((s) => s.institutionNetEnabled);
+  const paneIndicators = useLivePageStore((s): PanePrefsIndicatorSource => ({
+    volumeEnabled: s.volumeEnabled,
+    quoteTotalsEnabled: s.quoteTotalsEnabled,
+    ratioEnabled: s.ratioEnabled,
+    fillStrengthEnabled: s.fillStrengthEnabled,
+    programTradeEnabled: s.programTradeEnabled,
+    foreignNetEnabled: s.foreignNetEnabled,
+    institutionNetEnabled: s.institutionNetEnabled,
+    panePrefsByTimeframe: s.panePrefsByTimeframe,
+  }));
+  const activePanePrefs = useMemo(
+    () => panePrefsForTimeframe(paneIndicators, timeframe),
+    [paneIndicators, timeframe],
+  );
+  const investorNetEnabled = activePanePrefs.foreignNetEnabled || activePanePrefs.institutionNetEnabled;
   const stockTabCodes = useMemo(() => {
     const codes: string[] = [];
     const seen = new Set<string>();
@@ -217,7 +231,7 @@ export function LivePage() {
     timeframe,
     today,
     live,
-    { investorNetEnabled: foreignNetEnabled || institutionNetEnabled, venue: liveVenue },
+    { investorNetEnabled, venue: liveVenue },
   );
   const liveInitial = live.initial?.code === activeCode ? live.initial : undefined;
   const stockBundle = activeCode && bundle?.code === activeCode ? bundle : null;
@@ -238,7 +252,7 @@ export function LivePage() {
     activeIndexId && timeframe === 'D' && capabilities.investorNet === 'market' ? activeIndexId : null,
     indexInvestorFrom,
     indexInvestorTo,
-    timeframe === 'D' && capabilities.investorNet === 'market' && (foreignNetEnabled || institutionNetEnabled),
+    timeframe === 'D' && capabilities.investorNet === 'market' && investorNetEnabled,
   );
   const indexBundle = useMemo<RangeBundle | null>(() => {
     if (!activeIndexId || !indexCandles.data) return null;
@@ -433,6 +447,7 @@ export function LivePage() {
         <IndicatorPanel
           onClose={() => setIndicatorPanelOpen(false)}
           capabilities={capabilities}
+          timeframe={timeframe}
         />
       )}
       {settingsOpen && (

@@ -83,6 +83,7 @@ describe('makeStudySaveCommand', () => {
     });
     expect('snapshot' in command!.request).toBe(false);
     expect('indicator_state' in command!.request).toBe(false);
+    expect('panePrefsByTimeframe' in command!.request).toBe(false);
     expect(studySaveCommandBody(command!, { name: '복기', memo: '메모' })).toMatchObject({
       name: '복기',
       memo: '메모',
@@ -122,6 +123,7 @@ describe('makeStudySaveCommand', () => {
     });
     expect('snapshot' in command!.request).toBe(false);
     expect('indicator_state' in command!.request).toBe(false);
+    expect('panePrefsByTimeframe' in command!.request).toBe(false);
   });
 
   it('returns null when no viewport can be captured or inferred', () => {

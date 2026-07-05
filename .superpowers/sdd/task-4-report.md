@@ -1,36 +1,45 @@
-Status: DONE
+# Task 4 Report: Chart Pane Resolution
 
-Task: Verify Central KIS REST Gate Coverage
+## Status
 
-Scope:
-- Added endpoint-parametrized central bypass coverage to `tests/unit/live/test_kis_rest_bypass_access.py`.
-- No production code changed; `kis_access.run_with_capacity()` already blocks before scheduler execution for the tested endpoints.
+DONE
 
-Changes:
-- Added `test_run_with_capacity_blocks_representative_endpoints_when_bypass_on`.
-- The test covers representative endpoints:
-  - `PAST_MINUTE`
-  - `PAST_DAILY`
-  - `QUOTES`
-  - `LIVE_ORDERBOOK`
-  - `LIVE_TRADES`
-  - `LIVE_BROKERS`
-  - `INVESTOR_NET`
-- For each endpoint, the test enables `kis_rest_bypass_enabled`, calls `run_with_capacity()`, expects `KisRestBypassedError`, and asserts the scheduler was not called.
+## Files Changed
 
-Verification:
-- Implementer run:
-  - `uv run --extra dev pytest tests/unit/live/test_kis_rest_bypass_access.py -q`
-  - `10 passed`
-- Implementer run:
-  - `uv run --extra dev pytest tests/unit/live/test_api_kis_rest_bypass_quotes.py tests/unit/live/test_kis_rest_bypass_access.py -q`
-  - `14 passed`
+- `frontend/src/live/LiveChartRoot.tsx`
+- `frontend/src/live/LiveChartRoot.paneToggles.test.tsx`
 
-Files Changed:
-- `tests/unit/live/test_kis_rest_bypass_access.py`
+## Changes
 
-Commit:
-- `fcd9a660 test(live): broaden KIS REST bypass gate coverage`
+1. Added profile-aware pane-resolution coverage in `LiveChartRoot.paneToggles.test.tsx`:
+   - seeded `panePrefsByTimeframe` in the shared baseline
+   - verified minute profile overrides legacy flat fields
+   - verified `/live` D timeframe still suppresses hoga panes
+   - verified forced study-style D panes mount when `forceHogaPanes` is enabled
+2. Updated `LiveChartRoot.tsx` to resolve pane toggles from the active timeframe profile via `resolvePaneTogglesForTimeframe`.
+3. Replaced the local legacy toggle assembly with a single shallow store selector feeding the resolver.
+4. Kept `paneTogglesOverride` behavior intact and merged last through the resolver.
+5. Switched both the chart-pane mount effect and the render-time pane list to the resolved `activePaneToggles`.
 
-Concerns:
-- None.
+## Validation
+
+- `cd frontend && npm test -- --run src/live/LiveChartRoot.paneToggles.test.tsx` — PASS
+- `cd frontend && npm run build` — PASS
+
+## Commit
+
+- `05281853` — `feat: resolve panes from timeframe profiles`
+
+## Concerns
+
+None.
+
+## Task 4 Fix (post-review)
+
+### Change
+- In `frontend/src/live/LiveChartRoot.tsx`, narrowed `activePaneToggles` memo dependencies from the whole `paneTogglesOverride` object to individual scalar fields (`hogaPanes`, `volumeEnabled`, `quoteTotalsEnabled`, `ratioEnabled`, `fillStrengthEnabled`, `programTradeEnabled`).
+- Constructed the resolver `override` object from scalar values inside the memo to avoid unstable object identity from parent inline overrides while preserving existing precedence and profile-resolution behavior.
+
+### Verification
+- `cd frontend && npm test -- --run src/live/LiveChartRoot.paneToggles.test.tsx` — PASS (21 passed, 1 test file)
+- `cd frontend && npm run build` — PASS

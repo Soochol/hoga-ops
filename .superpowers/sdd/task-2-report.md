@@ -1,48 +1,61 @@
-# Task 2 Report: Central KIS REST Access Guard
+# Task 2 Report: Persist Profile Overrides
 
 ## Status
 
 Completed.
 
-## What Changed
+## Files Changed
 
-- Added `KisRestBypassedError(KisApiError)` in [hoga/live/kis_access.py](/home/dev/.codex/worktrees/2486/hoga-ops/hoga/live/kis_access.py).
-- Added `kis_rest_bypass_enabled(data_dir: Path) -> bool` plus internal `_raise_if_bypassed(...)`.
-- Guarded both REST access seams before any client/scheduler work:
-  - `run_with_capacity(...)` now raises immediately when bypass is enabled.
-  - `fetch_for_role(...)` now raises immediately when bypass is enabled.
-- Added focused unit coverage in [tests/unit/live/test_kis_rest_bypass_access.py](/home/dev/.codex/worktrees/2486/hoga-ops/tests/unit/live/test_kis_rest_bypass_access.py) for:
-  - scheduler path blocked before submit
-  - legacy fallback path blocked before client resolution
-  - scheduler path still allowed when bypass is off
+- `frontend/src/state/liveIndicatorsPersistence.ts`
+- `frontend/src/state/liveIndicatorsPersistence.test.ts`
 
 ## TDD Record
 
-1. Wrote `tests/unit/live/test_kis_rest_bypass_access.py` first.
-2. Ran red phase with `uv run pytest tests/unit/live/test_kis_rest_bypass_access.py -q`.
-3. Verified expected failure: missing `kis_access.KisRestBypassedError`.
-4. Implemented minimal guard in `hoga/live/kis_access.py`.
-5. Ran green verification:
-   - `uv run pytest tests/unit/live/test_kis_rest_bypass_access.py tests/unit/live/test_kis_runtime_accounts.py::test_kis_for_role_n1_all_account0 -q`
-   - Result: 4 passed.
-
-## Notes
-
-- The brief’s example used bare `pytest`, but this workspace required `uv run pytest` because the direct `pytest` entrypoint lacked the module environment.
-- Per instructions, unrelated uncommitted docs/spec/plan changes were left untouched and unstaged.
+1. Updated `frontend/src/state/liveIndicatorsPersistence.test.ts`:
+   - Added `panePrefsByTimeframe: {}` to default merged baseline expectation.
+   - Added three tests under `describe('mergeLiveIndicatorPrefs — 호가 토글', ...)`:
+     - defaulting to `{}`.
+     - preserving valid partial overrides.
+     - dropping invalid payload pieces.
+2. Ran focused tests (from `frontend/`): `npm test -- --run src/state/liveIndicatorsPersistence.test.ts`.
+3. Updated `frontend/src/state/liveIndicatorsPersistence.ts`:
+   - Added import from `../live/indicators/indicatorPaneProfiles`:
+     - `normalizePanePrefsByTimeframe` (runtime)
+     - `PersistedPanePrefsByTimeframe` (type-only)
+   - Added `panePrefsByTimeframe: PersistedPanePrefsByTimeframe` to `PersistedIndicators`.
+   - Normalized and injected `panePrefsByTimeframe` in `mergeLiveIndicatorPrefs`.
+4. Re-ran the focused test file after implementation:
+   - `npm test -- --run src/state/liveIndicatorsPersistence.test.ts`.
 
 ## Commit
 
-- `feat: block KIS REST data calls when bypassed`
+- `2da63efe` — `feat: persist indicator pane profiles`
+
+## Test Summary
+
+`npm test -- --run src/state/liveIndicatorsPersistence.test.ts` from `frontend/` — PASS (40 passed).
+
+## Import / Runtime Cycle Notes
+
+- `normalizePanePrefsByTimeframe` is a runtime import.
+- `PersistedPanePrefsByTimeframe` is type-only.
+- No runtime cycle was introduced; the new import is safe because only type dependencies in `indicatorPaneProfiles.ts` touch `liveIndicatorsPersistence`.
 
 ## Concerns
 
-- None from this task’s scope.
+None.
 
-## Follow-up Fix
+## Follow-up Fix (Snapshot Serialization) — 2026-07-05
 
-- Review found that the legacy fallback bypass test monkeypatched `kis_for_role` without proving it was never called.
-- Updated `test_run_with_capacity_blocks_legacy_fallback_when_bypass_on` to install a sentinel side effect and assert `kis_for_role_called is False` when bypass is enabled.
-- Re-ran the requested focused suite:
-  - `uv run pytest tests/unit/live/test_kis_rest_bypass_access.py tests/unit/live/test_kis_runtime_accounts.py::test_kis_for_role_n1_all_account0 -q`
-  - Result: 4 passed.
+### Files Changed
+
+- `frontend/src/state/livePage.ts`
+
+### Change
+
+- Updated `snapshotIndicators(get)` to include `panePrefsByTimeframe: s.panePrefsByTimeframe` so the persisted indicator snapshot matches `PersistedIndicators`.
+
+### Verification
+
+- `cd frontend && npm run build` — PASS
+- `cd frontend && npm test -- --run src/state/liveIndicatorsPersistence.test.ts` — PASS (40 passed)
