@@ -81,6 +81,7 @@ it('opens create dialog and creates from the live source', async () => {
   expect(body.range).toMatchObject({ from_ms: 1_000, to_ms: 2_000 });
   expect('snapshot' in body).toBe(false);
   expect('indicator_state' in body).toBe(false);
+  expect('panePrefsByTimeframe' in body).toBe(false);
   expect(body.viewport.at_live_edge).toBe(true);
   expect(body.viewport.right_padding_bars).toBe(13);
 });

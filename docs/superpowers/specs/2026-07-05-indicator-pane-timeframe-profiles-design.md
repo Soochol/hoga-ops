@@ -1,7 +1,7 @@
 # Indicator Pane Timeframe Profiles — Design
 
 **Date**: 2026-07-05
-**Status**: Draft for user review
+**Status**: Approved for implementation
 **Scope**: `frontend/src/state/livePage.ts`, `frontend/src/state/liveIndicatorsPersistence.ts`, `frontend/src/live/indicators/IndicatorPanel.tsx`, `frontend/src/live/LiveChartRoot.tsx`, `frontend/src/live/LiveWorkarea.tsx`, `frontend/src/studyViews/StudyPage.tsx`, `frontend/src/live/paneSpecsForTimeframe.ts`
 
 ## Problem

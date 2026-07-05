@@ -150,6 +150,7 @@ def test_study_view_routes_crud(study_client):
     assert created["schema_version"] == 2
     assert "snapshot_path" not in created
     assert "indicator_state" not in created
+    assert "panePrefsByTimeframe" not in created
     assert created["viewport"]["right_padding_bars"] == 11
 
     listed = study_client.get("/api/study-views/saves").json()["saves"]
