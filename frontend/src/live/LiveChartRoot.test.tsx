@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
-import { render, screen, act, waitFor } from '@testing-library/react';
+import { render, screen, act, waitFor, createEvent, fireEvent } from '@testing-library/react';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import type { ReactNode } from 'react';
 
@@ -114,6 +114,27 @@ describe('LiveChartRoot', () => {
       { wrapper },
     );
     expect(screen.getByTestId('live-chart-root')).toBeTruthy();
+  });
+
+  it('prevents the browser image context menu inside the chart area', () => {
+    render(
+      <LiveChartRoot
+        code="005930"
+        timeframe="1m"
+        bundle={DEFAULT_BUNDLE}
+        clampEngaged={false}
+        isPastCandlesLoading={false}
+      />,
+      { wrapper },
+    );
+
+    const root = screen.getByTestId('live-chart-root');
+    const chartSlot = root.firstElementChild;
+    expect(chartSlot).toBeTruthy();
+
+    const event = createEvent.contextMenu(chartSlot!);
+    fireEvent(chartSlot!, event);
+    expect(event.defaultPrevented).toBe(true);
   });
 
   it('allows saved study views to restore trade-volume POC overlays outside the live minute gate', () => {

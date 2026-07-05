@@ -3,6 +3,7 @@ import { useMemo, useRef } from 'react';
 import { useRange } from '../api/range';
 import { TIMEFRAME_TO_MS, type Candle, type DayVolumeDistribution, type RangeSegment, type Timeframe } from '../api/types';
 import {
+  buildContinuousTradeVolumeDistributionIndex,
   computeContinuousTradeVolumeDistribution,
   mergeVolumeDistributionTail,
 } from './continuousTradeVolumeDistribution';
@@ -13,6 +14,8 @@ type ContinuousTradeLike = {
   qty: number;
   side: number;
 };
+
+const EMPTY_TRADES: readonly ContinuousTradeLike[] = [];
 
 export function useVolumeDistributionCutoffProfile(args: {
   enabled: boolean;
@@ -43,6 +46,7 @@ export function useVolumeDistributionCutoffProfile(args: {
     args.cursorMs != null && bucketMs != null
       ? Math.floor(args.cursorMs / bucketMs) * bucketMs
       : null;
+  const liveTrades = args.liveTrades ?? EMPTY_TRADES;
   const scope = [
     args.code ?? '',
     args.timeframe ?? '',
@@ -65,6 +69,31 @@ export function useVolumeDistributionCutoffProfile(args: {
       volumeDistributionPriceRange: args.priceRange,
     },
   );
+  const liveFallbackIndex = useMemo(() => {
+    if (
+      !args.date
+      || args.date !== args.todayKst
+      || !args.segment
+      || !args.candles
+      || liveTrades.length === 0
+    ) {
+      return null;
+    }
+    return buildContinuousTradeVolumeDistributionIndex({
+      date: args.date,
+      candles: args.candles,
+      trades: liveTrades,
+      rangeCount: args.rangeCount,
+      segment: args.segment,
+    });
+  }, [
+    args.candles,
+    args.date,
+    args.rangeCount,
+    args.segment,
+    args.todayKst,
+    liveTrades,
+  ]);
 
   return useMemo(() => {
     if (!args.enabled || !queryEnabled) {
@@ -74,7 +103,6 @@ export function useVolumeDistributionCutoffProfile(args: {
 
     const date = args.date;
     const sidecarProfile = query.data?.volume_distributions.find((profile) => profile.date === date) ?? null;
-    const liveTrades = args.liveTrades ?? [];
 
     if (sidecarProfile) {
       const profile = mergeVolumeDistributionTail(sidecarProfile, liveTrades, args.cursorMs);
@@ -97,7 +125,7 @@ export function useVolumeDistributionCutoffProfile(args: {
       && liveTrades.length > 0
       && args.cursorMs != null
     ) {
-      const computedProfile = computeContinuousTradeVolumeDistribution({
+      const computedProfile = liveFallbackIndex?.profileAt(args.cursorMs) ?? computeContinuousTradeVolumeDistribution({
         date,
         candles: args.candles,
         trades: liveTrades,
@@ -118,11 +146,12 @@ export function useVolumeDistributionCutoffProfile(args: {
     args.date,
     args.enabled,
     args.finalProfile,
-    args.liveTrades,
     args.rangeCount,
     args.segment,
     args.todayKst,
     alignedCursorMs,
+    liveFallbackIndex,
+    liveTrades,
     query.data,
     query.isFetching,
     queryEnabled,

@@ -122,18 +122,30 @@ export function styleVisibleMaxAskPeakSegments(
   rankLimit: VisibleMaxRankLimit = 1,
 ): AskPeakSegment[] {
   if (!visibleRange || segments.length === 0 || rankLimit === 0) return [...segments];
-  const highlighted = new Set(segments
-    .map((segment, index) => ({ segment, index }))
-    .filter(({ segment }) => segmentOverlapsVisibleRange(segment, visibleRange))
-    .sort((a, b) => b.segment.qty - a.segment.qty || a.index - b.index)
-    .slice(0, rankLimit)
-    .map(({ index }) => index));
+  const best: { index: number; qty: number }[] = [];
+  for (let index = 0; index < segments.length; index += 1) {
+    const segment = segments[index];
+    if (!segmentOverlapsVisibleRange(segment, visibleRange)) continue;
+    const candidate = { index, qty: segment.qty };
+    let insertAt = best.length;
+    for (let i = 0; i < best.length; i += 1) {
+      if (candidate.qty > best[i].qty) {
+        insertAt = i;
+        break;
+      }
+    }
+    if (insertAt < rankLimit) {
+      best.splice(insertAt, 0, candidate);
+      if (best.length > rankLimit) best.length = rankLimit;
+    }
+  }
+  const highlighted = new Set(best.map(({ index }) => index));
   if (highlighted.size === 0) return [...segments];
-  return segments.map((segment, index) => (
-    highlighted.has(index)
-      ? { ...segment, color: style.color, lineWidth: style.lineWidth }
-      : segment
-  ));
+  const next = [...segments];
+  for (const index of highlighted) {
+    next[index] = { ...segments[index], color: style.color, lineWidth: style.lineWidth };
+  }
+  return next;
 }
 
 export function prepareAskPeakSegmentsForRender(

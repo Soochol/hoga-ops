@@ -95,6 +95,27 @@ describe('peakWallEventClassifier', () => {
     ]);
   });
 
+  it('classifies large live buffers without scanning every wall against every touch', () => {
+    const base = Date.UTC(2026, 5, 23, 0, 0, 0);
+    const events = Array.from({ length: 20_000 }, (_, i) => ({
+      price: 40_000 + (i % 20),
+      qty: 100 + i,
+      t_ms: base + i * 100,
+    }));
+    const touches = Array.from({ length: 2_000 }, (_, i) => ({
+      price: 40_010,
+      t_ms: base + i * 1_000,
+    }));
+
+    const started = performance.now();
+    const classified = classifyAskWallEvents(events, touches);
+    const elapsed = performance.now() - started;
+
+    expect(classified.postTouch[0]).toEqual({ price: 40_010, qty: 20090, t_ms: base + 1_999_000 });
+    expect(classified.postUntouched[0]).toEqual({ price: 40_019, qty: 20099, t_ms: base + 1_999_900 });
+    expect(elapsed).toBeLessThan(300);
+  });
+
   it('ignores side=0 trades when building touch classification input', () => {
     expect(toTouchTicksFromTrades([
       {

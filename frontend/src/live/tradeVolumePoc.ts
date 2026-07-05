@@ -37,14 +37,20 @@ function chooseBestPoc(
 ): TradeVolumePoc | null {
   const { bandPct, date } = options;
   if (buckets.length === 0) return null;
+  const byPrice = [...buckets].sort((a, b) => a.price - b.price);
+  const prices = byPrice.map((bucket) => bucket.price);
+  const prefixQty = new Array<number>(byPrice.length + 1);
+  prefixQty[0] = 0;
+  for (let i = 0; i < byPrice.length; i += 1) {
+    prefixQty[i + 1] = prefixQty[i] + byPrice[i].qty;
+  }
   let best: TradeVolumePoc & { order: number } | null = null;
   for (const center of buckets) {
     const lowPrice = floorKrxStockTick(center.price * (1 - bandPct));
     const highPrice = ceilKrxStockTick(center.price * (1 + bandPct));
-    let qty = 0;
-    for (const bucket of buckets) {
-      if (bucket.price >= lowPrice && bucket.price <= highPrice) qty += bucket.qty;
-    }
+    const start = lowerBoundPrice(prices, lowPrice);
+    const end = upperBoundPrice(prices, highPrice);
+    const qty = prefixQty[end] - prefixQty[start];
     if (
       best === null
       || qty > best.qty
@@ -65,6 +71,28 @@ function chooseBestPoc(
   if (best === null) return null;
   const { order: _order, ...poc } = best;
   return poc;
+}
+
+function lowerBoundPrice(prices: readonly number[], price: number): number {
+  let lo = 0;
+  let hi = prices.length;
+  while (lo < hi) {
+    const mid = (lo + hi) >>> 1;
+    if (prices[mid] < price) lo = mid + 1;
+    else hi = mid;
+  }
+  return lo;
+}
+
+function upperBoundPrice(prices: readonly number[], price: number): number {
+  let lo = 0;
+  let hi = prices.length;
+  while (lo < hi) {
+    const mid = (lo + hi) >>> 1;
+    if (prices[mid] <= price) lo = mid + 1;
+    else hi = mid;
+  }
+  return lo;
 }
 
 export function krxStockTickSize(price: number): number {
