@@ -608,7 +608,9 @@ export const useLivePageStore = create<Store>((set, get) => ({
   },
 
   setDailyMovingAverageEnabled: (enabled) => {
-    set({ dailyMovingAverageEnabled: enabled });
+    set(enabled
+      ? { dailyMovingAverageEnabled: true, dailyMovingAverageHidden: false }
+      : { dailyMovingAverageEnabled: false });
     persistIndicators(snapshotIndicators(get));
   },
 

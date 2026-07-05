@@ -36,6 +36,15 @@ describe('daily MA store setters', () => {
     expect(useLivePageStore.getState().dailyMovingAverageHidden).toBe(true);
   });
 
+  it('turning daily MA on clears a stale hidden flag', () => {
+    useLivePageStore.getState().setDailyMovingAverageHidden(true);
+
+    useLivePageStore.getState().setDailyMovingAverageEnabled(true);
+
+    expect(useLivePageStore.getState().dailyMovingAverageEnabled).toBe(true);
+    expect(useLivePageStore.getState().dailyMovingAverageHidden).toBe(false);
+  });
+
   it('daily setter does NOT clobber current-bar movingAverages (single source)', () => {
     const before = useLivePageStore.getState().movingAverages;
     useLivePageStore.getState().setDailyMovingAverageEnabled(true);
