@@ -1821,7 +1821,7 @@ def test_build_ask_peak_slice_wires_intra_max(tmp_path) -> None:
 
 
 def test_build_ask_peak_slice_wires_all_price_peak(tmp_path) -> None:
-    """과거 AskPeak은 체결가격 기준과 미체결 포함 최대벽을 함께 싣는다."""
+    """Post-touch가 없더라도 all/untraded ask peak payload는 유지된다."""
     from unittest.mock import MagicMock
     from hoga.api.bundle import build_ask_peak_slice
     from hoga.tables.snapshots import Orderbook, write_parquet as snapshots_write_parquet
@@ -1853,12 +1853,19 @@ def test_build_ask_peak_slice_wires_all_price_peak(tmp_path) -> None:
     )
 
     assert p is not None
-    assert p.price == 25000 and p.qty == 1000
+    assert p.price is None and p.qty is None and p.t_ms is None
+    assert p.max_price is None and p.max_qty is None and p.max_t_ms is None
     assert p.all_price == 26000 and p.all_qty == 9000
+    assert p.untraded_price == 26000 and p.untraded_qty == 9000
+    assert [c.model_dump() for c in p.untraded_peaks] == [
+        {"price": 26000, "qty": 9000, "t_ms": 1781049660000},
+        {"price": 25000, "qty": 1000, "t_ms": 1781049660000},
+        {"price": 27000, "qty": 100, "t_ms": 1781049660000},
+    ]
 
 
 def test_build_ask_peak_slice_wires_traded_peak_candidates(tmp_path) -> None:
-    """과거 AskPeak은 cutoff 재계산용 체결가격 기준 후보를 3등 밖까지 싣는다."""
+    """Post-touch 후보가 없으면 ranked arrays는 all/untraded 쪽으로만 남는다."""
     from unittest.mock import MagicMock
     from hoga.api.bundle import build_ask_peak_slice
     from hoga.tables.snapshots import Orderbook, write_parquet as snapshots_write_parquet
@@ -1906,7 +1913,21 @@ def test_build_ask_peak_slice_wires_traded_peak_candidates(tmp_path) -> None:
     )
 
     assert p is not None
-    assert [c.model_dump() for c in p.traded_peaks] == [
+    assert p.price is None and p.qty is None and p.t_ms is None
+    assert p.max_price is None and p.max_qty is None and p.max_t_ms is None
+    assert [c.model_dump() for c in p.traded_peaks] == []
+    assert [c.model_dump() for c in p.traded_max_peaks] == []
+    assert [c.model_dump() for c in p.untraded_peaks] == [
+        {"price": 26000, "qty": 9000, "t_ms": 1781049660000},
+        {"price": 26000, "qty": 8000, "t_ms": 1781049720000},
+        {"price": 27000, "qty": 7100, "t_ms": 1781049720000},
+    ]
+    assert [c.model_dump() for c in p.untraded_max_peaks] == [
+        {"price": 26000, "qty": 9000, "t_ms": 1781049660000},
+        {"price": 26000, "qty": 8000, "t_ms": 1781049720000},
+        {"price": 27000, "qty": 7100, "t_ms": 1781049720000},
+    ]
+    assert [c.model_dump() for c in p.all_peaks[:8]] == [
         {"price": 26000, "qty": 9000, "t_ms": 1781049660000},
         {"price": 26000, "qty": 8000, "t_ms": 1781049720000},
         {"price": 27000, "qty": 7100, "t_ms": 1781049720000},
@@ -1914,7 +1935,7 @@ def test_build_ask_peak_slice_wires_traded_peak_candidates(tmp_path) -> None:
         {"price": 28000, "qty": 6000, "t_ms": 1781049660000},
         {"price": 25000, "qty": 3000, "t_ms": 1781049720000},
         {"price": 25000, "qty": 1000, "t_ms": 1781049660000},
-        {"price": 28000, "qty": 100, "t_ms": 1781049720000},
+        {"price": 29000, "qty": 500, "t_ms": 1781049660000},
     ]
 
 
@@ -2012,6 +2033,87 @@ def test_ask_peak_from_dual_row_preserves_legacy_untraded_values_when_ranked_arr
     assert peak.untraded_max_t_ms == 1781654760000
 
 
+def test_ask_peak_from_dual_row_keeps_post_touch_scalars_nullable_without_dropping_other_views() -> None:
+    from hoga.api.bundle import _ask_peak_from_dual_row
+    from hoga.tables.snapshots import AskPeakCandidateRow, AskPeakDualRow
+
+    row = AskPeakDualRow(
+        price=None,
+        qty=None,
+        intra_ms=None,
+        max_price=None,
+        max_qty=None,
+        max_intra_ms=None,
+        traded_peaks=(),
+        traded_max_peaks=(),
+        all_price=26000,
+        all_qty=9000,
+        all_intra_ms=9 * 3_600_000 + 3 * 60_000,
+        all_max_price=26100,
+        all_max_qty=9100,
+        all_max_intra_ms=9 * 3_600_000 + 4 * 60_000,
+        all_peaks=(
+            AskPeakCandidateRow(price=26000, qty=9000, intra_ms=9 * 3_600_000 + 3 * 60_000),
+            AskPeakCandidateRow(price=27000, qty=7100, intra_ms=9 * 3_600_000 + 4 * 60_000),
+        ),
+        all_max_peaks=(
+            AskPeakCandidateRow(price=26100, qty=9100, intra_ms=9 * 3_600_000 + 4 * 60_000),
+            AskPeakCandidateRow(price=27200, qty=7200, intra_ms=9 * 3_600_000 + 5 * 60_000),
+        ),
+        untraded_price=29900,
+        untraded_qty=7,
+        untraded_intra_ms=9 * 3_600_000 + 5 * 60_000,
+        untraded_max_price=29800,
+        untraded_max_qty=6,
+        untraded_max_intra_ms=9 * 3_600_000 + 6 * 60_000,
+        untraded_peaks=(
+            AskPeakCandidateRow(price=27000, qty=100, intra_ms=9 * 3_600_000 + 7 * 60_000),
+            AskPeakCandidateRow(price=27100, qty=90, intra_ms=9 * 3_600_000 + 8 * 60_000),
+        ),
+        untraded_max_peaks=(
+            AskPeakCandidateRow(price=27200, qty=120, intra_ms=9 * 3_600_000 + 9 * 60_000),
+            AskPeakCandidateRow(price=27300, qty=110, intra_ms=9 * 3_600_000 + 10 * 60_000),
+        ),
+    )
+
+    peak = _ask_peak_from_dual_row("20260617", row)
+
+    assert peak.price is None
+    assert peak.qty is None
+    assert peak.t_ms is None
+    assert peak.max_price is None
+    assert peak.max_qty is None
+    assert peak.max_t_ms is None
+    assert [candidate.model_dump() for candidate in peak.all_peaks] == [
+        {"price": 26000, "qty": 9000, "t_ms": 1781654580000},
+        {"price": 27000, "qty": 7100, "t_ms": 1781654640000},
+    ]
+    assert [candidate.model_dump() for candidate in peak.all_max_peaks] == [
+        {"price": 26100, "qty": 9100, "t_ms": 1781654640000},
+        {"price": 27200, "qty": 7200, "t_ms": 1781654700000},
+    ]
+    assert peak.all_price == 26000
+    assert peak.all_qty == 9000
+    assert peak.all_t_ms == 1781654580000
+    assert peak.all_max_price == 26100
+    assert peak.all_max_qty == 9100
+    assert peak.all_max_t_ms == 1781654640000
+    assert [candidate.model_dump() for candidate in peak.untraded_peaks] == [
+        {"price": 27000, "qty": 100, "t_ms": 1781654820000},
+        {"price": 27100, "qty": 90, "t_ms": 1781654880000},
+    ]
+    assert [candidate.model_dump() for candidate in peak.untraded_max_peaks] == [
+        {"price": 27200, "qty": 120, "t_ms": 1781654940000},
+        {"price": 27300, "qty": 110, "t_ms": 1781655000000},
+    ]
+    assert peak.untraded_price == 27000
+    assert peak.untraded_qty == 100
+    assert peak.untraded_t_ms == 1781654820000
+    assert peak.untraded_max_price == 27200
+    assert peak.untraded_max_qty == 120
+    assert peak.untraded_max_t_ms == 1781654940000
+
+
 def test_build_bid_peak_slice_wires_untraded_peak(tmp_path) -> None:
     from unittest.mock import MagicMock
     from hoga.api.bundle import build_bid_peak_slice
@@ -2052,10 +2154,19 @@ def test_build_bid_peak_slice_wires_untraded_peak(tmp_path) -> None:
     )
 
     assert p is not None
-    assert p.price == 70000
-    assert p.qty == 5000
+    assert p.price is None
+    assert p.qty is None
+    assert p.t_ms is None
+    assert p.max_price is None
+    assert p.max_qty is None
+    assert p.max_t_ms is None
     assert p.untraded_price == 68900
     assert p.untraded_qty == 12000
+    assert [c.model_dump() for c in p.untraded_peaks] == [
+        {"price": 68900, "qty": 12000, "t_ms": 1781827260000},
+        {"price": 69000, "qty": 9000, "t_ms": 1781827260000},
+        {"price": 70000, "qty": 5000, "t_ms": 1781827260000},
+    ]
 
 
 def test_bid_peak_from_dual_row_preserves_ranked_untraded_arrays() -> None:
@@ -2152,6 +2263,87 @@ def test_bid_peak_from_dual_row_preserves_legacy_untraded_values_when_ranked_arr
     assert peak.untraded_max_t_ms == 1781827560000
 
 
+def test_bid_peak_from_dual_row_keeps_post_touch_scalars_nullable_without_dropping_other_views() -> None:
+    from hoga.api.bundle import _bid_peak_from_dual_row
+    from hoga.tables.snapshots import AskPeakCandidateRow, BidPeakDualRow
+
+    row = BidPeakDualRow(
+        price=None,
+        qty=None,
+        intra_ms=None,
+        max_price=None,
+        max_qty=None,
+        max_intra_ms=None,
+        traded_peaks=(),
+        traded_max_peaks=(),
+        all_price=69800,
+        all_qty=9000,
+        all_intra_ms=9 * 3_600_000 + 3 * 60_000,
+        all_max_price=69700,
+        all_max_qty=9100,
+        all_max_intra_ms=9 * 3_600_000 + 4 * 60_000,
+        all_peaks=(
+            AskPeakCandidateRow(price=69800, qty=9000, intra_ms=9 * 3_600_000 + 3 * 60_000),
+            AskPeakCandidateRow(price=69700, qty=7100, intra_ms=9 * 3_600_000 + 4 * 60_000),
+        ),
+        all_max_peaks=(
+            AskPeakCandidateRow(price=69700, qty=9100, intra_ms=9 * 3_600_000 + 4 * 60_000),
+            AskPeakCandidateRow(price=69600, qty=7200, intra_ms=9 * 3_600_000 + 5 * 60_000),
+        ),
+        untraded_price=68850,
+        untraded_qty=7,
+        untraded_intra_ms=9 * 3_600_000 + 5 * 60_000,
+        untraded_max_price=68750,
+        untraded_max_qty=6,
+        untraded_max_intra_ms=9 * 3_600_000 + 6 * 60_000,
+        untraded_peaks=(
+            AskPeakCandidateRow(price=69000, qty=12000, intra_ms=9 * 3_600_000 + 7 * 60_000),
+            AskPeakCandidateRow(price=68900, qty=11000, intra_ms=9 * 3_600_000 + 8 * 60_000),
+        ),
+        untraded_max_peaks=(
+            AskPeakCandidateRow(price=68800, qty=13000, intra_ms=9 * 3_600_000 + 9 * 60_000),
+            AskPeakCandidateRow(price=68700, qty=12500, intra_ms=9 * 3_600_000 + 10 * 60_000),
+        ),
+    )
+
+    peak = _bid_peak_from_dual_row("20260619", row)
+
+    assert peak.price is None
+    assert peak.qty is None
+    assert peak.t_ms is None
+    assert peak.max_price is None
+    assert peak.max_qty is None
+    assert peak.max_t_ms is None
+    assert [candidate.model_dump() for candidate in peak.all_peaks] == [
+        {"price": 69800, "qty": 9000, "t_ms": 1781827380000},
+        {"price": 69700, "qty": 7100, "t_ms": 1781827440000},
+    ]
+    assert [candidate.model_dump() for candidate in peak.all_max_peaks] == [
+        {"price": 69700, "qty": 9100, "t_ms": 1781827440000},
+        {"price": 69600, "qty": 7200, "t_ms": 1781827500000},
+    ]
+    assert peak.all_price == 69800
+    assert peak.all_qty == 9000
+    assert peak.all_t_ms == 1781827380000
+    assert peak.all_max_price == 69700
+    assert peak.all_max_qty == 9100
+    assert peak.all_max_t_ms == 1781827440000
+    assert [candidate.model_dump() for candidate in peak.untraded_peaks] == [
+        {"price": 69000, "qty": 12000, "t_ms": 1781827620000},
+        {"price": 68900, "qty": 11000, "t_ms": 1781827680000},
+    ]
+    assert [candidate.model_dump() for candidate in peak.untraded_max_peaks] == [
+        {"price": 68800, "qty": 13000, "t_ms": 1781827740000},
+        {"price": 68700, "qty": 12500, "t_ms": 1781827800000},
+    ]
+    assert peak.untraded_price == 69000
+    assert peak.untraded_qty == 12000
+    assert peak.untraded_t_ms == 1781827620000
+    assert peak.untraded_max_price == 68800
+    assert peak.untraded_max_qty == 13000
+    assert peak.untraded_max_t_ms == 1781827740000
+
+
 def test_build_bid_peak_slice_wires_ranked_candidates(tmp_path) -> None:
     from unittest.mock import MagicMock
     from hoga.api.bundle import build_bid_peak_slice
@@ -2200,17 +2392,21 @@ def test_build_bid_peak_slice_wires_ranked_candidates(tmp_path) -> None:
     )
 
     assert p is not None
-    assert [c.model_dump() for c in p.traded_peaks] == [
+    assert p.price is None and p.qty is None and p.t_ms is None
+    assert p.max_price is None and p.max_qty is None and p.max_t_ms is None
+    assert [c.model_dump() for c in p.traded_peaks] == []
+    assert [c.model_dump() for c in p.traded_max_peaks] == []
+    assert [c.model_dump() for c in p.untraded_peaks] == [
         {"price": 69900, "qty": 9000, "t_ms": 1781049660000},
         {"price": 69900, "qty": 8000, "t_ms": 1781049720000},
         {"price": 69800, "qty": 7100, "t_ms": 1781049720000},
-        {"price": 69800, "qty": 7000, "t_ms": 1781049660000},
-        {"price": 69700, "qty": 6000, "t_ms": 1781049660000},
-        {"price": 70000, "qty": 3000, "t_ms": 1781049720000},
-        {"price": 70000, "qty": 1000, "t_ms": 1781049660000},
-        {"price": 69700, "qty": 100, "t_ms": 1781049720000},
     ]
-    assert [c.model_dump() for c in p.traded_max_peaks] == [
+    assert [c.model_dump() for c in p.untraded_max_peaks] == [
+        {"price": 69900, "qty": 9000, "t_ms": 1781049660000},
+        {"price": 69900, "qty": 8000, "t_ms": 1781049720000},
+        {"price": 69800, "qty": 7100, "t_ms": 1781049720000},
+    ]
+    assert [c.model_dump() for c in p.all_peaks[:8]] == [
         {"price": 69900, "qty": 9000, "t_ms": 1781049660000},
         {"price": 69900, "qty": 8000, "t_ms": 1781049720000},
         {"price": 69800, "qty": 7100, "t_ms": 1781049720000},
@@ -2218,7 +2414,7 @@ def test_build_bid_peak_slice_wires_ranked_candidates(tmp_path) -> None:
         {"price": 69700, "qty": 6000, "t_ms": 1781049660000},
         {"price": 70000, "qty": 3000, "t_ms": 1781049720000},
         {"price": 70000, "qty": 1000, "t_ms": 1781049660000},
-        {"price": 69700, "qty": 100, "t_ms": 1781049720000},
+        {"price": 69600, "qty": 500, "t_ms": 1781049660000},
     ]
 
 

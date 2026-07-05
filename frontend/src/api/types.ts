@@ -503,12 +503,12 @@ export type AskPeakCandidate = {
  *  (분봉 내 최댓값 기준, Intra-Bar Max, ADR-0076). */
 export type PeakBase = {
   date: string;
-  price: number;
-  qty: number;
-  t_ms: number;
-  max_price: number;
-  max_qty: number;
-  max_t_ms: number;
+  price: number | null;
+  qty: number | null;
+  t_ms: number | null;
+  max_price: number | null;
+  max_qty: number | null;
+  max_t_ms: number | null;
   all_price?: number | null;
   all_qty?: number | null;
   all_t_ms?: number | null;

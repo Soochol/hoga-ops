@@ -115,12 +115,12 @@ class AskPeak(BaseModel):
     the full ranked candidates array.
     """
     date: str
-    price: int
-    qty: int
-    t_ms: int
-    max_price: int
-    max_qty: int
-    max_t_ms: int
+    price: int | None
+    qty: int | None
+    t_ms: int | None
+    max_price: int | None
+    max_qty: int | None
+    max_t_ms: int | None
     all_price: int | None = None
     all_qty: int | None = None
     all_t_ms: int | None = None
@@ -152,12 +152,12 @@ class BidPeak(BaseModel):
     """
 
     date: str
-    price: int
-    qty: int
-    t_ms: int
-    max_price: int
-    max_qty: int
-    max_t_ms: int
+    price: int | None
+    qty: int | None
+    t_ms: int | None
+    max_price: int | None
+    max_qty: int | None
+    max_t_ms: int | None
     all_price: int | None = None
     all_qty: int | None = None
     all_t_ms: int | None = None

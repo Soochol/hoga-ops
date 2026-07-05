@@ -630,9 +630,9 @@ def _ask_peak_from_dual_row(date: str, row: snapshots_tbl.AskPeakDualRow) -> Ask
     untraded_max_peaks = [_ask_candidate(date, c) for c in row.untraded_max_peaks]
     return AskPeak(
         date=date, price=row.price, qty=row.qty,
-        t_ms=ms_from_midnight_to_unix_ms(date, row.intra_ms),
+        t_ms=_unix_or_none(date, row.intra_ms),
         max_price=row.max_price, max_qty=row.max_qty,
-        max_t_ms=ms_from_midnight_to_unix_ms(date, row.max_intra_ms),
+        max_t_ms=_unix_or_none(date, row.max_intra_ms),
         traded_peaks=[_ask_candidate(date, c) for c in row.traded_peaks],
         traded_max_peaks=[_ask_candidate(date, c) for c in row.traded_max_peaks],
         all_peaks=[_ask_candidate(date, c) for c in row.all_peaks],
@@ -665,9 +665,9 @@ def _bid_peak_from_dual_row(date: str, row: snapshots_tbl.BidPeakDualRow) -> Bid
     untraded_max_peaks = [_ask_candidate(date, c) for c in row.untraded_max_peaks]
     return BidPeak(
         date=date, price=row.price, qty=row.qty,
-        t_ms=ms_from_midnight_to_unix_ms(date, row.intra_ms),
+        t_ms=_unix_or_none(date, row.intra_ms),
         max_price=row.max_price, max_qty=row.max_qty,
-        max_t_ms=ms_from_midnight_to_unix_ms(date, row.max_intra_ms),
+        max_t_ms=_unix_or_none(date, row.max_intra_ms),
         traded_peaks=[_ask_candidate(date, c) for c in row.traded_peaks],
         traded_max_peaks=[_ask_candidate(date, c) for c in row.traded_max_peaks],
         all_peaks=[_ask_candidate(date, c) for c in row.all_peaks],
