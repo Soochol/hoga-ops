@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from bisect import insort
 from collections.abc import Iterable, Mapping, Sequence
 from dataclasses import dataclass, field
 from typing import ClassVar, Literal
@@ -34,7 +35,7 @@ class _TodaySidePeakState:
     all_best_by_price_time: dict[tuple[int, int], Peak] = field(default_factory=dict)
     latest_touch_t_ms: int | None = None
     latest_touch_price_extreme: int | None = None
-    latest_seq_touch: TouchTick | None = None
+    latest_seq_touches: list[TouchTick] = field(default_factory=list)
     traded_peak: Peak | None = None
     untraded_peak: Peak | None = None
     all_peak: Peak | None = None
@@ -149,7 +150,7 @@ class _TodaySidePeakState:
         if touch.t_ms != self.latest_touch_t_ms:
             self.latest_touch_t_ms = touch.t_ms
             self.latest_touch_price_extreme = touch.price
-            self.latest_seq_touch = touch if touch.seq is not None else None
+            self.latest_seq_touches = [touch] if touch.seq is not None else []
             return
         current = self.latest_touch_price_extreme
         if current is None:
@@ -160,14 +161,11 @@ class _TodaySidePeakState:
             self.latest_touch_price_extreme = min(current, touch.price)
         if touch.seq is None:
             return
-        if self.latest_seq_touch is None or _event_order_key(
-            touch.t_ms,
-            touch.seq,
-        ) >= _event_order_key(
-            self.latest_seq_touch.t_ms,
-            self.latest_seq_touch.seq,
-        ):
-            self.latest_seq_touch = touch
+        insort(
+            self.latest_seq_touches,
+            touch,
+            key=lambda tick: _seq_sort_key(tick.seq),
+        )
 
     def _record_closed_peak(self, peak: Peak) -> None:
         self.closed_traded = _top_ranked_peaks([*self.closed_traded, peak])
@@ -189,9 +187,11 @@ class _TodaySidePeakState:
             return False
         if wall_seq is not None:
             wall = Peak(price=wall_price, qty=0, t_ms=t_ms, seq=wall_seq)
-            return self.latest_seq_touch is not None and self._trade_touches_peak(
-                self.latest_seq_touch,
-                wall,
+            return any(
+                tick.seq is not None
+                and tick.seq >= wall_seq
+                and self._trade_touches_peak(tick, wall)
+                for tick in self.latest_seq_touches
             )
         return self.latest_touch_price_extreme is not None and self._is_touched_by_price(
             self.latest_touch_price_extreme,

@@ -56,3 +56,27 @@
 - Snapshot payload shape and public ingest APIs are unchanged.
 - The bounded caches are sufficient for current snapshot ranking because closed state only needs the emitted top-N, while current open lifecycles remain price-bounded in `open_by_price`.
 - Same-ms seq-aware fallback is intentionally conservative: when a wall seq is available, it only classifies from the latest seq-aware touch kept for that millisecond, which avoids the reviewed false-positive case without reintroducing unbounded replay state.
+
+---
+
+## Re-review Fix 2026-07-05
+
+### Findings fixed
+- Replaced the single `latest_seq_touch` fallback with `latest_seq_touches`, retaining only seq-aware touches for the latest touched millisecond.
+- Updated same-ms fallback classification so a wall is touched when any retained touch at that millisecond has `seq >= wall.seq` and crosses by side.
+- Preserved the existing negative case where an earlier seq touch must not classify a later wall as touched.
+
+### Tests and results
+- `uv run pytest tests/unit/live/test_ask_peak_state.py -v`
+  - Result: passed, 17 passed in 0.07s.
+- Added direct reviewer-repro regression coverage for both ask and bid same-ms fallback paths:
+  - earlier same-ms crossing seq still touches an earlier wall even when a later same-ms seq does not cross
+  - later-wall negative case remains false
+
+### Files changed
+- `hoga/live/ask_peak_state.py`
+- `tests/unit/live/test_ask_peak_state.py`
+
+### Self-review
+- Live state remains bounded to the latest touched timestamp for same-ms fallback; no full-day touch replay was reintroduced.
+- Retaining all seq-aware touches for the current millisecond avoids the reviewed false negative without creating false positives for later walls.
