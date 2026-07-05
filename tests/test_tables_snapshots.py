@@ -1656,7 +1656,7 @@ def test_classify_peak_wall_events_resets_same_price_after_touch() -> None:
         _PeakWallEvent("ask", "rep", 50000, 100000, 36_000_000, 100000000, 1, 600),
         _PeakWallEvent("ask", "rep", 50000, 200000, 37_200_000, 110000000, 3, 620),
     ]
-    touches = [_TradeTouch(50000, 100300000, 2)]
+    touches = [_TradeTouch(50000, 100300000, 2, 1)]
 
     out = _classify_peak_wall_events(events, touches, side="ask")
 
@@ -1679,7 +1679,7 @@ def test_classify_peak_wall_events_keeps_one_best_same_price_before_touch() -> N
         _PeakWallEvent("ask", "rep", 50000, 100000, 36_000_000, 100000000, 1, 600),
         _PeakWallEvent("ask", "rep", 50000, 150000, 36_060_000, 100060000, 2, 601),
     ]
-    touches = [_TradeTouch(50000, 100300000, 3)]
+    touches = [_TradeTouch(50000, 100300000, 3, 1)]
 
     out = _classify_peak_wall_events(events, touches, side="ask")
 
@@ -1687,6 +1687,97 @@ def test_classify_peak_wall_events_keeps_one_best_same_price_before_touch() -> N
         AskPeakCandidateRow(price=50000, qty=150000, intra_ms=36_060_000),
     )
     assert out.untraded == ()
+
+
+def test_better_event_uses_seq_as_tie_breaker() -> None:
+    from hoga.tables.snapshots import (
+        _PeakWallEvent,
+        _better_event,
+    )
+
+    current = _PeakWallEvent("ask", "rep", 50010, 100000, 36_000_000, 100000000, 9, 600)
+    contender = _PeakWallEvent("ask", "rep", 50000, 100000, 36_000_000, 100010000, 3, 601)
+
+    out = _better_event(current, contender)
+
+    assert out is contender
+
+
+def test_classify_peak_wall_events_caps_emitted_rows_at_three() -> None:
+    from hoga.tables.snapshots import (
+        _PeakWallEvent,
+        _classify_peak_wall_events,
+    )
+
+    events = [
+        _PeakWallEvent("ask", "rep", 50000, 100000, 36_000_000, 100000000, 1, 600),
+        _PeakWallEvent("ask", "rep", 50001, 100001, 36_010_000, 100010000, 2, 601),
+        _PeakWallEvent("ask", "rep", 50002, 100002, 36_020_000, 100020000, 3, 602),
+        _PeakWallEvent("ask", "rep", 50003, 100003, 36_030_000, 100030000, 4, 603),
+    ]
+
+    out = _classify_peak_wall_events(events, (), side="ask", emit_limit=99)
+
+    assert len(out.untraded) == 3
+    assert out.untraded == (
+        AskPeakCandidateRow(price=50003, qty=100003, intra_ms=36_030_000),
+        AskPeakCandidateRow(price=50002, qty=100002, intra_ms=36_020_000),
+        AskPeakCandidateRow(price=50001, qty=100001, intra_ms=36_010_000),
+    )
+
+
+def test_classify_peak_wall_events_uses_bid_touch_direction() -> None:
+    from hoga.tables.snapshots import (
+        _PeakWallEvent,
+        _TradeTouch,
+        _classify_peak_wall_events,
+    )
+
+    events = [_PeakWallEvent("bid", "rep", 50000, 100000, 36_000_000, 100000000, 1, 600)]
+    touches = [_TradeTouch(49999, 100300000, 2, 1)]
+
+    out = _classify_peak_wall_events(events, touches, side="bid")
+
+    assert out.traded == (
+        AskPeakCandidateRow(price=50000, qty=100000, intra_ms=36_000_000),
+    )
+    assert out.untraded == ()
+
+
+def test_classify_peak_wall_events_ignores_auction_touch_side_zero() -> None:
+    from hoga.tables.snapshots import (
+        _PeakWallEvent,
+        _TradeTouch,
+        _classify_peak_wall_events,
+    )
+
+    events = [_PeakWallEvent("ask", "rep", 50000, 100000, 36_000_000, 100000000, 1, 600)]
+    touches = [_TradeTouch(50000, 100300000, 2, 0)]
+
+    out = _classify_peak_wall_events(events, touches, side="ask")
+
+    assert out.traded == ()
+    assert out.untraded == (
+        AskPeakCandidateRow(price=50000, qty=100000, intra_ms=36_000_000),
+    )
+
+
+def test_classify_peak_wall_events_ignores_mixed_side_events() -> None:
+    from hoga.tables.snapshots import (
+        _PeakWallEvent,
+        _classify_peak_wall_events,
+    )
+
+    events = [
+        _PeakWallEvent("ask", "rep", 50000, 100000, 36_000_000, 100000000, 1, 600),
+        _PeakWallEvent("bid", "rep", 49900, 90000, 36_010_000, 100010000, 2, 601),
+    ]
+
+    out = _classify_peak_wall_events(events, (), side="ask")
+
+    assert out.untraded == (
+        AskPeakCandidateRow(price=50000, qty=100000, intra_ms=36_000_000),
+    )
 
 
 # ---------------------------------------------------------------------------

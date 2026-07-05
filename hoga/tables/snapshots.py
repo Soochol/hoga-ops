@@ -551,6 +551,7 @@ class _TradeTouch:
     price: int
     ts_ms: int
     seq: int
+    side: int
 
 
 @dataclass(frozen=True)
@@ -575,15 +576,8 @@ def _candidate_sort_key(row: AskPeakCandidateRow) -> tuple[int, int, int]:
 def _better_event(current: _PeakWallEvent | None, event: _PeakWallEvent) -> _PeakWallEvent:
     if current is None:
         return event
-    current_key = (
-        -current.qty,
-        current.intra_ms,
-        current.ts_ms,
-        current.seq,
-        current.source,
-        current.price,
-    )
-    event_key = (-event.qty, event.intra_ms, event.ts_ms, event.seq, event.source, event.price)
+    current_key = (-current.qty, current.intra_ms, current.seq, current.price)
+    event_key = (-event.qty, event.intra_ms, event.seq, event.price)
     return event if event_key < current_key else current
 
 
@@ -602,6 +596,7 @@ def _classify_peak_wall_events(
     side: Literal["ask", "bid"],
     emit_limit: int = 3,
 ) -> _ClassifiedPeakWalls:
+    emit_limit = max(0, min(int(emit_limit), 3))
     sorted_events = sorted(events, key=_event_sort_key)
     sorted_touches = sorted(touches, key=_touch_sort_key)
 
@@ -615,6 +610,9 @@ def _classify_peak_wall_events(
             event = sorted_events[event_i]
             if event.ts_ms > touch.ts_ms or (event.ts_ms == touch.ts_ms and event.seq > touch.seq):
                 break
+            if event.side != side:
+                event_i += 1
+                continue
             active_by_price[event.price] = _better_event(active_by_price.get(event.price), event)
             bucket_key = (event.price, event.bucket_id)
             all_best_by_bucket[bucket_key] = _better_event(
@@ -626,12 +624,14 @@ def _classify_peak_wall_events(
         touched_prices = [
             price
             for price in active_by_price
-            if _touches_price(side, touch.price, price)
+            if touch.side in (1, -1) and _touches_price(side, touch.price, price)
         ]
         for price in touched_prices:
             traded_events.append(active_by_price.pop(price))
 
     for event in sorted_events[event_i:]:
+        if event.side != side:
+            continue
         active_by_price[event.price] = _better_event(active_by_price.get(event.price), event)
         bucket_key = (event.price, event.bucket_id)
         all_best_by_bucket[bucket_key] = _better_event(
