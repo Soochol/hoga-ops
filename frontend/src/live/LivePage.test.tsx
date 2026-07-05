@@ -28,6 +28,7 @@ const livePageMocks = vi.hoisted(() => {
   return {
     liveOb,
     liveTrade,
+    indicatorPanelProps: [] as Array<{ timeframe: LiveTimeframe }>,
     liveChartRootProps: [] as Array<{
       code?: string | null;
       timeframe?: string;
@@ -184,6 +185,17 @@ vi.mock('./useLiveBundle', () => ({
   },
 }));
 
+vi.mock('./indicators/IndicatorPanel', () => ({
+  default: ({ onClose, timeframe }: { onClose: () => void; timeframe: LiveTimeframe }) => {
+    livePageMocks.indicatorPanelProps.push({ timeframe });
+    return (
+      <div role="dialog" aria-label="지표">
+        <button type="button" onClick={onClose}>닫기</button>
+      </div>
+    );
+  },
+}));
+
 vi.mock('../studyViews/studySaveSource', async (importOriginal) => {
   const actual = await importOriginal<typeof import('../studyViews/studySaveSource')>();
   return {
@@ -247,6 +259,7 @@ describe('LivePage shell', () => {
     livePageMocks.dayAskPeakTradeArgs.length = 0;
     livePageMocks.liveChartRootProps.length = 0;
     livePageMocks.liveBundleCalls.length = 0;
+    livePageMocks.indicatorPanelProps.length = 0;
     livePageMocks.liveBundleResult.bundle = null;
     livePageMocks.liveBundleResult.chartBundle = null;
     livePageMocks.liveBundleResult.hogaBundle = null;
@@ -304,6 +317,18 @@ describe('LivePage shell', () => {
     expect(screen.getByTestId('live-toolbar')).toBeInTheDocument();
     expect(screen.getByTestId('live-workarea')).toBeInTheDocument();
     expect(screen.getByTestId('live-chart-panel')).toContainElement(screen.getByTestId('live-toolbar'));
+  });
+
+  it('passes the active live timeframe into IndicatorPanel', async () => {
+    useLivePageStore.setState({ candleTimeframe: 'D' });
+
+    renderWithRouter('/live?code=000660');
+    act(() => {
+      screen.getByTestId('live-indicators-button').click();
+    });
+
+    await waitFor(() => expect(livePageMocks.indicatorPanelProps.at(-1)?.timeframe).toBe('D'));
+    expect(screen.getByRole('dialog', { name: '지표' })).toBeInTheDocument();
   });
 
   it('reads activeCode from ?code= query param', () => {

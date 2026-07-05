@@ -16,6 +16,18 @@ export type IndicatorPanePrefs = {
 
 export type PanePrefKey = keyof IndicatorPanePrefs;
 
+export type PanePrefsIndicatorSource = Pick<
+  PersistedIndicators,
+  | 'volumeEnabled'
+  | 'quoteTotalsEnabled'
+  | 'ratioEnabled'
+  | 'fillStrengthEnabled'
+  | 'programTradeEnabled'
+  | 'foreignNetEnabled'
+  | 'institutionNetEnabled'
+  | 'panePrefsByTimeframe'
+>;
+
 export type IndicatorPanePrefsByTimeframe =
   Record<IndicatorPaneProfileKey, IndicatorPanePrefs>;
 
@@ -67,7 +79,7 @@ export function normalizePanePrefsByTimeframe(raw: unknown): PersistedPanePrefsB
   return normalized;
 }
 
-export function legacyPanePrefsFromIndicators(indicators: PersistedIndicators): IndicatorPanePrefs {
+export function legacyPanePrefsFromIndicators(indicators: PanePrefsIndicatorSource): IndicatorPanePrefs {
   return {
     volumeEnabled: indicators.volumeEnabled,
     quoteTotalsEnabled: indicators.quoteTotalsEnabled,
@@ -79,14 +91,12 @@ export function legacyPanePrefsFromIndicators(indicators: PersistedIndicators): 
   };
 }
 
-function panePrefsByTimeframeFromIndicators(indicators: PersistedIndicators): PersistedPanePrefsByTimeframe {
-  return normalizePanePrefsByTimeframe(
-    (indicators as { panePrefsByTimeframe?: unknown }).panePrefsByTimeframe,
-  );
+function panePrefsByTimeframeFromIndicators(indicators: PanePrefsIndicatorSource): PersistedPanePrefsByTimeframe {
+  return normalizePanePrefsByTimeframe(indicators.panePrefsByTimeframe);
 }
 
 export function panePrefsForTimeframe(
-  indicators: PersistedIndicators,
+  indicators: PanePrefsIndicatorSource,
   timeframe: LiveTimeframe,
 ): IndicatorPanePrefs {
   const legacy = legacyPanePrefsFromIndicators(indicators);
@@ -99,7 +109,7 @@ export function panePrefsForTimeframe(
 }
 
 export function resolvePaneTogglesForTimeframe(input: {
-  indicators: PersistedIndicators;
+  indicators: PanePrefsIndicatorSource;
   timeframe: LiveTimeframe;
   forceHogaPanes?: boolean;
   hogaPanes?: boolean;

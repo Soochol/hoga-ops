@@ -433,6 +433,7 @@ export function LivePage() {
         <IndicatorPanel
           onClose={() => setIndicatorPanelOpen(false)}
           capabilities={capabilities}
+          timeframe={timeframe}
         />
       )}
       {settingsOpen && (

@@ -366,7 +366,10 @@ export function StudyPage() {
         )}
       >
         {indicatorPanelOpen && (
-          <IndicatorPanel onClose={() => setIndicatorPanelOpen(false)} />
+          <IndicatorPanel
+            onClose={() => setIndicatorPanelOpen(false)}
+            timeframe="1m"
+          />
         )}
         {settingsOpen && (
           <LiveSettingsModal onClose={() => setSettingsOpen(false)} />
@@ -389,7 +392,10 @@ export function StudyPage() {
         )}
       >
         {indicatorPanelOpen && (
-          <IndicatorPanel onClose={() => setIndicatorPanelOpen(false)} />
+          <IndicatorPanel
+            onClose={() => setIndicatorPanelOpen(false)}
+            timeframe="1m"
+          />
         )}
         {settingsOpen && (
           <LiveSettingsModal onClose={() => setSettingsOpen(false)} />
@@ -413,7 +419,10 @@ export function StudyPage() {
         )}
       >
         {indicatorPanelOpen && (
-          <IndicatorPanel onClose={() => setIndicatorPanelOpen(false)} />
+          <IndicatorPanel
+            onClose={() => setIndicatorPanelOpen(false)}
+            timeframe="1m"
+          />
         )}
         {settingsOpen && (
           <LiveSettingsModal onClose={() => setSettingsOpen(false)} />
@@ -560,7 +569,10 @@ export function StudyPage() {
             {draggingEntry && overStudy && <StudyDropOverlay />}
           </div>
           {indicatorPanelOpen && (
-            <IndicatorPanel onClose={() => setIndicatorPanelOpen(false)} />
+            <IndicatorPanel
+              onClose={() => setIndicatorPanelOpen(false)}
+              timeframe={activeViewModel.status === 'ready' ? activeViewModel.save.timeframe : selectedSave?.timeframe ?? '1m'}
+            />
           )}
           {settingsOpen && (
             <LiveSettingsModal onClose={() => setSettingsOpen(false)} />
