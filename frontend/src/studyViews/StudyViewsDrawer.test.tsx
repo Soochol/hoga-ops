@@ -234,6 +234,23 @@ it('matches watchlist list typography for stock headers and saved view names', (
   expect(savedViewName).not.toHaveClass('text-sm');
 });
 
+it('highlights the saved-view row for the active study tab', () => {
+  useStudyTabsStore.setState({
+    tabs: [
+      { id: 'tab-a', viewId: 'a', code: '005930', label: '삼성전자 · 급등 이후 · 5m', name: '급등 이후', timeframe: '5m' },
+      { id: 'tab-b', viewId: 'b', code: '000660', label: 'SK하이닉스 · 눌림 · D', name: '눌림', timeframe: 'D' },
+    ],
+    activeTabId: 'tab-b',
+  });
+  renderDrawer('/study?view=a');
+
+  const activeRow = screen.getByRole('button', { name: '눌림 저장뷰 열기' });
+  expect(activeRow).toHaveAttribute('aria-current', 'true');
+  expect(activeRow).toHaveStyle({ background: 'var(--tint-selection)' });
+  expect(activeRow.getAttribute('style')).toContain('border-left: 2px solid var(--accent)');
+  expect(screen.getByRole('button', { name: '급등 이후 저장뷰 열기' })).not.toHaveAttribute('aria-current');
+});
+
 it('collapses and expands one stock group', async () => {
   renderDrawer('/inventory');
 
