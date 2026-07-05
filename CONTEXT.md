@@ -33,8 +33,12 @@ A user-named saved `/study` entry for one **Code**; v2 entries are **복기뷰**
 _Avoid_: "캡처" (this saves study context, not a market-data collection job), "북마크" alone (too generic), treating **저장뷰 트리** as a persisted folder model or Watchlist-style membership structure.
 
 **복기뷰 (Reference Study View)**:
-A v2 **저장 학습뷰** that stores one **Code**, **Timeframe**, saved period, viewport zoom/scroll, memo, and tags so `/study` can reload that period and analyze it with the current `/live` indicator settings.
+A v2 **저장 학습뷰** that stores one **Code**, **Timeframe**, saved period, viewport zoom/scroll, memo, and tags so `/study` can reload that period and analyze it with the current **공용 지표 셋업 (Shared Indicator Setup)**.
 _Avoid_: "snapshot", "fixed view", "captured chart"; saying it restores saved indicator state.
+
+**공용 지표 셋업 (Shared Indicator Setup)**:
+The current analysis indicator setup shared by `/live` and `/study`. It is not owned by a saved study view or a live tab: `/study` v2 reloads the saved period and re-analyzes it with this current setup, while `/live` renders the active instrument with the same setup. Pane visibility may be profiled by **LiveTimeframe** group (분봉 / 일봉 / 주봉 / 월봉), but the setup remains shared across `/live` and `/study`.
+_Avoid_: "`/live` indicator settings" when discussing `/study` behavior; saying a v2 **복기뷰** restores or stores indicator state.
 
 **스냅샷 학습뷰 (Legacy Parquet Study Snapshot)**:
 A v1 **저장 학습뷰** artifact that carries saved candle/indicator data and optional bucket-representative 10-level orderbook and broker detail arrays needed to reopen the chart as it was saved.
