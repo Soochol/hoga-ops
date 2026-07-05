@@ -43,14 +43,73 @@ const priceFormat = {
   minMove: 1,
 };
 
-export function projectVolume(bundle: RangeBundle, axis: VirtualAxis): HistogramData<Time>[] {
-  return bundle.candles
+type VolumeProjection = HistogramData<Time>;
+type VolumeCacheEntry = {
+  pastLen: number;
+  pastLastTs: number;
+  pastFirstRef: RangeBundle['candles'][number] | null;
+  pastLastRef: RangeBundle['candles'][number] | null;
+  pastData: VolumeProjection[];
+};
+
+const volumeCache = new WeakMap<VirtualAxis, VolumeCacheEntry>();
+
+function lowerBoundCandle(candles: RangeBundle['candles'], t: number): number {
+  let lo = 0;
+  let hi = candles.length;
+  while (lo < hi) {
+    const mid = (lo + hi) >>> 1;
+    if (candles[mid].ts_ms < t) lo = mid + 1;
+    else hi = mid;
+  }
+  return lo;
+}
+
+function projectVolumeRows(candles: RangeBundle['candles'], axis: VirtualAxis): VolumeProjection[] {
+  return candles
     .filter((c) => axis.contains(c.ts_ms))
-    .map((c): HistogramData<Time> => ({
+    .map((c): VolumeProjection => ({
       time: (axis.toVirtual(c.ts_ms) / 1000) as UTCTimestamp,
       value: c.vol_a + c.vol_b,
       color: c.close >= c.open ? up : down,
     }));
+}
+
+export function projectVolume(bundle: RangeBundle, axis: VirtualAxis): HistogramData<Time>[] {
+  return projectVolumeRows(bundle.candles, axis);
+}
+
+export function projectVolumeCached(bundle: RangeBundle, axis: VirtualAxis): HistogramData<Time>[] {
+  const segs = bundle.segments ?? [];
+  if (segs.length < 2) return projectVolume(bundle, axis);
+
+  const candles = bundle.candles;
+  const todayOpen = segs[segs.length - 1].session_open_ms;
+  const splitIdx = lowerBoundCandle(candles, todayOpen);
+  const pastLen = splitIdx;
+  const pastLastTs = pastLen > 0 ? candles[pastLen - 1].ts_ms : 0;
+  const pastFirstRef = pastLen > 0 ? candles[0] : null;
+  const pastLastRef = pastLen > 0 ? candles[pastLen - 1] : null;
+
+  let entry = volumeCache.get(axis);
+  if (
+    !entry ||
+    entry.pastLen !== pastLen ||
+    entry.pastLastTs !== pastLastTs ||
+    entry.pastFirstRef !== pastFirstRef ||
+    entry.pastLastRef !== pastLastRef
+  ) {
+    entry = {
+      pastLen,
+      pastLastTs,
+      pastFirstRef,
+      pastLastRef,
+      pastData: projectVolumeRows(candles.slice(0, splitIdx), axis),
+    };
+    volumeCache.set(axis, entry);
+  }
+
+  return entry.pastData.concat(projectVolumeRows(candles.slice(splitIdx), axis));
 }
 
 // volumeEnabled gating lives in `paneSpecsForTimeframe` (the pane is removed
@@ -70,7 +129,7 @@ export const VOLUME_SPEC = {
         priceLineVisible: false,
         lastValueVisible: false,
       },
-      data: (bundle: RangeBundle, axis: VirtualAxis, _ctx: VolumePaneContext) => projectVolume(bundle, axis),
+      data: (bundle: RangeBundle, axis: VirtualAxis, _ctx: VolumePaneContext) => projectVolumeCached(bundle, axis),
     },
     {
       type: LineSeries,

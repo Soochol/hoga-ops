@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { projectCandle } from './candle';
+import { CANDLE_SPEC, projectCandle } from './candle';
 import { createVirtualAxis } from '../../util/virtualAxis';
 
 const sessionOpenMs = 1_779_062_400_000;
@@ -73,5 +73,35 @@ describe('projectCandle', () => {
     };
     expect(projectCandle(bundle, axis)).toHaveLength(1);
     expect(projectCandle(bundle, axis)[0].open).toBe(100);
+  });
+
+  it('cached spec data reprojects only today after a live tick', () => {
+    const day0Open = sessionOpenMs;
+    const day1Open = sessionOpenMs + 24 * 60 * 60 * 1000;
+    const past0 = { ts_ms: day0Open, open: 100, close: 101, high: 102, low: 99, vol_a: 1, vol_b: 0 };
+    const past1 = { ts_ms: day0Open + 60_000, open: 101, close: 102, high: 103, low: 100, vol_a: 1, vol_b: 0 };
+    const today = { ts_ms: day1Open, open: 102, close: 103, high: 104, low: 101, vol_a: 1, vol_b: 0 };
+    const segments = [
+      { date: '20260518', session_open_ms: day0Open, session_close_ms: day0Open + 23_400_000, source: 'kis_live' },
+      { date: '20260519', session_open_ms: day1Open, session_close_ms: day1Open + 23_400_000, source: 'kis_live' },
+    ];
+    const calls: number[] = [];
+    const countingAxis = {
+      classifyAndProject: (t: number) => {
+        calls.push(t);
+        return { contained: true, inAuction: false, virtual: t - day0Open };
+      },
+    } as never;
+    const dataFn = CANDLE_SPEC.series[0].data as (...args: any[]) => Array<{ close: number }>;
+
+    dataFn({ segments, candles: [past0, past1, today] } as never, countingAxis);
+    calls.length = 0;
+    const data = dataFn(
+      { segments, candles: [past0, past1, { ...today, close: 104, high: 105 }] } as never,
+      countingAxis,
+    );
+
+    expect(calls).toEqual([today.ts_ms]);
+    expect(data.at(-1)?.close).toBe(104);
   });
 });

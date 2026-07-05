@@ -4,7 +4,7 @@ import {
   type Time,
   type UTCTimestamp,
 } from 'lightweight-charts';
-import type { RangeBundle } from '../../api/types';
+import type { Candle, RangeBundle } from '../../api/types';
 import { type VirtualAxis } from '../../util/virtualAxis';
 import { resolveTokens } from '../../util/tokens';
 import type { PaneSpec } from '../RangeSeriesPane';
@@ -29,13 +29,36 @@ const priceFormat = {
   minMove: 1,
 };
 
-export function projectCandle(
-  bundle: RangeBundle,
+type CandleProjection = CandlestickData<Time>;
+type CandleCacheEntry = {
+  ctx: CandlePaneContext;
+  pastLen: number;
+  pastLastTs: number;
+  pastFirstRef: Candle | null;
+  pastLastRef: Candle | null;
+  pastData: CandleProjection[];
+};
+
+const candleCache = new WeakMap<VirtualAxis, CandleCacheEntry>();
+
+function lowerBoundCandle(candles: readonly Candle[], t: number): number {
+  let lo = 0;
+  let hi = candles.length;
+  while (lo < hi) {
+    const mid = (lo + hi) >>> 1;
+    if (candles[mid].ts_ms < t) lo = mid + 1;
+    else hi = mid;
+  }
+  return lo;
+}
+
+function projectCandleRows(
+  candles: readonly Candle[],
   axis: VirtualAxis,
-  ctx: CandlePaneContext = DEFAULT_CONTEXT,
-): CandlestickData<Time>[] {
-  const out: CandlestickData<Time>[] = [];
-  for (const c of bundle.candles) {
+  ctx: CandlePaneContext,
+): CandleProjection[] {
+  const out: CandleProjection[] = [];
+  for (const c of candles) {
     const { contained, inAuction, virtual } = axis.classifyAndProject(c.ts_ms);
     if (!contained) continue;
     const color = ctx.muteAuctionCandles && inAuction ? muted : c.close >= c.open ? up : down;
@@ -51,6 +74,53 @@ export function projectCandle(
     });
   }
   return out;
+}
+
+export function projectCandle(
+  bundle: RangeBundle,
+  axis: VirtualAxis,
+  ctx: CandlePaneContext = DEFAULT_CONTEXT,
+): CandlestickData<Time>[] {
+  return projectCandleRows(bundle.candles, axis, ctx);
+}
+
+export function projectCandleCached(
+  bundle: RangeBundle,
+  axis: VirtualAxis,
+  ctx: CandlePaneContext = DEFAULT_CONTEXT,
+): CandlestickData<Time>[] {
+  const segs = bundle.segments ?? [];
+  if (segs.length < 2) return projectCandle(bundle, axis, ctx);
+
+  const candles = bundle.candles;
+  const todayOpen = segs[segs.length - 1].session_open_ms;
+  const splitIdx = lowerBoundCandle(candles, todayOpen);
+  const pastLen = splitIdx;
+  const pastLastTs = pastLen > 0 ? candles[pastLen - 1].ts_ms : 0;
+  const pastFirstRef = pastLen > 0 ? candles[0] : null;
+  const pastLastRef = pastLen > 0 ? candles[pastLen - 1] : null;
+
+  let entry = candleCache.get(axis);
+  if (
+    !entry ||
+    entry.ctx !== ctx ||
+    entry.pastLen !== pastLen ||
+    entry.pastLastTs !== pastLastTs ||
+    entry.pastFirstRef !== pastFirstRef ||
+    entry.pastLastRef !== pastLastRef
+  ) {
+    entry = {
+      ctx,
+      pastLen,
+      pastLastTs,
+      pastFirstRef,
+      pastLastRef,
+      pastData: projectCandleRows(candles.slice(0, splitIdx), axis, ctx),
+    };
+    candleCache.set(axis, entry);
+  }
+
+  return entry.pastData.concat(projectCandleRows(candles.slice(splitIdx), axis, ctx));
 }
 
 export const CANDLE_SPEC = {
@@ -69,7 +139,7 @@ export const CANDLE_SPEC = {
         lastValueVisible: false,
         priceFormat,
       },
-      data: projectCandle,
+      data: projectCandleCached,
     },
   ],
 } satisfies PaneSpec<CandlePaneContext>;

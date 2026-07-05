@@ -1179,6 +1179,7 @@ export function LiveChartRoot({
     () => ({ muteAuctionCandles: venue === 'KRX' }),
     [venue],
   );
+  const volumeFillStrengthCumulative = useActivePrefs((p) => p.volumeFillStrengthCumulative);
 
   useEffect(() => {
     if (!chart || !cb) return;
@@ -1511,16 +1512,19 @@ export function LiveChartRoot({
             <RangeSeriesPane
               key={spec.name}
               chart={chart}
-              // hoga panes (spec.live) get the live bundle; candle/volume/investor
-              // panes get the stable chartBundle so an SSE tick doesn't re-setData them.
+              // Hoga panes get the live bundle. Candle/investor panes, and volume
+              // unless its cumulative fill-strength line is enabled, get the stable
+              // chartBundle so an SSE tick doesn't re-project the candle path.
               bundle={
                 spec.name === 'ratio'
                   ? (paneRatioBundle ?? cb)
                   : (spec.name === 'quote-totals' || spec.name === 'fill-strength')
                     ? (paneHogaBundle ?? cb)
-                    : spec.live
-                      ? (bundle ?? cb)
-                      : cb
+                    : spec.name === 'volume'
+                      ? (volumeFillStrengthCumulative ? (bundle ?? cb) : cb)
+                      : spec.live
+                        ? (bundle ?? cb)
+                        : cb
               }
               axis={axis}
               paneIndex={i}
