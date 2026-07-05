@@ -69,7 +69,12 @@ The external seam is the resolved daily candle sequence. Callers should not need
 
 ## Resolution Policy
 
-`useResolvedDailyCandles` always requests the KIS daily adapter when enabled. It also requests the screener daily adapter when enabled because Daily MA needs a stable fallback path, and screener daily data is small.
+`useResolvedDailyCandles` always requests both adapters in parallel when enabled:
+
+- KIS daily is the preferred source.
+- Screener daily is the stored-data fallback.
+
+Do not wait for a KIS miss or warning before starting the screener daily request. Conditional fallback would create a two-step render (`KIS response -> warning/miss classification -> fallback request -> line appears`) and make the Daily MA line feel broken during KIS REST bypass. Screener daily data is small and already cached by React Query, so the stability is worth the extra request.
 
 Merge by KST trading date:
 
@@ -78,7 +83,7 @@ Merge by KST trading date:
 3. Sort by `t_ms` ascending.
 4. Return `sourceByDate` so tests and future diagnostics can prove which adapter supplied each date.
 
-This makes KIS daily the preferred source when available and makes stored daily data the fallback when KIS daily is absent due to bypass, rate limit, API failure, or cold memory cache.
+This makes KIS daily the preferred source when available and makes stored daily data the fallback when KIS daily is absent due to bypass, rate limit, API failure, or cold memory cache. This policy deliberately does not consult global Source Preference: Source Preference ranks parquet capture sources for RangeBundle reads, while Daily MA needs a daily price series with KIS daily preferred and screener daily as recovery.
 
 The Module should not infer `todayLiveClose`. That remains in `DailyMovingAverageOverlay`, because the override depends on the currently rendered minute bundle. The resolved daily candles are the historical daily base series; the overlay still owns the today-in-progress close proxy.
 
@@ -107,6 +112,8 @@ DailyMovingAverageOverlay
 
 `/live` and `/study` both use `LiveChartRoot`, and both mount `DailyMovingAverageOverlay` with the same `code`, `timeframe`, `venue`, and `todayKst` shape. No route-specific overlay fork is needed.
 
+For `/study` minute views, the screener daily adapter must use the Daily MA fetch window (`dailyMaFetchWindow(todayKst, configs)`), not the saved view's minute range. The saved minute range may be much narrower than the Daily MA lookback needed for period 20/60/120/400; the Daily MA data window remains anchored to the study view's `range.to_date`, just like the current KIS daily request.
+
 ## Why Frontend Resolution, Not Backend Mixing
 
 Backend mixing would make `/api/live/past-daily-candles` look complete even when it did not come from Live Candle Backfill. That weakens ADR-0048's Interface: callers could no longer interpret `cached_batches`, `fresh_batches`, and `data_warnings` as KIS daily backfill metadata.
@@ -126,18 +133,19 @@ This has better locality. Daily MA fallback behavior is changed and tested in on
 - If both fail, return no candles and expose the first meaningful error.
 - If both succeed but one source has partial gaps, date-keyed merge should still return all available dates.
 - If neither source covers enough rows for the configured Daily MA period, `computeDailyMaByDate` naturally omits values until the SMA window fills.
+- Do not escalate `kis_rest_bypassed` warnings from Daily MA into the KIS unavailable toast. Bypass is an intentional operator mode; the hook should expose warnings for diagnostics/tests only.
 
 The overlay should continue to avoid throwing on empty data. Empty data is a visible degrade, not a render crash.
 
 ## Loading Behavior
 
-Daily MA should not wait for both adapters before showing a line if one adapter already has enough data. The hook can derive:
+Daily MA should not wait for both adapters before showing a line if one adapter already has enough data. The hook derives:
 
 ```ts
 isLoading = kisQuery.isLoading && screenerQuery.isLoading
 ```
 
-or expose adapter-specific loading later if the UI needs diagnostics. For v1, the overlay does not show a loading surface; it updates the line as soon as `candles` changes.
+This means the result becomes usable as soon as either adapter has data. For v1, the overlay does not show a loading surface; it updates the line as soon as `candles` changes. Adapter-specific loading can be added later only if the UI needs diagnostics.
 
 ## Testing Plan
 
