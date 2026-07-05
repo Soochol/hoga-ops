@@ -44,6 +44,8 @@ import {
 } from './liveVenuePolicy';
 import { buildLivePriceLevelHits, mergePriceLevelHits } from './priceLevelHits';
 
+const EMPTY_INVESTOR_POINTS: InvestorNetPoint[] = [];
+
 function laterDate(a: string, b: string): string {
   return a >= b ? a : b;
 }
@@ -100,8 +102,7 @@ export function overlayLiveTradesOnCandles(
   bucketMs: number,
   venue: LiveVenueOption = 'KRX',
 ): Candle[] {
-  if (candles.length === 0 || bucketMs <= 0) return [...candles];
-  const out = candles.map((c) => ({ ...c }));
+  if (candles.length === 0 || bucketMs <= 0) return candles as Candle[];
   const lastBase = candles[candles.length - 1];
   const lastBaseBucket = bucketStartMs(lastBase.ts_ms, bucketMs);
   const byBucket = new Map<number, Array<{ price: number; qty: number; tMs: number }>>();
@@ -128,23 +129,30 @@ export function overlayLiveTradesOnCandles(
       byBucket.set(bucket, bucketTrades);
     }
   }
+  if (byBucket.size === 0) return candles as Candle[];
 
+  let out: Candle[] | null = null;
   for (const [bucket, bucketTrades] of Array.from(byBucket.entries()).sort((a, b) => a[0] - b[0])) {
     bucketTrades.sort((a, b) => a.tMs - b.tMs);
     const lastTrade = bucketTrades[bucketTrades.length - 1];
     const tradeHigh = Math.max(...bucketTrades.map((t) => t.price));
     const tradeLow = Math.min(...bucketTrades.map((t) => t.price));
     const tradeQty = bucketTrades.reduce((sum, t) => sum + t.qty, 0);
-    const last = out[out.length - 1];
+    const currentCandles: readonly Candle[] = out ?? candles;
+    const last: Candle = currentCandles[currentCandles.length - 1];
     if (bucket === last.ts_ms) {
-      last.high = Math.max(last.high, tradeHigh);
-      last.low = Math.min(last.low, tradeLow);
-      last.close = lastTrade.price;
-      last.vol_a += tradeQty;
+      if (out === null) out = [...candles.slice(0, -1), { ...last }];
+      const mutableLast = out[out.length - 1];
+      mutableLast.high = Math.max(mutableLast.high, tradeHigh);
+      mutableLast.low = Math.min(mutableLast.low, tradeLow);
+      mutableLast.close = lastTrade.price;
+      mutableLast.vol_a += tradeQty;
     } else if (bucket > last.ts_ms) {
+      if (out === null) out = [...candles];
+      const prev = out[out.length - 1];
       out.push({
         ts_ms: bucket,
-        open: last.close,
+        open: prev.close,
         high: tradeHigh,
         low: tradeLow,
         close: lastTrade.price,
@@ -154,7 +162,7 @@ export function overlayLiveTradesOnCandles(
     }
   }
 
-  return out;
+  return out ?? (candles as Candle[]);
 }
 
 export interface UseLiveBundleResult {
@@ -326,7 +334,7 @@ export function useLiveBundle(
     enableInvestor ? dailyPastTo : null,
   );
   const investorPoints = useMemo<InvestorNetPoint[]>(
-    () => (enableInvestor ? investorQuery.data?.points ?? [] : []),
+    () => (enableInvestor ? investorQuery.data?.points ?? EMPTY_INVESTOR_POINTS : EMPTY_INVESTOR_POINTS),
     [enableInvestor, investorQuery.data],
   );
 
@@ -422,21 +430,26 @@ export function useLiveBundle(
     'hogaplay_first',
   );
 
-  const kisCandles = useMemo<Candle[]>(() => {
-    const selectedRangeFallback = latestFallbackCandles.length > 0
+  const selectedRangeFallback = useMemo<Candle[]>(
+    () => latestFallbackCandles.length > 0
       ? latestFallbackCandles
-      : previousDiskCandleFallback.data?.candles ?? [];
-    if (isMinute) {
-      const raw = pastCandlesQuery.data?.candles ?? [];
-      if (raw.length === 0) return selectedRangeFallback;
-      // Minute timeframes: epoch-floor bucket via aggregateCandles (also dedupes
-      // within-bucket duplicates from pre-f63ed15 KIS cache files).
-      const bars = aggregateCandles(raw, TIMEFRAME_TO_MS[timeframe as Timeframe] / 1000);
-      const apiCandles = bars.map(kisBarToCandle);
-      return preferHogaplayCandles
-        ? mergeCandlesByPriority(selectedRangeFallback, apiCandles)
-        : mergeCandlesByPriority(apiCandles, selectedRangeFallback);
-    }
+      : previousDiskCandleFallback.data?.candles ?? [],
+    [latestFallbackCandles, previousDiskCandleFallback.data?.candles],
+  );
+  const minuteKisCandles = useMemo<Candle[]>(() => {
+    if (!isMinute) return selectedRangeFallback;
+    const raw = pastCandlesQuery.data?.candles ?? [];
+    if (raw.length === 0) return selectedRangeFallback;
+    // Minute timeframes: epoch-floor bucket via aggregateCandles (also dedupes
+    // within-bucket duplicates from pre-f63ed15 KIS cache files).
+    const bars = aggregateCandles(raw, TIMEFRAME_TO_MS[timeframe as Timeframe] / 1000);
+    const apiCandles = bars.map(kisBarToCandle);
+    return preferHogaplayCandles
+      ? mergeCandlesByPriority(selectedRangeFallback, apiCandles)
+      : mergeCandlesByPriority(apiCandles, selectedRangeFallback);
+  }, [isMinute, timeframe, preferHogaplayCandles, selectedRangeFallback, pastCandlesQuery.data?.candles]);
+  const calendarKisCandles = useMemo<Candle[]>(() => {
+    if (isMinute) return selectedRangeFallback;
     // D/W/M: bars come from the daily endpoint. For 'D' the call is
     // identity-ish (one bucket per bar); for 'W'/'M' aggregateCalendar groups
     // by ISO week / calendar month using the bar's first 1m bar t_ms so
@@ -483,7 +496,8 @@ export function useLiveBundle(
       mergeCalendarCandlesByPriority(screenerCandles, fallback, timeframe as 'D' | 'W' | 'M'),
       timeframe as 'D' | 'W' | 'M',
     );
-  }, [isMinute, timeframe, preferHogaplayCandles, preferScreenerDailyCandles, latestFallbackCandles, previousDiskCandleFallback.data, pastCandlesQuery.data, pastDailyCandlesQuery.data, screenerDailyCandlesQuery.data]);
+  }, [isMinute, timeframe, preferHogaplayCandles, preferScreenerDailyCandles, selectedRangeFallback, pastDailyCandlesQuery.data?.candles, screenerDailyCandlesQuery.data?.candles]);
+  const kisCandles = isMinute ? minuteKisCandles : calendarKisCandles;
   const candleSourceByDate = useMemo(() => {
     const primaryDates = isMinute
       ? new Set((pastCandlesQuery.data?.candles ?? []).map((c) => realMsToYyyymmdd(c.t_ms)))
@@ -625,12 +639,10 @@ export function useLiveBundle(
     [effectiveSessionByDate, isMinute, venue],
   );
 
-  // CHART side (candles + segments + investor). Deps deliberately EXCLUDE the
-  // ob/trade arrays — the only today-signal input is the `hasTodayObSignal`
-  // boolean, which flips false→true once on the first push and then stays put.
-  // So an SSE tick (new live.ob ref, same length>0) does NOT re-run this memo →
-  // `chartBundle` ref stays STABLE across ticks → the candle/volume panes + axis
-  // never re-setData on a tick (2026-06-09 bundle-split design, Phase A).
+  // CHART side (candles + segments + investor). The ob path only contributes the
+  // `hasTodayObSignal` boolean, so quote-only SSE ticks do not rebuild this memo.
+  // Trade ticks rebuild it only when they actually change or append the live
+  // forming candle; stale/venue-filtered ticks keep the candle ref stable.
   const hasTodayObSignal = isMinute && live.ob.length > 0;
   // Last content-distinct segments array — see the stabilization block below.
   const prevSegmentsRef = useRef<RangeBundle['segments'] | null>(null);

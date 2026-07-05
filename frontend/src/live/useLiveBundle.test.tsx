@@ -2,7 +2,7 @@ import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { renderHook, waitFor } from '@testing-library/react';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import type { ReactNode } from 'react';
-import { planLiveRangeRequest, useLiveBundle } from './useLiveBundle';
+import { overlayLiveTradesOnCandles, planLiveRangeRequest, useLiveBundle } from './useLiveBundle';
 import { LIVE_SETTINGS_KEY, type LiveSettings } from '../api/liveSettings';
 import { useLivePageStore } from '../state/livePage';
 import { useSourcePreferenceStore } from '../state/sourcePreference';
@@ -286,9 +286,62 @@ describe('planLiveRangeRequest', () => {
   });
 });
 
+describe('overlayLiveTradesOnCandles', () => {
+  it('reuses the input candle array when trades cannot affect the visible tail', () => {
+    const candles = [
+      { ts_ms: 1779840000000, open: 70000, high: 70100, low: 69900, close: 70050, vol_a: 1000, vol_b: 0 },
+    ];
+
+    const out = overlayLiveTradesOnCandles(candles, [
+      {
+        t_ms: 1779839940000,
+        kind: 'trade',
+        trades: [{ t_ms: 1779839940000, price: 80000, qty: 99, side: 1 }],
+      },
+    ], 60_000);
+
+    expect(out).toBe(candles);
+  });
+
+  it('keeps historical candle objects stable when updating the current bucket', () => {
+    const first = { ts_ms: 1779839940000, open: 69900, high: 70000, low: 69800, close: 70000, vol_a: 500, vol_b: 0 };
+    const last = { ts_ms: 1779840000000, open: 70000, high: 70100, low: 69900, close: 70050, vol_a: 1000, vol_b: 0 };
+    const candles = [first, last];
+
+    const out = overlayLiveTradesOnCandles(candles, [
+      {
+        t_ms: 1779840030000,
+        kind: 'trade',
+        trades: [{ t_ms: 1779840030000, price: 70150, qty: 7, side: 1 }],
+      },
+    ], 60_000);
+
+    expect(out).not.toBe(candles);
+    expect(out[0]).toBe(first);
+    expect(out[1]).not.toBe(last);
+    expect(out[1]).toMatchObject({ high: 70150, close: 70150, vol_a: 1007 });
+  });
+});
+
 describe('useLiveBundle', () => {
   beforeEach(() => {
     livePastCandlesSpy.mockClear();
+    livePastCandlesSpy.mockImplementation(() => ({
+      data: {
+        code: '005930',
+        from: '',
+        to: '',
+        candles: candlesMock.candles,
+        cached_dates: [],
+        fresh_dates: [],
+        data_warnings: candlesMock.warnings,
+        effective_sessions: candlesMock.effectiveSessions,
+      },
+      isLoading: false,
+      error: null,
+      isPlaceholderData: candlesMock.isPlaceholderData,
+      isFetching: candlesMock.isFetching,
+    }));
     livePastDailyCandlesSpy.mockClear();
     livePastInvestorNetSpy.mockClear();
     useRangeSpy.mockClear();
@@ -965,6 +1018,46 @@ describe('useLiveBundle', () => {
     ]);
   });
 
+  it('keeps the chart bundle stable when live trade ticks are outside the candle overlay window', () => {
+    const stablePastCandlesResult = {
+      data: {
+        code: '005930',
+        from: '',
+        to: '',
+        candles: candlesMock.candles,
+        cached_dates: [],
+        fresh_dates: [],
+        data_warnings: candlesMock.warnings,
+        effective_sessions: candlesMock.effectiveSessions,
+      },
+      isLoading: false,
+      error: null,
+      isPlaceholderData: candlesMock.isPlaceholderData,
+      isFetching: candlesMock.isFetching,
+    };
+    livePastCandlesSpy.mockReturnValue(stablePastCandlesResult);
+
+    const { result, rerender } = renderHook(
+      ({ live }) => useLiveBundle('005930', '1m', '20260527', live),
+      { wrapper, initialProps: { live: liveFixture } },
+    );
+    const before = result.current.chartBundle;
+
+    const liveWithOldTrade: LiveSeriesData = {
+      ...liveFixture,
+      trade: [
+        {
+          t_ms: 1779839940000,
+          kind: 'trade',
+          trades: [{ t_ms: 1779839940000, price: 80000, qty: 99, side: 1 }],
+        },
+      ],
+    };
+    rerender({ live: liveWithOldTrade });
+
+    expect(result.current.chartBundle).toBe(before);
+  });
+
   it('feeds synthesized live candle volume into the existing volume projector', () => {
     const liveWithTrade: LiveSeriesData = {
       ...liveFixture,
@@ -1359,14 +1452,20 @@ describe('useLiveBundle extension atomization gate', () => {
     // would rebuild computedChartBundle — the gate must mask it and keep the prior object.
     rangeMock.isPlaceholderData = true;
     rangeMock.isFetching = true;
+    candlesMock.candles = [
+      { t_ms: 1779753600000, open: 69000, high: 69100, low: 68900, close: 69050, volume: 900 },
+      DEFAULT_CANDLE,
+    ];
     rerender({ live: liveWithOb(1779840120000) });
     expect(result.current.chartBundle).toBe(settled); // HELD
+    expect(result.current.chartBundle!.candles).toHaveLength(1);
 
-    // Both fresh again → released to the fresh computedChartBundle (a new object).
+    // Both fresh again → released to the fresh computedChartBundle with the prepend.
     rangeMock.isPlaceholderData = false;
     rangeMock.isFetching = false;
     rerender({ live: liveWithOb(1779840120000) });
     expect(result.current.chartBundle).not.toBe(settled); // RELEASED
+    expect(result.current.chartBundle!.candles).toHaveLength(2);
   });
 
   it('does NOT gate a same-key periodic refetch (isFetching true but not placeholder)', () => {
