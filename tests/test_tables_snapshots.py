@@ -959,6 +959,49 @@ def test_query_day_ask_bid_peak_dual_matches_existing_separate_queries(tmp_path:
     assert actual_bid == expected_bid
 
 
+def test_query_day_ask_bid_peak_dual_same_price_lifecycle_without_duplicate_rank(tmp_path: Path) -> None:
+    snapshots = tmp_path / "snapshots.parquet"
+    trades = tmp_path / "trades.parquet"
+    obs = [
+        _ob_ap(
+            100000000,
+            [100000, 1, 1, 1, 1, 1, 1, 1, 1, 1],
+            ask_p=[50000] + [50100 + i for i in range(9)],
+            seq=1,
+        ),
+        _ob_ap(
+            100060000,
+            [150000, 1, 1, 1, 1, 1, 1, 1, 1, 1],
+            ask_p=[50000] + [50100 + i for i in range(9)],
+            seq=2,
+        ),
+        _ob_ap(
+            110000000,
+            [200000, 1, 1, 1, 1, 1, 1, 1, 1, 1],
+            ask_p=[50000] + [50100 + i for i in range(9)],
+            seq=4,
+        ),
+    ]
+    write_parquet(obs, snapshots)
+    write_trades([_trade(100300000, 50000, seq=3)], trades)
+
+    with duckdb.connect(":memory:") as con:
+        ask, _bid = query_day_ask_bid_peak_dual(
+            con,
+            path=snapshots,
+            trades_path=trades,
+            bucket_ms=60_000,
+        )
+
+    assert ask is not None
+    assert ask.traded_peaks == (
+        AskPeakCandidateRow(price=50000, qty=150000, intra_ms=36_060_000),
+    )
+    assert ask.untraded_peaks[0] == AskPeakCandidateRow(price=50000, qty=200000, intra_ms=39_600_000)
+    assert [peak.price for peak in ask.traded_peaks].count(50000) == 1
+    assert [peak.price for peak in ask.untraded_peaks].count(50000) == 1
+
+
 def test_query_day_ask_peak_dual_classifies_post_touch_and_post_untouched_events(tmp_path: Path) -> None:
     snapshots_path = tmp_path / "snapshots.parquet"
     trades_path = tmp_path / "trades.parquet"
