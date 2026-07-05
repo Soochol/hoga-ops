@@ -1087,16 +1087,33 @@ def query_day_ask_bid_peak_dual(
 
     def classified_levels(side: str, src: str) -> str:
         comparator = ">=" if side == "ask" else "<="
+        future_col = "future_max_price" if side == "ask" else "future_min_price"
         return f"""
         {side}_{src}_classified AS (
-          SELECT l.*,
-                 EXISTS (
-                   SELECT 1
-                   FROM touch_ticks t
-                   WHERE (t.ts_ms > l.ts_ms OR (t.ts_ms = l.ts_ms AND t.seq >= l.seq))
-                     AND t.price {comparator} l.price
-                 ) AS is_touched
-          FROM {side}_{src}_levels l
+          SELECT ts_ms, seq, price, qty, intra_ms, bucket_id,
+                 COALESCE({future_col} {comparator} price, FALSE) AS is_touched
+          FROM (
+            SELECT combined.*,
+                   MAX(CASE WHEN is_touch THEN touch_price ELSE NULL END) OVER (
+                     ORDER BY ts_ms DESC, seq DESC, is_touch DESC
+                     ROWS BETWEEN UNBOUNDED PRECEDING AND CURRENT ROW
+                   ) AS future_max_price,
+                   MIN(CASE WHEN is_touch THEN touch_price ELSE NULL END) OVER (
+                     ORDER BY ts_ms DESC, seq DESC, is_touch DESC
+                     ROWS BETWEEN UNBOUNDED PRECEDING AND CURRENT ROW
+                   ) AS future_min_price
+            FROM (
+              SELECT ts_ms, seq, price, qty, intra_ms, bucket_id,
+                     FALSE AS is_touch, NULL::INTEGER AS touch_price
+              FROM {side}_{src}_levels
+              UNION ALL
+              SELECT ts_ms, seq, NULL::INTEGER AS price, NULL::INTEGER AS qty,
+                     NULL::BIGINT AS intra_ms, NULL::BIGINT AS bucket_id,
+                     TRUE AS is_touch, price AS touch_price
+              FROM touch_ticks
+            ) combined
+          )
+          WHERE NOT is_touch
         )
         """
 
