@@ -524,20 +524,21 @@ class AskPeakCandidateRow:
 
 @dataclass(frozen=True)
 class AskPeakDualRow:
-    """Day ask peak split into traded-price baseline and all-price peak.
+    """Day ask peak split into post-touch, all-level, and post-untouched views.
 
-    ``price``/``qty``/``intra_ms`` and ``max_*`` are constrained to ask prices
-    that appeared in continuous trades. ``all_*`` fields use every eligible ask
-    level. ``untraded_*`` is the legacy rank-1 wire for post-untouched asks,
-    while ``untraded_*_peaks`` preserves the full ranked candidates array. Both
+    ``price``/``qty``/``intra_ms`` and ``max_*`` are the legacy rank-1 carriers
+    for post-touch ask events and stay ``None`` when no post-touch candidate
+    exists. ``all_*`` fields use every eligible ask level regardless of touch
+    state. ``untraded_*`` is the legacy rank-1 wire for post-untouched asks,
+    while ``untraded_*_peaks`` preserves the full ranked candidates array. All
     variants share the same continuous-book/session filters.
     """
-    price: int
-    qty: int
-    intra_ms: int
-    max_price: int
-    max_qty: int
-    max_intra_ms: int
+    price: int | None
+    qty: int | None
+    intra_ms: int | None
+    max_price: int | None
+    max_qty: int | None
+    max_intra_ms: int | None
     traded_peaks: tuple[AskPeakCandidateRow, ...]
     traded_max_peaks: tuple[AskPeakCandidateRow, ...]
     all_price: int
@@ -580,20 +581,21 @@ class BidPeakRow:
 
 @dataclass(frozen=True)
 class BidPeakDualRow:
-    """Day bid peak split into traded-price baseline and all-price peak.
+    """Day bid peak split into post-touch, all-level, and post-untouched views.
 
-    ``price``/``qty``/``intra_ms`` and ``max_*`` are constrained to bid prices
-    that appeared in continuous trades. ``all_*`` fields use every eligible bid
-    level. ``untraded_*`` is the legacy rank-1 wire for post-untouched bids,
-    while ``untraded_*_peaks`` preserves the full ranked candidates array. Both
+    ``price``/``qty``/``intra_ms`` and ``max_*`` are the legacy rank-1 carriers
+    for post-touch bid events and stay ``None`` when no post-touch candidate
+    exists. ``all_*`` fields use every eligible bid level regardless of touch
+    state. ``untraded_*`` is the legacy rank-1 wire for post-untouched bids,
+    while ``untraded_*_peaks`` preserves the full ranked candidates array. All
     variants share the same continuous-book/session filters.
     """
-    price: int
-    qty: int
-    intra_ms: int
-    max_price: int
-    max_qty: int
-    max_intra_ms: int
+    price: int | None
+    qty: int | None
+    intra_ms: int | None
+    max_price: int | None
+    max_qty: int | None
+    max_intra_ms: int | None
     traded_peaks: tuple[AskPeakCandidateRow, ...]
     traded_max_peaks: tuple[AskPeakCandidateRow, ...]
     all_price: int
@@ -1290,8 +1292,8 @@ def query_day_ask_bid_peak_dual(
     ask_all_max = single.get("ask_all_max")
     ask_row: AskPeakDualRow | None = None
     if ask_all_close is not None and ask_all_max is not None:
-        ask_traded_close = single.get("ask_traded_close") or ask_all_close
-        ask_traded_max = single.get("ask_traded_max") or ask_all_max
+        ask_traded_close = single.get("ask_traded_close")
+        ask_traded_max = single.get("ask_traded_max")
         traded_peaks = tuple(many["ask_traded_peak"])
         traded_max_peaks = tuple(many["ask_traded_max_peak"])
         untraded_peaks = tuple(many["ask_untraded_peak"])
@@ -1301,8 +1303,12 @@ def query_day_ask_bid_peak_dual(
         ask_untraded_close = single.get("ask_untraded_close")
         ask_untraded_max = single.get("ask_untraded_max")
         ask_row = AskPeakDualRow(
-            price=ask_traded_close[0], qty=ask_traded_close[1], intra_ms=ask_traded_close[2],
-            max_price=ask_traded_max[0], max_qty=ask_traded_max[1], max_intra_ms=ask_traded_max[2],
+            price=ask_traded_close[0] if ask_traded_close is not None else None,
+            qty=ask_traded_close[1] if ask_traded_close is not None else None,
+            intra_ms=ask_traded_close[2] if ask_traded_close is not None else None,
+            max_price=ask_traded_max[0] if ask_traded_max is not None else None,
+            max_qty=ask_traded_max[1] if ask_traded_max is not None else None,
+            max_intra_ms=ask_traded_max[2] if ask_traded_max is not None else None,
             traded_peaks=traded_peaks,
             traded_max_peaks=traded_max_peaks,
             all_price=ask_all_close[0], all_qty=ask_all_close[1], all_intra_ms=ask_all_close[2],
@@ -1323,8 +1329,8 @@ def query_day_ask_bid_peak_dual(
     bid_all_max = single.get("bid_all_max")
     bid_row: BidPeakDualRow | None = None
     if bid_all_close is not None and bid_all_max is not None:
-        bid_traded_close = single.get("bid_traded_close") or bid_all_close
-        bid_traded_max = single.get("bid_traded_max") or bid_all_max
+        bid_traded_close = single.get("bid_traded_close")
+        bid_traded_max = single.get("bid_traded_max")
         bid_traded_peaks = tuple(many["bid_traded_peak"])
         bid_traded_max_peaks = tuple(many["bid_traded_max_peak"])
         bid_untraded_peaks = tuple(many["bid_untraded_peak"])
@@ -1334,8 +1340,12 @@ def query_day_ask_bid_peak_dual(
         bid_untraded_close = single.get("bid_untraded_close")
         bid_untraded_max = single.get("bid_untraded_max")
         bid_row = BidPeakDualRow(
-            price=bid_traded_close[0], qty=bid_traded_close[1], intra_ms=bid_traded_close[2],
-            max_price=bid_traded_max[0], max_qty=bid_traded_max[1], max_intra_ms=bid_traded_max[2],
+            price=bid_traded_close[0] if bid_traded_close is not None else None,
+            qty=bid_traded_close[1] if bid_traded_close is not None else None,
+            intra_ms=bid_traded_close[2] if bid_traded_close is not None else None,
+            max_price=bid_traded_max[0] if bid_traded_max is not None else None,
+            max_qty=bid_traded_max[1] if bid_traded_max is not None else None,
+            max_intra_ms=bid_traded_max[2] if bid_traded_max is not None else None,
             traded_peaks=bid_traded_peaks,
             traded_max_peaks=bid_traded_max_peaks,
             all_price=bid_all_close[0], all_qty=bid_all_close[1], all_intra_ms=bid_all_close[2],

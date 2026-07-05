@@ -897,6 +897,11 @@ def _trade(ts_ms: int, price: int, side: int = 1, *, seq: int = 1) -> Trade:
     )
 
 
+def _assert_no_post_touch_scalars(peak: AskPeakDualRow | BidPeakDualRow) -> None:
+    assert (peak.price, peak.qty, peak.intra_ms) == (None, None, None)
+    assert (peak.max_price, peak.max_qty, peak.max_intra_ms) == (None, None, None)
+
+
 def test_query_day_ask_bid_peak_dual_matches_existing_separate_queries(tmp_path: Path) -> None:
     snapshots = tmp_path / "snapshots.parquet"
     trades = tmp_path / "trades.parquet"
@@ -1063,6 +1068,7 @@ def test_query_day_ask_peak_dual_ignores_prior_same_price_trade(tmp_path: Path) 
     assert peak is not None
     assert peak.traded_peaks == ()
     assert peak.traded_max_peaks == ()
+    _assert_no_post_touch_scalars(peak)
     only = AskPeakCandidateRow(price=50000, qty=100000, intra_ms=36_000_000)
     assert peak.untraded_peaks[0] == only
     assert peak.untraded_max_peaks[0] == only
@@ -1095,6 +1101,7 @@ def test_query_day_bid_peak_dual_ignores_prior_same_price_trade(tmp_path: Path) 
     assert peak is not None
     assert peak.traded_peaks == ()
     assert peak.traded_max_peaks == ()
+    _assert_no_post_touch_scalars(peak)
     only = AskPeakCandidateRow(price=50000, qty=100000, intra_ms=36_000_000)
     assert peak.untraded_peaks[0] == only
     assert peak.untraded_max_peaks[0] == only
@@ -1157,6 +1164,7 @@ def test_query_day_ask_peak_dual_same_millisecond_earlier_seq_does_not_touch(tmp
 
     assert peak is not None
     assert peak.traded_peaks == ()
+    _assert_no_post_touch_scalars(peak)
     assert peak.untraded_peaks[0] == AskPeakCandidateRow(price=50000, qty=1000, intra_ms=32_400_000)
 
 
@@ -1217,6 +1225,7 @@ def test_query_day_bid_peak_dual_same_millisecond_earlier_seq_does_not_touch(tmp
 
     assert peak is not None
     assert peak.traded_peaks == ()
+    _assert_no_post_touch_scalars(peak)
     assert peak.untraded_peaks[0] == AskPeakCandidateRow(price=50000, qty=1000, intra_ms=32_400_000)
 
 
@@ -1246,6 +1255,7 @@ def test_query_day_ask_peak_dual_ignores_side_zero_crosses(tmp_path: Path) -> No
 
     assert peak is not None
     assert peak.traded_peaks == ()
+    _assert_no_post_touch_scalars(peak)
     assert peak.untraded_peaks[0] == AskPeakCandidateRow(price=50000, qty=100000, intra_ms=36_000_000)
 
 
@@ -1275,6 +1285,7 @@ def test_query_day_bid_peak_dual_ignores_side_zero_crosses(tmp_path: Path) -> No
 
     assert peak is not None
     assert peak.traded_peaks == ()
+    _assert_no_post_touch_scalars(peak)
     assert peak.untraded_peaks[0] == AskPeakCandidateRow(price=50000, qty=100000, intra_ms=36_000_000)
 
 
@@ -1366,7 +1377,7 @@ def test_query_day_ask_peak_dual_excludes_collapsed_books_from_all_price(tmp_pat
 
     assert peak is not None
     assert peak.traded_peaks == ()
-    assert peak.qty == 2000 and peak.price == 26000
+    _assert_no_post_touch_scalars(peak)
     assert peak.all_qty == 2000 and peak.all_price == 26000
 
 
