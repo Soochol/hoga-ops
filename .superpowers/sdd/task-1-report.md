@@ -62,3 +62,27 @@
 - The fix stays inside the requested scope and keeps the helper deterministic.
 - The touch filter is intentionally narrow: only sides `1` and `-1` participate; everything else is ignored.
 - The seq tie-break is now tested directly at the helper level because the public candidate rows do not expose `seq`.
+
+---
+
+# Task 1 Fix Report: `_TradeTouch` Constructor Compatibility
+
+## What changed
+- Restored the original three-field construction surface for `_TradeTouch` by giving `side` a default of `1`.
+- Updated the classifier tests so at least one happy-path case uses the 3-field constructor.
+- Updated the auction-side regression to pass `side=0` by keyword, keeping the edge case explicit.
+
+## Tests and results
+- Focused classifier verification:
+  - `uv run pytest tests/test_tables_snapshots.py -v -k "classify_peak_wall_events"`
+  - Result: `6 passed, 65 deselected`
+- Full snapshots suite:
+  - `uv run pytest tests/test_tables_snapshots.py -v`
+  - Result: `71 passed`
+
+## Files changed
+- `hoga/tables/snapshots.py`
+- `tests/test_tables_snapshots.py`
+
+## Concerns
+- None. Classifier behavior is unchanged: only trade sides `1` and `-1` can touch walls, and `side=0` remains ignored.

@@ -1656,7 +1656,7 @@ def test_classify_peak_wall_events_resets_same_price_after_touch() -> None:
         _PeakWallEvent("ask", "rep", 50000, 100000, 36_000_000, 100000000, 1, 600),
         _PeakWallEvent("ask", "rep", 50000, 200000, 37_200_000, 110000000, 3, 620),
     ]
-    touches = [_TradeTouch(50000, 100300000, 2, 1)]
+    touches = [_TradeTouch(50000, 100300000, 2)]
 
     out = _classify_peak_wall_events(events, touches, side="ask")
 
@@ -1679,7 +1679,7 @@ def test_classify_peak_wall_events_keeps_one_best_same_price_before_touch() -> N
         _PeakWallEvent("ask", "rep", 50000, 100000, 36_000_000, 100000000, 1, 600),
         _PeakWallEvent("ask", "rep", 50000, 150000, 36_060_000, 100060000, 2, 601),
     ]
-    touches = [_TradeTouch(50000, 100300000, 3, 1)]
+    touches = [_TradeTouch(50000, 100300000, 3)]
 
     out = _classify_peak_wall_events(events, touches, side="ask")
 
@@ -1734,7 +1734,7 @@ def test_classify_peak_wall_events_uses_bid_touch_direction() -> None:
     )
 
     events = [_PeakWallEvent("bid", "rep", 50000, 100000, 36_000_000, 100000000, 1, 600)]
-    touches = [_TradeTouch(49999, 100300000, 2, 1)]
+    touches = [_TradeTouch(49999, 100300000, 2)]
 
     out = _classify_peak_wall_events(events, touches, side="bid")
 
@@ -1752,7 +1752,7 @@ def test_classify_peak_wall_events_ignores_auction_touch_side_zero() -> None:
     )
 
     events = [_PeakWallEvent("ask", "rep", 50000, 100000, 36_000_000, 100000000, 1, 600)]
-    touches = [_TradeTouch(50000, 100300000, 2, 0)]
+    touches = [_TradeTouch(50000, 100300000, 2, side=0)]
 
     out = _classify_peak_wall_events(events, touches, side="ask")
 

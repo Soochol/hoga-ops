@@ -551,7 +551,7 @@ class _TradeTouch:
     price: int
     ts_ms: int
     seq: int
-    side: int
+    side: int = 1
 
 
 @dataclass(frozen=True)
