@@ -1145,9 +1145,35 @@ export function LiveChartRoot({
       timeframe,
       forceHogaPanes,
       hogaPanes: paneTogglesOverride?.hogaPanes,
-      override: paneTogglesOverride,
+      override: {
+        ...(paneTogglesOverride?.volumeEnabled !== undefined
+          ? { volumeEnabled: paneTogglesOverride.volumeEnabled }
+          : {}),
+        ...(paneTogglesOverride?.quoteTotalsEnabled !== undefined
+          ? { quoteTotalsEnabled: paneTogglesOverride.quoteTotalsEnabled }
+          : {}),
+        ...(paneTogglesOverride?.ratioEnabled !== undefined
+          ? { ratioEnabled: paneTogglesOverride.ratioEnabled }
+          : {}),
+        ...(paneTogglesOverride?.fillStrengthEnabled !== undefined
+          ? { fillStrengthEnabled: paneTogglesOverride.fillStrengthEnabled }
+          : {}),
+        ...(paneTogglesOverride?.programTradeEnabled !== undefined
+          ? { programTradeEnabled: paneTogglesOverride.programTradeEnabled }
+          : {}),
+      },
     }),
-    [forceHogaPanes, indicatorPrefs, paneTogglesOverride, timeframe],
+    [
+      forceHogaPanes,
+      indicatorPrefs,
+      timeframe,
+      paneTogglesOverride?.hogaPanes,
+      paneTogglesOverride?.volumeEnabled,
+      paneTogglesOverride?.quoteTotalsEnabled,
+      paneTogglesOverride?.ratioEnabled,
+      paneTogglesOverride?.fillStrengthEnabled,
+      paneTogglesOverride?.programTradeEnabled,
+    ],
   );
   const candlePaneContext = useMemo<CandlePaneContext>(
     () => ({ muteAuctionCandles: venue === 'KRX' }),
