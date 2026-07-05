@@ -42,8 +42,9 @@
 - Modify `frontend/src/live/LiveChartRoot.tsx`
   - Read resolved pane toggles for `timeframe`.
   - Keep `paneTogglesOverride` as an override seam, merging it last.
-  - Pass active toggles to `PaneLegendOverlay`.
-- Modify `frontend/src/live/PaneLegendOverlay.tsx` and `frontend/src/live/legendRows.ts`
+  - Task 4 uses active toggles for pane mounting; Task 5 passes the same toggles to `PaneLegendOverlay`.
+- Modify `frontend/src/live/LiveChartRoot.tsx`, `frontend/src/live/PaneLegendOverlay.tsx`, and `frontend/src/live/legendRows.ts`
+  - Pass active toggles from chart root to legend overlay.
   - Legend rows use resolved profile toggles.
   - Close buttons write profile-specific pane prefs.
 - Modify `frontend/src/live/indicators/IndicatorPanel.tsx`
@@ -637,23 +638,7 @@ Replace the `paneSpecsForTimeframe(...)` call with:
 
 If existing code builds an inline object for `paneSpecsForTimeframe`, remove that object and use `activePaneToggles`.
 
-- [ ] **Step 4: Pass active toggles to PaneLegendOverlay**
-
-Update the render of `PaneLegendOverlay` in `LiveChartRoot` to include:
-
-```tsx
-<PaneLegendOverlay
-  chart={chart}
-  timeframe={timeframe}
-  paneSeries={paneSeries}
-  paneToggles={activePaneToggles}
-  dataEpoch={cb}
-/>
-```
-
-Task 5 will add the `paneToggles` prop to `PaneLegendOverlay`.
-
-- [ ] **Step 5: Run chart tests**
+- [ ] **Step 4: Run chart tests**
 
 Run:
 
@@ -661,9 +646,9 @@ Run:
 npm test -- --run src/live/LiveChartRoot.paneToggles.test.tsx
 ```
 
-Expected: PASS after Task 5 prop typing is available; if run before Task 5, TypeScript can fail on the missing prop type.
+Expected: PASS.
 
-- [ ] **Step 6: Commit**
+- [ ] **Step 5: Commit**
 
 ```bash
 git add frontend/src/live/LiveChartRoot.tsx frontend/src/live/LiveChartRoot.paneToggles.test.tsx
@@ -675,6 +660,7 @@ git commit -m "feat: resolve panes from timeframe profiles"
 ### Task 5: Pane Legend Uses Active Profile
 
 **Files:**
+- Modify: `frontend/src/live/LiveChartRoot.tsx`
 - Modify: `frontend/src/live/PaneLegendOverlay.tsx`
 - Modify: `frontend/src/live/legendRows.ts`
 - Modify: `frontend/src/live/PaneLegendOverlay.test.tsx`
@@ -731,6 +717,18 @@ npm test -- --run src/live/PaneLegendOverlay.test.tsx
 Expected: FAIL because close buttons still write flat store fields.
 
 - [ ] **Step 3: Thread active pane toggles through legend rows**
+
+Update the render of `PaneLegendOverlay` in `frontend/src/live/LiveChartRoot.tsx` to include:
+
+```tsx
+<PaneLegendOverlay
+  chart={chart}
+  timeframe={timeframe}
+  paneSeries={paneSeries}
+  paneToggles={activePaneToggles}
+  dataEpoch={cb}
+/>
+```
 
 Modify `frontend/src/live/PaneLegendOverlay.tsx` imports:
 
