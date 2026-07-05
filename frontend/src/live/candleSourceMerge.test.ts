@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { mergeCandlesByPriority } from './candleSourceMerge';
+import { mergeCalendarCandlesByPriority, mergeCandlesByPriority } from './candleSourceMerge';
 import type { Candle } from '../api/types';
 
 const c = (ts_ms: number, close = ts_ms): Candle => ({
@@ -33,5 +33,18 @@ describe('mergeCandlesByPriority', () => {
     expect(merged).toHaveLength(100);
     expect(merged.find((row) => row.ts_ms === 1000)?.close).toBe(1);
     expect(merged.at(-1)?.ts_ms).toBe(100_000);
+  });
+});
+
+describe('mergeCalendarCandlesByPriority', () => {
+  it('dedupes D candles by KST date, not exact timestamp', () => {
+    const dayOpen = Date.UTC(2026, 4, 27, 0, 0);
+    const sameKstDayLater = dayOpen + 60_000;
+    const primary = [c(sameKstDayLater, 20)];
+    const fallback = [c(dayOpen, 10)];
+
+    expect(mergeCalendarCandlesByPriority(primary, fallback, 'D')).toEqual([
+      c(sameKstDayLater, 20),
+    ]);
   });
 });
