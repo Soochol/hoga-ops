@@ -7,7 +7,7 @@ import type { VirtualAxis } from '../util/virtualAxis';
 import { livePeakWallDockedLabelsFromSegments } from '../chart/AskPeakSegmentsPrimitive';
 import { PeakWallDockedLabelsPrimitive } from '../chart/PeakWallDockedLabelsPrimitive';
 import { useLivePageStore } from '../state/livePage';
-import { useActivePrefs } from '../state/chartPrefs';
+import { useActivePrefs, type ChartViewPrefs } from '../state/chartPrefs';
 import { buildAskPeakOverlaySegments, styleVisibleMaxAskPeakSegments } from './LiveAskPeakSegments';
 import { buildBidPeakOverlaySegments } from './LiveBidPeakSegments';
 import type { VisibleTimeCutoff } from './peakWallVisibleCutoff';
@@ -32,6 +32,14 @@ function toPeakRankLimit(value: number): 1 | 2 | 3 {
 
 function maxPeakRankLimit(a: number, b: number): 1 | 2 | 3 {
   return Math.max(toPeakRankLimit(a), toPeakRankLimit(b)) as 1 | 2 | 3;
+}
+
+function optionalRankLimit(
+  prefs: ChartViewPrefs,
+  key: 'askPeakUntradedRankLimit' | 'bidPeakUntradedRankLimit',
+): 1 | 2 | 3 {
+  const value = (prefs as ChartViewPrefs & Partial<Record<typeof key, number>>)[key];
+  return value === 2 || value === 3 ? value : 1;
 }
 
 function LivePeakWallDockedLabels({
@@ -64,11 +72,13 @@ function LivePeakWallDockedLabels({
   const askShowAllPrices = useActivePrefs((s) => s.askPeakShowAllPrices);
   const askLabelEnabled = useActivePrefs((s) => s.askPeakLabelEnabled);
   const askAllPriceRankLimit = useActivePrefs((s) => s.askPeakAllPriceRankLimit);
+  const askUntradedRankLimit = useActivePrefs((s) => optionalRankLimit(s, 'askPeakUntradedRankLimit'));
   const askVisibleMaxRankLimit = useActivePrefs((s) => s.askPeakVisibleMaxRankLimit);
   const bidIntraMax = useActivePrefs((s) => s.bidPeakIntraMax);
   const bidShowAllPrices = useActivePrefs((s) => s.bidPeakShowAllPrices);
   const bidLabelEnabled = useActivePrefs((s) => s.bidPeakLabelEnabled);
   const bidAllPriceRankLimit = useActivePrefs((s) => s.bidPeakAllPriceRankLimit);
+  const bidUntradedRankLimit = useActivePrefs((s) => optionalRankLimit(s, 'bidPeakUntradedRankLimit'));
   const bidVisibleMaxRankLimit = useActivePrefs((s) => s.bidPeakVisibleMaxRankLimit);
   const primRef = useRef<PeakWallDockedLabelsPrimitive | null>(null);
 
@@ -104,6 +114,7 @@ function LivePeakWallDockedLabels({
         intraMax: askIntraMax,
         showAllPrices: askShowAllPrices,
         allPriceRankLimit: askPeakRankLimit,
+        untradedRankLimit: askUntradedRankLimit,
         visibleTimeCutoff: askVisibleTimeCutoff,
       })
       : [];
@@ -127,6 +138,7 @@ function LivePeakWallDockedLabels({
         intraMax: bidIntraMax,
         showAllPrices: bidShowAllPrices,
         allPriceRankLimit: maxPeakRankLimit(bidAllPriceRankLimit, bidVisibleMaxRankLimit),
+        untradedRankLimit: bidUntradedRankLimit,
         visibleTimeCutoff: bidVisibleTimeCutoff,
       })
       : [];
@@ -138,6 +150,7 @@ function LivePeakWallDockedLabels({
     askAllPriceColor,
     askAllPriceLineWidth,
     askAllPriceRankLimit,
+    askUntradedRankLimit,
     askColor,
     askIntraMax,
     askLabelEnabled,
@@ -152,6 +165,7 @@ function LivePeakWallDockedLabels({
     bidAllPriceColor,
     bidAllPriceLineWidth,
     bidAllPriceRankLimit,
+    bidUntradedRankLimit,
     bidColor,
     bidIntraMax,
     bidLabelEnabled,

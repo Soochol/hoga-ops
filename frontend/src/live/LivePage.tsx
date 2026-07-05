@@ -414,8 +414,10 @@ export function LivePage() {
         live={live}
         dayAskPeaks={dayAskPeaks}
         todayAllPriceAskPeak={todayAllPriceAskPeak}
+        todayAskPeakInput={liveInitial?.ask_peak_today ?? null}
         dayBidPeaks={dayBidPeaks}
         todayAllPriceBidPeak={todayAllPriceBidPeak}
+        todayBidPeakInput={liveInitial?.bid_peak_today ?? null}
         todayKst={today}
         tradeVolumePocs={tradeVolumePocs}
         onOpenIndicators={() => setIndicatorPanelOpen(true)}

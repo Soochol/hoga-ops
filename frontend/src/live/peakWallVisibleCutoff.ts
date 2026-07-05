@@ -18,6 +18,8 @@ type CutoffOptions = {
 type PeakWithCandidates = (AskPeak | BidPeak) & {
   traded_peaks?: AskPeakCandidate[];
   traded_max_peaks?: AskPeakCandidate[];
+  untraded_peaks?: AskPeakCandidate[];
+  untraded_max_peaks?: AskPeakCandidate[];
 };
 
 function finiteTime(value: unknown): number | null {
@@ -64,16 +66,22 @@ export function rightmostVisibleCandleCutoff(
   return { date: realMsToYyyymmdd(selected.ts_ms), tMs: bucketEndMs };
 }
 
-function candidateFromPeak(peak: PeakBase, intraMax: boolean): AskPeakCandidate {
-  return intraMax
-    ? { price: peak.max_price, qty: peak.max_qty, t_ms: peak.max_t_ms }
-    : { price: peak.price, qty: peak.qty, t_ms: peak.t_ms };
+function candidateFromPeak(peak: PeakBase, intraMax: boolean): AskPeakCandidate | null {
+  const price = intraMax ? peak.max_price : peak.price;
+  const qty = intraMax ? peak.max_qty : peak.qty;
+  const tMs = finiteTime(intraMax ? peak.max_t_ms : peak.t_ms);
+  if (
+    typeof price !== 'number'
+    || !Number.isFinite(price)
+    || typeof qty !== 'number'
+    || !Number.isFinite(qty)
+    || tMs === null
+  ) return null;
+  return { price, qty, t_ms: tMs };
 }
 
-function maxCandidateFromPeak(peak: PeakBase, intraMax: boolean): AskPeakCandidate {
-  return intraMax
-    ? { price: peak.max_price, qty: peak.max_qty, t_ms: peak.max_t_ms }
-    : { price: peak.price, qty: peak.qty, t_ms: peak.t_ms };
+function maxCandidateFromPeak(peak: PeakBase, intraMax: boolean): AskPeakCandidate | null {
+  return candidateFromPeak(peak, intraMax);
 }
 
 function chooseCandidate(
@@ -82,10 +90,10 @@ function chooseCandidate(
   intraMax: boolean,
 ): { close: AskPeakCandidate; max: AskPeakCandidate } | null {
   const closeCandidates = peak.traded_peaks === undefined
-    ? [candidateFromPeak(peak, false)]
+    ? [candidateFromPeak(peak, false)].filter((candidate): candidate is AskPeakCandidate => candidate !== null)
     : peak.traded_peaks;
   const maxCandidates = peak.traded_max_peaks === undefined
-    ? [maxCandidateFromPeak(peak, true)]
+    ? [maxCandidateFromPeak(peak, true)].filter((candidate): candidate is AskPeakCandidate => candidate !== null)
     : peak.traded_max_peaks;
   const sourceCandidates = intraMax ? maxCandidates : closeCandidates;
   const selected = sourceCandidates
@@ -153,6 +161,8 @@ export function applyPeakVisibleTimeCutoff<T extends PeakWithCandidates>(
       max_t_ms: selected.max.t_ms,
       traded_peaks: filterCandidatesByCutoff(peak.traded_peaks, cutoff),
       traded_max_peaks: filterCandidatesByCutoff(peak.traded_max_peaks, cutoff),
+      untraded_peaks: filterCandidatesByCutoff(peak.untraded_peaks, cutoff),
+      untraded_max_peaks: filterCandidatesByCutoff(peak.untraded_max_peaks, cutoff),
       ...cutoffNullableTriple(peak, cutoff, 'untraded'),
       ...cutoffNullableTriple(peak, cutoff, 'all'),
     });

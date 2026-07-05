@@ -16,6 +16,14 @@ export type LiveTodayPeakBase = {
   traded_qty: number | null;
   traded_t_ms: number | null;
   traded_peaks?: AskPeakCandidate[];
+  untraded_price?: number | null;
+  untraded_qty?: number | null;
+  untraded_t_ms?: number | null;
+  untraded_max_price?: number | null;
+  untraded_max_qty?: number | null;
+  untraded_max_t_ms?: number | null;
+  untraded_peaks?: AskPeakCandidate[];
+  untraded_max_peaks?: AskPeakCandidate[];
   all_price: number;
   all_qty: number;
   all_t_ms: number;

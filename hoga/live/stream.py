@@ -224,7 +224,14 @@ class LiveStream:
                     continue
                 if state is None:
                     state = self._ask_peak_state(tick.code)
-                state.ingest_trade(price=price, side=side)
+                trade_t_ms = trade.get("t_ms")
+                trade_seq = trade.get("seq")
+                state.ingest_trade(
+                    price=price,
+                    side=side,
+                    t_ms=trade_t_ms if type(trade_t_ms) is int else tick.t_ms,
+                    seq=trade_seq if type(trade_seq) is int else None,
+                )
             return
 
         if tick.kind is SnapshotKind.OB:
@@ -265,7 +272,14 @@ class LiveStream:
                     continue
                 if state is None:
                     state = self._bid_peak_state(tick.code)
-                state.ingest_trade(price=price, side=side)
+                trade_t_ms = trade.get("t_ms")
+                trade_seq = trade.get("seq")
+                state.ingest_trade(
+                    price=price,
+                    side=side,
+                    t_ms=trade_t_ms if type(trade_t_ms) is int else tick.t_ms,
+                    seq=trade_seq if type(trade_seq) is int else None,
+                )
             return
 
         if tick.kind is SnapshotKind.OB:

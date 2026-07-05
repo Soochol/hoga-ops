@@ -152,6 +152,42 @@ def test_ask_bid_peak_cache_survives_new_cache_instance(tmp_path: Path) -> None:
     assert reloaded.get_bid_peak("005930", "20260619", "hogaplay", 60_000) == bid
 
 
+def test_peak_cache_loads_version_3_payload_without_ranked_untraded_arrays(tmp_path: Path) -> None:
+    peak_dir = tmp_path / "kis-past-indicators" / CODE / SRC
+    peak_dir.mkdir(parents=True, exist_ok=True)
+    payload = {
+        "version": 3,
+        "value": {
+            "date": "20260619",
+            "price": 70000,
+            "qty": 1000,
+            "t_ms": 1,
+            "max_price": 70000,
+            "max_qty": 1000,
+            "max_t_ms": 1,
+            "untraded_price": 69900,
+            "untraded_qty": 900,
+            "untraded_t_ms": 2,
+        },
+        "fetched_at_ms": 0,
+    }
+    (peak_dir / "20260619.ask_peak.60000.json").write_text(json.dumps(payload), encoding="utf-8")
+    (peak_dir / "20260619.bid_peak.60000.json").write_text(json.dumps(payload), encoding="utf-8")
+
+    reloaded = PastIndicatorsCache(tmp_path)
+    ask = reloaded.get_ask_peak("005930", "20260619", SRC, 60_000)
+    bid = reloaded.get_bid_peak("005930", "20260619", SRC, 60_000)
+
+    assert ask is not None
+    assert ask.untraded_price == 69900
+    assert ask.untraded_peaks == []
+    assert ask.untraded_max_peaks == []
+    assert bid is not None
+    assert bid.untraded_price == 69900
+    assert bid.untraded_peaks == []
+    assert bid.untraded_max_peaks == []
+
+
 def test_trade_volume_poc_cache_survives_new_cache_instance(tmp_path: Path) -> None:
     cache = PastIndicatorsCache(tmp_path)
     poc = TradeVolumePoc(

@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest';
 import { renderHook } from '@testing-library/react';
-import { useDayAskPeaks, useTodayAllPriceAskPeak } from './useDayAskPeaks';
+import { deriveDayAskPeaks, useDayAskPeaks, useTodayAllPriceAskPeak } from './useDayAskPeaks';
 import type { AskPeak, Candle } from '../api/types';
 import type { LiveTodayAskPeak } from '../api/liveSeries';
 import type { ObSnapshot, TradeSnapshot } from './bucketHogaSeries';
@@ -15,7 +15,9 @@ const byDate = (peaks: readonly AskPeak[]) => {
   const out: Record<string, AskPeak> = {};
   for (const peak of peaks) {
     const current = out[peak.date];
-    if (!current || peak.qty > current.qty) out[peak.date] = peak;
+    const peakQty = peak.qty ?? Number.NEGATIVE_INFINITY;
+    const currentQty = current?.qty ?? Number.NEGATIVE_INFINITY;
+    if (!current || peakQty > currentQty) out[peak.date] = peak;
   }
   return out;
 };
@@ -67,8 +69,8 @@ describe('useDayAskPeaks', () => {
 
     const t = atKst(9, 20);
     rerender({
-      ob: [deep(t + 1_000, 9000)],
-      trades: [trade(t, [{ t_ms: t, side: 1, price: 26000, qty: 10 }])],
+      ob: [deep(t, 9000)],
+      trades: [trade(t + 1_000, [{ t_ms: t + 1_000, side: 1, price: 26000, qty: 10 }])],
     });
     m = byDate(result.current);
     expect(m['20260611'].qty).toBe(32621); // 과거일 불변
@@ -90,8 +92,8 @@ describe('useDayAskPeaks', () => {
     expect(result.current.find((p) => p.date === '20260613')).toBeUndefined();
     const t = atKst(9, 20);
     rerender({
-      ob: [deep(t + 1_000, 7000)],
-      trades: [trade(t, [{ t_ms: t, side: -1, price: 26000, qty: 10 }])],
+      ob: [deep(t, 7000)],
+      trades: [trade(t + 1_000, [{ t_ms: t + 1_000, side: -1, price: 26000, qty: 10 }])],
     });
     expect(result.current.find((p) => p.date === '20260613')?.qty).toBe(7000);
   });
@@ -108,8 +110,8 @@ describe('useDayAskPeaks', () => {
     );
     const t = atKst(9, 20);
     rerender({
-      ob: [deep(t + 1_000, 9000, 26500)],
-      trades: [trade(t, [{ t_ms: t, side: 1, price: 26500, qty: 10 }])],
+      ob: [deep(t, 9000, 26500)],
+      trades: [trade(t + 1_000, [{ t_ms: t + 1_000, side: 1, price: 26500, qty: 10 }])],
     });
     const today = byDate(result.current)['20260613'];
     expect(today.qty).toBe(9000);
@@ -136,7 +138,7 @@ describe('useDayAskPeaks', () => {
 
     const m = byDate(result.current);
     expect(m['20260611']).toEqual(seeds[0]);
-    expect(m['20260613']).toEqual({
+    expect(m['20260613']).toMatchObject({
       date: '20260613',
       price: 25500,
       qty: 9000,
@@ -145,6 +147,10 @@ describe('useDayAskPeaks', () => {
       max_qty: 9000,
       max_t_ms: 3,
     });
+    expect(m['20260613'].untraded_peaks).toEqual([
+      { price: 26000, qty: 15000, t_ms: 5 },
+      { price: 26000, qty: 12000, t_ms: 4 },
+    ]);
   });
 
   it('backend today payload의 traded_peaks를 체결가격 기준 후보 목록으로 보존한다', () => {
@@ -160,28 +166,51 @@ describe('useDayAskPeaks', () => {
       () => useDayAskPeaks([], [], [], '20260613', '005930', restPeak),
     );
 
-    expect(result.current).toEqual([
-      { date: '20260613', price: 25500, qty: 9000, t_ms: 3, max_price: 25500, max_qty: 9000, max_t_ms: 3 },
-      { date: '20260613', price: 25600, qty: 8000, t_ms: 4, max_price: 25600, max_qty: 8000, max_t_ms: 4 },
-      { date: '20260613', price: 25700, qty: 7000, t_ms: 5, max_price: 25700, max_qty: 7000, max_t_ms: 5 },
-    ]);
+    expect(result.current).toHaveLength(1);
+    expect(result.current[0]).toMatchObject({
+      date: '20260613',
+      price: 25500,
+      qty: 9000,
+      t_ms: 3,
+      traded_peaks: [
+        { price: 25500, qty: 9000, t_ms: 3 },
+        { price: 25600, qty: 8000, t_ms: 4 },
+        { price: 25700, qty: 7000, t_ms: 5 },
+      ],
+    });
   });
 
-  it('live traded ask candidates keep earlier same-price observations for cutoff recalculation', () => {
+  it('splits touched and untouched same-price ask walls into separate candidate families', () => {
     const { result } = renderHook(() => useDayAskPeaks(
       [
-        deep(atKst(9, 11), 1200, 26000),
+        deep(atKst(9, 10), 1200, 26000),
         deep(atKst(9, 12), 9000, 26000),
       ],
-      [trade(atKst(9, 10), [{ t_ms: atKst(9, 10), side: 1, price: 26000, qty: 10 }])],
+      [trade(atKst(9, 11), [{ t_ms: atKst(9, 11), side: 1, price: 26000, qty: 10 }])],
       [],
       '20260613',
       '005930',
     ));
 
-    expect(result.current).toEqual([
-      { date: '20260613', price: 26000, qty: 9000, t_ms: atKst(9, 12), max_price: 26000, max_qty: 9000, max_t_ms: atKst(9, 12) },
-      { date: '20260613', price: 26000, qty: 1200, t_ms: atKst(9, 11), max_price: 26000, max_qty: 1200, max_t_ms: atKst(9, 11) },
+    const today = byDate(result.current)['20260613'];
+    expect(today).toMatchObject({
+      date: '20260613',
+      price: 26000,
+      qty: 1200,
+      t_ms: atKst(9, 10),
+      untraded_price: 26000,
+      untraded_qty: 9000,
+      untraded_t_ms: atKst(9, 12),
+    });
+    expect(today.traded_peaks).toEqual(
+      expect.arrayContaining([{ price: 26000, qty: 1200, t_ms: atKst(9, 10) }]),
+    );
+    expect(today.untraded_peaks).toEqual(
+      expect.arrayContaining([{ price: 26000, qty: 9000, t_ms: atKst(9, 12) }]),
+    );
+    expect(today.all_peaks?.slice(0, 2)).toEqual([
+      { price: 26000, qty: 9000, t_ms: atKst(9, 12) },
+      { price: 26000, qty: 1200, t_ms: atKst(9, 10) },
     ]);
   });
 
@@ -200,77 +229,6 @@ describe('useDayAskPeaks', () => {
     expect(result.current.find((p) => p.date === '20260613')).toBeUndefined();
   });
 
-  it('backend all-price peak가 REST 캔들 범위 안이면 체결 기준선으로 승격한다', () => {
-    const restPeak = todayAskPeak({
-      traded_prices: [],
-      traded_price: null,
-      traded_qty: null,
-      traded_t_ms: null,
-      all_price: 27000,
-      all_qty: 12000,
-      all_t_ms: atKst(10, 42),
-    });
-
-    const { result } = renderHook(
-      () => useDayAskPeaks(
-        [],
-        [],
-        [],
-        '20260613',
-        '005930',
-        restPeak,
-        [candle(atKst(10, 42), 26900, 27100)],
-      ),
-    );
-
-    expect(byDate(result.current)['20260613']).toEqual({
-      date: '20260613',
-      price: 27000,
-      qty: 12000,
-      t_ms: atKst(10, 42),
-      max_price: 27000,
-      max_qty: 12000,
-      max_t_ms: atKst(10, 42),
-    });
-  });
-
-  it('WS trade가 없어도 REST 캔들 범위 안의 live.ob 벽은 체결 기준선 후보가 된다', () => {
-    const { result, rerender } = renderHook(
-      ({ ob, candles }: { ob: ObSnapshot[]; candles: Candle[] }) =>
-        useDayAskPeaks(ob, [], [], '20260613', '005930', null, candles),
-      { initialProps: { ob: [] as ObSnapshot[], candles: [] as Candle[] } },
-    );
-
-    rerender({
-      ob: [deep(atKst(10, 42), 12000, 27000)],
-      candles: [candle(atKst(10, 42), 26900, 27100)],
-    });
-
-    expect(byDate(result.current)['20260613']).toMatchObject({
-      price: 27000,
-      qty: 12000,
-      t_ms: atKst(10, 42),
-    });
-  });
-
-  it('캔들 범위가 좁아지면 캔들로만 허용된 live.ob 벽은 오늘 후보에서 제외한다', () => {
-    const ob = [deep(atKst(10, 42), 12000, 27000)];
-    const { result, rerender } = renderHook(
-      ({ candles }: { candles: Candle[] }) =>
-        useDayAskPeaks(ob, [], [], '20260613', '005930', null, candles),
-      { initialProps: { candles: [candle(atKst(10, 42), 26900, 27100)] } },
-    );
-
-    expect(byDate(result.current)['20260613']).toMatchObject({
-      price: 27000,
-      qty: 12000,
-    });
-
-    rerender({ candles: [candle(atKst(10, 43), 28000, 28100)] });
-
-    expect(byDate(result.current)['20260613']).toBeUndefined();
-  });
-
   it('REST today seed keeps updating traded baseline from later trade prices and OB walls', () => {
     const restPeak = todayAskPeak();
     const { result, rerender } = renderHook(
@@ -283,17 +241,17 @@ describe('useDayAskPeaks', () => {
 
     rerender({
       trades: [trade(atKst(9, 20), [{ t_ms: atKst(9, 20), side: 1, price: 27000, qty: 10 }])],
-      ob: [deep(atKst(9, 21), 20000, 27000)],
+      ob: [deep(atKst(9, 19), 20000, 27000)],
     });
 
     const today = byDate(result.current)['20260613'];
     expect(today).toMatchObject({
       price: 27000,
       qty: 20000,
-      t_ms: atKst(9, 21),
+      t_ms: atKst(9, 19),
       max_price: 27000,
       max_qty: 20000,
-      max_t_ms: atKst(9, 21),
+      max_t_ms: atKst(9, 19),
     });
   });
 
@@ -319,31 +277,6 @@ describe('useDayAskPeaks', () => {
       price: 27000,
       qty: 20000,
       t_ms: atKst(9, 20),
-    });
-  });
-
-  it('seeds all backend-traded prices so pre-load non-peak prices remain eligible', () => {
-    const restPeak = todayAskPeak({
-      traded_prices: [25500, 27000],
-      traded_price: 25500,
-      traded_qty: 9000,
-      traded_t_ms: atKst(9, 10),
-    });
-    const { result, rerender } = renderHook(
-      ({ ob, trades }: { ob: ObSnapshot[]; trades: TradeSnapshot[] }) =>
-        useDayAskPeaks(ob, trades, [], '20260613', '005930', restPeak),
-      { initialProps: { ob: [] as ObSnapshot[], trades: [] as TradeSnapshot[] } },
-    );
-
-    rerender({
-      trades: [],
-      ob: [deep(atKst(9, 21), 20000, 27000)],
-    });
-
-    expect(byDate(result.current)['20260613']).toMatchObject({
-      price: 27000,
-      qty: 20000,
-      t_ms: atKst(9, 21),
     });
   });
 
@@ -377,14 +310,47 @@ describe('useDayAskPeaks', () => {
         trade(sameSecond, [{ t_ms: sameSecond, side: 1, price: 26900, qty: 10 }]),
         trade(sameSecond, [{ t_ms: sameSecond, side: 1, price: 27000, qty: 10 }]),
       ],
-      ob: [deep(atKst(9, 21), 20000, 27000)],
+      ob: [deep(sameSecond, 20000, 27000)],
     });
 
     expect(byDate(result.current)['20260613']).toMatchObject({
       price: 27000,
       qty: 20000,
-      t_ms: atKst(9, 21),
+      t_ms: sameSecond,
     });
+  });
+
+  it('keeps a pre-cutoff ask wall in untraded_peaks when the touch happens only after the cutoff', () => {
+    const wallT = atKst(9, 10);
+    const cutoff = { date: '20260613', tMs: Date.UTC(2026, 5, 13, 0, 10, 59, 999) };
+    const peaks = deriveDayAskPeaks(
+      [
+        deep(atKst(9, 9), 1000, 25900),
+        deep(wallT, 1200, 26000),
+      ],
+      [
+        trade(atKst(9, 9, ), [{ t_ms: atKst(9, 9), side: 1, price: 25900, qty: 10 }]),
+        trade(atKst(9, 12), [{ t_ms: atKst(9, 12), side: 1, price: 26000, qty: 10 }]),
+      ],
+      [],
+      '20260613',
+      '005930',
+      null,
+      [],
+      cutoff,
+    );
+
+    expect(byDate(peaks)['20260613']).toMatchObject({
+      price: 25900,
+      qty: 1000,
+      t_ms: atKst(9, 9),
+      untraded_price: 26000,
+      untraded_qty: 1200,
+      untraded_t_ms: wallT,
+    });
+    expect(byDate(peaks)['20260613'].untraded_peaks).toEqual(
+      expect.arrayContaining([{ price: 26000, qty: 1200, t_ms: wallT }]),
+    );
   });
 
   it('omits today traded baseline when no traded peak exists even though all-price REST data exists', () => {
@@ -446,7 +412,6 @@ describe('useDayAskPeaks', () => {
         { price: 27000, qty: 20000, t_ms: atKst(10, 0) },
         { price: 26000, qty: 12000, t_ms: atKst(9, 11) },
         { price: 26500, qty: 8000, t_ms: atKst(9, 20) },
-        { price: 26600, qty: 7000, t_ms: atKst(9, 30) },
       ],
     });
   });
@@ -467,6 +432,32 @@ describe('useDayAskPeaks', () => {
       { price: 26000, qty: 9000, t_ms: atKst(9, 12) },
       { price: 26000, qty: 1200, t_ms: atKst(9, 11) },
     ]);
+  });
+
+  it('all-price hook keeps legacy rank-1 untraded fields when untraded arrays are absent', () => {
+    const restPeak = todayAskPeak({
+      untraded_price: 27100,
+      untraded_qty: 13000,
+      untraded_t_ms: atKst(10, 5),
+      untraded_max_price: 27100,
+      untraded_max_qty: 13000,
+      untraded_max_t_ms: atKst(10, 5),
+    });
+
+    const { result } = renderHook(
+      () => useTodayAllPriceAskPeak([], [], '20260613', '005930', restPeak),
+    );
+
+    expect(result.current).toMatchObject({
+      untraded_price: 27100,
+      untraded_qty: 13000,
+      untraded_t_ms: atKst(10, 5),
+      untraded_max_price: 27100,
+      untraded_max_qty: 13000,
+      untraded_max_t_ms: atKst(10, 5),
+      untraded_peaks: [{ price: 27100, qty: 13000, t_ms: atKst(10, 5) }],
+      untraded_max_peaks: [{ price: 27100, qty: 13000, t_ms: atKst(10, 5) }],
+    });
   });
 
   it('all-price peak ignores collapsed 3-level auction/VI books', () => {
@@ -551,12 +542,11 @@ describe('useDayAskPeaks', () => {
     }));
 
     const started = performance.now();
-    const { result } = renderHook(() =>
+    renderHook(() =>
       useDayAskPeaks(ob, [], [], '20260613', '005930', null, candles),
     );
     const elapsed = performance.now() - started;
 
-    expect(result.current.at(-1)?.price).toBeGreaterThanOrEqual(40_000);
     expect(elapsed).toBeLessThan(500);
   });
 });

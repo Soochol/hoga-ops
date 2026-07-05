@@ -194,4 +194,28 @@ describe('applyPeakVisibleTimeCutoff', () => {
       }),
     ]);
   });
+
+  it('filters ranked untraded arrays by the cutoff time', () => {
+    const out = applyPeakVisibleTimeCutoff([{
+      ...askPeak('20260611'),
+      untraded_peaks: [
+        { price: 102, qty: 700, t_ms: day2Open + 60_000 },
+        { price: 103, qty: 900, t_ms: day2Open + 180_000 },
+      ],
+      untraded_max_peaks: [
+        { price: 102, qty: 800, t_ms: day2Open + 60_000 },
+        { price: 103, qty: 950, t_ms: day2Open + 180_000 },
+      ],
+    }], { date: '20260611', tMs: day2Open + 120_000 }, {
+      side: 'ask',
+      intraMax: false,
+    });
+
+    expect(out).toEqual([
+      expect.objectContaining({
+        untraded_peaks: [{ price: 102, qty: 700, t_ms: day2Open + 60_000 }],
+        untraded_max_peaks: [{ price: 102, qty: 800, t_ms: day2Open + 60_000 }],
+      }),
+    ]);
+  });
 });

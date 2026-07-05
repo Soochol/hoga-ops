@@ -503,12 +503,12 @@ export type AskPeakCandidate = {
  *  (분봉 내 최댓값 기준, Intra-Bar Max, ADR-0076). */
 export type PeakBase = {
   date: string;
-  price: number;
-  qty: number;
-  t_ms: number;
-  max_price: number;
-  max_qty: number;
-  max_t_ms: number;
+  price: number | null;
+  qty: number | null;
+  t_ms: number | null;
+  max_price: number | null;
+  max_qty: number | null;
+  max_t_ms: number | null;
   all_price?: number | null;
   all_qty?: number | null;
   all_t_ms?: number | null;
@@ -529,6 +529,8 @@ export type AskPeak = PeakBase & {
   traded_max_peaks?: AskPeakCandidate[];
   all_peaks?: AskPeakCandidate[];
   all_max_peaks?: AskPeakCandidate[];
+  untraded_peaks?: AskPeakCandidate[];
+  untraded_max_peaks?: AskPeakCandidate[];
 };
 
 /** hoga/api/models.py::BidPeak mirror. Candidate arrays mirror ask for cutoff/ranking. */
@@ -537,6 +539,8 @@ export type BidPeak = PeakBase & {
   traded_max_peaks?: AskPeakCandidate[];
   all_peaks?: AskPeakCandidate[];
   all_max_peaks?: AskPeakCandidate[];
+  untraded_peaks?: AskPeakCandidate[];
+  untraded_max_peaks?: AskPeakCandidate[];
 };
 
 export type TradeVolumePocWire = {

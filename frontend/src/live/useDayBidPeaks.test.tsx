@@ -46,13 +46,13 @@ describe('useDayBidPeaks', () => {
   it('only promotes traded bid prices, even when a larger untraded wall exists', () => {
     const { result } = renderHook(() => useDayBidPeaks(
       [
-        deep(atKst(9, 21), [
+        deep(atKst(9, 20), [
           [23850, 15000],
           [23900, 9000],
           ...Array(8).fill([1, 1]),
         ] as Array<[number, number]>),
       ],
-      [trade(atKst(9, 20), [{ t_ms: atKst(9, 20), side: 1, price: 23900, qty: 10 }])],
+      [trade(atKst(9, 21), [{ t_ms: atKst(9, 21), side: 1, price: 23900, qty: 10 }])],
       [],
       '20260613',
       '005930',
@@ -61,7 +61,7 @@ describe('useDayBidPeaks', () => {
     expect(byDate(result.current)['20260613']).toMatchObject({
       price: 23900,
       qty: 9000,
-      t_ms: atKst(9, 21),
+      t_ms: atKst(9, 20),
     });
   });
 
@@ -86,16 +86,7 @@ describe('useDayBidPeaks', () => {
       [candle(atKst(10, 42), 23700, 23900)],
     ));
 
-    expect(byDate(result.current)['20260613']).toMatchObject({
-      date: '20260613',
-      price: 23800,
-      qty: 12000,
-      t_ms: atKst(10, 42),
-      max_price: 23800,
-      max_qty: 12000,
-      max_t_ms: atKst(10, 42),
-      traded_peaks: [{ price: 23800, qty: 12000, t_ms: atKst(10, 42) }],
-    });
+    expect(byDate(result.current)['20260613']).toBeUndefined();
   });
 
   it('preserves REST traded bid candidates for current-day cutoff recalculation', () => {
@@ -126,49 +117,41 @@ describe('useDayBidPeaks', () => {
         { price: 23800, qty: 20000, t_ms: atKst(10, 0) },
         { price: 23900, qty: 9000, t_ms: atKst(9, 10) },
         { price: 23700, qty: 8000, t_ms: atKst(9, 20) },
-        { price: 23600, qty: 7000, t_ms: atKst(9, 30) },
       ],
     });
   });
 
-  it('live traded bid candidates keep earlier same-price observations for cutoff recalculation', () => {
+  it('splits touched and untouched same-price bid walls into separate candidate families', () => {
     const { result } = renderHook(() => useDayBidPeaks(
       [
-        deep(atKst(9, 11), [[23900, 1200], ...Array(9).fill([1, 1])] as Array<[number, number]>),
+        deep(atKst(9, 10), [[23900, 1200], ...Array(9).fill([1, 1])] as Array<[number, number]>),
         deep(atKst(9, 12), [[23900, 9000], ...Array(9).fill([1, 1])] as Array<[number, number]>),
       ],
-      [trade(atKst(9, 10), [{ t_ms: atKst(9, 10), side: 1, price: 23900, qty: 10 }])],
+      [trade(atKst(9, 11), [{ t_ms: atKst(9, 11), side: 1, price: 23900, qty: 10 }])],
       [],
       '20260613',
       '005930',
     ));
 
-    expect(byDate(result.current)['20260613']).toMatchObject({
+    const today = byDate(result.current)['20260613'];
+    expect(today).toMatchObject({
       price: 23900,
-      qty: 9000,
-      traded_peaks: [
-        { price: 23900, qty: 9000, t_ms: atKst(9, 12) },
-        { price: 23900, qty: 1200, t_ms: atKst(9, 11) },
-      ],
+      qty: 1200,
+      t_ms: atKst(9, 10),
+      untraded_price: 23900,
+      untraded_qty: 9000,
+      untraded_t_ms: atKst(9, 12),
     });
-  });
-
-  it('drops a candle-only live bid peak when the current candle range no longer covers it', () => {
-    const ob = [deep(atKst(10, 42), [[23800, 12000], ...Array(9).fill([1, 1])] as Array<[number, number]>)];
-    const { result, rerender } = renderHook(
-      ({ candles }: { candles: Candle[] }) =>
-        useDayBidPeaks(ob, [], [], '20260613', '005930', null, candles),
-      { initialProps: { candles: [candle(atKst(10, 42), 23700, 23900)] } },
+    expect(today.traded_peaks).toEqual(
+      expect.arrayContaining([{ price: 23900, qty: 1200, t_ms: atKst(9, 10) }]),
     );
-
-    expect(byDate(result.current)['20260613']).toMatchObject({
-      price: 23800,
-      qty: 12000,
-    });
-
-    rerender({ candles: [candle(atKst(10, 43), 23000, 23100)] });
-
-    expect(byDate(result.current)['20260613']).toBeUndefined();
+    expect(today.untraded_peaks).toEqual(
+      expect.arrayContaining([{ price: 23900, qty: 9000, t_ms: atKst(9, 12) }]),
+    );
+    expect(today.all_peaks?.slice(0, 2)).toEqual([
+      { price: 23900, qty: 9000, t_ms: atKst(9, 12) },
+      { price: 23900, qty: 1200, t_ms: atKst(9, 10) },
+    ]);
   });
 
   it('retroactively promotes a previously observed bid wall once that price trades later', () => {
@@ -216,12 +199,11 @@ describe('useDayBidPeaks', () => {
     }));
 
     const started = performance.now();
-    const { result } = renderHook(() =>
+    renderHook(() =>
       useDayBidPeaks(ob, [], [], '20260613', '005930', null, candles),
     );
     const elapsed = performance.now() - started;
 
-    expect(result.current.at(-1)?.price).toBeGreaterThanOrEqual(40_000);
     expect(elapsed).toBeLessThan(500);
   });
 });
@@ -338,7 +320,6 @@ describe('useTodayAllPriceBidPeak', () => {
         { price: 23800, qty: 20000, t_ms: atKst(10, 0) },
         { price: 23900, qty: 9000, t_ms: atKst(9, 10) },
         { price: 23700, qty: 8000, t_ms: atKst(9, 20) },
-        { price: 23600, qty: 7000, t_ms: atKst(9, 30) },
       ],
     });
   });
@@ -359,5 +340,31 @@ describe('useTodayAllPriceBidPeak', () => {
       { price: 23900, qty: 9000, t_ms: atKst(9, 12) },
       { price: 23900, qty: 1200, t_ms: atKst(9, 11) },
     ]);
+  });
+
+  it('all-price hook keeps legacy rank-1 untraded fields when untraded arrays are absent', () => {
+    const restPeak = todayBidPeak({
+      untraded_price: 23700,
+      untraded_qty: 13000,
+      untraded_t_ms: atKst(10, 5),
+      untraded_max_price: 23700,
+      untraded_max_qty: 13000,
+      untraded_max_t_ms: atKst(10, 5),
+    });
+
+    const { result } = renderHook(
+      () => useTodayAllPriceBidPeak([], [], '20260613', '005930', restPeak),
+    );
+
+    expect(result.current).toMatchObject({
+      untraded_price: 23700,
+      untraded_qty: 13000,
+      untraded_t_ms: atKst(10, 5),
+      untraded_max_price: 23700,
+      untraded_max_qty: 13000,
+      untraded_max_t_ms: atKst(10, 5),
+      untraded_peaks: [{ price: 23700, qty: 13000, t_ms: atKst(10, 5) }],
+      untraded_max_peaks: [{ price: 23700, qty: 13000, t_ms: atKst(10, 5) }],
+    });
   });
 });

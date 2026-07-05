@@ -18,7 +18,7 @@ import { LiveToolbar } from './LiveToolbar';
 import { ChartDrawingShell } from './ChartDrawingShell';
 import type { LiveInstrument } from './liveInstrument';
 import type { AskPeak, BidPeak, RangeBundle } from '../api/types';
-import type { LiveSeriesData } from '../api/liveSeries';
+import type { LiveSeriesData, LiveTodayAskPeak, LiveTodayBidPeak } from '../api/liveSeries';
 import { useIndexSectorRankings } from '../api/indexSectorRankings';
 import type { LiveDataWarning } from './liveDataWarnings';
 import { useJumpToLive } from './useJumpToLive';
@@ -104,10 +104,14 @@ interface Props {
   dayAskPeaks?: readonly AskPeak[];
   /** Backend today all-price ask peak — optional because tests/legacy callers may omit it. */
   todayAllPriceAskPeak?: AskPeak | null;
+  /** Raw backend today ask-peak payload for cutoff-aware live recomputation. */
+  todayAskPeakInput?: LiveTodayAskPeak | null;
   /** LivePage의 useDayBidPeaks 결과(거래일별) — LiveChartRoot → LiveBidPeakSegments로 전달. */
   dayBidPeaks?: readonly BidPeak[];
   /** Backend today all-price bid peak — optional because tests/legacy callers may omit it. */
   todayAllPriceBidPeak?: BidPeak | null;
+  /** Raw backend today bid-peak payload for cutoff-aware live recomputation. */
+  todayBidPeakInput?: LiveTodayBidPeak | null;
   /** 오늘(KST YYYYMMDD) — 오늘 세그먼트만 라이브 엣지까지 연장. */
   todayKst?: string;
   /** Per-day regular-session trade-volume POC bands. */
@@ -142,8 +146,10 @@ export function LiveWorkarea({
   live,
   dayAskPeaks = EMPTY_ASK_PEAKS,
   todayAllPriceAskPeak = null,
+  todayAskPeakInput = null,
   dayBidPeaks = EMPTY_BID_PEAKS,
   todayAllPriceBidPeak = null,
+  todayBidPeakInput = null,
   todayKst = '',
   tradeVolumePocs = [],
   paneTogglesOverride,
@@ -378,8 +384,12 @@ export function LiveWorkarea({
                   viewIdentity={viewIdentity ?? undefined}
                   dayAskPeaks={dayAskPeaks}
                   todayAllPriceAskPeak={todayAllPriceAskPeak}
+                  todayAskPeakInput={todayAskPeakInput}
                   dayBidPeaks={dayBidPeaks}
                   todayAllPriceBidPeak={todayAllPriceBidPeak}
+                  todayBidPeakInput={todayBidPeakInput}
+                  liveObSnapshots={live.ob}
+                  liveTradeSnapshots={live.trade}
                   todayKst={todayKst}
                   tradeVolumePocs={tradeVolumePocs}
                   paneTogglesOverride={paneTogglesOverride}
