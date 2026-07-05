@@ -199,6 +199,10 @@ export function StudyViewsDrawer() {
     reorderRow,
   } = useStudyViewTreeState(data?.saves ?? []);
   const currentStudyViewId = useMemo(() => new URLSearchParams(location.search).get('view'), [location.search]);
+  const activeStudyViewId = useStudyTabsStore((state) => (
+    state.tabs.find((tab) => tab.id === state.activeTabId)?.viewId ?? null
+  ));
+  const selectedStudyViewId = activeStudyViewId ?? currentStudyViewId;
   const sensors = useSensors(useSensor(PointerSensor, { activationConstraint: { distance: 5 } }));
   const startEntryDrag = useEntryDragStore((s) => s.startDrag);
   const setOverStudy = useEntryDragStore((s) => s.setOverStudy);
@@ -355,73 +359,81 @@ export function StudyViewsDrawer() {
     reorderRow(intent.groupKey, intent.activeId, intent.overId);
   };
 
-  const renderStudyViewRow = (row: StudyViewListRow) => (
-    <RailTreeRow
-      key={row.id}
-      role={renameState?.id === row.id ? undefined : 'button'}
-      tabIndex={renameState?.id === row.id ? undefined : 0}
-      aria-label={renameState?.id === row.id ? undefined : `${row.name} 저장뷰 열기`}
-      onClick={renameState?.id === row.id ? undefined : (event) => {
-        if (event.ctrlKey || event.metaKey) {
-          openStudyViewInNewTab(row);
-          return;
-        }
-        scheduleStudyViewNavigation(row);
-      }}
-      onContextMenu={renameState?.id === row.id ? undefined : (e) => {
-        e.preventDefault();
-        setRowMenu({ row, left: e.clientX, top: e.clientY });
-      }}
-      onKeyDown={renameState?.id === row.id ? undefined : (e) => {
-        if (e.target !== e.currentTarget) return;
-        if (e.key !== 'Enter' && e.key !== ' ') return;
-        e.preventDefault();
-        openStudyViewInActiveTab(row);
-      }}
-    >
-      {renameState?.id === row.id ? (
-        <div className="min-w-0 flex-1 space-y-1">
-          <input
-            aria-label="저장뷰 이름 수정"
-            autoFocus
-            ref={renameInputRef}
-            value={renameState.value}
-            onChange={(e) => setRenameState({ ...renameState, value: e.target.value, error: null })}
-            onBlur={() => commitRename(row)}
-            onKeyDown={(e) => {
-              if (e.key === 'Enter') {
-                e.preventDefault();
-                commitRename(row);
-              }
-              if (e.key === 'Escape') {
-                e.preventDefault();
-                cancelRename();
-              }
-            }}
-            className="w-full rounded border border-line bg-bg-input px-1 py-0.5 text-xs text-fg"
-          />
-          {renameState.error && <div className="text-xs text-danger">{renameState.error}</div>}
-        </div>
-      ) : (
-        <div className="flex min-w-0 flex-1 items-center gap-2 leading-tight">
-          <span className="h-1.5 w-1.5 shrink-0 rounded-full border border-line bg-bg" aria-hidden />
-          <div className="min-w-0 flex-1">
-            <div
-              className="truncate text-xs text-fg"
-              onDoubleClick={(e) => {
-                e.preventDefault();
-                e.stopPropagation();
-                cancelPendingStudyViewNavigation();
-                startRename(row);
+  const renderStudyViewRow = (row: StudyViewListRow) => {
+    const isActive = selectedStudyViewId === row.id;
+    return (
+      <RailTreeRow
+        key={row.id}
+        role={renameState?.id === row.id ? undefined : 'button'}
+        tabIndex={renameState?.id === row.id ? undefined : 0}
+        aria-label={renameState?.id === row.id ? undefined : `${row.name} 저장뷰 열기`}
+        aria-current={isActive ? 'true' : undefined}
+        style={{
+          background: isActive ? 'var(--tint-selection)' : 'transparent',
+          borderLeft: `2px solid ${isActive ? 'var(--accent)' : 'transparent'}`,
+        }}
+        onClick={renameState?.id === row.id ? undefined : (event) => {
+          if (event.ctrlKey || event.metaKey) {
+            openStudyViewInNewTab(row);
+            return;
+          }
+          scheduleStudyViewNavigation(row);
+        }}
+        onContextMenu={renameState?.id === row.id ? undefined : (e) => {
+          e.preventDefault();
+          setRowMenu({ row, left: e.clientX, top: e.clientY });
+        }}
+        onKeyDown={renameState?.id === row.id ? undefined : (e) => {
+          if (e.target !== e.currentTarget) return;
+          if (e.key !== 'Enter' && e.key !== ' ') return;
+          e.preventDefault();
+          openStudyViewInActiveTab(row);
+        }}
+      >
+        {renameState?.id === row.id ? (
+          <div className="min-w-0 flex-1 space-y-1">
+            <input
+              aria-label="저장뷰 이름 수정"
+              autoFocus
+              ref={renameInputRef}
+              value={renameState.value}
+              onChange={(e) => setRenameState({ ...renameState, value: e.target.value, error: null })}
+              onBlur={() => commitRename(row)}
+              onKeyDown={(e) => {
+                if (e.key === 'Enter') {
+                  e.preventDefault();
+                  commitRename(row);
+                }
+                if (e.key === 'Escape') {
+                  e.preventDefault();
+                  cancelRename();
+                }
               }}
-            >
-              {row.name}
+              className="w-full rounded border border-line bg-bg-input px-1 py-0.5 text-xs text-fg"
+            />
+            {renameState.error && <div className="text-xs text-danger">{renameState.error}</div>}
+          </div>
+        ) : (
+          <div className="flex min-w-0 flex-1 items-center gap-2 leading-tight">
+            <span className="h-1.5 w-1.5 shrink-0 rounded-full border border-line bg-bg" aria-hidden />
+            <div className="min-w-0 flex-1">
+              <div
+                className="truncate text-xs text-fg"
+                onDoubleClick={(e) => {
+                  e.preventDefault();
+                  e.stopPropagation();
+                  cancelPendingStudyViewNavigation();
+                  startRename(row);
+                }}
+              >
+                {row.name}
+              </div>
             </div>
           </div>
-        </div>
-      )}
-    </RailTreeRow>
-  );
+        )}
+      </RailTreeRow>
+    );
+  };
 
   return (
     <RailDrawer id="right-rail-saved-views-panel" ariaLabel="저장 뷰">
