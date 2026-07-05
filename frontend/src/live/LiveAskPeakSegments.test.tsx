@@ -238,7 +238,7 @@ describe('buildAskPeakOverlaySegments', () => {
     expect(out[1].price).toBe(69000);
   });
 
-  it('buildBidPeakOverlaySegments only renders today all-price bid peaks below today day low', () => {
+  it('buildBidPeakOverlaySegments renders today bid untraded family independently of the intraday low gate', () => {
     const segments = [{ date: '20260619', session_open_ms: 1_000, session_close_ms: 2_000, source: 'kis_live' as const }];
     const candles = [
       { ts_ms: Date.UTC(2026, 5, 19, 0, 1), open: 70000, high: 70100, low: 69900, close: 70050, vol_a: 0, vol_b: 0 },
@@ -278,8 +278,8 @@ describe('buildAskPeakOverlaySegments', () => {
         max_t_ms: Date.UTC(2026, 5, 19, 0, 2),
       },
     });
-    expect(atDayLow).toHaveLength(1);
-    expect(atDayLow[0]).toMatchObject({ price: 69800, color: '#DC2626' });
+    expect(atDayLow).toHaveLength(2);
+    expect(atDayLow[1]).toMatchObject({ price: 69800, color: '#F97316' });
 
     const aboveDayLow = buildBidPeakOverlaySegments({
       ...commonArgs,
@@ -293,8 +293,8 @@ describe('buildAskPeakOverlaySegments', () => {
         max_t_ms: Date.UTC(2026, 5, 19, 0, 2),
       },
     });
-    expect(aboveDayLow).toHaveLength(1);
-    expect(aboveDayLow[0]).toMatchObject({ price: 69800, color: '#DC2626' });
+    expect(aboveDayLow).toHaveLength(2);
+    expect(aboveDayLow[1]).toMatchObject({ price: 69900, color: '#F97316' });
 
     const belowDayLow = buildBidPeakOverlaySegments({
       ...commonArgs,
@@ -339,7 +339,7 @@ describe('buildAskPeakOverlaySegments', () => {
     expect(out[1]).toMatchObject({ color: '#F97316', lineWidth: 1 });
   });
 
-  it('미체결 price/time이 달라도 qty가 체결가격 기준 qty보다 크지 않으면 한 줄만 만든다', () => {
+  it('미체결 rank 1은 체결가격 기준 rank 1보다 작아도 별도 가족으로 렌더한다', () => {
     const traded = peakWithUntraded(
       { date: '20260613', price: 100, qty: 80, t_ms: 120000 },
       { price: 110, qty: 80, t_ms: 180000 },
@@ -358,8 +358,9 @@ describe('buildAskPeakOverlaySegments', () => {
       showAllPrices: true,
     });
 
-    expect(out).toHaveLength(1);
-    expect(out[0]).toMatchObject({ price: 100, label: '100, 0.1k', color: '#1D4ED8', lineWidth: 2 });
+    expect(out).toHaveLength(2);
+    expect(out.map((segment) => segment.price)).toEqual([100, 110]);
+    expect(out[1]).toMatchObject({ price: 110, label: '110, 0.1k', color: '#F97316', lineWidth: 1 });
   });
 
   it('all_*만 있고 untraded_*가 없으면 미체결 선을 만들지 않는다', () => {
@@ -431,7 +432,7 @@ describe('buildAskPeakOverlaySegments', () => {
     expect(out[1]).toMatchObject({ label: '115, 0.1k', color: '#F97316', lineWidth: 1 });
   });
 
-  it('intraMax=true면 untraded_max_qty가 max_qty보다 크지 않을 때 미체결 선을 만들지 않는다', () => {
+  it('intraMax=true여도 untraded_max_qty가 max_qty보다 크지 않아도 미체결 가족을 렌더한다', () => {
     const traded: AskPeak = {
       date: '20260611',
       price: 100,
@@ -461,8 +462,9 @@ describe('buildAskPeakOverlaySegments', () => {
       showAllPrices: true,
     });
 
-    expect(out).toHaveLength(1);
-    expect(out[0]).toMatchObject({ price: 101, label: '101, 0.1k', color: '#1D4ED8', lineWidth: 2 });
+    expect(out).toHaveLength(2);
+    expect(out.map((segment) => segment.price)).toEqual([101, 115]);
+    expect(out[1]).toMatchObject({ price: 115, label: '115, 0.1k', color: '#F97316', lineWidth: 1 });
   });
 
   it('intraMax=true면 close 미체결 triple이 없어도 untraded_max_*만으로 오렌지 선을 만든다', () => {
@@ -575,16 +577,16 @@ describe('buildAskPeakOverlaySegments', () => {
     expect(out[0]).toMatchObject({ price: 100, color: '#1D4ED8' });
   });
 
-  it('오늘 live all-price scalar가 cutoff 뒤여도 all_peaks의 이전 후보를 렌더한다', () => {
+  it('오늘 live source scalar가 cutoff 뒤여도 ranked untraded 후보를 렌더한다', () => {
     const open = Date.UTC(2026, 5, 13, 0, 0);
     const traded = peak({ date: '20260613', price: 100, qty: 50, t_ms: open + 60_000 });
     const allPrice: AskPeak = {
       ...peak({ date: '20260613', price: 120, qty: 500, t_ms: open + 180_000 }),
-      all_peaks: [
+      untraded_peaks: [
         { price: 110, qty: 120, t_ms: open + 60_000 },
         { price: 120, qty: 500, t_ms: open + 180_000 },
       ],
-      all_max_peaks: [
+      untraded_max_peaks: [
         { price: 110, qty: 120, t_ms: open + 60_000 },
         { price: 120, qty: 500, t_ms: open + 180_000 },
       ],
@@ -611,7 +613,7 @@ describe('buildAskPeakOverlaySegments', () => {
     expect(out[1]).toMatchObject({ price: 110, qty: 120, color: '#F97316' });
   });
 
-  it('오늘 체결가격 기준 후보는 rank limit만큼 그리고 미체결 후보는 1개만 추가한다', () => {
+  it('오늘 체결가격 기준 후보와 미체결 후보를 각 가족의 rank limit만큼 독립적으로 그린다', () => {
     const traded = [
       peak({ date: '20260613', price: 100, qty: 100, t_ms: 120000 }),
       peak({ date: '20260613', price: 105, qty: 90, t_ms: 130000 }),
@@ -619,7 +621,12 @@ describe('buildAskPeakOverlaySegments', () => {
     ];
     const allPrice: AskPeak = {
       ...peak({ date: '20260613', price: 110, qty: 120, t_ms: 180000 }),
-      all_peaks: [
+      untraded_peaks: [
+        { price: 110, qty: 120, t_ms: 180000 },
+        { price: 115, qty: 115, t_ms: 190000 },
+        { price: 120, qty: 110, t_ms: 200000 },
+      ],
+      untraded_max_peaks: [
         { price: 110, qty: 120, t_ms: 180000 },
         { price: 115, qty: 115, t_ms: 190000 },
         { price: 120, qty: 110, t_ms: 200000 },
@@ -638,11 +645,12 @@ describe('buildAskPeakOverlaySegments', () => {
       intraMax: false,
       showAllPrices: true,
       allPriceRankLimit: 2,
+      untradedRankLimit: 3,
     });
 
-    expect(out).toHaveLength(3);
-    expect(out.map((s) => s.price)).toEqual([100, 105, 110]);
-    expect(out.map((s) => s.color)).toEqual(['#1D4ED8', '#1D4ED8', '#F97316']);
+    expect(out).toHaveLength(5);
+    expect(out.map((s) => s.price)).toEqual([100, 105, 110, 115, 120]);
+    expect(out.map((s) => s.color)).toEqual(['#1D4ED8', '#1D4ED8', '#F97316', '#F97316', '#F97316']);
   });
 
   it('체결가격 기준 top-N은 같은 가격 후보를 하나의 벽으로만 취급한다', () => {
@@ -756,7 +764,7 @@ describe('buildAskPeakOverlaySegments', () => {
     expect(out.map((s) => s.price)).toEqual([100, 105, 200, 205]);
   });
 
-  it('오늘 체결가격 기준선과 미체결 포함 triple이 같으면 한 줄만 만든다', () => {
+  it('오늘 체결가격 기준선과 미체결 가족은 같은 가격이어도 각각 한 줄씩 유지한다', () => {
     const traded = peak({ date: '20260613', price: 100, qty: 50, t_ms: 120000 });
     const allPrice = peak({ date: '20260613', price: 100, qty: 50, t_ms: 120000 });
 
@@ -773,11 +781,14 @@ describe('buildAskPeakOverlaySegments', () => {
       showAllPrices: true,
     });
 
-    expect(out).toHaveLength(1);
-    expect(out[0]).toMatchObject({ price: 100, color: '#1D4ED8', lineWidth: 2 });
+    expect(out).toHaveLength(2);
+    expect(out.map((segment) => [segment.price, segment.color])).toEqual([
+      [100, '#1D4ED8'],
+      [100, '#F97316'],
+    ]);
   });
 
-  it('아직 체결가격 기준 peak가 없으면 토글 ON이어도 미체결 포함 선을 단독 표시하지 않는다', () => {
+  it('체결가격 기준 peak가 없어도 미체결 가족은 단독으로 렌더한다', () => {
     const allPrice = peakWithUntraded(
       { date: '20260613', price: 100, qty: 50, t_ms: 120000 },
       { price: 110, qty: 80, t_ms: 180000 },
@@ -796,7 +807,8 @@ describe('buildAskPeakOverlaySegments', () => {
       showAllPrices: true,
     });
 
-    expect(out).toHaveLength(0);
+    expect(out).toHaveLength(1);
+    expect(out[0]).toMatchObject({ price: 110, color: '#F97316', lineWidth: 1 });
   });
 
   it('과거일 AskPeak의 untraded_* 필드로 미체결 선을 추가한다', () => {
@@ -832,6 +844,94 @@ describe('buildAskPeakOverlaySegments', () => {
     expect(out).toHaveLength(2);
     expect(out.map((s) => s.price)).toEqual([100, 110]);
     expect(out[1]).toMatchObject({ color: '#F97316', lineWidth: 1 });
+  });
+
+  it('체결가격 기준 ranked 후보가 비어 있어도 scalar 기준선과 ranked 미체결 가족을 함께 렌더한다', () => {
+    const out = buildAskPeakOverlaySegments({
+      dayAskPeaks: [{
+        date: '20260613',
+        price: 100,
+        qty: 100,
+        t_ms: 120000,
+        max_price: 100,
+        max_qty: 100,
+        max_t_ms: 120000,
+        traded_peaks: [],
+        traded_max_peaks: [],
+        untraded_peaks: [
+          { price: 110, qty: 80, t_ms: 180000 },
+          { price: 115, qty: 70, t_ms: 190000 },
+        ],
+        untraded_max_peaks: [
+          { price: 110, qty: 80, t_ms: 180000 },
+          { price: 115, qty: 70, t_ms: 190000 },
+        ],
+      }],
+      todayAllPriceAskPeak: null,
+      segments: [seg('20260613', 60000, 240000)],
+      candles: [candle(60000), candle(120000), candle(180000), candle(190000)],
+      axis,
+      todayKst: '20260613',
+      baselineStyle: { color: '#1D4ED8', lineWidth: 2 },
+      allPriceStyle: { color: '#F97316', lineWidth: 1 },
+      intraMax: false,
+      showAllPrices: true,
+      untradedRankLimit: 2,
+    });
+
+    expect(out.map((segment) => segment.price)).toEqual([100, 110, 115]);
+    expect(out.map((segment) => segment.color)).toEqual(['#1D4ED8', '#F97316', '#F97316']);
+  });
+
+  it('미체결 가족은 같은 가격을 dedupe하지만 체결가격 기준 가족과는 같은 가격을 각각 유지한다', () => {
+    const day = '20260613';
+    const out = buildAskPeakOverlaySegments({
+      dayAskPeaks: [{
+        date: day,
+        price: 100400,
+        qty: 22_300,
+        t_ms: 60_000,
+        max_price: 100400,
+        max_qty: 22_300,
+        max_t_ms: 60_000,
+        traded_peaks: [
+          { price: 100400, qty: 22_300, t_ms: 60_000 },
+          { price: 100300, qty: 21_000, t_ms: 180_000 },
+        ],
+        traded_max_peaks: [
+          { price: 100400, qty: 22_300, t_ms: 60_000 },
+          { price: 100300, qty: 21_000, t_ms: 180_000 },
+        ],
+        untraded_peaks: [
+          { price: 100500, qty: 30_000, t_ms: 240_000 },
+          { price: 100500, qty: 29_500, t_ms: 300_000 },
+          { price: 100400, qty: 29_000, t_ms: 360_000 },
+        ],
+        untraded_max_peaks: [
+          { price: 100500, qty: 30_000, t_ms: 240_000 },
+          { price: 100500, qty: 29_500, t_ms: 300_000 },
+          { price: 100400, qty: 29_000, t_ms: 360_000 },
+        ],
+      }],
+      todayAllPriceAskPeak: null,
+      segments: [seg(day, 0, 420_000)],
+      candles: [candle(60_000), candle(180_000), candle(240_000), candle(300_000), candle(360_000)],
+      axis,
+      todayKst: day,
+      baselineStyle: { color: '#1D4ED8', lineWidth: 2 },
+      allPriceStyle: { color: '#F97316', lineWidth: 1 },
+      intraMax: false,
+      showAllPrices: true,
+      allPriceRankLimit: 2,
+      untradedRankLimit: 3,
+    });
+
+    expect(out.map((segment) => [segment.price, segment.color])).toEqual([
+      [100400, '#1D4ED8'],
+      [100300, '#1D4ED8'],
+      [100500, '#F97316'],
+      [100400, '#F97316'],
+    ]);
   });
 
   it('filters ask baseline and untraded candidates by visible-time cutoff', () => {
@@ -879,7 +979,7 @@ describe('buildAskPeakOverlaySegments', () => {
     expect(segments[0]).toMatchObject({ price: 100, qty: 100 });
   });
 
-  it('reconstructs historical ask untraded lines using high-through-cutoff instead of full-day high', () => {
+  it('filters historical ranked ask untraded candidates through the visible-time cutoff', () => {
     const day = '20260613';
     const open = Date.UTC(2026, 5, 13, 0, 0);
     const peak: AskPeak = {
@@ -890,10 +990,10 @@ describe('buildAskPeakOverlaySegments', () => {
       max_price: 100,
       max_qty: 50,
       max_t_ms: open + 60_000,
-      all_peaks: [
+      untraded_peaks: [
         { price: 105, qty: 120, t_ms: open + 60_000 },
       ],
-      all_max_peaks: [
+      untraded_max_peaks: [
         { price: 105, qty: 120, t_ms: open + 60_000 },
       ],
       untraded_price: null,

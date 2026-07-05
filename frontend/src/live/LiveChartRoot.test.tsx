@@ -596,6 +596,156 @@ describe('LiveChartRoot', () => {
     }
   });
 
+  it('passes ranked untraded limits into live peak wall overlays', async () => {
+    const previousAskPeakEnabled = useLivePageStore.getState().askPeakEnabled;
+    const previousBidPeakEnabled = useLivePageStore.getState().bidPeakEnabled;
+    const previousPrefs = useChartPrefsStore.getState();
+    const attachedPeakWallPrimitives: Array<{ segmentsForTest: () => Array<{ price: number }> }> = [];
+    const ts = {
+      subscribeVisibleTimeRangeChange: vi.fn(),
+      unsubscribeVisibleTimeRangeChange: vi.fn(),
+      subscribeVisibleLogicalRangeChange: vi.fn(),
+      unsubscribeVisibleLogicalRangeChange: vi.fn(),
+      applyOptions: vi.fn(),
+      fitContent: vi.fn(),
+      scrollToRealTime: vi.fn(),
+      scrollToPosition: vi.fn(),
+      setVisibleLogicalRange: vi.fn(),
+      getVisibleLogicalRange: vi.fn(() => null),
+      getVisibleRange: vi.fn(() => null),
+      setVisibleRange: vi.fn(),
+      timeToCoordinate: vi.fn(() => null),
+      coordinateToTime: vi.fn(() => null),
+      coordinateToLogical: vi.fn(() => null),
+      timeToIndex: vi.fn(() => 0),
+      width: vi.fn(() => 800),
+    };
+    const makeSeries = (chart: {
+      timeScale: () => typeof ts;
+    }) => ({
+      setData: vi.fn(),
+      update: vi.fn(),
+      removeSeries: vi.fn(),
+      applyOptions: vi.fn(),
+      priceScale: vi.fn(() => ({ applyOptions: vi.fn() })),
+      priceToCoordinate: vi.fn((price: number) => price),
+      createPriceLine: vi.fn(() => ({ applyOptions: vi.fn() })),
+      removePriceLine: vi.fn(),
+      attachPrimitive: vi.fn((primitive: {
+        attached?: (param: unknown) => void;
+        segmentsData?: () => Array<{ price: number }>;
+      }) => {
+        primitive.attached?.({ chart, series: null, requestUpdate: vi.fn() });
+        attachedPeakWallPrimitives.push({
+          segmentsForTest: () => primitive.segmentsData?.() ?? [],
+        });
+      }),
+      detachPrimitive: vi.fn((primitive: { detached?: () => void }) => {
+        primitive.detached?.();
+      }),
+      setMarkers: vi.fn(),
+    });
+    const chart = {
+      addSeries: vi.fn(),
+      removeSeries: vi.fn(),
+      timeScale: vi.fn(() => ts),
+      panes: vi.fn(() => []),
+      remove: vi.fn(),
+      resize: vi.fn(),
+      applyOptions: vi.fn(),
+      options: vi.fn(() => ({ timeScale: { minBarSpacing: 0.5 } })),
+      subscribeCrosshairMove: vi.fn(),
+      unsubscribeCrosshairMove: vi.fn(),
+      subscribeClick: vi.fn(),
+      unsubscribeClick: vi.fn(),
+      chartElement: vi.fn(() => ({ clientWidth: 800, clientHeight: 400 })),
+    };
+    chart.addSeries.mockImplementation(() => makeSeries(chart));
+    vi.mocked(createChartEx).mockImplementationOnce(() => chart as never);
+
+    useLivePageStore.setState({ askPeakEnabled: true, bidPeakEnabled: true });
+    useChartPrefsStore.setState({
+      askPeakShowAllPrices: true,
+      bidPeakShowAllPrices: true,
+      askPeakUntradedRankLimit: 2,
+      bidPeakUntradedRankLimit: 2,
+    } as Partial<ReturnType<typeof useChartPrefsStore.getState>> & Record<string, number | boolean>);
+
+    const bundle: RangeBundle = {
+      ...TODAY_ONLY_BUNDLE,
+      candles: [
+        { ts_ms: TODAY_OPEN_MS + 60_000, open: 100, high: 101, low: 99, close: 100, vol_a: 1, vol_b: 0 },
+        { ts_ms: TODAY_OPEN_MS + 120_000, open: 100, high: 101, low: 98, close: 99, vol_a: 1, vol_b: 0 },
+        { ts_ms: TODAY_OPEN_MS + 180_000, open: 99, high: 100, low: 97, close: 98, vol_a: 1, vol_b: 0 },
+        { ts_ms: TODAY_OPEN_MS + 240_000, open: 98, high: 99, low: 96, close: 97, vol_a: 1, vol_b: 0 },
+      ],
+      ask_peaks: [{
+        date: '20260527',
+        price: 100,
+        qty: 100,
+        t_ms: TODAY_OPEN_MS + 60_000,
+        max_price: 100,
+        max_qty: 100,
+        max_t_ms: TODAY_OPEN_MS + 60_000,
+        untraded_peaks: [
+          { price: 110, qty: 90, t_ms: TODAY_OPEN_MS + 180_000 },
+          { price: 115, qty: 80, t_ms: TODAY_OPEN_MS + 240_000 },
+        ],
+        untraded_max_peaks: [
+          { price: 110, qty: 90, t_ms: TODAY_OPEN_MS + 180_000 },
+          { price: 115, qty: 80, t_ms: TODAY_OPEN_MS + 240_000 },
+        ],
+      }],
+    };
+
+    try {
+      render(
+        <LiveChartRoot
+          code="005930"
+          timeframe="1m"
+          bundle={bundle}
+          chartBundle={bundle}
+          clampEngaged={false}
+          isPastCandlesLoading={false}
+          todayKst="20260527"
+          dayAskPeaks={bundle.ask_peaks}
+          dayBidPeaks={[{
+            date: '20260527',
+            price: 99,
+            qty: 90,
+            t_ms: TODAY_OPEN_MS + 60_000,
+            max_price: 99,
+            max_qty: 90,
+            max_t_ms: TODAY_OPEN_MS + 60_000,
+            untraded_peaks: [
+              { price: 98, qty: 80, t_ms: TODAY_OPEN_MS + 180_000 },
+              { price: 97, qty: 70, t_ms: TODAY_OPEN_MS + 240_000 },
+            ],
+            untraded_max_peaks: [
+              { price: 98, qty: 80, t_ms: TODAY_OPEN_MS + 180_000 },
+              { price: 97, qty: 70, t_ms: TODAY_OPEN_MS + 240_000 },
+            ],
+          }]}
+        />,
+        { wrapper },
+      );
+
+      await waitFor(() => expect(attachedPeakWallPrimitives.length).toBeGreaterThanOrEqual(2));
+      const renderedPrices = attachedPeakWallPrimitives.flatMap((primitive) =>
+        primitive.segmentsForTest().map((segment) => segment.price));
+      expect(renderedPrices).toContain(110);
+      expect(renderedPrices).toContain(115);
+      expect(renderedPrices).toContain(98);
+      expect(renderedPrices).toContain(97);
+    } finally {
+      useChartPrefsStore.setState(previousPrefs);
+      useLivePageStore.setState({
+        askPeakEnabled: previousAskPeakEnabled,
+        bidPeakEnabled: previousBidPeakEnabled,
+      });
+    }
+  });
+
   it('does not render the auction-window overlay for NXT candle views', () => {
     render(
       <LiveChartRoot

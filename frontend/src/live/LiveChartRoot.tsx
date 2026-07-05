@@ -25,7 +25,7 @@ import {
   isMinuteTimeframe,
   isCalendarTimeframe,
 } from '../state/livePage';
-import { useActivePrefs, useChartPrefsStore } from '../state/chartPrefs';
+import { useActivePrefs, useChartPrefsStore, type ChartViewPrefs } from '../state/chartPrefs';
 import type { LiveVenueOption } from '../state/liveVenue';
 import { TIMEFRAME_TO_MS, type AskPeak, type BidPeak, type RangeBundle } from '../api/types';
 import { PAST_CANDLES_MAX_DAYS } from './liveDateTime';
@@ -117,6 +117,14 @@ function nearestCandleMs(realMs: number, candleMs: readonly number[], bucketMs: 
   const prev = lo > 0 ? candleMs[lo - 1] : next;
   const nearest = Math.abs(prev - realMs) <= Math.abs(next - realMs) ? prev : next;
   return Math.abs(nearest - realMs) <= bucketMs / 2 ? nearest : realMs;
+}
+
+function optionalRankLimit(
+  prefs: ChartViewPrefs,
+  key: 'askPeakUntradedRankLimit' | 'bidPeakUntradedRankLimit',
+): 1 | 2 | 3 {
+  const value = (prefs as ChartViewPrefs & Partial<Record<typeof key, number>>)[key];
+  return value === 2 || value === 3 ? value : 1;
 }
 
 /** Empty axis used while the bundle is loading. timeFormatter / tickMarkFormatter
@@ -928,9 +936,11 @@ export function LiveChartRoot({ code, timeframe, venue = 'KRX', viewIdentity, bu
   const bidPeakEnabled = useLivePageStore((s) => s.bidPeakEnabled);
   const askPeakIntraMax = useActivePrefs((s) => s.askPeakIntraMax);
   const askPeakShowAllPrices = useActivePrefs((s) => s.askPeakShowAllPrices);
+  const askPeakUntradedRankLimit = useActivePrefs((s) => optionalRankLimit(s, 'askPeakUntradedRankLimit'));
   const askPeakVisibleTimeCutoff = useActivePrefs((s) => s.askPeakVisibleTimeCutoff);
   const bidPeakIntraMax = useActivePrefs((s) => s.bidPeakIntraMax);
   const bidPeakShowAllPrices = useActivePrefs((s) => s.bidPeakShowAllPrices);
+  const bidPeakUntradedRankLimit = useActivePrefs((s) => optionalRankLimit(s, 'bidPeakUntradedRankLimit'));
   const bidPeakVisibleTimeCutoff = useActivePrefs((s) => s.bidPeakVisibleTimeCutoff);
   const candleAlwaysOnTop = useActivePrefs((s) => s.candleAlwaysOnTop);
   const [visibleTimeCutoff, setVisibleTimeCutoff] = useState<VisibleTimeCutoff | null>(null);
@@ -1043,6 +1053,7 @@ export function LiveChartRoot({ code, timeframe, venue = 'KRX', viewIdentity, bu
           allPriceStyle: HIGH_LOW_AVOID_BASELINE_STYLE,
           intraMax: askPeakIntraMax,
           showAllPrices: askPeakShowAllPrices,
+          untradedRankLimit: askPeakUntradedRankLimit,
           visibleTimeCutoff: askVisibleTimeCutoffForRender,
         })
         : []),
@@ -1058,6 +1069,7 @@ export function LiveChartRoot({ code, timeframe, venue = 'KRX', viewIdentity, bu
           allPriceStyle: HIGH_LOW_AVOID_BASELINE_STYLE,
           intraMax: bidPeakIntraMax,
           showAllPrices: bidPeakShowAllPrices,
+          untradedRankLimit: bidPeakUntradedRankLimit,
           visibleTimeCutoff: bidVisibleTimeCutoffForRender,
         })
         : []),
@@ -1074,11 +1086,13 @@ export function LiveChartRoot({ code, timeframe, venue = 'KRX', viewIdentity, bu
     askPeakEnabled,
     askPeakIntraMax,
     askPeakShowAllPrices,
+    askPeakUntradedRankLimit,
     askVisibleTimeCutoffForRender,
     axis,
     bidPeakEnabled,
     bidPeakIntraMax,
     bidPeakShowAllPrices,
+    bidPeakUntradedRankLimit,
     bidVisibleTimeCutoffForRender,
     cb,
     dayAskPeaks,
@@ -1360,6 +1374,7 @@ export function LiveChartRoot({ code, timeframe, venue = 'KRX', viewIdentity, bu
               segments={cb.segments}
               candles={cb.candles}
               todayKst={todayKst}
+              untradedRankLimit={askPeakUntradedRankLimit}
               visibleTimeCutoff={askVisibleTimeCutoffForRender}
             />
           )}
@@ -1372,6 +1387,7 @@ export function LiveChartRoot({ code, timeframe, venue = 'KRX', viewIdentity, bu
               segments={cb.segments}
               candles={cb.candles}
               todayKst={todayKst}
+              untradedRankLimit={bidPeakUntradedRankLimit}
               visibleTimeCutoff={bidVisibleTimeCutoffForRender}
             />
           )}
