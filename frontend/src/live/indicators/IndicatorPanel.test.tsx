@@ -262,52 +262,59 @@ describe('IndicatorPanel', () => {
     expect(useLivePageStore.getState().volumeEnabled).toBe(true);
   });
 
-  it('defaults selected pane profile to the active chart timeframe', () => {
-    useLivePageStore.setState({
-      volumeEnabled: true,
-      panePrefsByTimeframe: {
-        D: { volumeEnabled: false },
-      },
-    });
-
+  it('does not render a manual pane profile selector', () => {
     renderPanel({ timeframe: 'D' });
 
-    expect(screen.getByRole('button', { name: '일봉' })).toHaveAttribute('aria-pressed', 'true');
-    expect(screen.getByRole('checkbox', { name: '거래량' })).toHaveAttribute('aria-checked', 'false');
+    expect(screen.queryByRole('button', { name: '분봉' })).toBeNull();
+    expect(screen.queryByRole('button', { name: '일봉' })).toBeNull();
+    expect(screen.queryByRole('button', { name: '주봉' })).toBeNull();
+    expect(screen.queryByRole('button', { name: '월봉' })).toBeNull();
+    expect(screen.queryByLabelText('시간봉별 pane profile')).toBeNull();
   });
 
-  it('syncs the selected pane profile when the chart timeframe prop changes', () => {
+  it('reads pane checkbox state from the current chart timeframe profile', () => {
     useLivePageStore.setState({
       volumeEnabled: true,
       panePrefsByTimeframe: {
         D: { volumeEnabled: false },
+        W: { volumeEnabled: true },
       },
     });
 
-    const view = renderPanel({ timeframe: '1m' });
-    expect(screen.getByRole('button', { name: '분봉' })).toHaveAttribute('aria-pressed', 'true');
-    expect(screen.getByRole('checkbox', { name: '거래량' })).toHaveAttribute('aria-checked', 'true');
-
-    view.rerender(<IndicatorPanel onClose={() => {}} timeframe="D" />);
-
-    expect(screen.getByRole('button', { name: '일봉' })).toHaveAttribute('aria-pressed', 'true');
+    const view = renderPanel({ timeframe: 'D' });
     expect(screen.getByRole('checkbox', { name: '거래량' })).toHaveAttribute('aria-checked', 'false');
+
+    view.rerender(<IndicatorPanel onClose={() => {}} timeframe="W" />);
+    expect(screen.getByRole('checkbox', { name: '거래량' })).toHaveAttribute('aria-checked', 'true');
   });
 
-  it('edits only the selected pane profile for pane categories', async () => {
+  it('writes pane category changes to the current chart timeframe profile only', () => {
     useLivePageStore.setState({
       volumeEnabled: true,
       panePrefsByTimeframe: {},
     });
 
-    renderPanel({ timeframe: '1m' });
+    renderPanel({ timeframe: 'D' });
 
-    await userEvent.click(screen.getByRole('button', { name: '일봉' }));
-    await userEvent.click(screen.getByRole('checkbox', { name: '거래량' }));
+    fireEvent.click(screen.getByRole('checkbox', { name: '거래량' }));
 
     expect(useLivePageStore.getState().panePrefsByTimeframe.D?.volumeEnabled).toBe(false);
     expect(useLivePageStore.getState().panePrefsByTimeframe.minute?.volumeEnabled).toBeUndefined();
     expect(useLivePageStore.getState().volumeEnabled).toBe(true);
+  });
+
+  it('uses the minute profile for every minute chart timeframe', () => {
+    useLivePageStore.setState({
+      volumeEnabled: true,
+      panePrefsByTimeframe: {},
+    });
+
+    renderPanel({ timeframe: '3m' });
+
+    fireEvent.click(screen.getByRole('checkbox', { name: '거래량' }));
+
+    expect(useLivePageStore.getState().panePrefsByTimeframe.minute?.volumeEnabled).toBe(false);
+    expect(useLivePageStore.getState().panePrefsByTimeframe.D?.volumeEnabled).toBeUndefined();
   });
 
   it('clicking 이동평균선 checkbox toggles movingAverageEnabled', async () => {

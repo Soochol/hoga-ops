@@ -15,8 +15,6 @@ import ProgramTradeConfig from './ProgramTradeConfig';
 import BrokerLateEntryConfig from './BrokerLateEntryConfig';
 import {
   panePrefsForTimeframe,
-  profileKeyForTimeframe,
-  type IndicatorPaneProfileKey,
   type PanePrefKey,
   type PanePrefsIndicatorSource,
 } from './indicatorPaneProfiles';
@@ -65,16 +63,6 @@ const CATEGORIES: ReadonlyArray<{ id: CategoryId; label: string; group: GroupId 
   { id: 'institution-net', label: '기관 순매수량',    group: 'broker'  },
   { id: 'broker-late-entry', label: '신규 거래원 등장', group: 'broker' },
   { id: 'program-trade',   label: '프로그램 순매수',  group: 'program' },
-];
-
-const PROFILE_SELECTOR_OPTIONS: ReadonlyArray<{
-  key: IndicatorPaneProfileKey;
-  label: string;
-}> = [
-  { key: 'minute', label: '분봉' },
-  { key: 'D', label: '일봉' },
-  { key: 'W', label: '주봉' },
-  { key: 'M', label: '월봉' },
 ];
 
 const PANE_CATEGORY_TO_KEY: Partial<Record<CategoryId, PanePrefKey>> = {
@@ -130,13 +118,6 @@ export default function IndicatorPanel({ onClose, capabilities = STOCK_CAPABILIT
   // Which category's detail pane shows on the right. Clicking a category label
   // navigates here; the checkbox icon toggles its master switch separately.
   const [selected, setSelected] = useState<CategoryId>('moving-average');
-  const [selectedProfile, setSelectedProfile] = useState<IndicatorPaneProfileKey>(
-    () => profileKeyForTimeframe(timeframe),
-  );
-
-  useEffect(() => {
-    setSelectedProfile(profileKeyForTimeframe(timeframe));
-  }, [timeframe]);
 
   useEffect(() => {
     const onKey = (event: KeyboardEvent) => {
@@ -153,9 +134,7 @@ export default function IndicatorPanel({ onClose, capabilities = STOCK_CAPABILIT
     }
     return true;
   });
-  const selectedProfileTimeframe: LiveTimeframe =
-    selectedProfile === 'minute' ? '1m' : selectedProfile;
-  const selectedPanePrefs = panePrefsForTimeframe(paneIndicators, selectedProfileTimeframe);
+  const selectedPanePrefs = panePrefsForTimeframe(paneIndicators, timeframe);
 
   // Each category maps to a master on/off toggle. Investor bars have an
   // informational detail pane (legend + daily note) but no per-slot config,
@@ -178,7 +157,7 @@ export default function IndicatorPanel({ onClose, capabilities = STOCK_CAPABILIT
     const paneKey = PANE_CATEGORY_TO_KEY[id];
     if (paneKey) {
       return () => setPanePrefForTimeframe(
-        selectedProfileTimeframe,
+        timeframe,
         paneKey,
         !selectedPanePrefs[paneKey],
       );
@@ -208,30 +187,13 @@ export default function IndicatorPanel({ onClose, capabilities = STOCK_CAPABILIT
       <div
         data-testid="indicator-panel-shell"
         onClick={(event) => event.stopPropagation()}
-        className="grid max-h-[min(820px,calc(100vh-48px))] w-[min(1040px,calc(100vw-48px))] grid-rows-[auto_auto_minmax(0,1fr)_auto] overflow-hidden rounded-lg border border-border bg-bg-card shadow-[0_24px_80px_rgba(0,0,0,0.45)]"
+        className="grid max-h-[min(820px,calc(100vh-48px))] w-[min(1040px,calc(100vw-48px))] grid-rows-[auto_minmax(0,1fr)_auto] overflow-hidden rounded-lg border border-border bg-bg-card shadow-[0_24px_80px_rgba(0,0,0,0.45)]"
       >
         <div className="flex items-center justify-between border-b border-border px-4 py-3">
           <h2 className="text-base font-medium text-fg">지표</h2>
           <button type="button" aria-label="닫기" onClick={onClose} className="text-lg leading-none text-fg-dim hover:text-fg">
             ✕
           </button>
-        </div>
-        <div className="flex items-center gap-1 border-b border-border px-4 py-2" aria-label="시간봉별 pane profile">
-          {PROFILE_SELECTOR_OPTIONS.map(({ key, label }) => (
-            <button
-              key={key}
-              type="button"
-              aria-pressed={selectedProfile === key}
-              onClick={() => setSelectedProfile(key)}
-              className={`rounded-md px-2.5 py-1 text-xs ${
-                selectedProfile === key
-                  ? 'bg-accent text-bg'
-                  : 'bg-bg-input text-fg-dim hover:bg-bg-input-hover hover:text-fg'
-              }`}
-            >
-              {label}
-            </button>
-          ))}
         </div>
         <div className="grid min-h-0 grid-cols-[240px_minmax(0,1fr)]">
           <nav className="overflow-y-auto py-2 border-r border-border bg-bg-card" aria-label="지표 카테고리">
