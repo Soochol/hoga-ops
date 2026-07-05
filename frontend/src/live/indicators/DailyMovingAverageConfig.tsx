@@ -7,7 +7,9 @@ import ToggleRow from '../settings/ToggleRow';
 export default function DailyMovingAverageConfig() {
   const configs = useLivePageStore((s) => s.dailyMovingAverages);
   const enabled = useLivePageStore((s) => s.dailyMovingAverageEnabled);
+  const hidden = useLivePageStore((s) => s.dailyMovingAverageHidden);
   const setEnabled = useLivePageStore((s) => s.setDailyMovingAverageEnabled);
+  const setHidden = useLivePageStore((s) => s.setDailyMovingAverageHidden);
   const setMA = useLivePageStore((s) => s.setDailyMovingAverage);
   const addMA = useLivePageStore((s) => s.addDailyMovingAverage);
   const removeMA = useLivePageStore((s) => s.removeDailyMovingAverage);
@@ -29,6 +31,15 @@ export default function DailyMovingAverageConfig() {
           checked={enabled}
           onToggle={() => setEnabled(!enabled)}
           testId="settings-toggle-dailyMovingAverage"
+        />
+      </div>
+      <div className="mb-3">
+        <ToggleRow
+          label="일봉 MA 선 숨김"
+          description="설정은 유지하고 분봉 차트의 일봉 MA 선만 숨깁니다."
+          checked={hidden}
+          onToggle={() => setHidden(!hidden)}
+          testId="settings-toggle-dailyMovingAverageHidden"
         />
       </div>
       <div>
