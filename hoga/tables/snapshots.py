@@ -1117,6 +1117,70 @@ def query_day_ask_bid_peak_dual(
         )
         """
 
+    def lifecycle_levels(side: str, src: str) -> str:
+        comparator = ">=" if side == "ask" else "<="
+        return f"""
+        {side}_{src}_lifecycle_prices AS (
+          SELECT DISTINCT price
+          FROM {side}_{src}_classified
+        ),
+        {side}_{src}_lifecycle_stream AS (
+          SELECT ts_ms, seq, price, qty, intra_ms, bucket_id, is_touched,
+                 FALSE AS is_touch, NULL::BIGINT AS touch_ord
+          FROM {side}_{src}_classified
+          UNION ALL
+          SELECT t.ts_ms, t.seq, p.price, NULL::INTEGER AS qty,
+                 NULL::BIGINT AS intra_ms, NULL::BIGINT AS bucket_id,
+                 FALSE AS is_touched, TRUE AS is_touch, t.touch_ord
+          FROM touch_ticks t
+          JOIN {side}_{src}_lifecycle_prices p
+            ON t.price {comparator} p.price
+        ),
+        {side}_{src}_lifecycle_events AS (
+          SELECT ts_ms, seq, price, qty, intra_ms, bucket_id, is_touched, is_touch,
+                 COALESCE(
+                   MAX(CASE WHEN is_touch THEN touch_ord ELSE NULL END) OVER (
+                     PARTITION BY price
+                     ORDER BY ts_ms ASC, seq ASC, is_touch ASC
+                     ROWS BETWEEN UNBOUNDED PRECEDING AND 1 PRECEDING
+                   ),
+                   0
+                 ) AS lifecycle_id
+          FROM {side}_{src}_lifecycle_stream
+        ),
+        {side}_{src}_lifecycle_wall_events AS (
+          SELECT ts_ms, seq, price, qty, intra_ms, bucket_id, is_touched, lifecycle_id
+          FROM {side}_{src}_lifecycle_events
+          WHERE NOT is_touch
+        ),
+        {side}_{src}_lifecycle_ranked AS (
+          SELECT price, qty, intra_ms, seq, bucket_id, is_touched, lifecycle_id,
+                 ROW_NUMBER() OVER (
+                   PARTITION BY price, lifecycle_id
+                   ORDER BY qty DESC, intra_ms ASC, seq ASC, price ASC
+                 ) AS lifecycle_rn
+          FROM {side}_{src}_lifecycle_wall_events
+        ),
+        {side}_{src}_lifecycle AS (
+          SELECT price, qty, intra_ms, seq, bucket_id, is_touched
+          FROM {side}_{src}_lifecycle_ranked
+          WHERE lifecycle_rn = 1
+        ),
+        {side}_{src}_lifecycle_distinct_ranked AS (
+          SELECT price, qty, intra_ms, seq, bucket_id, is_touched,
+                 ROW_NUMBER() OVER (
+                   PARTITION BY price, is_touched
+                   ORDER BY qty DESC, intra_ms ASC, seq ASC, price ASC
+                 ) AS price_status_rn
+          FROM {side}_{src}_lifecycle
+        ),
+        {side}_{src}_lifecycle_distinct AS (
+          SELECT price, qty, intra_ms, seq, bucket_id, is_touched
+          FROM {side}_{src}_lifecycle_distinct_ranked
+          WHERE price_status_rn = 1
+        )
+        """
+
     def scalar_and_array_ctes(side: str) -> str:
         return f"""
         {side}_all_close AS (
@@ -1133,28 +1197,28 @@ def query_day_ask_bid_peak_dual(
         ),
         {side}_traded_close AS (
           SELECT '{side}_traded_close' AS kind, price, qty, intra_ms, 0 AS ord
-          FROM {side}_rep_classified
+          FROM {side}_rep_lifecycle_distinct
           WHERE is_touched
           ORDER BY qty DESC, intra_ms ASC, seq ASC, price ASC
           LIMIT 1
         ),
         {side}_traded_max AS (
           SELECT '{side}_traded_max' AS kind, price, qty, intra_ms, 0 AS ord
-          FROM {side}_cont_classified
+          FROM {side}_cont_lifecycle_distinct
           WHERE is_touched
           ORDER BY qty DESC, intra_ms ASC, seq ASC, price ASC
           LIMIT 1
         ),
         {side}_untraded_close AS (
           SELECT '{side}_untraded_close' AS kind, price, qty, intra_ms, 0 AS ord
-          FROM {side}_rep_classified
+          FROM {side}_rep_lifecycle_distinct
           WHERE NOT is_touched
           ORDER BY qty DESC, intra_ms ASC, seq ASC, price ASC
           LIMIT 1
         ),
         {side}_untraded_max AS (
           SELECT '{side}_untraded_max' AS kind, price, qty, intra_ms, 0 AS ord
-          FROM {side}_cont_classified
+          FROM {side}_cont_lifecycle_distinct
           WHERE NOT is_touched
           ORDER BY qty DESC, intra_ms ASC, seq ASC, price ASC
           LIMIT 1
@@ -1166,7 +1230,7 @@ def query_day_ask_bid_peak_dual(
                    ROW_NUMBER() OVER (
                      ORDER BY qty DESC, intra_ms ASC, seq ASC, price ASC
                    ) AS ord
-            FROM {side}_rep_classified
+            FROM {side}_rep_lifecycle_distinct
             WHERE is_touched
           )
           WHERE ord <= 3
@@ -1178,7 +1242,7 @@ def query_day_ask_bid_peak_dual(
                    ROW_NUMBER() OVER (
                      ORDER BY qty DESC, intra_ms ASC, seq ASC, price ASC
                    ) AS ord
-            FROM {side}_cont_classified
+            FROM {side}_cont_lifecycle_distinct
             WHERE is_touched
           )
           WHERE ord <= 3
@@ -1190,7 +1254,7 @@ def query_day_ask_bid_peak_dual(
                    ROW_NUMBER() OVER (
                      ORDER BY qty DESC, intra_ms ASC, seq ASC, price ASC
                    ) AS ord
-            FROM {side}_rep_classified
+            FROM {side}_rep_lifecycle_distinct
             WHERE NOT is_touched
           )
           WHERE ord <= 3
@@ -1202,7 +1266,7 @@ def query_day_ask_bid_peak_dual(
                    ROW_NUMBER() OVER (
                      ORDER BY qty DESC, intra_ms ASC, seq ASC, price ASC
                    ) AS ord
-            FROM {side}_cont_classified
+            FROM {side}_cont_lifecycle_distinct
             WHERE NOT is_touched
           )
           WHERE ord <= 3
@@ -1254,9 +1318,13 @@ def query_day_ask_bid_peak_dual(
         ),
         rep AS (SELECT * FROM cont WHERE rn = 1),
         touch_ticks AS (
-          SELECT ts_ms, {trade_seq_expr} AS seq, price
-          FROM read_parquet(?)
-          WHERE side IN (1, -1) AND price > 0
+          SELECT ts_ms, seq, price,
+                 ROW_NUMBER() OVER (ORDER BY ts_ms ASC, seq ASC, price ASC) AS touch_ord
+          FROM (
+            SELECT ts_ms, {trade_seq_expr} AS seq, price
+            FROM read_parquet(?)
+            WHERE side IN (1, -1) AND price > 0
+          )
         ),
         ask_rep_levels AS ({level_union("rep", "ask")}),
         ask_cont_levels AS ({level_union("cont", "ask")}),
@@ -1266,6 +1334,10 @@ def query_day_ask_bid_peak_dual(
         {classified_levels("ask", "cont")},
         {classified_levels("bid", "rep")},
         {classified_levels("bid", "cont")},
+        {lifecycle_levels("ask", "rep")},
+        {lifecycle_levels("ask", "cont")},
+        {lifecycle_levels("bid", "rep")},
+        {lifecycle_levels("bid", "cont")},
         {scalar_and_array_ctes("ask")},
         {scalar_and_array_ctes("bid")}
         SELECT * FROM ask_all_close

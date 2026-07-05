@@ -1000,6 +1000,78 @@ def test_query_day_ask_peak_dual_classifies_post_touch_and_post_untouched_events
     assert (peak.untraded_price, peak.untraded_qty, peak.untraded_intra_ms) == (50000, 200000, 37_200_000)
 
 
+def test_query_day_ask_peak_dual_ranks_lifecycle_representatives(tmp_path: Path) -> None:
+    snapshots_path = tmp_path / "snapshots.parquet"
+    trades_path = tmp_path / "trades.parquet"
+    ask_prices = [50000, 50100, 50200, 50300, 50400, 50500, 50600, 50700, 50800, 50900]
+    write_parquet(
+        [
+            _ob_ap(100000000, [5000, 4000, 3000, 1, 1, 1, 1, 1, 1, 1], ask_p=ask_prices),
+            _ob_ap(100100000, [8000, 4100, 3100, 1, 1, 1, 1, 1, 1, 1], ask_p=ask_prices),
+            _ob_ap(100200000, [7000, 4200, 3200, 1, 1, 1, 1, 1, 1, 1], ask_p=ask_prices),
+            _ob_ap(100400000, [9000, 100, 100, 1, 1, 1, 1, 1, 1, 1], ask_p=ask_prices),
+        ],
+        snapshots_path,
+    )
+    write_trades([_trade(100300000, 50200)], trades_path)
+
+    peak = query_day_ask_peak_dual(
+        _con_for(snapshots_path),
+        path=snapshots_path,
+        trades_path=trades_path,
+        bucket_ms=60_000,
+        session_open_ms=90_000_000,
+        session_close_ms=153_000_000,
+    )
+
+    assert peak is not None
+    traded = (
+        AskPeakCandidateRow(price=50000, qty=8000, intra_ms=36_060_000),
+        AskPeakCandidateRow(price=50100, qty=4200, intra_ms=36_120_000),
+        AskPeakCandidateRow(price=50200, qty=3200, intra_ms=36_120_000),
+    )
+    untraded = AskPeakCandidateRow(price=50000, qty=9000, intra_ms=36_240_000)
+    assert peak.traded_peaks == traded
+    assert peak.traded_max_peaks == traded
+    assert peak.untraded_peaks[0] == untraded
+    assert peak.untraded_max_peaks[0] == untraded
+
+
+def test_query_day_ask_peak_dual_keeps_one_best_traded_lifecycle_per_price(tmp_path: Path) -> None:
+    snapshots_path = tmp_path / "snapshots.parquet"
+    trades_path = tmp_path / "trades.parquet"
+    ask_prices = [50000, 50100, 50200, 50300, 50400, 50500, 50600, 50700, 50800, 50900]
+    write_parquet(
+        [
+            _ob_ap(100000000, [5000, 1, 1, 1, 1, 1, 1, 1, 1, 1], ask_p=ask_prices),
+            _ob_ap(100200000, [6000, 1, 1, 1, 1, 1, 1, 1, 1, 1], ask_p=ask_prices),
+            _ob_ap(100400000, [1, 4000, 1, 1, 1, 1, 1, 1, 1, 1], ask_p=ask_prices),
+        ],
+        snapshots_path,
+    )
+    write_trades([
+        _trade(100100000, 50000),
+        _trade(100300000, 50000),
+        _trade(100500000, 50100),
+    ], trades_path)
+
+    peak = query_day_ask_peak_dual(
+        _con_for(snapshots_path),
+        path=snapshots_path,
+        trades_path=trades_path,
+        bucket_ms=60_000,
+        session_open_ms=90_000_000,
+        session_close_ms=153_000_000,
+    )
+
+    assert peak is not None
+    assert peak.traded_peaks[:2] == (
+        AskPeakCandidateRow(price=50000, qty=6000, intra_ms=36_120_000),
+        AskPeakCandidateRow(price=50100, qty=4000, intra_ms=36_240_000),
+    )
+    assert [p.price for p in peak.traded_peaks].count(50000) == 1
+
+
 def test_query_day_bid_peak_dual_classifies_post_touch_and_post_untouched_events(tmp_path: Path) -> None:
     snapshots_path = tmp_path / "snapshots.parquet"
     trades_path = tmp_path / "trades.parquet"
@@ -1039,6 +1111,43 @@ def test_query_day_bid_peak_dual_classifies_post_touch_and_post_untouched_events
     assert (peak.price, peak.qty, peak.intra_ms) == (50000, 100000, 36_000_000)
     assert (peak.all_price, peak.all_qty, peak.all_intra_ms) == (50000, 200000, 37_200_000)
     assert (peak.untraded_price, peak.untraded_qty, peak.untraded_intra_ms) == (50000, 200000, 37_200_000)
+
+
+def test_query_day_bid_peak_dual_ranks_lifecycle_representatives(tmp_path: Path) -> None:
+    snapshots_path = tmp_path / "snapshots.parquet"
+    trades_path = tmp_path / "trades.parquet"
+    bid_prices = [50000, 49900, 49800, 49700, 49600, 49500, 49400, 49300, 49200, 49100]
+    write_parquet(
+        [
+            _ob_bp(100000000, [5000, 4000, 3000, 1, 1, 1, 1, 1, 1, 1], bid_p=bid_prices),
+            _ob_bp(100100000, [8000, 4100, 3100, 1, 1, 1, 1, 1, 1, 1], bid_p=bid_prices),
+            _ob_bp(100200000, [7000, 4200, 3200, 1, 1, 1, 1, 1, 1, 1], bid_p=bid_prices),
+            _ob_bp(100400000, [9000, 100, 100, 1, 1, 1, 1, 1, 1, 1], bid_p=bid_prices),
+        ],
+        snapshots_path,
+    )
+    write_trades([_trade(100300000, 49800)], trades_path)
+
+    peak = query_day_bid_peak_dual(
+        _con_for(snapshots_path),
+        path=snapshots_path,
+        trades_path=trades_path,
+        bucket_ms=60_000,
+        session_open_ms=90_000_000,
+        session_close_ms=153_000_000,
+    )
+
+    assert peak is not None
+    traded = (
+        AskPeakCandidateRow(price=50000, qty=8000, intra_ms=36_060_000),
+        AskPeakCandidateRow(price=49900, qty=4200, intra_ms=36_120_000),
+        AskPeakCandidateRow(price=49800, qty=3200, intra_ms=36_120_000),
+    )
+    untraded = AskPeakCandidateRow(price=50000, qty=9000, intra_ms=36_240_000)
+    assert peak.traded_peaks == traded
+    assert peak.traded_max_peaks == traded
+    assert peak.untraded_peaks[0] == untraded
+    assert peak.untraded_max_peaks[0] == untraded
 
 
 def test_query_day_ask_peak_dual_ignores_prior_same_price_trade(tmp_path: Path) -> None:
