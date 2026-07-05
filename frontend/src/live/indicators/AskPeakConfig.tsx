@@ -108,8 +108,8 @@ export default function AskPeakConfig() {
         </div>
       </div>
       <div className="mt-3">
-        <div className="text-sm text-fg mb-2">보이는 영역 최대벽 강조 개수</div>
-        <div className="inline-flex rounded-md border border-border overflow-hidden" role="group" aria-label="보이는 영역 최대벽 강조 개수">
+        <div className="text-sm text-fg mb-2">보이는 영역 최대벽 표시 개수</div>
+        <div className="inline-flex rounded-md border border-border overflow-hidden" role="group" aria-label="보이는 영역 최대벽 표시 개수">
           {RANK_OPTIONS.map((option) => {
             const selected = visibleMaxRankLimit === option.value;
             return (
