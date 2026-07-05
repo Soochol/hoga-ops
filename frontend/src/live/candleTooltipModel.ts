@@ -3,7 +3,7 @@ import { isCalendarTimeframe, type LiveTimeframe } from '../state/livePage';
 
 export interface CandleTooltipModel {
   tsMs: number;
-  dateLabel: string;        // "05/27" (분) / "2026/05/27" (D·W·M)
+  dateLabel: string;        // "2026/05/27"
   timeLabel: string | null; // "09:01" (분) / null (D·W·M)
   open: number;
   high: number;
@@ -39,11 +39,11 @@ function kstLabels(
   timeframe: LiveTimeframe,
 ): { dateLabel: string; timeLabel: string | null } {
   const d = new Date(tsMs + 9 * 3600_000);
-  const md = `${pad(d.getUTCMonth() + 1)}/${pad(d.getUTCDate())}`;
+  const ymd = `${d.getUTCFullYear()}/${pad(d.getUTCMonth() + 1)}/${pad(d.getUTCDate())}`;
   if (isCalendarTimeframe(timeframe)) {
-    return { dateLabel: `${d.getUTCFullYear()}/${md}`, timeLabel: null };
+    return { dateLabel: ymd, timeLabel: null };
   }
-  return { dateLabel: md, timeLabel: `${pad(d.getUTCHours())}:${pad(d.getUTCMinutes())}` };
+  return { dateLabel: ymd, timeLabel: `${pad(d.getUTCHours())}:${pad(d.getUTCMinutes())}` };
 }
 
 export function formatTooltipQtyK(qty: number): string {

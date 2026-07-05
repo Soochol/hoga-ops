@@ -75,6 +75,7 @@ describe('CandleTooltip', () => {
     // time = axis.toVirtual(1_060_000)/1000 = 1060 ; y=50 ∈ pane0. prev.close=102.
     fire({ point: { x: 100, y: 50 }, time: 1060 });
     const tip = screen.getByTestId('candle-tooltip');
+    expect(tip).toHaveTextContent('1970/01/01 09:17');
     expect(tip).toHaveTextContent('107');       // 종가
     expect(tip).toHaveTextContent('+0.00%');    // 시 % = 102/102
     expect(tip).toHaveTextContent('+5.88%');    // 고 % = 108/102
