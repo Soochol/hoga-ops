@@ -21,7 +21,7 @@ vi.mock('../api/savedScreeners', () => ({
 // 두어 EOD 검증 테스트를 보존하고, 오버레이 테스트에서만 quote 를 주입한다.
 vi.mock('../api/liveQuotes', () => ({
   useQuoteByCode: vi.fn(() => new Map()),
-  isStaleLiveQuote: vi.fn((quote) => quote?.stale === true),
+  isStaleLiveQuote: vi.fn((quote: { stale?: boolean } | undefined) => quote?.stale === true),
 }));
 
 // useLivePageStore lives at ../state/livePage (the path LiveStatusBar imports);

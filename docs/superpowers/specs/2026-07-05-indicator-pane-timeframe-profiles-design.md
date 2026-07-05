@@ -1,6 +1,7 @@
 # Indicator Pane Timeframe Profiles — Design
 
 **Date**: 2026-07-05
+**Updated**: 2026-07-06
 **Status**: Approved for implementation
 **Scope**: `frontend/src/state/livePage.ts`, `frontend/src/state/liveIndicatorsPersistence.ts`, `frontend/src/live/indicators/IndicatorPanel.tsx`, `frontend/src/live/LiveChartRoot.tsx`, `frontend/src/live/LiveWorkarea.tsx`, `frontend/src/studyViews/StudyPage.tsx`, `frontend/src/live/paneSpecsForTimeframe.ts`
 
@@ -31,6 +32,7 @@
 ## Goals
 
 - `/live`와 `/study`가 공유하는 현재 지표 셋업 안에서 `분봉 / 일봉 / 주봉 / 월봉`별 pane 표시 profile을 지원한다.
+- 지표 설정창 안에서는 `분봉 / 일봉 / 주봉 / 월봉` profile selector를 보여주지 않는다. 사용자가 현재 보고 있는 chart timeframe이 곧 편집 대상 profile이다.
 - 기존 사용자 설정은 깨지지 않게 legacy flat setting을 lazy fallback으로 사용한다.
 - v1 범위는 보조지표 pane의 ON/OFF에만 한정한다.
 - `/study` 저장뷰에는 indicator state를 저장하지 않고, 열 때마다 현재 shared profile로 재분석한다.
@@ -43,6 +45,17 @@
 - MA 슬롯, 색상, 두께, peak wall 스타일, ratio outlier filter, fill strength cumulative 같은 세부 동작 knob을 timeframe별로 나누지 않는다.
 - `/live` D/W/M에서 hoga-derived pane을 강제로 표시하지 않는다.
 - backend range/study schema를 변경하지 않는다.
+- 설정창 안에서 다른 timeframe profile을 수동으로 고르는 UI를 만들지 않는다.
+
+## Approach decision
+
+검토한 선택지는 세 가지다.
+
+1. **Recommended: current timeframe implicit edit** — profile 저장 구조는 유지하고, `IndicatorPanel`이 현재 chart timeframe profile만 읽고 쓴다. UI가 가장 단순하고 `/live`/`/study` 공용 셋업 모델과 잘 맞는다.
+2. **Manual profile selector in panel** — 설정창에서 `분봉 / 일봉 / 주봉 / 월봉`을 고르게 한다. 다른 timeframe을 한 번에 편집할 수 있지만, 사용자가 현재 화면이 아닌 profile을 실수로 바꿀 수 있어 이번 요구와 맞지 않는다.
+3. **Single global pane setting** — timeframe별 profile을 없앤다. 단순하지만 분봉/일봉/주봉/월봉별 pane 조합을 저장하려는 핵심 요구를 잃는다.
+
+따라서 v1 UX는 **현재 보고 있는 화면 기준 자동 profile 편집**으로 확정한다.
 
 ## Design
 
@@ -87,7 +100,7 @@ Migration rule:
 
 - 저장값에 `panePrefsByTimeframe`이 없으면 legacy flat fields를 모든 profile의 기본값으로 사용한다.
 - 사용자가 특정 profile의 toggle을 변경하면 그 profile만 `panePrefsByTimeframe`에 저장한다.
-- flat fields는 당장 제거하지 않는다. 구버전 fallback, 기존 selector, 점진 마이그레이션을 위해 유지한다.
+- flat fields는 당장 제거하지 않는다. 구버전 fallback과 점진 마이그레이션을 위해 유지한다.
 - snapshot/persist는 unknown field를 만들지 않고 known shape만 저장한다.
 
 초기 사용자 경험은 기존과 같다. 기존에 `volumeEnabled=false`였던 사용자는 분봉/일봉/주봉/월봉 모두 volume off로 보이고, 이후 일봉만 켜면 일봉 profile만 분리된다.
@@ -137,15 +150,16 @@ Resolver 책임:
 
 ### Indicator panel UX
 
-`IndicatorPanel`은 현재 chart timeframe을 알고 있어야 한다. 기본 selected profile은 active chart의 timeframe profile이다.
+`IndicatorPanel`은 현재 chart timeframe을 prop으로 받는다. 설정창 안에는 `분봉 / 일봉 / 주봉 / 월봉` selector를 두지 않는다.
 
-Panel 상단에 작은 segmented control을 둔다.
+Panel이 pane ON/OFF를 읽거나 쓸 때는 항상 `profileKeyForTimeframe(timeframe)`을 사용한다.
 
-```text
-분봉 | 일봉 | 주봉 | 월봉
-```
+- 분봉(`1m/3m/5m/10m/15m/30m`) 화면에서 변경하면 `minute` profile에 저장한다.
+- 일봉 화면에서 변경하면 `D` profile에 저장한다.
+- 주봉 화면에서 변경하면 `W` profile에 저장한다.
+- 월봉 화면에서 변경하면 `M` profile에 저장한다.
 
-사용자가 다른 segment를 고르면 그 profile의 pane ON/OFF를 편집한다. label은 명확히 "현재 선택한 시간봉 profile의 pane 표시"가 되도록 한다.
+설정창이 열린 상태에서 상위 chart timeframe prop이 바뀌면, panel의 checkbox 상태와 이후 write target도 새 timeframe profile로 즉시 전환된다. 별도 local selected profile state는 두지 않는다.
 
 Phase 1에서 profile 대상은 pane 표시 toggle만이다.
 
@@ -183,29 +197,30 @@ MA, 일봉 MA, peak wall 세부 스타일, volume distribution 설정, ratio/fil
 | Live D/W/M gate | D profile `ratioEnabled=true`, `forceHogaPanes=false` | `/live` daily에서 ratio pane 미표시 |
 | Study force hoga | D profile `ratioEnabled=true`, `forceHogaPanes=true` | `/study` daily에서 data가 있으면 ratio pane 표시 |
 | Investor daily-only | W profile `foreignNetEnabled=true` | W에서는 investor pane 미표시 |
-| Persist profile write | 일봉 profile에서 `volumeEnabled` 변경 | `panePrefsByTimeframe.D.volumeEnabled`만 저장 |
+| Persist profile write | 현재 일봉 화면에서 `volumeEnabled` 변경 | `panePrefsByTimeframe.D.volumeEnabled`만 저장 |
 | Legend close | 일봉 chart에서 ratio pane close | D profile `ratioEnabled=false` |
 
 ### Route/component tests
 
 - `LiveChartRoot.paneToggles.test.tsx`: `paneTogglesOverride`와 새 resolver가 충돌하지 않는지 확인한다.
 - `StudyPage.test.tsx`: 저장뷰 props나 save payload에 `indicator_state`가 생기지 않는 것을 유지한다.
-- `IndicatorPanel` tests: selected profile 변경, current timeframe 기본 선택, profile별 checkbox persistence를 검증한다.
+- `IndicatorPanel` tests: profile selector가 렌더되지 않는 것, current timeframe profile을 읽는 것, current timeframe profile에만 저장하는 것, prop 변경 시 target profile이 바뀌는 것을 검증한다.
 - `liveIndicatorsPersistence` tests: old payload, partial profile payload, corrupt profile payload fallback을 검증한다.
 
 ### Manual verification
 
-1. `/live` 분봉에서 `호가비` off, 일봉 profile에서 `거래량` on/off를 바꾼다.
-2. 분봉으로 돌아왔을 때 분봉 pane 조합이 유지되는지 확인한다.
-3. `/live` 일봉에서 hoga pane이 profile on이어도 빈 pane으로 표시되지 않는지 확인한다.
-4. `/study` 일봉 저장뷰를 열고 현재 일봉 profile에 맞춰 pane이 표시되는지 확인한다.
-5. 같은 저장뷰를 다시 열 때 저장 당시 지표가 아니라 현재 변경한 profile로 재분석되는지 확인한다.
+1. `/live` 분봉 화면에서 설정창을 열고 `호가비`를 off한다. 설정창 안에 `분봉 / 일봉 / 주봉 / 월봉` selector가 없는지 확인한다.
+2. `/live` 일봉 화면으로 바꾼 뒤 설정창에서 `거래량`을 on/off한다.
+3. 분봉으로 돌아왔을 때 분봉 pane 조합이 유지되고, 일봉으로 돌아가면 일봉 pane 조합이 유지되는지 확인한다.
+4. `/live` 일봉에서 hoga pane이 profile on이어도 빈 pane으로 표시되지 않는지 확인한다.
+5. `/study` 일봉 저장뷰를 열고 현재 일봉 profile에 맞춰 pane이 표시되는지 확인한다.
+6. 같은 저장뷰를 다시 열 때 저장 당시 지표가 아니라 현재 변경한 profile로 재분석되는지 확인한다.
 
 ## Risks / Open questions
 
 - `IndicatorPanel`이 현재 timeframe을 모르는 entry point가 있으면 prop threading이 필요하다. 이 경우 active chart timeframe을 상위 route에서 명시적으로 넘긴다.
 - `LiveChartRoot`의 기존 `paneTogglesOverride`는 테스트와 일부 route seam에서 쓰이므로 바로 제거하지 않는다. 새 resolver 결과와 병합 우선순위를 명확히 해야 한다.
-- D/W/M hoga profile은 `/live`에서는 data gate 때문에 보이지 않고 `/study`에서만 의미가 있을 수 있다. UI copy가 이를 과하게 설명하면 복잡해지므로, v1은 segmented profile만 제공하고 data absence는 기존 chart behavior에 맡긴다.
+- D/W/M hoga profile은 `/live`에서는 data gate 때문에 보이지 않고 `/study`에서만 의미가 있을 수 있다. UI copy가 이를 과하게 설명하면 복잡해지므로, v1은 별도 설명 UI를 추가하지 않고 data absence는 기존 chart behavior에 맡긴다.
 
 ## Out of Scope (Backlog)
 
