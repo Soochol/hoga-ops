@@ -1,88 +1,53 @@
-# Task 1 Report: Add Historical Classifier Unit Surface
+Status: DONE
 
-## What changed
-- Added a pure peak-wall classification surface in `hoga/tables/snapshots.py`.
-- Introduced `_PeakWallEvent`, `_TradeTouch`, and `_ClassifiedPeakWalls` dataclasses.
-- Added `_classify_peak_wall_events(...)` plus small sort / ranking helpers.
-- Kept the existing public query functions unchanged for this task.
-- Added focused unit tests in `tests/test_tables_snapshots.py` for same-price lifecycle reset behavior and best-per-price selection before touch.
+Task: Convert Minute Candle Cache to Memory Only
 
-## Tests and results
-- Focused red-green tests:
-  - `tests/test_tables_snapshots.py::test_classify_peak_wall_events_resets_same_price_after_touch`
-  - `tests/test_tables_snapshots.py::test_classify_peak_wall_events_keeps_one_best_same_price_before_touch`
-- Full snapshot module verification:
-  - `tests/test_tables_snapshots.py`
+Scope:
+- Updated `hoga/live/past_candles_cache.py` to use in-process storage only for past candles.
+- Updated `tests/unit/live/test_past_candles_cache.py` to remove disk-cache assumptions and assert the new memory-only behavior.
 
-## RED evidence
-- First focused run failed as expected with:
-  - `ImportError: cannot import name '_PeakWallEvent' from 'hoga.tables.snapshots'`
-  - `ImportError: cannot import name '_classify_peak_wall_events' from 'hoga.tables.snapshots'`
+Changes:
+- Replaced past-cache tests with:
+  - `test_past_memory_miss_then_store_then_hit_without_disk_write`
+  - `test_past_cache_does_not_read_legacy_json_files`
+- Removed/replaced legacy disk-specific tests for past cache:
+  - `test_past_disk_miss_then_store_then_hit`
+  - `test_past_corrupt_cache_treated_as_miss_and_heals_on_store`
+  - `test_past_stale_cache_with_wrong_date_treated_as_miss_and_evicted`
+  - `test_past_empty_cache_for_non_trading_day_is_valid`
+  - `test_past_mem_with_wrong_date_evicts_and_falls_through_to_disk`
+- Changed `get_past` to read only `_past_mem` and validate date via `_bars_match_date`.
+- Changed `store_past` to update only `_past_mem` and LRU size.
+- Changed `delete_past` to evict only `_past_mem`.
+- Updated module docstring for memory-only intent and removed disk persistence imports/paths.
 
-## GREEN evidence
-- Focused tests passed after implementation: `2 passed`
-- Full snapshot module passed after implementation: `66 passed`
+Verification:
+- `uv run --extra dev pytest tests/unit/live/test_past_candles_cache.py -q`  
+  - `13 passed in 0.08s`
+- `uv run --extra dev ruff check hoga/live/past_candles_cache.py tests/unit/live/test_past_candles_cache.py`
+  - `All checks passed!`
 
-## Files changed
-- `hoga/tables/snapshots.py`
-- `tests/test_tables_snapshots.py`
+Follow-up review finding fix:
+- Updated `tests/unit/live/test_api.py` at `test_past_candles_happy_path_single_date`:
+  - Replaced disk-file existence assertion with memory-only assertion:
+    `assert not (tmp_path / "kis-past-candles").exists()`.
+- Adjusted two additional API cache-behavior tests to align with in-memory-only cache semantics:
+  - `test_past_candles_rate_limit_still_serves_later_cache_hits`
+  - `test_past_candles_disk_cache_survives_router_rebuild` (renamed to
+    `test_past_candles_memory_cache_not_survives_router_rebuild`)
 
-## Self-review findings
-- The helper is pure and isolated, which matches the task goal and leaves query behavior untouched.
-- The classifier sorts and dedupes candidates deterministically, with same-timestamp / same-seq events counted as touched.
-- The implementation is intentionally conservative and does not wire into the existing query paths yet.
+Verification:
+- `uv run --extra dev pytest tests/unit/live/test_api.py -q`  
+  - `107 passed in 3.51s`
+- `uv run --extra dev pytest tests/unit/live/test_past_candles_cache.py tests/unit/live/test_api.py -q`
+  - `120 passed in 3.20s`
 
-## Concerns
-- None for this task. Later wiring work may want to validate that the query-side lifecycle logic and this helper stay aligned.
+Review finding follow-up:
+- Fixed `tests/unit/live/test_api_kis_rest_bypass_candles.py` to match the memory-only cache seam:
+  - `test_past_candles_bypass_uses_cached_krx_fallback_for_non_krx_request` now creates a seeded `PastCandlesCache` instance and monkeypatches `live_api.PastCandlesCache` before `_bypass_app()`, so the router uses the same cache instance.
 
----
-
-# Task 1 Fix Report: Review Follow-up
-
-## Findings fixed
-- Added `side` to `_TradeTouch` and ignored invalid touch sides in the classifier so auction-side touches do not trigger wall touches.
-- Corrected `_better_event` ordering to rank by highest `qty`, earliest `intra_ms`, earliest `seq`, then lowest `price`.
-- Hard-capped `_classify_peak_wall_events(..., emit_limit=...)` at 3 rows.
-- Filtered mixed-side `_PeakWallEvent` inputs so the classifier only uses events that match the requested side.
-- Added regressions for bid touch direction, auction non-touch behavior, seq tie-break selection, rank cap, and mixed-side filtering.
-
-## Tests and results
-- Focused verification:
-  - `uv run pytest tests/test_tables_snapshots.py::test_classify_peak_wall_events_resets_same_price_after_touch tests/test_tables_snapshots.py::test_classify_peak_wall_events_keeps_one_best_same_price_before_touch tests/test_tables_snapshots.py::test_better_event_uses_seq_as_tie_breaker tests/test_tables_snapshots.py::test_classify_peak_wall_events_caps_emitted_rows_at_three tests/test_tables_snapshots.py::test_classify_peak_wall_events_uses_bid_touch_direction tests/test_tables_snapshots.py::test_classify_peak_wall_events_ignores_auction_touch_side_zero tests/test_tables_snapshots.py::test_classify_peak_wall_events_ignores_mixed_side_events -v`
-  - Result: `7 passed`
-- Full module verification:
-  - `uv run pytest tests/test_tables_snapshots.py -v`
-  - Result: `71 passed`
-
-## Files changed
-- `hoga/tables/snapshots.py`
-- `tests/test_tables_snapshots.py`
-
-## Self-review
-- The fix stays inside the requested scope and keeps the helper deterministic.
-- The touch filter is intentionally narrow: only sides `1` and `-1` participate; everything else is ignored.
-- The seq tie-break is now tested directly at the helper level because the public candidate rows do not expose `seq`.
-
----
-
-# Task 1 Fix Report: `_TradeTouch` Constructor Compatibility
-
-## What changed
-- Restored the original three-field construction surface for `_TradeTouch` by giving `side` a default of `1`.
-- Updated the classifier tests so at least one happy-path case uses the 3-field constructor.
-- Updated the auction-side regression to pass `side=0` by keyword, keeping the edge case explicit.
-
-## Tests and results
-- Focused classifier verification:
-  - `uv run pytest tests/test_tables_snapshots.py -v -k "classify_peak_wall_events"`
-  - Result: `6 passed, 65 deselected`
-- Full snapshots suite:
-  - `uv run pytest tests/test_tables_snapshots.py -v`
-  - Result: `71 passed`
-
-## Files changed
-- `hoga/tables/snapshots.py`
-- `tests/test_tables_snapshots.py`
-
-## Concerns
-- None. Classifier behavior is unchanged: only trade sides `1` and `-1` can touch walls, and `side=0` remains ignored.
+Verification:
+- `uv run --extra dev pytest tests/unit/live/test_api_kis_rest_bypass_candles.py -q`
+  - `6 passed in 0.22s`
+- `uv run --extra dev pytest tests/unit/live/test_past_candles_cache.py tests/unit/live/test_api.py tests/unit/live/test_api_kis_rest_bypass_candles.py -q`
+  - `126 passed in 3.22s`
