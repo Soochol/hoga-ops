@@ -94,6 +94,18 @@ def _build_schema() -> pa.Schema:
 PARQUET_SCHEMA: pa.Schema = _build_schema()
 
 
+def _parquet_has_column(
+    con: duckdb.DuckDBPyConnection,
+    path: Path,
+    column_name: str,
+) -> bool:
+    row = con.execute(
+        "SELECT 1 FROM parquet_schema(?) WHERE name = ? LIMIT 1",
+        [str(path), column_name],
+    ).fetchone()
+    return row is not None
+
+
 # === Persist (flattens tuple-fields into per-level columns) ===
 
 
@@ -1055,6 +1067,7 @@ def query_day_ask_bid_peak_dual(
 ) -> tuple[AskPeakDualRow | None, BidPeakDualRow | None]:
     """Return ask and bid peak rows for the same day using shared scans."""
     intra = hhmmssms_to_intra_ms_sql("ts_ms")
+    trade_seq_expr = "COALESCE(seq, 0)" if _parquet_has_column(con, trades_path, "seq") else "0"
     bounds = [_DEEP_BOOK_SQL]
     if session_open_ms is not None:
         bounds.append(f"{intra} >= {hhmmssms_to_intra_ms_sql(str(int(session_open_ms)))}")
@@ -1224,7 +1237,7 @@ def query_day_ask_bid_peak_dual(
         ),
         rep AS (SELECT * FROM cont WHERE rn = 1),
         touch_ticks AS (
-          SELECT ts_ms, seq, price
+          SELECT ts_ms, {trade_seq_expr} AS seq, price
           FROM read_parquet(?)
           WHERE side IN (1, -1) AND price > 0
         ),

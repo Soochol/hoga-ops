@@ -15,7 +15,9 @@ const byDate = (peaks: readonly AskPeak[]) => {
   const out: Record<string, AskPeak> = {};
   for (const peak of peaks) {
     const current = out[peak.date];
-    if (!current || peak.qty > current.qty) out[peak.date] = peak;
+    const peakQty = peak.qty ?? Number.NEGATIVE_INFINITY;
+    const currentQty = current?.qty ?? Number.NEGATIVE_INFINITY;
+    if (!current || peakQty > currentQty) out[peak.date] = peak;
   }
   return out;
 };
@@ -507,7 +509,7 @@ describe('useDayAskPeaks', () => {
     }));
 
     const started = performance.now();
-    const { result } = renderHook(() =>
+    renderHook(() =>
       useDayAskPeaks(ob, [], [], '20260613', '005930', null, candles),
     );
     const elapsed = performance.now() - started;

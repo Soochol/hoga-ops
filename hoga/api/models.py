@@ -147,8 +147,8 @@ class BidPeak(BaseModel):
     Mirrors ``AskPeak`` on the bid side. ``traded_*`` arrays are the post-touch
     ranked wire, while single ``price``/``max_price`` stay as legacy rank-1
     compatibility fields. ``untraded_*`` fields are the post-untouched legacy
-    rank-1 wire for bid prices below the day's traded low, and
-    ``untraded_*_peaks`` carries the full ranked candidates array.
+    rank-1 wire, and ``untraded_*_peaks`` carries the full ranked candidates
+    array.
     """
 
     date: str

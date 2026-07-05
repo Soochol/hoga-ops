@@ -65,6 +65,7 @@ export function buildAskPeakSegments(
     const peakPrice = intraMax ? p.max_price : p.price;
     const peakQty = intraMax ? p.max_qty : p.qty;
     const peakTMs = intraMax ? p.max_t_ms : p.t_ms;
+    if (!finiteNumber(peakPrice) || !finiteNumber(peakQty) || !finiteNumber(peakTMs)) continue;
     // peak 점은 그 시각이 속한 캔들(버킷)에 스냅 → 점이 그 캔들 위에 정확히 놓인다(1캔들 밀림 방지).
     const peakMs = snapPeakMsToCandle(peakTMs, candles) ?? peakTMs;
     out.push({
@@ -172,6 +173,11 @@ function finiteNumber(value: number | null | undefined): value is number {
 function selectedQty(p: AskPeak, intraMax: boolean): number {
   const qty = intraMax ? p.max_qty : p.qty;
   return finiteNumber(qty) ? qty : Number.NEGATIVE_INFINITY;
+}
+
+function selectedTMs(p: AskPeak, intraMax: boolean): number {
+  const tMs = intraMax ? p.max_t_ms : p.t_ms;
+  return finiteNumber(tMs) ? tMs : Number.POSITIVE_INFINITY;
 }
 
 function selectedPrice(p: AskPeak, intraMax: boolean): number {
@@ -297,7 +303,9 @@ function expandBaselinePeaks(
   }
   return [...byDate.values()].flatMap((items) => items
     .slice()
-    .sort((a, b) => selectedQty(b, intraMax) - selectedQty(a, intraMax) || a.t_ms - b.t_ms || a.price - b.price)
+    .sort((a, b) => selectedQty(b, intraMax) - selectedQty(a, intraMax)
+      || selectedTMs(a, intraMax) - selectedTMs(b, intraMax)
+      || selectedPrice(a, intraMax) - selectedPrice(b, intraMax))
     .filter((item, index, sorted) => sorted.findIndex((candidate) =>
       selectedPrice(candidate, intraMax) === selectedPrice(item, intraMax),
     ) === index)
@@ -330,7 +338,9 @@ function expandUntradedAskPeaks(
   }
   return [...byDate.values()].flatMap((items) => items
     .slice()
-    .sort((a, b) => selectedQty(b, intraMax) - selectedQty(a, intraMax) || a.t_ms - b.t_ms || a.price - b.price)
+    .sort((a, b) => selectedQty(b, intraMax) - selectedQty(a, intraMax)
+      || selectedTMs(a, intraMax) - selectedTMs(b, intraMax)
+      || selectedPrice(a, intraMax) - selectedPrice(b, intraMax))
     .filter((item, index, sorted) => sorted.findIndex((candidate) =>
       selectedPrice(candidate, intraMax) === selectedPrice(item, intraMax),
     ) === index)

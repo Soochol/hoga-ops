@@ -66,16 +66,22 @@ export function rightmostVisibleCandleCutoff(
   return { date: realMsToYyyymmdd(selected.ts_ms), tMs: bucketEndMs };
 }
 
-function candidateFromPeak(peak: PeakBase, intraMax: boolean): AskPeakCandidate {
-  return intraMax
-    ? { price: peak.max_price, qty: peak.max_qty, t_ms: peak.max_t_ms }
-    : { price: peak.price, qty: peak.qty, t_ms: peak.t_ms };
+function candidateFromPeak(peak: PeakBase, intraMax: boolean): AskPeakCandidate | null {
+  const price = intraMax ? peak.max_price : peak.price;
+  const qty = intraMax ? peak.max_qty : peak.qty;
+  const tMs = finiteTime(intraMax ? peak.max_t_ms : peak.t_ms);
+  if (
+    typeof price !== 'number'
+    || !Number.isFinite(price)
+    || typeof qty !== 'number'
+    || !Number.isFinite(qty)
+    || tMs === null
+  ) return null;
+  return { price, qty, t_ms: tMs };
 }
 
-function maxCandidateFromPeak(peak: PeakBase, intraMax: boolean): AskPeakCandidate {
-  return intraMax
-    ? { price: peak.max_price, qty: peak.max_qty, t_ms: peak.max_t_ms }
-    : { price: peak.price, qty: peak.qty, t_ms: peak.t_ms };
+function maxCandidateFromPeak(peak: PeakBase, intraMax: boolean): AskPeakCandidate | null {
+  return candidateFromPeak(peak, intraMax);
 }
 
 function chooseCandidate(
@@ -84,10 +90,10 @@ function chooseCandidate(
   intraMax: boolean,
 ): { close: AskPeakCandidate; max: AskPeakCandidate } | null {
   const closeCandidates = peak.traded_peaks === undefined
-    ? [candidateFromPeak(peak, false)]
+    ? [candidateFromPeak(peak, false)].filter((candidate): candidate is AskPeakCandidate => candidate !== null)
     : peak.traded_peaks;
   const maxCandidates = peak.traded_max_peaks === undefined
-    ? [maxCandidateFromPeak(peak, true)]
+    ? [maxCandidateFromPeak(peak, true)].filter((candidate): candidate is AskPeakCandidate => candidate !== null)
     : peak.traded_max_peaks;
   const sourceCandidates = intraMax ? maxCandidates : closeCandidates;
   const selected = sourceCandidates

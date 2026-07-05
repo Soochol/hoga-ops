@@ -199,7 +199,7 @@ describe('useDayBidPeaks', () => {
     }));
 
     const started = performance.now();
-    const { result } = renderHook(() =>
+    renderHook(() =>
       useDayBidPeaks(ob, [], [], '20260613', '005930', null, candles),
     );
     const elapsed = performance.now() - started;
