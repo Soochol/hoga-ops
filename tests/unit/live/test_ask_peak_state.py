@@ -143,6 +143,23 @@ def test_today_state_collapses_same_price_until_touch_then_reopens() -> None:
     assert snap["untraded_peaks"] == [{"price": 10_000, "qty": 300, "t_ms": 1_300}]
 
 
+def test_today_state_many_same_price_updates_emit_one_traded_candidate() -> None:
+    state = TodayAskPeakState()
+    for i, qty in enumerate(range(1000, 1100), start=1):
+        state.ingest_orderbook(t_ms=1_000 + i, asks=[{"price": 10_000, "qty": qty}])
+    state.ingest_trade(price=10_000, side=1, t_ms=2_000)
+
+    snap = state.snapshot()
+
+    assert snap is not None
+    assert len(state.open_by_price) == 0
+    assert len(state.closed_traded) == 1
+    assert len(state.observed_peak_events) == 1
+    assert len(state.all_best_by_price_time) == 1
+    assert snap["traded_peaks"] == [{"price": 10_000, "qty": 1099, "t_ms": 1_100}]
+    assert snap["untraded_peaks"] == []
+
+
 def test_prior_trade_does_not_classify_a_later_wall():
     state = TodayAskPeakState()
     state.ingest_trade(price=10_100, side=1, t_ms=1_000)

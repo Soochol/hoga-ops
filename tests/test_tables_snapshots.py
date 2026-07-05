@@ -1732,6 +1732,26 @@ def test_classify_peak_wall_events_keeps_one_best_same_price_before_touch() -> N
     assert out.untraded == ()
 
 
+def test_classify_peak_wall_events_same_price_many_updates_emit_one_per_lifecycle() -> None:
+    from hoga.tables.snapshots import (
+        _PeakWallEvent,
+        _TradeTouch,
+        _classify_peak_wall_events,
+    )
+
+    events = [
+        _PeakWallEvent("ask", "rep", 50000, qty, 36_000_000 + i, 100000000 + i, i, 600)
+        for i, qty in enumerate(range(1000, 1100), start=1)
+    ]
+    touches = [_TradeTouch(50000, 100001000, 200)]
+
+    out = _classify_peak_wall_events(events, touches, side="ask")
+
+    assert len(out.traded) == 1
+    assert out.traded[0].qty == 1099
+    assert out.untraded == ()
+
+
 def test_better_event_uses_seq_as_tie_breaker() -> None:
     from hoga.tables.snapshots import (
         _PeakWallEvent,
