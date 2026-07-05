@@ -68,4 +68,39 @@ describe('VOLUME_SPEC', () => {
     const dataFn = VOLUME_SPEC.series[1].data as (...args: unknown[]) => { value: number; time: number }[];
     expect(dataFn(bundle, ax, { cumulativeEnabled: false, auctionWindowMask: false }).length).toBe(0);
   });
+
+  it('cached volume bars reproject only today after a live tick', () => {
+    const day0Open = sessionOpenMs;
+    const day1Open = sessionOpenMs + 24 * 60 * 60 * 1000;
+    const past0 = { ts_ms: day0Open, open: 100, close: 101, high: 102, low: 99, vol_a: 1, vol_b: 0 };
+    const past1 = { ts_ms: day0Open + 60_000, open: 101, close: 102, high: 103, low: 100, vol_a: 2, vol_b: 0 };
+    const today = { ts_ms: day1Open, open: 102, close: 103, high: 104, low: 101, vol_a: 3, vol_b: 0 };
+    const segments = [
+      { date: '20260518', session_open_ms: day0Open, session_close_ms: day0Open + 23_400_000, source: 'kis_live' },
+      { date: '20260519', session_open_ms: day1Open, session_close_ms: day1Open + 23_400_000, source: 'kis_live' },
+    ];
+    const calls: number[] = [];
+    const countingAxis = {
+      contains: (t: number) => {
+        calls.push(t);
+        return true;
+      },
+      toVirtual: (t: number) => t - day0Open,
+    } as never;
+    const dataFn = VOLUME_SPEC.series[0].data as (...args: any[]) => Array<{ value: number }>;
+
+    dataFn({ segments, candles: [past0, past1, today] } as never, countingAxis, {
+      cumulativeEnabled: false,
+      auctionWindowMask: false,
+    });
+    calls.length = 0;
+    const data = dataFn(
+      { segments, candles: [past0, past1, { ...today, vol_a: 4 }] } as never,
+      countingAxis,
+      { cumulativeEnabled: false, auctionWindowMask: false },
+    );
+
+    expect(calls).toEqual([today.ts_ms]);
+    expect(data.at(-1)?.value).toBe(4);
+  });
 });
