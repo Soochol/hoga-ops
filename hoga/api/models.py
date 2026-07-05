@@ -109,7 +109,10 @@ class AskPeak(BaseModel):
     ``price``/``qty``/``t_ms`` = 체결가격 기준 버킷 종가 대표 위에서의 당일 max.
     ``max_*`` = 체결가격 기준 버킷 틱-max 위에서의 당일 max(Intra-Bar Max, ADR-0076).
     ``all_*`` = 모든 eligible ask price 기준. None이면 legacy payload.
-    ``untraded_*`` = 당일 고가보다 큰 ask price 기준. None이면 후보 없음 또는 legacy payload.
+    ``traded_*`` arrays = post-touch ranked wire; single ``price``/``max_price`` remain
+    the legacy rank-1 compatibility fields.
+    ``untraded_*`` = post-untouched legacy rank-1 wire. ``untraded_*_peaks`` carries
+    the full ranked candidates array.
     """
     date: str
     price: int
@@ -134,13 +137,18 @@ class AskPeak(BaseModel):
     traded_max_peaks: list[AskPeakCandidate] = Field(default_factory=list)
     all_peaks: list[AskPeakCandidate] = Field(default_factory=list)
     all_max_peaks: list[AskPeakCandidate] = Field(default_factory=list)
+    untraded_peaks: list[AskPeakCandidate] = Field(default_factory=list)
+    untraded_max_peaks: list[AskPeakCandidate] = Field(default_factory=list)
 
 
 class BidPeak(BaseModel):
     """한 거래일 연속거래 중 단일 매수 호가단계 최대 물량·가격(Day Bid Peak).
 
-    Mirrors ``AskPeak`` on the bid side. ``untraded_*`` fields are bid prices
-    below the day's traded low.
+    Mirrors ``AskPeak`` on the bid side. ``traded_*`` arrays are the post-touch
+    ranked wire, while single ``price``/``max_price`` stay as legacy rank-1
+    compatibility fields. ``untraded_*`` fields are the post-untouched legacy
+    rank-1 wire for bid prices below the day's traded low, and
+    ``untraded_*_peaks`` carries the full ranked candidates array.
     """
 
     date: str
@@ -166,6 +174,8 @@ class BidPeak(BaseModel):
     traded_max_peaks: list[AskPeakCandidate] = Field(default_factory=list)
     all_peaks: list[AskPeakCandidate] = Field(default_factory=list)
     all_max_peaks: list[AskPeakCandidate] = Field(default_factory=list)
+    untraded_peaks: list[AskPeakCandidate] = Field(default_factory=list)
+    untraded_max_peaks: list[AskPeakCandidate] = Field(default_factory=list)
 
 
 class QuoteRatioPoint(BaseModel):

@@ -528,7 +528,9 @@ class AskPeakDualRow:
 
     ``price``/``qty``/``intra_ms`` and ``max_*`` are constrained to ask prices
     that appeared in continuous trades. ``all_*`` fields use every eligible ask
-    level. Both variants share the same continuous-book/session filters.
+    level. ``untraded_*`` is the legacy rank-1 wire for post-untouched asks,
+    while ``untraded_*_peaks`` preserves the full ranked candidates array. Both
+    variants share the same continuous-book/session filters.
     """
     price: int
     qty: int
@@ -552,6 +554,8 @@ class AskPeakDualRow:
     untraded_max_price: int | None = None
     untraded_max_qty: int | None = None
     untraded_max_intra_ms: int | None = None
+    untraded_peaks: tuple[AskPeakCandidateRow, ...] = ()
+    untraded_max_peaks: tuple[AskPeakCandidateRow, ...] = ()
 
 
 @dataclass(frozen=True)
@@ -580,7 +584,9 @@ class BidPeakDualRow:
 
     ``price``/``qty``/``intra_ms`` and ``max_*`` are constrained to bid prices
     that appeared in continuous trades. ``all_*`` fields use every eligible bid
-    level. Both variants share the same continuous-book/session filters.
+    level. ``untraded_*`` is the legacy rank-1 wire for post-untouched bids,
+    while ``untraded_*_peaks`` preserves the full ranked candidates array. Both
+    variants share the same continuous-book/session filters.
     """
     price: int
     qty: int
@@ -604,6 +610,8 @@ class BidPeakDualRow:
     untraded_max_price: int | None = None
     untraded_max_qty: int | None = None
     untraded_max_intra_ms: int | None = None
+    untraded_peaks: tuple[AskPeakCandidateRow, ...] = ()
+    untraded_max_peaks: tuple[AskPeakCandidateRow, ...] = ()
 
 
 def query_bucketed_ratio(

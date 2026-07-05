@@ -28,6 +28,35 @@ def test_ask_peak_accepts_untraded_fields() -> None:
     assert peak.untraded_qty == 100
 
 
+def test_ask_peak_accepts_ranked_untraded_candidates() -> None:
+    peak = AskPeak(
+        date="20260617",
+        price=25000,
+        qty=1000,
+        t_ms=1781658000000,
+        max_price=25000,
+        max_qty=1000,
+        max_t_ms=1781658000000,
+        untraded_peaks=[
+            AskPeakCandidate(price=27000, qty=100, t_ms=1781658000000),
+            AskPeakCandidate(price=27100, qty=90, t_ms=1781658060000),
+        ],
+        untraded_max_peaks=[
+            AskPeakCandidate(price=27200, qty=120, t_ms=1781658120000),
+            AskPeakCandidate(price=27300, qty=110, t_ms=1781658180000),
+        ],
+    )
+
+    assert [candidate.model_dump() for candidate in peak.untraded_peaks] == [
+        {"price": 27000, "qty": 100, "t_ms": 1781658000000},
+        {"price": 27100, "qty": 90, "t_ms": 1781658060000},
+    ]
+    assert [candidate.model_dump() for candidate in peak.untraded_max_peaks] == [
+        {"price": 27200, "qty": 120, "t_ms": 1781658120000},
+        {"price": 27300, "qty": 110, "t_ms": 1781658180000},
+    ]
+
+
 def test_bid_peak_accepts_untraded_fields() -> None:
     from hoga.api.models import BidPeak
 
@@ -55,6 +84,37 @@ def test_bid_peak_accepts_untraded_fields() -> None:
 
     assert peak.untraded_price == 69000
     assert peak.untraded_max_qty == 13000
+
+
+def test_bid_peak_accepts_ranked_untraded_candidates() -> None:
+    from hoga.api.models import BidPeak
+
+    peak = BidPeak(
+        date="20260619",
+        price=70000,
+        qty=5000,
+        t_ms=1,
+        max_price=69900,
+        max_qty=7000,
+        max_t_ms=2,
+        untraded_peaks=[
+            AskPeakCandidate(price=69000, qty=12000, t_ms=5),
+            AskPeakCandidate(price=68900, qty=11000, t_ms=6),
+        ],
+        untraded_max_peaks=[
+            AskPeakCandidate(price=68800, qty=13000, t_ms=7),
+            AskPeakCandidate(price=68700, qty=12500, t_ms=8),
+        ],
+    )
+
+    assert [candidate.model_dump() for candidate in peak.untraded_peaks] == [
+        {"price": 69000, "qty": 12000, "t_ms": 5},
+        {"price": 68900, "qty": 11000, "t_ms": 6},
+    ]
+    assert [candidate.model_dump() for candidate in peak.untraded_max_peaks] == [
+        {"price": 68800, "qty": 13000, "t_ms": 7},
+        {"price": 68700, "qty": 12500, "t_ms": 8},
+    ]
 
 
 def test_bid_peak_model_accepts_ranked_candidates():

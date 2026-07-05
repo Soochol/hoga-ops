@@ -1,53 +1,69 @@
 Status: DONE
 
-Task: Convert Minute Candle Cache to Memory Only
+Task: Lock Backend Wire Contract For Ranked Post-Untouched Arrays
 
-Scope:
-- Updated `hoga/live/past_candles_cache.py` to use in-process storage only for past candles.
-- Updated `tests/unit/live/test_past_candles_cache.py` to remove disk-cache assumptions and assert the new memory-only behavior.
+Summary:
+- Added ranked post-untouched array fields to the backend dual-row contract, API models, bundle conversion layer, and frontend TypeScript wire mirror.
+- Preserved legacy single `untraded_*` / `untraded_max_*` fields by deriving them from rank 1 when ranked arrays are present, and by falling back to existing singleton row fields when arrays are empty.
 
-Changes:
-- Replaced past-cache tests with:
-  - `test_past_memory_miss_then_store_then_hit_without_disk_write`
-  - `test_past_cache_does_not_read_legacy_json_files`
-- Removed/replaced legacy disk-specific tests for past cache:
-  - `test_past_disk_miss_then_store_then_hit`
-  - `test_past_corrupt_cache_treated_as_miss_and_heals_on_store`
-  - `test_past_stale_cache_with_wrong_date_treated_as_miss_and_evicted`
-  - `test_past_empty_cache_for_non_trading_day_is_valid`
-  - `test_past_mem_with_wrong_date_evicts_and_falls_through_to_disk`
-- Changed `get_past` to read only `_past_mem` and validate date via `_bars_match_date`.
-- Changed `store_past` to update only `_past_mem` and LRU size.
-- Changed `delete_past` to evict only `_past_mem`.
-- Updated module docstring for memory-only intent and removed disk persistence imports/paths.
+Implemented:
+- `hoga/tables/snapshots.py`
+  - Added `untraded_peaks` and `untraded_max_peaks` tuple fields to both `AskPeakDualRow` and `BidPeakDualRow`, defaulting to `()`.
+  - Updated dual-row docstrings to document `untraded_*` as legacy rank-1 wire fields and the new tuple fields as the ranked post-untouched contract.
+- `hoga/api/models.py`
+  - Added `untraded_peaks` and `untraded_max_peaks` to `AskPeak` and `BidPeak` with `Field(default_factory=list)`.
+  - Updated model docs to distinguish:
+    - `traded_*` arrays as the post-touch ranked wire with singleton compatibility fields.
+    - `untraded_*` singletons as the legacy post-untouched rank-1 wire plus new ranked arrays.
+- `hoga/api/bundle.py`
+  - Updated `_ask_peak_from_dual_row` and `_bid_peak_from_dual_row` to map `row.untraded_peaks` / `row.untraded_max_peaks` through `_ask_candidate`.
+  - When ranked arrays are present, singleton `untraded_*` and `untraded_max_*` are populated from the first candidate.
+  - When ranked arrays are empty, singleton fields continue to use the legacy row values.
+- `frontend/src/api/types.ts`
+  - Added optional `untraded_peaks` and `untraded_max_peaks` to the existing `AskPeak` and `BidPeak` TS wire types.
 
-Verification:
-- `uv run --extra dev pytest tests/unit/live/test_past_candles_cache.py -q`  
-  - `13 passed in 0.08s`
-- `uv run --extra dev ruff check hoga/live/past_candles_cache.py tests/unit/live/test_past_candles_cache.py`
-  - `All checks passed!`
+Tests Added:
+- `tests/test_api_ask_peak_model.py`
+  - `test_ask_peak_accepts_ranked_untraded_candidates`
+  - `test_bid_peak_accepts_ranked_untraded_candidates`
+- `tests/hoga/api/test_bundle.py`
+  - `test_ask_peak_from_dual_row_preserves_ranked_untraded_arrays`
+  - `test_bid_peak_from_dual_row_preserves_ranked_untraded_arrays`
 
-Follow-up review finding fix:
-- Updated `tests/unit/live/test_api.py` at `test_past_candles_happy_path_single_date`:
-  - Replaced disk-file existence assertion with memory-only assertion:
-    `assert not (tmp_path / "kis-past-candles").exists()`.
-- Adjusted two additional API cache-behavior tests to align with in-memory-only cache semantics:
-  - `test_past_candles_rate_limit_still_serves_later_cache_hits`
-  - `test_past_candles_disk_cache_survives_router_rebuild` (renamed to
-    `test_past_candles_memory_cache_not_survives_router_rebuild`)
+TDD Evidence:
+- RED:
+  - Initial plain `pytest` attempt failed because `pytest` was not installed in the bare shell environment.
+  - Switched to the repo runner: `uv run --extra dev pytest tests/test_api_ask_peak_model.py tests/hoga/api/test_bundle.py -q`
+  - Observed expected contract failures:
+    - `AskPeak` missing `untraded_peaks`
+    - `BidPeak` missing `untraded_peaks`
+    - `AskPeakDualRow` missing `untraded_peaks`
+    - `BidPeakDualRow` missing `untraded_peaks`
+  - Result: `4 failed, 59 passed`
+- GREEN:
+  - Re-ran `uv run --extra dev pytest tests/test_api_ask_peak_model.py tests/hoga/api/test_bundle.py -q`
+  - Result: `63 passed in 1.27s`
 
-Verification:
-- `uv run --extra dev pytest tests/unit/live/test_api.py -q`  
-  - `107 passed in 3.51s`
-- `uv run --extra dev pytest tests/unit/live/test_past_candles_cache.py tests/unit/live/test_api.py -q`
-  - `120 passed in 3.20s`
+Tests Run:
+- `uv run --extra dev pytest tests/test_api_ask_peak_model.py tests/hoga/api/test_bundle.py -q`
+  - PASS: `63 passed in 1.27s`
 
-Review finding follow-up:
-- Fixed `tests/unit/live/test_api_kis_rest_bypass_candles.py` to match the memory-only cache seam:
-  - `test_past_candles_bypass_uses_cached_krx_fallback_for_non_krx_request` now creates a seeded `PastCandlesCache` instance and monkeypatches `live_api.PastCandlesCache` before `_bypass_app()`, so the router uses the same cache instance.
+Additional Verification:
+- `git diff --check`
+  - PASS
+- `uv run --extra dev ruff check hoga/tables/snapshots.py hoga/api/models.py hoga/api/bundle.py tests/test_api_ask_peak_model.py tests/hoga/api/test_bundle.py`
+  - Not used as a gate: repository has a large pre-existing Ruff baseline in these files, including unrelated long-line and import-placement findings outside this task's scope.
 
-Verification:
-- `uv run --extra dev pytest tests/unit/live/test_api_kis_rest_bypass_candles.py -q`
-  - `6 passed in 0.22s`
-- `uv run --extra dev pytest tests/unit/live/test_past_candles_cache.py tests/unit/live/test_api.py tests/unit/live/test_api_kis_rest_bypass_candles.py -q`
-  - `126 passed in 3.22s`
+Self-Review:
+- The backend wire contract is now explicit at the dual-row, API-model, and TS mirror layers.
+- Compatibility behavior is locked:
+  - ranked arrays preserved end-to-end in bundle conversion
+  - singleton legacy fields sourced from rank 1 when arrays exist
+  - singleton legacy fields preserved when arrays are absent
+- Changes were kept scoped to the contract layer only; no peak classification or rendering behavior was changed.
+
+Commits:
+- Pending at report write time; filled after commit in git history.
+
+Concerns:
+- None for Task 1 scope.

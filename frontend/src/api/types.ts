@@ -529,6 +529,8 @@ export type AskPeak = PeakBase & {
   traded_max_peaks?: AskPeakCandidate[];
   all_peaks?: AskPeakCandidate[];
   all_max_peaks?: AskPeakCandidate[];
+  untraded_peaks?: AskPeakCandidate[];
+  untraded_max_peaks?: AskPeakCandidate[];
 };
 
 /** hoga/api/models.py::BidPeak mirror. Candidate arrays mirror ask for cutoff/ranking. */
@@ -537,6 +539,8 @@ export type BidPeak = PeakBase & {
   traded_max_peaks?: AskPeakCandidate[];
   all_peaks?: AskPeakCandidate[];
   all_max_peaks?: AskPeakCandidate[];
+  untraded_peaks?: AskPeakCandidate[];
+  untraded_max_peaks?: AskPeakCandidate[];
 };
 
 export type TradeVolumePocWire = {
