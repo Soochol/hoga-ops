@@ -1,4 +1,8 @@
 import type { MASource } from '../chart/projectors/movingAverage';
+import {
+  normalizePanePrefsByTimeframe,
+  type PersistedPanePrefsByTimeframe,
+} from '../live/indicators/indicatorPaneProfiles';
 
 /**
  * /live indicator prefs — canonical types, constants, and the persistence
@@ -156,6 +160,8 @@ export type PersistedIndicators = {
   dailyMovingAverageEnabled: boolean;
   /** 일봉 MA 눈(숨김), config 보존. 기본 false. */
   dailyMovingAverageHidden: boolean;
+  /** Shared live/study pane on/off overrides by timeframe profile. Empty = legacy flat fields are fallback. */
+  panePrefsByTimeframe: PersistedPanePrefsByTimeframe;
 };
 
 function isValidEntry(m: unknown): m is LiveMAConfig {
@@ -287,6 +293,7 @@ export function mergeLiveIndicatorPrefs(
     ? (dRaw.filter(isValidEntry).slice(0, MA_SLOT_LIMIT) as LiveMAConfig[])
     : [];
   const dMas = dKept.length > 0 ? dKept : DEFAULT_DAILY_MAS.map((m) => ({ ...m }));
+  const panePrefsByTimeframe = normalizePanePrefsByTimeframe(obj?.panePrefsByTimeframe);
   const build = (
     mas: LiveMAConfig[], enabled: boolean, fNet: boolean, iNet: boolean,
     vol: boolean, hidden: boolean,
@@ -333,6 +340,7 @@ export function mergeLiveIndicatorPrefs(
     dailyMovingAverages: dMas,
     dailyMovingAverageEnabled: dEnabled,
     dailyMovingAverageHidden: dHidden,
+    panePrefsByTimeframe,
   });
   if (!raw || typeof raw !== 'object') return build(defaults, true, false, false, true, false, true, true, true, true, true);
   // obj is guaranteed non-null here (same condition checked above)

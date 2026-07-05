@@ -43,6 +43,7 @@ describe('mergeLiveIndicatorPrefs', () => {
       brokerLateEntrySideMode: 'both',
       brokerLateEntryBuyColor: '#ef4444',
       brokerLateEntrySellColor: '#3b82f6',
+      panePrefsByTimeframe: {},
       dailyMovingAverages: DEFAULT_DAILY_MAS.map((m) => ({ ...m })),
       dailyMovingAverageEnabled: false,
       dailyMovingAverageHidden: false,
@@ -186,6 +187,36 @@ describe('mergeLiveIndicatorPrefs', () => {
 });
 
 describe('mergeLiveIndicatorPrefs — 호가 토글', () => {
+  it('panePrefsByTimeframe defaults to an empty override map', () => {
+    expect(mergeLiveIndicatorPrefs(undefined).panePrefsByTimeframe).toEqual({});
+  });
+
+  it('preserves valid partial pane timeframe profiles', () => {
+    const m = mergeLiveIndicatorPrefs({
+      panePrefsByTimeframe: {
+        minute: { ratioEnabled: false },
+        D: { volumeEnabled: false, foreignNetEnabled: true },
+      },
+    });
+    expect(m.panePrefsByTimeframe).toEqual({
+      minute: { ratioEnabled: false },
+      D: { volumeEnabled: false, foreignNetEnabled: true },
+    });
+  });
+
+  it('drops invalid pane profile payload pieces', () => {
+    const m = mergeLiveIndicatorPrefs({
+      panePrefsByTimeframe: {
+        minute: { ratioEnabled: 'false', fillStrengthEnabled: true },
+        Q: { volumeEnabled: false },
+        W: ['bad'],
+      },
+    } as never);
+    expect(m.panePrefsByTimeframe).toEqual({
+      minute: { fillStrengthEnabled: true },
+    });
+  });
+
   it('빈 입력 → 호가 4토글 기본 ON', () => {
     const m = mergeLiveIndicatorPrefs(undefined);
     expect(m.quoteTotalsEnabled).toBe(true);
