@@ -7,8 +7,10 @@
 // integration coverage lives in the manual QA pass and in ADR-0030 /
 // ADR-0032.
 
-import { describe, it, expect } from 'vitest';
-import { __test__ } from './DrawingOverlay';
+import { fireEvent, render } from '@testing-library/react';
+import { describe, it, expect, beforeEach, vi } from 'vitest';
+import DrawingOverlay, { __test__ } from './DrawingOverlay';
+import { useDrawingsStore } from '../state/drawings';
 
 const { shouldDeselectOnClick } = __test__;
 
@@ -51,5 +53,36 @@ describe('shouldDeselectOnClick', () => {
     // panel-false return the same answer keeps the rule orthogonal.
     expect(shouldDeselectOnClick({ x: 100, y: 50 }, rect, true, true)).toBe(false);
     expect(shouldDeselectOnClick({ x: 100, y: 50 }, rect, true, false)).toBe(false);
+  });
+});
+
+describe('DrawingOverlay context menu', () => {
+  beforeEach(() => {
+    useDrawingsStore.getState().__resetForTests();
+  });
+
+  it('switches back to select mode on right-click and suppresses the browser menu', () => {
+    useDrawingsStore.getState().setActiveTool('trendline');
+    const chart = {
+      timeScale: () => ({
+        subscribeVisibleLogicalRangeChange: vi.fn(),
+        unsubscribeVisibleLogicalRangeChange: vi.fn(),
+      }),
+      panes: () => [],
+    };
+    const { container } = render(
+      <DrawingOverlay
+        chart={chart as never}
+        axis={{ segments: [] } as never}
+        paneSeries={new Map()}
+      />,
+    );
+    const overlay = container.querySelector('[data-drawing-overlay]');
+    expect(overlay).not.toBeNull();
+
+    const prevented = !fireEvent.contextMenu(overlay!);
+
+    expect(prevented).toBe(true);
+    expect(useDrawingsStore.getState().activeTool).toBe('select');
   });
 });

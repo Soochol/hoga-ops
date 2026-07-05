@@ -33,6 +33,13 @@ describe('LiveDrawingRail', () => {
     expect(screen.getByRole('button', { name: TOOLS.select.label })).toHaveAttribute('aria-pressed', 'false');
   });
 
+  it('shows keyboard shortcuts in drawing tool hover tooltips', () => {
+    render(<LiveDrawingRail />);
+
+    expect(screen.getByRole('button', { name: TOOLS.select.label })).toHaveAttribute('title', '선택 (Alt+V)');
+    expect(screen.getByRole('button', { name: TOOLS.trendline.label })).toHaveAttribute('title', '추세선 (Alt+J)');
+  });
+
   it('clears drawings through the drawing store', () => {
     const drawing: Drawing = {
       id: 'h1',

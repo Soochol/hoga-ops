@@ -13,6 +13,12 @@ function buttonClass(active: boolean): string {
   ].join(' ');
 }
 
+function tooltipFor(tool: DrawingTool): string {
+  const spec = TOOLS[tool];
+  const shortcut = spec.shortcut ? ` (Alt+${spec.shortcut.key.toUpperCase()})` : '';
+  return `${spec.label}${shortcut}`;
+}
+
 export default function LiveDrawingRail() {
   const activeTool = useDrawingsStore((state) => state.activeTool);
   const setActiveTool = useDrawingsStore((state) => state.setActiveTool);
@@ -29,13 +35,14 @@ export default function LiveDrawingRail() {
         {TOOL_ORDER.map((tool) => {
           const spec = TOOLS[tool];
           const active = activeTool === tool;
+          const title = tooltipFor(tool);
           return (
             <button
               key={tool}
               type="button"
               aria-label={spec.label}
               aria-pressed={active}
-              title={spec.label}
+              title={title}
               className={buttonClass(active)}
               onClick={() => setActiveTool(tool)}
             >
