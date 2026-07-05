@@ -3,6 +3,11 @@
 All notable changes to this project are documented here.
 The format follows a 4-digit `MAJOR.MINOR.PATCH.MICRO` scheme.
 
+## [0.12.27.4] - 2026-07-05
+
+### Fixed
+- **/live·/study 일봉 이동평균선 fallback**: `KIS API 우회`가 켜져 KIS 일봉 backfill이 비어도 저장된 screener 일봉 캔들로 일봉 이동평균선을 계산해 분봉 차트에 계속 표시되도록 했다.
+
 ## [0.12.27.3] - 2026-07-04
 
 ### Fixed
