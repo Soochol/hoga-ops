@@ -229,6 +229,24 @@ describe('computeTradeVolumePoc', () => {
       qty: 20,
     });
   });
+
+  it('selects a tick-adjusted price band from many distinct prices without quadratic work', () => {
+    const trades = Array.from({ length: 8_000 }, (_, i) =>
+      trade(atKst(9 + Math.floor(i / 3_600), Math.floor((i % 3_600) / 60)), 10_000 + i * 1_000, 1),
+    );
+
+    const started = performance.now();
+    const poc = computeTradeVolumePoc(trades, { bandPct: 0 });
+    const elapsed = performance.now() - started;
+
+    expectPoc(poc, {
+      centerPrice: 10_000,
+      lowPrice: 10_000,
+      highPrice: 10_000,
+      qty: 1,
+    });
+    expect(elapsed).toBeLessThan(80);
+  });
 });
 
 describe('computeCandleVolumePocs', () => {

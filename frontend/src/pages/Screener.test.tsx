@@ -19,7 +19,10 @@ vi.mock('../api/savedScreeners', () => ({
 }));
 // 라이브 오버레이는 결과 행의 현재가·등락률을 덮는다. 기본 빈 Map(오버레이 없음)으로
 // 두어 EOD 검증 테스트를 보존하고, 오버레이 테스트에서만 quote 를 주입한다.
-vi.mock('../api/liveQuotes', () => ({ useQuoteByCode: vi.fn(() => new Map()) }));
+vi.mock('../api/liveQuotes', () => ({
+  useQuoteByCode: vi.fn(() => new Map()),
+  isStaleLiveQuote: vi.fn((quote) => quote?.stale === true),
+}));
 
 // useLivePageStore lives at ../state/livePage (the path LiveStatusBar imports);
 // `../live/useLivePageStore` does not exist. Mock the real module so clicking a

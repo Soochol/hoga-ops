@@ -86,12 +86,11 @@ export function toTouchTicksFromTrades(
 function classifyWallEvents(
   events: readonly PeakWallEvent[],
   touches: readonly PeakWallTouchTick[],
-  isTouchedByPrice: (touchPrice: number, wallPrice: number) => boolean,
+  side: 'ask' | 'bid',
 ): PeakWallClassification {
   const dedupedEvents = uniquePeakCandidates(events);
-  const postTouch = dedupedEvents.filter((event) =>
-    touches.some((touch) => touch.t_ms >= event.t_ms && isTouchedByPrice(touch.price, event.price)),
-  );
+  const touchedByLaterTrade = makeTouchIndex(touches, side);
+  const postTouch = dedupedEvents.filter(touchedByLaterTrade);
   const touchedKeys = new Set(postTouch.map(candidateKey));
   const postUntouched = dedupedEvents.filter((event) => !touchedKeys.has(candidateKey(event)));
   return {
@@ -101,16 +100,51 @@ function classifyWallEvents(
   };
 }
 
+function lowerBoundTouchTime(touches: readonly PeakWallTouchTick[], tMs: number): number {
+  let lo = 0;
+  let hi = touches.length;
+  while (lo < hi) {
+    const mid = (lo + hi) >>> 1;
+    if (touches[mid].t_ms < tMs) lo = mid + 1;
+    else hi = mid;
+  }
+  return lo;
+}
+
+function makeTouchIndex(
+  touches: readonly PeakWallTouchTick[],
+  side: 'ask' | 'bid',
+): (event: PeakWallEvent) => boolean {
+  if (touches.length === 0) return () => false;
+  const sorted = [...touches].sort((a, b) => a.t_ms - b.t_ms);
+  const extremeFromIdx = new Array<number>(sorted.length + 1);
+  extremeFromIdx[sorted.length] = side === 'ask'
+    ? Number.NEGATIVE_INFINITY
+    : Number.POSITIVE_INFINITY;
+  for (let i = sorted.length - 1; i >= 0; i -= 1) {
+    extremeFromIdx[i] = side === 'ask'
+      ? Math.max(sorted[i].price, extremeFromIdx[i + 1])
+      : Math.min(sorted[i].price, extremeFromIdx[i + 1]);
+  }
+
+  return (event) => {
+    const idx = lowerBoundTouchTime(sorted, event.t_ms);
+    if (idx >= sorted.length) return false;
+    const extreme = extremeFromIdx[idx];
+    return side === 'ask' ? extreme >= event.price : extreme <= event.price;
+  };
+}
+
 export function classifyAskWallEvents(
   events: readonly PeakWallEvent[],
   touches: readonly PeakWallTouchTick[],
 ): PeakWallClassification {
-  return classifyWallEvents(events, touches, (touchPrice, wallPrice) => touchPrice >= wallPrice);
+  return classifyWallEvents(events, touches, 'ask');
 }
 
 export function classifyBidWallEvents(
   events: readonly PeakWallEvent[],
   touches: readonly PeakWallTouchTick[],
 ): PeakWallClassification {
-  return classifyWallEvents(events, touches, (touchPrice, wallPrice) => touchPrice <= wallPrice);
+  return classifyWallEvents(events, touches, 'bid');
 }

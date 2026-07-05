@@ -35,18 +35,20 @@ describe('호가 Config Intra-Bar Max 토글 행', () => {
 
   it('AskPeakConfig에 미체결 후보 표시 범위 옵션', () => {
     render(<AskPeakConfig />);
-    expect(screen.getByRole('button', { name: '1등만' })).toBeTruthy();
-    expect(screen.getByRole('button', { name: '2등까지' })).toBeTruthy();
-    expect(screen.getByRole('button', { name: '3등까지' })).toBeTruthy();
+    expect(screen.getByRole('group', { name: '미체결된 벽 표시 개수' })).toBeTruthy();
+    expect(screen.getAllByRole('button', { name: '1' }).length).toBeGreaterThan(0);
+    expect(screen.getAllByRole('button', { name: '2' }).length).toBeGreaterThan(0);
+    expect(screen.getAllByRole('button', { name: '3' }).length).toBeGreaterThan(0);
   });
 
   it('AskPeakConfig에 보이는 영역 강조 범위 옵션', () => {
     render(<AskPeakConfig />);
-    expect(screen.getByText('보이는 영역 강조 범위')).toBeTruthy();
-    expect(screen.getByRole('group', { name: '보이는 영역 강조 범위' })).toBeTruthy();
-    expect(screen.getByRole('button', { name: '1순위만' })).toBeTruthy();
-    expect(screen.getByRole('button', { name: '2순위까지' })).toBeTruthy();
-    expect(screen.getByRole('button', { name: '3순위까지' })).toBeTruthy();
+    expect(screen.getByText('보이는 영역 최대벽 표시 개수')).toBeTruthy();
+    expect(screen.getByRole('group', { name: '보이는 영역 최대벽 표시 개수' })).toBeTruthy();
+    expect(screen.getAllByRole('button', { name: '0' }).length).toBeGreaterThan(0);
+    expect(screen.getAllByRole('button', { name: '1' }).length).toBeGreaterThan(0);
+    expect(screen.getAllByRole('button', { name: '2' }).length).toBeGreaterThan(0);
+    expect(screen.getAllByRole('button', { name: '3' }).length).toBeGreaterThan(0);
   });
 
   it('AskPeakConfig에 세 매도 최대벽 스타일 컨트롤', () => {
