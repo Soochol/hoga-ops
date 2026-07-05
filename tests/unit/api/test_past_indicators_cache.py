@@ -93,10 +93,10 @@ def test_ratio_disk_payload_is_seven_tuples(tmp_path: Path) -> None:
     assert PastIndicatorsCache(tmp_path).get_ratio(CODE, DATE, SRC) == RATIO
 
 
-def test_schema_version_bumped_to_3_invalidates_peak_candidate_cache(tmp_path: Path) -> None:
-    """SCHEMA_VERSION 2→3: 시간별 후보 배열 없는 peak 캐시는 버전 미스로 무효."""
+def test_schema_version_bumped_to_4_invalidates_peak_candidate_cache(tmp_path: Path) -> None:
+    """SCHEMA_VERSION 2→4: 시간별 후보 배열 없는 peak 캐시는 버전 미스로 무효."""
     from hoga.api import past_indicators_cache as mod
-    assert mod.SCHEMA_VERSION == 3
+    assert mod.SCHEMA_VERSION == 4
     p = tmp_path / "kis-past-indicators" / CODE / SRC / f"{DATE}.ratio.json"
     p.parent.mkdir(parents=True, exist_ok=True)
     p.write_text(json.dumps({"version": 1, "rows": [[0, 10, 20]], "fetched_at_ms": 0}),
@@ -118,6 +118,36 @@ def test_schema_version_bumped_to_3_invalidates_peak_candidate_cache(tmp_path: P
         "fetched_at_ms": 0,
     }), encoding="utf-8")
     assert PastIndicatorsCache(tmp_path).has_ask_peak(CODE, DATE, SRC, 60_000) is False
+
+
+def test_schema_version_bumped_to_4_invalidates_price_based_peak_classification_cache(tmp_path: Path) -> None:
+    """SCHEMA_VERSION 3→4: 가격 집합 기준 peak 분류 캐시는 이벤트 기준 재계산이 필요."""
+    from hoga.api import past_indicators_cache as mod
+    assert mod.SCHEMA_VERSION == 4
+
+    peak_dir = tmp_path / "kis-past-indicators" / CODE / SRC
+    peak_dir.mkdir(parents=True, exist_ok=True)
+    stale_peak = {
+        "version": 3,
+        "value": {
+            "date": DATE,
+            "price": 101000,
+            "qty": 30632,
+            "t_ms": 1,
+            "max_price": 101000,
+            "max_qty": 30632,
+            "max_t_ms": 1,
+            "traded_peaks": [{"price": 101000, "qty": 30632, "t_ms": 1}],
+            "untraded_peaks": [],
+        },
+        "fetched_at_ms": 0,
+    }
+    (peak_dir / f"{DATE}.ask_peak.60000.json").write_text(json.dumps(stale_peak), encoding="utf-8")
+    (peak_dir / f"{DATE}.bid_peak.60000.json").write_text(json.dumps(stale_peak), encoding="utf-8")
+
+    reloaded = PastIndicatorsCache(tmp_path)
+    assert reloaded.has_ask_peak(CODE, DATE, SRC, 60_000) is False
+    assert reloaded.has_bid_peak(CODE, DATE, SRC, 60_000) is False
 
 
 def test_bid_peak_cache_is_independent_from_ask_peak(tmp_path: Path) -> None:
@@ -152,11 +182,11 @@ def test_ask_bid_peak_cache_survives_new_cache_instance(tmp_path: Path) -> None:
     assert reloaded.get_bid_peak("005930", "20260619", "hogaplay", 60_000) == bid
 
 
-def test_peak_cache_loads_version_3_payload_without_ranked_untraded_arrays(tmp_path: Path) -> None:
+def test_peak_cache_loads_version_4_payload_without_ranked_untraded_arrays(tmp_path: Path) -> None:
     peak_dir = tmp_path / "kis-past-indicators" / CODE / SRC
     peak_dir.mkdir(parents=True, exist_ok=True)
     payload = {
-        "version": 3,
+        "version": 4,
         "value": {
             "date": "20260619",
             "price": 70000,
