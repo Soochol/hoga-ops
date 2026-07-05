@@ -1,5 +1,5 @@
 import { describe, it, expect, afterEach } from 'vitest';
-import { render, screen, cleanup } from '@testing-library/react';
+import { render, screen, cleanup, within } from '@testing-library/react';
 import QuoteTotalsConfig from './QuoteTotalsConfig';
 import RatioConfig from './RatioConfig';
 import AskPeakConfig from './AskPeakConfig';
@@ -33,20 +33,23 @@ describe('호가 Config Intra-Bar Max 토글 행', () => {
     expect(screen.getByTestId('settings-toggle-askPeakLabelEnabled')).toBeTruthy();
   });
 
-  it('AskPeakConfig에 미체결 후보 표시 범위 옵션', () => {
+  it('AskPeakConfig에 미체결된 벽 표시 개수 옵션', () => {
     render(<AskPeakConfig />);
-    expect(screen.getByRole('button', { name: '1등만' })).toBeTruthy();
-    expect(screen.getByRole('button', { name: '2등까지' })).toBeTruthy();
-    expect(screen.getByRole('button', { name: '3등까지' })).toBeTruthy();
+    expect(screen.getByText('미체결된 벽 표시 개수')).toBeTruthy();
+    const group = within(screen.getByRole('group', { name: '미체결된 벽 표시 개수' }));
+    expect(group.getByRole('button', { name: '1' })).toBeTruthy();
+    expect(group.getByRole('button', { name: '2' })).toBeTruthy();
+    expect(group.getByRole('button', { name: '3' })).toBeTruthy();
   });
 
-  it('AskPeakConfig에 보이는 영역 강조 범위 옵션', () => {
+  it('AskPeakConfig에 보이는 영역 최대벽 표시 개수 옵션', () => {
     render(<AskPeakConfig />);
-    expect(screen.getByText('보이는 영역 강조 범위')).toBeTruthy();
-    expect(screen.getByRole('group', { name: '보이는 영역 강조 범위' })).toBeTruthy();
-    expect(screen.getByRole('button', { name: '1순위만' })).toBeTruthy();
-    expect(screen.getByRole('button', { name: '2순위까지' })).toBeTruthy();
-    expect(screen.getByRole('button', { name: '3순위까지' })).toBeTruthy();
+    expect(screen.getByText('보이는 영역 최대벽 표시 개수')).toBeTruthy();
+    const group = within(screen.getByRole('group', { name: '보이는 영역 최대벽 표시 개수' }));
+    expect(group.getByRole('button', { name: '0' })).toBeTruthy();
+    expect(group.getByRole('button', { name: '1' })).toBeTruthy();
+    expect(group.getByRole('button', { name: '2' })).toBeTruthy();
+    expect(group.getByRole('button', { name: '3' })).toBeTruthy();
   });
 
   it('AskPeakConfig에 세 매도 최대벽 스타일 컨트롤', () => {
