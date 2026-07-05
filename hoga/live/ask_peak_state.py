@@ -32,8 +32,9 @@ class _TodaySidePeakState:
     open_by_price: dict[int, Peak] = field(default_factory=dict)
     closed_traded: list[Peak] = field(default_factory=list)
     all_best_by_price_time: dict[tuple[int, int], Peak] = field(default_factory=dict)
-    touch_ticks: list[TouchTick] = field(default_factory=list)
-    touch_price_extreme_by_t_ms: dict[int, int] = field(default_factory=dict)
+    latest_touch_t_ms: int | None = None
+    latest_touch_price_extreme: int | None = None
+    latest_seq_touch: TouchTick | None = None
     traded_peak: Peak | None = None
     untraded_peak: Peak | None = None
     all_peak: Peak | None = None
@@ -59,17 +60,15 @@ class _TodaySidePeakState:
         self.traded_prices.add(price)
         if type(t_ms) is not int or t_ms <= 0:
             return
-        self.touch_ticks.append(
-            TouchTick(price=price, t_ms=t_ms, seq=seq if type(seq) is int else None)
-        )
-        self._record_touch_price(t_ms=t_ms, price=price)
+        touch = TouchTick(price=price, t_ms=t_ms, seq=seq if type(seq) is int else None)
+        self._record_touch(touch)
         touched_prices = [
             wall_price
-            for wall_price in self.open_by_price
-            if self._is_touched_by_price(price, wall_price)
+            for wall_price, peak in self.open_by_price.items()
+            if self._trade_touches_peak(touch, peak)
         ]
         for wall_price in touched_prices:
-            self.closed_traded.append(self.open_by_price.pop(wall_price))
+            self._record_closed_peak(self.open_by_price.pop(wall_price))
         self._refresh_rank_ones()
 
     def _ingest_orderbook_levels(
@@ -84,26 +83,21 @@ class _TodaySidePeakState:
             if price is None or qty is None:
                 continue
 
-            key = (price, t_ms, None, self.side_name, "orderbook")
-            peak = _larger_peak(
-                self.observed_peak_events.get(key),
+            peak = Peak(price=price, qty=qty, t_ms=t_ms, seq=None)
+            if self._is_touched_by_touch_history(
+                t_ms=t_ms,
+                wall_price=price,
+                wall_seq=None,
+            ):
+                self._record_closed_peak(peak)
+                continue
+            self.open_by_price[price] = _larger_peak(
+                self.open_by_price.get(price),
                 price=price,
                 qty=qty,
                 t_ms=t_ms,
                 seq=None,
             )
-            self.observed_peak_events[key] = peak
-            self.all_best_by_price_time[(price, t_ms)] = peak
-            if self._is_touched_by_touch_history(t_ms=t_ms, wall_price=price):
-                self.closed_traded.append(peak)
-            else:
-                self.open_by_price[price] = _larger_peak(
-                    self.open_by_price.get(price),
-                    price=price,
-                    qty=qty,
-                    t_ms=t_ms,
-                    seq=None,
-                )
 
         self._refresh_rank_ones()
 
@@ -143,22 +137,66 @@ class _TodaySidePeakState:
         self.all_peak = all_ranked[0] if all_ranked else None
         self.traded_peak = traded_ranked[0] if traded_ranked else None
         self.untraded_peak = untraded_ranked[0] if untraded_ranked else None
+        bounded_all = all_ranked[:_EMIT_LIMIT]
+        self.observed_peak_events = {
+            _peak_event_key(self.side_name, peak): peak for peak in bounded_all
+        }
+        self.all_best_by_price_time = {
+            (peak.price, peak.t_ms): peak for peak in bounded_all
+        }
 
-    def _record_touch_price(self, *, t_ms: int, price: int) -> None:
-        current = self.touch_price_extreme_by_t_ms.get(t_ms)
-        if current is None:
-            self.touch_price_extreme_by_t_ms[t_ms] = price
+    def _record_touch(self, touch: TouchTick) -> None:
+        if touch.t_ms != self.latest_touch_t_ms:
+            self.latest_touch_t_ms = touch.t_ms
+            self.latest_touch_price_extreme = touch.price
+            self.latest_seq_touch = touch if touch.seq is not None else None
             return
-        if self.side_name == "ask":
-            self.touch_price_extreme_by_t_ms[t_ms] = max(current, price)
+        current = self.latest_touch_price_extreme
+        if current is None:
+            self.latest_touch_price_extreme = touch.price
+        elif self.side_name == "ask":
+            self.latest_touch_price_extreme = max(current, touch.price)
         else:
-            self.touch_price_extreme_by_t_ms[t_ms] = min(current, price)
+            self.latest_touch_price_extreme = min(current, touch.price)
+        if touch.seq is None:
+            return
+        if self.latest_seq_touch is None or _event_order_key(
+            touch.t_ms,
+            touch.seq,
+        ) >= _event_order_key(
+            self.latest_seq_touch.t_ms,
+            self.latest_seq_touch.seq,
+        ):
+            self.latest_seq_touch = touch
 
-    def _is_touched_by_touch_history(self, *, t_ms: int, wall_price: int) -> bool:
-        touch_price = self.touch_price_extreme_by_t_ms.get(t_ms)
-        if touch_price is None:
+    def _record_closed_peak(self, peak: Peak) -> None:
+        self.closed_traded = _top_ranked_peaks([*self.closed_traded, peak])
+
+    def _trade_touches_peak(self, touch: TouchTick, peak: Peak) -> bool:
+        return self._is_touched_by_price(touch.price, peak.price) and _touch_is_after_wall(
+            touch,
+            peak,
+        )
+
+    def _is_touched_by_touch_history(
+        self,
+        *,
+        t_ms: int,
+        wall_price: int,
+        wall_seq: int | None,
+    ) -> bool:
+        if t_ms != self.latest_touch_t_ms:
             return False
-        return self._is_touched_by_price(touch_price, wall_price)
+        if wall_seq is not None:
+            wall = Peak(price=wall_price, qty=0, t_ms=t_ms, seq=wall_seq)
+            return self.latest_seq_touch is not None and self._trade_touches_peak(
+                self.latest_seq_touch,
+                wall,
+            )
+        return self.latest_touch_price_extreme is not None and self._is_touched_by_price(
+            self.latest_touch_price_extreme,
+            wall_price,
+        )
 
 
 @dataclass
@@ -219,6 +257,20 @@ def _ranked_peaks(peaks: Iterable[Peak]) -> list[Peak]:
 
 def _peak_payload(peak: Peak) -> dict[str, int]:
     return {"price": peak.price, "qty": peak.qty, "t_ms": peak.t_ms}
+
+
+def _peak_event_key(side_name: str, peak: Peak) -> PeakEventKey:
+    return (peak.price, peak.t_ms, peak.seq, side_name, "candidate")
+
+
+def _event_order_key(t_ms: int, seq: int | None) -> tuple[int, int]:
+    return (t_ms, _seq_sort_key(seq))
+
+
+def _touch_is_after_wall(touch: TouchTick, peak: Peak) -> bool:
+    if touch.seq is None or peak.seq is None:
+        return touch.t_ms >= peak.t_ms
+    return _event_order_key(touch.t_ms, touch.seq) >= _event_order_key(peak.t_ms, peak.seq)
 
 
 def _seq_sort_key(seq: int | None) -> int:

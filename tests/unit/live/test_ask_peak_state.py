@@ -127,6 +127,7 @@ def test_bid_same_price_later_bigger_wall_stays_untraded_without_later_touch():
 def test_today_state_collapses_same_price_until_touch_then_reopens() -> None:
     state = TodayAskPeakState()
     state.ingest_orderbook(t_ms=1_000, asks=[{"price": 10_000, "qty": 100}])
+    state.ingest_orderbook(t_ms=1_050, asks=[{"price": 10_000, "qty": 150}])
     state.ingest_orderbook(t_ms=1_100, asks=[{"price": 10_000, "qty": 200}])
     state.ingest_trade(price=10_000, side=1, t_ms=1_200)
     state.ingest_orderbook(t_ms=1_300, asks=[{"price": 10_000, "qty": 300}])
@@ -134,6 +135,10 @@ def test_today_state_collapses_same_price_until_touch_then_reopens() -> None:
     snap = state.snapshot()
 
     assert snap is not None
+    assert len(state.open_by_price) == 1
+    assert len(state.closed_traded) == 1
+    assert len(state.observed_peak_events) <= 2
+    assert len(state.all_best_by_price_time) <= 2
     assert snap["traded_peaks"] == [{"price": 10_000, "qty": 200, "t_ms": 1_100}]
     assert snap["untraded_peaks"] == [{"price": 10_000, "qty": 300, "t_ms": 1_300}]
 
@@ -266,6 +271,29 @@ def test_bid_equal_t_ms_and_seq_touches_wall():
     }
 
 
+def test_same_t_ms_earlier_seq_trade_does_not_touch_later_seq_wall_in_internal_fallback():
+    state = TodayAskPeakState()
+    state.ingest_trade(price=10_100, side=1, t_ms=1_000, seq=6)
+
+    # Public orderbook ingest does not carry seq, so exercise the internal same-ms fallback directly.
+    assert (
+        state._is_touched_by_touch_history(
+            t_ms=1_000,
+            wall_price=10_100,
+            wall_seq=7,
+        )
+        is False
+    )
+    assert (
+        state._is_touched_by_touch_history(
+            t_ms=1_000,
+            wall_price=10_100,
+            wall_seq=6,
+        )
+        is True
+    )
+
+
 def test_side_zero_trade_is_ignored_for_touch_classification():
     state = TodayAskPeakState()
     state.ingest_orderbook(
@@ -349,3 +377,31 @@ def test_snapshot_ranks_and_caps_all_families_to_top_three():
         {"price": 10_100, "qty": 700, "t_ms": 1_000},
         {"price": 10_150, "qty": 600, "t_ms": 1_000},
     ]
+
+
+def test_closed_and_all_state_stay_bounded_after_many_lifecycle_closes():
+    state = TodayAskPeakState()
+
+    for idx in range(10):
+        price = 10_000 + (idx * 10)
+        qty = 100 + idx
+        wall_t_ms = 1_000 + idx
+        trade_t_ms = 2_000 + idx
+        state.ingest_orderbook(
+            t_ms=wall_t_ms,
+            asks=[{"price": price, "qty": qty}],
+        )
+        state.ingest_trade(price=price, side=1, t_ms=trade_t_ms)
+
+    snap = state.snapshot()
+
+    assert snap is not None
+    assert len(state.closed_traded) == 3
+    assert len(state.observed_peak_events) == 3
+    assert len(state.all_best_by_price_time) == 3
+    assert snap["traded_peaks"] == [
+        {"price": 10_090, "qty": 109, "t_ms": 1_009},
+        {"price": 10_080, "qty": 108, "t_ms": 1_008},
+        {"price": 10_070, "qty": 107, "t_ms": 1_007},
+    ]
+    assert snap["all_peaks"] == snap["traded_peaks"]
