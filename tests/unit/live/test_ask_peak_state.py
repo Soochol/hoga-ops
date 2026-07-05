@@ -334,6 +334,20 @@ def test_ask_same_t_ms_fallback_keeps_crossing_earlier_seq_when_latest_seq_does_
     )
 
 
+def test_same_t_ms_fallback_treats_unknown_touch_seq_as_same_ms_eligible():
+    state = TodayAskPeakState()
+    state.ingest_trade(price=10_100, side=1, t_ms=1_000, seq=None)
+
+    assert (
+        state._is_touched_by_touch_history(
+            t_ms=1_000,
+            wall_price=10_100,
+            wall_seq=7,
+        )
+        is True
+    )
+
+
 def test_bid_same_t_ms_fallback_keeps_crossing_earlier_seq_when_latest_seq_does_not_cross():
     state = TodayBidPeakState()
     state.ingest_trade(price=99, side=1, t_ms=1_000, seq=5)

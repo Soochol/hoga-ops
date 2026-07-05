@@ -150,7 +150,7 @@ class _TodaySidePeakState:
         if touch.t_ms != self.latest_touch_t_ms:
             self.latest_touch_t_ms = touch.t_ms
             self.latest_touch_price_extreme = touch.price
-            self.latest_seq_touches = [touch] if touch.seq is not None else []
+            self.latest_seq_touches = [touch]
             return
         current = self.latest_touch_price_extreme
         if current is None:
@@ -159,8 +159,6 @@ class _TodaySidePeakState:
             self.latest_touch_price_extreme = max(current, touch.price)
         else:
             self.latest_touch_price_extreme = min(current, touch.price)
-        if touch.seq is None:
-            return
         insort(
             self.latest_seq_touches,
             touch,
@@ -188,9 +186,7 @@ class _TodaySidePeakState:
         if wall_seq is not None:
             wall = Peak(price=wall_price, qty=0, t_ms=t_ms, seq=wall_seq)
             return any(
-                tick.seq is not None
-                and tick.seq >= wall_seq
-                and self._trade_touches_peak(tick, wall)
+                self._trade_touches_peak(tick, wall)
                 for tick in self.latest_seq_touches
             )
         return self.latest_touch_price_extreme is not None and self._is_touched_by_price(
