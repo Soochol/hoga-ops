@@ -184,6 +184,17 @@ describe('styleVisibleMaxAskPeakSegments', () => {
     expect(out).toEqual(input);
   });
 
+  it('rank limit 0이면 visible max 스타일을 적용하지 않는다', () => {
+    const input = [baseSeg({ qty: 500, color: '#1D4ED8', lineWidth: 2 })];
+    const out = styleVisibleMaxAskPeakSegments(
+      input,
+      { from: t(10), to: t(20) },
+      { color: '#EAB308', lineWidth: 3 },
+      0,
+    );
+    expect(out).toEqual(input);
+  });
+
   it('동률이면 먼저 나온 visible 세그먼트를 강조한다', () => {
     const out = styleVisibleMaxAskPeakSegments(
       [

@@ -12,6 +12,8 @@ import { buildAskPeakOverlaySegments, styleVisibleMaxAskPeakSegments } from './L
 import { buildBidPeakOverlaySegments } from './LiveBidPeakSegments';
 import type { VisibleTimeCutoff } from './peakWallVisibleCutoff';
 
+type VisibleMaxRankLimit = 0 | 1 | 2 | 3;
+
 type Props = {
   paneSeries: PaneSeriesMap;
   axis: VirtualAxis;
@@ -30,8 +32,12 @@ function toPeakRankLimit(value: number): 1 | 2 | 3 {
   return value === 2 || value === 3 ? value : 1;
 }
 
+function toVisibleMaxRankLimit(value: number): VisibleMaxRankLimit {
+  return value === 0 || value === 2 || value === 3 ? value : 1;
+}
+
 function maxPeakRankLimit(a: number, b: number): 1 | 2 | 3 {
-  return Math.max(toPeakRankLimit(a), toPeakRankLimit(b)) as 1 | 2 | 3;
+  return Math.max(toPeakRankLimit(a), toVisibleMaxRankLimit(b)) as 1 | 2 | 3;
 }
 
 function optionalRankLimit(
@@ -123,7 +129,7 @@ function LivePeakWallDockedLabels({
       askRaw,
       visibleRange,
       { color: askVisibleMaxColor, lineWidth: askVisibleMaxLineWidth },
-      askVisibleMaxRankLimit as 1 | 2 | 3,
+      toVisibleMaxRankLimit(askVisibleMaxRankLimit),
     );
     const bidSegments = bidPeakEnabled && bidLabelEnabled
       ? buildBidPeakOverlaySegments({

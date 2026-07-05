@@ -153,8 +153,9 @@ describe('IndicatorPanel', () => {
     expect(groups.some((group) => group.getAttribute('aria-label') === '미체결된 벽 표시 개수')).toBe(true);
     expect(groups.some((group) => group.getAttribute('aria-label') === '보이는 영역 최대벽 표시 개수')).toBe(true);
 
-    for (const name of ['1', '2', '3']) {
-      expect(screen.getAllByRole('button', { name }).length).toBeGreaterThanOrEqual(3);
+    const visibleMaxGroup = within(screen.getByRole('group', { name: '보이는 영역 최대벽 표시 개수' }));
+    for (const name of ['0', '1', '2', '3']) {
+      expect(visibleMaxGroup.getByRole('button', { name })).toBeTruthy();
     }
 
     useChartPrefsStore.setState({
@@ -162,10 +163,12 @@ describe('IndicatorPanel', () => {
       askPeakUntradedRankLimit: 1,
       askPeakVisibleMaxRankLimit: 1,
     });
-    fireEvent.click(within(screen.getByRole('group', { name: '보이는 영역 최대벽 표시 개수' })).getByRole('button', { name: '3' }));
+    fireEvent.click(visibleMaxGroup.getByRole('button', { name: '3' }));
     expect(useChartPrefsStore.getState().askPeakVisibleMaxRankLimit).toBe(3);
     expect(useChartPrefsStore.getState().askPeakAllPriceRankLimit).toBe(2);
     expect(useChartPrefsStore.getState().askPeakUntradedRankLimit).toBe(1);
+    fireEvent.click(visibleMaxGroup.getByRole('button', { name: '0' }));
+    expect(useChartPrefsStore.getState().askPeakVisibleMaxRankLimit).toBe(0);
   });
 
   it('호가비 라벨 클릭 → 우측에 RatioConfig(극단값 필터 토글) 노출', () => {
@@ -287,8 +290,9 @@ describe('IndicatorPanel', () => {
     expect(groups.some((group) => group.getAttribute('aria-label') === '미체결된 벽 표시 개수')).toBe(true);
     expect(groups.some((group) => group.getAttribute('aria-label') === '보이는 영역 최대벽 표시 개수')).toBe(true);
 
-    for (const name of ['1', '2', '3']) {
-      expect(screen.getAllByRole('button', { name }).length).toBeGreaterThanOrEqual(3);
+    const visibleMaxGroup = within(screen.getByRole('group', { name: '보이는 영역 최대벽 표시 개수' }));
+    for (const name of ['0', '1', '2', '3']) {
+      expect(visibleMaxGroup.getByRole('button', { name })).toBeTruthy();
     }
 
     useChartPrefsStore.setState({
@@ -296,10 +300,12 @@ describe('IndicatorPanel', () => {
       bidPeakUntradedRankLimit: 1,
       bidPeakVisibleMaxRankLimit: 1,
     });
-    fireEvent.click(within(screen.getByRole('group', { name: '보이는 영역 최대벽 표시 개수' })).getByRole('button', { name: '3' }));
+    fireEvent.click(visibleMaxGroup.getByRole('button', { name: '3' }));
     expect(useChartPrefsStore.getState().bidPeakVisibleMaxRankLimit).toBe(3);
     expect(useChartPrefsStore.getState().bidPeakAllPriceRankLimit).toBe(2);
     expect(useChartPrefsStore.getState().bidPeakUntradedRankLimit).toBe(1);
+    fireEvent.click(visibleMaxGroup.getByRole('button', { name: '0' }));
+    expect(useChartPrefsStore.getState().bidPeakVisibleMaxRankLimit).toBe(0);
   });
 
   it('거래량 카테고리 이동 후 체결강도 누적 토글이 노출된다', () => {

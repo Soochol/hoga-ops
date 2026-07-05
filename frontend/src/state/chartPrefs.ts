@@ -288,7 +288,7 @@ export const CHART_NUMERIC_PREFS = [
     label: '보이는 영역 최대벽 표시 개수',
     description: '현재 보이는 캔들 영역 안에서 최대벽을 수량순으로 몇 등까지 표시할지 선택합니다.',
     default: 1,
-    min: 1,
+    min: 0,
     max: 3,
   },
   {
@@ -314,7 +314,7 @@ export const CHART_NUMERIC_PREFS = [
     label: '보이는 영역 최대벽 표시 개수',
     description: '현재 보이는 캔들 영역 안에서 최대벽을 수량순으로 몇 등까지 표시할지 선택합니다.',
     default: 1,
-    min: 1,
+    min: 0,
     max: 3,
   },
 ] as const satisfies readonly NumericPrefDef[];

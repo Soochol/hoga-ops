@@ -90,13 +90,18 @@ type AskPeakLineStyle = {
 };
 
 type VisibleTimeRange = IRange<Time> | null;
+type VisibleMaxRankLimit = 0 | 1 | 2 | 3;
 
 function toPeakRankLimit(value: number): 1 | 2 | 3 {
   return value === 2 || value === 3 ? value : 1;
 }
 
+function toVisibleMaxRankLimit(value: number): VisibleMaxRankLimit {
+  return value === 0 || value === 2 || value === 3 ? value : 1;
+}
+
 function maxPeakRankLimit(a: number, b: number): 1 | 2 | 3 {
-  return Math.max(toPeakRankLimit(a), toPeakRankLimit(b)) as 1 | 2 | 3;
+  return Math.max(toPeakRankLimit(a), toVisibleMaxRankLimit(b)) as 1 | 2 | 3;
 }
 
 function segmentOverlapsVisibleRange(segment: AskPeakSegment, visibleRange: VisibleTimeRange): boolean {
@@ -114,9 +119,9 @@ export function styleVisibleMaxAskPeakSegments(
   segments: readonly AskPeakSegment[],
   visibleRange: VisibleTimeRange,
   style: AskPeakLineStyle,
-  rankLimit: 1 | 2 | 3 = 1,
+  rankLimit: VisibleMaxRankLimit = 1,
 ): AskPeakSegment[] {
-  if (!visibleRange || segments.length === 0) return [...segments];
+  if (!visibleRange || segments.length === 0 || rankLimit === 0) return [...segments];
   const highlighted = new Set(segments
     .map((segment, index) => ({ segment, index }))
     .filter(({ segment }) => segmentOverlapsVisibleRange(segment, visibleRange))
@@ -135,7 +140,7 @@ export function prepareAskPeakSegmentsForRender(
   segments: readonly AskPeakSegment[],
   visibleRange: IRange<Time> | null,
   visibleMaxStyle: { color: string; lineWidth: number },
-  visibleMaxRankLimit: 1 | 2 | 3,
+  visibleMaxRankLimit: VisibleMaxRankLimit,
 ): AskPeakSegment[] {
   return inlinePeakWallSegmentsForDocking(styleVisibleMaxAskPeakSegments(
     segments,
@@ -487,7 +492,7 @@ function LiveAskPeakSegments({ paneSeries, axis, dayAskPeaks, todayAllPriceAskPe
       rawSegments,
       visibleRange,
       { color: visibleMaxColor, lineWidth: visibleMaxLineWidth },
-      visibleMaxRankLimit as 1 | 2 | 3,
+      toVisibleMaxRankLimit(visibleMaxRankLimit),
     ));
   }, [
     dayAskPeaks,
