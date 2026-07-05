@@ -9,6 +9,15 @@ type ContinuousTradeLike = {
   side: number;
 };
 
+type VolumeDistributionBinIndex = {
+  times: number[];
+  prefixQtys: number[];
+};
+
+export type ContinuousTradeVolumeDistributionIndex = {
+  profileAt(cutoffMs?: number | null): DayVolumeDistribution;
+};
+
 function profileForDate(
   profiles: readonly DayVolumeDistribution[],
   date: string | null,
@@ -157,12 +166,14 @@ export function computeContinuousTradeVolumeDistribution(args: {
   const { date, candles, trades, rangeCount, segment, cutoffMs } = args;
   if (!Number.isInteger(rangeCount) || rangeCount <= 0) return null;
 
-  const lows = candles.map((candle) => candle.low).filter(Number.isFinite);
-  const highs = candles.map((candle) => candle.high).filter(Number.isFinite);
-  if (lows.length === 0 || highs.length === 0) return null;
+  let priceMin = Infinity;
+  let priceMax = -Infinity;
+  for (const candle of candles) {
+    if (Number.isFinite(candle.low)) priceMin = Math.min(priceMin, candle.low);
+    if (Number.isFinite(candle.high)) priceMax = Math.max(priceMax, candle.high);
+  }
+  if (!Number.isFinite(priceMin) || !Number.isFinite(priceMax)) return null;
 
-  const priceMin = Math.min(...lows);
-  const priceMax = Math.max(...highs);
   const rawBinWidth = (priceMax - priceMin) / rangeCount;
   const binWidth = rawBinWidth > 0 ? rawBinWidth : 1;
   const qtyByBin = Array.from({ length: rangeCount }, () => 0);
@@ -197,5 +208,105 @@ export function computeContinuousTradeVolumeDistribution(args: {
         : Math.floor(priceMin + (idx + 1) * binWidth),
       qty,
     })),
+  };
+}
+
+function upperBound(values: readonly number[], target: number): number {
+  let low = 0;
+  let high = values.length;
+  while (low < high) {
+    const mid = low + Math.floor((high - low) / 2);
+    if (values[mid] <= target) {
+      low = mid + 1;
+    } else {
+      high = mid;
+    }
+  }
+  return low;
+}
+
+export function buildContinuousTradeVolumeDistributionIndex(args: {
+  date: string;
+  candles: readonly Candle[];
+  trades: readonly ContinuousTradeLike[];
+  rangeCount: number;
+  segment: RangeSegment;
+  continuousBeforeMs?: number | null;
+}): ContinuousTradeVolumeDistributionIndex | null {
+  const { date, candles, trades, rangeCount, segment } = args;
+  if (!Number.isInteger(rangeCount) || rangeCount <= 0) return null;
+
+  let priceMin = Infinity;
+  let priceMax = -Infinity;
+  for (const candle of candles) {
+    if (Number.isFinite(candle.low)) priceMin = Math.min(priceMin, candle.low);
+    if (Number.isFinite(candle.high)) priceMax = Math.max(priceMax, candle.high);
+  }
+  if (!Number.isFinite(priceMin) || !Number.isFinite(priceMax)) return null;
+
+  const rawBinWidth = (priceMax - priceMin) / rangeCount;
+  const binWidth = rawBinWidth > 0 ? rawBinWidth : 1;
+  const upperBoundMs = args.continuousBeforeMs ?? segment.session_close_ms;
+  const pointsByBin = Array.from({ length: rangeCount }, () => [] as { t_ms: number; qty: number }[]);
+  const includedTimes: number[] = [];
+
+  for (const trade of trades) {
+    if (trade.side !== 1 && trade.side !== -1) continue;
+    if (!Number.isFinite(trade.price) || trade.price <= 0) continue;
+    if (!Number.isFinite(trade.qty) || trade.qty <= 0) continue;
+    if (trade.t_ms < segment.session_open_ms || trade.t_ms >= upperBoundMs) continue;
+    if (trade.price < priceMin || trade.price > priceMax) continue;
+
+    const idx = Math.floor((trade.price - priceMin) / binWidth);
+    const binIdx = Math.max(0, Math.min(rangeCount - 1, idx));
+    pointsByBin[binIdx].push({ t_ms: trade.t_ms, qty: trade.qty });
+    includedTimes.push(trade.t_ms);
+  }
+
+  includedTimes.sort((a, b) => a - b);
+  const indexedBins: VolumeDistributionBinIndex[] = pointsByBin.map((points) => {
+    points.sort((a, b) => a.t_ms - b.t_ms);
+    const times: number[] = [];
+    const prefixQtys: number[] = [];
+    let totalQty = 0;
+    for (const point of points) {
+      totalQty += point.qty;
+      times.push(point.t_ms);
+      prefixQtys.push(totalQty);
+    }
+    return { times, prefixQtys };
+  });
+  const binRanges = Array.from({ length: rangeCount }, (_, idx) => ({
+    price_low: Math.floor(priceMin + idx * binWidth),
+    price_high: idx === rangeCount - 1
+      ? priceMax
+      : Math.floor(priceMin + (idx + 1) * binWidth),
+  }));
+
+  return {
+    profileAt(cutoffMs?: number | null): DayVolumeDistribution {
+      const lastTradeIndex = cutoffMs == null
+        ? includedTimes.length
+        : upperBound(includedTimes, cutoffMs);
+
+      return {
+        date,
+        range_count: rangeCount,
+        price_min: priceMin,
+        price_max: priceMax,
+        session_open_ms: segment.session_open_ms,
+        session_close_ms: segment.session_close_ms,
+        last_trade_ms: lastTradeIndex > 0 ? includedTimes[lastTradeIndex - 1] : null,
+        bins: indexedBins.map((bin, idx) => {
+          const qtyIndex = cutoffMs == null
+            ? bin.prefixQtys.length
+            : upperBound(bin.times, cutoffMs);
+          return {
+            ...binRanges[idx],
+            qty: qtyIndex > 0 ? bin.prefixQtys[qtyIndex - 1] : 0,
+          };
+        }),
+      };
+    },
   };
 }

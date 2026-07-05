@@ -359,6 +359,47 @@ describe('useVolumeDistributionCutoffProfile', () => {
     }));
   });
 
+  it('reuses the live fallback distribution index while hovering across cutoffs', () => {
+    mockedUseRange.mockReturnValue({
+      data: emptyBundle,
+      isLoading: false,
+      isFetching: false,
+    } as ReturnType<typeof useRange>);
+    const liveTrades = Array.from({ length: 60_000 }, (_, idx) => ({
+      t_ms: segment.session_open_ms + idx * 100,
+      price: 100 + (idx % 20),
+      qty: 1,
+      side: idx % 2 === 0 ? 1 : -1,
+    }));
+    let cursorMs = segment.session_open_ms;
+
+    const startedAt = performance.now();
+    const { result, rerender } = renderHook(() => useVolumeDistributionCutoffProfile({
+      enabled: true,
+      code: '005930',
+      timeframe: '1m',
+      date: '20260625',
+      cursorMs,
+      todayKst: '20260625',
+      rangeCount: 20,
+      finalProfile: profile({ bins: [] }),
+      priceRange: null,
+      candles,
+      segment,
+      liveTrades,
+    }));
+
+    for (let step = 1; step <= 120; step += 1) {
+      cursorMs = segment.session_open_ms + step * 20_000;
+      rerender();
+    }
+    const elapsedMs = performance.now() - startedAt;
+
+    expect(result.current?.last_trade_ms).toBe(cursorMs);
+    expect(result.current?.bins.reduce((sum, bin) => sum + bin.qty, 0)).toBe(24_001);
+    expect(elapsedMs).toBeLessThan(90);
+  });
+
   it('keeps final profile when fallback recompute has no valid live trades', () => {
     mockedUseRange.mockReturnValue({
       data: emptyBundle,

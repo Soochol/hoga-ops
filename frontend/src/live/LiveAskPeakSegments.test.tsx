@@ -208,6 +208,30 @@ describe('styleVisibleMaxAskPeakSegments', () => {
     expect(out[0]).toMatchObject({ color: '#EAB308', lineWidth: 3, price: 100 });
     expect(out[1]).toMatchObject({ color: '#1D4ED8', lineWidth: 2, price: 110 });
   });
+
+  it('keeps visible max styling responsive with many peak wall segments', () => {
+    const segments = Array.from({ length: 200_000 }, (_, index) => baseSeg({
+      time0: index as never,
+      time1: (index + 10) as never,
+      peakTime: index as never,
+      qty: index % 97,
+      price: 10_000 + index,
+    }));
+    const startedAt = performance.now();
+
+    const out = styleVisibleMaxAskPeakSegments(
+      segments,
+      { from: t(0), to: t(200_010) },
+      { color: '#EAB308', lineWidth: 3 },
+      3,
+    );
+    const elapsedMs = performance.now() - startedAt;
+    const highlighted = out.filter((segment) => segment.color === '#EAB308');
+
+    expect(highlighted).toHaveLength(3);
+    expect(highlighted.map((segment) => segment.qty)).toEqual([96, 96, 96]);
+    expect(elapsedMs).toBeLessThan(40);
+  });
 });
 
 describe('buildAskPeakOverlaySegments', () => {
