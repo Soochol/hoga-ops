@@ -64,9 +64,9 @@ describe('buildCandleTooltip', () => {
     expect(m.closePct).toBeNull();        // (105/0-1)*100 = Infinity 가 아니라 null
   });
 
-  it('분봉: dateLabel MM/DD + timeLabel HH:MM (KST)', () => {
+  it('분봉: dateLabel YYYY/MM/DD + timeLabel HH:MM (KST)', () => {
     const m = buildCandleTooltip(bars, 1, '1m')!;
-    expect(m.dateLabel).toBe('05/27');           // baseMs+1m 의 KST 날짜
+    expect(m.dateLabel).toBe('2026/05/27');      // baseMs+1m 의 KST 날짜
     expect(m.timeLabel).toBe('09:01');
   });
 
