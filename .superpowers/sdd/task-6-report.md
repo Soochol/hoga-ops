@@ -63,3 +63,31 @@ Results:
 ## Concerns
 
 - None from this task’s scope after verification.
+
+---
+
+## Review Fix: Active Study Timeframe for Indicator Panel
+
+### Status
+
+Completed.
+
+### Fix applied
+
+- Added a single `indicatorPanelTimeframe` source in `StudyPage.tsx`.
+- Reused that value across every `IndicatorPanel` render path, including empty, loading, error, and ready states.
+- Stopped falling back to `selectedSave?.timeframe` for the panel profile selector.
+
+### Regression test
+
+- Added a loading-path test in `StudyPage.test.tsx` that opens `IndicatorPanel` while the reference bundle is still loading and verifies the panel receives the active study tab timeframe.
+
+### Verification
+
+- `cd frontend && npm test -- --run src/studyViews/StudyPage.test.tsx src/live/indicators/IndicatorPanel.test.tsx src/live/LivePage.test.tsx`
+- `cd frontend && npm run build`
+
+### Results
+
+- Focused tests passed: `3` files, `102` tests.
+- Frontend build passed with `tsc -b && vite build`.

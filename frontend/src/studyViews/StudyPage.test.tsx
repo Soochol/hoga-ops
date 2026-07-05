@@ -445,6 +445,34 @@ describe('StudyPage', () => {
     expect(screen.getByRole('dialog', { name: '보조지표' })).toBeTruthy();
   });
 
+  it('passes the active study timeframe into IndicatorPanel while the reference bundle is loading', () => {
+    useStudyTabsStore.setState({
+      tabs: [{
+        id: 'tab-ref',
+        viewId: 'view-ref',
+        code: '005930',
+        label: '삼성전자 · 돌파 복기 · D',
+        name: '돌파 복기',
+        timeframe: 'D',
+      }],
+      activeTabId: 'tab-ref',
+    });
+    useStudyReferenceBundleMock.mockReturnValue({
+      bundle: null,
+      chartBundle: null,
+      isLoading: true,
+      error: null,
+      pastDataWarnings: [],
+    });
+
+    renderPage('/study?view=view-ref');
+
+    fireEvent.click(screen.getByTestId('live-indicators-button'));
+
+    expect(indicatorPanelMockProps.at(-1)?.timeframe).toBe('D');
+    expect(screen.getByRole('dialog', { name: '보조지표' })).toBeTruthy();
+  });
+
   it('captures the active study tab viewport before switching tabs and restores it on return', () => {
     useStudyTabsStore.setState({
       tabs: [

@@ -179,6 +179,9 @@ export function StudyPage() {
   const isLoadingActiveView = activeViewModel.status === 'loading';
   const isErrorActiveView = activeViewModel.status === 'error';
   const isStudyPageLoading = savesQuery.isLoading || isLoadingActiveView;
+  const indicatorPanelTimeframe = activeViewModel.status === 'ready'
+    ? activeViewModel.save.timeframe
+    : activeTab?.timeframe ?? selectedTimeframe ?? '1m';
   const captureViewportRef = useRef<() => TabViewport | null>(() => null);
   const draggingEntry = useEntryDragStore((s) => s.draggingCode != null);
   const overStudy = useEntryDragStore((s) => s.overStudy);
@@ -368,7 +371,7 @@ export function StudyPage() {
         {indicatorPanelOpen && (
           <IndicatorPanel
             onClose={() => setIndicatorPanelOpen(false)}
-            timeframe="1m"
+            timeframe={indicatorPanelTimeframe}
           />
         )}
         {settingsOpen && (
@@ -394,7 +397,7 @@ export function StudyPage() {
         {indicatorPanelOpen && (
           <IndicatorPanel
             onClose={() => setIndicatorPanelOpen(false)}
-            timeframe="1m"
+            timeframe={indicatorPanelTimeframe}
           />
         )}
         {settingsOpen && (
@@ -421,7 +424,7 @@ export function StudyPage() {
         {indicatorPanelOpen && (
           <IndicatorPanel
             onClose={() => setIndicatorPanelOpen(false)}
-            timeframe="1m"
+            timeframe={indicatorPanelTimeframe}
           />
         )}
         {settingsOpen && (
@@ -571,7 +574,7 @@ export function StudyPage() {
           {indicatorPanelOpen && (
             <IndicatorPanel
               onClose={() => setIndicatorPanelOpen(false)}
-              timeframe={activeViewModel.status === 'ready' ? activeViewModel.save.timeframe : selectedSave?.timeframe ?? '1m'}
+              timeframe={indicatorPanelTimeframe}
             />
           )}
           {settingsOpen && (
