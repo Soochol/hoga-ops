@@ -276,6 +276,24 @@ describe('IndicatorPanel', () => {
     expect(screen.getByRole('checkbox', { name: '거래량' })).toHaveAttribute('aria-checked', 'false');
   });
 
+  it('syncs the selected pane profile when the chart timeframe prop changes', () => {
+    useLivePageStore.setState({
+      volumeEnabled: true,
+      panePrefsByTimeframe: {
+        D: { volumeEnabled: false },
+      },
+    });
+
+    const view = renderPanel({ timeframe: '1m' });
+    expect(screen.getByRole('button', { name: '분봉' })).toHaveAttribute('aria-pressed', 'true');
+    expect(screen.getByRole('checkbox', { name: '거래량' })).toHaveAttribute('aria-checked', 'true');
+
+    view.rerender(<IndicatorPanel onClose={() => {}} timeframe="D" />);
+
+    expect(screen.getByRole('button', { name: '일봉' })).toHaveAttribute('aria-pressed', 'true');
+    expect(screen.getByRole('checkbox', { name: '거래량' })).toHaveAttribute('aria-checked', 'false');
+  });
+
   it('edits only the selected pane profile for pane categories', async () => {
     useLivePageStore.setState({
       volumeEnabled: true,

@@ -135,6 +135,10 @@ export default function IndicatorPanel({ onClose, capabilities = STOCK_CAPABILIT
   );
 
   useEffect(() => {
+    setSelectedProfile(profileKeyForTimeframe(timeframe));
+  }, [timeframe]);
+
+  useEffect(() => {
     const onKey = (event: KeyboardEvent) => {
       if (event.key === 'Escape') onClose();
     };
