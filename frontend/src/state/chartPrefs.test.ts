@@ -250,6 +250,73 @@ describe('ask peak all-price toggle', () => {
     expect(mergePrefs({ bidPeakVisibleMaxRankLimit: 0 }).bidPeakVisibleMaxRankLimit)
       .toBe(DEFAULT_PREFS.bidPeakVisibleMaxRankLimit);
   });
+
+  it('post-touch and untraded rank limits default to 1', () => {
+    expect(DEFAULT_PREFS.askPeakAllPriceRankLimit).toBe(1);
+    expect(DEFAULT_PREFS.bidPeakAllPriceRankLimit).toBe(1);
+    expect(DEFAULT_PREFS.askPeakUntradedRankLimit).toBe(1);
+    expect(DEFAULT_PREFS.bidPeakUntradedRankLimit).toBe(1);
+  });
+
+  it('persists valid ask/bid untraded rank limits 1..3', () => {
+    expect(mergePrefs({ askPeakUntradedRankLimit: 1 }).askPeakUntradedRankLimit).toBe(1);
+    expect(mergePrefs({ askPeakUntradedRankLimit: 2 }).askPeakUntradedRankLimit).toBe(2);
+    expect(mergePrefs({ askPeakUntradedRankLimit: 3 }).askPeakUntradedRankLimit).toBe(3);
+    expect(mergePrefs({ bidPeakUntradedRankLimit: 1 }).bidPeakUntradedRankLimit).toBe(1);
+    expect(mergePrefs({ bidPeakUntradedRankLimit: 2 }).bidPeakUntradedRankLimit).toBe(2);
+    expect(mergePrefs({ bidPeakUntradedRankLimit: 3 }).bidPeakUntradedRankLimit).toBe(3);
+  });
+
+  it('falls back to defaults for invalid untraded rank limit values', () => {
+    expect(mergePrefs({ askPeakUntradedRankLimit: 0 }).askPeakUntradedRankLimit)
+      .toBe(DEFAULT_PREFS.askPeakUntradedRankLimit);
+    expect(mergePrefs({ askPeakUntradedRankLimit: 4 }).askPeakUntradedRankLimit)
+      .toBe(DEFAULT_PREFS.askPeakUntradedRankLimit);
+    expect(mergePrefs({ askPeakUntradedRankLimit: '2' as never }).askPeakUntradedRankLimit)
+      .toBe(DEFAULT_PREFS.askPeakUntradedRankLimit);
+    expect(mergePrefs({ bidPeakUntradedRankLimit: 0 }).bidPeakUntradedRankLimit)
+      .toBe(DEFAULT_PREFS.bidPeakUntradedRankLimit);
+    expect(mergePrefs({ bidPeakUntradedRankLimit: 4 }).bidPeakUntradedRankLimit)
+      .toBe(DEFAULT_PREFS.bidPeakUntradedRankLimit);
+    expect(mergePrefs({ bidPeakUntradedRankLimit: '2' as never }).bidPeakUntradedRankLimit)
+      .toBe(DEFAULT_PREFS.bidPeakUntradedRankLimit);
+  });
+
+  it('registers ask/bid untraded rank prefs in the indicator modal with 1..3 bounds', () => {
+    const ask = CHART_NUMERIC_PREFS.find((p) => p.key === 'askPeakUntradedRankLimit');
+    const bid = CHART_NUMERIC_PREFS.find((p) => p.key === 'bidPeakUntradedRankLimit');
+
+    expect(ask).toMatchObject({
+      key: 'askPeakUntradedRankLimit',
+      label: '미체결된 벽 표시 개수',
+      default: 1,
+      min: 1,
+      max: 3,
+      category: 'indicator-modal',
+    });
+    expect(bid).toMatchObject({
+      key: 'bidPeakUntradedRankLimit',
+      label: '미체결된 벽 표시 개수',
+      default: 1,
+      min: 1,
+      max: 3,
+      category: 'indicator-modal',
+    });
+  });
+
+  it('relabels post-touch rank prefs and updates untraded toggle descriptions', () => {
+    const askRank = CHART_NUMERIC_PREFS.find((p) => p.key === 'askPeakAllPriceRankLimit');
+    const bidRank = CHART_NUMERIC_PREFS.find((p) => p.key === 'bidPeakAllPriceRankLimit');
+    const askToggle = CHART_TOGGLES.find((t) => t.key === 'askPeakShowAllPrices');
+    const bidToggle = CHART_TOGGLES.find((t) => t.key === 'bidPeakShowAllPrices');
+
+    expect(askRank?.label).toBe('체결된 벽 표시 개수');
+    expect(bidRank?.label).toBe('체결된 벽 표시 개수');
+    expect(askRank).toMatchObject({ category: 'indicator-modal' });
+    expect(bidRank).toMatchObject({ category: 'indicator-modal' });
+    expect(askToggle?.description).toContain('미체결된 벽');
+    expect(bidToggle?.description).toContain('미체결된 벽');
+  });
 });
 
 describe('peak wall visible-time cutoff toggles', () => {

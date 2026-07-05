@@ -122,7 +122,7 @@ export const CHART_TOGGLES = [
   {
     key: 'askPeakShowAllPrices',
     label: '미체결 최대 매도벽 표시',
-    description: '당일 고가보다 위에 있는 미체결 추정 매도벽 수량이 체결가격 기준 최대벽 수량보다 클 때만 두 라인을 함께 표시합니다.',
+    description: '미체결된 벽 수량이 체결된 벽 수량보다 클 때만 두 라인을 함께 표시합니다.',
     default: true,
     category: 'indicator-modal',
   },
@@ -151,7 +151,7 @@ export const CHART_TOGGLES = [
   {
     key: 'bidPeakShowAllPrices',
     label: '미체결 최대 매수벽 표시',
-    description: '당일 저가보다 아래에 있는 미체결 추정 매수벽 수량이 체결가격 기준 최대벽 수량보다 클 때만 두 라인을 함께 표시합니다.',
+    description: '미체결된 벽 수량이 체결된 벽 수량보다 클 때만 두 라인을 함께 표시합니다.',
     default: true,
     category: 'indicator-modal',
   },
@@ -217,6 +217,8 @@ export type NumericPrefDef = {
   readonly max: number;
   /** Optional companion toggle that gates this pref's UI affordance. */
   readonly enabledBy?: ChartToggleKey;
+  /** UI surface this pref belongs to. Unset → chart settings modal. */
+  readonly category?: ChartToggleCategory;
 };
 
 export const CHART_NUMERIC_PREFS = [
@@ -265,11 +267,21 @@ export const CHART_NUMERIC_PREFS = [
   },
   {
     key: 'askPeakAllPriceRankLimit',
-    label: '체결가격 기준 최대벽 표시 개수',
-    description: '체결가격 기준 최대벽 후보를 수량순으로 몇 등까지 차트에 표시할지 선택합니다.',
+    label: '체결된 벽 표시 개수',
+    description: '체결된 벽 후보를 수량순으로 몇 등까지 차트에 표시할지 선택합니다.',
     default: 1,
     min: 1,
     max: 3,
+    category: 'indicator-modal',
+  },
+  {
+    key: 'askPeakUntradedRankLimit',
+    label: '미체결된 벽 표시 개수',
+    description: '미체결된 벽 후보를 수량순으로 몇 등까지 차트에 표시할지 선택합니다.',
+    default: 1,
+    min: 1,
+    max: 3,
+    category: 'indicator-modal',
   },
   {
     key: 'askPeakVisibleMaxRankLimit',
@@ -281,11 +293,21 @@ export const CHART_NUMERIC_PREFS = [
   },
   {
     key: 'bidPeakAllPriceRankLimit',
-    label: '매수 체결가격 기준 최대벽 표시 개수',
-    description: '체결가격 기준 매수 최대벽 후보를 수량순으로 몇 등까지 차트에 표시할지 선택합니다.',
+    label: '체결된 벽 표시 개수',
+    description: '체결된 벽 후보를 수량순으로 몇 등까지 차트에 표시할지 선택합니다.',
     default: 1,
     min: 1,
     max: 3,
+    category: 'indicator-modal',
+  },
+  {
+    key: 'bidPeakUntradedRankLimit',
+    label: '미체결된 벽 표시 개수',
+    description: '미체결된 벽 후보를 수량순으로 몇 등까지 차트에 표시할지 선택합니다.',
+    default: 1,
+    min: 1,
+    max: 3,
+    category: 'indicator-modal',
   },
   {
     key: 'bidPeakVisibleMaxRankLimit',

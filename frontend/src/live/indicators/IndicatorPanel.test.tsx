@@ -135,6 +135,22 @@ describe('IndicatorPanel', () => {
     expect(screen.getByTestId('settings-toggle-askPeakLabelEnabled')).toBeTruthy();
   });
 
+  it('매도 최대벽 상세 pane에 체결된/미체결된 벽 표시 개수 controls를 렌더한다', () => {
+    render(<IndicatorPanel onClose={() => {}} />);
+    fireEvent.click(screen.getByRole('button', { name: '당일 매도 최대벽' }));
+
+    expect(screen.getByText('체결된 벽 표시 개수')).toBeTruthy();
+    expect(screen.getByText('미체결된 벽 표시 개수')).toBeTruthy();
+
+    const groups = screen.getAllByRole('group');
+    expect(groups.some((group) => group.getAttribute('aria-label') === '체결된 벽 표시 개수')).toBe(true);
+    expect(groups.some((group) => group.getAttribute('aria-label') === '미체결된 벽 표시 개수')).toBe(true);
+
+    for (const name of ['1', '2', '3']) {
+      expect(screen.getAllByRole('button', { name }).length).toBeGreaterThanOrEqual(2);
+    }
+  });
+
   it('호가비 라벨 클릭 → 우측에 RatioConfig(극단값 필터 토글) 노출', () => {
     render(<IndicatorPanel onClose={() => {}} />);
     fireEvent.click(screen.getByRole('button', { name: '호가비' }));
@@ -239,6 +255,22 @@ describe('IndicatorPanel', () => {
     fireEvent.click(screen.getByRole('button', { name: '당일 매수 최대벽' }));
     expect(screen.getByTestId('settings-toggle-bidPeakVisibleTimeCutoff')).toBeTruthy();
     expect(screen.getByTestId('settings-toggle-bidPeakLabelEnabled')).toBeTruthy();
+  });
+
+  it('매수 최대벽 상세 pane에 체결된/미체결된 벽 표시 개수 controls를 렌더한다', () => {
+    render(<IndicatorPanel onClose={() => {}} />);
+    fireEvent.click(screen.getByRole('button', { name: '당일 매수 최대벽' }));
+
+    expect(screen.getByText('체결된 벽 표시 개수')).toBeTruthy();
+    expect(screen.getByText('미체결된 벽 표시 개수')).toBeTruthy();
+
+    const groups = screen.getAllByRole('group');
+    expect(groups.some((group) => group.getAttribute('aria-label') === '체결된 벽 표시 개수')).toBe(true);
+    expect(groups.some((group) => group.getAttribute('aria-label') === '미체결된 벽 표시 개수')).toBe(true);
+
+    for (const name of ['1', '2', '3']) {
+      expect(screen.getAllByRole('button', { name }).length).toBeGreaterThanOrEqual(2);
+    }
   });
 
   it('거래량 카테고리 이동 후 체결강도 누적 토글이 노출된다', () => {

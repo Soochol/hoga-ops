@@ -4,15 +4,9 @@ import MAStylePicker from './MAStylePicker';
 import IndicatorPrefRows from '../settings/IndicatorPrefRows';
 
 const RANK_OPTIONS = [
-  { value: 1, label: '1등만' },
-  { value: 2, label: '2등까지' },
-  { value: 3, label: '3등까지' },
-] as const;
-
-const VISIBLE_RANK_OPTIONS = [
-  { value: 1, label: '1순위만' },
-  { value: 2, label: '2순위까지' },
-  { value: 3, label: '3순위까지' },
+  { value: 1, label: '1' },
+  { value: 2, label: '2' },
+  { value: 3, label: '3' },
 ] as const;
 
 export default function BidPeakConfig() {
@@ -22,8 +16,8 @@ export default function BidPeakConfig() {
   const allPriceLineWidth = useLivePageStore((s) => s.bidPeakAllPriceLineWidth);
   const setStyle = useLivePageStore((s) => s.setBidPeakStyle);
   const setAllPriceStyle = useLivePageStore((s) => s.setBidPeakAllPriceStyle);
-  const rankLimit = useChartPrefsStore((s) => s.bidPeakAllPriceRankLimit);
-  const visibleMaxRankLimit = useChartPrefsStore((s) => s.bidPeakVisibleMaxRankLimit);
+  const postTouchRankLimit = useChartPrefsStore((s) => s.bidPeakAllPriceRankLimit);
+  const untradedRankLimit = useChartPrefsStore((s) => s.bidPeakUntradedRankLimit);
   const setNumericPref = useChartPrefsStore((s) => s.setNumericPref);
   return (
     <div>
@@ -56,10 +50,10 @@ export default function BidPeakConfig() {
       />
       <div className="border-b border-border my-2" />
       <div>
-        <div className="text-sm text-fg mb-2">체결가격 기준 표시 범위</div>
-        <div className="inline-flex rounded-md border border-border overflow-hidden" role="group" aria-label="매수 체결가격 기준 표시 범위">
+        <div className="text-sm text-fg mb-2">체결된 벽 표시 개수</div>
+        <div className="inline-flex rounded-md border border-border overflow-hidden" role="group" aria-label="체결된 벽 표시 개수">
           {RANK_OPTIONS.map((option) => {
-            const selected = rankLimit === option.value;
+            const selected = postTouchRankLimit === option.value;
             return (
               <button
                 key={option.value}
@@ -78,16 +72,16 @@ export default function BidPeakConfig() {
         </div>
       </div>
       <div className="mt-3">
-        <div className="text-sm text-fg mb-2">보이는 영역 라벨 범위</div>
-        <div className="inline-flex rounded-md border border-border overflow-hidden" role="group" aria-label="매수 보이는 영역 라벨 범위">
-          {VISIBLE_RANK_OPTIONS.map((option) => {
-            const selected = visibleMaxRankLimit === option.value;
+        <div className="text-sm text-fg mb-2">미체결된 벽 표시 개수</div>
+        <div className="inline-flex rounded-md border border-border overflow-hidden" role="group" aria-label="미체결된 벽 표시 개수">
+          {RANK_OPTIONS.map((option) => {
+            const selected = untradedRankLimit === option.value;
             return (
               <button
                 key={option.value}
                 type="button"
                 aria-pressed={selected}
-                onClick={() => setNumericPref('bidPeakVisibleMaxRankLimit', option.value)}
+                onClick={() => setNumericPref('bidPeakUntradedRankLimit', option.value)}
                 className={[
                   'px-3 py-1.5 text-xs border-r border-border last:border-r-0 transition-colors',
                   selected ? 'bg-accent text-accent-fg' : 'bg-bg-elevated text-fg-dim hover:text-fg',
