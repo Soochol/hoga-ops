@@ -2,11 +2,11 @@ import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { render, cleanup } from '@testing-library/react';
 import { useLivePageStore } from '../../state/livePage';
 import { useChartPrefsStore } from '../../state/chartPrefs';
-import { useLivePastDailyCandles } from '../../api/livePastDailyCandles';
+import { useResolvedDailyCandles } from './useResolvedDailyCandles';
 import DailyMovingAverageOverlay from './DailyMovingAverageOverlay';
 
-vi.mock('../../api/livePastDailyCandles', () => ({ useLivePastDailyCandles: vi.fn() }));
-const mockUseDaily = vi.mocked(useLivePastDailyCandles);
+vi.mock('./useResolvedDailyCandles', () => ({ useResolvedDailyCandles: vi.fn() }));
+const mockUseResolvedDaily = vi.mocked(useResolvedDailyCandles);
 
 function makeChartMock() {
   const seriesById = new Map<string, ReturnType<typeof makeSeriesMock>>();
@@ -55,7 +55,13 @@ function renderOverlay(m: ReturnType<typeof makeChartMock>, over: Record<string,
 describe('DailyMovingAverageOverlay', () => {
   beforeEach(() => {
     cleanup();
-    mockUseDaily.mockReturnValue({ data: { candles: dailyCandles } } as never);
+    mockUseResolvedDaily.mockReturnValue({
+      candles: dailyCandles,
+      dataWarnings: [],
+      isLoading: false,
+      error: null,
+      sourceByDate: new Map([['20260612', 'kis_daily']]),
+    } as never);
     useLivePageStore.setState({
       dailyMovingAverages: oneSlot.map((m) => ({ ...m })) as never,
       dailyMovingAverageEnabled: true,
@@ -73,10 +79,16 @@ describe('DailyMovingAverageOverlay', () => {
     expect(data.every((d) => d.value === 100)).toBe(true);
   });
 
-  it('threads the chart venue into the daily candle query', () => {
+  it('passes the Daily MA fetch window and venue into resolved daily candles', () => {
     const m = makeChartMock();
     renderOverlay(m, { venue: 'UN' });
-    expect(mockUseDaily).toHaveBeenLastCalledWith('005930', '20250822', '20260613', 'UN');
+    expect(mockUseResolvedDaily).toHaveBeenLastCalledWith({
+      code: '005930',
+      from: '20250822',
+      to: '20260613',
+      venue: 'UN',
+      enabled: true,
+    });
   });
 
   it('uses integer price formatting so daily MA overlays do not add .00 to the candle axis', () => {
@@ -162,8 +174,31 @@ describe('DailyMovingAverageOverlay', () => {
     expect(data.every((d) => d.value === 200)).toBe(true);
   });
 
-  it('empty daily response → no values, no throw', () => {
-    mockUseDaily.mockReturnValue({ data: { candles: [] } } as never);
+  it('projects screener fallback daily rows when KIS daily is unavailable', () => {
+    mockUseResolvedDaily.mockReturnValue({
+      candles: dailyCandles,
+      dataWarnings: [{ batch: '20260612__20260612', reason: 'kis_rest_bypassed', msg: 'cache only' }],
+      isLoading: false,
+      error: null,
+      sourceByDate: new Map([['20260612', 'screener_daily']]),
+    } as never);
+    const m = makeChartMock();
+    renderOverlay(m);
+
+    const first = m.addSeries.mock.results[0].value as { setData: ReturnType<typeof vi.fn> };
+    const data = first.setData.mock.calls.at(-1)?.[0] as Array<{ time: number; value?: number }>;
+    expect(data).toHaveLength(3);
+    expect(data.every((d) => d.value === 100)).toBe(true);
+  });
+
+  it('empty resolved daily response → no values, no throw', () => {
+    mockUseResolvedDaily.mockReturnValue({
+      candles: [],
+      dataWarnings: [],
+      isLoading: false,
+      error: null,
+      sourceByDate: new Map(),
+    } as never);
     const m = makeChartMock();
     expect(() => renderOverlay(m)).not.toThrow();
     const first = m.addSeries.mock.results[0].value as { setData: ReturnType<typeof vi.fn> };

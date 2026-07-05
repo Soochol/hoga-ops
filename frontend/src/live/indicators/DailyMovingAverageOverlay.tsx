@@ -5,9 +5,9 @@ import type { VirtualAxis } from '../../util/virtualAxis';
 import { useLivePageStore, isMinuteTimeframe, type LiveMAConfig, type LiveTimeframe } from '../../state/livePage';
 import { useChartPrefsStore } from '../../state/chartPrefs';
 import type { LiveVenueOption } from '../../state/liveVenue';
-import { useLivePastDailyCandles } from '../../api/livePastDailyCandles';
 import { computeDailyMaByDate } from '../../chart/projectors/dailyMovingAverage';
 import { dailyMaFetchWindow, pickTodayLiveClose } from './dailyMaProjection';
+import { useResolvedDailyCandles } from './useResolvedDailyCandles';
 
 type Props = {
   chart: IChartApi;
@@ -27,7 +27,6 @@ type Props = {
 type LineApi = ISeriesApi<'Line'>;
 const excludeFromAutoscale: AutoscaleInfoProvider = () => null;
 const includeInAutoscale: AutoscaleInfoProvider = (original) => original();
-const EMPTY_DAILY: never[] = [];
 const priceFormat = {
   type: 'custom' as const,
   formatter: (p: number) => Math.round(p).toLocaleString('ko-KR'),
@@ -53,8 +52,14 @@ function DailyMovingAverageOverlay({ chart, bundle, axis, code, timeframe, venue
   // 일봉 fetch 창은 today 앵커라 좌측 팬에 불변 → react-query 키 안정 → 재fetch 없이
   // candle prepend와 lockstep(ADR-0073). lookback 산식·거래일 환산은 dailyMaProjection(테스트됨).
   const fetchWindow = enabled ? dailyMaFetchWindow(todayKst, configs) : null;
-  const dailyQuery = useLivePastDailyCandles(enabled ? code : null, fetchWindow?.from ?? null, fetchWindow?.to ?? null, venue);
-  const daily = dailyQuery.data?.candles ?? EMPTY_DAILY;
+  const dailyQuery = useResolvedDailyCandles({
+    code,
+    from: fetchWindow?.from ?? null,
+    to: fetchWindow?.to ?? null,
+    venue,
+    enabled,
+  });
+  const daily = dailyQuery.candles;
 
   // Reconcile series ↔ configs by id (MovingAverageOverlay와 동일).
   useEffect(() => {
