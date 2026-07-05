@@ -131,7 +131,7 @@ class _TodaySidePeakState:
         for touch in self.touch_ticks:
             if not self._is_touched_by_price(touch.price, peak.price):
                 continue
-            if _event_order_key(touch.t_ms, touch.seq) > _event_order_key(peak.t_ms, peak.seq):
+            if _touch_is_after_wall(touch, peak):
                 return True
         return False
 
@@ -198,6 +198,12 @@ def _peak_payload(peak: Peak) -> dict[str, int]:
 
 def _event_order_key(t_ms: int, seq: int | None) -> tuple[int, int]:
     return (t_ms, _seq_sort_key(seq))
+
+
+def _touch_is_after_wall(touch: TouchTick, peak: Peak) -> bool:
+    if touch.seq is None or peak.seq is None:
+        return touch.t_ms >= peak.t_ms
+    return _event_order_key(touch.t_ms, touch.seq) > _event_order_key(peak.t_ms, peak.seq)
 
 
 def _seq_sort_key(seq: int | None) -> int:

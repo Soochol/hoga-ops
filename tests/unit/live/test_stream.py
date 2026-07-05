@@ -204,6 +204,111 @@ async def test_on_tick_updates_today_bid_peak_state(tmp_path):
     }
 
 
+async def test_on_tick_same_t_ms_trade_without_seq_touches_ask_peak_state(tmp_path):
+    buf = LiveBuffer()
+    stream = LiveStream(buffer=buf, writer=LiveWriter(tmp_path / "live"),
+                        date_fn=lambda: "20260616", phase_fn=lambda: "regular")
+
+    now = _kst_ms(9, 10)
+    await stream.on_tick(WsTick(code="005930", t_ms=now, kind=SnapshotKind.TRADE, payload={
+        "trades": [{"t_ms": now, "price": 101, "qty": 5, "side": 1}],
+    }))
+    await stream.on_tick(WsTick(code="005930", t_ms=now, kind=SnapshotKind.OB, payload={
+        "code": "005930", "t_ms": now,
+        "asks": [
+            {"price": 101, "qty": 3},
+            {"price": 102, "qty": 9},
+            {"price": 103, "qty": 1},
+            {"price": 104, "qty": 1},
+        ],
+        "bids": [
+            {"price": 100, "qty": 1},
+            {"price": 99, "qty": 1},
+            {"price": 98, "qty": 1},
+            {"price": 97, "qty": 1},
+        ],
+        "total_ask_qty": 14, "total_bid_qty": 4,
+    }))
+
+    assert stream.ask_peak_snapshot("005930") == {
+        "date": "20260616",
+        "coverage": "partial",
+        "traded_prices": [101],
+        "traded_price": 101,
+        "traded_qty": 3,
+        "traded_t_ms": now,
+        "traded_peaks": [
+            {"price": 101, "qty": 3, "t_ms": now},
+        ],
+        "untraded_price": 102,
+        "untraded_qty": 9,
+        "untraded_t_ms": now,
+        "untraded_peaks": [
+            {"price": 102, "qty": 9, "t_ms": now},
+            {"price": 103, "qty": 1, "t_ms": now},
+            {"price": 104, "qty": 1, "t_ms": now},
+        ],
+        "all_price": 102,
+        "all_qty": 9,
+        "all_t_ms": now,
+        "all_peaks": [
+            {"price": 102, "qty": 9, "t_ms": now},
+            {"price": 101, "qty": 3, "t_ms": now},
+            {"price": 103, "qty": 1, "t_ms": now},
+        ],
+    }
+
+
+async def test_on_tick_same_t_ms_trade_without_seq_touches_bid_peak_state(tmp_path):
+    buf = LiveBuffer()
+    stream = LiveStream(buffer=buf, writer=LiveWriter(tmp_path / "live"),
+                        date_fn=lambda: "20260619", phase_fn=lambda: "regular")
+    stream.set_active_codes({"005930"})
+
+    now = int(datetime(2026, 6, 19, 9, 1, tzinfo=KST).timestamp() * 1000)
+    await stream.on_tick(WsTick(code="005930", t_ms=now, kind=SnapshotKind.TRADE, payload={
+        "trades": [{"t_ms": now, "price": 70_000, "qty": 5, "side": 1}],
+    }))
+    await stream.on_tick(WsTick(code="005930", t_ms=now, kind=SnapshotKind.OB, payload={
+        "code": "005930", "t_ms": now,
+        "asks": [{"price": 70_100 + i * 50, "qty": 100} for i in range(10)],
+        "bids": [
+            {"price": 70_000, "qty": 5_000},
+            {"price": 68_900, "qty": 12_000},
+            *[{"price": 68_800 - i * 50, "qty": 100} for i in range(8)],
+        ],
+        "total_ask_qty": 1_000, "total_bid_qty": 17_800,
+    }))
+
+    assert stream.bid_peak_snapshot("005930") == {
+        "date": "20260619",
+        "coverage": "partial",
+        "traded_prices": [70_000],
+        "traded_price": 70_000,
+        "traded_qty": 5_000,
+        "traded_t_ms": now,
+        "traded_peaks": [
+            {"price": 70_000, "qty": 5_000, "t_ms": now},
+        ],
+        "untraded_price": 68_900,
+        "untraded_qty": 12_000,
+        "untraded_t_ms": now,
+        "untraded_peaks": [
+            {"price": 68_900, "qty": 12_000, "t_ms": now},
+            {"price": 68_450, "qty": 100, "t_ms": now},
+            {"price": 68_500, "qty": 100, "t_ms": now},
+        ],
+        "all_price": 68_900,
+        "all_qty": 12_000,
+        "all_t_ms": now,
+        "all_peaks": [
+            {"price": 68_900, "qty": 12_000, "t_ms": now},
+            {"price": 70_000, "qty": 5_000, "t_ms": now},
+            {"price": 68_450, "qty": 100, "t_ms": now},
+        ],
+    }
+
+
 async def test_on_tick_orderbook_populates_untraded_peak_arrays_without_trades(tmp_path):
     buf = LiveBuffer()
     stream = LiveStream(buffer=buf, writer=LiveWriter(tmp_path / "live"),
