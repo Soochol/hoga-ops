@@ -177,6 +177,7 @@ describe('LiveChartRoot — pane 토글 배선 (store → 마운트된 pane 집�
       programTradeEnabled: true,
       foreignNetEnabled: false,
       institutionNetEnabled: false,
+      panePrefsByTimeframe: {},
     });
   });
 
@@ -218,6 +219,38 @@ describe('LiveChartRoot — pane 토글 배선 (store → 마운트된 pane 집�
     useLivePageStore.setState({ quoteTotalsEnabled: true, ratioEnabled: true, fillStrengthEnabled: true });
     renderAt('D');
     expect(mounted).toEqual(['candle', 'volume']);
+  });
+
+  it('uses the active timeframe pane profile instead of flat legacy fields', () => {
+    useLivePageStore.setState({
+      ratioEnabled: true,
+      panePrefsByTimeframe: {
+        minute: { ratioEnabled: false },
+      },
+    });
+    renderAt('1m');
+    expect(mounted).not.toContain('ratio');
+    expect(mounted).toContain('quote-totals');
+  });
+
+  it('keeps /live D hoga panes gated even when the D profile enables them', () => {
+    useLivePageStore.setState({
+      panePrefsByTimeframe: {
+        D: { quoteTotalsEnabled: true, ratioEnabled: true, fillStrengthEnabled: true },
+      },
+    });
+    renderAt('D');
+    expect(mounted).toEqual(['candle', 'volume']);
+  });
+
+  it('allows forced study-style D hoga panes from the D profile', () => {
+    useLivePageStore.setState({
+      panePrefsByTimeframe: {
+        D: { ratioEnabled: true, quoteTotalsEnabled: false, fillStrengthEnabled: false },
+      },
+    });
+    renderAt('D', { forceHogaPanes: true });
+    expect(mounted).toEqual(['candle', 'volume', 'ratio', 'program-trade']);
   });
 
   it('paneTogglesOverride가 live store 대신 저장된 indicator pane 상태를 적용한다', () => {

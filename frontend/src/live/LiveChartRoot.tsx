@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState, type MutableRefObject } from 'react';
+import { useShallow } from 'zustand/react/shallow';
 import {
   createChartEx,
   TickMarkType,
@@ -17,6 +18,7 @@ import {
 import { createVirtualAxis, type VirtualAxis } from '../util/virtualAxis';
 import RangeSeriesPane from '../chart/RangeSeriesPane';
 import { paneSpecsForTimeframe } from './paneSpecsForTimeframe';
+import { resolvePaneTogglesForTimeframe } from './indicators/indicatorPaneProfiles';
 import DayBoundaryOverlay from '../chart/DayBoundaryOverlay';
 import {
   useLivePageStore,
@@ -25,6 +27,7 @@ import {
   isMinuteTimeframe,
   isCalendarTimeframe,
 } from '../state/livePage';
+import type { PersistedIndicators } from '../state/liveIndicatorsPersistence';
 import { useActivePrefs, useChartPrefsStore, type ChartViewPrefs } from '../state/chartPrefs';
 import type { LiveVenueOption } from '../state/liveVenue';
 import type { LiveTodayAskPeak, LiveTodayBidPeak } from '../api/liveSeries';
@@ -970,13 +973,21 @@ export function LiveChartRoot({
     });
   }, [chart, horizontalGridLinesEnabled, verticalGridLinesEnabled]);
 
-  const foreignNetEnabled = useLivePageStore((s) => s.foreignNetEnabled);
-  const institutionNetEnabled = useLivePageStore((s) => s.institutionNetEnabled);
-  const volumeEnabled = useLivePageStore((s) => s.volumeEnabled);
-  const quoteTotalsEnabled = useLivePageStore((s) => s.quoteTotalsEnabled);
-  const ratioEnabled = useLivePageStore((s) => s.ratioEnabled);
-  const fillStrengthEnabled = useLivePageStore((s) => s.fillStrengthEnabled);
-  const programTradeEnabled = useLivePageStore((s) => s.programTradeEnabled);
+  const indicatorPrefs = useLivePageStore(
+    useShallow((s) => ({
+      movingAverages: s.movingAverages,
+      movingAverageEnabled: s.movingAverageEnabled,
+      movingAverageHidden: s.movingAverageHidden,
+      volumeEnabled: s.volumeEnabled,
+      quoteTotalsEnabled: s.quoteTotalsEnabled,
+      ratioEnabled: s.ratioEnabled,
+      fillStrengthEnabled: s.fillStrengthEnabled,
+      programTradeEnabled: s.programTradeEnabled,
+      foreignNetEnabled: s.foreignNetEnabled,
+      institutionNetEnabled: s.institutionNetEnabled,
+      panePrefsByTimeframe: s.panePrefsByTimeframe,
+    })),
+  );
   const askPeakEnabled = useLivePageStore((s) => s.askPeakEnabled);
   const bidPeakEnabled = useLivePageStore((s) => s.bidPeakEnabled);
   const askPeakIntraMax = useActivePrefs((s) => s.askPeakIntraMax);
@@ -1128,39 +1139,15 @@ export function LiveChartRoot({
       todayKst,
     ],
   );
-  const effectiveVolumeEnabled = paneTogglesOverride?.volumeEnabled ?? volumeEnabled;
-  const effectiveQuoteTotalsEnabled = paneTogglesOverride?.quoteTotalsEnabled ?? quoteTotalsEnabled;
-  const effectiveRatioEnabled = paneTogglesOverride?.ratioEnabled ?? ratioEnabled;
-  const effectiveFillStrengthEnabled = paneTogglesOverride?.fillStrengthEnabled ?? fillStrengthEnabled;
-  const effectiveProgramTradeEnabled = paneTogglesOverride?.programTradeEnabled ?? programTradeEnabled;
-  const effectiveHogaPanes = paneTogglesOverride?.hogaPanes;
-
-  // Single source for the pane-mount toggles, consumed by BOTH the stretch
-  // effect and the render-side paneSpecsForTimeframe call. Building it once
-  // removes the risk of the two call sites drifting (one updated, one not).
-  const paneToggles = useMemo(
-    () => ({
-      foreignNet: foreignNetEnabled,
-      institutionNet: institutionNetEnabled,
-      volumeEnabled: effectiveVolumeEnabled,
-      quoteTotalsEnabled: effectiveQuoteTotalsEnabled,
-      ratioEnabled: effectiveRatioEnabled,
-      fillStrengthEnabled: effectiveFillStrengthEnabled,
-      programTradeEnabled: effectiveProgramTradeEnabled,
-      hogaPanes: effectiveHogaPanes,
+  const activePaneToggles = useMemo(
+    () => resolvePaneTogglesForTimeframe({
+      indicators: indicatorPrefs as PersistedIndicators,
+      timeframe,
       forceHogaPanes,
+      hogaPanes: paneTogglesOverride?.hogaPanes,
+      override: paneTogglesOverride,
     }),
-    [
-      foreignNetEnabled,
-      institutionNetEnabled,
-      effectiveVolumeEnabled,
-      effectiveQuoteTotalsEnabled,
-      effectiveRatioEnabled,
-      effectiveFillStrengthEnabled,
-      effectiveProgramTradeEnabled,
-      effectiveHogaPanes,
-      forceHogaPanes,
-    ],
+    [forceHogaPanes, indicatorPrefs, paneTogglesOverride, timeframe],
   );
   const candlePaneContext = useMemo<CandlePaneContext>(
     () => ({ muteAuctionCandles: venue === 'KRX' }),
@@ -1169,7 +1156,7 @@ export function LiveChartRoot({
 
   useEffect(() => {
     if (!chart || !cb) return;
-    const specs = paneSpecsForTimeframe(timeframe, paneToggles);
+    const specs = paneSpecsForTimeframe(timeframe, activePaneToggles);
     let cancelled = false;
     const apply = () => {
       if (cancelled) return;
@@ -1194,7 +1181,7 @@ export function LiveChartRoot({
       cancelled = true;
       cancelAnimationFrame(raf);
     };
-  }, [chart, cb, timeframe, paneToggles]);
+  }, [chart, activePaneToggles, cb, timeframe]);
 
   const highLowAvoidLabelYLines = useMemo(() => {
     if (!cb || !isMinuteTimeframe(timeframe)) return [];
@@ -1493,7 +1480,7 @@ export function LiveChartRoot({
               <DailyMovingAverageOverlay chart={chart} bundle={cb} axis={axis} code={code} timeframe={timeframe} venue={venue} todayKst={todayKst} override={dailyMovingAverageOverride} />
             </>
           )}
-          {paneSpecsForTimeframe(timeframe, paneToggles).map((spec, i) => (
+          {paneSpecsForTimeframe(timeframe, activePaneToggles).map((spec, i) => (
             <RangeSeriesPane
               key={spec.name}
               chart={chart}
