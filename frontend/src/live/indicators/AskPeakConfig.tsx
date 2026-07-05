@@ -9,6 +9,11 @@ const RANK_OPTIONS = [
   { value: 3, label: '3' },
 ] as const;
 
+const VISIBLE_MAX_RANK_OPTIONS = [
+  { value: 0, label: '0' },
+  ...RANK_OPTIONS,
+] as const;
+
 /** 당일 매도 최대벽 상세 설정 — 선 색·두께(MAStylePicker 재활용). */
 export default function AskPeakConfig() {
   const color = useLivePageStore((s) => s.askPeakColor);
@@ -110,7 +115,7 @@ export default function AskPeakConfig() {
       <div className="mt-3">
         <div className="text-sm text-fg mb-2">보이는 영역 최대벽 표시 개수</div>
         <div className="inline-flex rounded-md border border-border overflow-hidden" role="group" aria-label="보이는 영역 최대벽 표시 개수">
-          {RANK_OPTIONS.map((option) => {
+          {VISIBLE_MAX_RANK_OPTIONS.map((option) => {
             const selected = visibleMaxRankLimit === option.value;
             return (
               <button

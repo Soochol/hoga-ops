@@ -233,12 +233,13 @@ describe('ask peak all-price toggle', () => {
       .toBe(DEFAULT_PREFS.askPeakAllPriceRankLimit);
   });
 
-  it('visible max rank limit defaults to 1 and persists valid 1..3 values', () => {
+  it('visible max rank limit defaults to 1 and persists valid 0..3 values', () => {
     expect(DEFAULT_PREFS.askPeakVisibleMaxRankLimit).toBe(1);
     expect(CHART_NUMERIC_PREFS.find((p) => p.key === 'askPeakVisibleMaxRankLimit')?.label)
       .toBe('보이는 영역 최대벽 표시 개수');
+    expect(mergePrefs({ askPeakVisibleMaxRankLimit: 0 }).askPeakVisibleMaxRankLimit).toBe(0);
     expect(mergePrefs({ askPeakVisibleMaxRankLimit: 3 }).askPeakVisibleMaxRankLimit).toBe(3);
-    expect(mergePrefs({ askPeakVisibleMaxRankLimit: 0 }).askPeakVisibleMaxRankLimit)
+    expect(mergePrefs({ askPeakVisibleMaxRankLimit: 4 }).askPeakVisibleMaxRankLimit)
       .toBe(DEFAULT_PREFS.askPeakVisibleMaxRankLimit);
   });
 
@@ -248,10 +249,11 @@ describe('ask peak all-price toggle', () => {
     expect(CHART_NUMERIC_PREFS.find((p) => p.key === 'bidPeakVisibleMaxRankLimit')?.label)
       .toBe('보이는 영역 최대벽 표시 개수');
     expect(mergePrefs({ bidPeakAllPriceRankLimit: 2 }).bidPeakAllPriceRankLimit).toBe(2);
+    expect(mergePrefs({ bidPeakVisibleMaxRankLimit: 0 }).bidPeakVisibleMaxRankLimit).toBe(0);
     expect(mergePrefs({ bidPeakVisibleMaxRankLimit: 3 }).bidPeakVisibleMaxRankLimit).toBe(3);
     expect(mergePrefs({ bidPeakAllPriceRankLimit: 4 }).bidPeakAllPriceRankLimit)
       .toBe(DEFAULT_PREFS.bidPeakAllPriceRankLimit);
-    expect(mergePrefs({ bidPeakVisibleMaxRankLimit: 0 }).bidPeakVisibleMaxRankLimit)
+    expect(mergePrefs({ bidPeakVisibleMaxRankLimit: 4 }).bidPeakVisibleMaxRankLimit)
       .toBe(DEFAULT_PREFS.bidPeakVisibleMaxRankLimit);
   });
 
