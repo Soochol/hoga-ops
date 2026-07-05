@@ -5,8 +5,12 @@ import type { SourcePreference } from '../state/sourcePreference';
 export type RangeMode = 'full' | 'hoga' | 'sidecar' | 'candles';
 
 export type RangeRequestOptions = {
+  askPeaksEnabled?: boolean | null;
+  bidPeaksEnabled?: boolean | null;
   brokerLateEntriesEnabled?: boolean | null;
   brokerLateEntryStartHHMM?: number | null;
+  programTradeEnabled?: boolean | null;
+  tradeVolumePocEnabled?: boolean | null;
   volumeDistributionBins?: number | null;
   tradeVolumePocBins?: number | null;
   volumeDistributionPriceRange?: { min: number; max: number } | null;
@@ -42,6 +46,10 @@ export type RangeQueryKey = readonly [
   SourcePreference,
   RangeMode | null,
   number | null,
+  boolean | null,
+  boolean | null,
+  boolean | null,
+  boolean | null,
 ];
 
 export type RangeBundleRequest = {
@@ -51,18 +59,27 @@ export type RangeBundleRequest = {
   todayKst: string | null;
 };
 
-const PLACEHOLDER_COMPATIBLE_KEY_INDICES = [4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15] as const;
+const PLACEHOLDER_COMPATIBLE_KEY_INDICES = [4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19] as const;
 
 function addParam(params: URLSearchParams, key: string, value: number | string | null | undefined): void {
   if (value == null) return;
   params.set(key, String(value));
 }
 
+function addBoolParam(params: URLSearchParams, key: string, value: boolean | null): void {
+  if (value == null) return;
+  params.set(key, value ? 'true' : 'false');
+}
+
 export function buildRangeBundleRequest(input: RangeBundleRequestInput): RangeBundleRequest {
   const bucketMs = input.timeframe ? TIMEFRAME_TO_MS[input.timeframe] : null;
   const options = input.options ?? {};
+  const askPeaksEnabled = options.askPeaksEnabled ?? null;
+  const bidPeaksEnabled = options.bidPeaksEnabled ?? null;
   const brokerLateEntriesEnabled = options.brokerLateEntriesEnabled ?? null;
   const brokerLateEntryStartHHMM = options.brokerLateEntryStartHHMM ?? null;
+  const programTradeEnabled = options.programTradeEnabled ?? null;
+  const tradeVolumePocEnabled = options.tradeVolumePocEnabled ?? null;
   const volumeDistributionBins = options.volumeDistributionBins ?? null;
   const tradeVolumePocBins = options.tradeVolumePocBins ?? null;
   const volumeDistributionPriceRange = options.volumeDistributionPriceRange ?? null;
@@ -87,6 +104,10 @@ export function buildRangeBundleRequest(input: RangeBundleRequestInput): RangeBu
     input.sourcePref,
     mode,
     volumeDistributionCutoffMs,
+    askPeaksEnabled,
+    bidPeaksEnabled,
+    programTradeEnabled,
+    tradeVolumePocEnabled,
   ];
 
   const params = new URLSearchParams();
@@ -96,8 +117,11 @@ export function buildRangeBundleRequest(input: RangeBundleRequestInput): RangeBu
   addParam(params, 'bucket_ms', bucketMs);
   addParam(params, 'price_min', input.priceRange?.min);
   addParam(params, 'price_max', input.priceRange?.max);
-  if (brokerLateEntriesEnabled === false) params.set('broker_late_entries_enabled', 'false');
-  if (brokerLateEntriesEnabled === true) params.set('broker_late_entries_enabled', 'true');
+  addBoolParam(params, 'ask_peaks_enabled', askPeaksEnabled);
+  addBoolParam(params, 'bid_peaks_enabled', bidPeaksEnabled);
+  addBoolParam(params, 'broker_late_entries_enabled', brokerLateEntriesEnabled);
+  addBoolParam(params, 'program_trade_enabled', programTradeEnabled);
+  addBoolParam(params, 'trade_volume_poc_enabled', tradeVolumePocEnabled);
   addParam(params, 'broker_late_entry_start_hhmm', brokerLateEntryStartHHMM);
   addParam(params, 'volume_distribution_bins', volumeDistributionBins);
   addParam(params, 'volume_distribution_price_min', volumeDistributionPriceRange?.min);

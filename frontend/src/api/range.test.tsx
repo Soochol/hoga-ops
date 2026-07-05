@@ -81,6 +81,10 @@ describe('buildRangeBundleRequest', () => {
       'kis_ws_first',
       'full',
       null,
+      null,
+      null,
+      null,
+      null,
     ]);
   });
 
@@ -118,6 +122,29 @@ describe('buildRangeBundleRequest', () => {
     );
     expect(request.queryKey[14]).toBe('sidecar');
     expect(request.queryKey.at(-1)).toBe(null);
+  });
+
+  it('threads sidecar indicator gates into the URL params and query key', () => {
+    const request = buildRangeBundleRequest({
+      code: '005930',
+      from: '20260512',
+      to: '20260512',
+      timeframe: '1m',
+      sourcePref: 'hogaplay_first',
+      options: {
+        mode: 'sidecar',
+        askPeaksEnabled: false,
+        bidPeaksEnabled: false,
+        programTradeEnabled: false,
+        tradeVolumePocEnabled: false,
+      },
+    });
+
+    expect(request.url).toContain('&ask_peaks_enabled=false');
+    expect(request.url).toContain('&bid_peaks_enabled=false');
+    expect(request.url).toContain('&program_trade_enabled=false');
+    expect(request.url).toContain('&trade_volume_poc_enabled=false');
+    expect(request.queryKey.slice(-4)).toEqual([false, false, false, false]);
   });
 
   it('adds mode=candles for lightweight candle requests', () => {
@@ -198,6 +225,10 @@ describe('buildRangeBundleRequest', () => {
       'hogaplay_first',
       null,
       null,
+      null,
+      null,
+      null,
+      null,
     ]);
   });
 
@@ -257,6 +288,10 @@ describe('rangeBundleQueryOptions', () => {
       12,
       'hogaplay_first',
       'full',
+      null,
+      null,
+      null,
+      null,
       null,
     ]);
 
@@ -511,6 +546,10 @@ describe('rangePlaceholderData', () => {
     'hogaplay_first',
     'full',
     null,
+    null,
+    null,
+    null,
+    null,
   ];
 
   it('keeps previous same-code data for date extension when option-sensitive fields are unchanged', () => {
@@ -530,6 +569,10 @@ describe('rangePlaceholderData', () => {
       null,
       'hogaplay_first',
       'full',
+      null,
+      null,
+      null,
+      null,
       null,
     ];
 
@@ -554,6 +597,10 @@ describe('rangePlaceholderData', () => {
       'hogaplay_first',
       'full',
       null,
+      null,
+      null,
+      null,
+      null,
     ];
 
     expect(rangePlaceholderData(fakeBundle, currentKey, baseKey)).toBeUndefined();
@@ -577,6 +624,10 @@ describe('rangePlaceholderData', () => {
       'hogaplay_first',
       'sidecar',
       1_772_000_001_000,
+      null,
+      null,
+      null,
+      null,
     ];
     const currentKey: Parameters<typeof rangePlaceholderData>[1] = [
       'range',
@@ -594,6 +645,10 @@ describe('rangePlaceholderData', () => {
       null,
       'hogaplay_first',
       'sidecar',
+      null,
+      null,
+      null,
+      null,
       null,
     ];
 
