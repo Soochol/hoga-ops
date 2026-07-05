@@ -286,6 +286,7 @@ function snapshotIndicators(get: () => Store): PersistedIndicators {
     dailyMovingAverages: s.dailyMovingAverages,
     dailyMovingAverageEnabled: s.dailyMovingAverageEnabled,
     dailyMovingAverageHidden: s.dailyMovingAverageHidden,
+    panePrefsByTimeframe: s.panePrefsByTimeframe,
   };
 }
 
