@@ -1971,6 +1971,47 @@ def test_ask_peak_from_dual_row_preserves_ranked_untraded_arrays() -> None:
     assert peak.untraded_max_t_ms == 1781654940000
 
 
+def test_ask_peak_from_dual_row_preserves_legacy_untraded_values_when_ranked_arrays_empty() -> None:
+    from hoga.api.bundle import _ask_peak_from_dual_row
+    from hoga.tables.snapshots import AskPeakDualRow
+
+    row = AskPeakDualRow(
+        price=25000,
+        qty=1000,
+        intra_ms=9 * 3_600_000 + 1 * 60_000,
+        max_price=25050,
+        max_qty=1100,
+        max_intra_ms=9 * 3_600_000 + 2 * 60_000,
+        traded_peaks=(),
+        traded_max_peaks=(),
+        all_price=26000,
+        all_qty=9000,
+        all_intra_ms=9 * 3_600_000 + 3 * 60_000,
+        all_max_price=26100,
+        all_max_qty=9100,
+        all_max_intra_ms=9 * 3_600_000 + 4 * 60_000,
+        untraded_price=29900,
+        untraded_qty=7,
+        untraded_intra_ms=9 * 3_600_000 + 5 * 60_000,
+        untraded_max_price=29800,
+        untraded_max_qty=6,
+        untraded_max_intra_ms=9 * 3_600_000 + 6 * 60_000,
+        untraded_peaks=(),
+        untraded_max_peaks=(),
+    )
+
+    peak = _ask_peak_from_dual_row("20260617", row)
+
+    assert peak.untraded_peaks == []
+    assert peak.untraded_max_peaks == []
+    assert peak.untraded_price == 29900
+    assert peak.untraded_qty == 7
+    assert peak.untraded_t_ms == 1781654700000
+    assert peak.untraded_max_price == 29800
+    assert peak.untraded_max_qty == 6
+    assert peak.untraded_max_t_ms == 1781654760000
+
+
 def test_build_bid_peak_slice_wires_untraded_peak(tmp_path) -> None:
     from unittest.mock import MagicMock
     from hoga.api.bundle import build_bid_peak_slice
@@ -2068,6 +2109,47 @@ def test_bid_peak_from_dual_row_preserves_ranked_untraded_arrays() -> None:
     assert peak.untraded_max_price == 68800
     assert peak.untraded_max_qty == 13000
     assert peak.untraded_max_t_ms == 1781827740000
+
+
+def test_bid_peak_from_dual_row_preserves_legacy_untraded_values_when_ranked_arrays_empty() -> None:
+    from hoga.api.bundle import _bid_peak_from_dual_row
+    from hoga.tables.snapshots import BidPeakDualRow
+
+    row = BidPeakDualRow(
+        price=70000,
+        qty=5000,
+        intra_ms=9 * 3_600_000 + 1 * 60_000,
+        max_price=69900,
+        max_qty=5100,
+        max_intra_ms=9 * 3_600_000 + 2 * 60_000,
+        traded_peaks=(),
+        traded_max_peaks=(),
+        all_price=69800,
+        all_qty=9000,
+        all_intra_ms=9 * 3_600_000 + 3 * 60_000,
+        all_max_price=69700,
+        all_max_qty=9100,
+        all_max_intra_ms=9 * 3_600_000 + 4 * 60_000,
+        untraded_price=68850,
+        untraded_qty=7,
+        untraded_intra_ms=9 * 3_600_000 + 5 * 60_000,
+        untraded_max_price=68750,
+        untraded_max_qty=6,
+        untraded_max_intra_ms=9 * 3_600_000 + 6 * 60_000,
+        untraded_peaks=(),
+        untraded_max_peaks=(),
+    )
+
+    peak = _bid_peak_from_dual_row("20260619", row)
+
+    assert peak.untraded_peaks == []
+    assert peak.untraded_max_peaks == []
+    assert peak.untraded_price == 68850
+    assert peak.untraded_qty == 7
+    assert peak.untraded_t_ms == 1781827500000
+    assert peak.untraded_max_price == 68750
+    assert peak.untraded_max_qty == 6
+    assert peak.untraded_max_t_ms == 1781827560000
 
 
 def test_build_bid_peak_slice_wires_ranked_candidates(tmp_path) -> None:

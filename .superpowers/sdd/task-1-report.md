@@ -67,3 +67,15 @@ Commits:
 
 Concerns:
 - None for Task 1 scope.
+
+---
+
+Fix Report Addendum:
+- Files changed:
+  - `tests/hoga/api/test_bundle.py`
+  - `.superpowers/sdd/task-1-report.md`
+- Tests run:
+  - `uv run --extra dev pytest tests/test_api_ask_peak_model.py tests/hoga/api/test_bundle.py -q`
+- Results:
+  - `65 passed in 1.26s`
+  - Added regression coverage for ask and bid dual-row conversion when `untraded_peaks=()` and `untraded_max_peaks=()` while legacy singleton `untraded_*` / `untraded_max_*` fields remain set.
