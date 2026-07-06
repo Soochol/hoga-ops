@@ -3,6 +3,12 @@
 All notable changes to this project are documented here.
 The format follows a 4-digit `MAJOR.MINOR.PATCH.MICRO` scheme.
 
+## [0.12.30.0] - 2026-07-06
+
+### Fixed
+- **/live KIS background 재시도 대기 정교화**: 백그라운드 KIS 요청이 사용자용 계좌 여유분이 실제로 생긴 경우에만 깨어나도록 해, 계좌 반납 직후에도 예약 capacity를 다시 뺏지 않고 CPU 재시도 부하를 더 줄였다.
+- **/live 분봉 sidecar 중복 요청 제거**: 분봉 캔들 가격 범위가 아직 로딩 중일 때 volume distribution sidecar를 먼저 요청하지 않도록 해, 같은 구간의 `mode=sidecar` full-range 요청이 불필요하게 두 번 나가는 상황을 막았다.
+
 ## [0.12.29.0] - 2026-07-06
 
 ### Fixed
