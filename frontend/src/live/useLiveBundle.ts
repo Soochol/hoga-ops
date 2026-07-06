@@ -372,7 +372,8 @@ export function useLiveBundle(
     (kisRestBypassEnabled && (isMinute || timeframe === 'D')) ||
     (preferHogaplayCandles && (isMinute || timeframe === 'D')) ||
     (isMinute
-      ? pastCandlesQuery.data != null && pastCandlesQuery.data.data_warnings.length > 0
+      ? pastCandlesQuery.data != null &&
+        (pastCandlesQuery.data.data_warnings.length > 0 || pastCandlesQuery.data.candles.length === 0)
       : timeframe === 'D' &&
         pastDailyCandlesQuery.data != null &&
         (pastDailyCandlesQuery.data.data_warnings.length > 0 || pastDailyCandlesQuery.data.candles.length === 0))

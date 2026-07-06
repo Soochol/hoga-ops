@@ -1005,6 +1005,63 @@ describe('useLiveBundle', () => {
     expect(result.current.chartBundle!.segments.at(-1)?.source).toBe('hogaplay');
   });
 
+  it('falls back to hogaplay range candles when KIS minute response is empty without warnings', () => {
+    candlesMock.candles = [];
+    candlesMock.warnings = [];
+    const hogaplayFallback = {
+      code: '005930',
+      from_date: '20260520',
+      to_date: '20260527',
+      bucket_ms: 60000,
+      segments: [],
+      candles: [
+        { ts_ms: 1779840000000, open: 70000, high: 70200, low: 69900, close: 70150, vol_a: 0, vol_b: 1200 },
+      ],
+      quote_ratio: { bucket_ms: 60000, points: [] },
+      fill_strength: { bucket_ms: 60000, points: [] },
+      volume_profile_range: { bin_count: 0, price_min: 0, price_max: 0, bin_width: 0, bins: [] },
+      volume_profile_by_day: [],
+      volume_distributions: [],
+      investorPoints: [],
+      ask_peaks: [],
+      bid_peaks: [],
+      broker_late_entries: [],
+      price_level_hits: [],
+      trade_volume_pocs: [],
+      program_trade: { points: [] },
+    };
+    useRangeSpy
+      .mockReturnValueOnce(rangeResult({ ...hogaplayFallback, candles: [] }))
+      .mockReturnValueOnce(rangeResult(hogaplayFallback))
+      .mockReturnValueOnce(rangeResult())
+      .mockReturnValueOnce(rangeResult());
+
+    const { result } = renderHook(() => useLiveBundle('005930', '1m', '20260527', liveFixture), { wrapper });
+
+    expect(useRangeSpy).toHaveBeenCalledWith(
+      '005930',
+      '20260520',
+      '20260527',
+      '1m',
+      undefined,
+      '20260527',
+      expect.objectContaining({ mode: 'candles', brokerLateEntriesEnabled: false }),
+      undefined,
+    );
+    expect(useRangeSpy).toHaveBeenCalledWith(
+      '005930',
+      '20260520',
+      '20260527',
+      '1m',
+      undefined,
+      '20260527',
+      expect.objectContaining({ mode: 'candles', brokerLateEntriesEnabled: false }),
+      'hogaplay_first',
+    );
+    expect(result.current.chartBundle!.candles).toEqual(hogaplayFallback.candles);
+    expect(result.current.chartBundle!.segments.at(-1)?.source).toBe('hogaplay');
+  });
+
   it('uses the previous disk candle window when the latest minute window is empty', () => {
     candlesMock.candles = [];
     candlesMock.warnings = [{ date: '20260527', reason: 'kis_rest_bypassed', msg: 'cache only' }];

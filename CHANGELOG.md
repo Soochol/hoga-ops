@@ -3,6 +3,12 @@
 All notable changes to this project are documented here.
 The format follows a 4-digit `MAJOR.MINOR.PATCH.MICRO` scheme.
 
+## [0.12.30.1] - 2026-07-07
+
+### Fixed
+- **/live 분봉 빈 응답 복구**: 분봉 캔들이 KIS 과거 조회에서 빈 배열로 오더라도 호가 데이터(거래량 포함) 표시가 멈추지 않도록, 동일 구간의 호가 기반 캔들 소스로 자동 전환했다.
+- **회귀 테스트 보강**: KIS 분봉 빈 응답 시 호가 기반 대체 경로가 동작하는지 검증하는 회귀 테스트를 추가해, 유사한 시점 손실을 막았다.
+
 ## [0.12.30.0] - 2026-07-06
 
 ### Fixed
