@@ -82,7 +82,7 @@
   - `setSidebarCursor(t: number): void`
   - `clearSidebarCursor(): void`
 
-- [ ] **Step 1: Write failing helper tests**
+- [x] **Step 1: Write failing helper tests**
 
 Add `frontend/src/live/sidebarCursorRateLimit.test.ts`:
 
@@ -110,7 +110,7 @@ describe('sidebar cursor rate-limit helpers', () => {
 });
 ```
 
-- [ ] **Step 2: Write failing store tests**
+- [x] **Step 2: Write failing store tests**
 
 Append to `frontend/src/live/useLiveCursorStore.test.ts`:
 
@@ -144,7 +144,7 @@ it('clearSidebarCursor clears only sidebarCursorMs', () => {
 });
 ```
 
-- [ ] **Step 3: Run tests and verify failure**
+- [x] **Step 3: Run tests and verify failure**
 
 Run:
 
@@ -155,7 +155,7 @@ npm run test -- --run src/live/sidebarCursorRateLimit.test.ts src/live/useLiveCu
 
 Expected: FAIL because `sidebarCursorRateLimit.ts`, `sidebarCursorMs`, and sidebar actions do not exist.
 
-- [ ] **Step 4: Implement helpers**
+- [x] **Step 4: Implement helpers**
 
 Create `frontend/src/live/sidebarCursorRateLimit.ts`:
 
@@ -170,7 +170,7 @@ export function shouldPublishSidebarCursor(current: number | null, next: number 
 }
 ```
 
-- [ ] **Step 5: Extend store**
+- [x] **Step 5: Extend store**
 
 Update `frontend/src/live/useLiveCursorStore.ts`:
 
@@ -212,7 +212,7 @@ resetCursor: () => {
 },
 ```
 
-- [ ] **Step 6: Run tests and verify pass**
+- [x] **Step 6: Run tests and verify pass**
 
 Run:
 
@@ -223,7 +223,7 @@ npm run test -- --run src/live/sidebarCursorRateLimit.test.ts src/live/useLiveCu
 
 Expected: PASS.
 
-- [ ] **Step 7: Commit**
+- [x] **Step 7: Commit**
 
 ```bash
 git add frontend/src/live/sidebarCursorRateLimit.ts frontend/src/live/sidebarCursorRateLimit.test.ts frontend/src/live/useLiveCursorStore.ts frontend/src/live/useLiveCursorStore.test.ts
@@ -243,7 +243,7 @@ git commit -m "feat: add rate-limited live sidebar cursor state"
 - Consumes: `useLiveCursorStore.getState().setSidebarCursor(t)`
 - Produces: `cursorMs` remains immediate; `sidebarCursorMs` updates after `LIVE_SIDEBAR_CURSOR_DEBOUNCE_MS`.
 
-- [ ] **Step 1: Write failing LiveChartRoot test**
+- [x] **Step 1: Write failing LiveChartRoot test**
 
 Add a test near the existing crosshair cursor tests in `frontend/src/live/LiveChartRoot.test.tsx`:
 
@@ -294,7 +294,7 @@ it('debounces sidebar cursor while keeping chart cursor immediate', async () => 
 
 If the local test helper names differ, use the existing test fixture helpers in the same file for emitting crosshair move events and virtual time conversion.
 
-- [ ] **Step 2: Run test and verify failure**
+- [x] **Step 2: Run test and verify failure**
 
 Run:
 
@@ -305,7 +305,7 @@ npm run test -- --run src/live/LiveChartRoot.test.tsx -t "debounces sidebar curs
 
 Expected: FAIL because `sidebarCursorMs` is never scheduled.
 
-- [ ] **Step 3: Implement scheduling in LiveChartRoot**
+- [x] **Step 3: Implement scheduling in LiveChartRoot**
 
 In `frontend/src/live/LiveChartRoot.tsx`, import helper:
 
@@ -374,7 +374,7 @@ pendingSidebarCursorMsRef.current = null;
 useLiveCursorStore.getState().clearSidebarCursor();
 ```
 
-- [ ] **Step 4: Run focused tests**
+- [x] **Step 4: Run focused tests**
 
 Run:
 
@@ -385,7 +385,7 @@ npm run test -- --run src/live/LiveChartRoot.test.tsx src/live/useLiveCursorStor
 
 Expected: PASS.
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add frontend/src/live/LiveChartRoot.tsx frontend/src/live/LiveChartRoot.test.tsx
@@ -406,7 +406,7 @@ git commit -m "perf: debounce live sidebar cursor publishing"
 - Consumes: `useLiveCursorStore((s) => s.sidebarCursorMs)`
 - Produces: `LiveSidebar` no longer re-renders on every immediate `cursorMs` update.
 
-- [ ] **Step 1: Write failing API hook test**
+- [x] **Step 1: Write failing API hook test**
 
 In `frontend/src/api/useLiveCursor.test.ts`, add a test for orderbook:
 
@@ -430,7 +430,7 @@ it('orderbook waits for sidebarCursorMs instead of immediate cursorMs', async ()
 
 Adjust `fetchMock` naming to the existing mock helper in the file.
 
-- [ ] **Step 2: Write failing sidebar render test**
+- [x] **Step 2: Write failing sidebar render test**
 
 In `frontend/src/live/LiveSidebar.test.tsx`, add:
 
@@ -448,7 +448,7 @@ it('does not switch to spot mode from immediate cursorMs alone', () => {
 });
 ```
 
-- [ ] **Step 3: Run tests and verify failure**
+- [x] **Step 3: Run tests and verify failure**
 
 Run:
 
@@ -459,7 +459,7 @@ npm run test -- --run src/api/useLiveCursor.test.ts src/live/LiveSidebar.test.ts
 
 Expected: FAIL because both consumers still read immediate `cursorMs`.
 
-- [ ] **Step 4: Switch consumers**
+- [x] **Step 4: Switch consumers**
 
 In `frontend/src/live/LiveSidebar.tsx`, change:
 
@@ -479,7 +479,7 @@ In `frontend/src/api/useLiveCursor.ts`, change both hook selectors:
 const cursorMs = useLiveCursorStore((s) => s.sidebarCursorMs);
 ```
 
-- [ ] **Step 5: Update existing tests that intentionally drive sidebar behavior**
+- [x] **Step 5: Update existing tests that intentionally drive sidebar behavior**
 
 Where `LiveSidebar.test.tsx` currently calls:
 
@@ -495,7 +495,7 @@ act(() => useLiveCursorStore.getState().setSidebarCursor(t));
 
 Keep `setCursor` in tests whose assertion is specifically about immediate chart cursor state.
 
-- [ ] **Step 6: Run focused tests**
+- [x] **Step 6: Run focused tests**
 
 Run:
 
@@ -506,7 +506,7 @@ npm run test -- --run src/api/useLiveCursor.test.ts src/live/LiveSidebar.test.ts
 
 Expected: PASS.
 
-- [ ] **Step 7: Commit**
+- [x] **Step 7: Commit**
 
 ```bash
 git add frontend/src/live/LiveSidebar.tsx frontend/src/api/useLiveCursor.ts frontend/src/live/LiveSidebar.test.tsx frontend/src/api/useLiveCursor.test.ts
@@ -525,7 +525,7 @@ git commit -m "perf: move live sidebar spot data to rate-limited cursor"
 - Consumes: implemented `sidebarCursorMs` path.
 - Produces: measured before/after evidence for hover CPU, cursor updates, and spot API request count.
 
-- [ ] **Step 1: Run full focused test set**
+- [x] **Step 1: Run full focused test set**
 
 Run:
 
@@ -536,7 +536,7 @@ npm run test -- --run src/live/useLiveCursorStore.test.ts src/live/sidebarCursor
 
 Expected: PASS.
 
-- [ ] **Step 2: Build production bundle**
+- [x] **Step 2: Build production bundle**
 
 Run:
 
@@ -547,7 +547,7 @@ npm run build
 
 Expected: PASS.
 
-- [ ] **Step 3: Run dev browser profile**
+- [x] **Step 3: Run dev browser profile**
 
 Use the same Playwright/CDP profile script from the investigation with URL:
 
@@ -575,7 +575,7 @@ initial mode=sidecar payload size and latency do not increase from baseline
 /api/live/past-candles AbortError does not appear as a page-visible error
 ```
 
-- [ ] **Step 4: Run production preview browser profile**
+- [x] **Step 4: Run production preview browser profile**
 
 Run:
 
@@ -600,7 +600,7 @@ Initial sidecar payload/latency is not worse than the investigation baseline.
 Any past-candles abort remains non-user-visible.
 ```
 
-- [ ] **Step 5: Commit verification notes if numbers are added**
+- [x] **Step 5: Commit verification notes if numbers are added**
 
 ```bash
 git add docs/superpowers/plans/2026-07-06-live-cursor-sidebar-load-reduction.md
@@ -619,7 +619,13 @@ Measured on 2026-07-06 against local backend `127.0.0.1:8000`.
 - Dev browser 100-point fast crosshair sweep: `cursorMs` changed 74 times, `sidebarCursorMs` changed 2 times, `/api/orderbook` 0, `/api/brokers/series` 0, `/api/range` 0 during the sweep.
 - Dev browser stable hover: `cursorMs` published immediately, `sidebarCursorMs` published about 120 ms later, then exactly one `/api/orderbook` and one `/api/brokers/series` request were issued.
 - Production preview on `127.0.0.1:4173`: 100-point fast sweep issued `/api/orderbook` 0, `/api/brokers/series` 0, `/api/range` 0, with no page errors captured.
-- Residual observation: Vite dev console repeatedly logged `lightweight-charts` `CanvasGradient` non-finite errors while rendering. This was observed during verification and is outside this cursor/sidebar scope.
+- Ship recheck after merging `origin/main`: frontend full Vitest passed, 331 files / 3146 tests.
+- Ship recheck after merging `origin/main`: frontend production build passed.
+- Ship recheck dev browser/CDP on `127.0.0.1:5174`: 100-point sweep changed `cursorMs` 81 times and `sidebarCursorMs` 1 time; sweep-window requests were `/api/orderbook` 1, `/api/brokers/series` 1, `/api/range` 0, `/api/live/past-candles` 0.
+- Ship recheck dev browser/CDP `ScriptDuration` for the 100-point sweep was about 313 ms, materially lower than the earlier dev-mode investigation baseline of about 4.3 s active JS.
+- `lightweight-charts` `CanvasGradient` non-finite follow-up was fixed in `frontend/src/chart/projectors/ratio.ts` by expanding a flat zero autoscale range to `[-0.01, 0.01]`; `frontend/src/chart/projectors/ratio.test.ts` pins the regression.
+- Ship recheck dev browser captured 0 `CanvasGradient` / `non-finite` / `addColorStop` errors after the autoscale fix.
+- Root `uv run pytest` currently has pre-existing backend failures on `origin/main` (representative subset reproduced in a detached `origin/main` worktree): `/api/range` mock helper signature drift, ask/bid peak ranked-candidate expectations, and one live stream peak reclassification expectation. These files are outside this frontend branch diff.
 
 ---
 
