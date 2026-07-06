@@ -46,6 +46,36 @@ import { buildLivePriceLevelHits, mergePriceLevelHits } from './priceLevelHits';
 
 const EMPTY_INVESTOR_POINTS: InvestorNetPoint[] = [];
 
+const DATE_RANGE_PATTERN = /\d{8}/g;
+
+function narrowWarningRange(
+  warnings: ReadonlyArray<{ date?: unknown }> | undefined,
+  fallbackFrom: string,
+  fallbackTo: string,
+): { from: string; to: string } {
+  const dateSet = new Set<string>();
+  if (warnings != null) {
+    for (const warning of warnings) {
+      if (typeof warning?.date !== 'string') continue;
+      for (const match of warning.date.match(DATE_RANGE_PATTERN) ?? []) {
+        dateSet.add(match);
+      }
+    }
+  }
+
+  if (dateSet.size === 0) {
+    return { from: fallbackFrom, to: fallbackTo };
+  }
+
+  const sorted = [...dateSet].sort();
+  const first = sorted[0];
+  const last = sorted[sorted.length - 1];
+  return {
+    from: fallbackFrom > first ? fallbackFrom : first,
+    to: fallbackTo < last ? fallbackTo : last,
+  };
+}
+
 function laterDate(a: string, b: string): string {
   return a >= b ? a : b;
 }
@@ -288,6 +318,10 @@ export function useLiveBundle(
   const venue = options.venue ?? 'KRX';
   const preferHogaplayCandles = candleDataPreference === 'hogaplay_first';
   const preferScreenerDailyCandles = candleDataPreference === 'auto' || candleDataPreference === 'screener_daily_first';
+  const traceLiveBundle =
+    import.meta.env.DEV
+    && typeof window !== 'undefined'
+    && window.location.search.includes('traceLiveBundle=1');
 
   const isMinute = isMinuteTimeframe(timeframe);
   const bucketMs = isMinute ? TIMEFRAME_TO_MS[timeframe] : 60_000;
@@ -378,6 +412,49 @@ export function useLiveBundle(
         pastDailyCandlesQuery.data != null &&
         (pastDailyCandlesQuery.data.data_warnings.length > 0 || pastDailyCandlesQuery.data.candles.length === 0))
   ));
+  const candleFallbackWindow = useMemo(() => {
+    if (isMinute) {
+      return narrowWarningRange(
+        pastCandlesQuery.data?.data_warnings,
+        minutePastFrom,
+        minutePastTo,
+      );
+    }
+    if (timeframe === 'D') {
+      return narrowWarningRange(
+        pastDailyCandlesQuery.data?.data_warnings,
+        dailyPastFrom,
+        dailyPastTo,
+      );
+    }
+    return { from: dailyPastFrom, to: dailyPastTo };
+  }, [
+    isMinute,
+    timeframe,
+    pastCandlesQuery.data?.data_warnings,
+    pastDailyCandlesQuery.data?.data_warnings,
+    minutePastFrom,
+    minutePastTo,
+    dailyPastFrom,
+    dailyPastTo,
+  ]);
+  const candleFallbackSourceHint = useMemo(() => {
+    const minuteCandlesMissing = isMinute
+      && pastCandlesQuery.data != null
+      && pastCandlesQuery.data.candles.length === 0;
+    const dailyCandlesMissing = timeframe === 'D'
+      && pastDailyCandlesQuery.data != null
+      && pastDailyCandlesQuery.data.candles.length === 0;
+    return preferHogaplayCandles || minuteCandlesMissing || dailyCandlesMissing
+      ? 'hogaplay_first' as const
+      : undefined;
+  }, [
+    isMinute,
+    timeframe,
+    preferHogaplayCandles,
+    pastCandlesQuery.data?.candles.length,
+    pastDailyCandlesQuery.data?.candles.length,
+  ]);
   const candleFallbackOptions = useMemo(
     () => ({
       mode: 'candles' as const,
@@ -391,19 +468,22 @@ export function useLiveBundle(
   );
   const candleFallback = useRange(
     candleFallbackNeeded ? code : null,
-    candleFallbackNeeded ? (isMinute ? minutePastFrom : dailyPastFrom) : null,
-    candleFallbackNeeded ? (isMinute ? minutePastTo : dailyPastTo) : null,
+    candleFallbackNeeded ? (isMinute || timeframe === 'D' ? candleFallbackWindow.from : null) : null,
+    candleFallbackNeeded ? (isMinute || timeframe === 'D' ? candleFallbackWindow.to : null) : null,
     candleFallbackNeeded ? (isMinute ? (timeframe as Timeframe) : '1m') : null,
     undefined,
     candleFallbackNeeded ? todayKstYyyymmdd : null,
     candleFallbackOptions,
-    preferHogaplayCandles ? 'hogaplay_first' : undefined,
+    candleFallbackSourceHint,
   );
-  const hogaplayCandleFallbackNeeded = candleFallbackNeeded && !preferHogaplayCandles && sourcePreference !== 'hogaplay_first';
+  const hogaplayCandleFallbackNeeded = candleFallbackNeeded
+    && !preferHogaplayCandles
+    && candleFallbackSourceHint !== 'hogaplay_first'
+    && sourcePreference !== 'hogaplay_first';
   const hogaplayCandleFallback = useRange(
     hogaplayCandleFallbackNeeded ? code : null,
-    hogaplayCandleFallbackNeeded ? (isMinute ? minutePastFrom : dailyPastFrom) : null,
-    hogaplayCandleFallbackNeeded ? (isMinute ? minutePastTo : dailyPastTo) : null,
+    hogaplayCandleFallbackNeeded ? (isMinute || timeframe === 'D' ? candleFallbackWindow.from : null) : null,
+    hogaplayCandleFallbackNeeded ? (isMinute || timeframe === 'D' ? candleFallbackWindow.to : null) : null,
     hogaplayCandleFallbackNeeded ? (isMinute ? (timeframe as Timeframe) : '1m') : null,
     undefined,
     hogaplayCandleFallbackNeeded ? todayKstYyyymmdd : null,
@@ -552,6 +632,45 @@ export function useLiveBundle(
 
     return sourceByDate.size > 0 ? sourceByDate : undefined;
   }, [isMinute, preferHogaplayCandles, preferScreenerDailyCandles, pastCandlesQuery.data, pastDailyCandlesQuery.data, screenerDailyCandlesQuery.data, candleFallback.data, previousDiskCandleFallback.data, hogaplayCandleFallback.data]);
+
+  useEffect(() => {
+    if (!traceLiveBundle) return;
+    console.debug('[live] candleFallbackState', {
+      code,
+      timeframe,
+      isMinute,
+      candleFallbackNeeded,
+      sourcePreference,
+      candleFallbackSourceHint,
+      windowFrom: candleFallbackWindow.from,
+      windowTo: candleFallbackWindow.to,
+      minuteWarnings: pastCandlesQuery.data?.data_warnings.length ?? 0,
+      dailyWarnings: pastDailyCandlesQuery.data?.data_warnings.length ?? 0,
+      primaryCount: isMinute
+        ? pastCandlesQuery.data?.candles.length ?? 0
+        : pastDailyCandlesQuery.data?.candles.length ?? 0,
+      fallbackCount: candleFallback.data?.candles.length ?? 0,
+      hogaplayFallbackCount: hogaplayCandleFallback.data?.candles.length ?? 0,
+      previousDiskFallbackCount: previousDiskCandleFallback.data?.candles.length ?? 0,
+    });
+  }, [
+    traceLiveBundle,
+    code,
+    timeframe,
+    isMinute,
+    candleFallbackNeeded,
+    sourcePreference,
+    candleFallbackSourceHint,
+    candleFallbackWindow.from,
+    candleFallbackWindow.to,
+    pastCandlesQuery.data?.data_warnings,
+    pastDailyCandlesQuery.data?.data_warnings,
+    pastCandlesQuery.data?.candles,
+    pastDailyCandlesQuery.data?.candles,
+    candleFallback.data?.candles,
+    hogaplayCandleFallback.data?.candles,
+    previousDiskCandleFallback.data?.candles,
+  ]);
   const volumeDistributionPriceRange = useMemo(
     () =>
       isMinute && volumeDistributionEnabled
@@ -810,6 +929,28 @@ export function useLiveBundle(
   useEffect(() => {
     if (!extending) lastSettledChartRef.current = computedChartBundle;
   }, [extending, computedChartBundle]);
+
+  useEffect(() => {
+    if (!traceLiveBundle || chartBundle == null) return;
+    console.debug('[live] chartBundle', {
+      code,
+      timeframe,
+      candles: chartBundle.candles.length,
+      segments: chartBundle.segments.length,
+      lastSegmentSource: chartBundle.segments.at(-1)?.source ?? null,
+      todayDate: todayKstYyyymmdd,
+      hasObData: !!pastHoga.data,
+      hasSidecarData: !!pastSidecars.data,
+    });
+  }, [
+    traceLiveBundle,
+    code,
+    timeframe,
+    chartBundle,
+    todayKstYyyymmdd,
+    pastHoga.data,
+    pastSidecars.data,
+  ]);
 
   // Full bundle = stable chart side + live hoga overlay. Spreading chartBundle
   // shares its segments/candles refs, so the VirtualAxis stays single-build and

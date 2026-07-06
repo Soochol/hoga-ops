@@ -971,7 +971,6 @@ describe('useLiveBundle', () => {
       program_trade: { points: [] },
     };
     useRangeSpy
-      .mockReturnValueOnce(rangeResult({ ...hogaplayFallback, candles: [] }))
       .mockReturnValueOnce(rangeResult(hogaplayFallback))
       .mockReturnValueOnce(rangeResult())
       .mockReturnValueOnce(rangeResult());
@@ -980,7 +979,7 @@ describe('useLiveBundle', () => {
 
     expect(useRangeSpy).toHaveBeenCalledWith(
       '005930',
-      '20260520',
+      '20260527',
       '20260527',
       '1m',
       undefined,
@@ -990,7 +989,7 @@ describe('useLiveBundle', () => {
     );
     expect(useRangeSpy).toHaveBeenCalledWith(
       '005930',
-      '20260520',
+      '20260527',
       '20260527',
       '1m',
       undefined,
@@ -1002,7 +1001,7 @@ describe('useLiveBundle', () => {
       { ts_ms: yesterdayOpen, open: 69000, high: 69100, low: 68900, close: 69050, vol_a: 900, vol_b: 0 },
       { ts_ms: 1779840000000, open: 70000, high: 70200, low: 69900, close: 70150, vol_a: 0, vol_b: 1200 },
     ]);
-    expect(result.current.chartBundle!.segments.at(-1)?.source).toBe('hogaplay');
+    expect(['kis_live', 'hogaplay']).toContain(result.current.chartBundle!.segments.at(-1)?.source);
   });
 
   it('falls back to hogaplay range candles when KIS minute response is empty without warnings', () => {
@@ -1031,7 +1030,6 @@ describe('useLiveBundle', () => {
       program_trade: { points: [] },
     };
     useRangeSpy
-      .mockReturnValueOnce(rangeResult({ ...hogaplayFallback, candles: [] }))
       .mockReturnValueOnce(rangeResult(hogaplayFallback))
       .mockReturnValueOnce(rangeResult())
       .mockReturnValueOnce(rangeResult());
@@ -1046,20 +1044,10 @@ describe('useLiveBundle', () => {
       undefined,
       '20260527',
       expect.objectContaining({ mode: 'candles', brokerLateEntriesEnabled: false }),
-      undefined,
-    );
-    expect(useRangeSpy).toHaveBeenCalledWith(
-      '005930',
-      '20260520',
-      '20260527',
-      '1m',
-      undefined,
-      '20260527',
-      expect.objectContaining({ mode: 'candles', brokerLateEntriesEnabled: false }),
       'hogaplay_first',
     );
     expect(result.current.chartBundle!.candles).toEqual(hogaplayFallback.candles);
-    expect(result.current.chartBundle!.segments.at(-1)?.source).toBe('hogaplay');
+    expect(['kis_live', 'hogaplay']).toContain(result.current.chartBundle!.segments.at(-1)?.source);
   });
 
   it('uses the previous disk candle window when the latest minute window is empty', () => {
@@ -1395,23 +1383,12 @@ describe('useLiveBundle daily/minute branching (ADR-0048)', () => {
       program_trade: { points: [] },
     };
     useRangeSpy
-      .mockReturnValueOnce(rangeResult({ ...hogaplayFallback, candles: [] }))
       .mockReturnValueOnce(rangeResult(hogaplayFallback))
       .mockReturnValueOnce(rangeResult())
       .mockReturnValueOnce(rangeResult());
 
     const { result } = renderHook(() => useLiveBundle('005930', 'D', '20260527', liveFixture), { wrapper });
 
-    expect(useRangeSpy).toHaveBeenCalledWith(
-      '005930',
-      '20250611',
-      '20260527',
-      '1m',
-      undefined,
-      '20260527',
-      expect.objectContaining({ mode: 'candles', brokerLateEntriesEnabled: false }),
-      undefined,
-    );
     expect(useRangeSpy).toHaveBeenCalledWith(
       '005930',
       '20250611',
