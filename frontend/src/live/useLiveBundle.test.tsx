@@ -502,6 +502,45 @@ describe('useLiveBundle', () => {
     );
   });
 
+  it('holds sidecar requests while minute candle price range is still loading', () => {
+    candlesMock.candles = [];
+    candlesMock.isFetching = true;
+
+    const { rerender } = renderHook(() => useLiveBundle('005930', '1m', '20260527', liveFixture), { wrapper: createWrapper() });
+
+    expect(useRangeSidecarDeltaSpy).toHaveBeenCalledWith(
+      null,
+      null,
+      null,
+      null,
+      undefined,
+      null,
+      expect.objectContaining({
+        mode: 'sidecar',
+        volumeDistributionBins: 10,
+        volumeDistributionPriceRange: null,
+      }),
+    );
+
+    candlesMock.candles = [DEFAULT_CANDLE];
+    candlesMock.isFetching = false;
+    rerender();
+
+    expect(useRangeSidecarDeltaSpy).toHaveBeenLastCalledWith(
+      '005930',
+      '20260520',
+      '20260527',
+      '1m',
+      undefined,
+      '20260527',
+      expect.objectContaining({
+        mode: 'sidecar',
+        volumeDistributionBins: 10,
+        volumeDistributionPriceRange: { min: 69900, max: 70100 },
+      }),
+    );
+  });
+
   it('disables the sidecar range request when every sidecar indicator is off', () => {
     useLivePageStore.setState({
       askPeakEnabled: false,
