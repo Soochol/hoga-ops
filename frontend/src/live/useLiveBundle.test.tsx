@@ -130,6 +130,13 @@ const useRangeSpy = vi.fn<(...args: unknown[]) => any>(() => ({
   isPlaceholderData: rangeMock.isPlaceholderData,
   isFetching: rangeMock.isFetching,
 }));
+const useRangeHogaDeltaSpy = vi.fn<(...args: unknown[]) => any>(() => ({
+  data: null,
+  isLoading: false,
+  error: null,
+  isPlaceholderData: rangeMock.isPlaceholderData,
+  isFetching: rangeMock.isFetching,
+}));
 const useRangeSidecarDeltaSpy = vi.fn<(...args: unknown[]) => any>(() => ({
   data: null,
   isLoading: false,
@@ -139,6 +146,7 @@ const useRangeSidecarDeltaSpy = vi.fn<(...args: unknown[]) => any>(() => ({
 }));
 vi.mock('../api/range', () => ({
   useRange: (...args: unknown[]) => useRangeSpy(...args as []),
+  useRangeHogaDelta: (...args: unknown[]) => useRangeHogaDeltaSpy(...args as []),
   useRangeSidecarDelta: (...args: unknown[]) => useRangeSidecarDeltaSpy(...args as []),
 }));
 
@@ -367,6 +375,7 @@ describe('useLiveBundle', () => {
     livePastDailyCandlesSpy.mockClear();
     livePastInvestorNetSpy.mockClear();
     useRangeSpy.mockClear();
+    useRangeHogaDeltaSpy.mockClear();
     useRangeSidecarDeltaSpy.mockClear();
     useRangeSpy.mockImplementation(() => ({
       data: null,
@@ -376,6 +385,13 @@ describe('useLiveBundle', () => {
       isFetching: rangeMock.isFetching,
     }));
     useRangeSidecarDeltaSpy.mockImplementation(() => ({
+      data: null,
+      isLoading: false,
+      error: null,
+      isPlaceholderData: rangeMock.isPlaceholderData,
+      isFetching: rangeMock.isFetching,
+    }));
+    useRangeHogaDeltaSpy.mockImplementation(() => ({
       data: null,
       isLoading: false,
       error: null,
@@ -448,7 +464,7 @@ describe('useLiveBundle', () => {
   it('loads hoga panes and overlay sidecars through separate lightweight range requests', () => {
     renderHook(() => useLiveBundle('005930', '1m', '20260527', liveFixture), { wrapper: createWrapper() });
 
-    expect(useRangeSpy).toHaveBeenCalledWith(
+    expect(useRangeHogaDeltaSpy).toHaveBeenCalledWith(
       '005930',
       '20260520',
       '20260527',
@@ -492,7 +508,7 @@ describe('useLiveBundle', () => {
 
     renderHook(() => useLiveBundle('005930', '1m', '20260527', liveFixture), { wrapper: createWrapper() });
 
-    expect(useRangeSpy).toHaveBeenCalledWith(
+    expect(useRangeHogaDeltaSpy).toHaveBeenCalledWith(
       '005930',
       '20260520',
       '20260527',
@@ -521,10 +537,10 @@ describe('useLiveBundle', () => {
     );
   });
 
-  it('routes live sidecars through the delta range hook', () => {
+  it('routes live hoga and sidecars through delta range hooks', () => {
     renderHook(() => useLiveBundle('005930', '1m', '20260527', liveFixture), { wrapper: createWrapper() });
 
-    expect(useRangeSpy).toHaveBeenCalledWith(
+    expect(useRangeHogaDeltaSpy).toHaveBeenCalledWith(
       '005930',
       '20260520',
       '20260527',
@@ -589,11 +605,9 @@ describe('useLiveBundle', () => {
           ],
         });
       }
-      if (options?.mode === 'hoga') {
-        return rangeResult(fallbackRangeBundle(71_234));
-      }
       return rangeResult();
     });
+    useRangeHogaDeltaSpy.mockReturnValue(rangeResult(fallbackRangeBundle(71_234)));
     useRangeSidecarDeltaSpy.mockImplementation(() => ({
       data: null,
       isLoading: true,
@@ -1207,6 +1221,7 @@ describe('useLiveBundle daily/minute branching (ADR-0048)', () => {
     livePastDailyCandlesSpy.mockClear();
     screenerDailyCandlesSpy.mockClear();
     useRangeSpy.mockClear();
+    useRangeHogaDeltaSpy.mockClear();
     useRangeSidecarDeltaSpy.mockClear();
     candlesMock.candles = [DEFAULT_CANDLE];
     candlesMock.isPlaceholderData = false;
@@ -1516,6 +1531,7 @@ describe('useLiveBundle extension atomization gate', () => {
   beforeEach(() => {
     livePastCandlesSpy.mockClear();
     useRangeSpy.mockClear();
+    useRangeHogaDeltaSpy.mockClear();
     useRangeSidecarDeltaSpy.mockClear();
     candlesMock.candles = [DEFAULT_CANDLE];
     candlesMock.isPlaceholderData = false;
@@ -1600,6 +1616,7 @@ describe('useLiveBundle isExtending', () => {
     livePastCandlesSpy.mockClear();
     livePastDailyCandlesSpy.mockClear();
     useRangeSpy.mockClear();
+    useRangeHogaDeltaSpy.mockClear();
     useRangeSidecarDeltaSpy.mockClear();
     candlesMock.candles = [DEFAULT_CANDLE];
     candlesMock.isPlaceholderData = false;

@@ -96,32 +96,35 @@ function addDays(yyyymmdd: string, days: number): string {
   ].join('');
 }
 
-function sidecarIdentity(input: RangeBundleRequestInput): string {
+type DeltaRangeMode = 'sidecar' | 'hoga';
+
+function deltaRangeIdentity(input: RangeBundleRequestInput): string {
   const request = buildRangeBundleRequest(input);
   const key = [...request.queryKey];
   key[2] = null;
   return JSON.stringify(key);
 }
 
-export function planSidecarRangeDelta(
+function planRangeDelta(
   input: RangeBundleRequestInput,
   previous?: RangeBundle,
   previousIdentity?: string,
+  mode: DeltaRangeMode = 'sidecar',
 ): RangeDeltaPlan {
-  const identity = sidecarIdentity(input);
+  const identity = deltaRangeIdentity(input);
   const request = buildRangeBundleRequest(input);
   const options = input.options ?? {};
   const fullInput = { ...input };
-  const isLiveSidecarRequest = !!(
+  const isLiveDeltaRequest = !!(
     request.enabled &&
-    options.mode === 'sidecar' &&
+    options.mode === mode &&
     options.volumeDistributionCutoffMs == null &&
     input.todayKst &&
     input.to &&
     input.to >= input.todayKst
   );
 
-  if (!isLiveSidecarRequest || !input.code || !input.from || !input.to) {
+  if (!isLiveDeltaRequest || !input.code || !input.from || !input.to) {
     return {
       enabled: request.enabled,
       requestInput: fullInput,
@@ -165,6 +168,22 @@ export function planSidecarRangeDelta(
     servePrevious: false,
     identity,
   };
+}
+
+export function planSidecarRangeDelta(
+  input: RangeBundleRequestInput,
+  previous?: RangeBundle,
+  previousIdentity?: string,
+): RangeDeltaPlan {
+  return planRangeDelta(input, previous, previousIdentity, 'sidecar');
+}
+
+export function planHogaRangeDelta(
+  input: RangeBundleRequestInput,
+  previous?: RangeBundle,
+  previousIdentity?: string,
+): RangeDeltaPlan {
+  return planRangeDelta(input, previous, previousIdentity, 'hoga');
 }
 
 function uniqueBy<T>(items: T[], keyOf: (item: T) => string, compare: (a: T, b: T) => number): T[] {
@@ -281,7 +300,7 @@ export function useRange(
   }));
 }
 
-export function useRangeSidecarDelta(
+function useRangeDelta(
   code: string | null,
   from: string | null,
   to: string | null,
@@ -290,6 +309,7 @@ export function useRangeSidecarDelta(
   todayKst?: string | null,
   options?: RangeRequestOptions,
   sourcePrefOverride?: SourcePreference,
+  mode: DeltaRangeMode = 'sidecar',
 ) {
   const storedSourcePref: SourcePreference = useSourcePreferenceStore((s) => s.sourcePreference);
   const sourcePref = sourcePrefOverride ?? storedSourcePref;
@@ -301,12 +321,12 @@ export function useRangeSidecarDelta(
   );
   const merged = mergedRef.current;
   const previousIdentity = merged?.identity;
-  const previous = merged && merged.identity === sidecarIdentity(baseInput)
+  const previous = merged && merged.identity === deltaRangeIdentity(baseInput)
     ? merged.data
     : undefined;
   const plan = useMemo(
-    () => planSidecarRangeDelta(baseInput, previous, previousIdentity),
-    [baseInput, previous, previousIdentity],
+    () => planRangeDelta(baseInput, previous, previousIdentity, mode),
+    [baseInput, previous, previousIdentity, mode],
   );
   const request = buildRangeBundleRequest(plan.requestInput);
   const { staleTime, refetchInterval } = rangeFreshnessOptions(to, request.todayKst);
@@ -339,4 +359,30 @@ export function useRangeSidecarDelta(
   }, [data, query.isPlaceholderData, plan.identity, plan.canReusePrevious]);
 
   return { ...query, data };
+}
+
+export function useRangeSidecarDelta(
+  code: string | null,
+  from: string | null,
+  to: string | null,
+  timeframe: Timeframe | null,
+  priceRange?: { min: number; max: number },
+  todayKst?: string | null,
+  options?: RangeRequestOptions,
+  sourcePrefOverride?: SourcePreference,
+) {
+  return useRangeDelta(code, from, to, timeframe, priceRange, todayKst, options, sourcePrefOverride, 'sidecar');
+}
+
+export function useRangeHogaDelta(
+  code: string | null,
+  from: string | null,
+  to: string | null,
+  timeframe: Timeframe | null,
+  priceRange?: { min: number; max: number },
+  todayKst?: string | null,
+  options?: RangeRequestOptions,
+  sourcePrefOverride?: SourcePreference,
+) {
+  return useRangeDelta(code, from, to, timeframe, priceRange, todayKst, options, sourcePrefOverride, 'hoga');
 }

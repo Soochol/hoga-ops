@@ -6,8 +6,10 @@ import type { ReactNode } from 'react';
 import {
   buildRangeBundleRequest,
   mergeRangeBundles,
+  planHogaRangeDelta,
   planSidecarRangeDelta,
   useRange,
+  useRangeHogaDelta,
   useRangeSidecarDelta,
   rangeBundleQueryOptions,
   rangeFreshnessOptions,
@@ -427,6 +429,89 @@ describe('planSidecarRangeDelta', () => {
       from_date: '20260625',
       to_date: '20260628',
     }, planSidecarRangeDelta({
+      ...previousRequest,
+      from: '20260625',
+      to: '20260628',
+      todayKst: '20260706',
+    }).identity);
+
+    expect(plan.enabled).toBe(true);
+    expect(plan.canReusePrevious).toBe(false);
+    expect(plan.servePrevious).toBe(false);
+    expect(plan.requestInput.from).toBe('20260624');
+    expect(plan.requestInput.to).toBe('20260628');
+  });
+});
+
+describe('planHogaRangeDelta', () => {
+  const previous: RangeBundle = {
+    ...fakeBundle,
+    code: '005930',
+    from_date: '20260629',
+    to_date: '20260706',
+    bucket_ms: 60_000,
+  };
+  const previousRequest: RangeBundleRequestInput = {
+    code: '005930',
+    from: '20260629',
+    to: '20260706',
+    timeframe: '1m',
+    todayKst: '20260706',
+    sourcePref: 'hogaplay_first' as const,
+    options: { mode: 'hoga' as const },
+  };
+  const previousIdentity = planHogaRangeDelta(previousRequest).identity;
+
+  it('plans only the missing left delta for compatible live hoga ranges', () => {
+    const plan = planHogaRangeDelta({
+      ...previousRequest,
+      from: '20260624',
+    }, previous, previousIdentity);
+
+    expect(plan.enabled).toBe(true);
+    expect(plan.canReusePrevious).toBe(true);
+    expect(plan.servePrevious).toBe(true);
+    expect(plan.requestInput.from).toBe('20260624');
+    expect(plan.requestInput.to).toBe('20260628');
+  });
+
+  it('keeps the requested hoga range observable when previous data already covers it', () => {
+    const plan = planHogaRangeDelta({
+      ...previousRequest,
+      from: '20260629',
+    }, previous, previousIdentity);
+
+    expect(plan.enabled).toBe(true);
+    expect(plan.servePrevious).toBe(true);
+    expect(plan.requestInput.from).toBe('20260629');
+    expect(plan.requestInput.to).toBe('20260706');
+  });
+
+  it('falls back to full request when hoga identity changes', () => {
+    const plan = planHogaRangeDelta({
+      ...previousRequest,
+      from: '20260624',
+      sourcePref: 'kis_ws_first',
+    }, previous, previousIdentity);
+
+    expect(plan.enabled).toBe(true);
+    expect(plan.canReusePrevious).toBe(false);
+    expect(plan.servePrevious).toBe(false);
+    expect(plan.requestInput.from).toBe('20260624');
+    expect(plan.requestInput.to).toBe('20260706');
+  });
+
+  it('falls back to full request for past-only hoga ranges', () => {
+    const plan = planHogaRangeDelta({
+      ...previousRequest,
+      from: '20260624',
+      to: '20260628',
+      todayKst: '20260706',
+    }, {
+      ...previous,
+      from_date: '20260625',
+      to_date: '20260628',
+    }, planHogaRangeDelta({
       ...previousRequest,
       from: '20260625',
       to: '20260628',
@@ -913,6 +998,91 @@ describe('useRangeSidecarDelta', () => {
     resolveNext(next);
     await waitFor(() => expect(result.current.isPlaceholderData).toBe(false));
     await waitFor(() => expect(result.current.data?.to_date).toBe('20260707'));
+  });
+});
+
+describe('useRangeHogaDelta', () => {
+  beforeEach(() => {
+    vi.restoreAllMocks();
+    localStorage.clear();
+    useSourcePreferenceStore.setState({ sourcePreference: 'hogaplay_first' });
+  });
+
+  it('fetches only missing left hoga dates and keeps the full requested query observable', async () => {
+    const first: RangeBundle = {
+      ...fakeBundle,
+      code: '005930',
+      from_date: '20260629',
+      to_date: '20260706',
+      bucket_ms: 60_000,
+      quote_ratio: { bucket_ms: 60_000, points: [{ t: 2, bid_total: 11, ask_total: 10, bid_max: 5, ask_max: 4, imb_max_bid: 1, imb_max_ask: 0 }] },
+      fill_strength: { bucket_ms: 60_000, points: [{ t: 2, buy_qty: 3, sell_qty: 1 }] },
+    };
+    const delta: RangeBundle = {
+      ...fakeBundle,
+      code: '005930',
+      from_date: '20260624',
+      to_date: '20260628',
+      bucket_ms: 60_000,
+      quote_ratio: { bucket_ms: 60_000, points: [{ t: 1, bid_total: 9, ask_total: 10, bid_max: 3, ask_max: 4, imb_max_bid: 0, imb_max_ask: 1 }] },
+      fill_strength: { bucket_ms: 60_000, points: [{ t: 1, buy_qty: 1, sell_qty: 2 }] },
+    };
+    const refreshed: RangeBundle = {
+      ...fakeBundle,
+      code: '005930',
+      from_date: '20260624',
+      to_date: '20260706',
+      bucket_ms: 60_000,
+      quote_ratio: { bucket_ms: 60_000, points: [{ t: 3, bid_total: 13, ask_total: 10, bid_max: 6, ask_max: 4, imb_max_bid: 2, imb_max_ask: 0 }] },
+      fill_strength: { bucket_ms: 60_000, points: [{ t: 3, buy_qty: 5, sell_qty: 1 }] },
+    };
+    const options = { mode: 'hoga' as const };
+    const spy = vi.spyOn(client, 'apiCall').mockImplementation((url) => {
+      const text = String(url);
+      if (text.includes('from=20260624&to=20260628')) return Promise.resolve(delta);
+      if (text.includes('from=20260624&to=20260706')) return Promise.resolve(refreshed);
+      return Promise.resolve(first);
+    });
+    const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+    const wrapper = ({ children }: { children: ReactNode }) => (
+      <QueryClientProvider client={qc}>{children}</QueryClientProvider>
+    );
+    const { result, rerender } = renderHook(
+      ({ from }: { from: string }) =>
+        useRangeHogaDelta('005930', from, '20260706', '1m', undefined, '20260706', options, 'hogaplay_first'),
+      { wrapper, initialProps: { from: '20260629' } },
+    );
+
+    await waitFor(() => expect(result.current.data?.from_date).toBe('20260629'));
+    rerender({ from: '20260624' });
+
+    await waitFor(() => expect(result.current.data?.from_date).toBe('20260624'));
+    expect(spy).toHaveBeenCalledTimes(2);
+    expect(spy.mock.calls[1][0]).toBe(
+      '/api/range?code=005930&from=20260624&to=20260628&bucket_ms=60000'
+        + '&source_pref=hogaplay_first&mode=hoga',
+    );
+    expect(result.current.data?.quote_ratio.points.map((p) => p.t)).toEqual([1, 2]);
+    await new Promise((r) => setTimeout(r, 30));
+    expect(spy).toHaveBeenCalledTimes(2);
+
+    const fullRequest = buildRangeBundleRequest({
+      code: '005930',
+      from: '20260624',
+      to: '20260706',
+      timeframe: '1m',
+      todayKst: '20260706',
+      sourcePref: 'hogaplay_first',
+      options,
+    });
+    await qc.invalidateQueries({ queryKey: fullRequest.queryKey });
+
+    await waitFor(() => expect(spy).toHaveBeenCalledTimes(3));
+    expect(spy.mock.calls[2][0]).toBe(
+      '/api/range?code=005930&from=20260624&to=20260706&bucket_ms=60000'
+        + '&source_pref=hogaplay_first&mode=hoga',
+    );
+    await waitFor(() => expect(result.current.data?.quote_ratio.points.map((p) => p.t)).toEqual([3]));
   });
 });
 

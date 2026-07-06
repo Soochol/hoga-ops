@@ -5,7 +5,7 @@ import { useLivePastCandles } from '../api/livePastCandles';
 import { useLivePastDailyCandles } from '../api/livePastDailyCandles';
 import { useLivePastInvestorNet } from '../api/livePastInvestorNet';
 import { useScreenerDailyCandles } from '../api/screenerDailyCandles';
-import { useRange, useRangeSidecarDelta } from '../api/range';
+import { useRange, useRangeHogaDelta, useRangeSidecarDelta } from '../api/range';
 import { useLivePageStore, type LiveTimeframe, isMinuteTimeframe } from '../state/livePage';
 import type { LiveVenueOption } from '../state/liveVenue';
 import { useSourcePreferenceStore } from '../state/sourcePreference';
@@ -577,7 +577,7 @@ export function useLiveBundle(
     () => ({ mode: 'hoga' as const }),
     [],
   );
-  const pastHoga = useRange(
+  const pastHoga = useRangeHogaDelta(
     rangePlan.code,
     rangePlan.from,
     rangePlan.to,
