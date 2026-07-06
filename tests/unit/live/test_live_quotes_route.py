@@ -8,6 +8,7 @@ from fastapi.testclient import TestClient
 from hoga.live import account_health, kis_runtime, lifecycle, api as live_api
 from hoga.live.api import build_router, _quote_phase, _KST
 from hoga.live.buffer import LiveBuffer
+from hoga.live.kis_capacity_scheduler import KisCapacityCooldown, KisCapacityOverloaded
 from hoga.live.kis_client import KisQuote
 from hoga.live.snapshot import LiveSnapshot, SnapshotKind
 
@@ -571,3 +572,49 @@ def test_quotes_capacity_timeout_returns_stale_last_good(monkeypatch, tmp_path):
     assert body["quotes"][0]["change_pct"] == 1.2
     assert body["quotes"][0]["stale"] is True
     assert body["quotes"][0]["stale_reason"] == "kis_capacity_timeout"
+
+
+def test_quotes_capacity_cooldown_returns_stale_last_good(monkeypatch, tmp_path):
+    monkeypatch.setattr(live_api, "_quote_phase", lambda now, venue_policy="KRX": "open")
+    fake = _CountingFakeKis(QUOTES)
+    c = TestClient(_counting_app(fake, tmp_path))
+
+    seed = c.get("/api/live/quotes", params={"codes": "005930,000660"})
+    assert seed.status_code == 200
+    assert fake.calls == 1
+
+    async def raise_cooldown(*_args, **_kwargs):
+        raise KisCapacityCooldown("cooldown")
+
+    monkeypatch.setattr("hoga.live.kis_access.run_with_capacity", raise_cooldown)
+
+    response = c.get("/api/live/quotes", params={"codes": "005930,000660"})
+
+    assert response.status_code == 200
+    body = response.json()
+    assert [q["code"] for q in body["quotes"]] == ["005930", "000660"]
+    assert body["quotes"][0]["stale"] is True
+    assert body["quotes"][0]["stale_reason"] == "kis_capacity_cooldown"
+
+
+def test_quotes_capacity_overloaded_returns_stale_last_good(monkeypatch, tmp_path):
+    monkeypatch.setattr(live_api, "_quote_phase", lambda now, venue_policy="KRX": "open")
+    fake = _CountingFakeKis(QUOTES)
+    c = TestClient(_counting_app(fake, tmp_path))
+
+    seed = c.get("/api/live/quotes", params={"codes": "005930,000660"})
+    assert seed.status_code == 200
+    assert fake.calls == 1
+
+    async def raise_overloaded(*_args, **_kwargs):
+        raise KisCapacityOverloaded("overloaded")
+
+    monkeypatch.setattr("hoga.live.kis_access.run_with_capacity", raise_overloaded)
+
+    response = c.get("/api/live/quotes", params={"codes": "005930,000660"})
+
+    assert response.status_code == 200
+    body = response.json()
+    assert [q["code"] for q in body["quotes"]] == ["005930", "000660"]
+    assert body["quotes"][0]["stale"] is True
+    assert body["quotes"][0]["stale_reason"] == "kis_capacity_overloaded"

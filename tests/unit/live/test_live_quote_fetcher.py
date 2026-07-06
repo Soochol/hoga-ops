@@ -113,6 +113,25 @@ async def test_open_failure_after_cache_returns_stale_last_good() -> None:
     assert out[0].stale_reason == "kis_fetch_failed"
 
 
+async def test_pre_open_failure_after_cache_returns_stale_last_good_without_ohlc() -> None:
+    f = LiveQuoteFetcher()
+    kis_ok = _FakeKis(Q)
+    await f.fetch_and_gate(kis_ok, ["005930"], "open")  # type: ignore[arg-type]
+
+    out = await f.fetch_and_gate(_FakeKis(Q, fail=True), ["005930"], "pre_open")  # type: ignore[arg-type]
+
+    assert len(out) == 1
+    assert out[0].code == "005930"
+    assert out[0].price == 72400
+    assert out[0].change_pct is None
+    assert out[0].change_won is None
+    assert out[0].open is None
+    assert out[0].high is None
+    assert out[0].low is None
+    assert out[0].stale is True
+    assert out[0].stale_reason == "kis_fetch_failed"
+
+
 async def test_closed_cold_failure_serves_empty() -> None:
     f = LiveQuoteFetcher()
     out = await f.fetch_and_gate(_FakeKis(Q, fail=True), ["005930"], "closed")  # type: ignore[arg-type]
