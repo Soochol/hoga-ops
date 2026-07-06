@@ -40,9 +40,7 @@ class KisAccountPool:
     ) -> None:
         self._data_dir = data_dir
         account_ids = kis_runtime.configured_account_ids(data_dir)
-        if not account_ids and kis_runtime.get_kis_client(0) is not None:
-            account_ids = [0]
-        elif not account_ids:
+        if not account_ids:
             account_ids = [0]
         self._account_ids = tuple(account_ids)
         self._now = now
@@ -82,8 +80,7 @@ class KisAccountPool:
         if not candidates:
             raise KisNoAccountAvailable("no KIS account available")
 
-        free_candidates = [a for a in candidates if self._inflight.get(a, 0) == 0]
-        if reserve_one and len(self.eligible_accounts()) > 1 and len(free_candidates) <= 1:
+        if reserve_one and not self.reserved_background_capacity_available(cooldown_key):
             raise KisAccountReservationDeferred("reserved user-visible KIS account capacity")
 
         account_id = min(candidates, key=lambda a: (self._inflight.get(a, 0), a))
@@ -103,6 +100,16 @@ class KisAccountPool:
             self._inflight.pop(account_id, None)
         else:
             self._inflight[account_id] = current - 1
+
+    def reserved_background_capacity_available(self, cooldown_key: Hashable | None) -> bool:
+        if len(self.eligible_accounts()) <= 1:
+            return True
+        free_candidates = [
+            account_id
+            for account_id in self._candidates(cooldown_key)
+            if self._inflight.get(account_id, 0) == 0
+        ]
+        return len(free_candidates) > 1
 
     def snapshot(self) -> list[KisAccountSnapshot]:
         now = self._now()
