@@ -310,7 +310,7 @@ describe('planSidecarRangeDelta', () => {
     expect(plan.requestInput.to).toBe('20260628');
   });
 
-  it('serves previous data without fetching when the requested range is already covered', () => {
+  it('keeps the requested range observable when previous data already covers it', () => {
     const plan = planSidecarRangeDelta({
       code: '005930',
       from: '20260629',
@@ -324,10 +324,10 @@ describe('planSidecarRangeDelta', () => {
       options: { mode: 'sidecar', volumeDistributionBins: 10 },
     }).identity);
 
-    expect(plan.enabled).toBe(false);
+    expect(plan.enabled).toBe(true);
     expect(plan.servePrevious).toBe(true);
-    expect(plan.requestInput.from).toBe(null);
-    expect(plan.requestInput.to).toBe(null);
+    expect(plan.requestInput.from).toBe('20260629');
+    expect(plan.requestInput.to).toBe('20260706');
   });
 
   it('falls back to full request when to-date changes', () => {
@@ -795,6 +795,78 @@ describe('useRangeSidecarDelta', () => {
     expect(result.current.data?.volume_distributions.map((d) => d.date)).toEqual(['20260624', '20260629']);
     await new Promise((r) => setTimeout(r, 30));
     expect(spy).toHaveBeenCalledTimes(2);
+  });
+
+  it('keeps the full requested sidecar query observable after a delta merge', async () => {
+    const first: RangeBundle = {
+      ...fakeBundle,
+      code: '005930',
+      from_date: '20260629',
+      to_date: '20260706',
+      bucket_ms: 60_000,
+      volume_distributions: [{ date: '20260629', range_count: 10, price_min: 1, price_max: 2, session_open_ms: 1, session_close_ms: 2, bins: [] }],
+    };
+    const delta: RangeBundle = {
+      ...fakeBundle,
+      code: '005930',
+      from_date: '20260624',
+      to_date: '20260628',
+      bucket_ms: 60_000,
+      volume_distributions: [{ date: '20260624', range_count: 10, price_min: 1, price_max: 2, session_open_ms: 1, session_close_ms: 2, bins: [] }],
+    };
+    const refreshed: RangeBundle = {
+      ...fakeBundle,
+      code: '005930',
+      from_date: '20260624',
+      to_date: '20260706',
+      bucket_ms: 60_000,
+      volume_distributions: [{ date: '20260706', range_count: 10, price_min: 3, price_max: 4, session_open_ms: 3, session_close_ms: 4, bins: [] }],
+    };
+    const options = {
+      mode: 'sidecar' as const,
+      volumeDistributionBins: 10,
+      volumeDistributionPriceRange: { min: 303000, max: 325000 },
+    };
+    const spy = vi.spyOn(client, 'apiCall').mockImplementation((url) => {
+      const text = String(url);
+      if (text.includes('from=20260624&to=20260628')) return Promise.resolve(delta);
+      if (text.includes('from=20260624&to=20260706')) return Promise.resolve(refreshed);
+      return Promise.resolve(first);
+    });
+    const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+    const wrapper = ({ children }: { children: ReactNode }) => (
+      <QueryClientProvider client={qc}>{children}</QueryClientProvider>
+    );
+    const { result, rerender } = renderHook(
+      ({ from }: { from: string }) =>
+        useRangeSidecarDelta('005930', from, '20260706', '1m', undefined, '20260706', options, 'hogaplay_first'),
+      { wrapper, initialProps: { from: '20260629' } },
+    );
+
+    await waitFor(() => expect(result.current.data?.from_date).toBe('20260629'));
+    rerender({ from: '20260624' });
+    await waitFor(() => expect(result.current.data?.from_date).toBe('20260624'));
+    expect(spy).toHaveBeenCalledTimes(2);
+
+    const fullRequest = buildRangeBundleRequest({
+      code: '005930',
+      from: '20260624',
+      to: '20260706',
+      timeframe: '1m',
+      todayKst: '20260706',
+      sourcePref: 'hogaplay_first',
+      options,
+    });
+    await qc.invalidateQueries({ queryKey: fullRequest.queryKey });
+
+    await waitFor(() => expect(spy).toHaveBeenCalledTimes(3));
+    expect(spy.mock.calls[2][0]).toBe(
+      '/api/range?code=005930&from=20260624&to=20260706&bucket_ms=60000'
+        + '&volume_distribution_bins=10'
+        + '&volume_distribution_price_min=303000&volume_distribution_price_max=325000'
+        + '&source_pref=hogaplay_first&mode=sidecar',
+    );
+    await waitFor(() => expect(result.current.data?.volume_distributions.map((d) => d.date)).toEqual(['20260706']));
   });
 
   it('keeps placeholder query data during forced full requests while the next fetch is pending', async () => {

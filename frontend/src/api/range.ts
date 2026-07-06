@@ -1,5 +1,5 @@
 import { useQuery, type UseQueryOptions } from '@tanstack/react-query';
-import { useMemo, useRef } from 'react';
+import { useEffect, useMemo, useReducer, useRef } from 'react';
 
 import { apiCall } from './client';
 import type { RangeBundle, Timeframe } from './types';
@@ -140,8 +140,8 @@ export function planSidecarRangeDelta(
 
   if (sameIdentity && previous.from_date <= input.from) {
     return {
-      enabled: false,
-      requestInput: { ...input, from: null, to: null },
+      enabled: true,
+      requestInput: fullInput,
       canReusePrevious: false,
       servePrevious: true,
       identity,
@@ -294,19 +294,23 @@ export function useRangeSidecarDelta(
   const storedSourcePref: SourcePreference = useSourcePreferenceStore((s) => s.sourcePreference);
   const sourcePref = sourcePrefOverride ?? storedSourcePref;
   const mergedRef = useRef<{ identity: string; data: RangeBundle } | null>(null);
+  const [, forceRerender] = useReducer((value: number) => value + 1, 0);
   const baseInput = useMemo<RangeBundleRequestInput>(
     () => ({ code, from, to, timeframe, priceRange, todayKst, sourcePref, options }),
     [code, from, to, timeframe, priceRange, todayKst, sourcePref, options],
   );
-  const previous = mergedRef.current?.identity === sidecarIdentity(baseInput)
-    ? mergedRef.current.data
+  const merged = mergedRef.current;
+  const previousIdentity = merged?.identity;
+  const previous = merged && merged.identity === sidecarIdentity(baseInput)
+    ? merged.data
     : undefined;
   const plan = useMemo(
-    () => planSidecarRangeDelta(baseInput, previous, mergedRef.current?.identity),
-    [baseInput, previous],
+    () => planSidecarRangeDelta(baseInput, previous, previousIdentity),
+    [baseInput, previous, previousIdentity],
   );
   const request = buildRangeBundleRequest(plan.requestInput);
   const { staleTime, refetchInterval } = rangeFreshnessOptions(to, request.todayKst);
+  const initialData = plan.servePrevious && !plan.canReusePrevious ? previous : undefined;
 
   const query = useQuery<RangeBundle, Error, RangeBundle, RangeQueryKey>({
     queryKey: request.queryKey,
@@ -316,6 +320,7 @@ export function useRangeSidecarDelta(
     refetchInterval,
     placeholderData: (prev, previousQuery) =>
       rangePlaceholderData(prev, request.queryKey, previousQuery?.queryKey),
+    ...(initialData ? { initialData } : {}),
   });
 
   const data = useMemo(() => {
@@ -326,9 +331,12 @@ export function useRangeSidecarDelta(
     return query.data;
   }, [plan.canReusePrevious, plan.servePrevious, previous, query.data, query.isPlaceholderData]);
 
-  if (data && !query.isPlaceholderData) {
+  useEffect(() => {
+    if (!data || query.isPlaceholderData) return;
+    if (mergedRef.current?.identity === plan.identity && mergedRef.current.data === data) return;
     mergedRef.current = { identity: plan.identity, data };
-  }
+    if (plan.canReusePrevious) forceRerender();
+  }, [data, query.isPlaceholderData, plan.identity, plan.canReusePrevious]);
 
   return { ...query, data };
 }
