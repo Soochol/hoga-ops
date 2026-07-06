@@ -39,7 +39,7 @@ import { apiGet } from './client';
 
 describe('useLiveOrderbookAtCursor', () => {
   beforeEach(() => {
-    useLiveCursorStore.getState().clearCursor();
+    useLiveCursorStore.getState().resetCursor();
     useSourcePreferenceStore.getState().setSourcePreference('hogaplay_first');
     (apiGet as unknown as ReturnType<typeof vi.fn>).mockClear();
     (apiGet as unknown as ReturnType<typeof vi.fn>).mockImplementation(async (url: string) => {
@@ -58,12 +58,28 @@ describe('useLiveOrderbookAtCursor', () => {
     expect(apiGet).not.toHaveBeenCalled();
   });
 
-  it('fetches once when cursorMs becomes set', async () => {
+  it('waits for sidebarCursorMs instead of immediate cursorMs', async () => {
+    renderHook(() =>
+      useLiveOrderbookAtCursor({ code: '005930', timeframe: '1m' }),
+    );
+
+    act(() => useLiveCursorStore.getState().setCursor(1_779_930_001_234));
+    expect(apiGet).not.toHaveBeenCalled();
+
+    act(() => useLiveCursorStore.getState().setSidebarCursor(1_779_930_000_000));
+    await waitFor(() => expect(apiGet).toHaveBeenCalledTimes(1));
+    const url = (apiGet as ReturnType<typeof vi.fn>).mock.calls[0][0] as string;
+    expect(url).toContain('/api/orderbook');
+    expect(url).toContain('date=20260528');
+    expect(url).toContain('t=1779930000000');
+  });
+
+  it('fetches once when sidebarCursorMs becomes set', async () => {
     const { result, rerender } = renderHook(() =>
       useLiveOrderbookAtCursor({ code: '005930', timeframe: '1m' }),
     );
     act(() => {
-      useLiveCursorStore.getState().setCursor(1_779_930_000_000);  // 2026-05-28 10:00:00 KST, exact 1m boundary
+      useLiveCursorStore.getState().setSidebarCursor(1_779_930_000_000);  // 2026-05-28 10:00:00 KST, exact 1m boundary
     });
     rerender();
     await waitFor(() => expect(apiGet).toHaveBeenCalledTimes(1));
@@ -82,12 +98,10 @@ describe('useLiveOrderbookAtCursor', () => {
     renderHook(() =>
       useLiveOrderbookAtCursor({ code: '005930', timeframe: '1m' }),
     );
-    act(() => useLiveCursorStore.getState().setCursor(1_779_930_000_000));
+    act(() => useLiveCursorStore.getState().setSidebarCursor(1_779_930_000_000));
     await waitFor(() => expect(apiGet).toHaveBeenCalledTimes(1));
-    act(() => useLiveCursorStore.getState().setCursor(1_779_930_001_234));  // same minute
-    act(() => useLiveCursorStore.getState().setCursor(1_779_930_029_999));  // same minute
-    // 80ms is enough for useSpot's 30ms debounce to fire.
-    await new Promise((r) => setTimeout(r, 80));
+    act(() => useLiveCursorStore.getState().setSidebarCursor(1_779_930_001_234));  // same minute
+    act(() => useLiveCursorStore.getState().setSidebarCursor(1_779_930_029_999));  // same minute
     expect(apiGet).toHaveBeenCalledTimes(1);  // bucket-aligned: same key, LRU hit
   });
 
@@ -95,7 +109,7 @@ describe('useLiveOrderbookAtCursor', () => {
     renderHook(() =>
       useLiveOrderbookAtCursor({ code: '005930', timeframe: '1m' }),
     );
-    act(() => useLiveCursorStore.getState().setCursor(1_779_930_000_000));
+    act(() => useLiveCursorStore.getState().setSidebarCursor(1_779_930_000_000));
     await waitFor(() => expect(apiGet).toHaveBeenCalledTimes(1));
     (apiGet as unknown as ReturnType<typeof vi.fn>).mockImplementation(async (url: string) => {
       if (url.includes('/api/orderbook')) {
@@ -123,7 +137,7 @@ describe('useLiveOrderbookAtCursor', () => {
     renderHook(() =>
       useLiveOrderbookAtCursor({ code: '005930', timeframe: '1m' }),
     );
-    act(() => useLiveCursorStore.getState().setCursor(pastDayCursorMs));
+    act(() => useLiveCursorStore.getState().setSidebarCursor(pastDayCursorMs));
     await waitFor(() => expect(apiGet).toHaveBeenCalledTimes(1));
     const url = (apiGet as ReturnType<typeof vi.fn>).mock.calls[0][0] as string;
     expect(url).toContain('date=20260415');
@@ -135,7 +149,7 @@ describe('useLiveOrderbookAtCursor', () => {
 
 describe('useLiveBrokersAtCursor', () => {
   beforeEach(() => {
-    useLiveCursorStore.getState().clearCursor();
+    useLiveCursorStore.getState().resetCursor();
     useSourcePreferenceStore.getState().setSourcePreference('hogaplay_first');
     (apiGet as unknown as ReturnType<typeof vi.fn>).mockClear();
     (apiGet as unknown as ReturnType<typeof vi.fn>).mockImplementation(async (url: string) => {
@@ -157,25 +171,23 @@ describe('useLiveBrokersAtCursor', () => {
     // timeframe gate (null on calendar frames) keeps the fetch dormant — the
     // isSpot gate in LiveSidebar only suppresses display, not the fetch.
     renderHook(() => useLiveBrokersAtCursor({ code: '005930', timeframe: null }));
-    act(() => useLiveCursorStore.getState().setCursor(1_779_930_000_000));
-    await new Promise((r) => setTimeout(r, 80));
+    act(() => useLiveCursorStore.getState().setSidebarCursor(1_779_930_000_000));
     expect(apiGet).not.toHaveBeenCalled();
   });
 
-  it('fetches once when cursorMs set, key independent of cursorMs value', async () => {
+  it('fetches once when sidebarCursorMs set, key independent of sidebarCursorMs value', async () => {
     renderHook(() => useLiveBrokersAtCursor({ code: '005930', timeframe: '1m' }));
-    act(() => useLiveCursorStore.getState().setCursor(1_779_930_000_000));
+    act(() => useLiveCursorStore.getState().setSidebarCursor(1_779_930_000_000));
     await waitFor(() => expect(apiGet).toHaveBeenCalledTimes(1));
     // Moving cursor within the same day must not refetch — the day series
     // is whole-day; the sidebar projects per-row net at cursor client-side.
-    act(() => useLiveCursorStore.getState().setCursor(1_779_930_840_000));  // +14 min, same day
-    await new Promise((r) => setTimeout(r, 80));
+    act(() => useLiveCursorStore.getState().setSidebarCursor(1_779_930_840_000));  // +14 min, same day
     expect(apiGet).toHaveBeenCalledTimes(1);
   });
 
   it('source_pref change reissues', async () => {
     renderHook(() => useLiveBrokersAtCursor({ code: '005930', timeframe: '1m' }));
-    act(() => useLiveCursorStore.getState().setCursor(1_779_930_000_000));
+    act(() => useLiveCursorStore.getState().setSidebarCursor(1_779_930_000_000));
     await waitFor(() => expect(apiGet).toHaveBeenCalledTimes(1));
     act(() => useSourcePreferenceStore.getState().setSourcePreference('kis_ws_first'));
     await waitFor(() => expect(apiGet).toHaveBeenCalledTimes(2));

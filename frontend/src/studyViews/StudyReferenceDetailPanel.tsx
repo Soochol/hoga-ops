@@ -39,7 +39,7 @@ type SectionProps = {
 };
 
 export function StudyReferenceDetailPanel({ save, bundle }: Props) {
-  const cursorMs = useLiveCursorStore((s) => s.cursorMs);
+  const cursorMs = useLiveCursorStore((s) => s.sidebarCursorMs);
   const volumeDistributionEnabled = useLivePageStore((s) => s.volumeDistributionEnabled);
   const volumeDistributionHoverCutoffEnabled = useLivePageStore((s) => s.volumeDistributionHoverCutoffEnabled);
   const volumeDistributionRangeCount = useLivePageStore((s) => s.volumeDistributionRangeCount);

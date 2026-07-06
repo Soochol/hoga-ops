@@ -27,6 +27,15 @@ describe('projectRatio', () => {
     expect(res?.priceRange).toEqual({ minValue: -0.02, maxValue: 0 });
   });
 
+  it('expands a flat zero autoscale range so BaselineSeries gradients stay finite', () => {
+    const provider = RATIO_SPEC.series[0].options.autoscaleInfoProvider;
+    expect(provider).toBeTypeOf('function');
+    const res = provider!(() => ({
+      priceRange: { minValue: 0, maxValue: 0 },
+    }));
+    expect(res?.priceRange).toEqual({ minValue: -0.01, maxValue: 0.01 });
+  });
+
   it('emits {time, value} using quoteImbalance from bid_total / ask_total', () => {
     const bundle: any = {
       quote_ratio: {

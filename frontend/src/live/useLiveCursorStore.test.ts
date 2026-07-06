@@ -10,6 +10,7 @@ describe('useLiveCursorStore', () => {
   it('starts with cursorMs null', () => {
     expect(useLiveCursorStore.getState().cursorMs).toBeNull();
     expect(useLiveCursorStore.getState().lastCursorMs).toBeNull();
+    expect(useLiveCursorStore.getState().sidebarCursorMs).toBeNull();
   });
 
   it('setCursor stores the value', () => {
@@ -35,9 +36,11 @@ describe('useLiveCursorStore', () => {
 
   it('resetCursor clears cursorMs and lastCursorMs', () => {
     useLiveCursorStore.getState().setCursor(1748400000000);
+    useLiveCursorStore.getState().setSidebarCursor(1748400000000);
     useLiveCursorStore.getState().resetCursor();
     expect(useLiveCursorStore.getState().cursorMs).toBeNull();
     expect(useLiveCursorStore.getState().lastCursorMs).toBeNull();
+    expect(useLiveCursorStore.getState().sidebarCursorMs).toBeNull();
   });
 
   it('setCursor with same value is a no-op for subscribers', () => {
@@ -48,5 +51,33 @@ describe('useLiveCursorStore', () => {
     useLiveCursorStore.getState().setCursor(123);
     unsub();
     expect(calls).toBe(0);
+  });
+
+  it('setSidebarCursor stores a sidebar-specific value without changing cursorMs', () => {
+    useLiveCursorStore.getState().setCursor(1748400000123);
+    useLiveCursorStore.getState().setSidebarCursor(1748400000000);
+
+    expect(useLiveCursorStore.getState().cursorMs).toBe(1748400000123);
+    expect(useLiveCursorStore.getState().sidebarCursorMs).toBe(1748400000000);
+  });
+
+  it('setSidebarCursor with same value is a no-op for subscribers', () => {
+    useLiveCursorStore.getState().setSidebarCursor(123);
+    let calls = 0;
+    const unsub = useLiveCursorStore.subscribe((state) => {
+      if (state.sidebarCursorMs === 123) calls += 1;
+    });
+    useLiveCursorStore.getState().setSidebarCursor(123);
+    unsub();
+    expect(calls).toBe(0);
+  });
+
+  it('clearSidebarCursor clears only sidebarCursorMs', () => {
+    useLiveCursorStore.getState().setCursor(1748400000123);
+    useLiveCursorStore.getState().setSidebarCursor(1748400000000);
+    useLiveCursorStore.getState().clearSidebarCursor();
+
+    expect(useLiveCursorStore.getState().cursorMs).toBe(1748400000123);
+    expect(useLiveCursorStore.getState().sidebarCursorMs).toBeNull();
   });
 });

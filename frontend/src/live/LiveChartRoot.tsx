@@ -45,6 +45,7 @@ import {
 } from './viewportAnchor';
 import { useWheelInteractions } from './useWheelInteractions';
 import { useLiveCursorStore } from './useLiveCursorStore';
+import { alignSidebarCursorMs, shouldPublishSidebarCursor } from './sidebarCursorRateLimit';
 import { useLiveAxisStore } from './useLiveAxisStore';
 import MovingAverageOverlay from './indicators/MovingAverageOverlay';
 import DailyMovingAverageOverlay from './indicators/DailyMovingAverageOverlay';
@@ -146,6 +147,7 @@ const EMPTY_OB_SNAPSHOTS: ReadonlyArray<ObSnapshot> = [];
 const EMPTY_TRADE_SNAPSHOTS: ReadonlyArray<TradeSnapshot> = [];
 const EMPTY_CANDLE_MS: readonly number[] = [];
 const CURSOR_LEAVE_CLEAR_DELAY_MS = 120;
+const LIVE_SIDEBAR_CURSOR_DEBOUNCE_MS = 120;
 const HIGH_LOW_AVOID_BASELINE_STYLE = { color: '', lineWidth: 1 };
 const DAILY_MIN_EFFECTIVE_BAR_SPACING = 3.5;
 const CALENDAR_MIN_VIEWPORT_WIDTH_PX = 120;
@@ -425,6 +427,39 @@ export function LiveChartRoot({
   const publishedCursorMsRef = useRef<number | null>(null);
   const publishedBasisDateRef = useRef<string | null>(null);
   const publishedCursorActiveRef = useRef<boolean | null>(null);
+  const sidebarCursorTimeoutRef = useRef<number | null>(null);
+  const pendingSidebarCursorMsRef = useRef<number | null>(null);
+
+  const cancelPendingSidebarCursor = useCallback(() => {
+    if (sidebarCursorTimeoutRef.current !== null) {
+      window.clearTimeout(sidebarCursorTimeoutRef.current);
+      sidebarCursorTimeoutRef.current = null;
+    }
+    pendingSidebarCursorMsRef.current = null;
+  }, []);
+
+  const clearSidebarCursor = useCallback(() => {
+    cancelPendingSidebarCursor();
+    useLiveCursorStore.getState().clearSidebarCursor();
+  }, [cancelPendingSidebarCursor]);
+
+  const scheduleSidebarCursor = useCallback((cursorMs: number) => {
+    const aligned = alignSidebarCursorMs(cursorMs, bucketMsRef.current);
+    pendingSidebarCursorMsRef.current = aligned;
+    if (sidebarCursorTimeoutRef.current !== null) {
+      window.clearTimeout(sidebarCursorTimeoutRef.current);
+    }
+    sidebarCursorTimeoutRef.current = window.setTimeout(() => {
+      sidebarCursorTimeoutRef.current = null;
+      const next = pendingSidebarCursorMsRef.current;
+      pendingSidebarCursorMsRef.current = null;
+      if (next === null) return;
+      const current = useLiveCursorStore.getState().sidebarCursorMs;
+      if (shouldPublishSidebarCursor(current, next)) {
+        useLiveCursorStore.getState().setSidebarCursor(next);
+      }
+    }, LIVE_SIDEBAR_CURSOR_DEBOUNCE_MS);
+  }, []);
 
   // chartRef bridges the live chart instance to the viewport-capture callback
   // (registered once, reads refs) so the tabs store can snapshot the OUTGOING
@@ -1293,9 +1328,13 @@ export function LiveChartRoot({
         onCursorActiveChange?.(active);
       };
       const publishCursorMs = (cursorMs: number) => {
-        if (publishedCursorMsRef.current === cursorMs && store.cursorMs === cursorMs) return;
+        if (publishedCursorMsRef.current === cursorMs && store.cursorMs === cursorMs) {
+          scheduleSidebarCursor(cursorMs);
+          return;
+        }
         publishedCursorMsRef.current = cursorMs;
         store.setCursor(cursorMs);
+        scheduleSidebarCursor(cursorMs);
       };
       const t = typeof virtualTime === 'number'
         ? virtualTime
@@ -1314,6 +1353,7 @@ export function LiveChartRoot({
         }
         publishCursorActive(false);
         store.clearCursor();
+        clearSidebarCursor();
         publishedCursorMsRef.current = null;
         return;
       }
@@ -1330,7 +1370,7 @@ export function LiveChartRoot({
       publishCursorActive(true);
       publishCursorMs(cursorMs);
     },
-    [axis, chart, onCandleBasisHover, onCursorActiveChange],
+    [axis, chart, clearSidebarCursor, onCandleBasisHover, onCursorActiveChange, scheduleSidebarCursor],
   );
 
   const drawingHoverRafRef = useRef<number | null>(null);
@@ -1373,6 +1413,7 @@ export function LiveChartRoot({
       }
       publishedBasisDateRef.current = null;
       publishedCursorMsRef.current = null;
+      cancelPendingSidebarCursor();
       useLiveCursorStore.getState().resetCursor();
       return;
     }
@@ -1395,6 +1436,7 @@ export function LiveChartRoot({
       }
       publishedCursorMsRef.current = null;
       useLiveCursorStore.getState().clearCursor();
+      clearSidebarCursor();
     };
     const handler = (param: {
       time?: unknown;
@@ -1458,9 +1500,19 @@ export function LiveChartRoot({
         onCursorActiveChange?.(false);
       }
       publishedCursorMsRef.current = null;
+      cancelPendingSidebarCursor();
       useLiveCursorStore.getState().resetCursor();
     };
-  }, [chart, axis, timeframe, onCursorActiveChange, onCandleBasisHover, publishCursorHover]);
+  }, [
+    chart,
+    axis,
+    timeframe,
+    cancelPendingSidebarCursor,
+    clearSidebarCursor,
+    onCursorActiveChange,
+    onCandleBasisHover,
+    publishCursorHover,
+  ]);
 
   useEffect(() => {
     if (!chart || !onCandleBasisClick) return;

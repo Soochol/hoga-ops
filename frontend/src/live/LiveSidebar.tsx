@@ -68,7 +68,7 @@ interface Props {
  * 체결강도 pane provides equivalent information in compact form.
  */
 export function LiveSidebar({ code, live, bundle = null, todayKst = '', programTrade = null }: Props) {
-  const cursorMs = useLiveCursorStore((s) => s.cursorMs);
+  const cursorMs = useLiveCursorStore((s) => s.sidebarCursorMs);
   const timeframe = useLivePageStore((s) => s.candleTimeframe);
   const volumeDistributionEnabled = useLivePageStore((s) => s.volumeDistributionEnabled);
   const volumeDistributionHoverCutoffEnabled = useLivePageStore((s) => s.volumeDistributionHoverCutoffEnabled);
@@ -79,15 +79,15 @@ export function LiveSidebar({ code, live, bundle = null, todayKst = '', programT
   const activeBundle = bundle;
 
   // Spot mode is minute-only (ADR-0044): D/W/M have no per-cursor parquet. The
-  // chart still publishes cursorMs on D for the Pane Legend, so gate spot entry
-  // on the timeframe here — NOT on cursorMs alone.
+  // chart publishes sidebarCursorMs for spot/sidebar consumers, so gate spot
+  // entry on the timeframe here — NOT on cursor presence alone.
   const cursorScope = resolveCursorDetailScope({ cursorMs, timeframe });
   const isSpot = cursorScope.kind === 'minute-cursor';
   const spotCursorMs = cursorScope.kind === 'minute-cursor' ? cursorScope.cursorMs : null;
 
   // Latest-mode data flows through `live` — LivePage owns the single
   // useLiveSeries call site. useSpot hooks in spot mode sit dormant when
-  // cursorMs is null, no extra fetches.
+  // sidebarCursorMs is null, no extra fetches.
   const { ob, broker } = live;
   const latestOrderbook = useMemo(() => latestOrderbookSnapshot(ob), [ob]);
   const latestBrokerSeries = useMemo(() => aggregateBrokerSeries(broker), [broker]);

@@ -54,11 +54,17 @@ const priceFormat = {
   minMove: 0.01,
 };
 
+const RATIO_AUTOSCALE_EPSILON = 0.01;
+
 const includeZeroAutoscale: AutoscaleInfoProvider = (original) => {
   const res = original();
   if (!res?.priceRange) return res;
   res.priceRange.minValue = Math.min(res.priceRange.minValue, 0);
   res.priceRange.maxValue = Math.max(res.priceRange.maxValue, 0);
+  if (res.priceRange.minValue === res.priceRange.maxValue) {
+    res.priceRange.minValue -= RATIO_AUTOSCALE_EPSILON;
+    res.priceRange.maxValue += RATIO_AUTOSCALE_EPSILON;
+  }
   return res;
 };
 

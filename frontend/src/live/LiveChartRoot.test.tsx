@@ -2771,7 +2771,7 @@ import { useLiveAxisStore } from './useLiveAxisStore';
 
 describe('LiveChartRoot crosshair → cursor store (ADR-0044)', () => {
   beforeEach(() => {
-    useLiveCursorStore.getState().clearCursor();
+    useLiveCursorStore.getState().resetCursor();
     useLiveAxisStore.getState().setAxis(null);
     vi.mocked(createChartEx).mockClear();
   });
@@ -2831,42 +2831,101 @@ describe('LiveChartRoot crosshair → cursor store (ADR-0044)', () => {
   });
 
   it('crosshair move → setCursor; crosshair leave → clear cursor for latest mode', async () => {
+    vi.useFakeTimers();
     const onCursorActiveChange = vi.fn();
-    render(
-      <LiveChartRoot
-        code="005930"
-        timeframe="1m"
-        bundle={DEFAULT_BUNDLE}
-        clampEngaged={false}
-        isPastCandlesLoading={false}
-        onCursorActiveChange={onCursorActiveChange}
-      />,
-      { wrapper },
-    );
-    const chart = vi.mocked(createChartEx).mock.results[0].value;
-    // Both LiveChartRoot's cursor-publish handler and PaneLegendOverlay's value
-    // reader subscribe; the real chart dispatches each crosshair event to ALL
-    // subscribers, so fan the synthetic event out to every registered handler
-    // (order-independent — only LiveChartRoot's writes the cursor store).
-    const fire = (p: { time?: unknown; point?: { x: number } | null }) =>
-      chart.subscribeCrosshairMove.mock.calls.forEach(
-        ([h]: [(p: { time?: unknown; point?: { x: number } | null }) => void]) => h(p),
+    try {
+      render(
+        <LiveChartRoot
+          code="005930"
+          timeframe="1m"
+          bundle={DEFAULT_BUNDLE}
+          clampEngaged={false}
+          isPastCandlesLoading={false}
+          onCursorActiveChange={onCursorActiveChange}
+        />,
+        { wrapper },
       );
-    // Virtual second 0 → axis.toReal(0) = session_open_ms (virtualMs at/below
-    // the origin — segments[0].virtualStart — clamps to the first session
-    // open; with the real-anchored origin, 0 sits below it).
-    const SESSION_OPEN = DEFAULT_BUNDLE.segments[0].session_open_ms;
-    act(() => fire({ time: 0, point: { x: 1 } }));
-    // rAF coalescing — flush one frame.
-    await act(() => new Promise((r) => requestAnimationFrame(() => r(null))));
-    expect(useLiveCursorStore.getState().cursorMs).toBe(SESSION_OPEN);
-    expect(onCursorActiveChange).toHaveBeenLastCalledWith(true);
+      const chart = vi.mocked(createChartEx).mock.results[0].value;
+      // Both LiveChartRoot's cursor-publish handler and PaneLegendOverlay's value
+      // reader subscribe; the real chart dispatches each crosshair event to ALL
+      // subscribers, so fan the synthetic event out to every registered handler
+      // (order-independent — only LiveChartRoot's writes the cursor store).
+      const fire = (p: { time?: unknown; point?: { x: number } | null }) =>
+        chart.subscribeCrosshairMove.mock.calls.forEach(
+          ([h]: [(p: { time?: unknown; point?: { x: number } | null }) => void]) => h(p),
+        );
+      const flushFrame = () => act(() => { vi.advanceTimersByTime(16); });
+      // Virtual second 0 → axis.toReal(0) = session_open_ms (virtualMs at/below
+      // the origin — segments[0].virtualStart — clamps to the first session
+      // open; with the real-anchored origin, 0 sits below it).
+      const SESSION_OPEN = DEFAULT_BUNDLE.segments[0].session_open_ms;
+      act(() => fire({ time: 0, point: { x: 1 } }));
+      flushFrame();
+      expect(useLiveCursorStore.getState().cursorMs).toBe(SESSION_OPEN);
+      expect(useLiveCursorStore.getState().sidebarCursorMs).toBeNull();
+      expect(onCursorActiveChange).toHaveBeenLastCalledWith(true);
 
-    act(() => fire({ time: undefined, point: null }));
-    expect(useLiveCursorStore.getState().cursorMs).toBe(SESSION_OPEN);
-    await act(() => new Promise((r) => setTimeout(() => r(null), 140)));
-    expect(useLiveCursorStore.getState().cursorMs).toBeNull();
-    expect(onCursorActiveChange).toHaveBeenLastCalledWith(false);
+      act(() => { vi.advanceTimersByTime(120); });
+      expect(useLiveCursorStore.getState().sidebarCursorMs).toBe(SESSION_OPEN);
+
+      act(() => fire({ time: undefined, point: null }));
+      expect(useLiveCursorStore.getState().cursorMs).toBe(SESSION_OPEN);
+      act(() => { vi.advanceTimersByTime(120); });
+      expect(useLiveCursorStore.getState().cursorMs).toBeNull();
+      expect(useLiveCursorStore.getState().sidebarCursorMs).toBeNull();
+      expect(onCursorActiveChange).toHaveBeenLastCalledWith(false);
+
+      act(() => fire({ time: 0, point: { x: 2 } }));
+      flushFrame();
+      expect(useLiveCursorStore.getState().cursorMs).toBe(SESSION_OPEN);
+      act(() => fire({ time: undefined, point: null }));
+      act(() => { vi.advanceTimersByTime(240); });
+      expect(useLiveCursorStore.getState().sidebarCursorMs).toBeNull();
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it('debounces sidebar cursor while keeping chart cursor immediate', async () => {
+    vi.useFakeTimers();
+    try {
+      render(
+        <LiveChartRoot
+          code="005930"
+          timeframe="1m"
+          bundle={TODAY_ONLY_BUNDLE}
+          clampEngaged={false}
+          isPastCandlesLoading={false}
+        />,
+        { wrapper },
+      );
+      const chart = vi.mocked(createChartEx).mock.results[0].value;
+      const fire = (p: { time?: unknown; point?: { x: number } | null }) =>
+        chart.subscribeCrosshairMove.mock.calls.forEach(
+          ([h]: [(p: { time?: unknown; point?: { x: number } | null }) => void]) => h(p),
+        );
+      const flushFrame = () => act(() => { vi.advanceTimersByTime(16); });
+
+      act(() => fire({ time: 0, point: { x: 1 } }));
+      flushFrame();
+
+      expect(useLiveCursorStore.getState().cursorMs).toBe(TODAY_OPEN_MS);
+      expect(useLiveCursorStore.getState().sidebarCursorMs).toBeNull();
+
+      act(() => fire({ time: (TODAY_OPEN_MS + 10_000) / 1000, point: { x: 11 } }));
+      flushFrame();
+      act(() => fire({ time: (TODAY_OPEN_MS + 29_000) / 1000, point: { x: 12 } }));
+      flushFrame();
+      act(() => { vi.advanceTimersByTime(119); });
+
+      expect(useLiveCursorStore.getState().sidebarCursorMs).toBeNull();
+
+      act(() => { vi.advanceTimersByTime(1); });
+
+      expect(useLiveCursorStore.getState().sidebarCursorMs).toBe(TODAY_OPEN_MS);
+    } finally {
+      vi.useRealTimers();
+    }
   });
 
   it('transient crosshair clear without coordinates does not blank spot indicators before the next hover', async () => {

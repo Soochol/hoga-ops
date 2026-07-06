@@ -5,7 +5,7 @@
  * All three hooks are parquet-only — SSE / stream modules are excluded per
  * ADR-0044. See useLiveCursor.invariant.test.ts for the static guard.
  *
- * Client-side bucket alignment: Math.floor(cursorMs / bucketMs) * bucketMs
+ * Client-side bucket alignment: Math.floor(sidebarCursorMs / bucketMs) * bucketMs
  * is applied to both the URL `t=` param and the cache key to collapse
  * within-bucket motion to a single request.
  */
@@ -44,7 +44,7 @@ export interface LiveOrderbookSpot {
  * useOrderbookAtCursor. See ADR-0044 — parquet-only path, source_pref
  * threaded, client-side bucket alignment for cache stability.
  *
- * date is derived from cursorMs via unixMsToKSTDate, NOT passed as a prop —
+ * date is derived from sidebarCursorMs via unixMsToKSTDate, NOT passed as a prop —
  * this mirrors replay's useCursor pattern and fixes the regression where
  * hovering on past-date candles sent date=today to the API (ADR-0044).
  *
@@ -52,7 +52,7 @@ export interface LiveOrderbookSpot {
  * once fetched (snapshot may be null for pre-available slots).
  */
 export function useLiveOrderbookAtCursor(p: Params): LiveOrderbookSpot | undefined {
-  const cursorMs = useLiveCursorStore((s) => s.cursorMs);
+  const cursorMs = useLiveCursorStore((s) => s.sidebarCursorMs);
   const sourcePref: SourcePreference = useSourcePreferenceStore((s) => s.sourcePreference);
   const bucketMs = p.timeframe ? TIMEFRAME_TO_MS[p.timeframe as Timeframe] : null;
   const alignedT =
@@ -83,7 +83,7 @@ interface BrokersParams {
   code: string | null;
   /** Minute timeframe, or null on D/W/M. Gates the fetch: /api/brokers/series
    *  is parquet-backed only on minute frames (ADR-0044). LiveChartRoot
-   *  publishes cursorMs on all frames (calendar included), so without this
+   *  publishes sidebarCursorMs for sidebar/spot consumers, so without this
    *  gate a D/W/M hover would fire a spurious per-day series fetch. Mirrors
    *  useLiveOrderbookAtCursor's bucketMs gate. (The Pane Legend does NOT read
    *  the cursor store — it has its own crosshair subscription, so the store's
@@ -93,14 +93,14 @@ interface BrokersParams {
 
 /**
  * Live-side cursor-keyed broker day-series spot. Fetches the whole day series
- * once per (code, date, sourcePref); sidebar projects per-row net at cursorMs
+ * once per (code, date, sourcePref); sidebar projects per-row net at sidebarCursorMs
  * client-side via BrokerTrajectoryTable's binary-search (same as replay).
  *
- * Key intentionally does NOT include cursorMs — the day series is cursor-
+ * Key intentionally does NOT include sidebarCursorMs — the day series is cursor-
  * independent; moving the cursor within the same day must not refetch.
- * Key gates on cursorMs presence (null key = no fetch in latest mode).
+ * Key gates on sidebarCursorMs presence (null key = no fetch in latest mode).
  *
- * date is derived from cursorMs via unixMsToKSTDate, NOT passed as a prop —
+ * date is derived from sidebarCursorMs via unixMsToKSTDate, NOT passed as a prop —
  * fixes the regression where hovering past-date candles queried date=today.
  *
  * ADR-0039: source_pref threaded. ADR-0044: parquet path only.
@@ -108,12 +108,12 @@ interface BrokersParams {
 export function useLiveBrokersAtCursor(
   p: BrokersParams,
 ): BrokerSeriesEntry[] | undefined {
-  const cursorMs = useLiveCursorStore((s) => s.cursorMs);
+  const cursorMs = useLiveCursorStore((s) => s.sidebarCursorMs);
   const sourcePref: SourcePreference = useSourcePreferenceStore((s) => s.sourcePreference);
   const date = cursorMs !== null ? unixMsToKSTDate(cursorMs) : null;
   // Key gates on cursor presence AND a minute timeframe — no fetch in latest
   // mode, and never on D/W/M (no per-cursor parquet; LiveChartRoot publishes
-  // cursorMs on all frames). The key omits cursorMs — the day series is the
+  // sidebar cursor on all frames). The key omits sidebarCursorMs — the day series is the
   // same for any t within (code, date).
   const key =
     p.code && date && p.timeframe !== null
