@@ -2771,7 +2771,7 @@ import { useLiveAxisStore } from './useLiveAxisStore';
 
 describe('LiveChartRoot crosshair → cursor store (ADR-0044)', () => {
   beforeEach(() => {
-    useLiveCursorStore.getState().clearCursor();
+    useLiveCursorStore.getState().resetCursor();
     useLiveAxisStore.getState().setAxis(null);
     vi.mocked(createChartEx).mockClear();
   });
@@ -2867,6 +2867,43 @@ describe('LiveChartRoot crosshair → cursor store (ADR-0044)', () => {
     await act(() => new Promise((r) => setTimeout(() => r(null), 140)));
     expect(useLiveCursorStore.getState().cursorMs).toBeNull();
     expect(onCursorActiveChange).toHaveBeenLastCalledWith(false);
+  });
+
+  it('debounces sidebar cursor while keeping chart cursor immediate', async () => {
+    render(
+      <LiveChartRoot
+        code="005930"
+        timeframe="1m"
+        bundle={TODAY_ONLY_BUNDLE}
+        clampEngaged={false}
+        isPastCandlesLoading={false}
+      />,
+      { wrapper },
+    );
+    const chart = vi.mocked(createChartEx).mock.results[0].value;
+    const fire = (p: { time?: unknown; point?: { x: number } | null }) =>
+      chart.subscribeCrosshairMove.mock.calls.forEach(
+        ([h]: [(p: { time?: unknown; point?: { x: number } | null }) => void]) => h(p),
+      );
+    const flush = () => act(() => new Promise((r) => requestAnimationFrame(() => r(null))));
+
+    act(() => fire({ time: 0, point: { x: 1 } }));
+    await flush();
+
+    expect(useLiveCursorStore.getState().cursorMs).toBe(TODAY_OPEN_MS);
+    expect(useLiveCursorStore.getState().sidebarCursorMs).toBeNull();
+
+    act(() => fire({ time: (TODAY_OPEN_MS + 10_000) / 1000, point: { x: 11 } }));
+    await flush();
+    act(() => fire({ time: (TODAY_OPEN_MS + 29_000) / 1000, point: { x: 12 } }));
+    await flush();
+    await act(() => new Promise((r) => setTimeout(() => r(null), 119)));
+
+    expect(useLiveCursorStore.getState().sidebarCursorMs).toBeNull();
+
+    await act(() => new Promise((r) => setTimeout(() => r(null), 10)));
+
+    expect(useLiveCursorStore.getState().sidebarCursorMs).toBe(TODAY_OPEN_MS);
   });
 
   it('transient crosshair clear without coordinates does not blank spot indicators before the next hover', async () => {
