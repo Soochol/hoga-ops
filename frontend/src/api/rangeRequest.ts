@@ -52,6 +52,8 @@ export type RangeQueryKey = readonly [
   boolean | null,
 ];
 
+export const RANGE_QUERY_KEY_FROM_DATE_INDEX = 2;
+
 export type RangeBundleRequest = {
   enabled: boolean;
   queryKey: RangeQueryKey;

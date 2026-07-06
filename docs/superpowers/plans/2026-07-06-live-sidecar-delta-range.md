@@ -2,18 +2,20 @@
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
-**Goal:** Stop `/live` minute-chart sidecar requests from refetching the full visible historical range on leftward backfill; request only the newly prepended sidecar dates and merge them client-side.
+**Goal:** Stop `/live` minute-chart hoga and sidecar requests from refetching the full visible historical range on leftward backfill; request only the newly prepended dates and merge them client-side.
 
-**Architecture:** Keep the backend `/api/range?mode=sidecar` contract unchanged because it already accepts arbitrary date ranges. Add a frontend sidecar-specific delta query wrapper that plans `from..previous.from-1` fetches, merges immutable sidecar arrays by date/key, and serves the merged bundle once the requested range is already covered. Wire only `/live`'s `pastSidecars` query through this wrapper; leave study views, cutoff profile single-day queries, hoga mode, candles mode, and full mode untouched.
+**Architecture:** Keep the backend `/api/range` contract unchanged because it already accepts arbitrary date ranges for `mode=hoga` and `mode=sidecar`. Add a frontend live-range delta query wrapper that plans `from..previous.from-1` fetches, merges immutable hoga/sidecar arrays by date/key, and schedules a today-slice refresh only after the covered data becomes stale. Wire `/live`'s `pastHoga` and `pastSidecars` queries through this wrapper; leave study views, cutoff profile single-day queries, candles mode, and full mode untouched.
 
 **Tech Stack:** React 18, TanStack Query v5, Vitest + Testing Library, FastAPI `/api/range` existing route.
 
 ## Global Constraints
 
 - Do not change `/api/range` response schema or backend request parameters for this v1.
-- Only apply delta behavior to `/live` minute sidecar range requests where `options.mode === 'sidecar'` and `options.volumeDistributionCutoffMs == null`.
-- Delta reuse is allowed only when `code`, `to`, `timeframe`/`bucket_ms`, `source_pref`, price-range inputs, and all sidecar option gates are identical.
-- If the requested `to` changes, if any sidecar option changes, if source preference changes, or if cutoff mode is active, perform the normal full request.
+- Only apply delta behavior to `/live` minute hoga/sidecar range requests where `options.mode` is `'hoga'` or `'sidecar'` and `options.volumeDistributionCutoffMs == null`.
+- Delta reuse is allowed only when `code`, `to`, `timeframe`/`bucket_ms`, `source_pref`, price-range inputs, and all hoga/sidecar option gates are identical.
+- If the requested `to` changes, if any hoga/sidecar option changes, if source preference changes, or if cutoff mode is active, perform the normal full request.
+- When a refresh slice overlaps an existing date, replace the previous data for that covered date instead of unioning stale same-day points.
+- Historical-extension gating must wait for candles, hoga, and enabled sidecar deltas so prepended charts do not render with missing overlays.
 - Preserve React Query stale/placeholder behavior used by `useLiveBundle`'s historical-extension gate.
 - Existing untracked `.tmp/` artifacts must not be staged or modified.
 
@@ -22,12 +24,12 @@
 ## File Structure
 
 - Modify `frontend/src/api/range.ts`
-  - Add pure sidecar delta planner and `useRangeSidecarDelta`.
-  - Add deterministic `mergeRangeBundles` helpers for sidecar arrays.
+  - Add pure live-range delta planner and `useRangeSidecarDelta` / `useRangeHogaDelta`.
+  - Add deterministic `mergeRangeBundles` helpers for hoga and sidecar arrays.
   - Keep existing `useRange` behavior unchanged.
 - Modify `frontend/src/live/useLiveBundle.ts`
-  - Import and use `useRangeSidecarDelta` only for `pastSidecars`.
-  - Keep `pastHoga` on `useRange`, because hoga points still drive the atomic prepend gate with `/api/live/past-candles`.
+  - Import and use `useRangeHogaDelta` for `pastHoga`.
+  - Import and use `useRangeSidecarDelta` for `pastSidecars`.
 - Modify `frontend/src/api/range.test.tsx`
   - Unit-test planner, merge behavior, hook URL shape, and no post-merge full refetch.
 - Modify `frontend/src/live/useLiveBundle.test.tsx`
@@ -35,7 +37,7 @@
   - Assert sidecar requests still receive the same options from `useLiveBundle`.
   - Add regression coverage for historical extension call shape.
 - Optional docs note in `CONTEXT.md`
-  - Record that live minute sidecars are client-merged delta range requests.
+  - Record that live minute hoga and sidecars are client-merged delta range requests.
 
 ---
 

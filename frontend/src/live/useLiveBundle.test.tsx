@@ -122,13 +122,14 @@ vi.mock('../api/livePastInvestorNet', () => ({
   useLivePastInvestorNet: (...args: unknown[]) => livePastInvestorNetSpy(...args as []),
 }));
 
-const rangeMock = { isPlaceholderData: false, isFetching: false };
+const rangeMock = { isPlaceholderData: false, isFetching: false, isHistoricalDeltaFetching: false };
 const useRangeSpy = vi.fn<(...args: unknown[]) => any>(() => ({
   data: null,
   isLoading: false,
   error: null,
   isPlaceholderData: rangeMock.isPlaceholderData,
   isFetching: rangeMock.isFetching,
+  isHistoricalDeltaFetching: rangeMock.isHistoricalDeltaFetching,
 }));
 const useRangeHogaDeltaSpy = vi.fn<(...args: unknown[]) => any>(() => ({
   data: null,
@@ -136,6 +137,7 @@ const useRangeHogaDeltaSpy = vi.fn<(...args: unknown[]) => any>(() => ({
   error: null,
   isPlaceholderData: rangeMock.isPlaceholderData,
   isFetching: rangeMock.isFetching,
+  isHistoricalDeltaFetching: rangeMock.isHistoricalDeltaFetching,
 }));
 const useRangeSidecarDeltaSpy = vi.fn<(...args: unknown[]) => any>(() => ({
   data: null,
@@ -143,6 +145,7 @@ const useRangeSidecarDeltaSpy = vi.fn<(...args: unknown[]) => any>(() => ({
   error: null,
   isPlaceholderData: rangeMock.isPlaceholderData,
   isFetching: rangeMock.isFetching,
+  isHistoricalDeltaFetching: rangeMock.isHistoricalDeltaFetching,
 }));
 vi.mock('../api/range', () => ({
   useRange: (...args: unknown[]) => useRangeSpy(...args as []),
@@ -151,7 +154,7 @@ vi.mock('../api/range', () => ({
 }));
 
 function rangeResult(data: unknown = null) {
-  return { data, isLoading: false, error: null, isPlaceholderData: false, isFetching: false };
+  return { data, isLoading: false, error: null, isPlaceholderData: false, isFetching: false, isHistoricalDeltaFetching: false };
 }
 
 function fallbackRangeBundle(close = 71_234) {
@@ -234,13 +237,14 @@ function renderUseLiveBundle(
     () => useLiveBundle(code, timeframe, '20260527', liveFixture),
     { wrapper: createWrapper(settings) },
   );
-  useRangeSpy.mockImplementation(previousImplementation ?? (() => ({
-    data: null,
-    isLoading: false,
-    error: null,
-    isPlaceholderData: rangeMock.isPlaceholderData,
-    isFetching: rangeMock.isFetching,
-  })));
+	  useRangeSpy.mockImplementation(previousImplementation ?? (() => ({
+	    data: null,
+	    isLoading: false,
+	    error: null,
+	    isPlaceholderData: rangeMock.isPlaceholderData,
+	    isFetching: rangeMock.isFetching,
+	    isHistoricalDeltaFetching: rangeMock.isHistoricalDeltaFetching,
+	  })));
   return rendered.result.current;
 }
 
@@ -377,27 +381,30 @@ describe('useLiveBundle', () => {
     useRangeSpy.mockClear();
     useRangeHogaDeltaSpy.mockClear();
     useRangeSidecarDeltaSpy.mockClear();
-    useRangeSpy.mockImplementation(() => ({
-      data: null,
-      isLoading: false,
-      error: null,
-      isPlaceholderData: rangeMock.isPlaceholderData,
-      isFetching: rangeMock.isFetching,
-    }));
-    useRangeSidecarDeltaSpy.mockImplementation(() => ({
-      data: null,
-      isLoading: false,
-      error: null,
-      isPlaceholderData: rangeMock.isPlaceholderData,
-      isFetching: rangeMock.isFetching,
-    }));
-    useRangeHogaDeltaSpy.mockImplementation(() => ({
-      data: null,
-      isLoading: false,
-      error: null,
-      isPlaceholderData: rangeMock.isPlaceholderData,
-      isFetching: rangeMock.isFetching,
-    }));
+	    useRangeSpy.mockImplementation(() => ({
+	      data: null,
+	      isLoading: false,
+	      error: null,
+	      isPlaceholderData: rangeMock.isPlaceholderData,
+	      isFetching: rangeMock.isFetching,
+	      isHistoricalDeltaFetching: rangeMock.isHistoricalDeltaFetching,
+	    }));
+	    useRangeSidecarDeltaSpy.mockImplementation(() => ({
+	      data: null,
+	      isLoading: false,
+	      error: null,
+	      isPlaceholderData: rangeMock.isPlaceholderData,
+	      isFetching: rangeMock.isFetching,
+	      isHistoricalDeltaFetching: rangeMock.isHistoricalDeltaFetching,
+	    }));
+	    useRangeHogaDeltaSpy.mockImplementation(() => ({
+	      data: null,
+	      isLoading: false,
+	      error: null,
+	      isPlaceholderData: rangeMock.isPlaceholderData,
+	      isFetching: rangeMock.isFetching,
+	      isHistoricalDeltaFetching: rangeMock.isHistoricalDeltaFetching,
+	    }));
     candlesMock.candles = [DEFAULT_CANDLE];
     candlesMock.isPlaceholderData = false;
     candlesMock.isFetching = false;
@@ -1535,11 +1542,12 @@ describe('useLiveBundle extension atomization gate', () => {
     useRangeSidecarDeltaSpy.mockClear();
     candlesMock.candles = [DEFAULT_CANDLE];
     candlesMock.isPlaceholderData = false;
-    candlesMock.isFetching = false;
-    candlesMock.warnings = [];
-    rangeMock.isPlaceholderData = false;
-    rangeMock.isFetching = false;
-    useLivePageStore.setState({ activeCode: '005930', candleTimeframe: '1m', historicalFromDate: null });
+	    candlesMock.isFetching = false;
+	    candlesMock.warnings = [];
+	    rangeMock.isPlaceholderData = false;
+	    rangeMock.isFetching = false;
+	    rangeMock.isHistoricalDeltaFetching = false;
+	    useLivePageStore.setState({ activeCode: '005930', candleTimeframe: '1m', historicalFromDate: null });
     useSourcePreferenceStore.setState({ sourcePreference: 'kis_ws_first' });
   });
 
@@ -1548,7 +1556,7 @@ describe('useLiveBundle extension atomization gate', () => {
     ob: [{ t_ms: tMs, total_ask_qty: 100, total_bid_qty: 80, kind: 'ob' }],
   });
 
-  it('HOLDS the last-settled chartBundle while a re-keyed past query is placeholder+fetching', () => {
+	  it('HOLDS the last-settled chartBundle while a re-keyed past query is placeholder+fetching', () => {
     // Post bundle-split (2026-06-09): the gate holds the CHART side (candle/
     // segment prepend atomicity drives the viewport). The full `bundle` reflects
     // the live hoga overlay even mid-extension, so assert on `chartBundle` —
@@ -1563,9 +1571,10 @@ describe('useLiveBundle extension atomization gate', () => {
 
     // Mid-extension: hoga still placeholder+fetching AND a re-keyed candle query
     // would rebuild computedChartBundle — the gate must mask it and keep the prior object.
-    rangeMock.isPlaceholderData = true;
-    rangeMock.isFetching = true;
-    candlesMock.candles = [
+	    rangeMock.isPlaceholderData = true;
+	    rangeMock.isFetching = true;
+	    rangeMock.isHistoricalDeltaFetching = true;
+	    candlesMock.candles = [
       { t_ms: 1779753600000, open: 69000, high: 69100, low: 68900, close: 69050, volume: 900 },
       DEFAULT_CANDLE,
     ];
@@ -1574,14 +1583,48 @@ describe('useLiveBundle extension atomization gate', () => {
     expect(result.current.chartBundle!.candles).toHaveLength(1);
 
     // Both fresh again → released to the fresh computedChartBundle with the prepend.
-    rangeMock.isPlaceholderData = false;
-    rangeMock.isFetching = false;
-    rerender({ live: liveWithOb(1779840120000) });
-    expect(result.current.chartBundle).not.toBe(settled); // RELEASED
-    expect(result.current.chartBundle!.candles).toHaveLength(2);
-  });
+	    rangeMock.isPlaceholderData = false;
+	    rangeMock.isFetching = false;
+	    rangeMock.isHistoricalDeltaFetching = false;
+	    rerender({ live: liveWithOb(1779840120000) });
+	    expect(result.current.chartBundle).not.toBe(settled); // RELEASED
+	    expect(result.current.chartBundle!.candles).toHaveLength(2);
+	  });
 
-  it('does NOT gate a same-key periodic refetch (isFetching true but not placeholder)', () => {
+	  it('HOLDS the last-settled chartBundle while sidecar delta is still fetching', () => {
+	    useLivePageStore.setState({ historicalFromDate: '20260420' });
+	    const sidecarState = {
+	      isPlaceholderData: false,
+	      isFetching: false,
+	      isHistoricalDeltaFetching: false,
+	    };
+	    useRangeSidecarDeltaSpy.mockImplementation(() => ({
+	      data: null,
+	      isLoading: false,
+	      error: null,
+	      ...sidecarState,
+	    }));
+	    const { result, rerender } = renderHook(
+	      ({ live }) => useLiveBundle('005930', '1m', '20260527', live),
+	      { wrapper, initialProps: { live: liveWithOb(1779840060000) } },
+	    );
+	    const settled = result.current.chartBundle;
+	    expect(settled).not.toBeNull();
+
+	    sidecarState.isPlaceholderData = true;
+	    sidecarState.isFetching = true;
+	    sidecarState.isHistoricalDeltaFetching = true;
+	    candlesMock.candles = [
+	      { t_ms: 1779753600000, open: 69000, high: 69100, low: 68900, close: 69050, volume: 900 },
+	      DEFAULT_CANDLE,
+	    ];
+	    rerender({ live: liveWithOb(1779840120000) });
+
+	    expect(result.current.chartBundle).toBe(settled);
+	    expect(result.current.chartBundle!.candles).toHaveLength(1);
+	  });
+
+	  it('does NOT gate a same-key periodic refetch (isFetching true but not placeholder)', () => {
     useLivePageStore.setState({ historicalFromDate: '20260420' });
     const { result, rerender } = renderHook(
       ({ live }) => useLiveBundle('005930', '1m', '20260527', live),
@@ -1592,7 +1635,29 @@ describe('useLiveBundle extension atomization gate', () => {
     candlesMock.isFetching = true;
     rerender({ live: liveWithOb(1779840120000) });
     expect(result.current.bundle).not.toBe(before); // live tick flows through
-  });
+	  });
+
+	  it('does NOT gate a post-merge today refresh from the range delta hook', () => {
+	    useLivePageStore.setState({ historicalFromDate: '20260420' });
+	    const { result, rerender } = renderHook(
+	      ({ live }) => useLiveBundle('005930', '1m', '20260527', live),
+	      { wrapper, initialProps: { live: liveWithOb(1779840060000) } },
+	    );
+	    const settled = result.current.chartBundle;
+	    expect(settled).not.toBeNull();
+
+	    rangeMock.isPlaceholderData = true;
+	    rangeMock.isFetching = true;
+	    rangeMock.isHistoricalDeltaFetching = false;
+	    candlesMock.candles = [
+	      { t_ms: 1779753600000, open: 69000, high: 69100, low: 68900, close: 69050, volume: 900 },
+	      DEFAULT_CANDLE,
+	    ];
+	    rerender({ live: liveWithOb(1779840120000) });
+
+	    expect(result.current.chartBundle).not.toBe(settled);
+	    expect(result.current.chartBundle!.candles).toHaveLength(2);
+	  });
 
   it('does NOT gate when historicalFromDate is null (code / timeframe switch)', () => {
     // A timeframe switch re-keys the past queries (placeholder+fetching) but
@@ -1622,8 +1687,9 @@ describe('useLiveBundle isExtending', () => {
     candlesMock.isPlaceholderData = false;
     candlesMock.isFetching = false;
     candlesMock.warnings = [];
-    rangeMock.isPlaceholderData = false;
-    rangeMock.isFetching = false;
+	    rangeMock.isPlaceholderData = false;
+	    rangeMock.isFetching = false;
+	    rangeMock.isHistoricalDeltaFetching = false;
     useLivePageStore.setState({
       activeCode: '005930',
       candleTimeframe: '1m',

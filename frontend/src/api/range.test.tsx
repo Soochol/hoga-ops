@@ -312,7 +312,7 @@ describe('planSidecarRangeDelta', () => {
     expect(plan.requestInput.to).toBe('20260628');
   });
 
-  it('keeps the requested range observable when previous data already covers it', () => {
+  it('refreshes only the today sidecar slice when previous data already covers the requested range', () => {
     const plan = planSidecarRangeDelta({
       code: '005930',
       from: '20260629',
@@ -327,8 +327,9 @@ describe('planSidecarRangeDelta', () => {
     }).identity);
 
     expect(plan.enabled).toBe(true);
+    expect(plan.canReusePrevious).toBe(true);
     expect(plan.servePrevious).toBe(true);
-    expect(plan.requestInput.from).toBe('20260629');
+    expect(plan.requestInput.from).toBe('20260706');
     expect(plan.requestInput.to).toBe('20260706');
   });
 
@@ -475,15 +476,16 @@ describe('planHogaRangeDelta', () => {
     expect(plan.requestInput.to).toBe('20260628');
   });
 
-  it('keeps the requested hoga range observable when previous data already covers it', () => {
+  it('refreshes only today hoga slice when previous data already covers the requested range', () => {
     const plan = planHogaRangeDelta({
       ...previousRequest,
       from: '20260629',
     }, previous, previousIdentity);
 
     expect(plan.enabled).toBe(true);
+    expect(plan.canReusePrevious).toBe(true);
     expect(plan.servePrevious).toBe(true);
-    expect(plan.requestInput.from).toBe('20260629');
+    expect(plan.requestInput.from).toBe('20260706');
     expect(plan.requestInput.to).toBe('20260706');
   });
 
@@ -551,6 +553,14 @@ describe('mergeRangeBundles', () => {
         source: 'kis_program_trade',
         points: [{ t: 2, net_qty: 10, net_amount: 100, delta_qty: 10, delta_amount: 100, gap_risk: false }],
       },
+      excluded_dates: [{
+        date: '20260630',
+        violations: [{ invariant_id: 'qr_shape', severity: 'error', message: 'bad shape', ctx: { code: '005930' } }],
+      }],
+      data_warnings: [{
+        date: '20260629',
+        warnings: [{ invariant_id: 'qr_gap', severity: 'warn', message: 'gap', ctx: { code: '005930' } }],
+      }],
     };
     const next: RangeBundle = {
       ...fakeBundle,
@@ -575,6 +585,14 @@ describe('mergeRangeBundles', () => {
         source: 'kis_program_trade',
         points: [{ t: 1, net_qty: 5, net_amount: 50, delta_qty: 5, delta_amount: 50, gap_risk: false }],
       },
+      excluded_dates: [{
+        date: '20260625',
+        violations: [{ invariant_id: 'qr_shape', severity: 'error', message: 'bad shape', ctx: { code: '005930' } }],
+      }],
+      data_warnings: [{
+        date: '20260624',
+        warnings: [{ invariant_id: 'qr_gap', severity: 'warn', message: 'gap', ctx: { code: '005930' } }],
+      }],
     };
 
     const merged = mergeRangeBundles(previous, next);
@@ -588,6 +606,80 @@ describe('mergeRangeBundles', () => {
     expect(merged.volume_distributions.map((p) => p.date)).toEqual(['20260624', '20260629']);
     expect(merged.broker_late_entries.map((e) => e.t_ms)).toEqual([1, 2]);
     expect(merged.program_trade?.points.map((p) => p.t)).toEqual([1, 2]);
+    expect(merged.excluded_dates?.map((e) => e.date)).toEqual(['20260625', '20260630']);
+    expect(merged.data_warnings?.map((w) => w.date)).toEqual(['20260624', '20260629']);
+  });
+
+  it('dedupes overlapping rows by stable key and keeps the newer bundle values', () => {
+    const previous: RangeBundle = {
+      ...fakeBundle,
+      code: '005930',
+      from_date: '20260624',
+      to_date: '20260706',
+      segments: [{ date: '20260706', session_open_ms: 1, session_close_ms: 4, source: 'hogaplay' }],
+      candles: [
+        { ts_ms: 1, open: 10, high: 10, low: 10, close: 10, vol_a: 1, vol_b: 0 },
+        { ts_ms: 2, open: 11, high: 11, low: 11, close: 11, vol_a: 1, vol_b: 0 },
+      ],
+      quote_ratio: {
+        bucket_ms: 60_000,
+        points: [
+          { t: 1, bid_total: 10, ask_total: 9, bid_max: 5, ask_max: 4, imb_max_bid: 1, imb_max_ask: 0 },
+          { t: 2, bid_total: 11, ask_total: 9, bid_max: 5, ask_max: 4, imb_max_bid: 1, imb_max_ask: 0 },
+        ],
+      },
+      fill_strength: {
+        bucket_ms: 60_000,
+        points: [
+          { t: 1, buy_qty: 10, sell_qty: 1 },
+          { t: 2, buy_qty: 11, sell_qty: 1 },
+        ],
+      },
+      ask_peaks: [{ date: '20260706', price: 10, qty: 1, t_ms: 1, max_price: 10, max_qty: 1, max_t_ms: 1 }],
+      bid_peaks: [{ date: '20260706', price: 9, qty: 1, t_ms: 1, max_price: 9, max_qty: 1, max_t_ms: 1 }],
+      broker_late_entries: [
+        { t_ms: 1, broker: 'NH투자증권', side: 'buy', net: 100 },
+        { t_ms: 2, broker: '삼성증권', side: 'buy', net: 50 },
+      ],
+      trade_volume_pocs: [{ date: '20260706', center_price: 10, low_price: 9, high_price: 11, qty: 1, t_ms: 1, band_pct: 0.005 }],
+      volume_distributions: [{ date: '20260706', range_count: 10, price_min: 9, price_max: 11, session_open_ms: 1, session_close_ms: 2, bins: [{ price_low: 9, price_high: 10, qty: 1 }] }],
+      program_trade: {
+        source: 'kis_program_trade',
+        points: [
+          { t: 1, net_qty: 10, net_amount: 100, delta_qty: 10, delta_amount: 100, gap_risk: false },
+          { t: 2, net_qty: 11, net_amount: 110, delta_qty: 1, delta_amount: 10, gap_risk: false },
+        ],
+      },
+    };
+    const next: RangeBundle = {
+      ...fakeBundle,
+      code: '005930',
+      from_date: '20260706',
+      to_date: '20260706',
+      segments: [{ date: '20260706', session_open_ms: 1, session_close_ms: 4, source: 'kis_live' }],
+      candles: [{ ts_ms: 1, open: 20, high: 20, low: 20, close: 20, vol_a: 2, vol_b: 0 }],
+      quote_ratio: { bucket_ms: 60_000, points: [{ t: 1, bid_total: 20, ask_total: 19, bid_max: 6, ask_max: 5, imb_max_bid: 1, imb_max_ask: 0 }] },
+      fill_strength: { bucket_ms: 60_000, points: [{ t: 1, buy_qty: 20, sell_qty: 2 }] },
+      ask_peaks: [{ date: '20260706', price: 20, qty: 2, t_ms: 2, max_price: 20, max_qty: 2, max_t_ms: 2 }],
+      bid_peaks: [{ date: '20260706', price: 19, qty: 2, t_ms: 2, max_price: 19, max_qty: 2, max_t_ms: 2 }],
+      broker_late_entries: [{ t_ms: 1, broker: 'NH투자증권', side: 'buy', net: 200 }],
+      trade_volume_pocs: [{ date: '20260706', center_price: 20, low_price: 19, high_price: 21, qty: 2, t_ms: 2, band_pct: 0.005 }],
+      volume_distributions: [{ date: '20260706', range_count: 10, price_min: 19, price_max: 21, session_open_ms: 3, session_close_ms: 4, bins: [{ price_low: 19, price_high: 20, qty: 2 }] }],
+      program_trade: { source: 'kis_program_trade', points: [{ t: 1, net_qty: 20, net_amount: 200, delta_qty: 20, delta_amount: 200, gap_risk: false }] },
+    };
+
+    const merged = mergeRangeBundles(previous, next);
+
+    expect(merged.segments).toEqual(next.segments);
+    expect(merged.candles).toEqual(next.candles);
+    expect(merged.quote_ratio.points).toEqual(next.quote_ratio.points);
+    expect(merged.fill_strength.points).toEqual(next.fill_strength.points);
+    expect(merged.ask_peaks).toEqual(next.ask_peaks);
+    expect(merged.bid_peaks).toEqual(next.bid_peaks);
+    expect(merged.broker_late_entries).toEqual(next.broker_late_entries);
+    expect(merged.trade_volume_pocs).toEqual(next.trade_volume_pocs);
+    expect(merged.volume_distributions).toEqual(next.volume_distributions);
+    expect(merged.program_trade?.points).toEqual(next.program_trade?.points);
   });
 });
 
@@ -868,8 +960,8 @@ describe('useRangeSidecarDelta', () => {
     await waitFor(() => expect(result.current.data?.from_date).toBe('20260629'));
     rerender({ from: '20260624' });
 
-    await waitFor(() => expect(spy).toHaveBeenCalledTimes(2));
-    expect(spy.mock.calls[1][0]).toBe(
+    await waitFor(() => expect(spy.mock.calls.some(([url]) => String(url).includes('from=20260624&to=20260628'))).toBe(true));
+    expect(spy.mock.calls.map(([url]) => String(url))).toContain(
       '/api/range?code=005930&from=20260624&to=20260628&bucket_ms=60000'
         + '&volume_distribution_bins=10'
         + '&volume_distribution_price_min=303000&volume_distribution_price_max=325000'
@@ -878,11 +970,15 @@ describe('useRangeSidecarDelta', () => {
     await waitFor(() => expect(result.current.data?.from_date).toBe('20260624'));
     expect(result.current.data?.to_date).toBe('20260706');
     expect(result.current.data?.volume_distributions.map((d) => d.date)).toEqual(['20260624', '20260629']);
-    await new Promise((r) => setTimeout(r, 30));
-    expect(spy).toHaveBeenCalledTimes(2);
+    expect(spy.mock.calls.map(([url]) => String(url))).not.toContain(
+      '/api/range?code=005930&from=20260624&to=20260706&bucket_ms=60000'
+        + '&volume_distribution_bins=10'
+        + '&volume_distribution_price_min=303000&volume_distribution_price_max=325000'
+        + '&source_pref=hogaplay_first&mode=sidecar',
+    );
   });
 
-  it('keeps the full requested sidecar query observable after a delta merge', async () => {
+  it('does not immediately refresh the today sidecar slice after a delta merge', async () => {
     const first: RangeBundle = {
       ...fakeBundle,
       code: '005930',
@@ -899,14 +995,6 @@ describe('useRangeSidecarDelta', () => {
       bucket_ms: 60_000,
       volume_distributions: [{ date: '20260624', range_count: 10, price_min: 1, price_max: 2, session_open_ms: 1, session_close_ms: 2, bins: [] }],
     };
-    const refreshed: RangeBundle = {
-      ...fakeBundle,
-      code: '005930',
-      from_date: '20260624',
-      to_date: '20260706',
-      bucket_ms: 60_000,
-      volume_distributions: [{ date: '20260706', range_count: 10, price_min: 3, price_max: 4, session_open_ms: 3, session_close_ms: 4, bins: [] }],
-    };
     const options = {
       mode: 'sidecar' as const,
       volumeDistributionBins: 10,
@@ -915,7 +1003,6 @@ describe('useRangeSidecarDelta', () => {
     const spy = vi.spyOn(client, 'apiCall').mockImplementation((url) => {
       const text = String(url);
       if (text.includes('from=20260624&to=20260628')) return Promise.resolve(delta);
-      if (text.includes('from=20260624&to=20260706')) return Promise.resolve(refreshed);
       return Promise.resolve(first);
     });
     const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } });
@@ -931,27 +1018,91 @@ describe('useRangeSidecarDelta', () => {
     await waitFor(() => expect(result.current.data?.from_date).toBe('20260629'));
     rerender({ from: '20260624' });
     await waitFor(() => expect(result.current.data?.from_date).toBe('20260624'));
-    expect(spy).toHaveBeenCalledTimes(2);
-
-    const fullRequest = buildRangeBundleRequest({
+    const deltaRequest = buildRangeBundleRequest({
       code: '005930',
       from: '20260624',
+      to: '20260628',
+      timeframe: '1m',
+      todayKst: '20260706',
+      sourcePref: 'hogaplay_first',
+      options,
+    });
+    const deltaOptions = qc.getQueryCache().find({ queryKey: deltaRequest.queryKey })?.options as
+      | { refetchInterval?: number | false }
+      | undefined;
+    expect(deltaOptions?.refetchInterval).toBe(false);
+    const todaySidecarUrl = '/api/range?code=005930&from=20260706&to=20260706&bucket_ms=60000'
+      + '&volume_distribution_bins=10'
+      + '&volume_distribution_price_min=303000&volume_distribution_price_max=325000'
+      + '&source_pref=hogaplay_first&mode=sidecar';
+    expect(spy.mock.calls.map(([url]) => String(url))).not.toContain(todaySidecarUrl);
+    expect(spy.mock.calls.map(([url]) => String(url))).not.toContain(
+      '/api/range?code=005930&from=20260624&to=20260706&bucket_ms=60000'
+        + '&volume_distribution_bins=10'
+        + '&volume_distribution_price_min=303000&volume_distribution_price_max=325000'
+        + '&source_pref=hogaplay_first&mode=sidecar',
+    );
+    expect(result.current.data?.volume_distributions.map((d) => d.date)).toEqual(['20260624', '20260629']);
+  });
+
+  it('uses compatible query-cache data for sidecar delta planning when the local ref has not observed it', async () => {
+    const previous: RangeBundle = {
+      ...fakeBundle,
+      code: '005930',
+      from_date: '20260629',
+      to_date: '20260706',
+      bucket_ms: 60_000,
+      volume_distributions: [{ date: '20260629', range_count: 10, price_min: 1, price_max: 2, session_open_ms: 1, session_close_ms: 2, bins: [] }],
+    };
+    const delta: RangeBundle = {
+      ...fakeBundle,
+      code: '005930',
+      from_date: '20260624',
+      to_date: '20260628',
+      bucket_ms: 60_000,
+      volume_distributions: [{ date: '20260624', range_count: 10, price_min: 1, price_max: 2, session_open_ms: 1, session_close_ms: 2, bins: [] }],
+    };
+    const options = {
+      mode: 'sidecar' as const,
+      volumeDistributionBins: 10,
+      volumeDistributionPriceRange: { min: 303000, max: 325000 },
+    };
+    const previousRequest = buildRangeBundleRequest({
+      code: '005930',
+      from: '20260629',
       to: '20260706',
       timeframe: '1m',
       todayKst: '20260706',
       sourcePref: 'hogaplay_first',
       options,
     });
-    await qc.invalidateQueries({ queryKey: fullRequest.queryKey });
+    const spy = vi.spyOn(client, 'apiCall').mockResolvedValue(delta);
+    const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+    qc.setQueryData(previousRequest.queryKey, previous);
+    const wrapper = ({ children }: { children: ReactNode }) => (
+      <QueryClientProvider client={qc}>{children}</QueryClientProvider>
+    );
 
-    await waitFor(() => expect(spy).toHaveBeenCalledTimes(3));
-    expect(spy.mock.calls[2][0]).toBe(
+    const { result } = renderHook(
+      () =>
+        useRangeSidecarDelta('005930', '20260624', '20260706', '1m', undefined, '20260706', options, 'hogaplay_first'),
+      { wrapper },
+    );
+
+    await waitFor(() => expect(result.current.data?.from_date).toBe('20260624'));
+    expect(spy.mock.calls.map(([url]) => String(url))).toContain(
+      '/api/range?code=005930&from=20260624&to=20260628&bucket_ms=60000'
+        + '&volume_distribution_bins=10'
+        + '&volume_distribution_price_min=303000&volume_distribution_price_max=325000'
+        + '&source_pref=hogaplay_first&mode=sidecar',
+    );
+    expect(spy.mock.calls.map(([url]) => String(url))).not.toContain(
       '/api/range?code=005930&from=20260624&to=20260706&bucket_ms=60000'
         + '&volume_distribution_bins=10'
         + '&volume_distribution_price_min=303000&volume_distribution_price_max=325000'
         + '&source_pref=hogaplay_first&mode=sidecar',
     );
-    await waitFor(() => expect(result.current.data?.volume_distributions.map((d) => d.date)).toEqual(['20260706']));
+    expect(result.current.data?.volume_distributions.map((d) => d.date)).toEqual(['20260624', '20260629']);
   });
 
   it('keeps placeholder query data during forced full requests while the next fetch is pending', async () => {
@@ -991,7 +1142,7 @@ describe('useRangeSidecarDelta', () => {
     await waitFor(() => expect(result.current.data?.to_date).toBe('20260706'));
     rerender({ to: '20260707' });
 
-    await waitFor(() => expect(spy).toHaveBeenCalledTimes(2));
+    await waitFor(() => expect(spy.mock.calls.some(([url]) => String(url).includes('to=20260707'))).toBe(true));
     await waitFor(() => expect(result.current.isPlaceholderData).toBe(true));
     expect(result.current.data).toEqual(first);
 
@@ -1008,7 +1159,7 @@ describe('useRangeHogaDelta', () => {
     useSourcePreferenceStore.setState({ sourcePreference: 'hogaplay_first' });
   });
 
-  it('fetches only missing left hoga dates and keeps the full requested query observable', async () => {
+  it('fetches only missing left hoga dates without immediate today refresh after merge', async () => {
     const first: RangeBundle = {
       ...fakeBundle,
       code: '005930',
@@ -1027,20 +1178,10 @@ describe('useRangeHogaDelta', () => {
       quote_ratio: { bucket_ms: 60_000, points: [{ t: 1, bid_total: 9, ask_total: 10, bid_max: 3, ask_max: 4, imb_max_bid: 0, imb_max_ask: 1 }] },
       fill_strength: { bucket_ms: 60_000, points: [{ t: 1, buy_qty: 1, sell_qty: 2 }] },
     };
-    const refreshed: RangeBundle = {
-      ...fakeBundle,
-      code: '005930',
-      from_date: '20260624',
-      to_date: '20260706',
-      bucket_ms: 60_000,
-      quote_ratio: { bucket_ms: 60_000, points: [{ t: 3, bid_total: 13, ask_total: 10, bid_max: 6, ask_max: 4, imb_max_bid: 2, imb_max_ask: 0 }] },
-      fill_strength: { bucket_ms: 60_000, points: [{ t: 3, buy_qty: 5, sell_qty: 1 }] },
-    };
     const options = { mode: 'hoga' as const };
     const spy = vi.spyOn(client, 'apiCall').mockImplementation((url) => {
       const text = String(url);
       if (text.includes('from=20260624&to=20260628')) return Promise.resolve(delta);
-      if (text.includes('from=20260624&to=20260706')) return Promise.resolve(refreshed);
       return Promise.resolve(first);
     });
     const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } });
@@ -1057,32 +1198,18 @@ describe('useRangeHogaDelta', () => {
     rerender({ from: '20260624' });
 
     await waitFor(() => expect(result.current.data?.from_date).toBe('20260624'));
-    expect(spy).toHaveBeenCalledTimes(2);
-    expect(spy.mock.calls[1][0]).toBe(
+    expect(spy.mock.calls.map(([url]) => String(url))).toContain(
       '/api/range?code=005930&from=20260624&to=20260628&bucket_ms=60000'
         + '&source_pref=hogaplay_first&mode=hoga',
     );
-    expect(result.current.data?.quote_ratio.points.map((p) => p.t)).toEqual([1, 2]);
-    await new Promise((r) => setTimeout(r, 30));
-    expect(spy).toHaveBeenCalledTimes(2);
-
-    const fullRequest = buildRangeBundleRequest({
-      code: '005930',
-      from: '20260624',
-      to: '20260706',
-      timeframe: '1m',
-      todayKst: '20260706',
-      sourcePref: 'hogaplay_first',
-      options,
-    });
-    await qc.invalidateQueries({ queryKey: fullRequest.queryKey });
-
-    await waitFor(() => expect(spy).toHaveBeenCalledTimes(3));
-    expect(spy.mock.calls[2][0]).toBe(
+    const todayHogaUrl = '/api/range?code=005930&from=20260706&to=20260706&bucket_ms=60000'
+      + '&source_pref=hogaplay_first&mode=hoga';
+    expect(spy.mock.calls.map(([url]) => String(url))).not.toContain(todayHogaUrl);
+    expect(spy.mock.calls.map(([url]) => String(url))).not.toContain(
       '/api/range?code=005930&from=20260624&to=20260706&bucket_ms=60000'
         + '&source_pref=hogaplay_first&mode=hoga',
     );
-    await waitFor(() => expect(result.current.data?.quote_ratio.points.map((p) => p.t)).toEqual([3]));
+    expect(result.current.data?.quote_ratio.points.map((p) => p.t)).toEqual([1, 2]);
   });
 
   it('does not serve a wider merged hoga bundle when narrowing to an unseen range', async () => {
@@ -1134,11 +1261,10 @@ describe('useRangeHogaDelta', () => {
 
     rerender({ from: '20260625' });
 
-    await waitFor(() => expect(spy).toHaveBeenCalledTimes(3));
-    expect(spy.mock.calls[2][0]).toBe(
+    await waitFor(() => expect(spy.mock.calls.map(([url]) => String(url))).toContain(
       '/api/range?code=005930&from=20260625&to=20260706&bucket_ms=60000'
         + '&source_pref=hogaplay_first&mode=hoga',
-    );
+    ));
     expect(result.current.data?.from_date).not.toBe('20260624');
     expect(result.current.data?.quote_ratio.points.map((p) => p.t)).not.toEqual([1, 2]);
 

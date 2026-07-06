@@ -786,7 +786,8 @@ export function useLiveBundle(
   // pausing today's right edge — acceptable because the user is panned into
   // history, not watching the live edge.
   const extending = historicalFromDate != null && (isMinute
-    ? (pastHoga.isPlaceholderData && pastHoga.isFetching) ||
+    ? pastHoga.isHistoricalDeltaFetching ||
+      (sidecarEnabled && pastSidecars.isHistoricalDeltaFetching) ||
       (pastCandlesQuery.isPlaceholderData && pastCandlesQuery.isFetching)
     : (pastDailyCandlesQuery.isPlaceholderData && pastDailyCandlesQuery.isFetching) ||
       (screenerDailyCandlesQuery.isPlaceholderData && screenerDailyCandlesQuery.isFetching));
