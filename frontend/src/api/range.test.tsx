@@ -5,6 +5,8 @@ import type { ReactNode } from 'react';
 
 import {
   buildRangeBundleRequest,
+  mergeRangeBundles,
+  planSidecarRangeDelta,
   useRange,
   rangeBundleQueryOptions,
   rangeFreshnessOptions,
@@ -248,6 +250,162 @@ describe('buildRangeBundleRequest', () => {
     );
     expect(request.queryKey[14]).toBe(null);
     expect(request.queryKey.at(-1)).toBe(null);
+  });
+});
+
+describe('planSidecarRangeDelta', () => {
+  const previous: RangeBundle = {
+    ...fakeBundle,
+    code: '005930',
+    from_date: '20260629',
+    to_date: '20260706',
+    bucket_ms: 60_000,
+  };
+
+  it('plans only the missing left delta for compatible live sidecar ranges', () => {
+    const plan = planSidecarRangeDelta({
+      code: '005930',
+      from: '20260624',
+      to: '20260706',
+      timeframe: '1m',
+      todayKst: '20260706',
+      sourcePref: 'hogaplay_first',
+      options: {
+        mode: 'sidecar',
+        askPeaksEnabled: false,
+        bidPeaksEnabled: false,
+        programTradeEnabled: true,
+        tradeVolumePocEnabled: true,
+        volumeDistributionBins: 10,
+        tradeVolumePocBins: 10,
+        volumeDistributionPriceRange: { min: 303000, max: 325000 },
+      },
+    }, previous);
+
+    expect(plan.enabled).toBe(true);
+    expect(plan.canReusePrevious).toBe(true);
+    expect(plan.servePrevious).toBe(true);
+    expect(plan.requestInput.from).toBe('20260624');
+    expect(plan.requestInput.to).toBe('20260628');
+  });
+
+  it('serves previous data without fetching when the requested range is already covered', () => {
+    const plan = planSidecarRangeDelta({
+      code: '005930',
+      from: '20260629',
+      to: '20260706',
+      timeframe: '1m',
+      todayKst: '20260706',
+      sourcePref: 'hogaplay_first',
+      options: { mode: 'sidecar', volumeDistributionBins: 10 },
+    }, previous);
+
+    expect(plan.enabled).toBe(false);
+    expect(plan.servePrevious).toBe(true);
+    expect(plan.requestInput.from).toBe(null);
+    expect(plan.requestInput.to).toBe(null);
+  });
+
+  it('falls back to full request when to-date changes', () => {
+    const plan = planSidecarRangeDelta({
+      code: '005930',
+      from: '20260624',
+      to: '20260707',
+      timeframe: '1m',
+      todayKst: '20260707',
+      sourcePref: 'hogaplay_first',
+      options: { mode: 'sidecar', volumeDistributionBins: 10 },
+    }, previous);
+
+    expect(plan.enabled).toBe(true);
+    expect(plan.canReusePrevious).toBe(false);
+    expect(plan.requestInput.from).toBe('20260624');
+    expect(plan.requestInput.to).toBe('20260707');
+  });
+
+  it('does not delta-plan cutoff sidecar profile requests', () => {
+    const plan = planSidecarRangeDelta({
+      code: '005930',
+      from: '20260624',
+      to: '20260624',
+      timeframe: '1m',
+      todayKst: '20260706',
+      sourcePref: 'hogaplay_first',
+      options: {
+        mode: 'sidecar',
+        volumeDistributionBins: 10,
+        volumeDistributionCutoffMs: 1_772_000_001_000,
+      },
+    }, previous);
+
+    expect(plan.canReusePrevious).toBe(false);
+    expect(plan.requestInput.from).toBe('20260624');
+    expect(plan.requestInput.to).toBe('20260624');
+  });
+});
+
+describe('mergeRangeBundles', () => {
+  it('merges sidecar arrays by stable date/key and keeps chronological order', () => {
+    const previous: RangeBundle = {
+      ...fakeBundle,
+      code: '005930',
+      from_date: '20260629',
+      to_date: '20260706',
+      segments: [{ date: '20260629', session_open_ms: 1, session_close_ms: 2, source: 'hogaplay' }],
+      ask_peaks: [{ date: '20260629', price: 10, qty: 1, t_ms: 1, max_price: 10, max_qty: 1, max_t_ms: 1 }],
+      bid_peaks: [{ date: '20260629', price: 9, qty: 1, t_ms: 1, max_price: 9, max_qty: 1, max_t_ms: 1 }],
+      broker_late_entries: [{ t_ms: 2, broker: 'NH투자증권', side: 'buy', net: 100 }],
+      trade_volume_pocs: [{ date: '20260629', center_price: 10, low_price: 9, high_price: 11, qty: 1, t_ms: 1, band_pct: 0.005 }],
+      volume_distributions: [{
+        date: '20260629',
+        range_count: 10,
+        price_min: 9,
+        price_max: 11,
+        session_open_ms: 1,
+        session_close_ms: 2,
+        bins: [{ price_low: 9, price_high: 10, qty: 1 }],
+      }],
+      program_trade: {
+        source: 'kis_program_trade',
+        points: [{ t: 2, net_qty: 10, net_amount: 100, delta_qty: 10, delta_amount: 100, gap_risk: false }],
+      },
+    };
+    const next: RangeBundle = {
+      ...fakeBundle,
+      code: '005930',
+      from_date: '20260624',
+      to_date: '20260628',
+      segments: [{ date: '20260624', session_open_ms: 3, session_close_ms: 4, source: 'hogaplay' }],
+      ask_peaks: [{ date: '20260624', price: 8, qty: 1, t_ms: 3, max_price: 8, max_qty: 1, max_t_ms: 3 }],
+      bid_peaks: [{ date: '20260624', price: 7, qty: 1, t_ms: 3, max_price: 7, max_qty: 1, max_t_ms: 3 }],
+      broker_late_entries: [{ t_ms: 1, broker: 'NH투자증권', side: 'sell', net: -50 }],
+      trade_volume_pocs: [{ date: '20260624', center_price: 8, low_price: 7, high_price: 9, qty: 1, t_ms: 3, band_pct: 0.005 }],
+      volume_distributions: [{
+        date: '20260624',
+        range_count: 10,
+        price_min: 7,
+        price_max: 9,
+        session_open_ms: 3,
+        session_close_ms: 4,
+        bins: [{ price_low: 7, price_high: 8, qty: 1 }],
+      }],
+      program_trade: {
+        source: 'kis_program_trade',
+        points: [{ t: 1, net_qty: 5, net_amount: 50, delta_qty: 5, delta_amount: 50, gap_risk: false }],
+      },
+    };
+
+    const merged = mergeRangeBundles(previous, next);
+
+    expect(merged.from_date).toBe('20260624');
+    expect(merged.to_date).toBe('20260706');
+    expect(merged.segments.map((s) => s.date)).toEqual(['20260624', '20260629']);
+    expect(merged.ask_peaks.map((p) => p.date)).toEqual(['20260624', '20260629']);
+    expect(merged.bid_peaks?.map((p) => p.date)).toEqual(['20260624', '20260629']);
+    expect(merged.trade_volume_pocs?.map((p) => p.date)).toEqual(['20260624', '20260629']);
+    expect(merged.volume_distributions.map((p) => p.date)).toEqual(['20260624', '20260629']);
+    expect(merged.broker_late_entries.map((e) => e.t_ms)).toEqual([1, 2]);
+    expect(merged.program_trade?.points.map((p) => p.t)).toEqual([1, 2]);
   });
 });
 

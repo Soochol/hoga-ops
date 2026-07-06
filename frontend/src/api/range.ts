@@ -73,6 +73,174 @@ export function rangeBundleQueryOptions(
   };
 }
 
+export interface RangeDeltaPlan {
+  enabled: boolean;
+  requestInput: RangeBundleRequestInput;
+  canReusePrevious: boolean;
+  servePrevious: boolean;
+  identity: string;
+}
+
+function addDays(yyyymmdd: string, days: number): string {
+  const d = new Date(Date.UTC(
+    Number(yyyymmdd.slice(0, 4)),
+    Number(yyyymmdd.slice(4, 6)) - 1,
+    Number(yyyymmdd.slice(6, 8)),
+  ));
+  d.setUTCDate(d.getUTCDate() + days);
+  return [
+    d.getUTCFullYear(),
+    String(d.getUTCMonth() + 1).padStart(2, '0'),
+    String(d.getUTCDate()).padStart(2, '0'),
+  ].join('');
+}
+
+function sidecarIdentity(input: RangeBundleRequestInput): string {
+  const request = buildRangeBundleRequest(input);
+  const key = [...request.queryKey];
+  key[2] = null;
+  return JSON.stringify(key);
+}
+
+export function planSidecarRangeDelta(
+  input: RangeBundleRequestInput,
+  previous?: RangeBundle,
+): RangeDeltaPlan {
+  const identity = sidecarIdentity(input);
+  const request = buildRangeBundleRequest(input);
+  const options = input.options ?? {};
+  const fullInput = { ...input };
+
+  if (
+    !request.enabled ||
+    options.mode !== 'sidecar' ||
+    options.volumeDistributionCutoffMs != null ||
+    !input.code ||
+    !input.from ||
+    !input.to
+  ) {
+    return {
+      enabled: request.enabled,
+      requestInput: fullInput,
+      canReusePrevious: false,
+      servePrevious: false,
+      identity,
+    };
+  }
+
+  const previousInput: RangeBundleRequestInput | undefined = previous
+    ? { ...input, from: previous.from_date, to: previous.to_date }
+    : undefined;
+  const sameIdentity = !!(
+    previous &&
+    previous.code === input.code &&
+    previous.to_date === input.to &&
+    previousInput &&
+    sidecarIdentity(previousInput) === identity
+  );
+
+  if (sameIdentity && previous.from_date <= input.from) {
+    return {
+      enabled: false,
+      requestInput: { ...input, from: null, to: null },
+      canReusePrevious: false,
+      servePrevious: true,
+      identity,
+    };
+  }
+
+  if (sameIdentity && input.from < previous.from_date) {
+    return {
+      enabled: true,
+      requestInput: { ...input, from: input.from, to: addDays(previous.from_date, -1) },
+      canReusePrevious: true,
+      servePrevious: true,
+      identity,
+    };
+  }
+
+  return {
+    enabled: true,
+    requestInput: fullInput,
+    canReusePrevious: false,
+    servePrevious: false,
+    identity,
+  };
+}
+
+function uniqueBy<T>(items: T[], keyOf: (item: T) => string, compare: (a: T, b: T) => number): T[] {
+  const byKey = new Map<string, T>();
+  for (const item of items) byKey.set(keyOf(item), item);
+  return Array.from(byKey.values()).sort(compare);
+}
+
+export function mergeRangeBundles(previous: RangeBundle, next: RangeBundle): RangeBundle {
+  return {
+    ...next,
+    from_date: previous.from_date < next.from_date ? previous.from_date : next.from_date,
+    to_date: previous.to_date > next.to_date ? previous.to_date : next.to_date,
+    segments: uniqueBy(
+      [...previous.segments, ...next.segments],
+      (s) => s.date,
+      (a, b) => a.date.localeCompare(b.date),
+    ),
+    candles: uniqueBy(
+      [...previous.candles, ...next.candles],
+      (c) => String(c.ts_ms),
+      (a, b) => a.ts_ms - b.ts_ms,
+    ),
+    quote_ratio: {
+      bucket_ms: next.quote_ratio.bucket_ms,
+      points: uniqueBy(
+        [...previous.quote_ratio.points, ...next.quote_ratio.points],
+        (p) => String(p.t),
+        (a, b) => a.t - b.t,
+      ),
+    },
+    fill_strength: {
+      bucket_ms: next.fill_strength.bucket_ms,
+      points: uniqueBy(
+        [...previous.fill_strength.points, ...next.fill_strength.points],
+        (p) => String(p.t),
+        (a, b) => a.t - b.t,
+      ),
+    },
+    ask_peaks: uniqueBy(
+      [...previous.ask_peaks, ...next.ask_peaks],
+      (p) => p.date,
+      (a, b) => a.date.localeCompare(b.date),
+    ),
+    bid_peaks: uniqueBy(
+      [...(previous.bid_peaks ?? []), ...(next.bid_peaks ?? [])],
+      (p) => p.date,
+      (a, b) => a.date.localeCompare(b.date),
+    ),
+    broker_late_entries: uniqueBy(
+      [...previous.broker_late_entries, ...next.broker_late_entries],
+      (e) => `${e.t_ms}|${e.broker}|${e.side}`,
+      (a, b) => a.t_ms - b.t_ms,
+    ),
+    trade_volume_pocs: uniqueBy(
+      [...(previous.trade_volume_pocs ?? []), ...(next.trade_volume_pocs ?? [])],
+      (p) => p.date,
+      (a, b) => a.date.localeCompare(b.date),
+    ),
+    volume_distributions: uniqueBy(
+      [...previous.volume_distributions, ...next.volume_distributions],
+      (p) => p.date,
+      (a, b) => a.date.localeCompare(b.date),
+    ),
+    program_trade: {
+      source: next.program_trade?.source ?? previous.program_trade?.source,
+      points: uniqueBy(
+        [...(previous.program_trade?.points ?? []), ...(next.program_trade?.points ?? [])],
+        (p) => String(p.t),
+        (a, b) => a.t - b.t,
+      ),
+    },
+  };
+}
+
 /**
  * Fetch a Stock-Date Range bundle (ADR-0013, ADR-0014).
  *
