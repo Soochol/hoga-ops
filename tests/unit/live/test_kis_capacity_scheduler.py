@@ -170,7 +170,12 @@ async def test_capacity_scheduler_promotes_queued_background_when_user_visible_c
     )
     await asyncio.sleep(0)
     background_task = asyncio.create_task(
-        scheduler.submit(key="shared", endpoint="daily", priority="background", call=shared_background)
+        scheduler.submit(
+            key="shared",
+            endpoint="daily",
+            priority="background",
+            call=shared_background,
+        )
     )
     await asyncio.sleep(0)
     user_task = asyncio.create_task(
@@ -291,6 +296,124 @@ async def test_capacity_scheduler_does_not_start_background_while_user_visible_i
 
 
 @pytest.mark.asyncio
+async def test_capacity_scheduler_waits_for_release_before_reserved_background_retry() -> None:
+    class _ReserveAwarePool(_FakePool):
+        def __init__(self) -> None:
+            super().__init__()
+            self._inflight: set[int] = set()
+
+        async def lease(self, *, cooldown_key, reserve_one=False):
+            free_clients = [
+                client for client in self.clients if client.account_id not in self._inflight
+            ]
+            if reserve_one and len(self.clients) > 1 and len(free_clients) <= 1:
+                raise KisAccountReservationDeferred("reserved user-visible KIS account capacity")
+            if not free_clients:
+                raise KisNoAccountAvailable("no KIS account available")
+            client = free_clients[0]
+            self._inflight.add(client.account_id)
+            return KisAccountLease(account_id=client.account_id, client=client)
+
+        def release(self, account_id: int) -> None:
+            self._inflight.discard(account_id)
+            super().release(account_id)
+
+    pool = _ReserveAwarePool()
+    scheduler = KisCapacityScheduler(
+        name="test",
+        account_pool=pool,
+        max_workers=2,
+        max_pending_requests=1000,
+        account_cooldown_s=10.0,
+    )
+    user_visible_started = asyncio.Event()
+    release_user_visible = asyncio.Event()
+
+    async def user_visible(kis):
+        user_visible_started.set()
+        await release_user_visible.wait()
+        return "user_visible"
+
+    user_task = asyncio.create_task(
+        scheduler.submit(
+            key="user",
+            endpoint="quotes",
+            priority="user_visible",
+            cooldown_scope="quotes",
+            call=user_visible,
+        )
+    )
+    await asyncio.wait_for(user_visible_started.wait(), timeout=1)
+
+    background_task = asyncio.create_task(
+        scheduler.submit(
+            key="background",
+            endpoint="quotes",
+            priority="background",
+            cooldown_scope="quotes",
+            call=lambda kis: asyncio.sleep(0, result="background"),
+        )
+    )
+
+    for _ in range(20):
+        first_deferred = scheduler.snapshot()["background_deferred_due_to_reserved_capacity"]
+        if first_deferred:
+            break
+        await asyncio.sleep(0.005)
+    else:
+        pytest.fail("background request was not deferred by reserved capacity")
+
+    await asyncio.sleep(0.05)
+    assert scheduler.snapshot()["background_deferred_due_to_reserved_capacity"] == first_deferred
+    assert not background_task.done()
+
+    release_user_visible.set()
+    assert await user_task == "user_visible"
+    assert await asyncio.wait_for(background_task, timeout=1) == "background"
+    await scheduler.aclose()
+
+
+@pytest.mark.asyncio
+async def test_capacity_scheduler_retries_reserved_background_after_backstop() -> None:
+    class _AlwaysReservedPool(_FakePool):
+        async def lease(self, *, cooldown_key, reserve_one=False):
+            if reserve_one:
+                raise KisAccountReservationDeferred("reserved user-visible KIS account capacity")
+            return await super().lease(cooldown_key=cooldown_key, reserve_one=reserve_one)
+
+    scheduler = KisCapacityScheduler(
+        name="test",
+        account_pool=_AlwaysReservedPool(),
+        max_workers=1,
+        max_pending_requests=1000,
+        account_cooldown_s=10.0,
+    )
+    scheduler._capacity_retry_backstop_s = 0.01
+
+    task = asyncio.create_task(
+        scheduler.submit(
+            key="background",
+            endpoint="quotes",
+            priority="background",
+            cooldown_scope="quotes",
+            call=lambda kis: asyncio.sleep(0),
+        )
+    )
+
+    for _ in range(20):
+        deferred = scheduler.snapshot()["background_deferred_due_to_reserved_capacity"]
+        if deferred >= 2:
+            break
+        await asyncio.sleep(0.005)
+    else:
+        pytest.fail("background request did not retry after the backstop timeout")
+
+    assert not task.done()
+    await scheduler.aclose()
+    task.cancel()
+
+
+@pytest.mark.asyncio
 async def test_capacity_scheduler_snapshot_reports_background_deferrals() -> None:
     class _ReservedPool(_FakePool):
         async def lease(self, *, cooldown_key, reserve_one=False):
@@ -324,4 +447,3 @@ async def test_capacity_scheduler_snapshot_reports_background_deferrals() -> Non
 
     await scheduler.aclose()
     task.cancel()
-
