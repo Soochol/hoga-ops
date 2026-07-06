@@ -543,3 +543,31 @@ def test_quotes_skips_degraded_account(monkeypatch, tmp_path):
     assert r.status_code == 200
     assert fake0.calls == 1, "scheduler did not use remaining healthy account"
     assert fake1.calls == 0, "scheduler used degraded account 1"
+
+
+def test_quotes_capacity_timeout_returns_stale_last_good(monkeypatch, tmp_path):
+    monkeypatch.setattr(live_api, "_quote_phase", lambda now, venue_policy="KRX": "open")
+    fake = _CountingFakeKis(QUOTES)
+    c = TestClient(_counting_app(fake, tmp_path))
+
+    r1 = c.get("/api/live/quotes", params={"codes": "005930,000660"})
+    assert r1.status_code == 200
+    assert fake.calls == 1
+
+    async def never_returns(*_args, **_kwargs):
+        import asyncio
+
+        await asyncio.sleep(10)
+
+    monkeypatch.setattr("hoga.live.kis_access.run_with_capacity", never_returns)
+
+    r2 = c.get("/api/live/quotes", params={"codes": "005930,000660"})
+
+    assert r2.status_code == 200
+    body = r2.json()
+    assert body["phase"] == "open"
+    assert [q["code"] for q in body["quotes"]] == ["005930", "000660"]
+    assert body["quotes"][0]["price"] == 72400
+    assert body["quotes"][0]["change_pct"] == 1.2
+    assert body["quotes"][0]["stale"] is True
+    assert body["quotes"][0]["stale_reason"] == "kis_capacity_timeout"

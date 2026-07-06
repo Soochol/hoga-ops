@@ -1609,8 +1609,27 @@ def build_router(
                 ),
                 timeout=1.0,
             )
-        except (asyncio.TimeoutError, KisCapacityCooldown, KisCapacityOverloaded):
-            quotes = []
+        except asyncio.TimeoutError:
+            quotes = _quote_fetcher.stale_last_good(
+                code_list,
+                phase,
+                today=now.date(),
+                stale_reason="kis_capacity_timeout",
+            )
+        except KisCapacityCooldown:
+            quotes = _quote_fetcher.stale_last_good(
+                code_list,
+                phase,
+                today=now.date(),
+                stale_reason="kis_capacity_cooldown",
+            )
+        except KisCapacityOverloaded:
+            quotes = _quote_fetcher.stale_last_good(
+                code_list,
+                phase,
+                today=now.date(),
+                stale_reason="kis_capacity_overloaded",
+            )
         return LiveQuotesResponse(
             phase=phase,
             quotes=quotes,
