@@ -609,6 +609,18 @@ git commit -m "docs: record live cursor performance verification"
 
 Skip this commit if no doc changes are made.
 
+## Implementation Verification
+
+Measured on 2026-07-06 against local backend `127.0.0.1:8000`.
+
+- Focused tests: `npm run test -- --run src/live/useLiveCursorStore.test.ts src/live/sidebarCursorRateLimit.test.ts src/live/LiveChartRoot.test.tsx src/live/LiveSidebar.test.tsx src/api/useLiveCursor.test.ts` passed, 162 tests.
+- Production build: `npm run build` passed.
+- Dev browser, current worktree Vite on `127.0.0.1:5174`: initial sidecar load was about 2.0 MB / 927 ms in the `/browse` network log.
+- Dev browser 100-point fast crosshair sweep: `cursorMs` changed 74 times, `sidebarCursorMs` changed 2 times, `/api/orderbook` 0, `/api/brokers/series` 0, `/api/range` 0 during the sweep.
+- Dev browser stable hover: `cursorMs` published immediately, `sidebarCursorMs` published about 120 ms later, then exactly one `/api/orderbook` and one `/api/brokers/series` request were issued.
+- Production preview on `127.0.0.1:4173`: 100-point fast sweep issued `/api/orderbook` 0, `/api/brokers/series` 0, `/api/range` 0, with no page errors captured.
+- Residual observation: Vite dev console repeatedly logged `lightweight-charts` `CanvasGradient` non-finite errors while rendering. This was observed during verification and is outside this cursor/sidebar scope.
+
 ---
 
 ## Self-Review
