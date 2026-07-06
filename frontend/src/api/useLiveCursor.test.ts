@@ -64,7 +64,6 @@ describe('useLiveOrderbookAtCursor', () => {
     );
 
     act(() => useLiveCursorStore.getState().setCursor(1_779_930_001_234));
-    await new Promise((r) => setTimeout(r, 80));
     expect(apiGet).not.toHaveBeenCalled();
 
     act(() => useLiveCursorStore.getState().setSidebarCursor(1_779_930_000_000));
@@ -103,8 +102,6 @@ describe('useLiveOrderbookAtCursor', () => {
     await waitFor(() => expect(apiGet).toHaveBeenCalledTimes(1));
     act(() => useLiveCursorStore.getState().setSidebarCursor(1_779_930_001_234));  // same minute
     act(() => useLiveCursorStore.getState().setSidebarCursor(1_779_930_029_999));  // same minute
-    // 80ms is enough for useSpot's 30ms debounce to fire.
-    await new Promise((r) => setTimeout(r, 80));
     expect(apiGet).toHaveBeenCalledTimes(1);  // bucket-aligned: same key, LRU hit
   });
 
@@ -175,7 +172,6 @@ describe('useLiveBrokersAtCursor', () => {
     // isSpot gate in LiveSidebar only suppresses display, not the fetch.
     renderHook(() => useLiveBrokersAtCursor({ code: '005930', timeframe: null }));
     act(() => useLiveCursorStore.getState().setSidebarCursor(1_779_930_000_000));
-    await new Promise((r) => setTimeout(r, 80));
     expect(apiGet).not.toHaveBeenCalled();
   });
 
@@ -186,7 +182,6 @@ describe('useLiveBrokersAtCursor', () => {
     // Moving cursor within the same day must not refetch — the day series
     // is whole-day; the sidebar projects per-row net at cursor client-side.
     act(() => useLiveCursorStore.getState().setSidebarCursor(1_779_930_840_000));  // +14 min, same day
-    await new Promise((r) => setTimeout(r, 80));
     expect(apiGet).toHaveBeenCalledTimes(1);
   });
 

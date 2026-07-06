@@ -14,7 +14,7 @@ interface State {
 
 /**
  * /live page hover cursor.
- * - cursorMs: active spot timestamp shown by sidebar/legend.
+ * - cursorMs: immediate chart/legend hover timestamp.
  * - lastCursorMs: sticky last-valid hover timestamp for restore after pointer leave.
  * - sidebarCursorMs: rate-limited cursor consumed by LiveSidebar and spot REST hooks.
  * See ADR-0044.
