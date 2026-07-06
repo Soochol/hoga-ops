@@ -261,8 +261,27 @@ describe('planSidecarRangeDelta', () => {
     to_date: '20260706',
     bucket_ms: 60_000,
   };
+  const previousRequest = {
+    code: '005930',
+    from: '20260629',
+    to: '20260706',
+    timeframe: '1m',
+    todayKst: '20260706',
+    sourcePref: 'hogaplay_first' as const,
+    options: {
+      mode: 'sidecar' as const,
+      askPeaksEnabled: false,
+      bidPeaksEnabled: false,
+      programTradeEnabled: true,
+      tradeVolumePocEnabled: true,
+      volumeDistributionBins: 10,
+      tradeVolumePocBins: 10,
+      volumeDistributionPriceRange: { min: 303000, max: 325000 },
+    },
+  };
+  const previousIdentity = planSidecarRangeDelta(previousRequest).identity;
 
-  it('plans only the missing left delta for compatible live sidecar ranges', () => {
+  it('plans only the missing left delta for compatible live sidecar ranges when given the actual previous identity', () => {
     const plan = planSidecarRangeDelta({
       code: '005930',
       from: '20260624',
@@ -280,7 +299,7 @@ describe('planSidecarRangeDelta', () => {
         tradeVolumePocBins: 10,
         volumeDistributionPriceRange: { min: 303000, max: 325000 },
       },
-    }, previous);
+    }, previous, previousIdentity);
 
     expect(plan.enabled).toBe(true);
     expect(plan.canReusePrevious).toBe(true);
@@ -298,7 +317,10 @@ describe('planSidecarRangeDelta', () => {
       todayKst: '20260706',
       sourcePref: 'hogaplay_first',
       options: { mode: 'sidecar', volumeDistributionBins: 10 },
-    }, previous);
+    }, previous, planSidecarRangeDelta({
+      ...previousRequest,
+      options: { mode: 'sidecar', volumeDistributionBins: 10 },
+    }).identity);
 
     expect(plan.enabled).toBe(false);
     expect(plan.servePrevious).toBe(true);
@@ -315,7 +337,11 @@ describe('planSidecarRangeDelta', () => {
       todayKst: '20260707',
       sourcePref: 'hogaplay_first',
       options: { mode: 'sidecar', volumeDistributionBins: 10 },
-    }, previous);
+    }, previous, planSidecarRangeDelta({
+      ...previousRequest,
+      todayKst: '20260707',
+      options: { mode: 'sidecar', volumeDistributionBins: 10 },
+    }).identity);
 
     expect(plan.enabled).toBe(true);
     expect(plan.canReusePrevious).toBe(false);
@@ -336,11 +362,80 @@ describe('planSidecarRangeDelta', () => {
         volumeDistributionBins: 10,
         volumeDistributionCutoffMs: 1_772_000_001_000,
       },
-    }, previous);
+    }, previous, previousIdentity);
 
     expect(plan.canReusePrevious).toBe(false);
     expect(plan.requestInput.from).toBe('20260624');
     expect(plan.requestInput.to).toBe('20260624');
+  });
+
+  it('falls back to a full request when source preference changed', () => {
+    const plan = planSidecarRangeDelta({
+      ...previousRequest,
+      from: '20260624',
+      sourcePref: 'kis_ws_first',
+    }, previous, previousIdentity);
+
+    expect(plan.enabled).toBe(true);
+    expect(plan.canReusePrevious).toBe(false);
+    expect(plan.servePrevious).toBe(false);
+    expect(plan.requestInput.from).toBe('20260624');
+    expect(plan.requestInput.to).toBe('20260706');
+  });
+
+  it('falls back to a full request when sidecar options changed', () => {
+    const plan = planSidecarRangeDelta({
+      ...previousRequest,
+      from: '20260624',
+      options: {
+        ...previousRequest.options,
+        tradeVolumePocEnabled: false,
+      },
+    }, previous, previousIdentity);
+
+    expect(plan.enabled).toBe(true);
+    expect(plan.canReusePrevious).toBe(false);
+    expect(plan.servePrevious).toBe(false);
+    expect(plan.requestInput.from).toBe('20260624');
+    expect(plan.requestInput.to).toBe('20260706');
+  });
+
+  it('falls back to a full request when timeframe identity changed', () => {
+    const plan = planSidecarRangeDelta({
+      ...previousRequest,
+      from: '20260624',
+      timeframe: '3m',
+    }, previous, previousIdentity);
+
+    expect(plan.enabled).toBe(true);
+    expect(plan.canReusePrevious).toBe(false);
+    expect(plan.servePrevious).toBe(false);
+    expect(plan.requestInput.from).toBe('20260624');
+    expect(plan.requestInput.to).toBe('20260706');
+  });
+
+  it('falls back to a full request for past-only sidecar ranges', () => {
+    const plan = planSidecarRangeDelta({
+      ...previousRequest,
+      from: '20260624',
+      to: '20260628',
+      todayKst: '20260706',
+    }, {
+      ...previous,
+      from_date: '20260625',
+      to_date: '20260628',
+    }, planSidecarRangeDelta({
+      ...previousRequest,
+      from: '20260625',
+      to: '20260628',
+      todayKst: '20260706',
+    }).identity);
+
+    expect(plan.enabled).toBe(true);
+    expect(plan.canReusePrevious).toBe(false);
+    expect(plan.servePrevious).toBe(false);
+    expect(plan.requestInput.from).toBe('20260624');
+    expect(plan.requestInput.to).toBe('20260628');
   });
 });
 

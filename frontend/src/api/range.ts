@@ -105,20 +105,22 @@ function sidecarIdentity(input: RangeBundleRequestInput): string {
 export function planSidecarRangeDelta(
   input: RangeBundleRequestInput,
   previous?: RangeBundle,
+  previousIdentity?: string,
 ): RangeDeltaPlan {
   const identity = sidecarIdentity(input);
   const request = buildRangeBundleRequest(input);
   const options = input.options ?? {};
   const fullInput = { ...input };
+  const isLiveSidecarRequest = !!(
+    request.enabled &&
+    options.mode === 'sidecar' &&
+    options.volumeDistributionCutoffMs == null &&
+    input.todayKst &&
+    input.to &&
+    input.to >= input.todayKst
+  );
 
-  if (
-    !request.enabled ||
-    options.mode !== 'sidecar' ||
-    options.volumeDistributionCutoffMs != null ||
-    !input.code ||
-    !input.from ||
-    !input.to
-  ) {
+  if (!isLiveSidecarRequest || !input.code || !input.from || !input.to) {
     return {
       enabled: request.enabled,
       requestInput: fullInput,
@@ -128,15 +130,11 @@ export function planSidecarRangeDelta(
     };
   }
 
-  const previousInput: RangeBundleRequestInput | undefined = previous
-    ? { ...input, from: previous.from_date, to: previous.to_date }
-    : undefined;
   const sameIdentity = !!(
     previous &&
     previous.code === input.code &&
     previous.to_date === input.to &&
-    previousInput &&
-    sidecarIdentity(previousInput) === identity
+    previousIdentity === identity
   );
 
   if (sameIdentity && previous.from_date <= input.from) {
