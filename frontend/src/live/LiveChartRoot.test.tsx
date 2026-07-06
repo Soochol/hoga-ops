@@ -2897,11 +2897,11 @@ describe('LiveChartRoot crosshair → cursor store (ADR-0044)', () => {
     await flush();
     act(() => fire({ time: (TODAY_OPEN_MS + 29_000) / 1000, point: { x: 12 } }));
     await flush();
-    await act(() => new Promise((r) => setTimeout(() => r(null), 119)));
+    await act(() => new Promise((r) => setTimeout(() => r(null), 60)));
 
     expect(useLiveCursorStore.getState().sidebarCursorMs).toBeNull();
 
-    await act(() => new Promise((r) => setTimeout(() => r(null), 10)));
+    await act(() => new Promise((r) => setTimeout(() => r(null), 80)));
 
     expect(useLiveCursorStore.getState().sidebarCursorMs).toBe(TODAY_OPEN_MS);
   });
