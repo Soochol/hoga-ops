@@ -851,7 +851,12 @@ class LiveQuoteFetcher:
             # KIS rate-limit/api-error/네트워크 타임아웃 등 무엇이든 빈 결과로 graceful
             # (프론트는 '—' 표시). retry-exhausted 신호는 warning 으로만 남긴다.
             log.warning("live quotes fetch failed (%d codes): %s", len(code_list), e)
-            return []
+            return self.stale_last_good(
+                code_list,
+                phase,
+                today=today,
+                stale_reason="kis_fetch_failed",
+            )
         for q in quotes:
             self._last_quotes[q.code] = q
         return [self._to_live_quote(q, phase=phase, today=today) for q in quotes]
@@ -861,6 +866,8 @@ class LiveQuoteFetcher:
         code_list: list[str],
         phase: str,
         today: date | None = None,
+        *,
+        stale_reason: str = "kis_rest_bypassed",
     ) -> list[LiveQuote]:
         rows: list[LiveQuote] = []
         for code in code_list:
@@ -871,7 +878,7 @@ class LiveQuoteFetcher:
                 self._to_live_quote(q, phase=phase, today=today).model_copy(
                     update={
                         "stale": True,
-                        "stale_reason": "kis_rest_bypassed",
+                        "stale_reason": stale_reason,
                     }
                 )
             )
@@ -1602,8 +1609,27 @@ def build_router(
                 ),
                 timeout=1.0,
             )
-        except (asyncio.TimeoutError, KisCapacityCooldown, KisCapacityOverloaded):
-            quotes = []
+        except asyncio.TimeoutError:
+            quotes = _quote_fetcher.stale_last_good(
+                code_list,
+                phase,
+                today=now.date(),
+                stale_reason="kis_capacity_timeout",
+            )
+        except KisCapacityCooldown:
+            quotes = _quote_fetcher.stale_last_good(
+                code_list,
+                phase,
+                today=now.date(),
+                stale_reason="kis_capacity_cooldown",
+            )
+        except KisCapacityOverloaded:
+            quotes = _quote_fetcher.stale_last_good(
+                code_list,
+                phase,
+                today=now.date(),
+                stale_reason="kis_capacity_overloaded",
+            )
         return LiveQuotesResponse(
             phase=phase,
             quotes=quotes,

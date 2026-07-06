@@ -46,3 +46,22 @@ it('상승 칩 배경 = 적(--price-up rgb), 하락 칩 = 청', () => {
   expect(up.getAttribute('style') ?? '').toMatch(/220,\s*38,\s*38/);
   expect(down.getAttribute('style') ?? '').toMatch(/37,\s*99,\s*235/);
 });
+
+it('stale 종목은 평균 계산에서 제외되어 섹터 정렬/표시에 영향 없음', () => {
+  const staleGroups: FolderGroup<HeatmapEntry>[] = [
+    { folder: { id: 'f1', name: '로봇', order: 0 }, entries: [entry('111', 'f1')] },      // +2
+    { folder: { id: 'f2', name: '통신', order: 1 }, entries: [entry('222', 'f2')] },      // -3
+    { folder: { id: 'f3', name: '반도체', order: 2 }, entries: [entry('005930', 'f3')] },   // stale +20 (제외)
+  ];
+  const staleQuoteByCode = new Map<string, LiveQuote>([
+    ['111', { code: '111', price: 1, change_pct: 2, change_won: 0 }],
+    ['222', { code: '222', price: 1, change_pct: -3, change_won: 0 }],
+    ['005930', { code: '005930', price: 1, change_pct: 20, change_won: 0, stale: true }],
+  ]);
+
+  render(<SectorTempStrip groups={staleGroups} quoteByCode={staleQuoteByCode} onJump={() => {}} />);
+  const chips = screen.getAllByRole('button').map((c) => c.textContent ?? '');
+  expect(chips).toHaveLength(2);
+  expect(chips[0]).toContain('로봇');  // +2 should be first
+  expect(chips[1]).toContain('통신');  // -3 should be second
+});
