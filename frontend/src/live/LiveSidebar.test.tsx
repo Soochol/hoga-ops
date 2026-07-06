@@ -172,7 +172,7 @@ describe('LiveSidebar', () => {
       volumeDistributionHoverCutoffEnabled: false,
       volumeDistributionRangeCount: 10,
     });
-    useLiveCursorStore.getState().clearCursor();
+    useLiveCursorStore.getState().resetCursor();
     useLiveAxisStore.setState({ axis: null });
     vi.mocked(TotalQtyBar).mockClear();
   });
@@ -318,7 +318,7 @@ describe('LiveSidebar', () => {
       volumeDistributionHoverCutoffEnabled: false,
       volumeDistributionRangeCount: 2,
     });
-    act(() => useLiveCursorStore.getState().setCursor(Date.UTC(2026, 4, 27, 0, 1, 0)));
+    act(() => useLiveCursorStore.getState().setSidebarCursor(Date.UTC(2026, 4, 27, 0, 1, 0)));
 
     renderSidebar({ code: '005930', bundle: bundleWithFinalDistribution });
 
@@ -332,7 +332,7 @@ describe('LiveSidebar', () => {
       volumeDistributionRangeCount: 2,
     });
     volumeDistributionCutoffProfileMock.mockReturnValue(cutoffDistribution);
-    act(() => useLiveCursorStore.getState().setCursor(Date.UTC(2026, 4, 27, 0, 1, 0)));
+    act(() => useLiveCursorStore.getState().setSidebarCursor(Date.UTC(2026, 4, 27, 0, 1, 0)));
 
     renderSidebar({ code: '005930', bundle: bundleWithFinalDistribution });
 
@@ -354,7 +354,7 @@ describe('LiveSidebar', () => {
       volumeDistributionHoverCutoffEnabled: true,
       volumeDistributionRangeCount: 2,
     });
-    act(() => useLiveCursorStore.getState().setCursor(Date.UTC(2026, 4, 27, 0, 1, 0)));
+    act(() => useLiveCursorStore.getState().setSidebarCursor(Date.UTC(2026, 4, 27, 0, 1, 0)));
 
     const selectedDateCandle = {
       ts_ms: Date.UTC(2026, 4, 27, 0, 1, 0),
@@ -405,7 +405,7 @@ describe('LiveSidebar', () => {
       volumeDistributionHoverCutoffEnabled: true,
       volumeDistributionRangeCount: 10,
     });
-    act(() => useLiveCursorStore.getState().setCursor(Date.UTC(2026, 4, 27, 0, 1, 0)));
+    act(() => useLiveCursorStore.getState().setSidebarCursor(Date.UTC(2026, 4, 27, 0, 1, 0)));
 
     renderSidebar({
       code: '005930',
@@ -684,7 +684,7 @@ describe('LiveSidebar cursor branching (ADR-0044)', () => {
   beforeEach(() => {
     (cursorHooks.useLiveOrderbookAtCursor as ReturnType<typeof vi.fn>).mockReturnValue(undefined);
     (cursorHooks.useLiveBrokersAtCursor as ReturnType<typeof vi.fn>).mockReturnValue(undefined);
-    useLiveCursorStore.getState().clearCursor();
+    useLiveCursorStore.getState().resetCursor();
     useLiveAxisStore.setState({ axis: null });
     vi.mocked(TotalQtyBar).mockClear();
   });
@@ -700,7 +700,7 @@ describe('LiveSidebar cursor branching (ADR-0044)', () => {
     renderSidebar({ code: '005930' });
     // 2026-05-28T04:42:17Z → KST 13:42:17
     const t = new Date('2026-05-28T04:42:17Z').getTime();
-    act(() => useLiveCursorStore.getState().setCursor(t));
+    act(() => useLiveCursorStore.getState().setSidebarCursor(t));
     expect(screen.queryByTestId('live-sidebar-pulse')).toBeNull();
     expect(screen.queryByText('과거')).toBeNull();
     expect(screen.queryByText('13:42:17')).toBeNull();
@@ -715,6 +715,37 @@ describe('LiveSidebar cursor branching (ADR-0044)', () => {
     expect(cursorHooks.useLiveOrderbookAtCursor).toHaveBeenCalledWith(
       expect.objectContaining({ code: '005930' }),
     );
+  });
+
+  it('does not switch to spot mode from immediate cursorMs alone', () => {
+    const liveWithOrderbook: LiveSeriesData = {
+      ...emptyLive,
+      ob: [
+        {
+          t_ms: 1779840060000,
+          kind: 'ob',
+          asks: Array.from({ length: 10 }, (_, i) => ({ price: 70010 + i, qty: 10 + i })),
+          bids: Array.from({ length: 10 }, (_, i) => ({ price: 70000 - i, qty: 20 + i })),
+          total_ask_qty: 145,
+          total_bid_qty: 245,
+        },
+      ],
+      broker: [
+        {
+          t_ms: 1779840060000,
+          kind: 'broker',
+          buy_top: [{ name: '미래에셋증권', qty: 12 }],
+          sell_top: [],
+        },
+      ],
+    };
+    renderSidebar({ code: '005930', live: liveWithOrderbook, bundle: bundleFixture });
+
+    const latestCandleMs = bundleFixture.candles[bundleFixture.candles.length - 1].ts_ms;
+    act(() => useLiveCursorStore.getState().setCursor(latestCandleMs));
+
+    expect(screen.queryByText('커서 위치 로딩 중…')).toBeNull();
+    expect(screen.getByText('70,010')).toBeInTheDocument();
   });
 
   it('uses cursor spot data when the cursor is pinned to the latest candle', () => {
@@ -740,7 +771,7 @@ describe('LiveSidebar cursor branching (ADR-0044)', () => {
       },
     ]);
 
-    act(() => useLiveCursorStore.getState().setCursor(latestCandleMs));
+    act(() => useLiveCursorStore.getState().setSidebarCursor(latestCandleMs));
     renderSidebar({ code: '005930', live: emptyLive, bundle: bundleFixture });
 
     expect(screen.queryByText('커서 위치 로딩 중…')).toBeNull();
@@ -753,7 +784,7 @@ describe('LiveSidebar cursor branching (ADR-0044)', () => {
     (cursorHooks.useLiveOrderbookAtCursor as ReturnType<typeof vi.fn>).mockReturnValue(undefined);
     (cursorHooks.useLiveBrokersAtCursor as ReturnType<typeof vi.fn>).mockReturnValue([]);
 
-    act(() => useLiveCursorStore.getState().setCursor(latestCandleMs));
+    act(() => useLiveCursorStore.getState().setSidebarCursor(latestCandleMs));
     renderSidebar({ code: '005930', live: emptyLive, bundle: bundleFixture });
 
     expect(screen.getByText('커서 위치 로딩 중…')).toBeInTheDocument();
@@ -763,7 +794,7 @@ describe('LiveSidebar cursor branching (ADR-0044)', () => {
   it('TotalQtyBar maskRatio=true when cursorMs in closing auction window', () => {
     useLiveAxisStore.setState({ axis: { inClosingAuctionWindow: () => true } as never });
     renderSidebar({ code: '005930' });
-    act(() => useLiveCursorStore.getState().setCursor(1_748_400_900_000));
+    act(() => useLiveCursorStore.getState().setSidebarCursor(1_748_400_900_000));
     expect(TotalQtyBar).toHaveBeenCalledWith(
       expect.objectContaining({ maskRatio: true }),
       expect.anything(),
@@ -773,7 +804,7 @@ describe('LiveSidebar cursor branching (ADR-0044)', () => {
   it('TotalQtyBar maskRatio=false when cursorMs outside window', () => {
     useLiveAxisStore.setState({ axis: { inClosingAuctionWindow: () => false } as never });
     renderSidebar({ code: '005930' });
-    act(() => useLiveCursorStore.getState().setCursor(1_748_400_060_000));
+    act(() => useLiveCursorStore.getState().setSidebarCursor(1_748_400_060_000));
     expect(TotalQtyBar).toHaveBeenCalledWith(
       expect.objectContaining({ maskRatio: false }),
       expect.anything(),
@@ -797,7 +828,7 @@ describe('LiveSidebar cursor branching (ADR-0044)', () => {
     // (ADR-0044). Cursor on D must NOT blank the orderbook.
     useLivePageStore.setState({ candleTimeframe: 'D' });
     renderSidebar({ code: '005930' });
-    act(() => useLiveCursorStore.getState().setCursor(new Date('2026-05-28T04:42:17Z').getTime()));
+    act(() => useLiveCursorStore.getState().setSidebarCursor(new Date('2026-05-28T04:42:17Z').getTime()));
     expect(screen.queryByText('과거')).toBeNull();
     expect(screen.queryByTestId('live-sidebar-pulse')).toBeNull();
     useLivePageStore.setState({ candleTimeframe: '1m' });
@@ -807,7 +838,7 @@ describe('LiveSidebar cursor branching (ADR-0044)', () => {
 describe('LiveSidebar — empty spot orderbook with available_from hint (T14b)', () => {
   beforeEach(() => {
     (cursorHooks.useLiveBrokersAtCursor as ReturnType<typeof vi.fn>).mockReturnValue(undefined);
-    useLiveCursorStore.getState().clearCursor();
+    useLiveCursorStore.getState().resetCursor();
   });
   afterEach(() => cleanup());
 
@@ -820,7 +851,7 @@ describe('LiveSidebar — empty spot orderbook with available_from hint (T14b)',
       available_from: availableMs,
       source: 'hogaplay',
     });
-    act(() => useLiveCursorStore.getState().setCursor(1_748_400_060_000));
+    act(() => useLiveCursorStore.getState().setSidebarCursor(1_748_400_060_000));
     renderSidebar({ code: '005930' });
     expect(screen.getByText(/다음 가용: 12:42/)).toBeInTheDocument();
   });
@@ -831,7 +862,7 @@ describe('LiveSidebar — empty spot orderbook with available_from hint (T14b)',
       available_from: null,
       source: 'hogaplay',
     });
-    act(() => useLiveCursorStore.getState().setCursor(1_748_400_060_000));
+    act(() => useLiveCursorStore.getState().setSidebarCursor(1_748_400_060_000));
     renderSidebar({ code: '005930' });
     expect(screen.queryByText(/다음 가용/)).toBeNull();
   });
@@ -842,7 +873,7 @@ describe('LiveSidebar — REST 준실시간 안내 배너 제거 확인', () => 
   beforeEach(() => {
     (cursorHooks.useLiveOrderbookAtCursor as ReturnType<typeof vi.fn>).mockReturnValue(undefined);
     (cursorHooks.useLiveBrokersAtCursor as ReturnType<typeof vi.fn>).mockReturnValue(undefined);
-    useLiveCursorStore.getState().clearCursor();
+    useLiveCursorStore.getState().resetCursor();
     useLiveAxisStore.setState({ axis: null });
     vi.mocked(TotalQtyBar).mockClear();
   });
