@@ -5,7 +5,7 @@ import { useLivePastCandles } from '../api/livePastCandles';
 import { useLivePastDailyCandles } from '../api/livePastDailyCandles';
 import { useLivePastInvestorNet } from '../api/livePastInvestorNet';
 import { useScreenerDailyCandles } from '../api/screenerDailyCandles';
-import { useRange } from '../api/range';
+import { useRange, useRangeSidecarDelta } from '../api/range';
 import { useLivePageStore, type LiveTimeframe, isMinuteTimeframe } from '../state/livePage';
 import type { LiveVenueOption } from '../state/liveVenue';
 import { useSourcePreferenceStore } from '../state/sourcePreference';
@@ -609,7 +609,7 @@ export function useLiveBundle(
       rangePlan.options.volumeDistributionBins != null
     )
   );
-  const pastSidecars = useRange(
+  const pastSidecars = useRangeSidecarDelta(
     sidecarEnabled ? rangePlan.code : null,
     sidecarEnabled ? rangePlan.from : null,
     sidecarEnabled ? rangePlan.to : null,

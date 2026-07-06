@@ -130,8 +130,16 @@ const useRangeSpy = vi.fn<(...args: unknown[]) => any>(() => ({
   isPlaceholderData: rangeMock.isPlaceholderData,
   isFetching: rangeMock.isFetching,
 }));
+const useRangeSidecarDeltaSpy = vi.fn<(...args: unknown[]) => any>(() => ({
+  data: null,
+  isLoading: false,
+  error: null,
+  isPlaceholderData: rangeMock.isPlaceholderData,
+  isFetching: rangeMock.isFetching,
+}));
 vi.mock('../api/range', () => ({
   useRange: (...args: unknown[]) => useRangeSpy(...args as []),
+  useRangeSidecarDelta: (...args: unknown[]) => useRangeSidecarDeltaSpy(...args as []),
 }));
 
 function rangeResult(data: unknown = null) {
@@ -359,7 +367,15 @@ describe('useLiveBundle', () => {
     livePastDailyCandlesSpy.mockClear();
     livePastInvestorNetSpy.mockClear();
     useRangeSpy.mockClear();
+    useRangeSidecarDeltaSpy.mockClear();
     useRangeSpy.mockImplementation(() => ({
+      data: null,
+      isLoading: false,
+      error: null,
+      isPlaceholderData: rangeMock.isPlaceholderData,
+      isFetching: rangeMock.isFetching,
+    }));
+    useRangeSidecarDeltaSpy.mockImplementation(() => ({
       data: null,
       isLoading: false,
       error: null,
@@ -441,7 +457,7 @@ describe('useLiveBundle', () => {
       '20260527',
       { mode: 'hoga' },
     );
-    expect(useRangeSpy).toHaveBeenCalledWith(
+    expect(useRangeSidecarDeltaSpy).toHaveBeenCalledWith(
       '005930',
       '20260520',
       '20260527',
@@ -485,7 +501,7 @@ describe('useLiveBundle', () => {
       '20260527',
       { mode: 'hoga' },
     );
-    expect(useRangeSpy).toHaveBeenCalledWith(
+    expect(useRangeSidecarDeltaSpy).toHaveBeenCalledWith(
       null,
       null,
       null,
@@ -502,6 +518,29 @@ describe('useLiveBundle', () => {
         volumeDistributionBins: null,
         tradeVolumePocBins: null,
       }),
+    );
+  });
+
+  it('routes live sidecars through the delta range hook', () => {
+    renderHook(() => useLiveBundle('005930', '1m', '20260527', liveFixture), { wrapper: createWrapper() });
+
+    expect(useRangeSpy).toHaveBeenCalledWith(
+      '005930',
+      '20260520',
+      '20260527',
+      '1m',
+      undefined,
+      '20260527',
+      { mode: 'hoga' },
+    );
+    expect(useRangeSidecarDeltaSpy).toHaveBeenCalledWith(
+      '005930',
+      '20260520',
+      '20260527',
+      '1m',
+      undefined,
+      '20260527',
+      expect.objectContaining({ mode: 'sidecar' }),
     );
   });
 
@@ -553,11 +592,15 @@ describe('useLiveBundle', () => {
       if (options?.mode === 'hoga') {
         return rangeResult(fallbackRangeBundle(71_234));
       }
-      if (options?.mode === 'sidecar') {
-        return { data: null, isLoading: true, error: null, isPlaceholderData: false, isFetching: true };
-      }
       return rangeResult();
     });
+    useRangeSidecarDeltaSpy.mockImplementation(() => ({
+      data: null,
+      isLoading: true,
+      error: null,
+      isPlaceholderData: false,
+      isFetching: true,
+    }));
 
     const { result } = renderHook(
       () => useLiveBundle('005930', '1m', '20260527', liveFixture),
@@ -604,7 +647,7 @@ describe('useLiveBundle', () => {
 
     renderHook(() => useLiveBundle('005930', '1m', '20260527', liveFixture), { wrapper });
 
-    expect(useRangeSpy).toHaveBeenCalledWith(
+    expect(useRangeSidecarDeltaSpy).toHaveBeenCalledWith(
       '005930',
       '20260520',
       '20260527',
@@ -641,11 +684,7 @@ describe('useLiveBundle', () => {
       trade_volume_pocs: [],
       program_trade: { points: [] },
     };
-    useRangeSpy
-      .mockReturnValueOnce(rangeResult())
-      .mockReturnValueOnce(rangeResult())
-      .mockReturnValueOnce(rangeResult())
-      .mockReturnValueOnce(rangeResult(sidecarBundle));
+    useRangeSidecarDeltaSpy.mockReturnValueOnce(rangeResult(sidecarBundle));
 
     const { result } = renderHook(() => useLiveBundle('005930', '1m', '20260527', liveFixture), { wrapper });
 
@@ -682,11 +721,7 @@ describe('useLiveBundle', () => {
       trade_volume_pocs: [],
       program_trade: { points: [] },
     };
-    useRangeSpy
-      .mockReturnValueOnce(rangeResult())
-      .mockReturnValueOnce(rangeResult())
-      .mockReturnValueOnce(rangeResult())
-      .mockReturnValueOnce(rangeResult(sidecarBundle));
+    useRangeSidecarDeltaSpy.mockReturnValueOnce(rangeResult(sidecarBundle));
 
     const { result } = renderHook(() => useLiveBundle('005930', '1m', '20260527', liveFixture), { wrapper });
 
@@ -723,11 +758,7 @@ describe('useLiveBundle', () => {
       trade_volume_pocs: [],
       program_trade: { points: [programPoint], source: 'kis_program_trade' as const },
     };
-    useRangeSpy
-      .mockReturnValueOnce(rangeResult())
-      .mockReturnValueOnce(rangeResult())
-      .mockReturnValueOnce(rangeResult())
-      .mockReturnValueOnce(rangeResult(sidecarBundle));
+    useRangeSidecarDeltaSpy.mockReturnValueOnce(rangeResult(sidecarBundle));
 
     const { result } = renderHook(() => useLiveBundle('005930', '1m', '20260527', liveFixture), { wrapper });
 
@@ -742,7 +773,7 @@ describe('useLiveBundle', () => {
     // 5th arg = priceRange (undefined here); 6th = todayKst, which drives the
     // 5-min refetch that advances pastMaxQrT (review C1). minutePastTo === today
     // so todayKst === to === '20260527'.
-    expect(useRangeSpy).toHaveBeenCalledWith(
+    expect(useRangeSidecarDeltaSpy).toHaveBeenCalledWith(
       '005930',
       '20250920',
       '20260527',
@@ -768,7 +799,7 @@ describe('useLiveBundle', () => {
 
     renderHook(() => useLiveBundle('005930', '1m', '20260527', liveFixture), { wrapper });
 
-    expect(useRangeSpy).toHaveBeenCalledWith(
+    expect(useRangeSidecarDeltaSpy).toHaveBeenCalledWith(
       '005930',
       '20260501',
       '20260527',
@@ -794,7 +825,7 @@ describe('useLiveBundle', () => {
 
     renderHook(() => useLiveBundle('005930', '1m', '20260527', liveFixture), { wrapper });
 
-    expect(useRangeSpy).toHaveBeenCalledWith(
+    expect(useRangeSidecarDeltaSpy).toHaveBeenCalledWith(
       '005930',
       '20260501',
       '20260527',
@@ -1176,6 +1207,7 @@ describe('useLiveBundle daily/minute branching (ADR-0048)', () => {
     livePastDailyCandlesSpy.mockClear();
     screenerDailyCandlesSpy.mockClear();
     useRangeSpy.mockClear();
+    useRangeSidecarDeltaSpy.mockClear();
     candlesMock.candles = [DEFAULT_CANDLE];
     candlesMock.isPlaceholderData = false;
     candlesMock.isFetching = false;
@@ -1484,6 +1516,7 @@ describe('useLiveBundle extension atomization gate', () => {
   beforeEach(() => {
     livePastCandlesSpy.mockClear();
     useRangeSpy.mockClear();
+    useRangeSidecarDeltaSpy.mockClear();
     candlesMock.candles = [DEFAULT_CANDLE];
     candlesMock.isPlaceholderData = false;
     candlesMock.isFetching = false;
@@ -1567,6 +1600,7 @@ describe('useLiveBundle isExtending', () => {
     livePastCandlesSpy.mockClear();
     livePastDailyCandlesSpy.mockClear();
     useRangeSpy.mockClear();
+    useRangeSidecarDeltaSpy.mockClear();
     candlesMock.candles = [DEFAULT_CANDLE];
     candlesMock.isPlaceholderData = false;
     candlesMock.isFetching = false;
