@@ -81,6 +81,10 @@ class KisCapacityScheduler:
         self._background_deferred_due_to_user_visible = 0
         self._background_deferred_due_to_reserved_capacity = 0
         self._overloaded_rejections = 0
+        self._capacity_change_condition: asyncio.Condition | None = None
+        self._capacity_change_loop: asyncio.AbstractEventLoop | None = None
+        self._capacity_change_generation = 0
+        self._capacity_retry_backstop_s = 1.0
         self._seq = itertools.count()
         self._workers: list[asyncio.Task[None]] = []
         self._worker_loop: asyncio.AbstractEventLoop | None = None
@@ -161,8 +165,12 @@ class KisCapacityScheduler:
             "inflight": len(self._inflight),
             "configured_account_count": len(account_snapshots),
             "healthy_account_count": sum(1 for s in account_snapshots if s.healthy),
-            "background_deferred_due_to_user_visible": self._background_deferred_due_to_user_visible,
-            "background_deferred_due_to_reserved_capacity": self._background_deferred_due_to_reserved_capacity,
+            "background_deferred_due_to_user_visible": (
+                self._background_deferred_due_to_user_visible
+            ),
+            "background_deferred_due_to_reserved_capacity": (
+                self._background_deferred_due_to_reserved_capacity
+            ),
             "overloaded_rejections": self._overloaded_rejections,
             "accounts": [s.__dict__ for s in account_snapshots],
         }
@@ -202,7 +210,7 @@ class KisCapacityScheduler:
             for key, priority in self._queued_priorities.items()
         )
 
-    async def _worker(self) -> None:
+    async def _worker(self) -> None:  # noqa: PLR0912, PLR0915
         while True:
             request = await self._queue.get()
             if request.future.done():
@@ -221,6 +229,7 @@ class KisCapacityScheduler:
 
             lease = None
             requeued = False
+            capacity_generation = self._capacity_change_generation
             try:
                 self._started_keys.add(request.key)
                 lease = await self._account_pool.lease(
@@ -234,7 +243,7 @@ class KisCapacityScheduler:
                 await self._queue.put(request)
                 self._queue.task_done()
                 requeued = True
-                await asyncio.sleep(0.01)
+                await self._wait_for_capacity_change(capacity_generation)
                 continue
             except KisNoAccountAvailable as exc:
                 if not request.future.done():
@@ -260,6 +269,7 @@ class KisCapacityScheduler:
                         self._account_pool.release(lease.account_id)
                     self._cleanup_request(request.key)
                     self._queue.task_done()
+                    await self._notify_capacity_changed()
 
     def _cleanup_request(self, key: Hashable) -> None:
         self._inflight.pop(key, None)
@@ -269,3 +279,30 @@ class KisCapacityScheduler:
         self._request_endpoints.pop(key, None)
         self._request_cooldown_keys.pop(key, None)
         self._started_keys.discard(key)
+
+    def _get_capacity_change_condition(self) -> asyncio.Condition:
+        loop = asyncio.get_running_loop()
+        if self._capacity_change_condition is None or self._capacity_change_loop is not loop:
+            self._capacity_change_condition = asyncio.Condition()
+            self._capacity_change_loop = loop
+        return self._capacity_change_condition
+
+    async def _wait_for_capacity_change(self, observed_generation: int) -> None:
+        condition = self._get_capacity_change_condition()
+        try:
+            async with condition:
+                await asyncio.wait_for(
+                    condition.wait_for(
+                        lambda: self._closed
+                        or self._capacity_change_generation != observed_generation
+                    ),
+                    timeout=self._capacity_retry_backstop_s,
+                )
+        except TimeoutError:
+            return
+
+    async def _notify_capacity_changed(self) -> None:
+        condition = self._get_capacity_change_condition()
+        async with condition:
+            self._capacity_change_generation += 1
+            condition.notify(1)
