@@ -16,6 +16,7 @@ import {
 } from './range';
 import * as client from './client';
 import type { RangeBundle } from './types';
+import type { RangeBundleRequestInput } from './rangeRequest';
 import { useSourcePreferenceStore } from '../state/sourcePreference';
 
 function makeWrapper() {
@@ -262,7 +263,7 @@ describe('planSidecarRangeDelta', () => {
     to_date: '20260706',
     bucket_ms: 60_000,
   };
-  const previousRequest = {
+  const previousRequest: RangeBundleRequestInput = {
     code: '005930',
     from: '20260629',
     to: '20260706',
@@ -813,7 +814,7 @@ describe('useRangeSidecarDelta', () => {
       bucket_ms: 60_000,
       volume_distributions: [{ date: '20260707', range_count: 10, price_min: 3, price_max: 4, session_open_ms: 3, session_close_ms: 4, bins: [] }],
     };
-    let resolveNext: ((value: RangeBundle) => void) | null = null;
+    let resolveNext!: (value: RangeBundle) => void;
     const nextPending = new Promise<RangeBundle>((resolve) => {
       resolveNext = resolve;
     });
@@ -837,7 +838,7 @@ describe('useRangeSidecarDelta', () => {
     await waitFor(() => expect(result.current.isPlaceholderData).toBe(true));
     expect(result.current.data).toEqual(first);
 
-    resolveNext?.(next);
+    resolveNext(next);
     await waitFor(() => expect(result.current.isPlaceholderData).toBe(false));
     await waitFor(() => expect(result.current.data?.to_date).toBe('20260707'));
   });
