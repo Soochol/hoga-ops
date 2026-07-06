@@ -79,6 +79,7 @@ export interface RangeDeltaPlan {
   requestInput: RangeBundleRequestInput;
   canReusePrevious: boolean;
   servePrevious: boolean;
+  usePlaceholderData: boolean;
   identity: string;
 }
 
@@ -96,22 +97,22 @@ function addDays(yyyymmdd: string, days: number): string {
   ].join('');
 }
 
-type DeltaRangeMode = 'sidecar' | 'hoga';
+type LiveRangeDeltaMode = 'sidecar' | 'hoga';
 
-function deltaRangeIdentity(input: RangeBundleRequestInput): string {
+function liveRangeDeltaIdentity(input: RangeBundleRequestInput): string {
   const request = buildRangeBundleRequest(input);
   const key = [...request.queryKey];
   key[2] = null;
   return JSON.stringify(key);
 }
 
-function planRangeDelta(
+function planLiveRangeDelta(
   input: RangeBundleRequestInput,
   previous?: RangeBundle,
   previousIdentity?: string,
-  mode: DeltaRangeMode = 'sidecar',
+  mode: LiveRangeDeltaMode = 'sidecar',
 ): RangeDeltaPlan {
-  const identity = deltaRangeIdentity(input);
+  const identity = liveRangeDeltaIdentity(input);
   const request = buildRangeBundleRequest(input);
   const options = input.options ?? {};
   const fullInput = { ...input };
@@ -130,6 +131,7 @@ function planRangeDelta(
       requestInput: fullInput,
       canReusePrevious: false,
       servePrevious: false,
+      usePlaceholderData: true,
       identity,
     };
   }
@@ -146,7 +148,8 @@ function planRangeDelta(
       enabled: true,
       requestInput: fullInput,
       canReusePrevious: false,
-      servePrevious: true,
+      servePrevious: previous.from_date === input.from,
+      usePlaceholderData: previous.from_date === input.from,
       identity,
     };
   }
@@ -157,6 +160,7 @@ function planRangeDelta(
       requestInput: { ...input, from: input.from, to: addDays(previous.from_date, -1) },
       canReusePrevious: true,
       servePrevious: true,
+      usePlaceholderData: true,
       identity,
     };
   }
@@ -166,6 +170,7 @@ function planRangeDelta(
     requestInput: fullInput,
     canReusePrevious: false,
     servePrevious: false,
+    usePlaceholderData: true,
     identity,
   };
 }
@@ -175,7 +180,7 @@ export function planSidecarRangeDelta(
   previous?: RangeBundle,
   previousIdentity?: string,
 ): RangeDeltaPlan {
-  return planRangeDelta(input, previous, previousIdentity, 'sidecar');
+  return planLiveRangeDelta(input, previous, previousIdentity, 'sidecar');
 }
 
 export function planHogaRangeDelta(
@@ -183,7 +188,7 @@ export function planHogaRangeDelta(
   previous?: RangeBundle,
   previousIdentity?: string,
 ): RangeDeltaPlan {
-  return planRangeDelta(input, previous, previousIdentity, 'hoga');
+  return planLiveRangeDelta(input, previous, previousIdentity, 'hoga');
 }
 
 function uniqueBy<T>(items: T[], keyOf: (item: T) => string, compare: (a: T, b: T) => number): T[] {
@@ -300,7 +305,7 @@ export function useRange(
   }));
 }
 
-function useRangeDelta(
+function useLiveRangeDelta(
   code: string | null,
   from: string | null,
   to: string | null,
@@ -309,7 +314,7 @@ function useRangeDelta(
   todayKst?: string | null,
   options?: RangeRequestOptions,
   sourcePrefOverride?: SourcePreference,
-  mode: DeltaRangeMode = 'sidecar',
+  mode: LiveRangeDeltaMode = 'sidecar',
 ) {
   const storedSourcePref: SourcePreference = useSourcePreferenceStore((s) => s.sourcePreference);
   const sourcePref = sourcePrefOverride ?? storedSourcePref;
@@ -321,11 +326,11 @@ function useRangeDelta(
   );
   const merged = mergedRef.current;
   const previousIdentity = merged?.identity;
-  const previous = merged && merged.identity === deltaRangeIdentity(baseInput)
+  const previous = merged && merged.identity === liveRangeDeltaIdentity(baseInput)
     ? merged.data
     : undefined;
   const plan = useMemo(
-    () => planRangeDelta(baseInput, previous, previousIdentity, mode),
+    () => planLiveRangeDelta(baseInput, previous, previousIdentity, mode),
     [baseInput, previous, previousIdentity, mode],
   );
   const request = buildRangeBundleRequest(plan.requestInput);
@@ -338,8 +343,10 @@ function useRangeDelta(
     enabled: plan.enabled,
     staleTime,
     refetchInterval,
-    placeholderData: (prev, previousQuery) =>
-      rangePlaceholderData(prev, request.queryKey, previousQuery?.queryKey),
+    placeholderData: plan.usePlaceholderData
+      ? (prev, previousQuery) =>
+          rangePlaceholderData(prev, request.queryKey, previousQuery?.queryKey)
+      : undefined,
     ...(initialData ? { initialData } : {}),
   });
 
@@ -371,7 +378,7 @@ export function useRangeSidecarDelta(
   options?: RangeRequestOptions,
   sourcePrefOverride?: SourcePreference,
 ) {
-  return useRangeDelta(code, from, to, timeframe, priceRange, todayKst, options, sourcePrefOverride, 'sidecar');
+  return useLiveRangeDelta(code, from, to, timeframe, priceRange, todayKst, options, sourcePrefOverride, 'sidecar');
 }
 
 export function useRangeHogaDelta(
@@ -384,5 +391,5 @@ export function useRangeHogaDelta(
   options?: RangeRequestOptions,
   sourcePrefOverride?: SourcePreference,
 ) {
-  return useRangeDelta(code, from, to, timeframe, priceRange, todayKst, options, sourcePrefOverride, 'hoga');
+  return useLiveRangeDelta(code, from, to, timeframe, priceRange, todayKst, options, sourcePrefOverride, 'hoga');
 }

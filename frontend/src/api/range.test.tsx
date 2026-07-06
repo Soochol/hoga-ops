@@ -1084,6 +1084,68 @@ describe('useRangeHogaDelta', () => {
     );
     await waitFor(() => expect(result.current.data?.quote_ratio.points.map((p) => p.t)).toEqual([3]));
   });
+
+  it('does not serve a wider merged hoga bundle when narrowing to an unseen range', async () => {
+    const first: RangeBundle = {
+      ...fakeBundle,
+      code: '005930',
+      from_date: '20260629',
+      to_date: '20260706',
+      bucket_ms: 60_000,
+      quote_ratio: { bucket_ms: 60_000, points: [{ t: 2, bid_total: 11, ask_total: 10, bid_max: 5, ask_max: 4, imb_max_bid: 1, imb_max_ask: 0 }] },
+    };
+    const delta: RangeBundle = {
+      ...fakeBundle,
+      code: '005930',
+      from_date: '20260624',
+      to_date: '20260628',
+      bucket_ms: 60_000,
+      quote_ratio: { bucket_ms: 60_000, points: [{ t: 1, bid_total: 9, ask_total: 10, bid_max: 3, ask_max: 4, imb_max_bid: 0, imb_max_ask: 1 }] },
+    };
+    const narrow: RangeBundle = {
+      ...fakeBundle,
+      code: '005930',
+      from_date: '20260625',
+      to_date: '20260706',
+      bucket_ms: 60_000,
+      quote_ratio: { bucket_ms: 60_000, points: [{ t: 4, bid_total: 12, ask_total: 10, bid_max: 5, ask_max: 4, imb_max_bid: 1, imb_max_ask: 0 }] },
+    };
+    let resolveNarrow!: (value: RangeBundle) => void;
+    const narrowPending = new Promise<RangeBundle>((resolve) => {
+      resolveNarrow = resolve;
+    });
+    const spy = vi.spyOn(client, 'apiCall').mockImplementation((url) => {
+      const text = String(url);
+      if (text.includes('from=20260624&to=20260628')) return Promise.resolve(delta);
+      if (text.includes('from=20260625&to=20260706')) return narrowPending;
+      return Promise.resolve(first);
+    });
+    const wrapper = makeWrapper();
+    const { result, rerender } = renderHook(
+      ({ from }: { from: string }) =>
+        useRangeHogaDelta('005930', from, '20260706', '1m', undefined, '20260706', { mode: 'hoga' }, 'hogaplay_first'),
+      { wrapper, initialProps: { from: '20260629' } },
+    );
+
+    await waitFor(() => expect(result.current.data?.from_date).toBe('20260629'));
+    rerender({ from: '20260624' });
+    await waitFor(() => expect(result.current.data?.from_date).toBe('20260624'));
+    expect(result.current.data?.quote_ratio.points.map((p) => p.t)).toEqual([1, 2]);
+
+    rerender({ from: '20260625' });
+
+    await waitFor(() => expect(spy).toHaveBeenCalledTimes(3));
+    expect(spy.mock.calls[2][0]).toBe(
+      '/api/range?code=005930&from=20260625&to=20260706&bucket_ms=60000'
+        + '&source_pref=hogaplay_first&mode=hoga',
+    );
+    expect(result.current.data?.from_date).not.toBe('20260624');
+    expect(result.current.data?.quote_ratio.points.map((p) => p.t)).not.toEqual([1, 2]);
+
+    resolveNarrow(narrow);
+    await waitFor(() => expect(result.current.data?.from_date).toBe('20260625'));
+    expect(result.current.data?.quote_ratio.points.map((p) => p.t)).toEqual([4]);
+  });
 });
 
 describe('rangeFreshnessOptions (review C1 — pastMaxQrT advance)', () => {
