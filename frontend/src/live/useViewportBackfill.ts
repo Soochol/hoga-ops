@@ -10,6 +10,7 @@ import {
   earliestAllowedMinuteDate,
   todayKstYyyymmdd,
 } from './liveDateTime';
+import { livePerfLog } from '../util/perfDebug';
 
 /** 진행 루프 무한 방지 백스톱. 250일 클램프(≈50스텝 @ 5캘린더일)가 먼저 멈추므로
  * 이건 백스톱-of-백스톱(60×5=300일 > 250일). */
@@ -227,10 +228,27 @@ export function useViewportBackfill({
       maxSteps: MAX_FILL_STEPS,
     });
     if (plan.action === 'stop') {
+      livePerfLog('viewport_backfill_stop', {
+        code,
+        timeframe,
+        visibleFrom,
+        historicalFromDate: cur,
+        stepCount: fillStepCountRef.current,
+      });
       fillStepCountRef.current = 0;
       return;
     }
     fillStepCountRef.current += 1;
+    livePerfLog('viewport_backfill_extend', {
+      code,
+      timeframe,
+      trigger: 'settle_loop',
+      visibleFrom,
+      from: cur,
+      nextFrom: plan.nextFrom,
+      stepCount: fillStepCountRef.current,
+      candleCount: candleCountRef.current,
+    });
     useLivePageStore.getState().extendHistoricalRange(plan.nextFrom);
   }, [chart, axis, timeframe, isExtending, canTriggerBackfill]);
 
@@ -285,6 +303,16 @@ export function useViewportBackfill({
         const state = useLivePageStore.getState();
         if (state.candleTimeframe !== timeframe) return;
         if (state.activeCode && state.activeCode !== code) return;
+        livePerfLog('viewport_backfill_extend', {
+          code,
+          timeframe,
+          trigger: 'left_pan',
+          logicalFrom: r.from,
+          from: cur,
+          nextFrom,
+          stepCount: fillStepCountRef.current,
+          candleCount: candleCountRef.current,
+        });
         useLivePageStore.getState().extendHistoricalRange(nextFrom);
       }, 150);
     };

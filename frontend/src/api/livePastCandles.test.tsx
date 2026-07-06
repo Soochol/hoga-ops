@@ -157,4 +157,71 @@ describe('useLivePastCandles', () => {
     expect(result.current.data?.code).toBe('005930');
     await waitFor(() => expect(spy).toHaveBeenCalledTimes(2));
   });
+
+  it('fetches only the missing older delta when the range extends left', async () => {
+    const firstResponse: LivePastCandlesResponse = {
+      ...RESPONSE,
+      from: '20260501',
+      to: '20260502',
+      candles: [{ ...RESPONSE.candles[0], t_ms: 2, close: 102 }],
+      cached_dates: ['20260501'],
+      fresh_dates: ['20260502'],
+      effective_sessions: [
+        { date: '20260501', venue: 'KRX', open_ms: 1, close_ms: 2 },
+      ],
+    };
+    const deltaResponse: LivePastCandlesResponse = {
+      ...RESPONSE,
+      from: '20260430',
+      to: '20260430',
+      candles: [{ ...RESPONSE.candles[0], t_ms: 1, close: 101 }],
+      cached_dates: [],
+      fresh_dates: ['20260430'],
+      effective_sessions: [
+        { date: '20260430', venue: 'KRX', open_ms: 1, close_ms: 2 },
+      ],
+    };
+    const spy = vi.spyOn(client, 'apiCall').mockImplementation((url) =>
+      Promise.resolve(url.includes('from=20260430&to=20260430') ? deltaResponse : firstResponse),
+    );
+    const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+    const { result, rerender } = renderHook(
+      ({ from }: { from: string }) =>
+        useLivePastCandles('005930', from, '20260502'),
+      { wrapper: wrap(qc), initialProps: { from: '20260501' } },
+    );
+
+    await waitFor(() => expect(result.current.data?.from).toBe('20260501'));
+    rerender({ from: '20260430' });
+
+    await waitFor(() => expect(spy).toHaveBeenCalledTimes(2));
+    expect(spy.mock.calls[1][0]).toBe(
+      '/api/live/past-candles?code=005930&from=20260430&to=20260430&venue=KRX',
+    );
+    await waitFor(() => expect(result.current.data?.candles.map((c) => c.close)).toEqual([101, 102]));
+    expect(result.current.data?.from).toBe('20260430');
+    expect(result.current.data?.to).toBe('20260502');
+    expect(result.current.data?.cached_dates).toEqual(['20260501']);
+    expect(result.current.data?.fresh_dates).toEqual(['20260430', '20260502']);
+    await new Promise((r) => setTimeout(r, 30));
+    expect(spy).toHaveBeenCalledTimes(2);
+  });
+
+  it('does not reuse a previous range when the requested to-date changes', async () => {
+    const spy = vi.spyOn(client, 'apiCall').mockResolvedValue(RESPONSE);
+    const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+    const { rerender } = renderHook(
+      ({ from, to }: { from: string; to: string }) =>
+        useLivePastCandles('005930', from, to),
+      { wrapper: wrap(qc), initialProps: { from: '20260501', to: '20260502' } },
+    );
+    await waitFor(() => expect(spy).toHaveBeenCalledTimes(1));
+
+    rerender({ from: '20260430', to: '20260503' });
+
+    await waitFor(() => expect(spy).toHaveBeenCalledTimes(2));
+    expect(spy.mock.calls[1][0]).toBe(
+      '/api/live/past-candles?code=005930&from=20260430&to=20260503&venue=KRX',
+    );
+  });
 });

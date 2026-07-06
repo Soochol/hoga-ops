@@ -5,11 +5,13 @@ This file is the thin glue layer.
 
 from __future__ import annotations
 
+import logging
 import re
 from pathlib import Path
 
 from fastapi import APIRouter, HTTPException, Query
 
+from hoga import perf_debug
 from hoga.api.bundle import build_range_bundle
 from hoga.api.models import (
     BrokerSeriesResponse,
@@ -33,6 +35,8 @@ from hoga.api.timeenc import (
 from hoga.tables import brokers as brokers_tbl
 from hoga.tables import candles as candles_tbl
 from hoga.tables import snapshots as snapshots_tbl
+
+log = logging.getLogger(__name__)
 
 
 def _parquet_path(
@@ -337,25 +341,56 @@ def build_router(engine: QueryEngine) -> APIRouter:
                 "broker_late_entry_start_hhmm must be between 900 and 1520",
             )
         source_pref = _validate_source_policy(source_pref)
-        return build_range_bundle(
-            engine,
-            code=code,
-            from_date=from_date,
-            to_date=to_date,
-            bucket_ms=bucket_ms,
-            source_pref=source_pref,
-            broker_late_entries_enabled=broker_late_entries_enabled,
-            broker_late_entry_start_hhmm=broker_late_entry_start_hhmm,
-            volume_distribution_bins=volume_distribution_bins,
-            volume_distribution_price_min=volume_distribution_price_min,
-            volume_distribution_price_max=volume_distribution_price_max,
-            volume_distribution_cutoff_ms=volume_distribution_cutoff_ms,
-            trade_volume_poc_bins=trade_volume_poc_bins,
-            ask_peaks_enabled=ask_peaks_enabled,
-            bid_peaks_enabled=bid_peaks_enabled,
-            program_trade_enabled=program_trade_enabled,
-            trade_volume_poc_enabled=trade_volume_poc_enabled,
-            mode=mode,
-        )
+        t0 = perf_debug.now()
+        try:
+            bundle = build_range_bundle(
+                engine,
+                code=code,
+                from_date=from_date,
+                to_date=to_date,
+                bucket_ms=bucket_ms,
+                source_pref=source_pref,
+                broker_late_entries_enabled=broker_late_entries_enabled,
+                broker_late_entry_start_hhmm=broker_late_entry_start_hhmm,
+                volume_distribution_bins=volume_distribution_bins,
+                volume_distribution_price_min=volume_distribution_price_min,
+                volume_distribution_price_max=volume_distribution_price_max,
+                volume_distribution_cutoff_ms=volume_distribution_cutoff_ms,
+                trade_volume_poc_bins=trade_volume_poc_bins,
+                ask_peaks_enabled=ask_peaks_enabled,
+                bid_peaks_enabled=bid_peaks_enabled,
+                program_trade_enabled=program_trade_enabled,
+                trade_volume_poc_enabled=trade_volume_poc_enabled,
+                mode=mode,
+            )
+        except Exception:
+            if perf_debug.enabled():
+                log.exception(
+                    "hoga_perf api_range status=error code=%s from=%s to=%s bucket_ms=%s "
+                    "mode=%s source_pref=%s duration_ms=%.1f",
+                    code, from_date, to_date, bucket_ms, mode, source_pref,
+                    perf_debug.elapsed_ms(t0),
+                )
+            raise
+        if perf_debug.enabled():
+            log.warning(
+                "hoga_perf api_range status=ok code=%s from=%s to=%s bucket_ms=%s "
+                "mode=%s source_pref=%s segments=%d candles=%d quote_ratio=%d "
+                "fill_strength=%d excluded=%d warnings=%d duration_ms=%.1f",
+                code,
+                from_date,
+                to_date,
+                bucket_ms,
+                mode,
+                source_pref,
+                len(bundle.segments),
+                len(bundle.candles),
+                len(bundle.quote_ratio.points),
+                len(bundle.fill_strength.points),
+                len(bundle.excluded_dates),
+                len(bundle.data_warnings),
+                perf_debug.elapsed_ms(t0),
+            )
+        return bundle
 
     return router

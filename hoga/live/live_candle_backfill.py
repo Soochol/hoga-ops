@@ -1,12 +1,15 @@
 from __future__ import annotations
 
 import asyncio
+import logging
 import time as monotonic_time
 from collections.abc import Awaitable, Callable, Hashable
 from dataclasses import dataclass
 from datetime import date, datetime, timedelta, timezone
 from typing import Protocol
 
+from hoga import perf_debug
+from hoga.api import calendar as trading_calendar
 from hoga.live import kis_access
 from hoga.live.kis_capacity_scheduler import (
     KisCapacityCooldown,
@@ -22,6 +25,7 @@ from hoga.live.past_candles_cache import PastCandlesCache
 
 _KST = timezone(timedelta(hours=9))
 _WEEKEND_START_WEEKDAY = 5
+log = logging.getLogger(__name__)
 
 
 class KisRestScheduler(Protocol):
@@ -97,10 +101,11 @@ class LiveMinuteCandleBackfill:
             dates = list(_date_iter(frm, too))
             primary_dates = _dates_for_candles(primary_out.candles)
             warning_dates = _fallback_blocking_warning_dates(primary_out.data_warnings)
+            covered_dates = primary_dates | set(primary_out.cached_dates) | warning_dates
             missing_dates = [
                 date_s
                 for date_s in dates
-                if date_s not in primary_dates and date_s not in warning_dates
+                if date_s not in covered_dates
             ]
             if not missing_dates:
                 return primary_out
@@ -195,6 +200,7 @@ class LiveMinuteCandleBackfill:
         today_d: date,
         policy: LiveVenuePolicy,
     ) -> LiveMinuteCandleBackfillResult:
+        t0 = perf_debug.now()
         rows: list[dict] = []
         cached_dates: list[str] = []
         warnings: list[dict] = []
@@ -230,7 +236,7 @@ class LiveMinuteCandleBackfill:
                 warnings.append(_kis_rest_bypassed_warning(date_s))
 
         rows.sort(key=lambda candle: candle["t_ms"])
-        return LiveMinuteCandleBackfillResult(
+        result = LiveMinuteCandleBackfillResult(
             candles=rows,
             cached_dates=cached_dates,
             fresh_dates=[],
@@ -240,6 +246,21 @@ class LiveMinuteCandleBackfill:
                 for date_s, venue in sorted(effective_session_venues.items())
             ],
         )
+        if perf_debug.enabled():
+            log.warning(
+                "hoga_perf past_candles_cache_only code=%s venue=%s from=%s to=%s "
+                "days=%d cached_dates=%d candles=%d warnings=%d duration_ms=%.1f",
+                code,
+                policy,
+                frm.strftime("%Y%m%d"),
+                too.strftime("%Y%m%d"),
+                (too - frm).days + 1,
+                len(result.cached_dates),
+                len(result.candles),
+                len(result.data_warnings),
+                perf_debug.elapsed_ms(t0),
+            )
+        return result
 
     async def _collect_for_venue(
         self,
@@ -250,6 +271,7 @@ class LiveMinuteCandleBackfill:
         too: date,
         today_d: date,
     ) -> LiveMinuteCandleBackfillResult:
+        t0 = perf_debug.now()
         today_s = today_d.strftime("%Y%m%d")
         rows: dict[str, list[dict]] = {}
         cached_dates: list[str] = []
@@ -261,11 +283,17 @@ class LiveMinuteCandleBackfill:
             if date_s >= today_s:
                 continue
             bars = self._cache.get_past(venue, code, date_s)
-            if bars is None:
-                pending.append(date_s)
-            else:
+            if bars is not None:
                 rows[date_s] = bars
                 cached_dates.append(date_s)
+                continue
+            if trading_calendar.is_trading_day(date_s) is False:
+                empty_bars: list[dict] = []
+                self._cache.store_past(venue, code, date_s, empty_bars)
+                rows[date_s] = empty_bars
+                cached_dates.append(date_s)
+                continue
+            pending.append(date_s)
 
         blocked = asyncio.Event()
 
@@ -370,13 +398,32 @@ class LiveMinuteCandleBackfill:
             except KisApiError as e:
                 warnings.append({"date": date_s, "reason": "kis_api_error", "msg": e.msg_cd})
 
-        return LiveMinuteCandleBackfillResult(
+        result = LiveMinuteCandleBackfillResult(
             candles=candles_all,
             cached_dates=cached_dates,
             fresh_dates=fresh_dates,
             data_warnings=warnings,
             effective_sessions=_effective_sessions_for_candles(candles_all, venue),
         )
+        if perf_debug.enabled():
+            log.warning(
+                "hoga_perf past_candles_collect code=%s venue=%s from=%s to=%s "
+                "days=%d pending_dates=%d cached_dates=%d fresh_dates=%d candles=%d "
+                "warnings=%d rate_limited=%s duration_ms=%.1f",
+                code,
+                venue,
+                frm.strftime("%Y%m%d"),
+                too.strftime("%Y%m%d"),
+                (too - frm).days + 1,
+                len(pending),
+                len(result.cached_dates),
+                len(result.fresh_dates),
+                len(result.candles),
+                len(result.data_warnings),
+                kis_blocked,
+                perf_debug.elapsed_ms(t0),
+            )
+        return result
 
     async def _fetch_past_shared(
         self,
@@ -398,16 +445,38 @@ class LiveMinuteCandleBackfill:
         code: str,
         date_s: str,
     ) -> tuple[list[dict], str | None]:
-        return await kis_access.run_with_capacity(
-            self._scheduler,
-            data_dir=self._data_dir,
-            role="foreground",
-            key=("live-candle-backfill", "minute", venue, code, date_s),
-            endpoint=kis_access.KisRestEndpoint.PAST_MINUTE,
-            priority="user_visible",
-            cooldown_scope=venue,
-            fetch_fn=lambda kis: self._fetch_past_once(kis, venue, code, date_s),
-        )
+        t0 = perf_debug.now()
+        try:
+            result = await kis_access.run_with_capacity(
+                self._scheduler,
+                data_dir=self._data_dir,
+                role="foreground",
+                key=("live-candle-backfill", "minute", venue, code, date_s),
+                endpoint=kis_access.KisRestEndpoint.PAST_MINUTE,
+                priority="user_visible",
+                cooldown_scope=venue,
+                fetch_fn=lambda kis: self._fetch_past_once(kis, venue, code, date_s),
+            )
+        except Exception:
+            if perf_debug.enabled():
+                log.warning(
+                    "hoga_perf past_candles_fetch status=error code=%s venue=%s date=%s "
+                    "duration_ms=%.1f",
+                    code, venue, date_s, perf_debug.elapsed_ms(t0),
+                )
+            raise
+        if perf_debug.enabled():
+            log.warning(
+                "hoga_perf past_candles_fetch status=ok code=%s venue=%s date=%s "
+                "candles=%d cache_write_error=%s duration_ms=%.1f",
+                code,
+                venue,
+                date_s,
+                len(result[0]),
+                result[1] is not None,
+                perf_debug.elapsed_ms(t0),
+            )
+        return result
 
     async def _fetch_past_once(
         self,

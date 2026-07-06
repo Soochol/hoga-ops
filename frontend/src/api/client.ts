@@ -1,4 +1,5 @@
 import { loadConfig, resolveApiUrl, resolveWsUrl, type AppConfig } from '../config';
+import { livePerfDebugEnabled, livePerfLog } from '../util/perfDebug';
 
 let _configPromise: Promise<AppConfig> | null = null;
 
@@ -61,9 +62,35 @@ async function buildApiError(r: Response, path: string): Promise<ApiError> {
 
 /** Fetch a JSON-returning endpoint. Throws ApiError on non-OK. */
 export async function apiCall<T>(path: string, init?: RequestInit): Promise<T> {
-  const r = await fetch(await apiUrl(path), init);
-  if (!r.ok) throw await buildApiError(r, path);
-  return r.json();
+  const url = await apiUrl(path);
+  const perfEnabled = livePerfDebugEnabled();
+  const t0 = perfEnabled ? performance.now() : 0;
+  try {
+    const r = await fetch(url, init);
+    if (!r.ok) throw await buildApiError(r, path);
+    const out = await r.json() as T;
+    if (perfEnabled) {
+      livePerfLog('api_call', {
+        status: r.status,
+        method: init?.method ?? 'GET',
+        path,
+        durationMs: Math.round((performance.now() - t0) * 10) / 10,
+        contentLength: r.headers.get('content-length'),
+      });
+    }
+    return out;
+  } catch (e) {
+    if (perfEnabled) {
+      livePerfLog('api_call_error', {
+        method: init?.method ?? 'GET',
+        path,
+        durationMs: Math.round((performance.now() - t0) * 10) / 10,
+        name: e instanceof Error ? e.name : String(e),
+        message: e instanceof Error ? e.message : String(e),
+      });
+    }
+    throw e;
+  }
 }
 
 /** Fire-and-forget action endpoint with no JSON response body. Throws ApiError

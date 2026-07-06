@@ -15,12 +15,14 @@ Why the engine instead of ``(conn, data_dir)``:
 from __future__ import annotations
 
 import json
+import logging
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from typing import TYPE_CHECKING, Literal
 
 from fastapi import HTTPException
 
+from hoga import perf_debug
 from hoga.api.disk_state import DiskState, classify_from_meta
 from hoga.api.indicator_reaggregate import reaggregate_fill, reaggregate_ratio
 from hoga.api.invariants import normalize_session_bounds
@@ -66,6 +68,8 @@ from hoga.tables.trades import FillStrengthRow
 
 if TYPE_CHECKING:
     from hoga.api.past_indicators_cache import PastIndicatorsCache
+
+log = logging.getLogger(__name__)
 
 _KST = timezone(timedelta(hours=9))
 _PriceLevelKind = Literal["vi", "limit"]
@@ -1325,17 +1329,35 @@ def build_range_bundle(
             prev_close = row.today_close
 
     for d in dates:
+        date_t0 = perf_debug.now()
+        date_candles_before = len(candles)
+        date_ratio_before = len(ratio_pts)
+        date_fill_before = len(fill_pts)
+        date_excluded_before = len(excluded)
+        date_warnings_before = len(warnings_list)
         resolution = resolve_source_result(engine, d, code, source_pref)
         source = resolution.source
         if resolution.path is not None:
             try:
                 meta = json.loads((resolution.path / "meta.json").read_text(encoding="utf-8"))
             except (FileNotFoundError, ValueError, OSError):
+                if perf_debug.enabled():
+                    log.warning(
+                        "hoga_perf range_date status=skip_meta code=%s date=%s source=%s mode=%s "
+                        "duration_ms=%.1f",
+                        code, d, source, mode, perf_debug.elapsed_ms(date_t0),
+                    )
                 continue
         else:
             try:
                 meta = engine.get_meta(d, code, source)
             except (FileNotFoundError, StockDateNotFound):
+                if perf_debug.enabled():
+                    log.warning(
+                        "hoga_perf range_date status=skip_meta code=%s date=%s source=%s mode=%s "
+                        "duration_ms=%.1f",
+                        code, d, source, mode, perf_debug.elapsed_ms(date_t0),
+                    )
                 continue
         c = resolution.classification or classify_from_meta(meta)
 
@@ -1343,6 +1365,12 @@ def build_range_bundle(
             excluded.append(ExcludedDate(
                 date=d, violations=[v.to_model() for v in c.errors],
             ))
+            if perf_debug.enabled():
+                log.warning(
+                    "hoga_perf range_date status=invalid code=%s date=%s source=%s mode=%s "
+                    "errors=%d duration_ms=%.1f",
+                    code, d, source, mode, len(c.errors), perf_debug.elapsed_ms(date_t0),
+                )
             continue
 
         if c.warnings:
@@ -1504,6 +1532,23 @@ def build_range_bundle(
                     vi_base_open=vi_base_open,
                     limit_base_prev_close=prev_close_by_date.get(d) or None,
                 ),
+            )
+        if perf_debug.enabled():
+            log.warning(
+                "hoga_perf range_date status=ok code=%s date=%s source=%s mode=%s "
+                "raw_candles=%d candles=%d quote_ratio=%d fill_strength=%d "
+                "excluded_delta=%d warning_delta=%d duration_ms=%.1f",
+                code,
+                d,
+                source,
+                mode,
+                len(raw_candles),
+                len(candles) - date_candles_before,
+                len(ratio_pts) - date_ratio_before,
+                len(fill_pts) - date_fill_before,
+                len(excluded) - date_excluded_before,
+                len(warnings_list) - date_warnings_before,
+                perf_debug.elapsed_ms(date_t0),
             )
 
     if not segments:
