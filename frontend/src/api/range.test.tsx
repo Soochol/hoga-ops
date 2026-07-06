@@ -795,6 +795,52 @@ describe('useRangeSidecarDelta', () => {
     await new Promise((r) => setTimeout(r, 30));
     expect(spy).toHaveBeenCalledTimes(2);
   });
+
+  it('keeps placeholder query data during forced full requests while the next fetch is pending', async () => {
+    const first: RangeBundle = {
+      ...fakeBundle,
+      code: '005930',
+      from_date: '20260629',
+      to_date: '20260706',
+      bucket_ms: 60_000,
+      volume_distributions: [{ date: '20260629', range_count: 10, price_min: 1, price_max: 2, session_open_ms: 1, session_close_ms: 2, bins: [] }],
+    };
+    const next: RangeBundle = {
+      ...fakeBundle,
+      code: '005930',
+      from_date: '20260629',
+      to_date: '20260707',
+      bucket_ms: 60_000,
+      volume_distributions: [{ date: '20260707', range_count: 10, price_min: 3, price_max: 4, session_open_ms: 3, session_close_ms: 4, bins: [] }],
+    };
+    let resolveNext: ((value: RangeBundle) => void) | null = null;
+    const nextPending = new Promise<RangeBundle>((resolve) => {
+      resolveNext = resolve;
+    });
+    const spy = vi.spyOn(client, 'apiCall').mockImplementation((url) =>
+      String(url).includes('to=20260707') ? nextPending : Promise.resolve(first),
+    );
+    const wrapper = makeWrapper();
+    const { result, rerender } = renderHook(
+      ({ to }: { to: string }) =>
+        useRangeSidecarDelta('005930', '20260629', to, '1m', undefined, to, {
+          mode: 'sidecar',
+          volumeDistributionBins: 10,
+        }, 'hogaplay_first'),
+      { wrapper, initialProps: { to: '20260706' } },
+    );
+
+    await waitFor(() => expect(result.current.data?.to_date).toBe('20260706'));
+    rerender({ to: '20260707' });
+
+    await waitFor(() => expect(spy).toHaveBeenCalledTimes(2));
+    await waitFor(() => expect(result.current.isPlaceholderData).toBe(true));
+    expect(result.current.data).toEqual(first);
+
+    resolveNext?.(next);
+    await waitFor(() => expect(result.current.isPlaceholderData).toBe(false));
+    await waitFor(() => expect(result.current.data?.to_date).toBe('20260707'));
+  });
 });
 
 describe('rangeFreshnessOptions (review C1 — pastMaxQrT advance)', () => {

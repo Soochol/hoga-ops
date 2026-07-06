@@ -321,7 +321,7 @@ export function useRangeSidecarDelta(
   const data = useMemo(() => {
     if (plan.servePrevious && previous && !query.data) return previous;
     if (!query.data) return undefined;
-    if (query.isPlaceholderData) return previous;
+    if (query.isPlaceholderData) return previous ?? query.data;
     if (plan.canReusePrevious && previous) return mergeRangeBundles(previous, query.data);
     return query.data;
   }, [plan.canReusePrevious, plan.servePrevious, previous, query.data, query.isPlaceholderData]);
