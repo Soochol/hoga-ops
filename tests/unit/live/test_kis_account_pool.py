@@ -4,6 +4,7 @@ from pathlib import Path
 
 import pytest
 
+from hoga.live import account_health, kis_runtime
 from hoga.live.kis_account_pool import (
     KisAccountPool,
     KisAccountReservationDeferred,
@@ -31,8 +32,6 @@ def _patch_pool_clients(monkeypatch, kis_runtime, clients: dict[int, _FakeKis]) 
 
 
 def test_account_pool_discovers_configured_accounts(tmp_path: Path, monkeypatch) -> None:
-    from hoga.live import kis_runtime
-
     monkeypatch.setattr(kis_runtime, "configured_account_ids", lambda data_dir: [0, 1, 2])
 
     pool = KisAccountPool(tmp_path)
@@ -43,8 +42,6 @@ def test_account_pool_discovers_configured_accounts(tmp_path: Path, monkeypatch)
 def test_account_pool_does_not_hot_reload_configured_accounts(
     tmp_path: Path, monkeypatch
 ) -> None:
-    from hoga.live import kis_runtime
-
     account_ids = [0, 1]
     monkeypatch.setattr(kis_runtime, "configured_account_ids", lambda data_dir: account_ids)
     pool = KisAccountPool(tmp_path)
@@ -57,8 +54,6 @@ def test_account_pool_does_not_hot_reload_configured_accounts(
 def test_account_pool_eligibility_filters_degraded_accounts(
     tmp_path: Path, monkeypatch
 ) -> None:
-    from hoga.live import account_health, kis_runtime
-
     monkeypatch.setattr(kis_runtime, "configured_account_ids", lambda data_dir: [0, 1, 2])
     monkeypatch.setattr(account_health, "is_rest_degraded", lambda account_id: account_id == 2)
     pool = KisAccountPool(tmp_path)
@@ -68,8 +63,6 @@ def test_account_pool_eligibility_filters_degraded_accounts(
 
 @pytest.mark.asyncio
 async def test_account_pool_leases_least_loaded_account(tmp_path: Path, monkeypatch) -> None:
-    from hoga.live import account_health, kis_runtime
-
     clients = {0: _FakeKis(), 1: _FakeKis(), 2: _FakeKis()}
     _patch_pool_clients(monkeypatch, kis_runtime, clients)
     monkeypatch.setattr(account_health, "is_rest_degraded", lambda account_id: False)
@@ -90,8 +83,6 @@ async def test_account_pool_leases_least_loaded_account(tmp_path: Path, monkeypa
 
 @pytest.mark.asyncio
 async def test_account_pool_marks_account_cooldown_per_key(tmp_path: Path, monkeypatch) -> None:
-    from hoga.live import account_health, kis_runtime
-
     clients = {0: _FakeKis(), 1: _FakeKis()}
     now = 100.0
     _patch_pool_clients(monkeypatch, kis_runtime, clients)
@@ -109,8 +100,6 @@ async def test_account_pool_marks_account_cooldown_per_key(tmp_path: Path, monke
 async def test_account_pool_raises_when_all_candidates_cooling(
     tmp_path: Path, monkeypatch
 ) -> None:
-    from hoga.live import account_health, kis_runtime
-
     monkeypatch.setattr(kis_runtime, "configured_account_ids", lambda data_dir: [0, 1])
     monkeypatch.setattr(account_health, "is_rest_degraded", lambda account_id: False)
     pool = KisAccountPool(tmp_path, now=lambda: 100.0)
@@ -125,8 +114,6 @@ async def test_account_pool_raises_when_all_candidates_cooling(
 async def test_account_pool_reserves_final_usable_account_for_user_visible(
     tmp_path: Path, monkeypatch
 ) -> None:
-    from hoga.live import account_health, kis_runtime
-
     clients = {0: _FakeKis(), 1: _FakeKis()}
     _patch_pool_clients(monkeypatch, kis_runtime, clients)
     monkeypatch.setattr(account_health, "is_rest_degraded", lambda account_id: False)
@@ -142,8 +129,6 @@ async def test_account_pool_reserves_final_usable_account_for_user_visible(
 async def test_account_pool_does_not_reserve_when_only_one_account_is_healthy(
     tmp_path: Path, monkeypatch
 ) -> None:
-    from hoga.live import account_health, kis_runtime
-
     clients = {0: _FakeKis(), 1: _FakeKis()}
     _patch_pool_clients(monkeypatch, kis_runtime, clients)
     monkeypatch.setattr(account_health, "is_rest_degraded", lambda account_id: account_id == 1)
@@ -158,8 +143,6 @@ async def test_account_pool_does_not_reserve_when_only_one_account_is_healthy(
 async def test_account_pool_reservation_uses_non_cooling_accounts_for_key(
     tmp_path: Path, monkeypatch
 ) -> None:
-    from hoga.live import account_health, kis_runtime
-
     clients = {0: _FakeKis(), 1: _FakeKis(), 2: _FakeKis()}
     now = 100.0
     _patch_pool_clients(monkeypatch, kis_runtime, clients)
@@ -173,3 +156,26 @@ async def test_account_pool_reservation_uses_non_cooling_accounts_for_key(
 
     lease = await pool.lease(cooldown_key=("past-minute", "KRX"), reserve_one=False)
     assert lease.account_id == 0
+
+
+@pytest.mark.asyncio
+async def test_account_pool_reports_reserved_background_capacity_by_key(
+    tmp_path: Path, monkeypatch
+) -> None:
+    clients = {0: _FakeKis(), 1: _FakeKis(), 2: _FakeKis()}
+    now = 100.0
+    _patch_pool_clients(monkeypatch, kis_runtime, clients)
+    monkeypatch.setattr(account_health, "is_rest_degraded", lambda account_id: False)
+    pool = KisAccountPool(tmp_path, now=lambda: now)
+    first = await pool.lease(cooldown_key=("quotes", "quotes"))
+    second = await pool.lease(cooldown_key=("quotes", "quotes"))
+
+    assert {first.account_id, second.account_id} == {0, 1}
+    assert not pool.reserved_background_capacity_available(("quotes", "quotes"))
+
+    pool.release(first.account_id)
+    assert pool.reserved_background_capacity_available(("quotes", "quotes"))
+
+    pool.mark_cooldown(first.account_id, ("past-minute", "KRX"), 10.0)
+    assert not pool.reserved_background_capacity_available(("past-minute", "KRX"))
+    assert pool.reserved_background_capacity_available(("past-minute", "NXT"))

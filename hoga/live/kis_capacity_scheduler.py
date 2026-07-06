@@ -240,10 +240,14 @@ class KisCapacityScheduler:
             except KisAccountReservationDeferred:
                 self._started_keys.discard(request.key)
                 self._background_deferred_due_to_reserved_capacity += 1
-                await self._queue.put(request)
                 self._queue.task_done()
                 requeued = True
                 await self._wait_for_capacity_change(capacity_generation)
+                if (
+                    not request.future.done()
+                    and request.generation == self._request_generations.get(request.key)
+                ):
+                    await self._queue.put(request)
                 continue
             except KisNoAccountAvailable as exc:
                 if not request.future.done():
@@ -269,7 +273,7 @@ class KisCapacityScheduler:
                         self._account_pool.release(lease.account_id)
                     self._cleanup_request(request.key)
                     self._queue.task_done()
-                    await self._notify_capacity_changed()
+                    await self._notify_capacity_changed(request.cooldown_key)
 
     def _cleanup_request(self, key: Hashable) -> None:
         self._inflight.pop(key, None)
@@ -301,7 +305,9 @@ class KisCapacityScheduler:
         except TimeoutError:
             return
 
-    async def _notify_capacity_changed(self) -> None:
+    async def _notify_capacity_changed(self, cooldown_key: Hashable | None) -> None:
+        if not self._account_pool.reserved_background_capacity_available(cooldown_key):
+            return
         condition = self._get_capacity_change_condition()
         async with condition:
             self._capacity_change_generation += 1

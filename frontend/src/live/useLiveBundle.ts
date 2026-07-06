@@ -558,6 +558,12 @@ export function useLiveBundle(
         : null,
     [isMinute, volumeDistributionEnabled, kisCandles, todayKstYyyymmdd],
   );
+  const sidecarWaitingForCandlePriceRange = !!(
+    isMinute &&
+    volumeDistributionEnabled &&
+    volumeDistributionPriceRange == null &&
+    (pastCandlesQuery.isLoading || pastCandlesQuery.isFetching)
+  );
   const rangePlan = planLiveRangeRequest({
     code,
     timeframe,
@@ -599,6 +605,7 @@ export function useLiveBundle(
     [rangePlan.options],
   );
   const sidecarEnabled = !!(
+    !sidecarWaitingForCandlePriceRange &&
     rangePlan.code &&
     (
       rangePlan.options.askPeaksEnabled ||
