@@ -3,6 +3,13 @@
 All notable changes to this project are documented here.
 The format follows a 4-digit `MAJOR.MINOR.PATCH.MICRO` scheme.
 
+## [0.12.27.5] - 2026-07-06
+
+### Fixed
+- **/live 과거 이동 range 부하 완화**: 분봉 차트를 과거로 이동할 때 hoga와 sidecar 보조 지표가 전체 표시 범위를 다시 받지 않고 새로 필요한 과거 날짜만 요청하도록 했다.
+- **/live 과거 prepend 표시 안정화**: 캔들, hoga, sidecar 델타가 모두 준비된 뒤 차트와 보조 지표가 함께 교체되도록 해 과거 구간이 잠깐 빠진 오버레이로 보이는 상황을 막았다.
+- **/live 오늘 slice 갱신 정합성**: 이미 받은 범위는 즉시 중복 refresh하지 않고 stale 이후에만 오늘 slice를 갱신하며, 겹치는 날짜는 이전 포인트를 남기지 않고 새 응답으로 교체하도록 했다.
+
 ## [0.12.27.4] - 2026-07-05
 
 ### Fixed

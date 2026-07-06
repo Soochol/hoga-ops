@@ -462,6 +462,16 @@ export type ViolationWire = {
   ctx: Record<string, unknown>;
 };
 
+export type RangeExcludedDate = {
+  date: string;
+  violations: ViolationWire[];
+};
+
+export type RangeDateWarning = {
+  date: string;
+  warnings: ViolationWire[];
+};
+
 /** One live snapshot frame payload (ws.ts ch:'live' data). Mirrors the
  *  LiveBuffer entry: hoga/live/buffer.py — t_ms + kind are guaranteed;
  *  per-kind fields (orderbook/trade/broker) remain open pending a
@@ -567,6 +577,9 @@ export type RangeBundle = {
   program_trade?: ProgramTradeSeries;
   volume_profile_range: VolumeProfile;
   volume_profile_by_day: VolumeProfile[];
+  /** ADR-0020 invariant outcomes surfaced by hoga/api/models.py::RangeBundle. */
+  excluded_dates?: RangeExcludedDate[];
+  data_warnings?: RangeDateWarning[];
   volume_distributions: DayVolumeDistribution[];
   /** ADR-0055: daily foreign/institution net-buy bars across the requested
    *  range (FHPTJ04160001 date-cursor walk-back).

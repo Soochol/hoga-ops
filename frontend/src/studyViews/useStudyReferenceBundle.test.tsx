@@ -34,6 +34,7 @@ vi.mock('../api/screenerDailyCandles', () => ({
 import { useLivePageStore } from '../state/livePage';
 import { useLiveVenueStore } from '../state/liveVenue';
 import { useSourcePreferenceStore } from '../state/sourcePreference';
+import { buildRangeBundleRequest } from '../api/range';
 import { useStudyReferenceBundle } from './useStudyReferenceBundle';
 
 const save: StudyViewReference = {
@@ -77,6 +78,23 @@ const dailyOptions = { queryKey: ['daily-plan'], enabled: false } as unknown as 
 let kisRestBypassEnabled = false;
 let rangeCandlesFixture: Array<{ ts_ms: number; open: number; high: number; low: number; close: number; vol_a: number; vol_b: number }> = [];
 let screenerDailyCandlesFixture: Array<{ t_ms: number; open: number; high: number; low: number; close: number; volume: number }> = [];
+
+const expectedRangeCandlesQueryKey = buildRangeBundleRequest({
+  code: '005930',
+  from: '20260616',
+  to: '20260618',
+  timeframe: '5m',
+  todayKst: null,
+  sourcePref: 'kis_api_first',
+  options: {
+    mode: 'candles',
+    brokerLateEntriesEnabled: false,
+    brokerLateEntryStartHHMM: null,
+    volumeDistributionBins: null,
+    tradeVolumePocBins: null,
+    volumeDistributionPriceRange: null,
+  },
+}).queryKey;
 
 function rangeBundleFixture(overrides: Partial<RangeBundle> = {}): RangeBundle {
   return {
@@ -199,7 +217,7 @@ describe('useStudyReferenceBundle', () => {
     expect(useQueryMock).toHaveBeenNthCalledWith(2, rangeHogaOptions);
     expect(useQueryMock).toHaveBeenNthCalledWith(3, rangeSidecarOptions);
     expect(useQueryMock).toHaveBeenNthCalledWith(4, expect.objectContaining({
-      queryKey: ['range', '005930', '20260616', '20260618', 300000, undefined, undefined, false, null, null, undefined, undefined, null, 'kis_api_first', 'candles', null],
+      queryKey: expectedRangeCandlesQueryKey,
     }));
     expect(useQueryMock).toHaveBeenNthCalledWith(5, minuteOptions);
     expect(useQueryMock).toHaveBeenNthCalledWith(6, dailyOptions);
@@ -213,7 +231,7 @@ describe('useStudyReferenceBundle', () => {
 
     expect(result.current.bundle?.candles).toHaveLength(1);
     expect(useQueryMock).toHaveBeenCalledWith(expect.objectContaining({
-      queryKey: ['range', '005930', '20260616', '20260618', 300000, undefined, undefined, false, null, null, undefined, undefined, null, 'kis_api_first', 'candles', null],
+      queryKey: expectedRangeCandlesQueryKey,
     }));
   });
 
