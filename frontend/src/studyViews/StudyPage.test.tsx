@@ -617,7 +617,7 @@ describe('StudyPage', () => {
         points: [{ ts_ms: HOVER_MS, net: 1_200 }],
       },
     ]);
-    useLiveCursorStore.getState().setCursor(HOVER_MS);
+    useLiveCursorStore.getState().setSidebarCursor(HOVER_MS);
 
     renderPage('/study?view=view-ref');
 
@@ -641,6 +641,41 @@ describe('StudyPage', () => {
     expect(screen.getByText('+1억')).toBeTruthy();
   });
 
+  it('waits for the debounced sidebar cursor before activating reference spot details', () => {
+    useLiveOrderbookAtCursorMock.mockReturnValue({
+      snapshot: {
+        ts_ms: HOVER_MS,
+        seq: 1,
+        ask: Array.from({ length: 10 }, (_, index) => ({ price: 70_100 + index, qty: 10 + index })),
+        bid: Array.from({ length: 10 }, (_, index) => ({ price: 70_000 - index, qty: 20 + index })),
+        tot_ask: 145,
+        tot_bid: 245,
+      },
+      available_from: null,
+      source: 'hogaplay',
+    });
+    useLiveBrokersAtCursorMock.mockReturnValue([
+      {
+        broker: '키움증권',
+        final_net: 1_200,
+        dominant_side: 'buy',
+        points: [{ ts_ms: HOVER_MS, net: 1_200 }],
+      },
+    ]);
+    useLiveCursorStore.getState().setCursor(HOVER_MS);
+
+    renderPage('/study?view=view-ref');
+
+    const orderbookCard = screen.getByTestId('study-detail-card-orderbook');
+    const brokersCard = screen.getByTestId('study-detail-card-brokers');
+    expect(within(orderbookCard).queryByText('70,100')).toBeNull();
+    expect(within(brokersCard).queryByText('키움')).toBeNull();
+    expect(useVolumeDistributionCutoffProfileMock).toHaveBeenLastCalledWith(expect.objectContaining({
+      enabled: false,
+      cursorMs: null,
+    }));
+  });
+
   it('does not wire transient cursor active callbacks into study detail state', () => {
     renderPage('/study?view=view-ref');
 
@@ -650,7 +685,7 @@ describe('StudyPage', () => {
   it('shows orderbook loading instead of no-data while study cursor spot orderbook is fetching', () => {
     useLiveOrderbookAtCursorMock.mockReturnValue(undefined);
     useLiveBrokersAtCursorMock.mockReturnValue([]);
-    useLiveCursorStore.getState().setCursor(HOVER_MS);
+    useLiveCursorStore.getState().setSidebarCursor(HOVER_MS);
 
     renderPage('/study?view=view-ref');
 
@@ -662,7 +697,7 @@ describe('StudyPage', () => {
   it('keeps study cursor indicators visible while cursor remains set without relying on active callbacks', () => {
     useLiveOrderbookAtCursorMock.mockReturnValue(undefined);
     useLiveBrokersAtCursorMock.mockReturnValue(undefined);
-    useLiveCursorStore.getState().setCursor(HOVER_MS);
+    useLiveCursorStore.getState().setSidebarCursor(HOVER_MS);
 
     renderPage('/study?view=view-ref');
 
@@ -742,7 +777,7 @@ describe('StudyPage', () => {
       pastDataWarnings: [],
     });
     useVolumeDistributionCutoffProfileMock.mockReturnValue(cutoffDistribution);
-    useLiveCursorStore.getState().setCursor(HOVER_MS);
+    useLiveCursorStore.getState().setSidebarCursor(HOVER_MS);
 
     renderPage('/study?view=view-ref');
 
@@ -768,7 +803,7 @@ describe('StudyPage', () => {
         points: [{ ts_ms: HOVER_MS, net: index * 100 }],
       })),
     );
-    useLiveCursorStore.getState().setCursor(HOVER_MS);
+    useLiveCursorStore.getState().setSidebarCursor(HOVER_MS);
 
     renderPage('/study?view=view-ref');
 

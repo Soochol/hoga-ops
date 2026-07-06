@@ -3,6 +3,15 @@
 All notable changes to this project are documented here.
 The format follows a 4-digit `MAJOR.MINOR.PATCH.MICRO` scheme.
 
+## [0.12.28.0] - 2026-07-06
+
+### Changed
+- **/live 커서 이동 중 사이드바 부하 완화**: 분봉 차트에서 커서를 빠르게 움직여도 사이드바와 복기 상세의 보조 데이터 요청은 rate-limit된 커서만 따라가도록 해 orderbook/broker spot 조회가 과도하게 반복되지 않게 했다.
+
+### Fixed
+- **/live 커서 해제 상태 정합성**: 차트 밖으로 커서가 나가면 대기 중인 사이드바 커서 갱신을 취소하고 관련 spot 조회도 즉시 멈추도록 했다.
+- **비율 지표 flat range 렌더링 안정화**: 모든 값이 0처럼 동일한 구간에서도 lightweight-charts가 유한한 autoscale 범위를 받도록 해 CanvasGradient non-finite 오류를 막았다.
+
 ## [0.12.27.5] - 2026-07-06
 
 ### Fixed
