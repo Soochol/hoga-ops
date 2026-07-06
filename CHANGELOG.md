@@ -3,6 +3,11 @@
 All notable changes to this project are documented here.
 The format follows a 4-digit `MAJOR.MINOR.PATCH.MICRO` scheme.
 
+## [0.12.29.0] - 2026-07-06
+
+### Fixed
+- **/live KIS background 재시도 폭주 방지**: 사용자용 계좌 여유분이 남아 있지 않을 때 백그라운드 KIS 요청이 10ms마다 계속 재시도하지 않고, 계좌 반납 신호를 기다렸다가 재개하도록 해 분봉 과거 이동 중 서버 CPU 부하를 줄였다.
+
 ## [0.12.28.0] - 2026-07-06
 
 ### Changed
