@@ -110,6 +110,79 @@ async def test_live_minute_candle_backfill_schedules_past_minute_fetches(tmp_pat
 
 
 @pytest.mark.asyncio
+async def test_collect_minute_skips_known_non_trading_past_dates(tmp_path, monkeypatch) -> None:
+    from hoga.api import calendar as cal
+
+    kis = _FakeKis()
+    scheduler = _RecordingScheduler(kis)
+    backfill = LiveMinuteCandleBackfill(
+        data_dir=tmp_path,
+        cache=PastCandlesCache(data_dir=tmp_path),
+        scheduler=scheduler,  # type: ignore[arg-type]
+        concurrency=1,
+    )
+
+    monkeypatch.setattr(
+        cal,
+        "is_trading_day",
+        lambda d: False if d == "20260517" else True,
+    )
+
+    result = await backfill.collect_minute(
+        code="005930",
+        frm=dt.date(2026, 5, 17),
+        too=dt.date(2026, 5, 18),
+        today_d=dt.date(2026, 6, 1),
+        policy="KRX",
+    )
+
+    assert kis.calls == [("005930", "20260518", "KRX", True)]
+    assert scheduler.calls == [
+        {
+            "key": ("live-candle-backfill", "minute", "KRX", "005930", "20260518"),
+            "endpoint": "past-minute",
+            "priority": "user_visible",
+            "cooldown_scope": "KRX",
+        }
+    ]
+    assert result.cached_dates == ["20260517"]
+    assert result.fresh_dates == ["20260518"]
+    assert len(result.candles) == 1
+    assert result.data_warnings == []
+
+
+@pytest.mark.asyncio
+async def test_collect_minute_treats_non_trading_empty_as_covered_for_fallback(tmp_path, monkeypatch) -> None:
+    from hoga.api import calendar as cal
+
+    kis = _FakeKis()
+    scheduler = _RecordingScheduler(kis)
+    backfill = LiveMinuteCandleBackfill(
+        data_dir=tmp_path,
+        cache=PastCandlesCache(data_dir=tmp_path),
+        scheduler=scheduler,  # type: ignore[arg-type]
+        concurrency=1,
+    )
+
+    monkeypatch.setattr(cal, "is_trading_day", lambda d: False)
+
+    result = await backfill.collect_minute(
+        code="005930",
+        frm=dt.date(2026, 5, 17),
+        too=dt.date(2026, 5, 17),
+        today_d=dt.date(2026, 6, 1),
+        policy="NXT",
+    )
+
+    assert kis.calls == []
+    assert scheduler.calls == []
+    assert result.candles == []
+    assert result.cached_dates == ["20260517"]
+    assert result.fresh_dates == []
+    assert result.data_warnings == []
+
+
+@pytest.mark.asyncio
 async def test_live_minute_candle_backfill_reports_capacity_overload(tmp_path) -> None:
     backfill = LiveMinuteCandleBackfill(
         data_dir=tmp_path,

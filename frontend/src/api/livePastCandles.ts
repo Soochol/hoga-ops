@@ -1,3 +1,4 @@
+import { useMemo, useRef } from 'react';
 import { useQuery } from '@tanstack/react-query';
 
 import { apiCall } from './client';
@@ -38,21 +39,167 @@ export interface LivePastCandlesResponse {
   effective_sessions?: LiveEffectiveSession[];
 }
 
+interface DeltaPlan {
+  enabled: boolean;
+  requestFrom: string | null;
+  requestTo: string | null;
+  canReusePrevious: boolean;
+  servePrevious: boolean;
+  identity: string;
+}
+
+function addDays(yyyymmdd: string, days: number): string {
+  const d = new Date(Date.UTC(
+    Number(yyyymmdd.slice(0, 4)),
+    Number(yyyymmdd.slice(4, 6)) - 1,
+    Number(yyyymmdd.slice(6, 8)),
+  ));
+  d.setUTCDate(d.getUTCDate() + days);
+  return [
+    d.getUTCFullYear(),
+    String(d.getUTCMonth() + 1).padStart(2, '0'),
+    String(d.getUTCDate()).padStart(2, '0'),
+  ].join('');
+}
+
+function uniqueSorted(values: string[]): string[] {
+  return Array.from(new Set(values)).sort();
+}
+
+function uniqueWarnings(warnings: LivePastCandlesWarning[]): LivePastCandlesWarning[] {
+  const out = new Map<string, LivePastCandlesWarning>();
+  for (const warning of warnings) {
+    out.set(`${warning.date}|${warning.reason}|${warning.msg}`, warning);
+  }
+  return Array.from(out.values()).sort((a, b) =>
+    `${a.date}|${a.reason}|${a.msg}`.localeCompare(`${b.date}|${b.reason}|${b.msg}`),
+  );
+}
+
+function uniqueSessionsByDate(sessions: LiveEffectiveSession[]): LiveEffectiveSession[] {
+  const byDate = new Map<string, LiveEffectiveSession>();
+  for (const session of sessions) {
+    byDate.set(session.date, session);
+  }
+  return Array.from(byDate.values()).sort((a, b) => a.date.localeCompare(b.date));
+}
+
+function sortUniqueCandles(candles: LivePastCandle[]): LivePastCandle[] {
+  const byT = new Map<number, LivePastCandle>();
+  for (const candle of candles) {
+    byT.set(candle.t_ms, candle);
+  }
+  return Array.from(byT.values()).sort((a, b) => a.t_ms - b.t_ms);
+}
+
+function responseIdentity(code: string | null, to: string | null, venue: LiveVenueOption): string {
+  return `${code ?? ''}|${to ?? ''}|${venue}`;
+}
+
+export function planPastCandlesDelta(
+  code: string | null,
+  from: string | null,
+  to: string | null,
+  venue: LiveVenueOption,
+  previous?: LivePastCandlesResponse,
+): DeltaPlan {
+  const enabled = !!(code && from && to && from <= to);
+  const identity = responseIdentity(code, to, venue);
+  if (!enabled || !code || !from || !to) {
+    return {
+      enabled: false,
+      requestFrom: null,
+      requestTo: null,
+      canReusePrevious: false,
+      servePrevious: false,
+      identity,
+    };
+  }
+  const previousVenue = previous?.venue ?? 'KRX';
+  const sameIdentity = !!(
+    previous &&
+    previous.code === code &&
+    previousVenue === venue &&
+    previous.to === to
+  );
+  if (sameIdentity && previous.from <= from) {
+    return {
+      enabled: false,
+      requestFrom: null,
+      requestTo: null,
+      canReusePrevious: false,
+      servePrevious: true,
+      identity,
+    };
+  }
+  const canReusePrevious = !!(
+    sameIdentity &&
+    from < previous.from
+  );
+  if (!canReusePrevious) {
+    return {
+      enabled: true,
+      requestFrom: from,
+      requestTo: to,
+      canReusePrevious: false,
+      servePrevious: false,
+      identity,
+    };
+  }
+  return {
+    enabled: true,
+    requestFrom: from,
+    requestTo: addDays(previous.from, -1),
+    canReusePrevious: true,
+    servePrevious: true,
+    identity,
+  };
+}
+
+export function mergePastCandleResponses(
+  previous: LivePastCandlesResponse,
+  next: LivePastCandlesResponse,
+): LivePastCandlesResponse {
+  return {
+    ...next,
+    from: previous.from < next.from ? previous.from : next.from,
+    to: previous.to > next.to ? previous.to : next.to,
+    venue: next.venue ?? previous.venue,
+    candles: sortUniqueCandles([...previous.candles, ...next.candles]),
+    cached_dates: uniqueSorted([...previous.cached_dates, ...next.cached_dates]),
+    fresh_dates: uniqueSorted([...previous.fresh_dates, ...next.fresh_dates]),
+    data_warnings: uniqueWarnings([...previous.data_warnings, ...next.data_warnings]),
+    effective_sessions: uniqueSessionsByDate([
+      ...(previous.effective_sessions ?? []),
+      ...(next.effective_sessions ?? []),
+    ]),
+  };
+}
+
 export function useLivePastCandles(
   code: string | null,
   from: string | null,
   to: string | null,
   venue: LiveVenueOption = 'KRX',
 ) {
-  const enabled = !!(code && from && to && from <= to);
-  return useQuery({
-    queryKey: ['live', 'past-candles', code, from, to, venue] as const,
+  const mergedRef = useRef<{ identity: string; data: LivePastCandlesResponse } | null>(null);
+  const identity = responseIdentity(code, to, venue);
+  const previous = mergedRef.current?.identity === identity ? mergedRef.current.data : undefined;
+  const previousFrom = previous?.from;
+  const previousTo = previous?.to;
+  const plan = useMemo(
+    () => planPastCandlesDelta(code, from, to, venue, previous),
+    [code, from, to, venue, previous, previousFrom, previousTo],
+  );
+
+  const query = useQuery({
+    queryKey: ['live', 'past-candles', code, plan.requestFrom, plan.requestTo, venue] as const,
     queryFn: ({ signal }) =>
       apiCall<LivePastCandlesResponse>(
-        `/api/live/past-candles?code=${code}&from=${from}&to=${to}&venue=${venue}`,
+        `/api/live/past-candles?code=${code}&from=${plan.requestFrom}&to=${plan.requestTo}&venue=${venue}`,
         { signal },
       ),
-    enabled,
+    enabled: plan.enabled,
     staleTime: 60_000,
     refetchInterval: () => liveVenueRefetchInterval(venue),
     // Code+venue-aware placeholder: keep previous data only when the identity
@@ -63,6 +210,27 @@ export function useLivePastCandles(
     // without this, LiveChartRoot's initial-view effect runs against the
     // PREVIOUS code's candle count and locks setVisibleLogicalRange with a
     // stale right edge, pushing the new code's latest candle off-screen.
-    placeholderData: (prev) => (prev && prev.code === code && (prev.venue ?? 'KRX') === venue ? prev : undefined),
+    placeholderData: (prev) => (
+      prev && prev.code === code && (prev.venue ?? 'KRX') === venue && prev.to === to ? prev : undefined
+    ),
   });
+
+  const data = useMemo(() => {
+    if (plan.servePrevious && previous && !query.data) return previous;
+    if (!query.data) return undefined;
+    if (query.isPlaceholderData) return previous;
+    if (plan.canReusePrevious && previous) {
+      return mergePastCandleResponses(previous, query.data);
+    }
+    return query.data;
+  }, [plan.canReusePrevious, plan.servePrevious, previous, query.data, query.isPlaceholderData]);
+
+  if (data && !query.isPlaceholderData) {
+    mergedRef.current = { identity, data };
+  }
+
+  return {
+    ...query,
+    data,
+  };
 }

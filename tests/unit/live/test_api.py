@@ -623,23 +623,33 @@ async def test_past_candles_rate_limit_cooldown_blocks_immediate_followup(tmp_pa
 
 
 @pytest.mark.asyncio
-async def test_past_candles_weekend_empty_response(tmp_path) -> None:
-    """KIS returns [] for non-trading days (weekends, holidays). Endpoint
-    should accept that as a normal zero-candle date — no warning."""
+async def test_past_candles_weekend_skips_kis_and_returns_empty(tmp_path, monkeypatch) -> None:
+    """Past weekend dates are known-empty and must not spend KIS capacity."""
+    from hoga.api import calendar as cal
 
-    class _EmptyFakeKis:
+    class _CountingKis:
+        def __init__(self):
+            self.calls: list[str] = []
+
         async def fetch_past_minute_candles(self, code, date_yyyymmdd, **_kw):
-            return []
+            self.calls.append(date_yyyymmdd)
+            return [KisCandle(t_ms=1, open=100, high=110, low=95, close=105, volume=10)]
 
-    app = _past_app(tmp_path, _EmptyFakeKis())
+    monkeypatch.setattr(cal, "is_trading_day", lambda d: False if d == "20260516" else True)
+    fake = _CountingKis()
+    app = _past_app(tmp_path, fake)
     with TestClient(app) as c:
-        # 20260516 (Saturday)
-        r = c.get("/api/live/past-candles?code=005930&from=20260516&to=20260516")
-        assert r.status_code == 200
-        body = r.json()
-        assert body["candles"] == []
-        assert body["data_warnings"] == []
-        assert body["fresh_dates"] == ["20260516"]
+        r1 = c.get("/api/live/past-candles?code=005930&from=20260516&to=20260516")
+        r2 = c.get("/api/live/past-candles?code=005930&from=20260516&to=20260516")
+
+    assert r1.status_code == 200
+    assert r2.status_code == 200
+    assert fake.calls == []
+    body = r1.json()
+    assert body["candles"] == []
+    assert body["cached_dates"] == ["20260516"]
+    assert body["fresh_dates"] == []
+    assert body["data_warnings"] == []
 
 
 @pytest.mark.asyncio
