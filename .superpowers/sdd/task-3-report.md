@@ -1,39 +1,28 @@
-## Task 3 Report: Store Setter And Snapshot Wiring
+# Task 3 Report: Quote Row Missing-Pct Presentation
 
 ## Status
 
-DONE
-
-## Files Changed
-
-- `frontend/src/state/livePage.ts`
+Completed.
 
 ## Changes
 
-1. Added imports from `frontend/src/live/indicators/indicatorPaneProfiles`:
-   - `normalizePanePrefsByTimeframe`
-   - `profileKeyForTimeframe`
-   - `PanePrefKey`
-   - `PersistedPanePrefsByTimeframe`
-2. Extended `Store` with:
-   - `setPanePrefForTimeframe: (timeframe: LiveTimeframe, key: PanePrefKey, enabled: boolean) => void`
-3. Implemented `setPanePrefForTimeframe` in the store object near existing pane toggles.
-4. Kept existing `snapshotIndicators(get)` persistence slice including `panePrefsByTimeframe: s.panePrefsByTimeframe` intact (already present from Task 2).
+- Updated `frontend/src/rightrail/QuoteRow.tsx` so when `price` exists:
+  - `pct === null`: render `"<price>원"` only.
+  - `pct != null`: render `"<price>원 (<pct>)"` as before.
+- Left `formatPct()` unchanged.
+- Added/updated tests in `frontend/src/rightrail/QuoteRow.test.tsx`:
+  - Added required test: `omits the parenthesized dash when price exists but pct is missing`.
+  - Kept coverage for no-price fallback with a new/updated expectation (`—` when `price` is `null`).
 
-## Validation
+## TDD Evidence
 
-- `cd frontend && npm run build` — PASS
-  - `uv run --extra dev pytest tests/unit/live/test_lifecycle_rest30_recorder.py tests/unit/live/test_lifecycle_rest_poller.py -q`
-  - `19 passed`
-- Controller verification after review clarification:
-  - `uv run --extra dev pytest tests/unit/live/test_lifecycle_rest30_recorder.py tests/unit/live/test_lifecycle_rest_poller.py -q`
-  - `19 passed in 0.13s`
+- Red (pre-fix behavior / old rendering):  
+  `cd frontend && npm test -- QuoteRow.test.tsx --run` (or `--runInBand` from brief)  
+  → `2 failed` (the new missing-pct expectation and missing-price expectation both fail with old `가격 (—)` output).
+- Green (post-fix behavior):  
+  `cd frontend && npm test -- QuoteRow.test.tsx --run`  
+  → `19 passed`.
 
-Files Changed:
-- `tests/unit/live/test_lifecycle_rest30_recorder.py`
+## Note
 
-Commit:
-- `a385757f test(live): cover KIS REST bypass for REST capture runtime`
-
-Concerns:
-- None.
+- `vitest` in this repo does not accept `--runInBand` (it errors with `Unknown option --runInBand`), so `--run` was used for focused execution as the equivalent supported command.

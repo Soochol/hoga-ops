@@ -99,7 +99,9 @@ export function QuoteRow({
         <span className="truncate text-xs text-fg">{name}</span>
       </span>
       <span className={`font-mono tabular-nums text-sm text-right leading-tight ${pct === null ? 'text-fg' : priceDirClass(pct)}`}>
-        {price != null ? `${price.toLocaleString('ko-KR')}원` : '—'} ({formatPct(pct)})
+        {price != null
+          ? `${price.toLocaleString('ko-KR')}원${pct === null ? '' : ` (${formatPct(pct)})`}`
+          : '—'}
       </span>
       {trailingAction != null && (
         <span className="flex items-center justify-center" style={{ minWidth: '1.25rem' }}>

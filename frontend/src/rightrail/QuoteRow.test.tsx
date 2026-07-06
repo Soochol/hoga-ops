@@ -23,9 +23,15 @@ describe('QuoteRow', () => {
     expect(screen.queryByText('+750원 (1.20%)')).not.toBeInTheDocument();
   });
 
-  it('renders — for null change (장전/무데이터)', () => {
+  it('omits the parenthesized dash when price exists but pct is missing', () => {
     row({ pct: null, changeWon: null });
-    expect(screen.getByText('72,400원 (—)')).toBeInTheDocument();
+    expect(screen.getByText('72,400원')).toBeInTheDocument();
+    expect(screen.queryByText('72,400원 (—)')).not.toBeInTheDocument();
+  });
+
+  it('renders — when price is missing', () => {
+    row({ price: null, pct: null, changeWon: null });
+    expect(screen.getByText('—')).toBeInTheDocument();
   });
 
   it('Enter key triggers onClick (keyboard a11y)', () => {
