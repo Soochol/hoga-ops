@@ -1,4 +1,5 @@
 import { useQuery, type UseQueryOptions } from '@tanstack/react-query';
+import { useMemo, useRef } from 'react';
 
 import { apiCall } from './client';
 import type { RangeBundle, Timeframe } from './types';
@@ -278,4 +279,56 @@ export function useRange(
     sourcePref,
     options,
   }));
+}
+
+export function useRangeSidecarDelta(
+  code: string | null,
+  from: string | null,
+  to: string | null,
+  timeframe: Timeframe | null,
+  priceRange?: { min: number; max: number },
+  todayKst?: string | null,
+  options?: RangeRequestOptions,
+  sourcePrefOverride?: SourcePreference,
+) {
+  const storedSourcePref: SourcePreference = useSourcePreferenceStore((s) => s.sourcePreference);
+  const sourcePref = sourcePrefOverride ?? storedSourcePref;
+  const mergedRef = useRef<{ identity: string; data: RangeBundle } | null>(null);
+  const baseInput = useMemo<RangeBundleRequestInput>(
+    () => ({ code, from, to, timeframe, priceRange, todayKst, sourcePref, options }),
+    [code, from, to, timeframe, priceRange, todayKst, sourcePref, options],
+  );
+  const previous = mergedRef.current?.identity === sidecarIdentity(baseInput)
+    ? mergedRef.current.data
+    : undefined;
+  const plan = useMemo(
+    () => planSidecarRangeDelta(baseInput, previous, mergedRef.current?.identity),
+    [baseInput, previous],
+  );
+  const request = buildRangeBundleRequest(plan.requestInput);
+  const { staleTime, refetchInterval } = rangeFreshnessOptions(to, request.todayKst);
+
+  const query = useQuery<RangeBundle, Error, RangeBundle, RangeQueryKey>({
+    queryKey: request.queryKey,
+    queryFn: ({ signal }) => apiCall<RangeBundle>(request.url, { signal }),
+    enabled: plan.enabled,
+    staleTime,
+    refetchInterval,
+    placeholderData: (prev, previousQuery) =>
+      rangePlaceholderData(prev, request.queryKey, previousQuery?.queryKey),
+  });
+
+  const data = useMemo(() => {
+    if (plan.servePrevious && previous && !query.data) return previous;
+    if (!query.data) return undefined;
+    if (query.isPlaceholderData) return previous;
+    if (plan.canReusePrevious && previous) return mergeRangeBundles(previous, query.data);
+    return query.data;
+  }, [plan.canReusePrevious, plan.servePrevious, previous, query.data, query.isPlaceholderData]);
+
+  if (data && !query.isPlaceholderData) {
+    mergedRef.current = { identity: plan.identity, data };
+  }
+
+  return { ...query, data };
 }

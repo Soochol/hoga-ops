@@ -8,6 +8,7 @@ import {
   mergeRangeBundles,
   planSidecarRangeDelta,
   useRange,
+  useRangeSidecarDelta,
   rangeBundleQueryOptions,
   rangeFreshnessOptions,
   rangePlaceholderData,
@@ -738,6 +739,62 @@ describe('useRange', () => {
     expect(spy.mock.calls[1][0]).toContain('&broker_late_entry_start_hhmm=950');
   });
 
+});
+
+describe('useRangeSidecarDelta', () => {
+  beforeEach(() => {
+    vi.restoreAllMocks();
+    localStorage.clear();
+    useSourcePreferenceStore.setState({ sourcePreference: 'hogaplay_first' });
+  });
+
+  it('fetches only missing left sidecar dates and does not full-refetch after merge', async () => {
+    const first: RangeBundle = {
+      ...fakeBundle,
+      code: '005930',
+      from_date: '20260629',
+      to_date: '20260706',
+      bucket_ms: 60_000,
+      volume_distributions: [{ date: '20260629', range_count: 10, price_min: 1, price_max: 2, session_open_ms: 1, session_close_ms: 2, bins: [] }],
+    };
+    const delta: RangeBundle = {
+      ...fakeBundle,
+      code: '005930',
+      from_date: '20260624',
+      to_date: '20260628',
+      bucket_ms: 60_000,
+      volume_distributions: [{ date: '20260624', range_count: 10, price_min: 1, price_max: 2, session_open_ms: 1, session_close_ms: 2, bins: [] }],
+    };
+    const spy = vi.spyOn(client, 'apiCall').mockImplementation((url) =>
+      Promise.resolve(String(url).includes('from=20260624&to=20260628') ? delta : first),
+    );
+    const wrapper = makeWrapper();
+    const { result, rerender } = renderHook(
+      ({ from }: { from: string }) =>
+        useRangeSidecarDelta('005930', from, '20260706', '1m', undefined, '20260706', {
+          mode: 'sidecar',
+          volumeDistributionBins: 10,
+          volumeDistributionPriceRange: { min: 303000, max: 325000 },
+        }, 'hogaplay_first'),
+      { wrapper, initialProps: { from: '20260629' } },
+    );
+
+    await waitFor(() => expect(result.current.data?.from_date).toBe('20260629'));
+    rerender({ from: '20260624' });
+
+    await waitFor(() => expect(spy).toHaveBeenCalledTimes(2));
+    expect(spy.mock.calls[1][0]).toBe(
+      '/api/range?code=005930&from=20260624&to=20260628&bucket_ms=60000'
+        + '&volume_distribution_bins=10'
+        + '&volume_distribution_price_min=303000&volume_distribution_price_max=325000'
+        + '&source_pref=hogaplay_first&mode=sidecar',
+    );
+    await waitFor(() => expect(result.current.data?.from_date).toBe('20260624'));
+    expect(result.current.data?.to_date).toBe('20260706');
+    expect(result.current.data?.volume_distributions.map((d) => d.date)).toEqual(['20260624', '20260629']);
+    await new Promise((r) => setTimeout(r, 30));
+    expect(spy).toHaveBeenCalledTimes(2);
+  });
 });
 
 describe('rangeFreshnessOptions (review C1 — pastMaxQrT advance)', () => {
