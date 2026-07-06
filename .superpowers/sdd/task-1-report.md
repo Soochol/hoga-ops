@@ -62,7 +62,7 @@ Focused test run passed after the fix:
 
 ### Commit
 
-- `30a0bc9a` - `fix(live): harden sidecar delta identity checks`
+- `15287d48` - `fix(live): harden sidecar delta identity checks`
 
 ### Self-Review
 
