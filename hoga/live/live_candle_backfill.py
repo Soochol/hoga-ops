@@ -244,11 +244,21 @@ class LiveMinuteCandleBackfill:
 
         일부러 순차(동시성 1): 워밍이 사용자 경로의 세마포어(3)나 KIS 예산을
         점유하지 않게 한다. KRX 폴백은 하지 않는다 — 폴백이 필요한 날짜는
-        인터랙션 경로의 collect_minute가 그때 처리한다."""
+        인터랙션 경로의 collect_minute가 그때 처리한다.
+
+        latest-wins: 다른 (venue, code)의 진행 중 warm은 시작 전에 취소한다.
+        종목 전환마다 warm 스트림이 누적되면(종목당 ~240 KIS 콜) 분봉 엔드포인트가
+        지속 포화돼 EGW00201 폭풍 → 공유 쿨다운이 사용자 fetch까지 abort하는
+        회귀가 있었다(/investigate 2026-07-07). 사용자의 현재 관심사는 항상
+        마지막으로 활성화된 종목이므로 최신 warm 하나만 남긴다. 취소는 공유
+        _inflight 태스크를 건드리지 않아(awaiter만 취소) 진행 중 1콜은 완주한다."""
         key = (policy, code)
         existing = self._warm_tasks.get(key)
         if existing is not None and not existing.done():
             return "already_running"
+        for other_key, other_task in list(self._warm_tasks.items()):
+            if other_key != key and not other_task.done():
+                other_task.cancel()
         task = asyncio.create_task(
             self._warm_run(policy, code, frm=frm, too=too, today_d=today_d),
             name=f"live-candle-warm:{policy}:{code}",
@@ -579,7 +589,16 @@ class LiveMinuteCandleBackfill:
                 endpoint=kis_access.KisRestEndpoint.PAST_MINUTE,
                 priority=priority,
                 cooldown_scope=venue,
-                fetch_fn=lambda kis: self._fetch_past_once(kis, venue, code, date_s),
+                fetch_fn=lambda kis: self._fetch_past_once(
+                    kis,
+                    venue,
+                    code,
+                    date_s,
+                    # ADR-0087 2층(토큰버킷) 우선순위를 스케줄러 priority와 일치:
+                    # warm(background)이 foreground를 참칭하면 사용자 호출에
+                    # 토큰을 양보하지 않아 EGW00201 폭풍의 원인이 된다.
+                    foreground=(priority == "user_visible"),
+                ),
             )
         except Exception:
             if perf_debug.enabled():
@@ -608,12 +627,14 @@ class LiveMinuteCandleBackfill:
         venue: KisVenue,
         code: str,
         date_s: str,
+        *,
+        foreground: bool = True,
     ) -> tuple[list[dict], str | None]:
         raw = await kis.fetch_past_minute_candles(
             code,
             date_s,
             venue=venue,
-            foreground=True,
+            foreground=foreground,
         )
         bars = [_candle_to_dict(c) for c in raw]
         try:
