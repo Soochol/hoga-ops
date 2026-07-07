@@ -80,6 +80,23 @@ DEFAULT_TRADE_VOLUME_POC_BINS = 10
 # directly — re-aggregation cannot synthesize a finer grain than the cache.
 _ONE_MINUTE_MS = 60_000
 
+# WS3: 지표 빌더의 cache/today_kst 기본값 센티널. 미지정 호출은 빌더가
+# engine.indicators_cache / 현재 KST 날짜로 자가-해석해 ADR-0043/0090 게이트를
+# 내부에서 적용한다. None 명시는 "캐시 미적용"(테스트 주입 시맨틱)으로 유지.
+_RESOLVE: object = object()
+
+
+def _resolve_cache(engine: QueryEngine, cache: object) -> PastIndicatorsCache | None:
+    if cache is _RESOLVE:
+        return engine.indicators_cache
+    return cache  # type: ignore[return-value]
+
+
+def _resolve_today_kst(today_kst: object) -> str | None:
+    if today_kst is _RESOLVE:
+        return _today_kst_yyyymmdd()
+    return today_kst  # type: ignore[return-value]
+
 
 def _empty_volume_profile() -> VolumeProfile:
     return VolumeProfile(bin_count=0, price_min=0, price_max=0, bin_width=0, bins=[])
@@ -266,9 +283,11 @@ def build_quote_ratio_slice(
     bucket_ms: int = 1000,
     source: str = "hogaplay",
     session_close_ms: int | None = None,
-    cache: PastIndicatorsCache | None = None,
-    today_kst: str | None = None,
+    cache: PastIndicatorsCache | None = _RESOLVE,  # type: ignore[assignment]
+    today_kst: str | None = _RESOLVE,  # type: ignore[assignment]
 ) -> QuoteRatio:
+    cache = _resolve_cache(engine, cache)
+    today_kst = _resolve_today_kst(today_kst)
     # ADR-0001: the bucketing SQL + snapshots schema knowledge (the per-level
     # ask/bid quantity columns, the last-in-bucket selection, the closing-auction
     # pre-auction representative, the HHMMSSmmm-linearization rationale) now lives
@@ -429,9 +448,11 @@ def build_fill_strength_slice(
     date: str,
     bucket_ms: int = 60_000,
     source: str = "hogaplay",
-    cache: PastIndicatorsCache | None = None,
-    today_kst: str | None = None,
+    cache: PastIndicatorsCache | None = _RESOLVE,  # type: ignore[assignment]
+    today_kst: str | None = _RESOLVE,  # type: ignore[assignment]
 ) -> FillStrength:
+    cache = _resolve_cache(engine, cache)
+    today_kst = _resolve_today_kst(today_kst)
     # ADR-0001: the bucketing SQL + schema knowledge now lives in the table
     # modules. bundle stays the coordinator: it owns the path layout + the
     # no-data guard, and re-bases the native ms-from-midnight bucket into
@@ -708,9 +729,11 @@ def build_ask_bid_peak_slices(
     source: str = "hogaplay",
     session_open_ms: int | None = None,
     session_close_ms: int | None = None,
-    cache: PastIndicatorsCache | None = None,
-    today_kst: str | None = None,
+    cache: PastIndicatorsCache | None = _RESOLVE,  # type: ignore[assignment]
+    today_kst: str | None = _RESOLVE,  # type: ignore[assignment]
 ) -> tuple[AskPeak | None, BidPeak | None]:
+    cache = _resolve_cache(engine, cache)
+    today_kst = _resolve_today_kst(today_kst)
     ask_cached = (
         cache is not None
         and today_kst is not None
@@ -815,9 +838,11 @@ def build_trade_volume_poc_slice(
     price_range: tuple[int, int] | None = None,
     continuous_before_ms: int | None = None,
     band_pct: float = 0.005,
-    cache: PastIndicatorsCache | None = None,
-    today_kst: str | None = None,
+    cache: PastIndicatorsCache | None = _RESOLVE,  # type: ignore[assignment]
+    today_kst: str | None = _RESOLVE,  # type: ignore[assignment]
 ) -> TradeVolumePoc | None:
+    cache = _resolve_cache(engine, cache)
+    today_kst = _resolve_today_kst(today_kst)
     code_dir = engine.parquet_dir(date, code, source)
     trades_path = code_dir / "trades.parquet"
     if price_range is None or not trades_path.exists():
@@ -1048,10 +1073,8 @@ def build_range_bundle(
     trade_volume_pocs: list[TradeVolumePoc] = []
     included_dates: list[str] = []
 
-    # Indicator cache (호가비·체결강도): completed past days are computed once and
-    # re-aggregated on later pans; today_kst gates today out (still promoting).
-    indicators_cache = engine.indicators_cache
-    today_kst = _today_kst_yyyymmdd()
+    # Indicator cache (호가비·체결강도)의 과거/오늘 게이트(ADR-0043/0090)는 각
+    # 슬라이스 빌더가 자가-해석한다(WS3) — 루프는 캐시 정책을 알 필요 없음.
 
     for d in dates:
         date_t0 = perf_debug.now()
@@ -1150,7 +1173,6 @@ def build_range_bundle(
             else build_quote_ratio_slice(
                 engine, code=code, date=d, bucket_ms=bucket_ms, source=source,
                 session_close_ms=meta["regular_session_close_ms"],
-                cache=indicators_cache, today_kst=today_kst,
             )
         )
         fs_d = (
@@ -1158,7 +1180,6 @@ def build_range_bundle(
             if sidecar_only or candles_only
             else build_fill_strength_slice(
                 engine, code=code, date=d, bucket_ms=bucket_ms, source=source,
-                cache=indicators_cache, today_kst=today_kst,
             )
         )
         norm_meta, _ = normalize_session_bounds(meta)   # value-conversion only (notes handled by classify)
@@ -1179,7 +1200,6 @@ def build_range_bundle(
                 engine, code=code, date=d, bucket_ms=bucket_ms, source=source,
                 session_open_ms=norm_meta["regular_session_open_ms"],
                 session_close_ms=meta["regular_session_close_ms"],
-                cache=indicators_cache, today_kst=today_kst,
             )
             if not include_ask_peaks:
                 ap_d = None
@@ -1196,8 +1216,6 @@ def build_range_bundle(
                 range_count=trade_volume_poc_bins or DEFAULT_TRADE_VOLUME_POC_BINS,
                 price_range=price_range,
                 continuous_before_ms=continuous_before_ms,
-                cache=indicators_cache,
-                today_kst=today_kst,
             )
             if include_trade_volume_pocs
             else None
