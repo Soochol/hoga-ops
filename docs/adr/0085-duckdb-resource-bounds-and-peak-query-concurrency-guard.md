@@ -1,6 +1,6 @@
 # 0085 — DuckDB Resource Bounds + Peak-Query Concurrency Guard
 
-**Status:** accepted (2026-07-07)
+**Status:** accepted (2026-07-07); 이월 항목 1(선형 스위프 재작성) 랜딩(2026-07-07)
 
 **Related:**
 - ADR-0084 — Event-based peak wall classification (the query this guards/​rewrites)
@@ -63,15 +63,43 @@
 보증이 아니다**. `memory_limit`이 soft라서 미래의 000660보다 나쁜 날은 단일 쿼리로도 17GB를
 넘길 수 있다. 그 천장을 없애는 것은 아래의 쿼리 재작성이다.
 
+### 랜딩됨 — 선형 스위프 재작성 (2026-07-07, 이월 항목 1 완료)
+
+`query_day_ask_bid_peak_dual`의 비등가 조인·UNBOUNDED 윈도우를 선형 SQL 스캔(cont/rep
+언피벗 + touch) + 파이썬 정렬 스위프로 대체했다. 스위프는 **2패스**다.
+
+- **pass 1 (역방향)**: running future-extreme으로 `is_touched` 계산. 같은 `(ts, seq)` 터치를
+  **포함**(구 SQL의 `ORDER BY … is_touch DESC` + `future_max_price >= price`와 동치).
+- **pass 2 (정방향)**: touch 가격을 인덱싱한 **Fenwick prefix-max 트리**로 `lifecycle_id`
+  (STRICTLY-earlier 지배 터치의 max touch_ord) 계산. `touches_sorted`의 정렬키 `(ts, seq,
+  price)`가 구 SQL의 `touch_ord` ROW_NUMBER 순서와 동일해 리스트 1-based 위치가 곧 ordinal.
+
+전체 O((N+M) log M). 2026-07-05에 기각된 파이썬 분류기(`6239f67a`)는 터치마다 활성 가격을
+선형 스캔하는 O(touches×prices) 루프여서 느렸던 것 — 이 재작성은 그 함정을 스위프+Fenwick으로
+회피한다. 공개 시그니처·반환 dataclass(`AskPeakDualRow`/`BidPeakDualRow`)는 불변.
+
+**안전망 = old-vs-new 차등 테스트**(hand-written 유닛만으론 저자 멘탈모델을 공유해 불충분).
+구 SQL을 `_legacy` 오라클로 남긴 채 크기 분포(9KB~6MB)를 가로지르는 **25개 실데이터 날**(무거운
+20260619/005930·20260623/000660 포함)에서 신·구 dataclass 전체가 동일함을 assert하고
+(비퇴화: touched/None-side/traded+untraded 케이스를 각각 관측했음을 집계) 통과 후 구 SQL을
+삭제했다. 결과: **0 불일치**.
+
+실측(8GiB 상한, 단일 쿼리):
+
+| 날짜 | 구 SQL | 신 스위프 |
+|---|---|---|
+| 삼성 20260619/005930 | 15.7s / 3.56GB | ~4.5s / 0.79GB |
+| 최악 20260623/000660 | 155s / 17.16GB | ~4.3s / 0.72GB |
+
+soft `memory_limit`을 뚫던 단일 최악 쿼리의 17GB 천장이 제거됐다(0.72GB, 8GiB 아래).
+가드(Decision 2)는 여전히 유효하며 동시 재계산을 계속 제한한다 — 재작성은 per-query 비용만
+낮췄고 두 방어는 직교한다. 참고: 조인이 폭발하지 않는 일반적인 날(대다수)은 벡터화 SQL이 파이썬
+객체 스위프보다 빨라 신 구현이 소폭 느리다(예: 0.3s→2s). 근본 장애는 **꼬리**(worst-case 폭주)
+였으므로 수용하며, 필요 시 `fetchnumpy`/컬럼 스트림 전환이 후속 최적화 경로다.
+
 ### 이월(deferred) — 후속 작업
 
-1. **선형 스위프 재작성** (별도 PR): `query_day_ask_bid_peak_dual`의 비등가 조인·UNBOUNDED
-   윈도우를 선형 SQL 스캔 + 파이썬 정렬 스위프(Fenwick lifecycle)로 대체해 155초/17GB 단일
-   쿼리 비용 자체를 제거한다. 안전망은 hand-written 유닛 테스트가 아니라 **old-vs-new 차등
-   테스트**(구 SQL과 신 스위프 출력이 여러 실데이터 날에서 동일함을 assert 후 구 SQL 삭제).
-   주의: 2026-07-05에 파이썬 분류기가 시도됐다 기각(`6239f67a`)됐으나 그 구현은
-   O(touches×prices) 루프여서 느렸던 것 — 재작성은 반드시 O((N+M) log M) 스위프여야 한다.
-2. **알려진 peak-wall 테스트 불일치** (별건, 제품 의도 필요): 분기 기준(main `f56347be`)에 이미
+1. **알려진 peak-wall 테스트 불일치** (별건, 제품 의도 필요): 분기 기준(main `f56347be`)에 이미
    14개 실패가 존재한다 — `test_api_range.py` 11개(테스트 스텁 `_build_range_bundle_stub` kwarg
    드리프트), `tests/hoga/api/test_bundle.py` 2개(`untraded_peaks`가 가격별 dedup 되지 않기를
    기대 vs 현 SQL은 `(price, is_touched)`로 dedup), `tests/unit/live/test_stream.py` 1개. 이번

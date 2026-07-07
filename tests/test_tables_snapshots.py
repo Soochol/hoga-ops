@@ -29,6 +29,11 @@ from hoga.tables.snapshots import (
     validate,
     write_parquet,
 )
+from hoga.tables.snapshots import (
+    _classify_wall_stream,
+    _Touch,
+    _WallEvent,
+)
 from hoga.tables.trades import Trade, write_parquet as write_trades
 
 
@@ -1712,3 +1717,92 @@ def test_day_ask_peak_max_qty_geq_close_qty(tmp_path: Path) -> None:
     assert peak.max_qty >= peak.qty
     assert peak.qty == 3000
     assert peak.max_qty == 8000 and peak.max_qty > peak.qty
+
+
+def _hhmmssms(i: int, ms: int) -> int:
+    """i번째 이벤트를 유효한 HHMMSSmmm(비선형) 타임스탬프로 인코딩.
+
+    분·초 자리올림이 유효한 값만 생성해 ``hhmmssms_to_intra_ms`` 디코딩이 WRONG
+    ms를 만들지 않게 한다(중복/역순 방지).
+    """
+    return int(f"{10 + i // 3600:02d}{(i // 60) % 60:02d}{i % 60:02d}{ms:03d}")
+
+
+def _pathological_peak_dataset(
+    tmp_path: Path, *, n_snapshots: int, n_trades: int
+) -> tuple[Path, Path]:
+    """조인 폭발용: 넓은 가격 분포(distinct ask 레벨 다수) × 모든 레벨을 지배하는 고가 터치.
+
+    비등가 조인 ``t.price >= p.price`` 의 카디널리티 = ``n_trades × distinct_prices`` 를
+    인위적으로 키워 2026-07-05 356GB 스필 경로(실측 최악 distinct 803 × 55만 거래)를
+    작은 규모로 재현한다. distinct 가격은 스냅샷 가격 사다리로, 터치 수는 거래로 분리 제어.
+    """
+    snapshots_path = tmp_path / "snapshots.parquet"
+    trades_path = tmp_path / "trades.parquet"
+    obs = []
+    for i in range(n_snapshots):
+        base = 50000 + (i % 80) * 10  # 80 사다리 × 10 오프셋 → distinct 가격 ≈ 800
+        obs.append(_ob_ap(_hhmmssms(i, 0), [100 + i % 50] * 10, ask_p=[base + j for j in range(10)]))
+    write_parquet(obs, snapshots_path)
+    top = 50000 + 80 * 10 + 100  # 모든 ask 레벨을 지배하는 고가(장중 이후 고정 ts)
+    trades = [_trade(150_000_000, top, seq=i + 1) for i in range(n_trades)]
+    write_trades(trades, trades_path)
+    return snapshots_path, trades_path
+
+
+# ── 스위프 분류기 유닛 테스트 (SQL 의미론의 inclusive/exclusive 비대칭 고정) ──
+
+
+def _ev(ts: int, seq: int, price: int, qty: int, bucket: int = 0) -> _WallEvent:
+    return _WallEvent(ts_ms=ts, seq=seq, price=price, qty=qty, intra_ms=ts, bucket_id=bucket)
+
+
+def _tk(ts: int, seq: int, price: int) -> _Touch:
+    return _Touch(ts_ms=ts, seq=seq, price=price)
+
+
+def test_sweep_same_key_touch_counts_as_touched() -> None:
+    classified, _distinct = _classify_wall_stream([_ev(1000, 5, 50000, 10)], [_tk(1000, 5, 50000)], side="ask")
+    assert classified[0][1] is True  # 같은 (ts,seq) 터치는 touched (>= 규칙)
+
+
+def test_sweep_same_ms_earlier_seq_does_not_touch() -> None:
+    classified, _distinct = _classify_wall_stream([_ev(1000, 5, 50000, 10)], [_tk(1000, 4, 50000)], side="ask")
+    assert classified[0][1] is False  # 같은 ms의 더 이른 seq 터치는 미포함
+
+
+def test_sweep_lifecycle_reopens_after_touch() -> None:
+    # 벽 관측 → 지배 터치 → 같은 가격 재관측: 재관측은 새 lifecycle이라
+    # (price, is_touched=False) best로 남아야 한다 (untraded).
+    events = [_ev(1000, 1, 50000, 100), _ev(3000, 3, 50000, 40)]
+    _classified, distinct = _classify_wall_stream(events, [_tk(2000, 2, 50000)], side="ask")
+    assert distinct[(50000, True)].qty == 100   # 터치 전 lifecycle의 best
+    assert distinct[(50000, False)].qty == 40   # 터치 후 새 lifecycle
+
+
+def test_sweep_bid_side_uses_lower_or_equal_domination() -> None:
+    # bid에선 고가 터치(50100)가 저가 벽(50000)을 지배하지 않는다.
+    classified, _distinct = _classify_wall_stream([_ev(1000, 1, 50000, 10)], [_tk(2000, 2, 50100)], side="bid")
+    assert classified[0][1] is False
+
+
+def test_query_day_ask_bid_peak_dual_perf_guardrail(tmp_path: Path) -> None:
+    """2026-07-05 356GB 스필 회귀 방지: 넓은 가격 분포 × 다수 터치에서
+    비등가 조인이 폭발하지 않고 수 초 안에 완료되어야 한다."""
+    import time
+
+    snapshots_path, trades_path = _pathological_peak_dataset(
+        tmp_path, n_snapshots=2500, n_trades=60000
+    )
+    started = time.monotonic()
+    ask, bid = query_day_ask_bid_peak_dual(
+        _con_for(snapshots_path),
+        path=snapshots_path,
+        trades_path=trades_path,
+        bucket_ms=60_000,
+        session_open_ms=90_000_000,
+        session_close_ms=153_000_000,
+    )
+    elapsed = time.monotonic() - started
+    assert ask is not None
+    assert elapsed < 5.0, f"peak dual query took {elapsed:.1f}s"
