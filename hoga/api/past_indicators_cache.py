@@ -29,6 +29,7 @@ from __future__ import annotations
 import json
 import logging
 import time
+from collections import OrderedDict
 from pathlib import Path
 from typing import TYPE_CHECKING, Literal, TypeVar
 
@@ -47,6 +48,7 @@ _log = logging.getLogger(__name__)
 SCHEMA_VERSION = 5
 
 Kind = Literal["ratio", "fill"]
+DEFAULT_MEM_MAX_ENTRIES = 512
 _CACHE_MISS = object()
 CACHE_MISS = _CACHE_MISS
 _ModelT = TypeVar("_ModelT", bound="BaseModel")
@@ -56,18 +58,27 @@ class PastIndicatorsCache:
     """Disk-backed cache of 1-minute quote_ratio / fill_strength rows, keyed by
     (code, date, source). Past dates only — today is recomputed by the caller."""
 
-    def __init__(self, data_dir: Path):
+    def __init__(self, data_dir: Path, *, mem_max_entries: int = DEFAULT_MEM_MAX_ENTRIES):
         self._data_dir = data_dir
+        self._mem_max_entries = max(0, int(mem_max_entries))
         # In-memory hot cache (avoids re-reading disk within a process).
-        self._mem_ratio: dict[tuple[str, str, str], list[QuoteRatioRow]] = {}
-        self._mem_fill: dict[tuple[str, str, str], list[FillStrengthRow]] = {}
+        # WS4: dict당 LRU 상한 — 축출돼도 디스크 read-through로 값은 보존되므로
+        # 관측 가능 동작은 불변, 장수명 프로세스의 메모리만 유계가 된다.
+        self._mem_ratio: OrderedDict[tuple[str, str, str], list[QuoteRatioRow]] = OrderedDict()
+        self._mem_fill: OrderedDict[tuple[str, str, str], list[FillStrengthRow]] = OrderedDict()
         # None is a valid cached result for empty/no-data days, so has_/get_
         # remain separate for peak caches.
-        self._mem_ask_peak: dict[tuple[str, str, str, int], AskPeak | None] = {}
-        self._mem_bid_peak: dict[tuple[str, str, str, int], BidPeak | None] = {}
-        self._mem_trade_volume_poc: dict[
+        self._mem_ask_peak: OrderedDict[tuple[str, str, str, int], AskPeak | None] = OrderedDict()
+        self._mem_bid_peak: OrderedDict[tuple[str, str, str, int], BidPeak | None] = OrderedDict()
+        self._mem_trade_volume_poc: OrderedDict[
             tuple[str, str, str, int, int, int], TradeVolumePoc | None
-        ] = {}
+        ] = OrderedDict()
+
+    def _mem_put(self, od: OrderedDict, key, value) -> None:
+        od[key] = value
+        od.move_to_end(key)
+        while len(od) > self._mem_max_entries:
+            od.popitem(last=False)
 
     def _path(self, code: str, date: str, source: str, kind: Kind) -> Path:
         return self._data_dir / "kis-past-indicators" / code / source / f"{date}.{kind}.json"
@@ -78,6 +89,7 @@ class PastIndicatorsCache:
         key = (code, date, source)
         hit = self._mem_ratio.get(key)
         if hit is not None:
+            self._mem_ratio.move_to_end(key)
             return hit
         tuples = self._read(code, date, source, "ratio")
         if tuples is None:
@@ -89,7 +101,7 @@ class PastIndicatorsCache:
             )
             for t in tuples
         ]
-        self._mem_ratio[key] = rows
+        self._mem_put(self._mem_ratio, key, rows)
         return rows
 
     def store_ratio(self, code: str, date: str, source: str, rows: list[QuoteRatioRow]) -> None:
@@ -99,7 +111,7 @@ class PastIndicatorsCache:
             for r in rows
         ]
         self._write(code, date, source, "ratio", tuples)
-        self._mem_ratio[(code, date, source)] = rows
+        self._mem_put(self._mem_ratio, (code, date, source), rows)
 
     # ── fill (체결강도) ────────────────────────────────────────────────────────
 
@@ -107,6 +119,7 @@ class PastIndicatorsCache:
         key = (code, date, source)
         hit = self._mem_fill.get(key)
         if hit is not None:
+            self._mem_fill.move_to_end(key)
             return hit
         triples = self._read(code, date, source, "fill")
         if triples is None:
@@ -114,13 +127,13 @@ class PastIndicatorsCache:
         rows = [
             FillStrengthRow(bucket_intra_ms=t[0], buy_qty=t[1], sell_qty=t[2]) for t in triples
         ]
-        self._mem_fill[key] = rows
+        self._mem_put(self._mem_fill, key, rows)
         return rows
 
     def store_fill(self, code: str, date: str, source: str, rows: list[FillStrengthRow]) -> None:
         triples = [[r.bucket_intra_ms, r.buy_qty, r.sell_qty] for r in rows]
         self._write(code, date, source, "fill", triples)
-        self._mem_fill[(code, date, source)] = rows
+        self._mem_put(self._mem_fill, (code, date, source), rows)
 
     # ── ask/bid peak (매도/매수 최대벽) ───────────────────────────────────────
 
@@ -196,12 +209,13 @@ class PastIndicatorsCache:
         )
         if value is _CACHE_MISS:
             return False
-        self._mem_ask_peak[key] = value  # type: ignore[assignment]
+        self._mem_put(self._mem_ask_peak, key, value)  # type: ignore[arg-type]
         return True
 
     def get_ask_peak(self, code: str, date: str, source: str, bucket_ms: int) -> AskPeak | None:
         key = (code, date, source, bucket_ms)
         if key in self._mem_ask_peak:
+            self._mem_ask_peak.move_to_end(key)
             return self._mem_ask_peak[key]
         value = self._read_model_cache(
             self._peak_path(code, date, source, "ask_peak", bucket_ms),
@@ -209,13 +223,13 @@ class PastIndicatorsCache:
         )
         if value is _CACHE_MISS:
             return None
-        self._mem_ask_peak[key] = value  # type: ignore[assignment]
+        self._mem_put(self._mem_ask_peak, key, value)  # type: ignore[arg-type]
         return self._mem_ask_peak[key]
 
     def store_ask_peak(
         self, code: str, date: str, source: str, bucket_ms: int, peak: AskPeak | None
     ) -> None:
-        self._mem_ask_peak[(code, date, source, bucket_ms)] = peak
+        self._mem_put(self._mem_ask_peak, (code, date, source, bucket_ms), peak)
         self._write_model_cache(self._peak_path(code, date, source, "ask_peak", bucket_ms), peak)
 
     def has_bid_peak(self, code: str, date: str, source: str, bucket_ms: int) -> bool:
@@ -228,12 +242,13 @@ class PastIndicatorsCache:
         )
         if value is _CACHE_MISS:
             return False
-        self._mem_bid_peak[key] = value  # type: ignore[assignment]
+        self._mem_put(self._mem_bid_peak, key, value)  # type: ignore[arg-type]
         return True
 
     def get_bid_peak(self, code: str, date: str, source: str, bucket_ms: int) -> BidPeak | None:
         key = (code, date, source, bucket_ms)
         if key in self._mem_bid_peak:
+            self._mem_bid_peak.move_to_end(key)
             return self._mem_bid_peak[key]
         value = self._read_model_cache(
             self._peak_path(code, date, source, "bid_peak", bucket_ms),
@@ -241,13 +256,13 @@ class PastIndicatorsCache:
         )
         if value is _CACHE_MISS:
             return None
-        self._mem_bid_peak[key] = value  # type: ignore[assignment]
+        self._mem_put(self._mem_bid_peak, key, value)  # type: ignore[arg-type]
         return self._mem_bid_peak[key]
 
     def store_bid_peak(
         self, code: str, date: str, source: str, bucket_ms: int, peak: BidPeak | None
     ) -> None:
-        self._mem_bid_peak[(code, date, source, bucket_ms)] = peak
+        self._mem_put(self._mem_bid_peak, (code, date, source, bucket_ms), peak)
         self._write_model_cache(self._peak_path(code, date, source, "bid_peak", bucket_ms), peak)
 
     # ── trade_volume_poc ─────────────────────────────────────────────────────
@@ -263,6 +278,7 @@ class PastIndicatorsCache:
     ) -> TradeVolumePoc | None | object:
         key = (code, date, source, range_count, price_min, price_max)
         if key in self._mem_trade_volume_poc:
+            self._mem_trade_volume_poc.move_to_end(key)
             return self._mem_trade_volume_poc[key]
         value = self._read_model_cache(
             self._poc_path(code, date, source, range_count, price_min, price_max),
@@ -270,7 +286,7 @@ class PastIndicatorsCache:
         )
         if value is _CACHE_MISS:
             return _CACHE_MISS
-        self._mem_trade_volume_poc[key] = value  # type: ignore[assignment]
+        self._mem_put(self._mem_trade_volume_poc, key, value)  # type: ignore[arg-type]
         return self._mem_trade_volume_poc[key]
 
     def store_trade_volume_poc(
@@ -284,7 +300,7 @@ class PastIndicatorsCache:
         poc: TradeVolumePoc | None,
     ) -> None:
         key = (code, date, source, range_count, price_min, price_max)
-        self._mem_trade_volume_poc[key] = poc
+        self._mem_put(self._mem_trade_volume_poc, key, poc)
         self._write_model_cache(
             self._poc_path(code, date, source, range_count, price_min, price_max),
             poc,

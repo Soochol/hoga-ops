@@ -186,3 +186,19 @@ async def test_cache_key_separates_timeframes() -> None:
 
     assert calls == [("20260101", "20260131")]
     assert [c.close for c in result.candles] == [20]
+
+
+def test_per_key_batches_are_capped_oldest_dropped() -> None:
+    """WS4: per-key 배치 리스트는 캡을 넘으면 oldest부터 드랍 — 커버리지 구멍은
+    covered()가 None을 돌려 재fetch로 회복되므로 정확성은 불변."""
+    cache = IndexCandlesCache(max_batches_per_key=2)
+    key = ("KOSPI", "D")
+    cache.append_batch(key, date(2026, 1, 1), date(2026, 1, 31), [point("20260102")])
+    cache.append_batch(key, date(2026, 2, 1), date(2026, 2, 28), [point("20260203")])
+    cache.append_batch(key, date(2026, 3, 1), date(2026, 3, 31), [point("20260304")])
+
+    assert len(cache.list_batches(key)) == 2
+    # oldest(1월) 드랍 → 1월 조회는 미스(재fetch 신호)
+    assert cache.covered(key, date(2026, 1, 10), date(2026, 1, 20)) is None
+    # 최근 배치들은 유지
+    assert cache.covered(key, date(2026, 3, 10), date(2026, 3, 20)) is not None
