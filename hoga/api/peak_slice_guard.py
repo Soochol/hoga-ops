@@ -35,14 +35,14 @@ T = TypeVar("T")
 DEFAULT_CONCURRENCY = 2
 
 
-def _resolve_concurrency() -> int:
-    raw = os.environ.get("HOGA_PEAK_QUERY_CONCURRENCY")
+def _resolve_concurrency(env_name: str, default: int) -> int:
+    raw = os.environ.get(env_name)
     if raw is None:
-        return DEFAULT_CONCURRENCY
+        return default
     try:
         return max(1, int(raw))
     except ValueError:
-        return DEFAULT_CONCURRENCY
+        return default
 
 
 class _Flight(Generic[T]):
@@ -63,7 +63,9 @@ class PeakSliceGuard:
 
     def __init__(self, concurrency: int | None = None) -> None:
         self._sem = threading.BoundedSemaphore(
-            concurrency if concurrency is not None else _resolve_concurrency()
+            concurrency
+            if concurrency is not None
+            else _resolve_concurrency("HOGA_PEAK_QUERY_CONCURRENCY", DEFAULT_CONCURRENCY)
         )
         self._inflight_lock = threading.Lock()
         self._inflight: dict[Hashable, _Flight] = {}
@@ -105,3 +107,10 @@ class PeakSliceGuard:
 
 # Process-wide default guard for the dual ask/bid peak query.
 GUARD = PeakSliceGuard()
+
+# 범위 볼륨 프로파일(mode=full 전용, 2026-07-07 기준 프론트엔드 미사용 dead path)
+# 가드. 스트리밍 GROUP BY라 RAM은 유계지만, 범위 내 전 trades.parquet 풀 스캔 2회를
+# 요청마다 무캐시로 반복하므로 스레드풀·DuckDB 점유를 동시성 1로 격리한다.
+RANGE_PROFILE_GUARD = PeakSliceGuard(
+    concurrency=_resolve_concurrency("HOGA_RANGE_PROFILE_CONCURRENCY", 1)
+)
