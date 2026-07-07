@@ -545,3 +545,31 @@ async def test_collect_minute_default_no_read_ahead(tmp_path, monkeypatch) -> No
     )
 
     assert ("KRX", "005930") not in backfill._warm_tasks
+
+
+@pytest.mark.asyncio
+async def test_warm_minute_fetches_newest_date_first(tmp_path, monkeypatch) -> None:
+    from hoga.api import calendar as cal
+
+    monkeypatch.setattr(cal, "is_trading_day", lambda date_s: True)
+    kis = _FakeKis()
+    scheduler = _RecordingScheduler(kis)
+    backfill = LiveMinuteCandleBackfill(
+        data_dir=tmp_path,
+        cache=PastCandlesCache(data_dir=tmp_path),
+        scheduler=scheduler,
+        concurrency=1,
+    )
+
+    await backfill.warm_minute(
+        code="005930",
+        frm=dt.date(2026, 5, 18),
+        too=dt.date(2026, 5, 20),
+        today_d=dt.date(2026, 6, 1),
+        policy="KRX",
+    )
+    await backfill._warm_tasks[("KRX", "005930")]
+
+    # _warm_run은 다음 청크가 가장 먼저 필요로 하는 최신 날짜를 먼저 fetch한다.
+    fetched_dates = [c["key"][-1] for c in scheduler.calls]
+    assert fetched_dates == ["20260520", "20260519", "20260518"]

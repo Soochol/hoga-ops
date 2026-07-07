@@ -272,7 +272,7 @@ class LiveMinuteCandleBackfill:
         today_d: date,
     ) -> None:
         today_s = today_d.strftime("%Y%m%d")
-        for date_s in _date_iter(frm, too):
+        for date_s in reversed(list(_date_iter(frm, too))):
             if date_s >= today_s:
                 continue
             if self._cache.get_past(venue, code, date_s) is not None:
