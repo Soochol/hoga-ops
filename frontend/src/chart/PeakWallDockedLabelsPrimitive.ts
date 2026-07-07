@@ -20,6 +20,7 @@ import {
   type AskPeakLabelCandidate,
   type PeakWallDockedLabel,
 } from './AskPeakSegmentsPrimitive';
+import { measureTextCached } from './util/textWidthCache';
 
 export type PeakWallDockedLabelInput = PeakWallDockedLabel;
 
@@ -94,7 +95,7 @@ class PeakWallDockedLabelsRenderer implements IPrimitivePaneRenderer {
           return y === null ? null : y * vr;
         },
         xRight,
-        (text) => ctx.measureText(text).width,
+        (text) => measureTextCached(ctx, text),
         LABEL_GAP_PX * vr,
         (time) => {
           const x = chart.timeScale().timeToCoordinate(time);

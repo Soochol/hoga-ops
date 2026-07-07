@@ -10,6 +10,7 @@ import type {
   Time,
 } from 'lightweight-charts';
 import type { CanvasRenderingTarget2D } from 'fancy-canvas';
+import { measureTextCached } from './util/textWidthCache';
 
 /**
  * 거래일별 "매도 최대벽"을 그날 구간에만 걸치는 수평 세그먼트로 그리는 커스텀 series primitive.
@@ -267,7 +268,7 @@ class AskPeakSegmentsRenderer implements IPrimitivePaneRenderer {
             index: i,
             xRight: px1,
             yLine: py - LABEL_GAP_PX * vr,
-            width: ctx.measureText(s.label).width,
+            width: measureTextCached(ctx, s.label),
             segmentWidth: Math.abs(px1 - px0),
           });
         }
