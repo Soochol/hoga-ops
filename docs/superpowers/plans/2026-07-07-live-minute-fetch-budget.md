@@ -24,7 +24,7 @@
 |---|---|
 | Modify: `hoga/live/live_candle_backfill.py` | 미캐시-일수 예산(Task 1), read_ahead 폭 캡(Task 2) |
 | Modify: `hoga/live/past_candles_cache.py` | LRU 512→2048 (Task 3) |
-| Create: `tests/unit/live/test_past_candles_cache.py` | 과거 캐시 용량 테스트 (Task 3) |
+| Modify(append): `tests/unit/live/test_past_candles_cache.py` | 과거 캐시 용량 테스트 (Task 3). **주의: 파일이 이미 존재(13개 테스트) — Create 아님, append.** |
 | Modify: `tests/unit/live/test_live_candle_backfill.py` | Task 1·2 테스트 추가 |
 | Modify: `frontend/src/api/livePastCandles.ts` | 청크 워크백(Task 4), 타임아웃(Task 5), blocking 사유 추가 |
 | Modify: `frontend/src/api/livePastCandles.test.tsx` | Task 4·5 테스트 추가 |
