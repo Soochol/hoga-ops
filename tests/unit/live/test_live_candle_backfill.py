@@ -238,8 +238,59 @@ async def test_warm_minute_fetches_uncached_dates_at_background_priority(
 
     assert status == "started"
     assert [c["priority"] for c in scheduler.calls] == ["background", "background"]
+    # 토큰버킷 레이어(ADR-0087 2층)에서도 background여야 한다: foreground=True로
+    # 참칭하면 warm이 사용자 호출에 토큰을 양보하지 않아 EGW00201 폭풍의 원인이 된다.
+    assert [c[3] for c in kis.calls] == [False, False]
     assert cache.get_past("KRX", "005930", "20260518") is not None
     assert cache.get_past("KRX", "005930", "20260519") is not None
+
+
+@pytest.mark.asyncio
+async def test_warm_minute_new_code_cancels_other_codes_warm(
+    tmp_path, monkeypatch,
+) -> None:
+    """활성화 warm은 latest-wins: 새 종목의 warm이 시작되면 다른 종목의 진행 중
+    warm은 취소된다. 종목 전환마다 warm 스트림이 누적돼(종목당 ~240 KIS 콜)
+    지속 포화 → EGW00201 폭풍을 만들던 회귀의 재발 방지."""
+    from hoga.api import calendar as cal
+
+    monkeypatch.setattr(cal, "is_trading_day", lambda date_s: True)
+    release = asyncio.Event()
+
+    class _BlockedScheduler:
+        async def submit(self, *, key, endpoint, priority, call, cooldown_scope=None):
+            await release.wait()
+            return await call(_FakeKis())  # type: ignore[arg-type]
+
+    backfill = LiveMinuteCandleBackfill(
+        data_dir=tmp_path,
+        cache=PastCandlesCache(data_dir=tmp_path),
+        scheduler=_BlockedScheduler(),  # type: ignore[arg-type]
+        concurrency=1,
+    )
+    common = dict(
+        frm=dt.date(2026, 5, 18),
+        too=dt.date(2026, 5, 18),
+        today_d=dt.date(2026, 6, 1),
+        policy="KRX",
+    )
+
+    await backfill.warm_minute(code="005930", **common)
+    task_a = backfill._warm_tasks[("KRX", "005930")]
+    await asyncio.sleep(0)  # task_a가 blocked submit까지 진입
+
+    await backfill.warm_minute(code="000660", **common)
+    task_b = backfill._warm_tasks[("KRX", "000660")]
+    await asyncio.sleep(0)  # 취소 전파
+
+    assert task_a.cancelled() or task_a.cancelling()
+    release.set()
+    await task_b
+    with pytest.raises(asyncio.CancelledError):
+        await task_a
+    # 같은 code 재호출은 여전히 단일 비행(취소 아님).
+    still = await backfill.warm_minute(code="000660", **common)
+    assert still in {"started", "already_running"}
 
 
 @pytest.mark.asyncio
