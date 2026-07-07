@@ -100,6 +100,13 @@ class LiveMinuteCandleBackfill:
         # settle-loop의 다음 청크가 캐시 히트가 된다. 레이트리밋/용량 경고가
         # 있으면 예산이 이미 부족하다는 뜻이므로 이번엔 건너뛴다.
         if read_ahead and not _fallback_blocking_warning_dates(out.data_warnings):
+            # span_days는 의도적으로 무제한이다(요청창 폭 전체). 프론트 팬은
+            # to=today 고정으로 창이 넓어지고 nextHistoricalFrom이 from을 매 스텝
+            # 정확히 stepChunkDays(=5캘린더일)씩 뒤로 옮기므로, [frm-span, frm-1]은
+            # 항상 다음 청크가 필요로 하는 [frm-5, frm-1]의 superset이다(gap 없음).
+            # 5로 캡하면 backend가 프론트 STEP_TRADING_DAYS에 암묵 결합돼, 그 상수가
+            # 커지면 gap이 생긴다. 무제한 비용은 O(span) 캐시조회뿐(이미 데운 날짜는
+            # _warm_run에서 get_past로 스킵)이라 무시 가능.
             span_days = (too - frm).days + 1
             ra_too = frm - timedelta(days=1)
             ra_frm = ra_too - timedelta(days=span_days - 1)
