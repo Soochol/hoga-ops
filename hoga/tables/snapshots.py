@@ -772,7 +772,7 @@ class BidPeakDualRow:
     untraded_max_peaks: tuple[AskPeakCandidateRow, ...] = ()
 
 
-def query_bucketed_ratio(
+def _query_bucketed_ratio_windowed(
     con: duckdb.DuckDBPyConnection,
     *,
     path: Path,
@@ -901,6 +901,103 @@ def query_bucketed_ratio(
             bucket_intra_ms=int(r[0]), bid_total=int(r[1]), ask_total=int(r[2]),
             bid_max=int(r[3]), ask_max=int(r[4]),
             imb_max_bid=int(r[5]), imb_max_ask=int(r[6]),
+        )
+        for r in rows
+    ]
+
+
+def query_bucketed_ratio(
+    con: duckdb.DuckDBPyConnection,
+    *,
+    path: Path,
+    bucket_ms: int,
+    session_close_ms: int | None = None,
+) -> list[QuoteRatioRow]:
+    """GROUP BY / arg_max rewrite of :func:`_query_bucketed_ratio_windowed`.
+
+    Replaces 5 window functions (1 ROW_NUMBER + 2 MAX OVER + 2 FIRST_VALUE
+    with UNBOUNDED frames) with a single GROUP BY using arg_max/arg_min/MAX
+    aggregates — same linear-scan cost class, no windowed materialization.
+    Must be ROW-IDENTICAL to the windowed implementation; see
+    ``tests/test_tables_snapshots.py`` parity tests.
+
+    Equivalence notes (see the windowed impl's docstring for the domain
+    rationale — this note covers only the SQL-shape translation):
+
+    - Every per-row input (``gb``/``ga``/``imb_key``) is gated by
+      ``is_pre`` BEFORE aggregation, so no outer ``CASE WHEN is_pre`` is
+      needed on the final SELECT — a fully-auction bucket (no pre row) has
+      every gated input = 0 for every row, so all aggregates naturally
+      emit 0/(0,0) for it, matching the windowed impl's explicit zero-CASE.
+    - The representative row (bid_total/ask_total) is selected by ONE
+      ``arg_max(struct_pack(b, a), rep_key)`` so both totals always come
+      from the same physical row — mirrors the original's single
+      ``ROW_NUMBER() ... rn = 1`` row providing both columns.
+      ``rep_key = is_pre_int * 100_000_000 + intra_ms`` reproduces
+      ``ORDER BY is_pre DESC, ts_ms DESC``: pre rows outrank non-pre rows
+      (the *1e8 digit dominates), and within the same is_pre tier, larger
+      intra_ms (== larger ts_ms, monotonic within a bucket) wins — DuckDB's
+      arg_max picks the row with the maximum key, i.e. the LAST such row,
+      same as ``ORDER BY ... DESC`` picking rn=1.
+    - The imbalance-extreme pair (imb_max_bid/imb_max_ask) is selected by
+      ONE ``arg_min(struct_pack(b, a), struct_pack(neg_imb, ts))`` so both
+      values always come from the same row — mirrors pulling both
+      FIRST_VALUE(...) columns from the identical ORDER BY. Negating
+      imb_key turns "want max imb_key" into "want min neg_imb", and the
+      secondary ``ts_ms`` (ascending) key reproduces the original's
+      ``ts_ms ASC`` tiebreak for equal imb_key.
+    """
+    intra_ms_expr = hhmmssms_to_intra_ms_sql("ts_ms")
+    deep_book_sql = _DEEP_BOOK_SQL  # SSOT — same predicate as query_day_ask_peak & client isContinuousBook
+    last_continuous_ms: int | None = None
+    if session_close_ms is not None:
+        close_intra_sql = hhmmssms_to_intra_ms_sql(str(int(session_close_ms)))
+        row = con.execute(
+            f"SELECT max({intra_ms_expr}) FROM read_parquet(?) "
+            f"WHERE {deep_book_sql} AND {intra_ms_expr} <= {close_intra_sql}",
+            [str(path)],
+        ).fetchone()
+        if row is not None and row[0] is not None:
+            last_continuous_ms = int(row[0])
+    if last_continuous_ms is None:
+        # See _query_bucketed_ratio_windowed's identical branch — degenerate
+        # fixture / no session bound fallback to the legacy constant-TRUE
+        # last-in-bucket behavior.
+        pre_auction_pred = "TRUE"
+    else:
+        pre_auction_pred = f"({intra_ms_expr} <= {last_continuous_ms})"
+    rows = con.execute(
+        f"""
+        WITH keyed AS (
+          SELECT ts_ms,
+                 ({intra_ms_expr} // {bucket_ms}) AS bucket,
+                 (CASE WHEN ({pre_auction_pred}) THEN ({_BID_Q_SUM}) ELSE 0 END) AS gb,
+                 (CASE WHEN ({pre_auction_pred}) THEN ({_ASK_Q_SUM}) ELSE 0 END) AS ga,
+                 (CASE WHEN ({pre_auction_pred}) AND ({_BID_Q_SUM}) > 0 AND ({_ASK_Q_SUM}) > 0
+                     THEN GREATEST(({_ASK_Q_SUM}), ({_BID_Q_SUM})) * 1.0
+                          / LEAST(({_ASK_Q_SUM}), ({_BID_Q_SUM}))
+                     ELSE 0 END) AS imb_key,
+                 ((CASE WHEN ({pre_auction_pred}) THEN 1 ELSE 0 END) * 100000000
+                   + ({intra_ms_expr})) AS rep_key
+          FROM read_parquet(?)
+        )
+        SELECT bucket * {bucket_ms},
+               arg_max(struct_pack(b := gb, a := ga), rep_key) AS rep,
+               max(gb) AS bid_max,
+               max(ga) AS ask_max,
+               arg_min(struct_pack(b := gb, a := ga), struct_pack(neg_imb := -imb_key, ts := ts_ms)) AS imb
+        FROM keyed
+        GROUP BY bucket
+        ORDER BY bucket
+        """,
+        [str(path)],
+    ).fetchall()
+    return [
+        QuoteRatioRow(
+            bucket_intra_ms=int(r[0]),
+            bid_total=int(r[1]["b"]), ask_total=int(r[1]["a"]),
+            bid_max=int(r[2]), ask_max=int(r[3]),
+            imb_max_bid=int(r[4]["b"]), imb_max_ask=int(r[4]["a"]),
         )
         for r in rows
     ]

@@ -391,6 +391,103 @@ def test_query_bucketed_ratio_auction_bucket_zeroes_max_fields(tmp_path: Path) -
 
 
 # ---------------------------------------------------------------------------
+# query_bucketed_ratio parity: arg_max/arg_min GROUP BY rewrite vs the
+# windowed original (_query_bucketed_ratio_windowed). Row-identical output is
+# the gate before the windowed impl can be deleted (real-data differential is
+# a separate, later task) — see ADR/plan "호가비 arg_max 재작성".
+# ---------------------------------------------------------------------------
+
+
+def test_query_bucketed_ratio_parity_mixed_continuous_and_auction_tail(
+    tmp_path: Path,
+) -> None:
+    """Mixed bucket set: a normal continuous bucket, a straddle bucket (has
+    both pre and non-pre rows), and a fully-auction tail bucket — the case
+    that exercises the is_pre gating equivalence end-to-end."""
+    from hoga.tables.snapshots import _query_bucketed_ratio_windowed, query_bucketed_ratio
+
+    z = tuple([0] * 10)
+
+    def _deep(ts_ms: int, seq: int, ask_q: tuple[int, ...], bid_q: tuple[int, ...]) -> Orderbook:
+        return Orderbook(
+            ts_ms=ts_ms, seq=seq,
+            ask_p=tuple(range(101, 111)), ask_q=(tuple(ask_q) + (0,) * 10)[:10], ask_d=z,
+            bid_p=tuple(range(100, 90, -1)), bid_q=(tuple(bid_q) + (0,) * 10)[:10], bid_d=z,
+            tot_ask=0, tot_ask_d=0, tot_bid=0, tot_bid_d=0,
+        )
+
+    def _shallow(ts_ms: int, seq: int, ask_q: tuple[int, ...], bid_q: tuple[int, ...]) -> Orderbook:
+        return Orderbook(
+            ts_ms=ts_ms, seq=seq,
+            ask_p=(101, 102, 103) + (0,) * 7, ask_q=(tuple(ask_q) + (0,) * 10)[:10], ask_d=z,
+            bid_p=(100, 99, 98) + (0,) * 7, bid_q=(tuple(bid_q) + (0,) * 10)[:10], bid_d=z,
+            tot_ask=0, tot_ask_d=0, tot_bid=0, tot_bid_d=0,
+        )
+
+    obs = [
+        # Bucket 1 (09:00): plain continuous bucket, 3 rows, last wins.
+        _deep(90_000_100, 1, (10, 20, 30, 40, 5, 6, 7, 8, 9, 1), (900, 1, 1, 1, 1, 1, 1, 1, 1, 1)),
+        _deep(90_000_500, 2, (50, 60, 70, 80, 5, 6, 7, 8, 9, 1), (50, 1, 1, 1, 1, 1, 1, 1, 1, 1)),
+        _deep(90_000_900, 3, (100, 110, 120, 130, 5, 6, 7, 8, 9, 1), (20, 1, 1, 1, 1, 1, 1, 1, 1, 1)),
+        # Bucket 2 (15:18): deep continuous row that sets last_continuous_ms.
+        _deep(151_800_000, 4, (10, 20, 30, 40, 5, 6, 7, 8, 9, 1), (50, 40, 30, 20, 5, 5, 5, 5, 5, 5)),
+        # Bucket 3 (15:20:58): fully-auction tail bucket (shallow, after threshold).
+        _shallow(152_058_000, 5, (99, 98, 97), (7, 7, 7)),
+        _shallow(152_058_500, 6, (50, 40, 30), (5, 5, 5)),
+    ]
+    out = tmp_path / "snapshots.parquet"
+    write_parquet(obs, out)
+    con = duckdb.connect()
+    for bucket_ms in (1000, 60_000):
+        for session_close_ms in (None, 153000000):
+            got = query_bucketed_ratio(con, path=out, bucket_ms=bucket_ms, session_close_ms=session_close_ms)
+            want = _query_bucketed_ratio_windowed(
+                con, path=out, bucket_ms=bucket_ms, session_close_ms=session_close_ms
+            )
+            assert got == want
+
+
+def test_query_bucketed_ratio_parity_one_side_zero_and_imb_tie_earlier_ts_wins(
+    tmp_path: Path,
+) -> None:
+    """Degenerate one-side-zero snapshot (imb_key forced to 0) plus a genuine
+    imb magnitude tie between two rows at DISTINCT ts_ms — the earlier ts_ms
+    must win in both implementations (FIRST_VALUE ... ORDER BY ... ts_ms ASC
+    == arg_min tiebreak on ts_ms)."""
+    from hoga.tables.snapshots import _query_bucketed_ratio_windowed, query_bucketed_ratio
+
+    obs = [
+        # One side zero -> imb_key gated to 0 (not a real imbalance candidate).
+        _ob(ts_ms=90_000_100, seq=1, ask_q=(0,), bid_q=(500,)),
+        # Two rows with identical |imbalance| magnitude (ask/bid ratio equal);
+        # earlier ts_ms (seq=2) must win over later ts_ms (seq=3) on the tie.
+        _ob(ts_ms=90_000_300, seq=2, ask_q=(10,), bid_q=(100,)),  # imb = 100/10-1 = 9
+        _ob(ts_ms=90_000_600, seq=3, ask_q=(20,), bid_q=(200,)),  # imb = 200/20-1 = 9 (tie)
+        _ob(ts_ms=90_000_900, seq=4, ask_q=(30,), bid_q=(30,)),  # 종가, no imbalance
+    ]
+    out = tmp_path / "snapshots.parquet"
+    write_parquet(obs, out)
+    con = duckdb.connect()
+    got = query_bucketed_ratio(con, path=out, bucket_ms=1000)
+    want = _query_bucketed_ratio_windowed(con, path=out, bucket_ms=1000)
+    assert got == want
+    # Sanity: earlier-ts row (seq=2: bid=100, ask=10) wins the tie, per the
+    # windowed original's documented ORDER BY ... ts_ms ASC tiebreak.
+    assert (want[0].imb_max_bid, want[0].imb_max_ask) == (100, 10)
+
+
+def test_query_bucketed_ratio_parity_empty_parquet(tmp_path: Path) -> None:
+    from hoga.tables.snapshots import _query_bucketed_ratio_windowed, query_bucketed_ratio
+
+    out = tmp_path / "snapshots.parquet"
+    write_parquet([], out)
+    con = duckdb.connect()
+    got = query_bucketed_ratio(con, path=out, bucket_ms=1000)
+    want = _query_bucketed_ratio_windowed(con, path=out, bucket_ms=1000)
+    assert got == want == []
+
+
+# ---------------------------------------------------------------------------
 # query_bucket_representative (ADR-0062): sidebar 10호가 = indicator's structural
 # representative. The orderbook endpoint must show the same snapshot the
 # 호가비·총잔량 indicator labels at a straddle bucket, EXCLUDING the closing
