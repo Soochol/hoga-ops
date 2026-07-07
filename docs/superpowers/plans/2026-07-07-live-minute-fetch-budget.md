@@ -470,16 +470,7 @@ function mockApiEchoingWindow() {
   });
 ```
 
-`describe('hasBlockingWarnings', ...)` 안에 1개:
-
-```tsx
-  it('fetch_budget_exhausted 경고도 blocking으로 취급한다', () => {
-    expect(hasBlockingWarnings({
-      ...RESPONSE,
-      data_warnings: [{ date: '20260501', reason: 'fetch_budget_exhausted', msg: 'deferred' }],
-    })).toBe(true);
-  });
-```
+`describe('hasBlockingWarnings', ...)`의 `fetch_budget_exhausted` 테스트는 **Task 1 리뷰 수정 커밋(ad81624)에서 이미 추가됨 — 스킵**.
 
 - [ ] **Step 2: 실패 확인**
 
@@ -490,17 +481,7 @@ Expected: 신규 3개 FAIL — 첫 요청이 `from=20260101` 전체 창; blockin
 
 `frontend/src/api/livePastCandles.ts` — 네 군데.
 
-(a) `BLOCKING_WARNING_REASONS`에 추가:
-
-```ts
-const BLOCKING_WARNING_REASONS = new Set([
-  'capacity_overloaded',
-  'fetch_budget_exhausted',
-  'kis_api_error',
-  'kis_rate_limit',
-  'rate_limit_aborted',
-]);
-```
+(a) `BLOCKING_WARNING_REASONS`에 `fetch_budget_exhausted` 추가는 **Task 1 리뷰 수정 커밋(ad81624)에서 이미 완료 — 스킵**.
 
 (b) 상수 추가(파일 내 `planPastCandlesDelta` 위):
 
