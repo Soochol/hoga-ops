@@ -118,6 +118,18 @@ function responseIdentity(code: string | null, to: string | null, venue: LiveVen
  * 근본원인(2026-07-07 조사) — 청크 워크백으로 근절한다. */
 export const PAST_CHUNK_CALENDAR_DAYS = 15;
 
+/** 서버가 예산 내로 응답하므로 정상 요청은 수 초에 끝난다. 30s는 서버
+ * 포화·행 상태에서 무한 로딩을 끊는 백스톱 — abort되면 React Query
+ * 재시도/refetchInterval이 이어받는다. */
+const PAST_CANDLES_TIMEOUT_MS = 30_000;
+
+export function withPastCandlesTimeout(signal: AbortSignal, ms: number): AbortSignal {
+  if (typeof AbortSignal.any !== 'function' || typeof AbortSignal.timeout !== 'function') {
+    return signal; // 구형 런타임 폴백: 타임아웃 없이 기존 동작 유지
+  }
+  return AbortSignal.any([signal, AbortSignal.timeout(ms)]);
+}
+
 export function planPastCandlesDelta(
   code: string | null,
   from: string | null,
@@ -227,7 +239,7 @@ export function useLivePastCandles(
     queryFn: ({ signal }) =>
       apiCall<LivePastCandlesResponse>(
         `/api/live/past-candles?code=${code}&from=${plan.requestFrom}&to=${plan.requestTo}&venue=${venue}`,
-        { signal },
+        { signal: withPastCandlesTimeout(signal, PAST_CANDLES_TIMEOUT_MS) },
       ),
     enabled: plan.enabled,
     staleTime: 60_000,

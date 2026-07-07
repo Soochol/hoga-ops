@@ -1,7 +1,7 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { renderHook, waitFor } from '@testing-library/react';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
-import { hasBlockingWarnings, useLivePastCandles, type LivePastCandlesResponse } from './livePastCandles';
+import { hasBlockingWarnings, useLivePastCandles, withPastCandlesTimeout, type LivePastCandlesResponse } from './livePastCandles';
 import * as client from './client';
 
 function wrap(qc: QueryClient) {
@@ -380,6 +380,21 @@ describe('useLivePastCandles', () => {
     expect(spy.mock.calls[1][0]).toBe(
       '/api/live/past-candles?code=005930&from=20260430&to=20260503&venue=KRX',
     );
+  });
+});
+
+describe('withPastCandlesTimeout', () => {
+  it('원본 signal의 abort가 전파된다', () => {
+    const c = new AbortController();
+    const s = withPastCandlesTimeout(c.signal, 60_000);
+    c.abort();
+    expect(s.aborted).toBe(true);
+  });
+
+  it('타임아웃 경과 시 abort된다', async () => {
+    const s = withPastCandlesTimeout(new AbortController().signal, 10);
+    await new Promise((r) => setTimeout(r, 50));
+    expect(s.aborted).toBe(true);
   });
 });
 
