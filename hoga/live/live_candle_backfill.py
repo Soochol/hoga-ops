@@ -27,6 +27,16 @@ _KST = timezone(timedelta(hours=9))
 _WEEKEND_START_WEEKDAY = 5
 log = logging.getLogger(__name__)
 
+# read_ahead 선행 워밍 폭 상한(캘린더일). 하한 결합은 프론트 팬 스텝
+# stepChunkDays(minute=5캘린더일, frontend/src/live/liveDateTime.ts)다 —
+# 워밍 폭이 이보다 크면 다음 좌측 팬 청크가 항상 캐시 히트다. 5가 아니라
+# 15로 둔 건 헤드룸이다: STEP_TRADING_DAYS가 커져도 gap이 안 생기고,
+# 프론트 콜드로드 청크 PAST_CHUNK_CALENDAR_DAYS(=15, 같은 브랜치 Task 4가
+# frontend/src/api/livePastCandles.ts에 추가)를 정확히 선워밍한다.
+# 무제한이면 거대 창 요청이 같은 폭의 워밍을 또 낳아(2026-07-07: 243일→
+# +243일) KIS 예산을 자기증폭적으로 태운다.
+_READ_AHEAD_MAX_SPAN_DAYS = 15
+
 
 class KisRestScheduler(Protocol):
     async def submit(
@@ -69,12 +79,23 @@ class LiveMinuteCandleBackfill:
         scheduler: KisRestScheduler,
         concurrency: int = 3,
         rate_limit_cooldown_s: float = 10.0,
+        max_fresh_dates_per_collect: int = 12,
     ) -> None:
         self._data_dir = data_dir
         self._cache = cache
         self._scheduler = scheduler
         self._sem = asyncio.Semaphore(concurrency)
         self._rate_limit_cooldown_s = rate_limit_cooldown_s
+        # 한 collect 호출이 KIS에서 새로 가져올 수 있는 날짜 수 상한.
+        # 기준선을 잃은 프론트가 수백 일 창을 통째로 재요청하면(2026-07-07
+        # 실측 최대 243일/25분) foreground로 KIS 예산을 독점해 다른 종목이
+        # 굶는다. 초과분은 fetch_budget_exhausted 경고(blocking)로 유예 —
+        # 프론트가 박제하지 않으므로 다음 사이클에 이어서 받는다.
+        # 불변식: 이 값(12)은 프론트 청크 폭(PAST_CHUNK_CALENDAR_DAYS=15캘린더일
+        # ≈ 11거래일)보다 커야 한다 — 그래야 한 청크 요청이 항상 예산 안에서
+        # 완결된다. 이 아래로 낮추면 청크가 예산 경고를 받아 60s 주기로만
+        # 전진한다(기능은 유지, 속도 저하).
+        self._max_fresh_dates_per_collect = max(1, int(max_fresh_dates_per_collect))
         self._inflight: dict[
             tuple[KisVenue, str, str],
             asyncio.Task[tuple[list[dict], str | None]],
@@ -96,18 +117,12 @@ class LiveMinuteCandleBackfill:
         out = await self._collect_minute_inner(
             code=code, frm=frm, too=too, today_d=today_d, policy=policy,
         )
-        # read-ahead: 이번 요청창 직전 동일 폭 구간을 background로 선행 워밍.
-        # settle-loop의 다음 청크가 캐시 히트가 된다. 레이트리밋/용량 경고가
-        # 있으면 예산이 이미 부족하다는 뜻이므로 이번엔 건너뛴다.
+        # read-ahead: 이번 요청창 직전 구간을 background로 선행 워밍하되,
+        # 폭은 _READ_AHEAD_MAX_SPAN_DAYS로 캡한다(상수 주석 참조).
+        # 레이트리밋/용량/예산 경고가 있으면 예산이 이미 부족하다는 뜻이므로
+        # 이번엔 건너뛴다.
         if read_ahead and not _fallback_blocking_warning_dates(out.data_warnings):
-            # span_days는 의도적으로 무제한이다(요청창 폭 전체). 프론트 팬은
-            # to=today 고정으로 창이 넓어지고 nextHistoricalFrom이 from을 매 스텝
-            # 정확히 stepChunkDays(=5캘린더일)씩 뒤로 옮기므로, [frm-span, frm-1]은
-            # 항상 다음 청크가 필요로 하는 [frm-5, frm-1]의 superset이다(gap 없음).
-            # 5로 캡하면 backend가 프론트 STEP_TRADING_DAYS에 암묵 결합돼, 그 상수가
-            # 커지면 gap이 생긴다. 무제한 비용은 O(span) 캐시조회뿐(이미 데운 날짜는
-            # _warm_run에서 get_past로 스킵)이라 무시 가능.
-            span_days = (too - frm).days + 1
+            span_days = min((too - frm).days + 1, _READ_AHEAD_MAX_SPAN_DAYS)
             ra_too = frm - timedelta(days=1)
             ra_frm = ra_too - timedelta(days=span_days - 1)
             if earliest_allowed is not None:
@@ -421,6 +436,17 @@ class LiveMinuteCandleBackfill:
                 continue
             pending.append(date_s)
 
+        deferred = 0
+        if len(pending) > self._max_fresh_dates_per_collect:
+            # 최신 날짜 우선(차트는 우측=최신부터 보인다). 유예분은 blocking
+            # 경고 → read_ahead 스킵 + 비-KRX 폴백의 covered 처리 + 프론트
+            # 비박제까지 한 사유로 일관 처리된다.
+            overflow = pending[: -self._max_fresh_dates_per_collect]
+            pending = pending[-self._max_fresh_dates_per_collect :]
+            deferred = len(overflow)
+            for date_s in overflow:
+                warnings_by_date[date_s] = _fetch_budget_exhausted_warning(date_s)
+
         blocked = asyncio.Event()
 
         async def one(date_s: str) -> None:
@@ -533,7 +559,7 @@ class LiveMinuteCandleBackfill:
         if perf_debug.enabled():
             log.warning(
                 "hoga_perf past_candles_collect code=%s venue=%s from=%s to=%s "
-                "days=%d pending_dates=%d cached_dates=%d fresh_dates=%d candles=%d "
+                "days=%d pending_dates=%d deferred_dates=%d cached_dates=%d fresh_dates=%d candles=%d "
                 "warnings=%d rate_limited=%s duration_ms=%.1f",
                 code,
                 venue,
@@ -541,6 +567,7 @@ class LiveMinuteCandleBackfill:
                 too.strftime("%Y%m%d"),
                 (too - frm).days + 1,
                 len(pending),
+                deferred,
                 len(result.cached_dates),
                 len(result.fresh_dates),
                 len(result.candles),
@@ -792,6 +819,7 @@ def _merge_minute_fallback(
 def _fallback_blocking_warning_dates(warnings: list[dict]) -> set[str]:
     blocking_reasons = {
         "capacity_overloaded",
+        "fetch_budget_exhausted",
         "kis_api_error",
         "kis_rate_limit",
         "rate_limit_aborted",
@@ -808,6 +836,14 @@ def _capacity_overloaded_warning(date_s: str) -> dict:
         "date": date_s,
         "reason": "capacity_overloaded",
         "msg": "KIS capacity scheduler pending request limit reached",
+    }
+
+
+def _fetch_budget_exhausted_warning(date_s: str) -> dict:
+    return {
+        "date": date_s,
+        "reason": "fetch_budget_exhausted",
+        "msg": "uncached-date fetch budget exhausted for this request; older dates deferred",
     }
 
 

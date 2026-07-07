@@ -26,7 +26,11 @@ def _ts_ms_to_kst_yyyymmdd(ts_ms: int) -> str:
 
 # Default TTL for today's memory cache.
 TODAY_TTL_SECONDS = 60.0
-DEFAULT_PAST_MEM_MAX_ENTRIES = 512
+# 2048 = _PAST_MAX_DAYS(250) × 2종목 + 60일 워밍 여러 종목 + 여백.
+# 512에서는 한 종목 반년 워크백만으로 최근 날짜가 축출돼 60초 refetch가
+# 매번 KIS 재호출하는 churn이 생겼다(2026-07-07 실측). 봉당 ~130KB/일
+# 기준 최악 ~270MB — 단일 운영 서버에서 수용 가능.
+DEFAULT_PAST_MEM_MAX_ENTRIES = 2048
 DEFAULT_TODAY_MEM_MAX_ENTRIES = 256
 
 TodayState = Literal["hit", "miss", "negative"]

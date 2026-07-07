@@ -1,4 +1,4 @@
-import { useMemo, useRef } from 'react';
+import { useEffect, useMemo, useReducer, useRef } from 'react';
 import { useQuery } from '@tanstack/react-query';
 
 import { apiCall } from './client';
@@ -81,6 +81,7 @@ function uniqueWarnings(warnings: LivePastCandlesWarning[]): LivePastCandlesWarn
  * "이미 받은 범위"로 굳어 영원히 재요청되지 않는다(영구 구멍). */
 const BLOCKING_WARNING_REASONS = new Set([
   'capacity_overloaded',
+  'fetch_budget_exhausted',
   'kis_api_error',
   'kis_rate_limit',
   'rate_limit_aborted',
@@ -108,6 +109,25 @@ function sortUniqueCandles(candles: LivePastCandle[]): LivePastCandle[] {
 
 function responseIdentity(code: string | null, to: string | null, venue: LiveVenueOption): string {
   return `${code ?? ''}|${to ?? ''}|${venue}`;
+}
+
+/** 한 요청의 최대 캘린더일 폭. 백엔드 미캐시-일수 예산
+ * (max_fresh_dates_per_collect=12 거래일)보다 작은 ~11거래일이라 청크는
+ * 항상 예산 안에서 완결된다. 기준선(mergedRef)이 리마운트·날짜 롤오버로
+ * 사라졌을 때 수백 일 창을 통째로 재요청하던 것이 분봉 기아의
+ * 근본원인(2026-07-07 조사) — 청크 워크백으로 근절한다. */
+export const PAST_CHUNK_CALENDAR_DAYS = 15;
+
+/** 서버가 예산 내로 응답하므로 정상 요청은 수 초에 끝난다. 30s는 서버
+ * 포화·행 상태에서 무한 로딩을 끊는 백스톱 — abort되면 React Query
+ * 재시도/refetchInterval이 이어받는다. */
+const PAST_CANDLES_TIMEOUT_MS = 30_000;
+
+export function withPastCandlesTimeout(signal: AbortSignal, ms: number): AbortSignal {
+  if (typeof AbortSignal.any !== 'function' || typeof AbortSignal.timeout !== 'function') {
+    return signal; // 구형 런타임 폴백: 타임아웃 없이 기존 동작 유지
+  }
+  return AbortSignal.any([signal, AbortSignal.timeout(ms)]);
 }
 
 export function planPastCandlesDelta(
@@ -151,19 +171,22 @@ export function planPastCandlesDelta(
     from < previous.from
   );
   if (!canReusePrevious) {
+    const chunkFloor = addDays(to, -(PAST_CHUNK_CALENDAR_DAYS - 1));
     return {
       enabled: true,
-      requestFrom: from,
+      requestFrom: from < chunkFloor ? chunkFloor : from,
       requestTo: to,
       canReusePrevious: false,
       servePrevious: false,
       identity,
     };
   }
+  const requestTo = addDays(previous.from, -1);
+  const chunkFloor = addDays(requestTo, -(PAST_CHUNK_CALENDAR_DAYS - 1));
   return {
     enabled: true,
-    requestFrom: from,
-    requestTo: addDays(previous.from, -1),
+    requestFrom: from < chunkFloor ? chunkFloor : from,
+    requestTo,
     canReusePrevious: true,
     servePrevious: true,
     identity,
@@ -177,6 +200,10 @@ export function mergePastCandleResponses(
   return {
     ...next,
     from: previous.from < next.from ? previous.from : next.from,
+    // load-bearing: 청크 워크백 중 merged `to`를 seed `to`(=max)에 고정한다.
+    // sameIdentity가 `previous.to === to`로 키하므로(아래 planPastCandlesDelta),
+    // merged `to`가 한 청크의 더 작은 to로 흘러내리면 워크백 도중 체인이
+    // 리셋된다. 이 max가 워크백 자기재시작의 불변식이다 — 낮추지 말 것.
     to: previous.to > next.to ? previous.to : next.to,
     venue: next.venue ?? previous.venue,
     candles: sortUniqueCandles([...previous.candles, ...next.candles]),
@@ -197,6 +224,7 @@ export function useLivePastCandles(
   venue: LiveVenueOption = 'KRX',
 ) {
   const mergedRef = useRef<{ identity: string; data: LivePastCandlesResponse } | null>(null);
+  const [, bumpMergedVersion] = useReducer((x: number) => x + 1, 0);
   const identity = responseIdentity(code, to, venue);
   const previous = mergedRef.current?.identity === identity ? mergedRef.current.data : undefined;
   const previousFrom = previous?.from;
@@ -211,7 +239,7 @@ export function useLivePastCandles(
     queryFn: ({ signal }) =>
       apiCall<LivePastCandlesResponse>(
         `/api/live/past-candles?code=${code}&from=${plan.requestFrom}&to=${plan.requestTo}&venue=${venue}`,
-        { signal },
+        { signal: withPastCandlesTimeout(signal, PAST_CANDLES_TIMEOUT_MS) },
       ),
     enabled: plan.enabled,
     staleTime: 60_000,
@@ -247,6 +275,20 @@ export function useLivePastCandles(
   if (data && !query.isPlaceholderData && !(query.data && hasBlockingWarnings(query.data))) {
     mergedRef.current = { identity, data };
   }
+
+  // 청크 워크백 전진 nudge: 응답이 pin된 렌더에서는 plan이 pin 이전
+  // previous로 계산돼 있다. 데이터 도착마다 리렌더를 한 번 강제해
+  // 다음 청크 쿼리키가 즉시 파생되게 한다. blocking 경고 응답은 pin되지
+  // 않아 plan이 같은 키를 유지 → React Query가 중복 요청을 흡수하므로
+  // 무한 루프가 아니다(재시도는 staleTime 60s가 담당).
+  // 종료 보장: bumpMergedVersion은 어떤 query.data/isPlaceholderData에도
+  // 반영되지 않는 useReducer 카운터라 자기 effect를 재발화하지 못한다 —
+  // 오직 새 query 결과에만 발화한다. merged.from은 단조 비증가이고,
+  // seed from에 도달하면 servePrevious 분기가 enabled:false로 쿼리를 꺼
+  // query.data=undefined → 가드 거짓 → 정지한다.
+  useEffect(() => {
+    if (query.data && !query.isPlaceholderData) bumpMergedVersion();
+  }, [query.data, query.isPlaceholderData]);
 
   return {
     ...query,

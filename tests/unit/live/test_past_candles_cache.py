@@ -167,3 +167,35 @@ def test_today_negative_cache_ttl_expiry(tmp_path: Path) -> None:
     ):
         state, _ = cache.get_today_tri("005930")
     assert state == "miss"
+
+
+def _capacity_bar(date_yyyymmdd: str) -> list[dict]:
+    y, m, d = int(date_yyyymmdd[:4]), int(date_yyyymmdd[4:6]), int(date_yyyymmdd[6:8])
+    ts = datetime(y, m, d, 9, 0, tzinfo=_KST)
+    return [{"t_ms": int(ts.timestamp() * 1000), "open": 1, "high": 1, "low": 1, "close": 1, "volume": 1}]
+
+
+def test_default_capacity_survives_two_symbol_deep_walkback(tmp_path: Path) -> None:
+    """250일 워크백(_PAST_MAX_DAYS) × 2종목 + 60일 워밍 × 4종목 ≈ 740키가
+    공존해도 최근 날짜가 축출되지 않아야 한다. 512에서는 깊은 walk가 최근
+    날짜를 밀어내 60초마다 재fetch churn을 일으켰다(2026-07-07 실측: 같은
+    날짜 39회 재fetch)."""
+    cache = PastCandlesCache(data_dir=tmp_path)
+    start = datetime(2025, 11, 1, tzinfo=_KST)
+    dates = [(start + timedelta(days=i)).strftime("%Y%m%d") for i in range(250)]
+    for code in ("005930", "000660"):
+        for date_s in dates:
+            cache.store_past("KRX", code, date_s, _capacity_bar(date_s))
+    for code in ("112040", "000270", "015760", "241560"):
+        for date_s in dates[-60:]:
+            cache.store_past("KRX", code, date_s, _capacity_bar(date_s))
+
+    # 두 종목 250일 전량 + 워밍 4종목 60일 전량 생존
+    assert all(
+        cache.get_past("KRX", code, date_s) is not None
+        for code in ("005930", "000660") for date_s in dates
+    )
+    assert all(
+        cache.get_past("KRX", code, date_s) is not None
+        for code in ("112040", "000270", "015760", "241560") for date_s in dates[-60:]
+    )

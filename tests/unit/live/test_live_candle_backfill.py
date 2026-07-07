@@ -687,3 +687,129 @@ async def test_warm_then_read_non_krx_empty_does_not_suppress_krx_fallback(
     )
     assert len(out.candles) == 1  # KRX 폴백 캔들
     assert any(w.get("reason") == "minute_fallback_to_krx" for w in out.data_warnings)
+
+
+@pytest.mark.asyncio
+async def test_collect_minute_caps_uncached_fetches_per_request(tmp_path, monkeypatch) -> None:
+    """예산(3)보다 큰 미캐시 창(10일) → 최신 3일만 fetch, 나머지는 budget 경고로 유예."""
+    from hoga.api import calendar as cal
+
+    monkeypatch.setattr(cal, "is_trading_day", lambda date_s: True)
+    kis = _FakeKis()
+    scheduler = _RecordingScheduler(kis)
+    backfill = LiveMinuteCandleBackfill(
+        data_dir=tmp_path,
+        cache=PastCandlesCache(data_dir=tmp_path),
+        scheduler=scheduler,  # type: ignore[arg-type]
+        concurrency=1,
+        max_fresh_dates_per_collect=3,
+    )
+
+    result = await backfill.collect_minute(
+        code="005930",
+        frm=dt.date(2026, 5, 1),
+        too=dt.date(2026, 5, 10),
+        today_d=dt.date(2026, 6, 1),
+        policy="KRX",
+    )
+
+    assert result.fresh_dates == ["20260508", "20260509", "20260510"]
+    assert sorted(d for _, d, _, _ in kis.calls) == ["20260508", "20260509", "20260510"]
+    warned = [w for w in result.data_warnings if w["reason"] == "fetch_budget_exhausted"]
+    assert [w["date"] for w in warned] == [f"2026050{d}" for d in range(1, 8)]
+
+
+@pytest.mark.asyncio
+async def test_budget_counts_only_uncached_dates(tmp_path, monkeypatch) -> None:
+    """캐시된 날짜는 예산을 소모하지 않는다."""
+    from hoga.api import calendar as cal
+
+    monkeypatch.setattr(cal, "is_trading_day", lambda date_s: True)
+    kis = _FakeKis()
+    scheduler = _RecordingScheduler(kis)
+    cache = PastCandlesCache(data_dir=tmp_path)
+    for day in range(1, 8):  # 5/1-5/7 캐시 채움 → 미캐시는 5/8-5/10 셋뿐
+        date_s = f"2026050{day}"
+        cache.store_past("KRX", "005930", date_s, [
+            {"t_ms": _kst_ms(date_s), "open": 1, "high": 1, "low": 1, "close": 1, "volume": 1},
+        ])
+    backfill = LiveMinuteCandleBackfill(
+        data_dir=tmp_path, cache=cache, scheduler=scheduler,  # type: ignore[arg-type]
+        concurrency=1, max_fresh_dates_per_collect=3,
+    )
+
+    result = await backfill.collect_minute(
+        code="005930",
+        frm=dt.date(2026, 5, 1),
+        too=dt.date(2026, 5, 10),
+        today_d=dt.date(2026, 6, 1),
+        policy="KRX",
+    )
+
+    assert result.fresh_dates == ["20260508", "20260509", "20260510"]
+    assert result.data_warnings == []  # 예산 내 완결 → 경고 없음
+
+
+@pytest.mark.asyncio
+async def test_budget_exhausted_suppresses_read_ahead(tmp_path, monkeypatch) -> None:
+    """예산 초과 경고가 있으면 read_ahead 워밍을 건너뛴다(증폭 차단)."""
+    from hoga.api import calendar as cal
+
+    monkeypatch.setattr(cal, "is_trading_day", lambda date_s: True)
+    kis = _FakeKis()
+    scheduler = _RecordingScheduler(kis)
+    backfill = LiveMinuteCandleBackfill(
+        data_dir=tmp_path,
+        cache=PastCandlesCache(data_dir=tmp_path),
+        scheduler=scheduler,  # type: ignore[arg-type]
+        concurrency=1,
+        max_fresh_dates_per_collect=3,
+    )
+
+    await backfill.collect_minute(
+        code="005930",
+        frm=dt.date(2026, 5, 1),
+        too=dt.date(2026, 5, 10),
+        today_d=dt.date(2026, 6, 1),
+        policy="KRX",
+        read_ahead=True,
+    )
+
+    assert ("KRX", "005930") not in backfill._warm_tasks
+
+
+@pytest.mark.asyncio
+async def test_read_ahead_span_capped(tmp_path, monkeypatch) -> None:
+    """40일 요청창이라도 선행 워밍은 직전 15일만(자기증폭 차단)."""
+    from hoga.api import calendar as cal
+
+    monkeypatch.setattr(cal, "is_trading_day", lambda date_s: True)
+    kis = _FakeKis()
+    scheduler = _RecordingScheduler(kis)
+    backfill = LiveMinuteCandleBackfill(
+        data_dir=tmp_path,
+        cache=PastCandlesCache(data_dir=tmp_path),
+        scheduler=scheduler,  # type: ignore[arg-type]
+        concurrency=1,
+        max_fresh_dates_per_collect=100,  # 예산 경고로 워밍이 스킵되지 않게 격리
+    )
+
+    await backfill.collect_minute(
+        code="005930",
+        frm=dt.date(2026, 5, 20),
+        too=dt.date(2026, 6, 28),  # 40일 창
+        today_d=dt.date(2026, 7, 1),
+        policy="KRX",
+        read_ahead=True,
+    )
+    task = backfill._warm_tasks.get(("KRX", "005930"))
+    assert task is not None
+    await task
+
+    # 선행창 = [frm-15, frm-1] = 2026-05-05 .. 2026-05-19 (전부 거래일 mock)
+    bg_dates = sorted(
+        c["key"][4] for c in scheduler.calls if c["priority"] == "background"
+    )
+    assert bg_dates[0] == "20260505"
+    assert bg_dates[-1] == "20260519"
+    assert len(bg_dates) == 15

@@ -1,7 +1,7 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { renderHook, waitFor } from '@testing-library/react';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
-import { hasBlockingWarnings, useLivePastCandles, type LivePastCandlesResponse } from './livePastCandles';
+import { hasBlockingWarnings, useLivePastCandles, withPastCandlesTimeout, type LivePastCandlesResponse } from './livePastCandles';
 import * as client from './client';
 
 function wrap(qc: QueryClient) {
@@ -23,6 +23,22 @@ const RESPONSE: LivePastCandlesResponse = {
   data_warnings: [],
 };
 
+function mockApiEchoingWindow() {
+  return vi.spyOn(client, 'apiCall').mockImplementation(async (url: string) => {
+    const params = new URLSearchParams(url.split('?')[1]);
+    return {
+      code: params.get('code')!,
+      from: params.get('from')!,
+      to: params.get('to')!,
+      venue: (params.get('venue') ?? 'KRX') as LivePastCandlesResponse['venue'],
+      candles: [],
+      cached_dates: [],
+      fresh_dates: [],
+      data_warnings: [],
+    } satisfies LivePastCandlesResponse;
+  });
+}
+
 describe('useLivePastCandles', () => {
   beforeEach(() => vi.restoreAllMocks());
 
@@ -38,6 +54,37 @@ describe('useLivePastCandles', () => {
       '/api/live/past-candles?code=005930&from=20260501&to=20260502&venue=KRX',
       { signal: expect.any(AbortSignal) },
     );
+  });
+
+  it('기준선이 없으면 최신 15일 청크만 먼저 요청한다', async () => {
+    const spy = mockApiEchoingWindow();
+    const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+    renderHook(
+      () => useLivePastCandles('005930', '20260101', '20260707'),
+      { wrapper: wrap(qc) },
+    );
+    await waitFor(() => expect(spy).toHaveBeenCalled());
+    expect(spy.mock.calls[0][0]).toBe(
+      '/api/live/past-candles?code=005930&from=20260623&to=20260707&venue=KRX',
+    );
+  });
+
+  it('청크 단위로 seed from까지 자동 워크백한다', async () => {
+    const spy = mockApiEchoingWindow();
+    const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+    renderHook(
+      () => useLivePastCandles('005930', '20260601', '20260707'),
+      { wrapper: wrap(qc) },
+    );
+    await waitFor(() => expect(spy).toHaveBeenCalledTimes(3), { timeout: 3000 });
+    const urls = spy.mock.calls.map((c) => c[0]);
+    expect(urls).toEqual([
+      '/api/live/past-candles?code=005930&from=20260623&to=20260707&venue=KRX',
+      '/api/live/past-candles?code=005930&from=20260608&to=20260622&venue=KRX',
+      '/api/live/past-candles?code=005930&from=20260601&to=20260607&venue=KRX',
+    ]);
+    await new Promise((r) => setTimeout(r, 100));
+    expect(spy).toHaveBeenCalledTimes(3);
   });
 
   it('passes an AbortSignal to apiCall', async () => {
@@ -336,6 +383,21 @@ describe('useLivePastCandles', () => {
   });
 });
 
+describe('withPastCandlesTimeout', () => {
+  it('원본 signal의 abort가 전파된다', () => {
+    const c = new AbortController();
+    const s = withPastCandlesTimeout(c.signal, 60_000);
+    c.abort();
+    expect(s.aborted).toBe(true);
+  });
+
+  it('타임아웃 경과 시 abort된다', async () => {
+    const s = withPastCandlesTimeout(new AbortController().signal, 10);
+    await new Promise((r) => setTimeout(r, 50));
+    expect(s.aborted).toBe(true);
+  });
+});
+
 describe('hasBlockingWarnings', () => {
   const warn = (reason: string) => ({ date: '20260430', reason, msg: 'x' });
 
@@ -346,6 +408,13 @@ describe('hasBlockingWarnings', () => {
     'rate_limit_aborted',
   ])('blocking 사유 %s 에 true', (reason) => {
     expect(hasBlockingWarnings({ ...RESPONSE, data_warnings: [warn(reason)] })).toBe(true);
+  });
+
+  it('fetch_budget_exhausted 경고도 blocking으로 취급한다', () => {
+    expect(hasBlockingWarnings({
+      ...RESPONSE,
+      data_warnings: [{ date: '20260501', reason: 'fetch_budget_exhausted', msg: 'deferred' }],
+    })).toBe(true);
   });
 
   it('non-blocking 경고나 빈 경고에는 false', () => {
