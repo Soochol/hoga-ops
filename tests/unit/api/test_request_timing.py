@@ -124,3 +124,10 @@ def test_invalid_threshold_falls_back_to_default(
     assert request_timing.slow_request_threshold_ms() == (
         request_timing.DEFAULT_SLOW_REQUEST_MS
     )
+
+
+def test_create_app_wires_timing_middleware(tmp_path) -> None:
+    from hoga.api.app import create_app
+
+    app = create_app(tmp_path)
+    assert any(m.cls is RequestTimingMiddleware for m in app.user_middleware)
