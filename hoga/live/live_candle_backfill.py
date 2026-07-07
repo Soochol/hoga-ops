@@ -80,8 +80,38 @@ class LiveMinuteCandleBackfill:
             asyncio.Task[tuple[list[dict], str | None]],
         ] = {}
         self._rate_limit_until = 0.0
+        self._warm_tasks: dict[tuple[KisVenue, str], asyncio.Task[None]] = {}
 
     async def collect_minute(
+        self,
+        *,
+        code: str,
+        frm: date,
+        too: date,
+        today_d: date,
+        policy: LiveVenuePolicy,
+        read_ahead: bool = False,
+        earliest_allowed: date | None = None,
+    ) -> LiveMinuteCandleBackfillResult:
+        out = await self._collect_minute_inner(
+            code=code, frm=frm, too=too, today_d=today_d, policy=policy,
+        )
+        # read-ahead: 이번 요청창 직전 동일 폭 구간을 background로 선행 워밍.
+        # settle-loop의 다음 청크가 캐시 히트가 된다. 레이트리밋/용량 경고가
+        # 있으면 예산이 이미 부족하다는 뜻이므로 이번엔 건너뛴다.
+        if read_ahead and not _fallback_blocking_warning_dates(out.data_warnings):
+            span_days = (too - frm).days + 1
+            ra_too = frm - timedelta(days=1)
+            ra_frm = ra_too - timedelta(days=span_days - 1)
+            if earliest_allowed is not None:
+                ra_frm = max(ra_frm, earliest_allowed)
+            if ra_frm <= ra_too:
+                await self.warm_minute(
+                    code=code, frm=ra_frm, too=ra_too, today_d=today_d, policy=policy,
+                )
+        return out
+
+    async def _collect_minute_inner(
         self,
         *,
         code: str,
@@ -190,6 +220,85 @@ class LiveMinuteCandleBackfill:
             too=too,
             today_d=today_d,
         )
+
+    async def warm_minute(
+        self,
+        *,
+        code: str,
+        frm: date,
+        too: date,
+        today_d: date,
+        policy: LiveVenuePolicy,
+    ) -> str:
+        """[frm, too]의 미캐시 과거 날짜를 background 우선순위로 순차 fetch해
+        캐시를 데운다(fire-and-forget). (venue, code)별 단일 비행;
+        "started" | "already_running" 반환. 태스크는 supervised — 실패는
+        로그로 남고 침묵 사망하지 않는다(ADR-0088).
+
+        일부러 순차(동시성 1): 워밍이 사용자 경로의 세마포어(3)나 KIS 예산을
+        점유하지 않게 한다. KRX 폴백은 하지 않는다 — 폴백이 필요한 날짜는
+        인터랙션 경로의 collect_minute가 그때 처리한다."""
+        key = (policy, code)
+        existing = self._warm_tasks.get(key)
+        if existing is not None and not existing.done():
+            return "already_running"
+        task = asyncio.create_task(
+            self._warm_run(policy, code, frm=frm, too=too, today_d=today_d),
+            name=f"live-candle-warm:{policy}:{code}",
+        )
+        self._warm_tasks[key] = task
+
+        def _done(t: asyncio.Task, k: tuple[KisVenue, str] = key) -> None:
+            if self._warm_tasks.get(k) is t:
+                self._warm_tasks.pop(k, None)
+            if t.cancelled():
+                return
+            exc = t.exception()
+            if exc is not None:
+                log.warning(
+                    "live candle warm failed venue=%s code=%s: %s", k[0], k[1], exc,
+                )
+
+        task.add_done_callback(_done)
+        return "started"
+
+    async def _warm_run(
+        self,
+        venue: KisVenue,
+        code: str,
+        *,
+        frm: date,
+        too: date,
+        today_d: date,
+    ) -> None:
+        today_s = today_d.strftime("%Y%m%d")
+        for date_s in reversed(list(_date_iter(frm, too))):
+            if date_s >= today_s:
+                continue
+            if self._cache.get_past(venue, code, date_s) is not None:
+                continue
+            if trading_calendar.is_trading_day(date_s) is False:
+                self._cache.store_past(venue, code, date_s, [])
+                continue
+            if self._rate_limited_now():
+                return
+            try:
+                bars, _write_err = await self._fetch_past_shared(
+                    venue, code, date_s, priority="background"
+                )
+            except KisRateLimitError:
+                self._mark_rate_limited()
+                return
+            except (KisCapacityCooldown, KisCapacityOverloaded, KisApiError):
+                # 워밍은 best-effort: 이 날짜는 인터랙션 경로가 나중에 다시 시도.
+                continue
+            # 비-KRX venue가 거래일에 빈 결과를 주면, 그건 KRX 폴백을 트리거해야
+            # 하는 신호다(인터랙션 경로가 폴백+delete_past로 관리). 워밍이 이 빈
+            # 항목을 캐시에 남기면 이후 읽기가 cached=[]를 covered로 오인해 KRX
+            # 폴백을 억제하므로(_collect_minute_inner covered_dates), 비-KRX 빈
+            # 결과는 캐시에서 제거해 인터랙션 경로가 폴백하도록 한다.
+            if venue != "KRX" and not bars:
+                self._cache.delete_past(venue, code, date_s)
 
     async def collect_minute_cache_only(
         self,
@@ -429,11 +538,19 @@ class LiveMinuteCandleBackfill:
         venue: KisVenue,
         code: str,
         date_s: str,
+        *,
+        priority: kis_access.KisRequestPriority = "user_visible",
     ) -> tuple[list[dict], str | None]:
+        # 단일 비행 키는 priority를 포함하지 않는다: warm(background)이 먼저 띄운
+        # 태스크에 사용자 요청이 올라타면 background 우선순위로 대기하게 되지만,
+        # ADR-0087의 background 비굶주림 보장으로 진전은 유지된다. 반대 방향
+        # (user_visible 태스크에 warm이 올라탐)은 순수 이득.
         key = (venue, code, date_s)
         task = self._inflight.get(key)
         if task is None:
-            task = asyncio.create_task(self._fetch_past_scheduled(venue, code, date_s))
+            task = asyncio.create_task(
+                self._fetch_past_scheduled(venue, code, date_s, priority=priority)
+            )
             self._inflight[key] = task
             task.add_done_callback(lambda _t, k=key: self._inflight.pop(k, None))
         return await task
@@ -443,6 +560,8 @@ class LiveMinuteCandleBackfill:
         venue: KisVenue,
         code: str,
         date_s: str,
+        *,
+        priority: kis_access.KisRequestPriority = "user_visible",
     ) -> tuple[list[dict], str | None]:
         t0 = perf_debug.now()
         try:
@@ -451,7 +570,7 @@ class LiveMinuteCandleBackfill:
                 data_dir=self._data_dir,
                 key=("live-candle-backfill", "minute", venue, code, date_s),
                 endpoint=kis_access.KisRestEndpoint.PAST_MINUTE,
-                priority="user_visible",
+                priority=priority,
                 cooldown_scope=venue,
                 fetch_fn=lambda kis: self._fetch_past_once(kis, venue, code, date_s),
             )
