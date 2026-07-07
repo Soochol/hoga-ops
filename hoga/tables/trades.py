@@ -443,9 +443,10 @@ def query_trade_volume_poc(
 
 @dataclass(frozen=True)
 class VolumeProfileBinning:
-    """Result of the volume-profile binning queries (:func:`query_volume_profile`
-    and :func:`query_volume_profile_range`) — the price range plus the sparse
-    per-bin quantities.
+    """Result of the price-binned quantity query
+    (:func:`query_continuous_trade_volume_distribution`) — the price range plus
+    the sparse per-bin quantities. (mode=full 퇴역으로 volume-profile 쿼리 2종은
+    2026-07-08 삭제; 이 타입은 매물대 분포 쿼리가 계속 사용한다.)
 
     ``bins`` is sparse: ``list[(bin_idx, qty)]`` straight from the GROUP BY, in
     ascending bin_idx order. ``bin_idx`` may equal ``vp_bins`` at the upper edge
@@ -471,97 +472,6 @@ class VolumeProfileBinning:
     max_intra_ms: int | None = None
 
 
-def query_volume_profile_range(
-    con: duckdb.DuckDBPyConnection, *, paths: list[str], vp_bins: int = 24
-) -> VolumeProfileBinning | None:
-    """Union ``paths`` (multi-file ``read_parquet`` via a list parameter) into one
-    price-binned volume profile over the unioned ``MIN(price)..MAX(price)`` range.
-
-    No side filter — auction crosses (``side == 0``) count toward the volume
-    profile per spec §4.1. The path is parameter-bound (list) for the multi-file
-    glob; the bin arithmetic is f-string'd because price_min / bin_width are
-    server-derived numerics.
-
-    Returns ``None`` when the union has no priced rows (``MIN/MAX`` is NULL) so
-    the caller can map that to an empty profile. ``bin_width`` is floored at 1
-    for a single-price range (guards ZeroDivision).
-    """
-    min_max = con.execute(
-        "SELECT MIN(price), MAX(price) FROM read_parquet(?)", [paths],
-    ).fetchone()
-    if min_max is None or min_max[0] is None:
-        return None
-    price_min, price_max = int(min_max[0]), int(min_max[1])
-
-    # Bin-width derived from vp_bins. Guard against zero-width range
-    # (single-price day) by flooring at 1.
-    bin_width_raw = (price_max - price_min) / vp_bins if vp_bins > 0 else 1
-    if bin_width_raw <= 0:
-        bin_width_raw = 1
-
-    rows = con.execute(
-        f"""
-        SELECT FLOOR((price - {price_min}) / {bin_width_raw})::BIGINT AS bin_idx,
-               SUM(qty) AS qty
-        FROM read_parquet(?)
-        WHERE price BETWEEN {price_min} AND {price_max}
-        GROUP BY 1 ORDER BY 1
-        """,
-        [paths],
-    ).fetchall()
-    return VolumeProfileBinning(
-        price_min=price_min,
-        price_max=price_max,
-        bin_width=float(bin_width_raw),
-        bins=[(int(idx), int(qty)) for idx, qty in rows],
-    )
-
-
-def query_volume_profile(
-    con: duckdb.DuckDBPyConnection,
-    *,
-    path: Path,
-    price_lo: int,
-    price_hi: int,
-    bins: int = 24,
-) -> VolumeProfileBinning:
-    """Bin one trades.parquet's price/qty within the caller-supplied
-    ``[price_lo, price_hi]`` range.
-
-    Cross-table by design: the range comes from the candles dimension
-    (``candles.query_price_range``), derived and passed in by the caller (the
-    range bundle), so this stays a single-table trades query. No side filter —
-    auction crosses (``side == 0``) count toward the volume profile per spec
-    §4.1.
-
-    ``bin_width`` is returned as the RAW float; the caller truncates for the
-    wire value (see :class:`VolumeProfileBinning`). Like
-    :func:`query_volume_profile_range`, ``bin_width`` is floored at 1 when the
-    range is zero (``price_lo == price_hi``, e.g. a limit-lock 점상한가 day)
-    so a single-price day yields a degenerate single-bin profile instead of a
-    DuckDB ConversionException / HTTP 500.
-    """
-    bin_width = (price_hi - price_lo) / bins
-    if bin_width <= 0:
-        bin_width = 1
-    rows = con.execute(
-        f"""
-        SELECT FLOOR((price - {price_lo}) / {bin_width})::BIGINT AS bin_idx,
-               SUM(qty) AS qty
-        FROM read_parquet(?)
-        WHERE price BETWEEN {price_lo} AND {price_hi}
-        GROUP BY 1 ORDER BY 1
-        """,
-        [str(path)],
-    ).fetchall()
-    return VolumeProfileBinning(
-        price_min=price_lo,
-        price_max=price_hi,
-        bin_width=float(bin_width),
-        bins=[(int(idx), int(qty)) for idx, qty in rows],
-    )
-
-
 def query_continuous_trade_volume_distribution(
     con: duckdb.DuckDBPyConnection,
     *,
@@ -576,9 +486,9 @@ def query_continuous_trade_volume_distribution(
 ) -> VolumeProfileBinning:
     """Bin continuous-trading qty into a caller-supplied candle price range.
 
-    Unlike query_volume_profile, this excludes Auction Cross rows (side=0) and
-    bounds rows to the Stock-Date session after decoding HHMMSSmmm into linear
-    ms-from-midnight.
+    Unlike the retired all-side volume-profile query, this excludes Auction
+    Cross rows (side=0) and bounds rows to the Stock-Date session after
+    decoding HHMMSSmmm into linear ms-from-midnight.
     """
     bin_width = (price_hi - price_lo) / bins
     if bin_width <= 0:

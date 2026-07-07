@@ -18,7 +18,7 @@ import json
 import logging
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
-from typing import TYPE_CHECKING, Literal
+from typing import TYPE_CHECKING
 
 from fastapi import HTTPException
 
@@ -35,7 +35,6 @@ from hoga.api.models import (
     ExcludedDate,
     FillStrength,
     FillStrengthPoint,
-    PriceLevelHit,
     ProgramTradePoint,
     ProgramTradeSeries,
     QuoteRatio,
@@ -45,12 +44,10 @@ from hoga.api.models import (
     TradeVolumePoc,
     VolumeDistributionBin,
     VolumeProfile,
-    VolumeProfileBin,
     validate_bucket_ms,
 )
 from hoga.api.past_indicators_cache import CACHE_MISS
 from hoga.api.peak_slice_guard import GUARD as PEAK_SLICE_GUARD
-from hoga.api.peak_slice_guard import RANGE_PROFILE_GUARD
 from hoga.api.today_ttl_cache import TODAY_TTL
 from hoga.api.queries import QueryEngine, StockDateNotFound
 from hoga.api.sources import ordered_sources, resolve_source_result
@@ -75,10 +72,6 @@ if TYPE_CHECKING:
 log = logging.getLogger(__name__)
 
 _KST = timezone(timedelta(hours=9))
-_PriceLevelKind = Literal["vi", "limit"]
-_PriceLevelDirection = Literal["upper", "lower"]
-_PriceLevelPct = Literal[10, 20, 30]
-_VI_COOLING_MS = 120_000
 DEFAULT_TRADE_VOLUME_POC_BINS = 10
 
 # /api/range minute timeframes are multiples of this; the indicator cache stores
@@ -334,31 +327,6 @@ def build_quote_ratio_slice(
     )
 
 
-def _expand_dense_bins(
-    price_min: float, bin_width: float, sparse_bins: list[tuple[int, int]], vp_bins: int
-) -> list[VolumeProfileBin]:
-    """Expand sparse ``(bin_idx, qty)`` rows into a dense ``VolumeProfileBin``
-    array of length ``vp_bins`` (shared by both volume-profile builders).
-
-    ``price_low`` for bin ``i`` is ``floor(price_min + i*bin_width)`` — computed
-    from the raw float ``bin_width`` so fractional widths don't shift the grid.
-    The top-edge bin (``FLOOR(price_max) == vp_bins``) is folded into the last
-    valid bin (``vp_bins-1``): without this clamp the highest-price volume is
-    silently dropped. GROUP BY upstream guarantees at most one row per ``idx``,
-    so accumulating with ``+=`` is safe (and equals ``=`` for non-folded bins).
-    """
-    bins_arr = [
-        VolumeProfileBin(price_low=int(price_min + i * bin_width), qty=0)
-        for i in range(vp_bins)
-    ]
-    for idx, qty in sparse_bins:
-        if idx < 0:
-            continue
-        b = min(idx, vp_bins - 1)
-        bins_arr[b] = VolumeProfileBin(price_low=bins_arr[b].price_low, qty=bins_arr[b].qty + qty)
-    return bins_arr
-
-
 def _expand_distribution_bins(
     price_min: int,
     price_max: int,
@@ -386,49 +354,6 @@ def _expand_distribution_bins(
         high = price_max if i == range_count - 1 else int(price_min + (i + 1) * bin_width)
         rows.append(VolumeDistributionBin(price_low=low, price_high=high, qty=qty))
     return rows
-
-
-def build_volume_profile_slice(
-    engine: QueryEngine,
-    *,
-    code: str,
-    date: str,
-    source: str = "hogaplay",
-    price_min: int | None = None,
-    price_max: int | None = None,
-    vp_bins: int = 24,
-) -> VolumeProfile:
-    # ADR-0001: this is the cross-table coordinator — it derives the price grid
-    # from the candles dimension (candles_tbl.query_price_range owns the
-    # low/high column knowledge) and bins the trades within it
-    # (trades_tbl.query_volume_profile owns the price/qty binning SQL). bundle
-    # keeps only the glue: path layout, the degenerate-profile guards, and the
-    # dense VolumeProfileBin expansion (a models concern).
-    code_dir = engine.parquet_dir(date, code, source)
-    candles_path_obj = code_dir / "candles.parquet"
-    trades_path_obj = code_dir / "trades.parquet"
-    # ADR-0040/0043: kis_live source has no candles.parquet (Live Candle Backfill
-    # owns that dimension via separate cache). Return degenerate profile rather
-    # than raising. Likewise for missing trades.parquet (empty promote cycle).
-    if not candles_path_obj.exists() or not trades_path_obj.exists():
-        return VolumeProfile(bin_count=1, price_min=0, price_max=0, bin_width=0, bins=[])
-    if price_min is None or price_max is None:
-        price_range = candles_tbl.query_price_range(engine.conn, path=candles_path_obj)
-        if price_range is None:
-            # Empty candles table — return a degenerate single-bin profile.
-            return VolumeProfile(bin_count=1, price_min=0, price_max=0, bin_width=0, bins=[])
-        price_min, price_max = price_range
-    binning = trades_tbl.query_volume_profile(
-        engine.conn, path=trades_path_obj,
-        price_lo=price_min, price_hi=price_max, bins=vp_bins,
-    )
-    bins_arr = _expand_dense_bins(price_min, binning.bin_width, binning.bins, vp_bins)
-    return VolumeProfile(
-        bin_count=vp_bins, price_min=price_min, price_max=price_max,
-        # int() the float bin_width only for the wire value — price_low above is
-        # computed from the raw float so fractional widths don't shift the grid.
-        bin_width=int(binning.bin_width), bins=bins_arr,
-    )
 
 
 def build_volume_distribution_slice(
@@ -494,72 +419,6 @@ def build_volume_distribution_slice(
             binning.bins,
             range_count,
         ),
-    )
-
-
-def build_volume_profile_range(
-    engine: QueryEngine,
-    *,
-    code: str,
-    dates_with_sources: list[tuple[str, str]],
-    vp_bins: int = 24,
-) -> VolumeProfile:
-    """Union trades.parquet across all in-range Stock-Dates into one price-binned
-    profile (range-wide POC view, ADR-0013).
-
-    Bin-count policy mirrors build_volume_profile_slice (vp_bins=24 by default)
-    applied to the unioned price range. Uses DuckDB's multi-file read_parquet
-    via a list parameter — no f-string SQL for the path (matches bundle.py:145
-    convention; see plan-eng-review D3).
-
-    2026-07-07 기준 mode=full은 프론트엔드가 호출하지 않는 dead path지만 공개 API로
-    남아 있어, RANGE_PROFILE_GUARD(동시성 1 + single-flight)로 스캔 점유를 격리한다.
-    """
-    if not dates_with_sources:
-        return VolumeProfile(bin_count=0, price_min=0, price_max=0, bin_width=0, bins=[])
-
-    # ADR-0043: kis_live trades.parquet may not exist for sparse Stock-Dates
-    # (empty promote cycle → atomic_write_parquet unlinks the file). Filter
-    # to existing paths only; if none remain, return empty profile.
-    paths: list[str] = []
-    for d, src in dates_with_sources:
-        p = engine.parquet_dir(d, code, src) / "trades.parquet"
-        if p.exists():
-            paths.append(str(p))
-    if not paths:
-        return VolumeProfile(bin_count=0, price_min=0, price_max=0, bin_width=0, bins=[])
-
-    # ADR-0001: the MIN/MAX price query, the zero-width-guarded bin_width, and
-    # the multi-file binning SQL (price/qty schema knowledge) now live in
-    # trades_tbl.query_volume_profile_range. bundle stays the coordinator: it
-    # owns the path layout + existence filtering above, maps the no-trades
-    # signal (None) to the empty-profile wire shape, and expands the sparse
-    # per-bin rows into the dense VolumeProfileBin array (a models concern).
-    t0 = perf_debug.now()
-    binning = RANGE_PROFILE_GUARD.run(
-        ("vp_range", code, tuple(paths), vp_bins),
-        lambda: trades_tbl.query_volume_profile_range(engine.conn, paths=paths, vp_bins=vp_bins),
-    )
-    if perf_debug.enabled():
-        log.warning(
-            "hoga_perf vp_range status=ok code=%s dates=%d vp_bins=%d duration_ms=%.1f",
-            code,
-            len(paths),
-            vp_bins,
-            perf_debug.elapsed_ms(t0),
-        )
-    if binning is None:
-        return VolumeProfile(bin_count=0, price_min=0, price_max=0, bin_width=0, bins=[])
-
-    bins_arr = _expand_dense_bins(binning.price_min, binning.bin_width, binning.bins, vp_bins)
-    return VolumeProfile(
-        bin_count=vp_bins,
-        price_min=binning.price_min,
-        price_max=binning.price_max,
-        # int() the float bin_width only for the wire value — price_low above is
-        # computed from the raw float so fractional widths don't shift the grid.
-        bin_width=int(binning.bin_width),
-        bins=bins_arr,
     )
 
 
@@ -1042,188 +901,6 @@ def _first_trailing_single_price_book_hhmmssms(
     return h * 10_000_000 + m * 100_000 + s * 1000 + ms
 
 
-def _krx_stock_tick_size(price: int) -> int:
-    if price < 2_000:
-        return 1
-    if price < 5_000:
-        return 5
-    if price < 20_000:
-        return 10
-    if price < 50_000:
-        return 50
-    if price < 200_000:
-        return 100
-    if price < 500_000:
-        return 500
-    return 1_000
-
-
-def _ceil_krx_stock_tick(price: float) -> int:
-    candidate = int(price)
-    candidate = (
-        (candidate + _krx_stock_tick_size(candidate) - 1)
-        // _krx_stock_tick_size(candidate)
-    ) * _krx_stock_tick_size(candidate)
-    while candidate < price:
-        candidate += _krx_stock_tick_size(candidate)
-    return candidate
-
-
-def _floor_krx_stock_tick(price: float) -> int:
-    candidate = int(price)
-    candidate = (candidate // _krx_stock_tick_size(candidate)) * _krx_stock_tick_size(candidate)
-    while candidate > price:
-        candidate -= _krx_stock_tick_size(candidate)
-    return candidate
-
-
-def _ceil_krx_stock_tick_ratio(price: int, numerator: int, denominator: int) -> int:
-    won = (price * numerator + denominator - 1) // denominator
-    return _ceil_krx_stock_tick(won)
-
-
-def _floor_krx_stock_tick_ratio(price: int, numerator: int, denominator: int) -> int:
-    won = (price * numerator) // denominator
-    return _floor_krx_stock_tick(won)
-
-
-def _limit_price_levels(
-    *,
-    limit_base_prev_close: int | None,
-) -> list[tuple[int, _PriceLevelKind, _PriceLevelDirection, _PriceLevelPct]]:
-    candidates: list[tuple[int, _PriceLevelKind, _PriceLevelDirection, _PriceLevelPct]] = []
-    if limit_base_prev_close is not None and limit_base_prev_close > 0:
-        candidates.append((_floor_krx_stock_tick_ratio(limit_base_prev_close, 13, 10), "limit", "upper", 30))
-        candidates.append((_ceil_krx_stock_tick_ratio(limit_base_prev_close, 7, 10), "limit", "lower", 30))
-    return candidates
-
-
-def _first_price_level_touch(
-    candles: list[ApiCandle],
-    *,
-    price: int,
-    direction: _PriceLevelDirection,
-    min_ts_ms: int | None = None,
-) -> ApiCandle | None:
-    for c in candles:
-        if min_ts_ms is not None and c.ts_ms < min_ts_ms:
-            continue
-        if direction == "upper" and c.high >= price:
-            return c
-        if direction == "lower" and c.low <= price:
-            return c
-    return None
-
-
-def _append_hit(
-    hits: list[PriceLevelHit],
-    *,
-    date: str,
-    candle: ApiCandle,
-    price: int,
-    kind: _PriceLevelKind,
-    direction: _PriceLevelDirection,
-    pct: _PriceLevelPct,
-) -> None:
-    hits.append(PriceLevelHit(
-        date=date,
-        t_ms=candle.ts_ms,
-        price=price,
-        kind=kind,
-        direction=direction,
-        pct=pct,
-    ))
-
-
-def _append_vi_hits(
-    hits: list[PriceLevelHit],
-    *,
-    date: str,
-    candles: list[ApiCandle],
-    vi_base_open: int | None,
-    direction: _PriceLevelDirection,
-) -> None:
-    if vi_base_open is None or vi_base_open <= 0:
-        return
-
-    if direction == "upper":
-        first_price = _ceil_krx_stock_tick_ratio(vi_base_open, 11, 10)
-    else:
-        first_price = _floor_krx_stock_tick_ratio(vi_base_open, 9, 10)
-
-    first = _first_price_level_touch(candles, price=first_price, direction=direction)
-    if first is None:
-        return
-    _append_hit(
-        hits,
-        date=date,
-        candle=first,
-        price=first_price,
-        kind="vi",
-        direction=direction,
-        pct=10,
-    )
-
-    reopen = next((c for c in candles if c.ts_ms >= first.ts_ms + _VI_COOLING_MS), None)
-    if reopen is None:
-        return
-    second_price = (
-        _ceil_krx_stock_tick_ratio(reopen.open, 11, 10)
-        if direction == "upper"
-        else _floor_krx_stock_tick_ratio(reopen.open, 9, 10)
-    )
-    second = _first_price_level_touch(
-        candles,
-        price=second_price,
-        direction=direction,
-        min_ts_ms=reopen.ts_ms,
-    )
-    if second is None:
-        return
-    _append_hit(
-        hits,
-        date=date,
-        candle=second,
-        price=second_price,
-        kind="vi",
-        direction=direction,
-        pct=20,
-    )
-
-
-def build_price_level_hits_slice(
-    *,
-    date: str,
-    candles: list[ApiCandle],
-    vi_base_open: int | None,
-    limit_base_prev_close: int | None,
-) -> list[PriceLevelHit]:
-    if not candles:
-        return []
-
-    candles = sorted(candles, key=lambda c: c.ts_ms)
-    hits: list[PriceLevelHit] = []
-    _append_vi_hits(hits, date=date, candles=candles, vi_base_open=vi_base_open, direction="upper")
-    _append_vi_hits(hits, date=date, candles=candles, vi_base_open=vi_base_open, direction="lower")
-
-    for price, kind, direction, pct in _limit_price_levels(limit_base_prev_close=limit_base_prev_close):
-        if price <= 0:
-            continue
-        first = _first_price_level_touch(candles, price=price, direction=direction)
-        if first is None:
-            continue
-        _append_hit(
-            hits,
-            date=date,
-            candle=first,
-            price=price,
-            kind=kind,
-            direction=direction,
-            pct=pct,
-        )
-    return hits
-
-
 def _empty_range_bundle(
     code: str,
     from_date: str,
@@ -1297,7 +974,7 @@ def build_range_bundle(
     volume_distribution_price_min: int | None = None,
     volume_distribution_price_max: int | None = None,
     volume_distribution_cutoff_ms: int | None = None,
-    mode: str = "full",
+    mode: str,
     ask_peaks_enabled: bool = True,
     bid_peaks_enabled: bool = True,
     program_trade_enabled: bool = True,
@@ -1310,13 +987,16 @@ def build_range_bundle(
     or all in-range dates are excluded by invariants (spec 2026-05-27 §4.3).
 
     Loops over captured Stock-Dates calling each per-slice builder directly.
-    ``volume_profile`` is returned as a per-segment list (each Stock-Date
-    has its own price grid — they cannot be meaningfully concatenated).
     ``quote_ratio.points`` and ``fill_strength.points`` ARE concatenated
-    because they are flat ``(t, value)`` arrays. ``volume_profile_range``
-    is computed once across all dates via :func:`build_volume_profile_range`.
+    because they are flat ``(t, value)`` arrays.
+
+    ``volume_profile_range`` / ``volume_profile_by_day`` / ``price_level_hits``
+    는 와이어 shape 유지를 위해 항상-빈 값으로 남는다 — 이 필드들을 채우던
+    ``mode=full`` 은 프론트엔드 미사용 dead path 로 2026-07-08 제거됐다.
     """
     validate_bucket_ms(bucket_ms)
+    if mode not in {"hoga", "sidecar", "candles"}:
+        raise HTTPException(400, "mode must be one of hoga|sidecar|candles")
 
     try:
         d_from = datetime.strptime(from_date, "%Y%m%d").date()
@@ -1329,7 +1009,6 @@ def build_range_bundle(
     hoga_only = mode == "hoga"
     sidecar_only = mode == "sidecar"
     candles_only = mode == "candles"
-    full_mode = mode == "full"
     cutoff_sidecar = sidecar_only and volume_distribution_cutoff_ms is not None
     volume_distribution_slice_cutoff_ms = (
         volume_distribution_cutoff_ms if sidecar_only else None
@@ -1338,7 +1017,7 @@ def build_range_bundle(
     include_ask_peaks = include_optional_sidecar_slices and ask_peaks_enabled
     include_bid_peaks = include_optional_sidecar_slices and bid_peaks_enabled
     include_trade_volume_pocs = include_optional_sidecar_slices and trade_volume_poc_enabled
-    include_program_trade = program_trade_enabled and (full_mode or sidecar_only)
+    include_program_trade = program_trade_enabled and sidecar_only
 
     dates = engine.list_stock_dates_in_range(
         code=code, from_date=from_date, to_date=to_date,
@@ -1359,7 +1038,6 @@ def build_range_bundle(
     candles: list[ApiCandle] = []
     ratio_pts: list[QuoteRatioPoint] = []
     fill_pts: list[FillStrengthPoint] = []
-    profiles_by_day: list[VolumeProfile] = []
     volume_distributions: list[DayVolumeDistribution] = []
     # 거래일별 매도 최대벽 — 데이터 있는 각 거래일당 1개(프론트가 그날 구간 수평 세그먼트로 렌더).
     # 루프 안에서 계산해 native HHMMSSmmm 세션 경계(meta)에 접근 → 총잔량 지표와 동일하게
@@ -1367,7 +1045,6 @@ def build_range_bundle(
     ask_peaks: list[AskPeak] = []
     bid_peaks: list[BidPeak] = []
     broker_late_entries: list[BrokerLateEntryEvent] = []
-    price_level_hits: list[PriceLevelHit] = []
     trade_volume_pocs: list[TradeVolumePoc] = []
     included_dates: list[str] = []
 
@@ -1375,18 +1052,6 @@ def build_range_bundle(
     # re-aggregated on later pans; today_kst gates today out (still promoting).
     indicators_cache = engine.indicators_cache
     today_kst = _today_kst_yyyymmdd()
-    prev_close_by_date: dict[str, int] = {}
-    if full_mode:
-        stock_dates_for_code = sorted(
-            (row for row in engine.list_stock_dates() if row.code == code),
-            key=lambda row: row.date,
-        )
-        prev_close: int | None = None
-        for row in stock_dates_for_code:
-            prev_close_by_date[row.date] = (
-                prev_close if prev_close is not None and prev_close > 0 else 0
-            )
-            prev_close = row.today_close
 
     for d in dates:
         date_t0 = perf_debug.now()
@@ -1496,8 +1161,6 @@ def build_range_bundle(
                 cache=indicators_cache, today_kst=today_kst,
             )
         )
-        vp_d = build_volume_profile_slice(engine, code=code, date=d, source=source) if full_mode else None
-
         norm_meta, _ = normalize_session_bounds(meta)   # value-conversion only (notes handled by classify)
         continuous_before_needed = needs_trade_price_range and not hoga_only and not candles_only
         continuous_before_ms = (
@@ -1559,8 +1222,6 @@ def build_range_bundle(
         candles.extend(candles_d)
         ratio_pts.extend(qr_d.points)
         fill_pts.extend(fs_d.points)
-        if vp_d is not None:
-            profiles_by_day.append(vp_d)
         if not hoga_only and not candles_only and volume_distribution_bins is not None:
             profile = build_volume_distribution_slice(
                 engine,
@@ -1583,16 +1244,6 @@ def build_range_bundle(
             bid_peaks.append(bp_d)
         if tvp_d is not None:
             trade_volume_pocs.append(tvp_d)
-        if full_mode:
-            vi_base_open = raw_candles[0].open if raw_candles else int(meta.get("today_open") or 0)
-            price_level_hits.extend(
-                build_price_level_hits_slice(
-                    date=d,
-                    candles=candles_d,
-                    vi_base_open=vi_base_open,
-                    limit_base_prev_close=prev_close_by_date.get(d) or None,
-                ),
-            )
         if perf_debug.enabled():
             log.warning(
                 "hoga_perf range_date status=ok code=%s date=%s source=%s mode=%s "
@@ -1617,17 +1268,6 @@ def build_range_bundle(
         # DataWarning UX without 404 round-trips.
         return _empty_range_bundle(code, from_date, to_date, bucket_ms, excluded=excluded)
 
-    # The range-wide volume profile must aggregate only the dates we actually
-    # included — using the unfiltered `dates` would pull trades.parquet for
-    # INVALID Stock-Dates whose data is corrupt or incomplete, contaminating
-    # the range-wide histogram or raising a DuckDB read error.
-    dates_with_sources = [(s.date, s.source) for s in segments]
-    profile_range = (
-        build_volume_profile_range(engine, code=code, dates_with_sources=dates_with_sources)
-        if full_mode
-        else _empty_volume_profile()
-    )
-
     return RangeBundle(
         code=code,
         from_date=from_date,
@@ -1637,14 +1277,15 @@ def build_range_bundle(
         candles=candles,
         quote_ratio=QuoteRatio(bucket_ms=bucket_ms, points=ratio_pts),
         fill_strength=FillStrength(bucket_ms=bucket_ms, points=fill_pts),
-        volume_profile_range=profile_range,
-        volume_profile_by_day=profiles_by_day,
+        # mode=full 퇴역(2026-07-08) 후 와이어 shape 유지용 상시-빈 필드.
+        volume_profile_range=_empty_volume_profile(),
+        volume_profile_by_day=[],
         excluded_dates=excluded,
         data_warnings=warnings_list,
         ask_peaks=ask_peaks,
         bid_peaks=bid_peaks,
         broker_late_entries=broker_late_entries,
-        price_level_hits=price_level_hits,
+        price_level_hits=[],
         trade_volume_pocs=trade_volume_pocs,
         volume_distributions=volume_distributions,
         program_trade=(

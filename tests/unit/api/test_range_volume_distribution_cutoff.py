@@ -185,30 +185,6 @@ def test_volume_distribution_without_cutoff_preserves_final_profile(tmp_path: Pa
     assert _fold_sparse_qty(binning.bins, 2) == [10, 50]
 
 
-def test_full_range_bundle_ignores_cutoff_and_preserves_final_profile(
-    tmp_path: Path,
-) -> None:
-    engine = _engine(tmp_path)
-    cutoff_ms = hhmmssms_to_unix_ms("20260625", 90_001_000)
-
-    bundle = build_range_bundle(
-        engine,
-        code="005930",
-        from_date="20260625",
-        to_date="20260625",
-        bucket_ms=60_000,
-        mode="full",
-        source_pref="hogaplay",
-        volume_distribution_bins=5,
-        volume_distribution_cutoff_ms=cutoff_ms,
-    )
-
-    assert len(bundle.volume_distributions) == 1
-    profile = bundle.volume_distributions[0]
-    assert profile.last_trade_ms == hhmmssms_to_unix_ms("20260625", 90_002_000)
-    assert sum(b.qty for b in profile.bins) == 60
-
-
 def test_volume_distribution_cutoff_requires_single_stock_date(tmp_path: Path) -> None:
     client = _client(tmp_path)
     cutoff_ms = hhmmssms_to_unix_ms("20260625", 90_001_000)
@@ -267,7 +243,7 @@ def test_volume_distribution_cutoff_requires_sidecar_mode(tmp_path: Path) -> Non
             "from": "20260625",
             "to": "20260625",
             "bucket_ms": 60_000,
-            "mode": "full",
+            "mode": "hoga",
             "source_pref": "hogaplay",
             "volume_distribution_bins": 5,
             "volume_distribution_cutoff_ms": cutoff_ms,

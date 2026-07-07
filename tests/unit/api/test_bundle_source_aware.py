@@ -104,6 +104,7 @@ def test_dual_source_5_27_scenario(tmp_path: Path) -> None:
     bundle = build_range_bundle(
         engine, code=code, from_date=date, to_date=date,
         bucket_ms=60_000, source_pref="hogaplay",
+        mode="hoga",
     )
 
     assert len(bundle.segments) == 1
@@ -134,6 +135,7 @@ def test_legacy_flat_layout_still_works(tmp_path: Path) -> None:
     bundle = build_range_bundle(
         engine, code=code, from_date=date, to_date=date,
         bucket_ms=60_000, source_pref="hogaplay",
+        mode="hoga",
     )
 
     assert len(bundle.segments) == 1
@@ -168,6 +170,7 @@ def test_source_pref_strict_when_pref_present_but_sparse(tmp_path: Path) -> None
     bundle = build_range_bundle(
         engine, code=code, from_date=date, to_date=date,
         bucket_ms=60_000, source_pref="kis_live",
+        mode="hoga",
     )
 
     # kis_live가 있으니 그것만 — sparse(1건)여도
@@ -194,7 +197,7 @@ def test_source_pref_fallback_when_pref_missing(tmp_path: Path) -> None:
     engine = QueryEngine(tmp_path)
     bundle = build_range_bundle(
         engine, code=code, from_date=date, to_date=date,
-        bucket_ms=60_000, source_pref="hogaplay",  # 없으니 kis_live fallback
+        bucket_ms=60_000, source_pref="hogaplay", mode="hoga",  # 없으니 kis_live fallback
     )
 
     assert bundle.segments[0].source == "kis_live"
@@ -223,6 +226,7 @@ def test_source_pref_kis_api_first_reads_kis_api(tmp_path: Path) -> None:
             from_date=date,
             to_date=date,
             bucket_ms=60_000,
+            mode="hoga",
             source_pref="kis_api_first",
         )
     finally:
