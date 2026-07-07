@@ -373,18 +373,23 @@ async def test_on_tick_continuous_trade_reclassifies_earlier_wall_but_not_later_
         "untraded_price": 102,
         "untraded_qty": 9,
         "untraded_t_ms": now,
+        # Same-price walls collapse to their best open peak (ADR-0084 event-based
+        # model, commit 38fb9ff8): the later 102@4 collapses into 102@9 rather
+        # than staying a separate untraded row, so rank-3 falls through to 103@1.
         "untraded_peaks": [
             {"price": 102, "qty": 9, "t_ms": now},
             {"price": 101, "qty": 8, "t_ms": now + 2_000},
-            {"price": 102, "qty": 4, "t_ms": now + 2_000},
+            {"price": 103, "qty": 1, "t_ms": now},
         ],
         "all_price": 102,
         "all_qty": 9,
         "all_t_ms": now,
+        # all_peaks = closed_traded + open: the earlier 101@3 was touched by the
+        # trade (closed_traded), so it ranks third here, not the collapsed 102@4.
         "all_peaks": [
             {"price": 102, "qty": 9, "t_ms": now},
             {"price": 101, "qty": 8, "t_ms": now + 2_000},
-            {"price": 102, "qty": 4, "t_ms": now + 2_000},
+            {"price": 101, "qty": 3, "t_ms": now},
         ],
     }
 

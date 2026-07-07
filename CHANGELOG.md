@@ -3,6 +3,11 @@
 All notable changes to this project are documented here.
 The format follows a 4-digit `MAJOR.MINOR.PATCH.MICRO` scheme.
 
+## [0.12.32.1] - 2026-07-07
+
+### Fixed
+- **PR #441이 남긴 peak-wall 테스트 14건 red 해소 (테스트 전용, 프로덕션 코드 무변경)**. PR #441(선형 스위프 재작성, ADR-0085)은 커밋 메시지에 "peak-wall 테스트 14 red(별건)"로 명시하며 red 상태로 머지됐다. 원인은 두 갈래였다: (1) **11건 `test_api_range`** — `build_range_bundle` 호출에 추가된 `ask_peaks_enabled`/`bid_peaks_enabled`/`program_trade_enabled`/`trade_volume_poc_enabled` kwarg를 테스트 stub 시그니처가 수용하지 못해 `TypeError`. stub에 4개 kwarg를 추가. (2) **3건 의미론 (`test_bundle` 2, `test_stream` 1)** — 재작성 직전 구 SQL(`6239f67a`)을 오라클로 복원해 차등 실행한 결과 구 SQL도 신 코드와 **바이트 단위 동일** 출력을 냈다(재작성은 동작 보존 달성). 세 테스트의 기대값은 어느 구현과도 일치한 적 없는 stale 값이었다. `test_bundle` 2건은 `untraded_peaks`(lifecycle-distinct, 가격당 1행)와 `all_peaks`(price+bucket, 가격당 다중)의 dedup 의미론 혼동, `test_stream` 1건은 커밋 `38fb9ff8`("Bound today live peak classification", ADR-0084 collapse-per-price 모델)이 갱신을 놓친 통합 미러. ground-truth 값으로 기대값 갱신. 전체 스위트 2224 green.
+
 ## [0.12.32.0] - 2026-07-07
 
 ### Fixed
