@@ -188,6 +188,10 @@ export function mergePastCandleResponses(
   return {
     ...next,
     from: previous.from < next.from ? previous.from : next.from,
+    // load-bearing: 청크 워크백 중 merged `to`를 seed `to`(=max)에 고정한다.
+    // sameIdentity가 `previous.to === to`로 키하므로(아래 planPastCandlesDelta),
+    // merged `to`가 한 청크의 더 작은 to로 흘러내리면 워크백 도중 체인이
+    // 리셋된다. 이 max가 워크백 자기재시작의 불변식이다 — 낮추지 말 것.
     to: previous.to > next.to ? previous.to : next.to,
     venue: next.venue ?? previous.venue,
     candles: sortUniqueCandles([...previous.candles, ...next.candles]),
@@ -265,6 +269,11 @@ export function useLivePastCandles(
   // 다음 청크 쿼리키가 즉시 파생되게 한다. blocking 경고 응답은 pin되지
   // 않아 plan이 같은 키를 유지 → React Query가 중복 요청을 흡수하므로
   // 무한 루프가 아니다(재시도는 staleTime 60s가 담당).
+  // 종료 보장: bumpMergedVersion은 어떤 query.data/isPlaceholderData에도
+  // 반영되지 않는 useReducer 카운터라 자기 effect를 재발화하지 못한다 —
+  // 오직 새 query 결과에만 발화한다. merged.from은 단조 비증가이고,
+  // seed from에 도달하면 servePrevious 분기가 enabled:false로 쿼리를 꺼
+  // query.data=undefined → 가드 거짓 → 정지한다.
   useEffect(() => {
     if (query.data && !query.isPlaceholderData) bumpMergedVersion();
   }, [query.data, query.isPlaceholderData]);
