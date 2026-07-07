@@ -27,6 +27,12 @@ _KST = timezone(timedelta(hours=9))
 _WEEKEND_START_WEEKDAY = 5
 log = logging.getLogger(__name__)
 
+# read_ahead 선행 워밍 폭 상한(캘린더일). 프론트 팬 스텝 stepChunkDays(5)와
+# 청크 워크백 PAST_CHUNK_CALENDAR_DAYS(15)의 superset이면 gap이 없다.
+# 무제한이면 거대 창 요청이 같은 폭의 워밍을 또 낳아(2026-07-07: 243일→
+# +243일) KIS 예산을 자기증폭적으로 태운다.
+_READ_AHEAD_MAX_SPAN_DAYS = 15
+
 
 class KisRestScheduler(Protocol):
     async def submit(
@@ -107,18 +113,12 @@ class LiveMinuteCandleBackfill:
         out = await self._collect_minute_inner(
             code=code, frm=frm, too=too, today_d=today_d, policy=policy,
         )
-        # read-ahead: 이번 요청창 직전 동일 폭 구간을 background로 선행 워밍.
-        # settle-loop의 다음 청크가 캐시 히트가 된다. 레이트리밋/용량 경고가
-        # 있으면 예산이 이미 부족하다는 뜻이므로 이번엔 건너뛴다.
+        # read-ahead: 이번 요청창 직전 구간을 background로 선행 워밍하되,
+        # 폭은 _READ_AHEAD_MAX_SPAN_DAYS로 캡한다(상수 주석 참조).
+        # 레이트리밋/용량/예산 경고가 있으면 예산이 이미 부족하다는 뜻이므로
+        # 이번엔 건너뛴다.
         if read_ahead and not _fallback_blocking_warning_dates(out.data_warnings):
-            # span_days는 의도적으로 무제한이다(요청창 폭 전체). 프론트 팬은
-            # to=today 고정으로 창이 넓어지고 nextHistoricalFrom이 from을 매 스텝
-            # 정확히 stepChunkDays(=5캘린더일)씩 뒤로 옮기므로, [frm-span, frm-1]은
-            # 항상 다음 청크가 필요로 하는 [frm-5, frm-1]의 superset이다(gap 없음).
-            # 5로 캡하면 backend가 프론트 STEP_TRADING_DAYS에 암묵 결합돼, 그 상수가
-            # 커지면 gap이 생긴다. 무제한 비용은 O(span) 캐시조회뿐(이미 데운 날짜는
-            # _warm_run에서 get_past로 스킵)이라 무시 가능.
-            span_days = (too - frm).days + 1
+            span_days = min((too - frm).days + 1, _READ_AHEAD_MAX_SPAN_DAYS)
             ra_too = frm - timedelta(days=1)
             ra_frm = ra_too - timedelta(days=span_days - 1)
             if earliest_allowed is not None:

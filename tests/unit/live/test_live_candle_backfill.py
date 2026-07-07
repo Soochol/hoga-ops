@@ -776,3 +776,40 @@ async def test_budget_exhausted_suppresses_read_ahead(tmp_path, monkeypatch) -> 
     )
 
     assert ("KRX", "005930") not in backfill._warm_tasks
+
+
+@pytest.mark.asyncio
+async def test_read_ahead_span_capped(tmp_path, monkeypatch) -> None:
+    """40일 요청창이라도 선행 워밍은 직전 15일만(자기증폭 차단)."""
+    from hoga.api import calendar as cal
+
+    monkeypatch.setattr(cal, "is_trading_day", lambda date_s: True)
+    kis = _FakeKis()
+    scheduler = _RecordingScheduler(kis)
+    backfill = LiveMinuteCandleBackfill(
+        data_dir=tmp_path,
+        cache=PastCandlesCache(data_dir=tmp_path),
+        scheduler=scheduler,  # type: ignore[arg-type]
+        concurrency=1,
+        max_fresh_dates_per_collect=100,  # 예산 경고로 워밍이 스킵되지 않게 격리
+    )
+
+    await backfill.collect_minute(
+        code="005930",
+        frm=dt.date(2026, 5, 20),
+        too=dt.date(2026, 6, 28),  # 40일 창
+        today_d=dt.date(2026, 7, 1),
+        policy="KRX",
+        read_ahead=True,
+    )
+    task = backfill._warm_tasks.get(("KRX", "005930"))
+    assert task is not None
+    await task
+
+    # 선행창 = [frm-15, frm-1] = 2026-05-05 .. 2026-05-19 (전부 거래일 mock)
+    bg_dates = sorted(
+        c["key"][4] for c in scheduler.calls if c["priority"] == "background"
+    )
+    assert bg_dates[0] == "20260505"
+    assert bg_dates[-1] == "20260519"
+    assert len(bg_dates) == 15
