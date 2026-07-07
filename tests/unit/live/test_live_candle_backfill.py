@@ -573,3 +573,66 @@ async def test_warm_minute_fetches_newest_date_first(tmp_path, monkeypatch) -> N
     # _warm_run은 다음 청크가 가장 먼저 필요로 하는 최신 날짜를 먼저 fetch한다.
     fetched_dates = [c["key"][-1] for c in scheduler.calls]
     assert fetched_dates == ["20260520", "20260519", "20260518"]
+
+
+class _VenueAwareFakeKis:
+    """KRX엔 캔들, NXT/UN엔 빈 결과 — NXT→KRX 폴백 시나리오 재현."""
+
+    def __init__(self) -> None:
+        self.calls: list[tuple[str, str, str | None, bool | None]] = []
+
+    async def fetch_past_minute_candles(
+        self,
+        code: str,
+        date_yyyymmdd: str,
+        *,
+        venue: str | None = None,
+        foreground: bool | None = None,
+    ) -> list[KisCandle]:
+        self.calls.append((code, date_yyyymmdd, venue, foreground))
+        if venue == "KRX":
+            return [
+                KisCandle(
+                    t_ms=_kst_ms(date_yyyymmdd),
+                    open=100, high=110, low=95, close=105, volume=10,
+                )
+            ]
+        return []  # NXT/UN: empty
+
+
+@pytest.mark.asyncio
+async def test_warm_then_read_non_krx_empty_does_not_suppress_krx_fallback(
+    tmp_path, monkeypatch,
+) -> None:
+    from hoga.api import calendar as cal
+
+    monkeypatch.setattr(cal, "is_trading_day", lambda date_s: True)
+    kis = _VenueAwareFakeKis()
+    scheduler = _RecordingScheduler(kis)
+    cache = PastCandlesCache(data_dir=tmp_path)
+    backfill = LiveMinuteCandleBackfill(
+        data_dir=tmp_path, cache=cache, scheduler=scheduler, concurrency=1,
+    )
+
+    # 1) NXT를 워밍한다. NXT는 빈 결과 → 워밍이 NXT [] 를 캐시에 남기면 안 된다.
+    await backfill.warm_minute(
+        code="005930",
+        frm=dt.date(2026, 5, 18),
+        too=dt.date(2026, 5, 18),
+        today_d=dt.date(2026, 6, 1),
+        policy="NXT",
+    )
+    await backfill._warm_tasks[("NXT", "005930")]
+    # 워밍이 NXT 빈 항목을 캐시에 남기지 않았어야 한다.
+    assert cache.get_past("NXT", "005930", "20260518") is None
+
+    # 2) 같은 날짜를 NXT로 읽으면 KRX 폴백이 살아나 KRX 캔들이 나와야 한다.
+    out = await backfill.collect_minute(
+        code="005930",
+        frm=dt.date(2026, 5, 18),
+        too=dt.date(2026, 5, 18),
+        today_d=dt.date(2026, 6, 1),
+        policy="NXT",
+    )
+    assert len(out.candles) == 1  # KRX 폴백 캔들
+    assert any(w.get("reason") == "minute_fallback_to_krx" for w in out.data_warnings)

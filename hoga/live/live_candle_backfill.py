@@ -283,13 +283,22 @@ class LiveMinuteCandleBackfill:
             if self._rate_limited_now():
                 return
             try:
-                await self._fetch_past_shared(venue, code, date_s, priority="background")
+                bars, _write_err = await self._fetch_past_shared(
+                    venue, code, date_s, priority="background"
+                )
             except KisRateLimitError:
                 self._mark_rate_limited()
                 return
             except (KisCapacityCooldown, KisCapacityOverloaded, KisApiError):
                 # 워밍은 best-effort: 이 날짜는 인터랙션 경로가 나중에 다시 시도.
                 continue
+            # 비-KRX venue가 거래일에 빈 결과를 주면, 그건 KRX 폴백을 트리거해야
+            # 하는 신호다(인터랙션 경로가 폴백+delete_past로 관리). 워밍이 이 빈
+            # 항목을 캐시에 남기면 이후 읽기가 cached=[]를 covered로 오인해 KRX
+            # 폴백을 억제하므로(_collect_minute_inner covered_dates), 비-KRX 빈
+            # 결과는 캐시에서 제거해 인터랙션 경로가 폴백하도록 한다.
+            if venue != "KRX" and not bars:
+                self._cache.delete_past(venue, code, date_s)
 
     async def collect_minute_cache_only(
         self,
