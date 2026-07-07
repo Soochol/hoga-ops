@@ -307,7 +307,7 @@ def build_router(engine: QueryEngine) -> APIRouter:
         bid_peaks_enabled: bool = Query(True),
         program_trade_enabled: bool = Query(True),
         trade_volume_poc_enabled: bool = Query(True),
-        mode: str = Query(..., pattern="^(full|hoga|sidecar|candles)$"),
+        mode: str = Query(..., pattern="^(hoga|sidecar|candles)$"),
     ) -> RangeBundle:
         try:
             validate_bucket_ms(bucket_ms)

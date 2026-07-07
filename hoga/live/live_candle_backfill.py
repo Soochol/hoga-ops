@@ -98,7 +98,7 @@ class LiveMinuteCandleBackfill:
         self._max_fresh_dates_per_collect = max(1, int(max_fresh_dates_per_collect))
         self._inflight: dict[
             tuple[KisVenue, str, str],
-            asyncio.Task[tuple[list[dict], str | None]],
+            asyncio.Task[list[dict]],
         ] = {}
         self._rate_limit_until = 0.0
         self._warm_tasks: dict[tuple[KisVenue, str], asyncio.Task[None]] = {}
@@ -315,7 +315,7 @@ class LiveMinuteCandleBackfill:
             if self._rate_limited_now():
                 return
             try:
-                bars, _write_err = await self._fetch_past_shared(
+                bars = await self._fetch_past_shared(
                     venue, code, date_s, priority="background"
                 )
             except KisRateLimitError:
@@ -455,7 +455,7 @@ class LiveMinuteCandleBackfill:
                     warnings_by_date[date_s] = self._rate_limit_aborted_warning(date_s)
                     return
                 try:
-                    bars, write_err = await self._fetch_past_shared(venue, code, date_s)
+                    bars = await self._fetch_past_shared(venue, code, date_s)
                 except KisCapacityOverloaded:
                     warnings_by_date[date_s] = _capacity_overloaded_warning(date_s)
                     return
@@ -480,12 +480,6 @@ class LiveMinuteCandleBackfill:
                     return
                 rows[date_s] = bars
                 fresh.add(date_s)
-                if write_err is not None:
-                    warnings_by_date[date_s] = {
-                        "date": date_s,
-                        "reason": "cache_write_failed",
-                        "msg": write_err,
-                    }
 
         await asyncio.gather(*(one(d) for d in pending))
 
@@ -518,7 +512,7 @@ class LiveMinuteCandleBackfill:
                     if kis_blocked or self._rate_limited_now():
                         warnings.append(self._rate_limit_aborted_warning(date_s))
                         continue
-                    bars, _write_err = await kis_access.run_with_capacity(
+                    bars = await kis_access.run_with_capacity(
                         self._scheduler,
                         data_dir=self._data_dir,
                         key=("live-candle-backfill", "minute", venue, code, date_s, "today"),
@@ -584,7 +578,7 @@ class LiveMinuteCandleBackfill:
         date_s: str,
         *,
         priority: kis_access.KisRequestPriority = "user_visible",
-    ) -> tuple[list[dict], str | None]:
+    ) -> list[dict]:
         # 단일 비행 키는 priority를 포함하지 않는다: warm(background)이 먼저 띄운
         # 태스크에 사용자 요청이 올라타면 background 우선순위로 대기하게 되지만,
         # ADR-0087의 background 비굶주림 보장으로 진전은 유지된다. 반대 방향
@@ -606,7 +600,7 @@ class LiveMinuteCandleBackfill:
         date_s: str,
         *,
         priority: kis_access.KisRequestPriority = "user_visible",
-    ) -> tuple[list[dict], str | None]:
+    ) -> list[dict]:
         t0 = perf_debug.now()
         try:
             result = await kis_access.run_with_capacity(
@@ -638,12 +632,11 @@ class LiveMinuteCandleBackfill:
         if perf_debug.enabled():
             log.warning(
                 "hoga_perf past_candles_fetch status=ok code=%s venue=%s date=%s "
-                "candles=%d cache_write_error=%s duration_ms=%.1f",
+                "candles=%d duration_ms=%.1f",
                 code,
                 venue,
                 date_s,
-                len(result[0]),
-                result[1] is not None,
+                len(result),
                 perf_debug.elapsed_ms(t0),
             )
         return result
@@ -656,7 +649,7 @@ class LiveMinuteCandleBackfill:
         date_s: str,
         *,
         foreground: bool = True,
-    ) -> tuple[list[dict], str | None]:
+    ) -> list[dict]:
         raw = await kis.fetch_past_minute_candles(
             code,
             date_s,
@@ -664,11 +657,8 @@ class LiveMinuteCandleBackfill:
             foreground=foreground,
         )
         bars = [_candle_to_dict(c) for c in raw]
-        try:
-            self._cache.store_past(venue, code, date_s, bars)
-        except OSError as e:
-            return bars, str(e)
-        return bars, None
+        self._cache.store_past(venue, code, date_s, bars)
+        return bars
 
     async def _fetch_past_today_once(
         self,
@@ -676,14 +666,14 @@ class LiveMinuteCandleBackfill:
         venue: KisVenue,
         code: str,
         date_s: str,
-    ) -> tuple[list[dict], str | None]:
+    ) -> list[dict]:
         raw = await kis.fetch_past_minute_candles(
             code,
             date_s,
             venue=venue,
             foreground=True,
         )
-        return [_candle_to_dict(c) for c in raw], None
+        return [_candle_to_dict(c) for c in raw]
 
     def _rate_limited_now(self) -> bool:
         return monotonic_time.monotonic() < self._rate_limit_until

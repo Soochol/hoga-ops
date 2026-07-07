@@ -22,10 +22,6 @@ staleness and honours the "today is never cached" contract of
 ``memory_limit`` is soft, so a single future day worse than ``000660`` could
 still exceed one-query RSS. The linear-sweep rewrite of the query removes that
 ceiling.
-
-This module also hosts ``RANGE_PROFILE_GUARD``, a separate instance guarding the
-``mode=full`` range volume profile's repeated full-parquet scans, tunable via
-``HOGA_RANGE_PROFILE_CONCURRENCY``.
 """
 from __future__ import annotations
 
@@ -111,10 +107,3 @@ class PeakSliceGuard:
 
 # Process-wide default guard for the dual ask/bid peak query.
 GUARD = PeakSliceGuard()
-
-# 범위 볼륨 프로파일(mode=full 전용, 2026-07-07 기준 프론트엔드 미사용 dead path)
-# 가드. 스트리밍 GROUP BY라 RAM은 유계지만, 범위 내 전 trades.parquet 풀 스캔 2회를
-# 요청마다 무캐시로 반복하므로 스레드풀·DuckDB 점유를 동시성 1로 격리한다.
-RANGE_PROFILE_GUARD = PeakSliceGuard(
-    concurrency=_resolve_concurrency("HOGA_RANGE_PROFILE_CONCURRENCY", 1)
-)

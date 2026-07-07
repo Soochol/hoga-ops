@@ -8,7 +8,6 @@ import pytest
 
 from hoga.api.bundle import (
     _expand_distribution_bins,
-    build_price_level_hits_slice,
     downsample_candles,
 )
 from hoga.tables.candles import ApiCandle
@@ -76,301 +75,6 @@ def test_downsample_candles_handles_all_six_timeframes():
             assert c.ts_ms % bucket_ms == 0
 
 
-def test_build_price_level_hits_uses_candle_touch_open_for_vi_and_prev_close_for_limits():
-    hits = build_price_level_hits_slice(
-        date="20260624",
-        candles=[
-            _c(JUN24_0901, 10_000, 11_100, 9_950, 10_500),
-            _c(JUN24_0901 + MINUTE, 10_500, 12_100, 10_400, 11_500),
-            _c(JUN24_0901 + 2 * MINUTE, 11_500, 11_600, 8_900, 9_000),
-            _c(JUN24_0901 + 3 * MINUTE, 9_000, 9_100, 7_900, 8_000),
-            # Limit hits must use previous close=10000, not day open=13000.
-            _c(JUN24_0901 + 4 * MINUTE, 8_000, 13_100, 7_950, 13_000),
-            _c(JUN24_0901 + 5 * MINUTE, 13_000, 13_050, 6_900, 7_000),
-        ],
-        vi_base_open=10_000,
-        limit_base_prev_close=10_000,
-    )
-
-    assert [(h.kind, h.direction, h.pct, h.price, h.t_ms) for h in hits] == [
-        ("vi", "upper", 10, 11000, 1782259260000),
-        ("vi", "upper", 20, 12650, 1782259500000),
-        ("vi", "lower", 10, 9000, 1782259380000),
-        ("vi", "lower", 20, 7200, 1782259560000),
-        ("limit", "upper", 30, 13000, 1782259500000),
-        ("limit", "lower", 30, 7000, 1782259560000),
-    ]
-
-
-def test_build_price_level_hits_uses_first_candle_that_touches_price():
-    hits = build_price_level_hits_slice(
-        date="20260624",
-        candles=[
-            _c(JUN24_0901, 10_000, 10_999, 9_950, 10_900),
-            _c(JUN24_0901 + MINUTE, 10_900, 11_001, 10_850, 11_000),
-            _c(JUN24_0901 + 2 * MINUTE, 11_000, 11_500, 10_900, 11_100),
-        ],
-        vi_base_open=10_000,
-        limit_base_prev_close=None,
-    )
-
-    assert [(h.kind, h.direction, h.pct, h.price, h.t_ms) for h in hits] == [
-        ("vi", "upper", 10, 11000, 1782259320000),
-    ]
-
-
-def test_build_price_level_hits_uses_post_vi_reopen_open_for_second_vi():
-    hits = build_price_level_hits_slice(
-        date="20260624",
-        candles=[
-            _c(JUN24_0901, 10_000, 10_500, 9_500, 10_000),
-            _c(JUN24_0901 + MINUTE, 10_500, 11_000, 10_400, 11_000),
-            _c(JUN24_0901 + 2 * MINUTE, 11_000, 11_100, 10_900, 11_000),
-            # First candle after the 2-minute VI cooling window. Its open is
-            # the best candle-level proxy for the single-price reopening print.
-            _c(JUN24_0901 + 3 * MINUTE, 11_500, 12_600, 11_400, 12_500),
-            _c(JUN24_0901 + 4 * MINUTE, 12_500, 12_700, 12_400, 12_650),
-            _c(JUN24_0901 + 5 * MINUTE, 12_650, 12_700, 9_000, 9_000),
-            _c(JUN24_0901 + 6 * MINUTE, 9_000, 9_100, 8_800, 9_000),
-            _c(JUN24_0901 + 7 * MINUTE, 8_500, 8_600, 7_900, 8_000),
-            _c(JUN24_0901 + 8 * MINUTE, 8_000, 8_100, 7_650, 7_700),
-        ],
-        vi_base_open=10_000,
-        limit_base_prev_close=None,
-    )
-
-    assert [(h.kind, h.direction, h.pct, h.price, h.t_ms) for h in hits] == [
-        ("vi", "upper", 10, 11000, JUN24_0901 + MINUTE),
-        ("vi", "upper", 20, 12650, JUN24_0901 + 4 * MINUTE),
-        ("vi", "lower", 10, 9000, JUN24_0901 + 5 * MINUTE),
-        ("vi", "lower", 20, 7650, JUN24_0901 + 8 * MINUTE),
-    ]
-
-
-def test_build_price_level_hits_uses_krx_tick_adjusted_trigger_prices():
-    hits = build_price_level_hits_slice(
-        date="20260624",
-        candles=[
-            # open=29,100: raw +10 is 32,010, but executable KRX tick is 32,050.
-            _c(JUN24_0901, 29_100, 32_060, 29_000, 32_000),
-            # raw -10 is 26,190, but lower trigger executable tick is 26,150.
-            _c(JUN24_0901 + MINUTE, 32_000, 32_010, 26_140, 26_200),
-            # prev close=24,200: raw upper limit is 31,460, max allowed tick is 31,450.
-            _c(JUN24_0901 + 2 * MINUTE, 26_200, 31_460, 26_100, 31_450),
-        ],
-        vi_base_open=29_100,
-        limit_base_prev_close=24_200,
-    )
-
-    assert [(h.kind, h.direction, h.pct, h.price, h.t_ms) for h in hits] == [
-        ("vi", "upper", 10, 32050, 1782259260000),
-        ("vi", "upper", 20, 28850, 1782259380000),
-        ("vi", "lower", 10, 26150, 1782259320000),
-        ("limit", "upper", 30, 31450, 1782259260000),
-    ]
-
-
-def test_build_price_level_hits_returns_empty_without_basis_or_candles():
-    assert build_price_level_hits_slice(
-        date="20260624",
-        candles=[],
-        vi_base_open=10_000,
-        limit_base_prev_close=10_000,
-    ) == []
-    assert build_price_level_hits_slice(
-        date="20260624",
-        candles=[_c(JUN24_0901, 10_000, 10_500, 9_500, 10_000)],
-        vi_base_open=None,
-        limit_base_prev_close=None,
-    ) == []
-
-
-# ---------------------------------------------------------------------------
-# build_volume_profile_range (ADR-0013): multi-date trades unioned into one profile
-# ---------------------------------------------------------------------------
-
-def test_build_volume_profile_range_empty_dates_returns_empty():
-    from hoga.api.bundle import build_volume_profile_range
-    mock_engine = MagicMock()
-    out = build_volume_profile_range(mock_engine, code="005930", dates_with_sources=[])
-    assert out.bin_count == 0
-    assert out.bins == []
-
-
-def test_build_volume_profile_range_single_date_uses_multi_file_glob(tmp_path):
-    """One-date range: still calls read_parquet with a list parameter."""
-    from hoga.api.bundle import build_volume_profile_range
-
-    mock_engine = MagicMock()
-    def _mk(d, c, src="hogaplay"):
-        # Real dir + empty trades.parquet so build_volume_profile_range's
-        # existence-guard passes (ADR-0043: missing trades.parquet now skipped).
-        dd = tmp_path / c / d
-        dd.mkdir(parents=True, exist_ok=True)
-        (dd / "trades.parquet").touch()
-        return dd
-    mock_engine.parquet_dir.side_effect = _mk
-    # First execute (MIN/MAX): returns (100, 200)
-    # Second execute (GROUP BY bin): returns rows like [(0, 10), (1, 20), ...]
-    mock_engine.conn.execute.side_effect = [
-        MagicMock(fetchone=lambda: (100, 200)),
-        MagicMock(fetchall=lambda: [(0, 10), (1, 20)]),
-    ]
-
-    out = build_volume_profile_range(mock_engine, code="005930", dates_with_sources=[("20260512", "hogaplay")])
-
-    # Verify the first call's parameter list contains a path-list element
-    # (DuckDB multi-file glob: execute(sql, [paths]) where paths=list[str]).
-    calls = mock_engine.conn.execute.call_args_list
-    assert len(calls) >= 1
-    # args = (sql, params_list); params_list = [paths] where paths is list[str]
-    params = calls[0].args[1]
-    assert isinstance(params, list)
-    assert any(isinstance(p, list) and all(isinstance(s, str) for s in p) for p in params)
-    assert out.bin_count > 0
-    assert out.price_min == 100
-    assert out.price_max == 200
-
-
-def test_build_volume_profile_range_multi_date_unions_paths(tmp_path):
-    """Multi-date range: paths list contains every date's trades.parquet."""
-    from hoga.api.bundle import build_volume_profile_range
-
-    mock_engine = MagicMock()
-    def _mk(d, c, src="hogaplay"):
-        dd = tmp_path / c / d
-        dd.mkdir(parents=True, exist_ok=True)
-        (dd / "trades.parquet").touch()
-        return dd
-    mock_engine.parquet_dir.side_effect = _mk
-    mock_engine.conn.execute.side_effect = [
-        MagicMock(fetchone=lambda: (100, 200)),
-        MagicMock(fetchall=lambda: [(0, 10), (1, 20), (2, 30)]),
-    ]
-
-    out = build_volume_profile_range(mock_engine, code="005930", dates_with_sources=[("20260512", "hogaplay"), ("20260513", "hogaplay"), ("20260514", "hogaplay")])
-
-    # Find the path-list parameter and verify it contains all 3 trades.parquet entries.
-    # Each execute call's params is [paths] where paths is list[str] of size 3.
-    calls = mock_engine.conn.execute.call_args_list
-    path_lists = []
-    for call in calls:
-        params = call.args[1] if len(call.args) > 1 else []
-        if isinstance(params, list):
-            for p in params:
-                if isinstance(p, list) and all(isinstance(s, str) for s in p):
-                    path_lists.append(p)
-    assert path_lists, "Expected at least one path-list parameter"
-    assert any(len(pl) == 3 for pl in path_lists), "Expected a 3-element paths list for 3 dates"
-    assert out.bin_count > 0
-
-
-def test_build_volume_profile_range_no_trades_returns_empty():
-    """If MIN/MAX returns (None, None), no trades captured → empty profile."""
-    from hoga.api.bundle import build_volume_profile_range
-
-    mock_engine = MagicMock()
-    mock_engine.parquet_dir.side_effect = lambda d, c, src="hogaplay": __import__("pathlib").Path(f"/data/{c}/{d}")
-    mock_engine.conn.execute.return_value = MagicMock(fetchone=lambda: (None, None))
-
-    out = build_volume_profile_range(mock_engine, code="005930", dates_with_sources=[("20260512", "hogaplay")])
-    assert out.bin_count == 0
-    assert out.bins == []
-
-
-# ---------------------------------------------------------------------------
-# Fix #2: top-edge bin clamped into last bin (price_max volume not dropped)
-# ---------------------------------------------------------------------------
-
-
-def _write_trades_parquet(path, rows: list[tuple[int, int, int]]) -> None:
-    """Write a minimal trades.parquet: each row is (ts_ms, price, qty).
-    Fills other required Trade columns with zeros."""
-    from hoga.tables.trades import Trade, write_parquet
-    trades = [
-        Trade(
-            ts_ms=ts_ms, seq=i, price=price, change_pct=0.0, qty=qty, side=0,
-            cum_vol=0, cum_trades=0, low_so_far=0, high_so_far=0, net_pressure=0,
-            unknown_14=0, unknown_16=0.0, unknown_17=0.0, unknown_18=0.0,
-        )
-        for i, (ts_ms, price, qty) in enumerate(rows, start=1)
-    ]
-    write_parquet(trades, path)
-
-
-def test_build_volume_profile_range_top_edge_bin_not_dropped(tmp_path):
-    """Trade at price_max must land in the top dense bin (vp_bins-1), not vanish.
-
-    Setup: price_min=100, price_max=200, vp_bins=2 → bin_width=50.
-    - price 100 → bin 0 (qty 15)
-    - price 200 → FLOOR((200-100)/50)=2, folded into vp_bins-1=1 (qty 30)
-    Before the fix the fold was absent and the 30 qty was silently dropped.
-    """
-    from hoga.api.bundle import build_volume_profile_range
-
-    p = tmp_path / "trades.parquet"
-    _write_trades_parquet(p, [
-        (90_000_100, 100, 10),
-        (90_000_200, 100, 5),
-        (90_000_300, 200, 30),  # price_max — previously dropped
-    ])
-
-    mock_engine = MagicMock()
-    mock_engine.parquet_dir.side_effect = lambda d, c, src="hogaplay": tmp_path
-    mock_engine.conn = duckdb.connect()
-
-    out = build_volume_profile_range(
-        mock_engine, code="005930",
-        dates_with_sources=[("20260512", "hogaplay")],
-        vp_bins=2,
-    )
-
-    assert out.bin_count == 2
-    assert out.price_min == 100
-    assert out.price_max == 200
-    qty_by_price_low = {b.price_low: b.qty for b in out.bins}
-    assert qty_by_price_low[100] == 15  # bin 0: prices at 100
-    assert qty_by_price_low[150] == 30  # bin 1 (top): price_max 200 folded in
-
-
-def test_build_volume_profile_slice_top_edge_bin_not_dropped(tmp_path):
-    """Trade at price_max must land in the top dense bin (vp_bins-1), not vanish.
-
-    build_volume_profile_slice receives price_min/price_max externally (from candles),
-    passed as price_min/price_max kwargs to bypass the candles query.
-    Setup: price_lo=100, price_hi=200, vp_bins=2 → bin_width=50.
-    - price 100 → bin 0 (qty 15)
-    - price 200 → FLOOR((200-100)/50)=2, folded into vp_bins-1=1 (qty 30)
-    """
-    from hoga.api.bundle import build_volume_profile_slice
-
-    trades_path = tmp_path / "trades.parquet"
-    _write_trades_parquet(trades_path, [
-        (90_000_100, 100, 10),
-        (90_000_200, 100, 5),
-        (90_000_300, 200, 30),  # price_hi — previously dropped
-    ])
-    # candles.parquet must exist for the existence guard (even if not queried
-    # when price_min/price_max are supplied explicitly).
-    (tmp_path / "candles.parquet").touch()
-
-    mock_engine = MagicMock()
-    mock_engine.parquet_dir.side_effect = lambda d, c, src="hogaplay": tmp_path
-    mock_engine.conn = duckdb.connect()
-
-    out = build_volume_profile_slice(
-        mock_engine, code="005930", date="20260512",
-        price_min=100, price_max=200, vp_bins=2,
-    )
-
-    assert out.bin_count == 2
-    assert out.price_min == 100
-    assert out.price_max == 200
-    qty_by_price_low = {b.price_low: b.qty for b in out.bins}
-    assert qty_by_price_low[100] == 15  # bin 0: prices at 100
-    assert qty_by_price_low[150] == 30  # bin 1 (top): price_hi 200 folded in
-
-
 # ---------------------------------------------------------------------------
 # build_range_bundle (ADR-0013/0014): partial-inventory, segments
 # ---------------------------------------------------------------------------
@@ -390,17 +94,15 @@ def _patch_slice_builders(
     the relevant builder for real."""
     from unittest.mock import patch
     from hoga.api.models import (
-        FillStrength, QuoteRatio, VolumeProfile,
+        FillStrength, QuoteRatio,
     )
     qr = QuoteRatio(bucket_ms=bucket_ms, points=[])
     fs = FillStrength(bucket_ms=bucket_ms, points=[])
-    vp = VolumeProfile(bin_count=0, price_min=0, price_max=0, bin_width=0, bins=[])
     patches = [
         patch.object(bundle_mod, "build_candles_slice", return_value=[]),
         patch.object(bundle_mod, "downsample_candles", return_value=[]),
         patch.object(bundle_mod, "build_quote_ratio_slice", return_value=qr),
         patch.object(bundle_mod, "build_fill_strength_slice", return_value=fs),
-        patch.object(bundle_mod, "build_volume_profile_slice", return_value=vp),
     ]
     if patch_ask_peak and patch_bid_peak:
         patches.append(patch.object(bundle_mod, "build_ask_bid_peak_slices", return_value=(None, None)))
@@ -433,18 +135,17 @@ def test_build_range_bundle_single_day_yields_one_segment():
     from hoga.api.models import VolumeProfile
 
     mock_engine = _engine_with_meta_for_dates(["20260512"])
-    patches = _patch_slice_builders(bundle_mod) + [
-        patch.object(bundle_mod, "build_volume_profile_range", return_value=VolumeProfile(bin_count=0, price_min=0, price_max=0, bin_width=0, bins=[])),
-    ]
+    patches = _patch_slice_builders(bundle_mod)
     with contextlib.ExitStack() as stack:
         for pcm in patches:
             stack.enter_context(pcm)
-        rb = build_range_bundle(mock_engine, code="005930", from_date="20260512", to_date="20260512", bucket_ms=60_000)
+        rb = build_range_bundle(mock_engine, code="005930", from_date="20260512", to_date="20260512", bucket_ms=60_000, mode="sidecar")
 
     assert len(rb.segments) == 1
     assert rb.segments[0].date == "20260512"
     assert rb.bucket_ms == 60_000
-    assert len(rb.volume_profile_by_day) == 1
+    # mode=full 퇴역 후 volume_profile_by_day는 와이어 shape 유지용 상시-빈 필드.
+    assert rb.volume_profile_by_day == []
 
 
 def test_build_range_bundle_multi_day_concatenates_per_segment_lists():
@@ -454,17 +155,15 @@ def test_build_range_bundle_multi_day_concatenates_per_segment_lists():
     from hoga.api.models import VolumeProfile
 
     mock_engine = _engine_with_meta_for_dates(["20260512", "20260513"])
-    patches = _patch_slice_builders(bundle_mod) + [
-        patch.object(bundle_mod, "build_volume_profile_range", return_value=VolumeProfile(bin_count=0, price_min=0, price_max=0, bin_width=0, bins=[])),
-    ]
+    patches = _patch_slice_builders(bundle_mod)
     with contextlib.ExitStack() as stack:
         for pcm in patches:
             stack.enter_context(pcm)
-        rb = build_range_bundle(mock_engine, code="005930", from_date="20260512", to_date="20260513", bucket_ms=60_000)
+        rb = build_range_bundle(mock_engine, code="005930", from_date="20260512", to_date="20260513", bucket_ms=60_000, mode="sidecar")
 
     assert len(rb.segments) == 2
     assert [s.date for s in rb.segments] == ["20260512", "20260513"]
-    assert len(rb.volume_profile_by_day) == 2
+    assert rb.volume_profile_by_day == []
 
 
 def test_build_range_bundle_volume_distributions_are_opt_in():
@@ -483,13 +182,7 @@ def test_build_range_bundle_volume_distributions_are_opt_in():
         session_close_ms=153_000_000,
         bins=[VolumeDistributionBin(price_low=70_000, price_high=71_000, qty=123)],
     )
-    base_patches = _patch_slice_builders(bundle_mod) + [
-        patch.object(
-            bundle_mod,
-            "build_volume_profile_range",
-            return_value=VolumeProfile(bin_count=0, price_min=0, price_max=0, bin_width=0, bins=[]),
-        ),
-    ]
+    base_patches = _patch_slice_builders(bundle_mod)
 
     with contextlib.ExitStack() as stack:
         for pcm in base_patches:
@@ -503,6 +196,7 @@ def test_build_range_bundle_volume_distributions_are_opt_in():
             from_date="20260512",
             to_date="20260512",
             bucket_ms=60_000,
+            mode="sidecar",
         )
 
     assert dist_builder.call_count == 0
@@ -520,6 +214,7 @@ def test_build_range_bundle_volume_distributions_are_opt_in():
             from_date="20260512",
             to_date="20260512",
             bucket_ms=60_000,
+            mode="sidecar",
             volume_distribution_bins=10,
         )
 
@@ -583,14 +278,6 @@ def test_build_range_bundle_candles_mode_skips_hoga_and_sidecar_builders():
         downsample = stack.enter_context(patch.object(bundle_mod, "downsample_candles", return_value=downsampled))
         quote_ratio = stack.enter_context(patch.object(bundle_mod, "build_quote_ratio_slice"))
         fill_strength = stack.enter_context(patch.object(bundle_mod, "build_fill_strength_slice"))
-        volume_profile = stack.enter_context(patch.object(bundle_mod, "build_volume_profile_slice"))
-        volume_profile_range = stack.enter_context(
-            patch.object(
-                bundle_mod,
-                "build_volume_profile_range",
-                return_value=VolumeProfile(bin_count=0, price_min=0, price_max=0, bin_width=0, bins=[]),
-            )
-        )
         distribution = stack.enter_context(patch.object(bundle_mod, "build_volume_distribution_slice"))
         poc = stack.enter_context(patch.object(bundle_mod, "build_trade_volume_poc_slice"))
         ask_bid_peaks = stack.enter_context(patch.object(bundle_mod, "build_ask_bid_peak_slices"))
@@ -614,8 +301,6 @@ def test_build_range_bundle_candles_mode_skips_hoga_and_sidecar_builders():
     downsample.assert_called_once_with(raw_candles, bucket_ms=60_000)
     quote_ratio.assert_not_called()
     fill_strength.assert_not_called()
-    volume_profile.assert_not_called()
-    volume_profile_range.assert_not_called()
     distribution.assert_not_called()
     poc.assert_not_called()
     ask_bid_peaks.assert_not_called()
@@ -655,7 +340,6 @@ def test_build_range_bundle_builds_trade_volume_poc_by_default_from_candle_range
     )
     patches = _patch_slice_builders(bundle_mod) + [
         patch.object(bundle_mod, "build_candles_slice", return_value=raw_candles),
-        patch.object(bundle_mod, "build_volume_profile_range", return_value=VolumeProfile(bin_count=0, price_min=0, price_max=0, bin_width=0, bins=[])),
     ]
 
     with contextlib.ExitStack() as stack:
@@ -670,6 +354,7 @@ def test_build_range_bundle_builds_trade_volume_poc_by_default_from_candle_range
             from_date="20260512",
             to_date="20260512",
             bucket_ms=60_000,
+            mode="sidecar",
         )
 
     assert rb.trade_volume_pocs == [poc]
@@ -693,7 +378,6 @@ def test_build_range_bundle_threads_explicit_trade_volume_poc_bins():
                 ApiCandle(ts_ms=1, open=100, close=101, high=102, low=99, vol_a=1, vol_b=0),
             ],
         ),
-        patch.object(bundle_mod, "build_volume_profile_range", return_value=VolumeProfile(bin_count=0, price_min=0, price_max=0, bin_width=0, bins=[])),
     ]
 
     with contextlib.ExitStack() as stack:
@@ -708,6 +392,7 @@ def test_build_range_bundle_threads_explicit_trade_volume_poc_bins():
             from_date="20260512",
             to_date="20260512",
             bucket_ms=60_000,
+            mode="sidecar",
             trade_volume_poc_bins=12,
         )
 
@@ -748,13 +433,7 @@ def test_build_range_bundle_attaches_program_trade_sidecar_from_disk(tmp_path):
 
     mock_engine = _engine_with_meta_for_dates(["20260512"])
     mock_engine.data_dir = tmp_path
-    patches = _patch_slice_builders(bundle_mod) + [
-        patch.object(
-            bundle_mod,
-            "build_volume_profile_range",
-            return_value=VolumeProfile(bin_count=0, price_min=0, price_max=0, bin_width=0, bins=[]),
-        ),
-    ]
+    patches = _patch_slice_builders(bundle_mod)
     with contextlib.ExitStack() as stack:
         for pcm in patches:
             stack.enter_context(pcm)
@@ -764,6 +443,7 @@ def test_build_range_bundle_attaches_program_trade_sidecar_from_disk(tmp_path):
             from_date="20260512",
             to_date="20260512",
             bucket_ms=60_000,
+            mode="sidecar",
         )
 
     assert rb.program_trade.source == "kis_program_trade"
@@ -839,8 +519,6 @@ def test_build_range_bundle_sidecar_mode_builds_overlay_sidecars_only(tmp_path):
         stack.enter_context(patch.object(bundle_mod, "build_candles_slice", return_value=raw_candles))
         qr_builder = stack.enter_context(patch.object(bundle_mod, "build_quote_ratio_slice"))
         fs_builder = stack.enter_context(patch.object(bundle_mod, "build_fill_strength_slice"))
-        volume_profile_builder = stack.enter_context(patch.object(bundle_mod, "build_volume_profile_slice"))
-        volume_profile_range_builder = stack.enter_context(patch.object(bundle_mod, "build_volume_profile_range"))
         program = bundle_mod.ProgramTradeSeries(points=[
             bundle_mod.ProgramTradePoint(
                 t=1_747_006_200_000,
@@ -879,8 +557,6 @@ def test_build_range_bundle_sidecar_mode_builds_overlay_sidecars_only(tmp_path):
     assert rb.trade_volume_pocs == [poc]
     qr_builder.assert_not_called()
     fs_builder.assert_not_called()
-    volume_profile_builder.assert_not_called()
-    volume_profile_range_builder.assert_not_called()
     program_builder.assert_called_once_with(mock_engine, code="005930", dates=["20260512"])
 
 
@@ -956,7 +632,6 @@ def test_build_range_bundle_uses_combined_ask_bid_peak_builder():
     with contextlib.ExitStack() as stack:
         for pcm in _patch_slice_builders(bundle_mod, patch_ask_peak=False, patch_bid_peak=False):
             stack.enter_context(pcm)
-        stack.enter_context(patch.object(bundle_mod, "build_volume_profile_range", return_value=VolumeProfile(bin_count=0, price_min=0, price_max=0, bin_width=0, bins=[])))
         combined = stack.enter_context(patch.object(bundle_mod, "build_ask_bid_peak_slices", return_value=(ask, bid)))
         rb = build_range_bundle(
             mock_engine,
@@ -964,6 +639,7 @@ def test_build_range_bundle_uses_combined_ask_bid_peak_builder():
             from_date="20260512",
             to_date="20260512",
             bucket_ms=60_000,
+            mode="sidecar",
         )
 
     combined.assert_called_once()
@@ -1111,7 +787,6 @@ def test_build_range_bundle_falls_back_to_trade_source_with_supplied_distributio
         session_close_ms=2,
         bins=[VolumeDistributionBin(price_low=69_900, price_high=70_100, qty=123)],
     )
-    vp = VolumeProfile(bin_count=0, price_min=0, price_max=0, bin_width=0, bins=[])
     qr = bundle_mod.QuoteRatio(bucket_ms=60_000, points=[])
     fs = bundle_mod.FillStrength(bucket_ms=60_000, points=[])
 
@@ -1120,8 +795,6 @@ def test_build_range_bundle_falls_back_to_trade_source_with_supplied_distributio
         stack.enter_context(patch.object(bundle_mod, "downsample_candles", return_value=[]))
         stack.enter_context(patch.object(bundle_mod, "build_quote_ratio_slice", return_value=qr))
         stack.enter_context(patch.object(bundle_mod, "build_fill_strength_slice", return_value=fs))
-        stack.enter_context(patch.object(bundle_mod, "build_volume_profile_slice", return_value=vp))
-        stack.enter_context(patch.object(bundle_mod, "build_volume_profile_range", return_value=vp))
         stack.enter_context(patch.object(bundle_mod, "build_ask_peak_slice", return_value=None))
         stack.enter_context(patch.object(bundle_mod, "build_bid_peak_slice", return_value=None))
         stack.enter_context(patch.object(bundle_mod, "build_program_trade_series", return_value=bundle_mod.ProgramTradeSeries(points=[])))
@@ -1134,6 +807,7 @@ def test_build_range_bundle_falls_back_to_trade_source_with_supplied_distributio
             from_date=date,
             to_date=date,
             bucket_ms=60_000,
+            mode="sidecar",
             source_pref="kis_ws_first",
             volume_distribution_bins=10,
             volume_distribution_price_min=69_900,
@@ -1218,6 +892,7 @@ def test_range_volume_distribution_uses_first_single_price_book_cutoff(tmp_path)
             from_date=date,
             to_date=date,
             bucket_ms=60_000,
+            mode="sidecar",
             volume_distribution_bins=5,
             trade_volume_poc_bins=5,
         )
@@ -1301,6 +976,7 @@ def test_range_volume_distribution_ignores_false_early_single_price_cutoff(tmp_p
             from_date=date,
             to_date=date,
             bucket_ms=60_000,
+            mode="sidecar",
             volume_distribution_bins=5,
             trade_volume_poc_bins=5,
         )
@@ -1339,7 +1015,7 @@ def test_build_range_bundle_rejects_from_gt_to():
 
     mock_engine = MagicMock()
     with pytest.raises(HTTPException) as exc:
-        build_range_bundle(mock_engine, code="005930", from_date="20260520", to_date="20260512", bucket_ms=60_000)
+        build_range_bundle(mock_engine, code="005930", from_date="20260520", to_date="20260512", bucket_ms=60_000, mode="sidecar")
     assert exc.value.status_code == 400
 
 
@@ -1350,7 +1026,7 @@ def test_build_range_bundle_returns_empty_on_empty_inventory():
     mock_engine = MagicMock()
     mock_engine.list_stock_dates_in_range.return_value = []
     rb = build_range_bundle(
-        mock_engine, code="005930", from_date="20260512", to_date="20260520", bucket_ms=60_000
+        mock_engine, code="005930", from_date="20260512", to_date="20260520", bucket_ms=60_000, mode="sidecar"
     )
     assert rb.segments == []
     assert rb.candles == []
@@ -1368,7 +1044,7 @@ def test_build_range_bundle_rejects_invalid_bucket_ms():
 
     mock_engine = MagicMock()
     with pytest.raises(ValueError, match="bucket_ms"):
-        build_range_bundle(mock_engine, code="005930", from_date="20260512", to_date="20260512", bucket_ms=42_000)
+        build_range_bundle(mock_engine, code="005930", from_date="20260512", to_date="20260512", bucket_ms=42_000, mode="sidecar")
 
 
 # --- ADR-0020 / Invariants ---
@@ -1411,17 +1087,13 @@ def test_build_range_bundle_skips_invalid_and_surfaces_in_excluded():
     }
     eng.get_meta.side_effect = lambda date, _code, _source="hogaplay": metas[date]
 
-    patches = _patch_slice_builders(bundle_mod) + [
-        patch.object(bundle_mod, "build_volume_profile_range",
-                     return_value=VolumeProfile(bin_count=0, price_min=0,
-                                                price_max=0, bin_width=0, bins=[])),
-    ]
+    patches = _patch_slice_builders(bundle_mod)
     with contextlib.ExitStack() as stack:
         for pcm in patches:
             stack.enter_context(pcm)
         rb = build_range_bundle(eng, code="005930",
                                 from_date="20260520", to_date="20260521",
-                                bucket_ms=60_000)
+                                bucket_ms=60_000, mode="sidecar")
 
     # Only the 2 healthy dates are in segments.
     assert [s.date for s in rb.segments] == ["20260520", "20260521"]
@@ -1445,17 +1117,13 @@ def test_build_range_bundle_surfaces_warn_without_excluding():
     # Healthy bounds, but pages=4132 events=1553 → ratio invariant fires (warn).
     eng.get_meta.return_value = _meta(pages=4132, events=1553)
 
-    patches = _patch_slice_builders(bundle_mod) + [
-        patch.object(bundle_mod, "build_volume_profile_range",
-                     return_value=VolumeProfile(bin_count=0, price_min=0,
-                                                price_max=0, bin_width=0, bins=[])),
-    ]
+    patches = _patch_slice_builders(bundle_mod)
     with contextlib.ExitStack() as stack:
         for pcm in patches:
             stack.enter_context(pcm)
         rb = build_range_bundle(eng, code="005930",
                                 from_date="20260520", to_date="20260520",
-                                bucket_ms=60_000)
+                                bucket_ms=60_000, mode="sidecar")
 
     assert len(rb.segments) == 1
     assert rb.excluded_dates == []
@@ -1480,17 +1148,13 @@ def test_bundle_open_ms_zero_served_and_normalized():
     # open=0 is the upstream sentinel; close and completeness are healthy.
     eng.get_meta.return_value = _meta(open_ms=0)
 
-    patches = _patch_slice_builders(bundle_mod) + [
-        patch.object(bundle_mod, "build_volume_profile_range",
-                     return_value=VolumeProfile(bin_count=0, price_min=0,
-                                                price_max=0, bin_width=0, bins=[])),
-    ]
+    patches = _patch_slice_builders(bundle_mod)
     with contextlib.ExitStack() as stack:
         for pcm in patches:
             stack.enter_context(pcm)
         rb = build_range_bundle(eng, code="005930",
                                 from_date=DATE, to_date=DATE,
-                                bucket_ms=60_000)
+                                bucket_ms=60_000, mode="sidecar")
 
     # 1) Not excluded; present in segments.
     assert [s.date for s in rb.segments] == [DATE]
@@ -1518,7 +1182,7 @@ def test_build_range_bundle_empty_when_all_dates_excluded():
     eng.get_meta.return_value = _meta(close_ms=0)
 
     rb = build_range_bundle(
-        eng, code="003490", from_date="20260518", to_date="20260518", bucket_ms=60_000
+        eng, code="003490", from_date="20260518", to_date="20260518", bucket_ms=60_000, mode="sidecar"
     )
     assert rb.segments == []
     assert len(rb.excluded_dates) == 1
@@ -1545,17 +1209,13 @@ def test_build_range_bundle_excludes_real_5_18_003490_case():
     }
     eng.get_meta.side_effect = lambda date, _code, _source="hogaplay": metas[date]
 
-    patches = _patch_slice_builders(bundle_mod) + [
-        patch.object(bundle_mod, "build_volume_profile_range",
-                     return_value=VolumeProfile(bin_count=0, price_min=0,
-                                                price_max=0, bin_width=0, bins=[])),
-    ]
+    patches = _patch_slice_builders(bundle_mod)
     with contextlib.ExitStack() as stack:
         for pcm in patches:
             stack.enter_context(pcm)
         rb = build_range_bundle(eng, code="003490",
                                 from_date="20260518", to_date="20260520",
-                                bucket_ms=60_000)
+                                bucket_ms=60_000, mode="sidecar")
 
     # 5/18 must be excluded — virtual axis bug repeats otherwise.
     assert [s.date for s in rb.segments] == ["20260520"]
@@ -1602,14 +1262,11 @@ def test_build_range_bundle_includes_ask_peak_for_today(monkeypatch, tmp_path) -
     eng.conn = duckdb.connect()
     eng.indicators_cache = None  # ask_peak 캐시 미사용(MagicMock 회피); per-day 계산만 검증
 
-    patches = _patch_slice_builders(bundle_mod, patch_ask_peak=False) + [
-        patch.object(bundle_mod, "build_volume_profile_range",
-                     return_value=VolumeProfile(bin_count=0, price_min=0, price_max=0, bin_width=0, bins=[])),
-    ]
+    patches = _patch_slice_builders(bundle_mod, patch_ask_peak=False)
     with contextlib.ExitStack() as stack:
         for pcm in patches:
             stack.enter_context(pcm)
-        bundle = build_range_bundle(eng, code="005930", from_date=FIXTURE_DATE, to_date=FIXTURE_DATE, bucket_ms=60000)
+        bundle = build_range_bundle(eng, code="005930", from_date=FIXTURE_DATE, to_date=FIXTURE_DATE, bucket_ms=60000, mode="sidecar")
 
     assert len(bundle.ask_peaks) == 1
     p = bundle.ask_peaks[0]
@@ -1654,14 +1311,11 @@ def test_build_range_bundle_ask_peaks_includes_past_day_even_when_not_today(monk
     eng.conn = duckdb.connect()
     eng.indicators_cache = None  # ask_peak 캐시 미사용(MagicMock 회피); per-day 계산만 검증
 
-    patches = _patch_slice_builders(bundle_mod, patch_ask_peak=False) + [
-        patch.object(bundle_mod, "build_volume_profile_range",
-                     return_value=VolumeProfile(bin_count=0, price_min=0, price_max=0, bin_width=0, bins=[])),
-    ]
+    patches = _patch_slice_builders(bundle_mod, patch_ask_peak=False)
     with contextlib.ExitStack() as stack:
         for pcm in patches:
             stack.enter_context(pcm)
-        bundle = build_range_bundle(eng, code="005930", from_date=FIXTURE_DATE, to_date=FIXTURE_DATE, bucket_ms=60000)
+        bundle = build_range_bundle(eng, code="005930", from_date=FIXTURE_DATE, to_date=FIXTURE_DATE, bucket_ms=60000, mode="sidecar")
 
     # 과거일도 그날 항목이 ask_peaks에 들어간다(거래일별).
     assert len(bundle.ask_peaks) == 1
@@ -1702,14 +1356,11 @@ def test_build_range_bundle_ask_peaks_per_day(monkeypatch, tmp_path) -> None:
     eng.conn = duckdb.connect()
     eng.indicators_cache = None  # ask_peak 캐시 미사용(MagicMock 회피); per-day 계산만 검증
 
-    patches = _patch_slice_builders(bundle_mod, patch_ask_peak=False) + [
-        patch.object(bundle_mod, "build_volume_profile_range",
-                     return_value=VolumeProfile(bin_count=0, price_min=0, price_max=0, bin_width=0, bins=[])),
-    ]
+    patches = _patch_slice_builders(bundle_mod, patch_ask_peak=False)
     with contextlib.ExitStack() as stack:
         for pcm in patches:
             stack.enter_context(pcm)
-        bundle = build_range_bundle(eng, code="005930", from_date="20260610", to_date="20260611", bucket_ms=60000)
+        bundle = build_range_bundle(eng, code="005930", from_date="20260610", to_date="20260611", bucket_ms=60000, mode="sidecar")
 
     # 거래일별: 두 날 모두 각자의 최대벽이 ask_peaks에 — 06-10=9000@30000, 06-11=3000@28000.
     by_date = {p.date: p for p in bundle.ask_peaks}
@@ -2504,11 +2155,6 @@ def test_build_range_bundle_includes_bid_peaks(monkeypatch, tmp_path) -> None:
             "build_ask_bid_peak_slices",
             return_value=(None, bid),
         ),
-        patch.object(
-            bundle_mod,
-            "build_volume_profile_range",
-            return_value=VolumeProfile(bin_count=0, price_min=0, price_max=0, bin_width=0, bins=[]),
-        ),
     ]
     with contextlib.ExitStack() as stack:
         for p in patches:
@@ -2519,6 +2165,7 @@ def test_build_range_bundle_includes_bid_peaks(monkeypatch, tmp_path) -> None:
             from_date=FIXTURE_DATE,
             to_date=FIXTURE_DATE,
             bucket_ms=60_000,
+            mode="sidecar",
         )
     assert len(bundle.bid_peaks) == 1
     assert bundle.bid_peaks[0].price == 70000

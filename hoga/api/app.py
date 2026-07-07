@@ -22,6 +22,7 @@ from hoga.api.events import build_event_bus
 from hoga.api.heatmap import seed_from_watchlist_if_absent
 from hoga.api.heatmap_routes import build_router as build_heatmap_router
 from hoga.api.queries import QueryEngine
+from hoga.api.request_timing import RequestTimingMiddleware
 from hoga.api.routes import build_router
 from hoga.api.scheduler import start_scheduler
 from hoga.api.screener import build_router as build_screener_router
@@ -161,6 +162,8 @@ def create_app(data_dir: Path) -> FastAPI:
         allow_methods=["*"],
         allow_headers=["*"],
     )
+    # WS5: 요청 TTFB 타이밍 — 마지막에 추가해 최외곽(전 구간 측정)으로 배선.
+    app.add_middleware(RequestTimingMiddleware)
     # Liveness probe. Used by the Playwright e2e webServer config and by any
     # process supervisor that needs a no-side-effects 200 OK.
     @app.get("/health")

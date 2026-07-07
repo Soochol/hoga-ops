@@ -22,8 +22,15 @@ class IndexCandleCacheHit:
     violations: list[DailyInvariantViolation] = field(default_factory=list)
 
 
+# WS4: per-key 배치 리스트 무한 append 방지. 키(대표지수×프레임)는 유계지만
+# 배치는 러닝 일수만큼 쌓인다. 캡 초과 시 oldest 드랍 — 커버리지 구멍은
+# covered()가 None을 돌려 해당 구간만 재fetch되므로 정확성 불변.
+DEFAULT_MAX_BATCHES_PER_KEY = 128
+
+
 class IndexCandlesCache:
-    def __init__(self) -> None:
+    def __init__(self, *, max_batches_per_key: int = DEFAULT_MAX_BATCHES_PER_KEY) -> None:
+        self._max_batches_per_key = max(1, int(max_batches_per_key))
         self._per_key: dict[
             IndexCandleCacheKey,
             list[IndexCandleCacheBatch],
@@ -38,7 +45,10 @@ class IndexCandlesCache:
         *,
         violations: list[DailyInvariantViolation] | None = None,
     ) -> None:
-        self._per_key.setdefault(key, []).append((frm, to, list(candles), list(violations or [])))
+        batches = self._per_key.setdefault(key, [])
+        batches.append((frm, to, list(candles), list(violations or [])))
+        if len(batches) > self._max_batches_per_key:
+            del batches[: len(batches) - self._max_batches_per_key]
 
     def list_batches(
         self,

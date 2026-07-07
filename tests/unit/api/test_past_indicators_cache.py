@@ -267,3 +267,22 @@ def test_trade_volume_poc_cache_survives_new_cache_instance(tmp_path: Path) -> N
 
     reloaded = PastIndicatorsCache(tmp_path)
     assert reloaded.get_trade_volume_poc("005930", "20260619", "hogaplay", 10, 69900, 70100) == poc
+
+
+def test_mem_overlay_bounded_falls_back_to_disk(tmp_path: Path) -> None:
+    """WS4: 인메모리 오버레이는 상한을 넘으면 LRU 축출하되, 디스크
+    read-through로 값 자체는 보존된다 (관측 가능 동작 불변, 메모리만 유계)."""
+    cache = PastIndicatorsCache(tmp_path, mem_max_entries=2)
+    rows_by_date = {}
+    for i, date_s in enumerate(("20260601", "20260602", "20260603")):
+        rows = [QuoteRatioRow(
+            bucket_intra_ms=60_000, bid_total=100 + i, ask_total=200 + i,
+            bid_max=10, ask_max=20, imb_max_bid=1, imb_max_ask=2,
+        )]
+        rows_by_date[date_s] = rows
+        cache.store_ratio("005930", date_s, "kis_live", rows)
+
+    assert len(cache._mem_ratio) == 2  # 상한 유지
+    # 축출된 첫 날짜도 디스크에서 그대로 읽힌다.
+    got = cache.get_ratio("005930", "20260601", "kis_live")
+    assert got == rows_by_date["20260601"]
