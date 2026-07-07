@@ -288,6 +288,57 @@ def test_query_bucketed_ratio_buckets_on_linear_minute_boundary(tmp_path: Path) 
     assert [r.bid_total for r in rows] == [22, 44]
 
 
+def test_query_bucketed_ratio_int32_overflow_on_extreme_book(tmp_path: Path) -> None:
+    """A limit-up small-cap book can carry ~350M shares per level; the 10-level
+    SUM then exceeds INT32 max (2_147_483_647). Regression for the production
+    HTTP 500 (`OutOfRangeException: Overflow in addition of INT32`) observed on
+    real capture data (differential `2085534523 + 176964345`). ask_q/bid_q are
+    persisted as INT32 columns (see PARQUET_SCHEMA), so summing them in SQL
+    without widening overflows; _ASK_Q_SUM/_BID_Q_SUM (and the deep-book
+    _ASK_DEEP_SUM/_BID_DEEP_SUM used to classify continuous-vs-auction books)
+    must accumulate in BIGINT.
+
+    All 10 levels are > 0 (deep levels 4..10 included) so the snapshot
+    classifies as a continuous-trading book (_DEEP_BOOK_SQL / is_pre), which is
+    required for it to contribute to bid_total/ask_total at all. The per-level
+    quantity (350M) is chosen so that BOTH the full 10-level sum AND the deep
+    (level 4..10, 7-term) sum independently exceed INT32 max — this exercises
+    the deep-book classification query (line ~822, which runs before the main
+    totals query) as well as the totals query itself.
+    """
+    from hoga.tables.snapshots import query_bucketed_ratio
+
+    per_level_ask = (350_000_000,) * 10
+    per_level_bid = (350_000_000,) * 10
+    expected_ask_total = sum(per_level_ask)
+    expected_bid_total = sum(per_level_bid)
+    assert expected_ask_total == 3_500_000_000
+    assert expected_bid_total == 3_500_000_000
+    assert expected_ask_total > 2_147_483_647  # INT32 max
+    assert expected_bid_total > 2_147_483_647
+    # Deep-book sum (levels 4..10, 7 terms) also exceeds INT32 max on its own,
+    # stressing _ASK_DEEP_SUM / _BID_DEEP_SUM independently of the full sum.
+    expected_ask_deep = sum(per_level_ask[3:])
+    expected_bid_deep = sum(per_level_bid[3:])
+    assert expected_ask_deep == 2_450_000_000
+    assert expected_bid_deep == 2_450_000_000
+    assert expected_ask_deep > 2_147_483_647
+    assert expected_bid_deep > 2_147_483_647
+
+    obs = [_ob(ts_ms=90_000_100, seq=1, ask_q=per_level_ask, bid_q=per_level_bid)]
+    out = tmp_path / "snapshots.parquet"
+    write_parquet(obs, out)
+    con = duckdb.connect()
+
+    rows = query_bucketed_ratio(
+        con, path=out, bucket_ms=60_000, session_close_ms=153_000_000,
+    )
+
+    assert len(rows) == 1
+    assert rows[0].bid_total == expected_bid_total
+    assert rows[0].ask_total == expected_ask_total
+
+
 def test_query_bucketed_ratio_empty_parquet_returns_no_rows(tmp_path: Path) -> None:
     from hoga.tables.snapshots import query_bucketed_ratio
 
