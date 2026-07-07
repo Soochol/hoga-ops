@@ -52,6 +52,19 @@ def _no_env_reload_on_retry(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setattr(kis_runtime, "_reload_env_for_retry", lambda: None)
 
 
+@pytest.fixture(autouse=True)
+def _fresh_today_ttl(monkeypatch):
+    """ADR-0090 TodayTtlCache 테스트 간 격리 — 전역 인스턴스를 매 테스트 교체."""
+    import hoga.api.bundle as bundle_mod
+    from hoga.api.today_ttl_cache import TodayTtlCache
+
+    fresh = TodayTtlCache()
+    monkeypatch.setattr("hoga.api.today_ttl_cache.TODAY_TTL", fresh)
+    # bundle이 `from ... import TODAY_TTL`로 바인딩하므로 그 참조도 갈아끼운다.
+    if hasattr(bundle_mod, "TODAY_TTL"):
+        monkeypatch.setattr(bundle_mod, "TODAY_TTL", fresh)
+
+
 @pytest.fixture
 def tmp_data_dir(tmp_path: Path) -> Path:
     """A fresh per-test data directory."""

@@ -168,6 +168,7 @@ export function projectCumulativeNetFill(
       axis,
       auctionWindowMask,
       bundle.bucket_ms,
+      segIdx === bundle.segments.length - 1,
     );
     for (const e of segOut) out.push(e);
   });
@@ -190,6 +191,7 @@ export function projectCumulativeSegment(
   axis: VirtualAxis,
   auctionWindowMask: boolean,
   bucketMs: number,
+  isLastSegment: boolean,
 ): (LineData<Time> | WhitespaceData<Time>)[] {
   const out: (LineData<Time> | WhitespaceData<Time>)[] = [];
   let runningSum = 0;
@@ -243,7 +245,28 @@ export function projectCumulativeSegment(
     lastPreAuctionIdx = out.length - 1;
   }
 
-  // Paint the last pre-auction emission's outgoing segment transparent.
+  // Paint the last pre-auction emission's outgoing segment transparent, AND
+  // (below) synthesize transparent anchors across the auction window — both
+  // exist solely to prevent a diagonal line drawing THROUGH the auction band
+  // INTO THE NEXT SEGMENT (ADR-0029). isLastSegment marks the terminal segment
+  // of whatever range is loaded — there's no next segment for a diagonal to
+  // bleed into, so both are visually meaningless there and are suppressed via
+  // !isLastSegment. This holds for ANY last segment, not just a live/today
+  // one: browsing a past (non-live) range whose last loaded day is fully
+  // closed still gets isLastSegment=true and the same suppression — a missing
+  // anchor/gap artifact there is this gate working as designed, not a bug.
+  //
+  // The suppression also happens to make the /live tick path cheap when the
+  // last segment IS today's live segment: keeping these active there would
+  // force a per-tick setData fallback in seriesDataDiff.ts's
+  // classifyDataChange, because (a) the retroactive color rewrite below
+  // mutates a PRIOR emission's `color` field (breaking the byte-identical-
+  // prefix precondition for the tail-append 'update' path) and (b) the
+  // future anchor synthesis inserts points AFTER the segment's last real
+  // point, which also breaks the tail-append prefix on every subsequent
+  // tick. Suppressing both lets live ticks append cleanly — but that's a
+  // bonus of the rule, not its scope.
+  //
   // lightweight-charts uses each point's `color` for its OUTGOING segment,
   // so without this patch the connector from (e.g.) 15:19's gray cumulative
   // value to the value=0 synthesized anchor at 15:20 stays visible — the
@@ -251,7 +274,7 @@ export function projectCumulativeSegment(
   // cleanly. Skipped when there's no pre-auction emission to attach to
   // (viewport starts inside the auction window): the synthesized anchors
   // alone cover the visible region.
-  if (auctionWindowMask && lastPreAuctionIdx >= 0) {
+  if (auctionWindowMask && !isLastSegment && lastPreAuctionIdx >= 0) {
     out[lastPreAuctionIdx] = {
       ...(out[lastPreAuctionIdx] as LineData<Time>),
       ...LINE_HIDDEN_COLOR,
@@ -264,8 +287,9 @@ export function projectCumulativeSegment(
   // from this segment's last cumulative value to the next segment's first —
   // the exact diagonal-across-the-band bug ADR-0029 documents for the
   // line/baseline projectors. Same fix shape (transparent per-point color
-  // at every in-window bar) applied here at bucket resolution.
-  if (auctionWindowMask) {
+  // at every in-window bar) applied here at bucket resolution. Suppressed in
+  // the last segment (see comment above the color-patch block).
+  if (auctionWindowMask && !isLastSegment) {
     const auctionStart = seg.session_close_ms - 10 * 60 * 1000;
     // Stop strictly before session_close — the next segment's day-boundary
     // whitespace lands at `segOpenVirtual - 1` which converts back to the
@@ -316,14 +340,14 @@ export function makeCumulativeCachedProjector(): (
     if (!entry || entry.mask !== mask || entry.pastLen !== splitIdx || entry.pastLastT !== pastLastT) {
       const pastData: (LineData<Time> | WhitespaceData<Time>)[] = [];
       for (let i = 0; i < todayIdx; i++) {
-        const segOut = projectCumulativeSegment(segs[i], i, pastPoints, axis, mask, bucketMs);
+        const segOut = projectCumulativeSegment(segs[i], i, pastPoints, axis, mask, bucketMs, false);
         for (const e of segOut) pastData.push(e);
       }
       entry = { mask, pastLen: splitIdx, pastLastT, pastData };
       cache.set(axis, entry);
     }
     return entry.pastData.concat(
-      projectCumulativeSegment(todaySeg, todayIdx, todayPoints, axis, mask, bucketMs),
+      projectCumulativeSegment(todaySeg, todayIdx, todayPoints, axis, mask, bucketMs, true),
     );
   };
 }

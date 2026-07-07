@@ -298,64 +298,30 @@ describe('projectCumulativeNetFill — closing-auction hide', () => {
   ]);
   const auctionStartMs = day1Open + 22_800_000;
 
-  it('emits in-window cumulative points with transparent color AND synthesizes per-bucket auction anchors when mask=true', () => {
+  it('drops the in-window point and suppresses anchors/color-patch in the last (only) segment', () => {
     const bundle: any = {
       bucket_ms: 60_000,
       segments: [{ date: '20260518', session_open_ms: day1Open, session_close_ms: day1Open + sessionDurationMs }],
       fill_strength: {
         points: [
           { t: day1Open, buy_qty: 100, sell_qty: 30 },                  // +70 → 70 (kept)
-          { t: auctionStartMs + 60_000, buy_qty: 0, sell_qty: 100 },    // inside → transparent (rare; backend usually filters)
+          { t: auctionStartMs + 60_000, buy_qty: 0, sell_qty: 100 },    // inside → dropped (isAuctionHidden)
         ],
       },
     };
     const out = projectCumulativeNetFill(bundle, singleDayAxis, true);
 
-    // Breakdown:
-    //  1 kept point at session_open
-    //  + 10 synthesized transparent anchors (auction_start..session_close-1bucket
-    //    at 1-min intervals = 15:20..15:29 = 10 anchors)
-    // = 11 entries total. The in-window source point at 15:21 is intentionally
-    // dropped: its bucket-aligned timestamp collides with the synthesized 15:21
-    // anchor, and `setData` requires strictly ascending unique times. Visually
-    // identical because the anchor at that slot is also transparent zero;
-    // runningSum continues to accumulate regardless of emission.
-    expect(out).toHaveLength(11);
-    // out[0] is the last pre-auction emission (only pre-auction point in
-    // this bundle); its color is patched transparent so the outgoing
-    // segment into the synthesized 15:20 anchor is invisible. The value
-    // is preserved (it's still the data sample, just with a hidden
-    // outgoing connector).
-    expect(out[0]).toMatchObject({ time: 0, value: 70, color: 'rgba(0,0,0,0)' });
-
-    // Every entry is transparent-color: out[0] via the last-pre-auction
-    // outgoing patch, out[1..] via the synthesis transparency.
-    for (let i = 0; i < out.length; i++) {
-      expect((out[i] as { color?: string }).color).toBe('rgba(0,0,0,0)');
-    }
-    // Every synthesized anchor carries value=0; only out[0] is value-bearing.
-    for (let i = 1; i < out.length; i++) {
-      expect((out[i] as { value?: number }).value).toBe(0);
-    }
-
-    // Strict-ascending invariant: the projector output is fed directly to
-    // `series.setData()`, which rejects duplicate or out-of-order times with
-    // "Assertion failed: data must be asc ordered by time". Without this
-    // assertion the bug that prompted dropping in-window emissions could
-    // regress silently — the test would still pass on length and colors.
-    for (let i = 1; i < out.length; i++) {
-      const prev = (out[i - 1] as { time: number }).time;
-      const cur = (out[i] as { time: number }).time;
-      expect(cur).toBeGreaterThan(prev);
-    }
-
-    const auctionStartT = (auctionStartMs - day1Open) / 1000;
-    const auctionEndT = auctionStartT + 600;
-    for (let i = 1; i < out.length; i++) {
-      const t = (out[i] as { time: number }).time;
-      expect(t).toBeGreaterThanOrEqual(auctionStartT);
-      expect(t).toBeLessThan(auctionEndT);
-    }
+    // This is a single-segment bundle, so this segment is BOTH the only and
+    // the LAST segment — both the retroactive color-patch and the future
+    // auction-anchor synthesis are suppressed there (no next segment for a
+    // diagonal to bleed into, and keeping them would force a per-tick
+    // setData fallback on the live/today segment — see fillStrength.ts
+    // projectCumulativeSegment). The in-window source point itself is still
+    // dropped unconditionally (isAuctionHidden), leaving only the one
+    // pre-auction emission, with its plain (unpatched) color.
+    expect(out).toHaveLength(1);
+    expect(out[0]).toMatchObject({ time: 0, value: 70 });
+    expect((out[0] as { color?: string }).color).toBeUndefined();
   });
 
   it('keeps in-window cumulative emission and does NOT synthesize anchors when mask=false', () => {
@@ -375,13 +341,14 @@ describe('projectCumulativeNetFill — closing-auction hide', () => {
     expect(out[1]).toMatchObject({ value: -30 });
   });
 
-  it('paints the last pre-auction emission transparent so the line doesn’t bend into the 15:20 zero anchor', () => {
-    // Regression for: with mask=true and pre-auction emissions present,
-    // the gray cumulative line visibly sloped from the last pre-auction
-    // value to the synthesized value=0 anchor at 15:20. The fix patches
-    // the last pre-auction entry's `color` to transparent so its OUTGOING
-    // segment (the 15:19→15:20 connector) is invisible. The point itself
-    // retains its value — only the rendered connector is hidden.
+  it('does NOT patch the last pre-auction emission transparent when it is the LAST segment (no next segment to bleed into)', () => {
+    // This bundle has a single segment, so it is the last segment: the
+    // retroactive color-patch that hides the 15:19→15:20 outgoing connector
+    // is suppressed (there's no next segment for a diagonal to visually
+    // continue into, and keeping the patch active would force the live/today
+    // segment onto the per-tick setData fallback — see fillStrength.ts
+    // projectCumulativeSegment's isLastSegment gate). The point retains its
+    // plain, unpatched color.
     const preAuctionMs = day1Open + 22_740_000; // 15:19
     const bundle: any = {
       bucket_ms: 60_000,
@@ -403,7 +370,67 @@ describe('projectCumulativeNetFill — closing-auction hide', () => {
     ) as { time: number; value: number; color?: string }[];
     const last = preAuctionEntries.at(-1)!;
     expect(last.value).toBe(-150);
-    expect(last.color).toBe('rgba(0,0,0,0)');
+    expect(last.color).toBeUndefined();
+  });
+
+  it('still synthesizes auction anchors + patches the pre-auction color for a genuine NON-last segment (2-day bundle)', () => {
+    // All other closing-auction-hide tests above use a single-segment bundle,
+    // where that lone segment is BOTH the only and the LAST segment — the
+    // isLastSegment gate always suppresses there. This test uses a real
+    // 2-day bundle so segment 0 is NOT the last segment (segment 1 is), and
+    // asserts DIRECTLY that segment 0 still gets the anchor-synthesis +
+    // color-patch machinery. Without this, only the cross-path equivalence
+    // test in pastCachedProjector.test.ts exercises the non-suppressed path,
+    // which would stay green even if both the direct and cached paths broke
+    // identically.
+    const twoDayAxis = createVirtualAxis([
+      { date: '20260518', sessionOpenMs: day1Open, sessionCloseMs: day1Open + sessionDurationMs },
+      { date: '20260519', sessionOpenMs: day2Open, sessionCloseMs: day2Open + sessionDurationMs },
+    ]);
+    const bundle: any = {
+      bucket_ms: 60_000,
+      segments: [
+        { date: '20260518', session_open_ms: day1Open, session_close_ms: day1Open + sessionDurationMs },
+        { date: '20260519', session_open_ms: day2Open, session_close_ms: day2Open + sessionDurationMs },
+      ],
+      fill_strength: {
+        points: [
+          { t: day1Open, buy_qty: 100, sell_qty: 30 },  // day1 (non-last): +70 → 70 (pre-auction, kept)
+          { t: day2Open, buy_qty: 40, sell_qty: 10 },   // day2 (last) RESET: +30 → 30
+        ],
+      },
+    };
+    const out = projectCumulativeNetFill(bundle, twoDayAxis, true);
+
+    // Segment 0 (day1, virtual times map 1:1 since it's the first segment):
+    // the one pre-auction point at time=0, followed by 10 synthesized
+    // transparent anchors covering 15:20..15:29 (auctionStart=22_800s,
+    // session_close=23_400s, 60s buckets → [22800, 23400) = 10 anchors).
+    const seg0PreAuction = out.find((p) => 'value' in p && (p as { time: number }).time === 0) as
+      | { time: number; value: number; color?: string }
+      | undefined;
+    expect(seg0PreAuction).toBeDefined();
+    // (a)+(b): segment 0's last pre-auction emission STILL gets its value
+    // preserved AND its color retroactively patched transparent.
+    expect(seg0PreAuction).toEqual({ time: 0, value: 70, color: 'rgba(0,0,0,0)' });
+
+    const seg0Anchors = out.filter(
+      (p) => (p as { time: number }).time >= 22_800 && (p as { time: number }).time < 23_400,
+    ) as { time: number; value: number; color?: string }[];
+    // (a): segment 0 STILL gets its synthesized transparent auction anchors.
+    expect(seg0Anchors).toHaveLength(10);
+    for (const anchor of seg0Anchors) {
+      expect(anchor).toMatchObject({ value: 0, color: 'rgba(0,0,0,0)' });
+    }
+
+    // Contrast: segment 1 (day2) IS the last segment, so its value-bearing
+    // point keeps its plain, unpatched color — documenting that suppression
+    // is scoped to the terminal segment only, not applied blanket.
+    const seg1Point = out.find((p) => 'value' in p && (p as { value: number }).value === 30) as
+      | { value: number; color?: string }
+      | undefined;
+    expect(seg1Point).toBeDefined();
+    expect(seg1Point!.color).toBeUndefined();
   });
 
   it('runningSum continues to accumulate through hidden in-window points', () => {
@@ -480,16 +507,14 @@ describe('FILL_STRENGTH_SPEC — auctionWindowMask threading', () => {
     // cumulativeEnabled=false → always empty regardless of mask
     expect(cum.data(bundle, axis, { cumulativeEnabled: false, auctionWindowMask: true })).toEqual([]);
     expect(cum.data(bundle, axis, { cumulativeEnabled: false, auctionWindowMask: false })).toEqual([]);
-    // mask=true → the single in-auction source point is dropped (its bucket-
-    // aligned timestamp would collide with one of the synthesized anchors),
-    // and 10 synthesized transparent anchors fill the auction window
-    // (1-min buckets from 15:20..15:29). Every entry is transparent-color.
+    // mask=true → the single in-auction source point is dropped (isAuctionHidden,
+    // unconditional). This bundle has a single segment, i.e. this is the LAST
+    // segment, so no anchors are synthesized to fill the auction window (would
+    // only matter for a diagonal bleeding into a NEXT segment, which doesn't
+    // exist here — see fillStrength.ts projectCumulativeSegment's isLastSegment
+    // gate). Net result: empty output.
     const masked = cum.data(bundle, axis, { cumulativeEnabled: true, auctionWindowMask: true });
-    expect(masked).toHaveLength(10);
-    for (const p of masked) {
-      expect((p as any).color).toBe('rgba(0,0,0,0)');
-      expect((p as { value?: number }).value).toBe(0);
-    }
+    expect(masked).toEqual([]);
     // mask=false → in-auction point is kept as real value. Zero-anchor is
     // suppressed because the first visible point lands inside the auction
     // window (a 6h flat-zero baseline before the only cumulative reading

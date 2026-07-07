@@ -50,6 +50,8 @@ from hoga.api.models import (
 )
 from hoga.api.past_indicators_cache import CACHE_MISS
 from hoga.api.peak_slice_guard import GUARD as PEAK_SLICE_GUARD
+from hoga.api.peak_slice_guard import RANGE_PROFILE_GUARD
+from hoga.api.today_ttl_cache import TODAY_TTL
 from hoga.api.queries import QueryEngine, StockDateNotFound
 from hoga.api.sources import ordered_sources, resolve_source_result
 from hoga.api.timeenc import (
@@ -302,9 +304,17 @@ def build_quote_ratio_slice(
             cache.store_ratio(code, date, source, rows_1m)  # type: ignore[union-attr]
         rows = reaggregate_ratio(rows_1m, bucket_ms)
     else:
-        rows = snapshots_tbl.query_bucketed_ratio(
-            engine.conn, path=path_obj, bucket_ms=bucket_ms, session_close_ms=session_close_ms
-        )
+        is_today = today_kst is not None and date == today_kst
+        ttl_key = ("ratio", code, date, source, bucket_ms, session_close_ms)
+        hit, cached = TODAY_TTL.lookup(ttl_key) if is_today else (False, None)
+        if hit:
+            rows = cached
+        else:
+            rows = snapshots_tbl.query_bucketed_ratio(
+                engine.conn, path=path_obj, bucket_ms=bucket_ms, session_close_ms=session_close_ms
+            )
+            if is_today:
+                TODAY_TTL.put(ttl_key, rows)
     return QuoteRatio(
         bucket_ms=bucket_ms,
         points=[
@@ -501,6 +511,9 @@ def build_volume_profile_range(
     applied to the unioned price range. Uses DuckDB's multi-file read_parquet
     via a list parameter — no f-string SQL for the path (matches bundle.py:145
     convention; see plan-eng-review D3).
+
+    2026-07-07 기준 mode=full은 프론트엔드가 호출하지 않는 dead path지만 공개 API로
+    남아 있어, RANGE_PROFILE_GUARD(동시성 1 + single-flight)로 스캔 점유를 격리한다.
     """
     if not dates_with_sources:
         return VolumeProfile(bin_count=0, price_min=0, price_max=0, bin_width=0, bins=[])
@@ -522,7 +535,19 @@ def build_volume_profile_range(
     # owns the path layout + existence filtering above, maps the no-trades
     # signal (None) to the empty-profile wire shape, and expands the sparse
     # per-bin rows into the dense VolumeProfileBin array (a models concern).
-    binning = trades_tbl.query_volume_profile_range(engine.conn, paths=paths, vp_bins=vp_bins)
+    t0 = perf_debug.now()
+    binning = RANGE_PROFILE_GUARD.run(
+        ("vp_range", code, tuple(paths), vp_bins),
+        lambda: trades_tbl.query_volume_profile_range(engine.conn, paths=paths, vp_bins=vp_bins),
+    )
+    if perf_debug.enabled():
+        log.warning(
+            "hoga_perf vp_range status=ok code=%s dates=%d vp_bins=%d duration_ms=%.1f",
+            code,
+            len(paths),
+            vp_bins,
+            perf_debug.elapsed_ms(t0),
+        )
     if binning is None:
         return VolumeProfile(bin_count=0, price_min=0, price_max=0, bin_width=0, bins=[])
 
@@ -567,11 +592,24 @@ def build_fill_strength_slice(
             cache.store_fill(code, date, source, rows_1m)  # type: ignore[union-attr]
         rows = reaggregate_fill(rows_1m, bucket_ms)
     else:
-        direct = _query_fill_rows(engine, code_dir, bucket_ms)
-        if direct is None:
-            # ADR-0043: neither fills nor trades parquet — valid "no trades" state.
-            return FillStrength(bucket_ms=bucket_ms, points=[])
-        rows = direct
+        is_today = today_kst is not None and date == today_kst
+        ttl_key = ("fill", code, date, source, bucket_ms)
+        hit, cached = TODAY_TTL.lookup(ttl_key) if is_today else (False, None)
+        if hit:
+            rows = cached
+        else:
+            direct = _query_fill_rows(engine, code_dir, bucket_ms)
+            if direct is None:
+                # ADR-0043: neither fills nor trades parquet — valid "no trades" state.
+                return FillStrength(bucket_ms=bucket_ms, points=[])
+            rows = direct
+            if is_today:
+                # ADR-0090: _query_fill_rows가 fills.parquet 우선·trades 폴백이라, trades
+                # 유래 결과를 캐시한 뒤 fills.parquet이 같은 15s 창 안에 늦게 도착하면 이후
+                # 새로 선호되는 fills 유래 값 대신 캐시된 trades 유래 값을 서빙한다. trades
+                # 유래 체결강도도 유효 데이터(틀린 게 아니라 선호 소스만 다름)이고, TTL이
+                # 이미 수용한 15s staleness 예산 안이라 허용한다.
+                TODAY_TTL.put(ttl_key, rows)
     return FillStrength(
         bucket_ms=bucket_ms,
         points=[
@@ -871,17 +909,29 @@ def build_ask_bid_peak_slices(
     # (ADR-0043), so concurrent sidecar polls would run this in parallel over a
     # shared soft `memory_limit` and OOM. Guard bounds concurrency + collapses
     # identical concurrent computes. See hoga/api/peak_slice_guard.py.
-    ask_row, bid_row = PEAK_SLICE_GUARD.run(
-        (code, date, source, bucket_ms),
-        lambda: snapshots_tbl.query_day_ask_bid_peak_dual(
-            engine.conn,
-            path=path_obj,
-            trades_path=trades_path,
-            bucket_ms=bucket_ms,
-            session_open_ms=session_open_ms,
-            session_close_ms=session_close_ms,
-        ),
-    )
+    #
+    # ADR-0090: today's result is additionally reused across SEQUENTIAL calls
+    # (not just concurrent ones) for a short TTL, to collapse symbol-switch
+    # polling bursts that the single-flight guard above cannot dedupe.
+    is_today = today_kst is not None and date == today_kst
+    ttl_key = ("peak_dual", code, date, source, bucket_ms, session_open_ms, session_close_ms)
+    hit, cached_rows = TODAY_TTL.lookup(ttl_key) if is_today else (False, None)
+    if hit:
+        ask_row, bid_row = cached_rows
+    else:
+        ask_row, bid_row = PEAK_SLICE_GUARD.run(
+            (code, date, source, bucket_ms),
+            lambda: snapshots_tbl.query_day_ask_bid_peak_dual(
+                engine.conn,
+                path=path_obj,
+                trades_path=trades_path,
+                bucket_ms=bucket_ms,
+                session_open_ms=session_open_ms,
+                session_close_ms=session_close_ms,
+            ),
+        )
+        if is_today:
+            TODAY_TTL.put(ttl_key, (ask_row, bid_row))
     if ask_row is not None and not ask_cached:
         ask = _ask_peak_from_dual_row(date, ask_row)
     if bid_row is not None and not bid_cached:
