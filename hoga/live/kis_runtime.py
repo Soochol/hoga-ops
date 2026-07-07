@@ -21,12 +21,38 @@ import threading
 from pathlib import Path
 
 from . import account_health
-from .kis_client import KisClient, KisCredentials
+from .kis_client import KisClient, KisCredentials, _TokenBucket
 from .kis_token_provider import KisTokenProvider
 
 _kis_clients: dict[int, KisClient] = {}
 _kis_token_providers: dict[int, KisTokenProvider] = {}
 _lock = threading.Lock()
+
+# 같은 명의의 계좌들은 KIS 유량제한을 '명의 단위'로 공유한다(/investigate
+# 2026-07-07: 3계좌 × 15/s = 45/s 송신 → ~47% EGW00201). 그래서 프로세스의
+# 모든 KisClient가 하나의 전역 버킷에서 토큰을 소비해 합산 송신을 명의
+# 한도(~20/s) 아래로 묶는다. capacity를 rate보다 작게 잡아 유휴→포화 전이의
+# 첫 1초 burst(용량+리필)가 KIS 고정윈도를 넘지 않게 한다. foreground 양보
+# (ADR-0087)도 계좌별이 아니라 전역에서 일관 동작하게 되는 부수 이득.
+_GLOBAL_KIS_RATE_PER_SEC = 15.0
+_GLOBAL_KIS_BURST_CAPACITY = 4.0
+_global_rate_limiter: _TokenBucket | None = None
+
+
+def _shared_rate_limiter() -> _TokenBucket:
+    """명의-전역 토큰버킷 싱글톤 — 런타임이 만드는 모든 KisClient가 공유.
+
+    호출자가 ``_lock``을 이미 쥔 상태에서 부른다(ensure_kis_client 내부).
+    threading.Lock은 재진입 불가라 여기서 다시 잡으면 데드락 — check-then-create
+    원자성은 호출자의 락이 보장한다.
+    """
+    global _global_rate_limiter
+    if _global_rate_limiter is None:
+        _global_rate_limiter = _TokenBucket(
+            rate=_GLOBAL_KIS_RATE_PER_SEC,
+            capacity=_GLOBAL_KIS_BURST_CAPACITY,
+        )
+    return _global_rate_limiter
 
 # FM5 REST-auth latch + WS-degraded 통합 신호는 account_health(leaf)로 추출됨(2026-06-10).
 # 토큰 provider 콜백이 account_health.mark_rest_auth_degraded를, KisAccountPool.eligible_accounts가
@@ -94,9 +120,11 @@ def ensure_kis_client(
 ) -> KisClient:
     """Return the per-account KisClient singleton, creating it once.
 
-    "one app key = one 15/s bucket" holds PER ACCOUNT — each account_id has at
-    most one client. REST capacity scheduling may lease any configured account;
-    WS approval keys also reuse these per-account clients.
+    Each account_id has at most one client, but the RATE BUDGET is 명의-전역:
+    all runtime clients share ``_shared_rate_limiter()`` (KIS enforces the
+    limit per customer, not per app key — see the global-bucket comment above).
+    REST capacity scheduling may lease any configured account; WS approval
+    keys also reuse these per-account clients.
     Closed at process shutdown via aclose_kis_client — a stream/conn stop must NOT
     close it (R1).
     """
@@ -104,7 +132,11 @@ def ensure_kis_client(
     with _lock:
         client = _kis_clients.get(account_id)
         if client is None:
-            client = KisClient(credentials=creds, token_provider=provider)
+            client = KisClient(
+                credentials=creds,
+                token_provider=provider,
+                rate_limiter=_shared_rate_limiter(),
+            )
             _kis_clients[account_id] = client
         return client
 
@@ -221,7 +253,7 @@ async def aclose_kis_client() -> None:
 
 def reset_for_tests() -> None:
     """Test helper — drop all per-account singletons (best-effort provider close)."""
-    global _kis_clients, _kis_token_providers
+    global _kis_clients, _kis_token_providers, _global_rate_limiter
     for prov in list(_kis_token_providers.values()):
         try:
             prov.close()
@@ -229,4 +261,5 @@ def reset_for_tests() -> None:
             pass
     _kis_clients = {}
     _kis_token_providers = {}
+    _global_rate_limiter = None  # 명의-전역 버킷도 초기화(테스트 격리)
     account_health.reset_for_tests()  # FM5 latch + WS probe 초기화(테스트 격리)

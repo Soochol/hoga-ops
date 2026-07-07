@@ -413,6 +413,105 @@ async def test_token_bucket_serialises_concurrent_acquirers() -> None:
 
 
 @pytest.mark.asyncio
+async def test_token_bucket_capacity_caps_initial_and_refill() -> None:
+    """capacity < rate이면 초기 토큰과 리필 상한이 capacity로 묶인다.
+
+    명의-전역 버킷(3계좌 통합) 도입 시 burst 상한: capacity 없이는
+    유휴→포화 전이의 첫 1초에 '가득 찬 버킷(rate개) + 리필(rate개)'가
+    한꺼번에 나가 KIS 고정윈도 한도를 단일 계좌로도 넘을 수 있다.
+    """
+    bucket = _TokenBucket(rate=10.0, capacity=2.0)
+    # 초기 토큰 ≤ 2: 두 개는 즉시, 세 번째는 리필(~0.1s@10/s)을 기다린다.
+    start = time.monotonic()
+    await bucket.acquire()
+    await bucket.acquire()
+    burst_elapsed = time.monotonic() - start
+    assert burst_elapsed < 0.1, "capacity 안의 burst는 즉시 통과해야 함"
+    start = time.monotonic()
+    await bucket.acquire()
+    elapsed = time.monotonic() - start
+    assert 0.05 < elapsed < 0.3, "3번째 acquire는 리필 대기여야 함(초기 토큰이 2로 캡)"
+    # 긴 유휴 후에도 토큰은 capacity(2)로 클램프 — rate(10)까지 차지 않는다.
+    bucket._last = time.monotonic() - 10.0  # 10s 유휴 시뮬 (리필 후보 100토큰)
+    start = time.monotonic()
+    await bucket.acquire()
+    await bucket.acquire()
+    assert time.monotonic() - start < 0.1, "유휴 후 capacity만큼은 즉시"
+    start = time.monotonic()
+    await bucket.acquire()
+    elapsed = time.monotonic() - start
+    assert 0.05 < elapsed < 0.3, "유휴 리필도 2로 클램프 — 3번째는 대기해야 함"
+
+
+@pytest.mark.asyncio
+async def test_token_bucket_default_capacity_unchanged() -> None:
+    """capacity 미지정 시 기존 동작 그대로 — rate만큼 가득 차서 시작(회귀 가드)."""
+    bucket = _TokenBucket(rate=3.0)
+    start = time.monotonic()
+    for _ in range(3):
+        await bucket.acquire()
+    assert time.monotonic() - start < 0.1, "기본 버킷은 rate개 초기 burst를 즉시 통과"
+
+
+@pytest.mark.asyncio
+async def test_kis_client_accepts_injected_rate_limiter() -> None:
+    """주입된 공유 버킷을 두 클라이언트가 그대로 쓴다(명의-전역 예산).
+
+    같은 명의의 계좌별 KisClient가 각자 버킷을 가지면 합산 송신이
+    계좌수×rate가 되어 명의 한도를 넘는다 — 주입 seam이 공유의 전제.
+    """
+    shared = _TokenBucket(rate=10.0, capacity=1.0)
+    transport = httpx.MockTransport(lambda req: httpx.Response(200, json={"rt_cd": "0"}))
+    c1 = KisClient(
+        credentials=KisCredentials(app_key="K1", app_secret="S1", env="real"),
+        token_provider=FakeTokenProvider(),
+        _transport=transport,
+        rate_limiter=shared,
+    )
+    c2 = KisClient(
+        credentials=KisCredentials(app_key="K2", app_secret="S2", env="real"),
+        token_provider=FakeTokenProvider(),
+        _transport=transport,
+        rate_limiter=shared,
+    )
+    try:
+        assert c1._rate_limiter is shared
+        assert c2._rate_limiter is shared
+        # 공유 예산 증명: c1 쪽에서 유일한 토큰(capacity=1)을 소비하면
+        # c2의 다음 acquire는 리필을 기다려야 한다.
+        await c1._rate_limiter.acquire()
+        start = time.monotonic()
+        await c2._rate_limiter.acquire()
+        elapsed = time.monotonic() - start
+        assert elapsed >= 0.05, "c1이 소비한 토큰만큼 c2가 기다려야 공유 예산"
+    finally:
+        await c1.aclose()
+        await c2.aclose()
+
+
+@pytest.mark.asyncio
+async def test_kis_client_default_builds_own_rate_limiter() -> None:
+    """rate_limiter 미주입 시 기존처럼 자기 버킷을 만든다(단독 클라이언트 회귀 가드)."""
+    transport = httpx.MockTransport(lambda req: httpx.Response(200, json={"rt_cd": "0"}))
+    c1 = KisClient(
+        credentials=KisCredentials(app_key="K1", app_secret="S1", env="real"),
+        token_provider=FakeTokenProvider(),
+        _transport=transport,
+    )
+    c2 = KisClient(
+        credentials=KisCredentials(app_key="K2", app_secret="S2", env="real"),
+        token_provider=FakeTokenProvider(),
+        _transport=transport,
+    )
+    try:
+        assert isinstance(c1._rate_limiter, _TokenBucket)
+        assert c1._rate_limiter is not c2._rate_limiter
+    finally:
+        await c1.aclose()
+        await c2.aclose()
+
+
+@pytest.mark.asyncio
 async def test_token_bucket_invalid_rate_rejected() -> None:
     """Negative / zero rate is a programming error, not a soft default."""
     with pytest.raises(ValueError):
