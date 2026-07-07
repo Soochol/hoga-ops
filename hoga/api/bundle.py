@@ -604,6 +604,11 @@ def build_fill_strength_slice(
                 return FillStrength(bucket_ms=bucket_ms, points=[])
             rows = direct
             if is_today:
+                # ADR-0090: _query_fill_rows가 fills.parquet 우선·trades 폴백이라, trades
+                # 유래 결과를 캐시한 뒤 fills.parquet이 같은 15s 창 안에 늦게 도착하면 이후
+                # 새로 선호되는 fills 유래 값 대신 캐시된 trades 유래 값을 서빙한다. trades
+                # 유래 체결강도도 유효 데이터(틀린 게 아니라 선호 소스만 다름)이고, TTL이
+                # 이미 수용한 15s staleness 예산 안이라 허용한다.
                 TODAY_TTL.put(ttl_key, rows)
     return FillStrength(
         bucket_ms=bucket_ms,
