@@ -29,6 +29,9 @@ class _FakePool:
         self.released: list[int] = []
         self.cooldowns: list[tuple[int, object, float]] = []
 
+    def configured_accounts(self):
+        return [client.account_id for client in self.clients]
+
     async def lease(self, *, cooldown_key, reserve_one=False):
         client = self.clients[self.next % len(self.clients)]
         self.next += 1
@@ -199,7 +202,41 @@ async def test_capacity_scheduler_promotes_queued_background_when_user_visible_c
 
 
 @pytest.mark.asyncio
-async def test_capacity_scheduler_marks_account_cooldown_on_rate_limit() -> None:
+async def test_capacity_scheduler_fails_over_to_next_account_on_rate_limit() -> None:
+    pool = _FakePool()
+    scheduler = KisCapacityScheduler(
+        name="test",
+        account_pool=pool,
+        max_workers=1,
+        max_pending_requests=1000,
+        account_cooldown_s=10.0,
+    )
+    attempts: list[int] = []
+
+    async def limited_once(kis):
+        attempts.append(kis.account_id)
+        if kis.account_id == 0:
+            raise KisRateLimitError("EGW00201 rate limited")
+        return kis.account_id
+
+    result = await scheduler.submit(
+        key="failover",
+        endpoint="past-minute",
+        priority="user_visible",
+        cooldown_scope="KRX",
+        call=limited_once,
+    )
+
+    assert result == 1
+    assert attempts == [0, 1]
+    assert pool.cooldowns == [(0, ("past-minute", "KRX"), 10.0)]
+    assert pool.released == [0, 1]
+    assert scheduler.snapshot()["rate_limit_failovers"] == 1
+    await scheduler.aclose()
+
+
+@pytest.mark.asyncio
+async def test_capacity_scheduler_marks_every_account_cooldown_when_all_rate_limited() -> None:
     pool = _FakePool()
     scheduler = KisCapacityScheduler(
         name="test",
@@ -221,8 +258,77 @@ async def test_capacity_scheduler_marks_account_cooldown_on_rate_limit() -> None
             call=limited,
         )
 
+    assert pool.cooldowns == [
+        (0, ("past-minute", "KRX"), 10.0),
+        (1, ("past-minute", "KRX"), 10.0),
+    ]
+    assert pool.released == [0, 1]
+    await scheduler.aclose()
+
+
+@pytest.mark.asyncio
+async def test_capacity_scheduler_failover_pool_exhaustion_raises_rate_limit() -> None:
+    class _ExhaustAfterFirstPool(_FakePool):
+        async def lease(self, *, cooldown_key, reserve_one=False):
+            if self.next > 0:
+                raise KisNoAccountAvailable("all cooling")
+            return await super().lease(cooldown_key=cooldown_key, reserve_one=reserve_one)
+
+    pool = _ExhaustAfterFirstPool()
+    scheduler = KisCapacityScheduler(
+        name="test",
+        account_pool=pool,
+        max_workers=1,
+        max_pending_requests=1000,
+        account_cooldown_s=10.0,
+    )
+
+    async def limited(kis):
+        raise KisRateLimitError("EGW00201 rate limited")
+
+    with pytest.raises(KisRateLimitError):
+        await scheduler.submit(
+            key="limited",
+            endpoint="past-minute",
+            priority="user_visible",
+            cooldown_scope="KRX",
+            call=limited,
+        )
+
     assert pool.cooldowns == [(0, ("past-minute", "KRX"), 10.0)]
-    assert pool.released == [0]
+    await scheduler.aclose()
+
+
+@pytest.mark.asyncio
+async def test_capacity_scheduler_failover_reservation_deferred_raises_rate_limit() -> None:
+    class _ReserveAfterFirstPool(_FakePool):
+        async def lease(self, *, cooldown_key, reserve_one=False):
+            if reserve_one and self.next > 0:
+                raise KisAccountReservationDeferred("reserved user-visible KIS account capacity")
+            return await super().lease(cooldown_key=cooldown_key, reserve_one=reserve_one)
+
+    pool = _ReserveAfterFirstPool()
+    scheduler = KisCapacityScheduler(
+        name="test",
+        account_pool=pool,
+        max_workers=1,
+        max_pending_requests=1000,
+        account_cooldown_s=10.0,
+    )
+
+    async def limited(kis):
+        raise KisRateLimitError("EGW00201 rate limited")
+
+    with pytest.raises(KisRateLimitError):
+        await scheduler.submit(
+            key="limited",
+            endpoint="past-minute",
+            priority="background",
+            cooldown_scope="KRX",
+            call=limited,
+        )
+
+    assert pool.cooldowns == [(0, ("past-minute", "KRX"), 10.0)]
     await scheduler.aclose()
 
 

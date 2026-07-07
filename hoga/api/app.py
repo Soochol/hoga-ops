@@ -127,9 +127,12 @@ def create_app(data_dir: Path) -> FastAPI:
                 resolve_symbol_master_path=resolve_symbol_master_path,
             ),
         )
+        # ADR-0088: expose lifespan-owned task liveness at GET /api/live/status.
+        _app.state.startup_runtime = startup_runtime
         try:
             yield
         finally:
+            _app.state.startup_runtime = None
             await startup_runtime.stop()
             # Stop the worker pool first so in-flight items observe cancellation
             # while bus + observer are still live (they emit terminal events).

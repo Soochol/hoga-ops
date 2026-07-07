@@ -81,6 +81,7 @@ class KisCapacityScheduler:
         self._background_deferred_due_to_user_visible = 0
         self._background_deferred_due_to_reserved_capacity = 0
         self._overloaded_rejections = 0
+        self._rate_limit_failovers = 0
         self._capacity_change_condition: asyncio.Condition | None = None
         self._capacity_change_loop: asyncio.AbstractEventLoop | None = None
         self._capacity_change_generation = 0
@@ -172,6 +173,7 @@ class KisCapacityScheduler:
                 self._background_deferred_due_to_reserved_capacity
             ),
             "overloaded_rejections": self._overloaded_rejections,
+            "rate_limit_failovers": self._rate_limit_failovers,
             "accounts": [s.__dict__ for s in account_snapshots],
         }
 
@@ -227,16 +229,11 @@ class KisCapacityScheduler:
                 await asyncio.sleep(0.01)
                 continue
 
-            lease = None
             requeued = False
             capacity_generation = self._capacity_change_generation
             try:
                 self._started_keys.add(request.key)
-                lease = await self._account_pool.lease(
-                    cooldown_key=request.cooldown_key,
-                    reserve_one=request.rank > 0,
-                )
-                result = await request.call(lease.client)
+                result = await self._run_with_account_failover(request)
             except KisAccountReservationDeferred:
                 self._started_keys.discard(request.key)
                 self._background_deferred_due_to_reserved_capacity += 1
@@ -252,15 +249,6 @@ class KisCapacityScheduler:
             except KisNoAccountAvailable as exc:
                 if not request.future.done():
                     request.future.set_exception(KisCapacityCooldown(str(exc)))
-            except KisRateLimitError as exc:
-                if lease is not None:
-                    self._account_pool.mark_cooldown(
-                        lease.account_id,
-                        request.cooldown_key,
-                        self._account_cooldown_s,
-                    )
-                if not request.future.done():
-                    request.future.set_exception(exc)
             except Exception as exc:  # noqa: BLE001
                 if not request.future.done():
                     request.future.set_exception(exc)
@@ -269,11 +257,48 @@ class KisCapacityScheduler:
                     request.future.set_result(result)
             finally:
                 if not requeued:
-                    if lease is not None:
-                        self._account_pool.release(lease.account_id)
                     self._cleanup_request(request.key)
                     self._queue.task_done()
                     await self._notify_capacity_changed(request.cooldown_key)
+
+    async def _run_with_account_failover(self, request: _ScheduledRequest):
+        """Execute the request, failing over across accounts on rate-limit exhaustion.
+
+        ``KisClient`` already spent its in-account EGW00201 backoff (ADR-0050)
+        before ``KisRateLimitError`` reaches here, so the rate-limited account is
+        cooled down for this cooldown key and the request re-leases the next
+        eligible account instead of failing while healthy accounts sit idle. Pool
+        exhaustion during failover re-raises the *original* rate-limit error: an
+        already-started request must surface the cause callers degrade on, not a
+        deferral that would re-queue it.
+        """
+        last_rate_limit: KisRateLimitError | None = None
+        max_attempts = max(1, len(self._account_pool.configured_accounts()))
+        for attempt in range(max_attempts):
+            try:
+                lease = await self._account_pool.lease(
+                    cooldown_key=request.cooldown_key,
+                    reserve_one=request.rank > 0,
+                )
+            except (KisNoAccountAvailable, KisAccountReservationDeferred):
+                if last_rate_limit is not None:
+                    raise last_rate_limit
+                raise
+            if attempt > 0:
+                self._rate_limit_failovers += 1
+            try:
+                return await request.call(lease.client)
+            except KisRateLimitError as exc:
+                self._account_pool.mark_cooldown(
+                    lease.account_id,
+                    request.cooldown_key,
+                    self._account_cooldown_s,
+                )
+                last_rate_limit = exc
+            finally:
+                self._account_pool.release(lease.account_id)
+        assert last_rate_limit is not None
+        raise last_rate_limit
 
     def _cleanup_request(self, key: Hashable) -> None:
         self._inflight.pop(key, None)

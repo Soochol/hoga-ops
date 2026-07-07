@@ -31,7 +31,6 @@ async def test_run_with_capacity_blocks_before_scheduler_when_bypass_on(tmp_path
         await kis_access.run_with_capacity(
             scheduler,
             data_dir=tmp_path,
-            role="background",
             key=("quotes",),
             endpoint=kis_access.KisRestEndpoint.QUOTES,
             priority="background",
@@ -70,7 +69,6 @@ async def test_run_with_capacity_blocks_representative_endpoints_when_bypass_on(
         await kis_access.run_with_capacity(
             scheduler,
             data_dir=tmp_path,
-            role="background",
             key=("bypass", endpoint.value),
             endpoint=endpoint,
             priority="background",
@@ -81,29 +79,27 @@ async def test_run_with_capacity_blocks_representative_endpoints_when_bypass_on(
 
 
 @pytest.mark.asyncio
-async def test_run_with_capacity_blocks_legacy_fallback_when_bypass_on(tmp_path, monkeypatch):
+async def test_run_with_capacity_blocks_user_visible_before_submit_when_bypass_on(tmp_path):
+    # Bypass is enforced before any submit regardless of priority (ADR-0083).
+    # The legacy scheduler=None fallback was removed (ADR-0082 amendment): the
+    # scheduler path is now the only path, so this is the sole bypass ingress.
     save_live_settings(tmp_path, LiveSettingsResponse(kis_rest_bypass_enabled=True))
-    kis_for_role_called = False
+    scheduler = FakeScheduler()
 
-    def fake_kis_for_role(role, data_dir):
-        nonlocal kis_for_role_called
-        kis_for_role_called = True
-        return object()
-
-    monkeypatch.setattr(kis_access, "kis_for_role", fake_kis_for_role)
+    async def fetch_fn(_kis):
+        raise AssertionError("fetch_fn must not run during KIS REST bypass")
 
     with pytest.raises(kis_access.KisRestBypassedError):
         await kis_access.run_with_capacity(
-            None,
+            scheduler,
             data_dir=tmp_path,
-            role="background",
-            key=("legacy",),
-            endpoint=kis_access.KisRestEndpoint.QUOTES,
-            priority="background",
-            fetch_fn=lambda _kis: "not awaited",
+            key=("user-visible",),
+            endpoint=kis_access.KisRestEndpoint.PAST_MINUTE,
+            priority="user_visible",
+            fetch_fn=fetch_fn,
         )
 
-    assert kis_for_role_called is False
+    assert scheduler.calls == 0
 
 
 @pytest.mark.asyncio
@@ -117,7 +113,6 @@ async def test_run_with_capacity_allows_scheduler_when_bypass_off(tmp_path):
     result = await kis_access.run_with_capacity(
         scheduler,
         data_dir=tmp_path,
-        role="background",
         key=("quotes",),
         endpoint=kis_access.KisRestEndpoint.QUOTES,
         priority="background",

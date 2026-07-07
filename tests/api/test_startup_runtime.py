@@ -228,5 +228,52 @@ async def test_startup_runtime_cleans_up_partial_start_on_failure(tmp_path: Path
     assert calls.index(("close-kis-capacity", None)) < calls.index(("close-kis", None))
 
 
+@pytest.mark.asyncio
+async def test_supervised_task_health_reports_alive_sleeping_and_dead(tmp_path: Path) -> None:
+    """ADR-0088: honest liveness — a sleeping (alive) daily loop is healthy, a
+    finished (silently dead) loop is unhealthy. No staleness heuristic."""
+    from hoga.api.startup_runtime import AppStartupRuntime, StartupRuntimeDeps
+
+    async def sleeping() -> None:
+        await asyncio.sleep(3600)  # a ~daily loop between fires
+
+    async def finished() -> None:
+        return None
+
+    daily = asyncio.create_task(sleeping(), name="watchlist-daily-loop")
+    watchdog = asyncio.create_task(finished(), name="live-stream-watchdog")
+    await watchdog  # let it complete → done() == True (silent death)
+
+    deps = StartupRuntimeDeps(
+        env={},
+        start_scheduler=lambda _d: [],
+        start_live_stream=None,  # type: ignore[arg-type]
+        start_live_stream_watchdog=None,  # type: ignore[arg-type]
+        start_today_promoter=None,  # type: ignore[arg-type]
+        stop_today_promoter=None,  # type: ignore[arg-type]
+        stop_live_stream=None,  # type: ignore[arg-type]
+        aclose_kis_capacity_scheduler=None,  # type: ignore[arg-type]
+        aclose_kis_client=None,  # type: ignore[arg-type]
+        get_active_codes=lambda: [],
+        load_symbol_disk_state=lambda **_k: None,
+        needs_symbol_boot_refresh=lambda: False,
+        refresh_symbols=None,  # type: ignore[arg-type]
+        resolve_symbol_master_path=lambda: tmp_path / "symbols.json",
+    )
+    runtime = AppStartupRuntime(
+        scheduler_tasks=[daily],
+        live_watchdog_task=watchdog,
+        today_promoter_task=None,  # never started → reported unhealthy
+        deps=deps,
+    )
+
+    health = {row["name"]: row["running"] for row in runtime.supervised_task_health()}
+    assert health["watchlist-daily-loop"] is True  # alive-but-sleeping = healthy
+    assert health["live-stream-watchdog"] is False  # done() = silent death
+    assert health["today-promoter"] is False  # None handle = not running
+
+    daily.cancel()
+
+
 async def _record_async(calls: list[Any], name: str, value: Any) -> None:
     calls.append((name, value))

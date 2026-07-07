@@ -89,7 +89,6 @@ async def test_run_backfill_fetches_daily_rows_through_capacity_scheduler(tmp_pa
         scheduler_arg,
         *,
         data_dir,
-        role,
         key,
         endpoint,
         priority,
@@ -99,7 +98,6 @@ async def test_run_backfill_fetches_daily_rows_through_capacity_scheduler(tmp_pa
         calls.append({
             "scheduler": scheduler_arg,
             "data_dir": data_dir,
-            "role": role,
             "key": key,
             "endpoint": str(endpoint),
             "priority": priority,
@@ -132,7 +130,6 @@ async def test_run_backfill_fetches_daily_rows_through_capacity_scheduler(tmp_pa
         {
             "scheduler": scheduler,
             "data_dir": tmp_path,
-            "role": "background",
             "key": ("screener-backfill-adj", "005930", "20260601", "20260601"),
             "endpoint": "screener-daily",
             "priority": "background",
@@ -141,7 +138,6 @@ async def test_run_backfill_fetches_daily_rows_through_capacity_scheduler(tmp_pa
         {
             "scheduler": scheduler,
             "data_dir": tmp_path,
-            "role": "background",
             "key": ("screener-backfill-raw", "005930", "20260601", "20260601"),
             "endpoint": "screener-daily",
             "priority": "background",

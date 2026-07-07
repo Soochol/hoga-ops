@@ -120,7 +120,6 @@ class ProgramTradeCollector:
                 rows = await kis_access.run_with_capacity(
                     self._scheduler,
                     data_dir=self.data_dir,
-                    role="background",
                     key=("program-trade", code),
                     endpoint=kis_access.KisRestEndpoint.PROGRAM_TRADE,
                     priority="background",

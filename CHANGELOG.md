@@ -3,6 +3,21 @@
 All notable changes to this project are documented here.
 The format follows a 4-digit `MAJOR.MINOR.PATCH.MICRO` scheme.
 
+## [0.12.33.0] - 2026-07-07
+
+KIS 다중 계좌 스케줄러/워커 구조 아키텍처 리뷰의 결과. 코드 변경 2건 + 관측 노출 1건 + 문서 결정 2건.
+
+### Added
+- **KIS 계좌 rate-limit failover (ADR-0086)**: `KisCapacityScheduler`가 `EGW00201`(초당 한도 초과)을 만난 요청을 해당 계좌에 cooldown 마킹 후 **다른 eligible 계좌로 re-lease하여 재실행**한다(시도 상한 = 설정 계좌 수, cooldown 배제로 자연 수렴). 이전에는 계좌 내 backoff 소진 후 그냥 실패시켜 healthy 계좌가 유휴여도 못 썼다 — ADR-0082의 용량 선형성 약속이 실패 경로에도 적용된다. 단일 계좌 구성은 동작 불변. `rate_limit_failovers` 카운터를 `/api/live/status`에 노출. 클라이언트 내 backoff(ADR-0050)는 불변.
+- **감독 태스크 관측 노출 (ADR-0088)**: `/api/live/status`에 `supervised_tasks` 필드 추가 — lifespan-소유 배경 태스크(`watchlist-daily-loop`, `today-promoter`, `live-stream-watchdog`)의 alive 여부를 노출한다. `running`은 정직 신호(`task is not None and not task.done()`)로, ~23시간 잠자는 daily loop를 stale로 오판하지 않는다(ADR-0064 정직 health 패턴). 무감독 루프의 침묵 사망이 이제 감지 가능하다.
+
+### Changed
+- **레거시 role 라우팅 제거 (ADR-0082 amendment)**: `run_with_capacity`가 스케줄러를 필수(non-Optional)로 받고 `role` 인자·`scheduler=None` 폴백 분기를 제거한다. `kis_for_role`/`fetch_for_role`/`KisLegacyRole`/`_bg_round_robin` 삭제(16개 호출부에서 `role=` 제거, probe 스크립트는 `ensure_kis_client_from_env`로 마이그레이션). 의도 신호는 `priority` 하나로 통일. FM5 auth-fallback은 풀 레벨 degraded 계좌 제외로 구조적 보존.
+
+### Docs
+- **ADR-0087**: foreground 우선순위는 스케줄러 rank(디스패치 순서)와 토큰버킷 lane(토큰 획득 순서)이 서로 다른 계층을 나눠 소유 — 중복 아닌 보완재이므로 유지(단일 계좌에선 lane이 유일한 우선순위 장치).
+- **ADR-0088**: 범용 `supervised_task` seam·3-폴러 base-class 추출은 유보(ADR-0064 검증코드 blast radius / deletion test 실패).
+- **ADR-0089**: 라이브 테스트 싱글턴 리셋을 `tests/unit/live/conftest.py` 단일 autouse fixture로 통합(중복 fixture 3개 제거). env 격리·캐시·`_ws_probe` 등 test-specific fixture는 유지.
 ## [0.12.32.1] - 2026-07-07
 
 ### Fixed

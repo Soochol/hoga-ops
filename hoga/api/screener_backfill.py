@@ -258,7 +258,6 @@ async def run_backfill(data_dir: Path) -> dict:
         return await kis_access.run_with_capacity(
             scheduler,
             data_dir=data_dir,
-            role="background",
             key=("screener-backfill-adj", code, frm, to),
             endpoint=kis_access.KisRestEndpoint.SCREENER_DAILY,
             priority="background",
@@ -275,7 +274,6 @@ async def run_backfill(data_dir: Path) -> dict:
         return await kis_access.run_with_capacity(
             scheduler,
             data_dir=data_dir,
-            role="background",
             key=("screener-backfill-raw", code, frm, to),
             endpoint=kis_access.KisRestEndpoint.SCREENER_DAILY,
             priority="background",

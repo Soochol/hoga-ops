@@ -48,7 +48,6 @@ class LiveIndexInvestorNetFetcher:
             result = await kis_access.run_with_capacity(
                 self._scheduler,
                 data_dir=self._data_dir,
-                role="background",
                 key=("index-investor-net", index.id, from_label, to_label),
                 endpoint=kis_access.KisRestEndpoint.INDEX_INVESTOR_NET,
                 priority="background",

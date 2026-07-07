@@ -13,7 +13,7 @@ import json
 from datetime import datetime, timezone, timedelta
 from pathlib import Path
 
-from hoga.live import kis_access
+from hoga.live import kis_runtime
 
 _KST = timezone(timedelta(hours=9))
 
@@ -26,9 +26,9 @@ async def main() -> None:
     args = parser.parse_args()
 
     data_dir = Path(args.data_dir)
-    kis = kis_access.kis_for_role("background", data_dir)
+    kis = kis_runtime.ensure_kis_client_from_env(data_dir)
     if kis is None:
-        raise SystemExit("KIS background client is not initialized")
+        raise SystemExit("KIS client is not initialized (credentials missing)")
 
     rows = await kis.fetch_investor_trend_estimate(args.code)
     payload = {

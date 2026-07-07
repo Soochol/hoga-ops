@@ -111,6 +111,21 @@ def test_live_router_registered_on_full_app(tmp_path) -> None:
         assert r.json()["running"] is False
 
 
+def test_status_exposes_supervised_task_health_through_lifespan(tmp_path) -> None:
+    """ADR-0088 end-to-end: the lifespan sets app.state.startup_runtime and the
+    status route reads it, so GET /api/live/status carries supervised_tasks with
+    the always-on watchlist-daily-loop reporting running=True (alive, not stale)."""
+    from hoga.api.app import create_app
+    from hoga.live import lifecycle
+
+    lifecycle.reset_for_tests()
+    app = create_app(tmp_path)
+    with TestClient(app) as c:  # context manager runs the lifespan
+        body = c.get("/api/live/status").json()
+    tasks = {t["name"]: t["running"] for t in body["supervised_tasks"]}
+    assert tasks.get("watchlist-daily-loop") is True
+
+
 def test_get_live_snapshot_returns_404_when_no_data(tmp_path) -> None:
     """No publish yet → 404."""
     from hoga.api.app import create_app

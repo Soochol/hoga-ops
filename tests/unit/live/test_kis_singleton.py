@@ -4,15 +4,9 @@ from pathlib import Path
 import pytest
 
 import hoga.live.kis_runtime as kis_runtime
-import hoga.live.lifecycle as lifecycle
 from hoga.live.kis_client import KisCredentials
 
-
-@pytest.fixture(autouse=True)
-def _reset_singletons():
-    lifecycle.reset_for_tests()
-    yield
-    lifecycle.reset_for_tests()  # teardown runs even if the test body raises
+# Singleton reset is provided by tests/unit/live/conftest.py (_reset_live_singletons).
 
 
 def test_ensure_token_provider_is_singleton(tmp_path: Path) -> None:

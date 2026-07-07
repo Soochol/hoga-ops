@@ -159,7 +159,6 @@ async def test_trigger_update_fetches_daily_rows_through_capacity_scheduler(tmp_
         scheduler_arg,
         *,
         data_dir,
-        role,
         key,
         endpoint,
         priority,
@@ -169,7 +168,6 @@ async def test_trigger_update_fetches_daily_rows_through_capacity_scheduler(tmp_
         calls.append({
             "scheduler": scheduler_arg,
             "data_dir": data_dir,
-            "role": role,
             "key": key,
             "endpoint": str(endpoint),
             "priority": priority,
@@ -192,7 +190,6 @@ async def test_trigger_update_fetches_daily_rows_through_capacity_scheduler(tmp_
     assert calls == [{
         "scheduler": scheduler,
         "data_dir": tmp_path,
-        "role": "background",
         "key": ("screener-update", "005930", "20260627", "20260627"),
         "endpoint": "screener-daily",
         "priority": "background",

@@ -28,7 +28,6 @@ from pathlib import Path
 import pytest
 
 _FORBIDDEN_RE = re.compile(r"^(pyarrow|polars)(\..*)?$")
-_KIS_BACKGROUND_COMPAT_FUNCTIONS = {"kis_for_role", "fetch_for_role"}
 
 # Hot-path modules — must never import pyarrow/polars.
 _HOT_PATH_MODULES = (
@@ -67,47 +66,6 @@ def _forbidden_imports(path: Path) -> list[str]:
     return violations
 
 
-def _direct_background_kis_access_calls(path: Path) -> list[str]:
-    tree = ast.parse(path.read_text())
-    violations: list[str] = []
-    for node in ast.walk(tree):
-        if not isinstance(node, ast.Call):
-            continue
-        func = node.func
-        if not isinstance(func, ast.Attribute):
-            continue
-        if func.attr not in _KIS_BACKGROUND_COMPAT_FUNCTIONS:
-            continue
-        first_arg = node.args[0] if node.args else None
-        if isinstance(first_arg, ast.Constant) and first_arg.value == "background":
-            violations.append(f"{path}:{node.lineno}: {func.attr}(\"background\", ...)")
-    return violations
-
-
-def _direct_run_with_capacity_none_calls(path: Path) -> list[str]:
-    tree = ast.parse(path.read_text())
-    violations: list[str] = []
-    for node in ast.walk(tree):
-        if not isinstance(node, ast.Call):
-            continue
-        func = node.func
-        if not isinstance(func, ast.Attribute):
-            continue
-        if func.attr != "run_with_capacity":
-            continue
-        first_arg = node.args[0] if node.args else None
-        if isinstance(first_arg, ast.Constant) and first_arg.value is None:
-            violations.append(f"{path}:{node.lineno}: run_with_capacity(None, ...)")
-    return violations
-
-
-def _production_python_files() -> list[Path]:
-    paths: list[Path] = []
-    for root in (Path("hoga/api"), Path("hoga/live")):
-        paths.extend(root.rglob("*.py"))
-    return paths
-
-
 @pytest.mark.parametrize("module_path", _HOT_PATH_MODULES)
 def test_hot_path_module_does_not_import_parquet(module_path: str) -> None:
     """ADR-0038: Live Capture hot path is polars/pyarrow-free."""
@@ -129,35 +87,6 @@ def test_promote_is_allowed_to_import_polars() -> None:
     # We don't assert presence; we just confirm the guard doesn't fire spuriously
     # on the cold path. If promote.py drops polars/pyarrow entirely we still pass —
     # the carve-out is permissive, not mandatory.
-
-
-def test_background_kis_rest_callers_use_capacity_scheduler() -> None:
-    """KIS Capacity Scheduler owns production background REST account allocation."""
-    violations: list[str] = []
-    for path in _production_python_files():
-        if path == Path("hoga/live/kis_access.py"):
-            continue
-        violations.extend(_direct_background_kis_access_calls(path))
-
-    assert not violations, (
-        "Background KIS REST production callers must go through "
-        "kis_access.run_with_capacity(..., priority='background', ...), not the "
-        f"legacy role allocator: {violations}"
-    )
-
-
-def test_production_kis_rest_callers_do_not_bypass_capacity_scheduler() -> None:
-    """Production KIS REST callers must not use the legacy scheduler=None fallback."""
-    violations: list[str] = []
-    for path in _production_python_files():
-        if path == Path("hoga/live/kis_access.py"):
-            continue
-        violations.extend(_direct_run_with_capacity_none_calls(path))
-
-    assert not violations, (
-        "Production callers must pass a real KIS Capacity Scheduler to "
-        f"kis_access.run_with_capacity, not None: {violations}"
-    )
 
 
 def test_live_package_asserts_single_worker() -> None:

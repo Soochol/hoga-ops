@@ -93,7 +93,6 @@ async def build_intraday_overlay(
             quotes = await kis_access.run_with_capacity(
                 ensure_kis_capacity_scheduler(data_dir),
                 data_dir=data_dir,
-                role="background",
                 key=("screener-intraday", today, unique_codes),
                 endpoint=kis_access.KisRestEndpoint.QUOTES,
                 priority="background",

@@ -369,7 +369,6 @@ class LiveMinuteCandleBackfill:
                     bars, _write_err = await kis_access.run_with_capacity(
                         self._scheduler,
                         data_dir=self._data_dir,
-                        role="foreground",
                         key=("live-candle-backfill", "minute", venue, code, date_s, "today"),
                         endpoint=kis_access.KisRestEndpoint.PAST_MINUTE,
                         priority="user_visible",
@@ -450,7 +449,6 @@ class LiveMinuteCandleBackfill:
             result = await kis_access.run_with_capacity(
                 self._scheduler,
                 data_dir=self._data_dir,
-                role="foreground",
                 key=("live-candle-backfill", "minute", venue, code, date_s),
                 endpoint=kis_access.KisRestEndpoint.PAST_MINUTE,
                 priority="user_visible",
