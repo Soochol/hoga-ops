@@ -1,12 +1,12 @@
 from __future__ import annotations
 from collections.abc import Callable
 from pathlib import Path
-import duckdb
 import polars as pl
 from hoga.api import screener_universe
 from hoga.api.models import (
     BreakoutParams, ConditionLeaf, ScreenerRow, ScreenerUniverse,
 )
+from hoga.duck import connect_bounded
 
 _WON_PER_EOK = 100_000_000
 
@@ -120,7 +120,7 @@ def run_scan(adjusted_path: Path, stocks_path: Path, *,
              conditions: list[ConditionLeaf], universe: ScreenerUniverse,
              limit: int = 1000,
              intraday_rows: pl.DataFrame | None = None) -> list[ScreenerRow]:
-    con = duckdb.connect(":memory:")
+    con = connect_bounded()
     con.execute(f"CREATE VIEW adj_hist AS SELECT * FROM '{adjusted_path}'")
     if intraday_rows is not None and intraday_rows.height > 0:
         con.register("intraday_rows", intraday_rows)
