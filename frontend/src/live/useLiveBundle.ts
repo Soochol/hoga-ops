@@ -796,7 +796,16 @@ export function useLiveBundle(
   const extending = historicalFromDate != null && (isMinute
     ? pastHoga.isHistoricalDeltaFetching ||
       (sidecarEnabled && pastSidecars.isHistoricalDeltaFetching) ||
-      (pastCandlesQuery.isPlaceholderData && pastCandlesQuery.isFetching)
+      (pastCandlesQuery.isPlaceholderData && pastCandlesQuery.isFetching) ||
+      // warning/rate-limit·preferHogaplay 모드에선 차트 캔들이 KIS 경로가 아니라
+      // 폴백에서 온다. 이 폴백들(plain useRange)도 좌측 팬 re-key 시 이전 데이터를
+      // placeholder로 보이며 더 오래된 창을 fetch하므로, KIS 경로와 동일하게
+      // isPlaceholderData && isFetching로 홀드해야 프리펜드가 원자적이다(미포함 시
+      // 2커밋/잘못된 삽입). 비활성 폴백은 useRange가 disabled → 둘 다 false라 무해.
+      // (plain useRange는 delta 훅과 달리 isHistoricalDeltaFetching를 노출하지 않음.)
+      (candleFallback.isPlaceholderData && candleFallback.isFetching) ||
+      (hogaplayCandleFallback.isPlaceholderData && hogaplayCandleFallback.isFetching) ||
+      (previousDiskCandleFallback.isPlaceholderData && previousDiskCandleFallback.isFetching)
     : (pastDailyCandlesQuery.isPlaceholderData && pastDailyCandlesQuery.isFetching) ||
       (screenerDailyCandlesQuery.isPlaceholderData && screenerDailyCandlesQuery.isFetching));
   // The gate holds the CHART side (candle/segment prepend atomicity is what it

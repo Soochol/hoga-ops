@@ -1816,4 +1816,80 @@ describe('useLiveBundle isExtending', () => {
     );
     expect(result.current.isExtending).toBe(false);
   });
+
+  // 좌측 팬 중 캔들이 KIS 경로가 아니라 폴백(candleFallback/hogaplayCandleFallback/
+  // previousDiskCandleFallback)에서 올 때 — warning/rate-limit·preferHogaplay 모드 —
+  // 게이트가 폴백의 historical-delta fetch도 홀드해야 프리펜드가 원자적이다.
+  // 선행 테스트가 남긴 delta 스파이 구현 누수(mockClear는 구현 미리셋)에 견고하도록
+  // hoga/sidecar delta 신호를 명시적으로 false로 고정한다.
+  const idleDeltaSpy = () => ({
+    data: null,
+    isLoading: false,
+    error: null,
+    isPlaceholderData: false,
+    isFetching: false,
+    isHistoricalDeltaFetching: false,
+  });
+
+  it('is true when a candle fallback is doing its historical delta fetch (warning mode)', () => {
+    useLivePageStore.setState({ historicalFromDate: '20260514' });
+    useRangeHogaDeltaSpy.mockImplementation(idleDeltaSpy);
+    useRangeSidecarDeltaSpy.mockImplementation(idleDeltaSpy);
+    // KIS past-candles가 warning을 반환 → candleFallbackNeeded 활성.
+    // KIS 경로 자체는 정착(placeholder/fetching 아님).
+    candlesMock.warnings = [{ date: '20260527', reason: 'kis_rate_limit', msg: 'rate limited' }];
+    candlesMock.isPlaceholderData = false;
+    candlesMock.isFetching = false;
+    // 활성 폴백(mode:'candles' plain useRange)이 좌측 팬 re-key로 이전 데이터를
+    // placeholder로 보이며 더 오래된 창을 fetch 중(isPlaceholderData && isFetching).
+    // plain useRange는 isHistoricalDeltaFetching를 노출하지 않으므로 실제 반환
+    // 형태(isPlaceholderData/isFetching)로만 목킹한다. 캔들을 돌려줘 previousDisk
+    // 폴백은 비활성 유지.
+    useRangeSpy.mockImplementation((...args: unknown[]) => {
+      const options = args[6] as { mode?: string } | undefined;
+      const isCandles = options?.mode === 'candles';
+      return {
+        data: isCandles
+          ? { ...fallbackRangeBundle(), candles: [{ ts_ms: 1_779_753_600_000, open: 69_000, high: 69_100, low: 68_900, close: 69_050, vol_a: 900, vol_b: 0 }] }
+          : null,
+        isLoading: false,
+        error: null,
+        isPlaceholderData: isCandles,
+        isFetching: isCandles,
+      };
+    });
+    const { result } = renderHook(
+      () => useLiveBundle('005930', '1m', '20260527', liveFixture),
+      { wrapper },
+    );
+    expect(result.current.isExtending).toBe(true);
+  });
+
+  // 과잉 홀드 방지: 폴백이 활성(warning)이더라도 fetch 중이 아니면(정착) 홀드 안 함.
+  it('is false when the fallback is active but idle (settled, not fetching)', () => {
+    useLivePageStore.setState({ historicalFromDate: '20260514' });
+    useRangeHogaDeltaSpy.mockImplementation(idleDeltaSpy);
+    useRangeSidecarDeltaSpy.mockImplementation(idleDeltaSpy);
+    candlesMock.warnings = [{ date: '20260527', reason: 'kis_rate_limit', msg: 'rate limited' }];
+    candlesMock.isPlaceholderData = false;
+    candlesMock.isFetching = false;
+    useRangeSpy.mockImplementation((...args: unknown[]) => {
+      const options = args[6] as { mode?: string } | undefined;
+      const isCandles = options?.mode === 'candles';
+      return {
+        data: isCandles
+          ? { ...fallbackRangeBundle(), candles: [{ ts_ms: 1_779_753_600_000, open: 69_000, high: 69_100, low: 68_900, close: 69_050, vol_a: 900, vol_b: 0 }] }
+          : null,
+        isLoading: false,
+        error: null,
+        isPlaceholderData: false,
+        isFetching: false,
+      };
+    });
+    const { result } = renderHook(
+      () => useLiveBundle('005930', '1m', '20260527', liveFixture),
+      { wrapper },
+    );
+    expect(result.current.isExtending).toBe(false);
+  });
 });
