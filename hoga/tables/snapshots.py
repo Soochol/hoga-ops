@@ -1200,255 +1200,32 @@ def query_day_bid_peak_dual(
     return bid_row
 
 
-def query_day_ask_bid_peak_dual(
+def _read_peak_wall_streams(
     con: duckdb.DuckDBPyConnection,
     *,
     path: Path,
     trades_path: Path,
     bucket_ms: int,
-    session_open_ms: int | None = None,
-    session_close_ms: int | None = None,
-) -> tuple[AskPeakDualRow | None, BidPeakDualRow | None]:
-    """Return ask and bid peak rows for the same day using shared scans."""
-    intra = hhmmssms_to_intra_ms_sql("ts_ms")
-    trade_seq_expr = "COALESCE(seq, 0)" if _parquet_has_column(con, trades_path, "seq") else "0"
-    bounds = [_DEEP_BOOK_SQL]
-    if session_open_ms is not None:
-        bounds.append(f"{intra} >= {hhmmssms_to_intra_ms_sql(str(int(session_open_ms)))}")
-    if session_close_ms is not None:
-        bounds.append(f"{intra} <= {hhmmssms_to_intra_ms_sql(str(int(session_close_ms)))}")
-    where = " AND ".join(bounds)
+    where: str,
+    intra: str,
+    trade_seq_expr: str,
+) -> tuple[dict[str, list[_WallEvent]], list[_Touch]]:
+    """Linear SQL scans → Python streams for the sweep classifier.
 
-    def level_union(src: str, side: str) -> str:
-        price_prefix = "ask_p" if side == "ask" else "bid_p"
-        qty_prefix = "ask_q" if side == "ask" else "bid_q"
-        return " UNION ALL ".join(
-            f"SELECT ts_ms, seq, {price_prefix}{i} AS price, {qty_prefix}{i} AS qty, "
-            f"{intra} AS intra_ms, bucket_id "
-            f"FROM {src} WHERE {qty_prefix}{i} > 0"
-            for i in range(1, ORDERBOOK_LEVELS + 1)
-        )
-
-    def classified_levels(side: str, src: str) -> str:
-        comparator = ">=" if side == "ask" else "<="
-        future_col = "future_max_price" if side == "ask" else "future_min_price"
-        return f"""
-        {side}_{src}_classified AS (
-          SELECT ts_ms, seq, price, qty, intra_ms, bucket_id,
-                 COALESCE({future_col} {comparator} price, FALSE) AS is_touched
-          FROM (
-            SELECT combined.*,
-                   MAX(CASE WHEN is_touch THEN touch_price ELSE NULL END) OVER (
-                     ORDER BY ts_ms DESC, seq DESC, is_touch DESC
-                     ROWS BETWEEN UNBOUNDED PRECEDING AND CURRENT ROW
-                   ) AS future_max_price,
-                   MIN(CASE WHEN is_touch THEN touch_price ELSE NULL END) OVER (
-                     ORDER BY ts_ms DESC, seq DESC, is_touch DESC
-                     ROWS BETWEEN UNBOUNDED PRECEDING AND CURRENT ROW
-                   ) AS future_min_price
-            FROM (
-              SELECT ts_ms, seq, price, qty, intra_ms, bucket_id,
-                     FALSE AS is_touch, NULL::INTEGER AS touch_price
-              FROM {side}_{src}_levels
-              UNION ALL
-              SELECT ts_ms, seq, NULL::INTEGER AS price, NULL::INTEGER AS qty,
-                     NULL::BIGINT AS intra_ms, NULL::BIGINT AS bucket_id,
-                     TRUE AS is_touch, price AS touch_price
-              FROM touch_ticks
-            ) combined
-          )
-          WHERE NOT is_touch
-        )
-        """
-
-    def lifecycle_levels(side: str, src: str) -> str:
-        comparator = ">=" if side == "ask" else "<="
-        return f"""
-        {side}_{src}_lifecycle_prices AS (
-          SELECT DISTINCT price
-          FROM {side}_{src}_classified
-        ),
-        {side}_{src}_lifecycle_stream AS (
-          SELECT ts_ms, seq, price, qty, intra_ms, bucket_id, is_touched,
-                 FALSE AS is_touch, NULL::BIGINT AS touch_ord
-          FROM {side}_{src}_classified
-          UNION ALL
-          SELECT t.ts_ms, t.seq, p.price, NULL::INTEGER AS qty,
-                 NULL::BIGINT AS intra_ms, NULL::BIGINT AS bucket_id,
-                 FALSE AS is_touched, TRUE AS is_touch, t.touch_ord
-          FROM touch_ticks t
-          JOIN {side}_{src}_lifecycle_prices p
-            ON t.price {comparator} p.price
-        ),
-        {side}_{src}_lifecycle_events AS (
-          SELECT ts_ms, seq, price, qty, intra_ms, bucket_id, is_touched, is_touch,
-                 COALESCE(
-                   MAX(CASE WHEN is_touch THEN touch_ord ELSE NULL END) OVER (
-                     PARTITION BY price
-                     ORDER BY ts_ms ASC, seq ASC, is_touch ASC
-                     ROWS BETWEEN UNBOUNDED PRECEDING AND 1 PRECEDING
-                   ),
-                   0
-                 ) AS lifecycle_id
-          FROM {side}_{src}_lifecycle_stream
-        ),
-        {side}_{src}_lifecycle_wall_events AS (
-          SELECT ts_ms, seq, price, qty, intra_ms, bucket_id, is_touched, lifecycle_id
-          FROM {side}_{src}_lifecycle_events
-          WHERE NOT is_touch
-        ),
-        {side}_{src}_lifecycle_ranked AS (
-          SELECT price, qty, intra_ms, seq, bucket_id, is_touched, lifecycle_id,
-                 ROW_NUMBER() OVER (
-                   PARTITION BY price, lifecycle_id
-                   ORDER BY qty DESC, intra_ms ASC, seq ASC, price ASC
-                 ) AS lifecycle_rn
-          FROM {side}_{src}_lifecycle_wall_events
-        ),
-        {side}_{src}_lifecycle AS (
-          SELECT price, qty, intra_ms, seq, bucket_id, is_touched
-          FROM {side}_{src}_lifecycle_ranked
-          WHERE lifecycle_rn = 1
-        ),
-        {side}_{src}_lifecycle_distinct_ranked AS (
-          SELECT price, qty, intra_ms, seq, bucket_id, is_touched,
-                 ROW_NUMBER() OVER (
-                   PARTITION BY price, is_touched
-                   ORDER BY qty DESC, intra_ms ASC, seq ASC, price ASC
-                 ) AS price_status_rn
-          FROM {side}_{src}_lifecycle
-        ),
-        {side}_{src}_lifecycle_distinct AS (
-          SELECT price, qty, intra_ms, seq, bucket_id, is_touched
-          FROM {side}_{src}_lifecycle_distinct_ranked
-          WHERE price_status_rn = 1
-        )
-        """
-
-    def scalar_and_array_ctes(side: str) -> str:
-        return f"""
-        {side}_all_close AS (
-          SELECT '{side}_all_close' AS kind, price, qty, intra_ms, 0 AS ord
-          FROM {side}_rep_classified
-          ORDER BY qty DESC, intra_ms ASC, seq ASC, price ASC
-          LIMIT 1
-        ),
-        {side}_all_max AS (
-          SELECT '{side}_all_max' AS kind, price, qty, intra_ms, 0 AS ord
-          FROM {side}_cont_classified
-          ORDER BY qty DESC, intra_ms ASC, seq ASC, price ASC
-          LIMIT 1
-        ),
-        {side}_traded_close AS (
-          SELECT '{side}_traded_close' AS kind, price, qty, intra_ms, 0 AS ord
-          FROM {side}_rep_lifecycle_distinct
-          WHERE is_touched
-          ORDER BY qty DESC, intra_ms ASC, seq ASC, price ASC
-          LIMIT 1
-        ),
-        {side}_traded_max AS (
-          SELECT '{side}_traded_max' AS kind, price, qty, intra_ms, 0 AS ord
-          FROM {side}_cont_lifecycle_distinct
-          WHERE is_touched
-          ORDER BY qty DESC, intra_ms ASC, seq ASC, price ASC
-          LIMIT 1
-        ),
-        {side}_untraded_close AS (
-          SELECT '{side}_untraded_close' AS kind, price, qty, intra_ms, 0 AS ord
-          FROM {side}_rep_lifecycle_distinct
-          WHERE NOT is_touched
-          ORDER BY qty DESC, intra_ms ASC, seq ASC, price ASC
-          LIMIT 1
-        ),
-        {side}_untraded_max AS (
-          SELECT '{side}_untraded_max' AS kind, price, qty, intra_ms, 0 AS ord
-          FROM {side}_cont_lifecycle_distinct
-          WHERE NOT is_touched
-          ORDER BY qty DESC, intra_ms ASC, seq ASC, price ASC
-          LIMIT 1
-        ),
-        {side}_traded_peaks AS (
-          SELECT '{side}_traded_peak' AS kind, price, qty, intra_ms, ord
-          FROM (
-            SELECT price, qty, intra_ms,
-                   ROW_NUMBER() OVER (
-                     ORDER BY qty DESC, intra_ms ASC, seq ASC, price ASC
-                   ) AS ord
-            FROM {side}_rep_lifecycle_distinct
-            WHERE is_touched
-          )
-          WHERE ord <= 3
-        ),
-        {side}_traded_max_peaks AS (
-          SELECT '{side}_traded_max_peak' AS kind, price, qty, intra_ms, ord
-          FROM (
-            SELECT price, qty, intra_ms,
-                   ROW_NUMBER() OVER (
-                     ORDER BY qty DESC, intra_ms ASC, seq ASC, price ASC
-                   ) AS ord
-            FROM {side}_cont_lifecycle_distinct
-            WHERE is_touched
-          )
-          WHERE ord <= 3
-        ),
-        {side}_untraded_peaks AS (
-          SELECT '{side}_untraded_peak' AS kind, price, qty, intra_ms, ord
-          FROM (
-            SELECT price, qty, intra_ms,
-                   ROW_NUMBER() OVER (
-                     ORDER BY qty DESC, intra_ms ASC, seq ASC, price ASC
-                   ) AS ord
-            FROM {side}_rep_lifecycle_distinct
-            WHERE NOT is_touched
-          )
-          WHERE ord <= 3
-        ),
-        {side}_untraded_max_peaks AS (
-          SELECT '{side}_untraded_max_peak' AS kind, price, qty, intra_ms, ord
-          FROM (
-            SELECT price, qty, intra_ms,
-                   ROW_NUMBER() OVER (
-                     ORDER BY qty DESC, intra_ms ASC, seq ASC, price ASC
-                   ) AS ord
-            FROM {side}_cont_lifecycle_distinct
-            WHERE NOT is_touched
-          )
-          WHERE ord <= 3
-        ),
-        {side}_all_peak_candidates AS (
-          SELECT price, qty, intra_ms, seq, bucket_id,
-                 ROW_NUMBER() OVER (
-                   PARTITION BY price, bucket_id
-                   ORDER BY qty DESC, intra_ms ASC, seq ASC, price ASC
-                 ) AS price_rn
-          FROM {side}_rep_classified
-        ),
-        {side}_all_peaks AS (
-          SELECT '{side}_all_peak' AS kind, price, qty, intra_ms,
-                 ROW_NUMBER() OVER (
-                   ORDER BY qty DESC, intra_ms ASC, seq ASC, price ASC
-                 ) AS ord
-          FROM {side}_all_peak_candidates
-          WHERE price_rn = 1
-        ),
-        {side}_all_max_peak_candidates AS (
-          SELECT price, qty, intra_ms, seq, bucket_id,
-                 ROW_NUMBER() OVER (
-                   PARTITION BY price, bucket_id
-                   ORDER BY qty DESC, intra_ms ASC, seq ASC, price ASC
-                 ) AS price_rn
-          FROM {side}_cont_classified
-        ),
-        {side}_all_max_peaks AS (
-          SELECT '{side}_all_max_peak' AS kind, price, qty, intra_ms,
-                 ROW_NUMBER() OVER (
-                   ORDER BY qty DESC, intra_ms ASC, seq ASC, price ASC
-                 ) AS ord
-          FROM {side}_all_max_peak_candidates
-          WHERE price_rn = 1
-        )
-        """
-
+    Reuses the (linear) ``cont``/``rep`` bucketing + 10-level unpivot of the old
+    query, but materialises only per-level wall events and raw touches — NO
+    non-equi join, NO UNBOUNDED window. Everything else happens in Python.
+    """
+    level_selects: list[str] = []
+    for source in ("cont", "rep"):
+        for side, price_prefix, qty_prefix in (("ask", "ask_p", "ask_q"), ("bid", "bid_p", "bid_q")):
+            for i in range(1, ORDERBOOK_LEVELS + 1):
+                level_selects.append(
+                    f"SELECT '{side}' AS side, '{source}' AS source, ts_ms, seq, "
+                    f"{price_prefix}{i} AS price, {qty_prefix}{i} AS qty, "
+                    f"{intra} AS intra_ms, bucket_id "
+                    f"FROM {source} WHERE {qty_prefix}{i} > 0"
+                )
     rows = con.execute(
         f"""
         WITH cont AS (
@@ -1460,151 +1237,161 @@ def query_day_ask_bid_peak_dual(
                  ) AS rn
           FROM read_parquet(?) WHERE {where}
         ),
-        rep AS (SELECT * FROM cont WHERE rn = 1),
-        touch_ticks AS (
-          SELECT ts_ms, seq, price,
-                 ROW_NUMBER() OVER (ORDER BY ts_ms ASC, seq ASC, price ASC) AS touch_ord
-          FROM (
-            SELECT ts_ms, {trade_seq_expr} AS seq, price
-            FROM read_parquet(?)
-            WHERE side IN (1, -1) AND price > 0
-          )
-        ),
-        ask_rep_levels AS ({level_union("rep", "ask")}),
-        ask_cont_levels AS ({level_union("cont", "ask")}),
-        bid_rep_levels AS ({level_union("rep", "bid")}),
-        bid_cont_levels AS ({level_union("cont", "bid")}),
-        {classified_levels("ask", "rep")},
-        {classified_levels("ask", "cont")},
-        {classified_levels("bid", "rep")},
-        {classified_levels("bid", "cont")},
-        {lifecycle_levels("ask", "rep")},
-        {lifecycle_levels("ask", "cont")},
-        {lifecycle_levels("bid", "rep")},
-        {lifecycle_levels("bid", "cont")},
-        {scalar_and_array_ctes("ask")},
-        {scalar_and_array_ctes("bid")}
-        SELECT * FROM ask_all_close
-        UNION ALL SELECT * FROM ask_all_max
-        UNION ALL SELECT * FROM ask_traded_close
-        UNION ALL SELECT * FROM ask_traded_max
-        UNION ALL SELECT * FROM ask_untraded_close
-        UNION ALL SELECT * FROM ask_untraded_max
-        UNION ALL SELECT * FROM ask_traded_peaks
-        UNION ALL SELECT * FROM ask_traded_max_peaks
-        UNION ALL SELECT * FROM ask_untraded_peaks
-        UNION ALL SELECT * FROM ask_untraded_max_peaks
-        UNION ALL SELECT * FROM ask_all_peaks
-        UNION ALL SELECT * FROM ask_all_max_peaks
-        UNION ALL SELECT * FROM bid_all_close
-        UNION ALL SELECT * FROM bid_all_max
-        UNION ALL SELECT * FROM bid_traded_close
-        UNION ALL SELECT * FROM bid_traded_max
-        UNION ALL SELECT * FROM bid_traded_peaks
-        UNION ALL SELECT * FROM bid_traded_max_peaks
-        UNION ALL SELECT * FROM bid_untraded_peaks
-        UNION ALL SELECT * FROM bid_untraded_max_peaks
-        UNION ALL SELECT * FROM bid_all_peaks
-        UNION ALL SELECT * FROM bid_all_max_peaks
-        UNION ALL SELECT * FROM bid_untraded_close
-        UNION ALL SELECT * FROM bid_untraded_max
+        rep AS (SELECT * FROM cont WHERE rn = 1)
+        {" UNION ALL ".join(level_selects)}
         """,
-        [str(path), str(trades_path)],
+        [str(path)],
+    ).fetchall()
+    touch_rows = con.execute(
+        f"""
+        SELECT ts_ms, {trade_seq_expr} AS seq, price
+        FROM read_parquet(?)
+        WHERE side IN (1, -1) AND price > 0
+        """,
+        [str(trades_path)],
     ).fetchall()
 
-    single: dict[str, tuple[int, int, int]] = {}
-    many: dict[str, list[AskPeakCandidateRow]] = {
-        "ask_traded_peak": [],
-        "ask_traded_max_peak": [],
-        "ask_untraded_peak": [],
-        "ask_untraded_max_peak": [],
-        "ask_all_peak": [],
-        "ask_all_max_peak": [],
-        "bid_traded_peak": [],
-        "bid_traded_max_peak": [],
-        "bid_untraded_peak": [],
-        "bid_untraded_max_peak": [],
-        "bid_all_peak": [],
-        "bid_all_max_peak": [],
+    streams: dict[str, list[_WallEvent]] = {
+        "ask_rep": [], "ask_cont": [], "bid_rep": [], "bid_cont": [],
     }
-    for kind, price, qty, intra_ms, _ord in rows:
-        item = (int(price), int(qty), int(intra_ms))
-        if kind in many:
-            many[kind].append(AskPeakCandidateRow(price=item[0], qty=item[1], intra_ms=item[2]))
-        else:
-            single[str(kind)] = item
+    for side, source, ts_ms, seq, price, qty, intra_ms, bucket_id in rows:
+        streams[f"{side}_{source}"].append(
+            _WallEvent(
+                ts_ms=int(ts_ms), seq=int(seq or 0), price=int(price), qty=int(qty),
+                intra_ms=int(intra_ms), bucket_id=int(bucket_id),
+            )
+        )
+    touches = [
+        _Touch(ts_ms=int(ts_ms), seq=int(seq or 0), price=int(price))
+        for ts_ms, seq, price in touch_rows
+    ]
+    return streams, touches
 
-    ask_all_close = single.get("ask_all_close")
-    ask_all_max = single.get("ask_all_max")
+
+def _peak_candidates(rows: list[_WallEvent], limit: int | None) -> tuple[AskPeakCandidateRow, ...]:
+    ranked = sorted(rows, key=_event_rank_key)
+    if limit is not None:
+        ranked = ranked[:limit]
+    return tuple(AskPeakCandidateRow(price=e.price, qty=e.qty, intra_ms=e.intra_ms) for e in ranked)
+
+
+def _peak_bucket_dedup(classified: list[tuple[_WallEvent, bool]]) -> list[_WallEvent]:
+    """Best per (price, bucket_id) — mirrors ``{side}_all_peak_candidates`` price_rn=1."""
+    best: dict[tuple[int, int], _WallEvent] = {}
+    for e, _touched in classified:
+        key = (e.price, e.bucket_id)
+        cur = best.get(key)
+        if cur is None or _event_rank_key(e) < _event_rank_key(cur):
+            best[key] = e
+    return list(best.values())
+
+
+def _peak_scalar(rows: list[_WallEvent]) -> tuple[int, int, int] | None:
+    """Rank-1 (price, qty, intra_ms) or None — mirrors an ``... LIMIT 1`` CTE."""
+    if not rows:
+        return None
+    e = min(rows, key=_event_rank_key)
+    return (e.price, e.qty, e.intra_ms)
+
+
+def query_day_ask_bid_peak_dual(
+    con: duckdb.DuckDBPyConnection,
+    *,
+    path: Path,
+    trades_path: Path,
+    bucket_ms: int,
+    session_open_ms: int | None = None,
+    session_close_ms: int | None = None,
+) -> tuple[AskPeakDualRow | None, BidPeakDualRow | None]:
+    """Return ask and bid peak rows for the same day using shared scans.
+
+    Linear-sweep implementation (ADR-0085): the peak-wall lifecycle
+    classification that used to run as one heavy non-equi-join SQL now runs as
+    two linear SQL scans + a Python sorted sweep with a Fenwick prefix-max tree
+    (``_classify_wall_stream``), replacing the O(N·M) join that spilled 356GB /
+    took 155s on the worst day. Public signature and returned dataclasses are
+    unchanged.
+    """
+    intra = hhmmssms_to_intra_ms_sql("ts_ms")
+    trade_seq_expr = "COALESCE(seq, 0)" if _parquet_has_column(con, trades_path, "seq") else "0"
+    bounds = [_DEEP_BOOK_SQL]
+    if session_open_ms is not None:
+        bounds.append(f"{intra} >= {hhmmssms_to_intra_ms_sql(str(int(session_open_ms)))}")
+    if session_close_ms is not None:
+        bounds.append(f"{intra} <= {hhmmssms_to_intra_ms_sql(str(int(session_close_ms)))}")
+    where = " AND ".join(bounds)
+
+    streams, touches = _read_peak_wall_streams(
+        con, path=path, trades_path=trades_path, bucket_ms=bucket_ms,
+        where=where, intra=intra, trade_seq_expr=trade_seq_expr,
+    )
+
+    def _side_row(side: str) -> dict[str, Any] | None:
+        rep_classified, rep_distinct = _classify_wall_stream(streams[f"{side}_rep"], touches, side=side)
+        cont_classified, cont_distinct = _classify_wall_stream(streams[f"{side}_cont"], touches, side=side)
+
+        all_close = _peak_scalar([e for e, _t in rep_classified])
+        all_max = _peak_scalar([e for e, _t in cont_classified])
+        if all_close is None or all_max is None:
+            return None
+
+        rep_traded = [e for (_p, t), e in rep_distinct.items() if t]
+        rep_untraded = [e for (_p, t), e in rep_distinct.items() if not t]
+        cont_traded = [e for (_p, t), e in cont_distinct.items() if t]
+        cont_untraded = [e for (_p, t), e in cont_distinct.items() if not t]
+
+        return {
+            "all_close": all_close,
+            "all_max": all_max,
+            "traded_close": _peak_scalar(rep_traded),
+            "traded_max": _peak_scalar(cont_traded),
+            "untraded_close": _peak_scalar(rep_untraded),
+            "untraded_max": _peak_scalar(cont_untraded),
+            "traded_peaks": _peak_candidates(rep_traded, 3),
+            "traded_max_peaks": _peak_candidates(cont_traded, 3),
+            "untraded_peaks": _peak_candidates(rep_untraded, 3),
+            "untraded_max_peaks": _peak_candidates(cont_untraded, 3),
+            "all_peaks": _peak_candidates(_peak_bucket_dedup(rep_classified), None),
+            "all_max_peaks": _peak_candidates(_peak_bucket_dedup(cont_classified), None),
+        }
+
+    ask = _side_row("ask")
+    bid = _side_row("bid")
+
     ask_row: AskPeakDualRow | None = None
-    if ask_all_close is not None and ask_all_max is not None:
-        ask_traded_close = single.get("ask_traded_close")
-        ask_traded_max = single.get("ask_traded_max")
-        traded_peaks = tuple(many["ask_traded_peak"])
-        traded_max_peaks = tuple(many["ask_traded_max_peak"])
-        untraded_peaks = tuple(many["ask_untraded_peak"])
-        untraded_max_peaks = tuple(many["ask_untraded_max_peak"])
-        all_peaks = tuple(many["ask_all_peak"])
-        all_max_peaks = tuple(many["ask_all_max_peak"])
-        ask_untraded_close = single.get("ask_untraded_close")
-        ask_untraded_max = single.get("ask_untraded_max")
+    if ask is not None:
+        tc, tm = ask["traded_close"], ask["traded_max"]
+        uc, um = ask["untraded_close"], ask["untraded_max"]
         ask_row = AskPeakDualRow(
-            price=ask_traded_close[0] if ask_traded_close is not None else None,
-            qty=ask_traded_close[1] if ask_traded_close is not None else None,
-            intra_ms=ask_traded_close[2] if ask_traded_close is not None else None,
-            max_price=ask_traded_max[0] if ask_traded_max is not None else None,
-            max_qty=ask_traded_max[1] if ask_traded_max is not None else None,
-            max_intra_ms=ask_traded_max[2] if ask_traded_max is not None else None,
-            traded_peaks=traded_peaks,
-            traded_max_peaks=traded_max_peaks,
-            all_price=ask_all_close[0], all_qty=ask_all_close[1], all_intra_ms=ask_all_close[2],
-            all_max_price=ask_all_max[0], all_max_qty=ask_all_max[1], all_max_intra_ms=ask_all_max[2],
-            all_peaks=all_peaks,
-            all_max_peaks=all_max_peaks,
-            untraded_price=ask_untraded_close[0] if ask_untraded_close is not None else None,
-            untraded_qty=ask_untraded_close[1] if ask_untraded_close is not None else None,
-            untraded_intra_ms=ask_untraded_close[2] if ask_untraded_close is not None else None,
-            untraded_max_price=ask_untraded_max[0] if ask_untraded_max is not None else None,
-            untraded_max_qty=ask_untraded_max[1] if ask_untraded_max is not None else None,
-            untraded_max_intra_ms=ask_untraded_max[2] if ask_untraded_max is not None else None,
-            untraded_peaks=untraded_peaks,
-            untraded_max_peaks=untraded_max_peaks,
+            price=tc[0] if tc else None, qty=tc[1] if tc else None, intra_ms=tc[2] if tc else None,
+            max_price=tm[0] if tm else None, max_qty=tm[1] if tm else None, max_intra_ms=tm[2] if tm else None,
+            traded_peaks=ask["traded_peaks"], traded_max_peaks=ask["traded_max_peaks"],
+            all_price=ask["all_close"][0], all_qty=ask["all_close"][1], all_intra_ms=ask["all_close"][2],
+            all_max_price=ask["all_max"][0], all_max_qty=ask["all_max"][1], all_max_intra_ms=ask["all_max"][2],
+            all_peaks=ask["all_peaks"], all_max_peaks=ask["all_max_peaks"],
+            untraded_price=uc[0] if uc else None, untraded_qty=uc[1] if uc else None,
+            untraded_intra_ms=uc[2] if uc else None,
+            untraded_max_price=um[0] if um else None, untraded_max_qty=um[1] if um else None,
+            untraded_max_intra_ms=um[2] if um else None,
+            untraded_peaks=ask["untraded_peaks"], untraded_max_peaks=ask["untraded_max_peaks"],
         )
 
-    bid_all_close = single.get("bid_all_close")
-    bid_all_max = single.get("bid_all_max")
     bid_row: BidPeakDualRow | None = None
-    if bid_all_close is not None and bid_all_max is not None:
-        bid_traded_close = single.get("bid_traded_close")
-        bid_traded_max = single.get("bid_traded_max")
-        bid_traded_peaks = tuple(many["bid_traded_peak"])
-        bid_traded_max_peaks = tuple(many["bid_traded_max_peak"])
-        bid_untraded_peaks = tuple(many["bid_untraded_peak"])
-        bid_untraded_max_peaks = tuple(many["bid_untraded_max_peak"])
-        bid_all_peaks = tuple(many["bid_all_peak"])
-        bid_all_max_peaks = tuple(many["bid_all_max_peak"])
-        bid_untraded_close = single.get("bid_untraded_close")
-        bid_untraded_max = single.get("bid_untraded_max")
+    if bid is not None:
+        tc, tm = bid["traded_close"], bid["traded_max"]
+        uc, um = bid["untraded_close"], bid["untraded_max"]
         bid_row = BidPeakDualRow(
-            price=bid_traded_close[0] if bid_traded_close is not None else None,
-            qty=bid_traded_close[1] if bid_traded_close is not None else None,
-            intra_ms=bid_traded_close[2] if bid_traded_close is not None else None,
-            max_price=bid_traded_max[0] if bid_traded_max is not None else None,
-            max_qty=bid_traded_max[1] if bid_traded_max is not None else None,
-            max_intra_ms=bid_traded_max[2] if bid_traded_max is not None else None,
-            traded_peaks=bid_traded_peaks,
-            traded_max_peaks=bid_traded_max_peaks,
-            all_price=bid_all_close[0], all_qty=bid_all_close[1], all_intra_ms=bid_all_close[2],
-            all_max_price=bid_all_max[0], all_max_qty=bid_all_max[1], all_max_intra_ms=bid_all_max[2],
-            all_peaks=bid_all_peaks,
-            all_max_peaks=bid_all_max_peaks,
-            untraded_price=bid_untraded_close[0] if bid_untraded_close is not None else None,
-            untraded_qty=bid_untraded_close[1] if bid_untraded_close is not None else None,
-            untraded_intra_ms=bid_untraded_close[2] if bid_untraded_close is not None else None,
-            untraded_max_price=bid_untraded_max[0] if bid_untraded_max is not None else None,
-            untraded_max_qty=bid_untraded_max[1] if bid_untraded_max is not None else None,
-            untraded_max_intra_ms=bid_untraded_max[2] if bid_untraded_max is not None else None,
-            untraded_peaks=bid_untraded_peaks,
-            untraded_max_peaks=bid_untraded_max_peaks,
+            price=tc[0] if tc else None, qty=tc[1] if tc else None, intra_ms=tc[2] if tc else None,
+            max_price=tm[0] if tm else None, max_qty=tm[1] if tm else None, max_intra_ms=tm[2] if tm else None,
+            traded_peaks=bid["traded_peaks"], traded_max_peaks=bid["traded_max_peaks"],
+            all_price=bid["all_close"][0], all_qty=bid["all_close"][1], all_intra_ms=bid["all_close"][2],
+            all_max_price=bid["all_max"][0], all_max_qty=bid["all_max"][1], all_max_intra_ms=bid["all_max"][2],
+            all_peaks=bid["all_peaks"], all_max_peaks=bid["all_max_peaks"],
+            untraded_price=uc[0] if uc else None, untraded_qty=uc[1] if uc else None,
+            untraded_intra_ms=uc[2] if uc else None,
+            untraded_max_price=um[0] if um else None, untraded_max_qty=um[1] if um else None,
+            untraded_max_intra_ms=um[2] if um else None,
+            untraded_peaks=bid["untraded_peaks"], untraded_max_peaks=bid["untraded_max_peaks"],
         )
     return ask_row, bid_row
+

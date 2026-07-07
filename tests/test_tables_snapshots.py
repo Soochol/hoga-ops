@@ -1786,7 +1786,6 @@ def test_sweep_bid_side_uses_lower_or_equal_domination() -> None:
     assert classified[0][1] is False
 
 
-@pytest.mark.xfail(reason="quadratic non-equi-join SQL path — removed in peak sweep rewrite", strict=True)
 def test_query_day_ask_bid_peak_dual_perf_guardrail(tmp_path: Path) -> None:
     """2026-07-05 356GB 스필 회귀 방지: 넓은 가격 분포 × 다수 터치에서
     비등가 조인이 폭발하지 않고 수 초 안에 완료되어야 한다."""
