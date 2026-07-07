@@ -29,6 +29,11 @@ from hoga.tables.snapshots import (
     validate,
     write_parquet,
 )
+from hoga.tables.snapshots import (
+    _classify_wall_stream,
+    _Touch,
+    _WallEvent,
+)
 from hoga.tables.trades import Trade, write_parquet as write_trades
 
 
@@ -1743,6 +1748,42 @@ def _pathological_peak_dataset(
     trades = [_trade(150_000_000, top, seq=i + 1) for i in range(n_trades)]
     write_trades(trades, trades_path)
     return snapshots_path, trades_path
+
+
+# ── 스위프 분류기 유닛 테스트 (SQL 의미론의 inclusive/exclusive 비대칭 고정) ──
+
+
+def _ev(ts: int, seq: int, price: int, qty: int, bucket: int = 0) -> _WallEvent:
+    return _WallEvent(ts_ms=ts, seq=seq, price=price, qty=qty, intra_ms=ts, bucket_id=bucket)
+
+
+def _tk(ts: int, seq: int, price: int) -> _Touch:
+    return _Touch(ts_ms=ts, seq=seq, price=price)
+
+
+def test_sweep_same_key_touch_counts_as_touched() -> None:
+    classified, _distinct = _classify_wall_stream([_ev(1000, 5, 50000, 10)], [_tk(1000, 5, 50000)], side="ask")
+    assert classified[0][1] is True  # 같은 (ts,seq) 터치는 touched (>= 규칙)
+
+
+def test_sweep_same_ms_earlier_seq_does_not_touch() -> None:
+    classified, _distinct = _classify_wall_stream([_ev(1000, 5, 50000, 10)], [_tk(1000, 4, 50000)], side="ask")
+    assert classified[0][1] is False  # 같은 ms의 더 이른 seq 터치는 미포함
+
+
+def test_sweep_lifecycle_reopens_after_touch() -> None:
+    # 벽 관측 → 지배 터치 → 같은 가격 재관측: 재관측은 새 lifecycle이라
+    # (price, is_touched=False) best로 남아야 한다 (untraded).
+    events = [_ev(1000, 1, 50000, 100), _ev(3000, 3, 50000, 40)]
+    _classified, distinct = _classify_wall_stream(events, [_tk(2000, 2, 50000)], side="ask")
+    assert distinct[(50000, True)].qty == 100   # 터치 전 lifecycle의 best
+    assert distinct[(50000, False)].qty == 40   # 터치 후 새 lifecycle
+
+
+def test_sweep_bid_side_uses_lower_or_equal_domination() -> None:
+    # bid에선 고가 터치(50100)가 저가 벽(50000)을 지배하지 않는다.
+    classified, _distinct = _classify_wall_stream([_ev(1000, 1, 50000, 10)], [_tk(2000, 2, 50100)], side="bid")
+    assert classified[0][1] is False
 
 
 @pytest.mark.xfail(reason="quadratic non-equi-join SQL path — removed in peak sweep rewrite", strict=True)

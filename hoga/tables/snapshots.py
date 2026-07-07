@@ -7,7 +7,7 @@ Each event type 2 row is a full state snapshot. In-memory the entity uses
 
 from __future__ import annotations
 
-from bisect import bisect_right
+from bisect import bisect_left, bisect_right
 from collections import OrderedDict
 from collections.abc import Callable, Iterable
 from dataclasses import dataclass
@@ -532,6 +532,150 @@ class AskPeakCandidateRow:
     price: int
     qty: int
     intra_ms: int
+
+
+# ── Peak-wall linear sweep classifier (replaces the O(N·M) non-equi-join SQL) ──
+#
+# The former single-SQL classifier (ADR-0084) materialised a non-equi join
+# ``touch × lifecycle_prices ON t.price {>=|<=} p.price`` plus an UNBOUNDED
+# window over every ask/bid × rep/cont set — 17GB RSS / 155s on the worst day
+# (20260623/000660). This sweep computes the identical semantics in
+# O((N+M) log M): one reverse pass for ``is_touched`` and one forward pass with
+# a prefix-max Fenwick tree for lifecycle segment ids. See ADR-0085.
+
+
+@dataclass(frozen=True, slots=True)
+class _WallEvent:
+    ts_ms: int
+    seq: int
+    price: int
+    qty: int
+    intra_ms: int
+    bucket_id: int
+
+
+@dataclass(frozen=True, slots=True)
+class _Touch:
+    ts_ms: int
+    seq: int
+    price: int
+
+
+def _event_rank_key(e: _WallEvent) -> tuple[int, int, int, int]:
+    # SQL 공통 랭킹: qty DESC, intra_ms ASC, seq ASC, price ASC.
+    return (-e.qty, e.intra_ms, e.seq, e.price)
+
+
+class _MaxFenwick:
+    """1-based prefix-max Fenwick (Binary Indexed) tree over positive ordinals."""
+
+    def __init__(self, size: int) -> None:
+        self._size = size
+        self._tree = [0] * (size + 1)
+
+    def update(self, i: int, value: int) -> None:
+        tree = self._tree
+        while i <= self._size:
+            if tree[i] < value:
+                tree[i] = value
+            i += i & (-i)
+
+    def prefix_max(self, i: int) -> int:
+        best = 0
+        tree = self._tree
+        while i > 0:
+            if tree[i] > best:
+                best = tree[i]
+            i -= i & (-i)
+        return best
+
+
+def _classify_wall_stream(
+    events: list[_WallEvent],
+    touches: list[_Touch],
+    *,
+    side: str,
+) -> tuple[list[tuple[_WallEvent, bool]], dict[tuple[int, bool], _WallEvent]]:
+    """Linear-sweep replacement for the quadratic lifecycle SQL (ADR-0085).
+
+    Returns ``(classified, distinct_best)``:
+      classified    — ``(event, is_touched)`` in (ts_ms, seq) ascending order,
+                      mirroring ``{side}_{src}_classified``.
+      distinct_best — best event per ``(price, is_touched)`` after per-``(price,
+                      lifecycle_id)`` dedup; mirrors ``{side}_{src}_lifecycle_distinct``.
+
+    Semantics contract (must match the former SQL exactly):
+      is_touched — a level event ``e`` is touched iff some touch with
+                   ``(ts, seq) >= e``'s dominates it price-wise
+                   (ask: ``touch.price >= e.price``; bid: ``<=``).
+                   Same-``(ts, seq)`` touches ARE included (``is_touch DESC``).
+      lifecycle  — segmented by STRICTLY-earlier dominating touches
+                   (``(ts, seq) < e``, so same-``(ts, seq)`` touches are excluded,
+                   ``is_touch ASC``); ``lifecycle_id`` = the max touch ordinal of
+                   those, else 0. Touch ordinal = rank in (ts, seq, price) order.
+    """
+    is_ask = side == "ask"
+    events_sorted = sorted(events, key=lambda e: (e.ts_ms, e.seq))
+    # touches_sorted key (ts, seq, price) == SQL touch_ord ROW_NUMBER order,
+    # so a touch's 1-based list position IS its touch_ord.
+    touches_sorted = sorted(touches, key=lambda t: (t.ts_ms, t.seq, t.price))
+
+    # ── pass 1 (reverse): is_touched via a running future extreme ────────────
+    classified: list[tuple[_WallEvent, bool]] = [None] * len(events_sorted)  # type: ignore[list-item]
+    ti = len(touches_sorted) - 1
+    future_extreme: int | None = None
+    for ei in range(len(events_sorted) - 1, -1, -1):
+        e = events_sorted[ei]
+        while ti >= 0 and (touches_sorted[ti].ts_ms, touches_sorted[ti].seq) >= (e.ts_ms, e.seq):
+            tp = touches_sorted[ti].price
+            if future_extreme is None or (tp > future_extreme if is_ask else tp < future_extreme):
+                future_extreme = tp
+            ti -= 1
+        touched = future_extreme is not None and (
+            future_extreme >= e.price if is_ask else future_extreme <= e.price
+        )
+        classified[ei] = (e, touched)
+
+    # ── pass 2 (forward): lifecycle ids via Fenwick prefix-max over touch prices ──
+    uniq = sorted({t.price for t in touches_sorted})
+    fen = _MaxFenwick(len(uniq))
+    if is_ask:
+        # rank prices from the TOP so prefix_max(idx) covers touches with price >= q.
+        def _touch_idx(price: int) -> int:
+            return len(uniq) - bisect_left(uniq, price)
+
+        _query_idx = _touch_idx
+    else:
+        # rank from the BOTTOM so prefix_max(idx) covers touches with price <= q.
+        def _touch_idx(price: int) -> int:
+            return bisect_left(uniq, price) + 1
+
+        def _query_idx(price: int) -> int:
+            return bisect_right(uniq, price)
+
+    lifecycle_best: dict[tuple[int, int], tuple[_WallEvent, bool]] = {}
+    ti = 0
+    n_touch = len(touches_sorted)
+    for e, touched in classified:
+        while ti < n_touch and (
+            (touches_sorted[ti].ts_ms, touches_sorted[ti].seq) < (e.ts_ms, e.seq)
+        ):
+            fen.update(_touch_idx(touches_sorted[ti].price), ti + 1)
+            ti += 1
+        lifecycle_id = fen.prefix_max(_query_idx(e.price))
+        key = (e.price, lifecycle_id)
+        cur = lifecycle_best.get(key)
+        if cur is None or _event_rank_key(e) < _event_rank_key(cur[0]):
+            lifecycle_best[key] = (e, touched)
+
+    distinct_best: dict[tuple[int, bool], _WallEvent] = {}
+    for (price, _lid), (e, touched) in lifecycle_best.items():
+        key2 = (price, touched)
+        cur2 = distinct_best.get(key2)
+        if cur2 is None or _event_rank_key(e) < _event_rank_key(cur2):
+            distinct_best[key2] = e
+
+    return classified, distinct_best
 
 
 @dataclass(frozen=True)
