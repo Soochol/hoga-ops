@@ -487,6 +487,89 @@ def test_query_bucketed_ratio_parity_empty_parquet(tmp_path: Path) -> None:
     assert got == want == []
 
 
+def test_query_bucketed_ratio_parity_genuine_straddle_bucket(tmp_path: Path) -> None:
+    """A GENUINE straddle bucket: one bucket_ms=60_000 bucket holding BOTH a
+    deep/continuous row and a shallow/auction row, with session_close_ms
+    falling strictly between their intra_ms values. This is the ADR-0062 case
+    (continuous->auction transition drifting to ~15:20:01.xx instead of a
+    bucket boundary) — the ONE case where the representative tiering
+    (``is_pre DESC`` outranking ``ts_ms DESC``) actually changes the winner
+    versus plain last-in-bucket, rather than being a no-op. (The prior "mixed"
+    parity test's docstring claimed a straddle bucket, but its bucket 2 only
+    ever contains the single deep row — bucket 3 is fully shallow — so it
+    never exercised this tiering. This test closes that gap.)
+
+    ts_ms / session_close_ms chosen so the straddle is REAL, verified via the
+    actual hhmmssms_to_intra_ms_sql SQL expression (not just hand math):
+      intra(deep=15:20:05.000)    = 55_205_000  -> bucket 55_205_000//60_000 = 920
+      intra(close=15:20:30.000)   = 55_230_000
+      intra(shallow=15:20:35.000) = 55_235_000  -> bucket 55_235_000//60_000 = 920
+    Both rows land in bucket 920 (bucket_intra_ms = 920 * 60_000 = 55_200_000),
+    and intra(deep) <= intra(close) < intra(shallow) — deep is at/before the
+    close, shallow is strictly after. So last_continuous_ms = intra(deep) =
+    55_205_000, and within bucket 920 the deep row is_pre=TRUE beats the later
+    shallow row (is_pre=FALSE): the tiering picks the EARLIER deep row over
+    the LATER shallow row, the one case where the tiering is not a no-op.
+    """
+    from hoga.api.timeenc import hhmmssms_to_intra_ms_sql
+    from hoga.tables.snapshots import _query_bucketed_ratio_windowed, query_bucketed_ratio
+
+    z = tuple([0] * 10)
+    DEEP_TS = 152_005_000  # 15:20:05.000 — continuous book, depth beyond level 3
+    SHALLOW_TS = 152_035_000  # 15:20:35.000 — auction book, collapsed to 3 levels
+    SESSION_CLOSE_MS = 152_030_000  # 15:20:30.000 — strictly between the two
+    BUCKET_MS = 60_000
+
+    deep = Orderbook(
+        ts_ms=DEEP_TS, seq=1,
+        ask_p=tuple(range(101, 111)), ask_q=(10, 20, 30, 40, 5, 6, 7, 8, 9, 1), ask_d=z,
+        bid_p=tuple(range(100, 90, -1)), bid_q=(50, 40, 30, 20, 5, 5, 5, 5, 5, 5), bid_d=z,
+        tot_ask=0, tot_ask_d=0, tot_bid=0, tot_bid_d=0,
+    )
+    shallow = Orderbook(
+        ts_ms=SHALLOW_TS, seq=2,
+        ask_p=(101, 102, 103) + (0,) * 7, ask_q=(99, 98, 97) + (0,) * 7, ask_d=z,
+        bid_p=(100, 99, 98) + (0,) * 7, bid_q=(7, 7, 7) + (0,) * 7, bid_d=z,
+        tot_ask=0, tot_ask_d=0, tot_bid=0, tot_bid_d=0,
+    )
+    out = tmp_path / "snapshots.parquet"
+    write_parquet([deep, shallow], out)
+    con = duckdb.connect()
+
+    # --- Confirm the straddle is REAL before trusting the fixture (per task
+    # instructions: don't ship a test whose "straddle" is fictional). Uses the
+    # actual SQL expression the implementations use, not hand-rolled math.
+    intra_deep, intra_shallow, intra_close = con.execute(
+        f"SELECT {hhmmssms_to_intra_ms_sql(str(DEEP_TS))},"
+        f" {hhmmssms_to_intra_ms_sql(str(SHALLOW_TS))},"
+        f" {hhmmssms_to_intra_ms_sql(str(SESSION_CLOSE_MS))}"
+    ).fetchone()
+    assert intra_deep // BUCKET_MS == intra_shallow // BUCKET_MS, (
+        "fixture bug: deep and shallow rows must share one bucket"
+    )
+    assert intra_deep <= intra_close < intra_shallow, (
+        "fixture bug: session_close_ms must fall strictly between the two rows"
+    )
+    bucket_intra_ms = (intra_deep // BUCKET_MS) * BUCKET_MS
+
+    got = query_bucketed_ratio(con, path=out, bucket_ms=BUCKET_MS, session_close_ms=SESSION_CLOSE_MS)
+    want = _query_bucketed_ratio_windowed(
+        con, path=out, bucket_ms=BUCKET_MS, session_close_ms=SESSION_CLOSE_MS
+    )
+    assert got == want
+
+    # Pin the actual behavior, not just old==new agreement: the straddle
+    # bucket's representative must be the DEEP row's totals (ask=136, bid=170
+    # summed across its 10 levels), NOT the shallow row's (ask=294, bid=21),
+    # and NOT 0 (which would indicate a wrongly-fully-auction classification).
+    assert len(got) == 1
+    r = got[0]
+    assert r.bucket_intra_ms == bucket_intra_ms == 55_200_000
+    assert (r.bid_total, r.ask_total) == (170, 136)  # deep row: 50+40+30+20+5*6 / 10+20+30+40+5+6+7+8+9+1
+    assert (r.bid_max, r.ask_max) == (170, 136)
+    assert (r.imb_max_bid, r.imb_max_ask) == (170, 136)
+
+
 # ---------------------------------------------------------------------------
 # query_bucket_representative (ADR-0062): sidebar 10호가 = indicator's structural
 # representative. The orderbook endpoint must show the same snapshot the
