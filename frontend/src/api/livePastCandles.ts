@@ -76,6 +76,20 @@ function uniqueWarnings(warnings: LivePastCandlesWarning[]): LivePastCandlesWarn
   );
 }
 
+/** 백엔드 _fallback_blocking_warning_dates와 동일한 재시도-가능 실패 사유.
+ * 이 경고를 실은 응답을 델타 기준(mergedRef)에 박제하면, 일시 장애 창이
+ * "이미 받은 범위"로 굳어 영원히 재요청되지 않는다(영구 구멍). */
+const BLOCKING_WARNING_REASONS = new Set([
+  'capacity_overloaded',
+  'kis_api_error',
+  'kis_rate_limit',
+  'rate_limit_aborted',
+]);
+
+export function hasBlockingWarnings(response: LivePastCandlesResponse): boolean {
+  return response.data_warnings.some((w) => BLOCKING_WARNING_REASONS.has(w.reason));
+}
+
 function uniqueSessionsByDate(sessions: LiveEffectiveSession[]): LiveEffectiveSession[] {
   const byDate = new Map<string, LiveEffectiveSession>();
   for (const session of sessions) {
@@ -225,7 +239,12 @@ export function useLivePastCandles(
     return query.data;
   }, [plan.canReusePrevious, plan.servePrevious, previous, query.data, query.isPlaceholderData]);
 
-  if (data && !query.isPlaceholderData) {
+  // 일시 장애(blocking 경고) 응답은 이번 렌더에만 서빙하고 델타 기준으론
+  // 박제하지 않는다 — 다음 plan이 실패 창을 재요청해 자가 회복(staleTime
+  // 60s + refetchInterval). 박제하면 실패 창이 영구 구멍이 된다(319660 사례).
+  // 가드는 방금 도착한 query.data에만 건다: 이전에 박제된 정상 상태는
+  // merged data에 경고가 섞여 있어도 그대로 유지돼야 한다.
+  if (data && !query.isPlaceholderData && !(query.data && hasBlockingWarnings(query.data))) {
     mergedRef.current = { identity, data };
   }
 
