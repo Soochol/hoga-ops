@@ -391,10 +391,14 @@ def test_query_bucketed_ratio_auction_bucket_zeroes_max_fields(tmp_path: Path) -
 
 
 # ---------------------------------------------------------------------------
-# query_bucketed_ratio parity: arg_max/arg_min GROUP BY rewrite vs the
-# windowed original (_query_bucketed_ratio_windowed). Row-identical output is
-# the gate before the windowed impl can be deleted (real-data differential is
-# a separate, later task) — see ADR/plan "호가비 arg_max 재작성".
+# query_bucketed_ratio golden values: the arg_max/arg_min GROUP BY rewrite
+# was differentially validated against the prior windowed implementation
+# (now deleted — real-data differential over 11,398 capture files with
+# production session_close_ms values found 0 mismatches, 0 regressions; 14
+# files showed pre-existing same-ts_ms representative-row nondeterminism
+# unrelated to the rewrite). These tests now pin the rewrite's output
+# directly against hardcoded expected rows — see ADR/plan "호가비 arg_max
+# 재작성".
 # ---------------------------------------------------------------------------
 
 
@@ -403,8 +407,8 @@ def test_query_bucketed_ratio_parity_mixed_continuous_and_auction_tail(
 ) -> None:
     """Mixed bucket set: a normal continuous bucket, a straddle bucket (has
     both pre and non-pre rows), and a fully-auction tail bucket — the case
-    that exercises the is_pre gating equivalence end-to-end."""
-    from hoga.tables.snapshots import _query_bucketed_ratio_windowed, query_bucketed_ratio
+    that exercises the is_pre gating end-to-end."""
+    from hoga.tables.snapshots import QuoteRatioRow, query_bucketed_ratio
 
     z = tuple([0] * 10)
 
@@ -438,13 +442,35 @@ def test_query_bucketed_ratio_parity_mixed_continuous_and_auction_tail(
     out = tmp_path / "snapshots.parquet"
     write_parquet(obs, out)
     con = duckdb.connect()
+    # Golden values captured from query_bucketed_ratio's output before the
+    # windowed reference implementation was deleted (row-identical per the
+    # real-data differential — see module-level comment above).
+    want_by_combo = {
+        (1000, None): [
+            QuoteRatioRow(bucket_intra_ms=32400000, bid_total=29, ask_total=496, bid_max=909, ask_max=496, imb_max_bid=29, imb_max_ask=496),
+            QuoteRatioRow(bucket_intra_ms=55080000, bid_total=170, ask_total=136, bid_max=170, ask_max=136, imb_max_bid=170, imb_max_ask=136),
+            QuoteRatioRow(bucket_intra_ms=55258000, bid_total=15, ask_total=120, bid_max=21, ask_max=294, imb_max_bid=21, imb_max_ask=294),
+        ],
+        (1000, 153000000): [
+            QuoteRatioRow(bucket_intra_ms=32400000, bid_total=29, ask_total=496, bid_max=909, ask_max=496, imb_max_bid=29, imb_max_ask=496),
+            QuoteRatioRow(bucket_intra_ms=55080000, bid_total=170, ask_total=136, bid_max=170, ask_max=136, imb_max_bid=170, imb_max_ask=136),
+            QuoteRatioRow(bucket_intra_ms=55258000, bid_total=0, ask_total=0, bid_max=0, ask_max=0, imb_max_bid=0, imb_max_ask=0),
+        ],
+        (60_000, None): [
+            QuoteRatioRow(bucket_intra_ms=32400000, bid_total=29, ask_total=496, bid_max=909, ask_max=496, imb_max_bid=29, imb_max_ask=496),
+            QuoteRatioRow(bucket_intra_ms=55080000, bid_total=170, ask_total=136, bid_max=170, ask_max=136, imb_max_bid=170, imb_max_ask=136),
+            QuoteRatioRow(bucket_intra_ms=55200000, bid_total=15, ask_total=120, bid_max=21, ask_max=294, imb_max_bid=21, imb_max_ask=294),
+        ],
+        (60_000, 153000000): [
+            QuoteRatioRow(bucket_intra_ms=32400000, bid_total=29, ask_total=496, bid_max=909, ask_max=496, imb_max_bid=29, imb_max_ask=496),
+            QuoteRatioRow(bucket_intra_ms=55080000, bid_total=170, ask_total=136, bid_max=170, ask_max=136, imb_max_bid=170, imb_max_ask=136),
+            QuoteRatioRow(bucket_intra_ms=55200000, bid_total=0, ask_total=0, bid_max=0, ask_max=0, imb_max_bid=0, imb_max_ask=0),
+        ],
+    }
     for bucket_ms in (1000, 60_000):
         for session_close_ms in (None, 153000000):
             got = query_bucketed_ratio(con, path=out, bucket_ms=bucket_ms, session_close_ms=session_close_ms)
-            want = _query_bucketed_ratio_windowed(
-                con, path=out, bucket_ms=bucket_ms, session_close_ms=session_close_ms
-            )
-            assert got == want
+            assert got == want_by_combo[(bucket_ms, session_close_ms)]
 
 
 def test_query_bucketed_ratio_parity_one_side_zero_and_imb_tie_earlier_ts_wins(
@@ -452,9 +478,8 @@ def test_query_bucketed_ratio_parity_one_side_zero_and_imb_tie_earlier_ts_wins(
 ) -> None:
     """Degenerate one-side-zero snapshot (imb_key forced to 0) plus a genuine
     imb magnitude tie between two rows at DISTINCT ts_ms — the earlier ts_ms
-    must win in both implementations (FIRST_VALUE ... ORDER BY ... ts_ms ASC
-    == arg_min tiebreak on ts_ms)."""
-    from hoga.tables.snapshots import _query_bucketed_ratio_windowed, query_bucketed_ratio
+    must win (arg_min tiebreak on ts_ms ASC)."""
+    from hoga.tables.snapshots import QuoteRatioRow, query_bucketed_ratio
 
     obs = [
         # One side zero -> imb_key gated to 0 (not a real imbalance candidate).
@@ -469,22 +494,20 @@ def test_query_bucketed_ratio_parity_one_side_zero_and_imb_tie_earlier_ts_wins(
     write_parquet(obs, out)
     con = duckdb.connect()
     got = query_bucketed_ratio(con, path=out, bucket_ms=1000)
-    want = _query_bucketed_ratio_windowed(con, path=out, bucket_ms=1000)
-    assert got == want
-    # Sanity: earlier-ts row (seq=2: bid=100, ask=10) wins the tie, per the
-    # windowed original's documented ORDER BY ... ts_ms ASC tiebreak.
-    assert (want[0].imb_max_bid, want[0].imb_max_ask) == (100, 10)
+    # Golden value: earlier-ts row (seq=2: bid=100, ask=10) wins the imb tie.
+    assert got == [
+        QuoteRatioRow(bucket_intra_ms=32400000, bid_total=30, ask_total=30, bid_max=500, ask_max=30, imb_max_bid=100, imb_max_ask=10),
+    ]
 
 
 def test_query_bucketed_ratio_parity_empty_parquet(tmp_path: Path) -> None:
-    from hoga.tables.snapshots import _query_bucketed_ratio_windowed, query_bucketed_ratio
+    from hoga.tables.snapshots import query_bucketed_ratio
 
     out = tmp_path / "snapshots.parquet"
     write_parquet([], out)
     con = duckdb.connect()
     got = query_bucketed_ratio(con, path=out, bucket_ms=1000)
-    want = _query_bucketed_ratio_windowed(con, path=out, bucket_ms=1000)
-    assert got == want == []
+    assert got == []
 
 
 def test_query_bucketed_ratio_parity_genuine_straddle_bucket(tmp_path: Path) -> None:
@@ -512,7 +535,7 @@ def test_query_bucketed_ratio_parity_genuine_straddle_bucket(tmp_path: Path) -> 
     the LATER shallow row, the one case where the tiering is not a no-op.
     """
     from hoga.api.timeenc import hhmmssms_to_intra_ms_sql
-    from hoga.tables.snapshots import _query_bucketed_ratio_windowed, query_bucketed_ratio
+    from hoga.tables.snapshots import query_bucketed_ratio
 
     z = tuple([0] * 10)
     DEEP_TS = 152_005_000  # 15:20:05.000 — continuous book, depth beyond level 3
@@ -553,12 +576,8 @@ def test_query_bucketed_ratio_parity_genuine_straddle_bucket(tmp_path: Path) -> 
     bucket_intra_ms = (intra_deep // BUCKET_MS) * BUCKET_MS
 
     got = query_bucketed_ratio(con, path=out, bucket_ms=BUCKET_MS, session_close_ms=SESSION_CLOSE_MS)
-    want = _query_bucketed_ratio_windowed(
-        con, path=out, bucket_ms=BUCKET_MS, session_close_ms=SESSION_CLOSE_MS
-    )
-    assert got == want
 
-    # Pin the actual behavior, not just old==new agreement: the straddle
+    # Pin the actual behavior: the straddle
     # bucket's representative must be the DEEP row's totals (ask=136, bid=170
     # summed across its 10 levels), NOT the shallow row's (ask=294, bid=21),
     # and NOT 0 (which would indicate a wrongly-fully-auction classification).

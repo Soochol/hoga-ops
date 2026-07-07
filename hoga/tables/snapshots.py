@@ -772,14 +772,14 @@ class BidPeakDualRow:
     untraded_max_peaks: tuple[AskPeakCandidateRow, ...] = ()
 
 
-def _query_bucketed_ratio_windowed(
+def query_bucketed_ratio(
     con: duckdb.DuckDBPyConnection,
     *,
     path: Path,
     bucket_ms: int,
     session_close_ms: int | None = None,
 ) -> list[QuoteRatioRow]:
-    """Bucket snapshots and emit the depth totals of the LAST snapshot per bucket.
+    """Bucket snapshots and emit the depth totals of the representative snapshot per bucket.
 
     For each bucket, ``ask_total`` / ``bid_total`` are the SUM across all 10
     ask_q / bid_q level columns of the bucket's representative snapshot.
@@ -788,18 +788,18 @@ def _query_bucketed_ratio_windowed(
     Auction Window (and intraday VI) collapses the book to 3 levels per side, so a
     snapshot is continuous-trading iff it shows depth beyond level 3
     (``_ASK_DEEP_SUM`` / ``_BID_DEEP_SUM`` > 0). ``last_continuous_ms`` = the last
-    continuous snapshot at/before ``session_close_ms``; ``pre_auction_pred`` is true
-    for rows at/before it, and ``ORDER BY (pred) DESC, ts_ms DESC`` puts those first
-    so ``rn = 1`` picks the last pre-auction row — falling back to the last overall
-    row when a bucket has none (fully inside the auction window, left for the display
-    Auction Mask, ADR-0029). This structural boundary replaces the prior
-    ``session_close - 10min`` clock, which mis-sliced the tail bucket when the real
-    continuous→auction transition drifted off 15:20:00 (observed 15:20:01.xx). The
-    ``<= session_close`` bound is load-bearing: every stock shows a post-cross book
-    re-expansion (~15:30:14) that would otherwise pull the threshold past the
-    auction. When ``session_close_ms`` is None (or no continuous snapshot exists)
-    the predicate is the constant TRUE, so ``ORDER BY (TRUE) DESC, ts_ms DESC`` is
-    exactly the legacy last-in-bucket behavior. See ADR-0062.
+    continuous snapshot at/before ``session_close_ms``; ``pre_auction_pred``
+    (``is_pre``) is true for rows at/before it. Within a bucket, is_pre rows
+    outrank non-is_pre rows for the representative pick, falling back to the
+    last overall row when a bucket has none (fully inside the auction window,
+    left for the display Auction Mask, ADR-0029). This structural boundary
+    replaces the prior ``session_close - 10min`` clock, which mis-sliced the
+    tail bucket when the real continuous→auction transition drifted off
+    15:20:00 (observed 15:20:01.xx). The ``<= session_close`` bound is
+    load-bearing: every stock shows a post-cross book re-expansion (~15:30:14)
+    that would otherwise pull the threshold past the auction. When
+    ``session_close_ms`` is None (or no continuous snapshot exists) the
+    predicate is the constant TRUE, i.e. plain last-in-bucket. See ADR-0062.
 
     Buckets on LINEAR ms-from-midnight, not raw HHMMSSmmm. The raw encoding has
     gaps at minute / hour boundaries, so arithmetic bucketing of HHMMSSmmm
@@ -808,13 +808,52 @@ def _query_bucketed_ratio_windowed(
     time". Decoding to linear ms BEFORE bucketing yields strictly ascending,
     distinct buckets. See hhmmssms_to_intra_ms_sql.
 
+    A fully-auction bucket (its representative row is NOT pre-auction = it had
+    no continuous-trading book, e.g. the closing 15:21-15:30 buckets) emits 0
+    instead of the auction fallback, so the closing-auction 3-level book never
+    enters the 호가비·총잔량 calculation regardless of the display Auction
+    Mask toggle (ADR-0062). Straddle buckets keep their last continuous
+    representative; intraday VI sits before the threshold (is_pre TRUE) and is
+    retained.
+
+    Intra-Bar Max fields (ADR-0076): ``bid_max`` / ``ask_max`` are the
+    bucket's independent max of bid_total / ask_total across its is_pre rows;
+    ``imb_max_bid`` / ``imb_max_ask`` are the (bid_total, ask_total) pair of
+    the is_pre row with the largest |imbalance| (GREATEST/LEAST ratio, a
+    monotonic stand-in), tiebroken by the EARLIEST ts_ms. All four fields are
+    zeroed on a fully-auction bucket, matching the (0, 0) sentinel above.
+
+    Implementation: a single GROUP BY using arg_max/arg_min/MAX aggregates
+    (no windowed materialization). Every per-row input (``gb``/``ga``/
+    ``imb_key``) is gated by ``is_pre`` BEFORE aggregation, so a
+    fully-auction bucket (no pre row) has every gated input = 0 for every
+    row and all aggregates naturally emit 0/(0,0) for it — no outer
+    ``CASE WHEN is_pre`` needed on the final SELECT. The representative row
+    (bid_total/ask_total) is selected by ONE
+    ``arg_max(struct_pack(b, a), rep_key)`` so both totals always come from
+    the same physical row. ``rep_key = is_pre_int * 100_000_000 + intra_ms``
+    reproduces "is_pre DESC, ts_ms DESC" ranking: pre rows outrank non-pre
+    rows (the *1e8 digit dominates), and within the same is_pre tier, larger
+    intra_ms (== larger ts_ms, monotonic within a bucket) wins — arg_max
+    picks the row with the maximum key, i.e. the LAST such row. The
+    imbalance-extreme pair (imb_max_bid/imb_max_ask) is selected by ONE
+    ``arg_min(struct_pack(b, a), struct_pack(neg_imb, ts))`` so both values
+    always come from the same row. Negating imb_key turns "want max
+    imb_key" into "want min neg_imb", and the secondary ``ts_ms``
+    (ascending) key reproduces the ``ts_ms ASC`` tiebreak for equal
+    imb_key.
+
+    This rewrite replaced an earlier 5-window-function implementation
+    (1 ROW_NUMBER + 2 MAX OVER + 2 FIRST_VALUE with UNBOUNDED frames);
+    a real-data differential over 11,398 capture files (production
+    session_close_ms values) confirmed row-identical output — 0 mismatches,
+    0 regressions (14 files showed pre-existing same-ts_ms
+    representative-row nondeterminism unrelated to the rewrite). See
+    ``tests/test_tables_snapshots.py`` golden-value tests.
+
     Returns rows in ascending ``bucket_intra_ms`` order. Empty parquet → [].
     """
     intra_ms_expr = hhmmssms_to_intra_ms_sql("ts_ms")
-    # Structural closing-auction boundary (ADR-0062). last_continuous_ms = the last
-    # continuous-trading book (depth beyond level 3) at/before the session close;
-    # everything after it is the auction. None (no session bound / no continuous
-    # snapshot) -> TRUE predicate == legacy last-in-bucket.
     deep_book_sql = _DEEP_BOOK_SQL  # SSOT — same predicate as query_day_ask_peak & client isContinuousBook
     last_continuous_ms: int | None = None
     if session_close_ms is not None:
@@ -827,142 +866,12 @@ def _query_bucketed_ratio_windowed(
         if row is not None and row[0] is not None:
             last_continuous_ms = int(row[0])
     if last_continuous_ms is None:
-        # No continuous-trading book at/before the session close (no session bound,
-        # OR a degenerate dataset with no deep book). Either way fall back to the
-        # legacy constant-TRUE last-in-bucket path: ORDER BY (TRUE) DESC, ts_ms DESC
-        # == plain last-in-bucket (ADR-0062). Production continuous books always
-        # carry deep levels (4..10 > 0), so last_continuous_ms is always set on real
-        # data and this branch fires only on degenerate fixtures — restoring TRUE is
-        # safe and matches the documented legacy fallback.
-        pre_auction_pred = "TRUE"
-    else:
-        pre_auction_pred = f"({intra_ms_expr} <= {last_continuous_ms})"
-    rows = con.execute(
-        f"""
-        WITH bucketed AS (
-          SELECT ts_ms,
-                 ({_ASK_Q_SUM}) AS ask_total,
-                 ({_BID_Q_SUM}) AS bid_total,
-                 ({pre_auction_pred}) AS is_pre,
-                 ({intra_ms_expr} // {bucket_ms}) AS bucket,
-                 ROW_NUMBER() OVER (
-                   PARTITION BY ({intra_ms_expr} // {bucket_ms})
-                   ORDER BY ({pre_auction_pred}) DESC, ts_ms DESC
-                 ) AS rn,
-                 -- Intra-Bar Max (ADR-0076): is_pre 게이트로 동시호가 스냅샷 배제.
-                 MAX(CASE WHEN ({pre_auction_pred}) THEN ({_BID_Q_SUM}) ELSE 0 END) OVER (
-                   PARTITION BY ({intra_ms_expr} // {bucket_ms})
-                 ) AS bid_max,
-                 MAX(CASE WHEN ({pre_auction_pred}) THEN ({_ASK_Q_SUM}) ELSE 0 END) OVER (
-                   PARTITION BY ({intra_ms_expr} // {bucket_ms})
-                 ) AS ask_max,
-                 -- |imbalance| 최대 스냅샷의 (bid,ask) 쌍 — GREATEST/LEAST ratio는
-                 -- |imbalance|+1 의 단조 대용. degenerate(한쪽 0)·동시호가는 0으로
-                 -- 밀려 후순위. 동률은 가장 이른 ts_ms.
-                 FIRST_VALUE(CASE WHEN ({pre_auction_pred}) THEN ({_BID_Q_SUM}) ELSE 0 END) OVER (
-                   PARTITION BY ({intra_ms_expr} // {bucket_ms})
-                   ORDER BY (CASE WHEN ({pre_auction_pred}) AND ({_BID_Q_SUM}) > 0 AND ({_ASK_Q_SUM}) > 0
-                               THEN GREATEST(({_ASK_Q_SUM}), ({_BID_Q_SUM})) * 1.0
-                                    / LEAST(({_ASK_Q_SUM}), ({_BID_Q_SUM}))
-                               ELSE 0 END) DESC, ts_ms ASC
-                   ROWS BETWEEN UNBOUNDED PRECEDING AND UNBOUNDED FOLLOWING
-                 ) AS imb_max_bid,
-                 FIRST_VALUE(CASE WHEN ({pre_auction_pred}) THEN ({_ASK_Q_SUM}) ELSE 0 END) OVER (
-                   PARTITION BY ({intra_ms_expr} // {bucket_ms})
-                   ORDER BY (CASE WHEN ({pre_auction_pred}) AND ({_BID_Q_SUM}) > 0 AND ({_ASK_Q_SUM}) > 0
-                               THEN GREATEST(({_ASK_Q_SUM}), ({_BID_Q_SUM})) * 1.0
-                                    / LEAST(({_ASK_Q_SUM}), ({_BID_Q_SUM}))
-                               ELSE 0 END) DESC, ts_ms ASC
-                   ROWS BETWEEN UNBOUNDED PRECEDING AND UNBOUNDED FOLLOWING
-                 ) AS imb_max_ask
-          FROM read_parquet(?)
-        )
-        -- A fully-auction bucket (rn=1 row is NOT pre-auction = it had no
-        -- continuous-trading book, e.g. the closing 15:21-15:30 buckets) emits 0
-        -- instead of the auction fallback, so the closing-auction 3-level book
-        -- never enters the 호가비·총잔량 calculation regardless of the display
-        -- Auction Mask toggle (ADR-0062). Straddle buckets keep their last
-        -- continuous representative; intraday VI sits before the threshold
-        -- (is_pre TRUE) and is retained. Intra-Bar Max fields are likewise zeroed
-        -- on a fully-auction bucket so bid_max >= bid_total holds at the (0,0) sentinel.
-        SELECT bucket * {bucket_ms},
-               CASE WHEN is_pre THEN bid_total ELSE 0 END,
-               CASE WHEN is_pre THEN ask_total ELSE 0 END,
-               CASE WHEN is_pre THEN bid_max ELSE 0 END,
-               CASE WHEN is_pre THEN ask_max ELSE 0 END,
-               CASE WHEN is_pre THEN imb_max_bid ELSE 0 END,
-               CASE WHEN is_pre THEN imb_max_ask ELSE 0 END
-        FROM bucketed WHERE rn = 1 ORDER BY bucket
-        """,
-        [str(path)],
-    ).fetchall()
-    return [
-        QuoteRatioRow(
-            bucket_intra_ms=int(r[0]), bid_total=int(r[1]), ask_total=int(r[2]),
-            bid_max=int(r[3]), ask_max=int(r[4]),
-            imb_max_bid=int(r[5]), imb_max_ask=int(r[6]),
-        )
-        for r in rows
-    ]
-
-
-def query_bucketed_ratio(
-    con: duckdb.DuckDBPyConnection,
-    *,
-    path: Path,
-    bucket_ms: int,
-    session_close_ms: int | None = None,
-) -> list[QuoteRatioRow]:
-    """GROUP BY / arg_max rewrite of :func:`_query_bucketed_ratio_windowed`.
-
-    Replaces 5 window functions (1 ROW_NUMBER + 2 MAX OVER + 2 FIRST_VALUE
-    with UNBOUNDED frames) with a single GROUP BY using arg_max/arg_min/MAX
-    aggregates — same linear-scan cost class, no windowed materialization.
-    Must be ROW-IDENTICAL to the windowed implementation; see
-    ``tests/test_tables_snapshots.py`` parity tests.
-
-    Equivalence notes (see the windowed impl's docstring for the domain
-    rationale — this note covers only the SQL-shape translation):
-
-    - Every per-row input (``gb``/``ga``/``imb_key``) is gated by
-      ``is_pre`` BEFORE aggregation, so no outer ``CASE WHEN is_pre`` is
-      needed on the final SELECT — a fully-auction bucket (no pre row) has
-      every gated input = 0 for every row, so all aggregates naturally
-      emit 0/(0,0) for it, matching the windowed impl's explicit zero-CASE.
-    - The representative row (bid_total/ask_total) is selected by ONE
-      ``arg_max(struct_pack(b, a), rep_key)`` so both totals always come
-      from the same physical row — mirrors the original's single
-      ``ROW_NUMBER() ... rn = 1`` row providing both columns.
-      ``rep_key = is_pre_int * 100_000_000 + intra_ms`` reproduces
-      ``ORDER BY is_pre DESC, ts_ms DESC``: pre rows outrank non-pre rows
-      (the *1e8 digit dominates), and within the same is_pre tier, larger
-      intra_ms (== larger ts_ms, monotonic within a bucket) wins — DuckDB's
-      arg_max picks the row with the maximum key, i.e. the LAST such row,
-      same as ``ORDER BY ... DESC`` picking rn=1.
-    - The imbalance-extreme pair (imb_max_bid/imb_max_ask) is selected by
-      ONE ``arg_min(struct_pack(b, a), struct_pack(neg_imb, ts))`` so both
-      values always come from the same row — mirrors pulling both
-      FIRST_VALUE(...) columns from the identical ORDER BY. Negating
-      imb_key turns "want max imb_key" into "want min neg_imb", and the
-      secondary ``ts_ms`` (ascending) key reproduces the original's
-      ``ts_ms ASC`` tiebreak for equal imb_key.
-    """
-    intra_ms_expr = hhmmssms_to_intra_ms_sql("ts_ms")
-    deep_book_sql = _DEEP_BOOK_SQL  # SSOT — same predicate as query_day_ask_peak & client isContinuousBook
-    last_continuous_ms: int | None = None
-    if session_close_ms is not None:
-        close_intra_sql = hhmmssms_to_intra_ms_sql(str(int(session_close_ms)))
-        row = con.execute(
-            f"SELECT max({intra_ms_expr}) FROM read_parquet(?) "
-            f"WHERE {deep_book_sql} AND {intra_ms_expr} <= {close_intra_sql}",
-            [str(path)],
-        ).fetchone()
-        if row is not None and row[0] is not None:
-            last_continuous_ms = int(row[0])
-    if last_continuous_ms is None:
-        # See _query_bucketed_ratio_windowed's identical branch — degenerate
-        # fixture / no session bound fallback to the legacy constant-TRUE
-        # last-in-bucket behavior.
+        # No continuous-trading book at/before the session close (no session
+        # bound, OR a degenerate dataset with no deep book). Fall back to the
+        # constant-TRUE last-in-bucket path (ADR-0062). Production continuous
+        # books always carry deep levels (4..10 > 0), so last_continuous_ms is
+        # always set on real data and this branch fires only on degenerate
+        # fixtures / no session bound.
         pre_auction_pred = "TRUE"
     else:
         pre_auction_pred = f"({intra_ms_expr} <= {last_continuous_ms})"
