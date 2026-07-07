@@ -248,18 +248,24 @@ export function projectCumulativeSegment(
   // Paint the last pre-auction emission's outgoing segment transparent, AND
   // (below) synthesize transparent anchors across the auction window — both
   // exist solely to prevent a diagonal line drawing THROUGH the auction band
-  // INTO THE NEXT SEGMENT (ADR-0029). The last segment has no next segment,
-  // so both are visually meaningless there — suppressed via !isLastSegment.
+  // INTO THE NEXT SEGMENT (ADR-0029). isLastSegment marks the terminal segment
+  // of whatever range is loaded — there's no next segment for a diagonal to
+  // bleed into, so both are visually meaningless there and are suppressed via
+  // !isLastSegment. This holds for ANY last segment, not just a live/today
+  // one: browsing a past (non-live) range whose last loaded day is fully
+  // closed still gets isLastSegment=true and the same suppression — a missing
+  // anchor/gap artifact there is this gate working as designed, not a bug.
   //
-  // This suppression is also what makes the live tick path cheap: keeping
-  // them active in the last segment forces a per-tick setData fallback in
-  // seriesDataDiff.ts's classifyDataChange, because (a) the retroactive
-  // color rewrite below mutates a PRIOR emission's `color` field (breaking
-  // the byte-identical-prefix precondition for the tail-append 'update'
-  // path) and (b) the future anchor synthesis inserts points AFTER the
-  // segment's last real point, which also breaks the tail-append prefix on
-  // every subsequent tick. Suppressing both in the last (today/live)
-  // segment lets ticks there append cleanly.
+  // The suppression also happens to make the /live tick path cheap when the
+  // last segment IS today's live segment: keeping these active there would
+  // force a per-tick setData fallback in seriesDataDiff.ts's
+  // classifyDataChange, because (a) the retroactive color rewrite below
+  // mutates a PRIOR emission's `color` field (breaking the byte-identical-
+  // prefix precondition for the tail-append 'update' path) and (b) the
+  // future anchor synthesis inserts points AFTER the segment's last real
+  // point, which also breaks the tail-append prefix on every subsequent
+  // tick. Suppressing both lets live ticks append cleanly — but that's a
+  // bonus of the rule, not its scope.
   //
   // lightweight-charts uses each point's `color` for its OUTGOING segment,
   // so without this patch the connector from (e.g.) 15:19's gray cumulative

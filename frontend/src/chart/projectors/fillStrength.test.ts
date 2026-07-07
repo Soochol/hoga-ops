@@ -373,6 +373,66 @@ describe('projectCumulativeNetFill — closing-auction hide', () => {
     expect(last.color).toBeUndefined();
   });
 
+  it('still synthesizes auction anchors + patches the pre-auction color for a genuine NON-last segment (2-day bundle)', () => {
+    // All other closing-auction-hide tests above use a single-segment bundle,
+    // where that lone segment is BOTH the only and the LAST segment — the
+    // isLastSegment gate always suppresses there. This test uses a real
+    // 2-day bundle so segment 0 is NOT the last segment (segment 1 is), and
+    // asserts DIRECTLY that segment 0 still gets the anchor-synthesis +
+    // color-patch machinery. Without this, only the cross-path equivalence
+    // test in pastCachedProjector.test.ts exercises the non-suppressed path,
+    // which would stay green even if both the direct and cached paths broke
+    // identically.
+    const twoDayAxis = createVirtualAxis([
+      { date: '20260518', sessionOpenMs: day1Open, sessionCloseMs: day1Open + sessionDurationMs },
+      { date: '20260519', sessionOpenMs: day2Open, sessionCloseMs: day2Open + sessionDurationMs },
+    ]);
+    const bundle: any = {
+      bucket_ms: 60_000,
+      segments: [
+        { date: '20260518', session_open_ms: day1Open, session_close_ms: day1Open + sessionDurationMs },
+        { date: '20260519', session_open_ms: day2Open, session_close_ms: day2Open + sessionDurationMs },
+      ],
+      fill_strength: {
+        points: [
+          { t: day1Open, buy_qty: 100, sell_qty: 30 },  // day1 (non-last): +70 → 70 (pre-auction, kept)
+          { t: day2Open, buy_qty: 40, sell_qty: 10 },   // day2 (last) RESET: +30 → 30
+        ],
+      },
+    };
+    const out = projectCumulativeNetFill(bundle, twoDayAxis, true);
+
+    // Segment 0 (day1, virtual times map 1:1 since it's the first segment):
+    // the one pre-auction point at time=0, followed by 10 synthesized
+    // transparent anchors covering 15:20..15:29 (auctionStart=22_800s,
+    // session_close=23_400s, 60s buckets → [22800, 23400) = 10 anchors).
+    const seg0PreAuction = out.find((p) => 'value' in p && (p as { time: number }).time === 0) as
+      | { time: number; value: number; color?: string }
+      | undefined;
+    expect(seg0PreAuction).toBeDefined();
+    // (a)+(b): segment 0's last pre-auction emission STILL gets its value
+    // preserved AND its color retroactively patched transparent.
+    expect(seg0PreAuction).toEqual({ time: 0, value: 70, color: 'rgba(0,0,0,0)' });
+
+    const seg0Anchors = out.filter(
+      (p) => (p as { time: number }).time >= 22_800 && (p as { time: number }).time < 23_400,
+    ) as { time: number; value: number; color?: string }[];
+    // (a): segment 0 STILL gets its synthesized transparent auction anchors.
+    expect(seg0Anchors).toHaveLength(10);
+    for (const anchor of seg0Anchors) {
+      expect(anchor).toMatchObject({ value: 0, color: 'rgba(0,0,0,0)' });
+    }
+
+    // Contrast: segment 1 (day2) IS the last segment, so its value-bearing
+    // point keeps its plain, unpatched color — documenting that suppression
+    // is scoped to the terminal segment only, not applied blanket.
+    const seg1Point = out.find((p) => 'value' in p && (p as { value: number }).value === 30) as
+      | { value: number; color?: string }
+      | undefined;
+    expect(seg1Point).toBeDefined();
+    expect(seg1Point!.color).toBeUndefined();
+  });
+
   it('runningSum continues to accumulate through hidden in-window points', () => {
     // Defensive invariant: even though FillStrength normally has no in-window
     // points (Auction Cross rows are filtered out backend-side), if any did
