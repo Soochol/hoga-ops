@@ -50,7 +50,10 @@
 
 - 프론트 청크(15캘린더일 ≈ 최대 11거래일) < 백엔드 예산(12거래일) → 한 청크는 항상 예산
   안에서 완결. 이 아래로 예산을 낮추면 청크가 예산 경고를 받아 60s 주기로만 전진한다
-  (기능 유지, 속도 저하).
+  (기능 유지, 속도 저하). 정확히는 백엔드가 `pending > budget`(strict, `_collect_for_venue`)
+  일 때만 유예하므로, 실제 유예 임계는 청크가 **≥13거래일**(≈17캘린더일)을 내는 경우다.
+  현재 11 < 12는 양쪽 해석 모두 안전하나, `PAST_CHUNK_CALENDAR_DAYS`를 올리려는 유지보수자는
+  "청크의 최대 거래일 수 ≤ 예산" 조건(코드가 강제하는 strict 부등호)으로 판단해야 한다.
 - read_ahead 캡(15) ≥ 프론트 팬 스텝 `stepChunkDays`(minute=5캘린더일) → 다음 좌측 팬
   청크가 항상 캐시 히트. 15는 헤드룸(`STEP_TRADING_DAYS` 증가 대비).
 - 워크백 자기재시작은 `mergePastCandleResponses`가 merged `to`를 seed `to`(=max)에
@@ -72,3 +75,7 @@
   대체로 바람직하다.
 - **잔존(스코프 밖).** 별개 프론트 결함(extending 게이트가 폴백 3종 미참조 → warning/
   preferHogaplay에서 팬 프리펜드가 깨지는 문제)은 이 ADR과 무관하며 별도 작업으로 남긴다.
+- **후속 테스트.** 타임아웃 백스톱(레이어 5)은 `withPastCandlesTimeout` 단위 테스트만 있고,
+  queryFn 배선(합성 signal 전달) + 타임아웃 abort 후 React Query 재시도 복구 경로는 미검증.
+  `AbortSignal.timeout`은 `TimeoutError`로 abort → 쿼리 error → 재시도/refetchInterval 경로로
+  흐른다. 후속으로 이 복구 경로 테스트를 추가할 가치가 있다(비차단).
