@@ -1917,15 +1917,18 @@ def test_build_ask_peak_slice_wires_traded_peak_candidates(tmp_path) -> None:
     assert p.max_price is None and p.max_qty is None and p.max_t_ms is None
     assert [c.model_dump() for c in p.traded_peaks] == []
     assert [c.model_dump() for c in p.traded_max_peaks] == []
+    # untraded_peaks / untraded_max_peaks come from the lifecycle-distinct path
+    # (one row per price, ADR-0084 collapse-per-price). Same-price walls collapse
+    # to their best open peak — 26000 keeps 9000, not a second 8000 row.
     assert [c.model_dump() for c in p.untraded_peaks] == [
         {"price": 26000, "qty": 9000, "t_ms": 1781049660000},
-        {"price": 26000, "qty": 8000, "t_ms": 1781049720000},
         {"price": 27000, "qty": 7100, "t_ms": 1781049720000},
+        {"price": 28000, "qty": 6000, "t_ms": 1781049660000},
     ]
     assert [c.model_dump() for c in p.untraded_max_peaks] == [
         {"price": 26000, "qty": 9000, "t_ms": 1781049660000},
-        {"price": 26000, "qty": 8000, "t_ms": 1781049720000},
         {"price": 27000, "qty": 7100, "t_ms": 1781049720000},
+        {"price": 28000, "qty": 6000, "t_ms": 1781049660000},
     ]
     assert [c.model_dump() for c in p.all_peaks[:8]] == [
         {"price": 26000, "qty": 9000, "t_ms": 1781049660000},
@@ -2396,15 +2399,18 @@ def test_build_bid_peak_slice_wires_ranked_candidates(tmp_path) -> None:
     assert p.max_price is None and p.max_qty is None and p.max_t_ms is None
     assert [c.model_dump() for c in p.traded_peaks] == []
     assert [c.model_dump() for c in p.traded_max_peaks] == []
+    # untraded_peaks / untraded_max_peaks: one row per price (ADR-0084
+    # collapse-per-price). 69900 keeps its best open peak (9000), not a
+    # second 8000 row — the same-price collapse mirrors the ask side.
     assert [c.model_dump() for c in p.untraded_peaks] == [
         {"price": 69900, "qty": 9000, "t_ms": 1781049660000},
-        {"price": 69900, "qty": 8000, "t_ms": 1781049720000},
         {"price": 69800, "qty": 7100, "t_ms": 1781049720000},
+        {"price": 69700, "qty": 6000, "t_ms": 1781049660000},
     ]
     assert [c.model_dump() for c in p.untraded_max_peaks] == [
         {"price": 69900, "qty": 9000, "t_ms": 1781049660000},
-        {"price": 69900, "qty": 8000, "t_ms": 1781049720000},
         {"price": 69800, "qty": 7100, "t_ms": 1781049720000},
+        {"price": 69700, "qty": 6000, "t_ms": 1781049660000},
     ]
     assert [c.model_dump() for c in p.all_peaks[:8]] == [
         {"price": 69900, "qty": 9000, "t_ms": 1781049660000},
