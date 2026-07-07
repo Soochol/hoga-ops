@@ -86,6 +86,9 @@ _PAST_MAX_DAYS = 250
 # 여러 분봉 페이지를 호출하는 구조라 EGW00201 상황에서 동시 retry 폭을 키웠다.
 _PAST_CANDLES_CONCURRENCY = 3
 _PAST_CANDLES_RATE_LIMIT_COOLDOWN_S = 10.0
+# 종목 활성화 시 선행 워밍 창(캘린더일). ~40거래일 ≈ 160 KIS 콜 ≈ 11초의
+# background 예산 — foreground 양보(ADR-0087) 하에서 무해한 크기.
+_WARM_PAST_CANDLES_CALENDAR_DAYS = 60
 _CODE_RE = re.compile(CODE_PATTERN)
 _KST = timezone(timedelta(hours=9))
 _INVESTOR_ESTIMATE_MAX_CODES_PER_DAY = 256
@@ -1832,6 +1835,44 @@ def build_router(
             policy=policy,
         )
         return {"code": code, "from": from_, "to": to, "venue": policy, **out.model_dump()}
+
+    @router.post("/warm-past-candles")
+    async def _post_warm_past_candles(
+        code: str = Query(...),
+        venue: str | None = Query("KRX"),
+    ) -> dict:
+        """종목 활성화 시 과거 분봉 캐시를 background로 데운다(fire-and-forget).
+
+        인터랙션 경로(/past-candles)와 달리 실패해도 무해 — 응답은 워밍
+        시작 여부만 알린다. KIS 불가 상태는 503이 아니라 status로 알린다
+        (프론트가 조용히 무시하는 best-effort 계약)."""
+        if not _CODE_RE.match(code):
+            raise HTTPException(
+                422, {"code": "invalid_code", "msg": "code must be 6 digits"},
+            )
+        try:
+            policy = parse_live_venue_policy(venue)
+        except ValueError as e:
+            raise HTTPException(422, {"code": "invalid_venue", "msg": str(e)}) from e
+        if minute_backfill is None:
+            raise HTTPException(503, "past-candles cache not wired (data_dir missing)")
+        if data_dir is not None and kis_access.kis_rest_bypass_enabled(data_dir):
+            return {"code": code, "venue": policy, "status": "bypassed"}
+        if _kis_scheduler is None or not _has_kis_capacity_candidate():
+            return {"code": code, "venue": policy, "status": "kis_unavailable"}
+        today_d = _today_kst_date()
+        frm = today_d - timedelta(days=_WARM_PAST_CANDLES_CALENDAR_DAYS)
+        too = today_d - timedelta(days=1)
+        status = await minute_backfill.warm_minute(
+            code=code, frm=frm, too=too, today_d=today_d, policy=policy,
+        )
+        return {
+            "code": code,
+            "venue": policy,
+            "from": frm.strftime("%Y%m%d"),
+            "to": too.strftime("%Y%m%d"),
+            "status": status,
+        }
 
     @router.get("/past-daily-candles")
     async def _get_past_daily_candles(
