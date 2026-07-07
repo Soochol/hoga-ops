@@ -151,6 +151,31 @@ describe('IncrementalPeakWallSource — 배치 derive와의 동등성', () => {
     expect(today?.qty).toBe(50000);
   });
 
+  it('배열 순서가 뒤바뀐 touch도 재정렬 후 배치와 동일하다 (ensureTouchIndex lockstep argsort)', () => {
+    const Ta = atKst(9, 30);   // 벽 A: 26000 / qty 50000
+    const Tb = atKst(10, 0);   // 벽 B: 25000 / qty 40000
+    const obs = [
+      ob(Ta, [{ price: 26000, qty: 50000 }]),
+      ob(Tb, [{ price: 25000, qty: 40000 }]),
+    ];
+    // 체결을 시간 역순으로 공급: 배열[0]=10:30(25000), 배열[1]=9:15(30000).
+    // 올바른 lockstep 재정렬이라야 (9:15→30000, 10:30→25000)로 짝지어져
+    // 벽 A(9:30)는 untouched, 벽 B(10:00)는 touched → 오늘 벽 = B(qty 40000).
+    // touchPrices를 함께 재정렬하지 않으면 A가 touched로 뒤바뀐다.
+    const T2 = atKst(10, 30);
+    const T1 = atKst(9, 15);
+    const trades = [
+      tradeSnap(T2, [{ t_ms: T2, side: 1, price: 25000, qty: 100 }]),
+      tradeSnap(T1, [{ t_ms: T1, side: 1, price: 30000, qty: 100 }]),
+    ];
+    const source = new IncrementalPeakWallSource('ask');
+    const incremental = deriveDayAskPeaksIncremental(source, obs, trades, ASK_SEEDS, TODAY, null);
+    const batch = deriveDayAskPeaks(obs, trades, ASK_SEEDS, TODAY, '005930', null);
+    expect(incremental).toEqual(batch);
+    const today = incremental.find((p) => p.date === TODAY);
+    expect(today?.qty).toBe(40000); // 올바른 페어링이면 벽 B
+  });
+
   it('backend가 null이어도(seed 폴백 경로) 동일하다', () => {
     const { obs } = genStream(5, 100);
     const source = new IncrementalPeakWallSource('ask');
