@@ -81,6 +81,7 @@ function uniqueWarnings(warnings: LivePastCandlesWarning[]): LivePastCandlesWarn
  * "이미 받은 범위"로 굳어 영원히 재요청되지 않는다(영구 구멍). */
 const BLOCKING_WARNING_REASONS = new Set([
   'capacity_overloaded',
+  'fetch_budget_exhausted',
   'kis_api_error',
   'kis_rate_limit',
   'rate_limit_aborted',

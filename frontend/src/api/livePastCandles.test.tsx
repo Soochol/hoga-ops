@@ -348,6 +348,13 @@ describe('hasBlockingWarnings', () => {
     expect(hasBlockingWarnings({ ...RESPONSE, data_warnings: [warn(reason)] })).toBe(true);
   });
 
+  it('fetch_budget_exhausted 경고도 blocking으로 취급한다', () => {
+    expect(hasBlockingWarnings({
+      ...RESPONSE,
+      data_warnings: [{ date: '20260501', reason: 'fetch_budget_exhausted', msg: 'deferred' }],
+    })).toBe(true);
+  });
+
   it('non-blocking 경고나 빈 경고에는 false', () => {
     expect(hasBlockingWarnings({ ...RESPONSE, data_warnings: [] })).toBe(false);
     expect(hasBlockingWarnings({

@@ -81,6 +81,10 @@ class LiveMinuteCandleBackfill:
         # 실측 최대 243일/25분) foreground로 KIS 예산을 독점해 다른 종목이
         # 굶는다. 초과분은 fetch_budget_exhausted 경고(blocking)로 유예 —
         # 프론트가 박제하지 않으므로 다음 사이클에 이어서 받는다.
+        # 불변식: 이 값(12)은 프론트 청크 폭(PAST_CHUNK_CALENDAR_DAYS=15캘린더일
+        # ≈ 11거래일)보다 커야 한다 — 그래야 한 청크 요청이 항상 예산 안에서
+        # 완결된다. 이 아래로 낮추면 청크가 예산 경고를 받아 60s 주기로만
+        # 전진한다(기능은 유지, 속도 저하).
         self._max_fresh_dates_per_collect = max(1, int(max_fresh_dates_per_collect))
         self._inflight: dict[
             tuple[KisVenue, str, str],
