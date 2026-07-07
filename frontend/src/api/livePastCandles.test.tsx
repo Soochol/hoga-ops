@@ -1,7 +1,7 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { renderHook, waitFor } from '@testing-library/react';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
-import { useLivePastCandles, type LivePastCandlesResponse } from './livePastCandles';
+import { hasBlockingWarnings, useLivePastCandles, type LivePastCandlesResponse } from './livePastCandles';
 import * as client from './client';
 
 function wrap(qc: QueryClient) {
@@ -207,6 +207,116 @@ describe('useLivePastCandles', () => {
     expect(spy).toHaveBeenCalledTimes(2);
   });
 
+  // Regression(319660): KIS 스톰/쿨다운 중 백필 청크가 candles=[] +
+  // blocking 경고(rate_limit_aborted 등)로 오면, 그 실패 창이 mergedRef에
+  // "이미 받은 범위"로 박제되어 plan이 servePrevious/enabled:false로 굳고,
+  // 서버가 회복돼도 영원히 재요청되지 않았다(차트 영구 구멍).
+  // blocking 응답은 이번 렌더에 서빙만 하고 박제하지 않아야
+  // 다음 refetch가 실패 창을 다시 요청해 자가 회복된다.
+  it('blocking 경고 응답은 델타 기준에 박제되지 않는다', async () => {
+    const firstResponse: LivePastCandlesResponse = {
+      ...RESPONSE,
+      from: '20260501',
+      to: '20260502',
+      candles: [{ ...RESPONSE.candles[0], t_ms: 2, close: 102 }],
+      cached_dates: ['20260501'],
+      fresh_dates: ['20260502'],
+    };
+    const blockedDelta: LivePastCandlesResponse = {
+      ...RESPONSE,
+      from: '20260430',
+      to: '20260430',
+      candles: [],
+      cached_dates: [],
+      fresh_dates: [],
+      data_warnings: [{ date: '20260430', reason: 'rate_limit_aborted', msg: 'cooldown' }],
+    };
+    const recoveredDelta: LivePastCandlesResponse = {
+      ...blockedDelta,
+      candles: [{ ...RESPONSE.candles[0], t_ms: 1, close: 101 }],
+      fresh_dates: ['20260430'],
+      data_warnings: [],
+    };
+    let deltaCalls = 0;
+    vi.spyOn(client, 'apiCall').mockImplementation((url) => {
+      if (url.includes('from=20260430&to=20260430')) {
+        deltaCalls += 1;
+        return Promise.resolve(deltaCalls === 1 ? blockedDelta : recoveredDelta);
+      }
+      return Promise.resolve(firstResponse);
+    });
+    const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+    const { result, rerender } = renderHook(
+      ({ from }: { from: string }) =>
+        useLivePastCandles('005930', from, '20260502'),
+      { wrapper: wrap(qc), initialProps: { from: '20260501' } },
+    );
+    await waitFor(() => expect(result.current.data?.from).toBe('20260501'));
+
+    rerender({ from: '20260430' });
+    await waitFor(() => expect(deltaCalls).toBe(1));
+    // 이번 렌더에는 기존 캔들이 그대로 서빙된다 — 부분 데이터는 계속 보인다.
+    await waitFor(() =>
+      expect(result.current.data?.candles.map((c) => c.close)).toEqual([102]));
+
+    // 서버 회복 시나리오: 후속 리렌더(plan 재계산) 뒤 스테일 무효화가
+    // 실패 창을 재요청해야 한다. 박제 버그 상태에서는 리렌더 시 plan이
+    // servePrevious/enabled:false로 굳어 델타 쿼리의 활성 옵저버가 사라지고
+    // (queryKey가 null로 전환), 무효화해도 재요청이 영원히 일어나지 않는다.
+    rerender({ from: '20260430' });
+    await qc.invalidateQueries();
+    await waitFor(() => expect(deltaCalls).toBe(2));
+    await waitFor(() =>
+      expect(result.current.data?.candles.map((c) => c.close)).toEqual([101, 102]));
+    expect(result.current.data?.from).toBe('20260430');
+  });
+
+  // 가드의 반대 방향: 정상(경고 없는) 델타 응답은 여전히 박제되어,
+  // 이후 무효화/리렌더에서 같은 창을 중복 요청하지 않는다(servePrevious 유지).
+  it('정상 응답은 여전히 박제되어 중복 요청이 없다', async () => {
+    const firstResponse: LivePastCandlesResponse = {
+      ...RESPONSE,
+      from: '20260501',
+      to: '20260502',
+      candles: [{ ...RESPONSE.candles[0], t_ms: 2, close: 102 }],
+    };
+    const goodDelta: LivePastCandlesResponse = {
+      ...RESPONSE,
+      from: '20260430',
+      to: '20260430',
+      candles: [{ ...RESPONSE.candles[0], t_ms: 1, close: 101 }],
+      fresh_dates: ['20260430'],
+    };
+    let deltaCalls = 0;
+    const spy = vi.spyOn(client, 'apiCall').mockImplementation((url) => {
+      if (url.includes('from=20260430&to=20260430')) {
+        deltaCalls += 1;
+        return Promise.resolve(goodDelta);
+      }
+      return Promise.resolve(firstResponse);
+    });
+    const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+    const { result, rerender } = renderHook(
+      ({ from }: { from: string }) =>
+        useLivePastCandles('005930', from, '20260502'),
+      { wrapper: wrap(qc), initialProps: { from: '20260501' } },
+    );
+    await waitFor(() => expect(result.current.data?.from).toBe('20260501'));
+
+    rerender({ from: '20260430' });
+    await waitFor(() =>
+      expect(result.current.data?.candles.map((c) => c.close)).toEqual([101, 102]));
+    expect(deltaCalls).toBe(1);
+
+    // 박제됨 → 후속 리렌더에서 plan이 servePrevious로 전환돼 델타 쿼리의
+    // 활성 옵저버가 사라진다 — 이후 무효화해도 재요청 없음.
+    rerender({ from: '20260430' });
+    await qc.invalidateQueries();
+    await new Promise((r) => setTimeout(r, 30));
+    expect(deltaCalls).toBe(1);
+    expect(spy).toHaveBeenCalledTimes(2);
+  });
+
   it('does not reuse a previous range when the requested to-date changes', async () => {
     const spy = vi.spyOn(client, 'apiCall').mockResolvedValue(RESPONSE);
     const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } });
@@ -223,5 +333,26 @@ describe('useLivePastCandles', () => {
     expect(spy.mock.calls[1][0]).toBe(
       '/api/live/past-candles?code=005930&from=20260430&to=20260503&venue=KRX',
     );
+  });
+});
+
+describe('hasBlockingWarnings', () => {
+  const warn = (reason: string) => ({ date: '20260430', reason, msg: 'x' });
+
+  it.each([
+    'capacity_overloaded',
+    'kis_api_error',
+    'kis_rate_limit',
+    'rate_limit_aborted',
+  ])('blocking 사유 %s 에 true', (reason) => {
+    expect(hasBlockingWarnings({ ...RESPONSE, data_warnings: [warn(reason)] })).toBe(true);
+  });
+
+  it('non-blocking 경고나 빈 경고에는 false', () => {
+    expect(hasBlockingWarnings({ ...RESPONSE, data_warnings: [] })).toBe(false);
+    expect(hasBlockingWarnings({
+      ...RESPONSE,
+      data_warnings: [warn('minute_fallback_to_krx'), warn('kis_rest_bypassed')],
+    })).toBe(false);
   });
 });
