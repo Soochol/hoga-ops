@@ -1833,6 +1833,8 @@ def build_router(
             too=too,
             today_d=today_d,
             policy=policy,
+            read_ahead=True,
+            earliest_allowed=today_d - timedelta(days=_PAST_MAX_DAYS - 1),
         )
         return {"code": code, "from": from_, "to": to, "venue": policy, **out.model_dump()}
 

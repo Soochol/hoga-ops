@@ -456,3 +456,92 @@ async def test_warm_minute_logs_unexpected_exception(
 
     assert any("live candle warm failed" in r.message for r in caplog.records)
     assert ("KRX", "005930") not in backfill._warm_tasks
+
+
+@pytest.mark.asyncio
+async def test_collect_minute_read_ahead_warms_preceding_window(
+    tmp_path, monkeypatch,
+) -> None:
+    from hoga.api import calendar as cal
+
+    monkeypatch.setattr(cal, "is_trading_day", lambda date_s: True)
+    kis = _FakeKis()
+    scheduler = _RecordingScheduler(kis)
+    cache = PastCandlesCache(data_dir=tmp_path)
+    backfill = LiveMinuteCandleBackfill(
+        data_dir=tmp_path, cache=cache, scheduler=scheduler, concurrency=1,
+    )
+
+    await backfill.collect_minute(
+        code="005930",
+        frm=dt.date(2026, 5, 20),
+        too=dt.date(2026, 5, 21),
+        today_d=dt.date(2026, 6, 1),
+        policy="KRX",
+        read_ahead=True,
+    )
+    task = backfill._warm_tasks.get(("KRX", "005930"))
+    assert task is not None
+    await task
+
+    # 요청창 5/20-21은 user_visible, 선행창 5/18-19는 background
+    priorities = [c["priority"] for c in scheduler.calls]
+    assert priorities.count("user_visible") == 2
+    assert priorities.count("background") == 2
+    assert cache.get_past("KRX", "005930", "20260518") is not None
+    assert cache.get_past("KRX", "005930", "20260519") is not None
+
+
+@pytest.mark.asyncio
+async def test_collect_minute_read_ahead_respects_earliest_allowed(
+    tmp_path, monkeypatch,
+) -> None:
+    from hoga.api import calendar as cal
+
+    monkeypatch.setattr(cal, "is_trading_day", lambda date_s: True)
+    kis = _FakeKis()
+    scheduler = _RecordingScheduler(kis)
+    backfill = LiveMinuteCandleBackfill(
+        data_dir=tmp_path,
+        cache=PastCandlesCache(data_dir=tmp_path),
+        scheduler=scheduler,
+        concurrency=1,
+    )
+
+    await backfill.collect_minute(
+        code="005930",
+        frm=dt.date(2026, 5, 20),
+        too=dt.date(2026, 5, 21),
+        today_d=dt.date(2026, 6, 1),
+        policy="KRX",
+        read_ahead=True,
+        earliest_allowed=dt.date(2026, 5, 20),  # 선행창 전체가 하한 밖 → 워밍 없음
+    )
+
+    assert ("KRX", "005930") not in backfill._warm_tasks
+    assert all(c["priority"] == "user_visible" for c in scheduler.calls)
+
+
+@pytest.mark.asyncio
+async def test_collect_minute_default_no_read_ahead(tmp_path, monkeypatch) -> None:
+    from hoga.api import calendar as cal
+
+    monkeypatch.setattr(cal, "is_trading_day", lambda date_s: True)
+    kis = _FakeKis()
+    scheduler = _RecordingScheduler(kis)
+    backfill = LiveMinuteCandleBackfill(
+        data_dir=tmp_path,
+        cache=PastCandlesCache(data_dir=tmp_path),
+        scheduler=scheduler,
+        concurrency=1,
+    )
+
+    await backfill.collect_minute(
+        code="005930",
+        frm=dt.date(2026, 5, 20),
+        too=dt.date(2026, 5, 21),
+        today_d=dt.date(2026, 6, 1),
+        policy="KRX",
+    )
+
+    assert ("KRX", "005930") not in backfill._warm_tasks

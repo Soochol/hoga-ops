@@ -17,6 +17,24 @@ def _hermetic_kis_env(monkeypatch):
         monkeypatch.delenv(_k, raising=False)
 
 
+@pytest.fixture
+def _no_read_ahead_warm(monkeypatch):
+    """Suppress the /past-candles read-ahead background warm (Task 5).
+
+    These route tests assert exact KIS call lists / counts for a request's
+    own window; the fire-and-forget preceding-window warm is disjoint behavior
+    covered by test_live_candle_backfill.py. Stub warm_minute so the wrapper's
+    read_ahead branch still runs (window math + earliest_allowed clamp + the
+    awaited call) but no background fetch is created — removing a cross-thread
+    race with these tests' in-block assertions."""
+    from hoga.live.live_candle_backfill import LiveMinuteCandleBackfill
+
+    async def _noop_warm(self, **_kwargs):
+        return "started"
+
+    monkeypatch.setattr(LiveMinuteCandleBackfill, "warm_minute", _noop_warm)
+
+
 def _make_test_app(
     get_status_fn=None,
     control_fn=None,
@@ -368,7 +386,7 @@ async def test_past_candles_happy_path_single_date(tmp_path) -> None:
 
 
 @pytest.mark.asyncio
-async def test_past_candles_memory_cache_hit_on_second_call(tmp_path) -> None:
+async def test_past_candles_memory_cache_hit_on_second_call(tmp_path, _no_read_ahead_warm) -> None:
     fake = _FakeKisForPast()
     app = _past_app(tmp_path, fake)
     with TestClient(app) as c:
@@ -385,7 +403,7 @@ async def test_past_candles_memory_cache_hit_on_second_call(tmp_path) -> None:
 
 
 @pytest.mark.asyncio
-async def test_past_candles_today_memory_cache(tmp_path, monkeypatch) -> None:
+async def test_past_candles_today_memory_cache(tmp_path, monkeypatch, _no_read_ahead_warm) -> None:
     from hoga.live import api as live_api
 
     monkeypatch.setattr(live_api, "_today_kst_date", lambda: datetime.date(2026, 6, 26))
@@ -468,7 +486,7 @@ async def test_past_candles_fetches_uncached_dates_concurrently(tmp_path) -> Non
 
 
 @pytest.mark.asyncio
-async def test_past_candles_singleflight_dedups_concurrent_same_date(tmp_path) -> None:
+async def test_past_candles_singleflight_dedups_concurrent_same_date(tmp_path, _no_read_ahead_warm) -> None:
     """spec 2026-06-08 §4.3: 같은 (code, date)의 동시 요청 2건 → KIS 콜 1회
     공유(두 탭/60초 refetch 경합의 쿼터 절약). 두 응답 모두 동일 bars를 받고
     후발 요청도 fresh로 보고한다(캐시가 아니라 공유 fetch 결과이므로)."""
@@ -556,7 +574,7 @@ async def test_past_candles_rate_limit_blocks_unstarted_fetches(tmp_path) -> Non
 
 
 @pytest.mark.asyncio
-async def test_past_candles_rate_limit_still_serves_later_cache_hits(tmp_path) -> None:
+async def test_past_candles_rate_limit_still_serves_later_cache_hits(tmp_path, _no_read_ahead_warm) -> None:
     """When KIS rate-limits mid-range, dates AFTER the abort that are already
     in memory must still be served. Regression for the "candles all disappear
     when scrolling to past" bug: backend used to skip every subsequent date
@@ -638,7 +656,7 @@ async def test_past_candles_rate_limit_cooldown_blocks_immediate_followup(tmp_pa
 
 
 @pytest.mark.asyncio
-async def test_past_candles_weekend_skips_kis_and_returns_empty(tmp_path, monkeypatch) -> None:
+async def test_past_candles_weekend_skips_kis_and_returns_empty(tmp_path, monkeypatch, _no_read_ahead_warm) -> None:
     """Past weekend dates are known-empty and must not spend KIS capacity."""
     from hoga.api import calendar as cal
 
@@ -668,7 +686,7 @@ async def test_past_candles_weekend_skips_kis_and_returns_empty(tmp_path, monkey
 
 
 @pytest.mark.asyncio
-async def test_past_candles_memory_cache_not_survives_router_rebuild(tmp_path) -> None:
+async def test_past_candles_memory_cache_not_survives_router_rebuild(tmp_path, _no_read_ahead_warm) -> None:
     """Past memory cache is per-router process state; rebuilding the router
     starts with a fresh cache."""
     kst = datetime.timezone(datetime.timedelta(hours=9))
@@ -691,7 +709,7 @@ async def test_past_candles_memory_cache_not_survives_router_rebuild(tmp_path) -
         assert r.json()["fresh_dates"] == [yesterday]
 
 
-def test_minute_today_non_trading_day_negative_caches(tmp_path, monkeypatch) -> None:
+def test_minute_today_non_trading_day_negative_caches(tmp_path, monkeypatch, _no_read_ahead_warm) -> None:
     """When today's KIS minute fetch returns empty, the cache stores a
     negative sentinel so a follow-up request within the TTL skips KIS."""
     from hoga.live import api as live_api
@@ -714,7 +732,7 @@ def test_minute_today_non_trading_day_negative_caches(tmp_path, monkeypatch) -> 
         assert fake.calls == 1  # second call skipped via negative cache
 
 
-def test_minute_today_weekend_skips_kis_and_negative_caches(tmp_path, monkeypatch) -> None:
+def test_minute_today_weekend_skips_kis_and_negative_caches(tmp_path, monkeypatch, _no_read_ahead_warm) -> None:
     """On weekends, today's minute candles are known-empty before hitting KIS."""
     from hoga.live import api as live_api
 
@@ -740,7 +758,7 @@ def test_minute_today_weekend_skips_kis_and_negative_caches(tmp_path, monkeypatc
     assert r1.json()["data_warnings"] == []
 
 
-def test_past_candles_threads_explicit_venue_to_kis_and_response(tmp_path) -> None:
+def test_past_candles_threads_explicit_venue_to_kis_and_response(tmp_path, _no_read_ahead_warm) -> None:
     kst = datetime.timezone(datetime.timedelta(hours=9))
     t_ms = int(datetime.datetime(2026, 5, 18, 9, 0, tzinfo=kst).timestamp() * 1000)
 
@@ -763,6 +781,26 @@ def test_past_candles_threads_explicit_venue_to_kis_and_response(tmp_path) -> No
     assert fake.kwargs == [{"venue": "NXT", "foreground": True}]
 
 
+def test_past_candles_read_ahead_warms_preceding_window(tmp_path, monkeypatch) -> None:
+    """Task 5: /past-candles opts into read_ahead=True, so serving a request
+    also warms the immediately-preceding same-width window in the background.
+    The assertion runs AFTER the `with TestClient` block so lifespan shutdown
+    drains the fire-and-forget warm task deterministically."""
+    from hoga.api import calendar as cal
+    from hoga.live import api as live_api
+
+    monkeypatch.setattr(live_api, "_today_kst_date", lambda: datetime.date(2026, 6, 1))
+    monkeypatch.setattr(cal, "is_trading_day", lambda _d: True)
+    fake = _FakeKisForPast()
+    app = _past_app(tmp_path, fake)
+    with TestClient(app) as c:
+        r = c.get("/api/live/past-candles?code=005930&from=20260519&to=20260520")
+        assert r.status_code == 200
+
+    # 요청창 5/19-20은 즉시 fetch, 선행창 5/17-18은 background 워밍으로 채워진다.
+    assert set(fake.calls) == {"20260517", "20260518", "20260519", "20260520"}
+
+
 def test_past_candles_rejects_invalid_venue_before_kis(tmp_path) -> None:
     fake = _FakeKisForPast()
     app = _past_app(tmp_path, fake)
@@ -774,7 +812,7 @@ def test_past_candles_rejects_invalid_venue_before_kis(tmp_path) -> None:
     assert fake.calls == []
 
 
-def test_past_candles_legacy_auto_maps_to_integrated(tmp_path) -> None:
+def test_past_candles_legacy_auto_maps_to_integrated(tmp_path, _no_read_ahead_warm) -> None:
     fake = _FakeKisForPast()
     app = _past_app(tmp_path, fake)
     with TestClient(app) as c:
@@ -786,7 +824,7 @@ def test_past_candles_legacy_auto_maps_to_integrated(tmp_path) -> None:
     assert fake.calls == ["20260518"]
 
 
-def test_past_candles_integrated_uses_single_kis_un_call(tmp_path) -> None:
+def test_past_candles_integrated_uses_single_kis_un_call(tmp_path, _no_read_ahead_warm) -> None:
     kst = datetime.timezone(datetime.timedelta(hours=9))
 
     def ts(hh: int, mm: int) -> int:
@@ -831,7 +869,7 @@ def test_past_candles_integrated_uses_single_kis_un_call(tmp_path) -> None:
 
 
 @pytest.mark.parametrize("venue", ["NXT", "UN"])
-def test_past_candles_non_krx_empty_falls_back_to_krx(tmp_path, venue: str) -> None:
+def test_past_candles_non_krx_empty_falls_back_to_krx(tmp_path, venue: str, _no_read_ahead_warm) -> None:
     kst = datetime.timezone(datetime.timedelta(hours=9))
 
     def ts(hh: int, mm: int) -> int:
@@ -887,7 +925,7 @@ def test_past_candles_non_krx_empty_falls_back_to_krx(tmp_path, venue: str) -> N
     ]
 
 
-def test_past_candles_non_krx_partial_range_fills_empty_dates_from_krx(tmp_path) -> None:
+def test_past_candles_non_krx_partial_range_fills_empty_dates_from_krx(tmp_path, _no_read_ahead_warm) -> None:
     kst = datetime.timezone(datetime.timedelta(hours=9))
 
     def ts(date_s: str, close: int) -> KisCandle:
@@ -945,7 +983,7 @@ def test_past_candles_non_krx_partial_range_fills_empty_dates_from_krx(tmp_path)
     ]
 
 
-def test_past_candles_non_krx_fallback_rechecks_primary_on_next_request(tmp_path) -> None:
+def test_past_candles_non_krx_fallback_rechecks_primary_on_next_request(tmp_path, _no_read_ahead_warm) -> None:
     kst = datetime.timezone(datetime.timedelta(hours=9))
 
     def ts(close: int) -> KisCandle:

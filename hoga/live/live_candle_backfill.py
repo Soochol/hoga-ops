@@ -90,6 +90,35 @@ class LiveMinuteCandleBackfill:
         too: date,
         today_d: date,
         policy: LiveVenuePolicy,
+        read_ahead: bool = False,
+        earliest_allowed: date | None = None,
+    ) -> LiveMinuteCandleBackfillResult:
+        out = await self._collect_minute_inner(
+            code=code, frm=frm, too=too, today_d=today_d, policy=policy,
+        )
+        # read-ahead: 이번 요청창 직전 동일 폭 구간을 background로 선행 워밍.
+        # settle-loop의 다음 청크가 캐시 히트가 된다. 레이트리밋/용량 경고가
+        # 있으면 예산이 이미 부족하다는 뜻이므로 이번엔 건너뛴다.
+        if read_ahead and not _fallback_blocking_warning_dates(out.data_warnings):
+            span_days = (too - frm).days + 1
+            ra_too = frm - timedelta(days=1)
+            ra_frm = ra_too - timedelta(days=span_days - 1)
+            if earliest_allowed is not None:
+                ra_frm = max(ra_frm, earliest_allowed)
+            if ra_frm <= ra_too:
+                await self.warm_minute(
+                    code=code, frm=ra_frm, too=ra_too, today_d=today_d, policy=policy,
+                )
+        return out
+
+    async def _collect_minute_inner(
+        self,
+        *,
+        code: str,
+        frm: date,
+        too: date,
+        today_d: date,
+        policy: LiveVenuePolicy,
     ) -> LiveMinuteCandleBackfillResult:
         if policy != "KRX":
             primary_out = await self._collect_for_venue(
