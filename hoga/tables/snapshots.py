@@ -452,20 +452,27 @@ def query_first_ts(con: duckdb.DuckDBPyConnection, *, path: Path) -> int | None:
 # === Bucketed depth-ratio query (native-time rows; caller owns time/wire conv) ===
 
 
-_ASK_Q_SUM: str = " + ".join(f"ask_q{i}" for i in range(1, ORDERBOOK_LEVELS + 1))
-_BID_Q_SUM: str = " + ".join(f"bid_q{i}" for i in range(1, ORDERBOOK_LEVELS + 1))
+# Each ask_qN/bid_qN column is INT32 (see PARQUET_SCHEMA). On an extreme order
+# book (e.g. a limit-up small-cap with hundreds of millions of shares per
+# level) the plain INT32 SUM overflows DuckDB's INT32 accumulator and raises
+# OutOfRangeException, surfacing as an HTTP 500 from the 호가비/총잔량 API. The
+# ``::BIGINT`` cast on each term widens the accumulator to 64-bit; it is a
+# type widening only, so all in-range (non-overflow) results are byte-identical.
+_ASK_Q_SUM: str = " + ".join(f"ask_q{i}::BIGINT" for i in range(1, ORDERBOOK_LEVELS + 1))
+_BID_Q_SUM: str = " + ".join(f"bid_q{i}::BIGINT" for i in range(1, ORDERBOOK_LEVELS + 1))
 
 # Single-price auction is detected by orderbook STRUCTURE, not a 15:20 clock
 # (ADR-0062). KRX single-price phases (closing auction, intraday VI) expose exactly
 # the top 3 levels per side; a continuous-trading book still has depth beyond level
 # 3 on both sides. _ASK_DEEP_SUM / _BID_DEEP_SUM sum the deep (level 4..10) columns so
-# query_bucketed_ratio can test "is this a continuous-trading book?".
+# query_bucketed_ratio can test "is this a continuous-trading book?". Cast to
+# BIGINT for the same INT32-overflow reason as _ASK_Q_SUM / _BID_Q_SUM above.
 _AUCTION_BOOK_DEPTH: int = 3
 _ASK_DEEP_SUM: str = " + ".join(
-    f"ask_q{i}" for i in range(_AUCTION_BOOK_DEPTH + 1, ORDERBOOK_LEVELS + 1)
+    f"ask_q{i}::BIGINT" for i in range(_AUCTION_BOOK_DEPTH + 1, ORDERBOOK_LEVELS + 1)
 )
 _BID_DEEP_SUM: str = " + ".join(
-    f"bid_q{i}" for i in range(_AUCTION_BOOK_DEPTH + 1, ORDERBOOK_LEVELS + 1)
+    f"bid_q{i}::BIGINT" for i in range(_AUCTION_BOOK_DEPTH + 1, ORDERBOOK_LEVELS + 1)
 )
 
 # 연속거래 호가창 술어 — query_bucketed_ratio의 deep_book_sql과 동일(단일진실원).
