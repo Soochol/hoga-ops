@@ -3,6 +3,14 @@
 All notable changes to this project are documented here.
 The format follows a 4-digit `MAJOR.MINOR.PATCH.MICRO` scheme.
 
+## [0.12.32.0] - 2026-07-07
+
+### Fixed
+- **/live 피크 월 쿼리 OOM 근본 수정**: 매도/매수 최대벽(peak wall) 분류 쿼리(`query_day_ask_bid_peak_dual`)의 비등가 조인(`JOIN … ON t.price {>=|<=} p.price`) + `ROWS BETWEEN UNBOUNDED PRECEDING` 윈도우 ×4세트를 선형 SQL 스캔 + 파이썬 정렬 스위프(Fenwick prefix-max lifecycle)로 대체해 O((N+M) log M)으로 만들었다. soft `memory_limit`을 뚫던 단일 최악 쿼리의 17GB 천장을 제거한다(PR #440 인터림 완화의 후속 근본 수정). 공개 시그니처·반환 dataclass 불변. 상세는 ADR-0085.
+
+### Performance
+- **최악의 날 실측**: 20260623/000660(distinct 803 × 거래 55만) 단일 쿼리가 155s / 17.16GB → **4.3s / 0.72GB**. 삼성 20260619/005930은 15.7s / 3.56GB → 4.5s / 0.79GB. 안전망은 구 SQL을 오라클로 남긴 old-vs-new 차등 테스트(25개 실데이터 날, 0 불일치)로, 통과 후 구 SQL을 삭제했다. 참고: 조인이 폭발하지 않는 일반적인 날은 벡터화 SQL이 파이썬 스위프보다 소폭 빠르다(꼬리 폭주 제거가 목적).
+
 ## [0.12.31.0] - 2026-07-07
 
 ### Fixed
