@@ -74,7 +74,6 @@ async def test_program_trade_collector_polls_capture_candidates_and_skips_failed
         scheduler,
         *,
         data_dir,
-        role,
         key,
         endpoint,
         priority,
@@ -82,7 +81,6 @@ async def test_program_trade_collector_polls_capture_candidates_and_skips_failed
         fetch_fn,
     ):
         assert scheduler is None
-        assert role == "background"
         assert endpoint == "program-trade"
         assert priority == "background"
         assert cooldown_scope == "program-trade"
@@ -310,7 +308,6 @@ async def test_program_trade_collector_logs_transport_without_traceback_and_sets
         scheduler,
         *,
         data_dir,
-        role,
         key,
         endpoint,
         priority,
@@ -360,7 +357,6 @@ async def test_program_trade_collector_unexpected_errors_keep_traceback(
         scheduler,
         *,
         data_dir,
-        role,
         key,
         endpoint,
         priority,

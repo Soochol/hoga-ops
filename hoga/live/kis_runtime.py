@@ -29,7 +29,7 @@ _kis_token_providers: dict[int, KisTokenProvider] = {}
 _lock = threading.Lock()
 
 # FM5 REST-auth latch + WS-degraded 통합 신호는 account_health(leaf)로 추출됨(2026-06-10).
-# 토큰 provider 콜백이 account_health.mark_rest_auth_degraded를, kis_for_role가
+# 토큰 provider 콜백이 account_health.mark_rest_auth_degraded를, KisAccountPool.eligible_accounts가
 # account_health.is_rest_degraded를 쓴다(REST 라우팅은 REST latch만 — WS저하와 직교, 2026-06-10)
 # — kis_runtime은 더는 lifecycle을 late import하지 않는다.
 
@@ -197,8 +197,8 @@ def configured_account_ids(data_dir: Path) -> list[int]:
     return ids
 
 
-# role→account 라우팅(kis_for_role) + FM5 폴백(fetch_for_role)은 kis_access 모듈로 추출됨
-# (2026-06-10). kis_runtime은 리소스 소유(account별 싱글톤·ensure_*·env creds)만 담당한다.
+# account 라우팅은 KisAccountPool(kis_account_pool) + KisCapacityScheduler로 옮겨졌고
+# (ADR-0082), kis_runtime은 리소스 소유(account별 싱글톤·ensure_*·env creds)만 담당한다.
 
 
 async def aclose_kis_client() -> None:

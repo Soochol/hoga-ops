@@ -55,7 +55,6 @@ class LiveInvestorNetBackfill:
             result = await kis_access.run_with_capacity(
                 self._scheduler,
                 data_dir=self._data_dir,
-                role="background",
                 key=("live-investor-net", code_, from_s, to_s),
                 endpoint=kis_access.KisRestEndpoint.INVESTOR_NET,
                 priority="background",

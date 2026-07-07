@@ -103,6 +103,12 @@ class LiveStatus(BaseModel):
     rest_poller_backoff_remaining: int = 0
     kis_capacity_scheduler: dict[str, object] | None = None
     kis_rest_bypass_enabled: bool = False
+    # 감독 태스크 헬스(ADR-0088) — 각 lifespan-소유 배경 태스크의 alive 여부.
+    # `running`은 정직한 신호(task is not None and not task.done()) — 하루 한 번
+    # 도는 watchlist-daily-loop 등 '잠자는 살아있는' 태스크를 stale로 오판하지 않기
+    # 위해 last_cycle 시간이 아니라 task 생존만 본다(ADR-0064 정직 health 패턴).
+    # additive; unknown 필드라 프론트 무시 안전. 항목: {name, running}.
+    supervised_tasks: list[dict[str, object]] = Field(default_factory=list)
 
 
 # ── State ──────────────────────────────────────────────────────────────────────

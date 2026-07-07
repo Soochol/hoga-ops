@@ -38,7 +38,6 @@ class ScheduledLiveRestCaptureClient:
         return await kis_access.run_with_capacity(
             self._scheduler,
             data_dir=self._data_dir,
-            role="background",
             key=(self._source, "orderbook", code),
             endpoint=kis_access.KisRestEndpoint.LIVE_ORDERBOOK,
             priority="background",
@@ -50,7 +49,6 @@ class ScheduledLiveRestCaptureClient:
         return await kis_access.run_with_capacity(
             self._scheduler,
             data_dir=self._data_dir,
-            role="background",
             key=(self._source, "trades", code),
             endpoint=kis_access.KisRestEndpoint.LIVE_TRADES,
             priority="background",
@@ -62,7 +60,6 @@ class ScheduledLiveRestCaptureClient:
         return await kis_access.run_with_capacity(
             self._scheduler,
             data_dir=self._data_dir,
-            role="background",
             key=(self._source, "brokers", code),
             endpoint=kis_access.KisRestEndpoint.LIVE_BROKERS,
             priority="background",

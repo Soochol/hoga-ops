@@ -44,7 +44,6 @@ def _patch_scheduler(monkeypatch, fake: FakeKis, calls: list[dict] | None = None
         scheduler,
         *,
         data_dir,
-        role,
         key,
         endpoint,
         priority,
@@ -55,7 +54,6 @@ def _patch_scheduler(monkeypatch, fake: FakeKis, calls: list[dict] | None = None
             calls.append({
                 "scheduler": scheduler,
                 "data_dir": data_dir,
-                "role": role,
                 "key": key,
                 "endpoint": str(endpoint),
                 "priority": priority,
@@ -117,7 +115,6 @@ async def test_build_intraday_overlay_creates_daily_rows(monkeypatch, tmp_path: 
     assert calls == [{
         "scheduler": calls[0]["scheduler"],
         "data_dir": tmp_path,
-        "role": "background",
         "key": ("screener-intraday", "20260625", ("000111", "000222")),
         "endpoint": "quotes",
         "priority": "background",

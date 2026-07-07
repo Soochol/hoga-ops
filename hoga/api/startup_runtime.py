@@ -57,6 +57,31 @@ class AppStartupRuntime:
     today_promoter_task: TaskOrNone
     deps: StartupRuntimeDeps
 
+    def supervised_task_health(self) -> list[dict[str, object]]:
+        """Honest alive/dead snapshot of each lifespan-owned background task.
+
+        `running` uses the ADR-0064 honest-health rule — `task is not None and
+        not task.done()` — NOT a staleness check. `watchlist-daily-loop` sleeps
+        ~23h between fires, so a last-activity signal would false-alarm all day;
+        a task that is alive-but-sleeping must report healthy. A `done()` task is
+        a silently dead loop (the ADR-0064 failure mode) and reports unhealthy.
+
+        These tasks have no auto-restart supervisor by design (ADR-0088): the
+        capture worker pool and KIS capacity workers self-heal, and the WS
+        stream watchdog restarts the WS/flush tasks, but the once-a-day loop,
+        today-promoter, and the watchdog itself are only revived by a process
+        restart. Exposing their liveness makes a silent death detectable.
+        """
+        tasks: list[tuple[str, TaskOrNone]] = [
+            *((t.get_name(), t) for t in self.scheduler_tasks),
+            ("live-stream-watchdog", self.live_watchdog_task),
+            ("today-promoter", self.today_promoter_task),
+        ]
+        return [
+            {"name": name, "running": task is not None and not task.done()}
+            for name, task in tasks
+        ]
+
     async def stop(self) -> None:
         """Stop runtime-owned background work in shutdown order."""
         await self.deps.stop_today_promoter(self.today_promoter_task)

@@ -10,11 +10,7 @@ import hoga.live.lifecycle as lifecycle
 import hoga.live.live_session as live_session_module
 
 
-@pytest.fixture(autouse=True)
-def _reset():
-    lifecycle.reset_for_tests()
-    yield
-    lifecycle.reset_for_tests()
+# Singleton reset is provided by tests/unit/live/conftest.py (_reset_live_singletons).
 
 
 class _FakeKis:

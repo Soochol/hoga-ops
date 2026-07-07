@@ -94,7 +94,6 @@ async def trigger_update(data_dir: Path, *, bus=None) -> int:
         return await kis_access.run_with_capacity(
             scheduler,
             data_dir=data_dir,
-            role="background",
             key=("screener-update", c, f, t),
             endpoint=kis_access.KisRestEndpoint.SCREENER_DAILY,
             priority="background",

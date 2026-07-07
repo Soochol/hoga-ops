@@ -124,3 +124,49 @@ singletons.
 4. Hot-reload accounts and worker counts.
    This adds resize complexity around workers, queued requests, and shared
    futures. Explicit restart/recreate is simpler for the current local app.
+
+## Amendment (2026-07-07): 레거시 role 경로 제거
+
+**배경.** 원 결정은 `kis_for_role()` / `fetch_for_role()`를 "legacy compatibility
+and emergency fallback adapters only"로 남기고, `run_with_capacity`가
+`scheduler=None`일 때 그 경로로 폴백하도록 했다. 이전 조사(2026-07-07)로 확인:
+프로덕션 16개 호출자가 **모두** 실제 스케줄러를 주입하고
+(`ensure_kis_capacity_scheduler`는 절대 None을 반환하지 않음),
+`kis_for_role`의 유일한 비테스트 호출자는 `scripts/probe_investor_trend_estimate.py`
+한 곳뿐이었다. `run_with_capacity(role=...)`의 `role` 인자는 `scheduler=None`
+분기에서만 소비되므로, 스케줄러가 항상 존재하는 프로덕션에서는 죽은 인자였고
+항상 `priority`와 짝지어 다니는 중복이었다.
+
+**결정.**
+
+1. **`run_with_capacity`는 스케줄러를 필수(non-Optional)로 받고 `role` 인자와
+   `scheduler=None` 폴백 분기를 제거한다.** 의도 신호는 `priority`
+   (`user_visible` / `background`) 하나로 통일한다. 16개 호출자에서 `role=` 인자를
+   제거했다.
+
+2. **`kis_for_role` / `fetch_for_role` / `KisLegacyRole` / `_bg_round_robin`을
+   삭제한다.** probe 스크립트는 `kis_runtime.ensure_kis_client_from_env`(account 0
+   bare client)로 마이그레이션 — 스케줄러의 워커 lifecycle(`aclose`)을 일회성
+   진단 스크립트에 끌어들이지 않기 위함이다.
+
+3. **FM5 auth-fallback 회귀 없음.** `fetch_for_role`의 `KisAuthError` 재해결은
+   `scheduler=None` 경로에서만 돌던 것이고 프로덕션은 그 경로를 타지 않았다.
+   스케줄러 경로는 이미 풀 레벨에서 REST-degraded 계좌를 `eligible_accounts()`로
+   제외하므로(account_health.is_rest_degraded), auth-degraded 계좌 회피 동작은
+   구조적으로 보존된다 — 재시도가 아니라 lease 후보 제외로 이동했을 뿐이다.
+
+4. **불변식 가드 정리.** `test_adr_invariants.py`의 AST 가드 2개
+   (`kis_for_role("background")` 직접 호출 금지 / `run_with_capacity(None)` 금지)는
+   해당 심볼·인자가 인터페이스에서 사라져 grep 대상이 없어졌으므로 삭제했다.
+   (정밀히: 이 프로젝트는 Pyright로 게이트하지 않으므로 non-Optional 시그니처가
+   정적으로 강제되진 않는다 — 실질 backstop은 `scheduler=None` 전달 시
+   `None.submit` AttributeError로 런타임에서 즉시 실패하는 것이다. silent 레거시
+   경로가 아니라 loud failure다.) 라우팅 커버리지(degraded 제외/least-loaded/예약)는
+   `test_kis_account_pool.py`가, rate-limit failover는
+   `test_kis_capacity_scheduler.py`가 이미 소유한다.
+
+**Preserved Invariant 갱신.** 원 "Preserved Invariants"의 세 번째 항목
+("Existing `kis_for_role()` / `fetch_for_role()` remain as legacy compatibility")은
+본 amendment로 폐기된다. 새 불변식: **모든 KIS REST 데이터 fetch는
+`run_with_capacity(scheduler, ...)`를 통과하며, 스케줄러 없는 경로는 존재하지
+않는다.**

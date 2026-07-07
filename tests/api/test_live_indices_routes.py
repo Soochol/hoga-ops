@@ -38,7 +38,6 @@ def _patch_kis_capacity(monkeypatch, fake_kis):
         scheduler_arg,
         *,
         data_dir,
-        role,
         key,
         endpoint,
         priority,
@@ -48,7 +47,6 @@ def _patch_kis_capacity(monkeypatch, fake_kis):
         calls.append({
             "scheduler": scheduler_arg,
             "data_dir": data_dir,
-            "role": role,
             "key": key,
             "endpoint": str(endpoint),
             "priority": priority,
@@ -130,7 +128,6 @@ def test_index_candles_returns_fake_kis_daily_rows(tmp_path, monkeypatch) -> Non
     assert calls == [{
         "scheduler": scheduler,
         "data_dir": tmp_path,
-        "role": "foreground",
         "key": ("index-daily", "KOSPI", "D", "20260601", "20260619"),
         "endpoint": "index-daily",
         "priority": "user_visible",
@@ -232,7 +229,6 @@ def test_index_candles_returns_fake_kis_minute_rows(tmp_path, monkeypatch) -> No
     assert calls == [{
         "scheduler": scheduler,
         "data_dir": tmp_path,
-        "role": "foreground",
         "key": ("index-minute", "KOSPI", "1m", 60, "20260619", "20260619"),
         "endpoint": "index-minute",
         "priority": "user_visible",

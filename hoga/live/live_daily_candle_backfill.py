@@ -180,7 +180,6 @@ class LiveDailyCandleBackfill:
             return await kis_access.run_with_capacity(
                 self._scheduler,
                 data_dir=self._data_dir,
-                role="foreground",
                 key=("live-candle-backfill", "daily", venue, code, from_s, to_s),
                 endpoint=kis_access.KisRestEndpoint.PAST_DAILY,
                 priority="user_visible",
@@ -207,7 +206,6 @@ class LiveDailyCandleBackfill:
             return await kis_access.run_with_capacity(
                 self._scheduler,
                 data_dir=self._data_dir,
-                role="foreground",
                 key=("live-candle-backfill", "daily", "KRX", code, from_s, to_s, "fallback"),
                 endpoint=kis_access.KisRestEndpoint.PAST_DAILY,
                 priority="user_visible",

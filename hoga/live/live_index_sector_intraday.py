@@ -64,7 +64,6 @@ class LiveIndexSectorIntradayOverlay:
                     kis_access.run_with_capacity(
                         self._scheduler,
                         data_dir=self._data_dir,
-                        role="background",
                         key=("index-sector-rankings-quotes", tuple(sorted(codes)), phase),
                         endpoint=kis_access.KisRestEndpoint.QUOTES,
                         priority="background",

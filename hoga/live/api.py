@@ -13,7 +13,7 @@ from datetime import date, datetime, time, timedelta, timezone
 from pathlib import Path
 from typing import TYPE_CHECKING, Literal
 
-from fastapi import APIRouter, HTTPException, Query
+from fastapi import APIRouter, HTTPException, Query, Request
 from pydantic import BaseModel, Field, ValidationError
 
 from hoga.api._atomic_write import atomic_write_json
@@ -1253,13 +1253,16 @@ def build_router(
         return kis_access.has_rest_capacity(data_dir)
 
     @router.get("/status", response_model=LiveStatus)
-    async def _get_status() -> LiveStatus:
+    async def _get_status(request: Request) -> LiveStatus:
         status = get_status()
-        if _kis_scheduler is None:
-            return status
-        return status.model_copy(
-            update={"kis_capacity_scheduler": _kis_scheduler.snapshot()}
-        )
+        update: dict[str, object] = {}
+        if _kis_scheduler is not None:
+            update["kis_capacity_scheduler"] = _kis_scheduler.snapshot()
+        # ADR-0088: lifespan-owned task liveness (set on app.state at startup).
+        runtime = getattr(request.app.state, "startup_runtime", None)
+        if runtime is not None:
+            update["supervised_tasks"] = runtime.supervised_task_health()
+        return status.model_copy(update=update) if update else status
 
     @router.get("/settings", response_model=LiveSettingsResponse)
     async def _get_settings() -> LiveSettingsResponse:
@@ -1328,7 +1331,6 @@ def build_router(
                     return await kis_access.run_with_capacity(
                         _kis_scheduler,
                         data_dir=data_dir,
-                        role="foreground",
                         key=("index-daily", index.id, timeframe, inner_from_s, inner_to_s),
                         endpoint=kis_access.KisRestEndpoint.INDEX_DAILY,
                         priority="user_visible",
@@ -1385,7 +1387,6 @@ def build_router(
                 return await kis_access.run_with_capacity(
                     _kis_scheduler,
                     data_dir=data_dir,
-                    role="foreground",
                     key=("index-minute", index.id, timeframe, bucket_seconds, from_s, to_s),
                     endpoint=kis_access.KisRestEndpoint.INDEX_MINUTE,
                     priority="user_visible",
@@ -1593,7 +1594,6 @@ def build_router(
                     kis_access.run_with_capacity(
                         _kis_scheduler,
                         data_dir=data_dir,
-                        role="background",
                         key=("quotes", quote_venue, tuple(sorted(code_list)), phase),
                         endpoint=kis_access.KisRestEndpoint.QUOTES,
                         priority="background",
@@ -1662,7 +1662,6 @@ def build_router(
                         kis_access.run_with_capacity(
                             _kis_scheduler,
                             data_dir=data_dir,
-                            role="background",
                             key=("tab-metrics-quotes", quote_venue, tuple(sorted(code_list)), phase),
                             endpoint=kis_access.KisRestEndpoint.QUOTES,
                             priority="background",
@@ -1731,7 +1730,6 @@ def build_router(
                     kis_access.run_with_capacity(
                         _kis_scheduler,
                         data_dir=data_dir,
-                        role="background",
                         key=("investor-trend-estimate", code),
                         endpoint=kis_access.KisRestEndpoint.INVESTOR_TREND_ESTIMATE,
                         priority="background",
