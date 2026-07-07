@@ -1,4 +1,4 @@
-import { useMemo, useRef } from 'react';
+import { useEffect, useMemo, useReducer, useRef } from 'react';
 import { useQuery } from '@tanstack/react-query';
 
 import { apiCall } from './client';
@@ -111,6 +111,13 @@ function responseIdentity(code: string | null, to: string | null, venue: LiveVen
   return `${code ?? ''}|${to ?? ''}|${venue}`;
 }
 
+/** 한 요청의 최대 캘린더일 폭. 백엔드 미캐시-일수 예산
+ * (max_fresh_dates_per_collect=12 거래일)보다 작은 ~11거래일이라 청크는
+ * 항상 예산 안에서 완결된다. 기준선(mergedRef)이 리마운트·날짜 롤오버로
+ * 사라졌을 때 수백 일 창을 통째로 재요청하던 것이 분봉 기아의
+ * 근본원인(2026-07-07 조사) — 청크 워크백으로 근절한다. */
+export const PAST_CHUNK_CALENDAR_DAYS = 15;
+
 export function planPastCandlesDelta(
   code: string | null,
   from: string | null,
@@ -152,19 +159,22 @@ export function planPastCandlesDelta(
     from < previous.from
   );
   if (!canReusePrevious) {
+    const chunkFloor = addDays(to, -(PAST_CHUNK_CALENDAR_DAYS - 1));
     return {
       enabled: true,
-      requestFrom: from,
+      requestFrom: from < chunkFloor ? chunkFloor : from,
       requestTo: to,
       canReusePrevious: false,
       servePrevious: false,
       identity,
     };
   }
+  const requestTo = addDays(previous.from, -1);
+  const chunkFloor = addDays(requestTo, -(PAST_CHUNK_CALENDAR_DAYS - 1));
   return {
     enabled: true,
-    requestFrom: from,
-    requestTo: addDays(previous.from, -1),
+    requestFrom: from < chunkFloor ? chunkFloor : from,
+    requestTo,
     canReusePrevious: true,
     servePrevious: true,
     identity,
@@ -198,6 +208,7 @@ export function useLivePastCandles(
   venue: LiveVenueOption = 'KRX',
 ) {
   const mergedRef = useRef<{ identity: string; data: LivePastCandlesResponse } | null>(null);
+  const [, bumpMergedVersion] = useReducer((x: number) => x + 1, 0);
   const identity = responseIdentity(code, to, venue);
   const previous = mergedRef.current?.identity === identity ? mergedRef.current.data : undefined;
   const previousFrom = previous?.from;
@@ -248,6 +259,15 @@ export function useLivePastCandles(
   if (data && !query.isPlaceholderData && !(query.data && hasBlockingWarnings(query.data))) {
     mergedRef.current = { identity, data };
   }
+
+  // 청크 워크백 전진 nudge: 응답이 pin된 렌더에서는 plan이 pin 이전
+  // previous로 계산돼 있다. 데이터 도착마다 리렌더를 한 번 강제해
+  // 다음 청크 쿼리키가 즉시 파생되게 한다. blocking 경고 응답은 pin되지
+  // 않아 plan이 같은 키를 유지 → React Query가 중복 요청을 흡수하므로
+  // 무한 루프가 아니다(재시도는 staleTime 60s가 담당).
+  useEffect(() => {
+    if (query.data && !query.isPlaceholderData) bumpMergedVersion();
+  }, [query.data, query.isPlaceholderData]);
 
   return {
     ...query,

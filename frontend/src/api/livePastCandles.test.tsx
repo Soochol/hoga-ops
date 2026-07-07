@@ -23,6 +23,22 @@ const RESPONSE: LivePastCandlesResponse = {
   data_warnings: [],
 };
 
+function mockApiEchoingWindow() {
+  return vi.spyOn(client, 'apiCall').mockImplementation(async (url: string) => {
+    const params = new URLSearchParams(url.split('?')[1]);
+    return {
+      code: params.get('code')!,
+      from: params.get('from')!,
+      to: params.get('to')!,
+      venue: (params.get('venue') ?? 'KRX') as LivePastCandlesResponse['venue'],
+      candles: [],
+      cached_dates: [],
+      fresh_dates: [],
+      data_warnings: [],
+    } satisfies LivePastCandlesResponse;
+  });
+}
+
 describe('useLivePastCandles', () => {
   beforeEach(() => vi.restoreAllMocks());
 
@@ -38,6 +54,37 @@ describe('useLivePastCandles', () => {
       '/api/live/past-candles?code=005930&from=20260501&to=20260502&venue=KRX',
       { signal: expect.any(AbortSignal) },
     );
+  });
+
+  it('기준선이 없으면 최신 15일 청크만 먼저 요청한다', async () => {
+    const spy = mockApiEchoingWindow();
+    const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+    renderHook(
+      () => useLivePastCandles('005930', '20260101', '20260707'),
+      { wrapper: wrap(qc) },
+    );
+    await waitFor(() => expect(spy).toHaveBeenCalled());
+    expect(spy.mock.calls[0][0]).toBe(
+      '/api/live/past-candles?code=005930&from=20260623&to=20260707&venue=KRX',
+    );
+  });
+
+  it('청크 단위로 seed from까지 자동 워크백한다', async () => {
+    const spy = mockApiEchoingWindow();
+    const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+    renderHook(
+      () => useLivePastCandles('005930', '20260601', '20260707'),
+      { wrapper: wrap(qc) },
+    );
+    await waitFor(() => expect(spy).toHaveBeenCalledTimes(3), { timeout: 3000 });
+    const urls = spy.mock.calls.map((c) => c[0]);
+    expect(urls).toEqual([
+      '/api/live/past-candles?code=005930&from=20260623&to=20260707&venue=KRX',
+      '/api/live/past-candles?code=005930&from=20260608&to=20260622&venue=KRX',
+      '/api/live/past-candles?code=005930&from=20260601&to=20260607&venue=KRX',
+    ]);
+    await new Promise((r) => setTimeout(r, 100));
+    expect(spy).toHaveBeenCalledTimes(3);
   });
 
   it('passes an AbortSignal to apiCall', async () => {
