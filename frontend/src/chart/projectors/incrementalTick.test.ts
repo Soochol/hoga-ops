@@ -82,10 +82,23 @@ describe('장중 틱 → 증분 update() 분류 (P2 win 실재 검증)', () => {
     expect(tick(axis, bundle, FILL_STRENGTH_SPEC.series[2].data, ctx)).toBe('update');
   });
 
-  it('누적 라인: mask ON이면 setData 폴백(today 미래 경매 anchor가 마지막 점 뒤에 옴 — 알려진 한계)', () => {
+  it('누적 라인: mask ON에서도 장중 값-변경 틱에 update (마지막 세그먼트 앵커·패치 억제)', () => {
     const { axis, bundle } = build(180);
     const ctx = { cumulativeEnabled: true, auctionWindowMask: true };
-    // 5/6 시리즈는 update win, 누적만 mask ON에서 setData. 의도된 동작을 잠금.
-    expect(tick(axis, bundle, FILL_STRENGTH_SPEC.series[2].data, ctx)).toBe('setData');
+    expect(tick(axis, bundle, FILL_STRENGTH_SPEC.series[2].data, ctx)).toBe('update');
+  });
+
+  it('누적 라인: mask ON에서 새 버킷 append 틱에도 update', () => {
+    const { axis, bundle } = build(180);
+    const ctx = { cumulativeEnabled: true, auctionWindowMask: true };
+    const dataFn = FILL_STRENGTH_SPEC.series[2].data;
+    const before = dataFn(bundle, axis, ctx);
+    // 다음 분봉 버킷이 새로 열리는 틱: fill_strength에 점 1개 append.
+    const fs2 = bundle.fill_strength.points.slice();
+    const last = fs2[fs2.length - 1];
+    fs2.push({ t: last.t + BUCKET, buy_qty: 700, sell_qty: 300 });
+    const nextBundle = { ...bundle, fill_strength: { points: fs2 } };
+    const after = dataFn(nextBundle, axis, ctx);
+    expect(classifyDataChange(before, after).kind).toBe('update');
   });
 });
