@@ -137,6 +137,20 @@ describe('IncrementalPeakWallSource — 배치 derive와의 동등성', () => {
     }
   });
 
+  it('touch t_ms가 wall event t_ms와 정확히 같은 경계도 배치와 동일하다 (line 172 경계)', () => {
+    const T = atKst(10, 0);
+    // 최대 벽(qty 50000)이 시각 T, 정확히 같은 시각 T에 그 가격(26000)을 때리는 체결.
+    const obs = [ob(T, [{ price: 26000, qty: 50000 }])];
+    const trades = [tradeSnap(T, [{ t_ms: T, side: 1, price: 26000, qty: 100 }])];
+    const source = new IncrementalPeakWallSource('ask');
+    const incremental = deriveDayAskPeaksIncremental(source, obs, trades, ASK_SEEDS, TODAY, null);
+    const batch = deriveDayAskPeaks(obs, trades, ASK_SEEDS, TODAY, '005930', null);
+    expect(incremental).toEqual(batch);
+    // 경계가 실제로 물리는지(판별성) 보증: T 시각 체결이 벽을 traded로 만들어 오늘 벽이 출력에 있어야 함.
+    const today = incremental.find((p) => p.date === TODAY);
+    expect(today?.qty).toBe(50000);
+  });
+
   it('backend가 null이어도(seed 폴백 경로) 동일하다', () => {
     const { obs } = genStream(5, 100);
     const source = new IncrementalPeakWallSource('ask');
