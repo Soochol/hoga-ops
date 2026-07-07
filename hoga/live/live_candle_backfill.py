@@ -69,12 +69,19 @@ class LiveMinuteCandleBackfill:
         scheduler: KisRestScheduler,
         concurrency: int = 3,
         rate_limit_cooldown_s: float = 10.0,
+        max_fresh_dates_per_collect: int = 12,
     ) -> None:
         self._data_dir = data_dir
         self._cache = cache
         self._scheduler = scheduler
         self._sem = asyncio.Semaphore(concurrency)
         self._rate_limit_cooldown_s = rate_limit_cooldown_s
+        # 한 collect 호출이 KIS에서 새로 가져올 수 있는 날짜 수 상한.
+        # 기준선을 잃은 프론트가 수백 일 창을 통째로 재요청하면(2026-07-07
+        # 실측 최대 243일/25분) foreground로 KIS 예산을 독점해 다른 종목이
+        # 굶는다. 초과분은 fetch_budget_exhausted 경고(blocking)로 유예 —
+        # 프론트가 박제하지 않으므로 다음 사이클에 이어서 받는다.
+        self._max_fresh_dates_per_collect = max(1, int(max_fresh_dates_per_collect))
         self._inflight: dict[
             tuple[KisVenue, str, str],
             asyncio.Task[tuple[list[dict], str | None]],
@@ -421,6 +428,17 @@ class LiveMinuteCandleBackfill:
                 continue
             pending.append(date_s)
 
+        deferred = 0
+        if len(pending) > self._max_fresh_dates_per_collect:
+            # 최신 날짜 우선(차트는 우측=최신부터 보인다). 유예분은 blocking
+            # 경고 → read_ahead 스킵 + 비-KRX 폴백의 covered 처리 + 프론트
+            # 비박제까지 한 사유로 일관 처리된다.
+            overflow = pending[: -self._max_fresh_dates_per_collect]
+            pending = pending[-self._max_fresh_dates_per_collect :]
+            deferred = len(overflow)
+            for date_s in overflow:
+                warnings_by_date[date_s] = _fetch_budget_exhausted_warning(date_s)
+
         blocked = asyncio.Event()
 
         async def one(date_s: str) -> None:
@@ -533,7 +551,7 @@ class LiveMinuteCandleBackfill:
         if perf_debug.enabled():
             log.warning(
                 "hoga_perf past_candles_collect code=%s venue=%s from=%s to=%s "
-                "days=%d pending_dates=%d cached_dates=%d fresh_dates=%d candles=%d "
+                "days=%d pending_dates=%d deferred_dates=%d cached_dates=%d fresh_dates=%d candles=%d "
                 "warnings=%d rate_limited=%s duration_ms=%.1f",
                 code,
                 venue,
@@ -541,6 +559,7 @@ class LiveMinuteCandleBackfill:
                 too.strftime("%Y%m%d"),
                 (too - frm).days + 1,
                 len(pending),
+                deferred,
                 len(result.cached_dates),
                 len(result.fresh_dates),
                 len(result.candles),
@@ -792,6 +811,7 @@ def _merge_minute_fallback(
 def _fallback_blocking_warning_dates(warnings: list[dict]) -> set[str]:
     blocking_reasons = {
         "capacity_overloaded",
+        "fetch_budget_exhausted",
         "kis_api_error",
         "kis_rate_limit",
         "rate_limit_aborted",
@@ -808,6 +828,14 @@ def _capacity_overloaded_warning(date_s: str) -> dict:
         "date": date_s,
         "reason": "capacity_overloaded",
         "msg": "KIS capacity scheduler pending request limit reached",
+    }
+
+
+def _fetch_budget_exhausted_warning(date_s: str) -> dict:
+    return {
+        "date": date_s,
+        "reason": "fetch_budget_exhausted",
+        "msg": "uncached-date fetch budget exhausted for this request; older dates deferred",
     }
 
 
