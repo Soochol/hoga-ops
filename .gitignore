@@ -1,5 +1,6 @@
 .cookie
 data/
+.tmp/
 __pycache__/
 *.pyc
 .venv/

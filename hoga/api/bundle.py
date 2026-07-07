@@ -49,6 +49,7 @@ from hoga.api.models import (
     validate_bucket_ms,
 )
 from hoga.api.past_indicators_cache import CACHE_MISS
+from hoga.api.peak_slice_guard import GUARD as PEAK_SLICE_GUARD
 from hoga.api.queries import QueryEngine, StockDateNotFound
 from hoga.api.sources import ordered_sources, resolve_source_result
 from hoga.api.timeenc import (
@@ -864,13 +865,22 @@ def build_ask_bid_peak_slices(
             )
         return ask, bid
 
-    ask_row, bid_row = snapshots_tbl.query_day_ask_bid_peak_dual(
-        engine.conn,
-        path=path_obj,
-        trades_path=trades_path,
-        bucket_ms=bucket_ms,
-        session_open_ms=session_open_ms,
-        session_close_ms=session_close_ms,
+    # The dual-peak query is the process's heaviest read (inequality join +
+    # unbounded windows, ~17GB/155s on a pathological day). `/api/range` is a
+    # sync route on FastAPI's thread pool and today's peak is uncached
+    # (ADR-0043), so concurrent sidecar polls would run this in parallel over a
+    # shared soft `memory_limit` and OOM. Guard bounds concurrency + collapses
+    # identical concurrent computes. See hoga/api/peak_slice_guard.py.
+    ask_row, bid_row = PEAK_SLICE_GUARD.run(
+        (code, date, source, bucket_ms),
+        lambda: snapshots_tbl.query_day_ask_bid_peak_dual(
+            engine.conn,
+            path=path_obj,
+            trades_path=trades_path,
+            bucket_ms=bucket_ms,
+            session_open_ms=session_open_ms,
+            session_close_ms=session_close_ms,
+        ),
     )
     if ask_row is not None and not ask_cached:
         ask = _ask_peak_from_dual_row(date, ask_row)

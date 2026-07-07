@@ -15,6 +15,7 @@ from hoga.api.models import StockDate
 from hoga.api.past_indicators_cache import PastIndicatorsCache
 from hoga.api.sources import resolve_source_result
 from hoga.api.timeenc import hhmmssms_to_unix_ms
+from hoga.duck import connect_bounded
 from hoga.tables import snapshots
 
 
@@ -61,7 +62,7 @@ class QueryEngine:
 
     def __init__(self, data_dir: Path) -> None:
         self.data_dir = data_dir
-        self._conn = duckdb.connect(database=":memory:", read_only=False)
+        self._conn = connect_bounded()
         # Per-call mtime-validated cache for list_stock_dates. See
         # _CachedStockDate docstring; keyed by (date, code).
         self._stock_date_cache: dict[tuple[str, str], _CachedStockDate] = {}

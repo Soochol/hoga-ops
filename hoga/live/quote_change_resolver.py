@@ -6,8 +6,7 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Literal
 
-import duckdb
-
+from hoga.duck import connect_bounded
 from hoga.live.kis_client import KisQuote
 
 ChangePctSource = Literal[
@@ -180,7 +179,7 @@ class QuoteChangeResolver:
         if self._adjusted_daily_path is None or not self._adjusted_daily_path.exists():
             return None
         try:
-            with duckdb.connect(":memory:") as con:
+            with connect_bounded() as con:
                 date_guard = "AND date < ?" if today is not None else ""
                 params: list[object] = [code]
                 if today is not None:

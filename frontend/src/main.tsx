@@ -22,7 +22,20 @@ if (import.meta.hot) {
   });
 }
 
-const qc = new QueryClient({ defaultOptions: { queries: { staleTime: 60_000, retry: 1 } } });
+// refetchOnWindowFocus/Reconnect default to true — a tab refocus or network
+// blip fires every active /live poll at once, and each sidecar refetch can
+// launch the heavy peak query on the backend. Disabling both cuts that burst
+// at the source (the interval polls still keep data fresh).
+const qc = new QueryClient({
+  defaultOptions: {
+    queries: {
+      staleTime: 60_000,
+      retry: 1,
+      refetchOnWindowFocus: false,
+      refetchOnReconnect: false,
+    },
+  },
+});
 
 createRoot(document.getElementById('root')!).render(
   <QueryClientProvider client={qc}>

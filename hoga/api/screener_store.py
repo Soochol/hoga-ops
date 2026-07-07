@@ -8,10 +8,10 @@ import time
 from dataclasses import dataclass
 from pathlib import Path
 
-import duckdb
 from pydantic import ValidationError
 
 from hoga.api._atomic_write import atomic_write_json, atomic_write_parquet_df
+from hoga.duck import connect_bounded
 
 log = logging.getLogger(__name__)
 
@@ -25,7 +25,7 @@ _DAILY_COLS = {
 def seed_daily_from_csv(csv_path: Path, out_path: Path) -> int:
     """CSV(원주가 일봉) → daily_unadjusted.parquet. code VARCHAR 강제, count 반환."""
     out_path.parent.mkdir(parents=True, exist_ok=True)
-    con = duckdb.connect(":memory:")
+    con = connect_bounded()
     csv_s = str(csv_path).replace("'", "''")
     out_s = str(out_path).replace("'", "''")
     con.execute(
@@ -49,7 +49,7 @@ def export_db_to_csv(csv_path: Path, *, container: str = "tradingview-db",
 def seed_stocks_from_csv(csv_path: Path, out_path: Path) -> int:
     """CSV(code,name,market,is_etf,is_halted) → stocks.parquet. code VARCHAR 강제."""
     out_path.parent.mkdir(parents=True, exist_ok=True)
-    con = duckdb.connect(":memory:")
+    con = connect_bounded()
     csv_s = str(csv_path).replace("'", "''")
     out_s = str(out_path).replace("'", "''")
     con.execute(
@@ -165,7 +165,7 @@ def last_raw_date(unadjusted_path: Path) -> str | None:
     """아카이브 최신 거래일(YYYYMMDD) 또는 None(파일 없음)."""
     if not unadjusted_path.exists():
         return None
-    r = duckdb.connect(":memory:").execute(
+    r = connect_bounded().execute(
         f"SELECT max(date) FROM '{unadjusted_path}'").fetchone()[0]
     return r.strftime("%Y%m%d") if r else None
 

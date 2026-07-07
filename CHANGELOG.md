@@ -3,6 +3,13 @@
 All notable changes to this project are documented here.
 The format follows a 4-digit `MAJOR.MINOR.PATCH.MICRO` scheme.
 
+## [0.12.31.0] - 2026-07-07
+
+### Fixed
+- **/live 서버 OOM 완화**: 매도/매수 최대벽(peak wall) 쿼리가 sidecar 폴링·refetch 버스트로 병렬 누적되어 워커가 메모리 폭주로 죽던 문제를, 무거운 계산에 프로세스 전역 세마포어 + 키별 single-flight를 걸어 완화했다(8-병렬 실측 peak RSS 28.3GB→6.8GB). 상세는 ADR-0085.
+- **DuckDB 리소스 상한 도입**: 모든 in-process DuckDB 연결을 `hoga.duck.connect_bounded()` 경유로 바꿔 `memory_limit`(기본 8 GiB)·`temp_directory`(데이터 디렉터리)·`max_temp_directory_size`를 강제했다. 상한 없는 기본값이 356GB 스필을 만들던 것을 막는다.
+- **프론트 refetch 버스트 차단**: 탭 재포커스·네트워크 재연결 시 활성 `/live` 폴링이 일제히 재발화하던 것을 `refetchOnWindowFocus/Reconnect=false`로 막았다.
+
 ## [0.12.30.1] - 2026-07-07
 
 ### Fixed
