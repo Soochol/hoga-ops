@@ -27,8 +27,12 @@ _KST = timezone(timedelta(hours=9))
 _WEEKEND_START_WEEKDAY = 5
 log = logging.getLogger(__name__)
 
-# read_ahead 선행 워밍 폭 상한(캘린더일). 프론트 팬 스텝 stepChunkDays(5)와
-# 청크 워크백 PAST_CHUNK_CALENDAR_DAYS(15)의 superset이면 gap이 없다.
+# read_ahead 선행 워밍 폭 상한(캘린더일). 하한 결합은 프론트 팬 스텝
+# stepChunkDays(minute=5캘린더일, frontend/src/live/liveDateTime.ts)다 —
+# 워밍 폭이 이보다 크면 다음 좌측 팬 청크가 항상 캐시 히트다. 5가 아니라
+# 15로 둔 건 헤드룸이다: STEP_TRADING_DAYS가 커져도 gap이 안 생기고,
+# 프론트 콜드로드 청크 PAST_CHUNK_CALENDAR_DAYS(=15, 같은 브랜치 Task 4가
+# frontend/src/api/livePastCandles.ts에 추가)를 정확히 선워밍한다.
 # 무제한이면 거대 창 요청이 같은 폭의 워밍을 또 낳아(2026-07-07: 243일→
 # +243일) KIS 예산을 자기증폭적으로 태운다.
 _READ_AHEAD_MAX_SPAN_DAYS = 15
