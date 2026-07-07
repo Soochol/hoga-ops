@@ -1,7 +1,7 @@
 # 0090 — 오늘자 지표 short-TTL 캐시 (ADR-0043 보완)
 
-**Status:** proposed (2026-07-07) — **승인 대기**. 코드는 구현·머지 준비 완료이나 ADR-0043
-"오늘 무캐시" 계약을 바꾸는 정책 변경이므로 인간 승인 후 accepted 전환 + 머지.
+**Status:** accepted (2026-07-07). ADR-0043 "오늘 무캐시" 계약을 보완하는 정책 변경으로,
+사용자 승인(PR #444 main 머지 지시)을 받아 accepted 전환.
 
 **Related:**
 - ADR-0043 — Today indicators recompute live, never persisted (이 ADR이 보완하는 계약)
