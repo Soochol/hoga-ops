@@ -140,11 +140,17 @@ class _TokenBucket:
         self,
         rate: float,
         *,
+        capacity: float | None = None,
         yield_s: float = _FG_YIELD_S,
         bg_max_yield_s: float = _BG_MAX_YIELD_S,
     ):
         if rate <= 0:
             raise ValueError("rate must be positive")
+        # capacity = burst 상한(버킷 최대 토큰). None이면 기존 동작(= rate, 가득
+        # 차서 시작). rate보다 작게 주면 유휴→포화 전이의 첫 1초 송신이
+        # 'capacity + rate 리필'로 묶여 KIS 고정윈도 한도를 넘지 않는다.
+        if capacity is not None and capacity <= 0:
+            raise ValueError("capacity must be positive")
         # yield_s는 양보 중 재확인 간격이자 sleep 길이 — 0/음수면 양보 모드가
         # CPU busy-spin(라이브락)이 된다. bg_max_yield_s는 기아 백스톱 상한이라
         # 음수면 background가 즉시 강제 획득해 우선순위 자체가 무력화된다.
@@ -153,7 +159,8 @@ class _TokenBucket:
         if bg_max_yield_s < 0:
             raise ValueError("bg_max_yield_s must be non-negative")
         self._rate = float(rate)
-        self._tokens = float(rate)
+        self._capacity = float(capacity if capacity is not None else rate)
+        self._tokens = min(self._rate, self._capacity)
         self._last = time.monotonic()
         self._lock = asyncio.Lock()
         self._fg_waiters = 0
@@ -177,7 +184,7 @@ class _TokenBucket:
                 async with self._lock:
                     now = time.monotonic()
                     self._tokens = min(
-                        self._rate,
+                        self._capacity,
                         self._tokens + (now - self._last) * self._rate,
                     )
                     self._last = now
@@ -513,6 +520,7 @@ class KisClient:
         credentials: KisCredentials,
         token_provider: "KisTokenProvider",
         *,
+        rate_limiter: "_TokenBucket | None" = None,
         _transport: Optional[httpx.AsyncBaseTransport] = None,
         _rate_limit_per_sec: float = _RATE_LIMIT_CALLS_PER_SEC,
         _rate_limit_backoff: tuple[float, ...] = _RATE_LIMIT_BACKOFF,
@@ -526,7 +534,15 @@ class KisClient:
         # Single rate limiter shared by all data calls — `_get` acquires
         # one token per HTTP request. Token issuance lives in the injected
         # KisTokenProvider (ADR-0050 amendment) and bypasses this bucket.
-        self._rate_limiter = _TokenBucket(rate=_rate_limit_per_sec)
+        # ``rate_limiter`` 주입 시 그 버킷을 그대로 쓴다: KIS 유량제한은 '명의
+        # 단위'라 같은 명의의 다계좌 클라이언트는 하나의 전역 버킷을 공유해야
+        # 합산 송신이 한도를 넘지 않는다(kis_runtime._shared_rate_limiter).
+        # 미주입이면 기존처럼 자기 버킷(단독 클라이언트/테스트 backcompat).
+        self._rate_limiter = (
+            rate_limiter
+            if rate_limiter is not None
+            else _TokenBucket(rate=_rate_limit_per_sec)
+        )
         # Tests pass (0.0, 0.0, 0.0) here to exercise the retry shape without
         # paying the real wall-clock sleeps; production callers leave the
         # default. See ADR-0050.

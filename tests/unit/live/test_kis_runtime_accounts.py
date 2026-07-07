@@ -73,6 +73,21 @@ def test_for_account_distinct_clients_per_account(tmp_path, monkeypatch):
     assert kis_runtime.ensure_kis_client_for_account(0, tmp_path) is c0
 
 
+def test_for_account_clients_share_global_rate_limiter(tmp_path, monkeypatch):
+    """같은 명의의 계좌들은 KIS 유량제한을 명의 단위로 공유한다 — 런타임이 만드는
+    모든 KisClient는 하나의 전역 버킷을 써야 합산 송신이 한도(~20/s) 아래로 묶인다
+    (/investigate 2026-07-07: 3계좌 × 15/s = 45/s → ~47% EGW00201)."""
+    monkeypatch.setattr(kis_runtime, "_global_rate_limiter", None)  # 전역 버킷 격리
+    monkeypatch.setenv("KIS_APP_KEY", "k0")
+    monkeypatch.setenv("KIS_APP_SECRET", "s0")
+    monkeypatch.setenv("KIS_APP_KEY_2", "k1")
+    monkeypatch.setenv("KIS_APP_SECRET_2", "s1")
+    c0 = kis_runtime.ensure_kis_client_for_account(0, tmp_path)
+    c1 = kis_runtime.ensure_kis_client_for_account(1, tmp_path)
+    assert c0 is not None and c1 is not None and c0 is not c1
+    assert c0._rate_limiter is c1._rate_limiter, "계좌별 독립 버킷이면 명의 한도 초과"
+
+
 def test_for_account_missing_returns_none(tmp_path, monkeypatch):
     monkeypatch.setenv("KIS_APP_KEY", "k0")
     monkeypatch.setenv("KIS_APP_SECRET", "s0")
