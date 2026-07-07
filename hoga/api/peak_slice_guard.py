@@ -22,6 +22,10 @@ staleness and honours the "today is never cached" contract of
 ``memory_limit`` is soft, so a single future day worse than ``000660`` could
 still exceed one-query RSS. The linear-sweep rewrite of the query removes that
 ceiling.
+
+This module also hosts ``RANGE_PROFILE_GUARD``, a separate instance guarding the
+``mode=full`` range volume profile's repeated full-parquet scans, tunable via
+``HOGA_RANGE_PROFILE_CONCURRENCY``.
 """
 from __future__ import annotations
 

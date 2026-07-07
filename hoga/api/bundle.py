@@ -50,6 +50,7 @@ from hoga.api.models import (
 )
 from hoga.api.past_indicators_cache import CACHE_MISS
 from hoga.api.peak_slice_guard import GUARD as PEAK_SLICE_GUARD
+from hoga.api.peak_slice_guard import RANGE_PROFILE_GUARD
 from hoga.api.queries import QueryEngine, StockDateNotFound
 from hoga.api.sources import ordered_sources, resolve_source_result
 from hoga.api.timeenc import (
@@ -501,6 +502,9 @@ def build_volume_profile_range(
     applied to the unioned price range. Uses DuckDB's multi-file read_parquet
     via a list parameter — no f-string SQL for the path (matches bundle.py:145
     convention; see plan-eng-review D3).
+
+    2026-07-07 기준 mode=full은 프론트엔드가 호출하지 않는 dead path지만 공개 API로
+    남아 있어, RANGE_PROFILE_GUARD(동시성 1 + single-flight)로 스캔 점유를 격리한다.
     """
     if not dates_with_sources:
         return VolumeProfile(bin_count=0, price_min=0, price_max=0, bin_width=0, bins=[])
@@ -522,7 +526,19 @@ def build_volume_profile_range(
     # owns the path layout + existence filtering above, maps the no-trades
     # signal (None) to the empty-profile wire shape, and expands the sparse
     # per-bin rows into the dense VolumeProfileBin array (a models concern).
-    binning = trades_tbl.query_volume_profile_range(engine.conn, paths=paths, vp_bins=vp_bins)
+    t0 = perf_debug.now()
+    binning = RANGE_PROFILE_GUARD.run(
+        ("vp_range", code, tuple(paths), vp_bins),
+        lambda: trades_tbl.query_volume_profile_range(engine.conn, paths=paths, vp_bins=vp_bins),
+    )
+    if perf_debug.enabled():
+        log.warning(
+            "hoga_perf vp_range status=ok code=%s dates=%d vp_bins=%d duration_ms=%.1f",
+            code,
+            len(paths),
+            vp_bins,
+            perf_debug.elapsed_ms(t0),
+        )
     if binning is None:
         return VolumeProfile(bin_count=0, price_min=0, price_max=0, bin_width=0, bins=[])
 
