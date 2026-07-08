@@ -1,7 +1,6 @@
-import { useId } from 'react';
-import { QuoteSortIcon } from '../rightrail/QuoteSortIcon';
+import { SortCycleButton } from '../ui/SortCycleButton';
+import type { SortDirection } from '../ui/SortDirectionIcon';
 import type { ScreenerResultSortMode } from './sortResults';
-import type { QuoteSortMode } from '../rightrail/quoteSort';
 
 interface Props {
   mode: ScreenerResultSortMode;
@@ -21,9 +20,9 @@ function nextMode(mode: ScreenerResultSortMode): ScreenerResultSortMode {
   return 'default';
 }
 
-function iconMode(mode: ScreenerResultSortMode): QuoteSortMode {
-  if (!isChangePctMode(mode)) return 'default';
-  return mode.direction === 'asc' ? 'change_pct_asc' : 'change_pct_desc';
+function sortDirection(mode: ScreenerResultSortMode): SortDirection {
+  if (!isChangePctMode(mode)) return 'none';
+  return mode.direction === 'asc' ? 'asc' : 'desc';
 }
 
 function sortDescription(mode: ScreenerResultSortMode): string {
@@ -33,28 +32,13 @@ function sortDescription(mode: ScreenerResultSortMode): string {
 }
 
 export function ScreenerResultSortControl({ mode, onChange, disabled = false }: Props) {
-  const descriptionId = useId();
-  const description = sortDescription(mode);
-
   return (
-    <button
-      type="button"
-      aria-label="스크리너 결과 정렬"
-      aria-describedby={descriptionId}
-      title={description}
+    <SortCycleButton
+      direction={sortDirection(mode)}
+      label="스크리너 결과 정렬"
+      description={sortDescription(mode)}
       disabled={disabled}
       onClick={() => onChange(nextMode(mode))}
-      className={`grid h-6 w-6 place-items-center rounded-md border border-border bg-bg-input disabled:cursor-not-allowed disabled:opacity-50 ${
-        iconMode(mode) === 'default' ? 'text-fg-dim hover:bg-bg-input-hover hover:text-fg' : 'bg-tint-selection text-accent'
-      }`}
-    >
-      <QuoteSortIcon mode={iconMode(mode)} />
-      <span
-        id={descriptionId}
-        style={{ position: 'absolute', width: 1, height: 1, padding: 0, margin: -1, overflow: 'hidden', clip: 'rect(0, 0, 0, 0)', whiteSpace: 'nowrap', border: 0 }}
-      >
-        {description}
-      </span>
-    </button>
+    />
   );
 }

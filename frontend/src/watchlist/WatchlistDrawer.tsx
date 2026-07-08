@@ -145,14 +145,13 @@ function GroupHeader(props: {
     // 헤더(z-10)가 이 헤더의 메뉴(z-30, 헤더 스태킹 컨텍스트 내부)를 덮지 않게 한다.
     <div className={`group sticky top-0 ${menuOpen ? 'z-20' : 'z-10'} flex items-center gap-1.5 px-3 py-1.5 text-sm font-semibold text-fg-dim bg-bg-card hover:bg-bg-input-hover`}>
       {props.dragHandle && (
-        // 그룹 드래그 핸들 — hover/focus 시 노출(⋯ 메뉴와 같은 관용구), 포인터 전용.
-        // aria-hidden + listeners-only(편집 모달 ⠿ 행 핸들과 동일). 헤더 클릭(토글)과
-        // 충돌하지 않게 핸들에만 listeners를 건다.
+        // 그룹 드래그 핸들 — 항시 표시(dim), 포인터 전용. aria-hidden + listeners-only
+        // (편집 모달 ⠿ 행 핸들과 동일). 헤더 클릭(토글)과 충돌하지 않게 핸들에만 listeners.
         <span ref={props.dragHandle.setActivatorNodeRef}
           {...props.dragHandle.attributes}
           {...props.dragHandle.listeners}
           aria-hidden data-testid="group-drag-handle"
-          className="cursor-grab select-none touch-none px-1 leading-none text-fg-dimmer opacity-0 group-hover:opacity-100 group-focus-within:opacity-100">
+          className="cursor-grab select-none touch-none px-1 leading-none text-fg-dimmer">
           ⠿
         </span>
       )}
@@ -178,7 +177,7 @@ function GroupHeader(props: {
           // 설명은 있으나 포인터 사용자엔 안 보임). aria-describedby 와 같은 문구.
           title={quoteSortModeDescription(props.sortMode)}
           onClick={cycleSortMode}
-          className={`opacity-0 group-hover:opacity-100 group-focus-within:opacity-100 px-1 leading-none hover:text-fg ${props.sortMode === 'default' ? 'text-fg-dimmer' : 'text-accent'}`}>
+          className={`px-1 leading-none hover:text-fg ${props.sortMode === 'default' ? 'text-fg-dimmer' : 'text-accent'}`}>
           <QuoteSortIcon mode={props.sortMode} />
           <span id={sortDescriptionId}
             style={{ position: 'absolute', width: 1, height: 1, padding: 0, margin: -1, overflow: 'hidden', clip: 'rect(0, 0, 0, 0)', whiteSpace: 'nowrap', border: 0 }}>
@@ -188,13 +187,12 @@ function GroupHeader(props: {
       )}
       {props.onRename && (
         <div className="relative" ref={menuRef}>
-          {/* opacity(레이아웃 유지)로 숨겨 Tab 포커스가 닿게 한다 — display:none이면
-              키보드 사용자가 접근 불가. group-focus-within으로 헤더 내 포커스 시 노출,
-              메뉴가 열려 있는 동안엔 계속 보여 앵커를 유지한다(마우스가 떠나도). */}
+          {/* 그룹 헤더 도구(드래그·정렬·⋯)는 호버 없이 항시 표시(사용자 요청) —
+              dim(text-fg-dimmer)으로 밀도는 유지하되 발견성을 높인다. */}
           <button type="button" aria-label={`${props.label} 그룹 메뉴`}
             aria-haspopup="menu" aria-expanded={menuOpen}
             onClick={() => setMenuOpen((v) => !v)}
-            className={`${menuOpen ? 'opacity-100' : 'opacity-0 group-hover:opacity-100 group-focus-within:opacity-100'} px-1 leading-none hover:text-fg`}>
+            className="px-1 leading-none text-fg-dimmer hover:text-fg">
             ⋯
           </button>
           {menuOpen && (
