@@ -1,8 +1,16 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { renderHook, waitFor } from '@testing-library/react';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
-import { hasBlockingWarnings, useLivePastCandles, withPastCandlesTimeout, type LivePastCandlesResponse } from './livePastCandles';
+import {
+  hasBlockingWarnings,
+  pastCandlesRefetchInterval,
+  pastCandlesStaleTime,
+  useLivePastCandles,
+  withPastCandlesTimeout,
+  type LivePastCandlesResponse,
+} from './livePastCandles';
 import * as client from './client';
+import { liveVenueRefetchInterval } from '../live/liveVenuePolicy';
 
 function wrap(qc: QueryClient) {
   return ({ children }: { children: React.ReactNode }) => (
@@ -22,6 +30,34 @@ const RESPONSE: LivePastCandlesResponse = {
   fresh_dates: ['20260501', '20260502'],
   data_warnings: [],
 };
+
+const BLOCKED: LivePastCandlesResponse = {
+  ...RESPONSE,
+  data_warnings: [{ date: '20260501', reason: 'capacity_overloaded', msg: 'x' }],
+};
+
+describe('past-candles freshness gating (range.ts parity)', () => {
+  it('freezes past-only chunks, keeps today head chunk stale-checked', () => {
+    // requestTo < todayKst → immutable → Infinity
+    expect(pastCandlesStaleTime('20260502', '20260610')).toBe(Infinity);
+    // requestTo === todayKst → today head → 60s
+    expect(pastCandlesStaleTime('20260610', '20260610')).toBe(60_000);
+    // unknown todayKst (study/historical) → treat as past-only → frozen
+    expect(pastCandlesStaleTime('20260502', null)).toBe(Infinity);
+  });
+
+  it('past-only chunk does not poll unless it carries a blocking warning', () => {
+    // clean past-only → no poll (deterministic — never touches venue policy)
+    expect(pastCandlesRefetchInterval(RESPONSE, '20260502', '20260610', 'KRX')).toBe(false);
+    // blocking past-only + today head both delegate to venue policy. Compare
+    // against liveVenueRefetchInterval directly to stay clock-independent
+    // (its value depends on session-now).
+    expect(pastCandlesRefetchInterval(BLOCKED, '20260502', '20260610', 'KRX'))
+      .toBe(liveVenueRefetchInterval('KRX'));
+    expect(pastCandlesRefetchInterval(RESPONSE, '20260610', '20260610', 'NXT'))
+      .toBe(liveVenueRefetchInterval('NXT'));
+  });
+});
 
 function mockApiEchoingWindow() {
   return vi.spyOn(client, 'apiCall').mockImplementation(async (url: string) => {

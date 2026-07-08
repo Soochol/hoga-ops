@@ -864,7 +864,9 @@ describe('useLiveBundle', () => {
   it('clamps pastFrom to 249 days before today when historicalFromDate is older', () => {
     useLivePageStore.setState({ historicalFromDate: '20250101' });
     renderHook(() => useLiveBundle('005930', '1m', '20260527', liveFixture), { wrapper });
-    expect(livePastCandlesSpy).toHaveBeenCalledWith('005930', '20250920', '20260527', 'KRX');
+    // 5th arg = todayKst (=== minutePastTo === today), gating chunk freshness:
+    // the today head chunk polls; past-only walk-back chunks freeze.
+    expect(livePastCandlesSpy).toHaveBeenCalledWith('005930', '20250920', '20260527', 'KRX', '20260527');
     // 5th arg = priceRange (undefined here); 6th = todayKst, which drives the
     // 5-min refetch that advances pastMaxQrT (review C1). minutePastTo === today
     // so todayKst === to === '20260527'.

@@ -326,6 +326,7 @@ export function useLiveBundle(
     enableMinute ? minutePastFrom : null,
     enableMinute ? minutePastTo : null,
     venue,
+    todayKstYyyymmdd,
   );
 
   // KIS daily past-candles — only enabled for D/W/M timeframes (ADR-0048).
