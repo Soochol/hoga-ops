@@ -6,6 +6,7 @@ import { installFakeWebSocket, fakeSockets } from '../test/fakeWebSocket';
 import { __resetForTests as resetWs } from './ws';
 import * as client from './client';
 import { subscribeToCaptureEvents, useEventStream } from './eventStream';
+import { useLivePromotionStore } from '../state/livePromotion';
 import type { PushEvent } from './types';
 
 beforeEach(() => {
@@ -44,6 +45,25 @@ describe('subscribeToCaptureEvents', () => {
     const sock = await connect();
     sock.message({ ch: 'event', data: { type: 'inventory_added', code: '005930', date: '20260520' } });
     expect(events).toHaveLength(0);
+  });
+});
+
+describe('useEventStream promotion handler', () => {
+  it('stamps the promotion + invalidates the code range on promotion_completed', async () => {
+    useLivePromotionStore.setState({ byCode: {} });
+    const qc = new QueryClient();
+    const spy = vi.spyOn(qc, 'invalidateQueries');
+    const wrapper = ({ children }: { children: React.ReactNode }) =>
+      React.createElement(QueryClientProvider, { client: qc }, children);
+    renderHook(() => useEventStream(), { wrapper });
+    const sock = await connect();
+    sock.message({ ch: 'event', data: { type: 'promotion_completed', code: '005930', date: '20260708' } });
+    await new Promise((r) => setTimeout(r, 0));
+    // per-code stamp advanced → delta hooks recompute refreshDue
+    expect(useLivePromotionStore.getState().byCode['005930']).toBeGreaterThan(0);
+    // simple useRange consumers invalidated via predicate on ['range', code]
+    const calls = spy.mock.calls.map((c) => c[0]);
+    expect(calls.some((c: any) => typeof c?.predicate === 'function')).toBe(true);
   });
 });
 
