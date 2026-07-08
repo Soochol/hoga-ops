@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+from pathlib import Path
 
 import typer
 import uvicorn
@@ -91,6 +92,58 @@ def serve(port: int = typer.Option(8000, "--port")) -> None:
         port=port,
         reload=False,
     )
+
+
+def _cache_observe_default_out() -> Path:
+    return resolve_data_dir() / "cache-observe.jsonl"
+
+
+_OUT_HELP = "JSONL trail (default: <data_dir>/cache-observe.jsonl)"
+
+
+@app.command(name="cache-observe")
+def cache_observe(
+    url: str = typer.Option("http://127.0.0.1:8000", "--url", help="hoga server base URL"),
+    interval: float = typer.Option(300.0, "--interval", help="seconds between samples"),
+    out: Path | None = typer.Option(None, "--out", help=_OUT_HELP),
+    count: int | None = typer.Option(None, "--count", help="stop after N samples (default: ∞)"),
+) -> None:
+    """Poll /api/live/status and append cache_stats to a JSONL trail.
+
+    Snapshots the PR-1 cache observability counters over a real /live session so
+    the deferred cache follow-ups can be gated on data. Ctrl-C to stop; read the
+    trail with `hoga cache-report`.
+    """
+    from hoga.util.cache_observe import poll_loop  # noqa: PLC0415 — CLI-local import
+
+    out_path = out or _cache_observe_default_out()
+
+    def _on_sample(record, err) -> None:
+        if err is not None:
+            console.print(f"[yellow]fetch failed (skipped): {err}[/yellow]")
+            return
+        cs = record.get("cache_stats") or {}
+        fresh = (cs.get("minute_backfill") or {}).get("fresh_past_fetches")
+        console.print(f"[green]sample[/green] fresh_past_fetches={fresh} -> {out_path}")
+
+    scope = "" if count is None else f" ×{count}"
+    console.print(f"polling {url}{scope} every {interval:g}s → {out_path}")
+    try:
+        written = poll_loop(url, out_path, interval_s=interval, count=count, on_sample=_on_sample)
+    except KeyboardInterrupt:
+        written = None  # loop already returns on Ctrl-C; this is the outer guard
+    console.print(f"[green]done[/green] wrote {written if written is not None else '?'} samples")
+
+
+@app.command(name="cache-report")
+def cache_report(
+    in_: Path | None = typer.Option(None, "--in", help=_OUT_HELP),
+) -> None:
+    """Summarize a cache-observe trail into follow-up gate metrics."""
+    from hoga.util.cache_observe import format_report, read_records, summarize  # noqa: PLC0415
+
+    path = in_ or _cache_observe_default_out()
+    console.print(format_report(summarize(read_records(path))))
 
 
 @app.command(name="screener-seed")
