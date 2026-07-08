@@ -18,6 +18,8 @@ import { useSavedScreeners } from './useSavedScreeners';
 import { useScreener } from './useScreener';
 import { useScreenerStatus } from './useScreenerStatus';
 import { useScreenerUpdate } from './useScreenerUpdate';
+import { useScreenerUpdateFeedback } from './useScreenerUpdateSync';
+import { ScreenerUpdateProgress } from './ScreenerUpdateProgress';
 import { StalenessChip } from './StalenessChip';
 import type { LiveOpenDisposition } from '../live/liveActivation';
 import { QuoteRow } from '../rightrail/QuoteRow';
@@ -91,7 +93,7 @@ export function ScreenerDrawer() {
   const setUpdatePending = useScreenerPanelStore((s) => s.setUpdatePending);
   const setUpdateSuccess = useScreenerPanelStore((s) => s.setUpdateSuccess);
   const setUpdateError = useScreenerPanelStore((s) => s.setUpdateError);
-  const markLastScanDataStale = useScreenerPanelStore((s) => s.markLastScanDataStale);
+  const updateFeedback = useScreenerUpdateFeedback((s) => s.feedback);
   const clearExpiredScan = useScreenerPanelStore((s) => s.clearExpiredScan);
   const updateState = useScreenerPanelStore((s) => s.updateState);
 
@@ -157,15 +159,20 @@ export function ScreenerDrawer() {
     setSortMode(mode);
   };
 
-  const updatePending = updateState.status === 'pending' || update.isPending;
+  // 서버-소유 job 진행(status.updating)이 진실 — 다른 서피스/스케줄러발 갱신도 잡는다.
+  const serverUpdating = status?.updating != null;
+  const updatePending = updateState.status === 'pending' || update.isPending || serverUpdating;
   const updateErrorMessage = updateState.status === 'error' ? updateState.message : null;
   const runUpdate = () => {
     const startedAtMs = Date.now();
     setUpdatePending(startedAtMs);
     update.mutate(undefined, {
-      onSuccess: () => {
-        setUpdateSuccess(Date.now());
-        markLastScanDataStale();
+      onSuccess: (res) => {
+        // no-op(skip reason)만 즉시 settle. running 은 pending 유지 —
+        // screener_update_finished 이벤트가 sync 훅에서 앱 전역으로 settle 하고,
+        // dataStale 도 실제 updated>0 일 때만 이벤트 주도로 마킹된다(무갭 갱신의
+        // 거짓 '데이터 갱신됨' 힌트 제거).
+        if (!res.running) setUpdateSuccess(Date.now());
       },
       onError: (error) => {
         setUpdateError(error instanceof Error && error.message ? error.message : '갱신 실패', Date.now());
@@ -248,8 +255,21 @@ export function ScreenerDrawer() {
             {updatePending ? '갱신 중…' : '갱신'}
           </ToolbarButton>
         </div>
+        {serverUpdating && (
+          <div className="flex items-center">
+            <ScreenerUpdateProgress updating={status?.updating} />
+          </div>
+        )}
         {updateErrorMessage && (
           <RailState tone="error" className="p-0">갱신 실패 — {updateErrorMessage}</RailState>
+        )}
+        {updateFeedback && (
+          <RailState
+            tone={updateFeedback.tone === 'info' ? undefined : updateFeedback.tone}
+            className="p-0"
+          >
+            {updateFeedback.message}
+          </RailState>
         )}
         {notSeeded && (
           <RailState tone="warn" className="p-0">시드 필요 — 운영자 CLI로 시드 후 조회하세요</RailState>

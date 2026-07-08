@@ -54,12 +54,30 @@ export interface ScreenerResponse {
   warnings: string[];
 }
 
+/** 진행 중인 갱신 job — WS 이벤트가 없어도(재진입/재연결) 서버가 복원해 준다. */
+export interface ScreenerUpdating {
+  done: number;
+  total: number;
+  started_ms: number;
+}
+
 export interface ScreenerStatus {
   status: string;
   last_raw_date?: string;
   universe_size?: number;
   days_behind?: number | null;
+  updating?: ScreenerUpdating | null;
 }
+
+export type ScreenerUpdateSkipReason =
+  | 'no_gap'
+  | 'not_seeded'
+  | 'kis_creds_missing'
+  | 'calendar_unavailable';
+
+export type ScreenerUpdateResponse =
+  | { running: true; done: number; total: number }
+  | { running: false; updated: 0; reason: ScreenerUpdateSkipReason };
 
 export function runScan(body: ScanRequest): Promise<ScreenerResponse> {
   return apiCall<ScreenerResponse>('/api/screener/scan', {
@@ -70,4 +88,5 @@ export function runScan(body: ScanRequest): Promise<ScreenerResponse> {
 }
 
 export const getScreenerStatus = () => apiCall<ScreenerStatus>('/api/screener/status');
-export const triggerScreenerUpdate = () => apiCall('/api/screener/update', { method: 'POST' });
+export const triggerScreenerUpdate = () =>
+  apiCall<ScreenerUpdateResponse>('/api/screener/update', { method: 'POST' });
