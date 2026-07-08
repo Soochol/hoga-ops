@@ -2306,6 +2306,10 @@ def test_build_depth_heatmap_slice_converts_rows_to_points(tmp_path):
     assert points[0].bids[0] == [990, 400]
     assert len(points[0].asks) == 10
     assert len(points[0].bids) == 10
+    assert points[0].asks_max[0] == [1000, 900]
+    assert points[0].bids_max[0] == [990, 800]
+    assert len(points[0].asks_max) == 10
+    assert len(points[0].bids_max) == 10
     assert points[0].t_ms == ms_from_midnight_to_unix_ms("20260102", 34_200_000)
     assert points[0].t_ms > 1_000_000_000_000
 
