@@ -11,6 +11,15 @@ import type {
 } from 'lightweight-charts';
 import type { CanvasRenderingTarget2D } from 'fancy-canvas';
 import { measureTextCached } from './util/textWidthCache';
+import { resolveTokensThemed } from '../util/tokens';
+
+// 라벨 칩 표면·테두리 — canvas 는 var(--…) 를 못 받아 지연 해석. 하드코딩 다크
+// 반투명이던 것을 테마 표면(불투명)+테두리로: Ledger 라이트에서도 방향색 텍스트가
+// 캔들 위에서 또렷하게(반투명 비침 대비 저하 해소). high/low 오버레이와 동일 처방.
+const CHIP_TOKENS = {
+  bg: ['--bg-card', '#121216'],
+  border: ['--border-strong', '#33333C'],
+} as const;
 
 /**
  * 거래일별 "매도 최대벽"을 그날 구간에만 걸치는 수평 세그먼트로 그리는 커스텀 series primitive.
@@ -279,19 +288,22 @@ class AskPeakSegmentsRenderer implements IPrimitivePaneRenderer {
       const maxBaselineY = scope.bitmapSize.height - LABEL_EDGE_PAD_PX * vr;
       const visibleLabels = visibleAskPeakLabelCandidates(labelCandidates, LABEL_SEGMENT_PAD_PX * hr);
       const labelLayouts = layoutAskPeakLabels(visibleLabels, minBaselineY, maxBaselineY, rowHeight);
+      const { bg: chipBg, border: chipBorder } = resolveTokensThemed(CHIP_TOKENS);
       for (const layout of labelLayouts) {
         const s = segments[layout.index];
         ctx.font = `${LABEL_FONT_PX * vr}px sans-serif`;
         const xPad = LABEL_BOX_X_PAD_PX * hr;
         const yPad = LABEL_BOX_Y_PAD_PX * vr;
         const fontHeight = LABEL_FONT_PX * vr;
-        ctx.fillStyle = 'rgba(11, 15, 26, 0.72)';
-        ctx.fillRect(
-          layout.xRight - layout.width - xPad,
-          layout.baselineY - fontHeight - yPad,
-          layout.width + xPad * 2,
-          fontHeight + yPad * 2,
-        );
+        const bx = layout.xRight - layout.width - xPad;
+        const by = layout.baselineY - fontHeight - yPad;
+        const bw = layout.width + xPad * 2;
+        const bh = fontHeight + yPad * 2;
+        ctx.fillStyle = chipBg;
+        ctx.fillRect(bx, by, bw, bh);
+        ctx.strokeStyle = chipBorder;
+        ctx.lineWidth = hr;
+        ctx.strokeRect(bx, by, bw, bh);
         ctx.fillStyle = s.color;
         ctx.textBaseline = 'bottom';
         ctx.textAlign = 'right';
