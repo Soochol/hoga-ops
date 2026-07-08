@@ -789,8 +789,10 @@ def build_ask_bid_peak_slices(
     # unbounded windows, ~17GB/155s on a pathological day). `/api/range` is a
     # sync route on FastAPI's thread pool and today's peak is uncached
     # (ADR-0043), so concurrent sidecar polls would run this in parallel over a
-    # shared soft `memory_limit` and OOM. Guard bounds concurrency + collapses
-    # identical concurrent computes. See hoga/api/peak_slice_guard.py.
+    # shared soft `memory_limit` and OOM. The guard (ADR-0085) bounds concurrency
+    # + collapses identical concurrent computes — it is load-bearing, NOT an
+    # optimization: DuckDB's memory_limit is soft, so removing/bypassing this
+    # re-opens the OOM. See hoga/api/peak_slice_guard.py.
     #
     # ADR-0090: today's result is additionally reused across SEQUENTIAL calls
     # (not just concurrent ones) for a short TTL, to collapse symbol-switch

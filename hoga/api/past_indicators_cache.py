@@ -45,7 +45,10 @@ if TYPE_CHECKING:
 _log = logging.getLogger(__name__)
 
 # Bump when the bucketing/representative semantics of the underlying table
-# queries change, so stale 1m caches are ignored rather than served wrong.
+# queries change (e.g. a new imbalance definition, a different POC bin rule, or
+# a peak tie-break), so stale 1m caches are ignored rather than served wrong.
+# On bump, existing <date>.<kind>.json files fail the version check in _read /
+# _read_model_cache and are transparently recomputed + rewritten on next access.
 SCHEMA_VERSION = 5
 
 Kind = Literal["ratio", "fill"]

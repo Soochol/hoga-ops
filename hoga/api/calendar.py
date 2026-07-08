@@ -31,9 +31,12 @@ log = logging.getLogger(__name__)
 
 # Module-level cache: (year, month) → set of YYYYMMDD trading-day strings.
 # KRX trading days for past months are stable (holidays don't reschedule retro-
-# actively), so an unbounded dict is fine for one process. For the current
-# month we accept up to 24h staleness — a new holiday landing mid-month is
-# rare enough that bouncing the server fixes it.
+# actively), so an unbounded dict is fine for one process. For the current/future
+# month we accept staleness — a new holiday announced mid-process is rare enough
+# that a server bounce (or the negative-today recheck below evicting the month)
+# fixes it. ADR-0064 deliberately left this future-trading-day cache untouched
+# (blast radius 0); is_trading_session_today handles TODAY's verdict separately
+# with its own confirmed-positive / throttled-negative-recheck path.
 _month_cache: dict[tuple[int, int], set[str]] = {}
 
 # Negative cache: (year, month) → monotonic time of the last FAILED fetch.
