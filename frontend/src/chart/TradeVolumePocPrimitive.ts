@@ -10,6 +10,7 @@ import type {
   Time,
 } from 'lightweight-charts';
 import type { CanvasRenderingTarget2D } from 'fancy-canvas';
+import { xCoordinateOrNearest } from './AskPeakSegmentsPrimitive';
 
 export type TradeVolumePocSegment = {
   time0: Time;
@@ -42,8 +43,10 @@ class TradeVolumePocRenderer implements IPrimitivePaneRenderer {
       const vr = scope.verticalPixelRatio;
       const timeScale = chart.timeScale();
       for (const segment of segments) {
-        const x0 = timeScale.timeToCoordinate(segment.time0);
-        const x1 = timeScale.timeToCoordinate(segment.time1);
+        // 확장 세션 경계(통합 08:00/20:00)가 시계열 범위 밖이면 timeToCoordinate가 null
+        // → 그날 밴드 전체 소실(매도벽 선과 동일 결함). 가장 가까운 봉으로 클램프.
+        const x0 = xCoordinateOrNearest(timeScale, segment.time0);
+        const x1 = xCoordinateOrNearest(timeScale, segment.time1);
         const yLow = series.priceToCoordinate(segment.lowPrice);
         const yHigh = series.priceToCoordinate(segment.highPrice);
         if (x0 === null || x1 === null || yLow === null || yHigh === null) continue;

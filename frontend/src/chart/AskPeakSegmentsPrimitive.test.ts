@@ -1,5 +1,7 @@
 import { describe, expect, it } from 'vitest';
+import type { ITimeScaleApi, Time } from 'lightweight-charts';
 import {
+  xCoordinateOrNearest,
   layoutAskPeakLabels,
   inlinePeakWallSegmentsForDocking,
   livePeakWallDockedLabelsFromSegments,
@@ -219,5 +221,41 @@ describe('live peak-wall docked label helpers', () => {
       lineWidth: live.lineWidth,
       live: true,
     });
+  });
+});
+
+function timeScaleStub(overrides: Partial<Record<'timeToCoordinate' | 'timeToIndex' | 'logicalToCoordinate', (...args: never[]) => unknown>>) {
+  return {
+    timeToCoordinate: () => null,
+    timeToIndex: () => null,
+    logicalToCoordinate: () => null,
+    ...overrides,
+  } as unknown as ITimeScaleApi<Time>;
+}
+
+describe('xCoordinateOrNearest', () => {
+  it('timeToCoordinate가 좌표를 주면 그대로 쓴다', () => {
+    const ts = timeScaleStub({ timeToCoordinate: () => 123 });
+    expect(xCoordinateOrNearest(ts, 1000 as Time)).toBe(123);
+  });
+
+  it('범위 밖 시각(null)은 가장 가까운 봉 인덱스로 클램프한다 — 통합 확장 세션 경계에서 그날 벽 선이 통째로 사라지던 결함', () => {
+    const calls: unknown[][] = [];
+    const ts = timeScaleStub({
+      timeToCoordinate: () => null,
+      timeToIndex: (...args: never[]) => {
+        calls.push(args);
+        return 42;
+      },
+      logicalToCoordinate: () => 777,
+    });
+    expect(xCoordinateOrNearest(ts, 1000 as Time)).toBe(777);
+    // findNearest=true 로 가장 가까운 봉을 찾아야 한다(정확 일치 요구 금지).
+    expect(calls[0]?.[1]).toBe(true);
+  });
+
+  it('가장 가까운 봉조차 없으면(빈 차트) null — 기존 skip 동작 유지', () => {
+    const ts = timeScaleStub({});
+    expect(xCoordinateOrNearest(ts, 1000 as Time)).toBeNull();
   });
 });
