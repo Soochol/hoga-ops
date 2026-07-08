@@ -3,7 +3,7 @@ import { describe, expect, it } from 'vitest';
 
 import {
   formatAggregationTime,
-  formatQtyWithCommas,
+  formatQtyCompact,
   InvestorTrendEstimateCard,
 } from './InvestorTrendEstimateCard';
 import type { LiveInvestorTrendEstimateResponse } from '../api/liveInvestorTrendEstimate';
@@ -41,13 +41,22 @@ function response(
   };
 }
 
-describe('formatQtyWithCommas', () => {
-  it('formats signed Korean share quantities with comma grouping', () => {
-    expect(formatQtyWithCommas(265_000)).toBe('+265,000');
-    expect(formatQtyWithCommas(1500)).toBe('+1,500');
-    expect(formatQtyWithCommas(-200)).toBe('-200');
-    expect(formatQtyWithCommas(0)).toBe('0');
-    expect(formatQtyWithCommas(null)).toBe('-');
+describe('formatQtyCompact', () => {
+  it('abbreviates ≥1만 quantities to 만 units so the 3 columns fit', () => {
+    expect(formatQtyCompact(-4_361_000)).toBe('-436만');
+    expect(formatQtyCompact(-620_000)).toBe('-62만');
+    expect(formatQtyCompact(265_000)).toBe('+26.5만');
+    expect(formatQtyCompact(1_146_000)).toBe('+115만'); // ≥100만 → 0 digits
+  });
+
+  it('keeps sub-1만 quantities as raw signed comma values', () => {
+    expect(formatQtyCompact(1500)).toBe('+1,500');
+    expect(formatQtyCompact(-200)).toBe('-200');
+  });
+
+  it('handles zero and null', () => {
+    expect(formatQtyCompact(0)).toBe('0');
+    expect(formatQtyCompact(null)).toBe('-');
   });
 });
 

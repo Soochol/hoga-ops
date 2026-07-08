@@ -39,10 +39,10 @@ export function InvestorTrendEstimateCard({ query }: Props) {
           <table className="w-full table-fixed border-collapse font-mono text-sm tabular-nums">
             <thead className="text-fg-dimmer">
               <tr>
-                <th className="w-[7.5rem] px-2 py-1.5 text-left font-medium">집계시간</th>
-                <th className="px-2 py-1.5 text-right font-medium">외국인</th>
-                <th className="px-2 py-1.5 text-right font-medium">기관</th>
-                <th className="px-2 py-1.5 text-right font-medium">합산</th>
+                <th className="w-[6rem] px-2 py-1.5 text-left font-medium">집계시간</th>
+                <th className="px-1.5 py-1.5 text-right font-medium">외국인</th>
+                <th className="px-1.5 py-1.5 text-right font-medium">기관</th>
+                <th className="px-1.5 py-1.5 text-right font-medium">합산</th>
               </tr>
             </thead>
             <tbody>
@@ -82,18 +82,30 @@ export function InvestorTrendEstimateCard({ query }: Props) {
 
 function QtyCell({ value }: { value: number | null }) {
   return (
-    <td className={`px-2 py-1.5 text-right tabular-nums ${qtyClass(value)}`}>
-      {formatQtyWithCommas(value)}
+    <td className={`px-1.5 py-1.5 text-right tabular-nums whitespace-nowrap ${qtyClass(value)}`}>
+      {formatQtyCompact(value)}
     </td>
   );
 }
 
-export function formatQtyWithCommas(value: number | null): string {
+/** 추정 수급 수량 표시. |v| < 1만은 원수(콤마), 1만 이상은 만 단위로 축약해
+ *  350px 패널의 외국인/기관/합산 3컬럼이 겹치거나 잘리는 것을 막는다(부호 유지).
+ *  예: -4,361,000 → "-436만", -620,000 → "-62만", 1,500 → "+1,500". */
+export function formatQtyCompact(value: number | null): string {
   if (value === null) return '-';
   if (value === 0) return '0';
-
-  const sign = value > 0 ? '+' : '';
-  return `${sign}${value.toLocaleString('en-US')}`;
+  if (Math.abs(value) < 10_000) {
+    return `${value > 0 ? '+' : ''}${value.toLocaleString('ko-KR')}`;
+  }
+  const man = value / 10_000;
+  const abs = Math.abs(man);
+  const digits = abs >= 100 ? 0 : abs >= 10 ? 1 : 2;
+  const rounded = Object.is(Number(man.toFixed(digits)), -0) ? 0 : Number(man.toFixed(digits));
+  const body = rounded.toLocaleString('ko-KR', {
+    minimumFractionDigits: 0,
+    maximumFractionDigits: digits,
+  });
+  return `${rounded > 0 ? '+' : ''}${body}만`;
 }
 
 export function formatAggregationTime(
