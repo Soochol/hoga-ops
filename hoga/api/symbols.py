@@ -80,6 +80,18 @@ class _RefreshCoordinator(Generic[T]):
     Ownership rule: only the initiator (the caller that created the future)
     clears ``_inflight``. Joining waiters MUST NOT clear it, otherwise a
     follow-on flight's future can be clobbered, defeating single-flight.
+
+    Cancellation isolation: every caller awaits the shared future through
+    ``asyncio.shield`` so that cancelling ONE awaiter (e.g. a POST /refresh
+    whose client disconnected — Starlette cancels the handler) does not
+    propagate to the shared future. Awaiting a bare shared future is an
+    asyncio footgun: a cancelled awaiter's Task cancels whatever future it is
+    parked on, which here is the future EVERY other awaiter is parked on too —
+    so one disconnected client would kill an in-flight boot refresh for all
+    joiners. Shield scopes each cancellation to its own awaiter; the flight
+    survives as long as its initiator does. (The initiator staying coupled is
+    intentional: shutdown cancels the initiator task, whose ``finally`` then
+    cancels+awaits the worker before ``aclose_kis_client`` — see below.)
     """
 
     def __init__(self) -> None:
@@ -142,7 +154,10 @@ class _RefreshCoordinator(Generic[T]):
 
                 task.add_done_callback(_signal)
         try:
-            return await fut
+            # shield: a cancelled awaiter (disconnected POST /refresh) must not
+            # cancel the SHARED future and thereby kill the flight for every
+            # other joiner. See the class docstring "Cancellation isolation".
+            return await asyncio.shield(fut)
         finally:
             if is_initiator:
                 # If the flight was abandoned mid-run — this task (and therefore the

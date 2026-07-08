@@ -778,6 +778,53 @@ def test_current_status_reflects_state():
 
 
 @pytest.mark.asyncio
+async def test_coalesce_one_waiter_cancel_does_not_kill_flight() -> None:
+    """Cancellation isolation: cancelling ONE joined waiter must NOT kill the
+    in-flight fetch for the initiator (or any other waiter).
+
+    Regression guard for the shared-future footgun: awaiting a bare shared
+    future couples every awaiter's cancellation to it (a cancelled Task cancels
+    whatever future it is parked on). A single disconnected POST /refresh could
+    thus cancel the shared future and, via the initiator's finally, cancel the
+    worker — killing an in-flight boot refresh for everyone. The per-awaiter
+    ``asyncio.shield`` scopes each cancellation to its own awaiter.
+    """
+    coord: symbols_module._RefreshCoordinator[str] = symbols_module._RefreshCoordinator()
+    started = asyncio.Event()
+    gate = asyncio.Event()
+    was_cancelled = {"v": False}
+
+    async def _work() -> str:
+        started.set()
+        try:
+            await gate.wait()
+            return "SNAPSHOT"
+        except asyncio.CancelledError:
+            was_cancelled["v"] = True
+            raise
+
+    def _factory() -> asyncio.Task[str]:
+        return asyncio.create_task(_work())
+
+    # Initiator starts the flight; a second call joins the same flight.
+    initiator = asyncio.create_task(coord.coalesce(_factory))
+    await started.wait()
+    waiter = asyncio.create_task(coord.coalesce(_factory))
+    await asyncio.sleep(0)                     # let the waiter park on the shared future
+
+    waiter.cancel()                           # a disconnected joiner
+    with pytest.raises(asyncio.CancelledError):
+        await waiter
+
+    # The flight must be alive: worker not cancelled, initiator still pending.
+    assert was_cancelled["v"] is False
+    assert not initiator.done()
+
+    gate.set()                                # let the worker finish normally
+    assert await initiator == "SNAPSHOT"      # initiator still receives the result
+
+
+@pytest.mark.asyncio
 async def test_coalesce_cancels_detached_worker_when_awaiter_abandons() -> None:
     """#8: when the (sole) awaiter is cancelled, _RefreshCoordinator must cancel
     AND await the detached worker — not leak it to run on past its awaiters (e.g.
