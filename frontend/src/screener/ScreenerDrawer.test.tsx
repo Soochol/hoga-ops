@@ -616,6 +616,17 @@ describe('ScreenerDrawer', () => {
     await waitFor(() => expect(screen.getByText(/갱신 실패/)).toBeInTheDocument());
   });
 
+  it('job 실패가 두 채널(feedback + updateState)에 세팅돼도 갱신 실패 라벨은 한 번만', async () => {
+    // useScreenerUpdateSync 가 job-finished-error 에서 setFeedback + setUpdateError 를
+    // 둘 다 호출한다. 드로어는 error 를 단일 채널로만 렌더해야 한다(중복 라벨 버그).
+    vi.spyOn(savesApi, 'listSaves').mockResolvedValue({ schema_version: 1, saves: [SAVE] });
+    useScreenerUpdateFeedback.getState().setFeedback({ message: '갱신 실패', tone: 'error', atMs: Date.now() });
+    useScreenerPanelStore.getState().setUpdateError('갱신 실패', Date.now());
+    render(<ScreenerDrawer />, { wrapper: wrap(qc(), '/live') });
+    await waitFor(() => expect(useScreenerPanelStore.getState().selectedSavedId).toBe('s1'));
+    expect(screen.getAllByText(/갱신 실패/)).toHaveLength(1);
+  });
+
   it('a member row shows a filled heart; clicking opens the group picker (v3)', async () => {
     vi.spyOn(savesApi, 'listSaves').mockResolvedValue({ schema_version: 1, saves: [SAVE] });
     vi.spyOn(watchlistApi, 'getWatchlist').mockResolvedValue({
