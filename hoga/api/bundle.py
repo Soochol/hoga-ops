@@ -32,6 +32,7 @@ from hoga.api.models import (
     BrokerLateEntryEvent,
     DateWarning,
     DayVolumeDistribution,
+    DepthHeatmapPoint,
     ExcludedDate,
     FillStrength,
     FillStrengthPoint,
@@ -887,6 +888,50 @@ def build_trade_volume_poc_slice(
             code, date, source, range_count, price_min, price_max, poc,
         )
     return poc
+
+
+def build_depth_heatmap_slice(
+    engine: QueryEngine,
+    *,
+    code: str,
+    date: str,
+    bucket_ms: int,
+    source: str = "hogaplay",
+    session_open_ms: int | None = None,
+    session_close_ms: int | None = None,
+) -> list[DepthHeatmapPoint]:
+    """버킷별 대표 스냅샷의 10호가 잔량 분포를 DepthHeatmapPoint 리스트로.
+
+    query_bucketed_depth_heatmap은 LINEAR intra_ms를 주므로
+    ms_from_midnight_to_unix_ms(date, intra)로 unix 변환 — 호가비/총잔량 빌더와
+    동일 규약. 잔량 0 단계도 그대로 실어 보낸다(프론트가 스킵).
+
+    ``session_open_ms``는 형제 빌더(및 Task-4 호출부) 시그니처 대칭용으로만
+    유지 — 본문 미사용.
+    """
+    try:
+        path_obj = engine.parquet_dir(date, code, source) / "snapshots.parquet"
+    except (FileNotFoundError, StockDateNotFound):
+        return []
+    if not path_obj.exists():
+        return []
+    rows = snapshots_tbl.query_bucketed_depth_heatmap(
+        engine.conn,
+        path=path_obj,
+        bucket_ms=bucket_ms,
+        session_close_ms=session_close_ms,
+    )
+    out: list[DepthHeatmapPoint] = []
+    for r in rows:
+        t_ms = ms_from_midnight_to_unix_ms(date, r.bucket_intra_ms)
+        out.append(
+            DepthHeatmapPoint(
+                t_ms=t_ms,
+                asks=[[p, q] for p, q in zip(r.ask_prices, r.ask_qtys)],
+                bids=[[p, q] for p, q in zip(r.bid_prices, r.bid_qtys)],
+            )
+        )
+    return out
 
 
 def _first_trailing_single_price_book_hhmmssms(

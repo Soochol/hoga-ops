@@ -2170,3 +2170,72 @@ def test_build_range_bundle_includes_bid_peaks(monkeypatch, tmp_path) -> None:
     assert len(bundle.bid_peaks) == 1
     assert bundle.bid_peaks[0].price == 70000
     assert bundle.bid_peaks[0].qty == 5000
+
+
+def test_build_depth_heatmap_slice_converts_rows_to_points(tmp_path):
+    from hoga.api import bundle as bundle_mod
+    from hoga.api.bundle import build_depth_heatmap_slice
+    from hoga.api.timeenc import ms_from_midnight_to_unix_ms
+    from hoga.tables.snapshots import DepthHeatmapRow
+
+    code_dir = tmp_path / "20260102" / "005930"
+    code_dir.mkdir(parents=True)
+    (code_dir / "snapshots.parquet").touch()
+    engine = MagicMock()
+    engine.conn = object()
+    engine.parquet_dir.return_value = code_dir
+
+    row = DepthHeatmapRow(
+        bucket_intra_ms=34_200_000,
+        ask_prices=tuple(1000 + 10 * i for i in range(10)),
+        ask_qtys=tuple(500 - 10 * i for i in range(10)),
+        bid_prices=tuple(990 - 10 * i for i in range(10)),
+        bid_qtys=tuple(400 - 10 * i for i in range(10)),
+    )
+    with patch.object(
+        bundle_mod.snapshots_tbl,
+        "query_bucketed_depth_heatmap",
+        return_value=[row],
+    ) as query:
+        points = build_depth_heatmap_slice(
+            engine,
+            code="005930",
+            date="20260102",
+            bucket_ms=60_000,
+            source="hogaplay",
+            session_open_ms=90_000_000,
+            session_close_ms=153_000_000,
+        )
+
+    query.assert_called_once_with(
+        engine.conn,
+        path=code_dir / "snapshots.parquet",
+        bucket_ms=60_000,
+        session_close_ms=153_000_000,
+    )
+    assert len(points) == 1
+    assert points[0].asks[0] == [1000, 500]
+    assert points[0].bids[0] == [990, 400]
+    assert len(points[0].asks) == 10
+    assert len(points[0].bids) == 10
+    assert points[0].t_ms == ms_from_midnight_to_unix_ms("20260102", 34_200_000)
+    assert points[0].t_ms > 1_000_000_000_000
+
+
+def test_build_depth_heatmap_slice_missing_parquet_returns_empty(tmp_path):
+    from hoga.api.bundle import build_depth_heatmap_slice
+
+    engine = MagicMock()
+    engine.conn = object()
+    engine.parquet_dir.return_value = tmp_path / "20260102" / "005930"  # no file
+
+    points = build_depth_heatmap_slice(
+        engine,
+        code="005930",
+        date="20260102",
+        bucket_ms=60_000,
+        source="hogaplay",
+        session_open_ms=90_000_000,
+        session_close_ms=153_000_000,
+    )
+    assert points == []
