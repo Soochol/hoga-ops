@@ -365,3 +365,181 @@ async def test_capacity_scheduler_does_not_start_background_while_user_visible_i
     assert order == ["first", "user_visible", "background"]
 
     await scheduler.aclose()
+
+
+@pytest.mark.asyncio
+async def test_capacity_scheduler_promotion_residue_does_not_wedge_resubmit() -> None:
+    """A promoted request leaves its original (rank-10) queue entry behind. That
+    stale entry must not destroy the state of a LATER same-key request that
+    reuses the key after the promotion settled — otherwise the resubmit's future
+    is never resolved and its caller hangs forever (residue-cleanup bug)."""
+    pool = _FakePool()
+    scheduler = KisCapacityScheduler(
+        name="test",
+        account_pool=pool,
+        max_workers=1,
+        max_pending_requests=1000,
+        account_cooldown_s=10.0,
+    )
+    started1 = asyncio.Event()
+    release1 = asyncio.Event()
+    started2 = asyncio.Event()
+    release2 = asyncio.Event()
+
+    async def blocker1(kis):
+        started1.set()
+        await release1.wait()
+        return "b1"
+
+    async def shared_call(kis):
+        return "shared"
+
+    async def blocker2(kis):
+        started2.set()
+        await release2.wait()
+        return "b2"
+
+    async def resubmit_call(kis):
+        return "resubmit"
+
+    # 1. Occupy the single worker with blocker1 (user_visible).
+    b1_task = asyncio.create_task(
+        scheduler.submit(key="b1", endpoint="test", priority="user_visible", call=blocker1)
+    )
+    await started1.wait()
+
+    # 2. Background "shared" queues behind blocker1 (rank-10 entry E1).
+    bg_task = asyncio.create_task(
+        scheduler.submit(key="shared", endpoint="daily", priority="background", call=shared_call)
+    )
+    await asyncio.sleep(0)
+
+    # 3. user_visible "shared" promotes it → rank-0 entry E2; E1 stays behind.
+    uv_task = asyncio.create_task(
+        scheduler.submit(
+            key="shared",
+            endpoint="daily",
+            priority="user_visible",
+            call=lambda kis: asyncio.sleep(0, result="ignored"),
+        )
+    )
+    await asyncio.sleep(0)
+
+    # 4. blocker2 (user_visible) queues behind → the worker will land on it right
+    #    after running the promoted "shared", giving us a hold point.
+    b2_task = asyncio.create_task(
+        scheduler.submit(key="b2", endpoint="test", priority="user_visible", call=blocker2)
+    )
+    await asyncio.sleep(0)
+
+    # 5. Release blocker1 → worker runs promoted "shared" (E2), cleans it up, then
+    #    blocks on blocker2. The rank-10 residue E1 is still queued.
+    release1.set()
+    assert await bg_task == "shared"
+    assert await uv_task == "shared"
+    await started2.wait()
+
+    # 6. Same key "shared" is fresh (inflight cleared) — new background submit.
+    resubmit_task = asyncio.create_task(
+        scheduler.submit(key="shared", endpoint="daily", priority="background", call=resubmit_call)
+    )
+    await asyncio.sleep(0)
+
+    # 7. Release blocker2 → worker drains residue E1 (future already done) then the
+    #    resubmit entry. Pre-fix, E1's cleanup wipes the resubmit's state and the
+    #    resubmit is skipped → hang. Post-fix, E1 skips cleanup (not the current
+    #    inflight future) and the resubmit runs.
+    release2.set()
+    result = await asyncio.wait_for(resubmit_task, timeout=1.0)
+    assert result == "resubmit"
+    assert await b1_task == "b1"
+    assert await b2_task == "b2"
+
+    await scheduler.aclose()
+
+
+@pytest.mark.asyncio
+async def test_capacity_scheduler_call_cancelled_error_does_not_wedge_caller() -> None:
+    """A CancelledError escaping the call must resolve the caller's future (as
+    cancelled) instead of leaving it pending forever, and the scheduler must
+    accept new work afterwards (worker revives)."""
+    pool = _FakePool()
+    scheduler = KisCapacityScheduler(
+        name="test",
+        account_pool=pool,
+        max_workers=1,
+        max_pending_requests=1000,
+        account_cooldown_s=10.0,
+    )
+
+    async def cancel_call(kis):
+        raise asyncio.CancelledError()
+
+    with pytest.raises(asyncio.CancelledError):
+        await asyncio.wait_for(
+            scheduler.submit(
+                key="c",
+                endpoint="test",
+                priority="user_visible",
+                call=cancel_call,
+            ),
+            timeout=1.0,
+        )
+
+    # The dead worker must be revived by the next submit (_ensure_started).
+    result = await asyncio.wait_for(
+        scheduler.submit(
+            key="ok",
+            endpoint="test",
+            priority="user_visible",
+            call=lambda kis: asyncio.sleep(0, result="ok"),
+        ),
+        timeout=1.0,
+    )
+    assert result == "ok"
+
+    await scheduler.aclose()
+
+
+@pytest.mark.asyncio
+async def test_capacity_scheduler_aclose_resolves_queued_futures() -> None:
+    """aclose must resolve (cancel) requests still waiting in the queue so their
+    callers don't hang through shutdown."""
+    pool = _FakePool()
+    scheduler = KisCapacityScheduler(
+        name="test",
+        account_pool=pool,
+        max_workers=1,
+        max_pending_requests=1000,
+        account_cooldown_s=10.0,
+    )
+    started = asyncio.Event()
+    release = asyncio.Event()
+
+    async def blocker(kis):
+        started.set()
+        await release.wait()
+        return "blocker"
+
+    first_task = asyncio.create_task(
+        scheduler.submit(key="first", endpoint="test", priority="user_visible", call=blocker)
+    )
+    await started.wait()
+
+    # Second request is stuck in the queue behind the busy worker.
+    second_task = asyncio.create_task(
+        scheduler.submit(
+            key="second",
+            endpoint="test",
+            priority="user_visible",
+            call=lambda kis: asyncio.sleep(0, result="second"),
+        )
+    )
+    await asyncio.sleep(0)
+
+    await scheduler.aclose()
+
+    with pytest.raises(asyncio.CancelledError):
+        await asyncio.wait_for(second_task, timeout=1.0)
+    with pytest.raises(asyncio.CancelledError):
+        await asyncio.wait_for(first_task, timeout=1.0)

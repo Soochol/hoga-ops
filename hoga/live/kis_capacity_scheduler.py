@@ -180,6 +180,12 @@ class KisCapacityScheduler:
             await asyncio.gather(*current_loop_workers, return_exceptions=True)
         self._workers = []
         self._worker_loop = None
+        # Resolve requests still parked in the queue so their callers don't hang
+        # through shutdown. Cancel the pending future and clear its bookkeeping.
+        for key, future in list(self._inflight.items()):
+            if not future.done():
+                future.cancel()
+            self._cleanup_request(key)
 
     def _ensure_started(self) -> None:
         loop = asyncio.get_running_loop()
@@ -207,7 +213,13 @@ class KisCapacityScheduler:
         while True:
             request = await self._queue.get()
             if request.future.done():
-                self._cleanup_request(request.key)
+                # A promoted request leaves its original queue entry behind (same
+                # future, lower priority). When that residue drains, only clean up
+                # if this future is still the current inflight one for the key —
+                # otherwise a LATER same-key request has already claimed the slot
+                # and its state must not be wiped (would strand its future).
+                if self._inflight.get(request.key) is request.future:
+                    self._cleanup_request(request.key)
                 self._queue.task_done()
                 continue
             if request.generation != self._request_generations.get(request.key):
@@ -223,6 +235,14 @@ class KisCapacityScheduler:
             try:
                 self._started_keys.add(request.key)
                 result = await self._run_with_account_failover(request)
+            except asyncio.CancelledError:
+                # Cancellation must not be swallowed (aclose cancels workers), but
+                # it also must not strand the caller: resolve the future as
+                # cancelled, then re-raise so the worker actually stops. A revived
+                # worker is spun up by the next submit via _ensure_started.
+                if not request.future.done():
+                    request.future.cancel()
+                raise
             except KisNoAccountAvailable as exc:
                 if not request.future.done():
                     request.future.set_exception(KisCapacityCooldown(str(exc)))
