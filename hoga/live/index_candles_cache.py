@@ -1,11 +1,13 @@
 from __future__ import annotations
 
+from collections.abc import Awaitable, Callable
 from dataclasses import dataclass, field
-from datetime import datetime, date, timedelta
-from typing import Awaitable, Callable, TypeAlias
+from datetime import date, datetime, timedelta
+from typing import TypeAlias
 
-from hoga.live.kis_client import DailyInvariantViolation, IndexCandleFetchResult, KIS_KST
+from hoga.live.kis_client import KIS_KST, DailyInvariantViolation, IndexCandleFetchResult
 from hoga.live.kis_models import IndexCandlePoint
+from hoga.util.cache_stats import CacheStats
 
 IndexCandleCacheKey: TypeAlias = tuple[str, str]
 IndexCandleCacheBatch: TypeAlias = tuple[
@@ -35,6 +37,11 @@ class IndexCandlesCache:
             IndexCandleCacheKey,
             list[IndexCandleCacheBatch],
         ] = {}
+        self._stats = CacheStats()
+
+    def stats_snapshot(self) -> dict[str, int | float | None]:
+        total_batches = sum(len(b) for b in self._per_key.values())
+        return self._stats.snapshot(size=total_batches)
 
     def append_batch(
         self,
@@ -47,8 +54,11 @@ class IndexCandlesCache:
     ) -> None:
         batches = self._per_key.setdefault(key, [])
         batches.append((frm, to, list(candles), list(violations or [])))
+        self._stats.record_store()
         if len(batches) > self._max_batches_per_key:
-            del batches[: len(batches) - self._max_batches_per_key]
+            overflow = len(batches) - self._max_batches_per_key
+            del batches[:overflow]
+            self._stats.record_eviction(overflow)
 
     def list_batches(
         self,
@@ -57,6 +67,25 @@ class IndexCandlesCache:
         return list(self._per_key.get(key, []))
 
     def covered(
+        self,
+        key: IndexCandleCacheKey,
+        frm: date,
+        to: date,
+        *,
+        count: bool = True,
+    ) -> IndexCandleCacheHit | None:
+        # `count` gates stats: collect_index_candles_with_cache calls covered()
+        # twice — once as the real lookup, once to re-assemble after fetching the
+        # gaps. Only the first (count=True) is a cache lookup (advisor #2 pattern).
+        hit = self._covered(key, frm, to)
+        if count:
+            if hit is not None:
+                self._stats.record_hit()
+            else:
+                self._stats.record_miss()
+        return hit
+
+    def _covered(
         self,
         key: IndexCandleCacheKey,
         frm: date,
@@ -196,7 +225,7 @@ async def collect_index_candles_with_cache(
             violations=result.violations,
         )
 
-    final_hit = cache.covered(key, frm, to)
+    final_hit = cache.covered(key, frm, to, count=False)
     candles = final_hit.candles if final_hit is not None else []
     final_violations = final_hit.violations if final_hit is not None else violations
     return IndexCandleFetchResult(candles=candles, violations=final_violations or [])

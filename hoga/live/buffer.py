@@ -102,6 +102,24 @@ class LiveBuffer:
                         # they need the missing data.
                         pass
 
+    async def stats_snapshot(self) -> dict[str, object]:
+        """Size-only observability. A ring buffer has no hit/miss — it always
+        serves what it holds — so this reports occupancy, not a hit rate."""
+        async with self._lock:
+            per_kind: dict[str, int] = {}
+            for (_code, kind), d in self._buf.items():
+                per_kind[kind] = per_kind.get(kind, 0) + len(d)
+            codes = len({code for (code, _kind) in self._buf})
+            subscribers = sum(len(s) for s in self._subscribers.values())
+        return {
+            "total_entries": sum(per_kind.values()),
+            "per_kind": per_kind,
+            "codes": codes,
+            "subscribers": subscribers,
+            "retention_ms": self._retention_ms,
+            "max_entries_per_deque": MAX_BUFFER_ENTRIES,
+        }
+
     async def get_latest(self, code: str) -> dict | None:
         """Latest snapshot across all three kinds, as a flat response dict.
 

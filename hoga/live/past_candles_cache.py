@@ -17,6 +17,7 @@ from pathlib import Path
 from typing import Literal
 
 from hoga.live.kis_venue import KisVenue
+from hoga.util.cache_stats import CacheStats
 
 _KST = timezone(timedelta(hours=9))
 
@@ -65,25 +66,39 @@ class PastCandlesCache:
             tuple[KisVenue, str],
             tuple[float, list[dict] | None],
         ] = OrderedDict()
+        self._past_stats = CacheStats()
+        self._today_stats = CacheStats()
 
     # --- past ---
 
     def past_entry_count(self) -> int:
         return self._past_total
 
+    def stats_snapshot(self) -> dict[str, dict[str, int | float | None]]:
+        return {
+            "past": self._past_stats.snapshot(size=self._past_total),
+            "today": self._today_stats.snapshot(size=len(self._today_mem)),
+        }
+
     def get_past(self, venue: KisVenue, code: str, date: str) -> list[dict] | None:
         key = (venue, code)
         inner = self._past_mem.get(key)
         if inner is None:
+            self._past_stats.record_miss()
             return None
         bars = inner.get(date)
         if bars is None:
+            self._past_stats.record_miss()
             return None
         if not self._bars_match_date(bars, date):
+            # Stale entry (wrong-date rows) — a correctness invalidation, not LRU
+            # pressure, so drop it without counting an eviction (advisor #3).
             self._drop_date(key, inner, date)
+            self._past_stats.record_miss()
             return None
         inner.move_to_end(date)
         self._past_mem.move_to_end(key)
+        self._past_stats.record_hit()
         return bars
 
     @staticmethod
@@ -109,10 +124,12 @@ class PastCandlesCache:
         inner[date] = bars
         inner.move_to_end(date)
         self._past_mem.move_to_end(key)
+        self._past_stats.record_store()
         # ① per-code 쿼터: 자기 자신의 oldest부터.
         while len(inner) > self._max_past_dates_per_code:
             inner.popitem(last=False)
             self._past_total -= 1
+            self._past_stats.record_eviction()
         if not inner:
             self._past_mem.pop(key, None)
         # ② 전역 예산: LRU 코드의 oldest부터 (방금 저장한 코드는 MRU라 보호).
@@ -120,6 +137,7 @@ class PastCandlesCache:
             lru_key, lru_inner = next(iter(self._past_mem.items()))
             lru_inner.popitem(last=False)
             self._past_total -= 1
+            self._past_stats.record_eviction()
             if not lru_inner:
                 del self._past_mem[lru_key]
 
@@ -147,14 +165,18 @@ class PastCandlesCache:
         """Tri-state today accessor."""
         entry = self._today_mem.get((venue, code))
         if entry is None:
+            self._today_stats.record_miss()
             return "miss", None
         fetched_at, value = entry
         if time.monotonic() - fetched_at >= self._today_ttl:
             self._today_mem.pop((venue, code), None)
+            self._today_stats.record_miss()
             return "miss", None
         self._today_mem.move_to_end((venue, code))
         if value is None:
+            self._today_stats.record_negative()
             return "negative", None
+        self._today_stats.record_hit()
         return "hit", value
 
     def store_today(
