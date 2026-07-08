@@ -825,11 +825,55 @@ async def test_coalesce_one_waiter_cancel_does_not_kill_flight() -> None:
 
 
 @pytest.mark.asyncio
-async def test_coalesce_cancels_detached_worker_when_awaiter_abandons() -> None:
-    """#8: when the (sole) awaiter is cancelled, _RefreshCoordinator must cancel
-    AND await the detached worker — not leak it to run on past its awaiters (e.g.
-    touching a torn-down KIS client during shutdown). Before the fix the worker
-    kept running after the joiner was cancelled."""
+async def test_coalesce_sole_awaiter_abandon_lets_worker_finish() -> None:
+    """Worker-owned lifecycle: when the SOLE awaiter is cancelled, the flight
+    runs to completion and clears its slot — it is NOT aborted.
+
+    This is the decoupled semantics: an abandoned refresh (e.g. the only
+    POST /refresh disconnected) should still land its data, not be wasted.
+    Only :meth:`aclose` cancels the worker (see the aclose test). Before the
+    decouple the initiator's finally cancelled the worker on abandon; now the
+    worker outlives its callers.
+    """
+    coord: symbols_module._RefreshCoordinator[str] = symbols_module._RefreshCoordinator()
+    started = asyncio.Event()
+    gate = asyncio.Event()
+    finished = {"v": False}
+    holder: dict[str, asyncio.Task[str]] = {}
+
+    async def _work() -> str:
+        started.set()
+        await gate.wait()
+        finished["v"] = True
+        return "done"
+
+    def _factory() -> asyncio.Task[str]:
+        t = asyncio.create_task(_work())
+        holder["t"] = t
+        return t
+
+    joiner = asyncio.create_task(coord.coalesce(_factory))
+    await started.wait()                      # worker is running
+    joiner.cancel()
+    with pytest.raises(asyncio.CancelledError):
+        await joiner
+    # Abandon must NOT cancel the worker — it keeps running.
+    assert not holder["t"].done()
+    assert coord._task is holder["t"]         # slot still points at the live worker
+
+    gate.set()                                # let it finish
+    assert await holder["t"] == "done"
+    assert finished["v"] is True
+    await asyncio.sleep(0)                     # let _signal run
+    assert coord._inflight is None            # slot cleared by _signal, not a caller
+    assert coord._task is None
+
+
+@pytest.mark.asyncio
+async def test_aclose_cancels_live_worker() -> None:
+    """Shutdown hook: aclose() cancels+awaits the in-flight worker so it can't
+    run on past process teardown (the invariant the initiator's finally used to
+    hold). Idempotent — a second call on the quiescent coordinator is a no-op."""
     coord: symbols_module._RefreshCoordinator[str] = symbols_module._RefreshCoordinator()
     started = asyncio.Event()
     was_cancelled = {"v": False}
@@ -849,14 +893,19 @@ async def test_coalesce_cancels_detached_worker_when_awaiter_abandons() -> None:
         holder["t"] = t
         return t
 
-    joiner = asyncio.create_task(coord.coalesce(_factory))
-    await started.wait()                      # worker is running
-    joiner.cancel()
-    with pytest.raises(asyncio.CancelledError):
-        await joiner
-    # The worker must be finished (cancelled), not orphaned and still running.
+    caller = asyncio.create_task(coord.coalesce(_factory))
+    await started.wait()
+
+    await coord.aclose()                      # shutdown
     assert holder["t"].done()
     assert was_cancelled["v"] is True
+    assert coord._task is None                # _signal cleared the slot
+    assert coord._inflight is None
+    # The caller unwinds with cancellation (its shielded future was cancelled).
+    with pytest.raises(asyncio.CancelledError):
+        await caller
+
+    await coord.aclose()                      # idempotent no-op on a quiescent coord
 
 
 @pytest.mark.asyncio

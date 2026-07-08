@@ -143,6 +143,10 @@ def create_app(data_dir: Path) -> FastAPI:
             # 스크리너 갱신 job 은 KIS capacity scheduler/client 를 쓰므로
             # startup_runtime.stop()(KIS teardown 포함)보다 먼저 cancel+await.
             await _screener_module.shutdown_update_job()
+            # 심볼 .mst 리프레시 워커는 코디네이터-소유(호출자와 분리)라
+            # symbols-boot-refresh 태스크 취소만으론 멈추지 않는다. KIS/스케줄러
+            # teardown 전에 명시적으로 cancel+await(worker-owned lifecycle).
+            await _symbols_module.aclose_refresh()
             await startup_runtime.stop()
             # Stop the worker pool first so in-flight items observe cancellation
             # while bus + observer are still live (they emit terminal events).
