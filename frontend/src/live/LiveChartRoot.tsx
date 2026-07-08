@@ -9,7 +9,7 @@ import {
   type UTCTimestamp,
 } from 'lightweight-charts';
 import { createKstHorzScaleBehavior } from '../util/kstHorzScaleBehavior';
-import { resolveTokens } from '../util/tokens';
+import { resolveTokensThemed, currentThemeKey } from '../util/tokens';
 import {
   CHART_CROSSHAIR_OPTIONS,
   CHART_LAYOUT_OPTIONS,
@@ -74,11 +74,11 @@ import { useDrawingHost } from '../chart/useDrawingHost';
 import type { TradeVolumePoc } from './tradeVolumePoc';
 
 const TOKEN_SPEC = {
-  bgCard: ['--bg-card', '#13131C'],
-  fg: ['--fg', '#E2E8F0'],
-  grid: ['--grid', '#1A1A26'],
-  border: ['--border', '#1F1F2A'],
-  borderStrong: ['--border-strong', '#253040'],
+  bgCard: ['--bg-card', '#121216'],
+  fg: ['--fg', '#ECECF1'],
+  grid: ['--grid', '#1B1B21'],
+  border: ['--border', '#232329'],
+  borderStrong: ['--border-strong', '#33333C'],
 } as const;
 
 function chartGridOptions(
@@ -318,8 +318,16 @@ export function LiveChartRoot({
   const hogaBundle = bundle ?? cb;
   const paneHogaBundle = hogaPaneBundle ?? hogaBundle;
   const paneRatioBundle = ratioBundle ?? paneHogaBundle;
-  // Load identity for the per-view chart remount and the reveal cover.
-  const viewKey = viewIdentity ? `${code ?? ''}|${timeframe}|${viewIdentity}` : `${code ?? ''}|${timeframe}`;
+  // Load identity for the per-view chart remount and the reveal cover. The
+  // theme segment forces a full chart rebuild if the theme ever changes while
+  // this stays mounted — module-resolved series colors and axis-lifetime
+  // projection caches are otherwise frozen at their first resolution. In the
+  // shipped UX a theme swap already coincides with an unmount (route change /
+  // settings modal), so this is a forward-safety net, not the primary path.
+  const themeSeg = currentThemeKey();
+  const viewKey = viewIdentity
+    ? `${code ?? ''}|${timeframe}|${viewIdentity}|${themeSeg}`
+    : `${code ?? ''}|${timeframe}|${themeSeg}`;
   // Chart identity is KEYED by the view it was created for. On a viewKey
   // switch, React runs all cleanups then all setups within one commit, but
   // effects created by THAT render still close over the previous chart state
@@ -893,7 +901,7 @@ export function LiveChartRoot({
   useEffect(() => {
     const el = containerRef.current;
     if (!el) return;
-    const tokens = resolveTokens(TOKEN_SPEC);
+    const tokens = resolveTokensThemed(TOKEN_SPEC);
     // Explicit generics pin HorzScaleItem=Time: without them createChartEx
     // infers `unknown` and the IHorzScaleBehavior<Time> instance no longer
     // matches. The behavior's options() override (TimeChartOptions) is what
@@ -1015,7 +1023,7 @@ export function LiveChartRoot({
 
   useEffect(() => {
     if (!chart) return;
-    const tokens = resolveTokens(TOKEN_SPEC);
+    const tokens = resolveTokensThemed(TOKEN_SPEC);
     chart.applyOptions({
       grid: chartGridOptions(tokens.grid, horizontalGridLinesEnabled, verticalGridLinesEnabled),
     });

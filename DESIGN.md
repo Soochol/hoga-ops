@@ -2,7 +2,8 @@
 
 **Created:** 2026-05-20 via `/design-consultation`
 **Project:** hoga-ops — Korean stock orderbook + trade replay analysis tool
-**Approved mockup (at 1.0× base intent):** `docs/superpowers/designs/2026-05-20-replay-viewer.html`
+**Approved mockup (original, at 1.0× base intent):** `docs/superpowers/designs/2026-05-20-replay-viewer.html`
+**Approved commercial themes (2026-07-08):** `docs/superpowers/designs/2026-07-08-commercial-terminal.html` (Obsidian, dark) · `docs/superpowers/designs/2026-07-08-commercial-ledger.html` (Ledger, light)
 
 ## Product Context
 
@@ -39,13 +40,15 @@ The design system has a **single density dial** at `:root font-size`.
 
 ## Typography
 
-- **Display / Hero / Brand:** Geist Sans 600 — bold but neutral, distinctive without being decorative.
-- **Body / UI labels:** Geist Sans 400–500 — same family as Display for visual continuity.
+- **Display / Hero / Brand:** IBM Plex Sans KR 600 — bold but neutral, distinctive without being decorative. Carries Latin + Hangul in one family (no separate Korean fallback needed).
+- **Body / UI labels:** IBM Plex Sans KR 400–500 — same family as Display for visual continuity.
 - **UI / Labels:** Same as body. Small-caps section headers use 10.5px / 600 weight / `0.08em` letter-spacing / uppercase.
-- **Data / Tables / All numbers:** Geist Mono 400–500 — must use `font-variant-numeric: tabular-nums`. Every numeric value in the product is monospace for column alignment.
-- **Code (future, if any):** Geist Mono — same as data, no second mono.
+- **Data / Tables / All numbers:** IBM Plex Mono 400–500 — must use `font-variant-numeric: tabular-nums`. Every numeric value in the product is monospace for column alignment.
+- **Code (future, if any):** IBM Plex Mono — same as data, no second mono.
 
-- **Loading strategy:** Google Fonts CDN in v1 (`@import url('https://fonts.googleapis.com/css2?family=Geist:wght@400;500;600;700&family=Geist+Mono:wght@400;500;600&display=swap')`). Self-host as v1+1 if network latency becomes annoying on cold start.
+- **Font tokens:** `--font-ui` / `--font-mono` (theme-independent, defined on the base block in `tokens.css`; Tailwind `font-ui`/`font-sans`/`font-mono` resolve to them). Stacks fall back through `Pretendard` → system before generic. **Do not reference a font family by name in a component** — always go through the token.
+- **Loading strategy:** Google Fonts via `<link>` in `index.html` (preconnect + render-blocking stylesheet), `IBM+Plex+Sans+KR` + `IBM+Plex+Mono`. Self-host as v1+1 if network latency becomes annoying on cold start.
+- **History:** v1 speced Geist Sans/Mono but the `--font-ui`/`--font-mono` tokens were never defined, so the app silently rendered in the browser serif default (Times). Fixed 2026-07-08 by defining the tokens and switching to IBM Plex (Hangul coverage + a single vendor for sans+mono).
 
 - **Scale (rem-based, single dial at `:root font-size`):**
 
@@ -64,50 +67,51 @@ The design system has a **single density dial** at `:root font-size`.
 
 ## Color
 
-- **Approach:** Restrained. Single UI accent (teal). Three mutually-exclusive color categories for UI state, status semantic, and price direction.
-- **Palette (dark mode only — v1 has no light mode):**
+- **Approach:** Restrained. Single UI accent per theme. Three mutually-exclusive color categories for UI state, status semantic, and price direction. Two commercial themes share one token contract (see below) — components never branch on theme, they only read tokens.
+- **Themes (dual, selectable):** the app ships two full palettes behind `<html data-theme>`:
+  - **Obsidian** (dark, default) — warm graphite surfaces + brass accent. The trading-terminal / live surfaces.
+  - **Ledger** (light) — ivory paper surfaces + banker's-green accent. The review/research surfaces.
+  - The **preference** (`obsidian` / `ledger` / `auto`) lives in `state/themePrefs.ts` (localStorage `ui.themePreference.v1`); `auto` maps `/live` + `/heatmap` → Obsidian and everything else → Ledger via `effectiveTheme(pref, pathname)`. `App.tsx` writes the resolved theme to `data-theme`; `index.html` sets it inline before first paint (FOUC + wrong-theme chart cache guard).
+  - **Selectors:** `:root, [data-theme='dark'], [data-theme='obsidian']` carry the Obsidian palette + the scale dial + font + all size/spacing/layout tokens; `[data-theme='ledger']` overrides **colors only** (density and typography are theme-independent). The Ledger block sits *outside* the base block so `npm run gen:tokens` never touches it.
 
-  | Token | Hex | Use |
-  |---|---|---|
-  | `--bg` | `#090B0F` | App background |
-  | `--bg-card` | `#10151B` | Panes, cards, toolbars |
-  | `--bg-subtle` | `#0B0F15` | Nav, price strip, dropdown headers |
-  | `--bg-input` | `#0C1117` | Inputs, comboboxes, default tab |
-  | `--bg-input-hover` | `#151B23` | Hover state |
-  | `--border` | `#1A2431` | Default borders, dividers |
-  | `--border-strong` | `#253040` | Active borders, vertical dividers |
-  | `--fg` | `#E6EDF5` | Primary text |
-  | `--fg-dim` | `#91A0B4` | Secondary text, dim labels |
-  | `--fg-dimmer` | `#59677A` | Tertiary text, disabled |
-  | `--accent` | `#2DD4BF` | Teal — UI states only (buttons, focus, crosshair, active tab, primary CTAs) |
-  | `--success` | `#22C55E` | UI 상태 semantic — 캡처 완료, 양호 상태, 체크리스트 done |
-  | `--error` | `#F43F5E` | UI 상태 semantic — 실패, 에러 메시지, 비정상 상태 |
-  | `--price-up` | `#DC2626` | 시장 데이터 — 상승, 매수, KRX 빨강 컨벤션 |
-  | `--price-down` | `#2563EB` | 시장 데이터 — 하락, 매도, KRX 파랑 컨벤션 |
-  | `--grid` | `#17202B` | Chart grid lines, table row borders |
-  | `--heat-lo` | `#0B1518` | Heatmap low intensity (depth intensity pane) |
-  | `--heat-hi` | `#2DD4BF` | Heatmap high intensity (teal ramp) |
+  | Token | Obsidian (dark) | Ledger (light) | Use |
+  |---|---|---|---|
+  | `--bg` | `#0A0A0C` | `#F6F4EE` | App background |
+  | `--bg-card` | `#121216` | `#FDFCF8` | Panes, cards, toolbars |
+  | `--bg-subtle` | `#0E0E11` | `#F2EFE7` | Nav, price strip, dropdown headers |
+  | `--bg-input` | `#101014` | `#FDFCF8` | Inputs, comboboxes, default tab |
+  | `--bg-input-hover` | `#1A1A20` | `#F0EDE4` | Hover state |
+  | `--border` | `#232329` | `#E4E0D3` | Default borders, dividers |
+  | `--border-strong` | `#33333C` | `#C9C3B2` | Active borders, vertical dividers |
+  | `--fg` | `#ECECF1` | `#1E2732` | Primary text |
+  | `--fg-dim` | `#9A9AA8` | `#5C6673` | Secondary text, dim labels |
+  | `--fg-dimmer` | `#63636F` | `#8B94A0` | Tertiary text, disabled |
+  | `--accent` | `#F0B429` (brass) | `#1F6F54` (green) | UI states only (buttons, focus, crosshair, active tab, primary CTAs) |
+  | `--success` | `#2FBF71` | `#1F8A50` | UI 상태 semantic — 캡처 완료, 양호 상태, 체크리스트 done |
+  | `--error` | `#F25C7A` | `#C13B52` | UI 상태 semantic — 실패, 에러 메시지, 비정상 상태 |
+  | `--price-up` | `#F04452` | `#C4322E` | 시장 데이터 — 상승, 매수, KRX 빨강 컨벤션 |
+  | `--price-down` | `#3485FA` | `#1E5FC1` | 시장 데이터 — 하락, 매도, KRX 파랑 컨벤션 |
+  | `--grid` | `#1B1B21` | `#ECE8DC` | Chart grid lines, table row borders |
+  | `--heat-hi` | `#F0B429` | `#1F6F54` | Heatmap high intensity (accent ramp) |
+  | `--shadow` | `0 4px 12px rgba(0,0,0,0.5)` | `0 2px 8px rgba(30,39,50,0.12)` | Popover / tooltip elevation |
 
 - **Discipline rule:** Three mutually-exclusive color categories.
-  - **UI state** (teal `--accent`): buttons, focus rings, active tabs, crosshair, primary CTAs. Never for data.
+  - **UI state** (`--accent` — brass on Obsidian, green on Ledger): buttons, focus rings, active tabs, crosshair, primary CTAs. Never for data.
   - **Status semantic** (`--success`/`--error`): system feedback — capture complete/failed, error banners, calendar cell state, status dots. Never for market data.
   - **Price direction** (`--price-up`/`--price-down`): KRX convention — red = up/buy/positive delta, blue = down/sell/negative delta. Never for UI state or status.
   - This three-way separation prevents the "is this red because it failed, or because it's up?" ambiguity.
 
-- **Tint backgrounds (alpha-tinted chip / hover):**
-  - Selection tint: `rgba(45,212,191,0.12)` — active nav, active tab, primary hover
-  - Success tint: `rgba(34,197,94,0.10)` — completion chip background
-  - Error tint: `rgba(244,63,94,0.10)` — error chip background
-  - Success border: `rgba(34,197,94,0.30)` — `--tint-success-border` (banner/chip borders)
-  - Error border: `rgba(244,63,94,0.30)` — `--tint-error-border` (banner/chip borders)
-  - Price-up tint: `rgba(220,38,38,0.10)` — buy depth bar, positive market chip
-  - Price-down tint: `rgba(37,99,235,0.10)` — sell depth bar, negative market chip
+- **Tint backgrounds (alpha-tinted chip / hover):** each tracks its base color per theme — read the token, don't hardcode the rgba. Values below are the Obsidian defaults; `[data-theme='ledger']` redefines them against the Ledger accent/status/price colors.
+  - `--tint-selection` — active nav, active tab, primary hover (tracks `--accent`)
+  - `--tint-success` / `--tint-error` — completion / error chip background
+  - `--tint-success-border` / `--tint-error-border` — banner/chip borders
+  - `--tint-price-up` / `--tint-price-down` — buy/sell depth bar, market chip (tracks `--price-*`)
 
-- **Semantic (banners / toasts):**
-  - Success: `--success` (#22C55E)
-  - Error: `--error` (#F43F5E)
-  - Warning: `--warn` (#F59E0B, amber)
-  - Info: `--accent` (teal)
+- **Semantic (banners / toasts):** read the token (values vary per theme).
+  - Success: `--success`
+  - Error: `--error`
+  - Warning: `--warn`
+  - Info: `--accent`
 
 - **Price-direction heat ramp (히트맵 보드 전용):** `--price-up`/`--price-down` 을 |등락률| 비례
   가변 알파로 쓴다. **행 등락은 칩 배경이 아니라 `priceDirClass()` 텍스트 색 + 부호**로 표현한다
@@ -129,7 +133,11 @@ The design system has a **single density dial** at `:root font-size`.
   `text-fg-dim` 숫자. α 상향 금지(미분류명 `text-fg-dim` 의 틴트 밴드 위 대비 보호). 이 예외는
   **히트맵 폴더 한정**이며 드로어·차트·툴바 등 다른 카드는 `--bg-card` 유지.
 
-- **Dark mode:** Only mode in v1. Light mode is out of scope.
+- **Canvas theme reactivity:** `lightweight-charts` paints to a `<canvas>` and cannot read `var(--…)`, so chart colors resolve through `util/tokens.ts`. Use **`resolveTokensThemed(spec)`** (never the raw `resolveTokens` at module load) inside the projection/render function so a chart built under a different theme reads the live values. Projectors that embed color in cached per-point data (candle, volume, quoteTotals) carry the theme in their cache key; colors applied at series-options level use a thunk (`options: () => …`) resolved at `addSeries` time. `LiveChartRoot`'s `viewKey` includes the theme as a forward-safety net (a theme swap already coincides with an unmount in the shipped UX).
+
+- **Known limitation — MA / peak / drawing default colors:** the moving-average palette (`liveIndicatorsPersistence.ts`), peak-wall defaults, and drawing-tool colors are **user-selectable and persisted as hex in localStorage**, not theme tokens — so they do NOT change with the theme. The stock default MA-120 was white (`#F8FAFC`, invisible on Ledger); `--ma-5` is toned to `#334155` for the token consumers, but a user's persisted white stays white until they change it in the MA style picker. Accepted trade-off (user colors are user colors); revisit with a per-theme migration if it bites.
+
+- **Both themes only:** there is no "system/OS" mode and no third theme. `data-theme` is exactly `obsidian` or `ledger` at runtime (the legacy `dark` alias maps to Obsidian).
 
 ## Spacing
 
@@ -282,6 +290,9 @@ Two layers, each with one shared owner. Use them; do **not** hand-roll a dismiss
 | 2026-05-23 | Adopted KRX market convention (up=red `#DC2626`, down=blue `#2563EB`) | Single-user Korean analyst — Western up=green is counter-intuitive. Renamed `--up`/`--down` → `--success`/`--error` to disambiguate status semantic from price direction; introduced `--price-up`/`--price-down`. Removed `--ratio-ask` (folded into `--price-down`). All chart series now hide both `priceLineVisible` and `lastValueVisible` — analysts read latest values via crosshair. |
 | 2026-05-30 | Global Right Rail (fixed; single 관심 item, heart icon) replaces the `/live` ★ watchlist drawer; the chevron `»`/`«` and the 관심 item both show/hide the Watchlist Panel; chrome state in a dedicated `rightRail` store (ADR-0052) | Watchlist reachable from every page. Rail does not collapse — only the panel opens. Active state = tint bg + neutral text (no triple-teal, matches the app-shell active state). `--rail-w` added via `design-tokens.ts` (ADR-0012). |
 | 2026-06-08 | 관심종목 그룹 헤더 위계: 크기 교환(그룹 sm/600, 종목명 xs) + 개수 인라인 + chevron 좌측 ▼/▶ + sticky | 그룹·종목이 같은 "좌 텍스트 + 우 mono 숫자" 패턴으로 오독되던 문제. 디자인 컴패니언 4안 비교로 색 추가 없는 A안 선택 — 틸 라벨은 색상 규율(UI 상태 전용) 이탈로 기각. |
+| 2026-07-08 | 미정의 `--font-ui`/`--font-mono` 정의 + Geist→IBM Plex 전환 | 토큰이 정의된 적 없어 앱 전체가 Times(세리프)로 렌더링되던 P0. IBM Plex Sans KR 은 한글까지 한 패밀리로 커버, Plex Mono 로 tabular-nums 유지. |
+| 2026-07-08 | 상업화 듀얼 테마 Obsidian(다크)/Ledger(라이트) 도입 — 기존 틸 다크는 Obsidian 으로 교체 | 판매 가능한 프로 룩 요구. 틸+단일 형광은 생성형 기본값이라 차별성 없음 → 브래스/장부초록으로 아이덴티티 확보. 색 규율(UI/상태/시세 3분류)은 양 테마 계승. `[data-theme]` 계약 + 라우트별 auto. |
+| 2026-07-08 | 차트 색을 `resolveTokensThemed` 지연 해석으로 전환 (모듈 상수 박제 제거) | canvas 가 var() 를 못 받아 모듈 로드 시점 색을 박제 → 부트 테마에 고정되던 결함. 프로젝터 캐시에 테마 키, 시리즈 옵션 thunk 화로 테마 전환 대응. |
 
 ## App-shell & live tokens (ADR-0039, ADR-0052)
 

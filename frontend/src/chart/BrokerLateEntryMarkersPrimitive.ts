@@ -16,6 +16,16 @@ import {
   type BrokerLateEntryMarkerPoint,
 } from './projectors/brokerLateEntryMarkers';
 import { measureTextCached } from './util/textWidthCache';
+import { resolveTokensThemed } from '../util/tokens';
+
+// Label chip surface + text + hairline. Resolved lazily at draw() so the chip
+// follows the theme (a card-colored chip with a border reads on both the dark
+// Obsidian chart and the light Ledger chart).
+const CHIP_TOKENS = {
+  bg: ['--bg-card', '#121216'],
+  text: ['--fg', '#ECECF1'],
+  border: ['--border-strong', '#33333C'],
+} as const;
 
 export const BROKER_LATE_ENTRY_MARKER_STYLE = {
   dotRadiusPx: 4,
@@ -34,8 +44,6 @@ const LABEL_MIN_VERTICAL_GAP_PX = 4;
 const MIXED_ACCENT_RADIUS_PX = 1.5;
 const MIXED_ACCENT_GAP_PX = 5;
 const MIXED_ACCENT_AREA_PX = 10;
-const CHIP_BG = 'rgba(11, 15, 26, 0.78)';
-const CHIP_TEXT = '#E5E7EB';
 
 type MarkerCoordinate = {
   x: number;
@@ -111,8 +119,8 @@ function fillRoundedRect(
   ctx.fill();
 }
 
-function groupLabelColor(group: BrokerLateEntryLabelGroup): string {
-  return group.side === 'mixed' ? CHIP_TEXT : group.color;
+function groupLabelColor(group: BrokerLateEntryLabelGroup, chipText: string): string {
+  return group.side === 'mixed' ? chipText : group.color;
 }
 
 class BrokerLateEntryMarkersRenderer implements IPrimitivePaneRenderer {
@@ -129,6 +137,8 @@ class BrokerLateEntryMarkersRenderer implements IPrimitivePaneRenderer {
     const timeScale = chart.timeScale();
     const markers = this._source.markersData();
     if (markers.length === 0) return;
+
+    const { bg: chipBg, text: chipText, border: chipBorder } = resolveTokensThemed(CHIP_TOKENS);
 
     target.useBitmapCoordinateSpace((scope) => {
       const ctx = scope.context;
@@ -244,8 +254,13 @@ class BrokerLateEntryMarkersRenderer implements IPrimitivePaneRenderer {
         }
         placedLabelBoxes.push({ left, right: left + chipWidth, top, bottom: top + chipHeight });
 
-        ctx.fillStyle = CHIP_BG;
+        ctx.fillStyle = chipBg;
         fillRoundedRect(ctx, left, top, chipWidth, chipHeight, 4 * hr);
+        // Hairline so a card-colored chip reads against a same-family chart bg
+        // (notably a near-white Ledger chip on a near-white Ledger chart).
+        ctx.strokeStyle = chipBorder;
+        ctx.lineWidth = hr;
+        ctx.stroke();
 
         if (mixed) {
           const buyColor = group.markers.find((marker) => marker.side === 'buy')?.color ?? '#ef4444';
@@ -264,7 +279,7 @@ class BrokerLateEntryMarkersRenderer implements IPrimitivePaneRenderer {
           ctx.fill();
         }
 
-        ctx.fillStyle = groupLabelColor(group);
+        ctx.fillStyle = groupLabelColor(group, chipText);
         ctx.fillText(
           group.label,
           left + labelPadX + (mixed ? accentArea : 0),

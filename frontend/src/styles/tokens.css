@@ -4,48 +4,59 @@
  * v1 is dark-mode only; tokens live on :root.
  */
 :root,
-[data-theme='dark'] {
+[data-theme='dark'],
+[data-theme='obsidian'] {
   /* ───── Scale dial (single source for default density) ─────
      :root font-size is the ONE dial. 20px = 1.25× default; 16px would be 1.0×.
      All rem-based tokens (--text-*, --space-*, layout tokens) follow automatically.
      Chart canvas options in util/chartScale.ts are NOT reactive — see DESIGN.md Scale Factor. */
   font-size: 20px;
 
-  /* ───── Color · Surfaces ───── */
-  --bg: #090b0f;
-  --bg-card: #10151b;
-  --bg-subtle: #0b0f15;
-  --bg-input: #0c1117;
-  --bg-input-hover: #151b23;
+  /* ───── Typography · Font families (theme-independent) ─────
+     IBM Plex Sans KR carries Latin + Hangul in one family; IBM Plex Mono
+     carries every number (font-variant-numeric: tabular-nums). Faces load via
+     <link> in index.html. Tailwind font-ui/sans/mono resolve to these. */
+  --font-ui: 'IBM Plex Sans KR', 'Pretendard', ui-sans-serif, system-ui, 'Malgun Gothic', sans-serif;
+  --font-mono: 'IBM Plex Mono', ui-monospace, 'SF Mono', 'Menlo', Consolas, monospace;
+
+  /* ───── Color · Surfaces (Obsidian — warm graphite, 3-tier) ───── */
+  --bg: #0a0a0c;
+  --bg-card: #121216;
+  --bg-subtle: #0e0e11;
+  --bg-input: #101014;
+  --bg-input-hover: #1a1a20;
 
   /* ───── Color · Borders ───── */
-  --border: #1a2431;
-  --border-strong: #253040;
+  --border: #232329;
+  --border-strong: #33333c;
 
   /* ───── Color · Foreground ───── */
-  --fg: #e6edf5;
-  --fg-dim: #91a0b4;
-  --fg-dimmer: #59677a;
+  --fg: #ececf1;
+  --fg-dim: #9a9aa8;
+  --fg-dimmer: #63636f;
 
-  /* ───── Color · Accent + Semantic ───── */
-  --accent: #2dd4bf;
-  --accent-fg: #07100f;
+  /* ───── Color · Accent + Semantic (brass) ───── */
+  --accent: #f0b429;
+  --accent-fg: #1a1305;
   /* Sanctioned brand-mark gradient stop — DESIGN.md's "no gradients" rule
      has a single mockup-approved exception: the H brand mark in app chrome.
      Do not extend this exception to any other UI chrome. */
-  --accent-shade: #13998c;
+  --accent-shade: #c79417;
   /* Status semantic — UI feedback (success/error). Distinct from price direction. */
-  --success: #22C55E;
-  --error:   #F43F5E;
+  --success: #2FBF71;
+  --error:   #F25C7A;
   --warn: #F59E0B;
   /* Price direction — KRX convention: buy/up = red, sell/down = blue. */
-  --price-up:   #DC2626;
-  --price-down: #2563EB;
+  --price-up:   #F04452;
+  --price-down: #3485FA;
 
   /* ───── Color · Chart & Heatmap ───── */
-  --grid: #17202b;
-  --heat-lo: #0b1518;
-  --heat-hi: #2dd4bf;
+  --grid: #1b1b21;
+  --heat-lo: #13110b;
+  --heat-hi: #f0b429;
+
+  /* ───── Elevation ───── */
+  --shadow: 0 4px 12px rgba(0, 0, 0, 0.5);
 
   /* ───── Color · Moving Average ─────
      Per spec docs/superpowers/specs/2026-05-23-replay-moving-average-design.md §5.
@@ -63,13 +74,13 @@
   --ma-8: #94A3B8; /* slate — extension slot 8 */
 
   /* ───── Tint backgrounds ───── */
-  --tint-selection:  rgba(45, 212, 191, 0.12);
-  --tint-success:    rgba(34, 197, 94, 0.10);
-  --tint-error:      rgba(244, 63, 94, 0.10);
-  --tint-success-border: rgba(34, 197, 94, 0.30);  /* banner/chip borders */
-  --tint-error-border:   rgba(244, 63, 94, 0.30);  /* banner/chip borders */
-  --tint-price-up:   rgba(220, 38, 38, 0.10);  /* DC2626 @ 10% */
-  --tint-price-down: rgba(37, 99, 235, 0.10);  /* 2563EB @ 10% */
+  --tint-selection:  rgba(240, 180, 41, 0.10);
+  --tint-success:    rgba(47, 191, 113, 0.10);
+  --tint-error:      rgba(242, 92, 122, 0.10);
+  --tint-success-border: rgba(47, 191, 113, 0.30);  /* banner/chip borders */
+  --tint-error-border:   rgba(242, 92, 122, 0.30);  /* banner/chip borders */
+  --tint-price-up:   rgba(240, 68, 82, 0.10);   /* F04452 @ 10% */
+  --tint-price-down: rgba(52, 133, 250, 0.11);  /* 3485FA @ 11% */
   /* Closing Auction Window shading. Drawn behind chart panes by
      AuctionWindowOverlay so analysts can distinguish a "flat 0" tick
      from a "masked to 0" tick on RatioPane. Kept very subtle so it
@@ -81,8 +92,8 @@
      the card background so they read at small widths. Flat fill (no
      gradient) per user preference 2026-05-24. Anchored from the qty
      column inward — bar grows toward the price side. */
-  --bar-ask: rgba(37, 99, 235, 0.28);   /* 2563EB @ 28% */
-  --bar-bid: rgba(220, 38, 38, 0.28);   /* DC2626 @ 28% */
+  --bar-ask: rgba(52, 133, 250, 0.28);   /* 3485FA @ 28% */
+  --bar-bid: rgba(240, 68, 82, 0.28);    /* F04452 @ 28% */
 
   /* Source-identity chips (ADR-0039) — provenance, not UI/status/price. Hand-edited (color refs, not size). */
   --source-hogaplay-bg: var(--bg-card);
@@ -136,6 +147,74 @@
   --watchlist-panel-w: 17.5rem; /* 350px @ default; 280px base intent — Global Watchlist Panel (Right Rail) width */
   --rail-w: 3rem; /* 60px @ default; 48px base intent — Right Rail icon column width (fixed) */
 /* END AUTO-GENERATED */
+}
+
+/* ═══════════════ Paper Ledger — light theme (review/research) ═══════════════
+   Colors ONLY. The scale dial (:root font-size), font families, and every
+   size/spacing/radius/layout token stay on the base block above — this block
+   overrides nothing but color, so density + typography are theme-independent.
+   Sits OUTSIDE the base block so `npm run gen:tokens` (which rewrites only the
+   AUTO-GENERATED span inside the base block) never touches it. */
+[data-theme='ledger'] {
+  /* ───── Surfaces (ivory paper, 3-tier) ───── */
+  --bg: #f6f4ee;
+  --bg-card: #fdfcf8;
+  --bg-subtle: #f2efe7;
+  --bg-input: #fdfcf8;
+  --bg-input-hover: #f0ede4;
+
+  /* ───── Borders (괘선) ───── */
+  --border: #e4e0d3;
+  --border-strong: #c9c3b2;
+
+  /* ───── Foreground (ink) ───── */
+  --fg: #1e2732;
+  --fg-dim: #5c6673;
+  --fg-dimmer: #8b94a0;
+
+  /* ───── Accent + Semantic (banker's green) ───── */
+  --accent: #1f6f54;
+  --accent-fg: #f6f4ee;
+  --accent-shade: #165343;
+  --success: #1F8A50;
+  --error:   #C13B52;
+  --warn: #A16207;
+  /* Price direction — KRX convention, light-surface tuned. */
+  --price-up:   #C4322E;
+  --price-down: #1E5FC1;
+
+  /* ───── Chart & Heatmap ───── */
+  --grid: #ece8dc;
+  --heat-lo: #f0ede4;
+  --heat-hi: #1f6f54;
+
+  /* ───── Elevation ───── */
+  --shadow: 0 2px 8px rgba(30, 39, 50, 0.12);
+
+  /* ───── Moving Average — toned down for paper (only --ma-5 was invisible
+     white on light; the rest darkened for legibility on ivory) ───── */
+  --ma-1: #BE185D;
+  --ma-2: #1D4ED8;
+  --ma-3: #C2410C;
+  --ma-4: #15803D;
+  --ma-5: #334155; /* was #F8FAFC (white) — invisible on paper */
+  --ma-6: #0E7490;
+  --ma-7: #A16207;
+  --ma-8: #64748B;
+
+  /* ───── Tint backgrounds (new accent/status/price rgb) ───── */
+  --tint-selection:  rgba(31, 111, 84, 0.09);
+  --tint-success:    rgba(31, 138, 80, 0.10);
+  --tint-error:      rgba(193, 59, 82, 0.10);
+  --tint-success-border: rgba(31, 138, 80, 0.30);
+  --tint-error-border:   rgba(193, 59, 82, 0.30);
+  --tint-price-up:   rgba(196, 50, 46, 0.09);   /* C4322E @ 9% */
+  --tint-price-down: rgba(30, 95, 193, 0.09);   /* 1E5FC1 @ 9% */
+  --tint-auction-window: rgba(161, 98, 7, 0.10); /* warn @ 10% */
+
+  /* ───── Depth bar fills (alpha nudged up for light bg) ───── */
+  --bar-ask: rgba(30, 95, 193, 0.30);   /* 1E5FC1 @ 30% */
+  --bar-bid: rgba(196, 50, 46, 0.30);   /* C4322E @ 30% */
 }
 
 @keyframes tab-pulse { 0%, 100% { opacity: 1; } 50% { opacity: 0.3; } }

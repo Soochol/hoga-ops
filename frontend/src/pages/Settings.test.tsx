@@ -3,6 +3,7 @@ import { render, screen, waitFor } from '@testing-library/react';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import Settings from './Settings';
 import * as symbolsApi from '../api/symbols';
+import { useThemePrefsStore } from '../state/themePrefs';
 
 vi.mock('../config', () => ({
   loadConfig: () => Promise.resolve({ api_url: 'http://test' }),
@@ -157,5 +158,35 @@ describe('Settings — Symbol Master section', () => {
     });
     expect(screen.queryByText('시그널 알림')).toBeNull();
     expect(screen.queryByRole('switch', { name: '알림 사용' })).toBeNull();
+  });
+});
+
+describe('Settings — 테마 section', () => {
+  beforeEach(() => {
+    vi.restoreAllMocks();
+    localStorage.clear();
+    useThemePrefsStore.setState({ themePreference: 'auto' });
+    vi.spyOn(symbolsApi, 'getSymbolMasterInfo').mockResolvedValue({
+      count: 0, fetched_at_ms: null, status: 'unavailable', reason: 'symbol_master_not_initialized',
+    });
+  });
+
+  it('renders the three theme options with auto pressed by default', async () => {
+    renderWithQuery(<Settings />);
+    await waitFor(() => expect(screen.getByText('테마')).toBeInTheDocument());
+    const auto = screen.getByRole('button', { name: '자동' });
+    expect(auto).toHaveAttribute('aria-pressed', 'true');
+    expect(screen.getByRole('button', { name: 'Obsidian' })).toHaveAttribute('aria-pressed', 'false');
+    expect(screen.getByRole('button', { name: 'Ledger' })).toHaveAttribute('aria-pressed', 'false');
+  });
+
+  it('clicking Ledger updates the store and aria-pressed', async () => {
+    renderWithQuery(<Settings />);
+    const ledger = await screen.findByRole('button', { name: 'Ledger' });
+    ledger.click();
+    await waitFor(() => {
+      expect(useThemePrefsStore.getState().themePreference).toBe('ledger');
+    });
+    expect(ledger).toHaveAttribute('aria-pressed', 'true');
   });
 });

@@ -5,6 +5,38 @@
     <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>hoga-ops</title>
+    <!-- App type + data faces. IBM Plex Sans KR carries Latin + Hangul in one
+         family; IBM Plex Mono carries every number (tabular-nums). The Tailwind
+         font-ui/font-mono utilities resolve to var(--font-ui)/var(--font-mono),
+         defined in styles/tokens.css. -->
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link
+      href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans+KR:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;500;600&display=swap"
+      rel="stylesheet"
+    />
+    <!-- Theme bootstrap: set <html data-theme> BEFORE the module graph loads so
+         the first paint is the right theme and projector modules resolve their
+         colors against it (no FOUC, no wrong-theme chart cache). Mirrors
+         state/themePrefs.ts effectiveTheme() — keep the two in sync. -->
+    <script>
+      (function () {
+        try {
+          var raw = localStorage.getItem('ui.themePreference.v1');
+          var pref = raw ? JSON.parse(raw).themePreference : 'auto';
+          if (pref !== 'obsidian' && pref !== 'ledger' && pref !== 'auto') pref = 'auto';
+          var theme = pref;
+          if (pref === 'auto') {
+            var p = location.pathname;
+            var dark = p === '/live' || p.indexOf('/live/') === 0 || p === '/heatmap' || p.indexOf('/heatmap/') === 0;
+            theme = dark ? 'obsidian' : 'ledger';
+          }
+          document.documentElement.setAttribute('data-theme', theme);
+        } catch (e) {
+          document.documentElement.setAttribute('data-theme', 'obsidian');
+        }
+      })();
+    </script>
   </head>
   <body>
     <div id="root"></div>

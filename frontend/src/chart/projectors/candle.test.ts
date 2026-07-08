@@ -1,4 +1,4 @@
-import { describe, it, expect } from 'vitest';
+import { describe, it, expect, vi } from 'vitest';
 import { CANDLE_SPEC, projectCandle } from './candle';
 import { createVirtualAxis } from '../../util/virtualAxis';
 
@@ -103,5 +103,55 @@ describe('projectCandle', () => {
 
     expect(calls).toEqual([today.ts_ms]);
     expect(data.at(-1)?.close).toBe(104);
+  });
+
+  it('reprojects cached past candles when the theme changes (color re-resolves)', () => {
+    const day0Open = sessionOpenMs;
+    const day1Open = sessionOpenMs + 24 * 60 * 60 * 1000;
+    // past0 is an up candle (close ≥ open) → its color = --price-up.
+    const past0 = { ts_ms: day0Open, open: 100, close: 101, high: 102, low: 99, vol_a: 1, vol_b: 0 };
+    const past1 = { ts_ms: day0Open + 60_000, open: 101, close: 102, high: 103, low: 100, vol_a: 1, vol_b: 0 };
+    const today = { ts_ms: day1Open, open: 102, close: 103, high: 104, low: 101, vol_a: 1, vol_b: 0 };
+    const segments = [
+      { date: '20260518', session_open_ms: day0Open, session_close_ms: day0Open + 23_400_000, source: 'kis_live' },
+      { date: '20260519', session_open_ms: day1Open, session_close_ms: day1Open + 23_400_000, source: 'kis_live' },
+    ];
+    // Fresh theme names ('thm-*') keep the module-level themed-token cache empty
+    // for these keys, so the stub — not another test's cached fallbacks — drives
+    // the colors. --price-up differs per theme; the rest are constant.
+    const stub = vi.spyOn(window, 'getComputedStyle').mockImplementation(
+      () =>
+        ({
+          getPropertyValue: (v: string) => {
+            const theme = document.documentElement.getAttribute('data-theme');
+            if (v === '--price-up') return theme === 'thm-b' ? '#AAAAAA' : '#F04452';
+            if (v === '--price-down') return '#3485FA';
+            if (v === '--fg-dim') return '#9A9AA8';
+            return '';
+          },
+        }) as unknown as CSSStyleDeclaration,
+    );
+    const axisObj = {
+      classifyAndProject: (t: number) => ({ contained: true, inAuction: false, virtual: t - day0Open }),
+    } as never;
+    const dataFn = CANDLE_SPEC.series[0].data as (...args: any[]) => Array<{ color?: string }>;
+    const bundle = { segments, candles: [past0, past1, today] } as never;
+
+    document.documentElement.setAttribute('data-theme', 'thm-a');
+    const first = dataFn(bundle, axisObj);
+    const pastColorA = first[0].color;
+
+    // Same axis + byte-identical candle data → without the cache theme key the
+    // frozen past slice would return thm-a's color.
+    document.documentElement.setAttribute('data-theme', 'thm-b');
+    const second = dataFn(bundle, axisObj);
+    const pastColorB = second[0].color;
+
+    expect(pastColorA).toBe('#F04452');
+    expect(pastColorB).toBe('#AAAAAA');
+    expect(pastColorB).not.toBe(pastColorA);
+
+    stub.mockRestore();
+    document.documentElement.removeAttribute('data-theme');
   });
 });

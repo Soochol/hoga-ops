@@ -5,15 +5,16 @@ import type { PaneId } from '../chart/drawing/types';
 import type { PaneSeriesMap } from '../chart/drawing/chartCoordinates';
 import { useQuoteByCode } from '../api/liveQuotes';
 import { useLiveVenueStore } from '../state/liveVenue';
-import { resolveTokens } from '../util/tokens';
+import { resolveTokensThemed } from '../util/tokens';
 import { deriveCurrentPriceLine } from './deriveCurrentPriceLine';
 
 // DESIGN.md 토큰 → 색 문자열(canvas 가 var(--…) 를 못 받음). candle.ts 와 동일 토큰.
-const TOKENS = resolveTokens({
-  up: ['--price-up', '#DC2626'],
-  down: ['--price-down', '#2563EB'],
-  neutral: ['--fg-dim', '#94A3B8'],
-});
+// 렌더에서 지연 해석 — 테마(Obsidian/Ledger) 전환 시 라인·태그 색이 따라온다.
+const TOKEN_SPEC = {
+  up: ['--price-up', '#F04452'],
+  down: ['--price-down', '#3485FA'],
+  neutral: ['--fg-dim', '#9A9AA8'],
+} as const;
 
 type Props = {
   paneSeries: PaneSeriesMap;
@@ -33,6 +34,7 @@ function LiveCurrentPriceLine({ paneSeries, bundle, code }: Props) {
   const series = paneSeries.get('candle' as PaneId);
   const venue = useLiveVenueStore((s) => s.venue);
   const quote = useQuoteByCode(code ? [code] : [], venue).get(code ?? '');
+  const TOKENS = resolveTokensThemed(TOKEN_SPEC);
   const model = deriveCurrentPriceLine(bundle, quote, TOKENS);
   const lineRef = useRef<IPriceLine | null>(null);
 
