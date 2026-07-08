@@ -1,15 +1,10 @@
 import type { StudyViewReference } from '../api/studyViews';
 import { rangeBundleQueryOptions } from '../api/range';
-import {
-  studyPastCandlesQueryOptions,
-  studyPastDailyCandlesQueryOptions,
-} from '../api/studyPastCandles';
-import type { LiveVenueOption } from '../state/liveVenue';
+import { screenerDailyCandlesQueryOptions } from '../api/screenerDailyCandles';
 import type { SourcePreference } from '../state/sourcePreference';
 import { studyReferenceQueryInputs } from './studyReferenceBundleModel';
 
 export type StudyReferenceQuerySettings = {
-  venue: LiveVenueOption;
   sourcePref: SourcePreference;
   brokerLateEntryEnabled: boolean;
   brokerLateEntryStartHHMM: number;
@@ -59,29 +54,35 @@ export function studyReferenceSidecarRangeOptions(
   });
 }
 
-export function studyReferenceMinuteCandlesOptions(
-  save: StudyViewReference | null,
-  settings: StudyReferenceQuerySettings,
-) {
+/** 디스크 캔들(mode=candles). sourcePref는 store 값이 아니라 'hogaplay_first' 고정 —
+ * store가 'kis_ws_first'면 candles.parquet이 없는 kis_live 소스가 선택돼 빈 캔들이 된다
+ * (kis_live/kis_api는 캔들 parquet 미보유). 복기뷰 캔들은 항상 디스크 캡처만 쓴다. */
+export function studyReferenceCandleRangeOptions(save: StudyViewReference | null) {
   const inputs = studyReferenceQueryInputs(save);
-  return studyPastCandlesQueryOptions(
-    inputs.minuteCandles.code,
-    inputs.minuteCandles.from,
-    inputs.minuteCandles.to,
-    settings.venue,
-  );
+  return rangeBundleQueryOptions({
+    code: inputs.candles.code,
+    from: inputs.candles.from,
+    to: inputs.candles.to,
+    timeframe: inputs.candles.timeframe,
+    todayKst: null,
+    sourcePref: 'hogaplay_first',
+    options: {
+      mode: 'candles',
+      brokerLateEntriesEnabled: false,
+      brokerLateEntryStartHHMM: null,
+      volumeDistributionBins: null,
+      tradeVolumePocBins: null,
+      volumeDistributionPriceRange: null,
+    },
+  });
 }
 
-export function studyReferenceDailyCandlesOptions(
-  save: StudyViewReference | null,
-  settings: StudyReferenceQuerySettings,
-) {
+export function studyReferenceScreenerDailyOptions(save: StudyViewReference | null) {
   const inputs = studyReferenceQueryInputs(save);
-  return studyPastDailyCandlesQueryOptions(
-    inputs.dailyCandles.code,
-    inputs.dailyCandles.from,
-    inputs.dailyCandles.to,
-    settings.venue,
+  return screenerDailyCandlesQueryOptions(
+    inputs.screenerDaily.code,
+    inputs.screenerDaily.from,
+    inputs.screenerDaily.to,
   );
 }
 
@@ -92,7 +93,7 @@ export function studyReferenceQueryOptions(
   return {
     rangeHoga: studyReferenceHogaRangeOptions(save, settings),
     rangeSidecars: studyReferenceSidecarRangeOptions(save, settings),
-    minuteCandles: studyReferenceMinuteCandlesOptions(save, settings),
-    dailyCandles: studyReferenceDailyCandlesOptions(save, settings),
+    rangeCandles: studyReferenceCandleRangeOptions(save),
+    screenerDaily: studyReferenceScreenerDailyOptions(save),
   };
 }

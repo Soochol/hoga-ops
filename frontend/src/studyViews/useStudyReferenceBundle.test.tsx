@@ -1,20 +1,12 @@
 import { renderHook } from '@testing-library/react';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import type { UseQueryOptions, UseQueryResult } from '@tanstack/react-query';
-import { LIVE_SETTINGS_KEY } from '../api/liveSettings';
 import type { StudyViewReference } from '../api/studyViews';
-import type { RangeBundle } from '../api/types';
+import type { Candle, RangeBundle } from '../api/types';
 
-const {
-  useQueryMock,
-  studyReferenceQueryOptionsMock,
-  useScreenerDailyCandlesMock,
-  useLivePastCandlesMock,
-} = vi.hoisted(() => ({
+const { useQueryMock, studyReferenceQueryOptionsMock } = vi.hoisted(() => ({
   useQueryMock: vi.fn(),
   studyReferenceQueryOptionsMock: vi.fn(),
-  useScreenerDailyCandlesMock: vi.fn(),
-  useLivePastCandlesMock: vi.fn(),
 }));
 
 vi.mock('@tanstack/react-query', async (importOriginal) => {
@@ -29,22 +21,9 @@ vi.mock('./studyReferenceQueries', () => ({
   studyReferenceQueryOptions: studyReferenceQueryOptionsMock,
 }));
 
-vi.mock('../api/screenerDailyCandles', () => ({
-  useScreenerDailyCandles: useScreenerDailyCandlesMock,
-}));
-
-vi.mock('../api/livePastCandles', async (importOriginal) => {
-  const actual = await importOriginal<typeof import('../api/livePastCandles')>();
-  return {
-    ...actual,
-    useLivePastCandles: useLivePastCandlesMock,
-  };
-});
-
 import { useLivePageStore } from '../state/livePage';
 import { useLiveVenueStore } from '../state/liveVenue';
 import { useSourcePreferenceStore } from '../state/sourcePreference';
-import { buildRangeBundleRequest } from '../api/range';
 import { useStudyReferenceBundle } from './useStudyReferenceBundle';
 
 const save: StudyViewReference = {
@@ -54,21 +33,17 @@ const save: StudyViewReference = {
   code: '005930',
   label: '삼성전자',
   timeframe: '5m',
-  range: { from_date: '20260616', to_date: '20260618', from_ms: 1_000, to_ms: 2_000 },
-  viewport: { right_edge_ms: 2_000, bar_span: 120, at_live_edge: false },
-  memo: '',
-  tags: [],
-  created_at_ms: 1,
-  updated_at_ms: 2,
-};
-const minuteSave: StudyViewReference = {
-  ...save,
   range: {
     from_date: '20260616',
     to_date: '20260618',
     from_ms: 1_781_568_000_000,
     to_ms: 1_781_568_300_000,
   },
+  viewport: { right_edge_ms: 1_781_568_300_000, bar_span: 120, at_live_edge: false },
+  memo: '',
+  tags: [],
+  created_at_ms: 1,
+  updated_at_ms: 2,
 };
 const dailySave: StudyViewReference = {
   ...save,
@@ -83,28 +58,12 @@ const dailySave: StudyViewReference = {
 
 const rangeHogaOptions = { queryKey: ['range-hoga-plan'], enabled: true } as unknown as UseQueryOptions;
 const rangeSidecarOptions = { queryKey: ['range-sidecar-plan'], enabled: true } as unknown as UseQueryOptions;
-const minuteOptions = { queryKey: ['minute-plan'], enabled: true } as unknown as UseQueryOptions;
-const dailyOptions = { queryKey: ['daily-plan'], enabled: false } as unknown as UseQueryOptions;
-let kisRestBypassEnabled = false;
-let rangeCandlesFixture: Array<{ ts_ms: number; open: number; high: number; low: number; close: number; vol_a: number; vol_b: number }> = [];
-let screenerDailyCandlesFixture: Array<{ t_ms: number; open: number; high: number; low: number; close: number; volume: number }> = [];
+const rangeCandlesOptions = { queryKey: ['range-candles-plan'], enabled: true } as unknown as UseQueryOptions;
+const screenerDailyOptions = { queryKey: ['screener-daily-plan'], enabled: false } as unknown as UseQueryOptions;
 
-const expectedRangeCandlesQueryKey = buildRangeBundleRequest({
-  code: '005930',
-  from: '20260616',
-  to: '20260618',
-  timeframe: '5m',
-  todayKst: null,
-  sourcePref: 'kis_api_first',
-  options: {
-    mode: 'candles',
-    brokerLateEntriesEnabled: false,
-    brokerLateEntryStartHHMM: null,
-    volumeDistributionBins: null,
-    tradeVolumePocBins: null,
-    volumeDistributionPriceRange: null,
-  },
-}).queryKey;
+let rangeCandlesFixture: Candle[] = [];
+let rangeCandlesSegments: RangeBundle['segments'] = [];
+let screenerDailyFixture: Array<{ t_ms: number; open: number; high: number; low: number; close: number; volume: number }> = [];
 
 function rangeBundleFixture(overrides: Partial<RangeBundle> = {}): RangeBundle {
   return {
@@ -133,45 +92,24 @@ function rangeBundleFixture(overrides: Partial<RangeBundle> = {}): RangeBundle {
 }
 
 function queryResultFor(options: UseQueryOptions): Partial<UseQueryResult> {
-  if (Array.isArray(options.queryKey) && options.queryKey.length === LIVE_SETTINGS_KEY.length &&
-    options.queryKey.every((value, index) => value === LIVE_SETTINGS_KEY[index])) {
-    return {
-      data: {
-        schema_version: 1,
-        storage_policy: 'ws_plus_rest',
-        program_trade_storage_enabled: false,
-        kis_rest_bypass_enabled: kisRestBypassEnabled,
-      },
-      isLoading: false,
-      error: null,
-    };
-  }
   if (options === rangeHogaOptions) {
     return { data: null, isLoading: false, error: null };
   }
   if (options === rangeSidecarOptions) {
     return { data: null, isLoading: false, error: null };
   }
-  if (Array.isArray(options.queryKey) && options.queryKey[0] === 'range' && options.queryKey[14] === 'candles') {
+  if (options === rangeCandlesOptions) {
     return {
-      data: rangeCandlesFixture.length > 0 ? rangeBundleFixture({
-        bucket_ms: 180_000,
-        candles: rangeCandlesFixture,
-      }) : null,
+      data: rangeCandlesFixture.length > 0 || rangeCandlesSegments.length > 0
+        ? rangeBundleFixture({ candles: rangeCandlesFixture, segments: rangeCandlesSegments })
+        : null,
       isLoading: false,
       error: null,
     };
   }
-  if (options === minuteOptions) {
+  if (options === screenerDailyOptions) {
     return {
-      data: { candles: [], data_warnings: ['minute-warning'], effective_sessions: [] },
-      isLoading: false,
-      error: null,
-    };
-  }
-  if (options === dailyOptions) {
-    return {
-      data: { candles: [], data_warnings: ['daily-warning'] },
+      data: { candles: screenerDailyFixture, data_warnings: [] },
       isLoading: false,
       error: null,
     };
@@ -186,24 +124,13 @@ describe('useStudyReferenceBundle', () => {
     studyReferenceQueryOptionsMock.mockReturnValue({
       rangeHoga: rangeHogaOptions,
       rangeSidecars: rangeSidecarOptions,
-      minuteCandles: minuteOptions,
-      dailyCandles: dailyOptions,
+      rangeCandles: rangeCandlesOptions,
+      screenerDaily: screenerDailyOptions,
     });
-    kisRestBypassEnabled = false;
     rangeCandlesFixture = [];
-    screenerDailyCandlesFixture = [];
+    rangeCandlesSegments = [];
+    screenerDailyFixture = [];
     useQueryMock.mockImplementation(queryResultFor);
-    useLivePastCandlesMock.mockReset();
-    useLivePastCandlesMock.mockReturnValue({
-      data: { candles: [], data_warnings: ['minute-warning'], effective_sessions: [] },
-      isLoading: false,
-      error: null,
-    });
-    useScreenerDailyCandlesMock.mockImplementation(() => ({
-      data: { candles: screenerDailyCandlesFixture, data_warnings: [] },
-      isLoading: false,
-      error: null,
-    }));
     useLiveVenueStore.setState({ venue: 'NXT' });
     useSourcePreferenceStore.setState({ sourcePreference: 'kis_api_first' });
     useLivePageStore.setState({
@@ -215,11 +142,11 @@ describe('useStudyReferenceBundle', () => {
     });
   });
 
-  it('uses the shared study reference query plan for the active 복기뷰', () => {
+  it('uses the shared study reference query plan (no venue in settings) and subscribes 4 disk queries', () => {
     renderHook(() => useStudyReferenceBundle(save));
 
+    // settings에 venue가 없다 — 캔들은 rangeCandles(venue 무관)로만 로드된다.
     expect(studyReferenceQueryOptionsMock).toHaveBeenCalledWith(save, {
-      venue: 'NXT',
       sourcePref: 'kis_api_first',
       brokerLateEntryEnabled: true,
       brokerLateEntryStartHHMM: 1000,
@@ -227,48 +154,40 @@ describe('useStudyReferenceBundle', () => {
       volumeDistributionEnabled: true,
       volumeDistributionRangeCount: 12,
     });
-    expect(useQueryMock).toHaveBeenNthCalledWith(1, expect.objectContaining({
-      queryKey: LIVE_SETTINGS_KEY,
-    }));
-    expect(useQueryMock).toHaveBeenNthCalledWith(2, rangeHogaOptions);
-    expect(useQueryMock).toHaveBeenNthCalledWith(3, rangeSidecarOptions);
-    expect(useQueryMock).toHaveBeenNthCalledWith(4, expect.objectContaining({
-      queryKey: expectedRangeCandlesQueryKey,
-    }));
-    // 분봉은 useQuery(minuteOptions)가 아니라 청크 워크백 훅으로 로드된다.
-    expect(useQueryMock).toHaveBeenNthCalledWith(5, dailyOptions);
+    expect(useQueryMock).toHaveBeenNthCalledWith(1, rangeHogaOptions);
+    expect(useQueryMock).toHaveBeenNthCalledWith(2, rangeSidecarOptions);
+    expect(useQueryMock).toHaveBeenNthCalledWith(3, rangeCandlesOptions);
+    expect(useQueryMock).toHaveBeenNthCalledWith(4, screenerDailyOptions);
+    // KIS 훅은 하나도 호출되지 않는다(디스크 온리 계약).
+    expect(useQueryMock).toHaveBeenCalledTimes(4);
   });
 
-  it('분봉은 useLivePastCandles(청크 워크백 훅)로 로드한다 — ADR-0091 예산 유예 박제 방지', () => {
-    renderHook(() => useStudyReferenceBundle(save));
-
-    // 분봉 timeframe(5m) save → 저장 기간 전체를 seed로 청크 워크백 훅에 전달.
-    expect(useLivePastCandlesMock).toHaveBeenCalledWith(
-      '005930', '20260616', '20260618', 'NXT',
-    );
-    // minuteOptions는 이제 useQuery로 구독되지 않는다(warm 프리페치만 사용).
-    expect(useQueryMock).not.toHaveBeenCalledWith(minuteOptions);
-  });
-
-  it('uses lightweight range candle fallback for minute study when KIS REST bypass is enabled', () => {
-    kisRestBypassEnabled = true;
+  it('renders minute candles from the disk (mode=candles) query', () => {
     rangeCandlesFixture = [{ ts_ms: 1_781_568_000_000, open: 1, high: 2, low: 1, close: 2, vol_a: 100, vol_b: 0 }];
 
-    const { result } = renderHook(() => useStudyReferenceBundle(minuteSave));
+    const { result } = renderHook(() => useStudyReferenceBundle(save));
 
     expect(result.current.bundle?.candles).toHaveLength(1);
-    expect(useQueryMock).toHaveBeenCalledWith(expect.objectContaining({
-      queryKey: expectedRangeCandlesQueryKey,
-    }));
   });
 
-  it('uses screener daily fallback for stock D/W/M study when KIS REST bypass is enabled', () => {
-    kisRestBypassEnabled = true;
-    screenerDailyCandlesFixture = [{ t_ms: 1_781_568_000_000, open: 1, high: 2, low: 1, close: 2, volume: 100 }];
+  it('renders daily candles from screener gap-fill when hogaplay 1m is absent', () => {
+    screenerDailyFixture = [{ t_ms: 1_781_568_000_000, open: 1, high: 2, low: 1, close: 2, volume: 100 }];
+
     const { result } = renderHook(() => useStudyReferenceBundle(dailySave));
 
     expect(result.current.bundle?.candles).toHaveLength(1);
-    expect(useScreenerDailyCandlesMock).toHaveBeenCalledWith('005930', '20260616', '20260618');
+  });
+
+  it('always reports empty pastDataWarnings (disk-only has no KIS delay channel)', () => {
+    const { result } = renderHook(() => useStudyReferenceBundle(save));
+    expect(result.current.pastDataWarnings).toEqual([]);
+  });
+
+  it('pins venue to KRX regardless of the shared live venue store', () => {
+    // beforeEach가 스토어를 NXT로 세팅했지만 study는 KRX 고정(공유 스토어 무시).
+    useLiveVenueStore.setState({ venue: 'UN' });
+    const { result } = renderHook(() => useStudyReferenceBundle(save));
+    expect(result.current.venue).toBe('KRX');
   });
 
   it('merges sidecar overlays into the hoga study bundle without waiting on sidecar loading', () => {
@@ -327,8 +246,6 @@ describe('useStudyReferenceBundle', () => {
   });
 
   it('holds isLoading while the sidecar is pending with no data yet (개선안 1-C)', () => {
-    // 사이드카 최대벽·POC·거래량분포가 첫 커밋에 캔들과 함께 등장하도록 풀스크린
-    // 게이트에 포함. data==null(첫 로드)일 때만 홀드 — 위 테스트(데이터 present)는 무영향.
     useQueryMock.mockImplementation((options: UseQueryOptions) => {
       if (options === rangeSidecarOptions) {
         return { data: null, isLoading: true, error: null };
@@ -344,7 +261,6 @@ describe('useStudyReferenceBundle', () => {
   it('does not hold isLoading when the sidecar errors (settle, no permanent hold)', () => {
     useQueryMock.mockImplementation((options: UseQueryOptions) => {
       if (options === rangeSidecarOptions) {
-        // 에러 settle: react-query는 isLoading=false로 내려간다.
         return { data: null, isLoading: false, error: new Error('sidecar failed') };
       }
       return queryResultFor(options);
@@ -355,35 +271,16 @@ describe('useStudyReferenceBundle', () => {
     expect(result.current.isLoading).toBe(false);
   });
 
-  // isExtending: 분봉 워크백이 저장 기간 시작일(seed from_date)까지 아직
-  // 도달하지 않았는가. StudyPage가 차트를 마운트 유지한 채 진행 배지를 띄우는 신호.
-  it('분봉 워크백이 seed(from_date)까지 미도달이면 isExtending=true', () => {
-    useLivePastCandlesMock.mockReturnValue({
-      data: { from: '20260617', candles: [], data_warnings: [], effective_sessions: [] },
-      isLoading: false,
-      error: null,
+  it('holds isLoading while the screener daily gap-fill query is pending', () => {
+    useQueryMock.mockImplementation((options: UseQueryOptions) => {
+      if (options === screenerDailyOptions) {
+        return { data: null, isLoading: true, error: null };
+      }
+      return queryResultFor(options);
     });
-    const { result } = renderHook(() => useStudyReferenceBundle(save));
-    expect(result.current.isExtending).toBe(true);
-  });
 
-  it('분봉 워크백이 seed(from_date)에 도달하면 isExtending=false', () => {
-    useLivePastCandlesMock.mockReturnValue({
-      data: { from: '20260616', candles: [], data_warnings: [], effective_sessions: [] },
-      isLoading: false,
-      error: null,
-    });
-    const { result } = renderHook(() => useStudyReferenceBundle(save));
-    expect(result.current.isExtending).toBe(false);
-  });
-
-  it('일봉(비분봉) 뷰는 분봉 데이터와 무관하게 isExtending=false', () => {
-    useLivePastCandlesMock.mockReturnValue({
-      data: { from: '20260617', candles: [], data_warnings: [], effective_sessions: [] },
-      isLoading: false,
-      error: null,
-    });
     const { result } = renderHook(() => useStudyReferenceBundle(dailySave));
-    expect(result.current.isExtending).toBe(false);
+
+    expect(result.current.isLoading).toBe(true);
   });
 });

@@ -25,7 +25,7 @@ import {
 import { buildChartBundle, createIncrementalHogaSeriesBuilder, filterProgramTradeForCandles, type HogaSeries } from './buildLiveBundle';
 import type { LiveDataWarning } from './liveDataWarnings';
 import type { TradeSnapshot } from './bucketHogaSeries';
-import { aggregateCandles, aggregateCalendar } from './aggregateCandles';
+import { aggregateCandles, aggregateCalendar, keepRegularSessionCandles } from './aggregateCandles';
 import { mergeCalendarCandlesByPriority, mergeCandlesByPriority } from './candleSourceMerge';
 import {
   regularSessionOpenMs,
@@ -69,13 +69,6 @@ function candleVolume(c: Candle): number {
 
 function candleDateSet(candles: readonly Candle[]): Set<string> {
   return new Set(candles.map((c) => realMsToYyyymmdd(c.ts_ms)));
-}
-
-function keepRegularSessionCandles<T extends { t_ms: number }>(candles: readonly T[]): T[] {
-  return candles.filter((c) => {
-    const date = realMsToYyyymmdd(c.t_ms);
-    return c.t_ms >= regularSessionOpenMs(date) && c.t_ms <= regularSessionCloseMs(date);
-  });
 }
 
 function segmentSourceByDate(bundle: RangeBundle | null | undefined, date: string): SourceName | undefined {
