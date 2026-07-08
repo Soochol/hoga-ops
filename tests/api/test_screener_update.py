@@ -37,8 +37,9 @@ def _seed_archive(tmp_path: Path, codes: list[str]) -> Path:
 
 
 def _patch_update_env(monkeypatch):
-    """20260627 갭 1거래일 + creds 있음 + 캐퍼시티 fake 직결 + 스로틀 0."""
-    monkeypatch.setattr(_screener_mod, "now_kst", lambda: datetime(2026, 6, 27))
+    """20260627 갭 1거래일 + creds 있음 + 캐퍼시티 fake 직결 + 스로틀 0.
+    now=16:00 이후 → 오늘(20260627)이 D6 컷오프를 지나 확정 거래일로 갭에 포함된다."""
+    monkeypatch.setattr(_screener_mod, "now_kst", lambda: datetime(2026, 6, 27, 16, 0))
     monkeypatch.setattr(_screener_mod, "trading_days_in_range", lambda _f, _t: ["20260627"])
     monkeypatch.setattr(_screener_mod.kis_access, "has_rest_capacity", lambda data_dir: True)
     monkeypatch.setattr(_screener_mod, "ensure_kis_capacity_scheduler", lambda data_dir: object())
@@ -113,14 +114,42 @@ def test_gap_trading_days_no_gap_short_circuits(monkeypatch):
     # next day after 20260601 (=20260602) > today 20260601 → [] WITHOUT calling the calendar.
     calls = []
     monkeypatch.setattr(_screener_mod, "trading_days_in_range", lambda f, t: calls.append((f, t)) or ["x"])
-    assert _screener_mod._gap_trading_days("20260601", "20260601") == []
+    assert _screener_mod._gap_trading_days(
+        "20260601", "20260601", now=datetime(2026, 6, 1, 16, 0)) == []
     assert calls == []  # short-circuited, never hit the calendar
 
 
 def test_gap_trading_days_delegates_when_gap(monkeypatch):
     # next day after 20260529 = 20260530; today 20260601 → delegates to the calendar.
+    # now ≥ 16:00 → today(20260601) is a confirmed session and stays in the gap.
     monkeypatch.setattr(_screener_mod, "trading_days_in_range", lambda f, t: [f, t])
-    assert _screener_mod._gap_trading_days("20260529", "20260601") == ["20260530", "20260601"]
+    assert _screener_mod._gap_trading_days(
+        "20260529", "20260601", now=datetime(2026, 6, 1, 16, 0)) == ["20260530", "20260601"]
+
+
+def test_gap_excludes_today_before_eod_cutoff(monkeypatch):
+    """D6: 16:00 KST 전에는 오늘(미확정) 일봉을 갭에서 제외 — 장중 미확정 저장 방지."""
+    monkeypatch.setattr(_screener_mod, "trading_days_in_range", lambda f, t: ["20260627"])
+    days = _screener_mod._gap_trading_days(
+        "20260626", "20260627", now=datetime(2026, 6, 27, 12, 0))
+    assert days == []
+
+
+def test_gap_includes_today_after_eod_cutoff(monkeypatch):
+    """D6: 16:00 KST 이후에는 오늘이 확정 — 갭에 포함."""
+    monkeypatch.setattr(_screener_mod, "trading_days_in_range", lambda f, t: ["20260627"])
+    days = _screener_mod._gap_trading_days(
+        "20260626", "20260627", now=datetime(2026, 6, 27, 16, 0))
+    assert days == ["20260627"]
+
+
+def test_gap_keeps_past_days_but_drops_today_before_cutoff(monkeypatch):
+    """장중이라도 과거 확정 거래일은 남기고 오늘만 드롭."""
+    monkeypatch.setattr(_screener_mod, "trading_days_in_range",
+                        lambda f, t: ["20260626", "20260627"])
+    days = _screener_mod._gap_trading_days(
+        "20260625", "20260627", now=datetime(2026, 6, 27, 9, 30))
+    assert days == ["20260626"]
 
 
 def test_lifespan_does_not_run_screener_recovery_on_startup(tmp_path: Path, monkeypatch):
@@ -216,7 +245,7 @@ async def test_trigger_update_fetches_daily_rows_through_capacity_scheduler(tmp_
     async def fake_kis_fetch_one(_client, code, frm, to):
         return [DailyBar(code, datetime(2026, 6, 27).date(), 1.0, 2.0, 1.0, 2.0, 10)]
 
-    monkeypatch.setattr(_screener_mod, "now_kst", lambda: datetime(2026, 6, 27))
+    monkeypatch.setattr(_screener_mod, "now_kst", lambda: datetime(2026, 6, 27, 16, 0))
     monkeypatch.setattr(_screener_mod, "trading_days_in_range", lambda _f, _t: ["20260627"])
     monkeypatch.setattr(_screener_mod.screener_store, "run_update", fake_run_update)
     monkeypatch.setattr(_screener_mod.kis_access, "has_rest_capacity", lambda data_dir: True)
@@ -265,7 +294,7 @@ async def test_start_update_calendar_unavailable_reason(tmp_path: Path, monkeypa
 
 async def test_start_update_creds_missing_reason(tmp_path: Path, monkeypatch):
     _seed_archive(tmp_path, ["005930"])
-    monkeypatch.setattr(_screener_mod, "now_kst", lambda: datetime(2026, 6, 27))
+    monkeypatch.setattr(_screener_mod, "now_kst", lambda: datetime(2026, 6, 27, 16, 0))
     monkeypatch.setattr(_screener_mod, "trading_days_in_range", lambda _f, _t: ["20260627"])
     monkeypatch.setattr(_screener_mod.kis_access, "has_rest_capacity", lambda data_dir: False)
     assert await _screener_mod.start_update(tmp_path) == {

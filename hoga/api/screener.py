@@ -54,14 +54,27 @@ _module_bus = None  # EventBus | None — build_router 가 주입(스케줄러�
 _PROGRESS_MIN_INTERVAL_S = 1.0  # 진행 이벤트 스로틀(테스트는 0으로 monkeypatch)
 
 
-def _gap_trading_days(last_raw_date: str, today: str) -> list[str]:
+# 스펙 D6 — 스크리너 EOD ingest 컷오프 = 16:00 KST. 정규장 종가(15:30) 확정 +
+# After-Hours(15:30–16:00) 버퍼. 이 시각 전의 "오늘" 일봉은 KIS가 줘도 미확정이므로
+# 갭에서 제외한다 — 장중 미확정 행이 아카이브에 박제되는 것을 막는다(그렇게 박제되면
+# last_raw_date 가 오늘로 올라가 이후 no_gap 으로 재fetch까지 차단되어, 확정값으로
+# 자가 교체되지 않는 오염이 된다). captures 경로의 17:00 is_today_too_early(hogaplay
+# 집계 lag 버퍼)와는 목적·값이 다르다.
+_SCREENER_EOD_CUTOFF_HOUR = 16
+
+
+def _gap_trading_days(last_raw_date: str, today: str, *, now: datetime) -> list[str]:
     """last_raw_date 다음날부터 today(KST)까지의 거래일 목록. 갭 없으면 [].
     trading_days_in_range 예외(KIS 거래일 먹통)는 전파 — 호출자가 0/None 으로 다르게 매핑한다.
-    trigger_update(갭 캐치업)와 status(days_behind)가 공유하는 단일 갭 규칙."""
+    now < 16:00 KST 면 오늘(미확정)을 제외(스펙 D6). trigger_update(갭 캐치업)와
+    status(days_behind)가 공유하는 단일 갭 규칙."""
     start = next_kst_day(last_raw_date)
     if start > today:
         return []
-    return trading_days_in_range(start, today)
+    days = trading_days_in_range(start, today)
+    if now.hour < _SCREENER_EOD_CUTOFF_HOUR:
+        days = [d for d in days if d < today]
+    return days
 
 
 async def _kis_fetch_one(client, code: str, frm: str, to: str) -> list[DailyBar]:
@@ -88,11 +101,12 @@ async def _plan_update(data_dir: Path) -> _UpdatePlan | str:
     if last is None:
         return "not_seeded"
 
-    today = now_kst().strftime("%Y%m%d")
+    now = now_kst()
+    today = now.strftime("%Y%m%d")
     try:
         # to_thread: 콜드 월이면 KIS chk-holiday sync HTTP — duckdb read 와 같은
         # 규칙으로 이벤트 루프 밖에서.
-        days = await asyncio.to_thread(_gap_trading_days, last, today)
+        days = await asyncio.to_thread(_gap_trading_days, last, today, now=now)
     except Exception:  # noqa: BLE001 — TradingDayUnavailableError or worse
         log.warning("screener update: trading-day list unavailable")
         return "calendar_unavailable"
@@ -257,12 +271,13 @@ def build_router(*, data_dir: Path, bus=None) -> APIRouter:
         # logic (same next_kst_day + start>today short-circuit) so the
         # inverted-range ValueError never fires. KRX outage → None (frontend
         # treats None as unknown), never crash the status route.
-        today = now_kst().strftime("%Y%m%d")
+        now = now_kst()
+        today = now.strftime("%Y%m%d")
         if s.last_raw_date is None:
             days_behind = None  # 유효 거래일 없음(빈/NULL-date 아카이브) → 신선도 불명
         else:
             try:
-                days_behind = len(_gap_trading_days(s.last_raw_date, today))
+                days_behind = len(_gap_trading_days(s.last_raw_date, today, now=now))
             except Exception:  # noqa: BLE001 — TradingDayUnavailableError or worse
                 days_behind = None
         return {
