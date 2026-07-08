@@ -7,6 +7,7 @@ import InvestorNetConfig from './InvestorNetConfig';
 import AskPeakConfig from './AskPeakConfig';
 import BidPeakConfig from './BidPeakConfig';
 import TradeVolumePocConfig from './TradeVolumePocConfig';
+import DepthHeatmapConfig from './DepthHeatmapConfig';
 import QuoteTotalsConfig from './QuoteTotalsConfig';
 import RatioConfig from './RatioConfig';
 import FillStrengthConfig from './FillStrengthConfig';
@@ -33,6 +34,7 @@ type CategoryId =
   | 'ask-peak'
   | 'bid-peak'
   | 'trade-volume-poc'
+  | 'depth-heatmap'
   | 'volume-distribution'
   | 'quote-totals'
   | 'ratio'
@@ -59,6 +61,7 @@ const CATEGORIES: ReadonlyArray<{ id: CategoryId; label: string; group: GroupId 
   { id: 'trade-volume-poc', label: '당일 최대 매물대', group: 'hoga' },
   { id: 'ask-peak',        label: '당일 매도 최대벽', group: 'hoga' },
   { id: 'bid-peak',        label: '당일 매수 최대벽', group: 'hoga' },
+  { id: 'depth-heatmap',   label: '호가 잔량 히트맵', group: 'hoga' },
   { id: 'foreign-net',     label: '외국인 순매수량',  group: 'broker'  },
   { id: 'institution-net', label: '기관 순매수량',    group: 'broker'  },
   { id: 'broker-late-entry', label: '신규 거래원 등장', group: 'broker' },
@@ -103,6 +106,8 @@ export default function IndicatorPanel({ onClose, capabilities = STOCK_CAPABILIT
   const setVolumeDistributionStyle = useLivePageStore((s) => s.setVolumeDistributionStyle);
   const brokerLateEntryEnabled = useLivePageStore((s) => s.brokerLateEntryEnabled);
   const setBrokerLateEntryEnabled = useLivePageStore((s) => s.setBrokerLateEntryEnabled);
+  const depthHeatmapEnabled = useLivePageStore((s) => s.depthHeatmapEnabled);
+  const setDepthHeatmapEnabled = useLivePageStore((s) => s.setDepthHeatmapEnabled);
   const paneIndicators = useLivePageStore((s): PanePrefsIndicatorSource => ({
     volumeEnabled: s.volumeEnabled,
     quoteTotalsEnabled: s.quoteTotalsEnabled,
@@ -149,6 +154,7 @@ export default function IndicatorPanel({ onClose, capabilities = STOCK_CAPABILIT
       case 'bid-peak': return bidPeakEnabled;
       case 'trade-volume-poc': return tradeVolumePocEnabled;
       case 'volume-distribution': return volumeDistributionEnabled;
+      case 'depth-heatmap': return depthHeatmapEnabled;
       case 'broker-late-entry': return brokerLateEntryEnabled;
       default: return false;
     }
@@ -169,6 +175,7 @@ export default function IndicatorPanel({ onClose, capabilities = STOCK_CAPABILIT
       case 'bid-peak': return () => setBidPeakEnabled(!bidPeakEnabled);
       case 'trade-volume-poc': return () => setTradeVolumePocEnabled(!tradeVolumePocEnabled);
       case 'volume-distribution': return () => setVolumeDistributionEnabled(!volumeDistributionEnabled);
+      case 'depth-heatmap': return () => setDepthHeatmapEnabled(!depthHeatmapEnabled);
       case 'broker-late-entry': return () => setBrokerLateEntryEnabled(!brokerLateEntryEnabled);
       default: return null;
     }
@@ -250,6 +257,7 @@ export default function IndicatorPanel({ onClose, capabilities = STOCK_CAPABILIT
               {selected === 'ask-peak' && <AskPeakConfig />}
               {selected === 'bid-peak' && <BidPeakConfig />}
               {selected === 'trade-volume-poc' && <TradeVolumePocConfig />}
+              {selected === 'depth-heatmap' && <DepthHeatmapConfig />}
               {selected === 'volume-distribution' && (
                 <div>
                   <h3 className="pb-1 text-base font-medium text-fg">연속체결 매물대 분포</h3>
