@@ -2,6 +2,7 @@ import { useMemo } from 'react';
 import { useQuery } from '@tanstack/react-query';
 
 import { useLiveSettings } from '../api/liveSettings';
+import { useLivePastCandles } from '../api/livePastCandles';
 import { rangeBundleQueryOptions } from '../api/range';
 import { useScreenerDailyCandles } from '../api/screenerDailyCandles';
 import {
@@ -97,7 +98,16 @@ export function useStudyReferenceBundle(save: StudyViewReference | null) {
   const pastHoga = useQuery(queryOptions.rangeHoga);
   const pastSidecars = useQuery(queryOptions.rangeSidecars);
   const rangeCandles = useQuery(rangeCandlesOptions);
-  const minuteCandles = useQuery(queryOptions.minuteCandles);
+  // ADR-0091: 저장 기간이 백엔드 fetch 예산(12거래일)을 넘으면 단일 호출은
+  // fetch_budget_exhausted로 부분 응답이 온다. /live의 청크 워크백 훅을
+  // 그대로 재사용해 seed까지 자동 전진 + blocking 응답 비박제로 회복한다.
+  // (queryOptions.minuteCandles 옵션 빌더는 warm 프리페치가 계속 사용.)
+  const minuteCandles = useLivePastCandles(
+    inputs.minuteCandles.code,
+    inputs.minuteCandles.from,
+    inputs.minuteCandles.to,
+    venue,
+  );
   const dailyCandles = useQuery(queryOptions.dailyCandles);
   const screenerDailyCandles = useScreenerDailyCandles(
     !inputs.isMinute ? inputs.dailyCandles.code : null,
