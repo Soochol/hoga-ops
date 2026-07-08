@@ -34,6 +34,8 @@ const dotStyle = (color: string): CSSProperties => ({
   height: 6,
   borderRadius: '50%',
   background: color,
+  // 배경색 링 — 같은 방향색 캔들(적/청) 위에서도 극값 점이 파묻히지 않게 분리.
+  boxShadow: '0 0 0 1.5px var(--bg-card)',
   transform: 'translate(-50%, -50%)',
 });
 
@@ -148,12 +150,16 @@ const labelStyle = (place: ExtremeLabelPlace, color: string): CSSProperties => (
   color,
   fontFamily: 'var(--font-mono)',
   fontSize: 'var(--text-xs)',
+  fontWeight: 600,
   lineHeight: 1.2,
   whiteSpace: 'nowrap',
-  background: 'rgba(11, 15, 26, 0.76)',
-  borderRadius: 2,
-  padding: '1px 4px',
-  boxShadow: '0 0 0 1px rgba(11, 15, 26, 0.58)',
+  // 테마 표면(불투명) + 강한 테두리 링 + 옅은 드롭섀도 — 하드코딩 다크 반투명이던
+  // 것을 토큰화해 Ledger 라이트에서도 방향색 텍스트가 캔들 위에서 또렷하게 뜬다.
+  // 불투명이라 뒤 캔들이 비쳐 대비를 깎던 문제 해소.
+  background: 'var(--bg-card)',
+  borderRadius: 3,
+  padding: '1px 5px',
+  boxShadow: '0 0 0 1px var(--border-strong), 0 1px 3px rgba(0, 0, 0, 0.28)',
 });
 
 /** 가시 시간범위(가상초 {from,to}). 초기 마운트엔 null, 차트 teardown 중엔 throw → null. */
