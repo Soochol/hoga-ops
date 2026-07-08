@@ -143,14 +143,20 @@ function DataSourceDetail({ variant }: { variant: 'live' | 'study' }) {
 
   return (
     <>
-      <div style={{ fontSize: 'var(--text-sm)', color: 'var(--fg-dim)', marginBottom: 'var(--space-xs)' }}>
-        KIS 캔들 거래소
-      </div>
-      <div style={{ display: 'flex', flexWrap: 'wrap', gap: 'var(--space-xs)', marginBottom: 'var(--space-md)' }}>
-        {LIVE_VENUE_OPTIONS.map((opt) => (
-          <LiveVenueRadio key={opt} value={opt} />
-        ))}
-      </div>
+      {/* 복기뷰(study)는 hogaplay 정규장 캡처만 쓰므로 거래소 선택이 무의미 —
+          venue를 KRX로 고정하고 라디오를 숨긴다(useStudyReferenceBundle도 'KRX' 하드코딩). */}
+      {variant !== 'study' && (
+        <>
+          <div style={{ fontSize: 'var(--text-sm)', color: 'var(--fg-dim)', marginBottom: 'var(--space-xs)' }}>
+            KIS 캔들 거래소
+          </div>
+          <div style={{ display: 'flex', flexWrap: 'wrap', gap: 'var(--space-xs)', marginBottom: 'var(--space-md)' }}>
+            {LIVE_VENUE_OPTIONS.map((opt) => (
+              <LiveVenueRadio key={opt} value={opt} />
+            ))}
+          </div>
+        </>
+      )}
       <SettingsRow
         label="KIS API 우회"
         description="KIS REST 연결이 불안정할 때 분봉·일봉 캔들 API 호출을 건너뛰고 저장 데이터로 표시합니다."

@@ -183,6 +183,13 @@ describe('useStudyReferenceBundle', () => {
     expect(result.current.pastDataWarnings).toEqual([]);
   });
 
+  it('pins venue to KRX regardless of the shared live venue store', () => {
+    // beforeEach가 스토어를 NXT로 세팅했지만 study는 KRX 고정(공유 스토어 무시).
+    useLiveVenueStore.setState({ venue: 'UN' });
+    const { result } = renderHook(() => useStudyReferenceBundle(save));
+    expect(result.current.venue).toBe('KRX');
+  });
+
   it('merges sidecar overlays into the hoga study bundle without waiting on sidecar loading', () => {
     const broker = { t_ms: 1_779_840_000_000, broker: 'NH투자증권', side: 'buy' as const, net: 42 };
     const distribution = {

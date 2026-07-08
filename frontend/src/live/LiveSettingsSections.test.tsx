@@ -156,6 +156,10 @@ describe('LiveSettingsSections (2단 nav+detail)', () => {
     // 캔들 기준 섹션 제목은 유지되지만 라디오는 사라지고 안내문으로 대체.
     expect(await screen.findByTestId('study-candle-source-note')).toBeInTheDocument();
     expect(screen.queryByRole('radio', { name: '자동' })).toBeNull();
+    // venue는 KRX 고정 — 'KIS 캔들 거래소' 라디오 자체가 숨겨진다.
+    expect(screen.queryByText('KIS 캔들 거래소')).toBeNull();
+    expect(screen.queryByLabelText('KRX')).toBeNull();
+    expect(screen.queryByLabelText('NXT')).toBeNull();
     // 호가·체결 기준은 study에서도 유지(사이드카가 소비).
     expect(screen.getByText('호가·체결 데이터 기준')).toBeInTheDocument();
     expect(screen.getByRole('radio', { name: 'KIS WS 우선' })).toBeInTheDocument();

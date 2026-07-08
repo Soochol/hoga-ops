@@ -1,7 +1,7 @@
 import { useMemo } from 'react';
 import { useQuery } from '@tanstack/react-query';
 
-import { useLiveVenueStore } from '../state/liveVenue';
+import type { LiveVenueOption } from '../state/liveVenue';
 import { useLivePageStore } from '../state/livePage';
 import { useSourcePreferenceStore } from '../state/sourcePreference';
 import type { LiveDataWarning } from '../live/liveDataWarnings';
@@ -32,8 +32,13 @@ function mergeStudyRangeBundles(
 // KIS 지연 칩(LiveDataWarning)으로 표기하면 오해를 준다(디스크는 지연 개념이 없음).
 const EMPTY_WARNINGS: LiveDataWarning[] = [];
 
+// 복기뷰는 hogaplay 정규장 캡처(KRX)만 쓴다 — venue는 KRX 고정. 공유
+// live.venue.v1 스토어를 읽지 않아, /live에서 NXT/통합으로 바꿔도 study는 불변.
+// venue는 캔들 소스엔 무영향이고 세션 경계 폴백 렌더링에만 관여한다.
+const STUDY_VENUE: LiveVenueOption = 'KRX';
+
 export function useStudyReferenceBundle(save: StudyViewReference | null) {
-  const venue = useLiveVenueStore((s) => s.venue);
+  const venue = STUDY_VENUE;
   const sourcePref = useSourcePreferenceStore((s) => s.sourcePreference);
   const brokerLateEntryEnabled = useLivePageStore((s) => s.brokerLateEntryEnabled);
   const brokerLateEntryStartHHMM = useLivePageStore((s) => s.brokerLateEntryStartHHMM);
