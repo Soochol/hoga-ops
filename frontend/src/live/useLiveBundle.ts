@@ -735,6 +735,7 @@ export function useLiveBundle(
       built.bid_peaks = sidecarSource.bid_peaks ?? [];
       built.broker_late_entries = sidecarSource.broker_late_entries ?? [];
       built.trade_volume_pocs = sidecarSource.trade_volume_pocs ?? [];
+      built.depth_heatmap = sidecarSource.depth_heatmap ?? [];
       built.volume_distributions = sidecarSource.volume_distributions ?? [];
       built.program_trade = filterProgramTradeForCandles(sidecarSource.program_trade, liveCandles);
     }

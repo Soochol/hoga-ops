@@ -402,7 +402,7 @@ export function LiveWorkarea({
                   liveTradeSnapshots={live.trade}
                   todayKst={todayKst}
                   tradeVolumePocs={tradeVolumePocs}
-                  depthHeatmap={bundle?.depth_heatmap}
+                  depthHeatmap={(chartBundle ?? bundle)?.depth_heatmap}
                   paneTogglesOverride={paneTogglesOverride}
                   onViewportCaptureReady={onViewportCaptureReady}
                   onCandleBasisHover={rankingAllowed ? handleCandleBasisHover : undefined}
