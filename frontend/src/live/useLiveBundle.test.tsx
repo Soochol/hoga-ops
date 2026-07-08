@@ -452,6 +452,27 @@ describe('useLiveBundle', () => {
     expect(result.current.chartBundle).toBeNull();
   });
 
+  it('exposes hogaCoverageGapDates for past candle dates the hoga bundle does not cover', () => {
+    // 캔들: 과거일(20260526)+오늘(20260527), hoga 번들: 오늘만 커버 → 갭 = 과거일만.
+    candlesMock.candles = [
+      { t_ms: 1_779_753_600_000, open: 70000, high: 70100, low: 69900, close: 70050, volume: 1000 },
+      DEFAULT_CANDLE,
+    ];
+    useRangeHogaDeltaSpy.mockImplementation(() => rangeResult(fallbackRangeBundle()));
+    const { result } = renderHook(() => useLiveBundle('005930', '1m', '20260527', liveFixture), { wrapper: createWrapper() });
+    expect(result.current.hogaCoverageGapDates).toEqual(['20260526']);
+  });
+
+  it('keeps hogaCoverageGapDates empty while the hoga bundle has not loaded (판정 유보)', () => {
+    candlesMock.candles = [
+      { t_ms: 1_779_753_600_000, open: 70000, high: 70100, low: 69900, close: 70050, volume: 1000 },
+      DEFAULT_CANDLE,
+    ];
+    // 기본 useRangeHogaDelta mock: data null (미로드).
+    const { result } = renderHook(() => useLiveBundle('005930', '1m', '20260527', liveFixture), { wrapper: createWrapper() });
+    expect(result.current.hogaCoverageGapDates).toEqual([]);
+  });
+
   it('reports isHogaLoading while the hoga range delta is pending with no data (cold minute load)', () => {
     useRangeHogaDeltaSpy.mockImplementation(() => ({
       data: null,

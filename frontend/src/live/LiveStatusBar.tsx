@@ -17,6 +17,7 @@ import { CollectionDot } from './CollectionDot';
 import { useLiveVenueStore, type LiveVenueOption } from '../state/liveVenue';
 import { liveVenueDisplayLabel, liveVenueKeepsHogaKrx } from './liveVenuePolicy';
 import type { CaptureHealthView } from './liveStatusProjection';
+import { hogaCoverageGapTitle } from './hogaCoverageGap';
 
 interface Props {
   activeCode: string | null;
@@ -25,9 +26,12 @@ interface Props {
    * useLiveBundle call site per page. */
   bundle: RangeBundle | null;
   venue?: LiveVenueOption;
+  /** useLiveBundle.hogaCoverageGapDates — 캔들은 있는데 10호가 캡처가 없는 과거
+   * 거래일. 있으면 warn 칩으로 표시해 "지표가 최신 날짜에만 나온다" 오인을 막는다. */
+  hogaGapDates?: readonly string[];
 }
 
-export function LiveStatusBar({ activeCode, captureHealth, bundle, venue }: Props) {
+export function LiveStatusBar({ activeCode, captureHealth, bundle, venue, hogaGapDates = [] }: Props) {
   // Threshold MUST exceed the 30s server ping so a connected-but-idle
   // socket (e.g. market closed) stays realtime; only a real disconnect
   // (no frame for >35s) flips it to disconnected. (plan-review cross-task flag)
@@ -136,6 +140,26 @@ export function LiveStatusBar({ activeCode, captureHealth, bundle, venue }: Prop
         <span aria-hidden>·</span>
         <SourceChip source={lastSegmentSource} />
       </span>
+      {hogaGapDates.length > 0 && (() => {
+        // 과거 미캡처일 공백 알림 — 캡처 헬스 pill과 동일한 warn 팔레트(새 색 없음).
+        const gapPill = captureHealthPillColor('warn');
+        return (
+          <>
+            <span aria-hidden>·</span>
+            <span
+              data-testid="hoga-coverage-gap-chip"
+              title={hogaCoverageGapTitle(hogaGapDates)}
+              className="font-mono px-2 py-0.5 rounded whitespace-nowrap shrink-0"
+              style={{
+                background: gapPill.bg, border: `1px solid ${gapPill.border}`,
+                color: gapPill.fg, fontSize: 'var(--text-xs)',
+              }}
+            >
+              호가 미수집 {hogaGapDates.length}일
+            </span>
+          </>
+        );
+      })()}
       {activeCode && !member && (
         <>
           <span aria-hidden>·</span>
