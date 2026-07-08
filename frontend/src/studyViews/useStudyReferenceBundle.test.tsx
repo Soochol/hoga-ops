@@ -326,6 +326,35 @@ describe('useStudyReferenceBundle', () => {
     expect(result.current.bundle?.volume_distributions).toEqual([distribution]);
   });
 
+  it('holds isLoading while the sidecar is pending with no data yet (개선안 1-C)', () => {
+    // 사이드카 최대벽·POC·거래량분포가 첫 커밋에 캔들과 함께 등장하도록 풀스크린
+    // 게이트에 포함. data==null(첫 로드)일 때만 홀드 — 위 테스트(데이터 present)는 무영향.
+    useQueryMock.mockImplementation((options: UseQueryOptions) => {
+      if (options === rangeSidecarOptions) {
+        return { data: null, isLoading: true, error: null };
+      }
+      return queryResultFor(options);
+    });
+
+    const { result } = renderHook(() => useStudyReferenceBundle(save));
+
+    expect(result.current.isLoading).toBe(true);
+  });
+
+  it('does not hold isLoading when the sidecar errors (settle, no permanent hold)', () => {
+    useQueryMock.mockImplementation((options: UseQueryOptions) => {
+      if (options === rangeSidecarOptions) {
+        // 에러 settle: react-query는 isLoading=false로 내려간다.
+        return { data: null, isLoading: false, error: new Error('sidecar failed') };
+      }
+      return queryResultFor(options);
+    });
+
+    const { result } = renderHook(() => useStudyReferenceBundle(save));
+
+    expect(result.current.isLoading).toBe(false);
+  });
+
   // isExtending: 분봉 워크백이 저장 기간 시작일(seed from_date)까지 아직
   // 도달하지 않았는가. StudyPage가 차트를 마운트 유지한 채 진행 배지를 띄우는 신호.
   it('분봉 워크백이 seed(from_date)까지 미도달이면 isExtending=true', () => {

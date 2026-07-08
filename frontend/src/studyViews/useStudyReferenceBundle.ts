@@ -164,7 +164,10 @@ export function useStudyReferenceBundle(save: StudyViewReference | null) {
   return {
     bundle: model.bundle,
     chartBundle: model.chartBundle,
-    isLoading: pastHoga.isLoading || rangeCandles.isLoading || minuteCandles.isLoading || dailyCandles.isLoading || screenerDailyCandles.isLoading,
+    // 사이드카(최대벽·POC·거래량분포·프로그램매매)도 첫 커밋에 캔들과 함께 등장하도록
+    // 풀스크린 게이트에 포함(개선안 1-C). data==null 조건: 에러/캐시 히트로 settle되면
+    // 즉시 열려 영구 홀드 없음. save 로드 시 사이드카 쿼리는 항상 활성이라 sidecarEnabled 불요.
+    isLoading: pastHoga.isLoading || rangeCandles.isLoading || minuteCandles.isLoading || dailyCandles.isLoading || screenerDailyCandles.isLoading || (pastSidecars.isLoading && pastSidecars.data == null),
     isExtending,
     error: pastHoga.error ?? rangeCandles.error ?? minuteCandles.error ?? dailyCandles.error ?? screenerDailyCandles.error ?? pastSidecars.error ?? null,
     pastDataWarnings: warnings,
