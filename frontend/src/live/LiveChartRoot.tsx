@@ -1736,6 +1736,7 @@ export function LiveChartRoot({
           )}
           {showDepthHeatmapOverlay && (
             <DepthHeatmapOverlay
+              chart={chart}
               paneSeries={paneSeries}
               axis={axis}
               points={depthHeatmapPoints}

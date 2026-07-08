@@ -1,5 +1,5 @@
-import { memo, useEffect, useMemo, useRef } from 'react';
-import type { ISeriesApi, SeriesType, Time } from 'lightweight-charts';
+import { memo, useEffect, useMemo, useRef, useState } from 'react';
+import type { IChartApi, ISeriesApi, ITimeScaleApi, SeriesType, Time } from 'lightweight-charts';
 import type { PaneId } from '../chart/drawing/types';
 import type { PaneSeriesMap } from '../chart/drawing/chartCoordinates';
 import type { VirtualAxis } from '../util/virtualAxis';
@@ -7,6 +7,17 @@ import { useLivePageStore } from '../state/livePage';
 import { DepthHeatmapPrimitive, type DepthHeatmapCell } from '../chart/DepthHeatmapPrimitive';
 import type { DepthHeatmapPoint } from './depthHeatmapWire';
 import { levelAlpha, visibleMaxQty } from './depthHeatmapAlpha';
+
+/** 가시 시간범위(가상초 {from,to}). 초기 마운트엔 null, 차트 teardown 중엔 throw → null.
+ *  HighLowAnnotationOverlay.readVisibleRange 와 동일 관용구. */
+function readVisibleRange(ts: ITimeScaleApi<Time>): { from: number; to: number } | null {
+  try {
+    const r = ts.getVisibleRange();
+    return r ? { from: Number(r.from), to: Number(r.to) } : null;
+  } catch {
+    return null;
+  }
+}
 
 function hexToRgba(hex: string, opacity: number): string {
   const match = /^#?([0-9a-f]{6})$/i.exec(hex);
@@ -70,18 +81,21 @@ export function buildDepthHeatmapCells(
 }
 
 type Props = {
+  chart: IChartApi;
   paneSeries: PaneSeriesMap;
   axis: VirtualAxis;
   points: readonly DepthHeatmapPoint[];
 };
 
-function DepthHeatmapOverlay({ paneSeries, axis, points }: Props) {
+function DepthHeatmapOverlay({ chart, paneSeries, axis, points }: Props) {
   const series = paneSeries.get('candle' as PaneId) as ISeriesApi<SeriesType> | undefined;
   const enabled = useLivePageStore((s) => s.depthHeatmapEnabled);
   const bidColor = useLivePageStore((s) => s.depthHeatmapBidColor);
   const askColor = useLivePageStore((s) => s.depthHeatmapAskColor);
   const maxOpacity = useLivePageStore((s) => s.depthHeatmapMaxOpacity);
   const primitiveRef = useRef<DepthHeatmapPrimitive | null>(null);
+  // 강도 정규화 기준 = 현재 보이는 시간범위. 팬/줌 시 재정규화(HighLowAnnotationOverlay 선례).
+  const [visibleRange, setVisibleRange] = useState<{ from: number; to: number } | null>(null);
 
   // 프리미티브 부착: deps=[series]만 (bundle 파생값 금지 — 식별자 churn 함정).
   useEffect(() => {
@@ -99,10 +113,34 @@ function DepthHeatmapOverlay({ paneSeries, axis, points }: Props) {
     };
   }, [series]);
 
-  const cells = useMemo(
-    () => buildDepthHeatmapCells(points, axis, -Infinity, Infinity, { bidColor, askColor, maxOpacity }),
-    [points, axis, bidColor, askColor, maxOpacity],
-  );
+  // 가시범위 구독: 팬/줌(visible logical range 변경)을 rAF 로 coalesce 해 재정규화.
+  // logical range 를 쓰는 이유는 HighLowAnnotationOverlay 와 동일 — time range 는 팬 중
+  // 미세 변화를 덜 흘린다. 실제 {from,to} 는 getVisibleRange(가상초)로 읽는다.
+  useEffect(() => {
+    const ts = chart.timeScale();
+    let raf = 0;
+    const schedule = () => {
+      if (raf) cancelAnimationFrame(raf);
+      raf = requestAnimationFrame(() => {
+        raf = 0;
+        setVisibleRange(readVisibleRange(ts));
+      });
+    };
+    schedule(); // 초기 1회
+    ts.subscribeVisibleLogicalRangeChange(schedule);
+    return () => {
+      if (raf) cancelAnimationFrame(raf);
+      ts.unsubscribeVisibleLogicalRangeChange(schedule);
+    };
+  }, [chart]);
+
+  const cells = useMemo(() => {
+    // 가상초 {from,to} → 실 Unix-ms 로 역변환(axis.toReal 은 가상 ms 를 받는다).
+    // 초기(range 미확정) 프레임은 전 범위 폴백 후, 첫 구독 콜백에서 화면 범위로 좁힌다.
+    const fromMs = visibleRange ? axis.toReal(visibleRange.from * 1000) : -Infinity;
+    const toMs = visibleRange ? axis.toReal(visibleRange.to * 1000) : Infinity;
+    return buildDepthHeatmapCells(points, axis, fromMs, toMs, { bidColor, askColor, maxOpacity });
+  }, [points, axis, visibleRange, bidColor, askColor, maxOpacity]);
 
   useEffect(() => {
     primitiveRef.current?.setCells(enabled ? cells : []);
