@@ -9,7 +9,6 @@ from typing import Generic, Literal, TypeVar
 
 from hoga.live.kis_account_pool import (
     KisAccountPool,
-    KisAccountReservationDeferred,
     KisNoAccountAvailable,
 )
 from hoga.live.kis_client import KisClient, KisRateLimitError
@@ -79,13 +78,8 @@ class KisCapacityScheduler:
         self._request_cooldown_keys: dict[Hashable, Hashable | None] = {}
         self._started_keys: set[Hashable] = set()
         self._background_deferred_due_to_user_visible = 0
-        self._background_deferred_due_to_reserved_capacity = 0
         self._overloaded_rejections = 0
         self._rate_limit_failovers = 0
-        self._capacity_change_condition: asyncio.Condition | None = None
-        self._capacity_change_loop: asyncio.AbstractEventLoop | None = None
-        self._capacity_change_generation = 0
-        self._capacity_retry_backstop_s = 1.0
         self._seq = itertools.count()
         self._workers: list[asyncio.Task[None]] = []
         self._worker_loop: asyncio.AbstractEventLoop | None = None
@@ -169,9 +163,6 @@ class KisCapacityScheduler:
             "background_deferred_due_to_user_visible": (
                 self._background_deferred_due_to_user_visible
             ),
-            "background_deferred_due_to_reserved_capacity": (
-                self._background_deferred_due_to_reserved_capacity
-            ),
             "overloaded_rejections": self._overloaded_rejections,
             "rate_limit_failovers": self._rate_limit_failovers,
             "accounts": [s.__dict__ for s in account_snapshots],
@@ -229,23 +220,9 @@ class KisCapacityScheduler:
                 await asyncio.sleep(0.01)
                 continue
 
-            requeued = False
-            capacity_generation = self._capacity_change_generation
             try:
                 self._started_keys.add(request.key)
                 result = await self._run_with_account_failover(request)
-            except KisAccountReservationDeferred:
-                self._started_keys.discard(request.key)
-                self._background_deferred_due_to_reserved_capacity += 1
-                self._queue.task_done()
-                requeued = True
-                await self._wait_for_capacity_change(capacity_generation)
-                if (
-                    not request.future.done()
-                    and request.generation == self._request_generations.get(request.key)
-                ):
-                    await self._queue.put(request)
-                continue
             except KisNoAccountAvailable as exc:
                 if not request.future.done():
                     request.future.set_exception(KisCapacityCooldown(str(exc)))
@@ -256,10 +233,8 @@ class KisCapacityScheduler:
                 if not request.future.done():
                     request.future.set_result(result)
             finally:
-                if not requeued:
-                    self._cleanup_request(request.key)
-                    self._queue.task_done()
-                    await self._notify_capacity_changed(request.cooldown_key)
+                self._cleanup_request(request.key)
+                self._queue.task_done()
 
     async def _run_with_account_failover(self, request: _ScheduledRequest):
         """Execute the request, failing over across accounts on rate-limit exhaustion.
@@ -269,8 +244,7 @@ class KisCapacityScheduler:
         cooled down for this cooldown key and the request re-leases the next
         eligible account instead of failing while healthy accounts sit idle. Pool
         exhaustion during failover re-raises the *original* rate-limit error: an
-        already-started request must surface the cause callers degrade on, not a
-        deferral that would re-queue it.
+        already-started request must surface the cause callers degrade on.
         """
         last_rate_limit: KisRateLimitError | None = None
         max_attempts = max(1, len(self._account_pool.configured_accounts()))
@@ -278,9 +252,8 @@ class KisCapacityScheduler:
             try:
                 lease = await self._account_pool.lease(
                     cooldown_key=request.cooldown_key,
-                    reserve_one=request.rank > 0,
                 )
-            except (KisNoAccountAvailable, KisAccountReservationDeferred):
+            except KisNoAccountAvailable:
                 if last_rate_limit is not None:
                     raise last_rate_limit
                 raise
@@ -308,32 +281,3 @@ class KisCapacityScheduler:
         self._request_endpoints.pop(key, None)
         self._request_cooldown_keys.pop(key, None)
         self._started_keys.discard(key)
-
-    def _get_capacity_change_condition(self) -> asyncio.Condition:
-        loop = asyncio.get_running_loop()
-        if self._capacity_change_condition is None or self._capacity_change_loop is not loop:
-            self._capacity_change_condition = asyncio.Condition()
-            self._capacity_change_loop = loop
-        return self._capacity_change_condition
-
-    async def _wait_for_capacity_change(self, observed_generation: int) -> None:
-        condition = self._get_capacity_change_condition()
-        try:
-            async with condition:
-                await asyncio.wait_for(
-                    condition.wait_for(
-                        lambda: self._closed
-                        or self._capacity_change_generation != observed_generation
-                    ),
-                    timeout=self._capacity_retry_backstop_s,
-                )
-        except TimeoutError:
-            return
-
-    async def _notify_capacity_changed(self, cooldown_key: Hashable | None) -> None:
-        if not self._account_pool.reserved_background_capacity_available(cooldown_key):
-            return
-        condition = self._get_capacity_change_condition()
-        async with condition:
-            self._capacity_change_generation += 1
-            condition.notify(1)

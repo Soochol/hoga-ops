@@ -27,10 +27,6 @@ class KisNoAccountAvailable(RuntimeError):
     pass
 
 
-class KisAccountReservationDeferred(RuntimeError):
-    pass
-
-
 class KisAccountPool:
     def __init__(
         self,
@@ -74,14 +70,10 @@ class KisAccountPool:
         self,
         *,
         cooldown_key: Hashable | None,
-        reserve_one: bool = False,
     ) -> KisAccountLease:
         candidates = self._candidates(cooldown_key)
         if not candidates:
             raise KisNoAccountAvailable("no KIS account available")
-
-        if reserve_one and not self.reserved_background_capacity_available(cooldown_key):
-            raise KisAccountReservationDeferred("reserved user-visible KIS account capacity")
 
         account_id = min(candidates, key=lambda a: (self._inflight.get(a, 0), a))
         client = kis_runtime.get_kis_client(account_id)
@@ -100,16 +92,6 @@ class KisAccountPool:
             self._inflight.pop(account_id, None)
         else:
             self._inflight[account_id] = current - 1
-
-    def reserved_background_capacity_available(self, cooldown_key: Hashable | None) -> bool:
-        if len(self.eligible_accounts()) <= 1:
-            return True
-        free_candidates = [
-            account_id
-            for account_id in self._candidates(cooldown_key)
-            if self._inflight.get(account_id, 0) == 0
-        ]
-        return len(free_candidates) > 1
 
     def snapshot(self) -> list[KisAccountSnapshot]:
         now = self._now()

@@ -7,7 +7,6 @@ import pytest
 from hoga.live import account_health, kis_runtime
 from hoga.live.kis_account_pool import (
     KisAccountPool,
-    KisAccountReservationDeferred,
     KisNoAccountAvailable,
 )
 
@@ -108,74 +107,3 @@ async def test_account_pool_raises_when_all_candidates_cooling(
 
     with pytest.raises(KisNoAccountAvailable):
         await pool.lease(cooldown_key=("past-minute", "KRX"))
-
-
-@pytest.mark.asyncio
-async def test_account_pool_reserves_final_usable_account_for_user_visible(
-    tmp_path: Path, monkeypatch
-) -> None:
-    clients = {0: _FakeKis(), 1: _FakeKis()}
-    _patch_pool_clients(monkeypatch, kis_runtime, clients)
-    monkeypatch.setattr(account_health, "is_rest_degraded", lambda account_id: False)
-    pool = KisAccountPool(tmp_path)
-    first = await pool.lease(cooldown_key=("quotes", "quotes"), reserve_one=False)
-    assert first.account_id == 0
-
-    with pytest.raises(KisAccountReservationDeferred):
-        await pool.lease(cooldown_key=("quotes", "quotes"), reserve_one=True)
-
-
-@pytest.mark.asyncio
-async def test_account_pool_does_not_reserve_when_only_one_account_is_healthy(
-    tmp_path: Path, monkeypatch
-) -> None:
-    clients = {0: _FakeKis(), 1: _FakeKis()}
-    _patch_pool_clients(monkeypatch, kis_runtime, clients)
-    monkeypatch.setattr(account_health, "is_rest_degraded", lambda account_id: account_id == 1)
-    pool = KisAccountPool(tmp_path)
-
-    lease = await pool.lease(cooldown_key=("quotes", "quotes"), reserve_one=True)
-
-    assert lease.account_id == 0
-
-
-@pytest.mark.asyncio
-async def test_account_pool_reservation_uses_non_cooling_accounts_for_key(
-    tmp_path: Path, monkeypatch
-) -> None:
-    clients = {0: _FakeKis(), 1: _FakeKis(), 2: _FakeKis()}
-    now = 100.0
-    _patch_pool_clients(monkeypatch, kis_runtime, clients)
-    monkeypatch.setattr(account_health, "is_rest_degraded", lambda account_id: False)
-    pool = KisAccountPool(tmp_path, now=lambda: now)
-    pool.mark_cooldown(1, ("past-minute", "KRX"), 10.0)
-    pool.mark_cooldown(2, ("past-minute", "KRX"), 10.0)
-
-    with pytest.raises(KisAccountReservationDeferred):
-        await pool.lease(cooldown_key=("past-minute", "KRX"), reserve_one=True)
-
-    lease = await pool.lease(cooldown_key=("past-minute", "KRX"), reserve_one=False)
-    assert lease.account_id == 0
-
-
-@pytest.mark.asyncio
-async def test_account_pool_reports_reserved_background_capacity_by_key(
-    tmp_path: Path, monkeypatch
-) -> None:
-    clients = {0: _FakeKis(), 1: _FakeKis(), 2: _FakeKis()}
-    now = 100.0
-    _patch_pool_clients(monkeypatch, kis_runtime, clients)
-    monkeypatch.setattr(account_health, "is_rest_degraded", lambda account_id: False)
-    pool = KisAccountPool(tmp_path, now=lambda: now)
-    first = await pool.lease(cooldown_key=("quotes", "quotes"))
-    second = await pool.lease(cooldown_key=("quotes", "quotes"))
-
-    assert {first.account_id, second.account_id} == {0, 1}
-    assert not pool.reserved_background_capacity_available(("quotes", "quotes"))
-
-    pool.release(first.account_id)
-    assert pool.reserved_background_capacity_available(("quotes", "quotes"))
-
-    pool.mark_cooldown(first.account_id, ("past-minute", "KRX"), 10.0)
-    assert not pool.reserved_background_capacity_available(("past-minute", "KRX"))
-    assert pool.reserved_background_capacity_available(("past-minute", "NXT"))
