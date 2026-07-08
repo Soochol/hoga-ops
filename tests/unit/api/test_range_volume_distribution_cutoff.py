@@ -222,12 +222,14 @@ def test_sidecar_indicator_gates_can_disable_heavy_slices(tmp_path: Path) -> Non
         bid_peaks_enabled=False,
         program_trade_enabled=False,
         trade_volume_poc_enabled=False,
+        depth_heatmap_enabled=False,
     )
 
     assert bundle.segments
     assert bundle.ask_peaks == []
     assert bundle.bid_peaks == []
     assert bundle.trade_volume_pocs == []
+    assert bundle.depth_heatmap == []
     assert bundle.program_trade is not None
     assert bundle.program_trade.points == []
 

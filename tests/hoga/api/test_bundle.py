@@ -1277,6 +1277,90 @@ def test_build_range_bundle_includes_ask_peak_for_today(monkeypatch, tmp_path) -
     assert p.t_ms > 0
 
 
+def test_range_bundle_includes_depth_heatmap_when_enabled(monkeypatch, tmp_path) -> None:
+    """depth_heatmap_enabled=True(기본) + 캡처된 단일 거래일 → depth_heatmap이 채워진다.
+    (build_depth_heatmap_slice는 디스크 snapshots.parquet에서 실제 계산 — 패치 안 함.)"""
+    import contextlib
+    from hoga.api import bundle as bundle_mod
+    from hoga.api.bundle import build_range_bundle
+    from hoga.tables.snapshots import Orderbook, write_parquet as snapshots_write_parquet
+
+    FIXTURE_DATE = "20260613"
+    monkeypatch.setattr(bundle_mod, "_today_kst_yyyymmdd", lambda: FIXTURE_DATE)
+
+    z = tuple([0] * 10)
+    bp = tuple([24950 - 50 * i for i in range(10)])
+    ob = Orderbook(
+        ts_ms=90100000, seq=1,
+        ask_p=(25000, 25050, 25100, 25150, 25200, 25250, 25300, 25350, 25400, 25450),
+        ask_q=(100, 200, 5000, 40, 5, 6, 7, 8, 9, 1),
+        ask_d=z,
+        bid_p=bp, bid_q=tuple([100] * 10), bid_d=z,
+        tot_ask=5376, tot_ask_d=0, tot_bid=1000, tot_bid_d=0,
+    )
+    snapshots_path = tmp_path / "snapshots.parquet"
+    snapshots_write_parquet([ob], snapshots_path)
+    (tmp_path / "candles.parquet").touch()
+
+    eng = _engine_with_meta_for_dates([FIXTURE_DATE])
+    eng.parquet_dir.side_effect = lambda d, c, src="hogaplay": tmp_path
+    eng.conn = duckdb.connect()
+    eng.indicators_cache = None
+
+    patches = _patch_slice_builders(bundle_mod, patch_ask_peak=False)
+    with contextlib.ExitStack() as stack:
+        for pcm in patches:
+            stack.enter_context(pcm)
+        bundle = build_range_bundle(
+            eng, code="005930", from_date=FIXTURE_DATE, to_date=FIXTURE_DATE,
+            bucket_ms=60000, mode="sidecar", depth_heatmap_enabled=True,
+        )
+
+    assert len(bundle.depth_heatmap) > 0
+    assert all(len(p.asks) <= 10 for p in bundle.depth_heatmap)
+
+
+def test_range_bundle_omits_depth_heatmap_when_disabled(monkeypatch, tmp_path) -> None:
+    """depth_heatmap_enabled=False → 디스크에 캡처가 있어도 depth_heatmap은 빈 리스트."""
+    import contextlib
+    from hoga.api import bundle as bundle_mod
+    from hoga.api.bundle import build_range_bundle
+    from hoga.tables.snapshots import Orderbook, write_parquet as snapshots_write_parquet
+
+    FIXTURE_DATE = "20260613"
+    monkeypatch.setattr(bundle_mod, "_today_kst_yyyymmdd", lambda: FIXTURE_DATE)
+
+    z = tuple([0] * 10)
+    bp = tuple([24950 - 50 * i for i in range(10)])
+    ob = Orderbook(
+        ts_ms=90100000, seq=1,
+        ask_p=(25000, 25050, 25100, 25150, 25200, 25250, 25300, 25350, 25400, 25450),
+        ask_q=(100, 200, 5000, 40, 5, 6, 7, 8, 9, 1),
+        ask_d=z,
+        bid_p=bp, bid_q=tuple([100] * 10), bid_d=z,
+        tot_ask=5376, tot_ask_d=0, tot_bid=1000, tot_bid_d=0,
+    )
+    snapshots_path = tmp_path / "snapshots.parquet"
+    snapshots_write_parquet([ob], snapshots_path)
+    (tmp_path / "candles.parquet").touch()
+
+    eng = _engine_with_meta_for_dates([FIXTURE_DATE])
+    eng.parquet_dir.side_effect = lambda d, c, src="hogaplay": tmp_path
+    eng.conn = duckdb.connect()
+    eng.indicators_cache = None
+
+    patches = _patch_slice_builders(bundle_mod, patch_ask_peak=False)
+    with contextlib.ExitStack() as stack:
+        for pcm in patches:
+            stack.enter_context(pcm)
+        bundle = build_range_bundle(
+            eng, code="005930", from_date=FIXTURE_DATE, to_date=FIXTURE_DATE,
+            bucket_ms=60000, mode="sidecar", depth_heatmap_enabled=False,
+        )
+
+    assert bundle.depth_heatmap == []
+
+
 def test_build_range_bundle_ask_peaks_includes_past_day_even_when_not_today(monkeypatch, tmp_path) -> None:
     """범위가 과거일만(오늘 미포함)이어도 그날 항목이 ask_peaks에 들어간다(per-day).
     (이전엔 '달력상 오늘'에만 계산해 휴장·과거일 조회 시 항상 비어 선이 안 보였다 — 회귀 가드.)"""

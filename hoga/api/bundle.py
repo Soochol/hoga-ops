@@ -1002,6 +1002,7 @@ def _empty_range_bundle(
         bid_peaks=[],
         broker_late_entries=[],
         price_level_hits=[],
+        depth_heatmap=[],
         volume_distributions=[],
         program_trade=ProgramTradeSeries(points=[]),
     )
@@ -1051,6 +1052,7 @@ def build_range_bundle(
     bid_peaks_enabled: bool = True,
     program_trade_enabled: bool = True,
     trade_volume_poc_enabled: bool = True,
+    depth_heatmap_enabled: bool = True,
 ) -> RangeBundle:
     """Build the Wire Model for a Stock-Date Range (ADR-0013, ADR-0014).
 
@@ -1089,6 +1091,7 @@ def build_range_bundle(
     include_ask_peaks = include_optional_sidecar_slices and ask_peaks_enabled
     include_bid_peaks = include_optional_sidecar_slices and bid_peaks_enabled
     include_trade_volume_pocs = include_optional_sidecar_slices and trade_volume_poc_enabled
+    include_depth_heatmap = include_optional_sidecar_slices and depth_heatmap_enabled
     include_program_trade = program_trade_enabled and sidecar_only
 
     dates = engine.list_stock_dates_in_range(
@@ -1118,6 +1121,7 @@ def build_range_bundle(
     bid_peaks: list[BidPeak] = []
     broker_late_entries: list[BrokerLateEntryEvent] = []
     trade_volume_pocs: list[TradeVolumePoc] = []
+    depth_heatmap: list[DepthHeatmapPoint] = []
     included_dates: list[str] = []
 
     # Indicator cache (호가비·체결강도)의 과거/오늘 게이트(ADR-0043/0090)는 각
@@ -1309,6 +1313,18 @@ def build_range_bundle(
             bid_peaks.append(bp_d)
         if tvp_d is not None:
             trade_volume_pocs.append(tvp_d)
+        if include_depth_heatmap:
+            depth_heatmap.extend(
+                build_depth_heatmap_slice(
+                    engine,
+                    code=code,
+                    date=d,
+                    bucket_ms=bucket_ms,
+                    source=source,
+                    session_open_ms=norm_meta["regular_session_open_ms"],
+                    session_close_ms=meta["regular_session_close_ms"],
+                )
+            )
         if perf_debug.enabled():
             log.warning(
                 "hoga_perf range_date status=ok code=%s date=%s source=%s mode=%s "
@@ -1352,6 +1368,7 @@ def build_range_bundle(
         broker_late_entries=broker_late_entries,
         price_level_hits=[],
         trade_volume_pocs=trade_volume_pocs,
+        depth_heatmap=depth_heatmap,
         volume_distributions=volume_distributions,
         program_trade=(
             build_program_trade_series(engine, code=code, dates=included_dates)
