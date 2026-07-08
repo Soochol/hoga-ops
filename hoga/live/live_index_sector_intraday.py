@@ -67,7 +67,10 @@ class LiveIndexSectorIntradayOverlay:
                         key=("index-sector-rankings-quotes", tuple(sorted(codes)), phase),
                         endpoint=kis_access.KisRestEndpoint.QUOTES,
                         priority="background",
-                        cooldown_scope="quotes",
+                        # 국내 지수 섹터 시세는 항상 KRX venue를 조회하므로 api.py의
+                        # `quotes:{venue}` 쿨다운 스코프(KRX 경로)와 정렬한다. scope가
+                        # 갈라지면 rate-limit된 계좌를 다른 스코프 호출자가 즉시 재시도한다.
+                        cooldown_scope="quotes:KRX",
                         fetch_fn=lambda kis: self._quote_fetcher.fetch_and_gate(
                             kis,
                             codes,

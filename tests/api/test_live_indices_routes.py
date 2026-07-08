@@ -354,3 +354,65 @@ def test_index_investor_net_rejects_non_market_index(tmp_path) -> None:
 
     assert res.status_code == 422
     assert res.json()["detail"]["code"] == "unsupported_index_investor_net"
+
+
+# ---------------------------------------------------------------------------
+# KIS 스택 감사 Fix C: /index-candles가 KIS 용량 한계에 걸리면 HTTP 500이 아니라
+# 200 + capacity data_warning으로 강등한다(quotes 핸들러와 동일 정책).
+# ---------------------------------------------------------------------------
+
+
+def _patch_capacity_raises(monkeypatch, exc: Exception) -> None:
+    from hoga.live.index_candles_cache import IndexCandlesCache
+    from hoga.live.index_minute_candles_cache import IndexMinuteCandlesCache
+
+    monkeypatch.setattr(live_api, "ensure_kis_capacity_scheduler", lambda data_dir: object())
+    monkeypatch.setattr(live_api.kis_access, "has_rest_capacity", lambda data_dir: True)
+    # 모듈 전역 캐시는 다른 테스트가 채워둘 수 있다 — 캐시 히트가 나면 fetch(→capacity
+    # 에러) 경로를 안 타므로 빈 캐시를 미리 심어 강등 경로를 강제한다. build_router는
+    # 캐시가 None일 때만 생성하므로(is None), 미리 심은 non-None 인스턴스는 유지된다.
+    monkeypatch.setattr(live_api, "index_candles_cache_instance", IndexCandlesCache(), raising=False)
+    monkeypatch.setattr(
+        live_api, "index_minute_candles_cache_instance", IndexMinuteCandlesCache(), raising=False
+    )
+
+    async def raising_run_with_capacity(
+        scheduler_arg, *, data_dir, key, endpoint, priority, fetch_fn, cooldown_scope=None
+    ):
+        raise exc
+
+    monkeypatch.setattr(live_api.kis_access, "run_with_capacity", raising_run_with_capacity)
+
+
+def test_index_daily_candles_degrade_on_capacity_cooldown(tmp_path, monkeypatch) -> None:
+    from hoga.live.kis_capacity_scheduler import KisCapacityCooldown
+
+    _patch_capacity_raises(monkeypatch, KisCapacityCooldown("all accounts cooling"))
+
+    app = FastAPI()
+    app.include_router(build_router(get_status=lifecycle.get_status, data_dir=tmp_path))
+    res = TestClient(app).get(
+        "/api/live/index-candles?index_id=KOSPI&timeframe=D&from=20260601&to=20260619",
+    )
+
+    assert res.status_code == 200  # 500이 아니라 강등
+    body = res.json()
+    assert body["candles"] == []
+    assert [w["reason"] for w in body["data_warnings"]] == ["index_kis_capacity_cooldown"]
+
+
+def test_index_minute_candles_degrade_on_capacity_overloaded(tmp_path, monkeypatch) -> None:
+    from hoga.live.kis_capacity_scheduler import KisCapacityOverloaded
+
+    _patch_capacity_raises(monkeypatch, KisCapacityOverloaded("pending full"))
+
+    app = FastAPI()
+    app.include_router(build_router(get_status=lifecycle.get_status, data_dir=tmp_path))
+    res = TestClient(app).get(
+        "/api/live/index-candles?index_id=KOSPI&timeframe=1m&from=20260619&to=20260619",
+    )
+
+    assert res.status_code == 200
+    body = res.json()
+    assert body["candles"] == []
+    assert [w["reason"] for w in body["data_warnings"]] == ["index_kis_capacity_overloaded"]

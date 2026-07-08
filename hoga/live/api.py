@@ -269,6 +269,17 @@ def _kis_rest_bypassed_batch_warning(batch_label: str) -> dict:
     }
 
 
+def _kis_capacity_degraded_batch_warning(batch_label: str, reason: str) -> dict:
+    """/index-candles가 KIS 용량 한계(쿨다운/오버로드)에 걸렸을 때, HTTP 500 대신
+    비차단 data_warning으로 강등한다 (2026-07-08 KIS audit Fix C — quotes 핸들러와
+    동일 정책). bypass 경고와 별도 reason이라 프론트가 '일시 지연'으로 구분한다."""
+    return {
+        "batch": batch_label,
+        "reason": reason,
+        "msg": "KIS 호출 용량 한계로 지수 캔들을 지금 불러오지 못했습니다 — 잠시 후 재시도",
+    }
+
+
 def _collect_daily_series_cache_only(
     *,
     cache: PastDailyCandlesCache,
@@ -1386,13 +1397,30 @@ def build_router(
                     direct_fetch,
                 )
 
-            result = await collect_index_candles_with_cache(
-                index_candles_cache_instance,
-                (index.id, timeframe),
-                from_,
-                to,
-                fetch_batch,
-            )
+            try:
+                result = await collect_index_candles_with_cache(
+                    index_candles_cache_instance,
+                    (index.id, timeframe),
+                    from_,
+                    to,
+                    fetch_batch,
+                )
+            except (KisCapacityCooldown, KisCapacityOverloaded) as e:
+                reason = (
+                    "index_kis_capacity_cooldown"
+                    if isinstance(e, KisCapacityCooldown)
+                    else "index_kis_capacity_overloaded"
+                )
+                return {
+                    "index_id": index.id,
+                    "from": from_,
+                    "to": to,
+                    "timeframe": timeframe,
+                    "candles": [],
+                    "data_warnings": [
+                        _kis_capacity_degraded_batch_warning(f"{from_}__{to}", reason)
+                    ],
+                }
         else:
             bucket_seconds = {
                 "1m": 60,
@@ -1435,13 +1463,30 @@ def build_router(
                     ),
                 )
 
-            result = await collect_index_minute_candles_with_cache(
-                index_minute_candles_cache_instance,
-                (index.id, timeframe, bucket_seconds),
-                from_,
-                to,
-                fetch_batch,
-            )
+            try:
+                result = await collect_index_minute_candles_with_cache(
+                    index_minute_candles_cache_instance,
+                    (index.id, timeframe, bucket_seconds),
+                    from_,
+                    to,
+                    fetch_batch,
+                )
+            except (KisCapacityCooldown, KisCapacityOverloaded) as e:
+                reason = (
+                    "index_kis_capacity_cooldown"
+                    if isinstance(e, KisCapacityCooldown)
+                    else "index_kis_capacity_overloaded"
+                )
+                return {
+                    "index_id": index.id,
+                    "from": from_,
+                    "to": to,
+                    "timeframe": timeframe,
+                    "candles": [],
+                    "data_warnings": [
+                        _kis_capacity_degraded_batch_warning(f"{from_}__{to}", reason)
+                    ],
+                }
         batch_label = f"{from_}__{to}"
         data_warnings = [
             _violation_to_warning(v, batch_label) for v in result.violations
