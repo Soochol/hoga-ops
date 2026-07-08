@@ -3,7 +3,6 @@ import { useQueries } from '@tanstack/react-query';
 import type { StudyViewReference } from '../api/studyViews';
 import { useLivePageStore, type LiveTimeframe } from '../state/livePage';
 import type { StudyTab } from '../state/studyTabs';
-import { useLiveVenueStore } from '../state/liveVenue';
 import { useSourcePreferenceStore } from '../state/sourcePreference';
 import { referenceStudyView } from './studyViewVariant';
 import { studyReferenceQueryOptions } from './studyReferenceQueries';
@@ -30,7 +29,6 @@ export function useWarmStudyReferenceTabQueries({
   saves,
   viewTimeframes,
 }: UseWarmStudyReferenceTabQueriesArgs): Record<string, StudyTabQueryStatus> {
-  const venue = useLiveVenueStore((s) => s.venue);
   const sourcePref = useSourcePreferenceStore((s) => s.sourcePreference);
   const brokerLateEntryEnabled = useLivePageStore((s) => s.brokerLateEntryEnabled);
   const brokerLateEntryStartHHMM = useLivePageStore((s) => s.brokerLateEntryStartHHMM);
@@ -48,7 +46,6 @@ export function useWarmStudyReferenceTabQueries({
   const specs = useMemo<WarmQuerySpec[]>(() => {
     const savesById = new Map(saves.map((save) => [save.id, save]));
     const settings = {
-      venue,
       sourcePref,
       brokerLateEntryEnabled,
       brokerLateEntryStartHHMM,
@@ -63,7 +60,7 @@ export function useWarmStudyReferenceTabQueries({
       if (!save) return [];
       const timeframe = viewTimeframes[save.id] ?? save.timeframe;
       const options = studyReferenceQueryOptions({ ...save, timeframe }, settings);
-      return [options.rangeHoga, options.rangeSidecars, options.minuteCandles, options.dailyCandles]
+      return [options.rangeHoga, options.rangeSidecars, options.rangeCandles, options.screenerDaily]
         .filter((query) => query.enabled)
         .map((query) => ({ tabId: tab.id, query }));
     });
@@ -75,7 +72,6 @@ export function useWarmStudyReferenceTabQueries({
     tabs,
     tradeVolumePocEnabled,
     depthHeatmapEnabled,
-    venue,
     viewTimeframes,
     volumeDistributionEnabled,
     volumeDistributionRangeCount,

@@ -239,6 +239,9 @@ interface Props {
   depthHeatmap?: readonly DepthHeatmapPointWire[];
   /** Snapshot restore can carry hoga panes on calendar timeframes. /live keeps the default gate. */
   forceHogaPanes?: boolean;
+  /** 일봉 MA 오버레이의 KIS 일봉 fetch 허용 여부(기본 true). /study는 false로 넘겨
+   * 디스크(스크리너) 일봉만 쓴다 — study의 KIS 무호출 계약 유지. */
+  dailyCandleKisEnabled?: boolean;
   /** Snapshot restore can pin pane mounts to saved indicator state. Omitted means read /live store. */
   paneTogglesOverride?: {
     volumeEnabled?: boolean;
@@ -313,6 +316,7 @@ export function LiveChartRoot({
   tradeVolumePocs = [],
   depthHeatmap = [],
   forceHogaPanes = false,
+  dailyCandleKisEnabled = true,
   paneTogglesOverride,
   dailyMovingAverageOverride,
   tradeVolumePocOverride,
@@ -1639,7 +1643,7 @@ export function LiveChartRoot({
           {candleAlwaysOnTop && (
             <>
               <MovingAverageOverlay chart={chart} bundle={cb} axis={axis} />
-              <DailyMovingAverageOverlay chart={chart} bundle={cb} axis={axis} code={code} timeframe={timeframe} venue={venue} todayKst={todayKst} override={dailyMovingAverageOverride} />
+              <DailyMovingAverageOverlay chart={chart} bundle={cb} axis={axis} code={code} timeframe={timeframe} venue={venue} todayKst={todayKst} dailyCandleKisEnabled={dailyCandleKisEnabled} override={dailyMovingAverageOverride} />
             </>
           )}
           {paneSpecsForTimeframe(timeframe, activePaneToggles).map((spec, i) => (
@@ -1673,7 +1677,7 @@ export function LiveChartRoot({
           {!candleAlwaysOnTop && (
             <>
               <MovingAverageOverlay chart={chart} bundle={cb} axis={axis} />
-              <DailyMovingAverageOverlay chart={chart} bundle={cb} axis={axis} code={code} timeframe={timeframe} venue={venue} todayKst={todayKst} override={dailyMovingAverageOverride} />
+              <DailyMovingAverageOverlay chart={chart} bundle={cb} axis={axis} code={code} timeframe={timeframe} venue={venue} todayKst={todayKst} dailyCandleKisEnabled={dailyCandleKisEnabled} override={dailyMovingAverageOverride} />
             </>
           )}
           <LiveCurrentPriceLine paneSeries={paneSeries} bundle={cb} code={code} />

@@ -16,6 +16,7 @@ import { IndexSectorRankingPane } from './IndexSectorRankingPane';
 import { LiveSidebar } from './LiveSidebar';
 import { LiveToolbar } from './LiveToolbar';
 import { ChartDrawingShell } from './ChartDrawingShell';
+import ChartErrorBoundary from '../chart/ChartErrorBoundary';
 import type { LiveInstrument } from './liveInstrument';
 import type { AskPeak, BidPeak, RangeBundle } from '../api/types';
 import type { LiveSeriesData, LiveTodayAskPeak, LiveTodayBidPeak } from '../api/liveSeries';
@@ -376,39 +377,44 @@ export function LiveWorkarea({
               />
             )}
             <div style={{ flex: 1, minHeight: 0, overflow: 'hidden' }}>
-              <ChartDrawingShell>
-                <LiveChartRoot
-                  code={activeCode}
-                  timeframe={timeframe}
-                  venue={venue}
-                  bundle={bundle}
-                  chartBundle={chartBundle}
-                  hogaPaneBundle={hogaBundle}
-                  clampEngaged={clampEngaged}
-                  isPastCandlesLoading={isPastCandlesLoading}
-                  isHogaLoading={isHogaLoading}
-                  isSidecarLoading={isSidecarLoading}
-                  isExtending={isExtending}
-                  pastDataWarnings={pastDataWarnings}
-                  restoreViewport={restoreViewport}
-                  viewIdentity={viewIdentity ?? undefined}
-                  dayAskPeaks={dayAskPeaks}
-                  todayAllPriceAskPeak={todayAllPriceAskPeak}
-                  todayAskPeakInput={todayAskPeakInput}
-                  dayBidPeaks={dayBidPeaks}
-                  todayAllPriceBidPeak={todayAllPriceBidPeak}
-                  todayBidPeakInput={todayBidPeakInput}
-                  liveObSnapshots={live.ob}
-                  liveTradeSnapshots={live.trade}
-                  todayKst={todayKst}
-                  tradeVolumePocs={tradeVolumePocs}
-                  depthHeatmap={(chartBundle ?? bundle)?.depth_heatmap}
-                  paneTogglesOverride={paneTogglesOverride}
-                  onViewportCaptureReady={onViewportCaptureReady}
-                  onCandleBasisHover={rankingAllowed ? handleCandleBasisHover : undefined}
-                  onCandleBasisClick={rankingAllowed ? handleCandleBasisClick : undefined}
-                />
-              </ChartDrawingShell>
+              {/* lightweight-charts는 내부 불변식 위반 시 React render/effect 안에서
+                  동기 throw한다(2026-07-08 venue=UN 콜드 로드 간헐 크래시). 경계 없이는
+                  루트까지 버블해 앱 전체가 언마운트(검은 화면)되므로 차트 트리를 격리한다. */}
+              <ChartErrorBoundary>
+                <ChartDrawingShell>
+                  <LiveChartRoot
+                    code={activeCode}
+                    timeframe={timeframe}
+                    venue={venue}
+                    bundle={bundle}
+                    chartBundle={chartBundle}
+                    hogaPaneBundle={hogaBundle}
+                    clampEngaged={clampEngaged}
+                    isPastCandlesLoading={isPastCandlesLoading}
+                    isHogaLoading={isHogaLoading}
+                    isSidecarLoading={isSidecarLoading}
+                    isExtending={isExtending}
+                    pastDataWarnings={pastDataWarnings}
+                    restoreViewport={restoreViewport}
+                    viewIdentity={viewIdentity ?? undefined}
+                    dayAskPeaks={dayAskPeaks}
+                    todayAllPriceAskPeak={todayAllPriceAskPeak}
+                    todayAskPeakInput={todayAskPeakInput}
+                    dayBidPeaks={dayBidPeaks}
+                    todayAllPriceBidPeak={todayAllPriceBidPeak}
+                    todayBidPeakInput={todayBidPeakInput}
+                    liveObSnapshots={live.ob}
+                    liveTradeSnapshots={live.trade}
+                    todayKst={todayKst}
+                    tradeVolumePocs={tradeVolumePocs}
+                    depthHeatmap={(chartBundle ?? bundle)?.depth_heatmap}
+                    paneTogglesOverride={paneTogglesOverride}
+                    onViewportCaptureReady={onViewportCaptureReady}
+                    onCandleBasisHover={rankingAllowed ? handleCandleBasisHover : undefined}
+                    onCandleBasisClick={rankingAllowed ? handleCandleBasisClick : undefined}
+                  />
+                </ChartDrawingShell>
+              </ChartErrorBoundary>
             </div>
             {rankingAllowed && (
               <IndexSectorRankingPane

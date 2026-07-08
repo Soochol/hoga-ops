@@ -1,20 +1,14 @@
 import { useMemo } from 'react';
 import { useQuery } from '@tanstack/react-query';
 
-import { useLiveSettings } from '../api/liveSettings';
-import { useLivePastCandles } from '../api/livePastCandles';
-import { rangeBundleQueryOptions } from '../api/range';
-import { useScreenerDailyCandles } from '../api/screenerDailyCandles';
-import {
-  type LivePastCandlesWarning,
-  type LivePastDailyCandlesWarning,
-} from '../api/studyPastCandles';
-import { useLiveVenueStore } from '../state/liveVenue';
+import type { LiveVenueOption } from '../state/liveVenue';
 import { useLivePageStore } from '../state/livePage';
 import { useSourcePreferenceStore } from '../state/sourcePreference';
+import type { LiveDataWarning } from '../live/liveDataWarnings';
+import type { LiveEffectiveSession } from '../api/livePastCandles';
 import type { StudyViewReference } from '../api/studyViews';
-import type { Candle, RangeBundle } from '../api/types';
-import { buildStudyReferenceBundleModel, studyReferenceQueryInputs } from './studyReferenceBundleModel';
+import type { RangeBundle } from '../api/types';
+import { buildStudyReferenceBundleModel } from './studyReferenceBundleModel';
 import { studyReferenceQueryOptions } from './studyReferenceQueries';
 
 function mergeStudyRangeBundles(
@@ -29,23 +23,23 @@ function mergeStudyRangeBundles(
     bid_peaks: sidecars.bid_peaks ?? [],
     broker_late_entries: sidecars.broker_late_entries ?? [],
     trade_volume_pocs: sidecars.trade_volume_pocs ?? [],
+    depth_heatmap: sidecars.depth_heatmap ?? [],
     volume_distributions: sidecars.volume_distributions ?? [],
   };
 }
 
-function rangeCandleToStudyBar(candle: Candle) {
-  return {
-    t_ms: candle.ts_ms,
-    open: candle.open,
-    high: candle.high,
-    low: candle.low,
-    close: candle.close,
-    volume: candle.vol_a + candle.vol_b,
-  };
-}
+// 복기뷰 캔들은 디스크 캡처(hogaplay + 스크리너 일봉)만 쓴다 — KIS rate-limit/지연 경고
+// 채널이 없으므로 항상 빈 배열. RangeBundle의 data_warnings는 invariant 위반 타입이라
+// KIS 지연 칩(LiveDataWarning)으로 표기하면 오해를 준다(디스크는 지연 개념이 없음).
+const EMPTY_WARNINGS: LiveDataWarning[] = [];
+
+// 복기뷰는 hogaplay 정규장 캡처(KRX)만 쓴다 — venue는 KRX 고정. 공유
+// live.venue.v1 스토어를 읽지 않아, /live에서 NXT/통합으로 바꿔도 study는 불변.
+// venue는 캔들 소스엔 무영향이고 세션 경계 폴백 렌더링에만 관여한다.
+const STUDY_VENUE: LiveVenueOption = 'KRX';
 
 export function useStudyReferenceBundle(save: StudyViewReference | null) {
-  const venue = useLiveVenueStore((s) => s.venue);
+  const venue = STUDY_VENUE;
   const sourcePref = useSourcePreferenceStore((s) => s.sourcePreference);
   const brokerLateEntryEnabled = useLivePageStore((s) => s.brokerLateEntryEnabled);
   const brokerLateEntryStartHHMM = useLivePageStore((s) => s.brokerLateEntryStartHHMM);
@@ -53,11 +47,8 @@ export function useStudyReferenceBundle(save: StudyViewReference | null) {
   const depthHeatmapEnabled = useLivePageStore((s) => s.depthHeatmapEnabled);
   const volumeDistributionEnabled = useLivePageStore((s) => s.volumeDistributionEnabled);
   const volumeDistributionRangeCount = useLivePageStore((s) => s.volumeDistributionRangeCount);
-  useLiveSettings();
-  const inputs = useMemo(() => studyReferenceQueryInputs(save), [save]);
   const queryOptions = useMemo(
     () => studyReferenceQueryOptions(save, {
-      venue,
       sourcePref,
       brokerLateEntryEnabled,
       brokerLateEntryStartHHMM,
@@ -73,107 +64,61 @@ export function useStudyReferenceBundle(save: StudyViewReference | null) {
       sourcePref,
       tradeVolumePocEnabled,
       depthHeatmapEnabled,
-      venue,
       volumeDistributionEnabled,
       volumeDistributionRangeCount,
     ],
   );
-  const rangeCandlesOptions = useMemo(
-    () => rangeBundleQueryOptions({
-      code: inputs.range.code,
-      from: inputs.range.from,
-      to: inputs.range.to,
-      timeframe: inputs.range.timeframe,
-      todayKst: null,
-      sourcePref,
-      options: {
-        mode: 'candles',
-        brokerLateEntriesEnabled: false,
-        brokerLateEntryStartHHMM: null,
-        volumeDistributionBins: null,
-        tradeVolumePocBins: null,
-        volumeDistributionPriceRange: null,
-      },
-    }),
-    [inputs.range.code, inputs.range.from, inputs.range.timeframe, inputs.range.to, sourcePref],
-  );
 
   const pastHoga = useQuery(queryOptions.rangeHoga);
   const pastSidecars = useQuery(queryOptions.rangeSidecars);
-  const rangeCandles = useQuery(rangeCandlesOptions);
-  // ADR-0091: 저장 기간이 백엔드 fetch 예산(12거래일)을 넘으면 단일 호출은
-  // fetch_budget_exhausted로 부분 응답이 온다. /live의 청크 워크백 훅을
-  // 그대로 재사용해 seed까지 자동 전진 + blocking 응답 비박제로 회복한다.
-  // (queryOptions.minuteCandles 옵션 빌더는 warm 프리페치가 계속 사용.)
-  const minuteCandles = useLivePastCandles(
-    inputs.minuteCandles.code,
-    inputs.minuteCandles.from,
-    inputs.minuteCandles.to,
-    venue,
-  );
-  const dailyCandles = useQuery(queryOptions.dailyCandles);
-  const screenerDailyCandles = useScreenerDailyCandles(
-    !inputs.isMinute ? inputs.dailyCandles.code : null,
-    !inputs.isMinute ? save?.range.from_date ?? null : null,
-    !inputs.isMinute ? inputs.dailyCandles.to : null,
-  );
+  const rangeCandles = useQuery(queryOptions.rangeCandles);
+  const screenerDaily = useQuery(queryOptions.screenerDaily);
+
   const pastBundle = useMemo(
     () => mergeStudyRangeBundles(pastHoga.data ?? null, pastSidecars.data ?? null),
     [pastHoga.data, pastSidecars.data],
   );
-  const minuteCandleData = minuteCandles.data?.candles ?? [];
-  const fallbackMinuteCandles = (rangeCandles.data?.candles ?? []).map(rangeCandleToStudyBar);
-  const dailyCandleData = dailyCandles.data?.candles ?? [];
-  const screenerDailyCandleData = screenerDailyCandles.data?.candles ?? [];
+  const rangeCandleData = rangeCandles.data?.candles ?? [];
+  const screenerDailyData = screenerDaily.data?.candles ?? [];
+
+  // 세션 경계: 캡처 meta의 정규장 경계(RangeSegment)를 effective session으로 주입.
+  // 세그먼트가 없는 날짜는 모델의 venue 폴백(effectiveSessionBoundsByDate 미스 경로)이 처리.
+  const sessions = useMemo<LiveEffectiveSession[]>(
+    () => (rangeCandles.data?.segments ?? []).map((s) => ({
+      date: s.date,
+      venue,
+      open_ms: s.session_open_ms,
+      close_ms: s.session_close_ms,
+    })),
+    [rangeCandles.data?.segments, venue],
+  );
 
   const model = useMemo(
     () => buildStudyReferenceBundleModel({
       save,
       venue,
       pastBundle,
-      minuteCandles: minuteCandleData.length > 0 ? minuteCandleData : fallbackMinuteCandles,
-      dailyCandles: dailyCandleData.length > 0 ? dailyCandleData : screenerDailyCandleData,
-      minuteEffectiveSessions: minuteCandles.data?.effective_sessions ?? [],
+      rangeCandles: rangeCandleData,
+      screenerDailyCandles: screenerDailyData,
+      sessions,
     }),
-    [
-      dailyCandleData,
-      fallbackMinuteCandles,
-      minuteCandleData,
-      minuteCandles.data?.effective_sessions,
-      pastBundle,
-      save,
-      screenerDailyCandleData,
-      venue,
-    ],
-  );
-
-  const warnings: Array<LivePastCandlesWarning | LivePastDailyCandlesWarning> = inputs.isMinute
-    ? minuteCandles.data?.data_warnings ?? []
-    : dailyCandles.data?.data_warnings ?? [];
-
-  // 분봉 워크백이 아직 seed(저장 기간 시작일)까지 도달하지 않았는가.
-  // 첫 청크 도착 후 차트는 마운트를 유지하고, 과거 청크가 백그라운드로
-  // 채워지는 동안 StudyPage가 소형 진행 배지를 띄우는 데 쓴다.
-  // merged `from`(= 지금까지 받은 가장 이른 청크)이 seed `from`보다 크면 진행 중.
-  // 초기 첫 청크 로딩(data==null)은 isExtending=false → isLoading이 담당(풀스크린 1회).
-  // D/W/M은 단일 쿼리라 isMinute 가드로 항상 false.
-  const isExtending = !!(
-    inputs.isMinute &&
-    inputs.minuteCandles.from &&
-    minuteCandles.data &&
-    minuteCandles.data.from > inputs.minuteCandles.from
+    [pastBundle, rangeCandleData, save, screenerDailyData, sessions, venue],
   );
 
   return {
     bundle: model.bundle,
     chartBundle: model.chartBundle,
     // 사이드카(최대벽·POC·거래량분포·프로그램매매)도 첫 커밋에 캔들과 함께 등장하도록
-    // 풀스크린 게이트에 포함(개선안 1-C). data==null 조건: 에러/캐시 히트로 settle되면
-    // 즉시 열려 영구 홀드 없음. save 로드 시 사이드카 쿼리는 항상 활성이라 sidecarEnabled 불요.
-    isLoading: pastHoga.isLoading || rangeCandles.isLoading || minuteCandles.isLoading || dailyCandles.isLoading || screenerDailyCandles.isLoading || (pastSidecars.isLoading && pastSidecars.data == null),
-    isExtending,
-    error: pastHoga.error ?? rangeCandles.error ?? minuteCandles.error ?? dailyCandles.error ?? screenerDailyCandles.error ?? pastSidecars.error ?? null,
-    pastDataWarnings: warnings,
+    // 풀스크린 게이트에 포함(개선안 1-C). 비활성 쿼리는 react-query v5에서 isLoading=false라
+    // 분봉/캘린더 저장을 단일식으로 커버한다(분봉=pastHoga+rangeCandles+sidecars,
+    // D/W/M=rangeCandles+screenerDaily). data==null 조건: 에러/캐시 히트로 settle되면 즉시 열림.
+    isLoading:
+      pastHoga.isLoading ||
+      rangeCandles.isLoading ||
+      screenerDaily.isLoading ||
+      (pastSidecars.isLoading && pastSidecars.data == null),
+    error: pastHoga.error ?? rangeCandles.error ?? screenerDaily.error ?? pastSidecars.error ?? null,
+    pastDataWarnings: EMPTY_WARNINGS,
     venue,
   };
 }

@@ -17,6 +17,8 @@ type Props = {
   timeframe: LiveTimeframe;
   venue?: LiveVenueOption;
   todayKst: string;
+  /** KIS 일봉 fetch 허용 여부(기본 true). /study는 false로 넘겨 스크리너 일봉만 쓴다. */
+  dailyCandleKisEnabled?: boolean;
   override?: {
     configs: readonly LiveMAConfig[];
     masterEnabled: boolean;
@@ -37,7 +39,7 @@ const priceFormat = {
  *  (ADR-0073). 현재봉 MovingAverageOverlay의 series-reconcile 패턴을 미러링하되,
  *  일봉 데이터를 useLiveBundle 밖 독립 훅으로 fetch한다(번들 split 비침투). 분봉
  *  전용: D/W/M에선 미렌더. 레전드 연동은 v1 비대상(maSeriesRegistry 미등록). */
-function DailyMovingAverageOverlay({ chart, bundle, axis, code, timeframe, venue = 'KRX', todayKst, override }: Props) {
+function DailyMovingAverageOverlay({ chart, bundle, axis, code, timeframe, venue = 'KRX', todayKst, dailyCandleKisEnabled = true, override }: Props) {
   const storeConfigs = useLivePageStore((s) => s.dailyMovingAverages);
   const storeMasterEnabled = useLivePageStore((s) => s.dailyMovingAverageEnabled);
   const storeHidden = useLivePageStore((s) => s.dailyMovingAverageHidden);
@@ -58,6 +60,7 @@ function DailyMovingAverageOverlay({ chart, bundle, axis, code, timeframe, venue
     to: fetchWindow?.to ?? null,
     venue,
     enabled,
+    kisEnabled: dailyCandleKisEnabled,
   });
   const daily = dailyQuery.candles;
 

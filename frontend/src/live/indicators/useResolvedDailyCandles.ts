@@ -21,6 +21,9 @@ export type UseResolvedDailyCandlesInput = {
   to: string | null;
   venue: LiveVenueOption;
   enabled: boolean;
+  /** KIS 일봉 fetch 허용 여부(기본 true). /study는 false로 넘겨 KIS 호출을 막고
+   * 스크리너 일봉만 쓴다(디스크 온리 계약). */
+  kisEnabled?: boolean;
 };
 
 export type UseResolvedDailyCandlesResult = {
@@ -41,10 +44,11 @@ function resolveInputs(input: UseResolvedDailyCandlesInput): { code: string; fro
 
 export function useResolvedDailyCandles(input: UseResolvedDailyCandlesInput): UseResolvedDailyCandlesResult {
   const resolvedInput = resolveInputs(input);
+  const kisAllowed = input.kisEnabled !== false;
   const kisQuery = useLivePastDailyCandles(
-    resolvedInput?.code ?? null,
-    resolvedInput?.from ?? null,
-    resolvedInput?.to ?? null,
+    kisAllowed ? resolvedInput?.code ?? null : null,
+    kisAllowed ? resolvedInput?.from ?? null : null,
+    kisAllowed ? resolvedInput?.to ?? null : null,
     input.venue,
   );
   const screenerQuery = useScreenerDailyCandles(

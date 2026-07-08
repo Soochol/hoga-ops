@@ -25,7 +25,7 @@ import {
 import { buildChartBundle, createIncrementalHogaSeriesBuilder, filterProgramTradeForCandles, type HogaSeries } from './buildLiveBundle';
 import type { LiveDataWarning } from './liveDataWarnings';
 import type { TradeSnapshot } from './bucketHogaSeries';
-import { aggregateCandles, aggregateCalendar } from './aggregateCandles';
+import { aggregateCandles, aggregateCalendar, keepRegularSessionCandles } from './aggregateCandles';
 import { mergeCalendarCandlesByPriority, mergeCandlesByPriority } from './candleSourceMerge';
 import {
   regularSessionOpenMs,
@@ -69,13 +69,6 @@ function candleVolume(c: Candle): number {
 
 function candleDateSet(candles: readonly Candle[]): Set<string> {
   return new Set(candles.map((c) => realMsToYyyymmdd(c.ts_ms)));
-}
-
-function keepRegularSessionCandles<T extends { t_ms: number }>(candles: readonly T[]): T[] {
-  return candles.filter((c) => {
-    const date = realMsToYyyymmdd(c.t_ms);
-    return c.t_ms >= regularSessionOpenMs(date) && c.t_ms <= regularSessionCloseMs(date);
-  });
 }
 
 function segmentSourceByDate(bundle: RangeBundle | null | undefined, date: string): SourceName | undefined {
@@ -854,6 +847,25 @@ export function useLiveBundle(
     if (!extending) lastSettledChartRef.current = computedChartBundle;
   }, [extending, computedChartBundle]);
 
+  // 콜드 분봉 로드 원자화(2026-07-08 venue=UN 간헐 크래시): 콜드 로드에선 mode=hoga가
+  // past-candles보다 먼저 settle해 호가 pane 시리즈(2천+점)가 먼저 커밋되는데, 그 뒤
+  // UN 캔들(08:00~20:00)이 landing하면 공유 timeScale에 호가 축에 없던 시간점이 수천 개
+  // 삽입되며 lightweight-charts 내부(hitTest/baseline make-valid)가 스테일 인덱스를 밟아
+  // throw → React 트리 전체 언마운트(검은 화면)가 간헐 재현됐다(KRX는 캔들 시간점이 호가
+  // 버킷 grid와 일치해 삽입이 거의 0이라 미발현). 캔들 쿼리가 settle될 때까지 호가 시리즈를
+  // 빈 배열로 홀드해 "캔들 먼저, 호가는 그 부분집합 삽입" 순서를 강제한다. reveal 커버가
+  // 이미 캔들+호가 settle까지 차트를 가리므로 사용자 체감 변화는 없다.
+  const holdHogaSeriesForColdCandles =
+    isMinute && !!code && pastCandlesQuery.isLoading && pastCandlesQuery.data == null;
+  const emptyHogaSeries = useMemo<HogaSeries>(
+    () => ({
+      quote_ratio: { bucket_ms: bucketMs, points: [] },
+      fill_strength: { bucket_ms: bucketMs, points: [] },
+    }),
+    [bucketMs],
+  );
+  const committedHogaSeries = holdHogaSeriesForColdCandles ? emptyHogaSeries : hogaSeries;
+
   // Full bundle = stable chart side + live hoga overlay. Spreading chartBundle
   // shares its segments/candles refs, so the VirtualAxis stays single-build and
   // hoga panes (which read bundle.segments / bundle.bucket_ms in fillStrength)
@@ -863,20 +875,20 @@ export function useLiveBundle(
       chartBundle
         ? {
             ...chartBundle,
-            quote_ratio: hogaSeries.quote_ratio,
-            fill_strength: hogaSeries.fill_strength,
+            quote_ratio: committedHogaSeries.quote_ratio,
+            fill_strength: committedHogaSeries.fill_strength,
             price_level_hits: mergePriceLevelHits(chartBundle.price_level_hits, livePriceLevelHits),
           }
         : null,
-    [chartBundle, hogaSeries, livePriceLevelHits],
+    [chartBundle, committedHogaSeries, livePriceLevelHits],
   );
   const hogaBundle = useMemo<RangeBundle | null>(
     () =>
       chartBundle
         ? {
             ...chartBundle,
-            quote_ratio: hogaSeries.quote_ratio,
-            fill_strength: hogaSeries.fill_strength,
+            quote_ratio: committedHogaSeries.quote_ratio,
+            fill_strength: committedHogaSeries.fill_strength,
             broker_late_entries: brokerLateEntryEnabled ? chartBundle.broker_late_entries : [],
             program_trade: { points: [] },
           }
@@ -887,7 +899,7 @@ export function useLiveBundle(
       chartBundle?.to_date,
       chartBundle?.bucket_ms,
       chartBundle?.segments,
-      hogaSeries,
+      committedHogaSeries,
       brokerLateEntryEnabled,
       brokerLateEntryEnabled ? chartBundle?.broker_late_entries : null,
     ],

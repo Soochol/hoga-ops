@@ -142,6 +142,29 @@ describe('LiveSettingsSections (2단 nav+detail)', () => {
     expect(screen.getAllByRole('radio', { name: 'KIS API 우선' })).toHaveLength(2);
   });
 
+  it('study variant는 캔들 기준 라디오 대신 디스크 온리 안내문을 표시한다', async () => {
+    vi.spyOn(liveSettingsApi, 'getLiveSettings').mockResolvedValue({
+      schema_version: 1,
+      storage_policy: 'ws_plus_rest',
+      program_trade_storage_enabled: false,
+      kis_rest_bypass_enabled: false,
+    });
+
+    render(<LiveSettingsSections variant="study" />, { wrapper: wrap(new QueryClient({ defaultOptions: { queries: { retry: false } } })) });
+    fireEvent.click(screen.getByTestId('settings-nav-data-source'));
+
+    // 캔들 기준 섹션 제목은 유지되지만 라디오는 사라지고 안내문으로 대체.
+    expect(await screen.findByTestId('study-candle-source-note')).toBeInTheDocument();
+    expect(screen.queryByRole('radio', { name: '자동' })).toBeNull();
+    // venue는 KRX 고정 — 'KIS 캔들 거래소' 라디오 자체가 숨겨진다.
+    expect(screen.queryByText('KIS 캔들 거래소')).toBeNull();
+    expect(screen.queryByLabelText('KRX')).toBeNull();
+    expect(screen.queryByLabelText('NXT')).toBeNull();
+    // 호가·체결 기준은 study에서도 유지(사이드카가 소비).
+    expect(screen.getByText('호가·체결 데이터 기준')).toBeInTheDocument();
+    expect(screen.getByRole('radio', { name: 'KIS WS 우선' })).toBeInTheDocument();
+  });
+
   it('데이터소스 상세에서 KIS API 우회 토글을 backend settings로 저장한다', async () => {
     const apiCall = vi.spyOn(apiClient, 'apiCall').mockResolvedValue({
       schema_version: 1,

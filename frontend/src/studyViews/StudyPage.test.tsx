@@ -837,29 +837,9 @@ describe('StudyPage', () => {
     expect(screen.getByText('학습뷰 불러오는 중...')).toBeTruthy();
   });
 
-  // 워크백 진행 배지: 차트가 이미 떠 있는(ready) 상태에서 과거 청크가 채워지는
-  // 동안만 표시된다. 풀스크린 로딩(study-page-loading) 재진입을 대체한다.
-  it('ready 상태에서 isExtending이면 과거 로딩 배지를 표시하고 차트는 유지한다', () => {
-    useStudyReferenceBundleMock.mockReturnValue({
-      bundle: bundle(),
-      chartBundle: bundle(),
-      isLoading: false,
-      isExtending: true,
-      error: null,
-      pastDataWarnings: [],
-      venue: 'KRX',
-    });
-
-    renderPage('/study?view=view-ref');
-
-    expect(screen.getByTestId('study-past-loading-badge')).toBeTruthy();
-    expect(screen.getByText('과거 데이터 불러오는 중…')).toBeTruthy();
-    // 차트는 언마운트되지 않는다(플래시 없음).
-    expect(screen.getByTestId('live-chart-root-stub')).toBeTruthy();
-    expect(screen.queryByTestId('study-page-loading')).toBeNull();
-  });
-
-  it('isExtending이 아니면 과거 로딩 배지를 표시하지 않는다', () => {
+  // 캔들이 디스크 온리(hogaplay/스크리너)로 단일 호출이라 청크 워크백이 없다 →
+  // 과거 로딩 배지(구 isExtending)는 제거됐다. 차트는 게이트 통과 후 바로 뜬다.
+  it('과거 로딩 배지를 렌더하지 않는다 (디스크 온리, 워크백 없음)', () => {
     renderPage('/study?view=view-ref');
 
     expect(screen.queryByTestId('study-past-loading-badge')).toBeNull();

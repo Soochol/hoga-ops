@@ -1,7 +1,8 @@
 import type { StudyViewReference } from '../api/studyViews';
 import type { LiveEffectiveSession } from '../api/livePastCandles';
 import { TIMEFRAME_TO_MS, type Candle, type RangeBundle, type Timeframe, type VolumeProfile } from '../api/types';
-import { aggregateCalendar, aggregateCandles } from '../live/aggregateCandles';
+import { aggregateCalendar, aggregateCandles, keepRegularSessionCandles } from '../live/aggregateCandles';
+import { mergeCalendarCandlesByPriority } from '../live/candleSourceMerge';
 import { buildChartBundle } from '../live/buildLiveBundle';
 import {
   initialHistoricalDaysFor,
@@ -30,18 +31,23 @@ type StudyReferenceKisBar = {
 export type StudyReferenceQueryInputs = {
   isMinute: boolean;
   bucketMs: number;
+  // 호가·사이드카(mode=hoga/sidecar)용 — 분봉 저장에서만 활성(D/W/M은 null).
   range: {
     code: string | null;
     from: string | null;
     to: string | null;
     timeframe: Timeframe | null;
   };
-  minuteCandles: {
+  // 디스크 캔들(/api/range mode=candles) — 항상 활성. 분봉이면 저장 타임프레임,
+  // D/W/M이면 '1m'을 받아 프론트에서 캘린더 집계.
+  candles: {
     code: string | null;
     from: string | null;
     to: string | null;
+    timeframe: Timeframe | null;
   };
-  dailyCandles: {
+  // 스크리너 일봉(디스크 parquet) — D/W/M 갭 채움 전용.
+  screenerDaily: {
     code: string | null;
     from: string | null;
     to: string | null;
@@ -88,6 +94,7 @@ function emptyRangeBundle(code: string, fromDate: string, toDate: string, bucket
     bid_peaks: [],
     price_level_hits: [],
     trade_volume_pocs: [],
+    depth_heatmap: [],
     broker_late_entries: [],
   };
 }
@@ -96,6 +103,8 @@ export function studyReferenceQueryInputs(save: StudyViewReference | null): Stud
   const timeframe = save?.timeframe ?? null;
   const isMinute = timeframe ? isMinuteTimeframe(timeframe) : false;
   const bucketMs = timeframe && isMinute ? TIMEFRAME_TO_MS[timeframe as Timeframe] : 60_000;
+  // D/W/M: hogaplay 1m 요청 창은 저장 구간, 단 to 기준 타임프레임별 캡(월봉 ~10년
+  // 1m 전량 요청 방지). 캡 밖·캡처 공백은 screenerDaily가 저장 구간 전체를 커버해 채운다.
   const dailyFrom = save && !isMinute
     ? laterDate(save.range.from_date, subtractDaysKst(save.range.to_date, initialHistoricalDaysFor(save.timeframe)))
     : null;
@@ -109,54 +118,67 @@ export function studyReferenceQueryInputs(save: StudyViewReference | null): Stud
       to: save && isMinute ? save.range.to_date : null,
       timeframe: save && isMinute ? (save.timeframe as Timeframe) : null,
     },
-    minuteCandles: {
-      code: save && isMinute ? save.code : null,
-      from: save && isMinute ? save.range.from_date : null,
-      to: save && isMinute ? save.range.to_date : null,
+    candles: {
+      code: save ? save.code : null,
+      from: save ? (isMinute ? save.range.from_date : dailyFrom) : null,
+      to: save ? save.range.to_date : null,
+      timeframe: save ? (isMinute ? (save.timeframe as Timeframe) : '1m') : null,
     },
-    dailyCandles: {
+    screenerDaily: {
       code: save && !isMinute ? save.code : null,
-      from: dailyFrom,
+      from: save && !isMinute ? save.range.from_date : null,
       to: save && !isMinute ? save.range.to_date : null,
     },
   };
 }
 
+function candleToBar(c: Candle): StudyReferenceKisBar {
+  return { t_ms: c.ts_ms, open: c.open, high: c.high, low: c.low, close: c.close, volume: c.vol_a + c.vol_b };
+}
+
 function aggregateReferenceCandles({
   save,
   isMinute,
-  minuteCandles,
-  dailyCandles,
+  rangeCandles,
+  screenerDailyCandles,
 }: {
   save: StudyViewReference;
   isMinute: boolean;
-  minuteCandles: readonly StudyReferenceKisBar[];
-  dailyCandles: readonly StudyReferenceKisBar[];
+  rangeCandles: readonly Candle[];
+  screenerDailyCandles: readonly StudyReferenceKisBar[];
 }): Candle[] {
   if (isMinute) {
-    const raw = [...minuteCandles].sort((a, b) => a.t_ms - b.t_ms);
+    // 서버가 이미 저장 타임프레임 버킷으로 내려주므로 aggregateCandles는 멱등(재정렬만).
+    const raw = rangeCandles.map(candleToBar).sort((a, b) => a.t_ms - b.t_ms);
     return aggregateCandles(raw, TIMEFRAME_TO_MS[save.timeframe as Timeframe] / 1000).map(kisBarToCandle);
   }
 
-  const raw = [...dailyCandles].sort((a, b) => a.t_ms - b.t_ms);
-  const bars = save.timeframe === 'D' ? raw : aggregateCalendar(raw, save.timeframe as CalendarTimeframe);
-  return bars.map(kisBarToCandle);
+  // D/W/M: hogaplay 1m을 정규장 필터 후 일봉 집계 → 스크리너 일봉으로 갭 채움(hogaplay 우선).
+  // 일(D) granularity에서 병합해 캡 경계·캡처 공백의 부분 버킷을 스크리너가 날짜 단위로 메꾼 뒤,
+  // W/M이면 병합 결과를 다시 캘린더 집계한다.
+  const oneMinBars = rangeCandles.map(candleToBar).sort((a, b) => a.t_ms - b.t_ms);
+  const hogaDaily = aggregateCalendar(keepRegularSessionCandles(oneMinBars), 'D').map(kisBarToCandle);
+  const screenerDaily = [...screenerDailyCandles].sort((a, b) => a.t_ms - b.t_ms).map(kisBarToCandle);
+  const mergedDaily = mergeCalendarCandlesByPriority(hogaDaily, screenerDaily, 'D');
+  if (save.timeframe === 'D') return mergedDaily;
+  const mergedBars = mergedDaily.map(candleToBar);
+  return aggregateCalendar(mergedBars, save.timeframe as CalendarTimeframe).map(kisBarToCandle);
 }
 
 export function buildStudyReferenceBundleModel({
   save,
   venue,
   pastBundle,
-  minuteCandles,
-  dailyCandles,
-  minuteEffectiveSessions = [],
+  rangeCandles,
+  screenerDailyCandles,
+  sessions = [],
 }: {
   save: StudyViewReference | null;
   venue: LiveVenueOption;
   pastBundle: RangeBundle | null;
-  minuteCandles: readonly StudyReferenceKisBar[];
-  dailyCandles: readonly StudyReferenceKisBar[];
-  minuteEffectiveSessions?: readonly LiveEffectiveSession[];
+  rangeCandles: readonly Candle[];
+  screenerDailyCandles: readonly StudyReferenceKisBar[];
+  sessions?: readonly LiveEffectiveSession[];
 }): StudyReferenceBundleModel {
   if (!save) return { bundle: null, chartBundle: null };
 
@@ -164,8 +186,8 @@ export function buildStudyReferenceBundleModel({
   const kisCandles = aggregateReferenceCandles({
     save,
     isMinute: inputs.isMinute,
-    minuteCandles,
-    dailyCandles,
+    rangeCandles,
+    screenerDailyCandles,
   });
   const clippedKisCandles = inputs.isMinute
     ? kisCandles.filter((c) => c.ts_ms >= save.range.from_ms && c.ts_ms <= save.range.to_ms)
@@ -173,7 +195,7 @@ export function buildStudyReferenceBundleModel({
       const date = realMsToYyyymmdd(c.ts_ms);
       return date >= save.range.from_date && date <= save.range.to_date;
     });
-  const effectiveSessionByDate = effectiveSessionBoundsByDate(minuteEffectiveSessions);
+  const effectiveSessionByDate = effectiveSessionBoundsByDate(sessions);
   const sessionForDate = inputs.isMinute
     ? (yyyymmdd: string) =>
         effectiveSessionByDate.get(yyyymmdd) ??
@@ -227,6 +249,7 @@ export function buildStudyReferenceBundleModel({
       bid_peaks: pastBundle.bid_peaks ?? [],
       price_level_hits: pastBundle.price_level_hits ?? [],
       trade_volume_pocs: pastBundle.trade_volume_pocs ?? [],
+      depth_heatmap: pastBundle.depth_heatmap ?? [],
       broker_late_entries: pastBundle.broker_late_entries ?? [],
     },
   };

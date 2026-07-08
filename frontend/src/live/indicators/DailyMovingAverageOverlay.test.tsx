@@ -88,7 +88,16 @@ describe('DailyMovingAverageOverlay', () => {
       to: '20260613',
       venue: 'UN',
       enabled: true,
+      kisEnabled: true,
     });
+  });
+
+  it('forwards dailyCandleKisEnabled=false so /study daily MA stays disk-only', () => {
+    const m = makeChartMock();
+    renderOverlay(m, { dailyCandleKisEnabled: false });
+    expect(mockUseResolvedDaily).toHaveBeenLastCalledWith(
+      expect.objectContaining({ kisEnabled: false }),
+    );
   });
 
   it('uses integer price formatting so daily MA overlays do not add .00 to the candle axis', () => {
