@@ -1,4 +1,4 @@
-import { useMemo } from 'react';
+import { useMemo, useRef } from 'react';
 import type { AskPeakCandidate, BidPeak, Candle } from '../api/types';
 import type { LiveTodayBidPeak } from '../api/liveSeries';
 import type { ObSnapshot, TradeSnapshot } from './bucketHogaSeries';
@@ -8,7 +8,9 @@ import {
   rankPeakCandidates,
   toTouchTicksFromTrades,
   toWallEventsFromOrderbooks,
+  type PeakWallClassification,
 } from './peakWallEventClassifier';
+import { IncrementalPeakWallSource } from './incrementalPeakWallSource';
 
 const EMPTY_CANDLES: readonly Candle[] = [];
 
@@ -119,6 +121,22 @@ function attachFamilies(
   };
 }
 
+/** classify 결과 + 백엔드 패밀리 → 최종 패밀리 조립. 배치(mergedBidFamilies)와
+ *  증분(useDayBidPeaks) 경로가 공유하는 유일한 조립 구현. */
+function bidFamiliesFromClassified(
+  classified: PeakWallClassification,
+  backend: PeakFamilies,
+): PeakFamilies {
+  const traded = mergeRankedCandidates(classified.postTouch, backend.traded);
+  const tradedKeys = new Set(traded.map(candidateKey));
+  const untraded = rankUniqueCandidates(
+    [...classified.postUntouched, ...backend.untraded]
+      .filter((candidate) => !tradedKeys.has(candidateKey(candidate))),
+  );
+  const all = mergeRankedCandidates(classified.all, backend.all, traded, untraded);
+  return { traded, untraded, all };
+}
+
 function mergedBidFamilies(
   ob: ReadonlyArray<ObSnapshot>,
   trade: ReadonlyArray<TradeSnapshot>,
@@ -164,14 +182,7 @@ function mergedBidFamilies(
       all: rankPeakCandidates(classified.all),
     };
   }
-  const traded = mergeRankedCandidates(classified.postTouch, backend.traded);
-  const tradedKeys = new Set(traded.map(candidateKey));
-  const untraded = rankUniqueCandidates(
-    [...classified.postUntouched, ...backend.untraded]
-      .filter((candidate) => !tradedKeys.has(candidateKey(candidate))),
-  );
-  const all = mergeRankedCandidates(classified.all, backend.all, traded, untraded);
-  return { traded, untraded, all };
+  return bidFamiliesFromClassified(classified, backend);
 }
 
 function historicalTodaySeed(seeds: readonly BidPeak[], todayKst: string): AskPeakCandidate | null {
@@ -216,6 +227,28 @@ export function deriveDayBidPeaks(
   return out;
 }
 
+export function deriveDayBidPeaksIncremental(
+  source: IncrementalPeakWallSource,
+  ob: ReadonlyArray<ObSnapshot>,
+  trade: ReadonlyArray<TradeSnapshot>,
+  seeds: readonly BidPeak[],
+  todayKst: string,
+  todayBidPeak: LiveTodayBidPeak | null,
+): BidPeak[] {
+  const backend = backendPeakFamilies(todayBidPeak);
+  const classified = source.update(ob, trade, [
+    ...backend.all,
+    ...backend.traded,
+    ...backend.untraded,
+  ]);
+  const families = bidFamiliesFromClassified(classified, backend);
+  const out = seeds.filter((peak) => peak.date !== todayKst);
+  const traded = families.traded[0];
+  if (!traded) return out;
+  out.push(attachFamilies(bidPeakFromCandidate(todayKst, traded), families));
+  return out;
+}
+
 export function useDayBidPeaks(
   ob: ReadonlyArray<ObSnapshot>,
   trade: ReadonlyArray<TradeSnapshot>,
@@ -225,9 +258,13 @@ export function useDayBidPeaks(
   todayBidPeak: LiveTodayBidPeak | null = null,
   todayCandles: readonly Candle[] = EMPTY_CANDLES,
 ): BidPeak[] {
+  void code;
+  void todayCandles;
+  const sourceRef = useRef<IncrementalPeakWallSource | null>(null);
+  if (sourceRef.current === null) sourceRef.current = new IncrementalPeakWallSource('bid');
   return useMemo(
-    () => deriveDayBidPeaks(ob, trade, seeds, todayKst, code, todayBidPeak, todayCandles),
-    [ob, trade, seeds, todayKst, code, todayBidPeak, todayCandles],
+    () => deriveDayBidPeaksIncremental(sourceRef.current!, ob, trade, seeds, todayKst, todayBidPeak),
+    [ob, trade, seeds, todayKst, todayBidPeak],
   );
 }
 
@@ -266,6 +303,33 @@ export function deriveTodayAllPriceBidPeak(
   );
 }
 
+const EMPTY_TRADES: readonly TradeSnapshot[] = [];
+
+export function deriveTodayAllPriceBidPeakIncremental(
+  source: IncrementalPeakWallSource,
+  ob: ReadonlyArray<ObSnapshot>,
+  seeds: readonly BidPeak[],
+  todayKst: string,
+  todayBidPeak: LiveTodayBidPeak | null,
+): BidPeak | null {
+  const backend = backendPeakFamilies(todayBidPeak);
+  const todaySeed = historicalTodaySeed(seeds, todayKst);
+  const classified = source.update(ob, EMPTY_TRADES, [
+    ...backend.all,
+    ...(todayBidPeak === null && todaySeed ? [todaySeed] : []),
+  ]);
+  const all = classified.all[0];
+  if (!all) return null;
+  return attachFamilies(
+    bidPeakFromCandidate(todayKst, all),
+    {
+      traded: [...backend.traded],
+      untraded: [...backend.untraded],
+      all: classified.all,
+    },
+  );
+}
+
 export function useTodayAllPriceBidPeak(
   ob: ReadonlyArray<ObSnapshot>,
   seeds: readonly BidPeak[],
@@ -273,8 +337,11 @@ export function useTodayAllPriceBidPeak(
   code: string | null,
   todayBidPeak: LiveTodayBidPeak | null = null,
 ): BidPeak | null {
+  void code;
+  const sourceRef = useRef<IncrementalPeakWallSource | null>(null);
+  if (sourceRef.current === null) sourceRef.current = new IncrementalPeakWallSource('bid');
   return useMemo(
-    () => deriveTodayAllPriceBidPeak(ob, seeds, todayKst, code, todayBidPeak),
-    [ob, seeds, todayKst, code, todayBidPeak],
+    () => deriveTodayAllPriceBidPeakIncremental(sourceRef.current!, ob, seeds, todayKst, todayBidPeak),
+    [ob, seeds, todayKst, todayBidPeak],
   );
 }

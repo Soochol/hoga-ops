@@ -1,4 +1,4 @@
-import { useMemo } from 'react';
+import { useMemo, useRef } from 'react';
 import type { AskPeak, AskPeakCandidate, Candle } from '../api/types';
 import type { LiveTodayAskPeak } from '../api/liveSeries';
 import type { ObSnapshot, TradeSnapshot } from './bucketHogaSeries';
@@ -8,7 +8,9 @@ import {
   rankPeakCandidates,
   toTouchTicksFromTrades,
   toWallEventsFromOrderbooks,
+  type PeakWallClassification,
 } from './peakWallEventClassifier';
+import { IncrementalPeakWallSource } from './incrementalPeakWallSource';
 
 const EMPTY_CANDLES: readonly Candle[] = [];
 
@@ -119,6 +121,23 @@ function attachFamilies(
   };
 }
 
+/** classify 결과 + 백엔드 패밀리 → 최종 패밀리 조립. 배치(mergedAskFamilies)와
+ *  증분(useDayAskPeaks) 경로가 공유하는 유일한 조립 구현 — 여기가 갈라지면 동등성이
+ *  깨지므로 반드시 한 곳만 둔다. */
+function askFamiliesFromClassified(
+  classified: PeakWallClassification,
+  backend: PeakFamilies,
+): PeakFamilies {
+  const traded = mergeRankedCandidates(classified.postTouch, backend.traded);
+  const tradedKeys = new Set(traded.map(candidateKey));
+  const untraded = rankUniqueCandidates(
+    [...classified.postUntouched, ...backend.untraded]
+      .filter((candidate) => !tradedKeys.has(candidateKey(candidate))),
+  );
+  const all = mergeRankedCandidates(classified.all, backend.all, traded, untraded);
+  return { traded, untraded, all };
+}
+
 function mergedAskFamilies(
   ob: ReadonlyArray<ObSnapshot>,
   trade: ReadonlyArray<TradeSnapshot>,
@@ -164,14 +183,7 @@ function mergedAskFamilies(
       all: rankPeakCandidates(classified.all),
     };
   }
-  const traded = mergeRankedCandidates(classified.postTouch, backend.traded);
-  const tradedKeys = new Set(traded.map(candidateKey));
-  const untraded = rankUniqueCandidates(
-    [...classified.postUntouched, ...backend.untraded]
-      .filter((candidate) => !tradedKeys.has(candidateKey(candidate))),
-  );
-  const all = mergeRankedCandidates(classified.all, backend.all, traded, untraded);
-  return { traded, untraded, all };
+  return askFamiliesFromClassified(classified, backend);
 }
 
 function historicalTodaySeed(seeds: readonly AskPeak[], todayKst: string): AskPeakCandidate | null {
@@ -216,6 +228,30 @@ export function deriveDayAskPeaks(
   return out;
 }
 
+/** deriveDayAskPeaks의 증분판(no-cutoff 전용). source가 ob/trade 스캔을 누적으로
+ *  대체하고, 조립은 배치와 동일한 askFamiliesFromClassified를 쓴다. */
+export function deriveDayAskPeaksIncremental(
+  source: IncrementalPeakWallSource,
+  ob: ReadonlyArray<ObSnapshot>,
+  trade: ReadonlyArray<TradeSnapshot>,
+  seeds: readonly AskPeak[],
+  todayKst: string,
+  todayAskPeak: LiveTodayAskPeak | null,
+): AskPeak[] {
+  const backend = backendPeakFamilies(todayAskPeak);
+  const classified = source.update(ob, trade, [
+    ...backend.all,
+    ...backend.traded,
+    ...backend.untraded,
+  ]);
+  const families = askFamiliesFromClassified(classified, backend);
+  const out = seeds.filter((peak) => peak.date !== todayKst);
+  const traded = families.traded[0];
+  if (!traded) return out;
+  out.push(attachFamilies(askPeakFromCandidate(todayKst, traded), families));
+  return out;
+}
+
 export function useDayAskPeaks(
   ob: ReadonlyArray<ObSnapshot>,
   trade: ReadonlyArray<TradeSnapshot>,
@@ -225,9 +261,13 @@ export function useDayAskPeaks(
   todayAskPeak: LiveTodayAskPeak | null = null,
   todayCandles: readonly Candle[] = EMPTY_CANDLES,
 ): AskPeak[] {
+  void code;
+  void todayCandles;
+  const sourceRef = useRef<IncrementalPeakWallSource | null>(null);
+  if (sourceRef.current === null) sourceRef.current = new IncrementalPeakWallSource('ask');
   return useMemo(
-    () => deriveDayAskPeaks(ob, trade, seeds, todayKst, code, todayAskPeak, todayCandles),
-    [ob, trade, seeds, todayKst, code, todayAskPeak, todayCandles],
+    () => deriveDayAskPeaksIncremental(sourceRef.current!, ob, trade, seeds, todayKst, todayAskPeak),
+    [ob, trade, seeds, todayKst, todayAskPeak],
   );
 }
 
@@ -266,6 +306,36 @@ export function deriveTodayAllPriceAskPeak(
   );
 }
 
+const EMPTY_TRADES: readonly TradeSnapshot[] = [];
+
+/** deriveTodayAllPriceAskPeak의 증분판(no-cutoff 전용). 터치(trade) 없이 all
+ *  패밀리만 필요하므로 빈 trade 스트림으로 update한다. top-3 합집합의 top-3 =
+ *  전체 합집합의 top-3이므로 배치의 mergeRankedCandidates와 결과가 같다. */
+export function deriveTodayAllPriceAskPeakIncremental(
+  source: IncrementalPeakWallSource,
+  ob: ReadonlyArray<ObSnapshot>,
+  seeds: readonly AskPeak[],
+  todayKst: string,
+  todayAskPeak: LiveTodayAskPeak | null,
+): AskPeak | null {
+  const backend = backendPeakFamilies(todayAskPeak);
+  const todaySeed = historicalTodaySeed(seeds, todayKst);
+  const classified = source.update(ob, EMPTY_TRADES, [
+    ...backend.all,
+    ...(todayAskPeak === null && todaySeed ? [todaySeed] : []),
+  ]);
+  const all = classified.all[0];
+  if (!all) return null;
+  return attachFamilies(
+    askPeakFromCandidate(todayKst, all),
+    {
+      traded: [...backend.traded],
+      untraded: [...backend.untraded],
+      all: classified.all,
+    },
+  );
+}
+
 export function useTodayAllPriceAskPeak(
   ob: ReadonlyArray<ObSnapshot>,
   seeds: readonly AskPeak[],
@@ -273,8 +343,11 @@ export function useTodayAllPriceAskPeak(
   code: string | null,
   todayAskPeak: LiveTodayAskPeak | null = null,
 ): AskPeak | null {
+  void code;
+  const sourceRef = useRef<IncrementalPeakWallSource | null>(null);
+  if (sourceRef.current === null) sourceRef.current = new IncrementalPeakWallSource('ask');
   return useMemo(
-    () => deriveTodayAllPriceAskPeak(ob, seeds, todayKst, code, todayAskPeak),
-    [ob, seeds, todayKst, code, todayAskPeak],
+    () => deriveTodayAllPriceAskPeakIncremental(sourceRef.current!, ob, seeds, todayKst, todayAskPeak),
+    [ob, seeds, todayKst, todayAskPeak],
   );
 }

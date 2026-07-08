@@ -15,6 +15,7 @@ import {
   type BrokerLateEntryLabelGroup,
   type BrokerLateEntryMarkerPoint,
 } from './projectors/brokerLateEntryMarkers';
+import { measureTextCached } from './util/textWidthCache';
 
 export const BROKER_LATE_ENTRY_MARKER_STYLE = {
   dotRadiusPx: 4,
@@ -186,7 +187,7 @@ class BrokerLateEntryMarkersRenderer implements IPrimitivePaneRenderer {
         minHorizontalGapPx: LABEL_MIN_HORIZONTAL_GAP_PX * hr,
         minVerticalGapPx: LABEL_MIN_VERTICAL_GAP_PX * vr,
         labelHeightPx: labelHeight,
-        estimateLabelWidthPx: (label) => ctx.measureText(label).width + 10 * hr,
+        estimateLabelWidthPx: (label) => measureTextCached(ctx, label) + 10 * hr,
         getX: (marker) => plotted.get(marker)!.x + labelChipGapX,
         getY: (marker) => plotted.get(marker)!.y - labelOffsetY,
         forceFull: forceFullLabels,
@@ -212,7 +213,7 @@ class BrokerLateEntryMarkersRenderer implements IPrimitivePaneRenderer {
         const anchorY = Math.min(...coordinates.map((coord) => coord.y))
           - labelOffsetY
           - stackIndex * labelStackStep;
-        const textWidth = ctx.measureText(group.label).width;
+        const textWidth = measureTextCached(ctx, group.label);
         const mixed = group.side === 'mixed';
         const chipWidth = textWidth + labelPadX * 2 + (mixed ? accentArea : 0);
         const chipHeight = labelHeight;
