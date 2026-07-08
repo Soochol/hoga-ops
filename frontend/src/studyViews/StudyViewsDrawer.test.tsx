@@ -1,5 +1,5 @@
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
-import { fireEvent, render, screen, waitFor, within } from '@testing-library/react';
+import { act, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { MemoryRouter, Route, Routes, useLocation } from 'react-router';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
@@ -584,43 +584,190 @@ it('does not rename a saved view when the inline value is unchanged', async () =
   expect(screen.getByText('급등 이후')).toBeTruthy();
 });
 
-it('deletes a saved view directly from the row context menu', async () => {
-  renderDrawer('/study?view=a');
+it('defers deletion behind an undo grace period from the row context menu', () => {
+  vi.useFakeTimers();
+  try {
+    renderDrawer('/study?view=a');
 
-  fireEvent.contextMenu(screen.getByRole('button', { name: '급등 이후 저장뷰 열기' }));
-  await userEvent.click(screen.getByRole('menuitem', { name: '삭제' }));
+    fireEvent.contextMenu(screen.getByRole('button', { name: '급등 이후 저장뷰 열기' }));
+    fireEvent.click(screen.getByRole('menuitem', { name: '삭제' }));
 
-  expect(removeMutate).toHaveBeenCalledWith('a', expect.objectContaining({ onSuccess: expect.any(Function) }));
-  expect(screen.queryByRole('dialog', { name: '저장뷰 삭제' })).toBeNull();
+    // 행은 즉시 사라지고 토스트가 뜨지만, 유예가 끝나기 전엔 DELETE 가 나가지 않는다.
+    expect(screen.queryByRole('button', { name: '급등 이후 저장뷰 열기' })).toBeNull();
+    expect(screen.getByText('‘급등 이후’ 삭제됨')).toBeTruthy();
+    expect(removeMutate).not.toHaveBeenCalled();
+
+    act(() => { vi.advanceTimersByTime(5000); });
+
+    expect(removeMutate).toHaveBeenCalledWith('a', expect.objectContaining({ onSuccess: expect.any(Function) }));
+    expect(screen.queryByText('‘급등 이후’ 삭제됨')).toBeNull();
+  } finally {
+    vi.useRealTimers();
+  }
 });
 
-it('navigates away after deleting the active study view', async () => {
-  removeMutate.mockImplementation((_id, opts) => opts.onSuccess());
-  renderDrawer('/study?view=a');
+it('restores the row and skips the DELETE when undo is clicked within the grace period', () => {
+  vi.useFakeTimers();
+  try {
+    renderDrawer('/inventory');
 
-  fireEvent.contextMenu(screen.getByRole('button', { name: '급등 이후 저장뷰 열기' }));
-  await userEvent.click(screen.getByRole('menuitem', { name: '삭제' }));
+    fireEvent.contextMenu(screen.getByRole('button', { name: '급등 이후 저장뷰 열기' }));
+    fireEvent.click(screen.getByRole('menuitem', { name: '삭제' }));
+    expect(screen.queryByRole('button', { name: '급등 이후 저장뷰 열기' })).toBeNull();
 
-  await waitFor(() => expect(screen.getByTestId('loc').textContent).toBe('/study'));
-  expect(screen.queryByRole('dialog', { name: '저장뷰 삭제' })).toBeNull();
+    fireEvent.click(screen.getByRole('button', { name: '실행 취소' }));
+
+    expect(screen.getByRole('button', { name: '급등 이후 저장뷰 열기' })).toBeTruthy();
+    act(() => { vi.advanceTimersByTime(10_000); });
+    expect(removeMutate).not.toHaveBeenCalled();
+  } finally {
+    vi.useRealTimers();
+  }
 });
 
-it('removes every open tab for a deleted inactive study view', async () => {
-  useStudyTabsStore.getState().openSaveInNewTab(saves[1]);
-  useStudyTabsStore.getState().openSaveInNewTab(saves[0]);
-  useStudyTabsStore.getState().openSaveInNewTab(saves[0]);
-  const firstTabId = useStudyTabsStore.getState().tabs[0].id;
-  useStudyTabsStore.getState().focusTab(firstTabId);
-  removeMutate.mockImplementation((_id, opts) => opts.onSuccess());
-  renderDrawer('/study?view=b');
+it('flushes the previous pending delete when a second delete is requested', () => {
+  vi.useFakeTimers();
+  try {
+    renderDrawer('/inventory');
 
-  fireEvent.contextMenu(screen.getByRole('button', { name: '급등 이후 저장뷰 열기' }));
-  await userEvent.click(screen.getByRole('menuitem', { name: '삭제' }));
+    fireEvent.contextMenu(screen.getByRole('button', { name: '급등 이후 저장뷰 열기' }));
+    fireEvent.click(screen.getByRole('menuitem', { name: '삭제' }));
+    expect(removeMutate).not.toHaveBeenCalled();
 
-  const state = useStudyTabsStore.getState();
-  expect(state.tabs.map((tab) => tab.viewId)).toEqual(['b']);
-  expect(state.activeTabId).toBe(firstTabId);
-  expect(screen.getByTestId('loc').textContent).toBe('/study?view=b');
+    fireEvent.contextMenu(screen.getByRole('button', { name: '눌림 저장뷰 열기' }));
+    fireEvent.click(screen.getByRole('menuitem', { name: '삭제' }));
+
+    // 두 번째 삭제 요청이 첫 번째를 그 자리에서 확정한다(단일 실행취소 슬롯).
+    expect(removeMutate).toHaveBeenCalledTimes(1);
+    expect(removeMutate).toHaveBeenCalledWith('a', expect.any(Object));
+
+    act(() => { vi.advanceTimersByTime(5000); });
+    expect(removeMutate).toHaveBeenCalledWith('b', expect.any(Object));
+  } finally {
+    vi.useRealTimers();
+  }
+});
+
+it('navigates away after the delete grace period for the active study view', () => {
+  vi.useFakeTimers();
+  try {
+    removeMutate.mockImplementation((_id, opts) => opts.onSuccess());
+    renderDrawer('/study?view=a');
+
+    fireEvent.contextMenu(screen.getByRole('button', { name: '급등 이후 저장뷰 열기' }));
+    fireEvent.click(screen.getByRole('menuitem', { name: '삭제' }));
+    act(() => { vi.advanceTimersByTime(5000); });
+
+    expect(screen.getByTestId('loc').textContent).toBe('/study');
+  } finally {
+    vi.useRealTimers();
+  }
+});
+
+it('removes every open tab for a deleted inactive study view', () => {
+  vi.useFakeTimers();
+  try {
+    useStudyTabsStore.getState().openSaveInNewTab(saves[1]);
+    useStudyTabsStore.getState().openSaveInNewTab(saves[0]);
+    useStudyTabsStore.getState().openSaveInNewTab(saves[0]);
+    const firstTabId = useStudyTabsStore.getState().tabs[0].id;
+    useStudyTabsStore.getState().focusTab(firstTabId);
+    removeMutate.mockImplementation((_id, opts) => opts.onSuccess());
+    renderDrawer('/study?view=b');
+
+    fireEvent.contextMenu(screen.getByRole('button', { name: '급등 이후 저장뷰 열기' }));
+    fireEvent.click(screen.getByRole('menuitem', { name: '삭제' }));
+    act(() => { vi.advanceTimersByTime(5000); });
+
+    const state = useStudyTabsStore.getState();
+    expect(state.tabs.map((tab) => tab.viewId)).toEqual(['b']);
+    expect(state.activeTabId).toBe(firstTabId);
+    expect(screen.getByTestId('loc').textContent).toBe('/study?view=b');
+  } finally {
+    vi.useRealTimers();
+  }
+});
+
+it('opens the full row menu from the hover ⋯ button without navigating', async () => {
+  renderDrawer('/inventory');
+
+  await userEvent.click(screen.getByRole('button', { name: '급등 이후 행 메뉴' }));
+
+  const menu = screen.getByRole('menu', { name: '급등 이후 저장뷰 메뉴' });
+  expect(within(menu).getByRole('menuitem', { name: '열기' })).toBeTruthy();
+  expect(within(menu).getByRole('menuitem', { name: '새 탭에서 열기' })).toBeTruthy();
+  expect(within(menu).getByRole('menuitem', { name: '이름 변경' })).toBeTruthy();
+  expect(within(menu).getByRole('menuitem', { name: '메모 편집' })).toBeTruthy();
+  expect(within(menu).getByRole('menuitem', { name: '삭제' })).toBeTruthy();
+  expect(screen.getByTestId('loc').textContent).toBe('/inventory');
+});
+
+it('opens the saved view from the row menu 열기 item', async () => {
+  renderDrawer('/inventory');
+
+  await userEvent.click(screen.getByRole('button', { name: '급등 이후 행 메뉴' }));
+  await userEvent.click(screen.getByRole('menuitem', { name: '열기' }));
+
+  await waitFor(() => expect(screen.getByTestId('loc').textContent).toBe('/study?view=a'));
+});
+
+it('opens a new study tab from the row menu 새 탭에서 열기 item', async () => {
+  useStudyTabsStore.getState().openSaveInActiveTab(saves[1]);
+  renderDrawer('/inventory');
+
+  await userEvent.click(screen.getByRole('button', { name: '급등 이후 행 메뉴' }));
+  await userEvent.click(screen.getByRole('menuitem', { name: '새 탭에서 열기' }));
+
+  await waitFor(() => expect(screen.getByTestId('loc').textContent).toBe('/study?view=a'));
+  expect(useStudyTabsStore.getState().tabs.map((tab) => tab.viewId)).toEqual(['b', 'a']);
+});
+
+it('starts inline rename from the row menu', async () => {
+  renderDrawer('/inventory');
+
+  await userEvent.click(screen.getByRole('button', { name: '급등 이후 행 메뉴' }));
+  await userEvent.click(screen.getByRole('menuitem', { name: '이름 변경' }));
+
+  expect((screen.getByLabelText('저장뷰 이름 수정') as HTMLInputElement).value).toBe('급등 이후');
+});
+
+it('renders a one-line memo preview under the meta line', () => {
+  mockedSaves = [{ ...saves[0], memo: '첫 줄 메모\n둘째 줄' }, saves[1]];
+  renderDrawer('/inventory');
+
+  expect(screen.getByText('첫 줄 메모')).toBeTruthy();
+  expect(screen.queryByText(/둘째 줄/)).toBeNull();
+});
+
+it('edits the memo inline from the row menu and commits with Enter', async () => {
+  renderDrawer('/inventory');
+
+  await userEvent.click(screen.getByRole('button', { name: '급등 이후 행 메뉴' }));
+  await userEvent.click(screen.getByRole('menuitem', { name: '메모 편집' }));
+
+  const textarea = screen.getByLabelText('저장뷰 메모 수정') as HTMLTextAreaElement;
+  expect(textarea.value).toBe('memo one');
+  await userEvent.clear(textarea);
+  await userEvent.type(textarea, '새 메모{Enter}');
+
+  expect(updateMetadataMutate).toHaveBeenCalledWith(
+    { id: 'a', body: { memo: '새 메모' } },
+    expect.objectContaining({ onSuccess: expect.any(Function), onError: expect.any(Function) }),
+  );
+});
+
+it('cancels memo edit on Escape without saving', async () => {
+  renderDrawer('/inventory');
+
+  await userEvent.click(screen.getByRole('button', { name: '급등 이후 행 메뉴' }));
+  await userEvent.click(screen.getByRole('menuitem', { name: '메모 편집' }));
+  const textarea = screen.getByLabelText('저장뷰 메모 수정') as HTMLTextAreaElement;
+  await userEvent.clear(textarea);
+  await userEvent.type(textarea, '버릴 메모');
+  await userEvent.keyboard('{Escape}');
+
+  expect(updateMetadataMutate).not.toHaveBeenCalled();
+  expect(screen.queryByLabelText('저장뷰 메모 수정')).toBeNull();
 });
 
 it('ctrl-clicking a stock group header opens its newest save in a new study tab without collapsing the group', async () => {
