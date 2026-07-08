@@ -348,6 +348,34 @@ def test_query_bucketed_ratio_empty_parquet_returns_no_rows(tmp_path: Path) -> N
     assert query_bucketed_ratio(con, path=out, bucket_ms=1000) == []
 
 
+def test_query_bucketed_depth_heatmap_picks_last_continuous_snapshot(tmp_path: Path) -> None:
+    """버킷 대표 = 마지막 연속거래 스냅샷의 10단계 가격·잔량 (query_bucketed_ratio와
+    동일한 대표 선택). 같은 분(minute) 버킷에 이른(작은잔량)·늦은(큰잔량) 스냅샷을
+    두면 대표는 늦은 스냅샷이어야 한다."""
+    from hoga.tables.snapshots import query_bucketed_depth_heatmap
+
+    # 두 스냅샷 모두 같은 60s 버킷(09:00:xx → intra 32_400_xxx). 둘 다 10레벨 심층
+    # 호가창(레벨 4..10 > 0)이라 연속거래로 분류된다. 늦은 스냅샷(seq2, 900)이 대표.
+    obs = [
+        _ob(ts_ms=90_000_100, seq=1, ask_q=(100,) * 10, bid_q=(100,) * 10),
+        _ob(ts_ms=90_000_900, seq=2, ask_q=(900,) * 10, bid_q=(900,) * 10),
+    ]
+    out = tmp_path / "snapshots.parquet"
+    write_parquet(obs, out)
+    con = duckdb.connect()
+    rows = query_bucketed_depth_heatmap(con, path=out, bucket_ms=60000)
+    assert len(rows) == 1
+    row = rows[0]
+    assert len(row.ask_prices) == 10 and len(row.ask_qtys) == 10
+    assert len(row.bid_prices) == 10 and len(row.bid_qtys) == 10
+    assert row.ask_qtys[0] == 900   # later snapshot won
+    assert row.bid_qtys[0] == 900
+    # 가격도 대표 스냅샷의 것: _ob는 ask_p=range(1,11), bid_p=range(10,0,-1).
+    assert row.ask_prices == tuple(range(1, 11))
+    assert row.bid_prices == tuple(range(10, 0, -1))
+    assert row.bucket_intra_ms == 32_400_000
+
+
 def test_query_bucketed_ratio_intra_max_independent_sides(tmp_path: Path) -> None:
     """한 버킷 내 bid 최댓값과 ask 최댓값이 서로 다른 시점이어도 각각 독립 포착
     (캔들 고가가 시·종가와 무관하듯). 종가는 마지막 스냅샷 값으로 유지."""
