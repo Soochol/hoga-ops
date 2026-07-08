@@ -1,5 +1,6 @@
 import { useMemo } from 'react';
 
+import { useLiveSettings } from '../../api/liveSettings';
 import {
   useLivePastDailyCandles,
   type LivePastDailyCandle,
@@ -44,7 +45,11 @@ function resolveInputs(input: UseResolvedDailyCandlesInput): { code: string; fro
 
 export function useResolvedDailyCandles(input: UseResolvedDailyCandlesInput): UseResolvedDailyCandlesResult {
   const resolvedInput = resolveInputs(input);
-  const kisAllowed = input.kisEnabled !== false;
+  // KIS 일봉 fetch 허용 = 명시적 kisEnabled(=/study false) AND 우회 OFF. 우회 ON이면
+  // /live 캔들이 스크리너로 전환되므로 일봉 MA도 KIS를 꺼 소스를 일치시킨다. 훅 내부에서
+  // 우회를 읽어 소비처 2곳(오버레이·reveal 게이트)의 쿼리키가 자동으로 lockstep 유지된다.
+  const { data: liveSettings } = useLiveSettings();
+  const kisAllowed = input.kisEnabled !== false && !(liveSettings?.kis_rest_bypass_enabled ?? false);
   const kisQuery = useLivePastDailyCandles(
     kisAllowed ? resolvedInput?.code ?? null : null,
     kisAllowed ? resolvedInput?.from ?? null : null,

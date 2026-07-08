@@ -6,6 +6,7 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { useLivePastDailyCandles } from '../../api/livePastDailyCandles';
 import { useScreenerDailyCandles } from '../../api/screenerDailyCandles';
+import { LIVE_SETTINGS_KEY, type LiveSettings } from '../../api/liveSettings';
 import { useResolvedDailyCandles } from './useResolvedDailyCandles';
 
 vi.mock('../../api/livePastDailyCandles', () => ({ useLivePastDailyCandles: vi.fn() }));
@@ -14,12 +15,20 @@ vi.mock('../../api/screenerDailyCandles', () => ({ useScreenerDailyCandles: vi.f
 const mockUseKisDaily = vi.mocked(useLivePastDailyCandles);
 const mockUseScreenerDaily = vi.mocked(useScreenerDailyCandles);
 
-function wrapper({ children }: { children: ReactNode }) {
-  const qc = new QueryClient({
-    defaultOptions: { queries: { retry: false } },
-  });
-  return <QueryClientProvider client={qc}>{children}</QueryClientProvider>;
+function makeWrapper(bypass = false) {
+  return function wrapper({ children }: { children: ReactNode }) {
+    const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+    qc.setQueryData(LIVE_SETTINGS_KEY, {
+      schema_version: 1,
+      storage_policy: 'ws_plus_rest',
+      program_trade_storage_enabled: false,
+      kis_rest_bypass_enabled: bypass,
+    } satisfies LiveSettings);
+    return <QueryClientProvider client={qc}>{children}</QueryClientProvider>;
+  };
 }
+
+const wrapper = makeWrapper(false);
 
 const D1 = 1_781_568_000_000; // 2026-06-16 09:00 KST
 const D2 = 1_781_654_400_000; // 2026-06-17 09:00 KST
@@ -78,6 +87,38 @@ describe('useResolvedDailyCandles', () => {
 
     expect(mockUseKisDaily).toHaveBeenCalledWith(null, null, null, 'KRX');
     expect(mockUseScreenerDaily).toHaveBeenCalledWith(null, null, null);
+  });
+
+  it('disables the KIS adapter when KIS API bypass is ON, even with kisEnabled default true', () => {
+    mockUseScreenerDaily.mockReturnValue({
+      data: {
+        candles: [screenerRow(D1, 100)],
+        data_warnings: [],
+        code: '005930',
+        from: '20260616',
+        to: '20260617',
+        source: 'screener_daily',
+      },
+      isLoading: false,
+      error: null,
+    } as never);
+
+    const { result } = renderHook(
+      () =>
+        useResolvedDailyCandles({
+          code: '005930',
+          from: '20260616',
+          to: '20260617',
+          venue: 'KRX',
+          enabled: true,
+        }),
+      { wrapper: makeWrapper(true) },
+    );
+
+    // 우회 ON: /live 캔들이 스크리너로 전환되므로 일봉 MA도 KIS를 끈다(code=null).
+    expect(mockUseKisDaily).toHaveBeenCalledWith(null, null, null, 'KRX');
+    expect(result.current.candles.map((c) => c.close)).toEqual([100]);
+    expect(result.current.sourceByDate.get('20260616')).toBe('screener_daily');
   });
 
   it('disables the KIS adapter (screener-only) when kisEnabled is false', () => {

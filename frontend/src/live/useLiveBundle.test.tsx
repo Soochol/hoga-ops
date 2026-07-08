@@ -6,12 +6,10 @@ import { overlayLiveTradesOnCandles, planLiveRangeRequest, useLiveBundle } from 
 import { LIVE_SETTINGS_KEY, type LiveSettings } from '../api/liveSettings';
 import { useLivePageStore } from '../state/livePage';
 import { useSourcePreferenceStore } from '../state/sourcePreference';
-import { useCandleDataPreferenceStore } from '../state/candleDataPreference';
 import { useKisRestModeStore } from '../state/kisRestMode';
 import type { LiveSeriesData } from '../api/liveSeries';
 import { createVirtualAxis } from '../util/virtualAxis';
 import { projectVolume } from '../chart/projectors/volume';
-import { projectCandle } from '../chart/projectors/candle';
 
 // Live fixture — used to be a mock of useLiveSeries when useLiveBundle owned
 // the hook call. After the LivePage-lift refactor, `live` is a prop passed
@@ -431,7 +429,6 @@ describe('useLiveBundle', () => {
       brokerLateEntryEnabled: false,
     });
     useSourcePreferenceStore.setState({ sourcePreference: 'kis_ws_first' });
-    useCandleDataPreferenceStore.setState({ candleDataPreference: 'auto' });
     useKisRestModeStore.setState({
       lastFailureAtMs: null,
       lastToastAtMs: null,
@@ -761,10 +758,10 @@ describe('useLiveBundle', () => {
     expect(screenerDailyCandlesSpy).toHaveBeenLastCalledWith('005930', '20250611', '20260527');
   });
 
-  it('uses lightweight range candles for minute fallback when KIS REST bypass is enabled', () => {
+  it('uses disk range candles for minute when KIS REST bypass is enabled', () => {
     candlesMock.candles = [];
-    useCandleDataPreferenceStore.setState({ candleDataPreference: 'auto' });
-    useSourcePreferenceStore.setState({ sourcePreference: 'hogaplay_first' });
+    // store sourcePref가 무엇이든 캔들 쿼리는 'hogaplay_first' 고정(아래 검증).
+    useSourcePreferenceStore.setState({ sourcePreference: 'kis_ws_first' });
 
     const result = renderUseLiveBundle({
       timeframe: '1m',
@@ -774,16 +771,17 @@ describe('useLiveBundle', () => {
       ],
     });
 
-    const modes = useRangeSpy.mock.calls.map((call) => (call[6] as { mode?: string } | undefined)?.mode);
-    expect(modes).toContain('candles');
-    expect(modes).not.toContain('full');
+    // 우회 ON 분봉: 디스크 캔들 쿼리(mode=candles)가 code 있음 + sourcePref 'hogaplay_first' 고정.
+    const candleCall = useRangeSpy.mock.calls.find((call) => (call[6] as { mode?: string } | undefined)?.mode === 'candles');
+    expect(candleCall?.[0]).toBe('005930');
+    expect(candleCall?.[7]).toBe('hogaplay_first');
+    // KIS 분봉 쿼리는 우회 ON이면 code=null로 비활성.
+    expect(livePastCandlesSpy).toHaveBeenLastCalledWith(null, null, null, 'KRX', '20260527');
     expect(result.chartBundle?.candles).toHaveLength(1);
   });
 
-  it('returns fallback candles before sidecar data arrives', () => {
+  it('returns disk candles before sidecar data arrives (bypass ON)', () => {
     candlesMock.candles = [];
-    useCandleDataPreferenceStore.setState({ candleDataPreference: 'auto' });
-    useSourcePreferenceStore.setState({ sourcePreference: 'hogaplay_first' });
 
     useRangeSpy.mockImplementation((...args: unknown[]) => {
       const options = args[6] as { mode?: string } | undefined;
@@ -1087,222 +1085,39 @@ describe('useLiveBundle', () => {
     });
   });
 
-  it('fills missing KIS minute dates from hogaplay range candles when KIS returns warnings', () => {
+  it('does not fall back to disk on KIS minute warnings when bypass is OFF (empty gaps + toast)', () => {
     const yesterdayOpen = 1779753600000;
     candlesMock.candles = [
       { t_ms: yesterdayOpen, open: 69000, high: 69100, low: 68900, close: 69050, volume: 900 },
     ];
     candlesMock.warnings = [{ date: '20260527', reason: 'kis_api_error', msg: 'TRANSPORT/ConnectError' }];
-    const hogaplayFallback = {
-      code: '005930',
-      from_date: '20260520',
-      to_date: '20260527',
-      bucket_ms: 60000,
-      segments: [],
-      candles: [
-        { ts_ms: yesterdayOpen, open: 1, high: 1, low: 1, close: 1, vol_a: 1, vol_b: 0 },
-        { ts_ms: 1779840000000, open: 70000, high: 70200, low: 69900, close: 70150, vol_a: 0, vol_b: 1200 },
-      ],
-      quote_ratio: { bucket_ms: 60000, points: [] },
-      fill_strength: { bucket_ms: 60000, points: [] },
-      volume_profile_range: { bin_count: 0, price_min: 0, price_max: 0, bin_width: 0, bins: [] },
-      volume_profile_by_day: [],
-      volume_distributions: [],
-      investorPoints: [],
-      ask_peaks: [],
-      bid_peaks: [],
-      broker_late_entries: [],
-      price_level_hits: [],
-      trade_volume_pocs: [],
-      program_trade: { points: [] },
-    };
-    useRangeSpy
-      .mockReturnValueOnce(rangeResult({ ...hogaplayFallback, candles: [] }))
-      .mockReturnValueOnce(rangeResult(hogaplayFallback))
-      .mockReturnValueOnce(rangeResult())
-      .mockReturnValueOnce(rangeResult());
 
     const { result } = renderHook(() => useLiveBundle('005930', '1m', '20260527', liveFixture), { wrapper });
 
-    expect(useRangeSpy).toHaveBeenCalledWith(
-      '005930',
-      '20260520',
-      '20260527',
-      '1m',
-      undefined,
-      '20260527',
-      expect.objectContaining({ mode: 'candles', brokerLateEntriesEnabled: false }),
-      undefined,
+    // 우회 OFF: 디스크 캔들 쿼리는 code=null(미발사) — KIS 경고여도 폴백 없음.
+    const candleCall = useRangeSpy.mock.calls.find(
+      (call) => (call[6] as { mode?: string } | undefined)?.mode === 'candles',
     );
-    expect(useRangeSpy).toHaveBeenCalledWith(
-      '005930',
-      '20260520',
-      '20260527',
-      '1m',
-      undefined,
-      '20260527',
-      expect.objectContaining({ mode: 'candles', brokerLateEntriesEnabled: false }),
-      'hogaplay_first',
-    );
+    expect(candleCall?.[0]).toBeNull();
+    // 캔들은 KIS 응답 그대로(전일 1봉), hogaplay 보충 없음.
     expect(result.current.chartBundle!.candles).toEqual([
       { ts_ms: yesterdayOpen, open: 69000, high: 69100, low: 68900, close: 69050, vol_a: 900, vol_b: 0 },
-      { ts_ms: 1779840000000, open: 70000, high: 70200, low: 69900, close: 70150, vol_a: 0, vol_b: 1200 },
     ]);
-    expect(result.current.chartBundle!.segments.at(-1)?.source).toBe('hogaplay');
+    // unavailable 패턴 경고 → 토스트 트리거(사용자가 우회 ON 유도).
+    expect(useKisRestModeStore.getState().lastFailureAtMs).not.toBeNull();
   });
 
-  it('falls back to hogaplay range candles when KIS minute response is empty without warnings', () => {
+  it('shows empty candles when the KIS minute response is empty and bypass is OFF (no disk fallback)', () => {
     candlesMock.candles = [];
     candlesMock.warnings = [];
-    const hogaplayFallback = {
-      code: '005930',
-      from_date: '20260520',
-      to_date: '20260527',
-      bucket_ms: 60000,
-      segments: [],
-      candles: [
-        { ts_ms: 1779840000000, open: 70000, high: 70200, low: 69900, close: 70150, vol_a: 0, vol_b: 1200 },
-      ],
-      quote_ratio: { bucket_ms: 60000, points: [] },
-      fill_strength: { bucket_ms: 60000, points: [] },
-      volume_profile_range: { bin_count: 0, price_min: 0, price_max: 0, bin_width: 0, bins: [] },
-      volume_profile_by_day: [],
-      volume_distributions: [],
-      investorPoints: [],
-      ask_peaks: [],
-      bid_peaks: [],
-      broker_late_entries: [],
-      price_level_hits: [],
-      trade_volume_pocs: [],
-      program_trade: { points: [] },
-    };
-    useRangeSpy
-      .mockReturnValueOnce(rangeResult({ ...hogaplayFallback, candles: [] }))
-      .mockReturnValueOnce(rangeResult(hogaplayFallback))
-      .mockReturnValueOnce(rangeResult())
-      .mockReturnValueOnce(rangeResult());
 
     const { result } = renderHook(() => useLiveBundle('005930', '1m', '20260527', liveFixture), { wrapper });
 
-    expect(useRangeSpy).toHaveBeenCalledWith(
-      '005930',
-      '20260520',
-      '20260527',
-      '1m',
-      undefined,
-      '20260527',
-      expect.objectContaining({ mode: 'candles', brokerLateEntriesEnabled: false }),
-      undefined,
+    const candleCall = useRangeSpy.mock.calls.find(
+      (call) => (call[6] as { mode?: string } | undefined)?.mode === 'candles',
     );
-    expect(useRangeSpy).toHaveBeenCalledWith(
-      '005930',
-      '20260520',
-      '20260527',
-      '1m',
-      undefined,
-      '20260527',
-      expect.objectContaining({ mode: 'candles', brokerLateEntriesEnabled: false }),
-      'hogaplay_first',
-    );
-    expect(result.current.chartBundle!.candles).toEqual(hogaplayFallback.candles);
-    expect(result.current.chartBundle!.segments.at(-1)?.source).toBe('hogaplay');
-  });
-
-  it('uses the previous disk candle window when the latest minute window is empty', () => {
-    candlesMock.candles = [];
-    candlesMock.warnings = [{ date: '20260527', reason: 'kis_rest_bypassed', msg: 'cache only' }];
-    const previousDiskBundle = {
-      ...fallbackRangeBundle(68_500),
-      from_date: '20260515',
-      to_date: '20260519',
-      segments: [
-        {
-          date: '20260519',
-          session_open_ms: 1779148800000,
-          session_close_ms: 1779172200000,
-          source: 'hogaplay' as const,
-        },
-      ],
-      candles: [
-        { ts_ms: 1779148800000, open: 68_000, high: 68_700, low: 67_900, close: 68_500, vol_a: 1200, vol_b: 0 },
-      ],
-    };
-    useRangeSpy.mockImplementation((...args: unknown[]) => {
-      const from = args[1];
-      const options = args[6] as { mode?: string } | undefined;
-      if (options?.mode === 'candles' && from === '20260515') return rangeResult(previousDiskBundle);
-      if (options?.mode === 'candles') return rangeResult({ ...fallbackRangeBundle(), candles: [] });
-      return rangeResult();
-    });
-
-    const { result } = renderHook(
-      () => useLiveBundle('005930', '1m', '20260527', liveFixture),
-      { wrapper: createWrapper({ kis_rest_bypass_enabled: true }) },
-    );
-
-    expect(useRangeSpy).toHaveBeenCalledWith(
-      '005930',
-      '20260515',
-      '20260519',
-      '1m',
-      undefined,
-      '20260527',
-      expect.objectContaining({ mode: 'candles', brokerLateEntriesEnabled: false }),
-      'hogaplay_first',
-    );
-    expect(result.current.chartBundle!.candles).toEqual(previousDiskBundle.candles);
-    expect(result.current.chartBundle!.segments).toContainEqual(previousDiskBundle.segments[0]);
-  });
-
-  it('candleDataPreference=hogaplay_first uses range candles before KIS warnings', () => {
-    useCandleDataPreferenceStore.setState({ candleDataPreference: 'hogaplay_first' });
-    useSourcePreferenceStore.setState({ sourcePreference: 'kis_ws_first' });
-    candlesMock.candles = [
-      { t_ms: 1779840000000, open: 1, high: 1, low: 1, close: 1, volume: 1 },
-    ];
-    candlesMock.warnings = [];
-    const hogaplayFallback = {
-      code: '005930',
-      from_date: '20260520',
-      to_date: '20260527',
-      bucket_ms: 60000,
-      segments: [{ date: '20260527', session_open_ms: 1779840000000, session_close_ms: 1779863400000, source: 'hogaplay' as const }],
-      candles: [
-        { ts_ms: 1779840000000, open: 70000, high: 70100, low: 69900, close: 70050, vol_a: 100, vol_b: 0 },
-        { ts_ms: 1779840060000, open: 70050, high: 70200, low: 70050, close: 70200, vol_a: 200, vol_b: 0 },
-      ],
-      quote_ratio: { bucket_ms: 60000, points: [] },
-      fill_strength: { bucket_ms: 60000, points: [] },
-      volume_profile_range: { bin_count: 0, price_min: 0, price_max: 0, bin_width: 0, bins: [] },
-      volume_profile_by_day: [],
-      volume_distributions: [],
-      investorPoints: [],
-      ask_peaks: [],
-      bid_peaks: [],
-      broker_late_entries: [],
-      price_level_hits: [],
-      trade_volume_pocs: [],
-      program_trade: { points: [] },
-    };
-    useRangeSpy
-      .mockReturnValueOnce(rangeResult(hogaplayFallback))
-      .mockReturnValueOnce(rangeResult())
-      .mockReturnValueOnce(rangeResult());
-
-    const { result } = renderHook(() => useLiveBundle('005930', '1m', '20260527', liveFixture), { wrapper });
-
-    expect(useRangeSpy).toHaveBeenCalledWith(
-      '005930',
-      '20260520',
-      '20260527',
-      '1m',
-      undefined,
-      '20260527',
-      expect.objectContaining({ mode: 'candles', brokerLateEntriesEnabled: false }),
-      'hogaplay_first',
-    );
-    expect(result.current.chartBundle!.candles).toEqual(hogaplayFallback.candles);
-    expect(result.current.chartBundle!.segments.at(-1)?.source).toBe('hogaplay');
+    expect(candleCall?.[0]).toBeNull();
+    expect(result.current.chartBundle!.candles).toEqual([]);
   });
 
   it('does not overlay KRX live trade ticks onto an NXT candle view', () => {
@@ -1485,7 +1300,6 @@ describe('useLiveBundle daily/minute branching (ADR-0048)', () => {
       historicalFromDate: null,
     });
     useSourcePreferenceStore.setState({ sourcePreference: 'kis_ws_first' });
-    useCandleDataPreferenceStore.setState({ candleDataPreference: 'auto' });
   });
 
   it('D timeframe calls daily hook with non-null code, minute hook with null code', () => {
@@ -1514,171 +1328,46 @@ describe('useLiveBundle daily/minute branching (ADR-0048)', () => {
     expect(result.current.isPastCandlesLoading).toBe(true);
   });
 
-  it('D timeframe falls back to hogaplay range candles when daily KIS returns no candles', () => {
+  it('D timeframe shows empty candles when daily KIS is empty and bypass is OFF (no screener/disk fallback)', () => {
     dailyCandlesMock.candles = [];
     dailyCandlesMock.warnings = [{ reason: 'kis_transport', msg: 'TRANSPORT/ConnectError' }];
-    const hogaplayFallback = {
-      code: '005930',
-      from_date: '20240507',
-      to_date: '20260527',
-      bucket_ms: 60000,
-      segments: [],
-      candles: [
-        { ts_ms: 1779840000000, open: 70000, high: 70100, low: 69900, close: 70050, vol_a: 100, vol_b: 10 },
-        { ts_ms: 1779840060000, open: 70050, high: 70300, low: 70000, close: 70250, vol_a: 200, vol_b: 20 },
-      ],
-      quote_ratio: { bucket_ms: 60000, points: [] },
-      fill_strength: { bucket_ms: 60000, points: [] },
-      volume_profile_range: { bin_count: 0, price_min: 0, price_max: 0, bin_width: 0, bins: [] },
-      volume_profile_by_day: [],
-      volume_distributions: [],
-      investorPoints: [],
-      ask_peaks: [],
-      bid_peaks: [],
-      broker_late_entries: [],
-      price_level_hits: [],
-      trade_volume_pocs: [],
-      program_trade: { points: [] },
-    };
-    useRangeSpy
-      .mockReturnValueOnce(rangeResult({ ...hogaplayFallback, candles: [] }))
-      .mockReturnValueOnce(rangeResult(hogaplayFallback))
-      .mockReturnValueOnce(rangeResult())
-      .mockReturnValueOnce(rangeResult());
 
     const { result } = renderHook(() => useLiveBundle('005930', 'D', '20260527', liveFixture), { wrapper });
 
-    expect(useRangeSpy).toHaveBeenCalledWith(
-      '005930',
-      '20250611',
-      '20260527',
-      '1m',
-      undefined,
-      '20260527',
-      expect.objectContaining({ mode: 'candles', brokerLateEntriesEnabled: false }),
-      undefined,
+    // 우회 OFF D: 스크리너는 code=null(미발사), 디스크 캔들 쿼리도 code=null. 폴백 없음.
+    expect(screenerDailyCandlesSpy).toHaveBeenLastCalledWith(null, null, null);
+    const candleCall = useRangeSpy.mock.calls.find(
+      (call) => (call[6] as { mode?: string } | undefined)?.mode === 'candles',
     );
-    expect(useRangeSpy).toHaveBeenCalledWith(
-      '005930',
-      '20250611',
-      '20260527',
-      '1m',
-      undefined,
-      '20260527',
-      expect.objectContaining({ mode: 'candles', brokerLateEntriesEnabled: false }),
-      'hogaplay_first',
-    );
-    expect(result.current.chartBundle!.candles).toEqual([
-      { ts_ms: 1779840000000, open: 70000, high: 70300, low: 69900, close: 70250, vol_a: 330, vol_b: 0 },
-    ]);
+    expect(candleCall?.[0]).toBeNull();
+    expect(result.current.chartBundle!.candles).toEqual([]);
   });
 
-  it.each(['auto', 'screener_daily_first'] as const)(
-    'D timeframe uses screener daily candles first when candle preference is %s',
-    (candleDataPreference) => {
-      useCandleDataPreferenceStore.setState({ candleDataPreference });
-      dailyCandlesMock.candles = [
-        { t_ms: 1779840000000, open: 1, high: 1, low: 1, close: 1, volume: 1 },
-      ];
-      screenerDailyCandlesMock.candles = [
-        { t_ms: 1779753600000, open: 69000, high: 69100, low: 68900, close: 69050, volume: 900 },
-        { t_ms: 1779840000000, open: 70000, high: 70100, low: 69900, close: 70050, volume: 1000 },
-      ];
-
-      const { result } = renderHook(() => useLiveBundle('005930', 'D', '20260527', liveFixture), { wrapper });
-
-      expect(screenerDailyCandlesSpy).toHaveBeenCalledWith('005930', '20250611', '20260527');
-      expect(result.current.chartBundle!.candles).toEqual([
-        { ts_ms: 1779753600000, open: 69000, high: 69100, low: 68900, close: 69050, vol_a: 900, vol_b: 0 },
-        { ts_ms: 1779840000000, open: 70000, high: 70100, low: 69900, close: 70050, vol_a: 1000, vol_b: 0 },
-      ]);
-      expect(result.current.chartBundle!.segments.map((s) => s.source)).toEqual(['screener_daily', 'screener_daily']);
-    },
-  );
-
-  it('D timeframe dedupes primary and screener candles by KST date before projecting onto the calendar axis', () => {
-    useCandleDataPreferenceStore.setState({ candleDataPreference: 'auto' });
-    const dayOpen = 1779840000000;
+  it('D timeframe uses screener daily candles when bypass is ON (disk-only)', () => {
     dailyCandlesMock.candles = [
-      { t_ms: dayOpen + 60_000, open: 1, high: 1, low: 1, close: 1, volume: 1 },
+      { t_ms: 1779840000000, open: 1, high: 1, low: 1, close: 1, volume: 1 },
     ];
     screenerDailyCandlesMock.candles = [
-      { t_ms: dayOpen, open: 70000, high: 70100, low: 69900, close: 70050, volume: 1000 },
+      { t_ms: 1779753600000, open: 69000, high: 69100, low: 68900, close: 69050, volume: 900 },
+      { t_ms: 1779840000000, open: 70000, high: 70100, low: 69900, close: 70050, volume: 1000 },
     ];
 
-    const { result } = renderHook(() => useLiveBundle('005930', 'D', '20260527', liveFixture), { wrapper });
-    const chartBundle = result.current.chartBundle!;
-    const axis = createVirtualAxis(
-      chartBundle.segments.map((s) => ({
-        date: s.date,
-        sessionOpenMs: s.session_open_ms,
-        sessionCloseMs: s.session_close_ms,
-      })),
-      chartBundle.segments[0]!.session_open_ms,
-      { mode: 'calendar' },
+    const { result } = renderHook(
+      () => useLiveBundle('005930', 'D', '20260527', liveFixture),
+      { wrapper: createWrapper({ kis_rest_bypass_enabled: true }) },
     );
 
-    expect(chartBundle.candles).toEqual([
-      { ts_ms: dayOpen, open: 70000, high: 70100, low: 69900, close: 70050, vol_a: 1000, vol_b: 0 },
+    // 우회 ON: KIS 일봉은 code=null(미발사), 스크리너만 사용.
+    expect(livePastDailyCandlesSpy).toHaveBeenLastCalledWith(null, null, null, 'KRX');
+    expect(screenerDailyCandlesSpy).toHaveBeenCalledWith('005930', '20250611', '20260527');
+    expect(result.current.chartBundle!.candles).toEqual([
+      { ts_ms: 1779753600000, open: 69000, high: 69100, low: 68900, close: 69050, vol_a: 900, vol_b: 0 },
+      { ts_ms: 1779840000000, open: 70000, high: 70100, low: 69900, close: 70050, vol_a: 1000, vol_b: 0 },
     ]);
-    const projected = projectCandle(chartBundle, axis);
-    expect(projected).toHaveLength(1);
+    expect(result.current.chartBundle!.segments.map((s) => s.source)).toEqual(['screener_daily', 'screener_daily']);
   });
 
-  it('D timeframe fallback ignores pre-open hogaplay bars so daily candles render on the calendar axis', () => {
-    useSourcePreferenceStore.setState({ sourcePreference: 'hogaplay_first' });
-    dailyCandlesMock.candles = [];
-    dailyCandlesMock.warnings = [{ reason: 'kis_transport', msg: 'TRANSPORT/ConnectError' }];
-    const day1Open = 1779753600000;
-    const day2Open = 1779840000000;
-    const preOpenOffset = 30 * 60_000;
-    const hogaplayFallback = {
-      code: '005930',
-      from_date: '20240507',
-      to_date: '20260527',
-      bucket_ms: 60000,
-      segments: [],
-      candles: [
-        { ts_ms: day1Open - preOpenOffset, open: 69000, high: 69100, low: 68900, close: 69050, vol_a: 10, vol_b: 0 },
-        { ts_ms: day1Open, open: 70000, high: 70100, low: 69900, close: 70050, vol_a: 100, vol_b: 0 },
-        { ts_ms: day2Open - preOpenOffset, open: 71000, high: 71100, low: 70900, close: 71050, vol_a: 10, vol_b: 0 },
-        { ts_ms: day2Open, open: 72000, high: 72100, low: 71900, close: 72050, vol_a: 100, vol_b: 0 },
-      ],
-      quote_ratio: { bucket_ms: 60000, points: [] },
-      fill_strength: { bucket_ms: 60000, points: [] },
-      volume_profile_range: { bin_count: 0, price_min: 0, price_max: 0, bin_width: 0, bins: [] },
-      volume_profile_by_day: [],
-      volume_distributions: [],
-      investorPoints: [],
-      ask_peaks: [],
-      bid_peaks: [],
-      broker_late_entries: [],
-      price_level_hits: [],
-      trade_volume_pocs: [],
-      program_trade: { points: [] },
-    };
-    useRangeSpy
-      .mockReturnValueOnce(rangeResult(hogaplayFallback))
-      .mockReturnValueOnce(rangeResult())
-      .mockReturnValueOnce(rangeResult());
-
-    const { result } = renderHook(() => useLiveBundle('005930', 'D', '20260527', liveFixture), { wrapper });
-
-    const chartBundle = result.current.chartBundle!;
-    const axis = createVirtualAxis(
-      chartBundle.segments.map((s) => ({
-        date: s.date,
-        sessionOpenMs: s.session_open_ms,
-        sessionCloseMs: s.session_close_ms,
-      })),
-      chartBundle.segments[0]!.session_open_ms,
-      { mode: 'calendar' },
-    );
-    expect(chartBundle.candles.map((c) => c.ts_ms)).toEqual([day1Open, day2Open]);
-    expect(projectCandle(chartBundle, axis)).toHaveLength(2);
-  });
-
-  it('W/M timeframes do not fall back to hogaplay 1m aggregation when daily KIS returns no candles', () => {
+  it('W/M timeframes have no hogaplay 1m aggregation path when daily KIS returns no candles', () => {
     dailyCandlesMock.candles = [];
     dailyCandlesMock.warnings = [{ reason: 'kis_transport', msg: 'TRANSPORT/ConnectError' }];
 
@@ -1938,7 +1627,6 @@ describe('useLiveBundle isExtending', () => {
       historicalFromDate: null,
     });
     useSourcePreferenceStore.setState({ sourcePreference: 'kis_ws_first' });
-    useCandleDataPreferenceStore.setState({ candleDataPreference: 'auto' });
   });
 
   it('is true during a historical extension (placeholderData + isFetching, historicalFromDate set)', () => {
@@ -1963,11 +1651,10 @@ describe('useLiveBundle isExtending', () => {
     expect(result.current.isExtending).toBe(false);
   });
 
-  // 좌측 팬 중 캔들이 KIS 경로가 아니라 폴백(candleFallback/hogaplayCandleFallback/
-  // previousDiskCandleFallback)에서 올 때 — warning/rate-limit·preferHogaplay 모드 —
-  // 게이트가 폴백의 historical-delta fetch도 홀드해야 프리펜드가 원자적이다.
-  // 선행 테스트가 남긴 delta 스파이 구현 누수(mockClear는 구현 미리셋)에 견고하도록
-  // hoga/sidecar delta 신호를 명시적으로 false로 고정한다.
+  // 우회 ON 좌측 팬: 차트 캔들이 KIS가 아니라 디스크 쿼리(minuteDiskCandles, plain useRange
+  // mode=candles)에서 온다. 이 쿼리가 re-key로 이전 데이터를 placeholder로 보이며 더 오래된
+  // 창을 fetch 중이면 게이트가 홀드해야 프리펜드가 원자적이다.
+  // 선행 테스트의 delta 스파이 구현 누수에 견고하도록 hoga/sidecar delta는 false로 고정한다.
   const idleDeltaSpy = () => ({
     data: null,
     isLoading: false,
@@ -1977,20 +1664,13 @@ describe('useLiveBundle isExtending', () => {
     isHistoricalDeltaFetching: false,
   });
 
-  it('is true when a candle fallback is doing its historical delta fetch (warning mode)', () => {
+  it('is true when the disk candle query is doing its historical delta fetch (bypass ON)', () => {
     useLivePageStore.setState({ historicalFromDate: '20260514' });
     useRangeHogaDeltaSpy.mockImplementation(idleDeltaSpy);
     useRangeSidecarDeltaSpy.mockImplementation(idleDeltaSpy);
-    // KIS past-candles가 warning을 반환 → candleFallbackNeeded 활성.
-    // KIS 경로 자체는 정착(placeholder/fetching 아님).
-    candlesMock.warnings = [{ date: '20260527', reason: 'kis_rate_limit', msg: 'rate limited' }];
     candlesMock.isPlaceholderData = false;
     candlesMock.isFetching = false;
-    // 활성 폴백(mode:'candles' plain useRange)이 좌측 팬 re-key로 이전 데이터를
-    // placeholder로 보이며 더 오래된 창을 fetch 중(isPlaceholderData && isFetching).
-    // plain useRange는 isHistoricalDeltaFetching를 노출하지 않으므로 실제 반환
-    // 형태(isPlaceholderData/isFetching)로만 목킹한다. 캔들을 돌려줘 previousDisk
-    // 폴백은 비활성 유지.
+    // 디스크 캔들 쿼리가 좌측 팬 re-key로 placeholder를 보이며 더 오래된 창을 fetch 중.
     useRangeSpy.mockImplementation((...args: unknown[]) => {
       const options = args[6] as { mode?: string } | undefined;
       const isCandles = options?.mode === 'candles';
@@ -2006,17 +1686,16 @@ describe('useLiveBundle isExtending', () => {
     });
     const { result } = renderHook(
       () => useLiveBundle('005930', '1m', '20260527', liveFixture),
-      { wrapper },
+      { wrapper: createWrapper({ kis_rest_bypass_enabled: true }) },
     );
     expect(result.current.isExtending).toBe(true);
   });
 
-  // 과잉 홀드 방지: 폴백이 활성(warning)이더라도 fetch 중이 아니면(정착) 홀드 안 함.
-  it('is false when the fallback is active but idle (settled, not fetching)', () => {
+  // 과잉 홀드 방지: 디스크 쿼리가 활성이어도 fetch 중이 아니면(정착) 홀드 안 함.
+  it('is false when the disk candle query is active but idle (settled, not fetching)', () => {
     useLivePageStore.setState({ historicalFromDate: '20260514' });
     useRangeHogaDeltaSpy.mockImplementation(idleDeltaSpy);
     useRangeSidecarDeltaSpy.mockImplementation(idleDeltaSpy);
-    candlesMock.warnings = [{ date: '20260527', reason: 'kis_rate_limit', msg: 'rate limited' }];
     candlesMock.isPlaceholderData = false;
     candlesMock.isFetching = false;
     useRangeSpy.mockImplementation((...args: unknown[]) => {
@@ -2034,7 +1713,7 @@ describe('useLiveBundle isExtending', () => {
     });
     const { result } = renderHook(
       () => useLiveBundle('005930', '1m', '20260527', liveFixture),
-      { wrapper },
+      { wrapper: createWrapper({ kis_rest_bypass_enabled: true }) },
     );
     expect(result.current.isExtending).toBe(false);
   });
