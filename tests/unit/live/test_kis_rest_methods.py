@@ -303,7 +303,7 @@ async def test_fetch_past_minute_candles_threads_nxt_market_div(tmp_path: Path) 
 
     client = _make_client(handler, tmp_path)
     try:
-        await client.fetch_past_minute_candles("005930", "20260609", market="NXT")
+        await client.fetch_past_minute_candles("005930", "20260609", venue="NXT")
     finally:
         await client.aclose()
 
@@ -313,10 +313,10 @@ async def test_fetch_past_minute_candles_threads_nxt_market_div(tmp_path: Path) 
 
 
 @pytest.mark.asyncio
-@pytest.mark.parametrize("market", ["AUTO", "BAD"])
-async def test_fetch_past_minute_candles_rejects_non_concrete_market(
+@pytest.mark.parametrize("venue", ["AUTO", "BAD"])
+async def test_fetch_past_minute_candles_rejects_non_concrete_venue(
     tmp_path: Path,
-    market: str,
+    venue: str,
 ) -> None:
     data_requests = 0
 
@@ -329,8 +329,8 @@ async def test_fetch_past_minute_candles_rejects_non_concrete_market(
 
     client = _make_client(handler, tmp_path)
     try:
-        with pytest.raises(ValueError, match="market must be one of KRX, NXT, UN"):
-            await client.fetch_past_minute_candles("005930", "20260609", market=market)  # type: ignore[arg-type]
+        with pytest.raises(ValueError, match="venue must be one of KRX, NXT, UN"):
+            await client.fetch_past_minute_candles("005930", "20260609", venue=venue)  # type: ignore[arg-type]
     finally:
         await client.aclose()
 
@@ -375,7 +375,7 @@ async def test_fetch_past_minute_candles_jumps_nxt_empty_pause_anchor(tmp_path: 
 
     client = _make_client(handler, tmp_path)
     try:
-        candles = await client.fetch_past_minute_candles("005930", "20260609", market="NXT")
+        candles = await client.fetch_past_minute_candles("005930", "20260609", venue="NXT")
     finally:
         await client.aclose()
 
@@ -408,7 +408,7 @@ async def test_fetch_past_minute_candles_stops_on_first_empty_nxt_page(tmp_path:
 
     client = _make_client(handler, tmp_path)
     try:
-        candles = await client.fetch_past_minute_candles("005930", "20260609", market="NXT")
+        candles = await client.fetch_past_minute_candles("005930", "20260609", venue="NXT")
     finally:
         await client.aclose()
 
@@ -641,7 +641,7 @@ async def test_fetch_past_daily_paginates_forward_when_venue_returns_low_side(tm
         token_provider=FakeTokenProvider(),
         _transport=httpx.MockTransport(handler),
     )
-    result = await client.fetch_past_daily_candles("005930", "20260101", "20260619", market="UN")
+    result = await client.fetch_past_daily_candles("005930", "20260101", "20260619", venue="UN")
 
     dates = [
         datetime.fromtimestamp(c.t_ms / 1000, tz=KIS_KST).strftime("%Y%m%d")
@@ -671,7 +671,7 @@ async def test_fetch_past_daily_candles_threads_integrated_market_div(tmp_path: 
 
     client = _make_client(handler, tmp_path)
     try:
-        await client.fetch_past_daily_candles("005930", "20240101", "20240105", market="UN")
+        await client.fetch_past_daily_candles("005930", "20240101", "20240105", venue="UN")
     finally:
         await client.aclose()
 
@@ -680,10 +680,10 @@ async def test_fetch_past_daily_candles_threads_integrated_market_div(tmp_path: 
 
 
 @pytest.mark.asyncio
-@pytest.mark.parametrize("market", ["AUTO", "BAD"])
-async def test_fetch_past_daily_candles_rejects_non_concrete_market(
+@pytest.mark.parametrize("venue", ["AUTO", "BAD"])
+async def test_fetch_past_daily_candles_rejects_non_concrete_venue(
     tmp_path: Path,
-    market: str,
+    venue: str,
 ) -> None:
     data_requests = 0
 
@@ -696,8 +696,8 @@ async def test_fetch_past_daily_candles_rejects_non_concrete_market(
 
     client = _make_client(handler, tmp_path)
     try:
-        with pytest.raises(ValueError, match="market must be one of KRX, NXT, UN"):
-            await client.fetch_past_daily_candles("005930", "20240101", "20240105", market=market)  # type: ignore[arg-type]
+        with pytest.raises(ValueError, match="venue must be one of KRX, NXT, UN"):
+            await client.fetch_past_daily_candles("005930", "20240101", "20240105", venue=venue)  # type: ignore[arg-type]
     finally:
         await client.aclose()
 
