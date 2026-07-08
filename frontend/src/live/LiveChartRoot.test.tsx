@@ -3758,8 +3758,8 @@ describe('LiveChartRoot wheel interactions wiring', () => {
     const options = vi.mocked(createChartEx).mock.calls.at(-1)![2] as {
       layout?: { textColor?: string; panes?: { separatorColor?: string; separatorHoverColor?: string } };
     };
-    expect(options.layout?.panes?.separatorColor).toBe('#253040');
-    expect(options.layout?.panes?.separatorHoverColor).toBe('#253040');
+    expect(options.layout?.panes?.separatorColor).toBe('#33333C');
+    expect(options.layout?.panes?.separatorHoverColor).toBe('#33333C');
     expect(options.layout?.panes?.separatorHoverColor).not.toBe(options.layout?.textColor);
   });
 

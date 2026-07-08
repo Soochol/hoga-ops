@@ -231,7 +231,8 @@ describe('FILL_STRENGTH_SPEC shape', () => {
 
   it('cumulative series uses invisible overlay scale (priceScaleId: "")', () => {
     const cum = FILL_STRENGTH_SPEC.series[2];
-    expect(cum.options.priceScaleId).toBe('');
+    const opts = (typeof cum.options === 'function' ? cum.options() : cum.options) as Record<string, unknown>;
+    expect(opts.priceScaleId).toBe('');
   });
 
   it('cumulative series projector returns [] when cumulativeEnabled is false', () => {

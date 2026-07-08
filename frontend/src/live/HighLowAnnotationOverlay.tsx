@@ -6,15 +6,16 @@ import type { PaneId } from '../chart/drawing/types';
 import type { PaneSeriesMap } from '../chart/drawing/chartCoordinates';
 import type { LiveTimeframe } from '../state/livePage';
 import { useActivePrefs } from '../state/chartPrefs';
-import { resolveTokens } from '../util/tokens';
+import { resolveTokensThemed } from '../util/tokens';
 import { computeVisibleExtremes } from './visibleExtremes';
 import { formatExtremeLabel } from './formatExtremeLabel';
 
 // DESIGN.md 성역: 상승=빨강 / 하락=파랑. 고가 라벨=빨강, 저가 라벨=파랑. candle.ts 와 동일 토큰.
-const TOKENS = resolveTokens({
+// 렌더에서 지연 해석 — 테마(Obsidian/Ledger) 전환 시 라벨 색이 따라온다.
+const TOKEN_SPEC = {
   up: ['--price-up', '#F04452'],
   down: ['--price-down', '#3485FA'],
-});
+} as const;
 
 type Props = {
   chart: IChartApi;
@@ -221,10 +222,11 @@ function HighLowAnnotationOverlay({ chart, bundle, axis, paneSeries, timeframe, 
   // (전체 마지막 캔들이 아님 — 팬하면 기준이 바뀐다).
   const ex = series ? computeVisibleExtremes(bundle.candles, axis, range) : null;
 
+  const tokens = resolveTokensThemed(TOKEN_SPEC);
   const items = (ex
     ? [
-        { kind: 'high' as const, e: ex.high, color: TOKENS.up, place: 'above' as const },
-        { kind: 'low' as const, e: ex.low, color: TOKENS.down, place: 'below' as const },
+        { kind: 'high' as const, e: ex.high, color: tokens.up, place: 'above' as const },
+        { kind: 'low' as const, e: ex.low, color: tokens.down, place: 'below' as const },
       ]
     : []
   ).map((d) => {

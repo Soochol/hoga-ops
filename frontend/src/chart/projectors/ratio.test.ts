@@ -19,7 +19,11 @@ const baseCtx: RatioPaneContext = {
 
 describe('projectRatio', () => {
   it('keeps the zero baseline inside one-sided autoscale ranges', () => {
-    const provider = RATIO_SPEC.series[0].options.autoscaleInfoProvider;
+    const opts = RATIO_SPEC.series[0].options;
+    const resolved = (typeof opts === 'function' ? opts() : opts) as {
+      autoscaleInfoProvider?: (o: () => unknown) => { priceRange: { minValue: number; maxValue: number } } | null;
+    };
+    const provider = resolved.autoscaleInfoProvider;
     expect(provider).toBeTypeOf('function');
     const res = provider!(() => ({
       priceRange: { minValue: -0.02, maxValue: -0.01 },
@@ -28,7 +32,11 @@ describe('projectRatio', () => {
   });
 
   it('expands a flat zero autoscale range so BaselineSeries gradients stay finite', () => {
-    const provider = RATIO_SPEC.series[0].options.autoscaleInfoProvider;
+    const opts = RATIO_SPEC.series[0].options;
+    const resolved = (typeof opts === 'function' ? opts() : opts) as {
+      autoscaleInfoProvider?: (o: () => unknown) => { priceRange: { minValue: number; maxValue: number } } | null;
+    };
+    const provider = resolved.autoscaleInfoProvider;
     expect(provider).toBeTypeOf('function');
     const res = provider!(() => ({
       priceRange: { minValue: 0, maxValue: 0 },

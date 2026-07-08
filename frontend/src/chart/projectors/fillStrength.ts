@@ -11,12 +11,15 @@ import { useShallow } from 'zustand/react/shallow';
 import { useActivePrefs } from '../../state/chartPrefs';
 import type { RangeBundle, FillStrengthPoint } from '../../api/types';
 import { type VirtualAxis } from '../../util/virtualAxis';
-import { resolveTokens } from '../../util/tokens';
+import { resolveTokensThemed } from '../../util/tokens';
 import type { PaneSpec } from '../RangeSeriesPane';
 import { addZeroBaselineGuide } from '../util/zeroBaseline';
 import { isAuctionHidden, LINE_HIDDEN_COLOR } from '../util/auctionHide';
 import { makePastCachedProjector, lowerBoundT } from './pastCachedProjector';
 
+// buy/sell/cumulative are applied at series-options level (thunked below), not
+// embedded per data point — the histogram/line data carries no color, so the
+// P0 past-caches need no theme key (unlike candle/volume whose data embeds it).
 const TOKEN_SPEC = {
   buy: ['--price-up', '#F04452'],          // 체결 매수 (KRX 빨강)
   sell: ['--price-down', '#3485FA'],       // 체결 매도 (KRX 파랑)
@@ -26,8 +29,6 @@ const TOKEN_SPEC = {
   cumulative: ['--fg-dim', '#9A9AA8'],
   cumulativeBaseline: ['--fg-dimmer', '#63636F'], // 0-baseline guide
 } as const;
-
-const { buy, sell, cumulative, cumulativeBaseline } = resolveTokens(TOKEN_SPEC);
 
 const histOpts = {
   base: 0,
@@ -385,28 +386,28 @@ export const FILL_STRENGTH_SPEC = {
   series: [
     {
       type: HistogramSeries,
-      options: { color: buy, ...histOpts },
+      options: () => ({ color: resolveTokensThemed(TOKEN_SPEC).buy, ...histOpts }),
       data: (bundle, axis, ctx) => buyCachedData(bundle, axis, ctx.auctionWindowMask),
     },
     {
       type: HistogramSeries,
-      options: { color: sell, ...histOpts },
+      options: () => ({ color: resolveTokensThemed(TOKEN_SPEC).sell, ...histOpts }),
       data: (bundle, axis, ctx) => sellCachedData(bundle, axis, ctx.auctionWindowMask),
     },
     {
       type: LineSeries,
-      options: {
-        color: cumulative,
+      options: () => ({
+        color: resolveTokensThemed(TOKEN_SPEC).cumulative,
         lineWidth: 2,
         lineStyle: 0,          // solid
         priceScaleId: '',      // invisible overlay scale — autoscale split from histograms
         priceLineVisible: false,
         lastValueVisible: false,
         priceFormat: cumulativePriceFormat,
-      },
+      }),
       data: (bundle, axis, ctx) =>
         ctx.cumulativeEnabled ? cumulativeCachedData(bundle, axis, ctx.auctionWindowMask) : [],
-      afterAdd: (series) => addZeroBaselineGuide(series, cumulativeBaseline),
+      afterAdd: (series) => addZeroBaselineGuide(series, resolveTokensThemed(TOKEN_SPEC).cumulativeBaseline),
     },
   ],
 } satisfies PaneSpec<FillStrengthPaneContext>;

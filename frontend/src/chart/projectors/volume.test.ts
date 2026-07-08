@@ -51,7 +51,8 @@ describe('VOLUME_SPEC', () => {
     expect(VOLUME_SPEC.series).toHaveLength(2);
     const second = VOLUME_SPEC.series[1];
     expect(second.type).toBeDefined();
-    expect(second.options.priceScaleId).toBe('');
+    const opts = (typeof second.options === 'function' ? second.options() : second.options) as Record<string, unknown>;
+    expect(opts.priceScaleId).toBe('');
   });
 
   it('토글 off 시 체결강도 누적 시리즈는 빈 데이터', () => {

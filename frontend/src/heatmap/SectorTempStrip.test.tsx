@@ -39,12 +39,13 @@ it('칩 클릭 → onJump(folderId)', () => {
   expect(onJump).toHaveBeenCalledWith('f2');
 });
 
-it('상승 칩 배경 = 적(--price-up rgb), 하락 칩 = 청', () => {
+it('상승 칩 배경 = 적(--price-up), 하락 칩 = 청(--price-down) 토큰', () => {
   render(<SectorTempStrip groups={groups} quoteByCode={quoteByCode} onJump={() => {}} />);
   const up = screen.getAllByRole('button')[0];   // 로봇 +4
   const down = screen.getAllByRole('button')[2]; // 통신 -2
-  expect(up.getAttribute('style') ?? '').toMatch(/220,\s*38,\s*38/);
-  expect(down.getAttribute('style') ?? '').toMatch(/37,\s*99,\s*235/);
+  // heat.ts 는 color-mix(in srgb, var(--price-*) …) 로 테마 자동 추종.
+  expect(up.getAttribute('style') ?? '').toContain('var(--price-up)');
+  expect(down.getAttribute('style') ?? '').toContain('var(--price-down)');
 });
 
 it('stale 종목은 평균 계산에서 제외되어 섹터 정렬/표시에 영향 없음', () => {

@@ -6,7 +6,7 @@ import {
 } from 'lightweight-charts';
 import type { RangeBundle } from '../../api/types';
 import { type VirtualAxis } from '../../util/virtualAxis';
-import { resolveTokens } from '../../util/tokens';
+import { resolveTokensThemed } from '../../util/tokens';
 import { formatKoreanWonEok } from '../../util/koreanNumber';
 import type { PaneSpec } from '../RangeSeriesPane';
 import { isSyntheticHogaGapPoint } from '../util/hogaGapHide';
@@ -16,20 +16,19 @@ const TOKEN_SPEC = {
   line: ['--accent', '#F0B429'],
 } as const;
 
-const { line } = resolveTokens(TOKEN_SPEC);
-
-const lineOptions = {
-  color: line,
+// Color is series-level (thunked in the spec below); the data is value-only.
+const lineOptions = () => ({
+  color: resolveTokensThemed(TOKEN_SPEC).line,
   lineWidth: 2,
   priceFormat: {
     type: 'custom' as const,
     formatter: (v: number) => formatKoreanWonEok(v),
     minMove: 1,
   },
-  priceScaleId: 'right',
+  priceScaleId: 'right' as const,
   priceLineVisible: false,
   lastValueVisible: true,
-} as const;
+});
 
 export function projectProgramTradeNetAmount(
   bundle: RangeBundle,

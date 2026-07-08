@@ -6,7 +6,7 @@ import {
 } from 'lightweight-charts';
 import type { Candle, RangeBundle } from '../../api/types';
 import { type VirtualAxis } from '../../util/virtualAxis';
-import { resolveTokens } from '../../util/tokens';
+import { resolveTokensThemed, currentThemeKey } from '../../util/tokens';
 import type { PaneSpec } from '../RangeSeriesPane';
 
 const TOKEN_SPEC = {
@@ -14,8 +14,6 @@ const TOKEN_SPEC = {
   down: ['--price-down', '#3485FA'],
   muted: ['--fg-dim', '#9A9AA8'],
 } as const;
-
-const { up, down, muted } = resolveTokens(TOKEN_SPEC);
 
 export type CandlePaneContext = {
   muteAuctionCandles: boolean;
@@ -32,6 +30,7 @@ const priceFormat = {
 type CandleProjection = CandlestickData<Time>;
 type CandleCacheEntry = {
   ctx: CandlePaneContext;
+  theme: string;
   pastLen: number;
   pastLastTs: number;
   pastFirstRef: Candle | null;
@@ -57,6 +56,7 @@ function projectCandleRows(
   axis: VirtualAxis,
   ctx: CandlePaneContext,
 ): CandleProjection[] {
+  const { up, down, muted } = resolveTokensThemed(TOKEN_SPEC);
   const out: CandleProjection[] = [];
   for (const c of candles) {
     const { contained, inAuction, virtual } = axis.classifyAndProject(c.ts_ms);
@@ -100,10 +100,12 @@ export function projectCandleCached(
   const pastFirstRef = pastLen > 0 ? candles[0] : null;
   const pastLastRef = pastLen > 0 ? candles[pastLen - 1] : null;
 
+  const theme = currentThemeKey();
   let entry = candleCache.get(axis);
   if (
     !entry ||
     entry.ctx !== ctx ||
+    entry.theme !== theme ||
     entry.pastLen !== pastLen ||
     entry.pastLastTs !== pastLastTs ||
     entry.pastFirstRef !== pastFirstRef ||
@@ -111,6 +113,7 @@ export function projectCandleCached(
   ) {
     entry = {
       ctx,
+      theme,
       pastLen,
       pastLastTs,
       pastFirstRef,
@@ -129,15 +132,18 @@ export const CANDLE_SPEC = {
   series: [
     {
       type: CandlestickSeries,
-      options: {
-        upColor: up,
-        downColor: down,
-        wickUpColor: up,
-        wickDownColor: down,
-        borderVisible: false,
-        priceLineVisible: false,
-        lastValueVisible: false,
-        priceFormat,
+      options: () => {
+        const { up, down } = resolveTokensThemed(TOKEN_SPEC);
+        return {
+          upColor: up,
+          downColor: down,
+          wickUpColor: up,
+          wickDownColor: down,
+          borderVisible: false,
+          priceLineVisible: false,
+          lastValueVisible: false,
+          priceFormat,
+        };
       },
       data: projectCandleCached,
     },

@@ -160,10 +160,15 @@ describe('QUOTE_TOTALS_SPEC crosshair marker', () => {
   // series-level crosshairMarkerBackgroundColor decouples the marker from the
   // per-point color and keeps the dot — matching 호가비 (BaselineSeries). Lock
   // it so a future options refactor can't silently drop the marker.
+  // options are thunks (resolved at addSeries time so colors follow the theme).
+  const resolveOpts = (s: (typeof QUOTE_TOTALS_SPEC.series)[number]) =>
+    (typeof s.options === 'function' ? s.options() : s.options) as {
+      crosshairMarkerBackgroundColor?: string;
+      lineWidth?: number;
+    };
+
   it('pins each line a solid crosshairMarkerBackgroundColor (not transparent)', () => {
-    const colors = QUOTE_TOTALS_SPEC.series.map(
-      (s) => (s.options as { crosshairMarkerBackgroundColor?: string }).crosshairMarkerBackgroundColor,
-    );
+    const colors = QUOTE_TOTALS_SPEC.series.map((s) => resolveOpts(s).crosshairMarkerBackgroundColor);
     expect(colors).toHaveLength(2);
     for (const c of colors) {
       expect(c).toBeTruthy();
@@ -172,7 +177,7 @@ describe('QUOTE_TOTALS_SPEC crosshair marker', () => {
   });
 
   it('uses a thicker stroke to match the clearer ratio pane treatment', () => {
-    expect(QUOTE_TOTALS_SPEC.series.map((s) => (s.options as { lineWidth?: number }).lineWidth)).toEqual([3, 3]);
+    expect(QUOTE_TOTALS_SPEC.series.map((s) => resolveOpts(s).lineWidth)).toEqual([3, 3]);
   });
 });
 

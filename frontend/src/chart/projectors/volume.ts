@@ -8,7 +8,7 @@ import {
 import type { RangeBundle } from '../../api/types';
 import { type VirtualAxis } from '../../util/virtualAxis';
 import { useActivePrefs } from '../../state/chartPrefs';
-import { resolveTokens } from '../../util/tokens';
+import { resolveTokensThemed, currentThemeKey } from '../../util/tokens';
 import { formatKoreanInt } from '../../util/koreanNumber';
 import { useShallow } from 'zustand/react/shallow';
 import { addZeroBaselineGuide } from '../util/zeroBaseline';
@@ -21,8 +21,6 @@ const TOKEN_SPEC = {
   cumulative: ['--fg-dim', '#9A9AA8'],
   cumulativeBaseline: ['--fg-dimmer', '#63636F'],
 } as const;
-
-const { up, down, cumulative, cumulativeBaseline } = resolveTokens(TOKEN_SPEC);
 
 type VolumePaneContext = {
   cumulativeEnabled: boolean;
@@ -45,6 +43,7 @@ const priceFormat = {
 
 type VolumeProjection = HistogramData<Time>;
 type VolumeCacheEntry = {
+  theme: string;
   pastLen: number;
   pastLastTs: number;
   pastFirstRef: RangeBundle['candles'][number] | null;
@@ -66,6 +65,7 @@ function lowerBoundCandle(candles: RangeBundle['candles'], t: number): number {
 }
 
 function projectVolumeRows(candles: RangeBundle['candles'], axis: VirtualAxis): VolumeProjection[] {
+  const { up, down } = resolveTokensThemed(TOKEN_SPEC);
   return candles
     .filter((c) => axis.contains(c.ts_ms))
     .map((c): VolumeProjection => ({
@@ -91,15 +91,18 @@ export function projectVolumeCached(bundle: RangeBundle, axis: VirtualAxis): His
   const pastFirstRef = pastLen > 0 ? candles[0] : null;
   const pastLastRef = pastLen > 0 ? candles[pastLen - 1] : null;
 
+  const theme = currentThemeKey();
   let entry = volumeCache.get(axis);
   if (
     !entry ||
+    entry.theme !== theme ||
     entry.pastLen !== pastLen ||
     entry.pastLastTs !== pastLastTs ||
     entry.pastFirstRef !== pastFirstRef ||
     entry.pastLastRef !== pastLastRef
   ) {
     entry = {
+      theme,
       pastLen,
       pastLastTs,
       pastFirstRef,
@@ -133,18 +136,18 @@ export const VOLUME_SPEC = {
     },
     {
       type: LineSeries,
-      options: {
-        color: cumulative,
+      options: () => ({
+        color: resolveTokensThemed(TOKEN_SPEC).cumulative,
         lineWidth: 2,
         lineStyle: 0,
         priceScaleId: '',
         priceLineVisible: false,
         lastValueVisible: false,
         priceFormat: cumulativePriceFormat,
-      },
+      }),
       data: (bundle: RangeBundle, axis: VirtualAxis, ctx: VolumePaneContext) =>
         ctx.cumulativeEnabled ? cumulativeCachedData(bundle, axis, ctx.auctionWindowMask) : [],
-      afterAdd: (series) => addZeroBaselineGuide(series, cumulativeBaseline),
+      afterAdd: (series) => addZeroBaselineGuide(series, resolveTokensThemed(TOKEN_SPEC).cumulativeBaseline),
     },
   ],
 } satisfies PaneSpec<VolumePaneContext>;

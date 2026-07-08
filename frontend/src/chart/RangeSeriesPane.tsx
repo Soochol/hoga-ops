@@ -35,7 +35,15 @@ import { SurgeMarkersPrimitive, type SurgeMarkerPoint } from './SurgeMarkersPrim
  */
 export type SeriesSpec<Ctx = void> = {
   type: SeriesDefinition<SeriesType>;
-  options: SeriesPartialOptionsMap[SeriesType];
+  /**
+   * Series creation options. A thunk (`() => options`) is resolved at
+   * `addSeries` time, not module load — used by color-bearing specs so a chart
+   * created after a theme swap reads the live `var(--…)` values via
+   * `resolveTokensThemed`. A plain object is still accepted for static specs.
+   */
+  options:
+    | SeriesPartialOptionsMap[SeriesType]
+    | (() => SeriesPartialOptionsMap[SeriesType]);
   data: (bundle: RangeBundle, axis: VirtualAxis, ctx: Ctx) => SeriesDataItemTypeMap[SeriesType][];
   /** Optional: markers to overlay on this series, recomputed in the data effect
    *  (same cadence as `data`). Rendered by `SurgeMarkersPrimitive` (a custom
@@ -165,7 +173,8 @@ function RangeSeriesPaneInner<Ctx>({
     );
     creationOrder.forEach((specIndex) => {
       const s = spec.series[specIndex];
-      const series = chart.addSeries(s.type, s.options, paneIndex);
+      const options = typeof s.options === 'function' ? s.options() : s.options;
+      const series = chart.addSeries(s.type, options, paneIndex);
       s.afterAdd?.(series);
       seriesList[specIndex] = series;
     });

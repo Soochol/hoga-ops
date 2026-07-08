@@ -8,7 +8,7 @@ import { useShallow } from 'zustand/react/shallow';
 import type { RangeBundle, QuoteRatioPoint } from '../../api/types';
 import { type VirtualAxis } from '../../util/virtualAxis';
 import { isSyntheticHogaGapPoint } from '../util/hogaGapHide';
-import { resolveTokens } from '../../util/tokens';
+import { resolveTokensThemed, currentThemeKey } from '../../util/tokens';
 import { useActivePrefs } from '../../state/chartPrefs';
 import type { PaneSpec } from '../RangeSeriesPane';
 import type { SurgeMarkerPoint } from '../SurgeMarkersPrimitive';
@@ -21,8 +21,6 @@ const TOKEN_SPEC = {
   bid: ['--price-up', '#F04452'],   // 매수 호가 총합 (KRX 빨강)
   ask: ['--price-down', '#3485FA'], // 매도 호가 총합 (KRX 파랑)
 } as const;
-
-const { bid, ask } = resolveTokens(TOKEN_SPEC);
 
 const priceFormat = {
   type: 'custom' as const,
@@ -47,6 +45,7 @@ export function projectBidPoints(
   auctionWindowMask: boolean,
   intraMax = false,
 ): LineData<Time>[] {
+  const { bid } = resolveTokensThemed(TOKEN_SPEC);
   const out: LineData<Time>[] = [];
   for (const p of points) {
     if (!axis.contains(p.t)) continue;
@@ -87,6 +86,7 @@ export function projectAskPoints(
   auctionWindowMask: boolean,
   intraMax = false,
 ): LineData<Time>[] {
+  const { ask } = resolveTokensThemed(TOKEN_SPEC);
   const out: LineData<Time>[] = [];
   for (const p of points) {
     if (!axis.contains(p.t)) continue;
@@ -149,10 +149,14 @@ const useQuoteTotalsContext = (): QuoteTotalsCtx =>
  *  사용자 요청으로 미표시. 마감 동시호가는 항상 제외(그릴링 Q4). makePastCachedProjector가 과거/당일
  *  청크별로 호출·concat하므로 틱당 비용이 히스토리 깊이와 무관해진다(#56 P0).
  *  렌더는 SurgeMarkersPrimitive(timeToCoordinate 기반)가 맡아 series 길이 불일치에 면역. */
-function surgeMarkerPoints(side: 'ask' | 'bid', color: string) {
+function surgeMarkerPoints(side: 'ask' | 'bid') {
   const maxField = side === 'ask' ? 'ask_max' : 'bid_max';
   return (points: readonly QuoteRatioPoint[], axis: VirtualAxis, ctx: QuoteTotalsCtx): SurgeMarkerPoint[] => {
     if (!ctx.surgeEnabled) return [];
+    // Resolve per call so surge dots follow the live theme (via the chart
+    // remount on a theme swap). bid=매수=빨강, ask=매도=파랑.
+    const t = resolveTokensThemed(TOKEN_SPEC);
+    const color = side === 'ask' ? t.ask : t.bid;
     const startMinute = hhmmToMinute(ctx.surgeStartHHMM);
     const byT = ctx.intraMax ? new Map(points.map((p) => [p.t, p])) : null;
     return detectSurgeSide(points, side, {
@@ -175,8 +179,8 @@ function surgeMarkerPoints(side: 'ask' | 'bid', color: string) {
   };
 }
 
-const askSurgeCached = makePastCachedProjector(surgeMarkerPoints('ask', ask), (b) => b.quote_ratio.points);
-const bidSurgeCached = makePastCachedProjector(surgeMarkerPoints('bid', bid), (b) => b.quote_ratio.points);
+const askSurgeCached = makePastCachedProjector(surgeMarkerPoints('ask'), (b) => b.quote_ratio.points);
+const bidSurgeCached = makePastCachedProjector(surgeMarkerPoints('bid'), (b) => b.quote_ratio.points);
 export const askSurgeMarkers = (b: RangeBundle, a: VirtualAxis, c: QuoteTotalsCtx) => askSurgeCached(b, a, c);
 export const bidSurgeMarkers = (b: RangeBundle, a: VirtualAxis, c: QuoteTotalsCtx) => bidSurgeCached(b, a, c);
 
@@ -192,23 +196,32 @@ export const bidSurgeMarkers = (b: RangeBundle, a: VirtualAxis, c: QuoteTotalsCt
 // this for free because its marker color is series-level, not per-point — this
 // makes 총잔량 consistent with 호가비.
 // P0 과거/당일 분리 캐시 — 틱당 풀 재투영 제거. 출력은 projectBid/projectAsk와 동일.
+// Cache key = `${flags}|${theme}`. Per-point `color: bid/ask` is embedded in
+// the cached past data, so the theme segment forces a re-projection on a theme
+// swap even if the same axis survives (defense-in-depth beyond the remount).
+// parseInt reads the numeric flags prefix and stops at the '|'.
 const bidCachedRaw = makePastCachedProjector(
-  (pts: readonly QuoteRatioPoint[], a: VirtualAxis, flags: number) =>
-    projectBidPoints(pts, a, (flags & 1) !== 0, (flags & 2) !== 0),
+  (pts: readonly QuoteRatioPoint[], a: VirtualAxis, key: string) => {
+    const flags = parseInt(key, 10);
+    return projectBidPoints(pts, a, (flags & 1) !== 0, (flags & 2) !== 0);
+  },
   (b) => b.quote_ratio.points,
   { shouldPatchBoundary: isSyntheticHogaGapPoint, patchPastTail: LINE_HIDDEN_COLOR },
   quoteRatioPointsForSlice,
 );
 const askCachedRaw = makePastCachedProjector(
-  (pts: readonly QuoteRatioPoint[], a: VirtualAxis, flags: number) =>
-    projectAskPoints(pts, a, (flags & 1) !== 0, (flags & 2) !== 0),
+  (pts: readonly QuoteRatioPoint[], a: VirtualAxis, key: string) => {
+    const flags = parseInt(key, 10);
+    return projectAskPoints(pts, a, (flags & 1) !== 0, (flags & 2) !== 0);
+  },
   (b) => b.quote_ratio.points,
   { shouldPatchBoundary: isSyntheticHogaGapPoint, patchPastTail: LINE_HIDDEN_COLOR },
   quoteRatioPointsForSlice,
 );
-const flagsOf = (c: QuoteTotalsCtx): number => (c.auctionMask ? 1 : 0) | (c.intraMax ? 2 : 0);
-const bidCachedData = (b: RangeBundle, a: VirtualAxis, c: QuoteTotalsCtx) => bidCachedRaw(b, a, flagsOf(c));
-const askCachedData = (b: RangeBundle, a: VirtualAxis, c: QuoteTotalsCtx) => askCachedRaw(b, a, flagsOf(c));
+const keyOf = (c: QuoteTotalsCtx): string =>
+  `${(c.auctionMask ? 1 : 0) | (c.intraMax ? 2 : 0)}|${currentThemeKey()}`;
+const bidCachedData = (b: RangeBundle, a: VirtualAxis, c: QuoteTotalsCtx) => bidCachedRaw(b, a, keyOf(c));
+const askCachedData = (b: RangeBundle, a: VirtualAxis, c: QuoteTotalsCtx) => askCachedRaw(b, a, keyOf(c));
 
 export const QUOTE_TOTALS_SPEC = {
   name: 'quote-totals' as const,
@@ -218,18 +231,24 @@ export const QUOTE_TOTALS_SPEC = {
   series: [
     {
       type: LineSeries,
-      options: {
-        color: bid, lineWidth: 3, priceFormat, priceLineVisible: false,
-        lastValueVisible: false, crosshairMarkerBackgroundColor: bid,
+      options: () => {
+        const { bid } = resolveTokensThemed(TOKEN_SPEC);
+        return {
+          color: bid, lineWidth: 3, priceFormat, priceLineVisible: false,
+          lastValueVisible: false, crosshairMarkerBackgroundColor: bid,
+        };
       },
       data: bidCachedData,
       markers: bidSurgeMarkers,
     },
     {
       type: LineSeries,
-      options: {
-        color: ask, lineWidth: 3, priceFormat, priceLineVisible: false,
-        lastValueVisible: false, crosshairMarkerBackgroundColor: ask,
+      options: () => {
+        const { ask } = resolveTokensThemed(TOKEN_SPEC);
+        return {
+          color: ask, lineWidth: 3, priceFormat, priceLineVisible: false,
+          lastValueVisible: false, crosshairMarkerBackgroundColor: ask,
+        };
       },
       data: askCachedData,
       markers: askSurgeMarkers,

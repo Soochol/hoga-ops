@@ -6,7 +6,7 @@ import {
 } from 'lightweight-charts';
 import type { RangeBundle } from '../../api/types';
 import { type VirtualAxis } from '../../util/virtualAxis';
-import { resolveTokens } from '../../util/tokens';
+import { resolveTokensThemed } from '../../util/tokens';
 import { formatKoreanInt } from '../../util/koreanNumber';
 import type { PaneSpec } from '../RangeSeriesPane';
 
@@ -17,8 +17,6 @@ const TOKEN_SPEC = {
   up: ['--price-up', '#F04452'],
   down: ['--price-down', '#3485FA'],
 } as const;
-
-const { up, down } = resolveTokens(TOKEN_SPEC);
 
 const priceFormat = {
   type: 'custom' as const,
@@ -38,6 +36,7 @@ export function projectInvestorNet(
   axis: VirtualAxis,
   which: 'foreign' | 'institution',
 ): HistogramData<Time>[] {
+  const { up, down } = resolveTokensThemed(TOKEN_SPEC);
   return bundle.investorPoints
     .filter((p) => axis.contains(p.t_ms))
     .map((p): HistogramData<Time> => {

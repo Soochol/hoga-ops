@@ -13,7 +13,7 @@ import { useLivePageStore } from '../../state/livePage';
 import { type VirtualAxis } from '../../util/virtualAxis';
 import { isSyntheticHogaGapPoint } from '../util/hogaGapHide';
 import { quoteImbalance } from '../../util/imbalance';
-import { resolveTokens } from '../../util/tokens';
+import { resolveTokensThemed } from '../../util/tokens';
 import { useShallow } from 'zustand/react/shallow';
 import { useActivePrefs } from '../../state/chartPrefs';
 import type { PaneSpec } from '../RangeSeriesPane';
@@ -23,6 +23,9 @@ import { makePastCachedProjector } from './pastCachedProjector';
 import { projectBrokerLateEntryMarkers } from './brokerLateEntryMarkers';
 import { quoteRatioPointsForBundle, quoteRatioPointsForSlice } from './quoteRatioPoints';
 
+// Colors are applied at series-options level (thunked below), not per data
+// point — projectRatioPoints emits value-only, so ratioCachedData needs no
+// theme key.
 const TOKEN_SPEC = {
   // KRX 컨벤션: 매수=상승=빨강, 매도=하락=파랑. RatioPane은 price-direction
   // 토큰을 직접 차용해 의미 충돌 없음 (도서 압력 부호와 가격 방향이 정렬됨).
@@ -30,8 +33,6 @@ const TOKEN_SPEC = {
   ratioAsk: ['--price-down', '#3485FA'],
   baseline: ['--fg-dimmer', '#63636F'],
 } as const;
-
-const { ratioBid, ratioAsk, baseline } = resolveTokens(TOKEN_SPEC);
 
 /**
  * Convert a `#RRGGBB` hex string to `rgba(R, G, B, a)`. Used to derive
@@ -195,36 +196,39 @@ export const RATIO_SPEC = {
   series: [
     {
       type: BaselineSeries,
-      options: {
-        baseValue: { type: 'price', price: 0 },
-        // Gradient relative to the data range, not the full pane. Without this,
-        // when data hugs the baseline (small imbalances near 0), the fill
-        // sits in the "near-baseline" alpha (0.1) zone and reads as invisible.
-        // With true, the saturated fill (0.55) is concentrated at the data
-        // peaks where the user actually looks.
-        relativeGradient: true,
-        // BaselineSeries' relative gradient expects the zero baseline to be
-        // inside the autoscaled range. Study snapshots can legitimately contain
-        // a one-sided ratio run, so merge zero into the default range to keep
-        // gradient stops finite while preserving data-driven scale.
-        autoscaleInfoProvider: includeZeroAutoscale,
-        topLineColor: ratioAsk,
-        topFillColor1: rgba(ratioAsk, 0.55),
-        topFillColor2: rgba(ratioAsk, 0.1),
-        bottomLineColor: ratioBid,
-        bottomFillColor1: rgba(ratioBid, 0.1),
-        bottomFillColor2: rgba(ratioBid, 0.55),
-        // Bumped from 1.4 → 3: at the typical pane height (~62px) with
-        // mostly small-magnitude imbalance values plus rare outlier spikes
-        // that dominate the autoscale, hairlines disappear into the baseline.
-        // A 3px stroke survives both the small-magnitude near-baseline runs
-        // and the cross-day extreme spikes that compress the visible range.
-        lineWidth: 3 satisfies LineWidth,
-        // Suppress the library-default horizontal line + right-axis chip at the
-        // latest value. Analysts read the latest ratio via crosshair.
-        priceLineVisible: false,
-        lastValueVisible: false,
-        priceFormat,
+      options: () => {
+        const { ratioBid, ratioAsk } = resolveTokensThemed(TOKEN_SPEC);
+        return {
+          baseValue: { type: 'price', price: 0 },
+          // Gradient relative to the data range, not the full pane. Without this,
+          // when data hugs the baseline (small imbalances near 0), the fill
+          // sits in the "near-baseline" alpha (0.1) zone and reads as invisible.
+          // With true, the saturated fill (0.55) is concentrated at the data
+          // peaks where the user actually looks.
+          relativeGradient: true,
+          // BaselineSeries' relative gradient expects the zero baseline to be
+          // inside the autoscaled range. Study snapshots can legitimately contain
+          // a one-sided ratio run, so merge zero into the default range to keep
+          // gradient stops finite while preserving data-driven scale.
+          autoscaleInfoProvider: includeZeroAutoscale,
+          topLineColor: ratioAsk,
+          topFillColor1: rgba(ratioAsk, 0.55),
+          topFillColor2: rgba(ratioAsk, 0.1),
+          bottomLineColor: ratioBid,
+          bottomFillColor1: rgba(ratioBid, 0.1),
+          bottomFillColor2: rgba(ratioBid, 0.55),
+          // Bumped from 1.4 → 3: at the typical pane height (~62px) with
+          // mostly small-magnitude imbalance values plus rare outlier spikes
+          // that dominate the autoscale, hairlines disappear into the baseline.
+          // A 3px stroke survives both the small-magnitude near-baseline runs
+          // and the cross-day extreme spikes that compress the visible range.
+          lineWidth: 3 satisfies LineWidth,
+          // Suppress the library-default horizontal line + right-axis chip at the
+          // latest value. Analysts read the latest ratio via crosshair.
+          priceLineVisible: false,
+          lastValueVisible: false,
+          priceFormat,
+        };
       },
       data: ratioCachedData,
       labelMarkers: (bundle, axis, ctx) => (
@@ -244,7 +248,7 @@ export const RATIO_SPEC = {
         // 0-baseline reference line. Drawn explicitly because BaselineSeries
         // switches color at baseValue but does not paint a visible line there.
         // Color is --fg-dimmer (neutral) so it reads as a reference, not data.
-        addZeroBaselineGuide(series, baseline);
+        addZeroBaselineGuide(series, resolveTokensThemed(TOKEN_SPEC).baseline);
       },
     },
   ],
