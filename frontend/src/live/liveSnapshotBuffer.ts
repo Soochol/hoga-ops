@@ -18,7 +18,7 @@
 /** 봉합 사이징 불변식(spec §8): 보존 > 2× Today Promotion 주기(5분) → 15분.
  *  백엔드 LiveBuffer(retention 900s)와 동일 원칙 — per-tick 유량에서 개수 캡이
  *  pastMaxT까지의 꼬리를 자르면 지표 봉합에 구멍이 난다. */
-const RETENTION_MS = 15 * 60_000;
+export const RETENTION_MS = 15 * 60_000;
 
 function evictOld(arr: Array<{ t_ms: number }>, nowMs: number): void {
   const cutoff = nowMs - RETENTION_MS;
