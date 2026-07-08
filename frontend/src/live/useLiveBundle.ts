@@ -198,6 +198,14 @@ export interface UseLiveBundleResult {
   /** 좌측 팬 한 스텝이 진행 중(placeholderData+isFetching). false-edge = 스텝 settle.
    * LiveChartRoot 진행 루프가 이 falling edge에 반응해 다음 스텝을 dispatch한다. */
   isExtending: boolean;
+  /** 사이드카 지표 경로(/api/range mode=sidecar)의 초기 fetch가 아직 pending인가.
+   * LiveChartRoot의 reveal 커버가 캔들·호가와 함께 써서 최대벽·POC·거래량분포·프로그램
+   * 매매가 캔들과 한 번의 reveal로 등장하게 한다(개선안 1-A). 캔들 settle 후 상한(캡)까지만
+   * 대기하고, 사이드카가 rate-limit로 늦어지면 캔들을 인질로 잡지 않는다.
+   * - sidecarEnabled=false(지표 전부 off)면 항상 false → 홀드 없음.
+   * - `data == null`: 캐시된 뷰 재방문 시 즉시 서빙되는 동안 리프레시가 isLoading이어도
+   *   불필요 홀드를 방지. 에러 settle도 isLoading=false라 영구 홀드 없음. */
+  isSidecarLoading: boolean;
   /** 활성 타임프레임 경로(분봉=past-candles, D/W/M=past-daily-candles)의 fetch 경고.
    * 백엔드가 KIS rate-limit 등으로 일부/전체 날짜를 못 받으면 채운다. LiveChartRoot가
    * 빈칸 문구 전환 + 부분 로딩 칩에 쓴다(2026-06-09). 무경고면 빈 배열. */
@@ -896,6 +904,7 @@ export function useLiveBundle(
     isPastCandlesLoading: pastCandlesQuery.isLoading || pastDailyCandlesQuery.isLoading || screenerDailyCandlesQuery.isLoading || (candleFallbackNeeded && candleFallback.isLoading) || (hogaplayCandleFallbackNeeded && hogaplayCandleFallback.isLoading) || (previousDiskFallbackNeeded && previousDiskCandleFallback.isLoading) || (enableInvestor && investorQuery.isLoading),
     isHogaLoading: pastHoga.isLoading && pastHoga.data == null,
     isExtending: extending,
+    isSidecarLoading: sidecarEnabled && pastSidecars.isLoading && pastSidecars.data == null,
     pastDataWarnings,
   };
 }

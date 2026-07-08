@@ -32,6 +32,7 @@ import {
 import { LiveStudyViewSaveButton } from '../studyViews/LiveStudyViewSaveButton';
 import IndicatorPanel from './indicators/IndicatorPanel';
 import { panePrefsForTimeframe, type PanePrefsIndicatorSource } from './indicators/indicatorPaneProfiles';
+import { useDailyMaRevealGate } from './indicators/useDailyMaRevealGate';
 import LiveSettingsModal from './LiveSettingsModal';
 import { useDocumentTitle } from '../util/useDocumentTitle';
 import { indexInstrument, isLiveIndexId } from './liveInstrument';
@@ -230,7 +231,7 @@ export function LivePage() {
   // sidebar's LATEST mode stuck on the empty-buffer state.
   const today = todayKstYyyymmdd();
   const live = useLiveSeries(activeCode ?? '');
-  const { bundle, chartBundle, hogaBundle, clampEngaged, isPastCandlesLoading, isHogaLoading, isExtending, pastDataWarnings } = useLiveBundle(
+  const { bundle, chartBundle, hogaBundle, clampEngaged, isPastCandlesLoading, isHogaLoading, isExtending, isSidecarLoading, pastDataWarnings } = useLiveBundle(
     activeCode,
     timeframe,
     today,
@@ -242,6 +243,9 @@ export function LivePage() {
   const stockChartBundle = activeCode && chartBundle?.code === activeCode ? chartBundle : null;
   const stockHogaBundle = activeCode && hogaBundle?.code === activeCode ? hogaBundle : null;
   const activeIndexId = activeInstrument?.kind === 'index' ? activeInstrument.id : null;
+  // 일봉 MA 오버레이 초기 fetch도 reveal 게이트에 편입(개선안 1-B) — 오버레이와 동일
+  // 쿼리키라 react-query가 공유(네트워크 중복 없음). isSidecarLoading에 OR해 같은 캡으로 묶는다.
+  const isDailyMaLoading = useDailyMaRevealGate({ code: activeCode, timeframe, venue: liveVenue, todayKst: today });
   const capabilities = useMemo(() => capabilitiesForInstrument(activeInstrument), [activeInstrument]);
   const indexFrom = historicalFromDate ?? subtractDaysKst(today, initialHistoricalDaysFor(timeframe));
   const indexCandles = useLiveIndexCandles(
@@ -426,6 +430,7 @@ export function LivePage() {
         clampEngaged={clampEngaged}
         isPastCandlesLoading={workareaLoading}
         isHogaLoading={activeIndexId ? false : isHogaLoading}
+        isSidecarLoading={activeIndexId ? false : (isSidecarLoading || isDailyMaLoading)}
         isExtending={activeIndexId ? indexExtending : isExtending}
         pastDataWarnings={workareaDataWarnings}
         restoreViewport={activeTab?.viewport ?? null}

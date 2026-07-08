@@ -18,7 +18,7 @@ if (typeof window !== 'undefined' && !window.ResizeObserver) {
   };
 }
 
-import { LiveChartRoot, shouldShowTradeVolumePocOverlay } from './LiveChartRoot';
+import { LiveChartRoot, SIDECAR_REVEAL_CAP_MS, shouldShowTradeVolumePocOverlay } from './LiveChartRoot';
 import { useLivePageStore } from '../state/livePage';
 import { CandlestickSeries, createChartEx, LineSeries, TickMarkType } from 'lightweight-charts';
 import { createVirtualAxis } from '../util/virtualAxis';
@@ -1598,6 +1598,86 @@ describe('LiveChartRoot', () => {
     // 호가 settle → reveal, 홀드 노트 소멸.
     expect(screen.getByTestId('chart-reveal-cover').style.opacity).toBe('0');
     expect(screen.queryByTestId('hoga-loading-note')).toBeNull();
+  });
+
+  // 개선안 1-A: 사이드카 지표(최대벽·POC·거래량분포·프로그램매매)도 캔들과 한 번의
+  // reveal로 등장하도록 홀드. 캔들·호가가 settle돼도 사이드카가 아직이면 커버 유지.
+  it('holds the cover while the sidecar path is still loading (candles+hoga settled)', async () => {
+    useLivePageStore.setState({ historicalFromDate: null });
+    render(
+      <LiveChartRoot
+        code="005930"
+        timeframe="1m"
+        bundle={makeBundleWithCandles(100)}
+        clampEngaged={false}
+        isPastCandlesLoading={false}
+        isHogaLoading={false}
+        isSidecarLoading={true}
+      />,
+      { wrapper },
+    );
+    await flushFrames(3);
+    expect(screen.getByTestId('chart-reveal-cover').style.opacity).toBe('1');
+  });
+
+  it('reveals once the sidecar path settles (candles+hoga already present)', async () => {
+    useLivePageStore.setState({ historicalFromDate: null });
+    const { rerender } = render(
+      <LiveChartRoot
+        code="005930"
+        timeframe="1m"
+        bundle={makeBundleWithCandles(100)}
+        clampEngaged={false}
+        isPastCandlesLoading={false}
+        isHogaLoading={false}
+        isSidecarLoading={true}
+      />,
+      { wrapper },
+    );
+    await flushFrames(3);
+    expect(screen.getByTestId('chart-reveal-cover').style.opacity).toBe('1');
+    rerender(
+      <LiveChartRoot
+        code="005930"
+        timeframe="1m"
+        bundle={makeBundleWithCandles(100)}
+        clampEngaged={false}
+        isPastCandlesLoading={false}
+        isHogaLoading={false}
+        isSidecarLoading={false}
+      />,
+    );
+    await flushFrames(3);
+    expect(screen.getByTestId('chart-reveal-cover').style.opacity).toBe('0');
+  });
+
+  it('reveals after the sidecar cap even if the sidecar never settles (개선안 1-A cap)', async () => {
+    // 사이드카가 rate-limit로 늘어질 때 캔들을 인질로 잡지 않는다: 캔들·호가 settle 후
+    // SIDECAR_REVEAL_CAP_MS 경과하면 사이드카가 아직 loading이어도 reveal. 실타이머로
+    // 실제 캡을 기다린다(fake timer+React+rAF 인터리빙 회피 — 결정적).
+    useLivePageStore.setState({ historicalFromDate: null });
+    render(
+      <LiveChartRoot
+        code="005930"
+        timeframe="1m"
+        bundle={makeBundleWithCandles(100)}
+        clampEngaged={false}
+        isPastCandlesLoading={false}
+        isHogaLoading={false}
+        isSidecarLoading={true}
+      />,
+      { wrapper },
+    );
+    await flushFrames(3);
+    // 캡 이전: 커버 유지(사이드카 홀드).
+    expect(screen.getByTestId('chart-reveal-cover').style.opacity).toBe('1');
+    // 캡 경과 대기(act로 감싸 cap-reached 상태 업데이트를 flush).
+    await act(async () => {
+      await new Promise((resolve) => setTimeout(resolve, SIDECAR_REVEAL_CAP_MS + 50));
+    });
+    await flushFrames(3); // reveal rAF 체인.
+    // 사이드카는 여전히 loading이지만 캡으로 커버가 걷힌다.
+    expect(screen.getByTestId('chart-reveal-cover').style.opacity).toBe('0');
   });
 
   it('holds an empty-candle chart until the hoga path also settles', async () => {

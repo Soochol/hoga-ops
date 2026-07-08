@@ -151,6 +151,10 @@ const LIVE_SIDEBAR_CURSOR_DEBOUNCE_MS = 120;
 const HIGH_LOW_AVOID_BASELINE_STYLE = { color: '', lineWidth: 1 };
 const DAILY_MIN_EFFECTIVE_BAR_SPACING = 3.5;
 const CALENDAR_MIN_VIEWPORT_WIDTH_PX = 120;
+// 캔들·호가 settle 후 사이드카 지표를 기다리는 상한(개선안 1-A). 실측 사이드카 지연은
+// ~180ms이고 지배 병목은 캔들(콜드 1.5-2.4s)이라 정상 경로에선 체감 추가 지연이 없다.
+// 사이드카가 rate-limit로 수 초 늘어질 때만 이 캡이 발동해 캔들을 먼저 드러낸다.
+export const SIDECAR_REVEAL_CAP_MS = 700;
 
 function dailyLogicalRange(
   totalBars: number,
@@ -194,6 +198,13 @@ interface Props {
    *  isPastCandlesLoading과 함께 써서 캔들+호가 pane을 한 번의 reveal로 등장시킨다.
    *  옵셔널 + 기본 false라 StudyPage·스냅샷 복원·기존 테스트는 무변경으로 settled. */
   isHogaLoading?: boolean;
+  /** 캔들·호가 외의 오버레이 데이터(mode=sidecar 최대벽·POC·거래량분포·프로그램매매 +
+   *  일봉MA)가 초기 fetch pending인지. LivePage가 isSidecarLoading || isDailyMaLoading으로
+   *  OR해 전달한다(개선안 1-A/1-B). reveal 커버가 캔들·호가와 함께 써서 이 지표들이 캔들과
+   *  한 번의 reveal로 등장하게 하되, 캔들·호가 settle 후 SIDECAR_REVEAL_CAP_MS까지만 대기 —
+   *  이 경로들이 rate-limit로 늦어져도 캔들을 인질로 잡지 않는다. 옵셔널+기본 false라
+   *  StudyPage·index·기존 테스트는 무변경. */
+  isSidecarLoading?: boolean;
   /** useLiveBundle.isExtending. false-edge = 한 스텝 settle → 진행 루프 다음 스텝 판정. */
   isExtending?: boolean;
   /** 활성 경로 과거 fetch 경고(rate-limit 등, useLiveBundle). 캔들 없으면 빈칸 문구를
@@ -274,6 +285,7 @@ export function LiveChartRoot({
   clampEngaged,
   isPastCandlesLoading,
   isHogaLoading = false,
+  isSidecarLoading = false,
   isExtending = false,
   pastDataWarnings,
   restoreViewport = null,
@@ -582,6 +594,11 @@ export function LiveChartRoot({
   const revealRafRef = useRef<number | null>(null);
   const calendarViewportRetryRafRef = useRef<number | null>(null);
   const chartReady = revealedKey === viewKey;
+  // 사이드카 reveal 캡(개선안 1-A): 캔들·호가가 settle된 뒤 사이드카를 최대
+  // SIDECAR_REVEAL_CAP_MS만 기다리고, 그 안에 안 오면 reveal한다(사이드카가 rate-limit로
+  // 늘어질 때 캔들을 인질로 잡지 않게). viewKey 단위 리셋 — 종목/타임프레임 전환마다 새 캡.
+  const [sidecarCapReached, setSidecarCapReached] = useState(false);
+  const sidecarCapTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   useEffect(() => {
     lastAppliedCountRef.current = null;
     lastStableCandleLogicalIndexRef.current = null;
@@ -593,12 +610,32 @@ export function LiveChartRoot({
       cancelAnimationFrame(calendarViewportRetryRafRef.current);
       calendarViewportRetryRafRef.current = null;
     }
+    // 새 뷰마다 사이드카 캡 리셋 — 이전 뷰의 cap-reached가 새 뷰 첫 커밋을 조기 reveal하지 않게.
+    if (sidecarCapTimerRef.current !== null) {
+      clearTimeout(sidecarCapTimerRef.current);
+      sidecarCapTimerRef.current = null;
+    }
+    setSidecarCapReached(false);
   }, [viewKey]);
   // Cancel a pending reveal rAF on unmount so it can't setState after teardown.
   useEffect(() => () => {
     if (revealRafRef.current !== null) cancelAnimationFrame(revealRafRef.current);
     if (calendarViewportRetryRafRef.current !== null) cancelAnimationFrame(calendarViewportRetryRafRef.current);
+    if (sidecarCapTimerRef.current !== null) clearTimeout(sidecarCapTimerRef.current);
   }, []);
+  // 사이드카 reveal 캡(개선안 1-A): 캔들·호가가 settle됐는데 사이드카만 아직이면,
+  // 최대 SIDECAR_REVEAL_CAP_MS 뒤 cap-reached로 표시해 reveal 게이트를 연다. 타이머는
+  // viewKey 리셋/언마운트에서만 정리하므로(dep churn에 재시작 안 함) 정확히 한 창(window)당
+  // 한 번 동작한다. 사이드카가 캡 전에 settle되면 메인 reveal effect가 즉시 열어(아래 dep에
+  // isSidecarLoading 포함) 이 타이머는 무해하게 fire(revealedKey===viewKey 가드로 no-op).
+  useEffect(() => {
+    const waitingOnSidecar = isSidecarLoading && !isPastCandlesLoading && !isHogaLoading;
+    if (!waitingOnSidecar || sidecarCapReached || sidecarCapTimerRef.current !== null) return;
+    sidecarCapTimerRef.current = setTimeout(() => {
+      sidecarCapTimerRef.current = null;
+      setSidecarCapReached(true);
+    }, SIDECAR_REVEAL_CAP_MS);
+  }, [isSidecarLoading, isPastCandlesLoading, isHogaLoading, sidecarCapReached]);
 
   // Leftward-pan historical backfill + staleness-free viewport repositioning
   // (pre-swap layout snapshot, post-setData reposition, lazy-fetch trigger,
@@ -687,7 +724,11 @@ export function LiveChartRoot({
     // 뒤에서 그대로 선행하고, 호가 settle 시 effect가 재실행돼(isHogaLoading dep) reveal.
     // 팬 경로(historicalFromDate)는 일부러 이 게이트를 우회한다(raw reveal 유지).
     const revealWhenSettled = () => {
-      if (!isHogaLoading) reveal();
+      // 캔들·호가·사이드카가 모두 settle될 때까지 홀드 → 모든 pane이 한 번의 reveal로
+      // 등장(개선안 1-A). 단, 사이드카는 캡(SIDECAR_REVEAL_CAP_MS) 경과 시 대기 해제해
+      // rate-limit로 늘어질 때 캔들을 인질로 잡지 않는다.
+      const sidecarBlocking = isSidecarLoading && !sidecarCapReached;
+      if (!isHogaLoading && !sidecarBlocking) reveal();
     };
     if (!chart || !cb) {
       // No chart/bundle to position yet. If the past-candle fetch has SETTLED
@@ -896,7 +937,7 @@ export function LiveChartRoot({
     } catch {
       // chart torn down between effect runs
     }
-  }, [chart, cb, timeframe, venue, isPastCandlesLoading, isHogaLoading, viewKey, revealedKey, restoreViewport, viewportLayoutTick]);
+  }, [chart, cb, timeframe, venue, isPastCandlesLoading, isHogaLoading, isSidecarLoading, sidecarCapReached, viewKey, revealedKey, restoreViewport, viewportLayoutTick]);
 
   useEffect(() => {
     const el = containerRef.current;

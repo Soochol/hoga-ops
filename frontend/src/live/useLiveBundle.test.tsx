@@ -487,6 +487,47 @@ describe('useLiveBundle', () => {
     expect(result.current.isHogaLoading).toBe(false);
   });
 
+  it('reports isSidecarLoading while the sidecar delta is pending with no data (개선안 1-A)', () => {
+    // beforeEach enables tradeVolumePoc/volumeDistribution/programTrade → sidecarEnabled.
+    useRangeSidecarDeltaSpy.mockImplementation(() => ({
+      data: null,
+      isLoading: true,
+      error: null,
+      isPlaceholderData: false,
+      isFetching: true,
+      isHistoricalDeltaFetching: false,
+    }));
+    const { result } = renderHook(() => useLiveBundle('005930', '1m', '20260527', liveFixture), { wrapper: createWrapper() });
+    expect(result.current.isSidecarLoading).toBe(true);
+  });
+
+  it('clears isSidecarLoading once the sidecar delta settles', () => {
+    // Default beforeEach mock: sidecar delta settled (isLoading false).
+    const { result } = renderHook(() => useLiveBundle('005930', '1m', '20260527', liveFixture), { wrapper: createWrapper() });
+    expect(result.current.isSidecarLoading).toBe(false);
+  });
+
+  it('does not hold isSidecarLoading when no sidecar indicator is enabled (sidecarEnabled=false)', () => {
+    useLivePageStore.setState({
+      tradeVolumePocEnabled: false,
+      volumeDistributionEnabled: false,
+      programTradeEnabled: false,
+      askPeakEnabled: false,
+      bidPeakEnabled: false,
+      brokerLateEntryEnabled: false,
+    });
+    useRangeSidecarDeltaSpy.mockImplementation(() => ({
+      data: null,
+      isLoading: true,
+      error: null,
+      isPlaceholderData: false,
+      isFetching: true,
+      isHistoricalDeltaFetching: false,
+    }));
+    const { result } = renderHook(() => useLiveBundle('005930', '1m', '20260527', liveFixture), { wrapper: createWrapper() });
+    expect(result.current.isSidecarLoading).toBe(false);
+  });
+
   it('splits the candle side (chartBundle) from the live hoga overlay (bundle)', () => {
     // Bundle-split (2026-06-09, Phase A): candle/volume/axis read `chartBundle`
     // (no ob/trade deps → stable across SSE ticks); hoga panes read the full
