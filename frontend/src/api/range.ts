@@ -13,6 +13,7 @@ import {
 } from './rangeRequest';
 import { useSourcePreferenceStore } from '../state/sourcePreference';
 import type { SourcePreference } from '../state/sourcePreference';
+import { useLivePromotionStore } from '../state/livePromotion';
 
 export { buildRangeBundleRequest, rangePlaceholderData };
 export type { RangeBundleRequest, RangeBundleRequestInput, RangeQueryKey, RangeRequestOptions } from './rangeRequest';
@@ -54,6 +55,24 @@ export function rangeFreshnessOptions(
   return includesToday
     ? { staleTime: TODAY_RANGE_REFETCH_MS, refetchInterval: TODAY_RANGE_REFETCH_MS }
     : { staleTime: Infinity, refetchInterval: false };
+}
+
+/** Whether an at-rest today-range delta should refetch now.
+ *
+ * Three triggers: (1) never fetched, (2) the 5-min polling fallback elapsed,
+ * (3) WS 푸시 승격 무효화 — a promotion_completed stamp landed *after* our last
+ * fetch. Convergence/termination (the property that matters): once the refetch
+ * lands, `previousUpdatedAtMs` (react-query dataUpdatedAt) advances past
+ * `lastPromotionMs`, so trigger (3) goes false and a stale stamp cannot
+ * re-trigger — mirrors the past-candles bumpMergedVersion termination guard. */
+export function liveRangeRefreshDue(
+  previousUpdatedAtMs: number | undefined,
+  nowMs: number,
+  lastPromotionMs: number,
+): boolean {
+  if (!previousUpdatedAtMs) return true;
+  if (nowMs >= previousUpdatedAtMs + TODAY_RANGE_REFETCH_MS) return true;
+  return lastPromotionMs > 0 && lastPromotionMs > previousUpdatedAtMs;
 }
 
 export type RangeBundleQueryOptionsInput = RangeBundleRequestInput;
@@ -141,6 +160,9 @@ function planLiveRangeDelta(
   previousUpdatedAtMs?: number,
   nowMs: number = Date.now(),
   mode: LiveRangeDeltaMode = 'sidecar',
+  // Client-clock stamp of the last promotion_completed event for this code
+  // (0 = none). Added as a trailing param so the plan* wrappers stay unchanged.
+  lastPromotionMs: number = 0,
 ): RangeDeltaPlan {
   const identity = liveRangeDeltaIdentity(input);
   const request = buildRangeBundleRequest(input);
@@ -178,7 +200,7 @@ function planLiveRangeDelta(
 
   if (sameIdentity && previous.from_date === input.from) {
     const nextRefreshAtMs = previousUpdatedAtMs ? previousUpdatedAtMs + TODAY_RANGE_REFETCH_MS : 0;
-    const refreshDue = !previousUpdatedAtMs || nowMs >= nextRefreshAtMs;
+    const refreshDue = liveRangeRefreshDue(previousUpdatedAtMs, nowMs, lastPromotionMs);
     return {
       enabled: refreshDue,
       requestInput: { ...input, from: input.to, to: input.to },
@@ -427,9 +449,12 @@ function useLiveRangeDelta(
     ? merged
     : cachedLiveRangeDeltaPrevious(queryClient, baseInput, identity);
   const previous = cachedPrevious?.data;
+  // Per-code promotion stamp — updating it re-renders only this code's hooks,
+  // recomputing the plan so refreshDue fires the moment disk data advances.
+  const lastPromotionMs = useLivePromotionStore((s) => (code ? s.byCode[code] ?? 0 : 0));
   const plan = useMemo(
-    () => planLiveRangeDelta(baseInput, previous, previousIdentity, cachedPrevious?.updatedAtMs, nowMs, mode),
-    [baseInput, previous, previousIdentity, cachedPrevious?.updatedAtMs, nowMs, mode],
+    () => planLiveRangeDelta(baseInput, previous, previousIdentity, cachedPrevious?.updatedAtMs, nowMs, mode, lastPromotionMs),
+    [baseInput, previous, previousIdentity, cachedPrevious?.updatedAtMs, nowMs, mode, lastPromotionMs],
   );
   const request = buildRangeBundleRequest(plan.requestInput);
   const { staleTime, refetchInterval } = rangeFreshnessOptions(plan.requestInput.to, request.todayKst);

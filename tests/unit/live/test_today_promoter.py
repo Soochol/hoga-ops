@@ -141,6 +141,37 @@ async def test_today_promoter_empty_codes_no_promote_calls(
 
 
 @pytest.mark.asyncio
+async def test_today_promoter_publishes_only_on_real_promotion(
+    tmp_path: Path, monkeypatch,
+) -> None:
+    """on_promoted fires for a code that actually promoted (promote_today → date),
+    never for a skip (promote_today → None). A spurious event would refetch the
+    frontend's today range for nothing (WS 푸시 승격 무효화)."""
+    events: list[dict] = []
+
+    async def fake_promote(data_dir, *, code):
+        # 003490 has data to promote; 058610 is a skip (no jsonl this cycle).
+        return "20260708" if code == "003490" else None
+
+    monkeypatch.setattr("hoga.live.lifecycle.promote_today", fake_promote)
+
+    task = await start_today_promoter(
+        data_dir=tmp_path,
+        get_active_codes=lambda: ["003490", "058610"],
+        interval_s=0.05,
+        on_promoted=events.append,
+    )
+    await asyncio.sleep(0.12)
+    await stop_today_promoter(task)
+
+    assert events, "expected at least one promotion_completed event"
+    assert all(e["type"] == "promotion_completed" for e in events)
+    published_codes = {e["code"] for e in events}
+    assert published_codes == {"003490"}  # skip code never published
+    assert all(e["date"] == "20260708" for e in events)
+
+
+@pytest.mark.asyncio
 async def test_today_promoter_promotes_ws_and_api_targets(
     tmp_path: Path, monkeypatch,
 ) -> None:

@@ -14,6 +14,7 @@ import {
   rangeBundleQueryOptions,
   rangeFreshnessOptions,
   rangePlaceholderData,
+  liveRangeRefreshDue,
   TODAY_RANGE_REFETCH_MS,
 } from './range';
 import * as client from './client';
@@ -27,6 +28,34 @@ function makeWrapper() {
     <QueryClientProvider client={qc}>{children}</QueryClientProvider>
   );
 }
+
+describe('liveRangeRefreshDue — WS 푸시 승격 무효화 convergence', () => {
+  const T = 1_000_000; // an arbitrary fetch time
+
+  it('a promotion after the last fetch triggers a refresh ahead of the 5-min timer', () => {
+    expect(liveRangeRefreshDue(T, T + 1_000, T + 500)).toBe(true);
+  });
+
+  it('CONVERGES: once the refetch lands (updatedAt past the stamp) it goes false', () => {
+    // Promotion at T+500 → refetch → dataUpdatedAt advances to T+600.
+    // Same stale stamp must NOT keep re-triggering.
+    expect(liveRangeRefreshDue(T + 600, T + 700, T + 500)).toBe(false);
+  });
+
+  it('a stamp from before the last fetch never triggers (already covered)', () => {
+    expect(liveRangeRefreshDue(T, T + 1_000, T - 500)).toBe(false);
+  });
+
+  it('no promotion: within 5 min → false, past 5 min → fallback true', () => {
+    expect(liveRangeRefreshDue(T, T + 60_000, 0)).toBe(false);
+    expect(liveRangeRefreshDue(T, T + TODAY_RANGE_REFETCH_MS, 0)).toBe(true);
+  });
+
+  it('never-fetched query is always due', () => {
+    expect(liveRangeRefreshDue(undefined, T, T)).toBe(true);
+    expect(liveRangeRefreshDue(0, T, 0)).toBe(true);
+  });
+});
 
 const fakeBundle: RangeBundle = {
   code: '005930', from_date: '20260512', to_date: '20260512', bucket_ms: 60_000,
