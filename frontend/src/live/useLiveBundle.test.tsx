@@ -452,6 +452,53 @@ describe('useLiveBundle', () => {
     expect(result.current.chartBundle).toBeNull();
   });
 
+  it('holds hoga series empty while the cold minute candle load is pending (UN 대량 시간점 삽입 크래시 가드)', () => {
+    // 콜드: past-candles 미settle. 이때 SSE-유래 hoga 포인트가 캔들보다 먼저 커밋되면
+    // 공유 timeScale에 캔들이 뒤늦게 대량 삽입되며 lwc 내부가 깨진다(2026-07-08 UN 크래시).
+    livePastCandlesSpy.mockImplementation(() => ({
+      data: null,
+      isLoading: true,
+      error: null,
+      isPlaceholderData: false,
+      isFetching: true,
+    } as unknown as ReturnType<typeof livePastCandlesSpy>));
+    const { result } = renderHook(() => useLiveBundle('005930', '1m', '20260527', liveFixture), { wrapper: createWrapper() });
+    expect(result.current.bundle!.quote_ratio.points).toEqual([]);
+    expect(result.current.bundle!.fill_strength.points).toEqual([]);
+    expect(result.current.hogaBundle!.quote_ratio.points).toEqual([]);
+  });
+
+  it('releases the held hoga series once the candle query settles', () => {
+    livePastCandlesSpy.mockImplementation(() => ({
+      data: null,
+      isLoading: true,
+      error: null,
+      isPlaceholderData: false,
+      isFetching: true,
+    } as unknown as ReturnType<typeof livePastCandlesSpy>));
+    const { result, rerender } = renderHook(() => useLiveBundle('005930', '1m', '20260527', liveFixture), { wrapper: createWrapper() });
+    expect(result.current.bundle!.quote_ratio.points).toEqual([]);
+    livePastCandlesSpy.mockImplementation(() => ({
+      data: {
+        code: '005930',
+        from: '',
+        to: '',
+        candles: candlesMock.candles,
+        cached_dates: [],
+        fresh_dates: [],
+        data_warnings: [],
+        effective_sessions: [],
+      },
+      isLoading: false,
+      error: null,
+      isPlaceholderData: false,
+      isFetching: false,
+    }));
+    rerender();
+    expect(result.current.bundle!.quote_ratio.points.length).toBe(1);
+    expect(result.current.bundle!.candles.length).toBe(1);
+  });
+
   it('exposes hogaCoverageGapDates for past candle dates the hoga bundle does not cover', () => {
     // 캔들: 과거일(20260526)+오늘(20260527), hoga 번들: 오늘만 커버 → 갭 = 과거일만.
     candlesMock.candles = [
