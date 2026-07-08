@@ -39,6 +39,10 @@ import {
   studyViewTreeCollision,
 } from './studyViewTreeDnd';
 import { useStudyViewTreeState } from './useStudyViewTreeState';
+import { StudyViewRowMenu } from './StudyViewRowMenu';
+
+/** 삭제 유예(ms) — 이 시간 안에 "실행 취소"를 누르면 서버 DELETE 자체가 나가지 않는다. */
+const DELETE_UNDO_MS = 5000;
 
 export function filterStudyViews<T extends { name: string; code: string; memo: string }>(rows: T[], query: string): T[] {
   const q = normalizeStudyViewQuery(query);
@@ -193,11 +197,20 @@ export function StudyViewsDrawer() {
   const mutations = useStudyViewMutations();
   const [rowMenu, setRowMenu] = useState<{ row: StudyViewListRow; left: number; top: number } | null>(null);
   const [renameState, setRenameState] = useState<{ id: string; value: string; error: string | null } | null>(null);
+  const [memoState, setMemoState] = useState<{ id: string; value: string; error: string | null } | null>(null);
+  const [pendingDelete, setPendingDelete] = useState<StudyViewListRow | null>(null);
   const renameCommittingRef = useRef(false);
   const renameInputRef = useRef<HTMLInputElement>(null);
+  const memoCommittingRef = useRef(false);
+  const memoInputRef = useRef<HTMLTextAreaElement>(null);
+  const pendingDeleteTimerRef = useRef<number | null>(null);
   const navigateClickTimerRef = useRef<number | null>(null);
   const navigate = useNavigate();
   const location = useLocation();
+  // 삭제 유예 중인 행은 트리·그룹 최신뷰 계산 모두에서 즉시 사라져야 하므로
+  // 소스 배열 단계에서 걸러낸다(실행 취소 시 원배열 복귀 = 상태 복원).
+  const allSaves = data?.saves ?? [];
+  const saves = pendingDelete ? allSaves.filter((row) => row.id !== pendingDelete.id) : allSaves;
   const {
     query,
     setQuery,
@@ -211,7 +224,7 @@ export function StudyViewsDrawer() {
     toggleVisibleGroups,
     reorderGroup,
     reorderRow,
-  } = useStudyViewTreeState(data?.saves ?? []);
+  } = useStudyViewTreeState(saves);
   const currentStudyViewId = useMemo(() => new URLSearchParams(location.search).get('view'), [location.search]);
   const activeStudyViewId = useStudyTabsStore((state) => (
     state.tabs.find((tab) => tab.id === state.activeTabId)?.viewId ?? null
@@ -236,28 +249,29 @@ export function StudyViewsDrawer() {
   }, [renameState?.id]);
 
   useEffect(() => {
-    if (!rowMenu) return;
-
-    const close = () => setRowMenu(null);
-    const closeOnEscape = (event: KeyboardEvent) => {
-      if (event.key === 'Escape') close();
-    };
-
-    document.addEventListener('mousedown', close);
-    document.addEventListener('keydown', closeOnEscape);
-    return () => {
-      document.removeEventListener('mousedown', close);
-      document.removeEventListener('keydown', closeOnEscape);
-    };
-  }, [rowMenu]);
+    if (!memoState) return;
+    memoInputRef.current?.focus();
+    memoInputRef.current?.select();
+  }, [memoState?.id]);
 
   const startRename = (row: StudyViewListRow) => {
+    setMemoState(null);
     setRenameState({ id: row.id, value: row.name, error: null });
   };
 
   const cancelRename = () => {
     renameCommittingRef.current = false;
     setRenameState(null);
+  };
+
+  const startMemoEdit = (row: StudyViewListRow) => {
+    setRenameState(null);
+    setMemoState({ id: row.id, value: row.memo, error: null });
+  };
+
+  const cancelMemoEdit = () => {
+    memoCommittingRef.current = false;
+    setMemoState(null);
   };
 
   function cancelPendingStudyViewNavigation() {
@@ -326,7 +340,29 @@ export function StudyViewsDrawer() {
     );
   };
 
-  const deleteSave = (row: StudyViewListRow) => {
+  const commitMemo = (row: StudyViewListRow) => {
+    if (!memoState || memoState.id !== row.id || memoCommittingRef.current) return;
+    const memo = memoState.value.trim();
+    if (memo === row.memo) {
+      cancelMemoEdit();
+      return;
+    }
+    memoCommittingRef.current = true;
+    mutations.updateMetadata.mutate(
+      { id: row.id, body: { memo } },
+      {
+        onSuccess: () => cancelMemoEdit(),
+        onError: (error) => {
+          memoCommittingRef.current = false;
+          setMemoState((current) => current?.id === row.id
+            ? { ...current, error: error instanceof Error ? error.message : '메모 저장에 실패했습니다.' }
+            : current);
+        },
+      },
+    );
+  };
+
+  const executeDelete = (row: StudyViewListRow) => {
     const deletedId = row.id;
     mutations.remove.mutate(deletedId, {
       onSuccess: () => {
@@ -337,6 +373,46 @@ export function StudyViewsDrawer() {
       },
     });
   };
+
+  // 언마운트(패널 전환) 시점의 flush 가 stale location/mutation 을 잡지 않도록
+  // 최신 클로저를 ref 로 유지한다.
+  const executeDeleteRef = useRef(executeDelete);
+  useEffect(() => { executeDeleteRef.current = executeDelete; });
+  const pendingDeleteRef = useRef<StudyViewListRow | null>(null);
+  useEffect(() => { pendingDeleteRef.current = pendingDelete; }, [pendingDelete]);
+
+  /** 유예 삭제 — 행은 즉시 사라지고, DELETE 는 유예 후에만 나간다. 유예 중 다른
+   *  삭제가 오면 앞선 것은 그 자리에서 확정한다(단일 실행취소 슬롯). */
+  const requestDelete = (row: StudyViewListRow) => {
+    if (pendingDeleteTimerRef.current !== null) {
+      window.clearTimeout(pendingDeleteTimerRef.current);
+      pendingDeleteTimerRef.current = null;
+      if (pendingDeleteRef.current) executeDeleteRef.current(pendingDeleteRef.current);
+    }
+    setPendingDelete(row);
+    pendingDeleteTimerRef.current = window.setTimeout(() => {
+      pendingDeleteTimerRef.current = null;
+      setPendingDelete(null);
+      executeDeleteRef.current(row);
+    }, DELETE_UNDO_MS);
+  };
+
+  const undoDelete = () => {
+    if (pendingDeleteTimerRef.current !== null) {
+      window.clearTimeout(pendingDeleteTimerRef.current);
+      pendingDeleteTimerRef.current = null;
+    }
+    setPendingDelete(null);
+  };
+
+  // 유예가 남은 채로 패널이 닫히면 삭제 의사는 이미 확정된 것 — 즉시 flush.
+  useEffect(() => () => {
+    if (pendingDeleteTimerRef.current !== null) {
+      window.clearTimeout(pendingDeleteTimerRef.current);
+      pendingDeleteTimerRef.current = null;
+    }
+    if (pendingDeleteRef.current) executeDeleteRef.current(pendingDeleteRef.current);
+  }, []);
 
   const handleDragStart = (event: DragStartEvent) => {
     if (event.active.data.current?.type !== 'group') return;
@@ -358,7 +434,7 @@ export function StudyViewsDrawer() {
     endEntryDrag();
     if (event.active.data.current?.type === 'group' && isPointOnStudy(dropPoint(event))) {
       const draggedGroup = visibleGroups.find((group) => studyViewGroupDndId(group.key) === String(event.active.id));
-      const save = draggedGroup ? latestStudyViewForCode(data?.saves ?? [], draggedGroup.code) : null;
+      const save = draggedGroup ? latestStudyViewForCode(saves, draggedGroup.code) : null;
       if (save) openStudyViewInActiveTab(save);
       return;
     }
@@ -375,29 +451,31 @@ export function StudyViewsDrawer() {
 
   const renderStudyViewRow = (row: StudyViewListRow) => {
     const isActive = selectedStudyViewId === row.id;
+    const isEditing = renameState?.id === row.id || memoState?.id === row.id;
     return (
       <RailTreeRow
         key={row.id}
-        role={renameState?.id === row.id ? undefined : 'button'}
-        tabIndex={renameState?.id === row.id ? undefined : 0}
-        aria-label={renameState?.id === row.id ? undefined : `${row.name} 저장뷰 열기`}
+        className="group"
+        role={isEditing ? undefined : 'button'}
+        tabIndex={isEditing ? undefined : 0}
+        aria-label={isEditing ? undefined : `${row.name} 저장뷰 열기`}
         aria-current={isActive ? 'true' : undefined}
         style={{
           background: isActive ? 'var(--tint-selection)' : 'transparent',
           borderLeft: `2px solid ${isActive ? 'var(--accent)' : 'transparent'}`,
         }}
-        onClick={renameState?.id === row.id ? undefined : (event) => {
+        onClick={isEditing ? undefined : (event) => {
           if (event.ctrlKey || event.metaKey) {
             openStudyViewInNewTab(row);
             return;
           }
           scheduleStudyViewNavigation(row);
         }}
-        onContextMenu={renameState?.id === row.id ? undefined : (e) => {
+        onContextMenu={isEditing ? undefined : (e) => {
           e.preventDefault();
           setRowMenu({ row, left: e.clientX, top: e.clientY });
         }}
-        onKeyDown={renameState?.id === row.id ? undefined : (e) => {
+        onKeyDown={isEditing ? undefined : (e) => {
           if (e.target !== e.currentTarget) return;
           if (e.key !== 'Enter' && e.key !== ' ') return;
           e.preventDefault();
@@ -427,6 +505,31 @@ export function StudyViewsDrawer() {
             />
             {renameState.error && <div className="text-xs text-danger">{renameState.error}</div>}
           </div>
+        ) : memoState?.id === row.id ? (
+          <div className="min-w-0 flex-1 space-y-1">
+            <div className="truncate text-xs text-fg">{row.name}</div>
+            <textarea
+              aria-label="저장뷰 메모 수정"
+              autoFocus
+              ref={memoInputRef}
+              rows={2}
+              value={memoState.value}
+              onChange={(e) => setMemoState({ ...memoState, value: e.target.value, error: null })}
+              onBlur={() => commitMemo(row)}
+              onKeyDown={(e) => {
+                if (e.key === 'Enter' && !e.shiftKey) {
+                  e.preventDefault();
+                  commitMemo(row);
+                }
+                if (e.key === 'Escape') {
+                  e.preventDefault();
+                  cancelMemoEdit();
+                }
+              }}
+              className="w-full resize-none rounded border border-line bg-bg-input px-1 py-0.5 text-xs text-fg"
+            />
+            {memoState.error && <div className="text-xs text-danger">{memoState.error}</div>}
+          </div>
         ) : (
           <div className="flex min-w-0 flex-1 items-center gap-2 leading-tight">
             <span className="h-1.5 w-1.5 shrink-0 rounded-full border border-line bg-bg" aria-hidden />
@@ -447,7 +550,28 @@ export function StudyViewsDrawer() {
               <div className="truncate text-badge text-fg-dimmer tabular-nums">
                 {formatStudyViewMeta(row)}
               </div>
+              {/* 메모 미리보기(첫 줄) — 검색만 되고 화면엔 없던 복기 노트를 목록에서
+                  바로 훑을 수 있게 한다. 메타보다 한 단계 밝은 fg-dim 으로 구분. */}
+              {row.memo && (
+                <div className="truncate text-badge text-fg-dim">{row.memo.split('\n', 1)[0]}</div>
+              )}
             </div>
+            {/* 행 메뉴 ⋯ — 평시 opacity-0 + pointer-events-none 이라 클릭이 행(열기)으로
+                통과하고, 호버/포커스 시에만 보이며 클릭 가능(관심종목 RowTrailing 과 동일
+                계약). opacity(=DOM 유지)라 Tab 포커스가 닿는다. */}
+            <button
+              type="button"
+              aria-label={`${row.name} 행 메뉴`}
+              aria-haspopup="menu"
+              onClick={(e) => {
+                e.stopPropagation();
+                cancelPendingStudyViewNavigation();
+                setRowMenu({ row, left: e.clientX, top: e.clientY });
+              }}
+              className="shrink-0 grid place-items-center px-1 leading-none text-fg-dimmer hover:text-fg opacity-0 pointer-events-none group-hover:opacity-100 group-hover:pointer-events-auto group-focus-within:opacity-100 group-focus-within:pointer-events-auto focus-visible:opacity-100 focus-visible:pointer-events-auto"
+            >
+              ⋯
+            </button>
           </div>
         )}
       </RailTreeRow>
@@ -545,7 +669,7 @@ export function StudyViewsDrawer() {
                           onClick={(event) => {
                             if (event.ctrlKey || event.metaKey) {
                               event.preventDefault();
-                              const save = latestStudyViewForCode(data?.saves ?? [], group.code);
+                              const save = latestStudyViewForCode(saves, group.code);
                               if (save) openStudyViewInNewTab(save);
                               return;
                             }
@@ -574,26 +698,32 @@ export function StudyViewsDrawer() {
             </SortableContext>
           </DndContext>
         </RailDrawerBody>
-      {rowMenu && (
-        <div
-          role="menu"
-          aria-label={`${rowMenu.row.name} 저장뷰 메뉴`}
-          className="fixed z-50 min-w-[96px] rounded border border-line bg-bg shadow-lg"
-          style={{ left: rowMenu.left, top: rowMenu.top }}
-          onMouseDown={(e) => e.stopPropagation()}
-        >
+      {/* 삭제 유예 토스트 — 패널 하단 고정 슬롯. 유예 중에만 존재하며 "실행 취소"가
+          유일한 액션(확인 다이얼로그 대신 사후 복구를 택해 정상 삭제 흐름은 무마찰). */}
+      {pendingDelete && (
+        <div role="status" className="flex items-center gap-2 border-t border-border bg-bg-card px-3 py-2 text-xs">
+          <span className="min-w-0 flex-1 truncate text-fg-dim">‘{pendingDelete.name}’ 삭제됨</span>
           <button
             type="button"
-            role="menuitem"
-            onClick={() => {
-              deleteSave(rowMenu.row);
-              setRowMenu(null);
-            }}
-            className="block w-full px-3 py-1.5 text-left text-sm hover:bg-bg-input"
+            onClick={undoDelete}
+            className="shrink-0 font-medium text-accent hover:underline"
           >
-            삭제
+            실행 취소
           </button>
         </div>
+      )}
+      {rowMenu && (
+        <StudyViewRowMenu
+          x={rowMenu.left}
+          y={rowMenu.top}
+          name={rowMenu.row.name}
+          onOpen={() => openStudyViewInActiveTab(rowMenu.row)}
+          onOpenNewTab={() => openStudyViewInNewTab(rowMenu.row)}
+          onRename={() => startRename(rowMenu.row)}
+          onEditMemo={() => startMemoEdit(rowMenu.row)}
+          onDelete={() => requestDelete(rowMenu.row)}
+          onClose={() => setRowMenu(null)}
+        />
       )}
     </RailDrawer>
   );
