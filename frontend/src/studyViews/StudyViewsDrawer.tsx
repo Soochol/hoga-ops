@@ -28,10 +28,8 @@ import {
   RailToolbarIconButton,
   RailTreeRow,
 } from '../ui/RailShell';
-import {
-  normalizeStudyViewQuery,
-  type StudyViewTreeSortDirection,
-} from './studyViewTree';
+import { SortCycleButton } from '../ui/SortCycleButton';
+import { normalizeStudyViewQuery } from './studyViewTree';
 import {
   resolveStudyViewTreeDrag,
   studyViewGroupDndId,
@@ -80,38 +78,6 @@ function ExpandAllIcon({ className }: { className?: string }) {
       <path d="M9 20h6" />
       <path d="m8 13 4 4 4-4" />
       <path d="m8 10 4 4 4-4" />
-    </svg>
-  );
-}
-
-function NameSortIcon({ direction, className }: { direction: StudyViewTreeSortDirection; className?: string }) {
-  return (
-    <svg
-      className={className}
-      data-sort-icon={direction}
-      viewBox="0 0 24 24"
-      fill="none"
-      stroke="currentColor"
-      strokeWidth="1.8"
-      strokeLinecap="round"
-      strokeLinejoin="round"
-      aria-hidden="true"
-    >
-      <path d="M5 7h7" />
-      <path d="M5 12h10" />
-      <path d="M5 17h5" />
-      {direction === 'default' ? (
-        <>
-          <path d="M16 8h4" />
-          <path d="M16 12h4" />
-          <path d="M16 16h4" />
-        </>
-      ) : (
-        <>
-          <path d="M18 6v12" />
-          <path d={direction === 'desc' ? 'm15 15 3 3 3-3' : 'm15 9 3-3 3 3'} />
-        </>
-      )}
     </svg>
   );
 }
@@ -493,16 +459,11 @@ export function StudyViewsDrawer() {
                     ? <ExpandAllIcon className="h-4 w-4" />
                     : <CollapseAllIcon className="h-4 w-4" />}
                 </RailToolbarIconButton>
-                <RailToolbarIconButton
-                  type="button"
+                <SortCycleButton
                   onClick={cycleSortMode}
-                  aria-label={sortAction.label}
-                  aria-pressed={sortAction.pressed}
-                  active={sortAction.pressed}
-                  title={sortAction.label}
-                >
-                  <NameSortIcon direction={sortAction.direction} className="h-4 w-4" />
-                </RailToolbarIconButton>
+                  direction={sortAction.direction === 'default' ? 'none' : sortAction.direction}
+                  label={sortAction.label}
+                />
               </div>
             )}
           </div>
