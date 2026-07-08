@@ -1415,6 +1415,29 @@ describe('LiveChartRoot', () => {
     expect(cover.style.opacity).toBe('1');
   });
 
+  it('paints the cover above the chart pane content (z-index guard)', () => {
+    // Load-bearing: lightweight-charts canvases paint at z-index 1 and pane
+    // overlays at 4–20, so a default `auto` cover masks nothing (verified via
+    // /browse 2026-07-08 — the hoga panes bled through as the cold-load desync).
+    // The cover must stay above all pane content (≤20) and below the drawing
+    // toolbar (z:49-50). This guards against a regression that silently
+    // un-masks the reveal.
+    useLivePageStore.setState({ historicalFromDate: null });
+    render(
+      <LiveChartRoot
+        code="005930"
+        timeframe="1m"
+        bundle={makeBundleWithCandles(100)}
+        clampEngaged={false}
+        isPastCandlesLoading={false}
+      />,
+      { wrapper },
+    );
+    const z = Number(screen.getByTestId('chart-reveal-cover').style.zIndex);
+    expect(z).toBeGreaterThan(20);
+    expect(z).toBeLessThan(49);
+  });
+
   it('fades the cover out (opacity 0) two rAFs after the initial viewport is applied', async () => {
     useLivePageStore.setState({ historicalFromDate: null });
     render(
@@ -1518,6 +1541,107 @@ describe('LiveChartRoot', () => {
         bundle={makeBundleWithCandles(100)}
         clampEngaged={false}
         isPastCandlesLoading={false}
+      />,
+      { wrapper },
+    );
+    await flushFrames(3);
+    expect(screen.getByTestId('chart-reveal-cover').style.opacity).toBe('0');
+  });
+
+  // 데이터 홀드: 캔들이 먼저 도착해도 호가 경로가 settle될 때까지 reveal을 홀드해
+  // 캔들+호가 pane이 한 번의 reveal로 등장하게 한다(초기 로드/전환).
+  it('holds the cover while the hoga path is still loading (candles present)', async () => {
+    useLivePageStore.setState({ historicalFromDate: null });
+    render(
+      <LiveChartRoot
+        code="005930"
+        timeframe="1m"
+        bundle={makeBundleWithCandles(100)}
+        clampEngaged={false}
+        isPastCandlesLoading={false}
+        isHogaLoading={true}
+      />,
+      { wrapper },
+    );
+    await flushFrames(3);
+    // 캔들은 도착했지만 호가 미도착 → 커버 유지 + 호가 홀드 노트 표시.
+    expect(screen.getByTestId('chart-reveal-cover').style.opacity).toBe('1');
+    expect(screen.getByTestId('hoga-loading-note').textContent).toContain('지표 불러오는 중');
+  });
+
+  it('reveals once the hoga path settles (candles already present)', async () => {
+    useLivePageStore.setState({ historicalFromDate: null });
+    const { rerender } = render(
+      <LiveChartRoot
+        code="005930"
+        timeframe="1m"
+        bundle={makeBundleWithCandles(100)}
+        clampEngaged={false}
+        isPastCandlesLoading={false}
+        isHogaLoading={true}
+      />,
+      { wrapper },
+    );
+    await flushFrames(3);
+    expect(screen.getByTestId('chart-reveal-cover').style.opacity).toBe('1');
+    rerender(
+      <LiveChartRoot
+        code="005930"
+        timeframe="1m"
+        bundle={makeBundleWithCandles(100)}
+        clampEngaged={false}
+        isPastCandlesLoading={false}
+        isHogaLoading={false}
+      />,
+    );
+    await flushFrames(3);
+    // 호가 settle → reveal, 홀드 노트 소멸.
+    expect(screen.getByTestId('chart-reveal-cover').style.opacity).toBe('0');
+    expect(screen.queryByTestId('hoga-loading-note')).toBeNull();
+  });
+
+  it('holds an empty-candle chart until the hoga path also settles', async () => {
+    useLivePageStore.setState({ historicalFromDate: null });
+    const { rerender } = render(
+      <LiveChartRoot
+        code="005930"
+        timeframe="1m"
+        bundle={makeBundleWithCandles(0)}
+        clampEngaged={false}
+        isPastCandlesLoading={false}
+        isHogaLoading={true}
+      />,
+      { wrapper },
+    );
+    await flushFrames(3);
+    // 캔들 settle(0개)이어도 호가 pending이면 커버 유지.
+    expect(screen.getByTestId('chart-reveal-cover').style.opacity).toBe('1');
+    rerender(
+      <LiveChartRoot
+        code="005930"
+        timeframe="1m"
+        bundle={makeBundleWithCandles(0)}
+        clampEngaged={false}
+        isPastCandlesLoading={false}
+        isHogaLoading={false}
+      />,
+    );
+    await flushFrames(3);
+    // 호가도 settle → 신규상장 등 데이터 없는 코드도 reveal(커버가 wedge되지 않게).
+    expect(screen.getByTestId('chart-reveal-cover').style.opacity).toBe('0');
+  });
+
+  it('does not gate the reveal on a panned view (historicalFromDate set), even while hoga loads', async () => {
+    // 팬 경로는 이미 과거를 보고 있는 뷰라 데이터 홀드 대상이 아니다 — reveal 즉시.
+    useLivePageStore.setState({ historicalFromDate: '20260601' });
+    render(
+      <LiveChartRoot
+        code="005930"
+        timeframe="1m"
+        bundle={makeBundleWithCandles(100)}
+        clampEngaged={false}
+        isPastCandlesLoading={false}
+        isHogaLoading={true}
       />,
       { wrapper },
     );

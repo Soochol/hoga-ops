@@ -190,6 +190,10 @@ interface Props {
   ratioBundle?: RangeBundle | null;
   clampEngaged: boolean;
   isPastCandlesLoading: boolean;
+  /** useLiveBundle.isHogaLoading — 호가 지표 경로 초기 fetch pending. reveal 커버가
+   *  isPastCandlesLoading과 함께 써서 캔들+호가 pane을 한 번의 reveal로 등장시킨다.
+   *  옵셔널 + 기본 false라 StudyPage·스냅샷 복원·기존 테스트는 무변경으로 settled. */
+  isHogaLoading?: boolean;
   /** useLiveBundle.isExtending. false-edge = 한 스텝 settle → 진행 루프 다음 스텝 판정. */
   isExtending?: boolean;
   /** 활성 경로 과거 fetch 경고(rate-limit 등, useLiveBundle). 캔들 없으면 빈칸 문구를
@@ -269,6 +273,7 @@ export function LiveChartRoot({
   ratioBundle,
   clampEngaged,
   isPastCandlesLoading,
+  isHogaLoading = false,
   isExtending = false,
   pastDataWarnings,
   restoreViewport = null,
@@ -669,20 +674,28 @@ export function LiveChartRoot({
         });
       });
     };
+    // 데이터 홀드: 캔들 경로가 먼저 settle될 수 있으므로, 호가 경로도 settle될 때까지
+    // reveal을 홀드해 모든 pane이 한 번의 reveal로 등장하게 한다. 뷰포트 적용은 커버
+    // 뒤에서 그대로 선행하고, 호가 settle 시 effect가 재실행돼(isHogaLoading dep) reveal.
+    // 팬 경로(historicalFromDate)는 일부러 이 게이트를 우회한다(raw reveal 유지).
+    const revealWhenSettled = () => {
+      if (!isHogaLoading) reveal();
+    };
     if (!chart || !cb) {
       // No chart/bundle to position yet. If the past-candle fetch has SETTLED
       // with no bundle to show (no active code / null bundle), reveal anyway so
       // the cover can't wedge opaque over a chartless surface; while still
       // loading, keep it up. Safe against a re-flash: a null bundle means no
       // candle data is pending, so nothing can later paint at the wrong zoom.
-      if (chart && !isPastCandlesLoading) reveal();
+      if (chart && !isPastCandlesLoading && !isHogaLoading) reveal();
       return;
     }
     if (cb.candles.length === 0) {
-      // No candles yet. If the past-candle fetch has settled (empty result, or
-      // D/W/M with no history), reveal the empty chart so the cover doesn't
-      // linger; while it's still loading, keep the cover up.
-      if (!isPastCandlesLoading) reveal();
+      // No candles yet. If both the past-candle AND hoga fetches have settled
+      // (empty result, or D/W/M with no history), reveal the empty chart so the
+      // cover doesn't linger; while either is still loading, keep the cover up.
+      // 신규상장 등 진짜 데이터 없는 코드도 호가가 빈/에러로 settle되므로 게이트가 열린다.
+      if (!isPastCandlesLoading && !isHogaLoading) reveal();
       return;
     }
     // A안 (ADR-0069): a tab carrying a saved viewport restores its exact view on
@@ -755,7 +768,7 @@ export function LiveChartRoot({
           }
           if (range.scrollToRight) tsR.scrollToPosition(0, false);
           lastAppliedCountRef.current = totalBarsR;
-          reveal();
+          revealWhenSettled();
           return;
         }
         // range null (anchor fell outside the rebuilt axis, not live-edge) →
@@ -800,7 +813,7 @@ export function LiveChartRoot({
           // chart torn down between effect runs
         }
       }
-      reveal();
+      revealWhenSettled();
       return;
     }
     const historicalFromDate = useLivePageStore.getState().historicalFromDate;
@@ -836,7 +849,7 @@ export function LiveChartRoot({
         // Minute timeframes carry ~5000 1m bars and need 300-bar windowing
         // to stay legible. Apply once per (code, timeframe): SSE pushes
         // inside today's segment must not snap the user's scroll.
-        if (applied !== null) { reveal(); return; }
+        if (applied !== null) { revealWhenSettled(); return; }
         const lastMs = cb.candles[cb.candles.length - 1]?.ts_ms;
         let latestLogicalIndex: number | null = null;
         if (lastMs != null && typeof ts.timeToIndex === 'function') {
@@ -852,12 +865,12 @@ export function LiveChartRoot({
         const to = latest + 1 + rightOffset;
         ts.setVisibleLogicalRange({ from, to });
         lastAppliedCountRef.current = totalBars;
-        reveal();
+        revealWhenSettled();
       } else if (isCalendarTimeframe(timeframe)) {
         // Calendar frames avoid fitContent's multi-step internal range settle.
         // Use a width-derived span with the standard rightOffset so D/W/M all
         // open with visible candles plus the same empty area on the right.
-        if (applied === totalBars) { reveal(); return; }
+        if (applied === totalBars) { revealWhenSettled(); return; }
         const plotWidth = Math.max(ts.width(), containerRef.current?.clientWidth ?? 0);
         if (plotWidth < CALENDAR_MIN_VIEWPORT_WIDTH_PX) {
           if (calendarViewportRetryRafRef.current === null) {
@@ -870,12 +883,12 @@ export function LiveChartRoot({
         }
         ts.setVisibleLogicalRange(dailyLogicalRange(totalBars, plotWidth, null));
         lastAppliedCountRef.current = totalBars;
-        reveal();
+        revealWhenSettled();
       }
     } catch {
       // chart torn down between effect runs
     }
-  }, [chart, cb, timeframe, venue, isPastCandlesLoading, viewKey, revealedKey, restoreViewport, viewportLayoutTick]);
+  }, [chart, cb, timeframe, venue, isPastCandlesLoading, isHogaLoading, viewKey, revealedKey, restoreViewport, viewportLayoutTick]);
 
   useEffect(() => {
     const el = containerRef.current;
@@ -1700,11 +1713,19 @@ export function LiveChartRoot({
       {/* Reveal cover — masks the chart + its overlays while the initial
           viewport's barSpacing settles (see chartReady gate above), then fades
           out so the candles appear once at the final zoom instead of flashing
-          in at lightweight-charts' default ~60-bar fit and zooming out. Painted
-          after the chart/overlay fragment (above it) but before the loading /
-          clamp notes below (so those stay visible through the masked window).
+          in at lightweight-charts' default ~60-bar fit and zooming out.
           bg-card matches the chart background, so the cover reads as the empty
           chart surface during a cold load.
+
+          z-index 30 is LOAD-BEARING: lightweight-charts paints its canvases at
+          `position:absolute; z-index:1` and the pane overlays at z-index 4–20,
+          so a cover at the default `auto` paints BELOW them and masks NOTHING
+          (verified 2026-07-08 via /browse: forcing opacity:1 left the whole
+          chart visible — the hoga panes, which resolve ~2s before the candles,
+          bled through and produced the "hoga pane alone" cold-load desync).
+          30 sits above all pane content (≤20) and below the drawing toolbar
+          (z:49-50) so the toolbar/右 10호가 ladder stay put. The loading/clamp
+          notes below carry z-index 31 to remain visible through the mask.
 
           The transition is asymmetric: it animates only on REVEAL (chartReady
           true → fade out). Masking (chartReady false, e.g. a watchlist switch)
@@ -1720,6 +1741,7 @@ export function LiveChartRoot({
           opacity: chartReady ? 0 : 1,
           transition: chartReady ? 'opacity 0.16s ease-out' : 'none',
           pointerEvents: 'none',
+          zIndex: 30,
         }}
       />
       {dwDisabled && (
@@ -1737,6 +1759,7 @@ export function LiveChartRoot({
             borderRadius: 'var(--radius-md)',
             border: '1px solid var(--border)',
             pointerEvents: 'none',
+            zIndex: 31,
           }}
         >
           라이브 지표는 분봉에서 표시됩니다
@@ -1752,10 +1775,26 @@ export function LiveChartRoot({
             position: 'absolute', inset: 0, display: 'flex',
             alignItems: 'center', justifyContent: 'center',
             pointerEvents: 'none', color: 'var(--fg-dimmer)',
-            fontSize: 'var(--text-sm)',
+            fontSize: 'var(--text-sm)', zIndex: 31,
           }}
         >
           {warnSummary.hasRateLimit ? 'KIS 호출 한도로 지연 중 — 잠시 후 재시도…' : '분봉 불러오는 중…'}
+        </div>
+      )}
+      {/* 호가 홀드 노트: 캔들은 도착했지만 호가 경로 settle을 기다리며 reveal이 홀드된 동안
+          표시. 침묵 커버가 "행"처럼 보이는 걸 막는다. !chartReady 가드로 ungated 팬 경로에서
+          revealed 차트 위 플래시를 막는다. 커버 div 뒤에 렌더돼 커버 위에 페인트된다. */}
+      {cb !== null && cb.candles.length > 0 && !chartReady && isHogaLoading && (
+        <div
+          data-testid="hoga-loading-note"
+          style={{
+            position: 'absolute', inset: 0, display: 'flex',
+            alignItems: 'center', justifyContent: 'center',
+            pointerEvents: 'none', color: 'var(--fg-dimmer)',
+            fontSize: 'var(--text-sm)', zIndex: 31,
+          }}
+        >
+          지표 불러오는 중…
         </div>
       )}
       {/* bottom-left 상태 칩 스택: 부분로딩(rate-limit, 위) + 클램프(아래). 둘 다
@@ -1765,7 +1804,7 @@ export function LiveChartRoot({
           style={{
             position: 'absolute', bottom: 'var(--space-md)', left: 'var(--space-md)',
             display: 'flex', flexDirection: 'column', gap: 'var(--space-xs)',
-            pointerEvents: 'none',
+            pointerEvents: 'none', zIndex: 31,
           }}
         >
           {/* 캔들은 있는데 일부 과거구간이 rate-limit 등으로 누락 → 비차단 안내. */}
