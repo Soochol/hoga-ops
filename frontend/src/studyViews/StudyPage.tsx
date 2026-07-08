@@ -539,6 +539,7 @@ export function StudyPage() {
                     dayBidPeaks={activeViewModel.bundle.bid_peaks}
                     todayKst={activeViewModel.save.range.to_date}
                     tradeVolumePocs={tradeVolumePocsFromWire(activeViewModel.bundle.trade_volume_pocs)}
+                    depthHeatmap={activeViewModel.bundle.depth_heatmap}
                     forceHogaPanes
                     onViewportCaptureReady={handleViewportCaptureReady}
                   />

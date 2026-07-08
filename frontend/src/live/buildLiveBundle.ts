@@ -525,6 +525,7 @@ export function buildChartBundle(input: BuildChartBundleInput): RangeBundle {
     broker_late_entries: pastBundle?.broker_late_entries ?? [],
     price_level_hits: pastBundle?.price_level_hits ?? [],
     trade_volume_pocs: pastBundle?.trade_volume_pocs ?? [],
+    depth_heatmap: pastBundle?.depth_heatmap ?? [],
   };
 }
 
