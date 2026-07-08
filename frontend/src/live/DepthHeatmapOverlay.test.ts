@@ -32,4 +32,23 @@ describe('buildDepthHeatmapCells', () => {
     expect(cells.length).toBe(1);  // ask qty0 skipped
     expect(cells[0].price).toBe(9);
   });
+  it('화면 밖 큰 벽은 정규화 천장을 잡지 않는다 — 화면 내 최대로 재정규화', () => {
+    // tMs=60000 버킷의 벽(9000)이 화면 밖이면, 화면(tMs=180000) 안의 최대(600)가 천장.
+    const pts: DepthHeatmapPoint[] = [
+      { tMs: 60000, asks: [{ price: 1010, qty: 9000 }], bids: [] },   // 화면 밖 거대 벽
+      { tMs: 180000, asks: [{ price: 1010, qty: 600 }], bids: [{ price: 1000, qty: 600 }] },
+    ];
+    // 화면 범위 [120000,240000] — tMs=60000 제외. 화면 내 max=600 → 두 셀 모두 full α.
+    const visible = buildDepthHeatmapCells(pts, axis, 120000, 240000, {
+      bidColor: '#F04452', askColor: '#3485FA', maxOpacity: 1,
+    });
+    expect(visible.length).toBe(2);
+    expect(visible.every((c) => c.fillColor.endsWith(', 1)'))).toBe(true);
+    // 대조: 전 범위면 화면 밖 9000이 천장이라 같은 600셀이 옅어진다((600/9000)^0.65 ≈ 0.15).
+    const full = buildDepthHeatmapCells(pts, axis, -Infinity, Infinity, {
+      bidColor: '#F04452', askColor: '#3485FA', maxOpacity: 1,
+    });
+    const visibleCell = full.find((c) => c.price === 1000)!;
+    expect(visibleCell.fillColor).toMatch(/^rgba\(240, 68, 82, 0\.1[0-9]+\)$/);
+  });
 });
