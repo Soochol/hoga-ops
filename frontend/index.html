@@ -5,6 +5,16 @@
     <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>hoga-ops</title>
+    <!-- App type + data faces. IBM Plex Sans KR carries Latin + Hangul in one
+         family; IBM Plex Mono carries every number (tabular-nums). The Tailwind
+         font-ui/font-mono utilities resolve to var(--font-ui)/var(--font-mono),
+         defined in styles/tokens.css. -->
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link
+      href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans+KR:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;500;600&display=swap"
+      rel="stylesheet"
+    />
   </head>
   <body>
     <div id="root"></div>

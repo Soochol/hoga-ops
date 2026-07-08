@@ -1,5 +1,6 @@
 @import './tokens.css';
-@import url('https://fonts.googleapis.com/css2?family=Geist:wght@400;500;600;700&family=Geist+Mono:wght@400;500;600&display=swap');
+/* IBM Plex Sans KR + IBM Plex Mono load via <link> in index.html (preconnect +
+   render-blocking stylesheet) so the first paint already has the right faces. */
 
 @tailwind base;
 @tailwind components;

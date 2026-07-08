@@ -11,6 +11,13 @@
      Chart canvas options in util/chartScale.ts are NOT reactive — see DESIGN.md Scale Factor. */
   font-size: 20px;
 
+  /* ───── Typography · Font families (theme-independent) ─────
+     IBM Plex Sans KR carries Latin + Hangul in one family; IBM Plex Mono
+     carries every number (font-variant-numeric: tabular-nums). Faces load via
+     <link> in index.html. Tailwind font-ui/sans/mono resolve to these. */
+  --font-ui: 'IBM Plex Sans KR', 'Pretendard', ui-sans-serif, system-ui, 'Malgun Gothic', sans-serif;
+  --font-mono: 'IBM Plex Mono', ui-monospace, 'SF Mono', 'Menlo', Consolas, monospace;
+
   /* ───── Color · Surfaces ───── */
   --bg: #090b0f;
   --bg-card: #10151b;
