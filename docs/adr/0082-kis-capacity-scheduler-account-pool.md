@@ -170,3 +170,68 @@ and emergency fallback adapters only"로 남기고, `run_with_capacity`가
 본 amendment로 폐기된다. 새 불변식: **모든 KIS REST 데이터 fetch는
 `run_with_capacity(scheduler, ...)`를 통과하며, 스케줄러 없는 경로는 존재하지
 않는다.**
+
+## Amendment (2026-07-08): 명의-단위 한도 반증 + 계좌 계층 존재이유 재정의 + 예약 게이트 제거
+
+**배경 — 운영 가정이 반증됐다.** 원 결정의 Context는 "KIS REST 한도는
+계좌/appkey 단위(per account/appkey)"라는 운영 가정을 채택하고, 그 위에서
+"configured 계좌를 추가하면 REST 용량이 대략 선형으로 늘어난다
+(`healthy_accounts * per-account KIS rate limit`)"를 Consequences로 약속했다.
+
+이 가정은 실측으로 반증됐다. `/investigate 2026-07-07`에서 **한도가 명의(名義)
+단위**임이 확인됐다 — 3계좌 × 15/s = 45/s 송신 시 EGW00201 발생률 ~47%.
+그래서 프로세스의 모든 `KisClient`가 **하나의 전역 토큰버킷**(`_shared_rate_limiter`,
+[kis_runtime.py:39-55](../../hoga/live/kis_runtime.py))에서 토큰을 소비해 합산
+송신률을 명의 한도(~20/s) 아래로 묶도록 바뀌었다. 즉 "각 계좌가 자기 토큰버킷을
+가진다"는 게 아니라 **모든 계좌가 하나의 전역 버킷을 공유**한다.
+
+**폐기되는 불변식·서술.**
+
+- Preserved Invariants의 "Each configured account keeps its own `KisClient` and
+  token bucket" — 각 계좌는 자기 `KisClient`(=토큰 provider·httpx 연결)를 유지하나
+  **토큰버킷은 계좌별이 아니라 전역 공유**다. 절반만 유효하므로 정정한다.
+- Consequences의 "Adding healthy KIS accounts increases available REST capacity
+  approximately linearly" — **폐기**. 명의-전역 버킷 아래에서 계좌를 추가해도
+  합산 송신률은 15/s로 고정이라 REST 처리량은 늘지 않는다.
+
+**계좌 계층의 재정의된 존재이유.** 계좌 풀·account_health·`eligible_accounts()`는
+여전히 필요하나, 그 이유가 "REST 처리량 스케일링"에서 다음 둘로 바뀐다:
+
+1. **인증 격리.** FM5 REST-auth 저하 계좌를 `eligible_accounts()`가 배제하므로
+   (`account_health.is_rest_degraded`), appkey 하나가 revoke/만료돼도 다른 계좌로
+   REST가 지속된다. 이건 명의-단위 한도와 무관하게 유효하다.
+2. **WS 용량.** KIS WebSocket은 계좌(appkey)별 연결이라, 다계좌는 WS 구독 종목
+   수용량을 늘린다(REST 버킷과 직교).
+
+**예약 게이트(`reserve_one`) 제거.** `KisAccountPool.lease(reserve_one=...)` +
+`reserved_background_capacity_available` + `KisAccountReservationDeferred` +
+스케줄러의 지연-재큐잉/condition-variable 대기 사슬을 **제거**한다(별도 커밋에서
+구현). 근거:
+
+- **실측**: 운영 백엔드 `/api/live/status`에서
+  `background_deferred_due_to_reserved_capacity=29,962` vs `rate_limit_failovers=0`.
+  예약 게이트가 background를 3만 회 지연시키는 동안 그것이 지키려던 rate-limit
+  사고는 한 번도 없었다.
+- **구조**: `lease()`에는 **계좌별 동시성 상한이 없다** — foreground는 유휴 계좌를
+  요구하지 않고 least-loaded 계좌를 그냥 lease한다. 따라서 예약 게이트가 지키는
+  자원(완전 유휴 계좌 ≥2)은 foreground가 실제로 소비하는 자원(전역 버킷 토큰)이
+  아니다. 명의-전역 버킷 체제에서 이 게이트는 **background만 늦추는 순수
+  오버헤드**다. 예약 게이트가 계좌별 미사용 쿼터를 아끼는 의미가 있던 것은
+  계좌별-한도 가정 아래에서였고, 그 가정이 반증된 지금은 근거가 사라졌다.
+- **우선순위는 그대로 3겹**이 소유한다: ① 스케줄러 큐 rank(user_visible 먼저)
+  ② 워커의 background 양보(user_visible 대기 시 재큐잉) ③ 버킷 foreground 레인
+  (ADR-0087, 토큰 수준 양보 + 기아 백스톱). 게이트 제거로 우선순위 보장이
+  약화되지 않는다.
+
+**`KisRestEndpoint` 라벨의 의미 명문화.** 새 스케줄 호출자가 헷갈리지 않도록:
+라벨은 **KIS TR과 1:1이 아니라 "작업 차선(work lane)"**이다 — coalesce 요청키의
+구성요소이자 cooldown scope·`/api/live/status` 관측의 단위. 같은 KIS TR을 다른
+라벨로 스케줄하는 건 의도된 설계다: `SCREENER_DAILY`와 `PAST_DAILY`는 동일 TR
+(`fetch_past_daily_candles`)을 각각 스크리너 배치용/차트 백필용 차선으로 분리해
+cooldown·관측을 독립시킨다. 새 호출부는 라벨과 실제 호출이 어긋나지 않도록,
+가능하면 `ScheduledLiveRestCaptureClient`
+([live_rest_capture_access.py](../../hoga/live/live_rest_capture_access.py))처럼
+엔드포인트별 라벨을 메서드에 바인딩한 typed 어댑터를 해당 도메인 모듈에 두는 것을
+관례로 한다(21개 호출부를 일괄 재배선하는 통합 레지스트리는 엔드포인트별
+검증·페이징 의미 차이 때문에 shallow abstraction이 되므로 채택하지 않는다 —
+ADR-0060과 같은 판단 계열).
