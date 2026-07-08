@@ -5,6 +5,8 @@ import type {
   IPrimitivePaneView,
   ISeriesApi,
   ISeriesPrimitive,
+  ITimeScaleApi,
+  Logical,
   SeriesAttachedParameter,
   SeriesType,
   Time,
@@ -220,6 +222,19 @@ export function layoutAskPeakLabels(
     .sort((a, b) => a.index - b.index);
 }
 
+/** 세그먼트 끝점 시각 → x좌표. `timeToCoordinate`는 시각이 로드된 시계열의 첫/마지막
+ *  포인트 밖이면 null을 반환하는데, 통합(UN) 확장 세션 경계(08:00/20:00)는 캔들 소스에
+ *  따라 실데이터 범위 밖일 수 있어 그날 벽 선 전체가 조용히 사라졌다(2026-07-08 "특정
+ *  날짜에만 표시"). null이면 가장 가까운 실데이터 봉 인덱스로 클램프해 그날의 실제 봉
+ *  구간만큼 그린다 — peak 점의 보간 폴백과 같은 철학(그릴 수 있으면 항상 그린다). */
+export function xCoordinateOrNearest(timeScale: ITimeScaleApi<Time>, time: Time): number | null {
+  const x = timeScale.timeToCoordinate(time);
+  if (x !== null) return x;
+  const nearest = timeScale.timeToIndex(time, true);
+  if (nearest === null) return null;
+  return timeScale.logicalToCoordinate(nearest as unknown as Logical);
+}
+
 class AskPeakSegmentsRenderer implements IPrimitivePaneRenderer {
   private readonly _source: AskPeakSegmentsPrimitive;
   constructor(source: AskPeakSegmentsPrimitive) {
@@ -240,8 +255,8 @@ class AskPeakSegmentsRenderer implements IPrimitivePaneRenderer {
       const labelCandidates: AskPeakLabelCandidate[] = [];
       for (let i = 0; i < segments.length; i += 1) {
         const s = segments[i];
-        const x0 = timeScale.timeToCoordinate(s.time0);
-        const x1 = timeScale.timeToCoordinate(s.time1);
+        const x0 = xCoordinateOrNearest(timeScale, s.time0);
+        const x1 = xCoordinateOrNearest(timeScale, s.time1);
         const y = series.priceToCoordinate(s.price);
         if (x0 === null || x1 === null || y === null) continue;
         const px0 = x0 * hr;
