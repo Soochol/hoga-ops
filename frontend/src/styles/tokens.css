@@ -4,7 +4,8 @@
  * v1 is dark-mode only; tokens live on :root.
  */
 :root,
-[data-theme='dark'] {
+[data-theme='dark'],
+[data-theme='obsidian'] {
   /* ───── Scale dial (single source for default density) ─────
      :root font-size is the ONE dial. 20px = 1.25× default; 16px would be 1.0×.
      All rem-based tokens (--text-*, --space-*, layout tokens) follow automatically.
@@ -146,6 +147,74 @@
   --watchlist-panel-w: 17.5rem; /* 350px @ default; 280px base intent — Global Watchlist Panel (Right Rail) width */
   --rail-w: 3rem; /* 60px @ default; 48px base intent — Right Rail icon column width (fixed) */
 /* END AUTO-GENERATED */
+}
+
+/* ═══════════════ Paper Ledger — light theme (review/research) ═══════════════
+   Colors ONLY. The scale dial (:root font-size), font families, and every
+   size/spacing/radius/layout token stay on the base block above — this block
+   overrides nothing but color, so density + typography are theme-independent.
+   Sits OUTSIDE the base block so `npm run gen:tokens` (which rewrites only the
+   AUTO-GENERATED span inside the base block) never touches it. */
+[data-theme='ledger'] {
+  /* ───── Surfaces (ivory paper, 3-tier) ───── */
+  --bg: #f6f4ee;
+  --bg-card: #fdfcf8;
+  --bg-subtle: #f2efe7;
+  --bg-input: #fdfcf8;
+  --bg-input-hover: #f0ede4;
+
+  /* ───── Borders (괘선) ───── */
+  --border: #e4e0d3;
+  --border-strong: #c9c3b2;
+
+  /* ───── Foreground (ink) ───── */
+  --fg: #1e2732;
+  --fg-dim: #5c6673;
+  --fg-dimmer: #8b94a0;
+
+  /* ───── Accent + Semantic (banker's green) ───── */
+  --accent: #1f6f54;
+  --accent-fg: #f6f4ee;
+  --accent-shade: #165343;
+  --success: #1F8A50;
+  --error:   #C13B52;
+  --warn: #A16207;
+  /* Price direction — KRX convention, light-surface tuned. */
+  --price-up:   #C4322E;
+  --price-down: #1E5FC1;
+
+  /* ───── Chart & Heatmap ───── */
+  --grid: #ece8dc;
+  --heat-lo: #f0ede4;
+  --heat-hi: #1f6f54;
+
+  /* ───── Elevation ───── */
+  --shadow: 0 2px 8px rgba(30, 39, 50, 0.12);
+
+  /* ───── Moving Average — toned down for paper (only --ma-5 was invisible
+     white on light; the rest darkened for legibility on ivory) ───── */
+  --ma-1: #BE185D;
+  --ma-2: #1D4ED8;
+  --ma-3: #C2410C;
+  --ma-4: #15803D;
+  --ma-5: #334155; /* was #F8FAFC (white) — invisible on paper */
+  --ma-6: #0E7490;
+  --ma-7: #A16207;
+  --ma-8: #64748B;
+
+  /* ───── Tint backgrounds (new accent/status/price rgb) ───── */
+  --tint-selection:  rgba(31, 111, 84, 0.09);
+  --tint-success:    rgba(31, 138, 80, 0.10);
+  --tint-error:      rgba(193, 59, 82, 0.10);
+  --tint-success-border: rgba(31, 138, 80, 0.30);
+  --tint-error-border:   rgba(193, 59, 82, 0.30);
+  --tint-price-up:   rgba(196, 50, 46, 0.09);   /* C4322E @ 9% */
+  --tint-price-down: rgba(30, 95, 193, 0.09);   /* 1E5FC1 @ 9% */
+  --tint-auction-window: rgba(161, 98, 7, 0.10); /* warn @ 10% */
+
+  /* ───── Depth bar fills (alpha nudged up for light bg) ───── */
+  --bar-ask: rgba(30, 95, 193, 0.30);   /* 1E5FC1 @ 30% */
+  --bar-bid: rgba(196, 50, 46, 0.30);   /* C4322E @ 30% */
 }
 
 @keyframes tab-pulse { 0%, 100% { opacity: 1; } 50% { opacity: 0.3; } }

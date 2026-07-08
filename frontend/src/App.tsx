@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { Outlet, useLocation } from 'react-router';
 import TopNav from './nav/TopNav';
 import { SYSTEM_NAV_ITEMS, WORKSPACE_NAV_ITEMS } from './nav/items';
@@ -18,6 +18,7 @@ import { useSignalAlertEvents } from './signalAlerts/useSignalAlertEvents';
 import { useStaticDocumentTitle } from './util/useDocumentTitle';
 import { ModalShell } from './ui/ModalShell';
 import { SettingsPanel } from './pages/Settings';
+import { effectiveTheme, useThemePrefsStore } from './state/themePrefs';
 
 const STATIC_ROUTE_TITLES: ReadonlyMap<string, string> = new Map(
   [...WORKSPACE_NAV_ITEMS, ...SYSTEM_NAV_ITEMS]
@@ -44,6 +45,14 @@ export default function App() {
   const { pathname } = useLocation();
   const staticTitle = pathname === '/live' ? null : STATIC_ROUTE_TITLES.get(pathname) ?? 'hoga-ops';
   const [settingsOpen, setSettingsOpen] = useState(false);
+
+  // Keep <html data-theme> in sync with the preference + current route. The
+  // index.html bootstrap sets the first-paint value; this owns every change
+  // after (preference toggle in Settings, or an auto-mode route switch).
+  const themePreference = useThemePrefsStore((s) => s.themePreference);
+  useEffect(() => {
+    document.documentElement.setAttribute('data-theme', effectiveTheme(themePreference, pathname));
+  }, [themePreference, pathname]);
 
   return (
     <div

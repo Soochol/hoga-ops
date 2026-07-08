@@ -15,6 +15,28 @@
       href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans+KR:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;500;600&display=swap"
       rel="stylesheet"
     />
+    <!-- Theme bootstrap: set <html data-theme> BEFORE the module graph loads so
+         the first paint is the right theme and projector modules resolve their
+         colors against it (no FOUC, no wrong-theme chart cache). Mirrors
+         state/themePrefs.ts effectiveTheme() — keep the two in sync. -->
+    <script>
+      (function () {
+        try {
+          var raw = localStorage.getItem('ui.themePreference.v1');
+          var pref = raw ? JSON.parse(raw).themePreference : 'auto';
+          if (pref !== 'obsidian' && pref !== 'ledger' && pref !== 'auto') pref = 'auto';
+          var theme = pref;
+          if (pref === 'auto') {
+            var p = location.pathname;
+            var dark = p === '/live' || p.indexOf('/live/') === 0 || p === '/heatmap' || p.indexOf('/heatmap/') === 0;
+            theme = dark ? 'obsidian' : 'ledger';
+          }
+          document.documentElement.setAttribute('data-theme', theme);
+        } catch (e) {
+          document.documentElement.setAttribute('data-theme', 'obsidian');
+        }
+      })();
+    </script>
   </head>
   <body>
     <div id="root"></div>
