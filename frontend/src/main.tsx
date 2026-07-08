@@ -30,6 +30,11 @@ const qc = new QueryClient({
   defaultOptions: {
     queries: {
       staleTime: 60_000,
+      // Default gcTime is 5 min. Past-only /live chunks are immutable and now
+      // frozen (staleTime Infinity, no poll); a longer gcTime keeps a code's
+      // walk-back chunks cached across a switch-away so revisiting within the
+      // window re-derives the merged history from cache, not the network.
+      gcTime: 30 * 60_000,
       retry: 1,
       refetchOnWindowFocus: false,
       refetchOnReconnect: false,
