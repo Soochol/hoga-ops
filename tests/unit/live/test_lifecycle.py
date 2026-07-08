@@ -1224,14 +1224,21 @@ async def test_get_status_exposes_capture_health(monkeypatch, tmp_path) -> None:
 
 
 @pytest.mark.asyncio
-async def test_watchdog_does_not_restart_on_sub_failed_when_recv_fresh(
+async def test_watchdog_sub_failed_recv_fresh_uses_bounded_restart(
     monkeypatch, tmp_path
 ) -> None:
-    """spec §2.3: 구독 미확인이지만 수신 신선(appkey 거부류 — PINGPONG은 흐름)
-    → 재시작 안 함(재연결 불응, 가시화만)."""
+    """spec §2.3 (Fix D 개정): 구독 미확인 + 수신 신선 → 'sub_failed' 판정.
+    과거엔 가시화만 했으나 이제 세션당 상한부 자동 재시작한다(stale 경로 아님)."""
     from hoga.live import lifecycle
     lifecycle.reset_for_tests()
     monkeypatch.setattr("hoga.live.session_gate.ws_capture_window", lambda _t: True)
+    restart_calls: list[int] = []
+
+    async def fake_restart(account_id, *, data_dir):
+        restart_calls.append(account_id)
+
+    monkeypatch.setattr(lifecycle, "_restart_conn", fake_restart)
+
     async def _forever():
         await asyncio.sleep(60)
     ws_task = asyncio.create_task(_forever())
@@ -1242,17 +1249,18 @@ async def test_watchdog_does_not_restart_on_sub_failed_when_recv_fresh(
             stream_task=stream_task, last_tick_ms=None, last_recv_ms=9_950_000,
         )
         lifecycle._state.streams[0].stream_obj.ws.sub_expected = 39
-        lifecycle._state.streams[0].stream_obj.ws.sub_acked = 10   # 미확인
+        lifecycle._state.streams[0].stream_obj.ws.sub_acked = 10   # 미확인(부분)
         restarted = await lifecycle._ws_watchdog_check(
             data_dir=tmp_path, now_ms=10_000_000, stale_after_ms=120_000
         )
-        assert restarted is False
-        assert lifecycle._state.streams[0].ws_task is ws_task  # 불변
+        assert restarted is True          # Fix D: 상한 내 자동 재시작
+        assert restart_calls == [0]       # sub_failed 경로(stale 아님)로 1회
     finally:
         for t in (ws_task, stream_task):
             t.cancel()
             with contextlib.suppress(asyncio.CancelledError):
                 await t
+        lifecycle.reset_for_tests()
 
 
 @pytest.mark.asyncio
@@ -1287,3 +1295,96 @@ async def test_watchdog_restarts_when_sub_unacked_and_recv_stale(
             with contextlib.suppress(asyncio.CancelledError):
                 await t
         await lifecycle.stop_live_stream()
+
+
+# ---------------------------------------------------------------------------
+# KIS 스택 감사 Fix D: 부분 구독 실패(sub_failed)는 세션당 상한부 자동 재시작.
+# ---------------------------------------------------------------------------
+
+
+def _install_sub_failed_state(*, started_at_ms, ws_task, flush_task, now_ms):
+    """sub_failed 상태(connected·recv fresh·sub_acked<sub_expected·grace 경과)의
+    단일 conn을 설치. ws_task/flush_task는 살아있어야(dead=False) sub_failed 분기로
+    간다."""
+    from hoga.live import lifecycle
+    from hoga.live.lifecycle import _State, _StreamConn
+
+    class _FakeWs:
+        def __init__(self):
+            self.last_tick_ms = None
+            self.last_recv_ms = now_ms - 1_000  # fresh (not stale)
+            self.connected = True
+            self.sub_expected = 3
+            self.sub_acked = 1  # 부분 구독 — 2개 코드 침묵
+
+    class _FakeStream:
+        def __init__(self):
+            self.ws = _FakeWs()
+            self.last_flush_ms = None
+
+    conn = _StreamConn(
+        account_id=0,
+        stream_obj=_FakeStream(),
+        ws_task=ws_task,
+        flush_task=flush_task,
+        codes=("005930",),
+    )
+    lifecycle._state = _State(
+        started_at_ms=started_at_ms,
+        n_configured=1,
+        watchlist_codes=("005930",),
+        streams={0: conn},
+        live_set=("005930",),
+    )
+
+
+@pytest.mark.asyncio
+async def test_ws_watchdog_sub_failed_bounded_auto_restart(monkeypatch, tmp_path) -> None:
+    """부분 구독 실패는 세션당 상한(2회)까지 자동 재시작, 이후엔 로그만.
+    새 세션(started_at_ms 변경)이면 카운터가 리셋돼 다시 재시작한다."""
+    from hoga.live import lifecycle
+
+    lifecycle.reset_for_tests()
+    monkeypatch.setattr("hoga.live.session_gate.should_run_now", lambda t: True)
+    monkeypatch.setattr("hoga.live.session_gate.market_phase", lambda t: "regular")
+
+    restart_calls: list[int] = []
+
+    async def fake_restart(account_id, *, data_dir):
+        restart_calls.append(account_id)
+
+    monkeypatch.setattr(lifecycle, "_restart_conn", fake_restart)
+
+    async def _forever() -> None:
+        await asyncio.sleep(60)
+
+    tasks = [asyncio.create_task(_forever()) for _ in range(4)]
+    now_ms = 10_000_000
+    try:
+        _install_sub_failed_state(
+            started_at_ms=1_000, ws_task=tasks[0], flush_task=tasks[1], now_ms=now_ms,
+        )
+
+        async def check() -> bool:
+            return await lifecycle._ws_watchdog_check(
+                data_dir=tmp_path, now_ms=now_ms, stale_after_ms=120_000,
+            )
+
+        # 상한(2)까지 자동 재시작, 3번째는 상한 도달 → 재시작 안 함.
+        assert await check() is True
+        assert await check() is True
+        assert await check() is False
+        assert restart_calls == [0, 0]
+
+        # 새 세션 → 카운터 리셋 → 다시 재시작.
+        _install_sub_failed_state(
+            started_at_ms=2_000, ws_task=tasks[2], flush_task=tasks[3], now_ms=now_ms,
+        )
+        assert await check() is True
+        assert restart_calls == [0, 0, 0]
+    finally:
+        for t in tasks:
+            t.cancel()
+            with contextlib.suppress(asyncio.CancelledError):
+                await t
+        lifecycle.reset_for_tests()
