@@ -325,4 +325,36 @@ describe('useStudyReferenceBundle', () => {
     expect(result.current.bundle?.broker_late_entries).toEqual([broker]);
     expect(result.current.bundle?.volume_distributions).toEqual([distribution]);
   });
+
+  // isExtending: 분봉 워크백이 저장 기간 시작일(seed from_date)까지 아직
+  // 도달하지 않았는가. StudyPage가 차트를 마운트 유지한 채 진행 배지를 띄우는 신호.
+  it('분봉 워크백이 seed(from_date)까지 미도달이면 isExtending=true', () => {
+    useLivePastCandlesMock.mockReturnValue({
+      data: { from: '20260617', candles: [], data_warnings: [], effective_sessions: [] },
+      isLoading: false,
+      error: null,
+    });
+    const { result } = renderHook(() => useStudyReferenceBundle(save));
+    expect(result.current.isExtending).toBe(true);
+  });
+
+  it('분봉 워크백이 seed(from_date)에 도달하면 isExtending=false', () => {
+    useLivePastCandlesMock.mockReturnValue({
+      data: { from: '20260616', candles: [], data_warnings: [], effective_sessions: [] },
+      isLoading: false,
+      error: null,
+    });
+    const { result } = renderHook(() => useStudyReferenceBundle(save));
+    expect(result.current.isExtending).toBe(false);
+  });
+
+  it('일봉(비분봉) 뷰는 분봉 데이터와 무관하게 isExtending=false', () => {
+    useLivePastCandlesMock.mockReturnValue({
+      data: { from: '20260617', candles: [], data_warnings: [], effective_sessions: [] },
+      isLoading: false,
+      error: null,
+    });
+    const { result } = renderHook(() => useStudyReferenceBundle(dailySave));
+    expect(result.current.isExtending).toBe(false);
+  });
 });

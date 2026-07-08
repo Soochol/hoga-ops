@@ -222,6 +222,7 @@ beforeEach(() => {
     bundle: bundle(),
     chartBundle: bundle(),
     isLoading: false,
+    isExtending: false,
     error: null,
     pastDataWarnings: [],
     venue: 'KRX',
@@ -834,6 +835,35 @@ describe('StudyPage', () => {
 
     expect(screen.getByTestId('study-page-loading')).toBeTruthy();
     expect(screen.getByText('학습뷰 불러오는 중...')).toBeTruthy();
+  });
+
+  // 워크백 진행 배지: 차트가 이미 떠 있는(ready) 상태에서 과거 청크가 채워지는
+  // 동안만 표시된다. 풀스크린 로딩(study-page-loading) 재진입을 대체한다.
+  it('ready 상태에서 isExtending이면 과거 로딩 배지를 표시하고 차트는 유지한다', () => {
+    useStudyReferenceBundleMock.mockReturnValue({
+      bundle: bundle(),
+      chartBundle: bundle(),
+      isLoading: false,
+      isExtending: true,
+      error: null,
+      pastDataWarnings: [],
+      venue: 'KRX',
+    });
+
+    renderPage('/study?view=view-ref');
+
+    expect(screen.getByTestId('study-past-loading-badge')).toBeTruthy();
+    expect(screen.getByText('과거 데이터 불러오는 중…')).toBeTruthy();
+    // 차트는 언마운트되지 않는다(플래시 없음).
+    expect(screen.getByTestId('live-chart-root-stub')).toBeTruthy();
+    expect(screen.queryByTestId('study-page-loading')).toBeNull();
+  });
+
+  it('isExtending이 아니면 과거 로딩 배지를 표시하지 않는다', () => {
+    renderPage('/study?view=view-ref');
+
+    expect(screen.queryByTestId('study-past-loading-badge')).toBeNull();
+    expect(screen.getByTestId('live-chart-root-stub')).toBeTruthy();
   });
 
   it('keeps study tabs usable while the reference bundle is loading', () => {

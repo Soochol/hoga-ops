@@ -148,10 +148,24 @@ export function useStudyReferenceBundle(save: StudyViewReference | null) {
     ? minuteCandles.data?.data_warnings ?? []
     : dailyCandles.data?.data_warnings ?? [];
 
+  // 분봉 워크백이 아직 seed(저장 기간 시작일)까지 도달하지 않았는가.
+  // 첫 청크 도착 후 차트는 마운트를 유지하고, 과거 청크가 백그라운드로
+  // 채워지는 동안 StudyPage가 소형 진행 배지를 띄우는 데 쓴다.
+  // merged `from`(= 지금까지 받은 가장 이른 청크)이 seed `from`보다 크면 진행 중.
+  // 초기 첫 청크 로딩(data==null)은 isExtending=false → isLoading이 담당(풀스크린 1회).
+  // D/W/M은 단일 쿼리라 isMinute 가드로 항상 false.
+  const isExtending = !!(
+    inputs.isMinute &&
+    inputs.minuteCandles.from &&
+    minuteCandles.data &&
+    minuteCandles.data.from > inputs.minuteCandles.from
+  );
+
   return {
     bundle: model.bundle,
     chartBundle: model.chartBundle,
     isLoading: pastHoga.isLoading || rangeCandles.isLoading || minuteCandles.isLoading || dailyCandles.isLoading || screenerDailyCandles.isLoading,
+    isExtending,
     error: pastHoga.error ?? rangeCandles.error ?? minuteCandles.error ?? dailyCandles.error ?? screenerDailyCandles.error ?? pastSidecars.error ?? null,
     pastDataWarnings: warnings,
     venue,

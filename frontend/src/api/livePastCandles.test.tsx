@@ -123,6 +123,45 @@ describe('useLivePastCandles', () => {
     expect(spy).toHaveBeenCalledTimes(3);
   });
 
+  // Regression(2026-07-08, /study 플래시): 워크백 청크 N≥3에서 placeholderData
+  // 체인(prev.to === to)이 끊겨 raw query.isLoading이 재점화하지만, 훅의 isLoading은
+  // "보여줄 데이터가 전무"만 의미해야 한다. StudyPage가 훅 isLoading을 풀스크린 로딩
+  // 게이트로 쓰므로, 첫 청크 도착 후 isLoading이 다시 true가 되면 차트가
+  // 언마운트→재마운트하며 로딩 화면으로 되돌아가는 플래시가 발생한다. 기존
+  // 2청크 워크백 테스트는 청크2가 placeholder로 유지돼 이 결함을 못 잡았다(경계 다음 케이스).
+  it('첫 청크 도착 후 후속 워크백 청크(≥3)에서 isLoading이 다시 true가 되지 않는다', async () => {
+    vi.spyOn(client, 'apiCall').mockImplementation(async (url: string) => {
+      const params = new URLSearchParams(url.split('?')[1]);
+      await new Promise((r) => setTimeout(r, 15));
+      return {
+        code: params.get('code')!,
+        from: params.get('from')!,
+        to: params.get('to')!,
+        venue: 'KRX',
+        candles: [{ t_ms: Number(params.get('from')), open: 1, high: 1, low: 1, close: 1, volume: 1 }],
+        cached_dates: [],
+        fresh_dates: [],
+        data_warnings: [],
+      } satisfies LivePastCandlesResponse;
+    });
+    const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+    const loadingWhileHavingData: boolean[] = [];
+    const { result } = renderHook(
+      () => {
+        // 60캘린더일 → 15일 청크 4개(20260623/20260608/20260524/20260509).
+        const q = useLivePastCandles('005930', '20260509', '20260707', 'KRX');
+        if (q.data) loadingWhileHavingData.push(q.isLoading);
+        return q;
+      },
+      { wrapper: wrap(qc) },
+    );
+    // seed(20260509)까지 워크백 완료.
+    await waitFor(() => expect(result.current.data?.from).toBe('20260509'), { timeout: 5000 });
+    // 데이터가 존재한 어떤 렌더에서도 isLoading은 false여야 한다(청크 3·4 fetch 포함).
+    expect(loadingWhileHavingData.length).toBeGreaterThan(0);
+    expect(loadingWhileHavingData.every((l) => l === false)).toBe(true);
+  });
+
   it('passes an AbortSignal to apiCall', async () => {
     const spy = vi.spyOn(client, 'apiCall').mockResolvedValue(RESPONSE);
     const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } });
