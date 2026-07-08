@@ -77,39 +77,42 @@ class _RefreshCoordinator(Generic[T]):
     receives the same snapshot — no second read of module globals required
     after coalesce() returns. The lock guards transitions on ``_inflight``.
 
-    Ownership rule: only the initiator (the caller that created the future)
-    clears ``_inflight``. Joining waiters MUST NOT clear it, otherwise a
-    follow-on flight's future can be clobbered, defeating single-flight.
-
-    Cancellation isolation: every caller awaits the shared future through
-    ``asyncio.shield`` so that cancelling ONE awaiter (e.g. a POST /refresh
-    whose client disconnected — Starlette cancels the handler) does not
-    propagate to the shared future. Awaiting a bare shared future is an
-    asyncio footgun: a cancelled awaiter's Task cancels whatever future it is
-    parked on, which here is the future EVERY other awaiter is parked on too —
-    so one disconnected client would kill an in-flight boot refresh for all
-    joiners. Shield scopes each cancellation to its own awaiter; the flight
-    survives as long as its initiator does. (The initiator staying coupled is
-    intentional: shutdown cancels the initiator task, whose ``finally`` then
-    cancels+awaits the worker before ``aclose_kis_client`` — see below.)
+    Worker-owned lifecycle: the flight is owned by the detached worker task,
+    NOT by any caller. The worker's done-callback (``_signal``) is the sole
+    place that clears ``_inflight``/``_task``, and every caller — initiator
+    and joiners alike — awaits the shared future through ``asyncio.shield``.
+    Consequences:
+      * Cancelling ANY caller (a POST /refresh whose client disconnected;
+        Starlette cancels the handler) scopes to that caller only. It never
+        cancels the shared future and never aborts the fetch. Awaiting a bare
+        shared future is an asyncio footgun — a cancelled awaiter's Task
+        cancels whatever future it is parked on, which here is the future
+        EVERY other awaiter is parked on too — so one disconnected client
+        would otherwise kill an in-flight boot refresh for all joiners.
+      * The fetch runs to completion and populates the cache even if every
+        caller has gone away. This is deliberate: an abandoned refresh should
+        still land its data, not be wasted.
+      * The ONLY thing that cancels the worker is explicit shutdown via
+        :meth:`aclose`, which the lifespan calls before ``aclose_kis_client``
+        so a mid-flight worker can't touch torn-down resources. Atomic writes
+        make a mid-write cancel safe.
     """
 
     def __init__(self) -> None:
         self._lock = asyncio.Lock()
         self._inflight: asyncio.Future[T] | None = None
-        # The detached worker task for the current flight. Tracked so an abandoned
-        # flight (all waiters cancelled) can cancel+await it instead of leaking a
-        # task that runs on after its awaiters are gone (#8).
+        # The detached worker task for the current flight — owned by the
+        # coordinator, cleared by _signal on completion, cancelled only by aclose().
         self._task: asyncio.Task[T] | None = None
 
     async def coalesce(self, task_factory: Callable[[], asyncio.Task[T]]) -> T:
         """Start ``task_factory()`` once for the in-flight group; join existing.
 
-        First caller wins: creates the task and the broadcast future under
-        the lock. Subsequent callers that arrive while the task is running
-        await the same future and receive the same result. When the task
-        completes, all waiters unblock with that result; the initiator
-        clears the in-flight slot so the next click starts fresh.
+        First caller wins: creates the worker task and the broadcast future
+        under the lock. Subsequent callers that arrive while the worker is
+        running await the same future and receive the same result. When the
+        worker completes, ``_signal`` clears the in-flight slot so the next
+        call starts a fresh flight and resolves the future for all waiters.
 
         ``task_factory`` runs under the lock — use it for state mutations
         that must be visible before any waiter resumes (e.g. setting
@@ -120,12 +123,10 @@ class _RefreshCoordinator(Generic[T]):
         async with self._lock:
             if self._inflight is not None:
                 fut = self._inflight
-                is_initiator = False
             else:
                 loop = asyncio.get_running_loop()
                 fut = loop.create_future()
                 self._inflight = fut
-                is_initiator = True
                 try:
                     task = task_factory()
                 except BaseException:
@@ -135,11 +136,18 @@ class _RefreshCoordinator(Generic[T]):
                 self._task = task
 
                 def _signal(t: asyncio.Task[T]) -> None:
+                    # Worker owns the flight: clear the slot HERE (never in a
+                    # caller's finally) so the next coalesce() starts fresh and
+                    # no caller's cancellation can end the flight. Runs in the
+                    # loop with no await, so it can't interleave into coalesce's
+                    # (await-free) critical section — no lock needed.
+                    if self._inflight is fut:
+                        self._inflight = None
+                        self._task = None
                     if fut.done():
-                        # fut already settled (e.g. the flight was abandoned and the
-                        # worker cancelled in the finally below). Still OBSERVE the
-                        # worker's outcome so a worker exception is never reported as
-                        # "Task exception was never retrieved" at GC.
+                        # fut already settled (aclose() cancelled the worker, or
+                        # reset()). OBSERVE the worker's outcome so an exception
+                        # isn't reported "never retrieved" at GC.
                         if not t.cancelled():
                             t.exception()
                         return
@@ -153,30 +161,25 @@ class _RefreshCoordinator(Generic[T]):
                         fut.set_result(t.result())
 
                 task.add_done_callback(_signal)
-        try:
-            # shield: a cancelled awaiter (disconnected POST /refresh) must not
-            # cancel the SHARED future and thereby kill the flight for every
-            # other joiner. See the class docstring "Cancellation isolation".
-            return await asyncio.shield(fut)
-        finally:
-            if is_initiator:
-                # If the flight was abandoned mid-run — this task (and therefore the
-                # shared future, and thus every waiter) was cancelled — the worker is
-                # still detached and running. Cancel and AWAIT it so it cannot run on
-                # past this point (e.g. touch a torn-down KIS client during shutdown:
-                # the lifespan awaits this task before aclose_kis_client, so awaiting
-                # the worker here makes that ordering invariant hold). On normal
-                # completion the worker is already done, so this is a no-op. Atomic
-                # parquet writes (#6) make a mid-write cancel safe.
-                worker = self._task
-                if worker is not None and not worker.done():
-                    worker.cancel()
-                    # observe the worker's cancel/error; suppress in this cleanup path
-                    with contextlib.suppress(asyncio.CancelledError, Exception):
-                        await asyncio.shield(worker)
-                async with self._lock:
-                    self._inflight = None
-                    self._task = None
+        # shield: a cancelled awaiter (disconnected POST /refresh) must not
+        # cancel the SHARED future — that would abort the fetch for every other
+        # joiner. The flight lives until the worker finishes or aclose() cancels
+        # it, independent of who is (still) awaiting.
+        return await asyncio.shield(fut)
+
+    async def aclose(self) -> None:
+        """Shutdown hook — cancel+await the live worker. Idempotent.
+
+        The lifespan calls this before ``aclose_kis_client`` so a mid-flight
+        worker cannot touch torn-down resources. On a quiescent coordinator
+        (no flight in progress) it is a no-op. ``_signal`` clears the slot when
+        the cancelled worker's callback fires.
+        """
+        task = self._task
+        if task is not None and not task.done():
+            task.cancel()
+            with contextlib.suppress(asyncio.CancelledError, Exception):
+                await task
 
     def reset(self) -> None:
         """Test helper — clear in-flight state between tests.
@@ -465,6 +468,17 @@ async def refresh(*, path: Path, data_dir: Path) -> SymbolsAllResponse:
         return asyncio.create_task(_do_refresh(path=path, data_dir=data_dir))
 
     return await _refresh_coordinator.coalesce(_start_refresh_task)
+
+
+async def aclose_refresh() -> None:
+    """Lifespan shutdown hook — cancel+await any in-flight .mst refresh worker.
+
+    The refresh worker is coordinator-owned (decoupled from its callers), so
+    cancelling the ``symbols-boot-refresh`` initiator task no longer stops it.
+    The lifespan calls this before KIS/scheduler teardown so a mid-flight
+    worker can't run on past process shutdown. No-op when idle.
+    """
+    await _refresh_coordinator.aclose()
 
 
 def _set_stale_or_unavailable(reason: UpstreamCode) -> None:
