@@ -130,6 +130,34 @@ export function withPastCandlesTimeout(signal: AbortSignal, ms: number): AbortSi
   return AbortSignal.any([signal, AbortSignal.timeout(ms)]);
 }
 
+/** 이 청크 요청(requestTo)이 오늘을 포함하는가. range.ts의 rangeFreshnessOptions와
+ * 동일 술어 — todayKst가 없으면(스터디 등 과거 전용) false. */
+function chunkIncludesToday(requestTo: string | null, todayKst: string | null): boolean {
+  return !!(requestTo && todayKst && requestTo >= todayKst);
+}
+
+/** 완결된 과거 청크는 불변이므로 stale 판정이 무의미하다 → Infinity로 승격.
+ * 오늘을 포함하는 head 청크만 Today Promotion(5분)에 맞춰 60s stale을 유지한다.
+ * (range.ts rangeFreshnessOptions와 동일 원칙 — 그쪽은 이미 이렇게 한다.) */
+export function pastCandlesStaleTime(requestTo: string | null, todayKst: string | null): number {
+  return chunkIncludesToday(requestTo, todayKst) ? 60_000 : Infinity;
+}
+
+/** 과거 전용 청크는 폴링을 끈다(false) — 불변 데이터에 venue 주기 refetch는 낭비다.
+ * 예외: blocking 경고(일시 장애) 응답은 얼리면 실패 창이 영구 구멍이 되므로,
+ * 과거 전용이라도 venue 주기로 재시도해 자가 회복한다(mergedRef 박제 가드와 동일 원칙).
+ * refetchInterval은 staleTime과 무관하게 타이머로 도므로 staleTime:Infinity와 공존한다. */
+export function pastCandlesRefetchInterval(
+  data: LivePastCandlesResponse | undefined,
+  requestTo: string | null,
+  todayKst: string | null,
+  venue: LiveVenueOption,
+): number | false {
+  if (chunkIncludesToday(requestTo, todayKst)) return liveVenueRefetchInterval(venue);
+  if (data && hasBlockingWarnings(data)) return liveVenueRefetchInterval(venue);
+  return false;
+}
+
 export function planPastCandlesDelta(
   code: string | null,
   from: string | null,
@@ -222,6 +250,7 @@ export function useLivePastCandles(
   from: string | null,
   to: string | null,
   venue: LiveVenueOption = 'KRX',
+  todayKst: string | null = null,
 ) {
   const mergedRef = useRef<{ identity: string; data: LivePastCandlesResponse } | null>(null);
   const [, bumpMergedVersion] = useReducer((x: number) => x + 1, 0);
@@ -242,8 +271,12 @@ export function useLivePastCandles(
         { signal: withPastCandlesTimeout(signal, PAST_CANDLES_TIMEOUT_MS) },
       ),
     enabled: plan.enabled,
-    staleTime: 60_000,
-    refetchInterval: () => liveVenueRefetchInterval(venue),
+    // Freshness gated on whether this chunk includes today (range.ts parity):
+    // past-only completed chunks are immutable → frozen (staleTime Infinity,
+    // no poll); the today head chunk keeps the 60s / venue-interval cadence.
+    staleTime: pastCandlesStaleTime(plan.requestTo, todayKst),
+    refetchInterval: (query) =>
+      pastCandlesRefetchInterval(query.state.data, plan.requestTo, todayKst, venue),
     // Code+venue-aware placeholder: keep previous data only when the identity
     // still means the same candle venue. Same-code refetches (lazy from/to
     // extension, refetchInterval) keep the previous render to avoid blanking.
