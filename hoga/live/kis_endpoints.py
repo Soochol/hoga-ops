@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import asyncio
 import json
+import logging
 from dataclasses import dataclass, field
 from datetime import datetime, timedelta
 from typing import Any, Literal
@@ -34,6 +35,8 @@ from hoga.live.kis_venue import (
     previous_empty_page_anchor_hhmmss,
     session_window_hhmmss,
 )
+
+log = logging.getLogger(__name__)
 
 # Default KIS Venue for backwards-compatible callers. New /live candle routes
 # pass an explicit venue value and include it in cache/query keys.
@@ -357,15 +360,23 @@ class KisEndpointsMixin:
                 t_ms = int(dt.timestamp() * 1000)
                 if t_ms in seen_t_ms:
                     continue
+                try:
+                    candle = KisCandle(
+                        t_ms=t_ms,
+                        open=int(row["stck_oprc"]),
+                        high=int(row["stck_hgpr"]),
+                        low=int(row["stck_lwpr"]),
+                        close=int(row["stck_prpr"]),
+                        volume=int(row["cntg_vol"]),
+                    )
+                except (KeyError, ValueError, TypeError):
+                    # Defensive: a malformed OHLCV field skips this row rather
+                    # than crashing the whole fetch — symmetric with the date-
+                    # field guard above (2026-07-08 KIS audit Fix B).
+                    log.debug("kis minute candle row skipped (malformed): %s", row)
+                    continue
                 seen_t_ms.add(t_ms)
-                page_candles.append(KisCandle(
-                    t_ms=t_ms,
-                    open=int(row["stck_oprc"]),
-                    high=int(row["stck_hgpr"]),
-                    low=int(row["stck_lwpr"]),
-                    close=int(row["stck_prpr"]),
-                    volume=int(row["cntg_vol"]),
-                ))
+                page_candles.append(candle)
             if not page_candles:
                 break
             all_candles.extend(page_candles)
@@ -1016,23 +1027,32 @@ class KisEndpointsMixin:
                 "fid_input_iscd": code,
             },
         )
-        out1 = body["output1"]
-        asks = [
-            OrderbookLevel(price=int(out1[f"askp{i}"]), qty=int(out1[f"askp_rsqn{i}"]))
-            for i in range(1, 11)
-        ]
-        bids = [
-            OrderbookLevel(price=int(out1[f"bidp{i}"]), qty=int(out1[f"bidp_rsqn{i}"]))
-            for i in range(1, 11)
-        ]
-        return KisOrderbook(
-            code=code,
-            asks=asks,
-            bids=bids,
-            total_ask_qty=int(out1["total_askp_rsqn"]),
-            total_bid_qty=int(out1["total_bidp_rsqn"]),
-            t_ms=int(datetime.now(KIS_KST).timestamp() * 1000),
-        )
+        # 구조 이상(output1 결측·필드 결측·비숫자)은 KeyError/ValueError가 아니라
+        # typed KisApiError로 승격 — error_policy가 'unexpected'(ERROR+traceback)가
+        # 아닌 'kis_api'(WARNING+degraded)로 분류한다 (2026-07-08 KIS audit Fix B).
+        try:
+            out1 = body["output1"]
+            asks = [
+                OrderbookLevel(price=int(out1[f"askp{i}"]), qty=int(out1[f"askp_rsqn{i}"]))
+                for i in range(1, 11)
+            ]
+            bids = [
+                OrderbookLevel(price=int(out1[f"bidp{i}"]), qty=int(out1[f"bidp_rsqn{i}"]))
+                for i in range(1, 11)
+            ]
+            return KisOrderbook(
+                code=code,
+                asks=asks,
+                bids=bids,
+                total_ask_qty=int(out1["total_askp_rsqn"]),
+                total_bid_qty=int(out1["total_bidp_rsqn"]),
+                t_ms=int(datetime.now(KIS_KST).timestamp() * 1000),
+            )
+        except (KeyError, ValueError, TypeError, IndexError) as e:
+            raise KisApiError(
+                msg_cd="MALFORMED_ORDERBOOK",
+                msg1=f"unexpected orderbook shape for {code}: {e}",
+            ) from e
 
     # ------------------------------------------------------------------
     # fetch_trades (FHPST01060000, inquire-time-itemconclusion)
@@ -1055,27 +1075,35 @@ class KisEndpointsMixin:
         )
         today_kst = datetime.now(KIS_KST).date()
         trades: list[KisTrade] = []
-        for row in body["output2"]:
-            hhmmss = row["stck_cntg_hour"]
-            hh = int(hhmmss[:2])
-            mm = int(hhmmss[2:4])
-            ss = int(hhmmss[4:6])
-            dt = datetime(
-                today_kst.year, today_kst.month, today_kst.day,
-                hh, mm, ss, tzinfo=KIS_KST
-            )
-            t_ms = int(dt.timestamp() * 1000)
-            prpr = int(row["stck_prpr"])
-            askp = int(row.get("askp", "0") or "0")
-            bidp = int(row.get("bidp", "0") or "0")
-            side, side_source = classify_side(t_ms, prpr, askp, bidp)
-            trades.append(KisTrade(
-                price=prpr,
-                qty=int(row["cnqn"]),
-                side=side,
-                side_source=side_source,
-                t_ms=t_ms,
-            ))
+        # 구조 이상(output2 결측·필드 결측·비숫자)은 typed KisApiError로 승격
+        # (2026-07-08 KIS audit Fix B) — orderbook과 동일한 이유.
+        try:
+            for row in body["output2"]:
+                hhmmss = row["stck_cntg_hour"]
+                hh = int(hhmmss[:2])
+                mm = int(hhmmss[2:4])
+                ss = int(hhmmss[4:6])
+                dt = datetime(
+                    today_kst.year, today_kst.month, today_kst.day,
+                    hh, mm, ss, tzinfo=KIS_KST
+                )
+                t_ms = int(dt.timestamp() * 1000)
+                prpr = int(row["stck_prpr"])
+                askp = int(row.get("askp", "0") or "0")
+                bidp = int(row.get("bidp", "0") or "0")
+                side, side_source = classify_side(t_ms, prpr, askp, bidp)
+                trades.append(KisTrade(
+                    price=prpr,
+                    qty=int(row["cnqn"]),
+                    side=side,
+                    side_source=side_source,
+                    t_ms=t_ms,
+                ))
+        except (KeyError, ValueError, TypeError) as e:
+            raise KisApiError(
+                msg_cd="MALFORMED_TRADES",
+                msg1=f"unexpected trades shape for {code}: {e}",
+            ) from e
         return trades
 
     # ------------------------------------------------------------------
@@ -1099,21 +1127,29 @@ class KisEndpointsMixin:
                 "fid_input_iscd": code,
             },
         )
-        out = body["output"][0]  # KIS returns a 1-element list (Audit-3)
-        buy_top = [
-            KisBrokerEntry(
-                name=canonical(out[f"shnu_mbcr_name{i}"]),
-                qty=int(out[f"total_shnu_qty{i}"]),
-            )
-            for i in range(1, 6)
-        ]
-        sell_top = [
-            KisBrokerEntry(
-                name=canonical(out[f"seln_mbcr_name{i}"]),
-                qty=int(out[f"total_seln_qty{i}"]),
-            )
-            for i in range(1, 6)
-        ]
+        # 구조 이상(output 결측·빈 리스트·필드 결측)은 typed KisApiError로 승격
+        # (2026-07-08 KIS audit Fix B) — 빈 리스트의 [0]은 IndexError.
+        try:
+            out = body["output"][0]  # KIS returns a 1-element list (Audit-3)
+            buy_top = [
+                KisBrokerEntry(
+                    name=canonical(out[f"shnu_mbcr_name{i}"]),
+                    qty=int(out[f"total_shnu_qty{i}"]),
+                )
+                for i in range(1, 6)
+            ]
+            sell_top = [
+                KisBrokerEntry(
+                    name=canonical(out[f"seln_mbcr_name{i}"]),
+                    qty=int(out[f"total_seln_qty{i}"]),
+                )
+                for i in range(1, 6)
+            ]
+        except (KeyError, ValueError, TypeError, IndexError) as e:
+            raise KisApiError(
+                msg_cd="MALFORMED_BROKERS",
+                msg1=f"unexpected brokers shape for {code}: {e}",
+            ) from e
         return KisBrokers(code=code, buy_top=buy_top, sell_top=sell_top)
 
 
