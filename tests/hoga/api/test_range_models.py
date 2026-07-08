@@ -121,6 +121,41 @@ def test_trade_volume_poc_model_round_trip() -> None:
     }
 
 
+def test_depth_heatmap_point_defaults_and_shape() -> None:
+    from hoga.api.models import DepthHeatmapPoint
+
+    pt = DepthHeatmapPoint(
+        t_ms=1_700_000_000_000,
+        asks=[[1000, 500], [1010, 300]],
+        bids=[[990, 400], [980, 200]],
+    )
+    assert pt.asks[0] == [1000, 500]
+    assert pt.bids[0] == [990, 400]
+
+    empty = DepthHeatmapPoint(t_ms=1)
+    assert empty.asks == []
+    assert empty.bids == []
+
+    rb = RangeBundle(
+        code="005930", from_date="20260520", to_date="20260520",
+        bucket_ms=60_000,
+        segments=[RangeSegment(date="20260520",
+                               session_open_ms=1_000_000_000_000,
+                               session_close_ms=1_000_000_001_000)],
+        candles=[],
+        quote_ratio=QuoteRatio(bucket_ms=60_000, points=[]),
+        fill_strength=FillStrength(bucket_ms=60_000, points=[]),
+        volume_profile_range=VolumeProfile(
+            bin_count=0,
+            price_min=0,
+            price_max=0,
+            bin_width=0,
+            bins=[]),
+        volume_profile_by_day=[],
+    )
+    assert rb.depth_heatmap == []
+
+
 def test_excluded_date_round_trip() -> None:
     from hoga.api.models import ExcludedDate
     ed = ExcludedDate(date="20260518", violations=[
