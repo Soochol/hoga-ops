@@ -183,6 +183,18 @@ export interface UseLiveBundleResult {
   error: unknown;
   clampEngaged: boolean;
   isPastCandlesLoading: boolean;
+  /** 호가 지표 경로(/api/range mode=hoga)의 CURRENT (code, timeframe) 뷰 초기 fetch가
+   * 아직 pending인가. LiveChartRoot의 reveal 커버가 isPastCandlesLoading과 함께 써서
+   * 초기 로드/종목 전환/타임프레임 전환 시 캔들+호가 pane이 한 번의 reveal로 등장하게 한다.
+   * - `isLoading` 단독으로 re-key 안전: rangePlaceholderData가 code(rangeRequest.ts)·
+   *   bucketMs 변경 시 placeholder를 드롭하므로 stale 호가가 settled로 위장 불가.
+   *   placeholder 생존은 같은 뷰의 from/to 변경(좌측 팬)뿐 — reveal 게이트는 그 경로를
+   *   일부러 홀드하지 않는다(isExtending이 별도 원자화).
+   * - `&& data == null`: 캐시된 뷰로 되돌아올 때 병합 이전 번들이 즉시 서빙되는 동안
+   *   오늘-델타(from=to=today) 리프레시가 isLoading일 수 있어 불필요 홀드를 방지.
+   * - 에러 settle(status 'error' → isLoading false)·disabled(D/W/M: planLiveRangeRequest가
+   *   code를 null) 모두 false라 영구 홀드 없음. */
+  isHogaLoading: boolean;
   /** 좌측 팬 한 스텝이 진행 중(placeholderData+isFetching). false-edge = 스텝 settle.
    * LiveChartRoot 진행 루프가 이 falling edge에 반응해 다음 스텝을 dispatch한다. */
   isExtending: boolean;
@@ -881,6 +893,7 @@ export function useLiveBundle(
     error: live.error ?? pastHoga.error ?? pastCandlesQuery.error ?? pastDailyCandlesQuery.error ?? screenerDailyCandlesQuery.error ?? pastSidecars.error ?? candleFallback.error ?? hogaplayCandleFallback.error ?? previousDiskCandleFallback.error ?? null,
     clampEngaged,
     isPastCandlesLoading: pastCandlesQuery.isLoading || pastDailyCandlesQuery.isLoading || screenerDailyCandlesQuery.isLoading || (candleFallbackNeeded && candleFallback.isLoading) || (hogaplayCandleFallbackNeeded && hogaplayCandleFallback.isLoading) || (previousDiskFallbackNeeded && previousDiskCandleFallback.isLoading) || (enableInvestor && investorQuery.isLoading),
+    isHogaLoading: pastHoga.isLoading && pastHoga.data == null,
     isExtending: extending,
     pastDataWarnings,
   };

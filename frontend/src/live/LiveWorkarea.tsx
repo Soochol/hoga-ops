@@ -85,6 +85,9 @@ interface Props {
   hogaBundle?: RangeBundle | null;
   clampEngaged: boolean;
   isPastCandlesLoading: boolean;
+  /** useLiveBundle.isHogaLoading — 호가 경로 초기 fetch pending. LiveChartRoot의 reveal
+   *  커버가 캔들+호가 pane 동시 등장에 쓴다. 옵셔널 + 기본 false. */
+  isHogaLoading?: boolean;
   /** useLiveBundle.isExtending — 진행 루프 settle-effect 구동용. LiveChartRoot로 전달. */
   isExtending: boolean;
   /** 활성 경로 과거 fetch 경고(rate-limit 등). LiveChartRoot의 빈칸 문구·부분로딩 칩용. */
@@ -138,6 +141,7 @@ export function LiveWorkarea({
   hogaBundle,
   clampEngaged,
   isPastCandlesLoading,
+  isHogaLoading,
   isExtending,
   pastDataWarnings,
   restoreViewport,
@@ -378,6 +382,7 @@ export function LiveWorkarea({
                   hogaPaneBundle={hogaBundle}
                   clampEngaged={clampEngaged}
                   isPastCandlesLoading={isPastCandlesLoading}
+                  isHogaLoading={isHogaLoading}
                   isExtending={isExtending}
                   pastDataWarnings={pastDataWarnings}
                   restoreViewport={restoreViewport}

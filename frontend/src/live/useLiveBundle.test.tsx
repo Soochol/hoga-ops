@@ -452,6 +452,41 @@ describe('useLiveBundle', () => {
     expect(result.current.chartBundle).toBeNull();
   });
 
+  it('reports isHogaLoading while the hoga range delta is pending with no data (cold minute load)', () => {
+    useRangeHogaDeltaSpy.mockImplementation(() => ({
+      data: null,
+      isLoading: true,
+      error: null,
+      isPlaceholderData: false,
+      isFetching: true,
+      isHistoricalDeltaFetching: false,
+    }));
+    const { result } = renderHook(() => useLiveBundle('005930', '1m', '20260527', liveFixture), { wrapper: createWrapper() });
+    expect(result.current.isHogaLoading).toBe(true);
+  });
+
+  it('clears isHogaLoading once the hoga range delta settles', () => {
+    // Default beforeEach mock: hoga delta settled (isLoading false).
+    const { result } = renderHook(() => useLiveBundle('005930', '1m', '20260527', liveFixture), { wrapper: createWrapper() });
+    expect(result.current.isHogaLoading).toBe(false);
+  });
+
+  it('does not hold isHogaLoading on a warm switch-back (data present while a refresh is loading)', () => {
+    // cachedLiveRangeDeltaPrevious serves the merged bundle instantly while the
+    // today-only refresh delta re-keys as isLoading; the `data == null` term
+    // releases the hold so the cover does not wedge over a fully-drawn chart.
+    useRangeHogaDeltaSpy.mockImplementation(() => ({
+      data: fallbackRangeBundle(71_500),
+      isLoading: true,
+      error: null,
+      isPlaceholderData: false,
+      isFetching: true,
+      isHistoricalDeltaFetching: false,
+    }));
+    const { result } = renderHook(() => useLiveBundle('005930', '1m', '20260527', liveFixture), { wrapper: createWrapper() });
+    expect(result.current.isHogaLoading).toBe(false);
+  });
+
   it('splits the candle side (chartBundle) from the live hoga overlay (bundle)', () => {
     // Bundle-split (2026-06-09, Phase A): candle/volume/axis read `chartBundle`
     // (no ob/trade deps → stable across SSE ticks); hoga panes read the full

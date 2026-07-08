@@ -229,7 +229,7 @@ export function LivePage() {
   // sidebar's LATEST mode stuck on the empty-buffer state.
   const today = todayKstYyyymmdd();
   const live = useLiveSeries(activeCode ?? '');
-  const { bundle, chartBundle, hogaBundle, clampEngaged, isPastCandlesLoading, isExtending, pastDataWarnings } = useLiveBundle(
+  const { bundle, chartBundle, hogaBundle, clampEngaged, isPastCandlesLoading, isHogaLoading, isExtending, pastDataWarnings } = useLiveBundle(
     activeCode,
     timeframe,
     today,
@@ -423,6 +423,7 @@ export function LivePage() {
         hogaBundle={workareaHogaBundle}
         clampEngaged={clampEngaged}
         isPastCandlesLoading={workareaLoading}
+        isHogaLoading={activeIndexId ? false : isHogaLoading}
         isExtending={activeIndexId ? indexExtending : isExtending}
         pastDataWarnings={workareaDataWarnings}
         restoreViewport={activeTab?.viewport ?? null}
