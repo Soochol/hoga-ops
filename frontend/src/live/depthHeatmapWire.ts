@@ -5,6 +5,8 @@ export type DepthHeatmapPoint = {
   tMs: number;
   asks: DepthHeatmapLevel[];
   bids: DepthHeatmapLevel[];
+  asksMax: DepthHeatmapLevel[];
+  bidsMax: DepthHeatmapLevel[];
 };
 
 function levels(pairs: readonly [number, number][]): DepthHeatmapLevel[] {
@@ -18,5 +20,7 @@ export function depthHeatmapFromWire(
     tMs: p.t_ms,
     asks: levels(p.asks),
     bids: levels(p.bids),
+    asksMax: levels(p.asks_max ?? []),
+    bidsMax: levels(p.bids_max ?? []),
   }));
 }

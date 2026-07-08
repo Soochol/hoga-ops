@@ -573,6 +573,8 @@ export type DepthHeatmapPointWire = {
   t_ms: number;
   asks: [number, number][];
   bids: [number, number][];
+  asks_max?: [number, number][];
+  bids_max?: [number, number][];
 };
 
 export type RangeBundle = {

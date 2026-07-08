@@ -20,8 +20,8 @@ describe('depthHeatmapAlpha', () => {
   });
   it('visibleMaxQty는 보이는 범위 내 모든 레벨의 최대 잔량', () => {
     const points: DepthHeatmapPoint[] = [
-      { tMs: 100, asks: [{ price: 10, qty: 300 }], bids: [{ price: 9, qty: 900 }] },
-      { tMs: 200, asks: [{ price: 11, qty: 500 }], bids: [{ price: 8, qty: 100 }] },
+      { tMs: 100, asks: [{ price: 10, qty: 300 }], bids: [{ price: 9, qty: 900 }], asksMax: [], bidsMax: [] },
+      { tMs: 200, asks: [{ price: 11, qty: 500 }], bids: [{ price: 8, qty: 100 }], asksMax: [], bidsMax: [] },
     ];
     expect(visibleMaxQty(points, 0, 250)).toBe(900);
     expect(visibleMaxQty(points, 150, 250)).toBe(500); // tMs=100 제외
