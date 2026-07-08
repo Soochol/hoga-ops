@@ -151,7 +151,11 @@ describe('ScreenerDrawer', () => {
     render(<ScreenerDrawer />, { wrapper: wrap(qc(), '/live') });
     expect(screen.getByTestId('screener-panel')).toHaveClass('bg-bg-card');
     expect(screen.getByTestId('screener-panel')).toHaveClass('border-l');
-    await waitFor(() => expect(screen.getByRole('option', { name: '돌파+거래대금' })).toBeInTheDocument());
+    // 커스텀 드롭다운: 트리거가 선택된 조건명을 보여주고, 열면 option 목록이 뜬다.
+    const trigger = await screen.findByRole('button', { name: '저장한 조건검색 선택' });
+    expect(trigger).toHaveTextContent('돌파+거래대금');
+    fireEvent.click(trigger);
+    expect(screen.getByRole('option', { name: '돌파+거래대금' })).toBeInTheDocument();
   });
 
   it('defaults selection to the first save and 조회 scans with its conditions', async () => {
@@ -212,7 +216,7 @@ describe('ScreenerDrawer', () => {
     render(<ScreenerDrawer />, { wrapper: wrap(qc(), '/live') });
 
     await waitFor(() => expect(screen.getByText('결과 2 · 돌파+거래대금')).toBeInTheDocument());
-    await waitFor(() => expect(screen.getByRole('option', { name: '돌파+거래대금' })).toBeInTheDocument());
+    await waitFor(() => expect(screen.getByRole('button', { name: '저장한 조건검색 선택' })).toHaveTextContent('돌파+거래대금'));
     fireEvent.click(screen.getByRole('button', { name: '조회' }));
     await waitFor(() => expect(screen.getByText('조회 실패')).toBeInTheDocument());
     expect(screen.queryByText('결과 2 · 돌파+거래대금')).not.toBeInTheDocument();
@@ -319,7 +323,7 @@ describe('ScreenerDrawer', () => {
     vi.spyOn(savesApi, 'listSaves').mockResolvedValue({ schema_version: 1, saves: [SAVE, SAVE2] });
     useScreenerPanelStore.setState({ selectedSavedId: 's2', lastScan: null });
     render(<ScreenerDrawer />, { wrapper: wrap(qc(), '/live') });
-    await waitFor(() => expect(screen.getByRole('option', { name: '두번째조건' })).toBeInTheDocument());
+    await waitFor(() => expect(screen.getByRole('button', { name: '저장한 조건검색 선택' })).toHaveTextContent('두번째조건'));
     expect(useScreenerPanelStore.getState().selectedSavedId).toBe('s2');
   });
 
