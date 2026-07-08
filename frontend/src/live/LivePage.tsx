@@ -4,6 +4,7 @@ import { isMinuteTimeframe, useLivePageStore } from '../state/livePage';
 import { useLiveStatus } from '../api/liveStatus';
 import { useLiveStatusProjection } from './liveStatusProjection';
 import { LiveHeader } from './LiveHeader';
+import SessionTape from './SessionTape';
 import { LiveStatusBar } from './LiveStatusBar';
 import { LiveWorkarea } from './LiveWorkarea';
 import { LiveStateBanner } from './LiveStateBanner';
@@ -388,9 +389,10 @@ export function LivePage() {
         // minmax(0, 1fr) on the workarea row prevents the chart canvas's
         // intrinsic size from pushing the row past viewport height.
         gridTemplateRows:
-          'var(--h-live-header) 40px auto var(--h-pricestrip) minmax(0, 1fr)',
+          '3px var(--h-live-header) 40px auto var(--h-pricestrip) minmax(0, 1fr)',
       }}
     >
+      <SessionTape />
       <LiveHeader />
       <LiveTabBar
         tabs={tabs}

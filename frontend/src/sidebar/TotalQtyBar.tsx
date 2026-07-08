@@ -22,9 +22,12 @@ type Props = {
   maskRatio: boolean;
 };
 
-const ASK_FILL = 'rgba(37, 99, 235, 0.55)';   // --price-down @ 0.55 alpha
-const BID_FILL = 'rgba(220, 38, 38, 0.55)';   // --price-up @ 0.55 alpha
-const HAIRLINE = 'rgba(255, 255, 255, 0.18)';
+// color-mix over the price tokens so the fills track the theme (Obsidian brass
+// era palette AND the Ledger light palette). DOM inline style resolves var()
+// lazily, so no resolveTokensThemed needed here (unlike the canvas projectors).
+const ASK_FILL = 'color-mix(in srgb, var(--price-down) 55%, transparent)';
+const BID_FILL = 'color-mix(in srgb, var(--price-up) 55%, transparent)';
+const HAIRLINE = 'var(--border-strong)';
 
 export default function TotalQtyBar({ snapshot, maskRatio }: Props) {
   const totals = useMemo(() => (snapshot ? computeTotals(snapshot) : null), [snapshot]);
