@@ -118,7 +118,7 @@ async def test_build_intraday_overlay_creates_daily_rows(monkeypatch, tmp_path: 
         "key": ("screener-intraday", "20260625", ("000111", "000222")),
         "endpoint": "quotes",
         "priority": "background",
-        "cooldown_scope": "quotes",
+        "cooldown_scope": "quotes:KRX",
     }]
 
 
