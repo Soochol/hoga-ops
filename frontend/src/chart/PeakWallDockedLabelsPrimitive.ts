@@ -9,6 +9,13 @@ import type {
   Time,
 } from 'lightweight-charts';
 import type { CanvasRenderingTarget2D } from 'fancy-canvas';
+import { resolveTokensThemed } from '../util/tokens';
+
+// 라벨 칩 표면·테두리 — canvas 지연 해석(AskPeakSegmentsPrimitive 와 동일 처방).
+const CHIP_TOKENS = {
+  bg: ['--bg-card', '#121216'],
+  border: ['--border-strong', '#33333C'],
+} as const;
 import {
   LABEL_BOX_X_PAD_PX,
   LABEL_BOX_Y_PAD_PX,
@@ -111,18 +118,21 @@ class PeakWallDockedLabelsRenderer implements IPrimitivePaneRenderer {
       const maxBaselineY = scope.bitmapSize.height - LABEL_EDGE_PAD_PX * vr;
       const layouts = layoutAskPeakLabels(candidates, minBaselineY, maxBaselineY, rowHeight);
 
+      const { bg: chipBg, border: chipBorder } = resolveTokensThemed(CHIP_TOKENS);
       for (const layout of layouts) {
         const label = labels[layout.index];
         const xPad = LABEL_BOX_X_PAD_PX * hr;
         const yPad = LABEL_BOX_Y_PAD_PX * vr;
         const fontHeight = LABEL_FONT_PX * vr;
-        ctx.fillStyle = 'rgba(11, 15, 26, 0.82)';
-        ctx.fillRect(
-          layout.xRight - layout.width - xPad,
-          layout.baselineY - fontHeight - yPad,
-          layout.width + xPad * 2,
-          fontHeight + yPad * 2,
-        );
+        const bx = layout.xRight - layout.width - xPad;
+        const by = layout.baselineY - fontHeight - yPad;
+        const bw = layout.width + xPad * 2;
+        const bh = fontHeight + yPad * 2;
+        ctx.fillStyle = chipBg;
+        ctx.fillRect(bx, by, bw, bh);
+        ctx.strokeStyle = chipBorder;
+        ctx.lineWidth = hr;
+        ctx.strokeRect(bx, by, bw, bh);
         ctx.fillStyle = label.color;
         ctx.textBaseline = 'bottom';
         ctx.textAlign = 'right';
