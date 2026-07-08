@@ -94,11 +94,12 @@ export function QuoteRow({
       }}
     >
       {/* 종목명은 가격(text-sm)보다 의도적으로 작게(text-xs) — 그룹 헤더(text-sm/600) >
-          종목명 크기 위계 + 가격이 1차 콘텐츠. 등락(text-xs)과는 서체(mono)·색으로 구분. */}
-      <span className="flex-1 min-w-0 leading-tight">
-        <span className="truncate text-xs text-fg">{name}</span>
-      </span>
-      <span className={`font-mono tabular-nums text-sm text-right leading-tight ${pct === null ? 'text-fg' : priceDirClass(pct)}`}>
+          종목명 크기 위계 + 가격이 1차 콘텐츠. 등락(text-xs)과는 서체(mono)·색으로 구분.
+          truncate 는 flex 아이템 자신에 걸어야 클립된다(내부 inline span 은 overflow 를
+          무시해 긴 종목명이 가격 컬럼을 침범했다). 가격은 flex-none 으로 폭을 보전해
+          종목명이 대신 잘리게 한다(전체 이름은 행 aria-label 로 전달). */}
+      <span className="flex-1 min-w-0 truncate text-xs text-fg leading-tight">{name}</span>
+      <span className={`flex-none font-mono tabular-nums text-sm text-right leading-tight ${pct === null ? 'text-fg' : priceDirClass(pct)}`}>
         {price != null
           ? `${price.toLocaleString('ko-KR')}원${pct === null ? '' : ` (${formatPct(pct)})`}`
           : '—'}

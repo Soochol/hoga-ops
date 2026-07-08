@@ -7,7 +7,7 @@ import { QuoteSortIcon } from '../rightrail/QuoteSortIcon';
 import { quoteSortModeDescription } from '../rightrail/quoteSortDescription';
 import { useLivePageStore } from '../state/livePage';
 import { useLiveStatus } from '../api/liveStatus';
-import { deriveCollectionView } from '../live/collectionStatus';
+import { deriveCollectionView, type DisplayStatus } from '../live/collectionStatus';
 import { CollectionDot } from '../live/CollectionDot';
 import {
   useWatchlist, useCatchupAll, useRemoveFromWatchlist,
@@ -196,9 +196,13 @@ function GroupHeader(props: {
                 className={itemClass}>
                 <span className="w-4 grid place-items-center">▼</span> 아래로 이동
               </button>
+              {/* 파괴적 액션 — 디바이더 + --error 로 인접 항목과 시각 거리를 벌려
+                  오클릭(→ confirm) 을 줄이는 모터 가드. text-fg 와 충돌하지 않게
+                  itemClass 대신 전용 danger 클래스(같은 레이아웃, 색만 --error). */}
+              <div role="separator" className="my-1 border-t border-border" />
               <button type="button" role="menuitem"
                 onClick={() => { setMenuOpen(false); props.onDelete?.(); }}
-                className={itemClass}>
+                className="w-full text-left px-3 py-1.5 text-sm text-error hover:bg-tint-error flex items-center gap-2 disabled:opacity-40 disabled:hover:bg-transparent">
                 <span className="w-4 grid place-items-center"><TrashIcon className="w-[1em] h-[1em]" /></span> 그룹 삭제
               </button>
             </AnchoredMenu>
@@ -206,6 +210,44 @@ function GroupHeader(props: {
         </div>
       )}
     </div>
+  );
+}
+
+/**
+ * 행 우측 트레일링 슬롯 — 평시엔 수집상태 점(예외만), 호버/포커스 시엔 ⋯ 행 메뉴 버튼.
+ *
+ * 두 관용구를 한 슬롯에 겹친다(grid 오버레이): (1) 정상 실시간(realtime)은 점을 숨겨
+ * "정상=무표시" 예외-기반 신호로 만들고 — 33행 전부 초록 점이던 노이즈를 없앤다
+ * (LiveStatusBar의 종목 앞 점은 CollectionDot 그대로 유지, 여기서만 게이트). (2) 그간
+ * 우클릭으로만 닿던 행 메뉴(관심 해제/그룹 편집)를 호버 ⋯ 버튼으로 발견 가능하게 한다.
+ *
+ * ⋯ 는 평시 opacity-0 + pointer-events-none 이라 슬롯 위 클릭이 행(차트 이동)으로
+ * 통과하고, 호버/포커스 시에만 보이며 클릭 가능해진다. opacity(=DOM 유지)라 Tab 포커스가
+ * 닿는다(group 헤더 ⋯ 와 동일 계약). 정상 행은 점이 없어 ⋯ 만 이 슬롯을 쓴다.
+ */
+function RowTrailing(props: {
+  status: DisplayStatus;
+  name: string;
+  onOpenMenu: (e: React.MouseEvent) => void;
+}) {
+  const showDot = props.status !== 'realtime';
+  return (
+    <span className="relative grid place-items-center" style={{ minWidth: '1.25rem', minHeight: '1.25rem' }}>
+      {showDot && (
+        <span className="col-start-1 row-start-1 group-hover:opacity-0 group-focus-within:opacity-0 transition-opacity">
+          <CollectionDot status={props.status} />
+        </span>
+      )}
+      <button
+        type="button"
+        aria-label={`${props.name} 행 메뉴`}
+        aria-haspopup="menu"
+        onClick={(e) => { e.stopPropagation(); props.onOpenMenu(e); }}
+        className="col-start-1 row-start-1 grid place-items-center px-1 leading-none text-fg-dimmer hover:text-fg opacity-0 pointer-events-none group-hover:opacity-100 group-hover:pointer-events-auto group-focus-within:opacity-100 group-focus-within:pointer-events-auto focus-visible:opacity-100 focus-visible:pointer-events-auto"
+      >
+        ⋯
+      </button>
+    </span>
   );
 }
 
@@ -537,7 +579,13 @@ export function WatchlistDrawer() {
                         kisApiTargets: apiTargets,
                         captureCandidate: entry.capture_candidate !== false,
                       });
-                      const badge = <CollectionDot status={collection.displayStatus} />;
+                      const trailing = (
+                        <RowTrailing
+                          status={collection.displayStatus}
+                          name={entry.name}
+                          onOpenMenu={(e) => openMenu(e, entry.code, entry.name, entry.folder_id)}
+                        />
+                      );
                       return (
                         <SortableQuoteRow
                           key={entrySortableId(entry.folder_id, entry.code)}
@@ -549,7 +597,7 @@ export function WatchlistDrawer() {
                           onPick={(options) => onPick(entry.code, entry.name, options)}
                           onContextMenu={(e) => openMenu(e, entry.code, entry.name, entry.folder_id)}
                           onDelete={() => removeM.mutate(entry.code)}
-                          collectionBadge={badge}
+                          collectionBadge={trailing}
                           collectionLabel={collection.ariaLabel}
                           dragEnabled={rowDragEnabled}
                         />

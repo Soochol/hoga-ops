@@ -465,7 +465,11 @@ describe('WatchlistDrawer', () => {
     render(<WatchlistDrawer />, { wrapper: wrap(qc, '/inventory') });
     await waitFor(() => expect(screen.getByText('삼성전자')).toBeInTheDocument());
     fireEvent.click(screen.getByLabelText('스윙 그룹 메뉴'));
-    fireEvent.click(await screen.findByRole('menuitem', { name: /그룹 삭제/ }));
+    const deleteItem = await screen.findByRole('menuitem', { name: /그룹 삭제/ });
+    // 파괴적 액션 표기: --error 텍스트 + 위쪽 separator(모터 가드).
+    expect(deleteItem.className).toContain('text-error');
+    expect(deleteItem.previousElementSibling?.getAttribute('role')).toBe('separator');
+    fireEvent.click(deleteItem);
     await waitFor(() => expect(deleteSpy).toHaveBeenCalledWith('f_0000000a'));
     confirmSpy.mockRestore();
   });
@@ -575,7 +579,7 @@ describe('WatchlistDrawer', () => {
   });
 
   // ADR-0067: 관심종목 행 수집상태 배지
-  it('행 종목이 live_set에 있으면 그 행에 "실시간" 배지를 표시한다', async () => {
+  it('실시간(정상) 행은 점을 숨긴다 — 예외-기반 신호(상태는 aria-label로 유지)', async () => {
     vi.spyOn(watchlistApi, 'getWatchlist').mockResolvedValue(DATA);
     const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } });
     qc.setQueryData(['live', 'status'], {
@@ -587,7 +591,11 @@ describe('WatchlistDrawer', () => {
     render(<WatchlistDrawer />, { wrapper: wrap(qc, '/inventory') });
     await waitFor(() => expect(screen.getByText('삼성전자')).toBeInTheDocument());
     const row005930 = screen.getByTestId('watchlist-row-005930');
-    expect(row005930.querySelector('[data-testid="collection-dot-realtime"]')).toBeInTheDocument();
+    // 정상(realtime) → 시각적 점 없음(노이즈 제거), 상태는 접근성 이름으로 전달.
+    expect(row005930.querySelector('[data-testid="collection-dot-realtime"]')).toBeNull();
+    expect(row005930.getAttribute('aria-label')).toContain('실시간 수집 중');
+    // 대신 발견 가능한 행 메뉴 버튼이 슬롯을 차지.
+    expect(row005930.querySelector('[aria-label="삼성전자 행 메뉴"]')).toBeInTheDocument();
   });
 
   it('live_set 밖 + watchlist에 있고 안 보는 중이면 waiting_eod 점만 표시한다', async () => {
@@ -652,7 +660,8 @@ describe('WatchlistDrawer', () => {
     expect(screen.getByTestId('watchlist-row-000660')).not.toHaveTextContent('KIS API 30초 저장 중');
     expect(screen.getByTestId('watchlist-row-035420')).not.toHaveTextContent('대기');
     expect(screen.getByTestId('watchlist-row-051910')).not.toHaveTextContent('저장 제외');
-    expect(screen.getByTestId('watchlist-row-005930').querySelector('[data-testid="collection-dot-realtime"]')).toBeInTheDocument();
+    // realtime(정상)은 점 숨김; 비-정상(waiting_eod)만 점 표시.
+    expect(screen.getByTestId('watchlist-row-005930').querySelector('[data-testid="collection-dot-realtime"]')).toBeNull();
     expect(screen.getByTestId('watchlist-row-000660').querySelector('[data-testid="collection-dot-waiting_eod"]')).toBeInTheDocument();
     expect(screen.getByTestId('watchlist-row-035420').querySelector('[data-testid="collection-dot-waiting_eod"]')).toBeInTheDocument();
   });
