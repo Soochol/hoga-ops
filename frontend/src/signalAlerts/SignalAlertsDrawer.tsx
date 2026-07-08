@@ -7,6 +7,7 @@ import {
   type SignalAlertRecentResponse,
 } from '../api/signalAlerts';
 import { useJumpToLive } from '../live/useJumpToLive';
+import { TrashIcon } from '../ui/TrashIcon';
 import { groupSignalAlertsByCode, type SignalAlertGroup } from './groupAlerts';
 import { useSignalAlertInboxStore } from '../state/signalAlertInbox';
 import {
@@ -94,10 +95,13 @@ export default function SignalAlertsDrawer({ today = todayKst() }: { today?: str
         actions={(
           <RailToolbarIconButton
             aria-label="오늘 인박스 비우기"
+            title="오늘 인박스 비우기"
             disabled={visibleAlerts.length === 0 || clearToday.isPending}
             onClick={() => setConfirmingClear((open) => !open)}
           >
-            ×
+            {/* 비우기(파괴적) — 헤더의 맨 × 는 "닫기"로 오독돼, 휴지통 아이콘으로
+                의미를 명확히(패널 닫기는 레일 토글이 담당). */}
+            <TrashIcon className="h-3.5 w-3.5" />
           </RailToolbarIconButton>
         )}
       />

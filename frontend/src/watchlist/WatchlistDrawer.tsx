@@ -87,6 +87,21 @@ function ChevronIcon({ collapsed }: { collapsed: boolean }) {
   );
 }
 
+/** 그룹 ⋯ 메뉴 아이콘 — 유니코드 글리프(✎▲▼) 대신 SVG 로 통일(chevron·Trash 와 동일
+ *  근거: 폰트별 렌더 불일치 회피). 1em 스케일이라 텍스트 크기를 따른다. */
+function MenuGlyph({ children }: { children: React.ReactNode }) {
+  return (
+    <svg width="1em" height="1em" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+      strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+      {children}
+    </svg>
+  );
+}
+const PencilIcon = () => <MenuGlyph><path d="M12 20h9" /><path d="M16.5 3.5a2.1 2.1 0 0 1 3 3L7 19l-4 1 1-4z" /></MenuGlyph>;
+const ArrowUpIcon = () => <MenuGlyph><path d="M12 19V5" /><path d="M6 11l6-6 6 6" /></MenuGlyph>;
+const ArrowDownIcon = () => <MenuGlyph><path d="M12 5v14" /><path d="M6 13l6 6 6-6" /></MenuGlyph>;
+const PlusIcon = () => <MenuGlyph><path d="M12 5v14" /><path d="M5 12h14" /></MenuGlyph>;
+
 /**
  * 그룹 헤더 행 — 라벨/chevron 클릭 = 접기 토글, 호버 시 ⋯ 메뉴(이름 변경/삭제;
  * 실폴더만 — 미분류는 onRename/onDelete 미전달 → ⋯ 메뉴 없이 chevron+라벨 버튼만).
@@ -187,17 +202,17 @@ function GroupHeader(props: {
               <button type="button" role="menuitem"
                 onClick={() => { setMenuOpen(false); props.onRename?.(); }}
                 className={itemClass}>
-                <span className="w-4 grid place-items-center">✎</span> 그룹 이름 변경
+                <span className="w-4 grid place-items-center"><PencilIcon /></span> 그룹 이름 변경
               </button>
               <button type="button" role="menuitem" disabled={!props.canMoveUp}
                 onClick={() => { setMenuOpen(false); props.onMoveUp?.(); }}
                 className={itemClass}>
-                <span className="w-4 grid place-items-center">▲</span> 위로 이동
+                <span className="w-4 grid place-items-center"><ArrowUpIcon /></span> 위로 이동
               </button>
               <button type="button" role="menuitem" disabled={!props.canMoveDown}
                 onClick={() => { setMenuOpen(false); props.onMoveDown?.(); }}
                 className={itemClass}>
-                <span className="w-4 grid place-items-center">▼</span> 아래로 이동
+                <span className="w-4 grid place-items-center"><ArrowDownIcon /></span> 아래로 이동
               </button>
               {/* 파괴적 액션 — 디바이더 + --error 로 인접 항목과 시각 거리를 벌려
                   오클릭(→ confirm) 을 줄이는 모터 가드. text-fg 와 충돌하지 않게
@@ -366,9 +381,6 @@ export function WatchlistDrawer() {
   const [addGroupOpen, setAddGroupOpen] = useState(false);
   const [renameTarget, setRenameTarget] = useState<{ id: string; name: string } | null>(null);
   const [groupSortModes, setGroupSortModes] = useState<FolderSortModeMap>(() => readFolderSortModeMapFromStorage());
-  const [editMenu, setEditMenu] = useState(false);
-  const editMenuRef = useRef<HTMLDivElement>(null);
-  useDismissablePopover(editMenu, editMenuRef, () => setEditMenu(false));
   const [menu, setMenu] =
     useState<{ x: number; y: number; code: string; name: string; folderId: string | null } | null>(null);
   // v3 "그룹 편집" — 행 메뉴/하트가 여는 멤버십 피커(ADR-0070 P5).
@@ -527,27 +539,21 @@ export function WatchlistDrawer() {
       <RailDrawerHeader
         title="관심종목"
         actions={(
-          <div className="relative" ref={editMenuRef}>
-            <button type="button" aria-label="관심종목 편집 메뉴" aria-haspopup="menu" aria-expanded={editMenu}
-                    onClick={() => setEditMenu((v) => !v)}
+          // 생성(새 그룹)은 편집 메뉴에 숨어 2클릭이던 것을 헤더 직접 + 버튼으로 승격
+          // (히트맵 보드의 "+ 새 그룹" 과 표면 일치). 남은 편집은 항목 하나뿐이라
+          // 메뉴를 없애고 "편집"이 관심 편집 모달을 바로 연다.
+          <div className="flex items-center gap-2">
+            <button type="button" aria-label="새 그룹 만들기" title="새 그룹 만들기"
+                    onClick={() => setAddGroupOpen(true)}
+                    className="grid h-5 w-5 place-items-center rounded text-fg-dim hover:bg-bg-input-hover hover:text-fg">
+              <PlusIcon />
+            </button>
+            <button type="button" aria-label="관심종목 편집"
+                    onClick={() => setEditOpen(true)}
                     className="text-xs text-fg-dim hover:text-accent">
               편집
             </button>
-            {editMenu && (
-              <AnchoredMenu label="관심">
-                <button type="button" role="menuitem"
-                        onClick={() => { setEditMenu(false); setEditOpen(true); }}
-                        className="block w-full px-3 py-1.5 text-left text-sm text-fg hover:bg-bg-input-hover">
-                  관심 편집
-                </button>
-                <button type="button" role="menuitem"
-                        onClick={() => { setEditMenu(false); setAddGroupOpen(true); }}
-                        className="block w-full px-3 py-1.5 text-left text-sm text-fg hover:bg-bg-input-hover">
-                  새 그룹 만들기
-                </button>
-              </AnchoredMenu>
-            )}
-        </div>
+          </div>
         )}
       />
 
