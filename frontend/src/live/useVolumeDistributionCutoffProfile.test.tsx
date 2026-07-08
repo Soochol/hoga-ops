@@ -3,6 +3,7 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 import type { Candle, DayVolumeDistribution, RangeBundle, RangeSegment } from '../api/types';
 import { useRange } from '../api/range';
+import { buildContinuousTradeVolumeDistributionIndex } from './continuousTradeVolumeDistribution';
 import { useVolumeDistributionCutoffProfile } from './useVolumeDistributionCutoffProfile';
 
 vi.mock('../api/range', async () => {
@@ -13,7 +14,21 @@ vi.mock('../api/range', async () => {
   };
 });
 
+// 인덱스 빌더를 실제 구현으로 위임하는 spy로 감싸 호출 횟수를 검증 가능하게 한다
+// (커서 이동마다 재구축하지 않고 1회 구축·재사용하는지의 결정적 가드). 나머지 함수는
+// 실제 구현 유지 → profileAt/compute/merge 동작 불변.
+vi.mock('./continuousTradeVolumeDistribution', async () => {
+  const actual = await vi.importActual<typeof import('./continuousTradeVolumeDistribution')>(
+    './continuousTradeVolumeDistribution',
+  );
+  return {
+    ...actual,
+    buildContinuousTradeVolumeDistributionIndex: vi.fn(actual.buildContinuousTradeVolumeDistributionIndex),
+  };
+});
+
 const mockedUseRange = vi.mocked(useRange);
+const mockedBuildIndex = vi.mocked(buildContinuousTradeVolumeDistributionIndex);
 
 const profile = (overrides: Partial<DayVolumeDistribution> = {}): DayVolumeDistribution => ({
   date: '20260625',
@@ -365,6 +380,7 @@ describe('useVolumeDistributionCutoffProfile', () => {
       isLoading: false,
       isFetching: false,
     } as ReturnType<typeof useRange>);
+    mockedBuildIndex.mockClear();
     const liveTrades = Array.from({ length: 60_000 }, (_, idx) => ({
       t_ms: segment.session_open_ms + idx * 100,
       price: 100 + (idx % 20),
@@ -373,7 +389,6 @@ describe('useVolumeDistributionCutoffProfile', () => {
     }));
     let cursorMs = segment.session_open_ms;
 
-    const startedAt = performance.now();
     const { result, rerender } = renderHook(() => useVolumeDistributionCutoffProfile({
       enabled: true,
       code: '005930',
@@ -393,11 +408,13 @@ describe('useVolumeDistributionCutoffProfile', () => {
       cursorMs = segment.session_open_ms + step * 20_000;
       rerender();
     }
-    const elapsedMs = performance.now() - startedAt;
 
     expect(result.current?.last_trade_ms).toBe(cursorMs);
     expect(result.current?.bins.reduce((sum, bin) => sum + bin.qty, 0)).toBe(24_001);
-    expect(elapsedMs).toBeLessThan(90);
+    // 커서를 120번 옮겨도 O(n) 인덱스 빌더는 단 1회만 호출된다(cursorMs가 빌더 memo
+    // deps에 없음). 매 호버마다 재구축하는 O(n×m) 회귀면 여기서 121회로 잡힌다.
+    // 기존 벽시계 `elapsedMs < 90ms`는 병렬 부하에서 flaky해 결정적 호출횟수로 대체.
+    expect(mockedBuildIndex).toHaveBeenCalledTimes(1);
   });
 
   it('keeps final profile when fallback recompute has no valid live trades', () => {
