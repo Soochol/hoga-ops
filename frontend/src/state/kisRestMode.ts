@@ -13,7 +13,11 @@ type KisRestWarningLike = {
 interface Store {
   lastFailureAtMs: number | null;
   lastToastAtMs: number | null;
+  /** 사용자가 토스트를 닫았는가(× 또는 우회 ON). lastToastAtMs는 쿨다운 앵커로 보존하고
+   * 가시성만 이 플래그로 분리 — 닫아도 쿨다운은 유지되고, 쿨다운 경과 후 재실패면 다시 뜬다. */
+  toastDismissed: boolean;
   notifyFailure: (nowMs?: number) => boolean;
+  dismissToast: () => void;
 }
 
 export function readLegacyKisRestBypass(): { kisRestBypassEnabled: boolean } | null {
@@ -49,14 +53,19 @@ export function kisRestWarningIndicatesUnavailable(warning: KisRestWarningLike):
 export const useKisRestModeStore = create<Store>((set, get) => ({
   lastFailureAtMs: null,
   lastToastAtMs: null,
+  toastDismissed: false,
 
   notifyFailure: (nowMs = Date.now()) => {
     const lastToastAtMs = get().lastToastAtMs;
     set({ lastFailureAtMs: nowMs });
     if (lastToastAtMs != null && nowMs - lastToastAtMs < KIS_REST_FAILURE_TOAST_COOLDOWN_MS) {
+      // 쿨다운 중 — 닫힌 상태를 존중해 재노출하지 않는다.
       return false;
     }
-    set({ lastToastAtMs: nowMs });
+    // 새 알림 창(쿨다운 경과): 이전에 닫혔더라도 다시 띄운다.
+    set({ lastToastAtMs: nowMs, toastDismissed: false });
     return true;
   },
+
+  dismissToast: () => set({ toastDismissed: true }),
 }));

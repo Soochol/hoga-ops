@@ -26,10 +26,11 @@ describe('KisRestUnavailableToastHost', () => {
     kisRestMode.useKisRestModeStore.setState({
       lastFailureAtMs: null,
       lastToastAtMs: null,
+      toastDismissed: false,
     });
   });
 
-  it('shows a KIS connection toast and toggles backend bypass mode', async () => {
+  it('shows a KIS connection toast, enables bypass, and auto-dismisses the toast', async () => {
     const apiCall = vi.spyOn(apiClient, 'apiCall').mockResolvedValue({
       schema_version: 1,
       storage_policy: 'ws_plus_rest',
@@ -58,8 +59,57 @@ describe('KisRestUnavailableToastHost', () => {
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ kis_rest_bypass_enabled: true }),
     }));
-    await waitFor(() => expect(screen.getByRole('switch', { name: 'KIS API 우회' })).toHaveAttribute('aria-checked', 'true'));
-    expect(screen.getByText('KIS REST 우회 중')).toBeInTheDocument();
+    // 우회가 켜지면 토스트 목적이 달성되므로 자동으로 닫힌다.
+    await waitFor(() => expect(screen.queryByRole('status')).toBeNull());
+    expect(kisRestMode.useKisRestModeStore.getState().toastDismissed).toBe(true);
+  });
+
+  it('dismisses the toast via the close button without enabling bypass', () => {
+    renderWithClient({
+      schema_version: 1,
+      storage_policy: 'ws_plus_rest',
+      program_trade_storage_enabled: false,
+      kis_rest_bypass_enabled: false,
+    });
+
+    act(() => {
+      kisRestMode.useKisRestModeStore.getState().notifyFailure(1_000);
+    });
+    expect(screen.getByRole('status')).toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole('button', { name: '닫기' }));
+
+    // 닫으면 사라지지만 우회는 여전히 OFF(사용자가 KIS 복구를 기다리는 선택).
+    expect(screen.queryByRole('status')).toBeNull();
+    expect(kisRestMode.useKisRestModeStore.getState().toastDismissed).toBe(true);
+    expect(kisRestMode.useKisRestModeStore.getState().lastToastAtMs).toBe(1_000);
+  });
+
+  it('re-shows the toast on a fresh failure after the cooldown, even once dismissed', () => {
+    renderWithClient({
+      schema_version: 1,
+      storage_policy: 'ws_plus_rest',
+      program_trade_storage_enabled: false,
+      kis_rest_bypass_enabled: false,
+    });
+
+    act(() => {
+      kisRestMode.useKisRestModeStore.getState().notifyFailure(1_000);
+    });
+    fireEvent.click(screen.getByRole('button', { name: '닫기' }));
+    expect(screen.queryByRole('status')).toBeNull();
+
+    // 쿨다운(5분) 내 재실패는 닫힌 상태 존중 → 재노출 안 함.
+    act(() => {
+      kisRestMode.useKisRestModeStore.getState().notifyFailure(1_000 + 60_000);
+    });
+    expect(screen.queryByRole('status')).toBeNull();
+
+    // 쿨다운 경과 후 재실패는 다시 띄운다.
+    act(() => {
+      kisRestMode.useKisRestModeStore.getState().notifyFailure(1_000 + kisRestMode.KIS_REST_FAILURE_TOAST_COOLDOWN_MS + 1);
+    });
+    expect(screen.getByRole('status')).toBeInTheDocument();
   });
 
   it('does not render before a failure notification', () => {
