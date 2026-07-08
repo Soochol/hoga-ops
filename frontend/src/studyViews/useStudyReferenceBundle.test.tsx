@@ -9,10 +9,12 @@ const {
   useQueryMock,
   studyReferenceQueryOptionsMock,
   useScreenerDailyCandlesMock,
+  useLivePastCandlesMock,
 } = vi.hoisted(() => ({
   useQueryMock: vi.fn(),
   studyReferenceQueryOptionsMock: vi.fn(),
   useScreenerDailyCandlesMock: vi.fn(),
+  useLivePastCandlesMock: vi.fn(),
 }));
 
 vi.mock('@tanstack/react-query', async (importOriginal) => {
@@ -30,6 +32,14 @@ vi.mock('./studyReferenceQueries', () => ({
 vi.mock('../api/screenerDailyCandles', () => ({
   useScreenerDailyCandles: useScreenerDailyCandlesMock,
 }));
+
+vi.mock('../api/livePastCandles', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('../api/livePastCandles')>();
+  return {
+    ...actual,
+    useLivePastCandles: useLivePastCandlesMock,
+  };
+});
 
 import { useLivePageStore } from '../state/livePage';
 import { useLiveVenueStore } from '../state/liveVenue';
@@ -183,6 +193,12 @@ describe('useStudyReferenceBundle', () => {
     rangeCandlesFixture = [];
     screenerDailyCandlesFixture = [];
     useQueryMock.mockImplementation(queryResultFor);
+    useLivePastCandlesMock.mockReset();
+    useLivePastCandlesMock.mockReturnValue({
+      data: { candles: [], data_warnings: ['minute-warning'], effective_sessions: [] },
+      isLoading: false,
+      error: null,
+    });
     useScreenerDailyCandlesMock.mockImplementation(() => ({
       data: { candles: screenerDailyCandlesFixture, data_warnings: [] },
       isLoading: false,
@@ -219,8 +235,19 @@ describe('useStudyReferenceBundle', () => {
     expect(useQueryMock).toHaveBeenNthCalledWith(4, expect.objectContaining({
       queryKey: expectedRangeCandlesQueryKey,
     }));
-    expect(useQueryMock).toHaveBeenNthCalledWith(5, minuteOptions);
-    expect(useQueryMock).toHaveBeenNthCalledWith(6, dailyOptions);
+    // 분봉은 useQuery(minuteOptions)가 아니라 청크 워크백 훅으로 로드된다.
+    expect(useQueryMock).toHaveBeenNthCalledWith(5, dailyOptions);
+  });
+
+  it('분봉은 useLivePastCandles(청크 워크백 훅)로 로드한다 — ADR-0091 예산 유예 박제 방지', () => {
+    renderHook(() => useStudyReferenceBundle(save));
+
+    // 분봉 timeframe(5m) save → 저장 기간 전체를 seed로 청크 워크백 훅에 전달.
+    expect(useLivePastCandlesMock).toHaveBeenCalledWith(
+      '005930', '20260616', '20260618', 'NXT',
+    );
+    // minuteOptions는 이제 useQuery로 구독되지 않는다(warm 프리페치만 사용).
+    expect(useQueryMock).not.toHaveBeenCalledWith(minuteOptions);
   });
 
   it('uses lightweight range candle fallback for minute study when KIS REST bypass is enabled', () => {
