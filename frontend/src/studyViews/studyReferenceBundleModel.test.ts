@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import type { StudyViewReference } from '../api/studyViews';
-import type { RangeBundle } from '../api/types';
+import type { Candle, RangeBundle } from '../api/types';
 import { initialHistoricalDaysFor, subtractDaysKst } from '../live/liveDateTime';
 import { buildStudyReferenceBundleModel, studyReferenceQueryInputs } from './studyReferenceBundleModel';
 
@@ -18,6 +18,10 @@ const save: StudyViewReference = {
   created_at_ms: 1,
   updated_at_ms: 2,
 };
+
+function candle(ts_ms: number, open: number, high: number, low: number, close: number, vol: number): Candle {
+  return { ts_ms, open, high, low, close, vol_a: vol, vol_b: 0 };
+}
 
 function pastBundle(): RangeBundle {
   return {
@@ -51,32 +55,35 @@ describe('studyReferenceBundleModel', () => {
       isMinute: true,
       bucketMs: 300_000,
       range: { code: '005930', from: '20260616', to: '20260618', timeframe: '5m' },
-      minuteCandles: { code: '005930', from: '20260616', to: '20260618' },
-      dailyCandles: { code: null, from: null, to: null },
+      candles: { code: '005930', from: '20260616', to: '20260618', timeframe: '5m' },
+      screenerDaily: { code: null, from: null, to: null },
     });
   });
 
-  it('derives query inputs for calendar reference saves', () => {
+  it('derives query inputs for calendar reference saves (1m disk candles + screener gap-fill)', () => {
     expect(studyReferenceQueryInputs({ ...save, timeframe: 'D' })).toMatchObject({
       isMinute: false,
       range: { code: null, from: null, to: null, timeframe: null },
-      minuteCandles: { code: null, from: null, to: null },
-      dailyCandles: { code: '005930', from: '20260616', to: '20260618' },
+      candles: { code: '005930', from: '20260616', to: '20260618', timeframe: '1m' },
+      screenerDaily: { code: '005930', from: '20260616', to: '20260618' },
     });
   });
 
-  it('limits daily study candle requests to the live initial calendar window', () => {
+  it('caps the daily 1m candle window to the live initial calendar window; screener covers the full range', () => {
     const to = '20260618';
     expect(studyReferenceQueryInputs({
       ...save,
       timeframe: 'D',
       range: { ...save.range, from_date: '20200101', to_date: to },
     })).toMatchObject({
-      dailyCandles: {
+      candles: {
         code: '005930',
         from: subtractDaysKst(to, initialHistoricalDaysFor('D')),
         to,
+        timeframe: '1m',
       },
+      // 스크리너 일봉은 캡 밖(2020~)까지 저장 구간 전체를 커버해 갭을 채운다.
+      screenerDaily: { code: '005930', from: '20200101', to },
     });
   });
 
@@ -86,11 +93,11 @@ describe('studyReferenceBundleModel', () => {
       save: { ...save, range: { ...save.range, from_ms: 0, to_ms: 300_000 } },
       venue: 'KRX',
       pastBundle: past,
-      minuteCandles: [
-        { t_ms: 3_000, open: 3, high: 4, low: 3, close: 4, volume: 12 },
-        { t_ms: 1_000, open: 1, high: 2, low: 1, close: 2, volume: 10 },
+      rangeCandles: [
+        candle(3_000, 3, 4, 3, 4, 12),
+        candle(1_000, 1, 2, 1, 2, 10),
       ],
-      dailyCandles: [],
+      screenerDailyCandles: [],
     });
 
     expect(model.chartBundle?.candles.map((c) => c.ts_ms)).toEqual([0]);
@@ -101,7 +108,7 @@ describe('studyReferenceBundleModel', () => {
     expect(model.bundle?.to_date).toBe('20260618');
   });
 
-  it('uses effective KRX sessions for NXT fallback study reference minute charts', () => {
+  it('injects segment sessions (KRX meta) for NXT fallback study reference minute charts', () => {
     const model = buildStudyReferenceBundleModel({
       save: {
         ...save,
@@ -115,11 +122,9 @@ describe('studyReferenceBundleModel', () => {
       },
       venue: 'NXT',
       pastBundle: pastBundle(),
-      minuteCandles: [
-        { t_ms: Date.UTC(2026, 5, 16, 0, 0), open: 1, high: 2, low: 1, close: 2, volume: 10 },
-      ],
-      dailyCandles: [],
-      minuteEffectiveSessions: [
+      rangeCandles: [candle(Date.UTC(2026, 5, 16, 0, 0), 1, 2, 1, 2, 10)],
+      screenerDailyCandles: [],
+      sessions: [
         {
           date: '20260616',
           venue: 'KRX',
@@ -135,13 +140,55 @@ describe('studyReferenceBundleModel', () => {
     });
   });
 
-  it('builds calendar bundles without requiring /api/range data', () => {
+  it('aggregates hogaplay 1m into daily bars, filtering non-regular-session bars', () => {
+    // 09:00 KST = 00:00 UTC; 16:30 KST = 07:30 UTC (장 마감 이후, 제외돼야 함).
+    const inSessionOpen = Date.UTC(2026, 5, 16, 0, 0);
+    const inSessionMid = Date.UTC(2026, 5, 16, 1, 0);
+    const afterClose = Date.UTC(2026, 5, 16, 7, 30);
+    const model = buildStudyReferenceBundleModel({
+      save: { ...save, timeframe: 'D', range: { ...save.range, from_date: '20260616', to_date: '20260616' } },
+      venue: 'KRX',
+      pastBundle: null,
+      rangeCandles: [
+        candle(inSessionOpen, 1, 2, 1, 2, 10),
+        candle(inSessionMid, 3, 9, 3, 5, 5),
+        candle(afterClose, 100, 200, 100, 150, 99), // 정규장 밖 → OHLC에 반영 안 됨
+      ],
+      screenerDailyCandles: [],
+    });
+
+    // 정규장 두 바만 집계: open=1, high=9, low=1, close=5, vol=15.
+    expect(model.bundle?.candles).toHaveLength(1);
+    expect(model.bundle?.candles[0]).toMatchObject({ open: 1, high: 9, low: 1, close: 5 });
+  });
+
+  it('prefers hogaplay daily and fills capture gaps with screener daily', () => {
+    const d16 = Date.UTC(2026, 5, 16, 0, 0);
+    const d17 = Date.UTC(2026, 5, 17, 0, 0);
+    const model = buildStudyReferenceBundleModel({
+      save: { ...save, timeframe: 'D', range: { ...save.range, from_date: '20260616', to_date: '20260617' } },
+      venue: 'KRX',
+      pastBundle: null,
+      // hogaplay 1m는 20260616만 캡처됨.
+      rangeCandles: [candle(d16, 1, 4, 1, 4, 10)],
+      // 스크리너 일봉은 두 날짜 모두 있으나 20260616은 hogaplay가 이겨야 함.
+      screenerDailyCandles: [
+        { t_ms: d16, open: 90, high: 99, low: 90, close: 999, volume: 1 },
+        { t_ms: d17, open: 50, high: 55, low: 45, close: 50, volume: 2 },
+      ],
+    });
+
+    // 20260616 = hogaplay close 4, 20260617 = screener close 50 (갭 채움).
+    expect(model.bundle?.candles.map((c) => c.close)).toEqual([4, 50]);
+  });
+
+  it('builds calendar bundles from screener daily alone when no hogaplay capture exists', () => {
     const model = buildStudyReferenceBundleModel({
       save: { ...save, timeframe: 'D' },
       venue: 'KRX',
       pastBundle: null,
-      minuteCandles: [],
-      dailyCandles: [{ t_ms: Date.UTC(2026, 5, 16, 0, 0), open: 1, high: 2, low: 1, close: 2, volume: 10 }],
+      rangeCandles: [],
+      screenerDailyCandles: [{ t_ms: Date.UTC(2026, 5, 16, 0, 0), open: 1, high: 2, low: 1, close: 2, volume: 10 }],
     });
 
     expect(model.bundle?.candles).toHaveLength(1);

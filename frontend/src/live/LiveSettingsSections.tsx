@@ -133,7 +133,7 @@ function ViLimitPriceLineStyleRow() {
   );
 }
 
-function DataSourceDetail() {
+function DataSourceDetail({ variant }: { variant: 'live' | 'study' }) {
   const { data } = useLiveSettings();
   const patch = usePatchLiveSettings();
   const kisRestBypassEnabled = data?.kis_rest_bypass_enabled ?? false;
@@ -187,16 +187,27 @@ function DataSourceDetail() {
           })}
         />
       </SettingsRow>
-      <RoleSourceGroup
-        title="캔들 데이터 기준"
-        description="분봉·일봉·주봉·월봉 캔들에 적용됩니다. 자동은 현재 안정적인 디스크 데이터를 먼저 사용합니다."
-      >
-        <div className="flex flex-col gap-2">
-          {CANDLE_DATA_PREFERENCE_OPTIONS.map((opt) => (
-            <CandleDataPreferenceRadio key={opt} value={opt} />
-          ))}
-        </div>
-      </RoleSourceGroup>
+      {variant === 'study' ? (
+        <RoleSourceGroup
+          title="캔들 데이터 기준"
+          description="복기뷰 전용 안내입니다."
+        >
+          <div className="text-sm text-fg-dim" data-testid="study-candle-source-note">
+            복기뷰 캔들은 저장 데이터(캡처 분봉 + 스크리너 일봉)만 사용합니다.
+          </div>
+        </RoleSourceGroup>
+      ) : (
+        <RoleSourceGroup
+          title="캔들 데이터 기준"
+          description="분봉·일봉·주봉·월봉 캔들에 적용됩니다. 자동은 현재 안정적인 디스크 데이터를 먼저 사용합니다."
+        >
+          <div className="flex flex-col gap-2">
+            {CANDLE_DATA_PREFERENCE_OPTIONS.map((opt) => (
+              <CandleDataPreferenceRadio key={opt} value={opt} />
+            ))}
+          </div>
+        </RoleSourceGroup>
+      )}
       <RoleSourceGroup
         title="호가·체결 데이터 기준"
         description="호가창, 체결, 거래원, 호가비, 체결강도 같은 보조 데이터에 적용됩니다."
@@ -322,7 +333,7 @@ function LiveVenueRadio({ value }: { value: LiveVenueOption }) {
   );
 }
 
-export default function LiveSettingsSections() {
+export default function LiveSettingsSections({ variant = 'live' }: { variant?: 'live' | 'study' }) {
   const navIds: NavId[] = [
     ...CATEGORY_ORDER.filter((c) => CHART_TOGGLES.some((t) => categoryOf(t) === c)),
     'data-source',
@@ -354,7 +365,7 @@ export default function LiveSettingsSections() {
       <div className="min-h-0 overflow-y-auto" data-settings-detail={selected}>
         <DataSection title={LABEL[selected]} contentClassName="space-y-3 p-4">
           {selected === 'data-source'
-            ? <DataSourceDetail />
+            ? <DataSourceDetail variant={variant} />
             : selected === 'study-views'
               ? <StudyViewsDetail />
               : selected === 'alerts'

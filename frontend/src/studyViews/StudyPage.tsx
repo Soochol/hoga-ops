@@ -375,7 +375,7 @@ export function StudyPage() {
           />
         )}
         {settingsOpen && (
-          <LiveSettingsModal onClose={() => setSettingsOpen(false)} />
+          <LiveSettingsModal variant="study" onClose={() => setSettingsOpen(false)} />
         )}
       </StudyPageStateShell>
     );
@@ -401,7 +401,7 @@ export function StudyPage() {
           />
         )}
         {settingsOpen && (
-          <LiveSettingsModal onClose={() => setSettingsOpen(false)} />
+          <LiveSettingsModal variant="study" onClose={() => setSettingsOpen(false)} />
         )}
       </StudyPageStateShell>
     );
@@ -428,7 +428,7 @@ export function StudyPage() {
           />
         )}
         {settingsOpen && (
-          <LiveSettingsModal onClose={() => setSettingsOpen(false)} />
+          <LiveSettingsModal variant="study" onClose={() => setSettingsOpen(false)} />
         )}
       </StudyPageStateShell>
     );
@@ -540,22 +540,11 @@ export function StudyPage() {
                     todayKst={activeViewModel.save.range.to_date}
                     tradeVolumePocs={tradeVolumePocsFromWire(activeViewModel.bundle.trade_volume_pocs)}
                     forceHogaPanes
+                    dailyCandleKisEnabled={false}
                     onViewportCaptureReady={handleViewportCaptureReady}
                   />
                 </ChartDrawingShell>
               ) : null}
-              {/* 워크백 진행 배지: 첫 청크로 차트는 이미 떠 있고(마운트 유지), 과거
-                  구간이 백그라운드 청크로 채워지는 동안만 표시. isPastCandlesLoading/
-                  isExtending prop을 LiveChartRoot에 넘기지 않으므로 /live의 reveal
-                  커버·settle 루프와 무관하다(플래시 유발하던 풀스크린 로딩을 대체). */}
-              {activeViewModel.status === 'ready' && referenceQuery.isExtending && (
-                <div
-                  data-testid="study-past-loading-badge"
-                  className="pointer-events-none absolute left-md top-md z-20 rounded-md border border-[var(--border)] bg-bg-subtle px-md py-xs text-xs text-[var(--fg-dimmer)]"
-                >
-                  과거 데이터 불러오는 중…
-                </div>
-              )}
             </div>
             <aside
               ref={detailPanelScrollRef}
@@ -590,7 +579,7 @@ export function StudyPage() {
             />
           )}
           {settingsOpen && (
-            <LiveSettingsModal onClose={() => setSettingsOpen(false)} />
+            <LiveSettingsModal variant="study" onClose={() => setSettingsOpen(false)} />
           )}
         </WorkspaceRoot>
       </PanelCard>

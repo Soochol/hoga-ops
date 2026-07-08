@@ -1,4 +1,16 @@
 import type { LivePastCandle as LiveCandle } from '../api/livePastCandles';
+import { realMsToYyyymmdd, regularSessionOpenMs, regularSessionCloseMs } from './liveDateTime';
+
+/** Drop bars outside the regular session [09:00, 15:30] KST for their own date.
+ * Calendar (D/W/M) aggregation runs on this so pre/post-market minute bars do
+ * not skew the day's OHLC. Generic over `{t_ms}` so it applies to raw KIS bars
+ * and Candle-shaped rows alike. */
+export function keepRegularSessionCandles<T extends { t_ms: number }>(candles: readonly T[]): T[] {
+  return candles.filter((c) => {
+    const date = realMsToYyyymmdd(c.t_ms);
+    return c.t_ms >= regularSessionOpenMs(date) && c.t_ms <= regularSessionCloseMs(date);
+  });
+}
 
 /** OHLCV aggregation of a sorted 1m candle stream into `bucketSeconds`-sized
  * buckets, aligned to the Unix epoch.

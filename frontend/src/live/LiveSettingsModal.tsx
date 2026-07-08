@@ -3,9 +3,11 @@ import LiveSettingsSections from './LiveSettingsSections';
 
 type Props = {
   onClose: () => void;
+  /** 'study'는 복기뷰 컨텍스트 — 캔들 소스가 디스크 온리로 고정이라 캔들 기준 라디오를 안내문으로 대체. */
+  variant?: 'live' | 'study';
 };
 
-export default function LiveSettingsModal({ onClose }: Props) {
+export default function LiveSettingsModal({ onClose, variant = 'live' }: Props) {
   useEffect(() => {
     const onKey = (event: KeyboardEvent) => {
       if (event.key === 'Escape') onClose();
@@ -33,7 +35,7 @@ export default function LiveSettingsModal({ onClose }: Props) {
             ✕
           </button>
         </div>
-        <LiveSettingsSections />
+        <LiveSettingsSections variant={variant} />
         <div className="flex justify-end border-t border-border px-4 py-3">
           <button
             type="button"

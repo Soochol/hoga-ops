@@ -80,6 +80,40 @@ describe('useResolvedDailyCandles', () => {
     expect(mockUseScreenerDaily).toHaveBeenCalledWith(null, null, null);
   });
 
+  it('disables the KIS adapter (screener-only) when kisEnabled is false', () => {
+    mockUseScreenerDaily.mockReturnValue({
+      data: {
+        candles: [screenerRow(D1, 100), screenerRow(D2, 110)],
+        data_warnings: [],
+        code: '005930',
+        from: '20260616',
+        to: '20260617',
+        source: 'screener_daily',
+      },
+      isLoading: false,
+      error: null,
+    } as never);
+
+    const { result } = renderHook(
+      () =>
+        useResolvedDailyCandles({
+          code: '005930',
+          from: '20260616',
+          to: '20260617',
+          venue: 'KRX',
+          enabled: true,
+          kisEnabled: false,
+        }),
+      { wrapper },
+    );
+
+    // KIS 훅은 code null로 비활성화되고, 스크리너 단독으로 렌더된다(/study 디스크 온리).
+    expect(mockUseKisDaily).toHaveBeenCalledWith(null, null, null, 'KRX');
+    expect(mockUseScreenerDaily).toHaveBeenCalledWith('005930', '20260616', '20260617');
+    expect(result.current.candles.map((c) => c.close)).toEqual([100, 110]);
+    expect(result.current.sourceByDate.get('20260616')).toBe('screener_daily');
+  });
+
   it('uses screener daily rows when KIS daily is empty with kis_rest_bypassed', () => {
     mockUseKisDaily.mockReturnValue({
       data: {
