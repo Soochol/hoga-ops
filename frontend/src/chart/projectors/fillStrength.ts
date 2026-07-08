@@ -18,13 +18,13 @@ import { isAuctionHidden, LINE_HIDDEN_COLOR } from '../util/auctionHide';
 import { makePastCachedProjector, lowerBoundT } from './pastCachedProjector';
 
 const TOKEN_SPEC = {
-  buy: ['--price-up', '#DC2626'],          // 체결 매수 (KRX 빨강)
-  sell: ['--price-down', '#2563EB'],       // 체결 매도 (KRX 파랑)
+  buy: ['--price-up', '#F04452'],          // 체결 매수 (KRX 빨강)
+  sell: ['--price-down', '#3485FA'],       // 체결 매도 (KRX 파랑)
   // 체결강도 누적 — derived signal. --fg-dim (mid gray) is dark enough to
   // read as "neutral derived" against the chart bg without colliding with
   // the Zero Baseline Guide's --fg-dimmer (which is darker still).
-  cumulative: ['--fg-dim', '#94A3B8'],
-  cumulativeBaseline: ['--fg-dimmer', '#64748B'], // 0-baseline guide
+  cumulative: ['--fg-dim', '#9A9AA8'],
+  cumulativeBaseline: ['--fg-dimmer', '#63636F'], // 0-baseline guide
 } as const;
 
 const { buy, sell, cumulative, cumulativeBaseline } = resolveTokens(TOKEN_SPEC);

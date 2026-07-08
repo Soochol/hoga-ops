@@ -6,13 +6,14 @@ import { makeChangePctOf, sortEntriesByChangePct } from '../rightrail/quoteSort'
 export type SortMode = 'change' | 'manual';
 export const HEAT_SAT = 8;          // 포화 임계(%)
 export const HEAT_MAX_ALPHA = 0.42; // 기본 최대 알파(폴백 기본값)
-/** 등락률 → 배경 rgba. null/0 = 투명(카드 배경 노출). ±HEAT_SAT% 포화.
- *  maxAlpha 로 면적별 농도 조절. */
+/** 등락률 → 배경 색. null/0 = 투명(카드 배경 노출). ±HEAT_SAT% 포화.
+ *  maxAlpha 로 면적별 농도 조절. color-mix 로 var(--price-*) 를 참조하므로
+ *  테마(Obsidian/Ledger) 전환 시 시세 색이 자동 추종한다. */
 export function heatBg(pct: number | null, maxAlpha: number = HEAT_MAX_ALPHA): string {
   if (pct === null || pct === 0) return 'transparent';
   const a = Math.min(Math.abs(pct) / HEAT_SAT, 1) * maxAlpha;
-  const rgb = pct > 0 ? '220,38,38' : '37,99,235'; // --price-up / --price-down
-  return `rgba(${rgb},${a.toFixed(3)})`;
+  const token = pct > 0 ? 'var(--price-up)' : 'var(--price-down)';
+  return `color-mix(in srgb, ${token} ${(a * 100).toFixed(1)}%, transparent)`;
 }
 
 
@@ -24,8 +25,8 @@ export const HEAT_HEADER_MAX_ALPHA = 0.5; // 헤더 밴드용(큰 면적, 선형
 export function heatHeaderBg(pct: number | null): string {
   if (pct === null || pct === 0) return 'var(--bg-input)';
   const a = Math.min(Math.abs(pct) / HEAT_SAT, 1) * HEAT_HEADER_MAX_ALPHA;
-  const rgb = pct > 0 ? '220,38,38' : '37,99,235'; // --price-up / --price-down
-  const heat = `rgba(${rgb},${a.toFixed(3)})`;
+  const token = pct > 0 ? 'var(--price-up)' : 'var(--price-down)'; // 테마 자동 추종
+  const heat = `color-mix(in srgb, ${token} ${(a * 100).toFixed(1)}%, transparent)`;
   return `linear-gradient(0deg, ${heat}, ${heat}), var(--bg-input)`;
 }
 

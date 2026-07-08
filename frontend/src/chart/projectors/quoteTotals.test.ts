@@ -6,8 +6,8 @@ const sessionOpenMs = 1_779_062_400_000;
 const axis = createVirtualAxis([
   { date: '20260518', sessionOpenMs, sessionCloseMs: sessionOpenMs + 23_400_000 },
 ]);
-const bid = '#DC2626';
-const ask = '#2563EB';
+const bid = '#F04452';
+const ask = '#3485FA';
 
 describe('projectBid', () => {
   it('maps quote_ratio.points to {time, bid_total} in virtual seconds', () => {

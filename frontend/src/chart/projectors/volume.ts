@@ -16,10 +16,10 @@ import { cumulativeCachedData, cumulativePriceFormat } from './fillStrength';
 import type { PaneSpec } from '../RangeSeriesPane';
 
 const TOKEN_SPEC = {
-  up: ['--price-up', '#DC2626'],
-  down: ['--price-down', '#2563EB'],
-  cumulative: ['--fg-dim', '#94A3B8'],
-  cumulativeBaseline: ['--fg-dimmer', '#64748B'],
+  up: ['--price-up', '#F04452'],
+  down: ['--price-down', '#3485FA'],
+  cumulative: ['--fg-dim', '#9A9AA8'],
+  cumulativeBaseline: ['--fg-dimmer', '#63636F'],
 } as const;
 
 const { up, down, cumulative, cumulativeBaseline } = resolveTokens(TOKEN_SPEC);

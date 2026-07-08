@@ -18,8 +18,8 @@ import { quoteRatioPointsForBundle, quoteRatioPointsForSlice } from './quoteRati
 import { detectSurgeSide } from '../surge/detectSurges';
 
 const TOKEN_SPEC = {
-  bid: ['--price-up', '#DC2626'],   // 매수 호가 총합 (KRX 빨강)
-  ask: ['--price-down', '#2563EB'], // 매도 호가 총합 (KRX 파랑)
+  bid: ['--price-up', '#F04452'],   // 매수 호가 총합 (KRX 빨강)
+  ask: ['--price-down', '#3485FA'], // 매도 호가 총합 (KRX 파랑)
 } as const;
 
 const { bid, ask } = resolveTokens(TOKEN_SPEC);

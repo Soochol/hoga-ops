@@ -10,9 +10,9 @@ import { resolveTokens } from '../../util/tokens';
 import type { PaneSpec } from '../RangeSeriesPane';
 
 const TOKEN_SPEC = {
-  up: ['--price-up', '#DC2626'],
-  down: ['--price-down', '#2563EB'],
-  muted: ['--fg-dim', '#94A3B8'],
+  up: ['--price-up', '#F04452'],
+  down: ['--price-down', '#3485FA'],
+  muted: ['--fg-dim', '#9A9AA8'],
 } as const;
 
 const { up, down, muted } = resolveTokens(TOKEN_SPEC);

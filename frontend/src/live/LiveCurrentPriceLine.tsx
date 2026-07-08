@@ -10,9 +10,9 @@ import { deriveCurrentPriceLine } from './deriveCurrentPriceLine';
 
 // DESIGN.md 토큰 → 색 문자열(canvas 가 var(--…) 를 못 받음). candle.ts 와 동일 토큰.
 const TOKENS = resolveTokens({
-  up: ['--price-up', '#DC2626'],
-  down: ['--price-down', '#2563EB'],
-  neutral: ['--fg-dim', '#94A3B8'],
+  up: ['--price-up', '#F04452'],
+  down: ['--price-down', '#3485FA'],
+  neutral: ['--fg-dim', '#9A9AA8'],
 });
 
 type Props = {

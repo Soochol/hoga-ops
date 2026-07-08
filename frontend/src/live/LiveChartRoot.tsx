@@ -74,11 +74,11 @@ import { useDrawingHost } from '../chart/useDrawingHost';
 import type { TradeVolumePoc } from './tradeVolumePoc';
 
 const TOKEN_SPEC = {
-  bgCard: ['--bg-card', '#13131C'],
-  fg: ['--fg', '#E2E8F0'],
-  grid: ['--grid', '#1A1A26'],
-  border: ['--border', '#1F1F2A'],
-  borderStrong: ['--border-strong', '#253040'],
+  bgCard: ['--bg-card', '#121216'],
+  fg: ['--fg', '#ECECF1'],
+  grid: ['--grid', '#1B1B21'],
+  border: ['--border', '#232329'],
+  borderStrong: ['--border-strong', '#33333C'],
 } as const;
 
 function chartGridOptions(

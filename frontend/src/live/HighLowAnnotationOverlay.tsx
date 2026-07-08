@@ -12,8 +12,8 @@ import { formatExtremeLabel } from './formatExtremeLabel';
 
 // DESIGN.md 성역: 상승=빨강 / 하락=파랑. 고가 라벨=빨강, 저가 라벨=파랑. candle.ts 와 동일 토큰.
 const TOKENS = resolveTokens({
-  up: ['--price-up', '#DC2626'],
-  down: ['--price-down', '#2563EB'],
+  up: ['--price-up', '#F04452'],
+  down: ['--price-down', '#3485FA'],
 });
 
 type Props = {

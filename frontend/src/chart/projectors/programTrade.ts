@@ -13,7 +13,7 @@ import { isSyntheticHogaGapPoint } from '../util/hogaGapHide';
 import { LINE_HIDDEN_COLOR, maskOutgoingConnector } from '../util/auctionHide';
 
 const TOKEN_SPEC = {
-  line: ['--accent', '#14B8A6'],
+  line: ['--accent', '#F0B429'],
 } as const;
 
 const { line } = resolveTokens(TOKEN_SPEC);

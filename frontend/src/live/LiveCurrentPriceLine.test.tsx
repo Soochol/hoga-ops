@@ -13,9 +13,9 @@ const mockUseQuoteByCode = vi.mocked(useQuoteByCode);
 
 // 컴포넌트와 동일한 토큰 해석 — CSS 로드 여부와 무관하게 색 출처를 검증.
 const T = resolveTokens({
-  up: ['--price-up', '#DC2626'],
-  down: ['--price-down', '#2563EB'],
-  neutral: ['--fg-dim', '#94A3B8'],
+  up: ['--price-up', '#F04452'],
+  down: ['--price-down', '#3485FA'],
+  neutral: ['--fg-dim', '#9A9AA8'],
 });
 
 function makeSeriesMock() {

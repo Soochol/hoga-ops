@@ -26,9 +26,9 @@ import { quoteRatioPointsForBundle, quoteRatioPointsForSlice } from './quoteRati
 const TOKEN_SPEC = {
   // KRX 컨벤션: 매수=상승=빨강, 매도=하락=파랑. RatioPane은 price-direction
   // 토큰을 직접 차용해 의미 충돌 없음 (도서 압력 부호와 가격 방향이 정렬됨).
-  ratioBid: ['--price-up', '#DC2626'],
-  ratioAsk: ['--price-down', '#2563EB'],
-  baseline: ['--fg-dimmer', '#64748B'],
+  ratioBid: ['--price-up', '#F04452'],
+  ratioAsk: ['--price-down', '#3485FA'],
+  baseline: ['--fg-dimmer', '#63636F'],
 } as const;
 
 const { ratioBid, ratioAsk, baseline } = resolveTokens(TOKEN_SPEC);

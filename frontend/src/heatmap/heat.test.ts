@@ -29,18 +29,18 @@ describe('heatBg', () => {
     expect(heatBg(null)).toBe('transparent');
     expect(heatBg(0)).toBe('transparent');
   });
-  it('상승=빨강 / 하락=파랑', () => {
-    expect(heatBg(4)).toContain('220,38,38');
-    expect(heatBg(-4)).toContain('37,99,235');
+  it('상승=빨강(--price-up) / 하락=파랑(--price-down) 토큰 참조', () => {
+    expect(heatBg(4)).toContain('var(--price-up)');
+    expect(heatBg(-4)).toContain('var(--price-down)');
   });
-  it('±8%에서 max alpha 0.42로 포화', () => {
-    expect(heatBg(8)).toBe('rgba(220,38,38,0.420)');
-    expect(heatBg(30)).toBe('rgba(220,38,38,0.420)');
-    expect(heatBg(4)).toBe('rgba(220,38,38,0.210)');
+  it('±8%에서 max alpha 0.42로 포화 (color-mix %)', () => {
+    expect(heatBg(8)).toBe('color-mix(in srgb, var(--price-up) 42.0%, transparent)');
+    expect(heatBg(30)).toBe('color-mix(in srgb, var(--price-up) 42.0%, transparent)');
+    expect(heatBg(4)).toBe('color-mix(in srgb, var(--price-up) 21.0%, transparent)');
   });
   it('maxAlpha 인자로 임의 농도 적용', () => {
-    expect(heatBg(8, 0.72)).toBe('rgba(220,38,38,0.720)');
-    expect(heatBg(-4, 0.72)).toBe('rgba(37,99,235,0.360)');
+    expect(heatBg(8, 0.72)).toBe('color-mix(in srgb, var(--price-up) 72.0%, transparent)');
+    expect(heatBg(-4, 0.72)).toBe('color-mix(in srgb, var(--price-down) 36.0%, transparent)');
   });
 });
 
@@ -51,14 +51,15 @@ describe('heatHeaderBg (헤더 밴드 — 선형 램프 max α 0.5, bg-input 합
     expect(heatHeaderBg(0)).toBe('var(--bg-input)');
   });
   it('+8% 포화 → 빨강 max α 0.5 동색 2-stop 합성', () => {
+    const heat = 'color-mix(in srgb, var(--price-up) 50.0%, transparent)';
     expect(heatHeaderBg(8)).toBe(
-      'linear-gradient(0deg, rgba(220,38,38,0.500), rgba(220,38,38,0.500)), var(--bg-input)',
+      `linear-gradient(0deg, ${heat}, ${heat}), var(--bg-input)`,
     );
-    expect(heatHeaderBg(30)).toContain('0.500'); // ±8% 초과 클램프
+    expect(heatHeaderBg(30)).toContain('50.0%'); // ±8% 초과 클램프
   });
   it('+4% → α 0.25, -8% → 파랑', () => {
-    expect(heatHeaderBg(4)).toContain('rgba(220,38,38,0.250)');
-    expect(heatHeaderBg(-8)).toContain('rgba(37,99,235,0.500)');
+    expect(heatHeaderBg(4)).toContain('var(--price-up) 25.0%');
+    expect(heatHeaderBg(-8)).toContain('var(--price-down) 50.0%');
   });
 });
 
