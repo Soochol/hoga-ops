@@ -12,12 +12,20 @@ artifacts, not runtime cache.
 from __future__ import annotations
 
 import time
-from collections import OrderedDict
 from datetime import date, datetime
 from typing import Literal
 
 from hoga.live.kis_venue import KIS_KST, KisVenue
+from hoga.util.cache_primitives import LruDict, TtlTriStateCache
 from hoga.util.cache_stats import CacheStats
+
+
+def _monotonic() -> float:
+    # Late lookup through THIS module's `time` so the golden test's
+    # `past_daily_candles_cache.time.monotonic` patch is observed (a captured
+    # bound method would not be).
+    return time.monotonic()
+
 
 # TTL for today's bar (and negative cache for non-trading-day today).
 TODAY_TTL_SECONDS = 60.0
@@ -42,33 +50,27 @@ class PastDailyCandlesCache:
         max_past_keys: int = DEFAULT_PAST_KEY_MAX_ENTRIES,
         max_today_keys: int = DEFAULT_TODAY_KEY_MAX_ENTRIES,
     ) -> None:
-        self._today_ttl = today_ttl_seconds
-        self._max_past_keys = max(0, int(max_past_keys))
-        self._max_today_keys = max(0, int(max_today_keys))
-        self._per_key: OrderedDict[
-            tuple[KisVenue, str],
-            list[tuple[date, date, list[dict]]],
-        ] = OrderedDict()
-        # value: (fetched_at_monotonic, dict | None)
-        self._today_mem: OrderedDict[
-            tuple[KisVenue, str],
-            tuple[float, dict | None],
-        ] = OrderedDict()
-        # Minimal instrumentation — PR-4 rewrites this cache onto DualHorizonCache,
-        # whose CacheStatsSink re-exposes the same {"batches", "today"} shape.
         self._batch_stats = CacheStats()
         self._today_stats = CacheStats()
+        # Dual-horizon primitives (ADR-0092). `_per_key` / `_today_mem` names are
+        # kept so existing introspection (`key in cache._per_key`) and the
+        # `past_daily_candles_cache.time.monotonic` patch seam still resolve; the
+        # today clock is a module-local late lookup so that patch is observed.
+        self._per_key: LruDict[
+            tuple[KisVenue, str], list[tuple[date, date, list[dict]]]
+        ] = LruDict(max_past_keys, stats=self._batch_stats)
+        self._today_mem: TtlTriStateCache[tuple[KisVenue, str], dict] = TtlTriStateCache(
+            today_ttl_seconds,
+            max_today_keys,
+            clock=_monotonic,
+            stats=self._today_stats,
+        )
 
     def stats_snapshot(self) -> dict[str, dict[str, int | float | None]]:
         return {
             "batches": self._batch_stats.snapshot(size=len(self._per_key)),
             "today": self._today_stats.snapshot(size=len(self._today_mem)),
         }
-
-    def _trim_lru(self, cache: OrderedDict, max_entries: int, stats: CacheStats) -> None:
-        while max_entries >= 0 and len(cache) > max_entries:
-            cache.popitem(last=False)
-            stats.record_eviction()
 
     # --- batches ---
 
@@ -113,7 +115,7 @@ class PastDailyCandlesCache:
             self._batch_stats.record_miss()
         return [
             self._normalize_batch(frm, to, bars)
-            for frm, to, bars in batches
+            for frm, to, bars in (batches or [])
         ]
 
     def append_batch(
@@ -126,32 +128,19 @@ class PastDailyCandlesCache:
         else:
             raise TypeError("expected (code, frm, to, bars) or (venue, code, frm, to, bars)")
         key = (venue, code)
-        self._per_key.setdefault(key, []).append(
+        self._per_key.setdefault(key, list).append(
             self._normalize_batch(frm, to, bars)
         )
         self._per_key.move_to_end(key)
         self._batch_stats.record_store()
-        self._trim_lru(self._per_key, self._max_past_keys, self._batch_stats)
+        self._per_key.trim()
 
     # --- today ---
 
     def get_today(self, *args: str) -> tuple[TodayState, dict | None]:
         venue, code = self._parse_code_args(args)
-        entry = self._today_mem.get((venue, code))
-        if entry is None:
-            self._today_stats.record_miss()
-            return "miss", None
-        fetched_at, value = entry
-        if time.monotonic() - fetched_at >= self._today_ttl:
-            self._today_mem.pop((venue, code), None)
-            self._today_stats.record_miss()
-            return "miss", None
-        self._today_mem.move_to_end((venue, code))
-        if value is None:
-            self._today_stats.record_negative()
-            return "negative", None
-        self._today_stats.record_hit()
-        return "hit", value
+        # TtlTriStateCache records hit/miss/negative on _today_stats internally.
+        return self._today_mem.get((venue, code))
 
     def store_today(self, *args) -> None:
         if len(args) == 2:
@@ -160,8 +149,4 @@ class PastDailyCandlesCache:
             venue, code, bar = args
         else:
             raise TypeError("expected (code, bar) or (venue, code, bar)")
-        key = (venue, code)
-        self._today_mem[key] = (time.monotonic(), bar)
-        self._today_mem.move_to_end(key)
-        self._today_stats.record_store()
-        self._trim_lru(self._today_mem, self._max_today_keys, self._today_stats)
+        self._today_mem.store((venue, code), bar)
