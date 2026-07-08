@@ -1286,3 +1286,124 @@ async def test_retry_false_disables_transport_retry_too() -> None:
         assert calls["n"] == 1  # single-shot: no transport replay under retry=False
     finally:
         await client.aclose()
+
+
+# ---------------------------------------------------------------------------
+# KIS 스택 감사 Fix B: 파싱 방어 — 기형 응답이 fetch 전체를 죽이지 않는다.
+# 분봉 row는 그 row만 skip(대칭), orderbook/trades/brokers 구조 이상은 typed
+# KisApiError로 승격해 error_policy가 'unexpected'가 아닌 'kis_api'로 분류한다.
+# ---------------------------------------------------------------------------
+
+
+def _minute_row(hhmmss: str, **over: str) -> dict[str, str]:
+    base = {
+        "stck_bsop_date": "20260619",
+        "stck_cntg_hour": hhmmss,
+        "stck_oprc": "100",
+        "stck_hgpr": "105",
+        "stck_lwpr": "99",
+        "stck_prpr": "104",
+        "cntg_vol": "10",
+    }
+    base.update(over)
+    return base
+
+
+@pytest.mark.asyncio
+async def test_fetch_past_minute_candles_skips_malformed_row_without_crashing() -> None:
+    """기형 row(필수 필드 결측)는 그 row만 버리고 나머지는 반환 — KeyError로
+    fetch 전체를 죽이지 않는다(같은 루프의 날짜-필드 skip 가드와 대칭)."""
+    good = _minute_row("093000")
+    malformed = {k: v for k, v in _minute_row("093100").items() if k != "stck_oprc"}
+
+    def handler(req: httpx.Request) -> httpx.Response:
+        return httpx.Response(200, json={"rt_cd": "0", "output2": [good, malformed]})
+
+    client = KisClient(
+        credentials=KisCredentials(app_key="K", app_secret="S", env="real"),
+        token_provider=FakeTokenProvider(),
+        _transport=httpx.MockTransport(handler),
+    )
+    try:
+        candles = await client.fetch_past_minute_candles("005930", "20260619")
+    finally:
+        await client.aclose()
+
+    # 정상 row는 살아남고, 기형 row(093100)는 조용히 제외됐다.
+    assert [c.close for c in candles] == [104]
+
+
+@pytest.mark.asyncio
+async def test_fetch_past_minute_candles_skips_nonnumeric_field() -> None:
+    """비숫자 필드(ValueError)도 KeyError와 동일하게 그 row만 skip."""
+    good = _minute_row("093000")
+    malformed = _minute_row("093100", stck_hgpr="N/A")
+
+    def handler(req: httpx.Request) -> httpx.Response:
+        return httpx.Response(200, json={"rt_cd": "0", "output2": [good, malformed]})
+
+    client = KisClient(
+        credentials=KisCredentials(app_key="K", app_secret="S", env="real"),
+        token_provider=FakeTokenProvider(),
+        _transport=httpx.MockTransport(handler),
+    )
+    try:
+        candles = await client.fetch_past_minute_candles("005930", "20260619")
+    finally:
+        await client.aclose()
+
+    assert [c.close for c in candles] == [104]
+
+
+@pytest.mark.asyncio
+async def test_fetch_orderbook_missing_output1_raises_typed_api_error() -> None:
+    """output1 결측(구조 이상) → KeyError가 아니라 KisApiError로 승격."""
+    def handler(req: httpx.Request) -> httpx.Response:
+        return httpx.Response(200, json={"rt_cd": "0"})  # output1 없음
+
+    client = KisClient(
+        credentials=KisCredentials(app_key="K", app_secret="S", env="real"),
+        token_provider=FakeTokenProvider(),
+        _transport=httpx.MockTransport(handler),
+    )
+    try:
+        with pytest.raises(KisApiError):
+            await client.fetch_orderbook("005930")
+    finally:
+        await client.aclose()
+
+
+@pytest.mark.asyncio
+async def test_fetch_trades_missing_output2_raises_typed_api_error() -> None:
+    """output2 결측 → KisApiError로 승격(iteration 전 가드)."""
+    def handler(req: httpx.Request) -> httpx.Response:
+        return httpx.Response(200, json={"rt_cd": "0"})  # output2 없음
+
+    client = KisClient(
+        credentials=KisCredentials(app_key="K", app_secret="S", env="real"),
+        token_provider=FakeTokenProvider(),
+        _transport=httpx.MockTransport(handler),
+    )
+    try:
+        with pytest.raises(KisApiError):
+            await client.fetch_trades("005930")
+    finally:
+        await client.aclose()
+
+
+@pytest.mark.asyncio
+async def test_fetch_brokers_empty_output_raises_typed_api_error() -> None:
+    """output 빈 리스트 → IndexError가 아니라 KisApiError로 승격."""
+    def handler(req: httpx.Request) -> httpx.Response:
+        return httpx.Response(200, json={"rt_cd": "0", "output": []})  # 빈 리스트
+
+    client = KisClient(
+        credentials=KisCredentials(app_key="K", app_secret="S", env="real"),
+        token_provider=FakeTokenProvider(),
+        _transport=httpx.MockTransport(handler),
+    )
+    try:
+        with pytest.raises(KisApiError):
+            await client.fetch_brokers("005930")
+    finally:
+        await client.aclose()

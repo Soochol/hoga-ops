@@ -84,6 +84,6 @@ async def test_live_index_sector_intraday_overlay_schedules_quotes(tmp_path) -> 
             "key": ("index-sector-rankings-quotes", ("000660", "005930"), "open"),
             "endpoint": "quotes",
             "priority": "background",
-            "cooldown_scope": "quotes",
+            "cooldown_scope": "quotes:KRX",
         }
     ]

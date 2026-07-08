@@ -479,6 +479,9 @@ def reset_for_tests() -> None:
     _buffer = LiveBuffer()
     kis_runtime.reset_for_tests()
     _today_promote_last_ms.clear()
+    global _sub_failed_restart_session_ms  # noqa: PLW0603
+    _sub_failed_restart_counts.clear()
+    _sub_failed_restart_session_ms = None
 
 
 def refresh_status_from_settings(data_dir: Path) -> None:
@@ -562,6 +565,15 @@ async def stop_today_promoter(task: asyncio.Task | None) -> None:
 
 _WATCHDOG_CHECK_INTERVAL_S = 30.0
 _WATCHDOG_STALE_AFTER_MS = 120_000  # ~2 min (≈6 cycles) without a completed tick
+
+# 부분 구독 실패(sub_failed) 자동 복구 상한 (2026-07-08 KIS audit Fix D).
+# sub_failed는 일부 코드의 틱이 영구 침묵하는 상태 — 원래는 "재시작 안 함"으로
+# 가시화만 했으나(결정적 거부로 인한 무한 재시작 churn 방지), 대부분의 부분 거부는
+# 재연결로 회복되므로 세션당 상한부 자동 재시작을 준다. 상한 도달 후엔 원래처럼
+# 로그만(churn 방지 의도 보존). 카운터는 세션(started_at_ms) 단위로 리셋된다.
+_SUB_FAILED_MAX_RESTARTS = 2
+_sub_failed_restart_counts: dict[int, int] = {}
+_sub_failed_restart_session_ms: int | None = None
 
 
 async def start_live_stream(*, data_dir: Path) -> bool:
@@ -819,6 +831,12 @@ async def _ws_watchdog_check(
     )
     ref_ms = max(started, session_open_ms)
 
+    # sub_failed 자동 재시작 카운터는 세션(started_at_ms) 단위 — 새 세션이면 리셋.
+    global _sub_failed_restart_session_ms
+    if _sub_failed_restart_session_ms != started:
+        _sub_failed_restart_session_ms = started
+        _sub_failed_restart_counts.clear()
+
     # 동기 수집(await 없음): 재시작 대상 account_id 목록
     to_restart: list[int] = []
     for account_id, conn in _state.streams.items():
@@ -833,9 +851,23 @@ async def _ws_watchdog_check(
                          account_id, dead, reason)
             to_restart.append(account_id)
         elif reason == "sub_failed":
-            _log.warning("live.stream.sub_failed acct=%d acked=%s expected=%s — 재시작 안 함",
-                         account_id, getattr(ws, "sub_acked", 0),
-                         getattr(ws, "sub_expected", 0))
+            # 부분 구독 실패 = 일부 코드 틱 영구 침묵. 세션당 상한까지 자동 재시작하고,
+            # 상한 도달 후엔 로그만(결정적 거부의 무한 churn 방지 — Fix D).
+            attempts = _sub_failed_restart_counts.get(account_id, 0)
+            if attempts < _SUB_FAILED_MAX_RESTARTS:
+                _sub_failed_restart_counts[account_id] = attempts + 1
+                _log.warning(
+                    "live.stream.sub_failed_restart acct=%d acked=%s expected=%s attempt=%d/%d",
+                    account_id, getattr(ws, "sub_acked", 0), getattr(ws, "sub_expected", 0),
+                    attempts + 1, _SUB_FAILED_MAX_RESTARTS,
+                )
+                to_restart.append(account_id)
+            else:
+                _log.warning(
+                    "live.stream.sub_failed acct=%d acked=%s expected=%s — 상한(%d) 도달, 재시작 안 함",
+                    account_id, getattr(ws, "sub_acked", 0), getattr(ws, "sub_expected", 0),
+                    _SUB_FAILED_MAX_RESTARTS,
+                )
 
     for account_id in to_restart:
         await _restart_conn(account_id, data_dir=data_dir)
