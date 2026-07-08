@@ -27,4 +27,17 @@ describe('depthHeatmapAlpha', () => {
     expect(visibleMaxQty(points, 150, 250)).toBe(500); // tMs=100 제외
     expect(visibleMaxQty(points, 0, 50)).toBe(0);       // 아무것도 안 보임
   });
+  it('intraMax=true면 asksMax/bidsMax 잔량으로 최대 계산', () => {
+    const pts: DepthHeatmapPoint[] = [
+      {
+        tMs: 100,
+        asks: [{ price: 10, qty: 100 }],
+        bids: [{ price: 9, qty: 100 }],
+        asksMax: [{ price: 10, qty: 900 }],
+        bidsMax: [{ price: 9, qty: 700 }],
+      },
+    ];
+    expect(visibleMaxQty(pts, 0, 200, true)).toBe(900);   // max 소스
+    expect(visibleMaxQty(pts, 0, 200, false)).toBe(100);  // 종가 소스
+  });
 });

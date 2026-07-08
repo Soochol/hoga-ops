@@ -51,4 +51,26 @@ describe('buildDepthHeatmapCells', () => {
     const visibleCell = full.find((c) => c.price === 1000)!;
     expect(visibleCell.fillColor).toMatch(/^rgba\(240, 68, 82, 0\.1[0-9]+\)$/);
   });
+  it('intraMax=true면 asksMax/bidsMax를 소스로 셀 빌드 + max 기준 정규화', () => {
+    const pts: DepthHeatmapPoint[] = [
+      {
+        tMs: 1000,
+        asks: [{ price: 10, qty: 100 }],
+        bids: [{ price: 9, qty: 100 }],
+        asksMax: [{ price: 10, qty: 900 }],
+        bidsMax: [{ price: 9, qty: 900 }],
+      },
+    ];
+    const cells = buildDepthHeatmapCells(
+      pts,
+      axis,
+      0,
+      2000,
+      { bidColor: '#F04452', askColor: '#3485FA', maxOpacity: 1 },
+      /*intraMax*/ true,
+    );
+    expect(cells.length).toBe(2);
+    // visibleMax=900(max소스), qty=900 → full α
+    expect(cells.every((c) => c.fillColor.endsWith(', 1)'))).toBe(true);
+  });
 });

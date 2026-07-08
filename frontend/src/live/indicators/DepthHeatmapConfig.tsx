@@ -1,5 +1,6 @@
 import { useLivePageStore } from '../../state/livePage';
 import MAStylePicker from './MAStylePicker';
+import IndicatorPrefRows from '../settings/IndicatorPrefRows';
 
 /** 호가 잔량 히트맵 상세 설정 — 매수/매도 색(MAStylePicker) + 최대 불투명도. */
 export default function DepthHeatmapConfig() {
@@ -52,6 +53,8 @@ export default function DepthHeatmapConfig() {
           className="w-full"
         />
       </div>
+      <div className="border-b border-border my-3" />
+      <IndicatorPrefRows toggleKeys={['depthHeatmapIntraMax']} />
     </div>
   );
 }

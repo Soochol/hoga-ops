@@ -9,17 +9,22 @@ export function levelAlpha(qty: number, visibleMax: number, maxOpacity: number):
   return maxOpacity * Math.pow(ratio, GAMMA);
 }
 
-/** 보이는 unix-ms 범위 [fromMs, toMs] 내 모든 매수·매도 레벨 잔량의 최댓값. */
+/** 보이는 unix-ms 범위 [fromMs, toMs] 내 모든 매수·매도 레벨 잔량의 최댓값.
+ *  intraMax=true면 종가 스냅샷 대신 분봉 내 최대 총잔량 스냅샷(asksMax/bidsMax)을
+ *  스캔한다 — 셀 빌드가 쓰는 소스와 반드시 일치해야 정규화 스케일이 맞는다. */
 export function visibleMaxQty(
   points: readonly DepthHeatmapPoint[],
   fromMs: number,
   toMs: number,
+  intraMax = false,
 ): number {
   let max = 0;
   for (const pt of points) {
     if (pt.tMs < fromMs || pt.tMs > toMs) continue;
-    for (const lvl of pt.asks) if (lvl.qty > max) max = lvl.qty;
-    for (const lvl of pt.bids) if (lvl.qty > max) max = lvl.qty;
+    const asks = intraMax ? pt.asksMax : pt.asks;
+    const bids = intraMax ? pt.bidsMax : pt.bids;
+    for (const lvl of asks) if (lvl.qty > max) max = lvl.qty;
+    for (const lvl of bids) if (lvl.qty > max) max = lvl.qty;
   }
   return max;
 }
