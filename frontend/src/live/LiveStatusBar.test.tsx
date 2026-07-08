@@ -36,7 +36,7 @@ const EMPTY_BUNDLE: RangeBundle = {
 };
 
 function renderBar(
-  props: { activeCode: string | null; captureHealthy: boolean; captureReason: string; bundle: RangeBundle | null; venue?: LiveVenueOption },
+  props: { activeCode: string | null; captureHealthy: boolean; captureReason: string; bundle: RangeBundle | null; venue?: LiveVenueOption; hogaGapDates?: readonly string[] },
   watchlistCodes: string[] = [],
   quote?: { price: number; change_pct: number | null; change_won: number | null },
   liveSet: string[] = [],
@@ -72,6 +72,7 @@ function renderBar(
         captureHealth={projectCaptureHealth(props.captureHealthy, props.captureReason)}
         bundle={props.bundle}
         venue={props.venue}
+        hogaGapDates={props.hogaGapDates}
       />
     </QueryClientProvider>,
   );
@@ -241,5 +242,21 @@ describe('LiveStatusBar', () => {
     renderBar({ activeCode: '005930', captureHealthy: false, captureReason: 'sub_failed', bundle: EMPTY_BUNDLE });
     expect(screen.getByTestId('capture-health-pill').textContent).toBe('구독 실패');
     expect(screen.queryByTestId('capture-health-dot')).toBeNull();
+  });
+
+  it('shows the 호가 미수집 chip with day count + date tooltip when past hoga coverage has gaps', () => {
+    renderBar({
+      activeCode: '000810', captureHealthy: true, captureReason: 'healthy', bundle: EMPTY_BUNDLE,
+      hogaGapDates: ['20260702', '20260703'],
+    });
+    const chip = screen.getByTestId('hoga-coverage-gap-chip');
+    expect(chip.textContent).toBe('호가 미수집 2일');
+    expect(chip.getAttribute('title')).toContain('07/02·07/03');
+    expect(chip.getAttribute('title')).toContain('호가 캡처 없음');
+  });
+
+  it('omits the 호가 미수집 chip when there is no gap (default prop)', () => {
+    renderBar({ activeCode: '005930', captureHealthy: true, captureReason: 'healthy', bundle: EMPTY_BUNDLE });
+    expect(screen.queryByTestId('hoga-coverage-gap-chip')).toBeNull();
   });
 });

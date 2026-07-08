@@ -43,6 +43,7 @@ import {
   liveVenueUsesExtendedMinuteWindow,
 } from './liveVenuePolicy';
 import { buildLivePriceLevelHits, mergePriceLevelHits } from './priceLevelHits';
+import { hogaCoverageGapDates as computeHogaCoverageGapDates } from './hogaCoverageGap';
 
 const EMPTY_INVESTOR_POINTS: InvestorNetPoint[] = [];
 
@@ -210,6 +211,11 @@ export interface UseLiveBundleResult {
    * 백엔드가 KIS rate-limit 등으로 일부/전체 날짜를 못 받으면 채운다. LiveChartRoot가
    * 빈칸 문구 전환 + 부분 로딩 칩에 쓴다(2026-06-09). 무경고면 빈 배열. */
   pastDataWarnings: LiveDataWarning[];
+  /** 캔들은 있는데 10호가 캡처가 없는 과거 거래일(YYYYMMDD 오름차순). 이 날짜들은
+   * 최대벽·매물대·호가비 등 캡처 기반 지표가 빠지므로 LiveStatusBar가 warn 칩으로
+   * 드러낸다. 분봉 전용(D/W/M은 호가 pane이 없어 빈 배열), hoga 번들 미로드 시에도
+   * 빈 배열(판정 유보 — 로딩 중 거짓 경고 방지). */
+  hogaCoverageGapDates: string[];
 }
 
 type UseLiveBundleOptions = {
@@ -885,6 +891,21 @@ export function useLiveBundle(
     && historicalFromDate != null
     && historicalFromDate <= earliestAllowedMinute;
 
+  // 캔들 대비 10호가 캡처 공백일 — 화면에 실제로 보이는 chartBundle(hold 반영)과
+  // mode=hoga 응답의 세그먼트를 비교한다. 분봉 외 타임프레임은 hoga 쿼리가
+  // disabled(data undefined)라 자연히 빈 배열이지만 isMinute 게이트로 의도를 명시.
+  const hogaCoverageGapDates = useMemo(
+    () =>
+      isMinute
+        ? computeHogaCoverageGapDates(
+            chartBundle?.segments,
+            pastHoga.data?.segments ?? null,
+            todayKstYyyymmdd,
+          )
+        : [],
+    [isMinute, chartBundle?.segments, pastHoga.data?.segments, todayKstYyyymmdd],
+  );
+
   // 활성 타임프레임 경로의 fetch 경고만 노출 — 분봉은 past-candles, D/W/M은
   // past-daily-candles. (다른 경로 쿼리는 enabled=false라 data가 없거나 스테일.)
   const pastDataWarnings: LiveDataWarning[] = isMinute
@@ -906,5 +927,6 @@ export function useLiveBundle(
     isExtending: extending,
     isSidecarLoading: sidecarEnabled && pastSidecars.isLoading && pastSidecars.data == null,
     pastDataWarnings,
+    hogaCoverageGapDates,
   };
 }

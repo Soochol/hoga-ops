@@ -231,7 +231,7 @@ export function LivePage() {
   // sidebar's LATEST mode stuck on the empty-buffer state.
   const today = todayKstYyyymmdd();
   const live = useLiveSeries(activeCode ?? '');
-  const { bundle, chartBundle, hogaBundle, clampEngaged, isPastCandlesLoading, isHogaLoading, isExtending, isSidecarLoading, pastDataWarnings } = useLiveBundle(
+  const { bundle, chartBundle, hogaBundle, clampEngaged, isPastCandlesLoading, isHogaLoading, isExtending, isSidecarLoading, pastDataWarnings, hogaCoverageGapDates } = useLiveBundle(
     activeCode,
     timeframe,
     today,
@@ -420,6 +420,7 @@ export function LivePage() {
         captureHealth={liveStatus.captureHealth}
         bundle={workareaBundle}
         venue={liveVenue}
+        hogaGapDates={hogaCoverageGapDates}
       />
       <LiveWorkarea
         activeCode={workareaCode}
