@@ -210,6 +210,7 @@ describe('useStudyReferenceBundle', () => {
       brokerLateEntryEnabled: true,
       brokerLateEntryStartHHMM: 1000,
       tradeVolumePocEnabled: true,
+      depthHeatmapEnabled: true,
       volumeDistributionEnabled: true,
       volumeDistributionRangeCount: 12,
     });
@@ -224,6 +225,7 @@ describe('useStudyReferenceBundle', () => {
       brokerLateEntryEnabled: true,
       brokerLateEntryStartHHMM: 1000,
       tradeVolumePocEnabled: true,
+      depthHeatmapEnabled: true,
       volumeDistributionEnabled: true,
       volumeDistributionRangeCount: 12,
     });

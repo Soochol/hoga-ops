@@ -50,6 +50,7 @@ export function useStudyReferenceBundle(save: StudyViewReference | null) {
   const brokerLateEntryEnabled = useLivePageStore((s) => s.brokerLateEntryEnabled);
   const brokerLateEntryStartHHMM = useLivePageStore((s) => s.brokerLateEntryStartHHMM);
   const tradeVolumePocEnabled = useLivePageStore((s) => s.tradeVolumePocEnabled);
+  const depthHeatmapEnabled = useLivePageStore((s) => s.depthHeatmapEnabled);
   const volumeDistributionEnabled = useLivePageStore((s) => s.volumeDistributionEnabled);
   const volumeDistributionRangeCount = useLivePageStore((s) => s.volumeDistributionRangeCount);
   useLiveSettings();
@@ -61,6 +62,7 @@ export function useStudyReferenceBundle(save: StudyViewReference | null) {
       brokerLateEntryEnabled,
       brokerLateEntryStartHHMM,
       tradeVolumePocEnabled,
+      depthHeatmapEnabled,
       volumeDistributionEnabled,
       volumeDistributionRangeCount,
     }),
@@ -70,6 +72,7 @@ export function useStudyReferenceBundle(save: StudyViewReference | null) {
       brokerLateEntryStartHHMM,
       sourcePref,
       tradeVolumePocEnabled,
+      depthHeatmapEnabled,
       venue,
       volumeDistributionEnabled,
       volumeDistributionRangeCount,

@@ -24,6 +24,7 @@ const settings = {
   brokerLateEntryStartHHMM: 1000,
   volumeDistributionEnabled: true,
   tradeVolumePocEnabled: true,
+  depthHeatmapEnabled: true,
   volumeDistributionRangeCount: 12,
 };
 
@@ -42,6 +43,17 @@ describe('studyReferenceQueryOptions', () => {
     expect(options.minuteCandles.enabled).toBe(true);
     expect(options.minuteCandles.queryKey).toEqual(['study', 'past-candles', '005930', '20260616', '20260618', 'KRX']);
     expect(options.dailyCandles.enabled).toBe(false);
+    // depthHeatmapEnabled은 마지막 queryKey 슬롯(20)으로 사이드카에 실려 refetch를 가른다.
+    expect(options.rangeSidecars.queryKey[20]).toBe(true);
+  });
+
+  it('depthHeatmapEnabled=false면 사이드카 queryKey 슬롯 20이 false로 전송된다', () => {
+    const options = studyReferenceQueryOptions(save, {
+      ...settings,
+      depthHeatmapEnabled: false,
+    });
+
+    expect(options.rangeSidecars.queryKey[20]).toBe(false);
   });
 
   it('requests no broker late-entry sidecars when the indicator is disabled', () => {
