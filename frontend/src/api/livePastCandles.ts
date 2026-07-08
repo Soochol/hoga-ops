@@ -326,5 +326,12 @@ export function useLivePastCandles(
   return {
     ...query,
     data,
+    // isLoading = "보여줄 데이터가 전혀 없음". 워크백 청크 N≥3에선 placeholder
+    // 체인(prev.to === to, 위 placeholderData)이 끊겨 raw query.isLoading이
+    // 재점화하지만, `data`는 mergedRef 병합본을 계속 서빙한다 — 소비자가 이를
+    // '초기 로딩'으로 오독해 차트를 통째로 언마운트하는 것(/study 플래시,
+    // 2026-07-08 실증)을 계약 차원에서 차단한다. 워크백 진행 신호가 필요한
+    // 소비자는 isFetching / isPlaceholderData(둘 다 raw 유지)를 쓴다.
+    isLoading: query.isLoading && data == null,
   };
 }

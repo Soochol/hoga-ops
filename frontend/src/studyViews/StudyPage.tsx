@@ -516,7 +516,7 @@ export function StudyPage() {
             className="relative grid min-h-0 grid-cols-[minmax(0,1fr)_var(--sidebar-w)]"
             onWheelCapture={handleWheelCapture}
           >
-            <div className="min-h-0 min-w-0 overflow-hidden">
+            <div className="relative min-h-0 min-w-0 overflow-hidden">
               {isStudyPageLoading ? (
                 <div data-testid="study-page-loading" className="flex h-full items-center justify-center text-sm text-[var(--fg-dimmer)]">
                   학습뷰 불러오는 중...
@@ -544,6 +544,18 @@ export function StudyPage() {
                   />
                 </ChartDrawingShell>
               ) : null}
+              {/* 워크백 진행 배지: 첫 청크로 차트는 이미 떠 있고(마운트 유지), 과거
+                  구간이 백그라운드 청크로 채워지는 동안만 표시. isPastCandlesLoading/
+                  isExtending prop을 LiveChartRoot에 넘기지 않으므로 /live의 reveal
+                  커버·settle 루프와 무관하다(플래시 유발하던 풀스크린 로딩을 대체). */}
+              {activeViewModel.status === 'ready' && referenceQuery.isExtending && (
+                <div
+                  data-testid="study-past-loading-badge"
+                  className="pointer-events-none absolute left-md top-md z-20 rounded-md border border-[var(--border)] bg-bg-subtle px-md py-xs text-xs text-[var(--fg-dimmer)]"
+                >
+                  과거 데이터 불러오는 중…
+                </div>
+              )}
             </div>
             <aside
               ref={detailPanelScrollRef}
