@@ -229,6 +229,7 @@ export type LiveRangeRequestPlan = {
     brokerLateEntryStartHHMM: number | null;
     programTradeEnabled: boolean;
     tradeVolumePocEnabled: boolean;
+    depthHeatmapEnabled: boolean;
     volumeDistributionBins: number | null;
     tradeVolumePocBins: number | null;
     volumeDistributionPriceRange: { min: number; max: number } | null;
@@ -243,6 +244,7 @@ export function planLiveRangeRequest(args: {
   askPeakEnabled: boolean;
   bidPeakEnabled: boolean;
   tradeVolumePocEnabled: boolean;
+  depthHeatmapEnabled: boolean;
   brokerLateEntryEnabled: boolean;
   brokerLateEntryStartHHMM: number;
   programTradeEnabled: boolean;
@@ -268,6 +270,7 @@ export function planLiveRangeRequest(args: {
       brokerLateEntryStartHHMM: args.brokerLateEntryEnabled ? args.brokerLateEntryStartHHMM : null,
       programTradeEnabled: enableMinute && args.programTradeEnabled,
       tradeVolumePocEnabled: enableMinute && args.tradeVolumePocEnabled,
+      depthHeatmapEnabled: enableMinute && args.depthHeatmapEnabled,
       volumeDistributionBins: args.volumeDistributionEnabled ? args.volumeDistributionRangeCount : null,
       tradeVolumePocBins: args.tradeVolumePocEnabled ? args.volumeDistributionRangeCount : null,
       volumeDistributionPriceRange: args.volumeDistributionEnabled ? args.volumeDistributionPriceRange : null,
@@ -294,6 +297,7 @@ export function useLiveBundle(
   const askPeakEnabled = useLivePageStore((s) => s.askPeakEnabled);
   const bidPeakEnabled = useLivePageStore((s) => s.bidPeakEnabled);
   const tradeVolumePocEnabled = useLivePageStore((s) => s.tradeVolumePocEnabled);
+  const depthHeatmapEnabled = useLivePageStore((s) => s.depthHeatmapEnabled);
   const brokerLateEntryEnabled = useLivePageStore((s) => s.brokerLateEntryEnabled);
   const brokerLateEntryStartHHMM = useLivePageStore((s) => s.brokerLateEntryStartHHMM);
   const programTradeEnabled = useLivePageStore((s) => s.programTradeEnabled);
@@ -593,6 +597,7 @@ export function useLiveBundle(
     askPeakEnabled,
     bidPeakEnabled,
     tradeVolumePocEnabled,
+    depthHeatmapEnabled,
     brokerLateEntryEnabled,
     brokerLateEntryStartHHMM,
     programTradeEnabled,
@@ -634,6 +639,7 @@ export function useLiveBundle(
       rangePlan.options.brokerLateEntriesEnabled ||
       rangePlan.options.programTradeEnabled ||
       rangePlan.options.tradeVolumePocEnabled ||
+      rangePlan.options.depthHeatmapEnabled ||
       rangePlan.options.volumeDistributionBins != null
     )
   );
@@ -722,6 +728,7 @@ export function useLiveBundle(
       built.bid_peaks = sidecarSource.bid_peaks ?? [];
       built.broker_late_entries = sidecarSource.broker_late_entries ?? [];
       built.trade_volume_pocs = sidecarSource.trade_volume_pocs ?? [];
+      built.depth_heatmap = sidecarSource.depth_heatmap ?? [];
       built.volume_distributions = sidecarSource.volume_distributions ?? [];
       built.program_trade = filterProgramTradeForCandles(sidecarSource.program_trade, liveCandles);
     }

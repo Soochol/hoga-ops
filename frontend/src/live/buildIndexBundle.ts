@@ -53,5 +53,6 @@ export function buildIndexBundle(input: {
     ask_peaks: [],
     bid_peaks: [],
     broker_late_entries: [],
+    depth_heatmap: [],
   };
 }

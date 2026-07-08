@@ -357,6 +357,7 @@ export function LivePage() {
       bid_peaks: dayBidPeaks,
       broker_late_entries: base.broker_late_entries ?? [],
       trade_volume_pocs: tradeVolumePocsToWire(tradeVolumePocs),
+      depth_heatmap: base.depth_heatmap ?? [],
     };
   }, [stockBundle, stockChartBundle, dayAskPeaks, dayBidPeaks, tradeVolumePocs]);
   const workareaCode = activeCode ?? (activeIndexId ? `index:${activeIndexId}` : null);

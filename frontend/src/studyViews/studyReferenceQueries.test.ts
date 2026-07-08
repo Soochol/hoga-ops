@@ -23,6 +23,7 @@ const settings = {
   brokerLateEntryStartHHMM: 1000,
   volumeDistributionEnabled: true,
   tradeVolumePocEnabled: true,
+  depthHeatmapEnabled: true,
   volumeDistributionRangeCount: 12,
 };
 
@@ -37,6 +38,8 @@ describe('studyReferenceQueryOptions', () => {
     expect(options.rangeSidecars.queryKey[14]).toBe('sidecar');
     expect(options.rangeSidecars.queryKey).toContain(true);
     expect(options.rangeSidecars.queryKey).toContain(1000);
+    // depth_heatmap 지표 활성 → sidecar 요청 queryKey에 반영(index 20, 토글 refetch).
+    expect(options.rangeSidecars.queryKey[20]).toBe(true);
     // 캔들: mode=candles + sourcePref 'hogaplay_first' 고정 + 저장 타임프레임(5m 버킷).
     expect(options.rangeCandles.enabled).toBe(true);
     expect(options.rangeCandles.queryKey[0]).toBe('range');

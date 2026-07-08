@@ -919,6 +919,95 @@ def query_bucketed_ratio(
     ]
 
 
+@dataclass(frozen=True)
+class DepthHeatmapRow:
+    """버킷 대표(마지막 연속거래) 스냅샷의 10단계 매도/매수 가격·잔량.
+
+    ``bucket_intra_ms``는 LINEAR ms-from-midnight (NOT raw HHMMSSmmm, NOT unix
+    ms) — 호출자가 ``ms_from_midnight_to_unix_ms(date, bucket_intra_ms)``로 unix
+    변환. QuoteRatioRow.bucket_intra_ms와 동일 규약. 대표 선택 규칙도
+    query_bucketed_ratio와 동일(is_pre DESC, ts_ms DESC).
+
+    ``ask_prices``/``ask_qtys``는 index 0 = 최우선(best) 호가. 완전-auction
+    버킷은 대표가 없어도 last-in-bucket으로 폴백(정규화는 프론트가 담당하므로
+    표시상 문제 없음 — 총잔량 지표처럼 0으로 지울 필요 없다).
+    """
+
+    bucket_intra_ms: int
+    ask_prices: tuple[int, ...]
+    ask_qtys: tuple[int, ...]
+    bid_prices: tuple[int, ...]
+    bid_qtys: tuple[int, ...]
+
+
+def query_bucketed_depth_heatmap(
+    con: duckdb.DuckDBPyConnection,
+    *,
+    path: Path,
+    bucket_ms: int,
+    session_close_ms: int | None = None,
+) -> list[DepthHeatmapRow]:
+    """버킷별 대표 스냅샷의 10단계 가격·잔량을 방출한다.
+
+    대표 = 마지막 연속거래 스냅샷(query_bucketed_ratio와 동일 정의). 40개 레벨
+    컬럼을 하나의 struct_pack으로 묶어 arg_max(rep_key)로 한 물리 행에서 함께
+    가져온다 — 총잔량 대신 개별 레벨을 보존하는 것만 다르다. Empty parquet → [].
+    """
+    intra_ms_expr = hhmmssms_to_intra_ms_sql("ts_ms")
+    last_continuous_ms: int | None = None
+    if session_close_ms is not None:
+        last_continuous_ms = _last_continuous_intra_ms(
+            con, path=path, session_close_ms=session_close_ms
+        )
+    if last_continuous_ms is None:
+        pre_auction_pred = "TRUE"
+    else:
+        pre_auction_pred = f"({intra_ms_expr} <= {last_continuous_ms})"
+
+    level_cols = []
+    for i in range(1, ORDERBOOK_LEVELS + 1):
+        level_cols.append(f"ask_p{i} := ask_p{i}")
+        level_cols.append(f"ask_q{i} := ask_q{i}")
+        level_cols.append(f"bid_p{i} := bid_p{i}")
+        level_cols.append(f"bid_q{i} := bid_q{i}")
+    struct_body = ", ".join(level_cols)
+    passthrough_cols = ", ".join(
+        f"ask_p{i}, ask_q{i}, bid_p{i}, bid_q{i}"
+        for i in range(1, ORDERBOOK_LEVELS + 1)
+    )
+
+    rows = con.execute(
+        f"""
+        WITH keyed AS (
+          SELECT ({intra_ms_expr} // {bucket_ms}) AS bucket,
+                 ((CASE WHEN ({pre_auction_pred}) THEN 1 ELSE 0 END) * 100000000
+                   + ({intra_ms_expr})) AS rep_key,
+                 {passthrough_cols}
+          FROM read_parquet(?)
+        )
+        SELECT bucket * {bucket_ms} AS bucket_intra_ms,
+               arg_max(struct_pack({struct_body}), rep_key) AS rep
+        FROM keyed
+        GROUP BY bucket
+        ORDER BY bucket
+        """,
+        [str(path)],
+    ).fetchall()
+    out: list[DepthHeatmapRow] = []
+    for r in rows:
+        rep = r[1]
+        out.append(
+            DepthHeatmapRow(
+                bucket_intra_ms=int(r[0]),
+                ask_prices=tuple(int(rep[f"ask_p{i}"]) for i in range(1, ORDERBOOK_LEVELS + 1)),
+                ask_qtys=tuple(int(rep[f"ask_q{i}"]) for i in range(1, ORDERBOOK_LEVELS + 1)),
+                bid_prices=tuple(int(rep[f"bid_p{i}"]) for i in range(1, ORDERBOOK_LEVELS + 1)),
+                bid_qtys=tuple(int(rep[f"bid_q{i}"]) for i in range(1, ORDERBOOK_LEVELS + 1)),
+            )
+        )
+    return out
+
+
 def query_bucket_representative(
     con: duckdb.DuckDBPyConnection,
     *,

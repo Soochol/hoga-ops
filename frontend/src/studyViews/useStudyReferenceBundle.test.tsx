@@ -151,6 +151,7 @@ describe('useStudyReferenceBundle', () => {
       brokerLateEntryEnabled: true,
       brokerLateEntryStartHHMM: 1000,
       tradeVolumePocEnabled: true,
+      depthHeatmapEnabled: false,
       volumeDistributionEnabled: true,
       volumeDistributionRangeCount: 12,
     });

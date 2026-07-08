@@ -11,6 +11,7 @@ export type RangeRequestOptions = {
   brokerLateEntryStartHHMM?: number | null;
   programTradeEnabled?: boolean | null;
   tradeVolumePocEnabled?: boolean | null;
+  depthHeatmapEnabled?: boolean | null;
   volumeDistributionBins?: number | null;
   tradeVolumePocBins?: number | null;
   volumeDistributionPriceRange?: { min: number; max: number } | null;
@@ -50,6 +51,7 @@ export type RangeQueryKey = readonly [
   boolean | null,
   boolean | null,
   boolean | null,
+  boolean | null,
 ];
 
 export const RANGE_QUERY_KEY_FROM_DATE_INDEX = 2;
@@ -61,7 +63,7 @@ export type RangeBundleRequest = {
   todayKst: string | null;
 };
 
-const PLACEHOLDER_COMPATIBLE_KEY_INDICES = [4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19] as const;
+const PLACEHOLDER_COMPATIBLE_KEY_INDICES = [4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20] as const;
 
 function addParam(params: URLSearchParams, key: string, value: number | string | null | undefined): void {
   if (value == null) return;
@@ -82,6 +84,7 @@ export function buildRangeBundleRequest(input: RangeBundleRequestInput): RangeBu
   const brokerLateEntryStartHHMM = options.brokerLateEntryStartHHMM ?? null;
   const programTradeEnabled = options.programTradeEnabled ?? null;
   const tradeVolumePocEnabled = options.tradeVolumePocEnabled ?? null;
+  const depthHeatmapEnabled = options.depthHeatmapEnabled ?? null;
   const volumeDistributionBins = options.volumeDistributionBins ?? null;
   const tradeVolumePocBins = options.tradeVolumePocBins ?? null;
   const volumeDistributionPriceRange = options.volumeDistributionPriceRange ?? null;
@@ -110,6 +113,7 @@ export function buildRangeBundleRequest(input: RangeBundleRequestInput): RangeBu
     bidPeaksEnabled,
     programTradeEnabled,
     tradeVolumePocEnabled,
+    depthHeatmapEnabled,
   ];
 
   const params = new URLSearchParams();
@@ -124,6 +128,7 @@ export function buildRangeBundleRequest(input: RangeBundleRequestInput): RangeBu
   addBoolParam(params, 'broker_late_entries_enabled', brokerLateEntriesEnabled);
   addBoolParam(params, 'program_trade_enabled', programTradeEnabled);
   addBoolParam(params, 'trade_volume_poc_enabled', tradeVolumePocEnabled);
+  addBoolParam(params, 'depth_heatmap_enabled', depthHeatmapEnabled);
   addParam(params, 'broker_late_entry_start_hhmm', brokerLateEntryStartHHMM);
   addParam(params, 'volume_distribution_bins', volumeDistributionBins);
   addParam(params, 'volume_distribution_price_min', volumeDistributionPriceRange?.min);

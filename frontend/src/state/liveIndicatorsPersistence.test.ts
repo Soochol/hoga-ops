@@ -29,6 +29,10 @@ describe('mergeLiveIndicatorPrefs', () => {
       tradeVolumePocBandPct: 0.005,
       tradeVolumePocColor: '#A855F7',
       tradeVolumePocOpacity: 0.12,
+      depthHeatmapEnabled: false,
+      depthHeatmapBidColor: '#F04452',
+      depthHeatmapAskColor: '#3485FA',
+      depthHeatmapMaxOpacity: 0.7,
       volumeDistributionEnabled: true,
       volumeDistributionHoverCutoffEnabled: false,
       volumeDistributionRangeCount: 10,
@@ -271,6 +275,28 @@ describe('mergeLiveIndicatorPrefs — 호가 토글', () => {
     });
     expect(invalid.tradeVolumePocColor).toBe('#A855F7');
     expect(invalid.tradeVolumePocOpacity).toBe(0.12);
+  });
+  it('depthHeatmap 기본값을 채운다', () => {
+    const merged = mergeLiveIndicatorPrefs({});
+    expect(merged.depthHeatmapEnabled).toBe(false);
+    expect(merged.depthHeatmapBidColor).toBe('#F04452');
+    expect(merged.depthHeatmapAskColor).toBe('#3485FA');
+    expect(merged.depthHeatmapMaxOpacity).toBeCloseTo(0.7, 5);
+  });
+  it('depthHeatmap 잘못된 색/불투명도는 기본값으로 폴백', () => {
+    const merged = mergeLiveIndicatorPrefs({
+      depthHeatmapBidColor: 'not-a-hex', depthHeatmapMaxOpacity: 5,
+    } as never);
+    expect(merged.depthHeatmapBidColor).toBe('#F04452');
+    expect(merged.depthHeatmapMaxOpacity).toBeCloseTo(0.7, 5);
+  });
+  it('depthHeatmap 유효한 값은 보존한다', () => {
+    const merged = mergeLiveIndicatorPrefs({
+      depthHeatmapEnabled: true, depthHeatmapAskColor: '#123abc', depthHeatmapMaxOpacity: 0.5,
+    } as never);
+    expect(merged.depthHeatmapEnabled).toBe(true);
+    expect(merged.depthHeatmapAskColor).toBe('#123abc');
+    expect(merged.depthHeatmapMaxOpacity).toBeCloseTo(0.5, 5);
   });
   it('연속체결 매물대 분포 기본값/범위/색상 정규화', () => {
     const defaults = mergeLiveIndicatorPrefs(undefined);

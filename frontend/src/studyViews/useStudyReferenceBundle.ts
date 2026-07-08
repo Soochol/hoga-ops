@@ -23,6 +23,7 @@ function mergeStudyRangeBundles(
     bid_peaks: sidecars.bid_peaks ?? [],
     broker_late_entries: sidecars.broker_late_entries ?? [],
     trade_volume_pocs: sidecars.trade_volume_pocs ?? [],
+    depth_heatmap: sidecars.depth_heatmap ?? [],
     volume_distributions: sidecars.volume_distributions ?? [],
   };
 }
@@ -43,6 +44,7 @@ export function useStudyReferenceBundle(save: StudyViewReference | null) {
   const brokerLateEntryEnabled = useLivePageStore((s) => s.brokerLateEntryEnabled);
   const brokerLateEntryStartHHMM = useLivePageStore((s) => s.brokerLateEntryStartHHMM);
   const tradeVolumePocEnabled = useLivePageStore((s) => s.tradeVolumePocEnabled);
+  const depthHeatmapEnabled = useLivePageStore((s) => s.depthHeatmapEnabled);
   const volumeDistributionEnabled = useLivePageStore((s) => s.volumeDistributionEnabled);
   const volumeDistributionRangeCount = useLivePageStore((s) => s.volumeDistributionRangeCount);
   const queryOptions = useMemo(
@@ -51,6 +53,7 @@ export function useStudyReferenceBundle(save: StudyViewReference | null) {
       brokerLateEntryEnabled,
       brokerLateEntryStartHHMM,
       tradeVolumePocEnabled,
+      depthHeatmapEnabled,
       volumeDistributionEnabled,
       volumeDistributionRangeCount,
     }),
@@ -60,6 +63,7 @@ export function useStudyReferenceBundle(save: StudyViewReference | null) {
       brokerLateEntryStartHHMM,
       sourcePref,
       tradeVolumePocEnabled,
+      depthHeatmapEnabled,
       volumeDistributionEnabled,
       volumeDistributionRangeCount,
     ],

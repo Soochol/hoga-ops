@@ -31,7 +31,7 @@ import type { PersistedIndicators } from '../state/liveIndicatorsPersistence';
 import { useActivePrefs, useChartPrefsStore, type ChartViewPrefs } from '../state/chartPrefs';
 import type { LiveVenueOption } from '../state/liveVenue';
 import type { LiveTodayAskPeak, LiveTodayBidPeak } from '../api/liveSeries';
-import { TIMEFRAME_TO_MS, type AskPeak, type BidPeak, type RangeBundle } from '../api/types';
+import { TIMEFRAME_TO_MS, type AskPeak, type BidPeak, type RangeBundle, type DepthHeatmapPointWire } from '../api/types';
 import { PAST_CANDLES_MAX_DAYS } from './liveDateTime';
 import { initialVisibleMinuteBarsFor } from './liveVenuePolicy';
 import { minuteRightOffsetBars } from './minuteViewportPolicy';
@@ -61,6 +61,8 @@ import {
   type VisibleTimeCutoff,
 } from './peakWallVisibleCutoff';
 import TradeVolumePocOverlay from './TradeVolumePocOverlay';
+import DepthHeatmapOverlay from './DepthHeatmapOverlay';
+import { depthHeatmapFromWire } from './depthHeatmapWire';
 import AuctionWindowOverlay from '../chart/AuctionWindowOverlay';
 import DrawingOverlay from '../chart/DrawingOverlay';
 import DrawingPropertyPanel from '../chart/DrawingPropertyPanel';
@@ -233,6 +235,8 @@ interface Props {
   todayKst?: string;
   /** Per-day regular-session trade-volume POC bands. */
   tradeVolumePocs?: readonly TradeVolumePoc[];
+  /** 분봉 호가 잔량 히트맵 원본 wire — LiveChartRoot 내부에서 변환. */
+  depthHeatmap?: readonly DepthHeatmapPointWire[];
   /** Snapshot restore can carry hoga panes on calendar timeframes. /live keeps the default gate. */
   forceHogaPanes?: boolean;
   /** 일봉 MA 오버레이의 KIS 일봉 fetch 허용 여부(기본 true). /study는 false로 넘겨
@@ -273,6 +277,14 @@ export function shouldShowTradeVolumePocOverlay(
   return isMinuteTimeframe(timeframe) || (forceHogaPanes && tradeVolumePocCount > 0);
 }
 
+export function shouldShowDepthHeatmapOverlay(
+  timeframe: LiveTimeframe,
+  enabled: boolean,
+  pointCount: number,
+): boolean {
+  return isMinuteTimeframe(timeframe) && enabled && pointCount > 0;
+}
+
 /** /live's single-chart root. Mounts the timeframe-appropriate pane set
  * (see `paneSpecsForTimeframe`) inside one createChart instance so
  * timeScale is shared across candle/volume/(hoga) panes. */
@@ -302,6 +314,7 @@ export function LiveChartRoot({
   liveTradeSnapshots = EMPTY_TRADE_SNAPSHOTS,
   todayKst = '',
   tradeVolumePocs = [],
+  depthHeatmap = [],
   forceHogaPanes = false,
   dailyCandleKisEnabled = true,
   paneTogglesOverride,
@@ -1607,6 +1620,13 @@ export function LiveChartRoot({
     forceHogaPanes,
     tradeVolumePocs.length,
   );
+  const depthHeatmapPoints = useMemo(() => depthHeatmapFromWire(depthHeatmap), [depthHeatmap]);
+  const depthHeatmapEnabledStore = useLivePageStore((s) => s.depthHeatmapEnabled);
+  const showDepthHeatmapOverlay = shouldShowDepthHeatmapOverlay(
+    timeframe,
+    depthHeatmapEnabledStore,
+    depthHeatmapPoints.length,
+  );
 
   return (
     <div
@@ -1712,6 +1732,13 @@ export function LiveChartRoot({
               todayKst={todayKst}
               override={tradeVolumePocOverride}
               behindSeries={candleAlwaysOnTop}
+            />
+          )}
+          {showDepthHeatmapOverlay && (
+            <DepthHeatmapOverlay
+              paneSeries={paneSeries}
+              axis={axis}
+              points={depthHeatmapPoints}
             />
           )}
           <DrawingOverlay

@@ -155,6 +155,8 @@ type Store = Persisted & PersistedIndicators & {
   setTradeVolumePocEnabled: (enabled: boolean) => void;
   setTradeVolumePocBandPct: (bandPct: number) => void;
   setTradeVolumePocStyle: (patch: { color?: string; opacity?: number }) => void;
+  setDepthHeatmapEnabled: (enabled: boolean) => void;
+  setDepthHeatmapStyle: (patch: { bidColor?: string; askColor?: string; maxOpacity?: number }) => void;
   setVolumeDistributionEnabled: (enabled: boolean) => void;
   setVolumeDistributionHoverCutoffEnabled: (enabled: boolean) => void;
   setVolumeDistributionRangeCount: (count: number) => void;
@@ -276,6 +278,10 @@ function snapshotIndicators(get: () => Store): PersistedIndicators {
     tradeVolumePocBandPct: s.tradeVolumePocBandPct,
     tradeVolumePocColor: s.tradeVolumePocColor,
     tradeVolumePocOpacity: s.tradeVolumePocOpacity,
+    depthHeatmapEnabled: s.depthHeatmapEnabled,
+    depthHeatmapBidColor: s.depthHeatmapBidColor,
+    depthHeatmapAskColor: s.depthHeatmapAskColor,
+    depthHeatmapMaxOpacity: s.depthHeatmapMaxOpacity,
     volumeDistributionEnabled: s.volumeDistributionEnabled,
     volumeDistributionHoverCutoffEnabled: s.volumeDistributionHoverCutoffEnabled,
     volumeDistributionRangeCount: s.volumeDistributionRangeCount,
@@ -509,6 +515,22 @@ export const useLivePageStore = create<Store>((set, get) => ({
       tradeVolumePocOpacity: patch.opacity === undefined
         ? s.tradeVolumePocOpacity
         : clamp(patch.opacity, 0, 1),
+    }));
+    persistIndicators(snapshotIndicators(get));
+  },
+
+  setDepthHeatmapEnabled: (enabled) => {
+    set({ depthHeatmapEnabled: enabled });
+    persistIndicators(snapshotIndicators(get));
+  },
+
+  setDepthHeatmapStyle: (patch) => {
+    set((s) => ({
+      depthHeatmapBidColor: patch.bidColor ?? s.depthHeatmapBidColor,
+      depthHeatmapAskColor: patch.askColor ?? s.depthHeatmapAskColor,
+      depthHeatmapMaxOpacity: patch.maxOpacity === undefined
+        ? s.depthHeatmapMaxOpacity
+        : clamp(patch.maxOpacity, 0.2, 1),
     }));
     persistIndicators(snapshotIndicators(get));
   },

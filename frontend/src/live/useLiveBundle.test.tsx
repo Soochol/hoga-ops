@@ -258,6 +258,7 @@ describe('planLiveRangeRequest', () => {
       askPeakEnabled: false,
       bidPeakEnabled: true,
       tradeVolumePocEnabled: true,
+      depthHeatmapEnabled: true,
       brokerLateEntryEnabled: true,
       brokerLateEntryStartHHMM: 945,
       programTradeEnabled: true,
@@ -277,6 +278,7 @@ describe('planLiveRangeRequest', () => {
         brokerLateEntryStartHHMM: 945,
         programTradeEnabled: true,
         tradeVolumePocEnabled: true,
+        depthHeatmapEnabled: true,
         volumeDistributionBins: 12,
         tradeVolumePocBins: 12,
         volumeDistributionPriceRange: { min: 69900, max: 70100 },
@@ -293,6 +295,7 @@ describe('planLiveRangeRequest', () => {
       askPeakEnabled: true,
       bidPeakEnabled: true,
       tradeVolumePocEnabled: false,
+      depthHeatmapEnabled: true,
       brokerLateEntryEnabled: false,
       brokerLateEntryStartHHMM: 945,
       programTradeEnabled: true,
@@ -312,6 +315,7 @@ describe('planLiveRangeRequest', () => {
         brokerLateEntryStartHHMM: null,
         programTradeEnabled: false,
         tradeVolumePocEnabled: false,
+        depthHeatmapEnabled: false,
         volumeDistributionBins: null,
         tradeVolumePocBins: null,
         volumeDistributionPriceRange: null,
@@ -931,6 +935,44 @@ describe('useLiveBundle', () => {
 
     expect(result.current.bundle?.volume_distributions).toEqual([distribution]);
     expect(result.current.chartBundle?.volume_distributions).toEqual([distribution]);
+  });
+
+  it('merges sidecar depth heatmap into the chart and live bundles', () => {
+    const depthPoint = {
+      t_ms: 1_779_840_060_000,
+      asks: [[70_100, 500], [70_200, 300]],
+      bids: [[70_000, 400], [69_900, 200]],
+    };
+    const sidecarBundle = {
+      code: '005930',
+      from_date: '20260520',
+      to_date: '20260527',
+      bucket_ms: 60000,
+      segments: [],
+      candles: [],
+      quote_ratio: { bucket_ms: 60000, points: [] },
+      fill_strength: { bucket_ms: 60000, points: [] },
+      volume_profile_range: { bin_count: 0, price_min: 0, price_max: 0, bin_width: 0, bins: [] },
+      volume_profile_by_day: [],
+      volume_distributions: [],
+      investorPoints: [],
+      ask_peaks: [],
+      bid_peaks: [],
+      broker_late_entries: [],
+      price_level_hits: [],
+      trade_volume_pocs: [],
+      depth_heatmap: [depthPoint],
+      program_trade: { points: [] },
+    };
+    useRangeSidecarDeltaSpy.mockReturnValueOnce(rangeResult(sidecarBundle));
+
+    const { result } = renderHook(() => useLiveBundle('005930', '1m', '20260527', liveFixture), { wrapper });
+
+    // Regression: the sidecar-only depth_heatmap must be threaded onto the built
+    // chart bundle (and the live bundle spread from it), else the overlay's
+    // pointCount stays 0 and no cells render even though the fetch succeeded.
+    expect(result.current.chartBundle?.depth_heatmap).toEqual([depthPoint]);
+    expect(result.current.bundle?.depth_heatmap).toEqual([depthPoint]);
   });
 
   it('merges sidecar program trade into the chart and live bundles', () => {

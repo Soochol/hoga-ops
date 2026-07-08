@@ -70,6 +70,9 @@ export const BID_PEAK_ALL_PRICE_DEFAULT_WIDTH: 1 | 2 | 3 | 4 = 1;
 export const TRADE_VOLUME_POC_DEFAULT_BAND_PCT = 0.005;
 export const TRADE_VOLUME_POC_DEFAULT_COLOR = '#A855F7';
 export const TRADE_VOLUME_POC_DEFAULT_OPACITY = 0.12;
+export const DEPTH_HEATMAP_DEFAULT_BID_COLOR = '#F04452';
+export const DEPTH_HEATMAP_DEFAULT_ASK_COLOR = '#3485FA';
+export const DEPTH_HEATMAP_DEFAULT_MAX_OPACITY = 0.7;
 const VALID_TRADE_VOLUME_POC_BAND_PCTS = new Set([0.0025, 0.005, 0.01]);
 export const VOLUME_DISTRIBUTION_DEFAULT_COLOR = '#64748B';
 export const VOLUME_DISTRIBUTION_DEFAULT_MAX_COLOR = '#EAB308';
@@ -126,6 +129,14 @@ export type PersistedIndicators = {
   tradeVolumePocColor: string;
   /** 당일 최대 매물대 밴드 투명도(0~1). 기본 0.12. */
   tradeVolumePocOpacity: number;
+  /** 호가 잔량 히트맵 on/off. Default FALSE. */
+  depthHeatmapEnabled: boolean;
+  /** 호가 잔량 히트맵 매수(bid) 색(hex). 기본 #F04452(빨강). */
+  depthHeatmapBidColor: string;
+  /** 호가 잔량 히트맵 매도(ask) 색(hex). 기본 #3485FA(파랑). */
+  depthHeatmapAskColor: string;
+  /** 호가 잔량 히트맵 최대 불투명도(0.2~1). 기본 0.7. */
+  depthHeatmapMaxOpacity: number;
   /** 연속체결 매물대 분포 on/off. Default TRUE. */
   volumeDistributionEnabled: boolean;
   /** 연속체결 매물대 분포 hover cutoff mode. Default FALSE. */
@@ -266,6 +277,22 @@ export function mergeLiveIndicatorPrefs(
     && tvpOpacityRaw <= 1
     ? tvpOpacityRaw
     : TRADE_VOLUME_POC_DEFAULT_OPACITY;
+  const depthHeatmapEnabled = obj?.depthHeatmapEnabled === true;
+  const dhBidColor = typeof obj?.depthHeatmapBidColor === 'string'
+    && HEX_COLOR.test(obj.depthHeatmapBidColor as string)
+    ? (obj.depthHeatmapBidColor as string)
+    : DEPTH_HEATMAP_DEFAULT_BID_COLOR;
+  const dhAskColor = typeof obj?.depthHeatmapAskColor === 'string'
+    && HEX_COLOR.test(obj.depthHeatmapAskColor as string)
+    ? (obj.depthHeatmapAskColor as string)
+    : DEPTH_HEATMAP_DEFAULT_ASK_COLOR;
+  const dhOpacityRaw = obj?.depthHeatmapMaxOpacity;
+  const dhMaxOpacity = typeof dhOpacityRaw === 'number'
+    && Number.isFinite(dhOpacityRaw)
+    && dhOpacityRaw >= 0.2
+    && dhOpacityRaw <= 1
+    ? dhOpacityRaw
+    : DEPTH_HEATMAP_DEFAULT_MAX_OPACITY;
   const volumeDistributionEnabled = obj?.volumeDistributionEnabled !== false;
   const volumeDistributionHoverCutoffEnabled = obj?.volumeDistributionHoverCutoffEnabled === true;
   const volumeDistributionRangeCount = normalizeVolumeDistributionRangeCount(obj?.volumeDistributionRangeCount);
@@ -323,6 +350,10 @@ export function mergeLiveIndicatorPrefs(
     tradeVolumePocBandPct: tvpBandPct,
     tradeVolumePocColor: tvpColor,
     tradeVolumePocOpacity: tvpOpacity,
+    depthHeatmapEnabled,
+    depthHeatmapBidColor: dhBidColor,
+    depthHeatmapAskColor: dhAskColor,
+    depthHeatmapMaxOpacity: dhMaxOpacity,
     volumeDistributionEnabled,
     volumeDistributionHoverCutoffEnabled,
     volumeDistributionRangeCount,

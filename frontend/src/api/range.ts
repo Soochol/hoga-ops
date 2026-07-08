@@ -364,6 +364,14 @@ export function mergeRangeBundles(previous: RangeBundle, next: RangeBundle): Ran
       (p) => p.date,
       (a, b) => a.date.localeCompare(b.date),
     ),
+    // Per-bucket (not per-date) merge like fill_strength.points: dedup by t_ms,
+    // ascending. uniqueBy keeps the LAST occurrence, so [previous, next] → next
+    // (latest) wins per overlapping bucket.
+    depth_heatmap: uniqueBy(
+      [...(previous.depth_heatmap ?? []), ...(next.depth_heatmap ?? [])],
+      (p) => String(p.t_ms),
+      (a, b) => a.t_ms - b.t_ms,
+    ),
     volume_distributions: uniqueBy(
       [...outsideCoveredDates(previous.volume_distributions, nextDates), ...next.volume_distributions],
       (p) => p.date,

@@ -27,7 +27,7 @@ describe('IndicatorPanel', () => {
     });
     renderPanel();
     const checkboxes = screen.getAllByRole('checkbox');
-    expect(checkboxes).toHaveLength(14); // 상단 3 + 10호가 7 + 프로그램 1 + 거래원 3
+    expect(checkboxes).toHaveLength(15); // 상단 3 + 10호가 8 + 프로그램 1 + 거래원 3
     expect(checkboxes.filter((c) => (c as HTMLButtonElement).disabled)).toHaveLength(0);
     for (const name of ['총잔량', '호가비', '체결강도', '연속체결 매물대 분포', '프로그램 순매수', '당일 최대 매물대']) {
       const cb = screen.getByRole('checkbox', { name }) as HTMLButtonElement;
@@ -555,5 +555,26 @@ describe('IndicatorPanel', () => {
     renderPanel();
     fireEvent.click(screen.getByRole('button', { name: '일봉 이동평균선' }));
     expect(screen.getByText(/일봉 종가 기준 이평선을 분봉 차트에 투영/)).toBeTruthy();
+  });
+
+  it('호가 잔량 히트맵 카테고리가 10호가 그룹에 렌더된다', () => {
+    render(<IndicatorPanel onClose={() => {}} timeframe="1m" />);
+    expect(screen.getByText('호가 잔량 히트맵')).toBeInTheDocument();
+  });
+
+  it('호가 잔량 히트맵 카테고리 토글', () => {
+    useLivePageStore.setState({ depthHeatmapEnabled: false });
+    renderPanel();
+    const cb = screen.getByRole('checkbox', { name: '호가 잔량 히트맵' });
+    fireEvent.click(cb);
+    expect(useLivePageStore.getState().depthHeatmapEnabled).toBe(true);
+  });
+
+  it('호가 잔량 히트맵 라벨 클릭 → 매수/매도 색상 + 불투명도 노출', () => {
+    renderPanel();
+    fireEvent.click(screen.getByRole('button', { name: '호가 잔량 히트맵' }));
+    expect(screen.getByRole('button', { name: '매수 색상 스타일 선택' })).toBeTruthy();
+    expect(screen.getByRole('button', { name: '매도 색상 스타일 선택' })).toBeTruthy();
+    expect(screen.getByRole('slider')).toBeTruthy();
   });
 });

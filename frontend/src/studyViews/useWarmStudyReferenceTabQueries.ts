@@ -33,6 +33,7 @@ export function useWarmStudyReferenceTabQueries({
   const brokerLateEntryEnabled = useLivePageStore((s) => s.brokerLateEntryEnabled);
   const brokerLateEntryStartHHMM = useLivePageStore((s) => s.brokerLateEntryStartHHMM);
   const tradeVolumePocEnabled = useLivePageStore((s) => s.tradeVolumePocEnabled);
+  const depthHeatmapEnabled = useLivePageStore((s) => s.depthHeatmapEnabled);
   const volumeDistributionEnabled = useLivePageStore((s) => s.volumeDistributionEnabled);
   const volumeDistributionRangeCount = useLivePageStore((s) => s.volumeDistributionRangeCount);
 
@@ -49,6 +50,7 @@ export function useWarmStudyReferenceTabQueries({
       brokerLateEntryEnabled,
       brokerLateEntryStartHHMM,
       tradeVolumePocEnabled,
+      depthHeatmapEnabled,
       volumeDistributionEnabled,
       volumeDistributionRangeCount,
     };
@@ -69,6 +71,7 @@ export function useWarmStudyReferenceTabQueries({
     sourcePref,
     tabs,
     tradeVolumePocEnabled,
+    depthHeatmapEnabled,
     viewTimeframes,
     volumeDistributionEnabled,
     volumeDistributionRangeCount,

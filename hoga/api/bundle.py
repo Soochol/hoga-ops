@@ -32,6 +32,7 @@ from hoga.api.models import (
     BrokerLateEntryEvent,
     DateWarning,
     DayVolumeDistribution,
+    DepthHeatmapPoint,
     ExcludedDate,
     FillStrength,
     FillStrengthPoint,
@@ -889,6 +890,50 @@ def build_trade_volume_poc_slice(
     return poc
 
 
+def build_depth_heatmap_slice(
+    engine: QueryEngine,
+    *,
+    code: str,
+    date: str,
+    bucket_ms: int,
+    source: str = "hogaplay",
+    session_open_ms: int | None = None,
+    session_close_ms: int | None = None,
+) -> list[DepthHeatmapPoint]:
+    """버킷별 대표 스냅샷의 10호가 잔량 분포를 DepthHeatmapPoint 리스트로.
+
+    query_bucketed_depth_heatmap은 LINEAR intra_ms를 주므로
+    ms_from_midnight_to_unix_ms(date, intra)로 unix 변환 — 호가비/총잔량 빌더와
+    동일 규약. 잔량 0 단계도 그대로 실어 보낸다(프론트가 스킵).
+
+    ``session_open_ms``는 형제 빌더(및 Task-4 호출부) 시그니처 대칭용으로만
+    유지 — 본문 미사용.
+    """
+    try:
+        path_obj = engine.parquet_dir(date, code, source) / "snapshots.parquet"
+    except (FileNotFoundError, StockDateNotFound):
+        return []
+    if not path_obj.exists():
+        return []
+    rows = snapshots_tbl.query_bucketed_depth_heatmap(
+        engine.conn,
+        path=path_obj,
+        bucket_ms=bucket_ms,
+        session_close_ms=session_close_ms,
+    )
+    out: list[DepthHeatmapPoint] = []
+    for r in rows:
+        t_ms = ms_from_midnight_to_unix_ms(date, r.bucket_intra_ms)
+        out.append(
+            DepthHeatmapPoint(
+                t_ms=t_ms,
+                asks=[[p, q] for p, q in zip(r.ask_prices, r.ask_qtys)],
+                bids=[[p, q] for p, q in zip(r.bid_prices, r.bid_qtys)],
+            )
+        )
+    return out
+
+
 def _first_trailing_single_price_book_hhmmssms(
     engine: QueryEngine,
     *,
@@ -957,6 +1002,7 @@ def _empty_range_bundle(
         bid_peaks=[],
         broker_late_entries=[],
         price_level_hits=[],
+        depth_heatmap=[],
         volume_distributions=[],
         program_trade=ProgramTradeSeries(points=[]),
     )
@@ -1006,6 +1052,7 @@ def build_range_bundle(
     bid_peaks_enabled: bool = True,
     program_trade_enabled: bool = True,
     trade_volume_poc_enabled: bool = True,
+    depth_heatmap_enabled: bool = True,
 ) -> RangeBundle:
     """Build the Wire Model for a Stock-Date Range (ADR-0013, ADR-0014).
 
@@ -1044,6 +1091,7 @@ def build_range_bundle(
     include_ask_peaks = include_optional_sidecar_slices and ask_peaks_enabled
     include_bid_peaks = include_optional_sidecar_slices and bid_peaks_enabled
     include_trade_volume_pocs = include_optional_sidecar_slices and trade_volume_poc_enabled
+    include_depth_heatmap = include_optional_sidecar_slices and depth_heatmap_enabled
     include_program_trade = program_trade_enabled and sidecar_only
 
     dates = engine.list_stock_dates_in_range(
@@ -1073,6 +1121,7 @@ def build_range_bundle(
     bid_peaks: list[BidPeak] = []
     broker_late_entries: list[BrokerLateEntryEvent] = []
     trade_volume_pocs: list[TradeVolumePoc] = []
+    depth_heatmap: list[DepthHeatmapPoint] = []
     included_dates: list[str] = []
 
     # Indicator cache (호가비·체결강도)의 과거/오늘 게이트(ADR-0043/0090)는 각
@@ -1264,6 +1313,18 @@ def build_range_bundle(
             bid_peaks.append(bp_d)
         if tvp_d is not None:
             trade_volume_pocs.append(tvp_d)
+        if include_depth_heatmap:
+            depth_heatmap.extend(
+                build_depth_heatmap_slice(
+                    engine,
+                    code=code,
+                    date=d,
+                    bucket_ms=bucket_ms,
+                    source=source,
+                    session_open_ms=norm_meta["regular_session_open_ms"],
+                    session_close_ms=meta["regular_session_close_ms"],
+                )
+            )
         if perf_debug.enabled():
             log.warning(
                 "hoga_perf range_date status=ok code=%s date=%s source=%s mode=%s "
@@ -1307,6 +1368,7 @@ def build_range_bundle(
         broker_late_entries=broker_late_entries,
         price_level_hits=[],
         trade_volume_pocs=trade_volume_pocs,
+        depth_heatmap=depth_heatmap,
         volume_distributions=volume_distributions,
         program_trade=(
             build_program_trade_series(engine, code=code, dates=included_dates)

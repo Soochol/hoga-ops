@@ -569,6 +569,12 @@ export type TradeVolumePocWire = {
   band_pct: number;
 };
 
+export type DepthHeatmapPointWire = {
+  t_ms: number;
+  asks: [number, number][];
+  bids: [number, number][];
+};
+
 export type RangeBundle = {
   code: string;
   from_date: string;
@@ -602,5 +608,8 @@ export type RangeBundle = {
   price_level_hits?: PriceLevelHit[];
   /** 거래일별 정규장 체결량 최다 가격대(연속체결 매물대 분포의 max bar와 동일한 bin). */
   trade_volume_pocs?: TradeVolumePocWire[];
+  /** 버킷별 10호가 잔량 스냅샷(호가 잔량 히트맵). 각 포인트는 t_ms 버킷 하나의
+   *  매도/매수 [price, qty] 최대 10단계. 멀티데이 병합은 t_ms 단위 latest-wins. */
+  depth_heatmap?: DepthHeatmapPointWire[];
   broker_late_entries: BrokerLateEntryEvent[];
 };

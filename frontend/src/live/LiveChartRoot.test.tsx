@@ -18,7 +18,7 @@ if (typeof window !== 'undefined' && !window.ResizeObserver) {
   };
 }
 
-import { LiveChartRoot, SIDECAR_REVEAL_CAP_MS, shouldShowTradeVolumePocOverlay } from './LiveChartRoot';
+import { LiveChartRoot, SIDECAR_REVEAL_CAP_MS, shouldShowTradeVolumePocOverlay, shouldShowDepthHeatmapOverlay } from './LiveChartRoot';
 import { useLivePageStore } from '../state/livePage';
 import { CandlestickSeries, createChartEx, LineSeries, TickMarkType } from 'lightweight-charts';
 import { createVirtualAxis } from '../util/virtualAxis';
@@ -142,6 +142,16 @@ describe('LiveChartRoot', () => {
     expect(shouldShowTradeVolumePocOverlay('D', true, 0)).toBe(false);
     expect(shouldShowTradeVolumePocOverlay('D', false, 1)).toBe(false);
     expect(shouldShowTradeVolumePocOverlay('1m', false, 0)).toBe(true);
+  });
+
+  it('depthHeatmap 게이트: 분봉 + enabled + 데이터 있을 때만', () => {
+    expect(shouldShowDepthHeatmapOverlay('1m', true, 5)).toBe(true);
+    expect(shouldShowDepthHeatmapOverlay('30m', true, 5)).toBe(true);
+    expect(shouldShowDepthHeatmapOverlay('1m', false, 5)).toBe(false);
+    expect(shouldShowDepthHeatmapOverlay('1m', true, 0)).toBe(false);
+    expect(shouldShowDepthHeatmapOverlay('D', true, 5)).toBe(false);
+    expect(shouldShowDepthHeatmapOverlay('W', true, 5)).toBe(false);
+    expect(shouldShowDepthHeatmapOverlay('M', true, 5)).toBe(false);
   });
 
   it('creates moving-average overlays before candles when candles are always on top', async () => {

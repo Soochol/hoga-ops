@@ -10,6 +10,7 @@ export type StudyReferenceQuerySettings = {
   brokerLateEntryStartHHMM: number;
   volumeDistributionEnabled: boolean;
   tradeVolumePocEnabled: boolean;
+  depthHeatmapEnabled: boolean;
   volumeDistributionRangeCount: number;
 };
 
@@ -49,6 +50,7 @@ export function studyReferenceSidecarRangeOptions(
       brokerLateEntryStartHHMM: settings.brokerLateEntryEnabled ? settings.brokerLateEntryStartHHMM : null,
       volumeDistributionBins: settings.volumeDistributionEnabled ? settings.volumeDistributionRangeCount : null,
       tradeVolumePocBins: settings.tradeVolumePocEnabled ? settings.volumeDistributionRangeCount : null,
+      depthHeatmapEnabled: settings.depthHeatmapEnabled,
       volumeDistributionPriceRange: null,
     },
   });

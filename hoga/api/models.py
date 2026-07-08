@@ -621,6 +621,20 @@ class TradeVolumePoc(BaseModel):
     band_pct: float
 
 
+class DepthHeatmapPoint(BaseModel):
+    """한 분봉 버킷의 대표 스냅샷 10호가 잔량 분포.
+
+    ``t_ms``는 버킷 시작 unix ms (bucket_ms 정렬, ApiCandle.ts_ms와 동일 축).
+    ``asks``/``bids``는 각 최대 10단계 ``[price, qty]`` — asks는 가격 오름차순
+    (index 0 = 최우선 매도), bids는 가격 내림차순(index 0 = 최우선 매수).
+    잔량 0 단계는 프론트에서 렌더 스킵되므로 그대로 실어 보낸다.
+    """
+
+    t_ms: int
+    asks: list[list[int]] = Field(default_factory=list)
+    bids: list[list[int]] = Field(default_factory=list)
+
+
 class VolumeDistributionBin(BaseModel):
     price_low: int
     price_high: int
@@ -670,6 +684,8 @@ class RangeBundle(BaseModel):
     # D·W·M/무데이터는 빈 리스트. 기본 []라 기존 클라 무영향.
     ask_peaks: list["AskPeak"] = []
     bid_peaks: list["BidPeak"] = Field(default_factory=list)
+    # 분봉 버킷별 대표 스냅샷 10호가 잔량 분포(호가 잔량 히트맵). 기본 []라 기존 클라 무영향.
+    depth_heatmap: list["DepthHeatmapPoint"] = Field(default_factory=list)
     broker_late_entries: list["BrokerLateEntryEvent"] = Field(default_factory=list)
     price_level_hits: list[PriceLevelHit] = Field(default_factory=list)
     trade_volume_pocs: list[TradeVolumePoc] = Field(default_factory=list)
