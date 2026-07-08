@@ -349,13 +349,16 @@ def test_query_bucketed_ratio_empty_parquet_returns_no_rows(tmp_path: Path) -> N
 
 
 def test_query_bucketed_depth_heatmap_picks_last_continuous_snapshot(tmp_path: Path) -> None:
-    """버킷 대표 = 마지막 연속거래 스냅샷의 10단계 가격·잔량 (query_bucketed_ratio와
-    동일한 대표 선택). 같은 분(minute) 버킷에 이른(작은잔량)·늦은(큰잔량) 스냅샷을
-    두면 대표는 늦은 스냅샷이어야 한다."""
+    """session_close_ms 없음 → pre_auction_pred가 "TRUE"로 붕괴 → 단순
+    last-in-bucket 대표 선택. 같은 분(minute) 버킷에 이른(작은잔량)·늦은(큰잔량)
+    스냅샷을 두면 대표는 늦은 스냅샷이어야 하고(rep_key = intra_ms 만으로 결정),
+    한 struct_pack에 묶인 40개 레벨 컬럼이 그 대표 물리 행에서 함께(round-trip)
+    나오는지 검증한다. (deep-book 분류 경로는 여기서 타지 않음 — 그건
+    session_close_ms를 넘기는 아래 테스트가 커버.)"""
     from hoga.tables.snapshots import query_bucketed_depth_heatmap
 
-    # 두 스냅샷 모두 같은 60s 버킷(09:00:xx → intra 32_400_xxx). 둘 다 10레벨 심층
-    # 호가창(레벨 4..10 > 0)이라 연속거래로 분류된다. 늦은 스냅샷(seq2, 900)이 대표.
+    # 두 스냅샷 모두 같은 60s 버킷(09:00:xx → intra 32_400_xxx). session_close_ms를
+    # 넘기지 않으므로 연속/동시호가 구분 없이 늦은 스냅샷(seq2, 900)이 대표.
     obs = [
         _ob(ts_ms=90_000_100, seq=1, ask_q=(100,) * 10, bid_q=(100,) * 10),
         _ob(ts_ms=90_000_900, seq=2, ask_q=(900,) * 10, bid_q=(900,) * 10),
@@ -374,6 +377,62 @@ def test_query_bucketed_depth_heatmap_picks_last_continuous_snapshot(tmp_path: P
     assert row.ask_prices == tuple(range(1, 11))
     assert row.bid_prices == tuple(range(10, 0, -1))
     assert row.bucket_intra_ms == 32_400_000
+
+
+def test_query_bucketed_depth_heatmap_deep_book_classification(tmp_path: Path) -> None:
+    """session_close_ms를 넘겨 deep-book 분류 경로(_DEEP_BOOK_SQL /
+    _last_continuous_intra_ms)를 실제로 태운다.
+
+    - 연속거래 버킷(15:18): deep book(레벨4..10 > 0)인 늦은 스냅샷 → is_pre TRUE
+      → 그 스냅샷의 40컬럼을 대표로 유지.
+    - 마감 동시호가 버킷(15:20:58, intra > last_continuous_ms): 3-레벨 붕괴
+      shallow book만 → 대표(연속) 없음 → last-in-bucket으로 폴백해 shallow book을
+      그대로 반환한다(총잔량 지표처럼 0으로 지우지 않음 — 정규화는 프론트 담당).
+    query_bucketed_ratio의 auction/deep-book 테스트와 동일한 fixture 구성."""
+    from hoga.tables.snapshots import query_bucketed_depth_heatmap
+
+    z = tuple([0] * 10)
+    # 15:18:00 연속거래 책(레벨4..10 > 0) — last_continuous_ms를 세운다.
+    continuous = Orderbook(
+        ts_ms=151_800_000, seq=1,
+        ask_p=tuple(range(101, 111)), ask_q=(10, 20, 30, 40, 5, 6, 7, 8, 9, 1), ask_d=z,
+        bid_p=tuple(range(100, 90, -1)), bid_q=(50, 40, 30, 20, 5, 5, 5, 5, 5, 5), bid_d=z,
+        tot_ask=0, tot_ask_d=0, tot_bid=0, tot_bid_d=0,
+    )
+    # 15:20:58 마감 동시호가: 3-레벨 붕괴(레벨4+ = 0) shallow book 2건 한 버킷.
+    # intra > last_continuous_ms → is_pre FALSE. 늦은 쪽(seq3)이 last-in-bucket 대표.
+    collapsed1 = Orderbook(
+        ts_ms=152_058_000, seq=2,
+        ask_p=(101, 102, 103) + (0,) * 7, ask_q=(99, 98, 97) + (0,) * 7, ask_d=z,
+        bid_p=(100, 99, 98) + (0,) * 7, bid_q=(7, 7, 7) + (0,) * 7, bid_d=z,
+        tot_ask=0, tot_ask_d=0, tot_bid=0, tot_bid_d=0,
+    )
+    collapsed2 = Orderbook(
+        ts_ms=152_058_500, seq=3,
+        ask_p=(201, 202, 203) + (0,) * 7, ask_q=(50, 40, 30) + (0,) * 7, ask_d=z,
+        bid_p=(200, 199, 198) + (0,) * 7, bid_q=(5, 5, 5) + (0,) * 7, bid_d=z,
+        tot_ask=0, tot_ask_d=0, tot_bid=0, tot_bid_d=0,
+    )
+    out = tmp_path / "snapshots.parquet"
+    write_parquet([continuous, collapsed1, collapsed2], out)
+    con = duckdb.connect()
+    rows = query_bucketed_depth_heatmap(
+        con, path=out, bucket_ms=1000, session_close_ms=153000000,
+    )
+    assert len(rows) == 2  # 연속거래 버킷 + 마감 동시호가 버킷 (bucket-ascending)
+    cont_row, auction_row = rows[0], rows[1]
+
+    # 연속거래 버킷: deep 스냅샷(seq1)의 40컬럼을 그대로 유지.
+    assert cont_row.ask_qtys == (10, 20, 30, 40, 5, 6, 7, 8, 9, 1)
+    assert cont_row.bid_qtys == (50, 40, 30, 20, 5, 5, 5, 5, 5, 5)
+    assert cont_row.ask_prices == tuple(range(101, 111))
+    assert cont_row.bid_prices == tuple(range(100, 90, -1))
+
+    # 마감 동시호가 버킷: 대표(연속) 없음 → last-in-bucket(seq3) shallow book 폴백.
+    assert auction_row.ask_qtys == (50, 40, 30) + (0,) * 7
+    assert auction_row.bid_qtys == (5, 5, 5) + (0,) * 7
+    assert auction_row.ask_prices == (201, 202, 203) + (0,) * 7
+    assert auction_row.bid_prices == (200, 199, 198) + (0,) * 7
 
 
 def test_query_bucketed_ratio_intra_max_independent_sides(tmp_path: Path) -> None:
