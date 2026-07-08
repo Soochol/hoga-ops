@@ -2275,6 +2275,10 @@ def test_build_depth_heatmap_slice_converts_rows_to_points(tmp_path):
         ask_qtys=tuple(500 - 10 * i for i in range(10)),
         bid_prices=tuple(990 - 10 * i for i in range(10)),
         bid_qtys=tuple(400 - 10 * i for i in range(10)),
+        ask_prices_max=tuple(1000 + 10 * i for i in range(10)),
+        ask_qtys_max=tuple(900 - 10 * i for i in range(10)),
+        bid_prices_max=tuple(990 - 10 * i for i in range(10)),
+        bid_qtys_max=tuple(800 - 10 * i for i in range(10)),
     )
     with patch.object(
         bundle_mod.snapshots_tbl,
