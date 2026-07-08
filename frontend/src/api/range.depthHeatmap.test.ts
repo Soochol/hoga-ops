@@ -1,6 +1,8 @@
 import { describe, it, expect } from 'vitest';
 
 import { mergeRangeBundles } from './range';
+import { buildRangeBundleRequest } from './rangeRequest';
+import type { RangeBundleRequestInput } from './rangeRequest';
 import type { RangeBundle } from './types';
 
 // Minimal valid bundle mirroring range.test.tsx's fakeBundle fixture.
@@ -56,5 +58,35 @@ describe('depth_heatmap merge', () => {
     const merged = mergeRangeBundles(previous, next);
 
     expect(merged.depth_heatmap!.map((p) => p.t_ms)).toEqual([50]);
+  });
+});
+
+describe('depthHeatmapEnabled queryKey', () => {
+  const base: RangeBundleRequestInput = {
+    code: '005930',
+    from: '20260512',
+    to: '20260512',
+    timeframe: '1m',
+    sourcePref: 'kis_ws_first',
+    options: { mode: 'hoga' },
+  };
+
+  it('토글하면 queryKey가 달라져 캐시된 번들 대신 refetch를 유발한다', () => {
+    const on = buildRangeBundleRequest({
+      ...base,
+      options: { ...base.options, depthHeatmapEnabled: true },
+    });
+    const off = buildRangeBundleRequest({
+      ...base,
+      options: { ...base.options, depthHeatmapEnabled: false },
+    });
+
+    // depthHeatmapEnabled lives in the last queryKey slot (mirrors tradeVolumePocEnabled).
+    expect(on.queryKey[20]).toBe(true);
+    expect(off.queryKey[20]).toBe(false);
+    expect(on.queryKey).not.toEqual(off.queryKey);
+    // and it reaches the wire as depth_heatmap_enabled
+    expect(new URL(on.url, 'http://x').searchParams.get('depth_heatmap_enabled')).toBe('true');
+    expect(new URL(off.url, 'http://x').searchParams.get('depth_heatmap_enabled')).toBe('false');
   });
 });

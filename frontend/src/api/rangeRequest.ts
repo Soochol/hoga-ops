@@ -51,6 +51,7 @@ export type RangeQueryKey = readonly [
   boolean | null,
   boolean | null,
   boolean | null,
+  boolean | null,
 ];
 
 export const RANGE_QUERY_KEY_FROM_DATE_INDEX = 2;
@@ -62,7 +63,7 @@ export type RangeBundleRequest = {
   todayKst: string | null;
 };
 
-const PLACEHOLDER_COMPATIBLE_KEY_INDICES = [4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19] as const;
+const PLACEHOLDER_COMPATIBLE_KEY_INDICES = [4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20] as const;
 
 function addParam(params: URLSearchParams, key: string, value: number | string | null | undefined): void {
   if (value == null) return;
@@ -112,6 +113,7 @@ export function buildRangeBundleRequest(input: RangeBundleRequestInput): RangeBu
     bidPeaksEnabled,
     programTradeEnabled,
     tradeVolumePocEnabled,
+    depthHeatmapEnabled,
   ];
 
   const params = new URLSearchParams();
