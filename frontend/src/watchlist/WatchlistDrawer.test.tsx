@@ -151,10 +151,12 @@ describe('WatchlistDrawer', () => {
     });
     const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } });
     render(<WatchlistDrawer />, { wrapper: wrap(qc, '/inventory') });
-    await waitFor(() => expect(screen.getByText('72,400원 (+1.20%)')).toBeInTheDocument());
-    expect(screen.getByText('183,500원 (-0.80%)')).toBeInTheDocument();
+    // 가격/% 분리 컬럼, 원 접미사 제거.
+    await waitFor(() => expect(screen.getByText('72,400')).toBeInTheDocument());
+    expect(screen.getByText('+1.20%')).toBeInTheDocument();
+    expect(screen.getByText('183,500')).toBeInTheDocument();
+    expect(screen.getByText('-0.80%')).toBeInTheDocument();
     expect(screen.queryByText('+850원 (1.20%)')).not.toBeInTheDocument();
-    expect(screen.queryByText('-1,500원 (0.80%)')).not.toBeInTheDocument();
   });
 
   it('cycles a folder sort mode by clicking the group sort icon', async () => {
