@@ -491,6 +491,7 @@ async def start_today_promoter(
     get_active_codes: Callable[[], list[str]],
     get_api_capture_codes: Callable[[], list[str]] | None = None,
     interval_s: float = 300.0,
+    on_promoted: Callable[[dict], object] | None = None,
 ) -> asyncio.Task:
     """Start the ADR-0043 Today Promotion loop.
 
@@ -499,6 +500,13 @@ async def start_today_promoter(
     are caught and logged so one bad code doesn't break the cycle.
     The outer try/except prevents the loop itself from dying on a
     transient get_active_codes failure.
+
+    `on_promoted` (typically `EventBus.publish`, injected in app.py via
+    functools.partial) receives a `{type, code, date}` dict after each *real*
+    promotion (promote_today returned a date, not None). This lets the frontend
+    refetch the today range the moment its disk data advances, instead of
+    waiting out the polling fallback — pure acceleration on top of the poll, so
+    a dropped event only costs latency, never correctness (WS 푸시 승격 무효화).
 
     Returns the created asyncio.Task; caller (lifespan) is responsible
     for cancelling on shutdown via `stop_today_promoter`.
@@ -512,7 +520,13 @@ async def start_today_promoter(
                 api_codes = (get_api_capture_codes or get_api_codes)()
                 for code in ws_codes:
                     try:
-                        await promote_today(data_dir, code=code)
+                        promoted_date = await promote_today(data_dir, code=code)
+                        if promoted_date is not None and on_promoted is not None:
+                            on_promoted({
+                                "type": "promotion_completed",
+                                "code": code,
+                                "date": promoted_date,
+                            })
                     except Exception:
                         log.exception(
                             "live.today_promote.code_failed code=%s", code,

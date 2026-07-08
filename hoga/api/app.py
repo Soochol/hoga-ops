@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import asyncio
+import functools
 import os
 from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
@@ -116,7 +117,12 @@ def create_app(data_dir: Path) -> FastAPI:
                 start_scheduler=start_scheduler,
                 start_live_stream=start_live_stream,
                 start_live_stream_watchdog=start_live_stream_watchdog,
-                start_today_promoter=start_today_promoter,
+                # Inject the event bus so a real Today Promotion fires a
+                # promotion_completed event (WS 푸시 승격 무효화). Same
+                # bus.publish injection shape as configure_signal_alert_monitor.
+                start_today_promoter=functools.partial(
+                    start_today_promoter, on_promoted=bus.publish,
+                ),
                 stop_today_promoter=stop_today_promoter,
                 stop_live_stream=stop_live_stream,
                 aclose_kis_capacity_scheduler=aclose_kis_capacity_scheduler,

@@ -270,8 +270,13 @@ def _today_kst_yyyymmdd() -> str:
     return datetime.now(timezone(timedelta(hours=9))).strftime("%Y%m%d")
 
 
-async def promote_today(data_dir: Path, *, code: str) -> None:
+async def promote_today(data_dir: Path, *, code: str) -> str | None:
     """ADR-0043 Today Promotion — overwrite, no archive move.
+
+    Returns the promoted date (YYYYMMDD) on a real promotion, or None when the
+    code had nothing to promote (no jsonl this cycle). The promoter loop uses
+    this to publish a `promotion_completed` event only on a real promotion — a
+    None (skip) must not fire a spurious refetch on the frontend.
 
     promote_one과 다른 점:
       - idempotent skip 안 함 (meta.json 있어도 다시 처리)
@@ -295,7 +300,7 @@ async def promote_today(data_dir: Path, *, code: str) -> None:
     target = parquet_root / today / code / "kis_live"
 
     if not jsonl_path.exists():
-        return
+        return None
 
     start_ms = int(time.time() * 1000)
     _log.info("live.today_promote.start code=%s date=%s", code, today)
@@ -340,6 +345,8 @@ async def promote_today(data_dir: Path, *, code: str) -> None:
             record_fn(code, int(time.time() * 1000))
     except ImportError:
         pass
+
+    return today
 
 
 async def promote_api_today(data_dir: Path, *, code: str) -> None:
