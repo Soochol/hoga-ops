@@ -16,17 +16,19 @@ function row(props: Partial<ComponentProps<typeof QuoteRow>> = {}) {
 }
 
 describe('QuoteRow', () => {
-  it('renders name and price plus change percent on one line', () => {
+  it('renders name, neutral price (no 원), and colored percent as separate columns', () => {
     row();
     expect(screen.getByText('삼성전자')).toBeInTheDocument();
-    expect(screen.getByText('72,400원 (+1.20%)')).toBeInTheDocument();
-    expect(screen.queryByText('+750원 (1.20%)')).not.toBeInTheDocument();
+    // 원 접미사 제거 + 가격/% 분리 컬럼.
+    expect(screen.getByText('72,400')).toBeInTheDocument();
+    expect(screen.getByText('+1.20%')).toBeInTheDocument();
+    expect(screen.queryByText('72,400원 (+1.20%)')).not.toBeInTheDocument();
   });
 
-  it('omits the parenthesized dash when price exists but pct is missing', () => {
+  it('shows an empty percent column when price exists but pct is missing', () => {
     row({ pct: null, changeWon: null });
-    expect(screen.getByText('72,400원')).toBeInTheDocument();
-    expect(screen.queryByText('72,400원 (—)')).not.toBeInTheDocument();
+    expect(screen.getByText('72,400')).toBeInTheDocument();
+    expect(screen.queryByText(/%/)).not.toBeInTheDocument();
   });
 
   it('renders — when price is missing', () => {

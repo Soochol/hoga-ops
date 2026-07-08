@@ -2,12 +2,12 @@ import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { MemoryRouter, Route, Routes, useLocation } from 'react-router';
-import { beforeEach, expect, it, vi } from 'vitest';
+import { beforeEach, describe, expect, it, vi } from 'vitest';
 import type { StudyViewReference } from '../api/studyViews';
 import { useEntryDragStore } from '../state/entryDrag';
 import { useStudyTabsStore } from '../state/studyTabs';
 import { useStudyViewOpenPrefsStore } from '../state/studyViewOpenPrefs';
-import { StudyViewsDrawer, filterStudyViews } from './StudyViewsDrawer';
+import { StudyViewsDrawer, filterStudyViews, formatStudyViewMeta } from './StudyViewsDrawer';
 
 type DndHandlers = {
   onDragStart: null | ((event: unknown) => void);
@@ -722,4 +722,18 @@ it('dragging a stock group outside the study target still reorders groups', asyn
   } finally {
     useEntryDragStore.getState().clearStudyTarget(hitTest);
   }
+});
+
+describe('formatStudyViewMeta', () => {
+  it('shows timeframe · single date (from==to)', () => {
+    expect(
+      formatStudyViewMeta({ timeframe: '1m', range: { from_date: '20260708', to_date: '20260708' } }),
+    ).toBe('1m · 07-08');
+  });
+
+  it('shows a date range when from != to', () => {
+    expect(
+      formatStudyViewMeta({ timeframe: 'D', range: { from_date: '20260701', to_date: '20260708' } }),
+    ).toBe('D · 07-01~07-08');
+  });
 });

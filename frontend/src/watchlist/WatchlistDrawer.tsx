@@ -159,6 +159,9 @@ function GroupHeader(props: {
       {props.onSort && (
         <button type="button" aria-label={`${props.label} 정렬`}
           aria-describedby={sortDescriptionId}
+          // 마우스 툴팁 — 아이콘만으론 현재 정렬 상태·다음 동작이 불투명했다(sr-only
+          // 설명은 있으나 포인터 사용자엔 안 보임). aria-describedby 와 같은 문구.
+          title={quoteSortModeDescription(props.sortMode)}
           onClick={cycleSortMode}
           className={`opacity-0 group-hover:opacity-100 group-focus-within:opacity-100 px-1 leading-none hover:text-fg ${props.sortMode === 'default' ? 'text-fg-dimmer' : 'text-accent'}`}>
           <QuoteSortIcon mode={props.sortMode} />

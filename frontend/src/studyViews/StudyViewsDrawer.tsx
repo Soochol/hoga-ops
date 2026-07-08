@@ -46,6 +46,20 @@ export function filterStudyViews<T extends { name: string; code: string; memo: s
   return rows.filter((row) => [row.name, row.code, row.memo].some((v) => normalizeStudyViewQuery(v).includes(q)));
 }
 
+/** YYYYMMDD → "MM-DD" (같은 연도 가정, 저장뷰 메타의 좁은 폭에 맞춘 축약). */
+function shortMonthDay(yyyymmdd: string): string {
+  if (!/^\d{8}$/.test(yyyymmdd)) return yyyymmdd;
+  return `${yyyymmdd.slice(4, 6)}-${yyyymmdd.slice(6, 8)}`;
+}
+
+/** 저장뷰 아이템 메타 = 타임프레임 · 복기 대상일(범위면 from~to). 종목은 그룹
+ *  헤더가 이미 이므로 생략 — 아이템엔 "무엇을 저장했나"(분봉·날짜)만 남긴다. */
+export function formatStudyViewMeta(row: { timeframe: string; range: { from_date: string; to_date: string } }): string {
+  const { from_date, to_date } = row.range;
+  const date = from_date === to_date ? shortMonthDay(from_date) : `${shortMonthDay(from_date)}~${shortMonthDay(to_date)}`;
+  return `${row.timeframe} · ${date}`;
+}
+
 function CollapseAllIcon({ className }: { className?: string }) {
   return (
     <svg className={className} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
@@ -427,6 +441,11 @@ export function StudyViewsDrawer() {
                 }}
               >
                 {row.name}
+              </div>
+              {/* 메타행 — 저장뷰 이름만으론 "무엇을 저장했나"를 알 수 없던 것 보완:
+                  타임프레임 · 복기 대상일(종목은 그룹 헤더가 이미 표시). */}
+              <div className="truncate text-badge text-fg-dimmer tabular-nums">
+                {formatStudyViewMeta(row)}
               </div>
             </div>
           </div>

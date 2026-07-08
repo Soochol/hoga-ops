@@ -96,4 +96,35 @@ describe('SignalAlertsDrawer', () => {
     expect(screen.queryByText('오늘 알림이 없습니다.')).not.toBeInTheDocument();
     expect(useSignalAlertInboxStore.getState().unreadCount).toBe(0);
   });
+
+  it('collapses repeated codes into one row (×N badge, peak ratio) and emphasizes strong ratios', async () => {
+    const mk = (over: Partial<signalAlerts.SignalAlertEvent> & { id: string; code: string; t_ms: number }) => ({
+      type: 'signal_alert' as const, signal: 'sell_total_renewal' as const, seq: over.t_ms,
+      name: over.code, date: '20260701', source: 'ws' as const, value: 1000, baseline: 1000,
+      ratio_pct: 100, use_intra_minute_max: false, ...over,
+    });
+    vi.mocked(apiCall).mockResolvedValue({
+      date: '20260701', scope: 'inbox', cleared_through_seq: 0,
+      alerts: [
+        mk({ id: 'k1', code: '003490', name: '대한항공', t_ms: 100, ratio_pct: 107 }),
+        mk({ id: 'k2', code: '003490', name: '대한항공', t_ms: 300, ratio_pct: 125, value: 999 }),
+        mk({ id: 'k3', code: '005440', name: '현대지에프홀딩스', t_ms: 200, ratio_pct: 118.6 }),
+      ],
+    });
+    vi.mocked(signalAlerts.useClearSignalAlertToday).mockReturnValue({
+      mutate: vi.fn(), isPending: false,
+    } as unknown as ReturnType<typeof signalAlerts.useClearSignalAlertToday>);
+
+    renderWithProviders(<SignalAlertsDrawer today="20260701" />);
+
+    // 대한항공 2회 발화 → 한 행 + ×2 배지, 최고 강도(125.0%)만 표시.
+    expect(await screen.findByText('대한항공')).toBeInTheDocument();
+    expect(screen.getByText('×2')).toBeInTheDocument();
+    const strong = screen.getByText('125.0%');
+    expect(strong.className).toContain('text-price-down'); // ≥120 강조
+    expect(screen.queryByText('107.0%')).toBeNull();       // 접힌 약한 발화는 숨김
+    // 헤더: 총 3건 · 2종목.
+    const header = screen.getByText(/3건/);
+    expect(header.textContent).toContain('2종목');
+  });
 });

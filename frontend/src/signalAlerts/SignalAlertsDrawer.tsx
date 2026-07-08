@@ -4,10 +4,10 @@ import {
   signalAlertRecentKey,
   useClearSignalAlertToday,
   useSignalAlertRecent,
-  type SignalAlertEvent,
   type SignalAlertRecentResponse,
 } from '../api/signalAlerts';
 import { useJumpToLive } from '../live/useJumpToLive';
+import { groupSignalAlertsByCode, type SignalAlertGroup } from './groupAlerts';
 import { useSignalAlertInboxStore } from '../state/signalAlertInbox';
 import {
   RailDrawer,
@@ -40,8 +40,13 @@ function formatTime(ms: number): string {
   }).format(ms);
 }
 
-function formatSignalLine(alert: SignalAlertEvent): string {
-  return `매도 총잔량 ${alert.value.toLocaleString()} · 기준 대비 ${alert.ratio_pct.toFixed(1)}%`;
+/** 기준 대비 % 의 강조 단계 — 갱신 강도(=매도벽 크기)에 비례해 색·굵기를 준다.
+ *  ≥120% 강한 갱신은 매도 방향색(파랑, KRX)으로 굵게; 그 사이는 중립; ~100 근처
+ *  경미한 갱신은 dim. 균일하던 리스트에서 큰 신호만 튀게 하는 예외-기반 강조. */
+function ratioEmphasisClass(pct: number): string {
+  if (pct >= 120) return 'text-price-down font-semibold';
+  if (pct >= 110) return 'text-fg';
+  return 'text-fg-dim';
 }
 
 export default function SignalAlertsDrawer({ today = todayKst() }: { today?: string }) {
@@ -53,6 +58,9 @@ export default function SignalAlertsDrawer({ today = todayKst() }: { today?: str
   const [confirmingClear, setConfirmingClear] = useState(false);
   const alerts = useMemo(() => data?.alerts ?? [], [data?.alerts]);
   const visibleAlerts = alerts;
+  // 같은 종목 반복 발화(매도벽 갱신)를 한 행으로 접어 최신순으로 — 개별 타임스탬프
+  // 대신 갱신 횟수(count)·최고 강도(peakRatioPct)로 종목별 압력을 보여준다.
+  const groups = useMemo(() => groupSignalAlertsByCode(visibleAlerts), [visibleAlerts]);
 
   useEffect(() => {
     markPanelSeen();
@@ -95,6 +103,7 @@ export default function SignalAlertsDrawer({ today = todayKst() }: { today?: str
       />
       <RailDrawerSection className="py-2 text-xs text-fg-dim">
         오늘 {visibleAlerts.length.toLocaleString()}건
+        {groups.length > 0 && ` · ${groups.length.toLocaleString()}종목`}
       </RailDrawerSection>
       {confirmingClear && (
         <RailDrawerSection className="flex flex-col gap-2 text-sm">
@@ -121,11 +130,11 @@ export default function SignalAlertsDrawer({ today = todayKst() }: { today?: str
       <RailDrawerBody>
         {isLoading && <RailState>불러오는 중…</RailState>}
         {isError && <RailState tone="error">알림 내역을 불러오지 못했습니다.</RailState>}
-        {!isLoading && !isError && visibleAlerts.length === 0 && <RailState>오늘 알림이 없습니다.</RailState>}
-        {!isLoading && !isError && visibleAlerts.length > 0 && (
+        {!isLoading && !isError && groups.length === 0 && <RailState>오늘 알림이 없습니다.</RailState>}
+        {!isLoading && !isError && groups.length > 0 && (
           <ul className="divide-y divide-border">
-            {visibleAlerts.map((alert) => (
-              <SignalAlertRow key={alert.id} alert={alert} />
+            {groups.map((group) => (
+              <SignalAlertRow key={group.key} group={group} />
             ))}
           </ul>
         )}
@@ -134,27 +143,40 @@ export default function SignalAlertsDrawer({ today = todayKst() }: { today?: str
   );
 }
 
-function SignalAlertRow({ alert }: { alert: SignalAlertEvent }) {
+function SignalAlertRow({ group }: { group: SignalAlertGroup }) {
   const jumpToLive = useJumpToLive();
   const markPanelSeen = useSignalAlertInboxStore((state) => state.markPanelSeen);
+  const repeated = group.count > 1;
 
   return (
     <li>
       <button
         type="button"
-        aria-label={`${alert.name} ${alert.code} 차트 열기`}
-        className="flex w-full flex-col gap-1 px-md py-sm text-left hover:bg-bg-input-hover"
+        aria-label={`${group.name} ${group.code}${repeated ? ` 갱신 ${group.count}회` : ''} 기준 대비 ${group.peakRatioPct.toFixed(1)}% 차트 열기`}
+        className="grid w-full grid-cols-[1fr_auto] items-center gap-x-2 gap-y-0.5 px-md py-sm text-left hover:bg-bg-input-hover"
         onClick={() => {
           markPanelSeen();
-          jumpToLive(alert.code, alert.name);
+          jumpToLive(group.code, group.name);
         }}
       >
-        <div className="flex items-center gap-2 text-sm text-fg">
-          <span className="shrink-0 tabular-nums text-xs text-fg-dimmer">{formatTime(alert.t_ms)}</span>
-          <span className="min-w-0 truncate">{alert.name}</span>
-          <span className="shrink-0 text-xs text-fg-dimmer">{alert.code}</span>
+        {/* 좌: 시각 · 종목명 · 코드 (· ×N 반복 배지) */}
+        <div className="flex min-w-0 items-center gap-2 text-sm text-fg">
+          <span className="shrink-0 tabular-nums text-xs text-fg-dimmer">{formatTime(group.latestTMs)}</span>
+          <span className="min-w-0 truncate">{group.name}</span>
+          {repeated && (
+            <span className="shrink-0 rounded-sm bg-bg-input px-1 text-badge font-mono tabular-nums text-fg-dim">
+              ×{group.count}
+            </span>
+          )}
         </div>
-        <div className="text-xs text-fg-dim">{formatSignalLine(alert)}</div>
+        {/* 우: 기준 대비 % — 헤드라인 강도(갱신 강도 비례 강조) */}
+        <span className={`shrink-0 font-mono tabular-nums text-sm text-right ${ratioEmphasisClass(group.peakRatioPct)}`}>
+          {group.peakRatioPct.toFixed(1)}%
+        </span>
+        {/* 좌 아래: 매도 총잔량(최신) — 부차 정보 */}
+        <div className="col-start-1 text-xs text-fg-dimmer tabular-nums">
+          매도 총잔량 {group.latestValue.toLocaleString()}
+        </div>
       </button>
     </li>
   );

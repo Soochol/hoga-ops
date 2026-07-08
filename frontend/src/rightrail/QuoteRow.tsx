@@ -96,13 +96,17 @@ export function QuoteRow({
       {/* 종목명은 가격(text-sm)보다 의도적으로 작게(text-xs) — 그룹 헤더(text-sm/600) >
           종목명 크기 위계 + 가격이 1차 콘텐츠. 등락(text-xs)과는 서체(mono)·색으로 구분.
           truncate 는 flex 아이템 자신에 걸어야 클립된다(내부 inline span 은 overflow 를
-          무시해 긴 종목명이 가격 컬럼을 침범했다). 가격은 flex-none 으로 폭을 보전해
-          종목명이 대신 잘리게 한다(전체 이름은 행 aria-label 로 전달). */}
+          무시해 긴 종목명이 가격 컬럼을 침범했다). 가격/% 는 flex-none 고정폭이라
+          종목명이 대신 잘리고(전체 이름은 행 aria-label), 행마다 우측 끝자리가 정렬된다. */}
       <span className="flex-1 min-w-0 truncate text-xs text-fg leading-tight">{name}</span>
-      <span className={`flex-none font-mono tabular-nums text-sm text-right leading-tight ${pct === null ? 'text-fg' : priceDirClass(pct)}`}>
-        {price != null
-          ? `${price.toLocaleString('ko-KR')}원${pct === null ? '' : ` (${formatPct(pct)})`}`
-          : '—'}
+      {/* 가격은 --fg 중립, 등락%만 방향색 — 패널이 온통 적/청이던 것을 진정시켜 변동 큰
+          종목만 눈에 띄게(조용한 터미널). 원 접미사 제거(가격 컬럼 문맥상 자명). 가격/%
+          고정폭 2컬럼 우측정렬로 행마다 끝자리가 어긋나던 정렬을 맞춘다. */}
+      <span className="flex-none w-[4.75rem] text-right font-mono tabular-nums text-sm text-fg leading-tight">
+        {price != null ? price.toLocaleString('ko-KR') : '—'}
+      </span>
+      <span className={`flex-none w-[3.5rem] text-right font-mono tabular-nums text-xs leading-tight ${pct === null ? 'text-fg-dimmer' : priceDirClass(pct)}`}>
+        {pct != null ? formatPct(pct) : ''}
       </span>
       {trailingAction != null && (
         <span className="flex items-center justify-center" style={{ minWidth: '1.25rem' }}>
