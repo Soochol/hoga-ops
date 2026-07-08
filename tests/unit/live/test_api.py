@@ -99,6 +99,30 @@ def test_get_live_status_includes_kis_capacity_scheduler_snapshot(tmp_path) -> N
         assert "overloaded_rejections" in scheduler
 
 
+def test_get_live_status_includes_cache_stats(tmp_path) -> None:
+    from hoga.live import lifecycle
+    lifecycle.reset_for_tests()
+
+    app = _make_test_app(data_dir=tmp_path)
+    with TestClient(app) as c:
+        r = c.get("/api/live/status")
+        assert r.status_code == 200
+        cache_stats = r.json()["cache_stats"]
+        # Closure-reachable caches surface their counters.
+        assert set(cache_stats) >= {
+            "past_candles", "minute_backfill", "past_daily_candles",
+            "investor_net_daily", "today_ttl", "live_buffer",
+        }
+        # PastCandlesCache splits past vs today horizons.
+        assert "hits" in cache_stats["past_candles"]["past"]
+        assert "hits" in cache_stats["past_candles"]["today"]
+        # The cold re-spend metric (PR-1 (a)).
+        assert cache_stats["minute_backfill"]["fresh_past_fetches"] == 0
+        # Ring buffer is size-only — no hit rate.
+        assert "total_entries" in cache_stats["live_buffer"]
+        assert "hit_rate" not in cache_stats["live_buffer"]
+
+
 def test_post_live_control_dispatches_action() -> None:
     recorded: list[str] = []
 

@@ -102,6 +102,10 @@ class LiveStatus(BaseModel):
     rest_poller_last_error_count: int = 0
     rest_poller_backoff_remaining: int = 0
     kis_capacity_scheduler: dict[str, object] | None = None
+    # Per-cache hit/miss/eviction observability (PR-1). Assembled in the status
+    # route from closure-reachable cache instances; keyed by cache name. additive
+    # — unknown field, frontend ignores it safely.
+    cache_stats: dict[str, object] | None = None
     kis_rest_bypass_enabled: bool = False
     # 감독 태스크 헬스(ADR-0088) — 각 lifespan-소유 배경 태스크의 alive 여부.
     # `running`은 정직한 신호(task is not None and not task.done()) — 하루 한 번

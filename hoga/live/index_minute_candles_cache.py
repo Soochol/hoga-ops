@@ -4,6 +4,7 @@ from collections import OrderedDict
 from typing import Awaitable, Callable, TypeAlias
 
 from hoga.live.kis_client import IndexCandleFetchResult
+from hoga.util.cache_stats import CacheStats
 
 IndexMinuteCacheKey: TypeAlias = tuple[str, str, int]
 
@@ -18,6 +19,10 @@ class IndexMinuteCandlesCache:
         self._exact: OrderedDict[
             tuple[IndexMinuteCacheKey, str, str], IndexCandleFetchResult
         ] = OrderedDict()
+        self._stats = CacheStats()
+
+    def stats_snapshot(self) -> dict[str, int | float | None]:
+        return self._stats.snapshot(size=len(self._exact))
 
     def get_exact(
         self,
@@ -29,6 +34,9 @@ class IndexMinuteCandlesCache:
         hit = self._exact.get(full_key)
         if hit is not None:
             self._exact.move_to_end(full_key)
+            self._stats.record_hit()
+        else:
+            self._stats.record_miss()
         return hit
 
     def store_exact(
@@ -44,8 +52,10 @@ class IndexMinuteCandlesCache:
             violations=list(result.violations),
         )
         self._exact.move_to_end(full_key)
+        self._stats.record_store()
         while len(self._exact) > self._max_exact_entries:
             self._exact.popitem(last=False)
+            self._stats.record_eviction()
 
 
 async def collect_index_minute_candles_with_cache(

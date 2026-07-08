@@ -1265,7 +1265,39 @@ def build_router(
         runtime = getattr(request.app.state, "startup_runtime", None)
         if runtime is not None:
             update["supervised_tasks"] = runtime.supervised_task_health()
+        cache_stats = await _collect_cache_stats(request)
+        if cache_stats:
+            update["cache_stats"] = cache_stats
         return status.model_copy(update=update) if update else status
+
+    async def _collect_cache_stats(request: Request) -> dict[str, object]:
+        """Per-cache observability (PR-1). Reads closure-reachable cache
+        instances — the same closure path _kis_scheduler uses above."""
+        from hoga.api import today_ttl_cache  # late import: conftest swaps TODAY_TTL
+
+        out: dict[str, object] = {}
+        if cache_instance is not None:
+            out["past_candles"] = cache_instance.stats_snapshot()
+        if minute_backfill is not None:
+            out["minute_backfill"] = minute_backfill.stats_snapshot()
+        if daily_cache_instance is not None:
+            out["past_daily_candles"] = daily_cache_instance.stats_snapshot()
+        if investor_cache_instance is not None:
+            out["investor_net_daily"] = investor_cache_instance.stats_snapshot()
+        if index_candles_cache_instance is not None:
+            out["index_candles"] = index_candles_cache_instance.stats_snapshot()
+        if index_minute_candles_cache_instance is not None:
+            out["index_minute_candles"] = index_minute_candles_cache_instance.stats_snapshot()
+        out["today_ttl"] = today_ttl_cache.TODAY_TTL.stats_snapshot()
+        if get_buffer is not None:
+            out["live_buffer"] = await get_buffer().stats_snapshot()
+        # Indicators cache is engine-owned and built lazily on the first /range
+        # request — read it only if it exists (don't force-create an empty one).
+        engine = getattr(request.app.state, "engine", None)
+        indicators = getattr(engine, "_indicators_cache", None) if engine is not None else None
+        if indicators is not None:
+            out["past_indicators"] = indicators.stats_snapshot()
+        return out
 
     @router.get("/settings", response_model=LiveSettingsResponse)
     async def _get_settings() -> LiveSettingsResponse:

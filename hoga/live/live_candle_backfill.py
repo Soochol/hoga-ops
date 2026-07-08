@@ -102,6 +102,21 @@ class LiveMinuteCandleBackfill:
         ] = {}
         self._rate_limit_until = 0.0
         self._warm_tasks: dict[tuple[KisVenue, str], asyncio.Task[None]] = {}
+        # Fresh KIS past-minute fetches — the true cold re-spend metric (PR-1 (a)):
+        # counted at the deduped fetch chokepoint (_fetch_past_scheduled), so it
+        # measures KIS quota actually spent, not cache-layer get_past misses (which
+        # diverge via inflight dedup + warming). Post-restart this rises steeply;
+        # the PR-6 disk-persistence ROI reads directly off it.
+        self._fresh_past_fetches = 0
+        self._fresh_past_fetch_errors = 0
+
+    def stats_snapshot(self) -> dict[str, object]:
+        return {
+            "fresh_past_fetches": self._fresh_past_fetches,
+            "fresh_past_fetch_errors": self._fresh_past_fetch_errors,
+            "inflight": len(self._inflight),
+            "warm_tasks": len(self._warm_tasks),
+        }
 
     async def collect_minute(
         self,
@@ -622,6 +637,7 @@ class LiveMinuteCandleBackfill:
                 ),
             )
         except Exception:
+            self._fresh_past_fetch_errors += 1
             if perf_debug.enabled():
                 log.warning(
                     "hoga_perf past_candles_fetch status=error code=%s venue=%s date=%s "
@@ -629,6 +645,7 @@ class LiveMinuteCandleBackfill:
                     code, venue, date_s, perf_debug.elapsed_ms(t0),
                 )
             raise
+        self._fresh_past_fetches += 1
         if perf_debug.enabled():
             log.warning(
                 "hoga_perf past_candles_fetch status=ok code=%s venue=%s date=%s "

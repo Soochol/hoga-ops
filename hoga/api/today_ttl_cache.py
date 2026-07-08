@@ -14,6 +14,8 @@ import time
 from collections.abc import Callable, Hashable
 from typing import Any
 
+from hoga.util.cache_stats import CacheStats
+
 DEFAULT_TTL_MS = 15_000
 
 
@@ -40,14 +42,23 @@ class TodayTtlCache:
         self._clock = clock
         self._lock = threading.Lock()
         self._entries: dict[Hashable, tuple[float, Any]] = {}
+        # This is the one cache genuinely hit from multiple threads — counters
+        # live inside the existing lock, so no separate CacheStats locking.
+        self._stats = CacheStats()
+
+    def stats_snapshot(self) -> dict[str, int | float | None]:
+        with self._lock:
+            return self._stats.snapshot(size=len(self._entries))
 
     def lookup(self, key: Hashable) -> tuple[bool, Any]:
         if self._ttl_s <= 0:
-            return (False, None)
+            return (False, None)  # cache disabled — not a lookup, not counted
         with self._lock:
             entry = self._entries.get(key)
             if entry is None or entry[0] < self._clock():
+                self._stats.record_miss()
                 return (False, None)
+            self._stats.record_hit()
             return (True, entry[1])
 
     def put(self, key: Hashable, value: Any) -> None:
@@ -60,6 +71,8 @@ class TodayTtlCache:
             expired = [k for k, (dl, _) in self._entries.items() if dl < now]
             for k in expired:
                 del self._entries[k]
+            self._stats.record_eviction(len(expired))
+            self._stats.record_store()
             self._entries[key] = (now + self._ttl_s, value)
 
 
