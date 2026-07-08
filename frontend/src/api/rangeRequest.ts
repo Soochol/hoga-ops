@@ -11,6 +11,7 @@ export type RangeRequestOptions = {
   brokerLateEntryStartHHMM?: number | null;
   programTradeEnabled?: boolean | null;
   tradeVolumePocEnabled?: boolean | null;
+  depthHeatmapEnabled?: boolean | null;
   volumeDistributionBins?: number | null;
   tradeVolumePocBins?: number | null;
   volumeDistributionPriceRange?: { min: number; max: number } | null;
@@ -82,6 +83,7 @@ export function buildRangeBundleRequest(input: RangeBundleRequestInput): RangeBu
   const brokerLateEntryStartHHMM = options.brokerLateEntryStartHHMM ?? null;
   const programTradeEnabled = options.programTradeEnabled ?? null;
   const tradeVolumePocEnabled = options.tradeVolumePocEnabled ?? null;
+  const depthHeatmapEnabled = options.depthHeatmapEnabled ?? null;
   const volumeDistributionBins = options.volumeDistributionBins ?? null;
   const tradeVolumePocBins = options.tradeVolumePocBins ?? null;
   const volumeDistributionPriceRange = options.volumeDistributionPriceRange ?? null;
@@ -124,6 +126,7 @@ export function buildRangeBundleRequest(input: RangeBundleRequestInput): RangeBu
   addBoolParam(params, 'broker_late_entries_enabled', brokerLateEntriesEnabled);
   addBoolParam(params, 'program_trade_enabled', programTradeEnabled);
   addBoolParam(params, 'trade_volume_poc_enabled', tradeVolumePocEnabled);
+  addBoolParam(params, 'depth_heatmap_enabled', depthHeatmapEnabled);
   addParam(params, 'broker_late_entry_start_hhmm', brokerLateEntryStartHHMM);
   addParam(params, 'volume_distribution_bins', volumeDistributionBins);
   addParam(params, 'volume_distribution_price_min', volumeDistributionPriceRange?.min);
