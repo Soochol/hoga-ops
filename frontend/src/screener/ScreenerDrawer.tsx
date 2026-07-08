@@ -239,7 +239,6 @@ export function ScreenerDrawer() {
   // 서버-소유 job 진행(status.updating)이 진실 — 다른 서피스/스케줄러발 갱신도 잡는다.
   const serverUpdating = status?.updating != null;
   const updatePending = updateState.status === 'pending' || update.isPending || serverUpdating;
-  const updateErrorMessage = updateState.status === 'error' ? updateState.message : null;
   const runUpdate = () => {
     const startedAtMs = Date.now();
     setUpdatePending(startedAtMs);
@@ -252,7 +251,13 @@ export function ScreenerDrawer() {
         if (!res.running) setUpdateSuccess(Date.now());
       },
       onError: (error) => {
-        setUpdateError(error instanceof Error && error.message ? error.message : '갱신 실패', Date.now());
+        // 실패를 단일 채널(updateFeedback)로만 렌더한다 — updateState 는 pending
+        // 해제용으로만 쓰고, job-finished-error 가 setFeedback+setUpdateError 를
+        // 둘 다 호출해 라벨이 두 줄로 겹치던 버그를 제거한다.
+        const detail = error instanceof Error && error.message ? error.message : '';
+        const message = detail ? `갱신 실패 — ${detail}` : '갱신 실패';
+        setUpdateError(detail || '갱신 실패', Date.now());   // 상태엔 raw 메시지
+        useScreenerUpdateFeedback.getState().setFeedback({ message, tone: 'error', atMs: Date.now() });
       },
     });
   };
@@ -333,9 +338,6 @@ export function ScreenerDrawer() {
           <div className="flex items-center">
             <ScreenerUpdateProgress updating={status?.updating} />
           </div>
-        )}
-        {updateErrorMessage && (
-          <RailState tone="error" className="p-0">갱신 실패 — {updateErrorMessage}</RailState>
         )}
         {updateFeedback && (
           <RailState

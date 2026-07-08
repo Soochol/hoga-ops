@@ -18,12 +18,24 @@ export function StalenessChip({ status }: Props) {
       ? '오늘 확정분 대기'
       : `${daysBehind}거래일 확정분 대기`
     : null;
+  // behind 는 사용자 주의가 필요한 상태(오늘 확정분이 아직 아카이브에 없음)라
+  // warn 틴트 pill 로 강조한다. 최신(정상)은 조용한 dim 텍스트로 둔다.
   return (
     <span
       data-testid="staleness-chip"
       title={behind ? '확정 일봉 아카이브가 최신 거래일 확정분을 기다리는 중' : '확정 일봉 아카이브 최신'}
-      className="inline-flex items-center gap-1.5 font-mono text-xs tabular-nums"
-      style={{ color }}
+      className={`inline-flex items-center gap-1.5 font-mono text-xs tabular-nums${
+        behind ? ' rounded-md px-1.5 py-0.5 font-medium' : ''
+      }`}
+      style={
+        behind
+          ? {
+              color,
+              background: 'color-mix(in srgb, var(--warn) 14%, transparent)',
+              border: '1px solid color-mix(in srgb, var(--warn) 38%, transparent)',
+            }
+          : { color }
+      }
     >
       <span className="rounded-full" style={{ width: 6, height: 6, background: color }} aria-hidden />
       EOD 아카이브: {last ?? '—'}

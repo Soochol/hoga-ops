@@ -31,6 +31,16 @@ describe('StalenessChip', () => {
     expect(el.textContent).not.toMatch(/뒤처짐/);
   });
 
+  it('days_behind >= 1 → 배경 틴트 pill 로 강조(가시성)', () => {
+    const el = chip({ ...base, days_behind: 1 });
+    expect(el.style.background).not.toBe('');   // warn 틴트 배경으로 눈에 띔
+  });
+
+  it('days_behind === 0 → 배경 없이 조용(강조 안 함)', () => {
+    const el = chip({ ...base, days_behind: 0 });
+    expect(el.style.background).toBe('');
+  });
+
   it('days_behind === null (KRX outage / unknown) → neutral, no amber', () => {
     const el = chip({ ...base, days_behind: null });
     expect(el.style.color).toBe('var(--fg-dim)');
