@@ -70,7 +70,7 @@ describe('LiveSettingsModal (2단)', () => {
     expect(screen.queryByTestId('settings-numeric-surgeApproachPct')).toBeNull();
   });
 
-  it('데이터소스 nav 클릭 후 캔들/호가체결 기준이 보인다', () => {
+  it('데이터소스 nav 클릭 후 호가체결 기준이 보인다 (live는 캔들 라디오 없음)', () => {
     vi.spyOn(liveSettingsApi, 'getLiveSettings').mockResolvedValue({
       schema_version: 1,
       storage_policy: 'ws_plus_rest',
@@ -81,10 +81,12 @@ describe('LiveSettingsModal (2단)', () => {
       wrapper: wrap(new QueryClient({ defaultOptions: { queries: { retry: false } } })),
     });
     fireEvent.click(screen.getByTestId('settings-nav-data-source'));
-    expect(screen.getByText('캔들 데이터 기준')).toBeTruthy();
+    // 캔들 소스는 'KIS API 우회' 토글이 결정 — live는 캔들 기준 라디오 없음.
+    expect(screen.queryByText('캔들 데이터 기준')).toBeNull();
     expect(screen.getByText('호가·체결 데이터 기준')).toBeTruthy();
-    expect(screen.getAllByLabelText(/hogaplay 우선/)).toHaveLength(2);
-    expect(screen.getAllByLabelText(/KIS API 우선/)).toHaveLength(2);
+    // 캔들 라디오가 사라져 각 라벨은 호가·체결 기준에만(1개).
+    expect(screen.getAllByLabelText(/hogaplay 우선/)).toHaveLength(1);
+    expect(screen.getAllByLabelText(/KIS API 우선/)).toHaveLength(1);
   });
 
   it('Escape calls onClose', () => {

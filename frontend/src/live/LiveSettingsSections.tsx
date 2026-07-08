@@ -7,7 +7,6 @@ import {
   type ChartToggleCategory,
 } from '../state/chartPrefs';
 import { SOURCE_OPTIONS } from '../state/sourcePreference';
-import { CANDLE_DATA_PREFERENCE_OPTIONS } from '../state/candleDataPreference';
 import {
   LIVE_VENUE_LABELS,
   LIVE_VENUE_OPTIONS,
@@ -20,7 +19,6 @@ import { useStudyViewOpenPrefsStore, type StudyViewOpenTimeframe } from '../stat
 import MAStylePicker from './indicators/MAStylePicker';
 import IndicatorPrefRows from './settings/IndicatorPrefRows';
 import { SettingsRow, ToggleSwitch } from './settings/SettingsRow';
-import CandleDataPreferenceRadio from './settings/CandleDataPreferenceRadio';
 import SourcePreferenceRadio from './settings/SourcePreferenceRadio';
 import { DataSection } from '../ui/DataSurface';
 import SignalAlertSettingsSection from '../signalAlerts/SignalAlertSettingsSection';
@@ -159,7 +157,7 @@ function DataSourceDetail({ variant }: { variant: 'live' | 'study' }) {
       )}
       <SettingsRow
         label="KIS API 우회"
-        description="KIS REST 연결이 불안정할 때 분봉·일봉 캔들 API 호출을 건너뛰고 저장 데이터로 표시합니다."
+        description="켜면 분봉은 캡처(hogaplay) 데이터, 일·주·월봉은 스크리너 일봉으로 표시합니다. 저장된 날짜만 표시되며 없는 날짜는 비워집니다. 오늘 실시간(WS)은 계속 표시됩니다."
         className="mb-3"
         testId="kis-rest-bypass-row"
       >
@@ -193,24 +191,15 @@ function DataSourceDetail({ variant }: { variant: 'live' | 'study' }) {
           })}
         />
       </SettingsRow>
-      {variant === 'study' ? (
+      {/* 캔들 소스는 'KIS API 우회' 토글이 단독 결정한다(4옵션 캔들 라디오 폐기).
+          live는 별도 캔들 라디오 없음. study(복기뷰)만 디스크 온리 안내문을 유지. */}
+      {variant === 'study' && (
         <RoleSourceGroup
           title="캔들 데이터 기준"
           description="복기뷰 전용 안내입니다."
         >
           <div className="text-sm text-fg-dim" data-testid="study-candle-source-note">
             복기뷰 캔들은 저장 데이터(캡처 분봉 + 스크리너 일봉)만 사용합니다.
-          </div>
-        </RoleSourceGroup>
-      ) : (
-        <RoleSourceGroup
-          title="캔들 데이터 기준"
-          description="분봉·일봉·주봉·월봉 캔들에 적용됩니다. 자동은 현재 안정적인 디스크 데이터를 먼저 사용합니다."
-        >
-          <div className="flex flex-col gap-2">
-            {CANDLE_DATA_PREFERENCE_OPTIONS.map((opt) => (
-              <CandleDataPreferenceRadio key={opt} value={opt} />
-            ))}
           </div>
         </RoleSourceGroup>
       )}

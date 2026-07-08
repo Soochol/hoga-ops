@@ -130,16 +130,21 @@ describe('LiveSettingsSections (2단 nav+detail)', () => {
     fireEvent.click(screen.getByTestId('settings-nav-data-source'));
 
     expect(await screen.findByText('데이터 저장 방식')).toBeInTheDocument();
-    expect(screen.getByText('캔들 데이터 기준')).toBeInTheDocument();
+    // live는 캔들 소스가 'KIS API 우회' 토글로 단독 결정 — '캔들 데이터 기준' 라디오 없음.
+    expect(screen.queryByText('캔들 데이터 기준')).toBeNull();
+    expect(screen.queryByRole('radio', { name: '자동' })).toBeNull();
+    expect(screen.queryByRole('radio', { name: '스크리너 일봉 우선' })).toBeNull();
     expect(screen.getByText('호가·체결 데이터 기준')).toBeInTheDocument();
     expect(screen.getByText('스크리너 일봉 데이터')).toBeInTheDocument();
     expect(screen.getByRole('radio', { name: 'WS만 저장' })).toBeInTheDocument();
     expect(screen.getByRole('radio', { name: 'WS 우선 + 나머지 REST 저장' })).toBeChecked();
     expect(screen.getByRole('radio', { name: 'REST만 저장' })).toBeInTheDocument();
-    expect(screen.getByRole('radio', { name: '자동' })).toBeInTheDocument();
-    expect(screen.getAllByRole('radio', { name: 'hogaplay 우선' })).toHaveLength(2);
+    // 캔들 라디오가 사라져 'hogaplay 우선'·'KIS API 우선'은 호가·체결 기준에만(각 1개).
+    expect(screen.getByRole('radio', { name: 'hogaplay 우선' })).toBeInTheDocument();
     expect(screen.getByRole('radio', { name: 'KIS WS 우선' })).toBeInTheDocument();
-    expect(screen.getAllByRole('radio', { name: 'KIS API 우선' })).toHaveLength(2);
+    expect(screen.getByRole('radio', { name: 'KIS API 우선' })).toBeInTheDocument();
+    // 새 우회 설명문.
+    expect(screen.getByText(/켜면 분봉은 캡처\(hogaplay\) 데이터/)).toBeInTheDocument();
   });
 
   it('study variant는 캔들 기준 라디오 대신 디스크 온리 안내문을 표시한다', async () => {

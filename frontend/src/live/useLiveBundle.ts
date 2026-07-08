@@ -8,8 +8,6 @@ import { useScreenerDailyCandles } from '../api/screenerDailyCandles';
 import { useRange, useRangeHogaDelta, useRangeSidecarDelta } from '../api/range';
 import { useLivePageStore, type LiveTimeframe, isMinuteTimeframe } from '../state/livePage';
 import type { LiveVenueOption } from '../state/liveVenue';
-import { useSourcePreferenceStore } from '../state/sourcePreference';
-import { useCandleDataPreferenceStore } from '../state/candleDataPreference';
 import {
   kisRestWarningIndicatesUnavailable,
   useKisRestModeStore,
@@ -25,8 +23,7 @@ import {
 import { buildChartBundle, createIncrementalHogaSeriesBuilder, filterProgramTradeForCandles, type HogaSeries } from './buildLiveBundle';
 import type { LiveDataWarning } from './liveDataWarnings';
 import type { TradeSnapshot } from './bucketHogaSeries';
-import { aggregateCandles, aggregateCalendar, keepRegularSessionCandles } from './aggregateCandles';
-import { mergeCalendarCandlesByPriority, mergeCandlesByPriority } from './candleSourceMerge';
+import { aggregateCandles, aggregateCalendar } from './aggregateCandles';
 import {
   regularSessionOpenMs,
   regularSessionCloseMs,
@@ -34,7 +31,6 @@ import {
   subtractDaysKst,
   initialHistoricalDaysFor,
   earliestAllowedMinuteDate,
-  stepChunkDays,
 } from './liveDateTime';
 import {
   effectiveSessionBoundsByDate,
@@ -46,6 +42,7 @@ import { buildLivePriceLevelHits, mergePriceLevelHits } from './priceLevelHits';
 import { hogaCoverageGapDates as computeHogaCoverageGapDates } from './hogaCoverageGap';
 
 const EMPTY_INVESTOR_POINTS: InvestorNetPoint[] = [];
+const EMPTY_CANDLES: Candle[] = [];
 
 function laterDate(a: string, b: string): string {
   return a >= b ? a : b;
@@ -61,10 +58,6 @@ function kisBarToCandle(b: { t_ms: number; open: number; high: number; low: numb
     vol_a: b.volume,
     vol_b: 0,
   };
-}
-
-function candleVolume(c: Candle): number {
-  return (Number.isFinite(c.vol_a) ? c.vol_a : 0) + (Number.isFinite(c.vol_b) ? c.vol_b : 0);
 }
 
 function candleDateSet(candles: readonly Candle[]): Set<string> {
@@ -303,14 +296,12 @@ export function useLiveBundle(
   const programTradeEnabled = useLivePageStore((s) => s.programTradeEnabled);
   const volumeDistributionEnabled = useLivePageStore((s) => s.volumeDistributionEnabled);
   const volumeDistributionRangeCount = useLivePageStore((s) => s.volumeDistributionRangeCount);
-  const sourcePreference = useSourcePreferenceStore((s) => s.sourcePreference);
-  const candleDataPreference = useCandleDataPreferenceStore((s) => s.candleDataPreference);
   const { data: liveSettings } = useLiveSettings();
+  // 캔들 소스의 유일한 분기 축(4옵션 우선순위-병합 모델 폐기). 우회 OFF=KIS만,
+  // 우회 ON=디스크만(분봉 hogaplay / D·W·M 스크리너). 모드당 소스 1개라 병합 없음.
   const kisRestBypassEnabled = liveSettings?.kis_rest_bypass_enabled ?? false;
   const notifyKisRestFailure = useKisRestModeStore((s) => s.notifyFailure);
   const venue = options.venue ?? 'KRX';
-  const preferHogaplayCandles = candleDataPreference === 'hogaplay_first';
-  const preferScreenerDailyCandles = candleDataPreference === 'auto' || candleDataPreference === 'screener_daily_first';
 
   const isMinute = isMinuteTimeframe(timeframe);
   const bucketMs = isMinute ? TIMEFRAME_TO_MS[timeframe] : 60_000;
@@ -329,9 +320,9 @@ export function useLiveBundle(
   // with the SSE tail (buildLiveBundle.ts:67, 72).
   const minutePastTo = todayKstYyyymmdd;
 
-  // Minute-only gate: both /api/range (hoga indicators) and
-  // /api/live/past-candles fire on the same condition.
-  const enableMinute = !!(code && isMinute && minutePastFrom <= minutePastTo);
+  // KIS 분봉 캔들 — 우회 OFF에서만 fetch. 우회 ON이면 code=null로 비활성(요청 절약).
+  // (hoga 지표 쿼리 pastHoga는 이 게이트와 무관하게 rangePlan에서 별도로 발사된다.)
+  const enableMinute = !!(code && isMinute && minutePastFrom <= minutePastTo && !kisRestBypassEnabled);
   const pastCandlesQuery = useLivePastCandles(
     enableMinute ? code : null,
     enableMinute ? minutePastFrom : null,
@@ -340,8 +331,8 @@ export function useLiveBundle(
     todayKstYyyymmdd,
   );
 
-  // KIS daily past-candles — only enabled for D/W/M timeframes (ADR-0048).
-  const enableDaily = !!(code && !isMinute);
+  // KIS daily past-candles — D/W/M, 우회 OFF에서만 (ADR-0048).
+  const enableDaily = !!(code && !isMinute && !kisRestBypassEnabled);
   const dailyPastFrom = seedFrom;
   const dailyPastTo = todayKstYyyymmdd;
   const pastDailyCandlesQuery = useLivePastDailyCandles(
@@ -350,7 +341,8 @@ export function useLiveBundle(
     enableDaily ? dailyPastTo : null,
     venue,
   );
-  const enableScreenerDaily = !!(code && !isMinute);
+  // 스크리너 일봉 — D/W/M, 우회 ON 전용(디스크 소스).
+  const enableScreenerDaily = !!(code && !isMinute && kisRestBypassEnabled);
   const screenerDailyCandlesQuery = useScreenerDailyCandles(
     enableScreenerDaily ? code : null,
     enableScreenerDaily ? dailyPastFrom : null,
@@ -392,17 +384,12 @@ export function useLiveBundle(
     pastDailyCandlesQuery.data?.data_warnings,
   ]);
 
-  const candleFallbackNeeded = !!(code && (
-    (kisRestBypassEnabled && (isMinute || timeframe === 'D')) ||
-    (preferHogaplayCandles && (isMinute || timeframe === 'D')) ||
-    (isMinute
-      ? pastCandlesQuery.data != null &&
-        (pastCandlesQuery.data.data_warnings.length > 0 || pastCandlesQuery.data.candles.length === 0)
-      : timeframe === 'D' &&
-        pastDailyCandlesQuery.data != null &&
-        (pastDailyCandlesQuery.data.data_warnings.length > 0 || pastDailyCandlesQuery.data.candles.length === 0))
-  ));
-  const candleFallbackOptions = useMemo(
+  // 우회 ON 분봉의 유일한 디스크 캔들 쿼리(/api/range mode=candles). 서버가 bucket_ms로
+  // 3/5/15/30분 버킷팅해 내려주므로 클라이언트 재집계 불요. sourcePref는 'hogaplay_first'
+  // 고정 — store 값을 따라가면 candles.parquet 없는 kis 소스가 선택돼 빈 캔들이 되는 함정.
+  // (D/W/M 우회는 스크리너 일봉만 쓰므로 이 쿼리는 분봉 전용.)
+  const minuteDiskNeeded = !!(code && isMinute && kisRestBypassEnabled);
+  const minuteDiskOptions = useMemo(
     () => ({
       mode: 'candles' as const,
       brokerLateEntriesEnabled: false,
@@ -413,169 +400,52 @@ export function useLiveBundle(
     }),
     [],
   );
-  const candleFallback = useRange(
-    candleFallbackNeeded ? code : null,
-    candleFallbackNeeded ? (isMinute ? minutePastFrom : dailyPastFrom) : null,
-    candleFallbackNeeded ? (isMinute ? minutePastTo : dailyPastTo) : null,
-    candleFallbackNeeded ? (isMinute ? (timeframe as Timeframe) : '1m') : null,
+  const minuteDiskCandles = useRange(
+    minuteDiskNeeded ? code : null,
+    minuteDiskNeeded ? minutePastFrom : null,
+    minuteDiskNeeded ? minutePastTo : null,
+    minuteDiskNeeded ? (timeframe as Timeframe) : null,
     undefined,
-    candleFallbackNeeded ? todayKstYyyymmdd : null,
-    candleFallbackOptions,
-    preferHogaplayCandles ? 'hogaplay_first' : undefined,
-  );
-  const hogaplayCandleFallbackNeeded = candleFallbackNeeded && !preferHogaplayCandles && sourcePreference !== 'hogaplay_first';
-  const hogaplayCandleFallback = useRange(
-    hogaplayCandleFallbackNeeded ? code : null,
-    hogaplayCandleFallbackNeeded ? (isMinute ? minutePastFrom : dailyPastFrom) : null,
-    hogaplayCandleFallbackNeeded ? (isMinute ? minutePastTo : dailyPastTo) : null,
-    hogaplayCandleFallbackNeeded ? (isMinute ? (timeframe as Timeframe) : '1m') : null,
-    undefined,
-    hogaplayCandleFallbackNeeded ? todayKstYyyymmdd : null,
-    candleFallbackOptions,
-    'hogaplay_first',
-  );
-  const latestFallbackCandles = useMemo(
-    () => mergeCandlesByPriority(
-      candleFallback.data?.candles ?? [],
-      hogaplayCandleFallback.data?.candles ?? [],
-    ),
-    [candleFallback.data?.candles, hogaplayCandleFallback.data?.candles],
-  );
-  const previousDiskTo = isMinute ? subtractDaysKst(minutePastFrom, 1) : null;
-  const previousDiskFrom = isMinute
-    ? laterDate(subtractDaysKst(minutePastFrom, stepChunkDays(timeframe)), earliestAllowedMinute)
-    : null;
-  const previousDiskFallbackNeeded = !!(
-    code &&
-    isMinute &&
-    candleFallbackNeeded &&
-    pastCandlesQuery.data != null &&
-    pastCandlesQuery.data.candles.length === 0 &&
-    latestFallbackCandles.length === 0 &&
-    !candleFallback.isLoading &&
-    !hogaplayCandleFallback.isLoading &&
-    previousDiskFrom &&
-    previousDiskTo &&
-    previousDiskFrom <= previousDiskTo
-  );
-  const previousDiskCandleFallback = useRange(
-    previousDiskFallbackNeeded ? code : null,
-    previousDiskFallbackNeeded ? previousDiskFrom : null,
-    previousDiskFallbackNeeded ? previousDiskTo : null,
-    previousDiskFallbackNeeded ? (timeframe as Timeframe) : null,
-    undefined,
-    previousDiskFallbackNeeded ? todayKstYyyymmdd : null,
-    candleFallbackOptions,
+    minuteDiskNeeded ? todayKstYyyymmdd : null,
+    minuteDiskOptions,
     'hogaplay_first',
   );
 
-  const selectedRangeFallback = useMemo<Candle[]>(
-    () => latestFallbackCandles.length > 0
-      ? latestFallbackCandles
-      : previousDiskCandleFallback.data?.candles ?? [],
-    [latestFallbackCandles, previousDiskCandleFallback.data?.candles],
-  );
+  // 캔들 소스 이분법 — 모드당 소스 1개라 병합 없음.
   const minuteKisCandles = useMemo<Candle[]>(() => {
-    if (!isMinute) return selectedRangeFallback;
+    if (!isMinute) return EMPTY_CANDLES;
+    // 우회 ON: 디스크 캔들 그대로(서버 버킷팅 완료). OFF: KIS 분봉을 tf 버킷으로 집계.
+    if (kisRestBypassEnabled) return minuteDiskCandles.data?.candles ?? EMPTY_CANDLES;
     const raw = pastCandlesQuery.data?.candles ?? [];
-    if (raw.length === 0) return selectedRangeFallback;
-    // Minute timeframes: epoch-floor bucket via aggregateCandles (also dedupes
-    // within-bucket duplicates from pre-f63ed15 KIS cache files).
-    const bars = aggregateCandles(raw, TIMEFRAME_TO_MS[timeframe as Timeframe] / 1000);
-    const apiCandles = bars.map(kisBarToCandle);
-    return preferHogaplayCandles
-      ? mergeCandlesByPriority(selectedRangeFallback, apiCandles)
-      : mergeCandlesByPriority(apiCandles, selectedRangeFallback);
-  }, [isMinute, timeframe, preferHogaplayCandles, selectedRangeFallback, pastCandlesQuery.data?.candles]);
+    if (raw.length === 0) return EMPTY_CANDLES;
+    return aggregateCandles(raw, TIMEFRAME_TO_MS[timeframe as Timeframe] / 1000).map(kisBarToCandle);
+  }, [isMinute, timeframe, kisRestBypassEnabled, minuteDiskCandles.data?.candles, pastCandlesQuery.data?.candles]);
   const calendarKisCandles = useMemo<Candle[]>(() => {
-    if (isMinute) return selectedRangeFallback;
-    // D/W/M: bars come from the daily endpoint. For 'D' the call is
-    // identity-ish (one bucket per bar); for 'W'/'M' aggregateCalendar groups
-    // by ISO week / calendar month using the bar's first 1m bar t_ms so
-    // axis.contains admits it inside that Segment.
-    const raw = pastDailyCandlesQuery.data?.candles ?? [];
-    const screenerRaw = screenerDailyCandlesQuery.data?.candles ?? [];
-    const fallbackRaw = selectedRangeFallback.map((c) => ({
-      t_ms: c.ts_ms,
-      open: c.open,
-      high: c.high,
-      low: c.low,
-      close: c.close,
-      volume: candleVolume(c),
-    }));
-    const fallbackInput = timeframe === 'D' ? keepRegularSessionCandles(fallbackRaw) : fallbackRaw;
-    const fallbackBars = fallbackInput.length === 0
-      ? []
-      : aggregateCalendar(fallbackInput, timeframe as 'D' | 'W' | 'M');
-    const fallback = fallbackBars.map(kisBarToCandle);
-    const screenerBars = screenerRaw.length === 0
-      ? []
-      : timeframe === 'D'
-        ? screenerRaw
-        : aggregateCalendar(screenerRaw, timeframe as 'W' | 'M');
-    const screenerCandles = screenerBars.map(kisBarToCandle);
+    if (isMinute) return EMPTY_CANDLES;
+    // 우회 ON: 스크리너 일봉. OFF: KIS 일봉. D는 그대로, W/M은 aggregateCalendar.
+    const raw = kisRestBypassEnabled
+      ? screenerDailyCandlesQuery.data?.candles ?? []
+      : pastDailyCandlesQuery.data?.candles ?? [];
     const bars = raw.length === 0 ? [] : timeframe === 'D' ? raw : aggregateCalendar(raw, timeframe as 'W' | 'M');
-    const apiCandles = bars.map(kisBarToCandle);
-    if (preferHogaplayCandles) {
-      return mergeCalendarCandlesByPriority(
-        fallback,
-        mergeCalendarCandlesByPriority(screenerCandles, apiCandles, timeframe as 'D' | 'W' | 'M'),
-        timeframe as 'D' | 'W' | 'M',
-      );
-    }
-    if (preferScreenerDailyCandles) {
-      return mergeCalendarCandlesByPriority(
-        screenerCandles,
-        mergeCalendarCandlesByPriority(apiCandles, fallback, timeframe as 'D' | 'W' | 'M'),
-        timeframe as 'D' | 'W' | 'M',
-      );
-    }
-    return mergeCalendarCandlesByPriority(
-      apiCandles,
-      mergeCalendarCandlesByPriority(screenerCandles, fallback, timeframe as 'D' | 'W' | 'M'),
-      timeframe as 'D' | 'W' | 'M',
-    );
-  }, [isMinute, timeframe, preferHogaplayCandles, preferScreenerDailyCandles, selectedRangeFallback, pastDailyCandlesQuery.data?.candles, screenerDailyCandlesQuery.data?.candles]);
+    return bars.map(kisBarToCandle);
+  }, [isMinute, timeframe, kisRestBypassEnabled, pastDailyCandlesQuery.data?.candles, screenerDailyCandlesQuery.data?.candles]);
   const kisCandles = isMinute ? minuteKisCandles : calendarKisCandles;
+  // 소스 칩용 날짜→소스 맵. 우회 OFF는 undefined → buildChartBundle 기본값(kis_live)이
+  // 순수-KIS 표기를 담당(현행 동일). 우회 ON에서만 디스크 소스를 명시한다.
   const candleSourceByDate = useMemo(() => {
-    const primaryDates = isMinute
-      ? new Set((pastCandlesQuery.data?.candles ?? []).map((c) => realMsToYyyymmdd(c.t_ms)))
-      : new Set((pastDailyCandlesQuery.data?.candles ?? []).map((c) => realMsToYyyymmdd(c.t_ms)));
-    const screenerDates = isMinute
-      ? new Set<string>()
-      : new Set((screenerDailyCandlesQuery.data?.candles ?? []).map((c) => realMsToYyyymmdd(c.t_ms)));
-    const selectedFallbackDates = candleDateSet(candleFallback.data?.candles ?? []);
+    if (!kisRestBypassEnabled) return undefined;
     const sourceByDate = new Map<string, SourceName>();
-
-    for (const date of screenerDates) {
-      if (preferHogaplayCandles && selectedFallbackDates.has(date)) continue;
-      if (!preferScreenerDailyCandles && primaryDates.has(date)) continue;
-      sourceByDate.set(date, 'screener_daily');
+    if (isMinute) {
+      for (const date of candleDateSet(minuteDiskCandles.data?.candles ?? [])) {
+        sourceByDate.set(date, segmentSourceByDate(minuteDiskCandles.data, date) ?? 'hogaplay');
+      }
+    } else {
+      for (const c of screenerDailyCandlesQuery.data?.candles ?? []) {
+        sourceByDate.set(realMsToYyyymmdd(c.t_ms), 'screener_daily');
+      }
     }
-
-    for (const date of selectedFallbackDates) {
-      if (!preferHogaplayCandles && (primaryDates.has(date) || screenerDates.has(date))) continue;
-      const source = segmentSourceByDate(candleFallback.data, date);
-      if (source) sourceByDate.set(date, source);
-    }
-
-    for (const date of candleDateSet(hogaplayCandleFallback.data?.candles ?? [])) {
-      if (primaryDates.has(date) || screenerDates.has(date) || selectedFallbackDates.has(date)) continue;
-      sourceByDate.set(date, 'hogaplay');
-    }
-
-    for (const date of candleDateSet(previousDiskCandleFallback.data?.candles ?? [])) {
-      if (
-        primaryDates.has(date) ||
-        screenerDates.has(date) ||
-        selectedFallbackDates.has(date) ||
-        sourceByDate.has(date)
-      ) continue;
-      sourceByDate.set(date, 'hogaplay');
-    }
-
     return sourceByDate.size > 0 ? sourceByDate : undefined;
-  }, [isMinute, preferHogaplayCandles, preferScreenerDailyCandles, pastCandlesQuery.data, pastDailyCandlesQuery.data, screenerDailyCandlesQuery.data, candleFallback.data, previousDiskCandleFallback.data, hogaplayCandleFallback.data]);
+  }, [kisRestBypassEnabled, isMinute, minuteDiskCandles.data, screenerDailyCandlesQuery.data]);
   const volumeDistributionPriceRange = useMemo(
     () =>
       isMinute && volumeDistributionEnabled
@@ -587,7 +457,9 @@ export function useLiveBundle(
     isMinute &&
     volumeDistributionEnabled &&
     volumeDistributionPriceRange == null &&
-    (pastCandlesQuery.isLoading || pastCandlesQuery.isFetching)
+    (kisRestBypassEnabled
+      ? (minuteDiskCandles.isLoading || minuteDiskCandles.isFetching)
+      : (pastCandlesQuery.isLoading || pastCandlesQuery.isFetching))
   );
   const rangePlan = planLiveRangeRequest({
     code,
@@ -824,15 +696,11 @@ export function useLiveBundle(
     ? pastHoga.isHistoricalDeltaFetching ||
       (sidecarEnabled && pastSidecars.isHistoricalDeltaFetching) ||
       (pastCandlesQuery.isPlaceholderData && pastCandlesQuery.isFetching) ||
-      // warning/rate-limit·preferHogaplay 모드에선 차트 캔들이 KIS 경로가 아니라
-      // 폴백에서 온다. 이 폴백들(plain useRange)도 좌측 팬 re-key 시 이전 데이터를
-      // placeholder로 보이며 더 오래된 창을 fetch하므로, KIS 경로와 동일하게
-      // isPlaceholderData && isFetching로 홀드해야 프리펜드가 원자적이다(미포함 시
-      // 2커밋/잘못된 삽입). 비활성 폴백은 useRange가 disabled → 둘 다 false라 무해.
-      // (plain useRange는 delta 훅과 달리 isHistoricalDeltaFetching를 노출하지 않음.)
-      (candleFallback.isPlaceholderData && candleFallback.isFetching) ||
-      (hogaplayCandleFallback.isPlaceholderData && hogaplayCandleFallback.isFetching) ||
-      (previousDiskCandleFallback.isPlaceholderData && previousDiskCandleFallback.isFetching)
+      // 우회 ON에선 차트 캔들이 KIS가 아니라 디스크(minuteDiskCandles, plain useRange)에서
+      // 온다. 이 쿼리도 좌측 팬 re-key 시 이전 데이터를 placeholder로 보이며 더 오래된 창을
+      // fetch하므로 KIS 경로와 동일하게 isPlaceholderData && isFetching로 홀드해야 프리펜드가
+      // 원자적이다. 우회 OFF면 disabled → 둘 다 false라 무해(이분 조건 불필요).
+      (minuteDiskCandles.isPlaceholderData && minuteDiskCandles.isFetching)
     : (pastDailyCandlesQuery.isPlaceholderData && pastDailyCandlesQuery.isFetching) ||
       (screenerDailyCandlesQuery.isPlaceholderData && screenerDailyCandlesQuery.isFetching));
   // The gate holds the CHART side (candle/segment prepend atomicity is what it
@@ -925,23 +793,23 @@ export function useLiveBundle(
     [isMinute, chartBundle?.segments, pastHoga.data?.segments, todayKstYyyymmdd],
   );
 
-  // 활성 타임프레임 경로의 fetch 경고만 노출 — 분봉은 past-candles, D/W/M은
-  // past-daily-candles. (다른 경로 쿼리는 enabled=false라 data가 없거나 스테일.)
+  // 활성 소스의 fetch 경고만 노출 — 배타 이분화. 우회 ON 분봉은 디스크라 경고 없음([]),
+  // D/W/M은 스크리너. 우회 OFF는 KIS 경로. (다른 경로 쿼리는 disabled라 스테일 경고가
+  // 새어 나오지 않도록 배타로 고른다.)
   const pastDataWarnings: LiveDataWarning[] = isMinute
-    ? pastCandlesQuery.data?.data_warnings ?? []
-    : [
-        ...(pastDailyCandlesQuery.data?.data_warnings ?? []),
-        ...(screenerDailyCandlesQuery.data?.data_warnings ?? []),
-      ];
+    ? (kisRestBypassEnabled ? [] : pastCandlesQuery.data?.data_warnings ?? [])
+    : kisRestBypassEnabled
+      ? screenerDailyCandlesQuery.data?.data_warnings ?? []
+      : pastDailyCandlesQuery.data?.data_warnings ?? [];
 
   return {
     bundle,
     chartBundle,
     hogaBundle,
-    isLoading: live.isLoading || pastHoga.isLoading || pastCandlesQuery.isLoading || pastDailyCandlesQuery.isLoading || screenerDailyCandlesQuery.isLoading || (candleFallbackNeeded && candleFallback.isLoading) || (hogaplayCandleFallbackNeeded && hogaplayCandleFallback.isLoading) || (previousDiskFallbackNeeded && previousDiskCandleFallback.isLoading),
-    error: live.error ?? pastHoga.error ?? pastCandlesQuery.error ?? pastDailyCandlesQuery.error ?? screenerDailyCandlesQuery.error ?? pastSidecars.error ?? candleFallback.error ?? hogaplayCandleFallback.error ?? previousDiskCandleFallback.error ?? null,
+    isLoading: live.isLoading || pastHoga.isLoading || pastCandlesQuery.isLoading || pastDailyCandlesQuery.isLoading || screenerDailyCandlesQuery.isLoading || (minuteDiskNeeded && minuteDiskCandles.isLoading),
+    error: live.error ?? pastHoga.error ?? pastCandlesQuery.error ?? pastDailyCandlesQuery.error ?? screenerDailyCandlesQuery.error ?? pastSidecars.error ?? minuteDiskCandles.error ?? null,
     clampEngaged,
-    isPastCandlesLoading: pastCandlesQuery.isLoading || pastDailyCandlesQuery.isLoading || screenerDailyCandlesQuery.isLoading || (candleFallbackNeeded && candleFallback.isLoading) || (hogaplayCandleFallbackNeeded && hogaplayCandleFallback.isLoading) || (previousDiskFallbackNeeded && previousDiskCandleFallback.isLoading) || (enableInvestor && investorQuery.isLoading),
+    isPastCandlesLoading: pastCandlesQuery.isLoading || pastDailyCandlesQuery.isLoading || screenerDailyCandlesQuery.isLoading || (minuteDiskNeeded && minuteDiskCandles.isLoading) || (enableInvestor && investorQuery.isLoading),
     isHogaLoading: pastHoga.isLoading && pastHoga.data == null,
     isExtending: extending,
     isSidecarLoading: sidecarEnabled && pastSidecars.isLoading && pastSidecars.data == null,
