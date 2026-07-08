@@ -130,8 +130,12 @@ describe('LiveSettingsSections (2단 nav+detail)', () => {
     fireEvent.click(screen.getByTestId('settings-nav-data-source'));
 
     expect(await screen.findByText('데이터 저장 방식')).toBeInTheDocument();
-    // live는 캔들 소스가 'KIS API 우회' 토글로 단독 결정 — '캔들 데이터 기준' 라디오 없음.
-    expect(screen.queryByText('캔들 데이터 기준')).toBeNull();
+    // 표시/캡처 두 매크로 그룹으로 재배치.
+    expect(screen.getByText('표시 소스')).toBeInTheDocument();
+    expect(screen.getByText('캡처 저장')).toBeInTheDocument();
+    // '캔들 데이터 기준' 그룹 제목은 있지만(우회 토글을 담음), 캔들 소스 라디오는 없다.
+    expect(screen.getByText('캔들 데이터 기준')).toBeInTheDocument();
+    expect(screen.getByRole('switch', { name: 'KIS API 우회' })).toBeInTheDocument();
     expect(screen.queryByRole('radio', { name: '자동' })).toBeNull();
     expect(screen.queryByRole('radio', { name: '스크리너 일봉 우선' })).toBeNull();
     expect(screen.getByText('호가·체결 데이터 기준')).toBeInTheDocument();
@@ -143,8 +147,8 @@ describe('LiveSettingsSections (2단 nav+detail)', () => {
     expect(screen.getByRole('radio', { name: 'hogaplay 우선' })).toBeInTheDocument();
     expect(screen.getByRole('radio', { name: 'KIS WS 우선' })).toBeInTheDocument();
     expect(screen.getByRole('radio', { name: 'KIS API 우선' })).toBeInTheDocument();
-    // 새 우회 설명문.
-    expect(screen.getByText(/켜면 분봉은 캡처\(hogaplay\) 데이터/)).toBeInTheDocument();
+    // 우회 설명문(캔들 데이터 기준 그룹 description).
+    expect(screen.getByText(/'KIS API 우회'를 켜면 분봉은 캡처\(hogaplay\)/)).toBeInTheDocument();
   });
 
   it('study variant는 캔들 기준 라디오 대신 디스크 온리 안내문을 표시한다', async () => {

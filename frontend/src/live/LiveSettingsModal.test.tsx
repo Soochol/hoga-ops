@@ -81,9 +81,13 @@ describe('LiveSettingsModal (2단)', () => {
       wrapper: wrap(new QueryClient({ defaultOptions: { queries: { retry: false } } })),
     });
     fireEvent.click(screen.getByTestId('settings-nav-data-source'));
-    // 캔들 소스는 'KIS API 우회' 토글이 결정 — live는 캔들 기준 라디오 없음.
-    expect(screen.queryByText('캔들 데이터 기준')).toBeNull();
+    // '캔들 데이터 기준' 그룹은 있지만 캔들 소스는 'KIS API 우회' 토글로 결정(라디오 없음).
+    expect(screen.getByText('캔들 데이터 기준')).toBeTruthy();
+    expect(screen.getByRole('switch', { name: 'KIS API 우회' })).toBeTruthy();
     expect(screen.getByText('호가·체결 데이터 기준')).toBeTruthy();
+    // 표시/캡처 매크로 그룹 라벨.
+    expect(screen.getByText('표시 소스')).toBeTruthy();
+    expect(screen.getByText('캡처 저장')).toBeTruthy();
     // 캔들 라디오가 사라져 각 라벨은 호가·체결 기준에만(1개).
     expect(screen.getAllByLabelText(/hogaplay 우선/)).toHaveLength(1);
     expect(screen.getAllByLabelText(/KIS API 우선/)).toHaveLength(1);
