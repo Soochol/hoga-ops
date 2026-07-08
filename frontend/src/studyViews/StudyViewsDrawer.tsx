@@ -455,15 +455,15 @@ export function StudyViewsDrawer() {
   };
 
   return (
-    <RailDrawer id="right-rail-saved-views-panel" ariaLabel="저장 뷰">
+    <RailDrawer id="right-rail-saved-views-panel" ariaLabel="저장뷰">
       <RailDrawerHeader
-        title="저장 뷰"
+        title="저장뷰"
       />
       <RailDrawerSection className="p-3">
           <div className="flex items-center gap-1">
             <div className="relative min-w-0 flex-1">
               <input
-                aria-label="저장 뷰 검색"
+                aria-label="저장뷰 검색"
                 placeholder="검색하세요"
                 value={query}
                 onChange={(e) => setQuery(e.target.value)}
@@ -510,7 +510,7 @@ export function StudyViewsDrawer() {
         {isLoading && <RailState>불러오는 중</RailState>}
         {isError && (
           <RailState tone="error">
-            <p>저장 뷰를 불러오지 못했습니다.</p>
+            <p>저장뷰를 불러오지 못했습니다.</p>
             <button type="button" onClick={() => refetch()} className="mt-2 underline">다시 시도</button>
           </RailState>
         )}

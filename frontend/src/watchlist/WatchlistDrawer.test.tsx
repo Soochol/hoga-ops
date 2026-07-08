@@ -411,27 +411,25 @@ describe('WatchlistDrawer', () => {
     await waitFor(() => expect(removeSpy).toHaveBeenCalledWith('000660'));
   });
 
-  it('opens the edit modal via 편집 → 관심 편집', async () => {
+  it('opens the edit modal directly via the 편집 button', async () => {
     vi.spyOn(watchlistApi, 'getWatchlist').mockResolvedValue(DATA);
     const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } });
     render(<WatchlistDrawer />, { wrapper: wrap(qc, '/inventory') });
-    await waitFor(() => expect(screen.getByLabelText('관심종목 편집 메뉴')).toBeInTheDocument());
-    fireEvent.click(screen.getByLabelText('관심종목 편집 메뉴'));
-    fireEvent.click(await screen.findByRole('menuitem', { name: '관심 편집' }));
+    // 편집 메뉴 제거 — "편집" 버튼이 모달을 바로 연다.
+    await waitFor(() => expect(screen.getByRole('button', { name: '관심종목 편집' })).toBeInTheDocument());
+    fireEvent.click(screen.getByRole('button', { name: '관심종목 편집' }));
     expect(await screen.findByRole('dialog', { name: '관심종목 편집' })).toBeInTheDocument();
-    // 메뉴는 항목 선택과 동시에 닫힌다
-    expect(screen.queryByRole('menuitem', { name: '관심 편집' })).toBeNull();
   });
 
-  it('새 그룹 만들기 creates a folder through the 그룹 추가하기 dialog', async () => {
+  it('creates a folder directly via the header + button', async () => {
     vi.spyOn(watchlistApi, 'getWatchlist').mockResolvedValue(DATA);
     const createSpy = vi.spyOn(watchlistApi, 'createFolder')
       .mockResolvedValue({ id: 'f_new', name: '단타', order: 1 });
     const qc = new QueryClient({ defaultOptions: { queries: { retry: false }, mutations: { retry: false } } });
     render(<WatchlistDrawer />, { wrapper: wrap(qc, '/inventory') });
-    await waitFor(() => expect(screen.getByLabelText('관심종목 편집 메뉴')).toBeInTheDocument());
-    fireEvent.click(screen.getByLabelText('관심종목 편집 메뉴'));
-    fireEvent.click(await screen.findByRole('menuitem', { name: '새 그룹 만들기' }));
+    // "새 그룹 만들기" 를 헤더 + 버튼으로 승격 — 메뉴 없이 다이얼로그를 바로 연다.
+    await waitFor(() => expect(screen.getByRole('button', { name: '새 그룹 만들기' })).toBeInTheDocument());
+    fireEvent.click(screen.getByRole('button', { name: '새 그룹 만들기' }));
     expect(await screen.findByRole('dialog', { name: '그룹 추가하기' })).toBeInTheDocument();
     fireEvent.change(screen.getByPlaceholderText('그룹 이름 입력'), { target: { value: '단타' } });
     fireEvent.click(screen.getByRole('button', { name: '추가' }));
@@ -573,9 +571,8 @@ describe('WatchlistDrawer', () => {
     vi.spyOn(watchlistApi, 'getWatchlist').mockResolvedValue(DATA);
     const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } });
     render(<WatchlistDrawer />, { wrapper: wrap(qc, '/inventory') });
-    await waitFor(() => expect(screen.getByLabelText('관심종목 편집 메뉴')).toBeInTheDocument());
-    fireEvent.click(screen.getByLabelText('관심종목 편집 메뉴'));
-    fireEvent.click(await screen.findByRole('menuitem', { name: '새 그룹 만들기' }));
+    await waitFor(() => expect(screen.getByRole('button', { name: '새 그룹 만들기' })).toBeInTheDocument());
+    fireEvent.click(screen.getByRole('button', { name: '새 그룹 만들기' }));
     await screen.findByRole('dialog', { name: '그룹 추가하기' });
     expect(screen.getByRole('button', { name: '추가' })).toBeDisabled();
   });

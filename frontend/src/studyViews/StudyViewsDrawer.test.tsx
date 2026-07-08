@@ -175,17 +175,17 @@ it('filters by name, code, and memo ignoring whitespace and case', () => {
 
 it('renders list and no-match state', async () => {
   renderDrawer('/inventory');
-  expect(screen.getByRole('complementary', { name: '저장 뷰' })).toHaveClass('bg-bg-card');
-  expect(screen.getByRole('complementary', { name: '저장 뷰' })).toHaveClass('border-l');
+  expect(screen.getByRole('complementary', { name: '저장뷰' })).toHaveClass('bg-bg-card');
+  expect(screen.getByRole('complementary', { name: '저장뷰' })).toHaveClass('border-l');
   expect(screen.getByText('급등 이후')).toBeTruthy();
-  await userEvent.type(screen.getByLabelText('저장 뷰 검색'), '없음');
+  await userEvent.type(screen.getByLabelText('저장뷰 검색'), '없음');
   expect(screen.getByText('검색 결과가 없습니다.')).toBeTruthy();
   expect(screen.queryByText('차트 화면에서 저장할 수 있습니다.')).toBeNull();
 });
 
 it('clears the saved-view search with the inline clear button', async () => {
   renderDrawer('/inventory');
-  const search = screen.getByLabelText('저장 뷰 검색') as HTMLInputElement;
+  const search = screen.getByLabelText('저장뷰 검색') as HTMLInputElement;
 
   expect(screen.queryByRole('button', { name: '검색어 지우기' })).toBeNull();
 
@@ -285,7 +285,7 @@ it('searches stock name and shows all saved views under matching Code groups', a
   ];
   renderDrawer('/inventory');
 
-  await userEvent.type(screen.getByLabelText('저장 뷰 검색'), '삼성');
+  await userEvent.type(screen.getByLabelText('저장뷰 검색'), '삼성');
 
   expect(screen.getByRole('button', { name: '삼성전자 005930 접기' })).toBeTruthy();
   expect(screen.getByRole('button', { name: '급등 이후 저장뷰 열기' })).toBeTruthy();
@@ -300,7 +300,7 @@ it('searches Code and shows the full matching Code group', async () => {
   ];
   renderDrawer('/inventory');
 
-  await userEvent.type(screen.getByLabelText('저장 뷰 검색'), '005 930');
+  await userEvent.type(screen.getByLabelText('저장뷰 검색'), '005 930');
 
   expect(screen.getByRole('button', { name: '급등 이후 저장뷰 열기' })).toBeTruthy();
   expect(screen.getByRole('button', { name: '종가 반등 저장뷰 열기' })).toBeTruthy();
@@ -314,7 +314,7 @@ it('searches saved-view fields and shows only matching child rows', async () => 
   ];
   renderDrawer('/inventory');
 
-  await userEvent.type(screen.getByLabelText('저장 뷰 검색'), 'close rebound');
+  await userEvent.type(screen.getByLabelText('저장뷰 검색'), 'close rebound');
 
   expect(screen.getByRole('button', { name: '삼성전자 005930 접기' })).toBeTruthy();
   expect(screen.queryByRole('button', { name: '급등 이후 저장뷰 열기' })).toBeNull();
@@ -325,7 +325,7 @@ it('respects collapsed groups during search', async () => {
   renderDrawer('/inventory');
 
   await userEvent.click(screen.getByRole('button', { name: '삼성전자 005930 접기' }));
-  await userEvent.type(screen.getByLabelText('저장 뷰 검색'), '삼성');
+  await userEvent.type(screen.getByLabelText('저장뷰 검색'), '삼성');
 
   expect(screen.getByRole('button', { name: '삼성전자 005930 펼치기' })).toHaveAttribute('aria-expanded', 'false');
   expect(screen.queryByRole('button', { name: '급등 이후 저장뷰 열기' })).toBeNull();
@@ -359,9 +359,9 @@ it('toggles all visible stock groups with one toolbar button', async () => {
 it('bulk controls affect filtered visible groups without changing hidden groups', async () => {
   renderDrawer('/inventory');
 
-  await userEvent.type(screen.getByLabelText('저장 뷰 검색'), 'SK');
+  await userEvent.type(screen.getByLabelText('저장뷰 검색'), 'SK');
   await userEvent.click(screen.getByRole('button', { name: '전체 접기' }));
-  await userEvent.clear(screen.getByLabelText('저장 뷰 검색'));
+  await userEvent.clear(screen.getByLabelText('저장뷰 검색'));
 
   expect(screen.getByRole('button', { name: '삼성전자 005930 접기' })).toHaveAttribute('aria-expanded', 'true');
   expect(screen.getByRole('button', { name: '급등 이후 저장뷰 열기' })).toBeTruthy();
