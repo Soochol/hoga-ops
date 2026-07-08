@@ -1,11 +1,12 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { render, screen, fireEvent, waitFor, cleanup, within } from '@testing-library/react';
+import { render, screen, fireEvent, waitFor, cleanup, within, act } from '@testing-library/react';
 import type { DraggableAttributes, DraggableSyntheticListeners } from '@dnd-kit/core';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { MemoryRouter, Routes, Route, useLocation } from 'react-router';
 import { useLivePageStore } from '../state/livePage';
 import { useLiveTabsStore } from '../state/liveTabs';
 import { useScreenerPanelStore, type PanelScan } from '../state/screenerPanel';
+import { useScreenerUpdateFeedback } from './useScreenerUpdateSync';
 import { useEntryDragStore } from '../state/entryDrag';
 import { useLiveVenueStore } from '../state/liveVenue';
 import * as savesApi from '../api/savedScreeners';
@@ -138,6 +139,7 @@ describe('ScreenerDrawer', () => {
       updateState: { status: 'idle' },
       sortMode: 'default',
     });
+    useScreenerUpdateFeedback.setState({ feedback: null });
     vi.restoreAllMocks();
     vi.spyOn(screenerApi, 'getScreenerStatus').mockResolvedValue({ status: 'ok', last_raw_date: '20260530', days_behind: 0 });
     vi.spyOn(client, 'apiCall').mockResolvedValue({ phase: 'open', quotes: [] });
@@ -323,7 +325,8 @@ describe('ScreenerDrawer', () => {
 
   it('갱신 triggers a screener data update', async () => {
     vi.spyOn(savesApi, 'listSaves').mockResolvedValue({ schema_version: 1, saves: [SAVE] });
-    const upd = vi.spyOn(screenerApi, 'triggerScreenerUpdate').mockResolvedValue(undefined as never);
+    const upd = vi.spyOn(screenerApi, 'triggerScreenerUpdate')
+      .mockResolvedValue({ running: false, updated: 0, reason: 'no_gap' });
     render(<ScreenerDrawer />, { wrapper: wrap(qc(), '/live') });
     await waitFor(() => expect(useScreenerPanelStore.getState().selectedSavedId).toBe('s1'));
     fireEvent.click(screen.getByRole('button', { name: '데이터 갱신' }));
@@ -335,7 +338,7 @@ describe('ScreenerDrawer', () => {
     let resolveUpdate!: () => void;
     vi.spyOn(screenerApi, 'triggerScreenerUpdate').mockImplementation(
       () => new Promise((resolve) => {
-        resolveUpdate = () => resolve(undefined);
+        resolveUpdate = () => resolve({ running: false, updated: 0, reason: 'no_gap' });
       }),
     );
 
@@ -349,12 +352,14 @@ describe('ScreenerDrawer', () => {
     await waitFor(() => expect(resolveUpdate).toBeTypeOf('function'));
     resolveUpdate();
 
+    // no-op(skip reason) 응답은 즉시 settle — running 은 finished 이벤트가 settle 한다.
     await waitFor(() => expect(useScreenerPanelStore.getState().updateState.status).toBe('success'));
   });
 
-  it('marks existing scan results stale after data update succeeds', async () => {
+  it('running 응답은 pending 유지 + dataStale 미마킹(이벤트 주도)', async () => {
     vi.spyOn(savesApi, 'listSaves').mockResolvedValue({ schema_version: 1, saves: [SAVE] });
-    vi.spyOn(screenerApi, 'triggerScreenerUpdate').mockResolvedValue(undefined as never);
+    vi.spyOn(screenerApi, 'triggerScreenerUpdate')
+      .mockResolvedValue({ running: true, done: 0, total: 3561 });
     useScreenerPanelStore.setState({
       selectedSavedId: 's1',
       sortMode: 'default',
@@ -376,8 +381,26 @@ describe('ScreenerDrawer', () => {
     await waitFor(() => expect(screen.getByText('삼성전자')).toBeInTheDocument());
     fireEvent.click(screen.getByRole('button', { name: '데이터 갱신' }));
 
-    await waitFor(() => expect(screen.getByText(/데이터 갱신됨/)).toBeInTheDocument());
-    expect(useScreenerPanelStore.getState().lastScan?.dataStale).toBe(true);
+    // job 이 도는 동안 pending 유지, dataStale 은 finished(updated>0) 이벤트가
+    // 마킹한다(useScreenerUpdateSync.test 커버) — 무갭 갱신의 거짓 힌트 방지.
+    await waitFor(() => expect(screen.getByRole('button', { name: '갱신 중…' })).toBeDisabled());
+    expect(useScreenerPanelStore.getState().updateState.status).toBe('pending');
+    expect(useScreenerPanelStore.getState().lastScan?.dataStale).toBe(false);
+  });
+
+  it('status.updating(서버 폴백)만으로 갱신 버튼 비활성 + 진행 칩 표시', async () => {
+    vi.spyOn(savesApi, 'listSaves').mockResolvedValue({ schema_version: 1, saves: [SAVE] });
+    vi.spyOn(screenerApi, 'getScreenerStatus').mockResolvedValue({
+      status: 'ok',
+      last_raw_date: '20260626',
+      days_behind: 1,
+      updating: { done: 1200, total: 3561, started_ms: 1 },
+    });
+
+    render(<ScreenerDrawer />, { wrapper: wrap(qc(), '/live') });
+    await waitFor(() => expect(screen.getByRole('button', { name: '갱신 중…' })).toBeDisabled());
+    const progress = screen.getByTestId('screener-update-progress');
+    expect(progress.textContent).toContain('1,200/3,561');
   });
 
   it('shows stored update errors after the mutation rejects', async () => {
@@ -517,16 +540,17 @@ describe('ScreenerDrawer', () => {
     await waitFor(() => expect(screen.getByText(/조건 저장본 변경됨/)).toBeInTheDocument());
   });
 
-  it('flags the last result when the update mutation succeeds', async () => {
+  it('flags the last result when a finished update marks data stale', async () => {
+    // dataStale 마킹은 이벤트 주도(useScreenerUpdateSync, updated>0 조건)로 이동 —
+    // 여기서는 드로어 몫인 '데이터 갱신됨' 힌트 렌더링만 핀한다.
     vi.spyOn(savesApi, 'listSaves').mockResolvedValue({ schema_version: 1, saves: [SAVE] });
-    vi.spyOn(screenerApi, 'triggerScreenerUpdate').mockResolvedValue(undefined as never);
     useScreenerPanelStore.setState({ selectedSavedId: 's1', lastScan: makeScan() });
 
     render(<ScreenerDrawer />, { wrapper: wrap(qc(), '/live') });
+    await waitFor(() => expect(screen.getByText(/결과 /)).toBeInTheDocument());
 
-    fireEvent.click(screen.getByRole('button', { name: '데이터 갱신' }));
+    act(() => useScreenerPanelStore.getState().markLastScanDataStale());
 
-    await waitFor(() => expect(useScreenerPanelStore.getState().lastScan?.dataStale).toBe(true));
     await waitFor(() => expect(screen.getByText(/데이터 갱신됨/)).toBeInTheDocument());
   });
 

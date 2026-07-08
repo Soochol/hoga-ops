@@ -11,6 +11,7 @@ import { useRightRailStore } from './state/rightRail';
 import { useEventStream } from './api/eventStream';
 import { useInventoryRecaptureOriginsCleanup } from './inventory/useInventoryRecaptureOrigins';
 import { useCaptureQueueSync } from './capture/useCaptureQueue';
+import { useScreenerUpdateSync } from './screener/useScreenerUpdateSync';
 import SignalAlertToastHost from './signalAlerts/SignalAlertToastHost';
 import KisRestUnavailableToastHost from './live/KisRestUnavailableToastHost';
 import { useSignalAlertEvents } from './signalAlerts/useSignalAlertEvents';
@@ -31,6 +32,9 @@ export default function App() {
   // Single owner of the capture-queue push subscription (was fanned out across
   // ~5 useCaptureQueue mounts); the read side now only reads the shared cache.
   useCaptureQueueSync();
+  // Single owner of the screener-update push subscription; surfaces read the
+  // shared ['screener-status'] cache + feedback store.
+  useScreenerUpdateSync();
   const activePanel = useRightRailStore((s) => s.activePanel);
 
   // The top row is fixed; the content row owns main + optional right panel +

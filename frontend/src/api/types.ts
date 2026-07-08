@@ -251,6 +251,8 @@ export type PushEvent =
   // The frontend refetches that code's today range on receipt instead of
   // waiting out the polling fallback.
   | { type: 'promotion_completed'; code: string; date: string }
+  | { type: 'screener_update_progress'; done: number; total: number }
+  | { type: 'screener_update_finished'; updated: number; total: number; reason: string | null }
   | SignalAlertEvent
   | (CaptureEventBase & { type: 'capture_progress'; progress: CaptureProgress })
   | (CaptureEventBase & { type: 'capture_phase' })

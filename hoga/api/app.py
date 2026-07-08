@@ -140,6 +140,9 @@ def create_app(data_dir: Path) -> FastAPI:
             yield
         finally:
             _app.state.startup_runtime = None
+            # 스크리너 갱신 job 은 KIS capacity scheduler/client 를 쓰므로
+            # startup_runtime.stop()(KIS teardown 포함)보다 먼저 cancel+await.
+            await _screener_module.shutdown_update_job()
             await startup_runtime.stop()
             # Stop the worker pool first so in-flight items observe cancellation
             # while bus + observer are still live (they emit terminal events).

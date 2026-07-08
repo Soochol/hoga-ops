@@ -9,6 +9,7 @@ import { useRightRailStore } from './state/rightRail';
 vi.mock('./api/eventStream', () => ({
   useEventStream: () => {},
   lastHeartbeat: () => 0,
+  subscribeToScreenerUpdateEvents: () => () => {},
 }));
 
 vi.mock('./capture/useCaptureQueue', () => ({

@@ -4,6 +4,8 @@ import { useJumpToLive } from '../live/useJumpToLive';
 import { useScreener } from '../screener/useScreener';
 import { useScreenerStatus } from '../screener/useScreenerStatus';
 import { useScreenerUpdate } from '../screener/useScreenerUpdate';
+import { useScreenerUpdateFeedback } from '../screener/useScreenerUpdateSync';
+import { ScreenerUpdateProgress } from '../screener/ScreenerUpdateProgress';
 import { ConditionBuilder } from '../screener/ConditionBuilder';
 import { SavedScreenerList } from '../screener/SavedScreenerList';
 import { ResultTable } from '../screener/ResultTable';
@@ -18,6 +20,12 @@ import { sortScreenerRows, type ScreenerResultSortMode } from '../screener/sortR
 import type { ScanBasis } from '../api/screener';
 
 type SaveDialogMode = 'save-new' | 'save-as';
+
+const FEEDBACK_TONE_COLOR = {
+  info: 'var(--fg-dim)',
+  warn: 'var(--warn)',
+  error: 'var(--error)',
+} as const;
 
 function SaveNameDialog({ initialName, onSubmit, onClose }: {
   initialName: string;
@@ -60,6 +68,9 @@ export function Screener() {
   const screener = useScreener();
   const { data: status } = useScreenerStatus();
   const update = useScreenerUpdate();
+  const updateFeedback = useScreenerUpdateFeedback((s) => s.feedback);
+  // 서버-소유 job 진행 여부 — 다른 탭/드로어/스케줄러가 시작한 갱신도 잡는다.
+  const serverUpdating = status?.updating != null;
 
   // 결과 행에 Live Quote 오버레이(현재가·등락률)를 적용 — 드로어와 공유하는 단일
   // 머지 seam. rows 를 메모화해 훅 내부 polling 의 queryKey 가 매 렌더 흔들리지 않게
@@ -142,12 +153,18 @@ export function Screener() {
               {screener.isPending ? '조회 중…' : '조회'}
             </ToolbarButton>
             {!notSeeded && (
-              <ToolbarButton aria-label="데이터 갱신" onClick={() => update.mutate()} disabled={update.isPending}>
-                {update.isPending ? '갱신 중…' : '갱신'}
+              <ToolbarButton aria-label="데이터 갱신" onClick={() => update.mutate()}
+                disabled={update.isPending || serverUpdating}>
+                {update.isPending || serverUpdating ? '갱신 중…' : '갱신'}
               </ToolbarButton>
             )}
             {update.isError && (
               <span className="text-sm" style={{ color: 'var(--error)' }}>갱신 실패</span>
+            )}
+            {updateFeedback && (
+              <span className="text-sm" style={{ color: FEEDBACK_TONE_COLOR[updateFeedback.tone] }}>
+                {updateFeedback.message}
+              </span>
             )}
             <div className="min-w-0 flex-1" />
             {basis === 'intraday' && (
@@ -158,6 +175,7 @@ export function Screener() {
                 오늘 장중: KIS quote 반영
               </span>
             )}
+            <ScreenerUpdateProgress updating={status?.updating} />
             <StalenessChip status={status} />
           </ControlBar>
         </div>

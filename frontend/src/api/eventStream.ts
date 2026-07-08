@@ -45,3 +45,10 @@ export function subscribeToCaptureEvents(handler: (e: PushEvent) => void): () =>
     if (e.type.startsWith('capture_')) handler(e);
   });
 }
+
+/** 스크리너 갱신 job 이벤트 + disconnected(재연결 복구용) 필터. */
+export function subscribeToScreenerUpdateEvents(handler: (e: PushEvent) => void): () => void {
+  return subscribeEvents((e: PushEvent) => {
+    if (e.type.startsWith('screener_update') || e.type === 'disconnected') handler(e);
+  });
+}
