@@ -1427,10 +1427,32 @@ export function LiveChartRoot({
         : (typeof pointX === 'number' ? chart.timeScale().coordinateToTime(pointX) : null);
       const lastMs = lastCandleMsRef.current;
       // No usable time while still inside the chart surface means the pointer
-      // is over an internal blank band, not outside the chart. Keep sidebar
-      // spot indicators on the latest concrete candle; only mouse-leave
-      // returns to latest streaming mode.
+      // is over a blank band. Two kinds, distinguished by X:
+      //  - Right-offset whitespace (X right of the last candle): lwc reports no
+      //    time past the last bar (param.time undefined, coordinateToTime null),
+      //    so this branch — not the numeric one below — is the live path there.
+      //    It is temporally "now/future" → drop spot mode, return the sidebar to
+      //    latest (WS), same clear path as mouse-leave.
+      //  - Internal blank band (X on/left of the last candle): keep the sidebar
+      //    pinned to the latest concrete candle.
       if (typeof t !== 'number' || axis.segments.length === 0) {
+        if (
+          lastMs !== null
+          && typeof pointX === 'number'
+          && axis.segments.length > 0
+        ) {
+          const lastCoord = chart.timeScale().timeToCoordinate(
+            realMsToVirtualSeconds(axis, lastMs) as Time,
+          );
+          if (lastCoord !== null && pointX > lastCoord) {
+            publishBasisHover(null);
+            publishCursorActive(false);
+            store.clearCursor();
+            clearSidebarCursor();
+            publishedCursorMsRef.current = null;
+            return;
+          }
+        }
         if (lastMs !== null) {
           publishBasisHover(kstDateFromMs(lastMs));
           publishCursorActive(true);

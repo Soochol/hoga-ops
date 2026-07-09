@@ -3176,15 +3176,13 @@ describe('LiveChartRoot crosshair → cursor store (ADR-0044)', () => {
     expect(useLiveCursorStore.getState().cursorMs).toBe(TODAY_OPEN_MS + 60_000);
   });
 
-  it('crosshair into the right-offset whitespace (numeric time past the last candle) → clears the cursor so the sidebar returns to latest (WS) mode', async () => {
-    // Real mechanism (verified 2026-06-11 — supersedes the original #69
-    // assumption of `time: undefined`): with CrosshairMode.Normal lwc does NOT
-    // report an empty time in the whitespace; it extrapolates the gap-compressed
-    // virtual axis forward, so param.time is a NUMBER that maps PAST the last
-    // candle (onto the session tail). That x-slot has no candle and is temporally
-    // "now/future", so the handler drops spot mode and clears the cursor — the
-    // sidebar then shows the latest SSE/WS book instead of a stale pin. Mirrors
-    // the click handler, which already publishes null past the last candle.
+  it('crosshair into the right-offset whitespace (DEFENSIVE numeric-time path) → clears the cursor so the sidebar returns to latest (WS) mode', async () => {
+    // DEFENSIVE branch: IF a numeric time past the last candle ever reaches the
+    // handler (e.g. seriesData), realMs > lastCandle + bucketMs/2 clears the
+    // cursor. In practice (measured 2026-07-09) lwc reports NO time in the
+    // right-offset whitespace — param.time undefined AND coordinateToTime null —
+    // so the live path is the X-based check covered by the sibling test below.
+    // (The earlier "2026-06-11 lwc extrapolates a numeric time" claim was wrong.)
     // TODAY_ONLY_BUNDLE carries one candle so lastCandleMsRef is populated.
     render(
       <LiveChartRoot
@@ -3224,6 +3222,49 @@ describe('LiveChartRoot crosshair → cursor store (ADR-0044)', () => {
     // returns to the live WS edge.
     const whitespaceTimeSec = (TODAY_OPEN_MS + 600_000) / 1000;
     act(() => fire({ time: whitespaceTimeSec, point: { x: 9999 } }));
+    await flush();
+    expect(useLiveCursorStore.getState().cursorMs).toBeNull();
+    expect(useLiveCursorStore.getState().sidebarCursorMs).toBeNull();
+  });
+
+  it('crosshair into the right-offset whitespace (REAL path: no time, X right of last candle) → clears the cursor', async () => {
+    // Live mechanism (measured 2026-07-09): past the last candle lwc gives NO
+    // time — param.time undefined AND coordinateToTime(x) null — so `t` is null
+    // and the numeric branch never runs. The handler must instead detect
+    // whitespace by X: pointer right of the last candle's coordinate
+    // (timeToCoordinate) → clear the cursor so the sidebar shows the latest WS
+    // book. Without this the sidebar pinned to the last candle (stale) — the bug.
+    render(
+      <LiveChartRoot
+        code="005930"
+        timeframe="1m"
+        bundle={TODAY_ONLY_BUNDLE}
+        clampEngaged={false}
+        isPastCandlesLoading={false}
+      />,
+      { wrapper },
+    );
+    const chart = vi.mocked(createChartEx).mock.results[0].value;
+    const ts = chart.timeScale();
+    vi.mocked(chart.timeScale).mockReturnValue(ts);
+    // Whitespace: lwc has no time here.
+    vi.mocked(ts.coordinateToTime).mockReturnValue(null);
+    // Last candle sits at x=200; whitespace hover is to its right.
+    vi.mocked(ts.timeToCoordinate).mockReturnValue(200 as unknown as ReturnType<typeof ts.timeToCoordinate>);
+    const fire = (p: { time?: unknown; point?: { x: number } | null }) =>
+      chart.subscribeCrosshairMove.mock.calls.forEach(
+        ([h]: [(p: { time?: unknown; point?: { x: number } | null }) => void]) => h(p),
+      );
+    const flush = () => act(() => new Promise((r) => requestAnimationFrame(() => r(null))));
+    const lastCandleMs = TODAY_ONLY_BUNDLE.candles[TODAY_ONLY_BUNDLE.candles.length - 1].ts_ms;
+
+    // Internal blank band (X on/left of the last candle at x=200) → still pins.
+    act(() => fire({ point: { x: 150 } }));
+    await flush();
+    expect(useLiveCursorStore.getState().cursorMs).toBe(lastCandleMs);
+
+    // Right-offset whitespace (X right of the last candle) → cursor cleared.
+    act(() => fire({ point: { x: 640 } }));
     await flush();
     expect(useLiveCursorStore.getState().cursorMs).toBeNull();
     expect(useLiveCursorStore.getState().sidebarCursorMs).toBeNull();
