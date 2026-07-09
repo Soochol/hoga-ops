@@ -50,4 +50,14 @@ describe('ResultTable', () => {
     expect(within(row).getByText('74,200 (+5.80%)')).toBeInTheDocument();
     expect(screen.queryByRole('button', { name: '등락률 정렬' })).not.toBeInTheDocument();
   });
+
+  it('renders — for a row with no live quote (price null) without crashing', () => {
+    // 라이브 미도착 행: 순수 라이브라 price/change_pct 가 null → 셀은 '—' 하나.
+    const noQuote: ScreenerRowLive[] = [
+      { code: '000660', name: 'SK하이닉스', market: 'KOSPI', price: null, trade_value_won: 6e11, change_pct: null, change_won: null, change_pct_sort: null },
+    ];
+    render(<ResultTable rows={noQuote} onActivate={vi.fn()} sortMode="default" onSortChange={vi.fn()} />);
+    const row = screen.getByRole('button', { name: 'SK하이닉스 000660 호가창 열기' });
+    expect(within(row).getByText('—')).toBeInTheDocument();
+  });
 });

@@ -17,10 +17,18 @@ vi.mock('../api/savedScreeners', () => ({
   listSaves: vi.fn(() => Promise.resolve({ schema_version: 1, saves: [] })),
   createSave: vi.fn(), updateSave: vi.fn(), deleteSave: vi.fn(),
 }));
-// 라이브 오버레이는 결과 행의 현재가·등락률을 덮는다. 기본 빈 Map(오버레이 없음)으로
-// 두어 EOD 검증 테스트를 보존하고, 오버레이 테스트에서만 quote 를 주입한다.
+// 표시는 순수 라이브(EOD 폴백 없음) — quote 미도착 행은 '—'. 기본 mock 은 스캔 코퍼스와
+// 동일한 값의 라이브 quote 를 반환해 행이 채워지고 정렬 테스트가 유지되게 한다. 오버레이·
+// 정렬 테스트에서만 다른 quote 를 주입한다.
+const { defaultQuoteMap } = vi.hoisted(() => ({
+  defaultQuoteMap: () => new Map([
+    ['005930', { code: '005930', price: 74200, change_pct: 5.8, change_won: null }],
+    ['000660', { code: '000660', price: 180000, change_pct: -1.2, change_won: null }],
+    ['035420', { code: '035420', price: 210000, change_pct: 2.4, change_won: null }],
+  ]),
+}));
 vi.mock('../api/liveQuotes', () => ({
-  useQuoteByCode: vi.fn(() => new Map()),
+  useQuoteByCode: vi.fn(() => defaultQuoteMap()),
   isStaleLiveQuote: vi.fn((quote: { stale?: boolean } | undefined) => quote?.stale === true),
 }));
 
@@ -54,9 +62,9 @@ import { listSaves, createSave, updateSave } from '../api/savedScreeners';
 import { useQuoteByCode } from '../api/liveQuotes';
 import type { SavedScreener } from '../api/savedScreeners';
 
-// 오버레이 테스트가 주입한 quote 가 다음 테스트로 새지 않도록 매 테스트 후 빈 Map 복구.
+// 오버레이 테스트가 주입한 quote 가 다음 테스트로 새지 않도록 매 테스트 후 기본 map 복구.
 afterEach(() => {
-  vi.mocked(useQuoteByCode).mockReturnValue(new Map());
+  vi.mocked(useQuoteByCode).mockReturnValue(defaultQuoteMap());
   setActiveTabCode.mockClear();
   openSymbolInNewTab.mockClear();
 });
