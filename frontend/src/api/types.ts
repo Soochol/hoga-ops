@@ -430,6 +430,26 @@ export interface RetryResponse {
 }
 
 /** Mirrors hoga/api/models.py::QueueSnapshot. */
+/** Mirrors hoga/api/models.py::GapRange — one continuous-trading data gap,
+ *  in Unix ms (KST). start_ms = last snapshot before the gap; end_ms = first
+ *  snapshot after it. */
+export interface GapRange {
+  start_ms: number;
+  end_ms: number;
+}
+
+/** Mirrors hoga/api/models.py::GapRangesResponse (WS1). */
+export interface GapRangesResponse {
+  code: string;
+  date: string;
+  source: string;
+  gap_ranges: GapRange[];
+  /** True when the session window was too sparse (< 2 datapoints) to locate
+   *  discrete ranges — is_partial then rode the count rule. */
+  sparse: boolean;
+  origin: 'meta' | 'computed';
+}
+
 export interface QueueSnapshot {
   active: QueueItem[];
   queued: QueueItem[];

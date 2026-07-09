@@ -5,7 +5,7 @@ from __future__ import annotations
 import json
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Any
+from typing import Any, Literal
 
 import duckdb
 
@@ -286,6 +286,53 @@ class QueryEngine:
     def get_meta(self, date: str, code: str, source: str = "hogaplay") -> dict[str, Any]:
         path = self.parquet_dir(date, code, source) / "meta.json"
         return json.loads(path.read_text(encoding="utf-8"))
+
+    def compute_gap_ranges(
+        self, date: str, code: str, source: str = "hogaplay",
+    ) -> tuple[list[tuple[int, int]], bool, Literal["meta", "computed"]]:
+        """Return ``(gap_ranges_hoga, sparse, origin)`` for one Stock-Date source.
+
+        ``gap_ranges_hoga`` are (start, end) boundary pairs in HHMMSSmmm (HogaMs)
+        — the caller converts to Unix ms at the API boundary. Prefers the
+        parser-written ``gap_ranges`` in meta.json (``origin="meta"``); for legacy
+        meta lacking the field, recomputes from snapshots.parquet via
+        :func:`analyze_gaps` (``origin="computed"``). No write-back — meta.json
+        stays single-writer (the parser).
+
+        ``sparse`` is True when the in-session window had < 2 datapoints (the
+        is_partial-by-count case with no discrete ranges). Raises
+        :class:`StockDateNotFound` if the source has no meta.json.
+        """
+        from hoga.api.disk_state import analyze_gaps
+        from hoga.api.timeenc import HogaMs
+
+        meta = self.get_meta(date, code, source)
+        close_ms = meta.get("regular_session_close_ms")
+        if "gap_ranges" in meta and isinstance(meta["gap_ranges"], list):
+            ranges = [
+                (int(g["start_ms"]), int(g["end_ms"]))
+                for g in meta["gap_ranges"]
+                if isinstance(g, dict) and "start_ms" in g and "end_ms" in g
+            ]
+            # is_partial without discrete ranges = the sparse (count-rule) case.
+            sparse = bool(meta.get("is_partial")) and not ranges
+            return ranges, sparse, "meta"
+
+        # Legacy meta (pre-WS1) — recompute from the snapshot stream.
+        if not isinstance(close_ms, int):
+            return [], False, "computed"
+        snap_path = self.parquet_dir(date, code, source) / "snapshots.parquet"
+        if not snap_path.exists():
+            return [], False, "computed"
+        rows = self.conn.execute(
+            "SELECT ts_ms FROM read_parquet(?)", [str(snap_path)],
+        ).fetchall()
+        analysis = analyze_gaps(
+            (HogaMs(r[0]) for r in rows), session_close_ms=HogaMs(close_ms),
+        )
+        ranges = [(int(s), int(e)) for s, e in analysis.gap_ranges]
+        sparse = analysis.in_session_count < 2 and not ranges
+        return ranges, sparse, "computed"
 
     def list_stock_dates_in_range(
         self, *, code: str, from_date: str, to_date: str,

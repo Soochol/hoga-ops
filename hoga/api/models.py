@@ -94,6 +94,37 @@ class Meta(BaseModel):
     parser_version: str
 
 
+class GapRange(BaseModel):
+    """One continuous-trading data gap, in Unix ms (KST) at the API boundary.
+
+    ``start_ms`` = last snapshot before the gap; ``end_ms`` = first snapshot
+    after it. On disk (meta.json) these are stored in HHMMSSmmm (HogaMs); the
+    ``/gaps`` route converts to Unix ms so the frontend shares the chart's
+    coordinate system.
+    """
+    start_ms: int
+    end_ms: int
+
+
+class GapRangesResponse(BaseModel):
+    """WS1: continuous-trading gap boundaries for one (code, date, source).
+
+    Powers the inventory drawer's "업스트림 결손 N구간" panel — a ``source_partial``
+    Stock-Date whose collection completed still has these gaps, which means the
+    upstream archive is missing them (re-capture won't recover them).
+    """
+    code: str
+    date: str
+    source: str
+    gap_ranges: list[GapRange]
+    # True when the in-session window had < 2 datapoints — too sparse to prove
+    # completeness, so is_partial rode the count rule and no ranges exist.
+    sparse: bool
+    # "meta" when read from the parser-written gap_ranges field; "computed" when
+    # recomputed from snapshots.parquet for legacy meta lacking the field.
+    origin: Literal["meta", "computed"]
+
+
 class AskPeakCandidate(BaseModel):
     price: int
     qty: int

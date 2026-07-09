@@ -9,7 +9,7 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import assert_never
 
-from hoga.api.disk_state import has_meaningful_gaps
+from hoga.api.disk_state import analyze_gaps
 from hoga.api.timeenc import HogaMs
 from hoga.collector.orchestrator import raw_pages
 from hoga.tables import brokers, candles, snapshots, trades
@@ -327,10 +327,17 @@ def _build_meta(
     # Encoding seam: Orderbook.ts_ms is HHMMSSmmm (entity native); cast to
     # HogaMs at this single extraction point so future entity changes break
     # here loudly rather than silently producing wrong is_partial values.
-    is_partial = has_meaningful_gaps(
+    # One analyze_gaps pass yields both is_partial (the boolean gate) and the
+    # gap boundary ranges surfaced to the user (WS1 / ADR upstream-gap).
+    gaps = analyze_gaps(
         _snapshot_ts_hhmmssms(snapshots_list),
         session_close_ms=HogaMs(info.regular_session_close_ms),
     )
+    is_partial = gaps.is_partial
+    gap_ranges = [
+        {"start_ms": int(start), "end_ms": int(end)}
+        for start, end in gaps.gap_ranges
+    ]
 
     return {
         "code": info.code,
@@ -352,4 +359,8 @@ def _build_meta(
         "warnings": [{"file": f, "line": ln, "reason": r} for f, ln, r in skipped],
         "collection_complete": collection_complete,
         "is_partial": is_partial,
+        # WS1: continuous-trading gap boundaries in HHMMSSmmm (HogaMs), so the
+        # inventory drawer can show WHICH windows are missing. Empty when the
+        # stream is dense (or too sparse — is_partial then rides the count rule).
+        "gap_ranges": gap_ranges,
     }

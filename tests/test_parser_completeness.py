@@ -63,6 +63,23 @@ def test_meta_is_partial_field_present(tmp_path: Path) -> None:
     assert isinstance(meta.get("is_partial"), bool)
 
 
+def test_meta_records_gap_ranges_field(tmp_path: Path) -> None:
+    """WS1: the parser writes a gap_ranges list of {start_ms, end_ms} dicts.
+
+    The tiny_tsv fixture is sparse (few snapshots), so is_partial is True but
+    the discrete ranges may be empty (the count rule drives is_partial). What's
+    asserted here is the field's presence and shape — the boundary values are
+    exercised by analyze_gaps unit tests."""
+    _stage_raw(tmp_path, "tiny_tsv", "005930", "20260520", finished=True)
+    parse_stock_date(code="005930", date="20260520", data_dir=tmp_path, lenient=True)
+    meta_path = tmp_path / "parquet" / "20260520" / "005930" / "hogaplay" / "meta.json"
+    meta = json.loads(meta_path.read_text(encoding="utf-8"))
+    assert isinstance(meta.get("gap_ranges"), list)
+    for g in meta["gap_ranges"]:
+        assert set(g.keys()) == {"start_ms", "end_ms"}
+        assert isinstance(g["start_ms"], int) and isinstance(g["end_ms"], int)
+
+
 # --- ADR-0020: archival hook ---
 
 
