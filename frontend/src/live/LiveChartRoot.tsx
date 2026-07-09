@@ -16,7 +16,8 @@ import {
   CHART_TIMESCALE_OPTIONS,
 } from '../util/chartScale';
 import { createVirtualAxis, type VirtualAxis } from '../util/virtualAxis';
-import RangeSeriesPane from '../chart/RangeSeriesPane';
+import RangeSeriesPane, { type SeriesLegendMeta } from '../chart/RangeSeriesPane';
+import { usePaneLegendRegistry } from './indicators/paneLegendRegistry';
 import { paneSpecsForTimeframe } from './paneSpecsForTimeframe';
 import { resolvePaneTogglesForTimeframe } from './indicators/indicatorPaneProfiles';
 import DayBoundaryOverlay from '../chart/DayBoundaryOverlay';
@@ -415,6 +416,20 @@ export function LiveChartRoot({
   const handleSeriesGone = useCallback(
     (name: string) => unregisterPaneSeries(name as PaneId),
     [unregisterPaneSeries],
+  );
+  // Pane Legend registry: RangeSeriesPane fires these after series creation with
+  // the legend-bearing series + their meta. Kept as stable callbacks (module
+  // registry setters are referentially stable) so RangeSeriesPane's memo holds.
+  const registerPaneLegend = usePaneLegendRegistry((s) => s.register);
+  const unregisterPaneLegend = usePaneLegendRegistry((s) => s.unregister);
+  const handleLegendReady = useCallback(
+    (name: string, entries: { series: ISeriesApi<any>; meta: SeriesLegendMeta }[]) =>
+      registerPaneLegend(name as PaneId, entries),
+    [registerPaneLegend],
+  );
+  const handleLegendGone = useCallback(
+    (name: string) => unregisterPaneLegend(name as PaneId),
+    [unregisterPaneLegend],
   );
 
   // axisRef / timeframeRef bridge the latest axis + timeframe to the
@@ -1710,6 +1725,8 @@ export function LiveChartRoot({
               candleAlwaysOnTop={candleAlwaysOnTop}
               onPrimarySeriesReady={handleSeriesReady}
               onPrimarySeriesGone={handleSeriesGone}
+              onLegendReady={handleLegendReady}
+              onLegendGone={handleLegendGone}
             />
           ))}
           {!candleAlwaysOnTop && (
@@ -1798,7 +1815,6 @@ export function LiveChartRoot({
           <PaneLegendOverlay
             chart={chart}
             timeframe={timeframe}
-            paneSeries={paneSeries}
             paneToggles={activePaneToggles}
             dataEpoch={cb}
           />

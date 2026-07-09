@@ -104,11 +104,17 @@ export const PROGRAM_TRADE_SPEC = {
   name: 'program-trade' as const,
   live: true,
   stretch: 0.35,
+  legendToggleKey: 'programTradeEnabled',
   series: [
     {
       type: LineSeries,
       options: lineOptions,
       data: (bundle: RangeBundle, axis: VirtualAxis) => projectProgramTradeNetAmount(bundle, axis),
+      legend: {
+        label: '프로그램 순매수',
+        color: () => resolveTokensThemed(TOKEN_SPEC).line,
+        format: formatKoreanWonEok, // 억 단위 (라인 축과 동일)
+      },
     },
   ],
 } satisfies PaneSpec;

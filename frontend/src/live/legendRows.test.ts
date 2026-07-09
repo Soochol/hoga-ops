@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { buildLegendRows, readSeriesValue } from './legendRows';
+import { buildLegendRows, readSeriesValue, type PaneCellInput } from './legendRows';
 import type { LiveMAConfig } from '../state/livePage';
 
 const ma = (over: Partial<LiveMAConfig> & { id: string }): LiveMAConfig => ({
@@ -11,119 +11,121 @@ const ma = (over: Partial<LiveMAConfig> & { id: string }): LiveMAConfig => ({
   ...over,
 });
 
-describe('buildLegendRows', () => {
+const base = {
+  movingAverages: [] as LiveMAConfig[],
+  movingAverageEnabled: true,
+  movingAverageHidden: false,
+  maValues: new Map<string, number>(),
+  paneCells: [] as PaneCellInput[],
+};
+
+describe('buildLegendRows — candle MA row', () => {
   it('builds candle MA rows from enabled slots; value=null when missing', () => {
     const rows = buildLegendRows({
-      timeframe: 'D',
+      ...base,
       movingAverages: [ma({ id: 'ma-1', period: 5 }), ma({ id: 'ma-2', period: 20 })],
-      movingAverageEnabled: true,
-      movingAverageHidden: false,
       maValues: new Map([['ma-1', 311400]]), // ma-2 absent → null
-      volumeEnabled: true,
-      volumeValue: 12345,
-      foreignNetEnabled: true,
-      foreignValue: 100,
-      institutionNetEnabled: true,
-      institutionValue: -50,
     });
     const candle = rows.find((r) => r.paneId === 'candle');
-    expect(candle && candle.paneId === 'candle' && candle.mas[0].value).toBe(311400);
-    expect(candle && candle.paneId === 'candle' && candle.mas[1].value).toBeNull();
-    expect(candle && candle.paneId === 'candle' && candle.hidden).toBe(false);
+    expect(candle?.kind === 'ma' && candle.mas[0].value).toBe(311400);
+    expect(candle?.kind === 'ma' && candle.mas[1].value).toBeNull();
+    expect(candle?.kind === 'ma' && candle.hidden).toBe(false);
   });
 
   it('omits disabled MA slots from the candle row', () => {
     const rows = buildLegendRows({
-      timeframe: 'D',
+      ...base,
       movingAverages: [ma({ id: 'ma-1' }), ma({ id: 'ma-2', enabled: false })],
-      movingAverageEnabled: true,
-      movingAverageHidden: false,
       maValues: new Map([['ma-1', 1], ['ma-2', 2]]),
-      volumeEnabled: false,
-      volumeValue: null,
-      foreignNetEnabled: false,
-      foreignValue: null,
-      institutionNetEnabled: false,
-      institutionValue: null,
     });
     const candle = rows.find((r) => r.paneId === 'candle');
-    expect(candle && candle.paneId === 'candle' && candle.mas).toHaveLength(1);
-    expect(candle && candle.paneId === 'candle' && candle.mas[0].id).toBe('ma-1');
+    expect(candle?.kind === 'ma' && candle.mas).toHaveLength(1);
+    expect(candle?.kind === 'ma' && candle.mas[0].id).toBe('ma-1');
   });
 
   it('omits the candle row entirely when the MA master is off', () => {
     const rows = buildLegendRows({
-      timeframe: 'D',
+      ...base,
       movingAverages: [ma({ id: 'ma-1' })],
       movingAverageEnabled: false, // master off → MovingAverageOverlay clears data
-      movingAverageHidden: false,
       maValues: new Map([['ma-1', 999]]),
-      volumeEnabled: false,
-      volumeValue: null,
-      foreignNetEnabled: false,
-      foreignValue: null,
-      institutionNetEnabled: false,
-      institutionValue: null,
     });
     expect(rows.find((r) => r.paneId === 'candle')).toBeUndefined();
   });
+});
 
-  it('emits volume on every timeframe but investor rows only on D', () => {
-    const onW = buildLegendRows({
-      timeframe: 'W',
-      movingAverages: [],
-      movingAverageEnabled: true,
-      movingAverageHidden: false,
-      maValues: new Map(),
-      volumeEnabled: true,
-      volumeValue: 7,
-      foreignNetEnabled: true,
-      foreignValue: 100,
-      institutionNetEnabled: true,
-      institutionValue: -50,
+describe('buildLegendRows — generic pane cell rows', () => {
+  it('builds a multi-cell row and formats values (default 천단위 구분)', () => {
+    const rows = buildLegendRows({
+      ...base,
+      paneCells: [
+        {
+          paneId: 'quote-totals',
+          title: '총잔량',
+          toggleKey: 'quoteTotalsEnabled',
+          cells: [
+            { key: 'a', label: '매수', color: '#F04452', value: 311400 },
+            { key: 'b', label: '매도', color: '#3485FA', value: 6789 },
+          ],
+        },
+      ],
     });
-    expect(onW.some((r) => r.paneId === 'volume')).toBe(true);
-    expect(onW.some((r) => r.paneId.startsWith('investor'))).toBe(false);
+    const row = rows.find((r) => r.paneId === 'quote-totals');
+    expect(row?.kind).toBe('cells');
+    expect(row?.kind === 'cells' && row.title).toBe('총잔량');
+    expect(row?.kind === 'cells' && row.toggleKey).toBe('quoteTotalsEnabled');
+    expect(row?.kind === 'cells' && row.cells.map((c) => c.formatted)).toEqual([
+      '311,400',
+      '6,789',
+    ]);
+    expect(row?.kind === 'cells' && row.cells.map((c) => c.label)).toEqual(['매수', '매도']);
+    expect(row?.kind === 'cells' && row.cells[0].color).toBe('#F04452');
   });
 
-  it('investor rows carry sign-correct values and 량 labels on D', () => {
+  it('drops null-valued cells (toggle off / cold load) but keeps the rest', () => {
     const rows = buildLegendRows({
-      timeframe: 'D',
-      movingAverages: [],
-      movingAverageEnabled: true,
-      movingAverageHidden: false,
-      maValues: new Map(),
-      volumeEnabled: false,
-      volumeValue: null,
-      foreignNetEnabled: true,
-      foreignValue: 1061741,
-      institutionNetEnabled: true,
-      institutionValue: -1061741,
+      ...base,
+      paneCells: [
+        {
+          paneId: 'fill-strength',
+          title: '체결강도',
+          cells: [
+            { key: 'buy', label: '매수', value: 10 },
+            { key: 'sell', label: '매도', value: 20 },
+            { key: 'cum', label: '누적', value: null }, // cumulative off → omitted
+          ],
+        },
+      ],
     });
-    const f = rows.find((r) => r.paneId === 'investor-foreign');
-    const i = rows.find((r) => r.paneId === 'investor-institution');
-    expect(f?.value).toBe(1061741);
-    expect(f?.label).toBe('외국인 순매수량');
-    expect(i?.value).toBe(-1061741);
-    expect(i?.label).toBe('기관 순매수량');
+    const row = rows.find((r) => r.paneId === 'fill-strength');
+    expect(row?.kind === 'cells' && row.cells.map((c) => c.label)).toEqual(['매수', '매도']);
   });
 
-  it('drops the foreign row but keeps institution when only institution is on', () => {
+  it('emits no row when every cell is null (pane mounted but empty)', () => {
     const rows = buildLegendRows({
-      timeframe: 'D',
-      movingAverages: [],
-      movingAverageEnabled: true,
-      movingAverageHidden: false,
-      maValues: new Map(),
-      volumeEnabled: false,
-      volumeValue: null,
-      foreignNetEnabled: false,
-      foreignValue: null,
-      institutionNetEnabled: true,
-      institutionValue: 42,
+      ...base,
+      paneCells: [
+        {
+          paneId: 'volume',
+          cells: [{ key: 'v', label: '거래량', value: null }],
+        },
+      ],
     });
-    expect(rows.some((r) => r.paneId === 'investor-foreign')).toBe(false);
-    expect(rows.some((r) => r.paneId === 'investor-institution')).toBe(true);
+    expect(rows.some((r) => r.paneId === 'volume')).toBe(false);
+  });
+
+  it('applies a per-cell formatter when provided', () => {
+    const rows = buildLegendRows({
+      ...base,
+      paneCells: [
+        {
+          paneId: 'program-trade',
+          cells: [{ key: 'p', label: '프로그램 순매수', value: 5, format: (v) => `${v}억` }],
+        },
+      ],
+    });
+    const row = rows.find((r) => r.paneId === 'program-trade');
+    expect(row?.kind === 'cells' && row.cells[0].formatted).toBe('5억');
   });
 });
 

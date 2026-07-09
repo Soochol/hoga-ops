@@ -1,15 +1,18 @@
 // Pane Legend — a TradingView-style legend pinned to each chart pane's
 // top-left: indicator label + color swatch + the value under the cursor
 // (latest point when the cursor is away), with ✕ (turn the indicator off) and
-// an eye (hide the MA lines) control.
+// (MA only) an eye (hide the MA lines) control.
 //
 // Value source is the SAME series the chart draws — read back through
 // `param.seriesData` (cursor) / `series.data()` (latest), never recomputed.
-// MA slot series come from the global `maSeriesRegistry`; each non-candle
-// pane's primary series comes from the `paneSeries` registry threaded down by
-// LiveChartRoot. Pane Y is the runtime `paneSpecsForTimeframe` order summed
-// over `chart.panes()[i].getHeight()` — NOT `chartCoordinates.paneTopY`, whose
-// static PANE_SPECS map returns 0 for the runtime-appended investor panes.
+// MA slot series come from `maSeriesRegistry`; every other pane's legend series
+// come from `paneLegendRegistry` (populated by RangeSeriesPane for any pane
+// whose spec declares `legend` metadata). Registry presence == pane mounted, so
+// the generic rows re-derive NO toggle state. Pane-level ✕ target + title are
+// read from the pane spec (`paneSpecsForTimeframe`), which is also the runtime
+// pane order used for Y placement — summed over `chart.panes()[i].getHeight()`,
+// NOT `chartCoordinates.paneTopY` (static PANE_SPECS returns 0 for the
+// runtime-appended investor panes).
 //
 // See docs/superpowers/specs/2026-05-31-chart-indicator-legend-design.md.
 
@@ -17,23 +20,25 @@ import { memo, useEffect, useReducer, useRef, type CSSProperties } from 'react';
 import type { IChartApi, MouseEventParams } from 'lightweight-charts';
 import { useLivePageStore, type LiveTimeframe } from '../state/livePage';
 import { useMaSeriesRegistry } from './indicators/maSeriesRegistry';
+import { usePaneLegendRegistry } from './indicators/paneLegendRegistry';
 import { paneSpecsForTimeframe, type PaneToggles } from './paneSpecsForTimeframe';
-import { buildLegendRows, readSeriesValue, type LegendRow } from './legendRows';
+import {
+  buildLegendRows,
+  readSeriesValue,
+  type LegendRow,
+  type PaneCellInput,
+} from './legendRows';
 import { formatKoreanInt } from '../util/koreanNumber';
-import type { PaneId } from '../chart/drawing/types';
-import type { PaneSeriesMap } from '../chart/drawing/chartCoordinates';
 
 type Props = {
   chart: IChartApi;
   timeframe: LiveTimeframe;
-  paneSeries: PaneSeriesMap;
   paneToggles: PaneToggles;
   /** P1: 캔들-경로 데이터 신선화 토큰. /live가 SSE 호가 틱마다 부모(LiveChartRoot)를
-   *  재렌더하지만 이 레전드의 값(MA/거래량/투자자 = 캔들 경로)은 그때 안 바뀐다.
+   *  재렌더하지만 이 레전드의 캔들-경로 값(MA/거래량/투자자)은 그때 안 바뀐다.
    *  memo + 이 prop으로 호가 틱 재렌더는 차단하고, 캔들 갱신(chartBundle 식별자 변경)
-   *  때만 latest 값을 신선화한다. /live는 chartBundle ref를 그대로 넘긴다(호가 틱엔
-   *  안정, 캔들 갱신 땐 새 ref). 본문에서 읽지 않고 memo 얕은 비교 신호로만 쓴다
-   *  (크로스헤어/스토어 재렌더는 내부 구독이라 memo와 무관). */
+   *  때만 latest 값을 신선화한다. 호가 pane 값은 크로스헤어/레지스트리 구독으로 갱신되므로
+   *  memo와 무관하게 동작한다. 본문에서 읽지 않고 memo 얕은 비교 신호로만 쓴다. */
   dataEpoch?: unknown;
 };
 
@@ -57,6 +62,11 @@ const boxStyle: CSSProperties = {
   fontSize: 'var(--text-xs)',
   lineHeight: 1.4,
   whiteSpace: 'nowrap',
+  // Multi-cell panes (체결강도 3셀) can outgrow a narrow chart — clip rather
+  // than push the page. The crosshair is pointerEvents:none under the legend,
+  // so a clipped legend loses no function.
+  maxWidth: '100%',
+  overflow: 'hidden',
 };
 
 const iconBtnStyle: CSSProperties = {
@@ -76,20 +86,19 @@ const iconBtnStyle: CSSProperties = {
   transition: 'color 80ms ease-in-out',
 };
 
-function ValueCell({ value }: { value: number | null }) {
-  return (
-    <span
-      style={{
-        minWidth: VALUE_MIN_WIDTH,
-        textAlign: 'right',
-        color: 'var(--fg)',
-        fontVariantNumeric: 'tabular-nums',
-      }}
-    >
-      {value == null ? '—' : formatKoreanInt(value)}
-    </span>
-  );
-}
+const valueCellStyle: CSSProperties = {
+  minWidth: VALUE_MIN_WIDTH,
+  textAlign: 'right',
+  color: 'var(--fg)',
+  fontVariantNumeric: 'tabular-nums',
+};
+
+const swatchStyle: CSSProperties = {
+  width: 8,
+  height: 8,
+  borderRadius: 'var(--radius-sm)',
+  display: 'inline-block',
+};
 
 function HoverIcon({
   label,
@@ -151,7 +160,7 @@ function EyeGlyph({ hidden }: { hidden: boolean }) {
   );
 }
 
-function MaLegendRow({ row }: { row: Extract<LegendRow, { paneId: 'candle' }> }) {
+function MaLegendRow({ row }: { row: Extract<LegendRow, { kind: 'ma' }> }) {
   const setHidden = useLivePageStore((s) => s.setMovingAverageHidden);
   const setEnabled = useLivePageStore((s) => s.setMovingAverageEnabled);
   return (
@@ -162,18 +171,9 @@ function MaLegendRow({ row }: { row: Extract<LegendRow, { paneId: 'candle' }> })
           key={m.id}
           style={{ display: 'inline-flex', alignItems: 'center', gap: 'var(--space-2xs)' }}
         >
-          <span
-            aria-hidden="true"
-            style={{
-              width: 8,
-              height: 8,
-              borderRadius: 'var(--radius-sm)',
-              background: m.color,
-              display: 'inline-block',
-            }}
-          />
+          <span aria-hidden="true" style={{ ...swatchStyle, background: m.color }} />
           <span style={{ color: 'var(--fg-dim)' }}>{m.period}</span>
-          <ValueCell value={m.value} />
+          <span style={valueCellStyle}>{m.value == null ? '—' : formatKoreanInt(m.value)}</span>
         </span>
       ))}
       <HoverIcon
@@ -190,43 +190,42 @@ function MaLegendRow({ row }: { row: Extract<LegendRow, { paneId: 'candle' }> })
   );
 }
 
-function SingleLegendRow({
+function CellsLegendRow({
   row,
   timeframe,
 }: {
-  row: Exclude<LegendRow, { paneId: 'candle' }>;
+  row: Extract<LegendRow, { kind: 'cells' }>;
   timeframe: LiveTimeframe;
 }) {
   const setPanePrefForTimeframe = useLivePageStore((s) => s.setPanePrefForTimeframe);
-  const turnOff = () => {
-    switch (row.paneId) {
-      case 'volume':
-        setPanePrefForTimeframe(timeframe, 'volumeEnabled', false);
-        break;
-      case 'investor-foreign':
-        setPanePrefForTimeframe(timeframe, 'foreignNetEnabled', false);
-        break;
-      case 'investor-institution':
-        setPanePrefForTimeframe(timeframe, 'institutionNetEnabled', false);
-        break;
-      default: {
-        const _exhaustive: never = row;
-        void _exhaustive;
-      }
-    }
-  };
+  const toggleKey = row.toggleKey;
+  const turnOff = toggleKey
+    ? () => setPanePrefForTimeframe(timeframe, toggleKey, false)
+    : undefined;
+  const offLabel = `${row.title ?? row.cells[0]?.label ?? ''} 지표 끄기`;
   return (
     <>
-      <span style={{ color: 'var(--fg-dim)' }}>{row.label}</span>
-      <ValueCell value={row.value} />
-      <HoverIcon label={`${row.label} 지표 끄기`} restColor="var(--fg-dimmer)" onClick={turnOff}>
-        <CloseGlyph />
-      </HoverIcon>
+      {row.title && <span style={{ color: 'var(--fg-dim)' }}>{row.title}</span>}
+      {row.cells.map((c) => (
+        <span
+          key={c.key}
+          style={{ display: 'inline-flex', alignItems: 'center', gap: 'var(--space-2xs)' }}
+        >
+          {c.color && <span aria-hidden="true" style={{ ...swatchStyle, background: c.color }} />}
+          <span style={{ color: 'var(--fg-dim)' }}>{c.label}</span>
+          <span style={valueCellStyle}>{c.formatted}</span>
+        </span>
+      ))}
+      {turnOff && (
+        <HoverIcon label={offLabel} restColor="var(--fg-dimmer)" onClick={turnOff}>
+          <CloseGlyph />
+        </HoverIcon>
+      )}
     </>
   );
 }
 
-function PaneLegendOverlay({ chart, timeframe, paneSeries, paneToggles }: Props) {
+function PaneLegendOverlay({ chart, timeframe, paneToggles }: Props) {
   const containerRef = useRef<HTMLDivElement>(null);
   // Last crosshair param (null = cursor away → latest-fallback). Mutated by the
   // subscription, read during render; a tick (below) re-renders after each
@@ -238,6 +237,9 @@ function PaneLegendOverlay({ chart, timeframe, paneSeries, paneToggles }: Props)
   const movingAverageEnabled = useLivePageStore((s) => s.movingAverageEnabled);
   const movingAverageHidden = useLivePageStore((s) => s.movingAverageHidden);
   const maSeries = useMaSeriesRegistry((s) => s.series);
+  // Registry subscription: re-renders on pane (un)mount so a toggled-on pane's
+  // legend appears without waiting for a crosshair move.
+  const legendPanes = usePaneLegendRegistry((s) => s.panes);
 
   // Crosshair → values; ResizeObserver + range change → pane geometry. All
   // coalesced through one rAF tick (DrawingOverlay's redraw-loop pattern).
@@ -270,6 +272,15 @@ function PaneLegendOverlay({ chart, timeframe, paneSeries, paneToggles }: Props)
     };
   }, [chart]);
 
+  // ── runtime pane order (spec) — drives both cell metadata and Y placement ──
+  const specs = paneSpecsForTimeframe(timeframe, paneToggles);
+  const indexByPaneId = new Map<string, number>();
+  const specByPaneId = new Map<string, (typeof specs)[number]>();
+  specs.forEach((s, i) => {
+    indexByPaneId.set(s.name, i);
+    specByPaneId.set(s.name, s);
+  });
+
   // ── value extraction (read-only over the chart API) ────────────────────
   const seriesData = paramRef.current?.seriesData ?? null;
   const maValues = new Map<string, number>();
@@ -277,20 +288,29 @@ function PaneLegendOverlay({ chart, timeframe, paneSeries, paneToggles }: Props)
     const v = readSeriesValue(series, seriesData);
     if (v !== null) maValues.set(id, v);
   }
-  const valueFor = (paneId: PaneId) => readSeriesValue(paneSeries.get(paneId), seriesData);
+  const paneCells: PaneCellInput[] = [];
+  for (const [paneId, entries] of legendPanes) {
+    const spec = specByPaneId.get(paneId);
+    paneCells.push({
+      paneId,
+      title: spec?.legendTitle,
+      toggleKey: spec?.legendToggleKey,
+      cells: entries.map((entry, i) => ({
+        key: `${paneId}:${i}`,
+        label: entry.meta.label,
+        color: entry.meta.color?.(),
+        value: readSeriesValue(entry.series, seriesData),
+        format: entry.meta.format,
+      })),
+    });
+  }
 
   const rows = buildLegendRows({
-    timeframe,
     movingAverages,
     movingAverageEnabled,
     movingAverageHidden,
     maValues,
-    volumeEnabled: paneToggles.volumeEnabled !== false,
-    volumeValue: valueFor('volume'),
-    foreignNetEnabled: paneToggles.foreignNet,
-    foreignValue: valueFor('investor-foreign'),
-    institutionNetEnabled: paneToggles.institutionNet,
-    institutionValue: valueFor('investor-institution'),
+    paneCells,
   });
 
   // ── pane geometry (runtime order, not static paneTopY) ─────────────────
@@ -308,9 +328,6 @@ function PaneLegendOverlay({ chart, timeframe, paneSeries, paneToggles }: Props)
       acc += p.getHeight();
     }
   }
-  const specs = paneSpecsForTimeframe(timeframe, paneToggles);
-  const indexByPaneId = new Map<string, number>();
-  specs.forEach((s, i) => indexByPaneId.set(s.name, i));
 
   return (
     <div
@@ -334,10 +351,10 @@ function PaneLegendOverlay({ chart, timeframe, paneSeries, paneToggles }: Props)
               left: LEGEND_INSET,
             }}
           >
-            {row.paneId === 'candle' ? (
+            {row.kind === 'ma' ? (
               <MaLegendRow row={row} />
             ) : (
-              <SingleLegendRow row={row} timeframe={timeframe} />
+              <CellsLegendRow row={row} timeframe={timeframe} />
             )}
           </div>
         );
@@ -347,7 +364,6 @@ function PaneLegendOverlay({ chart, timeframe, paneSeries, paneToggles }: Props)
 }
 
 // P1: memo로 부모(LiveChartRoot)의 SSE 호가 틱 재렌더를 차단 — props(chart/timeframe/
-// paneSeries/dataEpoch)가 동일하면 재렌더 안 함. 호가 틱엔 이 넷이 모두 안 바뀌므로
-// 틱당 series.data() O(N) 리드백이 사라진다. 캔들 갱신 땐 dataEpoch가 바뀌어 신선화되고,
-// 크로스헤어/스토어 변경은 내부 구독/셀렉터가 재렌더하므로 memo와 무관하게 동작한다.
+// paneToggles/dataEpoch)가 동일하면 재렌더 안 함. 크로스헤어/스토어/레지스트리 변경은
+// 내부 구독/셀렉터가 재렌더하므로 memo와 무관하게 동작한다.
 export default memo(PaneLegendOverlay);

@@ -4,6 +4,12 @@ import userEvent from '@testing-library/user-event';
 import PaneLegendOverlay from './PaneLegendOverlay';
 import { useLivePageStore, type LiveTimeframe } from '../state/livePage';
 import { useMaSeriesRegistry } from './indicators/maSeriesRegistry';
+import {
+  usePaneLegendRegistry,
+  type LegendSeriesEntry,
+} from './indicators/paneLegendRegistry';
+import type { PaneId } from '../chart/drawing/types';
+import type { PaneToggles } from './paneSpecsForTimeframe';
 
 // Minimal chart stub: the overlay only reads pane heights for positioning and
 // (un)subscribes to crosshair / range — no live chart needed. Latest-fallback
@@ -24,19 +30,25 @@ function makeChart(paneHeights: number[]) {
 const seriesWithValue = (value: number) =>
   ({ data: () => [{ time: 1, value: value - 1 }, { time: 2, value }] }) as never;
 
+/** Register a pane's legend entries (mirrors what RangeSeriesPane fires). */
+function registerLegend(
+  paneId: PaneId,
+  cells: { label: string; value: number | null; color?: () => string; format?: (v: number) => string }[],
+) {
+  const entries: LegendSeriesEntry[] = cells.map((c) => ({
+    series: c.value === null ? ({ data: () => [] } as never) : seriesWithValue(c.value),
+    meta: { label: c.label, color: c.color, format: c.format },
+  }));
+  usePaneLegendRegistry.getState().register(paneId, entries);
+}
+
 function renderOverlay({
   timeframe = 'D' as LiveTimeframe,
-  paneToggles = { foreignNet: false, institutionNet: false, volumeEnabled: false },
-  paneSeries = new Map() as never,
+  paneToggles = { foreignNet: false, institutionNet: false, volumeEnabled: false } as PaneToggles,
   chart = makeChart([120]),
 } = {}) {
   return render(
-    <PaneLegendOverlay
-      chart={chart}
-      timeframe={timeframe}
-      paneSeries={paneSeries}
-      paneToggles={paneToggles}
-    />,
+    <PaneLegendOverlay chart={chart} timeframe={timeframe} paneToggles={paneToggles} />,
   );
 }
 
@@ -53,9 +65,10 @@ function resetStore() {
     institutionNetEnabled: false,
   });
   useMaSeriesRegistry.setState({ series: new Map() });
+  usePaneLegendRegistry.setState({ panes: new Map() });
 }
 
-describe('PaneLegendOverlay', () => {
+describe('PaneLegendOverlay — candle MA row', () => {
   beforeEach(resetStore);
   afterEach(cleanup);
 
@@ -75,41 +88,21 @@ describe('PaneLegendOverlay', () => {
       },
     } as never;
     useMaSeriesRegistry.getState().register('ma-1', spy);
-    // 안정 참조 props (LiveChartRoot가 SSE 틱 간 유지하는 것들)
     const chart = makeChart([120]);
-    const paneSeries = new Map() as never;
     const paneToggles = { foreignNet: false, institutionNet: false, volumeEnabled: false };
     const { rerender } = render(
-      <PaneLegendOverlay
-        chart={chart}
-        timeframe="D"
-        paneSeries={paneSeries}
-        paneToggles={paneToggles}
-        dataEpoch={1}
-      />,
+      <PaneLegendOverlay chart={chart} timeframe="D" paneToggles={paneToggles} dataEpoch={1} />,
     );
     const afterFirst = dataCalls;
     expect(afterFirst).toBeGreaterThan(0);
     // SSE 호가 틱 = 부모 재렌더, props 동일 → memo가 차단 → data() 추가 호출 없음
     rerender(
-      <PaneLegendOverlay
-        chart={chart}
-        timeframe="D"
-        paneSeries={paneSeries}
-        paneToggles={paneToggles}
-        dataEpoch={1}
-      />,
+      <PaneLegendOverlay chart={chart} timeframe="D" paneToggles={paneToggles} dataEpoch={1} />,
     );
     expect(dataCalls).toBe(afterFirst);
     // 캔들 갱신 = dataEpoch 증가 → 재렌더 → latest 값 신선화(data() 재호출)
     rerender(
-      <PaneLegendOverlay
-        chart={chart}
-        timeframe="D"
-        paneSeries={paneSeries}
-        paneToggles={paneToggles}
-        dataEpoch={2}
-      />,
+      <PaneLegendOverlay chart={chart} timeframe="D" paneToggles={paneToggles} dataEpoch={2} />,
     );
     expect(dataCalls).toBeGreaterThan(afterFirst);
   });
@@ -127,15 +120,62 @@ describe('PaneLegendOverlay', () => {
     fireEvent.click(screen.getByRole('button', { name: '이동평균선 선 숨김/표시' }));
     expect(useLivePageStore.getState().movingAverageHidden).toBe(true);
   });
+});
 
-  it('renders the volume row from its pane primary series and ✕ turns volume off', () => {
+describe('PaneLegendOverlay — generic pane rows', () => {
+  beforeEach(resetStore);
+  afterEach(cleanup);
+
+  it('renders a multi-cell hoga pane (총잔량 매수/매도) and ✕ turns it off', () => {
+    useLivePageStore.setState({ movingAverageEnabled: false });
+    registerLegend('quote-totals', [
+      { label: '매수', value: 311400, color: () => '#F04452' },
+      { label: '매도', value: 6789, color: () => '#3485FA' },
+    ]);
+    // 1m mounts candle(0) volume(1) quote-totals(2) ... — place quote-totals at idx 2.
+    render(
+      <PaneLegendOverlay
+        chart={makeChart([120, 60, 60])}
+        timeframe="1m"
+        paneToggles={{ foreignNet: false, institutionNet: false }}
+      />,
+    );
+    expect(screen.getByText('총잔량')).toBeInTheDocument();
+    expect(screen.getByText('매수')).toBeInTheDocument();
+    expect(screen.getByText('311,400')).toBeInTheDocument();
+    expect(screen.getByText('매도')).toBeInTheDocument();
+    expect(screen.getByText('6,789')).toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: '총잔량 지표 끄기' }));
+    expect(useLivePageStore.getState().panePrefsByTimeframe.minute?.quoteTotalsEnabled).toBe(false);
+  });
+
+  it('omits a null-valued cell (체결강도 누적 off) but keeps the rest', () => {
+    useLivePageStore.setState({ movingAverageEnabled: false });
+    registerLegend('fill-strength', [
+      { label: '매수', value: 10 },
+      { label: '매도', value: 20 },
+      { label: '누적', value: null }, // cumulative toggle off → empty series → omitted
+    ]);
+    render(
+      <PaneLegendOverlay
+        chart={makeChart([120, 60, 60, 60, 60])}
+        timeframe="1m"
+        paneToggles={{ foreignNet: false, institutionNet: false }}
+      />,
+    );
+    expect(screen.getByText('체결강도')).toBeInTheDocument();
+    expect(screen.getByText('매수')).toBeInTheDocument();
+    expect(screen.getByText('매도')).toBeInTheDocument();
+    expect(screen.queryByText('누적')).toBeNull();
+  });
+
+  it('renders the volume row from the registry and ✕ writes the active timeframe profile', () => {
     useLivePageStore.setState({ volumeEnabled: true, movingAverageEnabled: false });
-    const paneSeries = new Map([['volume', seriesWithValue(5000)]]) as never;
+    registerLegend('volume', [{ label: '거래량', value: 5000 }]);
     render(
       <PaneLegendOverlay
         chart={makeChart([120, 60])}
         timeframe="D"
-        paneSeries={paneSeries}
         paneToggles={{ foreignNet: false, institutionNet: false, volumeEnabled: true }}
       />,
     );
@@ -145,50 +185,33 @@ describe('PaneLegendOverlay', () => {
     expect(useLivePageStore.getState().volumeEnabled).toBe(true);
   });
 
-  it('renders no investor row on a weekly timeframe even with toggles on', () => {
+  it('renders no investor row on a weekly timeframe even with registry entries', () => {
     useLivePageStore.setState({
       movingAverageEnabled: false,
       foreignNetEnabled: true,
       institutionNetEnabled: true,
     });
-    const paneSeries = new Map([
-      ['investor-foreign', seriesWithValue(100)],
-      ['investor-institution', seriesWithValue(-100)],
-    ]) as never;
+    registerLegend('investor-foreign', [{ label: '외국인 순매수량', value: 100 }]);
+    registerLegend('investor-institution', [{ label: '기관 순매수량', value: -100 }]);
     render(
       <PaneLegendOverlay
         chart={makeChart([120, 60])}
         timeframe="W"
-        paneSeries={paneSeries}
         paneToggles={{ foreignNet: true, institutionNet: true, volumeEnabled: false }}
       />,
     );
+    // Investor panes are D-only → absent from the W spec order → no placement.
     expect(screen.queryByText('외국인 순매수량')).toBeNull();
     expect(screen.queryByText('기관 순매수량')).toBeNull();
   });
 
-  it('volume close writes the active timeframe profile', async () => {
-    useLivePageStore.setState({
-      volumeEnabled: true,
-      panePrefsByTimeframe: {},
-    });
-    renderOverlay({
-      timeframe: 'D',
-      chart: makeChart([120, 60]),
-      paneToggles: { foreignNet: false, institutionNet: false, volumeEnabled: true },
-    });
-
-    await userEvent.click(screen.getByLabelText('거래량 지표 끄기'));
-
-    expect(useLivePageStore.getState().panePrefsByTimeframe.D?.volumeEnabled).toBe(false);
-    expect(useLivePageStore.getState().volumeEnabled).toBe(true);
-  });
-
   it('foreign close writes D profile investor toggle', async () => {
     useLivePageStore.setState({
+      movingAverageEnabled: false,
       foreignNetEnabled: true,
       panePrefsByTimeframe: { D: { foreignNetEnabled: true } },
     });
+    registerLegend('investor-foreign', [{ label: '외국인 순매수량', value: 100 }]);
     renderOverlay({
       timeframe: 'D',
       chart: makeChart([120, 60]),
