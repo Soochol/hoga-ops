@@ -2293,6 +2293,10 @@ def test_build_depth_heatmap_slice_converts_rows_to_points(tmp_path):
             source="hogaplay",
             session_open_ms=90_000_000,
             session_close_ms=153_000_000,
+            # 순수 변환/쿼리 검증 — 캐시를 명시 우회해 MagicMock engine의
+            # indicators_cache 가 조기 반환하지 않도록 한다(형제 빌더 테스트 관용구).
+            cache=None,
+            today_kst=None,
         )
 
     query.assert_called_once_with(

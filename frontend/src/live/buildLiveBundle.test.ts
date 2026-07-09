@@ -476,6 +476,26 @@ describe('createIncrementalHogaSeriesBuilder', () => {
     );
   });
 
+  it('preserves depth point identity for unchanged buckets across ticks', () => {
+    // 하류 depthPointToWire/depthHeatmapFromWire WeakMap 캐시의 전제 불변식:
+    // "내용 변경 = 새 point 객체". 갱신 안 된 버킷은 동일 참조를 유지해야 한다.
+    const buildIncremental = createIncrementalHogaSeriesBuilder();
+    const bucketA = TODAY_OPEN;
+    const bucketB = TODAY_OPEN + 70_000; // 다른 분봉 버킷
+    const ob = [
+      shapedOb(bucketA, 60, 40, false),
+      shapedOb(bucketB, 100, 80, false),
+      shapedOb(bucketB + 10_000, 120, 90, false), // bucketB 만 갱신
+    ];
+    const first = buildIncremental({ ...baseInput, sseOb: ob.slice(0, 2), sseTrade: [] });
+    const aBefore = first.depth_heatmap_today[0];
+    const bBefore = first.depth_heatmap_today[1];
+
+    const second = buildIncremental({ ...baseInput, sseOb: ob, sseTrade: [] });
+    expect(second.depth_heatmap_today[0]).toBe(aBefore); // 미변경 버킷 → 동일 참조
+    expect(second.depth_heatmap_today[1]).not.toBe(bBefore); // 갱신된 버킷 → 새 참조
+  });
+
   it('does NOT create a depth point for totals-only ticks (asks/bids absent)', () => {
     const buildIncremental = createIncrementalHogaSeriesBuilder();
     const ob = [

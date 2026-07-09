@@ -899,6 +899,8 @@ def build_depth_heatmap_slice(
     source: str = "hogaplay",
     session_open_ms: int | None = None,
     session_close_ms: int | None = None,
+    cache: PastIndicatorsCache | None = _RESOLVE,  # type: ignore[assignment]
+    today_kst: str | None = _RESOLVE,  # type: ignore[assignment]
 ) -> list[DepthHeatmapPoint]:
     """버킷별 대표 스냅샷의 10호가 잔량 분포를 DepthHeatmapPoint 리스트로.
 
@@ -906,15 +908,30 @@ def build_depth_heatmap_slice(
     ms_from_midnight_to_unix_ms(date, intra)로 unix 변환 — 호가비/총잔량 빌더와
     동일 규약. 잔량 0 단계도 그대로 실어 보낸다(프론트가 스킵).
 
+    형제 지표(호가비·체결강도·매도벽·POC)와 동일하게 완료된 과거일은
+    PastIndicatorsCache로 1회 계산 후 재사용한다(ADR-0043/0090 게이트를
+    ``_indicator_cacheable``로 자가-해석). ratio/fill 과 달리 1m 저장+재집계가
+    아니라 (code, date, source, bucket_ms) 결과를 그대로 캐시한다 — 대표 선택이
+    조건부 argmax라 1m 행에서 coarse 대표를 정확히 복원할 수 없기 때문
+    (past_indicators_cache._mem_depth 주석 참조). 오늘은 프로모션 진행 중이라
+    항상 재계산.
+
     ``session_open_ms``는 형제 빌더(및 Task-4 호출부) 시그니처 대칭용으로만
     유지 — 본문 미사용.
     """
+    cache = _resolve_cache(engine, cache)
+    today_kst = _resolve_today_kst(today_kst)
     try:
         path_obj = engine.parquet_dir(date, code, source) / "snapshots.parquet"
     except (FileNotFoundError, StockDateNotFound):
         return []
     if not path_obj.exists():
         return []
+    cacheable = _indicator_cacheable(cache, today_kst, date, bucket_ms)
+    if cacheable:
+        cached = cache.get_depth(code, date, source, bucket_ms)  # type: ignore[union-attr]
+        if cached is not CACHE_MISS:
+            return cached  # type: ignore[return-value]
     rows = snapshots_tbl.query_bucketed_depth_heatmap(
         engine.conn,
         path=path_obj,
@@ -933,6 +950,8 @@ def build_depth_heatmap_slice(
                 bids_max=[[p, q] for p, q in zip(r.bid_prices_max, r.bid_qtys_max)],
             )
         )
+    if cacheable:
+        cache.store_depth(code, date, source, bucket_ms, out)  # type: ignore[union-attr]
     return out
 
 

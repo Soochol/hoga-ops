@@ -34,7 +34,7 @@ from pathlib import Path
 from typing import TYPE_CHECKING, Literal, TypeVar
 
 from hoga.api._atomic_write import atomic_write_json
-from hoga.api.models import AskPeak, BidPeak, TradeVolumePoc
+from hoga.api.models import AskPeak, BidPeak, DepthHeatmapPoint, TradeVolumePoc
 from hoga.tables.snapshots import QuoteRatioRow
 from hoga.tables.trades import FillStrengthRow
 from hoga.util.cache_stats import CacheStats
@@ -53,6 +53,10 @@ SCHEMA_VERSION = 5
 
 Kind = Literal["ratio", "fill"]
 DEFAULT_MEM_MAX_ENTRIES = 512
+# depth_heatmap 항목은 하루치 40컬럼 × 수백 버킷 ≈ 1.5MB/entry (ratio의 ~20배).
+# 공용 512 상한을 그대로 쓰면 최악 수백 MB가 되므로 전용 소형 상한을 둔다 —
+# 축출돼도 디스크 read-through라 값은 보존되고 관측 동작은 불변이다.
+DEFAULT_DEPTH_MEM_MAX_ENTRIES = 64
 _CACHE_MISS = object()
 CACHE_MISS = _CACHE_MISS
 _ModelT = TypeVar("_ModelT", bound="BaseModel")
@@ -62,9 +66,16 @@ class PastIndicatorsCache:
     """Disk-backed cache of 1-minute quote_ratio / fill_strength rows, keyed by
     (code, date, source). Past dates only — today is recomputed by the caller."""
 
-    def __init__(self, data_dir: Path, *, mem_max_entries: int = DEFAULT_MEM_MAX_ENTRIES):
+    def __init__(
+        self,
+        data_dir: Path,
+        *,
+        mem_max_entries: int = DEFAULT_MEM_MAX_ENTRIES,
+        mem_max_depth_entries: int = DEFAULT_DEPTH_MEM_MAX_ENTRIES,
+    ):
         self._data_dir = data_dir
         self._mem_max_entries = max(0, int(mem_max_entries))
+        self._mem_max_depth_entries = max(0, int(mem_max_depth_entries))
         # In-memory hot cache (avoids re-reading disk within a process).
         # WS4: dict당 LRU 상한 — 축출돼도 디스크 read-through로 값은 보존되므로
         # 관측 가능 동작은 불변, 장수명 프로세스의 메모리만 유계가 된다.
@@ -77,11 +88,20 @@ class PastIndicatorsCache:
         self._mem_trade_volume_poc: OrderedDict[
             tuple[str, str, str, int, int, int], TradeVolumePoc | None
         ] = OrderedDict()
+        # depth_heatmap 은 (code, date, source, bucket_ms) 결과를 그대로 캐시한다.
+        # ratio/fill 처럼 1m 저장 후 재집계하지 않는 이유: depth 대표 선택이
+        # "연속거래 우선 + 완전-동시호가 버킷 폴백"의 조건부 argmax라, 1m 행에서
+        # coarse 대표를 정확히 복원하려면 선택 근거(is_pre)를 함께 저장해야 하기
+        # 때문. bucket_ms 별 결과 캐시가 단순·정확하다.
+        self._mem_depth: OrderedDict[
+            tuple[str, str, str, int], list[DepthHeatmapPoint]
+        ] = OrderedDict()
         # Per-kind stats. Peak lookups are accounted on has_*, not get_* — bundle.py
         # calls has_ (the real disk-touching lookup) then get_ (an already-promoted
         # mem re-read); counting both would double-count (advisor #2).
         self._stats: dict[str, CacheStats] = {
-            kind: CacheStats() for kind in ("ratio", "fill", "ask_peak", "bid_peak", "poc")
+            kind: CacheStats()
+            for kind in ("ratio", "fill", "ask_peak", "bid_peak", "poc", "depth")
         }
 
     def stats_snapshot(self) -> dict[str, dict[str, int | float | None]]:
@@ -91,6 +111,7 @@ class PastIndicatorsCache:
             "ask_peak": len(self._mem_ask_peak),
             "bid_peak": len(self._mem_bid_peak),
             "poc": len(self._mem_trade_volume_poc),
+            "depth": len(self._mem_depth),
         }
         return {kind: st.snapshot(size=sizes[kind]) for kind, st in self._stats.items()}
 
@@ -359,6 +380,82 @@ class PastIndicatorsCache:
             self._poc_path(code, date, source, range_count, price_min, price_max),
             poc,
         )
+
+    # ── depth_heatmap (호가 잔량 히트맵) ─────────────────────────────────────────
+
+    def _depth_path(self, code: str, date: str, source: str, bucket_ms: int) -> Path:
+        return self._model_path(code, date, source, f"depth.{bucket_ms}")
+
+    def _mem_put_depth(
+        self, key: tuple[str, str, str, int], value: list[DepthHeatmapPoint]
+    ) -> None:
+        stats = self._stats["depth"]
+        od = self._mem_depth
+        od[key] = value
+        od.move_to_end(key)
+        while len(od) > self._mem_max_depth_entries:
+            od.popitem(last=False)
+            stats.record_eviction()
+
+    def get_depth(
+        self, code: str, date: str, source: str, bucket_ms: int
+    ) -> list[DepthHeatmapPoint] | object:
+        """Cached depth-heatmap points for a completed past Stock-Date, or
+        ``_CACHE_MISS``. An empty list is a valid cached result (no-data day),
+        so the sentinel — not ``[]`` — signals a miss (mirrors get_trade_volume_poc)."""
+        key = (code, date, source, bucket_ms)
+        stats = self._stats["depth"]
+        hit = self._mem_depth.get(key)
+        if hit is not None:
+            self._mem_depth.move_to_end(key)
+            stats.record_hit()
+            return hit
+        path = self._depth_path(code, date, source, bucket_ms)
+        if not path.exists():
+            stats.record_miss()
+            return _CACHE_MISS
+        try:
+            body = json.loads(path.read_text(encoding="utf-8"))
+        except (OSError, json.JSONDecodeError):
+            _log.warning("past_indicators_cache.corrupt path=%s", path, exc_info=True)
+            stats.record_miss()
+            return _CACHE_MISS
+        if body.get("version") != SCHEMA_VERSION:
+            stats.record_miss()
+            return _CACHE_MISS
+        raw = body.get("points")
+        if not isinstance(raw, list):
+            stats.record_miss()
+            return _CACHE_MISS
+        try:
+            points = [DepthHeatmapPoint.model_validate(v) for v in raw]
+        except ValueError:
+            _log.warning("past_indicators_cache.invalid_model path=%s", path, exc_info=True)
+            stats.record_miss()
+            return _CACHE_MISS
+        stats.record_disk_hit()
+        self._mem_put_depth(key, points)
+        return points
+
+    def store_depth(
+        self, code: str, date: str, source: str, bucket_ms: int, points: list[DepthHeatmapPoint]
+    ) -> None:
+        stats = self._stats["depth"]
+        stats.record_store()
+        self._mem_put_depth((code, date, source, bucket_ms), points)
+        payload = {
+            "version": SCHEMA_VERSION,
+            "points": [p.model_dump(mode="json") for p in points],
+            "fetched_at_ms": int(time.time() * 1000),
+        }
+        try:
+            atomic_write_json(self._depth_path(code, date, source, bucket_ms), payload)
+        except OSError:
+            _log.warning(
+                "past_indicators_cache.write_failed path=%s",
+                self._depth_path(code, date, source, bucket_ms),
+                exc_info=True,
+            )
 
     # ── disk I/O ──────────────────────────────────────────────────────────────
 

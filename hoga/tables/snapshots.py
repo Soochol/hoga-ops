@@ -487,6 +487,13 @@ _BID_DEEP_Q_INDEXES: tuple[int, ...] = tuple(
     for i in range(_AUCTION_BOOK_DEPTH + 1, ORDERBOOK_LEVELS + 1)
 )
 
+# query_bucketed_depth_heatmap 의 struct 언팩 키 — 버킷마다 f-string 을 재생성하지
+# 않도록 모듈 로드 시 1회 만든다(수백 버킷 × 40컬럼 재포맷 제거).
+_DEPTH_ASK_P_KEYS: tuple[str, ...] = tuple(f"ask_p{i}" for i in range(1, ORDERBOOK_LEVELS + 1))
+_DEPTH_ASK_Q_KEYS: tuple[str, ...] = tuple(f"ask_q{i}" for i in range(1, ORDERBOOK_LEVELS + 1))
+_DEPTH_BID_P_KEYS: tuple[str, ...] = tuple(f"bid_p{i}" for i in range(1, ORDERBOOK_LEVELS + 1))
+_DEPTH_BID_Q_KEYS: tuple[str, ...] = tuple(f"bid_q{i}" for i in range(1, ORDERBOOK_LEVELS + 1))
+
 
 @dataclass(frozen=True)
 class QuoteRatioRow:
@@ -1018,14 +1025,14 @@ def query_bucketed_depth_heatmap(
         out.append(
             DepthHeatmapRow(
                 bucket_intra_ms=int(r[0]),
-                ask_prices=tuple(int(rep[f"ask_p{i}"]) for i in range(1, ORDERBOOK_LEVELS + 1)),
-                ask_qtys=tuple(int(rep[f"ask_q{i}"]) for i in range(1, ORDERBOOK_LEVELS + 1)),
-                bid_prices=tuple(int(rep[f"bid_p{i}"]) for i in range(1, ORDERBOOK_LEVELS + 1)),
-                bid_qtys=tuple(int(rep[f"bid_q{i}"]) for i in range(1, ORDERBOOK_LEVELS + 1)),
-                ask_prices_max=tuple(int(rep_max[f"ask_p{i}"]) for i in range(1, ORDERBOOK_LEVELS + 1)),
-                ask_qtys_max=tuple(int(rep_max[f"ask_q{i}"]) for i in range(1, ORDERBOOK_LEVELS + 1)),
-                bid_prices_max=tuple(int(rep_max[f"bid_p{i}"]) for i in range(1, ORDERBOOK_LEVELS + 1)),
-                bid_qtys_max=tuple(int(rep_max[f"bid_q{i}"]) for i in range(1, ORDERBOOK_LEVELS + 1)),
+                ask_prices=tuple(int(rep[k]) for k in _DEPTH_ASK_P_KEYS),
+                ask_qtys=tuple(int(rep[k]) for k in _DEPTH_ASK_Q_KEYS),
+                bid_prices=tuple(int(rep[k]) for k in _DEPTH_BID_P_KEYS),
+                bid_qtys=tuple(int(rep[k]) for k in _DEPTH_BID_Q_KEYS),
+                ask_prices_max=tuple(int(rep_max[k]) for k in _DEPTH_ASK_P_KEYS),
+                ask_qtys_max=tuple(int(rep_max[k]) for k in _DEPTH_ASK_Q_KEYS),
+                bid_prices_max=tuple(int(rep_max[k]) for k in _DEPTH_BID_P_KEYS),
+                bid_qtys_max=tuple(int(rep_max[k]) for k in _DEPTH_BID_Q_KEYS),
             )
         )
     return out
