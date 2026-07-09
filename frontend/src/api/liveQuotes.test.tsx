@@ -63,10 +63,10 @@ it('includes venue in the request URL and query key', async () => {
     quotes: [],
   });
 
-  await getQuotes(['005930'], 'NXT');
+  await getQuotes(['005930'], 'UN');
 
-  expect(spy).toHaveBeenCalledWith('/api/live/quotes?codes=005930&venue=NXT');
-  expect(liveQuotesQueryKey(['005930'], 'NXT')).toEqual(['live-quotes', '005930', 'NXT']);
+  expect(spy).toHaveBeenCalledWith('/api/live/quotes?codes=005930&venue=UN');
+  expect(liveQuotesQueryKey(['005930'], 'UN')).toEqual(['live-quotes', '005930', 'UN']);
 });
 
 it('dedupes codes before requesting quotes and building the query key', async () => {

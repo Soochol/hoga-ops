@@ -72,19 +72,19 @@ describe('useWarmPastCandles', () => {
 
   it('venue만 바뀌어도 새 venue로 재발사한다', () => {
     const { rerender } = renderHook(
-      ({ venue }: { venue: 'KRX' | 'NXT' }) => useWarmPastCandles('005930', venue),
-      { initialProps: { venue: 'KRX' as 'KRX' | 'NXT' } },
+      ({ venue }: { venue: 'KRX' | 'UN' }) => useWarmPastCandles('005930', venue),
+      { initialProps: { venue: 'KRX' as 'KRX' | 'UN' } },
     );
     vi.advanceTimersByTime(1500);
     expect(apiAction).toHaveBeenLastCalledWith(
       '/api/live/warm-past-candles?code=005930&venue=KRX',
       { method: 'POST' },
     );
-    rerender({ venue: 'NXT' });
+    rerender({ venue: 'UN' });
     vi.advanceTimersByTime(1500);
     expect(apiAction).toHaveBeenCalledTimes(2);
     expect(apiAction).toHaveBeenLastCalledWith(
-      '/api/live/warm-past-candles?code=005930&venue=NXT',
+      '/api/live/warm-past-candles?code=005930&venue=UN',
       { method: 'POST' },
     );
   });

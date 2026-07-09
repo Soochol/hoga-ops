@@ -777,12 +777,12 @@ describe('LiveChartRoot', () => {
     }
   });
 
-  it('does not render the auction-window overlay for NXT candle views', () => {
+  it('does not render the auction-window overlay for UN candle views', () => {
     render(
       <LiveChartRoot
         code="005930"
         timeframe="1m"
-        venue="NXT"
+        venue="UN"
         bundle={DEFAULT_BUNDLE}
         clampEngaged={false}
         isPastCandlesLoading={false}
@@ -1326,7 +1326,7 @@ describe('LiveChartRoot', () => {
     expect(ts.scrollToPosition).not.toHaveBeenCalled();
   });
 
-  it('1m timeframe: NXT initial view keeps the standard 300-bar viewport', () => {
+  it('1m timeframe: UN initial view keeps the standard 300-bar viewport', () => {
     useLivePageStore.setState({ historicalFromDate: null });
     const { chart, ts } = buildChartMockWithStableTS();
     vi.mocked(createChartEx).mockImplementationOnce(() => chart as never);
@@ -1335,7 +1335,7 @@ describe('LiveChartRoot', () => {
       <LiveChartRoot
         code="005930"
         timeframe="1m"
-        venue="NXT"
+        venue="UN"
         bundle={makeBundleWithCandles(900)}
         clampEngaged={false}
         isPastCandlesLoading={false}
