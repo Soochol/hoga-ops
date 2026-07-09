@@ -539,3 +539,29 @@ def test_collect_raises_when_info_body_empty(tmp_path: Path) -> None:
     # info.tsv must NOT be written when the body is empty.
     info_path = tmp_path / "raw" / "20260319" / "003490" / "info.tsv"
     assert not info_path.exists()
+
+
+def test_collect_raises_when_info_body_is_status_2(tmp_path: Path) -> None:
+    """hogaplay's other HTTP 200 no-data status body is the bare string "2"
+    (suspended / no-replay stocks — confirmed stable across retries on
+    2025-04-24 258540 and 2025-08-11 086460). Like the empty body, it must
+    raise UpstreamNoDataError instead of persisting a garbage 1-byte info.tsv
+    that fails parsing forever with FieldCountError and is re-fetched on every
+    watchlist pass. See ADR-0021 + orchestrator._is_info_no_data."""
+    from hoga.collector.orchestrator import UpstreamNoDataError
+
+    client = FakeClient(info_body="2", first_pages={}, chart_body="")
+    with pytest.raises(UpstreamNoDataError) as exc_info:
+        collect_stock_date(
+            client=client,
+            code="258540",
+            date="20250424",
+            data_dir=tmp_path,
+            rate_limit_s=0.0,
+            resume=False,
+        )
+    assert exc_info.value.code == "258540"
+    assert exc_info.value.date == "20250424"
+    # The "2" status body must NOT be persisted as info.tsv.
+    info_path = tmp_path / "raw" / "20250424" / "258540" / "info.tsv"
+    assert not info_path.exists()
