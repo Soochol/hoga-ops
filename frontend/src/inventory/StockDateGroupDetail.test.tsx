@@ -335,4 +335,62 @@ describe('StockDateGroupDetail — WS1 upstream-gap panel', () => {
     fireEvent.click(screen.getByRole('button', { name: /결손 구간 보기/ }));
     await waitFor(() => expect(screen.getByTestId('gap-panel-sparse')).toBeTruthy());
   });
+
+  // ADR-0093 — confirmed upstream gap
+  const GAP_BODY = {
+    code: '003490', date: '20260707', source: 'hogaplay',
+    gap_ranges: [{ start_ms: Date.UTC(2026, 6, 7, 4, 52), end_ms: Date.UTC(2026, 6, 7, 5, 11) }],
+    sparse: false, origin: 'computed',
+  };
+
+  it('shows the confirmed message + force-recapture button when identical_capture_count>=2', async () => {
+    setupFetchWithGaps(GAP_BODY);
+    renderDetail(
+      [row('003490', '대한항공', '20260707', 'source_partial', { identical_capture_count: 2 })],
+      '003490', qc(),
+    );
+    fireEvent.click(screen.getByRole('button', { name: /결손 구간 보기/ }));
+    await waitFor(() => expect(screen.getByTestId('gap-panel')).toBeTruthy());
+    expect(screen.getByTestId('gap-panel-confirmed').textContent).toMatch(/2회 재캡처 동일 결과/);
+    expect(screen.getByTestId('force-recapture-button')).toBeTruthy();
+  });
+
+  it('hides the confirmed message + force button when identical_capture_count<2', async () => {
+    setupFetchWithGaps(GAP_BODY);
+    renderDetail(
+      [row('003490', '대한항공', '20260707', 'source_partial', { identical_capture_count: 1 })],
+      '003490', qc(),
+    );
+    fireEvent.click(screen.getByRole('button', { name: /결손 구간 보기/ }));
+    await waitFor(() => expect(screen.getByTestId('gap-panel')).toBeTruthy());
+    expect(screen.queryByTestId('gap-panel-confirmed')).toBeNull();
+    expect(screen.queryByTestId('force-recapture-button')).toBeNull();
+  });
+
+  it('force-recapture button POSTs force_retry: true', async () => {
+    const calls: Array<{ url: string; body: unknown }> = [];
+    vi.spyOn(globalThis, 'fetch' as const).mockImplementation(async (url, init) => {
+      const s = String(url);
+      if (s.includes('/api/captures/queue')) {
+        return { ok: true, status: 200, json: async () => EMPTY_QUEUE } as Response;
+      }
+      if (s.includes('/api/gaps')) {
+        return { ok: true, status: 200, json: async () => GAP_BODY } as Response;
+      }
+      if (s.includes('/api/captures/items')) {
+        calls.push({ url: s, body: JSON.parse(String(init?.body ?? '{}')) });
+        return { ok: true, status: 201, json: async () => ({ enqueued: [{ item_id: 'x' }], deduped: [] }) } as Response;
+      }
+      return { ok: true, status: 200, json: async () => ({}) } as Response;
+    });
+    renderDetail(
+      [row('003490', '대한항공', '20260707', 'source_partial', { identical_capture_count: 3 })],
+      '003490', qc(),
+    );
+    fireEvent.click(screen.getByRole('button', { name: /결손 구간 보기/ }));
+    await waitFor(() => expect(screen.getByTestId('force-recapture-button')).toBeTruthy());
+    fireEvent.click(screen.getByTestId('force-recapture-button'));
+    await waitFor(() => expect(calls.length).toBeGreaterThan(0));
+    expect(calls[0].body).toMatchObject({ code: '003490', dates: ['20260707'], force_retry: true });
+  });
 });

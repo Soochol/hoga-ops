@@ -100,6 +100,10 @@ describe('phaseToCalendarStatus', () => {
     expect(phaseToCalendarStatus('skipped', 'already_complete')).toBe('complete');
   });
 
+  it('skipped + upstream_gap → source_partial (ADR-0093: confirmed gap stays partial)', () => {
+    expect(phaseToCalendarStatus('skipped', 'upstream_gap')).toBe('source_partial');
+  });
+
   it('failed / cancelled → client_incomplete', () => {
     expect(phaseToCalendarStatus('failed', null)).toBe('client_incomplete');
     expect(phaseToCalendarStatus('cancelled', null)).toBe('client_incomplete');

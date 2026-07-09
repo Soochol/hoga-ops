@@ -80,6 +80,55 @@ def test_meta_records_gap_ranges_field(tmp_path: Path) -> None:
         assert isinstance(g["start_ms"], int) and isinstance(g["end_ms"], int)
 
 
+# --- ADR-0093: identical_capture_count ---
+
+
+def test_identical_capture_count_starts_at_one(tmp_path: Path) -> None:
+    _stage_raw(tmp_path, "tiny_tsv", "005930", "20260520", finished=True)
+    parse_stock_date(code="005930", date="20260520", data_dir=tmp_path, lenient=True)
+    meta_path = tmp_path / "parquet" / "20260520" / "005930" / "hogaplay" / "meta.json"
+    meta = json.loads(meta_path.read_text(encoding="utf-8"))
+    assert meta["identical_capture_count"] == 1
+
+
+def test_identical_capture_count_increments_on_reparse_of_same_raw(tmp_path: Path) -> None:
+    """Re-parsing the identical raw data yields the identical fingerprint →
+    the counter climbs (1 → 2). This is the confirmed-upstream-gap signal."""
+    _stage_raw(tmp_path, "tiny_tsv", "005930", "20260520", finished=True)
+    parse_stock_date(code="005930", date="20260520", data_dir=tmp_path, lenient=True)
+    parse_stock_date(code="005930", date="20260520", data_dir=tmp_path, lenient=True)
+    meta_path = tmp_path / "parquet" / "20260520" / "005930" / "hogaplay" / "meta.json"
+    meta = json.loads(meta_path.read_text(encoding="utf-8"))
+    assert meta["identical_capture_count"] == 2
+
+
+def test_identical_capture_count_helper_logic() -> None:
+    """Unit-test the pure helper across the branches ADR-0093 defines."""
+    from hoga.parser import _identical_capture_count
+
+    base = {
+        "collection_complete": True,
+        "total_unique_events": 100, "pages_collected": 10,
+        "gap_ranges": [{"start_ms": 135000000, "end_ms": 141000000}],
+    }
+    # No prior → 1
+    assert _identical_capture_count(None, base) == 1
+    # Prior identical (legacy, no counter) → 2
+    assert _identical_capture_count(dict(base), base) == 2
+    # Prior identical with counter=2 → 3
+    assert _identical_capture_count({**base, "identical_capture_count": 2}, base) == 3
+    # Prior differs (fewer events → upstream healed) → reset to 1
+    assert _identical_capture_count({**base, "total_unique_events": 90}, base) == 1
+    # Different gap window, same event count → still "changed" → 1
+    assert _identical_capture_count(
+        {**base, "gap_ranges": [{"start_ms": 100000000, "end_ms": 101000000}]}, base,
+    ) == 1
+    # Prior not complete → 1 (a failed prior attempt isn't a reproducible result)
+    assert _identical_capture_count({**base, "collection_complete": False}, base) == 1
+    # Current not complete → 1
+    assert _identical_capture_count(base, {**base, "collection_complete": False}) == 1
+
+
 # --- ADR-0020: archival hook ---
 
 

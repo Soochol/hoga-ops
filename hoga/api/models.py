@@ -57,6 +57,12 @@ class StockDate(BaseModel):
     overwrites of meta.json). Null on legacy meta files written before this counter
     was introduced. See CONTEXT.md "Full Capture Count" and ADR-0031 for the
     distinction from QueueItem.attempt."""
+    identical_capture_count: int | None = None
+    """ADR-0093: consecutive completed captures that reproduced the identical
+    result (fingerprint = total_unique_events + pages_collected + gap_ranges).
+    ``>= 2`` marks a confirmed upstream gap — the worker skips it (upstream_gap)
+    and the inventory drawer surfaces it + offers a force-recapture. Null on
+    legacy meta written before this counter."""
     fail_streak: int = 0
     """ADR-0042: consecutive failed+skipped count since last success/unblock.
     Joined from QueueManifest.fail_streaks at the route layer. 0 means
@@ -267,7 +273,10 @@ CapturePhase = Literal[
     "queued", "deciding", "capturing", "parsing",
     "done", "failed", "cancelled", "skipped",
 ]
-SkipReason = Literal["already_complete", "source_partial", "no_upstream_data"]
+# ADR-0093 adds "upstream_gap": a confirmed upstream data gap (a full re-capture
+# reproduced the identical gappy result) — skipped so we stop hammering hogaplay
+# for data it doesn't have. force_retry bypasses it.
+SkipReason = Literal["already_complete", "source_partial", "no_upstream_data", "upstream_gap"]
 
 
 class CaptureProgress(BaseModel):

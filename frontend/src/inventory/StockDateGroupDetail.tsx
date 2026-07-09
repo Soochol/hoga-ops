@@ -69,11 +69,11 @@ export function StockDateGroupDetail({ group }: Props) {
 
   const onSort = (column: SortKey) => setSort((prev) => nextSortState(prev, column));
 
-  const handleRecaptureRow = async (date: string) => {
+  const handleRecaptureRow = async (date: string, forceRetry = false) => {
     const key = `${group.code}|${date}`;
     setPendingKey(key);
     try {
-      await recapture(group.code, [date]);
+      await recapture(group.code, [date], forceRetry);
     } finally {
       setPendingKey(null);
     }
@@ -181,7 +181,13 @@ export function StockDateGroupDetail({ group }: Props) {
                 {hasGapPanel && gapExpanded && (
                   <tr className="border-b bg-bg-subtle">
                     <td colSpan={TABLE_COLSPAN} className="px-4 py-3">
-                      <GapPanel code={r.code} date={r.date} />
+                      <GapPanel
+                        code={r.code}
+                        date={r.date}
+                        identicalCaptureCount={r.identical_capture_count ?? null}
+                        isInFlight={inFlight}
+                        onForceRecapture={() => handleRecaptureRow(r.date, true)}
+                      />
                     </td>
                   </tr>
                 )}
@@ -195,9 +201,21 @@ export function StockDateGroupDetail({ group }: Props) {
   );
 }
 
-function GapPanel({ code, date }: { code: string; date: string }) {
+function GapPanel({
+  code, date, identicalCaptureCount, isInFlight, onForceRecapture,
+}: {
+  code: string;
+  date: string;
+  identicalCaptureCount: number | null;
+  isInFlight: boolean;
+  onForceRecapture: () => void;
+}) {
   // WS1: lazily fetch the gap boundaries only when this row is expanded.
   const { data, isLoading, isError } = useStockDateGaps(code, date, true);
+  // ADR-0093: >= 2 completed captures with the identical result = confirmed
+  // upstream gap. The worker now skips re-captures (upstream_gap); the only way
+  // to re-verify is the force button below.
+  const confirmed = (identicalCaptureCount ?? 0) >= 2;
 
   if (isLoading) {
     return <div className="text-xs text-fg-dim font-mono" data-testid="gap-panel-loading">결손 구간 조회 중…</div>;
@@ -223,6 +241,11 @@ function GapPanel({ code, date }: { code: string; date: string }) {
     <div className="flex flex-col gap-1.5" data-testid="gap-panel">
       <div className="text-xs font-semibold text-[var(--warn)]">
         업스트림 결손 {data.gap_ranges.length}구간
+        {confirmed && (
+          <span data-testid="gap-panel-confirmed" className="ml-2 text-fg-dim font-normal">
+            · {identicalCaptureCount}회 재캡처 동일 결과 — 업스트림 결손 확정
+          </span>
+        )}
       </div>
       <ul className="flex flex-col gap-0.5 font-mono text-xs tabular-nums text-fg">
         {data.gap_ranges.map((g) => (
@@ -236,6 +259,24 @@ function GapPanel({ code, date }: { code: string; date: string }) {
         수집은 끝까지 완료됐으나 원본 아카이브에 이 구간 데이터가 없습니다.
         재캡처해도 복구되지 않을 수 있습니다.
       </div>
+      {confirmed && (
+        <div>
+          <button
+            type="button"
+            data-testid="force-recapture-button"
+            disabled={isInFlight}
+            onClick={onForceRecapture}
+            className={[
+              'text-badge underline bg-transparent border-none p-0',
+              isInFlight
+                ? 'text-fg-dim cursor-not-allowed'
+                : 'text-accent hover:text-fg cursor-pointer',
+            ].join(' ')}
+          >
+            {isInFlight ? '강제 재캡처 중…' : '강제 재캡처 (확정 무시하고 재검증)'}
+          </button>
+        </div>
+      )}
     </div>
   );
 }

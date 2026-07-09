@@ -38,14 +38,16 @@ export function useInventoryRecapture() {
   useEffect(() => clearSuccessTimer, [clearSuccessTimer]);
 
   const recapture = useCallback(
-    async (code: string, dates: string[]): Promise<void> => {
+    async (code: string, dates: string[], forceRetry = false): Promise<void> => {
       if (dates.length === 0) return;
       clearSuccessTimer();
       try {
         const resp: EnqueueResponse = await addItems.mutateAsync({
           code,
           dates,
-          force_retry: false,
+          // ADR-0093: forceRetry bypasses the confirmed-upstream-gap skip so the
+          // user can re-verify. Defaults false — the normal ↻ / Re-capture all.
+          force_retry: forceRetry,
         });
         useInventoryRecaptureOrigins.getState().add(resp.enqueued.map((i) => i.item_id));
         setStatus({

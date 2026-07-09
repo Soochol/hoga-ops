@@ -12,6 +12,20 @@
 - ADR-0037 — Source subfolder layout (`check_disk_state`의 소스-통합 분류 = inventory ✓/✕의 근거)
 - `docs/superpowers/specs/2026-05-28-capture-fail-streak-guard-design.md` — 본 ADR이 근거를 보존하는 spec
 
+## Amendment (2026-07-09) — 확정된 업스트림 결손 스킵은 cap을 소모하지 않는다 (ADR-0093)
+
+hogaplay 아카이브 영구 결손 날짜(`collection_complete=true` + `is_partial=true`,
+절대 COMPLETE 불가)는 2026-06-03 개정에 따라 매 재캡처가 done+not-COMPLETE로 +1을
+쌓아, 5회 후 차단 = 사용자가 진짜로 캡처 못 함 + 그때까지 hogaplay에 무의미한 풀
+워크 부하. [ADR-0093](0093-upstream-gap-confirmation-and-skip.md)이 이를 해소한다:
+확정된 업스트림 결손(`identical_capture_count >= 2`)은 워커 deciding phase에서
+`skip_reason="upstream_gap"`으로 **fetch 이전에** 스킵되며, 이 스킵은 외부 호출이
+0건이므로 `_apply_terminal_to_streaks`가 fail_streak를 증가시키지 않는다. 다른
+스킵 사유(already_complete/source_partial/no_upstream_data)의 +1은 불변이고,
+`force_retry` 우회 재캡처가 여전히 갭이면 아래 done+not-COMPLETE 규칙이 다시 cap을
+지킨다. 즉 본 개정은 아래 2026-06-03 규칙을 훼손하지 않고, 그 규칙이 오작동하던
+"영구 결손" 케이스만 스킵으로 앞단에서 걷어낸다.
+
 ## Amendment (2026-06-03) — `done` 이 곧 성공은 아니다: 불완전 완료도 fail_streak에 카운트
 
 **계기.** 운영 중 (180640, 20260601)이 inventory에서 `×16`(= `full_capture_count`)에 도달했는데도 차단되지 않는 사례 발견. 해당 Stock-Date는 hogaplay 데이터가 09:10:29에서 freeze → 매 캡처가 `stagnation_abort`로 **동일 지점에서 중단**(`collection_complete=False`, `_progress.json.abort_reason="stagnation_abort"`, 16회 전부 309페이지·1206이벤트에서 정지). 그러나 worker는 예외를 던지지 않으므로 `phase="done"`에 도달(`captures.py` 캡처+파싱 완료 분기) → **원 규칙 §1상 `done`은 fail_streak을 0으로 리셋** → cap이 영원히 arm되지 않음. `.queue.json`의 `fail_streaks`에 해당 키가 부재(=0)함으로 실측 확인.

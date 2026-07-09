@@ -61,18 +61,33 @@ def decide_capture(
 ) -> CaptureDecision:
     """Worker deciding-phase decision.
 
-    Branches (ADR-0021 + ADR-0007):
+    Branches (ADR-0021 + ADR-0007 + ADR-0093):
       - DiskState.COMPLETE         → skip with reason "already_complete"
+      - DiskState.SOURCE_PARTIAL + upstream_gap_confirmed + not force_retry
+                                   → skip with reason "upstream_gap"
       - DiskState.NO_UPSTREAM_DATA → delete sentinel, proceed resume=False
       - DiskState.SOURCE_PARTIAL   → proceed resume=False
       - DiskState.INVALID          → proceed with resume=False (don't trust
                                      corrupt artifacts; fresh capture)
       - DiskState.CLIENT_INCOMPLETE → proceed with resume=True
       - DiskState.NONE             → proceed with resume=False
+
+    ADR-0093: a confirmed upstream gap (a full re-capture already reproduced the
+    identical gappy result) is skipped so we stop hammering hogaplay for data it
+    doesn't have. ``force_retry=True`` bypasses this to let the user re-verify —
+    if that re-capture is still gappy, the done+not-COMPLETE fail_streak rule
+    (ADR-0042) still caps runaway retries.
     """
-    disk = check_disk_state(data_dir, code, date).state
+    classification = check_disk_state(data_dir, code, date)
+    disk = classification.state
     if disk == DiskState.COMPLETE:
         return CaptureDecision(skip_reason="already_complete", resume=False)
+    if (
+        disk == DiskState.SOURCE_PARTIAL
+        and classification.upstream_gap_confirmed
+        and not force_retry
+    ):
+        return CaptureDecision(skip_reason="upstream_gap", resume=False)
     if disk == DiskState.NO_UPSTREAM_DATA:
         (data_dir / "raw" / date / code / ".no_upstream_data").unlink(missing_ok=True)
         return CaptureDecision(skip_reason=None, resume=False)

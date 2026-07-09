@@ -18,6 +18,10 @@ export type StockDate = {
    *  Null on legacy meta.json files written before the counter existed.
    *  See CONTEXT.md "Full Capture Count". */
   full_capture_count: number | null;
+  /** ADR-0093 mirror of StockDate.identical_capture_count. Consecutive completed
+   *  captures that reproduced the identical result; >= 2 = confirmed upstream
+   *  gap. Null on legacy meta.json. */
+  identical_capture_count?: number | null;
   /** ADR-0042: consecutive failed+skipped count since last success/unblock.
    *  Joined from QueueManifest.fail_streaks at the route layer. 0 means
    *  "no recent failures"; ``>= 5`` means ``blocked``. */
@@ -157,7 +161,7 @@ export type CapturePhase =
   | 'cancelled'
   | 'skipped';
 
-export type SkipReason = 'already_complete' | 'source_partial' | 'no_upstream_data';
+export type SkipReason = 'already_complete' | 'source_partial' | 'no_upstream_data' | 'upstream_gap';
 
 export interface CaptureProgress {
   pages_done: number;
