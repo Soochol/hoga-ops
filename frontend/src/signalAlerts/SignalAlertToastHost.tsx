@@ -1,16 +1,12 @@
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import type { SignalAlertEvent } from '../api/signalAlerts';
 import type { PushEvent } from '../api/types';
 import { subscribeEvents } from '../api/ws';
 import { useJumpToLive } from '../live/useJumpToLive';
+import { ToastCard } from '../ui/toast/ToastCard';
 
 const TOAST_LIMIT = 3;
 const TOAST_TTL_MS = 5000;
-
-type ToastState = {
-  event: SignalAlertEvent;
-  timeoutId: ReturnType<typeof window.setTimeout>;
-};
 
 function isSignalAlert(event: PushEvent): event is SignalAlertEvent {
   return event.type === 'signal_alert';
@@ -20,68 +16,99 @@ function formatSignalSummary(event: SignalAlertEvent): string {
   return `매도 총잔량 ${event.value.toLocaleString()} · 기준 대비 ${event.ratio_pct.toFixed(1)}%`;
 }
 
+/**
+ * 시그널 알림 토스트 스택. WS `signal_alert` 이벤트마다 카드를 push 하고,
+ * 각 카드는 {@link SignalToastItem} 이 스스로 TTL·hover 정지·점프를 관리한다.
+ * 위치/스택은 상위 ToastViewport 가 소유하므로 여기선 카드 리스트만 낸다.
+ */
 export default function SignalAlertToastHost() {
   const jumpToLive = useJumpToLive();
-  const [toasts, setToasts] = useState<ToastState[]>([]);
-  const toastsRef = useRef<ToastState[]>([]);
-
-  useEffect(() => {
-    toastsRef.current = toasts;
-  }, [toasts]);
+  const [events, setEvents] = useState<SignalAlertEvent[]>([]);
 
   useEffect(() => {
     return subscribeEvents((event) => {
       if (!isSignalAlert(event)) return;
-
-      const timeoutId = window.setTimeout(() => {
-        setToasts((current) => current.filter((toast) => toast.event.id !== event.id));
-      }, TOAST_TTL_MS);
-
-      setToasts((current) => {
-        const replaced = current.filter((toast) => toast.event.id === event.id);
-        replaced.forEach((toast) => window.clearTimeout(toast.timeoutId));
-        const next = [{ event, timeoutId }, ...current.filter((toast) => toast.event.id !== event.id)];
-        const overflow = next.slice(TOAST_LIMIT);
-        overflow.forEach((toast) => window.clearTimeout(toast.timeoutId));
+      setEvents((current) => {
+        // 같은 id 재수신은 최신으로 대체(맨 앞), 최대 TOAST_LIMIT 개 유지.
+        const next = [event, ...current.filter((e) => e.id !== event.id)];
         return next.slice(0, TOAST_LIMIT);
       });
     });
   }, []);
 
-  useEffect(() => () => {
-    toastsRef.current.forEach((toast) => window.clearTimeout(toast.timeoutId));
+  const remove = useCallback((id: string) => {
+    setEvents((current) => current.filter((e) => e.id !== id));
   }, []);
 
-  const visibleToasts = useMemo(() => toasts.map((toast) => toast.event), [toasts]);
+  return (
+    <>
+      {events.map((event) => (
+        <SignalToastItem
+          key={event.id}
+          event={event}
+          onExited={() => remove(event.id)}
+          onJump={() => jumpToLive(event.code, event.name)}
+        />
+      ))}
+    </>
+  );
+}
 
-  if (visibleToasts.length === 0) return null;
+type SignalToastItemProps = {
+  event: SignalAlertEvent;
+  /** exit 애니메이션 완료 후 리스트에서 실제 제거. */
+  onExited: () => void;
+  onJump: () => void;
+};
+
+/**
+ * 한 시그널 토스트의 수명 소유: TTL 자동소멸 + hover 시 타이머/진행바 정지,
+ * 클릭 시 점프. `visible` 을 내려 ToastCard 가 exit 애니메이션을 재생하게 한다.
+ */
+function SignalToastItem({ event, onExited, onJump }: SignalToastItemProps) {
+  const [visible, setVisible] = useState(true);
+  const [paused, setPaused] = useState(false);
+  const remainingRef = useRef(TOAST_TTL_MS);
+  const startedAtRef = useRef(0);
+  const timerRef = useRef<ReturnType<typeof window.setTimeout>>();
+
+  const startTimer = useCallback(() => {
+    startedAtRef.current = Date.now();
+    timerRef.current = window.setTimeout(() => setVisible(false), remainingRef.current);
+  }, []);
+
+  useEffect(() => {
+    startTimer();
+    return () => window.clearTimeout(timerRef.current);
+  }, [startTimer]);
+
+  const pause = () => {
+    window.clearTimeout(timerRef.current);
+    remainingRef.current = Math.max(0, remainingRef.current - (Date.now() - startedAtRef.current));
+    setPaused(true);
+  };
+  const resume = () => {
+    setPaused(false);
+    startTimer();
+  };
 
   return (
-    <div
-      aria-live="polite"
-      className="pointer-events-none fixed right-[calc(var(--rail-w)+12px)] top-[calc(var(--h-top-nav)+12px)] z-[90] flex w-[18rem] flex-col gap-2"
+    <ToastCard
+      visible={visible}
+      onExited={onExited}
+      variant="neutral"
+      ariaLabel={`${event.name} ${event.code} 알림 열기`}
+      progress={{ durationMs: TOAST_TTL_MS, paused }}
+      onMouseEnter={pause}
+      onMouseLeave={resume}
+      onClick={() => {
+        window.clearTimeout(timerRef.current);
+        onJump();
+        setVisible(false);
+      }}
     >
-      {visibleToasts.map((toast) => (
-        <button
-          key={toast.id}
-          type="button"
-          aria-label={`${toast.name} ${toast.code} 알림 열기`}
-          className="pointer-events-auto rounded border border-border bg-bg-card px-3 py-2 text-left shadow-lg transition hover:border-line-strong hover:bg-bg-input"
-          onClick={() => {
-            setToasts((current) => {
-              const next = current.filter((entry) => entry.event.id !== toast.id);
-              current
-                .filter((entry) => entry.event.id === toast.id)
-                .forEach((entry) => window.clearTimeout(entry.timeoutId));
-              return next;
-            });
-            jumpToLive(toast.code, toast.name);
-          }}
-        >
-          <div className="truncate text-sm font-medium text-fg">{toast.name}</div>
-          <div className="mt-1 text-xs text-fg-dim">{formatSignalSummary(toast)}</div>
-        </button>
-      ))}
-    </div>
+      <div className="truncate text-sm font-medium text-fg">{event.name}</div>
+      <div className="mt-1 text-xs text-fg-dim">{formatSignalSummary(event)}</div>
+    </ToastCard>
   );
 }

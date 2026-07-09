@@ -14,6 +14,7 @@ import { useCaptureQueueSync } from './capture/useCaptureQueue';
 import { useScreenerUpdateSync } from './screener/useScreenerUpdateSync';
 import SignalAlertToastHost from './signalAlerts/SignalAlertToastHost';
 import KisRestUnavailableToastHost from './live/KisRestUnavailableToastHost';
+import { ToastViewport } from './ui/toast/ToastViewport';
 import { useSignalAlertEvents } from './signalAlerts/useSignalAlertEvents';
 import { useStaticDocumentTitle } from './util/useDocumentTitle';
 import { ModalShell } from './ui/ModalShell';
@@ -62,8 +63,12 @@ export default function App() {
       }}
     >
       {staticTitle !== null && <StaticDocumentTitle title={staticTitle} />}
-      <SignalAlertToastHost />
-      <KisRestUnavailableToastHost />
+      <ToastViewport>
+        {/* flex-col-reverse: DOM 첫 자식이 최하단. 시그널(최신 prepend)을 먼저 둬
+            새 토스트가 맨 아래에서 떠오르게 하고, KIS 경고는 스택 위쪽에 둔다. */}
+        <SignalAlertToastHost />
+        <KisRestUnavailableToastHost />
+      </ToastViewport>
       <TopNav onOpenSettings={() => setSettingsOpen(true)} />
       {settingsOpen && (
         <ModalShell
