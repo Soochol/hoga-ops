@@ -515,64 +515,42 @@ export function buildChartBundle(input: BuildChartBundleInput): RangeBundle {
     candleSourceByDate,
   } = input;
 
-  const pastSegments = sessionBoundsForDate
-    ? (pastBundle?.segments ?? []).map((s) => {
-        const bounds = sessionBoundsForDate(s.date);
-        return {
-          ...s,
-          session_open_ms: bounds.open_ms,
-          session_close_ms: bounds.close_ms,
-          source: candleSourceByDate?.get(s.date) ?? s.source,
-        };
-      })
-    : (pastBundle?.segments ?? []).map((s) => ({
-        ...s,
-        source: candleSourceByDate?.get(s.date) ?? s.source,
-      }));
-  const pastQRPoints = pastBundle?.quote_ratio.points ?? [];
+  // Segment derivation follows the DISPLAYED CANDLE SOURCE, not hoga (10호가)
+  // capture coverage. One segment per distinct KST trading date present in the
+  // active candle set (`kisCandles`), so a day's Day-Boundary divider (and the
+  // VirtualAxis window that lets its candles render at all) appears exactly when
+  // that day's candles do — independent of whether/when hoga snapshots were
+  // captured. A day whose hoga capture backfills late (e.g. Orion 20260707,
+  // backfilled the next morning) no longer lags its divider behind its candles.
+  //
+  // This is the "표시 소스 = 캔들 데이터 기준" policy: in KIS mode the KIS candle
+  // history is complete so every in-range trading day gets a divider; in
+  // 우회(hogaplay) mode only captured days have candles and thus dividers, which
+  // is the intended "저장된 날짜만 표시, 없는 날짜는 비움" behavior. Hoga coverage
+  // still feeds the overlays (호가비·매도벽 etc.) independently via the
+  // pastBundle fields returned below — those render only where hoga data exists,
+  // gated by the segment the candle already established.
+  //
+  // Historical note: segments used to come from `pastBundle.segments` (hoga)
+  // unioned with a `kisOnlyDates` backfill (ADR-0040, /investigate 2026-05-28).
+  // Since hoga-captured dates are a subset of candle dates in practice, the
+  // union collapsed to "candle dates" anyway; deriving straight from candles
+  // makes the invariant explicit ("divider ⟺ candle for that day") and drops
+  // the empty-hoga-only-divider edge.
+  const boundsForDate = (d: string): { open_ms: number; close_ms: number } =>
+    sessionBoundsForDate?.(d) ?? {
+      open_ms: regularSessionOpenMs(d),
+      close_ms: regularSessionCloseMs(d),
+    };
 
-  // Today segment marker — present if we have any signal for today.
-  const todaySegments: RangeSegment[] = [];
-  const pastHasTodaySegment = pastSegments.some((s) => s.date === todayDate);
-  if (!pastHasTodaySegment) {
-    const hasTodaySignal =
-      pastQRPoints.some((p) => realMsToYyyymmdd(p.t) === todayDate) ||
-      hasTodayObSignal ||
-      kisCandles.some((c) => c.ts_ms >= todaySession.open_ms);
-    if (hasTodaySignal) {
-      todaySegments.push({
-        date: todayDate,
-        session_open_ms: todaySession.open_ms,
-        session_close_ms: todaySession.close_ms,
-        source: candleSourceByDate?.get(todayDate) ?? 'kis_live',
-      });
-    }
-  }
+  const candleDates = new Set<string>();
+  for (const c of kisCandles) candleDates.add(realMsToYyyymmdd(c.ts_ms));
 
-  // Synthesize segments for past dates that KIS has candles for but /api/range
-  // doesn't cover (e.g., hogaplay never captured that date). Without this, the
-  // VirtualAxis built from segments alone wouldn't `contain` those candles and
-  // the candle/volume projectors would filter them out — bug surfaced by
-  // /investigate 2026-05-28 (ADR-0040 intent is KIS candle independence from
-  // hogaplay coverage; we honor it by extending segments, not by skipping the
-  // filter). Today and past-covered dates are already handled above; here we
-  // fill the gap of "past dates with KIS candles but no hoga segment".
-  const knownDates = new Set([
-    ...pastSegments.map((s) => s.date),
-    ...todaySegments.map((s) => s.date),
-  ]);
-  const kisOnlyDates = new Set<string>();
-  for (const c of kisCandles) {
-    const d = realMsToYyyymmdd(c.ts_ms);
-    if (!knownDates.has(d)) kisOnlyDates.add(d);
-  }
-  const kisOnlySegments: RangeSegment[] = Array.from(kisOnlyDates)
+  const pastSegments: RangeSegment[] = Array.from(candleDates)
+    .filter((d) => d !== todayDate)
     .sort()
     .map((d) => {
-      const bounds = sessionBoundsForDate?.(d) ?? {
-        open_ms: regularSessionOpenMs(d),
-        close_ms: regularSessionCloseMs(d),
-      };
+      const bounds = boundsForDate(d);
       return {
         date: d,
         session_open_ms: bounds.open_ms,
@@ -581,14 +559,28 @@ export function buildChartBundle(input: BuildChartBundleInput): RangeBundle {
       };
     });
 
-  const pastFromDate = pastBundle?.from_date ?? todayDate;
-  // Order matters for the VirtualAxis (date-ascending). pastSegments are
-  // already sorted; kisOnlySegments are sorted; todaySegments is the
-  // single today entry which is strictly the latest.
-  const allPastLike = [...pastSegments, ...kisOnlySegments].sort((a, b) =>
-    a.date.localeCompare(b.date),
-  );
-  const segments = [...allPastLike, ...todaySegments];
+  // Today segment — present if today has ANY live signal: a today candle, an
+  // orderbook push, or a hoga QR point. Kept even with no past candles so the
+  // live WS view always shows today, per policy ("오늘 실시간(WS)은 계속 표시").
+  const pastQRPoints = pastBundle?.quote_ratio.points ?? [];
+  const todaySegments: RangeSegment[] = [];
+  const hasTodaySignal =
+    candleDates.has(todayDate) ||
+    hasTodayObSignal ||
+    pastQRPoints.some((p) => realMsToYyyymmdd(p.t) === todayDate);
+  if (hasTodaySignal) {
+    todaySegments.push({
+      date: todayDate,
+      session_open_ms: todaySession.open_ms,
+      session_close_ms: todaySession.close_ms,
+      source: candleSourceByDate?.get(todayDate) ?? 'kis_live',
+    });
+  }
+
+  const pastFromDate = pastBundle?.from_date ?? pastSegments[0]?.date ?? todayDate;
+  // pastSegments are already date-ascending; todaySegments is the single today
+  // entry which is strictly the latest.
+  const segments = [...pastSegments, ...todaySegments];
 
   return {
     code,
