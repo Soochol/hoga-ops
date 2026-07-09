@@ -71,39 +71,11 @@ describe('useLiveKeyboard', () => {
     expect(useRightRailStore.getState().activePanel).toBeNull();
   });
 
-  it('Escape closes panel only when open', () => {
-    render(<Harness />);
-    fireEvent.keyDown(window, { key: 'Escape' });
-    expect(useRightRailStore.getState().activePanel).toBeNull();
-
-    useRightRailStore.setState({ activePanel: 'watchlist' });
-    fireEvent.keyDown(window, { key: 'Escape' });
-    expect(useRightRailStore.getState().activePanel).toBeNull();
-  });
-
-  it('Escape leaves the panel open while a dialog or menu is open', () => {
+  it('Escape no longer closes the right rail panel', () => {
     render(<Harness />);
     useRightRailStore.setState({ activePanel: 'watchlist' });
-
-    // 열린 모달(role=dialog)이 Escape를 소유 — 패널은 유지된다
-    const dialog = document.createElement('div');
-    dialog.setAttribute('role', 'dialog');
-    document.body.appendChild(dialog);
     fireEvent.keyDown(window, { key: 'Escape' });
     expect(useRightRailStore.getState().activePanel).toBe('watchlist');
-    dialog.remove();
-
-    // 열린 팝오버(role=menu)도 동일
-    const menu = document.createElement('div');
-    menu.setAttribute('role', 'menu');
-    document.body.appendChild(menu);
-    fireEvent.keyDown(window, { key: 'Escape' });
-    expect(useRightRailStore.getState().activePanel).toBe('watchlist');
-    menu.remove();
-
-    // 둘 다 닫힌 뒤의 Escape만 패널을 닫는다
-    fireEvent.keyDown(window, { key: 'Escape' });
-    expect(useRightRailStore.getState().activePanel).toBeNull();
   });
 
   it('ignores shortcuts when focus is in an input', () => {

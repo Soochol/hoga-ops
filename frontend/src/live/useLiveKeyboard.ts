@@ -67,17 +67,6 @@ export function useLiveKeyboard(opts: UseLiveKeyboardOpts = {}): void {
           useRightRailStore.getState().togglePanel('watchlist');
           e.preventDefault();
           break;
-        case 'Escape':
-          // 모달/팝오버가 열려 있으면 Escape는 그쪽 소유 — 패널까지 같이 닫지
-          // 않는다. ModalShell은 document, useDismissablePopover는 window 리스너
-          // 인데 이 핸들러가 먼저 등록돼 stopPropagation으로는 막을 수 없으므로
-          // DOM에 열린 dialog/menu가 있는지를 단일 진실로 삼는다.
-          if (document.querySelector('[role="dialog"], [role="menu"]')) break;
-          if (useRightRailStore.getState().activePanel) {
-            useRightRailStore.getState().setActivePanel(null);
-            e.preventDefault();
-          }
-          break;
         default:
           // 1~9 → 0-based 탭 인덱스. 무제한 탭이어도 숫자 단축키는
           // 첫 9개 탭만 직접 선택한다. 그 이후 탭은 탭 목록/검색을 사용한다.
