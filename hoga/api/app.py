@@ -11,6 +11,7 @@ from pathlib import Path
 
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.middleware.gzip import GZipMiddleware
 
 from hoga.api import captures as _captures_module
 from hoga.api import screener as _screener_module
@@ -175,6 +176,12 @@ def create_app(data_dir: Path) -> FastAPI:
         allow_methods=["*"],
         allow_headers=["*"],
     )
+    # /api/range 등 번들 응답은 반복 구조 숫자 JSON이라 압축비가 크다(호가 잔량
+    # 히트맵 실측 246KB→27KB, ~9×). 라이브 스트림은 WebSocket(/api/ws)이라 HTTP
+    # scope만 처리하는 GZipMiddleware를 그대로 통과 — SSE 버퍼링 우려가 없다.
+    # CORS 뒤(안쪽)에 둬 CORS 헤더가 붙은 뒤 본문만 압축한다. minimum_size로 작은
+    # 응답(health·control ack)은 무압축 통과시켜 CPU를 낭비하지 않는다.
+    app.add_middleware(GZipMiddleware, minimum_size=1024)
     # WS5: 요청 TTFB 타이밍 — 마지막에 추가해 최외곽(전 구간 측정)으로 배선.
     app.add_middleware(RequestTimingMiddleware)
     # Liveness probe. Used by the Playwright e2e webServer config and by any

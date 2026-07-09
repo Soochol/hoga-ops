@@ -217,10 +217,12 @@ class IncrementalHogaBucketer {
   private seenPre = new Set<number>();
   private fillByBucket = new Map<number, FillStrengthPoint>();
   private fillOrder: number[] = [];
-  private depthByBucket = new Map<
-    number,
-    { close: { asks: OrderbookLevel[]; bids: OrderbookLevel[] }; max: { asks: OrderbookLevel[]; bids: OrderbookLevel[]; total: number } }
-  >();
+  // 버킷별로 완성된 DepthHeatmapPoint 를 보관한다 — 틱이 그 버킷을 실제로 바꿀 때만
+  // 새 point 객체로 교체하므로, 갱신되지 않은 과거 버킷의 참조가 틱 간 안정적이다.
+  // 하류 depthPointToWire / depthHeatmapFromWire 의 WeakMap 캐시가 이 불변식에
+  // 의존한다(내용 변경 = 객체 교체 → 미변경 버킷은 캐시 히트). ⚠️ point 내부
+  // 배열을 in-place mutate 하면 이 불변식이 깨진다 — 항상 새 point 로 교체할 것.
+  private depthByBucket = new Map<number, { point: DepthHeatmapPoint; maxTotal: number }>();
   private depthOrder: number[] = [];
 
   update(
@@ -385,12 +387,19 @@ class IncrementalHogaBucketer {
           const curTotal = s.total_bid_qty + s.total_ask_qty;
           const prevD = this.depthByBucket.get(t);
           if (!prevD) this.depthOrder.push(t);
-          const close = { asks: s.asks, bids: s.bids };
-          const max =
-            !prevD || curTotal > prevD.max.total
-              ? { asks: s.asks, bids: s.bids, total: curTotal }
-              : prevD.max;
-          this.depthByBucket.set(t, { close, max });
+          // CLOSE = 최신 틱(활성 버킷은 매 틱 새 point 로 정당히 교체). MAX = 총잔량
+          // 피크 틱 — strict `>` 로 동률 시 앞선 것 유지(imb_max 와 동일 argmax).
+          const keepMax = prevD !== undefined && curTotal <= prevD.maxTotal;
+          this.depthByBucket.set(t, {
+            maxTotal: keepMax ? prevD.maxTotal : curTotal,
+            point: {
+              tMs: t,
+              asks: s.asks,
+              bids: s.bids,
+              asksMax: keepMax ? prevD.point.asksMax : s.asks,
+              bidsMax: keepMax ? prevD.point.bidsMax : s.bids,
+            },
+          });
         }
       } else if (!this.seenPre.has(t) && !this.quoteByBucket.has(t)) {
         this.quoteOrder.push(t);
@@ -430,16 +439,8 @@ class IncrementalHogaBucketer {
     return {
       quoteRatioPoints: this.quoteOrder.map((t) => ({ ...this.quoteByBucket.get(t)! })),
       fillStrengthPoints: this.fillOrder.map((t) => ({ ...this.fillByBucket.get(t)! })),
-      depthHeatmapToday: this.depthOrder.map((t) => {
-        const d = this.depthByBucket.get(t)!;
-        return {
-          tMs: t,
-          asks: d.close.asks,
-          bids: d.close.bids,
-          asksMax: d.max.asks,
-          bidsMax: d.max.bids,
-        };
-      }),
+      // 갱신 안 된 버킷은 저장된 point 를 그대로 반환 → 참조 안정(틱당 재할당 = 변경 버킷뿐).
+      depthHeatmapToday: this.depthOrder.map((t) => this.depthByBucket.get(t)!.point),
     };
   }
 }

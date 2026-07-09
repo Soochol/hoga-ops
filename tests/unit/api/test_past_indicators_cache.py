@@ -4,8 +4,8 @@ from __future__ import annotations
 import json
 from pathlib import Path
 
-from hoga.api.models import AskPeak, BidPeak, TradeVolumePoc
-from hoga.api.past_indicators_cache import PastIndicatorsCache
+from hoga.api.models import AskPeak, BidPeak, DepthHeatmapPoint, TradeVolumePoc
+from hoga.api.past_indicators_cache import CACHE_MISS, PastIndicatorsCache
 from hoga.tables.snapshots import QuoteRatioRow
 from hoga.tables.trades import FillStrengthRow
 
@@ -286,3 +286,66 @@ def test_mem_overlay_bounded_falls_back_to_disk(tmp_path: Path) -> None:
     # 축출된 첫 날짜도 디스크에서 그대로 읽힌다.
     got = cache.get_ratio("005930", "20260601", "kis_live")
     assert got == rows_by_date["20260601"]
+
+
+# ── depth_heatmap ────────────────────────────────────────────────────────────
+
+_DEPTH = [
+    DepthHeatmapPoint(
+        t_ms=1_700_000_000_000,
+        asks=[[70100, 5], [70200, 3]],
+        bids=[[70000, 8], [69900, 2]],
+        asks_max=[[70100, 9], [70200, 4]],
+        bids_max=[[70000, 12], [69900, 6]],
+    ),
+    DepthHeatmapPoint(t_ms=1_700_000_060_000),  # 빈 레벨 버킷도 유효 데이터
+]
+
+
+def test_depth_roundtrip_in_memory(tmp_path: Path) -> None:
+    c = PastIndicatorsCache(tmp_path)
+    assert c.get_depth(CODE, DATE, SRC, 60_000) is CACHE_MISS
+    c.store_depth(CODE, DATE, SRC, 60_000, _DEPTH)
+    assert c.get_depth(CODE, DATE, SRC, 60_000) == _DEPTH
+
+
+def test_depth_empty_list_is_a_valid_cached_result(tmp_path: Path) -> None:
+    # 무데이터 거래일은 [] 를 캐시한다 — get 은 [](캐시됨)와 CACHE_MISS(미캐시)를 구분해야.
+    c = PastIndicatorsCache(tmp_path)
+    c.store_depth(CODE, DATE, SRC, 60_000, [])
+    assert c.get_depth(CODE, DATE, SRC, 60_000) == []
+    assert c.get_depth(CODE, DATE, SRC, 60_000) is not CACHE_MISS
+
+
+def test_depth_persists_to_disk_across_instances(tmp_path: Path) -> None:
+    PastIndicatorsCache(tmp_path).store_depth(CODE, DATE, SRC, 60_000, _DEPTH)
+    fresh = PastIndicatorsCache(tmp_path)  # cold memory → reconstruct from disk
+    assert fresh.get_depth(CODE, DATE, SRC, 60_000) == _DEPTH
+
+
+def test_depth_bucket_ms_is_part_of_the_key(tmp_path: Path) -> None:
+    c = PastIndicatorsCache(tmp_path)
+    c.store_depth(CODE, DATE, SRC, 60_000, _DEPTH)
+    assert c.get_depth(CODE, DATE, SRC, 300_000) is CACHE_MISS
+
+
+def test_depth_path_layout(tmp_path: Path) -> None:
+    PastIndicatorsCache(tmp_path).store_depth(CODE, DATE, SRC, 60_000, _DEPTH)
+    assert (tmp_path / "kis-past-indicators" / CODE / SRC / f"{DATE}.depth.60000.json").exists()
+
+
+def test_depth_version_mismatch_is_a_miss(tmp_path: Path) -> None:
+    PastIndicatorsCache(tmp_path).store_depth(CODE, DATE, SRC, 60_000, _DEPTH)
+    p = tmp_path / "kis-past-indicators" / CODE / SRC / f"{DATE}.depth.60000.json"
+    body = json.loads(p.read_text(encoding="utf-8"))
+    body["version"] = -1
+    p.write_text(json.dumps(body), encoding="utf-8")
+    assert PastIndicatorsCache(tmp_path).get_depth(CODE, DATE, SRC, 60_000) is CACHE_MISS
+
+
+def test_depth_mem_overlay_bounded_falls_back_to_disk(tmp_path: Path) -> None:
+    cache = PastIndicatorsCache(tmp_path, mem_max_depth_entries=2)
+    for date_s in ("20260601", "20260602", "20260603"):
+        cache.store_depth("005930", date_s, "kis_live", 60_000, _DEPTH)
+    assert len(cache._mem_depth) == 2  # 전용 상한 유지(공용 512 아님)
+    assert cache.get_depth("005930", "20260601", "kis_live", 60_000) == _DEPTH  # 디스크 복원

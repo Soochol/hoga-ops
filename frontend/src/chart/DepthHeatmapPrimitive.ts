@@ -42,10 +42,30 @@ class DepthHeatmapRenderer implements IPrimitivePaneRenderer {
       const timeScale = chart.timeScale();
       const barSpacing = timeScale.options().barSpacing;
       const halfW = Math.max(1, (barSpacing * 0.9) / 2);
+      // 단일 draw 안에서 뷰포트는 고정 → time→x, price→y 는 순수 함수. 프레임 로컬
+      // 캐시로 중복 좌표 변환을 제거한다: 한 시각(컬럼)의 최대 20셀이 timeToCoordinate
+      // 를 20번 호출하던 것을 1번으로, 10개 안팎의 호가 가격 레벨이 모든 컬럼에서
+      // 재등장하므로 priceToCoordinate 도 레벨 수만큼으로 줄인다. 색·기하는 불변.
+      const xByTime = new Map<Time, number | null>();
+      const yByPrice = new Map<number, number | null>();
+      const coordX = (t: Time): number | null => {
+        const cached = xByTime.get(t);
+        if (cached !== undefined) return cached;
+        const x = timeScale.timeToCoordinate(t);
+        xByTime.set(t, x);
+        return x;
+      };
+      const coordY = (price: number): number | null => {
+        const cached = yByPrice.get(price);
+        if (cached !== undefined) return cached;
+        const y = series.priceToCoordinate(price);
+        yByPrice.set(price, y);
+        return y;
+      };
       for (const cell of cells) {
-        const x = timeScale.timeToCoordinate(cell.time);
-        const yMid = series.priceToCoordinate(cell.price);
-        const yEdge = series.priceToCoordinate(cell.price + cell.halfTick);
+        const x = coordX(cell.time);
+        const yMid = coordY(cell.price);
+        const yEdge = coordY(cell.price + cell.halfTick);
         if (x === null || yMid === null || yEdge === null) continue;
         const cellHalfH = Math.abs(yMid - yEdge);
         const left = (x - halfW) * hr;
