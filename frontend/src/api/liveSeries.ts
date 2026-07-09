@@ -130,8 +130,9 @@ export function useLiveSeries(code: string): LiveSeriesData {
   // was deliberately skipped as high-risk/low-marginal after Phase A/B memoised
   // the candle path.) Buffer accumulates every push; only the re-READ is throttled,
   // so no snapshot is dropped — the next flush sees them all. Trade-off: ≤150ms
-  // display latency on live hoga + sidebar (current-price line uses useQuotes, not
-  // this path, so it's unaffected).
+  // display latency on live hoga + sidebar. 현재가 라인·상태바도 이 버퍼의 마지막
+  // 체결가(freshLiveTradePrice)를 1순위로 쓰므로 같은 ≤150ms 지연이 적용된다;
+  // useQuotes(10s 폴)는 체결이 뜸하거나 WS 단절일 때의 폴백이다.
   useEffect(() => {
     if (!code) return;
     bufferOwnerRef.current = code;

@@ -20,6 +20,10 @@ type Props = {
   paneSeries: PaneSeriesMap;
   bundle: RangeBundle;
   code: string | null;
+  /** LiveChartRoot 가 live.trade 를 number|null 로 환원해 내려주는 fresh 체결가.
+   * 프리미티브라 memo 유효성 유지 — deriveCurrentPriceLine 이 quote.price·캔들
+   * 종가보다 우선 사용해 D/W/M·WS 단절에도 라인이 얼지 않는다. */
+  liveTradePrice?: number | null;
 };
 
 /**
@@ -30,12 +34,12 @@ type Props = {
  * 컨벤션을 보존한다. 형제 패턴: DrawingOverlay / indicators/MovingAverageOverlay.
  * 설계 근거: docs/superpowers/specs/2026-06-03-live-current-price-line-design.md.
  */
-function LiveCurrentPriceLine({ paneSeries, bundle, code }: Props) {
+function LiveCurrentPriceLine({ paneSeries, bundle, code, liveTradePrice }: Props) {
   const series = paneSeries.get('candle' as PaneId);
   const venue = useLiveVenueStore((s) => s.venue);
   const quote = useQuoteByCode(code ? [code] : [], venue).get(code ?? '');
   const TOKENS = resolveTokensThemed(TOKEN_SPEC);
-  const model = deriveCurrentPriceLine(bundle, quote, TOKENS);
+  const model = deriveCurrentPriceLine(bundle, quote, TOKENS, liveTradePrice);
   const lineRef = useRef<IPriceLine | null>(null);
 
   // 생성: 시리즈 핸들당 1회. candle 시리즈는 RangeSeriesPane 의 생성 effect deps
