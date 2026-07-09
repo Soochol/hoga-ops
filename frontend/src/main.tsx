@@ -42,6 +42,12 @@ const qc = new QueryClient({
   },
 });
 
+// past-candles 청크·canonical 병합본은 불변(완결 과거일)이므로 전역 30분보다 오래
+// 살려 "점심 후 복귀"(gcTime 초과) 시나리오에서도 네트워크 재-워크백 없이 캐시에서
+// 병합 히스토리를 복원한다. 훅이 명시하는 staleTime/refetchInterval 은 우선순위가
+// 높아 불변(RQ v5: 훅 옵션 > setQueryDefaults > defaultOptions) — gcTime 만 승격된다.
+qc.setQueryDefaults(['live', 'past-candles'], { gcTime: 2 * 60 * 60_000 });
+
 createRoot(document.getElementById('root')!).render(
   <QueryClientProvider client={qc}>
     <BrowserRouter>

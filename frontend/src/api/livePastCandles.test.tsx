@@ -3,6 +3,7 @@ import { renderHook, waitFor } from '@testing-library/react';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import {
   hasBlockingWarnings,
+  mergedPastCandlesKey,
   pastCandlesRefetchInterval,
   pastCandlesStaleTime,
   useLivePastCandles,
@@ -498,5 +499,129 @@ describe('hasBlockingWarnings', () => {
       ...RESPONSE,
       data_warnings: [warn('minute_fallback_to_krx'), warn('kis_rest_bypassed')],
     })).toBe(false);
+  });
+});
+
+// 탭 복귀 시 병합 기준선 1-샷 복원 (W1) — mergedRef는 훅-로컬이라 code 전환으로
+// 소실되지만, 병합본을 canonical 키로 재발행해 두면 같은 QueryClient에서 재마운트
+// 시 청크 워크백 리플레이 없이 복원된다.
+describe('useLivePastCandles canonical 재발행/복원', () => {
+  beforeEach(() => vi.restoreAllMocks());
+
+  it('워크백 완료 후 병합본을 canonical 키로 재발행한다', async () => {
+    mockApiEchoingWindow();
+    const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+    const { result } = renderHook(
+      () => useLivePastCandles('005930', '20260601', '20260707', 'KRX'),
+      { wrapper: wrap(qc) },
+    );
+    await waitFor(() => expect(result.current.data?.from).toBe('20260601'), { timeout: 3000 });
+    const published = qc.getQueryData<LivePastCandlesResponse>(
+      mergedPastCandlesKey('005930', '20260707', 'KRX'),
+    );
+    expect(published?.from).toBe('20260601');
+    expect(published?.to).toBe('20260707');
+  });
+
+  it('재마운트 시 canonical 병합본만으로 복원한다(개별 청크 캐시 없이도 fetch 0)', async () => {
+    const spy = mockApiEchoingWindow();
+    const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+    const first = renderHook(
+      () => useLivePastCandles('005930', '20260601', '20260707', 'KRX'),
+      { wrapper: wrap(qc) },
+    );
+    await waitFor(() => expect(first.result.current.data?.from).toBe('20260601'), { timeout: 3000 });
+    const callsAfterWalkback = spy.mock.calls.length;
+    expect(callsAfterWalkback).toBe(3); // 15일 청크 × 3
+    first.unmount();
+
+    // 개별 청크 엔트리를 전부 제거하고 canonical 병합본만 남긴다 — 복원이
+    // 청크 캐시가 아니라 canonical 재발행에 기인함을 격리 검증한다.
+    qc.removeQueries({ queryKey: ['live', 'past-candles', '005930'], exact: false });
+    qc.getQueryCache().getAll()
+      .filter((q) => {
+        const k = q.queryKey as unknown[];
+        return k[0] === 'live' && k[1] === 'past-candles' && k[2] !== 'merged';
+      })
+      .forEach((q) => qc.getQueryCache().remove(q));
+    // canonical 은 살아 있어야 한다.
+    expect(qc.getQueryData(mergedPastCandlesKey('005930', '20260707', 'KRX'))).toBeTruthy();
+
+    const second = renderHook(
+      () => useLivePastCandles('005930', '20260601', '20260707', 'KRX'),
+      { wrapper: wrap(qc) },
+    );
+    await waitFor(() => expect(second.result.current.data?.from).toBe('20260601'));
+    await new Promise((r) => setTimeout(r, 60));
+    // 청크를 지웠는데도 복원됐다면 canonical 경로가 작동한 것 — 추가 fetch 0.
+    expect(spy.mock.calls.length).toBe(callsAfterWalkback);
+  });
+
+  it('부분 복원: canonical이 seed보다 얕으면 부족분 청크만 요청한다', async () => {
+    const spy = mockApiEchoingWindow();
+    const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+    // canonical 을 20260623~20260707 만 커버하도록 직접 심는다(첫 청크만 받은 상태).
+    qc.setQueryData(mergedPastCandlesKey('005930', '20260707', 'KRX'), {
+      code: '005930', from: '20260623', to: '20260707', venue: 'KRX',
+      candles: [], cached_dates: [], fresh_dates: [], data_warnings: [],
+    } satisfies LivePastCandlesResponse);
+
+    const { result } = renderHook(
+      () => useLivePastCandles('005930', '20260601', '20260707', 'KRX'),
+      { wrapper: wrap(qc) },
+    );
+    await waitFor(() => expect(result.current.data?.from).toBe('20260601'), { timeout: 3000 });
+    const urls = spy.mock.calls.map((c) => c[0]);
+    // 첫 청크(20260623~20260707)는 복원됐으므로 재요청 없이, 그 아래부터만 워크백.
+    expect(urls).toEqual([
+      '/api/live/past-candles?code=005930&from=20260608&to=20260622&venue=KRX',
+      '/api/live/past-candles?code=005930&from=20260601&to=20260607&venue=KRX',
+    ]);
+  });
+
+  it('다른 to/venue/code canonical은 복원에 쓰이지 않는다', async () => {
+    const spy = mockApiEchoingWindow();
+    const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+    // 다른 to 로 심어두면 이번 identity(to=20260707)와 불일치 → 무시.
+    qc.setQueryData(mergedPastCandlesKey('005930', '20260630', 'KRX'), {
+      code: '005930', from: '20260601', to: '20260630', venue: 'KRX',
+      candles: [], cached_dates: [], fresh_dates: [], data_warnings: [],
+    } satisfies LivePastCandlesResponse);
+    renderHook(
+      () => useLivePastCandles('005930', '20260601', '20260707', 'KRX'),
+      { wrapper: wrap(qc) },
+    );
+    // 복원 실패 → 최신 15일 청크부터 풀 워크백 시작.
+    await waitFor(() => expect(spy).toHaveBeenCalled());
+    expect(spy.mock.calls[0][0]).toBe(
+      '/api/live/past-candles?code=005930&from=20260623&to=20260707&venue=KRX',
+    );
+  });
+
+  it('blocking 경고 병합본은 canonical에 재발행되지 않는다', async () => {
+    vi.spyOn(client, 'apiCall').mockResolvedValue({
+      ...RESPONSE, from: '20260501', to: '20260502',
+      candles: [], data_warnings: [{ date: '20260501', reason: 'kis_rate_limit', msg: 'x' }],
+    } satisfies LivePastCandlesResponse);
+    const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+    const { result } = renderHook(
+      () => useLivePastCandles('005930', '20260501', '20260502', 'KRX'),
+      { wrapper: wrap(qc) },
+    );
+    await waitFor(() => expect(result.current.data).toBeTruthy());
+    await new Promise((r) => setTimeout(r, 40));
+    expect(qc.getQueryData(mergedPastCandlesKey('005930', '20260502', 'KRX'))).toBeUndefined();
+  });
+
+  it('창≤15일 로드는 재발행 루프를 만들지 않는다(apiCall 1회 유지)', async () => {
+    const spy = mockApiEchoingWindow();
+    const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+    renderHook(
+      () => useLivePastCandles('005930', '20260701', '20260707', 'KRX'),
+      { wrapper: wrap(qc) },
+    );
+    await waitFor(() => expect(spy).toHaveBeenCalledTimes(1));
+    await new Promise((r) => setTimeout(r, 80));
+    expect(spy).toHaveBeenCalledTimes(1);
   });
 });
