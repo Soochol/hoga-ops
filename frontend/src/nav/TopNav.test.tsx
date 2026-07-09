@@ -13,11 +13,17 @@ vi.mock('./StatusDot', () => ({
   default: () => <span>WS · :8000</span>,
 }));
 
-function W({ children }: { children: ReactNode }) {
+// The symbol search now lives in the TopNav header line but only on /live.
+// Stub it so these nav-structure assertions stay isolated from live stores.
+vi.mock('../live/LiveSymbolSearch', () => ({
+  LiveSymbolSearch: () => <div data-testid="live-symbol-search" />,
+}));
+
+function W({ children, route = '/live' }: { children: ReactNode; route?: string }) {
   const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } });
   return (
     <QueryClientProvider client={qc}>
-      <MemoryRouter initialEntries={['/live']}>{children}</MemoryRouter>
+      <MemoryRouter initialEntries={[route]}>{children}</MemoryRouter>
     </QueryClientProvider>
   );
 }
@@ -49,6 +55,22 @@ describe('TopNav', () => {
     expect(liveLink.className).not.toContain('before:');
     expect(liveLink).not.toHaveClass('border-border-strong', 'bg-tint-selection');
     expect(liveLink.querySelector('[aria-hidden="true"]')).toBeNull();
+  });
+
+  it('mounts the symbol search in the header on /live', () => {
+    render(<TopNav onOpenSettings={vi.fn()} />, {
+      wrapper: ({ children }) => <W route="/live">{children}</W>,
+    });
+
+    expect(screen.getByTestId('live-symbol-search')).toBeInTheDocument();
+  });
+
+  it('hides the symbol search on non-live routes', () => {
+    render(<TopNav onOpenSettings={vi.fn()} />, {
+      wrapper: ({ children }) => <W route="/study">{children}</W>,
+    });
+
+    expect(screen.queryByTestId('live-symbol-search')).toBeNull();
   });
 
   it('opens settings through a button instead of navigating', () => {

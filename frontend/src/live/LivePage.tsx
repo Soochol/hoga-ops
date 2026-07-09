@@ -3,7 +3,6 @@ import { useSearchParams } from 'react-router';
 import { isMinuteTimeframe, useLivePageStore } from '../state/livePage';
 import { useLiveStatus } from '../api/liveStatus';
 import { useLiveStatusProjection } from './liveStatusProjection';
-import { LiveHeader } from './LiveHeader';
 import SessionTape from './SessionTape';
 import { LiveStatusBar } from './LiveStatusBar';
 import { LiveWorkarea } from './LiveWorkarea';
@@ -84,12 +83,11 @@ function tradeVolumePocsToWire(pocs: readonly {
 /**
  * /live page — KIS-based real-time indicator chart.
  *
- * Five-row grid (Stage 9-β added LiveStateBanner; ADR-0069 adds the tab bar as row 2):
- *   1. LiveHeader      (var(--h-live-header))  — title + ⭐ toggle + symbol search
- *   2. LiveTabBar      (40px)                  — open stock tabs (ADR-0069)
- *   3. LiveStateBanner (auto)                  — empty/error state matrix
- *   4. LiveStatusBar   (var(--h-pricestrip))   — code/price/source/timeframe + cycle_lag pill
- *   5. LiveWorkarea    (1fr)                   — chart panel (toolbar + chart) + detail panel
+ * Four-row grid (symbol search moved up into the global TopNav header line):
+ *   1. LiveTabBar      (40px)                  — open stock tabs (ADR-0069)
+ *   2. LiveStateBanner (auto)                  — empty/error state matrix
+ *   3. LiveStatusBar   (var(--h-pricestrip))   — code/price/source/timeframe + cycle_lag pill
+ *   4. LiveWorkarea    (1fr)                   — chart panel (toolbar + chart) + detail panel
  *
  * Active code resolution (CONTEXT.md / ADR-0052 / ADR-0069):
  *   useLivePageStore remains the single source of truth that all read sites
@@ -399,11 +397,10 @@ export function LivePage() {
         // minmax(0, 1fr) on the workarea row prevents the chart canvas's
         // intrinsic size from pushing the row past viewport height.
         gridTemplateRows:
-          '3px var(--h-live-header) 40px auto var(--h-pricestrip) minmax(0, 1fr)',
+          '3px 40px auto var(--h-pricestrip) minmax(0, 1fr)',
       }}
     >
       <SessionTape />
-      <LiveHeader />
       <LiveTabBar
         tabs={tabs}
         activeTabId={activeTabId}
