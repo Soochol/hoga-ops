@@ -256,12 +256,26 @@ def build_broker_late_entries_slice(
     date: str,
     source: str,
     start_hhmm: int,
+    cache: PastIndicatorsCache | None = _RESOLVE,  # type: ignore[assignment]
+    today_kst: str | None = _RESOLVE,  # type: ignore[assignment]
 ) -> list[BrokerLateEntryEvent]:
+    """거래원 지각 진입 — 완료된 과거일 이벤트를 PastIndicatorsCache로 재사용.
+
+    brokers.parquet 풀스캔을 요청마다 재지불하던 것을 (code, date, source, start_hhmm)
+    이벤트 리스트 캐시로 제거. start_hhmm 은 seen-set 선별 임계라 키 필수(SQL 자체는
+    무관하지만 최종 events 는 종속). ``[]`` 도 유효 캐시값. 오늘은 재계산(ADR-0043)."""
+    cache = _resolve_cache(engine, cache)
+    today_kst = _resolve_today_kst(today_kst)
     path = engine.parquet_dir(date, code, source) / "brokers.parquet"
     if not path.exists():
         return []
-    threshold_ms = _hhmm_to_hhmmssms(start_hhmm)
-    return [
+    threshold_ms = _hhmm_to_hhmmssms(start_hhmm)  # invalid hhmm 은 캐시 이전에 raise
+    cacheable = cache is not None and today_kst is not None and date < today_kst
+    if cacheable:
+        cached = cache.get_broker_late(code, date, source, start_hhmm)  # type: ignore[union-attr]
+        if cached is not CACHE_MISS:
+            return cached  # type: ignore[return-value]
+    events = [
         BrokerLateEntryEvent(
             t_ms=hhmmssms_to_unix_ms(date, row.t_ms),
             broker=row.broker,
@@ -274,6 +288,9 @@ def build_broker_late_entries_slice(
             threshold_ms=threshold_ms,
         )
     ]
+    if cacheable:
+        cache.store_broker_late(code, date, source, start_hhmm, events)  # type: ignore[union-attr]
+    return events
 
 
 def build_quote_ratio_slice(
@@ -389,7 +406,22 @@ def build_volume_distribution_slice(
     price_max: int | None = None,
     cutoff_ms: int | None = None,
     continuous_before_ms: int | None = None,
+    cache: PastIndicatorsCache | None = _RESOLVE,  # type: ignore[assignment]
+    today_kst: str | None = _RESOLVE,  # type: ignore[assignment]
 ) -> DayVolumeDistribution | None:
+    """체결 분포 — 완료된 과거일 결과를 PastIndicatorsCache로 재사용(POC/depth 패턴).
+
+    trades.parquet 풀스캔 GROUP BY를 요청마다 재지불하던 것을 (code, date, source,
+    range_count, price_min, price_max) 결과 캐시로 제거. **cutoff_ms is None 요청만
+    캐시** — cutoff variant(hover/스터디 스크럽)는 버킷 정렬 카디널리티가 높아 디스크
+    파편화를 유발하므로 v1 제외(선행 continuous_before 캐시가 스크럽 비용은 이미 상쇄).
+    None(무데이터일)도 유효 캐시값. session_open/close_ms·last_trade_ms는 meta/데이터
+    파생이라 (code,date) 불변 → 키 불포함(POC 선례와 동일).
+
+    v2 아이디어: 1m 버킷별 bin 델타 아티팩트 + prefix-sum으로 임의 cutoff 응답을
+    합성하면 cutoff variant도 캐시 가능(현재 미구현)."""
+    cache = _resolve_cache(engine, cache)
+    today_kst = _resolve_today_kst(today_kst)
     code_dir = engine.parquet_dir(date, code, source)
     candles_path = code_dir / "candles.parquet"
     trades_path = code_dir / "trades.parquet"
@@ -402,6 +434,19 @@ def build_volume_distribution_slice(
         if price_range is None:
             return None
         price_min, price_max = price_range
+    # price 해석 후 캐시 조회 — 키가 확정되는 시점. cutoff 요청은 캐시 우회.
+    cacheable = (
+        cache is not None
+        and today_kst is not None
+        and date < today_kst
+        and cutoff_ms is None
+    )
+    if cacheable:
+        cached = cache.get_volume_distribution(  # type: ignore[union-attr]
+            code, date, source, range_count, price_min, price_max
+        )
+        if cached is not CACHE_MISS:
+            return cached  # type: ignore[return-value]
     upper_bound_ms = None
     if cutoff_ms is not None:
         cutoff_hhmmssms = unix_ms_to_hhmmssms(date, cutoff_ms)
@@ -420,7 +465,7 @@ def build_volume_distribution_slice(
         **dist_kwargs,
         continuous_before_ms=continuous_before_ms,
     )
-    return DayVolumeDistribution(
+    result = DayVolumeDistribution(
         date=date,
         range_count=range_count,
         price_min=price_min,
@@ -440,6 +485,11 @@ def build_volume_distribution_slice(
             range_count,
         ),
     )
+    if cacheable:
+        cache.store_volume_distribution(  # type: ignore[union-attr]
+            code, date, source, range_count, price_min, price_max, result
+        )
+    return result
 
 
 def build_fill_strength_slice(
@@ -956,6 +1006,37 @@ def build_depth_heatmap_slice(
 
 
 def _first_trailing_single_price_book_hhmmssms(
+    engine: QueryEngine,
+    *,
+    code: str,
+    date: str,
+    source: str,
+    session_close_ms: int,
+    cache: PastIndicatorsCache | None = _RESOLVE,  # type: ignore[assignment]
+    today_kst: str | None = _RESOLVE,  # type: ignore[assignment]
+) -> int | None:
+    """연속거래 상한(continuous_before_ms) — 체결분포·POC 슬라이스의 선행 의존값.
+
+    snapshots + trades **2-스캔**을 완료된 과거일마다 재실행하던 것을
+    PastIndicatorsCache로 1회 계산 후 재사용한다. None(경계 없음)도 유효 캐시값.
+    게이트는 bucket 무관이라 ``_indicator_cacheable``이 아니라 ``date < today_kst``
+    직접 판정(POC의 date-only 게이트 관용구). 오늘은 프로모션 진행 중이라 재계산."""
+    cache = _resolve_cache(engine, cache)
+    today_kst = _resolve_today_kst(today_kst)
+    cacheable = cache is not None and today_kst is not None and date < today_kst
+    if cacheable:
+        cached = cache.get_continuous_before(code, date, source, int(session_close_ms))  # type: ignore[union-attr]
+        if cached is not CACHE_MISS:
+            return cached  # type: ignore[return-value]
+    result = _compute_first_trailing_single_price_book_hhmmssms(
+        engine, code=code, date=date, source=source, session_close_ms=session_close_ms
+    )
+    if cacheable:
+        cache.store_continuous_before(code, date, source, int(session_close_ms), result)  # type: ignore[union-attr]
+    return result
+
+
+def _compute_first_trailing_single_price_book_hhmmssms(
     engine: QueryEngine,
     *,
     code: str,

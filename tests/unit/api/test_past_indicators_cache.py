@@ -4,7 +4,15 @@ from __future__ import annotations
 import json
 from pathlib import Path
 
-from hoga.api.models import AskPeak, BidPeak, DepthHeatmapPoint, TradeVolumePoc
+from hoga.api.models import (
+    AskPeak,
+    BidPeak,
+    BrokerLateEntryEvent,
+    DayVolumeDistribution,
+    DepthHeatmapPoint,
+    TradeVolumePoc,
+    VolumeDistributionBin,
+)
 from hoga.api.past_indicators_cache import CACHE_MISS, PastIndicatorsCache
 from hoga.tables.snapshots import QuoteRatioRow
 from hoga.tables.trades import FillStrengthRow
@@ -349,3 +357,101 @@ def test_depth_mem_overlay_bounded_falls_back_to_disk(tmp_path: Path) -> None:
         cache.store_depth("005930", date_s, "kis_live", 60_000, _DEPTH)
     assert len(cache._mem_depth) == 2  # 전용 상한 유지(공용 512 아님)
     assert cache.get_depth("005930", "20260601", "kis_live", 60_000) == _DEPTH  # 디스크 복원
+
+
+# ── volume_distribution (체결 분포) ──────────────────────────────────────────
+
+_VDIST = DayVolumeDistribution(
+    date=DATE, range_count=10, price_min=70_000, price_max=71_000,
+    session_open_ms=1_700_000_000_000, session_close_ms=1_700_020_000_000,
+    last_trade_ms=1_700_019_000_000,
+    bins=[VolumeDistributionBin(price_low=70_000, price_high=70_100, qty=500)],
+)
+_VD_KEY = (CODE, DATE, SRC, 10, 70_000, 71_000)
+
+
+def test_vdist_roundtrip_and_miss_sentinel(tmp_path: Path) -> None:
+    c = PastIndicatorsCache(tmp_path)
+    assert c.get_volume_distribution(*_VD_KEY) is CACHE_MISS
+    c.store_volume_distribution(*_VD_KEY, _VDIST)
+    assert c.get_volume_distribution(*_VD_KEY) == _VDIST
+
+
+def test_vdist_none_is_a_valid_cached_result(tmp_path: Path) -> None:
+    c = PastIndicatorsCache(tmp_path)
+    c.store_volume_distribution(*_VD_KEY, None)
+    assert c.get_volume_distribution(*_VD_KEY) is None
+    assert c.get_volume_distribution(*_VD_KEY) is not CACHE_MISS
+
+
+def test_vdist_persists_and_price_range_is_part_of_key(tmp_path: Path) -> None:
+    PastIndicatorsCache(tmp_path).store_volume_distribution(*_VD_KEY, _VDIST)
+    fresh = PastIndicatorsCache(tmp_path)  # cold memory → disk reconstruct
+    assert fresh.get_volume_distribution(*_VD_KEY) == _VDIST
+    # price_max 다르면 별도 엔트리(파일명에 박힘).
+    assert fresh.get_volume_distribution(CODE, DATE, SRC, 10, 70_000, 72_000) is CACHE_MISS
+
+
+def test_vdist_path_layout(tmp_path: Path) -> None:
+    PastIndicatorsCache(tmp_path).store_volume_distribution(*_VD_KEY, _VDIST)
+    assert (
+        tmp_path / "kis-past-indicators" / CODE / SRC
+        / f"{DATE}.volume_distribution.10.70000.71000.json"
+    ).exists()
+
+
+# ── broker_late_entries (거래원 지각 진입) ───────────────────────────────────
+
+_BROKER = [
+    BrokerLateEntryEvent(t_ms=1_700_019_000_000, broker="미래에셋", side="buy", net=1200),
+    BrokerLateEntryEvent(t_ms=1_700_019_060_000, broker="키움", side="sell", net=-800),
+]
+
+
+def test_broker_late_roundtrip_and_empty_valid(tmp_path: Path) -> None:
+    c = PastIndicatorsCache(tmp_path)
+    assert c.get_broker_late(CODE, DATE, SRC, 930) is CACHE_MISS
+    c.store_broker_late(CODE, DATE, SRC, 930, _BROKER)
+    assert c.get_broker_late(CODE, DATE, SRC, 930) == _BROKER
+    # [] 도 유효 캐시값.
+    c.store_broker_late(CODE, DATE, SRC, 1000, [])
+    assert c.get_broker_late(CODE, DATE, SRC, 1000) == []
+    assert c.get_broker_late(CODE, DATE, SRC, 1000) is not CACHE_MISS
+
+
+def test_broker_late_persists_and_hhmm_is_part_of_key(tmp_path: Path) -> None:
+    PastIndicatorsCache(tmp_path).store_broker_late(CODE, DATE, SRC, 930, _BROKER)
+    fresh = PastIndicatorsCache(tmp_path)
+    assert fresh.get_broker_late(CODE, DATE, SRC, 930) == _BROKER
+    assert fresh.get_broker_late(CODE, DATE, SRC, 1000) is CACHE_MISS
+
+
+def test_broker_late_version_mismatch_is_a_miss(tmp_path: Path) -> None:
+    PastIndicatorsCache(tmp_path).store_broker_late(CODE, DATE, SRC, 930, _BROKER)
+    p = tmp_path / "kis-past-indicators" / CODE / SRC / f"{DATE}.broker_late.930.json"
+    body = json.loads(p.read_text(encoding="utf-8"))
+    body["version"] = -1
+    p.write_text(json.dumps(body), encoding="utf-8")
+    assert PastIndicatorsCache(tmp_path).get_broker_late(CODE, DATE, SRC, 930) is CACHE_MISS
+
+
+# ── continuous_before_ms (선행 스칼라) ───────────────────────────────────────
+
+
+def test_continuous_before_roundtrip_none_and_int(tmp_path: Path) -> None:
+    c = PastIndicatorsCache(tmp_path)
+    assert c.get_continuous_before(CODE, DATE, SRC, 153_000_000) is CACHE_MISS
+    # int 값
+    c.store_continuous_before(CODE, DATE, SRC, 153_000_000, 151_030_000)
+    assert c.get_continuous_before(CODE, DATE, SRC, 153_000_000) == 151_030_000
+    # None(경계 없음)도 유효 캐시값 → 센티널과 구분
+    c.store_continuous_before(CODE, DATE, "other", 153_000_000, None)
+    assert c.get_continuous_before(CODE, DATE, "other", 153_000_000) is None
+    assert c.get_continuous_before(CODE, DATE, "other", 153_000_000) is not CACHE_MISS
+
+
+def test_continuous_before_persists_and_close_ms_is_part_of_key(tmp_path: Path) -> None:
+    PastIndicatorsCache(tmp_path).store_continuous_before(CODE, DATE, SRC, 153_000_000, 151_030_000)
+    fresh = PastIndicatorsCache(tmp_path)
+    assert fresh.get_continuous_before(CODE, DATE, SRC, 153_000_000) == 151_030_000
+    assert fresh.get_continuous_before(CODE, DATE, SRC, 133_000_000) is CACHE_MISS
