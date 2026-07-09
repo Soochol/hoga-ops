@@ -39,6 +39,7 @@ import {
   liveVenueUsesExtendedMinuteWindow,
 } from './liveVenuePolicy';
 import { buildLivePriceLevelHits, mergePriceLevelHits } from './priceLevelHits';
+import { mergeDepthHeatmapToday } from './depthHeatmapWire';
 import { hogaCoverageGapDates as computeHogaCoverageGapDates } from './hogaCoverageGap';
 
 const EMPTY_INVESTOR_POINTS: InvestorNetPoint[] = [];
@@ -747,6 +748,7 @@ export function useLiveBundle(
             quote_ratio: committedHogaSeries.quote_ratio,
             fill_strength: committedHogaSeries.fill_strength,
             price_level_hits: mergePriceLevelHits(chartBundle.price_level_hits, livePriceLevelHits),
+            depth_heatmap: mergeDepthHeatmapToday(chartBundle.depth_heatmap, committedHogaSeries.depth_heatmap_today),
           }
         : null,
     [chartBundle, committedHogaSeries, livePriceLevelHits],

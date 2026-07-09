@@ -3,6 +3,7 @@ import { renderHook, waitFor } from '@testing-library/react';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import type { ReactNode } from 'react';
 import { overlayLiveTradesOnCandles, planLiveRangeRequest, useLiveBundle } from './useLiveBundle';
+import { mergeDepthHeatmapToday } from './depthHeatmapWire';
 import { LIVE_SETTINGS_KEY, type LiveSettings } from '../api/liveSettings';
 import { useLivePageStore } from '../state/livePage';
 import { useSourcePreferenceStore } from '../state/sourcePreference';
@@ -356,6 +357,69 @@ describe('overlayLiveTradesOnCandles', () => {
     expect(out[0]).toBe(first);
     expect(out[1]).not.toBe(last);
     expect(out[1]).toMatchObject({ high: 70150, close: 70150, vol_a: 1007 });
+  });
+});
+
+describe('mergeDepthHeatmapToday', () => {
+  const pastBucket = {
+    t_ms: 100,
+    asks: [[70_100, 500]] as [number, number][],
+    bids: [[70_000, 400]] as [number, number][],
+  };
+
+  it('keeps past-only wire buckets and appends today domain buckets (ascending)', () => {
+    const merged = mergeDepthHeatmapToday([pastBucket], [
+      {
+        tMs: 200,
+        asks: [{ price: 70_200, qty: 300 }],
+        bids: [{ price: 69_900, qty: 200 }],
+        asksMax: [{ price: 70_200, qty: 350 }],
+        bidsMax: [{ price: 69_900, qty: 250 }],
+      },
+    ]);
+
+    expect(merged.map((p) => p.t_ms)).toEqual([100, 200]);
+    // past passes through untouched (same reference)
+    expect(merged[0]).toBe(pastBucket);
+    // today domain → wire (camelCase levels → [price, qty] pairs incl. *_max)
+    expect(merged[1]).toEqual({
+      t_ms: 200,
+      asks: [[70_200, 300]],
+      bids: [[69_900, 200]],
+      asks_max: [[70_200, 350]],
+      bids_max: [[69_900, 250]],
+    });
+  });
+
+  it('lets today (live) win when a t_ms exists in both past and today', () => {
+    const merged = mergeDepthHeatmapToday([pastBucket], [
+      {
+        tMs: 100,
+        asks: [{ price: 70_100, qty: 999 }],
+        bids: [{ price: 70_000, qty: 888 }],
+        asksMax: [{ price: 70_100, qty: 999 }],
+        bidsMax: [{ price: 70_000, qty: 888 }],
+      },
+    ]);
+
+    expect(merged).toHaveLength(1);
+    expect(merged[0]).toEqual({
+      t_ms: 100,
+      asks: [[70_100, 999]],
+      bids: [[70_000, 888]],
+      asks_max: [[70_100, 999]],
+      bids_max: [[70_000, 888]],
+    });
+  });
+
+  it('handles an empty/undefined past (today-only) and empty today (past-only)', () => {
+    expect(mergeDepthHeatmapToday(undefined, [])).toEqual([]);
+    expect(mergeDepthHeatmapToday([pastBucket], [])).toEqual([pastBucket]);
+    expect(
+      mergeDepthHeatmapToday(undefined, [
+        { tMs: 300, asks: [], bids: [], asksMax: [], bidsMax: [] },
+      ]),
+    ).toEqual([{ t_ms: 300, asks: [], bids: [], asks_max: [], bids_max: [] }]);
   });
 });
 
@@ -971,6 +1035,82 @@ describe('useLiveBundle', () => {
     // pointCount stays 0 and no cells render even though the fetch succeeded.
     expect(result.current.chartBundle?.depth_heatmap).toEqual([depthPoint]);
     expect(result.current.bundle?.depth_heatmap).toEqual([depthPoint]);
+  });
+
+  it('overlays today live-ratcheted depth buckets on top of the sidecar past (today wins by t_ms)', () => {
+    // Sidecar carries a past-only bucket (100) AND a bucket at today's live
+    // t_ms (1779840060000) that the live ratchet must override.
+    const pastOnly = { t_ms: 100, asks: [[70_100, 500]], bids: [[70_000, 400]] };
+    const overlapStale = { t_ms: 1_779_840_060_000, asks: [[70_100, 999]], bids: [[70_000, 999]] };
+    const sidecarBundle = {
+      code: '005930',
+      from_date: '20260520',
+      to_date: '20260527',
+      bucket_ms: 60000,
+      segments: [],
+      candles: [],
+      quote_ratio: { bucket_ms: 60000, points: [] },
+      fill_strength: { bucket_ms: 60000, points: [] },
+      volume_profile_range: { bin_count: 0, price_min: 0, price_max: 0, bin_width: 0, bins: [] },
+      volume_profile_by_day: [],
+      volume_distributions: [],
+      investorPoints: [],
+      ask_peaks: [],
+      bid_peaks: [],
+      broker_late_entries: [],
+      price_level_hits: [],
+      trade_volume_pocs: [],
+      depth_heatmap: [pastOnly, overlapStale],
+      program_trade: { points: [] },
+    };
+    useRangeSidecarDeltaSpy.mockReturnValueOnce(rangeResult(sidecarBundle));
+
+    // Drive a continuous-book live ob tick (asks/bids with depth beyond L3) so
+    // the incremental builder produces a depth_heatmap_today bucket at the
+    // minute-aligned t_ms 1779840060000.
+    const liveWithDepth: LiveSeriesData = {
+      ...liveFixture,
+      ob: [
+        {
+          t_ms: 1_779_840_060_000,
+          total_ask_qty: 800,
+          total_bid_qty: 700,
+          kind: 'ob',
+          asks: [
+            { price: 70_100, qty: 500 },
+            { price: 70_200, qty: 100 },
+            { price: 70_300, qty: 100 },
+            { price: 70_400, qty: 100 },
+          ],
+          bids: [
+            { price: 70_000, qty: 400 },
+            { price: 69_900, qty: 100 },
+            { price: 69_800, qty: 100 },
+            { price: 69_700, qty: 100 },
+          ],
+        },
+      ],
+    };
+
+    const { result } = renderHook(() => useLiveBundle('005930', '1m', '20260527', liveWithDepth), { wrapper });
+
+    const merged = result.current.bundle?.depth_heatmap ?? [];
+    expect(merged.map((p) => p.t_ms)).toEqual([100, 1_779_840_060_000]);
+    // past-only bucket survives untouched
+    expect(merged[0]).toEqual(pastOnly);
+    // today's live bucket wins over the stale sidecar bucket at the same t_ms
+    expect(merged[1].asks).toEqual([
+      [70_100, 500],
+      [70_200, 100],
+      [70_300, 100],
+      [70_400, 100],
+    ]);
+    expect(merged[1].asks_max).toEqual([
+      [70_100, 500],
+      [70_200, 100],
+      [70_300, 100],
+      [70_400, 100],
+    ]);
   });
 
   it('merges sidecar program trade into the chart and live bundles', () => {
