@@ -1445,11 +1445,20 @@ export function LiveChartRoot({
       }
       // ChartStage.tsx:197 pattern — param.time is virtual-axis seconds.
       // Convert to virtual-ms, then real Unix-ms via axis.toReal().
-      let realMs = axis.toReal(t * 1000);
-      // Right-offset whitespace past the last candle: keep the sidebar pinned
-      // to the last concrete candle instead of a future no-data slot.
-      if (lastMs !== null && realMs > lastMs) {
-        realMs = lastMs;
+      const realMs = axis.toReal(t * 1000);
+      // Right-offset whitespace past the last candle (beyond the last candle's
+      // half-bucket snap window): this x-slot has no candle and is temporally
+      // "now/future", so drop spot mode and return the sidebar to latest (WS)
+      // mode — same clear path as mouse-leave. Consistent with the click
+      // handler, which already publishes null past the last candle.
+      const bucketMs = bucketMsRef.current;
+      if (lastMs !== null && realMs > lastMs + (bucketMs > 0 ? bucketMs / 2 : 0)) {
+        publishBasisHover(null);
+        publishCursorActive(false);
+        store.clearCursor();
+        clearSidebarCursor();
+        publishedCursorMsRef.current = null;
+        return;
       }
       const cursorMs = nearestCandleMs(realMs, candleMsRef.current, bucketMsRef.current);
       publishBasisHover(kstDateFromMs(cursorMs));

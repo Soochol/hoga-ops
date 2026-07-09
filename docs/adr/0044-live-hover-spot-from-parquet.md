@@ -119,3 +119,26 @@ vs spot 조회)를 다루기 때문.
 `LiveChartRoot` crosshair 핸들러는 `realMs > 마지막 캔들 ts_ms` 를 감지하면
 현재 커서를 최신값으로 되돌리는 대신 **마지막 유효 hover 포인트를 보존**해 사이드바 표시를
 유지한다. (이건 spot 데이터 소스와 무관 — 빈 띠는 과거 시점이 아니다).
+
+## Amendment (2026-07-09) — 우측 빈영역 hover 는 spot 이 아니라 latest(WS) 모드
+
+**트리거:** blessp 요구 — 차트 우측 빈영역(마지막 캔들 이후, 캔들이 없는 x축 구간)에
+hover 하면 10호가·거래원·매물대가 마지막 캔들에 박제된 과거 spot 이 아니라, 차트 밖
+(10호가 패널 등)에 hover 했을 때와 동일한 **KIS WS/API 최신 실시간** 을 보여야 한다.
+"빈영역 = 시간적으로 현재/미래" 이므로 실시간이 자연스럽다는 관점.
+
+**개정:** 위 "별개 수정" 의 whitespace 핀(마지막 캔들 보존)을 **뒤집는다.** `LiveChartRoot`
+`publishCursorHover` 는 `realMs > 마지막 캔들 ts_ms + bucketMs/2`(마지막 캔들의 half-bucket
+스냅 창을 벗어난 진짜 빈영역)이면 커서를 **clear** 한다(mouse-leave 와 동일 경로). 커서가
+null 이면 `LiveSidebar` 의 spot↔latest 스위치가 자동으로 latest 로 전환되므로 별도 배선
+불필요 — 사이드바 3종 + 프로그램 카드가 SSE/WS latest 경로로 복귀한다.
+
+- **spot fetcher 불변식은 그대로.** 이 변경은 커서 발행 정책만 바꾼다 — parquet-only fetcher,
+  버퍼 폴백(위 2026-06-11 개정) 모두 무영향(커서 null 이면 dormant).
+- **click 핸들러와 일관.** `subscribeClick` 은 이미 `realMs > 마지막 캔들` 에서 null 을
+  발행했다(basis date 해제). 이제 hover 도 같은 의미론.
+- **내부 블랭크 밴드는 여전히 핀.** 차트 내부에서 time 이 해석 불가(`t` null)한 지점은
+  마지막 캔들에 고정 유지 — 우측 빈영역과 구분된다.
+- **매물대:** latest 모드면 hover cutoff 미적용 → 전체 누적. 캔들 위(spot)에서만 그 시점까지
+  누적. 설정 OFF 면 항상 전체 누적. 이 의미론은 커서 정책 변경만으로 자동 충족.
+- **적용 범위:** 분봉 프레임만 실질 영향. D/W/M 은 사이드바가 spot 진입 자체를 차단.
