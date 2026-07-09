@@ -76,8 +76,16 @@ export function liveVenueRefetchInterval(venue: LiveVenueOption): 60_000 | false
   return isLiveVenueSessionNow(venue) ? 60_000 : false;
 }
 
-export function liveVenueAllowsKrxTradeOverlay(venue: LiveVenueOption, _tMs: number): boolean {
-  return venue === 'KRX';
+/** 통합(UN) venue의 하이브리드 정의(ADR-0096): KRX 정규장(09:00~15:30)에는
+ * KRX WS 체결을 실시간 정본으로 쓰고, 그 밖(NXT 전용 시간대)은 통합 REST
+ * 폴링(NXT 체결 반영)에 맡긴다. 정규장 중 KRX≈통합 가격이라 오차는 미미하고,
+ * 60초 통합 REST 재조회가 캔들을 계속 정본으로 덮어써 자가 수정된다.
+ * NXT venue는 NXT 단독 캔들이라 KRX 체결을 섞지 않는다. */
+export function liveVenueAllowsKrxTradeOverlay(venue: LiveVenueOption, tMs: number): boolean {
+  if (venue === 'KRX') return true;
+  if (venue !== 'UN') return false;
+  const date = realMsToYyyymmdd(tMs);
+  return tMs >= regularSessionOpenMs(date) && tMs <= regularSessionCloseMs(date);
 }
 
 export function initialVisibleMinuteBarsFor(

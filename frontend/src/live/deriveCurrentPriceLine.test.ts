@@ -126,6 +126,18 @@ describe('freshLiveTradePrice', () => {
     expect(freshLiveTradePrice(trades, 'NXT', NOW)).toBeNull();
   });
 
+  it('UN hybrid (ADR-0096): KRX trade within the regular session is fresh', () => {
+    const sessionMs = Date.UTC(2026, 4, 18, 1, 0, 0); // KST 2026-05-18(월) 10:00 — 정규장
+    const trades = [tradeSnap(70500, sessionMs)];
+    expect(freshLiveTradePrice(trades, 'UN', sessionMs + 1000)).toBe(70500);
+  });
+
+  it('UN hybrid: NXT-hours KRX trade stays blocked (통합 REST가 정본)', () => {
+    const afterHoursMs = Date.UTC(2026, 4, 18, 8, 0, 0); // KST 17:00 — NXT 전용 시간대
+    const trades = [tradeSnap(70500, afterHoursMs)];
+    expect(freshLiveTradePrice(trades, 'UN', afterHoursMs + 1000)).toBeNull();
+  });
+
   it('returns null for an empty buffer', () => {
     expect(freshLiveTradePrice([], 'KRX', NOW)).toBeNull();
   });
