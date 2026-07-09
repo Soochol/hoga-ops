@@ -358,6 +358,32 @@ describe('overlayLiveTradesOnCandles', () => {
     expect(out[1]).not.toBe(last);
     expect(out[1]).toMatchObject({ high: 70150, close: 70150, vol_a: 1007 });
   });
+
+  it('UN hybrid (ADR-0096): merges regular-session KRX trades, drops NXT-hours trades', () => {
+    // 1779840000000 = 2026-05-27 KST 09:00 (정규장 개장 버킷)
+    const last = { ts_ms: 1779840000000, open: 70000, high: 70100, low: 69900, close: 70050, vol_a: 1000, vol_b: 0 };
+
+    const inSession = overlayLiveTradesOnCandles([last], [
+      {
+        t_ms: 1779840030000,
+        kind: 'trade',
+        trades: [{ t_ms: 1779840030000, price: 70150, qty: 7, side: 1 }],
+      },
+    ], 60_000, 'UN');
+    expect(inSession[0]).toMatchObject({ close: 70150, vol_a: 1007 });
+
+    // KST 17:00 — NXT 전용 시간대의 KRX 체결은 통합 캔들에 섞지 않는다 (통합 REST가 정본).
+    const afterMs = 1779840000000 + 8 * 3600 * 1000;
+    const candles = [{ ...last, ts_ms: afterMs }];
+    const afterHours = overlayLiveTradesOnCandles(candles, [
+      {
+        t_ms: afterMs + 30_000,
+        kind: 'trade',
+        trades: [{ t_ms: afterMs + 30_000, price: 70150, qty: 7, side: 1 }],
+      },
+    ], 60_000, 'UN');
+    expect(afterHours).toBe(candles);
+  });
 });
 
 describe('mergeDepthHeatmapToday', () => {
