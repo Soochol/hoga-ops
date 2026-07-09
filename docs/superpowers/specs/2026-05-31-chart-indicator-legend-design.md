@@ -4,6 +4,14 @@
 **Scope:** frontend
 **Status:** approved (brainstorming + grill)
 
+> **2026-07-09 확장 (전 pane):** 원 스코프의 "분봉 전용 pane 범위 밖"을 되돌려 **모든 pane**
+> (총잔량·호가비·체결강도·프로그램매매 추가)에 레전드를 붙였다. 이때 하드코딩된 `LegendRow`
+> 열거를 **레지스트리 구동 일반형**으로 전환: 값/라벨/색은 series 정의(`SeriesSpec.legend`),
+> ✕ 토글키·제목은 pane 정의(`PaneSpec.legendToggleKey`/`legendTitle`)에 콜로케이션하고,
+> 마운트된 series를 `paneLegendRegistry`(RangeSeriesPane→LiveChartRoot 배선)로 등록한다.
+> row 방출 게이트는 **레지스트리 존재 + 값 null-omit**로, 토글 상태를 재파생하지 않는다.
+> 이후 새 pane은 projector에 `legend`/`legendToggleKey` 메타만 추가하면 레전드가 자동으로 붙는다.
+
 ## 배경 / 목적
 
 `/live` 차트의 각 pane 좌상단에 **Pane Legend**(범례)를 추가한다. TradingView 스타일로

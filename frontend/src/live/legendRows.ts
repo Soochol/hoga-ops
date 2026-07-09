@@ -1,14 +1,27 @@
 // Pane Legend — pure row model.
 //
-// `buildLegendRows` turns the live indicator store snapshot + cursor-resolved
-// values into the rows the `PaneLegendOverlay` renders, one per chart pane.
+// `buildLegendRows` turns the MA store snapshot + the per-pane cursor-resolved
+// cell values into the rows the `PaneLegendOverlay` renders, one per chart pane.
 // Keeping it pure (values arrive as a Map / scalars, not a live chart) makes
-// the gating rules — MA master off, daily-only investor panes — unit-testable
-// without a chart instance. The component owns the impure value extraction
-// (`readSeriesValue` below) and feeds the result in.
+// the gating rules unit-testable without a chart instance. The component owns
+// the impure value extraction (`readSeriesValue` below) and feeds the result in.
+//
+// Two row kinds:
+//  - candle 'ma': aggregates every enabled MA slot (one row, many swatches) and
+//    carries the shared hide flag. Special-cased because MA has an eye toggle
+//    and a master on/off distinct from the pane-mount lifecycle.
+//  - 'cells': a generic multi-cell row driven by `paneLegendRegistry`. Each cell
+//    is one legend-bearing series (label + optional swatch + value). Registry
+//    presence == pane mounted, so this path re-derives NO toggle state — the
+//    mount gate (`paneSpecsForTimeframe`) stays the single source of "on?".
+//    A cell whose value is null (series holds no data → toggle off / cold load)
+//    is dropped; a pane left with no cells emits no row.
 
 import type { ISeriesApi, SeriesType } from 'lightweight-charts';
-import type { LiveTimeframe, LiveMAConfig } from '../state/livePage';
+import type { LiveMAConfig } from '../state/livePage';
+import type { PaneId } from '../chart/drawing/types';
+import type { PanePrefKey } from './indicators/indicatorPaneProfiles';
+import { formatKoreanInt } from '../util/koreanNumber';
 
 /** One moving-average slot's legend cell: swatch color + period + value. */
 export type LegendMAValue = {
@@ -18,19 +31,46 @@ export type LegendMAValue = {
   value: number | null;
 };
 
-/**
- * A single pane's legend row. The candle pane aggregates every enabled MA
- * slot (one row, many swatches) and carries the shared hide flag; the other
- * panes each show a single labelled value.
- */
+/** One rendered cell of a generic pane legend row: an optional swatch, a label,
+ *  and the pre-formatted value string (null values are dropped upstream, so
+ *  `formatted` is always a real string here). */
+export type LegendCell = {
+  key: string;
+  color?: string;
+  label: string;
+  formatted: string;
+};
+
+/** A single pane's legend row. */
 export type LegendRow =
   | { paneId: 'candle'; kind: 'ma'; mas: LegendMAValue[]; hidden: boolean }
-  | { paneId: 'volume'; kind: 'single'; label: string; value: number | null }
-  | { paneId: 'investor-foreign'; kind: 'single'; label: string; value: number | null }
-  | { paneId: 'investor-institution'; kind: 'single'; label: string; value: number | null };
+  | {
+      paneId: PaneId;
+      kind: 'cells';
+      title?: string;
+      cells: LegendCell[];
+      /** Store toggle the ✕ turns off; absent → no ✕ (should not happen for the
+       *  mounted panes, but keeps the render total). */
+      toggleKey?: PanePrefKey;
+    };
+
+/** Impure input: one pane's cells with values already read from the chart. The
+ *  overlay resolves `value`/`color` (chart + theme reads); this module formats
+ *  and filters. `title`/`toggleKey` are static pane metadata (from the spec). */
+export type PaneCellInput = {
+  paneId: PaneId;
+  title?: string;
+  toggleKey?: PanePrefKey;
+  cells: ReadonlyArray<{
+    key: string;
+    label: string;
+    color?: string;
+    value: number | null;
+    format?: (v: number) => string;
+  }>;
+};
 
 export type BuildLegendRowsInput = {
-  timeframe: LiveTimeframe;
   movingAverages: ReadonlyArray<LiveMAConfig>;
   /** MA master toggle. When off the overlay clears the series, so a row would
    *  read all-null on an invisible line — suppress it instead. */
@@ -38,12 +78,8 @@ export type BuildLegendRowsInput = {
   movingAverageHidden: boolean;
   /** slot id → value at cursor (or latest). Missing id → the cell shows "—". */
   maValues: ReadonlyMap<string, number>;
-  volumeEnabled: boolean;
-  volumeValue: number | null;
-  foreignNetEnabled: boolean;
-  foreignValue: number | null;
-  institutionNetEnabled: boolean;
-  institutionValue: number | null;
+  /** One entry per legend-bearing pane currently mounted (registry snapshot). */
+  paneCells: ReadonlyArray<PaneCellInput>;
 };
 
 export function buildLegendRows(input: BuildLegendRowsInput): LegendRow[] {
@@ -66,29 +102,28 @@ export function buildLegendRows(input: BuildLegendRowsInput): LegendRow[] {
     }
   }
 
-  // Volume pane is mounted on every timeframe (minute + calendar).
-  if (input.volumeEnabled) {
-    rows.push({ paneId: 'volume', kind: 'single', label: '거래량', value: input.volumeValue });
-  }
-
-  // Investor panes are daily-only (ADR-0055) — W/M aggregate candles into
-  // week/month segments, so the daily-anchored points wouldn't align.
-  // Mirror `paneSpecsForTimeframe`'s `tf === 'D'` gate exactly.
-  if (input.timeframe === 'D') {
-    if (input.foreignNetEnabled) {
-      rows.push({
-        paneId: 'investor-foreign',
-        kind: 'single',
-        label: '외국인 순매수량',
-        value: input.foreignValue,
+  // Generic pane rows. A null-valued cell means the series holds no data (its
+  // toggle is off, or data hasn't loaded yet) — drop it; a pane with no
+  // surviving cell emits no row. No per-pane toggle check: registry presence is
+  // the gate.
+  for (const pane of input.paneCells) {
+    const cells: LegendCell[] = [];
+    for (const c of pane.cells) {
+      if (c.value === null) continue;
+      cells.push({
+        key: c.key,
+        color: c.color,
+        label: c.label,
+        formatted: (c.format ?? formatKoreanInt)(c.value),
       });
     }
-    if (input.institutionNetEnabled) {
+    if (cells.length > 0) {
       rows.push({
-        paneId: 'investor-institution',
-        kind: 'single',
-        label: '기관 순매수량',
-        value: input.institutionValue,
+        paneId: pane.paneId,
+        kind: 'cells',
+        title: pane.title,
+        cells,
+        toggleKey: pane.toggleKey,
       });
     }
   }

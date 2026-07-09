@@ -49,15 +49,19 @@ export function projectInvestorNet(
     });
 }
 
+// Per-bar colored (up/down by sign) → no swatch, label only (matches the
+// pre-existing investor legend rows). Toggle keys mirror the ADR-0055 daily gate.
 export const INVESTOR_FOREIGN_SPEC = {
   name: 'investor-foreign' as const,
   stretch: 0.3,
+  legendToggleKey: 'foreignNetEnabled',
   series: [
     {
       type: HistogramSeries,
       options: histogramOptions,
       data: (bundle: RangeBundle, axis: VirtualAxis) =>
         projectInvestorNet(bundle, axis, 'foreign'),
+      legend: { label: '외국인 순매수량' },
     },
   ],
 } satisfies PaneSpec;
@@ -65,12 +69,14 @@ export const INVESTOR_FOREIGN_SPEC = {
 export const INVESTOR_INSTITUTION_SPEC = {
   name: 'investor-institution' as const,
   stretch: 0.3,
+  legendToggleKey: 'institutionNetEnabled',
   series: [
     {
       type: HistogramSeries,
       options: histogramOptions,
       data: (bundle: RangeBundle, axis: VirtualAxis) =>
         projectInvestorNet(bundle, axis, 'institution'),
+      legend: { label: '기관 순매수량' },
     },
   ],
 } satisfies PaneSpec;

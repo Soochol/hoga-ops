@@ -314,6 +314,69 @@ describe('RangeSeriesPane', () => {
     expect(markerSetCalls.at(-1)).toEqual([{ time: 1, price: 10, color: '#fff' }]);
   });
 
+  it('legend 메타 series만 zip해 onLegendReady로 넘기고 unmount에서 onLegendGone을 발화한다', () => {
+    // Pane Legend 배선의 급소: RangeSeriesPane이 legend 메타를 가진 series들만
+    // (spec 순서대로) 생성된 핸들과 zip해 콜백으로 넘겨야 registry → overlay가
+    // 올바른 series에서 값을 읽는다. 메타 없는 series(0-baseline 가이드 등)는 제외.
+    const { chart, created } = makeChart();
+    const buyLegend = { label: '매수', color: () => '#F04452' };
+    const cumLegend = { label: '누적' };
+    const legendSpec: PaneSpec = {
+      name: 'fill-strength',
+      stretch: 1,
+      legendToggleKey: 'fillStrengthEnabled',
+      series: [
+        { type: {} as never, options: {} as never, data: () => [] as never, legend: buyLegend },
+        { type: {} as never, options: {} as never, data: () => [] as never }, // legend-silent
+        { type: {} as never, options: {} as never, data: () => [] as never, legend: cumLegend },
+      ],
+    };
+    const onLegendReady = vi.fn();
+    const onLegendGone = vi.fn();
+    const { unmount } = render(
+      <RangeSeriesPane
+        chart={chart}
+        bundle={bundle}
+        axis={axis}
+        paneIndex={0}
+        spec={legendSpec}
+        onLegendReady={onLegendReady}
+        onLegendGone={onLegendGone}
+      />,
+    );
+
+    expect(onLegendReady).toHaveBeenCalledTimes(1);
+    expect(onLegendReady).toHaveBeenCalledWith('fill-strength', [
+      { series: created[0], meta: buyLegend },
+      { series: created[2], meta: cumLegend },
+    ]);
+    expect(onLegendGone).not.toHaveBeenCalled();
+
+    unmount();
+    expect(onLegendGone).toHaveBeenCalledTimes(1);
+    expect(onLegendGone).toHaveBeenCalledWith('fill-strength');
+  });
+
+  it('legend 메타가 하나도 없는 spec은 onLegendReady/Gone을 발화하지 않는다', () => {
+    const { chart } = makeChart();
+    const onLegendReady = vi.fn();
+    const onLegendGone = vi.fn();
+    const { unmount } = render(
+      <RangeSeriesPane
+        chart={chart}
+        bundle={bundle}
+        axis={axis}
+        paneIndex={0}
+        spec={SPEC}
+        onLegendReady={onLegendReady}
+        onLegendGone={onLegendGone}
+      />,
+    );
+    unmount();
+    expect(onLegendReady).not.toHaveBeenCalled();
+    expect(onLegendGone).not.toHaveBeenCalled();
+  });
+
   it('labelMarkers 프로젝터가 있으면 label primitive를 attach하고 unmount에서 detach한다', () => {
     const { chart, created } = makeChart();
     const labelMarkerSpec = {

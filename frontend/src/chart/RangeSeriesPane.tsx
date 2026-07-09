@@ -15,6 +15,27 @@ import {
 } from './BrokerLateEntryMarkersPrimitive';
 import type { BrokerLateEntryMarkerPoint } from './projectors/brokerLateEntryMarkers';
 import { SurgeMarkersPrimitive, type SurgeMarkerPoint } from './SurgeMarkersPrimitive';
+// Type-only: keeps chart/ free of a runtime dependency on live/ (the
+// `onLegend*` callbacks below, like `onPrimarySeriesReady`, hand registration
+// to the live-side owner rather than importing the registry here).
+import type { PanePrefKey } from '../live/indicators/indicatorPaneProfiles';
+
+/**
+ * Legend metadata colocated with a series in its `PaneSpec`. Consumed by the
+ * `paneLegendRegistry` → `PaneLegendOverlay`: the label/color/format live with
+ * the indicator definition, so adding a pane needs no edit to the legend model.
+ */
+export type SeriesLegendMeta = {
+  /** Cell label, e.g. '매수', '누적'. */
+  label: string;
+  /** Swatch color thunk (theme-resolved lazily via `resolveTokensThemed` so it
+   *  re-reads `var(--…)` after a theme swap). Omit for series with no single
+   *  color — per-bar histograms (volume/investor) and the bi-color baseline
+   *  (ratio) render no swatch. */
+  color?: () => string;
+  /** Value formatter; defaults to `formatKoreanInt` at the overlay. */
+  format?: (v: number) => string;
+};
 
 /**
  * One series inside a `PaneSpec`. Each field is typed to the lightweight-charts
@@ -56,6 +77,11 @@ export type SeriesSpec<Ctx = void> = {
    *  surge dots keep their existing renderer and lifecycle. */
   labelMarkers?: (bundle: RangeBundle, axis: VirtualAxis, ctx: Ctx) => BrokerLateEntryMarkerPoint[];
   afterAdd?: (series: ISeriesApi<SeriesType>) => void;
+  /** Optional: this series contributes a Pane Legend cell. Registered by the
+   *  lifecycle effect via `onLegendReady`; the overlay reads its value back
+   *  from the live series (no recompute). Series without it are legend-silent
+   *  (overlays, baseline guides). */
+  legend?: SeriesLegendMeta;
 };
 
 /**
@@ -74,6 +100,16 @@ export type PaneSpec<Ctx = void> = {
   stretch: number;
   series: SeriesSpec<Ctx>[];
   useContext?: () => Ctx;
+  /** The store toggle this pane's Pane Legend ✕ turns off. Lives at pane
+   *  altitude (one indicator = one pane = one off-switch), distinct from the
+   *  per-series `legend` cell metadata. Read by the overlay from the pane spec
+   *  (static), so no paneId→key switch is needed. */
+  legendToggleKey?: PanePrefKey;
+  /** Optional Pane Legend title shown before the cells (like MA's '이동평균선'),
+   *  disambiguating multi-cell panes whose cell labels repeat across panes
+   *  (총잔량 매수/매도 vs 체결강도 매수/매도). Single-cell panes omit it — the
+   *  cell label already names the indicator (거래량, 외국인 순매수량). */
+  legendTitle?: string;
   /** /live bundle-split routing (2026-06-09): `true` = this pane's projectors
    * read SSE-derived hoga series (quote_ratio / fill_strength), so LiveChartRoot
    * feeds it the live `bundle`. Unset/false = candle-path pane fed the stable
@@ -97,6 +133,19 @@ type Props<Ctx> = {
   /** Fired right before the primary series is removed from the chart
    *  (component unmount or spec change). `paneName` = spec.name (see above). */
   onPrimarySeriesGone?: (paneName: string) => void;
+  /** Fired after series creation with the subset of series carrying `legend`
+   *  metadata, zipped with their meta. The live-side owner (LiveChartRoot)
+   *  registers these in `paneLegendRegistry`; the overlay reads the pane-level
+   *  toggle/title from the spec, not here (those are static). Kept as a callback
+   *  (not a direct registry import) so chart/ stays free of a runtime dependency
+   *  on live/ — same rationale as `onPrimarySeriesReady`. Not fired when no
+   *  series declares `legend`. */
+  onLegendReady?: (
+    paneName: string,
+    entries: { series: ISeriesApi<any>; meta: SeriesLegendMeta }[],
+  ) => void;
+  /** Fired before legend series teardown (unmount / spec change). */
+  onLegendGone?: (paneName: string) => void;
   /** Force full replacement instead of tail update. Used where lightweight-
    * charts' incremental update path can leave stale candlestick geometry. */
   forceSetData?: boolean;
@@ -132,6 +181,8 @@ function RangeSeriesPaneInner<Ctx>({
   spec,
   onPrimarySeriesReady,
   onPrimarySeriesGone,
+  onLegendReady,
+  onLegendGone,
   forceSetData = false,
   candleAlwaysOnTop = false,
   contextOverride,
@@ -196,7 +247,17 @@ function RangeSeriesPaneInner<Ctx>({
       return prim;
     });
     if (seriesList.length > 0) onPrimarySeriesReady?.(seriesList[0], spec.name);
+    // Pane Legend: hand the legend-bearing series (zipped with their meta) to
+    // the live-side registry owner. Registration presence == pane mounted, so
+    // the legend never re-derives pane visibility from toggle state.
+    const legendEntries = spec.series
+      .map((s, i) => (s.legend ? { series: seriesList[i], meta: s.legend } : null))
+      .filter((e): e is { series: ISeriesApi<any>; meta: SeriesLegendMeta } => e !== null);
+    if (legendEntries.length > 0) {
+      onLegendReady?.(spec.name, legendEntries);
+    }
     return () => {
+      if (legendEntries.length > 0) onLegendGone?.(spec.name);
       if (seriesList.length > 0) onPrimarySeriesGone?.(spec.name);
       seriesList.forEach((series, i) => {
         const prim = markersRef.current[i];
@@ -233,9 +294,10 @@ function RangeSeriesPaneInner<Ctx>({
       }
       seriesRef.current = [];
     };
-    // onPrimarySeriesReady / onPrimarySeriesGone identities are stable on
-    // the parent (ChartStage uses `useCallback`); intentionally excluded
-    // from deps so the effect doesn't churn series on callback re-creation.
+    // onPrimarySeriesReady / onPrimarySeriesGone / onLegendReady / onLegendGone
+    // identities are stable on the parent (ChartStage uses `useCallback`);
+    // intentionally excluded from deps so the effect doesn't churn series on
+    // callback re-creation.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [chart, paneIndex, spec, candleAlwaysOnTop]);
 

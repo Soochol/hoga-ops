@@ -227,6 +227,8 @@ export const QUOTE_TOTALS_SPEC = {
   name: 'quote-totals' as const,
   live: true, // reads quote_ratio (SSE-derived) → fed the live bundle on /live
   stretch: 0.4,
+  legendToggleKey: 'quoteTotalsEnabled',
+  legendTitle: '총잔량',
   useContext: useQuoteTotalsContext,
   series: [
     {
@@ -240,6 +242,7 @@ export const QUOTE_TOTALS_SPEC = {
       },
       data: bidCachedData,
       markers: bidSurgeMarkers,
+      legend: { label: '매수', color: () => resolveTokensThemed(TOKEN_SPEC).bid },
     },
     {
       type: LineSeries,
@@ -252,6 +255,7 @@ export const QUOTE_TOTALS_SPEC = {
       },
       data: askCachedData,
       markers: askSurgeMarkers,
+      legend: { label: '매도', color: () => resolveTokensThemed(TOKEN_SPEC).ask },
     },
   ],
 } satisfies PaneSpec<QuoteTotalsCtx>;

@@ -192,10 +192,15 @@ export const RATIO_SPEC = {
   name: 'ratio' as const,
   live: true, // reads quote_ratio (SSE-derived) → fed the live bundle on /live
   stretch: 0.4,
+  legendToggleKey: 'ratioEnabled',
   useContext: useRatioContext,
   series: [
     {
       type: BaselineSeries,
+      // No swatch: the baseline is bi-color (red above / blue below the zero
+      // baseline), so a single color would mislead. Value format mirrors the
+      // pane's price axis (magnitude, sign shown by the chart's color).
+      legend: { label: '호가비', format: priceFormat.formatter },
       options: () => {
         const { ratioBid, ratioAsk } = resolveTokensThemed(TOKEN_SPEC);
         return {

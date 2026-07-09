@@ -382,20 +382,27 @@ export const FILL_STRENGTH_SPEC = {
   name: 'fill-strength' as const,
   live: true, // reads fill_strength (SSE-derived) → fed the live bundle on /live
   stretch: 0.4,
+  legendToggleKey: 'fillStrengthEnabled',
+  legendTitle: '체결강도',
   useContext: useFillStrengthContext,
   series: [
     {
       type: HistogramSeries,
       options: () => ({ color: resolveTokensThemed(TOKEN_SPEC).buy, ...histOpts }),
       data: (bundle, axis, ctx) => buyCachedData(bundle, axis, ctx.auctionWindowMask),
+      legend: { label: '매수', color: () => resolveTokensThemed(TOKEN_SPEC).buy },
     },
     {
       type: HistogramSeries,
       options: () => ({ color: resolveTokensThemed(TOKEN_SPEC).sell, ...histOpts }),
       data: (bundle, axis, ctx) => sellCachedData(bundle, axis, ctx.auctionWindowMask),
+      legend: { label: '매도', color: () => resolveTokensThemed(TOKEN_SPEC).sell },
     },
     {
       type: LineSeries,
+      // Gated on ctx.cumulativeEnabled → empty projector when off → value null →
+      // the overlay omits this cell (no toggle knowledge in the legend model).
+      legend: { label: '누적', color: () => resolveTokensThemed(TOKEN_SPEC).cumulative },
       options: () => ({
         color: resolveTokensThemed(TOKEN_SPEC).cumulative,
         lineWidth: 2,

@@ -122,10 +122,14 @@ export const VOLUME_SPEC = {
   name: 'volume' as const,
   live: true,
   stretch: 0.3,
+  legendToggleKey: 'volumeEnabled',
   useContext: useVolumeContext,
   series: [
     {
       type: HistogramSeries,
+      // No swatch: bars are per-candle colored (up/down), so a single color
+      // would mislead — matches the pre-existing volume legend (label only).
+      legend: { label: '거래량' },
       options: {
         priceFormat,
         priceScaleId: 'right',
@@ -136,6 +140,8 @@ export const VOLUME_SPEC = {
     },
     {
       type: LineSeries,
+      // Gated on ctx.cumulativeEnabled → empty when off → value null → cell omitted.
+      legend: { label: '누적', color: () => resolveTokensThemed(TOKEN_SPEC).cumulative },
       options: () => ({
         color: resolveTokensThemed(TOKEN_SPEC).cumulative,
         lineWidth: 2,
