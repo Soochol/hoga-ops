@@ -1,13 +1,17 @@
-import { useMemo, useState } from 'react';
+import { Fragment, useMemo, useState } from 'react';
 import type { StockDateGroup } from './types';
-import { fmtDate, fmtTime, fmtSize, fmtOHLC, fmtVolume } from './format';
+import { fmtDate, fmtTime, fmtSize, fmtOHLC, fmtVolume, fmtClock, fmtGapDuration } from './format';
 import { DiskStateBadge, isRecapturable } from './DiskStateBadge';
 import { sortDates, nextSortState, type SortKey, type SortState } from './sortDates';
 import { useInventoryRecapture } from './useInventoryRecapture';
 import { useInventoryUnblock } from './useInventoryUnblock';
+import { useStockDateGaps } from './useStockDateGaps';
 import { RecaptureActionBar } from './RecaptureActionBar';
 import { useCaptureQueue } from '../capture/useCaptureQueue';
 import { StatusBadge } from '../ui/StatusBadge';
+
+/** Columns spanned by an expanded gap-detail row (matches the 9-col table). */
+const TABLE_COLSPAN = 9;
 
 type Props = {
   group: StockDateGroup | null;
@@ -31,6 +35,9 @@ export function StockDateGroupDetail({ group }: Props) {
   // user can rapid-double-click the same row's ↻ and fire two POSTs. Track
   // the (code,date) of an in-flight submit locally to disable that row immediately.
   const [pendingKey, setPendingKey] = useState<string | null>(null);
+  // WS1: which source_partial row has its gap-detail panel expanded. Only one
+  // at a time — the lazy /gaps fetch is keyed by (code, date).
+  const [expandedGapKey, setExpandedGapKey] = useState<string | null>(null);
 
   // In-flight set: any (code, date) currently in queue.active ∪ queue.queued.
   // SSE updates from capture_queued / capture_progress / capture_finished
@@ -115,16 +122,18 @@ export function StockDateGroupDetail({ group }: Props) {
               const recap = isRecapturable(r.disk_state);
               const rowKey = `${r.code}|${r.date}`;
               const inFlight = inFlightSet.has(rowKey) || pendingKey === rowKey;
+              // WS1: only source_partial (collection completed, gaps remain =
+              // likely upstream-missing) offers the gap-detail panel.
+              const hasGapPanel = r.disk_state === 'source_partial';
+              const gapExpanded = expandedGapKey === rowKey;
               // ADR-0042 row tint: blocked rows pick up DESIGN.md error chip
               // bg (#F43F5E @ 10%) so the row itself signals "not normal".
               const trClass = r.blocked
                 ? 'border-b bg-tint-error'
                 : 'border-b';
               return (
-                <tr
-                  key={`${r.code}-${r.date}`}
-                  className={trClass}
-                >
+                <Fragment key={`${r.code}-${r.date}`}>
+                <tr className={trClass}>
                   <td
                     className="px-2 py-1.5 text-center"
                   >
@@ -140,7 +149,22 @@ export function StockDateGroupDetail({ group }: Props) {
                       />
                     ) : null}
                   </td>
-                  <td className="px-3 py-1.5 text-center"><DiskStateBadge state={r.disk_state} /></td>
+                  <td className="px-3 py-1.5 text-center">
+                    <span className="inline-flex items-center gap-1.5">
+                      <DiskStateBadge state={r.disk_state} />
+                      {hasGapPanel && (
+                        <button
+                          type="button"
+                          aria-label={gapExpanded ? '결손 구간 접기' : '결손 구간 보기'}
+                          aria-expanded={gapExpanded}
+                          onClick={() => setExpandedGapKey(gapExpanded ? null : rowKey)}
+                          className="text-badge text-[var(--warn)] underline hover:text-fg cursor-pointer bg-transparent border-none p-0"
+                        >
+                          결손
+                        </button>
+                      )}
+                    </span>
+                  </td>
                   <td
                     data-testid="fail-streak-cell"
                     className="px-3 py-1.5 text-center"
@@ -154,12 +178,65 @@ export function StockDateGroupDetail({ group }: Props) {
                   <td className="px-3 py-1.5 text-right text-fg-dim">{fmtSize(r.file_size_bytes)}</td>
                   <td className="px-3 py-1.5 text-right">{fmtOHLC(r.today_open, r.today_close)}</td>
                 </tr>
+                {hasGapPanel && gapExpanded && (
+                  <tr className="border-b bg-bg-subtle">
+                    <td colSpan={TABLE_COLSPAN} className="px-4 py-3">
+                      <GapPanel code={r.code} date={r.date} />
+                    </td>
+                  </tr>
+                )}
+                </Fragment>
               );
             })}
           </tbody>
         </table>
       </div>
     </section>
+  );
+}
+
+function GapPanel({ code, date }: { code: string; date: string }) {
+  // WS1: lazily fetch the gap boundaries only when this row is expanded.
+  const { data, isLoading, isError } = useStockDateGaps(code, date, true);
+
+  if (isLoading) {
+    return <div className="text-xs text-fg-dim font-mono" data-testid="gap-panel-loading">결손 구간 조회 중…</div>;
+  }
+  if (isError || data === undefined) {
+    return <div className="text-xs text-[var(--error)] font-mono">결손 구간을 불러오지 못했습니다</div>;
+  }
+  if (data.sparse) {
+    return (
+      <div className="text-xs text-fg-dim font-mono" data-testid="gap-panel-sparse">
+        세션 내 데이터가 너무 적어 결손 구간을 특정할 수 없습니다.
+      </div>
+    );
+  }
+  if (data.gap_ranges.length === 0) {
+    return (
+      <div className="text-xs text-fg-dim font-mono" data-testid="gap-panel-empty">
+        연속거래 구간에서 감지된 결손이 없습니다.
+      </div>
+    );
+  }
+  return (
+    <div className="flex flex-col gap-1.5" data-testid="gap-panel">
+      <div className="text-xs font-semibold text-[var(--warn)]">
+        업스트림 결손 {data.gap_ranges.length}구간
+      </div>
+      <ul className="flex flex-col gap-0.5 font-mono text-xs tabular-nums text-fg">
+        {data.gap_ranges.map((g) => (
+          <li key={g.start_ms}>
+            {fmtClock(g.start_ms)} ~ {fmtClock(g.end_ms)}
+            <span className="text-fg-dim"> ({fmtGapDuration(g.start_ms, g.end_ms)})</span>
+          </li>
+        ))}
+      </ul>
+      <div className="text-xs text-fg-dim leading-snug">
+        수집은 끝까지 완료됐으나 원본 아카이브에 이 구간 데이터가 없습니다.
+        재캡처해도 복구되지 않을 수 있습니다.
+      </div>
+    </div>
   );
 }
 

@@ -307,6 +307,58 @@ def test_auction_window_snapshots_excluded_from_gap_analysis() -> None:
     assert has_meaningful_gaps(ts, session_close_ms=_REGULAR_CLOSE) is True
 
 
+# --- WS1: analyze_gaps returns gap boundaries in original HHMMSSmmm ---
+
+def test_analyze_gaps_returns_boundary_in_original_encoding() -> None:
+    """The gap range boundaries must be the ORIGINAL HogaMs timestamps, not a
+    linear-ms value back-converted (that round-trip is unsafe)."""
+    from hoga.api.disk_state import analyze_gaps
+    ts = [HogaMs(100000000), HogaMs(100130000)]  # 10:00:00 → 10:01:30 (90s gap)
+    a = analyze_gaps(ts, session_close_ms=_REGULAR_CLOSE)
+    assert a.gap_ranges == [(HogaMs(100000000), HogaMs(100130000))]
+    assert a.is_partial is True
+    assert a.in_session_count == 2
+
+
+def test_analyze_gaps_boundary_across_minute_is_original() -> None:
+    """A gap spanning a minute boundary reports the raw HHMMSSmmm endpoints —
+    09:59:40 → 10:01:20 is a real 100s gap; boundaries stay native."""
+    from hoga.api.disk_state import analyze_gaps
+    ts = [HogaMs(95940000), HogaMs(100120000)]
+    a = analyze_gaps(ts, session_close_ms=_REGULAR_CLOSE)
+    assert a.gap_ranges == [(HogaMs(95940000), HogaMs(100120000))]
+
+
+def test_analyze_gaps_no_false_positive_across_hour_boundary() -> None:
+    """The dominant prod false-positive: 09:59:45 → 10:00:15 is 30s real; no gap."""
+    from hoga.api.disk_state import analyze_gaps
+    a = analyze_gaps([HogaMs(95945000), HogaMs(100015000)], session_close_ms=_REGULAR_CLOSE)
+    assert a.gap_ranges == []
+    assert a.is_partial is False
+
+
+def test_analyze_gaps_multiple_ranges_sorted() -> None:
+    """Unsorted input still yields ordered, per-gap boundary pairs."""
+    from hoga.api.disk_state import analyze_gaps
+    # 10:02:00, then dense 10:00:00/10:00:01, then 10:03:30 — two ≥60s gaps.
+    ts = [HogaMs(100200000), HogaMs(100000000), HogaMs(100001000), HogaMs(100330000)]
+    a = analyze_gaps(ts, session_close_ms=_REGULAR_CLOSE)
+    assert a.gap_ranges == [
+        (HogaMs(100001000), HogaMs(100200000)),
+        (HogaMs(100200000), HogaMs(100330000)),
+    ]
+
+
+def test_analyze_gaps_sparse_window_has_no_ranges_but_is_partial() -> None:
+    """< 2 in-session datapoints → is_partial True by the count rule, but no
+    discrete ranges (nothing to point the user at)."""
+    from hoga.api.disk_state import analyze_gaps
+    a = analyze_gaps([HogaMs(90000000)], session_close_ms=_REGULAR_CLOSE)
+    assert a.gap_ranges == []
+    assert a.in_session_count == 1
+    assert a.is_partial is True
+
+
 # --- ADR-0020 / Invariants ---
 
 def test_disk_state_enum_includes_invalid() -> None:

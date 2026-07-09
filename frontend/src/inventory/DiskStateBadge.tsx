@@ -3,7 +3,7 @@ import type { DiskStateValue } from '../api/types';
 /** 같은 어휘로 CalendarCell의 마커와 일치시킨다 (DESIGN.md status semantic 토큰). */
 const PRESENTATION: Record<DiskStateValue, { marker: string; color: string; label: string }> = {
   complete:          { marker: '✓', color: 'var(--success)', label: 'complete' },
-  source_partial:    { marker: '⚠', color: 'var(--warn)',    label: 'source partial — data gaps' },
+  source_partial:    { marker: '⚠', color: 'var(--warn)',    label: 'source partial — 업스트림 결손 가능 (재캡처로 복구 안 될 수 있음)' },
   client_incomplete: { marker: '✕', color: 'var(--error)',   label: 'client incomplete — resume on capture' },
   invalid:           { marker: '!', color: 'var(--error)',   label: 'invalid — domain invariant violated' },
 };

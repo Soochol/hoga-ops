@@ -16,6 +16,8 @@ from hoga.api.bundle import build_range_bundle
 from hoga.api.models import (
     BrokerSeriesResponse,
     CandlesResponse,
+    GapRange,
+    GapRangesResponse,
     Meta,
     OrderbookResponse,
     RangeBundle,
@@ -187,6 +189,43 @@ def build_router(engine: QueryEngine) -> APIRouter:
         except StockDateNotFound as e:
             raise HTTPException(status_code=404, detail=str(e)) from e
         return Meta(**{k: m[k] for k in Meta.model_fields})
+
+    @router.get("/gaps", response_model=GapRangesResponse)
+    def gaps(
+        code: Code,
+        date: StockDate,
+        source: str = Query("hogaplay"),
+    ) -> GapRangesResponse:
+        """WS1: continuous-trading data-gap boundaries for a Stock-Date source.
+
+        A ``source_partial`` Stock-Date whose collection completed still has
+        these gaps → the upstream archive is missing them (re-capture won't
+        recover). Only ``hogaplay`` snapshots use HHMMSSmmm ts encoding; other
+        sources (kis_live stores Unix ms) are rejected 400.
+        """
+        if source != "hogaplay":
+            raise HTTPException(
+                status_code=400,
+                detail=f"gap analysis only supported for hogaplay, got {source!r}",
+            )
+        try:
+            ranges_hoga, sparse, origin = engine.compute_gap_ranges(date, code, source)
+        except StockDateNotFound as e:
+            raise HTTPException(status_code=404, detail=str(e)) from e
+        return GapRangesResponse(
+            code=code,
+            date=date,
+            source=source,
+            gap_ranges=[
+                GapRange(
+                    start_ms=hhmmssms_to_unix_ms(date, start),
+                    end_ms=hhmmssms_to_unix_ms(date, end),
+                )
+                for start, end in ranges_hoga
+            ],
+            sparse=sparse,
+            origin=origin,
+        )
 
     @router.get("/orderbook", response_model=OrderbookResponse)
     def orderbook(

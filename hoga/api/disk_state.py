@@ -309,49 +309,89 @@ def _hhmmssms_to_intra_ms(t: HogaMs) -> int:
     return (h * 3600 + m * 60 + s) * 1000 + ms
 
 
-def has_meaningful_gaps(
+@dataclass(frozen=True)
+class GapAnalysis:
+    """Result of scanning a snapshot stream for continuous-trading gaps.
+
+    ``gap_ranges`` carries the (last-snapshot-before-gap, first-snapshot-after-
+    gap) boundary pair for each ≥1min gap, in the ORIGINAL HHMMSSmmm (HogaMs)
+    encoding — never a linear-ms value back-converted to HogaMs (that round-trip
+    is unsafe across minute/hour boundaries; see ``_hhmmssms_to_intra_ms``).
+    ``in_session_count`` is the number of datapoints inside the analysis window.
+    """
+    in_session_count: int
+    gap_ranges: list[tuple[HogaMs, HogaMs]]
+
+    @property
+    def is_partial(self) -> bool:
+        """The partial-data verdict: a real ≥1min gap, or too few in-session
+        datapoints to prove completeness (conservative default). This is the
+        single definition of ``is_partial`` — both ``has_meaningful_gaps`` and
+        the parser read it, so the sparse-window rule can't drift between them.
+        """
+        return (
+            self.in_session_count < _MIN_DATAPOINTS_FOR_GAP_ANALYSIS
+            or bool(self.gap_ranges)
+        )
+
+
+def analyze_gaps(
     ts_ms_values: Iterable[HogaMs],
     *,
     session_close_ms: HogaMs,
-) -> bool:
-    """True if any consecutive pair within continuous-trading hours has a gap
-    ≥ 1 minute. Pure function — no I/O.
+) -> GapAnalysis:
+    """Scan the continuous-trading window for ≥1min gaps, returning each gap's
+    boundary pair. Pure function — no I/O.
 
-    Operates on linear ms-from-midnight: HogaMs subtraction is unsafe across
-    minute/hour boundaries (timeenc.py:54). The dominant prod false-positive
-    before this fix was hour-boundary inflation (every multi-hour stream
-    classified SOURCE_PARTIAL regardless of real density).
+    Operates on linear ms-from-midnight for the gap arithmetic (HogaMs
+    subtraction is unsafe across minute/hour boundaries, timeenc.py:54) but
+    KEEPS each timestamp's original HogaMs alongside its linear value so gap
+    boundaries are reported in the native encoding without a lossy round-trip.
 
-    The analysis window is ``[09:00, session_close - 10min)`` — i.e. continuous
+    The analysis window is ``[09:00, session_close - 10min)`` — continuous
     trading only. Snapshots inside the closing Auction Window (last 10 min of
-    the Regular Session) are excluded: no continuous matching happens there,
-    so absence of snapshot churn is normal market behavior, not a data gap.
+    the Regular Session) are excluded: no continuous matching happens there, so
+    absence of snapshot churn is normal market behavior, not a data gap.
     ``session_close_ms`` is per-Stock-Date (Half-Day-safe: a 12:30 close
     correctly bounds the analysis at 12:20).
 
     Args:
       ts_ms_values: snapshot timestamps as HogaMs (HHMMSSmmm encoding).
         Pre-session, Auction-Window, and post-close events are filtered out
-        before gap analysis, so passing the full snapshot stream is safe.
+        before analysis, so passing the full snapshot stream is safe.
       session_close_ms: this Stock-Date's ``regular_session_close_ms`` from
         meta (HogaMs / HHMMSSmmm). Required: a hardcoded default would re-
         introduce the Half-Day footgun.
-
-    Returns:
-      True if a gap is detected OR input has fewer than 2 in-session datapoints
-      (too sparse to prove completeness — conservative default).
     """
     open_linear = _hhmmssms_to_intra_ms(_SESSION_OPEN_MS)
     auction_start_linear = _hhmmssms_to_intra_ms(session_close_ms) - _AUCTION_WINDOW_DURATION_MS
+    # (linear, original HogaMs) pairs, sorted by linear time. Retaining the
+    # original lets gap boundaries stay HHMMSSmmm (no linear→HogaMs decode).
     in_session = sorted(
-        intra for t in ts_ms_values
-        if open_linear <= (intra := _hhmmssms_to_intra_ms(t)) < auction_start_linear
+        (
+            (intra, t) for t in ts_ms_values
+            if open_linear <= (intra := _hhmmssms_to_intra_ms(t)) < auction_start_linear
+        ),
+        key=lambda pair: pair[0],
     )
-    if len(in_session) < _MIN_DATAPOINTS_FOR_GAP_ANALYSIS:
-        return True
+    gap_ranges: list[tuple[HogaMs, HogaMs]] = []
     # strict=False is correct: in_session[1:] is intentionally one shorter
     # (we're walking consecutive pairs, last element has no successor).
-    return any(
-        curr - prev >= _GAP_THRESHOLD_MS
-        for prev, curr in zip(in_session, in_session[1:], strict=False)
-    )
+    for (prev_lin, prev_ts), (curr_lin, curr_ts) in zip(in_session, in_session[1:], strict=False):
+        if curr_lin - prev_lin >= _GAP_THRESHOLD_MS:
+            gap_ranges.append((prev_ts, curr_ts))
+    return GapAnalysis(in_session_count=len(in_session), gap_ranges=gap_ranges)
+
+
+def has_meaningful_gaps(
+    ts_ms_values: Iterable[HogaMs],
+    *,
+    session_close_ms: HogaMs,
+) -> bool:
+    """True if any consecutive pair within continuous-trading hours has a gap
+    ≥ 1 minute, OR the window has fewer than 2 datapoints (too sparse to prove
+    completeness — conservative default). Thin wrapper over :func:`analyze_gaps`;
+    signature and semantics are unchanged so existing callers (parser is_partial,
+    invariants ``series.snapshots_no_gaps``) need no edits.
+    """
+    return analyze_gaps(ts_ms_values, session_close_ms=session_close_ms).is_partial

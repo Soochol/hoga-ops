@@ -279,3 +279,60 @@ describe('StockDateGroupDetail 재시도 column (fail_streak)', () => {
     expect(within(tr).queryByText(/차단됨/)).toBeNull();
   });
 });
+
+describe('StockDateGroupDetail — WS1 upstream-gap panel', () => {
+  function setupFetchWithGaps(gapsBody: unknown) {
+    return vi.spyOn(globalThis, 'fetch' as const).mockImplementation(async (url) => {
+      const s = String(url);
+      if (s.includes('/api/captures/queue')) {
+        return { ok: true, status: 200, json: async () => EMPTY_QUEUE } as Response;
+      }
+      if (s.includes('/api/gaps')) {
+        return { ok: true, status: 200, json: async () => gapsBody } as Response;
+      }
+      return { ok: true, status: 200, json: async () => ({}) } as Response;
+    });
+  }
+
+  const qc = () => new QueryClient({ defaultOptions: { queries: { retry: false }, mutations: { retry: false } } });
+
+  it('shows a 결손 toggle only for source_partial rows', () => {
+    setupFetch();
+    renderDetail(
+      [
+        row('003490', '대한항공', '20260707', 'source_partial'),
+        row('003490', '대한항공', '20260706', 'complete'),
+      ],
+      '003490', qc(),
+    );
+    // exactly one 결손 toggle (the source_partial row)
+    expect(screen.getAllByRole('button', { name: /결손 구간 보기/ })).toHaveLength(1);
+  });
+
+  it('expands and renders gap ranges from /api/gaps', async () => {
+    // 13:52 → 14:11 KST on 2026-07-07 (unix ms).
+    const start = Date.UTC(2026, 6, 7, 4, 52); // 13:52 KST = 04:52 UTC
+    const end = Date.UTC(2026, 6, 7, 5, 11);   // 14:11 KST = 05:11 UTC
+    setupFetchWithGaps({
+      code: '003490', date: '20260707', source: 'hogaplay',
+      gap_ranges: [{ start_ms: start, end_ms: end }],
+      sparse: false, origin: 'computed',
+    });
+    renderDetail([row('003490', '대한항공', '20260707', 'source_partial')], '003490', qc());
+    fireEvent.click(screen.getByRole('button', { name: /결손 구간 보기/ }));
+    await waitFor(() => expect(screen.getByTestId('gap-panel')).toBeTruthy());
+    expect(screen.getByText(/업스트림 결손 1구간/)).toBeTruthy();
+    expect(screen.getByText(/13:52 ~ 14:11/)).toBeTruthy();
+    expect(screen.getByText(/재캡처해도 복구되지 않을 수 있습니다/)).toBeTruthy();
+  });
+
+  it('renders the sparse message when the window is too sparse', async () => {
+    setupFetchWithGaps({
+      code: '003490', date: '20260707', source: 'hogaplay',
+      gap_ranges: [], sparse: true, origin: 'computed',
+    });
+    renderDetail([row('003490', '대한항공', '20260707', 'source_partial')], '003490', qc());
+    fireEvent.click(screen.getByRole('button', { name: /결손 구간 보기/ }));
+    await waitFor(() => expect(screen.getByTestId('gap-panel-sparse')).toBeTruthy());
+  });
+});
