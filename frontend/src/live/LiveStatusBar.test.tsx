@@ -4,6 +4,7 @@ import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { LiveStatusBar } from './LiveStatusBar';
 import type { RangeBundle } from '../api/types';
 import { useLiveVenueStore, type LiveVenueOption } from '../state/liveVenue';
+import { useLivePageStore } from '../state/livePage';
 import { projectCaptureHealth } from './liveStatusProjection';
 
 // useConnectionLiveness reads module-level WS state (_lastHeartbeatMs=0 in tests),
@@ -36,7 +37,7 @@ const EMPTY_BUNDLE: RangeBundle = {
 };
 
 function renderBar(
-  props: { activeCode: string | null; captureHealthy: boolean; captureReason: string; bundle: RangeBundle | null; venue?: LiveVenueOption; hogaGapDates?: readonly string[]; liveTradePrice?: number | null },
+  props: { activeCode: string | null; captureHealthy: boolean; captureReason: string; bundle: RangeBundle | null; venue?: LiveVenueOption; hogaGapDates?: readonly string[]; liveTradePrice?: number | null; isExtending?: boolean },
   watchlistCodes: string[] = [],
   quote?: { price: number; change_pct: number | null; change_won: number | null; stale?: boolean },
   liveSet: string[] = [],
@@ -74,6 +75,7 @@ function renderBar(
         venue={props.venue}
         hogaGapDates={props.hogaGapDates}
         liveTradePrice={props.liveTradePrice}
+        isExtending={props.isExtending}
       />
     </QueryClientProvider>,
   );
@@ -84,6 +86,7 @@ describe('LiveStatusBar', () => {
     cleanup();
     mockLiveness.mockReturnValue(false);
     useLiveVenueStore.setState({ venue: 'KRX' });
+    useLivePageStore.setState({ historicalFromDate: null });
   });
 
   it('shows em-dash when activeCode is null', () => {
@@ -303,5 +306,48 @@ describe('LiveStatusBar', () => {
   it('omits the 호가 미수집 chip when there is no gap (default prop)', () => {
     renderBar({ activeCode: '005930', captureHealthy: true, captureReason: 'healthy', bundle: EMPTY_BUNDLE });
     expect(screen.queryByTestId('hoga-coverage-gap-chip')).toBeNull();
+  });
+
+  it('shows the 과거 로딩 중 progress chip with the earliest loaded date while extending', () => {
+    // 좌측 팬 확장 진행 상태: historicalFromDate != null + isExtending. 딥 워크백이
+    // '고장'으로 오인되지 않게 "N까지 로드됨"을 노출한다. EMPTY_BUNDLE의 최고 세그먼트
+    // 날짜(20260527)가 5/27로 표시된다.
+    useLivePageStore.setState({ historicalFromDate: '20260101' });
+    renderBar({
+      activeCode: '005930', captureHealthy: true, captureReason: 'healthy',
+      bundle: EMPTY_BUNDLE, isExtending: true,
+    });
+    const chip = screen.getByTestId('past-backfill-progress-chip');
+    expect(chip.textContent).toContain('5/27');
+    expect(chip.getAttribute('title')).toContain('5/27까지 로드됨');
+  });
+
+  it('omits the progress chip when not extending', () => {
+    useLivePageStore.setState({ historicalFromDate: '20260101' });
+    renderBar({
+      activeCode: '005930', captureHealthy: true, captureReason: 'healthy',
+      bundle: EMPTY_BUNDLE, isExtending: false,
+    });
+    expect(screen.queryByTestId('past-backfill-progress-chip')).toBeNull();
+  });
+
+  it('omits the progress chip on cold load (isExtending but historicalFromDate null)', () => {
+    // 초기 콜드 로드는 isExtending 이 켜질 수 있지만 historicalFromDate 는 null 이다.
+    // AND 게이트가 이를 진행 칩으로 오인하지 않게 막는다.
+    useLivePageStore.setState({ historicalFromDate: null });
+    renderBar({
+      activeCode: '005930', captureHealthy: true, captureReason: 'healthy',
+      bundle: EMPTY_BUNDLE, isExtending: true,
+    });
+    expect(screen.queryByTestId('past-backfill-progress-chip')).toBeNull();
+  });
+
+  it('omits the progress chip when the bundle has no loaded segments', () => {
+    useLivePageStore.setState({ historicalFromDate: '20260101' });
+    renderBar({
+      activeCode: '005930', captureHealthy: true, captureReason: 'healthy',
+      bundle: null, isExtending: true,
+    });
+    expect(screen.queryByTestId('past-backfill-progress-chip')).toBeNull();
   });
 });
