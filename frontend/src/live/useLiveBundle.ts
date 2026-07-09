@@ -729,6 +729,7 @@ export function useLiveBundle(
     () => ({
       quote_ratio: { bucket_ms: bucketMs, points: [] },
       fill_strength: { bucket_ms: bucketMs, points: [] },
+      depth_heatmap_today: [],
     }),
     [bucketMs],
   );

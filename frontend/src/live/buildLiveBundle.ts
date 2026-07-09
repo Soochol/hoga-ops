@@ -9,6 +9,7 @@ import type {
   InvestorNetPoint,
   QuoteRatioPoint,
   FillStrengthPoint,
+  OrderbookLevel,
   SourceName,
 } from '../api/types';
 import {
@@ -23,6 +24,7 @@ import {
   regularSessionCloseMs,
 } from './liveDateTime';
 import { quoteImbalance } from '../util/imbalance';
+import type { DepthHeatmapPoint } from './depthHeatmapWire';
 
 /** /live never mounts VolumeProfileOverlay; the bundle ships an empty profile
  * that satisfies the RangeBundle type without claiming any data. */
@@ -70,6 +72,12 @@ export interface BuildHogaSeriesInput {
 export interface HogaSeries {
   quote_ratio: QuoteRatio;
   fill_strength: FillStrength;
+  /** Today's live depth-heatmap buckets — per minute the CLOSE (last continuous
+   * tick) 10-level book plus the MAX (peak total-qty tick) 10-level book. Only
+   * populated when SSE ob snapshots carry `asks`/`bids`; totals-only ticks
+   * contribute nothing. Past-date depth lives on `RangeBundle.depth_heatmap`;
+   * the bundle merge (Task 6) stitches the two. */
+  depth_heatmap_today: DepthHeatmapPoint[];
 }
 
 interface PastHogaSeries {
@@ -136,7 +144,51 @@ export function buildHogaSeries(input: BuildHogaSeriesInput): HogaSeries {
   return {
     quote_ratio: { bucket_ms: bucketMs, points: [...validPastQR, ...incrementalQR] },
     fill_strength: { bucket_ms: bucketMs, points: [...validPastFS, ...incrementalFS] },
+    depth_heatmap_today: bucketDepthHeatmap(sseOb, bucketMs, todaySession.close_ms),
   };
+}
+
+/** One-shot depth-heatmap bucketing — the stateless oracle mirrored by
+ * `IncrementalHogaBucketer`'s per-tick ratchet. Per minute bucket it keeps two
+ * 10-level books: CLOSE (the last continuous-book tick) and MAX (the tick whose
+ * total bid+ask qty peaked). Gated identically to the quote ratchet: only ticks
+ * at/before the structural closing-auction boundary (`s.t_ms <= lastContinuousMs`)
+ * count, and only ticks carrying `asks`/`bids` (totals-only ticks are skipped so
+ * the minute-chart totals path never fabricates an empty book). Strict `>` on the
+ * max means the FIRST tick at the peak total wins ties (mirrors `imb_max`). */
+export function bucketDepthHeatmap(
+  ob: readonly ObSnapshot[],
+  bucketMs: number,
+  sessionCloseMs: number = Number.POSITIVE_INFINITY,
+): DepthHeatmapPoint[] {
+  const obSorted = [...ob].sort((a, b) => a.t_ms - b.t_ms);
+  let lastContinuousMs = Number.NEGATIVE_INFINITY;
+  for (const s of obSorted) {
+    if (s.t_ms <= sessionCloseMs && isContinuousBook(s)) lastContinuousMs = s.t_ms;
+  }
+  if (lastContinuousMs === Number.NEGATIVE_INFINITY) lastContinuousMs = Number.POSITIVE_INFINITY;
+
+  const byBucket = new Map<
+    number,
+    { close: { asks: OrderbookLevel[]; bids: OrderbookLevel[] }; max: { asks: OrderbookLevel[]; bids: OrderbookLevel[]; total: number } }
+  >();
+  const order: number[] = [];
+  for (const s of obSorted) {
+    if (s.t_ms > lastContinuousMs) continue;
+    if (!s.asks || !s.bids) continue;
+    const t = bucketStartMs(s.t_ms, bucketMs);
+    const curTotal = s.total_bid_qty + s.total_ask_qty;
+    const prev = byBucket.get(t);
+    if (!prev) order.push(t);
+    const close = { asks: s.asks, bids: s.bids };
+    const max =
+      !prev || curTotal > prev.max.total ? { asks: s.asks, bids: s.bids, total: curTotal } : prev.max;
+    byBucket.set(t, { close, max });
+  }
+  return order.map((t) => {
+    const d = byBucket.get(t)!;
+    return { tMs: t, asks: d.close.asks, bids: d.close.bids, asksMax: d.max.asks, bidsMax: d.max.bids };
+  });
 }
 
 function isOrderedByTime<T extends { t_ms: number }>(items: readonly T[]): boolean {
@@ -165,13 +217,22 @@ class IncrementalHogaBucketer {
   private seenPre = new Set<number>();
   private fillByBucket = new Map<number, FillStrengthPoint>();
   private fillOrder: number[] = [];
+  private depthByBucket = new Map<
+    number,
+    { close: { asks: OrderbookLevel[]; bids: OrderbookLevel[] }; max: { asks: OrderbookLevel[]; bids: OrderbookLevel[]; total: number } }
+  >();
+  private depthOrder: number[] = [];
 
   update(
     ob: readonly ObSnapshot[],
     trade: readonly TradeSnapshot[],
     bucketMs: number,
     sessionCloseMs: number,
-  ): { quoteRatioPoints: QuoteRatioPoint[]; fillStrengthPoints: FillStrengthPoint[] } {
+  ): {
+    quoteRatioPoints: QuoteRatioPoint[];
+    fillStrengthPoints: FillStrengthPoint[];
+    depthHeatmapToday: DepthHeatmapPoint[];
+  } {
     if (
       this.bucketMs !== bucketMs ||
       this.sessionCloseMs !== sessionCloseMs ||
@@ -227,6 +288,8 @@ class IncrementalHogaBucketer {
     this.seenPre = new Set();
     this.fillByBucket = new Map();
     this.fillOrder = [];
+    this.depthByBucket = new Map();
+    this.depthOrder = [];
   }
 
   private canAppendOb(ob: readonly ObSnapshot[]): boolean {
@@ -313,6 +376,22 @@ class IncrementalHogaBucketer {
           imb_max_ask,
         });
         this.seenPre.add(t);
+        // Depth ratchet — mirrors bucketDepthHeatmap. Only continuous ticks that
+        // carry the 10-level book contribute; totals-only ticks (asks/bids absent)
+        // update quote totals but never fabricate a depth book. CLOSE = latest
+        // tick; MAX = the tick whose total bid+ask qty peaked (strict `>` keeps the
+        // earliest at a tie, same single-snapshot argmax as imb_max).
+        if (s.asks && s.bids) {
+          const curTotal = s.total_bid_qty + s.total_ask_qty;
+          const prevD = this.depthByBucket.get(t);
+          if (!prevD) this.depthOrder.push(t);
+          const close = { asks: s.asks, bids: s.bids };
+          const max =
+            !prevD || curTotal > prevD.max.total
+              ? { asks: s.asks, bids: s.bids, total: curTotal }
+              : prevD.max;
+          this.depthByBucket.set(t, { close, max });
+        }
       } else if (!this.seenPre.has(t) && !this.quoteByBucket.has(t)) {
         this.quoteOrder.push(t);
         this.quoteByBucket.set(t, {
@@ -351,6 +430,16 @@ class IncrementalHogaBucketer {
     return {
       quoteRatioPoints: this.quoteOrder.map((t) => ({ ...this.quoteByBucket.get(t)! })),
       fillStrengthPoints: this.fillOrder.map((t) => ({ ...this.fillByBucket.get(t)! })),
+      depthHeatmapToday: this.depthOrder.map((t) => {
+        const d = this.depthByBucket.get(t)!;
+        return {
+          tMs: t,
+          asks: d.close.asks,
+          bids: d.close.bids,
+          asksMax: d.max.asks,
+          bidsMax: d.max.bids,
+        };
+      }),
     };
   }
 }
@@ -383,6 +472,7 @@ export function createIncrementalHogaSeriesBuilder(): (input: BuildHogaSeriesInp
     return {
       quote_ratio: { bucket_ms: bucketMs, points: [...cachedPastQR, ...incrementalQR] },
       fill_strength: { bucket_ms: bucketMs, points: [...cachedPastFS, ...incrementalFS] },
+      depth_heatmap_today: sseBuckets.depthHeatmapToday,
     };
   };
 }
