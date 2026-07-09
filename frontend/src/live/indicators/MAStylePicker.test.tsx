@@ -10,10 +10,35 @@ describe('MAStylePicker', () => {
     // be painted with the current color; the line's height = lineWidth.
     const previews = trigger.querySelectorAll('span[aria-hidden="true"]');
     expect(previews).toHaveLength(2);
-    const colors = Array.from(previews).map((s) => (s as HTMLElement).style.backgroundColor);
-    expect(colors[0]).toMatch(/236.*72.*153|#ec4899/i);
-    expect(colors[1]).toMatch(/236.*72.*153|#ec4899/i);
-    expect((previews[1] as HTMLElement).style.height).toBe('3px');
+    // Dot uses backgroundColor; the line preview uses border-top (so it can
+    // reflect solid/dashed/dotted) with width = lineWidth.
+    expect((previews[0] as HTMLElement).style.backgroundColor).toMatch(/236.*72.*153|#ec4899/i);
+    expect((previews[1] as HTMLElement).style.borderTopColor).toMatch(/236.*72.*153|#ec4899/i);
+    expect((previews[1] as HTMLElement).style.borderTopWidth).toBe('3px');
+  });
+
+  it('renders 모양(line-style) section only when lineStyle + onLineStyleChange given', () => {
+    const onLineStyleChange = vi.fn();
+    const { rerender } = render(<MAStylePicker color="#EC4899" lineWidth={1} onChange={() => {}} />);
+    fireEvent.click(screen.getByRole('button', { name: 'MA 스타일 선택' }));
+    // Absent by default (기존 호출부 불변).
+    expect(screen.queryAllByRole('button', { name: /^MA 모양 / })).toHaveLength(0);
+    rerender(
+      <MAStylePicker
+        color="#EC4899"
+        lineWidth={1}
+        lineStyle="dashed"
+        onChange={() => {}}
+        onLineStyleChange={onLineStyleChange}
+      />,
+    );
+    const styleButtons = screen.getAllByRole('button', { name: /^MA 모양 / });
+    expect(styleButtons).toHaveLength(3);
+    expect(
+      screen.getByRole('button', { name: 'MA 모양 파선' }).getAttribute('aria-pressed'),
+    ).toBe('true');
+    fireEvent.click(screen.getByRole('button', { name: 'MA 모양 점선' }));
+    expect(onLineStyleChange).toHaveBeenCalledWith('dotted');
   });
 
   it('opens combined palette+width popover on click', () => {

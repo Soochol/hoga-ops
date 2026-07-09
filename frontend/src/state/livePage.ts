@@ -1,5 +1,6 @@
 import { create } from 'zustand';
 import type { MASource } from '../chart/projectors/movingAverage';
+import type { LineStyle } from '../chart/drawing/types';
 import {
   mergeLiveIndicatorPrefs,
   DEFAULT_LIVE_MAS,
@@ -162,7 +163,12 @@ type Store = Persisted & PersistedIndicators & {
   setVolumeDistributionRangeCount: (count: number) => void;
   setVolumeDistributionStyle: (patch: { color?: string; maxColor?: string }) => void;
   setQuoteTotalsEnabled: (enabled: boolean) => void;
+  setQuoteTotalsLevelLineEnabled: (enabled: boolean) => void;
+  setQuoteTotalsBidLevelStyle: (patch: { color?: string; lineWidth?: 1 | 2 | 3 | 4; lineStyle?: LineStyle }) => void;
+  setQuoteTotalsAskLevelStyle: (patch: { color?: string; lineWidth?: 1 | 2 | 3 | 4; lineStyle?: LineStyle }) => void;
   setRatioEnabled: (enabled: boolean) => void;
+  setRatioLevelLineEnabled: (enabled: boolean) => void;
+  setRatioLevelStyle: (patch: { color?: string; lineWidth?: 1 | 2 | 3 | 4; lineStyle?: LineStyle }) => void;
   setFillStrengthEnabled: (enabled: boolean) => void;
   setProgramTradeEnabled: (enabled: boolean) => void;
   setBrokerLateEntryEnabled: (enabled: boolean) => void;
@@ -288,7 +294,18 @@ function snapshotIndicators(get: () => Store): PersistedIndicators {
     volumeDistributionColor: s.volumeDistributionColor,
     volumeDistributionMaxColor: s.volumeDistributionMaxColor,
     quoteTotalsEnabled: s.quoteTotalsEnabled,
+    quoteTotalsLevelLineEnabled: s.quoteTotalsLevelLineEnabled,
+    quoteTotalsBidLevelColor: s.quoteTotalsBidLevelColor,
+    quoteTotalsBidLevelWidth: s.quoteTotalsBidLevelWidth,
+    quoteTotalsBidLevelStyle: s.quoteTotalsBidLevelStyle,
+    quoteTotalsAskLevelColor: s.quoteTotalsAskLevelColor,
+    quoteTotalsAskLevelWidth: s.quoteTotalsAskLevelWidth,
+    quoteTotalsAskLevelStyle: s.quoteTotalsAskLevelStyle,
     ratioEnabled: s.ratioEnabled,
+    ratioLevelLineEnabled: s.ratioLevelLineEnabled,
+    ratioLevelColor: s.ratioLevelColor,
+    ratioLevelWidth: s.ratioLevelWidth,
+    ratioLevelStyle: s.ratioLevelStyle,
     fillStrengthEnabled: s.fillStrengthEnabled,
     programTradeEnabled: s.programTradeEnabled,
     brokerLateEntryEnabled: s.brokerLateEntryEnabled,
@@ -564,8 +581,48 @@ export const useLivePageStore = create<Store>((set, get) => ({
     persistIndicators(snapshotIndicators(get));
   },
 
+  setQuoteTotalsLevelLineEnabled: (enabled) => {
+    set({ quoteTotalsLevelLineEnabled: enabled });
+    persistIndicators(snapshotIndicators(get));
+  },
+
+  setQuoteTotalsBidLevelStyle: (patch) => {
+    const s = get();
+    set({
+      quoteTotalsBidLevelColor: patch.color ?? s.quoteTotalsBidLevelColor,
+      quoteTotalsBidLevelWidth: patch.lineWidth ?? s.quoteTotalsBidLevelWidth,
+      quoteTotalsBidLevelStyle: patch.lineStyle ?? s.quoteTotalsBidLevelStyle,
+    });
+    persistIndicators(snapshotIndicators(get));
+  },
+
+  setQuoteTotalsAskLevelStyle: (patch) => {
+    const s = get();
+    set({
+      quoteTotalsAskLevelColor: patch.color ?? s.quoteTotalsAskLevelColor,
+      quoteTotalsAskLevelWidth: patch.lineWidth ?? s.quoteTotalsAskLevelWidth,
+      quoteTotalsAskLevelStyle: patch.lineStyle ?? s.quoteTotalsAskLevelStyle,
+    });
+    persistIndicators(snapshotIndicators(get));
+  },
+
   setRatioEnabled: (enabled) => {
     set({ ratioEnabled: enabled });
+    persistIndicators(snapshotIndicators(get));
+  },
+
+  setRatioLevelLineEnabled: (enabled) => {
+    set({ ratioLevelLineEnabled: enabled });
+    persistIndicators(snapshotIndicators(get));
+  },
+
+  setRatioLevelStyle: (patch) => {
+    const s = get();
+    set({
+      ratioLevelColor: patch.color ?? s.ratioLevelColor,
+      ratioLevelWidth: patch.lineWidth ?? s.ratioLevelWidth,
+      ratioLevelStyle: patch.lineStyle ?? s.ratioLevelStyle,
+    });
     persistIndicators(snapshotIndicators(get));
   },
 
