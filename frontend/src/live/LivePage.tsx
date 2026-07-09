@@ -425,6 +425,7 @@ export function LivePage() {
         venue={liveVenue}
         hogaGapDates={hogaCoverageGapDates}
         liveTradePrice={liveTradePrice}
+        isExtending={activeIndexId ? indexExtending : isExtending}
       />
       <LiveWorkarea
         activeCode={workareaCode}

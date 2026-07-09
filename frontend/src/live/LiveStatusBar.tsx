@@ -33,14 +33,22 @@ interface Props {
   /** LivePage 가 live.trade 를 환원한 fresh 체결가. 현재가 라인과 동일한
    * resolveLiveCurrentPrice 산출식을 공유해 "라인=상태바" invariant 를 유지한다. */
   liveTradePrice?: number | null;
+  /** useLiveBundle.isExtending — 좌측 팬 과거 확장 한 스텝이 진행 중. 느린 백엔드
+   * (KIS rate-limit·무거운 사이드카)에서 딥 워크백은 수십 초 무반응처럼 보이므로,
+   * "과거 로딩 중 · N까지 로드됨" 진행 칩으로 '고장'이 아니라 '진행 중'임을 알린다. */
+  isExtending?: boolean;
 }
 
-export function LiveStatusBar({ activeCode, captureHealth, bundle, venue, hogaGapDates = [], liveTradePrice }: Props) {
+export function LiveStatusBar({ activeCode, captureHealth, bundle, venue, hogaGapDates = [], liveTradePrice, isExtending = false }: Props) {
   // Threshold MUST exceed the 30s server ping so a connected-but-idle
   // socket (e.g. market closed) stays realtime; only a real disconnect
   // (no frame for >35s) flips it to disconnected. (plan-review cross-task flag)
   const live = useConnectionLiveness(LIVE_STALE_MS);
   const timeframe = useLivePageStore((s) => s.candleTimeframe);
+  // 과거 확장 진행 칩 게이트. historicalFromDate != null 은 "좌측 팬 확장 중"을
+  // 뜻한다(초기 로드/종목·타임프레임 전환은 null). isExtending 과 AND 로 걸어
+  // 확장이 아닌 최초 콜드 로드를 진행 칩으로 오인하지 않는다.
+  const historicalFromDate = useLivePageStore((s) => s.historicalFromDate);
   const { data: symbolsData } = useSymbols();
   const symbolName = activeCode
     ? symbolsData?.symbols.find((s) => s.code === activeCode)?.name
@@ -85,6 +93,10 @@ export function LiveStatusBar({ activeCode, captureHealth, bundle, venue, hogaGa
   const lastSegmentSource = bundle && bundle.segments.length > 0
     ? bundle.segments[bundle.segments.length - 1].source
     : undefined;
+  // 진행 칩용 최고(最古) 로드 날짜 — segments 는 오름차순이라 [0] 이 가장 과거.
+  // 확장 중이고 실제 확장 상태(historicalFromDate)이며 로드된 세그먼트가 있을 때만.
+  const showBackfillProgress = isExtending && historicalFromDate != null && !!bundle && bundle.segments.length > 0;
+  const earliestLoadedDate = showBackfillProgress ? bundle!.segments[0].date : null;
 
   return (
     <div
@@ -146,6 +158,28 @@ export function LiveStatusBar({ activeCode, captureHealth, bundle, venue, hogaGa
         <span aria-hidden>·</span>
         <SourceChip source={lastSegmentSource} />
       </span>
+      {showBackfillProgress && earliestLoadedDate && (() => {
+        // 과거 확장 진행 — 중립(ok) 팔레트 재사용(새 색 없음). 캔들·호가·사이드카가
+        // 모두 settle될 때까지 홀드되는 딥 워크백이 '고장'으로 오인되지 않게 한다.
+        const pill = captureHealthPillColor('ok');
+        const md = `${Number(earliestLoadedDate.slice(4, 6))}/${Number(earliestLoadedDate.slice(6, 8))}`;
+        return (
+          <>
+            <span aria-hidden>·</span>
+            <span
+              data-testid="past-backfill-progress-chip"
+              title={`과거 데이터 불러오는 중 — ${md}까지 로드됨`}
+              className="font-mono px-2 py-0.5 rounded whitespace-nowrap shrink-0"
+              style={{
+                background: pill.bg, border: `1px solid ${pill.border}`,
+                color: pill.fg, fontSize: 'var(--text-xs)',
+              }}
+            >
+              과거 로딩 중 · {md}까지
+            </span>
+          </>
+        );
+      })()}
       {hogaGapDates.length > 0 && (() => {
         // 과거 미캡처일 공백 알림 — 캡처 헬스 pill과 동일한 warn 팔레트(새 색 없음).
         const gapPill = captureHealthPillColor('warn');

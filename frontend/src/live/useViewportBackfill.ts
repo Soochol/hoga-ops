@@ -103,6 +103,19 @@ export function useViewportBackfill({
   // already guards `candles.length === 0`; this brings 3a/3b to parity.
   const candleCountRef = useRef(0);
   candleCountRef.current = bundle ? bundle.candles.length : 0;
+  // Backpressure mirror: is a historical extension step already in flight. The
+  // lazy-fetch trigger (3b) reads this to cap the outstanding step depth at 1 —
+  // rapid zoom-out (e.g. 10× at 500ms defeats 3b's 150ms debounce) must NOT
+  // race the fetch pipeline one chunk deeper per event, monotonically driving
+  // historicalFromDate toward the 250-day clamp faster than data arrives (the
+  // "silent for minutes, then one giant paint" regression, reproduced
+  // 2026-07-09). Skipped demand is not lost: the settle-loop (3a) re-reads the
+  // live viewport on each extending falling-edge and dispatches the next step
+  // itself if whitespace remains — so backpressure delegates queueing to 3a's
+  // pull loop. Mirrored to a ref (not an effect dep) so 3b does not re-subscribe
+  // every SSE tick (same rationale as candleCountRef above).
+  const isExtendingRef = useRef(false);
+  isExtendingRef.current = isExtending;
 
   useEffect(() => {
     preSwapRef.current = null;
@@ -284,6 +297,11 @@ export function useViewportBackfill({
       // 그건 "팬"이 아니라 "데이터 미도착"이다. 가드 없으면 historicalFromDate가
       // 250일 클램프까지 폭주해 거대 uncached fetch가 영구 pending → 빈 차트.
       if (candleCountRef.current === 0) return;
+      // Backpressure: a step is already fetching — let the settle-loop (3a)
+      // pull the next one when this settles. Without this, zoom-out spam
+      // outruns the pipeline (see isExtendingRef). Re-checked inside the
+      // debounce timer too, since 3a may start a step during the 150ms wait.
+      if (isExtendingRef.current) return;
       const r = range as { from?: number | null; to?: number | null } | null;
       if (!r || r.from == null) return;
       // logical.from is a fractional bar index; negative = past the leftmost
@@ -303,6 +321,18 @@ export function useViewportBackfill({
         const state = useLivePageStore.getState();
         if (state.candleTimeframe !== timeframe) return;
         if (state.activeCode && state.activeCode !== code) return;
+        // Re-check backpressure at fire time: a step may have started during
+        // the debounce window (3a settle-loop dispatch). Skip here defers to 3a.
+        if (isExtendingRef.current) {
+          livePerfLog('viewport_backfill_skip', {
+            code,
+            timeframe,
+            trigger: 'left_pan',
+            logicalFrom: r.from,
+            from: cur,
+          });
+          return;
+        }
         livePerfLog('viewport_backfill_extend', {
           code,
           timeframe,
