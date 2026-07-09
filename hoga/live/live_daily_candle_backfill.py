@@ -16,6 +16,7 @@ from hoga.live.kis_venue import (
     daily_venue_for_policy,
 )
 from hoga.live.past_daily_candles_cache import PastDailyCandlesCache
+from hoga.live.single_flight import SingleFlight
 
 _KST = timezone(timedelta(hours=9))
 
@@ -53,6 +54,10 @@ class LiveDailyCandleBackfill:
         self._cache = cache
         self._scheduler = scheduler
         self._walkback = walkback
+        # Coalesce concurrent same-(venue, code) cold walk-backs (see
+        # single_flight.py): overlapping [from, today] requests share one KIS
+        # fetch instead of each walking the same daily history independently.
+        self._inflight = SingleFlight()
 
     async def collect_daily(
         self,
@@ -102,15 +107,16 @@ class LiveDailyCandleBackfill:
                         result = fallback
             return [_candle_to_dict(c) for c in result.candles], result.violations
 
-        out = await self._walkback(
-            cache=_VenueDailyCacheAdapter(self._cache, venue),  # type: ignore[arg-type]
-            fetch_batch=fetch_batch,
-            output_key="candles",
-            code=code,
-            frm=frm,
-            too=too,
-            today_d=today_d,
-        )
+        async with self._inflight.acquire((venue, code)):
+            out = await self._walkback(
+                cache=_VenueDailyCacheAdapter(self._cache, venue),  # type: ignore[arg-type]
+                fetch_batch=fetch_batch,
+                output_key="candles",
+                code=code,
+                frm=frm,
+                too=too,
+                today_d=today_d,
+            )
         out["venue"] = policy
         out["data_warnings"].extend(fallback_warnings)
         return out

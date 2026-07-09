@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import asyncio
 import datetime as dt
 from collections.abc import Awaitable, Callable, Hashable
 
@@ -138,6 +139,74 @@ async def test_live_daily_candle_backfill_schedules_past_daily_fetches(tmp_path)
             "cooldown_scope": "UN",
         }
     ]
+
+
+class _GatedKis(_FakeKis):
+    """Blocks inside the first fetch so a second concurrent request races into
+    (or is coalesced out of) the walk-back."""
+
+    def __init__(self) -> None:
+        super().__init__()
+        self.gate = asyncio.Event()
+
+    async def fetch_past_daily_candles(
+        self,
+        code: str,
+        from_yyyymmdd: str,
+        to_yyyymmdd: str,
+        *,
+        venue: str | None = None,
+        foreground: bool | None = None,
+    ) -> DailyCandleFetchResult:
+        self.calls.append((code, from_yyyymmdd, to_yyyymmdd, venue, foreground))
+        await self.gate.wait()
+        return DailyCandleFetchResult(
+            candles=_daily_candles(from_yyyymmdd, to_yyyymmdd),
+            violations=[],
+        )
+
+
+@pytest.mark.asyncio
+async def test_collect_daily_coalesces_concurrent_same_venue_code_requests(tmp_path) -> None:
+    # Overlapping [from, today] requests for the same (venue, code) on a cold
+    # cache must share one KIS walk-back — the second reads the warm cache.
+    kis = _GatedKis()
+    scheduler = _RecordingScheduler(kis)
+    backfill = LiveDailyCandleBackfill(
+        data_dir=tmp_path,
+        cache=PastDailyCandlesCache(),
+        scheduler=scheduler,  # type: ignore[arg-type]
+        walkback=batched_daily_walkback,
+    )
+
+    async def one(frm: dt.date, from_label: str):
+        return await backfill.collect_daily(
+            code="005930",
+            frm=frm,
+            too=dt.date(2024, 1, 10),
+            today_d=dt.date(2024, 2, 1),
+            policy="KRX",
+            from_label=from_label,
+            to_label="20240110",
+        )
+
+    t1 = asyncio.create_task(one(dt.date(2024, 1, 1), "20240101"))
+    t2 = asyncio.create_task(one(dt.date(2024, 1, 5), "20240105"))
+
+    for _ in range(100):
+        await asyncio.sleep(0)
+        if kis.calls:
+            break
+    assert len(kis.calls) == 1
+
+    kis.gate.set()
+    r1, r2 = await asyncio.gather(t1, t2)
+
+    assert len(kis.calls) == 1
+    assert len(r1["candles"]) == 10
+    assert len(r2["candles"]) == 6
+    assert r2["fresh_batches"] == []
+    assert r2["cached_batches"] == ["20240101__20240110"]
 
 
 @pytest.mark.asyncio
