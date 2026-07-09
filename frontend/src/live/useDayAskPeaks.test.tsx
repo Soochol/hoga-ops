@@ -1,7 +1,7 @@
 import { describe, it, expect } from 'vitest';
 import { renderHook } from '@testing-library/react';
 import { deriveDayAskPeaks, useDayAskPeaks, useTodayAllPriceAskPeak } from './useDayAskPeaks';
-import type { AskPeak, Candle } from '../api/types';
+import type { AskPeak } from '../api/types';
 import type { LiveTodayAskPeak } from '../api/liveSeries';
 import type { ObSnapshot, TradeSnapshot } from './bucketHogaSeries';
 
@@ -22,15 +22,6 @@ const byDate = (peaks: readonly AskPeak[]) => {
   return out;
 };
 const atKst = (hh: number, mm = 0) => Date.UTC(2026, 5, 13, hh - 9, mm);
-const candle = (t_ms: number, low: number, high: number): Candle => ({
-  ts_ms: t_ms,
-  open: low,
-  high,
-  low,
-  close: high,
-  vol_a: 1,
-  vol_b: 0,
-});
 
 const todayAskPeak = (overrides: Partial<LiveTodayAskPeak> = {}): LiveTodayAskPeak => ({
   date: '20260613',
@@ -522,31 +513,7 @@ describe('useDayAskPeaks', () => {
     });
   });
 
-  it('keeps live ask peak updates responsive with many candles and repeated prices', () => {
-    const base = Date.UTC(2026, 5, 13, 0, 0, 0);
-    const candles = Array.from({ length: 2500 }, (_, i) =>
-      candle(base + (i % 300) * 60_000, 20_000 + i * 10, 20_005 + i * 10),
-    );
-    const ob = Array.from({ length: 2000 }, (_, i): ObSnapshot => ({
-      t_ms: base + i * 1000,
-      total_ask_qty: 1,
-      total_bid_qty: 1,
-      asks: Array.from({ length: 10 }, (_unused, level) => ({
-        price: 40_000 + level,
-        qty: 100 + i + level,
-      })),
-      bids: Array.from({ length: 10 }, (_unused, level) => ({
-        price: 39_000 - level,
-        qty: 100 + i + level,
-      })),
-    }));
-
-    const started = performance.now();
-    renderHook(() =>
-      useDayAskPeaks(ob, [], [], '20260613', '005930', null, candles),
-    );
-    const elapsed = performance.now() - started;
-
-    expect(elapsed).toBeLessThan(500);
-  });
+  // (제거됨, issue #434) 대량 버퍼 무정지 벽시계 테스트는 full-suite 워커 경합에
+  // flaky했다. 이 훅이 쓰는 IncrementalPeakWallSource의 append-only 델타 소비(perf를
+  // 담보하는 실제 불변식)는 useDayPeaks.perf.test.tsx가 결정론적 호출횟수로 검증한다.
 });

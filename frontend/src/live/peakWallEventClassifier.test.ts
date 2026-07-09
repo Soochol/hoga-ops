@@ -107,13 +107,13 @@ describe('peakWallEventClassifier', () => {
       t_ms: base + i * 1_000,
     }));
 
-    const started = performance.now();
     const classified = classifyAskWallEvents(events, touches);
-    const elapsed = performance.now() - started;
 
+    // 2만 이벤트 × 2천 터치에서도 정확한 top 후보를 고른다(전수 대조 아닌 이진탐색+
+    // suffix 극값이므로 결과가 O(n log n)로도 정확). 기존 벽시계 `elapsed < 300ms`는
+    // full-suite 워커 경합에 flaky해 제거(issue #434) — 대규모 정확성 단언은 남는다.
     expect(classified.postTouch[0]).toEqual({ price: 40_010, qty: 20090, t_ms: base + 1_999_000 });
     expect(classified.postUntouched[0]).toEqual({ price: 40_019, qty: 20099, t_ms: base + 1_999_900 });
-    expect(elapsed).toBeLessThan(300);
   });
 
   it('ignores side=0 trades when building touch classification input', () => {
