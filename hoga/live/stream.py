@@ -318,10 +318,19 @@ class LiveStream:
         # 시점). 저장 경로의 위상은 별개로 flush 시점에 _ds.flush(phase=...)가
         # 박는다(M2 참고) — ingest는 raw tick만 받으므로 이 phase를 안 본다.
         phase = self._phase_fn()
+        # venue 태그를 표시 스냅샷에 실어 프론트가 KRX/NXT를 구분(#524). 추가 키라
+        # 하위호환(구프론트 무시); 저장 스키마는 아래 KRX 격리로 무영향.
         snap = LiveSnapshot(t_ms=tick.t_ms, kind=tick.kind,
-                            payload={**tick.payload, "phase": phase})
-        # 표시 경로는 §11에 따라 무게이트 — 항상 publish.
+                            payload={**tick.payload, "phase": phase, "venue": tick.venue})
+        # 표시 경로는 §11에 따라 무게이트 — KRX/NXT 모두 항상 publish. 시분할 스왑이
+        # KRX를 정규장에만 구독하므로 KRX 틱이 장전에 도착해 유령 캔들을 만들 일은 없다.
         await self._buffer.publish(tick.code, [snap], now_ms=_now_ms())
+        # ── 성역 격리(#524): 저장·집계·피크·시그널은 KRX 전용 ──────────────────
+        # NXT 틱은 표시(위 publish)만 하고 여기서 리턴 — KRX 정규장 캡처 경로를
+        # byte-for-byte 불변으로 유지한다(정규장엔 KRX만 구독되므로 이 가드는
+        # 방어적이며, 경계 스왑 타이밍 오차에도 NXT가 저장에 새지 않게 봉인).
+        if tick.venue != "KRX":
+            return
         self._ingest_ask_peak(tick)
         self._ingest_bid_peak(tick)
         if tick.kind is SnapshotKind.OB:

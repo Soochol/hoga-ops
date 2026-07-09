@@ -68,6 +68,51 @@ async def test_on_tick_ingest_gated_off_skips_storage_but_still_displays(tmp_pat
     assert not jsonl_path.exists()                   # 저장 경로엔 아무것도 안 감
 
 
+def _nxt_trade_tick(t_ms, qty, side):
+    return WsTick(code="005930", t_ms=t_ms, kind=SnapshotKind.TRADE, venue="NXT", payload={
+        "trades": [{"t_ms": t_ms, "price": 100, "qty": qty, "side": side,
+                    "side_source": "kis_ws"}],
+    })
+
+
+async def test_on_tick_nxt_venue_displays_but_is_never_stored(tmp_path):
+    """성역 격리(#524): NXT 틱은 표시(buffer)엔 들어가고 venue 태그도 실리지만,
+    저장 게이트가 열려 있어도(정규장) 다운샘플러/저장엔 절대 안 들어간다 —
+    KRX 정규장 캡처를 byte-for-byte 불변으로 유지."""
+    buf = LiveBuffer()
+    writer = LiveWriter(tmp_path / "live")
+    stream = LiveStream(buffer=buf, writer=writer,
+                        date_fn=lambda: "20260605", phase_fn=lambda: "regular")
+    stream._gate_open = True  # 저장 게이트 열림(정규장) — 그래도 NXT는 격리돼야 함
+    now = int(time.time() * 1000)
+    await stream.on_tick(_nxt_trade_tick(now, qty=5, side=1))
+
+    series = await buf.get_series("005930")
+    assert len(series["trades"]) == 1              # 표시엔 들어감
+    assert series["trades"][0]["venue"] == "NXT"   # venue 태그 전달(프론트 구분용)
+
+    await stream.flush_once(now_ms=now + 10_000)
+    jsonl = tmp_path / "live" / "20260605" / "005930.jsonl"
+    stored = jsonl.read_text() if jsonl.exists() else ""
+    assert '"kind": "trade"' not in stored          # 저장 경로엔 NXT 미기록
+    assert '"kind": "fill"' not in stored           # 흐름 집계에도 미반영
+
+
+async def test_on_tick_krx_still_stored_alongside_nxt_isolation(tmp_path):
+    """대조군: 동일 조건에서 KRX 틱은 기존대로 저장된다(격리가 KRX를 막지 않음)."""
+    buf = LiveBuffer()
+    writer = LiveWriter(tmp_path / "live")
+    stream = LiveStream(buffer=buf, writer=writer,
+                        date_fn=lambda: "20260605", phase_fn=lambda: "regular")
+    stream._gate_open = True
+    now = int(time.time() * 1000)
+    await stream.on_tick(_trade_tick(now, qty=7, side=1))  # KRX(기본 venue)
+    await stream.flush_once(now_ms=now + 10_000)
+    stored = (tmp_path / "live" / "20260605" / "005930.jsonl").read_text()
+    assert '"buy_qty": 7' in stored
+    assert '"kind": "trade"' in stored
+
+
 def _ob_tick(t_ms, tot_ask):
     return WsTick(code="005930", t_ms=t_ms, kind=SnapshotKind.OB, payload={
         "code": "005930", "t_ms": t_ms, "asks": [], "bids": [],

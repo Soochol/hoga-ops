@@ -5,7 +5,12 @@ import pytest
 
 from hoga.api import calendar as cal
 from hoga.live.kis_client import KIS_KST
-from hoga.live.session_gate import ws_capture_window, ws_capture_window_async
+from hoga.live.session_gate import (
+    target_ws_venue,
+    ws_capture_window,
+    ws_capture_window_async,
+    ws_connection_window,
+)
 
 
 def _ms(year: int, month: int, day: int, hour: int, minute: int) -> int:
@@ -42,3 +47,45 @@ async def test_async_wrapper_matches_sync(monkeypatch):
     assert await ws_capture_window_async(t) is True
     monkeypatch.setattr(cal, "is_trading_session_today", lambda d: False)
     assert await ws_capture_window_async(t) is False
+
+
+# ── #524 연결 창(08~20) vs 저장 창(정규장) 분리 + 시분할 venue 경계 ─────────────
+
+
+def test_connection_window_covers_nxt_hours_on_trading_day(monkeypatch):
+    """연결 창은 거래일 08:00~20:00 — 저장 창(정규장) 밖의 NXT 시간대도 True."""
+    monkeypatch.setattr(cal, "is_trading_session_today", lambda d: True)
+    assert ws_connection_window(_ms(2026, 5, 27, 8, 30)) is True   # 장전 NXT
+    assert ws_connection_window(_ms(2026, 5, 27, 10, 0)) is True   # 정규장
+    assert ws_connection_window(_ms(2026, 5, 27, 18, 0)) is True   # 장후 NXT
+    # 창 밖(07:59, 20:00) → False
+    assert ws_connection_window(_ms(2026, 5, 27, 7, 59)) is False
+    assert ws_connection_window(_ms(2026, 5, 27, 20, 0)) is False
+
+
+def test_connection_window_false_on_weekend_and_holiday(monkeypatch):
+    """주말은 KIS 호출 전 즉시 차단; 평일이라도 휴장이면 False."""
+    monkeypatch.setattr(cal, "is_trading_session_today", lambda d: True)
+    assert ws_connection_window(_ms(2026, 5, 30, 10, 0)) is False  # 토요일
+    monkeypatch.setattr(cal, "is_trading_session_today", lambda d: False)
+    assert ws_connection_window(_ms(2026, 5, 27, 10, 0)) is False  # 평일 휴장
+
+
+def test_connection_window_strictly_wider_than_capture_window(monkeypatch):
+    """캡처 창(정규장)이 True인 시각은 연결 창도 반드시 True(연결 ⊇ 저장)."""
+    monkeypatch.setattr(cal, "is_trading_session_today", lambda d: True)
+    for h, m in [(9, 0), (12, 0), (15, 29)]:
+        t = _ms(2026, 5, 27, h, m)
+        if ws_capture_window(t):
+            assert ws_connection_window(t) is True
+
+
+def test_target_venue_krx_only_around_regular_session_with_margins():
+    """구독 venue: 정규장을 워밍(08:50)~drain 마진(15:31)으로 완전 포함해 KRX,
+    그 밖(연결 창 내 NXT 시간대)은 NXT."""
+    assert target_ws_venue(_ms(2026, 5, 27, 8, 30)) == "NXT"   # 장전 NXT
+    assert target_ws_venue(_ms(2026, 5, 27, 8, 50)) == "KRX"   # 워밍 시작
+    assert target_ws_venue(_ms(2026, 5, 27, 9, 0)) == "KRX"    # 개장(캡처 시작 시 KRX 준비 완료)
+    assert target_ws_venue(_ms(2026, 5, 27, 15, 30)) == "KRX"  # 마감 순간까지 KRX(drain 보존)
+    assert target_ws_venue(_ms(2026, 5, 27, 15, 31)) == "NXT"  # drain 마진 후 NXT 스왑
+    assert target_ws_venue(_ms(2026, 5, 27, 18, 0)) == "NXT"   # 장후 NXT

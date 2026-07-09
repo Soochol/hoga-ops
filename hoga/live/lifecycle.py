@@ -296,9 +296,13 @@ def _build_conn(account_id: int, codes: list[str], data_dir: Path) -> _StreamCon
 
     각 conn은 자체 LiveStream+LiveWriter(code-disjoint라 (date,code) 충돌 없음).
     공유: 단일 _buffer. KisClient는 kis_runtime의 account별 싱글톤(재사용)."""
-    # sync ws_capture_window을 의도적으로 씀(아래 gate_fn): KisWsClient가 gate_fn을
+    # sync ws_connection_window을 의도적으로 씀(아래 gate_fn): KisWsClient가 gate_fn을
     # `await to_thread(gate_fn)`로 감싸 blocking을 격리한다 — 유일한 합법적 sync 사용처.
-    from .session_gate import ws_capture_window  # noqa: PLC0415
+    # 연결 게이트(08~20)는 저장 게이트(정규장)와 분리(#524) — NXT 시분할 시간대에도
+    # 연결 유지. 초기 구독 venue는 target_ws_venue(현재 시각) — 콜드 스타트가 장전이면
+    # NXT로, 정규장이면 KRX로 시작한다. 이후 스왑은 watchdog 주기의 ensure_venue가 유지.
+    from . import ws_fields as F  # noqa: PLC0415
+    from .session_gate import target_ws_venue, ws_connection_window  # noqa: PLC0415
     from .stream import LiveStream  # noqa: PLC0415
     from .writer import LiveWriter  # noqa: PLC0415
     from .ws_client import KisWsClient  # noqa: PLC0415
@@ -317,7 +321,8 @@ def _build_conn(account_id: int, codes: list[str], data_dir: Path) -> _StreamCon
         approval_key_fn=kis.get_approval_key,
         on_tick=stream.on_tick,
         date_fn=_today_kst,
-        gate_fn=lambda: ws_capture_window(_now_ms()),
+        gate_fn=lambda: ws_connection_window(_now_ms()),
+        trs=F.trs_for_venue(target_ws_venue(_now_ms())),
     )
     stream.ws = ws
     return _StreamConn(
@@ -817,12 +822,14 @@ async def _ws_watchdog_check(
     from datetime import datetime  # noqa: PLC0415
 
     from .kis_client import KIS_KST  # noqa: PLC0415
-    from .session_gate import ws_capture_window_async  # noqa: PLC0415
+    from .session_gate import ws_connection_window_async  # noqa: PLC0415
 
     started = _state.started_at_ms
     if started is None:
         return False
-    if not await ws_capture_window_async(now_ms):  # async 진입점이 to_thread 봉인(blocking 계약)
+    # 연결 창(08~20) 기준 — NXT 시분할 시간대에도 stale conn을 복구한다(#524).
+    # 저장은 별도 ws_capture_window(정규장)가 게이트하므로 이 확대는 캡처 무영향.
+    if not await ws_connection_window_async(now_ms):  # async 진입점이 to_thread 봉인(blocking 계약)
         return False
 
     kst = datetime.fromtimestamp(now_ms / 1000, tz=KIS_KST)
@@ -886,13 +893,41 @@ async def start_live_stream_watchdog(
     async def loop() -> None:
         while True:
             try:
+                now_ms = _now_ms()
                 await _ws_watchdog_check(
                     data_dir=data_dir,
-                    now_ms=_now_ms(),
+                    now_ms=now_ms,
                     stale_after_ms=stale_after_ms,
                 )
+                # #524 시분할 venue 스왑 — watchdog 주기(30s)로 각 conn의 구독 venue를
+                # target_ws_venue(현재 시각)에 맞춘다. 별도 태스크 대신 기존 주기 루프에
+                # 얹어 배선 표면을 최소화. ensure_venue는 이미 목표면 no-op이라 값싸다.
+                await _ensure_conn_venues(now_ms)
             except Exception:  # noqa: BLE001 — watchdog must outlive any single pass
                 _log.exception("live.stream.watchdog_cycle_failed")
             await asyncio.sleep(check_interval_s)
 
     return asyncio.create_task(loop(), name="live-stream-watchdog")
+
+
+async def _ensure_conn_venues(now_ms: int) -> None:
+    """각 conn의 WS 구독 venue를 현재 시각의 target_ws_venue로 맞춘다(#524 시분할).
+
+    연결 창(거래일 08~20) 밖이면 target은 무의미하나 그 시간엔 conn이 없거나 게이트가
+    닫혀 있어 무해 — 판정은 순수 시계라 blocking 없음. ensure_venue가 sub_lock으로
+    update_codes/재연결과 직렬화하고, 이미 목표 venue면 no-op이라 매 주기 호출 안전.
+    저장 격리는 stream.on_tick의 KRX 가드 + ws_capture_window(정규장)가 별도로 보장하므로,
+    스왑 경계 오차가 정규장 캡처를 침범하지 않는다.
+    """
+    from .session_gate import target_ws_venue  # noqa: PLC0415
+
+    venue = target_ws_venue(now_ms)
+    for conn in list(_state.streams.values()):
+        ws = getattr(conn.stream_obj, "ws", None)
+        if ws is None:
+            continue
+        try:
+            await ws.ensure_venue(venue)
+        except Exception:  # noqa: BLE001 — 한 conn 스왑 실패가 다른 conn을 막지 않게 격리
+            _log.exception("live.stream.venue_swap_failed account=%s venue=%s",
+                           conn.account_id, venue)
