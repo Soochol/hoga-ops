@@ -39,6 +39,9 @@ class CaptureErrorCode(StrEnum):
     TERMINAL = "terminal"
     NOT_FOUND = "not_found"
     INTERNAL_ERROR = "internal_error"
+    # Queue mutation attempted on a server that does not own the capture queue
+    # for this data dir (another instance holds the flock — ADR-0094). HTTP 503.
+    QUEUE_NOT_OWNED = "queue_not_owned"
 
 
 class UpstreamCode(StrEnum):

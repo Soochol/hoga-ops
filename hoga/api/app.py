@@ -155,6 +155,10 @@ def create_app(data_dir: Path) -> FastAPI:
             # Best-effort cancel of any in-flight items at shutdown — raw files
             # are preserved on disk for Resume. Spec §9 documents this behavior.
             cancel_all_on_shutdown()
+            # ADR-0094: release the queue flock so a successor (e.g. --reload
+            # restart) can acquire it. flock also auto-releases on process exit,
+            # but explicit release makes handoff prompt.
+            _captures_module.release_queue_ownership()
             observer.stop()
             observer.join()
             engine.close()

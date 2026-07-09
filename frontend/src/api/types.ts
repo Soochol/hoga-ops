@@ -436,6 +436,9 @@ export interface QueueSnapshot {
   done: QueueItem[];
   paused: boolean;
   max_concurrent: number;
+  /** ADR-0094: false when another backend instance owns the capture queue for
+   *  this data dir — queue mutations return 503. Optional for wire back-compat. */
+  queue_owned?: boolean;
 }
 
 // === RangeBundle (ADR-0013) ===

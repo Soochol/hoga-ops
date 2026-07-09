@@ -13,6 +13,23 @@ FIXTURE_DIR = Path(__file__).parent / "fixtures" / "tiny_tsv"
 
 
 @pytest.fixture(autouse=True)
+def _reset_queue_ownership() -> None:
+    """ADR-0094: restore the owned-by-default state before each test.
+
+    The app lifespan teardown calls ``release_queue_ownership()`` which sets
+    ``_queue_owned = False`` (the lock is gone). Tests that exercise
+    ``_finalize_item``/``_persist_queue_locked`` by writing ``_data_dir``
+    directly — without calling ``reset_state_for_tests()`` — would then see a
+    leaked False and silently no-op their persistence. Resetting to the owned
+    default here closes that cross-test leak; ownership tests set the state
+    they need inside the test body, after this fixture runs.
+    """
+    from hoga.api import captures
+
+    captures._queue_owned = True
+
+
+@pytest.fixture(autouse=True)
 def _no_real_mst_downloads(monkeypatch: pytest.MonkeyPatch) -> None:
     """Suite-wide network guard for the Symbol Master boot auto-refresh.
 
