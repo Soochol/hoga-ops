@@ -197,7 +197,8 @@ function DataSourceDetail({ variant }: { variant: 'live' | 'study' }) {
           title="호가·체결 데이터 기준"
           description="호가창, 체결, 거래원, 호가비, 체결강도 같은 보조 데이터에 적용됩니다. 캔들과 독립된 소스입니다."
         >
-          <div className="flex flex-col gap-2">
+          {/* pb-2: 라디오가 다음 그룹 구분선에 붙지 않도록 하단 여백(거래소 그룹과 동일). */}
+          <div className="flex flex-col gap-2 pb-2">
             {SOURCE_OPTIONS.map((opt) => (
               <SourcePreferenceRadio key={opt} value={opt} />
             ))}
