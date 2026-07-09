@@ -75,6 +75,12 @@ describe('HighLowAnnotationOverlay', () => {
     expect(screen.getByTestId('highlow-label-low').textContent).toMatch(/\+\d+\.\d{2}%/);
   });
 
+  it('draws leader lines connecting each dot to its edge-pinned label', () => {
+    renderOverlay();
+    expect(screen.getByTestId('highlow-leader-high')).toBeInTheDocument();
+    expect(screen.getByTestId('highlow-leader-low')).toBeInTheDocument();
+  });
+
   it('renders nothing when the toggle is off', () => {
     useChartPrefsStore.setState({ highLowLabelsEnabled: false });
     renderOverlay();
@@ -114,10 +120,26 @@ describe('HighLowAnnotationOverlay', () => {
 });
 
 describe('placeExtremeLabel', () => {
-  it('flips a high label below the dot when it is too close to the top edge', () => {
-    expect(placeExtremeLabel('above', 140, 12, '59,300원 (-3.90%, 06.09 10:00)', 760, 180)).toMatchObject({
+  // pane 760×180, LABEL_EDGE_PAD_PX=6, LABEL_HEIGHT_PX=16. above 앵커=라벨 top,
+  // below 앵커=라벨 bottom. wall 박스 = {top: lineY-15, bottom: lineY-2}.
+  const highLabelBox = (y: number) => ({ top: y, bottom: y + 16 });
+  const lowLabelBox = (y: number) => ({ top: y - 16, bottom: y });
+  const wallBox = (lineY: number) => ({ top: lineY - 3 - 11 - 1, bottom: lineY - 3 + 1 });
+  const disjoint = (a: { top: number; bottom: number }, b: { top: number; bottom: number }) =>
+    a.bottom <= b.top || a.top >= b.bottom;
+
+  it('pins the high label to the top edge regardless of the dot y', () => {
+    // dot 이 pane 아래쪽(120)에 있어도 라벨은 상단 가장자리에 고정.
+    expect(placeExtremeLabel('above', 140, 120, '59,300원 (-3.90%, 06.09 10:00)', 760, 180)).toMatchObject({
+      place: 'above',
+      y: 6,
+    });
+  });
+
+  it('pins the low label to the bottom edge regardless of the dot y', () => {
+    expect(placeExtremeLabel('below', 140, 40, '58,900원 (+1.20%, 06.09 10:00)', 760, 180)).toMatchObject({
       place: 'below',
-      y: 12,
+      y: 174,
     });
   });
 
@@ -129,39 +151,28 @@ describe('placeExtremeLabel', () => {
     expect(right.x).toBeLessThan(750);
   });
 
-  it('moves high labels away from occupied wall-label text boxes', () => {
-    const high = placeExtremeLabel('above', 440, 96, '60,000원 (-13.59%, 06.10 09:30)', 760, 180, [96]);
+  it('pushes a top-pinned high label down past a wall-label box near the top edge', () => {
+    // wall line 20 → box {5,18} overlaps the top-edge high box {6,22}. 라벨은 아래로 양보.
+    const high = placeExtremeLabel('above', 440, 60, '60,000원 (-13.59%, 06.10 09:30)', 760, 180, [20]);
 
-    const renderedTop = high.y - 8 - 16;
-    const renderedBottom = high.y - 8;
-    const wallTextTop = 96 - 3 - 11 - 1;
-    const wallTextBottom = 96 - 3 + 1;
-
-    expect(high.y).toBeLessThan(96);
-    expect(renderedBottom <= wallTextTop || renderedTop >= wallTextBottom).toBe(true);
+    expect(high.place).toBe('above');
+    expect(high.y).toBeGreaterThan(6);
+    expect(disjoint(highLabelBox(high.y), wallBox(20))).toBe(true);
   });
 
-  it('moves low labels away when their rendered box would cross a wall-label text box', () => {
-    const low = placeExtremeLabel('below', 440, 80, '58,700원 (+2.10%, 06.10 09:30)', 760, 180, [112]);
+  it('pushes a bottom-pinned low label up past a wall-label box near the bottom edge', () => {
+    // wall line 170 → box {155,168} overlaps the bottom-edge low box {158,174}. 라벨은 위로 양보.
+    const low = placeExtremeLabel('below', 440, 120, '58,700원 (+2.10%, 06.10 09:30)', 760, 180, [170]);
 
-    const renderedTop = low.y + 8;
-    const renderedBottom = low.y + 8 + 16;
-    const wallTextTop = 112 - 3 - 11 - 1;
-    const wallTextBottom = 112 - 3 + 1;
-
-    expect(renderedBottom <= wallTextTop || renderedTop >= wallTextBottom).toBe(true);
+    expect(low.place).toBe('below');
+    expect(low.y).toBeLessThan(174);
+    expect(disjoint(lowLabelBox(low.y), wallBox(170))).toBe(true);
   });
 
-  it('keeps the rendered high label box out of a wall-label text box above the wall line', () => {
-    // Wall label text is drawn above the wall line, so avoiding only the line y is not enough.
-    const label = placeExtremeLabel('above', 440, 130, '550,000원 (-59.23%, 04.17 09:00)', 760, 180, [112]);
-
-    const renderedTop = label.y - 8 - 16;
-    const renderedBottom = label.y - 8;
-    const wallTextTop = 112 - 3 - 11 - 1;
-    const wallTextBottom = 112 - 3 + 1;
-
-    expect(renderedBottom <= wallTextTop || renderedTop >= wallTextBottom).toBe(true);
+  it('leaves the label at the edge when no wall box is near it', () => {
+    // wall line 96 → box {81,94} sits mid-pane, far from the top-edge high box {6,22}.
+    const high = placeExtremeLabel('above', 440, 60, '60,000원 (-13.59%, 06.10 09:30)', 760, 180, [96]);
+    expect(high.y).toBe(6);
   });
 
   it('falls back to the original point before pane size is known', () => {
