@@ -1012,6 +1012,104 @@ describe('useRangeSidecarDelta', () => {
     );
   });
 
+  // Reproduction probe for the "cumulative sidecar storm" seen in server logs
+  // (from moving back, to fixed at today, repeated). With a STABLE price range,
+  // consecutive left-scrolls must each stay a NARROW tile — never re-request the
+  // cumulative [from, today]. If this fails, the delta layer regressed; if it
+  // passes, the logged cumulative shape came from a stale build or churn, not the
+  // steady-state code path.
+  it('keeps CONSECUTIVE left-scrolls narrow (no repeated cumulative [from, today])', async () => {
+    const today = '20260706';
+    const price = { min: 303000, max: 325000 };
+    const bundleFor = (url: unknown): RangeBundle => {
+      const m = String(url).match(/from=(\d+)&to=(\d+)/);
+      const from = m ? m[1] : today;
+      const to = m ? m[2] : today;
+      return {
+        ...fakeBundle,
+        code: '005930',
+        from_date: from,
+        to_date: to,
+        bucket_ms: 60_000,
+        volume_distributions: [
+          { date: from, range_count: 10, price_min: 1, price_max: 2, session_open_ms: 1, session_close_ms: 2, bins: [] },
+        ],
+      };
+    };
+    const spy = vi.spyOn(client, 'apiCall').mockImplementation((url) => Promise.resolve(bundleFor(url)));
+    const options = { mode: 'sidecar' as const, volumeDistributionBins: 10, volumeDistributionPriceRange: price };
+    const { result, rerender } = renderHook(
+      ({ from }: { from: string }) =>
+        useRangeSidecarDelta('005930', from, today, '1m', undefined, today, options, 'hogaplay_first'),
+      { wrapper: makeWrapper(), initialProps: { from: '20260629' } },
+    );
+
+    await waitFor(() => expect(result.current.data?.from_date).toBe('20260629'));
+    rerender({ from: '20260624' });
+    await waitFor(() => expect(result.current.data?.from_date).toBe('20260624'));
+    rerender({ from: '20260619' });
+    await waitFor(() => expect(result.current.data?.from_date).toBe('20260619'));
+    rerender({ from: '20260614' });
+    await waitFor(() => expect(result.current.data?.from_date).toBe('20260614'));
+
+    const urls = spy.mock.calls.map(([u]) => String(u));
+    // No SCROLL step may re-request the cumulative window ending at today.
+    const cumulativeScroll = urls.filter((u) => /from=2026(0624|0619|0614)&to=20260706/.test(u));
+    expect(cumulativeScroll).toEqual([]);
+    // Each scroll fetched only its narrow delta tile.
+    expect(urls.some((u) => u.includes('from=20260624&to=20260628'))).toBe(true);
+    expect(urls.some((u) => u.includes('from=20260619&to=20260623'))).toBe(true);
+    expect(urls.some((u) => u.includes('from=20260614&to=20260618'))).toBe(true);
+    // The merged bundle still spans back to today.
+    expect(result.current.data?.to_date).toBe('20260706');
+  });
+
+  // Characterizes the "cold-load price-range churn" hypothesis: the sidecar
+  // delta identity includes volume_distribution price bounds (derived from
+  // today's candle high/low), which churn while candles stream in. A churn
+  // breaks `sameIdentity` for that one step (no `previous` under the new
+  // identity → cumulative fallback), but the NEXT scroll at the now-stable
+  // identity finds the just-cached bundle and returns to narrow deltas. So
+  // churn yields at most a TRANSIENT cumulative — it does NOT explain a long
+  // run of cumulative requests all sharing one stable price range.
+  it('a mid-scroll price-range churn is transient — the next stable scroll self-heals to narrow', async () => {
+    const today = '20260706';
+    const P1 = { min: 303000, max: 325000 };
+    const P2 = { min: 304000, max: 326000 }; // churned once, then stable
+    const bundleFor = (url: unknown): RangeBundle => {
+      const m = String(url).match(/from=(\d+)&to=(\d+)/);
+      const from = m ? m[1] : today;
+      const to = m ? m[2] : today;
+      return { ...fakeBundle, code: '005930', from_date: from, to_date: to, bucket_ms: 60_000 };
+    };
+    const spy = vi.spyOn(client, 'apiCall').mockImplementation((url) => Promise.resolve(bundleFor(url)));
+    const { result, rerender } = renderHook(
+      ({ from, price }: { from: string; price: { min: number; max: number } }) =>
+        useRangeSidecarDelta('005930', from, today, '1m', undefined, today, {
+          mode: 'sidecar', volumeDistributionBins: 10, volumeDistributionPriceRange: price,
+        }, 'hogaplay_first'),
+      { wrapper: makeWrapper(), initialProps: { from: '20260629', price: P1 } },
+    );
+
+    await waitFor(() => expect(result.current.data?.from_date).toBe('20260629'));
+    rerender({ from: '20260624', price: P2 }); // scroll + churn
+    await waitFor(() => expect(result.current.data?.from_date).toBe('20260624'));
+    rerender({ from: '20260619', price: P2 }); // scroll, stable
+    await waitFor(() => expect(result.current.data?.from_date).toBe('20260619'));
+    rerender({ from: '20260614', price: P2 }); // scroll, stable
+    await waitFor(() => expect(result.current.data?.from_date).toBe('20260614'));
+
+    const stableUrls = spy.mock.calls
+      .map(([u]) => String(u))
+      .filter((u) => u.includes('volume_distribution_price_min=304000'));
+    // The churn step (0624) may fall back to cumulative once; the subsequent
+    // stable scrolls (0619, 0614) must be narrow tiles.
+    expect(stableUrls.some((u) => u.includes('from=20260619&to=20260623'))).toBe(true);
+    expect(stableUrls.some((u) => u.includes('from=20260614&to=20260618'))).toBe(true);
+    // No cumulative at the stable identity for the later scroll steps.
+    expect(stableUrls.filter((u) => /from=2026(0619|0614)&to=20260706/.test(u))).toEqual([]);
+  });
+
   it('does not immediately refresh the today sidecar slice after a delta merge', async () => {
     const first: RangeBundle = {
       ...fakeBundle,
