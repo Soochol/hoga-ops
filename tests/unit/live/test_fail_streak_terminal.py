@@ -127,6 +127,33 @@ def test_skipped_increments_alongside_failed() -> None:
     assert m.fail_streaks["005930|20260520"] == 3
 
 
+def test_upstream_gap_skip_does_not_increment() -> None:
+    """ADR-0093: an upstream_gap skip made ZERO external calls (decided-phase
+    gate skipped before fetching) — it must NOT consume the cap."""
+    m = QueueManifest(paused=False, items=[], fail_streaks={"005930|20260520": 3})
+    apply_terminal_to_manifest(
+        m, "005930", "20260520", "skipped", skip_reason="upstream_gap",
+    )
+    assert m.fail_streaks["005930|20260520"] == 3
+
+
+def test_upstream_gap_skip_does_not_create_key_when_absent() -> None:
+    m = _empty()
+    apply_terminal_to_manifest(
+        m, "005930", "20260520", "skipped", skip_reason="upstream_gap",
+    )
+    assert "005930|20260520" not in m.fail_streaks
+
+
+def test_other_skip_reasons_still_increment() -> None:
+    """Only upstream_gap is exempt — already_complete/source_partial keep +1."""
+    m = QueueManifest(paused=False, items=[], fail_streaks={"005930|20260520": 1})
+    apply_terminal_to_manifest(
+        m, "005930", "20260520", "skipped", skip_reason="already_complete",
+    )
+    assert m.fail_streaks["005930|20260520"] == 2
+
+
 def test_cancelled_does_not_change_counter() -> None:
     m = QueueManifest(paused=False, items=[], fail_streaks={"005930|20260520": 3})
     apply_terminal_to_manifest(m, "005930", "20260520", "cancelled")

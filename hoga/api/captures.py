@@ -363,13 +363,14 @@ def _items_in_restore_order() -> Iterator[QueueItemState]:
 
 def _apply_terminal_to_streaks(
     fail_streaks: dict[str, int], code: str, date: str, phase: str,
-    *, done_complete: bool = False,
+    *, done_complete: bool = False, skip_reason: str | None = None,
 ) -> None:
-    """Mutate ``fail_streaks`` in place per ADR-0042 (amended 2026-06-03):
+    """Mutate ``fail_streaks`` in place per ADR-0042 (amended 2026-06-03) + ADR-0093:
 
     - ``phase == "done"`` AND ``done_complete``      → counter reset (key removed)
     - ``phase == "done"`` AND NOT ``done_complete``  → counter += 1
-    - ``phase in {"failed", "skipped"}``             → counter += 1
+    - ``phase == "skipped"`` AND ``skip_reason == "upstream_gap"`` → no change
+    - ``phase in {"failed", "skipped"}`` (other)     → counter += 1
     - ``phase == "cancelled"``                       → no change (user-initiated;
       external-call status unknown)
     - any other phase                                → ValueError (programmer bug;
@@ -386,6 +387,12 @@ def _apply_terminal_to_streaks(
     marker. Default ``False`` is conservative: an unclassified ``done`` is treated
     as incomplete (+1), never a silent reset.
 
+    ADR-0093: an ``upstream_gap`` skip made ZERO external calls (the worker
+    decided-phase gate skipped it before fetching), so it must NOT consume the
+    cap — the whole point of the confirmed-gap skip is to stop hammering the
+    upstream. All OTHER skips (already_complete, source_partial, no_upstream_data)
+    keep the existing +1.
+
     Caller is responsible for persisting after mutation.
     """
     from hoga.api.fail_streak import streak_key
@@ -395,6 +402,8 @@ def _apply_terminal_to_streaks(
             fail_streaks.pop(key, None)
         else:
             fail_streaks[key] = fail_streaks.get(key, 0) + 1
+    elif phase == "skipped" and skip_reason == "upstream_gap":
+        pass  # ADR-0093: no external call made — don't burn the cap
     elif phase in ("failed", "skipped"):
         fail_streaks[key] = fail_streaks.get(key, 0) + 1
     elif phase == "cancelled":
@@ -405,7 +414,7 @@ def _apply_terminal_to_streaks(
 
 def apply_terminal_to_manifest(
     manifest: QueueManifest, code: str, date: str, phase: str,
-    *, done_complete: bool = False,
+    *, done_complete: bool = False, skip_reason: str | None = None,
 ) -> None:
     """ADR-0042 worker-terminal hook (pure function on a QueueManifest).
 
@@ -413,10 +422,12 @@ def apply_terminal_to_manifest(
     ``manifest.fail_streaks``. Tests use this signature directly; the in-process
     call site mutates the module-global :data:`_fail_streaks` via the inner
     helper for the same logic. See that helper for ``done_complete`` semantics
-    (the COMPLETE-on-disk gate for ``phase == "done"``).
+    (the COMPLETE-on-disk gate for ``phase == "done"``) and ``skip_reason``
+    (ADR-0093: an ``upstream_gap`` skip doesn't consume the cap).
     """
     _apply_terminal_to_streaks(
-        manifest.fail_streaks, code, date, phase, done_complete=done_complete,
+        manifest.fail_streaks, code, date, phase,
+        done_complete=done_complete, skip_reason=skip_reason,
     )
 
 
@@ -891,7 +902,7 @@ async def _finalize_item(state: QueueItemState) -> None:
         # carries the new counter value. ``done_complete`` gates done→reset vs +1.
         _apply_terminal_to_streaks(
             _fail_streaks, state.code, state.date, state.phase,
-            done_complete=done_complete,
+            done_complete=done_complete, skip_reason=state.skip_reason,
         )
         _persist_queue_locked()  # ADR-0019 + ADR-0042 — item left _active, fail_streak updated
         # Drain detection — also check we're not paused (drained only fires

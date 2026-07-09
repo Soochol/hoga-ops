@@ -58,6 +58,55 @@ def test_decide_capture_source_partial_retries_without_force_concept(tmp_path: P
     assert decision == CaptureDecision(skip_reason=None, resume=False)
 
 
+def _write_meta_with_identical(path: Path, *, identical_capture_count: int) -> None:
+    """A source_partial meta carrying ADR-0093's identical_capture_count."""
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(json.dumps({
+        "collection_complete": True,
+        "is_partial": True,
+        "identical_capture_count": identical_capture_count,
+        "regular_session_open_ms": 90_000_000,
+        "regular_session_close_ms": 153_100_000,
+    }))
+
+
+def test_decide_capture_confirmed_upstream_gap_skips(tmp_path: Path) -> None:
+    """ADR-0093: source_partial + identical_capture_count>=2 → skip upstream_gap."""
+    _write_meta_with_identical(
+        tmp_path / "parquet" / "20260518" / "005930" / "meta.json",
+        identical_capture_count=2,
+    )
+    decision = eligibility.decide_capture(
+        data_dir=tmp_path, code="005930", date="20260518", force_retry=False,
+    )
+    assert decision == CaptureDecision(skip_reason="upstream_gap", resume=False)
+
+
+def test_decide_capture_confirmed_upstream_gap_bypassed_by_force_retry(tmp_path: Path) -> None:
+    """force_retry lets the user re-verify a confirmed gap (proceed, no skip)."""
+    _write_meta_with_identical(
+        tmp_path / "parquet" / "20260518" / "005930" / "meta.json",
+        identical_capture_count=3,
+    )
+    decision = eligibility.decide_capture(
+        data_dir=tmp_path, code="005930", date="20260518", force_retry=True,
+    )
+    assert decision == CaptureDecision(skip_reason=None, resume=False)
+
+
+def test_decide_capture_unconfirmed_source_partial_still_proceeds(tmp_path: Path) -> None:
+    """identical_capture_count=1 (only one capture so far) is NOT confirmed →
+    proceed fresh, same as the pre-ADR-0093 behavior."""
+    _write_meta_with_identical(
+        tmp_path / "parquet" / "20260518" / "005930" / "meta.json",
+        identical_capture_count=1,
+    )
+    decision = eligibility.decide_capture(
+        data_dir=tmp_path, code="005930", date="20260518", force_retry=False,
+    )
+    assert decision == CaptureDecision(skip_reason=None, resume=False)
+
+
 def test_decide_capture_client_incomplete_resumes(tmp_path: Path) -> None:
     # Raw pages present but no meta — disk_state returns CLIENT_INCOMPLETE.
     raw = tmp_path / "raw" / "20260518" / "005930"

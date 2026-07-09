@@ -65,6 +65,7 @@ export function phaseToCalendarStatus(
   if (phase === 'done') return 'complete';
   if (phase === 'skipped') {
     if (skipReason === 'source_partial') return 'source_partial';
+    if (skipReason === 'upstream_gap') return 'source_partial';         // ADR-0093: confirmed gap stays partial
     if (skipReason === 'no_upstream_data') return 'no_upstream_data';   // ADR-0021
     return 'complete';
   }

@@ -42,6 +42,11 @@ class Classification:
     """
     state: DiskState
     violations: list[Violation] = field(default_factory=list)
+    # ADR-0093: True when state==SOURCE_PARTIAL AND a full re-capture already
+    # reproduced the identical gappy result (identical_capture_count >= 2) —
+    # i.e. the gap is upstream-missing, not a transient collection failure.
+    # Defaulted so existing Classification(state=...) constructions are valid.
+    upstream_gap_confirmed: bool = False
 
     @property
     def errors(self) -> list[Violation]:
@@ -125,7 +130,20 @@ def classify_from_meta(meta: Mapping[str, object]) -> Classification:
 
     is_partial = bool(meta.get("is_partial", True))
     state = DiskState.SOURCE_PARTIAL if is_partial else DiskState.COMPLETE
-    return Classification(state=state, violations=violations)
+    # ADR-0093: a SOURCE_PARTIAL whose identical result has been reproduced by a
+    # full re-capture (identical_capture_count >= 2) is a confirmed upstream gap.
+    identical = meta.get("identical_capture_count", 0)
+    upstream_gap_confirmed = (
+        state == DiskState.SOURCE_PARTIAL
+        and isinstance(identical, int)
+        and not isinstance(identical, bool)
+        and identical >= 2
+    )
+    return Classification(
+        state=state,
+        violations=violations,
+        upstream_gap_confirmed=upstream_gap_confirmed,
+    )
 
 
 def latest_complete_date(data_dir: Path, code: str) -> str | None:

@@ -278,6 +278,10 @@ class QueryEngine:
                 DiskState.SOURCE_PARTIAL, DiskState.CLIENT_INCOMPLETE,
             ),
             full_capture_count=meta.get("full_capture_count"),
+            # ADR-0093: how many consecutive completed captures reproduced the
+            # identical result. >=2 = confirmed upstream gap (drawer shows it +
+            # gates the force-recapture affordance). Null on legacy meta.
+            identical_capture_count=meta.get("identical_capture_count"),
             # ADR-0020: surface the full enum so consumers can
             # see INVALID — the boolean pair above flattens it.
             disk_state=_state.value,

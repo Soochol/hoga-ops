@@ -177,24 +177,17 @@ def parse_stock_date(
     if _all_violations:
         meta["invariant_violations"] = [v.as_dict() for v in _all_violations]
 
-    # Full Capture Count (CONTEXT.md): read prior meta and increment.
+    # Full Capture Count (CONTEXT.md) + Identical Capture Count (ADR-0093):
+    # read prior meta ONCE and derive both counters.
     # Race-safe under the single-process precondition documented at
     # hoga/api/captures.py:69 — the capture queue's `_inflight_paths`
     # set (guarded by `_lock`) serializes same-(code,date) jobs within
     # one worker process. Multi-worker uvicorn would lose this guarantee.
     prior_path = out_dir / "meta.json"
-    prior_count = 0
+    prior_meta: dict[str, object] | None = None
     if prior_path.exists():
         try:
             prior_meta = json.loads(prior_path.read_text(encoding="utf-8"))
-            prior_value = prior_meta.get("full_capture_count")
-            # Reject bool: True/False would silently pass isinstance(_, int).
-            if (
-                isinstance(prior_value, int)
-                and not isinstance(prior_value, bool)
-                and prior_value >= 1
-            ):
-                prior_count = prior_value
         # ValueError subsumes json.JSONDecodeError AND UnicodeDecodeError
         # (raised by read_text on non-UTF-8 bytes). OSError covers I/O failures.
         except (OSError, ValueError) as exc:
@@ -202,11 +195,23 @@ def parse_stock_date(
             # Surface the corruption so an operator can investigate;
             # treat as legacy=0 only after warning.
             logging.getLogger("hoga.parser").warning(
-                "corrupt prior meta.json at %s — resetting full_capture_count: %s",
+                "corrupt prior meta.json at %s — resetting capture counters: %s",
                 prior_path, exc,
             )
-            prior_count = 0
+            prior_meta = None
+
+    prior_count = 0
+    if prior_meta is not None:
+        prior_value = prior_meta.get("full_capture_count")
+        # Reject bool: True/False would silently pass isinstance(_, int).
+        if (
+            isinstance(prior_value, int)
+            and not isinstance(prior_value, bool)
+            and prior_value >= 1
+        ):
+            prior_count = prior_value
     meta["full_capture_count"] = prior_count + 1
+    meta["identical_capture_count"] = _identical_capture_count(prior_meta, meta)
 
     (out_dir / "meta.json").write_text(
         json.dumps(meta, ensure_ascii=False, indent=2), encoding="utf-8"
@@ -304,6 +309,46 @@ def _snapshot_ts_hhmmssms(snapshots: list[Orderbook]) -> list[HogaMs]:
     schema drift surfaces here rather than silently breaking has_meaningful_gaps.
     """
     return [HogaMs(s.ts_ms) for s in snapshots]
+
+
+def _capture_fingerprint(meta: dict[str, object]) -> tuple:
+    """Result fingerprint used to decide "same capture again" (ADR-0093).
+
+    ``(total_unique_events, pages_collected, gap_ranges)`` — if all three match
+    the prior capture AND both completed collection, the re-capture reproduced
+    the identical (gappy) result, which confirms the gap is upstream-missing
+    rather than a transient collection failure. gap_ranges is included so a
+    same-event-count capture that filled a different window still counts as
+    "changed".
+    """
+    return (
+        meta.get("total_unique_events"),
+        meta.get("pages_collected"),
+        meta.get("gap_ranges"),
+    )
+
+
+def _identical_capture_count(
+    prior_meta: dict[str, object] | None, meta: dict[str, object],
+) -> int:
+    """How many consecutive completed captures produced the identical result
+    (ADR-0093). Starts at 1; increments only when the prior capture also
+    completed AND its fingerprint matches — so a healed upstream (different
+    result) resets it to 1. ``>= 2`` means at least one full re-capture
+    reproduced the same gaps → upstream-gap confirmed.
+    """
+    if prior_meta is None:
+        return 1
+    if not (bool(prior_meta.get("collection_complete")) and bool(meta.get("collection_complete"))):
+        return 1
+    if _capture_fingerprint(prior_meta) != _capture_fingerprint(meta):
+        return 1
+    prior_ic = prior_meta.get("identical_capture_count")
+    if isinstance(prior_ic, int) and not isinstance(prior_ic, bool) and prior_ic >= 1:
+        return prior_ic + 1
+    # Prior existed and matched but predates the counter (legacy) — this is the
+    # 2nd identical result we can prove.
+    return 2
 
 
 def _build_meta(
