@@ -229,7 +229,19 @@ function HighLowAnnotationOverlay({ chart, bundle, axis, paneSeries, timeframe, 
   const series = paneSeries.get('candle' as PaneId);
   const paneRect = containerRef.current?.getBoundingClientRect();
   const paneWidth = paneRect?.width ?? 0;
-  const paneHeight = paneRect?.height ?? 0;
+  // 라벨 세로 고정 기준은 오버레이 컨테이너(=전체 차트, 모든 pane 합)가 아니라 **캔들 pane**
+  // 높이다. 캔들은 항상 pane 0(최상단)이라 top=0, bottom=캔들 pane 높이 → 저가 라벨이
+  // 하위 pane(총잔량/호가비 등)이 켜져도 캔들 pane 하단 경계에 고정된다. priceToCoordinate
+  // 는 pane 로컬 좌표(pane 0이라 컨테이너 좌표와 일치)라 dot·라벨 좌표계가 일관된다.
+  // teardown 레이스 시 getPane/getHeight throw → 0 폴백(다음 프레임 self-heal).
+  let paneHeight = 0;
+  if (series) {
+    try {
+      paneHeight = series.getPane().getHeight();
+    } catch {
+      paneHeight = 0;
+    }
+  }
   const ts = chart.timeScale();
   const range = readVisibleRange(ts);
   // 기준가는 computeVisibleExtremes 가 가시 범위의 우측 끝 캔들 close에서 내부 산출한다

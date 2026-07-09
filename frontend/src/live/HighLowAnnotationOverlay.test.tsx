@@ -38,13 +38,21 @@ function makeChart(timeToCoordinate: () => number | null) {
   } as never;
 }
 
-function paneSeries(priceToCoordinate: () => number | null): PaneSeriesMap {
-  return new Map([['candle' as PaneId, { priceToCoordinate } as never]]) as never;
+function paneSeries(priceToCoordinate: () => number | null, paneHeight = 0): PaneSeriesMap {
+  // getPane().getHeight() = 캔들 pane 높이(라벨 세로 고정 기준). 캔들은 pane 0(최상단)이라
+  // top=0, bottom=이 값. jsdom 기본(paneHeight=0)이면 placeExtremeLabel fallback 경로.
+  return new Map([
+    [
+      'candle' as PaneId,
+      { priceToCoordinate, getPane: () => ({ getHeight: () => paneHeight }) } as never,
+    ],
+  ]) as never;
 }
 
 function renderOverlay(opts?: {
   timeToCoordinate?: () => number | null;
   priceToCoordinate?: () => number | null;
+  paneHeight?: number;
   bundle?: RangeBundle;
 }) {
   return render(
@@ -52,7 +60,7 @@ function renderOverlay(opts?: {
       chart={makeChart(opts?.timeToCoordinate ?? (() => 100))}
       bundle={opts?.bundle ?? bundle}
       axis={axis}
-      paneSeries={paneSeries(opts?.priceToCoordinate ?? (() => 50))}
+      paneSeries={paneSeries(opts?.priceToCoordinate ?? (() => 50), opts?.paneHeight)}
       timeframe="1m"
     />,
   );
@@ -79,6 +87,40 @@ describe('HighLowAnnotationOverlay', () => {
     renderOverlay();
     expect(screen.getByTestId('highlow-leader-high')).toBeInTheDocument();
     expect(screen.getByTestId('highlow-leader-low')).toBeInTheDocument();
+  });
+
+  it('pins labels to the CANDLE pane height, not the full overlay/chart height', () => {
+    // 컨테이너(=전체 차트)는 999px 높이지만 캔들 pane 은 200px. 저가 라벨은 캔들 pane
+    // 하단(200-6=194)에 고정돼야 하고, 전체 차트 하단(999-6=993)에 붙으면 회귀다.
+    // 첫 렌더엔 containerRef==null 이라 placeExtremeLabel fallback → ResizeObserver
+    // initial observe 로 재렌더돼 self-heal 하는 실제 경로를 mock 으로 재현(jsdom 무 RO).
+    const rectSpy = vi.spyOn(HTMLElement.prototype, 'getBoundingClientRect').mockReturnValue({
+      width: 760, height: 999, top: 0, left: 0, right: 760, bottom: 999, x: 0, y: 0,
+      toJSON: () => ({}),
+    } as DOMRect);
+    const rafSpy = vi
+      .spyOn(globalThis, 'requestAnimationFrame')
+      .mockImplementation((cb: FrameRequestCallback) => (cb(0), 0));
+    class MockRO {
+      private cb: ResizeObserverCallback;
+      constructor(cb: ResizeObserverCallback) {
+        this.cb = cb;
+      }
+      observe() {
+        this.cb([] as unknown as ResizeObserverEntry[], this as unknown as ResizeObserver);
+      }
+      unobserve() {}
+      disconnect() {}
+    }
+    vi.stubGlobal('ResizeObserver', MockRO);
+    try {
+      renderOverlay({ paneHeight: 200 });
+      expect(screen.getByTestId('highlow-label-high').style.top).toBe('6px');
+      expect(screen.getByTestId('highlow-label-low').style.top).toBe('194px');
+    } finally {
+      rectSpy.mockRestore();
+      rafSpy.mockRestore();
+    }
   });
 
   it('renders nothing when the toggle is off', () => {
