@@ -1779,3 +1779,21 @@ def test_apply_progress_threads_upstream_health_telemetry():
     assert progress is not None
     assert progress.recent_http_p50_ms == 612.5
     assert progress.throttled_pages == 3
+
+
+def test_refresh_max_concurrent_reads_env_after_load(monkeypatch):
+    """HOGA_MAX_CONCURRENT set purely in .env is read too early at import
+    (before load_env); refresh_max_concurrent re-reads it at pool-start."""
+    monkeypatch.setattr(captures, "_max_concurrent", 3, raising=False)
+    monkeypatch.setenv("HOGA_MAX_CONCURRENT", "12")
+    assert captures.refresh_max_concurrent() == 12
+    assert captures._max_concurrent == 12
+
+
+def test_refresh_max_concurrent_ignores_garbage(monkeypatch):
+    """A non-int or <1 value keeps the prior value and does not raise."""
+    monkeypatch.setattr(captures, "_max_concurrent", 5, raising=False)
+    monkeypatch.setenv("HOGA_MAX_CONCURRENT", "not-a-number")
+    assert captures.refresh_max_concurrent() == 5
+    monkeypatch.setenv("HOGA_MAX_CONCURRENT", "0")
+    assert captures.refresh_max_concurrent() == 5

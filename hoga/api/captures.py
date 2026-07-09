@@ -217,7 +217,36 @@ _done: list[Any] = []                                   # terminal items, cleare
 _inflight_paths: set[tuple[str, str]] = set()           # (code, date) — see spec §11 Q15 Layer 2
 _queue_paused: bool = False
 _fail_streaks: dict[str, int] = {}                      # ADR-0042: per-(Code, Stock-Date) consecutive failed+skipped counter
-_max_concurrent: int = int(os.environ.get("HOGA_MAX_CONCURRENT", "3"))
+_MAX_CONCURRENT_DEFAULT = 3
+# Read at import so tests and bare `start_workers()` callers have a value, but
+# this fires BEFORE default_app() runs load_env() — so a .env-only override is
+# invisible here (shell env would win, .env would not). refresh_max_concurrent()
+# re-reads it at pool-start time, AFTER load_env() has populated os.environ, so
+# HOGA_MAX_CONCURRENT set purely in .env takes effect (see start_capture_pool).
+_max_concurrent: int = int(os.environ.get("HOGA_MAX_CONCURRENT", str(_MAX_CONCURRENT_DEFAULT)))
+
+
+def refresh_max_concurrent() -> int:
+    """Re-read HOGA_MAX_CONCURRENT from the environment into the module global.
+
+    Called from start_capture_pool (lifespan startup), which runs after
+    default_app()'s load_env() — the seam where a .env-only value becomes
+    visible. Import-time capture (line above) is too early for .env. Returns
+    the resolved value. Invalid/absent → default; never raises.
+    """
+    global _max_concurrent  # noqa: PLW0603 — startup-only config refresh
+    raw = os.environ.get("HOGA_MAX_CONCURRENT")
+    if raw is not None:
+        try:
+            parsed = int(raw)
+            if parsed >= 1:
+                _max_concurrent = parsed
+        except ValueError:
+            logging.getLogger(__name__).warning(
+                "HOGA_MAX_CONCURRENT=%r is not a positive int — keeping %d",
+                raw, _max_concurrent,
+            )
+    return _max_concurrent
 
 
 def _timing_enabled() -> bool:
@@ -1150,6 +1179,9 @@ def start_capture_pool(data_dir: Path) -> list[asyncio.Task]:
     ever contending for the lock.
     """
     global _ownership, _queue_owned  # noqa: PLW0603 — startup-only ownership wiring
+    # Re-read HOGA_MAX_CONCURRENT now that load_env() has run (import-time read
+    # was too early for a .env-only value — see refresh_max_concurrent).
+    refresh_max_concurrent()
     if os.environ.get("HOGA_CAPTURE_QUEUE_DISABLED", "").strip() in ("1", "true", "yes", "on"):
         _queue_owned = False
         logging.getLogger(__name__).info(
