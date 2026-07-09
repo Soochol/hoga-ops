@@ -154,8 +154,9 @@ vi.mock('../api/useLiveCursor', () => ({
 // useLiveBannerState now reads the authoritative watchlist via useWatchlist;
 // mock it non-empty so the banner logic stays unit-level and doesn't hit
 // /api/watchlist in jsdom. (Empty-state is exercised in useLiveBannerState.test.ts.)
-// useAddToWatchlist / useRemoveFromWatchlist are also stubbed because
-// LiveSymbolSearch (mounted in LiveHeader) calls them.
+// useAddToWatchlist / useRemoveFromWatchlist are stubbed defensively; the
+// symbol search now lives in the global TopNav, but other live surfaces still
+// touch these hooks in jsdom.
 vi.mock('../watchlist/useWatchlist', () => ({
   useWatchlist: () => ({ data: { entries: [{ code: '000660' }], next_run_at_ms: 0 } }),
   useAddToWatchlist: () => ({ mutate: vi.fn() }),
@@ -322,7 +323,6 @@ describe('LivePage shell', () => {
 
   it('renders the page chrome and places the toolbar inside the workarea', () => {
     renderWithRouter('/live?code=000660');
-    expect(screen.getByTestId('live-header')).toBeInTheDocument();
     expect(screen.getByTestId('live-status-bar')).toBeInTheDocument();
     expect(screen.getByTestId('live-toolbar')).toBeInTheDocument();
     expect(screen.getByTestId('live-workarea')).toBeInTheDocument();
