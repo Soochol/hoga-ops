@@ -34,11 +34,19 @@ type Props = {
   chart: IChartApi;
   timeframe: LiveTimeframe;
   paneToggles: PaneToggles;
-  /** P1: 캔들-경로 데이터 신선화 토큰. /live가 SSE 호가 틱마다 부모(LiveChartRoot)를
-   *  재렌더하지만 이 레전드의 캔들-경로 값(MA/거래량/투자자)은 그때 안 바뀐다.
-   *  memo + 이 prop으로 호가 틱 재렌더는 차단하고, 캔들 갱신(chartBundle 식별자 변경)
-   *  때만 latest 값을 신선화한다. 호가 pane 값은 크로스헤어/레지스트리 구독으로 갱신되므로
-   *  memo와 무관하게 동작한다. 본문에서 읽지 않고 memo 얕은 비교 신호로만 쓴다. */
+  /** P1: latest-값 신선화 토큰(캔들 경로 chartBundle ref). /live가 SSE 호가 틱마다
+   *  부모(LiveChartRoot)를 재렌더하지만 memo + 이 prop이 그 재렌더를 차단하고, 캔들
+   *  갱신(chartBundle 식별자 변경) 때만 latest 값을 신선화한다. 본문에서 읽지 않고
+   *  memo 얕은 비교 신호로만 쓴다.
+   *
+   *  의도된 트레이드오프 — 호가-경로 pane(총잔량·호가비·체결강도·프로그램, 누적 ON
+   *  volume)은 SSE로 초 단위 데이터가 흐르지만, 커서 idle 시 레전드 latest는 이 epoch
+   *  주기(≈캔들 1개)로만 갱신된다. 정확한 지금-값은 크로스헤어로 읽는 것이 제품 규칙
+   *  (ratio.ts `lastValueVisible:false` "latest via crosshair" 선례; idle 실시간은
+   *  PR #503 현재값 수평선 토글이 담당). 호버 중엔 크로스헤어 구독이 실시간 갱신하므로
+   *  이 staleness는 idle readout에만 해당. 호가 bundle을 epoch로 넣으면 P1이 제거한
+   *  SSE 틱당 O(N) series.data() 리드백이 부활하므로 금지 — idle 실시간이 필요해지면
+   *  epoch 재렌더가 아니라 원시값 타겟 구독(LiveCurrentPriceLine 패턴)으로 구현할 것. */
   dataEpoch?: unknown;
 };
 
@@ -344,7 +352,9 @@ function PaneLegendOverlay({ chart, timeframe, paneToggles }: Props) {
         if (idx == null || idx >= paneTops.length) return null;
         return (
           <div
-            key={row.paneId}
+            // paneId+kind: candle이 향후 legend 메타를 얻으면 MA row와 cells row가
+            // 같은 paneId로 공존할 수 있다 — key 충돌 예방.
+            key={`${row.paneId}:${row.kind}`}
             style={{
               ...boxStyle,
               top: `calc(${paneTops[idx]}px + ${LEGEND_INSET})`,
@@ -365,5 +375,7 @@ function PaneLegendOverlay({ chart, timeframe, paneToggles }: Props) {
 
 // P1: memo로 부모(LiveChartRoot)의 SSE 호가 틱 재렌더를 차단 — props(chart/timeframe/
 // paneToggles/dataEpoch)가 동일하면 재렌더 안 함. 크로스헤어/스토어/레지스트리 변경은
-// 내부 구독/셀렉터가 재렌더하므로 memo와 무관하게 동작한다.
+// 내부 구독/셀렉터가 재렌더하므로 memo와 무관하게 동작한다. 호가-경로 pane의 커서-idle
+// latest가 캔들 epoch 주기로만 신선화되는 것은 의도된 트레이드오프 — dataEpoch prop
+// JSDoc 참조.
 export default memo(PaneLegendOverlay);
