@@ -46,12 +46,16 @@ class KisWsClient:
         date_fn: Callable[[], str],
         url: str = WS_URL_REAL,
         gate_fn: Callable[[], bool] | None = None,
+        trs: tuple[str, ...] = _TRS,
     ) -> None:
         self._approval_key_fn = approval_key_fn
         self._on_tick = on_tick
         self._date_fn = date_fn
         self._url = url
         self._gate_fn = gate_fn   # advisor B: 게이트 밖에선 (재)연결 시도 안 함
+        # 구독 TR세트(#524 시분할) — venue별로 스왑. 초기값은 생성 시 지정(기본 KRX).
+        # run()의 초기 구독·update_codes·ensure_venue가 모두 self._trs를 단일 소스로 쓴다.
+        self._trs: tuple[str, ...] = trs
         self._codes: list[str] = []
         self._ws: object | None = None
         self._approval: str | None = None  # 연결 시 발급분 캐시 — update_codes가 재사용
@@ -94,15 +98,17 @@ class KisWsClient:
                         self.connected = True
                         attempt = 0
                         codes_now = list(self._codes)
+                        trs_now = self._trs
                         # 연결별 구독 확인 카운터 리셋(spec §2.1) — 초기 구독 수가 기대치.
-                        self.sub_expected = len(codes_now) * len(_TRS)
+                        self.sub_expected = len(codes_now) * len(trs_now)
                         self.sub_acked = 0
                         self.sub_rejected = 0
                         await self._send_subscriptions(
                             ws, approval, codes_now, tr_type="1"
                         )
-                    _log.info("live.ws.connected codes=%d regs=%d",
-                              len(codes_now), len(codes_now) * len(_TRS))
+                    _log.info("live.ws.connected codes=%d regs=%d venue=%s",
+                              len(codes_now), len(codes_now) * len(trs_now),
+                              self.venue)
                     await self._recv_loop(ws)
             except asyncio.CancelledError:
                 self.connected = False
@@ -143,11 +149,43 @@ class KisWsClient:
             if added:
                 await self._send_subscriptions(ws, approval, added, tr_type="1")
 
+    @property
+    def venue(self) -> str:
+        """현재 구독 중인 venue("KRX"/"NXT") — status 표면화·로그용."""
+        return "NXT" if self._trs == F.TRS_NXT else "KRX"
+
+    async def ensure_venue(self, venue: str) -> None:
+        """구독 TR세트를 목표 venue로 맞춘다(#524 시분할 스왑). 이미 그 venue면 no-op.
+
+        등록 먼저·해제 나중으로 수신 공백을 없앤다(전환 찰나 종목당 2 venue 점유 —
+        슬롯 여유 내). 미연결이면 self._trs만 갱신해 다음 (재)연결이 새 venue로
+        초기 구독한다. sub_lock으로 update_codes·초기 구독과 직렬화(wire≠상태 발산 방지)."""
+        trs = F.trs_for_venue(venue)
+        async with self._sub_lock:
+            if trs == self._trs:
+                return
+            old_trs = self._trs
+            self._trs = trs
+            # sub_acked/expected/rejected는 **리셋하지 않는다** — update_codes(동일한 구독
+            # diff 연산)와 동일한 선례. 리셋하면 ① ACK 도착 전 acked<expected 창이 status의
+            # _capture_health에 순간적 거짓 'sub_failed'로 잡히고, ② 표시 전용 NXT 구독이
+            # 거부되면 그 비성역 실패로 watchdog이 conn 전체를 재시작(에스컬레이션)한다.
+            # 스왑 ACK는 recv 루프가 계속 카운트(재연결 시 sub_expected가 현재 venue로
+            # 재계산되므로 stale하지 않다). NXT 거부는 sub_rejected 경고 로그로 가시화된다.
+            ws, approval = self._ws, self._approval
+            if ws is None or approval is None:
+                return  # 미연결 — 다음 (재)연결이 self._trs로 초기 구독
+            # register-before-unregister: 새 venue 먼저 등록(공백 없음), 구 venue 해제.
+            await self._send_subscriptions(ws, approval, self._codes, tr_type="1", trs=trs)
+            await self._send_subscriptions(ws, approval, self._codes, tr_type="2", trs=old_trs)
+            _log.info("live.ws.venue_swapped venue=%s codes=%d", venue, len(self._codes))
+
     async def _send_subscriptions(
-        self, ws, approval_key: str, codes: list[str], *, tr_type: str
+        self, ws, approval_key: str, codes: list[str], *, tr_type: str,
+        trs: tuple[str, ...] | None = None,
     ) -> None:
         for code in codes:
-            for tr in _TRS:
+            for tr in (trs if trs is not None else self._trs):
                 await ws.send(build_request(approval_key, tr_type, tr, code))
 
     async def _recv_loop(self, ws) -> None:

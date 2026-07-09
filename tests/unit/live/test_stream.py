@@ -68,6 +68,72 @@ async def test_on_tick_ingest_gated_off_skips_storage_but_still_displays(tmp_pat
     assert not jsonl_path.exists()                   # 저장 경로엔 아무것도 안 감
 
 
+def _nxt_trade_tick(t_ms, qty, side):
+    return WsTick(code="005930", t_ms=t_ms, kind=SnapshotKind.TRADE, venue="NXT", payload={
+        "trades": [{"t_ms": t_ms, "price": 100, "qty": qty, "side": side,
+                    "side_source": "kis_ws"}],
+    })
+
+
+async def test_on_tick_nxt_venue_displays_but_is_never_stored(tmp_path):
+    """성역 격리(#524): NXT 틱은 표시(buffer)엔 들어가고 venue 태그도 실리지만,
+    저장 게이트가 열려 있어도(정규장) 다운샘플러/저장엔 절대 안 들어간다 —
+    KRX 정규장 캡처를 byte-for-byte 불변으로 유지."""
+    buf = LiveBuffer()
+    writer = LiveWriter(tmp_path / "live")
+    stream = LiveStream(buffer=buf, writer=writer,
+                        date_fn=lambda: "20260605", phase_fn=lambda: "regular")
+    stream._gate_open = True  # 저장 게이트 열림(정규장) — 그래도 NXT는 격리돼야 함
+    now = int(time.time() * 1000)
+    await stream.on_tick(_nxt_trade_tick(now, qty=5, side=1))
+
+    series = await buf.get_series("005930")
+    assert len(series["trades"]) == 1              # 표시엔 들어감
+    assert series["trades"][0]["venue"] == "NXT"   # venue 태그 전달(프론트 구분용)
+
+    await stream.flush_once(now_ms=now + 10_000)
+    jsonl = tmp_path / "live" / "20260605" / "005930.jsonl"
+    stored = jsonl.read_text() if jsonl.exists() else ""
+    assert '"kind": "trade"' not in stored          # 저장 경로엔 NXT 미기록
+    assert '"kind": "fill"' not in stored           # 흐름 집계에도 미반영
+
+
+async def test_on_tick_krx_still_stored_alongside_nxt_isolation(tmp_path):
+    """대조군: 동일 조건에서 KRX 틱은 기존대로 저장된다(격리가 KRX를 막지 않음)."""
+    buf = LiveBuffer()
+    writer = LiveWriter(tmp_path / "live")
+    stream = LiveStream(buffer=buf, writer=writer,
+                        date_fn=lambda: "20260605", phase_fn=lambda: "regular")
+    stream._gate_open = True
+    now = int(time.time() * 1000)
+    await stream.on_tick(_trade_tick(now, qty=7, side=1))  # KRX(기본 venue)
+    await stream.flush_once(now_ms=now + 10_000)
+    stored = (tmp_path / "live" / "20260605" / "005930.jsonl").read_text()
+    assert '"buy_qty": 7' in stored
+    assert '"kind": "trade"' in stored
+
+
+async def test_on_tick_mixed_krx_and_nxt_stores_only_krx_flow(tmp_path):
+    """혼합: 같은 스트림에 KRX·NXT 틱이 섞여 들어와도 저장 흐름 집계는 KRX만 반영한다
+    (경계 스왑 찰나에 두 venue가 겹쳐도 캡처는 KRX 전용, #524 성역 격리)."""
+    buf = LiveBuffer()
+    writer = LiveWriter(tmp_path / "live")
+    stream = LiveStream(buffer=buf, writer=writer,
+                        date_fn=lambda: "20260605", phase_fn=lambda: "regular")
+    stream._gate_open = True
+    now = int(time.time() * 1000)
+    await stream.on_tick(_trade_tick(now, qty=7, side=1))         # KRX 매수 7
+    await stream.on_tick(_nxt_trade_tick(now, qty=99, side=1))    # NXT 매수 99 — 저장 제외
+    await stream.flush_once(now_ms=now + 10_000)
+
+    stored = (tmp_path / "live" / "20260605" / "005930.jsonl").read_text()
+    assert '"buy_qty": 7' in stored     # KRX만 집계
+    assert '"buy_qty": 106' not in stored  # NXT 99가 섞이지 않음
+    # 표시엔 둘 다(KRX+NXT) 있고 각 venue 태그가 붙는다.
+    series = await buf.get_series("005930")
+    assert {t["venue"] for t in series["trades"]} == {"KRX", "NXT"}
+
+
 def _ob_tick(t_ms, tot_ask):
     return WsTick(code="005930", t_ms=t_ms, kind=SnapshotKind.OB, payload={
         "code": "005930", "t_ms": t_ms, "asks": [], "bids": [],

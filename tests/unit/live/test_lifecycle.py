@@ -430,9 +430,8 @@ async def test_ws_watchdog_restarts_dead_stream_during_capture_window(
     from hoga.live import lifecycle
 
     lifecycle.reset_for_tests()
-    # ws_capture_window를 True로 패치 (캡처 윈도 내)
-    monkeypatch.setattr("hoga.live.session_gate.should_run_now", lambda t: True)
-    monkeypatch.setattr("hoga.live.session_gate.market_phase", lambda t: "regular")
+    # 연결 창 내로 패치 (#524: watchdog 게이트 = ws_connection_window)
+    monkeypatch.setattr("hoga.live.session_gate.ws_connection_window", lambda t: True)
     _install_restart_env(monkeypatch, tmp_path)
 
     async def _done() -> None:
@@ -465,15 +464,15 @@ async def test_ws_watchdog_restarts_dead_stream_during_capture_window(
 
 
 @pytest.mark.asyncio
-async def test_ws_watchdog_noop_outside_capture_window(
+async def test_ws_watchdog_noop_outside_connection_window(
     monkeypatch, tmp_path
 ) -> None:
-    """WS watchdog: 캡처 윈도 밖(15:30 이후 등) → 재시작 안 함."""
+    """WS watchdog: 연결 창 밖(주말·휴장·08~20 밖) → 재시작 안 함(#524)."""
     from hoga.live import lifecycle
 
     lifecycle.reset_for_tests()
-    # ws_capture_window를 False로 패치
-    monkeypatch.setattr("hoga.live.session_gate.should_run_now", lambda t: False)
+    # 연결 창(ws_connection_window)을 False로 패치
+    monkeypatch.setattr("hoga.live.session_gate.ws_connection_window", lambda t: False)
 
     async def _done() -> None:
         return
@@ -524,9 +523,9 @@ async def test_ws_watchdog_noop_before_stream_start_skips_calendar_gate(
 async def test_ws_watchdog_gate_runs_off_event_loop(
     monkeypatch, tmp_path
 ) -> None:
-    """watchdog의 ws_capture_window 평가는 이벤트 루프 스레드 밖에서 —
+    """watchdog의 ws_connection_window 평가는 이벤트 루프 스레드 밖에서 —
     캘린더 게이트가 콜드/네거티브 캐시에서 동기 KIS HTTP를 부르므로 루프에서
-    직접 부르면 30초마다 전체 백엔드가 동결될 수 있다(리뷰 #2)."""
+    직접 부르면 30초마다 전체 백엔드가 동결될 수 있다(리뷰 #2, #524)."""
     import threading
 
     from hoga.live import lifecycle
@@ -540,13 +539,75 @@ async def test_ws_watchdog_gate_runs_off_event_loop(
         seen.append(threading.current_thread() is threading.main_thread())
         return False
 
-    monkeypatch.setattr("hoga.live.session_gate.ws_capture_window", fake_gate)
+    monkeypatch.setattr("hoga.live.session_gate.ws_connection_window", fake_gate)
     restarted = await lifecycle._ws_watchdog_check(
         data_dir=tmp_path, now_ms=10_000_000, stale_after_ms=120_000
     )
     assert restarted is False
     assert seen, "게이트가 한 번도 평가되지 않음"
     assert not any(seen), "watchdog 게이트가 이벤트 루프(메인 스레드)에서 실행됨"
+
+
+@pytest.mark.asyncio
+async def test_ensure_conn_venues_swaps_each_conn_to_target(monkeypatch) -> None:
+    """#524 시분할: watchdog 주기의 _ensure_conn_venues가 각 conn의 ws를
+    target_ws_venue(현재 시각)로 맞춘다."""
+    from hoga.live import lifecycle
+    from hoga.live.lifecycle import _State
+
+    lifecycle.reset_for_tests()
+    calls: list[tuple[int, str]] = []
+
+    class _FakeWs:
+        async def ensure_venue(self, venue: str) -> None:
+            calls.append((0, venue))
+
+    class _FakeConn:
+        account_id = 0
+        stream_obj = type("S", (), {"ws": _FakeWs()})()
+        ws_task = None       # reset_for_tests teardown이 읽음
+        flush_task = None
+
+    lifecycle._state = _State(started_at_ms=1, streams={0: _FakeConn()})  # type: ignore[dict-item]
+    monkeypatch.setattr("hoga.live.session_gate.target_ws_venue", lambda t: "NXT")
+
+    await lifecycle._ensure_conn_venues(now_ms=123)
+    assert calls == [(0, "NXT")]
+
+
+@pytest.mark.asyncio
+async def test_ensure_conn_venues_isolates_per_conn_swap_failure(monkeypatch) -> None:
+    """한 conn의 ensure_venue 실패가 다른 conn 스왑을 막지 않는다(격리)."""
+    from hoga.live import lifecycle
+    from hoga.live.lifecycle import _State
+
+    lifecycle.reset_for_tests()
+    ok_calls: list[str] = []
+
+    class _BadWs:
+        async def ensure_venue(self, venue: str) -> None:
+            raise RuntimeError("swap boom")
+
+    class _GoodWs:
+        async def ensure_venue(self, venue: str) -> None:
+            ok_calls.append(venue)
+
+    def _conn(acc: int, ws: object):
+        return type("C", (), {
+            "account_id": acc,
+            "stream_obj": type("S", (), {"ws": ws})(),
+            "ws_task": None,       # reset_for_tests teardown이 읽음
+            "flush_task": None,
+        })()
+
+    lifecycle._state = _State(
+        started_at_ms=1,
+        streams={0: _conn(0, _BadWs()), 1: _conn(1, _GoodWs())},  # type: ignore[dict-item]
+    )
+    monkeypatch.setattr("hoga.live.session_gate.target_ws_venue", lambda t: "KRX")
+
+    await lifecycle._ensure_conn_venues(now_ms=123)   # 예외 삼키고 계속
+    assert ok_calls == ["KRX"]   # 나머지 conn은 스왑됨
 
 
 @pytest.mark.asyncio

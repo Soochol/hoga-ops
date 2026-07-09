@@ -176,6 +176,61 @@ async def test_subscribe_sends_three_trs_per_code():
     assert trs == {"H0STASP0", "H0STCNT0", "H0STMBC0"}
 
 
+async def test_ensure_venue_swaps_trs_register_before_unregister():
+    """#524 시분할 스왑: KRX→NXT 전환 시 NXT를 먼저 등록(공백 없음)하고 KRX를 해제."""
+    fake = FakeWs([])
+    client = KisWsClient(approval_key_fn=_fake_approval, on_tick=None, date_fn=lambda: "20260605")
+    client._ws = fake            # 연결 상태 시뮬레이션
+    client._approval = "APPR"
+    client._codes = ["005930"]
+    # 스왑 전 구독 헬스 카운터(초기 연결분) — 스왑이 이를 리셋하지 않아야 한다.
+    client.sub_expected, client.sub_acked, client.sub_rejected = 3, 3, 0
+    assert client.venue == "KRX"
+
+    await client.ensure_venue("NXT")
+
+    assert client.venue == "NXT"
+    frames = [json.loads(s) for s in fake.sent]
+    reg = [f for f in frames if f["header"]["tr_type"] == "1"]
+    unreg = [f for f in frames if f["header"]["tr_type"] == "2"]
+    assert {f["body"]["input"]["tr_id"] for f in reg} == {"H0NXASP0", "H0NXCNT0"}
+    assert {f["body"]["input"]["tr_id"] for f in unreg} == {"H0STASP0", "H0STCNT0", "H0STMBC0"}
+    # register-before-unregister: 첫 등록 프레임이 첫 해제 프레임보다 앞선다.
+    first_reg = next(i for i, f in enumerate(frames) if f["header"]["tr_type"] == "1")
+    first_unreg = next(i for i, f in enumerate(frames) if f["header"]["tr_type"] == "2")
+    assert first_reg < first_unreg
+    # 카운터 리셋 안 함(update_codes 선례) — 표시 전용 NXT 실패가 watchdog 재시작을
+    # 유발하거나 status에 순간 거짓 sub_failed를 노출하지 않게 한다.
+    assert (client.sub_expected, client.sub_acked) == (3, 3)
+
+
+async def test_ensure_venue_noop_when_already_on_target():
+    fake = FakeWs([])
+    client = KisWsClient(approval_key_fn=_fake_approval, on_tick=None, date_fn=lambda: "20260605")
+    client._ws = fake
+    client._approval = "APPR"
+    client._codes = ["005930"]
+    await client.ensure_venue("KRX")   # 이미 KRX
+    assert fake.sent == []             # 재전송 없음
+
+
+async def test_ensure_venue_while_disconnected_defers_to_next_connect():
+    """미연결이면 self._trs만 갱신 — 다음 (재)연결이 새 venue로 초기 구독한다."""
+    client = KisWsClient(approval_key_fn=_fake_approval, on_tick=None, date_fn=lambda: "20260605")
+    await client.ensure_venue("NXT")
+    assert client.venue == "NXT"
+
+
+async def test_initial_venue_from_constructor_trs():
+    """생성자 trs로 초기 venue 결정(NXT로 시작 가능 — 장전 콜드 스타트)."""
+    from hoga.live import ws_fields as F
+    client = KisWsClient(
+        approval_key_fn=_fake_approval, on_tick=None, date_fn=lambda: "20260605",
+        trs=F.TRS_NXT,
+    )
+    assert client.venue == "NXT"
+
+
 class _FakeConnectCM:
     """websockets.connect 대체 — __aenter__가 FakeWs를 반환하는 async CM."""
 

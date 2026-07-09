@@ -84,6 +84,39 @@ def test_parse_member_frame_uses_now_ms():
     assert t.payload["buy_top"][4] == {"name": "매수사5", "qty": 2004}
 
 
+def test_krx_ticks_tagged_venue_krx():
+    """기존 KRX TR로 온 틱은 venue='KRX'(하위호환 기본값)."""
+    ob = parse_message(_asp_frame(), date="20260605", now_ms=0)
+    cnt = parse_message(_cnt_frame(1), date="20260605", now_ms=0)
+    mbc = parse_message(_mbc_frame(), date="20260605", now_ms=0)
+    assert ob[0].venue == "KRX"
+    assert cnt[0].venue == "KRX"
+    assert mbc[0].venue == "KRX"
+
+
+def test_parse_nxt_orderbook_reuses_krx_layout_tagged_nxt():
+    """H0NXASP0(NXT 호가)는 KRX와 필드 레이아웃 동일 — 같은 파서, venue='NXT'."""
+    raw = _asp_frame().replace("|H0STASP0|", "|H0NXASP0|", 1)
+    ticks = parse_message(raw, date="20260605", now_ms=0)
+    assert len(ticks) == 1
+    t = ticks[0]
+    assert t.kind is SnapshotKind.OB
+    assert t.venue == "NXT"
+    assert t.payload["asks"][0] == {"price": 75000, "qty": 100}
+    assert t.payload["total_bid_qty"] == 2500
+
+
+def test_parse_nxt_trade_reuses_krx_layout_tagged_nxt():
+    """H0NXCNT0(NXT 체결)는 KRX와 동일 46필드 레이아웃 — 같은 파서, venue='NXT'."""
+    raw = _cnt_frame(2).replace("|H0STCNT0|", "|H0NXCNT0|", 1)
+    ticks = parse_message(raw, date="20260605", now_ms=0)
+    assert len(ticks) == 2
+    assert all(t.venue == "NXT" for t in ticks)
+    assert ticks[0].kind is SnapshotKind.TRADE
+    assert ticks[0].payload["trades"][0]["side"] == 1
+    assert ticks[1].payload["trades"][0]["side"] == -1
+
+
 def test_parse_control_pingpong():
     raw = '{"header":{"tr_id":"PINGPONG","datetime":"20260605093000"}}'
     out = parse_message(raw, date="20260605", now_ms=0)

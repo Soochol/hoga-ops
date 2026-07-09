@@ -23,12 +23,18 @@ _SIDE_MAP = {"1": 1, "5": -1}  # 그 외('3' 장전 등) → 0 (Auction Cross �
 
 @dataclass(frozen=True)
 class WsTick:
-    """Live Tick — WS 1메시지에서 나온 1개 도메인 이벤트 (CONTEXT.md 'Live Tick')."""
+    """Live Tick — WS 1메시지에서 나온 1개 도메인 이벤트 (CONTEXT.md 'Live Tick').
+
+    venue: 이 틱을 실어온 TR의 시장(KRX/NXT). #524 통합 venue 시분할에서 stream이
+    저장(KRX만)·표시 분기에 쓴다. 기본 "KRX"라 기존 생성부·구경로는 무변경으로
+    KRX 의미를 유지(하위호환).
+    """
 
     code: str
     t_ms: int
     kind: SnapshotKind
     payload: dict[str, Any]
+    venue: str = "KRX"
 
 
 def _hhmmss_to_unix_ms(date: str, hhmmss: str) -> int:
@@ -61,16 +67,18 @@ def parse_message(raw: str, *, date: str, now_ms: int) -> list[WsTick]:
 def _dispatch(
     tr_id: str, fields: list[str], *, cnt: int, date: str, now_ms: int
 ) -> list[WsTick]:
-    if tr_id == F.TR_ORDERBOOK:
-        return _parse_orderbook(fields, date=date)
-    if tr_id == F.TR_TRADE:
-        return _parse_trades(fields, cnt=cnt, date=date)
-    if tr_id == F.TR_MEMBER:
+    # KRX/NXT 호가·체결은 필드 레이아웃이 동일(ws_fields 주석)이라 같은 파서를
+    # venue만 바꿔 재사용한다. venue는 tr_id로 결정(ws_fields.tr_venue).
+    if tr_id in (F.TR_ORDERBOOK, F.TR_ORDERBOOK_NXT):
+        return _parse_orderbook(fields, date=date, venue=F.tr_venue(tr_id))
+    if tr_id in (F.TR_TRADE, F.TR_TRADE_NXT):
+        return _parse_trades(fields, cnt=cnt, date=date, venue=F.tr_venue(tr_id))
+    if tr_id == F.TR_MEMBER:  # 거래원은 KRX 전용(NXT 미구독)
         return _parse_member(fields, now_ms=now_ms)
     return []
 
 
-def _parse_orderbook(f: list[str], *, date: str) -> list[WsTick]:
+def _parse_orderbook(f: list[str], *, date: str, venue: str = "KRX") -> list[WsTick]:
     if len(f) < F.ASP_MIN_FIELDS:
         _log.warning("live.ws.asp_short_frame n=%d", len(f))
         return []
@@ -97,10 +105,10 @@ def _parse_orderbook(f: list[str], *, date: str) -> list[WsTick]:
             "live.ws.bad_numeric_field tr=%s head=%s", F.TR_ORDERBOOK, "^".join(f)[:64]
         )
         return []
-    return [WsTick(code=code, t_ms=t_ms, kind=SnapshotKind.OB, payload=payload)]
+    return [WsTick(code=code, t_ms=t_ms, kind=SnapshotKind.OB, payload=payload, venue=venue)]
 
 
-def _parse_trades(f: list[str], *, cnt: int, date: str) -> list[WsTick]:
+def _parse_trades(f: list[str], *, cnt: int, date: str, venue: str = "KRX") -> list[WsTick]:
     if len(f) != cnt * F.CNT_FIELDS:
         # stride 불변식 — 어긋나면 레코드 k가 (k-1)필드씩 시프트되는
         # silent corruption(종목 오귀속 포함)이므로 프레임 전체를 버린다.
@@ -132,6 +140,7 @@ def _parse_trades(f: list[str], *, cnt: int, date: str) -> list[WsTick]:
                 t_ms=t_ms,
                 kind=SnapshotKind.TRADE,
                 payload={"trades": [trade]},
+                venue=venue,
             )
         )
     return ticks

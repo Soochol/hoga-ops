@@ -279,9 +279,20 @@ class LiveSession:
             t for c in streams.values()
             if (t := getattr(getattr(c.stream_obj, "ws", None), "last_tick_ms", None)) is not None
         ]
+        # #524 시분할: 현재 구독 중인 venue("KRX"/"NXT"). conn들은 같은 target으로
+        # 스왑되므로 보통 단일값 — 전환 찰나엔 "mixed", streams 없으면 None.
+        ws_venues = {
+            v for c in streams.values()
+            if (v := getattr(getattr(c.stream_obj, "ws", None), "venue", None)) is not None
+        }
+        ws_venue = (
+            next(iter(ws_venues)) if len(ws_venues) == 1
+            else "mixed" if ws_venues else None
+        )
         return {
             "streams_running": streams_running,
             "ws_connected": ws_connected,
+            "ws_venue": ws_venue,
             "last_tick_ms": max(ticks) if ticks else None,
             "started_at_ms": self.started_at_ms,
             "watchlist_count": len(self.watchlist_codes),
