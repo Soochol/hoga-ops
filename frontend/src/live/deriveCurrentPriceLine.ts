@@ -2,7 +2,7 @@ import type { RangeBundle } from '../api/types';
 import { isStaleLiveQuote, type LiveQuote } from '../api/liveQuotes';
 import type { LiveVenueOption } from '../state/liveVenue';
 import type { TradeSnapshot } from './bucketHogaSeries';
-import { liveVenueAllowsKrxTradeOverlay } from './liveVenuePolicy';
+import { liveVenueAllowsTradeOverlay } from './liveVenuePolicy';
 
 export type PriceLineColors = { up: string; down: string; neutral: string };
 export type PriceLineModel = { price: number; color: string } | null;
@@ -12,12 +12,12 @@ export type PriceLineModel = { price: number; color: string } | null;
 export const TRADE_PRICE_FRESH_MS = 60_000;
 
 /**
- * live.trade 버퍼 끝에서 마지막 유효 체결가를 찾는다. venue 불일치(비KRX)·TTL
+ * live.trade 버퍼 끝에서 마지막 유효 체결가를 찾는다. venue 태그 불일치·TTL
  * 초과·유효 체결 없음 → null. 유효성 판정은 overlayLiveTradesOnCandles
  * (useLiveBundle.ts)와 동일 기준(price finite>0, qty>0, t_ms ?? snapshot.t_ms,
- * liveVenueAllowsKrxTradeOverlay) — 라인과 캔들 오버레이가 같은 체결을 보게 해
- * 분봉에서 라인이 forming 캔들 close 에 정확히 부착되도록 한다.
- * 뒤에서부터 스캔하므로 O(마지막 스냅샷) 수준.
+ * liveVenueAllowsTradeOverlay(selectedVenue, snapshot.venue, tMs)) — 라인과 캔들
+ * 오버레이가 같은 체결을 보게 해 분봉에서 라인이 forming 캔들 close 에 정확히
+ * 부착되도록 한다. 뒤에서부터 스캔하므로 O(마지막 스냅샷) 수준.
  */
 export function freshLiveTradePrice(
   trades: readonly TradeSnapshot[],
@@ -38,7 +38,7 @@ export function freshLiveTradePrice(
         ev.price <= 0 ||
         !Number.isFinite(ev.qty) ||
         ev.qty <= 0 ||
-        !liveVenueAllowsKrxTradeOverlay(venue, tMs)
+        !liveVenueAllowsTradeOverlay(venue, snapshot.venue, tMs)
       ) {
         continue;
       }

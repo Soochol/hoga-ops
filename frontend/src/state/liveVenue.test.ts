@@ -12,9 +12,20 @@ describe('useLiveVenueStore', () => {
   });
 
   it('setVenue updates and persists to localStorage', () => {
-    useLiveVenueStore.getState().setVenue('NXT');
-    expect(useLiveVenueStore.getState().venue).toBe('NXT');
-    expect(localStorage.getItem('live.venue.v1')).toContain('NXT');
+    useLiveVenueStore.getState().setVenue('UN');
+    expect(useLiveVenueStore.getState().venue).toBe('UN');
+    expect(localStorage.getItem('live.venue.v1')).toContain('UN');
+  });
+
+  it('migrates a persisted NXT venue to 통합(UN) on hydration (#523)', () => {
+    localStorage.setItem('live.venue.v1', JSON.stringify({ venue: 'NXT' }));
+    useLiveVenueStore.getState().hydrateFromStorage();
+    expect(useLiveVenueStore.getState().venue).toBe('UN');
+  });
+
+  it('rejects NXT at runtime via setVenue (제거된 옵션)', () => {
+    useLiveVenueStore.getState().setVenue('NXT' as LiveVenueOption);
+    expect(useLiveVenueStore.getState().venue).toBe('KRX');
   });
 
   it('rejects unknown values at runtime', () => {
@@ -46,7 +57,7 @@ describe('useLiveVenueStore', () => {
     expect(useLiveVenueStore.getState().venue).toBe('KRX');
   });
 
-  it('exposes the requested UI labels', () => {
-    expect(LIVE_VENUE_OPTIONS.map((v) => LIVE_VENUE_LABELS[v])).toEqual(['KRX', 'NXT', '통합']);
+  it('exposes the requested UI labels (NXT 제거 후 KRX/통합)', () => {
+    expect(LIVE_VENUE_OPTIONS.map((v) => LIVE_VENUE_LABELS[v])).toEqual(['KRX', '통합']);
   });
 });

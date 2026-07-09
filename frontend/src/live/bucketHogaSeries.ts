@@ -13,6 +13,8 @@ export interface ObSnapshot {
   asks?: OrderbookLevel[];
   bids?: OrderbookLevel[];
   kind?: string;
+  /** 이 스냅샷을 실어온 시장(#524 시분할). 백엔드 태그; 구백엔드는 부재(=KRX 해석). */
+  venue?: 'KRX' | 'NXT';
   [field: string]: unknown;
 }
 
@@ -27,6 +29,8 @@ export interface TradeSnapshot {
   t_ms: number;
   trades: TradeEvent[];
   kind?: string;
+  /** 이 스냅샷을 실어온 시장(#524 시분할). 백엔드 태그; 구백엔드는 부재(=KRX 해석). */
+  venue?: 'KRX' | 'NXT';
   [field: string]: unknown;
 }
 

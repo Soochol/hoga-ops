@@ -131,7 +131,7 @@ describe('useStudyReferenceBundle', () => {
     rangeCandlesSegments = [];
     screenerDailyFixture = [];
     useQueryMock.mockImplementation(queryResultFor);
-    useLiveVenueStore.setState({ venue: 'NXT' });
+    useLiveVenueStore.setState({ venue: 'UN' });
     useSourcePreferenceStore.setState({ sourcePreference: 'kis_api_first' });
     useLivePageStore.setState({
       brokerLateEntryEnabled: true,
@@ -185,7 +185,7 @@ describe('useStudyReferenceBundle', () => {
   });
 
   it('pins venue to KRX regardless of the shared live venue store', () => {
-    // beforeEach가 스토어를 NXT로 세팅했지만 study는 KRX 고정(공유 스토어 무시).
+    // beforeEach가 스토어를 UN로 세팅했지만 study는 KRX 고정(공유 스토어 무시).
     useLiveVenueStore.setState({ venue: 'UN' });
     const { result } = renderHook(() => useStudyReferenceBundle(save));
     expect(result.current.venue).toBe('KRX');

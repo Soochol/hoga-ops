@@ -121,21 +121,22 @@ describe('freshLiveTradePrice', () => {
     expect(freshLiveTradePrice(trades, 'KRX', NOW)).toBeNull();
   });
 
-  it('returns null for a non-KRX venue (mirrors overlay gate)', () => {
-    const trades = [tradeSnap(70500, NOW - 1000)];
-    expect(freshLiveTradePrice(trades, 'NXT', NOW)).toBeNull();
+  it('KRX venue blocks an NXT-tagged trade (mirrors overlay gate, #523)', () => {
+    const trades = [tradeSnap(70500, NOW - 1000, { venue: 'NXT' })];
+    expect(freshLiveTradePrice(trades, 'KRX', NOW)).toBeNull();
   });
 
-  it('UN hybrid (ADR-0096): KRX trade within the regular session is fresh', () => {
-    const sessionMs = Date.UTC(2026, 4, 18, 1, 0, 0); // KST 2026-05-18(월) 10:00 — 정규장
-    const trades = [tradeSnap(70500, sessionMs)];
-    expect(freshLiveTradePrice(trades, 'UN', sessionMs + 1000)).toBe(70500);
+  it('UN venue accepts an NXT-tagged trade during NXT hours (#523)', () => {
+    const afterHoursMs = Date.UTC(2026, 4, 18, 8, 0, 0); // KST 17:00 — NXT 시간대
+    const trades = [tradeSnap(70500, afterHoursMs, { venue: 'NXT' })];
+    expect(freshLiveTradePrice(trades, 'UN', afterHoursMs + 1000)).toBe(70500);
   });
 
-  it('UN hybrid: NXT-hours KRX trade stays blocked (통합 REST가 정본)', () => {
-    const afterHoursMs = Date.UTC(2026, 4, 18, 8, 0, 0); // KST 17:00 — NXT 전용 시간대
-    const trades = [tradeSnap(70500, afterHoursMs)];
-    expect(freshLiveTradePrice(trades, 'UN', afterHoursMs + 1000)).toBeNull();
+  it('UN hybrid fallback (untagged 구백엔드): KRX trade fresh only in regular session', () => {
+    const sessionMs = Date.UTC(2026, 4, 18, 1, 0, 0); // KST 10:00 — 정규장
+    expect(freshLiveTradePrice([tradeSnap(70500, sessionMs)], 'UN', sessionMs + 1000)).toBe(70500);
+    const afterHoursMs = Date.UTC(2026, 4, 18, 8, 0, 0); // KST 17:00 — 태그 없으면 차단
+    expect(freshLiveTradePrice([tradeSnap(70500, afterHoursMs)], 'UN', afterHoursMs + 1000)).toBeNull();
   });
 
   it('returns null for an empty buffer', () => {

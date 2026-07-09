@@ -55,8 +55,8 @@ describe('past-candles freshness gating (range.ts parity)', () => {
     // (its value depends on session-now).
     expect(pastCandlesRefetchInterval(BLOCKED, '20260502', '20260610', 'KRX'))
       .toBe(liveVenueRefetchInterval('KRX'));
-    expect(pastCandlesRefetchInterval(RESPONSE, '20260610', '20260610', 'NXT'))
-      .toBe(liveVenueRefetchInterval('NXT'));
+    expect(pastCandlesRefetchInterval(RESPONSE, '20260610', '20260610', 'UN'))
+      .toBe(liveVenueRefetchInterval('UN'));
   });
 });
 
@@ -204,13 +204,13 @@ describe('useLivePastCandles', () => {
     const spy = vi.spyOn(client, 'apiCall').mockResolvedValue(RESPONSE);
     const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } });
     const { rerender } = renderHook(
-      ({ venue }: { venue: 'KRX' | 'NXT' }) => useLivePastCandles('005930', '20260501', '20260502', venue),
+      ({ venue }: { venue: 'KRX' | 'UN' }) => useLivePastCandles('005930', '20260501', '20260502', venue),
       { wrapper: wrap(qc), initialProps: { venue: 'KRX' } },
     );
     await waitFor(() => expect(spy).toHaveBeenCalledTimes(1));
-    rerender({ venue: 'NXT' });
+    rerender({ venue: 'UN' });
     await waitFor(() => expect(spy).toHaveBeenCalledTimes(2));
-    expect(spy.mock.calls[1][0]).toContain('venue=NXT');
+    expect(spy.mock.calls[1][0]).toContain('venue=UN');
   });
 
   it('drops placeholder data when venue changes for the same code', async () => {
@@ -219,19 +219,19 @@ describe('useLivePastCandles', () => {
       resolveNxt = resolve;
     });
     const krxResponse = { ...RESPONSE, venue: 'KRX' as const, candles: [{ ...RESPONSE.candles[0], close: 100 }] };
-    const nxtResponse = { ...RESPONSE, venue: 'NXT' as const, candles: [{ ...RESPONSE.candles[0], close: 200 }] };
+    const nxtResponse = { ...RESPONSE, venue: 'UN' as const, candles: [{ ...RESPONSE.candles[0], close: 200 }] };
     const spy = vi.spyOn(client, 'apiCall').mockImplementation((url) =>
-      url.includes('venue=NXT') ? nxtPending : Promise.resolve(krxResponse),
+      url.includes('venue=UN') ? nxtPending : Promise.resolve(krxResponse),
     );
     const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } });
     const { result, rerender } = renderHook(
-      ({ venue }: { venue: 'KRX' | 'NXT' }) =>
+      ({ venue }: { venue: 'KRX' | 'UN' }) =>
         useLivePastCandles('005930', '20260501', '20260502', venue),
       { wrapper: wrap(qc), initialProps: { venue: 'KRX' } },
     );
     await waitFor(() => expect(result.current.data?.candles[0].close).toBe(100));
 
-    rerender({ venue: 'NXT' });
+    rerender({ venue: 'UN' });
 
     expect(result.current.data).toBeUndefined();
     await waitFor(() => expect(spy).toHaveBeenCalledTimes(2));

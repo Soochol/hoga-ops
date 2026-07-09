@@ -104,8 +104,8 @@ describe('LiveSettingsSections (2단 nav+detail)', () => {
     fireEvent.click(screen.getByTestId('settings-nav-data-source'));
 
     expect(screen.getByLabelText('KRX')).toBeChecked();
-    expect(screen.getByLabelText('NXT')).toBeInTheDocument();
     expect(screen.getByLabelText('통합')).toBeInTheDocument();
+    expect(screen.queryByLabelText('NXT')).toBeNull();   // NXT venue 제거(#523)
 
     fireEvent.click(screen.getByLabelText('통합'));
     expect(useLiveVenueStore.getState().venue).toBe('UN');

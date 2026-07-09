@@ -15,7 +15,7 @@ import { useLiveStatus } from '../api/liveStatus';
 import { deriveCollectionView } from './collectionStatus';
 import { CollectionDot } from './CollectionDot';
 import { useLiveVenueStore, type LiveVenueOption } from '../state/liveVenue';
-import { liveVenueDisplayLabel, liveVenueKeepsHogaKrx } from './liveVenuePolicy';
+import { liveHogaVenueNow, liveVenueDisplayLabel, liveVenueKeepsHogaKrx } from './liveVenuePolicy';
 import { resolveLiveCurrentPrice } from './deriveCurrentPriceLine';
 import type { CaptureHealthView } from './liveStatusProjection';
 import { hogaCoverageGapTitle } from './hogaCoverageGap';
@@ -139,7 +139,7 @@ export function LiveStatusBar({ activeCode, captureHealth, bundle, venue, hogaGa
           <>
             <span aria-hidden>·</span>
             <span data-testid="live-venue-ws-note" style={{ color: 'var(--fg-dimmer)' }}>
-              호가 KRX
+              호가 {liveHogaVenueNow(selectedVenue)}
             </span>
           </>
         )}

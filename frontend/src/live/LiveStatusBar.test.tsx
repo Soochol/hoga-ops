@@ -158,10 +158,10 @@ describe('LiveStatusBar', () => {
   });
 
   it('uses selected store venue for quote lookup when venue prop is omitted', () => {
-    useLiveVenueStore.setState({ venue: 'NXT' });
+    useLiveVenueStore.setState({ venue: 'UN' });
     const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } });
     qc.setQueryData(['watchlist'], { entries: [], next_run_at_ms: 0 });
-    qc.setQueryData(['live-quotes', '005930', 'NXT'], {
+    qc.setQueryData(['live-quotes', '005930', 'UN'], {
       phase: 'open',
       quotes: [{ code: '005930', price: 361000, change_pct: 0.29, change_won: 1000 }],
     });
@@ -201,10 +201,19 @@ describe('LiveStatusBar', () => {
     expect(screen.getByTestId('source-chip-kis_live')).toBeTruthy();
   });
 
-  it('shows the selected candle venue without implying NXT hoga support', () => {
-    renderBar({ activeCode: '005930', captureHealthy: true, captureReason: 'healthy', bundle: EMPTY_BUNDLE, venue: 'NXT' });
-    expect(screen.getByTestId('live-venue-label').textContent).toBe('캔들 NXT');
+  it('shows candle 통합 with a time-multiplexed hoga badge (KRX in regular session, #523)', () => {
+    const now = vi.spyOn(Date, 'now').mockReturnValue(Date.UTC(2026, 4, 18, 1, 0, 0)); // KST 10:00 정규장
+    renderBar({ activeCode: '005930', captureHealthy: true, captureReason: 'healthy', bundle: EMPTY_BUNDLE, venue: 'UN' });
+    expect(screen.getByTestId('live-venue-label').textContent).toBe('캔들 통합');
     expect(screen.getByTestId('live-venue-ws-note').textContent).toBe('호가 KRX');
+    now.mockRestore();
+  });
+
+  it('shows a 호가 NXT badge during NXT-only hours for the 통합 venue (#523)', () => {
+    const now = vi.spyOn(Date, 'now').mockReturnValue(Date.UTC(2026, 4, 18, 8, 0, 0)); // KST 17:00 장후 NXT
+    renderBar({ activeCode: '005930', captureHealthy: true, captureReason: 'healthy', bundle: EMPTY_BUNDLE, venue: 'UN' });
+    expect(screen.getByTestId('live-venue-ws-note').textContent).toBe('호가 NXT');
+    now.mockRestore();
   });
 
   it('shows a filled heart (aria-pressed) for a watchlist member', () => {

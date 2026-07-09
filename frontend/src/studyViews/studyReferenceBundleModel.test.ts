@@ -108,7 +108,7 @@ describe('studyReferenceBundleModel', () => {
     expect(model.bundle?.to_date).toBe('20260618');
   });
 
-  it('injects segment sessions (KRX meta) for NXT fallback study reference minute charts', () => {
+  it('injects segment sessions (KRX meta) for UN fallback study reference minute charts', () => {
     const model = buildStudyReferenceBundleModel({
       save: {
         ...save,
@@ -120,7 +120,7 @@ describe('studyReferenceBundleModel', () => {
           to_ms: Date.UTC(2026, 5, 16, 6, 30),
         },
       },
-      venue: 'NXT',
+      venue: 'UN',
       pastBundle: pastBundle(),
       rangeCandles: [candle(Date.UTC(2026, 5, 16, 0, 0), 1, 2, 1, 2, 10)],
       screenerDailyCandles: [],

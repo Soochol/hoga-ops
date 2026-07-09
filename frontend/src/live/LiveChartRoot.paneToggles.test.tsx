@@ -189,7 +189,7 @@ describe('LiveChartRoot — pane 토글 배선 (store → 마운트된 pane 집�
   });
 
   it('passes the venue-specific candle auction style context from props', () => {
-    renderAt('1m', { venue: 'NXT' });
+    renderAt('1m', { venue: 'UN' });
     expect(paneContexts.find((pane) => pane.name === 'candle')?.contextOverride).toEqual({
       muteAuctionCandles: false,
     });

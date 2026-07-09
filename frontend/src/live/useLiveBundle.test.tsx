@@ -1328,23 +1328,25 @@ describe('useLiveBundle', () => {
     expect(result.current.chartBundle!.candles).toEqual([]);
   });
 
-  it('does not overlay KRX live trade ticks onto an NXT candle view', () => {
+  it('does not overlay an NXT-tagged trade onto a KRX candle view (#523)', () => {
     const liveWithTrade: LiveSeriesData = {
       ...liveFixture,
       trade: [
         {
           t_ms: 1779840030000,
           kind: 'trade',
+          venue: 'NXT',
           trades: [{ t_ms: 1779840030000, price: 70150, qty: 7, side: 1 }],
         },
       ],
     };
 
     const { result } = renderHook(
-      () => useLiveBundle('005930', '1m', '20260527', liveWithTrade, { venue: 'NXT' }),
+      () => useLiveBundle('005930', '1m', '20260527', liveWithTrade, { venue: 'KRX' }),
       { wrapper },
     );
 
+    // NXT 태그 체결은 KRX 캔들에 안 섞임 — forming 캔들 불변(태그 매칭 게이트).
     expect(result.current.chartBundle!.candles).toHaveLength(1);
     expect(result.current.chartBundle!.candles[0]).toMatchObject({
       ts_ms: 1779840000000,
@@ -1614,19 +1616,19 @@ describe('useLiveBundle daily/minute branching (ADR-0048)', () => {
     expect(lastDailyCall[0]).toBeNull();
   });
 
-  it('NXT minute venue expands chart session bounds to 08:00~20:00 KST and threads the query venue', () => {
+  it('UN minute venue expands chart session bounds to 08:00~20:00 KST and threads the query venue', () => {
     const { result } = renderHook(
-      () => useLiveBundle('005930', '1m', '20260527', liveFixture, { venue: 'NXT' }),
+      () => useLiveBundle('005930', '1m', '20260527', liveFixture, { venue: 'UN' }),
       { wrapper },
     );
     const seg = result.current.chartBundle!.segments[0];
     expect(seg.session_open_ms).toBe(1779836400000);
     expect(seg.session_close_ms).toBe(1779879600000);
     const lastMinuteCall = livePastCandlesSpy.mock.calls.at(-1) as unknown as unknown[];
-    expect(lastMinuteCall[3]).toBe('NXT');
+    expect(lastMinuteCall[3]).toBe('UN');
   });
 
-  it('NXT minute venue narrows fallback dates to KRX effective sessions', () => {
+  it('UN minute venue narrows fallback dates to KRX effective sessions', () => {
     candlesMock.effectiveSessions = [
       {
         date: '20260527',
@@ -1637,7 +1639,7 @@ describe('useLiveBundle daily/minute branching (ADR-0048)', () => {
     ];
 
     const { result } = renderHook(
-      () => useLiveBundle('005930', '1m', '20260527', liveFixture, { venue: 'NXT' }),
+      () => useLiveBundle('005930', '1m', '20260527', liveFixture, { venue: 'UN' }),
       { wrapper },
     );
 

@@ -34,7 +34,7 @@ import {
 } from './liveDateTime';
 import {
   effectiveSessionBoundsByDate,
-  liveVenueAllowsKrxTradeOverlay,
+  liveVenueAllowsTradeOverlay,
   liveVenueSessionBoundsMs,
   liveVenueUsesExtendedMinuteWindow,
 } from './liveVenuePolicy';
@@ -106,7 +106,7 @@ export function overlayLiveTradesOnCandles(
         !Number.isFinite(ev.price) ||
         !Number.isFinite(ev.qty) ||
         ev.qty <= 0 ||
-        !liveVenueAllowsKrxTradeOverlay(venue, tMs)
+        !liveVenueAllowsTradeOverlay(venue, snapshot.venue, tMs)
       ) {
         continue;
       }
