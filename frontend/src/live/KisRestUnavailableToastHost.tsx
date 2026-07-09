@@ -1,6 +1,7 @@
 import { useEffect } from 'react';
 import { useLiveSettings, usePatchLiveSettings } from '../api/liveSettings';
 import { ToggleSwitch } from './settings/SettingsRow';
+import { ToastCard } from '../ui/toast/ToastCard';
 import {
   markLegacyKisRestBypassMigrated,
   readLegacyKisRestBypass,
@@ -34,38 +35,34 @@ export default function KisRestUnavailableToastHost() {
     }
   }, [kisRestBypassEnabled, lastToastAtMs, toastDismissed, dismissToast]);
 
-  if (lastToastAtMs == null || toastDismissed) return null;
+  // 가시성만 계산해 ToastCard 에 내린다 — dismiss(× 또는 우회 ON) 시 카드가
+  // exit 애니메이션을 재생하고 스스로 언마운트한다. 스택/위치는 ToastViewport 소유.
+  const visible = lastToastAtMs != null && !toastDismissed;
 
   return (
-    <div
-      role="status"
-      aria-live="polite"
-      className="pointer-events-none fixed right-[calc(var(--rail-w)+12px)] top-[calc(var(--h-top-nav)+12px)] z-[91] w-[20rem]"
-    >
-      <div className="pointer-events-auto rounded border border-warn bg-bg-card px-3 py-3 text-left shadow-lg">
-        <div className="flex items-start justify-between gap-2">
-          <div className="text-sm font-medium text-fg">KIS 연결 불가</div>
-          <button
-            type="button"
-            aria-label="닫기"
-            onClick={dismissToast}
-            className="-mr-1 -mt-0.5 shrink-0 text-base leading-none text-fg-dim hover:text-fg"
-          >
-            ✕
-          </button>
-        </div>
-        <div className="mt-1 text-xs text-fg-dim">
-          외부 KIS API에 연결할 수 없습니다. 저장 데이터로 표시할 수 있습니다.
-        </div>
-        <div className="mt-3 flex items-center justify-between gap-3">
-          <div className="text-xs text-fg-dim">{kisRestBypassEnabled ? 'KIS REST 우회 중' : 'KIS API 재시도'}</div>
-          <ToggleSwitch
-            label="KIS API 우회"
-            checked={kisRestBypassEnabled}
-            onClick={() => patch.mutate({ kis_rest_bypass_enabled: !kisRestBypassEnabled })}
-          />
-        </div>
+    <ToastCard visible={visible} variant="warn" role="status">
+      <div className="flex items-start justify-between gap-2">
+        <div className="text-sm font-medium text-fg">KIS 연결 불가</div>
+        <button
+          type="button"
+          aria-label="닫기"
+          onClick={dismissToast}
+          className="-mr-1 -mt-0.5 shrink-0 text-base leading-none text-fg-dim hover:text-fg"
+        >
+          ✕
+        </button>
       </div>
-    </div>
+      <div className="mt-1 text-xs text-fg-dim">
+        외부 KIS API에 연결할 수 없습니다. 저장 데이터로 표시할 수 있습니다.
+      </div>
+      <div className="mt-3 flex items-center justify-between gap-3">
+        <div className="text-xs text-fg-dim">{kisRestBypassEnabled ? 'KIS REST 우회 중' : 'KIS API 재시도'}</div>
+        <ToggleSwitch
+          label="KIS API 우회"
+          checked={kisRestBypassEnabled}
+          onClick={() => patch.mutate({ kis_rest_bypass_enabled: !kisRestBypassEnabled })}
+        />
+      </div>
+    </ToastCard>
   );
 }

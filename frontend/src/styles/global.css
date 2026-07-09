@@ -38,6 +38,46 @@ body {
   .session-head-pulse { animation: none; }
 }
 
+/* 토스트 카드 enter/exit — 하단 중앙에서 아래→위로 떠오르는 슬라이드(8px)+페이드.
+   DESIGN.md Motion: Enter ease-out 250ms · Exit ease-in 200ms.
+   data-phase 는 useToastPresence 가 부여. */
+.toast-card {
+  transition-property: opacity, transform, border-color, background-color;
+  transition-timing-function: cubic-bezier(0, 0, 0.2, 1); /* ease-out */
+  transition-duration: 250ms;
+}
+.toast-card[data-phase='entering'] {
+  opacity: 0;
+  transform: translateY(8px); /* 아래에서 시작 */
+  transition-duration: 0ms; /* 초기 프레임은 즉시 off-screen 배치 */
+}
+.toast-card[data-phase='entered'] {
+  opacity: 1;
+  transform: translateY(0); /* 위로 떠오름 */
+}
+.toast-card[data-phase='exiting'] {
+  opacity: 0;
+  transform: translateY(8px); /* 아래로 가라앉으며 사라짐 */
+  transition-timing-function: cubic-bezier(0.4, 0, 1, 1); /* ease-in */
+  transition-duration: 200ms;
+}
+
+/* 남은시간 진행바 — scaleX(1→0), origin left. duration/play-state 는 인라인 제어. */
+@keyframes toast-progress {
+  from { transform: scaleX(1); }
+  to   { transform: scaleX(0); }
+}
+.toast-progress {
+  transform-origin: left;
+  animation-name: toast-progress;
+  animation-timing-function: linear;
+  animation-fill-mode: forwards;
+}
+@media (prefers-reduced-motion: reduce) {
+  .toast-card { transition: none; }
+  .toast-progress { display: none; }
+}
+
 /* 다크 테마 스크롤바 — 전역. 토큰만 사용(DESIGN.md, 그라데이션/장식 금지).
    실제 렌더 환경은 WebKit/Chromium(Vite dev + /browse). lightweight-charts
    캔버스는 자체 캔버스라 영향 없음. */
