@@ -12,7 +12,7 @@ import { resolveTokensThemed, currentThemeKey } from '../../util/tokens';
 import { useActivePrefs } from '../../state/chartPrefs';
 import type { PaneSpec } from '../RangeSeriesPane';
 import type { SurgeMarkerPoint } from '../SurgeMarkersPrimitive';
-import { isAuctionHidden, LINE_HIDDEN_COLOR, maskOutgoingConnector } from '../util/auctionHide';
+import { isAuctionHidden, isExcludedQuoteBucket, LINE_HIDDEN_COLOR, maskOutgoingConnector } from '../util/auctionHide';
 import { makePastCachedProjector } from './pastCachedProjector';
 import { quoteRatioPointsForBundle, quoteRatioPointsForSlice } from './quoteRatioPoints';
 import { detectSurgeSide } from '../surge/detectSurges';
@@ -57,7 +57,11 @@ export function projectBidPoints(
     }
     // Auction-window hide (ADR-0029, util/auctionHide.ts). Break the connector
     // from the last pre-auction point so the line doesn't slope into the window.
-    if (isAuctionHidden(axis, auctionWindowMask, p.t)) {
+    // 시간 마스크(마감 동시호가) OR 구조 센티넬(장중 VI 포함, (0,0)) — ADR-0062 v2.
+    if (
+      isAuctionHidden(axis, auctionWindowMask, p.t) ||
+      isExcludedQuoteBucket(auctionWindowMask, p.bid_total, p.ask_total)
+    ) {
       maskOutgoingConnector(out, LINE_HIDDEN_COLOR);
       out.push({ time, value: 0, ...LINE_HIDDEN_COLOR });
       continue;
@@ -96,7 +100,11 @@ export function projectAskPoints(
       out.push({ time, value: 0, ...LINE_HIDDEN_COLOR });
       continue;
     }
-    if (isAuctionHidden(axis, auctionWindowMask, p.t)) {
+    // 시간 마스크(마감 동시호가) OR 구조 센티넬(장중 VI 포함, (0,0)) — ADR-0062 v2.
+    if (
+      isAuctionHidden(axis, auctionWindowMask, p.t) ||
+      isExcludedQuoteBucket(auctionWindowMask, p.bid_total, p.ask_total)
+    ) {
       maskOutgoingConnector(out, LINE_HIDDEN_COLOR);
       out.push({ time, value: 0, ...LINE_HIDDEN_COLOR });
       continue;

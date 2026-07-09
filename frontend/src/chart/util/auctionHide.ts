@@ -60,6 +60,21 @@ export function isAuctionHidden(
 }
 
 /**
+ * ADR-0062 v2 — 구조적 마스크 보강. 호가비·총잔량 계산에서 배제된 붕괴 버킷(마감
+ * 동시호가 **및 장중 VI**)은 `(bid_total, ask_total) = (0, 0)` 센티넬로 방출된다
+ * (연속거래 책은 deep-book 정의상 항상 양측 잔량 > 0이라 (0,0)이 붕괴를 유일 식별).
+ * 시간 마스크(inClosingAuctionWindow)는 15:20~15:30만 가리므로, 이 구조 센티넬을
+ * 함께 봐야 장중 VI (0,0) 평지가 가려진다. mask 토글 OFF면 false(기존처럼 (0,0) 노출).
+ */
+export function isExcludedQuoteBucket(
+  mask: boolean,
+  bidTotal: number,
+  askTotal: number,
+): boolean {
+  return mask && bidTotal === 0 && askTotal === 0;
+}
+
+/**
  * Break the visible connector INTO a masked auction run.
  *
  * The Auction Mask transparents each masked point's OUTGOING segment
