@@ -681,6 +681,9 @@ def test_build_volume_distribution_slice_returns_unix_session_bounds(tmp_path):
             session_open_ms=90_000_000,
             session_close_ms=153_000_000,
             range_count=10,
+            # 순수 변환/쿼리 검증 — 캐시 명시 우회(MagicMock indicators_cache 조기반환 방지).
+            cache=None,
+            today_kst=None,
         )
 
     dist_query.assert_called_once_with(
@@ -733,6 +736,8 @@ def test_build_volume_distribution_slice_uses_supplied_price_range_without_candl
             range_count=10,
             price_min=70_000,
             price_max=71_000,
+            cache=None,
+            today_kst=None,
         )
 
     price_range_query.assert_not_called()

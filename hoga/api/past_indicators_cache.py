@@ -29,12 +29,20 @@ from __future__ import annotations
 import json
 import logging
 import time
+from collections.abc import Sequence
 from collections import OrderedDict
 from pathlib import Path
 from typing import TYPE_CHECKING, Literal, TypeVar
 
 from hoga.api._atomic_write import atomic_write_json
-from hoga.api.models import AskPeak, BidPeak, DepthHeatmapPoint, TradeVolumePoc
+from hoga.api.models import (
+    AskPeak,
+    BidPeak,
+    BrokerLateEntryEvent,
+    DayVolumeDistribution,
+    DepthHeatmapPoint,
+    TradeVolumePoc,
+)
 from hoga.tables.snapshots import QuoteRatioRow
 from hoga.tables.trades import FillStrengthRow
 from hoga.util.cache_stats import CacheStats
@@ -96,12 +104,26 @@ class PastIndicatorsCache:
         self._mem_depth: OrderedDict[
             tuple[str, str, str, int], list[DepthHeatmapPoint]
         ] = OrderedDict()
+        # 체결 분포(단일 모델|None)·거래원 지각진입(리스트)·연속거래 상한(스칼라).
+        # 전부 소형이라 공용 512 LRU 편승(depth 처럼 전용 상한 불필요).
+        self._mem_vdist: OrderedDict[
+            tuple[str, str, str, int, int, int], DayVolumeDistribution | None
+        ] = OrderedDict()
+        self._mem_broker_late: OrderedDict[
+            tuple[str, str, str, int], list[BrokerLateEntryEvent]
+        ] = OrderedDict()
+        self._mem_continuous_before: OrderedDict[
+            tuple[str, str, str, int], int | None
+        ] = OrderedDict()
         # Per-kind stats. Peak lookups are accounted on has_*, not get_* — bundle.py
         # calls has_ (the real disk-touching lookup) then get_ (an already-promoted
         # mem re-read); counting both would double-count (advisor #2).
         self._stats: dict[str, CacheStats] = {
             kind: CacheStats()
-            for kind in ("ratio", "fill", "ask_peak", "bid_peak", "poc", "depth")
+            for kind in (
+                "ratio", "fill", "ask_peak", "bid_peak", "poc", "depth",
+                "vdist", "broker_late", "continuous_before",
+            )
         }
 
     def stats_snapshot(self) -> dict[str, dict[str, int | float | None]]:
@@ -112,6 +134,9 @@ class PastIndicatorsCache:
             "bid_peak": len(self._mem_bid_peak),
             "poc": len(self._mem_trade_volume_poc),
             "depth": len(self._mem_depth),
+            "vdist": len(self._mem_vdist),
+            "broker_late": len(self._mem_broker_late),
+            "continuous_before": len(self._mem_continuous_before),
         }
         return {kind: st.snapshot(size=sizes[kind]) for kind, st in self._stats.items()}
 
@@ -454,6 +479,196 @@ class PastIndicatorsCache:
             _log.warning(
                 "past_indicators_cache.write_failed path=%s",
                 self._depth_path(code, date, source, bucket_ms),
+                exc_info=True,
+            )
+
+    # ── volume_distribution (체결 분포) ──────────────────────────────────────────
+
+    def _vdist_path(
+        self, code: str, date: str, source: str, range_count: int, price_min: int, price_max: int
+    ) -> Path:
+        return self._model_path(
+            code, date, source, f"volume_distribution.{range_count}.{price_min}.{price_max}"
+        )
+
+    def get_volume_distribution(
+        self, code: str, date: str, source: str, range_count: int, price_min: int, price_max: int
+    ) -> DayVolumeDistribution | None | object:
+        """Cached체결 분포 for a completed past Stock-Date, or ``_CACHE_MISS``.
+        None(무데이터일)도 유효 캐시값이라 센티널로 미스를 구분(POC와 동일).
+        ``source`` 는 호출부가 넘긴 trade_indicator_source — 키 정합 유지."""
+        key = (code, date, source, range_count, price_min, price_max)
+        stats = self._stats["vdist"]
+        if key in self._mem_vdist:
+            self._mem_vdist.move_to_end(key)
+            stats.record_hit()
+            return self._mem_vdist[key]
+        value = self._read_model_cache(
+            self._vdist_path(code, date, source, range_count, price_min, price_max),
+            DayVolumeDistribution,
+        )
+        if value is _CACHE_MISS:
+            stats.record_miss()
+            return _CACHE_MISS
+        stats.record_disk_hit()
+        self._mem_put(self._mem_vdist, key, value, stats)  # type: ignore[arg-type]
+        return self._mem_vdist[key]
+
+    def store_volume_distribution(
+        self,
+        code: str,
+        date: str,
+        source: str,
+        range_count: int,
+        price_min: int,
+        price_max: int,
+        value: DayVolumeDistribution | None,
+    ) -> None:
+        key = (code, date, source, range_count, price_min, price_max)
+        stats = self._stats["vdist"]
+        stats.record_store()
+        self._mem_put(self._mem_vdist, key, value, stats)
+        self._write_model_cache(
+            self._vdist_path(code, date, source, range_count, price_min, price_max), value
+        )
+
+    # ── broker_late_entries (거래원 지각 진입) ───────────────────────────────────
+    #
+    # ⚠️ 이벤트 선별은 broker_names.canonical(코드 레벨 별칭 병합)에 의존한다 —
+    # 그 매핑이 바뀌면 캐시된 events 가 스테일해지므로 SCHEMA_VERSION 을 범프해야
+    # 한다(bucketing/대표 semantics 변경과 동일 정책).
+
+    def _broker_late_path(self, code: str, date: str, source: str, start_hhmm: int) -> Path:
+        return self._model_path(code, date, source, f"broker_late.{start_hhmm}")
+
+    def _read_model_list_cache(
+        self, path: Path, model_type: type[_ModelT], *, payload_key: str
+    ) -> list[_ModelT] | object:
+        """List-of-model 디스크 read (list 또는 ``_CACHE_MISS``). ``[]`` 는 유효
+        캐시값이라 미스와 구분된다. depth 의 인라인 read 와 동형이나 payload_key 로
+        일반화 — broker_late 가 재사용한다(depth 는 기존 경로 유지)."""
+        if not path.exists():
+            return _CACHE_MISS
+        try:
+            body = json.loads(path.read_text(encoding="utf-8"))
+        except (OSError, json.JSONDecodeError):
+            _log.warning("past_indicators_cache.corrupt path=%s", path, exc_info=True)
+            return _CACHE_MISS
+        if body.get("version") != SCHEMA_VERSION:
+            return _CACHE_MISS
+        raw = body.get(payload_key)
+        if not isinstance(raw, list):
+            return _CACHE_MISS
+        try:
+            return [model_type.model_validate(v) for v in raw]
+        except ValueError:
+            _log.warning("past_indicators_cache.invalid_model path=%s", path, exc_info=True)
+            return _CACHE_MISS
+
+    def _write_model_list_cache(
+        self, path: Path, items: "Sequence[BaseModel]", *, payload_key: str
+    ) -> None:
+        payload = {
+            "version": SCHEMA_VERSION,
+            payload_key: [m.model_dump(mode="json") for m in items],
+            "fetched_at_ms": int(time.time() * 1000),
+        }
+        try:
+            atomic_write_json(path, payload)
+        except OSError:
+            _log.warning("past_indicators_cache.write_failed path=%s", path, exc_info=True)
+
+    def get_broker_late(
+        self, code: str, date: str, source: str, start_hhmm: int
+    ) -> list[BrokerLateEntryEvent] | object:
+        key = (code, date, source, start_hhmm)
+        stats = self._stats["broker_late"]
+        hit = self._mem_broker_late.get(key)
+        if hit is not None:
+            self._mem_broker_late.move_to_end(key)
+            stats.record_hit()
+            return hit
+        value = self._read_model_list_cache(
+            self._broker_late_path(code, date, source, start_hhmm),
+            BrokerLateEntryEvent,
+            payload_key="events",
+        )
+        if value is _CACHE_MISS:
+            stats.record_miss()
+            return _CACHE_MISS
+        stats.record_disk_hit()
+        self._mem_put(self._mem_broker_late, key, value, stats)  # type: ignore[arg-type]
+        return value  # type: ignore[return-value]
+
+    def store_broker_late(
+        self, code: str, date: str, source: str, start_hhmm: int, events: list[BrokerLateEntryEvent]
+    ) -> None:
+        key = (code, date, source, start_hhmm)
+        stats = self._stats["broker_late"]
+        stats.record_store()
+        self._mem_put(self._mem_broker_late, key, events, stats)
+        self._write_model_list_cache(
+            self._broker_late_path(code, date, source, start_hhmm), events, payload_key="events"
+        )
+
+    # ── continuous_before_ms (연속거래 상한 — POC·체결분포 선행 스칼라) ──────────
+    #
+    # 결과 자체가 아니라 두 지표의 선행 의존값(snapshots+trades 2-스캔). 과거일은
+    # 불변이라 한 번 계산해 재사용. None(경계 없음)도 유효 캐시값 → 센티널로 미스 구분.
+
+    def _continuous_before_path(self, code: str, date: str, source: str, session_close_ms: int) -> Path:
+        return self._model_path(code, date, source, f"continuous_before.{session_close_ms}")
+
+    def get_continuous_before(
+        self, code: str, date: str, source: str, session_close_ms: int
+    ) -> int | None | object:
+        key = (code, date, source, session_close_ms)
+        stats = self._stats["continuous_before"]
+        if key in self._mem_continuous_before:
+            self._mem_continuous_before.move_to_end(key)
+            stats.record_hit()
+            return self._mem_continuous_before[key]
+        path = self._continuous_before_path(code, date, source, session_close_ms)
+        if not path.exists():
+            stats.record_miss()
+            return _CACHE_MISS
+        try:
+            body = json.loads(path.read_text(encoding="utf-8"))
+        except (OSError, json.JSONDecodeError):
+            _log.warning("past_indicators_cache.corrupt path=%s", path, exc_info=True)
+            stats.record_miss()
+            return _CACHE_MISS
+        if body.get("version") != SCHEMA_VERSION:
+            stats.record_miss()
+            return _CACHE_MISS
+        value = body.get("value")
+        if value is not None and not isinstance(value, int):
+            stats.record_miss()
+            return _CACHE_MISS
+        stats.record_disk_hit()
+        self._mem_put(self._mem_continuous_before, key, value, stats)
+        return value
+
+    def store_continuous_before(
+        self, code: str, date: str, source: str, session_close_ms: int, value: int | None
+    ) -> None:
+        key = (code, date, source, session_close_ms)
+        stats = self._stats["continuous_before"]
+        stats.record_store()
+        self._mem_put(self._mem_continuous_before, key, value, stats)
+        payload = {
+            "version": SCHEMA_VERSION,
+            "value": value,
+            "fetched_at_ms": int(time.time() * 1000),
+        }
+        try:
+            atomic_write_json(
+                self._continuous_before_path(code, date, source, session_close_ms), payload
+            )
+        except OSError:
+            _log.warning(
+                "past_indicators_cache.write_failed path=%s",
+                self._continuous_before_path(code, date, source, session_close_ms),
                 exc_info=True,
             )
 
