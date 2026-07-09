@@ -7,6 +7,7 @@ from typing import Protocol
 from hoga.live import kis_access
 from hoga.live.kis_client import KisClient
 from hoga.live.past_daily_candles_cache import PastDailyCandlesCache
+from hoga.live.single_flight import SingleFlight
 
 
 class KisRestScheduler(Protocol):
@@ -42,6 +43,10 @@ class LiveInvestorNetBackfill:
         self._cache = cache
         self._scheduler = scheduler
         self._walkback = walkback
+        # Coalesce concurrent same-code cold walk-backs (see single_flight.py):
+        # overlapping [from, today] requests share one KIS fetch instead of each
+        # walking the background lane independently (the 60–100s storm).
+        self._inflight = SingleFlight()
 
     async def collect(
         self,
@@ -63,15 +68,16 @@ class LiveInvestorNetBackfill:
             )
             return [_investor_point_to_dict(p) for p in result.points], result.violations
 
-        return await self._walkback(
-            cache=self._cache,
-            fetch_batch=fetch_batch,
-            output_key="points",
-            code=code,
-            frm=frm,
-            too=too,
-            today_d=today_d,
-        )
+        async with self._inflight.acquire(code):
+            return await self._walkback(
+                cache=self._cache,
+                fetch_batch=fetch_batch,
+                output_key="points",
+                code=code,
+                frm=frm,
+                too=too,
+                today_d=today_d,
+            )
 
 
 def _investor_point_to_dict(p) -> dict:

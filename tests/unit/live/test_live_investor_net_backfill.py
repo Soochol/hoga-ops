@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import asyncio
 import datetime as dt
 from collections.abc import Awaitable, Callable, Hashable
 
@@ -111,3 +112,70 @@ async def test_live_investor_net_backfill_schedules_background_request(tmp_path)
             "cooldown_scope": "investor-net",
         }
     ]
+
+
+class _GatedKis(_FakeKis):
+    """Blocks inside the first fetch so a second concurrent request can race
+    into (or be coalesced out of) the walk-back."""
+
+    def __init__(self) -> None:
+        super().__init__()
+        self.gate = asyncio.Event()
+
+    async def fetch_investor_net(
+        self,
+        code: str,
+        from_yyyymmdd: str,
+        to_yyyymmdd: str,
+    ) -> InvestorNetFetchResult:
+        self.calls.append((code, from_yyyymmdd, to_yyyymmdd))
+        await self.gate.wait()
+        return InvestorNetFetchResult(
+            points=_investor_points(from_yyyymmdd, to_yyyymmdd),
+            violations=[],
+        )
+
+
+@pytest.mark.asyncio
+async def test_collect_coalesces_concurrent_same_code_requests(tmp_path) -> None:
+    # Two overlapping [from, today] requests for the same code fire at once on a
+    # cold cache. Single-flight must serialise them: the first walks KIS, the
+    # second reads the warm cache and issues zero upstream calls (240→60 storm
+    # collapse). Without coalescing both would fetch while the first is gated.
+    kis = _GatedKis()
+    scheduler = _RecordingScheduler(kis)
+    backfill = LiveInvestorNetBackfill(
+        data_dir=tmp_path,
+        cache=PastDailyCandlesCache(),
+        scheduler=scheduler,  # type: ignore[arg-type]
+        walkback=batched_daily_walkback,
+    )
+
+    async def one(frm: dt.date):
+        return await backfill.collect(
+            code="005930",
+            frm=frm,
+            too=dt.date(2024, 1, 10),
+            today_d=dt.date(2024, 2, 1),
+        )
+
+    t1 = asyncio.create_task(one(dt.date(2024, 1, 1)))
+    t2 = asyncio.create_task(one(dt.date(2024, 1, 5)))
+
+    # Spin the loop until the first request is parked inside the gated fetch,
+    # proving the second had a chance to enter the walk-back concurrently.
+    for _ in range(100):
+        await asyncio.sleep(0)
+        if kis.calls:
+            break
+    assert len(kis.calls) == 1
+
+    kis.gate.set()
+    r1, r2 = await asyncio.gather(t1, t2)
+
+    # Exactly one KIS round-trip served both requests.
+    assert len(kis.calls) == 1
+    assert len(r1["points"]) == 10
+    assert len(r2["points"]) == 6
+    assert r2["fresh_batches"] == []  # served entirely from the warm cache
+    assert r2["cached_batches"] == ["20240101__20240110"]
