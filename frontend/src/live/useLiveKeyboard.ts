@@ -1,5 +1,6 @@
 import { useEffect } from 'react';
 import { useRightRailStore } from '../state/rightRail';
+import { shouldIgnoreEvent } from '../util/keyboard';
 
 export type LiveTimeframeShortcutSlot = 'minute' | 'D' | 'W' | 'M';
 
@@ -29,15 +30,6 @@ export interface UseLiveKeyboardOpts {
   onPrevTab?: () => void;
   onSelectTabIndex?: (index: number) => void;
   onSelectTimeframeShortcut?: (slot: LiveTimeframeShortcutSlot) => void;
-}
-
-export function shouldIgnoreEvent(target: EventTarget | null): boolean {
-  if (!(target instanceof HTMLElement)) return false;
-  const tag = target.tagName;
-  if (tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT') return true;
-  if (target.isContentEditable) return true;
-  if (target.closest('[data-prevent-shortcuts]')) return true;
-  return false;
 }
 
 export function useLiveKeyboard(opts: UseLiveKeyboardOpts = {}): void {

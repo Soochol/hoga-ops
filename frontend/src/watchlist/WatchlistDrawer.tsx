@@ -555,7 +555,7 @@ export function WatchlistDrawer() {
         )}
       />
 
-      <RailDrawerBody testId="watchlist-scroll">
+      <RailDrawerBody testId="watchlist-scroll" quoteNav>
         {isLoading && <RailState>불러오는 중</RailState>}
         {error && <RailState tone="error">관심종목을 불러올 수 없습니다</RailState>}
         {!isLoading && !error && (data?.entries.length ?? 0) === 0 && (data?.folders.length ?? 0) === 0 && (

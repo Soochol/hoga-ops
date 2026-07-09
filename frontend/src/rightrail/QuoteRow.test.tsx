@@ -168,6 +168,69 @@ describe('QuoteRow', () => {
     expect(screen.getByTestId('kbd-yes').getAttribute('aria-keyshortcuts')).toBe('Delete');
   });
 
+  it('ArrowDown/ArrowUp move focus to the adjacent row and select it instantly', () => {
+    const onA = vi.fn();
+    const onB = vi.fn();
+    render(
+      <ul>
+        <QuoteRow name="A" price={1} pct={null} changeWon={null} active={false}
+          ariaLabel="A" testId="row-a" onClick={onA} />
+        <QuoteRow name="B" price={2} pct={null} changeWon={null} active={false}
+          ariaLabel="B" testId="row-b" onClick={onB} />
+      </ul>,
+    );
+    const a = screen.getByTestId('row-a');
+    const b = screen.getByTestId('row-b');
+    a.focus();
+    fireEvent.keyDown(a, { key: 'ArrowDown' });
+    expect(document.activeElement).toBe(b);
+    // 이동 즉시 선택 = 이웃 행의 onClick(현재 탭) 발동
+    expect(onB).toHaveBeenCalledWith({ disposition: 'current-tab' });
+
+    fireEvent.keyDown(b, { key: 'ArrowUp' });
+    expect(document.activeElement).toBe(a);
+    expect(onA).toHaveBeenCalledWith({ disposition: 'current-tab' });
+  });
+
+  it('ArrowDown at the last row is a no-op (no wrap-around)', () => {
+    const onB = vi.fn();
+    render(
+      <ul>
+        <QuoteRow name="A" price={1} pct={null} changeWon={null} active={false}
+          ariaLabel="A" testId="row-a" onClick={vi.fn()} />
+        <QuoteRow name="B" price={2} pct={null} changeWon={null} active={false}
+          ariaLabel="B" testId="row-b" onClick={onB} />
+      </ul>,
+    );
+    const b = screen.getByTestId('row-b');
+    b.focus();
+    fireEvent.keyDown(b, { key: 'ArrowDown' });
+    expect(document.activeElement).toBe(b); // 마지막 행에서 멈춤
+    expect(onB).not.toHaveBeenCalled();
+  });
+
+  it('Arrow navigation crosses <ul> group boundaries within [data-quote-nav]', () => {
+    const onB = vi.fn();
+    render(
+      <div data-quote-nav="">
+        <ul>
+          <QuoteRow name="A" price={1} pct={null} changeWon={null} active={false}
+            ariaLabel="A" testId="row-a" onClick={vi.fn()} />
+        </ul>
+        <ul>
+          <QuoteRow name="B" price={2} pct={null} changeWon={null} active={false}
+            ariaLabel="B" testId="row-b" onClick={onB} />
+        </ul>
+      </div>,
+    );
+    const a = screen.getByTestId('row-a');
+    a.focus();
+    fireEvent.keyDown(a, { key: 'ArrowDown' });
+    // 폴더별 <ul>이 나뉘어도 data-quote-nav 스코프 안이면 다음 그룹 첫 행으로 넘어간다
+    expect(document.activeElement).toBe(screen.getByTestId('row-b'));
+    expect(onB).toHaveBeenCalledOnce();
+  });
+
   it('moves focus to the sibling row before Delete removes the focused row', () => {
     const onDelete = vi.fn();
     render(

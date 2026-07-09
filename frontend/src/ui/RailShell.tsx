@@ -55,14 +55,21 @@ export function RailDrawerSection({ className = '', children }: { className?: st
 export function RailDrawerBody({
   className = '',
   testId,
+  quoteNav = false,
   children,
 }: {
   className?: string;
   testId?: string;
+  // 화살표 위/아래 종목 이동의 스코프 컨테이너로 표시(QuoteRow 가 이 마커를 탐색).
+  quoteNav?: boolean;
   children: ReactNode;
 }) {
   return (
-    <div data-testid={testId} className={`min-h-0 flex-1 overflow-auto ${className}`.trim()}>
+    <div
+      data-testid={testId}
+      data-quote-nav={quoteNav ? '' : undefined}
+      className={`min-h-0 flex-1 overflow-auto ${className}`.trim()}
+    >
       {children}
     </div>
   );

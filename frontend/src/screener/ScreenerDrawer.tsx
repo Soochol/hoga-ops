@@ -366,7 +366,7 @@ export function ScreenerDrawer() {
       </RailDrawerSection>
 
       {/* Results */}
-      <RailDrawerBody testId="screener-scroll">
+      <RailDrawerBody testId="screener-scroll" quoteNav>
         {screener.isError ? (
           <RailState tone="error">
             <div className="font-semibold" style={{ color: 'var(--error)' }}>조회 실패</div>
