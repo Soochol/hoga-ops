@@ -2275,6 +2275,10 @@ def test_build_depth_heatmap_slice_converts_rows_to_points(tmp_path):
         ask_qtys=tuple(500 - 10 * i for i in range(10)),
         bid_prices=tuple(990 - 10 * i for i in range(10)),
         bid_qtys=tuple(400 - 10 * i for i in range(10)),
+        ask_prices_max=tuple(1000 + 10 * i for i in range(10)),
+        ask_qtys_max=tuple(900 - 10 * i for i in range(10)),
+        bid_prices_max=tuple(990 - 10 * i for i in range(10)),
+        bid_qtys_max=tuple(800 - 10 * i for i in range(10)),
     )
     with patch.object(
         bundle_mod.snapshots_tbl,
@@ -2302,6 +2306,10 @@ def test_build_depth_heatmap_slice_converts_rows_to_points(tmp_path):
     assert points[0].bids[0] == [990, 400]
     assert len(points[0].asks) == 10
     assert len(points[0].bids) == 10
+    assert points[0].asks_max[0] == [1000, 900]
+    assert points[0].bids_max[0] == [990, 800]
+    assert len(points[0].asks_max) == 10
+    assert len(points[0].bids_max) == 10
     assert points[0].t_ms == ms_from_midnight_to_unix_ms("20260102", 34_200_000)
     assert points[0].t_ms > 1_000_000_000_000
 

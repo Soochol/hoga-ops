@@ -451,6 +451,46 @@ describe('createIncrementalHogaSeriesBuilder', () => {
     expect(first).toEqual(firstSnapshot);
   });
 
+  it('ratchets depth_heatmap_today: close = last tick book, max = peak-total tick book', () => {
+    const buildIncremental = createIncrementalHogaSeriesBuilder();
+    // Three continuous-book ticks in ONE bucket, totals 100 → 900 → 300.
+    const ob = [
+      shapedOb(TODAY_OPEN, 60, 40, false), //  total 100
+      shapedOb(TODAY_OPEN + 10_000, 500, 400, false), // total 900 (peak)
+      shapedOb(TODAY_OPEN + 20_000, 200, 100, false), // total 300 (close)
+    ];
+    let out;
+    for (let i = 1; i <= ob.length; i++) {
+      out = buildIncremental({ ...baseInput, sseOb: ob.slice(0, i), sseTrade: [] });
+    }
+    expect(out!.depth_heatmap_today).toEqual([
+      {
+        tMs: TODAY_OPEN,
+        asks: contLvls(200), // close = last tick
+        bids: contLvls(100),
+        asksMax: contLvls(500), // max = 900-total tick
+        bidsMax: contLvls(400),
+      },
+    ]);
+    // oracle parity — the one-shot builder produces the identical series.
+    expect(out!.depth_heatmap_today).toEqual(
+      buildHogaSeries({ ...baseInput, sseOb: ob, sseTrade: [] }).depth_heatmap_today,
+    );
+  });
+
+  it('does NOT create a depth point for totals-only ticks (asks/bids absent)', () => {
+    const buildIncremental = createIncrementalHogaSeriesBuilder();
+    const ob = [
+      { t_ms: TODAY_OPEN, total_ask_qty: 60, total_bid_qty: 40 },
+      { t_ms: TODAY_OPEN + 10_000, total_ask_qty: 500, total_bid_qty: 400 },
+    ];
+    const out = buildIncremental({ ...baseInput, sseOb: ob, sseTrade: [] });
+    expect(out.depth_heatmap_today).toEqual([]);
+    expect(out.depth_heatmap_today).toEqual(
+      buildHogaSeries({ ...baseInput, sseOb: ob, sseTrade: [] }).depth_heatmap_today,
+    );
+  });
+
   it('falls back safely when an appended snapshot arrives out of time order', () => {
     const buildIncremental = createIncrementalHogaSeriesBuilder();
     const ob = [

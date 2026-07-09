@@ -435,6 +435,40 @@ def test_query_bucketed_depth_heatmap_deep_book_classification(tmp_path: Path) -
     assert auction_row.bid_prices == (200, 199, 198) + (0,) * 7
 
 
+def test_query_bucketed_depth_heatmap_max_total_snapshot(tmp_path: Path) -> None:
+    """대표(종가=마지막) 스냅샷과 별개로, 버킷 내 총잔량(bid+ask 10레벨 합)이
+    최대였던 스냅샷의 40컬럼을 ``*_max`` 필드로 함께 방출하는지 검증(캔들 고가처럼).
+
+    같은 60s 버킷에 deep book 3건. session_close_ms 미전달 → pre_auction_pred가
+    "TRUE"로 붕괴 → is_pre 모두 1 → max는 순수 total로 결정. 최대(중간 스냅샷,
+    total=10000)와 종가(마지막, total=6000)가 다르므로 두 대표가 갈린다."""
+    from hoga.tables.snapshots import query_bucketed_depth_heatmap
+
+    # 모두 같은 60s 버킷(09:00:xx → intra 32_400_xxx). 레벨 4..10 > 0 = deep book.
+    obs = [
+        _ob(ts_ms=90_000_100, seq=1, ask_q=(100,) * 10, bid_q=(100,) * 10),  # total=2000
+        _ob(ts_ms=90_000_500, seq=2, ask_q=(500,) * 10, bid_q=(500,) * 10),  # total=10000 ← MAX
+        _ob(ts_ms=90_000_900, seq=3, ask_q=(300,) * 10, bid_q=(300,) * 10),  # total=6000 ← 종가
+    ]
+    out = tmp_path / "snapshots.parquet"
+    write_parquet(obs, out)
+    con = duckdb.connect()
+    rows = query_bucketed_depth_heatmap(con, path=out, bucket_ms=60000)
+    assert len(rows) == 1
+    r = rows[0]
+    # 종가(대표) = 마지막 스냅샷.
+    assert r.ask_qtys[0] == 300
+    assert r.bid_qtys[0] == 300
+    # 최대총잔량 대표 = 중간 스냅샷.
+    assert r.ask_qtys_max[0] == 500
+    assert r.bid_qtys_max[0] == 500
+    assert len(r.ask_prices_max) == 10 and len(r.ask_qtys_max) == 10
+    assert len(r.bid_prices_max) == 10 and len(r.bid_qtys_max) == 10
+    # 가격도 대표 스냅샷의 것: _ob는 ask_p=range(1,11), bid_p=range(10,0,-1).
+    assert r.ask_prices_max == tuple(range(1, 11))
+    assert r.bid_prices_max == tuple(range(10, 0, -1))
+
+
 def test_query_bucketed_ratio_intra_max_independent_sides(tmp_path: Path) -> None:
     """한 버킷 내 bid 최댓값과 ask 최댓값이 서로 다른 시점이어도 각각 독립 포착
     (캔들 고가가 시·종가와 무관하듯). 종가는 마지막 스냅샷 값으로 유지."""

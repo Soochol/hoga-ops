@@ -4,6 +4,7 @@ import type { PaneId } from '../chart/drawing/types';
 import type { PaneSeriesMap } from '../chart/drawing/chartCoordinates';
 import type { VirtualAxis } from '../util/virtualAxis';
 import { useLivePageStore } from '../state/livePage';
+import { useActivePrefs } from '../state/chartPrefs';
 import { DepthHeatmapPrimitive, type DepthHeatmapCell } from '../chart/DepthHeatmapPrimitive';
 import type { DepthHeatmapPoint } from './depthHeatmapWire';
 import { levelAlpha, visibleMaxQty } from './depthHeatmapAlpha';
@@ -49,16 +50,20 @@ export function buildDepthHeatmapCells(
   fromMs: number,
   toMs: number,
   style: StyleOpts,
+  intraMax = false,
 ): DepthHeatmapCell[] {
-  const vmax = visibleMaxQty(points, fromMs, toMs);
+  // 정규화 천장은 셀 소스와 반드시 같아야 한다 → intraMax 를 그대로 전달.
+  const vmax = visibleMaxQty(points, fromMs, toMs, intraMax);
   if (vmax <= 0) return [];
   const out: DepthHeatmapCell[] = [];
   for (const pt of points) {
     if (pt.tMs < fromMs || pt.tMs > toMs) continue;
+    const asks = intraMax ? pt.asksMax : pt.asks;
+    const bids = intraMax ? pt.bidsMax : pt.bids;
     const time = (axis.toVirtual(pt.tMs) / 1000) as Time;
-    const allPrices = [...pt.asks, ...pt.bids].map((l) => l.price);
+    const allPrices = [...asks, ...bids].map((l) => l.price);
     const halfTick = halfTickFor(allPrices);
-    for (const lvl of pt.asks) {
+    for (const lvl of asks) {
       if (lvl.qty <= 0) continue;
       out.push({
         time,
@@ -67,7 +72,7 @@ export function buildDepthHeatmapCells(
         fillColor: hexToRgba(style.askColor, levelAlpha(lvl.qty, vmax, style.maxOpacity)),
       });
     }
-    for (const lvl of pt.bids) {
+    for (const lvl of bids) {
       if (lvl.qty <= 0) continue;
       out.push({
         time,
@@ -93,6 +98,7 @@ function DepthHeatmapOverlay({ chart, paneSeries, axis, points }: Props) {
   const bidColor = useLivePageStore((s) => s.depthHeatmapBidColor);
   const askColor = useLivePageStore((s) => s.depthHeatmapAskColor);
   const maxOpacity = useLivePageStore((s) => s.depthHeatmapMaxOpacity);
+  const intraMax = useActivePrefs((p) => p.depthHeatmapIntraMax);
   const primitiveRef = useRef<DepthHeatmapPrimitive | null>(null);
   // 강도 정규화 기준 = 현재 보이는 시간범위. 팬/줌 시 재정규화(HighLowAnnotationOverlay 선례).
   const [visibleRange, setVisibleRange] = useState<{ from: number; to: number } | null>(null);
@@ -139,8 +145,8 @@ function DepthHeatmapOverlay({ chart, paneSeries, axis, points }: Props) {
     // 초기(range 미확정) 프레임은 전 범위 폴백 후, 첫 구독 콜백에서 화면 범위로 좁힌다.
     const fromMs = visibleRange ? axis.toReal(visibleRange.from * 1000) : -Infinity;
     const toMs = visibleRange ? axis.toReal(visibleRange.to * 1000) : Infinity;
-    return buildDepthHeatmapCells(points, axis, fromMs, toMs, { bidColor, askColor, maxOpacity });
-  }, [points, axis, visibleRange, bidColor, askColor, maxOpacity]);
+    return buildDepthHeatmapCells(points, axis, fromMs, toMs, { bidColor, askColor, maxOpacity }, intraMax);
+  }, [points, axis, visibleRange, bidColor, askColor, maxOpacity, intraMax]);
 
   useEffect(() => {
     primitiveRef.current?.setCells(enabled ? cells : []);

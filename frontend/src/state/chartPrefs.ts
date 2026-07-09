@@ -169,6 +169,14 @@ export const CHART_TOGGLES = [
     default: false,
     category: 'indicator-modal',
   },
+  {
+    key: 'depthHeatmapIntraMax',
+    label: '분봉 내 최댓값 기준',
+    description:
+      '분봉 종가 호가창 대신 그 분봉 내 총잔량이 가장 컸던 순간의 10호가를 히트맵 소스로 사용합니다. 강도 정규화도 같은 최댓값 소스를 기준으로 맞춥니다.',
+    default: false,
+    category: 'indicator-modal',
+  },
 ] as const;
 
 export type ChartToggleKey = (typeof CHART_TOGGLES)[number]['key'];

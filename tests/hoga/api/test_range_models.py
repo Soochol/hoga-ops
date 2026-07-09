@@ -128,13 +128,19 @@ def test_depth_heatmap_point_defaults_and_shape() -> None:
         t_ms=1_700_000_000_000,
         asks=[[1000, 500], [1010, 300]],
         bids=[[990, 400], [980, 200]],
+        asks_max=[[1000, 900], [1010, 700]],
+        bids_max=[[990, 800], [980, 600]],
     )
     assert pt.asks[0] == [1000, 500]
     assert pt.bids[0] == [990, 400]
+    assert pt.asks_max[0] == [1000, 900]
+    assert pt.bids_max[0] == [990, 800]
 
     empty = DepthHeatmapPoint(t_ms=1)
     assert empty.asks == []
     assert empty.bids == []
+    assert empty.asks_max == []
+    assert empty.bids_max == []
 
     rb = RangeBundle(
         code="005930", from_date="20260520", to_date="20260520",

@@ -628,11 +628,17 @@ class DepthHeatmapPoint(BaseModel):
     ``asks``/``bids``는 각 최대 10단계 ``[price, qty]`` — asks는 가격 오름차순
     (index 0 = 최우선 매도), bids는 가격 내림차순(index 0 = 최우선 매수).
     잔량 0 단계는 프론트에서 렌더 스킵되므로 그대로 실어 보낸다.
+
+    ``asks_max``/``bids_max``는 분봉 내 총잔량 최대 스냅샷의 분포(캔들 고가
+    직관) — 토글로 ``asks``/``bids``와 교체해 렌더한다. 형식은 동일한
+    ``[price, qty]`` 10단계.
     """
 
     t_ms: int
     asks: list[list[int]] = Field(default_factory=list)
     bids: list[list[int]] = Field(default_factory=list)
+    asks_max: list[list[int]] = Field(default_factory=list)
+    bids_max: list[list[int]] = Field(default_factory=list)
 
 
 class VolumeDistributionBin(BaseModel):

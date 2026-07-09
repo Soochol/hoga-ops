@@ -931,6 +931,9 @@ class DepthHeatmapRow:
     ``ask_prices``/``ask_qtys``는 index 0 = 최우선(best) 호가. 완전-auction
     버킷은 대표가 없어도 last-in-bucket으로 폴백(정규화는 프론트가 담당하므로
     표시상 문제 없음 — 총잔량 지표처럼 0으로 지울 필요 없다).
+
+    ``*_max`` 필드(분봉 내 최댓값): 버킷 내 총잔량(bid+ask 10레벨 합)이 최대였던
+    스냅샷의 40컬럼(캔들 고가처럼 "분봉 내 최댓값 기준" 토글용). 대표(종가)와 독립.
     """
 
     bucket_intra_ms: int
@@ -938,6 +941,10 @@ class DepthHeatmapRow:
     ask_qtys: tuple[int, ...]
     bid_prices: tuple[int, ...]
     bid_qtys: tuple[int, ...]
+    ask_prices_max: tuple[int, ...]
+    ask_qtys_max: tuple[int, ...]
+    bid_prices_max: tuple[int, ...]
+    bid_qtys_max: tuple[int, ...]
 
 
 def query_bucketed_depth_heatmap(
@@ -952,6 +959,13 @@ def query_bucketed_depth_heatmap(
     대표 = 마지막 연속거래 스냅샷(query_bucketed_ratio와 동일 정의). 40개 레벨
     컬럼을 하나의 struct_pack으로 묶어 arg_max(rep_key)로 한 물리 행에서 함께
     가져온다 — 총잔량 대신 개별 레벨을 보존하는 것만 다르다. Empty parquet → [].
+
+    ``*_max`` 필드는 버킷 내 총잔량(bid+ask 10레벨 합)이 최대였던 스냅샷의 40컬럼
+    (캔들 고가처럼 "분봉 내 최댓값 기준"). 정렬 키는 산술 ``is_pre*1e8 + total``이
+    아니라 COMPOSITE struct ``struct_pack(is_pre, total)``을 쓴다 — 총잔량이 1억주를
+    넘을 수 있어(상한가 소형주) 1e8 구간을 넘쳐 순위를 오염시키기 때문. struct는
+    필드 순서대로 사전식 비교되므로 is_pre 우선(연속거래 > 동시호가), 그 안에서 total
+    최대가 뽑힌다 — query_bucketed_ratio의 imb_max struct 키와 동일한 기법.
     """
     intra_ms_expr = hhmmssms_to_intra_ms_sql("ts_ms")
     last_continuous_ms: int | None = None
@@ -982,11 +996,15 @@ def query_bucketed_depth_heatmap(
           SELECT ({intra_ms_expr} // {bucket_ms}) AS bucket,
                  ((CASE WHEN ({pre_auction_pred}) THEN 1 ELSE 0 END) * 100000000
                    + ({intra_ms_expr})) AS rep_key,
+                 (CASE WHEN ({pre_auction_pred}) THEN 1 ELSE 0 END) AS is_pre,
+                 (({_BID_Q_SUM}) + ({_ASK_Q_SUM})) AS total,
                  {passthrough_cols}
           FROM read_parquet(?)
         )
         SELECT bucket * {bucket_ms} AS bucket_intra_ms,
-               arg_max(struct_pack({struct_body}), rep_key) AS rep
+               arg_max(struct_pack({struct_body}), rep_key) AS rep,
+               arg_max(struct_pack({struct_body}),
+                       struct_pack(is_pre := is_pre, total := total)) AS rep_max
         FROM keyed
         GROUP BY bucket
         ORDER BY bucket
@@ -996,6 +1014,7 @@ def query_bucketed_depth_heatmap(
     out: list[DepthHeatmapRow] = []
     for r in rows:
         rep = r[1]
+        rep_max = r[2]
         out.append(
             DepthHeatmapRow(
                 bucket_intra_ms=int(r[0]),
@@ -1003,6 +1022,10 @@ def query_bucketed_depth_heatmap(
                 ask_qtys=tuple(int(rep[f"ask_q{i}"]) for i in range(1, ORDERBOOK_LEVELS + 1)),
                 bid_prices=tuple(int(rep[f"bid_p{i}"]) for i in range(1, ORDERBOOK_LEVELS + 1)),
                 bid_qtys=tuple(int(rep[f"bid_q{i}"]) for i in range(1, ORDERBOOK_LEVELS + 1)),
+                ask_prices_max=tuple(int(rep_max[f"ask_p{i}"]) for i in range(1, ORDERBOOK_LEVELS + 1)),
+                ask_qtys_max=tuple(int(rep_max[f"ask_q{i}"]) for i in range(1, ORDERBOOK_LEVELS + 1)),
+                bid_prices_max=tuple(int(rep_max[f"bid_p{i}"]) for i in range(1, ORDERBOOK_LEVELS + 1)),
+                bid_qtys_max=tuple(int(rep_max[f"bid_q{i}"]) for i in range(1, ORDERBOOK_LEVELS + 1)),
             )
         )
     return out
