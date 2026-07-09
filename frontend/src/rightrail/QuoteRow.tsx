@@ -67,6 +67,21 @@ export function QuoteRow({
       return;
     }
     if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); onClick(); }
+    // 화살표 위/아래: 인접 행으로 이동하며 즉시 선택(차트 전환). 스코프는 가장 가까운
+    // [data-quote-nav](드로어 스크롤 컨테이너) — 관심종목은 폴더별로 <ul>이 여러 개라
+    // 형제 이동만으론 그룹 경계를 못 넘기 때문. 없으면 부모(<ul>)로 폴백.
+    if (e.key === 'ArrowDown' || e.key === 'ArrowUp') {
+      e.preventDefault(); // 컨테이너 스크롤 대신 행 이동
+      const li = e.currentTarget;
+      const scope = li.closest<HTMLElement>('[data-quote-nav]') ?? li.parentElement;
+      if (!scope) return;
+      const rows = Array.from(scope.querySelectorAll<HTMLElement>('[data-quote-row]'));
+      const next = rows.indexOf(li) + (e.key === 'ArrowDown' ? 1 : -1);
+      const target = rows[next];
+      if (!target) return; // 첫/마지막 행 경계에서 멈춤(순환 없음)
+      target.focus();
+      target.click(); // 행의 onClick(useJumpToLive) 재사용 → activeCode 전환
+    }
   };
   return (
     <li
@@ -74,6 +89,7 @@ export function QuoteRow({
       {...dragAttributes}
       {...dragListeners}
       data-testid={testId}
+      data-quote-row=""
       role="button"
       tabIndex={0}
       aria-current={active ? 'true' : undefined}

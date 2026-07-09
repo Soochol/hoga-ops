@@ -1,5 +1,5 @@
 import { useEffect } from 'react';
-import { shouldIgnoreEvent } from '../live/useLiveKeyboard';
+import { shouldIgnoreEvent } from '../util/keyboard';
 
 type UseStudyKeyboardOptions = {
   onSelectTabIndex?: (index: number) => void;

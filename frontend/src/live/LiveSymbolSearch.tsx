@@ -4,7 +4,7 @@ import { useSymbolSearch } from '../capture/useSymbols';
 import { useCombobox } from '../util/useCombobox';
 import { useLiveTabsStore } from '../state/liveTabs';
 import { onFocusLiveSearch } from './liveSearchFocus';
-import { shouldIgnoreEvent } from './useLiveKeyboard';
+import { shouldIgnoreEvent } from '../util/keyboard';
 import { WatchlistHeartButton } from '../watchlist/WatchlistHeartButton';
 import type { SymbolHit } from '../api/types';
 import { useLiveIndices, type LiveIndexEntry } from '../api/liveIndices';

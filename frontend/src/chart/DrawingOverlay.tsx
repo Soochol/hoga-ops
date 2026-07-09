@@ -7,6 +7,7 @@
 import { useCallback, useEffect, useRef } from 'react';
 import type { IChartApi } from 'lightweight-charts';
 import type { VirtualAxis } from '../util/virtualAxis';
+import { shouldIgnoreEvent } from '../util/keyboard';
 import { useDrawingsStore } from '../state/drawings';
 import { renderDrawing, renderTrendlineDraft, type ProjectCtx } from './drawing/render';
 import type { Drawing, PaneId } from './drawing/types';
@@ -201,8 +202,7 @@ export default function DrawingOverlay({ chart, axis, paneSeries, onChartHoverPa
   // ── keyboard shortcuts ─────────────────────────────────────────────────
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
-      const target = e.target as HTMLElement | null;
-      if (target && (target.tagName === 'INPUT' || target.tagName === 'TEXTAREA' || target.isContentEditable)) return;
+      if (shouldIgnoreEvent(e.target)) return;
       if (dragRef.current || trendlineDraft.current || pencilDraft.current) return;
 
       const shortcutKind = matchShortcut(e);
