@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useReducer, useRef } from 'react';
-import { useQuery } from '@tanstack/react-query';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
 
 import { apiCall } from './client';
 import { liveVenueRefetchInterval } from '../live/liveVenuePolicy';
@@ -109,6 +109,20 @@ function sortUniqueCandles(candles: LivePastCandle[]): LivePastCandle[] {
 
 function responseIdentity(code: string | null, to: string | null, venue: LiveVenueOption): string {
   return `${code ?? ''}|${to ?? ''}|${venue}`;
+}
+
+/** 탭 복귀 시 병합본을 1-샷 복원하기 위한 canonical React Query 키. 실 청크 요청
+ * 키(`['live','past-candles', code, requestFrom, requestTo, venue]`)와 겹치지 않는
+ * 전용 네임스페이스('merged')를 써서 ① 창≤15일에서 head 청크 키와 충돌하지 않고
+ * ② 팬으로 from 이 확장돼도 identity(code|to|venue)당 1개만 자기-덮어쓰므로 파편화가
+ * 없다. 복원은 정확-키 getQueryData O(1) — 스캔 불필요. `['live','past-candles']`
+ * prefix 에 속하므로 main.tsx 의 setQueryDefaults gcTime(2h)을 그대로 상속한다. */
+export function mergedPastCandlesKey(
+  code: string | null,
+  to: string | null,
+  venue: LiveVenueOption,
+): readonly ['live', 'past-candles', 'merged', string, string, LiveVenueOption] {
+  return ['live', 'past-candles', 'merged', code ?? '', to ?? '', venue] as const;
 }
 
 /** 한 요청의 최대 캘린더일 폭. 백엔드 미캐시-일수 예산
@@ -252,10 +266,17 @@ export function useLivePastCandles(
   venue: LiveVenueOption = 'KRX',
   todayKst: string | null = null,
 ) {
+  const queryClient = useQueryClient();
   const mergedRef = useRef<{ identity: string; data: LivePastCandlesResponse } | null>(null);
   const [, bumpMergedVersion] = useReducer((x: number) => x + 1, 0);
   const identity = responseIdentity(code, to, venue);
-  const previous = mergedRef.current?.identity === identity ? mergedRef.current.data : undefined;
+  // 탭 복귀(code 변경으로 mergedRef 소실) 시 canonical 병합본을 1-샷 복원한다.
+  // 정확-키 조회라 O(1); gcTime(2h) 내면 청크 워크백 리플레이 없이 병합 히스토리를
+  // 그대로 되살린다. mergedRef 가 아직 살아 있으면(같은 탭 내 리렌더) 그쪽이 우선.
+  const restored = queryClient.getQueryData<LivePastCandlesResponse>(
+    mergedPastCandlesKey(code, to, venue),
+  );
+  const previous = mergedRef.current?.identity === identity ? mergedRef.current.data : restored;
   const previousFrom = previous?.from;
   const previousTo = previous?.to;
   const plan = useMemo(
@@ -322,6 +343,23 @@ export function useLivePastCandles(
   useEffect(() => {
     if (query.data && !query.isPlaceholderData) bumpMergedVersion();
   }, [query.data, query.isPlaceholderData]);
+
+  // 병합본을 canonical 키로 재발행 → 다음 탭 복귀의 복원 소스가 된다. 워크백
+  // 스텝마다 더 넓은 병합본으로 덮어써 항상 최광폭을 유지한다.
+  // ⚠️ 반드시 useEffect: pin(위 329행)은 렌더 본문이라 거기서 setQueryData 를
+  //    부르면 옵저버 동기 통지 → "update while rendering" + 무한 리렌더.
+  // ⚠️ range.ts:502 의 `mergedRef.current.data === data` 가드는 복사 불가 —
+  //    렌더 단계 pin 이 이 effect 보다 선행해 항상 참이 되어 재발행이 영원히 안 된다.
+  //    별도 publishedRef 로 "마지막 발행 참조"를 추적한다.
+  // blocking 경고 병합본은 미발행 — pin 가드(329행)와 동일 원칙(실패 창 영구화 방지).
+  const publishedRef = useRef<LivePastCandlesResponse | null>(null);
+  useEffect(() => {
+    if (!data || query.isPlaceholderData) return;
+    if (query.data && hasBlockingWarnings(query.data)) return;
+    if (publishedRef.current === data) return;
+    publishedRef.current = data;
+    queryClient.setQueryData(mergedPastCandlesKey(code, to, venue), data);
+  }, [data, query.data, query.isPlaceholderData, queryClient, code, to, venue]);
 
   return {
     ...query,
