@@ -49,6 +49,7 @@ from hoga.api.models import (
 )
 from hoga.api.past_indicators_cache import CACHE_MISS
 from hoga.api.peak_slice_guard import GUARD as PEAK_SLICE_GUARD
+from hoga.api.peak_slice_guard import SLICE_COALESCER
 from hoga.api.today_ttl_cache import TODAY_TTL
 from hoga.api.queries import QueryEngine, StockDateNotFound
 from hoga.api.sources import ordered_sources, resolve_source_result
@@ -275,6 +276,15 @@ def build_broker_late_entries_slice(
         cached = cache.get_broker_late(code, date, source, start_hhmm)  # type: ignore[union-attr]
         if cached is not CACHE_MISS:
             return cached  # type: ignore[return-value]
+    # threshold_ms is derived from start_hhmm, so start_hhmm alone keys the compute.
+    rows = SLICE_COALESCER.run(
+        ("broker_late", code, date, source, start_hhmm),
+        lambda: brokers_tbl.query_late_entry_events(
+            engine.conn,
+            path=path,
+            threshold_ms=threshold_ms,
+        ),
+    )
     events = [
         BrokerLateEntryEvent(
             t_ms=hhmmssms_to_unix_ms(date, row.t_ms),
@@ -282,11 +292,7 @@ def build_broker_late_entries_slice(
             side=row.side,
             net=row.net,
         )
-        for row in brokers_tbl.query_late_entry_events(
-            engine.conn,
-            path=path,
-            threshold_ms=threshold_ms,
-        )
+        for row in rows
     ]
     if cacheable:
         cache.store_broker_late(code, date, source, start_hhmm, events)  # type: ignore[union-attr]
@@ -327,9 +333,12 @@ def build_quote_ratio_slice(
         # preserved across re-aggregation.
         rows_1m = cache.get_ratio(code, date, source)  # type: ignore[union-attr]
         if rows_1m is None:
-            rows_1m = snapshots_tbl.query_bucketed_ratio(
-                engine.conn, path=path_obj, bucket_ms=_ONE_MINUTE_MS,
-                session_close_ms=session_close_ms,
+            rows_1m = SLICE_COALESCER.run(
+                ("ratio", code, date, source),
+                lambda: snapshots_tbl.query_bucketed_ratio(
+                    engine.conn, path=path_obj, bucket_ms=_ONE_MINUTE_MS,
+                    session_close_ms=session_close_ms,
+                ),
             )
             cache.store_ratio(code, date, source, rows_1m)  # type: ignore[union-attr]
         rows = reaggregate_ratio(rows_1m, bucket_ms)
@@ -454,16 +463,22 @@ def build_volume_distribution_slice(
     dist_kwargs = {}
     if upper_bound_ms is not None:
         dist_kwargs["upper_bound_ms"] = upper_bound_ms
-    binning = trades_tbl.query_continuous_trade_volume_distribution(
-        engine.conn,
-        path=trades_path,
-        price_lo=price_min,
-        price_hi=price_max,
-        bins=range_count,
-        session_open_ms=session_open_ms,
-        session_close_ms=session_close_ms,
-        **dist_kwargs,
-        continuous_before_ms=continuous_before_ms,
+    # cutoff_ms is in the key: cutoff sidecars bypass the cache and each cutoff
+    # yields a different (upper-bounded) distribution, so they must NOT coalesce
+    # with each other or with the normal (cutoff=None) result.
+    binning = SLICE_COALESCER.run(
+        ("vdist", code, date, source, range_count, price_min, price_max, cutoff_ms),
+        lambda: trades_tbl.query_continuous_trade_volume_distribution(
+            engine.conn,
+            path=trades_path,
+            price_lo=price_min,
+            price_hi=price_max,
+            bins=range_count,
+            session_open_ms=session_open_ms,
+            session_close_ms=session_close_ms,
+            **dist_kwargs,
+            continuous_before_ms=continuous_before_ms,
+        ),
     )
     result = DayVolumeDistribution(
         date=date,
@@ -517,7 +532,10 @@ def build_fill_strength_slice(
     if _indicator_cacheable(cache, today_kst, date, bucket_ms):
         rows_1m = cache.get_fill(code, date, source)  # type: ignore[union-attr]
         if rows_1m is None:
-            rows_1m = _query_fill_rows(engine, code_dir, _ONE_MINUTE_MS)
+            rows_1m = SLICE_COALESCER.run(
+                ("fill", code, date, source),
+                lambda: _query_fill_rows(engine, code_dir, _ONE_MINUTE_MS),
+            )
             if rows_1m is None:
                 return FillStrength(bucket_ms=bucket_ms, points=[])
             cache.store_fill(code, date, source, rows_1m)  # type: ignore[union-attr]
@@ -908,15 +926,18 @@ def build_trade_volume_poc_slice(
         )
         if cached is not CACHE_MISS:
             return cached  # type: ignore[return-value]
-    row = trades_tbl.query_trade_volume_poc(
-        engine.conn,
-        path=trades_path,
-        price_lo=price_min,
-        price_hi=price_max,
-        bins=range_count,
-        session_open_ms=session_open_ms,
-        session_close_ms=session_close_ms,
-        continuous_before_ms=continuous_before_ms,
+    row = SLICE_COALESCER.run(
+        ("poc", code, date, source, range_count, price_min, price_max),
+        lambda: trades_tbl.query_trade_volume_poc(
+            engine.conn,
+            path=trades_path,
+            price_lo=price_min,
+            price_hi=price_max,
+            bins=range_count,
+            session_open_ms=session_open_ms,
+            session_close_ms=session_close_ms,
+            continuous_before_ms=continuous_before_ms,
+        ),
     )
     if row is None:
         if cacheable:
@@ -982,11 +1003,14 @@ def build_depth_heatmap_slice(
         cached = cache.get_depth(code, date, source, bucket_ms)  # type: ignore[union-attr]
         if cached is not CACHE_MISS:
             return cached  # type: ignore[return-value]
-    rows = snapshots_tbl.query_bucketed_depth_heatmap(
-        engine.conn,
-        path=path_obj,
-        bucket_ms=bucket_ms,
-        session_close_ms=session_close_ms,
+    rows = SLICE_COALESCER.run(
+        ("depth", code, date, source, bucket_ms),
+        lambda: snapshots_tbl.query_bucketed_depth_heatmap(
+            engine.conn,
+            path=path_obj,
+            bucket_ms=bucket_ms,
+            session_close_ms=session_close_ms,
+        ),
     )
     out: list[DepthHeatmapPoint] = []
     for r in rows:
@@ -1028,8 +1052,11 @@ def _first_trailing_single_price_book_hhmmssms(
         cached = cache.get_continuous_before(code, date, source, int(session_close_ms))  # type: ignore[union-attr]
         if cached is not CACHE_MISS:
             return cached  # type: ignore[return-value]
-    result = _compute_first_trailing_single_price_book_hhmmssms(
-        engine, code=code, date=date, source=source, session_close_ms=session_close_ms
+    result = SLICE_COALESCER.run(
+        ("continuous", code, date, source, int(session_close_ms)),
+        lambda: _compute_first_trailing_single_price_book_hhmmssms(
+            engine, code=code, date=date, source=source, session_close_ms=session_close_ms
+        ),
     )
     if cacheable:
         cache.store_continuous_before(code, date, source, int(session_close_ms), result)  # type: ignore[union-attr]

@@ -54,29 +54,30 @@ class _Flight(Generic[T]):
         self.error: BaseException | None = None
 
 
-class PeakSliceGuard:
-    """Semaphore + single-flight around a heavy compute keyed by a hashable.
+class SliceCoalescer:
+    """Per-key single-flight (no concurrency cap) around a compute keyed by a
+    hashable.
 
-    A module-level default instance is used in production; tests construct their
-    own with an explicit ``concurrency`` for deterministic assertions.
+    Concurrent callers sharing ``key`` execute ``compute`` exactly once and all
+    receive that result (or all re-raise its exception). Retains nothing past
+    the in-flight window, so it adds zero staleness — the same contract the
+    dual-peak guard relies on to honour "today is never cached".
+
+    This is the plain single-flight the cheap per-day ``/api/range`` slice
+    queries (ratio/fill/depth/poc/vdist/broker_late/continuous) use to collapse
+    the concurrent-overlap duplication of a cumulative deep-scroll burst: nested
+    ``[from, today]`` ranges share days, so each day's parquet compute runs once
+    and the losers re-read the now-warm ``PastIndicatorsCache``. Unlike
+    ``PeakSliceGuard`` it deliberately adds NO semaphore — these are ordinary
+    GROUP-BY reads, not the ~17GB dual-peak, so capping them would needlessly
+    serialize legitimate wide-range first-touch work.
     """
 
-    def __init__(self, concurrency: int | None = None) -> None:
-        self._sem = threading.BoundedSemaphore(
-            concurrency
-            if concurrency is not None
-            else _resolve_concurrency("HOGA_PEAK_QUERY_CONCURRENCY", DEFAULT_CONCURRENCY)
-        )
+    def __init__(self) -> None:
         self._inflight_lock = threading.Lock()
         self._inflight: dict[Hashable, _Flight] = {}
 
     def run(self, key: Hashable, compute: Callable[[], T]) -> T:
-        """Run ``compute`` under the guard.
-
-        Concurrent callers sharing ``key`` execute ``compute`` exactly once and
-        all receive that result (or all re-raise its exception). The number of
-        distinct keys computing at any instant is capped by the semaphore.
-        """
         with self._inflight_lock:
             flight = self._inflight.get(key)
             leader = flight is None
@@ -92,8 +93,7 @@ class PeakSliceGuard:
             return flight.result  # type: ignore[return-value]
 
         try:
-            with self._sem:
-                result = compute()
+            result = self._run_leader(compute)
             flight.result = result
             return result
         except BaseException as exc:  # noqa: BLE001 - re-raised to followers + caller
@@ -104,6 +104,37 @@ class PeakSliceGuard:
                 self._inflight.pop(key, None)
             flight.done.set()
 
+    def _run_leader(self, compute: Callable[[], T]) -> T:
+        """Leader-only execution hook. Base = run ``compute`` directly;
+        ``PeakSliceGuard`` overrides to wrap it in its concurrency semaphore."""
+        return compute()
+
+
+class PeakSliceGuard(SliceCoalescer):
+    """``SliceCoalescer`` plus a process-wide concurrency cap for the heavy dual
+    ask/bid peak query (see module docstring — load-bearing OOM mitigation).
+
+    A module-level default instance is used in production; tests construct their
+    own with an explicit ``concurrency`` for deterministic assertions.
+    """
+
+    def __init__(self, concurrency: int | None = None) -> None:
+        super().__init__()
+        self._sem = threading.BoundedSemaphore(
+            concurrency
+            if concurrency is not None
+            else _resolve_concurrency("HOGA_PEAK_QUERY_CONCURRENCY", DEFAULT_CONCURRENCY)
+        )
+
+    def _run_leader(self, compute: Callable[[], T]) -> T:
+        with self._sem:
+            return compute()
+
 
 # Process-wide default guard for the dual ask/bid peak query.
 GUARD = PeakSliceGuard()
+
+# Process-wide single-flight for the cheap per-day slice queries (ratio, fill,
+# depth, poc, vdist, broker_late, continuous, single-peak fallback). Collapses
+# the concurrent overlapping-day duplication of a cumulative deep-scroll burst.
+SLICE_COALESCER = SliceCoalescer()

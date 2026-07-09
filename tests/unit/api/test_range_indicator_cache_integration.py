@@ -16,6 +16,8 @@ bucket bypasses the cache (cannot re-aggregate finer than 1m).
 from __future__ import annotations
 
 import json
+import threading
+import time
 from pathlib import Path
 
 import polars as pl
@@ -124,6 +126,46 @@ def test_warmed_cache_serves_coarser_without_requerying(tmp_path: Path, monkeypa
     monkeypatch.setattr(snapshots_tbl, "query_bucketed_ratio", _boom)
     served_3m = _ratio(engine, B3, cache=cache, today=FUTURE)
     assert served_3m == oracle_3m
+
+
+def test_concurrent_same_key_coalesces_raw_query(tmp_path: Path, monkeypatch) -> None:
+    # Two threads deep-scrolling overlapping ranges hit the same (code, date) on a
+    # COLD cache. SLICE_COALESCER must collapse them: the raw parquet query runs
+    # ONCE and the follower reads the leader's result (the concurrent-overlap
+    # duplication this fix targets). Without the coalescer both would query.
+    engine = _engine_with_day(tmp_path)
+    cache = engine.indicators_cache
+    real = snapshots_tbl.query_bucketed_ratio
+    calls = [0]
+    entered = threading.Event()
+    release = threading.Event()
+
+    def gated(*a, **k):
+        calls[0] += 1
+        entered.set()
+        assert release.wait(timeout=2)
+        return real(*a, **k)
+
+    monkeypatch.setattr(snapshots_tbl, "query_bucketed_ratio", gated)
+    results = []
+
+    def worker():
+        results.append(_ratio(engine, B3, cache=cache, today=FUTURE))
+
+    leader = threading.Thread(target=worker)
+    leader.start()
+    # Leader has entered the (gated) query → its flight is registered, so the
+    # second thread is guaranteed to arrive as a follower.
+    assert entered.wait(timeout=2)
+    follower = threading.Thread(target=worker)
+    follower.start()
+    time.sleep(0.05)  # let the follower reach the flight wait
+    release.set()
+    leader.join(timeout=2)
+    follower.join(timeout=2)
+
+    assert calls[0] == 1  # one raw query served both concurrent requests
+    assert results[0] == results[1]
 
 
 def test_today_is_not_cached(tmp_path: Path) -> None:
