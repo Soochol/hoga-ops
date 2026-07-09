@@ -285,6 +285,12 @@ class CaptureProgress(BaseModel):
     frontier_ms: int  # Unix epoch ms per ADR-0003 (converted from HHMMSSmmm)
     estimate_pct: int  # 0..98 — backend-computed (see spec §5.5)
     elapsed_ms: int
+    # Upstream-health telemetry (mirrors collector ProgressEvent): rolling
+    # median wall-ms of recent first.php fetches + cumulative 429 count.
+    # High p50 with zero 429s = hogaplay itself is slow (not our backoff).
+    # Defaults keep restored manifests and legacy emitters parseable.
+    recent_http_p50_ms: float | None = None
+    throttled_pages: int = 0
 
 
 class CaptureResult(BaseModel):

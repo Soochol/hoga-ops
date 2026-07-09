@@ -30,6 +30,15 @@ export function CaptureQueueRow({
   const descriptor = getPhase(item.phase);
   const showCancel = !descriptor.terminal;
   const showRetry = item.phase === 'failed';
+  // Upstream-health badges (running rows only). Slow-but-no-429 = hogaplay
+  // itself is slow (measured 2026-07-09: 30ms/page days vs 500–1600ms/page
+  // days with zero 429s) — without this signal the user can't tell why a
+  // capture crawls. 300ms cleanly separates the two regimes.
+  const httpP50 = item.progress?.recent_http_p50_ms ?? null;
+  const throttledPages = item.progress?.throttled_pages ?? 0;
+  const showSlowUpstream = !descriptor.terminal && throttledPages === 0
+    && httpP50 !== null && httpP50 > 300;
+  const showThrottled = !descriptor.terminal && throttledPages > 0;
 
   const onKeyDown = (e: React.KeyboardEvent<HTMLDivElement>) => {
     if (e.key === 'Enter' || e.key === ' ') {
@@ -69,6 +78,22 @@ export function CaptureQueueRow({
           )}
           {isFromInventory && (
             <StatusBadge tone="dim" title="Triggered from inventory re-capture" className="flex-none">inventory</StatusBadge>
+          )}
+          {showSlowUpstream && (
+            <span data-testid="queue-row-slow-upstream" className="flex-none">
+              <StatusBadge
+                tone="warn"
+                title={`hogaplay 응답 지연 — 최근 페이지 p50 ${Math.round(httpP50!)}ms (429 아님). 서버 쪽 지연이라 한산한 시간대(장 마감 후) 재시도 권장.`}
+              >지연</StatusBadge>
+            </span>
+          )}
+          {showThrottled && (
+            <span data-testid="queue-row-throttled" className="flex-none">
+              <StatusBadge
+                tone="warn"
+                title={`hogaplay 429 스로틀 ${throttledPages}회 — 자동 백오프로 감속 중.`}
+              >429×{throttledPages}</StatusBadge>
+            </span>
           )}
         </span>
         <span style={{ background: descriptor.chipColor }} className="py-[0.1rem] px-xs rounded-md text-fg-dim">

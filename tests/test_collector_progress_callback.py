@@ -101,3 +101,59 @@ def test_cancel_token_stops_loop(tmp_path: Path) -> None:
     raw_dir = tmp_path / "raw" / "20260520" / "005930"
     written = sorted(raw_dir.glob("first_*.tsv"))
     assert len(written) >= 1
+
+
+def test_on_progress_carries_http_telemetry(tmp_path: Path) -> None:
+    """Every progress event after the first fetch carries the rolling http p50
+    and a zero throttle count when no 429 occurred (upstream-health telemetry,
+    2026-07-09 slow-hogaplay investigation)."""
+    events: list[ProgressEvent] = []
+    client = _FakeClient()
+
+    collect_stock_date(
+        client=client,
+        code="005930",
+        date="20260520",
+        data_dir=tmp_path,
+        rate_limit_s=0.0,
+        on_progress=events.append,
+    )
+
+    assert events, "expected progress events"
+    for e in events:
+        assert e.recent_http_p50_ms is not None
+        assert e.recent_http_p50_ms >= 0
+        assert e.throttled_pages == 0
+
+
+def test_on_progress_counts_throttled_pages(tmp_path: Path) -> None:
+    """A 429 increments throttled_pages on subsequent progress events, so the
+    UI can distinguish 'we are backing off' from 'hogaplay is slow'."""
+    from hoga.collector.client import HogaplayHTTPError
+
+    class _ThrottleOnce(_FakeClient):
+        def __init__(self) -> None:
+            super().__init__()
+            self._throttled = False
+
+        def fetch_first(self, code: str, date: str, time_ms: int) -> str:
+            # Throttle exactly once, on the second fetch attempt.
+            if self.first_calls == 1 and not self._throttled:
+                self._throttled = True
+                raise HogaplayHTTPError("throttled", status_code=429)
+            return super().fetch_first(code, date, time_ms)
+
+    events: list[ProgressEvent] = []
+    collect_stock_date(
+        client=_ThrottleOnce(),
+        code="005930",
+        date="20260520",
+        data_dir=tmp_path,
+        rate_limit_s=0.0,
+        on_progress=events.append,
+    )
+
+    assert events, "expected progress events"
+    assert events[-1].throttled_pages == 1
+    # Events emitted after the throttle carry the cumulative count.
+    assert all(e.throttled_pages in (0, 1) for e in events)

@@ -1,4 +1,4 @@
-import type { CaptureError, QueueItem, UpstreamCode, ViolationWire } from '../api/types';
+import type { CaptureError, CaptureProgress, QueueItem, UpstreamCode, ViolationWire } from '../api/types';
 import { captureFinishedHints } from '../api/upstream-hints';
 import { unixMsToKSTClock } from '../util/time';
 import { TimingPanel } from './timing/TimingPanel';
@@ -28,6 +28,21 @@ function formatKstClock(unixMs: number | null): string {
   return unixMs === null ? '–' : unixMsToKSTClock(unixMs);
 }
 
+// "8.3 pages/s · http p50 45ms · 429 ×3" — upstream-health line for running
+// rows. pages/s comes from cumulative pages/elapsed; p50 & 429 mirror the
+// backend telemetry (see CaptureProgress in api/types.ts). Segments render
+// only when their datum exists so legacy payloads degrade to pages/s alone.
+function speedLine(progress: CaptureProgress): string {
+  const parts = [`${(progress.pages_done / (progress.elapsed_ms / 1000)).toFixed(1)} pages/s`];
+  if (progress.recent_http_p50_ms != null) {
+    parts.push(`http p50 ${Math.round(progress.recent_http_p50_ms)}ms`);
+  }
+  if ((progress.throttled_pages ?? 0) > 0) {
+    parts.push(`429 ×${progress.throttled_pages}`);
+  }
+  return parts.join(' · ');
+}
+
 export function CaptureRowDetail({ item }: { item: QueueItem }) {
   const timingId = `${item.code}:${item.date}`;
   const hasTiming = useCaptureTimings((s) => Boolean(s.timings[timingId]));
@@ -48,6 +63,14 @@ export function CaptureRowDetail({ item }: { item: QueueItem }) {
       <span className="text-fg tabular-nums">
         {formatKstClock(item.enqueued_at_ms)}
       </span>
+      {item.progress != null && item.progress.elapsed_ms > 0 && (
+        <>
+          <span>speed</span>
+          <span className="text-fg tabular-nums" data-testid="queue-row-detail-speed">
+            {speedLine(item.progress)}
+          </span>
+        </>
+      )}
       {item.error !== null && (
         <>
           <span className="text-error">error</span>

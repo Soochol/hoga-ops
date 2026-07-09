@@ -7,9 +7,11 @@ import datetime as dt
 import json
 import os
 import time as _time
+from collections import deque
 from collections.abc import Callable
 from dataclasses import dataclass
 from pathlib import Path
+from statistics import median
 from typing import Protocol
 
 from hoga.api.timeenc import HogaMs
@@ -43,6 +45,11 @@ DEFAULT_RATE_LIMIT_S = 0.05
 # Throttle-aware backoff constants — see spec §8.2.
 THROTTLE_BACKOFF_FACTOR = 2.0
 THROTTLE_BACKOFF_HOLD_PAGES = 10  # Open Question #3: revisit if Phase 2 says otherwise
+
+# Rolling window (pages) for the ProgressEvent.recent_http_p50_ms telemetry.
+# 30 pages ≈ 2.4s of wall time on a fast day — long enough to smooth jitter,
+# short enough to react to an upstream slowdown within one progress tick.
+RECENT_HTTP_WINDOW = 30
 # Only 429 surfaces here as-is. 503 is retried internally by HogaplayClient
 # (with exponential backoff) and only escapes as an "exhausted retries"
 # HogaplayHTTPError with status_code=None — caller-killing intentionally.
@@ -199,6 +206,14 @@ class ProgressEvent:
     pages_done: int
     events_seen: int
     frontier: HogaMs
+    # Upstream-health telemetry ("why is this capture slow?" observability).
+    # Median wall-ms of the last ≤ RECENT_HTTP_WINDOW first.php fetches, and
+    # the cumulative count of 429-throttled fetch attempts. Slow-but-not-
+    # throttled (p50 high, throttled==0) means hogaplay itself is slow —
+    # measured 2026-07-09: 30ms/page days vs 500–1600ms/page days with zero
+    # 429s. Defaults keep legacy emitters (tests, resume paths) valid.
+    recent_http_p50_ms: float | None = None
+    throttled_pages: int = 0
 
 
 def now_kst() -> dt.datetime:
@@ -388,6 +403,8 @@ def _page_step_loop(
     last_emitted_pages = -1
     iter_idx = 0
     backoff_remaining = 0  # countdown of pages held at doubled rate after a 429
+    recent_http_ms: deque[float] = deque(maxlen=RECENT_HTTP_WINDOW)
+    throttled_total = 0  # cumulative 429 fetch attempts this run
     # Retry-aware page boundary flag (S2): start True so the first iteration
     # opens PageTiming row 0; set False after the boundary is marked; set
     # True again only after a SUCCESSFUL store. On a 429 retry path we hit
@@ -420,8 +437,10 @@ def _page_step_loop(
                     raw_dir, body, page_idx=page_idx, seen_seqs=seen_seqs
                 )
             http_ms = (_time.perf_counter() - http_t0) * 1000
+            recent_http_ms.append(http_ms)
         except HogaplayHTTPError as e:
             if e.status_code in THROTTLED_STATUSES:
+                throttled_total += 1
                 if profile_path is not None:
                     marker = json.dumps({
                         "iter": iter_idx, "t_in": t_in,
@@ -492,6 +511,10 @@ def _page_step_loop(
                 pages_done=page_idx,
                 events_seen=len(seen_seqs),
                 frontier=HogaMs(decision.progress_t),
+                recent_http_p50_ms=(
+                    median(recent_http_ms) if recent_http_ms else None
+                ),
+                throttled_pages=throttled_total,
             ))
             last_emitted_t = decision.progress_t
             last_emitted_pages = page_idx
