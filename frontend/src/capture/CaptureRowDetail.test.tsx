@@ -156,3 +156,27 @@ describe('CaptureRowDetail UpstreamCode map-driven copy', () => {
     expect(screen.getByText(/cookie missing on page 5/)).toBeTruthy();
   });
 });
+
+describe('CaptureRowDetail speed line', () => {
+  it('renders pages/s from cumulative progress', () => {
+    // 12 pages / 5s = 2.4 pages/s (base fixture)
+    render(<CaptureRowDetail item={base} />);
+    const speed = screen.getByTestId('queue-row-detail-speed');
+    expect(speed.textContent).toContain('2.4 pages/s');
+  });
+
+  it('appends http p50 and 429 count when telemetry is present', () => {
+    render(<CaptureRowDetail item={{
+      ...base,
+      progress: { ...base.progress!, recent_http_p50_ms: 612.4, throttled_pages: 3 },
+    }} />);
+    const speed = screen.getByTestId('queue-row-detail-speed');
+    expect(speed.textContent).toContain('http p50 612ms');
+    expect(speed.textContent).toContain('429 ×3');
+  });
+
+  it('omits the speed row when there is no progress yet', () => {
+    render(<CaptureRowDetail item={{ ...base, progress: null }} />);
+    expect(screen.queryByTestId('queue-row-detail-speed')).toBeNull();
+  });
+});

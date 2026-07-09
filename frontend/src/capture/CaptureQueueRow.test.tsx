@@ -208,3 +208,69 @@ describe('CaptureQueueRow — Full Capture Count cell', () => {
     );
   });
 });
+
+describe('CaptureQueueRow — upstream-health badges', () => {
+  const progressBase = {
+    pages_done: 100, events_seen: 5000, frontier_ms: 0,
+    estimate_pct: 40, elapsed_ms: 60_000,
+  };
+
+  it('shows the 지연 badge when http p50 > 300ms with zero 429s', () => {
+    render(
+      <CaptureQueueRow
+        item={{ ...baseItem, phase: 'capturing',
+          progress: { ...progressBase, recent_http_p50_ms: 612, throttled_pages: 0 } }}
+        symbolName="삼성전자" onCancel={() => {}} onRetry={() => {}}
+      />,
+    );
+    const badge = screen.getByTestId('queue-row-slow-upstream');
+    expect(badge.textContent).toBe('지연');
+    expect(badge.querySelector('span')?.getAttribute('title')).toContain('612ms');
+  });
+
+  it('shows 429×N instead of 지연 when throttled_pages > 0', () => {
+    render(
+      <CaptureQueueRow
+        item={{ ...baseItem, phase: 'capturing',
+          progress: { ...progressBase, recent_http_p50_ms: 900, throttled_pages: 4 } }}
+        symbolName="삼성전자" onCancel={() => {}} onRetry={() => {}}
+      />,
+    );
+    expect(screen.queryByTestId('queue-row-slow-upstream')).toBeNull();
+    expect(screen.getByTestId('queue-row-throttled').textContent).toBe('429×4');
+  });
+
+  it('shows no badge on a fast capture (p50 <= 300ms, no 429)', () => {
+    render(
+      <CaptureQueueRow
+        item={{ ...baseItem, phase: 'capturing',
+          progress: { ...progressBase, recent_http_p50_ms: 45, throttled_pages: 0 } }}
+        symbolName="삼성전자" onCancel={() => {}} onRetry={() => {}}
+      />,
+    );
+    expect(screen.queryByTestId('queue-row-slow-upstream')).toBeNull();
+    expect(screen.queryByTestId('queue-row-throttled')).toBeNull();
+  });
+
+  it('shows no badge on legacy payloads without the telemetry fields', () => {
+    render(
+      <CaptureQueueRow
+        item={{ ...baseItem, phase: 'capturing', progress: progressBase }}
+        symbolName="삼성전자" onCancel={() => {}} onRetry={() => {}}
+      />,
+    );
+    expect(screen.queryByTestId('queue-row-slow-upstream')).toBeNull();
+    expect(screen.queryByTestId('queue-row-throttled')).toBeNull();
+  });
+
+  it('hides the badges once the row is terminal', () => {
+    render(
+      <CaptureQueueRow
+        item={{ ...baseItem, phase: 'done',
+          progress: { ...progressBase, recent_http_p50_ms: 612, throttled_pages: 0 } }}
+        symbolName="삼성전자" onCancel={() => {}} onRetry={() => {}}
+      />,
+    );
+    expect(screen.queryByTestId('queue-row-slow-upstream')).toBeNull();
+  });
+});

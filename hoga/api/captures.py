@@ -147,6 +147,11 @@ class QueueItemState:
     frontier: HogaMs = HogaMs(0)  # collector encoding (HHMMSSmmm); see ADR-0003
     elapsed_ms: int = 0
     estimate_pct: int = 0
+    # Upstream-health telemetry, copied from collector ProgressEvent (see
+    # orchestrator.ProgressEvent docstring). Surfaced on the wire so the queue
+    # UI can distinguish "hogaplay is slow" from "we are backing off on 429".
+    recent_http_p50_ms: float | None = None
+    throttled_pages: int = 0
     result: CaptureResult | None = None
     error: CaptureError | None = None
     skip_reason: SkipReason | None = None
@@ -166,6 +171,8 @@ class QueueItemState:
             frontier_ms=hhmmssms_to_unix_ms(self.date, self.frontier),
             estimate_pct=self.estimate_pct,
             elapsed_ms=self.elapsed_ms,
+            recent_http_p50_ms=self.recent_http_p50_ms,
+            throttled_pages=self.throttled_pages,
         )
 
     def event_header(self) -> dict[str, Any]:
@@ -575,6 +582,8 @@ def _apply_progress(state: QueueItemState, evt: ProgressEvent) -> None:
     state.pages_done = evt.pages_done
     state.events_seen = evt.events_seen
     state.frontier = evt.frontier
+    state.recent_http_p50_ms = evt.recent_http_p50_ms
+    state.throttled_pages = evt.throttled_pages
     state.elapsed_ms = int(time.time() * 1000) - (state.started_at_ms or 0)
     # Estimate: % of Data Window covered. HogaMs arithmetic returns int
     # (NewType subtraction is identity), so span/offset are plain ints.

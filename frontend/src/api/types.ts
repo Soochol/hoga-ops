@@ -169,6 +169,12 @@ export interface CaptureProgress {
   frontier_ms: number;       // Unix epoch ms per ADR-0003
   estimate_pct: number;
   elapsed_ms: number;
+  /** Rolling median wall-ms of recent first.php fetches. High with
+   *  throttled_pages===0 means hogaplay itself is slow (not our backoff).
+   *  Optional: absent on payloads from backends predating the field. */
+  recent_http_p50_ms?: number | null;
+  /** Cumulative 429-throttled fetch attempts this run. */
+  throttled_pages?: number;
 }
 
 export interface CaptureResult {

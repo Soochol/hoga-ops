@@ -1741,3 +1741,41 @@ def test_enqueue_blocked_default_field_for_unaffected_paths(monkeypatch, tmp_pat
         assert r.status_code == 201, r.text
         body = r.json()
         assert body["blocked"] == []
+
+
+def test_apply_progress_threads_upstream_health_telemetry():
+    """Upstream-health fields must flow ProgressEvent → state → wire progress.
+
+    This is the explicit-enumeration seam (evt → _apply_progress → to_progress)
+    where a new field silently drops if any hop is missed — the UI badge would
+    just never render, and no compiler catches it (ADR-0004 hand-mirror).
+    """
+    from hoga.collector.orchestrator import ProgressEvent
+    from hoga.api.timeenc import HogaMs
+
+    state = QueueItemState(
+        item_id="x-20260709",
+        code="005930",
+        date="20260709",
+        force_retry=False,
+        enqueued_at_ms=1_700_000_000_000,
+        started_at_ms=1_700_000_001_000,
+        phase="capturing",
+    )
+    evt = ProgressEvent(
+        code="005930",
+        date="20260709",
+        pages_done=42,
+        events_seen=1000,
+        frontier=HogaMs(90000000),
+        recent_http_p50_ms=612.5,
+        throttled_pages=3,
+    )
+    captures._apply_progress(state, evt)  # type: ignore[attr-defined]
+
+    assert state.recent_http_p50_ms == 612.5
+    assert state.throttled_pages == 3
+    progress = state.to_progress()
+    assert progress is not None
+    assert progress.recent_http_p50_ms == 612.5
+    assert progress.throttled_pages == 3
