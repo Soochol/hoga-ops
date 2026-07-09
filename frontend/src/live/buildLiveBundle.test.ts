@@ -159,37 +159,34 @@ describe('buildLiveBundle', () => {
       kisCandles: [],
       bucketMs: 60_000,
     });
+    // Today segment is present via the SSE orderbook signal (candle-driven policy
+    // no longer reads pastBundle.segments; today survives on live signal). Its
+    // source now follows the candle policy → kis_live, not the hoga segment tag.
     expect(bundle.segments.length).toBe(1);
-    expect(bundle.segments[0].source).toBe('hogaplay');
+    expect(bundle.segments[0].source).toBe('kis_live');
     expect(bundle.quote_ratio.points[0].ask_total).toBe(500);
   });
 
-  it('past-only with yesterday, SSE today → segments concatenated in date order', () => {
+  it('past candle date + SSE today → segments candle-driven in date order', () => {
     const yesterday = '20260526';
     const Y_OPEN = TODAY_OPEN - 86400_000;
-    const Y_CLOSE = Y_OPEN + 6.5 * 3600 * 1000;
-    const past = emptyRangeBundle({
-      segments: [
-        { date: yesterday, session_open_ms: Y_OPEN, session_close_ms: Y_CLOSE, source: 'kis_live' },
-      ],
-      candles: [
-        { ts_ms: Y_OPEN, open: 69000, close: 69500, high: 69600, low: 68900, vol_a: 800, vol_b: 0 },
-      ],
-    });
     const bundle = buildLiveBundle({
       code: '005930',
       todayDate: TODAY,
       todaySession: { open_ms: TODAY_OPEN, close_ms: TODAY_CLOSE },
-      pastBundle: past,
+      // pastBundle carries no segments — the yesterday divider must come from the
+      // candle set, not hoga coverage (candle-driven policy).
+      pastBundle: emptyRangeBundle({ segments: [] }),
       sseOb: [{ t_ms: TODAY_OPEN, total_ask_qty: 100, total_bid_qty: 80 }],
       sseTrade: [],
       kisCandles: [
+        { ts_ms: Y_OPEN, open: 69000, close: 69500, high: 69600, low: 68900, vol_a: 800, vol_b: 0 },
         { ts_ms: TODAY_OPEN, open: 70000, close: 70050, high: 70100, low: 69900, vol_a: 1000, vol_b: 0 },
       ],
       bucketMs: 60_000,
     });
     expect(bundle.segments.map((s) => s.date)).toEqual([yesterday, TODAY]);
-    expect(bundle.candles.map((c) => c.ts_ms)).toEqual([TODAY_OPEN]);
+    expect(bundle.candles.map((c) => c.ts_ms)).toEqual([Y_OPEN, TODAY_OPEN]);
   });
 
   it('past bundle with empty segments (backend empty-no-data response) → treated like null', () => {
@@ -319,11 +316,12 @@ describe('buildLiveBundle', () => {
     expect(withoutPeaks.bid_peaks).toEqual([]);
   });
 
-  it('synthesizes kis_live segments for past dates that KIS has but /api/range does not', () => {
-    // /api/range only knows 5/20. KIS past-candles covers 5/8 + 5/20 + 5/26.
-    // Without segment synthesis, VirtualAxis built from segments would only
-    // contain 5/20, and projectCandle's axis.contains filter would drop the
-    // 5/8 + 5/26 bars — that's the production bug surfaced by /investigate.
+  it('creates a segment for every candle date, independent of hoga coverage', () => {
+    // /api/range (hoga) only knows 5/20. The candle set covers 5/8 + 5/20 + 5/26.
+    // Every candle date must get a segment so VirtualAxis.contains keeps its bars
+    // and each day draws its Day-Boundary divider — regardless of which dates
+    // hoga captured (candle-driven policy; the /investigate 2026-05-28 bug where
+    // 5/8 + 5/26 bars were dropped for lacking a segment stays fixed).
     const ONE_DAY = 86400_000;
     const date520 = '20260520';
     const ms520_open = Date.UTC(2026, 4, 20, 0, 0, 0); // 09:00 KST = 00:00 UTC
@@ -350,11 +348,11 @@ describe('buildLiveBundle', () => {
       bucketMs: 60_000,
     });
     const dates = bundle.segments.map((s) => s.date);
-    // 5/8 (KIS-only) + 5/20 (hogaplay) + 5/26 (KIS-only). Ascending order.
+    // 5/8 + 5/20 + 5/26, ascending — one per candle date.
     expect(dates).toEqual(['20260508', '20260520', '20260526']);
-    expect(bundle.segments[0].source).toBe('kis_live');
-    expect(bundle.segments[1].source).toBe('hogaplay');
-    expect(bundle.segments[2].source).toBe('kis_live');
+    // Source follows the candle policy (buildLiveBundle passes no
+    // candleSourceByDate here → default kis_live for every candle date).
+    expect(bundle.segments.map((s) => s.source)).toEqual(['kis_live', 'kis_live', 'kis_live']);
   });
 });
 
