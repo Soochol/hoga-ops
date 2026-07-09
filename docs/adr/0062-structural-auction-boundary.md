@@ -121,3 +121,39 @@ re-anchor the display band to the structural boundary (or carry `is_auction` on 
 wire, per the v2 "모든 단일가 제외" follow-up).
 
 Reference: `docs/superpowers/specs/2026-06-03-auction-structural-boundary-design.md`.
+
+## Amendment — v2 (2026-07-09): 장중 VI를 계산·표시에서 통일 제외
+
+**Status:** accepted (2026-07-09)
+
+v1의 "closing-only" 범위를 넓혀 **장중 VI(단일가 붕괴) 붕괴책을 모든 호가 참조
+지표에서 제외**한다 — 피크·spot 대표(`query_bucket_representatives`)가 이미 쓰던
+per-row `_DEEP_BOOK_SQL`(4호가 이상 잔량) 술어로 호가비·총잔량·히트맵 대표선정을
+통일한다.
+
+### Layer 1 — 계산
+
+`pre_auction_pred`를 시간-only(`ts <= last_continuous_ms`)에서 **`_DEEP_BOOK_SQL AND
+ts <= last_continuous_ms`**로 바꾼다. 시간 경계는 마감 후 호가창 재확장(~15:30:14)
+유입을 계속 막고, per-row 구조 술어가 마감 이전의 VI 붕괴책까지 배제한다. 세션 바운드
+없음(`last_continuous_ms is None`, 집계 단위테스트/퇴화)은 기존 `TRUE` 폴백 유지.
+
+- 백엔드: `query_bucketed_ratio`, `query_bucketed_depth_heatmap` (`hoga/tables/snapshots.py`).
+- 프론트(3개 병렬 구현 모두 미러 — parity 계약): `bucketHogaSeries`,
+  `buildHogaSeries`/`bucketDepthHeatmap`, `createIncrementalHogaSeriesBuilder`
+  (`bucketHogaSeries.ts`, `buildLiveBundle.ts`). 대표 게이트에 `&& isContinuousBook(s)`.
+
+VI-only 버킷은 마감 동시호가와 동일하게 `(0,0)` 센티넬(호가비/총잔량) 또는 last-in-bucket
+raw(히트맵, 프론트 정규화)로 방출된다.
+
+### Layer 2 — 표시 (구조 마스크)
+
+v1 한계("clock mask가 VI (0,0)을 못 가림")를 해소한다. 표시 마스크를 시간-only에서
+**시간 OR 구조 센티넬**로 확장: 연속거래 책은 항상 양측 잔량 > 0이라 `(bid_total,
+ask_total) == (0,0)`이 배제 버킷을 유일 식별한다. `isExcludedQuoteBucket(mask, bid, ask)`
+를 호가비(`ratio.ts`)·총잔량(`quoteTotals.ts`) 프로젝터의 마스크 술어에 OR로 더해,
+마감 동시호가와 VI를 한 규칙으로 가린다(마스크 토글 OFF면 기존처럼 `(0,0)` 노출).
+체결강도는 체결 파생이라 VI 구간이 자연히 비어 별도 처리 불요.
+
+**두 계층은 함께 배포**해야 한다 — Layer 1만 있으면 VI `(0,0)`이 clock mask 밖에서
+평지로 노출되는 회귀(v1 한계와 동일)가 남는다.

@@ -86,11 +86,16 @@ export function bucketHogaSeries(
   // toggle (ADR-0062). The 0 point is kept so the mask / overlay band / day-
   // boundary connector handling stay intact. Mirrors query_bucketed_ratio's
   // CASE WHEN is_pre on the past-date path.
+  // ADR-0062 v2 (VI 통일): 대표선정에 시간 경계뿐 아니라 per-snapshot isContinuousBook도
+  // 요구해 **장중 VI 단일가 붕괴책**을 대표·Intra-Bar Max 누적에서 배제한다(백엔드
+  // _DEEP_BOOK_SQL 통일과 동일). VI-only 버킷은 아래 else의 0-센티넬로 방출되고,
+  // 연속거래가 섞인 버킷은 연속 스냅샷이 대표가 된다. asks/bids 미동반(totals-only)
+  // 스냅샷은 isContinuousBook이 true라 기존 폴백(붕괴 감지 불가 → 포함)이 유지된다.
   const quoteByBucket = new Map<number, QuoteRatioPoint>();
   const seenPre = new Set<number>();
   for (const s of obSorted) {
     const t = Math.floor(s.t_ms / bucketMs) * bucketMs;
-    if (s.t_ms <= lastContinuousMs) {
+    if (s.t_ms <= lastContinuousMs && isContinuousBook(s)) {
       // pre-auction: last continuous wins (close = bid_total/ask_total). Intra-Bar
       // Max fields accumulate over the SAME continuous-snapshot set (s.t_ms <=
       // lastContinuousMs) so 동시호가 is excluded identically and bid_max ≥ bid_total

@@ -18,7 +18,7 @@ import { useShallow } from 'zustand/react/shallow';
 import { useActivePrefs } from '../../state/chartPrefs';
 import type { PaneSpec } from '../RangeSeriesPane';
 import { addZeroBaselineGuide } from '../util/zeroBaseline';
-import { isAuctionHidden, BASELINE_HIDDEN_COLORS, maskOutgoingConnector } from '../util/auctionHide';
+import { isAuctionHidden, isExcludedQuoteBucket, BASELINE_HIDDEN_COLORS, maskOutgoingConnector } from '../util/auctionHide';
 import { makePastCachedProjector } from './pastCachedProjector';
 import { projectBrokerLateEntryMarkers } from './brokerLateEntryMarkers';
 import { quoteRatioPointsForBundle, quoteRatioPointsForSlice } from './quoteRatioPoints';
@@ -114,7 +114,11 @@ export function projectRatioPoints(
     // outlier check is intentional: a hidden point has no value to clamp.
     // Break the connector from the last pre-auction point so the baseline
     // doesn't slope into the window.
-    if (isAuctionHidden(axis, ctx.auctionWindowMask, p.t)) {
+    // 시간 마스크(마감 동시호가) OR 구조 센티넬(장중 VI 포함, (0,0)) — ADR-0062 v2.
+    if (
+      isAuctionHidden(axis, ctx.auctionWindowMask, p.t) ||
+      isExcludedQuoteBucket(ctx.auctionWindowMask, p.bid_total, p.ask_total)
+    ) {
       maskOutgoingConnector(out, BASELINE_HIDDEN_COLORS);
       out.push({ time, value: 0, ...BASELINE_HIDDEN_COLORS });
       continue;

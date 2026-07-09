@@ -174,7 +174,9 @@ export function bucketDepthHeatmap(
   >();
   const order: number[] = [];
   for (const s of obSorted) {
-    if (s.t_ms > lastContinuousMs) continue;
+    // ADR-0062 v2 (VI 통일): 시간 경계 + per-snapshot isContinuousBook — 장중 VI 붕괴책을
+    // depth 대표에서도 배제(quote 경로·incremental builder와 동일 규칙, parity 유지).
+    if (s.t_ms > lastContinuousMs || !isContinuousBook(s)) continue;
     if (!s.asks || !s.bids) continue;
     const t = bucketStartMs(s.t_ms, bucketMs);
     const curTotal = s.total_bid_qty + s.total_ask_qty;
@@ -355,7 +357,10 @@ class IncrementalHogaBucketer {
     const threshold = this.continuousBoundaryMs ?? Number.POSITIVE_INFINITY;
     for (const s of obs) {
       const t = bucketStartMs(s.t_ms, this.bucketMs);
-      if (s.t_ms <= threshold) {
+      // ADR-0062 v2 (VI 통일): bucketHogaSeries와 동일하게 시간 경계뿐 아니라
+      // per-snapshot isContinuousBook도 요구해 장중 VI 붕괴책을 대표선정에서 배제한다
+      // (parity 계약 유지). VI-only 버킷은 아래 else의 0-센티넬로 방출.
+      if (s.t_ms <= threshold && isContinuousBook(s)) {
         const prev = this.quoteByBucket.get(t);
         const bid_max = Math.max(prev?.bid_max ?? 0, s.total_bid_qty);
         const ask_max = Math.max(prev?.ask_max ?? 0, s.total_ask_qty);

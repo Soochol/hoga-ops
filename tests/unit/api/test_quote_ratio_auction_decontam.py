@@ -184,19 +184,24 @@ def test_after_hours_continuous_excluded_by_close_bound(tmp_path: Path) -> None:
     assert (qr.points[0].bid_total, qr.points[0].ask_total) == (11, 21)
 
 
-def test_intraday_vi_run_retained(tmp_path: Path) -> None:
-    # v1 = closing-only. An intraday VI single-price run (3-level at 11:39/11:40)
-    # sits before last_continuous_ms (~15:19) so it is classified pre-auction and
-    # RETAINED (its 3-level value is kept — documented v1 trade-off).
+def test_intraday_vi_run_excluded(tmp_path: Path) -> None:
+    # ADR-0062 v2 (VI 통일): 장중 VI 단일가 붕괴책(3-level, 11:39/11:40)은 이제 마감
+    # 동시호가와 동일하게 `_DEEP_BOOK_SQL`로 구조적 배제된다 — 붕괴값 (11,21)/(12,22)이
+    # 호가비 계산에 들어가지 않고, VI-only 버킷은 (0,0) 센티넬로 방출된다(피크와 동일 술어).
     snaps = [
-        (_hms_unix(11, 39, 0), 11, 21, False),   # VI 3-level
-        (_hms_unix(11, 40, 0), 12, 22, False),   # VI 3-level (last in its bucket)
+        (_hms_unix(11, 39, 0), 11, 21, False),   # VI 3-level → excluded
+        (_hms_unix(11, 40, 0), 12, 22, False),   # VI 3-level → excluded
         (_hms_unix(15, 19, 0), 50, 60, True),    # continuous → threshold anchor
         (_hms_unix(15, 20, 30), 99, 98, False),  # closing auction → excluded
     ]
     qr = _slice(_engine(tmp_path, snaps, CLOSE_FULL), BUCKET_3M, CLOSE_FULL)
-    vi_bucket = [p for p in qr.points if p.bid_total == 12 and p.ask_total == 22]
-    assert vi_bucket, "intraday VI bucket must be retained (closing-only v1)"
+    values = {(p.bid_total, p.ask_total) for p in qr.points}
+    assert (11, 21) not in values, "VI 3-level book must be excluded (ADR-0062 v2)"
+    assert (12, 22) not in values, "VI 3-level book must be excluded (ADR-0062 v2)"
+    # VI-only 버킷은 마감 동시호가와 동일하게 (0,0) 센티넬로 방출(슬롯 보존).
+    assert (0, 0) in values
+    # 연속거래 버킷은 그대로 대표값 유지.
+    assert (50, 60) in values
 
 
 def _write_multi(path: Path, snaps: list[tuple[int, int, int]]) -> None:

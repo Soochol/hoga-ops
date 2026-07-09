@@ -1,6 +1,7 @@
 import { describe, it, expect, vi } from 'vitest';
 import {
   isAuctionHidden,
+  isExcludedQuoteBucket,
   TRANSPARENT,
   LINE_HIDDEN_COLOR,
   BASELINE_HIDDEN_COLORS,
@@ -24,6 +25,22 @@ describe('isAuctionHidden', () => {
   it('returns true when mask is on and axis predicate is true', () => {
     const axis: AxisLike = { inClosingAuctionWindow: () => true };
     expect(isAuctionHidden(axis, true, 1_700_000_000_000)).toBe(true);
+  });
+});
+
+describe('isExcludedQuoteBucket (ADR-0062 v2 — 구조 마스크)', () => {
+  it('마스크 ON + (0,0) 센티넬 → true (장중 VI/마감 동시호가 배제 버킷)', () => {
+    expect(isExcludedQuoteBucket(true, 0, 0)).toBe(true);
+  });
+
+  it('마스크 ON이라도 한쪽만 0(정상 일방 호가)이면 false', () => {
+    expect(isExcludedQuoteBucket(true, 0, 100)).toBe(false);
+    expect(isExcludedQuoteBucket(true, 100, 0)).toBe(false);
+    expect(isExcludedQuoteBucket(true, 50, 60)).toBe(false);
+  });
+
+  it('마스크 OFF면 (0,0)이라도 false (토글 OFF는 (0,0) 그대로 노출)', () => {
+    expect(isExcludedQuoteBucket(false, 0, 0)).toBe(false);
   });
 });
 

@@ -127,6 +127,22 @@ describe('bucketHogaSeries', () => {
     });
   });
 
+  it('excludes an intraday VI collapse from a mixed bucket — continuous wins (ADR-0062 v2)', () => {
+    const BUCKET = 60_000;
+    const base = Math.floor(1_700_000_000_000 / BUCKET) * BUCKET;
+    const sessionCloseMs = base + 3_600_000; // 마감 멀리 — lastContinuous를 마감 근처로.
+    const ob = [
+      cont(base + 10_000, 50, 60),   // 연속거래(deep) — 버킷 `base`
+      auc(base + 30_000, 41, 31),    // 같은 버킷의 **시간상 더 늦은** 장중 VI 붕괴책
+      cont(base + 120_000, 70, 80),  // 연속거래 앵커 → lastContinuousMs (VI는 그 이전)
+    ];
+    const { quoteRatioPoints } = bucketHogaSeries(ob, [], BUCKET, sessionCloseMs);
+    const viBucket = quoteRatioPoints.find((p) => p.t === base)!;
+    // 대표 = 연속거래(50,60), 시간상 늦은 VI 붕괴책(41,31) 아님.
+    expect(viBucket.ask_total).toBe(50);
+    expect(viBucket.bid_total).toBe(60);
+  });
+
   it('out-of-order input is sorted before bucketing', () => {
     const ob = [
       { t_ms: 1700_000_070_000, total_ask_qty: 300, total_bid_qty: 95 },

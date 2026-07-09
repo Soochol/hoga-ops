@@ -1,6 +1,7 @@
 import { describe, it, expect } from 'vitest';
 import { projectBid, projectAsk, QUOTE_TOTALS_SPEC, askSurgeMarkers } from './quoteTotals';
 import { createVirtualAxis } from '../../util/virtualAxis';
+import { LINE_HIDDEN_COLOR } from '../util/auctionHide';
 
 const sessionOpenMs = 1_779_062_400_000;
 const axis = createVirtualAxis([
@@ -36,6 +37,24 @@ describe('projectBid', () => {
     };
     expect(projectBid(bundle, axis, false)).toHaveLength(1);
     expect((projectBid(bundle, axis, false) as { time: number; value: number }[])[0].value).toBe(100);
+  });
+
+  it('masks a mid-session (0,0) excluded bucket (장중 VI) when mask on, shows it when off (ADR-0062 v2)', () => {
+    const bundle: any = {
+      quote_ratio: {
+        points: [
+          { t: sessionOpenMs, bid_total: 100, ask_total: 200 },        // 연속거래
+          { t: sessionOpenMs + 1000, bid_total: 0, ask_total: 0 },     // VI 배제 버킷(장중, 마감창 아님)
+          { t: sessionOpenMs + 2000, bid_total: 150, ask_total: 180 },
+        ],
+      },
+    };
+    // mask ON: 구조 센티넬로 (0,0) 점이 숨김색(transparent)으로 마스킹된다.
+    const masked = projectBid(bundle, axis, true) as any[];
+    expect(masked[1]).toMatchObject({ time: 1, value: 0, ...LINE_HIDDEN_COLOR });
+    // mask OFF: (0,0)을 그대로 노출(숨김색 아님).
+    const shown = projectBid(bundle, axis, false) as any[];
+    expect(shown[1]).toEqual({ time: 1, value: 0, color: bid });
   });
 });
 
