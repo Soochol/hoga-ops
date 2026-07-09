@@ -36,9 +36,9 @@ const EMPTY_BUNDLE: RangeBundle = {
 };
 
 function renderBar(
-  props: { activeCode: string | null; captureHealthy: boolean; captureReason: string; bundle: RangeBundle | null; venue?: LiveVenueOption; hogaGapDates?: readonly string[] },
+  props: { activeCode: string | null; captureHealthy: boolean; captureReason: string; bundle: RangeBundle | null; venue?: LiveVenueOption; hogaGapDates?: readonly string[]; liveTradePrice?: number | null },
   watchlistCodes: string[] = [],
-  quote?: { price: number; change_pct: number | null; change_won: number | null },
+  quote?: { price: number; change_pct: number | null; change_won: number | null; stale?: boolean },
   liveSet: string[] = [],
 ) {
   const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } });
@@ -73,6 +73,7 @@ function renderBar(
         bundle={props.bundle}
         venue={props.venue}
         hogaGapDates={props.hogaGapDates}
+        liveTradePrice={props.liveTradePrice}
       />
     </QueryClientProvider>,
   );
@@ -100,7 +101,7 @@ describe('LiveStatusBar', () => {
     expect(screen.getByTestId('live-status-bar').textContent).toContain('대기 중');
   });
 
-  it('shows latest candle close price when data is available', () => {
+  it('shows latest candle close price when data is available (no trade/quote)', () => {
     const bundle: RangeBundle = {
       ...EMPTY_BUNDLE,
       candles: [
@@ -109,6 +110,41 @@ describe('LiveStatusBar', () => {
       ],
     };
     renderBar({ activeCode: '005930', captureHealthy: true, captureReason: 'healthy', bundle });
+    expect(screen.getByTestId('live-current-price').textContent).toContain('71,200');
+  });
+
+  it('prefers liveTradePrice over candle close (하드닝: WS 체결 우선)', () => {
+    const bundle: RangeBundle = {
+      ...EMPTY_BUNDLE,
+      candles: [{ ts_ms: 2000, open: 70500, high: 72000, low: 70000, close: 71200, vol_a: 1500, vol_b: 0 }],
+    };
+    renderBar({ activeCode: '005930', captureHealthy: true, captureReason: 'healthy', bundle, liveTradePrice: 71800 });
+    expect(screen.getByTestId('live-current-price').textContent).toContain('71,800');
+  });
+
+  it('falls back to quote.price when no liveTradePrice (D/W/M·체결 뜸)', () => {
+    const bundle: RangeBundle = {
+      ...EMPTY_BUNDLE,
+      candles: [{ ts_ms: 2000, open: 70500, high: 72000, low: 70000, close: 71200, vol_a: 1500, vol_b: 0 }],
+    };
+    renderBar(
+      { activeCode: '005930', captureHealthy: true, captureReason: 'healthy', bundle },
+      ['005930'],
+      { price: 71500, change_pct: 0.4, change_won: 300 },
+    );
+    expect(screen.getByTestId('live-current-price').textContent).toContain('71,500');
+  });
+
+  it('ignores stale quote.price and falls back to candle close', () => {
+    const bundle: RangeBundle = {
+      ...EMPTY_BUNDLE,
+      candles: [{ ts_ms: 2000, open: 70500, high: 72000, low: 70000, close: 71200, vol_a: 1500, vol_b: 0 }],
+    };
+    renderBar(
+      { activeCode: '005930', captureHealthy: true, captureReason: 'healthy', bundle },
+      ['005930'],
+      { price: 99999, change_pct: 0.4, change_won: 300, stale: true },
+    );
     expect(screen.getByTestId('live-current-price').textContent).toContain('71,200');
   });
 

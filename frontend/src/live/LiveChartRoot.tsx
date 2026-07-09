@@ -50,6 +50,7 @@ import { useLiveAxisStore } from './useLiveAxisStore';
 import MovingAverageOverlay from './indicators/MovingAverageOverlay';
 import DailyMovingAverageOverlay from './indicators/DailyMovingAverageOverlay';
 import LiveCurrentPriceLine from './LiveCurrentPriceLine';
+import { freshLiveTradePrice } from './deriveCurrentPriceLine';
 import type { ObSnapshot, TradeSnapshot } from './bucketHogaSeries';
 import LiveAskPeakSegments, { buildAskPeakOverlaySegments } from './LiveAskPeakSegments';
 import LiveBidPeakSegments, { buildBidPeakOverlaySegments } from './LiveBidPeakSegments';
@@ -1145,6 +1146,11 @@ export function LiveChartRoot({
     && (liveObSnapshots.length > 0 || liveTradeSnapshots.length > 0 || todayAskPeakInput !== null);
   const canRecomputeBidCutoff = !!bidVisibleTimeCutoffForRender
     && (liveObSnapshots.length > 0 || liveTradeSnapshots.length > 0 || todayBidPeakInput !== null);
+  // 현재가 라인용 fresh 체결가 — live.trade 를 number|null 로 환원해 memo'd
+  // LiveCurrentPriceLine 에 프리미티브로 전달(재구독·per-tick churn 없음). LiveChartRoot
+  // 는 SSE 틱마다 재렌더되므로 Date.now() 기반 재평가 주기가 충분하다. index 뷰는
+  // liveTradeSnapshots 가 빈 배열이라 null → deriveCurrentPriceLine 이 캔들 종가로 폴백.
+  const liveTradePrice = freshLiveTradePrice(liveTradeSnapshots, venue, Date.now());
   const historicalAskSeeds = useMemo(
     () => dayAskPeaks.filter((peak) => peak.date !== todayKst),
     [dayAskPeaks, todayKst],
@@ -1680,7 +1686,7 @@ export function LiveChartRoot({
               <DailyMovingAverageOverlay chart={chart} bundle={cb} axis={axis} code={code} timeframe={timeframe} venue={venue} todayKst={todayKst} dailyCandleKisEnabled={dailyCandleKisEnabled} override={dailyMovingAverageOverride} />
             </>
           )}
-          <LiveCurrentPriceLine paneSeries={paneSeries} bundle={cb} code={code} />
+          <LiveCurrentPriceLine paneSeries={paneSeries} bundle={cb} code={code} liveTradePrice={liveTradePrice} />
           {isMinuteTimeframe(timeframe) && (
             <LiveAskPeakSegments
               paneSeries={paneSeries}

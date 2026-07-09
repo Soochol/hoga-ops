@@ -24,6 +24,7 @@ import type { ObSnapshot, TradeSnapshot } from './bucketHogaSeries';
 import type { TabViewport } from './viewportAnchor';
 import { initialHistoricalDaysFor, subtractDaysKst, todayKstYyyymmdd } from './liveDateTime';
 import { useLiveVenueStore } from '../state/liveVenue';
+import { freshLiveTradePrice } from './deriveCurrentPriceLine';
 import {
   clearCurrentStudySaveSource,
   setCurrentStudySaveSource,
@@ -290,6 +291,10 @@ export function LivePage() {
     }
     return next;
   }, [tabMetricByCode, tabs]);
+  // 상태바 현재가용 fresh 체결가 — 타임프레임 무관(live.trade 는 code 단위 구독).
+  // D/W/M 에서도 라인/상태바가 실시간 체결을 반영하게 하는 하드닝. LiveChartRoot 도
+  // 같은 순수함수를 별도 계산하지만 값이 동일해 "라인=상태바" invariant 를 유지한다.
+  const liveTradePrice = freshLiveTradePrice(live.trade, liveVenue, Date.now());
   const askPeakOb = isMinuteTimeframe(timeframe) ? live.ob : EMPTY_OB_SNAPSHOTS;
   const askPeakTrade = isMinuteTimeframe(timeframe) ? live.trade : EMPTY_TRADE_SNAPSHOTS;
   const askPeakSeeds = (stockChartBundle ?? stockBundle)?.ask_peaks ?? EMPTY_ASK_PEAKS;
@@ -422,6 +427,7 @@ export function LivePage() {
         bundle={workareaBundle}
         venue={liveVenue}
         hogaGapDates={hogaCoverageGapDates}
+        liveTradePrice={liveTradePrice}
       />
       <LiveWorkarea
         activeCode={workareaCode}

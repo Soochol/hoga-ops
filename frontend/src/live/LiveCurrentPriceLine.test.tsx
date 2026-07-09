@@ -2,7 +2,11 @@ import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { render, cleanup } from '@testing-library/react';
 
 // useQuoteByCode 를 모킹해 react-query/네트워크 없이 quote 를 직접 주입.
-vi.mock('../api/liveQuotes', () => ({ useQuoteByCode: vi.fn(() => new Map()) }));
+// isStaleLiveQuote 는 deriveCurrentPriceLine 이 실제로 쓰므로 원본 동작을 유지한다.
+vi.mock('../api/liveQuotes', () => ({
+  useQuoteByCode: vi.fn(() => new Map()),
+  isStaleLiveQuote: (q: { stale?: boolean } | undefined) => q?.stale === true,
+}));
 import { useQuoteByCode } from '../api/liveQuotes';
 import LiveCurrentPriceLine from './LiveCurrentPriceLine';
 import { resolveTokens } from '../util/tokens';
@@ -75,6 +79,23 @@ describe('LiveCurrentPriceLine', () => {
     mockUseQuoteByCode.mockReturnValue(quoteMap({ change_won: -300, change_pct: -0.4 }));
     rerender(<LiveCurrentPriceLine paneSeries={paneSeries as never} bundle={bundleWith([70000])} code="005930" />);
     expect(s.priceLine.applyOptions).toHaveBeenLastCalledWith(expect.objectContaining({ color: T.down }));
+  });
+
+  it('uses liveTradePrice over the candle close when provided (하드닝)', () => {
+    const s = makeSeriesMock();
+    const paneSeries = new Map([['candle', s]]);
+    mockUseQuoteByCode.mockReturnValue(quoteMap({ change_won: 500, change_pct: 0.7 }));
+    render(
+      <LiveCurrentPriceLine
+        paneSeries={paneSeries as never}
+        bundle={bundleWith([70000])}
+        code="005930"
+        liveTradePrice={70800}
+      />,
+    );
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const opts = (s.createPriceLine.mock.calls as any[][])[0]![0] as Record<string, unknown>;
+    expect(opts.price).toBe(70800);
   });
 
   it('does nothing when the candle series is absent', () => {

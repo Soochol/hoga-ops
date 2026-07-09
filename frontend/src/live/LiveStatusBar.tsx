@@ -16,6 +16,7 @@ import { deriveCollectionView } from './collectionStatus';
 import { CollectionDot } from './CollectionDot';
 import { useLiveVenueStore, type LiveVenueOption } from '../state/liveVenue';
 import { liveVenueDisplayLabel, liveVenueKeepsHogaKrx } from './liveVenuePolicy';
+import { resolveLiveCurrentPrice } from './deriveCurrentPriceLine';
 import type { CaptureHealthView } from './liveStatusProjection';
 import { hogaCoverageGapTitle } from './hogaCoverageGap';
 
@@ -29,9 +30,12 @@ interface Props {
   /** useLiveBundle.hogaCoverageGapDates — 캔들은 있는데 10호가 캡처가 없는 과거
    * 거래일. 있으면 warn 칩으로 표시해 "지표가 최신 날짜에만 나온다" 오인을 막는다. */
   hogaGapDates?: readonly string[];
+  /** LivePage 가 live.trade 를 환원한 fresh 체결가. 현재가 라인과 동일한
+   * resolveLiveCurrentPrice 산출식을 공유해 "라인=상태바" invariant 를 유지한다. */
+  liveTradePrice?: number | null;
 }
 
-export function LiveStatusBar({ activeCode, captureHealth, bundle, venue, hogaGapDates = [] }: Props) {
+export function LiveStatusBar({ activeCode, captureHealth, bundle, venue, hogaGapDates = [], liveTradePrice }: Props) {
   // Threshold MUST exceed the 30s server ping so a connected-but-idle
   // socket (e.g. market closed) stays realtime; only a real disconnect
   // (no frame for >35s) flips it to disconnected. (plan-review cross-task flag)
@@ -75,7 +79,9 @@ export function LiveStatusBar({ activeCode, captureHealth, bundle, venue, hogaGa
   const lastCandle = bundle && bundle.candles.length > 0
     ? bundle.candles[bundle.candles.length - 1]
     : null;
-  const currentPrice = lastCandle?.close ?? null;
+  // 현재가 라인과 동일 산출(fresh 체결가 > 사용가능 quote.price > 캔들 종가) —
+  // "라인=상태바" invariant. lastCandle 없으면 null → '가격 (대기 중)'.
+  const currentPrice = resolveLiveCurrentPrice(lastCandle?.close ?? null, quote, liveTradePrice);
   const lastSegmentSource = bundle && bundle.segments.length > 0
     ? bundle.segments[bundle.segments.length - 1].source
     : undefined;
