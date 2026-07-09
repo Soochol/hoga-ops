@@ -1,5 +1,13 @@
 import { useRef, useState } from 'react';
+import { LINE_STYLES, type LineStyle } from '../../chart/drawing/types';
 import { useDismissablePopover } from '../../util/useDismissablePopover';
+
+/** 모양 라벨(한국어). LineStyle 값이 CSS border-style 키워드와 동일해 미리보기는 값 그대로 사용. */
+const LINE_STYLE_LABELS: Record<LineStyle, string> = {
+  solid: '실선',
+  dashed: '파선',
+  dotted: '점선',
+};
 
 /** 8 hue × 4 shade. shade 인덱스 0=darkest → 3=lightest. mockup의
  *  컬러 palette layout과 1:1 일치. tokens.css의 --ma-N 8색 (단일 행)
@@ -22,13 +30,20 @@ type Props = {
   /** aria-label 접두어. 기본 'MA' — 기존 호출부 불변. 매도벽 등 재활용 시 지정. */
   label?: string;
   extraColors?: readonly string[];
+  /** 지정 시 색·두께에 더해 모양(실선/파선/점선) 선택 섹션을 노출한다. 미지정이면
+   *  기존 호출부와 동일하게 색+두께만. `onLineStyleChange`와 함께 넘겨야 렌더된다. */
+  lineStyle?: LineStyle;
+  onLineStyleChange?: (lineStyle: LineStyle) => void;
 };
 
 /** MA 슬롯의 color + lineWidth 를 한 popover에서 동시에 고른다.
  *  trigger는 현재 색을 보여주는 작은 swatch. 클릭하면 32색 grid +
  *  4개 굵기 카드가 같이 뜬다. ColorSwatchButton + LineWidthSelect 합본. */
-export default function MAStylePicker({ color, lineWidth, onChange, label, extraColors }: Props) {
+export default function MAStylePicker({
+  color, lineWidth, onChange, label, extraColors, lineStyle, onLineStyleChange,
+}: Props) {
   const lbl = label ?? 'MA';
+  const showLineStyle = lineStyle != null && onLineStyleChange != null;
   const [open, setOpen] = useState(false);
   const containerRef = useRef<HTMLDivElement>(null);
   const colorRows = extraColors?.length ? [extraColors, ...MA_COLOR_ROWS] : MA_COLOR_ROWS;
@@ -74,8 +89,10 @@ export default function MAStylePicker({ color, lineWidth, onChange, label, extra
           style={{
             display: 'inline-block',
             width: 18,
-            height: `${lineWidth}px`,
-            backgroundColor: color,
+            height: 0,
+            // border-top 으로 그려 모양(실선/파선/점선)까지 trigger 에 반영.
+            // LineStyle 값이 곧 CSS border-style. 미지정이면 solid.
+            borderTop: `${lineWidth}px ${lineStyle ?? 'solid'} ${color}`,
           }}
         />
       </button>
@@ -185,6 +202,59 @@ export default function MAStylePicker({ color, lineWidth, onChange, label, extra
               );
             })}
           </div>
+          {showLineStyle && (
+            <>
+              <div
+                style={{
+                  color: 'var(--fg-dim)',
+                  fontSize: 'var(--text-xs)',
+                  margin: 'var(--space-sm) 0 var(--space-xs)',
+                }}
+              >
+                모양
+              </div>
+              <div className="grid grid-cols-3" style={{ gap: 'var(--space-xs)' }}>
+                {LINE_STYLES.map((st) => {
+                  const selected = st === lineStyle;
+                  return (
+                    <button
+                      key={st}
+                      type="button"
+                      aria-label={`${lbl} 모양 ${LINE_STYLE_LABELS[st]}`}
+                      aria-pressed={selected}
+                      onClick={() => onLineStyleChange?.(st)}
+                      style={{
+                        background: 'var(--bg-input)',
+                        border: selected ? '1px solid var(--fg)' : '1px solid var(--border)',
+                        borderRadius: '4px',
+                        padding: '12px 0 6px',
+                        cursor: 'pointer',
+                      }}
+                    >
+                      {/* 미리보기: LineStyle 값이 곧 CSS border-style 라 그대로 사용. */}
+                      <div
+                        style={{
+                          width: '32px',
+                          height: 0,
+                          borderTop: `2px ${st} ${color}`,
+                          margin: '0 auto',
+                        }}
+                      />
+                      <div
+                        style={{
+                          color: 'var(--fg-dim)',
+                          fontSize: 'var(--text-xs)',
+                          marginTop: '8px',
+                        }}
+                      >
+                        {LINE_STYLE_LABELS[st]}
+                      </div>
+                    </button>
+                  );
+                })}
+              </div>
+            </>
+          )}
         </div>
       )}
     </div>

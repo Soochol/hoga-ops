@@ -50,6 +50,7 @@ import { useLiveAxisStore } from './useLiveAxisStore';
 import MovingAverageOverlay from './indicators/MovingAverageOverlay';
 import DailyMovingAverageOverlay from './indicators/DailyMovingAverageOverlay';
 import LiveCurrentPriceLine from './LiveCurrentPriceLine';
+import QuoteLevelLines from './QuoteLevelLines';
 import { freshLiveTradePrice } from './deriveCurrentPriceLine';
 import type { ObSnapshot, TradeSnapshot } from './bucketHogaSeries';
 import LiveAskPeakSegments, { buildAskPeakOverlaySegments } from './LiveAskPeakSegments';
@@ -1687,6 +1688,9 @@ export function LiveChartRoot({
             </>
           )}
           <LiveCurrentPriceLine paneSeries={paneSeries} bundle={cb} code={code} liveTradePrice={liveTradePrice} />
+          {isMinuteTimeframe(timeframe) && (
+            <QuoteLevelLines paneSeries={paneSeries} bundle={paneRatioBundle ?? cb} />
+          )}
           {isMinuteTimeframe(timeframe) && (
             <LiveAskPeakSegments
               paneSeries={paneSeries}

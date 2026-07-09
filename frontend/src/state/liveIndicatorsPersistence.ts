@@ -1,4 +1,5 @@
 import type { MASource } from '../chart/projectors/movingAverage';
+import { LINE_STYLES, type LineStyle } from '../chart/drawing/types';
 import {
   normalizePanePrefsByTimeframe,
   type PersistedPanePrefsByTimeframe,
@@ -82,6 +83,14 @@ export const BROKER_LATE_ENTRY_DEFAULT_START_HHMM = 930;
 export const BROKER_LATE_ENTRY_BUY_DEFAULT_COLOR = '#ef4444';
 export const BROKER_LATE_ENTRY_SELL_DEFAULT_COLOR = '#3b82f6';
 
+// 총잔량/호가비 현재값 수평선(price line) — opt-in. 색 기본은 각 pane 라인색과
+// 같게 두되 모양을 dashed로 해 실선 데이터 라인과 시각적으로 구분한다(현재가 라인과 동일 컨벤션).
+export const QUOTE_TOTALS_BID_LEVEL_DEFAULT_COLOR = '#F04452'; // 매수(빨강)
+export const QUOTE_TOTALS_ASK_LEVEL_DEFAULT_COLOR = '#3485FA'; // 매도(파랑)
+export const RATIO_LEVEL_DEFAULT_COLOR = '#9A9AA8'; // 중립 회색
+export const QUOTE_LEVEL_LINE_DEFAULT_WIDTH: 1 | 2 | 3 | 4 = 1;
+export const QUOTE_LEVEL_LINE_DEFAULT_STYLE: LineStyle = 'dashed';
+
 export type PersistedIndicators = {
   movingAverages: LiveMAConfig[];
   movingAverageEnabled: boolean;
@@ -149,8 +158,30 @@ export type PersistedIndicators = {
   volumeDistributionMaxColor: string;
   /** 총잔량 pane on/off. Default TRUE(기존 자동표시 보존). */
   quoteTotalsEnabled: boolean;
+  /** 총잔량 현재값 수평선(매수·매도) 표시. opt-in(기본 false). */
+  quoteTotalsLevelLineEnabled: boolean;
+  /** 총잔량 매수 현재값 수평선 색(hex). */
+  quoteTotalsBidLevelColor: string;
+  /** 총잔량 매수 현재값 수평선 두께. */
+  quoteTotalsBidLevelWidth: 1 | 2 | 3 | 4;
+  /** 총잔량 매수 현재값 수평선 모양(solid/dashed/dotted). */
+  quoteTotalsBidLevelStyle: LineStyle;
+  /** 총잔량 매도 현재값 수평선 색(hex). */
+  quoteTotalsAskLevelColor: string;
+  /** 총잔량 매도 현재값 수평선 두께. */
+  quoteTotalsAskLevelWidth: 1 | 2 | 3 | 4;
+  /** 총잔량 매도 현재값 수평선 모양(solid/dashed/dotted). */
+  quoteTotalsAskLevelStyle: LineStyle;
   /** 호가비 pane on/off. Default TRUE. */
   ratioEnabled: boolean;
+  /** 호가비 현재값 수평선 표시. opt-in(기본 false). */
+  ratioLevelLineEnabled: boolean;
+  /** 호가비 현재값 수평선 색(hex). */
+  ratioLevelColor: string;
+  /** 호가비 현재값 수평선 두께. */
+  ratioLevelWidth: 1 | 2 | 3 | 4;
+  /** 호가비 현재값 수평선 모양(solid/dashed/dotted). */
+  ratioLevelStyle: LineStyle;
   /** 체결강도 pane on/off. Default TRUE. */
   fillStrengthEnabled: boolean;
   /** 프로그램 순매수 pane on/off. Default TRUE. */
@@ -194,6 +225,16 @@ function isValidEntry(m: unknown): m is LiveMAConfig {
 
 function normalizeHexColor(value: unknown, fallback: string): string {
   return typeof value === 'string' && HEX_COLOR.test(value) ? value : fallback;
+}
+
+function normalizeLineWidth(value: unknown, fallback: 1 | 2 | 3 | 4): 1 | 2 | 3 | 4 {
+  return VALID_LINE_WIDTHS.has(value as number) ? (value as 1 | 2 | 3 | 4) : fallback;
+}
+
+function normalizeLineStyle(value: unknown, fallback: LineStyle): LineStyle {
+  return (LINE_STYLES as readonly string[]).includes(value as string)
+    ? (value as LineStyle)
+    : fallback;
 }
 
 function normalizeVolumeDistributionRangeCount(value: unknown): number {
@@ -320,6 +361,18 @@ export function mergeLiveIndicatorPrefs(
     ? (dRaw.filter(isValidEntry).slice(0, MA_SLOT_LIMIT) as LiveMAConfig[])
     : [];
   const dMas = dKept.length > 0 ? dKept : DEFAULT_DAILY_MAS.map((m) => ({ ...m }));
+  // 총잔량/호가비 현재값 수평선 — opt-in. 색/두께/모양은 저장값 검증 후 기본값 폴백.
+  const quoteTotalsLevelLineEnabled = obj?.quoteTotalsLevelLineEnabled === true;
+  const qtBidLevelColor = normalizeHexColor(obj?.quoteTotalsBidLevelColor, QUOTE_TOTALS_BID_LEVEL_DEFAULT_COLOR);
+  const qtBidLevelWidth = normalizeLineWidth(obj?.quoteTotalsBidLevelWidth, QUOTE_LEVEL_LINE_DEFAULT_WIDTH);
+  const qtBidLevelStyle = normalizeLineStyle(obj?.quoteTotalsBidLevelStyle, QUOTE_LEVEL_LINE_DEFAULT_STYLE);
+  const qtAskLevelColor = normalizeHexColor(obj?.quoteTotalsAskLevelColor, QUOTE_TOTALS_ASK_LEVEL_DEFAULT_COLOR);
+  const qtAskLevelWidth = normalizeLineWidth(obj?.quoteTotalsAskLevelWidth, QUOTE_LEVEL_LINE_DEFAULT_WIDTH);
+  const qtAskLevelStyle = normalizeLineStyle(obj?.quoteTotalsAskLevelStyle, QUOTE_LEVEL_LINE_DEFAULT_STYLE);
+  const ratioLevelLineEnabled = obj?.ratioLevelLineEnabled === true;
+  const ratioLevelColor = normalizeHexColor(obj?.ratioLevelColor, RATIO_LEVEL_DEFAULT_COLOR);
+  const ratioLevelWidth = normalizeLineWidth(obj?.ratioLevelWidth, QUOTE_LEVEL_LINE_DEFAULT_WIDTH);
+  const ratioLevelStyle = normalizeLineStyle(obj?.ratioLevelStyle, QUOTE_LEVEL_LINE_DEFAULT_STYLE);
   const panePrefsByTimeframe = normalizePanePrefsByTimeframe(obj?.panePrefsByTimeframe);
   const build = (
     mas: LiveMAConfig[], enabled: boolean, fNet: boolean, iNet: boolean,
@@ -360,7 +413,18 @@ export function mergeLiveIndicatorPrefs(
     volumeDistributionColor,
     volumeDistributionMaxColor,
     quoteTotalsEnabled: qt,
+    quoteTotalsLevelLineEnabled,
+    quoteTotalsBidLevelColor: qtBidLevelColor,
+    quoteTotalsBidLevelWidth: qtBidLevelWidth,
+    quoteTotalsBidLevelStyle: qtBidLevelStyle,
+    quoteTotalsAskLevelColor: qtAskLevelColor,
+    quoteTotalsAskLevelWidth: qtAskLevelWidth,
+    quoteTotalsAskLevelStyle: qtAskLevelStyle,
     ratioEnabled: ratio,
+    ratioLevelLineEnabled,
+    ratioLevelColor,
+    ratioLevelWidth,
+    ratioLevelStyle,
     fillStrengthEnabled: fill,
     programTradeEnabled: programTrade,
     brokerLateEntryEnabled,
