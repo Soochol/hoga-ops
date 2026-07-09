@@ -3167,20 +3167,25 @@ describe('LiveChartRoot crosshair → cursor store (ADR-0044)', () => {
     act(() => fire({ point: null }));
     expect(useLiveCursorStore.getState().cursorMs).toBe(TODAY_ONLY_BUNDLE.segments[0].session_open_ms);
 
-    act(() => fire({ time: (TODAY_OPEN_MS + 120_000) / 1000, point: { x: 24 } }));
+    // Next hover lands within the last candle's half-bucket snap window
+    // (open+80s vs the candle at open+60s, bucket 60s) → snaps to that candle.
+    // Kept inside the window on purpose: beyond lastCandle + bucketMs/2 is now
+    // whitespace and would clear the cursor (see the whitespace test below).
+    act(() => fire({ time: (TODAY_OPEN_MS + 80_000) / 1000, point: { x: 24 } }));
     await flush();
     expect(useLiveCursorStore.getState().cursorMs).toBe(TODAY_OPEN_MS + 60_000);
   });
 
-  it('crosshair into the right-offset whitespace (numeric time past the last candle) → pins the sidebar to the last candle', async () => {
+  it('crosshair into the right-offset whitespace (numeric time past the last candle) → clears the cursor so the sidebar returns to latest (WS) mode', async () => {
     // Real mechanism (verified 2026-06-11 — supersedes the original #69
     // assumption of `time: undefined`): with CrosshairMode.Normal lwc does NOT
     // report an empty time in the whitespace; it extrapolates the gap-compressed
     // virtual axis forward, so param.time is a NUMBER that maps PAST the last
-    // candle (onto the session tail). The handler must treat "realMs > last
-    // candle" as the latest concrete candle basis, not as the extrapolated
-    // future no-data slot. TODAY_ONLY_BUNDLE carries one candle so
-    // lastCandleMsRef is populated.
+    // candle (onto the session tail). That x-slot has no candle and is temporally
+    // "now/future", so the handler drops spot mode and clears the cursor — the
+    // sidebar then shows the latest SSE/WS book instead of a stale pin. Mirrors
+    // the click handler, which already publishes null past the last candle.
+    // TODAY_ONLY_BUNDLE carries one candle so lastCandleMsRef is populated.
     render(
       <LiveChartRoot
         code="005930"
@@ -3199,20 +3204,29 @@ describe('LiveChartRoot crosshair → cursor store (ADR-0044)', () => {
     const flush = () => act(() => new Promise((r) => requestAnimationFrame(() => r(null))));
     const SESSION_OPEN = TODAY_ONLY_BUNDLE.segments[0].session_open_ms;
     const lastCandleMs = TODAY_ONLY_BUNDLE.candles[TODAY_ONLY_BUNDLE.candles.length - 1].ts_ms;
+    const bucketMs = TODAY_ONLY_BUNDLE.bucket_ms;
     expect(lastCandleMs).toBeGreaterThan(SESSION_OPEN); // fixture premise guard
     // On/before the last candle (virtual 0 → session open ≤ last candle) → spot.
     act(() => fire({ time: 0, point: { x: 1 } }));
     await flush();
     expect(useLiveCursorStore.getState().cursorMs).toBe(SESSION_OPEN);
-    // Whitespace: param.time is virtual-axis seconds on a REAL-ANCHORED origin
-    // (virtualStart = session_open_ms), so toReal(t·1000) = t·1000 inside the
-    // session. Pick a time 10 min past the open — well past the single candle at
-    // open+60s → pin to the last real candle so the 10호가 / 매물대 / 거래원 /
-    // 프로그램 순매수 cards keep showing candle-based detail.
+    // Half-bucket snap window: a time just past the last candle but within
+    // bucketMs/2 still snaps to that candle (nearestCandleMs) → spot preserved,
+    // NOT treated as whitespace. param.time is virtual-axis seconds on a
+    // REAL-ANCHORED origin (virtualStart = session_open_ms), so
+    // toReal(t·1000) = t·1000 inside the session.
+    const withinSnapSec = (lastCandleMs + bucketMs / 2 - 1_000) / 1000;
+    act(() => fire({ time: withinSnapSec, point: { x: 500 } }));
+    await flush();
+    expect(useLiveCursorStore.getState().cursorMs).toBe(lastCandleMs);
+    // True whitespace: 10 min past the open — well beyond lastCandle + bucketMs/2
+    // → cursor cleared so the sidebar (10호가 / 매물대 / 거래원 / 프로그램 순매수)
+    // returns to the live WS edge.
     const whitespaceTimeSec = (TODAY_OPEN_MS + 600_000) / 1000;
     act(() => fire({ time: whitespaceTimeSec, point: { x: 9999 } }));
     await flush();
-    expect(useLiveCursorStore.getState().cursorMs).toBe(lastCandleMs);
+    expect(useLiveCursorStore.getState().cursorMs).toBeNull();
+    expect(useLiveCursorStore.getState().sidebarCursorMs).toBeNull();
   });
 
   it('crosshair over a pane separator keeps spot indicators on the candle at that x-coordinate', async () => {
@@ -3229,7 +3243,10 @@ describe('LiveChartRoot crosshair → cursor store (ADR-0044)', () => {
     const chart = vi.mocked(createChartEx).mock.results[0].value;
     const ts = chart.timeScale();
     vi.mocked(chart.timeScale).mockReturnValue(ts);
-    vi.mocked(ts.coordinateToTime).mockReturnValue((TODAY_OPEN_MS + 120_000) / 1000);
+    // Separator x maps to a time inside the last candle's half-bucket snap
+    // window (open+80s vs candle at open+60s) → snaps to that candle. Beyond
+    // lastCandle + bucketMs/2 would be whitespace and clear the cursor instead.
+    vi.mocked(ts.coordinateToTime).mockReturnValue((TODAY_OPEN_MS + 80_000) / 1000);
     const fire = (p: { time?: unknown; point?: { x: number } | null }) =>
       chart.subscribeCrosshairMove.mock.calls.forEach(
         ([h]: [(p: { time?: unknown; point?: { x: number } | null }) => void]) => h(p),
@@ -3257,7 +3274,9 @@ describe('LiveChartRoot crosshair → cursor store (ADR-0044)', () => {
     const chart = vi.mocked(createChartEx).mock.results[0].value;
     const ts = chart.timeScale();
     vi.mocked(chart.timeScale).mockReturnValue(ts);
-    vi.mocked(ts.coordinateToTime).mockReturnValue((TODAY_OPEN_MS + 120_000) / 1000);
+    // Within the last candle's half-bucket snap window (see the sibling
+    // separator test) → snaps to that candle rather than clearing as whitespace.
+    vi.mocked(ts.coordinateToTime).mockReturnValue((TODAY_OPEN_MS + 80_000) / 1000);
     const fire = (p: {
       time?: unknown;
       point?: { x: number } | null;
