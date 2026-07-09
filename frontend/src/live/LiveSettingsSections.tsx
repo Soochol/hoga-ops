@@ -185,7 +185,8 @@ function DataSourceDetail({ variant }: { variant: 'live' | 'study' }) {
             title="KIS 캔들 거래소"
             description="KIS 캔들·세션·실시간 스트림을 가져올 거래소입니다. 우회 ON 시 캔들엔 무효(저장 데이터는 KRX 정규장)."
           >
-            <div className="flex flex-wrap gap-2">
+            {/* pb-2: 박스형 거래소 pill이 다음 그룹 구분선에 붙지 않도록 하단 여백. */}
+            <div className="flex flex-wrap gap-2 pb-2">
               {LIVE_VENUE_OPTIONS.map((opt) => (
                 <LiveVenueRadio key={opt} value={opt} />
               ))}
