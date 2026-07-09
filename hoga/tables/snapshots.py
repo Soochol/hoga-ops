@@ -880,15 +880,16 @@ def query_bucketed_ratio(
         if row is not None and row[0] is not None:
             last_continuous_ms = int(row[0])
     if last_continuous_ms is None:
-        # No continuous-trading book at/before the session close (no session
-        # bound, OR a degenerate dataset with no deep book). Fall back to the
-        # constant-TRUE last-in-bucket path (ADR-0062). Production continuous
-        # books always carry deep levels (4..10 > 0), so last_continuous_ms is
-        # always set on real data and this branch fires only on degenerate
-        # fixtures / no session bound.
+        # 세션 바운드 없음 OR deep book 부재(퇴화 fixture) — last-in-bucket 폴백 유지
+        # (ADR-0062). 실데이터는 항상 세션 바운드 + deep book이라 이 분기는 집계 단위
+        # 테스트/퇴화 데이터에서만 발화한다.
         pre_auction_pred = "TRUE"
     else:
-        pre_auction_pred = f"({intra_ms_expr} <= {last_continuous_ms})"
+        # ADR-0062 v2 (VI 통일): `_DEEP_BOOK_SQL`(4호가 이상 잔량)을 AND해 마감 동시호가
+        # 뿐 아니라 **장중 VI 단일가 붕괴책도** 대표선정에서 구조적으로 배제한다
+        # (query_bucket_representatives·피크와 동일 SSOT 술어). 시간 경계는 마감 후
+        # 호가창 재확장(~15:30:14) 유입을 계속 막는다.
+        pre_auction_pred = f"({deep_book_sql} AND {intra_ms_expr} <= {last_continuous_ms})"
     rows = con.execute(
         f"""
         WITH keyed AS (
@@ -981,9 +982,11 @@ def query_bucketed_depth_heatmap(
             con, path=path, session_close_ms=session_close_ms
         )
     if last_continuous_ms is None:
-        pre_auction_pred = "TRUE"
+        pre_auction_pred = "TRUE"   # 세션 바운드 없음/퇴화 — last-in-bucket 폴백(호가비와 동일)
     else:
-        pre_auction_pred = f"({intra_ms_expr} <= {last_continuous_ms})"
+        # ADR-0062 v2 (VI 통일): `_DEEP_BOOK_SQL`을 AND해 장중 VI 붕괴책을 대표선정에서
+        # 배제(마감 동시호가는 시간 경계가 그대로 처리). 호가비와 동일 규칙.
+        pre_auction_pred = f"({_DEEP_BOOK_SQL} AND {intra_ms_expr} <= {last_continuous_ms})"
 
     level_cols = []
     for i in range(1, ORDERBOOK_LEVELS + 1):

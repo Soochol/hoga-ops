@@ -469,6 +469,45 @@ def test_query_bucketed_depth_heatmap_max_total_snapshot(tmp_path: Path) -> None
     assert r.bid_prices_max == tuple(range(10, 0, -1))
 
 
+def test_query_bucketed_depth_heatmap_excludes_intraday_vi_in_mixed_bucket(tmp_path: Path) -> None:
+    """ADR-0062 v2 (VI 통일): 한 버킷에 연속거래 책 + 그보다 **시간상 늦은** 장중 VI
+    붕괴책이 섞이면, 대표는 늦은 VI가 아니라 연속거래 책이어야 한다(_DEEP_BOOK_SQL).
+    이전(시간-only pre_auction_pred)엔 늦은 VI가 rep_key로 대표가 됐다."""
+    from hoga.tables.snapshots import query_bucketed_depth_heatmap
+
+    z = tuple([0] * 10)
+    # 11:40:00 연속거래(deep, 레벨4..10 > 0) — 같은 60s 버킷 내, ask_q[0]=10
+    cont = Orderbook(
+        ts_ms=114_000_000, seq=1,
+        ask_p=tuple(range(101, 111)), ask_q=(10, 20, 30, 40, 5, 6, 7, 8, 9, 1), ask_d=z,
+        bid_p=tuple(range(100, 90, -1)), bid_q=(50, 40, 30, 20, 5, 5, 5, 5, 5, 5), bid_d=z,
+        tot_ask=0, tot_ask_d=0, tot_bid=0, tot_bid_d=0,
+    )
+    # 11:40:30 장중 VI 3-레벨 붕괴(레벨4+ = 0) — 같은 버킷, 시간상 더 늦음. ask_q[0]=99
+    vi = Orderbook(
+        ts_ms=114_030_000, seq=2,
+        ask_p=(101, 102, 103) + (0,) * 7, ask_q=(99, 98, 97) + (0,) * 7, ask_d=z,
+        bid_p=(100, 99, 98) + (0,) * 7, bid_q=(7, 7, 7) + (0,) * 7, bid_d=z,
+        tot_ask=0, tot_ask_d=0, tot_bid=0, tot_bid_d=0,
+    )
+    # 15:19:00 연속거래 앵커 — last_continuous_ms를 마감 근처로 세운다(VI는 그 이전).
+    anchor = Orderbook(
+        ts_ms=151_900_000, seq=3,
+        ask_p=tuple(range(101, 111)), ask_q=(10, 20, 30, 40, 5, 6, 7, 8, 9, 1), ask_d=z,
+        bid_p=tuple(range(100, 90, -1)), bid_q=(50, 40, 30, 20, 5, 5, 5, 5, 5, 5), bid_d=z,
+        tot_ask=0, tot_ask_d=0, tot_bid=0, tot_bid_d=0,
+    )
+    out = tmp_path / "snapshots.parquet"
+    write_parquet([cont, vi, anchor], out)
+    con = duckdb.connect()
+    rows = query_bucketed_depth_heatmap(
+        con, path=out, bucket_ms=60000, session_close_ms=153000000
+    )
+    reps = {r.ask_qtys[0] for r in rows}
+    assert 99 not in reps, "장중 VI 붕괴책이 대표가 되면 안 됨(ADR-0062 v2)"
+    assert 10 in reps, "연속거래 책이 대표여야 함"
+
+
 def test_query_bucketed_ratio_intra_max_independent_sides(tmp_path: Path) -> None:
     """한 버킷 내 bid 최댓값과 ask 최댓값이 서로 다른 시점이어도 각각 독립 포착
     (캔들 고가가 시·종가와 무관하듯). 종가는 마지막 스냅샷 값으로 유지."""
