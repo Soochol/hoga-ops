@@ -2,6 +2,8 @@
 
 **Status:** accepted (2026-06-02)
 
+**Revision (2026-07-09):** 스크리너 결과 행의 표시 필드(현재가·등락률·전일대비)를 **순수 라이브 전용**으로 전환 — 라이브 미도착/stale·closed 등으로 quote 가 없으면 EOD 코퍼스로 폴백하지 않고 `—`로 둔다(관심종목과 완전히 동일한 표시 기준). 스캔 **필터**·정렬 초기값·`localStorage` 영속(드로어 `lastScan`)은 EOD 코퍼스를 그대로 유지한다(표시만 라이브). 아래 "표시 전용 (스크리너 스캔 필터 불변)"의 "결과 행은 EOD 위에 라이브를 덮는다" 서술과 Consequences의 "그 외 코퍼스 EOD 값 유지"는 이 개정으로 대체됨. 근거: `useScreenerRowsLive.ts`. (상위 30행 cap 은 2026-06-03 개정에서 이미 제거되어 결과 전 종목이 라이브 대상.)
+
 **Related:**
 - ADR-0052 (Global Right Rail state store) — 등락률을 얹는 두 패널(Watchlist/Screener Drawer)이 사는 곳.
 - ADR-0038 (Live Capture는 WebSocket 아닌 REST 폴링) / ADR-0050 (KIS rate-limit retry는 KisClient 내부) — 10초 폴링·단일 ingress 재사용의 근거.

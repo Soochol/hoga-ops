@@ -85,7 +85,7 @@ export function ResultTable({ rows, onActivate, sortMode = 'default', onSortChan
               <span className="truncate">{r.name}</span>
               <span className="font-mono text-xs text-fg-dim">{r.market}</span>
               <span className={`font-mono tabular-nums text-right ${r.change_pct === null ? '' : priceDirClass(r.change_pct)}`}>
-                {r.price.toLocaleString('ko-KR')} ({formatPct(r.change_pct)})
+                {r.price != null ? `${r.price.toLocaleString('ko-KR')} (${formatPct(r.change_pct)})` : '—'}
               </span>
               <span className="font-mono tabular-nums text-right text-fg-dim">{toEok(r.trade_value_won)}</span>
               <span className="flex items-center justify-end gap-2">

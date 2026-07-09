@@ -3,46 +3,45 @@ import type { ScreenerRow } from '../api/screener';
 import { isStaleLiveQuote, useQuoteByCode } from '../api/liveQuotes';
 import { useLiveVenueStore } from '../state/liveVenue';
 
-/** 스크리너 결과 행에 Live Quote 를 덮은 행. change_won 은 라이브 전용(EOD 없음). */
-export interface ScreenerRowLive extends ScreenerRow {
+/**
+ * 스크리너 결과 행에 Live Quote 를 덮은 행. 표시 필드(price·change_pct·change_won)는
+ * 라이브 전용이라 미도착 시 null('—') — EOD 폴백 없음. price 를 number|null 로 완화한다
+ * (스캔 응답 ScreenerRow.price 자체는 number 로 유지, 표시만 라이브 기준).
+ */
+export interface ScreenerRowLive extends Omit<ScreenerRow, 'price'> {
+  price: number | null;
   change_won: number | null;
   change_pct_sort: number | null;
 }
 
 /**
- * 스크리너 결과 행(EOD 코퍼스)에 Live Quote 오버레이를 적용한다(ADR-0056). 결과 코드
- * 전체를 10초 폴링하고, 라이브가 있으면 현재가·등락률을 덮고 없으면 EOD 값을 유지한다
- * (change_won 은 intstock-multprice 에만 있어 폴백 없음). 드로어/풀페이지 두 표시
- * 컴포넌트가 공유하는 단일 머지 seam — codes 추출·폴링·머지를 캡슐화하고, 호출처는
- * 레이아웃만 책임진다. Watchlist(라이브 전용)·Live Status Bar(dual-source)는 머지
- * 의미가 달라 이 훅을 쓰지 않는다.
+ * 스크리너 결과 행의 현재가·등락률을 Live Quote 로만 표시한다. 결과 코드 전체를 10초
+ * 폴링하고, 라이브가 도착하면 그 값을(장전·파싱실패의 change_pct=null 포함) 쓰며, 미도착
+ * 이면 표시 필드를 전부 null 로 두어 '—' 로 표시한다 — 관심종목(Watchlist)과 동일한 순수
+ * 라이브 기준. EOD 코퍼스 값은 스캔 필터·정렬 초기값·localStorage 영속에만 남고 표시에는
+ * 쓰지 않는다(ADR-0056, 2026-07-09 개정). 드로어/풀페이지 두 표시 컴포넌트가 공유하는 단일
+ * 머지 seam — codes 추출·폴링·머지를 캡슐화하고, 호출처는 레이아웃만 책임진다.
+ *
+ * stale quote(kis_rest_bypass·일시 미응답 시 마지막 캐시값)는 "받아온 값"이므로 그대로
+ * 표시하되, 정렬값(change_pct_sort)만 null 로 빼 관심종목의 quoteSort 규약과 정렬 거동을
+ * 맞춘다.
  */
 export function useScreenerRowsLive(rows: ScreenerRow[]): ScreenerRowLive[] {
   const codes = useMemo(() => rows.map((r) => r.code), [rows]);
   const venue = useLiveVenueStore((s) => s.venue);
   const quoteByCode = useQuoteByCode(codes, venue);
-  const hasFreshLiveBatch = useMemo(
-    () => [...quoteByCode.values()].some((quote) => !isStaleLiveQuote(quote)),
-    [quoteByCode],
-  );
   return useMemo(
     () =>
       rows.map((r) => {
         const q = quoteByCode.get(r.code);
-        if (isStaleLiveQuote(q)) {
-          return { ...r, change_won: null, change_pct_sort: r.change_pct };
-        }
-        // quote 존재 여부로 분기(값의 null 여부가 아니라). 라이브가 도착하면 현재가·
-        // 등락률·등락액을 그대로 쓴다 — 장전·파싱실패로 change_pct=null 이면 그 null 을
-        // 유지해 '—' 로 표시(관심종목과 동일 기준). quote 미도착 행만 EOD 로 폴백한다.
-        // `?? r.change_pct` 로 두면 장전에 EOD 등락률이 떠 관심종목과 어긋난다.
-        // 정렬은 별도 값을 쓴다. live batch 가 일부 도착한 뒤 누락된 코드는 EOD 등락률과
-        // live 등락률이 섞이지 않게 missing 취급하고, 아직 batch 자체가 없을 때만 EOD 로
-        // 초기 정렬을 허용한다.
-        return q
-          ? { ...r, price: q.price, change_pct: q.change_pct, change_won: q.change_won, change_pct_sort: q.change_pct }
-          : { ...r, change_won: null, change_pct_sort: hasFreshLiveBatch ? null : r.change_pct };
+        return {
+          ...r,
+          price: q?.price ?? null,
+          change_pct: q?.change_pct ?? null,
+          change_won: q?.change_won ?? null,
+          change_pct_sort: isStaleLiveQuote(q) ? null : (q?.change_pct ?? null),
+        };
       }),
-    [hasFreshLiveBatch, rows, quoteByCode],
+    [rows, quoteByCode],
   );
 }

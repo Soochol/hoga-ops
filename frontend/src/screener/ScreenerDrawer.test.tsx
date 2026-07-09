@@ -590,9 +590,9 @@ describe('ScreenerDrawer', () => {
     expect(useLivePageStore.getState().activeCode).toBeNull();   // 하트는 행 활성화와 무관
   });
 
-  it('falls back to the corpus price when a row has no live quote (no —)', async () => {
+  it('shows — for a row with no live quote (순수 라이브, EOD 코퍼스 폴백 없음)', async () => {
     vi.spyOn(savesApi, 'listSaves').mockResolvedValue({ schema_version: 1, saves: [SAVE] });
-    // live quote only for 005930 → 000660 has no quote and must show its corpus price.
+    // live quote only for 005930 → 000660 has no quote and must show '—', not its corpus price.
     vi.spyOn(client, 'apiCall').mockResolvedValue({
       phase: 'open',
       quotes: [{ code: '005930', price: 72400, change_pct: 3.4, change_won: 2380 }],
@@ -603,8 +603,9 @@ describe('ScreenerDrawer', () => {
     });
     render(<ScreenerDrawer />, { wrapper: wrap(qc(), '/live') });
     await waitFor(() => expect(screen.getByText('72,400')).toBeInTheDocument()); // live quote (005930), 분리 컬럼
-    expect(screen.getByText('180,000')).toBeInTheDocument();                     // corpus quote (000660), not —
-    expect(screen.getByText('-1.20%')).toBeInTheDocument();
+    expect(screen.queryByText('180,000')).not.toBeInTheDocument();               // corpus price 노출 안 함 → '—'
+    const row000660 = screen.getByTestId('screener-row-000660');
+    expect(within(row000660).getByText('—')).toBeInTheDocument();
   });
 
   it('surfaces 갱신 실패 when the update mutation errors', async () => {
@@ -669,8 +670,8 @@ describe('ScreenerDrawer', () => {
       lastScan: makeScan({ rows, savedUpdatedAtMs: 0 }),
     });
     render(<ScreenerDrawer />, { wrapper: wrap(qc(), '/live') });
-    // 행은 EOD(1,000원)로 먼저 렌더되고 라이브 quote 가 비동기로 덮는다. cap 이
-    // 살아있다면 100030 은 요청조차 안 돼 영영 1,000원 — 99,999원 도달이 cap 제거 증명.
+    // 순수 라이브라 행은 '—'로 먼저 렌더되고 라이브 quote 가 비동기로 채운다. cap 이
+    // 살아있다면 100030 은 요청조차 안 돼 영영 '—' — 99,999원 도달이 cap 제거 증명.
     await waitFor(() =>
       expect(within(screen.getByTestId('screener-row-100030')).getByText('99,999')).toBeInTheDocument(),
     );
@@ -721,6 +722,12 @@ describe('ScreenerDrawer', () => {
       { code: '000660', name: 'SK하이닉스', market: 'KOSPI' as const, price: 180000, trade_value_won: 2e11, change_pct: -1.2 },
       { code: '035420', name: 'NAVER', market: 'KOSPI' as const, price: 210000, trade_value_won: 3e11, change_pct: 4.4 },
     ];
+    // 순수 라이브 정렬이므로 정렬 기준(change_pct)을 라이브 quote 로 공급한다.
+    const livePct: Record<string, number> = { '005930': 2.1, '000660': -1.2, '035420': 4.4 };
+    vi.spyOn(client, 'apiCall').mockImplementation(async (path: string) => ({
+      phase: 'open',
+      quotes: liveQuoteCodesFromPath(path).map((c) => ({ code: c, price: 1, change_pct: livePct[c] ?? 0, change_won: null })),
+    }));
     useScreenerPanelStore.setState({
       selectedSavedId: 's1',
       lastScan: makeScan({ rows, savedUpdatedAtMs: 0 }),
@@ -731,6 +738,9 @@ describe('ScreenerDrawer', () => {
       render(<ScreenerDrawer />, { wrapper: wrap(qc(), '/inventory') });
       await waitFor(() => expect(screen.getByText('NAVER')).toBeInTheDocument());
 
+      await waitFor(() =>
+        expect(within(screen.getByTestId('screener-row-035420')).getByText('+4.40%')).toBeInTheDocument(),
+      );
       fireEvent.click(sortButton());
       await waitFor(() =>
         expect(screen.getAllByTestId(/^screener-row-/).map((el) => el.dataset.testid)).toEqual([
