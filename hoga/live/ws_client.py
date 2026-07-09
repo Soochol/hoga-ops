@@ -166,10 +166,12 @@ class KisWsClient:
                 return
             old_trs = self._trs
             self._trs = trs
-            # 재구독 카운터 리셋 — 스왑 후 기대 ACK 수는 새 venue 기준.
-            self.sub_expected = len(self._codes) * len(trs)
-            self.sub_acked = 0
-            self.sub_rejected = 0
+            # sub_acked/expected/rejected는 **리셋하지 않는다** — update_codes(동일한 구독
+            # diff 연산)와 동일한 선례. 리셋하면 ① ACK 도착 전 acked<expected 창이 status의
+            # _capture_health에 순간적 거짓 'sub_failed'로 잡히고, ② 표시 전용 NXT 구독이
+            # 거부되면 그 비성역 실패로 watchdog이 conn 전체를 재시작(에스컬레이션)한다.
+            # 스왑 ACK는 recv 루프가 계속 카운트(재연결 시 sub_expected가 현재 venue로
+            # 재계산되므로 stale하지 않다). NXT 거부는 sub_rejected 경고 로그로 가시화된다.
             ws, approval = self._ws, self._approval
             if ws is None or approval is None:
                 return  # 미연결 — 다음 (재)연결이 self._trs로 초기 구독

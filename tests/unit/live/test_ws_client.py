@@ -183,6 +183,8 @@ async def test_ensure_venue_swaps_trs_register_before_unregister():
     client._ws = fake            # 연결 상태 시뮬레이션
     client._approval = "APPR"
     client._codes = ["005930"]
+    # 스왑 전 구독 헬스 카운터(초기 연결분) — 스왑이 이를 리셋하지 않아야 한다.
+    client.sub_expected, client.sub_acked, client.sub_rejected = 3, 3, 0
     assert client.venue == "KRX"
 
     await client.ensure_venue("NXT")
@@ -197,7 +199,9 @@ async def test_ensure_venue_swaps_trs_register_before_unregister():
     first_reg = next(i for i, f in enumerate(frames) if f["header"]["tr_type"] == "1")
     first_unreg = next(i for i, f in enumerate(frames) if f["header"]["tr_type"] == "2")
     assert first_reg < first_unreg
-    assert client.sub_expected == 2   # NXT 1종목 × 2TR
+    # 카운터 리셋 안 함(update_codes 선례) — 표시 전용 NXT 실패가 watchdog 재시작을
+    # 유발하거나 status에 순간 거짓 sub_failed를 노출하지 않게 한다.
+    assert (client.sub_expected, client.sub_acked) == (3, 3)
 
 
 async def test_ensure_venue_noop_when_already_on_target():
