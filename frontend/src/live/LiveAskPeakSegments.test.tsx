@@ -217,20 +217,19 @@ describe('styleVisibleMaxAskPeakSegments', () => {
       qty: index % 97,
       price: 10_000 + index,
     }));
-    const startedAt = performance.now();
-
     const out = styleVisibleMaxAskPeakSegments(
       segments,
       { from: t(0), to: t(200_010) },
       { color: '#EAB308', lineWidth: 3 },
       3,
     );
-    const elapsedMs = performance.now() - startedAt;
     const highlighted = out.filter((segment) => segment.color === '#EAB308');
 
+    // 20만 세그먼트에서도 visible-max top 3만 하이라이트한다. 기존 벽시계
+    // `elapsedMs < 40ms`(가장 타이트)는 full-suite 워커 경합에 flaky해 제거(issue
+    // #434) — 대규모 입력 정확성 단언은 남는다.
     expect(highlighted).toHaveLength(3);
     expect(highlighted.map((segment) => segment.qty)).toEqual([96, 96, 96]);
-    expect(elapsedMs).toBeLessThan(40);
   });
 });
 

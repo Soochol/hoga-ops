@@ -179,33 +179,9 @@ describe('useDayBidPeaks', () => {
     });
   });
 
-  it('keeps live bid peak updates responsive with many candles and repeated prices', () => {
-    const base = Date.UTC(2026, 5, 13, 0, 0, 0);
-    const candles = Array.from({ length: 2500 }, (_, i) =>
-      candle(base + (i % 300) * 60_000, 20_000 + i * 10, 20_005 + i * 10),
-    );
-    const ob = Array.from({ length: 2000 }, (_, i): ObSnapshot => ({
-      t_ms: base + i * 1000,
-      total_ask_qty: 1,
-      total_bid_qty: 1,
-      asks: Array.from({ length: 10 }, (_unused, level) => ({
-        price: 41_000 + level,
-        qty: 100 + i + level,
-      })),
-      bids: Array.from({ length: 10 }, (_unused, level) => ({
-        price: 40_000 + level,
-        qty: 100 + i + level,
-      })),
-    }));
-
-    const started = performance.now();
-    renderHook(() =>
-      useDayBidPeaks(ob, [], [], '20260613', '005930', null, candles),
-    );
-    const elapsed = performance.now() - started;
-
-    expect(elapsed).toBeLessThan(500);
-  });
+  // (제거됨, issue #434) 대량 버퍼 무정지 벽시계 테스트는 full-suite 워커 경합에
+  // flaky했다. IncrementalPeakWallSource의 append-only 델타 소비는 useDayPeaks.perf
+  // .test.tsx가 결정론적으로 검증한다(ask/bid 공유 소스).
 });
 
 describe('useTodayAllPriceBidPeak', () => {
