@@ -25,6 +25,7 @@ from hoga.api.captures_persistence import load_manifest, manifest_path, save_man
 from hoga.api.eligibility import decide_capture, find_ineligible_dates
 from hoga.api.error_codes import CaptureErrorCode, UpstreamCode
 from hoga.api.params import CODE_PATTERN
+from hoga.api.queue_ownership import QueueOwnership, try_acquire_queue_ownership
 from hoga.api.models import (
     BlockedItem,
     CaptureDismissedEvent,
@@ -220,6 +221,17 @@ def _timing_enabled() -> bool:
 _wakeup: asyncio.Event | None = None                    # lazily constructed when the first worker starts
 _workers: list[asyncio.Task] = []                       # populated by app lifespan; stopped on shutdown
 
+# ADR-0094: single queue owner per data_dir. `_ownership` holds the flock (fd
+# kept open for the process lifetime); `_queue_owned` is the fast-path flag
+# guarding mutation endpoints and persistence. A non-owner boots read-only:
+# it neither restores the manifest nor spawns workers, so two backends sharing
+# one data_dir can't double-capture the same Stock-Date.
+_ownership: QueueOwnership | None = None
+# Default True so the test DI surface (write `_data_dir` directly, never call
+# start_capture_pool) keeps persisting. Production's start_capture_pool sets
+# this explicitly from the flock result; non-owner tests set it False.
+_queue_owned: bool = True
+
 # Production dependencies — set by build_router() at startup.
 # Tests bypass build_router() by writing directly: `captures._data_dir = tmp_path`.
 # That's the deliberate DI surface: the module attribute IS the seam, no
@@ -236,6 +248,23 @@ def _require_data_dir() -> Path:
 def _require_client_factory() -> Callable[[], object]:
     assert _client_factory is not None, "captures._client_factory not initialized; call build_router() or set in test fixture"
     return _client_factory
+
+
+def _require_queue_ownership() -> None:
+    """Reject a queue mutation on a read-only (non-owner) instance (ADR-0094).
+
+    Raises HTTP 503 so the frontend can surface "another server owns the
+    capture queue" and steer the user to the owning instance. Read paths
+    (GET /queue, charts, inventory) never call this.
+    """
+    if not _queue_owned:
+        raise HTTPException(status_code=503, detail={
+            "code": CaptureErrorCode.QUEUE_NOT_OWNED,
+            "message": (
+                "capture queue is owned by another server instance sharing "
+                "this data dir — mutations are disabled on this instance"
+            ),
+        })
 
 
 def _record_no_upstream_data(data_dir: Path, code: str, date: str) -> None:
@@ -261,13 +290,19 @@ def _record_no_upstream_data(data_dir: Path, code: str, date: str) -> None:
 def reset_state_for_tests() -> None:
     """For pytest fixtures only — clears all module singletons + the
     on-disk manifest (so per-test state never leaks)."""
-    global _queue_paused, _wakeup  # noqa: PLW0603 — intentional test-only reset of module singletons
+    global _queue_paused, _wakeup, _ownership, _queue_owned  # noqa: PLW0603 — intentional test-only reset of module singletons
     _queue.clear()
     _active.clear()
     _done.clear()
     _inflight_paths.clear()
     _fail_streaks.clear()  # ADR-0042 — keep test isolation for the new counter
     _queue_paused = False
+    # ADR-0094: drop any lock a prior test acquired and restore the owned
+    # default, so a non-owner test never leaks a 503 into the next test.
+    if _ownership is not None:
+        _ownership.release()
+        _ownership = None
+    _queue_owned = True
     # _wakeup is an asyncio.Event bound to an event loop — pytest-asyncio
     # creates a fresh loop per test, so we must drop the stale Event or the
     # next test gets "bound to a different event loop" errors. Workers
@@ -392,9 +427,16 @@ def _persist_queue_locked() -> None:
     INVARIANT: caller holds ``_lock``. Called from every mutation site that
     touches _queue or _active or _fail_streaks. _done is intentionally
     excluded (volatile — cleared by DELETE /done; see ADR-0019).
+
+    ADR-0094: a non-owner never persists — overwriting the owner's
+    ``.queue.json`` would corrupt the live queue it's actively managing. This
+    guard matters even more than skipping the worker pool: a non-owner with a
+    stale in-memory queue must not clobber the source of truth on disk.
     """
     if _data_dir is None:
         return  # test fixture without data_dir wired — no lock check needed
+    if not _queue_owned:
+        return  # ADR-0094: read-only instance never writes the manifest
     assert _lock.locked(), "must hold _lock — see ADR-0019"
     items = [
         QueueManifestItem(
@@ -557,6 +599,7 @@ def get_queue_snapshot() -> QueueSnapshot:
         done=[s.to_wire() for s in _done],
         paused=_queue_paused,
         max_concurrent=_max_concurrent,
+        queue_owned=_queue_owned,  # ADR-0094
     )
 
 
@@ -1070,17 +1113,44 @@ def start_workers(n: int | None = None) -> list[asyncio.Task]:
 
 
 def start_capture_pool(data_dir: Path) -> list[asyncio.Task]:
-    """Production boot entry: restore the queue manifest from disk (if any),
-    then spawn the worker pool.
+    """Production boot entry: acquire queue ownership, restore the manifest
+    (if owned), then spawn the worker pool.
 
     Bundles the ADR-0019 ordering invariant — restore-before-spawn — into a
     single call so future readers (and new callers like a test harness) can't
     accidentally start workers against an empty queue when the disk holds
     items to recover. ``app.py`` lifespan uses this; tests that exercise the
     full boot path should too.
+
+    ADR-0094: a second backend sharing this ``data_dir`` fails to acquire the
+    flock and boots read-only — it does NOT restore the manifest (restoring
+    would let its workers race the owner on the same Stock-Date) and does NOT
+    spawn workers. All read paths still work; queue mutations return 503.
+    Set ``HOGA_CAPTURE_QUEUE_DISABLED=1`` to opt a dogfood backend out of
+    ever contending for the lock.
     """
+    global _ownership, _queue_owned  # noqa: PLW0603 — startup-only ownership wiring
+    if os.environ.get("HOGA_CAPTURE_QUEUE_DISABLED", "").strip() in ("1", "true", "yes", "on"):
+        _queue_owned = False
+        logging.getLogger(__name__).info(
+            "HOGA_CAPTURE_QUEUE_DISABLED set — capture queue runs read-only (no workers)",
+        )
+        return []
+    _ownership = try_acquire_queue_ownership(data_dir)
+    _queue_owned = _ownership is not None
+    if not _queue_owned:
+        return []
     _restore_queue_from_manifest(data_dir)
     return start_workers()
+
+
+def release_queue_ownership() -> None:
+    """Release the queue flock at shutdown. Idempotent; safe on a non-owner."""
+    global _ownership, _queue_owned  # noqa: PLW0603 — shutdown-only ownership teardown
+    if _ownership is not None:
+        _ownership.release()
+        _ownership = None
+    _queue_owned = False
 
 
 async def stop_workers(workers: list[asyncio.Task]) -> None:
@@ -1443,6 +1513,7 @@ def build_router(
         for the 409 branch while ``response_model=EnqueueResponse`` keeps the
         OpenAPI schema coherent.
         """
+        _require_queue_ownership()  # ADR-0094
         resp = await enqueue_items_core(
             req,
             data_dir=_require_data_dir(),
@@ -1463,6 +1534,7 @@ def build_router(
         ``"noop"`` when the counter was already 0. Mirrors the cancel-handler
         pattern (line 1344): acquire ``_lock``, mutate, persist, return dict.
         """
+        _require_queue_ownership()  # ADR-0094
         from hoga.api.fail_streak import streak_key
         key = streak_key(code, date)
         async with _lock:
@@ -1480,6 +1552,7 @@ def build_router(
         Other states (`not_found`, `not_failed`, `already_in_queue`,
         `already_running`) return diagnostic rows in `skipped`.
         """
+        _require_queue_ownership()  # ADR-0094
         result = await _retry_items(req.item_ids)
         return RetryResponse(
             enqueued=[s.to_wire() for s in result.enqueued],
@@ -1488,6 +1561,7 @@ def build_router(
 
     @router.post("/items/{item_id}/cancel", status_code=202)
     async def cancel_item(item_id: str) -> dict:
+        _require_queue_ownership()  # ADR-0094
         async with _lock:
             # Queued case — drop from _queue, mark cancelled, push to _done.
             for i, s in enumerate(_queue):
@@ -1520,10 +1594,12 @@ def build_router(
 
     @router.post("/cancel-all", status_code=202)
     async def cancel_all_route() -> dict:
+        _require_queue_ownership()  # ADR-0094
         return await cancel_all()
 
     @router.post("/queue/resume", status_code=200)
     async def resume_route() -> dict:
+        _require_queue_ownership()  # ADR-0094
         await resume_queue()
         return {"status": "resumed"}
 

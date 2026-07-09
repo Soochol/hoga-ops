@@ -279,4 +279,29 @@ describe('CaptureQueue dedupe banner', () => {
     fireEvent.click(screen.getByRole('button', { name: /Dismiss dedupe notice/i }));
     expect(screen.queryByTestId('deduped-banner')).toBeNull();
   });
+
+  it('shows the not-owned banner when queue_owned is false (populated queue)', async () => {
+    const qc = setup({ ...SNAPSHOT(), queue_owned: false });
+    render(<CaptureQueue />, { wrapper: W(qc) });
+    await new Promise((r) => setTimeout(r, 30));
+    expect(screen.getByTestId('queue-not-owned-banner')).toBeTruthy();
+  });
+
+  it('shows the not-owned banner even when the queue is empty', async () => {
+    const empty: QueueSnapshot = {
+      active: [], queued: [], done: [], paused: false, max_concurrent: 3, queue_owned: false,
+    };
+    const qc = setup(empty);
+    render(<CaptureQueue />, { wrapper: W(qc) });
+    await new Promise((r) => setTimeout(r, 30));
+    expect(screen.getByTestId('queue-not-owned-banner')).toBeTruthy();
+    expect(screen.getByTestId('queue-empty')).toBeTruthy();
+  });
+
+  it('hides the not-owned banner when queue_owned is true/absent', async () => {
+    const qc = setup(SNAPSHOT());  // no queue_owned → treated as owned
+    render(<CaptureQueue />, { wrapper: W(qc) });
+    await new Promise((r) => setTimeout(r, 30));
+    expect(screen.queryByTestId('queue-not-owned-banner')).toBeNull();
+  });
 });

@@ -379,6 +379,11 @@ class QueueSnapshot(BaseModel):
     done: list[QueueItem]
     paused: bool
     max_concurrent: int
+    # ADR-0094: False when another backend instance owns the capture queue for
+    # this data dir — mutations return 503 and the frontend shows a banner.
+    # Defaulted so older wire consumers and tests that build snapshots by hand
+    # stay valid.
+    queue_owned: bool = True
 
 
 class QueueManifestItem(BaseModel):

@@ -123,12 +123,28 @@ export function CaptureQueue() {
     return <InlineState className="border-0 bg-transparent p-3">Loading queue…</InlineState>;
   }
 
+  // ADR-0094: a read-only (non-owner) instance can't mutate the queue. Surface
+  // it prominently — this instance's empty queue is NOT the source of truth.
+  const notOwned = queue.queue_owned === false;
+  const notOwnedBanner = notOwned ? (
+    <InlineState role="alert" tone="warn" data-testid="queue-not-owned-banner"
+      className="py-sm flex items-center gap-3 font-medium font-mono">
+      <span aria-hidden>⚠</span>
+      <span className="flex-1">
+        다른 서버 인스턴스가 캡처 큐를 소유 중입니다 · 이 인스턴스에서는 캡처를 시작·취소할 수 없습니다
+      </span>
+    </InlineState>
+  ) : null;
+
   const totalRows = queue.active.length + queue.queued.length + queue.done.length;
   if (totalRows === 0 && !queue.paused) {
     return (
-      <EmptyState testId="queue-empty" title="큐가 비어 있습니다">
-        왼쪽에서 종목과 날짜 범위를 선택하고 Start 를 누르면 캡처가 시작됩니다.
-      </EmptyState>
+      <div className="flex min-h-0 h-full flex-col gap-2">
+        {notOwnedBanner}
+        <EmptyState testId="queue-empty" title="큐가 비어 있습니다">
+          왼쪽에서 종목과 날짜 범위를 선택하고 Start 를 누르면 캡처가 시작됩니다.
+        </EmptyState>
+      </div>
     );
   }
 
@@ -142,6 +158,7 @@ export function CaptureQueue() {
 
   return (
     <div className="flex min-h-0 h-full flex-col gap-2">
+      {notOwnedBanner}
       <div className="flex items-center gap-3 px-sm">
         <div className="flex-1 font-medium text-sm font-mono text-fg-dim tabular-nums">
           {summary.done} of {summary.total} done · {summary.failed} failed · {summary.capturing} capturing
