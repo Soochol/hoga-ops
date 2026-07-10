@@ -73,11 +73,10 @@ def test_for_account_distinct_clients_per_account(tmp_path, monkeypatch):
     assert kis_runtime.ensure_kis_client_for_account(0, tmp_path) is c0
 
 
-def test_for_account_clients_share_global_rate_limiter(tmp_path, monkeypatch):
-    """같은 명의의 계좌들은 KIS 유량제한을 명의 단위로 공유한다 — 런타임이 만드는
-    모든 KisClient는 하나의 전역 버킷을 써야 합산 송신이 한도(~20/s) 아래로 묶인다
-    (/investigate 2026-07-07: 3계좌 × 15/s = 45/s → ~47% EGW00201)."""
-    monkeypatch.setattr(kis_runtime, "_global_rate_limiter", None)  # 전역 버킷 격리
+def test_for_account_clients_have_independent_rate_limiters(tmp_path, monkeypatch):
+    """계정(앱키)별 독립 토큰버킷 — 실측 2026-07-10(ADR-0100): 같은 명의 앱키 3개의
+    REST 유량은 앱키별 독립 ~15/s(45/s 지속 송신 EGW 9.0% 평탄, 3.03x). 전역 공유
+    버킷이면 계정을 늘려도 합산 15/s로 봉인되므로 이 회귀 가드가 필요하다."""
     monkeypatch.setenv("KIS_APP_KEY", "k0")
     monkeypatch.setenv("KIS_APP_SECRET", "s0")
     monkeypatch.setenv("KIS_APP_KEY_2", "k1")
@@ -85,7 +84,23 @@ def test_for_account_clients_share_global_rate_limiter(tmp_path, monkeypatch):
     c0 = kis_runtime.ensure_kis_client_for_account(0, tmp_path)
     c1 = kis_runtime.ensure_kis_client_for_account(1, tmp_path)
     assert c0 is not None and c1 is not None and c0 is not c1
-    assert c0._rate_limiter is c1._rate_limiter, "계좌별 독립 버킷이면 명의 한도 초과"
+    assert c0._rate_limiter is not c1._rate_limiter, "계정별 독립 버킷이어야 3배 예산"
+    # 같은 계정 재-ensure는 같은 클라이언트 싱글톤(=같은 버킷) — 앱키 내 단일 예산 보존.
+    assert kis_runtime.ensure_kis_client_for_account(0, tmp_path) is c0
+
+
+def test_shared_bucket_key_restores_global_clamp(tmp_path, monkeypatch):
+    """롤백 노브 _SHARED_BUCKET_KEY=0: 전 계정이 account-0 버킷으로 수렴해 기존
+    명의-전역 15/s 클램프를 1줄로 복원한다(ADR-0100 롤백 사다리 ①)."""
+    monkeypatch.setattr(kis_runtime, "_SHARED_BUCKET_KEY", 0)
+    monkeypatch.setenv("KIS_APP_KEY", "k0")
+    monkeypatch.setenv("KIS_APP_SECRET", "s0")
+    monkeypatch.setenv("KIS_APP_KEY_2", "k1")
+    monkeypatch.setenv("KIS_APP_SECRET_2", "s1")
+    c0 = kis_runtime.ensure_kis_client_for_account(0, tmp_path)
+    c1 = kis_runtime.ensure_kis_client_for_account(1, tmp_path)
+    assert c0 is not None and c1 is not None and c0 is not c1
+    assert c0._rate_limiter is c1._rate_limiter, "롤백 노브면 전 계정이 하나의 버킷 공유"
 
 
 def test_for_account_missing_returns_none(tmp_path, monkeypatch):

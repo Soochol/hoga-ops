@@ -2,6 +2,8 @@
 
 **Status:** accepted (2026-07-07)
 
+**Amended (2026-07-10 — ADR-0100):** "같은 명의면 계좌 failover가 무실효(다른 계좌도 같은 명의 한도)"라는 전제는 폐기됐다 — 재실측(앱키별 독립 ~15/s, 2026-07-07 '명의 단위'는 재현 실패)으로 계좌 failover는 원 설계 의도대로 **실효적**이다(다른 앱키 = 다른 한도). 본 ADR의 failover 메커니즘 자체는 그대로 유효하다.
+
 **Related:**
 - ADR-0050 — KIS rate-limit retry는 `KisClient._get`에 내장 (계좌 내 backoff)
 - ADR-0082 — `KisCapacityScheduler` + `KisAccountPool`이 계좌 인지형 REST 스케줄링 소유

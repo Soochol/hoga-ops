@@ -241,10 +241,10 @@ class KisClient(KisEndpointsMixin):
         # Single rate limiter shared by all data calls — `_get` acquires
         # one token per HTTP request. Token issuance lives in the injected
         # KisTokenProvider (ADR-0050 amendment) and bypasses this bucket.
-        # ``rate_limiter`` 주입 시 그 버킷을 그대로 쓴다: KIS 유량제한은 '명의
-        # 단위'라 같은 명의의 다계좌 클라이언트는 하나의 전역 버킷을 공유해야
-        # 합산 송신이 한도를 넘지 않는다(kis_runtime._shared_rate_limiter).
-        # 미주입이면 기존처럼 자기 버킷(단독 클라이언트/테스트 backcompat).
+        # ``rate_limiter`` 주입 시 그 버킷을 그대로 쓴다: KIS 유량제한은 앱키
+        # 단위로 독립 집행되므로(실측 2026-07-10, ADR-0100) kis_runtime이 계정마다
+        # 전용 버킷을 준다(kis_runtime._account_rate_limiter). 계정 수에 비례해
+        # REST 콜레이트가 늘어난다. 미주입이면 자기 버킷(단독 클라이언트/테스트 backcompat).
         self._rate_limiter = (
             rate_limiter
             if rate_limiter is not None

@@ -2,6 +2,8 @@
 
 Date: 2026-06-27
 
+**Amended (2026-07-10 — ADR-0100):** 본 ADR 말미 2026-07-08 Amendment의 "KIS 한도는 명의 단위 → 전역 15/s 버킷 → 계정 늘려도 REST 처리량 불변"은 재실측(앱키별 독립 ~15/s, 2026-07-07 '명의 단위'는 재현 실패)으로 폐기됐다 — 원 Context의 per-appkey 운영 가정과 계정 수 비례 linear-capacity Consequence가 복원됐다(3계정 실측 3.03x). 계정 풀은 WS 슬롯·failover·워커 동시성에 더해 **REST 콜레이트도 계정 수에 비례 증설**한다.
+
 ## Status
 
 Accepted

@@ -2,6 +2,8 @@
 
 **Status:** accepted (2026-07-07)
 
+**Amended (2026-07-10 — ADR-0100):** 명의-전역 버킷 기간(2026-07-08~10)이 종료됐다 — 토큰버킷 lane은 본문 원문대로 다시 계좌(앱키) 스코프에서 동작한다. user_visible 새치기는 자기 lease 계정 버킷 안에서만 일어나고, 계정 간 우선순위는 스케줄러 rank가 계속 소유한다(두 계층 소유권 결론은 불변).
+
 **Related:**
 - ADR-0050 — KIS rate-limit retry는 `KisClient._get`에 내장(토큰버킷 소유)
 - ADR-0082 — `KisCapacityScheduler` + `KisAccountPool`이 계좌 인지형 REST 스케줄링
