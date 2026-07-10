@@ -47,6 +47,7 @@ def update_live_settings(
     storage_policy: LiveStoragePolicy | None = None,
     program_trade_storage_enabled: bool | None = None,
     kis_rest_bypass_enabled: bool | None = None,
+    heatmap_capture_enabled: bool | None = None,
 ) -> LiveSettings:
     previous = load_live_settings(data_dir)
     next_storage_policy = storage_policy or previous.storage_policy
@@ -64,6 +65,11 @@ def update_live_settings(
             previous.kis_rest_bypass_enabled
             if kis_rest_bypass_enabled is None
             else bool(kis_rest_bypass_enabled)
+        ),
+        heatmap_capture_enabled=(
+            previous.heatmap_capture_enabled
+            if heatmap_capture_enabled is None
+            else bool(heatmap_capture_enabled)
         ),
     )
     save_live_settings(data_dir, settings)

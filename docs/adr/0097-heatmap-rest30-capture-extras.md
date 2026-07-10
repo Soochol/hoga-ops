@@ -45,6 +45,14 @@
 주기는 기존 30초·범위는 기존 3콜(호가+체결+거래원)을 그대로 쓴다. 저장·승격·
 조회·지표(체결분포·거래원·히트맵 pane 등)는 전부 기존 경로를 무변경 상속한다.
 
+**사용자 토글(amendment 2026-07-10).** 이 합류를 끌 수 있는 `LiveSettings.
+heatmap_capture_enabled`(기본 `True`)를 추가한다. 기본 True는 위 "무조건 합류"
+동작을 보존한다(무회귀). `sync_storage_runtime`이 False면 `rest_extra_candidates
+=()`로 게이트한다 — watchlist REST 스필오버는 영향받지 않고 히트맵 전용 종목만
+빠진다. 기존 `/api/live/settings` GET/PATCH가 필드를 그대로 실어 나르고, PATCH가
+이미 `refresh_live_stream`을 호출하므로 저장 즉시 반영된다. 프론트는 Settings의
+「데이터 수집」 섹션 토글(`pages/Settings.tsx`, `api/liveSettings`)로 노출한다.
+
 ## Consequences
 
 - 히트맵 종목 N개가 늘 때 지속 REST 부하는 0.1N 콜/s(30초 주기 3콜). 계정
