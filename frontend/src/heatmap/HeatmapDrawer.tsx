@@ -2,6 +2,13 @@ import {
   useEffect, useLayoutEffect, useMemo, useRef, useState,
 } from 'react';
 import { createPortal } from 'react-dom';
+import {
+  DndContext, PointerSensor, useSensor, useSensors, closestCenter,
+  type DragEndEvent, type DraggableAttributes, type DraggableSyntheticListeners,
+} from '@dnd-kit/core';
+import { SortableContext, useSortable, verticalListSortingStrategy } from '@dnd-kit/sortable';
+import { CSS } from '@dnd-kit/utilities';
+import { resolveFolderDrag } from '../watchlist/dragHandlers';
 import { useJumpToLive } from '../live/useJumpToLive';
 import { useQuoteByCode } from '../api/liveQuotes';
 import { useLivePageStore } from '../state/livePage';
@@ -68,11 +75,38 @@ function AnchoredMenu({ label, children }: { label: string; children: React.Reac
   );
 }
 
+/** 그룹 헤더에 부착할 드래그 핸들 — listeners만(포인터 전용; 관심종목과 동일 계약). */
+type GroupDragHandle = {
+  listeners: DraggableSyntheticListeners;
+  attributes: DraggableAttributes;
+  setActivatorNodeRef: (node: HTMLElement | null) => void;
+};
+
+/** 폴더(그룹)의 sortable 단위 = 그룹 블록 전체(헤더 + 종목들). setNodeRef/transform 은
+ *  컨테이너 div, listeners 는 children render-prop 으로 헤더 ⠿ 핸들에 전달 — 핸들을 잡으면
+ *  그룹이 통째로 움직인다(WatchlistDrawer.SortableGroup 미러; 히트맵은 그룹 드래그만이라
+ *  data.type 태깅/typeAwareCollision 불필요). */
+function SortableGroup({ folderId, children }: {
+  folderId: string;
+  children: (handle: GroupDragHandle) => React.ReactNode;
+}) {
+  const { setNodeRef, setActivatorNodeRef, transform, transition, listeners, attributes, isDragging } =
+    useSortable({ id: folderId });
+  return (
+    <div ref={setNodeRef} data-testid={`heatmap-drawer-group-${folderId}`}
+      style={{
+        transform: CSS.Transform.toString(transform), transition,
+        ...(isDragging ? { opacity: 0.6, position: 'relative', zIndex: 1 } : {}),
+      }}>
+      {children({ listeners, attributes, setActivatorNodeRef })}
+    </div>
+  );
+}
+
 /**
- * 그룹 헤더 행 — 라벨/chevron 클릭 = 접기 토글, ⋯ 메뉴(이름 변경/순서/삭제; 실폴더만 —
- * 미분류는 onRename 미전달 → ⋯ 없이 chevron+라벨 버튼만). 실폴더 헤더 우측에는 ＋종목
- * (trailing 슬롯). WatchlistDrawer.GroupHeader 의 축약판: 폴더별 정렬 토글·드래그 핸들을
- * 뺐다(드로어 v1은 재정렬을 /heatmap 페이지에 위임, 그룹 순서만 ⋯ 위/아래로 제공).
+ * 그룹 헤더 행 — ⠿ 드래그 핸들(수동 정렬 시) + chevron 접기 + 라벨/개수 + 평균 등락률 + ⋯ 메뉴
+ * (종목 추가/이름 변경/순서/삭제; 실폴더만 — 미분류는 chevron+라벨만). WatchlistDrawer.GroupHeader
+ * 미러(폴더별 행 정렬 토글은 드로어 툴바로 승격돼 헤더엔 없음).
  */
 function GroupHeader(props: {
   label: string; count: number; collapsed: boolean;
@@ -86,6 +120,7 @@ function GroupHeader(props: {
   canMoveDown?: boolean;
   onAddSymbol?: (code: string) => Promise<void>;
   addPending?: boolean;
+  dragHandle?: GroupDragHandle;
 }) {
   const [menuOpen, setMenuOpen] = useState(false);
   const [addOpen, setAddOpen] = useState(false);
@@ -95,6 +130,18 @@ function GroupHeader(props: {
     'w-full text-left px-3 py-1.5 text-sm text-fg hover:bg-bg-input-hover flex items-center gap-2 disabled:opacity-40 disabled:hover:bg-transparent';
   return (
     <div className={`group sticky top-0 ${menuOpen ? 'z-20' : 'z-10'} flex items-center gap-1.5 px-3 py-1.5 text-sm font-semibold text-fg-dim bg-bg-card hover:bg-bg-input-hover`}>
+      {/* 그룹 드래그 핸들(관심종목과 동일 계약: ⠿, listeners-only, aria-hidden). 접기 chevron
+          왼쪽에 둔다. 수동 정렬 + 비검색일 때만 부착(정렬/필터 중엔 화면 순서가 folder.order 와
+          어긋나 드래그가 혼란 — ⋯ 위/아래 비활성과 동일 조건). */}
+      {props.dragHandle && (
+        <span ref={props.dragHandle.setActivatorNodeRef}
+          {...props.dragHandle.attributes}
+          {...props.dragHandle.listeners}
+          aria-hidden data-testid="heatmap-group-drag-handle"
+          className="cursor-grab select-none touch-none px-1 leading-none text-fg-dimmer">
+          ⠿
+        </span>
+      )}
       <button type="button" aria-label={`${props.label} ${props.collapsed ? '펼치기' : '접기'}`}
         aria-expanded={!props.collapsed}
         onClick={props.onToggle} className="px-1 leading-none text-fg-dimmer hover:text-fg">
@@ -412,13 +459,24 @@ export function HeatmapDrawer() {
   }, [data, groupSort, pctOf, query]);
 
   const isSearching = query.trim() !== '';
-  // 그룹 순서 조작(⋯ 위/아래)은 수동 정렬 + 비검색일 때만 — 정렬/필터 중엔 화면 순서가
-  // folder.order 와 어긋나 조작이 혼란스럽다.
+  // 그룹 순서 조작(⋯ 위/아래·드래그)은 수동 정렬 + 비검색일 때만 — 정렬/필터 중엔 화면
+  // 순서가 folder.order 와 어긋나 조작이 혼란스럽다.
   const canMoveGroups = groupSort === 'manual' && !isSearching;
   const folderCount = data?.folders.length ?? 0;
   const moveFolder = (folderId: string, dir: -1 | 1) => {
     const ids = swapFolderOrder(data?.folders ?? [], folderId, dir);
     if (ids) reorderFoldersM.mutate(ids);
+  };
+
+  // 그룹 드래그 재정렬(관심종목 미러). 실폴더만 sortable, 표시 순서 = SortableContext items.
+  const sensors = useSensors(useSensor(PointerSensor, { activationConstraint: { distance: 5 } }));
+  const draggableFolderIds = canMoveGroups
+    ? visibleGroups.filter((g) => g.folder).map((g) => g.folder!.id)
+    : [];
+  const onGroupDragEnd = (ev: DragEndEvent) => {
+    if (!ev.over) return;
+    const r = resolveFolderDrag(draggableFolderIds, String(ev.active.id), String(ev.over.id));
+    if (r.kind === 'reorder') reorderFoldersM.mutate(r.orderedIds);
   };
 
   return (
@@ -448,59 +506,72 @@ export function HeatmapDrawer() {
         {!isLoading && !error && isSearching && visibleGroups.length === 0 && (
           <RailState>검색 결과 없음</RailState>
         )}
-        {visibleGroups.map((g, gi) => {
-          const key = g.folder?.id ?? UNCAT_KEY;
-          const label = g.folder?.name ?? '미분류';
-          // 빈 미분류만 숨긴다. 빈 실폴더는 표시 — 새 그룹 직후 ＋종목으로 채울 수 있어야
-          // 하기 때문(/heatmap 보드의 visibleFolderGroups 는 빈 폴더 전부 숨김 → 의도적 비대칭).
-          if (g.entries.length === 0 && g.folder === null) return null;
-          // 검색 중엔 접기 무시 — 매칭된 행이 보여야 한다(collapsed Set 은 안 건드림).
-          const isCollapsed = !isSearching && collapsed.has(key);
-          const folder = g.folder;
-          const rows = sortEntries(g.entries, sortMode, pctOf);
-          return (
-            <div key={key}>
-              <GroupHeader label={label} count={g.entries.length} collapsed={isCollapsed}
-                avg={avgPct(g.entries, pctOf)}
-                onToggle={() => toggle(key)}
-                onRename={folder ? () => setRenameTarget({ id: folder.id, name: folder.name }) : undefined}
-                onDelete={folder ? () => deleteM.mutate(folder.id) : undefined}
-                onMoveUp={folder ? () => moveFolder(folder.id, -1) : undefined}
-                onMoveDown={folder ? () => moveFolder(folder.id, +1) : undefined}
-                canMoveUp={canMoveGroups && gi > 0}
-                canMoveDown={canMoveGroups && gi < folderCount - 1}
-                onAddSymbol={folder ? (code) => addToFolder(code, folder.id) : undefined}
-                addPending={addingToFolder} />
-              {!isCollapsed && (
-                <ul style={{ listStyle: 'none', margin: 0, padding: 0 }}>
-                  {rows.map((entry) => {
-                    const q = quoteByCode.get(entry.code);
-                    return (
-                      <QuoteRow
-                        key={entry.code}
-                        name={entry.name}
-                        price={q?.price ?? null}
-                        pct={q?.change_pct ?? null}
-                        changeWon={q?.change_won ?? null}
-                        active={entry.code === activeCode}
-                        ariaLabel={[entry.name, entry.code, '차트 열기'].join(' ')}
-                        testId={`heatmap-drawer-row-${entry.code}`}
-                        onClick={(options) => onPick(entry.code, entry.name, options)}
-                        onContextMenu={(e) => openMenu(e, entry.code, entry.name, entry.folder_id)}
-                        onDelete={() => removeM.mutate(entry.code)}
-                        indented
-                        trailingAction={
-                          <RowTrailing name={entry.name}
-                            onOpenMenu={(e) => openMenu(e, entry.code, entry.name, entry.folder_id)} />
-                        }
-                      />
-                    );
-                  })}
-                </ul>
-              )}
-            </div>
-          );
-        })}
+        <DndContext sensors={sensors} collisionDetection={closestCenter} onDragEnd={onGroupDragEnd}>
+          <SortableContext items={draggableFolderIds} strategy={verticalListSortingStrategy}>
+            {visibleGroups.map((g, gi) => {
+              const key = g.folder?.id ?? UNCAT_KEY;
+              const label = g.folder?.name ?? '미분류';
+              // 빈 미분류만 숨긴다. 빈 실폴더는 표시 — 새 그룹 직후 종목 추가로 채울 수 있어야
+              // 하기 때문(/heatmap 보드의 visibleFolderGroups 는 빈 폴더 전부 숨김 → 의도적 비대칭).
+              if (g.entries.length === 0 && g.folder === null) return null;
+              // 검색 중엔 접기 무시 — 매칭된 행이 보여야 한다(collapsed Set 은 안 건드림).
+              const isCollapsed = !isSearching && collapsed.has(key);
+              const folder = g.folder;
+              const rows = sortEntries(g.entries, sortMode, pctOf);
+              const renderGroup = (dragHandle?: GroupDragHandle) => (
+                <>
+                  <GroupHeader label={label} count={g.entries.length} collapsed={isCollapsed}
+                    avg={avgPct(g.entries, pctOf)}
+                    onToggle={() => toggle(key)}
+                    onRename={folder ? () => setRenameTarget({ id: folder.id, name: folder.name }) : undefined}
+                    onDelete={folder ? () => deleteM.mutate(folder.id) : undefined}
+                    onMoveUp={folder ? () => moveFolder(folder.id, -1) : undefined}
+                    onMoveDown={folder ? () => moveFolder(folder.id, +1) : undefined}
+                    canMoveUp={canMoveGroups && gi > 0}
+                    canMoveDown={canMoveGroups && gi < folderCount - 1}
+                    onAddSymbol={folder ? (code) => addToFolder(code, folder.id) : undefined}
+                    addPending={addingToFolder}
+                    dragHandle={dragHandle} />
+                  {!isCollapsed && (
+                    <ul style={{ listStyle: 'none', margin: 0, padding: 0 }}>
+                      {rows.map((entry) => {
+                        const q = quoteByCode.get(entry.code);
+                        return (
+                          <QuoteRow
+                            key={entry.code}
+                            name={entry.name}
+                            price={q?.price ?? null}
+                            pct={q?.change_pct ?? null}
+                            changeWon={q?.change_won ?? null}
+                            active={entry.code === activeCode}
+                            ariaLabel={[entry.name, entry.code, '차트 열기'].join(' ')}
+                            testId={`heatmap-drawer-row-${entry.code}`}
+                            onClick={(options) => onPick(entry.code, entry.name, options)}
+                            onContextMenu={(e) => openMenu(e, entry.code, entry.name, entry.folder_id)}
+                            onDelete={() => removeM.mutate(entry.code)}
+                            indented
+                            trailingAction={
+                              <RowTrailing name={entry.name}
+                                onOpenMenu={(e) => openMenu(e, entry.code, entry.name, entry.folder_id)} />
+                            }
+                          />
+                        );
+                      })}
+                    </ul>
+                  )}
+                </>
+              );
+              // 실폴더 + 드래그 가능 조건이면 SortableGroup 으로 감싸 ⠿ 핸들을 헤더에 전달.
+              return folder && canMoveGroups ? (
+                <SortableGroup key={key} folderId={folder.id}>
+                  {(dragHandle) => renderGroup(dragHandle)}
+                </SortableGroup>
+              ) : (
+                <div key={key}>{renderGroup()}</div>
+              );
+            })}
+          </SortableContext>
+        </DndContext>
       </RailDrawerBody>
 
       {menu && (

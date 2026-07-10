@@ -334,4 +334,26 @@ describe('HeatmapDrawer', () => {
     expect(screen.getByRole('menuitem', { name: /위로 이동/ })).toBeDisabled();
     expect(screen.getByRole('menuitem', { name: /아래로 이동/ })).toBeDisabled();
   });
+
+  // --- 그룹 드래그 핸들(관심종목 미러) ---
+  it('수동 정렬 시 실폴더 헤더에 드래그 핸들(⠿) 표시 (미분류 제외)', async () => {
+    wrap(<HeatmapDrawer />);
+    await screen.findByTestId('heatmap-drawer-row-000001');
+    // 실폴더 f1/f2/f3 → 핸들 3개. 미분류는 sortable 아님 → 핸들 없음.
+    expect(screen.getAllByTestId('heatmap-group-drag-handle')).toHaveLength(3);
+  });
+
+  it('그룹 등락률 정렬(desc) 시 드래그 핸들 미표시', async () => {
+    useHeatmapPrefsStore.setState({ groupSort: 'desc' });
+    wrap(<HeatmapDrawer />);
+    await screen.findByTestId('heatmap-drawer-row-000001');
+    expect(screen.queryByTestId('heatmap-group-drag-handle')).toBeNull();
+  });
+
+  it('검색 중 드래그 핸들 미표시', async () => {
+    wrap(<HeatmapDrawer />);
+    await screen.findByTestId('heatmap-drawer-row-000001');
+    fireEvent.change(screen.getByTestId('heatmap-drawer-search'), { target: { value: '삼성' } });
+    await waitFor(() => expect(screen.queryByTestId('heatmap-group-drag-handle')).toBeNull());
+  });
 });
