@@ -22,6 +22,23 @@ from .live_rest_capture_access import ScheduledLiveRestCaptureClient
 from .settings import load_live_settings
 
 
+# rest30 동시 디스패치 상한 — 계정(앱키)당 슬롯 수 (ADR-0100 계정 비례화, ADR-0102).
+# ADR-0098: 단일 15/s 버킷 포화에 필요한 in-flight ≈ rate×latency ≈ 8, 기본 10(여유 2).
+# 버킷이 앱키별 독립(ADR-0100)이라 aggregate 예산(~15/s×계정수)을 포화시키려면 슬롯도
+# 계정 수에 비례해야 한다 — 3계정=30, 4계정=40. 이게 500종목@10초의 유일한 전제
+# (4앱키 ~53/s → 500콜 ~9.4초 → 10초 경계 정착, ADR-0102). 상한 48은 httpx/스케줄러
+# 여유 안. 실제 콜레이트는 계정별 버킷이 클램프하므로 과플러딩 없음.
+_REST30_CONCURRENCY_PER_ACCOUNT = 10
+_REST30_CONCURRENCY_MAX = 48
+
+
+def _rest30_concurrency(data_dir: Path) -> int:
+    """계정 수 비례 rest30 동시 상한 (ADR-0102). 1계정 10 → 3계정 30 → 4계정 40 →
+    상한 48. 계정 수는 REST 예산의 배수라 그대로 in-flight 배수로 쓴다."""
+    n_accounts = len(kis_runtime.configured_account_ids(data_dir))
+    return min(_REST30_CONCURRENCY_PER_ACCOUNT * max(1, n_accounts), _REST30_CONCURRENCY_MAX)
+
+
 class Rest30RecorderLike(Protocol):
     def set_targets(self, codes: set[str]) -> None: ...
     def start(self) -> None: ...
@@ -76,11 +93,14 @@ def _ensure_rest30_recorder(
         # 수집 주기 = 사이클 소요 + interval. 히트맵 종목이 REST-전용 후보로 합류(ADR-0097)
         # 하면서 스냅샷 밀도를 30→10초로 높인다. REST 예산은 계정별 15/s 버킷(kis_runtime,
         # ADR-0100 — 계정 수에 비례 증설)이 상한을 지키고 background 우선순위라 사용자 요청에
-        # 양보한다. 대상 수가 커지면 사이클이 길어져 실제 주기는 자연히 늘어난다(적응형 여부는
-        # 실장 후 kis_api_last_cycle_ms 로 판단). 클래스/파일/로그의 'rest30' 이름은 표면
-        # 안정을 위해 유지한다. 부수효과: 에러 백오프는 cycle 단위(recorder.backoff_cycles=3)라
-        # wall-time 이 90→30초로 짧아진다 — EGW00201 스톰 시 재시도가 3배 잦아지나, 계정별
-        # 15/s 버킷과 FM5 auth latch 가 상한을 지키므로 안전(오히려 복구가 빠르다).
+        # 양보한다. concurrency도 계정 비례(ADR-0102) — 예산을 다 쓰려면 in-flight가 계정 수에
+        # 비례해야 한다. 500종목@10초는 4앱키(~53/s)에서 사이클 ~9.4초 → 10초 경계 정착
+        # (3앱키는 ~12.5초라 ~20초 실효; 사이클이 interval 초과 시 다음 경계로 정렬). 진행은
+        # kis_api_last_cycle_ms 로 관측. 클래스/파일/로그의 'rest30' 이름은 표면 안정을 위해
+        # 유지한다. 부수효과: 에러 백오프는 cycle 단위(recorder.backoff_cycles=3)라 wall-time 이
+        # 90→30초로 짧아진다 — EGW00201 스톰 시 재시도가 3배 잦아지나, 계정별 15/s 버킷과
+        # FM5 auth latch 가 상한을 지키므로 안전(오히려 복구가 빠르다).
+        concurrency=_rest30_concurrency(data_dir),
         interval_s=10.0,
     )
     state.rest30_recorder = recorder

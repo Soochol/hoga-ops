@@ -391,3 +391,23 @@ async def test_storage_runtime_bypass_stops_program_trade_collector(
 
     assert snapshot.kis_api_targets == ()
     assert existing.stopped is True
+
+
+def test_rest30_concurrency_scales_per_account(tmp_path, monkeypatch) -> None:
+    """rest30 동시 상한은 configured 계정 수 비례 (ADR-0102): 계정당 10, 상한 48.
+    앱키별 독립 예산(ADR-0100)을 다 쓰려면 in-flight가 계정 수에 비례해야 한다."""
+    from hoga.live import storage_runtime as sr
+
+    def _ids(n: int):
+        return lambda _data_dir: list(range(n))
+
+    monkeypatch.setattr(sr.kis_runtime, "configured_account_ids", _ids(1))
+    assert sr._rest30_concurrency(tmp_path) == 10, "단일 계정 = 10 (ADR-0098 포화값)"
+    monkeypatch.setattr(sr.kis_runtime, "configured_account_ids", _ids(3))
+    assert sr._rest30_concurrency(tmp_path) == 30, "3계정 = 30"
+    monkeypatch.setattr(sr.kis_runtime, "configured_account_ids", _ids(4))
+    assert sr._rest30_concurrency(tmp_path) == 40, "4계정 = 40 (500종목@10초 전제)"
+    monkeypatch.setattr(sr.kis_runtime, "configured_account_ids", _ids(6))
+    assert sr._rest30_concurrency(tmp_path) == 48, "6계정 = 48 (상한 clamp)"
+    monkeypatch.setattr(sr.kis_runtime, "configured_account_ids", _ids(0))
+    assert sr._rest30_concurrency(tmp_path) == 10, "계정 0 = 10 (하한)"
