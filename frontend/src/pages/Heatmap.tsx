@@ -11,16 +11,16 @@ import { useLiveVenueStore } from '../state/liveVenue';
 import { HeatmapBoard } from '../heatmap/HeatmapBoard';
 import { SectorTempStrip } from '../heatmap/SectorTempStrip';
 import { HeatmapRowMenu } from '../heatmap/HeatmapRowMenu';
-import { visibleFolderGroups } from '../heatmap/visibleGroups';
-import { avgPct, orderFolderGroups, makePctOf } from '../heatmap/heat';
+import { SortCycleButton } from '../heatmap/SortCycleButton';
+import { HeatmapSearchInput } from '../heatmap/HeatmapSearchInput';
+import { filterGroups } from '../heatmap/filterGroups';
+import { avgPct, orderFolderGroups, makePctOf, nextSort } from '../heatmap/heat';
 import { useFrozenWhileDragging } from '../heatmap/useFrozenWhileDragging';
 import { GroupNameModal } from '../watchlist/GroupNameModal';
 import { PageContainer } from '../layout/PageContainer';
-import { ControlBar, PageState, PanelCard, SegmentedControl, ToolbarButton } from '../ui/PageShell';
+import { ControlBar, PageState, PanelCard, ToolbarButton } from '../ui/PageShell';
 
 const PHASE_LABEL: Record<string, string> = { pre_open: '장전', open: '● 장중', closed: '장마감' };
-const segBtn = (active: boolean) =>
-  active ? 'px-2 py-1 bg-tint-selection text-accent font-medium' : 'px-2 py-1 text-fg-dim';
 
 type RowMenu = { x: number; y: number; code: string; name: string; folderId: string | null };
 
@@ -50,6 +50,11 @@ export function Heatmap() {
   const [isRowDragging, setIsRowDragging] = useState(false);
   // G1: 행 드래그 중 그룹 순서 동결(텔레포트 방지), drag-end 에 최신 적용.
   const orderedGroups = useFrozenWhileDragging(liveOrderedGroups, isRowDragging);
+  // 검색 필터(그룹간 정렬과 그룹내 정렬 사이 — 드로어와 동일 파이프라인). 동결된 orderedGroups
+  // 뒤에 적용해 G1 텔레포트 가드를 보존. 빈 쿼리면 filterGroups 가 입력 참조 그대로 반환.
+  const [query, setQuery] = useState('');
+  const visibleGroups = useMemo(() => filterGroups(orderedGroups, query), [orderedGroups, query]);
+  const isSearching = query.trim() !== '';
   const [showNewGroup, setShowNewGroup] = useState(false);
   const [menu, setMenu] = useState<RowMenu | null>(null);
   const createFolderM = useCreateHeatmapFolder();
@@ -71,8 +76,8 @@ export function Heatmap() {
 
   const updated = dataUpdatedAt
     ? new Date(dataUpdatedAt).toLocaleTimeString('ko-KR') : '—';
-  const visibleCount = visibleFolderGroups(groups)
-    .reduce((n, g) => n + g.entries.length, 0);
+  // 헤더 "N종목" 은 검색 결과를 추종(빈 쿼리면 전체와 동일). 빈 실폴더는 0 기여 → 무필터 값 불변.
+  const visibleCount = visibleGroups.reduce((n, g) => n + g.entries.length, 0);
   if (isLoading) return <HeatmapStateShell>히트맵 불러오는 중…</HeatmapStateShell>;
   if (error) return <HeatmapStateShell tone="error">히트맵을 불러오지 못했습니다.</HeatmapStateShell>;
   if (entries.length === 0) return <HeatmapStateShell>히트맵이 비어 있습니다.</HeatmapStateShell>;
@@ -89,47 +94,11 @@ export function Heatmap() {
             <ToolbarButton className="text-xs px-2 py-1 rounded" onClick={() => setShowNewGroup(true)}>
               ＋ 새 그룹
             </ToolbarButton>
-            {/* 종목 정렬(그룹 내 종목 순서). 스코프어 '종목'은 버튼 밖 span — 버튼 accessible name 보존. */}
-            <span className="flex items-center gap-1 text-xs">
-              <span className="text-fg-dim">종목</span>
-              {/* 행 버튼은 visible 텍스트가 accessible name(그룹 버튼만 aria-label로
-                  구분 — 시각 텍스트가 '등락률 ↓'로 겹쳐도 접근명이 안 겹치게). */}
-              <SegmentedControl aria-label="종목 정렬" className="rounded">
-                <button
-                  className={segBtn(sortMode === 'desc')}
-                  onClick={() => setSortMode('desc')}
-                >등락률 ↓</button>
-                <button
-                  className={segBtn(sortMode === 'asc')}
-                  onClick={() => setSortMode('asc')}
-                >등락률 ↑</button>
-                <button
-                  className={segBtn(sortMode === 'manual')}
-                  onClick={() => setSortMode('manual')}
-                >수동</button>
-              </SegmentedControl>
-            </span>
-            {/* 그룹 정렬(폴더 순서) — 행 정렬과 직교. 버튼 의미는 aria-label(visible '등락률 ↓' 가 행과 겹침). */}
-            <span className="flex items-center gap-1 text-xs">
-              <span className="text-fg-dim">그룹</span>
-              <SegmentedControl aria-label="그룹 정렬" className="rounded">
-                <button
-                  aria-label="그룹을 평균 등락률 높은 순으로"
-                  className={segBtn(groupSort === 'desc')}
-                  onClick={() => setGroupSort('desc')}
-                >등락률 ↓</button>
-                <button
-                  aria-label="그룹을 평균 등락률 낮은 순으로"
-                  className={segBtn(groupSort === 'asc')}
-                  onClick={() => setGroupSort('asc')}
-                >등락률 ↑</button>
-                <button
-                  aria-label="그룹 수동 순서"
-                  className={segBtn(groupSort === 'manual')}
-                  onClick={() => setGroupSort('manual')}
-                >수동</button>
-              </SegmentedControl>
-            </span>
+            <HeatmapSearchInput query={query} onQuery={setQuery} testId="heatmap-search" className="w-44" />
+            {/* 정렬 = 우측 레일 드로어와 공유하는 아이콘 순환 버튼(manual→desc→asc). 종목=그룹 내
+                순서, 그룹=폴더 순서(직교 축). 라벨이 정렬 키(등락률)의 축을 알린다. */}
+            <SortCycleButton label="종목" mode={sortMode} onCycle={() => setSortMode(nextSort(sortMode))} />
+            <SortCycleButton label="그룹" mode={groupSort} onCycle={() => setGroupSort(nextSort(groupSort))} />
           </ControlBar>
         </header>
         <SectorTempStrip groups={groups} quoteByCode={quoteByCode} onJump={scrollToFolder} />
@@ -142,8 +111,11 @@ export function Heatmap() {
             onClose={() => setShowNewGroup(false)}
           />
         )}
-        <HeatmapBoard groups={orderedGroups} quoteByCode={quoteByCode}
-          sortMode={sortMode} onPick={onPick} onReorder={onReorder} onRowMenu={onRowMenu}
+        {/* 검색 중엔 재정렬 비활성(onReorder=undefined): HeatmapFolder 의 orderedCodes 는 렌더된
+            행에서 나오는데, 종목 필터 하에선 부분집합이라 서버 순서를 손상시킨다. */}
+        <HeatmapBoard groups={visibleGroups} quoteByCode={quoteByCode}
+          sortMode={sortMode} onPick={onPick}
+          onReorder={isSearching ? undefined : onReorder} onRowMenu={onRowMenu}
           onRowDragState={setIsRowDragging} />
         {menu && (
           <HeatmapRowMenu

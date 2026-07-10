@@ -39,6 +39,12 @@ export function makePctOf(quoteByCode: Map<string, LiveQuote>): (code: string) =
   return makeChangePctOf(quoteByCode);
 }
 
+/** 정렬 순환: 기본(manual) → 내림(desc) → 오름(asc) → 기본. 아이콘 순환 버튼(SortCycleButton)
+ *  이 클릭마다 진행하는 단일 순서 — /heatmap 페이지와 우측 레일 드로어가 공유. */
+export function nextSort(mode: SortMode): SortMode {
+  return mode === 'manual' ? 'desc' : mode === 'desc' ? 'asc' : 'manual';
+}
+
 /** SortMode/GroupSort(3-상태) → QuoteSortMode. manual=default(기본), desc=내림, asc=오름.
  *  정렬키 계산(sortEntries)과 통합 정렬 아이콘(QuoteSortIcon)이 공유하는 단일 매핑. */
 export function toQuoteSortMode(mode: 'manual' | 'desc' | 'asc'): QuoteSortMode {

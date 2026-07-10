@@ -89,8 +89,9 @@ it('폴더·종목·phase 배지 렌더 + 색 범례 제거됨(#6)', async () =>
   expect(screen.getByText('삼성전자')).toBeInTheDocument();
   expect(screen.getByText('● 장중')).toBeInTheDocument();
   expect(screen.queryByLabelText(/색 범례/)).toBeNull();   // #6: 범례 삭제
-  expect(screen.getByRole('group', { name: '종목 정렬' })).toBeInTheDocument();
-  expect(screen.getByRole('group', { name: '그룹 정렬' })).toBeInTheDocument();
+  // 정렬 = 드로어와 공유하는 아이콘 순환 버튼(role=button, accessible name 보존).
+  expect(screen.getByRole('button', { name: '종목 정렬' })).toBeInTheDocument();
+  expect(screen.getByRole('button', { name: '그룹 정렬' })).toBeInTheDocument();
 });
 
 it('행 클릭 → 종목 탭 open-or-focus(jump-to-live)', async () => {
@@ -113,12 +114,12 @@ it('Meta-clicking a heatmap row opens a new live tab', async () => {
   expect(setActiveTabCode).not.toHaveBeenCalled();
 });
 
-it('기본 manual=order 순, 등락률↓ 토글 시 등락률 내림차순', async () => {
+it('기본 manual=order 순, 종목 정렬 1클릭(manual→desc) 시 등락률 내림차순', async () => {
   renderPage();
   await screen.findAllByText('반도체');   // 스트립 칩+헤더로 중복 → All (렌더 대기용)
   const manual = screen.getAllByText(/삼성전자|SK하이닉스/).map((n) => n.textContent);
   expect(manual).toEqual(['삼성전자', 'SK하이닉스']);          // order 0,1
-  fireEvent.click(screen.getByRole('button', { name: '등락률 ↓' }));
+  fireEvent.click(screen.getByRole('button', { name: '종목 정렬' }));   // manual→desc
   const change = screen.getAllByText(/삼성전자|SK하이닉스/).map((n) => n.textContent);
   expect(change).toEqual(['SK하이닉스', '삼성전자']);          // +5% 먼저
 });
@@ -144,13 +145,25 @@ it('스트립 칩 클릭 → 해당 카드로 scrollIntoView', async () => {
   );
 });
 
-it('그룹 정렬 토글: aria로 쿼리, 클릭 시 store.groupSort 갱신(#7)', async () => {
+it('그룹 정렬 순환 버튼: 클릭마다 store.groupSort 갱신(manual→desc→asc→manual)(#7)', async () => {
   renderPage();
   await screen.findAllByText('반도체');
   expect(useHeatmapPrefsStore.getState().groupSort).toBe('manual');
-  // 그룹 버튼은 aria-label 로 식별(visible text '등락률 ↓' 는 행 토글과 겹치므로)
-  fireEvent.click(screen.getByRole('button', { name: '그룹을 평균 등락률 높은 순으로' }));
+  const btn = screen.getByRole('button', { name: '그룹 정렬' });
+  fireEvent.click(btn);
   expect(useHeatmapPrefsStore.getState().groupSort).toBe('desc');
-  fireEvent.click(screen.getByRole('button', { name: '그룹 수동 순서' }));
+  fireEvent.click(btn);
+  expect(useHeatmapPrefsStore.getState().groupSort).toBe('asc');
+  fireEvent.click(btn);
   expect(useHeatmapPrefsStore.getState().groupSort).toBe('manual');
+});
+
+it('검색: 종목명 부분일치로 행 필터 + 헤더 카운트 감소', async () => {
+  renderPage();
+  await screen.findAllByText('반도체');
+  expect(screen.getByText(/2종목/)).toBeInTheDocument();
+  fireEvent.change(screen.getByTestId('heatmap-search'), { target: { value: '삼성' } });
+  expect(screen.getByText('삼성전자')).toBeInTheDocument();
+  expect(screen.queryByText('SK하이닉스')).toBeNull();
+  expect(screen.getByText(/1종목/)).toBeInTheDocument();
 });
