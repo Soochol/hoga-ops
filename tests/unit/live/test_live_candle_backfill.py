@@ -294,6 +294,48 @@ async def test_warm_minute_new_code_cancels_other_codes_warm(
 
 
 @pytest.mark.asyncio
+async def test_fetch_past_shared_corider_survives_waiter_cancellation(tmp_path) -> None:
+    """한 대기자의 취소가 공유 single-flight 태스크에 올라탄 다른 대기자를 죽이는
+    회귀 가드(/investigate 2026-07-10). bare `await task`는 대기자 취소를
+    _fut_waiter.cancel()로 공유 태스크까지 전파한다 — warm latest-wins 취소
+    (warm_minute)가 이 경로로 같은 날짜에 올라탄 사용자 /past-candles 요청을
+    CancelledError로 죽였다. 조인 지점은 shield여야 한다."""
+    kis = _FakeKis()
+    gate = asyncio.Event()
+
+    class _GatedScheduler:
+        async def submit(self, *, key, endpoint, priority, call, cooldown_scope=None):
+            await gate.wait()
+            return await call(kis)  # type: ignore[arg-type]
+
+    backfill = LiveMinuteCandleBackfill(
+        data_dir=tmp_path,
+        cache=PastCandlesCache(data_dir=tmp_path),
+        scheduler=_GatedScheduler(),  # type: ignore[arg-type]
+        concurrency=1,
+    )
+
+    warm_rider = asyncio.create_task(
+        backfill._fetch_past_shared("KRX", "005930", "20260518")
+    )
+    user_rider = asyncio.create_task(
+        backfill._fetch_past_shared("KRX", "005930", "20260518")
+    )
+    await asyncio.sleep(0)
+    await asyncio.sleep(0)  # 두 rider 모두 공유 태스크에 매달린 상태
+
+    warm_rider.cancel()  # warm_minute latest-wins의 other_task.cancel() 모사
+    await asyncio.sleep(0)
+    gate.set()
+
+    bars = await user_rider  # shield 없으면 여기서 CancelledError
+    assert len(bars) == 1
+    assert kis.calls == [("005930", "20260518", "KRX", True)]
+    with pytest.raises(asyncio.CancelledError):
+        await warm_rider
+
+
+@pytest.mark.asyncio
 async def test_warm_minute_single_flight_per_venue_code(tmp_path, monkeypatch) -> None:
     from hoga.api import calendar as cal
 

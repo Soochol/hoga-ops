@@ -1052,7 +1052,9 @@ class LiveInvestorEstimateFetcher:
             task = asyncio.create_task(self._fetch_uncached(kis, code, trading_day))
             self._inflight[key] = task
             task.add_done_callback(lambda _t, k=key: self._inflight.pop(k, None))
-        return await task
+        # shield: 대기자 취소가 공유 태스크로 전파되면 같은 키에 올라탄 다른
+        # 대기자까지 CancelledError로 죽는다 (live_candle_backfill과 동일 규약).
+        return await asyncio.shield(task)
 
     async def _fetch_uncached(
         self,
