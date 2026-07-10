@@ -30,13 +30,9 @@ export default function OrderbookTable({ snapshot }: Props) {
     ...bids.map((l) => l.qty),
   );
 
-  // Asks displayed worst → best (top → bottom), so best ask hugs the spread
-  // divider. Bids continue best → worst below the divider.
+  // Asks displayed worst → best (top → bottom), so best ask sits directly
+  // above best bid. Bids continue best → worst below.
   const displayedAsks = [...asks].reverse();
-
-  const bestAsk = asks[0]?.price ?? null;
-  const bestBid = bids[0]?.price ?? null;
-  const spread = bestAsk != null && bestBid != null ? bestAsk - bestBid : null;
 
   return (
     <div className="font-mono text-sm tabular-nums">
@@ -45,7 +41,6 @@ export default function OrderbookTable({ snapshot }: Props) {
         // keys tied to rank (best = 1).
         <Row key={`a-${asks.length - i}`} side="ask" price={l.price} qty={l.qty} maxQty={maxQty} />
       ))}
-      <SpreadDivider spread={spread} />
       {bids.map((l, i) => (
         <Row key={`b-${i + 1}`} side="bid" price={l.price} qty={l.qty} maxQty={maxQty} />
       ))}
@@ -78,15 +73,6 @@ function Row({
       />
       <span className={`relative text-right ${priceColor}`}>{price.toLocaleString('ko-KR')}</span>
       <span className="relative text-right text-fg-dim">{qty.toLocaleString('ko-KR')}</span>
-    </div>
-  );
-}
-
-function SpreadDivider({ spread }: { spread: number | null }) {
-  return (
-    <div className="border-y bg-bg-subtle px-2.5 py-1 text-xs font-semibold tracking-wider uppercase text-fg-dimmer flex justify-between">
-      <span>Spread</span>
-      <span className="font-mono">{spread != null ? spread.toLocaleString('ko-KR') : '—'}</span>
     </div>
   );
 }
