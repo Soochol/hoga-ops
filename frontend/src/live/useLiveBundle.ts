@@ -203,6 +203,14 @@ export interface UseLiveBundleResult {
    * 드러낸다. 분봉 전용(D/W/M은 호가 pane이 없어 빈 배열), hoga 번들 미로드 시에도
    * 빈 배열(판정 유보 — 로딩 중 거짓 경고 방지). */
   hogaCoverageGapDates: string[];
+  /** Coverage-gap 백필(A안): 활성 range 지표(hoga + 활성 sidecar)가 도달한 가장 최근
+   * from_date(YYYYMMDD). 캔들이 병합 캐시로 더 과거까지 복원돼도 지표가 이 날짜까지만
+   * 있으면, useViewportBackfill이 viewport 좌단이 이보다 과거일 때 range 창을 확장한다.
+   * 분봉 전용(D/W/M은 range 지표 없음 → null), 미로드 시 null. */
+  indicatorCoverageFromDate: string | null;
+  /** 지금 range가 요청 중인 창의 from(YYYYMMDD). coverage 스텝 base의 null-fallback.
+   * 분봉 외/미요청이면 null. */
+  rangeWindowFromDate: string | null;
 }
 
 type UseLiveBundleOptions = {
@@ -796,6 +804,27 @@ export function useLiveBundle(
     [isMinute, chartBundle?.segments, pastHoga.data?.segments, todayKstYyyymmdd],
   );
 
+  // Coverage-gap 백필(A안) 신호. 캔들은 병합 캐시로 수개월 복원되는데 range 지표는
+  // 요청 창(기본 5거래일)만 커버해, viewport가 지표 커버리지 밖 구간을 보면
+  // useViewportBackfill이 whitespace 없이도 range 창을 확장하도록 돕는다.
+  // - indicatorCoverageFromDate: 활성 지표(hoga + 활성 sidecar)가 도달한 가장 최근
+  //   from_date. 둘은 같은 historicalFromDate로 re-key되어 정상 settle 후 일치하지만,
+  //   비활성/미settle 편차를 대비해 max(가장 덜 확장된 쪽=구속 조건)를 취한다.
+  // - rangeWindowFromDate: 지금 range가 요청 중인 창의 from(=nextCoverageFrom base의
+  //   null-fallback). 분봉 외/미요청이면 null이라 coverage 경로가 자연 비활성.
+  const indicatorCoverageFromDate = useMemo<string | null>(() => {
+    if (!isMinute) return null;
+    let coverage: string | null = null;
+    if (pastHoga.data?.from_date) coverage = pastHoga.data.from_date;
+    if (sidecarEnabled && pastSidecars.data?.from_date) {
+      coverage = coverage === null || pastSidecars.data.from_date > coverage
+        ? pastSidecars.data.from_date
+        : coverage;
+    }
+    return coverage;
+  }, [isMinute, pastHoga.data?.from_date, sidecarEnabled, pastSidecars.data?.from_date]);
+  const rangeWindowFromDate = isMinute ? rangePlan.from : null;
+
   // 활성 소스의 fetch 경고만 노출 — 배타 이분화. 우회 ON 분봉은 디스크라 경고 없음([]),
   // D/W/M은 스크리너. 우회 OFF는 KIS 경로. (다른 경로 쿼리는 disabled라 스테일 경고가
   // 새어 나오지 않도록 배타로 고른다.)
@@ -818,5 +847,7 @@ export function useLiveBundle(
     isSidecarLoading: sidecarEnabled && pastSidecars.isLoading && pastSidecars.data == null,
     pastDataWarnings,
     hogaCoverageGapDates,
+    indicatorCoverageFromDate,
+    rangeWindowFromDate,
   };
 }

@@ -194,3 +194,99 @@ describe('useViewportBackfill — settle-loop continuity (3a) is unaffected by t
     expect(extendSpy).toHaveBeenCalledTimes(1);
   });
 });
+
+describe('useViewportBackfill — coverage-gap trigger (3b, A안)', () => {
+  // 이 현상의 박제: 탭 전환 후 캔들은 병합 캐시로 몇 달치 복원되는데 range 지표는
+  // 5거래일 창만 커버해, viewport 좌단(readViewportLeftDate)이 지표 커버리지 밖이면
+  // whitespace(logical.from<0)가 없어도 range 창을 확장해야 한다. mock 의
+  // getVisibleRange().from=1 → axisWithOneSession 기준 viewportLeftDate='20260709'.
+  let extendSpy: ReturnType<typeof vi.spyOn>;
+
+  beforeEach(() => {
+    vi.useFakeTimers();
+    useLivePageStore.setState({
+      activeCode: '005930',
+      candleTimeframe: '1m',
+      historicalFromDate: '20260601',
+    });
+    extendSpy = vi
+      .spyOn(useLivePageStore.getState(), 'extendHistoricalRange')
+      .mockImplementation(() => {});
+  });
+
+  afterEach(() => {
+    vi.runOnlyPendingTimers();
+    vi.useRealTimers();
+    extendSpy.mockRestore();
+  });
+
+  function renderCoverage(props: {
+    indicatorCoverageFromDate?: string | null;
+    rangeWindowFromDate?: string | null;
+    isExtending?: boolean;
+  }) {
+    const cap = chartWithCapturedHandler();
+    renderHook(() =>
+      useViewportBackfill({
+        chart: cap.chart,
+        axis: axisWithOneSession(),
+        bundle: bundleWithCandles(),
+        timeframe: '1m',
+        isExtending: props.isExtending ?? false,
+        code: '005930',
+        canTriggerBackfill: () => true,
+        indicatorCoverageFromDate: props.indicatorCoverageFromDate,
+        rangeWindowFromDate: props.rangeWindowFromDate,
+      }),
+    );
+    return cap;
+  }
+
+  it('extends the range window when viewport left is older than indicator coverage (no whitespace)', () => {
+    // 회귀 가드: logical.from>=0 라 기존(whitespace-only) 코드였다면 즉시 return →
+    // dispatch 0. coverage 술어가 있어야 발화한다.
+    const cap = renderCoverage({
+      indicatorCoverageFromDate: '20260715', // viewport('20260709')보다 최근 → 갭
+      rangeWindowFromDate: '20260601',
+    });
+
+    cap.fire({ from: 5, to: 100 }); // whitespace 없음(from>=0)
+    vi.advanceTimersByTime(150);
+
+    expect(extendSpy).toHaveBeenCalledTimes(1);
+  });
+
+  it('does NOT extend when indicator coverage already reaches the viewport left edge', () => {
+    const cap = renderCoverage({
+      indicatorCoverageFromDate: '20260601', // viewport('20260709')보다 과거 → 갭 없음
+      rangeWindowFromDate: '20260601',
+    });
+
+    cap.fire({ from: 5, to: 100 });
+    vi.advanceTimersByTime(150);
+
+    expect(extendSpy).not.toHaveBeenCalled();
+  });
+
+  it('is inert when coverage props are absent (D/W/M or index — backward compat)', () => {
+    const cap = renderCoverage({}); // coverage/window 미전달 → null
+
+    cap.fire({ from: 5, to: 100 });
+    vi.advanceTimersByTime(150);
+
+    expect(extendSpy).not.toHaveBeenCalled();
+  });
+
+  it('respects backpressure: no coverage step while a step is already in flight', () => {
+    const cap = renderCoverage({
+      indicatorCoverageFromDate: '20260715',
+      rangeWindowFromDate: '20260601',
+      isExtending: true, // 스텝 진행 중
+    });
+
+    cap.fire({ from: 5, to: 100 });
+    vi.advanceTimersByTime(150);
+
+    expect(extendSpy).not.toHaveBeenCalled();
+  });
+});

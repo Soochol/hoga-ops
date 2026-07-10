@@ -5,12 +5,26 @@ import type { RangeBundle } from '../api/types';
 import { useLivePageStore, type LiveTimeframe, isMinuteTimeframe } from '../state/livePage';
 import {
   nextHistoricalFrom,
+  nextCoverageFrom,
   stepChunkDays,
   planFillStep,
   earliestAllowedMinuteDate,
   todayKstYyyymmdd,
+  realMsToYyyymmdd,
 } from './liveDateTime';
 import { livePerfLog } from '../util/perfDebug';
+
+/** viewport 좌단 가시 바의 KST 날짜(YYYYMMDD). getVisibleRange().from(virtual sec)를
+ * axis.toReal로 실시간 ms 변환 — coverage-gap 판정용. 측정 불가 시 null. */
+function readViewportLeftDate(chart: IChartApi, axis: VirtualAxis): string | null {
+  try {
+    const vr = chart.timeScale().getVisibleRange();
+    if (!vr) return null;
+    return realMsToYyyymmdd(axis.toReal((vr.from as number) * 1000));
+  } catch {
+    return null;
+  }
+}
 
 /** 진행 루프 무한 방지 백스톱. 250일 클램프(≈50스텝 @ 5캘린더일)가 먼저 멈추므로
  * 이건 백스톱-of-백스톱(60×5=300일 > 250일). */
@@ -31,6 +45,12 @@ export interface ViewportBackfillArgs {
   code: string;
   /** Backfill must not race the initial live-edge viewport placement. */
   canTriggerBackfill?: () => boolean;
+  /** Coverage-gap 백필(A안): 활성 range 지표(hoga/sidecar)가 도달한 가장 최근 from_date.
+   * 캔들이 병합 캐시로 더 과거까지 복원돼도 지표가 이 날짜까지만 있으면, viewport 좌단이
+   * 이보다 과거일 때 whitespace 없이도 range 창을 확장한다. 분봉 외/미로드면 null → 비활성. */
+  indicatorCoverageFromDate?: string | null;
+  /** 지금 range가 요청 중인 창의 from — nextCoverageFrom base의 null-fallback. */
+  rangeWindowFromDate?: string | null;
 }
 
 /** Headless controller for /live's leftward-pan historical backfill +
@@ -79,6 +99,8 @@ export function useViewportBackfill({
   isExtending,
   code,
   canTriggerBackfill = () => true,
+  indicatorCoverageFromDate = null,
+  rangeWindowFromDate = null,
 }: ViewportBackfillArgs): void {
   // Pre-swap snapshot: the view as of the CURRENT commit's layout phase, with
   // the right edge resolved to real ms through the axis the chart was actually
@@ -116,6 +138,13 @@ export function useViewportBackfill({
   // every SSE tick (same rationale as candleCountRef above).
   const isExtendingRef = useRef(false);
   isExtendingRef.current = isExtending;
+  // Coverage-gap 신호 미러. 3b 구독 effect의 deps에 넣지 않으려는 목적 —
+  // indicatorCoverageFromDate는 좌측 팬 확장 때만 바뀌지만(SSE 틱은 from_date 불변),
+  // deps에 두면 번들 참조 churn 시 재구독 위험이 있어 candleCountRef 패턴을 따른다.
+  const coverageFromRef = useRef<string | null>(null);
+  coverageFromRef.current = indicatorCoverageFromDate;
+  const rangeWindowFromRef = useRef<string | null>(null);
+  rangeWindowFromRef.current = rangeWindowFromDate;
 
   useEffect(() => {
     preSwapRef.current = null;
@@ -239,6 +268,9 @@ export function useViewportBackfill({
       stepCalendarDays: stepChunkDays(timeframe),
       stepCount: fillStepCountRef.current,
       maxSteps: MAX_FILL_STEPS,
+      viewportLeftDate: readViewportLeftDate(chart, axis),
+      coverageFromDate: coverageFromRef.current,
+      rangeWindowFromDate: rangeWindowFromRef.current,
     });
     if (plan.action === 'stop') {
       livePerfLog('viewport_backfill_stop', {
@@ -304,18 +336,33 @@ export function useViewportBackfill({
       if (isExtendingRef.current) return;
       const r = range as { from?: number | null; to?: number | null } | null;
       if (!r || r.from == null) return;
-      // logical.from is a fractional bar index; negative = past the leftmost
-      // loaded bar, which is exactly the lazy-fetch trigger condition. NOTE:
-      // nothing is captured here — the v3 snapshot happens at the prepend
-      // commit itself, so user movement after this trigger cannot go stale.
-      if (r.from >= 0) return;
-      fillStepCountRef.current = 1; // 이 dispatch가 스텝 1
-      // SR-3: the holiday-span / monotonic-decrease backfill policy lives in
-      // the pure nextHistoricalFrom kernel (liveDateTime, table-tested). This
-      // effect keeps only the imperative shell: trigger gate, debounce, store
-      // dispatch.
+      // 두 트리거 경로:
+      //  1. left_pan(기존): logical.from<0 = 최좌단 캔들보다 왼쪽으로 팬. axis-base로
+      //     캔들+지표 동반 확장. v3 스냅샷이 프리펜드 커밋에서 잡히므로 여기서 캡처 없음.
+      //  2. coverage_gap(A안): logical.from≥0(캔들 안)이지만 viewport 좌단이 range 지표
+      //     커버리지보다 과거면, 캔들은 병합 캐시로 복원됐는데 지표만 뒤처진 구간이다.
+      //     window-base nextCoverageFrom으로 range 창만 확장(axis-base 금지 — 복원된
+      //     캔들로 폭발). 분봉 외/미로드면 coverageFromRef=null이라 이 경로 비활성.
       const cur = useLivePageStore.getState().historicalFromDate;
-      const nextFrom = nextHistoricalFrom(axis.segments[0].sessionOpenMs, cur, stepChunkDays(timeframe));
+      let trigger: 'left_pan' | 'coverage_gap';
+      let nextFrom: string;
+      if (r.from < 0) {
+        trigger = 'left_pan';
+        nextFrom = nextHistoricalFrom(axis.segments[0].sessionOpenMs, cur, stepChunkDays(timeframe));
+      } else {
+        const coverageFrom = coverageFromRef.current;
+        const windowFrom = rangeWindowFromRef.current;
+        if (coverageFrom === null || windowFrom === null) return;
+        const leftDate = readViewportLeftDate(chart, axis);
+        if (leftDate === null || leftDate >= coverageFrom) return;
+        trigger = 'coverage_gap';
+        nextFrom = nextCoverageFrom(cur, windowFrom, stepChunkDays(timeframe));
+      }
+      fillStepCountRef.current = 1; // 이 dispatch가 스텝 1
+      // SR-3: the holiday-span / monotonic-decrease backfill policy lives in the
+      // pure nextHistoricalFrom / nextCoverageFrom kernels (liveDateTime,
+      // table-tested). This effect keeps only the imperative shell: trigger gate,
+      // debounce, store dispatch.
       if (timeoutId !== null) clearTimeout(timeoutId);
       timeoutId = setTimeout(() => {
         const state = useLivePageStore.getState();
@@ -327,7 +374,7 @@ export function useViewportBackfill({
           livePerfLog('viewport_backfill_skip', {
             code,
             timeframe,
-            trigger: 'left_pan',
+            trigger,
             logicalFrom: r.from,
             from: cur,
           });
@@ -336,7 +383,7 @@ export function useViewportBackfill({
         livePerfLog('viewport_backfill_extend', {
           code,
           timeframe,
-          trigger: 'left_pan',
+          trigger,
           logicalFrom: r.from,
           from: cur,
           nextFrom,
