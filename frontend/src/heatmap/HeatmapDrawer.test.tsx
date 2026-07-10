@@ -209,6 +209,19 @@ describe('HeatmapDrawer', () => {
     await waitFor(() => expect(api.addToHeatmap).toHaveBeenCalledWith('005930'));
   });
 
+  it('그룹 ⋯ 메뉴의 "종목 추가"가 검색 팝오버를 열고 그 폴더에 추가한다 (addToHeatmapFolder)', async () => {
+    wrap(<HeatmapDrawer />);
+    await screen.findByTestId('heatmap-drawer-row-000001');
+    // 2차전지(f1) 그룹 ⋯ → "종목 추가" (헤더 ＋종목 버튼은 이제 없음)
+    fireEvent.click(screen.getByRole('button', { name: '2차전지 그룹 메뉴' }));
+    fireEvent.click(screen.getByRole('menuitem', { name: /종목 추가/ }));
+    // 메뉴는 닫히고 검색 팝오버(dialog) 가 뜬다
+    const dialog = screen.getByRole('dialog', { name: '종목 추가' });
+    fireEvent.click(within(dialog).getByTestId('pick'));
+    fireEvent.click(within(dialog).getByRole('button', { name: '추가' }));
+    await waitFor(() => expect(api.addToHeatmapFolder).toHaveBeenCalledWith('005930', 'f1'));
+  });
+
   it('collapse toggle persists to localStorage', async () => {
     wrap(<HeatmapDrawer />);
     const toggle = await screen.findByRole('button', { name: '2차전지 접기' });
