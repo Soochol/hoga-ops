@@ -195,6 +195,22 @@ export function nextHistoricalFrom(
   return subtractDaysKst(baseDate, chunkDays);
 }
 
+/** Coverage-gap 백필(A안)의 다음 from. `nextHistoricalFrom`과 달리 axis earliest를
+ * base로 쓰지 않는다 — 캔들이 병합 캐시로 수개월치 복원되면 axis가 수개월 과거라,
+ * 그걸 base로 삼으면 첫 스텝이 수개월치 range 요청으로 폭발한다. 여기서는 지금 range가
+ * 요청 중인 창(`historicalFromDate`, 아직 확장 전이면 `rangeWindowFromDate`)을 base로
+ * 삼아 chunkDays씩만 과거로 걷는다. 결과는 항상 base보다 strict 과거이므로 스토어
+ * `extendHistoricalRange`의 단조 감소 가드를 통과하고, 스텝마다 coverage 경계가 앞으로
+ * 당겨져 viewport 좌단에 수렴한다(무한 루프 없음). */
+export function nextCoverageFrom(
+  historicalFromDate: string | null,
+  rangeWindowFromDate: string,
+  chunkDays: number,
+): string {
+  const base = historicalFromDate ?? rangeWindowFromDate;
+  return subtractDaysKst(base, chunkDays);
+}
+
 export interface FillStepArgs {
   /** getVisibleLogicalRange().from — 음수면 왼쪽 빈영역. null이면 측정 불가. */
   visibleFrom: number | null;
@@ -208,25 +224,58 @@ export interface FillStepArgs {
   stepCount: number;
   /** 무한 루프 백스톱. */
   maxSteps: number;
+  /** Coverage-gap 확장(A안). viewport 좌단 날짜(YYYYMMDD) — axis.toReal로 변환.
+   * 셋 다 생략/ null이면(비분봉/신호없음) coverage 경로 비활성 → 기존 whitespace 동작만. */
+  viewportLeftDate?: string | null;
+  /** range 지표(hoga/sidecar) 커버리지가 도달한 가장 최근 from_date(구속 조건). */
+  coverageFromDate?: string | null;
+  /** 지금 range가 요청 중인 창의 from — coverage 스텝 base의 null-fallback. */
+  rangeWindowFromDate?: string | null;
 }
 
 /** 한 스텝 settle 후 진행 루프가 멈출지 / 다음 from을 받을지 결정.
  *
- * 종료: (a) viewport 꽉 참(visibleFrom ≥ 0) (b) 측정 불가(null) (c) optional
- * 하한 도달 (d) 백스톱(stepCount ≥ maxSteps). 그 외엔 cur-base nextHistoricalFrom
- * 으로 한 스텝 더 과거를 받는다. 연휴 스텝(거래일 0개)은 여기서 멈추지 않는다 —
- * cur-base가 다음 스텝을 자동으로 더 과거로 보낸다. */
+ * 종료: (a) 측정 불가(visibleFrom null) (b) 백스톱(stepCount ≥ maxSteps) (c) optional
+ * 하한(클램프) 도달. 그 외엔 두 경로 순서로 확장한다:
+ *   1. Whitespace(기존): visibleFrom < 0 → 최좌단 캔들보다 왼쪽으로 팬. axis-base
+ *      nextHistoricalFrom(캔들+지표 동반 확장).
+ *   2. Coverage-gap(신규): whitespace는 찼지만(visibleFrom ≥ 0) 지표 커버리지가
+ *      viewport 좌단보다 뒤(더 최근)면 window-base nextCoverageFrom으로 range 창만
+ *      한 스텝 확장. axis-base 금지(복원된 캔들로 폭발).
+ * 둘 다 충족(whitespace 참 + coverage 도달)이면 stop. 연휴 스텝(거래일 0개)은 여기서
+ * 멈추지 않는다 — 다음 스텝 base가 자동으로 더 과거로 보낸다. */
 export function planFillStep(
   args: FillStepArgs,
 ): { action: 'stop' } | { action: 'fetch'; nextFrom: string } {
-  const { visibleFrom, historicalFromDate, axisEarliestMs, earliestAllowedDate, stepCalendarDays, stepCount, maxSteps } = args;
-  if (visibleFrom === null || visibleFrom >= 0) return { action: 'stop' };
+  const {
+    visibleFrom, historicalFromDate, axisEarliestMs, earliestAllowedDate,
+    stepCalendarDays, stepCount, maxSteps,
+    viewportLeftDate = null, coverageFromDate = null, rangeWindowFromDate = null,
+  } = args;
+  if (visibleFrom === null) return { action: 'stop' };
   if (stepCount >= maxSteps) return { action: 'stop' };
   if (earliestAllowedDate !== null && historicalFromDate !== null && historicalFromDate <= earliestAllowedDate) {
     return { action: 'stop' };
   }
-  return {
-    action: 'fetch',
-    nextFrom: nextHistoricalFrom(axisEarliestMs, historicalFromDate, stepCalendarDays),
-  };
+  // 1. Whitespace 경로(기존): 최좌단 캔들보다 왼쪽으로 팬 → axis-base 확장.
+  if (visibleFrom < 0) {
+    return {
+      action: 'fetch',
+      nextFrom: nextHistoricalFrom(axisEarliestMs, historicalFromDate, stepCalendarDays),
+    };
+  }
+  // 2. Coverage-gap 경로(신규): whitespace는 찼지만 지표 커버리지가 viewport 좌단보다
+  //    뒤(더 최근)면 window-base로 range 창을 한 스텝 확장.
+  if (
+    coverageFromDate !== null &&
+    viewportLeftDate !== null &&
+    rangeWindowFromDate !== null &&
+    viewportLeftDate < coverageFromDate
+  ) {
+    return {
+      action: 'fetch',
+      nextFrom: nextCoverageFrom(historicalFromDate, rangeWindowFromDate, stepCalendarDays),
+    };
+  }
+  return { action: 'stop' };
 }

@@ -94,6 +94,11 @@ interface Props {
   isSidecarLoading?: boolean;
   /** useLiveBundle.isExtending — 진행 루프 settle-effect 구동용. LiveChartRoot로 전달. */
   isExtending: boolean;
+  /** Coverage-gap 백필(A안) — 활성 range 지표 커버리지 from_date. LiveChartRoot로 전달.
+   * 인덱스(range 지표 없음)는 LivePage가 null로 넘긴다. 옵셔널+기본 null. */
+  indicatorCoverageFromDate?: string | null;
+  /** 지금 range가 요청 중인 창의 from — coverage 스텝 base의 null-fallback. LiveChartRoot로 전달. */
+  rangeWindowFromDate?: string | null;
   /** 활성 경로 과거 fetch 경고(rate-limit 등). LiveChartRoot의 빈칸 문구·부분로딩 칩용. */
   pastDataWarnings?: LiveDataWarning[];
   /** 활성 탭의 저장된 viewport(ADR-0069 A안). cold 전환 복귀 시 보던 위치 복원용으로
@@ -148,6 +153,8 @@ export function LiveWorkarea({
   isHogaLoading,
   isSidecarLoading,
   isExtending,
+  indicatorCoverageFromDate = null,
+  rangeWindowFromDate = null,
   pastDataWarnings,
   restoreViewport,
   viewIdentity,
@@ -394,6 +401,8 @@ export function LiveWorkarea({
                     isHogaLoading={isHogaLoading}
                     isSidecarLoading={isSidecarLoading}
                     isExtending={isExtending}
+                    indicatorCoverageFromDate={indicatorCoverageFromDate}
+                    rangeWindowFromDate={rangeWindowFromDate}
                     pastDataWarnings={pastDataWarnings}
                     restoreViewport={restoreViewport}
                     viewIdentity={viewIdentity ?? undefined}

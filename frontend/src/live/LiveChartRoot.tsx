@@ -212,6 +212,12 @@ interface Props {
   isSidecarLoading?: boolean;
   /** useLiveBundle.isExtending. false-edge = 한 스텝 settle → 진행 루프 다음 스텝 판정. */
   isExtending?: boolean;
+  /** Coverage-gap 백필(A안): 활성 range 지표가 도달한 가장 최근 from_date. 캔들이 병합
+   * 캐시로 더 과거까지 복원돼도 지표가 이 날짜까지만 있으면 useViewportBackfill이 range
+   * 창을 확장한다. 옵셔널+기본 null이라 StudyPage·기존 테스트는 무변경. */
+  indicatorCoverageFromDate?: string | null;
+  /** 지금 range가 요청 중인 창의 from — coverage 스텝 base의 null-fallback. */
+  rangeWindowFromDate?: string | null;
   /** 활성 경로 과거 fetch 경고(rate-limit 등, useLiveBundle). 캔들 없으면 빈칸 문구를
    * "호출 한도로 지연"으로 전환, 캔들 있으면 비차단 "일부 과거구간 로딩 지연" 칩. 옵셔널
    * (기존 단일-번들 호출부/테스트 보존). */
@@ -305,6 +311,8 @@ export function LiveChartRoot({
   isHogaLoading = false,
   isSidecarLoading = false,
   isExtending = false,
+  indicatorCoverageFromDate = null,
+  rangeWindowFromDate = null,
   pastDataWarnings,
   restoreViewport = null,
   dayAskPeaks = EMPTY_ASK_PEAKS,
@@ -687,6 +695,8 @@ export function LiveChartRoot({
     isExtending,
     code: code ?? '',
     canTriggerBackfill,
+    indicatorCoverageFromDate,
+    rangeWindowFromDate,
   });
   // Modifier-aware 휠 줌/팬 — handleScale.mouseWheel: false(아래 createChartEx
   // 옵션)와 한 쌍. 스펙: docs/superpowers/specs/2026-06-07-live-wheel-interactions-design.md
