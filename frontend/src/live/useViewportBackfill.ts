@@ -6,7 +6,6 @@ import { useLivePageStore, type LiveTimeframe, isMinuteTimeframe } from '../stat
 import {
   nextHistoricalFrom,
   nextCoverageFrom,
-  stepChunkDays,
   planFillStep,
   earliestAllowedMinuteDate,
   todayKstYyyymmdd,
@@ -26,8 +25,10 @@ function readViewportLeftDate(chart: IChartApi, axis: VirtualAxis): string | nul
   }
 }
 
-/** 진행 루프 무한 방지 백스톱. 250일 클램프(≈50스텝 @ 5캘린더일)가 먼저 멈추므로
- * 이건 백스톱-of-백스톱(60×5=300일 > 250일). */
+/** 진행 루프 무한 방지 백스톱. 스텝=캔들 100개(STEP_CANDLE_TARGET) 기준으로,
+ * 분봉은 250일 클램프가, D/W/M은 데이터 고갈이 보통 먼저 멈춘다 —
+ * 이건 그 뒤의 최후 방어선. 휠 줌아웃 좌단 클램프(1스텝 폭) 도입 후 정상
+ * 경로에서 이 카운터가 바닥날 일은 깊은 드래그 팬뿐이다. */
 const MAX_FILL_STEPS = 60;
 
 /** 재배치 skip 허용 오차(논리 인덱스). lwc가 스스로 타깃에 착지한 경우(라이브
@@ -265,7 +266,7 @@ export function useViewportBackfill({
       historicalFromDate: cur,
       axisEarliestMs: axis.segments[0].sessionOpenMs,
       earliestAllowedDate: isMinuteTimeframe(timeframe) ? earliestAllowedMinuteDate(todayKstYyyymmdd()) : null,
-      stepCalendarDays: stepChunkDays(timeframe),
+      timeframe,
       stepCount: fillStepCountRef.current,
       maxSteps: MAX_FILL_STEPS,
       viewportLeftDate: readViewportLeftDate(chart, axis),
@@ -308,8 +309,9 @@ export function useViewportBackfill({
   // freely go negative past the leftmost bar (-50.3 etc.), which is the
   // signal we actually need.
   //
-  // Each trigger prepends one chunk sized by stepChunkDays(timeframe) — minute
-  // = 5 calendar days (3-trading-day step), D = 350, W/M = 840/3720.
+  // Each trigger prepends one chunk of ~STEP_CANDLE_TARGET(100) candles —
+  // minute = 1~8 trading days (weekend-skipped), D = 140, W/M = 700/3100
+  // calendar days.
   // The 150ms trailing debounce coalesces rapid wheel / drag events into one
   // fetch; the store's extendHistoricalRange is monotonically decreasing, so
   // repeated negative ranges within one chunk are no-ops.
@@ -348,7 +350,7 @@ export function useViewportBackfill({
       let nextFrom: string;
       if (r.from < 0) {
         trigger = 'left_pan';
-        nextFrom = nextHistoricalFrom(axis.segments[0].sessionOpenMs, cur, stepChunkDays(timeframe));
+        nextFrom = nextHistoricalFrom(axis.segments[0].sessionOpenMs, cur, timeframe);
       } else {
         const coverageFrom = coverageFromRef.current;
         const windowFrom = rangeWindowFromRef.current;
@@ -356,7 +358,7 @@ export function useViewportBackfill({
         const leftDate = readViewportLeftDate(chart, axis);
         if (leftDate === null || leftDate >= coverageFrom) return;
         trigger = 'coverage_gap';
-        nextFrom = nextCoverageFrom(cur, windowFrom, stepChunkDays(timeframe));
+        nextFrom = nextCoverageFrom(cur, windowFrom, timeframe);
       }
       fillStepCountRef.current = 1; // 이 dispatch가 스텝 1
       // SR-3: the holiday-span / monotonic-decrease backfill policy lives in the

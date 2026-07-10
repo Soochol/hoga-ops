@@ -4,8 +4,11 @@ import {
   nextCoverageFrom,
   realMsToYyyymmdd,
   subtractDaysKst,
+  subtractWeekdaysKst,
   earliestAllowedMinuteDate,
   PAST_CANDLES_MAX_DAYS,
+  STEP_CANDLE_TARGET,
+  stepTradingDays,
   stepChunkDays,
   planFillStep,
   isKrxRegularSessionNow,
@@ -21,84 +24,125 @@ import { unixMsToKSTDate } from '../util/time';
  * chunk fetch back to?" These cases pin the holiday-span / monotonic-decrease
  * rule directly. */
 describe('nextHistoricalFrom', () => {
-  // 2026-02-02 09:00 KST in Unix ms — axis earliest for the base cases.
+  // 2026-02-02(월) 09:00 KST in Unix ms — axis earliest for the base cases.
   const axisEarliestMs = Date.UTC(2026, 1, 2, 0, 0, 0);
   const axisEarliestDate = realMsToYyyymmdd(axisEarliestMs);
 
-  it('steps back chunkDays from the axis earliest when no fetch is in flight', () => {
-    const got = nextHistoricalFrom(axisEarliestMs, null, 5);
-    expect(got).toBe(subtractDaysKst(axisEarliestDate, 5));
+  it('steps back one step from the axis earliest when no fetch is in flight', () => {
+    const got = nextHistoricalFrom(axisEarliestMs, null, '1m');
+    // 1m 스텝 = 1거래일, 월요일 base → 주말 스킵 → 직전 금요일.
+    expect(got).toBe('20260130');
+    expect(got).toBe(subtractWeekdaysKst(axisEarliestDate, stepTradingDays('1m')));
   });
 
   it('bases off historicalFromDate when it is already earlier than the axis (holiday-span progress)', () => {
     const earlier = subtractDaysKst(axisEarliestDate, 40);
-    const got = nextHistoricalFrom(axisEarliestMs, earlier, 5);
-    expect(got).toBe(subtractDaysKst(earlier, 5));
+    const got = nextHistoricalFrom(axisEarliestMs, earlier, '1m');
+    expect(got).toBe(subtractWeekdaysKst(earlier, stepTradingDays('1m')));
   });
 
   it('ignores a historicalFromDate that is NOT earlier than the axis earliest', () => {
     const later = subtractDaysKst(axisEarliestDate, -5);
-    const got = nextHistoricalFrom(axisEarliestMs, later, 5);
-    expect(got).toBe(subtractDaysKst(axisEarliestDate, 5));
+    const got = nextHistoricalFrom(axisEarliestMs, later, '1m');
+    expect(got).toBe(subtractWeekdaysKst(axisEarliestDate, stepTradingDays('1m')));
   });
 
-  it('honors the injected chunkDays (different chunkDays → different result)', () => {
-    const small = nextHistoricalFrom(axisEarliestMs, null, 5);
-    const large = nextHistoricalFrom(axisEarliestMs, null, 350);
-    expect(small).toBe(subtractDaysKst(axisEarliestDate, 5));
-    expect(large).toBe(subtractDaysKst(axisEarliestDate, 350));
-    expect(small).not.toBe(large);
+  it('honors the timeframe (coarser tf → bigger step; D uses calendar days)', () => {
+    const m1 = nextHistoricalFrom(axisEarliestMs, null, '1m');
+    const m30 = nextHistoricalFrom(axisEarliestMs, null, '30m');
+    const daily = nextHistoricalFrom(axisEarliestMs, null, 'D');
+    expect(m30).toBe(subtractWeekdaysKst(axisEarliestDate, stepTradingDays('30m')));
+    expect(daily).toBe(subtractDaysKst(axisEarliestDate, stepChunkDays('D')));
+    expect(m30 < m1).toBe(true);
+    expect(daily < m30).toBe(true);
   });
 
   it('is monotonic: feeding its own output back always steps further back', () => {
-    const first = nextHistoricalFrom(axisEarliestMs, null, 5);
-    const second = nextHistoricalFrom(axisEarliestMs, first, 5);
+    const first = nextHistoricalFrom(axisEarliestMs, null, '1m');
+    const second = nextHistoricalFrom(axisEarliestMs, first, '1m');
     expect(second < first).toBe(true);
   });
 });
 
 describe('nextCoverageFrom', () => {
   // Coverage-gap 백필(A안) 커널: axis earliest가 아니라 요청 창(historicalFromDate,
-  // 없으면 rangeWindowFromDate)을 base로 chunkDays만 걷는다 — 복원된 캔들로 axis가
+  // 없으면 rangeWindowFromDate)을 base로 한 스텝만 걷는다 — 복원된 캔들로 axis가
   // 수개월 과거여도 한 스텝이 폭발하지 않게 한다.
   it('bases off rangeWindowFromDate when no extension yet (historicalFromDate null)', () => {
-    const got = nextCoverageFrom(null, '20260601', 5);
-    expect(got).toBe(subtractDaysKst('20260601', 5)); // '20260527'
+    // '20260601'은 월요일 → 1m 1거래일 스텝 → 직전 금요일 '20260529'.
+    const got = nextCoverageFrom(null, '20260601', '1m');
+    expect(got).toBe('20260529');
   });
 
   it('bases off historicalFromDate once an extension is in flight (ignores window)', () => {
-    const got = nextCoverageFrom('20260520', '20260601', 5);
-    expect(got).toBe(subtractDaysKst('20260520', 5)); // '20260515'
+    const got = nextCoverageFrom('20260520', '20260601', '1m');
+    expect(got).toBe(subtractWeekdaysKst('20260520', 1)); // '20260519' (수→화)
   });
 
   it('does NOT use an axis earliest — result is window-relative, not months-deep', () => {
-    // 캔들이 몇 달치 복원돼도(=axis가 과거여도) coverage 스텝은 창 기준 5일만 뒤로.
-    const got = nextCoverageFrom(null, '20260601', 5);
+    // 캔들이 몇 달치 복원돼도(=axis가 과거여도) coverage 스텝은 창 기준 한 스텝만 뒤로.
+    const got = nextCoverageFrom(null, '20260601', '30m');
     expect(got > '20260501').toBe(true); // 한 달치 폭발 아님
   });
 
   it('is monotonic: feeding its own output back always steps further back', () => {
-    const first = nextCoverageFrom('20260520', '20260601', 5);
-    const second = nextCoverageFrom(first, '20260601', 5);
+    const first = nextCoverageFrom('20260520', '20260601', '1m');
+    const second = nextCoverageFrom(first, '20260601', '1m');
     expect(second < first).toBe(true);
   });
 });
 
-describe('stepChunkDays', () => {
-  it('minute timeframes are a fixed 3-trading-day step (≈5 calendar days)', () => {
-    // 3 trading days / (5/7 trading-days-per-calendar-day) = ceil(4.2) = 5.
-    for (const tf of ['1m', '3m', '5m', '10m', '15m', '30m'] as const) {
-      expect(stepChunkDays(tf)).toBe(5);
+describe('step sizing — 캔들 100개 통일 (STEP_CANDLE_TARGET)', () => {
+  it('target is 100 candles for every timeframe', () => {
+    expect(STEP_CANDLE_TARGET).toBe(100);
+  });
+
+  it('minute steps convert 100 candles to trading days (min 1 — date-granular API)', () => {
+    // ceil(100 × 봉분 ÷ 390): 1m/3m은 1일 floor, 5m=2, 10m=3, 15m=4, 30m=8.
+    expect(stepTradingDays('1m')).toBe(1);
+    expect(stepTradingDays('3m')).toBe(1);
+    expect(stepTradingDays('5m')).toBe(2);
+    expect(stepTradingDays('10m')).toBe(3);
+    expect(stepTradingDays('15m')).toBe(4);
+    expect(stepTradingDays('30m')).toBe(8);
+  });
+
+  it('D/W/M steps convert 100 candles to calendar days', () => {
+    expect(stepChunkDays('D')).toBe(140); // ceil(100 ÷ (5/7))
+    expect(stepChunkDays('W')).toBe(700); // 100 × 7
+    expect(stepChunkDays('M')).toBe(3100); // 100 × 31
+  });
+});
+
+describe('subtractWeekdaysKst', () => {
+  // 2026-05-18은 월요일(아래 isKrxRegularSessionNow 픽스처와 동일 근거).
+  it('skips a weekend: Monday − 1 weekday = previous Friday', () => {
+    expect(subtractWeekdaysKst('20260518', 1)).toBe('20260515');
+  });
+
+  it('counts only weekdays: Monday − 5 weekdays = previous Monday', () => {
+    expect(subtractWeekdaysKst('20260518', 5)).toBe('20260511');
+  });
+
+  it('weekend base walks back to the nearest prior weekday and beyond', () => {
+    expect(subtractWeekdaysKst('20260517', 1)).toBe('20260515'); // 일 → 금
+    expect(subtractWeekdaysKst('20260516', 1)).toBe('20260515'); // 토 → 금
+  });
+
+  it('never lands on a weekend and is always strictly earlier (monotonic)', () => {
+    for (let offset = 0; offset < 14; offset += 1) {
+      const base = subtractDaysKst('20260518', offset);
+      for (const n of [1, 2, 8]) {
+        const got = subtractWeekdaysKst(base, n);
+        expect(got < base).toBe(true);
+        const y = parseInt(got.slice(0, 4), 10);
+        const m = parseInt(got.slice(4, 6), 10);
+        const d = parseInt(got.slice(6, 8), 10);
+        const wd = new Date(Date.UTC(y, m - 1, d)).getUTCDay();
+        expect(wd).not.toBe(0);
+        expect(wd).not.toBe(6);
+      }
     }
-  });
-
-  it('D keeps the prior one-shot 350-calendar-day window (≈250 daily candles)', () => {
-    expect(stepChunkDays('D')).toBe(350);
-  });
-
-  it('W/M keep the prior one-shot windows (120 candles)', () => {
-    expect(stepChunkDays('W')).toBe(840); // 120 × 7
-    expect(stepChunkDays('M')).toBe(3720); // 120 × 31
   });
 });
 
@@ -144,12 +188,12 @@ describe('realMsToYyyymmdd', () => {
 });
 
 describe('planFillStep', () => {
-  const axisEarliestMs = Date.UTC(2026, 4, 26, 0, 0, 0); // '20260526' 09:00 KST
+  const axisEarliestMs = Date.UTC(2026, 4, 26, 0, 0, 0); // '20260526'(화) 09:00 KST
   const base = {
-    historicalFromDate: '20260521' as string | null,
+    historicalFromDate: '20260521' as string | null, // 목요일
     axisEarliestMs,
     earliestAllowedDate: '20251010', // far floor → not clamped
-    stepCalendarDays: 5,
+    timeframe: '1m' as const, // 1거래일 스텝
     stepCount: 1,
     maxSteps: 60,
   };
@@ -165,7 +209,7 @@ describe('planFillStep', () => {
   it('fetches the next step back when whitespace remains', () => {
     expect(planFillStep({ ...base, visibleFrom: -50 })).toEqual({
       action: 'fetch',
-      nextFrom: subtractDaysKst('20260521', 5), // '20260516'
+      nextFrom: subtractWeekdaysKst('20260521', 1), // '20260520' (목→수)
     });
   });
 
@@ -194,7 +238,7 @@ describe('planFillStep', () => {
     it('fetches a window-base step when viewport left is older than coverage', () => {
       expect(
         planFillStep({ ...cov, viewportLeftDate: '20260410', coverageFromDate: '20260519' }),
-      ).toEqual({ action: 'fetch', nextFrom: subtractDaysKst('20260521', 5) });
+      ).toEqual({ action: 'fetch', nextFrom: subtractWeekdaysKst('20260521', 1) });
     });
 
     it('stops when coverage already reaches the viewport left edge', () => {
@@ -224,7 +268,7 @@ describe('planFillStep', () => {
           viewportLeftDate: '20260410',
           coverageFromDate: '20260519',
         }),
-      ).toEqual({ action: 'fetch', nextFrom: subtractDaysKst('20260521', 5) });
+      ).toEqual({ action: 'fetch', nextFrom: subtractWeekdaysKst('20260521', 1) });
     });
 
     it('coverage-gap still honors the clamp floor', () => {

@@ -8,7 +8,7 @@
  * "what date is right now in Korea?" — keeping the date math in one place means
  * localising any future Half-Day Session handling here.
  */
-import { isMinuteTimeframe, type LiveTimeframe } from '../state/livePage';
+import { isMinuteTimeframe, type LiveTimeframe, type MinuteTimeframe } from '../state/livePage';
 import { TIMEFRAME_TO_MS } from '../api/types';
 import { unixMsToKSTDate } from '../util/time';
 
@@ -55,6 +55,21 @@ export function subtractDaysKst(yyyymmdd: string, n: number): string {
   const mm = String(date.getUTCMonth() + 1).padStart(2, '0');
   const dd = String(date.getUTCDate()).padStart(2, '0');
   return `${yy}${mm}${dd}`;
+}
+
+/** `yyyymmdd`에서 주말(토·일)을 건너뛰며 `n`평일 과거의 YYYYMMDD.
+ * 공휴일은 프론트가 모르는 정보(백엔드 KIS 캘린더 소유)라 캘린더상 평일
+ * 기준이다 — 공휴일에 떨어진 스텝은 빈 청크로 돌아오고, 진행 루프가 base를
+ * 더 과거로 밀어 다음 스텝을 밟는다(`nextHistoricalFrom` base 선택 주석). */
+export function subtractWeekdaysKst(yyyymmdd: string, n: number): string {
+  let cur = yyyymmdd;
+  let remaining = Math.max(1, n);
+  while (remaining > 0) {
+    cur = subtractDaysKst(cur, 1);
+    const wd = kstWeekday(cur);
+    if (wd !== 0 && wd !== 6) remaining -= 1;
+  }
+  return cur;
 }
 
 /** Default Regular Session open ms for a YYYYMMDD KST date (09:00 KST = 00:00
@@ -115,27 +130,39 @@ function candleTargetToCalendarDays(target: number, tf: LiveTimeframe): number {
   return Math.ceil(tradingDays / TRADING_DAYS_PER_CALENDAR_DAYS);
 }
 
-/** 좌측 팬 한 스텝의 캘린더일 크기.
+/** 좌측 팬/줌 한 스텝의 목표 캔들 수 — 전 타임프레임 공통.
  *
- * - 분봉: 고정 3거래일(=latency cap). 3거래일을 5/7 밀도로 환산 → 5 캘린더일.
- *   주말 1회를 한 스텝에 항상 덮어 빈 결과 재드래그를 막는 최소값.
- *   `STEP_TRADING_DAYS`는 실측 후 조정 가능한 단일 상수(데이터를 덜 받는 게
- *   아니라 첫 그림 시점·렌더 분할 횟수만 바뀐다).
- * - D/W/M: 기존 one-shot 윈도 유지(진행 루프는 minute-only). 한 번의 팬으로
- *   ~1년치를 그려 채우므로 스텝 분할이 불필요. */
-const STEP_TRADING_DAYS = 3;
+ * 스텝의 단위를 "기간"이 아니라 "캔들 개수"로 잡는 이유: 뷰포트·빈공간·줌은
+ * 전부 바(bar) 단위로 측정되므로, 수요(빈공간 바 수)와 공급(fetch 봉 수)의
+ * 단위를 맞추면 타임프레임과 무관하게 스텝이 화면의 일정 비율이 된다.
+ * (1거래일 고정 스텝은 30m에선 13봉=과소, 1m에선 390봉=과대로 30배 편차.)
+ *
+ * 이 상수는 두 소비자가 공유한다:
+ *  - 백필 스텝 폭(nextHistoricalFrom/nextCoverageFrom → 날짜 환산)
+ *  - 휠 줌아웃 좌단 클램프(useWheelInteractions, 논리 바 단위 그대로)
+ * 그래서 "줌아웃이 여는 빈공간은 항상 fetch 1스텝으로 채워진다"는 불변식이
+ * 상수 하나로 성립한다(줌 폭주 방지, /investigate 2026-07-11). */
+export const STEP_CANDLE_TARGET = 100;
+
+/** 분봉 한 스텝의 거래일 수 = 캔들 100개 환산. API가 날짜 구간 단위라 최소
+ * 1거래일로 floor된다(1m·3m). 스텝 날짜 계산은 주말을 건너뛰는
+ * `subtractWeekdaysKst`와 짝을 이룬다 — 캘린더일 환산(5/7 밀도)이면 좁은
+ * 스텝이 토·일만 덮는 빈 왕복이 생긴다. */
+export function stepTradingDays(tf: MinuteTimeframe): number {
+  const tfMinutes = TIMEFRAME_TO_MS[tf] / 60_000;
+  return Math.max(1, Math.ceil((STEP_CANDLE_TARGET * tfMinutes) / TRADING_MINUTES_PER_DAY));
+}
+
+/** D/W/M 한 스텝의 캘린더일 크기(캔들 100개 환산). 분봉은 이 함수가 아니라
+ * `stepTradingDays` + 주말 스킵 경로를 쓴다(위 주석). */
 export function stepChunkDays(tf: LiveTimeframe): number {
-  if (isMinuteTimeframe(tf)) {
-    return Math.ceil(STEP_TRADING_DAYS / TRADING_DAYS_PER_CALENDAR_DAYS);
-  }
-  if (tf === 'D') return candleTargetToCalendarDays(250, tf);
-  return candleTargetToCalendarDays(120, tf); // W, M
+  return candleTargetToCalendarDays(STEP_CANDLE_TARGET, tf);
 }
 
 /** 초기 분봉 fetch 폭(거래일). 콜드로드마다 받는 분봉 과거창의 크기를 정한다.
  *
  * 화면의 초기 뷰포트는 최근 ~300바(<1거래일)만 보여주고, 그 왼쪽은 사용자가 좌측
- * 끝을 넘어 팬하면 lazy-fetch(stepChunkDays=5캘린더일)가 자동으로 채운다
+ * 끝을 넘어 팬하면 lazy-fetch(스텝=캔들 STEP_CANDLE_TARGET개)가 자동으로 채운다
  * (useViewportBackfill 3a/3b — 빈영역이 보이는 동안 settle-loop가 사용자 액션 없이
  * 화면 가득 찰 때까지 스텝 단위로 진행). 따라서 초기엔 "보이는 양 + 약간의 헤드룸"만
  * 받으면 충분하다.
@@ -166,13 +193,22 @@ export function initialHistoricalDaysFor(tf: LiveTimeframe): number {
   return candleTargetToCalendarDays(initialCandleTargetFor(tf), tf);
 }
 
+/** base 날짜에서 타임프레임의 한 스텝(캔들 ~100개)만큼 과거의 YYYYMMDD.
+ * 분봉 = 거래일 환산 + 주말 스킵(빈 왕복 방지), D/W/M = 캘린더일 환산.
+ * 결과는 항상 base보다 strict 과거 — 두 kernel의 단조성 계약의 근거. */
+function stepBackFrom(baseYyyymmdd: string, tf: LiveTimeframe): string {
+  return isMinuteTimeframe(tf)
+    ? subtractWeekdaysKst(baseYyyymmdd, stepTradingDays(tf))
+    : subtractDaysKst(baseYyyymmdd, stepChunkDays(tf));
+}
+
 /** /live infinite-scroll backfill policy (SR-3), extracted pure from
  * LiveChartRoot's subscribeVisibleLogicalRangeChange effect.
  *
  * Given where the axis currently starts (`axisEarliestMs`, real Unix ms — the
  * first segment's session open), the date already requested
- * (`historicalFromDate`, or null before any extension), and the caller-injected
- * `chunkDays` (use `stepChunkDays(tf)`), returns the YYYYMMDD the next leftward
+ * (`historicalFromDate`, or null before any extension), and the timeframe
+ * (step sizing via `stepBackFrom`), returns the YYYYMMDD the next leftward
  * chunk should fetch back to.
  *
  * Base date: prefer `historicalFromDate` when it is strictly earlier than the
@@ -185,30 +221,30 @@ export function initialHistoricalDaysFor(tf: LiveTimeframe): number {
 export function nextHistoricalFrom(
   axisEarliestMs: number,
   historicalFromDate: string | null,
-  chunkDays: number,
+  tf: LiveTimeframe,
 ): string {
   const axisEarliestDate = realMsToYyyymmdd(axisEarliestMs);
   const baseDate =
     historicalFromDate !== null && historicalFromDate < axisEarliestDate
       ? historicalFromDate
       : axisEarliestDate;
-  return subtractDaysKst(baseDate, chunkDays);
+  return stepBackFrom(baseDate, tf);
 }
 
 /** Coverage-gap 백필(A안)의 다음 from. `nextHistoricalFrom`과 달리 axis earliest를
  * base로 쓰지 않는다 — 캔들이 병합 캐시로 수개월치 복원되면 axis가 수개월 과거라,
  * 그걸 base로 삼으면 첫 스텝이 수개월치 range 요청으로 폭발한다. 여기서는 지금 range가
  * 요청 중인 창(`historicalFromDate`, 아직 확장 전이면 `rangeWindowFromDate`)을 base로
- * 삼아 chunkDays씩만 과거로 걷는다. 결과는 항상 base보다 strict 과거이므로 스토어
+ * 삼아 한 스텝씩만 과거로 걷는다. 결과는 항상 base보다 strict 과거이므로 스토어
  * `extendHistoricalRange`의 단조 감소 가드를 통과하고, 스텝마다 coverage 경계가 앞으로
  * 당겨져 viewport 좌단에 수렴한다(무한 루프 없음). */
 export function nextCoverageFrom(
   historicalFromDate: string | null,
   rangeWindowFromDate: string,
-  chunkDays: number,
+  tf: LiveTimeframe,
 ): string {
   const base = historicalFromDate ?? rangeWindowFromDate;
-  return subtractDaysKst(base, chunkDays);
+  return stepBackFrom(base, tf);
 }
 
 export interface FillStepArgs {
@@ -218,8 +254,8 @@ export interface FillStepArgs {
   axisEarliestMs: number;
   /** Optional scrollback lower bound (YYYYMMDD). Minute charts pass the 250-day clamp; calendar charts pass null. */
   earliestAllowedDate: string | null;
-  /** stepChunkDays(tf). */
-  stepCalendarDays: number;
+  /** 스텝 크기 산정용(캔들 100개 환산, `stepBackFrom`). */
+  timeframe: LiveTimeframe;
   /** 이번 fill에서 지금까지 dispatch한 스텝 수. */
   stepCount: number;
   /** 무한 루프 백스톱. */
@@ -249,7 +285,7 @@ export function planFillStep(
 ): { action: 'stop' } | { action: 'fetch'; nextFrom: string } {
   const {
     visibleFrom, historicalFromDate, axisEarliestMs, earliestAllowedDate,
-    stepCalendarDays, stepCount, maxSteps,
+    timeframe, stepCount, maxSteps,
     viewportLeftDate = null, coverageFromDate = null, rangeWindowFromDate = null,
   } = args;
   if (visibleFrom === null) return { action: 'stop' };
@@ -261,7 +297,7 @@ export function planFillStep(
   if (visibleFrom < 0) {
     return {
       action: 'fetch',
-      nextFrom: nextHistoricalFrom(axisEarliestMs, historicalFromDate, stepCalendarDays),
+      nextFrom: nextHistoricalFrom(axisEarliestMs, historicalFromDate, timeframe),
     };
   }
   // 2. Coverage-gap 경로(신규): whitespace는 찼지만 지표 커버리지가 viewport 좌단보다
@@ -274,7 +310,7 @@ export function planFillStep(
   ) {
     return {
       action: 'fetch',
-      nextFrom: nextCoverageFrom(historicalFromDate, rangeWindowFromDate, stepCalendarDays),
+      nextFrom: nextCoverageFrom(historicalFromDate, rangeWindowFromDate, timeframe),
     };
   }
   return { action: 'stop' };

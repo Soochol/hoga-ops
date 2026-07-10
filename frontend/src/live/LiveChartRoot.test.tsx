@@ -1901,8 +1901,8 @@ describe('LiveChartRoot lazy fetch trigger', () => {
     // Axis with yesterday + today. lightweight-charts emits negative
     // logical.from when the visible-range origin is past the leftmost
     // loaded bar (fractional bar index can go negative beyond the data).
-    // Handler should prepend one stepChunkDays('1m')=5 calendar-day chunk
-    // (fixed 3-trading-day step, weekend-safe).
+    // Handler should prepend one step of ~STEP_CANDLE_TARGET(100) candles —
+    // 1m floors to 1 trading day, weekend-skipped (subtractWeekdaysKst).
     const handlers: Array<(r: unknown) => void> = [];
     vi.mocked(createChartEx).mockImplementationOnce(() => buildChartMockCapturing(handlers) as any);
 
@@ -1923,8 +1923,8 @@ describe('LiveChartRoot lazy fetch trigger', () => {
       vi.advanceTimersByTime(200);
     });
 
-    // currentEarliest = '20260526', minus stepChunkDays('1m')=5 → '20260521'.
-    expect(useLivePageStore.getState().historicalFromDate).toBe('20260521');
+    // currentEarliest = '20260526'(화), minus 1 trading day → '20260525'(월).
+    expect(useLivePageStore.getState().historicalFromDate).toBe('20260525');
   });
 
   it('does NOT fire extendHistoricalRange before any candle has loaded (cold-load empty chart)', () => {
@@ -2040,7 +2040,7 @@ describe('LiveChartRoot lazy fetch trigger', () => {
     });
 
     // candles>0(TWO_SEGMENT_BUNDLE) → 가드 통과 → 자동으로 한 청크 백필.
-    expect(useLivePageStore.getState().historicalFromDate).toBe('20260521');
+    expect(useLivePageStore.getState().historicalFromDate).toBe('20260525');
   });
 
   it('bases next chunk on historicalFromDate (not axis) when axis did not advance', () => {
@@ -2071,11 +2071,11 @@ describe('LiveChartRoot lazy fetch trigger', () => {
       vi.advanceTimersByTime(200);
     });
 
-    // base = historicalFromDate '20260519' (earlier than axisEarliest
-    // '20260526'), minus 5 → '20260514'. If the trigger had re-based on
-    // axis instead, it would compute '20260521' and the store guard would
-    // reject that as not strictly earlier than '20260519'.
-    expect(useLivePageStore.getState().historicalFromDate).toBe('20260514');
+    // base = historicalFromDate '20260519'(화) (earlier than axisEarliest
+    // '20260526'), minus 1 trading day → '20260518'(월). If the trigger had
+    // re-based on axis instead, it would compute '20260525' and the store
+    // guard would reject that as not strictly earlier than '20260519'.
+    expect(useLivePageStore.getState().historicalFromDate).toBe('20260518');
   });
 
   it('fires extendHistoricalRange on D timeframe when logical from goes negative', () => {
@@ -2105,10 +2105,9 @@ describe('LiveChartRoot lazy fetch trigger', () => {
       vi.advanceTimersByTime(200);
     });
 
-    // D-timeframe chunk: stepChunkDays('D')=350 calendar days (~1 year).
-    // axis.segments[0] = '20260526', minus 350 → '20250610'
-    // (crosses year boundary into 2025).
-    expect(useLivePageStore.getState().historicalFromDate).toBe('20250610');
+    // D-timeframe chunk: stepChunkDays('D')=140 calendar days (100 candles).
+    // axis.segments[0] = '20260526', minus 140 → '20260106'.
+    expect(useLivePageStore.getState().historicalFromDate).toBe('20260106');
   });
 
   it('does NOT fire extendHistoricalRange when logical from is non-negative', () => {
@@ -2706,8 +2705,8 @@ describe('LiveChartRoot historical-prepend viewport preservation', () => {
           clampEngaged={false} isPastCandlesLoading={false} isExtending={false} />,
       );
     });
-    // cur '20260521' − stepChunkDays('1m')=5 → '20260516'.
-    expect(useLivePageStore.getState().historicalFromDate).toBe('20260516');
+    // cur '20260521'(목) − 1 trading day → '20260520'(수).
+    expect(useLivePageStore.getState().historicalFromDate).toBe('20260520');
   });
 
   it('does NOT dispatch a fill step before candles load, even with historicalFromDate set', () => {
@@ -2778,7 +2777,8 @@ describe('LiveChartRoot historical-prepend viewport preservation', () => {
           clampEngaged={false} isPastCandlesLoading={false} isExtending={false} />,
       );
     });
-    expect(useLivePageStore.getState().historicalFromDate).toBe('20250605');
+    // cur '20260521' − stepChunkDays('D')=140 → '20260101'.
+    expect(useLivePageStore.getState().historicalFromDate).toBe('20260101');
   });
 
   it('keeps dispatching D timeframe fill steps past the minute scrollback clamp', () => {
@@ -2799,7 +2799,9 @@ describe('LiveChartRoot historical-prepend viewport preservation', () => {
           clampEngaged={false} isPastCandlesLoading={false} isExtending={false} />,
       );
     });
-    expect(useLivePageStore.getState().historicalFromDate).toBe('20240620');
+    // '20250605'는 오늘('20260527')−250일보다 과거 — 분봉 클램프가 D를 막지 않고
+    // 한 스텝(140일) 더 걷는다: '20250605' − 140 → '20250116'.
+    expect(useLivePageStore.getState().historicalFromDate).toBe('20250116');
   });
 
   it('does NOT restore on pure SSE growth while historicalFromDate is null', () => {
