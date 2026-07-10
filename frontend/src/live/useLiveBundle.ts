@@ -810,6 +810,10 @@ export function useLiveBundle(
   // - indicatorCoverageFromDate: 활성 지표(hoga + 활성 sidecar)가 도달한 가장 최근
   //   from_date. 둘은 같은 historicalFromDate로 re-key되어 정상 settle 후 일치하지만,
   //   비활성/미settle 편차를 대비해 max(가장 덜 확장된 쪽=구속 조건)를 취한다.
+  //   ⚠️ 전제: hoga와 sidecar는 같은 rangePlan.from(=historicalFromDate 파생)으로
+  //   항상 동반 확장된다 — max가 "둘 다 채울 때까지 확장"으로 안전한 이유다. 만약
+  //   향후 hoga/sidecar의 요청 창이 분기되면(예: sidecar만 좁게 요청), max는 화면 밖
+  //   sidecar pane까지 채우려 과확장할 수 있으니 그때는 이 max 정책을 재검토할 것.
   // - rangeWindowFromDate: 지금 range가 요청 중인 창의 from(=nextCoverageFrom base의
   //   null-fallback). 분봉 외/미요청이면 null이라 coverage 경로가 자연 비활성.
   const indicatorCoverageFromDate = useMemo<string | null>(() => {
