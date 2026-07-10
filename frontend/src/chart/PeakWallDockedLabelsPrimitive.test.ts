@@ -1,9 +1,10 @@
 import { describe, expect, it } from 'vitest';
 import {
+  dockedLabelTimeToX,
   peakWallDockedLabelCandidates,
   type PeakWallDockedLabelInput,
 } from './PeakWallDockedLabelsPrimitive';
-import type { Time } from 'lightweight-charts';
+import type { ITimeScaleApi, Time } from 'lightweight-charts';
 
 describe('peakWallDockedLabelCandidates', () => {
   const labels: PeakWallDockedLabelInput[] = [
@@ -104,5 +105,44 @@ describe('peakWallDockedLabelCandidates', () => {
     expect(out).toEqual([
       { index: 0, xRight: 700, yLine: 94, width: 42, segmentWidth: Number.POSITIVE_INFINITY },
     ]);
+  });
+});
+
+function timeScaleStub(overrides: Partial<Record<'timeToCoordinate' | 'timeToIndex' | 'logicalToCoordinate', (...args: never[]) => unknown>>) {
+  return {
+    timeToCoordinate: () => null,
+    timeToIndex: () => null,
+    logicalToCoordinate: () => null,
+    ...overrides,
+  } as unknown as ITimeScaleApi<Time>;
+}
+
+describe('dockedLabelTimeToX', () => {
+  it('timeToCoordinate가 좌표를 주면 픽셀비만 곱해 그대로 쓴다', () => {
+    const toX = dockedLabelTimeToX(timeScaleStub({ timeToCoordinate: () => 123 }), 2);
+    expect(toX(1000 as Time)).toBe(246);
+  });
+
+  it('범위 밖 시각(null)은 가장 가까운 봉으로 클램프한다 — 통합(UN) 확장 세션 close(20:00)가 마지막 봉 밖이면 당일 최대벽 라벨만 사라지던 결함', () => {
+    const calls: unknown[][] = [];
+    const toX = dockedLabelTimeToX(
+      timeScaleStub({
+        timeToCoordinate: () => null,
+        timeToIndex: (...args: never[]) => {
+          calls.push(args);
+          return 42;
+        },
+        logicalToCoordinate: () => 650,
+      }),
+      2,
+    );
+    expect(toX(1000 as Time)).toBe(1300);
+    // findNearest=true 로 가장 가까운 봉을 찾아야 한다(정확 일치 요구 금지).
+    expect(calls[0]?.[1]).toBe(true);
+  });
+
+  it('가장 가까운 봉조차 없으면(빈 차트) null — 라벨 skip 동작 유지', () => {
+    const toX = dockedLabelTimeToX(timeScaleStub({}), 2);
+    expect(toX(1000 as Time)).toBeNull();
   });
 });

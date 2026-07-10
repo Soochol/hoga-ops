@@ -4,6 +4,7 @@ import type {
   IPrimitivePaneView,
   ISeriesApi,
   ISeriesPrimitive,
+  ITimeScaleApi,
   SeriesAttachedParameter,
   SeriesType,
   Time,
@@ -24,12 +25,27 @@ import {
   LABEL_GAP_PX,
   LABEL_ROW_GAP_PX,
   layoutAskPeakLabels,
+  xCoordinateOrNearest,
   type AskPeakLabelCandidate,
   type PeakWallDockedLabel,
 } from './AskPeakSegmentsPrimitive';
 import { measureTextCached } from './util/textWidthCache';
 
 export type PeakWallDockedLabelInput = PeakWallDockedLabel;
+
+/** 도킹 라벨 앵커 x — 세그먼트 선과 동일한 최근접 봉 클램프(xCoordinateOrNearest)를 쓴다.
+ *  raw timeToCoordinate는 통합(UN) 확장 세션 경계(08:00/20:00)의 time1이 로드된 시계열
+ *  범위 밖이면 null이라, 선은 그려지는데 라벨만 조용히 사라졌다(선·매물대는 #489에서
+ *  클램프 적용, 라벨 프리미티브만 누락됐던 결함). */
+export function dockedLabelTimeToX(
+  timeScale: ITimeScaleApi<Time>,
+  horizontalPixelRatio: number,
+): (time: Time) => number | null {
+  return (time) => {
+    const x = xCoordinateOrNearest(timeScale, time);
+    return x === null ? null : x * horizontalPixelRatio;
+  };
+}
 
 export function peakWallDockedLabelCandidates(
   labels: readonly PeakWallDockedLabelInput[],
@@ -104,10 +120,7 @@ class PeakWallDockedLabelsRenderer implements IPrimitivePaneRenderer {
         xRight,
         (text) => measureTextCached(ctx, text),
         LABEL_GAP_PX * vr,
-        (time) => {
-          const x = chart.timeScale().timeToCoordinate(time);
-          return x === null ? null : x * hr;
-        },
+        dockedLabelTimeToX(chart.timeScale(), hr),
         6 * hr,
         halfBarSpacing,
       );
