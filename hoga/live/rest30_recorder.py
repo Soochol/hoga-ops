@@ -140,6 +140,14 @@ class Rest30sRecorder:
         now_s = self._now_ms() / 1000.0
         return self._interval_s - (now_s % self._interval_s)
 
+    def _mark_cycle_complete(self, cycle_start_ms: int) -> None:
+        """사이클 종료 시각과 소요를 함께 기록한다. poll_once의 모든 종료 경로
+        (backoff·no-targets·no-kis 조기 return 포함)에서 호출해야 last_cycle_duration_ms
+        가 stale 되지 않는다 — backoff/idle 사이클은 소요 ≈ 0으로 정직하게 남고,
+        직전의 느린 fetch 값이 관측 지표에 계속 비치는 것을 막는다(ADR-0098 검증용)."""
+        self._last_cycle_ms = self._now_ms()
+        self._last_cycle_duration_ms = self._last_cycle_ms - cycle_start_ms
+
     def _record_cycle_error(self, exc: Exception) -> None:
         policy = classify_live_error(exc, internal=True)
         self._last_error = format_live_error(exc)
@@ -157,7 +165,7 @@ class Rest30sRecorder:
         cycle_start_ms = self._now_ms()
         if self._backoff_remaining > 0:
             self._backoff_remaining -= 1
-            self._last_cycle_ms = self._now_ms()
+            self._mark_cycle_complete(cycle_start_ms)
             return
 
         phase = self._phase_fn()
@@ -169,7 +177,7 @@ class Rest30sRecorder:
             self._closed_snapshotted_once.clear()
 
         if not targets:
-            self._last_cycle_ms = self._now_ms()
+            self._mark_cycle_complete(cycle_start_ms)
             self._last_error_count = 0
             self._last_error = None
             self._last_error_kind = None
@@ -178,7 +186,7 @@ class Rest30sRecorder:
 
         kis = self._resolve_kis()
         if kis is None:
-            self._last_cycle_ms = self._now_ms()
+            self._mark_cycle_complete(cycle_start_ms)
             self._last_error = "kis_unavailable"
             self._last_error_kind = "auth"
             self._last_error_code = "kis_unavailable"
@@ -236,8 +244,7 @@ class Rest30sRecorder:
                 )
 
         await self._writer.fsync_all()
-        self._last_cycle_ms = self._now_ms()
-        self._last_cycle_duration_ms = self._last_cycle_ms - cycle_start_ms
+        self._mark_cycle_complete(cycle_start_ms)
         self._last_error = last_error
         self._last_error_kind = last_error_kind
         self._last_error_code = last_error_code

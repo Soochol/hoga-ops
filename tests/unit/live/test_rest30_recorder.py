@@ -559,6 +559,56 @@ async def test_rest30_recorder_concurrency_cap_bounds_inflight(tmp_path: Path) -
     assert recorder.status().last_cycle_duration_ms is not None
 
 
+@pytest.mark.asyncio
+async def test_rest30_recorder_no_targets_refreshes_cycle_duration(
+    tmp_path: Path,
+) -> None:
+    """대상이 없는 사이클도 last_cycle_duration_ms를 갱신한다 — 직전 느린 fetch
+    사이클의 값이 stale로 남지 않는다(ADR-0098 관측 지표)."""
+    from hoga.live.buffer import LiveBuffer
+    from hoga.live.rest30_recorder import Rest30sRecorder
+
+    recorder = Rest30sRecorder(
+        kis_resolver=lambda: FakeKis(),
+        buffer=LiveBuffer(),
+        data_dir=tmp_path,
+        date_fn=lambda: "20260622",
+        now_ms_fn=lambda: 1770000000000,
+        phase_fn=lambda: "regular",
+    )
+    recorder._last_cycle_duration_ms = 18_000  # 직전 느린 사이클 잔재
+
+    await recorder.poll_once()  # 대상 없음 → 조기 return
+
+    assert recorder.status().last_cycle_duration_ms == 0  # stale 18s가 덮임
+
+
+@pytest.mark.asyncio
+async def test_rest30_recorder_backoff_cycle_refreshes_cycle_duration(
+    tmp_path: Path,
+) -> None:
+    """backoff 소진 사이클도 duration을 갱신한다(조기 return 경로 커버)."""
+    from hoga.live.buffer import LiveBuffer
+    from hoga.live.rest30_recorder import Rest30sRecorder
+
+    recorder = Rest30sRecorder(
+        kis_resolver=lambda: FakeKis(),
+        buffer=LiveBuffer(),
+        data_dir=tmp_path,
+        date_fn=lambda: "20260622",
+        now_ms_fn=lambda: 1770000000000,
+        phase_fn=lambda: "regular",
+    )
+    recorder.set_targets({"005930"})
+    recorder._backoff_remaining = 2
+    recorder._last_cycle_duration_ms = 18_000
+
+    await recorder.poll_once()  # backoff 1 소진 → 조기 return
+
+    assert recorder._backoff_remaining == 1
+    assert recorder.status().last_cycle_duration_ms == 0
+
+
 def test_rest30_recorder_next_delay_aligns_to_wall_clock_boundary(tmp_path: Path) -> None:
     """_next_delay_s는 다음 벽시계 interval 경계까지의 잔여를 준다(위상 정렬)."""
     from hoga.live.buffer import LiveBuffer
