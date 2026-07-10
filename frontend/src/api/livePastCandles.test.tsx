@@ -4,8 +4,10 @@ import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import {
   hasBlockingWarnings,
   mergedPastCandlesKey,
+  mergePastCandleResponses,
   pastCandlesRefetchInterval,
   pastCandlesStaleTime,
+  planPastCandlesDelta,
   useLivePastCandles,
   withPastCandlesTimeout,
   type LivePastCandlesResponse,
@@ -122,6 +124,92 @@ describe('useLivePastCandles', () => {
     ]);
     await new Promise((r) => setTimeout(r, 100));
     expect(spy).toHaveBeenCalledTimes(3);
+  });
+
+  // Regression(2026-07-10, 통합 venue 중간 캔들 갭): 기준선이 창을 다 덮으면
+  // plan이 enabled:false로 쿼리를 꺼 head 청크의 장중 60초 refetchInterval이
+  // 초기 로드 직후 죽었다. 오늘 캔들의 REST 정본이 동결되면 WS 오버레이(15분
+  // 보존 버퍼)만 남아 축출과 함께 캔들이 소급 소멸한다. 창이 오늘을 포함하면
+  // 오늘-델타(from=to=today) 쿼리로 전환해 옵저버·폴링을 살려야 한다.
+  it('기준선이 창을 다 덮어도 오늘 포함 창은 오늘-델타로 폴링을 유지한다', async () => {
+    const spy = vi.spyOn(client, 'apiCall').mockImplementation(async (url: string) => {
+      const params = new URLSearchParams(url.split('?')[1]);
+      return {
+        code: params.get('code')!,
+        from: params.get('from')!,
+        to: params.get('to')!,
+        venue: (params.get('venue') ?? 'KRX') as LivePastCandlesResponse['venue'],
+        // from을 t_ms로 새겨 어느 요청의 캔들인지 식별 가능하게 한다.
+        candles: [{ t_ms: Number(params.get('from')), open: 1, high: 1, low: 1, close: 1, volume: 1 }],
+        cached_dates: [],
+        fresh_dates: [],
+        data_warnings: [],
+      } satisfies LivePastCandlesResponse;
+    });
+    const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+    const { result } = renderHook(
+      () => useLivePastCandles('005930', '20260705', '20260710', 'UN', '20260710'),
+      { wrapper: wrap(qc) },
+    );
+    // 청크 1방으로 창 커버 → 곧바로 오늘-델타가 발사돼야 한다.
+    await waitFor(() => expect(spy).toHaveBeenCalledTimes(2));
+    const urls = spy.mock.calls.map((c) => c[0]);
+    expect(urls).toEqual([
+      '/api/live/past-candles?code=005930&from=20260705&to=20260710&venue=UN',
+      '/api/live/past-candles?code=005930&from=20260710&to=20260710&venue=UN',
+    ]);
+    // 오늘-델타 응답이 기준선에 병합돼 서빙된다(청크 캔들 + 오늘 캔들).
+    await waitFor(() =>
+      expect(result.current.data?.candles.map((c) => c.t_ms)).toEqual([20260705, 20260710]));
+    // 같은 키 재조회는 refetchInterval 몫 — 즉시 재발사 루프는 없어야 한다.
+    await new Promise((r) => setTimeout(r, 100));
+    expect(spy).toHaveBeenCalledTimes(2);
+  });
+
+  it('todayKst 미지정(과거 전용)이면 커버 완료 후 기존처럼 동결된다', () => {
+    const baseline: LivePastCandlesResponse = {
+      ...RESPONSE,
+      from: '20260501',
+      to: '20260502',
+    };
+    const plan = planPastCandlesDelta('005930', '20260501', '20260502', 'KRX', baseline);
+    expect(plan.enabled).toBe(false);
+    expect(plan.servePrevious).toBe(true);
+  });
+
+  it('과거 전용 창(to < todayKst)은 커버 완료 후 오늘-델타를 발사하지 않는다', () => {
+    const baseline: LivePastCandlesResponse = {
+      ...RESPONSE,
+      from: '20260501',
+      to: '20260502',
+    };
+    const plan = planPastCandlesDelta('005930', '20260501', '20260502', 'KRX', baseline, '20260710');
+    expect(plan.enabled).toBe(false);
+  });
+
+  it('오늘-델타 병합은 같은 t_ms에서 새 응답(forming 캔들 갱신)이 이긴다', () => {
+    const previous: LivePastCandlesResponse = {
+      ...RESPONSE,
+      from: '20260705',
+      to: '20260710',
+      candles: [
+        { t_ms: 100, open: 1, high: 1, low: 1, close: 1, volume: 1 },
+        { t_ms: 200, open: 2, high: 2, low: 2, close: 2, volume: 2 },
+      ],
+    };
+    const next: LivePastCandlesResponse = {
+      ...RESPONSE,
+      from: '20260710',
+      to: '20260710',
+      candles: [{ t_ms: 200, open: 2, high: 3, low: 2, close: 3, volume: 9 }],
+    };
+    const merged = mergePastCandleResponses(previous, next);
+    expect(merged.from).toBe('20260705');
+    expect(merged.to).toBe('20260710');
+    expect(merged.candles).toEqual([
+      { t_ms: 100, open: 1, high: 1, low: 1, close: 1, volume: 1 },
+      { t_ms: 200, open: 2, high: 3, low: 2, close: 3, volume: 9 },
+    ]);
   });
 
   // Regression(2026-07-08, /study 플래시): 워크백 청크 N≥3에서 placeholderData
