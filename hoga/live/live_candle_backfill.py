@@ -27,16 +27,6 @@ _KST = timezone(timedelta(hours=9))
 _WEEKEND_START_WEEKDAY = 5
 log = logging.getLogger(__name__)
 
-# read_ahead 선행 워밍 폭 상한(캘린더일). 하한 결합은 프론트 팬 스텝
-# stepChunkDays(minute=5캘린더일, frontend/src/live/liveDateTime.ts)다 —
-# 워밍 폭이 이보다 크면 다음 좌측 팬 청크가 항상 캐시 히트다. 5가 아니라
-# 15로 둔 건 헤드룸이다: STEP_TRADING_DAYS가 커져도 gap이 안 생기고,
-# 프론트 콜드로드 청크 PAST_CHUNK_CALENDAR_DAYS(=15, 같은 브랜치 Task 4가
-# frontend/src/api/livePastCandles.ts에 추가)를 정확히 선워밍한다.
-# 무제한이면 거대 창 요청이 같은 폭의 워밍을 또 낳아(2026-07-07: 243일→
-# +243일) KIS 예산을 자기증폭적으로 태운다.
-_READ_AHEAD_MAX_SPAN_DAYS = 15
-
 
 class KisRestScheduler(Protocol):
     async def submit(
@@ -101,7 +91,6 @@ class LiveMinuteCandleBackfill:
             asyncio.Task[list[dict]],
         ] = {}
         self._rate_limit_until = 0.0
-        self._warm_tasks: dict[tuple[KisVenue, str], asyncio.Task[None]] = {}
         # Fresh KIS past-minute fetches — the true cold re-spend metric (PR-1 (a)):
         # counted at the deduped fetch chokepoint (_fetch_past_scheduled), so it
         # measures KIS quota actually spent, not cache-layer get_past misses (which
@@ -115,7 +104,6 @@ class LiveMinuteCandleBackfill:
             "fresh_past_fetches": self._fresh_past_fetches,
             "fresh_past_fetch_errors": self._fresh_past_fetch_errors,
             "inflight": len(self._inflight),
-            "warm_tasks": len(self._warm_tasks),
         }
 
     async def collect_minute(
@@ -126,27 +114,10 @@ class LiveMinuteCandleBackfill:
         too: date,
         today_d: date,
         policy: LiveVenuePolicy,
-        read_ahead: bool = False,
-        earliest_allowed: date | None = None,
     ) -> LiveMinuteCandleBackfillResult:
-        out = await self._collect_minute_inner(
+        return await self._collect_minute_inner(
             code=code, frm=frm, too=too, today_d=today_d, policy=policy,
         )
-        # read-ahead: 이번 요청창 직전 구간을 background로 선행 워밍하되,
-        # 폭은 _READ_AHEAD_MAX_SPAN_DAYS로 캡한다(상수 주석 참조).
-        # 레이트리밋/용량/예산 경고가 있으면 예산이 이미 부족하다는 뜻이므로
-        # 이번엔 건너뛴다.
-        if read_ahead and not _fallback_blocking_warning_dates(out.data_warnings):
-            span_days = min((too - frm).days + 1, _READ_AHEAD_MAX_SPAN_DAYS)
-            ra_too = frm - timedelta(days=1)
-            ra_frm = ra_too - timedelta(days=span_days - 1)
-            if earliest_allowed is not None:
-                ra_frm = max(ra_frm, earliest_allowed)
-            if ra_frm <= ra_too:
-                await self.warm_minute(
-                    code=code, frm=ra_frm, too=ra_too, today_d=today_d, policy=policy,
-                )
-        return out
 
     async def _collect_minute_inner(
         self,
@@ -258,97 +229,6 @@ class LiveMinuteCandleBackfill:
             today_d=today_d,
         )
 
-    async def warm_minute(
-        self,
-        *,
-        code: str,
-        frm: date,
-        too: date,
-        today_d: date,
-        policy: LiveVenuePolicy,
-    ) -> str:
-        """[frm, too]의 미캐시 과거 날짜를 background 우선순위로 순차 fetch해
-        캐시를 데운다(fire-and-forget). (venue, code)별 단일 비행;
-        "started" | "already_running" 반환. 태스크는 supervised — 실패는
-        로그로 남고 침묵 사망하지 않는다(ADR-0088).
-
-        일부러 순차(동시성 1): 워밍이 사용자 경로의 세마포어(3)나 KIS 예산을
-        점유하지 않게 한다. KRX 폴백은 하지 않는다 — 폴백이 필요한 날짜는
-        인터랙션 경로의 collect_minute가 그때 처리한다.
-
-        latest-wins: 다른 (venue, code)의 진행 중 warm은 시작 전에 취소한다.
-        종목 전환마다 warm 스트림이 누적되면(종목당 ~240 KIS 콜) 분봉 엔드포인트가
-        지속 포화돼 EGW00201 폭풍 → 공유 쿨다운이 사용자 fetch까지 abort하는
-        회귀가 있었다(/investigate 2026-07-07). 사용자의 현재 관심사는 항상
-        마지막으로 활성화된 종목이므로 최신 warm 하나만 남긴다. 취소가 공유
-        _inflight 태스크를 건드리지 않는 것은 _fetch_past_shared의 shield 조인
-        덕분이다 — bare await였다면 취소가 공유 태스크로 전파돼 같은 태스크에
-        올라탄 사용자 요청까지 죽는다. 진행 중 1콜은 완주한다."""
-        key = (policy, code)
-        existing = self._warm_tasks.get(key)
-        if existing is not None and not existing.done():
-            return "already_running"
-        for other_key, other_task in list(self._warm_tasks.items()):
-            if other_key != key and not other_task.done():
-                other_task.cancel()
-        task = asyncio.create_task(
-            self._warm_run(policy, code, frm=frm, too=too, today_d=today_d),
-            name=f"live-candle-warm:{policy}:{code}",
-        )
-        self._warm_tasks[key] = task
-
-        def _done(t: asyncio.Task, k: tuple[KisVenue, str] = key) -> None:
-            if self._warm_tasks.get(k) is t:
-                self._warm_tasks.pop(k, None)
-            if t.cancelled():
-                return
-            exc = t.exception()
-            if exc is not None:
-                log.warning(
-                    "live candle warm failed venue=%s code=%s: %s", k[0], k[1], exc,
-                )
-
-        task.add_done_callback(_done)
-        return "started"
-
-    async def _warm_run(
-        self,
-        venue: KisVenue,
-        code: str,
-        *,
-        frm: date,
-        too: date,
-        today_d: date,
-    ) -> None:
-        today_s = today_d.strftime("%Y%m%d")
-        for date_s in reversed(list(_date_iter(frm, too))):
-            if date_s >= today_s:
-                continue
-            if self._cache.get_past(venue, code, date_s) is not None:
-                continue
-            if trading_calendar.is_trading_day(date_s) is False:
-                self._cache.store_past(venue, code, date_s, [])
-                continue
-            if self._rate_limited_now():
-                return
-            try:
-                bars = await self._fetch_past_shared(
-                    venue, code, date_s, priority="background"
-                )
-            except KisRateLimitError:
-                self._mark_rate_limited()
-                return
-            except (KisCapacityCooldown, KisCapacityOverloaded, KisApiError):
-                # 워밍은 best-effort: 이 날짜는 인터랙션 경로가 나중에 다시 시도.
-                continue
-            # 비-KRX venue가 거래일에 빈 결과를 주면, 그건 KRX 폴백을 트리거해야
-            # 하는 신호다(인터랙션 경로가 폴백+delete_past로 관리). 워밍이 이 빈
-            # 항목을 캐시에 남기면 이후 읽기가 cached=[]를 covered로 오인해 KRX
-            # 폴백을 억제하므로(_collect_minute_inner covered_dates), 비-KRX 빈
-            # 결과는 캐시에서 제거해 인터랙션 경로가 폴백하도록 한다.
-            if venue != "KRX" and not bars:
-                self._cache.delete_past(venue, code, date_s)
-
     async def collect_minute_cache_only(
         self,
         *,
@@ -456,8 +336,8 @@ class LiveMinuteCandleBackfill:
         deferred = 0
         if len(pending) > self._max_fresh_dates_per_collect:
             # 최신 날짜 우선(차트는 우측=최신부터 보인다). 유예분은 blocking
-            # 경고 → read_ahead 스킵 + 비-KRX 폴백의 covered 처리 + 프론트
-            # 비박제까지 한 사유로 일관 처리된다.
+            # 경고 → 비-KRX 폴백의 covered 처리 + 프론트 비박제까지 한 사유로
+            # 일관 처리된다.
             overflow = pending[: -self._max_fresh_dates_per_collect]
             pending = pending[-self._max_fresh_dates_per_collect :]
             deferred = len(overflow)
@@ -609,9 +489,10 @@ class LiveMinuteCandleBackfill:
             self._inflight[key] = task
             task.add_done_callback(lambda _t, k=key: self._inflight.pop(k, None))
         # shield 필수: bare `await task`는 대기자 취소를 _fut_waiter.cancel()로
-        # 공유 태스크까지 전파해, 같은 태스크에 올라탄 다른 대기자(사용자 요청,
-        # warm)를 전부 CancelledError로 죽인다. warm latest-wins 취소(warm_minute)가
-        # 실제로 이 경로로 사용자 /past-candles를 죽였다(/investigate 2026-07-10).
+        # 공유 태스크까지 전파해, 같은 (venue, code, date)를 inflight dedup으로
+        # 공유하는 다른 대기자를 전부 CancelledError로 죽인다. 한 사용자 요청이
+        # 취소되면(예: 타임프레임 전환 abort) 같은 날짜에 올라탄 다른 /past-candles
+        # 요청까지 죽는 회귀가 실제로 있었다(/investigate 2026-07-10).
         return await asyncio.shield(task)
 
     async def _fetch_past_scheduled(

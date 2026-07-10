@@ -17,31 +17,6 @@ def _hermetic_kis_env(monkeypatch):
         monkeypatch.delenv(_k, raising=False)
 
 
-@pytest.fixture
-def _live_read_ahead_warm():
-    """Opt-out marker: a test requesting this fixture keeps the real
-    /past-candles read-ahead background warm (skips the autouse suppression)."""
-    return None
-
-
-@pytest.fixture(autouse=True)
-def _suppress_read_ahead_warm(request, monkeypatch):
-    """Suppress the /past-candles read-ahead background warm for every route
-    test by default (Task 5). Route tests assert exact KIS call lists/counts
-    for a request's own window; the fire-and-forget preceding-window warm is
-    disjoint behavior covered by test_live_candle_backfill.py, and letting it
-    run races these tests' in-block assertions. A test that genuinely exercises
-    read-ahead opts out by requesting the `_live_read_ahead_warm` fixture."""
-    if "_live_read_ahead_warm" in request.fixturenames:
-        return
-    from hoga.live.live_candle_backfill import LiveMinuteCandleBackfill
-
-    async def _noop_warm(self, **_kwargs):
-        return "started"
-
-    monkeypatch.setattr(LiveMinuteCandleBackfill, "warm_minute", _noop_warm)
-
-
 def _make_test_app(
     get_status_fn=None,
     control_fn=None,
@@ -834,26 +809,6 @@ def test_past_candles_threads_explicit_venue_to_kis_and_response(tmp_path) -> No
 
     assert body["venue"] == "NXT"
     assert fake.kwargs == [{"venue": "NXT", "foreground": True}]
-
-
-def test_past_candles_read_ahead_warms_preceding_window(tmp_path, monkeypatch, _live_read_ahead_warm) -> None:
-    """Task 5: /past-candles opts into read_ahead=True, so serving a request
-    also warms the immediately-preceding same-width window in the background.
-    The assertion runs AFTER the `with TestClient` block so lifespan shutdown
-    drains the fire-and-forget warm task deterministically."""
-    from hoga.api import calendar as cal
-    from hoga.live import api as live_api
-
-    monkeypatch.setattr(live_api, "_today_kst_date", lambda: datetime.date(2026, 6, 1))
-    monkeypatch.setattr(cal, "is_trading_day", lambda _d: True)
-    fake = _FakeKisForPast()
-    app = _past_app(tmp_path, fake)
-    with TestClient(app) as c:
-        r = c.get("/api/live/past-candles?code=005930&from=20260519&to=20260520")
-        assert r.status_code == 200
-
-    # 요청창 5/19-20은 즉시 fetch, 선행창 5/17-18은 background 워밍으로 채워진다.
-    assert set(fake.calls) == {"20260517", "20260518", "20260519", "20260520"}
 
 
 def test_past_candles_rejects_invalid_venue_before_kis(tmp_path) -> None:
