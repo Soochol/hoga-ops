@@ -239,6 +239,10 @@ export function overlayLiveTradesOnCalendarCandles(
       high: Math.max(...group.map((t) => t.price)),
       low: Math.min(...group.map((t) => t.price)),
       close: group[group.length - 1].price,
+      // best-effort 하한(당일 누적치 아님). KIS 모드는 다음 refetch 가 정본으로
+      // 교정하지만, bypass(D) 모드의 useScreenerDailyCandles 는 refetchInterval 이
+      // 없어(staleTime 60s 만) 교정이 오지 않는다 → today 캔들 volume 은 버퍼 tail
+      // 합계로 근사 유지된다(close/high/low 는 매 틱 정상 갱신). 의도된 한계.
       vol_a: group.reduce((sum, t) => sum + t.qty, 0),
       vol_b: 0,
     });
