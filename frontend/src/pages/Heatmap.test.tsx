@@ -89,7 +89,7 @@ it('폴더·종목·phase 배지 렌더 + 색 범례 제거됨(#6)', async () =>
   expect(screen.getByText('삼성전자')).toBeInTheDocument();
   expect(screen.getByText('● 장중')).toBeInTheDocument();
   expect(screen.queryByLabelText(/색 범례/)).toBeNull();   // #6: 범례 삭제
-  expect(screen.getByRole('group', { name: '행 정렬' })).toBeInTheDocument();
+  expect(screen.getByRole('group', { name: '종목 정렬' })).toBeInTheDocument();
   expect(screen.getByRole('group', { name: '그룹 정렬' })).toBeInTheDocument();
 });
 

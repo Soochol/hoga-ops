@@ -70,8 +70,11 @@ describe('sortEntries', () => {
   it('manual = order 오름차순', () => {
     expect(sortEntries(entries, 'manual', pctOf).map((e) => e.code)).toEqual(['a', 'b', 'c']);
   });
-  it('change = 등락률 내림차순, null 맨 아래', () => {
-    expect(sortEntries(entries, 'change', pctOf).map((e) => e.code)).toEqual(['b', 'a', 'c']);
+  it('desc = 등락률 내림차순, null 맨 아래', () => {
+    expect(sortEntries(entries, 'desc', pctOf).map((e) => e.code)).toEqual(['b', 'a', 'c']);
+  });
+  it('asc = 등락률 오름차순, null 맨 아래', () => {
+    expect(sortEntries(entries, 'asc', pctOf).map((e) => e.code)).toEqual(['a', 'b', 'c']);
   });
 });
 

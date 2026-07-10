@@ -1,9 +1,11 @@
 import type { FolderGroup } from '../watchlist/grouping';
 import type { HeatmapEntry } from '../api/heatmap';
 import type { LiveQuote } from '../api/liveQuotes';
-import { makeChangePctOf, sortEntriesByChangePct } from '../rightrail/quoteSort';
+import { makeChangePctOf, sortEntriesByChangePct, type QuoteSortMode } from '../rightrail/quoteSort';
 
-export type SortMode = 'change' | 'manual';
+// 행(종목)·그룹 정렬 공용 3-상태: manual=기본(저장 순서), desc=등락률 내림, asc=오름.
+// 관심종목의 QuoteSortMode(default/change_pct_desc/change_pct_asc)와 1:1 대응(아이콘 공용).
+export type SortMode = 'manual' | 'desc' | 'asc';
 export const HEAT_SAT = 8;          // 포화 임계(%)
 export const HEAT_MAX_ALPHA = 0.42; // 기본 최대 알파(폴백 기본값)
 /** 등락률 → 배경 색. null/0 = 투명(카드 배경 노출). ±HEAT_SAT% 포화.
@@ -37,13 +39,22 @@ export function makePctOf(quoteByCode: Map<string, LiveQuote>): (code: string) =
   return makeChangePctOf(quoteByCode);
 }
 
-/** 폴더 내 정렬. change=등락률 내림차순(null 맨 아래), manual=entry.order. 비파괴(복사). */
+/** SortMode/GroupSort(3-상태) → QuoteSortMode. manual=default(기본), desc=내림, asc=오름.
+ *  정렬키 계산(sortEntries)과 통합 정렬 아이콘(QuoteSortIcon)이 공유하는 단일 매핑. */
+export function toQuoteSortMode(mode: 'manual' | 'desc' | 'asc'): QuoteSortMode {
+  if (mode === 'desc') return 'change_pct_desc';
+  if (mode === 'asc') return 'change_pct_asc';
+  return 'default';
+}
+
+/** 폴더 내 정렬. desc=등락률 내림차순·asc=오름차순(둘 다 null 맨 아래), manual=entry.order.
+ *  비파괴(복사). */
 export function sortEntries(
   entries: HeatmapEntry[],
   mode: SortMode,
   pctOf: (code: string) => number | null,
 ): HeatmapEntry[] {
-  return sortEntriesByChangePct(entries, pctOf, mode === 'manual' ? 'default' : 'change_pct_desc');
+  return sortEntriesByChangePct(entries, pctOf, toQuoteSortMode(mode));
 }
 
 /** 섹터 온도 = 시세 도착 종목의 비가중 평균 등락률. 전부 결측이면 null. */

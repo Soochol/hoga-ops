@@ -17,7 +17,7 @@ const groups: FolderGroup<HeatmapEntry>[] = [
 
 it('빈 폴더는 제외, 비어있지 않은 미분류는 포함(별도 그룹)', () => {
   render(<HeatmapBoard groups={groups} quoteByCode={new Map<string, LiveQuote>()}
-    sortMode="change" onPick={() => {}} />);
+    sortMode="desc" onPick={() => {}} />);
   expect(screen.getByText('반도체')).toBeInTheDocument();
   expect(screen.queryByText('빈폴더')).not.toBeInTheDocument();
   // ADR-0068 G3: 미분류 그룹이 '미분류' 라벨로 표시되고 소속 종목이 보인다
@@ -28,7 +28,7 @@ it('빈 폴더는 제외, 비어있지 않은 미분류는 포함(별도 그룹)
 
 it('폴더 카드에 스크롤 앵커 id가 있다(스트립 점프 대상)', () => {
   render(<HeatmapBoard groups={groups} quoteByCode={new Map<string, LiveQuote>()}
-    sortMode="change" onPick={() => {}} />);
+    sortMode="desc" onPick={() => {}} />);
   expect(document.getElementById('heatmap-folder-f1')).toBeTruthy();
 });
 
@@ -38,7 +38,7 @@ it('quote 의 OHLC 로 행에 캔들이 그려진다(양봉=적)', () => {
                  open: 100, high: 120, low: 95 }],  // close=115>open=100 → 양봉
   ]);
   render(<HeatmapBoard groups={groups} quoteByCode={qbc}
-    sortMode="change" onPick={() => {}} />);
+    sortMode="desc" onPick={() => {}} />);
   expect(document.querySelector('.candle-glyph rect:last-child')?.getAttribute('fill'))
     .toBe('var(--price-up)');
 });

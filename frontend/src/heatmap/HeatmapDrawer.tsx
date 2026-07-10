@@ -19,8 +19,10 @@ import { useClampedFixedPosition } from '../util/useClampedFixedPosition';
 import { useDismissablePopover } from '../util/useDismissablePopover';
 import { HeatmapRowMenu } from './HeatmapRowMenu';
 import { FolderAddButton } from './FolderAddButton';
+import { QuoteSortIcon } from '../rightrail/QuoteSortIcon';
+import { quoteSortModeDescription } from '../rightrail/quoteSortDescription';
 import { filterGroups } from './filterGroups';
-import { sortEntries, avgPct, orderFolderGroups, makePctOf } from './heat';
+import { sortEntries, avgPct, orderFolderGroups, makePctOf, toQuoteSortMode, type SortMode } from './heat';
 import {
   useHeatmap, useAddToHeatmap, useRemoveFromHeatmap, useMoveHeatmapEntries,
   useCreateHeatmapFolder, useRenameHeatmapFolder, useDeleteHeatmapFolder,
@@ -238,17 +240,26 @@ function SearchIcon() {
   );
 }
 
-/** 세그먼트 토글 버튼 — 활성=accent 틴트, 비활성=dim. 페이지의 segBtn 과 같은 시각 규칙을
- *  280px 폭에 맞춘 축약판(라벨 짧게). */
-function SegBtn({ active, onClick, children, ariaLabel }: {
-  active: boolean; onClick: () => void; children: React.ReactNode; ariaLabel?: string;
+/** 다음 정렬 상태(관심종목과 동일 순환): 기본(manual) → 내림(desc) → 오름(asc) → 기본. */
+function nextSort(mode: SortMode): SortMode {
+  return mode === 'manual' ? 'desc' : mode === 'desc' ? 'asc' : 'manual';
+}
+
+/** 단일 아이콘 정렬 버튼 — 관심종목 정렬 버튼 계약을 미러: 클릭할 때마다 기본→내림→오름
+ *  순환, 아이콘(QuoteSortIcon)은 방향만, title/aria 는 현재 상태+다음 동작을 설명한다.
+ *  라벨(종목/그룹) 은 정렬 *키*(등락률)의 축을 알린다. 활성(desc/asc)=accent, 기본=dim. */
+function SortCycleButton({ label, mode, onCycle }: {
+  label: string; mode: SortMode; onCycle: () => void;
 }) {
+  const qm = toQuoteSortMode(mode);
   return (
-    <button type="button" aria-label={ariaLabel} aria-pressed={active} onClick={onClick}
-      className={`px-1.5 py-0.5 text-[11px] leading-none rounded ${
-        active ? 'bg-tint-selection text-accent font-medium' : 'text-fg-dim hover:text-fg'
+    <button type="button" aria-label={`${label} 정렬`} title={quoteSortModeDescription(qm)}
+      onClick={onCycle}
+      className={`flex items-center gap-1 px-1 py-0.5 leading-none rounded hover:bg-bg-input-hover ${
+        mode === 'manual' ? 'text-fg-dimmer' : 'text-accent'
       }`}>
-      {children}
+      <span className="text-[11px]">{label}</span>
+      <QuoteSortIcon mode={qm} className="w-[1em] h-[1em]" />
     </button>
   );
 }
@@ -282,18 +293,9 @@ function DrawerToolbar({ query, onQuery }: { query: string; onQuery: (v: string)
           </button>
         )}
       </div>
-      <div className="flex items-center gap-3 text-[11px]">
-        <span className="flex items-center gap-1">
-          <span className="text-fg-dimmer">행</span>
-          <SegBtn active={sortMode === 'change'} onClick={() => setSortMode('change')} ariaLabel="행 등락률 내림차순 정렬">등락률↓</SegBtn>
-          <SegBtn active={sortMode === 'manual'} onClick={() => setSortMode('manual')} ariaLabel="행 수동 순서">수동</SegBtn>
-        </span>
-        <span className="flex items-center gap-1">
-          <span className="text-fg-dimmer">그룹</span>
-          <SegBtn active={groupSort === 'desc'} onClick={() => setGroupSort('desc')} ariaLabel="그룹을 평균 등락률 높은 순으로">↓</SegBtn>
-          <SegBtn active={groupSort === 'asc'} onClick={() => setGroupSort('asc')} ariaLabel="그룹을 평균 등락률 낮은 순으로">↑</SegBtn>
-          <SegBtn active={groupSort === 'manual'} onClick={() => setGroupSort('manual')} ariaLabel="그룹 수동 순서">수동</SegBtn>
-        </span>
+      <div className="flex items-center gap-2">
+        <SortCycleButton label="종목" mode={sortMode} onCycle={() => setSortMode(nextSort(sortMode))} />
+        <SortCycleButton label="그룹" mode={groupSort} onCycle={() => setGroupSort(nextSort(groupSort))} />
       </div>
     </div>
   );

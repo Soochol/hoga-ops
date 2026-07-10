@@ -89,14 +89,20 @@ export function Heatmap() {
             <ToolbarButton className="text-xs px-2 py-1 rounded" onClick={() => setShowNewGroup(true)}>
               ＋ 새 그룹
             </ToolbarButton>
-            {/* 행 정렬(그룹 내 종목 순서). 스코프어 '행'은 버튼 밖 span — 버튼 accessible name 보존. */}
+            {/* 종목 정렬(그룹 내 종목 순서). 스코프어 '종목'은 버튼 밖 span — 버튼 accessible name 보존. */}
             <span className="flex items-center gap-1 text-xs">
-              <span className="text-fg-dim">행</span>
-              <SegmentedControl aria-label="행 정렬" className="rounded">
+              <span className="text-fg-dim">종목</span>
+              {/* 행 버튼은 visible 텍스트가 accessible name(그룹 버튼만 aria-label로
+                  구분 — 시각 텍스트가 '등락률 ↓'로 겹쳐도 접근명이 안 겹치게). */}
+              <SegmentedControl aria-label="종목 정렬" className="rounded">
                 <button
-                  className={segBtn(sortMode === 'change')}
-                  onClick={() => setSortMode('change')}
+                  className={segBtn(sortMode === 'desc')}
+                  onClick={() => setSortMode('desc')}
                 >등락률 ↓</button>
+                <button
+                  className={segBtn(sortMode === 'asc')}
+                  onClick={() => setSortMode('asc')}
+                >등락률 ↑</button>
                 <button
                   className={segBtn(sortMode === 'manual')}
                   onClick={() => setSortMode('manual')}

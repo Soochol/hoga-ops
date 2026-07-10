@@ -48,7 +48,7 @@ function renderPage() {
 
 beforeEach(() => {
   vi.clearAllMocks();
-  useHeatmapPrefsStore.setState({ sortMode: 'change' });  // 정적 행(드래그 비활성) — 메뉴만 검증
+  useHeatmapPrefsStore.setState({ sortMode: 'desc' });  // 정적 행(드래그 비활성) — 메뉴만 검증
 });
 
 it('행 우클릭 → "히트맵에서 제거" → removeFromHeatmap 호출', async () => {
