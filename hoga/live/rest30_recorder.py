@@ -65,9 +65,10 @@ class Rest30sRecorder:
         self._phase_fn = phase_fn
         self._interval_s = interval_s
         self._backoff_cycles = max(0, backoff_cycles)
-        # 코드 간 동시 디스패치 상한(코드 내부는 순차). 실제 콜레이트는 명의-전역
-        # 15콜/s 토큰버킷이 클램프하므로, 이 값은 그 게이트를 채우기에 충분한 in-flight
-        # 수(≈ rate×latency)면 된다 — 과하면 user_visible 대기창만 커진다(ADR-0098).
+        # 코드 간 동시 디스패치 상한(코드 내부는 순차). 실제 콜레이트는 계정별
+        # 15콜/s 토큰버킷(합산 ~15×계정수, ADR-0100)이 클램프하므로, 이 값은 그 게이트를
+        # 채우기에 충분한 in-flight 수(≈ rate×latency)면 된다 — 과하면 user_visible
+        # 대기창만 커진다(ADR-0098). 3계정 포화용 재튜닝은 실장 관측 후 별도.
         self._concurrency = max(1, concurrency)
         # False = 10호가(orderbook)만 fetch/저장(REST 호가 통일, ADR-0098). True면
         # 기존 호가+체결+거래원 3콜 복원. 체결·거래원이 필요하면 WS(관심종목).

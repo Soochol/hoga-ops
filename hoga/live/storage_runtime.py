@@ -74,13 +74,13 @@ def _ensure_rest30_recorder(
             "hoga.live.session_gate", fromlist=["market_phase"],
         ).market_phase(now_ms_fn()),
         # 수집 주기 = 사이클 소요 + interval. 히트맵 종목이 REST-전용 후보로 합류(ADR-0097)
-        # 하면서 스냅샷 밀도를 30→10초로 높인다. REST 예산은 명의-전역 15/s 버킷(kis_runtime)
-        # 이 상한을 지키고 background 우선순위라 사용자 요청에 양보한다. 대상 수가 커지면
-        # 사이클이 길어져 실제 주기는 자연히 늘어난다(적응형 여부는 실장 후 kis_api_last_cycle_ms
-        # 로 판단). 클래스/파일/로그의 'rest30' 이름은 표면 안정을 위해 유지한다.
-        # 부수효과: 에러 백오프는 cycle 단위(recorder.backoff_cycles=3)라 wall-time 이
-        # 90→30초로 짧아진다 — EGW00201 스톰 시 재시도가 3배 잦아지나, 전역 15/s 버킷과
-        # FM5 auth latch 가 상한을 지키므로 안전(오히려 복구가 빠르다).
+        # 하면서 스냅샷 밀도를 30→10초로 높인다. REST 예산은 계정별 15/s 버킷(kis_runtime,
+        # ADR-0100 — 계정 수에 비례 증설)이 상한을 지키고 background 우선순위라 사용자 요청에
+        # 양보한다. 대상 수가 커지면 사이클이 길어져 실제 주기는 자연히 늘어난다(적응형 여부는
+        # 실장 후 kis_api_last_cycle_ms 로 판단). 클래스/파일/로그의 'rest30' 이름은 표면
+        # 안정을 위해 유지한다. 부수효과: 에러 백오프는 cycle 단위(recorder.backoff_cycles=3)라
+        # wall-time 이 90→30초로 짧아진다 — EGW00201 스톰 시 재시도가 3배 잦아지나, 계정별
+        # 15/s 버킷과 FM5 auth latch 가 상한을 지키므로 안전(오히려 복구가 빠르다).
         interval_s=10.0,
     )
     state.rest30_recorder = recorder
