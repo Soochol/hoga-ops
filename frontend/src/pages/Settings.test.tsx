@@ -239,6 +239,21 @@ describe('Settings — 데이터 수집 (히트맵 API 수집 토글)', () => {
     expect(toggle).toHaveAttribute('aria-checked', 'true'); // optimistic default
     expect(toggle).toBeDisabled();
   });
+
+  it('stays actionable (not disabled) when settings failed to load', () => {
+    // PATCH is partial (heatmap field only), so a GET failure must not lock the
+    // toggle — the user can still recover by toggling.
+    liveSettingsState.data = undefined;
+    liveSettingsState.isLoading = false;
+    liveSettingsState.isError = true;
+    renderWithQuery(<Settings />);
+    selectSection('data');
+    const toggle = screen.getByRole('switch', { name: '히트맵 종목 API 수집' });
+    expect(toggle).toBeEnabled();
+    expect(screen.getByText(/라이브 설정을 불러오지 못했습니다/)).toBeInTheDocument();
+    fireEvent.click(toggle);
+    expect(heatmapMutate).toHaveBeenCalledWith({ heatmap_capture_enabled: false });
+  });
 });
 
 describe('Settings — 테마 section', () => {

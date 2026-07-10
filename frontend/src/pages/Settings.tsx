@@ -144,7 +144,9 @@ function DataCollectionSection() {
   const patch = usePatchLiveSettings();
   // 기본 True: ADR-0097 도입 당시의 무조건 히트맵 합류 동작을 낙관적으로 반영.
   const enabled = data?.heatmap_capture_enabled ?? true;
-  const busy = isLoading || isError || patch.isPending;
+  // isError는 비활성 사유가 아니다 — PATCH는 partial(heatmap 필드만 전송)이라
+  // GET 실패로 현재값을 몰라도 조작이 안전하고, 복구 조작을 열어둔다.
+  const busy = isLoading || patch.isPending;
 
   return (
     <section className="space-y-2">
