@@ -1677,7 +1677,6 @@ export function LiveChartRoot({
     };
   }, [chart, axis, onCandleBasisClick]);
 
-  const dwDisabled = isCalendarTimeframe(timeframe) && !forceHogaPanes;
   const showTradeVolumePocOverlay = shouldShowTradeVolumePocOverlay(
     timeframe,
     forceHogaPanes,
@@ -1892,27 +1891,6 @@ export function LiveChartRoot({
           zIndex: 30,
         }}
       />
-      {dwDisabled && (
-        <div
-          data-testid="indicator-disabled-note"
-          style={{
-            position: 'absolute',
-            top: 'var(--space-md)',
-            left: '50%',
-            transform: 'translateX(-50%)',
-            padding: 'var(--space-xs) var(--space-md)',
-            background: 'var(--bg-subtle)',
-            color: 'var(--fg-dimmer)',
-            fontSize: 'var(--text-xs)',
-            borderRadius: 'var(--radius-md)',
-            border: '1px solid var(--border)',
-            pointerEvents: 'none',
-            zIndex: 31,
-          }}
-        >
-          라이브 지표는 분봉에서 표시됩니다
-        </div>
-      )}
       {/* 빈칸 중앙 노트: 캔들이 아직 없을 때. 로딩 중이거나 rate-limit 지연이면 표시.
           rate-limit이면 "고장?" 오해를 막는 명시 문구로 전환(데이터는 결국 도착). 캔들 0인데
           로딩도 경고도 아니면(정말 데이터 없음) 노트 없이 빈 차트만. */}

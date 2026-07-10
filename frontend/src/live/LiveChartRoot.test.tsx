@@ -429,34 +429,6 @@ describe('LiveChartRoot', () => {
     expect(onCandleBasisHover).toHaveBeenLastCalledWith(null);
   });
 
-  it('shows D/W/M hoga indicator empty-state notice on D timeframe', () => {
-    render(
-      <LiveChartRoot
-        code="005930"
-        timeframe="D"
-        bundle={DEFAULT_BUNDLE}
-        clampEngaged={false}
-        isPastCandlesLoading={false}
-      />,
-      { wrapper },
-    );
-    expect(screen.getByTestId('indicator-disabled-note')).toBeTruthy();
-  });
-
-  it('hides D/W/M empty-state notice on minute timeframes', () => {
-    render(
-      <LiveChartRoot
-        code="005930"
-        timeframe="1m"
-        bundle={DEFAULT_BUNDLE}
-        clampEngaged={false}
-        isPastCandlesLoading={false}
-      />,
-      { wrapper },
-    );
-    expect(screen.queryByTestId('indicator-disabled-note')).toBeNull();
-  });
-
   it('mounts AuctionWindowOverlay when bundle has segments', () => {
     // Phase D2 regression: the auctionWindowMask toggle (default ON) must
     // render the AuctionWindowOverlay band so the user sees visual parity
