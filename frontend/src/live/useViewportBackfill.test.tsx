@@ -169,10 +169,11 @@ describe('useViewportBackfill — settle-loop continuity (3a) is unaffected by t
     extendSpy.mockRestore();
   });
 
-  it('dispatches the next step on the isExtending falling edge when whitespace remains', () => {
-    // 배압으로 3b 가 skip 한 수요는 유실되지 않는다: 스텝이 settle(true→false)되고
-    // 뷰포트가 아직 빈영역(visibleFrom<0)이면 settle-loop 가 다음 스텝을 스스로
-    // dispatch 한다. 이 계약이 배압 게이트와 함께 점진 렌더링을 복원한다.
+  it('runs the frozen gesture budget to completion, then stops (viewport 재측정 없음)', () => {
+    // 제스처 예산 모델: 트리거 순간의 빈공간(-60바, D=스텝당 50봉 → 예산 2)으로
+    // fill이 동결되고, falling edge마다 예산을 소진하며 진행한다. 예산이 다하면
+    // 뷰포트에 빈공간이 남아 있어도(mock getVisibleLogicalRange from=-5) 멈춘다 —
+    // fill 도중 뷰포트를 다시 측정하지 않는다는 계약의 박제.
     const cap = chartWithCapturedHandler();
     const { rerender } = renderHook(
       ({ ext }: { ext: boolean }) =>
@@ -185,13 +186,57 @@ describe('useViewportBackfill — settle-loop continuity (3a) is unaffected by t
           code: '005930',
           canTriggerBackfill: () => true,
         }),
-      { initialProps: { ext: true } },
+      { initialProps: { ext: false } },
     );
 
-    expect(extendSpy).not.toHaveBeenCalled(); // 아직 하강 엣지 아님
-    rerender({ ext: false }); // 스텝 settle → 하강 엣지
-
+    // 트리거: 빈공간 60바 → 예산 ceil(60/50)=2, 스텝 1 dispatch.
+    cap.fire({ from: -60, to: 100 });
+    vi.advanceTimersByTime(150);
     expect(extendSpy).toHaveBeenCalledTimes(1);
+
+    rerender({ ext: true }); // 스텝 1 진행
+    rerender({ ext: false }); // settle → 하강 엣지 → 스텝 2 (예산 소진)
+    expect(extendSpy).toHaveBeenCalledTimes(2);
+
+    rerender({ ext: true }); // 스텝 2 진행
+    rerender({ ext: false }); // settle → 예산 0 → stop (빈공간 남아도 무시)
+    expect(extendSpy).toHaveBeenCalledTimes(2);
+  });
+
+  it('mid-fill trigger events cannot extend the frozen budget', () => {
+    // fill 활성 중(예산 소진 전) 새 뷰포트 이벤트가 와도 예산이 덮어써지지
+    // 않는다 — "첫 동작의 필요량을 다 가져올 때까지 추가 인터랙션의 호출 차단".
+    const cap = chartWithCapturedHandler();
+    const { rerender } = renderHook(
+      ({ ext }: { ext: boolean }) =>
+        useViewportBackfill({
+          chart: cap.chart,
+          axis: axisWithOneSession(),
+          bundle: bundleWithCandles(),
+          timeframe: 'D',
+          isExtending: ext,
+          code: '005930',
+          canTriggerBackfill: () => true,
+        }),
+      { initialProps: { ext: false } },
+    );
+
+    cap.fire({ from: -60, to: 100 }); // 예산 2로 동결
+    vi.advanceTimersByTime(150);
+    expect(extendSpy).toHaveBeenCalledTimes(1);
+
+    rerender({ ext: true });
+    // fill 도중 훨씬 큰 빈공간 이벤트(-500) 연타 — 전부 무시되어야 한다.
+    for (let i = 0; i < 5; i += 1) {
+      cap.fire({ from: -500, to: 100 });
+      vi.advanceTimersByTime(200);
+    }
+    rerender({ ext: false }); // 스텝 2 (동결 예산의 마지막)
+    expect(extendSpy).toHaveBeenCalledTimes(2);
+
+    rerender({ ext: true });
+    rerender({ ext: false }); // 예산 소진 → stop. -500 이벤트가 연장 못함
+    expect(extendSpy).toHaveBeenCalledTimes(2);
   });
 });
 

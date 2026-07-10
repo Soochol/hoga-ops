@@ -10,6 +10,8 @@ import {
   STEP_CANDLE_TARGET,
   stepTradingDays,
   stepChunkDays,
+  stepCandlesEstimate,
+  fillBudgetSteps,
   planFillStep,
   isKrxRegularSessionNow,
   initialCandleTargetFor,
@@ -187,99 +189,104 @@ describe('realMsToYyyymmdd', () => {
   });
 });
 
-describe('planFillStep', () => {
+describe('fillBudgetSteps / stepCandlesEstimate — 제스처 예산 산정', () => {
+  it('스텝당 봉 수는 거래일 ceil을 반영한다 (STEP_CANDLE_TARGET 나누기가 아님)', () => {
+    // 1m: 1거래일 floor = 390봉/스텝. 50으로 나누면 예산이 ~8배 과다.
+    expect(stepCandlesEstimate('1m')).toBe(390);
+    expect(stepCandlesEstimate('5m')).toBe(78); // 1거래일 × 78봉
+    expect(stepCandlesEstimate('15m')).toBe(52); // 2거래일 × 26봉
+    expect(stepCandlesEstimate('30m')).toBe(52); // 4거래일 × 13봉
+    expect(stepCandlesEstimate('D')).toBe(50);
+  });
+
+  it('예산 = ceil(빈공간 바 수 ÷ 스텝당 봉 수), 최소 1', () => {
+    expect(fillBudgetSteps(50, '1m')).toBe(1); // 390봉 스텝 1개로 충분
+    expect(fillBudgetSteps(500, '1m')).toBe(2);
+    expect(fillBudgetSteps(350, '30m')).toBe(7); // ceil(350/52)
+    expect(fillBudgetSteps(60, 'D')).toBe(2); // ceil(60/50)
+    expect(fillBudgetSteps(0, '1m')).toBe(1); // 트리거됐다면 최소 1스텝
+  });
+});
+
+describe('planFillStep — 제스처 예산 모델', () => {
+  // fill 도중 뷰포트를 재측정하지 않는다: 입력에 visibleFrom/viewportLeftDate가
+  // 없다는 것 자체가 계약이다. 종료는 예산 소진·클램프·coverage 목표 도달뿐.
   const axisEarliestMs = Date.UTC(2026, 4, 26, 0, 0, 0); // '20260526'(화) 09:00 KST
   const base = {
+    kind: 'left_pan' as const,
     historicalFromDate: '20260521' as string | null, // 목요일
     axisEarliestMs,
     earliestAllowedDate: '20251010', // far floor → not clamped
     timeframe: '1m' as const, // 1거래일 스텝
     stepCount: 1,
-    maxSteps: 60,
+    budget: 3,
   };
 
-  it('stops when the viewport is full (visibleFrom >= 0)', () => {
-    expect(planFillStep({ ...base, visibleFrom: 3 })).toEqual({ action: 'stop' });
-  });
-
-  it('stops when the viewport range is unavailable (visibleFrom null)', () => {
-    expect(planFillStep({ ...base, visibleFrom: null })).toEqual({ action: 'stop' });
-  });
-
-  it('fetches the next step back when whitespace remains', () => {
-    expect(planFillStep({ ...base, visibleFrom: -50 })).toEqual({
+  it('fetches the next step while budget remains', () => {
+    expect(planFillStep(base)).toEqual({
       action: 'fetch',
       nextFrom: subtractWeekdaysKst('20260521', 1), // '20260520' (목→수)
     });
   });
 
+  it('stops when the budget is exhausted (stepCount >= budget)', () => {
+    expect(planFillStep({ ...base, stepCount: 3 })).toEqual({ action: 'stop' });
+  });
+
   it('stops at the 250-day clamp floor (already at/below earliestAllowed)', () => {
     expect(
-      planFillStep({ ...base, visibleFrom: -50, historicalFromDate: '20251010' }),
+      planFillStep({ ...base, historicalFromDate: '20251010' }),
     ).toEqual({ action: 'stop' });
   });
 
-  it('stops at the backstop (stepCount reached maxSteps) to bound the loop', () => {
-    expect(
-      planFillStep({ ...base, visibleFrom: -50, stepCount: 60 }),
-    ).toEqual({ action: 'stop' });
-  });
-
-  // Coverage-gap 경로(A안): whitespace는 찼지만(visibleFrom ≥ 0) 지표 커버리지가
-  // viewport 좌단보다 뒤(더 최근)면 window-base로 range 창만 확장한다.
-  describe('coverage-gap path', () => {
+  // Coverage-gap fill: 목표(트리거 순간 viewport 좌단, 동결)에 요청 창이 닿을
+  // 때까지 window-base로 걷는다.
+  describe('coverage-gap fill', () => {
     const cov = {
       ...base,
-      visibleFrom: 3, // whitespace 없음
+      kind: 'coverage_gap' as const,
       historicalFromDate: null as string | null,
       rangeWindowFromDate: '20260521',
+      coverageTargetDate: '20260410',
+      budget: 60, // 날짜 수렴이 주 종료 조건, 예산은 백스톱
     };
 
-    it('fetches a window-base step when viewport left is older than coverage', () => {
-      expect(
-        planFillStep({ ...cov, viewportLeftDate: '20260410', coverageFromDate: '20260519' }),
-      ).toEqual({ action: 'fetch', nextFrom: subtractWeekdaysKst('20260521', 1) });
+    it('fetches a window-base step while the window is behind the frozen target', () => {
+      expect(planFillStep(cov)).toEqual({
+        action: 'fetch',
+        nextFrom: subtractWeekdaysKst('20260521', 1),
+      });
     });
 
-    it('stops when coverage already reaches the viewport left edge', () => {
+    it('stops when the window reaches the frozen target', () => {
       expect(
-        planFillStep({ ...cov, viewportLeftDate: '20260519', coverageFromDate: '20260519' }),
+        planFillStep({ ...cov, historicalFromDate: '20260410' }),
       ).toEqual({ action: 'stop' });
     });
 
-    it('stops when coverage extends past (older than) the viewport left edge', () => {
+    it('stops when the window passes (older than) the frozen target', () => {
       expect(
-        planFillStep({ ...cov, viewportLeftDate: '20260519', coverageFromDate: '20260410' }),
+        planFillStep({ ...cov, historicalFromDate: '20260405' }),
       ).toEqual({ action: 'stop' });
     });
 
-    it('is inert when coverage args are absent (D/W/M or no range indicators)', () => {
-      // 신규 인자를 생략하면 기존 whitespace-only 동작 그대로 → stop.
-      expect(planFillStep({ ...base, visibleFrom: 3 })).toEqual({ action: 'stop' });
-    });
-
-    it('whitespace path wins when BOTH whitespace and coverage-gap apply (axis-base)', () => {
-      // visibleFrom < 0이면 coverage 인자가 있어도 axis-base nextHistoricalFrom.
+    it('stops when the target/window inputs are absent (defensive)', () => {
       expect(
-        planFillStep({
-          ...cov,
-          visibleFrom: -50,
-          historicalFromDate: '20260521',
-          viewportLeftDate: '20260410',
-          coverageFromDate: '20260519',
-        }),
-      ).toEqual({ action: 'fetch', nextFrom: subtractWeekdaysKst('20260521', 1) });
+        planFillStep({ ...cov, coverageTargetDate: null }),
+      ).toEqual({ action: 'stop' });
+      expect(
+        planFillStep({ ...cov, rangeWindowFromDate: null }),
+      ).toEqual({ action: 'stop' });
     });
 
     it('coverage-gap still honors the clamp floor', () => {
       expect(
-        planFillStep({
-          ...cov,
-          historicalFromDate: '20251010', // at/below earliestAllowedDate
-          viewportLeftDate: '20260410',
-          coverageFromDate: '20260519',
-        }),
+        planFillStep({ ...cov, historicalFromDate: '20251010' }),
       ).toEqual({ action: 'stop' });
+    });
+
+    it('budget backstop applies to coverage fills too', () => {
+      expect(planFillStep({ ...cov, stepCount: 60 })).toEqual({ action: 'stop' });
     });
   });
 });

@@ -244,9 +244,31 @@ export function nextCoverageFrom(
   return stepBackFrom(base, tf);
 }
 
+/** 한 스텝이 실제로 가져오는 봉 수 추정. 제스처 예산 산정의 분모 —
+ * `STEP_CANDLE_TARGET`으로 나누면 안 된다: 분봉 스텝은 거래일 단위로
+ * ceil되므로 1m 한 스텝은 50이 아니라 390봉이다(1거래일 floor). 이걸
+ * 무시하면 1m 예산이 ~8배 과다 산정돼 과다 fetch가 된다. */
+export function stepCandlesEstimate(tf: LiveTimeframe): number {
+  if (isMinuteTimeframe(tf)) {
+    const tfMinutes = TIMEFRAME_TO_MS[tf] / 60_000;
+    return stepTradingDays(tf) * (TRADING_MINUTES_PER_DAY / tfMinutes);
+  }
+  return STEP_CANDLE_TARGET;
+}
+
+/** 제스처 예산: 트리거 순간의 빈공간(바 수)을 채우는 데 필요한 스텝 수.
+ * 이 예산이 fill의 유일한 종료 조건이다(클램프 제외) — fill 도중의 추가
+ * 인터랙션은 예산을 늘리지 못하고(뷰포트 재측정 없음), fill은 예산만큼
+ * 무조건 완주한다. 도중에 생긴 새 빈공간은 완료 후 다음 트리거의 예산으로
+ * 배치 처리된다(/investigate 2026-07-11 설계 결정). */
+export function fillBudgetSteps(whitespaceBars: number, tf: LiveTimeframe): number {
+  return Math.max(1, Math.ceil(whitespaceBars / stepCandlesEstimate(tf)));
+}
+
 export interface FillStepArgs {
-  /** getVisibleLogicalRange().from — 음수면 왼쪽 빈영역. null이면 측정 불가. */
-  visibleFrom: number | null;
+  /** 트리거가 정한 fill 종류. left_pan=캔들+지표 동반 확장(axis-base),
+   * coverage_gap=range 창만 확장(window-base). */
+  kind: 'left_pan' | 'coverage_gap';
   historicalFromDate: string | null;
   axisEarliestMs: number;
   /** Optional scrollback lower bound (YYYYMMDD). Minute charts pass the 250-day clamp; calendar charts pass null. */
@@ -255,60 +277,50 @@ export interface FillStepArgs {
   timeframe: LiveTimeframe;
   /** 이번 fill에서 지금까지 dispatch한 스텝 수. */
   stepCount: number;
-  /** 무한 루프 백스톱. */
-  maxSteps: number;
-  /** Coverage-gap 확장(A안). viewport 좌단 날짜(YYYYMMDD) — axis.toReal로 변환.
-   * 셋 다 생략/ null이면(비분봉/신호없음) coverage 경로 비활성 → 기존 whitespace 동작만. */
-  viewportLeftDate?: string | null;
-  /** range 지표(hoga/sidecar) 커버리지가 도달한 가장 최근 from_date(구속 조건). */
-  coverageFromDate?: string | null;
+  /** 이번 fill의 스텝 예산(트리거 순간 동결, `fillBudgetSteps`).
+   * coverage_gap은 날짜 수렴이 주 종료 조건이라 백스톱 값을 넣는다. */
+  budget: number;
+  /** coverage_gap 전용: 트리거 순간의 viewport 좌단 날짜(수렴 목표, 동결). */
+  coverageTargetDate?: string | null;
   /** 지금 range가 요청 중인 창의 from — coverage 스텝 base의 null-fallback. */
   rangeWindowFromDate?: string | null;
 }
 
 /** 한 스텝 settle 후 진행 루프가 멈출지 / 다음 from을 받을지 결정.
  *
- * 종료: (a) 측정 불가(visibleFrom null) (b) 백스톱(stepCount ≥ maxSteps) (c) optional
- * 하한(클램프) 도달. 그 외엔 두 경로 순서로 확장한다:
- *   1. Whitespace(기존): visibleFrom < 0 → 최좌단 캔들보다 왼쪽으로 팬. axis-base
- *      nextHistoricalFrom(캔들+지표 동반 확장).
- *   2. Coverage-gap(신규): whitespace는 찼지만(visibleFrom ≥ 0) 지표 커버리지가
- *      viewport 좌단보다 뒤(더 최근)면 window-base nextCoverageFrom으로 range 창만
- *      한 스텝 확장. axis-base 금지(복원된 캔들로 폭발).
- * 둘 다 충족(whitespace 참 + coverage 도달)이면 stop. 연휴 스텝(거래일 0개)은 여기서
- * 멈추지 않는다 — 다음 스텝 base가 자동으로 더 과거로 보낸다. */
+ * 제스처 예산 모델(/investigate 2026-07-11): fill 진행 중에는 뷰포트를
+ * 다시 측정하지 않는다 — 트리거 순간 동결된 예산·목표만 소진한다. 그래서
+ * fill 도중의 줌인·줌아웃은 이번 fill을 늘리지도 줄이지도 못한다(추가
+ * API 호출 0, 예산만큼 무조건 완주).
+ *
+ * 종료: (a) 예산 소진(stepCount ≥ budget) (b) optional 하한(클램프) 도달
+ * (c) coverage_gap은 요청 창이 동결된 목표 날짜에 도달했을 때.
+ * 연휴 스텝(거래일 0개)도 예산 1을 소모한다 — 그만큼 덜 채워진 빈공간은
+ * 다음 트리거의 예산으로 회수된다(자가 치유). */
 export function planFillStep(
   args: FillStepArgs,
 ): { action: 'stop' } | { action: 'fetch'; nextFrom: string } {
   const {
-    visibleFrom, historicalFromDate, axisEarliestMs, earliestAllowedDate,
-    timeframe, stepCount, maxSteps,
-    viewportLeftDate = null, coverageFromDate = null, rangeWindowFromDate = null,
+    kind, historicalFromDate, axisEarliestMs, earliestAllowedDate,
+    timeframe, stepCount, budget,
+    coverageTargetDate = null, rangeWindowFromDate = null,
   } = args;
-  if (visibleFrom === null) return { action: 'stop' };
-  if (stepCount >= maxSteps) return { action: 'stop' };
+  if (stepCount >= budget) return { action: 'stop' };
   if (earliestAllowedDate !== null && historicalFromDate !== null && historicalFromDate <= earliestAllowedDate) {
     return { action: 'stop' };
   }
-  // 1. Whitespace 경로(기존): 최좌단 캔들보다 왼쪽으로 팬 → axis-base 확장.
-  if (visibleFrom < 0) {
+  if (kind === 'left_pan') {
     return {
       action: 'fetch',
       nextFrom: nextHistoricalFrom(axisEarliestMs, historicalFromDate, timeframe),
     };
   }
-  // 2. Coverage-gap 경로(신규): whitespace는 찼지만 지표 커버리지가 viewport 좌단보다
-  //    뒤(더 최근)면 window-base로 range 창을 한 스텝 확장.
-  if (
-    coverageFromDate !== null &&
-    viewportLeftDate !== null &&
-    rangeWindowFromDate !== null &&
-    viewportLeftDate < coverageFromDate
-  ) {
-    return {
-      action: 'fetch',
-      nextFrom: nextCoverageFrom(historicalFromDate, rangeWindowFromDate, timeframe),
-    };
-  }
-  return { action: 'stop' };
+  // coverage_gap: 요청 창이 동결된 목표(트리거 순간 viewport 좌단)에 닿으면 종료.
+  if (coverageTargetDate === null || rangeWindowFromDate === null) return { action: 'stop' };
+  const windowFrom = historicalFromDate ?? rangeWindowFromDate;
+  if (windowFrom <= coverageTargetDate) return { action: 'stop' };
+  return {
+    action: 'fetch',
+    nextFrom: nextCoverageFrom(historicalFromDate, rangeWindowFromDate, timeframe),
+  };
 }

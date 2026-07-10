@@ -7,6 +7,7 @@ import {
   nextHistoricalFrom,
   nextCoverageFrom,
   planFillStep,
+  fillBudgetSteps,
   earliestAllowedMinuteDate,
   todayKstYyyymmdd,
   realMsToYyyymmdd,
@@ -25,10 +26,9 @@ function readViewportLeftDate(chart: IChartApi, axis: VirtualAxis): string | nul
   }
 }
 
-/** 진행 루프 무한 방지 백스톱. 스텝=캔들 STEP_CANDLE_TARGET개 기준으로,
- * 분봉은 250일 클램프가, D/W/M은 데이터 고갈이 보통 먼저 멈춘다 —
- * 이건 그 뒤의 최후 방어선. 휠 줌아웃 좌단 클램프(1스텝 폭) 도입 후 정상
- * 경로에서 이 카운터가 바닥날 일은 깊은 드래그 팬뿐이다. */
+/** fill 스텝 수 상한. left_pan은 제스처 예산(fillBudgetSteps)이 이 값으로
+ * 캡되고, coverage_gap은 날짜 수렴이 주 종료 조건이라 이 값이 백스톱 예산이
+ * 된다. 분봉 250일 클램프·D/W/M 데이터 고갈이 보통 먼저 멈춘다. */
 const MAX_FILL_STEPS = 60;
 
 /** 재배치 skip 허용 오차(논리 인덱스). lwc가 스스로 타깃에 착지한 경우(라이브
@@ -111,9 +111,17 @@ export function useViewportBackfill({
   >(null);
   const prevAxisRef = useRef<VirtualAxis | null>(null);
   const prevEarliestTsMsRef = useRef<number | null>(null);
-  // 진행 루프: 현재 fill에서 dispatch한 스텝 수(백스톱용) + isExtending 직전값(falling edge 검출).
+  // 진행 루프: 현재 fill에서 dispatch한 스텝 수 + isExtending 직전값(falling edge 검출).
   const fillStepCountRef = useRef(0);
   const prevExtendingRef = useRef(false);
+  // 제스처 예산 fill 상태(/investigate 2026-07-11). 트리거(3b) 순간의 빈공간으로
+  // 예산을 동결하고, 진행 루프(3a)는 뷰포트를 다시 측정하지 않은 채 예산만
+  // 소진하며 무조건 완주한다 — fill 도중의 인터랙션은 이번 fill을 늘리지도
+  // 줄이지도 못한다(추가 호출 0). fillKindRef=null이 "활성 fill 없음"이며,
+  // 활성 중에는 3b가 새 트리거를 거부해 예산 덮어쓰기를 막는다.
+  const fillKindRef = useRef<'left_pan' | 'coverage_gap' | null>(null);
+  const fillBudgetRef = useRef(0);
+  const fillCoverageTargetRef = useRef<string | null>(null);
   // Candle count of the CURRENT render, mirrored into a ref so the lazy-fetch
   // trigger (3b) and settle-loop (3a) can read it without `bundle` in their
   // deps (3b would re-subscribe every SSE tick). NEITHER may run before the
@@ -153,6 +161,9 @@ export function useViewportBackfill({
     prevEarliestTsMsRef.current = null;
     fillStepCountRef.current = 0;
     prevExtendingRef.current = false;
+    fillKindRef.current = null;
+    fillBudgetRef.current = 0;
+    fillCoverageTargetRef.current = null;
   }, [code, timeframe]);
 
   // 1. Pre-swap snapshot. Runs in the layout phase of every bundle/axis
@@ -237,51 +248,51 @@ export function useViewportBackfill({
     }
   }, [chart, bundle, axis]);
 
-  // 3a. 진행 루프(스텝 2..N): 한 스텝 settle(isExtending true→false) 직후 viewport가
-  // 아직 빈영역이면 다음 스텝을 자가 dispatch한다. Applies to minute and
-  // calendar frames alike; D/W/M users can keep moving left without a manual
-  // "one chunk at a time" rhythm.
-  // planFillStep이 종료(꽉 참/클램프/백스톱)를 판정. 재배치 effect 뒤에 선언해
-  // getVisibleLogicalRange가 재배치 적용 후 위치를 읽도록 한다.
+  // 3a. 진행 루프(스텝 2..N): 한 스텝 settle(isExtending true→false)마다 활성
+  // fill의 예산을 소진하며 다음 스텝을 자가 dispatch한다. 뷰포트는 읽지 않는다
+  // — 예산과 목표는 트리거(3b) 순간에 동결됐고, fill은 그만큼 무조건 완주한다.
+  // planFillStep이 종료(예산 소진/클램프/coverage 목표 도달)를 판정.
   useEffect(() => {
     const wasExtending = prevExtendingRef.current;
     prevExtendingRef.current = isExtending;
     if (!chart) return;
     if (!canTriggerBackfill()) return;
     if (!(wasExtending && !isExtending)) return; // falling edge만
+    if (fillKindRef.current === null) return; // 활성 fill 없음 (예: 초기 로드 settle)
+    const endFill = () => {
+      fillKindRef.current = null;
+      fillBudgetRef.current = 0;
+      fillCoverageTargetRef.current = null;
+      fillStepCountRef.current = 0;
+    };
     // 초기 캔들 미로드(빈 차트)면 백필 폭주 금지 — candleCountRef 주석 참조.
     if (candleCountRef.current === 0) return;
     const cur = useLivePageStore.getState().historicalFromDate;
-    if (cur === null) return;
-    if (axis.segments.length === 0) return;
-    const ts = chart.timeScale();
-    let visibleFrom: number | null = null;
-    try {
-      visibleFrom = ts.getVisibleLogicalRange()?.from ?? null;
-    } catch {
-      visibleFrom = null;
+    if (cur === null || axis.segments.length === 0) {
+      endFill();
+      return;
     }
     const plan = planFillStep({
-      visibleFrom,
+      kind: fillKindRef.current,
       historicalFromDate: cur,
       axisEarliestMs: axis.segments[0].sessionOpenMs,
       earliestAllowedDate: isMinuteTimeframe(timeframe) ? earliestAllowedMinuteDate(todayKstYyyymmdd()) : null,
       timeframe,
       stepCount: fillStepCountRef.current,
-      maxSteps: MAX_FILL_STEPS,
-      viewportLeftDate: readViewportLeftDate(chart, axis),
-      coverageFromDate: coverageFromRef.current,
+      budget: fillBudgetRef.current,
+      coverageTargetDate: fillCoverageTargetRef.current,
       rangeWindowFromDate: rangeWindowFromRef.current,
     });
     if (plan.action === 'stop') {
       livePerfLog('viewport_backfill_stop', {
         code,
         timeframe,
-        visibleFrom,
+        kind: fillKindRef.current,
         historicalFromDate: cur,
         stepCount: fillStepCountRef.current,
+        budget: fillBudgetRef.current,
       });
-      fillStepCountRef.current = 0;
+      endFill();
       return;
     }
     fillStepCountRef.current += 1;
@@ -289,10 +300,11 @@ export function useViewportBackfill({
       code,
       timeframe,
       trigger: 'settle_loop',
-      visibleFrom,
+      kind: fillKindRef.current,
       from: cur,
       nextFrom: plan.nextFrom,
       stepCount: fillStepCountRef.current,
+      budget: fillBudgetRef.current,
       candleCount: candleCountRef.current,
     });
     useLivePageStore.getState().extendHistoricalRange(plan.nextFrom);
@@ -331,26 +343,31 @@ export function useViewportBackfill({
       // 그건 "팬"이 아니라 "데이터 미도착"이다. 가드 없으면 historicalFromDate가
       // 250일 클램프까지 폭주해 거대 uncached fetch가 영구 pending → 빈 차트.
       if (candleCountRef.current === 0) return;
-      // Backpressure: a step is already fetching — let the settle-loop (3a)
-      // pull the next one when this settles. Without this, zoom-out spam
-      // outruns the pipeline (see isExtendingRef). Re-checked inside the
-      // debounce timer too, since 3a may start a step during the 150ms wait.
-      if (isExtendingRef.current) return;
+      // Backpressure + 예산 보호: 진행 중인 스텝이 있거나 활성 fill이 예산을
+      // 소진 중이면 새 트리거를 받지 않는다 — 동결된 예산을 덮어쓰면 "fill 도중
+      // 인터랙션이 fill을 연장하지 못한다"는 계약이 깨진다. fill이 끝난 뒤의
+      // 다음 뷰포트 이벤트가 남은 빈공간을 새 예산으로 배치 처리한다.
+      // Re-checked inside the debounce timer too, since the 150ms wait can
+      // straddle a fill start.
+      if (isExtendingRef.current || fillKindRef.current !== null) return;
       const r = range as { from?: number | null; to?: number | null } | null;
       if (!r || r.from == null) return;
       // 두 트리거 경로:
       //  1. left_pan(기존): logical.from<0 = 최좌단 캔들보다 왼쪽으로 팬. axis-base로
-      //     캔들+지표 동반 확장. v3 스냅샷이 프리펜드 커밋에서 잡히므로 여기서 캡처 없음.
+      //     캔들+지표 동반 확장. 예산 = 트리거 순간의 빈공간 바 수 ÷ 스텝당 봉 수.
       //  2. coverage_gap(A안): logical.from≥0(캔들 안)이지만 viewport 좌단이 range 지표
       //     커버리지보다 과거면, 캔들은 병합 캐시로 복원됐는데 지표만 뒤처진 구간이다.
       //     window-base nextCoverageFrom으로 range 창만 확장(axis-base 금지 — 복원된
-      //     캔들로 폭발). 분봉 외/미로드면 coverageFromRef=null이라 이 경로 비활성.
+      //     캔들로 폭발). 목표 = 트리거 순간의 viewport 좌단 날짜(동결).
       const cur = useLivePageStore.getState().historicalFromDate;
       let trigger: 'left_pan' | 'coverage_gap';
       let nextFrom: string;
+      let budget: number;
+      let coverageTarget: string | null = null;
       if (r.from < 0) {
         trigger = 'left_pan';
         nextFrom = nextHistoricalFrom(axis.segments[0].sessionOpenMs, cur, timeframe);
+        budget = Math.min(fillBudgetSteps(-r.from, timeframe), MAX_FILL_STEPS);
       } else {
         const coverageFrom = coverageFromRef.current;
         const windowFrom = rangeWindowFromRef.current;
@@ -359,8 +376,9 @@ export function useViewportBackfill({
         if (leftDate === null || leftDate >= coverageFrom) return;
         trigger = 'coverage_gap';
         nextFrom = nextCoverageFrom(cur, windowFrom, timeframe);
+        budget = MAX_FILL_STEPS; // 종료는 날짜 수렴이 담당, 예산은 백스톱
+        coverageTarget = leftDate;
       }
-      fillStepCountRef.current = 1; // 이 dispatch가 스텝 1
       // SR-3: the holiday-span / monotonic-decrease backfill policy lives in the
       // pure nextHistoricalFrom / nextCoverageFrom kernels (liveDateTime,
       // table-tested). This effect keeps only the imperative shell: trigger gate,
@@ -370,9 +388,9 @@ export function useViewportBackfill({
         const state = useLivePageStore.getState();
         if (state.candleTimeframe !== timeframe) return;
         if (state.activeCode && state.activeCode !== code) return;
-        // Re-check backpressure at fire time: a step may have started during
-        // the debounce window (3a settle-loop dispatch). Skip here defers to 3a.
-        if (isExtendingRef.current) {
+        // Re-check at fire time: a fill may have started during the debounce
+        // window. Skip — its budget owns the pipeline until it completes.
+        if (isExtendingRef.current || fillKindRef.current !== null) {
           livePerfLog('viewport_backfill_skip', {
             code,
             timeframe,
@@ -382,6 +400,12 @@ export function useViewportBackfill({
           });
           return;
         }
+        // fill 상태는 실제 dispatch 직전에만 동결 — 위의 가드들로 반려된 이벤트가
+        // 유령 활성 fill을 남기면(안 그러면) falling edge가 없어 영구 잠금된다.
+        fillKindRef.current = trigger;
+        fillBudgetRef.current = budget;
+        fillCoverageTargetRef.current = coverageTarget;
+        fillStepCountRef.current = 1; // 이 dispatch가 스텝 1
         livePerfLog('viewport_backfill_extend', {
           code,
           timeframe,
@@ -390,6 +414,7 @@ export function useViewportBackfill({
           from: cur,
           nextFrom,
           stepCount: fillStepCountRef.current,
+          budget,
           candleCount: candleCountRef.current,
         });
         useLivePageStore.getState().extendHistoricalRange(nextFrom);
