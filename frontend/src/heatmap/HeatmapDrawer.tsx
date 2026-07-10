@@ -27,11 +27,11 @@ import { useClampedFixedPosition } from '../util/useClampedFixedPosition';
 import { useDismissablePopover } from '../util/useDismissablePopover';
 import { HeatmapRowMenu } from './HeatmapRowMenu';
 import { useAddToFolder } from './useAddToFolder';
-import { QuoteSortIcon } from '../rightrail/QuoteSortIcon';
-import { quoteSortModeDescription } from '../rightrail/quoteSortDescription';
+import { SortCycleButton } from './SortCycleButton';
+import { HeatmapSearchInput } from './HeatmapSearchInput';
 import { priceDirClass } from '../ui/priceDir';
 import { filterGroups } from './filterGroups';
-import { sortEntries, avgPct, orderFolderGroups, makePctOf, toQuoteSortMode, type SortMode } from './heat';
+import { sortEntries, avgPct, orderFolderGroups, makePctOf, nextSort } from './heat';
 import {
   useHeatmap, useAddToHeatmap, useRemoveFromHeatmap, useMoveHeatmapEntries,
   useCreateHeatmapFolder, useRenameHeatmapFolder, useDeleteHeatmapFolder,
@@ -357,40 +357,6 @@ function HeaderAddButton() {
   );
 }
 
-/** 검색 돋보기 + × 클리어 아이콘 (SVG 통일). */
-function SearchIcon() {
-  return (
-    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor"
-      strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
-      <circle cx="11" cy="11" r="7" /><path d="M21 21l-4.3-4.3" />
-    </svg>
-  );
-}
-
-/** 다음 정렬 상태(관심종목과 동일 순환): 기본(manual) → 내림(desc) → 오름(asc) → 기본. */
-function nextSort(mode: SortMode): SortMode {
-  return mode === 'manual' ? 'desc' : mode === 'desc' ? 'asc' : 'manual';
-}
-
-/** 단일 아이콘 정렬 버튼 — 관심종목 정렬 버튼 계약을 미러: 클릭할 때마다 기본→내림→오름
- *  순환, 아이콘(QuoteSortIcon)은 방향만, title/aria 는 현재 상태+다음 동작을 설명한다.
- *  라벨(종목/그룹) 은 정렬 *키*(등락률)의 축을 알린다. 활성(desc/asc)=accent, 기본=dim. */
-function SortCycleButton({ label, mode, onCycle }: {
-  label: string; mode: SortMode; onCycle: () => void;
-}) {
-  const qm = toQuoteSortMode(mode);
-  return (
-    <button type="button" aria-label={`${label} 정렬`} title={quoteSortModeDescription(qm)}
-      onClick={onCycle}
-      className={`flex items-center gap-1 px-1 py-0.5 leading-none rounded hover:bg-bg-input-hover ${
-        mode === 'manual' ? 'text-fg-dimmer' : 'text-accent'
-      }`}>
-      <span className="text-[11px]">{label}</span>
-      <QuoteSortIcon mode={qm} className="w-[1em] h-[1em]" />
-    </button>
-  );
-}
-
 /**
  * 드로어 툴바 — 목록 필터 검색창 + 행/그룹 등락률 정렬 토글. 정렬은 useHeatmapPrefsStore
  * (localStorage heatmap.sortMode.v1 / groupSort.v1)를 구독·기록하므로 /heatmap 페이지와
@@ -404,22 +370,7 @@ function DrawerToolbar({ query, onQuery }: { query: string; onQuery: (v: string)
   const setGroupSort = useHeatmapPrefsStore((s) => s.setGroupSort);
   return (
     <div className="flex flex-col gap-1.5 border-b border-border px-md py-sm">
-      <div className="relative flex items-center">
-        <span className="pointer-events-none absolute left-2 text-fg-dimmer"><SearchIcon /></span>
-        <input
-          type="text" value={query} onChange={(e) => onQuery(e.target.value)}
-          aria-label="종목·그룹 검색" placeholder="종목·그룹 검색"
-          data-testid="heatmap-drawer-search"
-          onKeyDown={(e) => { if (e.key === 'Escape' && query) { e.stopPropagation(); onQuery(''); } }}
-          className="w-full rounded bg-bg-input pl-7 pr-7 py-1 text-xs text-fg border border-border placeholder:text-fg-dimmer focus:outline-none focus:border-line-strong"
-        />
-        {query && (
-          <button type="button" aria-label="검색 지우기" onClick={() => onQuery('')}
-            className="absolute right-1.5 grid h-4 w-4 place-items-center rounded text-fg-dimmer hover:text-fg">
-            ✕
-          </button>
-        )}
-      </div>
+      <HeatmapSearchInput query={query} onQuery={onQuery} testId="heatmap-drawer-search" />
       <div className="flex items-center gap-2">
         <SortCycleButton label="종목" mode={sortMode} onCycle={() => setSortMode(nextSort(sortMode))} />
         <SortCycleButton label="그룹" mode={groupSort} onCycle={() => setGroupSort(nextSort(groupSort))} />
