@@ -66,6 +66,7 @@ async def test_rest30_recorder_poll_once_writes_three_payload_kinds(tmp_path: Pa
         now_ms_fn=lambda: 1770000000000,
         phase_fn=lambda: "regular",
         interval_s=30.0,
+        capture_aux=True,
     )
     recorder.set_targets({"005930"})
 
@@ -198,6 +199,7 @@ async def test_rest30_recorder_closed_market_fetches_one_snapshot_per_target(
         date_fn=lambda: "20260622",
         now_ms_fn=lambda: 1770000000000,
         phase_fn=lambda: "closed",
+        capture_aux=True,
     )
     recorder.set_targets({"005930"})
 
@@ -225,6 +227,7 @@ async def test_rest30_recorder_dedupes_repeated_trade_batches(tmp_path: Path) ->
         date_fn=lambda: "20260622",
         now_ms_fn=lambda: 1770000000000,
         phase_fn=lambda: "regular",
+        capture_aux=True,
     )
     recorder.set_targets({"005930"})
 
@@ -265,6 +268,7 @@ async def test_rest30_recorder_keeps_duplicate_trades_within_same_batch(
         date_fn=lambda: "20260622",
         now_ms_fn=lambda: 1770000000000,
         phase_fn=lambda: "regular",
+        capture_aux=True,
     )
     recorder.set_targets({"005930"})
 
@@ -308,6 +312,7 @@ async def test_rest30_recorder_repeated_batch_does_not_inflate_seen_count(
         date_fn=lambda: "20260622",
         now_ms_fn=lambda: 1770000000000,
         phase_fn=lambda: "regular",
+        capture_aux=True,
     )
     recorder.set_targets({"005930"})
 
@@ -439,3 +444,137 @@ async def test_rest30_recorder_cycle_failure_sets_internal_kind_code(
     assert records[0].getMessage() == (
         "live.rest30.cycle_failed kind=internal error=RuntimeError"
     )
+
+
+# ── ADR-0098: 호가 전용 기본 + 동시 디스패치 + 경계 스케줄링 ──
+
+
+@pytest.mark.asyncio
+async def test_rest30_recorder_default_captures_orderbook_only(tmp_path: Path) -> None:
+    """기본(capture_aux=False)은 10호가만 fetch/저장 — 체결·거래원 콜 없음."""
+    from hoga.live.buffer import LiveBuffer
+    from hoga.live.rest30_recorder import Rest30sRecorder
+
+    kis = FakeKis()
+    recorder = Rest30sRecorder(
+        kis_resolver=lambda: kis,
+        buffer=LiveBuffer(),
+        data_dir=tmp_path,
+        date_fn=lambda: "20260622",
+        now_ms_fn=lambda: 1770000000000,
+        phase_fn=lambda: "regular",
+    )
+    recorder.set_targets({"005930"})
+
+    await recorder.poll_once()
+
+    assert kis.calls == [("orderbook", "005930")]  # 호가 1콜만
+    lines = (tmp_path / "live_api" / "20260622" / "005930.jsonl").read_text().splitlines()
+    assert len(lines) == 1
+    assert '"kind": "ob"' in lines[0]
+    assert '"kind": "trade"' not in "".join(lines)
+    assert '"kind": "broker"' not in "".join(lines)
+
+
+@pytest.mark.asyncio
+async def test_rest30_recorder_dispatches_codes_concurrently(tmp_path: Path) -> None:
+    """코드 간 동시 디스패치 — 여러 종목의 fetch가 겹쳐서 in-flight ≥ 2가 된다.
+    gated fake로 진짜 동시성을 실증(PR #530 교훈: 순차여도 통과하는 테스트 금지)."""
+    from hoga.live.buffer import LiveBuffer
+    from hoga.live.rest30_recorder import Rest30sRecorder
+
+    class GatedKis(FakeKis):
+        def __init__(self) -> None:
+            super().__init__()
+            self.inflight = 0
+            self.max_inflight = 0
+            self.release = asyncio.Event()
+
+        async def fetch_orderbook(self, code: str) -> KisOrderbook:
+            self.inflight += 1
+            self.max_inflight = max(self.max_inflight, self.inflight)
+            try:
+                await self.release.wait()
+            finally:
+                self.inflight -= 1
+            return await super().fetch_orderbook(code)
+
+    kis = GatedKis()
+    recorder = Rest30sRecorder(
+        kis_resolver=lambda: kis,
+        buffer=LiveBuffer(),
+        data_dir=tmp_path,
+        date_fn=lambda: "20260622",
+        now_ms_fn=lambda: 1770000000000,
+        phase_fn=lambda: "regular",
+        concurrency=4,
+    )
+    recorder.set_targets({"005930", "000660", "035420"})
+
+    task = asyncio.create_task(recorder.poll_once())
+    # 게이트를 잡고 있는 동안 여러 종목이 동시에 fetch에 진입해야 한다.
+    for _ in range(50):
+        await asyncio.sleep(0)
+        if kis.max_inflight >= 2:
+            break
+    assert kis.max_inflight >= 2, "동시 디스패치가 안 됨(직렬)"
+    kis.release.set()
+    await task
+
+
+@pytest.mark.asyncio
+async def test_rest30_recorder_concurrency_cap_bounds_inflight(tmp_path: Path) -> None:
+    """동시성 상한이 in-flight를 제한한다 — concurrency=2면 max_inflight ≤ 2."""
+    from hoga.live.buffer import LiveBuffer
+    from hoga.live.rest30_recorder import Rest30sRecorder
+
+    class CountingKis(FakeKis):
+        def __init__(self) -> None:
+            super().__init__()
+            self.inflight = 0
+            self.max_inflight = 0
+
+        async def fetch_orderbook(self, code: str) -> KisOrderbook:
+            self.inflight += 1
+            self.max_inflight = max(self.max_inflight, self.inflight)
+            await asyncio.sleep(0)  # 다른 태스크에 양보 → 상한 없으면 다 겹침
+            self.inflight -= 1
+            return await super().fetch_orderbook(code)
+
+    kis = CountingKis()
+    recorder = Rest30sRecorder(
+        kis_resolver=lambda: kis,
+        buffer=LiveBuffer(),
+        data_dir=tmp_path,
+        date_fn=lambda: "20260622",
+        now_ms_fn=lambda: 1770000000000,
+        phase_fn=lambda: "regular",
+        concurrency=2,
+    )
+    recorder.set_targets({f"{i:06d}" for i in range(10)})
+
+    await recorder.poll_once()
+
+    assert kis.max_inflight <= 2
+    assert recorder.status().last_cycle_duration_ms is not None
+
+
+def test_rest30_recorder_next_delay_aligns_to_wall_clock_boundary(tmp_path: Path) -> None:
+    """_next_delay_s는 다음 벽시계 interval 경계까지의 잔여를 준다(위상 정렬)."""
+    from hoga.live.buffer import LiveBuffer
+    from hoga.live.rest30_recorder import Rest30sRecorder
+
+    now = {"ms": 1770000010500}  # 10.5초 경과(30초 주기 기준)
+    recorder = Rest30sRecorder(
+        kis_resolver=lambda: FakeKis(),
+        buffer=LiveBuffer(),
+        data_dir=tmp_path,
+        date_fn=lambda: "20260622",
+        now_ms_fn=lambda: now["ms"],
+        phase_fn=lambda: "regular",
+        interval_s=30.0,
+    )
+    # 1770000010.5 % 30 = 10.5 → 다음 경계까지 19.5초.
+    assert recorder._next_delay_s() == pytest.approx(19.5)
+    now["ms"] = 1770000030000  # 정각 경계 → 0이 아니라 한 주기(0 sleep 재진입 방지).
+    assert recorder._next_delay_s() == pytest.approx(30.0)

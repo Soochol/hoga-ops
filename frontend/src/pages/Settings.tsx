@@ -155,7 +155,7 @@ function DataCollectionSection() {
     <section className="space-y-2">
       <SettingsRow
         label="히트맵 종목 API 수집"
-        description="히트맵에 담긴 종목의 10호가·체결·거래원을 KIS REST로 30초마다 수집·저장합니다. 끄면 히트맵 전용 종목의 수집만 멈춥니다(관심종목 수집에는 영향 없음)."
+        description="히트맵에 담긴 종목의 10호가를 KIS REST로 주기적으로 수집·저장합니다(총잔량 등). 체결·거래원은 관심종목(WS) 전용입니다. 끄면 히트맵 전용 종목의 수집만 멈춥니다(관심종목 수집에는 영향 없음)."
         testId="settings-heatmap-capture-row"
       >
         <ToggleSwitch

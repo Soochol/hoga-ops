@@ -77,6 +77,7 @@ class LiveRestPoller:
         *,
         interval_s: float = 2.0,
         phase_fn: Callable[[], str] | None = None,
+        capture_aux: bool = False,
     ) -> None:
         # 고정 client가 아니라 resolver를 받는다. 운영에서는 scheduler-backed proxy를,
         # 테스트에서는 lambda: fake를 주입할 수 있다. None을 반환하면(creds 소실 등)
@@ -85,6 +86,9 @@ class LiveRestPoller:
         self._buffer = buffer
         self._interval_s = interval_s
         self._phase_fn = phase_fn or (lambda: market_phase(_now_ms()))
+        # False = 10호가(orderbook)만 폴링/표시(REST 호가 통일, ADR-0098). True면
+        # 기존 호가+체결+거래원 3콜 복원. 체결·거래원 실시간은 WS(관심종목) 전용.
+        self._capture_aux = capture_aux
 
         self._subscribed: set[str] = set()
         self._excluded: set[str] = set()
@@ -256,7 +260,11 @@ class LiveRestPoller:
             _log.warning(log_msg, policy.kind, policy.code)
 
     async def _fetch_and_publish(self, code: str, kis: _KisRestProto) -> None:
-        """단일 종목: fetch_* 3개 → B3 변환 → buffer.publish.
+        """단일 종목: fetch → B3 변환 → buffer.publish.
+
+        기본은 10호가(orderbook)만(REST 호가 통일, ADR-0098). capture_aux=True일 때만
+        체결·거래원 3콜을 복원한다. 체결·거래원 실시간은 WS(관심종목) 전용이라,
+        REST 전용(히트맵) 종목은 보는 중에도 호가/총잔량만 갱신된다.
 
         kis는 _poll_once가 사이클 시작에 resolve한 KIS REST adapter다. scheduler-backed
         proxy일 수도 있고 테스트 fake일 수도 있다.
@@ -267,12 +275,12 @@ class LiveRestPoller:
         phase = self._phase_fn()
 
         ob = await kis.fetch_orderbook(code)
-        trades = await kis.fetch_trades(code)
-        brokers = await kis.fetch_brokers(code)
-
-        ob_snap = ob_to_snapshot(ob, phase=phase)
-        trade_snaps = trades_to_snapshots(trades, phase=phase)
-        broker_snap = brokers_to_snapshot(brokers, now_ms=now_ms, phase=phase)
-
-        all_snaps = [ob_snap, *trade_snaps, broker_snap]
-        await self._buffer.publish(code, all_snaps, now_ms=now_ms)
+        snaps = [ob_to_snapshot(ob, phase=phase)]
+        if self._capture_aux:
+            trades = await kis.fetch_trades(code)
+            brokers = await kis.fetch_brokers(code)
+            snaps += [
+                *trades_to_snapshots(trades, phase=phase),
+                brokers_to_snapshot(brokers, now_ms=now_ms, phase=phase),
+            ]
+        await self._buffer.publish(code, snaps, now_ms=now_ms)
