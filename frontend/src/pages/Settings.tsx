@@ -6,6 +6,7 @@ import { SYMBOLS_QUERY_KEY } from '../capture/useSymbols';
 import { symbolMasterSettingsHints } from '../api/upstream-hints';
 import { useLiveSettings, usePatchLiveSettings } from '../api/liveSettings';
 import { SettingsRow, ToggleSwitch } from '../live/settings/SettingsRow';
+import { DataSourceDetail } from '../live/settings/DataSourceDetail';
 import { PageContainer } from '../layout/PageContainer';
 import { DataSection } from '../ui/DataSurface';
 import { DefinitionRow, PanelCard, SegmentedControl, ToolbarButton } from '../ui/PageShell';
@@ -14,11 +15,12 @@ import { THEME_PREFERENCE_OPTIONS, useThemePrefsStore, type ThemePreference } fr
 const VERSION = 'v0.1.0';
 const SYMBOLS_INFO_QUERY_KEY = ['symbols', 'info'] as const;
 
-type SectionId = 'general' | 'theme' | 'data' | 'symbols' | 'roadmap';
+type SectionId = 'general' | 'theme' | 'source' | 'data' | 'symbols' | 'roadmap';
 
 const SECTIONS: { id: SectionId; label: string }[] = [
   { id: 'general', label: '앱 정보' },
   { id: 'theme', label: '테마' },
+  { id: 'source', label: '데이터 소스' },
   { id: 'data', label: '데이터 수집' },
   { id: 'symbols', label: 'Symbol Master' },
   { id: 'roadmap', label: '로드맵' },
@@ -91,6 +93,7 @@ export function SettingsPanel() {
             </>
           )}
           {selected === 'theme' && <ThemeSection />}
+          {selected === 'source' && <DataSourceDetail variant="live" />}
           {selected === 'data' && <DataCollectionSection />}
           {selected === 'symbols' && <SymbolMasterSection />}
           {selected === 'roadmap' && (

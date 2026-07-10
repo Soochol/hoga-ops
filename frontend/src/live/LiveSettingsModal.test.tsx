@@ -70,7 +70,12 @@ describe('LiveSettingsModal (2단)', () => {
     expect(screen.queryByTestId('settings-numeric-surgeApproachPct')).toBeNull();
   });
 
-  it('데이터소스 nav 클릭 후 호가체결 기준이 보인다 (live는 캔들 라디오 없음)', () => {
+  it('라이브 모달에는 데이터소스 nav가 없다 (메인 Settings로 이동)', () => {
+    render(<LiveSettingsModal onClose={() => {}} />);
+    expect(screen.queryByTestId('settings-nav-data-source')).toBeNull();
+  });
+
+  it('복기뷰(study) 모달은 데이터소스 nav·상세를 유지한다', () => {
     vi.spyOn(liveSettingsApi, 'getLiveSettings').mockResolvedValue({
       schema_version: 1,
       storage_policy: 'ws_plus_rest',
@@ -78,20 +83,15 @@ describe('LiveSettingsModal (2단)', () => {
       kis_rest_bypass_enabled: false,
       heatmap_capture_enabled: true,
     });
-    render(<LiveSettingsModal onClose={() => {}} />, {
+    render(<LiveSettingsModal variant="study" onClose={() => {}} />, {
       wrapper: wrap(new QueryClient({ defaultOptions: { queries: { retry: false } } })),
     });
     fireEvent.click(screen.getByTestId('settings-nav-data-source'));
-    // '캔들 데이터 기준' 그룹은 있지만 캔들 소스는 'KIS API 우회' 토글로 결정(라디오 없음).
-    expect(screen.getByText('캔들 데이터 기준')).toBeTruthy();
-    expect(screen.getByRole('switch', { name: 'KIS API 우회' })).toBeTruthy();
+    // study는 캔들 라디오 대신 디스크 온리 안내문, 표시/캡처 매크로 그룹은 유지.
+    expect(screen.getByTestId('study-candle-source-note')).toBeTruthy();
     expect(screen.getByText('호가·체결 데이터 기준')).toBeTruthy();
-    // 표시/캡처 매크로 그룹 라벨.
     expect(screen.getByText('표시 소스')).toBeTruthy();
     expect(screen.getByText('캡처 저장')).toBeTruthy();
-    // 캔들 라디오가 사라져 각 라벨은 호가·체결 기준에만(1개).
-    expect(screen.getAllByLabelText(/hogaplay 우선/)).toHaveLength(1);
-    expect(screen.getAllByLabelText(/KIS API 우선/)).toHaveLength(1);
   });
 
   it('Escape calls onClose', () => {
