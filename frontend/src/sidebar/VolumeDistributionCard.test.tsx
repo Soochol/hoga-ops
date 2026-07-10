@@ -22,7 +22,7 @@ const profile: DayVolumeDistribution = {
 };
 
 describe('VolumeDistributionCard', () => {
-  it('renders distribution rows with an unlabeled time axis and highlights the max bin', () => {
+  it('renders distribution rows with labeled axes and highlights the max bin', () => {
     render(
       <VolumeDistributionCard
         profile={profile}
@@ -41,11 +41,20 @@ describe('VolumeDistributionCard', () => {
     expect(rows).toHaveLength(2);
     expect(screen.getAllByTestId('volume-distribution-track')).toHaveLength(2);
     expect(rows[0]).not.toHaveTextContent('110-120');
-    expect(screen.getByTestId('volume-distribution-time-axis')).toHaveTextContent('');
-    expect(screen.queryByText('09:00')).toBeNull();
-    expect(screen.queryByText('15:30')).toBeNull();
+    // 시간축: 세션 시작 ~ 마지막 종가(11:00 KST)까지, 중간 눈금 포함.
+    const timeAxis = screen.getByTestId('volume-distribution-time-axis');
+    expect(timeAxis).toHaveTextContent('09:00');
+    expect(timeAxis).toHaveTextContent('10:00');
+    expect(timeAxis).toHaveTextContent('11:00');
+    // 가격축: max/mid/min 눈금 + POC(최대 매물대 bin 중앙값) 라벨.
+    const priceAxis = screen.getByTestId('volume-distribution-price-axis');
+    expect(priceAxis).toHaveTextContent('120');
+    expect(priceAxis).toHaveTextContent('110');
+    expect(priceAxis).toHaveTextContent('100');
+    expect(screen.getByTestId('volume-distribution-poc-label')).toHaveTextContent('115');
     expect(screen.getByTestId('volume-distribution-max-bar')).toBeInTheDocument();
     expect(screen.getByTestId('volume-distribution-close-graph')).toBeInTheDocument();
+    expect(screen.getByTestId('volume-distribution-close-dot')).toBeInTheDocument();
   });
 
   it('shows the cursor marker only inside the session bounds', () => {

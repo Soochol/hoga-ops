@@ -262,8 +262,7 @@ describe('LiveSidebar', () => {
       },
     });
 
-    expect(screen.getByTestId('volume-distribution-time-axis')).toHaveTextContent('');
-    expect(screen.queryByText('09:00')).toBeNull();
+    expect(screen.getByTestId('volume-distribution-time-axis')).toHaveTextContent('09:00');
     expect(screen.getAllByTestId('volume-distribution-row')).toHaveLength(2);
     expect(screen.getByTestId('volume-distribution-max-bar')).toBeInTheDocument();
     expect(screen.getByTestId('volume-distribution-close-graph')).toBeInTheDocument();
@@ -308,7 +307,7 @@ describe('LiveSidebar', () => {
       },
     });
 
-    expect(screen.getByTestId('volume-distribution-time-axis')).toHaveTextContent('');
+    expect(screen.getByTestId('volume-distribution-time-axis')).toHaveTextContent('09:00');
     expect(screen.getByTestId('volume-distribution-bar')).toHaveStyle({ width: '50%' });
   });
 
