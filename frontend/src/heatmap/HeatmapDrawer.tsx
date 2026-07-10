@@ -1,5 +1,5 @@
 import {
-  useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState,
+  useEffect, useLayoutEffect, useMemo, useRef, useState,
 } from 'react';
 import { createPortal } from 'react-dom';
 import { useJumpToLive } from '../live/useJumpToLive';
@@ -18,7 +18,7 @@ import type { SymbolHit } from '../api/types';
 import { useClampedFixedPosition } from '../util/useClampedFixedPosition';
 import { useDismissablePopover } from '../util/useDismissablePopover';
 import { HeatmapRowMenu } from './HeatmapRowMenu';
-import { FolderAddButton } from './FolderAddButton';
+import { useAddToFolder } from './useAddToFolder';
 import { QuoteSortIcon } from '../rightrail/QuoteSortIcon';
 import { quoteSortModeDescription } from '../rightrail/quoteSortDescription';
 import { priceDirClass } from '../ui/priceDir';
@@ -84,9 +84,11 @@ function GroupHeader(props: {
   onMoveDown?: () => void;
   canMoveUp?: boolean;
   canMoveDown?: boolean;
-  trailing?: React.ReactNode;
+  onAddSymbol?: (code: string) => Promise<void>;
+  addPending?: boolean;
 }) {
   const [menuOpen, setMenuOpen] = useState(false);
+  const [addOpen, setAddOpen] = useState(false);
   const menuRef = useRef<HTMLDivElement>(null);
   useDismissablePopover(menuOpen, menuRef, () => setMenuOpen(false));
   const itemClass =
@@ -111,7 +113,6 @@ function GroupHeader(props: {
           {`${props.avg > 0 ? '+' : ''}${props.avg.toFixed(2)}%`}
         </span>
       )}
-      {props.trailing}
       {props.onRename && (
         <div className="relative" ref={menuRef}>
           <button type="button" aria-label={`${props.label} 그룹 메뉴`}
@@ -122,6 +123,15 @@ function GroupHeader(props: {
           </button>
           {menuOpen && (
             <AnchoredMenu label={props.label}>
+              {/* 종목 추가 — 클릭 시 메뉴를 닫고 검색 팝오버를 연다(팝오버는 메뉴와 별개 레이어라
+                  메뉴 언마운트에 딸려 사라지지 않는다). 예전 헤더의 ＋종목 버튼을 이 항목으로 이동. */}
+              {props.onAddSymbol && (
+                <button type="button" role="menuitem"
+                  onClick={() => { setMenuOpen(false); setAddOpen(true); }}
+                  className={itemClass}>
+                  <span className="w-4 grid place-items-center"><PlusIcon /></span> 종목 추가
+                </button>
+              )}
               <button type="button" role="menuitem"
                 onClick={() => { setMenuOpen(false); props.onRename?.(); }}
                 className={itemClass}>
@@ -146,6 +156,10 @@ function GroupHeader(props: {
                 <span className="w-4 grid place-items-center"><TrashIcon className="w-[1em] h-[1em]" /></span> 그룹 삭제 (종목은 미분류로)
               </button>
             </AnchoredMenu>
+          )}
+          {addOpen && props.onAddSymbol && (
+            <SymbolAddPopover anchorRef={menuRef} onClose={() => setAddOpen(false)}
+              onAdd={props.onAddSymbol} pending={!!props.addPending} />
           )}
         </div>
       )}
@@ -172,49 +186,67 @@ function RowTrailing({ name, onOpenMenu }: { name: string; onOpenMenu: (e: React
 // w-64 = 320px @ 20px root. FolderAddButton 과 동일한 우측정렬 초기추정폭.
 const POP_W = 320;
 
-/** 드로어 헤더 "종목 추가" — SymbolSearch 팝오버 → useAddToHeatmap(미분류로 추가).
- *  FolderAddButton 의 portal+클램프 패턴을 미분류(폴더 무지정) 추가용으로 옮긴 사본.
- *  팝오버를 createPortal 로 body 에 fixed 로 띄워 드로어의 overflow-hidden 을 탈출한다. */
-function HeaderAddButton() {
-  const [open, setOpen] = useState(false);
+/** 종목 검색 팝오버 (controlled) — 마운트되면 열린 상태. anchorRef 우하단 기준 우측정렬 후
+ *  useClampedFixedPosition 으로 뷰포트 보정, createPortal 로 body 에 fixed(드로어 overflow
+ *  탈출). 선택+추가 시 onAdd(code) 후 onClose; 바깥 클릭·Escape 로도 onClose. 헤더 "종목 추가"
+ *  (미분류)와 그룹 ⋯ 메뉴 "종목 추가"(폴더 지정)가 공유 — 팝오버 UI/닫힘 로직 단일 출처. */
+function SymbolAddPopover({ anchorRef, onClose, onAdd, pending }: {
+  anchorRef: React.RefObject<HTMLElement | null>;
+  onClose: () => void;
+  onAdd: (code: string) => Promise<void>;
+  pending: boolean;
+}) {
   const [picked, setPicked] = useState<SymbolHit | null>(null);
-  const addM = useAddToHeatmap();
-  const btnRef = useRef<HTMLButtonElement>(null);
   const [anchor, setAnchor] = useState({ left: 0, top: 0 });
   useLayoutEffect(() => {
-    if (!open) return;
-    const r = btnRef.current?.getBoundingClientRect();
+    const r = anchorRef.current?.getBoundingClientRect();
     if (r) setAnchor({ left: r.right - POP_W, top: r.bottom + 4 });
-  }, [open]);
+  }, [anchorRef]);
   const { ref: popRef, left, top } = useClampedFixedPosition<HTMLDivElement>(anchor.left, anchor.top);
-  const close = useCallback(() => { setOpen(false); setPicked(null); }, []);
-  useLayoutEffect(() => {
-    if (open) popRef.current?.querySelector('input')?.focus();
-  }, [open, popRef]);
+  useLayoutEffect(() => { popRef.current?.querySelector('input')?.focus(); }, [popRef]);
   useEffect(() => {
-    if (!open) return;
     const onDown = (e: MouseEvent) => {
       const t = e.target as Node;
-      if (btnRef.current?.contains(t) || popRef.current?.contains(t)) return;
-      close();
+      if (anchorRef.current?.contains(t) || popRef.current?.contains(t)) return;
+      onClose();
     };
-    const onKey = (e: KeyboardEvent) => { if (e.key === 'Escape') { close(); btnRef.current?.focus(); } };
+    const onKey = (e: KeyboardEvent) => { if (e.key === 'Escape') onClose(); };
     window.addEventListener('mousedown', onDown);
     window.addEventListener('keydown', onKey);
     return () => {
       window.removeEventListener('mousedown', onDown);
       window.removeEventListener('keydown', onKey);
     };
-  }, [open, close, popRef]);
+  }, [anchorRef, popRef, onClose]);
   const submit = async () => {
     if (!picked) return;
     try {
-      await addM.mutateAsync(picked.code);
+      await onAdd(picked.code);
     } catch {
       return; // 실패 시 팝오버 유지(재시도) — fire-and-forget rejection 삼킴.
     }
-    close();
+    onClose();
   };
+  return createPortal(
+    <div ref={popRef} role="dialog" aria-label="종목 추가"
+      style={{ position: 'fixed', left, top, width: POP_W }}
+      className="z-30 bg-bg-card border border-border-strong rounded p-2 flex flex-col gap-2 shadow-lg">
+      <SymbolSearch value={picked} onChange={setPicked} />
+      <div className="flex justify-end gap-2">
+        <button type="button" className="text-xs px-2 py-1 text-fg-dim" onClick={onClose}>닫기</button>
+        <button type="button" className="text-xs px-2 py-1 rounded bg-accent text-accent-fg disabled:opacity-40"
+          disabled={!picked || pending} onClick={submit}>추가</button>
+      </div>
+    </div>,
+    document.body,
+  );
+}
+
+/** 드로어 헤더 "종목 추가" — SymbolAddPopover → useAddToHeatmap(미분류로 추가). */
+function HeaderAddButton() {
+  const [open, setOpen] = useState(false);
+  const addM = useAddToHeatmap();
+  const btnRef = useRef<HTMLButtonElement>(null);
   return (
     <>
       <button ref={btnRef} type="button" title="종목 추가" data-testid="heatmap-header-add"
@@ -222,18 +254,9 @@ function HeaderAddButton() {
         className="text-xs text-fg-dim hover:text-accent">
         종목 추가
       </button>
-      {open && createPortal(
-        <div ref={popRef} role="dialog" aria-label="종목 추가"
-          style={{ position: 'fixed', left, top, width: POP_W }}
-          className="z-30 bg-bg-card border border-border-strong rounded p-2 flex flex-col gap-2 shadow-lg">
-          <SymbolSearch value={picked} onChange={setPicked} />
-          <div className="flex justify-end gap-2">
-            <button type="button" className="text-xs px-2 py-1 text-fg-dim" onClick={close}>닫기</button>
-            <button type="button" className="text-xs px-2 py-1 rounded bg-accent text-accent-fg disabled:opacity-40"
-              disabled={!picked || addM.isPending} onClick={submit}>추가</button>
-          </div>
-        </div>,
-        document.body,
+      {open && (
+        <SymbolAddPopover anchorRef={btnRef} onClose={() => setOpen(false)} pending={addM.isPending}
+          onAdd={async (code) => { await addM.mutateAsync(code); }} />
       )}
     </>
   );
@@ -333,6 +356,8 @@ export function HeatmapDrawer() {
   const renameM = useRenameHeatmapFolder();
   const deleteM = useDeleteHeatmapFolder();
   const reorderFoldersM = useReorderHeatmapFolders();
+  // 그룹 지정 종목 추가(⋯ 메뉴의 "종목 추가"). 훅 1회, folderId 는 호출 시 바인딩.
+  const { addToFolder, isPending: addingToFolder } = useAddToFolder();
 
   // 접기 상태는 localStorage 영속 — 패널을 닫았다 열어도(언마운트) 유지된다.
   const [collapsed, setCollapsed] = useState<Set<string>>(() => {
@@ -444,7 +469,8 @@ export function HeatmapDrawer() {
                 onMoveDown={folder ? () => moveFolder(folder.id, +1) : undefined}
                 canMoveUp={canMoveGroups && gi > 0}
                 canMoveDown={canMoveGroups && gi < folderCount - 1}
-                trailing={folder && <FolderAddButton folderId={folder.id} />} />
+                onAddSymbol={folder ? (code) => addToFolder(code, folder.id) : undefined}
+                addPending={addingToFolder} />
               {!isCollapsed && (
                 <ul style={{ listStyle: 'none', margin: 0, padding: 0 }}>
                   {rows.map((entry) => {
