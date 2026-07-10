@@ -151,19 +151,17 @@ describe('HeatmapDrawer', () => {
     await waitFor(() => expect(api.removeFromHeatmap).toHaveBeenCalledWith('000001'));
   });
 
-  it('row ⋯ menu removes and moves entries', async () => {
+  it('row ⋯ menu has only 제거 — no 그룹으로 이동 (드래그로 대체)', async () => {
     wrap(<HeatmapDrawer />);
     await screen.findByTestId('heatmap-drawer-row-000001');
-    // 행 ⋯ → 컨텍스트 메뉴
     fireEvent.click(screen.getByRole('button', { name: '에코프로 행 메뉴' }));
+    // '히트맵에서 제거'만 있고 '그룹으로 이동' 섹션(heatmap-menu-move-*)은 없다.
     fireEvent.click(screen.getByTestId('heatmap-menu-remove'));
     await waitFor(() => expect(api.removeFromHeatmap).toHaveBeenCalledWith('000001'));
-
-    // 다른 행 → 다른 그룹으로 이동(f2)
+    // 이동 항목 부재 확인 (다른 행 메뉴를 열어도 move 버튼 없음).
     fireEvent.click(screen.getByRole('button', { name: 'LG엔솔 행 메뉴' }));
-    fireEvent.click(screen.getByTestId('heatmap-menu-move-f2'));
-    await waitFor(() =>
-      expect(api.moveHeatmapEntries).toHaveBeenCalledWith(['000002'], 'f2'));
+    expect(screen.queryByTestId('heatmap-menu-move-f2')).toBeNull();
+    expect(screen.queryByTestId('heatmap-menu-move-uncat')).toBeNull();
   });
 
   it('header ＋ creates a folder via GroupNameModal', async () => {
