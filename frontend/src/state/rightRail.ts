@@ -3,8 +3,8 @@ import { persistJson, readJsonObject } from './persist';
 
 const STORAGE_KEY = 'rightRail.layout';
 
-export type RailPanel = 'watchlist' | 'screener' | 'savedViews' | 'signalAlerts';
-const VALID_PANELS: readonly RailPanel[] = ['watchlist', 'screener', 'savedViews', 'signalAlerts'];
+export type RailPanel = 'watchlist' | 'screener' | 'savedViews' | 'signalAlerts' | 'heatmap';
+const VALID_PANELS: readonly RailPanel[] = ['watchlist', 'screener', 'savedViews', 'signalAlerts', 'heatmap'];
 
 type Persisted = {
   activePanel: RailPanel | null;

@@ -62,4 +62,11 @@ describe('rightRail store', () => {
     const { useRightRailStore: fresh } = await import('./rightRail');
     expect(fresh.getState().activePanel).toBe('signalAlerts');
   });
+
+  it('accepts heatmap as a persisted panel', async () => {
+    localStorage.setItem('rightRail.layout', JSON.stringify({ activePanel: 'heatmap' }));
+    vi.resetModules();
+    const { useRightRailStore: fresh } = await import('./rightRail');
+    expect(fresh.getState().activePanel).toBe('heatmap');
+  });
 });

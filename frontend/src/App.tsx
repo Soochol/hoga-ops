@@ -4,6 +4,7 @@ import TopNav from './nav/TopNav';
 import { SYSTEM_NAV_ITEMS, WORKSPACE_NAV_ITEMS } from './nav/items';
 import RightRail from './rightrail/RightRail';
 import { WatchlistDrawer } from './watchlist/WatchlistDrawer';
+import { HeatmapDrawer } from './heatmap/HeatmapDrawer';
 import { ScreenerDrawer } from './screener/ScreenerDrawer';
 import { StudyViewsDrawer } from './studyViews/StudyViewsDrawer';
 import SignalAlertsDrawer from './signalAlerts/SignalAlertsDrawer';
@@ -90,6 +91,7 @@ export default function App() {
       >
         <main className="overflow-hidden min-w-0"><Outlet /></main>
         {activePanel === 'watchlist' && <WatchlistDrawer />}
+        {activePanel === 'heatmap' && <HeatmapDrawer />}
         {activePanel === 'screener' && <ScreenerDrawer />}
         {activePanel === 'savedViews' && <StudyViewsDrawer />}
         {activePanel === 'signalAlerts' && <SignalAlertsDrawer />}

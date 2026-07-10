@@ -32,6 +32,10 @@ vi.mock('./watchlist/WatchlistDrawer', () => ({
   WatchlistDrawer: () => <aside data-testid="watchlist-drawer" />,
 }));
 
+vi.mock('./heatmap/HeatmapDrawer', () => ({
+  HeatmapDrawer: () => <aside data-testid="heatmap-drawer" />,
+}));
+
 vi.mock('./screener/ScreenerDrawer', () => ({
   ScreenerDrawer: () => <aside data-testid="screener-drawer" />,
 }));
@@ -133,6 +137,17 @@ describe('App shell layout', () => {
       gridTemplateColumns: '1fr var(--watchlist-panel-w) var(--rail-w)',
     });
     expect(screen.getByTestId('watchlist-drawer')).toBeInTheDocument();
+  });
+
+  it('mounts the heatmap drawer when the heatmap panel is active', () => {
+    useRightRailStore.setState({ activePanel: 'heatmap', lastPanel: 'heatmap' });
+
+    wrap(<div>Heatmap</div>, '/heatmap');
+
+    expect(screen.getByTestId('app-content-grid')).toHaveStyle({
+      gridTemplateColumns: '1fr var(--watchlist-panel-w) var(--rail-w)',
+    });
+    expect(screen.getByTestId('heatmap-drawer')).toBeInTheDocument();
   });
 
   it('opens Settings as a centered popover without leaving the current page', () => {
