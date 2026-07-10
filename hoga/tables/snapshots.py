@@ -77,17 +77,37 @@ PARSERS: dict[int, Callable[[list[str]], Orderbook]] = {2: _parse_orderbook}
 
 # === Wire schema ===
 
+# Column widths. Prices fit int32 (KR won ≤ ~5M). Quantities and their deltas
+# can exceed int32 max (2,147,483,647) for high-volume / limit-locked
+# instruments — e.g. 252670 (KODEX inverse) 총잔량 2,366,893,147, and on a 상한가
+# lock a single level's qty approaches the total — so ask_q/bid_q, their deltas,
+# and the four totals are int64. seq stays int32 (a per-code-per-day counter,
+# never near 2.1B). Ordering (ask_p, ask_q, ask_d, bid_p, bid_q, bid_d) is the
+# on-disk column order; dict insertion order preserves it. Shared by
+# _build_schema (field types) and write_parquet (array types) so the two never
+# drift — a mismatch makes pa.table raise.
+_LEVEL_COL_TYPES: dict[str, pa.DataType] = {
+    "ask_p": pa.int32(),
+    "ask_q": pa.int64(),
+    "ask_d": pa.int64(),
+    "bid_p": pa.int32(),
+    "bid_q": pa.int64(),
+    "bid_d": pa.int64(),
+}
+_TOTAL_COLS: tuple[str, ...] = ("tot_ask", "tot_ask_d", "tot_bid", "tot_bid_d")
+_TOTAL_TYPE: pa.DataType = pa.int64()
+
 
 def _build_schema() -> pa.Schema:
     fields: list[pa.Field] = [
         pa.field("ts_ms", pa.int64()),
         pa.field("seq", pa.int32()),
     ]
-    for prefix in ("ask_p", "ask_q", "ask_d", "bid_p", "bid_q", "bid_d"):
+    for prefix, dtype in _LEVEL_COL_TYPES.items():
         for i in range(1, ORDERBOOK_LEVELS + 1):
-            fields.append(pa.field(f"{prefix}{i}", pa.int32()))
-    for total in ("tot_ask", "tot_ask_d", "tot_bid", "tot_bid_d"):
-        fields.append(pa.field(total, pa.int32()))
+            fields.append(pa.field(f"{prefix}{i}", dtype))
+    for total in _TOTAL_COLS:
+        fields.append(pa.field(total, _TOTAL_TYPE))
     return pa.schema(fields)
 
 
@@ -115,20 +135,13 @@ def write_parquet(snapshots: Iterable[Orderbook], path: Path) -> None:
         "ts_ms": pa.array([o.ts_ms for o in rows], type=pa.int64()),
         "seq": pa.array([o.seq for o in rows], type=pa.int32()),
     }
-    for prefix, attr in (
-        ("ask_p", "ask_p"),
-        ("ask_q", "ask_q"),
-        ("ask_d", "ask_d"),
-        ("bid_p", "bid_p"),
-        ("bid_q", "bid_q"),
-        ("bid_d", "bid_d"),
-    ):
+    for prefix, dtype in _LEVEL_COL_TYPES.items():
         for i in range(ORDERBOOK_LEVELS):
             cols[f"{prefix}{i + 1}"] = pa.array(
-                [getattr(o, attr)[i] for o in rows], type=pa.int32()
+                [getattr(o, prefix)[i] for o in rows], type=dtype
             )
-    for total in ("tot_ask", "tot_ask_d", "tot_bid", "tot_bid_d"):
-        cols[total] = pa.array([getattr(o, total) for o in rows], type=pa.int32())
+    for total in _TOTAL_COLS:
+        cols[total] = pa.array([getattr(o, total) for o in rows], type=_TOTAL_TYPE)
     from hoga.api._atomic_write import atomic_write_parquet_table
     atomic_write_parquet_table(path, pa.table(cols, schema=PARQUET_SCHEMA))
 
