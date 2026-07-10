@@ -31,8 +31,11 @@ vi.mock('../state/livePage', () => ({
   useLivePageStore: (sel: (s: { activeCode: string | null }) => unknown) => sel({ activeCode: '000001' }),
 }));
 
+// 시세 주입 가능한 목. quoteSort 가 isStaleLiveQuote 를 임포트하므로 목에 포함(항상 not-stale).
+const quotesHolder = vi.hoisted(() => ({ map: new Map<string, { change_pct: number; price: number; change_won: number }>() }));
 vi.mock('../api/liveQuotes', () => ({
-  useQuoteByCode: () => new Map(),
+  useQuoteByCode: () => quotesHolder.map,
+  isStaleLiveQuote: () => false,
 }));
 
 vi.mock('../capture/SymbolSearch', () => ({
@@ -41,6 +44,7 @@ vi.mock('../capture/SymbolSearch', () => ({
 }));
 
 import { HeatmapDrawer } from './HeatmapDrawer';
+import { useHeatmapPrefsStore } from '../state/heatmapPrefs';
 
 function makeData(): HeatmapResponse {
   return {
@@ -67,8 +71,25 @@ beforeEach(() => {
   localStorage.clear();
   Object.values(api).forEach((fn) => fn.mockClear());
   onPick.mockClear();
+  quotesHolder.map = new Map();
+  // 정렬 취향 스토어는 모듈 로드 시 1회 생성돼 localStorage.clear() 로는 안 리셋됨 → 명시 초기화.
+  useHeatmapPrefsStore.setState({ sortMode: 'manual', groupSort: 'manual' });
   api.getHeatmap.mockResolvedValue(makeData());
 });
+
+/** 문서 순서대로 렌더된 종목 행 코드 목록. */
+function renderedRowCodes(): string[] {
+  return Array.from(document.querySelectorAll('[data-testid^="heatmap-drawer-row-"]')).map(
+    (el) => (el.getAttribute('data-testid') ?? '').replace('heatmap-drawer-row-', ''),
+  );
+}
+
+/** 문서 순서대로 렌더된 그룹 라벨(chevron 토글 버튼 aria-label 의 라벨 부분). */
+function renderedGroupLabels(): string[] {
+  return Array.from(document.querySelectorAll('[aria-label$="접기"], [aria-label$="펼치기"]')).map(
+    (el) => (el.getAttribute('aria-label') ?? '').replace(/ (접기|펼치기)$/, ''),
+  );
+}
 
 afterEach(() => cleanup());
 
@@ -190,5 +211,88 @@ describe('HeatmapDrawer', () => {
     api.getHeatmap.mockResolvedValue({ folders: [], entries: [] });
     wrap(<HeatmapDrawer />);
     expect(await screen.findByText('히트맵이 비어 있습니다')).toBeInTheDocument();
+  });
+
+  // --- 검색 ---
+  it('종목명 검색은 매칭 행만 남기고 무매칭 그룹을 숨긴다', async () => {
+    wrap(<HeatmapDrawer />);
+    await screen.findByTestId('heatmap-drawer-row-000001');
+    fireEvent.change(screen.getByTestId('heatmap-drawer-search'), { target: { value: '삼성' } });
+    await waitFor(() => expect(renderedRowCodes()).toEqual(['000003']));
+    expect(screen.queryByRole('button', { name: '2차전지 2' })).toBeNull();
+  });
+
+  it('그룹명 검색은 그 그룹 전체를 보여준다', async () => {
+    wrap(<HeatmapDrawer />);
+    await screen.findByTestId('heatmap-drawer-row-000001');
+    fireEvent.change(screen.getByTestId('heatmap-drawer-search'), { target: { value: '2차전지' } });
+    await waitFor(() => expect(renderedRowCodes()).toEqual(['000001', '000002']));
+  });
+
+  it('검색 중에는 접힌 그룹도 매칭 행을 펼쳐 보여준다(collapsed 무시)', async () => {
+    localStorage.setItem('heatmapDrawer.collapsed', JSON.stringify({ keys: ['f2'] }));
+    wrap(<HeatmapDrawer />);
+    await screen.findByTestId('heatmap-drawer-row-000001');
+    // f2 접힘 → 삼성전자 행 숨김
+    expect(screen.queryByTestId('heatmap-drawer-row-000003')).toBeNull();
+    fireEvent.change(screen.getByTestId('heatmap-drawer-search'), { target: { value: '삼성' } });
+    await waitFor(() => expect(screen.getByTestId('heatmap-drawer-row-000003')).toBeInTheDocument());
+  });
+
+  it('검색 지우기(✕) 버튼이 필터를 리셋한다', async () => {
+    wrap(<HeatmapDrawer />);
+    await screen.findByTestId('heatmap-drawer-row-000001');
+    fireEvent.change(screen.getByTestId('heatmap-drawer-search'), { target: { value: '삼성' } });
+    await waitFor(() => expect(renderedRowCodes()).toEqual(['000003']));
+    fireEvent.click(screen.getByRole('button', { name: '검색 지우기' }));
+    await waitFor(() => expect(renderedRowCodes().length).toBeGreaterThan(1));
+  });
+
+  it('무매칭 검색은 "검색 결과 없음"을 보여준다', async () => {
+    wrap(<HeatmapDrawer />);
+    await screen.findByTestId('heatmap-drawer-row-000001');
+    fireEvent.change(screen.getByTestId('heatmap-drawer-search'), { target: { value: 'zzz없음' } });
+    expect(await screen.findByText('검색 결과 없음')).toBeInTheDocument();
+  });
+
+  // --- 정렬 (페이지와 heatmapPrefs 공유) ---
+  it('행 등락률↓ 토글은 공유 스토어(sortMode)를 갱신하고 그룹 내 행을 재정렬한다', async () => {
+    // f1: 에코프로(000001)=+1%, LG엔솔(000002)=+9% → 등락률↓ 이면 000002 먼저.
+    quotesHolder.map = new Map([
+      ['000001', { change_pct: 1, price: 100, change_won: 1 }],
+      ['000002', { change_pct: 9, price: 100, change_won: 9 }],
+    ]);
+    wrap(<HeatmapDrawer />);
+    await screen.findByTestId('heatmap-drawer-row-000001');
+    // manual(기본): 저장 순서 000001, 000002
+    expect(renderedRowCodes().slice(0, 2)).toEqual(['000001', '000002']);
+    fireEvent.click(screen.getByRole('button', { name: '행 등락률 내림차순 정렬' }));
+    // 페이지 공유의 근거: 스토어가 갱신됨
+    expect(useHeatmapPrefsStore.getState().sortMode).toBe('change');
+    await waitFor(() => expect(renderedRowCodes().slice(0, 2)).toEqual(['000002', '000001']));
+  });
+
+  it('그룹 등락률↓ 토글은 공유 스토어(groupSort)를 갱신하고 그룹을 재정렬한다', async () => {
+    // f1 평균 +1, f2 평균 +9 → desc 이면 반도체(f2)가 2차전지(f1)보다 앞.
+    quotesHolder.map = new Map([
+      ['000001', { change_pct: 1, price: 100, change_won: 1 }],
+      ['000002', { change_pct: 1, price: 100, change_won: 1 }],
+      ['000003', { change_pct: 9, price: 100, change_won: 9 }],
+    ]);
+    wrap(<HeatmapDrawer />);
+    await screen.findByTestId('heatmap-drawer-row-000001');
+    expect(renderedGroupLabels().slice(0, 2)).toEqual(['2차전지', '반도체']);
+    fireEvent.click(screen.getByRole('button', { name: '그룹을 평균 등락률 높은 순으로' }));
+    expect(useHeatmapPrefsStore.getState().groupSort).toBe('desc');
+    await waitFor(() => expect(renderedGroupLabels().slice(0, 2)).toEqual(['반도체', '2차전지']));
+  });
+
+  it('그룹 정렬 활성 시 ⋯ 위/아래 이동은 비활성', async () => {
+    useHeatmapPrefsStore.setState({ groupSort: 'desc' });
+    wrap(<HeatmapDrawer />);
+    await screen.findByRole('button', { name: '반도체 1' });
+    fireEvent.click(screen.getByRole('button', { name: '반도체 그룹 메뉴' }));
+    expect(screen.getByRole('menuitem', { name: /위로 이동/ })).toBeDisabled();
+    expect(screen.getByRole('menuitem', { name: /아래로 이동/ })).toBeDisabled();
   });
 });

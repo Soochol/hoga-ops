@@ -6,6 +6,7 @@ import { useJumpToLive } from '../live/useJumpToLive';
 import { useQuoteByCode } from '../api/liveQuotes';
 import { useLivePageStore } from '../state/livePage';
 import { useLiveVenueStore } from '../state/liveVenue';
+import { useHeatmapPrefsStore } from '../state/heatmapPrefs';
 import { persistJson, readJsonObject } from '../state/persist';
 import { groupByFolder, swapFolderOrder } from '../watchlist/grouping';
 import { GroupNameModal } from '../watchlist/GroupNameModal';
@@ -18,6 +19,8 @@ import { useClampedFixedPosition } from '../util/useClampedFixedPosition';
 import { useDismissablePopover } from '../util/useDismissablePopover';
 import { HeatmapRowMenu } from './HeatmapRowMenu';
 import { FolderAddButton } from './FolderAddButton';
+import { filterGroups } from './filterGroups';
+import { sortEntries, avgPct, orderFolderGroups, makePctOf } from './heat';
 import {
   useHeatmap, useAddToHeatmap, useRemoveFromHeatmap, useMoveHeatmapEntries,
   useCreateHeatmapFolder, useRenameHeatmapFolder, useDeleteHeatmapFolder,
@@ -225,14 +228,89 @@ function HeaderAddButton() {
   );
 }
 
+/** 검색 돋보기 + × 클리어 아이콘 (SVG 통일). */
+function SearchIcon() {
+  return (
+    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+      strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+      <circle cx="11" cy="11" r="7" /><path d="M21 21l-4.3-4.3" />
+    </svg>
+  );
+}
+
+/** 세그먼트 토글 버튼 — 활성=accent 틴트, 비활성=dim. 페이지의 segBtn 과 같은 시각 규칙을
+ *  280px 폭에 맞춘 축약판(라벨 짧게). */
+function SegBtn({ active, onClick, children, ariaLabel }: {
+  active: boolean; onClick: () => void; children: React.ReactNode; ariaLabel?: string;
+}) {
+  return (
+    <button type="button" aria-label={ariaLabel} aria-pressed={active} onClick={onClick}
+      className={`px-1.5 py-0.5 text-[11px] leading-none rounded ${
+        active ? 'bg-tint-selection text-accent font-medium' : 'text-fg-dim hover:text-fg'
+      }`}>
+      {children}
+    </button>
+  );
+}
+
+/**
+ * 드로어 툴바 — 목록 필터 검색창 + 행/그룹 등락률 정렬 토글. 정렬은 useHeatmapPrefsStore
+ * (localStorage heatmap.sortMode.v1 / groupSort.v1)를 구독·기록하므로 /heatmap 페이지와
+ * 단일 진실(양방향 동기화)이다. 검색 query 는 드로어 로컬 상태(패널을 닫으면 리셋 — 필터는
+ * 일시적 조회 보조이지 저장 설정이 아니다).
+ */
+function DrawerToolbar({ query, onQuery }: { query: string; onQuery: (v: string) => void }) {
+  const sortMode = useHeatmapPrefsStore((s) => s.sortMode);
+  const setSortMode = useHeatmapPrefsStore((s) => s.setSortMode);
+  const groupSort = useHeatmapPrefsStore((s) => s.groupSort);
+  const setGroupSort = useHeatmapPrefsStore((s) => s.setGroupSort);
+  return (
+    <div className="flex flex-col gap-1.5 border-b border-border px-md py-sm">
+      <div className="relative flex items-center">
+        <span className="pointer-events-none absolute left-2 text-fg-dimmer"><SearchIcon /></span>
+        <input
+          type="text" value={query} onChange={(e) => onQuery(e.target.value)}
+          aria-label="종목·그룹 검색" placeholder="종목·그룹 검색"
+          data-testid="heatmap-drawer-search"
+          onKeyDown={(e) => { if (e.key === 'Escape' && query) { e.stopPropagation(); onQuery(''); } }}
+          className="w-full rounded bg-bg-input pl-7 pr-7 py-1 text-xs text-fg border border-border placeholder:text-fg-dimmer focus:outline-none focus:border-line-strong"
+        />
+        {query && (
+          <button type="button" aria-label="검색 지우기" onClick={() => onQuery('')}
+            className="absolute right-1.5 grid h-4 w-4 place-items-center rounded text-fg-dimmer hover:text-fg">
+            ✕
+          </button>
+        )}
+      </div>
+      <div className="flex items-center gap-3 text-[11px]">
+        <span className="flex items-center gap-1">
+          <span className="text-fg-dimmer">행</span>
+          <SegBtn active={sortMode === 'change'} onClick={() => setSortMode('change')} ariaLabel="행 등락률 내림차순 정렬">등락률↓</SegBtn>
+          <SegBtn active={sortMode === 'manual'} onClick={() => setSortMode('manual')} ariaLabel="행 수동 순서">수동</SegBtn>
+        </span>
+        <span className="flex items-center gap-1">
+          <span className="text-fg-dimmer">그룹</span>
+          <SegBtn active={groupSort === 'desc'} onClick={() => setGroupSort('desc')} ariaLabel="그룹을 평균 등락률 높은 순으로">↓</SegBtn>
+          <SegBtn active={groupSort === 'asc'} onClick={() => setGroupSort('asc')} ariaLabel="그룹을 평균 등락률 낮은 순으로">↑</SegBtn>
+          <SegBtn active={groupSort === 'manual'} onClick={() => setGroupSort('manual')} ariaLabel="그룹 수동 순서">수동</SegBtn>
+        </span>
+      </div>
+    </div>
+  );
+}
+
 /**
  * Heatmap Panel — /live 우측 레일에서 히트맵(/heatmap 페이지)의 그룹-종목을 관심종목
  * 드로어와 같은 문법으로 보고 편집한다. 데이터는 useHeatmap(['heatmap']) 공유 — 드로어의
  * 변경(추가/삭제/그룹 CRUD)은 HEATMAP_KEY invalidate 를 타고 페이지에도 즉시 반영되고,
  * 페이지의 변경도 여기로 반영된다(같은 QueryClient, ADR-0068 독립 스토어).
  *
- * v1 스코프: 종목/그룹 추가·삭제, 그룹 이름변경·순서변경(⋯), 행 클릭 차트 점프, Delete/⋯
- * 로 제거, 그룹 이동. 드래그 재정렬·등락률 정렬 토글은 /heatmap 페이지가 담당한다.
+ * 툴바: 목록 필터 검색창(종목명·코드·그룹명) + 행/그룹 등락률 정렬 토글(heatmapPrefs 공유 →
+ * /heatmap 페이지와 양방향). 렌더 파이프라인은
+ *   groupByFolder → orderFolderGroups(그룹간) → filterGroups(검색) → sortEntries(그룹내).
+ * 종목/그룹 추가·삭제, 그룹 이름변경·순서변경(⋯), 행 클릭 차트 점프, Delete/⋯ 제거·이동.
+ * 그룹 순서 변경(⋯ 위/아래)은 수동 정렬 + 비검색 상태에서만 활성(정렬/필터 중엔 화면 순서와
+ * folder.order 가 어긋나므로 비활성). 드래그 재정렬은 /heatmap 페이지가 담당한다.
  */
 export function HeatmapDrawer() {
   const activeCode = useLivePageStore((s) => s.activeCode);
@@ -253,8 +331,13 @@ export function HeatmapDrawer() {
   });
   const [addGroupOpen, setAddGroupOpen] = useState(false);
   const [renameTarget, setRenameTarget] = useState<{ id: string; name: string } | null>(null);
+  const [query, setQuery] = useState('');
   const [menu, setMenu] =
     useState<{ x: number; y: number; code: string; name: string; folderId: string | null } | null>(null);
+
+  // 정렬 취향은 페이지와 공유(heatmapPrefs). 행=sortMode, 그룹=groupSort.
+  const sortMode = useHeatmapPrefsStore((s) => s.sortMode);
+  const groupSort = useHeatmapPrefsStore((s) => s.groupSort);
 
   // 히트맵 엔트리는 code 유일(단일 folder_id)이지만 방어적으로 dedup.
   const codes = useMemo(() => [...new Set(data?.entries.map((e) => e.code) ?? [])], [data]);
@@ -280,7 +363,22 @@ export function HeatmapDrawer() {
     setMenu({ x: e.clientX, y: e.clientY, code, name, folderId });
   };
 
-  const groups = data ? groupByFolder(data.folders, data.entries) : [];
+  // 렌더 파이프라인: groupByFolder → orderFolderGroups(그룹간 정렬) → filterGroups(검색)
+  //   → (렌더 시) sortEntries(그룹내 정렬). pctOf 는 시세 Map 파생이라 change/desc/asc 모드는
+  // 매 폴링 라이브 재정렬(페이지와 동일). 드로어는 행 드래그가 없어 재정렬이 안전하다
+  // (페이지의 useFrozenWhileDragging 텔레포트 가드 불필요).
+  const pctOf = useMemo(() => makePctOf(quoteByCode), [quoteByCode]);
+  const visibleGroups = useMemo(() => {
+    if (!data) return [];
+    const grouped = groupByFolder(data.folders, data.entries);
+    const ordered = orderFolderGroups(grouped, groupSort, (g) => avgPct(g.entries, pctOf));
+    return filterGroups(ordered, query);
+  }, [data, groupSort, pctOf, query]);
+
+  const isSearching = query.trim() !== '';
+  // 그룹 순서 조작(⋯ 위/아래)은 수동 정렬 + 비검색일 때만 — 정렬/필터 중엔 화면 순서가
+  // folder.order 와 어긋나 조작이 혼란스럽다.
+  const canMoveGroups = groupSort === 'manual' && !isSearching;
   const folderCount = data?.folders.length ?? 0;
   const moveFolder = (folderId: string, dir: -1 | 1) => {
     const ids = swapFolderOrder(data?.folders ?? [], folderId, dir);
@@ -303,20 +401,27 @@ export function HeatmapDrawer() {
         )}
       />
 
+      <DrawerToolbar query={query} onQuery={setQuery} />
+
       <RailDrawerBody testId="heatmap-drawer-scroll" quoteNav>
         {isLoading && <RailState>불러오는 중</RailState>}
         {error && <RailState tone="error">히트맵을 불러올 수 없습니다</RailState>}
         {!isLoading && !error && (data?.entries.length ?? 0) === 0 && (data?.folders.length ?? 0) === 0 && (
           <RailState>히트맵이 비어 있습니다</RailState>
         )}
-        {groups.map((g, gi) => {
+        {!isLoading && !error && isSearching && visibleGroups.length === 0 && (
+          <RailState>검색 결과 없음</RailState>
+        )}
+        {visibleGroups.map((g, gi) => {
           const key = g.folder?.id ?? UNCAT_KEY;
           const label = g.folder?.name ?? '미분류';
           // 빈 미분류만 숨긴다. 빈 실폴더는 표시 — 새 그룹 직후 ＋종목으로 채울 수 있어야
           // 하기 때문(/heatmap 보드의 visibleFolderGroups 는 빈 폴더 전부 숨김 → 의도적 비대칭).
           if (g.entries.length === 0 && g.folder === null) return null;
-          const isCollapsed = collapsed.has(key);
+          // 검색 중엔 접기 무시 — 매칭된 행이 보여야 한다(collapsed Set 은 안 건드림).
+          const isCollapsed = !isSearching && collapsed.has(key);
           const folder = g.folder;
+          const rows = sortEntries(g.entries, sortMode, pctOf);
           return (
             <div key={key}>
               <GroupHeader label={label} count={g.entries.length} collapsed={isCollapsed}
@@ -325,12 +430,12 @@ export function HeatmapDrawer() {
                 onDelete={folder ? () => deleteM.mutate(folder.id) : undefined}
                 onMoveUp={folder ? () => moveFolder(folder.id, -1) : undefined}
                 onMoveDown={folder ? () => moveFolder(folder.id, +1) : undefined}
-                canMoveUp={gi > 0}
-                canMoveDown={gi < folderCount - 1}
+                canMoveUp={canMoveGroups && gi > 0}
+                canMoveDown={canMoveGroups && gi < folderCount - 1}
                 trailing={folder && <FolderAddButton folderId={folder.id} />} />
               {!isCollapsed && (
                 <ul style={{ listStyle: 'none', margin: 0, padding: 0 }}>
-                  {g.entries.map((entry) => {
+                  {rows.map((entry) => {
                     const q = quoteByCode.get(entry.code);
                     return (
                       <QuoteRow
