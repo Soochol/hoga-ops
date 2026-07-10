@@ -1,9 +1,10 @@
-"""Heatmap independent-store + route tests (ADR-0068).
+"""Heatmap independent-store + route tests (ADR-0068, amended by ADR-0097).
 
 Mirrors the watchlist suite but asserts the SEPARATION invariants:
   - the heatmap store/routes never touch watchlist.json;
   - HeatmapEntry carries no capture fields;
-  - heatmap routes never call refresh_live_stream;
+  - entry-SET mutations resync storage targets (ADR-0097) while folder-shape
+    mutations (rename/reorder/move/delete-folder) do not;
   - the one-time seed copies the watchlist (capture-stripped) only when
     heatmap.json is absent AND the watchlist is non-empty, and never writes
     the watchlist.
@@ -11,10 +12,19 @@ Mirrors the watchlist suite but asserts the SEPARATION invariants:
 from __future__ import annotations
 
 from pathlib import Path
+from unittest.mock import AsyncMock, patch
 
 import pytest
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
+
+
+@pytest.fixture(autouse=True)
+def stub_refresh_live_stream():
+    """Keep route tests hermetic: the ADR-0097 storage resync hook must never
+    reach the real lifecycle (global state, creds probing) from this suite."""
+    with patch("hoga.api.heatmap_routes.refresh_live_stream", new=AsyncMock()) as mock:
+        yield mock
 
 
 # --- store: persistence -----------------------------------------------------
@@ -234,15 +244,56 @@ def test_folder_member_add_rejects_missing_folder_without_adding_code(tmp_path: 
 
 # --- separation invariants --------------------------------------------------
 
-def test_heatmap_routes_never_refresh_live_stream():
-    """The heatmap is a read-only quote consumer — its routes must NOT drive
-    the KIS WS subscription (ADR-0068 rule 2). Structural guard: the helper is
-    never imported into the routes module (so it can't be called), while the
-    watchlist routes DO import it (proving the guard is meaningful, not vacuous)."""
-    import hoga.api.heatmap_routes as m
-    import hoga.api.watchlist_routes as wm
-    assert not hasattr(m, "refresh_live_stream")
-    assert hasattr(wm, "refresh_live_stream")
+def test_entry_set_mutations_resync_storage_targets(tmp_path: Path, stub_refresh_live_stream):
+    """ADR-0097: the four routes that change the entry SET resync storage
+    targets so the REST 30s recorder follows heatmap membership."""
+    client = TestClient(_app(tmp_path))
+    with patch("hoga.api.heatmap_routes.symbols.search",
+               return_value=[_fake_hit("005930", "삼성전자")]):
+        client.post("/api/heatmap", json={"code": "005930"})
+        assert stub_refresh_live_stream.await_count == 1
+
+        fid = client.post("/api/heatmap/folders", json={"name": "반도체"}).json()["id"]
+        assert stub_refresh_live_stream.await_count == 1  # folder create: no resync
+
+        client.post(f"/api/heatmap/folders/{fid}/members", json={"code": "005930"})
+        assert stub_refresh_live_stream.await_count == 2
+
+    client.delete("/api/heatmap/005930")
+    assert stub_refresh_live_stream.await_count == 3
+
+    client.post("/api/heatmap/remove", json={"codes": ["005930"]})
+    assert stub_refresh_live_stream.await_count == 4
+
+
+def test_folder_shape_mutations_do_not_resync(tmp_path: Path, stub_refresh_live_stream):
+    """Rename/reorder/move/delete-folder leave the entry SET intact — the
+    storage-target resync hook must not fire (heatmap UI stays snappy)."""
+    client = TestClient(_app(tmp_path))
+    with patch("hoga.api.heatmap_routes.symbols.search",
+               return_value=[_fake_hit("005930", "삼성전자")]):
+        client.post("/api/heatmap", json={"code": "005930"})
+    fid = client.post("/api/heatmap/folders", json={"name": "반도체"}).json()["id"]
+    calls_after_setup = stub_refresh_live_stream.await_count
+
+    client.patch(f"/api/heatmap/folders/{fid}", json={"name": "IT"})
+    client.put("/api/heatmap/folders/order", json={"ordered_ids": [fid]})
+    client.post("/api/heatmap/move", json={"codes": ["005930"], "folder_id": fid})
+    client.put("/api/heatmap/reorder", json={"folder_id": fid, "ordered_codes": ["005930"]})
+    client.delete(f"/api/heatmap/folders/{fid}")
+
+    assert stub_refresh_live_stream.await_count == calls_after_setup
+
+
+def test_add_succeeds_even_if_storage_resync_fails(tmp_path: Path, stub_refresh_live_stream):
+    """The disk write already committed — a resync failure must not fail the
+    route (best-effort hook, same contract as the watchlist routes)."""
+    stub_refresh_live_stream.side_effect = RuntimeError("lifecycle down")
+    client = TestClient(_app(tmp_path))
+    with patch("hoga.api.heatmap_routes.symbols.search", return_value=[_fake_hit()]):
+        r = client.post("/api/heatmap", json={"code": "003490"})
+    assert r.status_code == 201
+    assert client.delete("/api/heatmap/003490").status_code == 204
 
 
 def test_post_heatmap_does_not_touch_watchlist(tmp_path: Path):

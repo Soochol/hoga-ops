@@ -156,6 +156,56 @@ async def test_storage_runtime_ws_plus_rest_excludes_ws_targets_from_api(
 
 
 @pytest.mark.asyncio
+async def test_storage_runtime_appends_heatmap_codes_as_rest_only_extras(
+    tmp_path,
+    monkeypatch,
+) -> None:
+    """Heatmap entries feed the REST 30s recorder (ADR-0097): duplicates of
+    watchlist codes dedup, unknown codes drop, and WS targets never change."""
+    from hoga.api.heatmap import save_document as save_heatmap_document
+    from hoga.api.models import HeatmapDocument, HeatmapEntry
+
+    _patch_common(monkeypatch)
+    _seed_watchlist(tmp_path)
+    save_heatmap_document(
+        tmp_path,
+        HeatmapDocument(entries=[
+            HeatmapEntry(code="000660", name="SK하이닉스"),  # watchlist dup → dedup
+            HeatmapEntry(code="005380", name="현대차"),      # heatmap-only → REST
+            HeatmapEntry(code="999999", name="유령"),        # unknown → dropped
+        ]),
+    )
+
+    class Hit:
+        def __init__(self, code: str) -> None:
+            self.code = code
+
+    monkeypatch.setattr(
+        "hoga.api.symbols.search",
+        lambda _query, limit=10_000: [
+            Hit("005930"), Hit("000660"), Hit("035420"), Hit("005380"),
+        ],
+    )
+    monkeypatch.setattr("hoga.live.coverage._PER_ACCOUNT_MAX", 1)
+    save_live_settings(tmp_path, LiveSettings(storage_policy="ws_plus_rest"))
+    state = FakeStorageState()
+
+    snapshot = await sync_storage_runtime(
+        tmp_path,
+        state=state,
+        buffer=object(),  # type: ignore[arg-type]
+        date_fn=lambda: "20260710",
+        now_ms_fn=lambda: 0,
+        n_configured=1,
+    )
+
+    assert snapshot.ws_targets == ("005930",)
+    assert snapshot.kis_api_targets == ("000660", "035420", "005380")
+    assert state.rest30_recorder is not None
+    assert state.rest30_recorder.targets == {"000660", "035420", "005380"}
+
+
+@pytest.mark.asyncio
 async def test_storage_runtime_ws_only_stops_existing_api_recorder(
     tmp_path,
     monkeypatch,

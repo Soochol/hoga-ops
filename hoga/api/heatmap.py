@@ -2,9 +2,11 @@
 
 The Heatmap is an INDEPENDENT monitoring list, separate from the Watchlist
 (ADR-0068). It mirrors the watchlist store's folder/entry CRUD but WITHOUT
-capture semantics: no ``last_success_date`` / ``registered_at_kst_date``, no
-``bump_last_success`` / ``set_last_success``, and its routes never refresh the
-live stream.
+hogaplay-capture semantics: no ``last_success_date`` / ``registered_at_kst_date``,
+no ``bump_last_success`` / ``set_last_success``. Since ADR-0097 heatmap codes DO
+feed the KIS REST 30s recorder as REST-only extras (never the WS subscription);
+the store itself stays capture-field-free — coverage planning reads it via
+``load_heatmap``.
 
 Cloned from ``watchlist.py`` rather than generalized (ADR-0068 / grilling G2):
 the watchlist store is entangled with the capture finalize hook + daily

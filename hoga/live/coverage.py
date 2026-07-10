@@ -80,15 +80,27 @@ def plan_storage_targets(
     storage_policy: LiveStoragePolicy,
     current_ws_live_set: tuple[str, ...] = (),
     per_account_max: int | None = None,
+    rest_extra_candidates: tuple[str, ...] = (),
 ) -> LiveStorageTargets:
+    """Split capture_candidates into WS slots + REST 30s remainder.
+
+    rest_extra_candidates (ADR-0097: heatmap codes) never compete for WS
+    slots — they are appended to kis_api_targets only, after dedup against
+    capture_candidates, and are dropped entirely under ws_only (the policy
+    forbids KIS API storage, not just watchlist REST spillover).
+    """
     if per_account_max is None:
         per_account_max = _PER_ACCOUNT_MAX
     candidates = tuple(capture_candidates)
+    candidate_set = set(candidates)
+    rest_extra = tuple(
+        code for code in dict.fromkeys(rest_extra_candidates) if code not in candidate_set
+    )
     max_codes = per_account_max * n_configured
     if storage_policy == "rest_only":
         return LiveStorageTargets(
             ws_targets=(),
-            kis_api_targets=candidates,
+            kis_api_targets=candidates + rest_extra,
             capture_candidates=candidates,
         )
     ws_targets = candidates[:max_codes]
@@ -96,7 +108,7 @@ def plan_storage_targets(
         rest_targets: tuple[str, ...] = ()
     else:
         ws_set = set(ws_targets)
-        rest_targets = tuple(code for code in candidates if code not in ws_set)
+        rest_targets = tuple(code for code in candidates if code not in ws_set) + rest_extra
     return LiveStorageTargets(
         ws_targets=ws_targets,
         kis_api_targets=rest_targets,
@@ -122,6 +134,23 @@ def _compute_capture_candidates(data_dir: Path) -> list[str]:
         if dropped:
             _log.warning("live.capture.codes_unknown dropped=%r", list(dropped))
     return candidates
+
+
+def _compute_heatmap_rest_extras(data_dir: Path) -> tuple[str, ...]:
+    """Heatmap codes as REST-only capture extras (ADR-0097).
+
+    Document order preserved; symbol-master filter mirrors
+    _compute_capture_candidates (cold cache keeps all)."""
+    from hoga.api.heatmap import load_heatmap  # noqa: PLC0415
+
+    codes = list(dict.fromkeys(entry.code for entry in load_heatmap(data_dir)))
+    known = _known_symbol_codes()
+    if not known:
+        return tuple(codes)
+    dropped = [code for code in codes if code not in known]
+    if dropped:
+        _log.warning("live.capture.heatmap_codes_unknown dropped=%r", dropped)
+    return tuple(code for code in codes if code in known)
 
 
 def _compute_ws_targets(
