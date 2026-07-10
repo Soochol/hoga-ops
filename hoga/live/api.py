@@ -26,6 +26,7 @@ from hoga.live.kis_client import (
     KisRateLimitError,
     KisTransportError,
 )
+from hoga.live import kis_runtime
 from hoga.live.kis_capacity_runtime import ensure_kis_capacity_scheduler
 from hoga.live.kis_capacity_scheduler import (
     KisCapacityCooldown,
@@ -80,12 +81,29 @@ log = logging.getLogger(__name__)
 
 _PAST_MAX_DAYS = 250
 
-# past-candles 미캐시 날짜 병렬 fetch 동시 상한 (spec 2026-06-08 §4.1).
-# 산식: RTT ~200ms → 슬롯당 ~5콜/초 → 3슬롯이 token bucket(15콜/초)의
-# 자연 포화점. 5슬롯은 평시 처리량 여유가 있었지만 한 날짜가 내부적으로
-# 여러 분봉 페이지를 호출하는 구조라 EGW00201 상황에서 동시 retry 폭을 키웠다.
-_PAST_CANDLES_CONCURRENCY = 3
+# past-candles 미캐시 날짜 병렬 fetch 동시 상한 — 계정(앱키)당 슬롯 수 (spec
+# 2026-06-08 §4.1; ADR-0100 계정 비례화). 산식: RTT ~200ms → 슬롯당 ~5콜/초 →
+# 계정당 3슬롯이 그 계정 15콜/초 토큰버킷의 자연 포화점. REST 유량이 앱키별
+# 독립(ADR-0100)이라 configured 계정 수에 비례해 슬롯을 늘려야 aggregate
+# 예산(~15콜/초×계정수)을 포화시킨다(3계정=9슬롯). 단일 계정은 3 유지 —
+# 계정당 5슬롯은 한 날짜가 여러 분봉 페이지를 호출하는 구조라 EGW00201 상황에서
+# 동시 retry 폭을 키웠던 실측이라, 계정당 상한은 3을 넘기지 않는다. 전체 상한 12는
+# max_fresh_dates_per_collect(=12)와 정합(한 collect의 fresh 날짜를 다 병렬화).
+_PAST_CANDLES_CONCURRENCY_PER_ACCOUNT = 3
+_PAST_CANDLES_CONCURRENCY_MAX = 12
 _PAST_CANDLES_RATE_LIMIT_COOLDOWN_S = 10.0
+
+
+def _past_candles_concurrency(data_dir) -> int:
+    """계정 수 비례 past-candles 동시 상한 (ADR-0100). 단일 계정 3 → 3계정 9 →
+    상한 12. 계정 수는 REST 유량 예산의 배수라 그대로 슬롯 배수로 쓴다."""
+    n_accounts = (
+        len(kis_runtime.configured_account_ids(data_dir)) if data_dir is not None else 1
+    )
+    return min(
+        _PAST_CANDLES_CONCURRENCY_PER_ACCOUNT * max(1, n_accounts),
+        _PAST_CANDLES_CONCURRENCY_MAX,
+    )
 # 종목 활성화 시 선행 워밍 창(캘린더일). ~40거래일 ≈ 160 KIS 콜 ≈ 11초의
 # background 예산 — foreground 양보(ADR-0087) 하에서 무해한 크기.
 _WARM_PAST_CANDLES_CALENDAR_DAYS = 60
@@ -1838,7 +1856,7 @@ def build_router(
             data_dir=data_dir,
             cache=cache_instance,
             scheduler=_kis_scheduler,
-            concurrency=_PAST_CANDLES_CONCURRENCY,
+            concurrency=_past_candles_concurrency(data_dir),
             rate_limit_cooldown_s=_PAST_CANDLES_RATE_LIMIT_COOLDOWN_S,
         )
         if data_dir is not None and cache_instance is not None and _kis_scheduler is not None
