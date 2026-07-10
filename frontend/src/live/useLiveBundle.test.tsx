@@ -2,7 +2,12 @@ import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { renderHook, waitFor } from '@testing-library/react';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import type { ReactNode } from 'react';
-import { overlayLiveTradesOnCandles, planLiveRangeRequest, useLiveBundle } from './useLiveBundle';
+import {
+  overlayLiveTradesOnCandles,
+  overlayLiveTradesOnCalendarCandles,
+  planLiveRangeRequest,
+  useLiveBundle,
+} from './useLiveBundle';
 import { mergeDepthHeatmapToday } from './depthHeatmapWire';
 import { LIVE_SETTINGS_KEY, type LiveSettings } from '../api/liveSettings';
 import { useLivePageStore } from '../state/livePage';
@@ -384,6 +389,95 @@ describe('overlayLiveTradesOnCandles', () => {
       },
     ], 60_000, 'UN');
     expect(afterHours).toBe(candles);
+  });
+});
+
+describe('overlayLiveTradesOnCalendarCandles', () => {
+  // 1779840000000 = 2026-05-27(Wed) 09:00 KST. regularSessionOpenMs('20260527').
+  const BASE = 1779840000000;
+  const DAY = 86400000;
+  const lastCandle = () => ({ ts_ms: BASE, open: 70000, high: 70100, low: 69900, close: 70050, vol_a: 1000, vol_b: 0 });
+  const snap = (tMs: number, price: number, qty: number, venue?: 'KRX' | 'NXT') => ({
+    t_ms: tMs,
+    kind: 'trade' as const,
+    ...(venue ? { venue } : {}),
+    trades: [{ t_ms: tMs, price, qty, side: 1 }],
+  });
+
+  it('D: updates high/low/close of the same-day tail but leaves vol_a untouched', () => {
+    const first = { ts_ms: BASE - DAY, open: 69000, high: 69200, low: 68900, close: 69100, vol_a: 500, vol_b: 0 };
+    const candles = [first, lastCandle()];
+    const out = overlayLiveTradesOnCalendarCandles(candles, [snap(BASE + 30_000, 70150, 7)], 'D');
+    expect(out).not.toBe(candles);
+    expect(out[0]).toBe(first); // 과거 캔들 참조 유지
+    expect(out[1]).toMatchObject({ high: 70150, low: 69900, close: 70150, vol_a: 1000 }); // vol_a 불변
+  });
+
+  it('reuses the input array when only past-bucket or venue-mismatched trades arrive', () => {
+    const candles = [lastCandle()];
+    const pastDay = overlayLiveTradesOnCalendarCandles(candles, [snap(BASE - DAY + 30_000, 80000, 9)], 'D');
+    expect(pastDay).toBe(candles);
+    const nxtTagged = overlayLiveTradesOnCalendarCandles(candles, [snap(BASE + 30_000, 80000, 9, 'NXT')], 'D', 'KRX');
+    expect(nxtTagged).toBe(candles);
+  });
+
+  it('reuses the input array when the tail OHLC would not change (churn guard)', () => {
+    const candles = [lastCandle()];
+    // price = close, within [low, high] → high/low/close all unchanged.
+    const out = overlayLiveTradesOnCalendarCandles(candles, [snap(BASE + 30_000, 70050, 5)], 'D');
+    expect(out).toBe(candles);
+  });
+
+  it('D: appends a new candle anchored to 09:00 KST when the tail is a prior day', () => {
+    const candles = [lastCandle()];
+    const nextDay = BASE + DAY + 30_000; // 2026-05-28 09:00:30 KST
+    const out = overlayLiveTradesOnCalendarCandles(candles, [snap(nextDay, 71000, 4)], 'D');
+    expect(out).toHaveLength(2);
+    expect(out[0]).toBe(candles[0]);
+    expect(out[1]).toMatchObject({
+      ts_ms: 1779926400000, // regularSessionOpenMs('20260528') = 09:00 KST anchor
+      open: 71000, // 첫 체결가 (prev.close 아님)
+      high: 71000,
+      low: 71000,
+      close: 71000,
+      vol_a: 4,
+    });
+  });
+
+  it('W: merges same ISO week in-place, appends a new candle for next week', () => {
+    const candles = [lastCandle()]; // Wed 05-27, week of Mon 05-25
+    const sameWeek = overlayLiveTradesOnCalendarCandles(candles, [snap(BASE + DAY + 30_000, 70200, 3)], 'W'); // Thu 05-28
+    expect(sameWeek).not.toBe(candles);
+    expect(sameWeek).toHaveLength(1);
+    expect(sameWeek[0]).toMatchObject({ high: 70200, close: 70200 });
+    const nextWeek = overlayLiveTradesOnCalendarCandles(candles, [snap(BASE + 5 * DAY + 30_000, 70200, 3)], 'W'); // Mon 06-01
+    expect(nextWeek).toHaveLength(2);
+    expect(nextWeek[1]).toMatchObject({ ts_ms: 1780272000000, open: 70200 });
+  });
+
+  it('M: merges same month in-place, appends a new candle for next month', () => {
+    const candles = [lastCandle()]; // May
+    const sameMonth = overlayLiveTradesOnCalendarCandles(candles, [snap(BASE + DAY + 30_000, 70200, 3)], 'M'); // 05-28
+    expect(sameMonth).toHaveLength(1);
+    expect(sameMonth[0]).toMatchObject({ close: 70200 });
+    const nextMonth = overlayLiveTradesOnCalendarCandles(candles, [snap(BASE + 5 * DAY + 30_000, 70200, 3)], 'M'); // 06-01
+    expect(nextMonth).toHaveLength(2);
+    expect(nextMonth[1]).toMatchObject({ ts_ms: 1780272000000 });
+  });
+
+  it('UN venue: accepts NXT-tagged trades that KRX would drop', () => {
+    const candles = [lastCandle()];
+    const un = overlayLiveTradesOnCalendarCandles(candles, [snap(BASE + 30_000, 70150, 7, 'NXT')], 'D', 'UN');
+    expect(un[0]).toMatchObject({ close: 70150 });
+  });
+
+  it('D: buckets by KST date, so a UTC-previous-day trade still lands on the same KST day', () => {
+    const candles = [lastCandle()]; // 2026-05-27 09:00 KST
+    // 2026-05-27 00:30 KST = 2026-05-26 15:30 UTC. Same KST day as the tail.
+    const out = overlayLiveTradesOnCalendarCandles(candles, [snap(1779809400000, 69950, 2)], 'D');
+    expect(out).not.toBe(candles);
+    expect(out).toHaveLength(1); // 새 캔들 아님 — 같은 KST 날 버킷
+    expect(out[0]).toMatchObject({ low: 69900, close: 69950 });
   });
 });
 

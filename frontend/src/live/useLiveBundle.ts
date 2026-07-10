@@ -23,7 +23,7 @@ import {
 import { buildChartBundle, createIncrementalHogaSeriesBuilder, filterProgramTradeForCandles, type HogaSeries } from './buildLiveBundle';
 import type { LiveDataWarning } from './liveDataWarnings';
 import type { TradeSnapshot } from './bucketHogaSeries';
-import { aggregateCandles, aggregateCalendar } from './aggregateCandles';
+import { aggregateCandles, aggregateCalendar, calendarBucketKey } from './aggregateCandles';
 import {
   regularSessionOpenMs,
   regularSessionCloseMs,
@@ -148,6 +148,94 @@ export function overlayLiveTradesOnCandles(
         vol_b: 0,
       });
     }
+  }
+
+  return out ?? (candles as Candle[]);
+}
+
+/**
+ * D/W/M 캔들의 마지막(=오늘이 속한) 캘린더 버킷에 live 체결을 접어 넣는다.
+ * `overlayLiveTradesOnCandles`(분봉)의 캘린더 판(版) — 차이점:
+ *  - 버킷 판정을 epoch-floor(`bucketStartMs`)가 아니라 `calendarBucketKey`(KST
+ *    날짜/주/월)로 한다. W/M은 기간이 가변이라 floor로는 깨진다.
+ *  - **vol_a는 건드리지 않는다.** KIS/스크리너 일봉의 오늘 volume은 이미 당일
+ *    누적치라 버퍼 qty를 더하면 이중계산 — 60초 refetch가 volume 정본을 공급한다.
+ *    (새로 만드는 캔들만 best-effort로 버퍼 qty 합을 넣는다.)
+ *  - 오늘 버킷이 아직 없으면(우회 모드 디스크는 어제까지, 콜드 로드) 새 캔들을
+ *    만든다. ts_ms=09:00 KST(백엔드 anchor 일치 → refetch가 같은 ts로 자연 대체),
+ *    open=첫 유효 체결가(prev.close는 일봉 갭 시가를 오도).
+ * 유효성 술어는 `freshLiveTradePrice`(deriveCurrentPriceLine.ts)와 동일 —
+ * 현재가 라인과 캔들 close가 같은 체결 집합을 보게 해 "라인 = 마지막 close" 정합.
+ * 유효 체결이 없거나 OHLC가 안 변하면 입력 배열 참조를 그대로 반환해 downstream
+ * churn(setData/크로스헤어/축)을 억제한다.
+ */
+export function overlayLiveTradesOnCalendarCandles(
+  candles: readonly Candle[],
+  trades: readonly TradeSnapshot[],
+  granularity: 'D' | 'W' | 'M',
+  venue: LiveVenueOption = 'KRX',
+): Candle[] {
+  if (candles.length === 0) return candles as Candle[];
+  const last = candles[candles.length - 1];
+  const lastKey = calendarBucketKey(last.ts_ms, granularity);
+
+  const sameBucket: Array<{ price: number; qty: number; tMs: number }> = [];
+  const newBuckets = new Map<string, Array<{ price: number; qty: number; tMs: number }>>();
+
+  for (const snapshot of trades) {
+    for (const ev of snapshot.trades) {
+      const tMs = ev.t_ms ?? snapshot.t_ms;
+      if (
+        typeof ev.side !== 'number' ||
+        typeof ev.price !== 'number' ||
+        typeof ev.qty !== 'number' ||
+        !Number.isFinite(tMs) ||
+        !Number.isFinite(ev.price) ||
+        ev.price <= 0 ||
+        !Number.isFinite(ev.qty) ||
+        ev.qty <= 0 ||
+        !liveVenueAllowsTradeOverlay(venue, snapshot.venue, tMs)
+      ) {
+        continue;
+      }
+      const key = calendarBucketKey(tMs, granularity);
+      if (key === lastKey) {
+        sameBucket.push({ price: ev.price, qty: ev.qty, tMs });
+      } else if (tMs > last.ts_ms) {
+        const group = newBuckets.get(key) ?? [];
+        group.push({ price: ev.price, qty: ev.qty, tMs });
+        newBuckets.set(key, group);
+      }
+      // else: 마지막 캔들보다 과거 버킷의 체결 → skip.
+    }
+  }
+  if (sameBucket.length === 0 && newBuckets.size === 0) return candles as Candle[];
+
+  let out: Candle[] | null = null;
+
+  if (sameBucket.length > 0) {
+    sameBucket.sort((a, b) => a.tMs - b.tMs);
+    const high = Math.max(last.high, ...sameBucket.map((t) => t.price));
+    const low = Math.min(last.low, ...sameBucket.map((t) => t.price));
+    const close = sameBucket[sameBucket.length - 1].price;
+    // OHLC 무변화 → 참조 유지(churn 억제). vol_a는 의도적으로 불변.
+    if (high !== last.high || low !== last.low || close !== last.close) {
+      out = [...candles.slice(0, -1), { ...last, high, low, close }];
+    }
+  }
+
+  for (const [, group] of newBuckets) {
+    group.sort((a, b) => a.tMs - b.tMs);
+    out = out ?? [...candles];
+    out.push({
+      ts_ms: regularSessionOpenMs(realMsToYyyymmdd(group[0].tMs)),
+      open: group[0].price,
+      high: Math.max(...group.map((t) => t.price)),
+      low: Math.min(...group.map((t) => t.price)),
+      close: group[group.length - 1].price,
+      vol_a: group.reduce((sum, t) => sum + t.qty, 0),
+      vol_b: 0,
+    });
   }
 
   return out ?? (candles as Candle[]);
@@ -539,8 +627,11 @@ export function useLiveBundle(
     sidecarRangeOptions,
   );
   const liveCandles = useMemo<Candle[]>(
-    () => (isMinute ? overlayLiveTradesOnCandles(kisCandles, live.trade, bucketMs, venue) : kisCandles),
-    [isMinute, kisCandles, live.trade, bucketMs, venue],
+    () =>
+      isMinute
+        ? overlayLiveTradesOnCandles(kisCandles, live.trade, bucketMs, venue)
+        : overlayLiveTradesOnCalendarCandles(kisCandles, live.trade, timeframe as 'D' | 'W' | 'M', venue),
+    [isMinute, timeframe, kisCandles, live.trade, bucketMs, venue],
   );
 
   const defaultKrxSession = useMemo(
