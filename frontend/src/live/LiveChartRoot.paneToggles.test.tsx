@@ -56,6 +56,9 @@ vi.mock('./LiveAskPeakSegments', () => ({
     askPeakMounts.push('mounted');
     return null;
   },
+  // highLowAvoidLabelPrices memo 가 회피할 벽 가격을 산출할 때 호출한다(회피는 이제
+  // 픽셀이 아닌 가격 기준). 이 테스트는 벽 회피를 검증하지 않으므로 빈 세그먼트 스텁.
+  buildAskPeakOverlaySegments: () => [],
 }));
 
 vi.mock('./LiveBidPeakSegments', () => ({
@@ -63,6 +66,7 @@ vi.mock('./LiveBidPeakSegments', () => ({
     bidPeakMounts.push('mounted');
     return null;
   },
+  buildBidPeakOverlaySegments: () => [],
 }));
 
 vi.mock('./LivePeakWallDockedLabels', () => ({

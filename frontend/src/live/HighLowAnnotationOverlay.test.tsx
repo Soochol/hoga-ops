@@ -38,7 +38,7 @@ function makeChart(timeToCoordinate: () => number | null) {
   } as never;
 }
 
-function paneSeries(priceToCoordinate: () => number | null, paneHeight = 0): PaneSeriesMap {
+function paneSeries(priceToCoordinate: (price: number) => number | null, paneHeight = 0): PaneSeriesMap {
   // getPane().getHeight() = 캔들 pane 높이(라벨 세로 고정 기준). 캔들은 pane 0(최상단)이라
   // top=0, bottom=이 값. jsdom 기본(paneHeight=0)이면 placeExtremeLabel fallback 경로.
   return new Map([
@@ -51,9 +51,10 @@ function paneSeries(priceToCoordinate: () => number | null, paneHeight = 0): Pan
 
 function renderOverlay(opts?: {
   timeToCoordinate?: () => number | null;
-  priceToCoordinate?: () => number | null;
+  priceToCoordinate?: (price: number) => number | null;
   paneHeight?: number;
   bundle?: RangeBundle;
+  avoidLabelPrices?: readonly number[];
 }) {
   return render(
     <HighLowAnnotationOverlay
@@ -62,6 +63,7 @@ function renderOverlay(opts?: {
       axis={axis}
       paneSeries={paneSeries(opts?.priceToCoordinate ?? (() => 50), opts?.paneHeight)}
       timeframe="1m"
+      avoidLabelPrices={opts?.avoidLabelPrices}
     />,
   );
 }
@@ -117,6 +119,45 @@ describe('HighLowAnnotationOverlay', () => {
       renderOverlay({ paneHeight: 200 });
       expect(screen.getByTestId('highlow-label-high').style.top).toBe('6px');
       expect(screen.getByTestId('highlow-label-low').style.top).toBe('194px');
+    } finally {
+      rectSpy.mockRestore();
+      rafSpy.mockRestore();
+    }
+  });
+
+  it('derives avoid y-lines from prices via priceToCoordinate at render (fresh, not pre-baked pixels)', () => {
+    // 회귀 가드: 회피선은 상위에서 픽셀로 구워 넘기지 않고, 오버레이 렌더가 매 프레임
+    // avoidLabelPrices(가격)를 priceToCoordinate 로 변환해야 한다(축 리스케일 정합).
+    // wall 가격을 상단 가장자리 근처(y=15)로 매핑하면 top 고정 고가 라벨이 그 박스를
+    // 피해 아래로 밀린다. 픽셀을 구워 넘기던 옛 방식이면 가격 prop 을 무시해 6px 에 머문다.
+    const WALL_PRICE = 38_805;
+    const rectSpy = vi.spyOn(HTMLElement.prototype, 'getBoundingClientRect').mockReturnValue({
+      width: 760, height: 300, top: 0, left: 0, right: 760, bottom: 300, x: 0, y: 0,
+      toJSON: () => ({}),
+    } as DOMRect);
+    const rafSpy = vi
+      .spyOn(globalThis, 'requestAnimationFrame')
+      .mockImplementation((cb: FrameRequestCallback) => (cb(0), 0));
+    class MockRO {
+      private cb: ResizeObserverCallback;
+      constructor(cb: ResizeObserverCallback) {
+        this.cb = cb;
+      }
+      observe() {
+        this.cb([] as unknown as ResizeObserverEntry[], this as unknown as ResizeObserver);
+      }
+      unobserve() {}
+      disconnect() {}
+    }
+    vi.stubGlobal('ResizeObserver', MockRO);
+    try {
+      renderOverlay({
+        paneHeight: 300,
+        priceToCoordinate: (price) => (price === WALL_PRICE ? 15 : 150),
+        avoidLabelPrices: [WALL_PRICE],
+      });
+      // 상단 고정(6px)이던 고가 라벨이 wall 박스(y≈15)를 피해 아래로 밀림.
+      expect(screen.getByTestId('highlow-label-high').style.top).toBe('15px');
     } finally {
       rectSpy.mockRestore();
       rafSpy.mockRestore();
