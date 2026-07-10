@@ -1901,7 +1901,7 @@ describe('LiveChartRoot lazy fetch trigger', () => {
     // Axis with yesterday + today. lightweight-charts emits negative
     // logical.from when the visible-range origin is past the leftmost
     // loaded bar (fractional bar index can go negative beyond the data).
-    // Handler should prepend one step of ~STEP_CANDLE_TARGET(100) candles —
+    // Handler should prepend one step of ~STEP_CANDLE_TARGET(50) candles —
     // 1m floors to 1 trading day, weekend-skipped (subtractWeekdaysKst).
     const handlers: Array<(r: unknown) => void> = [];
     vi.mocked(createChartEx).mockImplementationOnce(() => buildChartMockCapturing(handlers) as any);
@@ -2105,9 +2105,9 @@ describe('LiveChartRoot lazy fetch trigger', () => {
       vi.advanceTimersByTime(200);
     });
 
-    // D-timeframe chunk: stepChunkDays('D')=140 calendar days (100 candles).
-    // axis.segments[0] = '20260526', minus 140 → '20260106'.
-    expect(useLivePageStore.getState().historicalFromDate).toBe('20260106');
+    // D-timeframe chunk: stepChunkDays('D')=70 calendar days (50 candles).
+    // axis.segments[0] = '20260526', minus 70 → '20260317'.
+    expect(useLivePageStore.getState().historicalFromDate).toBe('20260317');
   });
 
   it('does NOT fire extendHistoricalRange when logical from is non-negative', () => {
@@ -2777,8 +2777,8 @@ describe('LiveChartRoot historical-prepend viewport preservation', () => {
           clampEngaged={false} isPastCandlesLoading={false} isExtending={false} />,
       );
     });
-    // cur '20260521' − stepChunkDays('D')=140 → '20260101'.
-    expect(useLivePageStore.getState().historicalFromDate).toBe('20260101');
+    // cur '20260521' − stepChunkDays('D')=70 → '20260312'.
+    expect(useLivePageStore.getState().historicalFromDate).toBe('20260312');
   });
 
   it('keeps dispatching D timeframe fill steps past the minute scrollback clamp', () => {
@@ -2800,8 +2800,8 @@ describe('LiveChartRoot historical-prepend viewport preservation', () => {
       );
     });
     // '20250605'는 오늘('20260527')−250일보다 과거 — 분봉 클램프가 D를 막지 않고
-    // 한 스텝(140일) 더 걷는다: '20250605' − 140 → '20250116'.
-    expect(useLivePageStore.getState().historicalFromDate).toBe('20250116');
+    // 한 스텝(70일) 더 걷는다: '20250605' − 70 → '20250327'.
+    expect(useLivePageStore.getState().historicalFromDate).toBe('20250327');
   });
 
   it('does NOT restore on pure SSE growth while historicalFromDate is null', () => {

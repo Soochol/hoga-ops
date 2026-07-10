@@ -4,7 +4,6 @@ import type { RangeBundle } from '../api/types';
 import type { VirtualAxis } from '../util/virtualAxis';
 import { computeWheelOutcome } from '../util/wheelInteractions';
 import { CHART_TIMESCALE_OPTIONS } from '../util/chartScale';
-import { STEP_CANDLE_TARGET } from './liveDateTime';
 
 /**
  * /live 차트의 modifier-aware 휠 인터랙션 배선.
@@ -133,10 +132,6 @@ export function useWheelInteractions(
           maxTo,
           lastBarIndex,
           maxSpan,
-          // 줌아웃 좌단 벽: 데이터 좌단(논리 0) 밖으로 백필 1스텝 폭
-          // (STEP_CANDLE_TARGET 바)까지만 빈공간을 열 수 있다 — 열린 빈공간은
-          // 항상 fetch 1스텝으로 채워진다는 불변식(liveDateTime 상수 주석).
-          minFrom: -STEP_CANDLE_TARGET,
         });
         if (outcome) {
           ts.setVisibleLogicalRange(outcome);

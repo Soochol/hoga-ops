@@ -137,14 +137,11 @@ function candleTargetToCalendarDays(target: number, tf: LiveTimeframe): number {
  * 단위를 맞추면 타임프레임과 무관하게 스텝이 화면의 일정 비율이 된다.
  * (1거래일 고정 스텝은 30m에선 13봉=과소, 1m에선 390봉=과대로 30배 편차.)
  *
- * 이 상수는 두 소비자가 공유한다:
- *  - 백필 스텝 폭(nextHistoricalFrom/nextCoverageFrom → 날짜 환산)
- *  - 휠 줌아웃 좌단 클램프(useWheelInteractions, 논리 바 단위 그대로)
- * 그래서 "줌아웃이 여는 빈공간은 항상 fetch 1스텝으로 채워진다"는 불변식이
- * 상수 하나로 성립한다(줌 폭주 방지, /investigate 2026-07-11). */
-export const STEP_CANDLE_TARGET = 100;
+ * 백필 스텝 폭(nextHistoricalFrom/nextCoverageFrom → 날짜 환산)의 단일
+ * 소스다. */
+export const STEP_CANDLE_TARGET = 50;
 
-/** 분봉 한 스텝의 거래일 수 = 캔들 100개 환산. API가 날짜 구간 단위라 최소
+/** 분봉 한 스텝의 거래일 수 = 캔들 STEP_CANDLE_TARGET개 환산. API가 날짜 구간 단위라 최소
  * 1거래일로 floor된다(1m·3m). 스텝 날짜 계산은 주말을 건너뛰는
  * `subtractWeekdaysKst`와 짝을 이룬다 — 캘린더일 환산(5/7 밀도)이면 좁은
  * 스텝이 토·일만 덮는 빈 왕복이 생긴다. */
@@ -153,7 +150,7 @@ export function stepTradingDays(tf: MinuteTimeframe): number {
   return Math.max(1, Math.ceil((STEP_CANDLE_TARGET * tfMinutes) / TRADING_MINUTES_PER_DAY));
 }
 
-/** D/W/M 한 스텝의 캘린더일 크기(캔들 100개 환산). 분봉은 이 함수가 아니라
+/** D/W/M 한 스텝의 캘린더일 크기(캔들 STEP_CANDLE_TARGET개 환산). 분봉은 이 함수가 아니라
  * `stepTradingDays` + 주말 스킵 경로를 쓴다(위 주석). */
 export function stepChunkDays(tf: LiveTimeframe): number {
   return candleTargetToCalendarDays(STEP_CANDLE_TARGET, tf);
@@ -254,7 +251,7 @@ export interface FillStepArgs {
   axisEarliestMs: number;
   /** Optional scrollback lower bound (YYYYMMDD). Minute charts pass the 250-day clamp; calendar charts pass null. */
   earliestAllowedDate: string | null;
-  /** 스텝 크기 산정용(캔들 100개 환산, `stepBackFrom`). */
+  /** 스텝 크기 산정용(캔들 STEP_CANDLE_TARGET개 환산, `stepBackFrom`). */
   timeframe: LiveTimeframe;
   /** 이번 fill에서 지금까지 dispatch한 스텝 수. */
   stepCount: number;

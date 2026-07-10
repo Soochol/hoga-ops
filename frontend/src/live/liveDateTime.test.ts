@@ -92,25 +92,25 @@ describe('nextCoverageFrom', () => {
   });
 });
 
-describe('step sizing — 캔들 100개 통일 (STEP_CANDLE_TARGET)', () => {
-  it('target is 100 candles for every timeframe', () => {
-    expect(STEP_CANDLE_TARGET).toBe(100);
+describe('step sizing — 캔들 50개 통일 (STEP_CANDLE_TARGET)', () => {
+  it('target is 50 candles for every timeframe', () => {
+    expect(STEP_CANDLE_TARGET).toBe(50);
   });
 
-  it('minute steps convert 100 candles to trading days (min 1 — date-granular API)', () => {
-    // ceil(100 × 봉분 ÷ 390): 1m/3m은 1일 floor, 5m=2, 10m=3, 15m=4, 30m=8.
+  it('minute steps convert 50 candles to trading days (min 1 — date-granular API)', () => {
+    // ceil(50 × 봉분 ÷ 390): 1m~5m은 1일 floor, 10m/15m=2, 30m=4.
     expect(stepTradingDays('1m')).toBe(1);
     expect(stepTradingDays('3m')).toBe(1);
-    expect(stepTradingDays('5m')).toBe(2);
-    expect(stepTradingDays('10m')).toBe(3);
-    expect(stepTradingDays('15m')).toBe(4);
-    expect(stepTradingDays('30m')).toBe(8);
+    expect(stepTradingDays('5m')).toBe(1);
+    expect(stepTradingDays('10m')).toBe(2);
+    expect(stepTradingDays('15m')).toBe(2);
+    expect(stepTradingDays('30m')).toBe(4);
   });
 
-  it('D/W/M steps convert 100 candles to calendar days', () => {
-    expect(stepChunkDays('D')).toBe(140); // ceil(100 ÷ (5/7))
-    expect(stepChunkDays('W')).toBe(700); // 100 × 7
-    expect(stepChunkDays('M')).toBe(3100); // 100 × 31
+  it('D/W/M steps convert 50 candles to calendar days', () => {
+    expect(stepChunkDays('D')).toBe(70); // ceil(50 ÷ (5/7))
+    expect(stepChunkDays('W')).toBe(350); // 50 × 7
+    expect(stepChunkDays('M')).toBe(1550); // 50 × 31
   });
 });
 

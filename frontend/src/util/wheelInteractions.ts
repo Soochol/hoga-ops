@@ -64,18 +64,6 @@ export interface WheelInput {
    * ratio at the floor instead. Omit (or pass Infinity) to disable.
    */
   maxSpan?: number;
-  /**
-   * 줌아웃 좌단 벽(논리 인덱스). 줌 결과의 `from`이 이보다 왼쪽으로 못 간다 —
-   * 데이터 좌단(-STEP_CANDLE_TARGET 바)을 넘는 빈공간을 줌이 여는 것을 막아,
-   * "빈공간 = 채워야 할 수요"인 백필이 화면용량만큼(수개월치) 폭주하는 것을
-   * 원천 차단한다(/investigate 2026-07-11: 30m 줌아웃 1.5초 입력 → 무입력
-   * 12초간 fetch 15연발·3개월 확장 재현). 두 줌 분기에만 적용하고 shift-pan은
-   * 두지 않는다 — 팬은 입력량에 선형이라 폭주 벡터가 아니고, 드래그 팬
-   * (라이브러리 소유)과의 대칭도 지킨다. 현재 `range.from`이 이미 벽보다
-   * 왼쪽이면(레거시 복원 등) 그 값이 벽이 된다: 줌이 상태를 더 악화시키지
-   * 않되 스냅 점프도 만들지 않는 단조 가드. Omit이면 비활성.
-   */
-  minFrom?: number;
 }
 
 export type WheelOutcome = { from: number; to: number } | null;
@@ -112,7 +100,7 @@ export function computeWheelOutcome(i: WheelInput): WheelOutcome {
     // under the mouse to drift on screen. The library renders empty space
     // past the last candle by design, so letting `to` exceed `maxTo` on
     // ctrl-zoom-out is acceptable. `maxTo` still constrains shift-pan.
-    return clampZoomResult(newFrom, newTo, anchor, i);
+    return clampSpanAroundAnchor(newFrom, newTo, anchor, i.maxSpan);
   }
 
   // Default: anchor at the latest candle when it's at/inside the right edge
@@ -123,27 +111,7 @@ export function computeWheelOutcome(i: WheelInput): WheelOutcome {
   const anchor = Math.min(to, i.lastBarIndex ?? to);
   const newFrom = anchor - (anchor - from) * factor;
   const newTo = anchor + (to - anchor) * factor;
-  return clampZoomResult(newFrom, newTo, anchor, i);
-}
-
-/** 두 줌 분기 공통 클램프: span 상한(`maxSpan`, 라이브러리 플로어) 뒤에
- * 좌단 벽(`minFrom`)을 적용한다. 둘 다 앵커 비율 보존 방식 — 벽에 닿으면
- * from을 벽에 고정하고 to를 같은 비율로 재축소해, 커서 아래 바가 화면에서
- * 밀리지 않는다. `minFrom` 주석의 단조 가드(현재 from이 이미 벽 왼쪽이면
- * 그 값을 벽으로)도 여기서 처리한다. */
-function clampZoomResult(
-  from: number,
-  to: number,
-  anchor: number,
-  i: WheelInput,
-): { from: number; to: number } {
-  const r = clampSpanAroundAnchor(from, to, anchor, i.maxSpan);
-  if (i.minFrom == null) return r;
-  const wall = Math.min(i.minFrom, i.range.from);
-  // 벽 미접촉(줌인 포함) / 앵커가 벽 밖(레거시 심층 빈공간 뷰) → 클램프 불가.
-  if (r.from >= wall || anchor <= wall) return r;
-  const scale = (anchor - wall) / (anchor - r.from);
-  return { from: wall, to: anchor + (r.to - anchor) * scale };
+  return clampSpanAroundAnchor(newFrom, newTo, anchor, i.maxSpan);
 }
 
 /**
