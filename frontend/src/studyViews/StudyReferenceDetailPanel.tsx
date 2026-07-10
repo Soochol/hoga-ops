@@ -26,6 +26,7 @@ import { isMinuteTimeframe, type MinuteTimeframe } from '../state/livePage';
 import { useLivePageStore } from '../state/livePage';
 import type { StudyViewReference } from '../api/studyViews';
 import { DataSection } from '../ui/DataSurface';
+import { PanelCard } from '../ui/PageShell';
 
 type Props = {
   save: StudyViewReference;
@@ -155,15 +156,15 @@ export function StudyReferenceDetailPanel({ save, bundle }: Props) {
 
 function StudyDetailSection({ label, testId, children }: SectionProps) {
   return (
-    <div
+    <PanelCard
       data-testid={`study-detail-card-${testId}`}
-      className="flex flex-col rounded-md border border-border bg-bg-card"
+      className="flex flex-col"
     >
       <DataSection title={label} className="flex flex-1 flex-col border-t-0" contentClassName="flex-1">
         <div data-testid={`study-detail-content-${testId}`} className="flex-1">
           {children}
         </div>
       </DataSection>
-    </div>
+    </PanelCard>
   );
 }

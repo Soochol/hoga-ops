@@ -720,7 +720,7 @@ describe('StudyPage', () => {
 
     for (const key of ['orderbook', 'brokers', 'volume-distribution', 'program'] as const) {
       const section = screen.getByTestId(`study-detail-card-${key}`);
-      expect(section).toHaveClass('rounded-md');
+      expect(section).toHaveClass('rounded-lg');
       expect(section).toHaveClass('border');
       expect(section).toHaveClass('bg-bg-card');
     }
@@ -814,7 +814,7 @@ describe('StudyPage', () => {
     expect(stack).toHaveClass('p-2');
     expect(stack.getAttribute('style') ?? '').toContain('auto auto auto auto');
     for (const key of ['orderbook', 'volume-distribution', 'brokers', 'program']) {
-      expect(screen.getByTestId(`study-detail-card-${key}`)).toHaveClass('rounded-md');
+      expect(screen.getByTestId(`study-detail-card-${key}`)).toHaveClass('rounded-lg');
       expect(screen.getByTestId(`study-detail-card-${key}`)).toHaveClass('bg-bg-card');
       expect(screen.getByTestId(`study-detail-card-${key}`)).not.toHaveClass('overflow-hidden');
       expect(screen.getByTestId(`study-detail-content-${key}`)).not.toHaveClass('overflow-y-auto');
