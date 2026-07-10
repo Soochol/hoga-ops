@@ -84,6 +84,71 @@ def test_plan_storage_targets_rest_only_disables_ws() -> None:
     assert plan.kis_api_targets == ("A", "B", "C")
 
 
+def test_plan_storage_targets_rest_extras_append_to_api_only() -> None:
+    from hoga.live.coverage import plan_storage_targets
+
+    plan = plan_storage_targets(
+        ["A", "B", "C"],
+        n_configured=1,
+        per_account_max=2,
+        storage_policy="ws_plus_rest",
+        rest_extra_candidates=("H1", "B", "H2", "H1"),
+    )
+
+    # Extras (heatmap, ADR-0097) never enter WS slots; dedup against the
+    # watchlist candidates ("B") and against themselves ("H1" twice).
+    assert plan.ws_targets == ("A", "B")
+    assert plan.kis_api_targets == ("C", "H1", "H2")
+    assert plan.capture_candidates == ("A", "B", "C")
+
+
+def test_plan_storage_targets_rest_extras_never_fill_free_ws_slots() -> None:
+    from hoga.live.coverage import plan_storage_targets
+
+    plan = plan_storage_targets(
+        ["A"],
+        n_configured=1,
+        per_account_max=10,
+        storage_policy="ws_plus_rest",
+        rest_extra_candidates=("H1",),
+    )
+
+    # WS slots are free, but extras stay REST-only — heatmap edits must never
+    # churn the WS subscription set (ADR-0097).
+    assert plan.ws_targets == ("A",)
+    assert plan.kis_api_targets == ("H1",)
+
+
+def test_plan_storage_targets_rest_extras_dropped_under_ws_only() -> None:
+    from hoga.live.coverage import plan_storage_targets
+
+    plan = plan_storage_targets(
+        ["A", "B"],
+        n_configured=1,
+        per_account_max=2,
+        storage_policy="ws_only",
+        rest_extra_candidates=("H1",),
+    )
+
+    assert plan.ws_targets == ("A", "B")
+    assert plan.kis_api_targets == ()
+
+
+def test_plan_storage_targets_rest_only_appends_extras_after_candidates() -> None:
+    from hoga.live.coverage import plan_storage_targets
+
+    plan = plan_storage_targets(
+        ["A", "B"],
+        n_configured=1,
+        per_account_max=2,
+        storage_policy="rest_only",
+        rest_extra_candidates=("H1", "A"),
+    )
+
+    assert plan.ws_targets == ()
+    assert plan.kis_api_targets == ("A", "B", "H1")
+
+
 def test_plan_storage_targets_does_not_silently_cap_rest_targets() -> None:
     from hoga.live.coverage import plan_storage_targets
 

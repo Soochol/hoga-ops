@@ -11,7 +11,12 @@ from hoga.api.models import LiveStoragePolicy
 
 from . import kis_runtime
 from .buffer import LiveBuffer
-from .coverage import LiveStorageTargets, _compute_capture_candidates, plan_storage_targets
+from .coverage import (
+    LiveStorageTargets,
+    _compute_capture_candidates,
+    _compute_heatmap_rest_extras,
+    plan_storage_targets,
+)
 from .kis_capacity_runtime import ensure_kis_capacity_scheduler
 from .live_rest_capture_access import ScheduledLiveRestCaptureClient
 from .settings import load_live_settings
@@ -113,6 +118,7 @@ async def sync_storage_runtime(
         _compute_capture_candidates(data_dir),
         n_configured=n_configured,
         storage_policy=settings.storage_policy,
+        rest_extra_candidates=_compute_heatmap_rest_extras(data_dir),
     )
     if bypass:
         targets = LiveStorageTargets(

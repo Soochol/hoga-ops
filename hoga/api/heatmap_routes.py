@@ -2,10 +2,13 @@
 
 The Heatmap is an independent monitoring list (ADR-0068). This router mirrors
 /api/watchlist's folder/entry CRUD 1:1 but deliberately OMITS:
-  - every ``refresh_live_stream`` call — the heatmap is a read-only consumer of
-    /api/live/quotes, it does NOT drive the KIS WebSocket subscription;
-  - the catch-up routes — the heatmap drives no captures;
+  - the catch-up routes — the heatmap drives no hogaplay captures;
   - ``next_run_at_ms`` — the heatmap has no scheduler.
+Since ADR-0097 the heatmap DOES feed the REST 30s recorder (never the KIS WS
+subscription — heatmap codes are REST-only extras), so the four routes that
+change the entry SET call ``refresh_live_stream`` to resync storage targets.
+Folder-shape routes (rename/reorder/move/delete-folder) leave the set intact
+and stay hook-free.
 Error code is ``already_in_heatmap`` (distinct from ``already_in_watchlist``)
 so the frontend can't cross-wire the two stores' add flows.
 """
@@ -52,8 +55,19 @@ from hoga.api.models import (
     WatchlistFolder,
 )
 from hoga.api.params import CODE_PATTERN
+from hoga.live.lifecycle import refresh_live_stream
 
 log = logging.getLogger(__name__)
+
+
+async def _refresh_storage_targets(data_dir: Path, *, op: str) -> None:
+    """Best-effort storage-target resync after an entry-set mutation (ADR-0097).
+    The disk write already committed — a resync failure must not fail the route;
+    the next boot/watchlist refresh converges."""
+    try:
+        await refresh_live_stream(data_dir=data_dir)
+    except Exception:
+        log.exception("heatmap.%s: refresh_live_stream failed", op)
 
 # KRX code — params.CODE_PATTERN is the single source of the ticker grammar,
 # shared with watchlist routes and models.HeatmapEntry.code.
@@ -82,12 +96,14 @@ def build_router(*, data_dir: Path) -> APIRouter:  # noqa: PLR0915
                 "message": f"Code {req.code} is not in the symbol master.",
             })
         try:
-            return await add_entry(data_dir, code=req.code, name=match.name)
+            entry = await add_entry(data_dir, code=req.code, name=match.name)
         except AlreadyInHeatmapError as e:
             raise HTTPException(status_code=409, detail={
                 "code": "already_in_heatmap",
                 "message": f"Code {req.code} is already in the Heatmap.",
             }) from e
+        await _refresh_storage_targets(data_dir, op="add")
+        return entry
 
     @router.delete("/{code}", status_code=204)
     async def remove_from_heatmap(code: CodePathParam) -> None:
@@ -98,6 +114,7 @@ def build_router(*, data_dir: Path) -> APIRouter:  # noqa: PLR0915
                 "code": "not_in_heatmap",
                 "message": f"Code {code} is not in the Heatmap.",
             }) from e
+        await _refresh_storage_targets(data_dir, op="remove")
 
     @router.post("/folders", status_code=201, response_model=HeatmapFolderView)
     async def create_heatmap_folder(req: FolderCreateRequest) -> HeatmapFolderView:
@@ -113,7 +130,7 @@ def build_router(*, data_dir: Path) -> APIRouter:  # noqa: PLR0915
                 "message": f"Code {req.code} is not in the symbol master.",
             })
         try:
-            return await add_entry_to_folder(
+            entry = await add_entry_to_folder(
                 data_dir,
                 code=req.code,
                 name=match.name,
@@ -122,6 +139,8 @@ def build_router(*, data_dir: Path) -> APIRouter:  # noqa: PLR0915
         except FolderNotFoundError as e:
             raise HTTPException(status_code=404, detail={
                 "code": "folder_not_found", "message": f"Folder {folder_id} not found."}) from e
+        await _refresh_storage_targets(data_dir, op="add_member")
+        return entry
 
     @router.put("/folders/order", status_code=204)
     async def reorder_heatmap_folders(req: FolderReorderRequest) -> None:
@@ -172,5 +191,6 @@ def build_router(*, data_dir: Path) -> APIRouter:  # noqa: PLR0915
     @router.post("/remove", status_code=204)
     async def bulk_remove_heatmap_entries(req: EntriesRemoveRequest) -> None:
         await remove_entries(data_dir, codes=req.codes)
+        await _refresh_storage_targets(data_dir, op="bulk_remove")
 
     return router
