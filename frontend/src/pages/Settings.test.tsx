@@ -48,12 +48,21 @@ describe('Settings — 사이드바 레이아웃', () => {
 
   it('renders all section nav items with 앱 정보 selected by default', async () => {
     renderWithQuery(<Settings />);
-    for (const id of ['general', 'theme', 'data', 'symbols', 'roadmap']) {
+    for (const id of ['general', 'theme', 'source', 'data', 'symbols', 'roadmap']) {
       expect(screen.getByTestId(`settings-nav-${id}`)).toBeInTheDocument();
     }
     expect(screen.getByTestId('settings-nav-general')).toHaveAttribute('aria-current', 'true');
     // Default detail = 앱 정보 → API URL row visible.
     await waitFor(() => expect(screen.getByText('http://test')).toBeInTheDocument());
+  });
+
+  it('데이터 소스 섹션이 라이브 데이터소스 상세(KIS API 우회 등)를 렌더한다', async () => {
+    renderWithQuery(<Settings />);
+    selectSection('source');
+    // DataSourceDetail(variant="live") 콘텐츠 — 상세 동작은 DataSourceDetail.test.tsx가 커버.
+    expect(await screen.findByRole('switch', { name: 'KIS API 우회' })).toBeInTheDocument();
+    expect(screen.getByText('표시 소스')).toBeInTheDocument();
+    expect(screen.getByText('캡처 저장')).toBeInTheDocument();
   });
 
   it('uses the feature page shell without repeating the nav page title', () => {

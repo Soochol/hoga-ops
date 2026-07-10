@@ -1,4 +1,4 @@
-import { useEffect } from 'react';
+import { useEffect, useRef } from 'react';
 import { useLiveSettings, usePatchLiveSettings } from '../api/liveSettings';
 import { ToggleSwitch } from './settings/SettingsRow';
 import { ToastCard } from '../ui/toast/ToastCard';
@@ -16,10 +16,16 @@ export default function KisRestUnavailableToastHost() {
   const dismissToast = useKisRestModeStore((s) => s.dismissToast);
   const kisRestBypassEnabled = settings?.kis_rest_bypass_enabled ?? false;
 
+  // 레거시 로컬 우회 → 백엔드 마이그레이션은 마운트당 1회만 시도한다. 낙관적 업데이트가
+  // settings 캐시를 잠깐 뒤집었다 롤백하면 effect가 재발화하는데, 이 가드가 없으면
+  // 실패 시 PATCH가 여러 번 나가 오실레이션한다(테스트 flaky). 실패해도 로컬은 보존되어
+  // 다음 세션(remount)에 재시도한다.
+  const migrationAttemptedRef = useRef(false);
   useEffect(() => {
-    if (!settings || settings.kis_rest_bypass_enabled) return;
+    if (!settings || settings.kis_rest_bypass_enabled || migrationAttemptedRef.current) return;
     const legacy = readLegacyKisRestBypass();
     if (legacy?.kisRestBypassEnabled) {
+      migrationAttemptedRef.current = true;
       patch.mutate(
         { kis_rest_bypass_enabled: true },
         { onSuccess: () => markLegacyKisRestBypassMigrated() },

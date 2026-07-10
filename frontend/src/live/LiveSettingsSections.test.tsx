@@ -4,9 +4,7 @@ import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import LiveSettingsSections from './LiveSettingsSections';
 import { useLiveVenueStore } from '../state/liveVenue';
 import { useStudyViewOpenPrefsStore } from '../state/studyViewOpenPrefs';
-import * as liveSettingsApi from '../api/liveSettings';
 import * as signalAlertsApi from '../api/signalAlerts';
-import * as apiClient from '../api/client';
 
 function wrap(qc: QueryClient) {
   return ({ children }: { children: React.ReactNode }) =>
@@ -22,14 +20,20 @@ describe('LiveSettingsSections (2단 nav+detail)', () => {
     useStudyViewOpenPrefsStore.setState({ defaultTimeframe: '3m' });
   });
 
-  it('카테고리 nav를 렌더 (차트·데이터소스·저장뷰·알림 — 보조지표·총잔량 급증은 지표 모달로 이동)', () => {
+  it('라이브 카테고리 nav를 렌더 — 데이터소스는 메인 Settings로 이동해 제외', () => {
     render(<LiveSettingsSections />);
     expect(screen.getByTestId('settings-nav-chart')).toBeTruthy();
-    expect(screen.getByTestId('settings-nav-data-source')).toBeTruthy();
     expect(screen.getByTestId('settings-nav-study-views')).toBeTruthy();
     expect(screen.getByTestId('settings-nav-alerts')).toBeTruthy();
+    // 데이터소스는 라이브 모달에선 제거되고 메인 Settings의 「데이터 소스」로 이동.
+    expect(screen.queryByTestId('settings-nav-data-source')).toBeNull();
     expect(screen.queryByTestId('settings-nav-indicators')).toBeNull();
     expect(screen.queryByTestId('settings-nav-surge')).toBeNull();
+  });
+
+  it('복기뷰(study) 모달은 데이터소스 nav를 유지한다', () => {
+    render(<LiveSettingsSections variant="study" />);
+    expect(screen.getByTestId('settings-nav-data-source')).toBeTruthy();
   });
 
   it('기본 선택은 차트 — 동시호가 마스킹 토글이 상세에 보인다', () => {
@@ -93,179 +97,9 @@ describe('LiveSettingsSections (2단 nav+detail)', () => {
     expect(screen.queryByTestId('settings-toggle-ratioOutlierFilterEnabled')).toBeNull();
   });
 
-  it('데이터소스 상세에서 KIS 캔들 venue 옵션을 렌더하고 저장한다', () => {
-    vi.spyOn(liveSettingsApi, 'getLiveSettings').mockResolvedValue({
-      schema_version: 1,
-      storage_policy: 'ws_plus_rest',
-      program_trade_storage_enabled: false,
-      kis_rest_bypass_enabled: false,
-      heatmap_capture_enabled: true,
-    });
-    render(<LiveSettingsSections />, { wrapper: wrap(new QueryClient({ defaultOptions: { queries: { retry: false } } })) });
-    fireEvent.click(screen.getByTestId('settings-nav-data-source'));
-
-    expect(screen.getByLabelText('KRX')).toBeChecked();
-    expect(screen.getByLabelText('통합')).toBeInTheDocument();
-    expect(screen.queryByLabelText('NXT')).toBeNull();   // NXT venue 제거(#523)
-
-    fireEvent.click(screen.getByLabelText('통합'));
-    expect(useLiveVenueStore.getState().venue).toBe('UN');
-    expect(localStorage.getItem('live.venue.v1')).toContain('UN');
-  });
-
-  it('데이터소스 상세를 캔들/호가체결/스크리너 일봉으로 구조화한다', async () => {
-    vi.spyOn(liveSettingsApi, 'getLiveSettings').mockResolvedValue({
-      schema_version: 1,
-      storage_policy: 'ws_plus_rest',
-      program_trade_storage_enabled: false,
-      kis_rest_bypass_enabled: false,
-      heatmap_capture_enabled: true,
-    });
-    vi.spyOn(liveSettingsApi, 'patchLiveSettings').mockResolvedValue({
-      schema_version: 1,
-      storage_policy: 'rest_only',
-      program_trade_storage_enabled: false,
-      kis_rest_bypass_enabled: false,
-      heatmap_capture_enabled: true,
-    });
-
-    render(<LiveSettingsSections />, { wrapper: wrap(new QueryClient({ defaultOptions: { queries: { retry: false } } })) });
-    fireEvent.click(screen.getByTestId('settings-nav-data-source'));
-
-    expect(await screen.findByText('데이터 저장 방식')).toBeInTheDocument();
-    // 표시/캡처 두 매크로 그룹으로 재배치.
-    expect(screen.getByText('표시 소스')).toBeInTheDocument();
-    expect(screen.getByText('캡처 저장')).toBeInTheDocument();
-    // '캔들 데이터 기준' 그룹 제목은 있지만(우회 토글을 담음), 캔들 소스 라디오는 없다.
-    expect(screen.getByText('캔들 데이터 기준')).toBeInTheDocument();
-    expect(screen.getByRole('switch', { name: 'KIS API 우회' })).toBeInTheDocument();
-    expect(screen.queryByRole('radio', { name: '자동' })).toBeNull();
-    expect(screen.queryByRole('radio', { name: '스크리너 일봉 우선' })).toBeNull();
-    expect(screen.getByText('호가·체결 데이터 기준')).toBeInTheDocument();
-    expect(screen.getByText('스크리너 일봉 데이터')).toBeInTheDocument();
-    expect(screen.getByRole('radio', { name: 'WS만 저장' })).toBeInTheDocument();
-    expect(screen.getByRole('radio', { name: 'WS 우선 + 나머지 REST 저장' })).toBeChecked();
-    expect(screen.getByRole('radio', { name: 'REST만 저장' })).toBeInTheDocument();
-    // 캔들 라디오가 사라져 'hogaplay 우선'·'KIS API 우선'은 호가·체결 기준에만(각 1개).
-    expect(screen.getByRole('radio', { name: 'hogaplay 우선' })).toBeInTheDocument();
-    expect(screen.getByRole('radio', { name: 'KIS WS 우선' })).toBeInTheDocument();
-    expect(screen.getByRole('radio', { name: 'KIS API 우선' })).toBeInTheDocument();
-    // 우회 설명문(캔들 데이터 기준 그룹 description).
-    expect(screen.getByText(/'KIS API 우회'를 켜면 분봉은 캡처\(hogaplay\)/)).toBeInTheDocument();
-  });
-
-  it('study variant는 캔들 기준 라디오 대신 디스크 온리 안내문을 표시한다', async () => {
-    vi.spyOn(liveSettingsApi, 'getLiveSettings').mockResolvedValue({
-      schema_version: 1,
-      storage_policy: 'ws_plus_rest',
-      program_trade_storage_enabled: false,
-      kis_rest_bypass_enabled: false,
-      heatmap_capture_enabled: true,
-    });
-
-    render(<LiveSettingsSections variant="study" />, { wrapper: wrap(new QueryClient({ defaultOptions: { queries: { retry: false } } })) });
-    fireEvent.click(screen.getByTestId('settings-nav-data-source'));
-
-    // 캔들 기준 섹션 제목은 유지되지만 라디오는 사라지고 안내문으로 대체.
-    expect(await screen.findByTestId('study-candle-source-note')).toBeInTheDocument();
-    expect(screen.queryByRole('radio', { name: '자동' })).toBeNull();
-    // venue는 KRX 고정 — 'KIS 캔들 거래소' 라디오 자체가 숨겨진다.
-    expect(screen.queryByText('KIS 캔들 거래소')).toBeNull();
-    expect(screen.queryByLabelText('KRX')).toBeNull();
-    expect(screen.queryByLabelText('NXT')).toBeNull();
-    // 호가·체결 기준은 study에서도 유지(사이드카가 소비).
-    expect(screen.getByText('호가·체결 데이터 기준')).toBeInTheDocument();
-    expect(screen.getByRole('radio', { name: 'KIS WS 우선' })).toBeInTheDocument();
-  });
-
-  it('데이터소스 상세에서 KIS API 우회 토글을 backend settings로 저장한다', async () => {
-    const apiCall = vi.spyOn(apiClient, 'apiCall').mockResolvedValue({
-      schema_version: 1,
-      storage_policy: 'ws_plus_rest',
-      program_trade_storage_enabled: false,
-      kis_rest_bypass_enabled: true,
-      heatmap_capture_enabled: true,
-    });
-    vi.spyOn(liveSettingsApi, 'getLiveSettings').mockResolvedValue({
-      schema_version: 1,
-      storage_policy: 'ws_plus_rest',
-      program_trade_storage_enabled: false,
-      kis_rest_bypass_enabled: false,
-      heatmap_capture_enabled: true,
-    });
-
-    render(<LiveSettingsSections />, { wrapper: wrap(new QueryClient({ defaultOptions: { queries: { retry: false } } })) });
-    fireEvent.click(screen.getByTestId('settings-nav-data-source'));
-
-    const toggle = await screen.findByRole('switch', { name: 'KIS API 우회' });
-    expect(toggle).toHaveAttribute('aria-checked', 'false');
-
-    fireEvent.click(toggle);
-
-    await waitFor(() => expect(apiCall).toHaveBeenCalledWith('/api/live/settings', {
-      method: 'PATCH',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ kis_rest_bypass_enabled: true }),
-    }));
-    await waitFor(() => expect(screen.getByRole('switch', { name: 'KIS API 우회' })).toHaveAttribute('aria-checked', 'true'));
-  });
-
-  it('데이터소스 상세에서 프로그램 순매수 저장 토글을 REST 허용 정책에서만 켠다', async () => {
-    const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } });
-    qc.setQueryData(liveSettingsApi.LIVE_SETTINGS_KEY, {
-      schema_version: 1,
-      storage_policy: 'ws_plus_rest',
-      program_trade_storage_enabled: false,
-      kis_rest_bypass_enabled: false,
-      heatmap_capture_enabled: true,
-    });
-    const apiCall = vi.spyOn(apiClient, 'apiCall')
-      .mockResolvedValueOnce({
-        schema_version: 1,
-        storage_policy: 'ws_plus_rest',
-        program_trade_storage_enabled: false,
-        kis_rest_bypass_enabled: false,
-        heatmap_capture_enabled: true,
-      })
-      .mockResolvedValueOnce({
-        schema_version: 1,
-        storage_policy: 'ws_plus_rest',
-        program_trade_storage_enabled: true,
-        kis_rest_bypass_enabled: false,
-        heatmap_capture_enabled: true,
-      });
-
-    render(<LiveSettingsSections />, { wrapper: wrap(qc) });
-    fireEvent.click(screen.getByTestId('settings-nav-data-source'));
-    const toggle = await screen.findByRole('switch', { name: '프로그램 순매수 저장' });
-
-    await waitFor(() => expect(toggle).not.toBeDisabled());
-    fireEvent.click(toggle);
-    await waitFor(() => expect(apiCall).toHaveBeenCalledWith('/api/live/settings', {
-      method: 'PATCH',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        storage_policy: 'ws_plus_rest',
-        program_trade_storage_enabled: true,
-      }),
-    }));
-  });
-
-  it('WS만 저장 정책에서는 프로그램 순매수 저장 토글을 비활성화한다', async () => {
-    const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } });
-    qc.setQueryData(liveSettingsApi.LIVE_SETTINGS_KEY, {
-      schema_version: 1,
-      storage_policy: 'ws_only',
-      program_trade_storage_enabled: false,
-      kis_rest_bypass_enabled: false,
-      heatmap_capture_enabled: true,
-    });
-
-    render(<LiveSettingsSections />, { wrapper: wrap(qc) });
-    fireEvent.click(screen.getByTestId('settings-nav-data-source'));
-
-    expect(await screen.findByRole('switch', { name: '프로그램 순매수 저장' })).toBeDisabled();
-  });
+  // 데이터소스 상세 콘텐츠 테스트는 DataSourceDetail.test.tsx로 이관(추출·재사용).
+  // 라이브 모달에선 데이터소스가 메인 Settings로 이동했고, 복기뷰(study) 모달의
+  // nav 유지만 위에서 검증한다.
 
   it('저장뷰 상세에서 사이드 메뉴 기본 분봉을 선택한다', () => {
     render(<LiveSettingsSections />);
