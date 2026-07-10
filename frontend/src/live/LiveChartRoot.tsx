@@ -1356,10 +1356,13 @@ export function LiveChartRoot({
     };
   }, [chart, activePaneToggles, cb, timeframe]);
 
-  const highLowAvoidLabelYLines = useMemo(() => {
+  // 고저 극값 라벨이 피할 매도/매수 최대벽 **가격**(픽셀 아님). 가격→y픽셀 변환은
+  // HighLowAnnotationOverlay 렌더 본문이 매 프레임 수행한다: priceToCoordinate 는
+  // 가격축 스케일 스냅샷이라, 여기(데이터-deps memo)서 구우면 오토스케일·팬/줌·pane
+  // 토글로 축이 리스케일돼도 재계산되지 않아 회피선이 실제 월 위치와 어긋난다(라벨이
+  // 유령 월을 피해 pane 안쪽으로 밀리는 버그). 가격만 넘기면 dot 과 동일 신선도.
+  const highLowAvoidLabelPrices = useMemo(() => {
     if (!cb || !isMinuteTimeframe(timeframe)) return [];
-    const series = paneSeries.get('candle' as PaneId);
-    if (!series) return [];
     const wallSegments = [
       ...(askPeakEnabled
         ? buildAskPeakOverlaySegments({
@@ -1394,14 +1397,12 @@ export function LiveChartRoot({
         })
         : []),
     ];
-    const yLines: number[] = [];
+    const prices: number[] = [];
     for (const segment of wallSegments) {
-      const y = series.priceToCoordinate(segment.price);
-      if (y === null) continue;
-      const rounded = Math.round(Number(y));
-      if (!yLines.includes(rounded)) yLines.push(rounded);
+      if (!Number.isFinite(segment.price)) continue;
+      if (!prices.includes(segment.price)) prices.push(segment.price);
     }
-    return yLines;
+    return prices;
   }, [
     askPeakEnabled,
     askPeakIntraMax,
@@ -1415,7 +1416,6 @@ export function LiveChartRoot({
     bidPeakUntradedRankLimit,
     bidVisibleTimeCutoffForRender,
     cb,
-    paneSeries,
     renderDayAskPeaks,
     renderDayBidPeaks,
     renderTodayAllPriceAskPeak,
@@ -1836,7 +1836,7 @@ export function LiveChartRoot({
             axis={axis}
             paneSeries={paneSeries}
             timeframe={timeframe}
-            avoidLabelYLines={highLowAvoidLabelYLines}
+            avoidLabelPrices={highLowAvoidLabelPrices}
           />
           {isMinuteTimeframe(timeframe) && hogaBundle && (
             <PriceLevelDotsOverlay chart={chart} bundle={hogaBundle} axis={axis} paneSeries={paneSeries} />

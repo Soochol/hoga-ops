@@ -24,8 +24,10 @@ type Props = {
   axis: VirtualAxis;
   paneSeries: PaneSeriesMap;
   timeframe: LiveTimeframe;
-  /** Canvas-based wall indicator labels already occupying these y lines. High/low labels yield. */
-  avoidLabelYLines?: readonly number[];
+  /** Ask/Bid Peak(최대벽) 라벨이 점유한 **가격**들. 렌더 본문이 매 프레임 priceToCoordinate
+   *  로 y픽셀 변환해 그 라인을 피한다. 픽셀이 아닌 가격을 받는 이유: priceToCoordinate 는
+   *  가격축 스케일 스냅샷이라, 상위에서 미리 구우면 오토스케일·팬/줌 시 회피선이 낡는다. */
+  avoidLabelPrices?: readonly number[];
 };
 
 const dotStyle = (color: string): CSSProperties => ({
@@ -187,7 +189,7 @@ function readVisibleRange(ts: ITimeScaleApi<Time>): { from: number; to: number }
  * 구독해 팬/줌 시 재계산하고, 차트 API 는 read-only 로 읽는다. PaneSpec series-marker 가 아닌
  * DOM 오버레이인 이유: marker seam 은 데이터 cadence(팬/줌 무반응)라 이 기능엔 맞지 않음(그릴링).
  */
-function HighLowAnnotationOverlay({ chart, bundle, axis, paneSeries, timeframe, avoidLabelYLines = [] }: Props) {
+function HighLowAnnotationOverlay({ chart, bundle, axis, paneSeries, timeframe, avoidLabelPrices = [] }: Props) {
   const enabled = useActivePrefs((p) => p.highLowLabelsEnabled);
   const containerRef = useRef<HTMLDivElement>(null);
   const [, tick] = useReducer((n: number) => n + 1, 0);
@@ -248,6 +250,23 @@ function HighLowAnnotationOverlay({ chart, bundle, axis, paneSeries, timeframe, 
   // (전체 마지막 캔들이 아님 — 팬하면 기준이 바뀐다).
   const ex = series ? computeVisibleExtremes(bundle.candles, axis, range) : null;
 
+  // 회피선 y픽셀은 렌더 본문에서 매 프레임 산출 — dot(priceToCoordinate)과 동일 신선도라
+  // 축 리스케일(오토스케일/팬/줌/pane 토글) 후에도 실제 월 위치와 정합한다. teardown 레이스
+  // 시 priceToCoordinate throw → 빈 배열 폴백(다음 프레임 self-heal). 중복 y는 dedup.
+  const avoidYLines: number[] = [];
+  if (series && avoidLabelPrices.length > 0) {
+    try {
+      for (const price of avoidLabelPrices) {
+        const yc = series.priceToCoordinate(price);
+        if (yc == null) continue;
+        const rounded = Math.round(Number(yc));
+        if (!avoidYLines.includes(rounded)) avoidYLines.push(rounded);
+      }
+    } catch {
+      avoidYLines.length = 0;
+    }
+  }
+
   const tokens = resolveTokensThemed(TOKEN_SPEC);
   const items = (ex
     ? [
@@ -286,7 +305,7 @@ function HighLowAnnotationOverlay({ chart, bundle, axis, paneSeries, timeframe, 
       {items.map(
         (it) => {
           if (!it) return null;
-          const label = placeExtremeLabel(it.place, it.x, it.y, it.text, paneWidth, paneHeight, avoidLabelYLines);
+          const label = placeExtremeLabel(it.place, it.x, it.y, it.text, paneWidth, paneHeight, avoidYLines);
           // 라벨 박스의 dot 쪽 모서리 y(above=박스 bottom, below=박스 top). dot(it.y)과의
           // 세로 구간을 리더선으로 잇는다. 극값이 가장자리 근처면 구간이 짧아 리더선 생략.
           const labelInnerY = label.place === 'above'
