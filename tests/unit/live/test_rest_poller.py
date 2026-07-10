@@ -76,6 +76,7 @@ def _make_poller(
     raise_for: set[str] | None = None,
     interval_s: float = 0.02,
     phase_fn=None,
+    capture_aux: bool = False,
 ) -> tuple[FakeKisClient, LiveBuffer, LiveRestPoller]:
     kis = FakeKisClient(raise_for=raise_for)
     buf = LiveBuffer()
@@ -84,6 +85,7 @@ def _make_poller(
         buf,
         interval_s=interval_s,
         phase_fn=phase_fn or (lambda: "regular"),
+        capture_aux=capture_aux,
     )
     return kis, buf, poller
 
@@ -119,8 +121,9 @@ async def test_set_excluded_codes():
 
 
 async def test_excluded_code_skipped_in_poll_cycle():
-    """WS live_set에 있는 종목은 폴링에서 skip — fetch/publish 안 함."""
-    kis, buf, poller = _make_poller()
+    """WS live_set에 있는 종목은 폴링에서 skip — fetch/publish 안 함.
+    3콜 배제 의미를 유지하기 위해 capture_aux=True로 검증."""
+    kis, buf, poller = _make_poller(capture_aux=True)
     poller.on_subscribe("005930")
     poller.on_subscribe("000660")
     poller.set_excluded_codes({"005930"})  # 005930은 WS 수집 중 → skip
@@ -137,35 +140,45 @@ async def test_excluded_code_skipped_in_poll_cycle():
     assert "000660" in kis.calls["fetch_brokers"]
 
 
-async def test_poll_cycle_calls_fetch_and_publishes_to_buffer():
-    """한 사이클에서 fetch_* 호출 → B3 변환 → buffer.publish 호출 (저장 없음)."""
+async def test_poll_cycle_default_orderbook_only_publishes_to_buffer():
+    """기본(호가 전용, ADR-0098): 한 사이클에서 fetch_orderbook만 호출하고
+    체결·거래원은 부르지 않으며 buffer.publish된다(저장 없음)."""
     kis, buf, poller = _make_poller()
     poller.on_subscribe("005930")
 
     await poller._poll_once()
 
-    # fetch 세 개 모두 호출됨
     assert "005930" in kis.calls["fetch_orderbook"]
-    assert "005930" in kis.calls["fetch_trades"]
-    assert "005930" in kis.calls["fetch_brokers"]
+    # 호가 전용 — 체결·거래원은 폴링하지 않음.
+    assert kis.calls["fetch_trades"] == []
+    assert kis.calls["fetch_brokers"] == []
 
-    # buffer에 publish됐는지 확인 — get_latest가 None이 아니어야 함
     result = await buf.get_latest("005930")
     assert result is not None
     assert result["code"] == "005930"
 
 
-async def test_poll_publishes_ob_trade_broker_kinds():
-    """buffer에 ob/trade/broker 세 kind가 모두 publish된다."""
-    from hoga.live.snapshot import SnapshotKind
-
+async def test_poll_default_publishes_ob_only_no_trade_broker():
+    """기본은 buffer에 ob kind만 publish하고 trade/broker는 비어 있다."""
     _, buf, poller = _make_poller()
     poller.on_subscribe("005930")
 
     await poller._poll_once()
 
     series = await buf.get_series("005930")
-    # 각 kind에 항목이 있어야 함
+    assert len(series["snapshots"]) >= 1     # ob
+    assert len(series["trades"]) == 0        # 호가 전용
+    assert len(series["brokers"]) == 0       # 호가 전용
+
+
+async def test_poll_capture_aux_publishes_ob_trade_broker_kinds():
+    """capture_aux=True면 기존처럼 ob/trade/broker 세 kind 모두 publish."""
+    _, buf, poller = _make_poller(capture_aux=True)
+    poller.on_subscribe("005930")
+
+    await poller._poll_once()
+
+    series = await buf.get_series("005930")
     assert len(series["snapshots"]) >= 1     # ob
     assert len(series["trades"]) >= 1        # trade
     assert len(series["brokers"]) >= 1       # broker
@@ -349,14 +362,14 @@ async def test_excluded_codes_updated_mid_run():
 @pytest.mark.asyncio
 async def test_poll_closed_one_snapshot_then_skips():
     """장 마감: 구독 종목을 1회만 스냅샷하고 이후 반복 폴링 skip(KIS 낭비 방지)."""
-    kis, _buf, poller = _make_poller(phase_fn=lambda: "closed")
+    kis, _buf, poller = _make_poller(phase_fn=lambda: "closed", capture_aux=True)
     poller.on_subscribe("005930")
     await poller._poll_once()
     assert kis.calls["fetch_orderbook"].count("005930") == 1  # 1회 스냅샷
     await poller._poll_once()
     await poller._poll_once()
     assert kis.calls["fetch_orderbook"].count("005930") == 1  # 반복 없음
-    # trades/brokers도 동일하게 1회만.
+    # trades/brokers도 동일하게 1회만(capture_aux=True 경로).
     assert kis.calls["fetch_trades"].count("005930") == 1
     assert kis.calls["fetch_brokers"].count("005930") == 1
 

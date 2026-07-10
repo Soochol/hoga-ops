@@ -39,6 +39,7 @@ class Rest30sStatus:
     last_error_kind: str | None = None
     last_error_code: str | None = None
     backoff_remaining: int = 0
+    last_cycle_duration_ms: int | None = None
 
 
 class Rest30sRecorder:
@@ -53,6 +54,8 @@ class Rest30sRecorder:
         phase_fn: Callable[[], str],
         interval_s: float = 30.0,
         backoff_cycles: int = 3,
+        concurrency: int = 10,
+        capture_aux: bool = False,
     ) -> None:
         self._resolve_kis = kis_resolver
         self._buffer = buffer
@@ -62,9 +65,17 @@ class Rest30sRecorder:
         self._phase_fn = phase_fn
         self._interval_s = interval_s
         self._backoff_cycles = max(0, backoff_cycles)
+        # 코드 간 동시 디스패치 상한(코드 내부는 순차). 실제 콜레이트는 명의-전역
+        # 15콜/s 토큰버킷이 클램프하므로, 이 값은 그 게이트를 채우기에 충분한 in-flight
+        # 수(≈ rate×latency)면 된다 — 과하면 user_visible 대기창만 커진다(ADR-0098).
+        self._concurrency = max(1, concurrency)
+        # False = 10호가(orderbook)만 fetch/저장(REST 호가 통일, ADR-0098). True면
+        # 기존 호가+체결+거래원 3콜 복원. 체결·거래원이 필요하면 WS(관심종목).
+        self._capture_aux = capture_aux
         self._targets: set[str] = set()
         self._task: asyncio.Task[None] | None = None
         self._last_cycle_ms: int | None = None
+        self._last_cycle_duration_ms: int | None = None
         self._last_error: str | None = None
         self._last_error_kind: str | None = None
         self._last_error_code: str | None = None
@@ -96,6 +107,7 @@ class Rest30sRecorder:
             last_error_count=self._last_error_count,
             backoff_remaining=self._backoff_remaining,
             degraded=self._last_error_count > 0,
+            last_cycle_duration_ms=self._last_cycle_duration_ms,
         )
 
     def start(self) -> None:
@@ -118,7 +130,23 @@ class Rest30sRecorder:
                 await self.poll_once()
             except Exception as e:
                 self._record_cycle_error(e)
-            await asyncio.sleep(self._interval_s)
+            await asyncio.sleep(self._next_delay_s())
+
+    def _next_delay_s(self) -> float:
+        """다음 벽시계 interval 경계까지의 지연(초). 사이클 시작을 경계에 정렬해
+        위상 밀림('poll 후 sleep(interval)'이 사이클 소요만큼 매번 뒤로 밀리는 것)을
+        없앤다. 사이클이 interval을 넘겨도 다음 경계에서 즉시 재개(밀리지 않음).
+        stream.py의 _next_window_delay_s 미러."""
+        now_s = self._now_ms() / 1000.0
+        return self._interval_s - (now_s % self._interval_s)
+
+    def _mark_cycle_complete(self, cycle_start_ms: int) -> None:
+        """사이클 종료 시각과 소요를 함께 기록한다. poll_once의 모든 종료 경로
+        (backoff·no-targets·no-kis 조기 return 포함)에서 호출해야 last_cycle_duration_ms
+        가 stale 되지 않는다 — backoff/idle 사이클은 소요 ≈ 0으로 정직하게 남고,
+        직전의 느린 fetch 값이 관측 지표에 계속 비치는 것을 막는다(ADR-0098 검증용)."""
+        self._last_cycle_ms = self._now_ms()
+        self._last_cycle_duration_ms = self._last_cycle_ms - cycle_start_ms
 
     def _record_cycle_error(self, exc: Exception) -> None:
         policy = classify_live_error(exc, internal=True)
@@ -134,9 +162,10 @@ class Rest30sRecorder:
             _log.warning(log_msg, policy.kind, policy.code)
 
     async def poll_once(self) -> None:
+        cycle_start_ms = self._now_ms()
         if self._backoff_remaining > 0:
             self._backoff_remaining -= 1
-            self._last_cycle_ms = self._now_ms()
+            self._mark_cycle_complete(cycle_start_ms)
             return
 
         phase = self._phase_fn()
@@ -148,7 +177,7 @@ class Rest30sRecorder:
             self._closed_snapshotted_once.clear()
 
         if not targets:
-            self._last_cycle_ms = self._now_ms()
+            self._mark_cycle_complete(cycle_start_ms)
             self._last_error_count = 0
             self._last_error = None
             self._last_error_kind = None
@@ -157,51 +186,65 @@ class Rest30sRecorder:
 
         kis = self._resolve_kis()
         if kis is None:
-            self._last_cycle_ms = self._now_ms()
+            self._mark_cycle_complete(cycle_start_ms)
             self._last_error = "kis_unavailable"
             self._last_error_kind = "auth"
             self._last_error_code = "kis_unavailable"
             self._last_error_count = 1 if self._targets else 0
             return
 
+        # 코드 간 동시 디스패치(코드 내부는 순차). 한 종목 실패는 _run_one 내부에서
+        # 잡아 gather를 취소하지 않는다(격리 불변식 보존). gather는 입력 순서대로
+        # 결과를 돌려주므로 sorted(targets) 순으로 결정론적 집계.
+        sem = asyncio.Semaphore(self._concurrency)
+
+        async def _run_one(code: str) -> tuple[str, Exception | None]:
+            async with sem:
+                try:
+                    await self._fetch_write_publish(code, kis, phase=phase)
+                    return code, None
+                except Exception as e:  # noqa: BLE001
+                    return code, e
+
+        results = await asyncio.gather(*(_run_one(code) for code in sorted(targets)))
+
         error_count = 0
         last_error: str | None = None
         last_error_kind: str | None = None
         last_error_code: str | None = None
-        for code in sorted(targets):
-            try:
-                await self._fetch_write_publish(code, kis, phase=phase)
+        for code, err in results:
+            if err is None:
                 if closed:
                     self._closed_snapshotted_once.add(code)
-            except Exception as e:  # noqa: BLE001
-                policy = classify_live_error(e)
-                error_count += 1
-                last_error = format_live_error(e)
-                last_error_kind = policy.kind
-                last_error_code = policy.code
-                if policy.backoff_cycles > 0:
-                    self._backoff_remaining = max(
-                        self._backoff_remaining,
-                        max(self._backoff_cycles, policy.backoff_cycles),
-                    )
-                if policy.include_traceback:
-                    _log.error(
-                        "live.rest30.code_failed code=%s kind=%s error=%s",
-                        code,
-                        policy.kind,
-                        policy.code,
-                        exc_info=True,
-                    )
-                else:
-                    _log.warning(
-                        "live.rest30.api_code_failed code=%s kind=%s error=%s",
-                        code,
-                        policy.kind,
-                        policy.code,
-                    )
+                continue
+            policy = classify_live_error(err)
+            error_count += 1
+            last_error = format_live_error(err)
+            last_error_kind = policy.kind
+            last_error_code = policy.code
+            if policy.backoff_cycles > 0:
+                self._backoff_remaining = max(
+                    self._backoff_remaining,
+                    max(self._backoff_cycles, policy.backoff_cycles),
+                )
+            if policy.include_traceback:
+                _log.error(
+                    "live.rest30.code_failed code=%s kind=%s error=%s",
+                    code,
+                    policy.kind,
+                    policy.code,
+                    exc_info=err,
+                )
+            else:
+                _log.warning(
+                    "live.rest30.api_code_failed code=%s kind=%s error=%s",
+                    code,
+                    policy.kind,
+                    policy.code,
+                )
 
         await self._writer.fsync_all()
-        self._last_cycle_ms = self._now_ms()
+        self._mark_cycle_complete(cycle_start_ms)
         self._last_error = last_error
         self._last_error_kind = last_error_kind
         self._last_error_code = last_error_code
@@ -227,15 +270,16 @@ class Rest30sRecorder:
                 total_ask_qty=ob.total_ask_qty,
                 source="rest",
             )
-        trades = await kis.fetch_trades(code)
-        brokers = await kis.fetch_brokers(code)
-        trades = self._dedupe_trades(code, date, trades)
-
-        snapshots = [
-            ob_to_snapshot(ob, phase=phase),
-            *trades_to_snapshots(trades, phase=phase),
-            brokers_to_snapshot(brokers, now_ms=now_ms, phase=phase),
-        ]
+        # 기본은 10호가만(ADR-0098). capture_aux=True일 때만 체결·거래원 3콜 복원.
+        snapshots = [ob_to_snapshot(ob, phase=phase)]
+        if self._capture_aux:
+            trades = await kis.fetch_trades(code)
+            brokers = await kis.fetch_brokers(code)
+            trades = self._dedupe_trades(code, date, trades)
+            snapshots += [
+                *trades_to_snapshots(trades, phase=phase),
+                brokers_to_snapshot(brokers, now_ms=now_ms, phase=phase),
+            ]
         await self._writer.append(date, code, snapshots)
         await self._buffer.publish(code, snapshots, now_ms=now_ms)
 
