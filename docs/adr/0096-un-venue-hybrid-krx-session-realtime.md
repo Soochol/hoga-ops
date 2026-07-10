@@ -2,6 +2,8 @@
 
 **Status:** accepted (2026-07-09)
 
+**Amended (2026-07-10 — ADR-0101):** 본문의 "슬롯 여유 계정당 ~16"과 venue 스왑 사이징 전제는 정정됐다 — 연결당 등록 상한은 실측 41이고, 스왑(register-before-unregister)은 찰나 종목당 5 TR을 점유해 10종목도 50>41로 초과한다. ADR-0101이 스왑을 unregister-before-register로 고치고 슬롯을 계정당 13종목(39등록)으로 올렸다.
+
 **Related:**
 - `frontend/src/live/liveVenuePolicy.ts` — `liveVenueAllowsKrxTradeOverlay` (게이트 단일 구현점)
 - `frontend/src/live/useLiveBundle.ts` — `overlayLiveTradesOnCandles` (WS 체결 → forming 캔들 병합)

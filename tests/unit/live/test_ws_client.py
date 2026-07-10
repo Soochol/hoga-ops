@@ -176,8 +176,10 @@ async def test_subscribe_sends_three_trs_per_code():
     assert trs == {"H0STASP0", "H0STCNT0", "H0STMBC0"}
 
 
-async def test_ensure_venue_swaps_trs_register_before_unregister():
-    """#524 시분할 스왑: KRX→NXT 전환 시 NXT를 먼저 등록(공백 없음)하고 KRX를 해제."""
+async def test_ensure_venue_swaps_trs_unregister_before_register():
+    """#524 시분할 스왑: KRX→NXT 전환 시 KRX를 먼저 해제(슬롯 비움)하고 NXT를 등록.
+    unregister-before-register — 연결당 등록 상한 41 준수(ADR-0101: register-first면
+    스왑 찰나 종목당 5 TR로 초과)."""
     fake = FakeWs([])
     client = KisWsClient(approval_key_fn=_fake_approval, on_tick=None, date_fn=lambda: "20260605")
     client._ws = fake            # 연결 상태 시뮬레이션
@@ -195,10 +197,10 @@ async def test_ensure_venue_swaps_trs_register_before_unregister():
     unreg = [f for f in frames if f["header"]["tr_type"] == "2"]
     assert {f["body"]["input"]["tr_id"] for f in reg} == {"H0NXASP0", "H0NXCNT0"}
     assert {f["body"]["input"]["tr_id"] for f in unreg} == {"H0STASP0", "H0STCNT0", "H0STMBC0"}
-    # register-before-unregister: 첫 등록 프레임이 첫 해제 프레임보다 앞선다.
+    # unregister-before-register: 첫 해제 프레임이 첫 등록 프레임보다 앞선다(상한 41 준수).
     first_reg = next(i for i, f in enumerate(frames) if f["header"]["tr_type"] == "1")
     first_unreg = next(i for i, f in enumerate(frames) if f["header"]["tr_type"] == "2")
-    assert first_reg < first_unreg
+    assert first_unreg < first_reg
     # 카운터 리셋 안 함(update_codes 선례) — 표시 전용 NXT 실패가 watchdog 재시작을
     # 유발하거나 status에 순간 거짓 sub_failed를 노출하지 않게 한다.
     assert (client.sub_expected, client.sub_acked) == (3, 3)

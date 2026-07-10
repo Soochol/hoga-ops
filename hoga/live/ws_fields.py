@@ -15,11 +15,14 @@ TR_TRADE_NXT = "H0NXCNT0"  # NXT 체결
 
 # 종목당 구독하는 실시간 TR 집합 — 사이징(live_session._PER_ACCOUNT_MAX)과 구독수
 # (ws_client.sub_expected)의 단일 진실원. 한 곳만 고치면 양쪽이 동기화돼 드리프트 불가.
-# TR을 빼면 연결당 등록 수가 줄어 더 많은 종목을 담을 수 있다(연결당 한도 ~32, 2026-06-10 실측).
+# TR을 빼면 연결당 등록 수가 줄어 더 많은 종목을 담을 수 있다(연결당 하드 상한 41 —
+# OPSP0008 MAX SUBSCRIBE OVER, 2026-07-10 실측; ADR-0101).
 TRS_KRX = (TR_ORDERBOOK, TR_TRADE, TR_MEMBER)
 TRS_NXT = (TR_ORDERBOOK_NXT, TR_TRADE_NXT)  # NXT는 호가+체결만(거래원 미구독)
-# 사이징은 worst-case(KRX 3 TR/종목) 기준 — 시분할이라 어느 시점이든 한 venue만
-# 구독하므로 계정당 등록 수는 max(len(TRS_KRX), len(TRS_NXT)) = 3을 넘지 않는다.
+# 사이징은 worst-case(KRX 3 TR/종목) 기준. 정상상태는 한 venue만 구독하므로 종목당
+# 3 TR이지만, venue 스왑(ws_client.ensure_venue)이 unregister-before-register라
+# 전환 찰나 구 venue를 먼저 비운다 — 그래서 스왑 점유도 종목당 3을 넘지 않아 상한
+# 41 안에 든다(register-first면 5로 초과했음, ADR-0101).
 TRS = TRS_KRX
 
 # tr_id → venue 태그. ws_frames가 WsTick.venue를 채우고 stream이 저장/표시 분기에 쓴다.

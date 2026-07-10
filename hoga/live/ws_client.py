@@ -157,9 +157,15 @@ class KisWsClient:
     async def ensure_venue(self, venue: str) -> None:
         """구독 TR세트를 목표 venue로 맞춘다(#524 시분할 스왑). 이미 그 venue면 no-op.
 
-        등록 먼저·해제 나중으로 수신 공백을 없앤다(전환 찰나 종목당 2 venue 점유 —
-        슬롯 여유 내). 미연결이면 self._trs만 갱신해 다음 (재)연결이 새 venue로
-        초기 구독한다. sub_lock으로 update_codes·초기 구독과 직렬화(wire≠상태 발산 방지)."""
+        해제 먼저·등록 나중(unregister-before-register) — 연결당 등록 상한 41
+        (OPSP0008 MAX SUBSCRIBE OVER, 2026-07-10 실측)을 지키기 위함이다.
+        register-first면 스왑 찰나 종목당 KRX3+NXT2=5 TR을 동시 점유해(13종목=65,
+        10종목=50) 41을 초과, 신 venue 등록 일부가 조용히 거부된다(재시도 없음 →
+        KRX 재등록분이 거부되면 정규장 캡처 구멍). 스왑 시각(08:50·15:31)은 저장창
+        (정규장 09:00-15:30) 밖이라 해제-후-등록의 찰나 공백은 캡처 무손실이다(ADR-0101).
+        update_codes의 remove-before-add와 동일 패턴. 미연결이면 self._trs만 갱신해
+        다음 (재)연결이 새 venue로 초기 구독한다. sub_lock으로 update_codes·초기
+        구독과 직렬화(wire≠상태 발산 방지)."""
         trs = F.trs_for_venue(venue)
         async with self._sub_lock:
             if trs == self._trs:
@@ -175,9 +181,10 @@ class KisWsClient:
             ws, approval = self._ws, self._approval
             if ws is None or approval is None:
                 return  # 미연결 — 다음 (재)연결이 self._trs로 초기 구독
-            # register-before-unregister: 새 venue 먼저 등록(공백 없음), 구 venue 해제.
-            await self._send_subscriptions(ws, approval, self._codes, tr_type="1", trs=trs)
+            # unregister-before-register: 구 venue 먼저 해제해 슬롯을 비우고(등록 상한
+            # 41 준수), 신 venue 등록. 찰나 공백은 저장창 밖이라 무해(docstring·ADR-0101).
             await self._send_subscriptions(ws, approval, self._codes, tr_type="2", trs=old_trs)
+            await self._send_subscriptions(ws, approval, self._codes, tr_type="1", trs=trs)
             _log.info("live.ws.venue_swapped venue=%s codes=%d", venue, len(self._codes))
 
     async def _send_subscriptions(
