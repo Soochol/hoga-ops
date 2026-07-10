@@ -106,6 +106,35 @@ def test_read_parquet_inverts_write_parquet(tmp_path: Path) -> None:
     assert rows == [ob1, ob2]
 
 
+def test_write_parquet_quantities_exceed_int32(tmp_path: Path) -> None:
+    """총잔량·개별 호가 잔량이 int32 max(2,147,483,647)를 넘는 고거래량/상한가-락
+    종목도 write→read 왕복이 깨지지 않아야 한다. 프로덕션 회귀: 252670(KODEX
+    인버스) 총잔량 2,366,893,147 이 int32 스키마의 pa.array(type=int32())에서
+    ArrowInvalid('Value ... too large to fit in C integer type')로 promote_api_today
+    를 죽였다. 상한가 락이면 물량이 한 호가에 몰려 bid_q1 도 int32 를 넘고, 델타는
+    부호 있는 하방 오버플로가 난다 — 셋 다 int64 로 커버되는지 검증한다."""
+    from hoga.tables.snapshots import read_parquet
+
+    big_tot = 2_366_893_147   # 실제 프로덕션 크래시 값 (> int32 max)
+    big_qty = 3_000_000_000   # 상한가 락 시 단일 호가 집중 물량 (> int32 max)
+    neg_delta = -3_000_000_000  # 부호 있는 델타의 하방 오버플로 (< int32 min)
+    ob = Orderbook(
+        ts_ms=90000435, seq=1,
+        ask_p=(25700,) + (0,) * 9,
+        ask_q=(big_qty,) + (0,) * 9,
+        ask_d=(neg_delta,) + (0,) * 9,
+        bid_p=(25650,) + (0,) * 9,
+        bid_q=(big_qty,) + (0,) * 9,
+        bid_d=(neg_delta,) + (0,) * 9,
+        tot_ask=big_tot, tot_ask_d=neg_delta,
+        tot_bid=big_tot, tot_bid_d=neg_delta,
+    )
+    out = tmp_path / "snapshots.parquet"
+    write_parquet([ob], out)  # int32 스키마였다면 여기서 ArrowInvalid
+    rows = read_parquet(out)
+    assert rows == [ob]       # 값 손실 없이 왕복(dataclass 전체 동등)
+
+
 def test_query_at_returns_api_model_for_latest_before(tmp_path: Path) -> None:
     obs = [
         PARSERS[2](_ob_parts(ts_ms=t, seq=i))
