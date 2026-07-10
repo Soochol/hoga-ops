@@ -41,6 +41,8 @@ export default function OrderbookTable({ snapshot }: Props) {
         // keys tied to rank (best = 1).
         <Row key={`a-${asks.length - i}`} side="ask" price={l.price} qty={l.qty} maxQty={maxQty} />
       ))}
+      {/* Divider marking the ask/bid boundary (best ask above, best bid below). */}
+      <div role="separator" className="border-t border-border" />
       {bids.map((l, i) => (
         <Row key={`b-${i + 1}`} side="bid" price={l.price} qty={l.qty} maxQty={maxQty} />
       ))}
@@ -61,7 +63,9 @@ function Row({
 }) {
   const widthPct = maxQty > 0 ? (qty / maxQty) * 100 : 0;
   const barBg     = side === 'ask' ? 'var(--bar-ask)' : 'var(--bar-bid)';
-  const priceColor = side === 'ask' ? 'text-price-down' : 'text-price-up';
+  // Price text colors swapped vs depth-bar side: ask prices use the up color,
+  // bid prices use the down color (depth bars keep their own ask/bid tint).
+  const priceColor = side === 'ask' ? 'text-price-up' : 'text-price-down';
   // Depth bar grows from the qty column (right) inward, with a 0.18 → 0
   // gradient fade. Matches the 2026-05-20 approved mockup
   // (docs/superpowers/designs/2026-05-20-replay-viewer.html lines 379-384).
