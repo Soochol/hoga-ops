@@ -129,19 +129,19 @@ function GroupHeader(props: {
   const itemClass =
     'w-full text-left px-3 py-1.5 text-sm text-fg hover:bg-bg-input-hover flex items-center gap-2 disabled:opacity-40 disabled:hover:bg-transparent';
   return (
-    <div className={`group sticky top-0 ${menuOpen ? 'z-20' : 'z-10'} flex items-center gap-1.5 px-3 py-1.5 text-sm font-semibold text-fg-dim bg-bg-card hover:bg-bg-input-hover`}>
-      {/* 그룹 드래그 핸들(관심종목과 동일 계약: ⠿, listeners-only, aria-hidden). 접기 chevron
-          왼쪽에 둔다. 수동 정렬 + 비검색일 때만 부착(정렬/필터 중엔 화면 순서가 folder.order 와
-          어긋나 드래그가 혼란 — ⋯ 위/아래 비활성과 동일 조건). */}
-      {props.dragHandle && (
-        <span ref={props.dragHandle.setActivatorNodeRef}
-          {...props.dragHandle.attributes}
-          {...props.dragHandle.listeners}
-          aria-hidden data-testid="heatmap-group-drag-handle"
-          className="cursor-grab select-none touch-none px-1 leading-none text-fg-dimmer">
-          ⠿
-        </span>
-      )}
+    // 별도 핸들 아이콘 없이 헤더 전체가 드래그 활성 영역(dragHandle 있을 때). dnd-kit
+    // PointerSensor(distance 5)가 클릭과 드래그를 구분하므로 chevron/⋯/라벨 클릭은 그대로
+    // 동작하고, 헤더를 5px 이상 끌면 그룹 드래그가 시작된다. attributes(role=button/tabindex)는
+    // 헤더 안 버튼들과 중첩 a11y 충돌을 피해 spread 하지 않는다(PointerSensor 전용, 키보드
+    // 드래그 미도입 — WatchlistDrawer 와 동일 포인터 전용 계약). data-testid 는 헤더에 둔다.
+    <div
+      ref={props.dragHandle?.setActivatorNodeRef}
+      {...(props.dragHandle?.listeners ?? {})}
+      data-testid="heatmap-group-header"
+      data-draggable={props.dragHandle ? '' : undefined}
+      className={`group sticky top-0 ${menuOpen ? 'z-20' : 'z-10'} flex items-center gap-1.5 px-3 py-1.5 text-sm font-semibold text-fg-dim bg-bg-card hover:bg-bg-input-hover ${
+        props.dragHandle ? 'cursor-grab select-none touch-none' : ''
+      }`}>
       <button type="button" aria-label={`${props.label} ${props.collapsed ? '펼치기' : '접기'}`}
         aria-expanded={!props.collapsed}
         onClick={props.onToggle} className="px-1 leading-none text-fg-dimmer hover:text-fg">
@@ -421,6 +421,7 @@ export function HeatmapDrawer() {
   // 정렬 취향은 페이지와 공유(heatmapPrefs). 행=sortMode, 그룹=groupSort.
   const sortMode = useHeatmapPrefsStore((s) => s.sortMode);
   const groupSort = useHeatmapPrefsStore((s) => s.groupSort);
+  const setGroupSort = useHeatmapPrefsStore((s) => s.setGroupSort);
 
   // 히트맵 엔트리는 code 유일(단일 folder_id)이지만 방어적으로 dedup.
   const codes = useMemo(() => [...new Set(data?.entries.map((e) => e.code) ?? [])], [data]);
@@ -459,8 +460,7 @@ export function HeatmapDrawer() {
   }, [data, groupSort, pctOf, query]);
 
   const isSearching = query.trim() !== '';
-  // 그룹 순서 조작(⋯ 위/아래·드래그)은 수동 정렬 + 비검색일 때만 — 정렬/필터 중엔 화면
-  // 순서가 folder.order 와 어긋나 조작이 혼란스럽다.
+  // ⋯ 위/아래 이동은 수동 정렬 + 비검색일 때만(정렬 중엔 folder.order 가 화면과 어긋나 애매).
   const canMoveGroups = groupSort === 'manual' && !isSearching;
   const folderCount = data?.folders.length ?? 0;
   const moveFolder = (folderId: string, dir: -1 | 1) => {
@@ -468,15 +468,22 @@ export function HeatmapDrawer() {
     if (ids) reorderFoldersM.mutate(ids);
   };
 
-  // 그룹 드래그 재정렬(관심종목 미러). 실폴더만 sortable, 표시 순서 = SortableContext items.
+  // 그룹 헤더 드래그 재정렬 — 검색 중이 아니면 정렬 모드와 무관하게 항상 가능. 실폴더만
+  // sortable, SortableContext items = 현재 화면 순서(등락률 정렬이면 그 순서). 드롭 시 화면
+  // 순서 기준으로 재배열한 뒤 groupSort 를 'manual' 로 전환 → 드래그한 순서가 바로 고정돼
+  // 보인다(등락률 정렬 상태로 드래그해도 "안 움직이는" 혼란 없음).
+  const groupDragEnabled = !isSearching;
   const sensors = useSensors(useSensor(PointerSensor, { activationConstraint: { distance: 5 } }));
-  const draggableFolderIds = canMoveGroups
+  const draggableFolderIds = groupDragEnabled
     ? visibleGroups.filter((g) => g.folder).map((g) => g.folder!.id)
     : [];
   const onGroupDragEnd = (ev: DragEndEvent) => {
     if (!ev.over) return;
     const r = resolveFolderDrag(draggableFolderIds, String(ev.active.id), String(ev.over.id));
-    if (r.kind === 'reorder') reorderFoldersM.mutate(r.orderedIds);
+    if (r.kind === 'reorder') {
+      reorderFoldersM.mutate(r.orderedIds);
+      if (groupSort !== 'manual') setGroupSort('manual'); // 드래그는 명시적 수동 정렬 의도
+    }
   };
 
   return (
@@ -561,8 +568,9 @@ export function HeatmapDrawer() {
                   )}
                 </>
               );
-              // 실폴더 + 드래그 가능 조건이면 SortableGroup 으로 감싸 ⠿ 핸들을 헤더에 전달.
-              return folder && canMoveGroups ? (
+              // 실폴더 + 드래그 가능(비검색)이면 SortableGroup 으로 감싸 헤더 전체를 드래그
+              // 활성 영역으로 만든다(핸들 아이콘 없음). 미분류·검색 중엔 일반 div.
+              return folder && groupDragEnabled ? (
                 <SortableGroup key={key} folderId={folder.id}>
                   {(dragHandle) => renderGroup(dragHandle)}
                 </SortableGroup>
