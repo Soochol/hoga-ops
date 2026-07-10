@@ -904,12 +904,16 @@ class LiveSettingsResponse(BaseModel):
     storage_policy: LiveStoragePolicy = "ws_plus_rest"
     program_trade_storage_enabled: bool = False
     kis_rest_bypass_enabled: bool = False
+    # 히트맵 종목을 KIS REST 30초 기록기에 합류시킬지(ADR-0097). 기본 True는
+    # ADR-0097 도입 당시의 무조건 합류 동작을 보존한다(끄면 히트맵 전용 수집만 중단).
+    heatmap_capture_enabled: bool = True
 
 
 class LiveSettingsUpdate(BaseModel):
     storage_policy: LiveStoragePolicy | None = None
     program_trade_storage_enabled: bool | None = None
     kis_rest_bypass_enabled: bool | None = None
+    heatmap_capture_enabled: bool | None = None
 
 
 SignalAlertSource = Literal["ws", "rest"]

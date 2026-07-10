@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { render, screen, waitFor } from '@testing-library/react';
+import { render, screen, waitFor, fireEvent } from '@testing-library/react';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import Settings from './Settings';
 import * as symbolsApi from '../api/symbols';
@@ -9,10 +9,60 @@ vi.mock('../config', () => ({
   loadConfig: () => Promise.resolve({ api_url: 'http://test' }),
 }));
 
+// The 데이터 수집 section reads/writes /api/live/settings via these hooks. Mock the
+// module so the toggle is deterministic and no network is touched. `liveSettingsState`
+// is mutable so individual tests can flip the wire value; `heatmapMutate` records PATCH.
+const { heatmapMutate, liveSettingsState } = vi.hoisted(() => ({
+  heatmapMutate: vi.fn(),
+  liveSettingsState: {
+    data: { heatmap_capture_enabled: true } as { heatmap_capture_enabled: boolean } | undefined,
+    isLoading: false,
+    isError: false,
+  },
+}));
+vi.mock('../api/liveSettings', () => ({
+  useLiveSettings: () => liveSettingsState,
+  usePatchLiveSettings: () => ({ mutate: heatmapMutate, isPending: false }),
+}));
+
 function renderWithQuery(ui: React.ReactElement) {
   const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } });
   return render(<QueryClientProvider client={qc}>{ui}</QueryClientProvider>);
 }
+
+/** Master-detail: click a left-nav item to reveal its detail panel.
+ *  fireEvent wraps in act() and flushes synchronously so callers can query
+ *  the revealed detail immediately. */
+function selectSection(id: string) {
+  fireEvent.click(screen.getByTestId(`settings-nav-${id}`));
+}
+
+describe('Settings — 사이드바 레이아웃', () => {
+  beforeEach(() => {
+    vi.restoreAllMocks();
+    localStorage.clear();
+    vi.spyOn(symbolsApi, 'getSymbolMasterInfo').mockResolvedValue({
+      count: 0, fetched_at_ms: null, status: 'unavailable', reason: 'symbol_master_not_initialized',
+    });
+  });
+
+  it('renders all section nav items with 앱 정보 selected by default', async () => {
+    renderWithQuery(<Settings />);
+    for (const id of ['general', 'theme', 'data', 'symbols', 'roadmap']) {
+      expect(screen.getByTestId(`settings-nav-${id}`)).toBeInTheDocument();
+    }
+    expect(screen.getByTestId('settings-nav-general')).toHaveAttribute('aria-current', 'true');
+    // Default detail = 앱 정보 → API URL row visible.
+    await waitFor(() => expect(screen.getByText('http://test')).toBeInTheDocument());
+  });
+
+  it('uses the feature page shell without repeating the nav page title', () => {
+    renderWithQuery(<Settings />);
+    expect(screen.queryByRole('heading', { name: 'Settings' })).toBeNull();
+    expect(screen.getByTestId('settings-page-primary')).toHaveClass('bg-bg-card');
+    expect(screen.getByTestId('settings-page-primary')).toHaveClass('border');
+  });
+});
 
 describe('Settings — Symbol Master section', () => {
   beforeEach(() => {
@@ -29,11 +79,9 @@ describe('Settings — Symbol Master section', () => {
     });
 
     renderWithQuery(<Settings />);
+    selectSection('symbols');
 
-    await waitFor(() => {
-      expect(screen.getByText(/Symbol Master/i)).toBeInTheDocument();
-    });
-    expect(screen.getByText('0')).toBeInTheDocument(); // count
+    expect(await screen.findByText('0')).toBeInTheDocument(); // count
     expect(screen.getByText(/아직 다운로드되지 않았습니다/)).toBeInTheDocument();
     expect(screen.getByRole('button', { name: /Update Now/i })).toBeEnabled();
   });
@@ -47,6 +95,7 @@ describe('Settings — Symbol Master section', () => {
     });
 
     renderWithQuery(<Settings />);
+    selectSection('symbols');
 
     await waitFor(() => {
       expect(screen.getByText('6,012')).toBeInTheDocument();
@@ -63,8 +112,12 @@ describe('Settings — Symbol Master section', () => {
       .mockResolvedValue({ symbols: [], status: 'fresh', fetched_at_ms: Date.now(), reason: null });
 
     renderWithQuery(<Settings />);
+    selectSection('symbols');
+    // The section mounts on select, so its symbols query starts here — wait for it
+    // to resolve (button enables) before clicking, else the disabled button eats it.
     const btn = await screen.findByRole('button', { name: /Update Now/i });
-    btn.click();
+    await waitFor(() => expect(btn).toBeEnabled());
+    fireEvent.click(btn);
 
     await waitFor(() => {
       expect(refreshSpy).toHaveBeenCalledOnce();
@@ -80,6 +133,7 @@ describe('Settings — Symbol Master section', () => {
     });
 
     renderWithQuery(<Settings />);
+    selectSection('symbols');
 
     await waitFor(() => {
       expect(screen.getByText('loading')).toBeInTheDocument();
@@ -102,6 +156,7 @@ describe('Settings — Symbol Master section', () => {
     });
 
     renderWithQuery(<Settings />);
+    selectSection('symbols');
 
     await waitFor(() => {
       expect(screen.getByText('6,012')).toBeInTheDocument();
@@ -117,30 +172,11 @@ describe('Settings — Symbol Master section', () => {
     });
 
     renderWithQuery(<Settings />);
+    selectSection('symbols');
 
-    await waitFor(() => {
-      expect(screen.getByText(/Symbol Master/i)).toBeInTheDocument();
-    });
+    expect(await screen.findByText('0')).toBeInTheDocument();
     expect(screen.queryByTestId('settings-force-retry-default')).toBeNull();
     expect(screen.queryByText(/force/i)).toBeNull();
-  });
-
-  it('uses the feature page shell without repeating the nav page title', async () => {
-    vi.spyOn(symbolsApi, 'getSymbolMasterInfo').mockResolvedValue({
-      count: 0,
-      fetched_at_ms: null,
-      status: 'unavailable',
-      reason: 'symbol_master_not_initialized',
-    });
-
-    renderWithQuery(<Settings />);
-
-    await waitFor(() => {
-      expect(screen.getByText(/Symbol Master/i)).toBeInTheDocument();
-    });
-    expect(screen.queryByRole('heading', { name: 'Settings' })).toBeNull();
-    expect(screen.getByTestId('settings-page-primary')).toHaveClass('bg-bg-card');
-    expect(screen.getByTestId('settings-page-primary')).toHaveClass('border');
   });
 
   it('does not render signal alert settings after moving them to the live settings modal', async () => {
@@ -152,12 +188,71 @@ describe('Settings — Symbol Master section', () => {
     });
 
     renderWithQuery(<Settings />);
+    selectSection('symbols');
 
-    await waitFor(() => {
-      expect(screen.getByText(/Symbol Master/i)).toBeInTheDocument();
-    });
+    await waitFor(() => expect(screen.getByText('fresh')).toBeInTheDocument());
     expect(screen.queryByText('시그널 알림')).toBeNull();
     expect(screen.queryByRole('switch', { name: '알림 사용' })).toBeNull();
+  });
+});
+
+describe('Settings — 데이터 수집 (히트맵 API 수집 토글)', () => {
+  beforeEach(() => {
+    vi.restoreAllMocks();
+    localStorage.clear();
+    heatmapMutate.mockReset();
+    liveSettingsState.data = { heatmap_capture_enabled: true };
+    liveSettingsState.isLoading = false;
+    liveSettingsState.isError = false;
+    vi.spyOn(symbolsApi, 'getSymbolMasterInfo').mockResolvedValue({
+      count: 0, fetched_at_ms: null, status: 'unavailable', reason: 'symbol_master_not_initialized',
+    });
+  });
+
+  it('shows the heatmap capture toggle checked when enabled', () => {
+    renderWithQuery(<Settings />);
+    selectSection('data');
+    const toggle = screen.getByRole('switch', { name: '히트맵 종목 API 수집' });
+    expect(toggle).toHaveAttribute('aria-checked', 'true');
+  });
+
+  it('reflects the disabled wire value', () => {
+    liveSettingsState.data = { heatmap_capture_enabled: false };
+    renderWithQuery(<Settings />);
+    selectSection('data');
+    expect(screen.getByRole('switch', { name: '히트맵 종목 API 수집' })).toHaveAttribute('aria-checked', 'false');
+  });
+
+  it('clicking the toggle PATCHes the inverted value', () => {
+    renderWithQuery(<Settings />);
+    selectSection('data');
+    fireEvent.click(screen.getByRole('switch', { name: '히트맵 종목 API 수집' }));
+    expect(heatmapMutate).toHaveBeenCalledWith({ heatmap_capture_enabled: false });
+  });
+
+  it('defaults to enabled and disables the toggle while settings are loading', () => {
+    liveSettingsState.data = undefined;
+    liveSettingsState.isLoading = true;
+    renderWithQuery(<Settings />);
+    selectSection('data');
+    const toggle = screen.getByRole('switch', { name: '히트맵 종목 API 수집' });
+    expect(toggle).toHaveAttribute('aria-checked', 'true'); // optimistic default
+    expect(toggle).toBeDisabled();
+  });
+
+  it('stays actionable (not disabled) when settings failed to load', () => {
+    // PATCH is partial (heatmap field only), so a GET failure must not lock the
+    // toggle — the user can still recover by toggling.
+    liveSettingsState.data = undefined;
+    liveSettingsState.isLoading = false;
+    liveSettingsState.isError = true;
+    renderWithQuery(<Settings />);
+    selectSection('data');
+    const toggle = screen.getByRole('switch', { name: '히트맵 종목 API 수집' });
+    expect(toggle).toBeEnabled();
+    expect(screen.getByText(/라이브 설정을 불러오지 못했습니다/)).toBeInTheDocument();
+    fireEvent.click(toggle);
+    expect(heatmapMutate).toHaveBeenCalledWith({ heatmap_capture_enabled: false });
   });
 });
 
@@ -171,9 +266,9 @@ describe('Settings — 테마 section', () => {
     });
   });
 
-  it('renders the three theme options with auto pressed by default', async () => {
+  it('renders the three theme options with auto pressed by default', () => {
     renderWithQuery(<Settings />);
-    await waitFor(() => expect(screen.getByText('테마')).toBeInTheDocument());
+    selectSection('theme');
     const auto = screen.getByRole('button', { name: '자동' });
     expect(auto).toHaveAttribute('aria-pressed', 'true');
     expect(screen.getByRole('button', { name: 'Obsidian' })).toHaveAttribute('aria-pressed', 'false');
@@ -182,8 +277,9 @@ describe('Settings — 테마 section', () => {
 
   it('clicking Ledger updates the store and aria-pressed', async () => {
     renderWithQuery(<Settings />);
-    const ledger = await screen.findByRole('button', { name: 'Ledger' });
-    ledger.click();
+    selectSection('theme');
+    const ledger = screen.getByRole('button', { name: 'Ledger' });
+    fireEvent.click(ledger);
     await waitFor(() => {
       expect(useThemePrefsStore.getState().themePreference).toBe('ledger');
     });

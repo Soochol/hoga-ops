@@ -206,6 +206,56 @@ async def test_storage_runtime_appends_heatmap_codes_as_rest_only_extras(
 
 
 @pytest.mark.asyncio
+async def test_storage_runtime_heatmap_capture_disabled_drops_heatmap_extras(
+    tmp_path,
+    monkeypatch,
+) -> None:
+    """heatmap_capture_enabled=False gates ONLY the heatmap extras — the
+    watchlist REST spillover is untouched (heatmap-only code drops out)."""
+    from hoga.api.heatmap import save_document as save_heatmap_document
+    from hoga.api.models import HeatmapDocument, HeatmapEntry
+
+    _patch_common(monkeypatch)
+    _seed_watchlist(tmp_path)
+    save_heatmap_document(
+        tmp_path,
+        HeatmapDocument(entries=[HeatmapEntry(code="005380", name="현대차")]),
+    )
+
+    class Hit:
+        def __init__(self, code: str) -> None:
+            self.code = code
+
+    monkeypatch.setattr(
+        "hoga.api.symbols.search",
+        lambda _query, limit=10_000: [
+            Hit("005930"), Hit("000660"), Hit("035420"), Hit("005380"),
+        ],
+    )
+    monkeypatch.setattr("hoga.live.coverage._PER_ACCOUNT_MAX", 1)
+    save_live_settings(
+        tmp_path,
+        LiveSettings(storage_policy="ws_plus_rest", heatmap_capture_enabled=False),
+    )
+    state = FakeStorageState()
+
+    snapshot = await sync_storage_runtime(
+        tmp_path,
+        state=state,
+        buffer=object(),  # type: ignore[arg-type]
+        date_fn=lambda: "20260710",
+        now_ms_fn=lambda: 0,
+        n_configured=1,
+    )
+
+    # Heatmap-only code 005380 is gated out; watchlist spillover survives.
+    assert snapshot.ws_targets == ("005930",)
+    assert snapshot.kis_api_targets == ("000660", "035420")
+    assert state.rest30_recorder is not None
+    assert state.rest30_recorder.targets == {"000660", "035420"}
+
+
+@pytest.mark.asyncio
 async def test_storage_runtime_ws_only_stops_existing_api_recorder(
     tmp_path,
     monkeypatch,

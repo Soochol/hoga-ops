@@ -99,6 +99,7 @@ describe('LiveSettingsSections (2단 nav+detail)', () => {
       storage_policy: 'ws_plus_rest',
       program_trade_storage_enabled: false,
       kis_rest_bypass_enabled: false,
+      heatmap_capture_enabled: true,
     });
     render(<LiveSettingsSections />, { wrapper: wrap(new QueryClient({ defaultOptions: { queries: { retry: false } } })) });
     fireEvent.click(screen.getByTestId('settings-nav-data-source'));
@@ -118,12 +119,14 @@ describe('LiveSettingsSections (2단 nav+detail)', () => {
       storage_policy: 'ws_plus_rest',
       program_trade_storage_enabled: false,
       kis_rest_bypass_enabled: false,
+      heatmap_capture_enabled: true,
     });
     vi.spyOn(liveSettingsApi, 'patchLiveSettings').mockResolvedValue({
       schema_version: 1,
       storage_policy: 'rest_only',
       program_trade_storage_enabled: false,
       kis_rest_bypass_enabled: false,
+      heatmap_capture_enabled: true,
     });
 
     render(<LiveSettingsSections />, { wrapper: wrap(new QueryClient({ defaultOptions: { queries: { retry: false } } })) });
@@ -157,6 +160,7 @@ describe('LiveSettingsSections (2단 nav+detail)', () => {
       storage_policy: 'ws_plus_rest',
       program_trade_storage_enabled: false,
       kis_rest_bypass_enabled: false,
+      heatmap_capture_enabled: true,
     });
 
     render(<LiveSettingsSections variant="study" />, { wrapper: wrap(new QueryClient({ defaultOptions: { queries: { retry: false } } })) });
@@ -180,12 +184,14 @@ describe('LiveSettingsSections (2단 nav+detail)', () => {
       storage_policy: 'ws_plus_rest',
       program_trade_storage_enabled: false,
       kis_rest_bypass_enabled: true,
+      heatmap_capture_enabled: true,
     });
     vi.spyOn(liveSettingsApi, 'getLiveSettings').mockResolvedValue({
       schema_version: 1,
       storage_policy: 'ws_plus_rest',
       program_trade_storage_enabled: false,
       kis_rest_bypass_enabled: false,
+      heatmap_capture_enabled: true,
     });
 
     render(<LiveSettingsSections />, { wrapper: wrap(new QueryClient({ defaultOptions: { queries: { retry: false } } })) });
@@ -211,6 +217,7 @@ describe('LiveSettingsSections (2단 nav+detail)', () => {
       storage_policy: 'ws_plus_rest',
       program_trade_storage_enabled: false,
       kis_rest_bypass_enabled: false,
+      heatmap_capture_enabled: true,
     });
     const apiCall = vi.spyOn(apiClient, 'apiCall')
       .mockResolvedValueOnce({
@@ -218,12 +225,14 @@ describe('LiveSettingsSections (2단 nav+detail)', () => {
         storage_policy: 'ws_plus_rest',
         program_trade_storage_enabled: false,
         kis_rest_bypass_enabled: false,
+        heatmap_capture_enabled: true,
       })
       .mockResolvedValueOnce({
         schema_version: 1,
         storage_policy: 'ws_plus_rest',
         program_trade_storage_enabled: true,
         kis_rest_bypass_enabled: false,
+        heatmap_capture_enabled: true,
       });
 
     render(<LiveSettingsSections />, { wrapper: wrap(qc) });
@@ -249,6 +258,7 @@ describe('LiveSettingsSections (2단 nav+detail)', () => {
       storage_policy: 'ws_only',
       program_trade_storage_enabled: false,
       kis_rest_bypass_enabled: false,
+      heatmap_capture_enabled: true,
     });
 
     render(<LiveSettingsSections />, { wrapper: wrap(qc) });

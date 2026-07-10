@@ -23,6 +23,7 @@ function makeWrapper(bypass = false) {
       storage_policy: 'ws_plus_rest',
       program_trade_storage_enabled: false,
       kis_rest_bypass_enabled: bypass,
+      heatmap_capture_enabled: true,
     } satisfies LiveSettings);
     return <QueryClientProvider client={qc}>{children}</QueryClientProvider>;
   };

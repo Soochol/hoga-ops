@@ -36,12 +36,14 @@ describe('KisRestUnavailableToastHost', () => {
       storage_policy: 'ws_plus_rest',
       program_trade_storage_enabled: false,
       kis_rest_bypass_enabled: true,
+      heatmap_capture_enabled: true,
     });
     renderWithClient({
       schema_version: 1,
       storage_policy: 'ws_plus_rest',
       program_trade_storage_enabled: false,
       kis_rest_bypass_enabled: false,
+      heatmap_capture_enabled: true,
     });
 
     act(() => {
@@ -70,6 +72,7 @@ describe('KisRestUnavailableToastHost', () => {
       storage_policy: 'ws_plus_rest',
       program_trade_storage_enabled: false,
       kis_rest_bypass_enabled: false,
+      heatmap_capture_enabled: true,
     });
 
     act(() => {
@@ -91,6 +94,7 @@ describe('KisRestUnavailableToastHost', () => {
       storage_policy: 'ws_plus_rest',
       program_trade_storage_enabled: false,
       kis_rest_bypass_enabled: false,
+      heatmap_capture_enabled: true,
     });
 
     act(() => {
@@ -118,6 +122,7 @@ describe('KisRestUnavailableToastHost', () => {
       storage_policy: 'ws_plus_rest',
       program_trade_storage_enabled: false,
       kis_rest_bypass_enabled: false,
+      heatmap_capture_enabled: true,
     });
 
     expect(screen.queryByRole('status')).toBeNull();
@@ -130,6 +135,7 @@ describe('KisRestUnavailableToastHost', () => {
       storage_policy: 'ws_plus_rest',
       program_trade_storage_enabled: false,
       kis_rest_bypass_enabled: true,
+      heatmap_capture_enabled: true,
     });
     const markSpy = vi.spyOn(kisRestMode, 'markLegacyKisRestBypassMigrated');
 
@@ -138,6 +144,7 @@ describe('KisRestUnavailableToastHost', () => {
       storage_policy: 'ws_plus_rest',
       program_trade_storage_enabled: false,
       kis_rest_bypass_enabled: false,
+      heatmap_capture_enabled: true,
     });
 
     await waitFor(() => expect(apiCall).toHaveBeenCalledWith('/api/live/settings', {
@@ -158,6 +165,7 @@ describe('KisRestUnavailableToastHost', () => {
       storage_policy: 'ws_plus_rest',
       program_trade_storage_enabled: false,
       kis_rest_bypass_enabled: false,
+      heatmap_capture_enabled: true,
     });
 
     await waitFor(() => expect(apiCall).toHaveBeenCalledWith('/api/live/settings', {

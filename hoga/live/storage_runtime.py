@@ -114,11 +114,16 @@ async def sync_storage_runtime(
     state.storage_policy = settings.storage_policy
     if n_configured is None:
         n_configured = len(kis_runtime.configured_account_ids(data_dir))
+    heatmap_extras = (
+        _compute_heatmap_rest_extras(data_dir)
+        if settings.heatmap_capture_enabled
+        else ()
+    )
     targets = plan_storage_targets(
         _compute_capture_candidates(data_dir),
         n_configured=n_configured,
         storage_policy=settings.storage_policy,
-        rest_extra_candidates=_compute_heatmap_rest_extras(data_dir),
+        rest_extra_candidates=heatmap_extras,
     )
     if bypass:
         targets = LiveStorageTargets(
