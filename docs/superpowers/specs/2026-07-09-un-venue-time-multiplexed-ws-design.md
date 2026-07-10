@@ -1,7 +1,9 @@
 # 통합(UN) venue 시분할 WS: KRX 정규장=KRX 구독, NXT 시간대=NXT 구독 — Design
 
 **Date**: 2026-07-09
-**Status**: Approved
+**Status**: Approved (슬롯 사이징 정정 2026-07-10 — ADR-0101)
+
+> **정정 (2026-07-10, ADR-0101):** 본 스펙의 슬롯 예산 서술("계정당 30건, 종목당 TR 2개(호가+체결)", "등록 먼저·해제 나중, 찰나 2배 점유, 여유 ~16/계정")은 틀렸다. KRX는 3 TR(호가+체결+**거래원**)이고, register-before-unregister 스왑은 찰나 종목당 **5 TR**(KRX3+NXT2)을 점유한다. 연결당 실측 상한은 **41**(OPSP0008)이라 10종목 스왑(50)이 이미 초과한다. ADR-0101이 스왑을 **unregister-before-register**로 고치고(찰나 점유 3 TR), 슬롯을 계정당 **13종목(39등록)**으로 올렸다. 아래 본문은 이력으로 보존한다.
 **Scope**: hoga/live/session_gate.py, hoga/live/ws_client.py, hoga/live/ws_fields.py, hoga/live/lifecycle.py, hoga/live/stream.py, frontend/src/live/liveVenuePolicy.ts, frontend/src/state/liveVenue.ts, frontend/src/live/useLiveBundle.ts, frontend/src/live/deriveCurrentPriceLine.ts
 
 ## Problem

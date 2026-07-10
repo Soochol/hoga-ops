@@ -49,7 +49,8 @@ def test_partition_stable_account_0_unchanged_when_appending_overflow():
 
 def test_per_account_max_derives_from_cap():
     # 계좌당 상한 = 등록 한도 // 코드당 구독수 (사이징 단일진실원).
-    assert _PER_ACCOUNT_MAX == 10
+    # 39//3 = 13 (ADR-0101: 등록 상한 41 실측 후 30→39 상향).
+    assert _PER_ACCOUNT_MAX == 13
     assert _PER_ACCOUNT_MAX == KIS_WS_MAX_REGISTRATIONS // TRS_PER_CODE
 
 
