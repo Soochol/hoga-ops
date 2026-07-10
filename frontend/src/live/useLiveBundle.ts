@@ -224,8 +224,14 @@ export function overlayLiveTradesOnCalendarCandles(
     }
   }
 
-  for (const [, group] of newBuckets) {
-    group.sort((a, b) => a.tMs - b.tMs);
+  // 그룹 내부는 tMs 정렬, 그룹 간에도 앵커(첫 체결 tMs) 오름차순으로 append 한다.
+  // live.trade 버퍼는 시간순이라 삽입 순서가 대개 오름차순이지만, 버퍼 시간 역전·
+  // 자정 초과로 미래 버킷이 2개 이상 생기면 ts_ms 비오름차순이 될 수 있다. lwc
+  // setData 는 오름차순을 가정하므로 방어적으로 정렬(분봉 경로 byBucket sort 와 대칭).
+  const sortedNewBuckets = Array.from(newBuckets.values());
+  for (const group of sortedNewBuckets) group.sort((a, b) => a.tMs - b.tMs);
+  sortedNewBuckets.sort((a, b) => a[0].tMs - b[0].tMs);
+  for (const group of sortedNewBuckets) {
     out = out ?? [...candles];
     out.push({
       ts_ms: regularSessionOpenMs(realMsToYyyymmdd(group[0].tMs)),

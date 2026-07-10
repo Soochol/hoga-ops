@@ -471,6 +471,18 @@ describe('overlayLiveTradesOnCalendarCandles', () => {
     expect(un[0]).toMatchObject({ close: 70150 });
   });
 
+  it('D: appended new-day candles stay ts_ms-ascending even if buffer trades are out of order', () => {
+    const candles = [lastCandle()]; // 2026-05-27
+    // 버퍼가 시간 역전(내일 체결이 모레 체결보다 뒤): append 순서 ≠ 시간순.
+    const dayAfter = BASE + 2 * DAY + 30_000; // 2026-05-29
+    const nextDay = BASE + DAY + 30_000; // 2026-05-28
+    const out = overlayLiveTradesOnCalendarCandles(candles, [snap(dayAfter, 72000, 1), snap(nextDay, 71000, 1)], 'D');
+    expect(out).toHaveLength(3);
+    expect(out.map((c) => c.ts_ms)).toEqual([...out.map((c) => c.ts_ms)].sort((a, b) => a - b));
+    expect(out[1].ts_ms).toBe(1779926400000); // 05-28 먼저
+    expect(out[2].ts_ms).toBe(1780012800000); // 05-29 나중
+  });
+
   it('D: buckets by KST date, so a UTC-previous-day trade still lands on the same KST day', () => {
     const candles = [lastCandle()]; // 2026-05-27 09:00 KST
     // 2026-05-27 00:30 KST = 2026-05-26 15:30 UTC. Same KST day as the tail.
