@@ -1014,16 +1014,20 @@ class KisEndpointsMixin:
     # fetch_orderbook (FHKST01010200, inquire-asking-price-exp-ccn)
     # ------------------------------------------------------------------
 
-    async def fetch_orderbook(self, code: str) -> KisOrderbook:
+    async def fetch_orderbook(
+        self, code: str, *, venue: KisVenue = _DEFAULT_KIS_VENUE
+    ) -> KisOrderbook:
         """Fetch 10-level real-time orderbook for *code* (e.g. '005930').
 
         ADR-0067 보는종목 표시폴러용. _get_with_rate_retry·토큰버킷 재사용.
+        venue는 시분할 표시폴러용(ADR-0099) — 기본 KRX("J"), 장전/장후 NXT("NX").
+        FHKST01010200은 J/NX/UN div 3종 모두 수용(2026-07-11 실측).
         """
         body = await self._get(
             path="/uapi/domestic-stock/v1/quotations/inquire-asking-price-exp-ccn",
             tr_id="FHKST01010200",
             params={
-                "fid_cond_mrkt_div_code": _STOCK_MRKT_DIV,
+                "fid_cond_mrkt_div_code": kis_venue_div(venue),
                 "fid_input_iscd": code,
             },
         )

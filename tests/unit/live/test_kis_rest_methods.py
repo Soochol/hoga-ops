@@ -58,6 +58,30 @@ async def test_fetch_orderbook_parses_real_kis_fixture(tmp_path: Path) -> None:
         await client.aclose()
 
 
+@pytest.mark.asyncio
+@pytest.mark.parametrize("venue,expected_div", [("KRX", "J"), ("NXT", "NX"), ("UN", "UN")])
+async def test_fetch_orderbook_threads_venue_div(
+    tmp_path: Path, venue: str, expected_div: str
+) -> None:
+    """venue가 fid_cond_mrkt_div_code로 매핑돼 요청에 실린다(ADR-0099 시분할).
+    FHKST01010200이 J/NX/UN 3종을 수용함은 2026-07-11 실측."""
+    sample = _fixture("quote_005930.json")
+    seen: dict[str, str] = {}
+
+    def handler(req: httpx.Request) -> httpx.Response:
+        if req.url.path == "/oauth2/tokenP":
+            return httpx.Response(200, json={"access_token": "T", "expires_in": 86400})
+        seen["div"] = req.url.params.get("fid_cond_mrkt_div_code", "")
+        return httpx.Response(200, json=sample)
+
+    client = _make_client(handler, tmp_path)
+    try:
+        await client.fetch_orderbook("005930", venue=venue)  # type: ignore[arg-type]
+        assert seen["div"] == expected_div
+    finally:
+        await client.aclose()
+
+
 # ---------------------------------------------------------------------------
 # Task 2.2: fetch_trades (inquire-time-itemconclusion, FHPST01060000)
 # ---------------------------------------------------------------------------

@@ -131,6 +131,17 @@ class TestObToSnapshot:
         assert result is not None
         assert result["orderbook"] is not None
 
+    def test_venue_omitted_by_default_preserves_storage_schema(self):
+        """venue 미전달(저장 레코더 경로)이면 payload에 'venue' 키가 없다 —
+        디스크 JSONL 스키마 불변 가드(ADR-0099)."""
+        snap = ob_to_snapshot(_make_orderbook(), phase="regular")
+        assert "venue" not in snap.payload
+
+    def test_venue_included_when_provided(self):
+        """venue 전달(시분할 표시폴러)이면 payload에 실려 WS 경로와 동일 shape(ADR-0099)."""
+        snap = ob_to_snapshot(_make_orderbook(), phase="closed", venue="NXT")
+        assert snap.payload["venue"] == "NXT"
+
 
 # ---------------------------------------------------------------------------
 # trades_to_snapshots
