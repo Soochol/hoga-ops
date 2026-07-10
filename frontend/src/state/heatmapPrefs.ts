@@ -2,7 +2,7 @@ import { create } from 'zustand';
 import type { SortMode, GroupSort } from '../heatmap/heat';
 import { persistJson, readJsonObject } from './persist';
 
-export const SORT_MODES = ['change', 'manual'] as const;
+export const SORT_MODES = ['manual', 'desc', 'asc'] as const;
 const STORAGE_KEY = 'heatmap.sortMode.v1';
 
 export const GROUP_SORTS = ['manual', 'desc', 'asc'] as const;
@@ -17,6 +17,8 @@ interface Store {
 
 function readStorage(): SortMode | null {
   const p = readJsonObject(STORAGE_KEY);
+  // 구 2-상태 값 마이그레이션: 'change'(등락률↓) → 'desc'. 옛 설정을 조용히 잃지 않는다.
+  if (p.sortMode === 'change') return 'desc';
   return SORT_MODES.includes(p.sortMode as SortMode) ? (p.sortMode as SortMode) : null;
 }
 

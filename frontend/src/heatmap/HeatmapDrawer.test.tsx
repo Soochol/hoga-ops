@@ -255,24 +255,32 @@ describe('HeatmapDrawer', () => {
     expect(await screen.findByText('검색 결과 없음')).toBeInTheDocument();
   });
 
-  // --- 정렬 (페이지와 heatmapPrefs 공유) ---
-  it('행 등락률↓ 토글은 공유 스토어(sortMode)를 갱신하고 그룹 내 행을 재정렬한다', async () => {
-    // f1: 에코프로(000001)=+1%, LG엔솔(000002)=+9% → 등락률↓ 이면 000002 먼저.
+  // --- 정렬 (단일 아이콘 순환 버튼, 페이지와 heatmapPrefs 공유) ---
+  it('종목 정렬 아이콘은 기본→내림→오름→기본 순환하며 스토어(sortMode)와 행을 재정렬한다', async () => {
+    // f1: 에코프로(000001)=+1%, LG엔솔(000002)=+9%.
     quotesHolder.map = new Map([
       ['000001', { change_pct: 1, price: 100, change_won: 1 }],
       ['000002', { change_pct: 9, price: 100, change_won: 9 }],
     ]);
     wrap(<HeatmapDrawer />);
     await screen.findByTestId('heatmap-drawer-row-000001');
-    // manual(기본): 저장 순서 000001, 000002
+    // manual(기본): 저장 순서
     expect(renderedRowCodes().slice(0, 2)).toEqual(['000001', '000002']);
-    fireEvent.click(screen.getByRole('button', { name: '행 등락률 내림차순 정렬' }));
-    // 페이지 공유의 근거: 스토어가 갱신됨
-    expect(useHeatmapPrefsStore.getState().sortMode).toBe('change');
+    const btn = screen.getByRole('button', { name: '종목 정렬' });
+    // 1클릭 → desc(내림): +9 먼저
+    fireEvent.click(btn);
+    expect(useHeatmapPrefsStore.getState().sortMode).toBe('desc'); // 페이지 공유의 근거
     await waitFor(() => expect(renderedRowCodes().slice(0, 2)).toEqual(['000002', '000001']));
+    // 2클릭 → asc(오름): +1 먼저
+    fireEvent.click(btn);
+    expect(useHeatmapPrefsStore.getState().sortMode).toBe('asc');
+    await waitFor(() => expect(renderedRowCodes().slice(0, 2)).toEqual(['000001', '000002']));
+    // 3클릭 → manual(기본)로 복귀
+    fireEvent.click(btn);
+    expect(useHeatmapPrefsStore.getState().sortMode).toBe('manual');
   });
 
-  it('그룹 등락률↓ 토글은 공유 스토어(groupSort)를 갱신하고 그룹을 재정렬한다', async () => {
+  it('그룹 정렬 아이콘은 순환하며 스토어(groupSort)와 그룹을 재정렬한다', async () => {
     // f1 평균 +1, f2 평균 +9 → desc 이면 반도체(f2)가 2차전지(f1)보다 앞.
     quotesHolder.map = new Map([
       ['000001', { change_pct: 1, price: 100, change_won: 1 }],
@@ -282,9 +290,13 @@ describe('HeatmapDrawer', () => {
     wrap(<HeatmapDrawer />);
     await screen.findByTestId('heatmap-drawer-row-000001');
     expect(renderedGroupLabels().slice(0, 2)).toEqual(['2차전지', '반도체']);
-    fireEvent.click(screen.getByRole('button', { name: '그룹을 평균 등락률 높은 순으로' }));
+    const btn = screen.getByRole('button', { name: '그룹 정렬' });
+    fireEvent.click(btn); // → desc
     expect(useHeatmapPrefsStore.getState().groupSort).toBe('desc');
     await waitFor(() => expect(renderedGroupLabels().slice(0, 2)).toEqual(['반도체', '2차전지']));
+    fireEvent.click(btn); // → asc: f1(+1)이 f2(+9)보다 앞
+    expect(useHeatmapPrefsStore.getState().groupSort).toBe('asc');
+    await waitFor(() => expect(renderedGroupLabels().slice(0, 2)).toEqual(['2차전지', '반도체']));
   });
 
   it('그룹 정렬 활성 시 ⋯ 위/아래 이동은 비활성', async () => {

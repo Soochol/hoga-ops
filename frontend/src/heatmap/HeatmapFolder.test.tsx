@@ -19,7 +19,7 @@ const quotes = new Map<string, LiveQuote>([
 
 it('폴더명 + 평균 등락률 표시, change 모드는 등락률 내림차순', () => {
   render(<HeatmapFolder folder={folder} entries={entries} quoteByCode={quotes}
-    sortMode="change" onPick={() => {}} />);
+    sortMode="desc" onPick={() => {}} />);
   expect(screen.getByText('반도체')).toBeInTheDocument();
   expect(screen.getByText('+5.0%')).toBeInTheDocument(); // (2+8)/2
   const avgEl = screen.getByText('+5.0%');
@@ -52,7 +52,7 @@ it('미분류(folder=null) 헤더도 자체 평균 틴트(무분기, G8)', () =>
 it('평면 보드(L3-B) 좌측 스파인 + 헤더 평균 틴트(#3): 폴더는 카드 대신 좌측 스파인, 헤더는 평균 등락 비례 배경', () => {
   const { container } = render(
     <HeatmapFolder folder={folder} entries={entries} quoteByCode={quotes}
-      sortMode="change" onPick={() => {}} />,
+      sortMode="desc" onPick={() => {}} />,
   );
   // L3-B: 폴더 루트 — 카드 배경·외곽 테두리 제거, 좌측 중립 스파인
   const root = container.querySelector('#heatmap-folder-f1') as HTMLElement;
