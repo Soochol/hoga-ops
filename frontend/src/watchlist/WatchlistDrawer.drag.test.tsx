@@ -88,19 +88,20 @@ describe('WatchlistDrawer drag wiring', () => {
     expect(h.onPointerDown).toHaveBeenCalledOnce();
   });
 
-  it('wires drag handles for every folder group, not only the first group', async () => {
+  it('makes every folder group header draggable (핸들 아이콘 없이 헤더 전체), not only the first', async () => {
     const qc = new QueryClient({ defaultOptions: { queries: { retry: false }, mutations: { retry: false } } });
     render(<WatchlistDrawer />, { wrapper: wrap(qc) });
     await waitFor(() => expect(screen.getByText('장기')).toBeInTheDocument());
 
-    const handles = screen.getAllByTestId('group-drag-handle');
-    expect(handles).toHaveLength(2);
+    // 그룹 헤더 자체가 드래그 활성 영역(data-draggable). 실폴더 2개.
+    const headers = screen.getAllByTestId('watchlist-group-header').filter((el) => el.hasAttribute('data-draggable'));
+    expect(headers).toHaveLength(2);
 
-    fireEvent.pointerDown(handles[0]);
-    fireEvent.pointerDown(handles[1]);
+    fireEvent.pointerDown(headers[0]);
+    fireEvent.pointerDown(headers[1]);
     expect(h.onPointerDown).toHaveBeenCalledTimes(2);
-    expect(h.setActivatorNodeRef).toHaveBeenCalledWith(handles[0]);
-    expect(h.setActivatorNodeRef).toHaveBeenCalledWith(handles[1]);
+    expect(h.setActivatorNodeRef).toHaveBeenCalledWith(headers[0]);
+    expect(h.setActivatorNodeRef).toHaveBeenCalledWith(headers[1]);
   });
 
   it('entry-drag onDragEnd → reorderEntries(folderId, orderedCodes)', async () => {
