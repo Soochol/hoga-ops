@@ -115,6 +115,20 @@ describe('HeatmapDrawer', () => {
     expect(screen.getByTestId('heatmap-drawer-row-000004')).toBeInTheDocument();
   });
 
+  it('그룹 헤더에 평균 등락률(비가중)을 표시; 시세 결측이면 미표시', async () => {
+    // f1: +2%, +8% → 평균 +5.00%. f2(000003): 시세 없음 → 미표시.
+    quotesHolder.map = new Map([
+      ['000001', { change_pct: 2, price: 100, change_won: 2 }],
+      ['000002', { change_pct: 8, price: 100, change_won: 8 }],
+    ]);
+    wrap(<HeatmapDrawer />);
+    await screen.findByTestId('heatmap-drawer-row-000001');
+    expect(screen.getByText('+5.00%')).toBeInTheDocument();
+    // 시세가 하나도 없는 그룹(반도체 f2) 헤더엔 등락률 텍스트가 없다.
+    const semi = screen.getByRole('button', { name: '반도체 1' }).closest('.group')!;
+    expect(within(semi as HTMLElement).queryByText(/%$/)).toBeNull();
+  });
+
   it('row click jumps to the chart via useJumpToLive(code, name)', async () => {
     wrap(<HeatmapDrawer />);
     const row = await screen.findByTestId('heatmap-drawer-row-000001');

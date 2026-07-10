@@ -21,6 +21,7 @@ import { HeatmapRowMenu } from './HeatmapRowMenu';
 import { FolderAddButton } from './FolderAddButton';
 import { QuoteSortIcon } from '../rightrail/QuoteSortIcon';
 import { quoteSortModeDescription } from '../rightrail/quoteSortDescription';
+import { priceDirClass } from '../ui/priceDir';
 import { filterGroups } from './filterGroups';
 import { sortEntries, avgPct, orderFolderGroups, makePctOf, toQuoteSortMode, type SortMode } from './heat';
 import {
@@ -75,6 +76,7 @@ function AnchoredMenu({ label, children }: { label: string; children: React.Reac
  */
 function GroupHeader(props: {
   label: string; count: number; collapsed: boolean;
+  avg?: number | null;
   onToggle: () => void;
   onRename?: () => void;
   onDelete?: () => void;
@@ -102,6 +104,13 @@ function GroupHeader(props: {
         <span className="truncate">{props.label}</span>
         <span className="flex-none text-xs font-normal text-fg-dimmer">{props.count}</span>
       </button>
+      {/* 그룹 평균 등락률(비가중, 시세 도착 종목만; 전부 결측이면 미표시). 방향색만 —
+          배경 틴트는 없다(섹터 스트립과 달리 드로어는 숫자만). 정렬키(avgPct)와 동일값. */}
+      {props.avg != null && (
+        <span className={`flex-none text-xs font-normal font-mono tabular-nums ${priceDirClass(props.avg)}`}>
+          {`${props.avg > 0 ? '+' : ''}${props.avg.toFixed(2)}%`}
+        </span>
+      )}
       {props.trailing}
       {props.onRename && (
         <div className="relative" ref={menuRef}>
@@ -427,6 +436,7 @@ export function HeatmapDrawer() {
           return (
             <div key={key}>
               <GroupHeader label={label} count={g.entries.length} collapsed={isCollapsed}
+                avg={avgPct(g.entries, pctOf)}
                 onToggle={() => toggle(key)}
                 onRename={folder ? () => setRenameTarget({ id: folder.id, name: folder.name }) : undefined}
                 onDelete={folder ? () => deleteM.mutate(folder.id) : undefined}
