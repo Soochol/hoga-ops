@@ -475,11 +475,17 @@ async def test_past_candles_partial_failure_kis_api_error(tmp_path) -> None:
 
 
 @pytest.mark.asyncio
-async def test_past_candles_fetches_uncached_dates_concurrently(tmp_path) -> None:
-    """spec 2026-06-08 §4: 미캐시 과거 날짜는 동시 fetch(상한 3) — 순차 구현은
+async def test_past_candles_fetches_uncached_dates_concurrently(tmp_path, monkeypatch) -> None:
+    """spec 2026-06-08 §4: 미캐시 과거 날짜는 동시 fetch — 순차 구현은
     max_inflight==1이라 실패한다. 완료 순서를 의도적으로 뒤섞어(늦은 날짜가
-    빨리 응답) 응답 candles의 날짜 오름차순 보장(§5 테스트 4)도 함께 핀한다."""
+    빨리 응답) 응답 candles의 날짜 오름차순 보장(§5 테스트 4)도 함께 핀한다.
+    단일 계정(KIS 키 미설정)이라 계정 비례 상한(ADR-0100)은 3이다."""
     import asyncio as _asyncio
+
+    # 단일 계정 확정 — 개발자 env에 KIS 키가 유출돼도 상한이 3으로 결정론적.
+    for _name in ("KIS_APP_KEY", "KIS_APP_SECRET", "KIS_APP_KEY_2",
+                  "KIS_APP_SECRET_2", "KIS_APP_KEY_3", "KIS_APP_SECRET_3"):
+        monkeypatch.delenv(_name, raising=False)
 
     class _SlowFakeKis:
         def __init__(self):
@@ -510,10 +516,28 @@ async def test_past_candles_fetches_uncached_dates_concurrently(tmp_path) -> Non
         assert r.status_code == 200
         body = r.json()
     assert fake.max_inflight >= 2, "병렬화 안 됨 — 순차 fetch"
-    assert fake.max_inflight <= 3, "동시 상한(_PAST_CANDLES_CONCURRENCY=3) 초과"
+    assert fake.max_inflight <= 3, "단일 계정 동시 상한(계정당 3, ADR-0100) 초과"
     t_list = [cd["t_ms"] for cd in body["candles"]]
     assert t_list == sorted(t_list), "응답 candles가 날짜 오름차순이 아님"
     assert body["fresh_dates"] == [f"2026050{i}" for i in range(1, 9)]
+
+
+def test_past_candles_concurrency_scales_per_account(tmp_path, monkeypatch) -> None:
+    """past-candles 동시 상한은 configured 계정 수 비례 (ADR-0100): 계정당 3슬롯,
+    상한 12. REST 유량이 앱키별 독립이라 계정 수가 곧 예산 배수다."""
+    from hoga.live import api as live_api
+
+    def _fake_ids(n: int):
+        return lambda _data_dir: list(range(n))
+
+    monkeypatch.setattr(live_api.kis_runtime, "configured_account_ids", _fake_ids(1))
+    assert live_api._past_candles_concurrency(tmp_path) == 3, "단일 계정 = 3 (회귀 가드)"
+    monkeypatch.setattr(live_api.kis_runtime, "configured_account_ids", _fake_ids(3))
+    assert live_api._past_candles_concurrency(tmp_path) == 9, "3계정 = 9 (예산 3배)"
+    monkeypatch.setattr(live_api.kis_runtime, "configured_account_ids", _fake_ids(5))
+    assert live_api._past_candles_concurrency(tmp_path) == 12, "5계정 = 12 (상한 clamp)"
+    monkeypatch.setattr(live_api.kis_runtime, "configured_account_ids", _fake_ids(0))
+    assert live_api._past_candles_concurrency(tmp_path) == 3, "계정 0 = 3 (하한, 크래시 방지)"
 
 
 @pytest.mark.asyncio
