@@ -1901,8 +1901,8 @@ describe('LiveChartRoot lazy fetch trigger', () => {
     // Axis with yesterday + today. lightweight-charts emits negative
     // logical.from when the visible-range origin is past the leftmost
     // loaded bar (fractional bar index can go negative beyond the data).
-    // Handler should prepend one stepChunkDays('1m')=5 calendar-day chunk
-    // (fixed 3-trading-day step, weekend-safe).
+    // Handler should prepend one step of ~STEP_CANDLE_TARGET(50) candles —
+    // 1m floors to 1 trading day, weekend-skipped (subtractWeekdaysKst).
     const handlers: Array<(r: unknown) => void> = [];
     vi.mocked(createChartEx).mockImplementationOnce(() => buildChartMockCapturing(handlers) as any);
 
@@ -1923,8 +1923,8 @@ describe('LiveChartRoot lazy fetch trigger', () => {
       vi.advanceTimersByTime(200);
     });
 
-    // currentEarliest = '20260526', minus stepChunkDays('1m')=5 → '20260521'.
-    expect(useLivePageStore.getState().historicalFromDate).toBe('20260521');
+    // currentEarliest = '20260526'(화), minus 1 trading day → '20260525'(월).
+    expect(useLivePageStore.getState().historicalFromDate).toBe('20260525');
   });
 
   it('does NOT fire extendHistoricalRange before any candle has loaded (cold-load empty chart)', () => {
@@ -2040,7 +2040,7 @@ describe('LiveChartRoot lazy fetch trigger', () => {
     });
 
     // candles>0(TWO_SEGMENT_BUNDLE) → 가드 통과 → 자동으로 한 청크 백필.
-    expect(useLivePageStore.getState().historicalFromDate).toBe('20260521');
+    expect(useLivePageStore.getState().historicalFromDate).toBe('20260525');
   });
 
   it('bases next chunk on historicalFromDate (not axis) when axis did not advance', () => {
@@ -2071,11 +2071,11 @@ describe('LiveChartRoot lazy fetch trigger', () => {
       vi.advanceTimersByTime(200);
     });
 
-    // base = historicalFromDate '20260519' (earlier than axisEarliest
-    // '20260526'), minus 5 → '20260514'. If the trigger had re-based on
-    // axis instead, it would compute '20260521' and the store guard would
-    // reject that as not strictly earlier than '20260519'.
-    expect(useLivePageStore.getState().historicalFromDate).toBe('20260514');
+    // base = historicalFromDate '20260519'(화) (earlier than axisEarliest
+    // '20260526'), minus 1 trading day → '20260518'(월). If the trigger had
+    // re-based on axis instead, it would compute '20260525' and the store
+    // guard would reject that as not strictly earlier than '20260519'.
+    expect(useLivePageStore.getState().historicalFromDate).toBe('20260518');
   });
 
   it('fires extendHistoricalRange on D timeframe when logical from goes negative', () => {
@@ -2105,10 +2105,9 @@ describe('LiveChartRoot lazy fetch trigger', () => {
       vi.advanceTimersByTime(200);
     });
 
-    // D-timeframe chunk: stepChunkDays('D')=350 calendar days (~1 year).
-    // axis.segments[0] = '20260526', minus 350 → '20250610'
-    // (crosses year boundary into 2025).
-    expect(useLivePageStore.getState().historicalFromDate).toBe('20250610');
+    // D-timeframe chunk: stepChunkDays('D')=70 calendar days (50 candles).
+    // axis.segments[0] = '20260526', minus 70 → '20260317'.
+    expect(useLivePageStore.getState().historicalFromDate).toBe('20260317');
   });
 
   it('does NOT fire extendHistoricalRange when logical from is non-negative', () => {
@@ -2170,7 +2169,9 @@ describe('LiveChartRoot lazy fetch trigger', () => {
 // logical-range handler and returning controllable range getters.
 describe('LiveChartRoot historical-prepend viewport preservation', () => {
   beforeEach(() => {
-    useLivePageStore.setState({ historicalFromDate: null });
+    // candleTimeframe도 리셋 — D 예산 테스트가 'D'를 남기면 뒤의 1m 테스트의
+    // 3b 디바운스 타이머가 타임프레임 불일치로 dispatch를 반려한다.
+    useLivePageStore.setState({ historicalFromDate: null, candleTimeframe: '1m' });
     vi.useFakeTimers();
     vi.setSystemTime(TODAY_OPEN_MS);
   });
@@ -2684,30 +2685,36 @@ describe('LiveChartRoot historical-prepend viewport preservation', () => {
     expect(ts.setVisibleLogicalRange).toHaveBeenLastCalledWith({ from: 0, to: 130 });
   });
 
-  // ── 진행 루프(스텝 2..N): isExtending falling edge + 빈영역 → 다음 스텝 자가 dispatch ──
-  // makeTs는 STABLE ts를 돌려주므로 per-test로 getVisibleLogicalRange().from을
-  // 덮어 viewport 상태(빈영역/꽉 참)를 제어한다. bundle은 rerender 사이 동결이라
-  // 복원 effect([chart,bundle,axis])가 재실행되지 않아 우리가 덮은 from을 그대로 읽는다.
-  it('dispatches the next step on isExtending falling edge while whitespace remains', () => {
+  // ── 진행 루프(스텝 2..N): 제스처 예산 모델 — 트리거(3b)가 예산을 동결하고
+  // falling edge마다 소진하며 완주한다. 3a는 fill 중 뷰포트를 재측정하지 않으므로
+  // 테스트는 3b 이벤트로 fill을 먼저 수립한 뒤 isExtending을 토글한다.
+  it('runs the frozen gesture budget across isExtending falling edges, then stops', () => {
     useLivePageStore.setState({ historicalFromDate: '20260521' });
     const handlers: Array<(r: unknown) => void> = [];
     const ts = makeTs(handlers);
-    ts.getVisibleLogicalRange = vi.fn(() => ({ from: -50, to: 100 })); // 빈영역 남음
+    ts.getVisibleLogicalRange = vi.fn(() => ({ from: -500, to: 100 })); // 빈영역
     vi.mocked(createChartEx).mockImplementationOnce(() => buildStableCapturingMock(ts) as any);
 
-    const { rerender } = render(
+    const props = (ext: boolean) => (
       <LiveChartRoot code="005930" timeframe="1m" bundle={TWO_SEGMENT_BUNDLE}
-        clampEngaged={false} isPastCandlesLoading={false} isExtending={true} />,
-      { wrapper },
+        clampEngaged={false} isPastCandlesLoading={false} isExtending={ext} />
     );
+    const { rerender } = render(props(false), { wrapper });
+    // 트리거: 빈공간 500바 (1m 스텝당 390봉) → 예산 ceil(500/390)=2, 스텝 1.
     act(() => {
-      rerender(
-        <LiveChartRoot code="005930" timeframe="1m" bundle={TWO_SEGMENT_BUNDLE}
-          clampEngaged={false} isPastCandlesLoading={false} isExtending={false} />,
-      );
+      handlers.forEach((h) => h({ from: -500, to: 100 }));
+      vi.advanceTimersByTime(200);
     });
-    // cur '20260521' − stepChunkDays('1m')=5 → '20260516'.
-    expect(useLivePageStore.getState().historicalFromDate).toBe('20260516');
+    // 스텝 1: '20260521'(목) − 1거래일 → '20260520'(수).
+    expect(useLivePageStore.getState().historicalFromDate).toBe('20260520');
+
+    act(() => { rerender(props(true)); });
+    act(() => { rerender(props(false)); }); // falling edge → 스텝 2(예산 소진)
+    expect(useLivePageStore.getState().historicalFromDate).toBe('20260519');
+
+    act(() => { rerender(props(true)); });
+    act(() => { rerender(props(false)); }); // 예산 0 → stop (빈공간 남아도 무시)
+    expect(useLivePageStore.getState().historicalFromDate).toBe('20260519');
   });
 
   it('does NOT dispatch a fill step before candles load, even with historicalFromDate set', () => {
@@ -2760,46 +2767,55 @@ describe('LiveChartRoot historical-prepend viewport preservation', () => {
     expect(ts.getVisibleLogicalRange).toHaveBeenCalled();
   });
 
-  it('dispatches the next step on D timeframe when whitespace remains after an extension', () => {
-    useLivePageStore.setState({ historicalFromDate: '20260521' });
+  it('runs a D-timeframe budget across falling edges (calendar frames share the loop)', () => {
+    useLivePageStore.setState({ historicalFromDate: '20260521', candleTimeframe: 'D' });
     const handlers: Array<(r: unknown) => void> = [];
     const ts = makeTs(handlers);
-    ts.getVisibleLogicalRange = vi.fn(() => ({ from: -50, to: 100 }));
+    ts.getVisibleLogicalRange = vi.fn(() => ({ from: -60, to: 100 }));
     vi.mocked(createChartEx).mockImplementationOnce(() => buildStableCapturingMock(ts) as any);
 
-    const { rerender } = render(
+    const props = (ext: boolean) => (
       <LiveChartRoot code="005930" timeframe="D" bundle={TWO_SEGMENT_BUNDLE}
-        clampEngaged={false} isPastCandlesLoading={false} isExtending={true} />,
-      { wrapper },
+        clampEngaged={false} isPastCandlesLoading={false} isExtending={ext} />
     );
+    const { rerender } = render(props(false), { wrapper });
+    // 트리거: 빈공간 60바 (D 스텝당 50봉) → 예산 2, 스텝 1.
     act(() => {
-      rerender(
-        <LiveChartRoot code="005930" timeframe="D" bundle={TWO_SEGMENT_BUNDLE}
-          clampEngaged={false} isPastCandlesLoading={false} isExtending={false} />,
-      );
+      handlers.forEach((h) => h({ from: -60, to: 100 }));
+      vi.advanceTimersByTime(200);
     });
-    expect(useLivePageStore.getState().historicalFromDate).toBe('20250605');
+    // 스텝 1: '20260521' − stepChunkDays('D')=70 → '20260312'.
+    expect(useLivePageStore.getState().historicalFromDate).toBe('20260312');
+
+    act(() => { rerender(props(true)); });
+    act(() => { rerender(props(false)); }); // falling edge → 스텝 2
+    // 스텝 2: '20260312' − 70 → '20260101'.
+    expect(useLivePageStore.getState().historicalFromDate).toBe('20260101');
   });
 
   it('keeps dispatching D timeframe fill steps past the minute scrollback clamp', () => {
-    useLivePageStore.setState({ historicalFromDate: '20250605' });
+    useLivePageStore.setState({ historicalFromDate: '20250605', candleTimeframe: 'D' });
     const handlers: Array<(r: unknown) => void> = [];
     const ts = makeTs(handlers);
-    ts.getVisibleLogicalRange = vi.fn(() => ({ from: -50, to: 100 }));
+    ts.getVisibleLogicalRange = vi.fn(() => ({ from: -60, to: 100 }));
     vi.mocked(createChartEx).mockImplementationOnce(() => buildStableCapturingMock(ts) as any);
 
-    const { rerender } = render(
+    const props = (ext: boolean) => (
       <LiveChartRoot code="005930" timeframe="D" bundle={TWO_SEGMENT_BUNDLE}
-        clampEngaged={false} isPastCandlesLoading={false} isExtending={true} />,
-      { wrapper },
+        clampEngaged={false} isPastCandlesLoading={false} isExtending={ext} />
     );
+    const { rerender } = render(props(false), { wrapper });
     act(() => {
-      rerender(
-        <LiveChartRoot code="005930" timeframe="D" bundle={TWO_SEGMENT_BUNDLE}
-          clampEngaged={false} isPastCandlesLoading={false} isExtending={false} />,
-      );
+      handlers.forEach((h) => h({ from: -60, to: 100 }));
+      vi.advanceTimersByTime(200);
     });
-    expect(useLivePageStore.getState().historicalFromDate).toBe('20240620');
+    // '20250605'는 오늘('20260527')−250일보다 과거 — 분봉 클램프가 D를 막지 않는다.
+    // 스텝 1: '20250605' − 70 → '20250327'.
+    expect(useLivePageStore.getState().historicalFromDate).toBe('20250327');
+
+    act(() => { rerender(props(true)); });
+    act(() => { rerender(props(false)); }); // 스텝 2: '20250327' − 70 → '20250116'.
+    expect(useLivePageStore.getState().historicalFromDate).toBe('20250116');
   });
 
   it('does NOT restore on pure SSE growth while historicalFromDate is null', () => {
