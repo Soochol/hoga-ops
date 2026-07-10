@@ -16,7 +16,11 @@ from hoga.live.live_rest_capture_access import ScheduledLiveRestCaptureClient
 
 
 class _FakeKis:
-    async def fetch_orderbook(self, code: str) -> KisOrderbook:
+    def __init__(self) -> None:
+        self.orderbook_venues: list[str] = []
+
+    async def fetch_orderbook(self, code: str, *, venue: str = "KRX") -> KisOrderbook:
+        self.orderbook_venues.append(venue)
         return KisOrderbook(
             code=code,
             asks=[OrderbookLevel(price=101, qty=10)],
@@ -88,7 +92,8 @@ async def test_scheduled_live_rest_capture_client_schedules_capture_calls(tmp_pa
     assert brokers.code == "005930"
     assert scheduler.calls == [
         {
-            "key": ("unit", "orderbook", "005930"),
+            # venue가 코얼레스 key에 포함(ADR-0099) — 기본 KRX.
+            "key": ("unit", "orderbook", "005930", "KRX"),
             "endpoint": "live-orderbook",
             "priority": "background",
             "cooldown_scope": "orderbook",
@@ -106,3 +111,19 @@ async def test_scheduled_live_rest_capture_client_schedules_capture_calls(tmp_pa
             "cooldown_scope": "brokers",
         },
     ]
+
+
+@pytest.mark.asyncio
+async def test_fetch_orderbook_threads_venue_into_key_and_call(tmp_path) -> None:
+    """venue를 명시하면 코얼레스 key와 실호출에 함께 전달된다(ADR-0099 시분할)."""
+    scheduler = _RecordingScheduler()
+    client = ScheduledLiveRestCaptureClient(
+        data_dir=tmp_path,
+        scheduler=scheduler,  # type: ignore[arg-type]
+        source="unit",
+    )
+
+    await client.fetch_orderbook("005930", venue="NXT")
+
+    assert scheduler.calls[0]["key"] == ("unit", "orderbook", "005930", "NXT")
+    assert scheduler.kis.orderbook_venues == ["NXT"]

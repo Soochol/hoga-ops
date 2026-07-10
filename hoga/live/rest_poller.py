@@ -24,7 +24,7 @@ from .buffer import LiveBuffer
 from .error_policy import classify_live_error, format_live_error
 from .kis_models import KisBrokers, KisOrderbook, KisTrade
 from .rest_buffer_build import brokers_to_snapshot, ob_to_snapshot, trades_to_snapshots
-from .session_gate import market_phase
+from .session_gate import market_phase, target_ws_venue, ws_connection_window
 
 _log = logging.getLogger(__name__)
 
@@ -55,7 +55,9 @@ class _KisRestProto(Protocol):
     fake를 주입할 수 있고 프로덕션에서 KisClient 실체를 주입할 수 있다.
     """
 
-    async def fetch_orderbook(self, code: str) -> KisOrderbook: ...
+    async def fetch_orderbook(
+        self, code: str, *, venue: str = "KRX"
+    ) -> KisOrderbook: ...
     async def fetch_trades(self, code: str) -> list[KisTrade]: ...
     async def fetch_brokers(self, code: str) -> KisBrokers: ...
 
@@ -77,6 +79,8 @@ class LiveRestPoller:
         *,
         interval_s: float = 2.0,
         phase_fn: Callable[[], str] | None = None,
+        window_fn: Callable[[], bool] | None = None,
+        venue_fn: Callable[[], str] | None = None,
         capture_aux: bool = False,
     ) -> None:
         # 고정 client가 아니라 resolver를 받는다. 운영에서는 scheduler-backed proxy를,
@@ -86,6 +90,12 @@ class LiveRestPoller:
         self._buffer = buffer
         self._interval_s = interval_s
         self._phase_fn = phase_fn or (lambda: market_phase(_now_ms()))
+        # 활성 창(거래일 08:00–20:00) 판정과 시분할 venue(ADR-0099, WS #524 미러).
+        # window_fn은 캘린더 캐시 미스 시 동기 KIS HTTP 가능(session_gate blocking
+        # 계약) — _poll_once가 to_thread로 봉인한다(KisWsClient gate_fn 패턴).
+        # venue_fn은 순수 시계(08:50–15:31 KRX, 그 외 NXT).
+        self._window_fn = window_fn or (lambda: ws_connection_window(_now_ms()))
+        self._venue_fn = venue_fn or (lambda: target_ws_venue(_now_ms()))
         # False = 10호가(orderbook)만 폴링/표시(REST 호가 통일, ADR-0098). True면
         # 기존 호가+체결+거래원 3콜 복원. 체결·거래원 실시간은 WS(관심종목) 전용.
         self._capture_aux = capture_aux
@@ -195,12 +205,16 @@ class LiveRestPoller:
         # 사이클 시작 시 target 스냅샷 — await 중 외부 변경이 안전하도록
         targets = self._subscribed - self._excluded
 
-        # 장 마감 게이트(ADR-0067 후속, 2026-06-09): phase=='closed'면 시세가
-        # 불변이라 반복 폴링이 KIS 쿼터만 낭비한다. 아직 스냅샷 안 받은 종목만
-        # 1회 받아 마지막(종가) 상태를 표시하고, 그 외는 skip. 정규장/장전이면
-        # 표식을 비워 모든 종목이 다시 주기 폴링되도록 복원한다.
-        # phase_fn은 사이클마다 호출(프레시) — 15:30 경계 전환은 다음 사이클에 반영.
-        closed = self._phase_fn() == "closed"
+        # 활성 창 게이트(ADR-0099, WS #524 미러): 연결 창(거래일 08:00–20:00) 안이면
+        # 매 사이클 폴링 + 시분할 venue(08:50–15:31 KRX, 그 외 NXT). 창 밖이면 기존
+        # 장 마감 게이트(ADR-0067)를 유지 — phase=='closed'면 시세 불변이라 아직 안
+        # 받은 종목만 1회 종가 스냅샷 후 skip, regular/장전이면 표식을 비워 주기 폴링 복원.
+        # window_fn은 캘린더 캐시 미스 시 동기 KIS HTTP 가능 → to_thread 봉인
+        # (session_gate blocking 계약). 예외는 _run_loop 사이클 격리가 흡수.
+        # venue_fn/phase_fn은 사이클마다 호출(프레시) — 경계 전환은 다음 사이클 반영.
+        in_window = await asyncio.to_thread(self._window_fn)
+        venue = self._venue_fn() if in_window else "KRX"
+        closed = (not in_window) and self._phase_fn() == "closed"
         if closed:
             targets = targets - self._snapshotted_once
         else:
@@ -213,7 +227,7 @@ class LiveRestPoller:
 
         for code in sorted(targets):
             try:
-                await self._fetch_and_publish(code, kis)
+                await self._fetch_and_publish(code, kis, venue=venue)
                 # 성공한 종목만 1회-표식에 추가(실패는 다음 사이클 재시도).
                 if closed:
                     self._snapshotted_once.add(code)
@@ -259,12 +273,18 @@ class LiveRestPoller:
         else:
             _log.warning(log_msg, policy.kind, policy.code)
 
-    async def _fetch_and_publish(self, code: str, kis: _KisRestProto) -> None:
+    async def _fetch_and_publish(
+        self, code: str, kis: _KisRestProto, *, venue: str = "KRX"
+    ) -> None:
         """단일 종목: fetch → B3 변환 → buffer.publish.
 
         기본은 10호가(orderbook)만(REST 호가 통일, ADR-0098). capture_aux=True일 때만
         체결·거래원 3콜을 복원한다. 체결·거래원 실시간은 WS(관심종목) 전용이라,
         REST 전용(히트맵) 종목은 보는 중에도 호가/총잔량만 갱신된다.
+
+        venue(ADR-0099)는 시분할 표시폴러용 — 호가만 시분할하고 스냅샷에 태그를 실어
+        프론트 venue 매칭이 WS와 동일하게 동작하게 한다. capture_aux(체결·거래원)는
+        venue 미전달(KRX 전용 유지, 비범위).
 
         kis는 _poll_once가 사이클 시작에 resolve한 KIS REST adapter다. scheduler-backed
         proxy일 수도 있고 테스트 fake일 수도 있다.
@@ -274,8 +294,8 @@ class LiveRestPoller:
         now_ms = _now_ms()
         phase = self._phase_fn()
 
-        ob = await kis.fetch_orderbook(code)
-        snaps = [ob_to_snapshot(ob, phase=phase)]
+        ob = await kis.fetch_orderbook(code, venue=venue)
+        snaps = [ob_to_snapshot(ob, phase=phase, venue=venue)]
         if self._capture_aux:
             trades = await kis.fetch_trades(code)
             brokers = await kis.fetch_brokers(code)

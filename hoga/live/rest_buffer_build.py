@@ -16,26 +16,31 @@ from hoga.live.kis_models import KisBrokers, KisOrderbook, KisTrade
 from hoga.live.snapshot import LiveSnapshot, SnapshotKind
 
 
-def ob_to_snapshot(ob: KisOrderbook, *, phase: str) -> LiveSnapshot:
+def ob_to_snapshot(
+    ob: KisOrderbook, *, phase: str, venue: str | None = None
+) -> LiveSnapshot:
     """KisOrderbook → SnapshotKind.OB LiveSnapshot.
 
     WS ob 경로(_parse_orderbook → on_tick)와 동일 payload shape:
       {code, t_ms, asks[{price,qty}], bids[{price,qty}],
-       total_ask_qty, total_bid_qty, phase}
+       total_ask_qty, total_bid_qty, phase, [venue]}
+
+    venue(ADR-0099, 시분할 표시폴러)는 optional — None(저장 레코더)이면 payload에
+    "venue" 키 자체를 넣지 않아 디스크 스키마 불변. 값이 있으면 WS 경로
+    (stream.py: payload["venue"]=tick.venue)와 동일 shape으로 프론트 venue 매칭 동작.
     """
-    return LiveSnapshot(
-        t_ms=ob.t_ms,
-        kind=SnapshotKind.OB,
-        payload={
-            "code": ob.code,
-            "t_ms": ob.t_ms,
-            "asks": [{"price": lvl.price, "qty": lvl.qty} for lvl in ob.asks],
-            "bids": [{"price": lvl.price, "qty": lvl.qty} for lvl in ob.bids],
-            "total_ask_qty": ob.total_ask_qty,
-            "total_bid_qty": ob.total_bid_qty,
-            "phase": phase,
-        },
-    )
+    payload = {
+        "code": ob.code,
+        "t_ms": ob.t_ms,
+        "asks": [{"price": lvl.price, "qty": lvl.qty} for lvl in ob.asks],
+        "bids": [{"price": lvl.price, "qty": lvl.qty} for lvl in ob.bids],
+        "total_ask_qty": ob.total_ask_qty,
+        "total_bid_qty": ob.total_bid_qty,
+        "phase": phase,
+    }
+    if venue is not None:
+        payload["venue"] = venue
+    return LiveSnapshot(t_ms=ob.t_ms, kind=SnapshotKind.OB, payload=payload)
 
 
 def trades_to_snapshots(

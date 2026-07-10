@@ -34,9 +34,12 @@ class FakeKisClient:
             "fetch_trades": [],
             "fetch_brokers": [],
         }
+        # (code, venue) 쌍 — 시분할 venue 선택 검증용(ADR-0099).
+        self.orderbook_venues: list[tuple[str, str]] = []
 
-    async def fetch_orderbook(self, code: str) -> KisOrderbook:
+    async def fetch_orderbook(self, code: str, *, venue: str = "KRX") -> KisOrderbook:
         self.calls["fetch_orderbook"].append(code)
+        self.orderbook_venues.append((code, venue))
         if code in self.raise_for:
             raise RuntimeError(f"fake fetch_orderbook error for {code}")
         now_ms = int(time.time() * 1000)
@@ -76,15 +79,21 @@ def _make_poller(
     raise_for: set[str] | None = None,
     interval_s: float = 0.02,
     phase_fn=None,
+    window_fn=None,
+    venue_fn=None,
     capture_aux: bool = False,
 ) -> tuple[FakeKisClient, LiveBuffer, LiveRestPoller]:
     kis = FakeKisClient(raise_for=raise_for)
     buf = LiveBuffer()
+    # 기본 window_fn=창 밖(False) — 기존 closed 게이트 테스트군이 "활성 창 밖"
+    # 시나리오로 재해석되어 무수정 통과(ADR-0099). 활성 창 안 동작은 명시 주입.
     poller = LiveRestPoller(
         lambda: kis,  # resolver: 매 사이클 동일 fake 반환
         buf,
         interval_s=interval_s,
         phase_fn=phase_fn or (lambda: "regular"),
+        window_fn=window_fn or (lambda: False),
+        venue_fn=venue_fn or (lambda: "KRX"),
         capture_aux=capture_aux,
     )
     return kis, buf, poller
@@ -355,8 +364,9 @@ async def test_excluded_codes_updated_mid_run():
     assert kis.calls["fetch_orderbook"].count("005930") == 1
 
 
-# ── 장 마감 게이트 (2026-06-09): phase=='closed'면 시세 불변 → 반복 폴링 skip,
-# 구독 직후 1회 종가 스냅샷만. 재개장 시 정상 복원. ──
+# ── 장 마감 게이트 (2026-06-09): 활성 창 밖(_make_poller 기본 window_fn=False, 즉
+# 심야/주말/휴장)에서 phase=='closed'면 시세 불변 → 반복 폴링 skip, 구독 직후 1회
+# 종가 스냅샷만. 재개장 시 정상 복원. 활성 창 안 시분할 동작은 별도 그룹(ADR-0099). ──
 
 
 @pytest.mark.asyncio
@@ -435,7 +445,8 @@ async def test_poll_resolves_background_client_each_cycle():
     current = {"kis": first}
     buf = LiveBuffer()
     poller = LiveRestPoller(
-        lambda: current["kis"], buf, interval_s=0.02, phase_fn=lambda: "regular"
+        lambda: current["kis"], buf, interval_s=0.02,
+        phase_fn=lambda: "regular", window_fn=lambda: False,
     )
     poller.on_subscribe("005930")
     await poller._poll_once()
@@ -468,13 +479,16 @@ async def test_transport_failure_logs_warning_without_traceback_and_sets_status(
     from hoga.live.kis_client import KisTransportError
 
     class TransportFailureKis(FakeKisClient):
-        async def fetch_orderbook(self, code: str) -> KisOrderbook:
+        async def fetch_orderbook(self, code: str, *, venue: str = "KRX") -> KisOrderbook:
             self.calls["fetch_orderbook"].append(code)
             raise KisTransportError(httpx.ConnectError("All connection attempts failed"))
 
     kis = TransportFailureKis()
     buf = LiveBuffer()
-    poller = LiveRestPoller(lambda: kis, buf, interval_s=0.02, phase_fn=lambda: "regular")
+    poller = LiveRestPoller(
+        lambda: kis, buf, interval_s=0.02,
+        phase_fn=lambda: "regular", window_fn=lambda: False,
+    )
     poller.on_subscribe("247540")
 
     with caplog.at_level("WARNING", logger="hoga.live.rest_poller"):
@@ -502,7 +516,7 @@ async def test_transport_backoff_skips_next_cycle_without_refetching():
     from hoga.live.kis_client import KisTransportError
 
     class TransportFailureKis(FakeKisClient):
-        async def fetch_orderbook(self, code: str) -> KisOrderbook:
+        async def fetch_orderbook(self, code: str, *, venue: str = "KRX") -> KisOrderbook:
             self.calls["fetch_orderbook"].append(code)
             raise KisTransportError(httpx.ConnectError("down"))
 
@@ -512,6 +526,7 @@ async def test_transport_backoff_skips_next_cycle_without_refetching():
         LiveBuffer(),
         interval_s=0.02,
         phase_fn=lambda: "regular",
+        window_fn=lambda: False,
     )
     poller.on_subscribe("005930")
 
@@ -585,14 +600,17 @@ async def test_successful_cycle_clears_degraded_status_after_failure():
             super().__init__()
             self.fail = True
 
-        async def fetch_orderbook(self, code: str) -> KisOrderbook:
+        async def fetch_orderbook(self, code: str, *, venue: str = "KRX") -> KisOrderbook:
             if self.fail:
                 self.calls["fetch_orderbook"].append(code)
                 raise RuntimeError("boom")
-            return await super().fetch_orderbook(code)
+            return await super().fetch_orderbook(code, venue=venue)
 
     kis = FirstBrokenThenHealthy()
-    poller = LiveRestPoller(lambda: kis, LiveBuffer(), interval_s=0.02, phase_fn=lambda: "regular")
+    poller = LiveRestPoller(
+        lambda: kis, LiveBuffer(), interval_s=0.02,
+        phase_fn=lambda: "regular", window_fn=lambda: False,
+    )
     poller.on_subscribe("005930")
 
     await poller._poll_once()
@@ -618,3 +636,122 @@ def test_live_rest_poller_still_has_no_writer_dependency() -> None:
     assert "LiveWriter" not in src
     assert "promote_api_today" not in src
     assert "live_api" not in src
+
+
+# ── ADR-0099: 활성 창 안 시분할 venue (WS #524 미러) ──
+
+
+@pytest.mark.asyncio
+async def test_window_open_nxt_hours_polls_every_cycle():
+    """활성 창 안 + phase=='closed'(NXT 시간대: 장전/장후)면 closed-once를 무시하고
+    매 사이클 폴링한다. venue는 시분할 선택(NXT). closed 게이트는 창 밖에서만."""
+    kis, _buf, poller = _make_poller(
+        phase_fn=lambda: "closed", window_fn=lambda: True, venue_fn=lambda: "NXT"
+    )
+    poller.on_subscribe("005930")
+
+    await poller._poll_once()
+    await poller._poll_once()
+
+    assert kis.calls["fetch_orderbook"] == ["005930", "005930"]  # 매 사이클(1회 아님)
+    assert kis.orderbook_venues == [("005930", "NXT"), ("005930", "NXT")]
+
+
+@pytest.mark.asyncio
+async def test_window_open_regular_hours_uses_krx_venue():
+    """활성 창 안 + 정규장(venue_fn=KRX)은 KRX div로 폴링(현행 파리티 + venue 태그)."""
+    kis, _buf, poller = _make_poller(
+        phase_fn=lambda: "regular", window_fn=lambda: True, venue_fn=lambda: "KRX"
+    )
+    poller.on_subscribe("005930")
+
+    await poller._poll_once()
+
+    assert kis.orderbook_venues == [("005930", "KRX")]
+
+
+@pytest.mark.asyncio
+async def test_window_open_venue_swap_reflected_next_cycle():
+    """venue_fn은 사이클마다 프레시 호출 — 스왑(KRX→NXT)이 다음 사이클에 반영."""
+    venue = {"v": "KRX"}
+    kis, _buf, poller = _make_poller(
+        phase_fn=lambda: "regular", window_fn=lambda: True, venue_fn=lambda: venue["v"]
+    )
+    poller.on_subscribe("005930")
+
+    await poller._poll_once()
+    venue["v"] = "NXT"
+    await poller._poll_once()
+
+    assert kis.orderbook_venues == [("005930", "KRX"), ("005930", "NXT")]
+
+
+@pytest.mark.asyncio
+async def test_snapshot_carries_venue_tag_in_window():
+    """활성 창 안 폴링 스냅샷은 payload에 venue 태그를 실어 프론트 매칭이 WS와 동일하게 동작."""
+    _, buf, poller = _make_poller(
+        phase_fn=lambda: "closed", window_fn=lambda: True, venue_fn=lambda: "NXT"
+    )
+    poller.on_subscribe("005930")
+
+    await poller._poll_once()
+
+    series = await buf.get_series("005930")
+    assert series["snapshots"][0]["venue"] == "NXT"
+
+
+@pytest.mark.asyncio
+async def test_out_of_window_snapshot_tagged_krx_once():
+    """창 밖 closed: 종가 스냅샷 1회 + venue="KRX" 태그, 이후 skip(기존 게이트 유지)."""
+    kis, buf, poller = _make_poller(
+        phase_fn=lambda: "closed", window_fn=lambda: False
+    )
+    poller.on_subscribe("005930")
+
+    await poller._poll_once()
+    await poller._poll_once()
+
+    assert kis.orderbook_venues == [("005930", "KRX")]  # 1회만
+    series = await buf.get_series("005930")
+    assert series["snapshots"][0]["venue"] == "KRX"
+
+
+@pytest.mark.asyncio
+async def test_window_reentry_resumes_polling():
+    """창 밖 closed 1회 → 창 재진입(True) 시 매 사이클 재개(_snapshotted_once clear).
+    월요일 08:00 재개장 시나리오."""
+    window = {"open": False}
+    kis, _buf, poller = _make_poller(
+        phase_fn=lambda: "closed",
+        window_fn=lambda: window["open"],
+        venue_fn=lambda: "NXT",
+    )
+    poller.on_subscribe("005930")
+
+    await poller._poll_once()  # 창 밖 closed: 1회
+    await poller._poll_once()  # 창 밖 closed: skip
+    assert kis.calls["fetch_orderbook"].count("005930") == 1
+    window["open"] = True
+    await poller._poll_once()  # 창 안: 재개
+    await poller._poll_once()  # 창 안: 매 사이클
+    assert kis.calls["fetch_orderbook"].count("005930") == 3
+
+
+@pytest.mark.asyncio
+async def test_window_fn_exception_isolated_by_cycle():
+    """window_fn이 raise해도 사이클 격리(_record_cycle_error)로 흡수 — 루프 생존."""
+    def boom() -> bool:
+        raise RuntimeError("calendar unreachable")
+
+    _, _, poller = _make_poller(window_fn=boom, interval_s=0.02)
+    poller.on_subscribe("005930")
+    poller.start()
+    try:
+        for _ in range(50):
+            await asyncio.sleep(0.01)
+            if poller.status().last_error_kind == "internal":
+                break
+        assert poller.alive is True  # 루프 생존(침묵 사망 아님)
+        assert poller.status().degraded is True
+    finally:
+        await poller.stop()
