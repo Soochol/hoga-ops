@@ -70,7 +70,7 @@ export function aggregateCandles(
  * string so D/W/M can all use string equality (epoch-floor breaks W & M
  * because their period lengths vary with month boundaries and leap weeks).
  * KST = UTC+9; shift first, then read calendar fields. */
-function calendarBucketKey(t_ms: number, granularity: 'D' | 'W' | 'M'): string {
+export function calendarBucketKey(t_ms: number, granularity: 'D' | 'W' | 'M'): string {
   const kst = new Date(t_ms + 9 * 3600 * 1000);
   const y = kst.getUTCFullYear();
   const m = kst.getUTCMonth();
