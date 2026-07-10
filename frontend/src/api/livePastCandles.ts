@@ -178,6 +178,7 @@ export function planPastCandlesDelta(
   to: string | null,
   venue: LiveVenueOption,
   previous?: LivePastCandlesResponse,
+  todayKst: string | null = null,
 ): DeltaPlan {
   const enabled = !!(code && from && to && from <= to);
   const identity = responseIdentity(code, to, venue);
@@ -199,6 +200,23 @@ export function planPastCandlesDelta(
     previous.to === to
   );
   if (sameIdentity && previous.from <= from) {
+    // 기준선이 창을 다 덮어도, 창이 오늘을 포함하면 오늘-델타(from=today)로 전환해
+    // 쿼리 옵저버를 살려 둔다. enabled:false 로 꺼 버리면 head 청크의 장중 60초
+    // refetchInterval 이 초기 로드 직후 죽고, 오늘 캔들은 WS 체결 오버레이(15분
+    // 보존 버퍼, liveSnapshotBuffer.ts)만으로 존재하다 축출과 함께 소급 소멸한다
+    // — 통합(UN) 중간 캔들 갭의 근본원인(2026-07-10 조사). 응답은
+    // mergePastCandleResponses 가 t_ms 단위 upsert 하므로 오늘 forming 캔들이
+    // 정본으로 계속 덮어써진다(ADR-0096 의 60초 재조회 계약 복원).
+    if (chunkIncludesToday(to, todayKst)) {
+      return {
+        enabled: true,
+        requestFrom: todayKst,
+        requestTo: to,
+        canReusePrevious: true,
+        servePrevious: true,
+        identity,
+      };
+    }
     return {
       enabled: false,
       requestFrom: null,
@@ -280,8 +298,8 @@ export function useLivePastCandles(
   const previousFrom = previous?.from;
   const previousTo = previous?.to;
   const plan = useMemo(
-    () => planPastCandlesDelta(code, from, to, venue, previous),
-    [code, from, to, venue, previous, previousFrom, previousTo],
+    () => planPastCandlesDelta(code, from, to, venue, previous, todayKst),
+    [code, from, to, venue, previous, previousFrom, previousTo, todayKst],
   );
 
   const query = useQuery({
