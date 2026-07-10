@@ -14,7 +14,6 @@ import { useLiveKeyboard } from './useLiveKeyboard';
 import { useLiveBundle } from './useLiveBundle';
 import { useLiveSeries } from '../api/liveSeries';
 import { useLiveTabMetricsByCode } from '../api/liveTabMetrics';
-import { useWarmPastCandles } from '../api/liveWarmPastCandles';
 import { useDayAskPeaks, useTodayAllPriceAskPeak } from './useDayAskPeaks';
 import { useDayBidPeaks, useTodayAllPriceBidPeak } from './useDayBidPeaks';
 import { useTradeVolumePocs } from './useTradeVolumePoc';
@@ -135,8 +134,6 @@ export function LivePage() {
   const timeframe = useLivePageStore((s) => s.candleTimeframe);
   const historicalFromDate = useLivePageStore((s) => s.historicalFromDate);
   const liveVenue = useLiveVenueStore((s) => s.venue);
-  // 종목 활성화 시 과거 분봉 캐시 선행 워밍 — 좌측 팬의 KIS 왕복을 캐시 히트로.
-  useWarmPastCandles(activeCode, liveVenue);
   const paneIndicators = useLivePageStore((s): PanePrefsIndicatorSource => ({
     volumeEnabled: s.volumeEnabled,
     quoteTotalsEnabled: s.quoteTotalsEnabled,

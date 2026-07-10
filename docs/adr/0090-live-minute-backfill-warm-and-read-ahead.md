@@ -1,8 +1,13 @@
 # 0090 — /live 분봉 백필: 선행 워밍 + read-ahead (인터랙션-결합 해소)
 
-**Status:** accepted (2026-07-07)
+**Status:** superseded by ADR-0103 (`0103-live-minute-backfill-remove-warm-and-read-ahead.md`, 2026-07-10) — accepted (2026-07-07)
+
+> 앱키별 독립 유량 재실측(ADR-0100)과 백필 동시성 계정 비례(#568)로 콜드 팬 지연
+> 전제가 소멸해, 선행 워밍 2종은 ADR-0103에서 전면 제거되고 온디맨드 스텝 백필로
+> 일원화되었다.
 
 **Related:**
+- ADR-0103 — 이 결정을 되돌리는 후속(선행 워밍 + read-ahead 제거)
 - ADR-0087 — Foreground 우선순위 두 계층 (background lane 비굶주림 보장의 출처)
 - ADR-0088 — 배경 태스크는 감독 통합이 아니라 관측 노출 (supervised task)
 
