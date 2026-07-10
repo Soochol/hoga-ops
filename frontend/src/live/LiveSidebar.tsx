@@ -27,6 +27,8 @@ import {
   useLiveBrokersAtCursor,
 } from '../api/useLiveCursor';
 import { useLiveInvestorTrendEstimate } from '../api/liveInvestorTrendEstimate';
+import { useQuoteByCode } from '../api/liveQuotes';
+import { useLiveVenueStore } from '../state/liveVenue';
 import type { MinuteTimeframe } from '../state/livePage';
 import { isMinuteTimeframe } from '../state/livePage';
 import { LiveDetailPanel } from './LiveDetailPanel';
@@ -104,6 +106,14 @@ export function LiveSidebar({ code, live, bundle = null, todayKst = '', programT
   const spotOrderbook = useLiveOrderbookAtCursor({ code: stockCode, timeframe: spotTimeframe });
   const spotBrokers = useLiveBrokersAtCursor({ code: stockCode, timeframe: spotTimeframe });
   const investorTrendEstimate = useLiveInvestorTrendEstimate(stockCode);
+
+  // 10호가 가격 색 기준 = KRX 전일 종가. quote.baseline_price 는 venue 불변(2026-07-10 실측:
+  // KRX/UN/NXT 모두 동일 — KIS inter2_prdy_clpr 이 어느 venue든 같은 전일 종가 보고)이라,
+  // 현재 venue quote 를 그대로 읽으면 = KRX 전일 종가. LiveStatusBar 가 이미 (code, venue) 로
+  // 폴링 중이므로 캐시 공유 → 추가 API 호출 0. 등락률 배지와 문자 그대로 같은 quote 라 기준 일치.
+  const venue = useLiveVenueStore((s) => s.venue);
+  const quote = useQuoteByCode(stockCode ? [stockCode] : [], venue).get(stockCode ?? '');
+  const baselinePrice = quote?.baseline_price ?? null;
 
   // Axis for Auction Mask in spot mode.
   const axis = useLiveAxisStore((s) => s.axis);
@@ -299,7 +309,7 @@ export function LiveSidebar({ code, live, bundle = null, todayKst = '', programT
                   다음 가용: {formatTime(spotAvailableFrom!)}
                 </div>
               )}
-              <OrderbookTable snapshot={orderbookForCard} />
+              <OrderbookTable snapshot={orderbookForCard} baselinePrice={baselinePrice} />
               <TotalQtyBar snapshot={orderbookForCard} maskRatio={maskRatio} />
             </>
           }
