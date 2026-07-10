@@ -335,25 +335,30 @@ describe('HeatmapDrawer', () => {
     expect(screen.getByRole('menuitem', { name: /아래로 이동/ })).toBeDisabled();
   });
 
-  // --- 그룹 드래그 핸들(관심종목 미러) ---
-  it('수동 정렬 시 실폴더 헤더에 드래그 핸들(⠿) 표시 (미분류 제외)', async () => {
-    wrap(<HeatmapDrawer />);
-    await screen.findByTestId('heatmap-drawer-row-000001');
-    // 실폴더 f1/f2/f3 → 핸들 3개. 미분류는 sortable 아님 → 핸들 없음.
-    expect(screen.getAllByTestId('heatmap-group-drag-handle')).toHaveLength(3);
-  });
+  // --- 그룹 헤더 드래그(핸들 아이콘 없이 헤더 전체가 드래그 영역) ---
+  const draggableHeaders = () =>
+    screen.queryAllByTestId('heatmap-group-header').filter((h) => h.hasAttribute('data-draggable'));
 
-  it('그룹 등락률 정렬(desc) 시 드래그 핸들 미표시', async () => {
-    useHeatmapPrefsStore.setState({ groupSort: 'desc' });
+  it('비검색 시 실폴더 헤더가 드래그 가능(data-draggable), 미분류는 제외', async () => {
     wrap(<HeatmapDrawer />);
     await screen.findByTestId('heatmap-drawer-row-000001');
+    // 실폴더 f1/f2/f3 → 3개 draggable. 미분류는 sortable 아님.
+    expect(draggableHeaders()).toHaveLength(3);
+    // 별도 드래그 핸들 아이콘은 없다.
     expect(screen.queryByTestId('heatmap-group-drag-handle')).toBeNull();
   });
 
-  it('검색 중 드래그 핸들 미표시', async () => {
+  it('등락률 정렬(desc)에서도 헤더 드래그 가능(정렬 모드 무관)', async () => {
+    useHeatmapPrefsStore.setState({ groupSort: 'desc' });
+    wrap(<HeatmapDrawer />);
+    await screen.findByTestId('heatmap-drawer-row-000001');
+    expect(draggableHeaders().length).toBeGreaterThan(0);
+  });
+
+  it('검색 중엔 헤더 드래그 불가', async () => {
     wrap(<HeatmapDrawer />);
     await screen.findByTestId('heatmap-drawer-row-000001');
     fireEvent.change(screen.getByTestId('heatmap-drawer-search'), { target: { value: '삼성' } });
-    await waitFor(() => expect(screen.queryByTestId('heatmap-group-drag-handle')).toBeNull());
+    await waitFor(() => expect(draggableHeaders()).toHaveLength(0));
   });
 });
