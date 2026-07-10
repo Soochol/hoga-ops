@@ -280,8 +280,10 @@ class LiveMinuteCandleBackfill:
         종목 전환마다 warm 스트림이 누적되면(종목당 ~240 KIS 콜) 분봉 엔드포인트가
         지속 포화돼 EGW00201 폭풍 → 공유 쿨다운이 사용자 fetch까지 abort하는
         회귀가 있었다(/investigate 2026-07-07). 사용자의 현재 관심사는 항상
-        마지막으로 활성화된 종목이므로 최신 warm 하나만 남긴다. 취소는 공유
-        _inflight 태스크를 건드리지 않아(awaiter만 취소) 진행 중 1콜은 완주한다."""
+        마지막으로 활성화된 종목이므로 최신 warm 하나만 남긴다. 취소가 공유
+        _inflight 태스크를 건드리지 않는 것은 _fetch_past_shared의 shield 조인
+        덕분이다 — bare await였다면 취소가 공유 태스크로 전파돼 같은 태스크에
+        올라탄 사용자 요청까지 죽는다. 진행 중 1콜은 완주한다."""
         key = (policy, code)
         existing = self._warm_tasks.get(key)
         if existing is not None and not existing.done():
@@ -606,7 +608,11 @@ class LiveMinuteCandleBackfill:
             )
             self._inflight[key] = task
             task.add_done_callback(lambda _t, k=key: self._inflight.pop(k, None))
-        return await task
+        # shield 필수: bare `await task`는 대기자 취소를 _fut_waiter.cancel()로
+        # 공유 태스크까지 전파해, 같은 태스크에 올라탄 다른 대기자(사용자 요청,
+        # warm)를 전부 CancelledError로 죽인다. warm latest-wins 취소(warm_minute)가
+        # 실제로 이 경로로 사용자 /past-candles를 죽였다(/investigate 2026-07-10).
+        return await asyncio.shield(task)
 
     async def _fetch_past_scheduled(
         self,
