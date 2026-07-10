@@ -143,18 +143,19 @@ function GroupHeader(props: {
     // 시에만 불투명이 드러나 행을 가린다(스펙 §1). 각 그룹 div가 컨테이닝 블록이라
     // 헤더는 자기 그룹 범위에서만 고정된다. 메뉴가 열리면 z를 올려 다음 sticky
     // 헤더(z-10)가 이 헤더의 메뉴(z-30, 헤더 스태킹 컨텍스트 내부)를 덮지 않게 한다.
-    <div className={`group sticky top-0 ${menuOpen ? 'z-20' : 'z-10'} flex items-center gap-1.5 px-3 py-1.5 text-sm font-semibold text-fg-dim bg-bg-card hover:bg-bg-input-hover`}>
-      {props.dragHandle && (
-        // 그룹 드래그 핸들 — 항시 표시(dim), 포인터 전용. aria-hidden + listeners-only
-        // (편집 모달 ⠿ 행 핸들과 동일). 헤더 클릭(토글)과 충돌하지 않게 핸들에만 listeners.
-        <span ref={props.dragHandle.setActivatorNodeRef}
-          {...props.dragHandle.attributes}
-          {...props.dragHandle.listeners}
-          aria-hidden data-testid="group-drag-handle"
-          className="cursor-grab select-none touch-none px-1 leading-none text-fg-dimmer">
-          ⠿
-        </span>
-      )}
+    //
+    // 별도 핸들 아이콘 없이 헤더 전체가 드래그 활성 영역(dragHandle 있을 때). dnd-kit
+    // PointerSensor(distance 5)가 클릭과 드래그를 구분하므로 chevron/정렬/⋯/라벨 클릭은
+    // 그대로 동작하고, 헤더를 5px 이상 끌면 그룹 드래그가 시작된다. attributes(role=button/
+    // tabindex)는 헤더 안 버튼들과 중첩 a11y 충돌을 피해 spread 하지 않는다(포인터 전용).
+    <div
+      ref={props.dragHandle?.setActivatorNodeRef}
+      {...(props.dragHandle?.listeners ?? {})}
+      data-testid="watchlist-group-header"
+      data-draggable={props.dragHandle ? '' : undefined}
+      className={`group sticky top-0 ${menuOpen ? 'z-20' : 'z-10'} flex items-center gap-1.5 px-3 py-1.5 text-sm font-semibold text-fg-dim bg-bg-card hover:bg-bg-input-hover ${
+        props.dragHandle ? 'cursor-grab select-none touch-none' : ''
+      }`}>
       <button type="button" aria-label={`${props.label} ${props.collapsed ? '펼치기' : '접기'}`}
         aria-expanded={!props.collapsed}
         onClick={props.onToggle} className="px-1 leading-none text-fg-dimmer hover:text-fg">
