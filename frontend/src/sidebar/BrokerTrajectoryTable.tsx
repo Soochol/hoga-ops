@@ -63,10 +63,14 @@ export default function BrokerTrajectoryTable({ series, cursorMs, gapThresholdMs
     );
   }
 
+  // 규모 바 분모: 커서 시점 |순매수| 최대값. 행간 상대 규모 비교용(depth bar 문법).
+  const nets = rows.map((entry) => netAtCursor(entry, cursorMs));
+  const maxAbsNet = nets.reduce<number>((acc, net) => Math.max(acc, Math.abs(net ?? 0)), 0);
+
   return (
     <div className="font-mono text-sm tabular-nums divide-y divide-border-strong">
-      {rows.map((entry) => {
-        const net = netAtCursor(entry, cursorMs);
+      {rows.map((entry, rowIndex) => {
+        const net = nets[rowIndex];
         return (
           <div
             key={entry.broker}
@@ -77,18 +81,32 @@ export default function BrokerTrajectoryTable({ series, cursorMs, gapThresholdMs
               {brokerDisplayShort(entry.broker)}
             </span>
             <Sparkline entry={entry} cursorMs={cursorMs} dayRange={dayRange} gapThresholdMs={gapThresholdMs} />
-            <span
-              className={
-                net > 0
-                  ? 'text-price-up text-right'
-                  : net < 0
-                    ? 'text-price-down text-right'
-                    : 'text-fg-dimmer text-right'
-              }
-            >
-              {net > 0 ? '+' : ''}
-              {net.toLocaleString('ko-KR')}
-            </span>
+            {net == null ? (
+              // 커서가 첫 관측 이전(아직 등장 전) — 진짜 0과 구분해 표기한다.
+              <span data-testid="broker-net-preobs" className="text-fg-dimmer text-right">—</span>
+            ) : (
+              <span className="relative block text-right">
+                {maxAbsNet > 0 && net !== 0 && (
+                  <span
+                    aria-hidden
+                    data-testid="broker-net-bar"
+                    className="absolute inset-y-0 right-0 rounded-[1px]"
+                    style={{
+                      width: `${(Math.abs(net) / maxAbsNet) * 100}%`,
+                      background: net > 0 ? 'var(--tint-price-up)' : 'var(--tint-price-down)',
+                    }}
+                  />
+                )}
+                <span
+                  className={`relative ${
+                    net > 0 ? 'text-price-up' : net < 0 ? 'text-price-down' : 'text-fg-dimmer'
+                  }`}
+                >
+                  {net > 0 ? '+' : ''}
+                  {net.toLocaleString('ko-KR')}
+                </span>
+              </span>
+            )}
           </div>
         );
       })}
@@ -107,15 +125,16 @@ function clipEntryToRegularSession(entry: BrokerSeriesEntry): BrokerSeriesEntry 
 }
 
 /** Pure function. Binary-searches entry.points for the last ts <= cursorMs.
- *  Returns 0 when cursorMs is null or precedes the first observation. */
+ *  Returns null when cursorMs is null or precedes the first observation —
+ *  "아직 등장 전"을 진짜 순매수 0과 구분하기 위해서다(표시는 —). */
 export function netAtCursor(
   entry: BrokerSeriesEntry,
   cursorMs: number | null,
-): number {
-  if (cursorMs == null) return 0;
+): number | null {
+  if (cursorMs == null) return null;
   const pts = entry.points;
-  if (pts.length === 0) return 0;
-  if (cursorMs < pts[0].ts_ms) return 0;
+  if (pts.length === 0) return null;
+  if (cursorMs < pts[0].ts_ms) return null;
   // Binary search for the rightmost point with ts_ms <= cursorMs.
   let lo = 0;
   let hi = pts.length - 1;
@@ -165,7 +184,7 @@ function Sparkline({
       kind: seg.kind,
       points: seg.pts.map((p) => `${toX(p.ts_ms)},${toY(p.net)}`).join(' '),
     }));
-    return { tsFirst, tsLast, tSpan, segments };
+    return { tsFirst, tsLast, tSpan, segments, zeroY: toY(0), toY };
   }, [dayRange, gapThresholdMs, pts]);
 
   if (!geometry) {
@@ -176,54 +195,103 @@ function Sparkline({
     entry.dominant_side === 'buy' ? 'var(--price-up)' : 'var(--price-down)';
 
   // Cursor marker: only visible when cursorMs is inside the day's range.
-  const { tsFirst, tsLast, tSpan, segments } = geometry;
+  const { tsFirst, tsLast, tSpan, segments, zeroY, toY } = geometry;
   const showCursor =
     cursorMs != null && cursorMs >= tsFirst && cursorMs <= tsLast;
   const cursorX = showCursor ? ((cursorMs! - tsFirst) / tSpan) * W : 0;
+  // 커서 교차점 도트: 궤적이 실제로 존재하는 구간(첫~마지막 관측)에서만.
+  // preserveAspectRatio=none 아래 <circle>은 타원으로 찌그러지므로 svg 밖
+  // div 오버레이로 그린다(매물대 close-dot과 동일 기법).
+  const dotNet = showCursor ? netOnDrawnLineAt(pts, cursorMs!) : null;
+  const dotTopPct = dotNet != null ? (toY(dotNet) / H) * 100 : null;
 
   return (
-    <svg
-      viewBox={`0 0 ${W} ${H}`}
-      preserveAspectRatio="none"
-      className="w-full h-4 block"
-    >
-      {segments.map((seg, i) => {
-        if (seg.kind === 'solid') {
+    <span className="relative block h-4 w-full">
+      <svg
+        viewBox={`0 0 ${W} ${H}`}
+        preserveAspectRatio="none"
+        className="w-full h-4 block"
+      >
+        <line
+          data-testid="zero-baseline"
+          x1={0}
+          x2={W}
+          y1={zeroY}
+          y2={zeroY}
+          stroke="var(--grid)"
+          strokeWidth={1}
+          vectorEffect="non-scaling-stroke"
+        />
+        {segments.map((seg, i) => {
+          if (seg.kind === 'solid') {
+            return (
+              <polyline
+                key={`s${i}`}
+                fill="none"
+                stroke={stroke}
+                strokeWidth={1.2}
+                points={seg.points}
+              />
+            );
+          }
           return (
             <polyline
-              key={`s${i}`}
+              key={`d${i}`}
               fill="none"
               stroke={stroke}
               strokeWidth={1.2}
+              strokeDasharray="1.5,1.5"
               points={seg.points}
             />
           );
-        }
-        return (
-          <polyline
-            key={`d${i}`}
-            fill="none"
-            stroke={stroke}
-            strokeWidth={1.2}
-            strokeDasharray="1.5,1.5"
-            points={seg.points}
+        })}
+        {showCursor && (
+          <line
+            data-testid="cursor-marker"
+            x1={cursorX}
+            x2={cursorX}
+            y1={0}
+            y2={H}
+            stroke="var(--accent)"
+            strokeWidth={0.6}
+            strokeDasharray="1,1"
           />
-        );
-      })}
-      {showCursor && (
-        <line
-          data-testid="cursor-marker"
-          x1={cursorX}
-          x2={cursorX}
-          y1={0}
-          y2={H}
-          stroke="var(--accent)"
-          strokeWidth={0.6}
-          strokeDasharray="1,1"
+        )}
+      </svg>
+      {dotTopPct != null && (
+        <span
+          data-testid="cursor-value-dot"
+          className="pointer-events-none absolute h-1.5 w-1.5 -translate-x-1/2 -translate-y-1/2 rounded-full"
+          style={{
+            left: `${(cursorX / W) * 100}%`,
+            top: `${dotTopPct}%`,
+            background: stroke,
+            border: '1px solid var(--bg-card)',
+          }}
         />
       )}
-    </svg>
+    </span>
   );
+}
+
+/** 커서 시각에서 "그려진 라인" 위의 net 값(선형 보간). netAtCursor(계단
+ *  의미론, 표시 숫자용)와 달리 도트를 시각적 궤적 위에 정확히 앉히기 위한
+ *  기하용이다. 궤적 범위 밖이면 null. */
+function netOnDrawnLineAt(pts: BrokerSeriesPoint[], cursorMs: number): number | null {
+  if (pts.length === 0) return null;
+  if (cursorMs < pts[0].ts_ms || cursorMs > pts[pts.length - 1].ts_ms) return null;
+  let lo = 0;
+  let hi = pts.length - 1;
+  while (lo < hi) {
+    const mid = (lo + hi + 1) >> 1;
+    if (pts[mid].ts_ms <= cursorMs) lo = mid;
+    else hi = mid - 1;
+  }
+  const a = pts[lo];
+  const b = pts[lo + 1];
+  if (!b || a.ts_ms === cursorMs) return a.net;
+  const t = (cursorMs - a.ts_ms) / (b.ts_ms - a.ts_ms || 1);
+  return a.net + (b.net - a.net) * t;
 }
 
 type Segment =

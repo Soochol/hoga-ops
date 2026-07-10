@@ -17,14 +17,14 @@ function entry(
 }
 
 describe('netAtCursor', () => {
-  it('returns 0 when cursorMs is null', () => {
+  it('returns null when cursorMs is null', () => {
     const e = entry('A', [{ ts_ms: 100, net: 5 }]);
-    expect(netAtCursor(e, null)).toBe(0);
+    expect(netAtCursor(e, null)).toBeNull();
   });
 
-  it('returns 0 when cursor precedes broker first observation', () => {
+  it('returns null when cursor precedes broker first observation (아직 등장 전)', () => {
     const e = entry('A', [{ ts_ms: 200, net: 5 }]);
-    expect(netAtCursor(e, 100)).toBe(0);
+    expect(netAtCursor(e, 100)).toBeNull();
   });
 
   it('returns the net of the last point at-or-before cursor', () => {
@@ -49,7 +49,7 @@ describe('netAtCursor', () => {
 
   it('handles single-point series', () => {
     const e = entry('A', [{ ts_ms: 100, net: 5 }]);
-    expect(netAtCursor(e, 50)).toBe(0);
+    expect(netAtCursor(e, 50)).toBeNull();
     expect(netAtCursor(e, 100)).toBe(5);
     expect(netAtCursor(e, 200)).toBe(5);
   });
@@ -245,5 +245,53 @@ describe('BrokerTrajectoryTable — sparkline', () => {
 
     expect(polyline!.getAttribute('points')).not.toBe(pointsBefore);
     expect(container.querySelector('[data-testid="cursor-marker"]')).not.toBeNull();
+  });
+});
+
+describe('BrokerTrajectoryTable — 0선·커서 도트·규모 바·관측 전 표기', () => {
+  const series: BrokerSeriesEntry[] = [
+    entry('A', [
+      { ts_ms: 1_000, net: 100 },
+      { ts_ms: 5_000, net: 120 },
+    ]),
+    entry('B', [
+      { ts_ms: 1_000, net: -50 },
+      { ts_ms: 5_000, net: -80 },
+    ], 'sell'),
+    entry('C', [{ ts_ms: 4_000, net: 30 }]),   // 커서(3_000) 시점엔 아직 등장 전
+  ];
+
+  it('renders a zero baseline in every sparkline', () => {
+    const { container } = render(
+      <BrokerTrajectoryTable series={series} cursorMs={3_000} />,
+    );
+    expect(container.querySelectorAll('[data-testid="zero-baseline"]')).toHaveLength(3);
+  });
+
+  it('renders a cursor value dot only where the trajectory exists at the cursor', () => {
+    const { container } = render(
+      <BrokerTrajectoryTable series={series} cursorMs={3_000} />,
+    );
+    // A·B는 궤적 범위 안(1s~5s), C는 첫 관측(4s) 이전이라 도트 없음.
+    expect(container.querySelectorAll('[data-testid="cursor-value-dot"]')).toHaveLength(2);
+  });
+
+  it('renders magnitude bars proportional to |net| across rows', () => {
+    const { container } = render(
+      <BrokerTrajectoryTable series={series} cursorMs={3_000} />,
+    );
+    const bars = container.querySelectorAll<HTMLElement>('[data-testid="broker-net-bar"]');
+    expect(bars).toHaveLength(2);   // C는 관측 전이라 바 없음
+    expect(bars[0].style.width).toBe('100%');   // A: |100| / max(100)
+    expect(bars[1].style.width).toBe('50%');    // B: |-50| / max(100)
+    expect(bars[0].style.background).toContain('--tint-price-up');
+    expect(bars[1].style.background).toContain('--tint-price-down');
+  });
+
+  it('shows an em-dash (not 0) when the cursor precedes the first observation', () => {
+    render(<BrokerTrajectoryTable series={series} cursorMs={3_000} />);
+    const preobs = screen.getAllByTestId('broker-net-preobs');
+    expect(preobs).toHaveLength(1);
+    expect(preobs[0]).toHaveTextContent('—');
   });
 });
