@@ -18,13 +18,13 @@ describe('OrderbookTable', () => {
     expect(screen.getByText(/로딩 중/)).toBeInTheDocument();
   });
 
-  it('renders ask + spread + bid rows from the ADR-0004 wire shape', () => {
+  it('renders ask + bid rows from the ADR-0004 wire shape', () => {
+    // SPREAD 구분선 행은 10호가 지표에서 제거됨(#551) — ask/bid 가격 행만 검증한다.
     const snap = mkSnap(
       [100, 200, 150, 80, 60, 40, 30, 25, 20, 15],
       [120, 90, 70, 60, 50, 40, 30, 20, 10, 5],
     );
     render(<OrderbookTable snapshot={snap} />);
-    expect(screen.getByText('Spread')).toBeInTheDocument();
     // Best ask price (ask[0])
     expect(screen.getByText('70,000')).toBeInTheDocument();
     // Best bid (bid[0] at 70_000 - 10)
