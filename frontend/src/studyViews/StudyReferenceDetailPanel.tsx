@@ -5,7 +5,8 @@ import {
 } from '../api/useLiveCursor';
 import type { RangeBundle } from '../api/types';
 import { useLiveCursorStore } from '../live/useLiveCursorStore';
-import { realMsToYyyymmdd } from '../live/liveDateTime';
+import { realMsToYyyymmdd, subtractDaysKst } from '../live/liveDateTime';
+import { useScreenerDailyCandles, prevCloseBeforeDate } from '../api/screenerDailyCandles';
 import {
   buildCandleDateIndex,
   selectVolumeDistributionProfile,
@@ -73,6 +74,21 @@ export function StudyReferenceDetailPanel({ save, bundle }: Props) {
   const volumeDistributionDate = detailCursorMs !== null
     ? realMsToYyyymmdd(detailCursorMs)
     : save.range.to_date;
+  // 10호가 가격색 기준 = 리플레이 날짜(volumeDistributionDate)의 전일 종가 = 그 직전 거래일의
+  // 일봉 close(라이브의 quote.baseline_price 와 같은 의미, 과거일 판). 커서 이동 시
+  // volumeDistributionDate 가 그 위치 날짜로 바뀌므로 색 기준도 따라간다. 호가가 실제로 있을
+  // 때만(minute-cursor 스코프) 조회 — 15일 창(주말·공휴일 커버). screener-daily-candles 는
+  // 이미 D/W/M study 가 쓰는 KRX 확정 일봉 소스라 신규 API 표면 없음.
+  const baselineFrom = subtractDaysKst(volumeDistributionDate, 15);
+  const prevCloseQuery = useScreenerDailyCandles(
+    orderbookSnapshot ? save.code : null,
+    baselineFrom,
+    volumeDistributionDate,
+  );
+  const baselinePrice = useMemo(
+    () => prevCloseBeforeDate(prevCloseQuery.data?.candles ?? [], volumeDistributionDate),
+    [prevCloseQuery.data, volumeDistributionDate],
+  );
   const candleDateIndex = useMemo(
     () => buildCandleDateIndex(bundle.candles),
     [bundle.candles],
@@ -125,7 +141,7 @@ export function StudyReferenceDetailPanel({ save, bundle }: Props) {
     >
       <StudyDetailSection label="10호가" testId="orderbook">
         <>
-          <OrderbookTable snapshot={orderbookSnapshot} />
+          <OrderbookTable snapshot={orderbookSnapshot} baselinePrice={baselinePrice} />
           <TotalQtyBar snapshot={orderbookSnapshot} maskRatio={false} />
         </>
       </StudyDetailSection>

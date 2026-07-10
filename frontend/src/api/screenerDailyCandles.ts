@@ -1,6 +1,7 @@
 import { useQuery, type UseQueryOptions } from '@tanstack/react-query';
 
 import { apiCall } from './client';
+import { realMsToYyyymmdd } from '../live/liveDateTime';
 
 export interface ScreenerDailyCandle {
   t_ms: number;
@@ -9,6 +10,22 @@ export interface ScreenerDailyCandle {
   low: number;
   close: number;
   volume: number;
+}
+
+/** 일봉 candles 중 `date`(YYYYMMDD) **직전 거래일**의 close = 그 date 기준 전일 종가.
+ *  date 미만(strictly <) 중 최댓날짜를 고르므로 캔들 정렬 순서·주말/공휴일 갭과 무관.
+ *  해당 종목/기간에 이전 거래일 캔들이 없으면 null. */
+export function prevCloseBeforeDate(candles: ScreenerDailyCandle[], date: string): number | null {
+  let bestDate = '';
+  let close: number | null = null;
+  for (const c of candles) {
+    const d = realMsToYyyymmdd(c.t_ms);
+    if (d < date && d > bestDate) {
+      bestDate = d;
+      close = c.close;
+    }
+  }
+  return close;
 }
 
 export interface ScreenerDailyCandlesResponse {
