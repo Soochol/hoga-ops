@@ -60,6 +60,20 @@ describe('RightRail', () => {
     expect(useRightRailStore.getState().activePanel).toBe('screener');
   });
 
+  it('renders 히트맵 below 관심 and toggles the heatmap panel', () => {
+    render(<RightRail />);
+    const buttons = screen.getAllByRole('button');
+    const watchlistButton = screen.getByRole('button', { name: '관심종목 패널 토글' });
+    const heatmapButton = screen.getByRole('button', { name: '히트맵 패널 토글' });
+
+    expect(buttons.indexOf(heatmapButton)).toBeGreaterThan(buttons.indexOf(watchlistButton));
+    expect(heatmapButton).toHaveAttribute('aria-controls', 'right-rail-heatmap-panel');
+
+    fireEvent.click(heatmapButton);
+
+    expect(useRightRailStore.getState().activePanel).toBe('heatmap');
+  });
+
   it('chevron shows the close affordance and collapses when a panel is open', () => {
     useRightRailStore.setState({ activePanel: 'screener', lastPanel: 'screener' });
     render(<RightRail />);

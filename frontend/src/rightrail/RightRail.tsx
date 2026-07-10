@@ -1,5 +1,6 @@
 import { useRightRailStore } from '../state/rightRail';
 import { HeartIcon } from '../ui/HeartIcon';
+import { HeatmapIcon } from '../ui/HeatmapIcon';
 import { FunnelIcon } from '../ui/FunnelIcon';
 import { BookmarkIcon } from '../ui/BookmarkIcon';
 import { BellIcon } from '../ui/BellIcon';
@@ -7,9 +8,9 @@ import { RailButton } from '../ui/RailShell';
 
 /**
  * Global Right Rail (ADR-0052) — fixed thin right-edge chrome on every route.
- * The rail itself does not collapse. It holds 관심 (Watchlist), 스크리너
- * (Screener), and 저장뷰 (Saved Views); each toggles its own panel (mutually exclusive — one
- * panel slot). The chevron collapses the open panel and re-opens the last one.
+ * The rail itself does not collapse. It holds 관심 (Watchlist), 히트맵 (Heatmap),
+ * 스크리너 (Screener), and 저장뷰 (Saved Views); each toggles its own panel (mutually
+ * exclusive — one panel slot). The chevron collapses the open panel and re-opens the last one.
  */
 export default function RightRail() {
   const activePanel = useRightRailStore((s) => s.activePanel);
@@ -27,7 +28,7 @@ export default function RightRail() {
         type="button"
         onClick={toggleCollapse}
         aria-expanded={open}
-        aria-controls="right-rail-watchlist-panel right-rail-screener-panel right-rail-saved-views-panel right-rail-signal-alerts-panel"
+        aria-controls="right-rail-watchlist-panel right-rail-heatmap-panel right-rail-screener-panel right-rail-saved-views-panel right-rail-signal-alerts-panel"
         aria-label={open ? '우측 패널 닫기' : '우측 패널 열기'}
         className="w-full py-2 grid place-items-center text-fg-dim hover:text-fg hover:bg-bg-input-hover"
       >
@@ -41,6 +42,14 @@ export default function RightRail() {
         active={activePanel === 'watchlist'}
         onClick={() => togglePanel('watchlist')}
         icon={<HeartIcon filled={activePanel === 'watchlist'} className="w-[1.125em] h-[1.125em]" />}
+      />
+      <RailItem
+        label="히트맵"
+        ariaLabel="히트맵 패널 토글"
+        controls="right-rail-heatmap-panel"
+        active={activePanel === 'heatmap'}
+        onClick={() => togglePanel('heatmap')}
+        icon={<HeatmapIcon filled={activePanel === 'heatmap'} className="w-[1.125em] h-[1.125em]" />}
       />
       <RailItem
         label="스크리너"
