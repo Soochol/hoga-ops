@@ -29,10 +29,11 @@ type TabsStore = {
   tabs: LiveTab[];
   activeTabId: string | null;
   /** 활성 탭의 종목을 제자리 교체한다(관심종목/검색/스크리너/히트맵 일반 클릭·드롭의 공통 동작).
-   *  활성 탭이 없으면(첫 진입·전체 닫힘) 이 종목으로 첫 탭을 만든다. 단일-탭 기본 모델
-   *  (ADR-0069 개정): 일반 클릭은 현재 탭을 바꾸고, 명시적 새 탭 intent(Ctrl/Meta 클릭)는
-   *  openSymbolInNewTab을 사용한다. 같은 코드가 다른 탭에 있어도 포커스하지 않고 현재 탭을
-   *  교체한다(중복 허용). */
+   *  단, 같은 종목이 이미 열려 있는 탭이 있으면(고정 여부 무관) 제자리 교체 대신 그 탭으로
+   *  전환한다 — 리스트에서 이미 열린(특히 고정한) 종목을 다시 골랐을 때 중복 탭을 만들거나
+   *  다른 탭을 덮어쓰지 않기 위함이다. 활성 탭이 없으면(첫 진입·전체 닫힘) 이 종목으로 첫
+   *  탭을 만든다. 단일-탭 기본 모델(ADR-0069 개정): 일반 클릭은 현재 탭을 바꾸고, 명시적
+   *  새 탭 intent(Ctrl/Meta 클릭)는 openSymbolInNewTab을 사용한다. */
   setActiveTabCode: (code: string, label?: string) => void;
   setActiveTabInstrument: (instrument: LiveInstrument) => void;
   /** 종목이 채워진 새 탭을 만들어 포커스한다(Ctrl/Meta+종목 클릭). 중복 탭은 허용한다. */
@@ -202,6 +203,18 @@ export const useLiveTabsStore = create<TabsStore>((set, get) => ({
 
   setActiveTabInstrument: (instrument) => {
     const { tabs, activeTabId } = get();
+    const fields = tabFieldsFromInstrument(instrument);
+    // 이미 같은 종목이 열려 있는 탭이 있으면(고정 여부 무관) 그 탭으로 전환한다.
+    // 리스트·검색·스크리너·히트맵에서 같은 종목을 다시 고르면 중복 탭을 만들거나
+    // 다른 탭을 덮어쓰지 않고 기존 탭을 그대로 포커스한다.
+    if (fields.code) {
+      const existing = tabs.find((t) => t.code === fields.code);
+      if (existing) {
+        if (existing.id !== activeTabId) set({ activeTabId: existing.id });
+        applyTabToPage(existing);
+        return;
+      }
+    }
     const active = tabs.find((t) => t.id === activeTabId);
     if (!active) {
       // 활성 탭이 없으면(첫 진입·전체 닫힘) 이 종목으로 첫 탭을 만든다.
@@ -217,7 +230,6 @@ export const useLiveTabsStore = create<TabsStore>((set, get) => ({
     // 활성 탭의 종목을 제자리 교체 — timeframe은 유지(같은 분봉으로 종목만 전환),
     // pan(historicalFromDate)은 새 종목의 기본 뷰를 위해 초기화한다. projectActiveView에
     // historicalFromDate: null을 직접 전달하므로 page와 tab 양쪽이 일관된다.
-    const fields = tabFieldsFromInstrument(instrument);
     if (active.pinned) {
       const target = tabs.find((t) => !t.pinned);
       if (target) {

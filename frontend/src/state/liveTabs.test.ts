@@ -42,15 +42,42 @@ describe('useLiveTabsStore', () => {
     expect(tabs[0].label).toBe('SK하이닉스');
   });
 
-  it('setActiveTabCode changes only the active tab and allows a duplicate code', () => {
+  it('setActiveTabCode focuses an existing tab with the same code instead of duplicating', () => {
     openTab('005930', '삼성전자');   // 탭 A
+    const tabA = useLiveTabsStore.getState().tabs[0].id;
     openTab('000660', 'SK하이닉스'); // 탭 B (활성)
-    // 같은 코드가 A에 있어도 포커스하지 않고 현재 탭(B)을 교체 → 중복 허용.
+    // 같은 코드가 A에 이미 있으므로 현재 탭(B)을 교체하지 않고 A로 전환한다 — 중복 탭 없음.
     useLiveTabsStore.getState().setActiveTabCode('005930', '삼성전자');
     const { tabs, activeTabId } = useLiveTabsStore.getState();
     expect(tabs).toHaveLength(2);
-    expect(tabs.map((t) => t.code)).toEqual(['005930', '005930']);
-    expect(tabs.find((t) => t.id === activeTabId)?.code).toBe('005930');
+    expect(tabs.map((t) => t.code)).toEqual(['005930', '000660']);
+    expect(activeTabId).toBe(tabA);
+    expect(useLivePageStore.getState().activeCode).toBe('005930');
+  });
+
+  it('setActiveTabCode switches to a pinned tab holding the same code (locked included)', () => {
+    openTab('005930', '삼성전자');   // 탭 A → 고정
+    const pinnedId = useLiveTabsStore.getState().tabs[0].id;
+    useLiveTabsStore.getState().toggleTabPinned(pinnedId);
+    openTab('000660', 'SK하이닉스'); // 탭 B (활성, 비고정)
+    // 고정 탭 A에 이미 005930이 있으므로 B를 교체하지 않고 잠긴 A로 전환한다.
+    useLiveTabsStore.getState().setActiveTabCode('005930', '삼성전자');
+    const { tabs, activeTabId } = useLiveTabsStore.getState();
+    expect(tabs.map((t) => t.code)).toEqual(['005930', '000660']);
+    expect(activeTabId).toBe(pinnedId);
+    expect(useLivePageStore.getState().activeCode).toBe('005930');
+  });
+
+  it('setActiveTabInstrument preserves the existing tab viewport when switching to it (no in-place reset)', () => {
+    const viewport = { rightEdgeMs: 1_781_000_000_000, barSpan: 331, atLiveEdge: false };
+    openTab('005930', '삼성전자');   // 탭 A
+    const tabA = useLiveTabsStore.getState().tabs[0].id;
+    useLiveTabsStore.getState().updateTabViewport(tabA, viewport);
+    openTab('000660', 'SK하이닉스'); // 탭 B (활성)
+    // A로 전환 시 pan/viewport를 초기화하지 않고 그대로 복원한다.
+    useLiveTabsStore.getState().setActiveTabCode('005930', '삼성전자');
+    expect(useLiveTabsStore.getState().tabs.find((t) => t.id === tabA)?.viewport).toEqual(viewport);
+    expect(useLivePageStore.getState().activeViewport).toEqual(viewport);
   });
 
   it('setActiveTabCode keeps the tab timeframe but resets pan (historicalFromDate)', () => {
