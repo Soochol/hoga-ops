@@ -192,9 +192,11 @@ async def test_fetch_brokers_parses_real_fixture(tmp_path: Path) -> None:
 
 
 @pytest.mark.asyncio
-async def test_fetch_past_minute_candles_paginates_until_session_open(tmp_path: Path) -> None:
-    """KIS returns at most 120 bars per call; the method must page backwards
-    from 15:30 until 09:00 is covered, then return ascending by t_ms."""
+async def test_fetch_past_minute_candles_covers_session_with_parallel_anchors(tmp_path: Path) -> None:
+    """앵커(FID_INPUT_HOUR_1)는 시간 주소라 사전 계산·병렬 조회한다 — 앵커-창
+    의미론("앵커 이하 최신 120행")의 밀집 하루에서 전 구간이 커버되고 결과는
+    오름차순·중복 없음이어야 한다. (구 계약: 순차 커서 워크 — 다음 앵커가
+    직전 응답의 최이른 바에 의존. 병렬화로 의도적으로 대체, 2026-07-12.)"""
 
     def make_row(hh: int, mm: int) -> dict:
         return {
@@ -207,21 +209,9 @@ async def test_fetch_past_minute_candles_paginates_until_session_open(tmp_path: 
             "cntg_vol": "100",
         }
 
-    # Build deterministic "120 newest-first bars per anchor" responses for
-    # successive anchors. KIS contract: newest-first.
-    pages_by_anchor: dict[str, list[dict]] = {
-        # 15:30 → 13:31 (120 minutes window, newest first)
-        "153000": [make_row(15, m // 60) if False else make_row(13 + (119 - m) // 60, (119 - m) % 60) for m in range(120)],
-    }
-    # Three deterministic pages. Each newest-first.
-    #   Page 1 (anchor 15:30): bars 13:00–14:59 (120). Earliest=13:00; next anchor=12:59:00.
-    #   Page 2 (anchor 12:59): bars 11:00–12:59 (120). Earliest=11:00; next anchor=10:59:00.
-    #   Page 3 (anchor 10:59): bars 09:00–10:29 (90). Earliest=09:00; stops at session open.
-    pages_by_anchor = {
-        "153000": [make_row(13 + (119 - i) // 60, (119 - i) % 60) for i in range(120)],
-        "125900": [make_row(11 + (119 - i) // 60, (119 - i) % 60) for i in range(120)],
-        "105900": [make_row(9 + (89 - i) // 60, (89 - i) % 60) for i in range(90)],
-    }
+    # 밀집 하루: 09:00~15:30 매 분 = 391바. 핸들러는 KIS 계약대로
+    # "앵커 이하 최신 120행, newest-first"를 돌려준다.
+    all_minutes = [(9 + m // 60, m % 60) for m in range(0, 391)]
     captured_anchors: list[str] = []
 
     def handler(req: httpx.Request) -> httpx.Response:
@@ -229,7 +219,10 @@ async def test_fetch_past_minute_candles_paginates_until_session_open(tmp_path: 
             return httpx.Response(200, json={"access_token": "T", "expires_in": 86400})
         anchor = req.url.params.get("FID_INPUT_HOUR_1")
         captured_anchors.append(anchor)
-        rows = pages_by_anchor.get(anchor, [])
+        a = int(anchor[:2]) * 60 + int(anchor[2:4])
+        eligible = [(hh, mm) for hh, mm in all_minutes if hh * 60 + mm <= a]
+        newest_first = sorted(eligible, key=lambda t: t[0] * 60 + t[1], reverse=True)[:120]
+        rows = [make_row(hh, mm) for hh, mm in newest_first]
         return httpx.Response(200, json={"rt_cd": "0", "msg_cd": "", "msg1": "", "output2": rows})
 
     client = _make_client(handler, tmp_path)
@@ -238,18 +231,68 @@ async def test_fetch_past_minute_candles_paginates_until_session_open(tmp_path: 
     finally:
         await client.aclose()
 
-    # All three pages were called in order.
-    assert captured_anchors[0] == "153000"
-    assert captured_anchors[1] == "125900"
-    assert captured_anchors[2] == "105900"
-    # Each call requested the same date.
-    # Result is ascending by t_ms.
-    assert all(candles[i].t_ms <= candles[i + 1].t_ms for i in range(len(candles) - 1))
-    # No duplicates across pages.
+    # 사전 계산 앵커 4개가 (병렬이라 순서는 무관하게) 전부 요청됐다.
+    assert sorted(captured_anchors, reverse=True) == ["153000", "135000", "121000", "103000"]
+    # 밀집 하루 전 구간 커버 + 오름차순 + 중복 없음.
+    assert len(candles) == 391
     t_ms_list = [c.t_ms for c in candles]
+    assert t_ms_list == sorted(t_ms_list)
     assert len(t_ms_list) == len(set(t_ms_list))
-    # Got at least the union of three pages' worth.
-    assert len(candles) >= 120 + 120 + 90 - 0  # no overlap in our fixtures
+
+
+def test_minute_page_anchors_intraday_clamp() -> None:
+    """오늘(장중) 조회는 경과 세션과 겹치는 앵커만 유지 — 미래 앵커의 중복
+    호출(60초 폴마다 레이트 예산 낭비)을 막되 커버리지는 보존한다."""
+    from hoga.live.kis_endpoints import KisEndpointsMixin as M
+
+    # 과거일: 전체 앵커.
+    assert M._minute_page_anchors("KRX") == ["153000", "135000", "121000", "103000"]
+    # 개장 직후: 첫 창 하나로 충분.
+    assert M._minute_page_anchors("KRX", "090300") == ["103000"]
+    # 정오: 두 창이 [09:00, 12:00]을 덮는다.
+    assert M._minute_page_anchors("KRX", "120000") == ["121000", "103000"]
+    # 마감 후 오늘 조회: 전체 앵커와 동일.
+    assert M._minute_page_anchors("KRX", "160000") == ["153000", "135000", "121000", "103000"]
+    # UN 이른 아침.
+    assert M._minute_page_anchors("UN", "090000") == ["100000", "082000"]
+
+
+@pytest.mark.asyncio
+async def test_fetch_past_minute_candles_sparse_day_fully_covered(tmp_path: Path) -> None:
+    """성긴 날(개장 30분만 체결): 늦은 앵커 창들은 이른 바까지 물고 내려오므로
+    (앵커 이하 최신 120행) 어느 창에서든 수집돼 유실이 없어야 한다."""
+
+    def make_row(hh: int, mm: int) -> dict:
+        return {
+            "stck_bsop_date": "20260526",
+            "stck_cntg_hour": f"{hh:02d}{mm:02d}00",
+            "stck_oprc": "40000", "stck_hgpr": "40100",
+            "stck_lwpr": "39900", "stck_prpr": "40050", "cntg_vol": "100",
+        }
+
+    sparse = [(9, mm) for mm in range(0, 30)]
+
+    def handler(req: httpx.Request) -> httpx.Response:
+        if req.url.path == "/oauth2/tokenP":
+            return httpx.Response(200, json={"access_token": "T", "expires_in": 86400})
+        anchor = req.url.params.get("FID_INPUT_HOUR_1")
+        a = int(anchor[:2]) * 60 + int(anchor[2:4])
+        eligible = [(hh, mm) for hh, mm in sparse if hh * 60 + mm <= a]
+        newest_first = sorted(eligible, key=lambda t: t[0] * 60 + t[1], reverse=True)[:120]
+        rows = [make_row(hh, mm) for hh, mm in newest_first]
+        return httpx.Response(200, json={"rt_cd": "0", "msg_cd": "", "msg1": "", "output2": rows})
+
+    client = _make_client(handler, tmp_path)
+    try:
+        candles = await client.fetch_past_minute_candles("005930", "20260526")
+    finally:
+        await client.aclose()
+
+    assert len(candles) == 30
+    t_ms_list = [c.t_ms for c in candles]
+    assert t_ms_list == sorted(t_ms_list)
+    assert len(t_ms_list) == len(set(t_ms_list))
+
 
 
 @pytest.mark.asyncio
@@ -362,23 +405,20 @@ async def test_fetch_past_minute_candles_rejects_non_concrete_venue(
 
 
 @pytest.mark.asyncio
-async def test_fetch_past_minute_candles_jumps_nxt_empty_pause_anchor(tmp_path: Path) -> None:
+async def test_fetch_past_minute_candles_nxt_empty_bands_harmless(tmp_path: Path) -> None:
+    """NXT/UN: 휴장 밴드(빈 창)는 병렬 앵커에선 자연히 빈 페이지일 뿐이다 —
+    구 순차 워크의 빈-앵커 점프 테이블 없이도 존재하는 바를 전부 수집한다."""
+
     def make_row(hh: int, mm: int) -> dict:
         return {
             "stck_bsop_date": "20260609",
             "stck_cntg_hour": f"{hh:02d}{mm:02d}00",
-            "stck_oprc": "40000",
-            "stck_hgpr": "40100",
-            "stck_lwpr": "39900",
-            "stck_prpr": "40050",
-            "cntg_vol": "100",
+            "stck_oprc": "40000", "stck_hgpr": "40100",
+            "stck_lwpr": "39900", "stck_prpr": "40050", "cntg_vol": "100",
         }
 
-    pages_by_anchor = {
-        "200000": [make_row(15, 32), make_row(15, 31)],
-        "153000": [],
-        "151900": [make_row(15, 19), make_row(15, 18)],
-    }
+    # 15:18·15:19·15:31·15:32에만 체결 — 그 외 시간대(다수 앵커 창)는 빈 밴드.
+    bars = [(15, 18), (15, 19), (15, 31), (15, 32)]
     captured_anchors: list[str] = []
 
     def handler(request: httpx.Request) -> httpx.Response:
@@ -387,13 +427,16 @@ async def test_fetch_past_minute_candles_jumps_nxt_empty_pause_anchor(tmp_path: 
         anchor = request.url.params.get("FID_INPUT_HOUR_1")
         assert anchor is not None
         captured_anchors.append(anchor)
+        a = int(anchor[:2]) * 60 + int(anchor[2:4])
+        eligible = [(hh, mm) for hh, mm in bars if hh * 60 + mm <= a]
+        newest_first = sorted(eligible, key=lambda t: t[0] * 60 + t[1], reverse=True)[:120]
         return httpx.Response(
             200,
             json={
                 "rt_cd": "0",
                 "msg_cd": "MCA00000",
                 "msg1": "정상처리",
-                "output2": pages_by_anchor.get(anchor, []),
+                "output2": [make_row(hh, mm) for hh, mm in newest_first],
             },
         )
 
@@ -403,15 +446,19 @@ async def test_fetch_past_minute_candles_jumps_nxt_empty_pause_anchor(tmp_path: 
     finally:
         await client.aclose()
 
-    assert captured_anchors[:3] == ["200000", "153000", "151900"]
+    # NXT 세션(08:00~20:00) 앵커 8개 전부 병렬 요청.
+    assert sorted(captured_anchors, reverse=True) == [
+        "200000", "182000", "164000", "150000", "132000", "114000", "100000", "082000",
+    ]
     assert [c.t_ms for c in candles] == sorted(c.t_ms for c in candles)
     assert len(candles) == 4
     assert datetime.fromtimestamp(candles[0].t_ms / 1000, tz=KIS_KST).strftime("%H%M%S") == "151800"
     assert datetime.fromtimestamp(candles[-1].t_ms / 1000, tz=KIS_KST).strftime("%H%M%S") == "153200"
 
 
+
 @pytest.mark.asyncio
-async def test_fetch_past_minute_candles_stops_on_first_empty_nxt_page(tmp_path: Path) -> None:
+async def test_fetch_past_minute_candles_empty_nxt_day_returns_empty(tmp_path: Path) -> None:
     captured_anchors: list[str] = []
 
     def handler(request: httpx.Request) -> httpx.Response:
@@ -437,7 +484,11 @@ async def test_fetch_past_minute_candles_stops_on_first_empty_nxt_page(tmp_path:
         await client.aclose()
 
     assert candles == []
-    assert captured_anchors == ["200000"]
+    # 병렬 앵커: 빈 날에도 사전 계산 앵커 8개가 전부 요청된다(조기 중단 없음 —
+    # 커버리지가 개별 응답에 의존하지 않는 것이 병렬화의 전제).
+    assert sorted(captured_anchors, reverse=True) == [
+        "200000", "182000", "164000", "150000", "132000", "114000", "100000", "082000",
+    ]
 
 
 # ----------------------------------------------------------------------
