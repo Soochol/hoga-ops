@@ -73,4 +73,39 @@ describe('buildDepthHeatmapCells', () => {
     // visibleMax=900(max소스), qty=900 → full α
     expect(cells.every((c) => c.fillColor.endsWith(', 1)'))).toBe(true);
   });
+
+  it('halfTick=최소 양수 가격 gap/2 (불규칙 gap, point별 캐시)', () => {
+    // 가격 gap: 1000→1010(10), 1010→1030(20) → 최소 10 → halfTick=5.
+    const pt: DepthHeatmapPoint = {
+      tMs: 1000,
+      asks: [{ price: 1030, qty: 100 }, { price: 1010, qty: 100 }],
+      bids: [{ price: 1000, qty: 100 }],
+      asksMax: [], bidsMax: [],
+    };
+    const cells = buildDepthHeatmapCells([pt], axis, 0, 2000, {
+      bidColor: '#F04452', askColor: '#3485FA', maxOpacity: 1,
+    });
+    expect(cells.every((c) => c.halfTick === 5)).toBe(true);
+    // 같은 point 재빌드(캐시 히트) 결과 동일.
+    const again = buildDepthHeatmapCells([pt], axis, 0, 2000, {
+      bidColor: '#F04452', askColor: '#3485FA', maxOpacity: 1,
+    });
+    expect(again.every((c) => c.halfTick === 5)).toBe(true);
+  });
+
+  it('halfTick close/max 변형은 서로 다른 소스 레벨로 분리 캐시', () => {
+    // close 소스는 gap 10(→halfTick 5), max 소스는 gap 40(→halfTick 20).
+    const pt: DepthHeatmapPoint = {
+      tMs: 1000,
+      asks: [{ price: 1010, qty: 100 }],
+      bids: [{ price: 1000, qty: 100 }],
+      asksMax: [{ price: 1040, qty: 100 }],
+      bidsMax: [{ price: 1000, qty: 100 }],
+    };
+    const style = { bidColor: '#F04452', askColor: '#3485FA', maxOpacity: 1 };
+    const closeCells = buildDepthHeatmapCells([pt], axis, 0, 2000, style, false);
+    const maxCells = buildDepthHeatmapCells([pt], axis, 0, 2000, style, true);
+    expect(closeCells.every((c) => c.halfTick === 5)).toBe(true);
+    expect(maxCells.every((c) => c.halfTick === 20)).toBe(true);
+  });
 });
