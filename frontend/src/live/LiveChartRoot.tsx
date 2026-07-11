@@ -1795,6 +1795,8 @@ export function LiveChartRoot({
             axis={axis}
             paneSeries={paneSeries}
             onChartHoverPassthrough={handleDrawingOverlayHover}
+            bucketMs={cb?.bucket_ms ?? undefined}
+            candles={cb?.candles}
           />
           {/* After DrawingOverlay so the legend's ✕/eye buttons paint above the
               drawing canvas; the container is pointer-transparent so the

@@ -10,8 +10,12 @@ import {
   TOOLS,
   DRAWABLE_TOOLS_ORDER,
   hlineTool,
+  vlineTool,
   eraserTool,
   pencilTool,
+  rectTool,
+  measureTool,
+  textTool,
   selectTool,
   trendlineTool,
   matchShortcut,
@@ -30,6 +34,7 @@ function makeCtx(overrides: Partial<ToolCtx> = {}): ToolCtx {
     releasePointer: vi.fn(),
     pixelToData: vi.fn(() => defaultPoint),
     realMsToCanvasX: vi.fn(() => 100),
+    canvasXToRealMs: vi.fn(() => defaultPoint.realMs),
     priceToCanvasY: vi.fn(() => 200),
     canvasYToPrice: vi.fn(() => defaultPoint.price),
     hitTestAt: vi.fn(() => null),
@@ -38,10 +43,14 @@ function makeCtx(overrides: Partial<ToolCtx> = {}): ToolCtx {
     priceBoundsForPane: vi.fn(() => ({ top: 100_000, bottom: 0 })),
     drawings: [],
     selectedId: null,
-    defaults: { color: '#14B8A6', width: 2, lineStyle: 'solid' as const },
+    defaults: { color: '#14B8A6', width: 2, lineStyle: 'solid' as const, magnet: false, hiddenAll: false },
+    shiftKey: false,
     trendlineDraft: { current: null },
     pencilDraft: { current: null },
+    rectDraft: { current: null },
+    measureDraft: { current: null },
     dragRef: { current: null },
+    beginTextEdit: vi.fn(),
     requestRedraw: vi.fn(),
     add: vi.fn(),
     update: vi.fn(),
@@ -55,12 +64,16 @@ describe('TOOLS registry shape', () => {
   it('covers every DrawingTool union member', () => {
     // If the union grows, this fails to compile — the cast forces alignment.
     const keys: string[] = Object.keys(TOOLS).sort();
-    expect(keys).toEqual(['eraser', 'hline', 'pencil', 'select', 'trendline']);
+    expect(keys).toEqual([
+      'eraser', 'hline', 'measure', 'pencil', 'rect', 'select', 'text', 'trendline', 'vline',
+    ]);
   });
 
   it('DRAWABLE_TOOLS_ORDER lists only non-select tools', () => {
     expect(DRAWABLE_TOOLS_ORDER).not.toContain('select');
-    expect(DRAWABLE_TOOLS_ORDER).toEqual(['hline', 'trendline', 'pencil', 'eraser']);
+    expect(DRAWABLE_TOOLS_ORDER).toEqual([
+      'hline', 'vline', 'trendline', 'rect', 'measure', 'text', 'pencil', 'eraser',
+    ]);
   });
 
   it('every spec carries a label + glyph (DrawingMenu reads both)', () => {
@@ -120,12 +133,115 @@ describe('hlineTool.onPointerDown', () => {
 
   it('new hline inherits color/width/lineStyle from ctx.defaults', () => {
     const ctx = makeCtx();
-    ctx.defaults = { color: '#F43F5E', width: 3, lineStyle: 'dashed' };
+    ctx.defaults = { color: '#F43F5E', width: 3, lineStyle: 'dashed', magnet: false, hiddenAll: false };
     hlineTool.onPointerDown!(ctx);
     const added = (ctx.add as ReturnType<typeof vi.fn>).mock.calls[0][0] as Drawing;
     expect(added.color).toBe('#F43F5E');
     expect(added.width).toBe(3);
     expect(added.lineStyle).toBe('dashed');
+  });
+});
+
+describe('vlineTool.onPointerDown', () => {
+  it('adds a Vline at the cursor time (realMs)', () => {
+    const ctx = makeCtx({ canvasXToRealMs: vi.fn(() => 1_700_000_123_000) });
+    vlineTool.onPointerDown!(ctx);
+    expect(ctx.add).toHaveBeenCalledOnce();
+    const added = (ctx.add as ReturnType<typeof vi.fn>).mock.calls[0][0] as Drawing;
+    expect(added.kind).toBe('vline');
+    if (added.kind === 'vline') expect(added.realMs).toBe(1_700_000_123_000);
+  });
+
+  it('does nothing in the empty band where canvasXToRealMs is null', () => {
+    const ctx = makeCtx({ canvasXToRealMs: vi.fn(() => null) });
+    vlineTool.onPointerDown!(ctx);
+    expect(ctx.add).not.toHaveBeenCalled();
+  });
+});
+
+describe('rectTool — drag commits a 2-corner box', () => {
+  it('captures on down, commits a Rect with default fill on up', () => {
+    const a: Point = { realMs: 1_000, price: 100 };
+    const b: Point = { realMs: 2_000, price: 200 };
+    let call = 0;
+    const ctx = makeCtx({ pixelToData: vi.fn(() => (call++ === 0 ? a : b)) });
+    rectTool.onPointerDown!(ctx);
+    expect(ctx.capturePointer).toHaveBeenCalledOnce();
+    expect(ctx.rectDraft.current).toMatchObject({ a, paneId: 'candle' });
+    rectTool.onPointerUp!(ctx);
+    const added = (ctx.add as ReturnType<typeof vi.fn>).mock.calls[0][0] as Drawing;
+    expect(added.kind).toBe('rect');
+    if (added.kind === 'rect') {
+      expect(added.a).toEqual(a);
+      expect(added.b).toEqual(b);
+      expect(added.fillOpacity).toBeGreaterThan(0);
+    }
+    expect(ctx.rectDraft.current).toBeNull();
+  });
+
+  it('rejects a zero-area rect (same time OR same price)', () => {
+    const a: Point = { realMs: 1_000, price: 100 };
+    // Same price → degenerate.
+    const flat: Point = { realMs: 2_000, price: 100 };
+    let call = 0;
+    const ctx = makeCtx({ pixelToData: vi.fn(() => (call++ === 0 ? a : flat)) });
+    rectTool.onPointerDown!(ctx);
+    rectTool.onPointerUp!(ctx);
+    expect(ctx.add).not.toHaveBeenCalled();
+  });
+});
+
+describe('trendlineTool — Shift constrains the endpoint angle', () => {
+  it('routes the endpoint through pixel-space angle constraint when shiftKey is set', () => {
+    const a: Point = { realMs: 1_000, price: 100 };
+    // Anchor projects to (0,0); cursor at px=100,py=8 (near-horizontal) → the
+    // constrained pixel is fed back through pixelToData. We assert pixelToData
+    // was called with a Y snapped toward the anchor's Y (0), not the raw py.
+    const pixelToData = vi.fn((_px: number, _py: number, _paneId: unknown) => a);
+    const ctx = makeCtx({
+      shiftKey: true,
+      pixelToData,
+      realMsToCanvasX: vi.fn(() => 0),
+      priceToCanvasY: vi.fn(() => 0),
+      px: 100,
+      py: 8,
+      clampYToPane: vi.fn((_id, py) => py),
+    });
+    ctx.trendlineDraft.current = { a, pointerId: 1, paneId: 'candle' };
+    trendlineTool.onPointerMove!(ctx);
+    // The constrained call should use a Y close to the anchor's 0, not 8.
+    const lastCall = pixelToData.mock.calls.at(-1)!;
+    expect(Math.abs(lastCall[1] as number)).toBeLessThan(4); // near-horizontal
+  });
+});
+
+describe('measureTool — drag commits a 2-endpoint measure', () => {
+  it('commits a Measure on drag', () => {
+    const a: Point = { realMs: 1_000, price: 100 };
+    const b: Point = { realMs: 2_000, price: 200 };
+    let call = 0;
+    const ctx = makeCtx({ pixelToData: vi.fn(() => (call++ === 0 ? a : b)) });
+    measureTool.onPointerDown!(ctx);
+    expect(ctx.measureDraft.current).toMatchObject({ a, paneId: 'candle' });
+    measureTool.onPointerUp!(ctx);
+    const added = (ctx.add as ReturnType<typeof vi.fn>).mock.calls[0][0] as Drawing;
+    expect(added.kind).toBe('measure');
+  });
+});
+
+describe('textTool.onPointerDown', () => {
+  it('opens the text editor at the cursor instead of adding directly', () => {
+    const at: Point = { realMs: 1_700_000_000_000, price: 70_000 };
+    const ctx = makeCtx({ pixelToData: vi.fn(() => at) });
+    textTool.onPointerDown!(ctx);
+    expect(ctx.beginTextEdit).toHaveBeenCalledWith(at, 'candle');
+    expect(ctx.add).not.toHaveBeenCalled(); // commit happens on Enter/blur
+  });
+
+  it('does nothing where pixelToData is null (empty band)', () => {
+    const ctx = makeCtx({ pixelToData: vi.fn(() => null) });
+    textTool.onPointerDown!(ctx);
+    expect(ctx.beginTextEdit).not.toHaveBeenCalled();
   });
 });
 
@@ -210,7 +326,7 @@ describe('trendlineTool — drag commits a 2-point segment', () => {
       pixelToData: vi.fn(() => b),
       trendlineDraft: downCtx.trendlineDraft,
     });
-    upCtx.defaults = { color: '#F43F5E', width: 3, lineStyle: 'dashed' };
+    upCtx.defaults = { color: '#F43F5E', width: 3, lineStyle: 'dashed', magnet: false, hiddenAll: false };
     trendlineTool.onPointerUp!(upCtx);
     const added = (upCtx.add as ReturnType<typeof vi.fn>).mock.calls[0][0] as Drawing;
     expect(added.color).toBe('#F43F5E');
@@ -263,7 +379,7 @@ describe('pencilTool commit', () => {
 
   it('new pencil inherits color/width/lineStyle from ctx.defaults', () => {
     const ctx = makeCtx();
-    ctx.defaults = { color: '#F43F5E', width: 3, lineStyle: 'dashed' };
+    ctx.defaults = { color: '#F43F5E', width: 3, lineStyle: 'dashed', magnet: false, hiddenAll: false };
     pencilTool.onPointerDown!(ctx);
     ctx.pencilDraft.current!.points.push({ realMs: 1_700_000_000_001, price: 70_010 });
     pencilTool.onPointerUp!(ctx);

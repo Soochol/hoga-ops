@@ -113,6 +113,57 @@ describe('hitTestDrawings', () => {
     expect(hitTestDrawings(coord, [bottom, top], 50, 100)).toBe(top);
   });
 
+  it('hits a vline by horizontal proximity regardless of cursor pane', () => {
+    const v: Drawing = {
+      id: 'v1', kind: 'vline', realMs: 100, paneId: 'candle',
+      color: '#fff', width: 2, lineStyle: 'solid',
+    };
+    // Cursor in a DIFFERENT pane (volume) still grabs the vline (pane-agnostic).
+    const otherPane: HitCoord = { ...coord, paneIdAtY: () => 'volume' };
+    expect(hitTestDrawings(otherPane, [v], 104, 999)).toBe(v); // 4px away → hit
+    expect(hitTestDrawings(otherPane, [v], 110, 999)).toBeNull(); // 10px → miss
+  });
+
+  it('hits a rect on its border but NOT its interior', () => {
+    const r: Drawing = {
+      id: 'r1', kind: 'rect', paneId: 'candle',
+      color: '#fff', width: 2, lineStyle: 'solid', fillOpacity: 0.2,
+      a: { realMs: 0, price: 0 }, b: { realMs: 100, price: 100 },
+    };
+    const c: HitCoord = { ...coord, canvasWidth: 800 };
+    expect(hitTestDrawings(c, [r], 3, 50)).toBe(r); // near left edge → hit
+    expect(hitTestDrawings(c, [r], 50, 3)).toBe(r); // near top edge → hit
+    expect(hitTestDrawings(c, [r], 50, 50)).toBeNull(); // dead centre → miss
+  });
+
+  it('rect with a corner off-axis falls back to the canvas edge and stays selectable', () => {
+    const r: Drawing = {
+      id: 'r1', kind: 'rect', paneId: 'candle',
+      color: '#fff', width: 2, lineStyle: 'solid', fillOpacity: 0,
+      a: { realMs: 0, price: 0 }, b: { realMs: 100, price: 100 },
+    };
+    // b.realMs projects off-axis → x falls back to canvasWidth (800).
+    const c: HitCoord = {
+      ...coord,
+      canvasWidth: 800,
+      realMsToCanvasX: (realMs) => (realMs === 100 ? null : realMs),
+    };
+    expect(hitTestDrawings(c, [r], 3, 50)).toBe(r); // left edge still resolves
+  });
+
+  it('hits a text label within its measured bounding box', () => {
+    const t: Drawing = {
+      id: 't1', kind: 'text', at: { realMs: 100, price: 100 },
+      text: '메모', fontSize: 13, paneId: 'candle',
+      color: '#fff', width: 1, lineStyle: 'solid',
+    };
+    // Stub measureTextWidth → 40px box; anchor at (100,100), height ≈ 13+4.
+    const c: HitCoord = { ...coord, measureTextWidth: () => 40 };
+    expect(hitTestDrawings(c, [t], 110, 105)).toBe(t); // inside the box
+    expect(hitTestDrawings(c, [t], 200, 105)).toBeNull(); // right of the box
+    expect(hitTestDrawings(c, [t], 110, 130)).toBeNull(); // below the box
+  });
+
   it('returns null for an empty drawing list', () => {
     expect(hitTestDrawings(coord, [], 50, 100)).toBeNull();
   });

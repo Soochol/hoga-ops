@@ -32,6 +32,9 @@ type ToastCardProps = {
   ariaLabel?: string;
   /** 남은 시간 진행바. paused=true(hover 등) 면 정지. 모션 감소 시 표시 안 함. */
   progress?: { durationMs: number; paused: boolean } | null;
+  /** 우측 정렬 액션 버튼(예: "실행취소"). onClick(카드 전체 버튼)과 상호배타 —
+   *  버튼-속-버튼 중첩을 피하려 action 이 있으면 div 변형으로 렌더한다. */
+  action?: { label: string; onClick: () => void };
   children: ReactNode;
 };
 
@@ -52,6 +55,7 @@ export function ToastCard({
   role,
   ariaLabel,
   progress,
+  action,
   children,
 }: ToastCardProps) {
   const { rendered, phase } = useToastPresence(visible, onExited);
@@ -65,7 +69,20 @@ export function ToastCard({
 
   const inner = (
     <>
-      {children}
+      {action ? (
+        <div className="flex items-center justify-between gap-3">
+          <div className="min-w-0">{children}</div>
+          <button
+            type="button"
+            onClick={action.onClick}
+            className="shrink-0 rounded border border-border-strong px-2 py-1 text-xs font-medium text-fg hover:border-accent hover:text-accent"
+          >
+            {action.label}
+          </button>
+        </div>
+      ) : (
+        children
+      )}
       {progress && (
         <span
           aria-hidden

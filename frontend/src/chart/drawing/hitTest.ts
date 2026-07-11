@@ -48,6 +48,14 @@ export interface HitCoord {
   realMsToCanvasX: (realMs: number) => number | null;
   priceToCanvasY: (price: number, paneId: PaneId) => number | null;
   paneIdAtY: (py: number) => PaneId | null;
+  /** Overlay canvas width in CSS px. Lets a rect whose corner is off the
+   *  virtual axis fall back to the visible edge (mirrors render). Optional so
+   *  existing test stubs that only exercise hline/trendline/pencil still
+   *  type-check. */
+  canvasWidth?: number;
+  /** Pixel width of `text` at `sizePx`, using the same font as render — needed
+   *  for the text-label bounding box. Optional for the same back-compat reason. */
+  measureTextWidth?: (text: string, sizePx: number) => number;
 }
 
 /** Topmost drawing under pixel (px, py), or null. Iterates back-to-front so a
@@ -67,6 +75,14 @@ export function hitTestDrawings(
   const cursorPaneId = coord.paneIdAtY(py);
   for (let i = drawings.length - 1; i >= 0; i--) {
     const d = drawings[i];
+    // vline is pane-agnostic (spans every pane), so it's tested BEFORE the
+    // per-pane filter — a cursor in any pane can grab it by horizontal
+    // proximity alone.
+    if (d.kind === 'vline') {
+      const x = coord.realMsToCanvasX(d.realMs);
+      if (x != null && Math.abs(px - x) <= HIT_THRESHOLD.vline) return d;
+      continue;
+    }
     if (d.paneId !== cursorPaneId) continue;
     if (d.kind === 'hline') {
       const y = coord.priceToCanvasY(d.price, d.paneId);
@@ -80,6 +96,29 @@ export function hitTestDrawings(
           distanceToSegment({ x: px, y: py }, { x: xa, y: ya }, { x: xb, y: yb }) <= HIT_THRESHOLD.trendlineBody) {
         return d;
       }
+    } else if (d.kind === 'rect') {
+      // Border-only hit. Interior clicks are intentionally NOT hits: the
+      // select-mode pointer-events gating shares this predicate, so an
+      // interior hit would block chart pan across the whole rectangle. The
+      // eraser inherits the same border-only rule.
+      if (rectBorderHit({ x: px, y: py }, coord, d.a, d.b, d.paneId)) return d;
+    } else if (d.kind === 'measure') {
+      // Same box-border rule as rect (a, b are the diagonal corners).
+      if (rectBorderHit({ x: px, y: py }, coord, d.a, d.b, d.paneId)) return d;
+    } else if (d.kind === 'text') {
+      const x = coord.realMsToCanvasX(d.at.realMs);
+      const y = coord.priceToCanvasY(d.at.price, d.paneId);
+      const w = coord.measureTextWidth?.(d.text, d.fontSize) ?? 0;
+      if (
+        x != null &&
+        y != null &&
+        px >= x - 3 &&
+        px <= x + w + 3 &&
+        py >= y - 2 &&
+        py <= y + d.fontSize + 4
+      ) {
+        return d;
+      }
     } else if (d.kind === 'pencil') {
       const poly: Pixel[] = [];
       for (const pt of d.points) {
@@ -91,4 +130,44 @@ export function hitTestDrawings(
     }
   }
   return null;
+}
+
+/** True when pixel `p` is within rectBorder px of any of the rect's four edges.
+ *  Corners that fall off the virtual axis fall back to canvas bounds (0/…),
+ *  mirroring the render-time fallback so a rect straddling the visible edge
+ *  stays selectable instead of vanishing from hit-testing. */
+function rectBorderHit(
+  p: Pixel,
+  coord: HitCoord,
+  a: { realMs: number; price: number },
+  b: { realMs: number; price: number },
+  paneId: PaneId,
+): boolean {
+  const xaRaw = coord.realMsToCanvasX(a.realMs);
+  const xbRaw = coord.realMsToCanvasX(b.realMs);
+  const ya = coord.priceToCanvasY(a.price, paneId);
+  const yb = coord.priceToCanvasY(b.price, paneId);
+  if (ya == null || yb == null) return false;
+  if (xaRaw == null && xbRaw == null) return false;
+  const width = coord.canvasWidth ?? 0;
+  const xa = xaRaw ?? 0;
+  const xb = xbRaw ?? width;
+  const x1 = Math.min(xa, xb);
+  const x2 = Math.max(xa, xb);
+  const y1 = Math.min(ya, yb);
+  const y2 = Math.max(ya, yb);
+  const tl = { x: x1, y: y1 };
+  const tr = { x: x2, y: y1 };
+  const br = { x: x2, y: y2 };
+  const bl = { x: x1, y: y2 };
+  const edges: [Pixel, Pixel][] = [
+    [tl, tr],
+    [tr, br],
+    [br, bl],
+    [bl, tl],
+  ];
+  for (const [s, e] of edges) {
+    if (distanceToSegment(p, s, e) <= HIT_THRESHOLD.rectBorder) return true;
+  }
+  return false;
 }

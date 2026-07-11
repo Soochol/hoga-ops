@@ -4,19 +4,33 @@
 //   - docs/superpowers/specs/2026-05-24-drawing-on-indicator-panes-design.md
 //   - docs/adr/0028-drawing-pane-binding.md
 
-import { useCallback, useEffect, useRef } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
+import { nanoid } from 'nanoid';
 import type { IChartApi } from 'lightweight-charts';
 import type { VirtualAxis } from '../util/virtualAxis';
 import { shouldIgnoreEvent } from '../util/keyboard';
 import { useDrawingsStore } from '../state/drawings';
-import { renderDrawing, renderTrendlineDraft, type ProjectCtx } from './drawing/render';
-import type { Drawing, PaneId } from './drawing/types';
+import {
+  renderDrawing,
+  renderTrendlineDraft,
+  renderRectDraft,
+  renderMeasureDraft,
+  textFont,
+  measureTextWidth,
+  type ProjectCtx,
+} from './drawing/render';
+import type { Drawing, PaneId, Point } from './drawing/types';
+import { TEXT_DEFAULT_FONT_SIZE } from './drawing/types';
+import { snapPoint, snapRealMs, type SnapCandle } from './drawing/snap';
+import { refCoords, cloneWithOffset } from './drawing/duplicate';
 import { hitTestDrawings } from './drawing/hitTest';
 import {
   TOOLS,
   matchShortcut,
   type DragMode,
   type PencilDraft,
+  type RectDraft,
+  type MeasureDraft,
   type ToolCtx,
   type TrendlineDraft,
 } from './drawing/tools';
@@ -25,6 +39,7 @@ import {
   priceToCanvasY as projPriceToCanvasY,
   canvasYToPrice as projCanvasYToPrice,
   realMsToCanvasX as projRealMsToCanvasX,
+  canvasXToRealMs as projCanvasXToRealMs,
   paneIdToIndex,
   paneIdAtY as projPaneIdAtY,
   clampYToPane as projClampYToPane,
@@ -70,9 +85,17 @@ type Props = {
   axis: VirtualAxis;
   paneSeries: PaneSeriesMap;
   onChartHoverPassthrough?: (point: { x: number; y: number }) => void;
+  /** Active timeframe bucket (ms) — forwarded to the measure tool's readout. */
+  bucketMs?: number;
+  /** Candles for magnet snapping (ts_ms + OHLC). Empty/absent → no snapping. */
+  candles?: readonly SnapCandle[];
 };
 
-export default function DrawingOverlay({ chart, axis, paneSeries, onChartHoverPassthrough }: Props) {
+/** Open text-editor state — a DOM <input> the overlay renders over the canvas.
+ *  `id` is null for a new label, or the id of an existing text being re-edited. */
+type TextEdit = { id: string | null; at: Point; paneId: PaneId; initial: string; fontSize: number };
+
+export default function DrawingOverlay({ chart, axis, paneSeries, onChartHoverPassthrough, bucketMs, candles }: Props) {
   const containerRef = useRef<HTMLDivElement>(null);
   const canvasRef = useRef<HTMLCanvasElement>(null);
 
@@ -86,8 +109,23 @@ export default function DrawingOverlay({ chart, axis, paneSeries, onChartHoverPa
 
   const trendlineDraft = useRef<TrendlineDraft | null>(null);
   const pencilDraft = useRef<PencilDraft | null>(null);
+  const rectDraft = useRef<RectDraft | null>(null);
+  const measureDraft = useRef<MeasureDraft | null>(null);
   const dragRef = useRef<DragMode | null>(null);
   const scheduleRef = useRef<() => void>(() => {});
+  // Reassigned every render so the (empty-deps) keydown effect always calls the
+  // latest closure over the current coordinate helpers — same pattern as
+  // scheduleRef. Set just before the return.
+  const duplicateSelectedRef = useRef<() => void>(() => {});
+
+  // Text editing — a DOM <input> rendered over the canvas (IME-safe).
+  const [textEdit, setTextEdit] = useState<TextEdit | null>(null);
+  const [textValue, setTextValue] = useState('');
+  const textInputRef = useRef<HTMLInputElement>(null);
+  // `textEdit` is also mirrored to a ref so the pointer/keyboard closures (which
+  // don't re-bind every render) can read the current editing state.
+  const textEditRef = useRef<TextEdit | null>(null);
+  textEditRef.current = textEdit;
 
   // Legacy post-commit hook. Current drawing tools keep their active tool and
   // call setSelected(id) directly; Escape is the explicit return to select mode.
@@ -123,6 +161,10 @@ export default function DrawingOverlay({ chart, axis, paneSeries, onChartHoverPa
       c.setTransform(dpr, 0, 0, dpr, 0, 0);
       c.clearRect(0, 0, w, h);
 
+      // Hidden layer: canvas is cleared above, so an early return leaves nothing
+      // drawn (the drafts below also skip since no gesture runs while hidden).
+      if (defaults.hiddenAll) return;
+
       const panes = chart.panes();
       const paneTops: number[] = [];
       {
@@ -143,23 +185,55 @@ export default function DrawingOverlay({ chart, axis, paneSeries, onChartHoverPa
         c.rect(0, top, w, paneH);
         c.clip();
         const projCtx: ProjectCtx = {
-          chart, axis, paneSeries, paneId, width: w, height: h,
+          chart, axis, paneSeries, paneId, width: w, height: h, bucketMs,
         };
         body(projCtx);
         c.restore();
       };
 
+      // A vline spans every pane, so it renders un-clipped and independent of
+      // its origin pane's series being mounted — handled BEFORE the per-drawing
+      // pane guard below. Any pane's series will do for the ProjectCtx (vline
+      // render ignores it).
+      const anyPaneId = drawings.length > 0 ? [...paneSeries.keys()][0] : undefined;
+      const renderVlines = () => {
+        if (anyPaneId == null) return;
+        const projCtx: ProjectCtx = {
+          chart, axis, paneSeries, paneId: anyPaneId, width: w, height: h, bucketMs,
+        };
+        for (const d of drawings) {
+          if (d.kind !== 'vline') continue;
+          renderDrawing(c, projCtx, d, d.id === selectedId);
+        }
+      };
+
       for (const d of drawings) {
+        if (d.kind === 'vline') continue; // rendered separately (un-clipped)
         if (!paneSeries.has(d.paneId)) continue;  // pane absent → silent skip
         clipAndRender(d.paneId, (projCtx) => {
           renderDrawing(c, projCtx, d, d.id === selectedId);
         });
       }
+      renderVlines();
 
       const trendDraft = trendlineDraft.current;
       if (trendDraft?.b) {
         clipAndRender(trendDraft.paneId, (projCtx) => {
           renderTrendlineDraft(c, projCtx, trendDraft, defaults);
+        });
+      }
+
+      const rDraft = rectDraft.current;
+      if (rDraft?.b) {
+        clipAndRender(rDraft.paneId, (projCtx) => {
+          renderRectDraft(c, projCtx, rDraft.a, rDraft.b!, defaults);
+        });
+      }
+
+      const mDraft = measureDraft.current;
+      if (mDraft?.b) {
+        clipAndRender(mDraft.paneId, (projCtx) => {
+          renderMeasureDraft(c, projCtx, mDraft.a, mDraft.b!);
         });
       }
 
@@ -197,13 +271,43 @@ export default function DrawingOverlay({ chart, axis, paneSeries, onChartHoverPa
       ts.unsubscribeVisibleLogicalRangeChange(schedule);
       ro?.disconnect();
     };
-  }, [chart, axis, paneSeries, drawings, selectedId, activeCode, defaults]);
+  }, [chart, axis, paneSeries, drawings, selectedId, activeCode, defaults, bucketMs]);
 
   // ── keyboard shortcuts ─────────────────────────────────────────────────
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
       if (shouldIgnoreEvent(e.target)) return;
-      if (dragRef.current || trendlineDraft.current || pencilDraft.current) return;
+      if (
+        dragRef.current ||
+        trendlineDraft.current ||
+        pencilDraft.current ||
+        rectDraft.current ||
+        measureDraft.current
+      )
+        return;
+
+      // Undo/Redo (ADR-0107). Ctrl/Cmd+Z = undo, Ctrl/Cmd+Shift+Z or Ctrl+Y =
+      // redo. matchShortcut() reserves ctrl/meta combos (returns null), so
+      // there's no collision with the Alt tool shortcuts below.
+      if ((e.ctrlKey || e.metaKey) && !e.altKey) {
+        const key = e.key.toLowerCase();
+        if (key === 'z') {
+          if (e.shiftKey) useDrawingsStore.getState().redo();
+          else useDrawingsStore.getState().undo();
+          e.preventDefault();
+          return;
+        }
+        if (key === 'y') {
+          useDrawingsStore.getState().redo();
+          e.preventDefault();
+          return;
+        }
+        if (key === 'd') {
+          duplicateSelectedRef.current();
+          e.preventDefault(); // suppress the browser bookmark dialog
+          return;
+        }
+      }
 
       const shortcutKind = matchShortcut(e);
       if (shortcutKind) {
@@ -222,18 +326,40 @@ export default function DrawingOverlay({ chart, axis, paneSeries, onChartHoverPa
         useDrawingsStore.getState().setActiveTool('select');
         trendlineDraft.current = null;
         pencilDraft.current = null;
+        rectDraft.current = null;
+        measureDraft.current = null;
       }
     };
     window.addEventListener('keydown', onKey);
     return () => window.removeEventListener('keydown', onKey);
   }, []);
 
-  // Coordinate helpers — pane-aware closures.
-  const pixelToData = (px: number, py: number, paneId: PaneId) =>
+  // Coordinate helpers — pane-aware closures. `magnetActive` gates the snap; the
+  // per-event Ctrl override is applied in buildCtx (which owns the event).
+  const magnetOn = defaults.magnet && candles != null && candles.length > 0;
+  const rawPixelToData = (px: number, py: number, paneId: PaneId) =>
     projPixelToData(chart, axis, paneSeries, paneId, px, py);
   const realMsToCanvasX = (realMs: number) => projRealMsToCanvasX(chart, axis, realMs);
+  const rawCanvasXToRealMs = (px: number) => projCanvasXToRealMs(chart, axis, px);
   const priceToCanvasY = (price: number, paneId: PaneId) =>
     projPriceToCanvasY(chart, paneSeries, paneId, price);
+
+  // Magnet-aware variants: snap the raw result to the nearest candle when magnet
+  // is on and the override (Ctrl) isn't held. Pencil opts out (see buildCtx).
+  const pixelToDataSnapped = (px: number, py: number, paneId: PaneId, snap: boolean) => {
+    const raw = rawPixelToData(px, py, paneId);
+    if (!raw || !snap || !magnetOn) return raw;
+    return snapPoint(raw, {
+      candles: candles!,
+      paneId,
+      priceToY: (p) => priceToCanvasY(p, paneId),
+    });
+  };
+  const canvasXToRealMsSnapped = (px: number, snap: boolean) => {
+    const raw = rawCanvasXToRealMs(px);
+    if (raw == null || !snap || !magnetOn) return raw;
+    return snapRealMs(candles!, raw);
+  };
   const canvasYToPrice = (py: number, paneId: PaneId) =>
     projCanvasYToPrice(chart, paneSeries, paneId, py);
   const paneIdAtY = (py: number) => projPaneIdAtY(chart, paneSeries, py);
@@ -247,24 +373,87 @@ export default function DrawingOverlay({ chart, axis, paneSeries, onChartHoverPa
   // kernel (hitTest.ts, unit-tested with stub coords). This wrapper just binds
   // the chart-aware coordinate closures.
   const hitTestAt = (px: number, py: number): Drawing | null =>
-    hitTestDrawings(
-      { realMsToCanvasX, priceToCanvasY, paneIdAtY: (y) => projPaneIdAtY(chart, paneSeries, y) },
-      drawings,
-      px,
-      py,
-    );
+    // Hidden drawings are non-interactive — no hover gating, no selection.
+    defaults.hiddenAll
+      ? null
+      : hitTestDrawings(
+          {
+            realMsToCanvasX,
+            priceToCanvasY,
+            paneIdAtY: (y) => projPaneIdAtY(chart, paneSeries, y),
+            canvasWidth: containerRef.current?.clientWidth ?? 0,
+            measureTextWidth,
+          },
+          drawings,
+          px,
+          py,
+        );
+
+  // ── text editing ───────────────────────────────────────────────────────
+  // Commit the in-flight text edit. Idempotent: reads textEditRef and nulls it,
+  // so a stray second call (blur after a commit) is a no-op. Empty → discard a
+  // new label, or delete an existing one edited down to blank.
+  const commitText = (value: string) => {
+    const edit = textEditRef.current;
+    if (!edit) return;
+    const trimmed = value.trim();
+    const store = useDrawingsStore.getState();
+    if (trimmed.length === 0) {
+      if (edit.id != null) store.remove(edit.id);
+    } else if (edit.id != null) {
+      store.update(edit.id, { text: trimmed } as Partial<Drawing>);
+    } else {
+      const id = nanoid(8);
+      store.add({
+        id,
+        kind: 'text',
+        at: edit.at,
+        text: trimmed,
+        color: store.defaults.color,
+        width: store.defaults.width,
+        lineStyle: store.defaults.lineStyle,
+        paneId: edit.paneId,
+        fontSize: TEXT_DEFAULT_FONT_SIZE,
+      });
+      store.setSelected(id);
+    }
+    setTextEdit(null);
+    setTextValue('');
+  };
+
+  const cancelText = () => {
+    setTextEdit(null);
+    setTextValue('');
+  };
+
+  const beginTextEdit = (at: Point, paneId: PaneId) => {
+    // If an edit is already open, this click commits it and is consumed — the
+    // user clicks again to place the next label. Prevents a blur/pointerdown
+    // race from spawning a second draft over the first.
+    if (textEditRef.current) {
+      commitText(textValue);
+      return;
+    }
+    setTextEdit({ id: null, at, paneId, initial: '', fontSize: TEXT_DEFAULT_FONT_SIZE });
+    setTextValue('');
+  };
 
   const buildCtx = (e: React.PointerEvent<HTMLDivElement>): ToolCtx => {
     const rect = (e.currentTarget as HTMLDivElement).getBoundingClientRect();
     const target = e.currentTarget as HTMLDivElement;
+    // Snap applies to every tool except pencil; Ctrl/Meta held on the event
+    // temporarily overrides magnet off.
+    const snap = activeTool !== 'pencil' && !(e.ctrlKey || e.metaKey);
     return {
       px: e.clientX - rect.left,
       py: e.clientY - rect.top,
       pointerId: e.pointerId,
+      shiftKey: e.shiftKey,
       capturePointer: () => target.setPointerCapture(e.pointerId),
       releasePointer: () => target.releasePointerCapture(e.pointerId),
-      pixelToData,
+      pixelToData: (px, py, paneId) => pixelToDataSnapped(px, py, paneId, snap),
       realMsToCanvasX,
+      canvasXToRealMs: (px) => canvasXToRealMsSnapped(px, snap),
       priceToCanvasY,
       canvasYToPrice,
       hitTestAt,
@@ -276,7 +465,10 @@ export default function DrawingOverlay({ chart, axis, paneSeries, onChartHoverPa
       defaults,
       trendlineDraft,
       pencilDraft,
+      rectDraft,
+      measureDraft,
       dragRef,
+      beginTextEdit,
       requestRedraw: () => scheduleRef.current(),
       add: (d) => useDrawingsStore.getState().add(d),
       update: (id, patch) => useDrawingsStore.getState().update(id, patch),
@@ -301,12 +493,38 @@ export default function DrawingOverlay({ chart, axis, paneSeries, onChartHoverPa
   const onPointerUp = (e: React.PointerEvent<HTMLDivElement>) => {
     TOOLS[activeTool].onPointerUp?.(buildCtx(e));
   };
-  const onContextMenu = (e: React.MouseEvent<HTMLDivElement>) => {
-    e.preventDefault();
+  // Abandon any in-flight gesture. Shared by pointercancel (touch interrupted,
+  // pointer lost) and contextmenu. Keep this in sync with the draft refs the
+  // tools own — a new draft-bearing tool must reset here too.
+  const resetGesture = () => {
     trendlineDraft.current = null;
     pencilDraft.current = null;
+    rectDraft.current = null;
+    measureDraft.current = null;
     dragRef.current = null;
+  };
+  const onPointerCancel = (e: React.PointerEvent<HTMLDivElement>) => {
+    resetGesture();
+    try {
+      (e.currentTarget as HTMLDivElement).releasePointerCapture(e.pointerId);
+    } catch {
+      // pointer already released — ignore.
+    }
+  };
+  const onContextMenu = (e: React.MouseEvent<HTMLDivElement>) => {
+    e.preventDefault();
+    resetGesture();
     useDrawingsStore.getState().setActiveTool('select');
+  };
+  // Double-click an existing text label to re-open its editor in place.
+  const onDoubleClick = (e: React.MouseEvent<HTMLDivElement>) => {
+    const rect = (e.currentTarget as HTMLDivElement).getBoundingClientRect();
+    const hit = hitTestAt(e.clientX - rect.left, e.clientY - rect.top);
+    if (hit && hit.kind === 'text') {
+      setTextEdit({ id: hit.id, at: hit.at, paneId: hit.paneId, initial: hit.text, fontSize: hit.fontSize });
+      setTextValue(hit.text);
+      e.preventDefault();
+    }
   };
 
   // ── pointer-events gating ──────────────────────────────────────────────
@@ -385,6 +603,67 @@ export default function DrawingOverlay({ chart, axis, paneSeries, onChartHoverPa
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [activeTool, selectedId, drawings, paneSeries, axis]);
 
+  // Focus + select the text input whenever an edit opens.
+  useEffect(() => {
+    if (textEdit == null) return;
+    const el = textInputRef.current;
+    if (el == null) return;
+    el.focus();
+    el.select();
+  }, [textEdit]);
+
+  // Auto-unhide when the user *switches to* a drawing tool — drawing while the
+  // layer is hidden would be confusing (the new shape wouldn't appear). Keyed
+  // on activeTool transitions ONLY (hiddenAll read fresh): otherwise toggling
+  // hide while a drawing tool is active would instantly revert itself.
+  useEffect(() => {
+    if (activeTool !== 'select' && useDrawingsStore.getState().defaults.hiddenAll) {
+      useDrawingsStore.getState().setDefaults({ hiddenAll: false });
+    }
+  }, [activeTool]);
+
+  // Duplicate the selected drawing with a ~14px down-right offset (derived from
+  // the current coordinate closures so the offset is visually constant across
+  // panes/timeframes). Reassigned each render; called from the keydown effect.
+  duplicateSelectedRef.current = () => {
+    const store = useDrawingsStore.getState();
+    const id = store.selectedId;
+    const code = store.activeCode;
+    if (id == null || code == null) return;
+    const d = store.byCode.get(code)?.find((x) => x.id === id);
+    if (d == null) return;
+    const OFFSET_PX = 14;
+    const ref = refCoords(d);
+    let dMs = 0;
+    let dPrice = 0;
+    if (ref.realMs != null) {
+      const x = realMsToCanvasX(ref.realMs);
+      if (x != null) {
+        const shifted = rawCanvasXToRealMs(x + OFFSET_PX);
+        if (shifted != null) dMs = shifted - ref.realMs;
+      }
+    }
+    if (ref.price != null) {
+      const y = priceToCanvasY(ref.price, d.paneId);
+      if (y != null) {
+        const shifted = canvasYToPrice(y + OFFSET_PX, d.paneId);
+        if (shifted != null) dPrice = shifted - ref.price;
+      }
+    }
+    const clone = cloneWithOffset(d, dMs, dPrice);
+    store.add(clone);
+    store.setSelected(clone.id);
+  };
+
+  // Screen position of the open text editor (null when its anchor is off-axis).
+  const textEditPos = textEdit
+    ? (() => {
+        const x = realMsToCanvasX(textEdit.at.realMs);
+        const y = priceToCanvasY(textEdit.at.price, textEdit.paneId);
+        return x != null && y != null ? { x, y } : null;
+      })()
+    : null;
+
   return (
     <div
       ref={containerRef}
@@ -393,9 +672,42 @@ export default function DrawingOverlay({ chart, axis, paneSeries, onChartHoverPa
       onPointerDown={onPointerDown}
       onPointerMove={onPointerMove}
       onPointerUp={onPointerUp}
+      onPointerCancel={onPointerCancel}
       onContextMenu={onContextMenu}
+      onDoubleClick={onDoubleClick}
     >
       <canvas ref={canvasRef} className="absolute inset-0" />
+      {textEdit && textEditPos && (
+        <input
+          ref={textInputRef}
+          data-drawing-text-input
+          value={textValue}
+          onChange={(e) => setTextValue(e.target.value)}
+          onBlur={() => commitText(textValue)}
+          onKeyDown={(e) => {
+            // IME guard: Enter while composing (한글 조합) confirms the
+            // composition, it does NOT commit the label.
+            if (e.key === 'Enter' && !e.nativeEvent.isComposing) {
+              e.preventDefault();
+              commitText(textValue);
+            } else if (e.key === 'Escape') {
+              e.preventDefault();
+              cancelText();
+            }
+            // Swallow other keys so global drawing shortcuts don't fire while typing.
+            e.stopPropagation();
+          }}
+          placeholder="텍스트…"
+          className="absolute z-30 rounded border border-accent bg-bg-card px-1 py-0 text-fg outline-none"
+          style={{
+            left: textEditPos.x,
+            top: textEditPos.y,
+            font: textFont(textEdit.fontSize),
+            pointerEvents: 'auto',
+            minWidth: '4rem',
+          }}
+        />
+      )}
     </div>
   );
 }

@@ -1,10 +1,23 @@
 // frontend/src/chart/drawing/persistence.ts
-import type { Drawing, LineStyle, PaneId, DrawingDefaults } from './types';
+import type { Drawing, DrawingKind, LineStyle, PaneId, DrawingDefaults } from './types';
 import { PANE_SPECS } from '../paneSpecs';
 import { INITIAL_DEFAULTS } from './types';
 
 const PREFIX = 'replay.drawings.v1.';
 const VERSION = 1;
+
+/** Kinds this build knows how to render. Items with any other kind (corruption,
+ *  or a shape written by a newer build) are dropped on load rather than
+ *  crashing the exhaustive render/hit-test switches. */
+const KNOWN_KINDS: ReadonlySet<string> = new Set<DrawingKind>([
+  'hline',
+  'vline',
+  'trendline',
+  'rect',
+  'measure',
+  'text',
+  'pencil',
+]);
 
 export function storageKey(code: string): string {
   return `${PREFIX}${code}`;
@@ -46,13 +59,24 @@ export function loadDrawings(code: string): Drawing[] {
     return [];
   }
   if (parsed == null || parsed.v !== VERSION) return [];
-  if (!Array.isArray(parsed.items)) return [];
-  return (parsed.items as LegacyItem[]).map((item) => {
-    const { paneIndex: _ignored, ...rest } = item;
-    void _ignored;
-    const lineStyle = (item as { lineStyle?: LineStyle }).lineStyle ?? 'solid';
-    return { ...rest, paneId: resolvePaneId(item), lineStyle } as Drawing;
-  });
+  return normalizeItems(parsed.items);
+}
+
+/**
+ * Coerce an untrusted array of drawing-ish records into valid `Drawing`s:
+ * drops unknown/unparseable kinds, resolves legacy `paneIndex`→`paneId`, and
+ * defaults a missing `lineStyle`. Shared by localStorage load and JSON import.
+ */
+export function normalizeItems(raw: unknown): Drawing[] {
+  if (!Array.isArray(raw)) return [];
+  return (raw as LegacyItem[])
+    .filter((item) => item != null && KNOWN_KINDS.has((item as { kind?: string }).kind ?? ''))
+    .map((item) => {
+      const { paneIndex: _ignored, ...rest } = item;
+      void _ignored;
+      const lineStyle = (item as { lineStyle?: LineStyle }).lineStyle ?? 'solid';
+      return { ...rest, paneId: resolvePaneId(item), lineStyle } as Drawing;
+    });
 }
 
 export function saveDrawings(code: string, items: Drawing[]): void {

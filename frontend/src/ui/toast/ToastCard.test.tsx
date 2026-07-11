@@ -51,6 +51,21 @@ describe('ToastCard', () => {
     expect(exited).toBe(1);
   });
 
+  it('renders an action button (div variant) and fires it without card-level button nesting', () => {
+    let undone = 0;
+    render(
+      <ToastCard visible role="status" action={{ label: '실행취소', onClick: () => { undone += 1; } }}>
+        <span>그림 2개 삭제됨</span>
+      </ToastCard>,
+    );
+    // action ⇒ div variant (no card-wide button), single inner action button.
+    const card = screen.getByRole('status');
+    expect(card.tagName).toBe('DIV');
+    const btn = screen.getByRole('button', { name: '실행취소' });
+    act(() => btn.click());
+    expect(undone).toBe(1);
+  });
+
   it('renders a progress bar only when progress is provided', () => {
     const { rerender } = render(
       <ToastCard visible role="status" progress={{ durationMs: 5000, paused: false }}>

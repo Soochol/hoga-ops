@@ -20,9 +20,25 @@ export type Point = {
 
 export type DrawingId = string;
 
-export type DrawingKind = 'hline' | 'trendline' | 'pencil';
+export type DrawingKind =
+  | 'hline'
+  | 'vline'
+  | 'trendline'
+  | 'rect'
+  | 'measure'
+  | 'text'
+  | 'pencil';
 
-export type DrawingTool = 'select' | 'hline' | 'trendline' | 'pencil' | 'eraser';
+export type DrawingTool =
+  | 'select'
+  | 'hline'
+  | 'vline'
+  | 'trendline'
+  | 'rect'
+  | 'measure'
+  | 'text'
+  | 'pencil'
+  | 'eraser';
 
 /** Stable identifier for a chart pane. Mirrors `PaneSpec.name`. Renaming
  *  any literal here is a breaking change — strands every user's saved
@@ -55,10 +71,51 @@ export interface Hline extends DrawingBase {
   price: number;
 }
 
+export interface Vline extends DrawingBase {
+  kind: 'vline';
+  /** The single time level (real Unix-ms). Renders as a vertical line spanning
+   *  every mounted pane — time is shared across panes, so unlike other shapes
+   *  vline is NOT clipped to `paneId`. `paneId` is retained (the pane it was
+   *  created in) only for schema uniformity; render and hit-test ignore it. */
+  realMs: number;
+}
+
 export interface Trendline extends DrawingBase {
   kind: 'trendline';
   a: Point;
   b: Point;
+}
+
+export interface Rect extends DrawingBase {
+  kind: 'rect';
+  /** Opposite corners. Rendered/hit-tested after min/max normalization, so the
+   *  two corners may be stored in any order (a handle drag can cross them). */
+  a: Point;
+  b: Point;
+  /** Fill alpha 0..1. 0 = outline only. Not a sticky default (excluded from the
+   *  DrawingDefaults propagation whitelist), so it never leaks to other kinds. */
+  fillOpacity: number;
+}
+
+export interface Measure extends DrawingBase {
+  kind: 'measure';
+  /** Diagonal corners of the measured region. Renders as a shaded box plus a
+   *  Δprice / Δ% / Δtime / bar-count readout. Same 2-point model as Trendline,
+   *  so it reuses the endpoint-handle drag path. */
+  a: Point;
+  b: Point;
+}
+
+export interface Text extends DrawingBase {
+  kind: 'text';
+  /** Anchor (top-left of the text box). */
+  at: Point;
+  /** The label content. Empty strings are never committed. */
+  text: string;
+  /** Font size in CSS px. `width`/`lineStyle` are unused for text (the panel
+   *  hides them); a dedicated field avoids overloading `width` and leaking a
+   *  font size into other kinds' sticky stroke defaults. */
+  fontSize: number;
 }
 
 export interface Pencil extends DrawingBase {
@@ -67,7 +124,17 @@ export interface Pencil extends DrawingBase {
   points: Point[];
 }
 
-export type Drawing = Hline | Trendline | Pencil;
+export type Drawing = Hline | Vline | Trendline | Rect | Measure | Text | Pencil;
+
+/** Default fill alpha for a freshly-created rectangle. */
+export const RECT_DEFAULT_FILL_OPACITY = 0.1;
+/** Selectable fill-opacity steps shown in the property panel for a rect. */
+export const RECT_FILL_OPACITIES = [0, 0.1, 0.2, 0.35] as const;
+
+/** Default font size (CSS px) for a freshly-created text label. */
+export const TEXT_DEFAULT_FONT_SIZE = 13;
+/** Selectable font-size steps shown in the property panel for a text label. */
+export const TEXT_FONT_SIZES = [11, 13, 16, 20, 24] as const;
 
 /** Hard cap on pencil points to keep one drawing under ~250KB serialized. */
 export const PENCIL_MAX_POINTS = 5000;
@@ -75,8 +142,13 @@ export const PENCIL_MAX_POINTS = 5000;
 /** Hit-test thresholds in canvas-space pixels. */
 export const HIT_THRESHOLD = {
   hline: 6,
+  vline: 6,
   trendlineBody: 8,
   trendlineHandle: 6,
+  rectBorder: 6,
+  rectHandle: 6,
+  measureBorder: 6,
+  measureHandle: 6,
   pencil: 8,
 } as const;
 
@@ -102,12 +174,20 @@ export type DrawingDefaults = {
   color: string;
   width: number;
   lineStyle: LineStyle;
+  /** Magnet mode — snap creation/handle drags to the nearest candle. Session
+   *  preference persisted alongside style defaults; NOT a per-drawing field, so
+   *  it never propagates through the style whitelist. */
+  magnet: boolean;
+  /** Hide all drawings without deleting them (rail eye toggle). */
+  hiddenAll: boolean;
 };
 
 /** Seed used when no persisted defaults exist. Teal accent, integer-step
- *  2 px, solid. */
+ *  2 px, solid, magnet off, all visible. */
 export const INITIAL_DEFAULTS: DrawingDefaults = {
   color: '#14B8A6',
   width: 2,
   lineStyle: 'solid',
+  magnet: false,
+  hiddenAll: false,
 };

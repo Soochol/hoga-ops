@@ -15,6 +15,7 @@ import { useCaptureQueueSync } from './capture/useCaptureQueue';
 import { useScreenerUpdateSync } from './screener/useScreenerUpdateSync';
 import SignalAlertToastHost from './signalAlerts/SignalAlertToastHost';
 import KisRestUnavailableToastHost from './live/KisRestUnavailableToastHost';
+import DrawingClearToastHost from './chart/DrawingClearToastHost';
 import { ToastViewport } from './ui/toast/ToastViewport';
 import { useSignalAlertEvents } from './signalAlerts/useSignalAlertEvents';
 import { useStaticDocumentTitle } from './util/useDocumentTitle';
@@ -69,6 +70,7 @@ export default function App() {
             새 토스트가 맨 아래에서 떠오르게 하고, KIS 경고는 스택 위쪽에 둔다. */}
         <SignalAlertToastHost />
         <KisRestUnavailableToastHost />
+        <DrawingClearToastHost />
       </ToastViewport>
       <TopNav onOpenSettings={() => setSettingsOpen(true)} />
       {settingsOpen && (

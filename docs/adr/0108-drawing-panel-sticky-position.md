@@ -1,4 +1,8 @@
-# 0062 — Drawing property panel sticky position (supersedes ADR-0032 in part)
+# 0108 — Drawing property panel sticky position (supersedes ADR-0032 in part)
+
+> Renumbered from 0062 (2026-07-12): the number collided with
+> `0062-structural-auction-boundary.md`, which is the canonical ADR-0062
+> referenced as "v2/v3" throughout `frontend/src/live/`.
 
 **Status:** accepted (2026-06-03)
 **Supersedes (in part):** ADR-0032 — only its "Why session-only panel position" *per-selection re-anchor* clause; the *no-persistence* (session-scoped) decision is preserved.

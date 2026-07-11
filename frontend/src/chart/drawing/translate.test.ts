@@ -1,7 +1,7 @@
 // frontend/src/chart/drawing/translate.test.ts
 
 import { describe, expect, it } from 'vitest';
-import type { Drawing, Hline, Pencil, Trendline } from './types';
+import type { Drawing, Hline, Measure, Pencil, Rect, Text, Trendline, Vline } from './types';
 import { clampDPriceForDrawing, pricesOf, translateDrawing } from './translate';
 
 const baseStyle = { color: '#14B8A6', width: 1.5, lineStyle: 'solid' as const };
@@ -11,6 +11,60 @@ describe('translateDrawing — hline', () => {
     const h: Hline = { id: 'h1', kind: 'hline', price: 100, ...baseStyle, paneId: 'candle' };
     expect(translateDrawing(h, 999, 5)).toEqual({ price: 105 });
     expect(translateDrawing(h, -1_000_000, -10)).toEqual({ price: 90 });
+  });
+});
+
+describe('translateDrawing — vline', () => {
+  it('shifts realMs by dMs and ignores dPrice (vline has no price)', () => {
+    const v: Vline = { id: 'v1', kind: 'vline', realMs: 1_000, ...baseStyle, paneId: 'candle' };
+    expect(translateDrawing(v, 500, 9999)).toEqual({ realMs: 1_500 });
+  });
+
+  it('pricesOf(vline) is empty so its Δprice clamp is a pass-through', () => {
+    const v: Vline = { id: 'v1', kind: 'vline', realMs: 1_000, ...baseStyle, paneId: 'candle' };
+    expect(pricesOf(v)).toEqual([]);
+    expect(clampDPriceForDrawing(v, 42, { top: 100, bottom: 0 })).toBe(42);
+  });
+});
+
+describe('translateDrawing — rect', () => {
+  it('shifts both corners by (dMs, dPrice)', () => {
+    const r: Rect = {
+      id: 'r1', kind: 'rect',
+      a: { realMs: 1_000, price: 100 }, b: { realMs: 2_000, price: 200 },
+      fillOpacity: 0.1, ...baseStyle, paneId: 'candle',
+    };
+    expect(translateDrawing(r, 500, 5)).toEqual({
+      a: { realMs: 1_500, price: 105 },
+      b: { realMs: 2_500, price: 205 },
+    });
+    expect(pricesOf(r)).toEqual([100, 200]);
+  });
+});
+
+describe('translateDrawing — measure', () => {
+  it('shifts both endpoints and reports both prices', () => {
+    const m: Measure = {
+      id: 'm1', kind: 'measure',
+      a: { realMs: 1_000, price: 100 }, b: { realMs: 2_000, price: 200 },
+      ...baseStyle, paneId: 'candle',
+    };
+    expect(translateDrawing(m, 500, 5)).toEqual({
+      a: { realMs: 1_500, price: 105 },
+      b: { realMs: 2_500, price: 205 },
+    });
+    expect(pricesOf(m)).toEqual([100, 200]);
+  });
+});
+
+describe('translateDrawing — text', () => {
+  it('shifts the anchor by (dMs, dPrice)', () => {
+    const t: Text = {
+      id: 't1', kind: 'text', at: { realMs: 1_000, price: 100 },
+      text: '메모', fontSize: 13, ...baseStyle, paneId: 'candle',
+    };
+    expect(translateDrawing(t, 500, 5)).toEqual({ at: { realMs: 1_500, price: 105 } });
+    expect(pricesOf(t)).toEqual([100]);
   });
 });
 
