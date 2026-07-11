@@ -145,3 +145,41 @@ def test_program_trade_store_quarantines_future_sidecar_and_accepts_current_rows
     assert len(backups) == 1
     backed_up = json.loads(backups[0].read_text())
     assert [p["bsop_hour"] for p in backed_up["rows"]] == ["152801", "180242"]
+
+
+def test_load_cached_hits_unchanged_and_reloads_after_write(tmp_path):
+    from datetime import datetime
+
+    from hoga.live.program_trade_store import ProgramTradeStore
+
+    store = ProgramTradeStore(tmp_path)
+    obs = int(datetime(2026, 6, 26, 10, 0, 0, tzinfo=KIS_KST).timestamp() * 1000)
+    store.merge_response(code="005930", date="20260626", rows=[row("100000", 1_000)], observed_at_ms=obs)
+
+    a = store.load_cached("005930", "20260626")
+    b = store.load_cached("005930", "20260626")
+    assert a is b, "미변경 파일 2회째는 캐시 히트(동일 객체)"
+    assert [p.bsop_hour for p in a.rows] == ["100000"]
+
+    # merge_response 가 파일을 갱신(mtime 변경) → load_cached 는 새 데이터 반영.
+    store.merge_response(code="005930", date="20260626", rows=[row("110000", 2_000)], observed_at_ms=obs + 1)
+    c = store.load_cached("005930", "20260626")
+    assert [p.bsop_hour for p in c.rows] == ["100000", "110000"]
+
+
+def test_load_cached_does_not_poison_writer_path(tmp_path):
+    """load_cached 로 캐시를 데운 뒤에도 writer(merge_response, uncached load)는 실제
+    현재 파일에 병합해야 한다 — 캐시가 read-modify-write 를 오염시키면 안 된다."""
+    from datetime import datetime
+
+    from hoga.live.program_trade_store import ProgramTradeStore
+
+    store = ProgramTradeStore(tmp_path)
+    obs = int(datetime(2026, 6, 26, 10, 0, 0, tzinfo=KIS_KST).timestamp() * 1000)
+    store.merge_response(code="005930", date="20260626", rows=[row("100000", 1_000)], observed_at_ms=obs)
+    store.load_cached("005930", "20260626")  # 캐시 예열
+
+    result = store.merge_response(
+        code="005930", date="20260626", rows=[row("110000", 2_000)], observed_at_ms=obs + 1
+    )
+    assert [p.bsop_hour for p in result.rows] == ["100000", "110000"], "writer 는 기존 행 위에 병합"

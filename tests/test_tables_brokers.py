@@ -127,6 +127,27 @@ def test_query_day_series_returns_all_recorded_brokers(tmp_path: Path) -> None:
     )
 
 
+def test_query_day_series_cached_reuses_result_for_unchanged_file(tmp_path: Path) -> None:
+    from hoga.tables.brokers import query_day_series_cached
+
+    rows = PARSERS[4](
+        _broker_parts_named(
+            ts_ms=90000000, seq=1,
+            sell_names=[f"S{j}" for j in range(5)], sell_today=[100 + j for j in range(5)],
+            buy_names=[f"B{j}" for j in range(5)], buy_today=[200 + j for j in range(5)],
+        )
+    )
+    out = tmp_path / "brokers.parquet"
+    write_parquet(rows, out)
+    con = duckdb.connect()
+
+    a = query_day_series_cached(con, path=out)
+    b = query_day_series_cached(con, path=out)
+    assert a is b, "미변경 파일 2회째는 캐시 히트(동일 객체)"
+    # 내용은 uncached 와 동일해야 한다.
+    assert [e.broker for e in a] == [e.broker for e in query_day_series(con, path=out)]
+
+
 def test_query_late_entry_events_use_pre_threshold_same_side_history(
     tmp_path: Path,
 ) -> None:

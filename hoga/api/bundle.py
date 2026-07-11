@@ -1205,7 +1205,8 @@ def build_program_trade_series(engine: QueryEngine, *, code: str, dates: list[st
     store = ProgramTradeStore(data_dir)
     points: list[ProgramTradePoint] = []
     for date in dates:
-        day = store.load(code, date)
+        # 읽기 전용 — mtime 캐시로 과거일 JSON 재파싱 제거(today 는 mtime 변경 시 재로드).
+        day = store.load_cached(code, date)
         gap_times = {str(ev.get("new_oldest")) for ev in day.gap_events}
         for row in day.rows:
             points.append(
