@@ -321,9 +321,11 @@ export function useViewportBackfill({
   // freely go negative past the leftmost bar (-50.3 etc.), which is the
   // signal we actually need.
   //
-  // Each trigger prepends one chunk of ~STEP_CANDLE_TARGET(50) candles —
-  // minute = 1~4 trading days (weekend-skipped), D = 70, W/M = 350/1550
-  // calendar days.
+  // Each step prepends one STEP_TRADING_DAYS chunk (weekend-skipped): minute =
+  // 5 trading days (~1,950 bars at 1m → one backend date-parallel batch, ADR-0105),
+  // D/W/M = 50/250/1050 trading days (~50 candles). A minute step is sized to
+  // one parallel backend batch, not one bar-count — deep pans commit every 5
+  // trading days instead of every single day.
   // The 150ms trailing debounce coalesces rapid wheel / drag events into one
   // fetch; the store's extendHistoricalRange is monotonically decreasing, so
   // repeated negative ranges within one chunk are no-ops.

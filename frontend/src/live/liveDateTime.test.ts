@@ -8,8 +8,7 @@ import {
   earliestAllowedMinuteDate,
   PAST_CANDLES_MAX_DAYS,
   STEP_CANDLE_TARGET,
-  stepTradingDays,
-  stepChunkDays,
+  STEP_TRADING_DAYS,
   stepCandlesEstimate,
   fillBudgetSteps,
   planFillStep,
@@ -32,30 +31,31 @@ describe('nextHistoricalFrom', () => {
 
   it('steps back one step from the axis earliest when no fetch is in flight', () => {
     const got = nextHistoricalFrom(axisEarliestMs, null, '1m');
-    // 1m 스텝 = 1거래일, 월요일 base → 주말 스킵 → 직전 금요일.
-    expect(got).toBe('20260130');
-    expect(got).toBe(subtractWeekdaysKst(axisEarliestDate, stepTradingDays('1m')));
+    // 1m 스텝 = 5거래일, 월요일(20260202) base → 주말 스킵 → 직전 월요일 20260126.
+    expect(got).toBe('20260126');
+    expect(got).toBe(subtractWeekdaysKst(axisEarliestDate, STEP_TRADING_DAYS['1m']));
   });
 
   it('bases off historicalFromDate when it is already earlier than the axis (holiday-span progress)', () => {
     const earlier = subtractDaysKst(axisEarliestDate, 40);
     const got = nextHistoricalFrom(axisEarliestMs, earlier, '1m');
-    expect(got).toBe(subtractWeekdaysKst(earlier, stepTradingDays('1m')));
+    expect(got).toBe(subtractWeekdaysKst(earlier, STEP_TRADING_DAYS['1m']));
   });
 
   it('ignores a historicalFromDate that is NOT earlier than the axis earliest', () => {
     const later = subtractDaysKst(axisEarliestDate, -5);
     const got = nextHistoricalFrom(axisEarliestMs, later, '1m');
-    expect(got).toBe(subtractWeekdaysKst(axisEarliestDate, stepTradingDays('1m')));
+    expect(got).toBe(subtractWeekdaysKst(axisEarliestDate, STEP_TRADING_DAYS['1m']));
   });
 
-  it('honors the timeframe (coarser tf → bigger step; D uses calendar days)', () => {
+  it('honors the timeframe (coarser tf → bigger step; all weekend-skipped)', () => {
     const m1 = nextHistoricalFrom(axisEarliestMs, null, '1m');
     const m30 = nextHistoricalFrom(axisEarliestMs, null, '30m');
     const daily = nextHistoricalFrom(axisEarliestMs, null, 'D');
-    expect(m30).toBe(subtractWeekdaysKst(axisEarliestDate, stepTradingDays('30m')));
-    expect(daily).toBe(subtractDaysKst(axisEarliestDate, stepChunkDays('D')));
-    expect(m30 < m1).toBe(true);
+    // 분봉은 전부 5거래일이라 1m·30m 스텝 크기가 같다(단일 통화).
+    expect(m30).toBe(subtractWeekdaysKst(axisEarliestDate, STEP_TRADING_DAYS['30m']));
+    expect(m30).toBe(m1);
+    expect(daily).toBe(subtractWeekdaysKst(axisEarliestDate, STEP_TRADING_DAYS['D']));
     expect(daily < m30).toBe(true);
   });
 
@@ -71,14 +71,14 @@ describe('nextCoverageFrom', () => {
   // 없으면 rangeWindowFromDate)을 base로 한 스텝만 걷는다 — 복원된 캔들로 axis가
   // 수개월 과거여도 한 스텝이 폭발하지 않게 한다.
   it('bases off rangeWindowFromDate when no extension yet (historicalFromDate null)', () => {
-    // '20260601'은 월요일 → 1m 1거래일 스텝 → 직전 금요일 '20260529'.
+    // '20260601'은 월요일 → 1m 5거래일 스텝 → 직전 월요일 '20260525'.
     const got = nextCoverageFrom(null, '20260601', '1m');
-    expect(got).toBe('20260529');
+    expect(got).toBe('20260525');
   });
 
   it('bases off historicalFromDate once an extension is in flight (ignores window)', () => {
     const got = nextCoverageFrom('20260520', '20260601', '1m');
-    expect(got).toBe(subtractWeekdaysKst('20260520', 1)); // '20260519' (수→화)
+    expect(got).toBe(subtractWeekdaysKst('20260520', STEP_TRADING_DAYS['1m'])); // '20260513' (수)
   });
 
   it('does NOT use an axis earliest — result is window-relative, not months-deep', () => {
@@ -94,25 +94,31 @@ describe('nextCoverageFrom', () => {
   });
 });
 
-describe('step sizing — 캔들 50개 통일 (STEP_CANDLE_TARGET)', () => {
-  it('target is 50 candles for every timeframe', () => {
+describe('step sizing — STEP_TRADING_DAYS 단일 테이블 (ADR-0105)', () => {
+  it('분봉은 전 타임프레임 5거래일로 균일 (백엔드 날짜-병렬 배치 1회)', () => {
+    expect(STEP_TRADING_DAYS['1m']).toBe(5);
+    expect(STEP_TRADING_DAYS['3m']).toBe(5);
+    expect(STEP_TRADING_DAYS['5m']).toBe(5);
+    expect(STEP_TRADING_DAYS['10m']).toBe(5);
+    expect(STEP_TRADING_DAYS['15m']).toBe(5);
+    expect(STEP_TRADING_DAYS['30m']).toBe(5);
+  });
+
+  it('D/W/M은 캔들 STEP_CANDLE_TARGET(50)개에서 유도된 거래일', () => {
     expect(STEP_CANDLE_TARGET).toBe(50);
+    expect(STEP_TRADING_DAYS['D']).toBe(50); // 일봉 50개 = 50거래일
+    expect(STEP_TRADING_DAYS['W']).toBe(250); // 주봉 50개 = 50주 × 5거래일
+    expect(STEP_TRADING_DAYS['M']).toBe(1050); // 월봉 50개 = 50개월 × 21거래일
   });
 
-  it('minute steps convert 50 candles to trading days (min 1 — date-granular API)', () => {
-    // ceil(50 × 봉분 ÷ 390): 1m~5m은 1일 floor, 10m/15m=2, 30m=4.
-    expect(stepTradingDays('1m')).toBe(1);
-    expect(stepTradingDays('3m')).toBe(1);
-    expect(stepTradingDays('5m')).toBe(1);
-    expect(stepTradingDays('10m')).toBe(2);
-    expect(stepTradingDays('15m')).toBe(2);
-    expect(stepTradingDays('30m')).toBe(4);
-  });
-
-  it('D/W/M steps convert 50 candles to calendar days', () => {
-    expect(stepChunkDays('D')).toBe(70); // ceil(50 ÷ (5/7))
-    expect(stepChunkDays('W')).toBe(350); // 50 × 7
-    expect(stepChunkDays('M')).toBe(1550); // 50 × 31
+  it('D/W 거래일 스텝은 기존 캘린더일 스텝과 동치 (회귀 없음 증명)', () => {
+    // 주말 스킵이 D/W를 정확히 기존 캘린더일 폭으로 되돌린다.
+    expect(subtractWeekdaysKst('20260202', STEP_TRADING_DAYS['D'])).toBe(
+      subtractDaysKst('20260202', 70), // 기존 stepChunkDays('D')
+    );
+    expect(subtractWeekdaysKst('20260202', STEP_TRADING_DAYS['W'])).toBe(
+      subtractDaysKst('20260202', 350), // 기존 stepChunkDays('W')
+    );
   });
 });
 
@@ -190,19 +196,19 @@ describe('realMsToYyyymmdd', () => {
 });
 
 describe('fillBudgetSteps / stepCandlesEstimate — 제스처 예산 산정', () => {
-  it('스텝당 봉 수는 거래일 ceil을 반영한다 (STEP_CANDLE_TARGET 나누기가 아님)', () => {
-    // 1m: 1거래일 floor = 390봉/스텝. 50으로 나누면 예산이 ~8배 과다.
-    expect(stepCandlesEstimate('1m')).toBe(390);
-    expect(stepCandlesEstimate('5m')).toBe(78); // 1거래일 × 78봉
-    expect(stepCandlesEstimate('15m')).toBe(52); // 2거래일 × 26봉
-    expect(stepCandlesEstimate('30m')).toBe(52); // 4거래일 × 13봉
+  it('스텝당 봉 수는 5거래일 폭을 반영한다 (STEP_TRADING_DAYS × 봉/거래일)', () => {
+    // 1m: 5거래일 × 390 = 1,950봉/스텝. D/W/M은 STEP_CANDLE_TARGET(50)봉.
+    expect(stepCandlesEstimate('1m')).toBe(1950);
+    expect(stepCandlesEstimate('5m')).toBe(390); // 5거래일 × 78봉
+    expect(stepCandlesEstimate('15m')).toBe(130); // 5거래일 × 26봉
+    expect(stepCandlesEstimate('30m')).toBe(65); // 5거래일 × 13봉
     expect(stepCandlesEstimate('D')).toBe(50);
   });
 
   it('예산 = ceil(빈공간 바 수 ÷ 스텝당 봉 수), 최소 1', () => {
-    expect(fillBudgetSteps(50, '1m')).toBe(1); // 390봉 스텝 1개로 충분
-    expect(fillBudgetSteps(500, '1m')).toBe(2);
-    expect(fillBudgetSteps(350, '30m')).toBe(7); // ceil(350/52)
+    expect(fillBudgetSteps(50, '1m')).toBe(1); // 1,950봉 스텝 1개로 충분
+    expect(fillBudgetSteps(3000, '1m')).toBe(2); // ceil(3000/1950)
+    expect(fillBudgetSteps(350, '30m')).toBe(6); // ceil(350/65)
     expect(fillBudgetSteps(60, 'D')).toBe(2); // ceil(60/50)
     expect(fillBudgetSteps(0, '1m')).toBe(1); // 트리거됐다면 최소 1스텝
   });
@@ -217,7 +223,7 @@ describe('planFillStep — 제스처 예산 모델', () => {
     historicalFromDate: '20260521' as string | null, // 목요일
     axisEarliestMs,
     earliestAllowedDate: '20251010', // far floor → not clamped
-    timeframe: '1m' as const, // 1거래일 스텝
+    timeframe: '1m' as const, // 5거래일 스텝
     stepCount: 1,
     budget: 3,
   };
@@ -225,7 +231,7 @@ describe('planFillStep — 제스처 예산 모델', () => {
   it('fetches the next step while budget remains', () => {
     expect(planFillStep(base)).toEqual({
       action: 'fetch',
-      nextFrom: subtractWeekdaysKst('20260521', 1), // '20260520' (목→수)
+      nextFrom: subtractWeekdaysKst('20260521', STEP_TRADING_DAYS['1m']), // '20260514' (목→목)
     });
   });
 
@@ -254,7 +260,7 @@ describe('planFillStep — 제스처 예산 모델', () => {
     it('fetches a window-base step while the window is behind the frozen target', () => {
       expect(planFillStep(cov)).toEqual({
         action: 'fetch',
-        nextFrom: subtractWeekdaysKst('20260521', 1),
+        nextFrom: subtractWeekdaysKst('20260521', STEP_TRADING_DAYS['1m']),
       });
     });
 

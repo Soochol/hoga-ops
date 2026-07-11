@@ -8,7 +8,7 @@
  * "what date is right now in Korea?" — keeping the date math in one place means
  * localising any future Half-Day Session handling here.
  */
-import { isMinuteTimeframe, type LiveTimeframe, type MinuteTimeframe } from '../state/livePage';
+import { isMinuteTimeframe, type LiveTimeframe } from '../state/livePage';
 import { TIMEFRAME_TO_MS } from '../api/types';
 import { unixMsToKSTDate } from '../util/time';
 
@@ -130,31 +130,38 @@ function candleTargetToCalendarDays(target: number, tf: LiveTimeframe): number {
   return Math.ceil(tradingDays / TRADING_DAYS_PER_CALENDAR_DAYS);
 }
 
-/** 좌측 팬/줌 한 스텝의 목표 캔들 수 — 전 타임프레임 공통.
- *
- * 스텝의 단위를 "기간"이 아니라 "캔들 개수"로 잡는 이유: 뷰포트·빈공간·줌은
- * 전부 바(bar) 단위로 측정되므로, 수요(빈공간 바 수)와 공급(fetch 봉 수)의
- * 단위를 맞추면 타임프레임과 무관하게 스텝이 화면의 일정 비율이 된다.
- * (1거래일 고정 스텝은 30m에선 13봉=과소, 1m에선 390봉=과대로 30배 편차.)
- *
- * 백필 스텝 폭(nextHistoricalFrom/nextCoverageFrom → 날짜 환산)의 단일
- * 소스다. */
+/** D/W/M 한 스텝이 겨냥하는 캔들 개수. STEP_TRADING_DAYS 의 D/W/M 값을 이
+ * 목표에서 유도해 "한 스텝 ≈ 50개 캔들" 불변식을 코드로 드러낸다(ADR-0104).
+ * 분봉 스텝은 캔들 개수가 아니라 백엔드 병렬 배치 1회(5거래일)로 산정한다
+ * (ADR-0105) — 스텝 폭의 단일 소스는 STEP_TRADING_DAYS. */
 export const STEP_CANDLE_TARGET = 50;
+const TRADING_DAYS_PER_WEEK = 5;
+const TRADING_DAYS_PER_MONTH = 21;
 
-/** 분봉 한 스텝의 거래일 수 = 캔들 STEP_CANDLE_TARGET개 환산. API가 날짜 구간 단위라 최소
- * 1거래일로 floor된다(1m·3m). 스텝 날짜 계산은 주말을 건너뛰는
- * `subtractWeekdaysKst`와 짝을 이룬다 — 캘린더일 환산(5/7 밀도)이면 좁은
- * 스텝이 토·일만 덮는 빈 왕복이 생긴다. */
-export function stepTradingDays(tf: MinuteTimeframe): number {
-  const tfMinutes = TIMEFRAME_TO_MS[tf] / 60_000;
-  return Math.max(1, Math.ceil((STEP_CANDLE_TARGET * tfMinutes) / TRADING_MINUTES_PER_DAY));
-}
-
-/** D/W/M 한 스텝의 캘린더일 크기(캔들 STEP_CANDLE_TARGET개 환산). 분봉은 이 함수가 아니라
- * `stepTradingDays` + 주말 스킵 경로를 쓴다(위 주석). */
-export function stepChunkDays(tf: LiveTimeframe): number {
-  return candleTargetToCalendarDays(STEP_CANDLE_TARGET, tf);
-}
+/** 좌측 팬/줌 백필 한 스텝의 거래일 폭 — 전 타임프레임 단일 소스(ADR-0105).
+ *
+ * 스텝 날짜 계산은 전 타임프레임이 `subtractWeekdaysKst`(주말 스킵) 단일 경로를
+ * 쓴다 — 거래일이 주식 데이터의 자연 단위라(일봉은 거래일에만 존재), 스텝당
+ * 캔들 산출량이 주말 위치와 무관하게 일정해진다(1m = 5×390 = 1,950봉 고정).
+ *
+ * - 분봉(1m~30m): 5거래일. 백엔드 날짜-병렬 배치 1회로 첫 커밋 ~1.5-2.5s이면서
+ *   딥 팬 총시간은 순차(1거래일 스텝) 대비 3~5배 단축(실측 2026-07-11). 초기
+ *   로드 `INITIAL_MINUTE_TRADING_DAYS=5`와 동일 단위. 5거래일 ≈ 7~9캘린더일
+ *   < 청크 캡 15일·백엔드 신선예산 12일이라 스텝당 요청은 항상 청크 1개.
+ * - D/W/M: 캔들 STEP_CANDLE_TARGET(50)개 환산. D=50거래일, W=50주×5거래일,
+ *   M=50개월×21거래일. D=50평일=70캘린더일(기존과 동치), W=250평일=350캘린더일
+ *   (기존과 동치), M=1050평일≈1470캘린더일(기존 1550의 의도된 근사). */
+export const STEP_TRADING_DAYS: Record<LiveTimeframe, number> = {
+  '1m': 5,
+  '3m': 5,
+  '5m': 5,
+  '10m': 5,
+  '15m': 5,
+  '30m': 5,
+  D: STEP_CANDLE_TARGET,
+  W: STEP_CANDLE_TARGET * TRADING_DAYS_PER_WEEK,
+  M: STEP_CANDLE_TARGET * TRADING_DAYS_PER_MONTH,
+};
 
 /** 초기 분봉 fetch 폭(거래일). 콜드로드마다 받는 분봉 과거창의 크기를 정한다.
  *
@@ -190,13 +197,11 @@ export function initialHistoricalDaysFor(tf: LiveTimeframe): number {
   return candleTargetToCalendarDays(initialCandleTargetFor(tf), tf);
 }
 
-/** base 날짜에서 타임프레임의 한 스텝(캔들 ~100개)만큼 과거의 YYYYMMDD.
- * 분봉 = 거래일 환산 + 주말 스킵(빈 왕복 방지), D/W/M = 캘린더일 환산.
+/** base 날짜에서 타임프레임의 한 스텝(`STEP_TRADING_DAYS`거래일)만큼 과거의
+ * YYYYMMDD. 전 타임프레임이 주말 스킵 단일 경로를 쓴다(`STEP_TRADING_DAYS` 주석).
  * 결과는 항상 base보다 strict 과거 — 두 kernel의 단조성 계약의 근거. */
 function stepBackFrom(baseYyyymmdd: string, tf: LiveTimeframe): string {
-  return isMinuteTimeframe(tf)
-    ? subtractWeekdaysKst(baseYyyymmdd, stepTradingDays(tf))
-    : subtractDaysKst(baseYyyymmdd, stepChunkDays(tf));
+  return subtractWeekdaysKst(baseYyyymmdd, STEP_TRADING_DAYS[tf]);
 }
 
 /** /live infinite-scroll backfill policy (SR-3), extracted pure from
@@ -244,14 +249,14 @@ export function nextCoverageFrom(
   return stepBackFrom(base, tf);
 }
 
-/** 한 스텝이 실제로 가져오는 봉 수 추정. 제스처 예산 산정의 분모 —
- * `STEP_CANDLE_TARGET`으로 나누면 안 된다: 분봉 스텝은 거래일 단위로
- * ceil되므로 1m 한 스텝은 50이 아니라 390봉이다(1거래일 floor). 이걸
- * 무시하면 1m 예산이 ~8배 과다 산정돼 과다 fetch가 된다. */
+/** 한 스텝이 실제로 가져오는 봉 수 추정. 제스처 예산 산정의 분모.
+ * 분봉은 `STEP_TRADING_DAYS`거래일 × (거래분/일 ÷ 봉분) — 1m 한 스텝은
+ * 5×390 = 1,950봉이다. D/W/M은 STEP_TRADING_DAYS가 캔들 50개에서 유도됐으므로
+ * 정확히 STEP_CANDLE_TARGET(50)봉. */
 export function stepCandlesEstimate(tf: LiveTimeframe): number {
   if (isMinuteTimeframe(tf)) {
     const tfMinutes = TIMEFRAME_TO_MS[tf] / 60_000;
-    return stepTradingDays(tf) * (TRADING_MINUTES_PER_DAY / tfMinutes);
+    return STEP_TRADING_DAYS[tf] * (TRADING_MINUTES_PER_DAY / tfMinutes);
   }
   return STEP_CANDLE_TARGET;
 }
