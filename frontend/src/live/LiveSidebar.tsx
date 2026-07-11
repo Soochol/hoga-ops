@@ -35,11 +35,13 @@ import { LiveDetailPanel } from './LiveDetailPanel';
 import { realMsToYyyymmdd } from './liveDateTime';
 import {
   buildCandleDateIndex,
-  computeContinuousTradeVolumeDistribution,
   firstTrailingSinglePriceBookMs,
-  selectVolumeDistributionProfile,
   volumeDistributionClosePointsFromCandles,
 } from './continuousTradeVolumeDistribution';
+import {
+  useLiveDistributionTrades,
+  useLiveTodayVolumeDistribution,
+} from './useLiveVolumeDistribution';
 import { useVolumeDistributionCutoffProfile } from './useVolumeDistributionCutoffProfile';
 
 interface Props {
@@ -165,76 +167,56 @@ export function LiveSidebar({ code, live, bundle = null, todayKst = '', programT
     return candleDateIndex.get(activeVolumeDistributionDate) ?? [];
   }, [activeBundle, activeVolumeDistributionDate, candleDateIndex]);
   const persistedVolumeDistributions = activeBundle?.volume_distributions ?? [];
-  const liveDistributionTrades = useMemo(
-    () => live.trade.flatMap((snapshot) =>
-      snapshot.trades.map((trade) => ({
-        t_ms: trade.t_ms ?? snapshot.t_ms,
-        price: trade.price ?? NaN,
-        qty: trade.qty,
-        side: trade.side,
-      })),
-    ),
-    [live.trade],
-  );
+  // 틱-증분 flatten: OFF면 stable EMPTY, ON이면 신규 스냅샷만 접는다
+  // (기존 flatMap은 기능 OFF여도 체결 틱마다 15분 버퍼 전체를 재물질화했다).
+  const liveDistribution = useLiveDistributionTrades(live.trade, volumeDistributionEnabled);
+  const liveDistributionTrades = liveDistribution.trades;
   const todayContinuousBeforeMs = useMemo(() => {
     if (!activeBundle || !todayKst) return null;
     const todaySegment = activeBundle.segments.find((segment) => segment.date === todayKst);
     if (!todaySegment) return null;
     return firstTrailingSinglePriceBookMs(ob, todaySegment.session_close_ms);
   }, [activeBundle, todayKst, ob]);
-  const recomputedTodayVolumeDistribution = useMemo(() => {
-    if (
-      !volumeDistributionEnabled ||
-      !stockCode ||
-      !todayKst ||
-      !isMinuteTimeframe(timeframe) ||
-      !activeBundle
-    ) {
-      return null;
-    }
-    const todaySegment = activeBundle.segments.find((segment) => segment.date === todayKst);
-    if (!todaySegment) return null;
-    const todayCandles = candleDateIndex.get(todayKst) ?? [];
-    if (todayCandles.length === 0) return null;
-    return computeContinuousTradeVolumeDistribution({
-      date: todayKst,
-      candles: todayCandles,
-      trades: liveDistributionTrades,
-      rangeCount: volumeDistributionRangeCount,
-      segment: todaySegment,
-      continuousBeforeMs: todayContinuousBeforeMs,
-    });
-  }, [
-    volumeDistributionEnabled,
+  const todayVolumeSegment = useMemo(
+    () => activeBundle?.segments.find((segment) => segment.date === todayKst) ?? null,
+    [activeBundle, todayKst],
+  );
+  const persistedTodayVolumeDistribution = useMemo(
+    () => (todayKst
+      ? persistedVolumeDistributions.find((profile) => profile.date === todayKst) ?? null
+      : null),
+    [persistedVolumeDistributions, todayKst],
+  );
+  // 오늘 분포: 베이스(승격 프로필·캔들 그리드·세션 경계) 불변인 동안은 신규
+  // 체결 델타만 fold — 기존엔 체결 틱마다 버퍼 전체를 재계산/재병합했다.
+  const todayVolumeDistribution = useLiveTodayVolumeDistribution({
+    enabled: volumeDistributionEnabled && !!activeBundle,
     stockCode,
     todayKst,
-    timeframe,
-    activeBundle,
-    candleDateIndex,
-    liveDistributionTrades,
-    volumeDistributionRangeCount,
-    todayContinuousBeforeMs,
-  ]);
+    isMinute: isMinuteTimeframe(timeframe),
+    rangeCount: volumeDistributionRangeCount,
+    todayCandles: (todayKst ? candleDateIndex.get(todayKst) : undefined) ?? [],
+    todaySegment: todayVolumeSegment,
+    persistedToday: persistedTodayVolumeDistribution,
+    liveTrades: liveDistribution,
+    continuousBeforeMs: todayContinuousBeforeMs,
+  });
   const activeVolumeDistribution = useMemo(() => {
-    return selectVolumeDistributionProfile({
-      enabled: volumeDistributionEnabled,
-      date: activeVolumeDistributionDate,
-      todayKst,
-      rangeCount: volumeDistributionRangeCount,
-      persistedProfiles: persistedVolumeDistributions,
-      recomputedToday: recomputedTodayVolumeDistribution,
-      liveTrades: liveDistributionTrades,
-      continuousBeforeMs: todayContinuousBeforeMs,
-    });
+    // 구 selectVolumeDistributionProfile 의미론: 비활성=undefined,
+    // 오늘=증분 유지 프로필, 과거일=persisted 그대로(없으면 null).
+    if (!volumeDistributionEnabled) return undefined;
+    if (activeVolumeDistributionDate && activeVolumeDistributionDate === todayKst) {
+      return todayVolumeDistribution;
+    }
+    return persistedVolumeDistributions.find(
+      (profile) => profile.date === activeVolumeDistributionDate,
+    ) ?? null;
   }, [
     volumeDistributionEnabled,
     activeVolumeDistributionDate,
     todayKst,
-    volumeDistributionRangeCount,
-    recomputedTodayVolumeDistribution,
+    todayVolumeDistribution,
     persistedVolumeDistributions,
-    liveDistributionTrades,
-    todayContinuousBeforeMs,
   ]);
   const activeVolumeDistributionPriceRange = useMemo(() => {
     if (

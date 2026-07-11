@@ -2,7 +2,7 @@ import type { Candle, DayVolumeDistribution, RangeSegment } from '../api/types';
 import { realMsToYyyymmdd } from './liveDateTime';
 import { isContinuousBook, type ObSnapshot } from './bucketHogaSeries';
 
-type ContinuousTradeLike = {
+export type ContinuousTradeLike = {
   t_ms: number;
   price: number;
   qty: number;
@@ -61,6 +61,50 @@ export function mergeVolumeDistributionTail(
     ? profile
     : { ...profile, bins, last_trade_ms: lastTradeMs };
 }
+
+/**
+ * 증분 fold: 커서가 "진짜 신규"를 보장하는 체결만 profile에 접는다.
+ *
+ * mergeVolumeDistributionTail과 달리 `t_ms <= last_trade_ms` 스킵이 없다 —
+ * 호출자(useLiveTodayVolumeDistribution)가 스냅샷 참조 커서로 신규성을
+ * 보장하므로, 같은 ms에 걸친 늦은 체결도 정확히 집계된다. 대신
+ * `baselineMs`(재구축 시점 persisted last_trade_ms)를 넘겨 구 경로의
+ * "persisted 이전 체결 드롭" 의미론을 보존한다(null이면 필터 없음).
+ * 접힌 게 없으면 동일 참조를 반환해 하류 memo가 스킵되게 한다.
+ */
+export function foldTradesIntoVolumeDistribution(
+  profile: DayVolumeDistribution,
+  trades: readonly ContinuousTradeLike[],
+  continuousBeforeMs?: number | null,
+  baselineMs?: number | null,
+): DayVolumeDistribution {
+  if (trades.length === 0 || profile.bins.length === 0) return profile;
+  const rangeCount = profile.bins.length;
+  const rawBinWidth = (profile.price_max - profile.price_min) / rangeCount;
+  const binWidth = rawBinWidth > 0 ? rawBinWidth : 1;
+  const upperBoundMs = continuousBeforeMs ?? profile.session_close_ms;
+
+  let bins: { price_low: number; price_high: number; qty: number }[] | null = null;
+  let lastTradeMs = profile.last_trade_ms;
+  for (const trade of trades) {
+    if (baselineMs != null && trade.t_ms <= baselineMs) continue;
+    if (trade.side !== 1 && trade.side !== -1) continue;
+    if (!Number.isFinite(trade.price) || trade.price <= 0) continue;
+    if (!Number.isFinite(trade.qty) || trade.qty <= 0) continue;
+    if (trade.t_ms < profile.session_open_ms || trade.t_ms >= upperBoundMs) continue;
+    if (trade.price < profile.price_min || trade.price > profile.price_max) continue;
+    if (bins === null) bins = profile.bins.map((bin) => ({ ...bin }));
+    const idx = Math.max(
+      0,
+      Math.min(rangeCount - 1, Math.floor((trade.price - profile.price_min) / binWidth)),
+    );
+    bins[idx] = { ...bins[idx], qty: bins[idx].qty + trade.qty };
+    lastTradeMs = lastTradeMs == null ? trade.t_ms : Math.max(lastTradeMs, trade.t_ms);
+  }
+  if (bins === null) return profile;
+  return { ...profile, bins, last_trade_ms: lastTradeMs };
+}
+
 
 function isEmptyVolumeDistribution(profile: DayVolumeDistribution): boolean {
   return profile.last_trade_ms == null && profile.bins.every((bin) => bin.qty === 0);
