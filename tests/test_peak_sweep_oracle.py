@@ -397,7 +397,7 @@ def _compare_day(tmp_path: Path, books: list[Orderbook], trades: list[Trade],
     assert actual == expected
 
 
-@pytest.mark.parametrize("seed", range(40))
+@pytest.mark.parametrize("seed", range(120))
 def test_fuzz_matches_oracle(tmp_path: Path, seed: int) -> None:
     rng = random.Random(seed)
     books, trades = _fuzz_day(rng)

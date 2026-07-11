@@ -608,10 +608,9 @@ class AskPeakCandidateRow:
 # sequential — measured 2026-07-11).
 #
 # This columnar version keeps the exact sweep semantics but moves the data
-# plane to polars (Rust, GIL-released): DuckDB → Arrow → polars frames, pass 1
-# (is_touched) as a merged-timeline reverse cumulative extreme, and all
-# ranking/dedup reductions as frame ops. Only pass 2 (lifecycle Fenwick)
-# remains a Python loop, over plain int lists — no per-event objects.
+# plane to polars (Rust, GIL-released): DuckDB → Arrow → polars frames,
+# is_touched as a merged-timeline reverse cumulative extreme, and all
+# ranking/dedup reductions as frame ops. No Python loop remains.
 #
 # Semantics contract (must match the ADR-0085 sweep exactly; oracle-tested in
 # tests/test_peak_sweep_oracle.py against a frozen copy):
@@ -619,9 +618,21 @@ class AskPeakCandidateRow:
 #   is_touched — event ``e`` is touched iff some touch with ``(ts, seq) >= e``'s
 #                dominates it price-wise (ask: ``touch.price >= e.price``;
 #                bid: ``<=``). Same-``(ts, seq)`` touches ARE included.
-#   lifecycle  — segmented by STRICTLY-earlier dominating touches
-#                (``(ts, seq) < e``); ``lifecycle_id`` = max touch ordinal of
-#                those, else 0. Touch ordinal = rank in (ts, seq, price) order.
+#
+# lifecycle 세그먼트(엄격히-이른 지배 터치 기준 분할, ADR-0085의 Fenwick pass 2)는
+# 계산하지 않는다 — 최종 출력에 잉여임이 증명되어 삭제했다 (ADR-0085 v2.1):
+#
+#   정리: 모든 (price, lifecycle) 세그먼트는 touched 값이 순수하다.
+#   증명: 가격 p의 지배 터치들을 키 순서로 d_1 < d_2 < … < d_K라 하자.
+#     count(e) = |{ d_i < key(e) }| 는 세그먼트 키와 동치다(둘 다 "사이에 지배
+#     터치가 없는" 이벤트를 같은 그룹으로 묶는다). count(e) = c < K 이면
+#     d_{c+1} ≥ key(e) 가 존재 → touched. count(e) = K 이면 모든 d_i < key(e)
+#     → 어떤 지배 터치도 ≥ key(e) 가 아님 → untouched. ∎
+#   따름정리: distinct_best[(p, X)] = "클래스 X 이벤트 전역 rank-1"
+#     (순수 세그먼트들의 세그먼트-최댓값들의 최댓값 = 클래스 전역 최댓값).
+#   → per-event lifecycle id가 불필요하고, per-(price,lifecycle) 중간 dedup도
+#   per-(price,touched) rank-1로 직접 붕괴한다. 동결 오라클(퍼즈 + 실데이터)이
+#   이 동치를 경험적으로 재확인한다.
 
 _PEAK_RANK_BY = ["qty", "intra_ms", "seq", "price"]
 _PEAK_RANK_DESC = [True, False, False, False]
@@ -638,7 +649,7 @@ def _classify_wall_frame(
     *,
     side: str,
 ) -> pl.DataFrame:
-    """Columnar sweep: ``events`` + ``touched``/``lifecycle`` columns.
+    """Columnar sweep: ``events`` + ``touched`` column.
 
     ``events`` needs columns ts_ms/seq/price/qty/intra_ms/bucket_id (Int64);
     ``touches`` needs ts_ms/seq/price (Int64). Both may arrive unsorted.
@@ -647,12 +658,10 @@ def _classify_wall_frame(
     ev = events.sort(["ts_ms", "seq"])
     n = ev.height
     if n == 0:
-        return ev.with_columns(
-            pl.lit(False).alias("touched"), pl.lit(0, pl.Int64).alias("lifecycle"),
-        )
+        return ev.with_columns(pl.lit(False).alias("touched"))
     tch = touches.sort(["ts_ms", "seq", "price"])
 
-    # ── pass 1: is_touched via merged-timeline reverse cumulative extreme ────
+    # is_touched via merged-timeline reverse cumulative extreme.
     # Event rows (kind=0) sort BEFORE same-(ts,seq) touch rows (kind=1), so the
     # suffix extreme at an event row includes same-key touches — the oracle's
     # ``(t.ts, t.seq) >= (e.ts, e.seq)`` inclusion. cum_max/cum_min accumulate
@@ -682,51 +691,7 @@ def _classify_wall_frame(
     touched = (fut >= ev["price"]) if is_ask else (fut <= ev["price"])
     touched = touched.fill_null(False)
 
-    # ── pass 2: lifecycle ids — Fenwick prefix-max, strictly-earlier touches ──
-    # Python loop over plain int lists (the only non-columnar step). Price
-    # ranks are precomputed via search_sorted so the loop body is pure ints.
-    uniq = tch["price"].unique().sort()
-    n_prices = uniq.len()
-    if is_ask:
-        # rank from the TOP so prefix_max(idx) covers touches with price >= q.
-        t_idx = (n_prices - uniq.search_sorted(tch["price"], side="left").cast(pl.Int64)).to_list()
-        q_idx = (n_prices - uniq.search_sorted(ev["price"], side="left").cast(pl.Int64)).to_list()
-    else:
-        # rank from the BOTTOM so prefix_max(idx) covers touches with price <= q.
-        t_idx = (uniq.search_sorted(tch["price"], side="left").cast(pl.Int64) + 1).to_list()
-        q_idx = uniq.search_sorted(ev["price"], side="right").cast(pl.Int64).to_list()
-
-    e_ts = ev["ts_ms"].to_list()
-    e_seq = ev["seq"].to_list()
-    t_ts = tch["ts_ms"].to_list()
-    t_seq = tch["seq"].to_list()
-    tree = [0] * (n_prices + 1)
-    lifecycle = [0] * n
-    ti = 0
-    n_touch = len(t_ts)
-    for i in range(n):
-        ets = e_ts[i]
-        eseq = e_seq[i]
-        while ti < n_touch and (t_ts[ti] < ets or (t_ts[ti] == ets and t_seq[ti] < eseq)):
-            j = t_idx[ti]
-            v = ti + 1  # 1-based touch ordinal in (ts, seq, price) order
-            while j <= n_prices:
-                if tree[j] < v:
-                    tree[j] = v
-                j += j & (-j)
-            ti += 1
-        j = q_idx[i]
-        best = 0
-        while j > 0:
-            if tree[j] > best:
-                best = tree[j]
-            j -= j & (-j)
-        lifecycle[i] = best
-
-    return ev.with_columns(
-        touched.alias("touched"),
-        pl.Series("lifecycle", lifecycle, dtype=pl.Int64),
-    )
+    return ev.with_columns(touched.alias("touched"))
 
 
 @dataclass(frozen=True)
@@ -1456,14 +1421,14 @@ def _peak_scalar(df: pl.DataFrame) -> tuple[int, int, int] | None:
 
 
 def _peak_distinct(classified: pl.DataFrame) -> pl.DataFrame:
-    """Best per (price, lifecycle) then best per (price, touched) — mirrors
-    ``{side}_{src}_lifecycle_distinct``. Input must carry touched/lifecycle."""
-    per_lifecycle = _peak_rank_sort(classified).unique(
-        subset=["price", "lifecycle"], keep="first", maintain_order=True,
+    """Best per (price, touched) — mirrors ``{side}_{src}_lifecycle_distinct``.
+
+    구 구현의 per-(price, lifecycle) 중간 dedup은 생략한다: 세그먼트가 touched
+    순수(모듈 헤더의 정리)이므로 클래스 전역 rank-1과 결과가 동일하다. 동결
+    오라클(lifecycle 기계 포함)과의 전 필드 일치가 이 동치의 경험적 재확인."""
+    return _peak_rank_sort(classified).unique(
+        subset=["price", "touched"], keep="first", maintain_order=True,
     )
-    # per_lifecycle is rank-sorted; keep="first" therefore picks the best-ranked
-    # lifecycle representative within each (price, touched) class.
-    return per_lifecycle.unique(subset=["price", "touched"], keep="first", maintain_order=True)
 
 
 def query_day_ask_bid_peak_dual(
@@ -1477,12 +1442,13 @@ def query_day_ask_bid_peak_dual(
 ) -> tuple[AskPeakDualRow | None, BidPeakDualRow | None]:
     """Return ask and bid peak rows for the same day using shared scans.
 
-    Columnar-sweep implementation (ADR-0085 v2): the peak-wall lifecycle
-    classification runs as two linear SQL scans fetched into polars frames +
-    a columnar classifier (``_classify_wall_frame``) whose only Python loop is
-    the lifecycle Fenwick over plain ints. Identical semantics to the ADR-0085
-    dataclass sweep (oracle-tested), ~10× less RSS and mostly GIL-released.
-    Public signature and returned dataclasses are unchanged.
+    Columnar-sweep implementation (ADR-0085 v2/v2.1): two linear SQL scans
+    fetched into polars frames + a fully columnar classifier
+    (``_classify_wall_frame``) — no Python loop. The lifecycle segmentation of
+    the original sweep is provably redundant to the output (see the module
+    header theorem) and is not computed. Identical results to the ADR-0085
+    dataclass sweep (oracle-tested), GIL-released end to end. Public signature
+    and returned dataclasses are unchanged.
     """
     intra = hhmmssms_to_intra_ms_sql("ts_ms")
     trade_seq_expr = "COALESCE(seq, 0)" if _parquet_has_column(con, trades_path, "seq") else "0"
