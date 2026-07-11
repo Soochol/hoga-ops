@@ -120,6 +120,24 @@ function addDays(yyyymmdd: string, days: number): string {
   ].join('');
 }
 
+function maxDate(a: string, b: string): string {
+  return a > b ? a : b;
+}
+
+/**
+ * 라이브 델타 요청 1회의 최대 달력일 폭 (콜드 시드 + 좌측 확장 타일 공통).
+ *
+ * 콜드(캐시된 previous 없음) 딥 뷰포트는 종전엔 [from, 오늘] 전체를 한 방에
+ * 요청했다 — 2개월 콜드 범위 실측 ~52s 블로킹(016360, 2026-07-11 슬로그).
+ * 시드 창(최근 CHUNK일)부터 받고 나머지는 기존 좌측-확장 델타 경로가 청크
+ * 단위로 워크백한다(분봉 청크 워크백 PR#455 패턴의 range 이식). 각 청크가
+ * 랜딩되는 렌더에서 isHistoricalDeltaFetching이 하강해 점진 렌더가 되고,
+ * merge가 previous.from_date를 전진시켜 다음 청크를 자기구동으로 당긴다.
+ * 빈 범위(주말 청크)도 백엔드가 요청 경계를 에코하므로(_empty_range_bundle)
+ * from_date가 전진해 종결이 보장된다.
+ */
+export const LIVE_RANGE_CHUNK_DAYS = 7;
+
 type LiveRangeDeltaMode = 'sidecar' | 'hoga';
 
 function liveRangeDeltaIdentity(input: RangeBundleRequestInput): string {
@@ -229,9 +247,13 @@ function planLiveRangeDelta(
   }
 
   if (sameIdentity && input.from < previous.from_date) {
+    // 좌측 확장 타일 — LIVE_RANGE_CHUNK_DAYS로 캡. 갭이 크면(콜드 시드 직후,
+    // 딥 팬) 청크가 랜딩→merge→plan 재계산을 반복하며 input.from까지 워크백.
+    const tileTo = addDays(previous.from_date, -1);
+    const tileFrom = maxDate(input.from, addDays(tileTo, -(LIVE_RANGE_CHUNK_DAYS - 1)));
     return {
       enabled: true,
-      requestInput: { ...input, from: input.from, to: addDays(previous.from_date, -1) },
+      requestInput: { ...input, from: tileFrom, to: tileTo },
       canReusePrevious: true,
       servePrevious: true,
       usePlaceholderData: true,
@@ -242,9 +264,12 @@ function planLiveRangeDelta(
     };
   }
 
+  // 콜드(또는 identity 전환) — 통짜 [from, to] 대신 최근 CHUNK일 시드만 요청.
+  // 시드가 랜딩되면 위의 확장-타일 분기가 나머지를 청크 워크백한다.
+  const seedFrom = maxDate(input.from, addDays(input.to, -(LIVE_RANGE_CHUNK_DAYS - 1)));
   return {
     enabled: true,
-    requestInput: fullInput,
+    requestInput: seedFrom > input.from ? { ...input, from: seedFrom } : fullInput,
     canReusePrevious: false,
     servePrevious: false,
     usePlaceholderData: true,
@@ -509,7 +534,13 @@ function useLiveRangeDelta(
     ...query,
     data,
     isPlaceholderData: plan.enabled ? query.isPlaceholderData : false,
-    isHistoricalDeltaFetching: plan.blocksHistoricalExtension && query.isPlaceholderData && query.isFetching,
+    // 배압 신호. isPlaceholderData만으로는 콜드(보여줄 이전 데이터가 없어
+    // placeholder 미형성)에서 false가 되어, 콜드 in-flight 중 팬이 추가 요청을
+    // 발사하는 사각이 있었다(2026-07-11 슬로그: 동일 wide 요청 3건 동시).
+    // `!query.data`가 콜드 fetch를 커버한다 — 데이터가 랜딩되는 렌더에서는
+    // isFetching=false라 하강 엣지(점진 페인트 + settle-loop pull)는 보존된다.
+    isHistoricalDeltaFetching:
+      plan.blocksHistoricalExtension && query.isFetching && (query.isPlaceholderData || query.data == null),
   };
 }
 

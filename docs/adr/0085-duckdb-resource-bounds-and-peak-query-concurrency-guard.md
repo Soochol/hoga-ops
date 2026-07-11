@@ -97,6 +97,49 @@ soft `memory_limit`을 뚫던 단일 최악 쿼리의 17GB 천장이 제거됐�
 객체 스위프보다 빨라 신 구현이 소폭 느리다(예: 0.3s→2s). 근본 장애는 **꼬리**(worst-case 폭주)
 였으므로 수용하며, 필요 시 `fetchnumpy`/컬럼 스트림 전환이 후속 최적화 경로다.
 
+### v2 — 컬럼형 스위프 전환 + 동시성 가드 은퇴 (2026-07-11)
+
+위 문단이 예고한 "`fetchnumpy`/컬럼 스트림 전환" 후속을 랜딩하고, 그 결과로 Decision 2의
+세마포어(`PeakSliceGuard`, `HOGA_PEAK_QUERY_CONCURRENCY=2`)를 **은퇴**시켰다.
+
+**계기 — 가드의 존재 이유가 바뀌어 있었다.** 제거 검토 Phase 0 실측(034020/20260116,
+110k rows, bucket 600000)에서 선형 스위프(v1)는 단독 6.4s / +1.0GB RSS였고, 서로 다른
+무거운 날 **12개 동시 실행이 wall 94s(개당 p50 77s)로 순차 합계 77s보다 느렸다** — 순수
+파이썬 스위프가 GIL-bound라 병렬화가 순손실이었고, 세마포어=2가 우연히 최적에 가까운
+처리량 조절기 역할(2-wide 추정 38s, 무제한 대비 2.5×)을 하고 있었다. 즉 "OOM 방지"로
+태어난 가드가 "GIL 처리량 보호"로 살아 있었던 것.
+
+**전환 내용.** 데이터 플레인을 polars(Rust, GIL 해제)로 이동:
+
+- `_read_peak_wall_streams`(dataclass ~2M개 물질화, +1GB RSS 지배 비용) →
+  `_read_peak_wall_frames`(DuckDB→Arrow→polars, SQL 불변).
+- pass 1(is_touched) → 병합 타임라인 reverse `cum_max/cum_min` + `forward_fill`
+  벡터화(이벤트가 같은 `(ts,seq)` 터치보다 앞에 정렬되어 `>=` 포함 계약 보존).
+- 랭킹·dedup 축약(`_peak_scalar`/`_peak_candidates`/`_peak_bucket_dedup`/lifecycle
+  distinct) → 프레임 정렬 + `unique(keep="first")`.
+- pass 2(lifecycle Fenwick)만 파이썬 루프로 잔존하되 평범한 int 리스트 위에서 동작
+  (per-event 객체·함수호출 제거, 가격 랭크는 `search_sorted`로 일괄 계산).
+
+**동등성 증거** — `tests/test_peak_sweep_oracle.py`: v1 구현 전체를 동결 오라클로 복사,
+시드 퍼즈 40케이스(동일-키 터치·lifecycle 재개·붕괴책·세션 경계·빈 터치) + 실데이터 3일
+(최중량 034020/20260116 포함) 전 필드 일치. 기존 스냅샷 테스트 81개 green 유지.
+
+**실측(백필 active 24 부하 중, 동일 조건 재측정):**
+
+| 지표 | v1 스위프 | v2 컬럼형 |
+|---|---|---|
+| 단독 최중량일 | 6.4s / +1.0GB | **1.1s / ~450MB transient** |
+| 동시 ×12 wall | 94s (순차 77s보다 느림) | **7.1s (순차 13.2s보다 빠름)** |
+| 동시 ×12 피크 RSS | +8.1GB | +6.2GB |
+
+**가드 은퇴 근거.** 동시성이 순이득으로 반전됐고(GIL 해제), per-compute 메모리가 DuckDB
+예산(8GiB) 대비 소액이며, 요청 내부 per-day 루프가 순차라 동시 peak 계산 수는 동시
+`/api/range` 요청 수로 자연 상한된다. 따라서 상한은 정당한 wide-range 첫-터치 작업을
+직렬화하는 순비용만 남는다. 모듈은 `hoga/api/slice_coalescer.py`로 개명하고 single-flight
+(`SLICE_COALESCER`)만 남겼다 — 동일-키 폭풍 붕괴는 여전히 이것이 담당하며, dual-peak 키는
+TTL 키를 미러해 `(kind, code, date, source, bucket_ms, session_open_ms, session_close_ms)`
+로 세션 경계를 포함한다(구 가드 키의 경계 누락 잠재 결함 봉합).
+
 ### 이월(deferred) — 후속 작업
 
 1. **알려진 peak-wall 테스트 불일치** (별건, 제품 의도 필요): 분기 기준(main `f56347be`)에 이미
