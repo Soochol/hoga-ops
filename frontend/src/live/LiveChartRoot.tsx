@@ -46,7 +46,11 @@ import {
 } from './viewportAnchor';
 import { useWheelInteractions } from './useWheelInteractions';
 import { useLiveCursorStore } from './useLiveCursorStore';
-import { alignSidebarCursorMs, shouldPublishSidebarCursor } from './sidebarCursorRateLimit';
+import {
+  alignSidebarCursorMs,
+  shouldPublishSidebarCursor,
+  sidebarCursorPublishDelayMs,
+} from './sidebarCursorRateLimit';
 import { useLiveAxisStore } from './useLiveAxisStore';
 import MovingAverageOverlay from './indicators/MovingAverageOverlay';
 import DailyMovingAverageOverlay from './indicators/DailyMovingAverageOverlay';
@@ -159,7 +163,12 @@ const EMPTY_OB_SNAPSHOTS: ReadonlyArray<ObSnapshot> = [];
 const EMPTY_TRADE_SNAPSHOTS: ReadonlyArray<TradeSnapshot> = [];
 const EMPTY_CANDLE_MS: readonly number[] = [];
 const CURSOR_LEAVE_CLEAR_DELAY_MS = 120;
-const LIVE_SIDEBAR_CURSOR_DEBOUNCE_MS = 120;
+/** Leading+trailing throttle window for sidebarCursorMs publishes. The first
+ * hover after a quiet window publishes immediately; while the pointer keeps
+ * moving, the latest aligned cursor is published once per window — a trailing
+ * debounce here starved the sidebar for the entire duration of a continuous
+ * sweep (it only fired after the pointer stopped). */
+const LIVE_SIDEBAR_CURSOR_THROTTLE_MS = 120;
 const HIGH_LOW_AVOID_BASELINE_STYLE = { color: '', lineWidth: 1 };
 const DAILY_MIN_EFFECTIVE_BAR_SPACING = 3.5;
 const CALENDAR_MIN_VIEWPORT_WIDTH_PX = 120;
@@ -497,6 +506,10 @@ export function LiveChartRoot({
   const publishedCursorActiveRef = useRef<boolean | null>(null);
   const sidebarCursorTimeoutRef = useRef<number | null>(null);
   const pendingSidebarCursorMsRef = useRef<number | null>(null);
+  // Wall-clock time of the last ACTUAL sidebarCursorMs store write. Same-value
+  // publishes are skipped and intentionally do NOT refresh this, so wiggling
+  // inside one candle bucket can't postpone the next real update.
+  const sidebarCursorLastPublishAtRef = useRef<number | null>(null);
 
   const cancelPendingSidebarCursor = useCallback(() => {
     if (sidebarCursorTimeoutRef.current !== null) {
@@ -513,20 +526,37 @@ export function LiveChartRoot({
 
   const scheduleSidebarCursor = useCallback((cursorMs: number) => {
     const aligned = alignSidebarCursorMs(cursorMs, bucketMsRef.current);
-    pendingSidebarCursorMsRef.current = aligned;
     if (sidebarCursorTimeoutRef.current !== null) {
-      window.clearTimeout(sidebarCursorTimeoutRef.current);
+      // Trailing timer already armed — refresh the pending value only. NOT
+      // resetting the timer is what distinguishes this throttle from the old
+      // debounce: continuous movement can no longer postpone the publish.
+      pendingSidebarCursorMsRef.current = aligned;
+      return;
     }
+    const publish = (next: number) => {
+      const current = useLiveCursorStore.getState().sidebarCursorMs;
+      if (shouldPublishSidebarCursor(current, next)) {
+        sidebarCursorLastPublishAtRef.current = performance.now();
+        useLiveCursorStore.getState().setSidebarCursor(next);
+      }
+    };
+    const delay = sidebarCursorPublishDelayMs(
+      performance.now(),
+      sidebarCursorLastPublishAtRef.current,
+      LIVE_SIDEBAR_CURSOR_THROTTLE_MS,
+    );
+    if (delay === 0) {
+      publish(aligned);
+      return;
+    }
+    pendingSidebarCursorMsRef.current = aligned;
     sidebarCursorTimeoutRef.current = window.setTimeout(() => {
       sidebarCursorTimeoutRef.current = null;
       const next = pendingSidebarCursorMsRef.current;
       pendingSidebarCursorMsRef.current = null;
       if (next === null) return;
-      const current = useLiveCursorStore.getState().sidebarCursorMs;
-      if (shouldPublishSidebarCursor(current, next)) {
-        useLiveCursorStore.getState().setSidebarCursor(next);
-      }
-    }, LIVE_SIDEBAR_CURSOR_DEBOUNCE_MS);
+      publish(next);
+    }, delay);
   }, []);
 
   // chartRef bridges the live chart instance to the viewport-capture callback

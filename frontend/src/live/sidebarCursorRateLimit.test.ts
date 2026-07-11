@@ -1,5 +1,9 @@
 import { describe, expect, it } from 'vitest';
-import { alignSidebarCursorMs, shouldPublishSidebarCursor } from './sidebarCursorRateLimit';
+import {
+  alignSidebarCursorMs,
+  shouldPublishSidebarCursor,
+  sidebarCursorPublishDelayMs,
+} from './sidebarCursorRateLimit';
 
 describe('sidebar cursor rate-limit helpers', () => {
   it('aligns to the bucket floor', () => {
@@ -17,5 +21,17 @@ describe('sidebar cursor rate-limit helpers', () => {
     expect(shouldPublishSidebarCursor(1, 1)).toBe(false);
     expect(shouldPublishSidebarCursor(1, 2)).toBe(true);
     expect(shouldPublishSidebarCursor(null, null)).toBe(false);
+  });
+
+  it('leading edge: zero delay when never published or the window has elapsed', () => {
+    expect(sidebarCursorPublishDelayMs(1_000, null, 120)).toBe(0);
+    expect(sidebarCursorPublishDelayMs(1_000, 880, 120)).toBe(0);
+    expect(sidebarCursorPublishDelayMs(1_000, 500, 120)).toBe(0);
+  });
+
+  it('trailing edge: remaining window when inside it', () => {
+    expect(sidebarCursorPublishDelayMs(1_000, 1_000, 120)).toBe(120);
+    expect(sidebarCursorPublishDelayMs(1_000, 999, 120)).toBe(119);
+    expect(sidebarCursorPublishDelayMs(1_000, 881, 120)).toBe(1);
   });
 });

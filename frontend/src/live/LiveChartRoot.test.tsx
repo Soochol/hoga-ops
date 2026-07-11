@@ -3066,11 +3066,11 @@ describe('LiveChartRoot crosshair → cursor store (ADR-0044)', () => {
       act(() => fire({ time: 0, point: { x: 1 } }));
       flushFrame();
       expect(useLiveCursorStore.getState().cursorMs).toBe(SESSION_OPEN);
-      expect(useLiveCursorStore.getState().sidebarCursorMs).toBeNull();
-      expect(onCursorActiveChange).toHaveBeenLastCalledWith(true);
-
-      act(() => { vi.advanceTimersByTime(120); });
+      // Leading edge of the sidebar-cursor throttle: the first hover after a
+      // quiet window publishes immediately (the old trailing debounce made
+      // even a single stationary hover wait 120ms).
       expect(useLiveCursorStore.getState().sidebarCursorMs).toBe(SESSION_OPEN);
+      expect(onCursorActiveChange).toHaveBeenLastCalledWith(true);
 
       act(() => fire({ time: undefined, point: null }));
       expect(useLiveCursorStore.getState().cursorMs).toBe(SESSION_OPEN);
@@ -3090,7 +3090,7 @@ describe('LiveChartRoot crosshair → cursor store (ADR-0044)', () => {
     }
   });
 
-  it('debounces sidebar cursor while keeping chart cursor immediate', async () => {
+  it('throttles sidebar cursor (leading + trailing) while keeping chart cursor immediate', async () => {
     vi.useFakeTimers();
     try {
       render(
@@ -3110,23 +3110,26 @@ describe('LiveChartRoot crosshair → cursor store (ADR-0044)', () => {
         );
       const flushFrame = () => act(() => { vi.advanceTimersByTime(16); });
 
+      // t=16: first hover → leading publish, no 120ms wait.
       act(() => fire({ time: 0, point: { x: 1 } }));
       flushFrame();
-
       expect(useLiveCursorStore.getState().cursorMs).toBe(TODAY_OPEN_MS);
-      expect(useLiveCursorStore.getState().sidebarCursorMs).toBeNull();
-
-      act(() => fire({ time: (TODAY_OPEN_MS + 10_000) / 1000, point: { x: 11 } }));
-      flushFrame();
-      act(() => fire({ time: (TODAY_OPEN_MS + 29_000) / 1000, point: { x: 12 } }));
-      flushFrame();
-      act(() => { vi.advanceTimersByTime(119); });
-
-      expect(useLiveCursorStore.getState().sidebarCursorMs).toBeNull();
-
-      act(() => { vi.advanceTimersByTime(1); });
-
       expect(useLiveCursorStore.getState().sidebarCursorMs).toBe(TODAY_OPEN_MS);
+
+      // t=32: sweep to the next candle inside the throttle window — the chart
+      // cursor follows immediately, the sidebar holds the previous value.
+      act(() => fire({ time: (TODAY_OPEN_MS + 60_000) / 1000, point: { x: 11 } }));
+      flushFrame();
+      expect(useLiveCursorStore.getState().cursorMs).toBe(TODAY_OPEN_MS + 60_000);
+      expect(useLiveCursorStore.getState().sidebarCursorMs).toBe(TODAY_OPEN_MS);
+
+      // Trailing edge fires at lastPublish+120 (= t=136, so 104ms after the
+      // move), NOT 120ms after the last movement — continuous motion can no
+      // longer starve the sidebar the way the old trailing debounce did.
+      act(() => { vi.advanceTimersByTime(103); });
+      expect(useLiveCursorStore.getState().sidebarCursorMs).toBe(TODAY_OPEN_MS);
+      act(() => { vi.advanceTimersByTime(1); });
+      expect(useLiveCursorStore.getState().sidebarCursorMs).toBe(TODAY_OPEN_MS + 60_000);
     } finally {
       vi.useRealTimers();
     }
@@ -3404,9 +3407,12 @@ describe('LiveChartRoot crosshair → cursor store (ADR-0044)', () => {
     const chart = vi.mocked(createChartEx).mock.results[0].value;
     onCandleBasisHover.mockClear();
     onCursorActiveChange.mockClear();
+    // Count distinct cursorMs transitions only — the store also gets a
+    // sidebarCursorMs write from the throttle's leading edge (same-candle
+    // hover), which is a separate field and not what this test guards.
     const cursorChanges: Array<number | null> = [];
-    const unsubscribe = useLiveCursorStore.subscribe((state) => {
-      cursorChanges.push(state.cursorMs);
+    const unsubscribe = useLiveCursorStore.subscribe((state, prev) => {
+      if (state.cursorMs !== prev.cursorMs) cursorChanges.push(state.cursorMs);
     });
     const fire = (p: { time?: unknown; point?: { x: number } | null }) =>
       chart.subscribeCrosshairMove.mock.calls.forEach(
