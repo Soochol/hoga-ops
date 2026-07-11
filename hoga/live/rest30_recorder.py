@@ -52,6 +52,7 @@ class Rest30sRecorder:
         date_fn: Callable[[], str],
         now_ms_fn: Callable[[], int] | None = None,
         phase_fn: Callable[[], str],
+        trading_day_fn: Callable[[], bool] | None = None,
         interval_s: float = 30.0,
         backoff_cycles: int = 3,
         concurrency: int = 10,
@@ -63,6 +64,10 @@ class Rest30sRecorder:
         self._date_fn = date_fn
         self._now_ms = now_ms_fn or (lambda: int(time.time() * 1000))
         self._phase_fn = phase_fn
+        # 거래일 게이트(ADR-0099 저장 파리티) — 비거래일엔 캡처/저장 금지. 기본값은
+        # 실제 캘린더 술어(주말/휴장 배제), 테스트는 fake 주입(LiveRestPoller.window_fn
+        # 패턴 미러). blocking 계약이라 poll_once가 asyncio.to_thread로 봉인한다.
+        self._trading_day_fn = trading_day_fn or self._default_trading_day_fn
         self._interval_s = interval_s
         self._backoff_cycles = max(0, backoff_cycles)
         # 코드 간 동시 디스패치 상한(코드 내부는 순차). 실제 콜레이트는 계정별
@@ -84,6 +89,11 @@ class Rest30sRecorder:
         self._closed_snapshotted_once: set[str] = set()
         self._trade_seen: dict[str, tuple[str, Counter[tuple[int, int, int, int]]]] = {}
         self._backoff_remaining = 0
+
+    def _default_trading_day_fn(self) -> bool:
+        from hoga.live.session_gate import is_trading_day_now  # noqa: PLC0415
+
+        return is_trading_day_now(self._now_ms())
 
     def set_targets(self, codes: set[str]) -> None:
         self._targets = set(codes)
@@ -167,6 +177,20 @@ class Rest30sRecorder:
         if self._backoff_remaining > 0:
             self._backoff_remaining -= 1
             self._mark_cycle_complete(cycle_start_ms)
+            return
+
+        # 거래일 게이트(ADR-0099 저장 파리티) — 비거래일(주말/휴장)엔 저장 절대 금지.
+        # market_phase(시계만)는 토요일 09:00–15:30에도 "regular"라 closed 게이트를
+        # 통과시켜 유령 캡처를 만들었다. WS 저장(ws_capture_window)과 동일하게 캘린더로
+        # 차단한다. blocking 계약이라 to_thread로 봉인(사이클 격리가 예외 흡수).
+        is_trading = await asyncio.to_thread(self._trading_day_fn)
+        if not is_trading:
+            self._closed_snapshotted_once.clear()
+            self._mark_cycle_complete(cycle_start_ms)
+            self._last_error_count = 0
+            self._last_error = None
+            self._last_error_kind = None
+            self._last_error_code = None
             return
 
         phase = self._phase_fn()

@@ -215,6 +215,92 @@ async def test_rest30_recorder_closed_market_fetches_one_snapshot_per_target(
 
 
 @pytest.mark.asyncio
+async def test_rest30_recorder_skips_capture_on_non_trading_day(tmp_path: Path) -> None:
+    """비거래일(주말/휴장)엔 phase가 시계상 'regular'여도 저장 금지 (ADR-0099 파리티).
+
+    회귀: market_phase(시계만)는 토요일 09:00–15:30에도 'regular'라 closed 게이트를
+    통과시켜 유령 캡처를 만들었다. trading_day_fn=False면 fetch/write가 0이어야 한다.
+    """
+    from hoga.live.buffer import LiveBuffer
+    from hoga.live.rest30_recorder import Rest30sRecorder
+
+    kis = FakeKis()
+    recorder = Rest30sRecorder(
+        kis_resolver=lambda: kis,
+        buffer=LiveBuffer(),
+        data_dir=tmp_path,
+        date_fn=lambda: "20260711",  # 토요일
+        now_ms_fn=lambda: 1770000000000,
+        phase_fn=lambda: "regular",  # 시계상 정규장 — 게이트를 통과시키던 지점
+        trading_day_fn=lambda: False,  # 캘린더: 비거래일
+        capture_aux=True,
+    )
+    recorder.set_targets({"005930", "000660"})
+
+    await recorder.poll_once()
+    await recorder.poll_once()
+
+    assert kis.calls == []  # 어떤 fetch도 없어야 함
+    assert not (tmp_path / "live_api" / "20260711").exists()  # 디스크 저장 0
+    status = recorder.status()
+    assert status.last_error_count == 0
+    assert status.degraded is False
+
+
+@pytest.mark.asyncio
+async def test_rest30_recorder_non_trading_day_skips_even_closed_snapshot(
+    tmp_path: Path,
+) -> None:
+    """비거래일엔 장마감(closed) 1회-스냅샷 경로도 열리면 안 된다 — 유령 마감 호가 방지.
+
+    거래일 closed는 종가 호가를 1회 캡처하지만, 비거래일엔 의미 있는 마감 호가가 없다.
+    """
+    from hoga.live.buffer import LiveBuffer
+    from hoga.live.rest30_recorder import Rest30sRecorder
+
+    kis = FakeKis()
+    recorder = Rest30sRecorder(
+        kis_resolver=lambda: kis,
+        buffer=LiveBuffer(),
+        data_dir=tmp_path,
+        date_fn=lambda: "20260711",
+        now_ms_fn=lambda: 1770000000000,
+        phase_fn=lambda: "closed",
+        trading_day_fn=lambda: False,
+    )
+    recorder.set_targets({"005930"})
+
+    await recorder.poll_once()
+
+    assert kis.calls == []
+    assert not (tmp_path / "live_api" / "20260711").exists()
+
+
+@pytest.mark.asyncio
+async def test_rest30_recorder_captures_on_trading_day(tmp_path: Path) -> None:
+    """양성 대조: 거래일(trading_day_fn=True) + regular면 기존대로 캡처한다."""
+    from hoga.live.buffer import LiveBuffer
+    from hoga.live.rest30_recorder import Rest30sRecorder
+
+    kis = FakeKis()
+    recorder = Rest30sRecorder(
+        kis_resolver=lambda: kis,
+        buffer=LiveBuffer(),
+        data_dir=tmp_path,
+        date_fn=lambda: "20260710",  # 금요일(거래일)
+        now_ms_fn=lambda: 1770000000000,
+        phase_fn=lambda: "regular",
+        trading_day_fn=lambda: True,
+    )
+    recorder.set_targets({"005930"})
+
+    await recorder.poll_once()
+
+    assert ("orderbook", "005930") in kis.calls
+    assert (tmp_path / "live_api" / "20260710" / "005930.jsonl").exists()
+
+
+@pytest.mark.asyncio
 async def test_rest30_recorder_dedupes_repeated_trade_batches(tmp_path: Path) -> None:
     from hoga.live.buffer import LiveBuffer
     from hoga.live.rest30_recorder import Rest30sRecorder
