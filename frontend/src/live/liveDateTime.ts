@@ -130,17 +130,10 @@ function candleTargetToCalendarDays(target: number, tf: LiveTimeframe): number {
   return Math.ceil(tradingDays / TRADING_DAYS_PER_CALENDAR_DAYS);
 }
 
-/** 좌측 팬/줌 한 스텝의 목표 캔들 수 — 전 타임프레임 공통.
- *
- * 스텝의 단위를 "기간"이 아니라 "캔들 개수"로 잡는 이유: 뷰포트·빈공간·줌은
- * 전부 바(bar) 단위로 측정되므로, 수요(빈공간 바 수)와 공급(fetch 봉 수)의
- * 단위를 맞추면 타임프레임과 무관하게 스텝이 화면의 일정 비율이 된다.
- * (1거래일 고정 스텝은 30m에선 13봉=과소, 1m에선 390봉=과대로 30배 편차.)
- *
- * 백필 스텝 폭(nextHistoricalFrom/nextCoverageFrom → 날짜 환산)의 단일
- * 소스다. */
 /** D/W/M 한 스텝이 겨냥하는 캔들 개수. STEP_TRADING_DAYS 의 D/W/M 값을 이
- * 목표에서 유도해 "한 스텝 ≈ 50개 캔들" 불변식을 코드로 드러낸다(ADR-0104). */
+ * 목표에서 유도해 "한 스텝 ≈ 50개 캔들" 불변식을 코드로 드러낸다(ADR-0104).
+ * 분봉 스텝은 캔들 개수가 아니라 백엔드 병렬 배치 1회(5거래일)로 산정한다
+ * (ADR-0105) — 스텝 폭의 단일 소스는 STEP_TRADING_DAYS. */
 export const STEP_CANDLE_TARGET = 50;
 const TRADING_DAYS_PER_WEEK = 5;
 const TRADING_DAYS_PER_MONTH = 21;
