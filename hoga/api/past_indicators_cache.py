@@ -52,14 +52,28 @@ if TYPE_CHECKING:
 
 _log = logging.getLogger(__name__)
 
-# Bump when the bucketing/representative semantics of the underlying table
-# queries change (e.g. a new imbalance definition, a different POC bin rule, or
-# a peak tie-break), so stale 1m caches are ignored rather than served wrong.
-# On bump, existing <date>.<kind>.json files fail the version check in _read /
-# _read_model_cache and are transparently recomputed + rewritten on next access.
-# v6 (ADR-0062 v3): 동시호가 배제 통일 — ratio에 개장(session_open) 하한 추가, heatmap을
-# WHERE 사전 필터 드롭으로 전환. 구 5 캐시(붕괴책 포함 heatmap·개장 미배제 ratio)는 무효.
-SCHEMA_VERSION = 6
+# Kind별 스키마 버전. 어떤 kind의 bucketing/대표 선택 semantics가 바뀌면 **그 kind만**
+# 범프한다 — 구 파일은 버전 체크에 걸려 다음 접근 때 투명하게 재계산+재기록된다.
+#
+# ⚠️ 과거엔 전역 SCHEMA_VERSION 하나였는데, v5→v6 범프(ratio·depth만 의미 변경)가
+# 의미 불변 kind(peak 등 7종)까지 무효화해 /study 뷰 첫 로드가 수십 분으로 늘었다
+# (2026-07-11 실측: 콜드 비용의 95%+가 peak 재계산, 값은 v5와 동일). kind별 버전은
+# 그 재발 방지책이다. 전부 6에서 시작하는 이유: 기존 디스크 파일이 전부 v6이라
+# 마이그레이션 없이 호환된다.
+#
+# 버전 이력(전역 시절): v6 (ADR-0062 v3) 동시호가 배제 통일 — ratio에 개장(session_open)
+# 하한 추가, depth heatmap을 WHERE 사전 필터 드롭으로 전환.
+KIND_VERSIONS: dict[str, int] = {
+    "ratio": 6,
+    "fill": 6,
+    "ask_peak": 6,
+    "bid_peak": 6,
+    "poc": 6,
+    "depth": 6,
+    "vdist": 6,
+    "broker_late": 6,
+    "continuous_before": 6,
+}
 
 Kind = Literal["ratio", "fill"]
 DEFAULT_MEM_MAX_ENTRIES = 512
@@ -251,6 +265,8 @@ class PastIndicatorsCache:
         self,
         path: Path,
         model_type: type[_ModelT],
+        *,
+        kind: str,
     ) -> _ModelT | None | object:
         if not path.exists():
             return _CACHE_MISS
@@ -259,7 +275,7 @@ class PastIndicatorsCache:
         except (OSError, json.JSONDecodeError):
             _log.warning("past_indicators_cache.corrupt path=%s", path, exc_info=True)
             return _CACHE_MISS
-        if body.get("version") != SCHEMA_VERSION:
+        if body.get("version") != KIND_VERSIONS[kind]:
             return _CACHE_MISS
         value = body.get("value")
         if value is None:
@@ -270,9 +286,9 @@ class PastIndicatorsCache:
             _log.warning("past_indicators_cache.invalid_model path=%s", path, exc_info=True)
             return _CACHE_MISS
 
-    def _write_model_cache(self, path: Path, value: "BaseModel | None") -> None:
+    def _write_model_cache(self, path: Path, value: "BaseModel | None", *, kind: str) -> None:
         payload = {
-            "version": SCHEMA_VERSION,
+            "version": KIND_VERSIONS[kind],
             "value": None if value is None else value.model_dump(mode="json"),
             "fetched_at_ms": int(time.time() * 1000),
         }
@@ -290,6 +306,7 @@ class PastIndicatorsCache:
         value = self._read_model_cache(
             self._peak_path(code, date, source, "ask_peak", bucket_ms),
             AskPeak,
+            kind="ask_peak",
         )
         if value is _CACHE_MISS:
             stats.record_miss()
@@ -307,6 +324,7 @@ class PastIndicatorsCache:
         value = self._read_model_cache(
             self._peak_path(code, date, source, "ask_peak", bucket_ms),
             AskPeak,
+            kind="ask_peak",
         )
         if value is _CACHE_MISS:
             return None
@@ -319,7 +337,9 @@ class PastIndicatorsCache:
         stats = self._stats["ask_peak"]
         stats.record_store()
         self._mem_put(self._mem_ask_peak, (code, date, source, bucket_ms), peak, stats)
-        self._write_model_cache(self._peak_path(code, date, source, "ask_peak", bucket_ms), peak)
+        self._write_model_cache(
+            self._peak_path(code, date, source, "ask_peak", bucket_ms), peak, kind="ask_peak"
+        )
 
     def has_bid_peak(self, code: str, date: str, source: str, bucket_ms: int) -> bool:
         key = (code, date, source, bucket_ms)
@@ -330,6 +350,7 @@ class PastIndicatorsCache:
         value = self._read_model_cache(
             self._peak_path(code, date, source, "bid_peak", bucket_ms),
             BidPeak,
+            kind="bid_peak",
         )
         if value is _CACHE_MISS:
             stats.record_miss()
@@ -347,6 +368,7 @@ class PastIndicatorsCache:
         value = self._read_model_cache(
             self._peak_path(code, date, source, "bid_peak", bucket_ms),
             BidPeak,
+            kind="bid_peak",
         )
         if value is _CACHE_MISS:
             return None
@@ -359,7 +381,9 @@ class PastIndicatorsCache:
         stats = self._stats["bid_peak"]
         stats.record_store()
         self._mem_put(self._mem_bid_peak, (code, date, source, bucket_ms), peak, stats)
-        self._write_model_cache(self._peak_path(code, date, source, "bid_peak", bucket_ms), peak)
+        self._write_model_cache(
+            self._peak_path(code, date, source, "bid_peak", bucket_ms), peak, kind="bid_peak"
+        )
 
     # ── trade_volume_poc ─────────────────────────────────────────────────────
 
@@ -381,6 +405,7 @@ class PastIndicatorsCache:
         value = self._read_model_cache(
             self._poc_path(code, date, source, range_count, price_min, price_max),
             TradeVolumePoc,
+            kind="poc",
         )
         if value is _CACHE_MISS:
             stats.record_miss()
@@ -406,6 +431,7 @@ class PastIndicatorsCache:
         self._write_model_cache(
             self._poc_path(code, date, source, range_count, price_min, price_max),
             poc,
+            kind="poc",
         )
 
     # ── depth_heatmap (호가 잔량 히트맵) ─────────────────────────────────────────
@@ -447,7 +473,7 @@ class PastIndicatorsCache:
             _log.warning("past_indicators_cache.corrupt path=%s", path, exc_info=True)
             stats.record_miss()
             return _CACHE_MISS
-        if body.get("version") != SCHEMA_VERSION:
+        if body.get("version") != KIND_VERSIONS["depth"]:
             stats.record_miss()
             return _CACHE_MISS
         raw = body.get("points")
@@ -471,7 +497,7 @@ class PastIndicatorsCache:
         stats.record_store()
         self._mem_put_depth((code, date, source, bucket_ms), points)
         payload = {
-            "version": SCHEMA_VERSION,
+            "version": KIND_VERSIONS["depth"],
             "points": [p.model_dump(mode="json") for p in points],
             "fetched_at_ms": int(time.time() * 1000),
         }
@@ -508,6 +534,7 @@ class PastIndicatorsCache:
         value = self._read_model_cache(
             self._vdist_path(code, date, source, range_count, price_min, price_max),
             DayVolumeDistribution,
+            kind="vdist",
         )
         if value is _CACHE_MISS:
             stats.record_miss()
@@ -531,20 +558,22 @@ class PastIndicatorsCache:
         stats.record_store()
         self._mem_put(self._mem_vdist, key, value, stats)
         self._write_model_cache(
-            self._vdist_path(code, date, source, range_count, price_min, price_max), value
+            self._vdist_path(code, date, source, range_count, price_min, price_max),
+            value,
+            kind="vdist",
         )
 
     # ── broker_late_entries (거래원 지각 진입) ───────────────────────────────────
     #
     # ⚠️ 이벤트 선별은 broker_names.canonical(코드 레벨 별칭 병합)에 의존한다 —
-    # 그 매핑이 바뀌면 캐시된 events 가 스테일해지므로 SCHEMA_VERSION 을 범프해야
-    # 한다(bucketing/대표 semantics 변경과 동일 정책).
+    # 그 매핑이 바뀌면 캐시된 events 가 스테일해지므로 KIND_VERSIONS["broker_late"] 를
+    # 범프해야 한다(bucketing/대표 semantics 변경과 동일 정책).
 
     def _broker_late_path(self, code: str, date: str, source: str, start_hhmm: int) -> Path:
         return self._model_path(code, date, source, f"broker_late.{start_hhmm}")
 
     def _read_model_list_cache(
-        self, path: Path, model_type: type[_ModelT], *, payload_key: str
+        self, path: Path, model_type: type[_ModelT], *, payload_key: str, kind: str
     ) -> list[_ModelT] | object:
         """List-of-model 디스크 read (list 또는 ``_CACHE_MISS``). ``[]`` 는 유효
         캐시값이라 미스와 구분된다. depth 의 인라인 read 와 동형이나 payload_key 로
@@ -556,7 +585,7 @@ class PastIndicatorsCache:
         except (OSError, json.JSONDecodeError):
             _log.warning("past_indicators_cache.corrupt path=%s", path, exc_info=True)
             return _CACHE_MISS
-        if body.get("version") != SCHEMA_VERSION:
+        if body.get("version") != KIND_VERSIONS[kind]:
             return _CACHE_MISS
         raw = body.get(payload_key)
         if not isinstance(raw, list):
@@ -568,10 +597,10 @@ class PastIndicatorsCache:
             return _CACHE_MISS
 
     def _write_model_list_cache(
-        self, path: Path, items: "Sequence[BaseModel]", *, payload_key: str
+        self, path: Path, items: "Sequence[BaseModel]", *, payload_key: str, kind: str
     ) -> None:
         payload = {
-            "version": SCHEMA_VERSION,
+            "version": KIND_VERSIONS[kind],
             payload_key: [m.model_dump(mode="json") for m in items],
             "fetched_at_ms": int(time.time() * 1000),
         }
@@ -594,6 +623,7 @@ class PastIndicatorsCache:
             self._broker_late_path(code, date, source, start_hhmm),
             BrokerLateEntryEvent,
             payload_key="events",
+            kind="broker_late",
         )
         if value is _CACHE_MISS:
             stats.record_miss()
@@ -610,7 +640,10 @@ class PastIndicatorsCache:
         stats.record_store()
         self._mem_put(self._mem_broker_late, key, events, stats)
         self._write_model_list_cache(
-            self._broker_late_path(code, date, source, start_hhmm), events, payload_key="events"
+            self._broker_late_path(code, date, source, start_hhmm),
+            events,
+            payload_key="events",
+            kind="broker_late",
         )
 
     # ── continuous_before_ms (연속거래 상한 — POC·체결분포 선행 스칼라) ──────────
@@ -640,7 +673,7 @@ class PastIndicatorsCache:
             _log.warning("past_indicators_cache.corrupt path=%s", path, exc_info=True)
             stats.record_miss()
             return _CACHE_MISS
-        if body.get("version") != SCHEMA_VERSION:
+        if body.get("version") != KIND_VERSIONS["continuous_before"]:
             stats.record_miss()
             return _CACHE_MISS
         value = body.get("value")
@@ -659,7 +692,7 @@ class PastIndicatorsCache:
         stats.record_store()
         self._mem_put(self._mem_continuous_before, key, value, stats)
         payload = {
-            "version": SCHEMA_VERSION,
+            "version": KIND_VERSIONS["continuous_before"],
             "value": value,
             "fetched_at_ms": int(time.time() * 1000),
         }
@@ -685,7 +718,7 @@ class PastIndicatorsCache:
         except (OSError, json.JSONDecodeError):
             _log.warning("past_indicators_cache.corrupt path=%s", p, exc_info=True)
             return None
-        if body.get("version") != SCHEMA_VERSION:
+        if body.get("version") != KIND_VERSIONS[kind]:
             # Semantics changed under an old file — ignore; next store heals it.
             return None
         rows = body.get("rows")
@@ -694,7 +727,8 @@ class PastIndicatorsCache:
     def _write(self, code: str, date: str, source: str, kind: Kind, rows: list[list[int]]) -> None:
         path = self._path(code, date, source, kind)
         payload = {
-            "version": SCHEMA_VERSION, "rows": rows, "fetched_at_ms": int(time.time() * 1000),
+            "version": KIND_VERSIONS[kind], "rows": rows,
+            "fetched_at_ms": int(time.time() * 1000),
         }
         try:
             atomic_write_json(path, payload)
