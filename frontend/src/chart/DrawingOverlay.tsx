@@ -112,6 +112,9 @@ export default function DrawingOverlay({ chart, axis, paneSeries, onChartHoverPa
   const rectDraft = useRef<RectDraft | null>(null);
   const measureDraft = useRef<MeasureDraft | null>(null);
   const dragRef = useRef<DragMode | null>(null);
+  // Cursor position for the hline/vline placement preview (ghost line following
+  // the mouse before the click commits). Null when not hovering with those tools.
+  const previewCursorRef = useRef<{ px: number; py: number } | null>(null);
   const scheduleRef = useRef<() => void>(() => {});
   // Reassigned every render so the (empty-deps) keydown effect always calls the
   // latest closure over the current coordinate helpers — same pattern as
@@ -247,6 +250,30 @@ export default function DrawingOverlay({ chart, axis, paneSeries, onChartHoverPa
         });
       }
 
+      // hline / vline placement preview — a faint dashed ghost line at the cursor
+      // that follows the mouse until the click commits. Only for the 1-click line
+      // tools (drag tools already show a live draft).
+      const preview = previewCursorRef.current;
+      if (preview && (activeTool === 'hline' || activeTool === 'vline')) {
+        let paneBottom = 0;
+        for (const p of panes) paneBottom += p.getHeight();
+        c.save();
+        c.strokeStyle = defaults.color;
+        c.globalAlpha = 0.6;
+        c.lineWidth = defaults.width;
+        c.setLineDash([5, 4]);
+        c.beginPath();
+        if (activeTool === 'hline') {
+          c.moveTo(0, preview.py);
+          c.lineTo(w, preview.py);
+        } else {
+          c.moveTo(preview.px, 0);
+          c.lineTo(preview.px, paneBottom);
+        }
+        c.stroke();
+        c.restore();
+      }
+
       // Live pencil draft preview — clipped to its origin pane.
       const draft = pencilDraft.current;
       if (draft && draft.points.length >= 2) {
@@ -281,7 +308,7 @@ export default function DrawingOverlay({ chart, axis, paneSeries, onChartHoverPa
       ts.unsubscribeVisibleLogicalRangeChange(schedule);
       ro?.disconnect();
     };
-  }, [chart, axis, paneSeries, drawings, selectedId, activeCode, defaults, bucketMs, lastRealMs]);
+  }, [chart, axis, paneSeries, drawings, selectedId, activeCode, defaults, bucketMs, lastRealMs, activeTool]);
 
   // ── keyboard shortcuts ─────────────────────────────────────────────────
   useEffect(() => {
@@ -500,14 +527,25 @@ export default function DrawingOverlay({ chart, axis, paneSeries, onChartHoverPa
   };
   const onPointerMove = (e: React.PointerEvent<HTMLDivElement>) => {
     const rect = (e.currentTarget as HTMLDivElement).getBoundingClientRect();
-    onChartHoverPassthrough?.({
-      x: e.clientX - rect.left,
-      y: e.clientY - rect.top,
-    });
+    const px = e.clientX - rect.left;
+    const py = e.clientY - rect.top;
+    onChartHoverPassthrough?.({ x: px, y: py });
+    // Track the cursor for the hline/vline ghost-line preview and repaint.
+    if (activeTool === 'hline' || activeTool === 'vline') {
+      previewCursorRef.current = { px, py };
+      scheduleRef.current();
+    }
     TOOLS[activeTool].onPointerMove?.(buildCtx(e));
   };
   const onPointerUp = (e: React.PointerEvent<HTMLDivElement>) => {
     TOOLS[activeTool].onPointerUp?.(buildCtx(e));
+  };
+  const onPointerLeave = () => {
+    // Drop the ghost preview when the cursor leaves the chart.
+    if (previewCursorRef.current) {
+      previewCursorRef.current = null;
+      scheduleRef.current();
+    }
   };
   // Abandon any in-flight gesture. Shared by pointercancel (touch interrupted,
   // pointer lost) and contextmenu. Keep this in sync with the draft refs the
@@ -689,6 +727,7 @@ export default function DrawingOverlay({ chart, axis, paneSeries, onChartHoverPa
       onPointerMove={onPointerMove}
       onPointerUp={onPointerUp}
       onPointerCancel={onPointerCancel}
+      onPointerLeave={onPointerLeave}
       onContextMenu={onContextMenu}
       onDoubleClick={onDoubleClick}
     >

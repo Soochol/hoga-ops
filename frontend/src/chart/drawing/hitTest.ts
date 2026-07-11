@@ -96,15 +96,17 @@ export function hitTestDrawings(
           distanceToSegment({ x: px, y: py }, { x: xa, y: ya }, { x: xb, y: yb }) <= HIT_THRESHOLD.trendlineBody) {
         return d;
       }
-    } else if (d.kind === 'rect') {
-      // Border-only hit. Interior clicks are intentionally NOT hits: the
-      // select-mode pointer-events gating shares this predicate, so an
-      // interior hit would block chart pan across the whole rectangle. The
-      // eraser inherits the same border-only rule.
-      if (rectBorderHit({ x: px, y: py }, coord, d.a, d.b, d.paneId)) return d;
-    } else if (d.kind === 'measure') {
-      // Same box-border rule as rect (a, b are the diagonal corners).
-      if (rectBorderHit({ x: px, y: py }, coord, d.a, d.b, d.paneId)) return d;
+    } else if (d.kind === 'rect' || d.kind === 'measure') {
+      // A rect/measure is a solid box: clicking anywhere in the fill (or border)
+      // grabs it to select/move — like every charting tool's filled shapes. The
+      // chart is still pannable by starting the drag OUTSIDE the box. (Previously
+      // border-only, which made a filled box feel unmovable — the reported bug.)
+      if (
+        rectBorderHit({ x: px, y: py }, coord, d.a, d.b, d.paneId) ||
+        rectInteriorHit({ x: px, y: py }, coord, d.a, d.b, d.paneId)
+      ) {
+        return d;
+      }
     } else if (d.kind === 'text') {
       const x = coord.realMsToCanvasX(d.at.realMs);
       const y = coord.priceToCanvasY(d.at.price, d.paneId);
@@ -170,4 +172,31 @@ function rectBorderHit(
     if (distanceToSegment(p, s, e) <= HIT_THRESHOLD.rectBorder) return true;
   }
   return false;
+}
+
+/** True when pixel `p` is inside the rect's (min/max-normalized) box. Same
+ *  projection + off-axis fallback as rectBorderHit, so a selected rect can be
+ *  grabbed anywhere in its fill to move it. */
+function rectInteriorHit(
+  p: Pixel,
+  coord: HitCoord,
+  a: { realMs: number; price: number },
+  b: { realMs: number; price: number },
+  paneId: PaneId,
+): boolean {
+  const xaRaw = coord.realMsToCanvasX(a.realMs);
+  const xbRaw = coord.realMsToCanvasX(b.realMs);
+  const ya = coord.priceToCanvasY(a.price, paneId);
+  const yb = coord.priceToCanvasY(b.price, paneId);
+  if (ya == null || yb == null) return false;
+  if (xaRaw == null && xbRaw == null) return false;
+  const width = coord.canvasWidth ?? 0;
+  const xa = xaRaw ?? 0;
+  const xb = xbRaw ?? width;
+  return (
+    p.x >= Math.min(xa, xb) &&
+    p.x <= Math.max(xa, xb) &&
+    p.y >= Math.min(ya, yb) &&
+    p.y <= Math.max(ya, yb)
+  );
 }
