@@ -6,6 +6,8 @@ import type { RangeBundle, Timeframe } from './types';
 import {
   buildRangeBundleRequest,
   RANGE_QUERY_KEY_FROM_DATE_INDEX,
+  RANGE_QUERY_KEY_VDIST_PRICE_MAX_INDEX,
+  RANGE_QUERY_KEY_VDIST_PRICE_MIN_INDEX,
   rangePlaceholderData,
   type RangeBundleRequestInput,
   type RangeQueryKey,
@@ -140,17 +142,33 @@ export const LIVE_RANGE_CHUNK_DAYS = 7;
 
 type LiveRangeDeltaMode = 'sidecar' | 'hoga';
 
+/** 델타 identity에서 중립화하는 queryKey 인덱스.
+ *
+ * vdist 가격 경계(10·11)는 오늘 세션 고저가에서 파생돼(useLiveBundle의
+ * candlePriceRange) 신고/신저가·60초 폴마다 흔들리는데, identity에 남겨두면
+ * 매번 "콜드"로 오인해 시드+워크백을 재실행한다(2026-07-11 슬로그 churn).
+ * 제외해도 정합이 깨지지 않는 근거: 백엔드는 per-day 로컬 캔들 범위를
+ * 우선하고(bundle.py `price_range = candle_price_range or supplied…`) 요청
+ * 경계는 캔들 없는 날의 폴백일 뿐이라 과거일 결과가 이 경계와 무관하다.
+ * 오늘 슬라이스는 at-rest refresh(case 2)가 새 경계를 URL에 실어 나르며
+ * TODAY_RANGE_REFETCH_MS 주기로 수렴한다. */
+const LIVE_RANGE_IDENTITY_NEUTRAL_INDICES = [
+  RANGE_QUERY_KEY_FROM_DATE_INDEX,
+  RANGE_QUERY_KEY_VDIST_PRICE_MIN_INDEX,
+  RANGE_QUERY_KEY_VDIST_PRICE_MAX_INDEX,
+] as const;
+
 function liveRangeDeltaIdentity(input: RangeBundleRequestInput): string {
   const request = buildRangeBundleRequest(input);
   const key = [...request.queryKey];
-  key[RANGE_QUERY_KEY_FROM_DATE_INDEX] = null;
+  for (const index of LIVE_RANGE_IDENTITY_NEUTRAL_INDICES) key[index] = null;
   return JSON.stringify(key);
 }
 
 function liveRangeDeltaIdentityFromKey(queryKey: QueryKey): string | null {
   if (!Array.isArray(queryKey) || queryKey[0] !== 'range') return null;
   const key = [...queryKey];
-  key[RANGE_QUERY_KEY_FROM_DATE_INDEX] = null;
+  for (const index of LIVE_RANGE_IDENTITY_NEUTRAL_INDICES) key[index] = null;
   return JSON.stringify(key);
 }
 

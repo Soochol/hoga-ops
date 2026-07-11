@@ -467,6 +467,40 @@ describe('planSidecarRangeDelta', () => {
     expect(plan.requestInput.to).toBe('20260706');
   });
 
+  it('keeps identity across a vdist price-range change (today-slice refresh, no cold seed)', () => {
+    // 오늘 세션 신고/신저가로 vdist 경계가 흔들려도 identity는 불변 — 과거일
+    // vdist는 per-day 로컬 캔들 범위 우선(백엔드 폴백 의미론)이라 재사용 정합.
+    const plan = planSidecarRangeDelta({
+      ...previousRequest,
+      options: {
+        ...previousRequest.options,
+        volumeDistributionPriceRange: { min: 304000, max: 326000 },
+      },
+    }, previous, previousIdentity);
+
+    expect(plan.identity).toBe(previousIdentity);
+    expect(plan.canReusePrevious).toBe(true);
+    expect(plan.servePrevious).toBe(true);
+    // at-rest: 오늘 슬라이스 refresh 게이트로 수렴 (콜드 시드 재실행 없음).
+    expect(plan.requestInput.from).toBe('20260706');
+    expect(plan.requestInput.to).toBe('20260706');
+  });
+
+  it('keeps a narrow extension tile across a vdist price-range change', () => {
+    const plan = planSidecarRangeDelta({
+      ...previousRequest,
+      from: '20260624',
+      options: {
+        ...previousRequest.options,
+        volumeDistributionPriceRange: { min: 304000, max: 326000 },
+      },
+    }, previous, previousIdentity);
+
+    expect(plan.canReusePrevious).toBe(true);
+    expect(plan.requestInput.from).toBe('20260624');
+    expect(plan.requestInput.to).toBe('20260628');
+  });
+
   it('seeds only the most-recent chunk when sidecar options changed', () => {
     const plan = planSidecarRangeDelta({
       ...previousRequest,
@@ -1184,15 +1218,14 @@ describe('useRangeSidecarDelta', () => {
     expect(result.current.data?.to_date).toBe('20260706');
   });
 
-  // Characterizes the "cold-load price-range churn" hypothesis: the sidecar
-  // delta identity includes volume_distribution price bounds (derived from
-  // today's candle high/low), which churn while candles stream in. A churn
-  // breaks `sameIdentity` for that one step (no `previous` under the new
-  // identity → cumulative fallback), but the NEXT scroll at the now-stable
-  // identity finds the just-cached bundle and returns to narrow deltas. So
-  // churn yields at most a TRANSIENT cumulative — it does NOT explain a long
-  // run of cumulative requests all sharing one stable price range.
-  it('a mid-scroll price-range churn is transient — the next stable scroll self-heals to narrow', async () => {
+  // vdist price bounds (derived from today's candle high/low) are NEUTRAL to
+  // the delta identity: a mid-scroll churn must keep every step a NARROW tile —
+  // the churn step included. (Before the identity fix a churn step fell back to
+  // a cumulative [from, today]; with cold seeding that became a seed+walkback
+  // re-run — still wasted work. Backend semantics make the exclusion sound:
+  // past days bin by their own candle range, the request bounds are only a
+  // no-candles fallback.)
+  it('a mid-scroll price-range churn stays narrow — identity is vdist-range neutral', async () => {
     const today = '20260706';
     const P1 = { min: 303000, max: 325000 };
     const P2 = { min: 304000, max: 326000 }; // churned once, then stable
@@ -1219,15 +1252,14 @@ describe('useRangeSidecarDelta', () => {
     rerender({ from: '20260614', price: P2 }); // scroll, stable
     await waitFor(() => expect(result.current.data?.from_date).toBe('20260614'));
 
-    const stableUrls = spy.mock.calls
-      .map(([u]) => String(u))
-      .filter((u) => u.includes('volume_distribution_price_min=304000'));
-    // The churn step (0624) may fall back to cumulative once; the subsequent
-    // stable scrolls (0619, 0614) must be narrow tiles.
-    expect(stableUrls.some((u) => u.includes('from=20260619&to=20260623'))).toBe(true);
-    expect(stableUrls.some((u) => u.includes('from=20260614&to=20260618'))).toBe(true);
-    // No cumulative at the stable identity for the later scroll steps.
-    expect(stableUrls.filter((u) => /from=2026(0619|0614)&to=20260706/.test(u))).toEqual([]);
+    const urls = spy.mock.calls.map(([u]) => String(u));
+    // churn 스텝(0624+P2)도 좁은 타일 — 새 경계는 URL로 전달되지만 identity는 불변.
+    expect(urls.some((u) => u.includes('from=20260624&to=20260628')
+      && u.includes('volume_distribution_price_min=304000'))).toBe(true);
+    expect(urls.some((u) => u.includes('from=20260619&to=20260623'))).toBe(true);
+    expect(urls.some((u) => u.includes('from=20260614&to=20260618'))).toBe(true);
+    // 어떤 스텝에서도 누적 [from, today] 재요청 금지.
+    expect(urls.filter((u) => /from=2026(0624|0619|0614)&to=20260706/.test(u))).toEqual([]);
   });
 
   it('does not immediately refresh the today sidecar slice after a delta merge', async () => {
