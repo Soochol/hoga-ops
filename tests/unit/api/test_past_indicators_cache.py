@@ -102,9 +102,10 @@ def test_ratio_disk_payload_is_seven_tuples(tmp_path: Path) -> None:
 
 
 def test_schema_version_bumped_to_6_invalidates_peak_candidate_cache(tmp_path: Path) -> None:
-    """SCHEMA_VERSION 2→6: 시간별 후보 배열 없는 peak 캐시는 버전 미스로 무효."""
+    """v2→v6: 시간별 후보 배열 없는 peak 캐시는 버전 미스로 무효."""
     from hoga.api import past_indicators_cache as mod
-    assert mod.SCHEMA_VERSION == 6
+    assert mod.KIND_VERSIONS["ratio"] == 6
+    assert mod.KIND_VERSIONS["ask_peak"] == 6
     p = tmp_path / "kis-past-indicators" / CODE / SRC / f"{DATE}.ratio.json"
     p.parent.mkdir(parents=True, exist_ok=True)
     p.write_text(json.dumps({"version": 1, "rows": [[0, 10, 20]], "fetched_at_ms": 0}),
@@ -129,9 +130,10 @@ def test_schema_version_bumped_to_6_invalidates_peak_candidate_cache(tmp_path: P
 
 
 def test_schema_version_bumped_to_6_invalidates_price_based_peak_classification_cache(tmp_path: Path) -> None:
-    """SCHEMA_VERSION 3→6: 가격 집합 기준 peak 분류 캐시는 이벤트/lifecycle 기준 재계산이 필요."""
+    """v3→v6: 가격 집합 기준 peak 분류 캐시는 이벤트/lifecycle 기준 재계산이 필요."""
     from hoga.api import past_indicators_cache as mod
-    assert mod.SCHEMA_VERSION == 6
+    assert mod.KIND_VERSIONS["ask_peak"] == 6
+    assert mod.KIND_VERSIONS["bid_peak"] == 6
 
     peak_dir = tmp_path / "kis-past-indicators" / CODE / SRC
     peak_dir.mkdir(parents=True, exist_ok=True)
@@ -159,9 +161,10 @@ def test_schema_version_bumped_to_6_invalidates_price_based_peak_classification_
 
 
 def test_schema_version_bumped_to_6_invalidates_raw_peak_event_rank_cache(tmp_path: Path) -> None:
-    """SCHEMA_VERSION 4→6: 같은 가격 raw 이벤트 순위 캐시는 lifecycle 기준 재계산이 필요."""
+    """v4→v6: 같은 가격 raw 이벤트 순위 캐시는 lifecycle 기준 재계산이 필요."""
     from hoga.api import past_indicators_cache as mod
-    assert mod.SCHEMA_VERSION == 6
+    assert mod.KIND_VERSIONS["ask_peak"] == 6
+    assert mod.KIND_VERSIONS["bid_peak"] == 6
 
     peak_dir = tmp_path / "kis-past-indicators" / CODE / SRC
     peak_dir.mkdir(parents=True, exist_ok=True)
@@ -190,6 +193,38 @@ def test_schema_version_bumped_to_6_invalidates_raw_peak_event_rank_cache(tmp_pa
     reloaded = PastIndicatorsCache(tmp_path)
     assert reloaded.has_ask_peak(CODE, DATE, SRC, 60_000) is False
     assert reloaded.has_bid_peak(CODE, DATE, SRC, 60_000) is False
+
+
+def test_kind_version_bump_invalidates_only_that_kind(
+    tmp_path: Path, monkeypatch,
+) -> None:
+    """kind별 버전의 존재 이유: 한 kind의 semantics 변경(버전 범프)이 다른 kind의
+    디스크 캐시를 무효화하면 안 된다 — 2026-07-11 전역 v5→v6 범프가 의미 불변
+    kind(peak 등)까지 콜드로 만들어 /study 뷰 첫 로드가 수십 분으로 늘었던 회귀 가드."""
+    from hoga.api import past_indicators_cache as mod
+
+    ask = AskPeak(
+        date=DATE, price=71000, qty=1, t_ms=1, max_price=71000, max_qty=1, max_t_ms=1
+    )
+    warm = PastIndicatorsCache(tmp_path)
+    warm.store_ratio(CODE, DATE, SRC, RATIO)
+    warm.store_fill(CODE, DATE, SRC, FILL)
+    warm.store_ask_peak(CODE, DATE, SRC, 60_000, ask)
+
+    monkeypatch.setitem(mod.KIND_VERSIONS, "ratio", mod.KIND_VERSIONS["ratio"] + 1)
+
+    fresh = PastIndicatorsCache(tmp_path)  # cold memory → 디스크 버전 체크 경유
+    assert fresh.get_ratio(CODE, DATE, SRC) is None  # 범프된 kind만 무효
+    assert fresh.get_fill(CODE, DATE, SRC) == FILL
+    assert fresh.get_ask_peak(CODE, DATE, SRC, 60_000) == ask
+
+
+def test_kind_versions_covers_every_cache_kind(tmp_path: Path) -> None:
+    """새 kind 추가 시 KIND_VERSIONS 등록 누락은 read/write에서 KeyError가 되므로,
+    stats에 등록된 kind 집합과 일치해야 한다."""
+    from hoga.api import past_indicators_cache as mod
+
+    assert set(mod.KIND_VERSIONS) == set(PastIndicatorsCache(tmp_path)._stats)
 
 
 def test_bid_peak_cache_is_independent_from_ask_peak(tmp_path: Path) -> None:
