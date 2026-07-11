@@ -33,6 +33,9 @@ export type ProjectCtx = {
    *  bar count. Absent (e.g. daily/aggregated views without a fixed bucket) →
    *  the readout omits the bar count. */
   bucketMs?: number;
+  /** Newest candle's realMs — with bucketMs, lets drawings anchored in the
+   *  empty band right of the last candle render via extrapolation. */
+  lastRealMs?: number;
 };
 
 /** Canvas font string for a text-label drawing at `sizePx`. Rendering and
@@ -60,7 +63,11 @@ const MEASURE_DOWN = '#3B82F6';
 const MEASURE_FLAT = '#9CA3AF';
 
 function realMsToX(ctx: ProjectCtx, realMs: number): number | null {
-  return realMsToCanvasX(ctx.chart, ctx.axis, realMs);
+  const future =
+    ctx.lastRealMs != null && ctx.bucketMs != null && ctx.bucketMs > 0
+      ? { lastRealMs: ctx.lastRealMs, bucketMs: ctx.bucketMs }
+      : undefined;
+  return realMsToCanvasX(ctx.chart, ctx.axis, realMs, future);
 }
 
 function priceToY(ctx: ProjectCtx, price: number): number | null {
