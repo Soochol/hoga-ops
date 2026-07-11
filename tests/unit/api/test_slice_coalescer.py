@@ -3,18 +3,8 @@ import time
 
 import pytest
 
-import hoga.api.peak_slice_guard as psg
-from hoga.api.peak_slice_guard import PeakSliceGuard, SliceCoalescer
+from hoga.api.slice_coalescer import SliceCoalescer
 
-
-def test_resolve_concurrency_reads_named_env(monkeypatch):
-    monkeypatch.setenv("HOGA_RANGE_PROFILE_CONCURRENCY", "3")
-    assert psg._resolve_concurrency("HOGA_RANGE_PROFILE_CONCURRENCY", 1) == 3
-
-
-def test_resolve_concurrency_falls_back_on_garbage(monkeypatch):
-    monkeypatch.setenv("HOGA_RANGE_PROFILE_CONCURRENCY", "banana")
-    assert psg._resolve_concurrency("HOGA_RANGE_PROFILE_CONCURRENCY", 1) == 1
 
 
 # ── SliceCoalescer (per-day slice single-flight) ────────────────────────────
@@ -89,34 +79,3 @@ def test_slice_coalescer_propagates_exception_without_poisoning_key():
     # compute on the same key runs normally.
     assert c.run("k", lambda: 7) == 7
 
-
-def test_peak_slice_guard_inherits_single_flight():
-    # The refactor keeps PeakSliceGuard's single-flight (now inherited) intact.
-    guard = PeakSliceGuard(concurrency=1)
-    calls = [0]
-    entered = threading.Event()
-    release = threading.Event()
-
-    def compute():
-        calls[0] += 1
-        entered.set()
-        release.wait()
-        return 42
-
-    results: list[int] = []
-
-    def worker():
-        results.append(guard.run(("code", "date"), compute))
-
-    leader = threading.Thread(target=worker)
-    leader.start()
-    assert entered.wait(timeout=2)
-    follower = threading.Thread(target=worker)
-    follower.start()
-    time.sleep(0.05)
-    release.set()
-    leader.join(timeout=2)
-    follower.join(timeout=2)
-
-    assert calls[0] == 1
-    assert results == [42, 42]

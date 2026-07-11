@@ -7,7 +7,7 @@ Each event type 2 row is a full state snapshot. In-memory the entity uses
 
 from __future__ import annotations
 
-from bisect import bisect_left, bisect_right
+from bisect import bisect_right
 from collections import OrderedDict
 from collections.abc import Callable, Iterable
 from dataclasses import dataclass
@@ -16,6 +16,7 @@ from threading import Lock
 from typing import Any
 
 import duckdb
+import polars as pl
 import pyarrow as pa
 import pyarrow.parquet as pq
 from pydantic import BaseModel
@@ -596,148 +597,136 @@ class AskPeakCandidateRow:
     intra_ms: int
 
 
-# ── Peak-wall linear sweep classifier (replaces the O(N·M) non-equi-join SQL) ──
+# ── Peak-wall columnar sweep classifier (ADR-0085 v2) ────────────────────────
 #
-# The former single-SQL classifier (ADR-0084) materialised a non-equi join
-# ``touch × lifecycle_prices ON t.price {>=|<=} p.price`` plus an UNBOUNDED
-# window over every ask/bid × rep/cont set — 17GB RSS / 155s on the worst day
-# (20260623/000660). This sweep computes the identical semantics in
-# O((N+M) log M): one reverse pass for ``is_touched`` and one forward pass with
-# a prefix-max Fenwick tree for lifecycle segment ids. See ADR-0085.
+# History: the single-SQL classifier (ADR-0084) materialised a non-equi join —
+# 17GB RSS / 155s on the worst day (20260623/000660). ADR-0085 replaced it with
+# a pure-Python Fenwick sweep over ``_WallEvent`` dataclass streams (identical
+# semantics, O((N+M) log M)) — but materialising ~2M dataclasses cost ~1GB RSS
+# and ~6s on a heavy day (measured 034020/20260116), and the pure-Python sweep
+# is GIL-bound, so concurrent computes serialise (12-way: 94s wall vs 77s
+# sequential — measured 2026-07-11).
+#
+# This columnar version keeps the exact sweep semantics but moves the data
+# plane to polars (Rust, GIL-released): DuckDB → Arrow → polars frames, pass 1
+# (is_touched) as a merged-timeline reverse cumulative extreme, and all
+# ranking/dedup reductions as frame ops. Only pass 2 (lifecycle Fenwick)
+# remains a Python loop, over plain int lists — no per-event objects.
+#
+# Semantics contract (must match the ADR-0085 sweep exactly; oracle-tested in
+# tests/test_peak_sweep_oracle.py against a frozen copy):
+#   rank       — qty DESC, intra_ms ASC, seq ASC, price ASC.
+#   is_touched — event ``e`` is touched iff some touch with ``(ts, seq) >= e``'s
+#                dominates it price-wise (ask: ``touch.price >= e.price``;
+#                bid: ``<=``). Same-``(ts, seq)`` touches ARE included.
+#   lifecycle  — segmented by STRICTLY-earlier dominating touches
+#                (``(ts, seq) < e``); ``lifecycle_id`` = max touch ordinal of
+#                those, else 0. Touch ordinal = rank in (ts, seq, price) order.
+
+_PEAK_RANK_BY = ["qty", "intra_ms", "seq", "price"]
+_PEAK_RANK_DESC = [True, False, False, False]
 
 
-@dataclass(frozen=True, slots=True)
-class _WallEvent:
-    ts_ms: int
-    seq: int
-    price: int
-    qty: int
-    intra_ms: int
-    bucket_id: int
+def _peak_rank_sort(df: pl.DataFrame) -> pl.DataFrame:
+    """SQL 공통 랭킹 정렬: qty DESC, intra_ms ASC, seq ASC, price ASC."""
+    return df.sort(_PEAK_RANK_BY, descending=_PEAK_RANK_DESC)
 
 
-@dataclass(frozen=True, slots=True)
-class _Touch:
-    ts_ms: int
-    seq: int
-    price: int
-
-
-def _event_rank_key(e: _WallEvent) -> tuple[int, int, int, int]:
-    # SQL 공통 랭킹: qty DESC, intra_ms ASC, seq ASC, price ASC.
-    return (-e.qty, e.intra_ms, e.seq, e.price)
-
-
-class _MaxFenwick:
-    """1-based prefix-max Fenwick (Binary Indexed) tree over positive ordinals."""
-
-    def __init__(self, size: int) -> None:
-        self._size = size
-        self._tree = [0] * (size + 1)
-
-    def update(self, i: int, value: int) -> None:
-        tree = self._tree
-        while i <= self._size:
-            if tree[i] < value:
-                tree[i] = value
-            i += i & (-i)
-
-    def prefix_max(self, i: int) -> int:
-        best = 0
-        tree = self._tree
-        while i > 0:
-            if tree[i] > best:
-                best = tree[i]
-            i -= i & (-i)
-        return best
-
-
-def _classify_wall_stream(
-    events: list[_WallEvent],
-    touches: list[_Touch],
+def _classify_wall_frame(
+    events: pl.DataFrame,
+    touches: pl.DataFrame,
     *,
     side: str,
-) -> tuple[list[tuple[_WallEvent, bool]], dict[tuple[int, bool], _WallEvent]]:
-    """Linear-sweep replacement for the quadratic lifecycle SQL (ADR-0085).
+) -> pl.DataFrame:
+    """Columnar sweep: ``events`` + ``touched``/``lifecycle`` columns.
 
-    Returns ``(classified, distinct_best)``:
-      classified    — ``(event, is_touched)`` in (ts_ms, seq) ascending order,
-                      mirroring ``{side}_{src}_classified``.
-      distinct_best — best event per ``(price, is_touched)`` after per-``(price,
-                      lifecycle_id)`` dedup; mirrors ``{side}_{src}_lifecycle_distinct``.
-
-    Semantics contract (must match the former SQL exactly):
-      is_touched — a level event ``e`` is touched iff some touch with
-                   ``(ts, seq) >= e``'s dominates it price-wise
-                   (ask: ``touch.price >= e.price``; bid: ``<=``).
-                   Same-``(ts, seq)`` touches ARE included (``is_touch DESC``).
-      lifecycle  — segmented by STRICTLY-earlier dominating touches
-                   (``(ts, seq) < e``, so same-``(ts, seq)`` touches are excluded,
-                   ``is_touch ASC``); ``lifecycle_id`` = the max touch ordinal of
-                   those, else 0. Touch ordinal = rank in (ts, seq, price) order.
+    ``events`` needs columns ts_ms/seq/price/qty/intra_ms/bucket_id (Int64);
+    ``touches`` needs ts_ms/seq/price (Int64). Both may arrive unsorted.
     """
     is_ask = side == "ask"
-    events_sorted = sorted(events, key=lambda e: (e.ts_ms, e.seq))
-    # touches_sorted key (ts, seq, price) == SQL touch_ord ROW_NUMBER order,
-    # so a touch's 1-based list position IS its touch_ord.
-    touches_sorted = sorted(touches, key=lambda t: (t.ts_ms, t.seq, t.price))
-
-    # ── pass 1 (reverse): is_touched via a running future extreme ────────────
-    classified: list[tuple[_WallEvent, bool]] = [None] * len(events_sorted)  # type: ignore[list-item]
-    ti = len(touches_sorted) - 1
-    future_extreme: int | None = None
-    for ei in range(len(events_sorted) - 1, -1, -1):
-        e = events_sorted[ei]
-        while ti >= 0 and (touches_sorted[ti].ts_ms, touches_sorted[ti].seq) >= (e.ts_ms, e.seq):
-            tp = touches_sorted[ti].price
-            if future_extreme is None or (tp > future_extreme if is_ask else tp < future_extreme):
-                future_extreme = tp
-            ti -= 1
-        touched = future_extreme is not None and (
-            future_extreme >= e.price if is_ask else future_extreme <= e.price
+    ev = events.sort(["ts_ms", "seq"])
+    n = ev.height
+    if n == 0:
+        return ev.with_columns(
+            pl.lit(False).alias("touched"), pl.lit(0, pl.Int64).alias("lifecycle"),
         )
-        classified[ei] = (e, touched)
+    tch = touches.sort(["ts_ms", "seq", "price"])
 
-    # ── pass 2 (forward): lifecycle ids via Fenwick prefix-max over touch prices ──
-    uniq = sorted({t.price for t in touches_sorted})
-    fen = _MaxFenwick(len(uniq))
+    # ── pass 1: is_touched via merged-timeline reverse cumulative extreme ────
+    # Event rows (kind=0) sort BEFORE same-(ts,seq) touch rows (kind=1), so the
+    # suffix extreme at an event row includes same-key touches — the oracle's
+    # ``(t.ts, t.seq) >= (e.ts, e.seq)`` inclusion. cum_max/cum_min accumulate
+    # across nulls but leave null positions null → forward_fill carries the
+    # running extreme onto event rows.
+    merged = pl.concat([
+        ev.select(
+            "ts_ms", "seq",
+            pl.lit(0, pl.Int8).alias("kind"),
+            pl.lit(None, pl.Int64).alias("tprice"),
+            pl.int_range(0, pl.len(), dtype=pl.Int64).alias("eidx"),
+        ),
+        tch.select(
+            "ts_ms", "seq",
+            pl.lit(1, pl.Int8).alias("kind"),
+            pl.col("price").alias("tprice"),
+            pl.lit(None, pl.Int64).alias("eidx"),
+        ),
+    ]).sort(["ts_ms", "seq", "kind"])
+    rev = merged["tprice"].reverse()
+    rev = (rev.cum_max() if is_ask else rev.cum_min()).forward_fill()
+    fut = (
+        merged.with_columns(rev.reverse().alias("fut"))
+        .filter(pl.col("kind") == 0)
+        .sort("eidx")["fut"]
+    )
+    touched = (fut >= ev["price"]) if is_ask else (fut <= ev["price"])
+    touched = touched.fill_null(False)
+
+    # ── pass 2: lifecycle ids — Fenwick prefix-max, strictly-earlier touches ──
+    # Python loop over plain int lists (the only non-columnar step). Price
+    # ranks are precomputed via search_sorted so the loop body is pure ints.
+    uniq = tch["price"].unique().sort()
+    n_prices = uniq.len()
     if is_ask:
-        # rank prices from the TOP so prefix_max(idx) covers touches with price >= q.
-        def _touch_idx(price: int) -> int:
-            return len(uniq) - bisect_left(uniq, price)
-
-        _query_idx = _touch_idx
+        # rank from the TOP so prefix_max(idx) covers touches with price >= q.
+        t_idx = (n_prices - uniq.search_sorted(tch["price"], side="left").cast(pl.Int64)).to_list()
+        q_idx = (n_prices - uniq.search_sorted(ev["price"], side="left").cast(pl.Int64)).to_list()
     else:
         # rank from the BOTTOM so prefix_max(idx) covers touches with price <= q.
-        def _touch_idx(price: int) -> int:
-            return bisect_left(uniq, price) + 1
+        t_idx = (uniq.search_sorted(tch["price"], side="left").cast(pl.Int64) + 1).to_list()
+        q_idx = uniq.search_sorted(ev["price"], side="right").cast(pl.Int64).to_list()
 
-        def _query_idx(price: int) -> int:
-            return bisect_right(uniq, price)
-
-    lifecycle_best: dict[tuple[int, int], tuple[_WallEvent, bool]] = {}
+    e_ts = ev["ts_ms"].to_list()
+    e_seq = ev["seq"].to_list()
+    t_ts = tch["ts_ms"].to_list()
+    t_seq = tch["seq"].to_list()
+    tree = [0] * (n_prices + 1)
+    lifecycle = [0] * n
     ti = 0
-    n_touch = len(touches_sorted)
-    for e, touched in classified:
-        while ti < n_touch and (
-            (touches_sorted[ti].ts_ms, touches_sorted[ti].seq) < (e.ts_ms, e.seq)
-        ):
-            fen.update(_touch_idx(touches_sorted[ti].price), ti + 1)
+    n_touch = len(t_ts)
+    for i in range(n):
+        ets = e_ts[i]
+        eseq = e_seq[i]
+        while ti < n_touch and (t_ts[ti] < ets or (t_ts[ti] == ets and t_seq[ti] < eseq)):
+            j = t_idx[ti]
+            v = ti + 1  # 1-based touch ordinal in (ts, seq, price) order
+            while j <= n_prices:
+                if tree[j] < v:
+                    tree[j] = v
+                j += j & (-j)
             ti += 1
-        lifecycle_id = fen.prefix_max(_query_idx(e.price))
-        key = (e.price, lifecycle_id)
-        cur = lifecycle_best.get(key)
-        if cur is None or _event_rank_key(e) < _event_rank_key(cur[0]):
-            lifecycle_best[key] = (e, touched)
+        j = q_idx[i]
+        best = 0
+        while j > 0:
+            if tree[j] > best:
+                best = tree[j]
+            j -= j & (-j)
+        lifecycle[i] = best
 
-    distinct_best: dict[tuple[int, bool], _WallEvent] = {}
-    for (price, _lid), (e, touched) in lifecycle_best.items():
-        key2 = (price, touched)
-        cur2 = distinct_best.get(key2)
-        if cur2 is None or _event_rank_key(e) < _event_rank_key(cur2):
-            distinct_best[key2] = e
-
-    return classified, distinct_best
+    return ev.with_columns(
+        touched.alias("touched"),
+        pl.Series("lifecycle", lifecycle, dtype=pl.Int64),
+    )
 
 
 @dataclass(frozen=True)
@@ -1377,7 +1366,7 @@ def query_day_bid_peak_dual(
     return bid_row
 
 
-def _read_peak_wall_streams(
+def _read_peak_wall_frames(
     con: duckdb.DuckDBPyConnection,
     *,
     path: Path,
@@ -1386,12 +1375,13 @@ def _read_peak_wall_streams(
     where: str,
     intra: str,
     trade_seq_expr: str,
-) -> tuple[dict[str, list[_WallEvent]], list[_Touch]]:
-    """Linear SQL scans → Python streams for the sweep classifier.
+) -> tuple[pl.DataFrame, pl.DataFrame]:
+    """Linear SQL scans → polars frames for the columnar sweep classifier.
 
     Reuses the (linear) ``cont``/``rep`` bucketing + 10-level unpivot of the old
-    query, but materialises only per-level wall events and raw touches — NO
-    non-equi join, NO UNBOUNDED window. Everything else happens in Python.
+    query, but fetches via Arrow into columnar frames — NO per-row Python
+    objects (the ADR-0085 dataclass streams cost ~1GB RSS on a heavy day),
+    NO non-equi join, NO UNBOUNDED window.
     """
     level_selects: list[str] = []
     for source in ("cont", "rep"):
@@ -1403,7 +1393,7 @@ def _read_peak_wall_streams(
                     f"{intra} AS intra_ms, bucket_id "
                     f"FROM {source} WHERE {qty_prefix}{i} > 0"
                 )
-    rows = con.execute(
+    events = con.execute(
         f"""
         WITH cont AS (
           SELECT *,
@@ -1418,57 +1408,62 @@ def _read_peak_wall_streams(
         {" UNION ALL ".join(level_selects)}
         """,
         [str(path)],
-    ).fetchall()
-    touch_rows = con.execute(
+    ).pl()
+    touches = con.execute(
         f"""
         SELECT ts_ms, {trade_seq_expr} AS seq, price
         FROM read_parquet(?)
         WHERE side IN (1, -1) AND price > 0
         """,
         [str(trades_path)],
-    ).fetchall()
+    ).pl()
 
-    streams: dict[str, list[_WallEvent]] = {
-        "ask_rep": [], "ask_cont": [], "bid_rep": [], "bid_cont": [],
-    }
-    for side, source, ts_ms, seq, price, qty, intra_ms, bucket_id in rows:
-        streams[f"{side}_{source}"].append(
-            _WallEvent(
-                ts_ms=int(ts_ms), seq=int(seq or 0), price=int(price), qty=int(qty),
-                intra_ms=int(intra_ms), bucket_id=int(bucket_id),
-            )
-        )
-    touches = [
-        _Touch(ts_ms=int(ts_ms), seq=int(seq or 0), price=int(price))
-        for ts_ms, seq, price in touch_rows
-    ]
-    return streams, touches
+    num_cols = ["ts_ms", "seq", "price", "qty", "intra_ms", "bucket_id"]
+    events = events.with_columns(
+        [pl.col(c).fill_null(0).cast(pl.Int64) for c in num_cols]
+        # 2M행 Utf8 두 컬럼은 정렬·복사 비용이 지배적 — 사전형으로 격하.
+        + [pl.col("side").cast(pl.Categorical), pl.col("source").cast(pl.Categorical)],
+    )
+    touches = touches.with_columns(
+        [pl.col(c).fill_null(0).cast(pl.Int64) for c in ("ts_ms", "seq", "price")],
+    )
+    return events, touches
 
 
-def _peak_candidates(rows: list[_WallEvent], limit: int | None) -> tuple[AskPeakCandidateRow, ...]:
-    ranked = sorted(rows, key=_event_rank_key)
+def _peak_candidates(df: pl.DataFrame, limit: int | None) -> tuple[AskPeakCandidateRow, ...]:
+    ranked = _peak_rank_sort(df)
     if limit is not None:
-        ranked = ranked[:limit]
-    return tuple(AskPeakCandidateRow(price=e.price, qty=e.qty, intra_ms=e.intra_ms) for e in ranked)
+        ranked = ranked.head(limit)
+    return tuple(
+        AskPeakCandidateRow(price=p, qty=q, intra_ms=i)
+        for p, q, i in zip(ranked["price"], ranked["qty"], ranked["intra_ms"], strict=True)
+    )
 
 
-def _peak_bucket_dedup(classified: list[tuple[_WallEvent, bool]]) -> list[_WallEvent]:
+def _peak_bucket_dedup(df: pl.DataFrame) -> pl.DataFrame:
     """Best per (price, bucket_id) — mirrors ``{side}_all_peak_candidates`` price_rn=1."""
-    best: dict[tuple[int, int], _WallEvent] = {}
-    for e, _touched in classified:
-        key = (e.price, e.bucket_id)
-        cur = best.get(key)
-        if cur is None or _event_rank_key(e) < _event_rank_key(cur):
-            best[key] = e
-    return list(best.values())
+    return _peak_rank_sort(df).unique(
+        subset=["price", "bucket_id"], keep="first", maintain_order=True,
+    )
 
 
-def _peak_scalar(rows: list[_WallEvent]) -> tuple[int, int, int] | None:
+def _peak_scalar(df: pl.DataFrame) -> tuple[int, int, int] | None:
     """Rank-1 (price, qty, intra_ms) or None — mirrors an ``... LIMIT 1`` CTE."""
-    if not rows:
+    if df.height == 0:
         return None
-    e = min(rows, key=_event_rank_key)
-    return (e.price, e.qty, e.intra_ms)
+    row = _peak_rank_sort(df).row(0, named=True)
+    return (row["price"], row["qty"], row["intra_ms"])
+
+
+def _peak_distinct(classified: pl.DataFrame) -> pl.DataFrame:
+    """Best per (price, lifecycle) then best per (price, touched) — mirrors
+    ``{side}_{src}_lifecycle_distinct``. Input must carry touched/lifecycle."""
+    per_lifecycle = _peak_rank_sort(classified).unique(
+        subset=["price", "lifecycle"], keep="first", maintain_order=True,
+    )
+    # per_lifecycle is rank-sorted; keep="first" therefore picks the best-ranked
+    # lifecycle representative within each (price, touched) class.
+    return per_lifecycle.unique(subset=["price", "touched"], keep="first", maintain_order=True)
 
 
 def query_day_ask_bid_peak_dual(
@@ -1482,12 +1477,12 @@ def query_day_ask_bid_peak_dual(
 ) -> tuple[AskPeakDualRow | None, BidPeakDualRow | None]:
     """Return ask and bid peak rows for the same day using shared scans.
 
-    Linear-sweep implementation (ADR-0085): the peak-wall lifecycle
-    classification that used to run as one heavy non-equi-join SQL now runs as
-    two linear SQL scans + a Python sorted sweep with a Fenwick prefix-max tree
-    (``_classify_wall_stream``), replacing the O(N·M) join that spilled 356GB /
-    took 155s on the worst day. Public signature and returned dataclasses are
-    unchanged.
+    Columnar-sweep implementation (ADR-0085 v2): the peak-wall lifecycle
+    classification runs as two linear SQL scans fetched into polars frames +
+    a columnar classifier (``_classify_wall_frame``) whose only Python loop is
+    the lifecycle Fenwick over plain ints. Identical semantics to the ADR-0085
+    dataclass sweep (oracle-tested), ~10× less RSS and mostly GIL-released.
+    Public signature and returned dataclasses are unchanged.
     """
     intra = hhmmssms_to_intra_ms_sql("ts_ms")
     trade_seq_expr = "COALESCE(seq, 0)" if _parquet_has_column(con, trades_path, "seq") else "0"
@@ -1495,24 +1490,29 @@ def query_day_ask_bid_peak_dual(
         intra, session_open_ms=session_open_ms, session_close_ms=session_close_ms,
     )
 
-    streams, touches = _read_peak_wall_streams(
+    events, touches = _read_peak_wall_frames(
         con, path=path, trades_path=trades_path, bucket_ms=bucket_ms,
         where=where, intra=intra, trade_seq_expr=trade_seq_expr,
     )
 
     def _side_row(side: str) -> dict[str, Any] | None:
-        rep_classified, rep_distinct = _classify_wall_stream(streams[f"{side}_rep"], touches, side=side)
-        cont_classified, cont_distinct = _classify_wall_stream(streams[f"{side}_cont"], touches, side=side)
+        classified = _classify_wall_frame(
+            events.filter(pl.col("side") == side), touches, side=side,
+        )
+        rep = classified.filter(pl.col("source") == "rep")
+        cont = classified.filter(pl.col("source") == "cont")
 
-        all_close = _peak_scalar([e for e, _t in rep_classified])
-        all_max = _peak_scalar([e for e, _t in cont_classified])
+        all_close = _peak_scalar(rep)
+        all_max = _peak_scalar(cont)
         if all_close is None or all_max is None:
             return None
 
-        rep_traded = [e for (_p, t), e in rep_distinct.items() if t]
-        rep_untraded = [e for (_p, t), e in rep_distinct.items() if not t]
-        cont_traded = [e for (_p, t), e in cont_distinct.items() if t]
-        cont_untraded = [e for (_p, t), e in cont_distinct.items() if not t]
+        rep_distinct = _peak_distinct(rep)
+        cont_distinct = _peak_distinct(cont)
+        rep_traded = rep_distinct.filter(pl.col("touched"))
+        rep_untraded = rep_distinct.filter(~pl.col("touched"))
+        cont_traded = cont_distinct.filter(pl.col("touched"))
+        cont_untraded = cont_distinct.filter(~pl.col("touched"))
 
         return {
             "all_close": all_close,
@@ -1525,8 +1525,8 @@ def query_day_ask_bid_peak_dual(
             "traded_max_peaks": _peak_candidates(cont_traded, 3),
             "untraded_peaks": _peak_candidates(rep_untraded, 3),
             "untraded_max_peaks": _peak_candidates(cont_untraded, 3),
-            "all_peaks": _peak_candidates(_peak_bucket_dedup(rep_classified), None),
-            "all_max_peaks": _peak_candidates(_peak_bucket_dedup(cont_classified), None),
+            "all_peaks": _peak_candidates(_peak_bucket_dedup(rep), None),
+            "all_max_peaks": _peak_candidates(_peak_bucket_dedup(cont), None),
         }
 
     ask = _side_row("ask")

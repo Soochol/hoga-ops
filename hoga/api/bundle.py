@@ -48,8 +48,7 @@ from hoga.api.models import (
     validate_bucket_ms,
 )
 from hoga.api.past_indicators_cache import CACHE_MISS
-from hoga.api.peak_slice_guard import GUARD as PEAK_SLICE_GUARD
-from hoga.api.peak_slice_guard import SLICE_COALESCER
+from hoga.api.slice_coalescer import SLICE_COALESCER
 from hoga.api.today_ttl_cache import TODAY_TTL
 from hoga.api.queries import QueryEngine, StockDateNotFound
 from hoga.api.sources import ordered_sources, resolve_source_result
@@ -876,26 +875,27 @@ def build_ask_bid_peak_slices(
             )
         return ask, bid
 
-    # The dual-peak query is the process's heaviest read (inequality join +
-    # unbounded windows, ~17GB/155s on a pathological day). `/api/range` is a
-    # sync route on FastAPI's thread pool and today's peak is uncached
-    # (ADR-0043), so concurrent sidecar polls would run this in parallel over a
-    # shared soft `memory_limit` and OOM. The guard (ADR-0085) bounds concurrency
-    # + collapses identical concurrent computes — it is load-bearing, NOT an
-    # optimization: DuckDB's memory_limit is soft, so removing/bypassing this
-    # re-opens the OOM. See hoga/api/peak_slice_guard.py.
+    # Concurrent identical dual-peak computes are collapsed by single-flight
+    # (SLICE_COALESCER), same as every other per-day slice. The 2-slot
+    # semaphore that used to cap DISTINCT-key concurrency here (ADR-0085,
+    # added when this query was a ~17GB/155s non-equi join) was retired in
+    # ADR-0085 v2: the columnar sweep measures ~1.1s / ~450MB transient per
+    # heavy day and scales under concurrency (12-way: 7.1s wall vs 13.2s
+    # sequential), so a cap would only serialize wide-range first-touch work.
     #
     # ADR-0090: today's result is additionally reused across SEQUENTIAL calls
     # (not just concurrent ones) for a short TTL, to collapse symbol-switch
-    # polling bursts that the single-flight guard above cannot dedupe.
+    # polling bursts that the single-flight above cannot dedupe.
     is_today = today_kst is not None and date == today_kst
     ttl_key = ("peak_dual", code, date, source, bucket_ms, session_open_ms, session_close_ms)
     hit, cached_rows = TODAY_TTL.lookup(ttl_key) if is_today else (False, None)
     if hit:
         ask_row, bid_row = cached_rows
     else:
-        ask_row, bid_row = PEAK_SLICE_GUARD.run(
-            (code, date, source, bucket_ms),
+        # 키는 TTL 키를 미러(kind 프리픽스 + 세션 경계): 경계가 다른 동시 호출이
+        # flight를 공유하면 다른 결과를 받게 되므로 경계도 키에 포함한다.
+        ask_row, bid_row = SLICE_COALESCER.run(
+            ("peak_dual", code, date, source, bucket_ms, session_open_ms, session_close_ms),
             lambda: snapshots_tbl.query_day_ask_bid_peak_dual(
                 engine.conn,
                 path=path_obj,

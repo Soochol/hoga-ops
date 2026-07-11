@@ -29,10 +29,11 @@ from hoga.tables.snapshots import (
     validate,
     write_parquet,
 )
+import polars as pl
+
 from hoga.tables.snapshots import (
-    _classify_wall_stream,
-    _Touch,
-    _WallEvent,
+    _classify_wall_frame,
+    _peak_distinct,
 )
 from hoga.tables.trades import Trade, write_parquet as write_trades
 
@@ -2236,37 +2237,60 @@ def _pathological_peak_dataset(
 # ── 스위프 분류기 유닛 테스트 (SQL 의미론의 inclusive/exclusive 비대칭 고정) ──
 
 
-def _ev(ts: int, seq: int, price: int, qty: int, bucket: int = 0) -> _WallEvent:
-    return _WallEvent(ts_ms=ts, seq=seq, price=price, qty=qty, intra_ms=ts, bucket_id=bucket)
+def _ev_frame(rows: list[tuple[int, int, int, int]]) -> pl.DataFrame:
+    """(ts, seq, price, qty) 튜플들 → _classify_wall_frame 이벤트 프레임."""
+    cols = ("ts_ms", "seq", "price", "qty", "intra_ms", "bucket_id")
+    return pl.DataFrame(
+        {
+            "ts_ms": [r[0] for r in rows],
+            "seq": [r[1] for r in rows],
+            "price": [r[2] for r in rows],
+            "qty": [r[3] for r in rows],
+            "intra_ms": [r[0] for r in rows],
+            "bucket_id": [0] * len(rows),
+        },
+        schema_overrides={c: pl.Int64 for c in cols},
+    )
 
 
-def _tk(ts: int, seq: int, price: int) -> _Touch:
-    return _Touch(ts_ms=ts, seq=seq, price=price)
+def _tk_frame(rows: list[tuple[int, int, int]]) -> pl.DataFrame:
+    """(ts, seq, price) 튜플들 → _classify_wall_frame 터치 프레임."""
+    return pl.DataFrame(
+        {
+            "ts_ms": [r[0] for r in rows],
+            "seq": [r[1] for r in rows],
+            "price": [r[2] for r in rows],
+        },
+        schema_overrides={c: pl.Int64 for c in ("ts_ms", "seq", "price")},
+    )
 
 
 def test_sweep_same_key_touch_counts_as_touched() -> None:
-    classified, _distinct = _classify_wall_stream([_ev(1000, 5, 50000, 10)], [_tk(1000, 5, 50000)], side="ask")
-    assert classified[0][1] is True  # 같은 (ts,seq) 터치는 touched (>= 규칙)
+    cls = _classify_wall_frame(_ev_frame([(1000, 5, 50000, 10)]), _tk_frame([(1000, 5, 50000)]), side="ask")
+    assert cls["touched"].to_list() == [True]  # 같은 (ts,seq) 터치는 touched (>= 규칙)
 
 
 def test_sweep_same_ms_earlier_seq_does_not_touch() -> None:
-    classified, _distinct = _classify_wall_stream([_ev(1000, 5, 50000, 10)], [_tk(1000, 4, 50000)], side="ask")
-    assert classified[0][1] is False  # 같은 ms의 더 이른 seq 터치는 미포함
+    cls = _classify_wall_frame(_ev_frame([(1000, 5, 50000, 10)]), _tk_frame([(1000, 4, 50000)]), side="ask")
+    assert cls["touched"].to_list() == [False]  # 같은 ms의 더 이른 seq 터치는 미포함
 
 
 def test_sweep_lifecycle_reopens_after_touch() -> None:
     # 벽 관측 → 지배 터치 → 같은 가격 재관측: 재관측은 새 lifecycle이라
     # (price, is_touched=False) best로 남아야 한다 (untraded).
-    events = [_ev(1000, 1, 50000, 100), _ev(3000, 3, 50000, 40)]
-    _classified, distinct = _classify_wall_stream(events, [_tk(2000, 2, 50000)], side="ask")
-    assert distinct[(50000, True)].qty == 100   # 터치 전 lifecycle의 best
-    assert distinct[(50000, False)].qty == 40   # 터치 후 새 lifecycle
+    events = _ev_frame([(1000, 1, 50000, 100), (3000, 3, 50000, 40)])
+    cls = _classify_wall_frame(events, _tk_frame([(2000, 2, 50000)]), side="ask")
+    lifecycles = cls.sort("ts_ms")["lifecycle"].to_list()
+    assert lifecycles[0] != lifecycles[1]  # 터치가 세그먼트를 가른다
+    by_touched = {row["touched"]: row for row in _peak_distinct(cls).to_dicts()}
+    assert by_touched[True]["qty"] == 100   # 터치 전 lifecycle의 best
+    assert by_touched[False]["qty"] == 40   # 터치 후 새 lifecycle
 
 
 def test_sweep_bid_side_uses_lower_or_equal_domination() -> None:
     # bid에선 고가 터치(50100)가 저가 벽(50000)을 지배하지 않는다.
-    classified, _distinct = _classify_wall_stream([_ev(1000, 1, 50000, 10)], [_tk(2000, 2, 50100)], side="bid")
-    assert classified[0][1] is False
+    cls = _classify_wall_frame(_ev_frame([(1000, 1, 50000, 10)]), _tk_frame([(2000, 2, 50100)]), side="bid")
+    assert cls["touched"].to_list() == [False]
 
 
 def test_query_day_ask_bid_peak_dual_perf_guardrail(tmp_path: Path) -> None:

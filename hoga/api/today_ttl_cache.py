@@ -5,7 +5,7 @@ snapshots는 아직 promotion 중이라 디스크에 박제하면 곧 stale해�
 프로세스-메모리 short-TTL 메모는 그 위반이 아니라 클래스-C 정책(승격대기 × 고비용
 계산)의 나머지 반쪽이며, 오늘 peak뿐 아니라 호가비·체결강도까지 감싼다(bundle.py).
 
-single-flight(peak_slice_guard)는 *동시* 중복만 접고 *순차* 반복(관심종목 전환
+single-flight(slice_coalescer)는 *동시* 중복만 접고 *순차* 반복(관심종목 전환
 버스트, 어긋난 다중 클라이언트 폴링)은 못 접는다. 이 캐시는 TTL(기본 15s) 동안만
 오늘자 계산 결과를 재사용한다 — /live의 오늘 범위 refetch 주기(5분)에 비해 무시할
 staleness. TTL=0이면 완전 비활성(ADR-0043 원 동작). 키에 date가 들어가므로 자정
