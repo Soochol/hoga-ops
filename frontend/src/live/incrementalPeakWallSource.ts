@@ -66,6 +66,28 @@ export class IncrementalPeakWallSource {
     trade: ReadonlyArray<TradeSnapshot>,
     extras: readonly AskPeakCandidate[] = [],
   ): PeakWallClassification {
+    this.accumulate(ob, trade);
+    return this.classify(extras);
+  }
+
+  /** update 의 as-of-cutoff 판. 누적(ob/trade 소비)은 cutoff 무관하게 동일하고, 분류만
+   *  t_ms <= cutoffMs 로 제한한다 — 배치 deriveDay*Peaks(cutoff)와 동일하게 cutoff 이하
+   *  ob/trade 로 벽·터치를 재평가한다(터치 관계도 cutoff 기준). ob/trade 재스캔 없이
+   *  누적 구조만 필터링하므로 틱당 비용이 히스토리 재빌드에서 분리된다. */
+  updateAsOf(
+    ob: ReadonlyArray<ObSnapshot>,
+    trade: ReadonlyArray<TradeSnapshot>,
+    extras: readonly AskPeakCandidate[],
+    cutoffMs: number,
+  ): PeakWallClassification {
+    this.accumulate(ob, trade);
+    return this.classifyAsOf(extras, cutoffMs);
+  }
+
+  private accumulate(
+    ob: ReadonlyArray<ObSnapshot>,
+    trade: ReadonlyArray<TradeSnapshot>,
+  ): void {
     if (!this.canAppendOb(ob) || !this.canAppendTrade(trade)) {
       this.reset();
       this.consumeOb(ob);
@@ -78,7 +100,6 @@ export class IncrementalPeakWallSource {
     this.lastObRef = ob.length > 0 ? ob[ob.length - 1] : null;
     this.tradeLength = trade.length;
     this.lastTradeRef = trade.length > 0 ? trade[trade.length - 1] : null;
-    return this.classify(extras);
   }
 
   private reset(): void {
@@ -138,17 +159,23 @@ export class IncrementalPeakWallSource {
     }
   }
 
+  /** 터치 배열을 시각 오름차순으로 정렬(이진탐색 전제). 정렬이 일어나면 suffixExtreme
+   *  캐시가 무효화되므로 touchIndexDirty 를 세운다. */
+  private ensureTouchesSorted(): void {
+    if (this.touchesSorted) return;
+    const order = this.touchTimes
+      .map((_, i) => i)
+      .sort((a, b) => this.touchTimes[a] - this.touchTimes[b]);
+    this.touchTimes = order.map((i) => this.touchTimes[i]);
+    this.touchPrices = order.map((i) => this.touchPrices[i]);
+    this.touchesSorted = true;
+    this.touchIndexDirty = true;
+  }
+
   /** makeTouchIndex(peakWallEventClassifier.ts)와 동일한 인덱스를 터치가 자랄 때만 재구축. */
   private ensureTouchIndex(): void {
+    this.ensureTouchesSorted();
     if (!this.touchIndexDirty) return;
-    if (!this.touchesSorted) {
-      const order = this.touchTimes
-        .map((_, i) => i)
-        .sort((a, b) => this.touchTimes[a] - this.touchTimes[b]);
-      this.touchTimes = order.map((i) => this.touchTimes[i]);
-      this.touchPrices = order.map((i) => this.touchPrices[i]);
-      this.touchesSorted = true;
-    }
     const n = this.touchTimes.length;
     const suffix = new Array<number>(n + 1);
     suffix[n] = this.side === 'ask' ? Number.NEGATIVE_INFINITY : Number.POSITIVE_INFINITY;
@@ -192,6 +219,70 @@ export class IncrementalPeakWallSource {
     // extras 상호 간 + 누적 이벤트와의 중복(같은 price:t_ms에 같은 qty)을 걸러낸다.
     const seenExtras = new Set<string>();
     for (const extra of extras) {
+      const uniqKey = `${extra.price}:${extra.qty}:${extra.t_ms}`;
+      if (seenExtras.has(uniqKey)) continue;
+      seenExtras.add(uniqKey);
+      const accumulatedIndex = this.eventIndexByKey.get(`${extra.price}:${extra.t_ms}`);
+      if (accumulatedIndex !== undefined && this.events[accumulatedIndex].qty === extra.qty) continue;
+      consider(extra);
+    }
+    return { postTouch, postUntouched, all };
+  }
+
+  /** classify 의 as-of-cutoff 판. 이벤트·extras·터치를 t_ms <= cutoffMs 로 제한한다.
+   *  cutoff 는 팬으로 이동하므로 suffixExtreme 를 캐시하지 않고, cutoff 이하 터치
+   *  prefix [0, hi) 에 대한 suffixExtremeC 를 호출마다 O(hi) 로 빌드한다(sparse table
+   *  불필요). 배치 mergedAskFamilies 의 cutoff 분기와 동일: cutoff 이하 터치로만 벽의
+   *  touched 여부를 재평가한다. no-cutoff classify 의 dedup·top-3 규칙을 그대로 상속. */
+  private classifyAsOf(
+    extras: readonly AskPeakCandidate[],
+    cutoffMs: number,
+  ): PeakWallClassification {
+    this.ensureTouchesSorted();
+    const n = this.touchTimes.length;
+    // hi = cutoff 이하 터치 개수(upper bound).
+    let lo = 0;
+    let hiBound = n;
+    while (lo < hiBound) {
+      const mid = (lo + hiBound) >>> 1;
+      if (this.touchTimes[mid] <= cutoffMs) lo = mid + 1;
+      else hiBound = mid;
+    }
+    const hi = lo;
+    // suffixExtreme over [0, hi): suffix[i] = extreme(touchPrices[i..hi-1]).
+    const suffix = new Array<number>(hi + 1);
+    suffix[hi] = this.side === 'ask' ? Number.NEGATIVE_INFINITY : Number.POSITIVE_INFINITY;
+    for (let i = hi - 1; i >= 0; i -= 1) {
+      suffix[i] = this.side === 'ask'
+        ? Math.max(this.touchPrices[i], suffix[i + 1])
+        : Math.min(this.touchPrices[i], suffix[i + 1]);
+    }
+    const isTouchedC = (event: AskPeakCandidate): boolean => {
+      if (hi === 0) return false;
+      let l = 0;
+      let h = hi;
+      while (l < h) {
+        const mid = (l + h) >>> 1;
+        if (this.touchTimes[mid] < event.t_ms) l = mid + 1;
+        else h = mid;
+      }
+      if (l >= hi) return false;
+      const extreme = suffix[l];
+      return this.side === 'ask' ? extreme >= event.price : extreme <= event.price;
+    };
+    const postTouch: AskPeakCandidate[] = [];
+    const postUntouched: AskPeakCandidate[] = [];
+    const all: AskPeakCandidate[] = [];
+    const consider = (candidate: AskPeakCandidate) => {
+      if (candidate.t_ms > cutoffMs) return;
+      pushTopK(all, candidate);
+      if (isTouchedC(candidate)) pushTopK(postTouch, candidate);
+      else pushTopK(postUntouched, candidate);
+    };
+    for (const event of this.events) consider(event);
+    const seenExtras = new Set<string>();
+    for (const extra of extras) {
+      if (extra.t_ms > cutoffMs) continue;
       const uniqKey = `${extra.price}:${extra.qty}:${extra.t_ms}`;
       if (seenExtras.has(uniqKey)) continue;
       seenExtras.add(uniqKey);

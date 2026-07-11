@@ -249,6 +249,75 @@ export function deriveDayBidPeaksIncremental(
   return out;
 }
 
+function filterCandidatesByCutoff(
+  candidates: readonly AskPeakCandidate[],
+  cutoffMs: number,
+): AskPeakCandidate[] {
+  return candidates.filter((candidate) => candidate.t_ms <= cutoffMs);
+}
+
+/** mergedBidFamilies 의 cutoff 분기와 동일(증분 경로 전용). */
+function bidFamiliesFromClassifiedCutoff(classified: PeakWallClassification): PeakFamilies {
+  const traded = rankPeakCandidates(classified.postTouch);
+  const tradedKeys = new Set(traded.map(candidateKey));
+  const untraded = rankUniqueCandidates(
+    classified.postUntouched.filter((candidate) => !tradedKeys.has(candidateKey(candidate))),
+  );
+  const all = rankPeakCandidates(classified.all);
+  return { traded, untraded, all };
+}
+
+/** deriveDayBidPeaks(cutoff) 의 증분판. */
+export function deriveDayBidPeaksIncrementalAsOf(
+  source: IncrementalPeakWallSource,
+  ob: ReadonlyArray<ObSnapshot>,
+  trade: ReadonlyArray<TradeSnapshot>,
+  seeds: readonly BidPeak[],
+  todayKst: string,
+  todayBidPeak: LiveTodayBidPeak | null,
+  cutoffMs: number,
+): BidPeak[] {
+  const backend = backendPeakFamilies(todayBidPeak);
+  const classified = source.updateAsOf(ob, trade, [
+    ...backend.all,
+    ...backend.traded,
+    ...backend.untraded,
+  ], cutoffMs);
+  const families = bidFamiliesFromClassifiedCutoff(classified);
+  const out = seeds.filter((peak) => peak.date !== todayKst);
+  const traded = families.traded[0];
+  if (!traded) return out;
+  out.push(attachFamilies(bidPeakFromCandidate(todayKst, traded), families));
+  return out;
+}
+
+/** deriveTodayAllPriceBidPeak(cutoff) 의 증분판. */
+export function deriveTodayAllPriceBidPeakIncrementalAsOf(
+  source: IncrementalPeakWallSource,
+  ob: ReadonlyArray<ObSnapshot>,
+  seeds: readonly BidPeak[],
+  todayKst: string,
+  todayBidPeak: LiveTodayBidPeak | null,
+  cutoffMs: number,
+): BidPeak | null {
+  const backend = backendPeakFamilies(todayBidPeak);
+  const todaySeed = historicalTodaySeed(seeds, todayKst);
+  const classified = source.updateAsOf(ob, EMPTY_TRADES, [
+    ...backend.all,
+    ...(todayBidPeak === null && todaySeed ? [todaySeed] : []),
+  ], cutoffMs);
+  const all = classified.all[0];
+  if (!all) return null;
+  return attachFamilies(
+    bidPeakFromCandidate(todayKst, all),
+    {
+      traded: filterCandidatesByCutoff(backend.traded, cutoffMs),
+      untraded: filterCandidatesByCutoff(backend.untraded, cutoffMs),
+      all: classified.all,
+    },
+  );
+}
+
 export function useDayBidPeaks(
   ob: ReadonlyArray<ObSnapshot>,
   trade: ReadonlyArray<TradeSnapshot>,

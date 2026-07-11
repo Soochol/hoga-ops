@@ -3,14 +3,18 @@ import { IncrementalPeakWallSource } from './incrementalPeakWallSource';
 import {
   deriveDayAskPeaks,
   deriveDayAskPeaksIncremental,
+  deriveDayAskPeaksIncrementalAsOf,
   deriveTodayAllPriceAskPeak,
   deriveTodayAllPriceAskPeakIncremental,
+  deriveTodayAllPriceAskPeakIncrementalAsOf,
 } from './useDayAskPeaks';
 import {
   deriveDayBidPeaks,
   deriveDayBidPeaksIncremental,
+  deriveDayBidPeaksIncrementalAsOf,
   deriveTodayAllPriceBidPeak,
   deriveTodayAllPriceBidPeakIncremental,
+  deriveTodayAllPriceBidPeakIncrementalAsOf,
 } from './useDayBidPeaks';
 import type { AskPeak, BidPeak } from '../api/types';
 import type { LiveTodayAskPeak } from '../api/liveSeries';
@@ -203,5 +207,99 @@ describe('IncrementalPeakWallSource — 배치 derive와의 동등성', () => {
     const incremental = deriveDayAskPeaksIncremental(source, shrunkOb, shrunkTrade, ASK_SEEDS, TODAY, BACKEND);
     const batch = deriveDayAskPeaks(shrunkOb, shrunkTrade, ASK_SEEDS, TODAY, '005930', BACKEND);
     expect(incremental).toEqual(batch);
+  });
+});
+
+describe('IncrementalPeakWallSource — cutoff(as-of) 증분 = 배치 cutoff (ADR-0106)', () => {
+  // 스트림의 ob 시각들에서 cutoff 후보를 뽑는다: 정확히 이벤트 시각 + 사이값 + 경계 밖.
+  function cutoffCandidates(obs: ObSnapshot[]): number[] {
+    if (obs.length === 0) return [atKst(9, 1)];
+    const times = obs.map((o) => o.t_ms);
+    const min = times[0];
+    const max = times[times.length - 1];
+    const mid = times[Math.floor(times.length / 2)];
+    return [
+      min - 1,          // 모든 이벤트 이전(빈 결과)
+      min,              // 첫 이벤트 정확히
+      mid,              // 중간(정확한 이벤트 시각)
+      mid + 1,          // 중간 직후(사이값)
+      max,              // 마지막 이벤트 정확히
+      max + 10_000,     // 모든 이벤트 이후(cutoff 무효과)
+    ];
+  }
+
+  it.each([1, 7, 42, 1234])('ask dayPeaks: cutoff 스윕이 배치와 동일 (seed %i)', (seed) => {
+    const { obs, trades } = genStream(seed, 300);
+    // 전체 누적 후 cutoff 를 오름차순·내림차순으로 스윕(팬 좌우 = cutoff 이동).
+    const source = new IncrementalPeakWallSource('ask');
+    const cuts = cutoffCandidates(obs);
+    for (const cutoffMs of [...cuts, ...cuts.slice().reverse()]) {
+      const incremental = deriveDayAskPeaksIncrementalAsOf(
+        source, obs, trades, ASK_SEEDS, TODAY, BACKEND, cutoffMs,
+      );
+      const batch = deriveDayAskPeaks(
+        obs, trades, ASK_SEEDS, TODAY, '005930', BACKEND, [], { date: TODAY, tMs: cutoffMs },
+      );
+      expect(incremental).toEqual(batch);
+    }
+  });
+
+  it.each([1, 7, 42, 1234])('bid dayPeaks: cutoff 스윕이 배치와 동일 (seed %i)', (seed) => {
+    const { obs, trades } = genStream(seed, 300);
+    const source = new IncrementalPeakWallSource('bid');
+    const cuts = cutoffCandidates(obs);
+    for (const cutoffMs of [...cuts, ...cuts.slice().reverse()]) {
+      const incremental = deriveDayBidPeaksIncrementalAsOf(
+        source, obs, trades, BID_SEEDS, TODAY, null, cutoffMs,
+      );
+      const batch = deriveDayBidPeaks(
+        obs, trades, BID_SEEDS, TODAY, '005930', null, [], { date: TODAY, tMs: cutoffMs },
+      );
+      expect(incremental).toEqual(batch);
+    }
+  });
+
+  it.each([1, 7, 42])('ask/bid todayAllPrice: cutoff 스윕이 배치와 동일 (seed %i)', (seed) => {
+    const { obs } = genStream(seed, 250);
+    const askSource = new IncrementalPeakWallSource('ask');
+    const bidSource = new IncrementalPeakWallSource('bid');
+    for (const cutoffMs of cutoffCandidates(obs)) {
+      expect(deriveTodayAllPriceAskPeakIncrementalAsOf(askSource, obs, ASK_SEEDS, TODAY, BACKEND, cutoffMs))
+        .toEqual(deriveTodayAllPriceAskPeak(obs, ASK_SEEDS, TODAY, '005930', BACKEND, { date: TODAY, tMs: cutoffMs }));
+      expect(deriveTodayAllPriceBidPeakIncrementalAsOf(bidSource, obs, BID_SEEDS, TODAY, null, cutoffMs))
+        .toEqual(deriveTodayAllPriceBidPeak(obs, BID_SEEDS, TODAY, '005930', null, { date: TODAY, tMs: cutoffMs }));
+    }
+  });
+
+  it('cutoff 증분: ob/trade 가 자라는 매 스텝에서 live-edge cutoff 가 배치와 동일', () => {
+    // 팬 없이 실시간 뷰(cutoff=마지막 캔들 시각)에서 틱마다 성장하는 경우.
+    const { obs, trades } = genStream(555, 200);
+    const source = new IncrementalPeakWallSource('ask');
+    for (const n of [1, 5, 20, 50, 120, 200]) {
+      const obSlice = obs.slice(0, n);
+      const tradeSlice = trades.slice(0, Math.min(n, trades.length));
+      const cutoffMs = obSlice[obSlice.length - 1].t_ms; // live edge
+      const incremental = deriveDayAskPeaksIncrementalAsOf(
+        source, obSlice, tradeSlice, ASK_SEEDS, TODAY, BACKEND, cutoffMs,
+      );
+      const batch = deriveDayAskPeaks(
+        obSlice, tradeSlice, ASK_SEEDS, TODAY, '005930', BACKEND, [], { date: TODAY, tMs: cutoffMs },
+      );
+      expect(incremental).toEqual(batch);
+    }
+  });
+
+  it('경계: cutoff 가 벽·터치 시각과 정확히 같아도 배치와 동일(터치 재분류)', () => {
+    const Twall = atKst(10, 0);
+    const Ttouch = atKst(10, 0, 30);
+    const obs = [ob(Twall, [{ price: 26000, qty: 50000 }])];
+    const trades = [tradeSnap(Ttouch, [{ t_ms: Ttouch, side: 1, price: 26000, qty: 100 }])];
+    const source = new IncrementalPeakWallSource('ask');
+    // cutoff 가 터치 직전 → 미체결, 터치 시각 이상 → 체결. 두 경우 모두 배치와 일치.
+    for (const cutoffMs of [Twall, Ttouch - 1, Ttouch, Ttouch + 1]) {
+      const incremental = deriveDayAskPeaksIncrementalAsOf(source, obs, trades, ASK_SEEDS, TODAY, null, cutoffMs);
+      const batch = deriveDayAskPeaks(obs, trades, ASK_SEEDS, TODAY, '005930', null, [], { date: TODAY, tMs: cutoffMs });
+      expect(incremental).toEqual(batch);
+    }
   });
 });

@@ -63,6 +63,33 @@ describe('live day peak performance (incremental, deterministic)', () => {
     spy.mockRestore();
   });
 
+  it('updateAsOf(cutoff)도 append-only 에서 델타만 소비한다 (cutoff 재스캔 회귀 가드, ADR-0106)', () => {
+    // #1 의 핵심: cutoff pref ON 이어도 매 틱 ob 를 재스캔하지 않는다. updateAsOf 는
+    // accumulate(consumeOb)를 공유하므로 delta-only 불변식이 그대로 성립하고, cutoff 는
+    // classify 단계에서만 적용된다(누적과 무관).
+    const spy = vi.spyOn(bucketHogaSeries, 'isIndicatorEligibleBook');
+    const src = new IncrementalPeakWallSource('ask');
+    const ob: ObSnapshot[] = Array.from({ length: 1000 }, (_unused, i) => mkOb(i));
+    const cutoff = base + 500 * 1000; // 중간 지점(팬 백)
+
+    src.updateAsOf(ob, [], [], cutoff);
+    const afterFull = spy.mock.calls.length;
+    expect(afterFull).toBe(1000); // 첫 소비 = 전체 1회
+
+    // cutoff 밖 틱 append(스크롤백 실사용) — 델타 1개만 소비, cutoff 는 재스캔 유발 안 함.
+    // 라이브 버퍼는 append-only 로 참조가 안정하므로 append 배열을 1회 만들어 재사용한다.
+    const obPlus = [...ob, mkOb(1000)];
+    src.updateAsOf(obPlus, [], [], cutoff);
+    expect(spy.mock.calls.length - afterFull).toBe(1);
+
+    // cutoff 를 옮겨도(팬) 재소비 없음 — classify 만 다시 돌 뿐 consumeOb 는 호출 안 됨.
+    const afterAppend = spy.mock.calls.length;
+    src.updateAsOf(obPlus, [], [], base + 200 * 1000);
+    expect(spy.mock.calls.length - afterAppend).toBe(0);
+
+    spy.mockRestore();
+  });
+
   it('produces the same classification as a from-scratch source (incremental == batch)', () => {
     // 증분 소스가 append로 누적한 결과 == 콜드 소스가 전체를 한 번에 받은 결과.
     const ob: ObSnapshot[] = Array.from({ length: 300 }, (_unused, i) => mkOb(i));
