@@ -18,8 +18,10 @@ export type SnapCandle = {
   close: number;
 };
 
-/** Snap threshold in canvas pixels for the price (Y) snap. */
-export const SNAP_PX = 10;
+/** Snap threshold in canvas pixels for the price (Y) snap. Generous enough that
+ *  the magnet visibly grabs candle OHLC levels without demanding pixel-perfect
+ *  aim (10px felt like it wasn't working). */
+export const SNAP_PX = 16;
 
 /** Index of the candle whose ts_ms is nearest `realMs` (binary search on a
  *  time-sorted array). Returns -1 for an empty array. */

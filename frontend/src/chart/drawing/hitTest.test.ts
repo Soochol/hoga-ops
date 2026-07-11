@@ -124,7 +124,7 @@ describe('hitTestDrawings', () => {
     expect(hitTestDrawings(otherPane, [v], 110, 999)).toBeNull(); // 10px → miss
   });
 
-  it('hits a rect on its border but NOT its interior', () => {
+  it('hits a rect on its border AND its interior (solid box, grab-to-move)', () => {
     const r: Drawing = {
       id: 'r1', kind: 'rect', paneId: 'candle',
       color: '#fff', width: 2, lineStyle: 'solid', fillOpacity: 0.2,
@@ -133,7 +133,8 @@ describe('hitTestDrawings', () => {
     const c: HitCoord = { ...coord, canvasWidth: 800 };
     expect(hitTestDrawings(c, [r], 3, 50)).toBe(r); // near left edge → hit
     expect(hitTestDrawings(c, [r], 50, 3)).toBe(r); // near top edge → hit
-    expect(hitTestDrawings(c, [r], 50, 50)).toBeNull(); // dead centre → miss
+    expect(hitTestDrawings(c, [r], 50, 50)).toBe(r); // dead centre → hit (fill)
+    expect(hitTestDrawings(c, [r], 200, 50)).toBeNull(); // outside the box → miss
   });
 
   it('rect with a corner off-axis falls back to the canvas edge and stays selectable', () => {

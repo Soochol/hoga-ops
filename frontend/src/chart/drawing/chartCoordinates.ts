@@ -13,11 +13,67 @@
 // panes): a pane removed at runtime shifts every pane below it, and a static
 // PANE_SPECS lookup would mislocate drawings on those shifted panes.
 
-import type { IChartApi, ISeriesApi, UTCTimestamp } from 'lightweight-charts';
+import type { IChartApi, ISeriesApi, Logical, UTCTimestamp } from 'lightweight-charts';
 import type { VirtualAxis } from '../../util/virtualAxis';
 import type { PaneId, Point } from './types';
 
 export type PaneSeriesMap = ReadonlyMap<PaneId, ISeriesApi<any>>;
+
+/**
+ * Reference for extrapolating time into the empty band right of the last candle
+ * (where `coordinateToTime` returns null). `lastRealMs` is the newest candle's
+ * timestamp; `bucketMs` is the timeframe bar length. Drawings anchor there via
+ * logical-index extrapolation so a trendline/vline/text can be placed in the
+ * whitespace and still round-trips consistently. See the empty-band methods.
+ */
+export type FutureBand = { lastRealMs: number; bucketMs: number };
+
+/** Core real→canvas-X (in-axis only). Split out so the future-band path can
+ *  resolve the last candle's coordinate without re-entering the wrapper. */
+function coreRealMsToCanvasX(chart: IChartApi, axis: VirtualAxis, realMs: number): number | null {
+  if (!axis.contains(realMs)) return null;
+  const virtualMs = axis.toVirtual(realMs);
+  const x = chart.timeScale().timeToCoordinate((virtualMs / 1000) as UTCTimestamp);
+  return x == null ? null : (x as number);
+}
+
+/** realMs (past the last candle) → canvas X via logical-index extrapolation:
+ *  bars-ahead = (realMs − lastRealMs) / bucketMs, projected off the last
+ *  candle's logical position. Returns null if the last candle can't be located. */
+function extrapolateFutureX(
+  chart: IChartApi,
+  axis: VirtualAxis,
+  realMs: number,
+  future: FutureBand,
+): number | null {
+  const ts = chart.timeScale();
+  const lastX = coreRealMsToCanvasX(chart, axis, future.lastRealMs);
+  if (lastX == null) return null;
+  const lastLogical = ts.coordinateToLogical(lastX);
+  if (lastLogical == null) return null;
+  const barsAhead = (realMs - future.lastRealMs) / future.bucketMs;
+  const x = ts.logicalToCoordinate(((lastLogical as number) + barsAhead) as Logical);
+  return x == null ? null : (x as number);
+}
+
+/** Canvas X (in the empty band) → realMs via logical-index extrapolation. Only
+ *  extrapolates to the RIGHT of the last candle (the empty band); returns null
+ *  for the left whitespace to avoid colliding with real historical time. */
+function extrapolateFutureRealMs(
+  chart: IChartApi,
+  axis: VirtualAxis,
+  px: number,
+  future: FutureBand,
+): number | null {
+  const ts = chart.timeScale();
+  const lastX = coreRealMsToCanvasX(chart, axis, future.lastRealMs);
+  if (lastX == null) return null;
+  const lastLogical = ts.coordinateToLogical(lastX);
+  const logical = ts.coordinateToLogical(px);
+  if (lastLogical == null || logical == null) return null;
+  if ((logical as number) <= (lastLogical as number)) return null; // right band only
+  return future.lastRealMs + ((logical as number) - (lastLogical as number)) * future.bucketMs;
+}
 
 /** A series' live pane index, or -1 if the chart/series is mid-teardown. */
 function safePaneIndex(series: ISeriesApi<any>): number {
@@ -56,11 +112,16 @@ export function realMsToCanvasX(
   chart: IChartApi,
   axis: VirtualAxis,
   realMs: number,
+  future?: FutureBand,
 ): number | null {
-  if (!axis.contains(realMs)) return null;
-  const virtualMs = axis.toVirtual(realMs);
-  const x = chart.timeScale().timeToCoordinate((virtualMs / 1000) as UTCTimestamp);
-  return x == null ? null : (x as number);
+  const inAxis = coreRealMsToCanvasX(chart, axis, realMs);
+  if (inAxis != null) return inAxis;
+  // Empty band right of the last candle: extrapolate so future-anchored
+  // drawings still render.
+  if (future && future.bucketMs > 0 && realMs > future.lastRealMs) {
+    return extrapolateFutureX(chart, axis, realMs, future);
+  }
+  return null;
 }
 
 /**
@@ -74,10 +135,13 @@ export function canvasXToRealMs(
   chart: IChartApi,
   axis: VirtualAxis,
   px: number,
+  future?: FutureBand,
 ): number | null {
   const timeSec = chart.timeScale().coordinateToTime(px);
-  if (timeSec == null) return null;
-  return axis.toReal((timeSec as number) * 1000);
+  if (timeSec != null) return axis.toReal((timeSec as number) * 1000);
+  // Empty band: coordinateToTime is null past the last bar → extrapolate.
+  if (future && future.bucketMs > 0) return extrapolateFutureRealMs(chart, axis, px, future);
+  return null;
 }
 
 /** Total height of all mounted panes (excludes the time-axis strip below).
@@ -201,13 +265,20 @@ export function pixelToData(
   paneId: PaneId,
   px: number,
   py: number,
+  future?: FutureBand,
 ): Point | null {
   const series = paneSeries.get(paneId);
   if (!series) return null;
   const timeSec = chart.timeScale().coordinateToTime(px);
-  if (timeSec == null) return null;
-  const virtualMs = (timeSec as number) * 1000;
-  const realMs = axis.toReal(virtualMs);
+  let realMs: number | null;
+  if (timeSec != null) {
+    realMs = axis.toReal((timeSec as number) * 1000);
+  } else {
+    // Empty band right of the last candle: extrapolate the time so trendline /
+    // rect / measure / text can be created there (price resolves below).
+    realMs = future && future.bucketMs > 0 ? extrapolateFutureRealMs(chart, axis, px, future) : null;
+  }
+  if (realMs == null) return null;
   const yLocal = py - paneTopY(chart, paneSeries, paneId);
   const price = series.coordinateToPrice(yLocal);
   if (price == null) return null;

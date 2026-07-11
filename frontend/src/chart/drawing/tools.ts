@@ -459,7 +459,12 @@ export const hlineTool: DrawingToolSpec = {
     // where coordinateToTime — and thus pixelToData — returns null: the user
     // could add an hline over candles but not in the empty area. This mirrors
     // the body-drag fix in selectTool, which already decoupled the same way.
-    const price = ctx.canvasYToPrice(ctx.py, paneId);
+    // Magnet: pixelToData is the snapped path (price → nearest candle OHLC), so
+    // prefer it and take just the price. Fall back to the price-only
+    // canvasYToPrice in the empty band where the time axis can't resolve (no
+    // future ref) — there's nothing to snap to there anyway.
+    const snapped = ctx.pixelToData(ctx.px, ctx.py, paneId);
+    const price = snapped ? snapped.price : ctx.canvasYToPrice(ctx.py, paneId);
     if (price == null) return;
     const id = nanoid(8);
     ctx.add({

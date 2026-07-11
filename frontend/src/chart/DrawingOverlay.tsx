@@ -112,6 +112,9 @@ export default function DrawingOverlay({ chart, axis, paneSeries, onChartHoverPa
   const rectDraft = useRef<RectDraft | null>(null);
   const measureDraft = useRef<MeasureDraft | null>(null);
   const dragRef = useRef<DragMode | null>(null);
+  // Cursor position for the hline/vline placement preview (ghost line following
+  // the mouse before the click commits). Null when not hovering with those tools.
+  const previewCursorRef = useRef<{ px: number; py: number } | null>(null);
   const scheduleRef = useRef<() => void>(() => {});
   // Reassigned every render so the (empty-deps) keydown effect always calls the
   // latest closure over the current coordinate helpers — same pattern as
@@ -126,6 +129,16 @@ export default function DrawingOverlay({ chart, axis, paneSeries, onChartHoverPa
   // don't re-bind every render) can read the current editing state.
   const textEditRef = useRef<TextEdit | null>(null);
   textEditRef.current = textEdit;
+
+  // Empty-band extrapolation reference: newest candle + timeframe bucket. Lets
+  // drawings be created/rendered in the whitespace right of the last candle.
+  // Declared here (above the redraw effect, which reads lastRealMs) so it's in
+  // scope for both the effect and the coordinate closures below.
+  const futureBand =
+    candles != null && candles.length > 0 && bucketMs != null && bucketMs > 0
+      ? { lastRealMs: candles[candles.length - 1].ts_ms, bucketMs }
+      : undefined;
+  const lastRealMs = futureBand?.lastRealMs;
 
   // Legacy post-commit hook. Current drawing tools keep their active tool and
   // call setSelected(id) directly; Escape is the explicit return to select mode.
@@ -185,7 +198,7 @@ export default function DrawingOverlay({ chart, axis, paneSeries, onChartHoverPa
         c.rect(0, top, w, paneH);
         c.clip();
         const projCtx: ProjectCtx = {
-          chart, axis, paneSeries, paneId, width: w, height: h, bucketMs,
+          chart, axis, paneSeries, paneId, width: w, height: h, bucketMs, lastRealMs,
         };
         body(projCtx);
         c.restore();
@@ -199,7 +212,7 @@ export default function DrawingOverlay({ chart, axis, paneSeries, onChartHoverPa
       const renderVlines = () => {
         if (anyPaneId == null) return;
         const projCtx: ProjectCtx = {
-          chart, axis, paneSeries, paneId: anyPaneId, width: w, height: h, bucketMs,
+          chart, axis, paneSeries, paneId: anyPaneId, width: w, height: h, bucketMs, lastRealMs,
         };
         for (const d of drawings) {
           if (d.kind !== 'vline') continue;
@@ -237,6 +250,67 @@ export default function DrawingOverlay({ chart, axis, paneSeries, onChartHoverPa
         });
       }
 
+      // hline / vline placement preview — a faint dashed ghost line at the cursor
+      // that follows the mouse until the click commits. Only for the 1-click line
+      // tools (drag tools already show a live draft). When magnet is on the ghost
+      // SNAPS to the candle it will commit to, so the snap is visible before the
+      // click. A small dot marks the snapped level.
+      const preview = previewCursorRef.current;
+      const magnetActive = defaults.magnet && candles != null && candles.length > 0;
+      if (preview && (activeTool === 'hline' || activeTool === 'vline')) {
+        let paneBottom = 0;
+        for (const p of panes) paneBottom += p.getHeight();
+        let px = preview.px;
+        let py = preview.py;
+        let snappedDot: { x: number; y: number } | null = null;
+        if (magnetActive) {
+          if (activeTool === 'hline') {
+            const paneId = projPaneIdAtY(chart, paneSeries, preview.py);
+            if (paneId === 'candle') {
+              const raw = projPixelToData(chart, axis, paneSeries, paneId, preview.px, preview.py, futureBand);
+              if (raw) {
+                const snapped = snapPoint(raw, {
+                  candles: candles!,
+                  paneId,
+                  priceToY: (pr) => projPriceToCanvasY(chart, paneSeries, paneId, pr),
+                });
+                const sy = projPriceToCanvasY(chart, paneSeries, paneId, snapped.price);
+                if (sy != null) { py = sy; snappedDot = { x: preview.px, y: sy }; }
+              }
+            }
+          } else {
+            const rawMs = projCanvasXToRealMs(chart, axis, preview.px, futureBand);
+            if (rawMs != null) {
+              const sx = projRealMsToCanvasX(chart, axis, snapRealMs(candles!, rawMs), futureBand);
+              if (sx != null) { px = sx; snappedDot = { x: sx, y: preview.py }; }
+            }
+          }
+        }
+        c.save();
+        c.strokeStyle = defaults.color;
+        c.globalAlpha = 0.6;
+        c.lineWidth = defaults.width;
+        c.setLineDash([5, 4]);
+        c.beginPath();
+        if (activeTool === 'hline') {
+          c.moveTo(0, py);
+          c.lineTo(w, py);
+        } else {
+          c.moveTo(px, 0);
+          c.lineTo(px, paneBottom);
+        }
+        c.stroke();
+        c.restore();
+        if (snappedDot) {
+          c.save();
+          c.fillStyle = defaults.color;
+          c.beginPath();
+          c.arc(snappedDot.x, snappedDot.y, 3.5, 0, Math.PI * 2);
+          c.fill();
+          c.restore();
+        }
+      }
+
       // Live pencil draft preview — clipped to its origin pane.
       const draft = pencilDraft.current;
       if (draft && draft.points.length >= 2) {
@@ -271,7 +345,7 @@ export default function DrawingOverlay({ chart, axis, paneSeries, onChartHoverPa
       ts.unsubscribeVisibleLogicalRangeChange(schedule);
       ro?.disconnect();
     };
-  }, [chart, axis, paneSeries, drawings, selectedId, activeCode, defaults, bucketMs]);
+  }, [chart, axis, paneSeries, drawings, selectedId, activeCode, defaults, bucketMs, lastRealMs, activeTool]);
 
   // ── keyboard shortcuts ─────────────────────────────────────────────────
   useEffect(() => {
@@ -338,9 +412,9 @@ export default function DrawingOverlay({ chart, axis, paneSeries, onChartHoverPa
   // per-event Ctrl override is applied in buildCtx (which owns the event).
   const magnetOn = defaults.magnet && candles != null && candles.length > 0;
   const rawPixelToData = (px: number, py: number, paneId: PaneId) =>
-    projPixelToData(chart, axis, paneSeries, paneId, px, py);
-  const realMsToCanvasX = (realMs: number) => projRealMsToCanvasX(chart, axis, realMs);
-  const rawCanvasXToRealMs = (px: number) => projCanvasXToRealMs(chart, axis, px);
+    projPixelToData(chart, axis, paneSeries, paneId, px, py, futureBand);
+  const realMsToCanvasX = (realMs: number) => projRealMsToCanvasX(chart, axis, realMs, futureBand);
+  const rawCanvasXToRealMs = (px: number) => projCanvasXToRealMs(chart, axis, px, futureBand);
   const priceToCanvasY = (price: number, paneId: PaneId) =>
     projPriceToCanvasY(chart, paneSeries, paneId, price);
 
@@ -396,6 +470,9 @@ export default function DrawingOverlay({ chart, axis, paneSeries, onChartHoverPa
   const commitText = (value: string) => {
     const edit = textEditRef.current;
     if (!edit) return;
+    // Null the ref immediately so a racing second call (e.g. Enter→blur firing
+    // after this one) is a no-op instead of double-committing.
+    textEditRef.current = null;
     const trimmed = value.trim();
     const store = useDrawingsStore.getState();
     if (trimmed.length === 0) {
@@ -422,6 +499,9 @@ export default function DrawingOverlay({ chart, axis, paneSeries, onChartHoverPa
   };
 
   const cancelText = () => {
+    // Null the ref first so the input's onBlur (which fires as it unmounts)
+    // finds no edit and doesn't commit what the user just cancelled.
+    textEditRef.current = null;
     setTextEdit(null);
     setTextValue('');
   };
@@ -431,7 +511,7 @@ export default function DrawingOverlay({ chart, axis, paneSeries, onChartHoverPa
     // user clicks again to place the next label. Prevents a blur/pointerdown
     // race from spawning a second draft over the first.
     if (textEditRef.current) {
-      commitText(textValue);
+      commitText(textInputRef.current?.value ?? textValue);
       return;
     }
     setTextEdit({ id: null, at, paneId, initial: '', fontSize: TEXT_DEFAULT_FONT_SIZE });
@@ -484,14 +564,25 @@ export default function DrawingOverlay({ chart, axis, paneSeries, onChartHoverPa
   };
   const onPointerMove = (e: React.PointerEvent<HTMLDivElement>) => {
     const rect = (e.currentTarget as HTMLDivElement).getBoundingClientRect();
-    onChartHoverPassthrough?.({
-      x: e.clientX - rect.left,
-      y: e.clientY - rect.top,
-    });
+    const px = e.clientX - rect.left;
+    const py = e.clientY - rect.top;
+    onChartHoverPassthrough?.({ x: px, y: py });
+    // Track the cursor for the hline/vline ghost-line preview and repaint.
+    if (activeTool === 'hline' || activeTool === 'vline') {
+      previewCursorRef.current = { px, py };
+      scheduleRef.current();
+    }
     TOOLS[activeTool].onPointerMove?.(buildCtx(e));
   };
   const onPointerUp = (e: React.PointerEvent<HTMLDivElement>) => {
     TOOLS[activeTool].onPointerUp?.(buildCtx(e));
+  };
+  const onPointerLeave = () => {
+    // Drop the ghost preview when the cursor leaves the chart.
+    if (previewCursorRef.current) {
+      previewCursorRef.current = null;
+      scheduleRef.current();
+    }
   };
   // Abandon any in-flight gesture. Shared by pointercancel (touch interrupted,
   // pointer lost) and contextmenu. Keep this in sync with the draft refs the
@@ -673,6 +764,7 @@ export default function DrawingOverlay({ chart, axis, paneSeries, onChartHoverPa
       onPointerMove={onPointerMove}
       onPointerUp={onPointerUp}
       onPointerCancel={onPointerCancel}
+      onPointerLeave={onPointerLeave}
       onContextMenu={onContextMenu}
       onDoubleClick={onDoubleClick}
     >
@@ -683,13 +775,16 @@ export default function DrawingOverlay({ chart, axis, paneSeries, onChartHoverPa
           data-drawing-text-input
           value={textValue}
           onChange={(e) => setTextValue(e.target.value)}
-          onBlur={() => commitText(textValue)}
+          onBlur={(e) => commitText(e.currentTarget.value)}
           onKeyDown={(e) => {
-            // IME guard: Enter while composing (한글 조합) confirms the
-            // composition, it does NOT commit the label.
-            if (e.key === 'Enter' && !e.nativeEvent.isComposing) {
+            if (e.key === 'Enter') {
+              // Blur instead of committing inline. blur() first ends any active
+              // IME composition (한글 조합 확정) — committing the composed char to
+              // the input value — then fires onBlur, which commits. This is the
+              // single-Enter CJK path: the old `!isComposing` inline-commit
+              // swallowed the composition-confirming Enter and demanded a second.
               e.preventDefault();
-              commitText(textValue);
+              e.currentTarget.blur();
             } else if (e.key === 'Escape') {
               e.preventDefault();
               cancelText();
