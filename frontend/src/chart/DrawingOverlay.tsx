@@ -252,11 +252,40 @@ export default function DrawingOverlay({ chart, axis, paneSeries, onChartHoverPa
 
       // hline / vline placement preview — a faint dashed ghost line at the cursor
       // that follows the mouse until the click commits. Only for the 1-click line
-      // tools (drag tools already show a live draft).
+      // tools (drag tools already show a live draft). When magnet is on the ghost
+      // SNAPS to the candle it will commit to, so the snap is visible before the
+      // click. A small dot marks the snapped level.
       const preview = previewCursorRef.current;
+      const magnetActive = defaults.magnet && candles != null && candles.length > 0;
       if (preview && (activeTool === 'hline' || activeTool === 'vline')) {
         let paneBottom = 0;
         for (const p of panes) paneBottom += p.getHeight();
+        let px = preview.px;
+        let py = preview.py;
+        let snappedDot: { x: number; y: number } | null = null;
+        if (magnetActive) {
+          if (activeTool === 'hline') {
+            const paneId = projPaneIdAtY(chart, paneSeries, preview.py);
+            if (paneId === 'candle') {
+              const raw = projPixelToData(chart, axis, paneSeries, paneId, preview.px, preview.py, futureBand);
+              if (raw) {
+                const snapped = snapPoint(raw, {
+                  candles: candles!,
+                  paneId,
+                  priceToY: (pr) => projPriceToCanvasY(chart, paneSeries, paneId, pr),
+                });
+                const sy = projPriceToCanvasY(chart, paneSeries, paneId, snapped.price);
+                if (sy != null) { py = sy; snappedDot = { x: preview.px, y: sy }; }
+              }
+            }
+          } else {
+            const rawMs = projCanvasXToRealMs(chart, axis, preview.px, futureBand);
+            if (rawMs != null) {
+              const sx = projRealMsToCanvasX(chart, axis, snapRealMs(candles!, rawMs), futureBand);
+              if (sx != null) { px = sx; snappedDot = { x: sx, y: preview.py }; }
+            }
+          }
+        }
         c.save();
         c.strokeStyle = defaults.color;
         c.globalAlpha = 0.6;
@@ -264,14 +293,22 @@ export default function DrawingOverlay({ chart, axis, paneSeries, onChartHoverPa
         c.setLineDash([5, 4]);
         c.beginPath();
         if (activeTool === 'hline') {
-          c.moveTo(0, preview.py);
-          c.lineTo(w, preview.py);
+          c.moveTo(0, py);
+          c.lineTo(w, py);
         } else {
-          c.moveTo(preview.px, 0);
-          c.lineTo(preview.px, paneBottom);
+          c.moveTo(px, 0);
+          c.lineTo(px, paneBottom);
         }
         c.stroke();
         c.restore();
+        if (snappedDot) {
+          c.save();
+          c.fillStyle = defaults.color;
+          c.beginPath();
+          c.arc(snappedDot.x, snappedDot.y, 3.5, 0, Math.PI * 2);
+          c.fill();
+          c.restore();
+        }
       }
 
       // Live pencil draft preview — clipped to its origin pane.

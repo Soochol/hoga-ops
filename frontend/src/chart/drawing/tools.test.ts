@@ -116,10 +116,22 @@ describe('hlineTool.onPointerDown', () => {
     if (added.kind === 'hline') expect(added.price).toBe(70_000);
   });
 
-  it('does nothing when canvasYToPrice returns null (price scale unavailable)', () => {
-    const ctx = makeCtx({ canvasYToPrice: vi.fn(() => null) });
+  it('does nothing when the price scale is unavailable (both pixelToData and canvasYToPrice null)', () => {
+    const ctx = makeCtx({ pixelToData: vi.fn(() => null), canvasYToPrice: vi.fn(() => null) });
     hlineTool.onPointerDown!(ctx);
     expect(ctx.add).not.toHaveBeenCalled();
+  });
+
+  it('uses the snapped pixelToData price (magnet) over canvasYToPrice when available', () => {
+    // pixelToData is the snapped path; its price must win over the raw
+    // canvasYToPrice so magnet snapping reaches the committed hline.
+    const ctx = makeCtx({
+      pixelToData: vi.fn(() => ({ realMs: 1_700_000_000_000, price: 71_500 })),
+      canvasYToPrice: vi.fn(() => 71_342.7),
+    });
+    hlineTool.onPointerDown!(ctx);
+    const added = (ctx.add as ReturnType<typeof vi.fn>).mock.calls[0][0] as Drawing;
+    if (added.kind === 'hline') expect(added.price).toBe(71_500);
   });
 
   it('keeps hline active after add', () => {
