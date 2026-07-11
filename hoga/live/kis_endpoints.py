@@ -32,7 +32,6 @@ from hoga.live.kis_venue import (
     KIS_KST,
     KisVenue,
     kis_venue_div,
-    previous_empty_page_anchor_hhmmss,
     session_window_hhmmss,
 )
 
@@ -288,6 +287,48 @@ def _parse_optional_int(value: object) -> int | None:
 
 
 class KisEndpointsMixin:
+    # 페이지 앵커 간격(분). 페이지당 최대 120행(=120분)이므로 100분 간격이면
+    # 인접 앵커 사이 바 수가 항상 캡 미만 — 전 구간 커버가 보장된다(겹침은
+    # seen_t_ms dedup). 120으로 두면 "정확히 120행 + 전 분 존재" 경계에서
+    # 1행이 빠질 수 있어 여유를 둔다.
+    _MINUTE_PAGE_ANCHOR_STEP_MIN = 100
+
+    @staticmethod
+    def _minute_page_anchors(venue: KisVenue, now_hhmmss: str | None = None) -> list[str]:
+        """세션 창을 덮는 사전 계산 앵커들 (내림차순, 세션 마감부터).
+
+        구 구현은 "다음 앵커 = 응답의 최이른 바 − 1분"인 순차 커서 워크라
+        페이지들이 직렬화됐다(KRX 4페이지, UN 6~9페이지 — UN 콜드 하루
+        1.5~4s의 원흉, 2026-07-11 실측). 앵커는 API가 시간 주소화를 지원하는
+        덕에 사전 계산 가능하고, 그러면 전 페이지를 병렬로 쏠 수 있다.
+
+        커버리지 논증: 임의의 세션 내 분 m에 대해 m 이상의 최소 앵커 a는
+        m과 100분 이내다. a 페이지는 a 이하 최신 120행을 주므로 (m, a] 구간
+        바 수 ≤ 100 < 120 → m 포함. 성긴 날은 바가 더 적어 자명하게 포함.
+        마지막 앵커는 세션 개장 후 첫 100분 창을 덮도록 개장+step 아래에서
+        멈춘다.
+        """
+        session_open_hhmmss, session_close_hhmmss = session_window_hhmmss(venue)
+        open_min = int(session_open_hhmmss[:2]) * 60 + int(session_open_hhmmss[2:4])
+        close_min = int(session_close_hhmmss[:2]) * 60 + int(session_close_hhmmss[2:4])
+        step = KisEndpointsMixin._MINUTE_PAGE_ANCHOR_STEP_MIN
+        anchors: list[str] = []
+        cur = close_min
+        while True:
+            anchors.append(f"{cur // 60:02d}{cur % 60:02d}00")
+            if cur - open_min <= step:
+                break
+            cur -= step
+        if now_hhmmss is not None:
+            # 오늘(장중) 조회: 창 (a−step, a]가 경과 세션과 겹치는 앵커만 유지 —
+            # 미래 앵커들은 전부 "지금까지의 최신 120행"이라는 같은 창을 돌려주므로
+            # 병렬로 다 쏘면 60초 폴마다 중복 호출만 늘린다(레이트 예산 낭비).
+            # 가장 이른 겹침 앵커 하나는 남겨 커버리지를 보존한다.
+            now_min = int(now_hhmmss[:2]) * 60 + int(now_hhmmss[2:4])
+            kept = [a for a in anchors if (int(a[:2]) * 60 + int(a[2:4])) - step < now_min]
+            anchors = kept if kept else anchors[-1:]
+        return anchors
+
     async def fetch_past_minute_candles(
         self,
         code: str,
@@ -299,24 +340,21 @@ class KisEndpointsMixin:
         """Fetch 1-minute candles for *code* on *date_yyyymmdd* (KST).
 
         KIS endpoint `inquire-time-dailychartprice` returns at most 120 rows
-        per call (about 2 hours of 1-minute bars). A full regular-session day
-        (09:00-15:30 KST = 390 minutes) needs ~4 paginated calls — we anchor
-        from 15:30 KST and walk the anchor backwards by the earliest received
-        candle's HHMMSS until we cover 09:00 or stop receiving new bars.
+        per call, addressed by an end-time anchor (`FID_INPUT_HOUR_1`). 앵커가
+        시간 주소라 사전 계산이 가능하므로 세션 창을 덮는 앵커들(KRX 4,
+        NXT/UN 8)을 **병렬로** 조회한다 — 구 순차 커서 워크(다음 앵커가 직전
+        응답에 의존)의 페이지 직렬화를 제거해 하루 wall이 페이지 수 × RTT에서
+        ~1 RTT로 줄어든다. 겹침은 t_ms dedup, 빈 창(휴장 밴드)은 자연히 무시.
+        출력은 종전과 동일하게 t_ms 오름차순(같은 바 집합 ⇒ 동일 출력).
 
         KIS retains roughly 1 year of historical minute candles per the
         portal docs (https://apiportal.koreainvestment.com/).
         """
         path = "/uapi/domestic-stock/v1/quotations/inquire-time-dailychartprice"
         tr_id = "FHKST03010230"
-        session_open_hhmmss, session_close_hhmmss = session_window_hhmmss(venue)
-        anchor_hhmmss = session_close_hhmmss
         venue_div = kis_venue_div(venue)
-        seen_t_ms: set[int] = set()
-        all_candles: list[KisCandle] = []
-        # Hard cap so a misbehaving KIS response never spirals into infinite
-        # pages. NXT/UN can span 12h, so they legitimately need more calls.
-        for _ in range(8 if venue == "KRX" else 16):
+
+        async def one_page(anchor_hhmmss: str) -> list[dict]:
             params = {
                 "FID_COND_MRKT_DIV_CODE": venue_div,
                 "FID_INPUT_ISCD": code,
@@ -326,18 +364,17 @@ class KisEndpointsMixin:
                 "FID_FAKE_TICK_INCU_YN": "",
             }
             body = await self._get(path=path, tr_id=tr_id, params=params, foreground=foreground)
-            rows = body.get("output2") or []
-            if not rows:
-                next_anchor = previous_empty_page_anchor_hhmmss(
-                    venue,
-                    date_yyyymmdd,
-                    anchor_hhmmss,
-                )
-                if next_anchor is None:
-                    break
-                anchor_hhmmss = next_anchor
-                continue
-            page_candles: list[KisCandle] = []
+            return body.get("output2") or []
+
+        now_kst = datetime.now(KIS_KST)
+        now_hhmmss = now_kst.strftime("%H%M%S") if now_kst.strftime("%Y%m%d") == date_yyyymmdd else None
+        anchors = self._minute_page_anchors(venue, now_hhmmss)
+        pages = await asyncio.gather(*(one_page(a) for a in anchors))
+
+        seen_t_ms: set[int] = set()
+        all_candles: list[KisCandle] = []
+        # 처리 순서는 앵커 내림차순(리스트 순) — dedup 승자 선택이 결정적이다.
+        for rows in pages:
             for row in rows:
                 date_str = row.get("stck_bsop_date") or ""
                 hhmmss = row.get("stck_cntg_hour") or ""
@@ -376,31 +413,7 @@ class KisEndpointsMixin:
                     log.debug("kis minute candle row skipped (malformed): %s", row)
                     continue
                 seen_t_ms.add(t_ms)
-                page_candles.append(candle)
-            if not page_candles:
-                break
-            all_candles.extend(page_candles)
-            # Next anchor = HHMMSS of the earliest bar minus 1 minute. KIS
-            # responses come newest-first; the earliest bar's hour drives the
-            # next page's anchor.
-            earliest_t_ms = min(c.t_ms for c in page_candles)
-            earliest_dt = datetime.fromtimestamp(earliest_t_ms / 1000, tz=KIS_KST)
-            # If we already covered the session open, stop.
-            session_open_hour = int(session_open_hhmmss[:2])
-            session_open_minute = int(session_open_hhmmss[2:4])
-            if (
-                earliest_dt.hour < session_open_hour
-                or (
-                    earliest_dt.hour == session_open_hour
-                    and earliest_dt.minute <= session_open_minute
-                )
-            ):
-                break
-            # Step the anchor back by 1 minute from the earliest bar.
-            next_anchor_dt = earliest_dt - timedelta(minutes=1)
-            anchor_hhmmss = (
-                f"{next_anchor_dt.hour:02d}{next_anchor_dt.minute:02d}{next_anchor_dt.second:02d}"
-            )
+                all_candles.append(candle)
         # Return in ascending order by t_ms — frontend / aggregator expects ASC.
         all_candles.sort(key=lambda c: c.t_ms)
         return all_candles
