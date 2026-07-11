@@ -95,3 +95,50 @@ def test_list_stock_dates_in_range_finds_any_source(tmp_path: Path) -> None:
         assert dates == ["20260520", "20260521"]
     finally:
         engine.close()
+
+
+def test_list_stock_dates_in_range_excludes_non_trading_day(tmp_path: Path) -> None:
+    """비거래일(주말) 파티션은 서빙 인벤토리에서 제외한다(defense-in-depth).
+
+    회귀: 유령 REST 호가 캡처가 비거래일 파티션(예: 토요일)을 만들면 사이드카 지표로
+    서빙됐다. 주말 게이트는 순수 날짜연산이라 캘린더 크레덴셜 없이 결정론적.
+    """
+    from hoga.api.queries import QueryEngine
+
+    # 20260710 = 금요일(거래일), 20260711 = 토요일(비거래일 유령 파티션)
+    for date in ("20260710", "20260711"):
+        d = tmp_path / "parquet" / date / "005930" / "kis_api"
+        d.mkdir(parents=True)
+        (d / "meta.json").write_text(json.dumps({"source": "kis_api"}))
+
+    engine = QueryEngine(tmp_path)
+    try:
+        dates = engine.list_stock_dates_in_range(
+            code="005930", from_date="20260701", to_date="20260731",
+            source_pref="kis_api",
+        )
+        assert dates == ["20260710"]  # 토요일 20260711 배제
+    finally:
+        engine.close()
+
+
+def test_is_non_trading_day_predicate() -> None:
+    """_is_non_trading_day: 주말=확실 배제, 휴장=캘린더 확정 False만, None/불가=관대."""
+    from unittest.mock import patch
+
+    from hoga.api.queries import _is_non_trading_day
+
+    # 주말은 캘린더 무관하게 True (순수 날짜연산 우선)
+    assert _is_non_trading_day("20260711") is True   # 토
+    assert _is_non_trading_day("20260712") is True   # 일
+
+    # 평일: 캘린더 판정에 위임
+    with patch("hoga.api.calendar.is_trading_day", return_value=False):
+        assert _is_non_trading_day("20260713") is True   # 월이지만 휴장 확정 → 배제
+    with patch("hoga.api.calendar.is_trading_day", return_value=True):
+        assert _is_non_trading_day("20260713") is False  # 정상 거래일 → 서빙
+    with patch("hoga.api.calendar.is_trading_day", return_value=None):
+        assert _is_non_trading_day("20260713") is False  # 판정 불가 → 관대(서빙)
+
+    # 파싱 불가 형식은 보류(기존 인벤토리 동작 보존)
+    assert _is_non_trading_day("not-a-date") is False

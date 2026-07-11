@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import json
 from dataclasses import dataclass
+from datetime import datetime
 from pathlib import Path
 from typing import Any, Literal
 
@@ -17,6 +18,27 @@ from hoga.api.sources import resolve_source_result
 from hoga.api.timeenc import hhmmssms_to_unix_ms
 from hoga.duck import connect_bounded
 from hoga.tables import snapshots
+
+
+def _is_non_trading_day(date_yyyymmdd: str) -> bool:
+    """비거래일(주말/휴장) 여부 — 서빙 인벤토리에서 유령 파티션 배제(defense-in-depth).
+
+    주말은 순수 날짜연산으로 **확실히** 배제한다(캘린더 다운 시에도 동작). 휴장은
+    캘린더가 **확정 False**일 때만 배제 — ``is_trading_day``가 None(KIS 미가용)/판정불가면
+    관대하게 서빙한다(정상 데이터를 캘린더 flake로 드롭하지 않음, 캡처 게이트의 lenient
+    정책과 일관). 파싱 불가 형식도 보류(기존 인벤토리 동작 보존).
+
+    유령의 원천 차단은 캡처측 rest30 거래일 게이트다. 이 함수는 이미 디스크에 존재하는
+    비거래일 파티션이 사이드카 지표로 서빙되는 것을 막는 2차 안전망이다.
+    """
+    try:
+        if datetime.strptime(date_yyyymmdd, "%Y%m%d").weekday() >= 5:  # 토/일  # noqa: PLR2004
+            return True
+    except ValueError:
+        return False
+    from hoga.api.calendar import is_trading_day  # noqa: PLC0415 — 지연 import(순환 회피)
+
+    return is_trading_day(date_yyyymmdd) is False
 
 
 def resolve_source_dir(stock_date_dir: Path, source: str) -> Path:
@@ -350,6 +372,10 @@ class QueryEngine:
 
         Matches if EITHER the preferred source has meta.json OR any source does
         (ADR-0039: preference + fallback). Includes legacy flat layout.
+
+        비거래일(주말/휴장) 파티션은 서빙에서 제외한다(:func:`_is_non_trading_day`,
+        defense-in-depth). 유령 REST 호가 캡처가 비거래일 파티션을 만들면 사이드카
+        지표로 표시됐던 회귀의 2차 안전망 — 원천 차단은 캡처측 rest30 거래일 게이트다.
         """
         base = self.data_dir / "parquet"
         if not base.exists():
@@ -360,6 +386,8 @@ class QueryEngine:
                 continue
             date = date_dir.name
             if date < from_date or date > to_date:
+                continue
+            if _is_non_trading_day(date):
                 continue
             code_dir = date_dir / code
             if not code_dir.is_dir():
