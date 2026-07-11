@@ -140,7 +140,7 @@ function isTradeTimeEligible(
   return isRegularContinuousTrade(tMs);
 }
 
-function priceRangeFromCandles(candles: readonly Candle[]): { min: number; max: number } | null {
+export function priceRangeFromCandles(candles: readonly Candle[]): { min: number; max: number } | null {
   const lows = candles.map((candle) => candle.low).filter(Number.isFinite);
   const highs = candles.map((candle) => candle.high).filter(Number.isFinite);
   if (lows.length === 0 || highs.length === 0) return null;
@@ -260,6 +260,74 @@ export function computeTradeVolumePoc(
     bandPct,
     date: options.date ?? '',
   });
+}
+
+/** computeTradeVolumePoc 의 distribution 분기(candles+segment+rangeCount)를 증분화한다.
+ *  당일 POC 를 SSE 틱마다 trades 전량 재-bin 하던 것을, 파라미터(가격범위·rangeCount·
+ *  세션·continuousBeforeMs)가 안정적이고 trades 가 append-only 인 동안은 델타 trade 만
+ *  기존 버킷에 누적하도록 바꾼다. 파라미터 변경(범위 확장 등)이나 trades 비-append(종목
+ *  전환·버퍼 리셋)에는 전체 재빌드로 폴백한다 — 폴백 경로 연산이 batch 와 동일하므로
+ *  정확성은 computeTradeVolumePoc 가 보증한다(IncrementalPeakWallSource 선례).
+ *
+ *  bandPct·date 는 bin 이 아니라 chooseBestDistributionBucket 출력 라벨/선택에만 영향
+ *  주므로 재빌드 키에 넣지 않고 매 호출 전달한다(bandPct 변경이 bin 재계산을 강제하지
+ *  않는다). update 는 같은 trades 로 두 번 불러도 델타 0 → 결과 불변(React 이중 호출 안전).
+ */
+export type TradeVolumePocDistParams = {
+  date: string;
+  bandPct: number;
+  rangeMin: number;
+  rangeMax: number;
+  rangeCount: number;
+  sessionOpenMs: number;
+  sessionCloseMs: number;
+  continuousBeforeMs: number | null;
+};
+
+export class IncrementalTradeVolumePoc {
+  private key = '';
+  private buckets: DistributionBucket[] = [];
+  private consumed = 0;
+  private lastRef: TradeSnapshot | null = null;
+  private openMinute = 0;
+
+  update(trades: readonly TradeSnapshot[], params: TradeVolumePocDistParams): TradeVolumePoc | null {
+    const key = `${params.rangeMin}|${params.rangeMax}|${params.rangeCount}`
+      + `|${params.sessionOpenMs}|${params.sessionCloseMs}|${params.continuousBeforeMs ?? 'n'}`;
+    const appendOnly = trades.length >= this.consumed
+      && (this.consumed === 0 || trades[this.consumed - 1] === this.lastRef);
+    if (key !== this.key || !appendOnly) {
+      this.key = key;
+      this.openMinute = kstMinuteOfDay(params.sessionOpenMs);
+      this.buckets = emptyDistributionBuckets(params.rangeMin, params.rangeMax, params.rangeCount);
+      this.consume(trades, params);
+    } else if (trades.length > this.consumed) {
+      this.consume(trades.slice(this.consumed), params);
+    }
+    this.consumed = trades.length;
+    this.lastRef = trades.length > 0 ? trades[trades.length - 1] : null;
+    return chooseBestDistributionBucket(this.buckets, { bandPct: params.bandPct, date: params.date });
+  }
+
+  /** computeTradeVolumePoc distribution 분기의 bin 루프와 라인 단위로 동일해야 한다. */
+  private consume(snapshots: readonly TradeSnapshot[], params: TradeVolumePocDistParams): void {
+    for (const snapshot of snapshots) {
+      for (const event of snapshot.trades) {
+        const tMs = event.t_ms ?? snapshot.t_ms;
+        if (tMs < params.sessionOpenMs || tMs >= params.sessionCloseMs) continue;
+        if (!isTradeTimeEligible(tMs, { openMinute: this.openMinute, continuousBeforeMs: params.continuousBeforeMs })) continue;
+        if (!isEligibleSide(event.side)) continue;
+        const rawPrice = event.price;
+        const qty = event.qty;
+        if (typeof rawPrice !== 'number' || !Number.isFinite(rawPrice) || rawPrice <= 0) continue;
+        if (typeof qty !== 'number' || !Number.isFinite(qty) || qty <= 0) continue;
+        if (rawPrice < params.rangeMin || rawPrice > params.rangeMax) continue;
+        const idx = distributionIndex(rawPrice, params.rangeMin, params.rangeMax, params.rangeCount);
+        this.buckets[idx].qty += qty;
+        this.buckets[idx].firstTMs = Math.min(this.buckets[idx].firstTMs, tMs);
+      }
+    }
+  }
 }
 
 export function computeCandleVolumePocs(

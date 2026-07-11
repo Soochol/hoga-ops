@@ -56,8 +56,15 @@ import { freshLiveTradePrice } from './deriveCurrentPriceLine';
 import type { ObSnapshot, TradeSnapshot } from './bucketHogaSeries';
 import LiveAskPeakSegments, { buildAskPeakOverlaySegments } from './LiveAskPeakSegments';
 import LiveBidPeakSegments, { buildBidPeakOverlaySegments } from './LiveBidPeakSegments';
-import { deriveDayAskPeaks, deriveTodayAllPriceAskPeak } from './useDayAskPeaks';
-import { deriveDayBidPeaks, deriveTodayAllPriceBidPeak } from './useDayBidPeaks';
+import {
+  deriveDayAskPeaksIncrementalAsOf,
+  deriveTodayAllPriceAskPeakIncrementalAsOf,
+} from './useDayAskPeaks';
+import {
+  deriveDayBidPeaksIncrementalAsOf,
+  deriveTodayAllPriceBidPeakIncrementalAsOf,
+} from './useDayBidPeaks';
+import { IncrementalPeakWallSource } from './incrementalPeakWallSource';
 import LivePeakWallDockedLabels from './LivePeakWallDockedLabels';
 import {
   rightmostVisibleCandleCutoff,
@@ -1185,23 +1192,33 @@ export function LiveChartRoot({
     () => dayBidPeaks.filter((peak) => peak.date !== todayKst),
     [dayBidPeaks, todayKst],
   );
+  // cutoff(as-of) 증분 소스 — 4계열(ask/bid × dayPeaks/todayAll) 각자 누적 상태를 갖는다
+  // (todayAll 은 빈 trade 로 update 하므로 dayPeaks 와 공유 불가 — 공유 시 리셋 스래싱).
+  // 훅 수명 동안 인스턴스 고정(useDayAskPeaks 선례). cutoff pref 를 껐다 켜도 append-only
+  // prefix-guard 가 누락분을 자가 회수하고, 종목 전환(버퍼 리셋)은 참조 불일치로 전체
+  // 재소비한다. batch 는 매 틱 ob/trade 를 재스캔했으나 증분은 델타만 소비한다(ADR-0106).
+  const askDayPeakSourceRef = useRef<IncrementalPeakWallSource | null>(null);
+  if (askDayPeakSourceRef.current === null) askDayPeakSourceRef.current = new IncrementalPeakWallSource('ask');
+  const askTodayAllSourceRef = useRef<IncrementalPeakWallSource | null>(null);
+  if (askTodayAllSourceRef.current === null) askTodayAllSourceRef.current = new IncrementalPeakWallSource('ask');
+  const bidDayPeakSourceRef = useRef<IncrementalPeakWallSource | null>(null);
+  if (bidDayPeakSourceRef.current === null) bidDayPeakSourceRef.current = new IncrementalPeakWallSource('bid');
+  const bidTodayAllSourceRef = useRef<IncrementalPeakWallSource | null>(null);
+  if (bidTodayAllSourceRef.current === null) bidTodayAllSourceRef.current = new IncrementalPeakWallSource('bid');
   const renderDayAskPeaks = useMemo(
     () => canRecomputeAskCutoff && isMinuteTimeframe(timeframe)
-      ? deriveDayAskPeaks(
+      ? deriveDayAskPeaksIncrementalAsOf(
+        askDayPeakSourceRef.current!,
         liveObSnapshots,
         liveTradeSnapshots,
         historicalAskSeeds,
         todayKst,
-        code,
         todayAskPeakInput,
-        cb?.candles ?? [],
-        askVisibleTimeCutoffForRender,
+        askVisibleTimeCutoffForRender!.tMs,
       )
       : [...dayAskPeaks],
     [
       canRecomputeAskCutoff,
-      cb?.candles,
-      code,
       dayAskPeaks,
       historicalAskSeeds,
       liveObSnapshots,
@@ -1214,18 +1231,17 @@ export function LiveChartRoot({
   );
   const renderTodayAllPriceAskPeak = useMemo(
     () => canRecomputeAskCutoff && isMinuteTimeframe(timeframe)
-      ? deriveTodayAllPriceAskPeak(
+      ? deriveTodayAllPriceAskPeakIncrementalAsOf(
+        askTodayAllSourceRef.current!,
         liveObSnapshots,
         historicalAskSeeds,
         todayKst,
-        code,
         todayAskPeakInput,
-        askVisibleTimeCutoffForRender,
+        askVisibleTimeCutoffForRender!.tMs,
       )
       : todayAllPriceAskPeak,
     [
       canRecomputeAskCutoff,
-      code,
       historicalAskSeeds,
       liveObSnapshots,
       timeframe,
@@ -1237,21 +1253,18 @@ export function LiveChartRoot({
   );
   const renderDayBidPeaks = useMemo(
     () => canRecomputeBidCutoff && isMinuteTimeframe(timeframe)
-      ? deriveDayBidPeaks(
+      ? deriveDayBidPeaksIncrementalAsOf(
+        bidDayPeakSourceRef.current!,
         liveObSnapshots,
         liveTradeSnapshots,
         historicalBidSeeds,
         todayKst,
-        code,
         todayBidPeakInput,
-        cb?.candles ?? [],
-        bidVisibleTimeCutoffForRender,
+        bidVisibleTimeCutoffForRender!.tMs,
       )
       : [...dayBidPeaks],
     [
       canRecomputeBidCutoff,
-      cb?.candles,
-      code,
       dayBidPeaks,
       historicalBidSeeds,
       liveObSnapshots,
@@ -1264,25 +1277,24 @@ export function LiveChartRoot({
   );
   const renderTodayAllPriceBidPeak = useMemo(
     () => canRecomputeBidCutoff && isMinuteTimeframe(timeframe)
-      ? deriveTodayAllPriceBidPeak(
+      ? deriveTodayAllPriceBidPeakIncrementalAsOf(
+        bidTodayAllSourceRef.current!,
         liveObSnapshots,
         historicalBidSeeds,
         todayKst,
-        code,
         todayBidPeakInput,
-        bidVisibleTimeCutoffForRender,
+        bidVisibleTimeCutoffForRender!.tMs,
       )
       : todayAllPriceBidPeak,
     [
       canRecomputeBidCutoff,
-      code,
       historicalBidSeeds,
       liveObSnapshots,
       timeframe,
       bidVisibleTimeCutoffForRender?.tMs,
-      todayAllPriceBidPeak,
       todayBidPeakInput,
       todayKst,
+      todayAllPriceBidPeak,
     ],
   );
   const activePaneToggles = useMemo(

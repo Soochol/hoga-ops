@@ -7,7 +7,7 @@ import { quoteImbalance } from '../../util/imbalance';
 import type { VirtualAxis } from '../../util/virtualAxis';
 import { isAuctionHidden } from '../util/auctionHide';
 import { isSyntheticHogaGapPoint } from '../util/hogaGapHide';
-import { quoteRatioPointsForBundle } from './quoteRatioPoints';
+import { quoteRatioPointsForBundle, quoteRatioPointsForSlice } from './quoteRatioPoints';
 import type { RatioPaneContext } from './ratio';
 
 export type BrokerLateEntryMarkerPoint = {
@@ -105,15 +105,17 @@ function findMarkerAnchorPoint(
   return null;
 }
 
-export function projectBrokerLateEntryMarkers(
-  bundle: RangeBundle,
+/** 이벤트 목록을 주어진 ratio points(앵커 소스)에 대해 마커로 투영하는 코어. 캐시
+ *  경로(과거/당일 슬라이스)와 풀 경로가 공유하는 유일 구현 — 여기가 갈라지면 동등성이
+ *  깨지므로 반드시 한 곳만 둔다. */
+function projectMarkersFromRatioPoints(
+  events: readonly BrokerLateEntryEvent[],
+  ratioPoints: readonly QuoteRatioPoint[],
   axis: VirtualAxis,
   ctx: BrokerLateEntryProjectionContext,
 ): BrokerLateEntryMarkerPoint[] {
-  const ratioPoints = quoteRatioPointsForBundle(bundle);
   const markers: BrokerLateEntryMarkerPoint[] = [];
-
-  for (const event of bundle.broker_late_entries) {
+  for (const event of events) {
     if (!sideAllowed(event.side, ctx.sideMode)) continue;
     const anchor = findMarkerAnchorPoint(ratioPoints, event, axis, ctx);
     if (!anchor) continue;
@@ -127,8 +129,91 @@ export function projectBrokerLateEntryMarkers(
       color: event.side === 'buy' ? ctx.buyColor : ctx.sellColor,
     });
   }
-
   return markers;
+}
+
+export function projectBrokerLateEntryMarkers(
+  bundle: RangeBundle,
+  axis: VirtualAxis,
+  ctx: BrokerLateEntryProjectionContext,
+): BrokerLateEntryMarkerPoint[] {
+  return projectMarkersFromRatioPoints(
+    bundle.broker_late_entries,
+    quoteRatioPointsForBundle(bundle),
+    axis,
+    ctx,
+  );
+}
+
+/** projectBrokerLateEntryMarkers 의 과거/당일 분리 캐시판(makePastCachedProjector 관용구).
+ *
+ *  labelMarkers 는 SSE 틱(150ms)마다 실행되고, 매번 quoteRatioPointsForBundle 이 전체
+ *  ratio points 에 withHogaGapSentinels(정렬 2회 + Set, O(n log n))를 재지불했다.
+ *  broker_late_entries·과거 ratio points·axis·ctx 는 장중 불변(당일 세그먼트만 매 틱
+ *  변함)이므로, 과거 이벤트의 마커를 캐시하고 당일 이벤트만 재투영하면 틱당 비용이
+ *  히스토리 깊이와 무관해진다.
+ *
+ *  정확성 불변식: cached(past) ++ project(today) 는 풀 투영과 바이트 동일해야 한다.
+ *  - 과거 이벤트(t_ms < todayOpen)의 앵커는 반드시 todayOpen 이전(같은 세션)에 있으므로
+ *    과거 slice ratio points 만으로 찾아도 풀 배열과 같은 앵커를 얻는다.
+ *  - slice 의 sentinel 은 quoteRatioPointsForSlice(allPoints 로 firstHogaT/lastHogaT 전달)
+ *    로 풀 배열의 과거 구간과 동일하게 생성된다(과거 candle 버킷 t < todayOpen 은 당일
+ *    ratio 점과 겹치지 않아 hogaTimes 판정도 동일).
+ *  - broker_late_entries 는 과거→당일 오름차순(백엔드 date 순 + range 병합 previous++next)
+ *    이라 filter 로 분할해도 원배열 순서가 보존된다(오라클 테스트로 잠금). */
+export function makeCachedBrokerLateEntryProjector(): (
+  bundle: RangeBundle,
+  axis: VirtualAxis,
+  ctx: BrokerLateEntryProjectionContext,
+) => BrokerLateEntryMarkerPoint[] {
+  const cache = new WeakMap<VirtualAxis, {
+    ctx: BrokerLateEntryProjectionContext;
+    events: readonly BrokerLateEntryEvent[];
+    todayOpen: number;
+    pastQuoteLen: number;
+    pastQuoteLastT: number;
+    pastMarkers: BrokerLateEntryMarkerPoint[];
+  }>();
+  return (bundle, axis, ctx) => {
+    const segs = bundle.segments;
+    // 세그먼트가 1개 이하면 "과거"가 없어 분리 이득이 없다 — 풀 투영.
+    if (!segs || segs.length < 2) return projectBrokerLateEntryMarkers(bundle, axis, ctx);
+
+    const events = bundle.broker_late_entries;
+    const todayOpen = segs[segs.length - 1].session_open_ms;
+    const quotePoints = bundle.quote_ratio.points;
+    const splitIdx = lowerBoundT(quotePoints, todayOpen);
+    const pastQuote = quotePoints.slice(0, splitIdx);
+    const todayQuote = quotePoints.slice(splitIdx);
+    const pastQuoteLen = pastQuote.length;
+    const pastQuoteLastT = pastQuoteLen > 0 ? pastQuote[pastQuoteLen - 1].t : 0;
+
+    let entry = cache.get(axis);
+    if (
+      !entry
+      || entry.ctx !== ctx
+      || entry.events !== events
+      || entry.todayOpen !== todayOpen
+      || entry.pastQuoteLen !== pastQuoteLen
+      || entry.pastQuoteLastT !== pastQuoteLastT
+    ) {
+      const pastEvents = events.filter((e) => e.t_ms < todayOpen);
+      const pastRatio = quoteRatioPointsForSlice({
+        bundle, points: pastQuote, allPoints: quotePoints, toT: todayOpen,
+      });
+      entry = {
+        ctx, events, todayOpen, pastQuoteLen, pastQuoteLastT,
+        pastMarkers: projectMarkersFromRatioPoints(pastEvents, pastRatio, axis, ctx),
+      };
+      cache.set(axis, entry);
+    }
+    const todayEvents = events.filter((e) => e.t_ms >= todayOpen);
+    const todayRatio = quoteRatioPointsForSlice({
+      bundle, points: todayQuote, allPoints: quotePoints, fromT: todayOpen,
+    });
+    const todayMarkers = projectMarkersFromRatioPoints(todayEvents, todayRatio, axis, ctx);
+    return entry.pastMarkers.concat(todayMarkers);
+  };
 }
 
 type MarkerLayoutBox = {

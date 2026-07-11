@@ -310,7 +310,7 @@ def build_router(engine: QueryEngine) -> APIRouter:
         if sd_dir is None:
             return BrokerSeriesResponse(date=date, brokers=[], source=source)
         path = sd_dir / "brokers.parquet"
-        raw_entries = brokers_tbl.query_day_series(engine.conn, path=path)
+        raw_entries = brokers_tbl.query_day_series_cached(engine.conn, path=path)
         # Convert each point's ts_ms from HH:MM:SS.ms-encoded to Unix ms,
         # mirroring the /api/brokers and /api/candles handlers.
         entries = [

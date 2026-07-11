@@ -20,15 +20,24 @@ function readVisibleRange(ts: ITimeScaleApi<Time>): { from: number; to: number }
   }
 }
 
-function hexToRgba(hex: string, opacity: number): string {
+type Rgb = { r: number; g: number; b: number };
+
+// base hex 는 build 내내 고정(bidColor/askColor)이라 셀마다 regex+parseInt 로 재파싱하지
+// 않는다 — build 진입 시 1회 파싱해 두고 alpha 만 셀별로 포맷한다.
+function parseHex(hex: string): Rgb {
   const match = /^#?([0-9a-f]{6})$/i.exec(hex);
-  const alpha = Math.max(0, Math.min(1, opacity));
-  if (!match) return `rgba(128, 128, 128, ${alpha})`;
+  if (!match) return { r: 128, g: 128, b: 128 };
   const raw = match[1];
-  const r = Number.parseInt(raw.slice(0, 2), 16);
-  const g = Number.parseInt(raw.slice(2, 4), 16);
-  const b = Number.parseInt(raw.slice(4, 6), 16);
-  return `rgba(${r}, ${g}, ${b}, ${alpha})`;
+  return {
+    r: Number.parseInt(raw.slice(0, 2), 16),
+    g: Number.parseInt(raw.slice(2, 4), 16),
+    b: Number.parseInt(raw.slice(4, 6), 16),
+  };
+}
+
+function rgba(c: Rgb, opacity: number): string {
+  const alpha = Math.max(0, Math.min(1, opacity));
+  return `rgba(${c.r}, ${c.g}, ${c.b}, ${alpha})`;
 }
 
 function halfTickFor(prices: number[]): number {
@@ -40,6 +49,28 @@ function halfTickFor(prices: number[]): number {
   }
   if (!Number.isFinite(minGap)) return 0.5;
   return minGap / 2;
+}
+
+// halfTick 은 point 의 가격 집합에만 의존(vmax·가시범위 무관)하고, IncrementalHogaBucketer
+// 가 미변경 버킷에 안정적인 point 참조를 주므로(depthHeatmapWire 불변식) point 별로 1회만
+// 계산한다. SSE 틱마다 전 point 를 정렬(+ allPrices 스프레드 할당)하던 것을 실제 바뀐
+// 버킷 1개로 줄인다. close/max 는 소스 레벨이 달라 변형별로 따로 캐시.
+const _halfTickCache = new WeakMap<DepthHeatmapPoint, { close?: number; max?: number }>();
+
+function halfTickForPoint(pt: DepthHeatmapPoint, intraMax: boolean): number {
+  let entry = _halfTickCache.get(pt);
+  if (entry === undefined) {
+    entry = {};
+    _halfTickCache.set(pt, entry);
+  }
+  const cached = intraMax ? entry.max : entry.close;
+  if (cached !== undefined) return cached;
+  const asks = intraMax ? pt.asksMax : pt.asks;
+  const bids = intraMax ? pt.bidsMax : pt.bids;
+  const value = halfTickFor([...asks, ...bids].map((l) => l.price));
+  if (intraMax) entry.max = value;
+  else entry.close = value;
+  return value;
 }
 
 type StyleOpts = { bidColor: string; askColor: string; maxOpacity: number };
@@ -55,21 +86,22 @@ export function buildDepthHeatmapCells(
   // 정규화 천장은 셀 소스와 반드시 같아야 한다 → intraMax 를 그대로 전달.
   const vmax = visibleMaxQty(points, fromMs, toMs, intraMax);
   if (vmax <= 0) return [];
+  const askRgb = parseHex(style.askColor);
+  const bidRgb = parseHex(style.bidColor);
   const out: DepthHeatmapCell[] = [];
   for (const pt of points) {
     if (pt.tMs < fromMs || pt.tMs > toMs) continue;
     const asks = intraMax ? pt.asksMax : pt.asks;
     const bids = intraMax ? pt.bidsMax : pt.bids;
     const time = (axis.toVirtual(pt.tMs) / 1000) as Time;
-    const allPrices = [...asks, ...bids].map((l) => l.price);
-    const halfTick = halfTickFor(allPrices);
+    const halfTick = halfTickForPoint(pt, intraMax);
     for (const lvl of asks) {
       if (lvl.qty <= 0) continue;
       out.push({
         time,
         price: lvl.price,
         halfTick,
-        fillColor: hexToRgba(style.askColor, levelAlpha(lvl.qty, vmax, style.maxOpacity)),
+        fillColor: rgba(askRgb, levelAlpha(lvl.qty, vmax, style.maxOpacity)),
       });
     }
     for (const lvl of bids) {
@@ -78,7 +110,7 @@ export function buildDepthHeatmapCells(
         time,
         price: lvl.price,
         halfTick,
-        fillColor: hexToRgba(style.bidColor, levelAlpha(lvl.qty, vmax, style.maxOpacity)),
+        fillColor: rgba(bidRgb, levelAlpha(lvl.qty, vmax, style.maxOpacity)),
       });
     }
   }

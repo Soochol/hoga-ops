@@ -20,7 +20,7 @@ import type { PaneSpec } from '../RangeSeriesPane';
 import { addZeroBaselineGuide } from '../util/zeroBaseline';
 import { isAuctionHidden, isExcludedQuoteBucket, BASELINE_HIDDEN_COLORS, maskOutgoingConnector } from '../util/auctionHide';
 import { makePastCachedProjector } from './pastCachedProjector';
-import { projectBrokerLateEntryMarkers } from './brokerLateEntryMarkers';
+import { makeCachedBrokerLateEntryProjector } from './brokerLateEntryMarkers';
 import { quoteRatioPointsForBundle, quoteRatioPointsForSlice } from './quoteRatioPoints';
 
 // Colors are applied at series-options level (thunked below), not per data
@@ -192,6 +192,10 @@ const ratioCachedData = makePastCachedProjector(projectRatioPoints, (b) => b.quo
   patchPastTail: BASELINE_HIDDEN_COLORS,
 }, quoteRatioPointsForSlice);
 
+// 거래원 지각진입 라벨 마커도 과거/당일 분리 캐시 — labelMarkers 는 SSE 틱마다 실행되고
+// 매번 전체 ratio points 에 sentinel 정렬(O(n log n))을 재지불했다. 모듈 레벨 1개 인스턴스.
+const brokerLateEntryMarkersCached = makeCachedBrokerLateEntryProjector();
+
 export const RATIO_SPEC = {
   name: 'ratio' as const,
   live: true, // reads quote_ratio (SSE-derived) → fed the live bundle on /live
@@ -242,7 +246,7 @@ export const RATIO_SPEC = {
       data: ratioCachedData,
       labelMarkers: (bundle, axis, ctx) => (
         ctx.brokerLateEntryEnabled
-          ? projectBrokerLateEntryMarkers(bundle, axis, {
+          ? brokerLateEntryMarkersCached(bundle, axis, {
               auctionWindowMask: ctx.auctionWindowMask,
               outlierFilterEnabled: ctx.outlierFilterEnabled,
               outlierThreshold: ctx.outlierThreshold,

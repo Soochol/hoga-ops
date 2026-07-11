@@ -164,3 +164,35 @@ def test_today_peak_dual_second_call_within_ttl_skips_query(peak_fixture):
         r2 = bundle_mod.build_ask_bid_peak_slices(engine, **kw)
     assert spy.call_count == 1
     assert r1 == r2
+
+
+def test_today_depth_second_call_within_ttl_skips_query(ratio_fixture):
+    engine, code, date, source = ratio_fixture  # snapshots.parquet 최소 세트
+    with patch.object(
+        bundle_mod.snapshots_tbl, "query_bucketed_depth_heatmap",
+        wraps=bundle_mod.snapshots_tbl.query_bucketed_depth_heatmap,
+    ) as spy:
+        kw = dict(code=code, date=date, source=source, bucket_ms=60_000,
+                   session_open_ms=90_000_000, session_close_ms=153_000_000,
+                   cache=None, today_kst=date)
+        r1 = bundle_mod.build_depth_heatmap_slice(engine, **kw)
+        r2 = bundle_mod.build_depth_heatmap_slice(engine, **kw)
+    assert spy.call_count == 1
+    assert r1 == r2
+
+
+def test_today_poc_second_call_within_ttl_skips_query(peak_fixture):
+    engine, code, date, source = peak_fixture  # trades.parquet 존재
+    with patch.object(
+        bundle_mod.trades_tbl, "query_trade_volume_poc",
+        wraps=bundle_mod.trades_tbl.query_trade_volume_poc,
+    ) as spy:
+        # price_range 직접 전달 → candles.parquet 불필요.
+        kw = dict(code=code, date=date, source=source,
+                   session_open_ms=90_000_000, session_close_ms=153_000_000,
+                   range_count=50, price_range=(24_000, 26_000),
+                   cache=None, today_kst=date)
+        r1 = bundle_mod.build_trade_volume_poc_slice(engine, **kw)
+        r2 = bundle_mod.build_trade_volume_poc_slice(engine, **kw)
+    assert spy.call_count == 1
+    assert r1 == r2

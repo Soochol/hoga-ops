@@ -252,6 +252,80 @@ export function deriveDayAskPeaksIncremental(
   return out;
 }
 
+function filterCandidatesByCutoff(
+  candidates: readonly AskPeakCandidate[],
+  cutoffMs: number,
+): AskPeakCandidate[] {
+  return candidates.filter((candidate) => candidate.t_ms <= cutoffMs);
+}
+
+/** classify 결과 → cutoff 패밀리 조립. mergedAskFamilies 의 cutoff 분기(라인 174-185)와
+ *  동일: backend 를 별도 병합하지 않고(이미 sourceEvents/extras 로 접힘) 분류 결과를 랭크만
+ *  한다. 증분 경로 전용 — no-cutoff 의 askFamiliesFromClassified 와 구분된다. */
+function askFamiliesFromClassifiedCutoff(classified: PeakWallClassification): PeakFamilies {
+  const traded = rankPeakCandidates(classified.postTouch);
+  const tradedKeys = new Set(traded.map(candidateKey));
+  const untraded = rankUniqueCandidates(
+    classified.postUntouched.filter((candidate) => !tradedKeys.has(candidateKey(candidate))),
+  );
+  const all = rankPeakCandidates(classified.all);
+  return { traded, untraded, all };
+}
+
+/** deriveDayAskPeaks(cutoff) 의 증분판. source.updateAsOf 가 ob/trade 재스캔 대신 누적
+ *  구조를 cutoff 기준으로 분류하고, 조립은 배치 cutoff 분기와 동일. */
+export function deriveDayAskPeaksIncrementalAsOf(
+  source: IncrementalPeakWallSource,
+  ob: ReadonlyArray<ObSnapshot>,
+  trade: ReadonlyArray<TradeSnapshot>,
+  seeds: readonly AskPeak[],
+  todayKst: string,
+  todayAskPeak: LiveTodayAskPeak | null,
+  cutoffMs: number,
+): AskPeak[] {
+  const backend = backendPeakFamilies(todayAskPeak);
+  const classified = source.updateAsOf(ob, trade, [
+    ...backend.all,
+    ...backend.traded,
+    ...backend.untraded,
+  ], cutoffMs);
+  const families = askFamiliesFromClassifiedCutoff(classified);
+  const out = seeds.filter((peak) => peak.date !== todayKst);
+  const traded = families.traded[0];
+  if (!traded) return out;
+  out.push(attachFamilies(askPeakFromCandidate(todayKst, traded), families));
+  return out;
+}
+
+/** deriveTodayAllPriceAskPeak(cutoff) 의 증분판. 터치 없이 all 패밀리만 필요하므로 빈
+ *  trade 로 updateAsOf 한다(EMPTY_TRADES). traded/untraded 는 배치와 동일하게 backend 를
+ *  cutoff 로 필터한 값. */
+export function deriveTodayAllPriceAskPeakIncrementalAsOf(
+  source: IncrementalPeakWallSource,
+  ob: ReadonlyArray<ObSnapshot>,
+  seeds: readonly AskPeak[],
+  todayKst: string,
+  todayAskPeak: LiveTodayAskPeak | null,
+  cutoffMs: number,
+): AskPeak | null {
+  const backend = backendPeakFamilies(todayAskPeak);
+  const todaySeed = historicalTodaySeed(seeds, todayKst);
+  const classified = source.updateAsOf(ob, EMPTY_TRADES, [
+    ...backend.all,
+    ...(todayAskPeak === null && todaySeed ? [todaySeed] : []),
+  ], cutoffMs);
+  const all = classified.all[0];
+  if (!all) return null;
+  return attachFamilies(
+    askPeakFromCandidate(todayKst, all),
+    {
+      traded: filterCandidatesByCutoff(backend.traded, cutoffMs),
+      untraded: filterCandidatesByCutoff(backend.untraded, cutoffMs),
+      all: classified.all,
+    },
+  );
+}
+
 export function useDayAskPeaks(
   ob: ReadonlyArray<ObSnapshot>,
   trade: ReadonlyArray<TradeSnapshot>,

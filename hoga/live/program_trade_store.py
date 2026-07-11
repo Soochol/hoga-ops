@@ -12,11 +12,18 @@ from hoga.api.timeenc import hhmmssms_to_unix_ms
 from hoga.api._atomic_write import atomic_write_json
 from hoga.live.kis_client import KIS_KST
 from hoga.live.kis_models import ProgramTradeByStockRow
+from hoga.util.mtime_cache import MtimeLruCache
 
 log = logging.getLogger(__name__)
 
 SCHEMA_VERSION = 1
 SOURCE = "kis_program_trade"
+
+# 읽기 전용 소비자(build_program_trade_series)용 프로세스-전역 mtime 캐시. 범위 번들이
+# today 포함으로 주기적 refetch 될 때 과거 전 날짜 JSON 을 매번 재파싱하던 것을, 파일이
+# 안 바뀐 과거일은 파싱 결과를 재사용해 제거한다. today 는 캡처 write(atomic)가 mtime 을
+# 바꿔 자연 무효화. 쓰기 경로(merge_response)는 반드시 uncached load()를 써야 한다.
+_LOAD_CACHE: "MtimeLruCache[ProgramTradeDayFile]" = MtimeLruCache(max_entries=512)
 
 
 class ProgramTradeStoredRow(ProgramTradeByStockRow):
@@ -67,6 +74,13 @@ class ProgramTradeStore:
                 date=date,
                 poll_interval_ms=self._poll_interval_ms,
             )
+
+    def load_cached(self, code: str, date: str) -> ProgramTradeDayFile:
+        """읽기 전용 소비자용 mtime 검증 캐시 load. 절대 쓰기 경로에서 쓰지 말 것 —
+        캐시가 stale write 를 막지 못한다(merge_response 는 uncached load() 사용).
+        반환 모델은 참조 공유이므로 소비자는 변형하지 말 것."""
+        path = self.path(code, date)
+        return _LOAD_CACHE.get_or_load(path, lambda _p: self.load(code, date))
 
     def merge_response(
         self,

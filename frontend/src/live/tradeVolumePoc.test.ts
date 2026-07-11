@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 import {
   computeCandleVolumePocs,
   computeTradeVolumePoc,
+  IncrementalTradeVolumePoc,
   krxStockTickSize,
   type TradeVolumePoc,
 } from './tradeVolumePoc';
@@ -245,6 +246,126 @@ describe('computeTradeVolumePoc', () => {
       highPrice: 10_000,
       qty: 1,
     });
+  });
+});
+
+describe('IncrementalTradeVolumePoc', () => {
+  const SEGMENT = {
+    date: '20260624',
+    session_open_ms: atKst(9, 0),
+    session_close_ms: atKst(15, 30),
+    source: 'kis_live' as const,
+  };
+
+  // batch distribution 분기의 오라클 — 증분 결과와 라인 단위로 같아야 한다.
+  function batch(
+    trades: readonly TradeSnapshot[],
+    range: { min: number; max: number },
+    rangeCount: number,
+    continuousBeforeMs: number | null,
+  ): TradeVolumePoc | null {
+    return computeTradeVolumePoc(trades, {
+      date: SEGMENT.date,
+      bandPct: 0.005,
+      candles: [{
+        ts_ms: atKst(9, 1), open: range.min, high: range.max,
+        low: range.min, close: range.min, vol_a: 0, vol_b: 0,
+      }],
+      rangeCount,
+      segment: SEGMENT,
+      continuousBeforeMs,
+    });
+  }
+
+  function incrUpdate(
+    acc: IncrementalTradeVolumePoc,
+    trades: readonly TradeSnapshot[],
+    range: { min: number; max: number },
+    rangeCount: number,
+    continuousBeforeMs: number | null,
+  ): TradeVolumePoc | null {
+    return acc.update(trades, {
+      date: SEGMENT.date,
+      bandPct: 0.005,
+      rangeMin: range.min,
+      rangeMax: range.max,
+      rangeCount,
+      sessionOpenMs: SEGMENT.session_open_ms,
+      sessionCloseMs: SEGMENT.session_close_ms,
+      continuousBeforeMs,
+    });
+  }
+
+  it('append-only 성장 스트림에서 매 스텝 batch 와 동일', () => {
+    // 결정론적 의사난수(9973 소수 모듈러) — 3600개 체결을 한 스냅샷씩 append.
+    const range = { min: 10_000, max: 60_000 };
+    const rangeCount = 20;
+    const snapshots: TradeSnapshot[] = [];
+    const acc = new IncrementalTradeVolumePoc();
+    let seed = 1;
+    for (let i = 0; i < 300; i += 1) {
+      seed = (seed * 48_271) % 2_147_483_647;
+      const price = 10_000 + (seed % 50_001);
+      const qty = 1 + (seed % 7);
+      const side = (seed % 5 === 0) ? 0 : (seed % 2 === 0 ? 1 : -1); // 가끔 side=0(제외)
+      const tMs = atKst(9, Math.min(359, Math.floor(i / 1)));
+      snapshots.push({ t_ms: tMs, trades: [{ t_ms: tMs, price, qty, side }] });
+      const incr = incrUpdate(acc, snapshots, range, rangeCount, null);
+      const oracle = batch(snapshots, range, rangeCount, null);
+      expect(incr).toEqual(oracle);
+    }
+  });
+
+  it('가격범위 확장 시 전체 재빌드 후 batch 와 동일', () => {
+    const acc = new IncrementalTradeVolumePoc();
+    const s: TradeSnapshot[] = [
+      { t_ms: atKst(9, 1), trades: [{ t_ms: atKst(9, 1), price: 12_000, qty: 10, side: 1 }] },
+      { t_ms: atKst(9, 2), trades: [{ t_ms: atKst(9, 2), price: 18_000, qty: 30, side: 1 }] },
+    ];
+    // 초기 좁은 범위.
+    expect(incrUpdate(acc, s, { min: 10_000, max: 20_000 }, 10, null))
+      .toEqual(batch(s, { min: 10_000, max: 20_000 }, 10, null));
+    // 범위 확장(재빌드 트리거) — 같은 trades, 넓은 범위.
+    expect(incrUpdate(acc, s, { min: 10_000, max: 40_000 }, 10, null))
+      .toEqual(batch(s, { min: 10_000, max: 40_000 }, 10, null));
+  });
+
+  it('continuousBeforeMs 등장(null→값) 시 재빌드 후 batch 와 동일', () => {
+    const acc = new IncrementalTradeVolumePoc();
+    const s: TradeSnapshot[] = [
+      { t_ms: atKst(9, 1), trades: [{ t_ms: atKst(9, 1), price: 11_000, qty: 10, side: 1 }] },
+      { t_ms: atKst(15, 25), trades: [{ t_ms: atKst(15, 25), price: 19_000, qty: 50, side: 1 }] },
+    ];
+    const range = { min: 10_000, max: 20_000 };
+    expect(incrUpdate(acc, s, range, 10, null)).toEqual(batch(s, range, 10, null));
+    const cutoff = atKst(15, 0);
+    expect(incrUpdate(acc, s, range, 10, cutoff)).toEqual(batch(s, range, 10, cutoff));
+  });
+
+  it('비-append(종목 전환 = 배열 교체) 시 재빌드', () => {
+    const acc = new IncrementalTradeVolumePoc();
+    const range = { min: 10_000, max: 20_000 };
+    const a: TradeSnapshot[] = [
+      { t_ms: atKst(9, 1), trades: [{ t_ms: atKst(9, 1), price: 12_000, qty: 100, side: 1 }] },
+    ];
+    incrUpdate(acc, a, range, 10, null);
+    // 완전히 다른 배열(참조 불일치) → prefix-guard 실패 → 전체 재빌드.
+    const b: TradeSnapshot[] = [
+      { t_ms: atKst(9, 2), trades: [{ t_ms: atKst(9, 2), price: 18_000, qty: 5, side: 1 }] },
+    ];
+    expect(incrUpdate(acc, b, range, 10, null)).toEqual(batch(b, range, 10, null));
+  });
+
+  it('같은 trades 로 두 번 update = 델타 0, 결과 불변(React 이중 호출 안전)', () => {
+    const acc = new IncrementalTradeVolumePoc();
+    const range = { min: 10_000, max: 20_000 };
+    const s: TradeSnapshot[] = [
+      { t_ms: atKst(9, 1), trades: [{ t_ms: atKst(9, 1), price: 12_000, qty: 100, side: 1 }] },
+    ];
+    const first = incrUpdate(acc, s, range, 10, null);
+    const second = incrUpdate(acc, s, range, 10, null);
+    expect(second).toEqual(first);
+    expect(second).toEqual(batch(s, range, 10, null));
   });
 });
 
