@@ -949,7 +949,16 @@ export function useLiveBundle(
     isPastCandlesLoading: pastCandlesQuery.isLoading || pastDailyCandlesQuery.isLoading || screenerDailyCandlesQuery.isLoading || (minuteDiskNeeded && minuteDiskCandles.isLoading) || (enableInvestor && investorQuery.isLoading),
     isHogaLoading: pastHoga.isLoading && pastHoga.data == null,
     isExtending: extending,
-    isSidecarLoading: sidecarEnabled && pastSidecars.isLoading && pastSidecars.data == null,
+    // 콜드 로드 동시 등장(장면1): 거래량분포는 캔들 priceRange 가 나와야 fetch 가
+    // 시작되는 구조적 체인(오늘 promoted trades 가 candles.parquet 보다 먼저 존재 가능)
+    // 이라, 그 "캔들 대기" 상태(sidecarWaitingForCandlePriceRange)도 loading 으로 셈해
+    // reveal 게이트가 지표 없이 캔들만 먼저 공개하지 않게 한다. isLoading(=isPending &&
+    // isFetching) 대신 isPending 을 쓰는 이유: sidecarEnabled 가 켜지는 커밋에서 아직
+    // fetch 미발화(isFetching=false)라 isLoading 이 1프레임 false 로 새는 레이스에 reveal
+    // rAF 가 선스케줄되는 것을 막기 위함. 캔들·사이드카 settle(성공·에러 모두 isPending
+    // false, sidecarEnabled 가 disabled 영구-pending 차단)로 반드시 해제된다.
+    isSidecarLoading: sidecarWaitingForCandlePriceRange
+      || (sidecarEnabled && pastSidecars.isPending && pastSidecars.data == null),
     pastDataWarnings,
     hogaCoverageGapDates,
     indicatorCoverageFromDate,
