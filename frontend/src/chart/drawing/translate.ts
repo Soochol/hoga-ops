@@ -11,7 +11,7 @@
 // so its translate-by-(Δms, Δprice) collapses to a price-only shift.
 // Trendline shifts both endpoints. Pencil shifts every vertex.
 
-import type { Drawing, Hline, Pencil, Trendline } from './types';
+import type { Drawing, Hline, Measure, Pencil, Rect, Text, Trendline, Vline } from './types';
 
 /**
  * Body-drag translation: shift the whole drawing by (Δrealms, Δprice).
@@ -25,8 +25,16 @@ export function translateDrawing(
   switch (drawing.kind) {
     case 'hline':
       return translateHline(drawing, dPrice);
+    case 'vline':
+      return translateVline(drawing, dMs);
     case 'trendline':
       return translateTrendline(drawing, dMs, dPrice);
+    case 'rect':
+      return translateRect(drawing, dMs, dPrice);
+    case 'measure':
+      return translateMeasure(drawing, dMs, dPrice);
+    case 'text':
+      return translateText(drawing, dMs, dPrice);
     case 'pencil':
       return translatePencil(drawing, dMs, dPrice);
   }
@@ -36,11 +44,35 @@ function translateHline(h: Hline, dPrice: number): Partial<Hline> {
   return { price: h.price + dPrice };
 }
 
+function translateVline(v: Vline, dMs: number): Partial<Vline> {
+  // Time-only: vline carries no price, so Δprice is discarded (mirrors how
+  // hline discards Δms).
+  return { realMs: v.realMs + dMs };
+}
+
 function translateTrendline(t: Trendline, dMs: number, dPrice: number): Partial<Trendline> {
   return {
     a: { realMs: t.a.realMs + dMs, price: t.a.price + dPrice },
     b: { realMs: t.b.realMs + dMs, price: t.b.price + dPrice },
   };
+}
+
+function translateRect(r: Rect, dMs: number, dPrice: number): Partial<Rect> {
+  return {
+    a: { realMs: r.a.realMs + dMs, price: r.a.price + dPrice },
+    b: { realMs: r.b.realMs + dMs, price: r.b.price + dPrice },
+  };
+}
+
+function translateMeasure(m: Measure, dMs: number, dPrice: number): Partial<Measure> {
+  return {
+    a: { realMs: m.a.realMs + dMs, price: m.a.price + dPrice },
+    b: { realMs: m.b.realMs + dMs, price: m.b.price + dPrice },
+  };
+}
+
+function translateText(t: Text, dMs: number, dPrice: number): Partial<Text> {
+  return { at: { realMs: t.at.realMs + dMs, price: t.at.price + dPrice } };
 }
 
 function translatePencil(p: Pencil, dMs: number, dPrice: number): Partial<Pencil> {
@@ -52,13 +84,23 @@ function translatePencil(p: Pencil, dMs: number, dPrice: number): Partial<Pencil
   };
 }
 
-/** Every price-bearing vertex of a Drawing (in pane Y-domain units). */
+/** Every price-bearing vertex of a Drawing (in pane Y-domain units). A vline
+ *  has none, so it returns [] — clampDPriceForDrawing then leaves Δprice
+ *  unclamped, which is correct (vline never moves vertically). */
 export function pricesOf(drawing: Drawing): number[] {
   switch (drawing.kind) {
     case 'hline':
       return [drawing.price];
+    case 'vline':
+      return [];
     case 'trendline':
       return [drawing.a.price, drawing.b.price];
+    case 'rect':
+      return [drawing.a.price, drawing.b.price];
+    case 'measure':
+      return [drawing.a.price, drawing.b.price];
+    case 'text':
+      return [drawing.at.price];
     case 'pencil':
       return drawing.points.map((p) => p.price);
   }

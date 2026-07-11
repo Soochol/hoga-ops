@@ -7,7 +7,15 @@
 import { useCallback, useState, useEffect, useRef } from 'react';
 import { useDrawingsStore } from '../state/drawings';
 import { useDismissablePopover } from '../util/useDismissablePopover';
-import { COLOR_PALETTE, STROKE_WIDTHS, LINE_STYLES, type LineStyle, type Drawing } from './drawing/types';
+import {
+  COLOR_PALETTE,
+  STROKE_WIDTHS,
+  LINE_STYLES,
+  RECT_FILL_OPACITIES,
+  TEXT_FONT_SIZES,
+  type LineStyle,
+  type Drawing,
+} from './drawing/types';
 
 export type DrawingAnchor = { x: number; y: number };
 export type ComputeAnchorFn = (d: Drawing) => DrawingAnchor | null;
@@ -25,7 +33,7 @@ const LINE_STYLE_LABELS: Record<LineStyle, string> = {
 const previewBorderStyle = (style: LineStyle): 'solid' | 'dashed' | 'dotted' =>
   style === 'solid' ? 'solid' : style === 'dashed' ? 'dashed' : 'dotted';
 
-type OpenPopover = 'color' | 'thickness' | 'lineStyle' | null;
+type OpenPopover = 'color' | 'thickness' | 'lineStyle' | 'fill' | 'fontSize' | null;
 
 const INITIAL_POSITION = { x: 14, y: 20 };
 
@@ -37,6 +45,7 @@ export default function DrawingPropertyPanel({ computeAnchor }: Props = {}) {
     return s.byCode.get(s.activeCode)?.find((d) => d.id === s.selectedId) ?? null;
   });
 
+  const hiddenAll = useDrawingsStore((s) => s.defaults.hiddenAll);
   const [openPopover, setOpenPopover] = useState<OpenPopover>(null);
   const rootRef = useRef<HTMLDivElement>(null);
 
@@ -48,7 +57,7 @@ export default function DrawingPropertyPanel({ computeAnchor }: Props = {}) {
     startPanelY: number;
   } | null>(null);
   // Once the user has dragged the panel, it stops re-anchoring on selection
-  // changes and stays where they parked it (session-scoped; see ADR-0062).
+  // changes and stays where they parked it (session-scoped; see ADR-0108).
   // Set inside onMove (a real drag), not startDrag (a bare grip mousedown).
   const userMovedRef = useRef(false);
 
@@ -76,7 +85,7 @@ export default function DrawingPropertyPanel({ computeAnchor }: Props = {}) {
   // Re-anchor when selection identity changes — but only until the user has
   // dragged the panel. After a manual drag the panel is sticky: it keeps the
   // last position across selections instead of snapping back to each drawing's
-  // anchor (ADR-0062, reversing ADR-0032's per-selection re-anchor clause).
+  // anchor (ADR-0108, reversing ADR-0032's per-selection re-anchor clause).
   useEffect(() => {
     if (drawing == null) return;
     if (userMovedRef.current) return;
@@ -89,8 +98,9 @@ export default function DrawingPropertyPanel({ computeAnchor }: Props = {}) {
   const closePopover = useCallback(() => setOpenPopover(null), []);
   useDismissablePopover(openPopover != null, rootRef, closePopover);
 
-  // Visibility gate — both clauses required.
-  if (activeTool !== 'select' || selectedId == null || drawing == null) return null;
+  // Visibility gate. The hiddenAll clause keeps the editor off a hidden layer —
+  // there's no shape on screen to point at.
+  if (activeTool !== 'select' || selectedId == null || drawing == null || hiddenAll) return null;
 
   const id = selectedId;
 
@@ -108,6 +118,20 @@ export default function DrawingPropertyPanel({ computeAnchor }: Props = {}) {
     useDrawingsStore.getState().update(id, { lineStyle });
     setOpenPopover(null);
   };
+
+  const pickFillOpacity = (fillOpacity: number) => {
+    useDrawingsStore.getState().update(id, { fillOpacity } as Partial<Drawing>);
+    setOpenPopover(null);
+  };
+
+  const pickFontSize = (fontSize: number) => {
+    useDrawingsStore.getState().update(id, { fontSize } as Partial<Drawing>);
+    setOpenPopover(null);
+  };
+
+  // Text labels have no stroke width or line style; they carry a font size
+  // instead. Hide the stroke controls and show a size picker for them.
+  const isText = drawing.kind === 'text';
 
   const startDrag = (e: React.MouseEvent) => {
     dragRef.current = {
@@ -182,6 +206,7 @@ export default function DrawingPropertyPanel({ computeAnchor }: Props = {}) {
         </div>
       )}
 
+      {!isText && (
       <button
         type="button"
         data-testid="drawing-thickness-trigger"
@@ -192,8 +217,9 @@ export default function DrawingPropertyPanel({ computeAnchor }: Props = {}) {
         <span className="inline-block w-4 border-t border-fg" style={{ borderTopWidth: drawing.width }} />
         <span className="tabular-nums">{drawing.width}px</span>
       </button>
+      )}
 
-      {openPopover === 'thickness' && (
+      {!isText && openPopover === 'thickness' && (
         <div className="absolute top-full left-0 mt-1 bg-bg-card border border-border rounded-md p-1 shadow-xl min-w-[7rem]">
           {STROKE_WIDTHS.map((w) => {
             const isSelected = w === drawing.width;
@@ -216,6 +242,7 @@ export default function DrawingPropertyPanel({ computeAnchor }: Props = {}) {
         </div>
       )}
 
+      {!isText && (
       <button
         type="button"
         data-testid="drawing-line-style-trigger"
@@ -229,8 +256,9 @@ export default function DrawingPropertyPanel({ computeAnchor }: Props = {}) {
           style={{ borderTopStyle: previewBorderStyle(drawing.lineStyle), borderTopWidth: 1.5 }}
         />
       </button>
+      )}
 
-      {openPopover === 'lineStyle' && (
+      {!isText && openPopover === 'lineStyle' && (
         <div className="absolute top-full left-0 mt-1 bg-bg-card border border-border rounded-md p-1 shadow-xl min-w-[7rem]">
           {LINE_STYLES.map((style) => {
             const isSelected = style === drawing.lineStyle;
@@ -254,6 +282,88 @@ export default function DrawingPropertyPanel({ computeAnchor }: Props = {}) {
             );
           })}
         </div>
+      )}
+
+      {drawing.kind === 'rect' && (
+        <>
+          <button
+            type="button"
+            data-testid="drawing-fill-trigger"
+            aria-label="채우기 농도"
+            onClick={() => setOpenPopover(openPopover === 'fill' ? null : 'fill')}
+            className="h-7 px-2 inline-flex items-center gap-1.5 rounded hover:bg-bg-input-hover text-xs"
+          >
+            <span
+              className="inline-block h-4 w-4 rounded-sm border border-fg-dim"
+              style={{ background: drawing.color, opacity: Math.max(0.15, drawing.fillOpacity) }}
+            />
+            <span className="tabular-nums">{Math.round(drawing.fillOpacity * 100)}%</span>
+          </button>
+
+          {openPopover === 'fill' && (
+            <div className="absolute top-full left-0 mt-1 bg-bg-card border border-border rounded-md p-1 shadow-xl min-w-[7rem]">
+              {RECT_FILL_OPACITIES.map((op) => {
+                const isSelected = op === drawing.fillOpacity;
+                return (
+                  <button
+                    key={op}
+                    type="button"
+                    data-testid={`drawing-fill-item-${op}`}
+                    onClick={() => pickFillOpacity(op)}
+                    className={
+                      'w-full px-2 py-1 flex items-center gap-2 rounded text-xs ' +
+                      (isSelected ? 'bg-bg-input-hover text-accent' : 'text-fg hover:bg-bg-input-hover')
+                    }
+                  >
+                    <span
+                      className="inline-block h-4 w-6 rounded-sm border border-fg-dim"
+                      style={{ background: drawing.color, opacity: Math.max(0.12, op) }}
+                    />
+                    <span className="tabular-nums">{Math.round(op * 100)}%</span>
+                  </button>
+                );
+              })}
+            </div>
+          )}
+        </>
+      )}
+
+      {isText && drawing.kind === 'text' && (
+        <>
+          <button
+            type="button"
+            data-testid="drawing-font-size-trigger"
+            aria-label="글자 크기"
+            onClick={() => setOpenPopover(openPopover === 'fontSize' ? null : 'fontSize')}
+            className="h-7 px-2 inline-flex items-center gap-1 rounded hover:bg-bg-input-hover text-xs"
+          >
+            <span className="font-semibold leading-none">A</span>
+            <span className="tabular-nums">{drawing.fontSize}px</span>
+          </button>
+
+          {openPopover === 'fontSize' && (
+            <div className="absolute top-full left-0 mt-1 bg-bg-card border border-border rounded-md p-1 shadow-xl min-w-[7rem]">
+              {TEXT_FONT_SIZES.map((size) => {
+                const isSelected = size === drawing.fontSize;
+                return (
+                  <button
+                    key={size}
+                    type="button"
+                    data-testid={`drawing-font-size-item-${size}`}
+                    onClick={() => pickFontSize(size)}
+                    className={
+                      'w-full px-2 py-1 flex items-center gap-2 rounded ' +
+                      (isSelected ? 'bg-bg-input-hover text-accent' : 'text-fg hover:bg-bg-input-hover')
+                    }
+                    style={{ fontSize: Math.min(size, 18) }}
+                  >
+                    <span className="tabular-nums">{size}px</span>
+                  </button>
+                );
+              })}
+            </div>
+          )}
+        </>
       )}
 
       <div className="w-px h-4 bg-border mx-0.5" />

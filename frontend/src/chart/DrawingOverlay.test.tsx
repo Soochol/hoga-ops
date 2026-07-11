@@ -86,3 +86,49 @@ describe('DrawingOverlay context menu', () => {
     expect(useDrawingsStore.getState().activeTool).toBe('select');
   });
 });
+
+describe('DrawingOverlay undo/redo keyboard (ADR-0107)', () => {
+  beforeEach(() => {
+    useDrawingsStore.getState().__resetForTests();
+  });
+
+  function mountOverlay() {
+    const chart = {
+      timeScale: () => ({
+        subscribeVisibleLogicalRangeChange: vi.fn(),
+        unsubscribeVisibleLogicalRangeChange: vi.fn(),
+      }),
+      panes: () => [],
+    };
+    return render(
+      <DrawingOverlay
+        chart={chart as never}
+        axis={{ segments: [] } as never}
+        paneSeries={new Map()}
+      />,
+    );
+  }
+
+  it('Ctrl+Z undoes and Ctrl+Shift+Z redoes the last mutation', () => {
+    const s = () => useDrawingsStore.getState();
+    s().setActiveCode('005930');
+    s().add({ id: 'h1', kind: 'hline', price: 100, color: '#fff', width: 1, lineStyle: 'solid', paneId: 'candle' });
+    mountOverlay();
+    expect(s().drawingsFor('005930')).toHaveLength(1);
+
+    fireEvent.keyDown(window, { key: 'z', ctrlKey: true });
+    expect(s().drawingsFor('005930')).toHaveLength(0);
+
+    fireEvent.keyDown(window, { key: 'Z', ctrlKey: true, shiftKey: true });
+    expect(s().drawingsFor('005930')).toHaveLength(1);
+  });
+
+  it('Meta+Z (macOS) also undoes', () => {
+    const s = () => useDrawingsStore.getState();
+    s().setActiveCode('005930');
+    s().add({ id: 'h1', kind: 'hline', price: 100, color: '#fff', width: 1, lineStyle: 'solid', paneId: 'candle' });
+    mountOverlay();
+    fireEvent.keyDown(window, { key: 'z', metaKey: true });
+    expect(s().drawingsFor('005930')).toHaveLength(0);
+  });
+});

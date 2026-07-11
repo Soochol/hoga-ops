@@ -1,5 +1,7 @@
+import { useRef } from 'react';
 import type { DrawingTool } from '../chart/drawing/types';
 import { DRAWABLE_TOOLS_ORDER, TOOLS } from '../chart/drawing/tools';
+import { normalizeItems } from '../chart/drawing/persistence';
 import { useDrawingsStore } from '../state/drawings';
 
 const TOOL_ORDER: readonly DrawingTool[] = ['select', ...DRAWABLE_TOOLS_ORDER];
@@ -23,6 +25,37 @@ export default function LiveDrawingRail() {
   const activeTool = useDrawingsStore((state) => state.activeTool);
   const setActiveTool = useDrawingsStore((state) => state.setActiveTool);
   const clearAll = useDrawingsStore((state) => state.clearAll);
+  const magnet = useDrawingsStore((state) => state.defaults.magnet);
+  const hiddenAll = useDrawingsStore((state) => state.defaults.hiddenAll);
+  const setDefaults = useDrawingsStore((state) => state.setDefaults);
+  const fileInputRef = useRef<HTMLInputElement>(null);
+
+  const handleExport = () => {
+    const store = useDrawingsStore.getState();
+    const code = store.activeCode;
+    if (code == null) return;
+    const items = store.drawingsFor(code);
+    if (items.length === 0) return;
+    const payload = JSON.stringify({ v: 1, code, items }, null, 2);
+    const blob = new Blob([payload], { type: 'application/json' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `drawings-${code}.json`;
+    a.click();
+    URL.revokeObjectURL(url);
+  };
+
+  const handleImportFile = async (file: File) => {
+    try {
+      const text = await file.text();
+      const parsed = JSON.parse(text) as { items?: unknown };
+      const items = normalizeItems(parsed.items);
+      if (items.length > 0) useDrawingsStore.getState().importDrawings(items);
+    } catch {
+      // Malformed file — ignore silently (nothing imported).
+    }
+  };
 
   return (
     <aside
@@ -50,6 +83,61 @@ export default function LiveDrawingRail() {
             </button>
           );
         })}
+      </div>
+      <div className="my-2 h-px w-8 bg-border" />
+      <div className="flex flex-col items-center gap-1">
+        <button
+          type="button"
+          aria-label="자석"
+          aria-pressed={magnet}
+          title="자석 — 캔들에 스냅 (Ctrl로 일시 해제)"
+          className={buttonClass(magnet)}
+          onClick={() => setDefaults({ magnet: !magnet })}
+        >
+          <span aria-hidden="true">🧲</span>
+        </button>
+        <button
+          type="button"
+          aria-label="그림 표시 전환"
+          aria-pressed={!hiddenAll}
+          title={hiddenAll ? '그림 표시' : '그림 숨김'}
+          className={buttonClass(false)}
+          onClick={() => setDefaults({ hiddenAll: !hiddenAll })}
+        >
+          <span aria-hidden="true">{hiddenAll ? '🙈' : '👁'}</span>
+        </button>
+      </div>
+      <div className="my-2 h-px w-8 bg-border" />
+      <div className="flex flex-col items-center gap-1">
+        <button
+          type="button"
+          aria-label="내보내기"
+          title="그림 내보내기 (JSON)"
+          className={buttonClass(false)}
+          onClick={handleExport}
+        >
+          <span aria-hidden="true">⭳</span>
+        </button>
+        <button
+          type="button"
+          aria-label="가져오기"
+          title="그림 가져오기 (JSON)"
+          className={buttonClass(false)}
+          onClick={() => fileInputRef.current?.click()}
+        >
+          <span aria-hidden="true">⭱</span>
+        </button>
+        <input
+          ref={fileInputRef}
+          type="file"
+          accept="application/json,.json"
+          className="hidden"
+          onChange={(e) => {
+            const file = e.target.files?.[0];
+            if (file) void handleImportFile(file);
+            e.target.value = ''; // allow re-importing the same file
+          }}
+        />
       </div>
       <div className="my-2 h-px w-8 bg-border" />
       <button

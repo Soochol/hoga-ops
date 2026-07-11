@@ -215,6 +215,8 @@ describe('renderTrendlineDraft', () => {
       color: '#14B8A6',
       width: 2,
       lineStyle: 'solid',
+      magnet: false,
+      hiddenAll: false,
     });
 
     expect(c.lineTo).toHaveBeenCalledWith(2, 200);

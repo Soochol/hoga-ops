@@ -255,7 +255,7 @@ describe('DrawingPropertyPanel — hline anchoring', () => {
   });
 });
 
-describe('DrawingPropertyPanel — sticky position after drag (ADR-0062)', () => {
+describe('DrawingPropertyPanel — sticky position after drag (ADR-0108)', () => {
   const HLINE2: Drawing = {
     id: 'h2', kind: 'hline', price: 2000,
     color: '#14B8A6', width: 2, lineStyle: 'solid', paneId: 'candle',

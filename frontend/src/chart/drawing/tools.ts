@@ -34,10 +34,31 @@ import {
   type DrawingTool,
   type PaneId,
   type Point,
+  type Rect,
   PENCIL_MAX_POINTS,
   HIT_THRESHOLD,
+  RECT_DEFAULT_FILL_OPACITY,
 } from './types';
 import { translateDrawing, clampDPriceForDrawing } from './translate';
+import { constrainAngle } from './snap';
+import { simplifyByPixels, PENCIL_SIMPLIFY_EPSILON } from './simplify';
+
+/** Constrain the free endpoint (cursor px,py) to 0°/45°/90° relative to anchor
+ *  `a`, in pixel space, then convert back to a data Point. Returns null when the
+ *  anchor can't be projected. Used by trendline/measure Shift-drag. */
+function angleConstrainedPoint(
+  ctx: ToolCtx,
+  a: Point,
+  px: number,
+  py: number,
+  paneId: PaneId,
+): Point | null {
+  const ax = ctx.realMsToCanvasX(a.realMs);
+  const ay = ctx.priceToCanvasY(a.price, paneId);
+  if (ax == null || ay == null) return null;
+  const c = constrainAngle({ x: ax, y: ay }, { x: px, y: py });
+  return ctx.pixelToData(c.x, c.y, paneId);
+}
 
 /** A per-gesture draft for the trendline tool — first point captured on
  *  pointer-down, committed on pointer-up. */
@@ -52,6 +73,13 @@ export type PencilDraft = {
   lastFrame: number;
   paneId: PaneId;
 };
+
+/** A per-gesture draft for the rect tool — one corner captured on pointer-down,
+ *  the opposite corner tracked on move, committed on pointer-up. */
+export type RectDraft = { a: Point; b?: Point; pointerId: number; paneId: PaneId };
+
+/** A per-gesture draft for the measure tool. Same 2-point drag shape as rect. */
+export type MeasureDraft = { a: Point; b?: Point; pointerId: number; paneId: PaneId };
 
 /** Active drag in select mode. `body` translates the whole drawing;
  *  `handle` moves one endpoint of a trendline only. */
@@ -70,7 +98,22 @@ export type DragMode =
       pointerId: number;
       paneId: PaneId;
     }
-  | { kind: 'handle'; id: string; endpoint: 'a' | 'b'; pointerId: number; paneId: PaneId };
+  | { kind: 'handle'; id: string; endpoint: 'a' | 'b'; pointerId: number; paneId: PaneId }
+  // Rect corner drag. A corner is identified by which stored point supplies its
+  // X (msKey) and which supplies its Y (priceKey): the top-left corner of a
+  // non-crossed rect is {msKey:'a', priceKey:'a'}, the top-right {msKey:'b',
+  // priceKey:'a'}, etc. Dragging updates exactly those two coordinates.
+  | {
+      kind: 'rect-handle';
+      id: string;
+      msKey: 'a' | 'b';
+      priceKey: 'a' | 'b';
+      pointerId: number;
+      paneId: PaneId;
+    }
+  // Vline body drag — horizontal only, resolved off the time axis alone so it
+  // survives its origin pane being toggled off (no price scale needed).
+  | { kind: 'vline-body'; id: string; lastRealMs: number | null; pointerId: number; paneId: PaneId };
 
 /** A React-style ref bucket. Spec'd as the minimal shape the tools
  *  mutate, so tests can pass plain `{ current: null }` objects. */
@@ -92,6 +135,8 @@ export type ToolCtx = {
   py: number;
   /** PointerEvent.pointerId — needed for setPointerCapture / release. */
   pointerId: number;
+  /** Shift held — constrains trendline/measure drags to 0°/45°/90°. */
+  shiftKey: boolean;
   /** Pin the active pointer to the overlay until releasePointer is called. */
   capturePointer(): void;
   releasePointer(): void;
@@ -101,6 +146,10 @@ export type ToolCtx = {
   /** Convert a stored realMs to a canvas X. Returns null when the realMs
    *  falls outside every Virtual Axis segment. */
   realMsToCanvasX(realMs: number): number | null;
+  /** Convert a canvas X to realMs — the time-only half of `pixelToData`, used
+   *  by the vline tool and vline body-drag (price-independent). Returns null in
+   *  the chart's empty band where the time axis can't resolve. */
+  canvasXToRealMs(px: number): number | null;
   /** Convert a stored price to a canvas Y using `paneId`'s price scale. */
   priceToCanvasY(price: number, paneId: PaneId): number | null;
   /** Convert a canvas Y to a price using `paneId`'s price scale — the
@@ -135,7 +184,13 @@ export type ToolCtx = {
    *  read and mutate `.current` directly. */
   trendlineDraft: Ref<TrendlineDraft | null>;
   pencilDraft: Ref<PencilDraft | null>;
+  rectDraft: Ref<RectDraft | null>;
+  measureDraft: Ref<MeasureDraft | null>;
   dragRef: Ref<DragMode | null>;
+
+  /** Open the text editor at `at` in `paneId` to author a new label. The
+   *  overlay owns the DOM <input> (IME-safe) and commits on Enter/blur. */
+  beginTextEdit(at: Point, paneId: PaneId): void;
 
   /** Trigger a single canvas redraw on the next animation frame. Tools
    *  call this after mutating a draft ref to surface a live preview
@@ -173,6 +228,37 @@ export interface DrawingToolSpec {
   onPointerUp?(ctx: ToolCtx): void;
 }
 
+/**
+ * Which rect corner (if any) is under the cursor, expressed as the (msKey,
+ * priceKey) pair whose stored points supply that corner's X and Y. Returns null
+ * when no corner is within threshold. Corners are derived from the projected,
+ * min/max-normalized box so a crossed rect still yields the visually-correct
+ * corners.
+ */
+function hitRectCorner(
+  ctx: ToolCtx,
+  r: Rect,
+): { msKey: 'a' | 'b'; priceKey: 'a' | 'b' } | null {
+  const xa = ctx.realMsToCanvasX(r.a.realMs);
+  const xb = ctx.realMsToCanvasX(r.b.realMs);
+  const ya = ctx.priceToCanvasY(r.a.price, r.paneId);
+  const yb = ctx.priceToCanvasY(r.b.price, r.paneId);
+  if (xa == null || xb == null || ya == null || yb == null) return null;
+  // Each corner keeps the identity of which point owns its X and Y.
+  const corners: { x: number; y: number; msKey: 'a' | 'b'; priceKey: 'a' | 'b' }[] = [
+    { x: xa, y: ya, msKey: 'a', priceKey: 'a' },
+    { x: xb, y: ya, msKey: 'b', priceKey: 'a' },
+    { x: xb, y: yb, msKey: 'b', priceKey: 'b' },
+    { x: xa, y: yb, msKey: 'a', priceKey: 'b' },
+  ];
+  for (const c of corners) {
+    if (Math.hypot(ctx.px - c.x, ctx.py - c.y) <= HIT_THRESHOLD.rectHandle) {
+      return { msKey: c.msKey, priceKey: c.priceKey };
+    }
+  }
+  return null;
+}
+
 // ─── select ────────────────────────────────────────────────────────────────
 //
 // Select mode owns hit-test → selection update → optional drag. Trendline
@@ -182,14 +268,17 @@ export interface DrawingToolSpec {
 export const selectTool: DrawingToolSpec = {
   kind: 'select',
   label: '선택',
-  glyph: '↶',
+  // Northwest arrow reads as a cursor; the old '↶' looked like Undo, which now
+  // has a real Ctrl+Z binding it would be confused with.
+  glyph: '↖',
   cursor: 'default',
   shortcut: { alt: true, key: 'v' },
   onPointerDown(ctx) {
     const selected = ctx.selectedId
       ? ctx.drawings.find((d) => d.id === ctx.selectedId)
       : null;
-    if (selected && selected.kind === 'trendline') {
+    // Trendline and measure share the 2-endpoint (a/b) handle-drag path.
+    if (selected && (selected.kind === 'trendline' || selected.kind === 'measure')) {
       const xa = ctx.realMsToCanvasX(selected.a.realMs);
       const ya = ctx.priceToCanvasY(selected.a.price, selected.paneId);
       const xb = ctx.realMsToCanvasX(selected.b.realMs);
@@ -217,8 +306,37 @@ export const selectTool: DrawingToolSpec = {
         return;
       }
     }
+    // Rect corner handles take precedence over body hit when a rect is selected.
+    if (selected && selected.kind === 'rect') {
+      const corner = hitRectCorner(ctx, selected);
+      if (corner) {
+        ctx.dragRef.current = {
+          kind: 'rect-handle',
+          id: selected.id,
+          msKey: corner.msKey,
+          priceKey: corner.priceKey,
+          pointerId: ctx.pointerId,
+          paneId: selected.paneId,
+        };
+        ctx.capturePointer();
+        return;
+      }
+    }
     const hit = ctx.hitTestAt(ctx.px, ctx.py);
     ctx.setSelected(hit?.id ?? null);
+    // vline body drag is horizontal-only and resolved off the time axis alone,
+    // so it doesn't touch (and doesn't require) any pane's price scale.
+    if (hit && hit.kind === 'vline') {
+      ctx.dragRef.current = {
+        kind: 'vline-body',
+        id: hit.id,
+        lastRealMs: ctx.canvasXToRealMs(ctx.px),
+        pointerId: ctx.pointerId,
+        paneId: hit.paneId,
+      };
+      ctx.capturePointer();
+      return;
+    }
     if (hit) {
       // Body drag runs off the price axis alone: resolve price (works in the
       // empty right band too, where the time axis can't) and best-effort
@@ -242,6 +360,40 @@ export const selectTool: DrawingToolSpec = {
   onPointerMove(ctx) {
     const drag = ctx.dragRef.current;
     if (!drag || drag.pointerId !== ctx.pointerId) return;
+    // vline body drag: horizontal only, no price scale involved.
+    if (drag.kind === 'vline-body') {
+      const target = ctx.drawings.find((d) => d.id === drag.id);
+      if (!target || target.kind !== 'vline') return;
+      const curRealMs = ctx.canvasXToRealMs(ctx.px);
+      const dMs =
+        curRealMs != null && drag.lastRealMs != null ? curRealMs - drag.lastRealMs : 0;
+      if (dMs !== 0) ctx.update(target.id, translateDrawing(target, dMs, 0));
+      if (curRealMs != null) drag.lastRealMs = curRealMs;
+      return;
+    }
+    if (drag.kind === 'rect-handle') {
+      const target = ctx.drawings.find((d) => d.id === drag.id);
+      if (!target || target.kind !== 'rect') return;
+      const clampedY = ctx.clampYToPane(drag.paneId, ctx.py);
+      const price = ctx.canvasYToPrice(clampedY, drag.paneId);
+      if (price == null) return;
+      const data = ctx.pixelToData(ctx.px, clampedY, drag.paneId);
+      const curRealMs = data?.realMs ?? null;
+      // Update the corner's X (msKey point) and Y (priceKey point). In the empty
+      // band keep the existing realMs (X unresolvable) and move vertically only.
+      const msPoint = drag.msKey === 'a' ? target.a : target.b;
+      const prPoint = drag.priceKey === 'a' ? target.a : target.b;
+      const newMs = curRealMs ?? msPoint.realMs;
+      const patch: Partial<Pick<Rect, 'a' | 'b'>> = {};
+      if (drag.msKey === drag.priceKey) {
+        patch[drag.msKey] = { realMs: newMs, price };
+      } else {
+        patch[drag.msKey] = { realMs: newMs, price: msPoint.price };
+        patch[drag.priceKey] = { realMs: prPoint.realMs, price };
+      }
+      ctx.update(target.id, patch as Partial<Drawing>);
+      return;
+    }
     const clampedY = ctx.clampYToPane(drag.paneId, ctx.py);
     // Price resolves off the Y axis everywhere the pane is mounted; realMs is
     // null in the empty right band (coordinateToTime can't resolve a coordinate
@@ -253,7 +405,7 @@ export const selectTool: DrawingToolSpec = {
     const curRealMs = data?.realMs ?? null;
     const target = ctx.drawings.find((d) => d.id === drag.id);
     if (!target) return;
-    if (drag.kind === 'handle' && target.kind === 'trendline') {
+    if (drag.kind === 'handle' && (target.kind === 'trendline' || target.kind === 'measure')) {
       // In the empty band keep the endpoint's realMs (X unresolvable) and move
       // it vertically; over data, move both axes.
       const endpoint = drag.endpoint === 'a' ? target.a : target.b;
@@ -323,6 +475,33 @@ export const hlineTool: DrawingToolSpec = {
   },
 };
 
+// ─── vline ─────────────────────────────────────────────────────────────────
+export const vlineTool: DrawingToolSpec = {
+  kind: 'vline',
+  label: '수직선',
+  glyph: '│',
+  cursor: 'crosshair',
+  shortcut: { alt: true, key: 'u' },
+  onPointerDown(ctx) {
+    // vline is time-only: resolve realMs off the X axis alone. Null in the
+    // empty right band (coordinateToTime unresolvable) → no creation there.
+    const realMs = ctx.canvasXToRealMs(ctx.px);
+    if (realMs == null) return;
+    const paneId = ctx.paneIdAtY(ctx.py);
+    const id = nanoid(8);
+    ctx.add({
+      id,
+      kind: 'vline',
+      realMs,
+      color: ctx.defaults.color,
+      width: ctx.defaults.width,
+      lineStyle: ctx.defaults.lineStyle,
+      paneId,
+    });
+    ctx.setSelected(id);
+  },
+};
+
 // ─── trendline ─────────────────────────────────────────────────────────────
 export const trendlineTool: DrawingToolSpec = {
   kind: 'trendline',
@@ -341,7 +520,9 @@ export const trendlineTool: DrawingToolSpec = {
     const draft = ctx.trendlineDraft.current;
     if (!draft || draft.pointerId !== ctx.pointerId) return;
     const clampedY = ctx.clampYToPane(draft.paneId, ctx.py);
-    const data = ctx.pixelToData(ctx.px, clampedY, draft.paneId);
+    const data = ctx.shiftKey
+      ? angleConstrainedPoint(ctx, draft.a, ctx.px, clampedY, draft.paneId)
+      : ctx.pixelToData(ctx.px, clampedY, draft.paneId);
     if (!data) return;
     draft.b = data;
     ctx.requestRedraw();
@@ -350,7 +531,9 @@ export const trendlineTool: DrawingToolSpec = {
     const draft = ctx.trendlineDraft.current;
     if (!draft || draft.pointerId !== ctx.pointerId) return;
     const clampedY = ctx.clampYToPane(draft.paneId, ctx.py);
-    const data = ctx.pixelToData(ctx.px, clampedY, draft.paneId);
+    const data = ctx.shiftKey
+      ? angleConstrainedPoint(ctx, draft.a, ctx.px, clampedY, draft.paneId)
+      : ctx.pixelToData(ctx.px, clampedY, draft.paneId);
     ctx.trendlineDraft.current = null;
     ctx.releasePointer();
     if (!data) return;
@@ -368,6 +551,125 @@ export const trendlineTool: DrawingToolSpec = {
       paneId: draft.paneId,
     });
     ctx.setSelected(id);
+  },
+};
+
+// ─── rect ──────────────────────────────────────────────────────────────────
+export const rectTool: DrawingToolSpec = {
+  kind: 'rect',
+  label: '사각형',
+  glyph: '▭',
+  cursor: 'crosshair',
+  shortcut: { alt: true, key: 'r' },
+  onPointerDown(ctx) {
+    const paneId = ctx.paneIdAtY(ctx.py);
+    const data = ctx.pixelToData(ctx.px, ctx.py, paneId);
+    if (!data) return;
+    ctx.rectDraft.current = { a: data, pointerId: ctx.pointerId, paneId };
+    ctx.capturePointer();
+  },
+  onPointerMove(ctx) {
+    const draft = ctx.rectDraft.current;
+    if (!draft || draft.pointerId !== ctx.pointerId) return;
+    const clampedY = ctx.clampYToPane(draft.paneId, ctx.py);
+    const data = ctx.pixelToData(ctx.px, clampedY, draft.paneId);
+    if (!data) return;
+    draft.b = data;
+    ctx.requestRedraw();
+  },
+  onPointerUp(ctx) {
+    const draft = ctx.rectDraft.current;
+    if (!draft || draft.pointerId !== ctx.pointerId) return;
+    const clampedY = ctx.clampYToPane(draft.paneId, ctx.py);
+    const data = ctx.pixelToData(ctx.px, clampedY, draft.paneId);
+    ctx.rectDraft.current = null;
+    ctx.releasePointer();
+    if (!data) return;
+    // Reject a zero-area rect: EITHER axis collapsing (same time OR same price)
+    // makes it a degenerate line, not a box.
+    if (data.realMs === draft.a.realMs || data.price === draft.a.price) return;
+    const id = nanoid(8);
+    ctx.add({
+      id,
+      kind: 'rect',
+      a: draft.a,
+      b: data,
+      color: ctx.defaults.color,
+      width: ctx.defaults.width,
+      lineStyle: ctx.defaults.lineStyle,
+      paneId: draft.paneId,
+      fillOpacity: RECT_DEFAULT_FILL_OPACITY,
+    });
+    ctx.setSelected(id);
+  },
+};
+
+// ─── measure ───────────────────────────────────────────────────────────────
+export const measureTool: DrawingToolSpec = {
+  kind: 'measure',
+  label: '측정자',
+  glyph: '⇲',
+  cursor: 'crosshair',
+  shortcut: { alt: true, key: 'm' },
+  onPointerDown(ctx) {
+    const paneId = ctx.paneIdAtY(ctx.py);
+    const data = ctx.pixelToData(ctx.px, ctx.py, paneId);
+    if (!data) return;
+    ctx.measureDraft.current = { a: data, pointerId: ctx.pointerId, paneId };
+    ctx.capturePointer();
+  },
+  onPointerMove(ctx) {
+    const draft = ctx.measureDraft.current;
+    if (!draft || draft.pointerId !== ctx.pointerId) return;
+    const clampedY = ctx.clampYToPane(draft.paneId, ctx.py);
+    const data = ctx.shiftKey
+      ? angleConstrainedPoint(ctx, draft.a, ctx.px, clampedY, draft.paneId)
+      : ctx.pixelToData(ctx.px, clampedY, draft.paneId);
+    if (!data) return;
+    draft.b = data;
+    ctx.requestRedraw();
+  },
+  onPointerUp(ctx) {
+    const draft = ctx.measureDraft.current;
+    if (!draft || draft.pointerId !== ctx.pointerId) return;
+    const clampedY = ctx.clampYToPane(draft.paneId, ctx.py);
+    const data = ctx.shiftKey
+      ? angleConstrainedPoint(ctx, draft.a, ctx.px, clampedY, draft.paneId)
+      : ctx.pixelToData(ctx.px, clampedY, draft.paneId);
+    ctx.measureDraft.current = null;
+    ctx.releasePointer();
+    if (!data) return;
+    if (data.realMs === draft.a.realMs && data.price === draft.a.price) return;
+    const id = nanoid(8);
+    ctx.add({
+      id,
+      kind: 'measure',
+      a: draft.a,
+      b: data,
+      color: ctx.defaults.color,
+      width: ctx.defaults.width,
+      lineStyle: ctx.defaults.lineStyle,
+      paneId: draft.paneId,
+    });
+    ctx.setSelected(id);
+  },
+};
+
+// ─── text ──────────────────────────────────────────────────────────────────
+export const textTool: DrawingToolSpec = {
+  kind: 'text',
+  label: '텍스트',
+  glyph: 'T',
+  cursor: 'text',
+  shortcut: { alt: true, key: 't' },
+  onPointerDown(ctx) {
+    // Anchor the label at the click; the overlay opens a DOM <input> there and
+    // commits the text on Enter/blur (IME-safe). If an edit is already open the
+    // overlay commits it first (pointerdown precedes the input's blur).
+    const paneId = ctx.paneIdAtY(ctx.py);
+    const data = ctx.pixelToData(ctx.px, ctx.py, paneId);
+    if (!data) return;
+    ctx.beginTextEdit(data, paneId);
   },
 };
 
@@ -411,11 +713,22 @@ export const pencilTool: DrawingToolSpec = {
     ctx.pencilDraft.current = null;
     ctx.releasePointer();
     if (draft.points.length < 2) return;
+    // RDP-simplify in pixel space at commit — trims the dense freehand capture
+    // to the points that actually define the curve's shape.
+    const simplified = simplifyByPixels(
+      draft.points,
+      (pt) => {
+        const x = ctx.realMsToCanvasX(pt.realMs);
+        const y = ctx.priceToCanvasY(pt.price, draft.paneId);
+        return x != null && y != null ? { x, y } : null;
+      },
+      PENCIL_SIMPLIFY_EPSILON,
+    );
     const id = nanoid(8);
     ctx.add({
       id,
       kind: 'pencil',
-      points: draft.points,
+      points: simplified,
       color: ctx.defaults.color,
       width: ctx.defaults.width,
       lineStyle: ctx.defaults.lineStyle,
@@ -446,14 +759,22 @@ export const eraserTool: DrawingToolSpec = {
 export const TOOLS: Record<DrawingTool, DrawingToolSpec> = {
   select: selectTool,
   hline: hlineTool,
+  vline: vlineTool,
   trendline: trendlineTool,
+  rect: rectTool,
+  measure: measureTool,
+  text: textTool,
   pencil: pencilTool,
   eraser: eraserTool,
 };
 
 export const DRAWABLE_TOOLS_ORDER: readonly DrawingTool[] = [
   'hline',
+  'vline',
   'trendline',
+  'rect',
+  'measure',
+  'text',
   'pencil',
   'eraser',
 ];

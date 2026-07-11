@@ -136,7 +136,7 @@ describe('drawing defaults persistence', () => {
   });
 
   it('round-trips a written value', () => {
-    const written = { color: '#F43F5E', width: 4, lineStyle: 'dashed' as const };
+    const written = { color: '#F43F5E', width: 4, lineStyle: 'dashed' as const, magnet: false, hiddenAll: false };
     saveDefaults(written);
     expect(loadDefaults()).toEqual(written);
   });

@@ -64,6 +64,32 @@ export function realMsToCanvasX(
 }
 
 /**
+ * Canvas X → real Unix-ms — the time-only inverse of `realMsToCanvasX` and the
+ * X-half of `pixelToData`. Used by the vertical-line tool (price-independent)
+ * and by vline body-drag, which must resolve horizontally without touching any
+ * pane's price scale. Returns null in the chart's empty band where
+ * `coordinateToTime` can't resolve a coordinate.
+ */
+export function canvasXToRealMs(
+  chart: IChartApi,
+  axis: VirtualAxis,
+  px: number,
+): number | null {
+  const timeSec = chart.timeScale().coordinateToTime(px);
+  if (timeSec == null) return null;
+  return axis.toReal((timeSec as number) * 1000);
+}
+
+/** Total height of all mounted panes (excludes the time-axis strip below).
+ *  A vertical line spans this — not the full canvas, which would cross the
+ *  axis labels. */
+export function totalPanesHeight(chart: IChartApi): number {
+  let h = 0;
+  for (const p of chart.panes()) h += p.getHeight();
+  return h;
+}
+
+/**
  * Sum of pane heights above `paneId`. For the candle pane (index 0) this
  * is 0. Returns 0 when the pane isn't mounted.
  *
