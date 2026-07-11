@@ -93,7 +93,18 @@ type Props = {
 
 /** Open text-editor state — a DOM <input> the overlay renders over the canvas.
  *  `id` is null for a new label, or the id of an existing text being re-edited. */
-type TextEdit = { id: string | null; at: Point; paneId: PaneId; initial: string; fontSize: number };
+type TextEdit = {
+  id: string | null;
+  at: Point;
+  paneId: PaneId;
+  initial: string;
+  fontSize: number;
+  /** Raw click screen coords (overlay-relative). The input is positioned by
+   *  re-projecting `at`, but falls back to these so it ALWAYS appears where the
+   *  user clicked even if the projection can't resolve. */
+  px: number;
+  py: number;
+};
 
 export default function DrawingOverlay({ chart, axis, paneSeries, onChartHoverPassthrough, bucketMs, candles }: Props) {
   const containerRef = useRef<HTMLDivElement>(null);
@@ -506,7 +517,7 @@ export default function DrawingOverlay({ chart, axis, paneSeries, onChartHoverPa
     setTextValue('');
   };
 
-  const beginTextEdit = (at: Point, paneId: PaneId) => {
+  const beginTextEdit = (at: Point, paneId: PaneId, px: number, py: number) => {
     // If an edit is already open, this click commits it and is consumed — the
     // user clicks again to place the next label. Prevents a blur/pointerdown
     // race from spawning a second draft over the first.
@@ -514,7 +525,7 @@ export default function DrawingOverlay({ chart, axis, paneSeries, onChartHoverPa
       commitText(textInputRef.current?.value ?? textValue);
       return;
     }
-    setTextEdit({ id: null, at, paneId, initial: '', fontSize: TEXT_DEFAULT_FONT_SIZE });
+    setTextEdit({ id: null, at, paneId, initial: '', fontSize: TEXT_DEFAULT_FONT_SIZE, px, py });
     setTextValue('');
   };
 
@@ -610,9 +621,11 @@ export default function DrawingOverlay({ chart, axis, paneSeries, onChartHoverPa
   // Double-click an existing text label to re-open its editor in place.
   const onDoubleClick = (e: React.MouseEvent<HTMLDivElement>) => {
     const rect = (e.currentTarget as HTMLDivElement).getBoundingClientRect();
-    const hit = hitTestAt(e.clientX - rect.left, e.clientY - rect.top);
+    const px = e.clientX - rect.left;
+    const py = e.clientY - rect.top;
+    const hit = hitTestAt(px, py);
     if (hit && hit.kind === 'text') {
-      setTextEdit({ id: hit.id, at: hit.at, paneId: hit.paneId, initial: hit.text, fontSize: hit.fontSize });
+      setTextEdit({ id: hit.id, at: hit.at, paneId: hit.paneId, initial: hit.text, fontSize: hit.fontSize, px, py });
       setTextValue(hit.text);
       e.preventDefault();
     }
@@ -746,12 +759,15 @@ export default function DrawingOverlay({ chart, axis, paneSeries, onChartHoverPa
     store.setSelected(clone.id);
   };
 
-  // Screen position of the open text editor (null when its anchor is off-axis).
+  // Screen position of the open text editor. Re-projects the anchor so the box
+  // tracks the data if the chart shifts; falls back to the raw click pixels so
+  // the input ALWAYS appears where the user clicked, even if the anchor can't
+  // be projected (empty band, transient scale state).
   const textEditPos = textEdit
     ? (() => {
         const x = realMsToCanvasX(textEdit.at.realMs);
         const y = priceToCanvasY(textEdit.at.price, textEdit.paneId);
-        return x != null && y != null ? { x, y } : null;
+        return x != null && y != null ? { x, y } : { x: textEdit.px, y: textEdit.py };
       })()
     : null;
 

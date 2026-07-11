@@ -188,9 +188,11 @@ export type ToolCtx = {
   measureDraft: Ref<MeasureDraft | null>;
   dragRef: Ref<DragMode | null>;
 
-  /** Open the text editor at `at` in `paneId` to author a new label. The
-   *  overlay owns the DOM <input> (IME-safe) and commits on Enter/blur. */
-  beginTextEdit(at: Point, paneId: PaneId): void;
+  /** Open the text editor at `at` in `paneId` to author a new label. `px`/`py`
+   *  are the raw click pixels so the overlay can always position the DOM
+   *  <input> at the click even if `at` can't be re-projected. The overlay owns
+   *  the input (IME-safe) and commits on Enter/blur. */
+  beginTextEdit(at: Point, paneId: PaneId, px: number, py: number): void;
 
   /** Trigger a single canvas redraw on the next animation frame. Tools
    *  call this after mutating a draft ref to surface a live preview
@@ -672,9 +674,17 @@ export const textTool: DrawingToolSpec = {
     // commits the text on Enter/blur (IME-safe). If an edit is already open the
     // overlay commits it first (pointerdown precedes the input's blur).
     const paneId = ctx.paneIdAtY(ctx.py);
-    const data = ctx.pixelToData(ctx.px, ctx.py, paneId);
+    // Resolve an anchor; fall back to a price-only point in the empty band so a
+    // label can still be placed to the right of the last candle.
+    const data =
+      ctx.pixelToData(ctx.px, ctx.py, paneId) ??
+      (() => {
+        const price = ctx.canvasYToPrice(ctx.py, paneId);
+        const realMs = ctx.canvasXToRealMs(ctx.px);
+        return price != null && realMs != null ? { realMs, price } : null;
+      })();
     if (!data) return;
-    ctx.beginTextEdit(data, paneId);
+    ctx.beginTextEdit(data, paneId, ctx.px, ctx.py);
   },
 };
 
