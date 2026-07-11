@@ -55,6 +55,8 @@ export type RangeQueryKey = readonly [
 ];
 
 export const RANGE_QUERY_KEY_FROM_DATE_INDEX = 2;
+export const RANGE_QUERY_KEY_VDIST_PRICE_MIN_INDEX = 10;
+export const RANGE_QUERY_KEY_VDIST_PRICE_MAX_INDEX = 11;
 
 export type RangeBundleRequest = {
   enabled: boolean;
