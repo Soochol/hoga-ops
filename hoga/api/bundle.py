@@ -306,6 +306,7 @@ def build_quote_ratio_slice(
     date: str,
     bucket_ms: int = 1000,
     source: str = "hogaplay",
+    session_open_ms: int | None = None,
     session_close_ms: int | None = None,
     cache: PastIndicatorsCache | None = _RESOLVE,  # type: ignore[assignment]
     today_kst: str | None = _RESOLVE,  # type: ignore[assignment]
@@ -329,14 +330,15 @@ def build_quote_ratio_slice(
         # Past day + minute bucket: cache the 1-minute representatives once and
         # re-aggregate up (reaggregate_ratio == a direct bucket_ms query, proven
         # in test_indicator_reaggregate). The 1m rows carry the SAME
-        # session_close_ms auction boundary, so the (0,0) auction sentinel is
-        # preserved across re-aggregation.
+        # session_open_ms/session_close_ms auction boundary, so the (0,0) auction
+        # sentinel (opening + closing) is preserved across re-aggregation.
         rows_1m = cache.get_ratio(code, date, source)  # type: ignore[union-attr]
         if rows_1m is None:
             rows_1m = SLICE_COALESCER.run(
                 ("ratio", code, date, source),
                 lambda: snapshots_tbl.query_bucketed_ratio(
                     engine.conn, path=path_obj, bucket_ms=_ONE_MINUTE_MS,
+                    session_open_ms=session_open_ms,
                     session_close_ms=session_close_ms,
                 ),
             )
@@ -344,13 +346,14 @@ def build_quote_ratio_slice(
         rows = reaggregate_ratio(rows_1m, bucket_ms)
     else:
         is_today = today_kst is not None and date == today_kst
-        ttl_key = ("ratio", code, date, source, bucket_ms, session_close_ms)
+        ttl_key = ("ratio", code, date, source, bucket_ms, session_open_ms, session_close_ms)
         hit, cached = TODAY_TTL.lookup(ttl_key) if is_today else (False, None)
         if hit:
             rows = cached
         else:
             rows = snapshots_tbl.query_bucketed_ratio(
-                engine.conn, path=path_obj, bucket_ms=bucket_ms, session_close_ms=session_close_ms
+                engine.conn, path=path_obj, bucket_ms=bucket_ms,
+                session_open_ms=session_open_ms, session_close_ms=session_close_ms,
             )
             if is_today:
                 TODAY_TTL.put(ttl_key, rows)
@@ -987,8 +990,8 @@ def build_depth_heatmap_slice(
     (past_indicators_cache._mem_depth 주석 참조). 오늘은 프로모션 진행 중이라
     항상 재계산.
 
-    ``session_open_ms``는 형제 빌더(및 Task-4 호출부) 시그니처 대칭용으로만
-    유지 — 본문 미사용.
+    ``session_open_ms``는 개장 동시호가 배제의 하한(ADR-0062 v3) — 쿼리의 공용 술어
+    ``_book_indicator_eligible_sql``로 전달된다. 호가비·매도벽과 동일 규칙.
     """
     cache = _resolve_cache(engine, cache)
     today_kst = _resolve_today_kst(today_kst)
@@ -1009,6 +1012,7 @@ def build_depth_heatmap_slice(
             engine.conn,
             path=path_obj,
             bucket_ms=bucket_ms,
+            session_open_ms=session_open_ms,
             session_close_ms=session_close_ms,
         ),
     )
@@ -1347,11 +1351,13 @@ def build_range_bundle(
                 else source
             )
             candles_d = [] if sidecar_only else downsample_candles(raw_candles, bucket_ms=bucket_ms)
+        norm_meta, _ = normalize_session_bounds(meta)   # value-conversion only (notes handled by classify)
         qr_d = (
             QuoteRatio(bucket_ms=bucket_ms, points=[])
             if sidecar_only or candles_only
             else build_quote_ratio_slice(
                 engine, code=code, date=d, bucket_ms=bucket_ms, source=source,
+                session_open_ms=norm_meta["regular_session_open_ms"],
                 session_close_ms=meta["regular_session_close_ms"],
             )
         )
@@ -1362,7 +1368,6 @@ def build_range_bundle(
                 engine, code=code, date=d, bucket_ms=bucket_ms, source=source,
             )
         )
-        norm_meta, _ = normalize_session_bounds(meta)   # value-conversion only (notes handled by classify)
         continuous_before_needed = needs_trade_price_range and not hoga_only and not candles_only
         continuous_before_ms = (
             _first_trailing_single_price_book_hhmmssms(

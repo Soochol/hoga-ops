@@ -1,6 +1,5 @@
 import type { AskPeakCandidate } from '../api/types';
-import { isContinuousBook, type ObSnapshot, type TradeSnapshot } from './bucketHogaSeries';
-import { isAfterRegularOpen } from '../util/tradingDay';
+import { isIndicatorEligibleBook, type ObSnapshot, type TradeSnapshot } from './bucketHogaSeries';
 import type { PeakWallClassification } from './peakWallEventClassifier';
 
 const EMIT_LIMIT = 3;
@@ -106,7 +105,7 @@ export class IncrementalPeakWallSource {
 
   private consumeOb(snapshots: ReadonlyArray<ObSnapshot>): void {
     for (const snapshot of snapshots) {
-      if (!isContinuousBook(snapshot) || !isAfterRegularOpen(snapshot.t_ms)) continue;
+      if (!isIndicatorEligibleBook(snapshot)) continue;
       const levels = this.side === 'ask' ? snapshot.asks : snapshot.bids;
       if (!levels) continue;
       for (const level of levels) {

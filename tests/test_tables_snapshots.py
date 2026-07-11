@@ -317,6 +317,32 @@ def test_query_bucketed_ratio_buckets_on_linear_minute_boundary(tmp_path: Path) 
     assert [r.bid_total for r in rows] == [22, 44]
 
 
+def test_query_bucketed_ratio_excludes_opening_auction_via_open_bound(tmp_path: Path) -> None:
+    """ADR-0062 v3: session_open_ms 하한으로 개장 동시호가를 (0,0) 센티넬로 배제한다
+    (매도벽·히트맵과 공용 술어). 개장 전 deep book(구조 술어 통과)이라도 open 하한이
+    잡아 대표에서 제외 → 그 버킷은 (0,0)."""
+    from hoga.tables.snapshots import query_bucketed_ratio
+
+    # 08:59:00 개장 전 deep book(구조 통과) + 09:01:00 정규장 deep book.
+    obs = [
+        _ob(ts_ms=85_900_000, seq=1, ask_q=(100,) * 10, bid_q=(100,) * 10),
+        _ob(ts_ms=90_100_000, seq=2, ask_q=(300,) * 10, bid_q=(300,) * 10),
+    ]
+    out = tmp_path / "snapshots.parquet"
+    write_parquet(obs, out)
+    con = duckdb.connect()
+    rows = query_bucketed_ratio(
+        con, path=out, bucket_ms=60_000,
+        session_open_ms=90_000_000, session_close_ms=153_000_000,
+    )
+    by = {r.bucket_intra_ms: r for r in rows}
+    # 개장 전 버킷(08:59 → linear 32_340_000): 유효 스냅샷 없음 → (0,0) 센티넬.
+    assert (by[32_340_000].bid_total, by[32_340_000].ask_total) == (0, 0)
+    # 정규장 버킷(09:01 → linear 32_460_000): 실제 총잔량(300 × 10레벨).
+    assert by[32_460_000].ask_total == 3000
+    assert by[32_460_000].bid_total == 3000
+
+
 def test_query_bucketed_ratio_int32_overflow_on_extreme_book(tmp_path: Path) -> None:
     """A limit-up small-cap book can carry ~350M shares per level; the 10-level
     SUM then exceeds INT32 max (2_147_483_647). Regression for the production
@@ -408,28 +434,27 @@ def test_query_bucketed_depth_heatmap_picks_last_continuous_snapshot(tmp_path: P
     assert row.bucket_intra_ms == 32_400_000
 
 
-def test_query_bucketed_depth_heatmap_deep_book_classification(tmp_path: Path) -> None:
-    """session_close_ms를 넘겨 deep-book 분류 경로(_DEEP_BOOK_SQL /
-    _last_continuous_intra_ms)를 실제로 태운다.
+def test_query_bucketed_depth_heatmap_drops_fully_auction_bucket(tmp_path: Path) -> None:
+    """session_close_ms를 넘겨 공용 술어(_book_indicator_eligible_sql) WHERE 사전 필터를
+    태운다. ADR-0062 v3: 완전-동시호가 버킷은 결과에서 통째로 빠진다(매도벽과 동일 패턴,
+    종전 last-in-bucket 폴백 방출 폐기 — 프론트 라이브 빌더 드롭과 파리티).
 
-    - 연속거래 버킷(15:18): deep book(레벨4..10 > 0)인 늦은 스냅샷 → is_pre TRUE
-      → 그 스냅샷의 40컬럼을 대표로 유지.
-    - 마감 동시호가 버킷(15:20:58, intra > last_continuous_ms): 3-레벨 붕괴
-      shallow book만 → 대표(연속) 없음 → last-in-bucket으로 폴백해 shallow book을
-      그대로 반환한다(총잔량 지표처럼 0으로 지우지 않음 — 정규화는 프론트 담당).
+    - 연속거래 버킷(15:18): deep book(레벨4..10 > 0) 스냅샷 → 유효 → 40컬럼 대표 유지.
+    - 마감 동시호가 버킷(15:20:58): 3-레벨 붕괴 shallow book만 → 유효 스냅샷 0 →
+      GROUP BY에서 자연 탈락(방출되지 않는다).
     query_bucketed_ratio의 auction/deep-book 테스트와 동일한 fixture 구성."""
     from hoga.tables.snapshots import query_bucketed_depth_heatmap
 
     z = tuple([0] * 10)
-    # 15:18:00 연속거래 책(레벨4..10 > 0) — last_continuous_ms를 세운다.
+    # 15:18:00 연속거래 책(레벨4..10 > 0) — 유일한 유효 스냅샷.
     continuous = Orderbook(
         ts_ms=151_800_000, seq=1,
         ask_p=tuple(range(101, 111)), ask_q=(10, 20, 30, 40, 5, 6, 7, 8, 9, 1), ask_d=z,
         bid_p=tuple(range(100, 90, -1)), bid_q=(50, 40, 30, 20, 5, 5, 5, 5, 5, 5), bid_d=z,
         tot_ask=0, tot_ask_d=0, tot_bid=0, tot_bid_d=0,
     )
-    # 15:20:58 마감 동시호가: 3-레벨 붕괴(레벨4+ = 0) shallow book 2건 한 버킷.
-    # intra > last_continuous_ms → is_pre FALSE. 늦은 쪽(seq3)이 last-in-bucket 대표.
+    # 15:20:58 마감 동시호가: 3-레벨 붕괴(레벨4+ = 0) shallow book 2건 한 버킷 →
+    # _DEEP_BOOK_SQL 탈락 → 유효 스냅샷 0 → 버킷 자연 탈락.
     collapsed1 = Orderbook(
         ts_ms=152_058_000, seq=2,
         ask_p=(101, 102, 103) + (0,) * 7, ask_q=(99, 98, 97) + (0,) * 7, ask_d=z,
@@ -448,8 +473,8 @@ def test_query_bucketed_depth_heatmap_deep_book_classification(tmp_path: Path) -
     rows = query_bucketed_depth_heatmap(
         con, path=out, bucket_ms=1000, session_close_ms=153000000,
     )
-    assert len(rows) == 2  # 연속거래 버킷 + 마감 동시호가 버킷 (bucket-ascending)
-    cont_row, auction_row = rows[0], rows[1]
+    assert len(rows) == 1  # 연속거래 버킷만 — 완전-동시호가 버킷은 탈락
+    cont_row = rows[0]
 
     # 연속거래 버킷: deep 스냅샷(seq1)의 40컬럼을 그대로 유지.
     assert cont_row.ask_qtys == (10, 20, 30, 40, 5, 6, 7, 8, 9, 1)
@@ -457,11 +482,30 @@ def test_query_bucketed_depth_heatmap_deep_book_classification(tmp_path: Path) -
     assert cont_row.ask_prices == tuple(range(101, 111))
     assert cont_row.bid_prices == tuple(range(100, 90, -1))
 
-    # 마감 동시호가 버킷: 대표(연속) 없음 → last-in-bucket(seq3) shallow book 폴백.
-    assert auction_row.ask_qtys == (50, 40, 30) + (0,) * 7
-    assert auction_row.bid_qtys == (5, 5, 5) + (0,) * 7
-    assert auction_row.ask_prices == (201, 202, 203) + (0,) * 7
-    assert auction_row.bid_prices == (200, 199, 198) + (0,) * 7
+
+def test_query_bucketed_depth_heatmap_drops_opening_auction_bucket(tmp_path: Path) -> None:
+    """ADR-0062 v3: session_open_ms 하한으로 개장 동시호가 버킷을 배제한다(매도벽 동일).
+    개장 전 10레벨 호가(구조 술어를 통과하는 라이브 WS 가정)라도 open 하한이 잡는다.
+
+    - 08:59:00 개장 전 deep book(구조 통과) → open 하한(<09:00)으로 배제 → 버킷 탈락.
+    - 09:01:00 정규장 deep book → 유효 → 방출."""
+    from hoga.tables.snapshots import query_bucketed_depth_heatmap
+
+    # 08:59:00 개장 전: 일부러 deep book(레벨4..10 > 0)으로 둬 구조 술어를 통과시킨다 —
+    # open 하한이 유일한 배제 경로임을 검증.
+    pre_open = _ob(ts_ms=85_900_000, seq=1, ask_q=(100,) * 10, bid_q=(100,) * 10)
+    # 09:01:00 정규장 deep book.
+    regular = _ob(ts_ms=90_100_000, seq=2, ask_q=(300,) * 10, bid_q=(300,) * 10)
+    out = tmp_path / "snapshots.parquet"
+    write_parquet([pre_open, regular], out)
+    con = duckdb.connect()
+    rows = query_bucketed_depth_heatmap(
+        con, path=out, bucket_ms=60000,
+        session_open_ms=90000000, session_close_ms=153000000,
+    )
+    assert len(rows) == 1  # 정규장 버킷만 — 개장 동시호가 버킷은 open 하한으로 탈락
+    assert rows[0].bucket_intra_ms == 32_460_000  # 09:01 linear ms
+    assert rows[0].ask_qtys[0] == 300
 
 
 def test_query_bucketed_depth_heatmap_max_total_snapshot(tmp_path: Path) -> None:

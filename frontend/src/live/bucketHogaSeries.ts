@@ -1,5 +1,6 @@
 import type { QuoteRatioPoint, FillStrengthPoint, OrderbookLevel } from '../api/types';
 import { quoteImbalance } from '../util/imbalance';
+import { isAfterRegularOpen } from '../util/tradingDay';
 
 /** One live OB snapshot as it crosses the SSE seam (SR-1). The chart reads
  * t_ms + total_*_qty; LiveSidebar reads asks/bids too (optional because the
@@ -46,6 +47,16 @@ export function isContinuousBook(s: ObSnapshot): boolean {
   return hasDeep(s.asks) && hasDeep(s.bids);
 }
 
+/** 호가 파생 지표(호가비·총잔량·히트맵·매도/매수 최대벽) 공용 '유효 스냅샷' 술어 (ADR-0062 v3).
+ * 백엔드 `_book_indicator_eligible_sql`의 구조+개장 하한과 글자 그대로 같은 정의:
+ * 연속거래 호가창(3호가 붕괴 아님, `isContinuousBook`) AND 정규장 개장(09:00) 이후
+ * (`isAfterRegularOpen`). 마감 상한(`<= sessionClose` / `lastContinuousMs`)은 백엔드
+ * session_close 대응으로 각 버킷 경계에서 따로 적용한다 — 미래 틱에 의존하는 이 상한만
+ * 지표별로 두고, 미래 무관한 구조+개장은 이 한 술어로 통일한다(peak 래칫도 공유). */
+export function isIndicatorEligibleBook(s: ObSnapshot): boolean {
+  return isContinuousBook(s) && isAfterRegularOpen(s.t_ms);
+}
+
 /** Bucket label = floor(t_ms / bucketMs) * bucketMs (bucket start). Matches
  * `aggregateCandles.ts` convention so candle/volume/호가 align on the x-axis.
  *
@@ -86,16 +97,18 @@ export function bucketHogaSeries(
   // toggle (ADR-0062). The 0 point is kept so the mask / overlay band / day-
   // boundary connector handling stay intact. Mirrors query_bucketed_ratio's
   // CASE WHEN is_pre on the past-date path.
-  // ADR-0062 v2 (VI 통일): 대표선정에 시간 경계뿐 아니라 per-snapshot isContinuousBook도
-  // 요구해 **장중 VI 단일가 붕괴책**을 대표·Intra-Bar Max 누적에서 배제한다(백엔드
-  // _DEEP_BOOK_SQL 통일과 동일). VI-only 버킷은 아래 else의 0-센티넬로 방출되고,
-  // 연속거래가 섞인 버킷은 연속 스냅샷이 대표가 된다. asks/bids 미동반(totals-only)
-  // 스냅샷은 isContinuousBook이 true라 기존 폴백(붕괴 감지 불가 → 포함)이 유지된다.
+  // ADR-0062 v2/v3 (동시호가 배제 통일): 대표선정에 시간 상한(lastContinuousMs)뿐 아니라
+  // 공용 술어 isIndicatorEligibleBook = per-snapshot isContinuousBook AND isAfterRegularOpen을
+  // 요구한다 — **장중 VI 단일가 붕괴책**(구조)과 **개장 동시호가**(v3, 09:00 하한)를 대표·
+  // Intra-Bar Max 누적에서 배제(백엔드 _book_indicator_eligible_sql·매도벽과 동일). VI-only·
+  // 개장전 버킷은 아래 else의 0-센티넬로 방출되고, 연속거래가 섞인 버킷은 연속 스냅샷이
+  // 대표가 된다. asks/bids 미동반(totals-only) 스냅샷은 isContinuousBook이 true라 기존
+  // 폴백(붕괴 감지 불가 → 포함)이 유지된다(개장 하한은 여전히 적용).
   const quoteByBucket = new Map<number, QuoteRatioPoint>();
   const seenPre = new Set<number>();
   for (const s of obSorted) {
     const t = Math.floor(s.t_ms / bucketMs) * bucketMs;
-    if (s.t_ms <= lastContinuousMs && isContinuousBook(s)) {
+    if (s.t_ms <= lastContinuousMs && isIndicatorEligibleBook(s)) {
       // pre-auction: last continuous wins (close = bid_total/ask_total). Intra-Bar
       // Max fields accumulate over the SAME continuous-snapshot set (s.t_ms <=
       // lastContinuousMs) so 동시호가 is excluded identically and bid_max ≥ bid_total

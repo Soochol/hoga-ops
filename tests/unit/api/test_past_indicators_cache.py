@@ -101,10 +101,10 @@ def test_ratio_disk_payload_is_seven_tuples(tmp_path: Path) -> None:
     assert PastIndicatorsCache(tmp_path).get_ratio(CODE, DATE, SRC) == RATIO
 
 
-def test_schema_version_bumped_to_5_invalidates_peak_candidate_cache(tmp_path: Path) -> None:
-    """SCHEMA_VERSION 2→5: 시간별 후보 배열 없는 peak 캐시는 버전 미스로 무효."""
+def test_schema_version_bumped_to_6_invalidates_peak_candidate_cache(tmp_path: Path) -> None:
+    """SCHEMA_VERSION 2→6: 시간별 후보 배열 없는 peak 캐시는 버전 미스로 무효."""
     from hoga.api import past_indicators_cache as mod
-    assert mod.SCHEMA_VERSION == 5
+    assert mod.SCHEMA_VERSION == 6
     p = tmp_path / "kis-past-indicators" / CODE / SRC / f"{DATE}.ratio.json"
     p.parent.mkdir(parents=True, exist_ok=True)
     p.write_text(json.dumps({"version": 1, "rows": [[0, 10, 20]], "fetched_at_ms": 0}),
@@ -128,10 +128,10 @@ def test_schema_version_bumped_to_5_invalidates_peak_candidate_cache(tmp_path: P
     assert PastIndicatorsCache(tmp_path).has_ask_peak(CODE, DATE, SRC, 60_000) is False
 
 
-def test_schema_version_bumped_to_5_invalidates_price_based_peak_classification_cache(tmp_path: Path) -> None:
-    """SCHEMA_VERSION 3→5: 가격 집합 기준 peak 분류 캐시는 이벤트/lifecycle 기준 재계산이 필요."""
+def test_schema_version_bumped_to_6_invalidates_price_based_peak_classification_cache(tmp_path: Path) -> None:
+    """SCHEMA_VERSION 3→6: 가격 집합 기준 peak 분류 캐시는 이벤트/lifecycle 기준 재계산이 필요."""
     from hoga.api import past_indicators_cache as mod
-    assert mod.SCHEMA_VERSION == 5
+    assert mod.SCHEMA_VERSION == 6
 
     peak_dir = tmp_path / "kis-past-indicators" / CODE / SRC
     peak_dir.mkdir(parents=True, exist_ok=True)
@@ -158,10 +158,10 @@ def test_schema_version_bumped_to_5_invalidates_price_based_peak_classification_
     assert reloaded.has_bid_peak(CODE, DATE, SRC, 60_000) is False
 
 
-def test_schema_version_bumped_to_5_invalidates_raw_peak_event_rank_cache(tmp_path: Path) -> None:
-    """SCHEMA_VERSION 4→5: 같은 가격 raw 이벤트 순위 캐시는 lifecycle 기준 재계산이 필요."""
+def test_schema_version_bumped_to_6_invalidates_raw_peak_event_rank_cache(tmp_path: Path) -> None:
+    """SCHEMA_VERSION 4→6: 같은 가격 raw 이벤트 순위 캐시는 lifecycle 기준 재계산이 필요."""
     from hoga.api import past_indicators_cache as mod
-    assert mod.SCHEMA_VERSION == 5
+    assert mod.SCHEMA_VERSION == 6
 
     peak_dir = tmp_path / "kis-past-indicators" / CODE / SRC
     peak_dir.mkdir(parents=True, exist_ok=True)
@@ -224,11 +224,11 @@ def test_ask_bid_peak_cache_survives_new_cache_instance(tmp_path: Path) -> None:
     assert reloaded.get_bid_peak("005930", "20260619", "hogaplay", 60_000) == bid
 
 
-def test_peak_cache_loads_version_5_payload_without_ranked_untraded_arrays(tmp_path: Path) -> None:
+def test_peak_cache_loads_version_6_payload_without_ranked_untraded_arrays(tmp_path: Path) -> None:
     peak_dir = tmp_path / "kis-past-indicators" / CODE / SRC
     peak_dir.mkdir(parents=True, exist_ok=True)
     payload = {
-        "version": 5,
+        "version": 6,
         "value": {
             "date": "20260619",
             "price": 70000,

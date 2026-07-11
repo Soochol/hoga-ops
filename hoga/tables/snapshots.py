@@ -491,6 +491,41 @@ _BID_DEEP_SUM: str = " + ".join(
 # 연속거래 호가창 술어 — query_bucketed_ratio의 deep_book_sql과 동일(단일진실원).
 # 클라 isContinuousBook(bucketHogaSeries.ts)과도 글자 그대로 같은 정의.
 _DEEP_BOOK_SQL: str = f"(({_ASK_DEEP_SUM}) > 0 AND ({_BID_DEEP_SUM}) > 0)"
+
+
+def _book_indicator_eligible_sql(
+    intra_ms_expr: str,
+    *,
+    session_open_ms: int | None = None,
+    session_close_ms: int | None = None,
+) -> str:
+    """호가 파생 지표(호가비·총잔량·히트맵·매도/매수 최대벽) 공용 '유효 스냅샷' 술어 (ADR-0062 v3).
+
+    유효 = 연속거래 호가창(``_DEEP_BOOK_SQL``) AND ``session_open <= t <= session_close``.
+    open/close는 하드코딩된 시계가 아니라 그 날짜 메타의 실제 세션 경계(HHMMSSmmm native)
+    — 수능일 지연 개장·반나절장 조기 마감이 자동 반영된다. None인 바운드는 그 항만 생략하고,
+    둘 다 None이면 순수 구조 술어(``_DEEP_BOOK_SQL``)만 남는다. 클라
+    ``isIndicatorEligibleBook``(bucketHogaSeries.ts)과 글자 그대로 같은 정의(단일진실원).
+
+    동시호가 3경로가 전부 이 한 술어로 배제된다:
+      * **마감 동시호가·장중 VI**: 3호가 붕괴 → 구조 술어(``_DEEP_BOOK_SQL``)가 배제.
+      * **개장 동시호가**(08:50~09:00): hogaplay 실측(2026-07-11, 무작위 40파일 개장 전
+        36,371행 전수)상 이 역시 3호가 붕괴책이라 구조 술어가 이미 배제한다. ``session_open``
+        하한은 라이브 KIS WS 개장 전 호가가 10레벨일 가능성(PR #96 제보 정황; 장중 미실측)에
+        대한 안전망 — 과거 데이터에는 중복이라 무해.
+      * **마감 교차 후 호가창 재확장**(~15:30:14 > close): ``session_close`` 상한이 배제.
+        종전 호가비/히트맵이 쓰던 ``<= last_continuous_ms`` 간접층(파일 전체 max 사전 스캔)과
+        수학적 동치 — {deep 행 중 close 이하} = {deep 행 중 last_continuous 이하} — 이므로
+        v3에서 간접층을 제거하고 매도벽과 같은 직접 close 상한으로 통일했다.
+    """
+    parts = [_DEEP_BOOK_SQL]
+    if session_open_ms is not None:
+        parts.append(f"{intra_ms_expr} >= {hhmmssms_to_intra_ms_sql(str(int(session_open_ms)))}")
+    if session_close_ms is not None:
+        parts.append(f"{intra_ms_expr} <= {hhmmssms_to_intra_ms_sql(str(int(session_close_ms)))}")
+    return " AND ".join(parts)
+
+
 _ASK_DEEP_Q_INDEXES: tuple[int, ...] = tuple(
     _QUERY_COLS.index(f"ask_q{i}")
     for i in range(_AUCTION_BOOK_DEPTH + 1, ORDERBOOK_LEVELS + 1)
@@ -804,6 +839,7 @@ def query_bucketed_ratio(
     *,
     path: Path,
     bucket_ms: int,
+    session_open_ms: int | None = None,
     session_close_ms: int | None = None,
 ) -> list[QuoteRatioRow]:
     """Bucket snapshots and emit the depth totals of the representative snapshot per bucket.
@@ -811,22 +847,25 @@ def query_bucketed_ratio(
     For each bucket, ``ask_total`` / ``bid_total`` are the SUM across all 10
     ask_q / bid_q level columns of the bucket's representative snapshot.
 
-    The representative is the last *continuous-trading* snapshot. The closing
-    Auction Window (and intraday VI) collapses the book to 3 levels per side, so a
-    snapshot is continuous-trading iff it shows depth beyond level 3
-    (``_ASK_DEEP_SUM`` / ``_BID_DEEP_SUM`` > 0). ``last_continuous_ms`` = the last
-    continuous snapshot at/before ``session_close_ms``; ``pre_auction_pred``
-    (``is_pre``) is true for rows at/before it. Within a bucket, is_pre rows
-    outrank non-is_pre rows for the representative pick, falling back to the
-    last overall row when a bucket has none (fully inside the auction window,
-    left for the display Auction Mask, ADR-0029). This structural boundary
-    replaces the prior ``session_close - 10min`` clock, which mis-sliced the
-    tail bucket when the real continuous→auction transition drifted off
-    15:20:00 (observed 15:20:01.xx). The ``<= session_close`` bound is
-    load-bearing: every stock shows a post-cross book re-expansion (~15:30:14)
-    that would otherwise pull the threshold past the auction. When
-    ``session_close_ms`` is None (or no continuous snapshot exists) the
-    predicate is the constant TRUE, i.e. plain last-in-bucket. See ADR-0062.
+    The representative is the last *continuous-trading* snapshot inside the
+    session. A snapshot is eligible (``is_pre``) iff it is a continuous-trading
+    book (depth beyond level 3 on both sides, ``_DEEP_BOOK_SQL``) AND its time is
+    within ``[session_open, session_close]`` — the shared ``_book_indicator_
+    eligible_sql`` predicate (ADR-0062 v3), identical to 매도/매수 최대벽 and the
+    client ``isIndicatorEligible``. Within a bucket, is_pre rows outrank non-is_pre
+    rows for the representative pick, falling back to the last overall row when a
+    bucket has none (fully inside an auction window, left for the display Auction
+    Mask, ADR-0029). The structural (deep-book) test replaces the prior
+    ``session_close - 10min`` clock, which mis-sliced the tail bucket when the real
+    continuous→auction transition drifted off 15:20:00 (observed 15:20:01.xx). The
+    ``<= session_close`` bound is load-bearing: every stock shows a post-cross book
+    re-expansion (~15:30:14) that would otherwise leak past the auction; the
+    ``>= session_open`` bound excludes the opening auction (ADR-0062 v3, matching
+    매도벽). When ``session_close_ms`` is None OR the file has no in-session deep
+    book at all (aggregation-unit tests / degenerate captures) the predicate is
+    the constant TRUE — plain last-in-bucket, and the ``session_open_ms`` bound
+    is deliberately NOT applied either (don't blank a degenerate series). See
+    ADR-0062.
 
     Buckets on LINEAR ms-from-midnight, not raw HHMMSSmmm. The raw encoding has
     gaps at minute / hour boundaries, so arithmetic bucketing of HHMMSSmmm
@@ -881,28 +920,23 @@ def query_bucketed_ratio(
     Returns rows in ascending ``bucket_intra_ms`` order. Empty parquet → [].
     """
     intra_ms_expr = hhmmssms_to_intra_ms_sql("ts_ms")
-    deep_book_sql = _DEEP_BOOK_SQL  # SSOT — same predicate as query_day_ask_peak & client isContinuousBook
-    last_continuous_ms: int | None = None
-    if session_close_ms is not None:
-        close_intra_sql = hhmmssms_to_intra_ms_sql(str(int(session_close_ms)))
-        row = con.execute(
-            f"SELECT max({intra_ms_expr}) FROM read_parquet(?) "
-            f"WHERE {deep_book_sql} AND {intra_ms_expr} <= {close_intra_sql}",
-            [str(path)],
-        ).fetchone()
-        if row is not None and row[0] is not None:
-            last_continuous_ms = int(row[0])
+    last_continuous_ms = (
+        _last_continuous_intra_ms(con, path=path, session_close_ms=session_close_ms)
+        if session_close_ms is not None
+        else None
+    )
     if last_continuous_ms is None:
-        # 세션 바운드 없음 OR deep book 부재(퇴화 fixture) — last-in-bucket 폴백 유지
-        # (ADR-0062). 실데이터는 항상 세션 바운드 + deep book이라 이 분기는 집계 단위
-        # 테스트/퇴화 데이터에서만 발화한다.
+        # 세션 바운드 없음 OR 세션 내 deep book 전무(퇴화 fixture/깨진 캡처) — 시리즈를
+        # 통째로 비우지 않고 last-in-bucket 폴백을 유지한다(ADR-0062). 실데이터는 항상
+        # 세션 바운드 + deep book이라 이 분기는 집계 단위 테스트/퇴화 데이터에서만 발화한다.
         pre_auction_pred = "TRUE"
     else:
-        # ADR-0062 v2 (VI 통일): `_DEEP_BOOK_SQL`(4호가 이상 잔량)을 AND해 마감 동시호가
-        # 뿐 아니라 **장중 VI 단일가 붕괴책도** 대표선정에서 구조적으로 배제한다
-        # (query_bucket_representatives·피크와 동일 SSOT 술어). 시간 경계는 마감 후
-        # 호가창 재확장(~15:30:14) 유입을 계속 막는다.
-        pre_auction_pred = f"({deep_book_sql} AND {intra_ms_expr} <= {last_continuous_ms})"
+        # ADR-0062 v3 (동시호가 배제 통일): 매도벽·히트맵과 글자 그대로 같은 공용 술어 —
+        # 구조(마감·VI·개장 3호가 붕괴) AND open ≤ t ≤ close. deep book이 존재하는 이
+        # 분기에서 `<= session_close`는 종전 `<= last_continuous`와 수학적 동치다.
+        pre_auction_pred = _book_indicator_eligible_sql(
+            intra_ms_expr, session_open_ms=session_open_ms, session_close_ms=session_close_ms,
+        )
     rows = con.execute(
         f"""
         WITH keyed AS (
@@ -947,11 +981,11 @@ class DepthHeatmapRow:
     ``bucket_intra_ms``는 LINEAR ms-from-midnight (NOT raw HHMMSSmmm, NOT unix
     ms) — 호출자가 ``ms_from_midnight_to_unix_ms(date, bucket_intra_ms)``로 unix
     변환. QuoteRatioRow.bucket_intra_ms와 동일 규약. 대표 선택 규칙도
-    query_bucketed_ratio와 동일(is_pre DESC, ts_ms DESC).
+    query_bucketed_ratio와 동일.
 
-    ``ask_prices``/``ask_qtys``는 index 0 = 최우선(best) 호가. 완전-auction
-    버킷은 대표가 없어도 last-in-bucket으로 폴백(정규화는 프론트가 담당하므로
-    표시상 문제 없음 — 총잔량 지표처럼 0으로 지울 필요 없다).
+    ``ask_prices``/``ask_qtys``는 index 0 = 최우선(best) 호가. 유효 스냅샷(연속거래
+    +세션내)이 하나도 없는 완전-동시호가 버킷은 결과에서 통째로 빠진다(ADR-0062 v3
+    — 매도벽의 "사전 필터→자연 탈락"과 동일; 종전의 last-in-bucket 폴백 방출 폐기).
 
     ``*_max`` 필드(분봉 내 최댓값): 버킷 내 총잔량(bid+ask 10레벨 합)이 최대였던
     스냅샷의 40컬럼(캔들 고가처럼 "분봉 내 최댓값 기준" 토글용). 대표(종가)와 독립.
@@ -973,6 +1007,7 @@ def query_bucketed_depth_heatmap(
     *,
     path: Path,
     bucket_ms: int,
+    session_open_ms: int | None = None,
     session_close_ms: int | None = None,
 ) -> list[DepthHeatmapRow]:
     """버킷별 대표 스냅샷의 10단계 가격·잔량을 방출한다.
@@ -981,25 +1016,31 @@ def query_bucketed_depth_heatmap(
     컬럼을 하나의 struct_pack으로 묶어 arg_max(rep_key)로 한 물리 행에서 함께
     가져온다 — 총잔량 대신 개별 레벨을 보존하는 것만 다르다. Empty parquet → [].
 
+    ADR-0062 v3: 공용 술어 ``_book_indicator_eligible_sql``(구조+세션 경계)로 유효
+    스냅샷만 WHERE 사전 필터한다 — 매도벽과 동일 패턴. 필터 뒤 남는 행은 모두 유효라
+    대표는 그냥 버킷의 마지막 행(``rep_key = intra_ms``)이고, 유효 행이 없는 완전-
+    동시호가 버킷(마감·장중 VI·개장 동시호가)은 GROUP BY에서 자연 탈락한다(종전
+    is_pre CASE + last-in-bucket 폴백 방출을 대체 — 프론트 라이브 빌더와 파리티).
+
     ``*_max`` 필드는 버킷 내 총잔량(bid+ask 10레벨 합)이 최대였던 스냅샷의 40컬럼
-    (캔들 고가처럼 "분봉 내 최댓값 기준"). 정렬 키는 산술 ``is_pre*1e8 + total``이
-    아니라 COMPOSITE struct ``struct_pack(is_pre, total)``을 쓴다 — 총잔량이 1억주를
-    넘을 수 있어(상한가 소형주) 1e8 구간을 넘쳐 순위를 오염시키기 때문. struct는
-    필드 순서대로 사전식 비교되므로 is_pre 우선(연속거래 > 동시호가), 그 안에서 total
-    최대가 뽑힌다 — query_bucketed_ratio의 imb_max struct 키와 동일한 기법.
+    (캔들 고가처럼 "분봉 내 최댓값 기준"). 사전 필터로 유효 행만 남으므로 정렬 키는
+    ``total`` 단독이다(종전 struct_pack(is_pre, total)의 is_pre 우선 정렬은 이제 불필요).
     """
     intra_ms_expr = hhmmssms_to_intra_ms_sql("ts_ms")
-    last_continuous_ms: int | None = None
-    if session_close_ms is not None:
-        last_continuous_ms = _last_continuous_intra_ms(
-            con, path=path, session_close_ms=session_close_ms
-        )
+    last_continuous_ms = (
+        _last_continuous_intra_ms(con, path=path, session_close_ms=session_close_ms)
+        if session_close_ms is not None
+        else None
+    )
     if last_continuous_ms is None:
-        pre_auction_pred = "TRUE"   # 세션 바운드 없음/퇴화 — last-in-bucket 폴백(호가비와 동일)
+        # 세션 바운드 없음 OR 세션 내 deep book 전무(퇴화 fixture) — 사전 필터 없이
+        # last-in-bucket 폴백(호가비와 동일). 실데이터 미발화.
+        where_pred = "TRUE"
     else:
-        # ADR-0062 v2 (VI 통일): `_DEEP_BOOK_SQL`을 AND해 장중 VI 붕괴책을 대표선정에서
-        # 배제(마감 동시호가는 시간 경계가 그대로 처리). 호가비와 동일 규칙.
-        pre_auction_pred = f"({_DEEP_BOOK_SQL} AND {intra_ms_expr} <= {last_continuous_ms})"
+        # ADR-0062 v3 (동시호가 배제 통일): 호가비·매도벽과 글자 그대로 같은 공용 술어.
+        where_pred = _book_indicator_eligible_sql(
+            intra_ms_expr, session_open_ms=session_open_ms, session_close_ms=session_close_ms,
+        )
 
     level_cols = []
     for i in range(1, ORDERBOOK_LEVELS + 1):
@@ -1017,17 +1058,15 @@ def query_bucketed_depth_heatmap(
         f"""
         WITH keyed AS (
           SELECT ({intra_ms_expr} // {bucket_ms}) AS bucket,
-                 ((CASE WHEN ({pre_auction_pred}) THEN 1 ELSE 0 END) * 100000000
-                   + ({intra_ms_expr})) AS rep_key,
-                 (CASE WHEN ({pre_auction_pred}) THEN 1 ELSE 0 END) AS is_pre,
+                 ({intra_ms_expr}) AS rep_key,
                  (({_BID_Q_SUM}) + ({_ASK_Q_SUM})) AS total,
                  {passthrough_cols}
           FROM read_parquet(?)
+          WHERE {where_pred}
         )
         SELECT bucket * {bucket_ms} AS bucket_intra_ms,
                arg_max(struct_pack({struct_body}), rep_key) AS rep,
-               arg_max(struct_pack({struct_body}),
-                       struct_pack(is_pre := is_pre, total := total)) AS rep_max
+               arg_max(struct_pack({struct_body}), total) AS rep_max
         FROM keyed
         GROUP BY bucket
         ORDER BY bucket
@@ -1191,24 +1230,17 @@ def query_day_ask_peak(
     연속거래 스냅샷이므로, raw 틱 max(분 사이 순간값)는 표시 호가창에 안 나타날 수 있다 —
     버킷 대표 위에서 찾아야 "표시한 곳에 실제로 보이는" 벽이 된다.
 
-    동시호가는 세 경로 모두 배제(총잔량 지표와 동치):
-      * **개장 동시호가**(<09:00): 10레벨 누적 호가라 ``_DEEP_BOOK_SQL``을 통과한다 →
-        ``session_open_ms`` 하한으로 배제(총잔량의 surgeStartHHMM 시각 게이트에 대응하나,
-        여기선 표시 prefs가 아닌 구조적 세션 경계를 쓴다).
-      * **마감 동시호가 / 장중 VI**(3-레벨 단일가 붕괴): ``_DEEP_BOOK_SQL``이 구조적 배제.
-      * **마감 교차 후 호가창 재확장**(~15:30:14): ``_DEEP_BOOK_SQL``을 통과한다 →
-        ``session_close_ms`` 상한으로 배제(``query_bucketed_ratio``의 ``<= session_close``
-        경계와 동일 목적).
+    동시호가 배제는 공용 술어 ``_book_indicator_eligible_sql``(호가비·히트맵과 동일)
+    한 곳으로 통일 — 구조(마감·VI·개장 동시호가 3-레벨 붕괴) AND open ≤ t ≤ close.
+    ``session_open_ms`` 하한은 개장 동시호가, ``session_close_ms`` 상한은 마감 교차 후
+    호가창 재확장(~15:30:14) 유입을 막는다.
 
     동률이면 가장 이른 시각. 빈 parquet(또는 세션 내 연속거래행 없음) → None. 파일 부재
     가드는 호출자(bundle) 책임. ``bucket_ms``는 > 0 (호출자 validate_bucket_ms 책임)."""
     intra = hhmmssms_to_intra_ms_sql("ts_ms")
-    bounds = [_DEEP_BOOK_SQL]
-    if session_open_ms is not None:
-        bounds.append(f"{intra} >= {hhmmssms_to_intra_ms_sql(str(int(session_open_ms)))}")
-    if session_close_ms is not None:
-        bounds.append(f"{intra} <= {hhmmssms_to_intra_ms_sql(str(int(session_close_ms)))}")
-    where = " AND ".join(bounds)
+    where = _book_indicator_eligible_sql(
+        intra, session_open_ms=session_open_ms, session_close_ms=session_close_ms,
+    )
     # 버킷별 대표 = 마지막 연속거래 스냅샷(rn=1 by ts_ms DESC). 연속거래행으로 사전 필터한 뒤
     # 버킷팅하므로 완전-동시호가 버킷은 행이 없어 자연 탈락(총잔량의 (0,0) 센티넬 불필요).
     def level_union(src: str) -> str:
@@ -1281,12 +1313,9 @@ def query_day_bid_peak(
 ) -> BidPeakRow | None:
     """Past-day bid peak over continuous-trading representative snapshots."""
     intra = hhmmssms_to_intra_ms_sql("ts_ms")
-    bounds = [_DEEP_BOOK_SQL]
-    if session_open_ms is not None:
-        bounds.append(f"{intra} >= {hhmmssms_to_intra_ms_sql(str(int(session_open_ms)))}")
-    if session_close_ms is not None:
-        bounds.append(f"{intra} <= {hhmmssms_to_intra_ms_sql(str(int(session_close_ms)))}")
-    where = " AND ".join(bounds)
+    where = _book_indicator_eligible_sql(
+        intra, session_open_ms=session_open_ms, session_close_ms=session_close_ms,
+    )
 
     def level_union(src: str) -> str:
         return " UNION ALL ".join(
@@ -1462,12 +1491,9 @@ def query_day_ask_bid_peak_dual(
     """
     intra = hhmmssms_to_intra_ms_sql("ts_ms")
     trade_seq_expr = "COALESCE(seq, 0)" if _parquet_has_column(con, trades_path, "seq") else "0"
-    bounds = [_DEEP_BOOK_SQL]
-    if session_open_ms is not None:
-        bounds.append(f"{intra} >= {hhmmssms_to_intra_ms_sql(str(int(session_open_ms)))}")
-    if session_close_ms is not None:
-        bounds.append(f"{intra} <= {hhmmssms_to_intra_ms_sql(str(int(session_close_ms)))}")
-    where = " AND ".join(bounds)
+    where = _book_indicator_eligible_sql(
+        intra, session_open_ms=session_open_ms, session_close_ms=session_close_ms,
+    )
 
     streams, touches = _read_peak_wall_streams(
         con, path=path, trades_path=trades_path, bucket_ms=bucket_ms,

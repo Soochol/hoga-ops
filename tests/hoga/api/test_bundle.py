@@ -2308,6 +2308,7 @@ def test_build_depth_heatmap_slice_converts_rows_to_points(tmp_path):
         engine.conn,
         path=code_dir / "snapshots.parquet",
         bucket_ms=60_000,
+        session_open_ms=90_000_000,
         session_close_ms=153_000_000,
     )
     assert len(points) == 1

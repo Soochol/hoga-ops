@@ -18,11 +18,12 @@ export function kstMinuteOfDay(ms: number): number {
 /** KRX 정규장 개장(09:00) 분. */
 export const KRX_OPEN_MIN = 9 * 60;
 
-/** KRX 정규장 개장(09:00) 이후인가(KST). 개장 동시호가(<09:00)는 10레벨 누적 호가라
- *  isContinuousBook을 통과하므로 구조적 배제가 안 된다 — 당일 매도 최대벽 래칫에서 이 게이트로
- *  배제한다(백엔드 query_day_ask_peak의 session_open 하한과 동일 목적, 총잔량 지표 동치). 마감측은
- *  isContinuousBook이 단일가 붕괴(3레벨)로 처리하고, 과거일 마감후 재확장(~15:30:14)은 백엔드
- *  session_close 상한이 맡으므로 라이브 래칫엔 불필요. */
+/** KRX 정규장 개장(09:00) 이후인가(KST). 공용 술어 isIndicatorEligibleBook의 개장 하한 —
+ *  백엔드 _book_indicator_eligible_sql의 session_open 하한과 동일 목적으로 개장 동시호가를
+ *  배제한다(호가비·총잔량·히트맵·매도/매수 최대벽 공용). 개장 동시호가는 hogaplay 실측상
+ *  3호가로 붕괴해 isContinuousBook이 이미 배제하지만(2026-07-11), 이 하한은 라이브 KIS WS가
+ *  개장 전 10레벨 호가를 밀어줄 가능성(미실측)에 대한 구조적 안전망이다. 마감측은
+ *  isContinuousBook(3레벨 붕괴)+마감 상한(sessionClose/lastContinuousMs)이 맡는다. */
 export function isAfterRegularOpen(ms: number): boolean {
   return kstMinuteOfDay(ms) >= KRX_OPEN_MIN;
 }
