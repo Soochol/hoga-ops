@@ -2280,11 +2280,11 @@ def test_sweep_lifecycle_reopens_after_touch() -> None:
     # (price, is_touched=False) best로 남아야 한다 (untraded).
     events = _ev_frame([(1000, 1, 50000, 100), (3000, 3, 50000, 40)])
     cls = _classify_wall_frame(events, _tk_frame([(2000, 2, 50000)]), side="ask")
-    lifecycles = cls.sort("ts_ms")["lifecycle"].to_list()
-    assert lifecycles[0] != lifecycles[1]  # 터치가 세그먼트를 가른다
+    # lifecycle id는 더 이상 계산하지 않는다(모듈 헤더 정리: 세그먼트는 touched
+    # 순수 → (price, touched) 전역 rank-1과 동치). 관측 계약만 고정한다.
     by_touched = {row["touched"]: row for row in _peak_distinct(cls).to_dicts()}
-    assert by_touched[True]["qty"] == 100   # 터치 전 lifecycle의 best
-    assert by_touched[False]["qty"] == 40   # 터치 후 새 lifecycle
+    assert by_touched[True]["qty"] == 100   # 터치 전 벽 (touched 클래스 best)
+    assert by_touched[False]["qty"] == 40   # 터치 후 재관측 벽 (untouched best)
 
 
 def test_sweep_bid_side_uses_lower_or_equal_domination() -> None:

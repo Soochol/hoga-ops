@@ -140,6 +140,32 @@ soft `memory_limit`을 뚫던 단일 최악 쿼리의 17GB 천장이 제거됐�
 TTL 키를 미러해 `(kind, code, date, source, bucket_ms, session_open_ms, session_close_ms)`
 로 세션 경계를 포함한다(구 가드 키의 경계 누락 잠재 결함 봉합).
 
+### v2.1 — lifecycle 세그먼트 잉여 증명 → pass 2 삭제 (2026-07-11)
+
+v2가 남겨둔 유일한 파이썬 루프(lifecycle Fenwick, 최중량일 1.1s 중 ~0.7s)를 CDQ
+벡터화하려다, 더 강한 사실을 증명했다: **lifecycle은 최종 출력에 잉여다.**
+
+정리: 모든 (price, lifecycle) 세그먼트는 touched 값이 순수하다. 가격 p의 지배
+터치 키를 d_1 < … < d_K라 하면 count(e)=c<K인 이벤트는 d_{c+1} ≥ key(e)가
+존재해 touched, c=K면 어떤 지배 터치도 ≥ key(e)가 아니라 untouched. 따라서
+distinct_best[(p, X)]는 "클래스 X 전역 rank-1"과 동치이고(순수 분할의 max-of-
+maxes = 클래스 전역 max), per-event lifecycle id도, per-(price,lifecycle) 중간
+dedup도 불필요하다. 원 SQL(ADR-0084)의 lifecycle 기계는 이 동치를 모른 채
+일반형으로 구현된 것이었다.
+
+검증: 동결 v1 오라클(lifecycle 기계 포함) 대비 시드 퍼즈 **120케이스** + 실데이터
+3일(최중량 034020/20260116 포함) 전 필드 일치 — 정리의 경험적 재확인.
+
+실측(백필 부하 중, v2 → v2.1):
+
+| 지표 | v2 | v2.1 |
+|---|---|---|
+| 단독 최중량일 | 1.1s | **0.53s** (v1 대비 12×) |
+| 동시 ×12 wall | 7.1s | **1.95s** (per-day p50 1.79s) |
+| 동시 ×12 피크 RSS | +6.2GB | +5.5GB |
+
+이로써 분류기는 파이썬 루프 0개 — DuckDB 스캔 + polars 프레임 연산만 남았다.
+
 ### 이월(deferred) — 후속 작업
 
 1. **알려진 peak-wall 테스트 불일치** (별건, 제품 의도 필요): 분기 기준(main `f56347be`)에 이미
