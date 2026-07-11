@@ -4,6 +4,7 @@ import type { RangeBundle } from '../../api/types';
 import { createVirtualAxis } from '../../util/virtualAxis';
 import {
   layoutBrokerLateEntryLabels,
+  makeCachedBrokerLateEntryProjector,
   projectBrokerLateEntryMarkers,
 } from './brokerLateEntryMarkers';
 
@@ -304,5 +305,120 @@ describe('layoutBrokerLateEntryLabels', () => {
         color: 'var(--fg-dim)',
       },
     ]);
+  });
+});
+
+describe('makeCachedBrokerLateEntryProjector (과거/당일 분리 = 풀 투영 동일)', () => {
+  const CTX = {
+    auctionWindowMask: false,
+    outlierFilterEnabled: false,
+    outlierThreshold: 100,
+    sideMode: 'both' as const,
+    buyColor: '#ef4444',
+    sellColor: '#3b82f6',
+  };
+
+  // 2일 히스토리 번들 — 과거일(20260626) + 당일(20260627). 당일 ratio/events 는
+  // overrides 로 매 틱 갱신을 흉내낸다.
+  function twoDayBundle(overrides: Partial<RangeBundle> = {}): RangeBundle {
+    return bundle({
+      to_date: '20260627',
+      segments: [
+        { date: '20260626', session_open_ms: OPEN, session_close_ms: CLOSE },
+        { date: '20260627', session_open_ms: DAY2_OPEN, session_close_ms: DAY2_CLOSE },
+      ],
+      candles: [
+        candle(OPEN), candle(OPEN + 120_000), candle(OPEN + 23_220_000),
+        candle(DAY2_OPEN), candle(DAY2_OPEN + 120_000),
+      ],
+      quote_ratio: {
+        bucket_ms: 60_000,
+        points: [
+          ratioPoint(OPEN, 200, 100),
+          ratioPoint(OPEN + 120_000, 100, 300),
+          ratioPoint(OPEN + 23_220_000, 100, 400),
+          ratioPoint(DAY2_OPEN, 150, 150),
+          ratioPoint(DAY2_OPEN + 120_000, 100, 250),
+        ],
+      },
+      broker_late_entries: [
+        { t_ms: OPEN, broker: '삼성증권', side: 'buy', net: 10 },
+        { t_ms: OPEN + 120_000, broker: '키움증권', side: 'sell', net: -20 },
+        { t_ms: DAY2_OPEN + 120_000, broker: '미래증권', side: 'buy', net: 30 },
+      ],
+      ...overrides,
+    });
+  }
+
+  const twoDayAxis = () => createVirtualAxis([
+    { date: '20260626', sessionOpenMs: OPEN, sessionCloseMs: CLOSE },
+    { date: '20260627', sessionOpenMs: DAY2_OPEN, sessionCloseMs: DAY2_CLOSE },
+  ]);
+
+  it('초기 투영이 풀 투영과 동일', () => {
+    const axis = twoDayAxis();
+    const cached = makeCachedBrokerLateEntryProjector();
+    const b = twoDayBundle();
+    expect(cached(b, axis, CTX)).toEqual(projectBrokerLateEntryMarkers(b, axis, CTX));
+  });
+
+  it('당일 ratio/events 가 매 틱 갱신돼도(과거 캐시 유지) 풀 투영과 동일', () => {
+    const axis = twoDayAxis();
+    const cached = makeCachedBrokerLateEntryProjector();
+    // 틱1: 당일 첫 투영.
+    const b1 = twoDayBundle();
+    expect(cached(b1, axis, CTX)).toEqual(projectBrokerLateEntryMarkers(b1, axis, CTX));
+    // 틱2: 당일 ratio 마지막 점 값 변경 + 당일 이벤트 추가(새 배열 참조 = SSE 틱).
+    const b2 = twoDayBundle({
+      quote_ratio: {
+        bucket_ms: 60_000,
+        points: [
+          ratioPoint(OPEN, 200, 100),
+          ratioPoint(OPEN + 120_000, 100, 300),
+          ratioPoint(OPEN + 23_220_000, 100, 400),
+          ratioPoint(DAY2_OPEN, 150, 150),
+          ratioPoint(DAY2_OPEN + 120_000, 400, 100), // 값 변경
+          ratioPoint(DAY2_OPEN + 180_000, 100, 500), // 새 버킷
+        ],
+      },
+      broker_late_entries: [
+        { t_ms: OPEN, broker: '삼성증권', side: 'buy', net: 10 },
+        { t_ms: OPEN + 120_000, broker: '키움증권', side: 'sell', net: -20 },
+        { t_ms: DAY2_OPEN + 120_000, broker: '미래증권', side: 'buy', net: 30 },
+        { t_ms: DAY2_OPEN + 180_000, broker: '한투증권', side: 'sell', net: -40 }, // 새 당일 이벤트
+      ],
+    });
+    expect(cached(b2, axis, CTX)).toEqual(projectBrokerLateEntryMarkers(b2, axis, CTX));
+  });
+
+  it('과거 백필(좌측 팬으로 과거 ratio 증가) 후에도 풀 투영과 동일', () => {
+    const axis = twoDayAxis();
+    const cached = makeCachedBrokerLateEntryProjector();
+    const b1 = twoDayBundle();
+    cached(b1, axis, CTX); // 캐시 예열
+    // 과거일에 ratio 점 하나가 뒤늦게 채워짐(pastQuoteLen 변경 → 캐시 무효화).
+    const b2 = twoDayBundle({
+      quote_ratio: {
+        bucket_ms: 60_000,
+        points: [
+          ratioPoint(OPEN, 200, 100),
+          ratioPoint(OPEN + 60_000, 300, 100), // 과거 새 점
+          ratioPoint(OPEN + 120_000, 100, 300),
+          ratioPoint(OPEN + 23_220_000, 100, 400),
+          ratioPoint(DAY2_OPEN, 150, 150),
+          ratioPoint(DAY2_OPEN + 120_000, 100, 250),
+        ],
+      },
+    });
+    expect(cached(b2, axis, CTX)).toEqual(projectBrokerLateEntryMarkers(b2, axis, CTX));
+  });
+
+  it('세그먼트 1개(과거 없음)면 풀 투영으로 폴백', () => {
+    const axis = createVirtualAxis([
+      { date: '20260626', sessionOpenMs: OPEN, sessionCloseMs: CLOSE },
+    ]);
+    const cached = makeCachedBrokerLateEntryProjector();
+    const b = bundle();
+    expect(cached(b, axis, CTX)).toEqual(projectBrokerLateEntryMarkers(b, axis, CTX));
   });
 });
