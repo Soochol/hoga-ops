@@ -13,10 +13,12 @@ line on disk — per ADR-0038 the rest of the file is still recoverable.
 """
 from __future__ import annotations
 
+import asyncio
 import json
 import logging
 import shutil
 import time
+from dataclasses import dataclass, field
 from datetime import UTC, datetime, timedelta, timezone
 from pathlib import Path
 
@@ -49,6 +51,190 @@ def _atomic_write_table(writer, records, path: Path) -> None:
         path.unlink(missing_ok=True)
 
 
+
+@dataclass
+class _JsonlParseState:
+    """증분 파싱 상태 — (source, code, date)별로 오프셋·누적 레코드·seq 유지.
+
+    Today Promotion(5분 주기)이 자라는 JSONL을 매번 0바이트부터 재파싱하던
+    일중 O(n²)를 제거한다: 이전 사이클이 소비한 바이트 오프셋 이후만 읽고,
+    누적 리스트에 이어붙인다. **개행으로 끝나지 않은 꼬리는 소비하지 않는다** —
+    쓰기 도중의 부분 라인을 오프셋 너머로 넘겨 영구 유실하는 일이 없도록
+    (다음 사이클에 완성분으로 재시도; 구 전량-재파싱의 회복 의미론과 동일).
+    파일이 줄어들면(회전·수동 삭제) 상태를 버리고 전량 재파싱으로 복귀한다.
+    """
+    offset: int = 0
+    snap_seq: int = 0
+    trade_seq: int = 0
+    broker_seq: int = 0
+    fill_seq: int = 0
+    broker_snapshot_count: int = 0
+    snapshots: list[Orderbook] = field(default_factory=list)
+    trades: list[Trade] = field(default_factory=list)
+    broker_rows: list[BrokerRow] = field(default_factory=list)
+    fills: list[Fill] = field(default_factory=list)
+
+
+# Today Promotion 전용 증분 상태. 프로모터 루프는 코드를 순차 await하므로
+# 단일 스레드 접근(뮤텍스 불필요). 과거 날짜 키는 사이클마다 정리된다.
+# 키에 경로를 포함한다: (source, code, date)가 같아도 data_dir이 다르면
+# (테스트 tmp_path, 샌드박스) 오프셋이 남의 파일을 가리키면 안 된다.
+_TODAY_PARSE_STATES: dict[tuple[str, str, str, str], _JsonlParseState] = {}
+
+
+def _apply_jsonl_line(
+    state: _JsonlParseState, line: str, *, code: str, date: str,
+) -> None:
+    """JSONL 한 줄을 상태에 적용 — 전량/증분 두 경로가 공유하는 유일한 파서."""
+    try:
+        row = json.loads(line)
+    except json.JSONDecodeError:
+        _log.warning("live.promote.partial_line code=%s date=%s", code, date)
+        return
+    kind = row.get("kind")
+    t_ms_raw = row.get("t_ms")
+    # ADR-0049: convert Unix ms → HHMMSSmmm so the on-disk `ts_ms`
+    # column honors the ADR-0010 invariant (series-builder SQL
+    # decodes ts_ms as HHMMSSmmm via hhmmssms_to_intra_ms_sql).
+    try:
+        t_ms_int = int(t_ms_raw)
+    except (TypeError, ValueError):
+        _log.warning(
+            "live.promote.malformed_t_ms_skip code=%s date=%s t_ms_raw=%r",
+            code, date, t_ms_raw,
+        )
+        return
+    try:
+        ts_ms_encoded = unix_ms_to_hhmmssms(date, t_ms_int)
+    except ValueError:
+        _log.warning(
+            "live.promote.midnight_race_skip code=%s date=%s t_ms=%d",
+            code, date, t_ms_int,
+        )
+        return
+    p = row.get("payload") or {}
+    # `phase` ("regular" / "premarket" / "afterhours") is preserved in
+    # the JSONL forensic record but not in canonical parquet — no
+    # downstream reader queries it.
+    if kind == "ob":
+        bids = p.get("bids") or []
+        asks = p.get("asks") or []
+        state.snap_seq += 1
+        state.snapshots.append(Orderbook(
+            ts_ms=ts_ms_encoded,
+            seq=state.snap_seq,
+            ask_p=tuple(asks[i]["price"] if i < len(asks) else 0 for i in range(10)),
+            ask_q=tuple(asks[i]["qty"] if i < len(asks) else 0 for i in range(10)),
+            ask_d=_ZERO_LEVELS,
+            bid_p=tuple(bids[i]["price"] if i < len(bids) else 0 for i in range(10)),
+            bid_q=tuple(bids[i]["qty"] if i < len(bids) else 0 for i in range(10)),
+            bid_d=_ZERO_LEVELS,
+            tot_ask=int(p.get("total_ask_qty") or 0),
+            tot_ask_d=0,
+            tot_bid=int(p.get("total_bid_qty") or 0),
+            tot_bid_d=0,
+        ))
+    elif kind == "trade":
+        for tr in p.get("trades") or []:
+            state.trade_seq += 1
+            state.trades.append(Trade(
+                ts_ms=ts_ms_encoded,
+                seq=state.trade_seq,
+                price=int(tr.get("price") or 0),
+                change_pct=0.0,
+                qty=int(tr.get("qty") or 0),
+                side=int(tr.get("side") or 0),
+                cum_vol=0,
+                cum_trades=0,
+                low_so_far=0,
+                high_so_far=0,
+                net_pressure=0,
+                unknown_14=0,
+                unknown_16=0.0,
+                unknown_17=0.0,
+                unknown_18=0.0,
+            ))
+    elif kind == "broker":
+        buy = p.get("buy_top") or []
+        sell = p.get("sell_top") or []
+        state.broker_snapshot_count += 1
+        state.broker_seq += 1
+        for rank, e in enumerate(sell[:5], start=1):
+            state.broker_rows.append(BrokerRow(
+                ts_ms=ts_ms_encoded,
+                seq=state.broker_seq,
+                side="sell",
+                rank=rank,
+                broker=str(e.get("name") or ""),
+                qty_today=int(e.get("qty") or 0),
+                qty_delta=0,
+            ))
+        for rank, e in enumerate(buy[:5], start=1):
+            state.broker_rows.append(BrokerRow(
+                ts_ms=ts_ms_encoded,
+                seq=state.broker_seq,
+                side="buy",
+                rank=rank,
+                broker=str(e.get("name") or ""),
+                qty_today=int(e.get("qty") or 0),
+                qty_delta=0,
+            ))
+    elif kind == "fill":
+        state.fill_seq += 1
+        state.fills.append(Fill(
+            ts_ms=ts_ms_encoded,
+            seq=state.fill_seq,
+            buy_qty=int(p.get("buy_qty") or 0),
+            sell_qty=int(p.get("sell_qty") or 0),
+        ))
+
+
+def _consume_complete_lines(state: _JsonlParseState, jsonl_path: Path, *, code: str, date: str) -> None:
+    """오프셋 이후의 '완결된' 라인만 상태에 적용하고 오프셋을 전진시킨다."""
+    size = jsonl_path.stat().st_size
+    if size < state.offset:
+        # 파일 축소(회전/삭제 후 재생성) → 전량 재파싱으로 복귀.
+        fresh = _JsonlParseState()
+        state.__dict__.update(fresh.__dict__)
+    if size == state.offset:
+        return
+    with jsonl_path.open("rb") as f:
+        f.seek(state.offset)
+        data = f.read()
+    cut = data.rfind(b"\n")
+    if cut < 0:
+        return  # 완결 라인 없음 — 다음 사이클로 이월
+    consumed = data[: cut + 1]
+    state.offset += len(consumed)
+    for line in consumed.decode("utf-8").splitlines():
+        if line:
+            _apply_jsonl_line(state, line, code=code, date=date)
+
+
+def _parse_jsonl_incremental(
+    jsonl_path: Path, *, code: str, date: str, source: str = "kis_live",
+) -> tuple[list[Orderbook], list[Trade], list[BrokerRow], list[Fill], dict]:
+    """Today Promotion용 증분 파서 — 전량 파서와 결과 동등(패리티 테스트 고정)."""
+    key = (source, code, date, str(jsonl_path))
+    # 날짜가 넘어간(또는 경로가 바뀐) 같은 (source, code) 키 정리 — 장기 구동
+    # 서버에서 상태가 코드당 하루치만 살도록.
+    for stale in [
+        k for k in _TODAY_PARSE_STATES
+        if k[0] == source and k[1] == code and k != key
+    ]:
+        del _TODAY_PARSE_STATES[stale]
+    state = _TODAY_PARSE_STATES.get(key)
+    if state is None:
+        state = _JsonlParseState()
+        _TODAY_PARSE_STATES[key] = state
+    _consume_complete_lines(state, jsonl_path, code=code, date=date)
+    meta = _build_meta(
+        code, date, state.snapshots, state.trades, state.broker_snapshot_count,
+        fill_count=len(state.fills), source=source,
+    )
+    return state.snapshots, state.trades, state.broker_rows, state.fills, meta
+
+
 def _parse_jsonl_to_records(  # noqa: PLR0912, PLR0915
     jsonl_path: Path,
     *,
@@ -75,157 +261,33 @@ def _parse_jsonl_to_records(  # noqa: PLR0912, PLR0915
     when/how to persist it. If `jsonl_path` does not exist, returns empty
     lists and meta with row_counts=0.
     """
-    snapshots: list[Orderbook] = []
-    trades: list[Trade] = []
-    broker_rows: list[BrokerRow] = []
-    fills: list[Fill] = []
-    broker_snapshot_count = 0
-    # Monotonic per stock-date counters; KIS has no native seq, but the
-    # parquet schemas (snapshots/trades/brokers/fills) require an int seq column
-    # so readers (snapshots.query_at, trades selectors) can SELECT it
-    # without DuckDB BinderException. Each `kind` gets its own counter so
-    # ts_ms-collision tie-breaks are unambiguous within a kind.
-    # fills의 seq는 reader가 없고 스키마 균일성 목적(PARQUET_SCHEMA 일관성 유지).
-    snap_seq = 0
-    trade_seq = 0
-    broker_seq = 0
-    fill_seq = 0
+    state = _JsonlParseState()
 
     if not jsonl_path.exists():
         meta = _build_meta(
             code,
             date,
-            snapshots,
-            trades,
-            broker_snapshot_count,
+            state.snapshots,
+            state.trades,
+            state.broker_snapshot_count,
             fill_count=0,
             source=source,
         )
-        return snapshots, trades, broker_rows, fills, meta
+        return state.snapshots, state.trades, state.broker_rows, state.fills, meta
 
+    # 라인 의미론(스킵 로그·인코딩 변환·seq 부여)은 _apply_jsonl_line 한 곳에
+    # 산다 — 전량(이 함수)·증분(_parse_jsonl_incremental) 경로가 공유한다.
     with jsonl_path.open("r", encoding="utf-8") as f:
         for raw in f:
             line = raw.rstrip("\n")
-            if not line:
-                continue
-            try:
-                row = json.loads(line)
-            except json.JSONDecodeError:
-                _log.warning(
-                    "live.promote.partial_line code=%s date=%s", code, date
-                )
-                continue
-            kind = row.get("kind")
-            t_ms_raw = row.get("t_ms")
-            # ADR-0049: convert Unix ms → HHMMSSmmm so the on-disk `ts_ms`
-            # column honors the ADR-0010 invariant (series-builder SQL
-            # decodes ts_ms as HHMMSSmmm via hhmmssms_to_intra_ms_sql).
-            try:
-                t_ms_int = int(t_ms_raw)
-            except (TypeError, ValueError):
-                _log.warning(
-                    "live.promote.malformed_t_ms_skip code=%s date=%s t_ms_raw=%r",
-                    code, date, t_ms_raw,
-                )
-                continue
-            try:
-                ts_ms_encoded = unix_ms_to_hhmmssms(date, t_ms_int)
-            except ValueError:
-                _log.warning(
-                    "live.promote.midnight_race_skip code=%s date=%s t_ms=%d",
-                    code, date, t_ms_int,
-                )
-                continue
-            p = row.get("payload") or {}
-            # `phase` ("regular" / "premarket" / "afterhours") is preserved in
-            # the JSONL forensic record but not in canonical parquet — no
-            # downstream reader queries it. If a future use case needs it,
-            # extend Orderbook/Trade dataclasses and PARQUET_SCHEMA.
-            if kind == "ob":
-                bids = p.get("bids") or []
-                asks = p.get("asks") or []
-                # ADR-0010 invariant: parquet `ts_ms` column = HHMMSSmmm packed-decimal.
-                # ADR-0049: kis_live writer converts JSONL's Unix-ms `t_ms` to
-                # HHMMSSmmm at promote time so reader-side decoding is source-uniform.
-                # Forensic columns (ask_d/bid_d/tot_*_d) — KIS REST is delta-free.
-                snap_seq += 1
-                snapshots.append(Orderbook(
-                    ts_ms=ts_ms_encoded,
-                    seq=snap_seq,
-                    ask_p=tuple(asks[i]["price"] if i < len(asks) else 0 for i in range(10)),
-                    ask_q=tuple(asks[i]["qty"] if i < len(asks) else 0 for i in range(10)),
-                    ask_d=_ZERO_LEVELS,
-                    bid_p=tuple(bids[i]["price"] if i < len(bids) else 0 for i in range(10)),
-                    bid_q=tuple(bids[i]["qty"] if i < len(bids) else 0 for i in range(10)),
-                    bid_d=_ZERO_LEVELS,
-                    tot_ask=int(p.get("total_ask_qty") or 0),
-                    tot_ask_d=0,
-                    tot_bid=int(p.get("total_bid_qty") or 0),
-                    tot_bid_d=0,
-                ))
-            elif kind == "trade":
-                for tr in p.get("trades") or []:
-                    # Inner trade's t_ms can drift micro-seconds from the outer tick.
-                    # Use the outer ts_ms_encoded so the entire row's encoding is uniform
-                    # per cycle. If inner-vs-outer divergence ever matters, revisit at that
-                    # signal. Forensic / cumulative fields (change_pct, cum_vol,
-                    # cum_trades, low/high_so_far, net_pressure, unknown_*) are
-                    # hogaplay-TSV-only — synthesize zero so the canonical schema
-                    # stays uniform across sources.
-                    trade_seq += 1
-                    trades.append(Trade(
-                        ts_ms=ts_ms_encoded,
-                        seq=trade_seq,
-                        price=int(tr.get("price") or 0),
-                        change_pct=0.0,
-                        qty=int(tr.get("qty") or 0),
-                        side=int(tr.get("side") or 0),
-                        cum_vol=0,
-                        cum_trades=0,
-                        low_so_far=0,
-                        high_so_far=0,
-                        net_pressure=0,
-                        unknown_14=0,
-                        unknown_16=0.0,
-                        unknown_17=0.0,
-                        unknown_18=0.0,
-                    ))
-            elif kind == "broker":
-                buy = p.get("buy_top") or []
-                sell = p.get("sell_top") or []
-                broker_snapshot_count += 1
-                broker_seq += 1
-                for rank, e in enumerate(sell[:5], start=1):
-                    broker_rows.append(BrokerRow(
-                        ts_ms=ts_ms_encoded,
-                        seq=broker_seq,
-                        side="sell",
-                        rank=rank,
-                        broker=str(e.get("name") or ""),
-                        qty_today=int(e.get("qty") or 0),
-                        qty_delta=0,
-                    ))
-                for rank, e in enumerate(buy[:5], start=1):
-                    broker_rows.append(BrokerRow(
-                        ts_ms=ts_ms_encoded,
-                        seq=broker_seq,
-                        side="buy",
-                        rank=rank,
-                        broker=str(e.get("name") or ""),
-                        qty_today=int(e.get("qty") or 0),
-                        qty_delta=0,
-                    ))
-            elif kind == "fill":
-                # 그릴링 Q4: 10초 체결강도 구간합 → fills.parquet.
-                # side 분류는 다운샘플러가 write-time에 적용 완료(±1만, side=0 제외).
-                fill_seq += 1
-                fills.append(Fill(
-                    ts_ms=ts_ms_encoded,
-                    seq=fill_seq,
-                    buy_qty=int(p.get("buy_qty") or 0),
-                    sell_qty=int(p.get("sell_qty") or 0),
-                ))
+            if line:
+                _apply_jsonl_line(state, line, code=code, date=date)
 
+    snapshots = state.snapshots
+    trades = state.trades
+    broker_rows = state.broker_rows
+    fills = state.fills
+    broker_snapshot_count = state.broker_snapshot_count
     meta = _build_meta(
         code,
         date,
@@ -305,29 +367,36 @@ async def promote_today(data_dir: Path, *, code: str) -> str | None:
     start_ms = int(time.time() * 1000)
     _log.info("live.today_promote.start code=%s date=%s", code, today)
 
-    try:
-        snapshots, trades, broker_rows, fills, meta = _parse_jsonl_to_records(
-            jsonl_path, code=code, date=today,
-        )
-    except Exception:
-        _log.exception(
-            "live.today_promote.parse_failed code=%s date=%s", code, today,
-        )
-        raise
+    def _sync_parse_and_write() -> dict:
+        # 증분 파싱(직전 사이클 오프셋 이후만) + parquet 재작성. sync 디스크/CPU
+        # 작업 전체를 스레드로 격리 — 종전엔 이벤트 루프에서 인라인 실행되어
+        # 5분마다 코드당 수백 ms씩 루프를 블로킹했다.
+        try:
+            snapshots, trades, broker_rows, fills, meta = _parse_jsonl_incremental(
+                jsonl_path, code=code, date=today,
+            )
+        except Exception:
+            _log.exception(
+                "live.today_promote.parse_failed code=%s date=%s", code, today,
+            )
+            raise
 
-    target.mkdir(parents=True, exist_ok=True)
-    try:
-        _atomic_write_table(write_snapshots_parquet, snapshots, target / "snapshots.parquet")
-        _atomic_write_table(write_trades_parquet, trades, target / "trades.parquet")
-        _atomic_write_table(write_brokers_parquet, broker_rows, target / "brokers.parquet")
-        _atomic_write_table(write_fills_parquet, fills, target / "fills.parquet")
-        atomic_write_json(target / "meta.json", meta, indent=2)
-    except OSError as e:
-        _log.warning(
-            "live.today_promote.write_failed code=%s date=%s reason=%s",
-            code, today, e,
-        )
-        raise
+        target.mkdir(parents=True, exist_ok=True)
+        try:
+            _atomic_write_table(write_snapshots_parquet, snapshots, target / "snapshots.parquet")
+            _atomic_write_table(write_trades_parquet, trades, target / "trades.parquet")
+            _atomic_write_table(write_brokers_parquet, broker_rows, target / "brokers.parquet")
+            _atomic_write_table(write_fills_parquet, fills, target / "fills.parquet")
+            atomic_write_json(target / "meta.json", meta, indent=2)
+        except OSError as e:
+            _log.warning(
+                "live.today_promote.write_failed code=%s date=%s reason=%s",
+                code, today, e,
+            )
+            raise
+        return meta
+
+    meta = await asyncio.to_thread(_sync_parse_and_write)
 
     elapsed = int(time.time() * 1000) - start_ms
     _log.info(
@@ -358,18 +427,21 @@ async def promote_api_today(data_dir: Path, *, code: str) -> None:
     if not jsonl_path.exists():
         return
 
-    snapshots, trades, broker_rows, fills, meta = _parse_jsonl_to_records(
-        jsonl_path,
-        code=code,
-        date=today,
-        source="kis_api",
-    )
-    target.mkdir(parents=True, exist_ok=True)
-    _atomic_write_table(write_snapshots_parquet, snapshots, target / "snapshots.parquet")
-    _atomic_write_table(write_trades_parquet, trades, target / "trades.parquet")
-    _atomic_write_table(write_brokers_parquet, broker_rows, target / "brokers.parquet")
-    _atomic_write_table(write_fills_parquet, fills, target / "fills.parquet")
-    atomic_write_json(target / "meta.json", meta, indent=2)
+    def _sync_parse_and_write() -> None:
+        snapshots, trades, broker_rows, fills, meta = _parse_jsonl_incremental(
+            jsonl_path,
+            code=code,
+            date=today,
+            source="kis_api",
+        )
+        target.mkdir(parents=True, exist_ok=True)
+        _atomic_write_table(write_snapshots_parquet, snapshots, target / "snapshots.parquet")
+        _atomic_write_table(write_trades_parquet, trades, target / "trades.parquet")
+        _atomic_write_table(write_brokers_parquet, broker_rows, target / "brokers.parquet")
+        _atomic_write_table(write_fills_parquet, fills, target / "fills.parquet")
+        atomic_write_json(target / "meta.json", meta, indent=2)
+
+    await asyncio.to_thread(_sync_parse_and_write)
 
 
 async def promote_one(
