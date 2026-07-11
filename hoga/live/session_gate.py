@@ -30,6 +30,33 @@ def market_phase(t_ms: int) -> Literal["regular", "after_hours_closing", "closed
     return "closed"
 
 
+def is_trading_day_now(t_ms: int) -> bool:
+    """거래일 여부 — **시계 무관** 순수 캘린더 술어(주말 단축 후 chk-holiday).
+
+    ``should_run_now``·``ws_connection_window``·``Rest30sRecorder`` 저장 게이트가
+    공유하는 SSOT. '거래일'의 정의를 한 곳에 봉인해 소비자별 재구현이 표류하지 않게
+    한다 — 이 함수가 도입되기 전 레코더는 ``market_phase``(시계만)로만 게이트해
+    비거래일(주말/휴장) 09:00–15:30에도 호가를 캡처·저장했다(ADR-0099가 주장한 WS
+    저장 파리티 위반).
+
+    Weekends are short-circuited by weekday before any KIS call, so a weekend stays
+    closed even when KIS is unreachable. Lenient on missing calendar data — when
+    ``is_trading_session_today`` returns None (KRX creds missing, chk-holiday flaked),
+    ``live_session_allowed_today`` defers to treating today as a session; losing live
+    capture for a transient KRX outage is a worse failure than a brief burst of empty
+    fetches on a stale day.
+
+    ⚠ BLOCKING: ``live_session_allowed_today``가 캐시 미스 시 동기 KIS HTTP 가능 —
+    이벤트 루프에서 직접 호출 금지. 코루틴은 ``asyncio.to_thread``로 감싸라
+    (``ws_capture_window`` blocking 계약과 동일).
+    """
+    kst = datetime.fromtimestamp(t_ms / 1000, tz=KIS_KST)
+    if kst.weekday() >= 5:  # Saturday/Sunday — never a KRX session  # noqa: PLR2004
+        return False
+    from hoga.api.calendar_policy import live_session_allowed_today  # noqa: PLC0415
+    return live_session_allowed_today(kst.strftime("%Y%m%d"))
+
+
 def should_run_now(t_ms: int) -> bool:
     """Calendar + clock gate: True only when KRX is *probably* trading right now.
 
@@ -40,22 +67,11 @@ def should_run_now(t_ms: int) -> bool:
     was cached the poller silently halted capture for the whole process. The
     business-day calendar marks today as a session from the open.
 
-    Weekends are short-circuited by the clock/weekday before any KIS call, so a
-    weekend stays closed even when KIS is unreachable (a None verdict is treated
-    leniently below and would otherwise poll).
-
-    Lenient on missing calendar data — when ``is_trading_session_today`` returns
-    None (KRX creds missing, chk-holiday flaked), defer to the clock alone. Losing live
-    capture for a transient KRX outage is a worse failure than the noise from a
-    brief burst of empty fetches on a stale day.
+    거래일 판정은 :func:`is_trading_day_now`(SSOT)에 위임한다.
     """
     if market_phase(t_ms) == "closed":
         return False
-    kst = datetime.fromtimestamp(t_ms / 1000, tz=KIS_KST)
-    if kst.weekday() >= 5:  # Saturday/Sunday — never a KRX session  # noqa: PLR2004
-        return False
-    from hoga.api.calendar_policy import live_session_allowed_today  # noqa: PLC0415
-    return live_session_allowed_today(kst.strftime("%Y%m%d"))
+    return is_trading_day_now(t_ms)
 
 
 def ws_capture_window(now_ms: int) -> bool:
@@ -109,11 +125,7 @@ def ws_connection_window(now_ms: int) -> bool:
     """
     if not _within_connection_clock(now_ms):
         return False
-    kst = datetime.fromtimestamp(now_ms / 1000, tz=KIS_KST)
-    if kst.weekday() >= 5:  # 주말 — 즉시 차단(KIS 호출 전)  # noqa: PLR2004
-        return False
-    from hoga.api.calendar_policy import live_session_allowed_today  # noqa: PLC0415
-    return live_session_allowed_today(kst.strftime("%Y%m%d"))
+    return is_trading_day_now(now_ms)  # 거래일 판정 SSOT(주말/휴장 배제)
 
 
 async def ws_connection_window_async(now_ms: int) -> bool:
