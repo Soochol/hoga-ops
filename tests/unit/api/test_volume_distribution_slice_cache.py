@@ -90,7 +90,9 @@ def test_explicit_none_cache_bypasses(tmp_path: Path) -> None:
     assert q.call_count == 2
 
 
-def test_today_is_not_cached(tmp_path: Path) -> None:
+def test_today_second_call_within_ttl_skips_query(tmp_path: Path) -> None:
+    # ADR-0090: 오늘자(cutoff 없음)는 디스크 캐시 대신 short-TTL 프로세스 캐시.
+    # TTL 창 내 2회째는 trades 풀스캔 GROUP BY를 재실행하지 않는다.
     engine = _engine(tmp_path)
     today = datetime.now(_KST).strftime("%Y%m%d")
     with patch.object(
@@ -99,4 +101,4 @@ def test_today_is_not_cached(tmp_path: Path) -> None:
     ) as q:
         _direct(engine, date=today, cache=engine.indicators_cache, today_kst=today)
         _direct(engine, date=today, cache=engine.indicators_cache, today_kst=today)
-    assert q.call_count == 2, "오늘은 프로모션 진행 중이라 재계산(ADR-0043)"
+    assert q.call_count == 1, "오늘 TTL 창 내 2회째는 캐시 히트"

@@ -276,9 +276,16 @@ def build_broker_late_entries_slice(
         cached = cache.get_broker_late(code, date, source, start_hhmm)  # type: ignore[union-attr]
         if cached is not CACHE_MISS:
             return cached  # type: ignore[return-value]
+    # 오늘자: short-TTL 프로세스 캐시(ADR-0090). ``[]`` 도 유효 캐시값.
+    is_today = today_kst is not None and date == today_kst
     # threshold_ms is derived from start_hhmm, so start_hhmm alone keys the compute.
+    broker_key = ("broker_late", code, date, source, start_hhmm)
+    if is_today:
+        hit, cached = TODAY_TTL.lookup(broker_key)
+        if hit:
+            return cached
     rows = SLICE_COALESCER.run(
-        ("broker_late", code, date, source, start_hhmm),
+        broker_key,
         lambda: brokers_tbl.query_late_entry_events(
             engine.conn,
             path=path,
@@ -296,6 +303,8 @@ def build_broker_late_entries_slice(
     ]
     if cacheable:
         cache.store_broker_late(code, date, source, start_hhmm, events)  # type: ignore[union-attr]
+    elif is_today:
+        TODAY_TTL.put(broker_key, events)
     return events
 
 
@@ -459,6 +468,14 @@ def build_volume_distribution_slice(
         )
         if cached is not CACHE_MISS:
             return cached  # type: ignore[return-value]
+    # 오늘자 & cutoff 없는 요청만 short-TTL(ADR-0090) — cutoff variant는 과거일과
+    # 동일하게 캐시 제외(카디널리티). 키=coalescer 키로 정합 보장.
+    is_today = today_kst is not None and date == today_kst and cutoff_ms is None
+    vdist_key = ("vdist", code, date, source, range_count, price_min, price_max, cutoff_ms)
+    if is_today:
+        hit, cached = TODAY_TTL.lookup(vdist_key)
+        if hit:
+            return cached  # type: ignore[return-value]
     upper_bound_ms = None
     if cutoff_ms is not None:
         cutoff_hhmmssms = unix_ms_to_hhmmssms(date, cutoff_ms)
@@ -470,7 +487,7 @@ def build_volume_distribution_slice(
     # yields a different (upper-bounded) distribution, so they must NOT coalesce
     # with each other or with the normal (cutoff=None) result.
     binning = SLICE_COALESCER.run(
-        ("vdist", code, date, source, range_count, price_min, price_max, cutoff_ms),
+        vdist_key,
         lambda: trades_tbl.query_continuous_trade_volume_distribution(
             engine.conn,
             path=trades_path,
@@ -507,6 +524,8 @@ def build_volume_distribution_slice(
         cache.store_volume_distribution(  # type: ignore[union-attr]
             code, date, source, range_count, price_min, price_max, result
         )
+    elif is_today:
+        TODAY_TTL.put(vdist_key, result)
     return result
 
 
@@ -929,8 +948,15 @@ def build_trade_volume_poc_slice(
         )
         if cached is not CACHE_MISS:
             return cached  # type: ignore[return-value]
+    # 오늘자: short-TTL 프로세스 캐시(ADR-0090). None 결과도 유효 캐시값.
+    is_today = today_kst is not None and date == today_kst
+    poc_key = ("poc", code, date, source, range_count, price_min, price_max)
+    if is_today:
+        hit, cached = TODAY_TTL.lookup(poc_key)
+        if hit:
+            return cached
     row = SLICE_COALESCER.run(
-        ("poc", code, date, source, range_count, price_min, price_max),
+        poc_key,
         lambda: trades_tbl.query_trade_volume_poc(
             engine.conn,
             path=trades_path,
@@ -947,6 +973,8 @@ def build_trade_volume_poc_slice(
             cache.store_trade_volume_poc(
                 code, date, source, range_count, price_min, price_max, None,
             )
+        elif is_today:
+            TODAY_TTL.put(poc_key, None)
         return None
     poc = TradeVolumePoc(
         date=date,
@@ -961,6 +989,8 @@ def build_trade_volume_poc_slice(
         cache.store_trade_volume_poc(
             code, date, source, range_count, price_min, price_max, poc,
         )
+    elif is_today:
+        TODAY_TTL.put(poc_key, poc)
     return poc
 
 
@@ -1006,8 +1036,18 @@ def build_depth_heatmap_slice(
         cached = cache.get_depth(code, date, source, bucket_ms)  # type: ignore[union-attr]
         if cached is not CACHE_MISS:
             return cached  # type: ignore[return-value]
+    # ADR-0090: 오늘자는 디스크 캐시 금지(프로모션 중)라 형제 지표(ratio/fill/peak)처럼
+    # short-TTL 프로세스 캐시로 순차 반복(관심종목 전환 버스트)을 흡수한다. 항목이
+    # ~1.5MB로 크지만 TODAY_TTL은 오늘 항목만 보유하고 put마다 만료분을 청소하므로
+    # 정상 뷰의 정상상태는 (code, bucket_ms)당 1건이다. 키=coalescer 키로 정합 보장.
+    is_today = today_kst is not None and date == today_kst
+    depth_key = ("depth", code, date, source, bucket_ms)
+    if is_today:
+        hit, cached = TODAY_TTL.lookup(depth_key)
+        if hit:
+            return cached
     rows = SLICE_COALESCER.run(
-        ("depth", code, date, source, bucket_ms),
+        depth_key,
         lambda: snapshots_tbl.query_bucketed_depth_heatmap(
             engine.conn,
             path=path_obj,
@@ -1030,6 +1070,8 @@ def build_depth_heatmap_slice(
         )
     if cacheable:
         cache.store_depth(code, date, source, bucket_ms, out)  # type: ignore[union-attr]
+    elif is_today:
+        TODAY_TTL.put(depth_key, out)
     return out
 
 
@@ -1056,14 +1098,29 @@ def _first_trailing_single_price_book_hhmmssms(
         cached = cache.get_continuous_before(code, date, source, int(session_close_ms))  # type: ignore[union-attr]
         if cached is not CACHE_MISS:
             return cached  # type: ignore[return-value]
+    # 오늘자: short-TTL 프로세스 캐시(ADR-0090). "경계 없음"(None)은 장중 흔한
+    # 정상값이라 캐시하지만, snapshots.parquet 부재(시가 직후 미생성)로 인한 None은
+    # 캐시하지 않는다 — TTL 창 안에 파일이 생기면 stale None이 새 데이터를 가린다
+    # (test_today_fill_strength_none_result_is_not_cached 선례).
+    is_today = today_kst is not None and date == today_kst
+    if is_today:
+        snapshots_path = engine.parquet_dir(date, code, source) / "snapshots.parquet"
+        is_today = snapshots_path.exists()
+    cont_key = ("continuous", code, date, source, int(session_close_ms))
+    if is_today:
+        hit, cached = TODAY_TTL.lookup(cont_key)
+        if hit:
+            return cached
     result = SLICE_COALESCER.run(
-        ("continuous", code, date, source, int(session_close_ms)),
+        cont_key,
         lambda: _compute_first_trailing_single_price_book_hhmmssms(
             engine, code=code, date=date, source=source, session_close_ms=session_close_ms
         ),
     )
     if cacheable:
         cache.store_continuous_before(code, date, source, int(session_close_ms), result)  # type: ignore[union-attr]
+    elif is_today:
+        TODAY_TTL.put(cont_key, result)
     return result
 
 
