@@ -146,6 +146,7 @@ const useRangeHogaDeltaSpy = vi.fn<(...args: unknown[]) => any>(() => ({
 const useRangeSidecarDeltaSpy = vi.fn<(...args: unknown[]) => any>(() => ({
   data: null,
   isLoading: false,
+  isPending: false,
   error: null,
   isPlaceholderData: rangeMock.isPlaceholderData,
   isFetching: rangeMock.isFetching,
@@ -591,6 +592,7 @@ describe('useLiveBundle', () => {
 	    useRangeSidecarDeltaSpy.mockImplementation(() => ({
 	      data: null,
 	      isLoading: false,
+	      isPending: false,
 	      error: null,
 	      isPlaceholderData: rangeMock.isPlaceholderData,
 	      isFetching: rangeMock.isFetching,
@@ -758,6 +760,7 @@ describe('useLiveBundle', () => {
     useRangeSidecarDeltaSpy.mockImplementation(() => ({
       data: null,
       isLoading: true,
+      isPending: true,
       error: null,
       isPlaceholderData: false,
       isFetching: true,
@@ -785,9 +788,54 @@ describe('useLiveBundle', () => {
     useRangeSidecarDeltaSpy.mockImplementation(() => ({
       data: null,
       isLoading: true,
+      isPending: true,
       error: null,
       isPlaceholderData: false,
       isFetching: true,
+      isHistoricalDeltaFetching: false,
+    }));
+    const { result } = renderHook(() => useLiveBundle('005930', '1m', '20260527', liveFixture), { wrapper: createWrapper() });
+    expect(result.current.isSidecarLoading).toBe(false);
+  });
+
+  // 장면1 — 거래량분포 게이트 편입: 거래량분포는 캔들 priceRange 가 나와야 사이드카
+  // fetch 가 시작되므로, "캔들 대기" 상태도 loading 으로 셈해 reveal 이 먼저 열리지 않게.
+  it('holds isSidecarLoading while volume-distribution waits for the candle priceRange', () => {
+    // volumeDistribution ON(beforeEach) + 캔들 아직 로딩(priceRange 미확정) → 사이드카
+    // 쿼리가 아직 enable 전이어도(settled mock) 게이트가 대기.
+    candlesMock.candles = [];        // priceRange null
+    candlesMock.isFetching = true;   // 캔들 fetch 진행 중
+    const { result } = renderHook(() => useLiveBundle('005930', '1m', '20260527', liveFixture), { wrapper: createWrapper() });
+    expect(result.current.isSidecarLoading).toBe(true);
+  });
+
+  it('holds isSidecarLoading on the isPending blind frame (enabled but not yet fetching)', () => {
+    // sidecarEnabled 가 켜지는 커밋: 쿼리는 pending(no data)인데 fetch 미발화라 isLoading
+    // (=isPending && isFetching)가 false 로 샌다. isPending 을 쓰면 이 프레임도 홀드 →
+    // reveal rAF 선스케줄(캔들만 먼저 공개) 레이스 봉쇄.
+    useRangeSidecarDeltaSpy.mockImplementation(() => ({
+      data: null,
+      isLoading: false, // 블라인드 프레임: isPending && isFetching 중 isFetching false
+      isPending: true,
+      error: null,
+      isPlaceholderData: false,
+      isFetching: false,
+      isHistoricalDeltaFetching: false,
+    }));
+    const { result } = renderHook(() => useLiveBundle('005930', '1m', '20260527', liveFixture), { wrapper: createWrapper() });
+    expect(result.current.isSidecarLoading).toBe(true);
+  });
+
+  it('releases isSidecarLoading when the sidecar delta errors out (settle, no cover wedge)', () => {
+    // 에러 settle: isPending false → 게이트 해제(커버 고착 금지). 캡 제거 후 이 해제가
+    // 무제한 홀드의 유일한 탈출구이므로 회귀 가드로 잠근다.
+    useRangeSidecarDeltaSpy.mockImplementation(() => ({
+      data: null,
+      isLoading: false,
+      isPending: false,
+      error: new Error('sidecar failed'),
+      isPlaceholderData: false,
+      isFetching: false,
       isHistoricalDeltaFetching: false,
     }));
     const { result } = renderHook(() => useLiveBundle('005930', '1m', '20260527', liveFixture), { wrapper: createWrapper() });
