@@ -57,7 +57,9 @@ _log = logging.getLogger(__name__)
 # a peak tie-break), so stale 1m caches are ignored rather than served wrong.
 # On bump, existing <date>.<kind>.json files fail the version check in _read /
 # _read_model_cache and are transparently recomputed + rewritten on next access.
-SCHEMA_VERSION = 5
+# v6 (ADR-0062 v3): 동시호가 배제 통일 — ratio에 개장(session_open) 하한 추가, heatmap을
+# WHERE 사전 필터 드롭으로 전환. 구 5 캐시(붕괴책 포함 heatmap·개장 미배제 ratio)는 무효.
+SCHEMA_VERSION = 6
 
 Kind = Literal["ratio", "fill"]
 DEFAULT_MEM_MAX_ENTRIES = 512

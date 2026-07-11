@@ -1,5 +1,5 @@
-import { isContinuousBook, type ObSnapshot } from './bucketHogaSeries';
-import { isAfterRegularOpen, tradingDayOf } from '../util/tradingDay';
+import { isIndicatorEligibleBook, type ObSnapshot } from './bucketHogaSeries';
+import { tradingDayOf } from '../util/tradingDay';
 
 /** 래칫 내부 peak 값 — 날짜 없는 {price, qty, t_ms}. 래칫은 오늘 하루에만 적용되므로 date는
  *  훅(useDayBidPeaks)이 todayKst로 부착해 와이어 `BidPeak`을 만든다. BidPeak은 구조적으로
@@ -16,11 +16,10 @@ type BidPriceFilter = (price: number) => boolean;
 
 export const FRESH_RATCHET: RatchetState = { peak: null, tradingDay: -1, lastTMs: -1 };
 
-/** seed로 시작한 단조 ratchet에 한 ObSnapshot을 폴드. 연속거래(isContinuousBook) + 개장
- *  (isAfterRegularOpen, 09:00↑) 스냅샷만 — 개장 동시호가(<09:00)는 10레벨 누적이라
- *  isContinuousBook을 통과하므로 시각 게이트로 따로 배제(백엔드 session_open과 동치).
- *  거래일 경계에서 리셋·재시드, 동률 비교체(먼저 도달 유지), 이미 본 tMs는 멱등.
- *  ob.bids가 없으면(totals-only) 후보는 seed뿐. */
+/** seed로 시작한 단조 ratchet에 한 ObSnapshot을 폴드. 공용 술어 isIndicatorEligibleBook을
+ *  통과하는 스냅샷만 — 연속거래(isContinuousBook) AND 정규장 개장(isAfterRegularOpen, 09:00↑;
+ *  개장 동시호가 배제, 백엔드 _book_indicator_eligible_sql과 동일). 거래일 경계에서 리셋·재시드,
+ *  동률 비교체(먼저 도달 유지), 이미 본 tMs는 멱등. ob.bids가 없으면(totals-only) 후보는 seed뿐. */
 export function foldBidPeak(
   prev: RatchetState,
   seed: DayPeak | null,
@@ -35,7 +34,7 @@ export function foldBidPeak(
   }
   if (ob.t_ms <= state.lastTMs) return state; // 멱등(증분)
   let best = state.peak;
-  if (isContinuousBook(ob) && isAfterRegularOpen(ob.t_ms) && ob.bids) {
+  if (isIndicatorEligibleBook(ob) && ob.bids) {
     for (const lv of ob.bids) {
       if (allowPrice && !allowPrice(lv.price)) continue;
       if (lv.qty > 0 && (best === null || lv.qty > best.qty)) {

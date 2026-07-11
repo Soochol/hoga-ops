@@ -476,6 +476,25 @@ describe('createIncrementalHogaSeriesBuilder', () => {
     );
   });
 
+  it('drops pre-open (opening-auction) ticks from depth_heatmap_today even with a continuous-looking book (ADR-0062 v3)', () => {
+    // 공용 술어 isIndicatorEligibleBook의 개장(09:00 KST) 하한 — 개장 전 10레벨 연속북
+    // (라이브 KIS WS 가정, 구조 술어 통과)이라도 depth 버킷을 만들지 않는다(드롭 = 빈 컬럼,
+    // 백엔드 WHERE 사전 필터와 파리티). quote 쪽은 (0,0) 센티넬로 방출된다.
+    const buildIncremental = createIncrementalHogaSeriesBuilder();
+    const ob = [
+      shapedOb(TODAY_OPEN - 60_000, 500, 400, false), // 08:59 KST 연속북 → 개장 하한으로 드롭
+      shapedOb(TODAY_OPEN + 10_000, 60, 40, false),   // 09:00:10 KST → 유일한 depth 버킷
+    ];
+    const out = buildIncremental({ ...baseInput, sseOb: ob, sseTrade: [] });
+    expect(out.depth_heatmap_today.map((p) => p.tMs)).toEqual([TODAY_OPEN]);
+    // quote 파리티: 개장 전 버킷은 (0,0) 센티넬 슬롯으로 남는다(라인 시리즈 규약).
+    expect(out.quote_ratio.points[0]).toMatchObject({ ask_total: 0, bid_total: 0 });
+    // oracle parity — the one-shot builder agrees.
+    expect(out.depth_heatmap_today).toEqual(
+      buildHogaSeries({ ...baseInput, sseOb: ob, sseTrade: [] }).depth_heatmap_today,
+    );
+  });
+
   it('preserves depth point identity for unchanged buckets across ticks', () => {
     // 하류 depthPointToWire/depthHeatmapFromWire WeakMap 캐시의 전제 불변식:
     // "내용 변경 = 새 point 객체". 갱신 안 된 버킷은 동일 참조를 유지해야 한다.

@@ -15,6 +15,7 @@ import type {
 import {
   bucketHogaSeries,
   isContinuousBook,
+  isIndicatorEligibleBook,
   type ObSnapshot,
   type TradeSnapshot,
 } from './bucketHogaSeries';
@@ -174,9 +175,11 @@ export function bucketDepthHeatmap(
   >();
   const order: number[] = [];
   for (const s of obSorted) {
-    // ADR-0062 v2 (VI 통일): 시간 경계 + per-snapshot isContinuousBook — 장중 VI 붕괴책을
-    // depth 대표에서도 배제(quote 경로·incremental builder와 동일 규칙, parity 유지).
-    if (s.t_ms > lastContinuousMs || !isContinuousBook(s)) continue;
+    // ADR-0062 v2/v3 (동시호가 배제 통일): 시간 상한 + 공용 술어 isIndicatorEligibleBook
+    // (구조 + 개장 09:00 하한) — 장중 VI 붕괴책과 개장 동시호가를 depth 대표에서도 배제
+    // (quote 경로·incremental builder·매도벽과 동일 규칙, parity 유지). 완전-동시호가
+    // 버킷은 통째로 드롭 = 빈 컬럼(백엔드 WHERE 사전 필터 드롭과 파리티).
+    if (s.t_ms > lastContinuousMs || !isIndicatorEligibleBook(s)) continue;
     if (!s.asks || !s.bids) continue;
     const t = bucketStartMs(s.t_ms, bucketMs);
     const curTotal = s.total_bid_qty + s.total_ask_qty;
@@ -357,10 +360,11 @@ class IncrementalHogaBucketer {
     const threshold = this.continuousBoundaryMs ?? Number.POSITIVE_INFINITY;
     for (const s of obs) {
       const t = bucketStartMs(s.t_ms, this.bucketMs);
-      // ADR-0062 v2 (VI 통일): bucketHogaSeries와 동일하게 시간 경계뿐 아니라
-      // per-snapshot isContinuousBook도 요구해 장중 VI 붕괴책을 대표선정에서 배제한다
-      // (parity 계약 유지). VI-only 버킷은 아래 else의 0-센티넬로 방출.
-      if (s.t_ms <= threshold && isContinuousBook(s)) {
+      // ADR-0062 v2/v3 (동시호가 배제 통일): bucketHogaSeries와 동일하게 시간 상한 +
+      // 공용 술어 isIndicatorEligibleBook(구조 + 개장 09:00 하한)을 요구해 장중 VI
+      // 붕괴책과 개장 동시호가를 대표선정에서 배제한다(parity 계약 유지). 배제 버킷은
+      // 아래 else의 0-센티넬로 방출. depth 래칫은 이 게이트 안쪽이라 개장전 자동 드롭.
+      if (s.t_ms <= threshold && isIndicatorEligibleBook(s)) {
         const prev = this.quoteByBucket.get(t);
         const bid_max = Math.max(prev?.bid_max ?? 0, s.total_bid_qty);
         const ask_max = Math.max(prev?.ask_max ?? 0, s.total_ask_qty);

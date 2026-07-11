@@ -24,12 +24,13 @@ function mkTrade(i: number): TradeSnapshot {
 // 워커 경합에 flaky했다(issue #434). 성능을 담보하는 실제 불변식 — IncrementalPeak
 // WallSource가 append-only 갱신에서 델타만 소비하고 버퍼 전체를 재스캔하지 않는 것 —
 // 을 결정론적 호출횟수로 검증한다(sibling useVolumeDistributionCutoffProfile.test와
-// 동일 정신). isContinuousBook은 소비되는 ob 스냅샷당 consumeOb 루프에서 정확히 1회
-// 호출되고 classify는 호출하지 않으므로, 그 호출 수 = 소비된 스냅샷 수의 결정론적
-// 프록시다. 전체 재스캔(O(n²)) 회귀면 append 갱신이 델타 1이 아니라 전체를 다시 센다.
+// 동일 정신). isIndicatorEligibleBook(공용 유효-스냅샷 술어)은 소비되는 ob 스냅샷당
+// consumeOb 루프에서 정확히 1회 호출되고 classify는 호출하지 않으므로, 그 호출 수 =
+// 소비된 스냅샷 수의 결정론적 프록시다. 전체 재스캔(O(n²)) 회귀면 append 갱신이 델타
+// 1이 아니라 전체를 다시 센다.
 describe('live day peak performance (incremental, deterministic)', () => {
   it('appended ob snapshots consume the delta only, not a full re-scan', () => {
-    const spy = vi.spyOn(bucketHogaSeries, 'isContinuousBook');
+    const spy = vi.spyOn(bucketHogaSeries, 'isIndicatorEligibleBook');
     const src = new IncrementalPeakWallSource('ask');
     const ob: ObSnapshot[] = Array.from({ length: 2000 }, (_unused, i) => mkOb(i));
 
@@ -47,7 +48,7 @@ describe('live day peak performance (incremental, deterministic)', () => {
   it('a replaced buffer falls back to a full re-consume (correctness safety net)', () => {
     // 폴백 경로(prefix 참조 불일치)는 전체를 다시 소비해야 정확성이 유지된다 —
     // 증분 최적화가 이 안전망을 없애지 않았는지 확인한다.
-    const spy = vi.spyOn(bucketHogaSeries, 'isContinuousBook');
+    const spy = vi.spyOn(bucketHogaSeries, 'isIndicatorEligibleBook');
     const src = new IncrementalPeakWallSource('bid');
     const ob: ObSnapshot[] = Array.from({ length: 500 }, (_unused, i) => mkOb(i));
     src.update(ob, [], []);

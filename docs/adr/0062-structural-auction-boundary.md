@@ -157,3 +157,70 @@ ask_total) == (0,0)`이 배제 버킷을 유일 식별한다. `isExcludedQuoteBu
 
 **두 계층은 함께 배포**해야 한다 — Layer 1만 있으면 VI `(0,0)`이 clock mask 밖에서
 평지로 노출되는 회귀(v1 한계와 동일)가 남는다.
+
+## Amendment — v3 (2026-07-11): 동시호가 배제를 **공용 술어 SSOT**로 통일 + 개장 동시호가·히트맵 정합
+
+**Status:** accepted (2026-07-11)
+
+v2 시점에도 지표별로 배제 범위가 어긋나 있었다: 히트맵은 완전-동시호가 버킷을 raw로
+방출(드롭 안 함)했고, 호가비·총잔량은 **개장 동시호가**(<09:00)를 배제하지 않았다
+(매도벽·매물대만 개장 하한을 가짐). 사용자 제보("히트맵만 동시호가 구간에 그려진다")를
+계기로 **모든 호가 파생 지표가 하나의 술어·하나의 코드로** 동시호가를 배제하도록 통일한다.
+
+### 공용 술어 (SSOT)
+
+```
+유효 스냅샷 = isContinuousBook(3호가 붕괴 아님) AND session_open ≤ t ≤ session_close
+```
+
+- 백엔드: `_book_indicator_eligible_sql(intra, session_open_ms, session_close_ms)`
+  (`hoga/tables/snapshots.py`) — `query_bucketed_ratio`·`query_bucketed_depth_heatmap`·
+  `query_day_ask_peak`/`query_day_bid_peak`/`query_day_ask_bid_peak_dual`가 전부 이 한
+  함수로 WHERE/pred를 조립한다.
+- 프론트: `isIndicatorEligibleBook(s) = isContinuousBook(s) && isAfterRegularOpen(s.t_ms)`
+  (`bucketHogaSeries.ts`) — `bucketHogaSeries`·`bucketDepthHeatmap`·
+  `IncrementalHogaBucketer`·peak 래칫 4종(`computeDayAskPeak`/`computeDayBidPeak`/
+  `incrementalPeakWallSource`/`peakWallEventClassifier`)이 공유. 마감 상한(미래 틱 의존)만
+  버킷 경계에서 `sessionClose`/`lastContinuousMs`로 따로 적용.
+
+### 동시호가 3경로 (전부 이 한 술어로 배제)
+
+- **마감 동시호가·장중 VI**: 3호가 붕괴 → `_DEEP_BOOK_SQL` 구조 배제 (v1·v2 그대로).
+- **개장 동시호가**(08:50~09:00): `session_open` 하한 신설. hogaplay 실측(2026-07-11,
+  무작위 40파일 개장 전 36,371행 전수)상 개장 동시호가 **역시 3호가 붕괴책**이라
+  `_DEEP_BOOK_SQL`이 이미 배제하지만, 라이브 KIS WS가 개장 전 10레벨을 밀어줄 가능성
+  (PR #96 제보 정황, 장중 미실측)에 대한 안전망으로 open 하한을 둔다. → **PR #96의
+  "개장 동시호가는 10레벨 누적" 가정을 실측으로 정정**(당시 합성 테스트 기반이었음).
+- **마감 교차 후 재확장**(~15:30:14): `session_close` 상한 배제 (v2 그대로).
+
+### last_continuous 간접층 정리
+
+`query_bucketed_ratio`/`query_bucketed_depth_heatmap`의 `<= last_continuous_ms`는
+`{deep 행 중 close 이하} = {deep 행 중 last_continuous 이하}`로 `<= session_close`와
+수학적 동치다. deep book이 존재하는 정상 경로는 공용 술어의 직접 close 상한으로 통일했다.
+단 "세션 내 deep book 전무"(퇴화/깨진 캡처) 감지를 위한 `_last_continuous_intra_ms` None
+체크는 유지 — 이 경우만 `TRUE` 폴백(last-in-bucket, 시리즈를 통째로 비우지 않음).
+
+### 히트맵: (0,0) 센티넬이 아니라 **버킷 드롭**
+
+히트맵은 v2까지 완전-동시호가 버킷을 last-in-bucket raw로 방출했으나, v3에서 **매도벽과
+같은 "WHERE 사전 필터 → 자연 탈락"**으로 전환한다(빈 컬럼 = 표시 없음). 근거:
+
+- ADR-0029가 라인 시리즈에 드롭을 금지한 두 이유(bar-index 타임스케일 축소·라인 보간)는
+  캔들 시리즈에 부착된 **캔버스 프리미티브**에 미적용 — 셀 폭은 전역 `barSpacing`, 셀 부재가
+  곧 자연스러운 숨김.
+- 프론트 라이브 빌더는 원래부터 드롭이라, 이 전환으로 **백↔프론트 파리티 불일치가 해소**된다.
+- 따라서 히트맵은 Layer 2(표시 마스크) 없이 **계산-레벨 제외 계열**(매물대·peak wall)로
+  분류 — `auctionWindowMask` 토글과 무관. 호가비·총잔량만 v2의 (0,0) 센티넬+표시 마스크 유지.
+
+### 부수
+
+- `PastIndicatorsCache.SCHEMA_VERSION 5→6` — 구 히트맵(붕괴책 포함)·구 호가비(개장 미배제)
+  캐시를 버전 미스로 무효화(read-through 1회 재계산).
+- 개장 전 버킷이 `virtualAxis`에서 09:00 컬럼으로 스냅되며 알파가 중첩되던 시각 아티팩트 해소.
+
+### 미해결 (후속)
+
+라이브 KIS WS의 개장 동시호가(08:50~09:00) 호가창이 실제로 10레벨인지 3레벨인지는
+장중에만 검증 가능. 10레벨이면 open 하한이 load-bearing, 3레벨이면 구조 술어와 중복(무해).
+다음 장중에 실측해 이 문서에 기록할 것.

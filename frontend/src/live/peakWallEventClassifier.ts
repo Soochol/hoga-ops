@@ -1,6 +1,5 @@
 import type { AskPeakCandidate } from '../api/types';
-import { isContinuousBook, type ObSnapshot, type TradeSnapshot } from './bucketHogaSeries';
-import { isAfterRegularOpen } from '../util/tradingDay';
+import { isIndicatorEligibleBook, type ObSnapshot, type TradeSnapshot } from './bucketHogaSeries';
 
 export type PeakWallEvent = AskPeakCandidate;
 
@@ -53,7 +52,7 @@ export function toWallEventsFromOrderbooks(
 ): AskPeakCandidate[] {
   const bySnapshot = new Map<string, AskPeakCandidate>();
   for (const orderbook of orderbooks) {
-    if (!isContinuousBook(orderbook) || !isAfterRegularOpen(orderbook.t_ms)) continue;
+    if (!isIndicatorEligibleBook(orderbook)) continue;
     const levels = side === 'ask' ? orderbook.asks : orderbook.bids;
     if (!levels) continue;
     for (const level of levels) {
