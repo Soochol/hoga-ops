@@ -345,6 +345,49 @@ describe('planSidecarRangeDelta', () => {
     expect(plan.requestInput.to).toBe('20260628');
   });
 
+  it('caps a wide left-extension gap at LIVE_RANGE_CHUNK_DAYS (chunk walkback tile)', () => {
+    // 갭 [20260501, 20260628]은 통짜가 아니라 previous 좌측 인접 7일 타일만.
+    // 타일이 merge되면 previous.from_date가 전진해 다음 타일을 자기구동으로 당긴다.
+    const plan = planSidecarRangeDelta({
+      ...previousRequest,
+      from: '20260501',
+    }, previous, previousIdentity);
+
+    expect(plan.enabled).toBe(true);
+    expect(plan.canReusePrevious).toBe(true);
+    expect(plan.servePrevious).toBe(true);
+    expect(plan.requestInput.from).toBe('20260622');
+    expect(plan.requestInput.to).toBe('20260628');
+    expect(plan.blocksHistoricalExtension).toBe(true);
+  });
+
+  it('seeds only the most-recent chunk on a cold plan (no previous bundle)', () => {
+    // 콜드 딥 뷰포트(저장 뷰포트 복원)가 종전엔 [from, 오늘] 통짜 1방이었다
+    // (2026-07-11 슬로그: 2개월 콜드 peak ~52s). 시드 창만 먼저 받는다.
+    const plan = planSidecarRangeDelta({
+      ...previousRequest,
+      from: '20260518',
+    });
+
+    expect(plan.enabled).toBe(true);
+    expect(plan.canReusePrevious).toBe(false);
+    expect(plan.servePrevious).toBe(false);
+    expect(plan.requestInput.from).toBe('20260630');
+    expect(plan.requestInput.to).toBe('20260706');
+    expect(plan.blocksHistoricalExtension).toBe(true);
+  });
+
+  it('keeps a cold plan within LIVE_RANGE_CHUNK_DAYS as a single full request', () => {
+    const plan = planSidecarRangeDelta({
+      ...previousRequest,
+      from: '20260701',
+    });
+
+    expect(plan.enabled).toBe(true);
+    expect(plan.requestInput.from).toBe('20260701');
+    expect(plan.requestInput.to).toBe('20260706');
+  });
+
   it('refreshes only the today sidecar slice when previous data already covers the requested range', () => {
     const plan = planSidecarRangeDelta({
       code: '005930',
@@ -366,7 +409,7 @@ describe('planSidecarRangeDelta', () => {
     expect(plan.requestInput.to).toBe('20260706');
   });
 
-  it('falls back to full request when to-date changes', () => {
+  it('seeds only the most-recent chunk when to-date changes (identity break)', () => {
     const plan = planSidecarRangeDelta({
       code: '005930',
       from: '20260624',
@@ -383,8 +426,11 @@ describe('planSidecarRangeDelta', () => {
 
     expect(plan.enabled).toBe(true);
     expect(plan.canReusePrevious).toBe(false);
-    expect(plan.requestInput.from).toBe('20260624');
+    // LIVE_RANGE_CHUNK_DAYS 시드: 통짜 [0624,0707] 대신 최근 7일 창만. 나머지는
+    // 시드 랜딩 후 확장-타일 분기가 청크 워크백한다.
+    expect(plan.requestInput.from).toBe('20260701');
     expect(plan.requestInput.to).toBe('20260707');
+    expect(plan.blocksHistoricalExtension).toBe(true);
   });
 
   it('does not delta-plan cutoff sidecar profile requests', () => {
@@ -407,7 +453,7 @@ describe('planSidecarRangeDelta', () => {
     expect(plan.requestInput.to).toBe('20260624');
   });
 
-  it('falls back to a full request when source preference changed', () => {
+  it('seeds only the most-recent chunk when source preference changed', () => {
     const plan = planSidecarRangeDelta({
       ...previousRequest,
       from: '20260624',
@@ -417,11 +463,11 @@ describe('planSidecarRangeDelta', () => {
     expect(plan.enabled).toBe(true);
     expect(plan.canReusePrevious).toBe(false);
     expect(plan.servePrevious).toBe(false);
-    expect(plan.requestInput.from).toBe('20260624');
+    expect(plan.requestInput.from).toBe('20260630');
     expect(plan.requestInput.to).toBe('20260706');
   });
 
-  it('falls back to a full request when sidecar options changed', () => {
+  it('seeds only the most-recent chunk when sidecar options changed', () => {
     const plan = planSidecarRangeDelta({
       ...previousRequest,
       from: '20260624',
@@ -434,11 +480,11 @@ describe('planSidecarRangeDelta', () => {
     expect(plan.enabled).toBe(true);
     expect(plan.canReusePrevious).toBe(false);
     expect(plan.servePrevious).toBe(false);
-    expect(plan.requestInput.from).toBe('20260624');
+    expect(plan.requestInput.from).toBe('20260630');
     expect(plan.requestInput.to).toBe('20260706');
   });
 
-  it('falls back to a full request when timeframe identity changed', () => {
+  it('seeds only the most-recent chunk when timeframe identity changed', () => {
     const plan = planSidecarRangeDelta({
       ...previousRequest,
       from: '20260624',
@@ -448,7 +494,7 @@ describe('planSidecarRangeDelta', () => {
     expect(plan.enabled).toBe(true);
     expect(plan.canReusePrevious).toBe(false);
     expect(plan.servePrevious).toBe(false);
-    expect(plan.requestInput.from).toBe('20260624');
+    expect(plan.requestInput.from).toBe('20260630');
     expect(plan.requestInput.to).toBe('20260706');
   });
 
@@ -522,7 +568,7 @@ describe('planHogaRangeDelta', () => {
     expect(plan.requestInput.to).toBe('20260706');
   });
 
-  it('falls back to full request when hoga identity changes', () => {
+  it('seeds only the most-recent chunk when hoga identity changes', () => {
     const plan = planHogaRangeDelta({
       ...previousRequest,
       from: '20260624',
@@ -532,7 +578,7 @@ describe('planHogaRangeDelta', () => {
     expect(plan.enabled).toBe(true);
     expect(plan.canReusePrevious).toBe(false);
     expect(plan.servePrevious).toBe(false);
-    expect(plan.requestInput.from).toBe('20260624');
+    expect(plan.requestInput.from).toBe('20260630');
     expect(plan.requestInput.to).toBe('20260706');
   });
 
@@ -1010,6 +1056,80 @@ describe('useRangeSidecarDelta', () => {
         + '&volume_distribution_price_min=303000&volume_distribution_price_max=325000'
         + '&source_pref=hogaplay_first&mode=sidecar',
     );
+  });
+
+  it('cold-loads a deep viewport via seed + chunk walkback (every request ≤ 7 calendar days)', async () => {
+    // 콜드 딥 뷰포트: 통짜 [20260601, 20260706] 금지 — 시드 [0630,0706] 후
+    // 7일 타일 워크백으로 from까지 자기구동 수렴해야 한다.
+    const today = '20260706';
+    const bundleFor = (url: unknown): RangeBundle => {
+      const m = String(url).match(/from=(\d+)&to=(\d+)/);
+      return {
+        ...fakeBundle,
+        code: '005930',
+        from_date: m ? m[1] : today,
+        to_date: m ? m[2] : today,
+        bucket_ms: 60_000,
+      };
+    };
+    const spy = vi.spyOn(client, 'apiCall').mockImplementation((url) => Promise.resolve(bundleFor(url)));
+    const wrapper = makeWrapper();
+    const { result } = renderHook(
+      () =>
+        useRangeSidecarDelta('005930', '20260601', today, '1m', undefined, today, {
+          mode: 'sidecar',
+          volumeDistributionBins: 10,
+        }, 'hogaplay_first'),
+      { wrapper },
+    );
+
+    // 워크백 완주: merged from_date가 요청 from까지 도달.
+    await waitFor(() => expect(result.current.data?.from_date).toBe('20260601'), { timeout: 5000 });
+
+    const spans = spy.mock.calls.map(([url]) => {
+      const m = String(url).match(/from=(\d+)&to=(\d+)/);
+      return m ? ([m[1], m[2]] as const) : null;
+    }).filter((s): s is readonly [string, string] => s != null);
+    // 통짜 요청 부재 + 모든 요청이 7 달력일 이내.
+    expect(spans.some(([f, t]) => f === '20260601' && t === today)).toBe(false);
+    const dayNum = (d: string) => Date.UTC(+d.slice(0, 4), +d.slice(4, 6) - 1, +d.slice(6, 8)) / 86_400_000;
+    for (const [f, t] of spans) {
+      expect(dayNum(t) - dayNum(f)).toBeLessThan(7);
+    }
+    // 시드가 최근 창이고, 이후 타일들이 좌측으로 인접 연속.
+    expect(spans[0]).toEqual(['20260630', today]);
+    expect(spans.slice(1).map(([f, t]) => `${f}-${t}`)).toEqual([
+      '20260623-20260629',
+      '20260616-20260622',
+      '20260609-20260615',
+      '20260602-20260608',
+      '20260601-20260601',
+    ]);
+  });
+
+  it('reports isHistoricalDeltaFetching during a COLD in-flight fetch (backpressure blind spot)', async () => {
+    // 콜드에는 placeholder가 없어 종전 신호(isPlaceholderData 의존)가 false였다
+    // → 콜드 52s 창 동안 팬이 추가 통짜를 발사(슬로그: 동일 wide 3건 동시).
+    let resolve!: (b: RangeBundle) => void;
+    const gate = new Promise<RangeBundle>((r) => { resolve = r; });
+    vi.spyOn(client, 'apiCall').mockImplementation(() => gate);
+    const wrapper = makeWrapper();
+    const { result } = renderHook(
+      () =>
+        useRangeSidecarDelta('005930', '20260601', '20260706', '1m', undefined, '20260706', {
+          mode: 'sidecar',
+          volumeDistributionBins: 10,
+        }, 'hogaplay_first'),
+      { wrapper },
+    );
+
+    // 콜드 fetch in-flight: 배압 신호가 켜져 있어야 확장 트리거가 홀드된다.
+    await waitFor(() => expect(result.current.isFetching).toBe(true));
+    expect(result.current.isHistoricalDeltaFetching).toBe(true);
+
+    resolve({ ...fakeBundle, code: '005930', from_date: '20260630', to_date: '20260706', bucket_ms: 60_000 });
+    // 시드 랜딩 렌더에서 하강(점진 페인트 + settle-loop pull 엣지 보존).
+    await waitFor(() => expect(result.current.data?.from_date).toBe('20260630'));
   });
 
   // Reproduction probe for the "cumulative sidecar storm" seen in server logs
