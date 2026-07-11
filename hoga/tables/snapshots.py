@@ -147,6 +147,68 @@ def write_parquet(snapshots: Iterable[Orderbook], path: Path) -> None:
     atomic_write_parquet_table(path, pa.table(cols, schema=PARQUET_SCHEMA))
 
 
+def write_parquet_frame(df: pl.DataFrame, path: Path) -> None:
+    """write_parquet의 컬럼형 등가물 — 프레임은 이미 플랫 스키마 컬럼을 가진다.
+
+    정렬은 리스트 경로와 동일하게 ts_ms 단독 + stable."""
+    table = (
+        df.sort("ts_ms", maintain_order=True)
+        .select([f.name for f in PARQUET_SCHEMA])
+        .to_arrow()
+        .cast(PARQUET_SCHEMA)
+    )
+    from hoga.api._atomic_write import atomic_write_parquet_table
+    atomic_write_parquet_table(path, table)
+
+
+def validate_frame(df: pl.DataFrame, *, lenient: bool = False) -> None:
+    """validate의 컬럼형 등가물 — 동일 예외 클래스·메시지.
+
+    사다리 검사(비영 부분수열 정렬)를 long-format 윈도우 누적극값으로 벡터화:
+    행별로 레벨 순서 cum_max(ask)/cum_min(bid) 대비 하락/상승이 있으면 위반
+    (nz != sorted(nz)와 동치 — 뒤의 비영 원소가 앞선 비영 극값을 깨는 경우).
+    위반은 실코퍼스에서 0건이 정상이라, 메시지는 위반 행만 재구성한다.
+    lenient면 no-op(리스트 경로의 continue와 동일 — 관측 효과 없음).
+
+    NOTE: 중첩 when-체인으로 행내 running-extreme을 만들면 폴라스 식 트리가
+    레벨 수에 지수적으로 불어난다(실측 3.3s) — unpivot이 선형이다.
+    """
+    if lenient or df.height == 0:
+        return
+
+    def _first_bad_row(prefix: str, ascending: bool) -> int | None:
+        cols = [f"{prefix}{i}" for i in range(1, ORDERBOOK_LEVELS + 1)]
+        long = (
+            df.with_row_index("_i")
+            .select("_i", *cols)
+            .unpivot(index="_i", on=cols, variable_name="_lvl", value_name="_p")
+            .filter(pl.col("_p") > 0)
+            .with_columns(pl.col("_lvl").str.extract(r"(\d+)$").cast(pl.Int64))
+            .sort(["_i", "_lvl"])
+        )
+        run = (
+            pl.col("_p").cum_max().over("_i") if ascending
+            else pl.col("_p").cum_min().over("_i")
+        )
+        breach = pl.col("_p") < run if ascending else pl.col("_p") > run
+        bad = long.filter(breach)
+        return int(bad["_i"].min()) if bad.height else None
+
+    bad_ask = _first_bad_row("ask_p", ascending=True)
+    bad_bid = _first_bad_row("bid_p", ascending=False)
+    if bad_ask is None and bad_bid is None:
+        return
+    # 리스트 경로는 행 순서로 돌며 ask를 먼저 검사한다: 더 이른 위반 행이
+    # 기준이고, 같은 행이면 ask 메시지가 우선.
+    first = min(x for x in (bad_ask, bad_bid) if x is not None)
+    row = df.row(first, named=True)
+    nz_ask = [row[f"ask_p{i}"] for i in range(1, ORDERBOOK_LEVELS + 1) if row[f"ask_p{i}"] > 0]
+    if bad_ask == first and nz_ask != sorted(nz_ask):
+        raise SnapshotValidationError(f"ask prices not sorted at seq={row['seq']}: {nz_ask}")
+    nz_bid = [row[f"bid_p{i}"] for i in range(1, ORDERBOOK_LEVELS + 1) if row[f"bid_p{i}"] > 0]
+    raise SnapshotValidationError(f"bid prices not sorted at seq={row['seq']}: {nz_bid}")
+
+
 def read_parquet(path: Path) -> list[Orderbook]:
     """Symmetric inverse of :func:`write_parquet` — reassembles ``Orderbook``
     tuple fields from the 60 flattened parquet columns.

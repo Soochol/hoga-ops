@@ -16,6 +16,7 @@ from dataclasses import dataclass
 from pathlib import Path
 
 import duckdb
+import polars as pl
 import pyarrow as pa
 
 from hoga.api.timeenc import hhmmssms_to_intra_ms_sql
@@ -149,6 +150,71 @@ def write_parquet(trades: Iterable[Trade], path: Path) -> None:
     }
     from hoga.api._atomic_write import atomic_write_parquet_table
     atomic_write_parquet_table(path, pa.table(cols, schema=PARQUET_SCHEMA))
+
+
+def write_parquet_frame(df: pl.DataFrame, path: Path) -> None:
+    """write_parquet의 컬럼형 등가물 — dataclass getattr 물질화 없이 기록.
+
+    정렬은 리스트 경로와 동일하게 ts_ms 단독 + stable(동일 ts는 입력 순서 보존).
+    스키마 캐스팅은 PARQUET_SCHEMA로 다운캐스트(i64→i32 등) — 리스트 경로의
+    pa.array(type=...) 캐스트와 동일 결과."""
+    table = (
+        df.sort("ts_ms", maintain_order=True)
+        .select([f.name for f in PARQUET_SCHEMA])
+        .to_arrow()
+        .cast(PARQUET_SCHEMA)
+    )
+    from hoga.api._atomic_write import atomic_write_parquet_table
+    atomic_write_parquet_table(path, table)
+
+
+def dedup_overlap_resends_frame(df: pl.DataFrame) -> pl.DataFrame:
+    """dedup_overlap_resends의 컬럼형 등가물 — 입력 행 순서 보존.
+
+    연속체결(side!=0, qty>0)에서 같은 cum_vol의 최대 seq만 생존, 나머지 행은
+    무조건 보존 — 리스트 경로와 동일한 keep-LAST 규칙."""
+    in_scope = (pl.col("side") != 0) & (pl.col("qty") > 0)
+    keep_last = (
+        df.filter(in_scope)
+        .group_by("cum_vol")
+        .agg(pl.col("seq").max().alias("_keep_seq"))
+    )
+    return (
+        df.with_row_index("_ord")
+        .join(keep_last, on="cum_vol", how="left")
+        .filter(~in_scope | (pl.col("seq") == pl.col("_keep_seq")))
+        .sort("_ord")
+        .drop("_ord", "_keep_seq")
+    )
+
+
+def find_cum_vol_violations_frame(df: pl.DataFrame) -> list[CumVolViolation]:
+    """find_cum_vol_violations의 컬럼형 등가물 — 동일 (index, prev, curr, ts_ms)."""
+    s = df.filter(pl.col("side") != 0).sort(["ts_ms", "seq"])
+    if s.height == 0:
+        return []
+    s = s.with_row_index("_i").with_columns(
+        pl.col("cum_vol").shift(1, fill_value=-1).alias("_prev"),
+    )
+    bad = s.filter(pl.col("cum_vol") < pl.col("_prev"))
+    return [
+        CumVolViolation(
+            index=int(r["_i"]), prev_cum=int(r["_prev"]),
+            curr_cum=int(r["cum_vol"]), ts_ms=int(r["ts_ms"]),
+        )
+        for r in bad.select("_i", "_prev", "cum_vol", "ts_ms").to_dicts()
+    ]
+
+
+def validate_frame(df: pl.DataFrame, *, lenient: bool = False) -> None:
+    """validate의 컬럼형 등가물 — 동일 예외 클래스·메시지."""
+    violations = find_cum_vol_violations_frame(df)
+    if violations and not lenient:
+        first = violations[0]
+        raise TradeValidationError(
+            f"cum_vol decreased at ts_ms={first.ts_ms}: "
+            f"{first.prev_cum} -> {first.curr_cum}"
+        )
 
 
 # === Within-table invariants ===

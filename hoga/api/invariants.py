@@ -263,6 +263,10 @@ class StockDateArtifacts:
     candles: "list[Candle] | None" = None
     snapshots: "list[Orderbook] | None" = None
     trades: "list[Trade] | None" = None
+    # 컬럼형 대안 입력 (파서 고속 경로): 리스트 필드와 동시 설정 금지 —
+    # series 검사는 컬럼형이 설정돼 있으면 그것을 우선한다.
+    snapshot_ts_ms: "list[int] | None" = None
+    trades_frame: "Any | None" = None  # polars.DataFrame(ts_ms, seq, side, cum_vol …)
 
 
 @dataclass(frozen=True)
@@ -314,7 +318,13 @@ def _series_candles_ts_monotonic(a: "StockDateArtifacts") -> list[Violation]:
 # parser uses for is_partial also flows into the catalog.
 
 def _series_snapshots_no_gaps(a: "StockDateArtifacts") -> list[Violation]:
-    if a.snapshots is None:
+    if a.snapshot_ts_ms is not None:
+        raw_ts: list[int] | None = a.snapshot_ts_ms
+    elif a.snapshots is not None:
+        raw_ts = [s.ts_ms for s in a.snapshots]
+    else:
+        raw_ts = None
+    if raw_ts is None:
         return []
     close_ms = a.meta.get("regular_session_close_ms")
     if not isinstance(close_ms, int):
@@ -323,14 +333,14 @@ def _series_snapshots_no_gaps(a: "StockDateArtifacts") -> list[Violation]:
         return []
     from hoga.api.disk_state import has_meaningful_gaps
     from hoga.api.timeenc import HogaMs
-    ts_values = [HogaMs(s.ts_ms) for s in a.snapshots]
+    ts_values = [HogaMs(ts) for ts in raw_ts]
     if not has_meaningful_gaps(ts_values, session_close_ms=HogaMs(close_ms)):
         return []
     return [Violation(
         "series.snapshots_no_gaps",
         Severity.warn,
         "snapshot stream has ≥60s gap inside continuous-trading session",
-        {"datapoint_count": len(a.snapshots)},
+        {"datapoint_count": len(raw_ts)},
     )]
 
 
@@ -359,11 +369,16 @@ def _series_snapshots_no_gaps(a: "StockDateArtifacts") -> list[Violation]:
 # the first regression to drive the lenient fallback, independent of severity).
 
 def _series_cum_vol_monotonic(a: "StockDateArtifacts") -> list[Violation]:
-    if a.trades is None:
+    if a.trades_frame is not None:
+        from hoga.tables.trades import find_cum_vol_violations_frame
+        violations = find_cum_vol_violations_frame(a.trades_frame)
+    elif a.trades is not None:
+        from hoga.tables.trades import find_cum_vol_violations
+        violations = find_cum_vol_violations(a.trades)
+    else:
         return []
-    from hoga.tables.trades import find_cum_vol_violations
     out: list[Violation] = []
-    for v in find_cum_vol_violations(a.trades):
+    for v in violations:
         out.append(Violation(
             "series.cum_vol_monotonic",
             Severity.warn,

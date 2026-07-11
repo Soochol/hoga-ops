@@ -120,43 +120,40 @@ def parse_stock_date(
     info_text = (raw_dir / "info.tsv").read_text(encoding="utf-8").strip()
     info = parse_info_row(info_text)
 
-    trades_list, snapshots_list, brokers_list, seen_seqs, skipped = _collect_events(
-        raw_dir, lenient=lenient
-    )
+    # 컬럼형 고속 경로 (hoga.parser.frames): type-1/2는 polars 벡터 파싱,
+    # 그 외·의심 라인은 python parse_row 폴백 — strict/lenient 오류 의미론
+    # 바이트 동일. 리스트 경로(_collect_events)는 폴백·오라클로 상존한다.
+    from hoga.parser.frames import collect_event_frames
+    collected = collect_event_frames(raw_dir, lenient=lenient)
+    skipped = collected.skipped
+    brokers_list = collected.brokers
+    snapshots_df = collected.snapshots
     # Drop hogaplay page re-send duplicates (continuous trades re-sent with fresh
     # seqs, so seq-dedup misses them). Runs BEFORE validate so the strict cum_vol
     # check passes for dates whose only anomaly was the overlap — no lenient
     # fallback needed — and before write_parquet so the 체결강도 bucket isn't
-    # double-counted. No-op for clean dates. See trades.dedup_overlap_resends.
-    trades_list = trades.dedup_overlap_resends(trades_list)
+    # double-counted. No-op for clean dates. See trades.dedup_overlap_resends_frame.
+    trades_df = trades.dedup_overlap_resends_frame(collected.trades)
 
     candles_list = _collect_candles(raw_dir, skipped=skipped, lenient=lenient)
 
-    # Per-table validation registry: a table module participates by exporting
-    # ``validate(entities, *, lenient: bool) -> None``. Tables without
-    # invariants (brokers, candles) simply don't define it.
-    for table_mod, entities in (
-        (trades, trades_list),
-        (snapshots, snapshots_list),
-        (brokers, brokers_list),
-        (candles, candles_list),
-    ):
-        validate = getattr(table_mod, "validate", None)
-        if validate is not None:
-            validate(entities, lenient=lenient)
+    # Per-table validation: trades/snapshots는 컬럼형(validate_frame — 동일
+    # 예외 클래스·메시지), brokers/candles는 invariant 미정의(리스트 경로와 동일).
+    trades.validate_frame(trades_df, lenient=lenient)
+    snapshots.validate_frame(snapshots_df, lenient=lenient)
 
     out_dir.mkdir(parents=True, exist_ok=True)
-    trades.write_parquet(trades_list, out_dir / "trades.parquet")
-    snapshots.write_parquet(snapshots_list, out_dir / "snapshots.parquet")
+    trades.write_parquet_frame(trades_df, out_dir / "trades.parquet")
+    snapshots.write_parquet_frame(snapshots_df, out_dir / "snapshots.parquet")
     brokers.write_parquet(brokers_list, out_dir / "brokers.parquet")
     candles.write_parquet(candles_list, out_dir / "candles.parquet")
 
     meta = _build_meta(
         info=info,
-        seen_seqs=seen_seqs,
+        unique_event_count=collected.unique_event_count,
         skipped=skipped,
         raw_dir=raw_dir,
-        snapshots_list=snapshots_list,
+        snapshot_ts_ms=snapshots_df["ts_ms"].to_list(),
     )
 
     # ADR-0020 archival hook — record violations at write time. Meta-level
@@ -171,8 +168,8 @@ def parse_stock_date(
     _all_violations = _check_meta(meta) + _check_series(StockDateArtifacts(
         meta=meta,
         candles=candles_list,
-        snapshots=snapshots_list,
-        trades=trades_list,
+        snapshot_ts_ms=snapshots_df["ts_ms"].to_list(),
+        trades_frame=trades_df,
     ))
     if _all_violations:
         meta["invariant_violations"] = [v.as_dict() for v in _all_violations]
@@ -219,6 +216,9 @@ def parse_stock_date(
     return out_dir
 
 
+# NOTE: 리스트 경로(_collect_events + 테이블 validate/write 리스트 함수들)는
+# 컬럼형 고속 경로(hoga.parser.frames)의 폴백 파서(parse_row)가 기대는 기준
+# 구현이자 차등 테스트(test_parser_frames_oracle)의 오라클로 상존한다.
 def _collect_events(
     raw_dir: Path,
     *,
@@ -300,16 +300,6 @@ def _collect_candles(
     return candles_list
 
 
-def _snapshot_ts_hhmmssms(snapshots: list[Orderbook]) -> list[HogaMs]:
-    """Extract HHMMSSmmm timestamps from Orderbook entities (encoding seam).
-
-    Orderbook.ts_ms is stored as plain ``int`` on the entity for now (entity-
-    level HogaMs adoption is a separate sweep). This helper is the single
-    place where the encoding is asserted by casting to HogaMs, so any future
-    schema drift surfaces here rather than silently breaking has_meaningful_gaps.
-    """
-    return [HogaMs(s.ts_ms) for s in snapshots]
-
 
 def _capture_fingerprint(meta: dict[str, object]) -> tuple:
     """Result fingerprint used to decide "same capture again" (ADR-0093).
@@ -354,10 +344,10 @@ def _identical_capture_count(
 def _build_meta(
     *,
     info: StockInfo,
-    seen_seqs: set[int],
+    unique_event_count: int,
     skipped: list[tuple[str, int, str]],
     raw_dir: Path,
-    snapshots_list: list[Orderbook],
+    snapshot_ts_ms: list[int],
 ) -> dict[str, object]:
     pages = raw_pages(raw_dir)
     progress_path = raw_dir / "_progress.json"
@@ -375,7 +365,7 @@ def _build_meta(
     # One analyze_gaps pass yields both is_partial (the boolean gate) and the
     # gap boundary ranges surfaced to the user (WS1 / ADR upstream-gap).
     gaps = analyze_gaps(
-        _snapshot_ts_hhmmssms(snapshots_list),
+        [HogaMs(ts) for ts in snapshot_ts_ms],
         session_close_ms=HogaMs(info.regular_session_close_ms),
     )
     is_partial = gaps.is_partial
@@ -399,7 +389,7 @@ def _build_meta(
         "info_unknowns": info.unknowns,
         "raw_info_tsv": info.raw_line,
         "pages_collected": len(pages),
-        "total_unique_events": len(seen_seqs),
+        "total_unique_events": unique_event_count,
         "parser_version": PARSER_VERSION,
         "warnings": [{"file": f, "line": ln, "reason": r} for f, ln, r in skipped],
         "collection_complete": collection_complete,
