@@ -792,6 +792,17 @@ export default function DrawingOverlay({ chart, axis, paneSeries, onChartHoverPa
           value={textValue}
           onChange={(e) => setTextValue(e.target.value)}
           onBlur={(e) => commitText(e.currentTarget.value)}
+          // Pointer events inside the input must NOT reach the overlay's tool
+          // dispatch. Without these stops, clicking the box itself bubbled to
+          // textTool.onPointerDown → beginTextEdit saw an open edit → committed
+          // the (empty) value → the input vanished on the spot. Real users
+          // click the box to start typing (or double-click to place), so the
+          // editor looked like it "never appeared". Same leak let select-mode
+          // re-edits start a body-drag on the underlying text drawing while
+          // selecting characters.
+          onPointerDown={(e) => e.stopPropagation()}
+          onPointerUp={(e) => e.stopPropagation()}
+          onDoubleClick={(e) => e.stopPropagation()}
           onKeyDown={(e) => {
             if (e.key === 'Enter') {
               // Blur instead of committing inline. blur() first ends any active
