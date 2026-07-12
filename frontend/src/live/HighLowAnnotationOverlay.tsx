@@ -7,6 +7,13 @@ import type { PaneSeriesMap } from '../chart/drawing/chartCoordinates';
 import type { LiveTimeframe } from '../state/livePage';
 import { useActivePrefs } from '../state/chartPrefs';
 import { resolveTokensThemed } from '../util/tokens';
+import {
+  LABEL_BOX_X_PAD_PX,
+  LABEL_BOX_Y_PAD_PX,
+  LABEL_FONT_PX,
+  LABEL_GAP_PX,
+  xCoordinateOrNearest,
+} from '../chart/AskPeakSegmentsPrimitive';
 import { computeVisibleExtremes } from './visibleExtremes';
 import { formatExtremeLabel } from './formatExtremeLabel';
 
@@ -17,6 +24,13 @@ const TOKEN_SPEC = {
   down: ['--price-down', '#3485FA'],
 } as const;
 
+/** Ask/Bid Peak(최대벽) 도킹 라벨 1개의 회피 입력 — 가격(y)·선 끝 시각(x)·라벨 텍스트(폭). */
+export type AvoidWallLabel = {
+  price: number;
+  time1: Time;
+  label: string;
+};
+
 type Props = {
   chart: IChartApi;
   /** 캔들 경로 bundle(cb) — 현재가 = candles.at(-1).close. */
@@ -24,10 +38,11 @@ type Props = {
   axis: VirtualAxis;
   paneSeries: PaneSeriesMap;
   timeframe: LiveTimeframe;
-  /** Ask/Bid Peak(최대벽) 라벨이 점유한 **가격**들. 렌더 본문이 매 프레임 priceToCoordinate
-   *  로 y픽셀 변환해 그 라인을 피한다. 픽셀이 아닌 가격을 받는 이유: priceToCoordinate 는
-   *  가격축 스케일 스냅샷이라, 상위에서 미리 구우면 오토스케일·팬/줌 시 회피선이 낡는다. */
-  avoidLabelPrices?: readonly number[];
+  /** Ask/Bid Peak(최대벽) 도킹 라벨들. 렌더 본문이 매 프레임 priceToCoordinate(y)·
+   *  xCoordinateOrNearest(x)로 라벨 rect 를 산출해 **2D 교차 시에만** 피한다. 픽셀이 아닌
+   *  가격/시각을 받는 이유: 좌표 변환은 축 스케일 스냅샷이라, 상위에서 미리 구우면
+   *  오토스케일·팬/줌 시 회피 rect 가 낡는다. */
+  avoidWallLabels?: readonly AvoidWallLabel[];
 };
 
 const dotStyle = (color: string): CSSProperties => ({
@@ -54,13 +69,26 @@ const LABEL_HEIGHT_PX = 16;
 const LEADER_MIN_HEIGHT_PX = 3;
 const LABEL_CHAR_WIDTH_PX = 6.6;
 const LABEL_AVOID_GAP_PX = 2;
-const WALL_LABEL_GAP_PX = 3;
-const WALL_LABEL_FONT_PX = 11;
-const WALL_LABEL_BOX_Y_PAD_PX = 1;
+// 도킹 라벨(11px sans-serif, 숫자·콤마 위주) 폭 추정 — canvas measureText 없이 근사.
+// 약간 넉넉하게 잡아 회피 rect 가 실제 칩보다 좁아지는 쪽(겹침 잔존)을 피한다.
+const WALL_LABEL_CHAR_WIDTH_PX = 6.5;
+// 도킹 라벨 x 간격 — PeakWallDockedLabelsPrimitive.draw 의 labelXGapPx(6*hr)와 동일.
+const WALL_LABEL_X_GAP_PX = 6;
+// 회피 연쇄 push 상한(pane 높이 비율). 이보다 깊이 밀 바엔 겹침을 감수하고 가장자리로
+// 복귀한다 — 회피가 라벨을 pane 중간까지 표류시키던 최악 케이스의 구조적 차단.
+const MAX_AVOID_SHIFT_RATIO = 0.3;
 
 function estimateLabelWidth(text: string): number {
   return text.length * LABEL_CHAR_WIDTH_PX + 8;
 }
+
+/** 회피 대상 rect — 오버레이 컨테이너(=캔들 pane 0) 로컬 px 좌표. */
+export type AvoidRect = {
+  top: number;
+  bottom: number;
+  left: number;
+  right: number;
+};
 
 type VerticalBox = {
   top: number;
@@ -75,16 +103,23 @@ function highLowLabelBox(anchorY: number, place: ExtremeLabelPlace): VerticalBox
     : { top: anchorY - LABEL_HEIGHT_PX, bottom: anchorY };
 }
 
-function wallLabelBoxFromLineY(lineY: number): VerticalBox {
-  const baselineY = lineY - WALL_LABEL_GAP_PX;
+/** 도킹 라벨 칩 rect 근사 — PeakWallDockedLabelsPrimitive 의 렌더 기하를 미러링:
+ *  선 y 위 baseline(lineY-GAP), 선 끝 x 우측(x-gap + halfBarSpacing anchor shift). */
+function wallLabelAvoidRect(
+  lineY: number,
+  lineEndX: number,
+  label: string,
+  halfBarSpacingPx: number,
+): AvoidRect {
+  const baselineY = lineY - LABEL_GAP_PX;
+  const estWidth = label.length * WALL_LABEL_CHAR_WIDTH_PX;
+  const left = lineEndX + WALL_LABEL_X_GAP_PX + halfBarSpacingPx - LABEL_BOX_X_PAD_PX;
   return {
-    top: baselineY - WALL_LABEL_FONT_PX - WALL_LABEL_BOX_Y_PAD_PX,
-    bottom: baselineY + WALL_LABEL_BOX_Y_PAD_PX,
+    top: baselineY - LABEL_FONT_PX - LABEL_BOX_Y_PAD_PX,
+    bottom: baselineY + LABEL_BOX_Y_PAD_PX,
+    left,
+    right: left + estWidth + LABEL_BOX_X_PAD_PX * 2,
   };
-}
-
-function verticalBoxesOverlap(a: VerticalBox, b: VerticalBox): boolean {
-  return a.top < b.bottom && b.top < a.bottom;
 }
 
 export function placeExtremeLabel(
@@ -94,7 +129,7 @@ export function placeExtremeLabel(
   text: string,
   paneWidth: number,
   paneHeight: number,
-  avoidYLines: readonly number[] = [],
+  avoidRects: readonly AvoidRect[] = [],
 ): ExtremeLabelPlacement {
   if (paneWidth <= 0 || paneHeight <= 0) return { x, y, place: preferred };
   // x: dot(극값 봉) x 를 유지하되 라벨 폭 절반이 pane 좌우 가장자리를 넘지 않게 클램프.
@@ -109,21 +144,35 @@ export function placeExtremeLabel(
   const place = preferred;
   const minY = LABEL_EDGE_PAD_PX;
   const maxY = paneHeight - LABEL_EDGE_PAD_PX;
-  let anchorY = place === 'above' ? minY : maxY;
+  const edgeAnchorY = place === 'above' ? minY : maxY;
+  let anchorY = edgeAnchorY;
 
-  // wall(Ask/Bid Peak 등) 라벨과 겹치면 pane 안쪽으로 양보: 상단 라벨은 아래로,
-  // 하단 라벨은 위로 민다(가장자리 고정의 역방향 push). 가장자리 근처 wall 만 실효.
-  if (avoidYLines.length > 0) {
-    const avoidBoxes = avoidYLines
-      .filter(Number.isFinite)
-      .map(wallLabelBoxFromLineY)
+  // 다른 라벨(도킹 wall 칩·pane 레전드 행)과 겹치면 pane 안쪽으로 양보: 상단 라벨은
+  // 아래로, 하단 라벨은 위로 민다(가장자리 고정의 역방향 push). 회피는 **2D** — 라벨
+  // 박스와 x·y 모두 교차하는 rect 만 실효한다. y-전용이던 옛 방식은 우측에 도킹된 wall
+  // 칩이 좌측 극값 라벨을 밀어내는 유령 push 로 라벨을 pane 중간까지 표류시켰다.
+  if (avoidRects.length > 0) {
+    const labelLeft = placedX - halfWidth;
+    const labelRight = placedX + halfWidth;
+    const overlappingX = avoidRects
+      .filter((r) => (
+        Number.isFinite(r.top) && Number.isFinite(r.bottom)
+        && Number.isFinite(r.left) && Number.isFinite(r.right)
+        && labelLeft < r.right && r.left < labelRight
+      ))
       .sort((a, b) => (place === 'above' ? a.top - b.top : b.bottom - a.bottom));
-    for (const box of avoidBoxes) {
-      if (verticalBoxesOverlap(highLowLabelBox(anchorY, place), box)) {
+    for (const box of overlappingX) {
+      const labelBox = highLowLabelBox(anchorY, place);
+      if (labelBox.top < box.bottom && box.top < labelBox.bottom) {
         anchorY = place === 'above'
           ? box.bottom + LABEL_AVOID_GAP_PX
           : box.top - LABEL_AVOID_GAP_PX;
       }
+    }
+    // 연쇄 push 상한 — 겹겹이 쌓인 회피 대상을 따라 pane 중간까지 밀리느니 가장자리
+    // 원위치로 복귀한다(겹침 감수). "저가 라벨이 pane 중간에 뜨는" 케이스의 최종 방벽.
+    if (Math.abs(anchorY - edgeAnchorY) > paneHeight * MAX_AVOID_SHIFT_RATIO) {
+      anchorY = edgeAnchorY;
     }
   }
 
@@ -189,7 +238,7 @@ function readVisibleRange(ts: ITimeScaleApi<Time>): { from: number; to: number }
  * 구독해 팬/줌 시 재계산하고, 차트 API 는 read-only 로 읽는다. PaneSpec series-marker 가 아닌
  * DOM 오버레이인 이유: marker seam 은 데이터 cadence(팬/줌 무반응)라 이 기능엔 맞지 않음(그릴링).
  */
-function HighLowAnnotationOverlay({ chart, bundle, axis, paneSeries, timeframe, avoidLabelPrices = [] }: Props) {
+function HighLowAnnotationOverlay({ chart, bundle, axis, paneSeries, timeframe, avoidWallLabels = [] }: Props) {
   const enabled = useActivePrefs((p) => p.highLowLabelsEnabled);
   const containerRef = useRef<HTMLDivElement>(null);
   const [, tick] = useReducer((n: number) => n + 1, 0);
@@ -250,20 +299,53 @@ function HighLowAnnotationOverlay({ chart, bundle, axis, paneSeries, timeframe, 
   // (전체 마지막 캔들이 아님 — 팬하면 기준이 바뀐다).
   const ex = series ? computeVisibleExtremes(bundle.candles, axis, range) : null;
 
-  // 회피선 y픽셀은 렌더 본문에서 매 프레임 산출 — dot(priceToCoordinate)과 동일 신선도라
-  // 축 리스케일(오토스케일/팬/줌/pane 토글) 후에도 실제 월 위치와 정합한다. teardown 레이스
-  // 시 priceToCoordinate throw → 빈 배열 폴백(다음 프레임 self-heal). 중복 y는 dedup.
-  const avoidYLines: number[] = [];
-  if (series && avoidLabelPrices.length > 0) {
+  // 회피 rect 는 렌더 본문에서 매 프레임 산출 — dot(priceToCoordinate)과 동일 신선도라
+  // 축 리스케일(오토스케일/팬/줌/pane 토글) 후에도 실제 칩 위치와 정합한다. teardown 레이스
+  // 시 좌표 변환 throw → 빈 배열 폴백(다음 프레임 self-heal).
+  const avoidRects: AvoidRect[] = [];
+  if (series && avoidWallLabels.length > 0) {
     try {
-      for (const price of avoidLabelPrices) {
-        const yc = series.priceToCoordinate(price);
+      // 도킹 라벨의 anchor shift(반 봉 간격) — PeakWallDockedLabelsPrimitive.draw 미러.
+      const lr = ts.getVisibleLogicalRange();
+      const logicalSpan = lr ? Math.abs(lr.to - lr.from) : 0;
+      const halfBarSpacing = logicalSpan > 0 && paneWidth > 0 ? (paneWidth / logicalSpan) * 0.5 : 0;
+      for (const wall of avoidWallLabels) {
+        if (wall.label === '' || !Number.isFinite(wall.price)) continue;
+        const yc = series.priceToCoordinate(wall.price);
         if (yc == null) continue;
-        const rounded = Math.round(Number(yc));
-        if (!avoidYLines.includes(rounded)) avoidYLines.push(rounded);
+        const lineEndX = xCoordinateOrNearest(ts, wall.time1);
+        if (lineEndX == null) continue;
+        avoidRects.push(
+          wallLabelAvoidRect(Math.round(Number(yc)), Number(lineEndX), wall.label, halfBarSpacing),
+        );
       }
     } catch {
-      avoidYLines.length = 0;
+      avoidRects.length = 0;
+    }
+  }
+  // Pane Legend(캔들 pane 좌상단 행 스택)도 회피 대상 — 극값 봉이 좌측이면 상단 고정
+  // 고가 라벨이 레전드 행과 정확히 같은 자리에 겹치던 결함의 수정. 레전드는 형제 오버레이라
+  // DOM 실측이 정본이고(행 수·폭이 데이터/토글 따라 변함), 이 오버레이의 재렌더 주기
+  // (팬/줌·리사이즈·캔들 갱신·pane 토글=paneSeries 식별자)면 신선도가 충분하다.
+  if (paneRect && paneHeight > 0) {
+    const legendRoot = containerRef.current?.parentElement?.querySelector(
+      '[data-testid="pane-legend-overlay"]',
+    );
+    if (legendRoot) {
+      for (const stack of Array.from(legendRoot.children)) {
+        for (const row of Array.from(stack.children)) {
+          const r = row.getBoundingClientRect();
+          if (r.width <= 0 || r.height <= 0) continue;
+          const top = r.top - paneRect.top;
+          if (top >= paneHeight) continue; // 하위 pane(거래량 등)의 레전드 행은 무관.
+          avoidRects.push({
+            top,
+            bottom: r.bottom - paneRect.top,
+            left: r.left - paneRect.left,
+            right: r.right - paneRect.left,
+          });
+        }
+      }
     }
   }
 
@@ -305,7 +387,7 @@ function HighLowAnnotationOverlay({ chart, bundle, axis, paneSeries, timeframe, 
       {items.map(
         (it) => {
           if (!it) return null;
-          const label = placeExtremeLabel(it.place, it.x, it.y, it.text, paneWidth, paneHeight, avoidYLines);
+          const label = placeExtremeLabel(it.place, it.x, it.y, it.text, paneWidth, paneHeight, avoidRects);
           // 라벨 박스의 dot 쪽 모서리 y(above=박스 bottom, below=박스 top). dot(it.y)과의
           // 세로 구간을 리더선으로 잇는다. 극값이 가장자리 근처면 구간이 짧아 리더선 생략.
           const labelInnerY = label.place === 'above'
