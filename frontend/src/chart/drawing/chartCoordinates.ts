@@ -14,6 +14,7 @@
 // PANE_SPECS lookup would mislocate drawings on those shifted panes.
 
 import type { IChartApi, ISeriesApi, Logical, UTCTimestamp } from 'lightweight-charts';
+import { INTER_SEGMENT_GAP_MS } from '../../util/time';
 import type { VirtualAxis } from '../../util/virtualAxis';
 import type { PaneId, Point } from './types';
 
@@ -27,6 +28,67 @@ export type PaneSeriesMap = ReadonlyMap<PaneId, ISeriesApi<any>>;
  * whitespace and still round-trips consistently. See the empty-band methods.
  */
 export type FutureBand = { lastRealMs: number; bucketMs: number };
+
+/**
+ * Gap-aware time domain for horizontal DRAG translation. Body-drag used to
+ * shift vertices by Δ-real-ms, but the screen's X axis is the gap-compressed
+ * VirtualAxis: the moment the cursor crossed a day boundary, Δms swallowed the
+ * whole inter-session gap (overnight ~17.5h, weekends days) and the shifted
+ * vertices landed INSIDE a gap — off-axis realMs that `axis.contains()`
+ * rejects. One gap-landed corner made a rect/measure stretch to the canvas
+ * edge (the `?? 0 / ?? width` render fallback); both corners gap-landed made
+ * it vanish from render AND hit-test.
+ *
+ * Translating in VIRTUAL ms instead preserves the visual shape and guarantees
+ * every vertex lands back on-axis: `toReal(toVirtual(ms) + dVirtual)` walks
+ * bar-space, not wall-clock space.
+ *
+ * The virtual domain is extended linearly past the last candle so vertices
+ * anchored in the empty right band (created there via FutureBand
+ * extrapolation) keep dragging instead of getting clamped onto the last
+ * candle. The extension pitch matches the render-side extrapolation: one
+ * `bucketMs` of real time per bar, where a bar is `bucketMs` of virtual time
+ * on intraday axes and one segment (`INTER_SEGMENT_GAP_MS`) on calendar axes.
+ */
+export type DragTimeDomain = {
+  toVirtual(realMs: number): number;
+  toReal(virtualMs: number): number;
+  /** Virtual coordinate of the axis origin (first session open) — the left
+   *  bound for the shape-preserving horizontal drag cap. */
+  originV: number;
+};
+
+export function dragTimeDomain(axis: VirtualAxis, future?: FutureBand): DragTimeDomain {
+  const hasFuture = future != null && future.bucketMs > 0;
+  const vPerBar = hasFuture
+    ? axis.mode === 'calendar'
+      ? INTER_SEGMENT_GAP_MS
+      : future.bucketMs
+    : 0;
+  const lastV = hasFuture ? axis.toVirtual(future.lastRealMs) : 0;
+  return {
+    toVirtual(realMs: number): number {
+      // Off-axis but past the last candle → the empty right band. Mirrors
+      // realMsToCanvasX / extrapolateFutureX so drag and render agree.
+      if (hasFuture && realMs > future.lastRealMs && !axis.contains(realMs)) {
+        return lastV + ((realMs - future.lastRealMs) / future.bucketMs) * vPerBar;
+      }
+      // On-axis → exact; in a gap (legacy real-ms-drag leftovers) → toVirtual
+      // snaps forward to the next open, self-healing the drawing on its next drag.
+      return axis.toVirtual(realMs);
+    },
+    toReal(virtualMs: number): number {
+      // Past the last candle → invert the band extension. For intraday this is
+      // identical to axis.toReal inside the last session and continues linearly
+      // beyond its close, so the branch boundary introduces no seam.
+      if (hasFuture && virtualMs > lastV) {
+        return future.lastRealMs + ((virtualMs - lastV) / vPerBar) * future.bucketMs;
+      }
+      return axis.toReal(virtualMs);
+    },
+    originV: axis.segments.length > 0 ? axis.segments[0].virtualStart : 0,
+  };
+}
 
 /** Core real→canvas-X (in-axis only). Split out so the future-band path can
  *  resolve the last candle's coordinate without re-entering the wrapper. */

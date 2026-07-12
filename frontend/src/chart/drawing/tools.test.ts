@@ -22,6 +22,8 @@ import {
   type ToolCtx,
 } from './tools';
 import type { Drawing, Point } from './types';
+import { createVirtualAxis } from '../../util/virtualAxis';
+import { dragTimeDomain } from './chartCoordinates';
 
 function makeCtx(overrides: Partial<ToolCtx> = {}): ToolCtx {
   const defaultPoint: Point = { realMs: 1_700_000_000_000, price: 70_000 };
@@ -41,6 +43,10 @@ function makeCtx(overrides: Partial<ToolCtx> = {}): ToolCtx {
     paneIdAtY: vi.fn(() => 'candle' as const),
     clampYToPane: vi.fn((_id, py) => py),
     priceBoundsForPane: vi.fn(() => ({ top: 100_000, bottom: 0 })),
+    // Identity time domain: virtual == real. Gap-aware behavior is covered by
+    // the dragTimeDomain tests (chartCoordinates.test.ts) and the dedicated
+    // gap-crossing drag test below.
+    dragTime: { toVirtual: (ms: number) => ms, toReal: (v: number) => v, originV: -Infinity },
     drawings: [],
     selectedId: null,
     defaults: { color: '#14B8A6', width: 2, lineStyle: 'solid' as const, fontSize: 13, magnet: false, hiddenAll: false },
@@ -566,6 +572,128 @@ describe('selectTool — body drag in the empty right band (pixelToData → null
     expect(ctx.update).toHaveBeenCalledWith('t1', {
       b: { realMs: 1_700_000_600_000, price: 130 },
     });
+  });
+});
+
+// Regression for the "사각형·측정자 드래그 좌우로 길어지거나 사라짐" bug: body-drag
+// used flat Δ-real-ms, so a cursor crossing the day boundary injected the whole
+// overnight gap into the delta and stranded rect/measure corners INSIDE the
+// gap (off-axis → stretched-to-edge or vanished render). The drag now shifts
+// in virtual (gap-compressed) ms, so every vertex must land back on-axis.
+describe('selectTool — body drag across a session gap (virtual-domain shift)', () => {
+  // Sessions A [0, 1_000_000] and B [10_000_000, 11_000_000]; the 9_000_000
+  // overnight gap compresses to 1s of virtual time.
+  const axis = createVirtualAxis([
+    { date: '20260101', sessionOpenMs: 0, sessionCloseMs: 1_000_000 },
+    { date: '20260102', sessionOpenMs: 10_000_000, sessionCloseMs: 11_000_000 },
+  ]);
+  const dragTime = dragTimeDomain(axis, { lastRealMs: 10_900_000, bucketMs: 60_000 });
+
+  const rect = (): Drawing => ({
+    id: 'r1', kind: 'rect',
+    a: { realMs: 800_000, price: 100 },
+    b: { realMs: 900_000, price: 120 },
+    fillOpacity: 0.1,
+    color: '#14B8A6', width: 1.5, lineStyle: 'solid', paneId: 'candle',
+  });
+
+  it('keeps both rect corners on-axis when the drag crosses the gap', () => {
+    const target = rect();
+    const update = vi.fn();
+    const ctx = makeCtx({
+      drawings: [target],
+      dragTime,
+      update,
+      // Cursor jumped from late session A into session B (crossed the day
+      // boundary): 99_000ms into B, i.e. +200_000 VIRTUAL ms from 900_000.
+      dragRef: { current: { kind: 'body', id: 'r1', lastRealMs: 900_000, lastPrice: 110, pointerId: 1, paneId: 'candle' } },
+      pixelToData: vi.fn(() => ({ realMs: 10_099_000, price: 110 })),
+      canvasYToPrice: vi.fn(() => 110),
+      priceBoundsForPane: vi.fn(() => ({ top: 1_000, bottom: 0 })),
+    });
+    selectTool.onPointerMove!(ctx);
+    expect(update).toHaveBeenCalledOnce();
+    const patch = update.mock.calls[0][1] as { a: Point; b: Point };
+    // Old real-ms behavior: +9_199_000 real Δ → corners at 9_999_000 /
+    // 10_099_000, the first stranded in the gap (stretched render). Virtual
+    // shift instead lands a at session A's close and b 99_000 into session B.
+    expect(patch.a.realMs).toBe(1_000_000);
+    expect(patch.b.realMs).toBe(10_099_000);
+    expect(axis.contains(patch.a.realMs)).toBe(true);
+    expect(axis.contains(patch.b.realMs)).toBe(true);
+    // Prices untouched (pure horizontal drag).
+    expect(patch.a.price).toBe(100);
+    expect(patch.b.price).toBe(120);
+  });
+
+  it('dragging back restores the original corners exactly (no drift)', () => {
+    // Start from the post-gap-crossing state and move the cursor back to the
+    // original grab position: the virtual deltas telescope to zero.
+    const target: Drawing = {
+      ...rect(),
+      a: { realMs: 1_000_000, price: 100 },
+      b: { realMs: 10_099_000, price: 120 },
+    } as Drawing;
+    const update = vi.fn();
+    const ctx = makeCtx({
+      drawings: [target],
+      dragTime,
+      update,
+      dragRef: { current: { kind: 'body', id: 'r1', lastRealMs: 10_099_000, lastPrice: 110, pointerId: 1, paneId: 'candle' } },
+      pixelToData: vi.fn(() => ({ realMs: 900_000, price: 110 })),
+      canvasYToPrice: vi.fn(() => 110),
+      priceBoundsForPane: vi.fn(() => ({ top: 1_000, bottom: 0 })),
+    });
+    selectTool.onPointerMove!(ctx);
+    const patch = update.mock.calls[0][1] as { a: Point; b: Point };
+    expect(patch.a.realMs).toBe(800_000);
+    expect(patch.b.realMs).toBe(900_000);
+  });
+
+  it('caps a leftward overshoot at the axis origin without compressing the shape', () => {
+    const target = rect(); // spans virtual [800_000, 900_000]
+    const update = vi.fn();
+    const ctx = makeCtx({
+      drawings: [target],
+      dragTime,
+      update,
+      dragRef: { current: { kind: 'body', id: 'r1', lastRealMs: 900_000, lastPrice: 110, pointerId: 1, paneId: 'candle' } },
+      // Cursor swung far left — raw Δvirtual would be -900_000, past the origin.
+      pixelToData: vi.fn(() => ({ realMs: 0, price: 110 })),
+      canvasYToPrice: vi.fn(() => 110),
+      priceBoundsForPane: vi.fn(() => ({ top: 1_000, bottom: 0 })),
+    });
+    selectTool.onPointerMove!(ctx);
+    const patch = update.mock.calls[0][1] as { a: Point; b: Point };
+    // Capped at -800_000: a pinned to the origin, b keeps the 100_000 span.
+    expect(patch.a.realMs).toBe(0);
+    expect(patch.b.realMs).toBe(100_000);
+  });
+
+  it('heals a corner stranded in the gap by an old real-ms drag on the next move', () => {
+    const target: Drawing = {
+      ...rect(),
+      // a was left inside the overnight gap by the pre-fix drag path.
+      a: { realMs: 5_000_000, price: 100 },
+      b: { realMs: 10_099_000, price: 120 },
+    } as Drawing;
+    const update = vi.fn();
+    const ctx = makeCtx({
+      drawings: [target],
+      dragTime,
+      update,
+      dragRef: { current: { kind: 'body', id: 'r1', lastRealMs: 10_099_000, lastPrice: 110, pointerId: 1, paneId: 'candle' } },
+      // Pure vertical move: Δvirtual = 0, but the round-trip still snaps the
+      // stranded corner forward onto session B's open.
+      pixelToData: vi.fn(() => ({ realMs: 10_099_000, price: 111 })),
+      canvasYToPrice: vi.fn(() => 111),
+      priceBoundsForPane: vi.fn(() => ({ top: 1_000, bottom: 0 })),
+    });
+    selectTool.onPointerMove!(ctx);
+    const patch = update.mock.calls[0][1] as { a: Point; b: Point };
+    expect(patch.a.realMs).toBe(10_000_000);
+    expect(axis.contains(patch.a.realMs)).toBe(true);
+    expect(patch.b.realMs).toBe(10_099_000);
   });
 });
 

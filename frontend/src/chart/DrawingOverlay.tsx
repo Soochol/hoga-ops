@@ -44,6 +44,7 @@ import {
   paneIdAtY as projPaneIdAtY,
   clampYToPane as projClampYToPane,
   priceBoundsForPane as projPriceBoundsForPane,
+  dragTimeDomain,
   type PaneSeriesMap,
 } from './drawing/chartCoordinates';
 
@@ -456,6 +457,9 @@ export default function DrawingOverlay({ chart, axis, paneSeries, onChartHoverPa
   const priceBoundsForPane = (paneId: PaneId) =>
     projPriceBoundsForPane(chart, paneSeries, paneId);
 
+  // Gap-aware virtual-time domain for body-drag translation (see DragTimeDomain).
+  const dragTime = dragTimeDomain(axis, futureBand);
+
   // SR-5: the kind-dispatch hit geometry lives in the pure hitTestDrawings
   // kernel (hitTest.ts, unit-tested with stub coords). This wrapper just binds
   // the chart-aware coordinate closures.
@@ -559,6 +563,7 @@ export default function DrawingOverlay({ chart, axis, paneSeries, onChartHoverPa
       paneIdAtY,
       clampYToPane,
       priceBoundsForPane,
+      dragTime,
       drawings,
       selectedId,
       defaults,

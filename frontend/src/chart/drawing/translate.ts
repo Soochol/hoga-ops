@@ -14,71 +14,87 @@
 import type { Drawing, Hline, Measure, Pencil, Rect, Text, Trendline, Vline } from './types';
 
 /**
+ * Horizontal shift for a translation: either a flat Δrealms or a mapping
+ * function. The function form exists because the drag path shifts in the
+ * gap-compressed VIRTUAL time domain — `toReal(toVirtual(ms) + dVirtual)` is
+ * not expressible as a constant real-ms delta across session boundaries
+ * (a flat Δms lands vertices inside inter-session gaps; see DragTimeDomain).
+ */
+export type TimeShift = number | ((realMs: number) => number);
+
+function toShiftFn(dMs: TimeShift): (realMs: number) => number {
+  return typeof dMs === 'function' ? dMs : (ms) => ms + dMs;
+}
+
+/**
  * Body-drag translation: shift the whole drawing by (Δrealms, Δprice).
  * Returns the partial patch a caller passes to the store's `update`.
  */
 export function translateDrawing(
   drawing: Drawing,
-  dMs: number,
+  dMs: TimeShift,
   dPrice: number,
 ): Partial<Drawing> {
+  const shift = toShiftFn(dMs);
   switch (drawing.kind) {
     case 'hline':
       return translateHline(drawing, dPrice);
     case 'vline':
-      return translateVline(drawing, dMs);
+      return translateVline(drawing, shift);
     case 'trendline':
-      return translateTrendline(drawing, dMs, dPrice);
+      return translateTrendline(drawing, shift, dPrice);
     case 'rect':
-      return translateRect(drawing, dMs, dPrice);
+      return translateRect(drawing, shift, dPrice);
     case 'measure':
-      return translateMeasure(drawing, dMs, dPrice);
+      return translateMeasure(drawing, shift, dPrice);
     case 'text':
-      return translateText(drawing, dMs, dPrice);
+      return translateText(drawing, shift, dPrice);
     case 'pencil':
-      return translatePencil(drawing, dMs, dPrice);
+      return translatePencil(drawing, shift, dPrice);
   }
 }
+
+type ShiftFn = (realMs: number) => number;
 
 function translateHline(h: Hline, dPrice: number): Partial<Hline> {
   return { price: h.price + dPrice };
 }
 
-function translateVline(v: Vline, dMs: number): Partial<Vline> {
+function translateVline(v: Vline, shift: ShiftFn): Partial<Vline> {
   // Time-only: vline carries no price, so Δprice is discarded (mirrors how
   // hline discards Δms).
-  return { realMs: v.realMs + dMs };
+  return { realMs: shift(v.realMs) };
 }
 
-function translateTrendline(t: Trendline, dMs: number, dPrice: number): Partial<Trendline> {
+function translateTrendline(t: Trendline, shift: ShiftFn, dPrice: number): Partial<Trendline> {
   return {
-    a: { realMs: t.a.realMs + dMs, price: t.a.price + dPrice },
-    b: { realMs: t.b.realMs + dMs, price: t.b.price + dPrice },
+    a: { realMs: shift(t.a.realMs), price: t.a.price + dPrice },
+    b: { realMs: shift(t.b.realMs), price: t.b.price + dPrice },
   };
 }
 
-function translateRect(r: Rect, dMs: number, dPrice: number): Partial<Rect> {
+function translateRect(r: Rect, shift: ShiftFn, dPrice: number): Partial<Rect> {
   return {
-    a: { realMs: r.a.realMs + dMs, price: r.a.price + dPrice },
-    b: { realMs: r.b.realMs + dMs, price: r.b.price + dPrice },
+    a: { realMs: shift(r.a.realMs), price: r.a.price + dPrice },
+    b: { realMs: shift(r.b.realMs), price: r.b.price + dPrice },
   };
 }
 
-function translateMeasure(m: Measure, dMs: number, dPrice: number): Partial<Measure> {
+function translateMeasure(m: Measure, shift: ShiftFn, dPrice: number): Partial<Measure> {
   return {
-    a: { realMs: m.a.realMs + dMs, price: m.a.price + dPrice },
-    b: { realMs: m.b.realMs + dMs, price: m.b.price + dPrice },
+    a: { realMs: shift(m.a.realMs), price: m.a.price + dPrice },
+    b: { realMs: shift(m.b.realMs), price: m.b.price + dPrice },
   };
 }
 
-function translateText(t: Text, dMs: number, dPrice: number): Partial<Text> {
-  return { at: { realMs: t.at.realMs + dMs, price: t.at.price + dPrice } };
+function translateText(t: Text, shift: ShiftFn, dPrice: number): Partial<Text> {
+  return { at: { realMs: shift(t.at.realMs), price: t.at.price + dPrice } };
 }
 
-function translatePencil(p: Pencil, dMs: number, dPrice: number): Partial<Pencil> {
+function translatePencil(p: Pencil, shift: ShiftFn, dPrice: number): Partial<Pencil> {
   return {
     points: p.points.map((pt) => ({
-      realMs: pt.realMs + dMs,
+      realMs: shift(pt.realMs),
       price: pt.price + dPrice,
     })),
   };
@@ -104,6 +120,50 @@ export function pricesOf(drawing: Drawing): number[] {
     case 'pencil':
       return drawing.points.map((p) => p.price);
   }
+}
+
+/** Every time-bearing vertex of a Drawing (real Unix-ms). An hline has none,
+ *  so it returns [] — clampDVirtualForDrawing then leaves Δvirtual unclamped,
+ *  which is correct (hline discards the horizontal shift entirely). */
+export function timesOf(drawing: Drawing): number[] {
+  switch (drawing.kind) {
+    case 'hline':
+      return [];
+    case 'vline':
+      return [drawing.realMs];
+    case 'trendline':
+      return [drawing.a.realMs, drawing.b.realMs];
+    case 'rect':
+      return [drawing.a.realMs, drawing.b.realMs];
+    case 'measure':
+      return [drawing.a.realMs, drawing.b.realMs];
+    case 'text':
+      return [drawing.at.realMs];
+    case 'pencil':
+      return drawing.points.map((p) => p.realMs);
+  }
+}
+
+/**
+ * Cap a requested body-drag Δvirtual (leftward) so that EVERY vertex of
+ * `drawing` stays at or right of the axis origin — the time-axis sibling of
+ * `clampDPriceForDrawing`. Without it a leftward drag past the first session
+ * would clamp vertices one by one against the origin (axis.toReal floors
+ * there), permanently compressing the shape. Rightward needs no cap: the
+ * future band is open-ended.
+ */
+export function clampDVirtualForDrawing(
+  drawing: Drawing,
+  dVirtual: number,
+  originV: number,
+  toVirtual: (realMs: number) => number,
+): number {
+  if (dVirtual >= 0) return dVirtual;
+  const times = timesOf(drawing);
+  if (times.length === 0) return dVirtual;
+  let minV = Infinity;
+  for (const t of times) minV = Math.min(minV, toVirtual(t));
+  return Math.max(dVirtual, originV - minV);
 }
 
 /**
