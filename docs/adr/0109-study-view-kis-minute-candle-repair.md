@@ -68,9 +68,14 @@ KIS 과거 분봉(`FHKST03010230`)은 포털 기준 ~1년치를 날짜 지정으
      기존 뷰 일회성 복구용. dry-run은 KIS 미접근으로 공백만 보고.
 
 5. **게이트.** `kis_rest_bypass_enabled`(ADR-0083) ON이면 스킵. KIS 무자격/오프라인
-   (클라이언트 None)이면 fetch가 빈 리스트 → 스킵. (code, date) in-flight 집합으로 저장
-   훅·CLI 스윕 중복 실행 방지. KIS 접근은 클라이언트 내장 rate-limiter로 쿼터 보호,
-   background 예산(foreground=False)이라 /live 포그라운드를 굶기지 않는다.
+   (클라이언트 None)이면 fetch가 빈 리스트 → 스킵. (code, date) in-flight 집합(모듈 전역
+   + asyncio.Lock)으로 **프로세스 내** 중복 실행 방지 — 서버 프로세스에서 저장 훅이 빠르게
+   두 번(create→update) 겹치거나 여러 저장 훅이 동시에 도는 경우를 커버한다. CLI 스윕은
+   별도 프로세스(`asyncio.run`)라 이 집합을 공유하지 않으므로, 서버 가동 중 스윕을 돌리면
+   같은 (code, date)를 양쪽이 복구할 수 있다 — 그러나 쓰기가 멱등(동일 캔들 덮어쓰기,
+   meta는 존재-가드)이라 결과는 안전하다(중복 KIS fetch 한 번이 유일한 낭비). KIS 접근은
+   클라이언트 내장 rate-limiter로 쿼터 보호, background 예산(foreground=False)이라 /live
+   포그라운드를 굶기지 않는다.
 
 6. **배지.** `RangeBundle.repaired_candle_dates`(기본 [])에 승리 소스 kis_api +
    `created_from == kis_minute_repair`인 날을 방출. 프론트는 /study 헤더에 "KIS 보충 캔들

@@ -23,8 +23,10 @@
       이긴다. 부분일 병합은 비목표.
 
 게이트. ``kis_rest_bypass_enabled``(ADR-0083) ON이면 스킵한다. KIS fetch가
-불가(자격증명 없음)하면 스킵한다. (code, date) 단위 in-flight 집합으로 저장 훅과
-CLI 스윕의 중복 실행을 막는다.
+불가(자격증명 없음)하면 스킵한다. (code, date) 단위 in-flight 집합은 **프로세스
+내** 중복만 막는다(빠른 create→update·동시 저장 훅). CLI 스윕은 별도 프로세스라
+이 집합을 공유하지 않지만, 쓰기가 멱등이라 서버 가동 중 스윕을 돌려도 안전하다
+(중복 KIS fetch 한 번이 유일한 낭비 — ADR-0109 §Decision 5).
 """
 
 from __future__ import annotations
@@ -63,7 +65,8 @@ REPAIR_MARKER = "kis_minute_repair"
 
 _SOURCE_PREF = "hogaplay_first"
 
-# 동시 복구 방지 — 저장 훅과 CLI 스윕이 같은 (code, date)를 겹쳐 잡지 않도록.
+# 동시 복구 방지(프로세스 내) — 같은 (code, date)를 겹쳐 잡지 않도록. 크로스-프로세스
+# (서버 저장 훅 vs CLI 스윕)는 공유 안 하지만 쓰기가 멱등이라 안전(ADR-0109 §Decision 5).
 _inflight: set[tuple[str, str]] = set()
 _inflight_lock = asyncio.Lock()
 

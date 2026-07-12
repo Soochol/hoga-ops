@@ -16,7 +16,7 @@ export function StudyRepairedBadge({ dates }: Props) {
   return (
     <span
       data-testid="study-repaired-candle-badge"
-      title={`KIS 분봉으로 보충한 거래일: ${dates.join(', ')} — 이 날 캔들은 KIS 보충본이며 호가 기반 지표(최대벽·POC·거래량분포·호가비)는 없습니다.`}
+      title={`KIS 분봉으로 보충한 거래일: ${dates.join(', ')} — 이 날 캔들은 KIS 보충본이며 호가 기반 지표(최대벽·POC·거래량분포·호가비)는 없음`}
       style={{
         display: 'inline-flex',
         alignItems: 'center',
