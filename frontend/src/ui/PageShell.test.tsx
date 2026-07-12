@@ -17,7 +17,7 @@ describe('PageShell primitives', () => {
     expect(panel).toHaveClass('border');
     expect(panel).toHaveClass('border-border');
     expect(panel).toHaveClass('rounded-lg');
-    expect(panel).toHaveClass('shadow-[0_18px_60px_rgba(0,0,0,0.22)]');
+    expect(panel).toHaveClass('shadow-panel');
     expect(panel).toHaveClass('min-h-0');
   });
 

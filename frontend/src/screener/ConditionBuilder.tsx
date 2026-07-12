@@ -72,7 +72,7 @@ export function ConditionBuilder({ conditions, universe, onConditionsChange, onU
           </button>
           {menuOpen && anchorRect && (
             <ul ref={menuRef} role="menu"
-              className="bg-bg-card border border-border-strong rounded-[6px] shadow-[0_8px_24px_rgba(0,0,0,0.4)] overflow-hidden z-50"
+              className="bg-bg-card border border-border-strong rounded-[6px] shadow-overlay overflow-hidden z-50"
               style={{ position: 'fixed', top, left, width: anchorRect.width }}>
               {grouped.map(([label, types]) => (
                 <li key={label} role="none">

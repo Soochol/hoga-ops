@@ -57,6 +57,14 @@ export default {
       borderColor: {
         DEFAULT: 'var(--border)',
       },
+      // Theme-aware elevation tiers (see tokens.css Elevation). Components use
+      // these instead of hardcoded rgba(0,0,0,…) arbitrary values so Ledger
+      // gets paper shadows while Obsidian keeps deep terminal shadows.
+      boxShadow: {
+        overlay: 'var(--shadow-overlay)',
+        panel: 'var(--shadow-panel)',
+        modal: 'var(--shadow-modal)',
+      },
       // Generated tokens (size, spacing, layout, radius) — see comment above.
       ...TAILWIND_THEME,
     },

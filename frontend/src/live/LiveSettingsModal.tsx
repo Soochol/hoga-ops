@@ -27,7 +27,7 @@ export default function LiveSettingsModal({ onClose, variant = 'live' }: Props) 
       <div
         data-testid="live-settings-modal-shell"
         onClick={(event) => event.stopPropagation()}
-        className="grid h-[min(820px,calc(100vh-48px))] w-[min(1040px,calc(100vw-48px))] grid-rows-[auto_minmax(0,1fr)_auto] overflow-hidden rounded-lg border border-border bg-bg-card shadow-[0_24px_80px_rgba(0,0,0,0.45)]"
+        className="grid h-[min(820px,calc(100vh-48px))] w-[min(1040px,calc(100vw-48px))] grid-rows-[auto_minmax(0,1fr)_auto] overflow-hidden rounded-lg border border-border bg-bg-card shadow-modal"
       >
         <div className="flex items-center justify-between border-b border-border px-4 py-3">
           <h2 className="text-base font-medium text-fg">설정</h2>

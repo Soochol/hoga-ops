@@ -662,7 +662,7 @@ export function StudyViewsDrawer() {
       {/* 삭제 유예 토스트 — 패널 하단 고정 슬롯. 유예 중에만 존재하며 "실행 취소"가
           유일한 액션(확인 다이얼로그 대신 사후 복구를 택해 정상 삭제 흐름은 무마찰). */}
       {pendingDelete && (
-        <div role="status" className="flex items-center gap-2 border-t border-border bg-bg-card px-3 py-2 text-xs">
+        <div role="status" className="flex items-center gap-2 border-t border-border bg-bg-subtle px-3 py-2 text-xs">
           <span className="min-w-0 flex-1 truncate text-fg-dim">‘{pendingDelete.name}’ 삭제됨</span>
           <button
             type="button"

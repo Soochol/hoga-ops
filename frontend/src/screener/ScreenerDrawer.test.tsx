@@ -149,7 +149,7 @@ describe('ScreenerDrawer', () => {
   it('lists saved screeners in the dropdown', async () => {
     vi.spyOn(savesApi, 'listSaves').mockResolvedValue({ schema_version: 1, saves: [SAVE] });
     render(<ScreenerDrawer />, { wrapper: wrap(qc(), '/live') });
-    expect(screen.getByTestId('screener-panel')).toHaveClass('bg-bg-card');
+    expect(screen.getByTestId('screener-panel')).toHaveClass('bg-bg-subtle');
     expect(screen.getByTestId('screener-panel')).toHaveClass('border-l');
     // 커스텀 드롭다운: 트리거가 선택된 조건명을 보여주고, 열면 option 목록이 뜬다.
     const trigger = await screen.findByRole('button', { name: '저장한 조건검색 선택' });

@@ -42,7 +42,7 @@ import {
  *  드래그 고스트는 패널 overflow 경계에서 잘리므로 워크에어리어 자체를 어포던스로 쓴다.
  *  pointer-events:none — 좌표 hit-test는 rect로 하므로 포인터를 가로채면 안 된다.
  *  색·섀도·모션은 DESIGN.md 토큰 준수: 선택 틴트(--tint-selection, accent 12%) +
- *  accent 점선 보더 + 드롭다운 섀도(0 8px 24px) + short 트랜지션(150ms). */
+ *  accent 점선 보더 + 오버레이 섀도(--shadow-overlay) + short 트랜지션(150ms). */
 function ChartDropOverlay({ over }: { over: boolean }) {
   return (
     <div
@@ -63,7 +63,7 @@ function ChartDropOverlay({ over }: { over: boolean }) {
           padding: 'var(--space-sm) var(--space-md)',
           background: 'var(--accent)',
           color: 'var(--accent-fg)',
-          boxShadow: '0 8px 24px rgba(0,0,0,0.4)',
+          boxShadow: 'var(--shadow-overlay)',
           transform: over ? 'scale(1)' : 'scale(0.97)',
           transition: 'transform 150ms ease',
         }}
@@ -328,7 +328,7 @@ export function LiveWorkarea({
     border: '1px solid var(--border)',
     borderRadius: 8,
     background: 'var(--bg-card)',
-    boxShadow: '0 18px 60px rgba(0, 0, 0, 0.35)',
+    boxShadow: 'var(--shadow-panel)',
   };
   const detailPanelVisible = !isIndexInstrument;
   const renderedRightPanelWidthPx = workareaWidthPx != null
@@ -467,7 +467,7 @@ export function LiveWorkarea({
                   border: '1px solid var(--border)',
                   borderRadius: 8,
                   background: 'var(--bg-card)',
-                  boxShadow: '0 18px 60px rgba(0, 0, 0, 0.35)',
+                  boxShadow: 'var(--shadow-panel)',
                   scrollbarGutter: 'stable',
                 }}
               >

@@ -94,6 +94,11 @@ The design system has a **single density dial** at `:root font-size`.
   | `--grid` | `#1B1B21` | `#ECE8DC` | Chart grid lines, table row borders |
   | `--heat-hi` | `#F0B429` | `#1F6F54` | Heatmap high intensity (accent ramp) |
   | `--shadow` | `0 4px 12px rgba(0,0,0,0.5)` | `0 2px 8px rgba(30,39,50,0.12)` | Popover / tooltip elevation |
+  | `--shadow-overlay` | `0 8px 24px rgba(0,0,0,0.4)` | `0 8px 24px rgba(30,39,50,0.16)` | Dropdowns, menus, small dialogs |
+  | `--shadow-panel` | `0 18px 60px rgba(0,0,0,0.35)` | `0 2px 8px rgba(30,39,50,0.12)` | Page-level panes/cards (workarea, PageShell) |
+  | `--shadow-modal` | `0 24px 80px rgba(0,0,0,0.45)` | `0 16px 48px rgba(30,39,50,0.2)` | Full-size modals (settings, indicators, search palette) |
+
+- **Elevation rule:** components never hardcode `rgba(0,0,0,…)` box-shadows — always one of the four shadow tokens (Tailwind: `shadow-overlay`/`shadow-panel`/`shadow-modal`). Obsidian elevates with deep dark halos; Ledger elevates with faint ink-tinted paper shadows. A dark-tuned shadow reused on Ledger turns the ivory gaps between cards into grey trenches and visually deadens the main surface (fixed 2026-07-12).
 
 - **Discipline rule:** Three mutually-exclusive color categories.
   - **UI state** (`--accent` — brass on Obsidian, green on Ledger): buttons, focus rings, active tabs, crosshair, primary CTAs. Never for data.
@@ -228,7 +233,7 @@ Quiet Trading Terminal migration completed across app shell, route surfaces, rai
 - Min width: 220px
 - Border-radius: 6px
 - Open state: teal border
-- Dropdown shadow: `0 8px 24px rgba(0,0,0,0.4)`
+- Dropdown shadow: `var(--shadow-overlay)`
 - Search input inside dropdown: transparent background, mono font, no border
 
 ### Date field
@@ -258,11 +263,11 @@ Quiet Trading Terminal migration completed across app shell, route surfaces, rai
 - 구조: `[chevron ▼(펼침)/▶(접힘), 좌측] [그룹명 + 개수 인라인] ··· [⋯ hover 메뉴, 우측]`
 - 그룹명: `sm`/600 — 종목명(`xs`/400)보다 크고 굵게. 색은 `--fg-dim` 유지(크기·굵기만으로 위계).
 - 개수: `xs` `--fg-dimmer`, **mono 금지** — 우측 정렬 mono 숫자는 종목 행의 가격 컬럼과
-  같은 x에 떨어져 행으로 오독되므로 라벨 옆 인라인 고정. (`--fg-dimmer`/`--bg-card` 대비
+  같은 x에 떨어져 행으로 오독되므로 라벨 옆 인라인 고정. (`--fg-dimmer`/드로어 배경 대비
   ≈3.9:1로 WCAG AA(4.5:1) 미달 — 3차 텍스트로 의도된 트레이드오프, 개수는 라벨 버튼
   aria-label에 포함되어 AT에는 전달됨.)
-- sticky `top-0` + `--bg-card` 배경 — 패널과 동일색이라 평시엔 투명처럼 보이고
-  스크롤 시에만 행을 가린다.
+- sticky `top-0` + `--bg-subtle` 배경 — 드로어(RailDrawer, 크롬 표면이라 `--bg-subtle`)와
+  동일색이라 평시엔 투명처럼 보이고 스크롤 시에만 행을 가린다.
 - 종목 행(QuoteRow) 종목명은 `xs` — 가격(`sm` mono)이 1차 콘텐츠, 종목명은 식별자.
 - 종목 행 들여쓰기: 관심종목 패널에서만 `pl-10`(50px) — 그룹명 첫 글자(≈46px)보다
   오른쪽에서 시작해 부모-자식 위계를 들여쓰기로도 표현(`QuoteRow indented`).

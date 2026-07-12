@@ -175,7 +175,7 @@ it('filters by name, code, and memo ignoring whitespace and case', () => {
 
 it('renders list and no-match state', async () => {
   renderDrawer('/inventory');
-  expect(screen.getByRole('complementary', { name: '저장뷰' })).toHaveClass('bg-bg-card');
+  expect(screen.getByRole('complementary', { name: '저장뷰' })).toHaveClass('bg-bg-subtle');
   expect(screen.getByRole('complementary', { name: '저장뷰' })).toHaveClass('border-l');
   expect(screen.getByText('급등 이후')).toBeTruthy();
   await userEvent.type(screen.getByLabelText('저장뷰 검색'), '없음');

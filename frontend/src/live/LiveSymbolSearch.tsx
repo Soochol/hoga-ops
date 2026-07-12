@@ -128,7 +128,7 @@ export function LiveSymbolSearch() {
       ref={wrapperRef}
       role="dialog"
       aria-label="종목 검색"
-      style={{ boxShadow: '0 18px 50px rgba(0,0,0,0.45)' }}
+      style={{ boxShadow: 'var(--shadow-modal)' }}
       className="fixed left-1/2 top-[12vh] z-50 w-[min(960px,calc(100vw-32px))] -translate-x-1/2 rounded-xl border border-border-strong bg-bg-card p-4 font-ui"
     >
       <div className="flex items-center gap-2.5 h-11 px-3 rounded-xl bg-bg-input">
