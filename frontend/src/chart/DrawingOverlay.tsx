@@ -22,6 +22,7 @@ import {
 import type { Drawing, PaneId, Point } from './drawing/types';
 import { snapPoint, snapRealMs, type SnapCandle } from './drawing/snap';
 import { refCoords, cloneWithOffset } from './drawing/duplicate';
+import type { TimeShift } from './drawing/translate';
 import { hitTestDrawings } from './drawing/hitTest';
 import {
   TOOLS,
@@ -764,13 +765,21 @@ export default function DrawingOverlay({ chart, axis, paneSeries, onChartHoverPa
     if (d == null) return;
     const OFFSET_PX = 14;
     const ref = refCoords(d);
-    let dMs = 0;
+    // Horizontal offset in VIRTUAL ms, applied per-vertex through dragTime
+    // (same domain as body-drag). The ref vertex is pixel-derived and thus
+    // always lands on-axis, but a flat real-ms delta would strand the OTHER
+    // vertices in an inter-session gap whenever the ref's +14px crosses a
+    // session boundary (clone stretched to the canvas edge near the close).
+    let shiftMs: TimeShift = 0;
     let dPrice = 0;
     if (ref.realMs != null) {
       const x = realMsToCanvasX(ref.realMs);
       if (x != null) {
         const shifted = rawCanvasXToRealMs(x + OFFSET_PX);
-        if (shifted != null) dMs = shifted - ref.realMs;
+        if (shifted != null) {
+          const dVirtual = dragTime.toVirtual(shifted) - dragTime.toVirtual(ref.realMs);
+          shiftMs = (ms) => dragTime.toReal(dragTime.toVirtual(ms) + dVirtual);
+        }
       }
     }
     if (ref.price != null) {
@@ -780,7 +789,7 @@ export default function DrawingOverlay({ chart, axis, paneSeries, onChartHoverPa
         if (shifted != null) dPrice = shifted - ref.price;
       }
     }
-    const clone = cloneWithOffset(d, dMs, dPrice);
+    const clone = cloneWithOffset(d, shiftMs, dPrice);
     store.add(clone);
     store.setSelected(clone.id);
   };

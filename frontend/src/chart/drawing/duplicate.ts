@@ -7,7 +7,7 @@
 
 import { nanoid } from 'nanoid';
 import type { Drawing } from './types';
-import { translateDrawing } from './translate';
+import { translateDrawing, type TimeShift } from './translate';
 
 /** A representative (realMs, price) to derive the pixel offset from. Either
  *  coordinate may be null for shapes that lack it (hline has no time, vline no
@@ -30,7 +30,10 @@ export function refCoords(d: Drawing): { realMs: number | null; price: number | 
 }
 
 /** Clone `d` shifted by (dMs, dPrice) with a fresh id. Reuses translateDrawing
- *  so every kind's geometry moves consistently. */
-export function cloneWithOffset(d: Drawing, dMs: number, dPrice: number): Drawing {
+ *  so every kind's geometry moves consistently. `dMs` takes the function form
+ *  for gap-aware virtual-domain shifts (see TimeShift): a flat real-ms offset
+ *  computed off the ref vertex would strand the OTHER vertices inside an
+ *  inter-session gap whenever the ref's +14px crosses a session boundary. */
+export function cloneWithOffset(d: Drawing, dMs: TimeShift, dPrice: number): Drawing {
   return { ...d, ...translateDrawing(d, dMs, dPrice), id: nanoid(8) } as Drawing;
 }
