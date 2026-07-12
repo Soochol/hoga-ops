@@ -7,7 +7,7 @@
 // integration coverage lives in the manual QA pass and in ADR-0030 /
 // ADR-0032.
 
-import { fireEvent, render } from '@testing-library/react';
+import { act, fireEvent, render } from '@testing-library/react';
 import { describe, it, expect, beforeEach, vi } from 'vitest';
 import DrawingOverlay, { __test__ } from './DrawingOverlay';
 import { useDrawingsStore } from '../state/drawings';
@@ -148,6 +148,31 @@ describe('DrawingOverlay text editor — pointer isolation', () => {
     fireEvent.pointerDown(input!, { clientX: 102, clientY: 52, button: 0 });
     fireEvent.pointerUp(input!, { clientX: 102, clientY: 52, button: 0 });
     expect(container.querySelector('[data-drawing-text-input]')).not.toBeNull();
+  });
+
+  // Regression for the focus-steal kill: a REAL click's native mousedown
+  // (compat event, ~1ms after pointerdown) moves focus to the non-focusable
+  // overlay, blurring the just-opened editor → onBlur commits empty → the box
+  // unmounts within 3ms ("입력창이 안 나와요"). Canceling pointerdown for the
+  // text tool suppresses the compat mousedown and its focus default (Pointer
+  // Events spec), so the editor keeps focus. jsdom can't run native default
+  // actions, so we pin the guard itself: defaultPrevented must be true for the
+  // text tool and stay false for others (their gestures rely on defaults).
+  it('text-tool pointerdown is defaultPrevented (focus-steal guard); select is not', () => {
+    useDrawingsStore.getState().setActiveCode('005930');
+    useDrawingsStore.getState().setActiveTool('text');
+    const { container } = mountWithCandlePane();
+    const overlay = container.querySelector('[data-drawing-overlay]')!;
+
+    // fireEvent returns false when preventDefault() was called.
+    const textNotPrevented = fireEvent.pointerDown(overlay, { clientX: 100, clientY: 50, button: 0 });
+    expect(textNotPrevented).toBe(false);
+
+    act(() => {
+      useDrawingsStore.getState().setActiveTool('select');
+    });
+    const selectNotPrevented = fireEvent.pointerDown(overlay, { clientX: 300, clientY: 90, button: 0 });
+    expect(selectNotPrevented).toBe(true);
   });
 });
 

@@ -571,6 +571,19 @@ export default function DrawingOverlay({ chart, axis, paneSeries, onChartHoverPa
 
   const onPointerDown = (e: React.PointerEvent<HTMLDivElement>) => {
     if (e.button !== 0) return;
+    if (activeTool === 'text') {
+      // Cancel the gesture's default actions (Pointer Events: a canceled
+      // pointerdown suppresses the compatibility mousedown and its
+      // focus-change default). Without this, a REAL click's native mousedown
+      // — fired ~1ms after our handler opens and focuses the editor — moves
+      // focus back to the (non-focusable) overlay, blurring the input, whose
+      // onBlur commits the empty value and unmounts it. The editor lived <3ms
+      // and looked like it never appeared. Synthetic-event tests never fire
+      // native default actions, which is why they all passed. Captured
+      // trusted-event kill sequence:
+      //   pointerdown → focusin INPUT → mousedown → focusout INPUT
+      e.preventDefault();
+    }
     TOOLS[activeTool].onPointerDown?.(buildCtx(e));
   };
   const onPointerMove = (e: React.PointerEvent<HTMLDivElement>) => {
