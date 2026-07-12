@@ -6,8 +6,9 @@
 
 import { describe, expect, it, vi } from 'vitest';
 import type { IChartApi } from 'lightweight-charts';
-import { renderDrawing, renderTrendlineDraft, type ProjectCtx, dashPattern } from './render';
-import type { Hline, Text, Trendline } from './types';
+import { renderDrawing, renderTrendlineDraft, formatMeasureLabel, type ProjectCtx, dashPattern } from './render';
+import { createVirtualAxis } from '../../util/virtualAxis';
+import type { Hline, Measure, Text, Trendline } from './types';
 import type { TrendlineDraft } from './tools';
 
 /** Build a context with all the canvas methods we touch spied. */
@@ -184,6 +185,61 @@ describe('renderHline price badge', () => {
     const h: Hline = { id: 'h1', kind: 'hline', price: 100, color: '#14B8A6', width: 1.5, lineStyle: 'solid', paneId: 'candle' };
     renderDrawing(c, ctx, h, false);
     expect((c.fillText as ReturnType<typeof vi.fn>).mock.calls).toHaveLength(0);
+  });
+});
+
+// The measure bar count must be gap-aware: dividing the real-ms span by
+// bucketMs counted inter-session gaps as bars (overnight on 1m ≈ +1,050봉).
+// Bars are now counted in the virtual (gap-compressed) domain.
+describe('formatMeasureLabel — gap-aware bar count', () => {
+  const measure = (aMs: number, bMs: number): Measure => ({
+    id: 'm1', kind: 'measure',
+    a: { realMs: aMs, price: 100 },
+    b: { realMs: bMs, price: 120 },
+    color: '#14B8A6', width: 1.5, lineStyle: 'solid', paneId: 'candle',
+  });
+
+  it('counts only on-screen bars across an overnight gap (intraday)', () => {
+    // Sessions A [0, 1_000_000] and B [10_000_000, 11_000_000]; 1m bars.
+    const axis = createVirtualAxis([
+      { date: '20260101', sessionOpenMs: 0, sessionCloseMs: 1_000_000 },
+      { date: '20260102', sessionOpenMs: 10_000_000, sessionCloseMs: 11_000_000 },
+    ]);
+    const ctx = {
+      axis, bucketMs: 60_000, lastRealMs: 10_900_000, paneId: 'candle',
+    } as unknown as ProjectCtx;
+    // a: 100_000 before A's close; b: 60_000 into B. Virtual span 161_000
+    // (gap compressed to 1s) → ≈3 bars. The old real-ms math divided
+    // 9_160_000 by 60_000 → 153봉.
+    const label = formatMeasureLabel(measure(900_000, 10_060_000), ctx);
+    expect(label.endsWith(' · 3봉')).toBe(true);
+  });
+
+  it('counts one bar per trading day on a calendar (D/W/M) axis', () => {
+    const axis = createVirtualAxis(
+      [
+        { date: '20260105', sessionOpenMs: 0, sessionCloseMs: 1_000 },
+        { date: '20260106', sessionOpenMs: 100_000, sessionCloseMs: 101_000 },
+        { date: '20260107', sessionOpenMs: 200_000, sessionCloseMs: 201_000 },
+      ],
+      0,
+      { mode: 'calendar' },
+    );
+    const ctx = {
+      axis, bucketMs: 86_400_000, lastRealMs: 200_000, paneId: 'candle',
+    } as unknown as ProjectCtx;
+    // Day 1 anchor → day 3 anchor: 2 bars regardless of the irregular real-ms
+    // spacing between the days (the old math gave round(200_000/86_400_000)=0).
+    const label = formatMeasureLabel(measure(0, 200_000), ctx);
+    expect(label.endsWith(' · 2봉')).toBe(true);
+  });
+
+  it('omits the bar count without a bucketMs (unchanged behavior)', () => {
+    const axis = createVirtualAxis([
+      { date: '20260101', sessionOpenMs: 0, sessionCloseMs: 1_000_000 },
+    ]);
+    const ctx = { axis, paneId: 'candle' } as unknown as ProjectCtx;
+    expect(formatMeasureLabel(measure(0, 120_000), ctx)).not.toContain('봉');
   });
 });
 
