@@ -232,6 +232,7 @@ beforeEach(() => {
     isExtending: false,
     error: null,
     pastDataWarnings: [],
+    repairedCandleDates: [],
     venue: 'KRX',
   });
   useWarmStudyReferenceTabQueriesMock.mockClear();
@@ -315,6 +316,7 @@ describe('StudyPage', () => {
       isLoading: false,
       error: null,
       pastDataWarnings: [],
+      repairedCandleDates: [],
       venue: 'NXT',
     });
 

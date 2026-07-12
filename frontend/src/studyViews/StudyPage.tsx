@@ -13,6 +13,7 @@ import { useEntryDragStore } from '../state/entryDrag';
 import { useStudyTabsStore } from '../state/studyTabs';
 import { isMinuteTimeframe, type LiveTimeframe, type MinuteTimeframe } from '../state/livePage';
 import { StudyMemoPanel } from './StudyMemoPanel';
+import { StudyRepairedBadge } from './StudyRepairedBadge';
 import { StudyReferenceDetailPanel } from './StudyReferenceDetailPanel';
 import { StudyTabBar } from './StudyTabBar';
 import { useStudyKeyboard } from './useStudyKeyboard';
@@ -489,8 +490,13 @@ export function StudyPage() {
           <WorkspaceHeader className="min-h-12 px-4">
             <div className="min-w-0">
               <div className="truncate text-sm font-semibold">{headerLabel}</div>
-              <div className="text-xs text-[var(--fg-dimmer)]">
-                {headerCode} · {headerTimeframe ?? '-'} · {headerKindLabel}
+              <div className="flex items-center gap-2 text-xs text-[var(--fg-dimmer)]">
+                <span className="truncate">
+                  {headerCode} · {headerTimeframe ?? '-'} · {headerKindLabel}
+                </span>
+                {activeViewModel.status === 'ready' && (
+                  <StudyRepairedBadge dates={referenceQuery.repairedCandleDates} />
+                )}
               </div>
             </div>
             <div className="flex shrink-0 items-center gap-2">

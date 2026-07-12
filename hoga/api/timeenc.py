@@ -44,6 +44,18 @@ def ms_from_midnight_to_unix_ms(date: str, intra_ms: int) -> int:
     return _date_unix_ms_at_kst_midnight(date) + intra_ms
 
 
+def unix_ms_to_ms_from_midnight(date: str, unix_ms: int) -> int:
+    """Inverse of :func:`ms_from_midnight_to_unix_ms` — encode a Unix ms (UTC)
+    instant as candles.parquet's native ms-from-KST-midnight for ``date``.
+
+    Write-path counterpart used when persisting externally-sourced bars (e.g.
+    KIS minute candles, whose ``t_ms`` is Unix epoch ms) into a Stock-Date's
+    ``candles.parquet``. Keeping the pair together makes the round-trip
+    (encode → decode) the single test surface for the offset, mirroring the
+    write↔read symmetry of ``candles.{write,read}_parquet``."""
+    return unix_ms - _date_unix_ms_at_kst_midnight(date)
+
+
 def hhmmssms_to_intra_ms_sql(col: str) -> str:
     """Build a DuckDB SQL expression that decodes a HHMMSSmmm column to
     linear ms-from-midnight.

@@ -58,6 +58,7 @@ from hoga.api.timeenc import (
     ms_from_midnight_to_unix_ms,
     unix_ms_to_hhmmssms,
 )
+from hoga.live.candle_repair import REPAIR_MARKER
 from hoga.live.program_trade_store import ProgramTradeStore
 from hoga.tables import brokers as brokers_tbl
 from hoga.tables import candles as candles_tbl
@@ -1314,6 +1315,7 @@ def build_range_bundle(
     trade_volume_pocs: list[TradeVolumePoc] = []
     depth_heatmap: list[DepthHeatmapPoint] = []
     included_dates: list[str] = []
+    repaired_candle_dates: list[str] = []
 
     # Indicator cache (호가비·체결강도)의 과거/오늘 게이트(ADR-0043/0090)는 각
     # 슬라이스 빌더가 자가-해석한다(WS3) — 루프는 캐시 정책을 알 필요 없음.
@@ -1470,6 +1472,10 @@ def build_range_bundle(
             source=source,
         ))
         included_dates.append(d)
+        if source == "kis_api" and meta.get("created_from") == REPAIR_MARKER:
+            # 이 거래일 캔들은 hogaplay 공백을 KIS 분봉으로 복구한 것 —
+            # 프론트 배지용(호가 기반 지표는 없음). hoga.live.candle_repair 참조.
+            repaired_candle_dates.append(d)
         if not hoga_only and not cutoff_sidecar and not candles_only and broker_late_entries_enabled:
             broker_late_entries.extend(
                 build_broker_late_entries_slice(
@@ -1567,4 +1573,5 @@ def build_range_bundle(
             if include_program_trade
             else ProgramTradeSeries(points=[])
         ),
+        repaired_candle_dates=repaired_candle_dates,
     )

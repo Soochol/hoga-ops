@@ -647,4 +647,8 @@ export type RangeBundle = {
    *  매도/매수 [price, qty] 최대 10단계. 멀티데이 병합은 t_ms 단위 latest-wins. */
   depth_heatmap?: DepthHeatmapPointWire[];
   broker_late_entries: BrokerLateEntryEvent[];
+  /** hogaplay 캡처 공백을 KIS 분봉으로 복구한 거래일(YYYYMMDD). 승리 소스가 kis_api +
+   *  meta.created_from == 'kis_minute_repair'인 날. /study가 "KIS 보충 캔들" 배지를 띄운다.
+   *  Optional in TS라 기존 fixture 무영향(hoga/live/candle_repair.py). */
+  repaired_candle_dates?: string[];
 };

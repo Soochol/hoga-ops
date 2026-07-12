@@ -30,17 +30,19 @@ from hoga.api.scheduler import start_scheduler
 from hoga.api.screener import build_router as build_screener_router
 from hoga.api.signal_alert_routes import build_router as build_signal_alert_router
 from hoga.api.startup_runtime import StartupRuntimeDeps, start_app_runtime
+from hoga.api.study_view_routes import build_router as build_study_view_router
 from hoga.api.symbols import build_router as build_symbols_router
 from hoga.api.test_routes import build_test_router
 from hoga.api.watchlist_routes import build_router as build_watchlist_router
-from hoga.api.study_view_routes import build_router as build_study_view_router
 from hoga.api.ws import build_ws_router
 from hoga.collector.client import HogaplayClient
 from hoga.config import Config, resolve_data_dir, resolve_symbol_master_path
 from hoga.env import load_env
 from hoga.live.api import build_router as build_live_router
+from hoga.live.candle_repair import build_saved_view_repair_hook
 from hoga.live.kis_capacity_runtime import aclose_kis_capacity_scheduler
-from hoga.live.kis_runtime import aclose_kis_client
+from hoga.live.kis_models import KisCandle
+from hoga.live.kis_runtime import aclose_kis_client, get_kis_client
 from hoga.live.lifecycle import (
     configure_signal_alert_monitor,
     get_active_codes,
@@ -63,6 +65,21 @@ from hoga.live.lifecycle import (
     get_today_bid_peak as live_get_today_bid_peak,
 )
 from hoga.live.migrate import migrate_to_v2_layout
+
+
+async def _repair_minute_fetch(code: str, date_s: str) -> list[KisCandle]:
+    """저장뷰 캡처-공백 복구용 KIS 과거 분봉 fetch(KRX 고정 — /study venue).
+
+    현재 KIS 클라이언트를 raw로 호출한다(클라이언트 내장 rate-limiter가 쿼터를
+    보호). 오프라인/무자격이면 클라이언트가 None → 빈 리스트로 복구를 스킵시킨다.
+    background 예산(foreground=False)이라 /live 포그라운드 fetch를 굶기지 않는다."""
+    client = get_kis_client()
+    if client is None:
+        return []
+    return await client.fetch_past_minute_candles(
+        code, date_s, venue="KRX", foreground=False,
+    )
+
 
 def create_app(data_dir: Path) -> FastAPI:
     engine = QueryEngine(data_dir)
@@ -207,7 +224,14 @@ def create_app(data_dir: Path) -> FastAPI:
     app.include_router(build_heatmap_router(data_dir=data_dir))
     app.include_router(build_screener_router(data_dir=data_dir, bus=bus))
     app.include_router(build_signal_alert_router(data_dir=data_dir))
-    app.include_router(build_study_view_router(data_dir=data_dir))
+    app.include_router(
+        build_study_view_router(
+            data_dir=data_dir,
+            on_reference_saved=build_saved_view_repair_hook(
+                engine, data_dir, _repair_minute_fetch,
+            ),
+        )
+    )
     app.include_router(
         build_live_router(
             get_status=live_get_status,
