@@ -100,6 +100,9 @@ describe('LiveChartRoot', () => {
   beforeEach(() => {
     resizeObserverCallbacks.length = 0;
     useChartPrefsStore.getState().resetToDefaults();
+    // 분봉 커버리지 복원(1-샷)의 재료 — 남으면 뒤 테스트의 분봉 초기 배치가
+    // extendHistoricalRange를 dispatch해 상태가 샌다.
+    useLivePageStore.setState({ lastMinuteHistoricalFromDate: null });
   });
 
   it('renders root container with chart slot', () => {
@@ -1231,6 +1234,111 @@ describe('LiveChartRoot', () => {
     expect(ts.setVisibleLogicalRange).toHaveBeenCalledTimes(1);
   });
 
+  it('1m timeframe: one-shot coverage restore re-extends historicalFromDate right after initial placement', () => {
+    // 분봉→D/W/M→분봉 복귀: setCandleTimeframe이 남긴 lastMinuteHistoricalFromDate를
+    // 초기 뷰 배치 직후 extendHistoricalRange로 1-샷 복원한다. 배치(setVisibleLogicalRange)가
+    // 먼저고 확장이 나중 — "fresh 로드 = historicalFromDate null" 게이트와 경합하지 않는다.
+    useLivePageStore.setState({
+      activeCode: '005930',
+      candleTimeframe: '1m',
+      historicalFromDate: null,
+      lastMinuteHistoricalFromDate: '20250712',
+    });
+    const { chart, ts } = buildChartMockWithStableTS();
+    vi.mocked(createChartEx).mockImplementationOnce(() => chart as never);
+
+    render(
+      <LiveChartRoot
+        code="005930"
+        timeframe="1m"
+        bundle={makeBundleWithCandles(100)}
+        clampEngaged={false}
+        isPastCandlesLoading={false}
+      />,
+      { wrapper },
+    );
+
+    expect(ts.setVisibleLogicalRange).toHaveBeenCalledTimes(1);
+    expect(useLivePageStore.getState().historicalFromDate).toBe('20250712');
+  });
+
+  it('1m timeframe: activeCode mismatch blocks the coverage restore (study-mount guard)', () => {
+    // StudyPage 등 다른 마운트의 분봉 배치가 live store를 extend하지 못하도록,
+    // 복원 dispatch는 activeCode === code 엄격 동등일 때만 발화한다.
+    useLivePageStore.setState({
+      activeCode: '000660',
+      candleTimeframe: '1m',
+      historicalFromDate: null,
+      lastMinuteHistoricalFromDate: '20250712',
+    });
+    const { chart } = buildChartMockWithStableTS();
+    vi.mocked(createChartEx).mockImplementationOnce(() => chart as never);
+
+    render(
+      <LiveChartRoot
+        code="005930"
+        timeframe="1m"
+        bundle={makeBundleWithCandles(100)}
+        clampEngaged={false}
+        isPastCandlesLoading={false}
+      />,
+      { wrapper },
+    );
+
+    expect(useLivePageStore.getState().historicalFromDate).toBeNull();
+    expect(useLivePageStore.getState().lastMinuteHistoricalFromDate).toBe('20250712');
+  });
+
+  it('1m timeframe: no remembered window → historicalFromDate stays null after placement', () => {
+    useLivePageStore.setState({
+      activeCode: '005930',
+      candleTimeframe: '1m',
+      historicalFromDate: null,
+      lastMinuteHistoricalFromDate: null,
+    });
+    const { chart } = buildChartMockWithStableTS();
+    vi.mocked(createChartEx).mockImplementationOnce(() => chart as never);
+
+    render(
+      <LiveChartRoot
+        code="005930"
+        timeframe="1m"
+        bundle={makeBundleWithCandles(100)}
+        clampEngaged={false}
+        isPastCandlesLoading={false}
+      />,
+      { wrapper },
+    );
+
+    expect(useLivePageStore.getState().historicalFromDate).toBeNull();
+  });
+
+  it('D timeframe: the calendar branch never dispatches the minute coverage restore', () => {
+    useLivePageStore.setState({
+      activeCode: '005930',
+      candleTimeframe: 'D',
+      historicalFromDate: null,
+      lastMinuteHistoricalFromDate: '20250712',
+    });
+    const { chart } = buildChartMockWithStableTS();
+    vi.mocked(createChartEx).mockImplementationOnce(() => chart as never);
+
+    render(
+      <LiveChartRoot
+        code="005930"
+        timeframe="D"
+        bundle={makeDailyCalendarBundle(30)}
+        clampEngaged={false}
+        isPastCandlesLoading={false}
+      />,
+      { wrapper },
+    );
+
+    expect(useLivePageStore.getState().historicalFromDate).toBeNull();
+    // 기억 자체는 소모되지 않는다 — 분봉 복귀 시 쓰인다.
+    expect(useLivePageStore.getState().lastMinuteHistoricalFromDate).toBe('20250712');
+  });
+
   it('1m timeframe: initial apply includes pixel-safe right whitespace', () => {
     // The live edge should look like W/M: latest candle visible with an empty
     // band to its right. The range owns that padding directly instead of
@@ -1835,7 +1943,12 @@ const TWO_SEGMENT_BUNDLE: RangeBundle = {
 
 describe('LiveChartRoot lazy fetch trigger', () => {
   beforeEach(() => {
-    useLivePageStore.setState({ activeCode: null, candleTimeframe: '1m', historicalFromDate: null });
+    useLivePageStore.setState({
+      activeCode: null,
+      candleTimeframe: '1m',
+      historicalFromDate: null,
+      lastMinuteHistoricalFromDate: null,
+    });
     vi.useFakeTimers();
     vi.setSystemTime(TODAY_OPEN_MS);
   });

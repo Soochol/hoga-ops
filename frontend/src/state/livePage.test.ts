@@ -16,6 +16,7 @@ describe('livePage store', () => {
       candleTimeframe: '1m',
       lastMinuteTimeframe: '1m',
       historicalFromDate: null,
+      lastMinuteHistoricalFromDate: null,
     });
   });
 
@@ -170,6 +171,79 @@ describe('livePage store', () => {
     });
     expect(useLivePageStore.getState().candleTimeframe).toBe('M');
     expect(useLivePageStore.getState().lastMinuteTimeframe).toBe('10m');
+  });
+
+  it('setCandleTimeframe remembers the minute pan window when leaving a minute frame', () => {
+    useLivePageStore.setState({ candleTimeframe: '1m', historicalFromDate: '20250712' });
+    useLivePageStore.getState().setCandleTimeframe('D');
+    const s = useLivePageStore.getState();
+    expect(s.historicalFromDate).toBeNull(); // 전환 자체는 여전히 null 리셋
+    expect(s.lastMinuteHistoricalFromDate).toBe('20250712');
+  });
+
+  it('setCandleTimeframe preserves the remembered window across D/W/M hops', () => {
+    useLivePageStore.setState({ candleTimeframe: '1m', historicalFromDate: '20250712' });
+    useLivePageStore.getState().setCandleTimeframe('D');
+    useLivePageStore.getState().setCandleTimeframe('W'); // 비분봉→비분봉: 기억 유지
+    const s = useLivePageStore.getState();
+    expect(s.historicalFromDate).toBeNull();
+    expect(s.lastMinuteHistoricalFromDate).toBe('20250712');
+  });
+
+  it('setCandleTimeframe carries the window across minute→minute switches', () => {
+    useLivePageStore.setState({ candleTimeframe: '1m', historicalFromDate: '20250712' });
+    useLivePageStore.getState().setCandleTimeframe('5m');
+    const s = useLivePageStore.getState();
+    expect(s.historicalFromDate).toBeNull();
+    expect(s.lastMinuteHistoricalFromDate).toBe('20250712');
+  });
+
+  it('leaving minute before the restore ran keeps the remembered window (?? fallback)', () => {
+    // D→분봉 복귀 직후, 초기 배치 전(콜드 로드 등)에 다시 떠나는 레이스:
+    // historicalFromDate는 아직 null이지만 기억을 null로 덮어쓰면 영구 소실된다.
+    // 명시적 리셋 경로는 resetHistoricalRange가 기억까지 직접 클리어한다(아래 테스트).
+    useLivePageStore.setState({
+      candleTimeframe: '1m',
+      historicalFromDate: null,
+      lastMinuteHistoricalFromDate: '20250712',
+    });
+    useLivePageStore.getState().setCandleTimeframe('D');
+    expect(useLivePageStore.getState().lastMinuteHistoricalFromDate).toBe('20250712');
+  });
+
+  it('setActiveCode clears the remembered minute window (per-symbol coverage)', () => {
+    useLivePageStore.setState({ lastMinuteHistoricalFromDate: '20250712' });
+    useLivePageStore.getState().setActiveCode('005930');
+    expect(useLivePageStore.getState().lastMinuteHistoricalFromDate).toBeNull();
+  });
+
+  it('resetHistoricalRange clears the remembered minute window too', () => {
+    useLivePageStore.setState({
+      historicalFromDate: '20250712',
+      lastMinuteHistoricalFromDate: '20250712',
+    });
+    useLivePageStore.getState().resetHistoricalRange();
+    const s = useLivePageStore.getState();
+    expect(s.historicalFromDate).toBeNull();
+    expect(s.lastMinuteHistoricalFromDate).toBeNull();
+  });
+
+  it('projectActiveView re-seeds the remembered window from the projected tab', () => {
+    useLivePageStore.setState({ lastMinuteHistoricalFromDate: '20240101' }); // 이전 탭 잔재
+    useLivePageStore.getState().projectActiveView({
+      code: '005930',
+      timeframe: '5m',
+      historicalFromDate: '20250601',
+    });
+    expect(useLivePageStore.getState().lastMinuteHistoricalFromDate).toBe('20250601');
+
+    useLivePageStore.getState().projectActiveView({
+      code: '005930',
+      timeframe: 'D',
+      historicalFromDate: '20250601',
+    });
+    // 비분봉 탭으로의 투영은 분봉 창 기억을 남기지 않는다.
+    expect(useLivePageStore.getState().lastMinuteHistoricalFromDate).toBeNull();
   });
 });
 

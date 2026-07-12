@@ -936,7 +936,8 @@ export function LiveChartRoot({
       // historicalFromDate is read via getState() (not an effect dep) on purpose:
       // setActiveCode / setCandleTimeframe reset it to null, so a fresh
       // (code, timeframe) load always passes this gate; it only flips non-null
-      // after a pan, when the chart is already revealed.
+      // after a pan — or after the minute branch's one-shot coverage restore —
+      // both of which run when the chart is already placed and revealed.
       reveal();
       return;
     }
@@ -965,6 +966,25 @@ export function LiveChartRoot({
         ts.setVisibleLogicalRange({ from, to });
         lastAppliedCountRef.current = totalBars;
         revealWhenSettled();
+        // 분봉 복귀 커버리지 복원(1-샷): 직전 분봉 뷰에서 팬으로 넓힌 창
+        // (lastMinuteHistoricalFromDate)을 초기 뷰 배치 "직후"에 일반 좌측-팬
+        // 확장과 같은 경로로 다시 연다 — 캔들은 병합 캐시로 즉시, range 지표는
+        // 델타·청크 워크백으로 따라온다. 전환 시점에 복원하지 않는 이유: 이
+        // effect 위의 historicalFromDate 게이트(reveal-only 분기)와 번들
+        // atomize 게이트가 "fresh 로드 = null"에 기대므로, 배치가 끝난 뒤에야
+        // 안전하게 창을 넓힐 수 있다. 확장 자체는 뷰포트를 움직이지 않는다
+        // (useViewportBackfill 리포지셔너가 현재 봉을 핀).
+        // activeCode 엄격 동등: /live는 activeCode truthy일 때만 이 차트를
+        // 마운트하므로 항상 일치한다. 느슨한 truthy-게이트였다면 StudyPage 등
+        // 다른 마운트의 분봉 배치가 live store를 extend하는 월경이 가능하다.
+        const pageState = useLivePageStore.getState();
+        if (
+          pageState.lastMinuteHistoricalFromDate !== null &&
+          pageState.candleTimeframe === timeframe &&
+          pageState.activeCode === code
+        ) {
+          pageState.extendHistoricalRange(pageState.lastMinuteHistoricalFromDate);
+        }
       } else if (isCalendarTimeframe(timeframe)) {
         // Calendar frames avoid fitContent's multi-step internal range settle.
         // Use a width-derived span with the standard rightOffset so D/W/M all
