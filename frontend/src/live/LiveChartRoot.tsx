@@ -974,11 +974,14 @@ export function LiveChartRoot({
         // atomize 게이트가 "fresh 로드 = null"에 기대므로, 배치가 끝난 뒤에야
         // 안전하게 창을 넓힐 수 있다. 확장 자체는 뷰포트를 움직이지 않는다
         // (useViewportBackfill 리포지셔너가 현재 봉을 핀).
+        // activeCode 엄격 동등: /live는 activeCode truthy일 때만 이 차트를
+        // 마운트하므로 항상 일치한다. 느슨한 truthy-게이트였다면 StudyPage 등
+        // 다른 마운트의 분봉 배치가 live store를 extend하는 월경이 가능하다.
         const pageState = useLivePageStore.getState();
         if (
           pageState.lastMinuteHistoricalFromDate !== null &&
           pageState.candleTimeframe === timeframe &&
-          (!pageState.activeCode || pageState.activeCode === code)
+          pageState.activeCode === code
         ) {
           pageState.extendHistoricalRange(pageState.lastMinuteHistoricalFromDate);
         }

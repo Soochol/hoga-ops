@@ -198,14 +198,17 @@ describe('livePage store', () => {
     expect(s.lastMinuteHistoricalFromDate).toBe('20250712');
   });
 
-  it('leaving minute with a reset (null) pan overwrites the remembered window', () => {
+  it('leaving minute before the restore ran keeps the remembered window (?? fallback)', () => {
+    // D→분봉 복귀 직후, 초기 배치 전(콜드 로드 등)에 다시 떠나는 레이스:
+    // historicalFromDate는 아직 null이지만 기억을 null로 덮어쓰면 영구 소실된다.
+    // 명시적 리셋 경로는 resetHistoricalRange가 기억까지 직접 클리어한다(아래 테스트).
     useLivePageStore.setState({
       candleTimeframe: '1m',
       historicalFromDate: null,
       lastMinuteHistoricalFromDate: '20250712',
     });
     useLivePageStore.getState().setCandleTimeframe('D');
-    expect(useLivePageStore.getState().lastMinuteHistoricalFromDate).toBeNull();
+    expect(useLivePageStore.getState().lastMinuteHistoricalFromDate).toBe('20250712');
   });
 
   it('setActiveCode clears the remembered minute window (per-symbol coverage)', () => {

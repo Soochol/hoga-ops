@@ -1262,6 +1262,33 @@ describe('LiveChartRoot', () => {
     expect(useLivePageStore.getState().historicalFromDate).toBe('20250712');
   });
 
+  it('1m timeframe: activeCode mismatch blocks the coverage restore (study-mount guard)', () => {
+    // StudyPage 등 다른 마운트의 분봉 배치가 live store를 extend하지 못하도록,
+    // 복원 dispatch는 activeCode === code 엄격 동등일 때만 발화한다.
+    useLivePageStore.setState({
+      activeCode: '000660',
+      candleTimeframe: '1m',
+      historicalFromDate: null,
+      lastMinuteHistoricalFromDate: '20250712',
+    });
+    const { chart } = buildChartMockWithStableTS();
+    vi.mocked(createChartEx).mockImplementationOnce(() => chart as never);
+
+    render(
+      <LiveChartRoot
+        code="005930"
+        timeframe="1m"
+        bundle={makeBundleWithCandles(100)}
+        clampEngaged={false}
+        isPastCandlesLoading={false}
+      />,
+      { wrapper },
+    );
+
+    expect(useLivePageStore.getState().historicalFromDate).toBeNull();
+    expect(useLivePageStore.getState().lastMinuteHistoricalFromDate).toBe('20250712');
+  });
+
   it('1m timeframe: no remembered window → historicalFromDate stays null after placement', () => {
     useLivePageStore.setState({
       activeCode: '005930',

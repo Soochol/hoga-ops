@@ -135,7 +135,10 @@ type Store = Persisted & PersistedIndicators & {
    *  이 값으로 extendHistoricalRange를 1-샷 dispatch해 지표·캔들 커버리지를
    *  복원한다(캔들 병합 캐시와 수명 대칭). 전환 자체는 여전히
    *  historicalFromDate=null 리셋 — 초기 뷰 배치·번들 atomize 게이트가
-   *  "fresh (code,tf) 로드 = null" 불변식에 기대기 때문. 종목/탭 전환 시 초기화. */
+   *  "fresh (code,tf) 로드 = null" 불변식에 기대기 때문. 종목/탭 전환 시 초기화.
+   *  persist 블롭(live.page.v1)에 직렬화는 되지만 readStorage 화이트리스트가
+   *  무시하므로 재수화되지 않는다(activeViewport와 같은 관례) — "런타임 전용"은
+   *  읽기 경로 기준. */
   lastMinuteHistoricalFromDate: string | null;
   projectActiveView: (view: ActiveViewProjection) => void;
   setActiveCode: (code: string | null) => void;
@@ -816,8 +819,13 @@ export const useLivePageStore = create<Store>((set, get) => ({
       // 분봉을 떠나는 순간의 pan 창을 기억한다(분봉→분봉 전환 포함 — 같은 1m
       // 데이터의 재집계라 창 유지가 자연스럽다). 복원은 LiveChartRoot가 초기 뷰
       // 배치 직후 1-샷 dispatch — Store 타입의 필드 주석 참조.
+      // `??` 폴백: 복원 dispatch가 아직 안 돈 창(빠른 D→분봉→재이탈, 콜드 로드
+      // 배치 전)에는 historicalFromDate가 여전히 null이므로, null로 덮어쓰면
+      // 기억이 영구 소실된다. hFD=null && 기억≠null은 그 "복원 대기" 상태뿐 —
+      // 명시적 리셋은 resetHistoricalRange가 기억까지 직접 클리어하므로 폴백이
+      // 리셋을 되살리는 일은 없다.
       lastMinuteHistoricalFromDate: isMinuteTimeframe(cur.candleTimeframe)
-        ? cur.historicalFromDate
+        ? cur.historicalFromDate ?? cur.lastMinuteHistoricalFromDate
         : cur.lastMinuteHistoricalFromDate,
       activeViewport: null,
     };
