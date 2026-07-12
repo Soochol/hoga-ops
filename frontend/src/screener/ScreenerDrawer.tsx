@@ -18,7 +18,6 @@ import { useScreenerPanelStore } from '../state/screenerPanel';
 import { useSavedScreeners } from './useSavedScreeners';
 import { useScreener } from './useScreener';
 import { useScreenerStatus } from './useScreenerStatus';
-import { useScreenerUpdate } from './useScreenerUpdate';
 import { useScreenerUpdateFeedback } from './useScreenerUpdateSync';
 import { ScreenerUpdateProgress } from './ScreenerUpdateProgress';
 import { StalenessChip } from './StalenessChip';
@@ -167,18 +166,13 @@ export function ScreenerDrawer() {
   const setLastScan = useScreenerPanelStore((s) => s.setLastScan);
   const sortMode = useScreenerPanelStore((s) => s.sortMode);
   const setSortMode = useScreenerPanelStore((s) => s.setSortMode);
-  const setUpdatePending = useScreenerPanelStore((s) => s.setUpdatePending);
-  const setUpdateSuccess = useScreenerPanelStore((s) => s.setUpdateSuccess);
-  const setUpdateError = useScreenerPanelStore((s) => s.setUpdateError);
   const updateFeedback = useScreenerUpdateFeedback((s) => s.feedback);
   const clearExpiredScan = useScreenerPanelStore((s) => s.clearExpiredScan);
-  const updateState = useScreenerPanelStore((s) => s.updateState);
 
   const { data: savesData, isSuccess: savesLoaded } = useSavedScreeners();
   const saves = useMemo(() => savesData?.saves ?? [], [savesData]);
   const { data: status } = useScreenerStatus();
   const screener = useScreener();
-  const update = useScreenerUpdate();
 
   // Restore/repair selection once saves have loaded: keep the persisted id if it
   // still exists, else fall back to the first save, else none. Gate on
@@ -236,31 +230,10 @@ export function ScreenerDrawer() {
     setSortMode(mode);
   };
 
-  // 서버-소유 job 진행(status.updating)이 진실 — 다른 서피스/스케줄러발 갱신도 잡는다.
+  // 서버-소유 job 진행(status.updating)이 진실 — 갱신 트리거는 풀페이지 Screener/
+  // 스케줄러 몫이고(드로어의 수동 갱신 버튼은 2026-07-12 제거), 드로어는 진행
+  // 칩·피드백 표시만 담당한다.
   const serverUpdating = status?.updating != null;
-  const updatePending = updateState.status === 'pending' || update.isPending || serverUpdating;
-  const runUpdate = () => {
-    const startedAtMs = Date.now();
-    setUpdatePending(startedAtMs);
-    update.mutate(undefined, {
-      onSuccess: (res) => {
-        // no-op(skip reason)만 즉시 settle. running 은 pending 유지 —
-        // screener_update_finished 이벤트가 sync 훅에서 앱 전역으로 settle 하고,
-        // dataStale 도 실제 updated>0 일 때만 이벤트 주도로 마킹된다(무갭 갱신의
-        // 거짓 '데이터 갱신됨' 힌트 제거).
-        if (!res.running) setUpdateSuccess(Date.now());
-      },
-      onError: (error) => {
-        // 실패를 단일 채널(updateFeedback)로만 렌더한다 — updateState 는 pending
-        // 해제용으로만 쓰고, job-finished-error 가 setFeedback+setUpdateError 를
-        // 둘 다 호출해 라벨이 두 줄로 겹치던 버그를 제거한다.
-        const detail = error instanceof Error && error.message ? error.message : '';
-        const message = detail ? `갱신 실패 — ${detail}` : '갱신 실패';
-        setUpdateError(detail || '갱신 실패', Date.now());   // 상태엔 raw 메시지
-        useScreenerUpdateFeedback.getState().setFeedback({ message, tone: 'error', atMs: Date.now() });
-      },
-    });
-  };
 
   // 결과 전 종목에 Live Quote 오버레이(ADR-0056 개정 2026-06-03 — 상위 30 cap 제거).
   // 풀페이지 ResultTable 과 공유하는 단일 머지 seam(codes 추출·폴링·머지 캡슐화).
@@ -305,7 +278,7 @@ export function ScreenerDrawer() {
       {/* Header: label + freshness chip */}
       <RailDrawerHeader title="스크리너" actions={<StalenessChip status={status} />} />
 
-      {/* Controls: dropdown + 조회 + 갱신 */}
+      {/* Controls: dropdown + 조회 */}
       <RailDrawerSection className="flex flex-col gap-sm">
         {saves.length === 0 ? (
           <RailState className="p-0">저장된 조건이 없습니다 — Screener 페이지에서 만드세요</RailState>
@@ -316,24 +289,14 @@ export function ScreenerDrawer() {
             onSelect={setSelectedSavedId}
           />
         )}
-        <div className="flex items-center gap-2">
-          <ToolbarButton
-            tone="primary"
-            onClick={runScan}
-            disabled={screener.isPending || notSeeded || !selected}
-            className="flex-1 py-1.5"
-          >
-            {screener.isPending ? '조회 중…' : '조회'}
-          </ToolbarButton>
-          <ToolbarButton
-            aria-label={updatePending ? '갱신 중…' : '데이터 갱신'}
-            onClick={runUpdate}
-            disabled={updatePending || notSeeded}
-            className="px-2.5 py-1.5"
-          >
-            {updatePending ? '갱신 중…' : '갱신'}
-          </ToolbarButton>
-        </div>
+        <ToolbarButton
+          tone="primary"
+          onClick={runScan}
+          disabled={screener.isPending || notSeeded || !selected}
+          className="w-full py-1.5"
+        >
+          {screener.isPending ? '조회 중…' : '조회'}
+        </ToolbarButton>
         {serverUpdating && (
           <div className="flex items-center">
             <ScreenerUpdateProgress updating={status?.updating} />
