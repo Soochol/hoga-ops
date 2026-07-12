@@ -104,6 +104,8 @@ export type PersistedIndicators = {
   movingAverageHidden: boolean;
   /** 당일 매도 최대벽 토글. opt-in(기본 false). */
   askPeakEnabled: boolean;
+  /** 매도 최대벽 눈(숨김) — 그리기만 끄고 레전드 데이터는 유지. 기본 false. */
+  askPeakHidden: boolean;
   /** 매도 최대벽 선 색(hex). 기본 #1D4ED8(파랑). */
   askPeakColor: string;
   /** 매도 최대벽 선 두께. 기본 2. */
@@ -122,6 +124,8 @@ export type PersistedIndicators = {
   viLimitPriceLineWidth: 1 | 2 | 3 | 4;
   /** 당일 매수 최대벽 토글. opt-in(기본 false). */
   bidPeakEnabled: boolean;
+  /** 매수 최대벽 눈(숨김) — 그리기만 끄고 레전드 데이터는 유지. 기본 false. */
+  bidPeakHidden: boolean;
   /** 매수 최대벽 선 색(hex). 기본 #DC2626(빨강). */
   bidPeakColor: string;
   /** 매수 최대벽 선 두께. 기본 2. */
@@ -132,6 +136,8 @@ export type PersistedIndicators = {
   bidPeakAllPriceLineWidth: 1 | 2 | 3 | 4;
   /** 당일 최대 매물대(체결량 POC) 밴드 on/off. Default TRUE. */
   tradeVolumePocEnabled: boolean;
+  /** 최대 매물대 눈(숨김). 기본 false. */
+  tradeVolumePocHidden: boolean;
   /** 당일 최대 매물대 자동 밴드 폭. Default +/-0.5%. */
   tradeVolumePocBandPct: number;
   /** 당일 최대 매물대 밴드 색(hex). 기본 #A855F7(보라). */
@@ -140,6 +146,8 @@ export type PersistedIndicators = {
   tradeVolumePocOpacity: number;
   /** 호가 잔량 히트맵 on/off. Default FALSE. */
   depthHeatmapEnabled: boolean;
+  /** 히트맵 눈(숨김). 기본 false. */
+  depthHeatmapHidden: boolean;
   /** 호가 잔량 히트맵 매수(bid) 색(hex). 기본 #F04452(빨강). */
   depthHeatmapBidColor: string;
   /** 호가 잔량 히트맵 매도(ask) 색(hex). 기본 #3485FA(파랑). */
@@ -188,6 +196,8 @@ export type PersistedIndicators = {
   programTradeEnabled: boolean;
   /** 신규 거래원 등장 마커 on/off. opt-in(기본 false). */
   brokerLateEntryEnabled: boolean;
+  /** 거래원 등장 마커 눈(숨김). 기본 false. */
+  brokerLateEntryHidden: boolean;
   /** 신규 거래원 등장 기준 시각(HHMM). 기본 930. */
   brokerLateEntryStartHHMM: number;
   /** 신규 거래원 등장 표시 방향. 기본 both. */
@@ -276,6 +286,7 @@ export function mergeLiveIndicatorPrefs(
     : undefined;
   // askPeak fields — opt-in (default false/ASK_PEAK_DEFAULT_COLOR/ASK_PEAK_DEFAULT_WIDTH).
   const apEnabled = obj?.askPeakEnabled === true;
+  const apHidden = obj?.askPeakHidden === true;
   const apColor = typeof obj?.askPeakColor === 'string' && HEX_COLOR.test(obj.askPeakColor as string)
     ? (obj.askPeakColor as string) : ASK_PEAK_DEFAULT_COLOR;
   const apWidth = VALID_LINE_WIDTHS.has(obj?.askPeakLineWidth as number)
@@ -296,6 +307,7 @@ export function mergeLiveIndicatorPrefs(
     ? (obj!.viLimitPriceLineWidth as 1 | 2 | 3 | 4) : VI_LIMIT_PRICE_LINE_DEFAULT_WIDTH;
   // bidPeak fields — opt-in (default false/BID_PEAK_DEFAULT_COLOR/BID_PEAK_DEFAULT_WIDTH).
   const bpEnabled = obj?.bidPeakEnabled === true;
+  const bpHidden = obj?.bidPeakHidden === true;
   const bpColor = typeof obj?.bidPeakColor === 'string' && HEX_COLOR.test(obj.bidPeakColor as string)
     ? (obj.bidPeakColor as string) : BID_PEAK_DEFAULT_COLOR;
   const bpWidth = VALID_LINE_WIDTHS.has(obj?.bidPeakLineWidth as number)
@@ -318,7 +330,9 @@ export function mergeLiveIndicatorPrefs(
     && tvpOpacityRaw <= 1
     ? tvpOpacityRaw
     : TRADE_VOLUME_POC_DEFAULT_OPACITY;
+  const tvpHidden = obj?.tradeVolumePocHidden === true;
   const depthHeatmapEnabled = obj?.depthHeatmapEnabled === true;
+  const depthHeatmapHidden = obj?.depthHeatmapHidden === true;
   const dhBidColor = typeof obj?.depthHeatmapBidColor === 'string'
     && HEX_COLOR.test(obj.depthHeatmapBidColor as string)
     ? (obj.depthHeatmapBidColor as string)
@@ -343,6 +357,7 @@ export function mergeLiveIndicatorPrefs(
     VOLUME_DISTRIBUTION_DEFAULT_MAX_COLOR,
   );
   const brokerLateEntryEnabled = obj?.brokerLateEntryEnabled === true;
+  const brokerLateEntryHidden = obj?.brokerLateEntryHidden === true;
   const brokerLateEntryStartHHMM = normalizeHHMM(obj?.brokerLateEntryStartHHMM);
   const brokerLateEntrySideMode = normalizeBrokerLateEntrySideMode(obj?.brokerLateEntrySideMode);
   const brokerLateEntryBuyColor = normalizeHexColor(
@@ -386,6 +401,7 @@ export function mergeLiveIndicatorPrefs(
     volumeEnabled: vol,
     movingAverageHidden: hidden,
     askPeakEnabled: apEnabled,
+    askPeakHidden: apHidden,
     askPeakColor: apColor,
     askPeakLineWidth: apWidth,
     askPeakAllPriceColor: apAllColor,
@@ -395,15 +411,18 @@ export function mergeLiveIndicatorPrefs(
     viLimitPriceLineColor,
     viLimitPriceLineWidth,
     bidPeakEnabled: bpEnabled,
+    bidPeakHidden: bpHidden,
     bidPeakColor: bpColor,
     bidPeakLineWidth: bpWidth,
     bidPeakAllPriceColor: bpAllColor,
     bidPeakAllPriceLineWidth: bpAllWidth,
     tradeVolumePocEnabled: tradeVolumePoc,
+    tradeVolumePocHidden: tvpHidden,
     tradeVolumePocBandPct: tvpBandPct,
     tradeVolumePocColor: tvpColor,
     tradeVolumePocOpacity: tvpOpacity,
     depthHeatmapEnabled,
+    depthHeatmapHidden,
     depthHeatmapBidColor: dhBidColor,
     depthHeatmapAskColor: dhAskColor,
     depthHeatmapMaxOpacity: dhMaxOpacity,
@@ -428,6 +447,7 @@ export function mergeLiveIndicatorPrefs(
     fillStrengthEnabled: fill,
     programTradeEnabled: programTrade,
     brokerLateEntryEnabled,
+    brokerLateEntryHidden,
     brokerLateEntryStartHHMM,
     brokerLateEntrySideMode,
     brokerLateEntryBuyColor,

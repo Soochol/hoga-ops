@@ -20,6 +20,9 @@ import type { PaneSpec } from '../RangeSeriesPane';
 import { addZeroBaselineGuide } from '../util/zeroBaseline';
 import { isAuctionHidden, isExcludedQuoteBucket, BASELINE_HIDDEN_COLORS, maskOutgoingConnector } from '../util/auctionHide';
 import { makePastCachedProjector } from './pastCachedProjector';
+import { registerFlagLegendValues } from '../../live/indicators/flagLegendValueRegistry';
+import { legendCursorDate } from '../../live/peakLegendValues';
+import type { BrokerLateEntryMarkerPoint } from './brokerLateEntryMarkers';
 import { makeCachedBrokerLateEntryProjector } from './brokerLateEntryMarkers';
 import { quoteRatioPointsForBundle, quoteRatioPointsForSlice } from './quoteRatioPoints';
 
@@ -76,6 +79,8 @@ export type RatioPaneContext = {
   /** ratioIntraMax — 호가비 분봉 내 |불균형| 극값(부호 유지) 기준. 미지정 = 종가. */
   intraMax?: boolean;
   brokerLateEntryEnabled: boolean;
+  /** 눈(숨김) — 마커 그리기만 끄고 레전드 값 계산은 유지. 미지정 = 표시. */
+  brokerLateEntryHidden?: boolean;
   brokerLateEntrySideMode: BrokerLateEntrySideMode;
   brokerLateEntryBuyColor: string;
   brokerLateEntrySellColor: string;
@@ -160,6 +165,7 @@ const useRatioContext = (): RatioPaneContext => {
   const brokerPrefs = useLivePageStore(
     useShallow((s) => ({
       brokerLateEntryEnabled: s.brokerLateEntryEnabled,
+      brokerLateEntryHidden: s.brokerLateEntryHidden,
       brokerLateEntrySideMode: s.brokerLateEntrySideMode,
       brokerLateEntryBuyColor: s.brokerLateEntryBuyColor,
       brokerLateEntrySellColor: s.brokerLateEntrySellColor,
@@ -177,6 +183,7 @@ const useRatioContext = (): RatioPaneContext => {
       chartPrefs.outlierThreshold,
       chartPrefs.intraMax,
       brokerPrefs.brokerLateEntryEnabled,
+      brokerPrefs.brokerLateEntryHidden,
       brokerPrefs.brokerLateEntrySideMode,
       brokerPrefs.brokerLateEntryBuyColor,
       brokerPrefs.brokerLateEntrySellColor,
@@ -195,6 +202,36 @@ const ratioCachedData = makePastCachedProjector(projectRatioPoints, (b) => b.quo
 // 거래원 지각진입 라벨 마커도 과거/당일 분리 캐시 — labelMarkers 는 SSE 틱마다 실행되고
 // 매번 전체 ratio points 에 sentinel 정렬(O(n log n))을 재지불했다. 모듈 레벨 1개 인스턴스.
 const brokerLateEntryMarkersCached = makeCachedBrokerLateEntryProjector();
+
+// 신규 거래원 등장 레전드 값 — labelMarkers가 계산한 마커를 비반응형으로 보관하고
+// (SSE 틱마다 갱신되므로 반응형이면 레전드 P1 재렌더 차단이 무너진다), 커서 거래일의
+// 매수/매도 마커 수를 provider로 노출. 등록은 모듈 로드 시 1회(모듈 캐시들과 동일 수명).
+let brokerLegendSnapshot: { points: readonly BrokerLateEntryMarkerPoint[]; axis: VirtualAxis } | null = null;
+registerFlagLegendValues('broker-late-entry', (cursorTimeSec) => {
+  const snap = brokerLegendSnapshot;
+  if (!snap || snap.points.length === 0) return [];
+  const date = legendCursorDate(snap.axis, cursorTimeSec);
+  if (date === null) return [];
+  let buyCount = 0;
+  let sellCount = 0;
+  let buyColor: string | undefined;
+  let sellColor: string | undefined;
+  for (const p of snap.points) {
+    const idx = snap.axis.findByVirtual((p.time as unknown as number) * 1000);
+    if (idx < 0 || snap.axis.segments[idx]?.date !== date) continue;
+    if (p.side === 'buy') {
+      buyCount += 1;
+      buyColor = p.color;
+    } else {
+      sellCount += 1;
+      sellColor = p.color;
+    }
+  }
+  const cells = [];
+  if (buyCount > 0) cells.push({ key: 'ble-buy', label: '매수', color: buyColor, value: `${buyCount}건` });
+  if (sellCount > 0) cells.push({ key: 'ble-sell', label: '매도', color: sellColor, value: `${sellCount}건` });
+  return cells;
+});
 
 export const RATIO_SPEC = {
   name: 'ratio' as const,
@@ -244,8 +281,9 @@ export const RATIO_SPEC = {
         };
       },
       data: ratioCachedData,
-      labelMarkers: (bundle, axis, ctx) => (
-        ctx.brokerLateEntryEnabled
+      labelMarkers: (bundle, axis, ctx) => {
+        // enabled면 항상 계산해 레전드 스냅샷 갱신 — 눈(hidden)은 그리기만 끈다.
+        const points = ctx.brokerLateEntryEnabled
           ? brokerLateEntryMarkersCached(bundle, axis, {
               auctionWindowMask: ctx.auctionWindowMask,
               outlierFilterEnabled: ctx.outlierFilterEnabled,
@@ -255,8 +293,10 @@ export const RATIO_SPEC = {
               buyColor: ctx.brokerLateEntryBuyColor,
               sellColor: ctx.brokerLateEntrySellColor,
             })
-          : []
-      ),
+          : [];
+        brokerLegendSnapshot = { points, axis };
+        return ctx.brokerLateEntryHidden ? [] : points;
+      },
       afterAdd: (series) => {
         // 0-baseline reference line. Drawn explicitly because BaselineSeries
         // switches color at baseValue but does not paint a visible line there.

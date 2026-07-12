@@ -10,6 +10,12 @@ import {
   type TradeVolumePocSegment,
 } from '../chart/TradeVolumePocPrimitive';
 import type { TradeVolumePoc } from './tradeVolumePoc';
+import {
+  registerFlagLegendValues,
+  unregisterFlagLegendValues,
+  type FlagLegendValueProvider,
+} from './indicators/flagLegendValueRegistry';
+import { formatPriceQty, legendCursorDate } from './peakLegendValues';
 
 function hexToRgba(hex: string, opacity: number): string {
   const match = /^#?([0-9a-f]{6})$/i.exec(hex);
@@ -77,6 +83,7 @@ export function buildTradeVolumePocSegments(
 function TradeVolumePocOverlay({ paneSeries, axis, pocs, segments, candles, todayKst, override, behindSeries = false }: Props) {
   const series = paneSeries.get('candle' as PaneId) as ISeriesApi<SeriesType> | undefined;
   const storeEnabled = useLivePageStore((s) => s.tradeVolumePocEnabled);
+  const hidden = useLivePageStore((s) => s.tradeVolumePocHidden);
   const storeColor = useLivePageStore((s) => s.tradeVolumePocColor);
   const storeOpacity = useLivePageStore((s) => s.tradeVolumePocOpacity);
   const enabled = override?.enabled ?? storeEnabled;
@@ -105,8 +112,22 @@ function TradeVolumePocOverlay({ paneSeries, axis, pocs, segments, candles, toda
   }, [series, behindSeries]);
 
   useEffect(() => {
-    primitiveRef.current?.setSegments(enabled ? segment : []);
-  }, [enabled, segment, series, behindSeries]);
+    primitiveRef.current?.setSegments(enabled && !hidden ? segment : []);
+  }, [enabled, hidden, segment, series, behindSeries]);
+
+  // 레전드 값 provider — 커서 거래일 POC의 중심가·체결량. hidden과 무관하게 유지
+  // (MA "hide는 그리기만" 규칙 미러).
+  useEffect(() => {
+    const provider: FlagLegendValueProvider = (cursorTimeSec) => {
+      const date = legendCursorDate(axis, cursorTimeSec);
+      if (date === null) return [];
+      const poc = pocs.find((p) => p.date === date);
+      if (!poc) return [];
+      return [{ key: 'trade-volume-poc', value: formatPriceQty(poc.centerPrice, poc.qty) }];
+    };
+    registerFlagLegendValues('trade-volume-poc', provider);
+    return () => unregisterFlagLegendValues('trade-volume-poc', provider);
+  }, [pocs, axis]);
 
   return null;
 }

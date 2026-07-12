@@ -63,23 +63,43 @@ export type LegendFlagId =
   | 'depth-heatmap'
   | 'broker-late-entry';
 
+/** One pre-formatted value cell of a flag row (values come from
+ *  `flagLegendValueRegistry` providers — 지표별 포맷을 provider가 소유). */
+export type LegendFlagCell = {
+  key: string;
+  label?: string;
+  color?: string;
+  value: string;
+};
+
 /** One flag indicator's input: `paneId` = the pane its overlay draws on,
  *  enabled = store toggle, applicable = "can this overlay draw on the current
- *  timeframe" (all five are minute-only, mirroring their mount gates). */
+ *  timeframe" (all five are minute-only, mirroring their mount gates).
+ *  `hidden` = 눈 토글(그리기만 숨김 — 행과 값은 유지, MA 규칙 미러). */
 export type LegendFlagInput = {
   id: LegendFlagId;
   paneId: PaneId;
   label: string;
   enabled: boolean;
   applicable: boolean;
+  hidden: boolean;
   swatches: readonly string[];
+  cells: readonly LegendFlagCell[];
 };
 
 /** A single pane's legend row. */
 export type LegendRow =
   | { paneId: 'candle'; kind: 'ma'; mas: LegendMAValue[]; hidden: boolean }
   | { paneId: 'candle'; kind: 'daily-ma'; mas: LegendMAValue[]; hidden: boolean }
-  | { paneId: PaneId; kind: 'flag'; id: LegendFlagId; label: string; swatches: readonly string[] }
+  | {
+      paneId: PaneId;
+      kind: 'flag';
+      id: LegendFlagId;
+      label: string;
+      swatches: readonly string[];
+      hidden: boolean;
+      cells: readonly LegendFlagCell[];
+    }
   | {
       paneId: PaneId;
       kind: 'cells';
@@ -207,6 +227,8 @@ export function buildLegendRows(input: BuildLegendRowsInput): LegendRow[] {
       id: flag.id,
       label: flag.label,
       swatches: flag.swatches,
+      hidden: flag.hidden,
+      cells: flag.cells,
     });
   }
 
