@@ -87,6 +87,70 @@ describe('DrawingOverlay context menu', () => {
   });
 });
 
+describe('DrawingOverlay text editor — pointer isolation', () => {
+  beforeEach(() => {
+    useDrawingsStore.getState().__resetForTests();
+  });
+
+  // Rich-enough chart/axis/paneSeries stubs for the text tool to resolve an
+  // anchor and open the editor. Identity projections: px↔realMs/1000, py↔price.
+  function mountWithCandlePane() {
+    const fakePane = { paneIndex: () => 0, getHeight: () => 400 };
+    const fakeSeries = {
+      priceToCoordinate: (p: number) => p,
+      coordinateToPrice: (y: number) => y,
+      getPane: () => fakePane,
+    };
+    const chart = {
+      timeScale: () => ({
+        subscribeVisibleLogicalRangeChange: vi.fn(),
+        unsubscribeVisibleLogicalRangeChange: vi.fn(),
+        coordinateToTime: (x: number) => x,
+        timeToCoordinate: (t: number) => t,
+        coordinateToLogical: (x: number) => x,
+        logicalToCoordinate: (l: number) => l,
+      }),
+      panes: () => [{ getHeight: () => 400, getSeries: () => [] }],
+    };
+    const axis = {
+      segments: [{ date: '20260101', sessionOpenMs: 0, sessionCloseMs: 10_000_000, virtualStart: 0 }],
+      contains: () => true,
+      toVirtual: (v: number) => v,
+      toReal: (v: number) => v,
+    };
+    return render(
+      <DrawingOverlay
+        chart={chart as never}
+        axis={axis as never}
+        paneSeries={new Map([['candle', fakeSeries]]) as never}
+      />,
+    );
+  }
+
+  // Regression for the "입력창이 안 나와요" report: the editor opens at the
+  // cursor, so a real user's next press lands ON the input (click-to-type,
+  // double-click habit). That pointerdown used to bubble into the overlay's
+  // tool dispatch → beginTextEdit saw an open edit → committed the empty value
+  // → the box vanished the instant it was touched.
+  it('clicking inside the open text input does NOT close it', () => {
+    useDrawingsStore.getState().setActiveCode('005930');
+    useDrawingsStore.getState().setActiveTool('text');
+    const { container } = mountWithCandlePane();
+    const overlay = container.querySelector('[data-drawing-overlay]')!;
+
+    // Open the editor with a chart click.
+    fireEvent.pointerDown(overlay, { clientX: 100, clientY: 50, button: 0 });
+    fireEvent.pointerUp(overlay, { clientX: 100, clientY: 50, button: 0 });
+    const input = container.querySelector('[data-drawing-text-input]');
+    expect(input).not.toBeNull();
+
+    // Press inside the input itself — must stay open (propagation stopped).
+    fireEvent.pointerDown(input!, { clientX: 102, clientY: 52, button: 0 });
+    fireEvent.pointerUp(input!, { clientX: 102, clientY: 52, button: 0 });
+    expect(container.querySelector('[data-drawing-text-input]')).not.toBeNull();
+  });
+});
+
 describe('DrawingOverlay undo/redo keyboard (ADR-0107)', () => {
   beforeEach(() => {
     useDrawingsStore.getState().__resetForTests();
