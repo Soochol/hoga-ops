@@ -20,7 +20,6 @@ import {
   type ProjectCtx,
 } from './drawing/render';
 import type { Drawing, PaneId, Point } from './drawing/types';
-import { TEXT_DEFAULT_FONT_SIZE } from './drawing/types';
 import { snapPoint, snapRealMs, type SnapCandle } from './drawing/snap';
 import { refCoords, cloneWithOffset } from './drawing/duplicate';
 import { hitTestDrawings } from './drawing/hitTest';
@@ -501,7 +500,9 @@ export default function DrawingOverlay({ chart, axis, paneSeries, onChartHoverPa
         width: store.defaults.width,
         lineStyle: store.defaults.lineStyle,
         paneId: edit.paneId,
-        fontSize: TEXT_DEFAULT_FONT_SIZE,
+        // Sticky size: a new label inherits the last-committed size. (Re-edits
+        // take the `edit.id != null` branch above and keep their own size.)
+        fontSize: store.defaults.fontSize,
       });
       store.setSelected(id);
     }
@@ -525,7 +526,10 @@ export default function DrawingOverlay({ chart, axis, paneSeries, onChartHoverPa
       commitText(textInputRef.current?.value ?? textValue);
       return;
     }
-    setTextEdit({ id: null, at, paneId, initial: '', fontSize: TEXT_DEFAULT_FONT_SIZE, px, py });
+    // Open the editor at the sticky default size so the box matches what will
+    // be committed.
+    const fontSize = useDrawingsStore.getState().defaults.fontSize;
+    setTextEdit({ id: null, at, paneId, initial: '', fontSize, px, py });
     setTextValue('');
   };
 

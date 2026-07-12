@@ -215,6 +215,7 @@ describe('renderTrendlineDraft', () => {
       color: '#14B8A6',
       width: 2,
       lineStyle: 'solid',
+      fontSize: 13,
       magnet: false,
       hiddenAll: false,
     });
