@@ -4,7 +4,7 @@
 // edit the selected Drawing's color, stroke width, and line style, and
 // delete it. See CONTEXT.md "Drawing Property Panel" and ADR-0032.
 
-import { useCallback, useState, useEffect, useRef } from 'react';
+import { useCallback, useState, useRef } from 'react';
 import { useDrawingsStore } from '../state/drawings';
 import { useDismissablePopover } from '../util/useDismissablePopover';
 import {
@@ -20,9 +20,9 @@ import {
 export type DrawingAnchor = { x: number; y: number };
 export type ComputeAnchorFn = (d: Drawing) => DrawingAnchor | null;
 
-type Props = {
-  computeAnchor?: ComputeAnchorFn;
-};
+// The panel now docks to the chart's top-center (see the re-dock effect) rather
+// than anchoring to each drawing, so it takes no positioning props.
+type Props = Record<string, never>;
 
 const LINE_STYLE_LABELS: Record<LineStyle, string> = {
   solid: '실선',
@@ -35,9 +35,10 @@ const previewBorderStyle = (style: LineStyle): 'solid' | 'dashed' | 'dotted' =>
 
 type OpenPopover = 'color' | 'thickness' | 'lineStyle' | 'fill' | 'fontSize' | null;
 
-const INITIAL_POSITION = { x: 14, y: 20 };
+/** Top-center dock offset from the chart's top edge (candle pane top). */
+const TOP_DOCK_Y = 8;
 
-export default function DrawingPropertyPanel({ computeAnchor }: Props = {}) {
+export default function DrawingPropertyPanel(_props: Props = {}) {
   const activeTool = useDrawingsStore((s) => s.activeTool);
   const selectedId = useDrawingsStore((s) => s.selectedId);
   const drawing = useDrawingsStore((s) => {
@@ -49,51 +50,10 @@ export default function DrawingPropertyPanel({ computeAnchor }: Props = {}) {
   const [openPopover, setOpenPopover] = useState<OpenPopover>(null);
   const rootRef = useRef<HTMLDivElement>(null);
 
-  const [position, setPosition] = useState<{ x: number; y: number }>(INITIAL_POSITION);
-  const dragRef = useRef<{
-    startMouseX: number;
-    startMouseY: number;
-    startPanelX: number;
-    startPanelY: number;
-  } | null>(null);
-  // Once the user has dragged the panel, it stops re-anchoring on selection
-  // changes and stays where they parked it (session-scoped; see ADR-0108).
-  // Set inside onMove (a real drag), not startDrag (a bare grip mousedown).
-  const userMovedRef = useRef(false);
-
-  useEffect(() => {
-    const onMove = (e: MouseEvent) => {
-      const d = dragRef.current;
-      if (!d) return;
-      userMovedRef.current = true;
-      setPosition({
-        x: d.startPanelX + (e.clientX - d.startMouseX),
-        y: d.startPanelY + (e.clientY - d.startMouseY),
-      });
-    };
-    const onUp = () => {
-      dragRef.current = null;
-    };
-    window.addEventListener('mousemove', onMove);
-    window.addEventListener('mouseup', onUp);
-    return () => {
-      window.removeEventListener('mousemove', onMove);
-      window.removeEventListener('mouseup', onUp);
-    };
-  }, []);
-
-  // Re-anchor when selection identity changes — but only until the user has
-  // dragged the panel. After a manual drag the panel is sticky: it keeps the
-  // last position across selections instead of snapping back to each drawing's
-  // anchor (ADR-0108, reversing ADR-0032's per-selection re-anchor clause).
-  useEffect(() => {
-    if (drawing == null) return;
-    if (userMovedRef.current) return;
-    const anchor = computeAnchor?.(drawing) ?? null;
-    setPosition(anchor ?? INITIAL_POSITION);
-  // Re-anchor only on selection identity change, not on every drawing edit
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [drawing?.id]);
+  // The panel is a fixed toolbar docked to the chart's top-center (candle pane
+  // top) — CSS `left:50%` + translateX(-50%), so it reads as a toolbar rather
+  // than a panel chasing each shape. Positioning is pure CSS (no drag/measure),
+  // superseding the draggable/sticky model of ADR-0108/ADR-0032.
 
   const closePopover = useCallback(() => setOpenPopover(null), []);
   useDismissablePopover(openPopover != null, rootRef, closePopover);
@@ -133,15 +93,6 @@ export default function DrawingPropertyPanel({ computeAnchor }: Props = {}) {
   // instead. Hide the stroke controls and show a size picker for them.
   const isText = drawing.kind === 'text';
 
-  const startDrag = (e: React.MouseEvent) => {
-    dragRef.current = {
-      startMouseX: e.clientX,
-      startMouseY: e.clientY,
-      startPanelX: position.x,
-      startPanelY: position.y,
-    };
-  };
-
   return (
     <div
       ref={rootRef}
@@ -149,24 +100,12 @@ export default function DrawingPropertyPanel({ computeAnchor }: Props = {}) {
       data-testid="drawing-property-panel"
       className="absolute z-30 inline-flex items-center gap-0.5 bg-bg-card border border-border rounded-lg p-1 shadow-lg"
       style={{
-        top: position.y,
-        left: position.x,
-        // hline panels are anchored to the chart's horizontal centre and to
-        // their own bottom edge: translateX(-50%) lands the visual centre on
-        // `position.x` (not the left edge), and translateY(-100%) lifts the
-        // panel fully above `position.y` so it rests over the line rather than
-        // covering it. trendline / pencil keep top-left anchoring.
-        transform: drawing.kind === 'hline' ? 'translate(-50%, -100%)' : undefined,
+        // Fixed toolbar, docked to the top-center of the chart (candle pane top).
+        top: TOP_DOCK_Y,
+        left: '50%',
+        transform: 'translateX(-50%)',
       }}
     >
-      <span
-        data-testid="drawing-panel-grip"
-        onMouseDown={startDrag}
-        className="px-1 h-7 inline-flex items-center text-fg-dim cursor-grab select-none"
-      >
-        ⋮⋮
-      </span>
-
       <button
         type="button"
         data-testid="drawing-color-trigger"

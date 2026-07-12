@@ -246,12 +246,33 @@ describe('textTool.onPointerDown', () => {
     const at: Point = { realMs: 1_700_000_000_000, price: 70_000 };
     const ctx = makeCtx({ pixelToData: vi.fn(() => at) });
     textTool.onPointerDown!(ctx);
-    expect(ctx.beginTextEdit).toHaveBeenCalledWith(at, 'candle');
+    expect(ctx.beginTextEdit).toHaveBeenCalledWith(at, 'candle', ctx.px, ctx.py);
     expect(ctx.add).not.toHaveBeenCalled(); // commit happens on Enter/blur
   });
 
-  it('does nothing where pixelToData is null (empty band)', () => {
-    const ctx = makeCtx({ pixelToData: vi.fn(() => null) });
+  it('falls back to canvasYToPrice/canvasXToRealMs in the empty band (pixelToData null)', () => {
+    // Text can still be placed right of the last candle: with pixelToData null,
+    // the tool composes a point from the price + time axes.
+    const ctx = makeCtx({
+      pixelToData: vi.fn(() => null),
+      canvasYToPrice: vi.fn(() => 70_000),
+      canvasXToRealMs: vi.fn(() => 1_700_000_000_000),
+    });
+    textTool.onPointerDown!(ctx);
+    expect(ctx.beginTextEdit).toHaveBeenCalledWith(
+      { realMs: 1_700_000_000_000, price: 70_000 },
+      'candle',
+      ctx.px,
+      ctx.py,
+    );
+  });
+
+  it('does nothing only when neither axis resolves', () => {
+    const ctx = makeCtx({
+      pixelToData: vi.fn(() => null),
+      canvasYToPrice: vi.fn(() => null),
+      canvasXToRealMs: vi.fn(() => null),
+    });
     textTool.onPointerDown!(ctx);
     expect(ctx.beginTextEdit).not.toHaveBeenCalled();
   });

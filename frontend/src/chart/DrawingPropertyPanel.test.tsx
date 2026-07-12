@@ -1,5 +1,5 @@
 import { render, fireEvent, screen, act } from '@testing-library/react';
-import { describe, it, expect, beforeEach, vi } from 'vitest';
+import { describe, it, expect, beforeEach } from 'vitest';
 import DrawingPropertyPanel from './DrawingPropertyPanel';
 import { useDrawingsStore } from '../state/drawings';
 import type { Drawing } from './drawing/types';
@@ -171,77 +171,28 @@ describe('DrawingPropertyPanel — delete', () => {
   });
 });
 
-describe('DrawingPropertyPanel — drag', () => {
-  beforeEach(() => {
-    useDrawingsStore.getState().__resetForTests();
-    useDrawingsStore.getState().setActiveCode('005930');
-    useDrawingsStore.getState().add(HLINE);
-    useDrawingsStore.getState().setSelected('h1');
-  });
+describe('DrawingPropertyPanel — top-center dock (fixed toolbar)', () => {
+  const HLINE2: Drawing = {
+    id: 'h2', kind: 'hline', price: 2000,
+    color: '#14B8A6', width: 2, lineStyle: 'solid', paneId: 'candle',
+  };
 
-  it('dragging the grip translates the panel', () => {
-    render(<DrawingPropertyPanel />);
-    const panel = screen.getByTestId('drawing-property-panel') as HTMLElement;
-    const grip = screen.getByTestId('drawing-panel-grip');
-    const startLeft = parseFloat(panel.style.left);
-    const startTop = parseFloat(panel.style.top);
-
-    fireEvent.mouseDown(grip, { clientX: 100, clientY: 100 });
-    fireEvent.mouseMove(window, { clientX: 150, clientY: 130 });
-    fireEvent.mouseUp(window);
-
-    expect(parseFloat(panel.style.left)).toBeCloseTo(startLeft + 50);
-    expect(parseFloat(panel.style.top)).toBeCloseTo(startTop + 30);
-  });
-});
-
-describe('DrawingPropertyPanel — initial position per selection', () => {
   beforeEach(() => {
     useDrawingsStore.getState().__resetForTests();
     useDrawingsStore.getState().setActiveCode('005930');
   });
 
-  it('calls computeAnchor(drawing) when selectedId changes and applies its result', () => {
-    const computeAnchor = vi.fn().mockReturnValue({ x: 120, y: 80 });
-    useDrawingsStore.getState().add(HLINE);
-    useDrawingsStore.getState().setSelected('h1');
-    render(<DrawingPropertyPanel computeAnchor={computeAnchor} />);
-    const panel = screen.getByTestId('drawing-property-panel') as HTMLElement;
-    expect(computeAnchor).toHaveBeenCalledWith(HLINE);
-    expect(panel.style.left).toBe('120px');
-    expect(panel.style.top).toBe('80px');
-  });
-
-  it('null anchor (off-axis) falls back to INITIAL_POSITION', () => {
-    const computeAnchor = vi.fn().mockReturnValue(null);
-    useDrawingsStore.getState().add(HLINE);
-    useDrawingsStore.getState().setSelected('h1');
-    render(<DrawingPropertyPanel computeAnchor={computeAnchor} />);
-    const panel = screen.getByTestId('drawing-property-panel') as HTMLElement;
-    expect(panel.style.left).toBe('14px');
-    expect(panel.style.top).toBe('20px');
-  });
-});
-
-describe('DrawingPropertyPanel — hline anchoring', () => {
-  beforeEach(() => {
-    useDrawingsStore.getState().__resetForTests();
-    useDrawingsStore.getState().setActiveCode('005930');
-  });
-
-  // hline panels rest *above* the line (bottom-edge anchored) so the line
-  // they describe stays visible. The vertical lift is done with
-  // translateY(-100%); without it the panel hangs below `top` and covers the
-  // line. The horizontal translateX(-50%) centres the panel on the line.
-  it('hline panel is bottom+centre anchored via translate(-50%, -100%)', () => {
+  it('is fixed at top:8px, left:50%, translateX(-50%) — a top-center toolbar', () => {
     useDrawingsStore.getState().add(HLINE);
     useDrawingsStore.getState().setSelected('h1');
     render(<DrawingPropertyPanel />);
     const panel = screen.getByTestId('drawing-property-panel') as HTMLElement;
-    expect(panel.style.transform).toBe('translate(-50%, -100%)');
+    expect(panel.style.top).toBe('8px');
+    expect(panel.style.left).toBe('50%');
+    expect(panel.style.transform).toBe('translateX(-50%)');
   });
 
-  it('non-hline (trendline) keeps top-left anchoring (no transform)', () => {
+  it('docks the same way for a trendline (not anchored to the shape)', () => {
     const TREND: Drawing = {
       id: 't1', kind: 'trendline',
       a: { realMs: 1, price: 100 }, b: { realMs: 2, price: 200 },
@@ -251,64 +202,28 @@ describe('DrawingPropertyPanel — hline anchoring', () => {
     useDrawingsStore.getState().setSelected('t1');
     render(<DrawingPropertyPanel />);
     const panel = screen.getByTestId('drawing-property-panel') as HTMLElement;
-    expect(panel.style.transform).toBe('');
+    expect(panel.style.top).toBe('8px');
+    expect(panel.style.left).toBe('50%');
   });
-});
 
-describe('DrawingPropertyPanel — sticky position after drag (ADR-0108)', () => {
-  const HLINE2: Drawing = {
-    id: 'h2', kind: 'hline', price: 2000,
-    color: '#14B8A6', width: 2, lineStyle: 'solid', paneId: 'candle',
-  };
-  // h1 anchors at (100,100); h2 would anchor at (300,300). A sticky panel must
-  // ignore h2's anchor once the user has dragged.
-  const anchorByDrawing = (d: Drawing) =>
-    d.id === 'h1' ? { x: 100, y: 100 } : { x: 300, y: 300 };
-
-  beforeEach(() => {
-    useDrawingsStore.getState().__resetForTests();
-    useDrawingsStore.getState().setActiveCode('005930');
+  it('stays docked when the selection changes to another drawing', () => {
     useDrawingsStore.getState().add(HLINE); // h1
     useDrawingsStore.getState().add(HLINE2); // h2
     useDrawingsStore.getState().setSelected('h1');
-  });
-
-  it('re-selecting a different drawing keeps the dragged position (no re-anchor)', () => {
-    const computeAnchor = vi.fn(anchorByDrawing);
-    render(<DrawingPropertyPanel computeAnchor={computeAnchor} />);
+    render(<DrawingPropertyPanel />);
     const panel = screen.getByTestId('drawing-property-panel') as HTMLElement;
-    const grip = screen.getByTestId('drawing-panel-grip');
-
-    // First selection anchors normally.
-    expect(panel.style.left).toBe('100px');
-    expect(panel.style.top).toBe('100px');
-
-    // User drags the panel by (+40, +40).
-    fireEvent.mouseDown(grip, { clientX: 0, clientY: 0 });
-    fireEvent.mouseMove(window, { clientX: 40, clientY: 40 });
-    fireEvent.mouseUp(window);
-    expect(panel.style.left).toBe('140px');
-    expect(panel.style.top).toBe('140px');
-
-    // Re-selecting a DIFFERENT drawing must NOT snap to its anchor — the bug.
+    expect(panel.style.left).toBe('50%');
     act(() => {
       useDrawingsStore.getState().setSelected('h2');
     });
-    expect(panel.style.left).toBe('140px');
-    expect(panel.style.top).toBe('140px');
+    expect(panel.style.top).toBe('8px');
+    expect(panel.style.left).toBe('50%');
   });
 
-  it('before any drag, selection still re-anchors per drawing', () => {
-    const computeAnchor = vi.fn(anchorByDrawing);
-    render(<DrawingPropertyPanel computeAnchor={computeAnchor} />);
-    const panel = screen.getByTestId('drawing-property-panel') as HTMLElement;
-    expect(panel.style.left).toBe('100px');
-
-    // No drag yet → switching selection re-anchors to h2's anchor.
-    act(() => {
-      useDrawingsStore.getState().setSelected('h2');
-    });
-    expect(panel.style.left).toBe('300px');
-    expect(panel.style.top).toBe('300px');
+  it('no drag grip (the toolbar is fixed, not draggable)', () => {
+    useDrawingsStore.getState().add(HLINE);
+    useDrawingsStore.getState().setSelected('h1');
+    render(<DrawingPropertyPanel />);
+    expect(screen.queryByTestId('drawing-panel-grip')).toBeNull();
   });
 });
