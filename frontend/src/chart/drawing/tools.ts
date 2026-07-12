@@ -39,9 +39,10 @@ import {
   HIT_THRESHOLD,
   RECT_DEFAULT_FILL_OPACITY,
 } from './types';
-import { translateDrawing, clampDPriceForDrawing } from './translate';
+import { translateDrawing, clampDPriceForDrawing, clampDVirtualForDrawing } from './translate';
 import { constrainAngle } from './snap';
 import { simplifyByPixels, PENCIL_SIMPLIFY_EPSILON } from './simplify';
+import type { DragTimeDomain } from './chartCoordinates';
 
 /** Constrain the free endpoint (cursor px,py) to 0°/45°/90° relative to anchor
  *  `a`, in pixel space, then convert back to a data Point. Returns null when the
@@ -171,6 +172,11 @@ export type ToolCtx = {
    *  from the registered series' coordinateToPrice at the pane's top/bottom
    *  pixels. Returns null if the pane or its series isn't mounted. */
   priceBoundsForPane(paneId: PaneId): { top: number; bottom: number } | null;
+  /** Gap-aware time domain for body-drag translation. Horizontal drag deltas
+   *  are computed and applied in VIRTUAL ms so shifted vertices always land
+   *  back on-axis (a flat Δ-real-ms swallowed inter-session gaps and stranded
+   *  rect/measure corners inside them — stretched or vanished drawings). */
+  dragTime: DragTimeDomain;
 
   /** The current Drawing list for the active Code. */
   drawings: readonly Drawing[];
@@ -362,14 +368,20 @@ export const selectTool: DrawingToolSpec = {
   onPointerMove(ctx) {
     const drag = ctx.dragRef.current;
     if (!drag || drag.pointerId !== ctx.pointerId) return;
-    // vline body drag: horizontal only, no price scale involved.
+    // vline body drag: horizontal only, no price scale involved. The delta is
+    // taken in virtual ms (see the body branch below for why).
     if (drag.kind === 'vline-body') {
       const target = ctx.drawings.find((d) => d.id === drag.id);
       if (!target || target.kind !== 'vline') return;
       const curRealMs = ctx.canvasXToRealMs(ctx.px);
-      const dMs =
-        curRealMs != null && drag.lastRealMs != null ? curRealMs - drag.lastRealMs : 0;
-      if (dMs !== 0) ctx.update(target.id, translateDrawing(target, dMs, 0));
+      const dVirtual =
+        curRealMs != null && drag.lastRealMs != null
+          ? ctx.dragTime.toVirtual(curRealMs) - ctx.dragTime.toVirtual(drag.lastRealMs)
+          : 0;
+      if (dVirtual !== 0) {
+        const shift = (ms: number) => ctx.dragTime.toReal(ctx.dragTime.toVirtual(ms) + dVirtual);
+        ctx.update(target.id, translateDrawing(target, shift, 0));
+      }
       if (curRealMs != null) drag.lastRealMs = curRealMs;
       return;
     }
@@ -418,10 +430,27 @@ export const selectTool: DrawingToolSpec = {
     }
     if (drag.kind === 'body') {
       // Horizontal shift only when both ends resolve; otherwise 0 — hline
-      // discards Δms anyway, and trendline/pencil degrade to vertical-only in
-      // the band rather than freezing.
-      const dMs =
-        curRealMs != null && drag.lastRealMs != null ? curRealMs - drag.lastRealMs : 0;
+      // discards it anyway, and trendline/pencil degrade to vertical-only
+      // rather than freezing. The delta lives in VIRTUAL ms: shifting stored
+      // real timestamps by a flat Δ-real-ms stranded vertices inside
+      // inter-session gaps whenever the cursor crossed a day boundary (the
+      // gap's whole duration entered the delta), which rendered rect/measure
+      // stretched to the canvas edge or not at all. Virtual-domain shifts walk
+      // bar-space, so every vertex lands back on-axis and the on-screen shape
+      // is preserved.
+      const rawDVirtual =
+        curRealMs != null && drag.lastRealMs != null
+          ? ctx.dragTime.toVirtual(curRealMs) - ctx.dragTime.toVirtual(drag.lastRealMs)
+          : 0;
+      // Shape-preserving cap against the axis origin — the time-axis sibling
+      // of the price cap below. Without it a leftward overshoot would floor
+      // vertices one by one at the first session's open, compressing the shape.
+      const dVirtual = clampDVirtualForDrawing(
+        target,
+        rawDVirtual,
+        ctx.dragTime.originV,
+        ctx.dragTime.toVirtual,
+      );
       const rawDPrice = price - drag.lastPrice;
       // Shape-preserving cap: compute the largest |dPrice| that keeps every
       // vertex inside the pane, then translate once. Post-translate per-vertex
@@ -431,9 +460,14 @@ export const selectTool: DrawingToolSpec = {
       const dPrice = paneBounds
         ? clampDPriceForDrawing(target, rawDPrice, paneBounds)
         : rawDPrice;
-      ctx.update(target.id, translateDrawing(target, dMs, dPrice));
+      // The round-trip runs even when dVirtual is 0: for a healthy vertex it is
+      // the identity, and for one stranded in a gap by the old real-ms drags it
+      // snaps forward to the next session open — grabbing a broken drawing
+      // heals it.
+      const shift = (ms: number) => ctx.dragTime.toReal(ctx.dragTime.toVirtual(ms) + dVirtual);
+      ctx.update(target.id, translateDrawing(target, shift, dPrice));
       // Advance the horizontal anchor only when X resolved, so re-entering the
-      // data area computes Δms from the last real position (no jump for hline).
+      // data area computes the delta from the last real position (no jump).
       if (curRealMs != null) drag.lastRealMs = curRealMs;
       drag.lastPrice = price;
     }

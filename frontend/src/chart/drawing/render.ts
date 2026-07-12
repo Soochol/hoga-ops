@@ -18,11 +18,13 @@ import type { TrendlineDraft } from './tools';
 import {
   type FutureBand,
   type PaneSeriesMap,
+  dragTimeDomain,
   priceToCanvasY,
   realMsToCanvasX,
   realMsToCanvasXClamped,
   totalPanesHeight,
 } from './chartCoordinates';
+import { INTER_SEGMENT_GAP_MS } from '../../util/time';
 
 export type ProjectCtx = {
   chart: IChartApi;
@@ -384,12 +386,25 @@ function measureDirColor(a: number, b: number): string {
   return MEASURE_FLAT;
 }
 
-function formatMeasureLabel(m: Measure, bucketMs: number | undefined): string {
+/** Measure readout: Δprice · elapsed real time · bar count. The DURATION is
+ *  deliberately wall-clock (a measure spanning a weekend really covers 3 days),
+ *  but the BAR COUNT must be gap-aware: dividing the real-ms span by bucketMs
+ *  counted inter-session gaps as bars (an overnight on the 1m timeframe
+ *  inflated the count by ~1,050봉). Counting in the virtual (gap-compressed)
+ *  domain matches the bars actually on screen; the drag domain also linearizes
+ *  the empty right band so a measure with a future-anchored endpoint counts
+ *  its extrapolated bars. Exported for tests. */
+export function formatMeasureLabel(m: Measure, ctx: ProjectCtx): string {
   const delta = formatDeltaLabel(m.a.price, m.b.price, m.paneId);
   const dur = formatDuration(m.b.realMs - m.a.realMs);
   const parts = [delta, dur];
+  const bucketMs = ctx.bucketMs;
   if (bucketMs && bucketMs > 0) {
-    const bars = Math.round(Math.abs(m.b.realMs - m.a.realMs) / bucketMs);
+    const dom = dragTimeDomain(ctx.axis, futureBand(ctx));
+    // One bar of virtual time: session-linear on intraday axes, one segment
+    // pitch on calendar (D/W/M) axes where each trading day is one bar.
+    const vPerBar = ctx.axis.mode === 'calendar' ? INTER_SEGMENT_GAP_MS : bucketMs;
+    const bars = Math.round(Math.abs(dom.toVirtual(m.b.realMs) - dom.toVirtual(m.a.realMs)) / vPerBar);
     parts.push(`${bars}봉`);
   }
   return parts.join(' · ');
@@ -426,7 +441,7 @@ function renderMeasureShape(
     if (xb != null && yb != null) drawHandle(c, dir, xb, yb);
   }
   // Centered measurement readout.
-  const label = formatMeasureLabel(m, ctx.bucketMs);
+  const label = formatMeasureLabel(m, ctx);
   drawFloatingLabel(c, ctx.width, box.x + box.w / 2 - c.measureText(label).width / 2, box.y + box.h / 2, label, dir);
 }
 

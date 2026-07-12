@@ -7,7 +7,14 @@
 
 import { describe, expect, it } from 'vitest';
 import type { IChartApi } from 'lightweight-charts';
-import { realMsToCanvasX, realMsToCanvasXClamped, canvasXToRealMs, type FutureBand } from './chartCoordinates';
+import { createVirtualAxis } from '../../util/virtualAxis';
+import {
+  realMsToCanvasX,
+  realMsToCanvasXClamped,
+  canvasXToRealMs,
+  dragTimeDomain,
+  type FutureBand,
+} from './chartCoordinates';
 
 // Virtual axis stub: identity in this test (virtual ms == real ms), one session
 // spanning [0, LAST]. contains() true only within the session.
@@ -131,5 +138,100 @@ describe('realMsToCanvasXClamped (off-axis text anchor)', () => {
   it('passes an on-axis realMs straight through (no clamping)', () => {
     // 500 is inside seg A → direct projection, virtual 500 → x = 5.
     expect(realMsToCanvasXClamped(gapChart, gapAxis, 500)).toBe(5);
+  });
+});
+
+// Body-drag translation domain: shifting a vertex by Δvirtual must always land
+// it back on-axis (or in the linearized future band), unlike the old flat
+// Δ-real-ms which stranded vertices inside inter-session gaps whenever the
+// cursor crossed a day boundary (rect/measure stretched to the canvas edge or
+// vanished — the drag "왔다갔다" bug).
+describe('dragTimeDomain — intraday', () => {
+  // Two real sessions with a big overnight gap: A [0, 1_000_000],
+  // B [10_000_000, 11_000_000]. Virtual: A [0, 1_000_000], B starts at
+  // 1_001_000 (gap collapses to INTER_SEGMENT_GAP_MS = 1000).
+  const axis = createVirtualAxis([
+    { date: '20260101', sessionOpenMs: 0, sessionCloseMs: 1_000_000 },
+    { date: '20260102', sessionOpenMs: 10_000_000, sessionCloseMs: 11_000_000 },
+  ]);
+  // Last candle mid session B, 1-minute bars.
+  const future: FutureBand = { lastRealMs: 10_500_000, bucketMs: 60_000 };
+  const dom = dragTimeDomain(axis, future);
+
+  it('round-trips on-axis realMs exactly (identity when unshifted)', () => {
+    for (const ms of [0, 500_000, 1_000_000, 10_000_000, 10_200_000]) {
+      expect(dom.toReal(dom.toVirtual(ms))).toBe(ms);
+    }
+  });
+
+  it('a gap-crossing shift lands the vertex ON-AXIS in the next session', () => {
+    // Vertex late in session A, shifted right by 200_000 virtual ms — enough
+    // to cross the compressed overnight gap into session B.
+    const shifted = dom.toReal(dom.toVirtual(900_000) + 200_000);
+    expect(axis.contains(shifted)).toBe(true);
+    // virtual 1_100_000 → 99_000 into session B → real 10_099_000. The old
+    // real-ms shift (900_000 + 200_000 = 1_100_000) landed in the gap instead.
+    expect(shifted).toBe(10_099_000);
+    expect(axis.contains(1_100_000)).toBe(false);
+  });
+
+  it('a leftward gap-crossing shift is exactly inverse (drag back restores)', () => {
+    const there = dom.toVirtual(900_000) + 200_000;
+    expect(dom.toReal(there - 200_000)).toBe(900_000);
+  });
+
+  it('heals a gap-stranded realMs (legacy real-ms drag leftover) to the next open', () => {
+    // 5_000_000 sits in the overnight gap — the zero-shift round-trip snaps it
+    // forward onto session B's open instead of leaving it invisible.
+    expect(dom.toReal(dom.toVirtual(5_000_000))).toBe(10_000_000);
+  });
+
+  it('is seamless across the last-candle boundary (on-axis after the last bar)', () => {
+    // 10_800_000 is beyond the last candle but still inside session B: the
+    // on-axis toVirtual and the future-branch toReal must agree exactly.
+    expect(dom.toReal(dom.toVirtual(10_800_000))).toBe(10_800_000);
+  });
+
+  it('round-trips future-band realMs past the session close (bar-linear extension)', () => {
+    // 2 bars past session B's close: creation extrapolates such anchors; the
+    // drag domain must keep them draggable rather than clamping onto the close.
+    const bandMs = 11_120_000;
+    expect(dom.toReal(dom.toVirtual(bandMs))).toBe(bandMs);
+    // And shifting one bar right moves exactly one bucket in real time.
+    expect(dom.toReal(dom.toVirtual(bandMs) + future.bucketMs)).toBe(bandMs + future.bucketMs);
+  });
+
+  it('exposes the axis origin for the shape-preserving left cap', () => {
+    expect(dom.originV).toBe(0);
+  });
+});
+
+describe('dragTimeDomain — calendar (D/W/M)', () => {
+  // Three trading days; calendar mode gives each day one INTER_SEGMENT_GAP_MS
+  // (1000) of virtual width regardless of session length.
+  const axis = createVirtualAxis(
+    [
+      { date: '20260105', sessionOpenMs: 0, sessionCloseMs: 1_000 },
+      { date: '20260106', sessionOpenMs: 100_000, sessionCloseMs: 101_000 },
+      { date: '20260107', sessionOpenMs: 200_000, sessionCloseMs: 201_000 },
+    ],
+    0,
+    { mode: 'calendar' },
+  );
+  const future: FutureBand = { lastRealMs: 200_000, bucketMs: 50_000 };
+  const dom = dragTimeDomain(axis, future);
+
+  it('shifts an anchor by whole segments onto the target day open', () => {
+    // Day 1 anchor + 2 segment pitches (2 × 1000 virtual) → day 3 open, even
+    // though the real-ms distance (200_000) is irregular across the days.
+    expect(dom.toReal(dom.toVirtual(0) + 2_000)).toBe(200_000);
+  });
+
+  it('extends past the last bar at one bucketMs per segment pitch', () => {
+    // One pitch past the last anchor → one bucket of real time ahead.
+    const v = dom.toVirtual(200_000) + 1_000;
+    expect(dom.toReal(v)).toBe(250_000);
+    // And the forward map inverts it (round-trip through the band).
+    expect(dom.toVirtual(250_000)).toBe(v);
   });
 });
