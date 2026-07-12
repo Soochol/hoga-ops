@@ -1137,6 +1137,10 @@ export function LiveChartRoot({
   );
   const askPeakEnabled = useLivePageStore((s) => s.askPeakEnabled);
   const bidPeakEnabled = useLivePageStore((s) => s.bidPeakEnabled);
+  const askPeakWallHidden = useLivePageStore((s) => s.askPeakHidden);
+  const bidPeakWallHidden = useLivePageStore((s) => s.bidPeakHidden);
+  const askPeakLabelEnabled = useActivePrefs((s) => s.askPeakLabelEnabled);
+  const bidPeakLabelEnabled = useActivePrefs((s) => s.bidPeakLabelEnabled);
   const askPeakIntraMax = useActivePrefs((s) => s.askPeakIntraMax);
   const askPeakShowAllPrices = useActivePrefs((s) => s.askPeakShowAllPrices);
   const askPeakUntradedRankLimit = useActivePrefs((s) => optionalRankLimit(s, 'askPeakUntradedRankLimit'));
@@ -1367,15 +1371,20 @@ export function LiveChartRoot({
     };
   }, [chart, activePaneToggles, cb, timeframe]);
 
-  // 고저 극값 라벨이 피할 매도/매수 최대벽 **가격**(픽셀 아님). 가격→y픽셀 변환은
-  // HighLowAnnotationOverlay 렌더 본문이 매 프레임 수행한다: priceToCoordinate 는
-  // 가격축 스케일 스냅샷이라, 여기(데이터-deps memo)서 구우면 오토스케일·팬/줌·pane
-  // 토글로 축이 리스케일돼도 재계산되지 않아 회피선이 실제 월 위치와 어긋난다(라벨이
-  // 유령 월을 피해 pane 안쪽으로 밀리는 버그). 가격만 넘기면 dot 과 동일 신선도.
-  const highLowAvoidLabelPrices = useMemo(() => {
+  // 고저 극값 라벨이 피할 매도/매수 최대벽 도킹 라벨 입력(가격·선 끝 시각·텍스트 —
+  // 픽셀 아님). 좌표 변환은 HighLowAnnotationOverlay 렌더 본문이 매 프레임 수행한다:
+  // priceToCoordinate 는 가격축 스케일 스냅샷이라, 여기(데이터-deps memo)서 구우면
+  // 오토스케일·팬/줌·pane 토글로 축이 리스케일돼도 재계산되지 않아 회피 rect 가 실제
+  // 칩 위치와 어긋난다. 게이트는 도킹 라벨이 **실제로 그려지는** 조건과 동일해야 한다
+  // (LivePeakWallDockedLabels 미러: enabled && !hidden && labelEnabled) — 안 그려지는
+  // 라벨을 피해 극값 라벨이 pane 안쪽으로 밀리던 유령 회피의 수정. 가시범위/rank 컷은
+  // 렌더 단 2D 교차 검사가 흡수한다(화면 밖 칩 rect 는 극값 라벨과 교차하지 않음).
+  const highLowAvoidWallLabels = useMemo(() => {
     if (!cb || !isMinuteTimeframe(timeframe)) return [];
+    const askLabelsOn = askPeakEnabled && !askPeakWallHidden && askPeakLabelEnabled;
+    const bidLabelsOn = bidPeakEnabled && !bidPeakWallHidden && bidPeakLabelEnabled;
     const wallSegments = [
-      ...(askPeakEnabled
+      ...(askLabelsOn
         ? buildAskPeakOverlaySegments({
           dayAskPeaks: renderDayAskPeaks,
           todayAllPriceAskPeak: renderTodayAllPriceAskPeak,
@@ -1391,7 +1400,7 @@ export function LiveChartRoot({
           visibleTimeCutoff: askVisibleTimeCutoffForRender,
         })
         : []),
-      ...(bidPeakEnabled
+      ...(bidLabelsOn
         ? buildBidPeakOverlaySegments({
           dayBidPeaks: renderDayBidPeaks,
           todayAllPriceBidPeak: renderTodayAllPriceBidPeak,
@@ -1408,23 +1417,34 @@ export function LiveChartRoot({
         })
         : []),
     ];
-    const prices: number[] = [];
+    // livePeakWallDockedLabelsFromSegments 미러: 라벨 없는 세그먼트 제외 + 가격별 최대
+    // qty 1개(같은 가격에 라벨 칩은 하나만 도킹됨).
+    const bestByPrice = new Map<number, (typeof wallSegments)[number]>();
     for (const segment of wallSegments) {
-      if (!Number.isFinite(segment.price)) continue;
-      if (!prices.includes(segment.price)) prices.push(segment.price);
+      if (segment.label === '' || !Number.isFinite(segment.price)) continue;
+      const prev = bestByPrice.get(segment.price);
+      if (!prev || segment.qty > prev.qty) bestByPrice.set(segment.price, segment);
     }
-    return prices;
+    return [...bestByPrice.values()].map((s) => ({
+      price: s.price,
+      time1: s.time1,
+      label: s.label,
+    }));
   }, [
     askPeakEnabled,
     askPeakIntraMax,
+    askPeakLabelEnabled,
     askPeakShowAllPrices,
     askPeakUntradedRankLimit,
+    askPeakWallHidden,
     askVisibleTimeCutoffForRender,
     axis,
     bidPeakEnabled,
     bidPeakIntraMax,
+    bidPeakLabelEnabled,
     bidPeakShowAllPrices,
     bidPeakUntradedRankLimit,
+    bidPeakWallHidden,
     bidVisibleTimeCutoffForRender,
     cb,
     renderDayAskPeaks,
@@ -1849,7 +1869,7 @@ export function LiveChartRoot({
             axis={axis}
             paneSeries={paneSeries}
             timeframe={timeframe}
-            avoidLabelPrices={highLowAvoidLabelPrices}
+            avoidWallLabels={highLowAvoidWallLabels}
           />
           {isMinuteTimeframe(timeframe) && hogaBundle && (
             <PriceLevelDotsOverlay chart={chart} bundle={hogaBundle} axis={axis} paneSeries={paneSeries} />
