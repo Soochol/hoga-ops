@@ -257,11 +257,12 @@ function FlagLegendRow({ row }: { row: Extract<LegendRow, { kind: 'flag' }> }) {
   const showRowSwatches = !row.cells.some((c) => c.color);
   return (
     <>
+      {/* 요소 순서는 MA row와 통일: 라벨 → 색상 → 수치. */}
+      <span style={{ color: 'var(--fg-dim)' }}>{row.label}</span>
       {showRowSwatches
         && row.swatches.map((color, i) => (
           <span key={i} aria-hidden="true" style={{ ...swatchStyle, background: color }} />
         ))}
-      <span style={{ color: 'var(--fg-dim)' }}>{row.label}</span>
       {row.cells.map((c) => (
         <span
           key={c.key}
