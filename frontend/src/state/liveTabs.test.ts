@@ -545,7 +545,12 @@ describe('liveTabs ↔ page mirror', () => {
   beforeEach(() => {
     localStorage.clear();
     useLiveTabsStore.setState({ tabs: [], activeTabId: null });
-    useLivePageStore.setState({ activeCode: null, candleTimeframe: '1m', historicalFromDate: null });
+    useLivePageStore.setState({
+      activeCode: null,
+      candleTimeframe: '1m',
+      historicalFromDate: null,
+      lastMinuteHistoricalFromDate: null,
+    });
     _disposeMirror = initLiveTabsSync();
   });
   afterEach(() => { _disposeMirror?.(); _disposeMirror = null; });
@@ -587,6 +592,26 @@ describe('liveTabs ↔ page mirror', () => {
     useLivePageStore.getState().extendHistoricalRange('20260601');
     expect(useLiveTabsStore.getState().tabs[0].historicalFromDate).toBe('20260601');
     expect(useLiveTabsStore.getState().tabs[0].viewport).toBeNull();
+  });
+
+  it('D 상태로 탭을 오가도 분봉 창 기억이 살아남는다 (탭별 미러 왕복)', () => {
+    // PR #605의 잔여 간극: 페이지 전역 기억은 탭 복귀 시 projectActiveView
+    // 재시드로 소실됐다. 탭별 미러로 왕복 전체가 보존되는지 스토어 레벨 검증.
+    openTab('005930', '삼성전자');                                  // 탭A, 1m
+    useLivePageStore.getState().extendHistoricalRange('20260601'); // 분봉 팬
+    useLivePageStore.getState().setCandleTimeframe('D');           // 분봉 이탈 → 기억 저장
+    const tabA = useLiveTabsStore.getState().tabs[0];
+    expect(tabA.lastMinuteHistoricalFromDate).toBe('20260601');    // 탭에 미러됨
+
+    openTab('000660', 'SK하이닉스');                                // 탭B로 전환
+    expect(useLivePageStore.getState().lastMinuteHistoricalFromDate).toBeNull(); // B에 안 샘
+
+    useLiveTabsStore.getState().focusTab(tabA.id);                 // 탭A 복귀(여전히 D)
+    expect(useLivePageStore.getState().candleTimeframe).toBe('D');
+    expect(useLivePageStore.getState().lastMinuteHistoricalFromDate).toBe('20260601');
+
+    useLivePageStore.getState().setCandleTimeframe('1m');          // 분봉 복귀
+    expect(useLivePageStore.getState().lastMinuteHistoricalFromDate).toBe('20260601');
   });
 
   it('projecting a tab is idempotent on the active tab and does not churn its fields (mirror works without the guard)', () => {
