@@ -658,7 +658,11 @@ export const measureTool: DrawingToolSpec = {
       lineStyle: ctx.defaults.lineStyle,
       paneId: draft.paneId,
     });
-    ctx.setSelected(id);
+    // One-shot: revert to select after a measurement (like a ruler). Otherwise
+    // the tool stays active and the user's next click/drag — meant to adjust the
+    // measure — draws a NEW overlapping one (grows/vanishes). In select mode the
+    // same gesture moves or resizes the existing measure instead.
+    ctx.revertToSelectMode(id);
   },
 };
 
