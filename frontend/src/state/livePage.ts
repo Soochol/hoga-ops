@@ -130,6 +130,13 @@ export type ActiveViewProjection = {
 
 type Store = Persisted & PersistedIndicators & {
   activeViewport: TabViewport | null;
+  /** 직전 분봉 뷰에서 팬으로 넓힌 historicalFromDate의 런타임 기억.
+   *  분봉을 떠날 때 저장되고, 분봉 복귀 시 LiveChartRoot가 초기 뷰 배치 직후
+   *  이 값으로 extendHistoricalRange를 1-샷 dispatch해 지표·캔들 커버리지를
+   *  복원한다(캔들 병합 캐시와 수명 대칭). 전환 자체는 여전히
+   *  historicalFromDate=null 리셋 — 초기 뷰 배치·번들 atomize 게이트가
+   *  "fresh (code,tf) 로드 = null" 불변식에 기대기 때문. 종목/탭 전환 시 초기화. */
+  lastMinuteHistoricalFromDate: string | null;
   projectActiveView: (view: ActiveViewProjection) => void;
   setActiveCode: (code: string | null) => void;
   setCandleTimeframe: (tf: LiveTimeframe) => void;
@@ -383,6 +390,7 @@ export const useLivePageStore = create<Store>((set, get) => ({
   ...readStorage(),
   ...readIndicatorsStorage(),
   activeViewport: null,
+  lastMinuteHistoricalFromDate: null,
 
   setMovingAverage: (id, patch) => {
     const current = get().movingAverages;
@@ -777,6 +785,9 @@ export const useLivePageStore = create<Store>((set, get) => ({
       candleTimeframe: tf,
       lastMinuteTimeframe: isMinuteTimeframe(tf) ? tf : get().lastMinuteTimeframe,
       historicalFromDate,
+      // 탭 전환 = 뷰 교체. 이전 탭의 분봉 창 기억이 새 탭으로 새지 않도록,
+      // 투영되는 탭 자신의 pan(분봉일 때)으로 다시 시드한다.
+      lastMinuteHistoricalFromDate: isMinuteTimeframe(tf) ? historicalFromDate : null,
       activeViewport: viewport ?? null,
     };
     set(next);
@@ -785,16 +796,29 @@ export const useLivePageStore = create<Store>((set, get) => ({
 
   setActiveCode: (code) => {
     const activeInstrument = code ? stockInstrument(code) : null;
-    set({ activeInstrument, activeCode: code, historicalFromDate: null, activeViewport: null });
+    set({
+      activeInstrument,
+      activeCode: code,
+      historicalFromDate: null,
+      lastMinuteHistoricalFromDate: null,
+      activeViewport: null,
+    });
     persist({ ...get(), activeInstrument, activeCode: code, historicalFromDate: null });
   },
 
   setCandleTimeframe: (tf) => {
     if (!LIVE_TIMEFRAMES.includes(tf)) return;
+    const cur = get();
     const next = {
       candleTimeframe: tf,
-      lastMinuteTimeframe: isMinuteTimeframe(tf) ? tf : get().lastMinuteTimeframe,
+      lastMinuteTimeframe: isMinuteTimeframe(tf) ? tf : cur.lastMinuteTimeframe,
       historicalFromDate: null,
+      // 분봉을 떠나는 순간의 pan 창을 기억한다(분봉→분봉 전환 포함 — 같은 1m
+      // 데이터의 재집계라 창 유지가 자연스럽다). 복원은 LiveChartRoot가 초기 뷰
+      // 배치 직후 1-샷 dispatch — Store 타입의 필드 주석 참조.
+      lastMinuteHistoricalFromDate: isMinuteTimeframe(cur.candleTimeframe)
+        ? cur.historicalFromDate
+        : cur.lastMinuteHistoricalFromDate,
       activeViewport: null,
     };
     set(next);
@@ -809,7 +833,7 @@ export const useLivePageStore = create<Store>((set, get) => ({
   },
 
   resetHistoricalRange: () => {
-    set({ historicalFromDate: null, activeViewport: null });
+    set({ historicalFromDate: null, lastMinuteHistoricalFromDate: null, activeViewport: null });
     persist({ ...get(), historicalFromDate: null });
   },
 
