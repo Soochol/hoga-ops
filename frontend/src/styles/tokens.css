@@ -55,8 +55,15 @@
   --heat-lo: #13110b;
   --heat-hi: #f0b429;
 
-  /* ───── Elevation ───── */
+  /* ───── Elevation ─────
+     Components must not hardcode rgba(0,0,0,…) shadows — dark-tuned shadows
+     bleed into Ledger's ivory gaps and turn them into grey trenches.
+     --shadow: popover/tooltip · --shadow-overlay: dropdown/menu/dialog ·
+     --shadow-panel: page-level pane/card · --shadow-modal: full-size modal */
   --shadow: 0 4px 12px rgba(0, 0, 0, 0.5);
+  --shadow-overlay: 0 8px 24px rgba(0, 0, 0, 0.4);
+  --shadow-panel: 0 18px 60px rgba(0, 0, 0, 0.35);
+  --shadow-modal: 0 24px 80px rgba(0, 0, 0, 0.45);
 
   /* ───── Color · Moving Average ─────
      Per spec docs/superpowers/specs/2026-05-23-replay-moving-average-design.md §5.
@@ -188,8 +195,11 @@
   --heat-lo: #f0ede4;
   --heat-hi: #1f6f54;
 
-  /* ───── Elevation ───── */
+  /* ───── Elevation — paper shadows (ink-tinted, low opacity) ───── */
   --shadow: 0 2px 8px rgba(30, 39, 50, 0.12);
+  --shadow-overlay: 0 8px 24px rgba(30, 39, 50, 0.16);
+  --shadow-panel: 0 2px 8px rgba(30, 39, 50, 0.12);
+  --shadow-modal: 0 16px 48px rgba(30, 39, 50, 0.2);
 
   /* ───── Moving Average — toned down for paper (only --ma-5 was invisible
      white on light; the rest darkened for legibility on ivory) ───── */

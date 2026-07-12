@@ -139,8 +139,8 @@ function GroupHeader(props: {
     }
   };
   return (
-    // sticky + bg-bg-card: 패널 배경과 동일색이라 평시엔 투명처럼 보이고, 스크롤
-    // 시에만 불투명이 드러나 행을 가린다(스펙 §1). 각 그룹 div가 컨테이닝 블록이라
+    // sticky + bg-bg-subtle: 패널(RailDrawer) 배경과 동일색이라 평시엔 투명처럼 보이고,
+    // 스크롤 시에만 불투명이 드러나 행을 가린다(스펙 §1). 각 그룹 div가 컨테이닝 블록이라
     // 헤더는 자기 그룹 범위에서만 고정된다. 메뉴가 열리면 z를 올려 다음 sticky
     // 헤더(z-10)가 이 헤더의 메뉴(z-30, 헤더 스태킹 컨텍스트 내부)를 덮지 않게 한다.
     //
@@ -153,7 +153,7 @@ function GroupHeader(props: {
       {...(props.dragHandle?.listeners ?? {})}
       data-testid="watchlist-group-header"
       data-draggable={props.dragHandle ? '' : undefined}
-      className={`group sticky top-0 ${menuOpen ? 'z-20' : 'z-10'} flex items-center gap-1.5 px-3 py-1.5 text-sm font-semibold text-fg-dim bg-bg-card hover:bg-bg-input-hover ${
+      className={`group sticky top-0 ${menuOpen ? 'z-20' : 'z-10'} flex items-center gap-1.5 px-3 py-1.5 text-sm font-semibold text-fg-dim bg-bg-subtle hover:bg-bg-input-hover ${
         props.dragHandle ? 'cursor-grab select-none touch-none' : ''
       }`}>
       <button type="button" aria-label={`${props.label} ${props.collapsed ? '펼치기' : '접기'}`}

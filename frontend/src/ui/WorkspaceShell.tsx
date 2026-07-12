@@ -96,7 +96,7 @@ export function DropOverlay({ children }: { children: ReactNode }) {
           padding: 'var(--space-sm) var(--space-md)',
           background: 'var(--accent)',
           color: 'var(--accent-fg)',
-          boxShadow: '0 8px 24px rgba(0,0,0,0.4)',
+          boxShadow: 'var(--shadow-overlay)',
         }}
       >
         {children}

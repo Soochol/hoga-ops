@@ -151,7 +151,7 @@ export function SymbolSearch({ value, onChange }: SymbolSearchProps) {
       {dropdownVisible && (
         <div
           role="listbox"
-          style={{ boxShadow: '0 8px 24px rgba(0,0,0,0.4)' }}
+          style={{ boxShadow: 'var(--shadow-overlay)' }}
           className="absolute z-10 top-full left-0 right-0 mt-1 bg-bg-card border-border-strong border rounded-lg max-h-80 overflow-y-auto"
         >
           {isEmpty ? (

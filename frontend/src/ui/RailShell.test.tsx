@@ -18,7 +18,7 @@ describe('RailShell primitives', () => {
     const drawer = screen.getByTestId('panel');
     expect(drawer).toHaveClass('h-full');
     expect(drawer).toHaveClass('border-l');
-    expect(drawer).toHaveClass('bg-bg-card');
+    expect(drawer).toHaveClass('bg-bg-subtle');
     expect(drawer).toHaveStyle({ width: 'var(--watchlist-panel-w)' });
   });
 

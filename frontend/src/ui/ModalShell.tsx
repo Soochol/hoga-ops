@@ -26,7 +26,7 @@ export function ModalShell({ ariaLabel, title, width = 'w-[640px]', height, onCl
     <div role="dialog" aria-modal="true" aria-label={ariaLabel} onClick={onClose}
       className="fixed inset-0 bg-black/50 flex items-center justify-center z-[60]">
       <div onClick={(e) => e.stopPropagation()}
-        className={`bg-bg-card border border-border-strong rounded-[6px] shadow-[0_8px_24px_rgba(0,0,0,0.4)] ${width} ${height ?? ''} max-w-[90vw] flex flex-col`}>
+        className={`bg-bg-card border border-border-strong rounded-[6px] shadow-overlay ${width} ${height ?? ''} max-w-[90vw] flex flex-col`}>
         {title && (
           <div className="flex items-center justify-between px-4 py-3 border-b border-border">
             <h2 className="text-fg text-base font-medium">{title}</h2>

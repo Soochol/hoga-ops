@@ -52,7 +52,7 @@ function SavedScreenerRowMenu({ left, top, onRename, onDuplicate, onDelete }: {
   const { ref, left: clampedLeft, top: clampedTop } = useClampedFixedPosition<HTMLDivElement>(left, top);
   return (
     <div ref={ref} role="menu"
-      className="fixed z-50 min-w-[104px] overflow-hidden rounded-md border border-border-strong bg-bg-card shadow-[0_8px_24px_rgba(0,0,0,0.4)]"
+      className="fixed z-50 min-w-[104px] overflow-hidden rounded-md border border-border-strong bg-bg-card shadow-overlay"
       style={{ left: clampedLeft, top: clampedTop }}>
       <button type="button" role="menuitem" onClick={(e) => {
         e.stopPropagation(); onRename();

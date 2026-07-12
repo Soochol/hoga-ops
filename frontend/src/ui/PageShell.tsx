@@ -18,7 +18,7 @@ export function PanelCard({ as = 'div', className = '', style, children, ...prop
   return (
     <Tag
       {...props}
-      className={`bg-bg-card border border-border rounded-lg min-w-0 shadow-[0_18px_60px_rgba(0,0,0,0.22)] ${className}`.trim()}
+      className={`bg-bg-card border border-border rounded-lg min-w-0 shadow-panel ${className}`.trim()}
       style={style}
     >
       {children}
