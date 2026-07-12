@@ -31,6 +31,7 @@ import {
   type LegendRow,
   type PaneCellInput,
 } from './legendRows';
+import { readFlagLegendValues } from './indicators/flagLegendValueRegistry';
 import { formatKoreanInt } from '../util/koreanNumber';
 
 type Props = {
@@ -181,6 +182,15 @@ const FLAG_TURN_OFF: Record<LegendFlagId, () => void> = {
   'broker-late-entry': () => useLivePageStore.getState().setBrokerLateEntryEnabled(false),
 };
 
+/** 눈(숨김) dispatch — id → store hidden setter. */
+const FLAG_SET_HIDDEN: Record<LegendFlagId, (hidden: boolean) => void> = {
+  'ask-peak': (h) => useLivePageStore.getState().setAskPeakHidden(h),
+  'bid-peak': (h) => useLivePageStore.getState().setBidPeakHidden(h),
+  'trade-volume-poc': (h) => useLivePageStore.getState().setTradeVolumePocHidden(h),
+  'depth-heatmap': (h) => useLivePageStore.getState().setDepthHeatmapHidden(h),
+  'broker-late-entry': (h) => useLivePageStore.getState().setBrokerLateEntryHidden(h),
+};
+
 function MaLegendRow({ row }: { row: Extract<LegendRow, { kind: 'ma' }> }) {
   const setHidden = useLivePageStore((s) => s.setMovingAverageHidden);
   const setEnabled = useLivePageStore((s) => s.setMovingAverageEnabled);
@@ -242,12 +252,33 @@ function DailyMaLegendRow({ row }: { row: Extract<LegendRow, { kind: 'daily-ma' 
 }
 
 function FlagLegendRow({ row }: { row: Extract<LegendRow, { kind: 'flag' }> }) {
+  // 색 있는 값 셀(히트맵 매수/매도, 거래원 매수/매도)이 있으면 행 스와치는 중복 —
+  // 셀 스와치만 남긴다. 무색 셀(벽 가격, POC)은 행 스와치가 지표 색을 대표.
+  const showRowSwatches = !row.cells.some((c) => c.color);
   return (
     <>
-      {row.swatches.map((color, i) => (
-        <span key={i} aria-hidden="true" style={{ ...swatchStyle, background: color }} />
-      ))}
+      {showRowSwatches
+        && row.swatches.map((color, i) => (
+          <span key={i} aria-hidden="true" style={{ ...swatchStyle, background: color }} />
+        ))}
       <span style={{ color: 'var(--fg-dim)' }}>{row.label}</span>
+      {row.cells.map((c) => (
+        <span
+          key={c.key}
+          style={{ display: 'inline-flex', alignItems: 'center', gap: 'var(--space-2xs)' }}
+        >
+          {c.color && <span aria-hidden="true" style={{ ...swatchStyle, background: c.color }} />}
+          {c.label && <span style={{ color: 'var(--fg-dim)' }}>{c.label}</span>}
+          <span style={valueCellStyle}>{c.value}</span>
+        </span>
+      ))}
+      <HoverIcon
+        label={`${row.label} 표시 숨김/표시`}
+        restColor={row.hidden ? 'var(--fg-dim)' : 'var(--fg-dimmer)'}
+        onClick={() => FLAG_SET_HIDDEN[row.id](!row.hidden)}
+      >
+        <EyeGlyph hidden={row.hidden} />
+      </HoverIcon>
       <HoverIcon
         label={`${row.label} 지표 끄기`}
         restColor="var(--fg-dimmer)"
@@ -308,17 +339,22 @@ function PaneLegendOverlay({ chart, timeframe, paneToggles }: Props) {
   const dailyMovingAverages = useLivePageStore((s) => s.dailyMovingAverages);
   const dailyMovingAverageEnabled = useLivePageStore((s) => s.dailyMovingAverageEnabled);
   const dailyMovingAverageHidden = useLivePageStore((s) => s.dailyMovingAverageHidden);
-  // Candle-pane flag indicators — enabled flags + swatch colors (설정 변경 즉시 반영).
+  // Candle-pane flag indicators — enabled/hidden flags + swatch colors (설정 변경 즉시 반영).
   const askPeakEnabled = useLivePageStore((s) => s.askPeakEnabled);
+  const askPeakHidden = useLivePageStore((s) => s.askPeakHidden);
   const askPeakColor = useLivePageStore((s) => s.askPeakColor);
   const bidPeakEnabled = useLivePageStore((s) => s.bidPeakEnabled);
+  const bidPeakHidden = useLivePageStore((s) => s.bidPeakHidden);
   const bidPeakColor = useLivePageStore((s) => s.bidPeakColor);
   const tradeVolumePocEnabled = useLivePageStore((s) => s.tradeVolumePocEnabled);
+  const tradeVolumePocHidden = useLivePageStore((s) => s.tradeVolumePocHidden);
   const tradeVolumePocColor = useLivePageStore((s) => s.tradeVolumePocColor);
   const depthHeatmapEnabled = useLivePageStore((s) => s.depthHeatmapEnabled);
+  const depthHeatmapHidden = useLivePageStore((s) => s.depthHeatmapHidden);
   const depthHeatmapBidColor = useLivePageStore((s) => s.depthHeatmapBidColor);
   const depthHeatmapAskColor = useLivePageStore((s) => s.depthHeatmapAskColor);
   const brokerLateEntryEnabled = useLivePageStore((s) => s.brokerLateEntryEnabled);
+  const brokerLateEntryHidden = useLivePageStore((s) => s.brokerLateEntryHidden);
   const brokerLateEntrySideMode = useLivePageStore((s) => s.brokerLateEntrySideMode);
   const brokerLateEntryBuyColor = useLivePageStore((s) => s.brokerLateEntryBuyColor);
   const brokerLateEntrySellColor = useLivePageStore((s) => s.brokerLateEntrySellColor);
@@ -400,7 +436,9 @@ function PaneLegendOverlay({ chart, timeframe, paneToggles }: Props) {
   // 플래그 지표 — 모두 분봉 전용 오버레이(각자의 마운트 게이트를 미러링).
   // 표시 순서 = 이 배열 순서. 거래원 등장 마커는 ratio pane에 붙으므로(RATIO_SPEC
   // labelMarkers) 그쪽에 배치 — pane 미마운트(호가비 off) 시 배치 단계에서 스킵.
+  // 값 셀은 각 오버레이가 등록한 provider에서 커서 시각(가상초, 없으면 latest)으로 읽는다.
   const isMinute = isMinuteTimeframe(timeframe);
+  const cursorTimeSec = typeof paramRef.current?.time === 'number' ? paramRef.current.time : null;
   const indicatorFlags: LegendFlagInput[] = [
     {
       id: 'ask-peak',
@@ -408,7 +446,9 @@ function PaneLegendOverlay({ chart, timeframe, paneToggles }: Props) {
       label: '당일 매도 최대벽',
       enabled: askPeakEnabled,
       applicable: isMinute,
+      hidden: askPeakHidden,
       swatches: [askPeakColor],
+      cells: readFlagLegendValues('ask-peak', cursorTimeSec),
     },
     {
       id: 'bid-peak',
@@ -416,7 +456,9 @@ function PaneLegendOverlay({ chart, timeframe, paneToggles }: Props) {
       label: '당일 매수 최대벽',
       enabled: bidPeakEnabled,
       applicable: isMinute,
+      hidden: bidPeakHidden,
       swatches: [bidPeakColor],
+      cells: readFlagLegendValues('bid-peak', cursorTimeSec),
     },
     {
       id: 'trade-volume-poc',
@@ -424,7 +466,9 @@ function PaneLegendOverlay({ chart, timeframe, paneToggles }: Props) {
       label: '당일 최대 매물대',
       enabled: tradeVolumePocEnabled,
       applicable: isMinute,
+      hidden: tradeVolumePocHidden,
       swatches: [tradeVolumePocColor],
+      cells: readFlagLegendValues('trade-volume-poc', cursorTimeSec),
     },
     {
       id: 'depth-heatmap',
@@ -432,7 +476,9 @@ function PaneLegendOverlay({ chart, timeframe, paneToggles }: Props) {
       label: '호가 잔량 히트맵',
       enabled: depthHeatmapEnabled,
       applicable: isMinute,
+      hidden: depthHeatmapHidden,
       swatches: [depthHeatmapBidColor, depthHeatmapAskColor],
+      cells: readFlagLegendValues('depth-heatmap', cursorTimeSec),
     },
     {
       id: 'broker-late-entry',
@@ -440,6 +486,7 @@ function PaneLegendOverlay({ chart, timeframe, paneToggles }: Props) {
       label: '신규 거래원 등장',
       enabled: brokerLateEntryEnabled,
       applicable: isMinute,
+      hidden: brokerLateEntryHidden,
       // side mode에 따라 실제 그려지는 쪽의 스와치만 노출.
       swatches:
         brokerLateEntrySideMode === 'buy'
@@ -447,6 +494,7 @@ function PaneLegendOverlay({ chart, timeframe, paneToggles }: Props) {
           : brokerLateEntrySideMode === 'sell'
             ? [brokerLateEntrySellColor]
             : [brokerLateEntryBuyColor, brokerLateEntrySellColor],
+      cells: readFlagLegendValues('broker-late-entry', cursorTimeSec),
     },
   ];
 

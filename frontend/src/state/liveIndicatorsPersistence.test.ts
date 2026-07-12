@@ -12,6 +12,7 @@ describe('mergeLiveIndicatorPrefs', () => {
       volumeEnabled: true,
       movingAverageHidden: false,
       askPeakEnabled: false,
+      askPeakHidden: false,
       askPeakColor: '#1D4ED8',
       askPeakLineWidth: 2,
       askPeakAllPriceColor: '#F97316',
@@ -21,15 +22,18 @@ describe('mergeLiveIndicatorPrefs', () => {
       viLimitPriceLineColor: '#EAB308',
       viLimitPriceLineWidth: 3,
       bidPeakEnabled: false,
+      bidPeakHidden: false,
       bidPeakColor: '#DC2626',
       bidPeakLineWidth: 2,
       bidPeakAllPriceColor: '#F97316',
       bidPeakAllPriceLineWidth: 1,
       tradeVolumePocEnabled: true,
+      tradeVolumePocHidden: false,
       tradeVolumePocBandPct: 0.005,
       tradeVolumePocColor: '#A855F7',
       tradeVolumePocOpacity: 0.12,
       depthHeatmapEnabled: false,
+      depthHeatmapHidden: false,
       depthHeatmapBidColor: '#F04452',
       depthHeatmapAskColor: '#3485FA',
       depthHeatmapMaxOpacity: 0.7,
@@ -54,6 +58,7 @@ describe('mergeLiveIndicatorPrefs', () => {
       fillStrengthEnabled: true,
       programTradeEnabled: true,
       brokerLateEntryEnabled: false,
+      brokerLateEntryHidden: false,
       brokerLateEntryStartHHMM: 930,
       brokerLateEntrySideMode: 'both',
       brokerLateEntryBuyColor: '#ef4444',
@@ -345,6 +350,33 @@ describe('mergeLiveIndicatorPrefs — 호가 토글', () => {
 
     expect(mergeLiveIndicatorPrefs({ volumeDistributionHoverCutoffEnabled: true }).volumeDistributionHoverCutoffEnabled).toBe(true);
     expect(mergeLiveIndicatorPrefs({ volumeDistributionHoverCutoffEnabled: false }).volumeDistributionHoverCutoffEnabled).toBe(false);
+  });
+});
+
+describe('mergeLiveIndicatorPrefs — 지표 눈(hidden) 플래그', () => {
+  it('레거시(필드 없음): 전부 false (보임)', () => {
+    const m = mergeLiveIndicatorPrefs(undefined);
+    expect(m.askPeakHidden).toBe(false);
+    expect(m.bidPeakHidden).toBe(false);
+    expect(m.tradeVolumePocHidden).toBe(false);
+    expect(m.depthHeatmapHidden).toBe(false);
+    expect(m.brokerLateEntryHidden).toBe(false);
+  });
+  it('true 리터럴만 hidden 유지 (라운드트립)', () => {
+    const m = mergeLiveIndicatorPrefs({
+      askPeakHidden: true,
+      bidPeakHidden: true,
+      tradeVolumePocHidden: true,
+      depthHeatmapHidden: true,
+      brokerLateEntryHidden: true,
+    });
+    expect(m.askPeakHidden).toBe(true);
+    expect(m.bidPeakHidden).toBe(true);
+    expect(m.tradeVolumePocHidden).toBe(true);
+    expect(m.depthHeatmapHidden).toBe(true);
+    expect(m.brokerLateEntryHidden).toBe(true);
+    // 쓰레기 값은 false로 정규화.
+    expect(mergeLiveIndicatorPrefs({ askPeakHidden: 'yes' }).askPeakHidden).toBe(false);
   });
 });
 

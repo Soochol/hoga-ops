@@ -146,17 +146,21 @@ type Store = Persisted & PersistedIndicators & {
   setVolumeEnabled: (enabled: boolean) => void;
   setMovingAverageHidden: (hidden: boolean) => void;
   setAskPeakEnabled: (enabled: boolean) => void;
+  setAskPeakHidden: (hidden: boolean) => void;
   setAskPeakStyle: (patch: { color?: string; lineWidth?: 1 | 2 | 3 | 4 }) => void;
   setAskPeakAllPriceStyle: (patch: { color?: string; lineWidth?: 1 | 2 | 3 | 4 }) => void;
   setAskPeakVisibleMaxStyle: (patch: { color?: string; lineWidth?: 1 | 2 | 3 | 4 }) => void;
   setViLimitPriceLineStyle: (patch: { color?: string; lineWidth?: 1 | 2 | 3 | 4 }) => void;
   setBidPeakEnabled: (enabled: boolean) => void;
+  setBidPeakHidden: (hidden: boolean) => void;
   setBidPeakStyle: (patch: { color?: string; lineWidth?: 1 | 2 | 3 | 4 }) => void;
   setBidPeakAllPriceStyle: (patch: { color?: string; lineWidth?: 1 | 2 | 3 | 4 }) => void;
   setTradeVolumePocEnabled: (enabled: boolean) => void;
+  setTradeVolumePocHidden: (hidden: boolean) => void;
   setTradeVolumePocBandPct: (bandPct: number) => void;
   setTradeVolumePocStyle: (patch: { color?: string; opacity?: number }) => void;
   setDepthHeatmapEnabled: (enabled: boolean) => void;
+  setDepthHeatmapHidden: (hidden: boolean) => void;
   setDepthHeatmapStyle: (patch: { bidColor?: string; askColor?: string; maxOpacity?: number }) => void;
   setVolumeDistributionEnabled: (enabled: boolean) => void;
   setVolumeDistributionHoverCutoffEnabled: (enabled: boolean) => void;
@@ -172,6 +176,7 @@ type Store = Persisted & PersistedIndicators & {
   setFillStrengthEnabled: (enabled: boolean) => void;
   setProgramTradeEnabled: (enabled: boolean) => void;
   setBrokerLateEntryEnabled: (enabled: boolean) => void;
+  setBrokerLateEntryHidden: (hidden: boolean) => void;
   setBrokerLateEntryStartHHMM: (value: number) => void;
   setBrokerLateEntrySideMode: (mode: BrokerLateEntrySideMode) => void;
   setBrokerLateEntryStyle: (patch: { buyColor?: string; sellColor?: string }) => void;
@@ -267,6 +272,7 @@ function snapshotIndicators(get: () => Store): PersistedIndicators {
     volumeEnabled: s.volumeEnabled,
     movingAverageHidden: s.movingAverageHidden,
     askPeakEnabled: s.askPeakEnabled,
+    askPeakHidden: s.askPeakHidden,
     askPeakColor: s.askPeakColor,
     askPeakLineWidth: s.askPeakLineWidth,
     askPeakAllPriceColor: s.askPeakAllPriceColor,
@@ -276,15 +282,18 @@ function snapshotIndicators(get: () => Store): PersistedIndicators {
     viLimitPriceLineColor: s.viLimitPriceLineColor,
     viLimitPriceLineWidth: s.viLimitPriceLineWidth,
     bidPeakEnabled: s.bidPeakEnabled,
+    bidPeakHidden: s.bidPeakHidden,
     bidPeakColor: s.bidPeakColor,
     bidPeakLineWidth: s.bidPeakLineWidth,
     bidPeakAllPriceColor: s.bidPeakAllPriceColor,
     bidPeakAllPriceLineWidth: s.bidPeakAllPriceLineWidth,
     tradeVolumePocEnabled: s.tradeVolumePocEnabled,
+    tradeVolumePocHidden: s.tradeVolumePocHidden,
     tradeVolumePocBandPct: s.tradeVolumePocBandPct,
     tradeVolumePocColor: s.tradeVolumePocColor,
     tradeVolumePocOpacity: s.tradeVolumePocOpacity,
     depthHeatmapEnabled: s.depthHeatmapEnabled,
+    depthHeatmapHidden: s.depthHeatmapHidden,
     depthHeatmapBidColor: s.depthHeatmapBidColor,
     depthHeatmapAskColor: s.depthHeatmapAskColor,
     depthHeatmapMaxOpacity: s.depthHeatmapMaxOpacity,
@@ -309,6 +318,7 @@ function snapshotIndicators(get: () => Store): PersistedIndicators {
     fillStrengthEnabled: s.fillStrengthEnabled,
     programTradeEnabled: s.programTradeEnabled,
     brokerLateEntryEnabled: s.brokerLateEntryEnabled,
+    brokerLateEntryHidden: s.brokerLateEntryHidden,
     brokerLateEntryStartHHMM: s.brokerLateEntryStartHHMM,
     brokerLateEntrySideMode: s.brokerLateEntrySideMode,
     brokerLateEntryBuyColor: s.brokerLateEntryBuyColor,
@@ -458,7 +468,13 @@ export const useLivePageStore = create<Store>((set, get) => ({
   },
 
   setAskPeakEnabled: (enabled) => {
-    set({ askPeakEnabled: enabled });
+    // MA 마스터 규칙 미러: 켤 때 hidden 초기화(꺼진 채 켜지는 혼란 방지).
+    set(enabled ? { askPeakEnabled: true, askPeakHidden: false } : { askPeakEnabled: false });
+    persistIndicators(snapshotIndicators(get));
+  },
+
+  setAskPeakHidden: (hidden) => {
+    set({ askPeakHidden: hidden });
     persistIndicators(snapshotIndicators(get));
   },
 
@@ -495,7 +511,12 @@ export const useLivePageStore = create<Store>((set, get) => ({
   },
 
   setBidPeakEnabled: (enabled) => {
-    set({ bidPeakEnabled: enabled });
+    set(enabled ? { bidPeakEnabled: true, bidPeakHidden: false } : { bidPeakEnabled: false });
+    persistIndicators(snapshotIndicators(get));
+  },
+
+  setBidPeakHidden: (hidden) => {
+    set({ bidPeakHidden: hidden });
     persistIndicators(snapshotIndicators(get));
   },
 
@@ -516,7 +537,14 @@ export const useLivePageStore = create<Store>((set, get) => ({
   },
 
   setTradeVolumePocEnabled: (enabled) => {
-    set({ tradeVolumePocEnabled: enabled });
+    set(enabled
+      ? { tradeVolumePocEnabled: true, tradeVolumePocHidden: false }
+      : { tradeVolumePocEnabled: false });
+    persistIndicators(snapshotIndicators(get));
+  },
+
+  setTradeVolumePocHidden: (hidden) => {
+    set({ tradeVolumePocHidden: hidden });
     persistIndicators(snapshotIndicators(get));
   },
 
@@ -537,7 +565,14 @@ export const useLivePageStore = create<Store>((set, get) => ({
   },
 
   setDepthHeatmapEnabled: (enabled) => {
-    set({ depthHeatmapEnabled: enabled });
+    set(enabled
+      ? { depthHeatmapEnabled: true, depthHeatmapHidden: false }
+      : { depthHeatmapEnabled: false });
+    persistIndicators(snapshotIndicators(get));
+  },
+
+  setDepthHeatmapHidden: (hidden) => {
+    set({ depthHeatmapHidden: hidden });
     persistIndicators(snapshotIndicators(get));
   },
 
@@ -637,7 +672,14 @@ export const useLivePageStore = create<Store>((set, get) => ({
   },
 
   setBrokerLateEntryEnabled: (enabled) => {
-    set({ brokerLateEntryEnabled: enabled });
+    set(enabled
+      ? { brokerLateEntryEnabled: true, brokerLateEntryHidden: false }
+      : { brokerLateEntryEnabled: false });
+    persistIndicators(snapshotIndicators(get));
+  },
+
+  setBrokerLateEntryHidden: (hidden) => {
+    set({ brokerLateEntryHidden: hidden });
     persistIndicators(snapshotIndicators(get));
   },
 

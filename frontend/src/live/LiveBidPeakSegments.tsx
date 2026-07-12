@@ -9,6 +9,12 @@ import { useActivePrefs } from '../state/chartPrefs';
 import { formatQtyCompact } from '../util/formatQtyCompact';
 import { applyPeakVisibleTimeCutoff, type VisibleTimeCutoff } from './peakWallVisibleCutoff';
 import {
+  registerFlagLegendValues,
+  unregisterFlagLegendValues,
+  type FlagLegendValueProvider,
+} from './indicators/flagLegendValueRegistry';
+import { peakLegendCells } from './peakLegendValues';
+import {
   AskPeakSegmentsPrimitive,
   inlinePeakWallSegmentsForDocking,
   type AskPeakSegment,
@@ -389,6 +395,7 @@ type Props = {
 function LiveBidPeakSegments({ paneSeries, axis, dayBidPeaks, todayAllPriceBidPeak = null, segments, candles, todayKst, untradedRankLimit = 1, visibleTimeCutoff = null }: Props) {
   const series = paneSeries.get('candle' as PaneId) as ISeriesApi<SeriesType> | undefined;
   const enabled = useLivePageStore((s) => s.bidPeakEnabled);
+  const hidden = useLivePageStore((s) => s.bidPeakHidden);
   const color = useLivePageStore((s) => s.bidPeakColor);
   const lineWidth = useLivePageStore((s) => s.bidPeakLineWidth);
   const allPriceColor = useLivePageStore((s) => s.bidPeakAllPriceColor);
@@ -415,12 +422,20 @@ function LiveBidPeakSegments({ paneSeries, axis, dayBidPeaks, todayAllPriceBidPe
     };
   }, [series]);
 
+  // 레전드 값 provider — 커서 거래일의 벽 가격·잔량(ask 쪽과 동일 규칙).
+  useEffect(() => {
+    const provider: FlagLegendValueProvider = (cursorTimeSec) =>
+      peakLegendCells(dayBidPeaks, axis, intraMax, cursorTimeSec, 'bid-peak');
+    registerFlagLegendValues('bid-peak', provider);
+    return () => unregisterFlagLegendValues('bid-peak', provider);
+  }, [dayBidPeaks, axis, intraMax]);
+
   // 갱신: dayBidPeaks·segments·candles·축·스타일·토글 변화 시 세그먼트 재계산.
   useEffect(() => {
     const prim = primRef.current;
     if (!prim) return;
     const baselineRankLimit = maxPeakRankLimit(allPriceRankLimit, visibleMaxRankLimit);
-    const nextSegments = enabled
+    const nextSegments = enabled && !hidden
       ? buildBidPeakOverlaySegments({
         dayBidPeaks,
         todayAllPriceBidPeak,
@@ -450,6 +465,7 @@ function LiveBidPeakSegments({ paneSeries, axis, dayBidPeaks, todayAllPriceBidPe
     allPriceColor,
     allPriceLineWidth,
     enabled,
+    hidden,
     intraMax,
     showAllPrices,
     allPriceRankLimit,

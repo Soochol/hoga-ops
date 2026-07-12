@@ -62,8 +62,9 @@ function LivePeakWallDockedLabels({
   bidVisibleTimeCutoff = null,
 }: Props) {
   const series = paneSeries.get('candle' as PaneId) as ISeriesApi<SeriesType> | undefined;
-  const askPeakEnabled = useLivePageStore((s) => s.askPeakEnabled);
-  const bidPeakEnabled = useLivePageStore((s) => s.bidPeakEnabled);
+  // 눈(hidden)은 세그먼트와 도킹 라벨을 함께 숨긴다 — 시각 요소 일괄.
+  const askPeakEnabled = useLivePageStore((s) => s.askPeakEnabled && !s.askPeakHidden);
+  const bidPeakEnabled = useLivePageStore((s) => s.bidPeakEnabled && !s.bidPeakHidden);
   const askColor = useLivePageStore((s) => s.askPeakColor);
   const askLineWidth = useLivePageStore((s) => s.askPeakLineWidth);
   const askAllPriceColor = useLivePageStore((s) => s.askPeakAllPriceColor);

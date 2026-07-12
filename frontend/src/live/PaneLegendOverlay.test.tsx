@@ -6,6 +6,11 @@ import { useLivePageStore, type LiveTimeframe } from '../state/livePage';
 import { useMaSeriesRegistry } from './indicators/maSeriesRegistry';
 import { useDailyMaSeriesRegistry } from './indicators/dailyMaSeriesRegistry';
 import {
+  registerFlagLegendValues,
+  unregisterFlagLegendValues,
+  type FlagLegendValueProvider,
+} from './indicators/flagLegendValueRegistry';
+import {
   usePaneLegendRegistry,
   type LegendSeriesEntry,
 } from './indicators/paneLegendRegistry';
@@ -64,10 +69,15 @@ function resetStore() {
     dailyMovingAverageEnabled: false,
     dailyMovingAverageHidden: false,
     askPeakEnabled: false,
+    askPeakHidden: false,
     bidPeakEnabled: false,
+    bidPeakHidden: false,
     tradeVolumePocEnabled: false,
+    tradeVolumePocHidden: false,
     depthHeatmapEnabled: false,
+    depthHeatmapHidden: false,
     brokerLateEntryEnabled: false,
+    brokerLateEntryHidden: false,
     brokerLateEntrySideMode: 'both',
     volumeEnabled: false,
     foreignNetEnabled: false,
@@ -211,6 +221,47 @@ describe('PaneLegendOverlay — candle-pane indicator rows', () => {
     expect(useLivePageStore.getState().askPeakEnabled).toBe(false);
     fireEvent.click(screen.getByRole('button', { name: '호가 잔량 히트맵 지표 끄기' }));
     expect(useLivePageStore.getState().depthHeatmapEnabled).toBe(false);
+  });
+
+  it('eye on a flag row toggles its hidden store flag (row stays rendered)', () => {
+    useLivePageStore.setState({ askPeakEnabled: true });
+    render(<PaneLegendOverlay chart={minutePanes()} timeframe="1m" paneToggles={toggles} />);
+    fireEvent.click(screen.getByRole('button', { name: '당일 매도 최대벽 표시 숨김/표시' }));
+    expect(useLivePageStore.getState().askPeakHidden).toBe(true);
+    // 눈은 그리기만 숨긴다 — 레전드 행은 그대로.
+    expect(screen.getByText('당일 매도 최대벽')).toBeInTheDocument();
+  });
+
+  it('renders provider value cells on a flag row (latest fallback, cursor away)', () => {
+    useLivePageStore.setState({ askPeakEnabled: true });
+    const provider: FlagLegendValueProvider = (cursorTimeSec) =>
+      cursorTimeSec === null ? [{ key: 'ask-peak', value: '300,000, 12.3만' }] : [];
+    registerFlagLegendValues('ask-peak', provider);
+    try {
+      render(<PaneLegendOverlay chart={minutePanes()} timeframe="1m" paneToggles={toggles} />);
+      expect(screen.getByText('300,000, 12.3만')).toBeInTheDocument();
+    } finally {
+      unregisterFlagLegendValues('ask-peak', provider);
+    }
+  });
+
+  it('renders labeled/colored provider cells (히트맵 매수/매도)', () => {
+    useLivePageStore.setState({ depthHeatmapEnabled: true });
+    const provider: FlagLegendValueProvider = () => [
+      { key: 'dh-bid', label: '매수', color: '#F04452', value: '299,000, 30만' },
+      { key: 'dh-ask', label: '매도', color: '#3485FA', value: '300,000, 12만' },
+    ];
+    registerFlagLegendValues('depth-heatmap', provider);
+    try {
+      render(<PaneLegendOverlay chart={minutePanes()} timeframe="1m" paneToggles={toggles} />);
+      expect(screen.getByText('호가 잔량 히트맵')).toBeInTheDocument();
+      expect(screen.getByText('299,000, 30만')).toBeInTheDocument();
+      expect(screen.getByText('300,000, 12만')).toBeInTheDocument();
+      expect(screen.getByText('매수')).toBeInTheDocument();
+      expect(screen.getByText('매도')).toBeInTheDocument();
+    } finally {
+      unregisterFlagLegendValues('depth-heatmap', provider);
+    }
   });
 
   it('renders the 거래원 등장 flag on the ratio pane when mounted, and ✕ turns it off', () => {

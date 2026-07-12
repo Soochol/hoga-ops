@@ -8,6 +8,12 @@ import { useActivePrefs } from '../state/chartPrefs';
 import { DepthHeatmapPrimitive, type DepthHeatmapCell } from '../chart/DepthHeatmapPrimitive';
 import type { DepthHeatmapPoint } from './depthHeatmapWire';
 import { levelAlpha, visibleMaxQty } from './depthHeatmapAlpha';
+import {
+  registerFlagLegendValues,
+  unregisterFlagLegendValues,
+  type FlagLegendValueProvider,
+} from './indicators/flagLegendValueRegistry';
+import { formatPriceQty } from './peakLegendValues';
 
 /** 가시 시간범위(가상초 {from,to}). 초기 마운트엔 null, 차트 teardown 중엔 throw → null.
  *  HighLowAnnotationOverlay.readVisibleRange 와 동일 관용구. */
@@ -127,6 +133,7 @@ type Props = {
 function DepthHeatmapOverlay({ chart, paneSeries, axis, points }: Props) {
   const series = paneSeries.get('candle' as PaneId) as ISeriesApi<SeriesType> | undefined;
   const enabled = useLivePageStore((s) => s.depthHeatmapEnabled);
+  const hidden = useLivePageStore((s) => s.depthHeatmapHidden);
   const bidColor = useLivePageStore((s) => s.depthHeatmapBidColor);
   const askColor = useLivePageStore((s) => s.depthHeatmapAskColor);
   const maxOpacity = useLivePageStore((s) => s.depthHeatmapMaxOpacity);
@@ -181,10 +188,61 @@ function DepthHeatmapOverlay({ chart, paneSeries, axis, points }: Props) {
   }, [points, axis, visibleRange, bidColor, askColor, maxOpacity, intraMax]);
 
   useEffect(() => {
-    primitiveRef.current?.setCells(enabled ? cells : []);
-  }, [enabled, cells]);
+    primitiveRef.current?.setCells(enabled && !hidden ? cells : []);
+  }, [enabled, hidden, cells]);
+
+  // 레전드 값 provider — 커서 시각(없으면 최신)의 스냅샷에서 매수/매도 최대 잔량
+  // 레벨을 "가격, 수량"으로. 셀 소스는 그리기와 동일하게 intraMax를 따른다.
+  useEffect(() => {
+    const provider: FlagLegendValueProvider = (cursorTimeSec) => {
+      if (points.length === 0) return [];
+      const realMs = cursorTimeSec === null ? Infinity : axis.toReal(cursorTimeSec * 1000);
+      const point = latestPointAtOrBefore(points, realMs);
+      if (!point) return [];
+      const bids = intraMax ? point.bidsMax : point.bids;
+      const asks = intraMax ? point.asksMax : point.asks;
+      const out = [];
+      const maxBid = maxQtyLevel(bids);
+      if (maxBid) out.push({ key: 'dh-bid', label: '매수', color: bidColor, value: formatPriceQty(maxBid.price, maxBid.qty) });
+      const maxAsk = maxQtyLevel(asks);
+      if (maxAsk) out.push({ key: 'dh-ask', label: '매도', color: askColor, value: formatPriceQty(maxAsk.price, maxAsk.qty) });
+      return out;
+    };
+    registerFlagLegendValues('depth-heatmap', provider);
+    return () => unregisterFlagLegendValues('depth-heatmap', provider);
+  }, [points, axis, intraMax, bidColor, askColor]);
 
   return null;
+}
+
+/** points는 tMs 오름차순 — realMs 이하의 마지막 스냅샷(이진 탐색). */
+function latestPointAtOrBefore(
+  points: readonly DepthHeatmapPoint[],
+  realMs: number,
+): DepthHeatmapPoint | null {
+  let lo = 0;
+  let hi = points.length - 1;
+  let ans = -1;
+  while (lo <= hi) {
+    const mid = (lo + hi) >> 1;
+    if (points[mid].tMs <= realMs) {
+      ans = mid;
+      lo = mid + 1;
+    } else {
+      hi = mid - 1;
+    }
+  }
+  return ans >= 0 ? points[ans] : null;
+}
+
+function maxQtyLevel(
+  levels: readonly { price: number; qty: number }[],
+): { price: number; qty: number } | null {
+  let best: { price: number; qty: number } | null = null;
+  for (const level of levels) {
+    if (best === null || level.qty > best.qty) best = level;
+  }
+  return best;
 }
 
 export default memo(DepthHeatmapOverlay);

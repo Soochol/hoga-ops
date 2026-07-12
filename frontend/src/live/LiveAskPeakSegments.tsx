@@ -7,6 +7,12 @@ import type { VirtualAxis } from '../util/virtualAxis';
 import { useLivePageStore } from '../state/livePage';
 import { useActivePrefs } from '../state/chartPrefs';
 import { formatQtyCompact } from '../util/formatQtyCompact';
+import {
+  registerFlagLegendValues,
+  unregisterFlagLegendValues,
+  type FlagLegendValueProvider,
+} from './indicators/flagLegendValueRegistry';
+import { peakLegendCells } from './peakLegendValues';
 import { applyPeakVisibleTimeCutoff, type VisibleTimeCutoff } from './peakWallVisibleCutoff';
 import {
   AskPeakSegmentsPrimitive,
@@ -448,6 +454,7 @@ type Props = {
 function LiveAskPeakSegments({ paneSeries, axis, dayAskPeaks, todayAllPriceAskPeak = null, segments, candles, todayKst, untradedRankLimit = 1, visibleTimeCutoff = null }: Props) {
   const series = paneSeries.get('candle' as PaneId) as ISeriesApi<SeriesType> | undefined;
   const enabled = useLivePageStore((s) => s.askPeakEnabled);
+  const hidden = useLivePageStore((s) => s.askPeakHidden);
   const color = useLivePageStore((s) => s.askPeakColor);
   const lineWidth = useLivePageStore((s) => s.askPeakLineWidth);
   const allPriceColor = useLivePageStore((s) => s.askPeakAllPriceColor);
@@ -476,10 +483,19 @@ function LiveAskPeakSegments({ paneSeries, axis, dayAskPeaks, todayAllPriceAskPe
     };
   }, [series]);
 
+  // 레전드 값 provider — 커서 거래일의 벽 가격·잔량. hidden(눈)과 무관하게 유지:
+  // MA의 "hide는 선만 숨기고 레전드 값은 산다" 규칙 미러.
+  useEffect(() => {
+    const provider: FlagLegendValueProvider = (cursorTimeSec) =>
+      peakLegendCells(dayAskPeaks, axis, intraMax, cursorTimeSec, 'ask-peak');
+    registerFlagLegendValues('ask-peak', provider);
+    return () => unregisterFlagLegendValues('ask-peak', provider);
+  }, [dayAskPeaks, axis, intraMax]);
+
   const updateSegments = useCallback(() => {
     const prim = primRef.current;
     if (!prim) return;
-    if (!enabled) {
+    if (!enabled || hidden) {
       prim.setSegments([]);
       return;
     }
@@ -520,6 +536,7 @@ function LiveAskPeakSegments({ paneSeries, axis, dayAskPeaks, todayAllPriceAskPe
     visibleMaxColor,
     visibleMaxLineWidth,
     enabled,
+    hidden,
     intraMax,
     showAllPrices,
     allPriceRankLimit,
