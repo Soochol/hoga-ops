@@ -125,6 +125,61 @@ export function realMsToCanvasX(
 }
 
 /**
+ * Nearest on-axis realMs for an `realMs` the axis doesn't `contains()`. Used to
+ * keep a single-anchor drawing (text) visible instead of vanishing when its
+ * anchor is dragged into an inter-session gap / weekend / before the first
+ * session. Multi-point drawings survive via `?? 0 / ?? width` edge clamps; a
+ * lone point has nothing to clamp to, so we snap the *realMs* to the closest
+ * session boundary (which the compressed gap renders adjacent to on screen).
+ *
+ * - Before the first session → first session's open.
+ * - After the last session's close → last session's close.
+ * - In a gap between segment N and N+1 → whichever of `N.close` / `N+1.open`
+ *   is nearer in real time.
+ *
+ * Returns null only for an empty axis.
+ */
+function nearestOnAxisRealMs(axis: VirtualAxis, realMs: number): number | null {
+  const segs = axis.segments;
+  if (segs.length === 0) return null;
+  const first = segs[0];
+  const last = segs[segs.length - 1];
+  if (realMs <= first.sessionOpenMs) return first.sessionOpenMs;
+  if (realMs >= last.sessionCloseMs) return last.sessionCloseMs;
+  // Somewhere in the interior but off-axis → an inter-session gap. findByReal
+  // returns the segment on the LEFT of the gap (the "prior" segment).
+  const idx = axis.findByReal(realMs);
+  if (idx < 0) return first.sessionOpenMs;
+  const prior = segs[idx];
+  const next = segs[idx + 1];
+  if (!next) return prior.sessionCloseMs;
+  const distPrior = realMs - prior.sessionCloseMs;
+  const distNext = next.sessionOpenMs - realMs;
+  return distPrior <= distNext ? prior.sessionCloseMs : next.sessionOpenMs;
+}
+
+/**
+ * Like `realMsToCanvasX` but never returns null for a mounted axis: an off-axis
+ * `realMs` (gap / weekend / pre-axis) is snapped to the nearest session
+ * boundary via `nearestOnAxisRealMs` and projected there. Render and hit-test
+ * for a single-anchor text share this so an off-axis text stays both visible
+ * AND grabbable (rather than vanishing, then being un-selectable). Still returns
+ * null only when the axis is empty or the time scale can't resolve at all.
+ */
+export function realMsToCanvasXClamped(
+  chart: IChartApi,
+  axis: VirtualAxis,
+  realMs: number,
+  future?: FutureBand,
+): number | null {
+  const direct = realMsToCanvasX(chart, axis, realMs, future);
+  if (direct != null) return direct;
+  const clamped = nearestOnAxisRealMs(axis, realMs);
+  if (clamped == null) return null;
+  return coreRealMsToCanvasX(chart, axis, clamped);
+}
+
+/**
  * Canvas X → real Unix-ms — the time-only inverse of `realMsToCanvasX` and the
  * X-half of `pixelToData`. Used by the vertical-line tool (price-independent)
  * and by vline body-drag, which must resolve horizontally without touching any

@@ -165,6 +165,28 @@ describe('hitTestDrawings', () => {
     expect(hitTestDrawings(c, [t], 110, 130)).toBeNull(); // below the box
   });
 
+  it('keeps an off-axis text grabbable via the clamped projector (dragged into a gap)', () => {
+    const t: Drawing = {
+      id: 't1', kind: 'text', at: { realMs: 50_000, price: 100 },
+      text: '메모', fontSize: 13, paneId: 'candle',
+      color: '#fff', width: 1, lineStyle: 'solid',
+    };
+    // Plain projector returns null for this gap anchor (would vanish +
+    // un-selectable); the clamped projector snaps it to x=120 so it stays
+    // grabbable there — exactly how renderText paints it.
+    const c: HitCoord = {
+      ...coord,
+      measureTextWidth: () => 40,
+      realMsToCanvasX: (realMs) => (realMs === 50_000 ? null : realMs),
+      realMsToCanvasXClamped: (realMs) => (realMs === 50_000 ? 120 : realMs),
+    };
+    // Without the clamp the text is unreachable:
+    const noClamp: HitCoord = { ...c, realMsToCanvasXClamped: undefined };
+    expect(hitTestDrawings(noClamp, [t], 130, 105)).toBeNull();
+    // With the clamp, the box sits at x∈[117,163] → (130,105) hits.
+    expect(hitTestDrawings(c, [t], 130, 105)).toBe(t);
+  });
+
   it('returns null for an empty drawing list', () => {
     expect(hitTestDrawings(coord, [], 50, 100)).toBeNull();
   });

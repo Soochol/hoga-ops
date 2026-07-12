@@ -38,6 +38,7 @@ import {
   priceToCanvasY as projPriceToCanvasY,
   canvasYToPrice as projCanvasYToPrice,
   realMsToCanvasX as projRealMsToCanvasX,
+  realMsToCanvasXClamped as projRealMsToCanvasXClamped,
   canvasXToRealMs as projCanvasXToRealMs,
   paneIdToIndex,
   paneIdAtY as projPaneIdAtY,
@@ -424,6 +425,8 @@ export default function DrawingOverlay({ chart, axis, paneSeries, onChartHoverPa
   const rawPixelToData = (px: number, py: number, paneId: PaneId) =>
     projPixelToData(chart, axis, paneSeries, paneId, px, py, futureBand);
   const realMsToCanvasX = (realMs: number) => projRealMsToCanvasX(chart, axis, realMs, futureBand);
+  const realMsToCanvasXClamped = (realMs: number) =>
+    projRealMsToCanvasXClamped(chart, axis, realMs, futureBand);
   const rawCanvasXToRealMs = (px: number) => projCanvasXToRealMs(chart, axis, px, futureBand);
   const priceToCanvasY = (price: number, paneId: PaneId) =>
     projPriceToCanvasY(chart, paneSeries, paneId, price);
@@ -463,6 +466,7 @@ export default function DrawingOverlay({ chart, axis, paneSeries, onChartHoverPa
       : hitTestDrawings(
           {
             realMsToCanvasX,
+            realMsToCanvasXClamped,
             priceToCanvasY,
             paneIdAtY: (y) => projPaneIdAtY(chart, paneSeries, y),
             canvasWidth: containerRef.current?.clientWidth ?? 0,
@@ -782,7 +786,7 @@ export default function DrawingOverlay({ chart, axis, paneSeries, onChartHoverPa
   // be projected (empty band, transient scale state).
   const textEditPos = textEdit
     ? (() => {
-        const x = realMsToCanvasX(textEdit.at.realMs);
+        const x = realMsToCanvasXClamped(textEdit.at.realMs);
         const y = priceToCanvasY(textEdit.at.price, textEdit.paneId);
         return x != null && y != null ? { x, y } : { x: textEdit.px, y: textEdit.py };
       })()

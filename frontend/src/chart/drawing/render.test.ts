@@ -7,7 +7,7 @@
 import { describe, expect, it, vi } from 'vitest';
 import type { IChartApi } from 'lightweight-charts';
 import { renderDrawing, renderTrendlineDraft, type ProjectCtx, dashPattern } from './render';
-import type { Hline, Trendline } from './types';
+import type { Hline, Text, Trendline } from './types';
 import type { TrendlineDraft } from './tools';
 
 /** Build a context with all the canvas methods we touch spied. */
@@ -245,6 +245,59 @@ describe('renderTrendline delta label', () => {
 
     const labels = (c.fillText as ReturnType<typeof vi.fn>).mock.calls.map((a) => a[0] as string);
     expect(labels).toContain('+25 (+25.00%)');
+  });
+});
+
+describe('renderText off-axis anchor (dragged into an inter-session gap)', () => {
+  // Two-session axis with a real gap: seg A [0,1000], seg B [100000,101000].
+  // A text anchored at 50000 sits in the gap → off every segment. Pre-fix this
+  // made renderText bail (invisible + un-selectable = lost); now it clamps to
+  // the nearest boundary and paints there.
+  const segA = { sessionOpenMs: 0, sessionCloseMs: 1_000, virtualStart: 0 };
+  const segB = { sessionOpenMs: 100_000, sessionCloseMs: 101_000, virtualStart: 2_000 };
+  function makeGapCtx(): ProjectCtx {
+    return {
+      chart: {
+        panes: () => [{ getHeight: () => 400 }],
+        timeScale: () => ({
+          timeToCoordinate: (timeSec: number) => (timeSec * 1000 / 1000) * 10,
+          coordinateToTime: () => null,
+          coordinateToLogical: (x: number) => x / 10,
+          logicalToCoordinate: (logical: number) => logical * 10,
+        }),
+      } as unknown as IChartApi,
+      axis: {
+        segments: [segA, segB],
+        contains: (rm: number) =>
+          (rm >= segA.sessionOpenMs && rm <= segA.sessionCloseMs) ||
+          (rm >= segB.sessionOpenMs && rm <= segB.sessionCloseMs),
+        toVirtual: (rm: number) =>
+          rm <= segA.sessionCloseMs ? rm : rm - segB.sessionOpenMs + segB.virtualStart,
+        findByReal: (rm: number) =>
+          rm < segA.sessionOpenMs ? -1 : rm >= segB.sessionOpenMs && rm <= segB.sessionCloseMs ? 1 : 0,
+      } as unknown as ProjectCtx['axis'],
+      paneSeries: new Map([['candle', {
+        priceToCoordinate: vi.fn(() => 200),
+        coordinateToPrice: vi.fn(),
+      } as any]]) as unknown as ProjectCtx['paneSeries'],
+      paneId: 'candle',
+      width: 800,
+      height: 400,
+    };
+  }
+
+  it('paints the label at the clamped boundary X instead of vanishing', () => {
+    const c = makeCanvasSpy();
+    const ctx = makeGapCtx();
+    const t: Text = {
+      id: 'txt1', kind: 'text', at: { realMs: 50_000, price: 100 },
+      text: '이동테스트', fontSize: 13, color: '#F43F5E', width: 1,
+      lineStyle: 'solid', paneId: 'candle',
+    };
+    renderDrawing(c, ctx, t, false);
+    const calls = (c.fillText as ReturnType<typeof vi.fn>).mock.calls;
+    // segA.close (1000) is the nearer boundary → virtual 1000 → x = 10, y = 200.
+    expect(calls).toContainEqual(['이동테스트', 10, 200]);
   });
 });
 
