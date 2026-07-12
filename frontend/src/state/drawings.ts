@@ -189,11 +189,15 @@ export const useDrawingsStore = create<State & Actions>((set, get) => {
       set({ byCode });
       queuePersist(code);
 
-      // Drawing Defaults sync — only style fields propagate.
+      // Drawing Defaults sync — only style fields propagate, so the last-picked
+      // color / width / lineStyle / fontSize seeds the next new drawing.
       const stylePatch: Partial<DrawingDefaults> = {};
       if ('color' in patch && typeof patch.color === 'string') stylePatch.color = patch.color;
       if ('width' in patch && typeof patch.width === 'number') stylePatch.width = patch.width;
       if ('lineStyle' in patch && patch.lineStyle != null) stylePatch.lineStyle = patch.lineStyle;
+      if ('fontSize' in patch && typeof (patch as { fontSize?: unknown }).fontSize === 'number') {
+        stylePatch.fontSize = (patch as { fontSize: number }).fontSize;
+      }
       if (Object.keys(stylePatch).length > 0) get().setDefaults(stylePatch);
     },
 

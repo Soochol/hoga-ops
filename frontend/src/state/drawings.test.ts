@@ -309,6 +309,17 @@ describe('useDrawingsStore — defaults', () => {
     });
   });
 
+  it('update(id, {fontSize}) syncs the text size into defaults (sticky)', () => {
+    const s = useDrawingsStore.getState();
+    s.setActiveCode('005930');
+    s.add({
+      id: 't', kind: 'text', at: { realMs: 1_700_000_000_000, price: 1000 },
+      text: 'hi', fontSize: 13, color: '#14B8A6', width: 2, lineStyle: 'solid', paneId: 'candle',
+    });
+    s.update('t', { fontSize: 20 } as Partial<Drawing>);
+    expect(useDrawingsStore.getState().defaults.fontSize).toBe(20);
+  });
+
   it('update with no style fields does not touch defaults', () => {
     const s = useDrawingsStore.getState();
     s.setActiveCode('005930');

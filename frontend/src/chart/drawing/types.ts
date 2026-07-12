@@ -174,6 +174,10 @@ export type DrawingDefaults = {
   color: string;
   width: number;
   lineStyle: LineStyle;
+  /** Sticky font size (CSS px) for new text labels. Separate from `width` so a
+   *  size pick never leaks into stroke-tool defaults (and vice versa); it
+   *  propagates alongside the style fields so the last-used size carries over. */
+  fontSize: number;
   /** Magnet mode — snap creation/handle drags to the nearest candle. Session
    *  preference persisted alongside style defaults; NOT a per-drawing field, so
    *  it never propagates through the style whitelist. */
@@ -183,11 +187,12 @@ export type DrawingDefaults = {
 };
 
 /** Seed used when no persisted defaults exist. Teal accent, integer-step
- *  2 px, solid, magnet off, all visible. */
+ *  2 px, solid, 13px text, magnet off, all visible. */
 export const INITIAL_DEFAULTS: DrawingDefaults = {
   color: '#14B8A6',
   width: 2,
   lineStyle: 'solid',
+  fontSize: TEXT_DEFAULT_FONT_SIZE,
   magnet: false,
   hiddenAll: false,
 };
