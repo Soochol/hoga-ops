@@ -6,10 +6,21 @@
 // the gating rules unit-testable without a chart instance. The component owns
 // the impure value extraction (`readSeriesValue` below) and feeds the result in.
 //
-// Two row kinds:
-//  - candle 'ma': aggregates every enabled MA slot (one row, many swatches) and
-//    carries the shared hide flag. Special-cased because MA has an eye toggle
-//    and a master on/off distinct from the pane-mount lifecycle.
+// Row kinds:
+//  - candle 'ma' / 'daily-ma': aggregates every enabled (daily-)MA slot (one
+//    row, many swatches) and carries the shared hide flag. Special-cased
+//    because MA has an eye toggle and a master on/off distinct from the
+//    pane-mount lifecycle. 'daily-ma' additionally gates on the timeframe
+//    (the overlay is minute-only — on D/W/M its series are cleared, so a row
+//    would read all "—").
+//  - 'flag': a name-only chip for overlay indicators that have no cursor value
+//    (peak walls, POC band, depth heatmap — primitives/canvas, not value
+//    series; broker late-entry markers on the ratio pane). Swatch(es) + label
+//    + ✕; gated on the store enabled flag AND timeframe applicability,
+//    mirroring each overlay's own mount gate. Emitted AFTER the cells rows so
+//    a flag chip stacks below its pane's value row (ratio: 호가비 → 거래원).
+//    Pane mount gating stays at render time (spec order lookup), same as
+//    every other row.
 //  - 'cells': a generic multi-cell row driven by `paneLegendRegistry`. Each cell
 //    is one legend-bearing series (label + optional swatch + value). Registry
 //    presence == pane mounted, so this path re-derives NO toggle state — the
@@ -41,9 +52,34 @@ export type LegendCell = {
   formatted: string;
 };
 
+/** Overlay indicators without a cursor value — legend shows a name chip
+ *  (swatches + label + ✕) only. Ids double as the ✕ → store-setter dispatch
+ *  key in `PaneLegendOverlay`. Most draw on the candle pane; broker late-entry
+ *  markers attach to the ratio pane (RATIO_SPEC `labelMarkers`). */
+export type LegendFlagId =
+  | 'ask-peak'
+  | 'bid-peak'
+  | 'trade-volume-poc'
+  | 'depth-heatmap'
+  | 'broker-late-entry';
+
+/** One flag indicator's input: `paneId` = the pane its overlay draws on,
+ *  enabled = store toggle, applicable = "can this overlay draw on the current
+ *  timeframe" (all five are minute-only, mirroring their mount gates). */
+export type LegendFlagInput = {
+  id: LegendFlagId;
+  paneId: PaneId;
+  label: string;
+  enabled: boolean;
+  applicable: boolean;
+  swatches: readonly string[];
+};
+
 /** A single pane's legend row. */
 export type LegendRow =
   | { paneId: 'candle'; kind: 'ma'; mas: LegendMAValue[]; hidden: boolean }
+  | { paneId: 'candle'; kind: 'daily-ma'; mas: LegendMAValue[]; hidden: boolean }
+  | { paneId: PaneId; kind: 'flag'; id: LegendFlagId; label: string; swatches: readonly string[] }
   | {
       paneId: PaneId;
       kind: 'cells';
@@ -78,6 +114,17 @@ export type BuildLegendRowsInput = {
   movingAverageHidden: boolean;
   /** slot id → value at cursor (or latest). Missing id → the cell shows "—". */
   maValues: ReadonlyMap<string, number>;
+  /** Daily-MA mirror of the MA fields. `dailyMaApplicable` = minute timeframe
+   *  (the overlay clears its series on D/W/M, so a row would read all "—").
+   *  Optional so callers without a daily-MA context (tests) can omit them. */
+  dailyMovingAverages?: ReadonlyArray<LiveMAConfig>;
+  dailyMovingAverageEnabled?: boolean;
+  dailyMovingAverageHidden?: boolean;
+  dailyMaValues?: ReadonlyMap<string, number>;
+  dailyMaApplicable?: boolean;
+  /** Flag indicators (no cursor value) across panes. Rows emit for
+   *  enabled && applicable entries, in input order, after the cells rows. */
+  indicatorFlags?: ReadonlyArray<LegendFlagInput>;
   /** One entry per legend-bearing pane currently mounted (registry snapshot). */
   paneCells: ReadonlyArray<PaneCellInput>;
 };
@@ -99,6 +146,27 @@ export function buildLegendRows(input: BuildLegendRowsInput): LegendRow[] {
       }));
     if (mas.length > 0) {
       rows.push({ paneId: 'candle', kind: 'ma', mas, hidden: input.movingAverageHidden });
+    }
+  }
+
+  // Candle pane — daily-MA row, the MA row's mirror with an extra timeframe
+  // gate (see field doc).
+  if (input.dailyMovingAverageEnabled && input.dailyMaApplicable) {
+    const mas: LegendMAValue[] = (input.dailyMovingAverages ?? [])
+      .filter((m) => m.enabled)
+      .map((m) => ({
+        id: m.id,
+        color: m.color,
+        period: m.period,
+        value: input.dailyMaValues?.get(m.id) ?? null,
+      }));
+    if (mas.length > 0) {
+      rows.push({
+        paneId: 'candle',
+        kind: 'daily-ma',
+        mas,
+        hidden: input.dailyMovingAverageHidden ?? false,
+      });
     }
   }
 
@@ -126,6 +194,20 @@ export function buildLegendRows(input: BuildLegendRowsInput): LegendRow[] {
         toggleKey: pane.toggleKey,
       });
     }
+  }
+
+  // Flag rows for valueless overlay indicators — after the cells rows so a
+  // flag chip stacks below its pane's value row (candle rows are unaffected:
+  // MA/daily-MA were pushed first and candle has no cells row).
+  for (const flag of input.indicatorFlags ?? []) {
+    if (!flag.enabled || !flag.applicable) continue;
+    rows.push({
+      paneId: flag.paneId,
+      kind: 'flag',
+      id: flag.id,
+      label: flag.label,
+      swatches: flag.swatches,
+    });
   }
 
   return rows;

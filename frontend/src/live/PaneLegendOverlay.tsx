@@ -18,13 +18,16 @@
 
 import { memo, useEffect, useReducer, useRef, type CSSProperties } from 'react';
 import type { IChartApi, MouseEventParams } from 'lightweight-charts';
-import { useLivePageStore, type LiveTimeframe } from '../state/livePage';
+import { useLivePageStore, isMinuteTimeframe, type LiveTimeframe } from '../state/livePage';
 import { useMaSeriesRegistry } from './indicators/maSeriesRegistry';
+import { useDailyMaSeriesRegistry } from './indicators/dailyMaSeriesRegistry';
 import { usePaneLegendRegistry } from './indicators/paneLegendRegistry';
 import { paneSpecsForTimeframe, type PaneToggles } from './paneSpecsForTimeframe';
 import {
   buildLegendRows,
   readSeriesValue,
+  type LegendFlagId,
+  type LegendFlagInput,
   type LegendRow,
   type PaneCellInput,
 } from './legendRows';
@@ -55,8 +58,9 @@ type Props = {
 const VALUE_MIN_WIDTH = '12ch';
 const LEGEND_INSET = 'var(--space-xs)';
 
+// Positioned by the per-pane stack wrapper (flex column), not absolutely —
+// a pane can now hold several rows (candle: MA + daily-MA + flag chips).
 const boxStyle: CSSProperties = {
-  position: 'absolute',
   display: 'inline-flex',
   alignItems: 'center',
   gap: 'var(--space-xs)',
@@ -168,6 +172,15 @@ function EyeGlyph({ hidden }: { hidden: boolean }) {
   );
 }
 
+/** ✕ dispatch for flag rows — id → store master toggle off. */
+const FLAG_TURN_OFF: Record<LegendFlagId, () => void> = {
+  'ask-peak': () => useLivePageStore.getState().setAskPeakEnabled(false),
+  'bid-peak': () => useLivePageStore.getState().setBidPeakEnabled(false),
+  'trade-volume-poc': () => useLivePageStore.getState().setTradeVolumePocEnabled(false),
+  'depth-heatmap': () => useLivePageStore.getState().setDepthHeatmapEnabled(false),
+  'broker-late-entry': () => useLivePageStore.getState().setBrokerLateEntryEnabled(false),
+};
+
 function MaLegendRow({ row }: { row: Extract<LegendRow, { kind: 'ma' }> }) {
   const setHidden = useLivePageStore((s) => s.setMovingAverageHidden);
   const setEnabled = useLivePageStore((s) => s.setMovingAverageEnabled);
@@ -192,6 +205,54 @@ function MaLegendRow({ row }: { row: Extract<LegendRow, { kind: 'ma' }> }) {
         <EyeGlyph hidden={row.hidden} />
       </HoverIcon>
       <HoverIcon label="이동평균선 지표 끄기" restColor="var(--fg-dimmer)" onClick={() => setEnabled(false)}>
+        <CloseGlyph />
+      </HoverIcon>
+    </>
+  );
+}
+
+function DailyMaLegendRow({ row }: { row: Extract<LegendRow, { kind: 'daily-ma' }> }) {
+  const setHidden = useLivePageStore((s) => s.setDailyMovingAverageHidden);
+  const setEnabled = useLivePageStore((s) => s.setDailyMovingAverageEnabled);
+  return (
+    <>
+      <span style={{ color: 'var(--fg-dim)' }}>일봉 이동평균선</span>
+      {row.mas.map((m) => (
+        <span
+          key={m.id}
+          style={{ display: 'inline-flex', alignItems: 'center', gap: 'var(--space-2xs)' }}
+        >
+          <span aria-hidden="true" style={{ ...swatchStyle, background: m.color }} />
+          <span style={{ color: 'var(--fg-dim)' }}>{m.period}</span>
+          <span style={valueCellStyle}>{m.value == null ? '—' : formatKoreanInt(m.value)}</span>
+        </span>
+      ))}
+      <HoverIcon
+        label="일봉 이동평균선 선 숨김/표시"
+        restColor={row.hidden ? 'var(--fg-dim)' : 'var(--fg-dimmer)'}
+        onClick={() => setHidden(!row.hidden)}
+      >
+        <EyeGlyph hidden={row.hidden} />
+      </HoverIcon>
+      <HoverIcon label="일봉 이동평균선 지표 끄기" restColor="var(--fg-dimmer)" onClick={() => setEnabled(false)}>
+        <CloseGlyph />
+      </HoverIcon>
+    </>
+  );
+}
+
+function FlagLegendRow({ row }: { row: Extract<LegendRow, { kind: 'flag' }> }) {
+  return (
+    <>
+      {row.swatches.map((color, i) => (
+        <span key={i} aria-hidden="true" style={{ ...swatchStyle, background: color }} />
+      ))}
+      <span style={{ color: 'var(--fg-dim)' }}>{row.label}</span>
+      <HoverIcon
+        label={`${row.label} 지표 끄기`}
+        restColor="var(--fg-dimmer)"
+        onClick={FLAG_TURN_OFF[row.id]}
+      >
         <CloseGlyph />
       </HoverIcon>
     </>
@@ -244,7 +305,25 @@ function PaneLegendOverlay({ chart, timeframe, paneToggles }: Props) {
   const movingAverages = useLivePageStore((s) => s.movingAverages);
   const movingAverageEnabled = useLivePageStore((s) => s.movingAverageEnabled);
   const movingAverageHidden = useLivePageStore((s) => s.movingAverageHidden);
+  const dailyMovingAverages = useLivePageStore((s) => s.dailyMovingAverages);
+  const dailyMovingAverageEnabled = useLivePageStore((s) => s.dailyMovingAverageEnabled);
+  const dailyMovingAverageHidden = useLivePageStore((s) => s.dailyMovingAverageHidden);
+  // Candle-pane flag indicators — enabled flags + swatch colors (설정 변경 즉시 반영).
+  const askPeakEnabled = useLivePageStore((s) => s.askPeakEnabled);
+  const askPeakColor = useLivePageStore((s) => s.askPeakColor);
+  const bidPeakEnabled = useLivePageStore((s) => s.bidPeakEnabled);
+  const bidPeakColor = useLivePageStore((s) => s.bidPeakColor);
+  const tradeVolumePocEnabled = useLivePageStore((s) => s.tradeVolumePocEnabled);
+  const tradeVolumePocColor = useLivePageStore((s) => s.tradeVolumePocColor);
+  const depthHeatmapEnabled = useLivePageStore((s) => s.depthHeatmapEnabled);
+  const depthHeatmapBidColor = useLivePageStore((s) => s.depthHeatmapBidColor);
+  const depthHeatmapAskColor = useLivePageStore((s) => s.depthHeatmapAskColor);
+  const brokerLateEntryEnabled = useLivePageStore((s) => s.brokerLateEntryEnabled);
+  const brokerLateEntrySideMode = useLivePageStore((s) => s.brokerLateEntrySideMode);
+  const brokerLateEntryBuyColor = useLivePageStore((s) => s.brokerLateEntryBuyColor);
+  const brokerLateEntrySellColor = useLivePageStore((s) => s.brokerLateEntrySellColor);
   const maSeries = useMaSeriesRegistry((s) => s.series);
+  const dailyMaSeries = useDailyMaSeriesRegistry((s) => s.series);
   // Registry subscription: re-renders on pane (un)mount so a toggled-on pane's
   // legend appears without waiting for a crosshair move.
   const legendPanes = usePaneLegendRegistry((s) => s.panes);
@@ -296,6 +375,11 @@ function PaneLegendOverlay({ chart, timeframe, paneToggles }: Props) {
     const v = readSeriesValue(series, seriesData);
     if (v !== null) maValues.set(id, v);
   }
+  const dailyMaValues = new Map<string, number>();
+  for (const [id, series] of dailyMaSeries) {
+    const v = readSeriesValue(series, seriesData);
+    if (v !== null) dailyMaValues.set(id, v);
+  }
   const paneCells: PaneCellInput[] = [];
   for (const [paneId, entries] of legendPanes) {
     const spec = specByPaneId.get(paneId);
@@ -313,11 +397,70 @@ function PaneLegendOverlay({ chart, timeframe, paneToggles }: Props) {
     });
   }
 
+  // 플래그 지표 — 모두 분봉 전용 오버레이(각자의 마운트 게이트를 미러링).
+  // 표시 순서 = 이 배열 순서. 거래원 등장 마커는 ratio pane에 붙으므로(RATIO_SPEC
+  // labelMarkers) 그쪽에 배치 — pane 미마운트(호가비 off) 시 배치 단계에서 스킵.
+  const isMinute = isMinuteTimeframe(timeframe);
+  const indicatorFlags: LegendFlagInput[] = [
+    {
+      id: 'ask-peak',
+      paneId: 'candle',
+      label: '당일 매도 최대벽',
+      enabled: askPeakEnabled,
+      applicable: isMinute,
+      swatches: [askPeakColor],
+    },
+    {
+      id: 'bid-peak',
+      paneId: 'candle',
+      label: '당일 매수 최대벽',
+      enabled: bidPeakEnabled,
+      applicable: isMinute,
+      swatches: [bidPeakColor],
+    },
+    {
+      id: 'trade-volume-poc',
+      paneId: 'candle',
+      label: '당일 최대 매물대',
+      enabled: tradeVolumePocEnabled,
+      applicable: isMinute,
+      swatches: [tradeVolumePocColor],
+    },
+    {
+      id: 'depth-heatmap',
+      paneId: 'candle',
+      label: '호가 잔량 히트맵',
+      enabled: depthHeatmapEnabled,
+      applicable: isMinute,
+      swatches: [depthHeatmapBidColor, depthHeatmapAskColor],
+    },
+    {
+      id: 'broker-late-entry',
+      paneId: 'ratio',
+      label: '신규 거래원 등장',
+      enabled: brokerLateEntryEnabled,
+      applicable: isMinute,
+      // side mode에 따라 실제 그려지는 쪽의 스와치만 노출.
+      swatches:
+        brokerLateEntrySideMode === 'buy'
+          ? [brokerLateEntryBuyColor]
+          : brokerLateEntrySideMode === 'sell'
+            ? [brokerLateEntrySellColor]
+            : [brokerLateEntryBuyColor, brokerLateEntrySellColor],
+    },
+  ];
+
   const rows = buildLegendRows({
     movingAverages,
     movingAverageEnabled,
     movingAverageHidden,
     maValues,
+    dailyMovingAverages,
+    dailyMovingAverageEnabled,
+    dailyMovingAverageHidden,
+    dailyMaValues,
+    dailyMaApplicable: isMinute,
+    indicatorFlags,
     paneCells,
   });
 
@@ -337,6 +480,15 @@ function PaneLegendOverlay({ chart, timeframe, paneToggles }: Props) {
     }
   }
 
+  // Group rows per pane — the candle pane can hold several (MA + daily-MA +
+  // flag chips), stacked vertically inside one absolutely-positioned wrapper.
+  const rowsByPane = new Map<string, LegendRow[]>();
+  for (const row of rows) {
+    const list = rowsByPane.get(row.paneId);
+    if (list) list.push(row);
+    else rowsByPane.set(row.paneId, [row]);
+  }
+
   return (
     <div
       ref={containerRef}
@@ -345,27 +497,44 @@ function PaneLegendOverlay({ chart, timeframe, paneToggles }: Props) {
       // the icon buttons re-enable hits (iconBtnStyle).
       style={{ position: 'absolute', inset: 0, pointerEvents: 'none', zIndex: 4 }}
     >
-      {rows.map((row) => {
-        const idx = indexByPaneId.get(row.paneId);
+      {Array.from(rowsByPane, ([paneId, paneRows]) => {
+        const idx = indexByPaneId.get(paneId);
         // Pane not mounted yet (first frame after a toggle) → skip; self-heals
         // next tick once chart.panes() includes it.
         if (idx == null || idx >= paneTops.length) return null;
         return (
           <div
-            // paneId+kind: candle이 향후 legend 메타를 얻으면 MA row와 cells row가
-            // 같은 paneId로 공존할 수 있다 — key 충돌 예방.
-            key={`${row.paneId}:${row.kind}`}
+            key={paneId}
             style={{
-              ...boxStyle,
+              position: 'absolute',
               top: `calc(${paneTops[idx]}px + ${LEGEND_INSET})`,
               left: LEGEND_INSET,
+              right: LEGEND_INSET,
+              display: 'flex',
+              flexDirection: 'column',
+              alignItems: 'flex-start',
+              gap: 'var(--space-2xs)',
+              pointerEvents: 'none',
             }}
           >
-            {row.kind === 'ma' ? (
-              <MaLegendRow row={row} />
-            ) : (
-              <CellsLegendRow row={row} timeframe={timeframe} />
-            )}
+            {paneRows.map((row) => (
+              <div
+                // paneId+kind(+flag id): 캔들 pane은 MA/daily-MA/flag row가 공존 —
+                // key 충돌 예방.
+                key={row.kind === 'flag' ? `${row.paneId}:flag:${row.id}` : `${row.paneId}:${row.kind}`}
+                style={boxStyle}
+              >
+                {row.kind === 'ma' ? (
+                  <MaLegendRow row={row} />
+                ) : row.kind === 'daily-ma' ? (
+                  <DailyMaLegendRow row={row} />
+                ) : row.kind === 'flag' ? (
+                  <FlagLegendRow row={row} />
+                ) : (
+                  <CellsLegendRow row={row} timeframe={timeframe} />
+                )}
+              </div>
+            ))}
           </div>
         );
       })}
