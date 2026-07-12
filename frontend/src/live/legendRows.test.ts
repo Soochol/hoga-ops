@@ -1,5 +1,10 @@
 import { describe, it, expect } from 'vitest';
-import { buildLegendRows, readSeriesValue, type PaneCellInput } from './legendRows';
+import {
+  buildLegendRows,
+  readSeriesValue,
+  type LegendFlagInput,
+  type PaneCellInput,
+} from './legendRows';
 import type { LiveMAConfig } from '../state/livePage';
 
 const ma = (over: Partial<LiveMAConfig> & { id: string }): LiveMAConfig => ({
@@ -51,6 +56,104 @@ describe('buildLegendRows — candle MA row', () => {
       maValues: new Map([['ma-1', 999]]),
     });
     expect(rows.find((r) => r.paneId === 'candle')).toBeUndefined();
+  });
+});
+
+describe('buildLegendRows — candle daily-MA row', () => {
+  const dailyBase = {
+    ...base,
+    movingAverageEnabled: false,
+    dailyMovingAverages: [ma({ id: 'dma-1', period: 20, color: '#3485FA' })],
+    dailyMovingAverageEnabled: true,
+    dailyMovingAverageHidden: false,
+    dailyMaValues: new Map<string, number>(),
+    dailyMaApplicable: true,
+  };
+
+  it('builds the daily-MA row from enabled slots; value=null when missing', () => {
+    const rows = buildLegendRows({
+      ...dailyBase,
+      dailyMovingAverages: [ma({ id: 'dma-1', period: 20 }), ma({ id: 'dma-2', period: 60 })],
+      dailyMaValues: new Map([['dma-1', 70000]]),
+    });
+    const row = rows.find((r) => r.kind === 'daily-ma');
+    expect(row?.kind === 'daily-ma' && row.mas[0].value).toBe(70000);
+    expect(row?.kind === 'daily-ma' && row.mas[1].value).toBeNull();
+  });
+
+  it('omits the row on non-minute timeframes (overlay clears its series on D/W/M)', () => {
+    const rows = buildLegendRows({ ...dailyBase, dailyMaApplicable: false });
+    expect(rows.some((r) => r.kind === 'daily-ma')).toBe(false);
+  });
+
+  it('omits the row when the daily-MA master is off', () => {
+    const rows = buildLegendRows({ ...dailyBase, dailyMovingAverageEnabled: false });
+    expect(rows.some((r) => r.kind === 'daily-ma')).toBe(false);
+  });
+
+  it('coexists with the intraday MA row on the candle pane (MA first)', () => {
+    const rows = buildLegendRows({
+      ...dailyBase,
+      movingAverages: [ma({ id: 'ma-1' })],
+      movingAverageEnabled: true,
+    });
+    const candleKinds = rows.filter((r) => r.paneId === 'candle').map((r) => r.kind);
+    expect(candleKinds).toEqual(['ma', 'daily-ma']);
+  });
+});
+
+describe('buildLegendRows — flag rows', () => {
+  const flags: LegendFlagInput[] = [
+    { id: 'ask-peak', paneId: 'candle', label: '당일 매도 최대벽', enabled: true, applicable: true, swatches: ['#F04452'] },
+    { id: 'bid-peak', paneId: 'candle', label: '당일 매수 최대벽', enabled: false, applicable: true, swatches: ['#3485FA'] },
+    { id: 'depth-heatmap', paneId: 'candle', label: '호가 잔량 히트맵', enabled: true, applicable: false, swatches: ['#3485FA', '#F04452'] },
+  ];
+
+  it('emits rows only for enabled && applicable flags, in input order', () => {
+    const rows = buildLegendRows({ ...base, movingAverageEnabled: false, indicatorFlags: flags });
+    const flagRows = rows.filter((r) => r.kind === 'flag');
+    expect(flagRows.map((r) => r.kind === 'flag' && r.id)).toEqual(['ask-peak']);
+    expect(flagRows[0].kind === 'flag' && flagRows[0].label).toBe('당일 매도 최대벽');
+    expect(flagRows[0].kind === 'flag' && flagRows[0].swatches).toEqual(['#F04452']);
+  });
+
+  it('orders candle rows ma → daily-ma → flags', () => {
+    const rows = buildLegendRows({
+      ...base,
+      movingAverages: [ma({ id: 'ma-1' })],
+      dailyMovingAverages: [ma({ id: 'dma-1' })],
+      dailyMovingAverageEnabled: true,
+      dailyMaApplicable: true,
+      indicatorFlags: [
+        { id: 'trade-volume-poc', paneId: 'candle', label: '당일 최대 매물대', enabled: true, applicable: true, swatches: ['#A855F7'] },
+      ],
+    });
+    expect(rows.filter((r) => r.paneId === 'candle').map((r) => r.kind)).toEqual([
+      'ma',
+      'daily-ma',
+      'flag',
+    ]);
+  });
+
+  it('emits a ratio-pane flag (거래원 등장) AFTER the ratio cells row', () => {
+    const rows = buildLegendRows({
+      ...base,
+      movingAverageEnabled: false,
+      paneCells: [
+        {
+          paneId: 'ratio',
+          title: '호가비',
+          toggleKey: 'ratioEnabled',
+          cells: [{ key: 'r', label: '호가비', value: 3.4 }],
+        },
+      ],
+      indicatorFlags: [
+        { id: 'broker-late-entry', paneId: 'ratio', label: '신규 거래원 등장', enabled: true, applicable: true, swatches: ['#F04452', '#3485FA'] },
+      ],
+    });
+    const ratioRows = rows.filter((r) => r.paneId === 'ratio');
+    expect(ratioRows.map((r) => r.kind)).toEqual(['cells', 'flag']);
+    expect(ratioRows[1].kind === 'flag' && ratioRows[1].id).toBe('broker-late-entry');
   });
 });
 

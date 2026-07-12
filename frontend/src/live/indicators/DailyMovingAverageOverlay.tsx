@@ -8,6 +8,7 @@ import type { LiveVenueOption } from '../../state/liveVenue';
 import { computeDailyMaByDate } from '../../chart/projectors/dailyMovingAverage';
 import { dailyMaFetchWindow, pickTodayLiveClose } from './dailyMaProjection';
 import { useResolvedDailyCandles } from './useResolvedDailyCandles';
+import { useDailyMaSeriesRegistry } from './dailyMaSeriesRegistry';
 
 type Props = {
   chart: IChartApi;
@@ -38,7 +39,7 @@ const priceFormat = {
 /** 일봉 이동평균선 오버레이 — 일봉 종가 SMA를 분봉 축에 거래일-계단으로 투영
  *  (ADR-0073). 현재봉 MovingAverageOverlay의 series-reconcile 패턴을 미러링하되,
  *  일봉 데이터를 useLiveBundle 밖 독립 훅으로 fetch한다(번들 split 비침투). 분봉
- *  전용: D/W/M에선 미렌더. 레전드 연동은 v1 비대상(maSeriesRegistry 미등록). */
+ *  전용: D/W/M에선 미렌더. 레전드 값은 dailyMaSeriesRegistry 등록으로 노출. */
 function DailyMovingAverageOverlay({ chart, bundle, axis, code, timeframe, venue = 'KRX', todayKst, dailyCandleKisEnabled = true, override }: Props) {
   const storeConfigs = useLivePageStore((s) => s.dailyMovingAverages);
   const storeMasterEnabled = useLivePageStore((s) => s.dailyMovingAverageEnabled);
@@ -72,6 +73,7 @@ function DailyMovingAverageOverlay({ chart, bundle, axis, code, timeframe, venue
       if (!currentIds.has(id)) {
         try { chart.removeSeries(s); } catch { /* torn down */ }
         map.delete(id);
+        useDailyMaSeriesRegistry.getState().unregister(id);
       }
     }
     for (const cfg of configs) {
@@ -92,6 +94,7 @@ function DailyMovingAverageOverlay({ chart, bundle, axis, code, timeframe, venue
             ...createScaleOptions,
           }, 0); // paneIndex 0 — candle pane overlay
           map.set(cfg.id, s);
+          useDailyMaSeriesRegistry.getState().register(cfg.id, s);
         } catch { /* torn down */ }
       } else {
         existing.applyOptions({ color: cfg.color, lineWidth: cfg.lineWidth, ...updateScaleOptions });
@@ -103,8 +106,9 @@ function DailyMovingAverageOverlay({ chart, bundle, axis, code, timeframe, venue
   useEffect(() => {
     return () => {
       const map = seriesByIdRef.current;
-      for (const [, s] of map) {
+      for (const [id, s] of map) {
         try { chart.removeSeries(s); } catch { /* torn down */ }
+        useDailyMaSeriesRegistry.getState().unregister(id);
       }
       map.clear();
     };

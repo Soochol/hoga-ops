@@ -4,6 +4,7 @@ import userEvent from '@testing-library/user-event';
 import PaneLegendOverlay from './PaneLegendOverlay';
 import { useLivePageStore, type LiveTimeframe } from '../state/livePage';
 import { useMaSeriesRegistry } from './indicators/maSeriesRegistry';
+import { useDailyMaSeriesRegistry } from './indicators/dailyMaSeriesRegistry';
 import {
   usePaneLegendRegistry,
   type LegendSeriesEntry,
@@ -60,11 +61,20 @@ function resetStore() {
     ],
     movingAverageEnabled: true,
     movingAverageHidden: false,
+    dailyMovingAverageEnabled: false,
+    dailyMovingAverageHidden: false,
+    askPeakEnabled: false,
+    bidPeakEnabled: false,
+    tradeVolumePocEnabled: false,
+    depthHeatmapEnabled: false,
+    brokerLateEntryEnabled: false,
+    brokerLateEntrySideMode: 'both',
     volumeEnabled: false,
     foreignNetEnabled: false,
     institutionNetEnabled: false,
   });
   useMaSeriesRegistry.setState({ series: new Map() });
+  useDailyMaSeriesRegistry.setState({ series: new Map() });
   usePaneLegendRegistry.setState({ panes: new Map() });
 }
 
@@ -119,6 +129,121 @@ describe('PaneLegendOverlay — candle MA row', () => {
     renderOverlay();
     fireEvent.click(screen.getByRole('button', { name: '이동평균선 선 숨김/표시' }));
     expect(useLivePageStore.getState().movingAverageHidden).toBe(true);
+  });
+});
+
+describe('PaneLegendOverlay — candle-pane indicator rows', () => {
+  beforeEach(resetStore);
+  afterEach(cleanup);
+
+  const minutePanes = () => makeChart([120, 60, 60]);
+  const toggles = { foreignNet: false, institutionNet: false } as PaneToggles;
+
+  it('renders the daily-MA row with the latest-fallback value on a minute timeframe', () => {
+    useLivePageStore.setState({
+      movingAverageEnabled: false,
+      dailyMovingAverageEnabled: true,
+      dailyMovingAverages: [
+        { id: 'dma-1', enabled: true, period: 20, color: '#3485FA', lineWidth: 1, source: 'close' },
+      ],
+    });
+    useDailyMaSeriesRegistry.getState().register('dma-1', seriesWithValue(70500));
+    render(<PaneLegendOverlay chart={minutePanes()} timeframe="1m" paneToggles={toggles} />);
+    expect(screen.getByText('일봉 이동평균선')).toBeInTheDocument();
+    expect(screen.getByText('70,500')).toBeInTheDocument();
+    expect(screen.getByText('20')).toBeInTheDocument();
+  });
+
+  it('hides the daily-MA row on D even when enabled (minute-only overlay)', () => {
+    useLivePageStore.setState({
+      movingAverageEnabled: false,
+      dailyMovingAverageEnabled: true,
+      dailyMovingAverages: [
+        { id: 'dma-1', enabled: true, period: 20, color: '#3485FA', lineWidth: 1, source: 'close' },
+      ],
+    });
+    renderOverlay({ timeframe: 'D' });
+    expect(screen.queryByText('일봉 이동평균선')).toBeNull();
+  });
+
+  it('daily-MA row: eye toggles hidden, ✕ turns the master off', () => {
+    useLivePageStore.setState({
+      movingAverageEnabled: false,
+      dailyMovingAverageEnabled: true,
+      dailyMovingAverages: [
+        { id: 'dma-1', enabled: true, period: 20, color: '#3485FA', lineWidth: 1, source: 'close' },
+      ],
+    });
+    render(<PaneLegendOverlay chart={minutePanes()} timeframe="1m" paneToggles={toggles} />);
+    fireEvent.click(screen.getByRole('button', { name: '일봉 이동평균선 선 숨김/표시' }));
+    expect(useLivePageStore.getState().dailyMovingAverageHidden).toBe(true);
+    fireEvent.click(screen.getByRole('button', { name: '일봉 이동평균선 지표 끄기' }));
+    expect(useLivePageStore.getState().dailyMovingAverageEnabled).toBe(false);
+  });
+
+  it('renders enabled flag rows on a minute timeframe and stacks them with the MA row', () => {
+    useMaSeriesRegistry.getState().register('ma-1', seriesWithValue(100));
+    useLivePageStore.setState({
+      askPeakEnabled: true,
+      bidPeakEnabled: true,
+      tradeVolumePocEnabled: true,
+      depthHeatmapEnabled: true,
+    });
+    render(<PaneLegendOverlay chart={minutePanes()} timeframe="1m" paneToggles={toggles} />);
+    expect(screen.getByText('이동평균선')).toBeInTheDocument();
+    expect(screen.getByText('당일 매도 최대벽')).toBeInTheDocument();
+    expect(screen.getByText('당일 매수 최대벽')).toBeInTheDocument();
+    expect(screen.getByText('당일 최대 매물대')).toBeInTheDocument();
+    expect(screen.getByText('호가 잔량 히트맵')).toBeInTheDocument();
+  });
+
+  it('renders no flag rows on D/W/M (minute-only overlays)', () => {
+    useLivePageStore.setState({ askPeakEnabled: true, depthHeatmapEnabled: true });
+    renderOverlay({ timeframe: 'D' });
+    expect(screen.queryByText('당일 매도 최대벽')).toBeNull();
+    expect(screen.queryByText('호가 잔량 히트맵')).toBeNull();
+  });
+
+  it('✕ on a flag row turns that indicator off in the store', () => {
+    useLivePageStore.setState({ askPeakEnabled: true, depthHeatmapEnabled: true });
+    render(<PaneLegendOverlay chart={minutePanes()} timeframe="1m" paneToggles={toggles} />);
+    fireEvent.click(screen.getByRole('button', { name: '당일 매도 최대벽 지표 끄기' }));
+    expect(useLivePageStore.getState().askPeakEnabled).toBe(false);
+    fireEvent.click(screen.getByRole('button', { name: '호가 잔량 히트맵 지표 끄기' }));
+    expect(useLivePageStore.getState().depthHeatmapEnabled).toBe(false);
+  });
+
+  it('renders the 거래원 등장 flag on the ratio pane when mounted, and ✕ turns it off', () => {
+    useLivePageStore.setState({ movingAverageEnabled: false, brokerLateEntryEnabled: true });
+    // '1m' pane order: candle volume quote-totals ratio fill-strength …
+    render(
+      <PaneLegendOverlay
+        chart={makeChart([120, 60, 60, 60, 60, 60])}
+        timeframe="1m"
+        paneToggles={toggles}
+      />,
+    );
+    expect(screen.getByText('신규 거래원 등장')).toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: '신규 거래원 등장 지표 끄기' }));
+    expect(useLivePageStore.getState().brokerLateEntryEnabled).toBe(false);
+  });
+
+  it('hides the 거래원 등장 flag when the ratio pane is unmounted (호가비 off)', () => {
+    useLivePageStore.setState({ movingAverageEnabled: false, brokerLateEntryEnabled: true });
+    render(
+      <PaneLegendOverlay
+        chart={makeChart([120, 60, 60, 60, 60])}
+        timeframe="1m"
+        paneToggles={{ ...toggles, ratioEnabled: false } as PaneToggles}
+      />,
+    );
+    expect(screen.queryByText('신규 거래원 등장')).toBeNull();
+  });
+
+  it('hides the 거래원 등장 flag on D (분봉 전용)', () => {
+    useLivePageStore.setState({ movingAverageEnabled: false, brokerLateEntryEnabled: true });
+    renderOverlay({ timeframe: 'D', chart: makeChart([120, 60]) });
+    expect(screen.queryByText('신규 거래원 등장')).toBeNull();
   });
 });
 
