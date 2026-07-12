@@ -16,9 +16,11 @@ import type {
 } from './types';
 import type { TrendlineDraft } from './tools';
 import {
+  type FutureBand,
   type PaneSeriesMap,
   priceToCanvasY,
   realMsToCanvasX,
+  realMsToCanvasXClamped,
   totalPanesHeight,
 } from './chartCoordinates';
 
@@ -62,12 +64,21 @@ const MEASURE_UP = '#F43F5E';
 const MEASURE_DOWN = '#3B82F6';
 const MEASURE_FLAT = '#9CA3AF';
 
+function futureBand(ctx: ProjectCtx): FutureBand | undefined {
+  return ctx.lastRealMs != null && ctx.bucketMs != null && ctx.bucketMs > 0
+    ? { lastRealMs: ctx.lastRealMs, bucketMs: ctx.bucketMs }
+    : undefined;
+}
+
 function realMsToX(ctx: ProjectCtx, realMs: number): number | null {
-  const future =
-    ctx.lastRealMs != null && ctx.bucketMs != null && ctx.bucketMs > 0
-      ? { lastRealMs: ctx.lastRealMs, bucketMs: ctx.bucketMs }
-      : undefined;
-  return realMsToCanvasX(ctx.chart, ctx.axis, realMs, future);
+  return realMsToCanvasX(ctx.chart, ctx.axis, realMs, futureBand(ctx));
+}
+
+/** Off-axis-tolerant X for single-anchor drawings (text): snaps a gap/pre-axis
+ *  realMs to the nearest session boundary so the text stays visible + grabbable
+ *  instead of vanishing. See `realMsToCanvasXClamped`. */
+function realMsToXClamped(ctx: ProjectCtx, realMs: number): number | null {
+  return realMsToCanvasXClamped(ctx.chart, ctx.axis, realMs, futureBand(ctx));
 }
 
 function priceToY(ctx: ProjectCtx, price: number): number | null {
@@ -439,7 +450,10 @@ export function renderMeasureDraft(
 }
 
 function renderText(c: CanvasRenderingContext2D, ctx: ProjectCtx, t: Text, selected: boolean) {
-  const x = realMsToX(ctx, t.at.realMs);
+  // Clamped X: a text dragged into an inter-session gap / weekend / pre-axis
+  // must not vanish (it also becomes un-selectable, so it's lost). Snap to the
+  // nearest session boundary — mirrors trendline/rect's `?? 0 / ?? width`.
+  const x = realMsToXClamped(ctx, t.at.realMs);
   const y = priceToY(ctx, t.at.price);
   if (x == null || y == null) return;
   c.save();

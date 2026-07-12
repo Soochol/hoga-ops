@@ -46,6 +46,12 @@ export function distanceToPolyline(p: Pixel, polyline: readonly Pixel[]): number
  * skipped. */
 export interface HitCoord {
   realMsToCanvasX: (realMs: number) => number | null;
+  /** Off-axis-tolerant X for single-anchor drawings (text): snaps a gap/pre-axis
+   *  realMs to the nearest session boundary so an off-axis text stays grabbable
+   *  (it also renders clamped). Optional so existing test stubs that only cover
+   *  hline/trendline/pencil still type-check; text falls back to
+   *  `realMsToCanvasX` when absent. */
+  realMsToCanvasXClamped?: (realMs: number) => number | null;
   priceToCanvasY: (price: number, paneId: PaneId) => number | null;
   paneIdAtY: (py: number) => PaneId | null;
   /** Overlay canvas width in CSS px. Lets a rect whose corner is off the
@@ -108,7 +114,11 @@ export function hitTestDrawings(
         return d;
       }
     } else if (d.kind === 'text') {
-      const x = coord.realMsToCanvasX(d.at.realMs);
+      // Clamped X mirrors renderText: an off-axis text is snapped to the
+      // nearest session boundary so it stays grabbable where it's drawn (not
+      // lost). Fall back to the plain projector for stubs without the clamp.
+      const projectX = coord.realMsToCanvasXClamped ?? coord.realMsToCanvasX;
+      const x = projectX(d.at.realMs);
       const y = coord.priceToCanvasY(d.at.price, d.paneId);
       const w = coord.measureTextWidth?.(d.text, d.fontSize) ?? 0;
       if (
