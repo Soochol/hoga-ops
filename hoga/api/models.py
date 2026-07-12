@@ -748,6 +748,10 @@ class RangeBundle(BaseModel):
     trade_volume_pocs: list[TradeVolumePoc] = Field(default_factory=list)
     volume_distributions: list[DayVolumeDistribution] = Field(default_factory=list)
     program_trade: ProgramTradeSeries = Field(default_factory=ProgramTradeSeries)
+    # hogaplay 캡처 공백을 KIS 분봉으로 복구한 거래일(YYYYMMDD). 승리 소스가 kis_api
+    # + meta.created_from == 'kis_minute_repair'인 날. 프론트가 "KIS 보충 캔들 ·
+    # 호가 지표 없음" 배지를 띄운다. 기본 []라 기존 클라 무영향(hoga.live.candle_repair).
+    repaired_candle_dates: list[str] = Field(default_factory=list)
 
 
 # === Broker Day-Trajectory (ADR-0023) ===

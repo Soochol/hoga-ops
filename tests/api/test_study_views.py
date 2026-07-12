@@ -42,6 +42,49 @@ def study_client(tmp_path):
     return TestClient(app)
 
 
+def test_create_save_fires_reference_saved_hook(tmp_path):
+    """ADR-0109 — 저장 시 on_reference_saved 콜백이 저장된 뷰로 호출된다."""
+    seen: list[StudyViewReference] = []
+    app = FastAPI()
+    app.include_router(build_router(data_dir=tmp_path, on_reference_saved=seen.append))
+    client = TestClient(app)
+
+    resp = client.post("/api/study-views/saves", json=_ref_req())
+    assert resp.status_code == 201
+    assert len(seen) == 1
+    assert seen[0].code == "005930"
+    assert seen[0].range.from_date == "20260616"
+
+
+def test_update_save_fires_reference_saved_hook(tmp_path):
+    seen: list[StudyViewReference] = []
+    app = FastAPI()
+    app.include_router(build_router(data_dir=tmp_path, on_reference_saved=seen.append))
+    client = TestClient(app)
+
+    created = client.post("/api/study-views/saves", json=_ref_req()).json()
+    seen.clear()
+    resp = client.put(f"/api/study-views/saves/{created['id']}", json=_ref_req(name="갱신"))
+    assert resp.status_code == 200
+    assert len(seen) == 1
+    assert seen[0].name == "갱신"
+
+
+def test_reference_saved_hook_failure_does_not_break_save(tmp_path):
+    """훅이 던져도 저장 응답은 성공한다(격리)."""
+    def _boom(_save):
+        raise RuntimeError("repair scheduling failed")
+
+    app = FastAPI()
+    app.include_router(build_router(data_dir=tmp_path, on_reference_saved=_boom))
+    client = TestClient(app)
+
+    resp = client.post("/api/study-views/saves", json=_ref_req())
+    assert resp.status_code == 201
+    # 저장은 실제로 영속된다.
+    assert len(sv.load_saves(tmp_path).saves) == 1
+
+
 def test_reference_write_request_strips_name_and_defaults_optional_fields():
     raw = _ref_req(name="  내 저장뷰  ", memo=None, tags=None)
 

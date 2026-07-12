@@ -190,6 +190,95 @@ def screener_backfill() -> None:
           f"impact(changed_codes={rep['impact']['changed_codes']})")
 
 
+async def _run_repair_sweep(data_dir: Path, *, dry_run: bool) -> None:
+    from hoga.api import study_views  # noqa: PLC0415 — CLI-local
+    from hoga.api.queries import QueryEngine  # noqa: PLC0415
+    from hoga.live import candle_repair  # noqa: PLC0415
+    from hoga.live.kis_runtime import ensure_kis_client_from_env  # noqa: PLC0415
+
+    saves = study_views.load_saves(data_dir).saves
+    if not saves:
+        console.print("[yellow]no saved study views[/yellow]")
+        return
+    engine = QueryEngine(data_dir)
+
+    if dry_run:
+        total_gap = 0
+        for save in saves:
+            gaps = candle_repair.scan_saved_view_gaps(
+                engine, code=save.code,
+                from_date=save.range.from_date, to_date=save.range.to_date,
+            )
+            total_gap += len(gaps)
+            if gaps:
+                console.print(
+                    f"  {save.code} {save.range.from_date}-{save.range.to_date}: "
+                    f"{len(gaps)} gap day(s): {', '.join(gaps)}"
+                )
+        console.print(
+            f"[green]dry-run[/green] {len(saves)} view(s), {total_gap} gap day(s) total"
+        )
+        return
+
+    client = ensure_kis_client_from_env(data_dir)  # account 0; also registers globally
+    if client is None:
+        console.print(
+            "[red]KIS credentials not set (KIS_APP_KEY/SECRET) — cannot repair[/red]"
+        )
+        return
+
+    async def _fetch(code: str, date_s: str):
+        return await client.fetch_past_minute_candles(
+            code, date_s, venue="KRX", foreground=True,
+        )
+
+    tot_r = tot_s = tot_u = tot_e = 0
+    for save in saves:
+        summary = await candle_repair.repair_saved_view_range(
+            engine, data_dir,
+            code=save.code, from_date=save.range.from_date, to_date=save.range.to_date,
+            fetch=_fetch,
+        )
+        if summary is None:
+            console.print("[yellow]repair gated off (kis_rest_bypass enabled)[/yellow]")
+            return
+        tot_r += len(summary.repaired)
+        tot_s += len(summary.skipped)
+        tot_u += len(summary.unavailable)
+        tot_e += len(summary.errors)
+        if summary.repaired or summary.unavailable or summary.errors:
+            console.print(
+                f"  {save.code} {save.range.from_date}-{save.range.to_date}: "
+                f"repaired={summary.repaired} unavailable={summary.unavailable} "
+                f"errors={summary.errors}"
+            )
+    console.print(
+        f"[green]repair done[/green] repaired={tot_r} skipped={tot_s} "
+        f"unavailable={tot_u} errors={tot_e}"
+    )
+
+
+@app.command(name="repair-study-candles")
+def repair_study_candles(
+    dry_run: bool = typer.Option(False, "--dry-run", help="공백만 리포트하고 쓰지 않음"),
+) -> None:
+    """저장된 /study 뷰들의 hogaplay 캡처 공백을 KIS 분봉으로 1회 복구.
+
+    저장뷰가 실제로 가리키는 (종목, 구간)의 과거 거래일 중 캔들이 비는 날만 KIS
+    과거 분봉으로 메워 kis_api/candles.parquet에 박제한다. 멱등(이미 있으면 스킵).
+    KIS_APP_KEY/SECRET 필요. --dry-run은 KIS 미접근으로 공백만 보고한다.
+    """
+    import asyncio  # noqa: PLC0415 — CLI-local
+
+    load_env()  # ADR-0008: KIS 자격증명을 .env에서 로드
+    data_dir = resolve_data_dir()
+    try:
+        asyncio.run(_run_repair_sweep(data_dir, dry_run=dry_run))
+    except Exception as e:  # noqa: BLE001
+        console.print(f"[red]repair-study-candles failed: {e}[/red]")
+        raise typer.Exit(code=1) from e
+
+
 @app.command(name="ls")
 def list_stock_dates() -> None:
     """Show captured/parsed Stock-Dates."""

@@ -33,6 +33,9 @@ function mergeStudyRangeBundles(
 // KIS 지연 칩(LiveDataWarning)으로 표기하면 오해를 준다(디스크는 지연 개념이 없음).
 const EMPTY_WARNINGS: LiveDataWarning[] = [];
 
+// 안정 참조 — 복구일 없을 때 매 렌더 새 배열 생성으로 배지 memo가 깨지지 않도록.
+const EMPTY_REPAIRED_DATES: string[] = [];
+
 // 복기뷰는 hogaplay 정규장 캡처(KRX)만 쓴다 — venue는 KRX 고정. 공유
 // live.venue.v1 스토어를 읽지 않아, /live에서 NXT/통합으로 바꿔도 study는 불변.
 // venue는 캔들 소스엔 무영향이고 세션 경계 폴백 렌더링에만 관여한다.
@@ -119,6 +122,9 @@ export function useStudyReferenceBundle(save: StudyViewReference | null) {
       (pastSidecars.isLoading && pastSidecars.data == null),
     error: pastHoga.error ?? rangeCandles.error ?? screenerDaily.error ?? pastSidecars.error ?? null,
     pastDataWarnings: EMPTY_WARNINGS,
+    // hogaplay 공백을 KIS 분봉으로 복구한 거래일 — 캔들 응답에서만 흐른다(디스크 캡처
+    // 정본). 배지로 "이 날 캔들은 KIS 보충 · 호가 지표 없음"을 알린다.
+    repairedCandleDates: rangeCandles.data?.repaired_candle_dates ?? EMPTY_REPAIRED_DATES,
     venue,
   };
 }
