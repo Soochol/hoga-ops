@@ -11,7 +11,9 @@ import { tradeVolumePocsFromWire } from '../live/tradeVolumePocWire';
 import type { TabViewport } from '../live/viewportAnchor';
 import { useEntryDragStore } from '../state/entryDrag';
 import { useStudyTabsStore } from '../state/studyTabs';
+import { STUDY_DETAIL_PANEL_RAIL_WIDTH_PX, useStudyLayoutStore } from '../state/studyLayout';
 import { isMinuteTimeframe, type LiveTimeframe, type MinuteTimeframe } from '../state/livePage';
+import { DoubleChevronIcon } from '../ui/ChevronIcon';
 import { StudyMemoPanel } from './StudyMemoPanel';
 import { StudyRepairedBadge } from './StudyRepairedBadge';
 import { StudyReferenceDetailPanel } from './StudyReferenceDetailPanel';
@@ -111,6 +113,15 @@ export function StudyPage() {
   const savesQuery = useStudyViews();
   const mutations = useStudyViewMutations();
   const [isMemoOpen, setIsMemoOpen] = useState(false);
+  const detailPanelCollapsed = useStudyLayoutStore((s) => s.detailPanelCollapsed);
+  const setDetailPanelCollapsed = useStudyLayoutStore((s) => s.setDetailPanelCollapsed);
+  // 메모는 상세 패널 aside 안에 산다 — 접힌 채로 열면 안 보이므로 열 때 자동 펼침.
+  const openMemo = useCallback(() => {
+    setIsMemoOpen((value) => {
+      if (!value) setDetailPanelCollapsed(false);
+      return !value;
+    });
+  }, [setDetailPanelCollapsed]);
   const [indicatorPanelOpen, setIndicatorPanelOpen] = useState(false);
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [memoError, setMemoError] = useState<string | null>(null);
@@ -511,7 +522,7 @@ export function StudyPage() {
                 onOpenIndicators={() => setIndicatorPanelOpen(true)}
                 onOpenSettings={() => setSettingsOpen(true)}
               />
-              <IconToolbarButton onClick={() => setIsMemoOpen((value) => !value)} className="shrink-0">
+              <IconToolbarButton onClick={openMemo} className="shrink-0">
                 메모
               </IconToolbarButton>
             </div>
@@ -519,7 +530,12 @@ export function StudyPage() {
           <div
             ref={studyDropTargetRef}
             data-testid="study-drop-target"
-            className="relative grid min-h-0 grid-cols-[minmax(0,1fr)_var(--sidebar-w)]"
+            className="relative grid min-h-0"
+            style={{
+              gridTemplateColumns: detailPanelCollapsed
+                ? `minmax(0,1fr) ${STUDY_DETAIL_PANEL_RAIL_WIDTH_PX}px`
+                : 'minmax(0,1fr) var(--sidebar-w)',
+            }}
             onWheelCapture={handleWheelCapture}
           >
             <div className="relative min-h-0 min-w-0 overflow-hidden">
@@ -558,23 +574,51 @@ export function StudyPage() {
               role="complementary"
               aria-label="Study Detail Panel"
               data-testid={selectedSave ? studyReferenceDetailPanelTestId(selectedSave) : undefined}
-              className="relative z-10 grid min-h-0 grid-rows-[auto_minmax(0,1fr)] overflow-y-auto overflow-x-hidden border-l border-[var(--border)] bg-bg-subtle/40"
+              className={
+                detailPanelCollapsed
+                  ? 'relative z-10 flex min-h-0 border-l border-[var(--border)] bg-bg-subtle/40'
+                  : 'relative z-10 grid min-h-0 grid-rows-[auto_minmax(0,1fr)] overflow-y-auto overflow-x-hidden border-l border-[var(--border)] bg-bg-subtle/40'
+              }
               style={{ scrollbarGutter: 'stable' }}
             >
-              {activeViewModel.status === 'ready' && (
-                <StudyReferenceDetailPanel
-                  save={activeViewModel.save}
-                  bundle={activeViewModel.bundle}
-                />
-              )}
-              {isMemoOpen && selectedSave && (
-                <StudyMemoPanel
-                  memo={selectedSave.memo}
-                  isSaving={mutations.updateMetadata.isPending}
-                  errorMessage={memoError}
-                  onClose={() => setIsMemoOpen(false)}
-                  onCommit={commitMemo}
-                />
+              {detailPanelCollapsed ? (
+                <button
+                  type="button"
+                  data-testid="study-detail-rail"
+                  aria-label="상세 패널 펼치기"
+                  aria-expanded={false}
+                  onClick={() => setDetailPanelCollapsed(false)}
+                  className="flex w-full flex-col items-center gap-2.5 pt-2 text-fg-dimmer hover:text-fg"
+                >
+                  <DoubleChevronIcon direction="left" />
+                  <span
+                    style={{
+                      writingMode: 'vertical-rl',
+                      fontSize: 'var(--text-xs)',
+                      letterSpacing: '0.15em',
+                    }}
+                  >
+                    상세
+                  </span>
+                </button>
+              ) : (
+                <>
+                  {activeViewModel.status === 'ready' && (
+                    <StudyReferenceDetailPanel
+                      save={activeViewModel.save}
+                      bundle={activeViewModel.bundle}
+                    />
+                  )}
+                  {isMemoOpen && selectedSave && (
+                    <StudyMemoPanel
+                      memo={selectedSave.memo}
+                      isSaving={mutations.updateMetadata.isPending}
+                      errorMessage={memoError}
+                      onClose={() => setIsMemoOpen(false)}
+                      onCommit={commitMemo}
+                    />
+                  )}
+                </>
               )}
             </aside>
             {draggingEntry && overStudy && <StudyDropOverlay />}

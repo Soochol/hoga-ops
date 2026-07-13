@@ -1,5 +1,5 @@
 import { render, screen } from '@testing-library/react';
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 import {
   DataSection,
   DataTableHeader,
@@ -71,6 +71,48 @@ describe('DataSurface primitives', () => {
 
     expect(screen.getByText('Active')).toHaveClass('bg-tint-selection');
     expect(screen.getByText('Inactive')).toHaveClass('hover:bg-bg-input-hover');
+  });
+
+  it('renders a static header with no toggle button when not collapsible', () => {
+    render(<DataSection title="10호가">rows</DataSection>);
+    expect(screen.queryByRole('button')).toBeNull();
+    expect(screen.getByText('rows')).toBeInTheDocument();
+  });
+
+  it('turns the header into a toggle button when collapsible and reflects expanded state', () => {
+    const onToggle = vi.fn();
+    render(
+      <DataSection title="10호가" onToggleCollapse={onToggle} toggleTestId="toggle-orderbook">
+        rows
+      </DataSection>,
+    );
+
+    const button = screen.getByTestId('toggle-orderbook');
+    expect(button).toHaveAttribute('aria-expanded', 'true');
+    expect(button).toHaveAttribute('aria-label', '10호가 접기');
+    button.click();
+    expect(onToggle).toHaveBeenCalledTimes(1);
+    expect(screen.getByText('rows')).toBeInTheDocument();
+  });
+
+  it('unmounts content and shows the empty dot only when collapsed and empty', () => {
+    const { rerender } = render(
+      <DataSection title="거래원" collapsed onToggleCollapse={() => {}} showEmptyDot>
+        rows
+      </DataSection>,
+    );
+
+    expect(screen.queryByText('rows')).toBeNull();
+    expect(screen.getByRole('button')).toHaveAttribute('aria-expanded', 'false');
+    expect(screen.getByText('데이터 없음')).toBeInTheDocument();
+
+    rerender(
+      <DataSection title="거래원" collapsed={false} onToggleCollapse={() => {}} showEmptyDot>
+        rows
+      </DataSection>,
+    );
+    expect(screen.getByText('rows')).toBeInTheDocument();
+    expect(screen.queryByText('데이터 없음')).toBeNull();
   });
 
   it('renders empty states, form fields, and inline state tones', () => {

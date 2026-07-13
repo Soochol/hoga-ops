@@ -6,32 +6,78 @@ import type {
   ReactNode,
 } from 'react';
 import { useId } from 'react';
+import { ChevronIcon } from './ChevronIcon';
 
+/**
+ * 데이터 섹션 — 단일 표면 안의 divider 기반 카드(중첩 카드 크롬 금지, DESIGN.md).
+ * `onToggleCollapse` 를 넘기면 접기 가능해지고 헤더 전체가 토글 버튼이 된다. 넘기지
+ * 않으면(대부분의 호출부) 기존 정적 헤더 그대로라 렌더가 불변한다. 접힘 시 본문은
+ * unmount(SSE 틱마다 도는 테이블 재렌더 정지 = 성능 이득). 높이는 스냅(무애니메이션),
+ * chevron 회전만 150ms.
+ */
 export function DataSection({
   title,
   children,
   className = '',
   contentClassName = '',
+  collapsed = false,
+  onToggleCollapse,
+  showEmptyDot = false,
+  toggleTestId,
 }: {
   title: ReactNode;
   children: ReactNode;
   className?: string;
   contentClassName?: string;
+  collapsed?: boolean;
+  onToggleCollapse?: () => void;
+  showEmptyDot?: boolean;
+  toggleTestId?: string;
 }) {
   const headerId = useId();
+  const label = typeof title === 'string' ? title : undefined;
+  const collapsible = typeof onToggleCollapse === 'function';
   return (
     <section
-      aria-label={typeof title === 'string' ? title : undefined}
+      aria-label={label}
       aria-labelledby={headerId}
       className={`border-t border-border first:border-t-0 ${className}`.trim()}
     >
-      <header
-        id={headerId}
-        className="border-b border-border px-3 py-2 text-xs font-semibold uppercase tracking-[0.08em] text-fg-dimmer"
-      >
-        {title}
-      </header>
-      <div className={contentClassName}>{children}</div>
+      {collapsible ? (
+        <header
+          id={headerId}
+          className="border-b border-border text-xs font-semibold uppercase tracking-[0.08em] text-fg-dimmer"
+        >
+          <button
+            type="button"
+            data-testid={toggleTestId}
+            aria-expanded={!collapsed}
+            aria-label={label ? `${label} ${collapsed ? '펼치기' : '접기'}` : undefined}
+            onClick={onToggleCollapse}
+            className="flex w-full items-center gap-1.5 px-3 py-2 text-left hover:bg-bg-input-hover"
+          >
+            <ChevronIcon collapsed={collapsed} />
+            <span className="min-w-0 flex-1 truncate">{title}</span>
+            {collapsed && showEmptyDot && (
+              <>
+                <span
+                  aria-hidden
+                  className="ml-1 inline-block h-1.5 w-1.5 shrink-0 rounded-full bg-fg-dimmer"
+                />
+                <span className="sr-only">데이터 없음</span>
+              </>
+            )}
+          </button>
+        </header>
+      ) : (
+        <header
+          id={headerId}
+          className="border-b border-border px-3 py-2 text-xs font-semibold uppercase tracking-[0.08em] text-fg-dimmer"
+        >
+          {title}
+        </header>
+      )}
+      {!collapsed && <div className={contentClassName}>{children}</div>}
     </section>
   );
 }

@@ -34,9 +34,11 @@ import { realMsToYyyymmdd } from './liveDateTime';
 import type { TradeVolumePoc } from './tradeVolumePoc';
 import {
   clampRightPanelWidth,
+  DETAIL_PANEL_RAIL_WIDTH_PX,
   LIVE_WORKAREA_SPLITTER_WIDTH_PX,
   useLiveLayoutStore,
 } from '../state/liveLayout';
+import { DoubleChevronIcon } from '../ui/ChevronIcon';
 
 /** 관심종목 행을 차트로 드래그할 때 워크에어리어 위에 뜨는 드롭 타깃 오버레이.
  *  드래그 고스트는 패널 overflow 경계에서 잘리므로 워크에어리어 자체를 어포던스로 쓴다.
@@ -191,6 +193,8 @@ export function LiveWorkarea({
   const clearChartTarget = useEntryDragStore((s) => s.clearChartTarget);
   const rightPanelWidthPx = useLiveLayoutStore((s) => s.rightPanelWidthPx);
   const setRightPanelWidthPx = useLiveLayoutStore((s) => s.setRightPanelWidthPx);
+  const detailPanelCollapsed = useLiveLayoutStore((s) => s.detailPanelCollapsed);
+  const setDetailPanelCollapsed = useLiveLayoutStore((s) => s.setDetailPanelCollapsed);
   const activeResizeCleanupRef = useRef<(() => void) | null>(null);
   const [workareaWidthPx, setWorkareaWidthPx] = useState<number | null>(null);
   useEffect(() => {
@@ -330,7 +334,9 @@ export function LiveWorkarea({
     background: 'var(--bg-card)',
     boxShadow: 'var(--shadow-panel)',
   };
-  const detailPanelVisible = !isIndexInstrument;
+  // 지수 종목은 애초에 상세 패널이 없다(available=false). 그 외엔 사용자 접힘 선호를 반영.
+  const detailPanelAvailable = !isIndexInstrument;
+  const detailPanelVisible = detailPanelAvailable && !detailPanelCollapsed;
   const renderedRightPanelWidthPx = workareaWidthPx != null
     ? clampRightPanelWidth(
       rightPanelWidthPx,
@@ -480,6 +486,42 @@ export function LiveWorkarea({
                 />
               </div>
             </>
+          )}
+          {detailPanelAvailable && detailPanelCollapsed && (
+            <button
+              type="button"
+              data-testid="live-detail-rail"
+              aria-label="상세 패널 펼치기"
+              aria-expanded={false}
+              onClick={() => setDetailPanelCollapsed(false)}
+              style={{
+                width: DETAIL_PANEL_RAIL_WIDTH_PX,
+                flexShrink: 0,
+                display: 'flex',
+                flexDirection: 'column',
+                alignItems: 'center',
+                gap: 10,
+                paddingTop: 8,
+                minHeight: 0,
+                border: '1px solid var(--border)',
+                borderRadius: 8,
+                background: 'var(--bg-card)',
+                boxShadow: 'var(--shadow-panel)',
+                color: 'var(--fg-dimmer)',
+                cursor: 'pointer',
+              }}
+            >
+              <DoubleChevronIcon direction="left" />
+              <span
+                style={{
+                  writingMode: 'vertical-rl',
+                  fontSize: 'var(--text-xs)',
+                  letterSpacing: '0.15em',
+                }}
+              >
+                상세
+              </span>
+            </button>
           )}
         </>
       )}

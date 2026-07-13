@@ -10,6 +10,7 @@ import { useStudyTabsStore } from '../state/studyTabs';
 import { useEntryDragStore } from '../state/entryDrag';
 import { useLivePageStore } from '../state/livePage';
 import { useLiveTabsStore } from '../state/liveTabs';
+import { useStudyLayoutStore } from '../state/studyLayout';
 
 const {
   useStudyViewsMock,
@@ -254,6 +255,7 @@ beforeEach(() => {
   });
   useStudyTabsStore.setState({ tabs: [], activeTabId: null });
   useEntryDragStore.setState({ draggingCode: null, overStudy: false });
+  useStudyLayoutStore.setState({ cardCollapsed: {}, detailPanelCollapsed: false });
 });
 
 describe('StudyPage', () => {
@@ -649,6 +651,59 @@ describe('StudyPage', () => {
     expect(screen.getByText('+1,200')).toBeTruthy();
     expect(screen.getByTestId('volume-distribution-card')).toBeTruthy();
     expect(screen.getByText('+1억')).toBeTruthy();
+  });
+
+  it('collapses a study detail card via its header toggle and persists', () => {
+    renderPage('/study?view=view-ref');
+
+    expect(screen.getByTestId('study-detail-content-orderbook')).toBeInTheDocument();
+    act(() => {
+      screen.getByTestId('study-detail-toggle-orderbook').click();
+    });
+    expect(useStudyLayoutStore.getState().cardCollapsed.orderbook).toBe(true);
+    expect(screen.queryByTestId('study-detail-content-orderbook')).toBeNull();
+    expect(
+      JSON.parse(localStorage.getItem('study.layout.v1') ?? '{}').cardCollapsed.orderbook,
+    ).toBe(true);
+  });
+
+  it('collapses the whole study detail panel to a rail and restores it on click', () => {
+    useStudyLayoutStore.setState({ detailPanelCollapsed: true });
+    renderPage('/study?view=view-ref');
+
+    expect(screen.queryByTestId('study-reference-detail-cards')).toBeNull();
+    const rail = screen.getByTestId('study-detail-rail');
+    expect(rail).toHaveAttribute('aria-label', '상세 패널 펼치기');
+
+    act(() => {
+      rail.click();
+    });
+    expect(useStudyLayoutStore.getState().detailPanelCollapsed).toBe(false);
+    expect(screen.getByTestId('study-reference-detail-cards')).toBeInTheDocument();
+  });
+
+  it('toggles the study detail panel with the d shortcut', () => {
+    renderPage('/study?view=view-ref');
+
+    act(() => {
+      fireEvent.keyDown(window, { key: 'd' });
+    });
+    expect(useStudyLayoutStore.getState().detailPanelCollapsed).toBe(true);
+    act(() => {
+      fireEvent.keyDown(window, { key: 'd' });
+    });
+    expect(useStudyLayoutStore.getState().detailPanelCollapsed).toBe(false);
+  });
+
+  it('auto-expands the collapsed detail panel when the memo opens', () => {
+    useStudyLayoutStore.setState({ detailPanelCollapsed: true });
+    renderPage('/study?view=view-ref');
+
+    expect(screen.getByTestId('study-detail-rail')).toBeInTheDocument();
+    act(() => {
+      screen.getByRole('button', { name: '메모' }).click();
+    });
+    expect(useStudyLayoutStore.getState().detailPanelCollapsed).toBe(false);
   });
 
   it('waits for the debounced sidebar cursor before activating reference spot details', () => {
