@@ -4017,10 +4017,10 @@ describe('LiveChartRoot wheel interactions wiring', () => {
     const options = vi.mocked(createChartEx).mock.calls.at(-1)![2] as {
       layout?: { textColor?: string; panes?: { separatorColor?: string; separatorHoverColor?: string } };
     };
-    // Dedicated --chart-pane-divider (dark fallback), stronger than the old
-    // --border-strong so the 1px line reads on the busy candle pane.
-    expect(options.layout?.panes?.separatorColor).toBe('#44444F');
-    expect(options.layout?.panes?.separatorHoverColor).toBe('#44444F');
+    // Dedicated --chart-pane-divider (dark fallback), tuned for luminance
+    // contrast against --bg-card so the 2px line reads on the busy dark chart.
+    expect(options.layout?.panes?.separatorColor).toBe('#63636F');
+    expect(options.layout?.panes?.separatorHoverColor).toBe('#63636F');
     expect(options.layout?.panes?.separatorHoverColor).not.toBe(options.layout?.textColor);
   });
 

@@ -30,9 +30,12 @@
   --border: #232329;
   --border-strong: #33333c;
   /* Chart pane separator (lightweight-charts layout.panes) — one notch stronger
-     than --border-strong so the 1px inter-pane line survives the busy candle
-     pane on both themes. Chart-scoped; do not reuse for app chrome. */
-  --chart-pane-divider: #44444f;
+     than --border-strong so the inter-pane line survives the busy candle pane
+     on both themes. Chart-scoped; do not reuse for app chrome. Tuned for
+     luminance contrast against --bg-card (#121216), not to match border-strong:
+     a 2px line at #44444f (Δ~50) still washed out on the dark chart, so this
+     sits well above it (Δ~80). */
+  --chart-pane-divider: #63636f;
 
   /* ───── Color · Foreground ───── */
   --fg: #ececf1;
@@ -177,8 +180,9 @@
   /* ───── Borders (괘선) ───── */
   --border: #e4e0d3;
   --border-strong: #c9c3b2;
-  /* Chart pane separator — darker warm gray so the 1px line reads on ivory. */
-  --chart-pane-divider: #b4ad98;
+  /* Chart pane separator — darker warm gray so the line reads on ivory even
+     over the candle pane's busy content (Δ~99 vs --bg-card #fdfcf8). */
+  --chart-pane-divider: #9a917c;
 
   /* ───── Foreground (ink) ───── */
   --fg: #1e2732;
