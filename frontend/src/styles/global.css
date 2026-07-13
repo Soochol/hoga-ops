@@ -78,6 +78,26 @@ body {
   .toast-progress { display: none; }
 }
 
+/* Chart pane 구분선 강조 — lightweight-charts 는 pane separator 를 상수 1px
+   td background 로만 그려, separatorColor 를 진하게 해도 선이 얇아 묻힌다(마우스
+   호버 시에만 9px resize 핸들이 칠해져 보였다). 구분선 셀(= colspan=3 td 만 가진
+   유일한 행)에 레이아웃을 건드리지 않는 ::after 2px 라인을 얹어 항상 명확히
+   보이게 한다. td 는 라이브러리가 position:relative 로 두므로 절대배치가 셀에
+   고정되고, top:50%+translateY(-50%) 로 1px 행 위에 2px 라인만 중앙 정렬된다.
+   .live-chart-canvas 로 스코프해 heatmap·study 상세의 다른 lightweight-charts
+   인스턴스엔 영향이 없다. 색은 --chart-pane-divider 토큰(양 테마). */
+.live-chart-canvas .tv-lightweight-charts td[colspan='3']::after {
+  content: '';
+  position: absolute;
+  left: 0;
+  right: 0;
+  top: 50%;
+  transform: translateY(-50%);
+  height: 2px;
+  background: var(--chart-pane-divider);
+  pointer-events: none;
+}
+
 /* 다크 테마 스크롤바 — 전역. 토큰만 사용(DESIGN.md, 그라데이션/장식 금지).
    실제 렌더 환경은 WebKit/Chromium(Vite dev + /browse). lightweight-charts
    캔버스는 자체 캔버스라 영향 없음. */

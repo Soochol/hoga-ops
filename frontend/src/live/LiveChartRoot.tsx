@@ -1750,6 +1750,7 @@ export function LiveChartRoot({
     >
       <div
         ref={containerRef}
+        className="live-chart-canvas"
         style={{ width: '100%', height: '100%', background: 'var(--bg-card)' }}
       />
       {chart && cb && axis.segments.length > 0 && (
