@@ -29,6 +29,10 @@
   /* ───── Color · Borders ───── */
   --border: #232329;
   --border-strong: #33333c;
+  /* Chart pane separator (lightweight-charts layout.panes) — one notch stronger
+     than --border-strong so the 1px inter-pane line survives the busy candle
+     pane on both themes. Chart-scoped; do not reuse for app chrome. */
+  --chart-pane-divider: #44444f;
 
   /* ───── Color · Foreground ───── */
   --fg: #ececf1;
@@ -173,6 +177,8 @@
   /* ───── Borders (괘선) ───── */
   --border: #e4e0d3;
   --border-strong: #c9c3b2;
+  /* Chart pane separator — darker warm gray so the 1px line reads on ivory. */
+  --chart-pane-divider: #b4ad98;
 
   /* ───── Foreground (ink) ───── */
   --fg: #1e2732;

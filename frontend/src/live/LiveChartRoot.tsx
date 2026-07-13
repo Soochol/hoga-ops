@@ -95,6 +95,7 @@ const TOKEN_SPEC = {
   grid: ['--grid', '#1B1B21'],
   border: ['--border', '#232329'],
   borderStrong: ['--border-strong', '#33333C'],
+  paneDivider: ['--chart-pane-divider', '#44444F'],
 } as const;
 
 function chartGridOptions(
@@ -1029,8 +1030,8 @@ export function LiveChartRoot({
         background: { color: tokens.bgCard },
         textColor: tokens.fg,
         panes: {
-          separatorColor: tokens.borderStrong,
-          separatorHoverColor: tokens.borderStrong,
+          separatorColor: tokens.paneDivider,
+          separatorHoverColor: tokens.paneDivider,
         },
       },
       grid: chartGridOptions(
