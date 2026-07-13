@@ -1,18 +1,56 @@
 import { fireEvent, render, screen } from '@testing-library/react';
 import { it, expect, vi } from 'vitest';
-import { LiveTabOverflowMenu } from './LiveTabOverflowMenu';
-import type { LiveTab } from '../state/liveTabs';
+import { useState } from 'react';
+import { ChartTabOverflowMenu } from './ChartTabOverflowMenu';
 
-const tabs: LiveTab[] = [
-  { id: 'a', code: '005930', label: '삼성전자', timeframe: '1m', historicalFromDate: null },
-  { id: 'b', code: '000660', label: 'SK하이닉스', timeframe: '1m', historicalFromDate: null },
-  { id: 'c', code: '035420', label: 'NAVER', timeframe: 'D', historicalFromDate: null },
+type TestTab = {
+  id: string;
+  code: string;
+  label: string;
+  timeframe: '1m' | 'D';
+  pinned?: boolean;
+};
+
+const TF_LABEL: Record<TestTab['timeframe'], string> = { '1m': '1분봉', D: '일봉' };
+const renderLabel = (t: TestTab) => `${t.label} ${TF_LABEL[t.timeframe]}`;
+
+const tabs: TestTab[] = [
+  { id: 'a', code: '005930', label: '삼성전자', timeframe: '1m' },
+  { id: 'b', code: '000660', label: 'SK하이닉스', timeframe: '1m' },
+  { id: 'c', code: '035420', label: 'NAVER', timeframe: 'D' },
 ];
 
-function setup() {
+function Harness({ tabs, activeTabId, onFocus, onClose }: {
+  tabs: TestTab[];
+  activeTabId: string | null;
+  onFocus: (id: string) => void;
+  onClose: (id: string) => void;
+}) {
+  const [open, setOpen] = useState(false);
+  return (
+    <ChartTabOverflowMenu
+      tabs={tabs}
+      activeTabId={activeTabId}
+      renderLabel={renderLabel}
+      onFocus={onFocus}
+      onClose={onClose}
+      open={open}
+      onOpenChange={setOpen}
+    />
+  );
+}
+
+function setup(override: { tabs?: TestTab[]; activeTabId?: string } = {}) {
   const onFocus = vi.fn();
   const onClose = vi.fn();
-  render(<LiveTabOverflowMenu tabs={tabs} activeTabId="b" onFocus={onFocus} onClose={onClose} />);
+  render(
+    <Harness
+      tabs={override.tabs ?? tabs}
+      activeTabId={override.activeTabId ?? 'b'}
+      onFocus={onFocus}
+      onClose={onClose}
+    />,
+  );
   return { onFocus, onClose };
 }
 
@@ -36,7 +74,7 @@ it('filters by label and code', () => {
   expect(screen.queryByText('삼성전자 1분봉')).toBeNull();
 });
 
-it('filters by the visible timeframe label', () => {
+it('filters by the visible display label (renderLabel output)', () => {
   setup();
   fireEvent.click(screen.getByLabelText('열린 탭 목록'));
   fireEvent.change(screen.getByPlaceholderText('탭 검색'), { target: { value: '일봉' } });
@@ -74,16 +112,13 @@ it('shows an empty state when no tabs match the query', () => {
 });
 
 it('bounds the rendered result list and lets search reach later tabs', () => {
-  const manyTabs = Array.from({ length: 250 }, (_, index): LiveTab => ({
+  const manyTabs = Array.from({ length: 250 }, (_, index): TestTab => ({
     id: `tab-${index}`,
     code: String(100000 + index),
     label: `종목 ${index + 1}`,
     timeframe: '1m',
-    historicalFromDate: null,
   }));
-  const onFocus = vi.fn();
-  const onClose = vi.fn();
-  render(<LiveTabOverflowMenu tabs={manyTabs} activeTabId="tab-0" onFocus={onFocus} onClose={onClose} />);
+  const { onFocus } = setup({ tabs: manyTabs, activeTabId: 'tab-0' });
   fireEvent.click(screen.getByLabelText('열린 탭 목록'));
 
   expect(screen.queryByText('종목 250 1분봉')).toBeNull();
@@ -110,4 +145,11 @@ it('closes a tab from the list without selecting it or dismissing the dialog', (
   expect(onClose).toHaveBeenCalledWith('a');
   expect(onFocus).not.toHaveBeenCalled();
   expect(screen.getByRole('dialog', { name: '열린 탭' })).toBeInTheDocument();
+});
+
+it('shows a pinned marker instead of a close button for pinned tabs', () => {
+  setup({ tabs: [{ ...tabs[0], pinned: true }, tabs[1]], activeTabId: 'b' });
+  fireEvent.click(screen.getByLabelText('열린 탭 목록'));
+  expect(screen.getByLabelText('고정된 탭: 삼성전자 1분봉')).toBeInTheDocument();
+  expect(screen.queryByLabelText('탭 닫기: 삼성전자 1분봉')).toBeNull();
 });

@@ -1,7 +1,10 @@
-import { useEffect, useRef, useState, type CSSProperties, type ReactNode } from 'react';
+import { useCallback, useEffect, useRef, useState, type CSSProperties } from 'react';
 import { dropIndicatorClass, sortableDraggingStyle, type DropIndicator } from '../ui/sortableDragVisuals';
+import { ChartTabOverflowMenu } from './ChartTabOverflowMenu';
 
 const MAX_RENDERED_TABS = 24;
+/** 가장자리 페이드 폭(px) — 탭이 "잘린 게 아니라 이어진다"는 스크롤 어포던스. */
+const EDGE_FADE_PX = 28;
 
 type ChartTabLike = {
   id: string;
@@ -34,7 +37,6 @@ type Props<T extends ChartTabLike> = {
   renderLabel: (tab: T) => string;
   renderLabelParts?: (tab: T) => ChartTabLabelParts;
   newTabButton?: NewTabButtonProps | null;
-  trailingActions?: ReactNode;
   tabCountLabel?: (count: number) => string;
   tablistAriaLabel?: string;
   tabStatus?: (tab: T, active: boolean) => ChartTabStatus;
@@ -59,15 +61,18 @@ export function ChartTabBar<T extends ChartTabLike>({
   renderLabel,
   renderLabelParts,
   newTabButton,
-  trailingActions,
   tabCountLabel = (count) => `${count} open`,
   tablistAriaLabel = '열린 탭',
   tabStatus,
   onTogglePin,
 }: Props<T>) {
   const activeElRef = useRef<HTMLDivElement | null>(null);
+  const tablistRef = useRef<HTMLDivElement | null>(null);
   const [draggingTab, setDraggingTab] = useState<{ id: string; index: number; pinned: boolean } | null>(null);
   const [dropTargetId, setDropTargetId] = useState<string | null>(null);
+  const [menuOpen, setMenuOpen] = useState(false);
+  // 스크롤 오버플로 상태: 좌/우 페이드 여부 + 뷰포트 밖으로 밀려난(렌더는 됐지만 안 보이는) 탭 수.
+  const [overflow, setOverflow] = useState({ left: false, right: false, offscreen: 0 });
   const activeIdx = Math.max(0, tabs.findIndex((tab) => tab.id === activeTabId));
   const windowStart = tabs.length <= MAX_RENDERED_TABS
     ? 0
@@ -83,18 +88,83 @@ export function ChartTabBar<T extends ChartTabLike>({
     }
   }, [activeTabId]);
 
+  /** 탭 중심점이 스크롤 뷰포트 밖이면 '가려짐'으로 센다. */
+  const measureOverflow = useCallback(() => {
+    const el = tablistRef.current;
+    if (!el) return;
+    const { scrollLeft, clientWidth, scrollWidth } = el;
+    const left = scrollLeft > 1;
+    const right = scrollLeft + clientWidth < scrollWidth - 1;
+    let offscreen = 0;
+    if (left || right) {
+      el.querySelectorAll<HTMLElement>('[data-tab-id]').forEach((child) => {
+        const mid = child.offsetLeft + child.offsetWidth / 2;
+        if (mid < scrollLeft || mid > scrollLeft + clientWidth) offscreen += 1;
+      });
+    }
+    setOverflow((prev) =>
+      prev.left === left && prev.right === right && prev.offscreen === offscreen
+        ? prev
+        : { left, right, offscreen },
+    );
+  }, []);
+
+  useEffect(() => {
+    const el = tablistRef.current;
+    if (!el) return;
+    el.addEventListener('scroll', measureOverflow, { passive: true });
+    const ro = typeof ResizeObserver !== 'undefined' ? new ResizeObserver(measureOverflow) : null;
+    ro?.observe(el);
+    return () => {
+      el.removeEventListener('scroll', measureOverflow);
+      ro?.disconnect();
+    };
+  }, [measureOverflow]);
+
+  // 탭 추가/삭제/라벨 변경으로 폭이 바뀌면 재측정 (scroll 이벤트가 안 오는 경우 커버).
+  useEffect(() => {
+    measureOverflow();
+  }, [tabs, measureOverflow]);
+
+  // 세로 휠을 가로 스크롤로 변환. preventDefault가 필요해 non-passive 네이티브 리스너 사용.
+  useEffect(() => {
+    const el = tablistRef.current;
+    if (!el) return;
+    const onWheel = (e: WheelEvent) => {
+      if (Math.abs(e.deltaY) <= Math.abs(e.deltaX)) return; // 트랙패드 가로 제스처는 기본 동작 유지
+      if (el.scrollWidth <= el.clientWidth) return;
+      e.preventDefault();
+      el.scrollLeft += e.deltaY;
+    };
+    el.addEventListener('wheel', onWheel, { passive: false });
+    return () => el.removeEventListener('wheel', onWheel);
+  }, []);
+
   const clearDragVisuals = () => {
     setDraggingTab(null);
     setDropTargetId(null);
   };
 
+  // 스크롤 여지가 있는 쪽에만 가장자리 페이드 마스크를 건다.
+  const fadeMask = overflow.left && overflow.right
+    ? `linear-gradient(to right, transparent, black ${EDGE_FADE_PX}px, black calc(100% - ${EDGE_FADE_PX}px), transparent)`
+    : overflow.left
+      ? `linear-gradient(to right, transparent, black ${EDGE_FADE_PX}px)`
+      : overflow.right
+        ? `linear-gradient(to right, black calc(100% - ${EDGE_FADE_PX}px), transparent)`
+        : undefined;
+  // 가려진 탭 = 렌더 윈도우 밖으로 잘린 탭 + 뷰포트 밖으로 스크롤된 탭.
+  const hiddenCount = tabs.length - visibleTabs.length + overflow.offscreen;
+  const fullLabel = (tab: T) => renderLabelParts?.(tab).full ?? renderLabel(tab);
+
   return (
     <div className="flex h-full min-w-0 items-end gap-1 px-2 font-ui" style={{ background: 'var(--bg-subtle)' }}>
       <div
+        ref={tablistRef}
         role="tablist"
         aria-label={tablistAriaLabel}
         className="flex min-w-0 flex-1 items-end gap-0.5 overflow-x-auto overflow-y-hidden"
-        style={{ scrollbarWidth: 'none' }}
+        style={{ scrollbarWidth: 'none', maskImage: fadeMask, WebkitMaskImage: fadeMask }}
         onDragLeave={(e) => {
           if (!e.currentTarget.contains(e.relatedTarget as Node | null)) setDropTargetId(null);
         }}
@@ -237,6 +307,18 @@ export function ChartTabBar<T extends ChartTabLike>({
         )}
       </div>
       <div className="flex items-center gap-1 self-center shrink-0">
+        {hiddenCount > 0 && (
+          <button
+            type="button"
+            aria-label={`가려진 탭 ${hiddenCount}개 목록 열기`}
+            title={`가려진 탭 ${hiddenCount}개 — 클릭하면 전체 목록`}
+            onClick={() => setMenuOpen(true)}
+            className="h-7 px-2 flex items-center rounded-md font-mono text-xs"
+            style={{ color: 'var(--accent)', background: 'var(--tint-selection)', border: '1px solid var(--border)' }}
+          >
+            +{hiddenCount}
+          </button>
+        )}
         {newTabButton && (
           <button
             type="button"
@@ -251,7 +333,15 @@ export function ChartTabBar<T extends ChartTabLike>({
             </svg>
           </button>
         )}
-        {trailingActions}
+        <ChartTabOverflowMenu
+          tabs={tabs}
+          activeTabId={activeTabId}
+          renderLabel={fullLabel}
+          onFocus={onFocus}
+          onClose={onClose}
+          open={menuOpen}
+          onOpenChange={setMenuOpen}
+        />
         <span className="text-xs font-mono whitespace-nowrap" style={{ color: 'var(--fg-dimmer)' }}>
           {tabCountLabel(tabs.length)}
         </span>
