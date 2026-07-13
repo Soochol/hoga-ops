@@ -125,6 +125,9 @@ export type ActiveViewProjection = {
   code: string | null;
   timeframe: LiveTimeframe;
   historicalFromDate: string | null;
+  /** 탭이 들고 온 분봉 창 기억. 생략(undefined) 시 레거시 derive 폴백
+   *  (분봉이면 historicalFromDate, 아니면 null). */
+  lastMinuteHistoricalFromDate?: string | null;
   viewport?: TabViewport | null;
 };
 
@@ -773,7 +776,7 @@ export const useLivePageStore = create<Store>((set, get) => ({
     persistIndicators(snapshotIndicators(get));
   },
 
-  projectActiveView: ({ instrument, code, timeframe, historicalFromDate, viewport }) => {
+  projectActiveView: ({ instrument, code, timeframe, historicalFromDate, lastMinuteHistoricalFromDate, viewport }) => {
     // One atomic write — no reset-then-restore. tf is clamped like setCandleTimeframe
     // (belt-and-suspenders; tabs already carry validated timeframes).
     const tf = LIVE_TIMEFRAMES.includes(timeframe) ? timeframe : get().candleTimeframe;
@@ -789,8 +792,11 @@ export const useLivePageStore = create<Store>((set, get) => ({
       lastMinuteTimeframe: isMinuteTimeframe(tf) ? tf : get().lastMinuteTimeframe,
       historicalFromDate,
       // 탭 전환 = 뷰 교체. 이전 탭의 분봉 창 기억이 새 탭으로 새지 않도록,
-      // 투영되는 탭 자신의 pan(분봉일 때)으로 다시 시드한다.
-      lastMinuteHistoricalFromDate: isMinuteTimeframe(tf) ? historicalFromDate : null,
+      // 투영되는 탭 자신의 기억으로 재시드한다(탭별 미러 — liveTabProjection).
+      // 필드 생략(레거시 호출)이면 기존 derive 폴백: 분봉이면 pan, 아니면 null.
+      lastMinuteHistoricalFromDate: lastMinuteHistoricalFromDate !== undefined
+        ? lastMinuteHistoricalFromDate
+        : (isMinuteTimeframe(tf) ? historicalFromDate : null),
       activeViewport: viewport ?? null,
     };
     set(next);

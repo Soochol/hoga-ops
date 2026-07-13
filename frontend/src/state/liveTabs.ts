@@ -20,6 +20,10 @@ export type LiveTab = {
   timeframe: LiveTimeframe;
   /** Runtime-only historical fetch range. Restored across tab switches, cleared on refresh. */
   historicalFromDate: string | null;
+  /** Runtime-only 분봉 창 기억(livePage.lastMinuteHistoricalFromDate의 탭별 미러).
+   *  D/W/M 상태로 탭을 오가도 분봉 복귀 복원이 살아남게 한다. historicalFromDate와
+   *  같은 수명: 탭 전환에서 복원, 스냅샷 미직렬화(새로고침에 소실). */
+  lastMinuteHistoricalFromDate?: string | null;
   /** Runtime-only chart viewport. Keeps tab switches warm; intentionally excluded from persisted snapshots. */
   viewport?: TabViewport | null;
   pinned?: boolean;
@@ -240,6 +244,7 @@ export const useLiveTabsStore = create<TabsStore>((set, get) => ({
           label: fields.label,
           timeframe: active.timeframe,
           historicalFromDate: null,
+          lastMinuteHistoricalFromDate: null,
           viewport: null,
         };
         set({ tabs: tabs.map((t) => (t.id === target.id ? updated : t)), activeTabId: updated.id });
@@ -261,6 +266,7 @@ export const useLiveTabsStore = create<TabsStore>((set, get) => ({
       code: fields.code,
       label: fields.label,
       historicalFromDate: null,
+      lastMinuteHistoricalFromDate: null,
       viewport: null,
     };
     set({ tabs: tabs.map((t) => (t.id === active.id ? updated : t)) });
@@ -359,7 +365,11 @@ export function initLiveTabsSync(): () => void {
   // active tab. The chart viewport itself is captured explicitly before tab
   // switches; timeframe changes clear that viewport because the x-axis changed.
   const unsubMirror = useLivePageStore.subscribe((state, prev) => {
-    if (state.candleTimeframe === prev.candleTimeframe && state.historicalFromDate === prev.historicalFromDate) return;
+    if (
+      state.candleTimeframe === prev.candleTimeframe &&
+      state.historicalFromDate === prev.historicalFromDate &&
+      state.lastMinuteHistoricalFromDate === prev.lastMinuteHistoricalFromDate
+    ) return;
     const { tabs, activeTabId } = useLiveTabsStore.getState();
     if (!activeTabId) return;
     useLiveTabsStore.setState({

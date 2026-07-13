@@ -27,6 +27,7 @@ describe('live tab projection policy', () => {
       code: '005930',
       timeframe: 'D',
       historicalFromDate: '2026-01-02',
+      lastMinuteHistoricalFromDate: null,
       viewport,
     });
   });
@@ -37,8 +38,17 @@ describe('live tab projection policy', () => {
       code: null,
       timeframe: 'D',
       historicalFromDate: null,
+      lastMinuteHistoricalFromDate: null,
       viewport: null,
     });
+  });
+
+  it('projects the tab-carried minute window into the active view', () => {
+    const projected = projectTabToActiveView(
+      tab({ timeframe: 'D', lastMinuteHistoricalFromDate: '20260601' }),
+      '1m',
+    );
+    expect(projected.lastMinuteHistoricalFromDate).toBe('20260601');
   });
 
   it('mirrors page timeframe into the active tab while dropping pan and viewport', () => {
@@ -49,10 +59,41 @@ describe('live tab projection policy', () => {
       mirrorPageViewToActiveTab(tabs, 'tab-a', {
         candleTimeframe: 'D',
         historicalFromDate: '2026-01-02',
+        lastMinuteHistoricalFromDate: null,
       }),
     ).toEqual([
-      { ...tabs[0], timeframe: 'D', historicalFromDate: null, viewport: null },
+      { ...tabs[0], timeframe: 'D', historicalFromDate: null, lastMinuteHistoricalFromDate: null, viewport: null },
       tabs[1],
+    ]);
+  });
+
+  it('mirrors the page minute window verbatim, including across a timeframe change', () => {
+    // 분봉 이탈(1m→D) 커밋: store가 이미 기억을 계산했으므로 미러는 그대로 복사.
+    const tabs = [tab()];
+    expect(
+      mirrorPageViewToActiveTab(tabs, 'tab-a', {
+        candleTimeframe: 'D',
+        historicalFromDate: null,
+        lastMinuteHistoricalFromDate: '20260601',
+      }),
+    ).toEqual([
+      { ...tabs[0], timeframe: 'D', historicalFromDate: null, lastMinuteHistoricalFromDate: '20260601', viewport: null },
+    ]);
+  });
+
+  it('mirrors a minute-window-only change without touching timeframe or viewport', () => {
+    // 복원 dispatch(extendHistoricalRange) 직후처럼 pan과 기억이 함께 변한 경우가
+    // 아니라, 기억만 변한 커밋도 미러가 놓치지 않는다(변경 감지 3항).
+    const viewport = { rightEdgeMs: 1_781_000_000_000, barSpan: 240, atLiveEdge: false };
+    const tabs = [tab({ viewport, timeframe: 'D' })];
+    expect(
+      mirrorPageViewToActiveTab(tabs, 'tab-a', {
+        candleTimeframe: 'D',
+        historicalFromDate: null,
+        lastMinuteHistoricalFromDate: '20260601',
+      }),
+    ).toEqual([
+      { ...tabs[0], historicalFromDate: null, lastMinuteHistoricalFromDate: '20260601', viewport },
     ]);
   });
 
@@ -63,6 +104,7 @@ describe('live tab projection policy', () => {
       mirrorPageViewToActiveTab(tabs, 'tab-b', {
         candleTimeframe: 'D',
         historicalFromDate: null,
+        lastMinuteHistoricalFromDate: null,
       }),
     ).toEqual([tabs[0], { ...tabs[1], historicalFromDate: null }]);
   });

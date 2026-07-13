@@ -228,6 +228,18 @@ describe('livePage store', () => {
     expect(s.lastMinuteHistoricalFromDate).toBeNull();
   });
 
+  it('projectActiveView prefers the tab-carried minute window over the derive fallback', () => {
+    // 탭별 미러 경로: D 탭이 분봉 창 기억을 들고 오면 derive(비분봉→null)를
+    // 무시하고 그대로 재시드한다 — D 상태 탭 왕복에서 기억이 살아남는 근거.
+    useLivePageStore.getState().projectActiveView({
+      code: '005930',
+      timeframe: 'D',
+      historicalFromDate: null,
+      lastMinuteHistoricalFromDate: '20250601',
+    });
+    expect(useLivePageStore.getState().lastMinuteHistoricalFromDate).toBe('20250601');
+  });
+
   it('projectActiveView re-seeds the remembered window from the projected tab', () => {
     useLivePageStore.setState({ lastMinuteHistoricalFromDate: '20240101' }); // 이전 탭 잔재
     useLivePageStore.getState().projectActiveView({
