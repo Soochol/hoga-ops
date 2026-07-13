@@ -178,7 +178,7 @@ async def test_catchup_enqueues_gap_since_last_success(tmp_path: Path):
 
 @pytest.mark.asyncio
 async def test_catchup_pretrims_today_when_too_early(tmp_path: Path):
-    """When now < 17:00, today must be removed before calling core."""
+    """When now < 16:30, today must be removed before calling core."""
     from hoga.api import scheduler, watchlist
     from hoga.api.models import EnqueueResponse
     await _seed(tmp_path, code="003490", name="대한항공",

@@ -125,8 +125,8 @@ def test_decide_capture_none_fresh(tmp_path: Path) -> None:
     assert decision == CaptureDecision(skip_reason=None, resume=False)
 
 
-def test_find_ineligible_dates_flags_today_before_17_kst() -> None:
-    now = dt.datetime(2026, 5, 22, 16, 59, 0, tzinfo=KST)
+def test_find_ineligible_dates_flags_today_before_1630_kst() -> None:
+    now = dt.datetime(2026, 5, 22, 16, 29, 0, tzinfo=KST)
     rejected = eligibility.find_ineligible_dates(
         candidate_dates=["20260520", "20260522"], now=now,
     )
@@ -141,9 +141,9 @@ def test_find_ineligible_dates_empty_when_no_match() -> None:
     assert rejected == []
 
 
-def test_find_ineligible_dates_today_at_17_passes() -> None:
-    """17:00 KST is the boundary — at-or-after-17 is admissible."""
-    now = dt.datetime(2026, 5, 22, 17, 0, 0, tzinfo=KST)
+def test_find_ineligible_dates_today_at_1630_passes() -> None:
+    """16:30 KST is the boundary — at-or-after-16:30 is admissible."""
+    now = dt.datetime(2026, 5, 22, 16, 30, 0, tzinfo=KST)
     rejected = eligibility.find_ineligible_dates(
         candidate_dates=["20260522"], now=now,
     )

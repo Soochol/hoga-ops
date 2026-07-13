@@ -100,7 +100,7 @@ function shiftMonth(year: number, month: number, delta: number): { year: number;
 const YEAR_SPAN = 5;  // year selector covers [reference-YEAR_SPAN, reference+1]
 
 export function DateRangePicker({ code, referenceYear, referenceMonth, value, onChange }: DateRangePickerProps) {
-  // Q14: re-render every 60s so today_locked transitions cleanly through 17:00 KST.
+  // Q14: re-render every 60s so today_locked transitions cleanly through 16:30 KST.
   const [, setTick] = useState(0);
   useEffect(() => {
     const id = setInterval(() => setTick((t) => t + 1), 60_000);

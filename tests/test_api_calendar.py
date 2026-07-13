@@ -70,10 +70,10 @@ def test_calendar_marks_future_dates(monkeypatch, tmp_path):
         assert cell["status"] == "future"
 
 
-def test_calendar_marks_today_locked_before_17_kst(monkeypatch, tmp_path):
+def test_calendar_marks_today_locked_before_1630_kst(monkeypatch, tmp_path):
     KST = dt.timezone(dt.timedelta(hours=9))
     monkeypatch.setattr("hoga.api.calendar._now_kst",
-                        lambda: dt.datetime(2026, 5, 22, 16, 59, 0, tzinfo=KST),
+                        lambda: dt.datetime(2026, 5, 22, 16, 29, 0, tzinfo=KST),
                         raising=False)
     app = _build_app(monkeypatch, tmp_path)
     with TestClient(app) as c:
