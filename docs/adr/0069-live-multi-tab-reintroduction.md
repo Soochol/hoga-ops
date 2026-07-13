@@ -105,3 +105,24 @@
 - **영속화는 bounded snapshot**: 복원 가능한 탭 수를 실무적으로 충분히 큰 active-centered window로 제한해
   localStorage quota와 reload freeze를 피한다. 이는 사용자-visible 탭 생성 제한이 아니라 browser storage
   안전장치다.
+
+## Addendum — 오버플로 어포던스 배선 + 탭 목록 메뉴 공용화 (2026-07-13)
+
+2026-06-16 addendum의 "한 줄 + bounded window + 검색형 overflow dialog" 모델은 메커니즘만 있고
+어포던스가 없었다. 스크롤바를 숨긴 채(`scrollbarWidth: 'none'`) 대체 단서가 없어 "탭이 넘쳤다"는
+사실 자체가 발견 불가능했고, ellipsis 마커는 24개 초과 시에만 등장하는 비인터랙티브 장식이었으며,
+`/study`에는 overflow dialog가 아예 없었다. 이를 `ChartTabBar` 한 곳에서 채운다.
+
+- **가장자리 페이드 마스크**: 스크롤 여지가 있는 쪽에 28px `mask-image` 그라디언트. 좌/우 독립,
+  scroll 이벤트 + ResizeObserver + 탭 배열 변경 시 재측정.
+- **세로 휠 → 가로 스크롤**: 탭바 위에서 `deltaY`를 `scrollLeft`로 변환. `preventDefault`가 필요해
+  non-passive 네이티브 리스너를 쓰고, `deltaX` 우세(트랙패드 가로 제스처)면 기본 동작에 맡긴다.
+- **`+N` 가려짐 칩**: 가려진 탭 수 = 렌더 윈도우 밖으로 잘린 탭 + 뷰포트 밖으로 스크롤된 탭
+  (탭 중심점 기준). 0 초과일 때만 탭바 우측 고정 영역에 나타나고, 클릭하면 탭 목록 dialog를 연다.
+- **탭 목록 메뉴 공용화**: `LiveTabOverflowMenu`를 제네릭 `tabs/ChartTabOverflowMenu`(controlled
+  open)로 이관해 `ChartTabBar`에 내장. `/live`·`/study` 모두 목록 버튼과 칩 경로를 얻는다.
+  라벨은 탭바와 동일 렌더러(`renderLabelParts.full ?? renderLabel`)를 주입받아 검색도 표시 라벨
+  기준으로 동작한다.
+
+기각: Chrome식 탭 폭 압축. `/live` 탭 라벨은 종목명 + 실시간 등락 metric을 담고 있어 폭을 줄이면
+정보가 먼저 죽는다. 폭 고정 + 스크롤 + 목록이 이 앱의 정보 밀도에 맞다.

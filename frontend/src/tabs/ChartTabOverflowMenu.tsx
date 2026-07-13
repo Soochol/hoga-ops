@@ -1,34 +1,50 @@
 import { useCallback, useMemo, useRef, useState } from 'react';
-import type { LiveTab } from '../state/liveTabs';
 import { useDismissablePopover } from '../util/useDismissablePopover';
-import { formatLiveViewLabel, type LiveTabMetrics } from './liveViewLabel';
 
 const MAX_RENDERED_RESULTS = 200;
 
-interface Props {
-  tabs: LiveTab[];
+type MenuTabLike = {
+  id: string;
+  code: string;
+  label: string;
+  pinned?: boolean;
+};
+
+type Props<T extends MenuTabLike> = {
+  tabs: T[];
   activeTabId: string | null;
-  tabMetrics?: Record<string, LiveTabMetrics>;
+  /** 목록·검색에 쓰는 표시 라벨 (탭바와 동일 렌더러를 주입). */
+  renderLabel: (tab: T) => string;
   onFocus: (id: string) => void;
   onClose: (id: string) => void;
-}
+  /** controlled open — 탭바의 가려짐 칩에서도 열 수 있게 상태는 부모가 소유. */
+  open: boolean;
+  onOpenChange: (open: boolean) => void;
+};
 
-export function LiveTabOverflowMenu({ tabs, activeTabId, tabMetrics, onFocus, onClose }: Props) {
-  const [open, setOpen] = useState(false);
+export function ChartTabOverflowMenu<T extends MenuTabLike>({
+  tabs,
+  activeTabId,
+  renderLabel,
+  onFocus,
+  onClose,
+  open,
+  onOpenChange,
+}: Props<T>) {
   const [query, setQuery] = useState('');
   const rootRef = useRef<HTMLDivElement | null>(null);
 
-  const dismiss = useCallback(() => setOpen(false), []);
+  const dismiss = useCallback(() => onOpenChange(false), [onOpenChange]);
   useDismissablePopover(open, rootRef, dismiss);
 
   const filtered = useMemo(() => {
     const q = query.trim().toLowerCase();
     if (!q) return tabs;
     return tabs.filter((t) => {
-      const displayLabel = formatLiveViewLabel(t.label, t.timeframe, tabMetrics?.[t.id]).toLowerCase();
+      const displayLabel = renderLabel(t).toLowerCase();
       return displayLabel.includes(q) || t.label.toLowerCase().includes(q) || t.code.toLowerCase().includes(q);
     });
-  }, [query, tabs, tabMetrics]);
+  }, [query, tabs, renderLabel]);
   const visible = filtered.slice(0, MAX_RENDERED_RESULTS);
 
   return (
@@ -38,7 +54,7 @@ export function LiveTabOverflowMenu({ tabs, activeTabId, tabMetrics, onFocus, on
         aria-label="열린 탭 목록"
         aria-haspopup="dialog"
         aria-expanded={open}
-        onClick={() => setOpen((v) => !v)}
+        onClick={() => onOpenChange(!open)}
         className="w-7 h-7 flex items-center justify-center rounded-md"
         style={{ color: 'var(--fg-dim)', border: '1px solid var(--border)' }}
       >
@@ -52,7 +68,7 @@ export function LiveTabOverflowMenu({ tabs, activeTabId, tabMetrics, onFocus, on
         <div
           role="dialog"
           aria-label="열린 탭"
-          className="absolute right-0 top-8 z-50 w-72 rounded-md p-2 shadow-lg"
+          className="absolute right-0 top-8 z-50 w-72 rounded-md p-2 shadow-overlay"
           style={{ background: 'var(--bg-card)', border: '1px solid var(--border)' }}
         >
           <input
@@ -66,7 +82,7 @@ export function LiveTabOverflowMenu({ tabs, activeTabId, tabMetrics, onFocus, on
           <div className="mt-2 max-h-80 overflow-y-auto">
             {visible.map((t) => {
               const active = t.id === activeTabId;
-              const displayLabel = formatLiveViewLabel(t.label, t.timeframe, tabMetrics?.[t.id]);
+              const displayLabel = renderLabel(t);
               const pinned = t.pinned === true;
               return (
                 <div
@@ -79,7 +95,7 @@ export function LiveTabOverflowMenu({ tabs, activeTabId, tabMetrics, onFocus, on
                     aria-label={active ? `활성 탭: ${displayLabel}` : undefined}
                     onClick={() => {
                       onFocus(t.id);
-                      setOpen(false);
+                      onOpenChange(false);
                     }}
                     className="min-w-0 flex flex-1 items-center gap-2 text-left"
                     style={{ color: 'inherit' }}
