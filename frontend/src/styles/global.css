@@ -85,7 +85,12 @@ body {
    보이게 한다. td 는 라이브러리가 position:relative 로 두므로 절대배치가 셀에
    고정되고, top:50%+translateY(-50%) 로 1px 행 위에 2px 라인만 중앙 정렬된다.
    .live-chart-canvas 로 스코프해 heatmap·study 상세의 다른 lightweight-charts
-   인스턴스엔 영향이 없다. 색은 --chart-pane-divider 토큰(양 테마). */
+   인스턴스엔 영향이 없다. 색은 --chart-pane-divider 토큰(양 테마).
+
+   z-index 는 필수 — Chrome 은 pane 캔버스를 GPU 합성 레이어로 올려, z-index
+   없는 ::after 가 캔버스 아래로 깔려 안 보인다(Firefox 등은 보임). 라이브러리
+   resize 핸들이 z-index:50 이라 호버 시엔 보였던 것과 동일 원리. 핸들(50) 보다
+   낮게 둬 호버 상호작용은 유지한다. */
 .live-chart-canvas .tv-lightweight-charts td[colspan='3']::after {
   content: '';
   position: absolute;
@@ -95,6 +100,7 @@ body {
   transform: translateY(-50%);
   height: 2px;
   background: var(--chart-pane-divider);
+  z-index: 4;
   pointer-events: none;
 }
 
