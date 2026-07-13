@@ -145,6 +145,15 @@ export function ChartTabBar<T extends ChartTabLike>({
     setDropTargetId(null);
   };
 
+  /** 화살표 클릭당 뷰포트의 ~60%씩 이동 (최소 120px). */
+  const scrollByPage = (dir: 1 | -1) => {
+    const el = tablistRef.current;
+    if (!el) return;
+    const amount = dir * Math.max(120, Math.round(el.clientWidth * 0.6));
+    if (typeof el.scrollBy === 'function') el.scrollBy({ left: amount, behavior: 'smooth' });
+    else el.scrollLeft += amount;
+  };
+
   // 스크롤 여지가 있는 쪽에만 가장자리 페이드 마스크를 건다.
   const fadeMask = overflow.left && overflow.right
     ? `linear-gradient(to right, transparent, black ${EDGE_FADE_PX}px, black calc(100% - ${EDGE_FADE_PX}px), transparent)`
@@ -159,6 +168,19 @@ export function ChartTabBar<T extends ChartTabLike>({
 
   return (
     <div className="flex h-full min-w-0 items-end gap-1 px-2 font-ui" style={{ background: 'var(--bg-subtle)' }}>
+      {overflow.left && (
+        <button
+          type="button"
+          aria-label="탭 왼쪽으로 스크롤"
+          onClick={() => scrollByPage(-1)}
+          className="h-8 w-5 flex items-center justify-center shrink-0 rounded-t-md hover:bg-bg-input-hover"
+          style={{ color: 'var(--fg-dim)' }}
+        >
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" className="w-[12px] h-[12px]" aria-hidden="true">
+            <polyline points="15 18 9 12 15 6" />
+          </svg>
+        </button>
+      )}
       <div
         ref={tablistRef}
         role="tablist"
@@ -170,9 +192,16 @@ export function ChartTabBar<T extends ChartTabLike>({
         }}
       >
         {windowStart > 0 && (
-          <div aria-hidden="true" className="h-8 px-1.5 flex items-center shrink-0 text-xs" style={{ color: 'var(--fg-dimmer)' }}>
+          <button
+            type="button"
+            aria-label={`이전 탭 ${windowStart}개 목록 열기`}
+            title={`이전 탭 ${windowStart}개 — 클릭하면 전체 목록`}
+            onClick={() => setMenuOpen(true)}
+            className="h-8 px-1.5 flex items-center shrink-0 text-xs rounded-t-md hover:bg-bg-input-hover"
+            style={{ color: 'var(--fg-dimmer)' }}
+          >
             …
-          </div>
+          </button>
         )}
         {visibleTabs.map((tab, offset) => {
           const idx = windowStart + offset;
@@ -301,11 +330,31 @@ export function ChartTabBar<T extends ChartTabLike>({
           );
         })}
         {windowStart + visibleTabs.length < tabs.length && (
-          <div aria-hidden="true" className="h-8 px-1.5 flex items-center shrink-0 text-xs" style={{ color: 'var(--fg-dimmer)' }}>
+          <button
+            type="button"
+            aria-label={`다음 탭 ${tabs.length - windowStart - visibleTabs.length}개 목록 열기`}
+            title={`다음 탭 ${tabs.length - windowStart - visibleTabs.length}개 — 클릭하면 전체 목록`}
+            onClick={() => setMenuOpen(true)}
+            className="h-8 px-1.5 flex items-center shrink-0 text-xs rounded-t-md hover:bg-bg-input-hover"
+            style={{ color: 'var(--fg-dimmer)' }}
+          >
             …
-          </div>
+          </button>
         )}
       </div>
+      {overflow.right && (
+        <button
+          type="button"
+          aria-label="탭 오른쪽으로 스크롤"
+          onClick={() => scrollByPage(1)}
+          className="h-8 w-5 flex items-center justify-center shrink-0 rounded-t-md hover:bg-bg-input-hover"
+          style={{ color: 'var(--fg-dim)' }}
+        >
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" className="w-[12px] h-[12px]" aria-hidden="true">
+            <polyline points="9 18 15 12 9 6" />
+          </svg>
+        </button>
+      )}
       <div className="flex items-center gap-1 self-center shrink-0">
         {hiddenCount > 0 && (
           <button

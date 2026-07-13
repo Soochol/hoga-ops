@@ -37,6 +37,12 @@ function fakeScrollMetrics(el: HTMLElement, { scrollWidth, clientWidth, scrollLe
   Object.defineProperty(el, 'scrollWidth', { value: scrollWidth, configurable: true });
   Object.defineProperty(el, 'clientWidth', { value: clientWidth, configurable: true });
   Object.defineProperty(el, 'scrollLeft', { value: scrollLeft, writable: true, configurable: true });
+  // jsdom엔 Element.scrollBy가 없어 스크롤 화살표는 폴백 경로를 타지만,
+  // 실브라우저의 smooth 스크롤 경로를 검증하려면 즉시 적용 스텁을 심는다.
+  Object.defineProperty(el, 'scrollBy', {
+    value: (opts: { left: number }) => { el.scrollLeft += opts.left; },
+    configurable: true,
+  });
 }
 
 it('shows no hidden-tab chip when every tab fits', () => {
@@ -88,6 +94,36 @@ it('ignores vertical wheel when tabs fit (no overflow)', () => {
   fakeScrollMetrics(tablist, { scrollWidth: 200, clientWidth: 200, scrollLeft: 0 });
 
   fireEvent.wheel(tablist, { deltaY: 48, deltaX: 0 });
+  expect(tablist.scrollLeft).toBe(0);
+});
+
+it('makes render-window ellipsis markers interactive — click opens the tab list', () => {
+  setup({ tabs: makeTabs(80), activeTabId: 'tab-40' });
+
+  // windowStart = 40 - 12 = 28, 렌더 24개 → 앞 28개 / 뒤 28개가 윈도우 밖
+  const prevMarker = screen.getByLabelText('이전 탭 28개 목록 열기');
+  expect(screen.getByLabelText('다음 탭 28개 목록 열기')).toBeInTheDocument();
+
+  fireEvent.click(prevMarker);
+  expect(screen.getByRole('dialog', { name: '열린 탭' })).toBeInTheDocument();
+});
+
+it('shows scroll arrows only toward the overflowing side and pages by 60% viewport', () => {
+  setup({ tabs: makeTabs(5), activeTabId: 'tab-0' });
+  expect(screen.queryByLabelText('탭 왼쪽으로 스크롤')).toBeNull();
+  expect(screen.queryByLabelText('탭 오른쪽으로 스크롤')).toBeNull();
+
+  const tablist = screen.getByRole('tablist');
+  fakeScrollMetrics(tablist, { scrollWidth: 500, clientWidth: 200, scrollLeft: 0 });
+  fireEvent.scroll(tablist);
+
+  // 왼쪽 여지 없음 → 오른쪽 화살표만
+  expect(screen.queryByLabelText('탭 왼쪽으로 스크롤')).toBeNull();
+  fireEvent.click(screen.getByLabelText('탭 오른쪽으로 스크롤'));
+  expect(tablist.scrollLeft).toBe(120); // max(120, 200*0.6)
+
+  fireEvent.scroll(tablist);
+  fireEvent.click(screen.getByLabelText('탭 왼쪽으로 스크롤'));
   expect(tablist.scrollLeft).toBe(0);
 });
 
