@@ -332,6 +332,16 @@ export function StudyPage() {
       const nextTab = tabs[index];
       if (nextTab) handleFocusTab(nextTab.id);
     },
+    onNextTab: () => {
+      if (!tabs.length) return;
+      const activeIdx = Math.max(0, tabs.findIndex((tab) => tab.id === activeTabId));
+      handleFocusTab(tabs[(activeIdx + 1) % tabs.length].id);
+    },
+    onPrevTab: () => {
+      if (!tabs.length) return;
+      const activeIdx = Math.max(0, tabs.findIndex((tab) => tab.id === activeTabId));
+      handleFocusTab(tabs[(activeIdx - 1 + tabs.length) % tabs.length].id);
+    },
   });
 
   useEffect(() => {
