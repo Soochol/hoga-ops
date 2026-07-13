@@ -29,6 +29,9 @@ export interface LiveStatus {
   kis_api_last_error: string | null;
   kis_api_last_error_count: number;
   kis_api_degraded: boolean;
+  // 직전 rest30 사이클의 EGW00201 바운스 수(설계된 정상 손실률 ~9-12%의 관측 채널).
+  // 백엔드 신규 필드라 optional — UI 표시는 후속.
+  kis_api_rate_limit_bounces?: number | null;
   kis_rest_bypass_enabled: boolean;
 }
 

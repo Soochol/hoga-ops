@@ -19,6 +19,12 @@ from hoga.live.rest_buffer_build import brokers_to_snapshot, ob_to_snapshot, tra
 
 _log = logging.getLogger(__name__)
 
+# 사이클 바운스율이 이 값을 넘고(_ANOMALY_CONSECUTIVE 사이클 연속) 지속되면 경보.
+# 설계상 정상은 ~9-12%(ADR-0100)라 그 위 여유를 둔 0.25를 이탈 임계로 잡는다 —
+# '정상 손실률'이 아니라 진짜 이상(예: KIS 유량 축소·앱키 문제)만 WARN이 되게.
+_BOUNCE_RATE_ANOMALY = 0.25
+_ANOMALY_CONSECUTIVE = 2
+
 
 @runtime_checkable
 class KisRestCaptureProto(Protocol):
@@ -40,6 +46,8 @@ class Rest30sStatus:
     last_error_code: str | None = None
     backoff_remaining: int = 0
     last_cycle_duration_ms: int | None = None
+    # 직전 사이클에 관측된 EGW00201 바운스 수(프로세스 전역 델타 — 아래 주석 참조).
+    rate_limit_bounces: int | None = None
 
 
 class Rest30sRecorder:
@@ -57,6 +65,7 @@ class Rest30sRecorder:
         backoff_cycles: int = 3,
         concurrency: int = 10,
         capture_aux: bool = False,
+        bounce_counter_fn: Callable[[], int] | None = None,
     ) -> None:
         self._resolve_kis = kis_resolver
         self._buffer = buffer
@@ -68,6 +77,9 @@ class Rest30sRecorder:
         # 실제 캘린더 술어(주말/휴장 배제), 테스트는 fake 주입(LiveRestPoller.window_fn
         # 패턴 미러). blocking 계약이라 poll_once가 asyncio.to_thread로 봉인한다.
         self._trading_day_fn = trading_day_fn or self._default_trading_day_fn
+        # 프로세스 전역 EGW00201 바운스 카운터 접근자(now_ms_fn/trading_day_fn과 동일한
+        # 주입 시임 — 테스트가 fake 시퀀스를 넣을 수 있게). 기본은 kis_client의 전역.
+        self._bounce_counter_fn = bounce_counter_fn or self._default_bounce_counter_fn
         self._interval_s = interval_s
         self._backoff_cycles = max(0, backoff_cycles)
         # 코드 간 동시 디스패치 상한(코드 내부는 순차). 실제 콜레이트는 계정별
@@ -89,11 +101,18 @@ class Rest30sRecorder:
         self._closed_snapshotted_once: set[str] = set()
         self._trade_seen: dict[str, tuple[str, Counter[tuple[int, int, int, int]]]] = {}
         self._backoff_remaining = 0
+        self._last_cycle_bounces: int | None = None
+        self._anomaly_streak = 0
 
     def _default_trading_day_fn(self) -> bool:
         from hoga.live.session_gate import is_trading_day_now  # noqa: PLC0415
 
         return is_trading_day_now(self._now_ms())
+
+    def _default_bounce_counter_fn(self) -> int:
+        from hoga.live.kis_client import rate_limit_bounces_total  # noqa: PLC0415
+
+        return rate_limit_bounces_total()
 
     def set_targets(self, codes: set[str]) -> None:
         self._targets = set(codes)
@@ -119,6 +138,7 @@ class Rest30sRecorder:
             backoff_remaining=self._backoff_remaining,
             degraded=self._last_error_count > 0,
             last_cycle_duration_ms=self._last_cycle_duration_ms,
+            rate_limit_bounces=self._last_cycle_bounces,
         )
 
     def start(self) -> None:
@@ -158,6 +178,38 @@ class Rest30sRecorder:
         직전의 느린 fetch 값이 관측 지표에 계속 비치는 것을 막는다(ADR-0098 검증용)."""
         self._last_cycle_ms = self._now_ms()
         self._last_cycle_duration_ms = self._last_cycle_ms - cycle_start_ms
+
+    def _record_cycle_bounces(self, bounces: int, dispatched: int) -> None:
+        """사이클 EGW00201 바운스 델타를 관측에 반영한다. 개별 바운스는 kis_client
+        에서 DEBUG로 강등됐고(설계된 손실률), 신호는 여기서 율로 집계한다:
+
+        - status(rate_limit_bounces)에 델타 노출.
+        - 바운스>0이면 사이클 요약 1줄 INFO(0이면 DEBUG — 무사고 사이클로 로그를
+          채우지 않음).
+        - 바운스율이 _BOUNCE_RATE_ANOMALY를 _ANOMALY_CONSECUTIVE 사이클 연속 넘으면
+          WARN. '정상 ~9-12%'가 아닌 이탈만 경보가 되게 하는 게 이 설계의 핵심.
+        """
+        self._last_cycle_bounces = bounces
+        rate = bounces / dispatched if dispatched else 0.0
+        if bounces > 0:
+            _log.info(
+                "live.rest30.cycle_done targets=%d bounces=%d (%.1f%%) duration_ms=%s",
+                dispatched, bounces, rate * 100.0, self._last_cycle_duration_ms,
+            )
+        else:
+            _log.debug(
+                "live.rest30.cycle_done targets=%d bounces=0 duration_ms=%s",
+                dispatched, self._last_cycle_duration_ms,
+            )
+        if rate > _BOUNCE_RATE_ANOMALY:
+            self._anomaly_streak += 1
+            if self._anomaly_streak >= _ANOMALY_CONSECUTIVE:
+                _log.warning(
+                    "live.rest30.rate_limit_anomaly rate=%.1f%% cycles=%d targets=%d",
+                    rate * 100.0, self._anomaly_streak, dispatched,
+                )
+        else:
+            self._anomaly_streak = 0
 
     def _record_cycle_error(self, exc: Exception) -> None:
         policy = classify_live_error(exc, internal=True)
@@ -221,6 +273,7 @@ class Rest30sRecorder:
         # 코드 간 동시 디스패치(코드 내부는 순차). 한 종목 실패는 _run_one 내부에서
         # 잡아 gather를 취소하지 않는다(격리 불변식 보존). gather는 입력 순서대로
         # 결과를 돌려주므로 sorted(targets) 순으로 결정론적 집계.
+        sorted_targets = sorted(targets)
         sem = asyncio.Semaphore(self._concurrency)
 
         async def _run_one(code: str) -> tuple[str, Exception | None]:
@@ -231,7 +284,14 @@ class Rest30sRecorder:
                 except Exception as e:  # noqa: BLE001
                     return code, e
 
-        results = await asyncio.gather(*(_run_one(code) for code in sorted(targets)))
+        # EGW00201 바운스 델타를 사이클 경계에서 뜬다. 카운터는 프로세스 전역이라
+        # 이 델타는 엄밀히는 '이 사이클 동안 프로세스 전체'의 바운스다 — 장중엔
+        # 레코더가 REST 트래픽을 지배(수백종목/10s)하므로 ≈ 레코더 바운스이고,
+        # foreground 버스트 혼입은 짧아(~20콜) 왜곡이 작다. 정확 귀속은 _get까지
+        # sink 배관이 필요해 과하다(플랜 '전역 델타의 귀속 불순' 참조).
+        bounces_before = self._bounce_counter_fn()
+        results = await asyncio.gather(*(_run_one(code) for code in sorted_targets))
+        cycle_bounces = self._bounce_counter_fn() - bounces_before
 
         error_count = 0
         last_error: str | None = None
@@ -270,6 +330,9 @@ class Rest30sRecorder:
 
         await self._writer.fsync_all()
         self._mark_cycle_complete(cycle_start_ms)
+        # 사이클 소요가 확정된(_mark_cycle_complete) 뒤에 집계 로그를 낸다 —
+        # duration_ms가 직전 사이클 값으로 stale 되지 않게.
+        self._record_cycle_bounces(cycle_bounces, len(sorted_targets))
         self._last_error = last_error
         self._last_error_kind = last_error_kind
         self._last_error_code = last_error_code

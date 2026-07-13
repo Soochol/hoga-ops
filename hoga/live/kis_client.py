@@ -91,6 +91,27 @@ _RATE_LIMIT_BACKOFF: tuple[float, ...] = (1.0, 2.0, 4.0)
 # already-slow upstream. See ADR-0050 amendment (2026-06-11).
 _TRANSPORT_RETRY_BACKOFF: tuple[float, ...] = (0.1,)
 
+# EGW00201 바운스(rate-limit 후 재시도)의 프로세스 전역 단조 카운터. 설계상
+# 포화 부하에서 ~9-12%의 요청이 EGW00201로 튕겼다가 재시도로 복구되는 것은
+# '에러'가 아니라 흐름제어 신호다(ADR-0100) — 그래서 개별 이벤트를 WARN 로그로
+# 흘리는 대신(로그 벽·경보 무뎌짐), 여기서 율로 집계해 사이클 단위 관측(레코더)에
+# 넘긴다. 모든 계정별 KisClient가 공유하는 계정-합산 카운터라 모듈 전역이 맞다.
+# 증가는 전부 이벤트루프(_get_with_rate_retry의 except)에서 일어나므로 락 불필요.
+_rate_limit_bounces = 0
+
+
+def rate_limit_bounces_total() -> int:
+    """프로세스 시작 이후 누적 EGW00201 바운스 수(계정 합산). 소비자는 두 시점의
+    델타를 떠서 사이클 바운스율을 계산한다 — Rest30sRecorder.poll_once 참조."""
+    return _rate_limit_bounces
+
+
+def reset_bounces_for_tests() -> None:
+    """테스트 격리 — 전역 바운스 카운터를 0으로 되돌린다."""
+    global _rate_limit_bounces
+    _rate_limit_bounces = 0
+
+
 # 우선순위 레인 기본값 (2026-06-09). 백그라운드가 foreground 대기자에게 토큰을
 # 양보할 때 재확인 간격(busy-loop 방지) + 기아 방지 상한(누적 양보가 이를 넘으면
 # 백그라운드도 강제 획득). foreground 버스트는 본질상 짧으므로(전환 1회 ~20콜 ≈
@@ -340,12 +361,17 @@ class KisClient(KisEndpointsMixin):
                     path, tr_id, params, retry=retry, foreground=foreground
                 )
             except KisRateLimitError:
+                global _rate_limit_bounces
+                _rate_limit_bounces += 1
                 if attempt + 1 >= attempts:
                     raise
-                # 가시화(스펙 2026-06-08 ⑤): 첫 재시도만 WARNING — 지속 장애 시
-                # 병렬 fetch(동시 5)의 동시 재시도가 로그 벽이 되지 않게 이후는
-                # DEBUG. 소진 후엔 호출부의 kis_rate_limit data_warning이 최종 신호.
-                log_fn = log.warning if attempt == 0 else log.debug
+                # 로그 레벨(2026-07-13 개정, ADR-0097/0102로 대상이 동시5→수백종목·
+                # 10초주기로 커진 뒤): background 호출의 첫 바운스는 '설계된 손실률'이라
+                # 개별 이벤트가 신호가 아니다 → DEBUG(레코더가 사이클 율로 집계). foreground
+                # (사용자가 기다리는 차트 fetch)의 첫 바운스만 사용자 지연 신호이므로 WARNING
+                # 유지. 소진 후 최종 raise는 불변 — 호출부의 kis_rate_limit data_warning /
+                # cycle_failed 가 최종 신호를 담당한다.
+                log_fn = log.warning if (attempt == 0 and foreground) else log.debug
                 log_fn("KIS rate-limited (EGW00201) path=%s — retry %d/%d in %.0fs",
                        path, attempt + 1, attempts - 1, backoff[attempt])
                 await asyncio.sleep(backoff[attempt])

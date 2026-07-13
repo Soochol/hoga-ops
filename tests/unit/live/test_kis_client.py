@@ -852,34 +852,55 @@ async def test_get_retries_on_rate_limit_5xx_then_succeeds(monkeypatch) -> None:
 
 
 @pytest.mark.asyncio
-async def test_rate_limit_retry_is_logged(monkeypatch, caplog) -> None:
-    """스펙 2026-06-08 ⑤: 재시도는 +1~7s의 침묵 지연이었다 — 첫 재시도는
-    WARNING(운영 신호), 이후 재시도는 DEBUG(병렬 fetch 동시 재시도 로그 벽 방지)."""
+async def test_rate_limit_retry_logged_by_lane(monkeypatch, caplog) -> None:
+    """로그 레벨은 lane별(2026-07-13 개정, 제안 A): background(폴러/레코더, 기본)의
+    첫 바운스는 DEBUG로 강등됐다 — 설계된 손실률(~9-12%)이라 개별 이벤트가 신호가
+    아니다(레코더가 사이클 율로 집계). foreground(사용자 차트 대기)의 첫 바운스만
+    WARNING 유지 — 사용자 지연 신호이므로. 메시지 포맷(path·N/3)은 불변."""
     import logging
 
     async def fake_sleep(s: float) -> None:
         return
 
     monkeypatch.setattr("hoga.live.kis_client.asyncio.sleep", fake_sleep)
-    client, _counter = _make_attempt_counting_client(
-        responses=[
-            (500, {"rt_cd": "1", "msg_cd": "EGW00201", "msg1": "too fast"}),
-            (500, {"rt_cd": "1", "msg_cd": "EGW00201", "msg1": "too fast"}),
-            (200, _ok_orderbook_body()),
-        ],
-        _rate_limit_backoff=(1.0, 2.0, 4.0),
-    )
+
+    def _bounce_twice_then_ok():
+        return _make_attempt_counting_client(
+            responses=[
+                (500, {"rt_cd": "1", "msg_cd": "EGW00201", "msg1": "too fast"}),
+                (500, {"rt_cd": "1", "msg_cd": "EGW00201", "msg1": "too fast"}),
+                (200, _ok_orderbook_body()),
+            ],
+            _rate_limit_backoff=(1.0, 2.0, 4.0),
+        )
+
+    # background(기본): 두 재시도 모두 DEBUG.
+    client, _ = _bounce_twice_then_ok()
     try:
         with caplog.at_level(logging.DEBUG, logger="hoga.live.kis_client"):
             await client._get(path="/uapi/probe", tr_id="PROBE0000", params={})
     finally:
         await client.aclose()
-    retry_logs = [r for r in caplog.records if "EGW00201" in r.getMessage()]
-    assert len(retry_logs) == 2
-    assert retry_logs[0].levelno == logging.WARNING
-    assert "/uapi/probe" in retry_logs[0].getMessage()
-    assert "1/3" in retry_logs[0].getMessage()
-    assert retry_logs[1].levelno == logging.DEBUG
+    bg_logs = [r for r in caplog.records if "EGW00201" in r.getMessage()]
+    assert len(bg_logs) == 2
+    assert all(r.levelno == logging.DEBUG for r in bg_logs)
+    assert "/uapi/probe" in bg_logs[0].getMessage()
+    assert "1/3" in bg_logs[0].getMessage()
+
+    # foreground: 첫 재시도 WARNING, 이후 DEBUG.
+    caplog.clear()
+    client, _ = _bounce_twice_then_ok()
+    try:
+        with caplog.at_level(logging.DEBUG, logger="hoga.live.kis_client"):
+            await client._get(
+                path="/uapi/probe", tr_id="PROBE0000", params={}, foreground=True,
+            )
+    finally:
+        await client.aclose()
+    fg_logs = [r for r in caplog.records if "EGW00201" in r.getMessage()]
+    assert len(fg_logs) == 2
+    assert fg_logs[0].levelno == logging.WARNING
+    assert fg_logs[1].levelno == logging.DEBUG
 
 
 @pytest.mark.asyncio
@@ -1405,5 +1426,110 @@ async def test_fetch_brokers_empty_output_raises_typed_api_error() -> None:
     try:
         with pytest.raises(KisApiError):
             await client.fetch_brokers("005930")
+    finally:
+        await client.aclose()
+
+
+# ------------------------------------------------------------------------
+# EGW00201 바운스 카운터 + 로그 레벨 (2026-07-13, 제안 A)
+# 설계된 정상 손실률(~9-12%)을 개별 WARN 로그가 아닌 율로 집계하기 위한 관측 채널.
+# ------------------------------------------------------------------------
+
+
+def _make_client_bounce_then_ok(
+    n_bounces: int,
+    *,
+    _rate_limit_backoff: tuple[float, ...] = (0.0, 0.0, 0.0),
+) -> KisClient:
+    """처음 n_bounces번은 EGW00201, 그 다음엔 성공을 돌려주는 stateful 클라이언트.
+
+    backoff는 0초라 재시도가 즉시(테스트 속도). n_bounces가 backoff+1을 넘으면
+    끝까지 EGW00201만 나와 재시도가 소진(raise)된다."""
+    calls = {"n": 0}
+
+    def handler(req: httpx.Request) -> httpx.Response:
+        calls["n"] += 1
+        if calls["n"] <= n_bounces:
+            return httpx.Response(
+                200, json={"rt_cd": "1", "msg_cd": "EGW00201", "msg1": "거래량 초과"},
+            )
+        return httpx.Response(200, json={"rt_cd": "0", "msg1": "ok"})
+
+    return KisClient(
+        credentials=KisCredentials(app_key="K", app_secret="S", env="real"),
+        token_provider=FakeTokenProvider(),
+        _transport=httpx.MockTransport(handler),
+        _rate_limit_backoff=_rate_limit_backoff,
+    )
+
+
+@pytest.mark.asyncio
+async def test_bounce_counter_increments_on_recovered_rate_limit() -> None:
+    """EGW00201 후 재시도로 복구돼도 바운스는 카운트된다(설계된 손실률의 집계원)."""
+    from hoga.live import kis_client as kc
+
+    kc.reset_bounces_for_tests()
+    client = _make_client_bounce_then_ok(1)
+    try:
+        body = await client._get(path="/uapi/probe", tr_id="PROBE0000", params={})
+        assert body["rt_cd"] == "0"  # 복구 성공
+        assert kc.rate_limit_bounces_total() == 1  # 바운스 1회 집계됨
+    finally:
+        await client.aclose()
+
+
+@pytest.mark.asyncio
+async def test_bounce_counter_increments_on_exhausted_retries() -> None:
+    """재시도 소진(끝까지 EGW00201)이면 매 시도가 바운스로 집계되고 raise된다."""
+    from hoga.live import kis_client as kc
+
+    kc.reset_bounces_for_tests()
+    # backoff=(0,) → 총 2시도(1 + 재시도 1). 둘 다 EGW00201이면 소진.
+    client = _make_client_bounce_then_ok(5, _rate_limit_backoff=(0.0,))
+    try:
+        with pytest.raises(KisRateLimitError):
+            await client._get(path="/uapi/probe", tr_id="PROBE0000", params={})
+        assert kc.rate_limit_bounces_total() == 2  # 2시도 모두 바운스
+    finally:
+        await client.aclose()
+
+
+@pytest.mark.asyncio
+async def test_background_first_bounce_is_debug_not_warning(caplog) -> None:
+    """background 호출(foreground=False, 기본)의 첫 바운스는 DEBUG로 강등된다 —
+    설계된 손실률이라 개별 이벤트가 신호가 아니다."""
+    import logging
+
+    from hoga.live import kis_client as kc
+
+    kc.reset_bounces_for_tests()
+    client = _make_client_bounce_then_ok(1)
+    try:
+        with caplog.at_level(logging.DEBUG, logger="hoga.live.kis_client"):
+            await client._get(path="/uapi/probe", tr_id="PROBE0000", params={})
+        rate_logs = [r for r in caplog.records if "rate-limited" in r.getMessage()]
+        assert rate_logs, "바운스 로그가 있어야 한다"
+        assert all(r.levelno == logging.DEBUG for r in rate_logs)  # WARNING 없음
+    finally:
+        await client.aclose()
+
+
+@pytest.mark.asyncio
+async def test_foreground_first_bounce_is_warning(caplog) -> None:
+    """foreground 호출(사용자가 기다리는 차트 fetch)의 첫 바운스는 WARNING 유지 —
+    사용자 지연 신호이므로."""
+    import logging
+
+    from hoga.live import kis_client as kc
+
+    kc.reset_bounces_for_tests()
+    client = _make_client_bounce_then_ok(1)
+    try:
+        with caplog.at_level(logging.DEBUG, logger="hoga.live.kis_client"):
+            await client._get(
+                path="/uapi/probe", tr_id="PROBE0000", params={}, foreground=True,
+            )
+        rate_logs = [r for r in caplog.records if "rate-limited" in r.getMessage()]
+        assert any(r.levelno == logging.WARNING for r in rate_logs)  # 첫 재시도 WARN
     finally:
         await client.aclose()
