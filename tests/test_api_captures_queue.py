@@ -306,11 +306,11 @@ def test_enqueue_skips_weekend_dates(monkeypatch, tmp_path):
         assert {it["date"] for it in body["enqueued"]} == {"20260515", "20260518"}
 
 
-def test_enqueue_rejects_today_pre_17_kst(monkeypatch, tmp_path):
-    """A date matching today_kst before 17:00 → 400 today_too_early."""
+def test_enqueue_rejects_today_pre_1630_kst(monkeypatch, tmp_path):
+    """A date matching today_kst before 16:30 → 400 today_too_early."""
     _no_workers(monkeypatch)
     KST = dt.timezone(dt.timedelta(hours=9))
-    fixed_now = dt.datetime(2026, 5, 22, 16, 30, 0, tzinfo=KST)
+    fixed_now = dt.datetime(2026, 5, 22, 16, 29, 0, tzinfo=KST)
     monkeypatch.setattr(captures, "_now_kst", lambda: fixed_now)
     app = _build_test_app(monkeypatch, tmp_path)
     with TestClient(app) as c:
