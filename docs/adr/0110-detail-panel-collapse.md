@@ -21,8 +21,10 @@
 `ui/DataSurface.tsx`의 `DataSection`에 `onToggleCollapse`를 넘기면 헤더 전체가 토글
 버튼이 되고, 안 넘기면(나머지 6개 호출부) 기존 정적 헤더 그대로 렌더한다. 접힘 시
 본문을 **unmount** — SSE 틱마다 도는 테이블 재렌더가 멈추는 성능 이득이 접기의
-숨은 효용이다. chevron은 `ui/ChevronIcon.tsx`로 추출(관심종목 드로어와 공유), 접힘은
-아래 화살표를 -90° 회전(150ms)해 얻는다. 높이는 스냅(무애니메이션, DESIGN.md).
+숨은 효용이다. chevron은 `ui/ChevronIcon.tsx`로 추출하고 관심종목·히트맵 드로어의
+로컬 사본을 이 프리미티브로 이관했다(히트맵 사본의 "watchlist를 안 건드리려는" 근거는
+중립 ui/ 모듈이 생기며 소멸). 접힘은 아래 화살표를 -90° 회전(150ms)해 얻는다. 높이는
+스냅(무애니메이션, DESIGN.md).
 
 ### 2. weights 보존 + inert 리사이저
 

@@ -1,13 +1,15 @@
 import { create } from 'zustand';
+import { DETAIL_PANEL_RAIL_WIDTH_PX } from './liveLayout';
 import { persistJson, readJsonObject } from './persist';
 
 export const STUDY_LAYOUT_STORAGE_KEY = 'study.layout.v1';
-/** 상세 패널을 전체 접었을 때 남는 세로 레일 너비(펼치기 클릭 타깃). /live 와 동일. */
-export const STUDY_DETAIL_PANEL_RAIL_WIDTH_PX = 28;
+/** 상세 패널을 전체 접었을 때 남는 세로 레일 너비 — /live 와 같은 값 하나만 존재. */
+export const STUDY_DETAIL_PANEL_RAIL_WIDTH_PX = DETAIL_PANEL_RAIL_WIDTH_PX;
 
 export type StudyCardKey = 'orderbook' | 'brokers' | 'volumeDistribution' | 'program';
 
-const STUDY_CARD_KEYS: readonly StudyCardKey[] = [
+/** 렌더 순서 그대로의 카드 키 — 패널의 섹션 목록·전체접힘 판정이 이 목록을 공유한다. */
+export const STUDY_CARD_KEYS: readonly StudyCardKey[] = [
   'orderbook',
   'brokers',
   'volumeDistribution',

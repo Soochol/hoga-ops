@@ -15,6 +15,7 @@ import {
   useReorderEntries,
 } from './useWatchlist';
 import { persistJson, readJsonObject } from '../state/persist';
+import { ChevronIcon } from '../ui/ChevronIcon';
 import { useWatchlistFeedback } from './useWatchlistFeedback';
 import { groupByFolder, swapFolderOrder } from './grouping';
 import { Countdown } from './Countdown';
@@ -73,17 +74,6 @@ function AnchoredMenu({ label, children }: { label: string; children: React.Reac
       <div className="px-3 py-1 text-xs text-fg-dimmer">{label}</div>
       {children}
     </div>
-  );
-}
-
-/** 접기 chevron — 펼침=▼(클릭하면 접기), 접힘=▶. 폴더 관용구(VS Code·TradingView),
- *  좌측 배치와 세트. 유니코드 대신 SVG(폰트별 렌더 불일치 회피). */
-function ChevronIcon({ collapsed }: { collapsed: boolean }) {
-  return (
-    <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor"
-      strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
-      {collapsed ? <path d="M9 6l6 6-6 6" /> : <path d="M6 9l6 6 6-6" />}
-    </svg>
   );
 }
 

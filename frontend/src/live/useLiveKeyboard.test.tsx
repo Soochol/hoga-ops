@@ -2,6 +2,7 @@ import { describe, it, expect, beforeEach, vi } from 'vitest';
 import { render, fireEvent, cleanup } from '@testing-library/react';
 import { useLiveKeyboard } from './useLiveKeyboard';
 import { useRightRailStore } from '../state/rightRail';
+import { useLiveLayoutStore } from '../state/liveLayout';
 
 function Harness({
   onNextCode,
@@ -46,6 +47,7 @@ describe('useLiveKeyboard', () => {
   beforeEach(() => {
     cleanup();
     useRightRailStore.setState({ activePanel: null, lastPanel: 'watchlist' });
+    useLiveLayoutStore.setState({ detailPanelCollapsed: false });
   });
 
   it('j triggers onNextCode', () => {
@@ -69,6 +71,24 @@ describe('useLiveKeyboard', () => {
     expect(useRightRailStore.getState().activePanel).toBe('watchlist');
     fireEvent.keyDown(window, { key: 'w' });
     expect(useRightRailStore.getState().activePanel).toBeNull();
+  });
+
+  it('d toggles the detail panel collapse flag', () => {
+    render(<Harness />);
+    expect(useLiveLayoutStore.getState().detailPanelCollapsed).toBe(false);
+    fireEvent.keyDown(window, { key: 'd' });
+    expect(useLiveLayoutStore.getState().detailPanelCollapsed).toBe(true);
+    fireEvent.keyDown(window, { key: 'd' });
+    expect(useLiveLayoutStore.getState().detailPanelCollapsed).toBe(false);
+  });
+
+  it('ignores d when typing in an input or with modifiers', () => {
+    const { getByTestId } = render(<HarnessWithInput />);
+    fireEvent.keyDown(getByTestId('input'), { key: 'd' });
+    fireEvent.keyDown(window, { key: 'd', ctrlKey: true });
+    fireEvent.keyDown(window, { key: 'd', metaKey: true });
+    fireEvent.keyDown(window, { key: 'd', altKey: true });
+    expect(useLiveLayoutStore.getState().detailPanelCollapsed).toBe(false);
   });
 
   it('Escape no longer closes the right rail panel', () => {

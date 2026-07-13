@@ -29,7 +29,7 @@ import type { StudyViewReference } from '../api/studyViews';
 import { DataSection } from '../ui/DataSurface';
 import { DoubleChevronIcon } from '../ui/ChevronIcon';
 import { PanelCard } from '../ui/PageShell';
-import { type StudyCardKey, useStudyLayoutStore } from '../state/studyLayout';
+import { STUDY_CARD_KEYS, type StudyCardKey, useStudyLayoutStore } from '../state/studyLayout';
 
 type Props = {
   save: StudyViewReference;
@@ -39,7 +39,6 @@ type Props = {
 type SectionProps = {
   label: string;
   testId: string;
-  cardKey: StudyCardKey;
   collapsed: boolean;
   onToggleCollapse: () => void;
   showEmptyDot: boolean;
@@ -153,7 +152,7 @@ export function StudyReferenceDetailPanel({ save, bundle }: Props) {
     volumeDistribution: (bundle.volume_distributions ?? []).length === 0,
     program: (bundle.program_trade?.points?.length ?? 0) === 0,
   };
-  const allCollapsed = STUDY_SECTIONS.every((section) => cardCollapsed[section.cardKey]);
+  const allCollapsed = STUDY_CARD_KEYS.every((key) => cardCollapsed[key]);
 
   return (
     <div className="flex min-h-full flex-col">
@@ -182,12 +181,17 @@ export function StudyReferenceDetailPanel({ save, bundle }: Props) {
       <div
         data-testid="study-reference-detail-cards"
         className="grid min-h-full flex-1 content-start gap-2 bg-bg-subtle/40 p-2"
-        style={{ gridTemplateRows: 'auto auto auto auto' }}
+        style={{
+          // 접힌 카드 행은 min-content — content-start 가 사라져도 stretch 로
+          // 빈 헤더가 늘어나지 않도록 /live 와 동일한 방어(ADR-0110 §2).
+          gridTemplateRows: STUDY_CARD_KEYS
+            .map((key) => (cardCollapsed[key] ? 'min-content' : 'auto'))
+            .join(' '),
+        }}
       >
         <StudyDetailSection
           label="10호가"
           testId="orderbook"
-          cardKey="orderbook"
           collapsed={Boolean(cardCollapsed.orderbook)}
           onToggleCollapse={() => toggleCardCollapsed('orderbook')}
           showEmptyDot={emptyByCard.orderbook}
@@ -200,7 +204,6 @@ export function StudyReferenceDetailPanel({ save, bundle }: Props) {
         <StudyDetailSection
           label="거래원"
           testId="brokers"
-          cardKey="brokers"
           collapsed={Boolean(cardCollapsed.brokers)}
           onToggleCollapse={() => toggleCardCollapsed('brokers')}
           showEmptyDot={emptyByCard.brokers}
@@ -213,7 +216,6 @@ export function StudyReferenceDetailPanel({ save, bundle }: Props) {
         <StudyDetailSection
           label="연속체결 매물대 분포"
           testId="volume-distribution"
-          cardKey="volumeDistribution"
           collapsed={Boolean(cardCollapsed.volumeDistribution)}
           onToggleCollapse={() => toggleCardCollapsed('volumeDistribution')}
           showEmptyDot={emptyByCard.volumeDistribution}
@@ -229,7 +231,6 @@ export function StudyReferenceDetailPanel({ save, bundle }: Props) {
         <StudyDetailSection
           label="프로그램"
           testId="program"
-          cardKey="program"
           collapsed={Boolean(cardCollapsed.program)}
           onToggleCollapse={() => toggleCardCollapsed('program')}
           showEmptyDot={emptyByCard.program}
@@ -243,13 +244,6 @@ export function StudyReferenceDetailPanel({ save, bundle }: Props) {
     </div>
   );
 }
-
-const STUDY_SECTIONS: ReadonlyArray<{ cardKey: StudyCardKey }> = [
-  { cardKey: 'orderbook' },
-  { cardKey: 'brokers' },
-  { cardKey: 'volumeDistribution' },
-  { cardKey: 'program' },
-];
 
 function StudyDetailSection({
   label,

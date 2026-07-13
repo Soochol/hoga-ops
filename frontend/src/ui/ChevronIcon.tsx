@@ -2,7 +2,7 @@
  * 접기 chevron — 펼침=▼(아래, 클릭하면 접기), 접힘=▶(오른쪽). 폴더 관용구
  * (VS Code·TradingView), 좌측 배치와 세트. 접힘은 아래 화살표를 -90° 회전(경로 교체
  * 대신)해 150ms 회전 모션을 얻는다. 유니코드 대신 SVG(폰트별 렌더 불일치 회피).
- * 관심종목 드로어 그룹 헤더와 상세 패널 카드 헤더가 공유한다.
+ * 관심종목·히트맵 드로어 그룹 헤더와 상세 패널 카드 헤더가 공유한다.
  */
 export function ChevronIcon({ collapsed, size = 12 }: { collapsed: boolean; size?: number }) {
   return (
