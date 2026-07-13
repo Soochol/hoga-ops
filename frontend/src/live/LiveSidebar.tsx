@@ -21,6 +21,7 @@ import { TIMEFRAME_TO_MS, type RangeBundle, type Timeframe } from '../api/types'
 import { useLiveCursorStore } from './useLiveCursorStore';
 import { useLiveAxisStore } from './useLiveAxisStore';
 import { useLivePageStore } from '../state/livePage';
+import { type LiveCardKey, useLiveLayoutStore } from '../state/liveLayout';
 import { useAuctionMaskActive } from '../state/useAuctionMaskActive';
 import {
   useLiveOrderbookAtCursor,
@@ -81,6 +82,10 @@ export function LiveSidebar({ code, live, bundle = null, todayKst = '', programT
   const volumeDistributionMaxColor = useLivePageStore((s) => s.volumeDistributionMaxColor);
   const stockCode = code && !code.startsWith('index:') ? code : null;
   const activeBundle = bundle;
+  // 매물대 카드가 접혀 있으면 무거운 매물대 훅(오늘 증분 + 커서 컷오프)을 끈다.
+  // SSE 는 LivePage 소유라 불변(ADR-0040) — 카드 언마운트로 렌더만 멈추고,
+  // 이 게이트로 재계산 자체를 멈춘다.
+  const volumeCardCollapsed = useLiveLayoutStore((s) => s.rightCardCollapsed.volumeDistribution ?? false);
 
   // Spot mode is minute-only (ADR-0044): D/W/M have no per-cursor parquet. The
   // chart publishes sidebarCursorMs for spot/sidebar consumers, so gate spot
@@ -190,7 +195,7 @@ export function LiveSidebar({ code, live, bundle = null, todayKst = '', programT
   // 오늘 분포: 베이스(승격 프로필·캔들 그리드·세션 경계) 불변인 동안은 신규
   // 체결 델타만 fold — 기존엔 체결 틱마다 버퍼 전체를 재계산/재병합했다.
   const todayVolumeDistribution = useLiveTodayVolumeDistribution({
-    enabled: volumeDistributionEnabled && !!activeBundle,
+    enabled: volumeDistributionEnabled && !!activeBundle && !volumeCardCollapsed,
     stockCode,
     todayKst,
     isMinute: isMinuteTimeframe(timeframe),
@@ -233,7 +238,7 @@ export function LiveSidebar({ code, live, bundle = null, todayKst = '', programT
     return candlePriceRange(activeVolumeDistributionCandles);
   }, [activeVolumeDistribution, activeVolumeDistributionCandles]);
   const cutoffVolumeDistribution = useVolumeDistributionCutoffProfile({
-    enabled: volumeDistributionEnabled && volumeDistributionHoverCutoffEnabled && isSpot,
+    enabled: volumeDistributionEnabled && volumeDistributionHoverCutoffEnabled && isSpot && !volumeCardCollapsed,
     code: stockCode,
     timeframe: spotTimeframe,
     date: activeVolumeDistributionDate,
@@ -262,6 +267,31 @@ export function LiveSidebar({ code, live, bundle = null, todayKst = '', programT
     spotSnap === null &&
     bufferSnap === null &&
     spotAvailableFrom !== null;
+
+  // 접힌 카드 헤더의 "데이터 없음" 점. 매물대는 게이트된 훅 출력(위에서 접힘 시 공허하게
+  // 비어짐)이 아니라 언게이트 입력(persisted 프로필/캔들 유무)으로 판정 — 접혀도 진실을 말한다.
+  const emptyByCard = useMemo<Partial<Record<LiveCardKey, boolean>>>(
+    () => ({
+      orderbook: orderbookForCard == null,
+      brokers: !brokerCard.series || brokerCard.series.length === 0,
+      volumeDistribution:
+        !activeBundle
+        || (!persistedVolumeDistributions.some((profile) => profile.date === activeVolumeDistributionDate)
+          && activeVolumeDistributionCandles.length === 0),
+      program: (programTrade?.points?.length ?? 0) === 0,
+      investor: (investorTrendEstimate.data?.rows?.length ?? 0) === 0,
+    }),
+    [
+      orderbookForCard,
+      brokerCard.series,
+      activeBundle,
+      persistedVolumeDistributions,
+      activeVolumeDistributionDate,
+      activeVolumeDistributionCandles,
+      programTrade,
+      investorTrendEstimate.data,
+    ],
+  );
 
   return (
     <div
@@ -314,6 +344,7 @@ export function LiveSidebar({ code, live, bundle = null, todayKst = '', programT
             <BrokerTrajectoryTable series={brokerCard.series} cursorMs={brokerCard.cursorMs} />
           }
           investor={<InvestorTrendEstimateCard query={investorTrendEstimate} />}
+          emptyByCard={emptyByCard}
         />
       </div>
     </div>

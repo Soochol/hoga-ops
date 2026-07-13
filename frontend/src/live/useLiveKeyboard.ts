@@ -1,5 +1,6 @@
 import { useEffect } from 'react';
 import { useRightRailStore } from '../state/rightRail';
+import { useLiveLayoutStore } from '../state/liveLayout';
 import { shouldIgnoreEvent } from '../util/keyboard';
 
 export type LiveTimeframeShortcutSlot = 'minute' | 'D' | 'W' | 'M';
@@ -17,6 +18,7 @@ const TIMEFRAME_SHORTCUT_KEYS: Record<string, LiveTimeframeShortcutSlot> = {
  *   j   — focus next watchlist code (handled via callback for caller wiring)
  *   k   — focus previous watchlist code
  *   w   — toggle watchlist panel
+ *   d   — toggle the right detail panel (collapse to rail / expand)
  *   Esc — close the open panel if any (do not toggle off otherwise)
  *
  * Shortcuts are suppressed when the user is typing in an input/textarea or
@@ -65,6 +67,10 @@ export function useLiveKeyboard(opts: UseLiveKeyboardOpts = {}): void {
           break;
         case 'w':
           useRightRailStore.getState().togglePanel('watchlist');
+          e.preventDefault();
+          break;
+        case 'd':
+          useLiveLayoutStore.getState().toggleDetailPanelCollapsed();
           e.preventDefault();
           break;
         default:

@@ -1,15 +1,27 @@
 import { useEffect } from 'react';
 import { shouldIgnoreEvent } from '../util/keyboard';
+import { useStudyLayoutStore } from '../state/studyLayout';
 
 type UseStudyKeyboardOptions = {
   onSelectTabIndex?: (index: number) => void;
 };
 
+/**
+ * /study 키보드 단축키.
+ *   1~4 — 탭 선택
+ *   d   — 상세 패널 접기/펴기 (레일 ↔ 확장; /live 와 동일)
+ * 입력창·modifier 조합에선 무시(shouldIgnoreEvent + modifier bail).
+ */
 export function useStudyKeyboard({ onSelectTabIndex }: UseStudyKeyboardOptions = {}): void {
   useEffect(() => {
     function onKeyDown(event: KeyboardEvent) {
       if (shouldIgnoreEvent(event.target)) return;
       if (event.metaKey || event.ctrlKey || event.altKey || event.shiftKey) return;
+      if (event.key === 'd') {
+        useStudyLayoutStore.getState().toggleDetailPanelCollapsed();
+        event.preventDefault();
+        return;
+      }
       if (!/^[1-4]$/.test(event.key) || !onSelectTabIndex) return;
       onSelectTabIndex(Number(event.key) - 1);
       event.preventDefault();

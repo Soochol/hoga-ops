@@ -30,6 +30,7 @@ import { useAddToFolder } from './useAddToFolder';
 import { SortCycleButton } from './SortCycleButton';
 import { HeatmapSearchInput } from './HeatmapSearchInput';
 import { priceDirClass } from '../ui/priceDir';
+import { ChevronIcon } from '../ui/ChevronIcon';
 import { filterGroups } from './filterGroups';
 import { sortEntries, avgPct, orderFolderGroups, makePctOf, nextSort } from './heat';
 import {
@@ -42,16 +43,9 @@ const COLLAPSE_STORAGE_KEY = 'heatmapDrawer.collapsed';
 const UNCAT_KEY = '__uncat__';
 
 // --- 아이콘 (WatchlistDrawer 의 module-private glyph 들과 동일 계약: SVG 로 통일해
-//     폰트별 유니코드 렌더 불일치를 피한다). 히트맵 드로어는 watchlist 를 건드리지 않기
-//     위해 공용화 대신 이 사본을 둔다(ADR-0068 정신 — 독립 표면). ---
-function ChevronIcon({ collapsed }: { collapsed: boolean }) {
-  return (
-    <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor"
-      strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
-      {collapsed ? <path d="M9 6l6 6-6 6" /> : <path d="M6 9l6 6 6-6" />}
-    </svg>
-  );
-}
+//     폰트별 유니코드 렌더 불일치를 피한다). chevron 은 ui/ChevronIcon 공유 프리미티브
+//     (ADR-0110)로 이관 — 과거 "watchlist 를 건드리지 않으려는" 사본 근거는 중립
+//     ui/ 모듈이 생기며 소멸했다. ---
 function MenuGlyph({ children }: { children: React.ReactNode }) {
   return (
     <svg width="1em" height="1em" viewBox="0 0 24 24" fill="none" stroke="currentColor"

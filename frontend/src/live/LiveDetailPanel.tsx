@@ -6,6 +6,7 @@ import {
   useLiveLayoutStore,
 } from '../state/liveLayout';
 import { DataSection } from '../ui/DataSurface';
+import { DoubleChevronIcon } from '../ui/ChevronIcon';
 
 type Props = {
   orderbook: ReactNode;
@@ -13,6 +14,8 @@ type Props = {
   program: ReactNode;
   brokers: ReactNode;
   investor: ReactNode;
+  /** 접힌 카드 헤더의 "데이터 없음" 점 표시용. 키 부재/false = 점 없음. */
+  emptyByCard?: Partial<Record<LiveCardKey, boolean>>;
 };
 
 type CardDef = {
@@ -32,11 +35,22 @@ const RESIZER_PAIRS: Array<{ upper: LiveCardKey; lower: LiveCardKey; label: stri
 const RESIZER_HEIGHT_PX = 8;
 const WEIGHT_TO_MIN_HEIGHT_PX = 6;
 
-export function LiveDetailPanel({ orderbook, volumeDistribution, program, brokers, investor }: Props) {
+export function LiveDetailPanel({
+  orderbook,
+  volumeDistribution,
+  program,
+  brokers,
+  investor,
+  emptyByCard,
+}: Props) {
   const panelRef = useRef<HTMLDivElement>(null);
   const activeResizeCleanupRef = useRef<(() => void) | null>(null);
   const weights = useLiveLayoutStore((state) => state.rightCardWeights);
   const setWeights = useLiveLayoutStore((state) => state.setRightCardWeights);
+  const collapsed = useLiveLayoutStore((state) => state.rightCardCollapsed);
+  const toggleCardCollapsed = useLiveLayoutStore((state) => state.toggleCardCollapsed);
+  const setAllCardsCollapsed = useLiveLayoutStore((state) => state.setAllCardsCollapsed);
+  const setDetailPanelCollapsed = useLiveLayoutStore((state) => state.setDetailPanelCollapsed);
   useEffect(() => () => {
     activeResizeCleanupRef.current?.();
     activeResizeCleanupRef.current = null;
@@ -141,49 +155,99 @@ export function LiveDetailPanel({ orderbook, volumeDistribution, program, broker
       activeResizeCleanupRef.current = cleanup;
     };
 
+  const allCollapsed = cards.every((card) => collapsed[card.key]);
+
   return (
-    <aside
-      ref={panelRef}
-      data-testid="live-detail-panel"
-      className="grid min-h-full bg-bg-card"
-      style={{
-        gridTemplateRows: cards.map(() => 'auto').join(' 8px '),
-      }}
-    >
-      {cards.map((card, index) => (
-        <div key={card.key} style={{ display: 'contents' }}>
-          <div
-            data-testid={card.testId}
-            data-card={card.key}
-            className={`flex flex-col ${index === 0 ? '' : 'border-t border-border'}`.trim()}
-            style={{
-              minHeight: Math.max(
-                LIVE_CARD_MIN_HEIGHT_PX[card.key],
-                Math.round(weights[card.key] * WEIGHT_TO_MIN_HEIGHT_PX),
-              ),
-            }}
-          >
-            <DataSection title={card.label} className="flex flex-1 flex-col border-t-0" contentClassName="flex-1">
-              <div data-testid={`live-detail-content-${card.key}`} className="flex-1">
-                <div data-testid={card.contentTestId}>{card.content}</div>
+    <div className="flex min-h-full flex-col bg-bg-card">
+      <div
+        data-testid="live-detail-controls"
+        className="sticky top-0 z-10 flex shrink-0 items-center justify-between gap-2 border-b border-border bg-bg-card px-2 py-1"
+      >
+        <button
+          type="button"
+          data-testid="live-detail-panel-collapse"
+          aria-label="상세 패널 접기"
+          onClick={() => setDetailPanelCollapsed(true)}
+          className="flex h-6 w-6 items-center justify-center rounded text-fg-dimmer hover:bg-bg-input-hover hover:text-fg"
+        >
+          <DoubleChevronIcon direction="right" />
+        </button>
+        <button
+          type="button"
+          data-testid="live-detail-collapse-all"
+          onClick={() => setAllCardsCollapsed(!allCollapsed)}
+          className="rounded px-2 py-0.5 text-[11px] font-medium uppercase tracking-wider text-fg-dimmer hover:bg-bg-input-hover hover:text-fg"
+        >
+          {allCollapsed ? '모두 펴기' : '모두 접기'}
+        </button>
+      </div>
+      <aside
+        ref={panelRef}
+        data-testid="live-detail-panel"
+        className="grid min-h-full flex-1 bg-bg-card"
+        style={{
+          gridTemplateRows: cards
+            .map((card) => (collapsed[card.key] ? 'min-content' : 'auto'))
+            .join(' 8px '),
+        }}
+      >
+        {cards.map((card, index) => {
+          const isCollapsed = Boolean(collapsed[card.key]);
+          const resizer = index < RESIZER_PAIRS.length ? RESIZER_PAIRS[index] : null;
+          // 이웃 카드가 하나라도 접혀 있으면 리사이저를 inert 로 — DOM 에는 유지하되
+          // 드래그를 비활성(pointerdown 미부착)해 "정확히 4개 separator" 테스트와 8px
+          // 행 정렬을 보존한다.
+          const resizerInert = resizer
+            ? Boolean(collapsed[resizer.upper]) || Boolean(collapsed[resizer.lower])
+            : false;
+          return (
+            <div key={card.key} style={{ display: 'contents' }}>
+              <div
+                data-testid={card.testId}
+                data-card={card.key}
+                className={`flex flex-col ${index === 0 ? '' : 'border-t border-border'}`.trim()}
+                style={{
+                  minHeight: isCollapsed
+                    ? undefined
+                    : Math.max(
+                        LIVE_CARD_MIN_HEIGHT_PX[card.key],
+                        Math.round(weights[card.key] * WEIGHT_TO_MIN_HEIGHT_PX),
+                      ),
+                }}
+              >
+                <DataSection
+                  title={card.label}
+                  collapsed={isCollapsed}
+                  onToggleCollapse={() => toggleCardCollapsed(card.key)}
+                  showEmptyDot={Boolean(emptyByCard?.[card.key])}
+                  toggleTestId={`live-detail-toggle-${card.key}`}
+                  className="flex flex-1 flex-col border-t-0"
+                  contentClassName="flex-1"
+                >
+                  <div data-testid={`live-detail-content-${card.key}`} className="flex-1">
+                    <div data-testid={card.contentTestId}>{card.content}</div>
+                  </div>
+                </DataSection>
               </div>
-            </DataSection>
-          </div>
-          {index < RESIZER_PAIRS.length ? (
-            <div
-              role="separator"
-              aria-label={RESIZER_PAIRS[index].label}
-              aria-orientation="horizontal"
-              data-testid={`live-detail-resizer-${RESIZER_PAIRS[index].upper}-${RESIZER_PAIRS[index].lower}`}
-              className="grid min-h-[8px] cursor-row-resize place-items-center"
-              style={{ touchAction: 'none' }}
-              onPointerDown={beginResize(RESIZER_PAIRS[index].upper, RESIZER_PAIRS[index].lower)}
-            >
-              <div aria-hidden className="h-px w-full bg-border" />
+              {resizer ? (
+                <div
+                  role="separator"
+                  aria-label={resizer.label}
+                  aria-orientation="horizontal"
+                  aria-disabled={resizerInert || undefined}
+                  data-inert={resizerInert || undefined}
+                  data-testid={`live-detail-resizer-${resizer.upper}-${resizer.lower}`}
+                  className={`grid min-h-[8px] place-items-center ${resizerInert ? 'cursor-default' : 'cursor-row-resize'}`}
+                  style={{ touchAction: 'none' }}
+                  onPointerDown={resizerInert ? undefined : beginResize(resizer.upper, resizer.lower)}
+                >
+                  <div aria-hidden className={`h-px w-full bg-border ${resizerInert ? 'opacity-40' : ''}`.trim()} />
+                </div>
+              ) : null}
             </div>
-          ) : null}
-        </div>
-      ))}
-    </aside>
+          );
+        })}
+      </aside>
+    </div>
   );
 }

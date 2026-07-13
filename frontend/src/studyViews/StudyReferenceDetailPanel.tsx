@@ -27,7 +27,9 @@ import { isMinuteTimeframe, type MinuteTimeframe } from '../state/livePage';
 import { useLivePageStore } from '../state/livePage';
 import type { StudyViewReference } from '../api/studyViews';
 import { DataSection } from '../ui/DataSurface';
+import { DoubleChevronIcon } from '../ui/ChevronIcon';
 import { PanelCard } from '../ui/PageShell';
+import { STUDY_CARD_KEYS, type StudyCardKey, useStudyLayoutStore } from '../state/studyLayout';
 
 type Props = {
   save: StudyViewReference;
@@ -37,6 +39,9 @@ type Props = {
 type SectionProps = {
   label: string;
   testId: string;
+  collapsed: boolean;
+  onToggleCollapse: () => void;
+  showEmptyDot: boolean;
   children: ReactNode;
 };
 
@@ -114,8 +119,16 @@ export function StudyReferenceDetailPanel({ save, bundle }: Props) {
       volumeDistributionRangeCount,
     ],
   );
+  const cardCollapsed = useStudyLayoutStore((s) => s.cardCollapsed);
+  const toggleCardCollapsed = useStudyLayoutStore((s) => s.toggleCardCollapsed);
+  const setAllCardsCollapsed = useStudyLayoutStore((s) => s.setAllCardsCollapsed);
+  const setDetailPanelCollapsed = useStudyLayoutStore((s) => s.setDetailPanelCollapsed);
   const cutoffVolumeDistribution = useVolumeDistributionCutoffProfile({
-    enabled: volumeDistributionEnabled && volumeDistributionHoverCutoffEnabled && detailCursorMs !== null,
+    enabled:
+      volumeDistributionEnabled
+      && volumeDistributionHoverCutoffEnabled
+      && detailCursorMs !== null
+      && !cardCollapsed.volumeDistribution,
     code: save.code,
     timeframe: minuteTimeframe,
     date: volumeDistributionDate,
@@ -133,50 +146,127 @@ export function StudyReferenceDetailPanel({ save, bundle }: Props) {
     [volumeDistributionCandles],
   );
 
+  const emptyByCard: Record<StudyCardKey, boolean> = {
+    orderbook: orderbookSnapshot == null,
+    brokers: !brokerCard.series || brokerCard.series.length === 0,
+    volumeDistribution: (bundle.volume_distributions ?? []).length === 0,
+    program: (bundle.program_trade?.points?.length ?? 0) === 0,
+  };
+  const allCollapsed = STUDY_CARD_KEYS.every((key) => cardCollapsed[key]);
+
   return (
-    <div
-      data-testid="study-reference-detail-cards"
-      className="grid min-h-full content-start gap-2 bg-bg-subtle/40 p-2"
-      style={{ gridTemplateRows: 'auto auto auto auto' }}
-    >
-      <StudyDetailSection label="10호가" testId="orderbook">
-        <>
-          <OrderbookTable snapshot={orderbookSnapshot} baselinePrice={baselinePrice} />
-          <TotalQtyBar snapshot={orderbookSnapshot} maskRatio={false} />
-        </>
-      </StudyDetailSection>
-      <StudyDetailSection label="거래원" testId="brokers">
-        <BrokerTrajectoryTable
-          series={brokerCard.series}
-          cursorMs={brokerCard.cursorMs}
-        />
-      </StudyDetailSection>
-      <StudyDetailSection label="연속체결 매물대 분포" testId="volume-distribution">
-        <VolumeDistributionCard
-          profile={cutoffVolumeDistribution}
-          cursorMs={detailCursorMs}
-          closePoints={volumeClosePoints}
-          color={volumeDistributionColor}
-          maxColor={volumeDistributionMaxColor}
-        />
-      </StudyDetailSection>
-      <StudyDetailSection label="프로그램" testId="program">
-        <ProgramTradeSummaryCard
-          series={bundle.program_trade}
-          cursorMs={detailCursorMs}
-        />
-      </StudyDetailSection>
+    <div className="flex min-h-full flex-col">
+      <div
+        data-testid="study-detail-controls"
+        className="sticky top-0 z-10 flex shrink-0 items-center justify-between gap-2 border-b border-[var(--border)] bg-bg-subtle/40 px-2 py-1"
+      >
+        <button
+          type="button"
+          data-testid="study-detail-panel-collapse"
+          aria-label="상세 패널 접기"
+          onClick={() => setDetailPanelCollapsed(true)}
+          className="flex h-6 w-6 items-center justify-center rounded text-fg-dimmer hover:bg-bg-input-hover hover:text-fg"
+        >
+          <DoubleChevronIcon direction="right" />
+        </button>
+        <button
+          type="button"
+          data-testid="study-detail-collapse-all"
+          onClick={() => setAllCardsCollapsed(!allCollapsed)}
+          className="rounded px-2 py-0.5 text-[11px] font-medium uppercase tracking-wider text-fg-dimmer hover:bg-bg-input-hover hover:text-fg"
+        >
+          {allCollapsed ? '모두 펴기' : '모두 접기'}
+        </button>
+      </div>
+      <div
+        data-testid="study-reference-detail-cards"
+        className="grid min-h-full flex-1 content-start gap-2 bg-bg-subtle/40 p-2"
+        style={{
+          // 접힌 카드 행은 min-content — content-start 가 사라져도 stretch 로
+          // 빈 헤더가 늘어나지 않도록 /live 와 동일한 방어(ADR-0110 §2).
+          gridTemplateRows: STUDY_CARD_KEYS
+            .map((key) => (cardCollapsed[key] ? 'min-content' : 'auto'))
+            .join(' '),
+        }}
+      >
+        <StudyDetailSection
+          label="10호가"
+          testId="orderbook"
+          collapsed={Boolean(cardCollapsed.orderbook)}
+          onToggleCollapse={() => toggleCardCollapsed('orderbook')}
+          showEmptyDot={emptyByCard.orderbook}
+        >
+          <>
+            <OrderbookTable snapshot={orderbookSnapshot} baselinePrice={baselinePrice} />
+            <TotalQtyBar snapshot={orderbookSnapshot} maskRatio={false} />
+          </>
+        </StudyDetailSection>
+        <StudyDetailSection
+          label="거래원"
+          testId="brokers"
+          collapsed={Boolean(cardCollapsed.brokers)}
+          onToggleCollapse={() => toggleCardCollapsed('brokers')}
+          showEmptyDot={emptyByCard.brokers}
+        >
+          <BrokerTrajectoryTable
+            series={brokerCard.series}
+            cursorMs={brokerCard.cursorMs}
+          />
+        </StudyDetailSection>
+        <StudyDetailSection
+          label="연속체결 매물대 분포"
+          testId="volume-distribution"
+          collapsed={Boolean(cardCollapsed.volumeDistribution)}
+          onToggleCollapse={() => toggleCardCollapsed('volumeDistribution')}
+          showEmptyDot={emptyByCard.volumeDistribution}
+        >
+          <VolumeDistributionCard
+            profile={cutoffVolumeDistribution}
+            cursorMs={detailCursorMs}
+            closePoints={volumeClosePoints}
+            color={volumeDistributionColor}
+            maxColor={volumeDistributionMaxColor}
+          />
+        </StudyDetailSection>
+        <StudyDetailSection
+          label="프로그램"
+          testId="program"
+          collapsed={Boolean(cardCollapsed.program)}
+          onToggleCollapse={() => toggleCardCollapsed('program')}
+          showEmptyDot={emptyByCard.program}
+        >
+          <ProgramTradeSummaryCard
+            series={bundle.program_trade}
+            cursorMs={detailCursorMs}
+          />
+        </StudyDetailSection>
+      </div>
     </div>
   );
 }
 
-function StudyDetailSection({ label, testId, children }: SectionProps) {
+function StudyDetailSection({
+  label,
+  testId,
+  collapsed,
+  onToggleCollapse,
+  showEmptyDot,
+  children,
+}: SectionProps) {
   return (
     <PanelCard
       data-testid={`study-detail-card-${testId}`}
       className="flex flex-col"
     >
-      <DataSection title={label} className="flex flex-1 flex-col border-t-0" contentClassName="flex-1">
+      <DataSection
+        title={label}
+        collapsed={collapsed}
+        onToggleCollapse={onToggleCollapse}
+        showEmptyDot={showEmptyDot}
+        toggleTestId={`study-detail-toggle-${testId}`}
+        className="flex flex-1 flex-col border-t-0"
+        contentClassName="flex-1"
+      >
         <div data-testid={`study-detail-content-${testId}`} className="flex-1">
           {children}
         </div>

@@ -223,6 +223,8 @@ describe('LiveWorkarea gate', () => {
     useLiveLayoutStore.setState({
       rightPanelWidthPx: DEFAULT_RIGHT_PANEL_WIDTH_PX,
       rightCardWeights: DEFAULT_CARD_WEIGHTS,
+      rightCardCollapsed: {},
+      detailPanelCollapsed: false,
     });
   });
 
@@ -339,6 +341,52 @@ describe('LiveWorkarea gate', () => {
     fireEvent.wheel(screen.getByTestId('live-chart-panel'), { altKey: true, deltaY: 90 });
 
     expect(detailGroup.scrollTop).toBe(110);
+  });
+
+  it('collapses the detail panel to a rail and restores it on rail click', () => {
+    useLiveLayoutStore.setState({ detailPanelCollapsed: true });
+    renderWorkarea('005930');
+
+    // 접힘: 스플리터·상세 패널 대신 레일만.
+    expect(screen.queryByTestId('live-workarea-splitter')).toBeNull();
+    expect(screen.queryByRole('complementary', { name: 'Live Detail Panel' })).toBeNull();
+    const rail = screen.getByTestId('live-detail-rail');
+    expect(rail).toHaveAttribute('aria-label', '상세 패널 펼치기');
+
+    act(() => {
+      rail.click();
+    });
+    expect(useLiveLayoutStore.getState().detailPanelCollapsed).toBe(false);
+    expect(screen.getByRole('complementary', { name: 'Live Detail Panel' })).toBeInTheDocument();
+  });
+
+  it('does not render the rail for representative index charts even when collapsed', () => {
+    useLiveLayoutStore.setState({ detailPanelCollapsed: true });
+    render(
+      <LiveWorkarea
+        activeCode="index:KOSPI"
+        activeInstrument={indexInstrument('KOSPI', 'KOSPI')}
+        bundle={null}
+        clampEngaged={false}
+        isPastCandlesLoading={false}
+        isExtending={false}
+        live={LIVE}
+      />,
+    );
+
+    expect(screen.queryByTestId('live-detail-rail')).toBeNull();
+    expect(screen.queryByRole('complementary', { name: 'Live Detail Panel' })).toBeNull();
+  });
+
+  it('no-ops Alt+wheel while the detail panel is collapsed', () => {
+    useLiveLayoutStore.setState({ detailPanelCollapsed: true });
+    renderWorkarea('005930');
+
+    // 접힘 중엔 스크롤 대상이 없어 preventDefault 도 없다(핸들러 조기 반환).
+    const chartPanel = screen.getByTestId('live-chart-panel');
+    const event = new WheelEvent('wheel', { altKey: true, deltaY: 90, bubbles: true, cancelable: true });
+    chartPanel.dispatchEvent(event);
+    expect(event.defaultPrevented).toBe(false);
   });
 
   it('starts splitter drag from the rendered clamped width when the saved width is oversized', () => {

@@ -11,6 +11,8 @@ describe('LiveDetailPanel', () => {
     useLiveLayoutStore.setState({
       rightPanelWidthPx: 400,
       rightCardWeights: DEFAULT_CARD_WEIGHTS,
+      rightCardCollapsed: {},
+      detailPanelCollapsed: false,
     });
   });
 
@@ -253,5 +255,133 @@ describe('LiveDetailPanel', () => {
     );
 
     expect(screen.getByTestId('live-detail-panel')).toHaveClass('min-h-full');
+  });
+
+  it('toggles a single card via its header button and persists the collapsed flag', () => {
+    render(
+      <LiveDetailPanel
+        orderbook={<div>orderbook</div>}
+        volumeDistribution={<div>volume</div>}
+        program={<div>program</div>}
+        brokers={<div>brokers</div>}
+        investor={<div>investor</div>}
+      />,
+    );
+
+    // 펼침 기본: 본문(content wrapper)이 마운트되어 있다.
+    expect(screen.getByTestId('card-orderbook')).toBeInTheDocument();
+
+    act(() => {
+      screen.getByTestId('live-detail-toggle-orderbook').click();
+    });
+
+    expect(useLiveLayoutStore.getState().rightCardCollapsed.orderbook).toBe(true);
+    expect(
+      JSON.parse(localStorage.getItem('live.layout.v1') ?? '{}').rightCardCollapsed.orderbook,
+    ).toBe(true);
+    // 접힘: 본문 unmount, minHeight 강등, 카드 래퍼는 유지.
+    expect(screen.queryByTestId('card-orderbook')).toBeNull();
+    expect(screen.getByTestId('live-detail-card-orderbook').style.minHeight).toBe('');
+  });
+
+  it('renders the empty dot only for collapsed empty cards', () => {
+    useLiveLayoutStore.setState({ rightCardCollapsed: { orderbook: true, brokers: true } });
+    render(
+      <LiveDetailPanel
+        orderbook={<div />}
+        volumeDistribution={<div />}
+        program={<div />}
+        brokers={<div />}
+        investor={<div />}
+        emptyByCard={{ orderbook: true, brokers: false }}
+      />,
+    );
+
+    // orderbook 접힘 + 비었음 → 점 표시(sr-only "데이터 없음").
+    const orderbookToggle = screen.getByTestId('live-detail-toggle-orderbook');
+    expect(orderbookToggle.textContent).toContain('데이터 없음');
+    // brokers 접힘이나 데이터 있음 → 점 없음.
+    const brokersToggle = screen.getByTestId('live-detail-toggle-brokers');
+    expect(brokersToggle.textContent).not.toContain('데이터 없음');
+  });
+
+  it('makes the resizer inert when a neighbor is collapsed while others still drag', () => {
+    Object.defineProperties(HTMLElement.prototype, {
+      setPointerCapture: { configurable: true, value: vi.fn() },
+      releasePointerCapture: { configurable: true, value: vi.fn() },
+      hasPointerCapture: { configurable: true, value: vi.fn(() => true) },
+    });
+    // 거래원 접힘 → 10호가/거래원, 거래원/매물대 리사이저가 inert.
+    useLiveLayoutStore.setState({ rightCardCollapsed: { brokers: true } });
+    render(
+      <LiveDetailPanel
+        orderbook={<div />}
+        volumeDistribution={<div />}
+        program={<div />}
+        brokers={<div />}
+        investor={<div />}
+      />,
+    );
+
+    const inertResizer = screen.getByTestId('live-detail-resizer-orderbook-brokers');
+    expect(inertResizer).toHaveAttribute('aria-disabled', 'true');
+
+    const panel = screen.getByTestId('live-detail-panel');
+    Object.defineProperty(panel, 'clientHeight', { configurable: true, value: 1000 });
+    const PointerEvt = window.PointerEvent ?? MouseEvent;
+    const before = useLiveLayoutStore.getState().rightCardWeights;
+    act(() => {
+      inertResizer.dispatchEvent(
+        new PointerEvt('pointerdown', { bubbles: true, clientY: 100, pointerId: 1 }),
+      );
+      window.dispatchEvent(
+        new PointerEvt('pointermove', { bubbles: true, clientY: 300, pointerId: 1 }),
+      );
+    });
+    // inert 리사이저는 드래그해도 weights 불변.
+    expect(useLiveLayoutStore.getState().rightCardWeights).toEqual(before);
+
+    // 접힘과 무관한 매물대/프로그램 리사이저는 여전히 활성.
+    expect(
+      screen.getByTestId('live-detail-resizer-volumeDistribution-program'),
+    ).not.toHaveAttribute('aria-disabled');
+  });
+
+  it('collapses and expands all cards from the control bar toggle', () => {
+    render(
+      <LiveDetailPanel
+        orderbook={<div />}
+        volumeDistribution={<div />}
+        program={<div />}
+        brokers={<div />}
+        investor={<div />}
+      />,
+    );
+
+    const allToggle = screen.getByTestId('live-detail-collapse-all');
+    expect(allToggle.textContent).toBe('모두 접기');
+    act(() => {
+      allToggle.click();
+    });
+    expect(screen.queryByTestId('card-orderbook')).toBeNull();
+    expect(screen.queryByTestId('card-investor')).toBeNull();
+    expect(screen.getByTestId('live-detail-collapse-all').textContent).toBe('모두 펴기');
+  });
+
+  it('collapses the whole detail panel from the control bar « button', () => {
+    render(
+      <LiveDetailPanel
+        orderbook={<div />}
+        volumeDistribution={<div />}
+        program={<div />}
+        brokers={<div />}
+        investor={<div />}
+      />,
+    );
+
+    act(() => {
+      screen.getByTestId('live-detail-panel-collapse').click();
+    });
+    expect(useLiveLayoutStore.getState().detailPanelCollapsed).toBe(true);
   });
 });
