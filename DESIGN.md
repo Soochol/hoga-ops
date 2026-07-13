@@ -83,6 +83,7 @@ The design system has a **single density dial** at `:root font-size`.
   | `--bg-input-hover` | `#1A1A20` | `#F0EDE4` | Hover state |
   | `--border` | `#232329` | `#E4E0D3` | Default borders, dividers |
   | `--border-strong` | `#33333C` | `#C9C3B2` | Active borders, vertical dividers |
+  | `--chart-pane-divider` | `#44444F` | `#B4AD98` | Chart pane separators only (lightweight-charts `layout.panes`); one notch stronger than `--border-strong` so the 1px inter-pane line reads on the busy candle pane |
   | `--fg` | `#ECECF1` | `#1E2732` | Primary text |
   | `--fg-dim` | `#9A9AA8` | `#5C6673` | Secondary text, dim labels |
   | `--fg-dimmer` | `#63636F` | `#8B94A0` | Tertiary text, disabled |

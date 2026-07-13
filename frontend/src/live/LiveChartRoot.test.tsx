@@ -4003,7 +4003,7 @@ describe('LiveChartRoot wheel interactions wiring', () => {
     expect(options).toMatchObject({ handleScale: { mouseWheel: false } });
   });
 
-  it('keeps pane separator hover color subdued for candle/volume boundaries', () => {
+  it('uses the dedicated chart-pane-divider token for pane separators', () => {
     render(
       <LiveChartRoot
         code="005930"
@@ -4017,8 +4017,10 @@ describe('LiveChartRoot wheel interactions wiring', () => {
     const options = vi.mocked(createChartEx).mock.calls.at(-1)![2] as {
       layout?: { textColor?: string; panes?: { separatorColor?: string; separatorHoverColor?: string } };
     };
-    expect(options.layout?.panes?.separatorColor).toBe('#33333C');
-    expect(options.layout?.panes?.separatorHoverColor).toBe('#33333C');
+    // Dedicated --chart-pane-divider (dark fallback), stronger than the old
+    // --border-strong so the 1px line reads on the busy candle pane.
+    expect(options.layout?.panes?.separatorColor).toBe('#44444F');
+    expect(options.layout?.panes?.separatorHoverColor).toBe('#44444F');
     expect(options.layout?.panes?.separatorHoverColor).not.toBe(options.layout?.textColor);
   });
 
