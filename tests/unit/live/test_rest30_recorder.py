@@ -714,3 +714,127 @@ def test_rest30_recorder_next_delay_aligns_to_wall_clock_boundary(tmp_path: Path
     assert recorder._next_delay_s() == pytest.approx(19.5)
     now["ms"] = 1770000030000  # 정각 경계 → 0이 아니라 한 주기(0 sleep 재진입 방지).
     assert recorder._next_delay_s() == pytest.approx(30.0)
+
+
+# ------------------------------------------------------------------------
+# EGW00201 바운스 사이클 집계 (2026-07-13, 제안 A)
+# 프로세스 전역 바운스 카운터 델타를 사이클 단위 관측/경보로 접는다.
+# ------------------------------------------------------------------------
+
+
+class _BouncingKis(FakeKis):
+    """fetch마다 공유 바운스 카운터를 증가시켜, 사이클 중 카운터가 오르는 실제
+    흐름을 재현한다(레코더의 before/after 델타 샘플링을 정직하게 검증)."""
+
+    def __init__(self, counter: dict[str, int], bumps_per_fetch: int) -> None:
+        super().__init__()
+        self._counter = counter
+        self._bumps = bumps_per_fetch
+
+    async def fetch_orderbook(self, code: str):
+        self._counter["v"] += self._bumps
+        return await super().fetch_orderbook(code)
+
+
+def _make_recorder(tmp_path: Path, counter: dict[str, int], kis, targets: set[str]):
+    from hoga.live.buffer import LiveBuffer
+    from hoga.live.rest30_recorder import Rest30sRecorder
+
+    recorder = Rest30sRecorder(
+        kis_resolver=lambda: kis,
+        buffer=LiveBuffer(),
+        data_dir=tmp_path,
+        date_fn=lambda: "20260622",
+        now_ms_fn=lambda: 1770000000000,
+        phase_fn=lambda: "regular",
+        trading_day_fn=lambda: True,
+        interval_s=10.0,
+        bounce_counter_fn=lambda: counter["v"],
+    )
+    recorder.set_targets(targets)
+    return recorder
+
+
+@pytest.mark.asyncio
+async def test_rest30_records_cycle_bounce_delta_in_status(tmp_path: Path) -> None:
+    """사이클 중 오른 바운스 델타가 status.rate_limit_bounces에 반영된다."""
+    counter = {"v": 0}
+    kis = _BouncingKis(counter, bumps_per_fetch=2)  # 종목당 2 바운스
+    recorder = _make_recorder(tmp_path, counter, kis, {"005930", "000660"})
+
+    await recorder.poll_once()
+
+    assert recorder.status().rate_limit_bounces == 4  # 2종목 × 2
+
+
+@pytest.mark.asyncio
+async def test_rest30_zero_bounce_cycle_logs_no_info(
+    tmp_path: Path, caplog: pytest.LogCaptureFixture
+) -> None:
+    """무바운스 사이클은 INFO cycle_done을 내지 않는다(정상 시간대 로그 침묵)."""
+    counter = {"v": 0}
+    kis = _BouncingKis(counter, bumps_per_fetch=0)
+    recorder = _make_recorder(tmp_path, counter, kis, {"005930"})
+
+    with caplog.at_level("INFO", logger="hoga.live.rest30_recorder"):
+        await recorder.poll_once()
+
+    cycle_logs = [r for r in caplog.records if "cycle_done" in r.getMessage()]
+    assert cycle_logs == []  # INFO 레벨에선 아무것도 안 보임
+    assert recorder.status().rate_limit_bounces == 0
+
+
+@pytest.mark.asyncio
+async def test_rest30_bounce_cycle_logs_info_summary(
+    tmp_path: Path, caplog: pytest.LogCaptureFixture
+) -> None:
+    """바운스>0 사이클은 요약 1줄 INFO를 낸다(개별 이벤트 대신 율)."""
+    counter = {"v": 0}
+    kis = _BouncingKis(counter, bumps_per_fetch=1)
+    recorder = _make_recorder(tmp_path, counter, kis, {"005930"})
+
+    with caplog.at_level("INFO", logger="hoga.live.rest30_recorder"):
+        await recorder.poll_once()
+
+    cycle_logs = [r for r in caplog.records if "cycle_done" in r.getMessage()]
+    assert len(cycle_logs) == 1
+    assert "bounces=1" in cycle_logs[0].getMessage()
+
+
+@pytest.mark.asyncio
+async def test_rest30_anomaly_warns_after_consecutive_high_rate(
+    tmp_path: Path, caplog: pytest.LogCaptureFixture
+) -> None:
+    """바운스율이 임계를 2사이클 연속 넘으면 이상치 WARN. 1사이클만으론 안 낸다."""
+    counter = {"v": 0}
+    kis = _BouncingKis(counter, bumps_per_fetch=1)  # 1종목 1바운스 = 100% > 25%
+    recorder = _make_recorder(tmp_path, counter, kis, {"005930"})
+
+    with caplog.at_level("WARNING", logger="hoga.live.rest30_recorder"):
+        await recorder.poll_once()  # streak=1, WARN 없음
+        after_first = [r for r in caplog.records if "rate_limit_anomaly" in r.getMessage()]
+        assert after_first == []
+        await recorder.poll_once()  # streak=2 → WARN
+
+    anomaly = [r for r in caplog.records if "rate_limit_anomaly" in r.getMessage()]
+    assert len(anomaly) == 1
+
+
+@pytest.mark.asyncio
+async def test_rest30_anomaly_streak_resets_on_normal_cycle(
+    tmp_path: Path, caplog: pytest.LogCaptureFixture
+) -> None:
+    """정상(저바운스) 사이클이 끼면 연속 카운터가 리셋돼 경보가 안 뜬다."""
+    counter = {"v": 0}
+    kis = _BouncingKis(counter, bumps_per_fetch=1)
+    recorder = _make_recorder(tmp_path, counter, kis, {"005930"})
+
+    with caplog.at_level("WARNING", logger="hoga.live.rest30_recorder"):
+        await recorder.poll_once()  # streak=1
+        kis._bumps = 0  # 다음 사이클은 무바운스
+        await recorder.poll_once()  # streak 리셋 → 0
+        kis._bumps = 1
+        await recorder.poll_once()  # streak=1 (연속 아님)
+
+    anomaly = [r for r in caplog.records if "rate_limit_anomaly" in r.getMessage()]
+    assert anomaly == []

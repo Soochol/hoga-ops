@@ -95,6 +95,9 @@ class LiveStatus(BaseModel):
     kis_api_last_error: str | None = None
     kis_api_last_error_count: int = 0
     kis_api_degraded: bool = False
+    # 직전 rest30 사이클의 EGW00201 바운스 수(프로세스 전역 델타). 설계된 정상
+    # 손실률(~9-12%, ADR-0100)의 관측 채널 — 개별 WARN 로그 대신 율로 노출.
+    kis_api_rate_limit_bounces: int | None = None
     rest_poller_degraded: bool = False
     rest_poller_last_error: str | None = None
     rest_poller_last_error_kind: str | None = None
@@ -445,6 +448,9 @@ def get_status() -> LiveStatus:
         kis_api_last_error=rest30_status.last_error if rest30_status else None,
         kis_api_last_error_count=rest30_status.last_error_count if rest30_status else 0,
         kis_api_degraded=rest30_status.degraded if rest30_status else False,
+        kis_api_rate_limit_bounces=(
+            rest30_status.rate_limit_bounces if rest30_status else None
+        ),
         rest_poller_degraded=bool(rest_poller_status and rest_poller_status.degraded),
         rest_poller_last_error=(
             rest_poller_status.last_error if rest_poller_status else None

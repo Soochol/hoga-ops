@@ -12,6 +12,7 @@ class FakeRest30Recorder:
         self.targets = set()
         self.started = False
         self.stopped = False
+        self.bounces = None
         FakeRest30Recorder.created.append(self)
 
     def set_targets(self, codes):
@@ -38,6 +39,7 @@ class FakeRest30Recorder:
             last_error=None,
             last_error_count=0,
             degraded=False,
+            rate_limit_bounces=self.bounces,
         )
 
 
@@ -89,6 +91,11 @@ async def test_rest_only_stops_ws_and_starts_api_recorder(tmp_path, monkeypatch)
     assert status.storage_policy == "rest_only"
     assert status.kis_api_targets == ["000660", "005930"]
     assert FakeRest30Recorder.created[0].started is True
+
+    # 바운스 델타가 recorder status → LiveStatus로 매핑되는지(제안 A).
+    assert status.kis_api_rate_limit_bounces is None  # 초기엔 None
+    FakeRest30Recorder.created[0].bounces = 42
+    assert lifecycle.get_status().kis_api_rate_limit_bounces == 42
 
     await lifecycle.stop_live_stream()
     assert FakeRest30Recorder.created[0].stopped is True
