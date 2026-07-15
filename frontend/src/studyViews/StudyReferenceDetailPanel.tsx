@@ -1,7 +1,10 @@
-import { useMemo, type ReactNode } from 'react';
+import { useMemo, useState, type ReactNode } from 'react';
 import {
   DndContext,
+  DragOverlay,
   type DragEndEvent,
+  type DragOverEvent,
+  type DragStartEvent,
   PointerSensor,
   closestCenter,
   useSensor,
@@ -143,21 +146,18 @@ export function StudyReferenceDetailPanel({ save, bundle }: Props) {
       volumeDistributionRangeCount,
     ],
   );
-  const cardCollapsed = useStudyLayoutStore((s) => s.cardCollapsed);
   const cardOrder = useStudyLayoutStore((s) => s.cardOrder);
   const cardHidden = useStudyLayoutStore((s) => s.cardHidden);
   const setCardOrder = useStudyLayoutStore((s) => s.setCardOrder);
   const setCardHidden = useStudyLayoutStore((s) => s.setCardHidden);
-  const toggleCardCollapsed = useStudyLayoutStore((s) => s.toggleCardCollapsed);
-  const setAllCardsCollapsed = useStudyLayoutStore((s) => s.setAllCardsCollapsed);
   const setDetailPanelCollapsed = useStudyLayoutStore((s) => s.setDetailPanelCollapsed);
   const sensors = useSensors(useSensor(PointerSensor, { activationConstraint: { distance: 5 } }));
+  const [drag, setDrag] = useState<{ active: StudyCardKey; over: StudyCardKey | null } | null>(null);
   const cutoffVolumeDistribution = useVolumeDistributionCutoffProfile({
     enabled:
       volumeDistributionEnabled
       && volumeDistributionHoverCutoffEnabled
-      && detailCursorMs !== null
-      && !cardCollapsed.volumeDistribution,
+      && detailCursorMs !== null,
     code: save.code,
     timeframe: minuteTimeframe,
     date: volumeDistributionDate,
@@ -174,13 +174,6 @@ export function StudyReferenceDetailPanel({ save, bundle }: Props) {
     () => volumeDistributionClosePointsFromCandles(volumeDistributionCandles),
     [volumeDistributionCandles],
   );
-
-  const emptyByCard: Record<StudyCardKey, boolean> = {
-    orderbook: orderbookSnapshot == null,
-    brokers: !brokerCard.series || brokerCard.series.length === 0,
-    volumeDistribution: (bundle.volume_distributions ?? []).length === 0,
-    program: (bundle.program_trade?.points?.length ?? 0) === 0,
-  };
 
   const contentByKey: Record<StudyCardKey, ReactNode> = {
     orderbook: (
@@ -206,9 +199,23 @@ export function StudyReferenceDetailPanel({ save, bundle }: Props) {
   const hiddenCards = cardOrder
     .filter((key) => cardHidden[key])
     .map((key) => ({ key, label: STUDY_CARD_META[key].label }));
-  const allCollapsed = visible.length > 0 && visible.every((key) => cardCollapsed[key]);
 
+  const insertionEdgeFor = (key: StudyCardKey): 'top' | 'bottom' | null => {
+    if (!drag || !drag.over || drag.active === key || drag.over !== key) return null;
+    const ai = visible.indexOf(drag.active);
+    const oi = visible.indexOf(key);
+    if (ai < 0 || oi < 0) return null;
+    return ai < oi ? 'bottom' : 'top';
+  };
+
+  const handleDragStart = (event: DragStartEvent) => {
+    setDrag({ active: event.active.id as StudyCardKey, over: event.active.id as StudyCardKey });
+  };
+  const handleDragOver = (event: DragOverEvent) => {
+    setDrag((prev) => (prev ? { active: prev.active, over: (event.over?.id ?? null) as StudyCardKey | null } : prev));
+  };
   const handleDragEnd = (event: DragEndEvent) => {
+    setDrag(null);
     const activeKey = event.active.id as StudyCardKey;
     const overKey = event.over?.id as StudyCardKey | undefined;
     if (!overKey || activeKey === overKey) return;
@@ -218,6 +225,7 @@ export function StudyReferenceDetailPanel({ save, bundle }: Props) {
     const hiddenSet = new Set(cardOrder.filter((key) => cardHidden[key]));
     setCardOrder(reorderVisible(cardOrder, hiddenSet, from, to));
   };
+  const handleDragCancel = () => setDrag(null);
 
   return (
     <div className="flex min-h-full flex-col">
@@ -234,48 +242,39 @@ export function StudyReferenceDetailPanel({ save, bundle }: Props) {
         >
           <DoubleChevronIcon direction="right" />
         </button>
-        <div className="flex items-center gap-1">
-          <CardRestoreMenu
-            hidden={hiddenCards}
-            onRestore={(key) => setCardHidden(key as StudyCardKey, false)}
-            testId="study-detail-restore"
-          />
-          <button
-            type="button"
-            data-testid="study-detail-collapse-all"
-            onClick={() => setAllCardsCollapsed(!allCollapsed)}
-            className="rounded px-2 py-0.5 text-[11px] font-medium uppercase tracking-wider text-fg-dimmer hover:bg-bg-input-hover hover:text-fg"
-          >
-            {allCollapsed ? '모두 펴기' : '모두 접기'}
-          </button>
-        </div>
+        <CardRestoreMenu
+          hidden={hiddenCards}
+          onRestore={(key) => setCardHidden(key as StudyCardKey, false)}
+          testId="study-detail-restore"
+        />
       </div>
-      <DndContext sensors={sensors} collisionDetection={closestCenter} onDragEnd={handleDragEnd}>
+      <DndContext
+        sensors={sensors}
+        collisionDetection={closestCenter}
+        onDragStart={handleDragStart}
+        onDragOver={handleDragOver}
+        onDragEnd={handleDragEnd}
+        onDragCancel={handleDragCancel}
+      >
         <SortableContext items={visible} strategy={verticalListSortingStrategy}>
           <div
             data-testid="study-reference-detail-cards"
-            className="grid min-h-full flex-1 content-start gap-2 bg-bg-subtle/40 p-2"
-            style={{
-              // 접힌 카드 행은 min-content — content-start 가 사라져도 stretch 로
-              // 빈 헤더가 늘어나지 않도록 /live 와 동일한 방어(ADR-0110 §2).
-              gridTemplateRows: visible
-                .map((key) => (cardCollapsed[key] ? 'min-content' : 'auto'))
-                .join(' '),
-            }}
+            className="flex min-h-full flex-1 flex-col gap-2 bg-bg-subtle/40 p-2"
           >
             {visible.map((key) => (
               <SortableStudyCard
                 key={key}
                 cardKey={key}
                 content={contentByKey[key]}
-                collapsed={Boolean(cardCollapsed[key])}
-                showEmptyDot={emptyByCard[key]}
-                onToggleCollapse={() => toggleCardCollapsed(key)}
+                insertionEdge={insertionEdgeFor(key)}
                 onHide={() => setCardHidden(key, true)}
               />
             ))}
           </div>
         </SortableContext>
+        <DragOverlay>
+          {drag ? <DragOverlayStudyCard cardKey={drag.active} content={contentByKey[drag.active]} /> : null}
+        </DragOverlay>
       </DndContext>
     </div>
   );
@@ -284,16 +283,12 @@ export function StudyReferenceDetailPanel({ save, bundle }: Props) {
 function SortableStudyCard({
   cardKey,
   content,
-  collapsed,
-  showEmptyDot,
-  onToggleCollapse,
+  insertionEdge,
   onHide,
 }: {
   cardKey: StudyCardKey;
   content: ReactNode;
-  collapsed: boolean;
-  showEmptyDot: boolean;
-  onToggleCollapse: () => void;
+  insertionEdge: 'top' | 'bottom' | null;
   onHide: () => void;
 }) {
   const meta = STUDY_CARD_META[cardKey];
@@ -301,49 +296,54 @@ function SortableStudyCard({
     id: cardKey,
   });
 
-  // PanelCard 는 ref 를 forward 하지 않으므로 sortable 노드는 래퍼 div — 카드 크롬(border/
-  // rounded/bg)·testid 는 PanelCard 에 그대로 두고(기존 클래스·위치 단언 보존), 래퍼는
-  // dnd transform 만 담는다.
+  // PanelCard 는 ref 를 forward 하지 않으므로 sortable 노드는 래퍼 div — 카드 크롬·testid 는
+  // PanelCard 에 두고 래퍼는 dnd transform·삽입선 앵커만 담는다. relative = 삽입선 앵커.
   return (
     <div
       ref={setNodeRef}
+      className="relative"
       style={{
         transform: CSS.Transform.toString(transform),
         transition,
-        ...(isDragging ? { opacity: 0.65, position: 'relative', zIndex: 10 } : {}),
+        // 드래그 중인 카드는 자리만 유지(투명) — 실제 카드는 DragOverlay 클론이 그린다.
+        ...(isDragging ? { opacity: 0 } : {}),
       }}
     >
+      {insertionEdge && (
+        <span
+          aria-hidden
+          data-testid={`study-detail-drop-${meta.testId}`}
+          className="pointer-events-none absolute inset-x-1 z-20 h-0.5 rounded-full bg-accent"
+          style={{ [insertionEdge]: -5 }}
+        />
+      )}
     <PanelCard data-testid={`study-detail-card-${meta.testId}`} className="flex flex-col">
       <DataSection
         title={meta.label}
-        collapsed={collapsed}
-        onToggleCollapse={onToggleCollapse}
-        showEmptyDot={showEmptyDot}
-        toggleTestId={`study-detail-toggle-${meta.testId}`}
+        headerLeading={
+          <button
+            type="button"
+            data-testid={`study-detail-drag-${meta.testId}`}
+            aria-label={`${meta.label} 카드 이동`}
+            className="flex h-6 w-5 cursor-grab items-center justify-center text-fg-dimmer hover:text-fg active:cursor-grabbing"
+            {...attributes}
+            {...listeners}
+          >
+            <StudyGripIcon />
+          </button>
+        }
         headerTrailing={
-          <>
-            <button
-              type="button"
-              data-testid={`study-detail-drag-${meta.testId}`}
-              aria-label={`${meta.label} 카드 이동`}
-              className="flex h-6 w-5 cursor-grab items-center justify-center text-fg-dimmer hover:text-fg active:cursor-grabbing"
-              {...attributes}
-              {...listeners}
-            >
-              <StudyGripIcon />
-            </button>
-            <button
-              type="button"
-              data-testid={`study-detail-hide-${meta.testId}`}
-              aria-label={`${meta.label} 카드 숨기기`}
-              onClick={onHide}
-              className="flex h-6 w-5 items-center justify-center text-fg-dimmer hover:text-fg"
-            >
-              <svg width="11" height="11" viewBox="0 0 12 12" aria-hidden fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round">
-                <path d="M3 3l6 6M9 3l-6 6" />
-              </svg>
-            </button>
-          </>
+          <button
+            type="button"
+            data-testid={`study-detail-hide-${meta.testId}`}
+            aria-label={`${meta.label} 카드 숨기기`}
+            onClick={onHide}
+            className="flex h-6 w-5 items-center justify-center text-fg-dimmer hover:text-fg"
+          >
+            <svg width="11" height="11" viewBox="0 0 12 12" aria-hidden fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round">
+              <path d="M3 3l6 6M9 3l-6 6" />
+            </svg>
+          </button>
         }
         className="flex flex-1 flex-col border-t-0"
         contentClassName="flex-1"
@@ -354,5 +354,34 @@ function SortableStudyCard({
       </DataSection>
     </PanelCard>
     </div>
+  );
+}
+
+/** DragOverlay 안 고정 크기 클론(비대화형) — 드래그 내내 크기 일정, 스냅백 없음.
+ *  testid 는 붙이지 않는다(원본과 충돌 방지). */
+function DragOverlayStudyCard({ cardKey, content }: { cardKey: StudyCardKey; content: ReactNode }) {
+  const meta = STUDY_CARD_META[cardKey];
+  return (
+    <PanelCard className="flex flex-col shadow-modal">
+      <DataSection
+        title={meta.label}
+        headerLeading={
+          <span className="flex h-6 w-5 cursor-grabbing items-center justify-center text-fg-dim">
+            <StudyGripIcon />
+          </span>
+        }
+        headerTrailing={
+          <span className="flex h-6 w-5 items-center justify-center text-fg-dimmer">
+            <svg width="11" height="11" viewBox="0 0 12 12" aria-hidden fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round">
+              <path d="M3 3l6 6M9 3l-6 6" />
+            </svg>
+          </span>
+        }
+        className="flex flex-1 flex-col border-t-0"
+        contentClassName="flex-1"
+      >
+        <div className="flex-1">{content}</div>
+      </DataSection>
+    </PanelCard>
   );
 }

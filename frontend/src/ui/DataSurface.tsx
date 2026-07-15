@@ -24,6 +24,7 @@ export function DataSection({
   onToggleCollapse,
   showEmptyDot = false,
   toggleTestId,
+  headerLeading,
   headerTrailing,
   flushHeader = false,
 }: {
@@ -35,8 +36,10 @@ export function DataSection({
   onToggleCollapse?: () => void;
   showEmptyDot?: boolean;
   toggleTestId?: string;
-  /** 접기 토글 버튼 우측에 나란히 놓이는 컨트롤(드래그 핸들·숨김 버튼 등, ADR-0114).
-   *  넘기지 않으면 버튼이 헤더 전체를 차지해 렌더가 불변한다. */
+  /** 정적 헤더(비접기) 좌측에 놓이는 컨트롤(드래그 핸들 등). collapsible 헤더에는
+   *  적용되지 않는다 — 그쪽은 좌측이 토글 버튼이다. */
+  headerLeading?: ReactNode;
+  /** 헤더 우측에 나란히 놓이는 컨트롤(숨김 버튼 등). 넘기지 않으면 렌더 불변. */
   headerTrailing?: ReactNode;
   /** 헤더 밑 구분선(border-b) 제거 — 헤더가 본문과 같은 톤으로 흐르는 부유 카드 스타일
    *  (예: /capture 캡처 요청·대기열). 기본은 구분선 유지. */
@@ -46,6 +49,7 @@ export function DataSection({
   const label = typeof title === 'string' ? title : undefined;
   const collapsible = typeof onToggleCollapse === 'function';
   const headerDivider = flushHeader ? '' : 'border-b border-border';
+  const hasStaticControls = headerLeading != null || headerTrailing != null;
   return (
     <section
       aria-label={label}
@@ -79,6 +83,19 @@ export function DataSection({
           </button>
           {headerTrailing != null && (
             <div className="flex shrink-0 items-center gap-0.5 pr-1.5">{headerTrailing}</div>
+          )}
+        </header>
+      ) : hasStaticControls ? (
+        <header
+          id={headerId}
+          className={`flex items-center ${headerDivider} text-xs font-semibold uppercase tracking-[0.08em] text-fg-dimmer`.trim()}
+        >
+          {headerLeading != null && (
+            <span className="flex shrink-0 items-center pl-1.5">{headerLeading}</span>
+          )}
+          <span className="min-w-0 flex-1 truncate px-2 py-2">{title}</span>
+          {headerTrailing != null && (
+            <span className="flex shrink-0 items-center gap-0.5 pr-1.5">{headerTrailing}</span>
           )}
         </header>
       ) : (
