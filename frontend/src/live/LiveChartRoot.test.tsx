@@ -4022,10 +4022,10 @@ describe('LiveChartRoot wheel interactions wiring', () => {
     const options = vi.mocked(createChartEx).mock.calls.at(-1)![2] as {
       layout?: { textColor?: string; panes?: { separatorColor?: string; separatorHoverColor?: string } };
     };
-    // Dedicated --chart-pane-divider (dark fallback), tuned for luminance
-    // contrast against --bg-card so the 2px line reads on the busy dark chart.
-    expect(options.layout?.panes?.separatorColor).toBe('#63636F');
-    expect(options.layout?.panes?.separatorHoverColor).toBe('#63636F');
+    // Dedicated --chart-pane-divider (dark fallback). 2026-07-15 완화: 이전
+    // #63636F(Δ~80)는 화면 최강 선이라 border-strong 근처 #3a3a42(Δ~35)로 낮췄다.
+    expect(options.layout?.panes?.separatorColor).toBe('#3a3a42');
+    expect(options.layout?.panes?.separatorHoverColor).toBe('#3a3a42');
     expect(options.layout?.panes?.separatorHoverColor).not.toBe(options.layout?.textColor);
   });
 
