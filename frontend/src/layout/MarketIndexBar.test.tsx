@@ -4,7 +4,7 @@ import userEvent from '@testing-library/user-event';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { MemoryRouter, useLocation } from 'react-router';
 import { MarketIndexBar } from './MarketIndexBar';
-import { useLiveTabsStore } from '../state/liveTabs';
+import { useLivePageStore } from '../state/livePage';
 import * as client from '../api/client';
 
 function LocationProbe() {
@@ -36,7 +36,7 @@ const KOSPI_WIRE = {
 describe('MarketIndexBar', () => {
   beforeEach(() => {
     vi.restoreAllMocks();
-    useLiveTabsStore.setState({ tabs: [], activeTabId: null });
+    useLivePageStore.setState({ activeInstrument: null, activeCode: null, candleTimeframe: '1m', historicalFromDate: null });
   });
 
   it('renders label + value + signed change with KRX direction colors', async () => {
@@ -67,7 +67,7 @@ describe('MarketIndexBar', () => {
     expect(screen.queryByTestId('market-index-bar')).not.toBeInTheDocument();
   });
 
-  it('click opens the index as a /live tab and navigates', async () => {
+  it('click opens the index in the current /live view and navigates', async () => {
     vi.spyOn(client, 'apiCall').mockResolvedValue({ quotes: [KOSPI_WIRE] });
     const user = userEvent.setup();
 
@@ -76,8 +76,6 @@ describe('MarketIndexBar', () => {
     await user.click(await screen.findByRole('button', { name: 'KOSPI 차트 열기' }));
 
     expect(screen.getByTestId('location-probe')).toHaveTextContent('/live');
-    const { tabs, activeTabId } = useLiveTabsStore.getState();
-    const active = tabs.find((t) => t.id === activeTabId);
-    expect(active?.instrument).toEqual({ kind: 'index', id: 'KOSPI', label: 'KOSPI' });
+    expect(useLivePageStore.getState().activeInstrument).toEqual({ kind: 'index', id: 'KOSPI', label: 'KOSPI' });
   });
 });

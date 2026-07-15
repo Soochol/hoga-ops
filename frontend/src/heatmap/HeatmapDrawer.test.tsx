@@ -118,7 +118,7 @@ describe('HeatmapDrawer', () => {
     wrap(<HeatmapDrawer />);
     const row = await screen.findByTestId('heatmap-drawer-row-000001');
     fireEvent.click(row);
-    expect(onPick).toHaveBeenCalledWith('000001', '에코프로', expect.anything());
+    expect(onPick).toHaveBeenCalledWith('000001', '에코프로');
   });
 
   it('marks the active row via aria-current', async () => {

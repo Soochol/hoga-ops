@@ -5,11 +5,10 @@ import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { LivePage } from './LivePage';
 import type { RangeBundle } from '../api/types';
 import { useLivePageStore } from '../state/livePage';
-import { useLiveTabsStore } from '../state/liveTabs';
+import { stockInstrument } from './liveInstrument';
 import { useLiveVenueStore } from '../state/liveVenue';
 import { DEFAULT_CARD_WEIGHTS, DEFAULT_RIGHT_PANEL_WIDTH_PX, useLiveLayoutStore } from '../state/liveLayout';
 import * as liveStatus from '../api/liveStatus';
-import * as client from '../api/client';
 import { initialHistoricalDaysFor, subtractDaysKst, todayKstYyyymmdd } from './liveDateTime';
 import type { LiveTimeframe } from '../state/livePage';
 
@@ -287,14 +286,13 @@ describe('LivePage shell', () => {
     livePageMocks.currentStudySaveSource = null;
     livePageMocks.dayBidPeaksResult = null;
     livePageMocks.tradeVolumePocsResult = [];
-    // The tabs store is a module singleton (loaded once at import). The new
-    // LivePage tab-bar wiring makes the mount-seed effect read its activeTabId,
-    // so reset it per-test to keep tests isolated — without this, a tab opened
-    // by one test's ?code= leaks into the next test's restored-active-tab path.
-    useLiveTabsStore.setState({ tabs: [], activeTabId: null });
+    // 단일 뷰 모델(ADR-0113): 마운트 시드는 복원된 activeInstrument를 읽으므로
+    // 매 테스트마다 page 스토어의 subject를 리셋해 격리한다.
     useLivePageStore.setState({
+      activeInstrument: null,
       activeCode: null,
       candleTimeframe: '1m',
+      historicalFromDate: null,
     });
     useLiveVenueStore.setState({ venue: 'KRX' });
     useLiveLayoutStore.setState({
@@ -373,11 +371,6 @@ describe('LivePage shell', () => {
       label: 'KOSPI',
     }));
     expect(useLivePageStore.getState().activeCode).toBeNull();
-    expect(useLiveTabsStore.getState().tabs[0].instrument).toEqual({
-      kind: 'index',
-      id: 'KOSPI',
-      label: 'KOSPI',
-    });
   });
 
   it('renders an index chart bundle for daily index deep links', async () => {
@@ -617,25 +610,21 @@ describe('LivePage shell', () => {
     await waitFor(() => expect(document.title).toBe('005930'));
   });
 
-  it('falls back to the restored active tab when no query param', () => {
-    // 단일-탭 모델: 복원된 활성 탭이 page.activeCode의 단일 writer다(stray activeCode가
-    // 아니라 탭이 진실). 마운트 시드가 focusTab → applyTabToPage 로 동기화한다.
-    const id = 'restored';
-    useLiveTabsStore.setState({
-      tabs: [{ id, code: '035720', label: '035720', timeframe: '1m', historicalFromDate: null }],
-      activeTabId: id,
+  it('falls back to the restored active instrument when no query param', () => {
+    // 단일 뷰 모델(ADR-0113): 복원된 activeInstrument가 page.activeCode의 단일 SoT.
+    // 마운트 시드가 activateLiveInstrument로 fresh view를 재투영한다.
+    useLivePageStore.setState({
+      activeInstrument: stockInstrument('035720', '035720'),
+      activeCode: '035720',
     });
     renderWithRouter();
     expect(screen.getByTestId('live-status-bar').textContent).toContain('035720');
   });
 
-  it('passes the active tab id as chart view identity so same-code tabs do not share viewport state', () => {
-    useLiveTabsStore.setState({
-      tabs: [
-        { id: 'tab-a', code: '005930', label: '삼성전자', timeframe: '1m', historicalFromDate: null },
-        { id: 'tab-b', code: '005930', label: '삼성전자', timeframe: '1m', historicalFromDate: null },
-      ],
-      activeTabId: 'tab-b',
+  it('passes activeCode:venue as chart view identity (single-view)', () => {
+    useLivePageStore.setState({
+      activeInstrument: stockInstrument('005930', '삼성전자'),
+      activeCode: '005930',
     });
 
     renderWithRouter();
@@ -643,155 +632,9 @@ describe('LivePage shell', () => {
     expect(livePageMocks.liveChartRootProps.at(-1)).toMatchObject({
       code: '005930',
       timeframe: '1m',
-      viewIdentity: 'tab-b:KRX',
+      viewIdentity: '005930:KRX',
       restoreViewport: null,
     });
-  });
-
-  it('renders the live tab label as stock name, change percent, and active hoga ratio multiple', async () => {
-    vi.spyOn(client, 'apiCall').mockImplementation(async (path: string) => {
-      if (path.startsWith('/api/live/tab-metrics')) {
-        return {
-          phase: 'open',
-          metrics: [{
-            code: '005930',
-            change_pct: 2.14,
-            hoga_ratio_x: 1.32,
-            hoga_available: true,
-            hoga_reason: null,
-            source: 'live',
-          }],
-        };
-      }
-      if (path === '/api/symbols/all') {
-        return { symbols: [], status: 'fresh', fetched_at_ms: 1 };
-      }
-      return {};
-    });
-    useLiveTabsStore.setState({
-      tabs: [{ id: 'tab-a', code: '005930', label: '삼성전자', timeframe: '1m', historicalFromDate: null }],
-      activeTabId: 'tab-a',
-    });
-
-    renderWithRouter();
-
-    await waitFor(() => expect(screen.getByRole('tab', { name: '삼성전자 +2.14%' })).toBeInTheDocument());
-    expect(useLiveTabsStore.getState().tabs[0].label).toBe('삼성전자');
-  });
-
-  it('renders metrics on inactive stock tabs as well as the active tab', async () => {
-    vi.spyOn(client, 'apiCall').mockImplementation(async (path: string) => {
-      if (path.startsWith('/api/live/tab-metrics')) {
-        return {
-          phase: 'open',
-          metrics: [
-            {
-              code: '005930',
-              change_pct: 2.14,
-              hoga_ratio_x: 1.32,
-              hoga_available: true,
-              hoga_reason: null,
-              source: 'live',
-            },
-            {
-              code: '000660',
-              change_pct: -0.8,
-              hoga_ratio_x: 1.11,
-              hoga_available: true,
-              hoga_reason: null,
-              source: 'live',
-            },
-          ],
-        };
-      }
-      if (path === '/api/symbols/all') {
-        return { symbols: [], status: 'fresh', fetched_at_ms: 1 };
-      }
-      return {};
-    });
-    useLiveTabsStore.setState({
-      tabs: [
-        { id: 'tab-a', code: '005930', label: '삼성전자', timeframe: '1m', historicalFromDate: null },
-        { id: 'tab-b', code: '000660', label: 'SK하이닉스', timeframe: '1m', historicalFromDate: null },
-      ],
-      activeTabId: 'tab-a',
-    });
-
-    renderWithRouter();
-
-    await waitFor(() => expect(screen.getByRole('tab', { name: '삼성전자 +2.14%' })).toBeInTheDocument());
-    expect(screen.getByRole('tab', { name: 'SK하이닉스 -0.80%' })).toBeInTheDocument();
-  });
-
-  it('captures the outgoing live tab viewport and restores it when returning to that tab', async () => {
-    const capturedViewport = {
-      rightEdgeMs: 1_781_000_000_000,
-      barSpan: 331,
-      atLiveEdge: false,
-    };
-    useLiveTabsStore.setState({
-      tabs: [
-        { id: 'tab-a', code: '005930', label: '삼성전자', timeframe: '1m', historicalFromDate: null },
-        { id: 'tab-b', code: '000660', label: 'SK하이닉스', timeframe: 'D', historicalFromDate: null },
-      ],
-      activeTabId: 'tab-b',
-    });
-
-    renderWithRouter();
-    await waitFor(() => expect(livePageMocks.liveChartRootProps.at(-1)).toMatchObject({
-      code: '000660',
-      timeframe: 'D',
-      restoreViewport: null,
-    }));
-    act(() => {
-      livePageMocks.liveChartRootProps.at(-1)?.onViewportCaptureReady?.(() => capturedViewport);
-    });
-
-    act(() => {
-      screen.getByRole('tab', { name: /삼성전자/ }).click();
-    });
-
-    expect(useLiveTabsStore.getState().tabs.find((tab) => tab.id === 'tab-b')?.viewport).toEqual(capturedViewport);
-
-    act(() => {
-      screen.getByRole('tab', { name: /SK하이닉스/ }).click();
-    });
-
-    await waitFor(() => expect(livePageMocks.liveChartRootProps.at(-1)).toMatchObject({
-      code: '000660',
-      timeframe: 'D',
-      restoreViewport: capturedViewport,
-    }));
-  });
-
-  it('captures the active live tab viewport on pagehide but keeps it out of persistence', async () => {
-    const capturedViewport = {
-      rightEdgeMs: 1_781_000_000_000,
-      barSpan: 331,
-      atLiveEdge: false,
-    };
-    useLiveTabsStore.setState({
-      tabs: [
-        { id: 'tab-a', code: '005930', label: '삼성전자', timeframe: '1m', historicalFromDate: null },
-      ],
-      activeTabId: 'tab-a',
-    });
-
-    renderWithRouter();
-    await waitFor(() => expect(livePageMocks.liveChartRootProps.at(-1)).toMatchObject({
-      code: '005930',
-    }));
-    act(() => {
-      livePageMocks.liveChartRootProps.at(-1)?.onViewportCaptureReady?.(() => capturedViewport);
-    });
-
-    act(() => {
-      window.dispatchEvent(new Event('pagehide'));
-    });
-
-    expect(useLiveTabsStore.getState().tabs[0].viewport).toEqual(capturedViewport);
-    const persisted = JSON.parse(localStorage.getItem('live.tabs.v2') ?? '{}');
-    expect(persisted.tabs[0]).not.toHaveProperty('viewport');
   });
 
   it('does not restore logical viewport across minute timeframe changes', async () => {
@@ -819,16 +662,16 @@ describe('LivePage shell', () => {
 
   it('includes the selected venue in bundle options, status text, and chart identity', () => {
     useLiveVenueStore.setState({ venue: 'UN' });
-    useLiveTabsStore.setState({
-      tabs: [{ id: 'tab-a', code: '005930', label: '삼성전자', timeframe: '1m', historicalFromDate: null }],
-      activeTabId: 'tab-a',
+    useLivePageStore.setState({
+      activeInstrument: stockInstrument('005930', '삼성전자'),
+      activeCode: '005930',
     });
 
     renderWithRouter();
 
     expect(livePageMocks.liveBundleCalls.at(-1)?.options.venue).toBe('UN');
     expect(screen.getByTestId('live-venue-label').textContent).toBe('캔들 통합');
-    expect(livePageMocks.liveChartRootProps.at(-1)?.viewIdentity).toBe('tab-a:UN');
+    expect(livePageMocks.liveChartRootProps.at(-1)?.viewIdentity).toBe('005930:UN');
   });
 
   it('shows empty-state placeholder when no activeCode anywhere', () => {

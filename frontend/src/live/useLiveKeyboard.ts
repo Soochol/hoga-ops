@@ -28,9 +28,6 @@ const TIMEFRAME_SHORTCUT_KEYS: Record<string, LiveTimeframeShortcutSlot> = {
 export interface UseLiveKeyboardOpts {
   onNextCode?: () => void;
   onPrevCode?: () => void;
-  onNextTab?: () => void;
-  onPrevTab?: () => void;
-  onSelectTabIndex?: (index: number) => void;
   onSelectTimeframeShortcut?: (slot: LiveTimeframeShortcutSlot) => void;
 }
 
@@ -57,14 +54,6 @@ export function useLiveKeyboard(opts: UseLiveKeyboardOpts = {}): void {
           opts.onPrevCode?.();
           e.preventDefault();
           break;
-        case ']':
-          opts.onNextTab?.();
-          e.preventDefault();
-          break;
-        case '[':
-          opts.onPrevTab?.();
-          e.preventDefault();
-          break;
         case 'w':
           useRightRailStore.getState().togglePanel('watchlist');
           e.preventDefault();
@@ -74,13 +63,6 @@ export function useLiveKeyboard(opts: UseLiveKeyboardOpts = {}): void {
           e.preventDefault();
           break;
         default:
-          // 1~9 → 0-based 탭 인덱스. 무제한 탭이어도 숫자 단축키는
-          // 첫 9개 탭만 직접 선택한다. 그 이후 탭은 탭 목록/검색을 사용한다.
-          // 정규식은 자기설명적이고 다중문자 key(예: 'F1')의 NaN 경로를 원천 차단.
-          if (/^[1-9]$/.test(e.key) && opts.onSelectTabIndex) {
-            opts.onSelectTabIndex(Number(e.key) - 1);
-            e.preventDefault();
-          }
           break;
       }
     }
@@ -89,9 +71,6 @@ export function useLiveKeyboard(opts: UseLiveKeyboardOpts = {}): void {
   }, [
     opts.onNextCode,
     opts.onPrevCode,
-    opts.onNextTab,
-    opts.onPrevTab,
-    opts.onSelectTabIndex,
     opts.onSelectTimeframeShortcut,
   ]);
 }

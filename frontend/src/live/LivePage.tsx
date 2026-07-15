@@ -7,13 +7,11 @@ import SessionTape from './SessionTape';
 import { LiveStatusBar } from './LiveStatusBar';
 import { LiveWorkarea } from './LiveWorkarea';
 import { LiveStateBanner } from './LiveStateBanner';
-import { LiveTabBar } from './LiveTabBar';
-import { persistLiveTabsNow, useLiveTabsStore } from '../state/liveTabs';
+import { activateLiveCode, activateLiveInstrument } from './liveNavigate';
 import { focusLiveSearch } from './liveSearchFocus';
 import { useLiveKeyboard } from './useLiveKeyboard';
 import { useLiveBundle } from './useLiveBundle';
 import { useLiveSeries } from '../api/liveSeries';
-import { useLiveTabMetricsByCode } from '../api/liveTabMetrics';
 import { useDayAskPeaks, useTodayAllPriceAskPeak } from './useDayAskPeaks';
 import { useDayBidPeaks, useTodayAllPriceBidPeak } from './useDayBidPeaks';
 import { useTradeVolumePocs } from './useTradeVolumePoc';
@@ -34,11 +32,10 @@ import { panePrefsForTimeframe, type PanePrefsIndicatorSource } from './indicato
 import { useDailyMaRevealGate } from './indicators/useDailyMaRevealGate';
 import LiveSettingsModal from './LiveSettingsModal';
 import { useDocumentTitle } from '../util/useDocumentTitle';
-import { indexInstrument, isLiveIndexId } from './liveInstrument';
+import { indexInstrument, instrumentLabel, isLiveIndexId } from './liveInstrument';
 import { useLiveIndexCandles, useLiveIndexInvestorNet } from '../api/liveIndices';
 import { buildIndexBundle } from './buildIndexBundle';
 import { capabilitiesForInstrument } from './liveInstrumentCapabilities';
-import type { LiveTabMetrics } from './liveViewLabel';
 
 /** 안정 빈 배열 — 매 렌더 새 [] 가 useDayAskPeaks의 메모 deps를 churn하지 않게. */
 const EMPTY_ASK_PEAKS: readonly AskPeak[] = [];
@@ -82,48 +79,38 @@ function tradeVolumePocsToWire(pocs: readonly {
 /**
  * /live page — KIS-based real-time indicator chart.
  *
- * Four-row grid (symbol search moved up into the global TopNav header line):
- *   1. LiveTabBar      (40px)                  — open stock tabs (ADR-0069)
- *   2. LiveStateBanner (auto)                  — empty/error state matrix
- *   3. LiveStatusBar   (var(--h-pricestrip))   — code/price/source/timeframe + cycle_lag pill
- *   4. LiveWorkarea    (1fr)                   — chart panel (toolbar + chart) + detail panel
+ * Three-row grid (symbol search lives in the global TopNav header line):
+ *   1. LiveStateBanner (auto)                  — empty/error state matrix
+ *   2. LiveStatusBar   (var(--h-pricestrip))   — code/price/source/timeframe + cycle_lag pill
+ *   3. LiveWorkarea    (1fr)                   — chart panel (toolbar + chart) + detail panel
  *
- * Active code resolution (CONTEXT.md / ADR-0052 / ADR-0069):
- *   useLivePageStore remains the single source of truth that all read sites
- *   consume for activeCode. The active *tab* (useLiveTabsStore → applyTabToPage)
- *   is now the single WRITER of that value. `?code=` is a one-shot deep-link
- *   SEED: on first mount it open-or-focuses a tab (which writes activeCode);
- *   thereafter search / ♥ / Watchlist writes flow through the tabs store and the
- *   URL never reverts them. With no `?code=`, the restored active tab is applied
- *   to the page on mount; with no tabs at all, LiveWorkarea shows the empty state.
+ * Active code resolution (CONTEXT.md / ADR-0052 / ADR-0113):
+ *   useLivePageStore is the single source of truth that all read sites consume
+ *   for activeCode, and `projectActiveView` is its single WRITER (tabs removed —
+ *   single-view model). `?code=`/`?index=` is a one-shot deep-link SEED on first
+ *   mount; with neither, the restored activeInstrument (live.page.v1) is
+ *   normalized to a fresh view (pan reset). Search / ♥ / Watchlist / Heatmap /
+ *   Screener clicks write the active view in place via liveNavigate; with no
+ *   restored subject, LiveWorkarea shows the empty state.
  */
 export function LivePage() {
   const [params] = useSearchParams();
   const queryCode = params.get('code');
   const queryIndex = params.get('index');
-  const tabs = useLiveTabsStore((s) => s.tabs);
-  const activeTabId = useLiveTabsStore((s) => s.activeTabId);
-  const setActiveTabCode = useLiveTabsStore((s) => s.setActiveTabCode);
-  const setActiveTabInstrument = useLiveTabsStore((s) => s.setActiveTabInstrument);
-  const addBlankTab = useLiveTabsStore((s) => s.addBlankTab);
-  const focusTab = useLiveTabsStore((s) => s.focusTab);
-  const closeTab = useLiveTabsStore((s) => s.closeTab);
-  const reorderTabs = useLiveTabsStore((s) => s.reorderTabs);
-  const toggleTabPinned = useLiveTabsStore((s) => s.toggleTabPinned);
-  const updateTabViewport = useLiveTabsStore((s) => s.updateTabViewport);
 
-  // 1회: URL ?code= 시드는 현재 탭에 적용, 없으면 복원된 활성 탭을 page에 동기화,
-  // 복원된 탭이 하나도 없으면 기본 빈 탭 1개를 만든다 — 항상 현재 탭이 존재해
-  // 관심종목 클릭이 교체할 대상을 보장한다(단일-탭 내비게이션 모델, ADR-0069 개정).
+  // 1회 시드: URL ?code=/?index= 딥링크는 그 종목으로 현재 뷰를 연다. 없으면
+  // live.page.v1에서 복원된 활성 종목의 pan/뷰포트를 초기화해 fresh view로 정규화한다
+  // (탭 제거 후 단일 뷰 복귀, ADR-0113 — 새로고침=마지막 종목·타임프레임 유지, pan 리셋).
+  // 복원된 종목이 없으면 빈 상태(종목 검색 안내)를 보인다.
   const seeded = useRef(false);
   useEffect(() => {
     if (seeded.current) return;
     seeded.current = true;
-    if (queryCode) setActiveTabCode(queryCode);
-    else if (isLiveIndexId(queryIndex)) setActiveTabInstrument(indexInstrument(queryIndex, queryIndex));
-    else if (activeTabId) focusTab(activeTabId); // 복원된 활성 탭 → page 동기화
-    else addBlankTab();                          // 기본 탭 1개
-  }, [queryCode, queryIndex, activeTabId, setActiveTabCode, setActiveTabInstrument, addBlankTab, focusTab]);
+    if (queryCode) { activateLiveCode(queryCode); return; }
+    if (isLiveIndexId(queryIndex)) { activateLiveInstrument(indexInstrument(queryIndex, queryIndex)); return; }
+    const restored = useLivePageStore.getState().activeInstrument;
+    if (restored) activateLiveInstrument(restored);
+  }, [queryCode, queryIndex]);
 
   const { data: status } = useLiveStatus();
   const liveStatus = useLiveStatusProjection(status);
@@ -149,69 +136,20 @@ export function LivePage() {
     [paneIndicators, timeframe],
   );
   const investorNetEnabled = activePanePrefs.foreignNetEnabled || activePanePrefs.institutionNetEnabled;
-  const stockTabCodes = useMemo(() => {
-    const codes: string[] = [];
-    const seen = new Set<string>();
-    for (const tab of tabs) {
-      const code = tab.instrument?.kind === 'stock'
-        ? tab.instrument.code
-        : tab.instrument == null
-          ? tab.code
-          : null;
-      if (!code || seen.has(code)) continue;
-      seen.add(code);
-      codes.push(code);
-    }
-    return codes;
-  }, [tabs]);
-  const tabMetricByCode = useLiveTabMetricsByCode(stockTabCodes, liveVenue);
   useDocumentTitle(activeCode);
   const [indicatorPanelOpen, setIndicatorPanelOpen] = useState(false);
   const [settingsOpen, setSettingsOpen] = useState(false);
+  // 저장뷰(Study View Save)가 현재 차트 뷰포트를 캡처하는 데 쓰는 ref — 탭이 아니라
+  // 뷰포트 프리미티브다(ADR-0113: 탭별 뷰포트 저장은 제거, 저장뷰 캡처는 유지).
   const viewportCaptureRef = useRef<() => TabViewport | null>(() => null);
   const handleViewportCaptureReady = useCallback((capture: () => TabViewport | null) => {
     viewportCaptureRef.current = capture;
   }, []);
-  const captureActiveTabViewport = useCallback(() => {
-    if (!activeTabId) return false;
-    const viewport = viewportCaptureRef.current();
-    if (!viewport) return false;
-    updateTabViewport(activeTabId, viewport);
-    return true;
-  }, [activeTabId, updateTabViewport]);
-  useEffect(() => {
-    const flushActiveViewport = () => {
-      if (captureActiveTabViewport()) persistLiveTabsNow();
-    };
-    window.addEventListener('pagehide', flushActiveViewport);
-    window.addEventListener('beforeunload', flushActiveViewport);
-    return () => {
-      window.removeEventListener('pagehide', flushActiveViewport);
-      window.removeEventListener('beforeunload', flushActiveViewport);
-    };
-  }, [captureActiveTabViewport]);
-  const focusLiveTab = useCallback((id: string) => {
-    if (id !== activeTabId) captureActiveTabViewport();
-    focusTab(id);
-  }, [activeTabId, captureActiveTabViewport, focusTab]);
-  const closeLiveTab = useCallback((id: string) => {
-    if (id === activeTabId) captureActiveTabViewport();
-    closeTab(id);
-  }, [activeTabId, captureActiveTabViewport, closeTab]);
-  const addLiveBlankTab = useCallback(() => {
-    captureActiveTabViewport();
-    addBlankTab();
-  }, [addBlankTab, captureActiveTabViewport]);
 
   // Keyboard shortcuts (Addendum 9.y / Design B7).
   // j/k traversal callbacks will be supplied by Stage 11 when the watchlist
-  // panel is wired up; for now they're no-ops.
-  // Tab switching (ADR-0069 / D6): ] next, [ prev, 1-9 jump to tab N.
-  const activeIdx = tabs.findIndex((t) => t.id === activeTabId);
+  // panel is wired up; for now they're no-ops. Shift+숫자 = 타임프레임 슬롯.
   useLiveKeyboard({
-    onNextTab: () => { if (tabs.length) focusLiveTab(tabs[(activeIdx + 1 + tabs.length) % tabs.length].id); },
-    onPrevTab: () => { if (tabs.length) focusLiveTab(tabs[(activeIdx - 1 + tabs.length) % tabs.length].id); },
-    onSelectTabIndex: (i) => { if (i < tabs.length) focusLiveTab(tabs[i].id); },
     onSelectTimeframeShortcut: (slot) => {
       const page = useLivePageStore.getState();
       const next = slot === 'minute' ? page.lastMinuteTimeframe : slot;
@@ -269,22 +207,7 @@ export function LivePage() {
       investorPoints: indexInvestorNet.data?.points ?? [],
     });
   }, [activeIndexId, timeframe, indexCandles.data, indexInvestorNet.data?.points]);
-  const activeTab = tabs.find((t) => t.id === activeTabId);
-  const tabMetrics = useMemo<Record<string, LiveTabMetrics>>(() => {
-    const next: Record<string, LiveTabMetrics> = {};
-    for (const tab of tabs) {
-      const code = tab.instrument?.kind === 'stock'
-        ? tab.instrument.code
-        : tab.instrument == null
-          ? tab.code
-          : null;
-      const metric = code ? tabMetricByCode.get(code) : undefined;
-      next[tab.id] = {
-        changePct: metric?.change_pct ?? null,
-      };
-    }
-    return next;
-  }, [tabMetricByCode, tabs]);
+  const activeLabel = activeInstrument ? instrumentLabel(activeInstrument) : activeCode;
   // 상태바 현재가용 fresh 체결가 — 타임프레임 무관(live.trade 는 code 단위 구독).
   // D/W/M 에서도 라인/상태바가 실시간 체결을 반영하게 하는 하드닝. LiveChartRoot 도
   // 같은 순수함수를 별도 계산하지만 값이 동일해 "라인=상태바" invariant 를 유지한다.
@@ -375,7 +298,7 @@ export function LivePage() {
     const source: LiveStudySaveSource = {
       origin: 'live',
       code: activeCode,
-      label: activeTab?.label || activeCode,
+      label: activeLabel || activeCode,
       timeframe,
       bundle: liveSaveBundle,
       captureViewport: () => viewportCaptureRef.current(),
@@ -384,7 +307,7 @@ export function LivePage() {
     return () => {
       clearCurrentStudySaveSource(source);
     };
-  }, [activeCode, activeTab?.label, liveSaveBundle, timeframe]);
+  }, [activeCode, activeLabel, liveSaveBundle, timeframe]);
 
   return (
     <div
@@ -393,23 +316,10 @@ export function LivePage() {
         // minmax(0, 1fr) on the workarea row prevents the chart canvas's
         // intrinsic size from pushing the row past viewport height.
         gridTemplateRows:
-          '3px var(--h-tab) auto var(--h-pricestrip) minmax(0, 1fr)',
+          '3px auto var(--h-pricestrip) minmax(0, 1fr)',
       }}
     >
       <SessionTape />
-      <LiveTabBar
-        tabs={tabs}
-        activeTabId={activeTabId}
-        tabMetrics={tabMetrics}
-        activeLoading={isPastCandlesLoading}
-        onFocus={focusLiveTab}
-        onClose={closeLiveTab}
-        onReorder={reorderTabs}
-        onTogglePin={toggleTabPinned}
-        // + 버튼: 빈 탭을 만들고 검색창에 포커스 → 사용자가 바로 종목을 타이핑해 채운다(spec D5).
-        // 마운트 시 기본 탭(위 시드)은 의도적으로 검색 포커스를 주지 않는다(로드마다 포커스 탈취 방지).
-        onNewTab={() => { addLiveBlankTab(); focusLiveSearch(); }}
-      />
       <LiveStateBanner
         primary={workareaCode && banner.primary === 'watchlist_empty' ? null : banner.primary}
         stack={banner.stack}
@@ -437,8 +347,8 @@ export function LivePage() {
         indicatorCoverageFromDate={activeIndexId ? null : indicatorCoverageFromDate}
         rangeWindowFromDate={activeIndexId ? null : rangeWindowFromDate}
         pastDataWarnings={workareaDataWarnings}
-        restoreViewport={activeTab?.viewport ?? null}
-        viewIdentity={activeTabId ? `${activeTabId}:${liveVenue}` : liveVenue}
+        restoreViewport={null}
+        viewIdentity={workareaCode ? `${workareaCode}:${liveVenue}` : liveVenue}
         venue={liveVenue}
         live={live}
         dayAskPeaks={dayAskPeaks}

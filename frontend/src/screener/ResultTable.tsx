@@ -1,5 +1,4 @@
 import type { ScreenerRowLive } from './useScreenerRowsLive';
-import { dispositionFromMouseEvent, type LiveOpenDisposition } from '../live/liveActivation';
 import { WatchlistHeartButton } from '../watchlist/WatchlistHeartButton';
 import { nextScreenerSortMode, type ScreenerResultSortField, type ScreenerResultSortMode } from './sortResults';
 import { DataTableHeader, DataTableRow, DataTableShell, EmptyState } from '../ui/DataSurface';
@@ -8,7 +7,7 @@ import { priceDirClass } from '../ui/priceDir';
 interface Props {
   /** Live Quote 가 이미 머지된 결과 행(useScreenerRowsLive). 표시만 하면 된다. */
   rows: ScreenerRowLive[];
-  onActivate: (code: string, name?: string, options?: { disposition?: LiveOpenDisposition }) => void;
+  onActivate: (code: string, name?: string) => void;
   sortMode?: ScreenerResultSortMode;
   onSortChange?: (mode: ScreenerResultSortMode) => void;
   embedded?: boolean;
@@ -78,7 +77,7 @@ export function ResultTable({ rows, onActivate, sortMode = 'default', onSortChan
           };
           return (
             <DataTableRow key={r.code} role="button" tabIndex={0} aria-label={`${r.name} ${r.code} 호가창 열기`}
-              onClick={(e) => onActivate(r.code, r.name, { disposition: dispositionFromMouseEvent(e) })} onKeyDown={onKeyDown}
+              onClick={() => onActivate(r.code, r.name)} onKeyDown={onKeyDown}
               columns={COLS}
               className="cursor-pointer outline-none hover:bg-bg-input-hover focus-visible:bg-bg-input-hover">
               <span className="font-mono tabular-nums text-fg-dim">{r.code}</span>

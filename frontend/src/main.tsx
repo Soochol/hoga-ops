@@ -9,15 +9,12 @@ import Capture from './pages/Capture';
 import Settings from './pages/Settings';
 import { Heatmap } from './pages/Heatmap';
 import { StudyPage } from './studyViews/StudyPage';
-import { initLiveTabsSync } from './state/liveTabs';
 import { initStudyTabsSync } from './state/studyTabs';
 import './styles/global.css';
 
-const _disposeLiveTabsSync = initLiveTabsSync();
 const _disposeStudyTabsSync = initStudyTabsSync();
 if (import.meta.hot) {
   import.meta.hot.dispose(() => {
-    _disposeLiveTabsSync();
     _disposeStudyTabsSync();
   });
 }

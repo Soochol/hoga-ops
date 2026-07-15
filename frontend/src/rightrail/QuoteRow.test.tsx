@@ -42,19 +42,10 @@ describe('QuoteRow', () => {
     expect(onClick).toHaveBeenCalledOnce();
   });
 
-  it('plain click opens in the current tab', () => {
+  it('click opens the current view (single-view model)', () => {
     const { onClick } = row();
     fireEvent.click(screen.getByTestId('quote-row-005930'));
-    expect(onClick).toHaveBeenCalledWith({ disposition: 'current-tab' });
-  });
-
-  it('Ctrl-click and Meta-click request a new tab', () => {
-    const { onClick } = row();
-    const li = screen.getByTestId('quote-row-005930');
-    fireEvent.click(li, { ctrlKey: true });
-    fireEvent.click(li, { metaKey: true });
-    expect(onClick).toHaveBeenNthCalledWith(1, { disposition: 'new-tab' });
-    expect(onClick).toHaveBeenNthCalledWith(2, { disposition: 'new-tab' });
+    expect(onClick).toHaveBeenCalledOnce();
   });
 
   it('renders no trailing cell when trailingAction is omitted (backward compat)', () => {
@@ -120,7 +111,7 @@ describe('QuoteRow', () => {
     expect(onPointerDown).toHaveBeenCalledOnce();
 
     fireEvent.click(li);
-    expect(onClick).toHaveBeenCalledWith({ disposition: 'current-tab' });
+    expect(onClick).toHaveBeenCalledOnce();
   });
 
   it('right-click calls onContextMenu', () => {
@@ -184,12 +175,12 @@ describe('QuoteRow', () => {
     a.focus();
     fireEvent.keyDown(a, { key: 'ArrowDown' });
     expect(document.activeElement).toBe(b);
-    // 이동 즉시 선택 = 이웃 행의 onClick(현재 탭) 발동
-    expect(onB).toHaveBeenCalledWith({ disposition: 'current-tab' });
+    // 이동 즉시 선택 = 이웃 행의 onClick(현재 뷰 교체) 발동
+    expect(onB).toHaveBeenCalledOnce();
 
     fireEvent.keyDown(b, { key: 'ArrowUp' });
     expect(document.activeElement).toBe(a);
-    expect(onA).toHaveBeenCalledWith({ disposition: 'current-tab' });
+    expect(onA).toHaveBeenCalledOnce();
   });
 
   it('ArrowDown at the last row is a no-op (no wrap-around)', () => {

@@ -27,17 +27,11 @@ const { setActiveCode } = vi.hoisted(() => ({ setActiveCode: vi.fn() }));
 vi.mock('../state/livePage', () => ({
   useLivePageStore: (sel: (s: { setActiveCode: typeof setActiveCode }) => unknown) => sel({ setActiveCode }),
 }));
-// 탭 도입(D5): useJumpToLive가 실제 liveTabs를 import → 로드 시 useLivePageStore.subscribe
-// 호출. 위 livePage 모킹은 selector만 제공하므로 liveTabs도 모킹해 모듈 로드 crash를 막는다.
-const { setActiveTabCode, openSymbolInNewTab } = vi.hoisted(() => ({
-  setActiveTabCode: vi.fn(),
-  openSymbolInNewTab: vi.fn(),
-}));
-vi.mock('../state/liveTabs', () => ({
-  useLiveTabsStore: (sel: (s: {
-    setActiveTabCode: typeof setActiveTabCode;
-    openSymbolInNewTab: typeof openSymbolInNewTab;
-  }) => unknown) => sel({ setActiveTabCode, openSymbolInNewTab }),
+// 단일 뷰 모델(ADR-0113): 행 클릭은 useJumpToLive → activateLiveCode. liveNavigate를
+// 모킹해 실제 스토어 투영 없이 jump 경로를 차단한다.
+vi.mock('../live/liveNavigate', () => ({
+  activateLiveCode: vi.fn(),
+  activateLiveInstrument: vi.fn(),
 }));
 
 import { Heatmap } from './Heatmap';

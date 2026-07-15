@@ -5,7 +5,7 @@ import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import Capture from './Capture';
 import type { ReactNode } from 'react';
 import { stockInstrument } from '../live/liveInstrument';
-import { useLiveTabsStore } from '../state/liveTabs';
+import { useLivePageStore } from '../state/livePage';
 
 vi.mock('../api/eventStream', () => ({
   subscribeToCaptureEvents: () => () => {},
@@ -21,7 +21,7 @@ function W(qc: QueryClient) {
 
 beforeEach(() => {
   vi.restoreAllMocks();
-  useLiveTabsStore.setState({ tabs: [], activeTabId: null });
+  useLivePageStore.setState({ activeInstrument: null, activeCode: null });
   vi.spyOn(globalThis, 'fetch' as 'fetch').mockImplementation(async (url: RequestInfo | URL) => {
     const s = String(url);
     if (s.includes('/api/symbols/all')) {
@@ -76,17 +76,10 @@ describe('Capture page', () => {
     expect(queueSection).toHaveClass('min-h-0');
   });
 
-  it('prefills the symbol from the active live stock tab when capture has no code query', async () => {
-    useLiveTabsStore.setState({
-      tabs: [{
-        id: 'tab-a',
-        instrument: stockInstrument('005930', '삼성전자'),
-        code: '005930',
-        label: '삼성전자',
-        timeframe: '1m',
-        historicalFromDate: null,
-      }],
-      activeTabId: 'tab-a',
+  it('prefills the symbol from the active live stock when capture has no code query', async () => {
+    useLivePageStore.setState({
+      activeInstrument: stockInstrument('005930', '삼성전자'),
+      activeCode: '005930',
     });
     const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } });
 
