@@ -293,8 +293,13 @@ def test_every_condition_leaf_has_a_compiler():
     assert leaf_types, "failed to introspect ConditionLeaf union type literals"
     assert len(leaf_types) == len(leaf_models)  # each leaf has a distinct type literal
 
-    assert leaf_types == set(CONDITION_COMPILERS), (
-        f"condition drift — union types {leaf_types} != compilers {set(CONDITION_COMPILERS)}"
+    # 총잔량 신고 조건(ask/bid_depth_new_high)은 CONDITION_COMPILERS 를 경유하지 않고
+    # run_scan 이 사전계산 코드셋(screener_depth.evaluate)으로 특수처리한다 — 그래서
+    # 계약은 "컴파일러 dict ∪ depth 특수처리 집합 == 전체 leaf 타입".
+    from hoga.api.screener_scan import _DEPTH_TYPES
+    handled = set(CONDITION_COMPILERS) | set(_DEPTH_TYPES)
+    assert leaf_types == handled, (
+        f"condition drift — union types {leaf_types} != handled {handled}"
     )
 
 

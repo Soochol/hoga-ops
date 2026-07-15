@@ -2,11 +2,20 @@ import { describe, it, expect } from 'vitest';
 import { CONDITION_CATALOG, CONDITION_ORDER, makeLeaf } from './catalog';
 
 describe('catalog', () => {
-  it('covers all 9 types incl. 당일/기간내 변형', () => {
-    expect(CONDITION_ORDER).toHaveLength(9);
+  it('covers all 11 types incl. 당일/기간내 변형 + 총잔량 신고', () => {
+    expect(CONDITION_ORDER).toHaveLength(11);
     expect(Object.keys(CONDITION_CATALOG).sort()).toEqual(
-      ['change_pct', 'ma', 'new_high', 'new_high_today', 'new_high_vol',
-       'new_high_vol_today', 'price_range', 'trade_value', 'trade_value_period']);
+      ['ask_depth_new_high', 'bid_depth_new_high', 'change_pct', 'ma', 'new_high',
+       'new_high_today', 'new_high_vol', 'new_high_vol_today', 'price_range',
+       'trade_value', 'trade_value_period']);
+  });
+  it('총잔량 신고 조건: 기본 파라미터 + 요약', () => {
+    expect(makeLeaf('ask_depth_new_high').params).toEqual({ lookback: 20, threshold_pct: 100 });
+    expect(makeLeaf('bid_depth_new_high').params).toEqual({ lookback: 20, threshold_pct: 100 });
+    expect(CONDITION_CATALOG.ask_depth_new_high.label).toBe('매도 총잔량 peak');
+    expect(CONDITION_CATALOG.bid_depth_new_high.label).toBe('매수 총잔량 peak');
+    expect(CONDITION_CATALOG.ask_depth_new_high.summarize({ lookback: 20, threshold_pct: 100 }))
+      .toBe('20일 peak의 100%');
   });
   it('renames breakout labels to 기간내, bare label = 당일', () => {
     expect(CONDITION_CATALOG.new_high.label).toBe('기간내 신고가');

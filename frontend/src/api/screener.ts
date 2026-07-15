@@ -11,6 +11,8 @@ export interface PriceRangeParams { min?: number; max?: number }
 export type MaRelation = 'above' | 'below';
 export type MaSource = 'open' | 'high' | 'low' | 'close';
 export interface MaParams { period: number; relation: MaRelation; source?: MaSource }
+// 매도/매수 총잔량 분봉 peak 신고: 당일 peak ≥ (threshold_pct/100) × 지난 N일 peak.
+export interface DepthPeakParams { lookback: number; threshold_pct: number }
 
 export type ConditionLeaf =
   | { id: string; type: 'trade_value'; params: TradeValueParams }
@@ -21,7 +23,9 @@ export type ConditionLeaf =
   | { id: string; type: 'new_high_vol'; params: BreakoutParams }
   | { id: string; type: 'change_pct'; params: ChangePctParams }
   | { id: string; type: 'price_range'; params: PriceRangeParams }
-  | { id: string; type: 'ma'; params: MaParams };
+  | { id: string; type: 'ma'; params: MaParams }
+  | { id: string; type: 'ask_depth_new_high'; params: DepthPeakParams }
+  | { id: string; type: 'bid_depth_new_high'; params: DepthPeakParams };
 export type ConditionType = ConditionLeaf['type'];
 
 export interface ScreenerUniverse {
@@ -48,10 +52,36 @@ export interface ScreenerRow {
   change_pct: number | null;
 }
 
+export interface DepthCoverageCode {
+  code: string;
+  name: string;
+  have_days: number;
+  need_days: number;
+}
+export interface DepthCoverage {
+  lookback: number;
+  evaluated: number;
+  excluded: DepthCoverageCode[];
+  partial: DepthCoverageCode[];
+}
+export interface DepthPeakValue {
+  ask_today: number | null;
+  ask_past_peak: number | null;
+  ask_have_days: number;
+  ask_need_days: number;
+  bid_today: number | null;
+  bid_past_peak: number | null;
+  bid_have_days: number;
+  bid_need_days: number;
+}
+
 export interface ScreenerResponse {
   status: 'ok' | 'not_seeded' | 'building';
   rows: ScreenerRow[];
   warnings: string[];
+  // 총잔량 신고 조건이 있을 때만 채워진다(없으면 null — 기존 응답과 하위호환).
+  depth_coverage?: DepthCoverage | null;
+  depth_values?: Record<string, DepthPeakValue> | null;
 }
 
 /** 진행 중인 갱신 job — WS 이벤트가 없어도(재진입/재연결) 서버가 복원해 준다. */
