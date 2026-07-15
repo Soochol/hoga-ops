@@ -23,20 +23,8 @@ describe('studyLayout store', () => {
     expect(useStudyLayoutStore.getState().detailPanelCollapsed).toBe(false);
   });
 
-  it('toggles cards and persists, collapses/expands all, toggles the panel', async () => {
+  it('toggles the detail panel and persists', async () => {
     const { useStudyLayoutStore } = await import('./studyLayout');
-
-    useStudyLayoutStore.getState().toggleCardCollapsed('volumeDistribution');
-    expect(useStudyLayoutStore.getState().cardCollapsed.volumeDistribution).toBe(true);
-    expect(JSON.parse(localStorage.getItem('study.layout.v1') ?? '{}').cardCollapsed.volumeDistribution).toBe(true);
-
-    useStudyLayoutStore.getState().setAllCardsCollapsed(true);
-    expect(useStudyLayoutStore.getState().cardCollapsed).toEqual({
-      orderbook: true,
-      brokers: true,
-      volumeDistribution: true,
-      program: true,
-    });
 
     useStudyLayoutStore.getState().toggleDetailPanelCollapsed();
     expect(useStudyLayoutStore.getState().detailPanelCollapsed).toBe(true);

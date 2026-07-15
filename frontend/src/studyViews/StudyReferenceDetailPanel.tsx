@@ -5,12 +5,18 @@ import {
   type DragEndEvent,
   type DragOverEvent,
   type DragStartEvent,
+  KeyboardSensor,
   PointerSensor,
   closestCenter,
   useSensor,
   useSensors,
 } from '@dnd-kit/core';
-import { SortableContext, useSortable, verticalListSortingStrategy } from '@dnd-kit/sortable';
+import {
+  SortableContext,
+  sortableKeyboardCoordinates,
+  useSortable,
+  verticalListSortingStrategy,
+} from '@dnd-kit/sortable';
 import { CSS } from '@dnd-kit/utilities';
 import {
   useLiveBrokersAtCursor,
@@ -151,7 +157,11 @@ export function StudyReferenceDetailPanel({ save, bundle }: Props) {
   const setCardOrder = useStudyLayoutStore((s) => s.setCardOrder);
   const setCardHidden = useStudyLayoutStore((s) => s.setCardHidden);
   const setDetailPanelCollapsed = useStudyLayoutStore((s) => s.setDetailPanelCollapsed);
-  const sensors = useSensors(useSensor(PointerSensor, { activationConstraint: { distance: 5 } }));
+  const sensors = useSensors(
+    useSensor(PointerSensor, { activationConstraint: { distance: 5 } }),
+    // 키보드 재배열(a11y): 드래그 핸들 포커스 → Space 로 집기, ↑/↓ 로 이동, Space 로 놓기.
+    useSensor(KeyboardSensor, { coordinateGetter: sortableKeyboardCoordinates }),
+  );
   const [drag, setDrag] = useState<{ active: StudyCardKey; over: StudyCardKey | null } | null>(null);
   const cutoffVolumeDistribution = useVolumeDistributionCutoffProfile({
     enabled:

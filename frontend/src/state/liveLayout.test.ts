@@ -70,21 +70,6 @@ describe('liveLayout store helpers', () => {
     expect(clampRightPanelWidth(700, 966, LIVE_WORKAREA_SPLITTER_WIDTH_PX)).toBe(320);
   });
 
-  it('resizes adjacent weights without disturbing the rest of the layout', async () => {
-    const { DEFAULT_CARD_WEIGHTS, resizeAdjacentWeights } = await import('./liveLayout');
-
-    const next = resizeAdjacentWeights(DEFAULT_CARD_WEIGHTS, 'orderbook', 'program', 80, 800);
-
-    expect(next.brokers).toBe(DEFAULT_CARD_WEIGHTS.brokers);
-    expect(next.investor).toBe(DEFAULT_CARD_WEIGHTS.investor);
-    expect(next.orderbook + next.program).toBeCloseTo(
-      DEFAULT_CARD_WEIGHTS.orderbook + DEFAULT_CARD_WEIGHTS.program,
-      6,
-    );
-    expect(next.orderbook).toBeGreaterThan(DEFAULT_CARD_WEIGHTS.orderbook);
-    expect(next.program).toBeLessThan(DEFAULT_CARD_WEIGHTS.program);
-  });
-
   it('hydrates legacy payloads (width + weights only) to expanded defaults', async () => {
     localStorage.setItem('live.layout.v1', JSON.stringify({
       rightPanelWidthPx: 480,
@@ -123,38 +108,15 @@ describe('liveLayout store helpers', () => {
     expect(useLiveLayoutStore.getState().detailPanelCollapsed).toBe(false);
   });
 
-  it('keeps collapse fields in the persisted payload after a width write (persist centralization)', async () => {
+  it('keeps persisted fields intact after a width write (persist centralization)', async () => {
     const { useLiveLayoutStore } = await import('./liveLayout');
 
-    useLiveLayoutStore.getState().toggleCardCollapsed('program');
     useLiveLayoutStore.getState().setDetailPanelCollapsed(true);
     useLiveLayoutStore.getState().setRightPanelWidthPx(420);
 
     const persisted = JSON.parse(localStorage.getItem('live.layout.v1') ?? '{}');
     expect(persisted.rightPanelWidthPx).toBe(420);
-    expect(persisted.rightCardCollapsed).toEqual({ program: true });
     expect(persisted.detailPanelCollapsed).toBe(true);
-  });
-
-  it('toggles individual cards and collapses/expands all cards', async () => {
-    const { useLiveLayoutStore, DEFAULT_CARD_WEIGHTS } = await import('./liveLayout');
-
-    useLiveLayoutStore.getState().toggleCardCollapsed('orderbook');
-    expect(useLiveLayoutStore.getState().rightCardCollapsed.orderbook).toBe(true);
-    useLiveLayoutStore.getState().toggleCardCollapsed('orderbook');
-    expect(useLiveLayoutStore.getState().rightCardCollapsed.orderbook).toBe(false);
-
-    useLiveLayoutStore.getState().setAllCardsCollapsed(true);
-    for (const key of Object.keys(DEFAULT_CARD_WEIGHTS)) {
-      expect(useLiveLayoutStore.getState().rightCardCollapsed[key as keyof typeof DEFAULT_CARD_WEIGHTS]).toBe(true);
-    }
-    // 접기는 weights 를 파괴하지 않는다 — 펴면 이전 비율 복원.
-    expect(useLiveLayoutStore.getState().rightCardWeights).toEqual(DEFAULT_CARD_WEIGHTS);
-
-    useLiveLayoutStore.getState().setAllCardsCollapsed(false);
-    for (const key of Object.keys(DEFAULT_CARD_WEIGHTS)) {
-      expect(useLiveLayoutStore.getState().rightCardCollapsed[key as keyof typeof DEFAULT_CARD_WEIGHTS]).toBe(false);
-    }
   });
 
   it('toggles the whole detail panel collapse flag', async () => {
@@ -229,10 +191,11 @@ describe('liveLayout store helpers', () => {
     expect(persisted.lastAppliedPresetId).toBe('preset-y');
   });
 
-  it('hiding a card leaves weights and collapse untouched (restore fidelity)', async () => {
+  it('hiding a card leaves weights and (preset-carried) collapse untouched', async () => {
     const { useLiveLayoutStore, DEFAULT_CARD_WEIGHTS } = await import('./liveLayout');
 
-    useLiveLayoutStore.getState().toggleCardCollapsed('brokers');
+    // collapse 필드는 프리셋 캡처/적용용으로만 남아 있다(setter 제거) — 직접 세팅.
+    useLiveLayoutStore.setState({ rightCardCollapsed: { brokers: true } });
     useLiveLayoutStore.getState().setCardHidden('brokers', true);
 
     expect(useLiveLayoutStore.getState().rightCardWeights).toEqual(DEFAULT_CARD_WEIGHTS);

@@ -5,12 +5,18 @@ import {
   type DragEndEvent,
   type DragOverEvent,
   type DragStartEvent,
+  KeyboardSensor,
   PointerSensor,
   closestCenter,
   useSensor,
   useSensors,
 } from '@dnd-kit/core';
-import { SortableContext, useSortable, verticalListSortingStrategy } from '@dnd-kit/sortable';
+import {
+  SortableContext,
+  sortableKeyboardCoordinates,
+  useSortable,
+  verticalListSortingStrategy,
+} from '@dnd-kit/sortable';
 import { CSS } from '@dnd-kit/utilities';
 import { type LiveCardKey, useLiveLayoutStore } from '../state/liveLayout';
 import { reorderVisible } from '../state/keyOrder';
@@ -192,7 +198,11 @@ export function LiveDetailPanel({
   const setRightCardOrder = useLiveLayoutStore((state) => state.setRightCardOrder);
   const setCardHidden = useLiveLayoutStore((state) => state.setCardHidden);
   const setDetailPanelCollapsed = useLiveLayoutStore((state) => state.setDetailPanelCollapsed);
-  const sensors = useSensors(useSensor(PointerSensor, { activationConstraint: { distance: 5 } }));
+  const sensors = useSensors(
+    useSensor(PointerSensor, { activationConstraint: { distance: 5 } }),
+    // 키보드 재배열(a11y): 드래그 핸들 포커스 → Space 로 집기, ↑/↓ 로 이동, Space 로 놓기.
+    useSensor(KeyboardSensor, { coordinateGetter: sortableKeyboardCoordinates }),
+  );
 
   // 드래그 상태 — 삽입선 위치 + DragOverlay 클론 대상. { active, over } 키.
   const [drag, setDrag] = useState<{ active: LiveCardKey; over: LiveCardKey | null } | null>(null);

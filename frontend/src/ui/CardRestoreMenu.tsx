@@ -47,7 +47,7 @@ export function CardRestoreMenu({
       role="menu"
       aria-label="숨긴 카드 목록"
       onMouseDown={(event) => event.stopPropagation()}
-      className="min-w-32 rounded border border-border bg-bg-card py-1 shadow-lg z-50"
+      className="min-w-32 rounded border border-border bg-bg-card py-1 shadow-overlay z-50"
       style={{ position: 'fixed', left, top }}
     >
       {hidden.map((card) => (
