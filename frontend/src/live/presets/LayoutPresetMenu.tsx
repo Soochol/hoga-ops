@@ -20,12 +20,17 @@ export function LayoutPresetMenu() {
   const [anchorRect, setAnchorRect] = useState<DOMRect | null>(null);
   const [saveAsName, setSaveAsName] = useState<string | null>(null);
   const [pendingDelete, setPendingDelete] = useState<string | null>(null);
+  const [error, setError] = useState<string | null>(null);
   const wrapRef = useRef<HTMLDivElement>(null);
   const close = useCallback(() => {
     setOpen(false);
     setSaveAsName(null);
     setPendingDelete(null);
+    setError(null);
   }, []);
+  // 저장/이름변경/삭제 실패 시 메뉴를 닫지 않고 에러를 표면화 — study-views 패턴.
+  const failWith = (fallback: string) => (e: unknown) =>
+    setError(e instanceof Error ? e.message : fallback);
   useDismissablePopover(open, wrapRef, close);
   const { ref: menuPositionRef, left, top } = useClampedFixedPosition<HTMLDivElement>(
     anchorRect?.left ?? 0,
@@ -52,18 +57,27 @@ export function LayoutPresetMenu() {
 
   const saveCurrent = () => {
     if (!activePreset) return;
-    update.mutate({ id: activePreset.id, body: { name: activePreset.name, payload: capturePresetPayload() } });
-    close();
+    setError(null);
+    update.mutate(
+      { id: activePreset.id, body: { name: activePreset.name, payload: capturePresetPayload() } },
+      { onSuccess: () => close(), onError: failWith('프리셋 저장에 실패했습니다.') },
+    );
   };
 
   const confirmSaveAs = () => {
     const name = (saveAsName ?? '').trim();
     if (!name) return;
+    setError(null);
     create.mutate(
       { name, payload: capturePresetPayload() },
-      { onSuccess: (row) => useLiveLayoutStore.getState().setLastAppliedPresetId(row.id) },
+      {
+        onSuccess: (row) => {
+          useLiveLayoutStore.getState().setLastAppliedPresetId(row.id);
+          close();
+        },
+        onError: failWith('프리셋 저장에 실패했습니다.'),
+      },
     );
-    close();
   };
 
   const resetDefault = () => {
@@ -81,6 +95,11 @@ export function LayoutPresetMenu() {
       className="min-w-56 rounded border border-border bg-bg-card py-1 shadow-lg z-50"
       style={{ position: 'fixed', left, top }}
     >
+      {error && (
+        <div data-testid="layout-preset-error" role="alert" className="px-3 py-1.5 text-xs text-danger">
+          {error}
+        </div>
+      )}
       {presets.length === 0 && (
         <div className="px-3 py-1.5 text-xs text-fg-dimmer">저장된 프리셋이 없습니다</div>
       )}
@@ -101,7 +120,11 @@ export function LayoutPresetMenu() {
             <button
               type="button"
               data-testid={`layout-preset-confirm-delete-${preset.id}`}
-              onClick={() => { remove.mutate(preset.id); setPendingDelete(null); }}
+              onClick={() => {
+                setError(null);
+                remove.mutate(preset.id, { onError: failWith('프리셋 삭제에 실패했습니다.') });
+                setPendingDelete(null);
+              }}
               className="rounded px-2 py-1 text-[11px] text-error hover:bg-tint-error"
             >
               삭제?
