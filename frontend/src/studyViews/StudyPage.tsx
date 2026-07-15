@@ -586,8 +586,8 @@ export function StudyPage() {
               data-testid={selectedSave ? studyReferenceDetailPanelTestId(selectedSave) : undefined}
               className={
                 detailPanelCollapsed
-                  ? 'relative z-10 flex min-h-0 border-l border-[var(--border)] bg-bg-subtle/40'
-                  : 'relative z-10 grid min-h-0 grid-rows-[auto_minmax(0,1fr)] overflow-y-auto overflow-x-hidden border-l border-[var(--border)] bg-bg-subtle/40'
+                  ? 'relative z-10 flex min-h-0 bg-bg-subtle'
+                  : 'relative z-10 grid min-h-0 grid-rows-[auto_minmax(0,1fr)] overflow-y-auto overflow-x-hidden bg-bg-subtle'
               }
               style={{ scrollbarGutter: 'stable' }}
             >
