@@ -58,7 +58,7 @@ export function MarketIndexBar() {
     <footer
       data-testid="market-index-bar"
       aria-label="시장지표"
-      className="flex h-bottom-bar min-w-0 items-center gap-1 overflow-x-auto border-t border-border bg-bg-subtle px-2 [scrollbar-width:none]"
+      className="flex h-bottom-bar min-w-0 items-center gap-1 overflow-x-auto bg-bg px-2 [scrollbar-width:none]"
     >
       {data.map((quote, i) => (
         <div key={quote.id} className="flex shrink-0 items-center gap-1">
