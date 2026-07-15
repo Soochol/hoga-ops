@@ -12,6 +12,7 @@ import { SectorTempStrip } from '../heatmap/SectorTempStrip';
 import { HeatmapRowMenu } from '../heatmap/HeatmapRowMenu';
 import { SortCycleButton } from '../heatmap/SortCycleButton';
 import { HeatmapSearchInput } from '../heatmap/HeatmapSearchInput';
+import { CollectDialog } from '../heatmap/CollectDialog';
 import { filterGroups } from '../heatmap/filterGroups';
 import { avgPct, groupHeatmapEntries, orderFolderGroups, makePctOf, nextSort } from '../heatmap/heat';
 import { useFrozenWhileDragging } from '../heatmap/useFrozenWhileDragging';
@@ -55,7 +56,15 @@ export function Heatmap() {
   const visibleGroups = useMemo(() => filterGroups(orderedGroups, query), [orderedGroups, query]);
   const isSearching = query.trim() !== '';
   const [showNewGroup, setShowNewGroup] = useState(false);
+  const [showCollect, setShowCollect] = useState(false);
+  // 단일 종목 수집 스코프(행 메뉴 '지난 N일 수집'). null 이면 전체/그룹 다이얼로그.
+  const [collectOne, setCollectOne] = useState<{ code: string; name: string } | null>(null);
   const [menu, setMenu] = useState<RowMenu | null>(null);
+  // 수집 다이얼로그 스코프 — 각 그룹(폴더)의 코드 목록. 전체 히트맵/그룹 단위 선택.
+  const collectScopes = useMemo(
+    () => groups.map((g) => ({ id: g.folder.id, name: g.folder.name, codes: g.entries.map((e) => e.code) })),
+    [groups],
+  );
   const createFolderM = useCreateHeatmapFolder();
   const reorderEntriesM = useReorderHeatmapEntries();
   const removeM = useRemoveFromHeatmap();
@@ -100,6 +109,10 @@ export function Heatmap() {
             <ToolbarButton className="text-xs px-2 py-1 rounded" onClick={() => setShowNewGroup(true)}>
               ＋ 새 그룹
             </ToolbarButton>
+            <ToolbarButton className="text-xs px-2 py-1 rounded" onClick={() => setShowCollect(true)}
+              disabled={collectScopes.length === 0}>
+              ⬇ 데이터 수집
+            </ToolbarButton>
             <HeatmapSearchInput query={query} onQuery={setQuery} testId="heatmap-search" className="w-44" />
             {/* 정렬 = 우측 레일 드로어와 공유하는 아이콘 순환 버튼(manual→desc→asc). 종목=그룹 내
                 순서, 그룹=폴더 순서(직교 축). 라벨이 정렬 키(등락률)의 축을 알린다. */}
@@ -117,6 +130,16 @@ export function Heatmap() {
             onClose={() => setShowNewGroup(false)}
           />
         )}
+        {showCollect && (
+          <CollectDialog groups={collectScopes} onClose={() => setShowCollect(false)} />
+        )}
+        {collectOne && (
+          <CollectDialog
+            title={`${collectOne.name} 지난 N일 수집`}
+            groups={[{ id: '_one', name: collectOne.name, codes: [collectOne.code] }]}
+            onClose={() => setCollectOne(null)}
+          />
+        )}
         {/* 검색 중엔 재정렬 비활성(onReorder=undefined): HeatmapFolder 의 orderedCodes 는 렌더된
             행에서 나오는데, 종목 필터 하에선 부분집합이라 서버 순서를 손상시킨다. */}
         <HeatmapBoard groups={visibleGroups} quoteByCode={quoteByCode}
@@ -130,6 +153,7 @@ export function Heatmap() {
             currentFolderId={menu.folderId}
             onRemove={() => removeM.mutate(menu.code)}
             onMove={(folderId) => moveM.mutate({ codes: [menu.code], folderId })}
+            onCollect={() => setCollectOne({ code: menu.code, name: menu.name })}
             onClose={() => setMenu(null)}
           />
         )}

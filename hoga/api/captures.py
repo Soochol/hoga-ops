@@ -28,8 +28,13 @@ from hoga.api.params import CODE_PATTERN
 from hoga.api.queue_ownership import QueueOwnership, try_acquire_queue_ownership
 from hoga.api.models import (
     BlockedItem,
+    BulkEnqueueRequest,
+    BulkEnqueueResponse,
     CaptureDismissedEvent,
     CaptureError,
+    CoveragePreviewRequest,
+    CoveragePreviewResponse,
+    MissingStockDate,
     CaptureFinishedEvent,
     CapturePhase,
     CapturePhaseEvent,
@@ -1551,6 +1556,139 @@ async def enqueue_items_core(
     )
 
 
+# 지난 N일 수집 ETA 의 스톡데이트당 대략 소요(초). hogaplay 상류가 페이지당 ~1s
+# think-time(#509)이라 한 거래일 캡처가 수십초~수분이다. 정확한 예측은 불가하므로
+# 보수적 상수로 잡고 UI 에 "예상 ≈" 로만 노출한다.
+_EST_SECONDS_PER_STOCKDATE = 90
+
+
+def _trading_window(lookback_days: int, now: dt.datetime) -> list[str]:
+    """오늘(KST)로 끝나는 최근 ``lookback_days`` 거래일(오름차순).
+
+    주말/공휴일 버퍼를 두고 달력일로 넉넉히 되짚어 거래일을 확보한 뒤 최근 N개만
+    취한다. 오늘이 16:30 전이면 today-too-early 로 제외(Q14 게이트와 정합)."""
+    today = now.strftime("%Y%m%d")
+    start_dt = now - dt.timedelta(days=lookback_days * 3 + 14)
+    days = _expand_to_trading_days(start_dt.strftime("%Y%m%d"), today)
+    window = days[-lookback_days:] if len(days) >= lookback_days else days
+    ineligible = set(find_ineligible_dates(candidate_dates=window, now=now))
+    return [d for d in window if d not in ineligible]
+
+
+# coverage-preview 분류의 상한(codes × dates). _classify 는 (code,date)당 여러 파일
+# 읽기를 단일 executor 스레드에서 직렬 수행하므로, 무제한이면 대형 요청 하나가 그
+# 스레드를 수 초간 점유해 다른 run_in_executor 작업을 굶긴다. 전체 히트맵(~수백)×
+# 짧은 기간은 통과하고 병리적 대형(수백×120일)만 막는 선.
+_MAX_PREVIEW_CELLS = 10_000
+
+
+async def coverage_preview_core(
+    req: CoveragePreviewRequest, *, data_dir: Path, now: dt.datetime,
+) -> CoveragePreviewResponse:
+    """(codes × 거래일창) 의 hogaplay 디스크 커버리지 요약 + 수집 대상 목록.
+
+    creds/큐 소유권을 요구하지 않는 읽기 전용 미리보기(적재는 bulk-items 가 한다).
+    분류는 (code,date)당 meta.json stat/read 라 디스크 I/O — 스레드로 오프로드."""
+    loop = asyncio.get_running_loop()
+    # 거래일 캘린더는 KIS 백엔드 — 무자격증명/일시장애 시 TradingDayUnavailableError.
+    # enqueue_items_core 와 동일하게 503(자격증명 vs 일시장애 안내)으로 변환한다.
+    # 그냥 두면 FastAPI 500 → 프론트가 "잠시 후 재시도" 오안내(진짜 원인=자격증명).
+    try:
+        if req.lookback_days is not None:
+            dates = await loop.run_in_executor(None, _trading_window, req.lookback_days, now)
+        elif req.start_date and req.end_date:
+            expanded = await loop.run_in_executor(
+                None, _expand_to_trading_days, req.start_date, req.end_date)
+            ineligible = set(find_ineligible_dates(candidate_dates=expanded, now=now))
+            dates = [d for d in expanded if d not in ineligible]
+        else:
+            raise HTTPException(status_code=400, detail={
+                "code": CaptureErrorCode.MISSING_RANGE,
+                "message": "Provide either lookback_days or start_date+end_date.",
+            })
+    except TradingDayUnavailableError as e:
+        if e.code == UpstreamCode.KIS_CREDENTIALS_MISSING:
+            message = (
+                "Trading-day list unavailable (KIS). Configure KIS_APP_KEY / "
+                "KIS_APP_SECRET in repo-root .env and try again."
+            )
+        else:
+            message = (
+                "Trading-day list unavailable (KIS upstream error). "
+                "Credentials look configured — retry in a minute."
+            )
+        raise HTTPException(status_code=503, detail={
+            "code": e.code, "message": message,
+        }) from e
+
+    cells = len(req.codes) * len(dates)
+    if cells > _MAX_PREVIEW_CELLS:
+        raise HTTPException(status_code=400, detail={
+            "code": CaptureErrorCode.MISSING_RANGE,
+            "message": (
+                f"Preview too large: {len(req.codes)} codes × {len(dates)} days "
+                f"= {cells} > {_MAX_PREVIEW_CELLS}. 종목 수나 기간을 줄이세요."
+            ),
+        })
+
+    def _classify() -> tuple[int, int, list[MissingStockDate]]:
+        from hoga.api.disk_state import DiskState, check_disk_state  # noqa: PLC0415
+        have = no_up = 0
+        missing: list[MissingStockDate] = []
+        for code in req.codes:
+            for date in dates:
+                st = check_disk_state(data_dir, code, date).state
+                if st == DiskState.COMPLETE:
+                    have += 1
+                elif st == DiskState.NO_UPSTREAM_DATA:
+                    no_up += 1
+                else:  # NONE / SOURCE_PARTIAL / CLIENT_INCOMPLETE / INVALID → 수집 대상
+                    missing.append(MissingStockDate(code=code, date=date))
+        return have, no_up, missing
+
+    have, no_up, missing = await loop.run_in_executor(None, _classify)
+    est_min = (len(missing) * _EST_SECONDS_PER_STOCKDATE + 59) // 60
+    return CoveragePreviewResponse(
+        dates=dates, codes=len(req.codes), total=len(req.codes) * len(dates),
+        have=have, no_upstream=no_up, to_collect=len(missing),
+        est_minutes=est_min, missing=missing,
+    )
+
+
+async def bulk_enqueue_core(
+    req: BulkEnqueueRequest, *, data_dir: Path, now: dt.datetime,
+) -> BulkEnqueueResponse:
+    """정확히 (code, dates) 목록을 캡처 큐에 적재(코드별 enqueue_items_core 루프).
+
+    coverage-preview.missing 를 그대로 넘기면 이미 보유/상류무데이터를 제외한
+    대상만 적재된다. 워커의 decide_capture 가 COMPLETE 를 한 번 더 skip 하므로
+    중복 적재도 안전(멱등).
+
+    각 코드는 독립적으로 enqueue_items_core 를 호출하며 자체 lock 으로 즉시 영속된다.
+    한 코드가 raise 해도(예: 16:30 경계를 넘긴 today_too_early) 앞 코드들의 적재는
+    이미 커밋됐으므로, 루프를 중단하지 않고 실패를 failed 로 집계해 부분 결과를
+    돌려준다(재제출도 dedupe 로 안전). 그래야 '전부 실패'로 오인해 재제출하는 일을 막는다."""
+    enq = ded = blk = failed = 0
+    for item in req.items:
+        try:
+            resp = await enqueue_items_core(
+                EnqueueRequest(code=item.code, dates=item.dates),
+                data_dir=data_dir, now=now,
+            )
+        except HTTPException:
+            failed += 1
+            logging.getLogger(__name__).warning(
+                "bulk_enqueue: %s enqueue failed; continuing", item.code,
+            )
+            continue
+        enq += len(resp.enqueued)
+        ded += len(resp.deduped)
+        blk += len(resp.blocked)
+    return BulkEnqueueResponse(
+        enqueued=enq, deduped=ded, blocked=blk, failed=failed, codes=len(req.items),
+    )
+
+
 def build_router(
     *,
     data_dir: Path,
@@ -1591,6 +1729,25 @@ def build_router(
         if resp.blocked and not resp.enqueued and not resp.deduped:
             return JSONResponse(content=resp.model_dump(mode="json"), status_code=409)
         return resp
+
+    @router.post("/coverage-preview", response_model=CoveragePreviewResponse)
+    async def coverage_preview(req: CoveragePreviewRequest) -> CoveragePreviewResponse:
+        """여러 종목의 지난 N거래일 hogaplay 커버리지 미리보기(읽기 전용).
+
+        히트맵 '지난 N일 수집' 다이얼로그와 스크리너 결측 배너가 적재 전에 호출해
+        보유/무데이터/수집 예정/예상 소요를 보여준다. ``missing`` 을 그대로
+        bulk-items 에 넘기면 대상만 적재된다."""
+        return await coverage_preview_core(
+            req, data_dir=_require_data_dir(), now=_now_kst(),
+        )
+
+    @router.post("/bulk-items", status_code=201, response_model=BulkEnqueueResponse)
+    async def bulk_items(req: BulkEnqueueRequest) -> BulkEnqueueResponse:
+        """다종목 (code, dates) 를 캡처 큐에 일괄 적재(coverage-preview.missing 대상)."""
+        _require_queue_ownership()  # ADR-0094
+        return await bulk_enqueue_core(
+            req, data_dir=_require_data_dir(), now=_now_kst(),
+        )
 
     @router.post("/items/{code}/{date}/unblock", status_code=200)
     async def unblock_item(
