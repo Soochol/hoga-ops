@@ -141,3 +141,45 @@ describe('paneSpecsForTimeframe — 호가 토글', () => {
     expect(n).toContain('fill-strength');
   });
 });
+
+describe('paneSpecsForTimeframe — paneOrder (ADR-0114)', () => {
+  const CANON = [
+    'candle', 'volume', 'quote-totals', 'ratio',
+    'fill-strength', 'program-trade', 'investor-foreign', 'investor-institution',
+  ] as const;
+  const names = (tf: LiveTimeframe, t: PaneToggles, order?: readonly string[]) =>
+    paneSpecsForTimeframe(tf, t, order as never).map((s) => s.name);
+
+  it('canonical order keeps PANE_SPECS identity (all-base minute)', () => {
+    expect(paneSpecsForTimeframe('1m', { foreignNet: false, institutionNet: false }, CANON)).toBe(PANE_SPECS);
+  });
+
+  it('reorders kept panes by the provided order', () => {
+    const order = [
+      'candle', 'ratio', 'volume', 'quote-totals',
+      'fill-strength', 'program-trade', 'investor-foreign', 'investor-institution',
+    ] as const;
+    expect(names('1m', { foreignNet: false, institutionNet: false }, order))
+      .toEqual(['candle', 'ratio', 'volume', 'quote-totals', 'fill-strength', 'program-trade']);
+  });
+
+  it('a custom order yields a stable (frozen) reference across calls', () => {
+    const order = ['candle', 'ratio', 'volume', 'quote-totals', 'fill-strength', 'program-trade'] as const;
+    const a = paneSpecsForTimeframe('1m', { foreignNet: false, institutionNet: false }, order as never);
+    const b = paneSpecsForTimeframe('5m', { foreignNet: false, institutionNet: false }, order as never);
+    expect(a).toBe(b);
+  });
+
+  it('order composes with the D-only investor gate (membership still gated)', () => {
+    // 분봉: investor 는 순서에 있어도 게이트로 제외된다.
+    expect(names('1m', { foreignNet: true, institutionNet: true }, CANON))
+      .not.toContain('investor-foreign');
+    // D + 커스텀 순서: investor-institution 을 volume 앞으로.
+    const order = [
+      'candle', 'investor-institution', 'investor-foreign', 'volume',
+      'quote-totals', 'ratio', 'fill-strength', 'program-trade',
+    ] as const;
+    expect(names('D', { foreignNet: true, institutionNet: true }, order))
+      .toEqual(['candle', 'investor-institution', 'investor-foreign', 'volume']);
+  });
+});
