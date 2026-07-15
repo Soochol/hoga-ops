@@ -510,3 +510,35 @@ async def test_venue_roundtrip_detects_lost_reregistration():
 
 def _grace() -> int:
     return ws_client_mod._SUB_ACK_GRACE_MS
+
+
+async def test_midbatch_send_failure_leaves_remaining_keys_visible():
+    """PR #622 리뷰 갭: 구독 배치 send가 중간에 실패해도 잔여 키가 선(先)스탬프돼
+    있어 유예 후 sub_missing으로 잡힌다(→ resubscribe_missing이 재시도). send 후
+    스탬프였다면 미송신 키는 영원히 불가시(재연결까지 캡처 구멍)였다."""
+
+    class FailAfterN:
+        """N번째 send까지 성공, 이후 raise."""
+
+        def __init__(self, n: int):
+            self._left = n
+            self.sent: list[str] = []
+
+        async def send(self, data: str) -> None:
+            if self._left <= 0:
+                raise ConnectionError("mid-batch drop")
+            self._left -= 1
+            self.sent.append(data)
+
+    fake = FailAfterN(2)   # 3TR 중 2개만 송신 성공
+    client = KisWsClient(
+        approval_key_fn=_fake_approval, on_tick=None, date_fn=lambda: "20260605"
+    )
+    client._codes = ["005930"]
+    with pytest.raises(ConnectionError):
+        await client._send_subscriptions(fake, "APPR", ["005930"], tr_type="1")
+    assert len(fake.sent) == 2
+    # 미송신 3번째 키까지 전부 스탬프됨 → 유예 후 3키 모두 missing(ACK가 없으므로).
+    assert len(client._sub_sent_ms) == 3
+    later = int(time.time() * 1000) + _grace() + 1
+    assert len(client.sub_missing(later)) == 3

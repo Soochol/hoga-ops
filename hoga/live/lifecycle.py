@@ -20,7 +20,7 @@ import logging
 import time
 from collections.abc import Awaitable, Callable
 from pathlib import Path
-from typing import TYPE_CHECKING, cast
+from typing import TYPE_CHECKING, Literal, cast
 
 if TYPE_CHECKING:
     from .rest30_recorder import Rest30sRecorder
@@ -827,9 +827,10 @@ async def _restart_conn(account_id: int, *, data_dir: Path) -> None:
             )
 
 
-def _plan_sub_failed_action(account_id: int, ws: object) -> str:
-    """sub_failed conn의 복구 조치 결정(카운터 갱신 포함). 반환: "resubscribe" /
-    "restart" / "log".
+def _plan_sub_failed_action(
+    account_id: int, ws: object,
+) -> Literal["resubscribe", "restart", "log"]:
+    """sub_failed conn의 복구 조치 결정(카운터 갱신 포함).
 
     사다리(2026-07-15 근본수정): ① 표적 재구독(유실된 (tr,code)만) 상한까지 → ② 소진
     시 KRX면 기존 제한 conn 재시작 → ③ NXT(표시 전용)면 로그만(정규장 캡처와 무관,

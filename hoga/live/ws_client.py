@@ -241,26 +241,38 @@ class KisWsClient:
     async def _send_keys(
         self, ws, approval_key: str, keys: list[tuple[str, str]], now_ms: int,
     ) -> None:
-        """지정 (tr, code) 키만 재구독 송신 + 송신 시각 스탬프(표적 복구용)."""
+        """지정 (tr, code) 키 구독 송신 — 초기/스왑/표적 재구독의 단일 송신 경로.
+
+        스탬프를 send **전에 일괄** 찍는다: send가 배치 중간에 예외를 던져도 미송신
+        잔여 키가 stamped-but-unsent로 남아 유예 후 sub_missing에 잡히고,
+        resubscribe_missing이 재시도한다. send 후 스탬프면 그 키들은 송신 기록이
+        없어 영원히 불가시(재연결까지 캡처 구멍) — PR #622 리뷰에서 발견된 갭."""
+        for key in keys:
+            self._sub_sent_ms[key] = now_ms
         for tr, code in keys:
             await ws.send(build_request(approval_key, "1", tr, code))
-            self._sub_sent_ms[(tr, code)] = now_ms
 
     async def _send_subscriptions(
         self, ws, approval_key: str, codes: list[str], *, tr_type: str,
         trs: tuple[str, ...] | None = None,
     ) -> None:
         now_ms = int(time.time() * 1000)
-        for code in codes:
-            for tr in (trs if trs is not None else self._trs):
-                key = (tr, code)
-                await ws.send(build_request(approval_key, tr_type, tr, code))
-                if tr_type == "1":
-                    self._sub_sent_ms[key] = now_ms  # ACK 유예 기준 스탬프
-                else:
-                    # 해제(tr_type="2"): 기대 이탈 → 송신 기록·ACK 폐기(스왑 시 구 venue).
-                    self._sub_sent_ms.pop(key, None)
-                    self._acked_keys.discard(key)
+        keys = [
+            (tr, code)
+            for code in codes
+            for tr in (trs if trs is not None else self._trs)
+        ]
+        if tr_type == "1":
+            await self._send_keys(ws, approval_key, keys, now_ms)
+            return
+        # 해제(tr_type="2"): 기대 이탈 → 송신 기록·ACK 선(先)폐기(스왑 시 구 venue).
+        # 폐기도 send 전에 — 해제 send가 중간 실패해도 상태는 이미 '기대 아님'이라
+        # 거짓 missing이 생기지 않는다(서버 잔존 등록은 재연결이 청산).
+        for key in keys:
+            self._sub_sent_ms.pop(key, None)
+            self._acked_keys.discard(key)
+        for tr, code in keys:
+            await ws.send(build_request(approval_key, tr_type, tr, code))
 
     async def _recv_loop(self, ws) -> None:
         while True:
