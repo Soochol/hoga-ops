@@ -1,7 +1,7 @@
 import { create } from 'zustand';
 import type { MASource } from '../chart/projectors/movingAverage';
 import type { LineStyle, PaneId } from '../chart/drawing/types';
-import { normalizePaneOrder, swapInPaneOrder } from '../chart/paneOrder';
+import { normalizePaneOrder } from '../chart/paneOrder';
 import {
   PRESET_INDICATOR_FLAG_KEYS,
   type PresetIndicatorFlags,
@@ -161,8 +161,9 @@ type Store = Persisted & PersistedIndicators & {
   setForeignNetEnabled: (enabled: boolean) => void;
   setInstitutionNetEnabled: (enabled: boolean) => void;
   setPanePrefForTimeframe: (timeframe: LiveTimeframe, key: PanePrefKey, enabled: boolean) => void;
-  /** 두 pane 의 순서 위치를 교환한다(레전드 ↑/↓, candle 은 고정, ADR-0114 §3). */
-  swapPaneOrder: (a: PaneId, b: PaneId) => void;
+  /** pane 순서를 통째로 교체한다(레전드 ↑/↓ 의 reorderVisible 결과; candle 은
+   *  normalizePaneOrder 가 index 0 으로 고정, ADR-0114 §3). */
+  setPaneOrder: (order: PaneId[]) => void;
   /** 레이아웃 프리셋의 지표 슬라이스를 한 번에 적용(단일 set + 단일 persist, ADR-0114 §4). */
   applyIndicatorPreset: (input: {
     paneOrder: PaneId[];
@@ -485,8 +486,8 @@ export const useLivePageStore = create<Store>((set, get) => ({
     persistIndicators(snapshotIndicators(get));
   },
 
-  swapPaneOrder: (a, b) => {
-    set({ paneOrder: swapInPaneOrder(get().paneOrder, a, b) });
+  setPaneOrder: (order) => {
+    set({ paneOrder: normalizePaneOrder(order) });
     persistIndicators(snapshotIndicators(get));
   },
 

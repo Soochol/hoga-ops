@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { CANONICAL_PANE_ORDER, normalizePaneOrder, swapInPaneOrder } from './paneOrder';
+import { CANONICAL_PANE_ORDER, movePaneBeside, normalizePaneOrder } from './paneOrder';
 
 describe('CANONICAL_PANE_ORDER', () => {
   it('starts with candle and includes the two investor panes', () => {
@@ -36,30 +36,41 @@ describe('normalizePaneOrder', () => {
   });
 });
 
-describe('swapInPaneOrder', () => {
-  it('swaps two non-candle ids by position', () => {
+describe('movePaneBeside', () => {
+  it('moves a pane to just before its neighbor', () => {
     const order = normalizePaneOrder(undefined);
-    const out = swapInPaneOrder(order, 'volume', 'ratio');
-    expect(out.indexOf('volume')).toBe(order.indexOf('ratio'));
-    expect(out.indexOf('ratio')).toBe(order.indexOf('volume'));
+    const out = movePaneBeside(order, 'ratio', 'volume', 'before');
+    expect(out.indexOf('ratio')).toBe(out.indexOf('volume') - 1);
+  });
+
+  it('moves a pane to just after its neighbor', () => {
+    const order = normalizePaneOrder(undefined);
+    const out = movePaneBeside(order, 'volume', 'ratio', 'after');
+    expect(out.indexOf('volume')).toBe(out.indexOf('ratio') + 1);
   });
 
   it('refuses to move candle', () => {
     const order = normalizePaneOrder(undefined);
-    expect(swapInPaneOrder(order, 'candle', 'volume')).toEqual(order);
+    expect(movePaneBeside(order, 'candle', 'volume', 'before')).toEqual(order);
   });
 
-  it('swaps across a gap (absent pane between neighbors)', () => {
-    // 분봉에서 investor 가 부재중이어도 전체 순서에서 이름 위치를 바꾼다.
-    const order: readonly ('candle' | 'volume' | 'investor-foreign' | 'program-trade')[] = [
-      'candle', 'volume', 'investor-foreign', 'program-trade',
-    ];
-    const out = swapInPaneOrder(order as never, 'volume', 'program-trade');
-    expect(out).toEqual(['candle', 'program-trade', 'investor-foreign', 'volume']);
-  });
-
-  it('returns a copy when an id is missing', () => {
+  it('returns a copy when the neighbor is missing or pane==neighbor', () => {
     const order = normalizePaneOrder(undefined);
-    expect(swapInPaneOrder(order, 'volume', 'volume')).toEqual(order);
+    expect(movePaneBeside(order, 'volume', 'volume', 'before')).toEqual(order);
+  });
+
+  it('preserves absent panes\' relative slots (no cross-timeframe leapfrog)', () => {
+    // D 전역 순서에서 investor-foreign 을 volume 위로 올려도, 분봉에서만 마운트되는
+    // 호가 pane(quote-totals..program-trade)의 상대 순서는 그대로 — volume 이 그들
+    // 뒤로 튀지 않는다. 이동한 pane 만 volume 바로 앞으로 최소 이동한다.
+    const order = normalizePaneOrder(undefined); // candle, volume, quote-totals, ratio, fill-strength, program-trade, IF, II
+    const out = movePaneBeside(order, 'investor-foreign', 'volume', 'before');
+    expect(out).toEqual([
+      'candle', 'investor-foreign', 'volume', 'quote-totals', 'ratio',
+      'fill-strength', 'program-trade', 'investor-institution',
+    ]);
+    // 분봉 투영(IF/II 제외): volume 이 여전히 candle 바로 뒤 → leapfrog 없음.
+    const minuteView = out.filter((id) => id !== 'investor-foreign' && id !== 'investor-institution');
+    expect(minuteView).toEqual(['candle', 'volume', 'quote-totals', 'ratio', 'fill-strength', 'program-trade']);
   });
 });

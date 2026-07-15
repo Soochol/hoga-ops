@@ -58,13 +58,15 @@ type Persisted = {
   lastAppliedPresetId: string | null;
 };
 
-/** 프리셋 적용용 우측 패널 배치 묶음(단일 set + 단일 persist). */
+/** 프리셋 적용용 우측 패널 배치 묶음(단일 set + 단일 persist). lastAppliedPresetId 도
+ *  함께 넘겨 두 번 쓰지 않는다(코드 리뷰). */
 export type LiveLayoutPresetInput = {
   rightPanelWidthPx: number;
   rightCardOrder: LiveCardKey[];
   rightCardHidden: Partial<Record<LiveCardKey, boolean>>;
   rightCardCollapsed: Partial<Record<LiveCardKey, boolean>>;
   rightCardWeights: LiveCardWeights;
+  lastAppliedPresetId: string | null;
 };
 
 type Store = Persisted & {
@@ -310,6 +312,7 @@ export const useLiveLayoutStore = create<Store>((set) => ({
       rightCardHidden: readCollapsedMap(input.rightCardHidden),
       rightCardCollapsed: readCollapsedMap(input.rightCardCollapsed),
       rightCardWeights: clampCardWeights(input.rightCardWeights),
+      lastAppliedPresetId: input.lastAppliedPresetId,
     };
     set((state) => {
       persistFromState({ ...state, ...next });

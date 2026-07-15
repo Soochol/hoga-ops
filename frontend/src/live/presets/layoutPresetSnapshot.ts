@@ -89,10 +89,11 @@ export function applyPresetPayload(payload: LiveLayoutPresetPayload, presetId: s
     rightCardHidden: boolMap(payload.right_card_hidden) as Partial<Record<LiveCardKey, boolean>>,
     rightCardCollapsed: boolMap(payload.right_card_collapsed) as Partial<Record<LiveCardKey, boolean>>,
     rightCardWeights: numberMap(payload.right_card_weights) as Record<LiveCardKey, number>,
+    // "마지막 적용" 기록을 배치 입력에 포함 — applyLayoutPreset 이 단일 persist 로 함께
+    // 쓴다(별도 setLastAppliedPresetId 호출 = 두 번째 persist 제거, 코드 리뷰).
+    lastAppliedPresetId: presetId,
   };
   useLiveLayoutStore.getState().applyLayoutPreset(layoutInput);
-  // "마지막 적용" 기록 — 이후 수동 조정에도 유지된다.
-  useLiveLayoutStore.getState().setLastAppliedPresetId(presetId);
 }
 
 /** 기본 레이아웃(코드 기본값) payload — "기본으로 초기화"에 사용. */

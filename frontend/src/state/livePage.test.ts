@@ -259,7 +259,7 @@ describe('livePage store', () => {
   });
 });
 
-describe('useLivePageStore.swapPaneOrder', () => {
+describe('useLivePageStore.setPaneOrder', () => {
   beforeEach(() => {
     localStorage.clear();
     useLivePageStore.setState({
@@ -270,8 +270,11 @@ describe('useLivePageStore.swapPaneOrder', () => {
     });
   });
 
-  it('swaps two non-candle panes and persists to live.indicators.v1', () => {
-    useLivePageStore.getState().swapPaneOrder('volume', 'quote-totals');
+  it('replaces the order (normalized) and persists to live.indicators.v1', () => {
+    useLivePageStore.getState().setPaneOrder([
+      'candle', 'quote-totals', 'volume', 'ratio',
+      'fill-strength', 'program-trade', 'investor-foreign', 'investor-institution',
+    ]);
     expect(useLivePageStore.getState().paneOrder.slice(0, 3)).toEqual([
       'candle', 'quote-totals', 'volume',
     ]);
@@ -279,10 +282,9 @@ describe('useLivePageStore.swapPaneOrder', () => {
     expect(persisted.paneOrder.slice(0, 3)).toEqual(['candle', 'quote-totals', 'volume']);
   });
 
-  it('refuses to move the candle pane', () => {
-    const before = useLivePageStore.getState().paneOrder;
-    useLivePageStore.getState().swapPaneOrder('candle', 'volume');
-    expect(useLivePageStore.getState().paneOrder).toEqual(before);
+  it('normalizes candle back to index 0 even if passed elsewhere', () => {
+    useLivePageStore.getState().setPaneOrder(['volume', 'candle', 'ratio'] as never);
+    expect(useLivePageStore.getState().paneOrder[0]).toBe('candle');
   });
 });
 
