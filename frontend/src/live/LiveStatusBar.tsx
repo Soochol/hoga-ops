@@ -101,15 +101,16 @@ export function LiveStatusBar({ activeCode, captureHealth, bundle, venue, hogaGa
   return (
     <div
       data-testid="live-status-bar"
-      className="flex items-center gap-2 border-b px-3"
+      className="flex items-center gap-2 px-3"
       style={{
         height: 'var(--h-pricestrip)',
-        borderColor: 'var(--border)',
+        // 하단 border-b 제거(2026-07-15 borderless) — 스트립과 아래 워크에어리어 분리는
+        // bg-subtle↔bg 톤 스텝이 담당. 라이트(Δ가 옅음)에서도 아래 차트 카드(bg-card)
+        // 상단 엣지가 함께 경계를 만든다.
         background: 'var(--bg-subtle)',
         fontSize: 'var(--text-sm)',
         color: 'var(--fg-dim)',
         fontVariantNumeric: 'tabular-nums',
-        boxShadow: 'inset 0 -1px 0 rgba(255, 255, 255, 0.015)',
       }}
     >
       <span className="inline-flex min-h-[1.2rem] items-center gap-1">
