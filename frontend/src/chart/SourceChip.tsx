@@ -18,7 +18,6 @@ export function SourceChip({ source }: Props) {
   if (!source) return null;
   const capability = getSourceCapability(source);
   const bgVar = `var(--source-${capability.cssTokenName}-bg)`;
-  const borderVar = `var(--source-${capability.cssTokenName}-border)`;
 
   return (
     <span
@@ -29,8 +28,9 @@ export function SourceChip({ source }: Props) {
         gap: 'var(--space-xs)',
         padding: '0 var(--space-sm)',
         height: '1.2rem',
+        // 외곽선 제거(2026-07-15 borderless) — 소스별 bg 틴트(kis_live=accent 12%,
+        // hogaplay=bg-card)가 칩을 구분한다.
         background: bgVar,
-        border: `1px solid ${borderVar}`,
         borderRadius: 'var(--radius-md)',
         fontSize: 'var(--text-xs)',
         fontFamily: 'monospace',

@@ -172,7 +172,7 @@ export function LiveStatusBar({ activeCode, captureHealth, bundle, venue, hogaGa
               title={`과거 데이터 불러오는 중 — ${md}까지 로드됨`}
               className="font-mono px-2 py-0.5 rounded whitespace-nowrap shrink-0"
               style={{
-                background: pill.bg, border: `1px solid ${pill.border}`,
+                background: pill.bg, border: pill.border,
                 color: pill.fg, fontSize: 'var(--text-xs)',
               }}
             >
@@ -192,7 +192,7 @@ export function LiveStatusBar({ activeCode, captureHealth, bundle, venue, hogaGa
               title={hogaCoverageGapTitle(hogaGapDates)}
               className="font-mono px-2 py-0.5 rounded whitespace-nowrap shrink-0"
               style={{
-                background: gapPill.bg, border: `1px solid ${gapPill.border}`,
+                background: gapPill.bg, border: gapPill.border,
                 color: gapPill.fg, fontSize: 'var(--text-xs)',
               }}
             >
@@ -232,7 +232,7 @@ export function LiveStatusBar({ activeCode, captureHealth, bundle, venue, hogaGa
             title={captureHealth.title}
             className="font-mono px-2 py-0.5 rounded"
             style={{
-              background: capPill.bg, border: `1px solid ${capPill.border}`,
+              background: capPill.bg, border: capPill.border,
               color: capPill.fg, fontSize: 'var(--text-xs)',
             }}
           >
