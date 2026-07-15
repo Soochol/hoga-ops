@@ -85,12 +85,13 @@ it('조회 결과 액션에는 관심 그룹 하트만 표시한다', async () =
 
 it('renders shared top action buttons without changing the screener workflow', async () => {
   renderPage();
+  // 부유 카드 모델(2026-07-15): borderless — --bg-card + shadow-panel 만으로 분리.
   expect(screen.getByTestId('screener-saves-pane')).toHaveClass('bg-bg-card');
-  expect(screen.getByTestId('screener-saves-pane')).toHaveClass('border');
+  expect(screen.getByTestId('screener-saves-pane')).not.toHaveClass('border');
   expect(screen.getByTestId('screener-builder-pane')).toHaveClass('bg-bg-card');
-  expect(screen.getByTestId('screener-builder-pane')).toHaveClass('border');
+  expect(screen.getByTestId('screener-builder-pane')).not.toHaveClass('border');
   expect(screen.getByTestId('screener-results-pane')).toHaveClass('bg-bg-card');
-  expect(screen.getByTestId('screener-results-pane')).toHaveClass('border');
+  expect(screen.getByTestId('screener-results-pane')).not.toHaveClass('border');
   expect(await screen.findByRole('button', { name: '조회' })).toBeInTheDocument();
   // secondary ToolbarButton은 테두리 없는 ghost(2026-07-15) — 투명 배경.
   expect(screen.getByRole('button', { name: '저장' })).toHaveClass('bg-transparent');

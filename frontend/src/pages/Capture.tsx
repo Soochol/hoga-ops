@@ -69,7 +69,7 @@ export default function Capture() {
       className="grid gap-0 bg-bg text-fg"
       style={{ gridTemplateColumns: `${leftPct}fr 12px ${100 - leftPct}fr` }}
     >
-      <PanelCard as="section" data-testid="capture-form-pane" className="flex min-h-0 flex-col overflow-hidden">
+      <PanelCard as="section" borderless data-testid="capture-form-pane" className="flex min-h-0 flex-col overflow-hidden">
         <DataSection title="캡처 요청" className="flex flex-1 flex-col" contentClassName="flex-1 overflow-y-auto p-md">
           <CaptureForm referenceYear={year} referenceMonth={month} initialCode={initialCode} />
         </DataSection>
@@ -86,7 +86,7 @@ export default function Capture() {
       {/* min-w-0: grid item 의 기본 min-width:auto(=콘텐츠 min-content) 를 풀어,
           큐 행의 최소폭이 패널 축소를 막지 않게 한다. 패널이 행보다 좁아지면
           큐 리스트(overflow-x:auto)가 가로 스크롤로 받아낸다 — 페이지 오버플로 방지. */}
-      <PanelCard as="section" data-testid="capture-queue-pane" className="flex min-h-0 min-w-0 flex-col overflow-hidden">
+      <PanelCard as="section" borderless data-testid="capture-queue-pane" className="flex min-h-0 min-w-0 flex-col overflow-hidden">
         <DataSection title="캡처 대기열" className="flex min-h-0 flex-1 flex-col" contentClassName="flex min-h-0 flex-1 flex-col p-md">
           <CaptureQueue />
         </DataSection>
