@@ -158,7 +158,9 @@ export default function LiveSettingsSections({ variant = 'live' }: { variant?: '
 
   return (
     <div className="grid min-h-0 grid-cols-[200px_minmax(0,1fr)]">
-      <nav className="overflow-y-auto py-2 border-r border-border bg-bg-card" aria-label="설정 카테고리">
+      {/* nav↔콘텐츠 분리는 border-r가 아니라 bg-subtle↔bg-card 톤 스텝이 담당(2026-07-15
+          borderless 규칙). 선택은 좌측 accent 보더 대신 둥근 pill. */}
+      <nav className="space-y-0.5 overflow-y-auto bg-bg-subtle p-2" aria-label="설정 카테고리">
         {navIds.map((id) => (
           <button
             key={id}
@@ -166,10 +168,10 @@ export default function LiveSettingsSections({ variant = 'live' }: { variant?: '
             data-testid={`settings-nav-${id}`}
             aria-current={selected === id ? 'true' : undefined}
             onClick={() => setSelected(id)}
-            className={`flex w-full items-center justify-between rounded-none border-l-2 px-4 py-2 text-left text-sm transition-colors ${
+            className={`flex w-full items-center justify-between rounded-lg px-3 py-2 text-left text-sm transition-colors ${
               selected === id
-                ? 'border-accent bg-tint-selection text-fg'
-                : 'border-transparent text-fg-dim hover:bg-bg-input-hover hover:text-fg'
+                ? 'bg-tint-selection font-medium text-fg'
+                : 'text-fg-dim hover:bg-bg-input-hover hover:text-fg'
             }`}
           >
             {LABEL[id]}

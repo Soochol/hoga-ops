@@ -29,7 +29,9 @@ describe('LiveSettingsModal (2단)', () => {
     expect(screen.getByRole('dialog')).toHaveClass('z-[60]');
     expect(screen.getByTestId('live-settings-modal-shell')).toHaveClass('bg-bg-card');
     expect(screen.getByTestId('live-settings-modal-shell')).toHaveClass('h-[min(820px,calc(100vh-48px))]');
-    expect(screen.getByRole('navigation', { name: '설정 카테고리' })).toHaveClass('border-r');
+    // nav는 border-r 대신 bg-subtle 톤 스텝으로 분리(2026-07-15 borderless 통일).
+    expect(screen.getByRole('navigation', { name: '설정 카테고리' })).toHaveClass('bg-bg-subtle');
+    expect(screen.getByRole('navigation', { name: '설정 카테고리' })).not.toHaveClass('border-r');
   });
 
   it('toggle click mutates chartPrefs store', () => {

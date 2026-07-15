@@ -203,7 +203,9 @@ export default function IndicatorPanel({ onClose, capabilities = STOCK_CAPABILIT
           </button>
         </div>
         <div className="grid min-h-0 grid-cols-[240px_minmax(0,1fr)]">
-          <nav className="overflow-y-auto py-2 border-r border-border bg-bg-card" aria-label="지표 카테고리">
+          {/* nav↔콘텐츠 분리는 border-r가 아니라 bg-subtle↔bg-card 톤 스텝이 담당(2026-07-15
+              borderless 규칙). 선택은 좌측 accent 보더 대신 둥근 pill. */}
+          <nav className="space-y-0.5 overflow-y-auto bg-bg-subtle p-2" aria-label="지표 카테고리">
           {categories.map((c, i) => {
             const checked = checkedFor(c.id);
             const onToggle = toggleFor(c.id);
@@ -212,15 +214,15 @@ export default function IndicatorPanel({ onClose, capabilities = STOCK_CAPABILIT
             return (
               <Fragment key={c.id}>
                 {showHeader && (
-                  <div className={`px-4 pb-2 text-xs font-semibold uppercase tracking-[0.08em] text-fg-dimmer${i !== 0 ? ' pt-3' : ''}`}>
+                  <div className={`px-3 pb-1 text-xs font-semibold uppercase tracking-[0.08em] text-fg-dimmer${i !== 0 ? ' pt-3' : ''}`}>
                     {GROUP_LABEL[c.group]}
                   </div>
                 )}
                 <ListRow
-                  className={`flex w-full items-center justify-between rounded-none border-l-2 px-4 py-2 text-left text-sm transition-colors ${
+                  className={`flex w-full items-center justify-between rounded-lg px-3 py-2 text-left text-sm transition-colors ${
                     isSelected
-                      ? 'border-accent bg-tint-selection text-fg'
-                      : 'border-transparent text-fg-dim hover:bg-bg-input-hover hover:text-fg'
+                      ? 'bg-tint-selection font-medium text-fg'
+                      : 'text-fg-dim hover:bg-bg-input-hover hover:text-fg'
                   }`}
                 >
                   <button
