@@ -1,5 +1,17 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { act, fireEvent, render, screen } from '@testing-library/react';
+
+// LayoutPresetMenu(툴바)는 react-query 를 쓰므로 QueryClient 없이 렌더된다.
+// 이 테스트는 프리셋과 무관하니 훅을 목해 빈 목록/노옵 뮤테이션을 준다.
+vi.mock('./presets/useLiveLayoutPresets', () => ({
+  useLiveLayoutPresets: () => ({ data: { schema_version: 1, presets: [] } }),
+  useLiveLayoutPresetMutations: () => ({
+    create: { mutate: vi.fn() },
+    update: { mutate: vi.fn() },
+    remove: { mutate: vi.fn() },
+  }),
+}));
+
 import { LiveWorkarea } from './LiveWorkarea';
 import type { LiveChartRoot } from './LiveChartRoot';
 import { useLivePageStore } from '../state/livePage';

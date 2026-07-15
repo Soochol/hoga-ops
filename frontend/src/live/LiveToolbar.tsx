@@ -2,6 +2,7 @@ import type { ReactNode } from 'react';
 import { useLivePageStore } from '../state/livePage';
 import { TimeframeControl } from './TimeframeControl';
 import { IconToolbarButton, WorkspaceToolbar } from '../ui/WorkspaceShell';
+import { LayoutPresetMenu } from './presets/LayoutPresetMenu';
 
 type Props = {
   onOpenIndicators: () => void;
@@ -63,6 +64,7 @@ export function LiveToolbar({ onOpenIndicators, onOpenSettings, studySaveControl
         onOpenSettings={onOpenSettings}
         studySaveControl={studySaveControl}
       />
+      <LayoutPresetMenu />
     </WorkspaceToolbar>
   );
 }

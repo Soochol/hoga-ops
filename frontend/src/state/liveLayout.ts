@@ -53,6 +53,18 @@ type Persisted = {
   rightCardCollapsed: Partial<Record<LiveCardKey, boolean>>;
   /** 상세 패널 전체 접힘 여부(사용자 선호; 지수 종목 여부와 독립). */
   detailPanelCollapsed: boolean;
+  /** 마지막으로 적용한 레이아웃 프리셋 id(클라 전용, ADR-0114 §4). 이후 수동 조정에도
+   *  유지 — "마지막 적용" 의미이지 "동기화됨"이 아니다. null = 프리셋 미적용. */
+  lastAppliedPresetId: string | null;
+};
+
+/** 프리셋 적용용 우측 패널 배치 묶음(단일 set + 단일 persist). */
+export type LiveLayoutPresetInput = {
+  rightPanelWidthPx: number;
+  rightCardOrder: LiveCardKey[];
+  rightCardHidden: Partial<Record<LiveCardKey, boolean>>;
+  rightCardCollapsed: Partial<Record<LiveCardKey, boolean>>;
+  rightCardWeights: LiveCardWeights;
 };
 
 type Store = Persisted & {
@@ -64,6 +76,8 @@ type Store = Persisted & {
   setAllCardsCollapsed: (collapsed: boolean) => void;
   setDetailPanelCollapsed: (collapsed: boolean) => void;
   toggleDetailPanelCollapsed: () => void;
+  applyLayoutPreset: (input: LiveLayoutPresetInput) => void;
+  setLastAppliedPresetId: (id: string | null) => void;
 };
 
 function isFiniteNumber(value: unknown): value is number {
@@ -195,6 +209,9 @@ function readStorage(): Partial<Persisted> {
   if (typeof parsed.detailPanelCollapsed === 'boolean') {
     next.detailPanelCollapsed = parsed.detailPanelCollapsed;
   }
+  if (typeof parsed.lastAppliedPresetId === 'string') {
+    next.lastAppliedPresetId = parsed.lastAppliedPresetId;
+  }
 
   return next;
 }
@@ -209,6 +226,7 @@ function persistFromState(state: Persisted): void {
     rightCardHidden: state.rightCardHidden,
     rightCardCollapsed: state.rightCardCollapsed,
     detailPanelCollapsed: state.detailPanelCollapsed,
+    lastAppliedPresetId: state.lastAppliedPresetId,
   });
 }
 
@@ -221,6 +239,7 @@ export const useLiveLayoutStore = create<Store>((set) => ({
   rightCardHidden: {},
   rightCardCollapsed: {},
   detailPanelCollapsed: false,
+  lastAppliedPresetId: null,
   ...hydrated,
   setRightPanelWidthPx: (widthPx) => {
     const nextWidthPx = sanitizeRightPanelWidthPx(widthPx);
@@ -279,6 +298,28 @@ export const useLiveLayoutStore = create<Store>((set) => ({
       const next = !state.detailPanelCollapsed;
       persistFromState({ ...state, detailPanelCollapsed: next });
       return { detailPanelCollapsed: next };
+    });
+  },
+  applyLayoutPreset: (input) => {
+    // 프리셋 적용 — 우측 패널 배치를 한 번에 교체(단일 set + 단일 persist). 입력은
+    // 호출측(layoutPresetSnapshot)이 이미 정규화했다고 가정하되, order 는 방어적으로
+    // 한 번 더 정규화한다.
+    const next = {
+      rightPanelWidthPx: sanitizeRightPanelWidthPx(input.rightPanelWidthPx),
+      rightCardOrder: normalizeKeyOrder(input.rightCardOrder, LIVE_CARD_KEYS, isLiveCardKey),
+      rightCardHidden: readCollapsedMap(input.rightCardHidden),
+      rightCardCollapsed: readCollapsedMap(input.rightCardCollapsed),
+      rightCardWeights: clampCardWeights(input.rightCardWeights),
+    };
+    set((state) => {
+      persistFromState({ ...state, ...next });
+      return next;
+    });
+  },
+  setLastAppliedPresetId: (id) => {
+    set((state) => {
+      persistFromState({ ...state, lastAppliedPresetId: id });
+      return { lastAppliedPresetId: id };
     });
   },
 }));

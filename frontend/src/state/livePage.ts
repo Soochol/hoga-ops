@@ -1,7 +1,11 @@
 import { create } from 'zustand';
 import type { MASource } from '../chart/projectors/movingAverage';
 import type { LineStyle, PaneId } from '../chart/drawing/types';
-import { swapInPaneOrder } from '../chart/paneOrder';
+import { normalizePaneOrder, swapInPaneOrder } from '../chart/paneOrder';
+import {
+  PRESET_INDICATOR_FLAG_KEYS,
+  type PresetIndicatorFlags,
+} from '../live/presets/presetFlags';
 import {
   mergeLiveIndicatorPrefs,
   DEFAULT_LIVE_MAS,
@@ -159,6 +163,12 @@ type Store = Persisted & PersistedIndicators & {
   setPanePrefForTimeframe: (timeframe: LiveTimeframe, key: PanePrefKey, enabled: boolean) => void;
   /** 두 pane 의 순서 위치를 교환한다(레전드 ↑/↓, candle 은 고정, ADR-0114 §3). */
   swapPaneOrder: (a: PaneId, b: PaneId) => void;
+  /** 레이아웃 프리셋의 지표 슬라이스를 한 번에 적용(단일 set + 단일 persist, ADR-0114 §4). */
+  applyIndicatorPreset: (input: {
+    paneOrder: PaneId[];
+    panePrefsByTimeframe: PersistedPanePrefsByTimeframe;
+    flags: PresetIndicatorFlags;
+  }) => void;
   setVolumeEnabled: (enabled: boolean) => void;
   setMovingAverageHidden: (hidden: boolean) => void;
   setAskPeakEnabled: (enabled: boolean) => void;
@@ -477,6 +487,21 @@ export const useLivePageStore = create<Store>((set, get) => ({
 
   swapPaneOrder: (a, b) => {
     set({ paneOrder: swapInPaneOrder(get().paneOrder, a, b) });
+    persistIndicators(snapshotIndicators(get));
+  },
+
+  applyIndicatorPreset: ({ paneOrder, panePrefsByTimeframe, flags }) => {
+    // 화이트리스트 키만 반영 — payload 에 든 미지의 키가 store 로 새지 않게.
+    const flagPatch: PresetIndicatorFlags = {};
+    for (const key of PRESET_INDICATOR_FLAG_KEYS) {
+      const v = flags[key];
+      if (typeof v === 'boolean') flagPatch[key] = v;
+    }
+    set({
+      paneOrder: normalizePaneOrder(paneOrder),
+      panePrefsByTimeframe: normalizePanePrefsByTimeframe(panePrefsByTimeframe),
+      ...flagPatch,
+    });
     persistIndicators(snapshotIndicators(get));
   },
 

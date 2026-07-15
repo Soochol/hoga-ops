@@ -203,6 +203,32 @@ describe('liveLayout store helpers', () => {
     expect(persisted.rightCardHidden).toEqual({ program: true });
   });
 
+  it('round-trips lastAppliedPresetId and applies a layout preset in one write', async () => {
+    localStorage.setItem('live.layout.v1', JSON.stringify({ lastAppliedPresetId: 'preset-x' }));
+    const { useLiveLayoutStore } = await import('./liveLayout');
+    expect(useLiveLayoutStore.getState().lastAppliedPresetId).toBe('preset-x');
+
+    useLiveLayoutStore.getState().applyLayoutPreset({
+      rightPanelWidthPx: 455,
+      rightCardOrder: ['investor', 'bogus', 'orderbook'] as never,
+      rightCardHidden: { program: true },
+      rightCardCollapsed: { brokers: true },
+      rightCardWeights: { orderbook: 30, brokers: 20, volumeDistribution: 20, program: 15, investor: 15 },
+    });
+    useLiveLayoutStore.getState().setLastAppliedPresetId('preset-y');
+
+    const s = useLiveLayoutStore.getState();
+    expect(s.rightPanelWidthPx).toBe(455);
+    // 미지의 카드 키 드롭 + 누락 append 정규화.
+    expect(s.rightCardOrder).toEqual(['investor', 'orderbook', 'brokers', 'volumeDistribution', 'program']);
+    expect(s.rightCardHidden).toEqual({ program: true });
+    expect(s.lastAppliedPresetId).toBe('preset-y');
+
+    const persisted = JSON.parse(localStorage.getItem('live.layout.v1') ?? '{}');
+    expect(persisted.rightPanelWidthPx).toBe(455);
+    expect(persisted.lastAppliedPresetId).toBe('preset-y');
+  });
+
   it('hiding a card leaves weights and collapse untouched (restore fidelity)', async () => {
     const { useLiveLayoutStore, DEFAULT_CARD_WEIGHTS } = await import('./liveLayout');
 
