@@ -76,7 +76,7 @@ The design system has a **single density dial** at `:root font-size`.
 
   | Token | Obsidian (dark) | Ledger (light) | Use |
   |---|---|---|---|
-  | `--bg` | `#060608` | `#F6F4EE` | App background — 카드와의 명도차가 패널 분리의 1차 수단 (2026-07-15 심도 강화) |
+  | `--bg` | `#121216` | `#F6F4EE` | App background — Obsidian 은 `--bg-card` 와 동일 톤(배경 통일, 2026-07-15 PR #636); 분리는 4px gap + `--shadow-panel` 만 담당. Ledger 는 종전 톤 스텝 유지 |
   | `--bg-card` | `#121216` | `#FDFCF8` | Panes, cards, toolbars |
   | `--bg-subtle` | `#0E0E11` | `#F2EFE7` | Nav, price strip, dropdown headers |
   | `--bg-input` | `#101014` | `#FDFCF8` | Inputs, comboboxes, default tab |
@@ -311,6 +311,8 @@ Two layers, each with one shared owner. Use them; do **not** hand-roll a dismiss
 | 2026-07-15 | Obsidian `--bg` #0A0A0C → #060608 심도 강화 | 배경↔카드 명도차(Δ~8)가 너무 옅어 패널이 한 덩어리로 읽힘. 다크에서 1px 보더 강화는 반복 실패(#610~613) — 분리는 톤+간격이 담당한다는 규칙 확정. 카드 크롬(`--bg-card`+border+radius+gap) 자체는 기존 구조 유지. |
 | 2026-07-15 | 전역 하단 시장지표 바(MarketIndexBar) 신설 — 앱 셸 3행(auto) | 대표지수 현재지수+전일대비 스트립(KIS FHPUP02100000, 백엔드 20s TTL 코얼레스 + last-good). 색 규율: 등락=가격 방향(priceDirClass 색+부호), 라벨=fg-dim, 값=mono fg. 데이터 없으면(자격증명 부재) 행이 0으로 접혀 빈 띠가 남지 않는다. 지수 클릭=해당 /live 탭 열기. |
 | 2026-07-15 | `/live`·`/study` 워크스페이스 pane 보더 제거(A안) — 차트↔상세 경계선 폐지 | 차트와 상세 사이 17px 이음매에 1px 선 3개(카드 보더 + 스플리터 라인 + 카드 보더)가 겹쳐 지저분하게 읽힘. "분리는 톤+간격" 규칙(#610~613)을 pane 이음매에도 적용: `/live`는 두 카드 보더 제거(톤+4px gap+shadow-panel 유지), `/study`는 `border-l` 제거+상세 배경 `bg-subtle/40`→`bg-subtle` 승격(한 카드 내 톤 스텝). 스플리터 리사이즈 라인은 평상시 숨김, 호버/드래그 시 `--accent`로만 노출. |
+| 2026-07-15 | 차트 pane 구분선 완화 + 상세패널 겹친 이음매 정리 (#635) | 토스식 "구분선 최소" 평가에서 나온 두 최대 소음. pane 구분선 다크 `#63636f`→`#3a3a42`(Δ~80→~35)·라이트 `#9a917c`→`#bcb4a0` — 이전 값은 `fg-dimmer` 수준의 화면 최강 선이라 규칙 위반(DESIGN.md 기록 `#44444F`와도 드리프트). 상세패널은 카드 `border-t` 제거로 이음매 2선→1선(리사이저선만). |
+| 2026-07-15 | **Obsidian `--bg` #060608 → #121216 (= `--bg-card`, 배경 통일)** — 위 심도 강화 결정 되돌림 (#636) | 토스 레퍼런스 기준 "배경색 통일" 평가. 카드를 슬랩처럼 띄우던 톤 스텝이 차트↔호가 gutter 를 어두운 골로 만들어 화면이 쪼개져 읽힘. 사용자 A/B(현재/중간/통일 스크린샷)로 통일(Level B) 확정 — `--bg`=`--bg-card` 로 gutter 소멸, 분리는 4px gap + `--shadow-panel`(카드 가장자리 옅은 다크 헤일로)만 담당. `--bg-subtle`/`--bg-input` 불변이라 nav·탭 활성/비활성·입력 크롬 어포던스 보존. Obsidian 전용(/live·/heatmap); Ledger 는 종전 톤 스텝 유지(라이트는 별도 검토). "분리는 톤+간격"의 극단(톤 스텝 0). |
 
 ## App-shell & live tokens (ADR-0039, ADR-0052)
 
