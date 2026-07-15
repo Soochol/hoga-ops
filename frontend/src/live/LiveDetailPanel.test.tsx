@@ -135,7 +135,7 @@ describe('LiveDetailPanel', () => {
     }
   });
 
-  it('renders detail sections as flat sections inside the outer panel', () => {
+  it('renders each detail section as a bounded independent card (border + rounded + surface)', () => {
     render(
       <LiveDetailPanel
         orderbook={<div>orderbook</div>}
@@ -147,8 +147,12 @@ describe('LiveDetailPanel', () => {
     );
 
     const orderbook = screen.getByTestId('live-detail-card-orderbook');
-    expect(orderbook).not.toHaveClass('rounded');
-    expect(orderbook).not.toHaveClass('bg-bg-card');
+    // 독립 카드 외관(2026-07-15) — 테두리+둥근모서리+카드 표면+그림자.
+    expect(orderbook).toHaveClass('rounded-lg');
+    expect(orderbook).toHaveClass('border');
+    expect(orderbook).toHaveClass('bg-bg-card');
+    expect(orderbook).toHaveClass('shadow-panel');
+    // 카드별 스크롤 컨테이너는 여전히 금지(스크롤은 패널 레벨).
     expect(orderbook).not.toHaveClass('overflow-hidden');
   });
 

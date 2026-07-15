@@ -128,9 +128,11 @@ function SortableCard({
       ref={setNodeRef}
       data-testid={meta.testId}
       data-card={cardKey}
-      // 이음매 겹침 제거(2026-07-15): 카드 border-t 를 걷어내고 8px 리사이저 gap 안의
-      // bg-border 선 하나만 이음매로 남긴다("분리는 톤+간격").
-      className="flex flex-col"
+      // 독립 카드 외관(2026-07-15): 각 지표를 테두리+둥근모서리+그림자를 가진 개별
+      // 카드로 렌더한다(/study PanelCard 와 동일 크롬, DESIGN.md 승인). 패널 배경을
+      // bg-subtle 로 낮춰 카드가 떠 보인다. overflow-hidden 은 붙이지 않는다 — 스크롤은
+      // 패널 레벨에서만(카드별 스크롤 컨테이너 금지 규칙 보존).
+      className="flex flex-col rounded-lg border border-border bg-bg-card shadow-panel"
       style={{
         minHeight,
         transform: CSS.Transform.toString(transform),
@@ -317,7 +319,7 @@ export function LiveDetailPanel({
           <aside
             ref={panelRef}
             data-testid="live-detail-panel"
-            className="grid min-h-full flex-1 bg-bg-card"
+            className="grid min-h-full flex-1 content-start bg-bg-subtle p-2"
             style={{
               gridTemplateRows: visible
                 .map((key) => (collapsed[key] ? 'min-content' : 'auto'))
@@ -358,11 +360,18 @@ export function LiveDetailPanel({
                       aria-disabled={resizerInert || undefined}
                       data-inert={resizerInert || undefined}
                       data-testid={`live-detail-resizer-${resizer.upper}-${resizer.lower}`}
-                      className={`grid min-h-[8px] place-items-center ${resizerInert ? 'cursor-default' : 'cursor-row-resize'}`}
+                      className={`group grid min-h-[8px] place-items-center ${resizerInert ? 'cursor-default' : 'cursor-row-resize'}`}
                       style={{ touchAction: 'none' }}
                       onPointerDown={resizerInert ? undefined : beginResize(resizer.upper, resizer.lower)}
                     >
-                      <div aria-hidden className={`h-px w-full bg-border ${resizerInert ? 'opacity-40' : ''}`.trim()} />
+                      {/* 독립 카드 사이는 여백으로 분리 — 하이라인 대신 호버 시에만 짧은
+                          그립을 노출(카드 자체 테두리가 이미 경계를 담당). */}
+                      <div
+                        aria-hidden
+                        className={`h-1 w-8 rounded-full bg-transparent transition-colors ${
+                          resizerInert ? '' : 'group-hover:bg-border'
+                        }`.trim()}
+                      />
                     </div>
                   ) : null}
                 </Fragment>
