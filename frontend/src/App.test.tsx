@@ -117,16 +117,17 @@ describe('App document title', () => {
 });
 
 describe('App shell layout', () => {
-  it('renders a three-row shell (top nav / content / bottom-bar auto) with no side-menu column', () => {
+  it('renders a column shell (main stack | full-height right panel) with the main stack as 3 rows', () => {
     const { container } = wrap(<div>Heatmap</div>, '/heatmap');
     const shell = container.firstElementChild as HTMLElement;
-    const contentGrid = screen.getByTestId('app-content-grid');
+    const mainStack = screen.getByTestId('app-main-stack');
 
     expect(screen.getByRole('navigation', { name: '주요 메뉴' })).toBeInTheDocument();
-    // 3행: 하단 시장지표 바 행은 auto — 바가 null 이면 0으로 접힌다.
-    expect(shell.style.gridTemplateRows).toBe('var(--h-top-nav) minmax(0, 1fr) auto');
-    expect(shell.style.gridTemplateColumns).toBe('');
-    expect(contentGrid).toHaveStyle({ gridTemplateColumns: '1fr var(--rail-w)' });
+    // 열 기반 셸: 우측 패널(레일)이 full-height 열, 왼쪽 스택이 1fr — 헤더는 우측 패널 위를 양보.
+    expect(shell.style.gridTemplateColumns).toBe('1fr var(--rail-w)');
+    expect(shell.style.gridTemplateRows).toBe('');
+    // 왼쪽 스택: top nav / 페이지 / 하단 바(auto — 바 null 이면 0 으로 접힘) 3행.
+    expect(mainStack.style.gridTemplateRows).toBe('var(--h-top-nav) minmax(0, 1fr) auto');
   });
 
   it('adds exactly one right panel column before the fixed rail when a panel is open', () => {

@@ -210,7 +210,7 @@ export function LiveSymbolSearch() {
   ) : null;
 
   return (
-    <div className="relative flex-1 max-w-[360px] font-ui">
+    <div className="relative flex-1 min-w-0 max-w-[360px] font-ui">
       <button
         type="button"
         aria-label="종목 검색 열기"
@@ -223,8 +223,9 @@ export function LiveSymbolSearch() {
           <circle cx="11" cy="11" r="7" />
           <line x1="21" y1="21" x2="16.65" y2="16.65" />
         </svg>
-        <span className="flex-1 text-sm text-fg-dimmer">종목명 또는 코드 검색…</span>
-        <span className="ml-auto flex items-center gap-1 text-fg-dimmer text-xs">
+        {/* min-w-0 + truncate: 헤더가 좁아지면(드로어 열림 등) 두 줄 줄바꿈 대신 한 줄 말줄임. */}
+        <span className="flex-1 min-w-0 truncate text-sm text-fg-dimmer">종목명 또는 코드 검색…</span>
+        <span className="ml-auto flex shrink-0 items-center gap-1 text-fg-dimmer text-xs">
           <kbd className="inline-flex items-center justify-center min-w-[17px] h-[17px] px-1 border border-border-strong rounded bg-bg-input font-mono">/</kbd>
         </span>
       </button>
