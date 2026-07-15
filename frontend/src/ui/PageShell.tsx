@@ -35,7 +35,9 @@ export function ControlBar({ className = '', children }: { className?: string; c
 }
 
 const BUTTON_TONE_CLASS = {
-  secondary: 'bg-bg-input border border-border text-fg-dim hover:bg-bg-input-hover hover:text-fg',
+  // secondary는 테두리 없는 ghost(2026-07-15) — 라이트에서 bg-input=카드 배경이라 보더 없이
+  // 채우면 안 보이므로 투명 배경 + hover 시 배경으로 어포던스. primary/destructive는 채움 유지.
+  secondary: 'bg-transparent text-fg-dim hover:bg-bg-input-hover hover:text-fg',
   primary: 'bg-accent text-accent-fg font-semibold hover:brightness-110',
   destructive: 'text-fg font-semibold hover:brightness-110',
 } as const;
@@ -68,7 +70,9 @@ export function SegmentedControl({
     <div
       role="group"
       {...props}
-      className={`inline-flex rounded-lg border border-border bg-bg-input overflow-hidden ${className}`.trim()}
+      // 테두리 없는 세그먼트(2026-07-15) — bg-subtle 트랙 pill로 그룹을 정의(다크에서 bg-input=
+      // 카드라 보더 없이 안 보임). 활성 세그먼트의 tint-selection이 선택 앵커.
+      className={`inline-flex overflow-hidden rounded-lg bg-bg-subtle ${className}`.trim()}
     >
       {children}
     </div>

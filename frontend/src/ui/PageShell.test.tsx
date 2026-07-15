@@ -35,7 +35,8 @@ describe('PageShell primitives', () => {
       </ControlBar>,
     );
     expect(screen.getByText('Cancel').parentElement).toHaveClass('flex');
-    expect(screen.getByRole('button', { name: 'Cancel' })).toHaveClass('bg-bg-input');
+    // secondary는 테두리 없는 ghost(2026-07-15) — 투명 배경.
+    expect(screen.getByRole('button', { name: 'Cancel' })).toHaveClass('bg-transparent');
     expect(screen.getByRole('button', { name: 'Run' })).toHaveClass('bg-accent');
     expect(screen.getByRole('button', { name: 'Delete' })).toHaveStyle({ background: 'var(--error)' });
   });
@@ -46,7 +47,8 @@ describe('PageShell primitives', () => {
         <button type="button">A</button>
       </SegmentedControl>,
     );
-    expect(screen.getByRole('group', { name: '정렬' })).toHaveClass('bg-bg-input');
+    // 테두리 없는 세그먼트(2026-07-15) — bg-subtle 트랙.
+    expect(screen.getByRole('group', { name: '정렬' })).toHaveClass('bg-bg-subtle');
   });
 
   it('renders page states by tone', () => {
