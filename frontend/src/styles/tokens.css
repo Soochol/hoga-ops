@@ -177,8 +177,12 @@
    Sits OUTSIDE the base block so `npm run gen:tokens` (which rewrites only the
    AUTO-GENERATED span inside the base block) never touches it. */
 [data-theme='ledger'] {
-  /* ───── Surfaces (ivory paper, 3-tier) ───── */
-  --bg: #f6f4ee;
+  /* ───── Surfaces (ivory paper) ─────
+     --bg 를 --bg-card 와 동일 톤(#fdfcf8)으로 통일 — 다크(#636)와 대칭인 "배경 통일".
+     Ledger 는 feature-route 카드가 border(--border)를 유지하므로 톤 스텝 0에서도
+     카드 경계가 보존된다(다크 워크스페이스는 borderless라 gap+shadow에 의존, 여긴
+     border가 분리 담당). 효과는 다크보다 subtle(원래 Δ~11로 작았음). */
+  --bg: #fdfcf8;
   --bg-card: #fdfcf8;
   --bg-subtle: #f2efe7;
   --bg-input: #fdfcf8;
