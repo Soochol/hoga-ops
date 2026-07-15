@@ -22,7 +22,12 @@
 import { readFileSync, writeFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import { dirname, resolve } from 'node:path';
-import { SIZE_TOKENS, FIXED_PX_TOKENS, type SizeToken } from '../src/styles/design-tokens.ts';
+import { SIZE_TOKENS, FIXED_PX_TOKENS, RENDERED_ROOT_PX, type SizeToken } from '../src/styles/design-tokens.ts';
+
+/** e.g. 18px root → "1.125" — used in comments/table headers. */
+const DENSITY_LABEL = (RENDERED_ROOT_PX / 16).toString();
+/** Rendered px at default density, trimmed (14.625 stays, 36 stays integer). */
+const renderedPxOf = (rem: number): string => (Math.round(rem * RENDERED_ROOT_PX * 1000) / 1000).toString();
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const REPO_ROOT = resolve(__dirname, '../..');
@@ -156,7 +161,7 @@ function emitCssBlock(): string {
   lines.push('  /* ───── Typography sizes (rem-based) ───── */');
   for (const [name, t] of Object.entries(SIZE_TOKENS)) {
     if (!name.startsWith('text-')) continue;
-    const renderedPx = (t.rem * 20).toString();
+    const renderedPx = renderedPxOf(t.rem);
     lines.push(`  --${name}: ${t.rem}rem; /* ${renderedPx}px @ default; ${t.baseIntentPx}px base intent */`);
   }
 
@@ -164,7 +169,7 @@ function emitCssBlock(): string {
   lines.push('  /* ───── Spacing (rem-based; 4px base unit) ───── */');
   for (const [name, t] of Object.entries(SIZE_TOKENS)) {
     if (!name.startsWith('space-')) continue;
-    const renderedPx = (t.rem * 20).toString();
+    const renderedPx = renderedPxOf(t.rem);
     lines.push(`  --${name}: ${t.rem}rem; /* ${renderedPx}px @ default; ${t.baseIntentPx}px base intent */`);
   }
 
@@ -175,10 +180,10 @@ function emitCssBlock(): string {
   }
 
   lines.push('');
-  lines.push('  /* ───── Layout (rem-based; rendered px @ 20px root = default density) ───── */');
+  lines.push(`  /* ───── Layout (rem-based; rendered px @ ${RENDERED_ROOT_PX}px root = default density) ───── */`);
   for (const [name, t] of Object.entries(SIZE_TOKENS)) {
     if (!(name.startsWith('h-') || name.endsWith('-w') || name.endsWith('-min-w'))) continue;
-    const renderedPx = (t.rem * 20).toString();
+    const renderedPx = renderedPxOf(t.rem);
     lines.push(`  --${name}: ${t.rem}rem; /* ${renderedPx}px @ default; ${t.baseIntentPx}px base intent — ${t.usage} */`);
   }
 
@@ -227,12 +232,12 @@ const DESIGN_MARKERS = {
 
 function buildTypographyTable(): string {
   const rows: string[] = [
-    '| Token | Base intent (1.0×) | Rendered @ default (1.25×) | Use |',
+    `| Token | Base intent (1.0×) | Rendered @ default (${DENSITY_LABEL}×) | Use |`,
     '|---|---|---|---|',
   ];
   for (const [name, t] of Object.entries(SIZE_TOKENS)) {
     if (!name.startsWith('text-')) continue;
-    const renderedPx = (t.rem * 20).toString();
+    const renderedPx = renderedPxOf(t.rem);
     rows.push(`| \`${name.slice('text-'.length)}\` | ${t.baseIntentPx}px | ${renderedPx}px | ${t.usage} |`);
   }
   return rows.join('\n');
@@ -240,12 +245,12 @@ function buildTypographyTable(): string {
 
 function buildSpacingTable(): string {
   const rows: string[] = [
-    '| Token | Base intent (1.0×) | Rendered @ default (1.25×) | Use |',
+    `| Token | Base intent (1.0×) | Rendered @ default (${DENSITY_LABEL}×) | Use |`,
     '|---|---|---|---|',
   ];
   for (const [name, t] of Object.entries(SIZE_TOKENS)) {
     if (!name.startsWith('space-')) continue;
-    const renderedPx = (t.rem * 20).toString();
+    const renderedPx = renderedPxOf(t.rem);
     rows.push(`| \`${name.slice('space-'.length)}\` | ${t.baseIntentPx}px | ${renderedPx}px | ${t.usage} |`);
   }
   return rows.join('\n');
@@ -253,12 +258,12 @@ function buildSpacingTable(): string {
 
 function buildLayoutTable(): string {
   const rows: string[] = [
-    '| Token | Base intent (1.0×) | Rendered @ default (1.25×) | Use |',
+    `| Token | Base intent (1.0×) | Rendered @ default (${DENSITY_LABEL}×) | Use |`,
     '|---|---|---|---|',
   ];
   for (const [name, t] of Object.entries(SIZE_TOKENS)) {
     if (!(name.startsWith('h-') || name.endsWith('-w') || name.endsWith('-min-w'))) continue;
-    const renderedPx = (t.rem * 20).toString();
+    const renderedPx = renderedPxOf(t.rem);
     rows.push(`| \`--${name}\` | ${t.baseIntentPx}px | ${renderedPx}px | ${t.usage} |`);
   }
   return rows.join('\n');

@@ -31,6 +31,15 @@
  * Tokens that don't match any prefix fail the generator's name-check.
  */
 
+/**
+ * Rendered root font-size (px) at default density — MUST mirror the scale
+ * dial (`:root { font-size }`) in tokens.css. The generator uses it for
+ * "rendered @ default" comments/tables; `util/chartScale.ts` derives the
+ * canvas font/offset from it (lightweight-charts can't read CSS rem).
+ * 18px = 1.125× of the 16px base intent (2026-07-15, was 20px = 1.25×).
+ */
+export const RENDERED_ROOT_PX = 18;
+
 export type SizeToken = Readonly<{
   /** rem value emitted into CSS. Single source of truth for size. */
   rem: number;

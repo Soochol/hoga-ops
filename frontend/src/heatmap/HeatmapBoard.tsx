@@ -22,7 +22,8 @@ export interface HeatmapBoardProps {
 
 /** 신문형 멀티칼럼 보드. 빈 그룹만 제외(미분류 포함 — ADR-0068 G3). columnWidth 로 가용 폭만큼
  *  칼럼 수가 자동 결정된다(순수 CSS 메이슨리, 레이아웃 JS 없음). columnWidth 는 행 그리드의 측정
- *  min-content(합성 하니스 실측 ≈314px — 이름+캔들 2.5rem+현재가+칩, :root 20px ≈15.7rem) 위로
+ *  min-content(합성 하니스 실측 ≈15.7rem — 이름+캔들 2.5rem+현재가+칩; 20px root 시절 ≈314px 실측을
+ *  rem 환산, rem 기준이라 root 크기와 무관) 위로
  *  올린 16.5rem floor. multicol 은 column-width 를 '최소'로 보고 칼럼수를 올림한 뒤 칼럼을 board
  *  폭까지 늘리므로, 플로어가 행 min-content 미만이면 특정 board 밴드(칼럼수 올림→stretch폭<행min)
  *  에서 카드(overflow-hidden·break-inside-avoid)가 등락칩을 잘랐다 — v0.7.15.0 글리프 칼럼(3.5rem)
