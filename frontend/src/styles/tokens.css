@@ -34,13 +34,11 @@
   /* ───── Color · Borders ───── */
   --border: #232329;
   --border-strong: #33333c;
-  /* Chart pane separator (lightweight-charts layout.panes) — one notch stronger
-     than --border-strong so the inter-pane line survives the busy candle pane
-     on both themes. Chart-scoped; do not reuse for app chrome. Tuned for
-     luminance contrast against --bg-card (#121216), not to match border-strong:
-     a 2px line at #44444f (Δ~50) still washed out on the dark chart, so this
-     sits well above it (Δ~80). */
-  --chart-pane-divider: #63636f;
+  /* Chart pane separator (lightweight-charts layout.panes). Chart-scoped; do not
+     reuse for app chrome. 2026-07-15 완화: 이전 #63636f(Δ~80, fg-dimmer 수준)는
+     화면에서 가장 밝은 선이라 "분리는 톤+간격" 규칙과 충돌 — border-strong 근처
+     #3a3a42(Δ~35)로 낮춰 pane 경계는 남기되 소음을 없앤다. */
+  --chart-pane-divider: #3a3a42;
 
   /* ───── Color · Foreground ───── */
   --fg: #ececf1;
@@ -186,9 +184,10 @@
   /* ───── Borders (괘선) ───── */
   --border: #e4e0d3;
   --border-strong: #c9c3b2;
-  /* Chart pane separator — darker warm gray so the line reads on ivory even
-     over the candle pane's busy content (Δ~99 vs --bg-card #fdfcf8). */
-  --chart-pane-divider: #9a917c;
+  /* Chart pane separator — warm gray. 2026-07-15 완화: 이전 #9a917c(Δ~99)는
+     너무 진해 pane마다 굵은 선처럼 읽힘 — border-strong 근처 #bcb4a0(Δ~55)로 낮춰
+     경계는 남기되 소음을 줄인다(다크 --chart-pane-divider 완화와 대칭). */
+  --chart-pane-divider: #bcb4a0;
 
   /* ───── Foreground (ink) ───── */
   --fg: #1e2732;

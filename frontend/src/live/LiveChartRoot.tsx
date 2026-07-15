@@ -95,7 +95,7 @@ const TOKEN_SPEC = {
   grid: ['--grid', '#1B1B21'],
   border: ['--border', '#232329'],
   borderStrong: ['--border-strong', '#33333C'],
-  paneDivider: ['--chart-pane-divider', '#63636F'],
+  paneDivider: ['--chart-pane-divider', '#3a3a42'],
 } as const;
 
 function chartGridOptions(

@@ -205,7 +205,10 @@ export function LiveDetailPanel({
               <div
                 data-testid={card.testId}
                 data-card={card.key}
-                className={`flex flex-col ${index === 0 ? '' : 'border-t border-border'}`.trim()}
+                // 이음매 겹침 제거(2026-07-15): 카드 border-t 를 걷어내고 8px 리사이저 gap 안의
+                // bg-border 선 하나만 이음매로 남긴다("분리는 톤+간격" — 이전엔 border-t + 리사이저선
+                // 2줄이 8px 간격으로 겹쳐 읽힘). 첫 카드 헤더 라벨이 카드 시작을 announce.
+                className="flex flex-col"
                 style={{
                   minHeight: isCollapsed
                     ? undefined
