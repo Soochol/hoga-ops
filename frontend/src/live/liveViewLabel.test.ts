@@ -15,21 +15,21 @@ describe('liveViewLabel', () => {
     expect(formatLiveViewLabel('005930', null)).toBe('005930');
   });
 
-  it('formats live tab labels with change percent and active ratio multiple', () => {
-    expect(formatLiveViewLabel('삼성전자', '1m', { changePct: 2.14, ratioX: 1.32 })).toBe('삼성전자 +2.14% · 1.32x');
+  it('formats live tab labels with change percent only', () => {
+    expect(formatLiveViewLabel('삼성전자', '1m', { changePct: 2.14 })).toBe('삼성전자 +2.14%');
     expect(formatLiveViewLabel('SK하이닉스', '1m', { changePct: -0.8 })).toBe('SK하이닉스 -0.80%');
   });
 
   it('omits the timeframe and metric suffix when live tab metrics are unavailable', () => {
     expect(formatLiveViewLabel('삼성전자', '1m', {})).toBe('삼성전자');
-    expect(formatLiveViewLabel('삼성전자', '1m', { changePct: null, ratioX: 1.32 })).toBe('삼성전자');
+    expect(formatLiveViewLabel('삼성전자', '1m', { changePct: null })).toBe('삼성전자');
   });
 
   it('splits live tab labels into truncatable name and fixed metric detail', () => {
-    expect(formatLiveViewLabelParts('아주긴종목이름우선주', '1m', { changePct: 2.14, ratioX: 1.32 })).toEqual({
+    expect(formatLiveViewLabelParts('아주긴종목이름우선주', '1m', { changePct: 2.14 })).toEqual({
       primary: '아주긴종목이름우선주',
-      detail: '+2.14% · 1.32x',
-      full: '아주긴종목이름우선주 +2.14% · 1.32x',
+      detail: '+2.14%',
+      full: '아주긴종목이름우선주 +2.14%',
     });
   });
 });
