@@ -12,7 +12,6 @@ import MAStylePicker from './indicators/MAStylePicker';
 import IndicatorPrefRows from './settings/IndicatorPrefRows';
 import { SettingsRow } from './settings/SettingsRow';
 import { DataSourceDetail } from './settings/DataSourceDetail';
-import { DataSection } from '../ui/DataSurface';
 import SignalAlertSettingsSection from '../signalAlerts/SignalAlertSettingsSection';
 
 /**
@@ -145,7 +144,7 @@ function StudyViewsDetail() {
   );
 }
 
-export default function LiveSettingsSections({ variant = 'live' }: { variant?: 'live' | 'study' }) {
+export default function LiveSettingsSections({ variant = 'live', onClose }: { variant?: 'live' | 'study'; onClose?: () => void }) {
   const navIds: NavId[] = [
     ...CATEGORY_ORDER.filter((c) => CHART_TOGGLES.some((t) => categoryOf(t) === c)),
     // 'data-source'는 라이브 워크스페이스에선 메인 Settings(「데이터 소스」)로 이동했다.
@@ -156,10 +155,14 @@ export default function LiveSettingsSections({ variant = 'live' }: { variant?: '
   ];
   const [selected, setSelected] = useState<NavId>(navIds[0]);
 
+  // Settings 모달과 동일한 크롬(2026-07-15): 전폭 헤더 바·푸터 없이 nav+콘텐츠가
+  // 다이얼로그를 edge-to-edge로 채우고, 섹션 제목과 닫기 X는 콘텐츠 헤더가 담당.
+  // nav↔콘텐츠 분리는 bg-subtle↔bg-card 톤 스텝. rounded-[6px]는 ModalShell 반경에 맞춰 클립.
   return (
-    <div className="grid min-h-0 grid-cols-[200px_minmax(0,1fr)]">
-      {/* nav↔콘텐츠 분리는 border-r가 아니라 bg-subtle↔bg-card 톤 스텝이 담당(2026-07-15
-          borderless 규칙). 선택은 좌측 accent 보더 대신 둥근 pill. */}
+    <div
+      data-testid="live-settings-modal-shell"
+      className="grid h-full min-h-0 grid-cols-[200px_minmax(0,1fr)] overflow-hidden rounded-[6px] bg-bg-card"
+    >
       <nav className="space-y-0.5 overflow-y-auto bg-bg-subtle p-2" aria-label="설정 카테고리">
         {navIds.map((id) => (
           <button
@@ -178,8 +181,21 @@ export default function LiveSettingsSections({ variant = 'live' }: { variant?: '
           </button>
         ))}
       </nav>
-      <div className="min-h-0 overflow-y-auto" data-settings-detail={selected}>
-        <DataSection title={LABEL[selected]} contentClassName="space-y-3 p-4">
+      <div className="flex min-h-0 flex-col" data-settings-detail={selected}>
+        <header className="flex items-center justify-between px-5 pb-3 pt-4">
+          <h2 className="text-lg font-semibold text-fg">{LABEL[selected]}</h2>
+          {onClose && (
+            <button
+              type="button"
+              aria-label="닫기"
+              onClick={onClose}
+              className="-mr-1 px-1 text-lg leading-none text-fg-dim transition-colors hover:text-fg"
+            >
+              ✕
+            </button>
+          )}
+        </header>
+        <section aria-label={LABEL[selected]} className="min-h-0 flex-1 space-y-3 overflow-y-auto px-5 pb-5">
           {selected === 'data-source'
             ? <DataSourceDetail variant={variant} />
             : selected === 'study-views'
@@ -187,7 +203,7 @@ export default function LiveSettingsSections({ variant = 'live' }: { variant?: '
               : selected === 'alerts'
                 ? <SignalAlertSettingsSection />
                 : <CategoryDetail category={selected} />}
-        </DataSection>
+        </section>
       </div>
     </div>
   );

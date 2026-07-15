@@ -419,8 +419,7 @@ describe('IndicatorPanel', () => {
   it('✕ button calls onClose', () => {
     const onClose = vi.fn();
     renderPanel({ onClose });
-    // Two "닫기" buttons exist: header ✕ (aria-label) and footer text button.
-    // Both wire to onClose — clicking either verifies the wire-up.
+    // 콘텐츠 헤더의 ✕ (aria-label 닫기)가 유일한 닫기 버튼(2026-07-15 크롬 통일로 푸터 제거).
     const closeBtns = screen.getAllByRole('button', { name: '닫기' });
     expect(closeBtns.length).toBeGreaterThanOrEqual(1);
     fireEvent.click(closeBtns[0]);
