@@ -94,8 +94,10 @@ describe('index sector ranking state', () => {
     expect(resolveActiveSectorId(sectors, unpinned)).toBe('folder:semi');
   });
 
-  it('keeps uncategorized sectors addressable when previewing and pinning', () => {
-    const uncategorizedSectors: IndexSectorRankingSector[] = [
+  // v3 (ADR-0112): 미분류(null) 섹터는 와이어에서 폐지 — 마이그레이션 산물로 남을 수
+  // 있는 "미분류"라는 **이름**의 실폴더가 여느 폴더처럼 preview/pin 되는지만 본다.
+  it('keeps a migrated "미분류"-named real folder addressable when previewing and pinning', () => {
+    const migratedSectors: IndexSectorRankingSector[] = [
       {
         folder_id: 'semi',
         folder_name: '반도체',
@@ -106,7 +108,7 @@ describe('index sector ranking state', () => {
         stocks: [],
       },
       {
-        folder_id: null,
+        folder_id: 'f_00000000',
         folder_name: '미분류',
         order: 1,
         change_pct: 2,
@@ -118,21 +120,21 @@ describe('index sector ranking state', () => {
 
     const previewed = reduceIndexSectorRankingState(initialIndexSectorRankingUiState, {
       type: 'preview_sector',
-      sectorKey: '__uncat__',
+      sectorKey: 'folder:f_00000000',
     });
-    expect(resolveActiveSectorId(uncategorizedSectors, previewed)).toBe('__uncat__');
+    expect(resolveActiveSectorId(migratedSectors, previewed)).toBe('folder:f_00000000');
 
     const pinned = reduceIndexSectorRankingState(initialIndexSectorRankingUiState, {
       type: 'toggle_sector_pin',
-      sectorKey: '__uncat__',
+      sectorKey: 'folder:f_00000000',
     });
-    expect(resolveActiveSectorId(uncategorizedSectors, pinned)).toBe('__uncat__');
+    expect(resolveActiveSectorId(migratedSectors, pinned)).toBe('folder:f_00000000');
 
     const unpinned = reduceIndexSectorRankingState(pinned, {
       type: 'toggle_sector_pin',
-      sectorKey: '__uncat__',
+      sectorKey: 'folder:f_00000000',
     });
-    expect(resolveActiveSectorId(uncategorizedSectors, unpinned)).toBe('folder:semi');
+    expect(resolveActiveSectorId(migratedSectors, unpinned)).toBe('folder:semi');
   });
 
   it('clears missing pinned sector and falls back to rank 1', () => {

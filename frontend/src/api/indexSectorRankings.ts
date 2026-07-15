@@ -9,7 +9,8 @@ export const TODAY_INDEX_SECTOR_RANKINGS_REFETCH_MS = 60_000;
 export interface IndexSectorRankingStock {
   code: string;
   name: string;
-  folder_id: string | null;
+  // v3 (ADR-0112): heatmap folder_id 는 항상 실폴더 — null 미분류 와이어는 폐지.
+  folder_id: string;
   folder_name: string;
   order: number;
   close: number | null;
@@ -19,7 +20,7 @@ export interface IndexSectorRankingStock {
 }
 
 export interface IndexSectorRankingSector {
-  folder_id: string | null;
+  folder_id: string;
   folder_name: string;
   order: number;
   change_pct: number | null;
