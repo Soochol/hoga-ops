@@ -60,11 +60,13 @@ export default function App() {
 
   return (
     <div
+      data-testid="app-content-grid"
       className="grid h-screen w-screen overflow-hidden"
       style={{
-        // 3행: 하단 시장지표 바는 auto — 데이터 없으면(MarketIndexBar가 null)
-        // 행이 0으로 접혀 빈 띠가 남지 않는다.
-        gridTemplateRows: 'var(--h-top-nav) minmax(0, 1fr) auto',
+        // 열 기반 셸(2026-07-15): 우측 패널(드로어+고정 레일)이 화면 상단~하단 full-height
+        // 열로 서고, 왼쪽 스택(TopNav/페이지/하단 시장지표 바)이 나머지 1fr 을 세로로 채운다.
+        // 상단 헤더는 우측 패널 위 코너를 양보한다(우측 패널이 화면 맨 위까지 올라옴).
+        gridTemplateColumns: contentCols,
       }}
     >
       {staticTitle !== null && <StaticDocumentTitle title={staticTitle} />}
@@ -75,7 +77,6 @@ export default function App() {
         <KisRestUnavailableToastHost />
         <DrawingClearToastHost />
       </ToastViewport>
-      <TopNav onOpenSettings={() => setSettingsOpen(true)} />
       {settingsOpen && (
         <ModalShell
           ariaLabel="Settings"
@@ -88,20 +89,25 @@ export default function App() {
           <SettingsPanel onClose={() => setSettingsOpen(false)} />
         </ModalShell>
       )}
+      {/* 왼쪽 스택(1fr 열): 상단 nav / 페이지 / 하단 시장지표 바 — 모두 main 너비.
+          하단 바 행은 auto — 데이터 없으면(MarketIndexBar가 null) 0 으로 접힌다. */}
       <div
-        data-testid="app-content-grid"
+        data-testid="app-main-stack"
         className="grid min-h-0 min-w-0 overflow-hidden"
-        style={{ gridTemplateColumns: contentCols }}
+        style={{ gridTemplateRows: 'var(--h-top-nav) minmax(0, 1fr) auto' }}
       >
+        <TopNav onOpenSettings={() => setSettingsOpen(true)} />
         <main className="overflow-hidden min-w-0"><Outlet /></main>
-        {activePanel === 'watchlist' && <WatchlistDrawer />}
-        {activePanel === 'heatmap' && <HeatmapDrawer />}
-        {activePanel === 'screener' && <ScreenerDrawer />}
-        {activePanel === 'savedViews' && <StudyViewsDrawer />}
-        {activePanel === 'signalAlerts' && <SignalAlertsDrawer />}
-        <RightRail />
+        <MarketIndexBar />
       </div>
-      <MarketIndexBar />
+      {/* 우측 패널: 드로어(열림 시) + 고정 레일 — 열 자동 배치로 왼쪽 스택 오른쪽에
+          full-height 로 선다. */}
+      {activePanel === 'watchlist' && <WatchlistDrawer />}
+      {activePanel === 'heatmap' && <HeatmapDrawer />}
+      {activePanel === 'screener' && <ScreenerDrawer />}
+      {activePanel === 'savedViews' && <StudyViewsDrawer />}
+      {activePanel === 'signalAlerts' && <SignalAlertsDrawer />}
+      <RightRail />
     </div>
   );
 }

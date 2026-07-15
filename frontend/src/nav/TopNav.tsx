@@ -17,7 +17,7 @@ export default function TopNav({ onOpenSettings }: { onOpenSettings: () => void 
   return (
     <nav
       aria-label="주요 메뉴"
-      className="h-top-nav min-w-0 border-b border-border bg-bg-subtle px-lg"
+      className="h-top-nav min-w-0 bg-bg px-lg"
     >
       <div className="grid h-full min-w-0 grid-cols-[auto_auto_minmax(0,1fr)_auto] items-center gap-xl">
         <div className="inline-flex items-center gap-sm whitespace-nowrap">
