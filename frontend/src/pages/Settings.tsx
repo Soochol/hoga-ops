@@ -8,8 +8,7 @@ import { useLiveSettings, usePatchLiveSettings } from '../api/liveSettings';
 import { SettingsRow, ToggleSwitch } from '../live/settings/SettingsRow';
 import { DataSourceDetail } from '../live/settings/DataSourceDetail';
 import { PageContainer } from '../layout/PageContainer';
-import { DataSection } from '../ui/DataSurface';
-import { DefinitionRow, PanelCard, SegmentedControl, ToolbarButton } from '../ui/PageShell';
+import { DefinitionRow, SegmentedControl, ToolbarButton } from '../ui/PageShell';
 import { THEME_PREFERENCE_OPTIONS, useThemePrefsStore, type ThemePreference } from '../state/themePrefs';
 
 const VERSION = 'v0.1.0';
@@ -40,14 +39,18 @@ function formatRelative(ms: number | null | undefined): string {
 }
 
 export default function Settings() {
+  // /settings 라우트(SymbolSearch 링크 1곳에서 도달)의 페이지 프레임. 모달 밖에서는
+  // 다이얼로그 크롬이 없으므로 여기서 카드 프레임을 씌워 full-bleed 패널을 담는다.
   return (
     <PageContainer className="grid grid-cols-[minmax(0,52rem)] content-start">
-      <SettingsPanel />
+      <div className="h-[min(40rem,72vh)] overflow-hidden rounded-lg border border-border shadow-panel">
+        <SettingsPanel />
+      </div>
     </PageContainer>
   );
 }
 
-export function SettingsPanel() {
+export function SettingsPanel({ onClose }: { onClose?: () => void }) {
   const [selected, setSelected] = useState<SectionId>('general');
   const [config, setConfig] = useState<AppConfig | null>(null);
   useEffect(() => {
@@ -60,13 +63,16 @@ export function SettingsPanel() {
     };
   }, []);
 
+  // 카드 크롬 없이 다이얼로그를 edge-to-edge로 채운다. nav↔콘텐츠 분리는 보더가 아니라
+  // bg-subtle↔bg-card 톤 스텝이 담당(2026-07-15 borderless 규칙). rounded-[6px]는
+  // ModalShell 다이얼로그 반경에 맞춰 코너를 클립한다(ModalShell 전역 overflow는
+  // MAStylePicker 드롭다운을 잘라먹으므로 국소 처리).
   return (
-    <PanelCard
-      as="section"
+    <section
       data-testid="settings-page-primary"
-      className="grid min-h-[20rem] grid-cols-[180px_minmax(0,1fr)] overflow-hidden text-sm"
+      className="grid h-full min-h-[20rem] grid-cols-[176px_minmax(0,1fr)] overflow-hidden rounded-[6px] bg-bg-card text-sm"
     >
-      <nav className="overflow-y-auto py-2 border-r border-border bg-bg-card" aria-label="설정 카테고리">
+      <nav className="space-y-0.5 overflow-y-auto bg-bg-subtle p-2" aria-label="설정 카테고리">
         {SECTIONS.map(({ id, label }) => (
           <button
             key={id}
@@ -74,18 +80,31 @@ export function SettingsPanel() {
             data-testid={`settings-nav-${id}`}
             aria-current={selected === id ? 'true' : undefined}
             onClick={() => setSelected(id)}
-            className={`flex w-full items-center rounded-none border-l-2 px-4 py-2 text-left text-sm transition-colors ${
+            className={`flex w-full items-center rounded-lg px-3 py-2 text-left text-sm transition-colors ${
               selected === id
-                ? 'border-accent bg-tint-selection text-fg'
-                : 'border-transparent text-fg-dim hover:bg-bg-input-hover hover:text-fg'
+                ? 'bg-tint-selection font-medium text-fg'
+                : 'text-fg-dim hover:bg-bg-input-hover hover:text-fg'
             }`}
           >
             {label}
           </button>
         ))}
       </nav>
-      <div className="min-h-0 overflow-y-auto" data-settings-detail={selected}>
-        <DataSection title={SECTION_LABEL[selected]} contentClassName="space-y-3 p-md">
+      <div className="flex min-h-0 flex-col" data-settings-detail={selected}>
+        <header className="flex items-center justify-between px-5 pb-3 pt-4">
+          <h2 className="text-lg font-semibold text-fg">{SECTION_LABEL[selected]}</h2>
+          {onClose && (
+            <button
+              type="button"
+              aria-label="닫기"
+              onClick={onClose}
+              className="-mr-1 px-1 text-lg leading-none text-fg-dim transition-colors hover:text-fg"
+            >
+              ✕
+            </button>
+          )}
+        </header>
+        <div className="min-h-0 flex-1 space-y-3 overflow-y-auto px-5 pb-5">
           {selected === 'general' && (
             <>
               <DefinitionRow label="API URL" value={config?.api_url ?? '…'} />
@@ -101,9 +120,9 @@ export function SettingsPanel() {
               편집 가능한 설정은 v1+1에서 `/api/config` 라우트와 함께 제공 예정.
             </p>
           )}
-        </DataSection>
+        </div>
       </div>
-    </PanelCard>
+    </section>
   );
 }
 
