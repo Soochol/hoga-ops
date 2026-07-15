@@ -47,6 +47,7 @@ _HOT_PATH_MODULES = (
     "hoga/live/live_session.py",
     "hoga/live/kis_client.py",
     "hoga/live/kis_models.py",
+    "hoga/live/broker_rest_poller.py",  # ADR-0111 — 거래원 REST 폴러도 핫패스(틱 주입)
 )
 
 
