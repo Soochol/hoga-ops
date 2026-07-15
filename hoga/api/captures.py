@@ -818,6 +818,23 @@ async def _run_capture_inner(
     if progress is not None:
         _publish_event(CaptureProgressEvent(**state.event_header(), progress=progress))
 
+    # depth_daily 증분 갱신(스크리너 총잔량 신고 조건의 과거 기준). 방금 파싱된 이
+    # (code,date) hogaplay 캡처의 당일 peak 를 (code,date)당 1행으로 집계해 둔다 —
+    # 사용자가 수집 직후 재조회하면 곧바로 비교 대상에 포함된다(수집→재조회 흐름).
+    # 실패가 캡처 완료(phase=done)를 되돌리면 안 되므로 삼켜서 로깅만 한다.
+    try:
+        from hoga.api import depth_daily  # noqa: PLC0415 — import cycle 회피
+        await loop.run_in_executor(
+            None,
+            lambda: depth_daily.sweep(
+                data_dir, codes={state.code}, dates={state.date},
+            ),
+        )
+    except Exception:  # noqa: BLE001
+        logging.getLogger(__name__).exception(
+            "depth_daily incremental sweep failed for %s/%s", state.code, state.date,
+        )
+
 
 async def _run_item(state: QueueItemState) -> None:
     """Full pipeline: deciding → (skipped | capturing → parsing → done).

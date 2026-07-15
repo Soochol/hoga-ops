@@ -404,6 +404,98 @@ def test_query_bucketed_ratio_empty_parquet_returns_no_rows(tmp_path: Path) -> N
     assert query_bucketed_ratio(con, path=out, bucket_ms=1000) == []
 
 
+# ---------------------------------------------------------------------------
+# query_daily_depth_peak: 하루치 매도/매수 총잔량(10단계 합) 당일 최댓값 스칼라
+# ---------------------------------------------------------------------------
+
+
+def test_query_daily_depth_peak_is_max_over_eligible_snapshots(tmp_path: Path) -> None:
+    """당일 peak = 유효 스냅샷 전체의 SUM(ask_q1..10)/bid_q 최댓값. bucketed_ratio가
+    pane에 그리는 Intra-Bar Max(ask_max)를 하루로 collapse한 값과 일치해야 한다."""
+    from hoga.tables.snapshots import query_daily_depth_peak
+
+    obs = [
+        _ob(ts_ms=90_100_000, seq=1, ask_q=(100,) * 10, bid_q=(50,) * 10),   # ask 1000
+        _ob(ts_ms=91_000_000, seq=2, ask_q=(300,) * 10, bid_q=(10,) * 10),   # ask 3000 (peak)
+        _ob(ts_ms=92_000_000, seq=3, ask_q=(200,) * 10, bid_q=(400,) * 10),  # bid 4000 (peak)
+    ]
+    out = tmp_path / "snapshots.parquet"
+    write_parquet(obs, out)
+    con = duckdb.connect()
+    peak = query_daily_depth_peak(
+        con, path=out, session_open_ms=90_000_000, session_close_ms=153_000_000,
+    )
+    assert peak is not None
+    assert peak.ask_peak == 3000
+    assert peak.bid_peak == 4000
+    assert peak.eligible_count == 3
+
+
+def test_query_daily_depth_peak_excludes_opening_and_closing_auction(tmp_path: Path) -> None:
+    """ADR-0062 v3 술어 재사용: 개장 전(session_open 하한)·마감 동시호가(3호가 붕괴
+    구조 술어)는 peak 계산에서 배제된다 — bucketed_ratio와 같은 규칙."""
+    from hoga.tables.snapshots import query_daily_depth_peak
+
+    obs = [
+        # 08:59 개장 전 deep book(구조 통과, but open 하한이 배제) — 거대한 잔량이지만 무시.
+        _ob(ts_ms=85_900_000, seq=1, ask_q=(9999,) * 10, bid_q=(9999,) * 10),
+        # 09:01 정규장 deep book — 실제 peak.
+        _ob(ts_ms=90_100_000, seq=2, ask_q=(300,) * 10, bid_q=(300,) * 10),
+        # 15:25 마감 동시호가(3호가만) — 구조 술어가 배제.
+        _ob(ts_ms=152_500_000, seq=3, ask_q=(500, 500, 500), bid_q=(500, 500, 500)),
+    ]
+    out = tmp_path / "snapshots.parquet"
+    write_parquet(obs, out)
+    con = duckdb.connect()
+    peak = query_daily_depth_peak(
+        con, path=out, session_open_ms=90_000_000, session_close_ms=153_000_000,
+    )
+    assert peak is not None
+    assert peak.ask_peak == 3000   # 09:01 봉만(300×10), 개장전/마감동시호가 제외
+    assert peak.bid_peak == 3000
+    assert peak.eligible_count == 1
+
+
+def test_query_daily_depth_peak_empty_or_no_eligible_returns_none(tmp_path: Path) -> None:
+    """빈 parquet → None. deep book 이 존재하되 전부 세션 밖(개장 전)이면 유효 0 → None."""
+    from hoga.tables.snapshots import query_daily_depth_peak
+
+    out = tmp_path / "snapshots.parquet"
+    write_parquet([], out)
+    con = duckdb.connect()
+    assert query_daily_depth_peak(
+        con, path=out, session_open_ms=90_000_000, session_close_ms=153_000_000,
+    ) is None
+
+    # deep book 이 존재해 last_continuous 가 잡히므로 실제 술어가 적용된다. 그 deep
+    # book 이 전부 개장 전(08:59)이면 open 하한이 배제 → 유효 0 → MAX NULL → None.
+    obs = [_ob(ts_ms=85_900_000, seq=1, ask_q=(100,) * 10, bid_q=(100,) * 10)]
+    out2 = tmp_path / "snapshots2.parquet"
+    write_parquet(obs, out2)
+    assert query_daily_depth_peak(
+        con, path=out2, session_open_ms=90_000_000, session_close_ms=153_000_000,
+    ) is None
+
+
+def test_query_daily_depth_peak_degenerate_no_deep_book_falls_back_to_true(tmp_path: Path) -> None:
+    """파일 전체에 세션내 deep book 이 하나도 없으면(퇴화 캡처) query_bucketed_ratio
+    와 동일하게 술어가 TRUE 로 완화된다 — 시리즈를 통째로 비우지 않는다. 정상 거래일은
+    항상 deep book 이 있어 이 분기는 퇴화 데이터에서만 발화한다."""
+    from hoga.tables.snapshots import query_daily_depth_peak
+
+    # 전부 3호가(구조 술어 미통과) → last_continuous None → 술어 TRUE 폴백.
+    obs = [_ob(ts_ms=100_000_000, seq=1, ask_q=(1, 2, 3), bid_q=(4, 5, 6))]
+    out = tmp_path / "snapshots.parquet"
+    write_parquet(obs, out)
+    con = duckdb.connect()
+    peak = query_daily_depth_peak(
+        con, path=out, session_open_ms=90_000_000, session_close_ms=153_000_000,
+    )
+    assert peak is not None
+    assert peak.ask_peak == 6    # 1+2+3
+    assert peak.bid_peak == 15   # 4+5+6
+
+
 def test_query_bucketed_depth_heatmap_picks_last_continuous_snapshot(tmp_path: Path) -> None:
     """session_close_ms 없음 → pre_auction_pred가 "TRUE"로 붕괴 → 단순
     last-in-bucket 대표 선택. 같은 분(minute) 버킷에 이른(작은잔량)·늦은(큰잔량)

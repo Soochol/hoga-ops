@@ -110,6 +110,22 @@ async def _daily_run(data_dir: Path) -> None:
     except Exception:  # noqa: BLE001
         log.exception("daily run: screener update failed; continuing")
 
+    # depth_daily 집계 갱신(스크리너 총잔량 신고 조건의 과거 기준). 디스크에 있는 모든
+    # hogaplay 스톡데이트(대개 이전 거래일들)를 훑어 (code,date)당 1행으로 집계한다 —
+    # 오늘 enqueue 된 캡처는 아직 큐/실행 중이므로 여기서 잡히지 않고 캡처 parse 완료
+    # 훅이 처리한다. 증분(메타 mtime 미변경분은 건너뜀)이라 매일 전체 스윕해도 저렴하다.
+    # 동기 polars/duckdb 이므로 to_thread 로 이벤트 루프를 막지 않는다. 실패는 삼켜서
+    # 나머지 일일 작업을 죽이지 않는다.
+    try:
+        from hoga.api import depth_daily  # noqa: PLC0415
+        res = await asyncio.to_thread(depth_daily.sweep, data_dir)
+        log.info(
+            "daily run: depth_daily sweep computed=%d total=%d",
+            res.computed, res.total_rows,
+        )
+    except Exception:  # noqa: BLE001
+        log.exception("daily run: depth_daily sweep failed; continuing")
+
 
 async def catchup_one_entry(
     entry: WatchlistEntry,
