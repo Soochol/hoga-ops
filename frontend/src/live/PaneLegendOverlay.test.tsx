@@ -400,3 +400,56 @@ describe('PaneLegendOverlay — generic pane rows', () => {
     expect(useLivePageStore.getState().foreignNetEnabled).toBe(true);
   });
 });
+
+describe('PaneLegendOverlay — pane reorder controls (ADR-0114)', () => {
+  const CANON: PaneId[] = [
+    'candle', 'volume', 'quote-totals', 'ratio',
+    'fill-strength', 'program-trade', 'investor-foreign', 'investor-institution',
+  ];
+  const toggles = { foreignNet: false, institutionNet: false } as PaneToggles;
+  // 분봉 전체 pane(candle, volume, quote-totals, ratio, fill-strength, program-trade).
+  const sixPaneChart = () => makeChart([100, 100, 100, 100, 100, 100]);
+
+  beforeEach(() => {
+    resetStore();
+    useLivePageStore.setState({ candleTimeframe: '1m', volumeEnabled: true, paneOrder: [...CANON] });
+  });
+  afterEach(cleanup);
+
+  it('renders ↑/↓ controls on non-candle panes and none on candle', () => {
+    render(<PaneLegendOverlay chart={sixPaneChart()} timeframe="1m" paneToggles={toggles} />);
+    expect(screen.queryByTestId('pane-move-up-candle')).toBeNull();
+    expect(screen.queryByTestId('pane-move-down-candle')).toBeNull();
+    expect(screen.getByTestId('pane-move-up-volume')).toBeInTheDocument();
+    expect(screen.getByTestId('pane-move-down-volume')).toBeInTheDocument();
+    expect(screen.getByTestId('pane-move-up-program-trade')).toBeInTheDocument();
+  });
+
+  it('disables ↑ on the first non-candle pane and ↓ on the last pane', () => {
+    render(<PaneLegendOverlay chart={sixPaneChart()} timeframe="1m" paneToggles={toggles} />);
+    expect(screen.getByTestId('pane-move-up-volume')).toBeDisabled();
+    expect(screen.getByTestId('pane-move-down-program-trade')).toBeDisabled();
+    // 중간 pane(ratio)은 양쪽 다 활성.
+    expect(screen.getByTestId('pane-move-up-ratio')).not.toBeDisabled();
+    expect(screen.getByTestId('pane-move-down-ratio')).not.toBeDisabled();
+  });
+
+  it('dispatches swapPaneOrder with the mounted up-neighbor on ↑ click', () => {
+    render(<PaneLegendOverlay chart={sixPaneChart()} timeframe="1m" paneToggles={toggles} />);
+    // ratio(idx3) ↑ → 마운트된 위 이웃 quote-totals(idx2)와 스왑.
+    fireEvent.click(screen.getByTestId('pane-move-up-ratio'));
+    const order = useLivePageStore.getState().paneOrder;
+    expect(order.indexOf('ratio')).toBeLessThan(order.indexOf('quote-totals'));
+  });
+
+  it('swaps mounted neighbors across a gated-absent pane (investor absent on minute)', () => {
+    // 분봉에서 investor 는 게이트로 부재 — 마운트된 program-trade(idx5) ↑ 는
+    // 마운트 이웃 fill-strength(idx4)와 스왑하고, 전체 순서에서 investor 슬롯은 불변.
+    render(<PaneLegendOverlay chart={sixPaneChart()} timeframe="1m" paneToggles={toggles} />);
+    fireEvent.click(screen.getByTestId('pane-move-up-program-trade'));
+    const order = useLivePageStore.getState().paneOrder;
+    expect(order.indexOf('program-trade')).toBeLessThan(order.indexOf('fill-strength'));
+    // investor 두 pane 은 여전히 순서 끝에 canonical 위치.
+    expect(order.slice(-2)).toEqual(['investor-foreign', 'investor-institution']);
+  });
+});

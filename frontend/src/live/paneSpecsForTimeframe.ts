@@ -1,5 +1,6 @@
 import { type LiveTimeframe, isCalendarTimeframe } from '../state/livePage';
 import { PANE_SPECS, type BoundPaneSpec } from '../chart/paneSpecs';
+import type { PaneId } from '../chart/drawing/types';
 import {
   INVESTOR_FOREIGN_SPEC,
   INVESTOR_INSTITUTION_SPEC,
@@ -84,8 +85,18 @@ const paneCache = new Map<string, readonly BoundPaneSpec[]>([[ALL_BASE_KEY, PANE
 export function paneSpecsForTimeframe(
   tf: LiveTimeframe,
   toggles: PaneToggles = NO_TOGGLES,
+  paneOrder?: readonly PaneId[],
 ): readonly BoundPaneSpec[] {
   const kept = GATED.filter((g) => g.gate(tf, toggles)).map((g) => g.spec);
+  // 게이트가 멤버십을 소유하고, paneOrder 는 순열일 뿐이다(ADR-0114 §3). paneOrder 가
+  // 주어지면 kept 를 그 인덱스로 안정 정렬한다 — candle 은 정규화 단계에서 이미 index 0.
+  // 미포함 pane(있을 수 없지만 방어)은 뒤로. 정렬 결과의 이름 join 이 캐시 키이자 출력
+  // 결정자라, canonical 순서/미지정이면 all-base 는 `=== PANE_SPECS` identity 를 유지한다.
+  if (paneOrder) {
+    const rank = new Map(paneOrder.map((id, i) => [id, i]));
+    const indexOf = (name: PaneId): number => rank.get(name) ?? Number.MAX_SAFE_INTEGER;
+    kept.sort((a, b) => indexOf(a.name) - indexOf(b.name));
+  }
   const key = kept.map((s) => s.name).join(',');
   const cached = paneCache.get(key);
   if (cached) return cached;

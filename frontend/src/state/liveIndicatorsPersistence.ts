@@ -1,5 +1,6 @@
 import type { MASource } from '../chart/projectors/movingAverage';
-import { LINE_STYLES, type LineStyle } from '../chart/drawing/types';
+import { LINE_STYLES, type LineStyle, type PaneId } from '../chart/drawing/types';
+import { normalizePaneOrder } from '../chart/paneOrder';
 import {
   normalizePanePrefsByTimeframe,
   type PersistedPanePrefsByTimeframe,
@@ -214,6 +215,8 @@ export type PersistedIndicators = {
   dailyMovingAverageHidden: boolean;
   /** Shared live/study pane on/off overrides by timeframe profile. Empty = legacy flat fields are fallback. */
   panePrefsByTimeframe: PersistedPanePrefsByTimeframe;
+  /** 사용자 소유 차트 pane 순서(안정 PaneId 배열; candle 은 항상 index 0, ADR-0114 §3). */
+  paneOrder: PaneId[];
 };
 
 function isValidEntry(m: unknown): m is LiveMAConfig {
@@ -389,6 +392,7 @@ export function mergeLiveIndicatorPrefs(
   const ratioLevelWidth = normalizeLineWidth(obj?.ratioLevelWidth, QUOTE_LEVEL_LINE_DEFAULT_WIDTH);
   const ratioLevelStyle = normalizeLineStyle(obj?.ratioLevelStyle, QUOTE_LEVEL_LINE_DEFAULT_STYLE);
   const panePrefsByTimeframe = normalizePanePrefsByTimeframe(obj?.panePrefsByTimeframe);
+  const paneOrder = normalizePaneOrder(obj?.paneOrder);
   const build = (
     mas: LiveMAConfig[], enabled: boolean, fNet: boolean, iNet: boolean,
     vol: boolean, hidden: boolean,
@@ -456,6 +460,7 @@ export function mergeLiveIndicatorPrefs(
     dailyMovingAverageEnabled: dEnabled,
     dailyMovingAverageHidden: dHidden,
     panePrefsByTimeframe,
+    paneOrder,
   });
   if (!raw || typeof raw !== 'object') return build(defaults, true, false, false, true, false, true, true, true, true, true);
   // obj is guaranteed non-null here (same condition checked above)

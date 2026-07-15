@@ -64,6 +64,10 @@ describe('mergeLiveIndicatorPrefs', () => {
       brokerLateEntryBuyColor: '#ef4444',
       brokerLateEntrySellColor: '#3b82f6',
       panePrefsByTimeframe: {},
+      paneOrder: [
+        'candle', 'volume', 'quote-totals', 'ratio',
+        'fill-strength', 'program-trade', 'investor-foreign', 'investor-institution',
+      ],
       dailyMovingAverages: DEFAULT_DAILY_MAS.map((m) => ({ ...m })),
       dailyMovingAverageEnabled: false,
       dailyMovingAverageHidden: false,
@@ -203,6 +207,23 @@ describe('mergeLiveIndicatorPrefs', () => {
       brokerLateEntryBuyColor: '#ef4444',
       brokerLateEntrySellColor: '#3b82f6',
     });
+  });
+});
+
+describe('mergeLiveIndicatorPrefs — paneOrder', () => {
+  it('defaults paneOrder to the canonical order with candle first', () => {
+    expect(mergeLiveIndicatorPrefs(undefined).paneOrder).toEqual([
+      'candle', 'volume', 'quote-totals', 'ratio',
+      'fill-strength', 'program-trade', 'investor-foreign', 'investor-institution',
+    ]);
+  });
+
+  it('normalizes a persisted paneOrder: candle forced first, unknown dropped, missing appended', () => {
+    const m = mergeLiveIndicatorPrefs({ paneOrder: ['ratio', 'bogus', 'candle', 'volume'] } as never);
+    expect(m.paneOrder).toEqual([
+      'candle', 'ratio', 'volume',
+      'quote-totals', 'fill-strength', 'program-trade', 'investor-foreign', 'investor-institution',
+    ]);
   });
 });
 
