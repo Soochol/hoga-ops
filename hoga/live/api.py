@@ -611,6 +611,20 @@ class LiveIndicesResponse(BaseModel):
     indices: list[LiveIndexEntry]
 
 
+class LiveIndexQuote(BaseModel):
+    """하단 시장지표 바 1항목 — 대표지수 현재지수 + 전일대비."""
+    id: str
+    label: str
+    value: float
+    change: float
+    change_rate: float
+    t_ms: int
+
+
+class LiveIndexQuotesResponse(BaseModel):
+    quotes: list[LiveIndexQuote]
+
+
 InvestorEstimateWarningReason = Literal[
     "kis_credentials_missing",
     "kis_rest_bypassed",
@@ -1362,6 +1376,76 @@ def build_router(
                 for index in list_representative_indices()
             ],
         )
+
+    # ── /index-quotes: 하단 시장지표 바 ──────────────────────────────
+    # 서버 TTL 로 N 클라이언트 폴링이 KIS 콜을 공유하고(30s 프론트 폴 ↔ 20s TTL),
+    # 락이 첫 동시 요청들을 single-flight 로 직렬화한다. 실패한 지수는 last-good
+    # 을 유지해 바가 항목 단위로 깜빡이지 않는다. 자격증명/용량 부재 시에도
+    # last-good(없으면 빈 배열)을 돌려주고 프론트가 바를 숨긴다.
+    _INDEX_QUOTES_TTL_S = 20.0
+    _index_quotes_cache: dict[str, LiveIndexQuote] = {}
+    _index_quotes_meta = {"fetched_at": float("-inf")}
+    _index_quotes_lock = asyncio.Lock()
+
+    @router.get("/index-quotes", response_model=LiveIndexQuotesResponse)
+    async def _get_index_quotes() -> LiveIndexQuotesResponse:
+        indices = list_representative_indices()
+
+        def snapshot() -> LiveIndexQuotesResponse:
+            return LiveIndexQuotesResponse(
+                quotes=[
+                    _index_quotes_cache[index.id]
+                    for index in indices
+                    if index.id in _index_quotes_cache
+                ],
+            )
+
+        if (
+            data_dir is None
+            or _kis_scheduler is None
+            or not kis_access.has_rest_capacity(data_dir)
+            or kis_access.kis_rest_bypass_enabled(data_dir)
+        ):
+            return snapshot()
+
+        async with _index_quotes_lock:
+            if monotonic_time.monotonic() - _index_quotes_meta["fetched_at"] < _INDEX_QUOTES_TTL_S:
+                return snapshot()
+
+            async def fetch_one(index) -> LiveIndexQuote | None:
+                try:
+                    snap = await kis_access.run_with_capacity(
+                        _kis_scheduler,
+                        data_dir=data_dir,
+                        key=("index-price", index.id),
+                        endpoint=kis_access.KisRestEndpoint.INDEX_PRICE,
+                        priority="background",
+                        cooldown_scope="index-price",
+                        fetch_fn=lambda kis, index=index: kis.fetch_index_price(index),
+                    )
+                except (KisApiError, KisCapacityCooldown, KisCapacityOverloaded) as e:
+                    # 20s 주기 배경 폴 — 개별 WARN 은 로그벽이 된다(EGW00201 교훈).
+                    log.debug("index-quote fetch failed: %s (%s)", index.id, e)
+                    return None
+                except (KeyError, ValueError, TypeError) as e:
+                    log.warning("index-quote parse failed: %s (%s)", index.id, e)
+                    return None
+                return LiveIndexQuote(
+                    id=index.id,
+                    label=index.label,
+                    value=snap.value,
+                    change=snap.change,
+                    change_rate=snap.change_rate,
+                    t_ms=snap.t_ms,
+                )
+
+            results = await asyncio.gather(*(fetch_one(index) for index in indices))
+            for quote in results:
+                if quote is not None:
+                    _index_quotes_cache[quote.id] = quote
+            # 부분 실패여도 fetched_at 은 갱신 — KIS 저하 시 TTL 간격으로만 재시도.
+            _index_quotes_meta["fetched_at"] = monotonic_time.monotonic()
+            return snapshot()
 
     @router.get("/index-candles")
     async def _get_index_candles(

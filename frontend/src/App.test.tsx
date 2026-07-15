@@ -117,13 +117,14 @@ describe('App document title', () => {
 });
 
 describe('App shell layout', () => {
-  it('renders a two-row shell with top nav and no side-menu column', () => {
+  it('renders a three-row shell (top nav / content / bottom-bar auto) with no side-menu column', () => {
     const { container } = wrap(<div>Heatmap</div>, '/heatmap');
     const shell = container.firstElementChild as HTMLElement;
     const contentGrid = screen.getByTestId('app-content-grid');
 
     expect(screen.getByRole('navigation', { name: '주요 메뉴' })).toBeInTheDocument();
-    expect(shell.style.gridTemplateRows).toBe('var(--h-top-nav) minmax(0, 1fr)');
+    // 3행: 하단 시장지표 바 행은 auto — 바가 null 이면 0으로 접힌다.
+    expect(shell.style.gridTemplateRows).toBe('var(--h-top-nav) minmax(0, 1fr) auto');
     expect(shell.style.gridTemplateColumns).toBe('');
     expect(contentGrid).toHaveStyle({ gridTemplateColumns: '1fr var(--rail-w)' });
   });

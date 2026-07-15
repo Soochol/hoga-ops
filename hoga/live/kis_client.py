@@ -43,6 +43,7 @@ from hoga.live.kis_endpoints import (  # noqa: F401
     DailyCandleFetchResult,
     DailyInvariantViolation,
     IndexCandleFetchResult,
+    IndexQuoteSnapshot,
     InvestorNetFetchResult,
     InvestorNetInvariantViolation,
     KisQuote,
