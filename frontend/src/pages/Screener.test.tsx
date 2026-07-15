@@ -100,7 +100,8 @@ it('renders shared top action buttons without changing the screener workflow', a
   expect(screen.getByTestId('screener-results-pane')).toHaveClass('bg-bg-card');
   expect(screen.getByTestId('screener-results-pane')).toHaveClass('border');
   expect(await screen.findByRole('button', { name: '조회' })).toBeInTheDocument();
-  expect(screen.getByRole('button', { name: '저장' })).toHaveClass('bg-bg-input');
+  // secondary ToolbarButton은 테두리 없는 ghost(2026-07-15) — 투명 배경.
+  expect(screen.getByRole('button', { name: '저장' })).toHaveClass('bg-transparent');
 });
 
 it('runs scan and renders row; click sets the active tab code', async () => {
