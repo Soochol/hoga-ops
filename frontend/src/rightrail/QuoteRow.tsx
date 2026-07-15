@@ -94,7 +94,7 @@ export function QuoteRow({
       aria-current={active ? 'true' : undefined}
       aria-label={ariaLabel}
       aria-keyshortcuts={onDelete ? 'Delete' : undefined}
-      onClick={() => onClick()}
+      onClick={onClick}
       onKeyDown={onKeyDown}
       onContextMenu={onContextMenu}
       className={`group cursor-pointer touch-none ${indented ? 'pl-10' : 'pl-md'} pr-md py-sm flex items-center gap-2 border-b outline-none hover:bg-bg-input-hover focus-visible:bg-bg-input-hover ${

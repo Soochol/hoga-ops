@@ -47,7 +47,7 @@ export function HeatmapRow({
       // 우선되게 한다(현 PointerSensor 는 onPointerDown 만 — 충돌 없음; 향후 KeyboardSensor
       // 도입 시에도 Enter/Space 가 드래그가 아닌 차트 열기로 유지되도록 하는 방어).
       {...dragListeners}
-      onClick={() => onClick()}
+      onClick={onClick}
       onContextMenu={onContextMenu}
       onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); onClick(); } }}
       style={dragging ? { ...sortableStyle, opacity: 0.5 } : sortableStyle}

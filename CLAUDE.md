@@ -50,7 +50,7 @@ and collect the actual chart numbers first:
 ```bash
 B=/home/dev/.claude/skills/gstack/browse/dist/browse
 $B goto http://localhost:5173/live
-$B js "(() => { const c = window.__liveChart; const r = c?.timeScale().getVisibleLogicalRange(); return { href: location.href, dpr: devicePixelRatio, zoom: visualViewport?.scale, range: r, span: r && r.to - r.from, width: c?.timeScale().width(), timeScale: c?.options().timeScale, tabs: localStorage.getItem('live.tabs.v1'), page: localStorage.getItem('live.page.v1') }; })()"
+$B js "(() => { const c = window.__liveChart; const r = c?.timeScale().getVisibleLogicalRange(); return { href: location.href, dpr: devicePixelRatio, zoom: visualViewport?.scale, range: r, span: r && r.to - r.from, width: c?.timeScale().width(), timeScale: c?.options().timeScale, page: localStorage.getItem('live.page.v1') }; })()"
 $B screenshot /tmp/live-daily.png
 ```
 
@@ -65,7 +65,7 @@ Useful sanity checks:
 - A very large visible span (hundreds to 1000+) with a narrow chart usually means daily
   candles are being over-compressed.
 - Compare `timeScale().width()`, visible logical span, `devicePixelRatio`, browser zoom,
-  `localStorage` keys `live.tabs.v1` / `live.page.v1`, and the current active timeframe.
+  the `localStorage` key `live.page.v1`, and the current active timeframe.
 - Verify `D`, `W`, and `M` pane policy together; do not patch only `barSpan` without
   checking `barSpacing`, `minBarSpacing`, `rightOffset`, data count, and saved viewport
   restoration.

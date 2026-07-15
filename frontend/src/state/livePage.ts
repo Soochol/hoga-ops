@@ -778,7 +778,7 @@ export const useLivePageStore = create<Store>((set, get) => ({
 
   projectActiveView: ({ instrument, code, timeframe, historicalFromDate, lastMinuteHistoricalFromDate, viewport }) => {
     // One atomic write — no reset-then-restore. tf is clamped like setCandleTimeframe
-    // (belt-and-suspenders; tabs already carry validated timeframes).
+    // (belt-and-suspenders; callers already pass validated timeframes).
     const tf = LIVE_TIMEFRAMES.includes(timeframe) ? timeframe : get().candleTimeframe;
     const nextInstrument = instrument === undefined
       ? (code ? stockInstrument(code) : null)
@@ -791,8 +791,8 @@ export const useLivePageStore = create<Store>((set, get) => ({
       candleTimeframe: tf,
       lastMinuteTimeframe: isMinuteTimeframe(tf) ? tf : get().lastMinuteTimeframe,
       historicalFromDate,
-      // 탭 전환 = 뷰 교체. 이전 탭의 분봉 창 기억이 새 탭으로 새지 않도록,
-      // 투영되는 탭 자신의 기억으로 재시드한다(탭별 미러 — liveTabProjection).
+      // 뷰 교체 시 이전 subject의 분봉 창 기억이 새 subject로 새지 않도록,
+      // 투영되는 값으로 재시드한다(ADR-0113 단일 뷰 — liveNavigate가 null 전달).
       // 필드 생략(레거시 호출)이면 기존 derive 폴백: 분봉이면 pan, 아니면 null.
       lastMinuteHistoricalFromDate: lastMinuteHistoricalFromDate !== undefined
         ? lastMinuteHistoricalFromDate

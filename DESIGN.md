@@ -230,12 +230,13 @@ Quiet Trading Terminal migration completed across app shell, route surfaces, rai
 - Hover: `--bg-input-hover`
 - Close X: 18px × 18px, opacity 0 by default, 1 on hover
 - Status dot: 6px circle, `--success` solid (loaded), `--accent` pulsing (loading), `--fg-dimmer` outline (empty)
-- Overflow (unlimited tabs, ADR-0069): single row, horizontal scroll with hidden scrollbar.
+- Overflow (unlimited tabs; `ChartTabBar` — now /study only, /live tabs removed by ADR-0113):
+  single row, horizontal scroll with hidden scrollbar.
   Affordances are mandatory when overflowing — 28px edge fade mask on the scrollable side(s),
   vertical wheel → horizontal scroll, `‹ ›` scroll arrows (visible only toward the overflowing
   side, page by ~60% viewport), interactive `…` window markers and a `+N` hidden-count chip
   (`--tint-selection` bg, `--accent` text) that both open the searchable tab list dialog.
-  Keyboard: `[` / `]` cycles tabs with wraparound on both /live and /study. Never wrap to a
+  Keyboard: `[` / `]` cycles tabs with wraparound on /study. Never wrap to a
   second row, never shrink tab width below label legibility.
 
 ### Combobox (stock selector)
