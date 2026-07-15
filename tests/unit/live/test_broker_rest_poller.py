@@ -201,6 +201,47 @@ async def test_rate_limit_error_does_not_supervisor_backoff() -> None:
 
 
 @pytest.mark.asyncio
+async def test_transport_error_escalates_backoff_and_skips_cycles() -> None:
+    """transport 에러(backoff_cycles=3)는 폴러 레벨 backoff를 상승시켜 이후 사이클을
+    건너뛰고, 소진 후 폴링을 재개한다 — rate_limit(무 backoff)와 대비되는 경로."""
+    import httpx
+
+    from hoga.live.kis_client import KisTransportError
+
+    class Flaky(FakeBrokerKis):
+        def __init__(self) -> None:
+            super().__init__()
+            self.fail = True
+
+        async def fetch_brokers(self, code: str) -> KisBrokers:
+            if self.fail:
+                self.calls.append(code)  # 성공 경로는 super()가 계수 — 이중 계수 방지
+                raise KisTransportError(httpx.ConnectTimeout("connect timed out"))
+            return await super().fetch_brokers(code)
+
+    kis = Flaky()
+    dispatch = _Collector()
+    poller = _make_poller(kis=kis, dispatch=dispatch, backoff_cycles=1)
+    poller.set_targets({"005930"})
+
+    await poller.poll_once()  # 실패 → backoff = max(1, policy 3) = 3
+    status = poller.status()
+    assert status.last_error_kind == "transport"
+    assert status.backoff_remaining == 3
+
+    kis.fail = False
+    await poller.poll_once()  # backoff 3→2, fetch 안 함
+    await poller.poll_once()  # 2→1
+    await poller.poll_once()  # 1→0
+    assert kis.calls == ["005930"], "backoff 소진 중엔 fetch 금지"
+
+    await poller.poll_once()  # 재개
+    assert kis.calls == ["005930", "005930"]
+    assert [t.code for t in dispatch.ticks] == ["005930"]
+    assert poller.status().last_error_count == 0
+
+
+@pytest.mark.asyncio
 async def test_kis_unavailable_is_marked_but_not_fatal() -> None:
     dispatch = _Collector()
     from hoga.live.broker_rest_poller import BrokerRestPoller

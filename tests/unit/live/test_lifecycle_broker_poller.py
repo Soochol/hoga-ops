@@ -150,6 +150,28 @@ async def test_no_creds_no_broker_poller(monkeypatch, tmp_path) -> None:
 
 
 @pytest.mark.asyncio
+async def test_refresh_bypass_stops_existing_broker_poller(
+    monkeypatch, tmp_path
+) -> None:
+    """kis_rest_bypass_enabled면 refresh가 broker_poller를 정지·해제한다
+    (rest_poller와 동일 정책 — 거래원 폴러도 REST 기반이라 bypass 대상)."""
+    from hoga.api.models import LiveSettingsResponse
+    from hoga.live import lifecycle
+    from hoga.live.settings import save_live_settings
+
+    lifecycle.reset_for_tests()
+    fake_poller = _FakeBrokerPoller()
+    fake_poller.start()
+    lifecycle._state.broker_poller = fake_poller
+    save_live_settings(tmp_path, LiveSettingsResponse(kis_rest_bypass_enabled=True))
+
+    await lifecycle.refresh_live_stream(data_dir=tmp_path)
+
+    assert fake_poller.stopped is True
+    assert lifecycle._state.broker_poller is None
+
+
+@pytest.mark.asyncio
 async def test_refresh_resyncs_broker_poller_targets(monkeypatch, tmp_path) -> None:
     """watchlist 변경 후 refresh가 타깃을 갱신된 live_set으로 재동기화한다."""
     from hoga.live import lifecycle, session_gate
