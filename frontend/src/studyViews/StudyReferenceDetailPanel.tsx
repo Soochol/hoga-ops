@@ -1,5 +1,15 @@
 import { useMemo, type ReactNode } from 'react';
 import {
+  DndContext,
+  type DragEndEvent,
+  PointerSensor,
+  closestCenter,
+  useSensor,
+  useSensors,
+} from '@dnd-kit/core';
+import { SortableContext, useSortable, verticalListSortingStrategy } from '@dnd-kit/sortable';
+import { CSS } from '@dnd-kit/utilities';
+import {
   useLiveBrokersAtCursor,
   useLiveOrderbookAtCursor,
 } from '../api/useLiveCursor';
@@ -27,23 +37,37 @@ import { isMinuteTimeframe, type MinuteTimeframe } from '../state/livePage';
 import { useLivePageStore } from '../state/livePage';
 import type { StudyViewReference } from '../api/studyViews';
 import { DataSection } from '../ui/DataSurface';
+import { CardRestoreMenu } from '../ui/CardRestoreMenu';
 import { DoubleChevronIcon } from '../ui/ChevronIcon';
 import { PanelCard } from '../ui/PageShell';
-import { STUDY_CARD_KEYS, type StudyCardKey, useStudyLayoutStore } from '../state/studyLayout';
+import { type StudyCardKey, useStudyLayoutStore } from '../state/studyLayout';
+import { reorderVisible } from '../state/keyOrder';
 
 type Props = {
   save: StudyViewReference;
   bundle: RangeBundle;
 };
 
-type SectionProps = {
-  label: string;
-  testId: string;
-  collapsed: boolean;
-  onToggleCollapse: () => void;
-  showEmptyDot: boolean;
-  children: ReactNode;
+/** 카드별 라벨·testid(대시 형태) 정적 메타. 렌더 순서·표시는 studyLayout store 소유. */
+const STUDY_CARD_META: Record<StudyCardKey, { label: string; testId: string }> = {
+  orderbook: { label: '10호가', testId: 'orderbook' },
+  brokers: { label: '거래원', testId: 'brokers' },
+  volumeDistribution: { label: '연속체결 매물대 분포', testId: 'volume-distribution' },
+  program: { label: '프로그램', testId: 'program' },
 };
+
+function StudyGripIcon() {
+  return (
+    <svg width="10" height="14" viewBox="0 0 10 14" aria-hidden fill="currentColor">
+      <circle cx="2.5" cy="2.5" r="1.2" />
+      <circle cx="7.5" cy="2.5" r="1.2" />
+      <circle cx="2.5" cy="7" r="1.2" />
+      <circle cx="7.5" cy="7" r="1.2" />
+      <circle cx="2.5" cy="11.5" r="1.2" />
+      <circle cx="7.5" cy="11.5" r="1.2" />
+    </svg>
+  );
+}
 
 export function StudyReferenceDetailPanel({ save, bundle }: Props) {
   const cursorMs = useLiveCursorStore((s) => s.sidebarCursorMs);
@@ -120,9 +144,14 @@ export function StudyReferenceDetailPanel({ save, bundle }: Props) {
     ],
   );
   const cardCollapsed = useStudyLayoutStore((s) => s.cardCollapsed);
+  const cardOrder = useStudyLayoutStore((s) => s.cardOrder);
+  const cardHidden = useStudyLayoutStore((s) => s.cardHidden);
+  const setCardOrder = useStudyLayoutStore((s) => s.setCardOrder);
+  const setCardHidden = useStudyLayoutStore((s) => s.setCardHidden);
   const toggleCardCollapsed = useStudyLayoutStore((s) => s.toggleCardCollapsed);
   const setAllCardsCollapsed = useStudyLayoutStore((s) => s.setAllCardsCollapsed);
   const setDetailPanelCollapsed = useStudyLayoutStore((s) => s.setDetailPanelCollapsed);
+  const sensors = useSensors(useSensor(PointerSensor, { activationConstraint: { distance: 5 } }));
   const cutoffVolumeDistribution = useVolumeDistributionCutoffProfile({
     enabled:
       volumeDistributionEnabled
@@ -152,7 +181,43 @@ export function StudyReferenceDetailPanel({ save, bundle }: Props) {
     volumeDistribution: (bundle.volume_distributions ?? []).length === 0,
     program: (bundle.program_trade?.points?.length ?? 0) === 0,
   };
-  const allCollapsed = STUDY_CARD_KEYS.every((key) => cardCollapsed[key]);
+
+  const contentByKey: Record<StudyCardKey, ReactNode> = {
+    orderbook: (
+      <>
+        <OrderbookTable snapshot={orderbookSnapshot} baselinePrice={baselinePrice} />
+        <TotalQtyBar snapshot={orderbookSnapshot} maskRatio={false} />
+      </>
+    ),
+    brokers: <BrokerTrajectoryTable series={brokerCard.series} cursorMs={brokerCard.cursorMs} />,
+    volumeDistribution: (
+      <VolumeDistributionCard
+        profile={cutoffVolumeDistribution}
+        cursorMs={detailCursorMs}
+        closePoints={volumeClosePoints}
+        color={volumeDistributionColor}
+        maxColor={volumeDistributionMaxColor}
+      />
+    ),
+    program: <ProgramTradeSummaryCard series={bundle.program_trade} cursorMs={detailCursorMs} />,
+  };
+
+  const visible = cardOrder.filter((key) => !cardHidden[key]);
+  const hiddenCards = cardOrder
+    .filter((key) => cardHidden[key])
+    .map((key) => ({ key, label: STUDY_CARD_META[key].label }));
+  const allCollapsed = visible.length > 0 && visible.every((key) => cardCollapsed[key]);
+
+  const handleDragEnd = (event: DragEndEvent) => {
+    const activeKey = event.active.id as StudyCardKey;
+    const overKey = event.over?.id as StudyCardKey | undefined;
+    if (!overKey || activeKey === overKey) return;
+    const from = visible.indexOf(activeKey);
+    const to = visible.indexOf(overKey);
+    if (from < 0 || to < 0) return;
+    const hiddenSet = new Set(cardOrder.filter((key) => cardHidden[key]));
+    setCardOrder(reorderVisible(cardOrder, hiddenSet, from, to));
+  };
 
   return (
     <div className="flex min-h-full flex-col">
@@ -169,108 +234,125 @@ export function StudyReferenceDetailPanel({ save, bundle }: Props) {
         >
           <DoubleChevronIcon direction="right" />
         </button>
-        <button
-          type="button"
-          data-testid="study-detail-collapse-all"
-          onClick={() => setAllCardsCollapsed(!allCollapsed)}
-          className="rounded px-2 py-0.5 text-[11px] font-medium uppercase tracking-wider text-fg-dimmer hover:bg-bg-input-hover hover:text-fg"
-        >
-          {allCollapsed ? '모두 펴기' : '모두 접기'}
-        </button>
+        <div className="flex items-center gap-1">
+          <CardRestoreMenu
+            hidden={hiddenCards}
+            onRestore={(key) => setCardHidden(key as StudyCardKey, false)}
+            testId="study-detail-restore"
+          />
+          <button
+            type="button"
+            data-testid="study-detail-collapse-all"
+            onClick={() => setAllCardsCollapsed(!allCollapsed)}
+            className="rounded px-2 py-0.5 text-[11px] font-medium uppercase tracking-wider text-fg-dimmer hover:bg-bg-input-hover hover:text-fg"
+          >
+            {allCollapsed ? '모두 펴기' : '모두 접기'}
+          </button>
+        </div>
       </div>
-      <div
-        data-testid="study-reference-detail-cards"
-        className="grid min-h-full flex-1 content-start gap-2 bg-bg-subtle/40 p-2"
-        style={{
-          // 접힌 카드 행은 min-content — content-start 가 사라져도 stretch 로
-          // 빈 헤더가 늘어나지 않도록 /live 와 동일한 방어(ADR-0110 §2).
-          gridTemplateRows: STUDY_CARD_KEYS
-            .map((key) => (cardCollapsed[key] ? 'min-content' : 'auto'))
-            .join(' '),
-        }}
-      >
-        <StudyDetailSection
-          label="10호가"
-          testId="orderbook"
-          collapsed={Boolean(cardCollapsed.orderbook)}
-          onToggleCollapse={() => toggleCardCollapsed('orderbook')}
-          showEmptyDot={emptyByCard.orderbook}
-        >
-          <>
-            <OrderbookTable snapshot={orderbookSnapshot} baselinePrice={baselinePrice} />
-            <TotalQtyBar snapshot={orderbookSnapshot} maskRatio={false} />
-          </>
-        </StudyDetailSection>
-        <StudyDetailSection
-          label="거래원"
-          testId="brokers"
-          collapsed={Boolean(cardCollapsed.brokers)}
-          onToggleCollapse={() => toggleCardCollapsed('brokers')}
-          showEmptyDot={emptyByCard.brokers}
-        >
-          <BrokerTrajectoryTable
-            series={brokerCard.series}
-            cursorMs={brokerCard.cursorMs}
-          />
-        </StudyDetailSection>
-        <StudyDetailSection
-          label="연속체결 매물대 분포"
-          testId="volume-distribution"
-          collapsed={Boolean(cardCollapsed.volumeDistribution)}
-          onToggleCollapse={() => toggleCardCollapsed('volumeDistribution')}
-          showEmptyDot={emptyByCard.volumeDistribution}
-        >
-          <VolumeDistributionCard
-            profile={cutoffVolumeDistribution}
-            cursorMs={detailCursorMs}
-            closePoints={volumeClosePoints}
-            color={volumeDistributionColor}
-            maxColor={volumeDistributionMaxColor}
-          />
-        </StudyDetailSection>
-        <StudyDetailSection
-          label="프로그램"
-          testId="program"
-          collapsed={Boolean(cardCollapsed.program)}
-          onToggleCollapse={() => toggleCardCollapsed('program')}
-          showEmptyDot={emptyByCard.program}
-        >
-          <ProgramTradeSummaryCard
-            series={bundle.program_trade}
-            cursorMs={detailCursorMs}
-          />
-        </StudyDetailSection>
-      </div>
+      <DndContext sensors={sensors} collisionDetection={closestCenter} onDragEnd={handleDragEnd}>
+        <SortableContext items={visible} strategy={verticalListSortingStrategy}>
+          <div
+            data-testid="study-reference-detail-cards"
+            className="grid min-h-full flex-1 content-start gap-2 bg-bg-subtle/40 p-2"
+            style={{
+              // 접힌 카드 행은 min-content — content-start 가 사라져도 stretch 로
+              // 빈 헤더가 늘어나지 않도록 /live 와 동일한 방어(ADR-0110 §2).
+              gridTemplateRows: visible
+                .map((key) => (cardCollapsed[key] ? 'min-content' : 'auto'))
+                .join(' '),
+            }}
+          >
+            {visible.map((key) => (
+              <SortableStudyCard
+                key={key}
+                cardKey={key}
+                content={contentByKey[key]}
+                collapsed={Boolean(cardCollapsed[key])}
+                showEmptyDot={emptyByCard[key]}
+                onToggleCollapse={() => toggleCardCollapsed(key)}
+                onHide={() => setCardHidden(key, true)}
+              />
+            ))}
+          </div>
+        </SortableContext>
+      </DndContext>
     </div>
   );
 }
 
-function StudyDetailSection({
-  label,
-  testId,
+function SortableStudyCard({
+  cardKey,
+  content,
   collapsed,
-  onToggleCollapse,
   showEmptyDot,
-  children,
-}: SectionProps) {
+  onToggleCollapse,
+  onHide,
+}: {
+  cardKey: StudyCardKey;
+  content: ReactNode;
+  collapsed: boolean;
+  showEmptyDot: boolean;
+  onToggleCollapse: () => void;
+  onHide: () => void;
+}) {
+  const meta = STUDY_CARD_META[cardKey];
+  const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({
+    id: cardKey,
+  });
+
+  // PanelCard 는 ref 를 forward 하지 않으므로 sortable 노드는 래퍼 div — 카드 크롬(border/
+  // rounded/bg)·testid 는 PanelCard 에 그대로 두고(기존 클래스·위치 단언 보존), 래퍼는
+  // dnd transform 만 담는다.
   return (
-    <PanelCard
-      data-testid={`study-detail-card-${testId}`}
-      className="flex flex-col"
+    <div
+      ref={setNodeRef}
+      style={{
+        transform: CSS.Transform.toString(transform),
+        transition,
+        ...(isDragging ? { opacity: 0.65, position: 'relative', zIndex: 10 } : {}),
+      }}
     >
+    <PanelCard data-testid={`study-detail-card-${meta.testId}`} className="flex flex-col">
       <DataSection
-        title={label}
+        title={meta.label}
         collapsed={collapsed}
         onToggleCollapse={onToggleCollapse}
         showEmptyDot={showEmptyDot}
-        toggleTestId={`study-detail-toggle-${testId}`}
+        toggleTestId={`study-detail-toggle-${meta.testId}`}
+        headerTrailing={
+          <>
+            <button
+              type="button"
+              data-testid={`study-detail-drag-${meta.testId}`}
+              aria-label={`${meta.label} 카드 이동`}
+              className="flex h-6 w-5 cursor-grab items-center justify-center text-fg-dimmer hover:text-fg active:cursor-grabbing"
+              {...attributes}
+              {...listeners}
+            >
+              <StudyGripIcon />
+            </button>
+            <button
+              type="button"
+              data-testid={`study-detail-hide-${meta.testId}`}
+              aria-label={`${meta.label} 카드 숨기기`}
+              onClick={onHide}
+              className="flex h-6 w-5 items-center justify-center text-fg-dimmer hover:text-fg"
+            >
+              <svg width="11" height="11" viewBox="0 0 12 12" aria-hidden fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round">
+                <path d="M3 3l6 6M9 3l-6 6" />
+              </svg>
+            </button>
+          </>
+        }
         className="flex flex-1 flex-col border-t-0"
         contentClassName="flex-1"
       >
-        <div data-testid={`study-detail-content-${testId}`} className="flex-1">
-          {children}
+        <div data-testid={`study-detail-content-${meta.testId}`} className="flex-1">
+          {content}
         </div>
       </DataSection>
     </PanelCard>
+    </div>
   );
 }

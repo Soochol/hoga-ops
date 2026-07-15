@@ -24,6 +24,7 @@ export function DataSection({
   onToggleCollapse,
   showEmptyDot = false,
   toggleTestId,
+  headerTrailing,
 }: {
   title: ReactNode;
   children: ReactNode;
@@ -33,6 +34,9 @@ export function DataSection({
   onToggleCollapse?: () => void;
   showEmptyDot?: boolean;
   toggleTestId?: string;
+  /** 접기 토글 버튼 우측에 나란히 놓이는 컨트롤(드래그 핸들·숨김 버튼 등, ADR-0114).
+   *  넘기지 않으면 버튼이 헤더 전체를 차지해 렌더가 불변한다. */
+  headerTrailing?: ReactNode;
 }) {
   const headerId = useId();
   const label = typeof title === 'string' ? title : undefined;
@@ -46,7 +50,7 @@ export function DataSection({
       {collapsible ? (
         <header
           id={headerId}
-          className="border-b border-border text-xs font-semibold uppercase tracking-[0.08em] text-fg-dimmer"
+          className="flex items-center border-b border-border text-xs font-semibold uppercase tracking-[0.08em] text-fg-dimmer"
         >
           <button
             type="button"
@@ -54,7 +58,7 @@ export function DataSection({
             aria-expanded={!collapsed}
             aria-label={label ? `${label} ${collapsed ? '펼치기' : '접기'}` : undefined}
             onClick={onToggleCollapse}
-            className="flex w-full items-center gap-1.5 px-3 py-2 text-left hover:bg-bg-input-hover"
+            className="flex min-w-0 flex-1 items-center gap-1.5 px-3 py-2 text-left hover:bg-bg-input-hover"
           >
             <ChevronIcon collapsed={collapsed} />
             <span className="min-w-0 flex-1 truncate">{title}</span>
@@ -68,6 +72,9 @@ export function DataSection({
               </>
             )}
           </button>
+          {headerTrailing != null && (
+            <div className="flex shrink-0 items-center gap-0.5 pr-1.5">{headerTrailing}</div>
+          )}
         </header>
       ) : (
         <header

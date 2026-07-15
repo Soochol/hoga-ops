@@ -42,4 +42,29 @@ describe('studyLayout store', () => {
     expect(useStudyLayoutStore.getState().detailPanelCollapsed).toBe(true);
     expect(JSON.parse(localStorage.getItem('study.layout.v1') ?? '{}').detailPanelCollapsed).toBe(true);
   });
+
+  it('defaults order to canonical keys and hidden to empty', async () => {
+    const { useStudyLayoutStore, STUDY_CARD_KEYS } = await import('./studyLayout');
+    expect(useStudyLayoutStore.getState().cardOrder).toEqual([...STUDY_CARD_KEYS]);
+    expect(useStudyLayoutStore.getState().cardHidden).toEqual({});
+  });
+
+  it('normalizes persisted order and persists order/hidden setters', async () => {
+    localStorage.setItem('study.layout.v1', JSON.stringify({
+      cardOrder: ['program', 'bogus', 'orderbook'],
+    }));
+
+    const { useStudyLayoutStore } = await import('./studyLayout');
+    expect(useStudyLayoutStore.getState().cardOrder).toEqual([
+      'program', 'orderbook', 'brokers', 'volumeDistribution',
+    ]);
+
+    useStudyLayoutStore.getState().setCardHidden('program', true);
+    useStudyLayoutStore.getState().setCardOrder(['brokers', 'orderbook']);
+    const persisted = JSON.parse(localStorage.getItem('study.layout.v1') ?? '{}');
+    expect(persisted.cardHidden).toEqual({ program: true });
+    expect(persisted.cardOrder).toEqual([
+      'brokers', 'orderbook', 'volumeDistribution', 'program',
+    ]);
+  });
 });

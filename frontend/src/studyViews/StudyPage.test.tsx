@@ -9,7 +9,7 @@ import { useLiveCursorStore } from '../live/useLiveCursorStore';
 import { useStudyTabsStore } from '../state/studyTabs';
 import { useEntryDragStore } from '../state/entryDrag';
 import { useLivePageStore } from '../state/livePage';
-import { useStudyLayoutStore } from '../state/studyLayout';
+import { STUDY_CARD_KEYS, useStudyLayoutStore } from '../state/studyLayout';
 
 const {
   useStudyViewsMock,
@@ -253,7 +253,12 @@ beforeEach(() => {
   });
   useStudyTabsStore.setState({ tabs: [], activeTabId: null });
   useEntryDragStore.setState({ draggingCode: null, overStudy: false });
-  useStudyLayoutStore.setState({ cardCollapsed: {}, detailPanelCollapsed: false });
+  useStudyLayoutStore.setState({
+    cardOrder: [...STUDY_CARD_KEYS],
+    cardHidden: {},
+    cardCollapsed: {},
+    detailPanelCollapsed: false,
+  });
 });
 
 describe('StudyPage', () => {
@@ -667,6 +672,39 @@ describe('StudyPage', () => {
     expect(
       JSON.parse(localStorage.getItem('study.layout.v1') ?? '{}').cardCollapsed.orderbook,
     ).toBe(true);
+  });
+
+  it('renders study detail cards in the persisted order', () => {
+    useStudyLayoutStore.setState({
+      cardOrder: ['program', 'orderbook', 'brokers', 'volumeDistribution'],
+    });
+    renderPage('/study?view=view-ref');
+
+    const program = screen.getByTestId('study-detail-card-program');
+    const orderbook = screen.getByTestId('study-detail-card-orderbook');
+    expect(
+      program.compareDocumentPosition(orderbook) & Node.DOCUMENT_POSITION_FOLLOWING,
+    ).toBeTruthy();
+  });
+
+  it('hides a study detail card and restores it from the + menu', () => {
+    renderPage('/study?view=view-ref');
+
+    expect(screen.getByTestId('study-detail-card-brokers')).toBeInTheDocument();
+    act(() => {
+      screen.getByTestId('study-detail-hide-brokers').click();
+    });
+    expect(useStudyLayoutStore.getState().cardHidden.brokers).toBe(true);
+    expect(screen.queryByTestId('study-detail-card-brokers')).toBeNull();
+
+    act(() => {
+      screen.getByTestId('study-detail-restore').click();
+    });
+    act(() => {
+      screen.getByTestId('study-detail-restore-item-brokers').click();
+    });
+    expect(useStudyLayoutStore.getState().cardHidden.brokers).toBe(false);
+    expect(screen.getByTestId('study-detail-card-brokers')).toBeInTheDocument();
   });
 
   it('collapses the whole study detail panel to a rail and restores it on click', () => {
