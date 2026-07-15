@@ -279,6 +279,55 @@ def repair_study_candles(
         raise typer.Exit(code=1) from e
 
 
+@app.command(name="depth-daily-sweep")
+def depth_daily_sweep(
+    dry_run: bool = typer.Option(False, "--dry-run", help="스캔 대상만 세고 쓰지 않음"),
+    code: str | None = typer.Option(None, "--code", help="한 종목만(6자리)"),
+) -> None:
+    """hogaplay 캡처에서 (code,date)별 매도/매수 총잔량 당일 peak 를 집계해
+    screener/depth_daily.parquet 에 박제한다(스크리너 총잔량 신고 조건의 과거 기준).
+
+    증분: 메타 mtime 이 그대로면 재계산을 건너뛴다. 멱등(반복 실행 안전).
+    --dry-run 은 parquet 트리를 훑어 hogaplay meta.json 이 있는 스톡데이트 수(=sweep 의
+    scanned)만 센다 — peak 계산(DuckDB)이나 쓰기는 하지 않으므로 즉시 끝난다.
+    """
+    import time  # noqa: PLC0415 — CLI-local
+
+    from hoga.api import depth_daily  # noqa: PLC0415 — CLI-local
+
+    data_dir = resolve_data_dir()
+    codes = {code} if code else None
+    if dry_run:
+        # 실계산 없이 대상 후보만 센다 — 메타 존재 여부까지만 확인.
+        parquet_root = data_dir / "parquet"
+        n = 0
+        if parquet_root.exists():
+            for date_dir in sorted(parquet_root.iterdir()):
+                if not date_dir.is_dir() or not depth_daily.is_yyyymmdd(date_dir.name):
+                    continue
+                for code_dir in sorted(date_dir.iterdir()):
+                    if not code_dir.is_dir():
+                        continue
+                    if codes is not None and code_dir.name not in codes:
+                        continue
+                    src_dir = depth_daily.resolve_source_dir(code_dir, depth_daily.HOGAPLAY)
+                    if (src_dir / "meta.json").exists():
+                        n += 1
+        console.print(f"[green]dry-run[/green] {n} hogaplay stock-date(s) in scope")
+        return
+    t0 = time.time()
+    try:
+        res = depth_daily.sweep(data_dir, codes=codes)
+    except Exception as e:  # noqa: BLE001
+        console.print(f"[red]depth-daily-sweep failed: {e}[/red]")
+        raise typer.Exit(code=1) from e
+    console.print(
+        f"[green]depth-daily-sweep done[/green] in {time.time() - t0:.0f}s: "
+        f"scanned={res.scanned} computed={res.computed} skipped={res.skipped} "
+        f"no_data={res.no_data} total_rows={res.total_rows}"
+    )
+
+
 @app.command(name="ls")
 def list_stock_dates() -> None:
     """Show captured/parsed Stock-Dates."""

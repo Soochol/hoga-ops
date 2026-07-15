@@ -991,6 +991,73 @@ def query_bucketed_ratio(
 
 
 @dataclass(frozen=True)
+class DailyDepthPeak:
+    """하루치 매도/매수 총잔량(10단계 합)의 당일 최댓값 + 유효 스냅샷 수.
+
+    ``ask_peak`` / ``bid_peak`` = 유효(연속거래+세션내, ``_book_indicator_eligible_sql``)
+    스냅샷 전체에서 ``SUM(ask_q1..10)`` / ``SUM(bid_q1..10)``의 당일 최댓값. 이는
+    query_bucketed_ratio가 pane에 그리는 Intra-Bar Max(``ask_max``, ADR-0076)를 하루
+    단위로 collapse한 값과 동일 — 스크리너 depth peak 조건이 /live 총잔량 pane의
+    intra-bar-max 레벨선과 숫자로 일치하도록 같은 술어를 재사용한다.
+
+    ``eligible_count`` = 술어를 통과한 스냅샷 수(0이면 유효 데이터 없음 → peak는 None).
+    """
+
+    ask_peak: int
+    bid_peak: int
+    eligible_count: int
+
+
+def query_daily_depth_peak(
+    con: duckdb.DuckDBPyConnection,
+    *,
+    path: Path,
+    session_open_ms: int | None = None,
+    session_close_ms: int | None = None,
+) -> DailyDepthPeak | None:
+    """유효 스냅샷의 10단계 매도/매수 총잔량 당일 최댓값을 스칼라로 반환.
+
+    술어는 query_bucketed_ratio와 글자 그대로 같은 ``_book_indicator_eligible_sql``
+    (ADR-0062 v3: 연속거래 호가창 AND session_open ≤ t ≤ session_close). 버킷팅은
+    하지 않는다 — pane은 분단위 표시를 위해 버킷이 필요하지만 "당일 peak"는 유효
+    스냅샷 전체의 단일 최댓값이면 충분하고, 그 값은 pane의 분봉 Intra-Bar Max를
+    하루로 collapse한 것과 같다.
+
+    ``session_close_ms``가 None이거나 파일에 세션내 deep book이 전무하면(퇴화
+    fixture/깨진 캡처) query_bucketed_ratio와 동일하게 술어를 TRUE로 완화한다.
+    유효 행이 하나도 없으면(MAX가 NULL) None을 반환 — 호출자는 이를 "그 날 유효
+    총잔량 데이터 없음"으로 취급한다(빈 parquet도 None).
+    """
+    intra_ms_expr = hhmmssms_to_intra_ms_sql("ts_ms")
+    last_continuous_ms = (
+        _last_continuous_intra_ms(con, path=path, session_close_ms=session_close_ms)
+        if session_close_ms is not None
+        else None
+    )
+    if last_continuous_ms is None:
+        pre_auction_pred = "TRUE"
+    else:
+        pre_auction_pred = _book_indicator_eligible_sql(
+            intra_ms_expr, session_open_ms=session_open_ms, session_close_ms=session_close_ms,
+        )
+    row = con.execute(
+        f"""
+        SELECT max({_ASK_Q_SUM}) AS ask_peak,
+               max({_BID_Q_SUM}) AS bid_peak,
+               count(*) AS eligible_count
+        FROM read_parquet(?)
+        WHERE ({pre_auction_pred})
+        """,
+        [str(path)],
+    ).fetchone()
+    if row is None or row[0] is None:
+        return None
+    return DailyDepthPeak(
+        ask_peak=int(row[0]), bid_peak=int(row[1]), eligible_count=int(row[2]),
+    )
+
+
+@dataclass(frozen=True)
 class DepthHeatmapRow:
     """버킷 대표(마지막 연속거래) 스냅샷의 10단계 매도/매수 가격·잔량.
 
