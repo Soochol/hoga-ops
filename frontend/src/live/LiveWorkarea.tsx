@@ -197,6 +197,10 @@ export function LiveWorkarea({
   const setDetailPanelCollapsed = useLiveLayoutStore((s) => s.setDetailPanelCollapsed);
   const activeResizeCleanupRef = useRef<(() => void) | null>(null);
   const [workareaWidthPx, setWorkareaWidthPx] = useState<number | null>(null);
+  // 스플리터 라인은 평상시 숨김(패널 경계는 톤+간격이 담당) — 호버/드래그 시에만 accent로
+  // 리사이즈 어포던스를 드러낸다.
+  const [splitterHovered, setSplitterHovered] = useState(false);
+  const [splitterDragging, setSplitterDragging] = useState(false);
   useEffect(() => {
     const hitTest = (clientX: number, clientY: number): boolean => {
       const el = chartPanelRef.current;
@@ -278,6 +282,7 @@ export function LiveWorkarea({
     const workarea = workareaRef.current;
     if (!workarea) return;
     event.currentTarget.setPointerCapture(event.pointerId);
+    setSplitterDragging(true);
     document.body.style.cursor = 'col-resize';
     document.body.style.userSelect = 'none';
     const startX = event.clientX;
@@ -302,6 +307,7 @@ export function LiveWorkarea({
       window.removeEventListener('pointercancel', cancel);
       document.body.style.cursor = '';
       document.body.style.userSelect = '';
+      setSplitterDragging(false);
       activeResizeCleanupRef.current = null;
     };
     const finish = (pointerId: number) => {
@@ -329,7 +335,7 @@ export function LiveWorkarea({
     overflow: 'hidden',
     display: 'flex',
     flexDirection: 'column',
-    border: '1px solid var(--border)',
+    // 보더 없음(A안, 2026-07-15) — 패널 분리는 --bg↔--bg-card 톤 차 + gap + shadow-panel이 담당.
     borderRadius: 8,
     background: 'var(--bg-card)',
     boxShadow: 'var(--shadow-panel)',
@@ -451,6 +457,8 @@ export function LiveWorkarea({
                 aria-label="차트 / 상세 패널 크기 조절"
                 data-testid="live-workarea-splitter"
                 onPointerDown={beginWidthResize}
+                onPointerEnter={() => setSplitterHovered(true)}
+                onPointerLeave={() => setSplitterHovered(false)}
                 style={{
                   width: LIVE_WORKAREA_SPLITTER_WIDTH_PX,
                   cursor: 'col-resize',
@@ -458,7 +466,16 @@ export function LiveWorkarea({
                   placeItems: 'center',
                 }}
               >
-                <div aria-hidden style={{ width: 1, height: '100%', background: 'var(--border-strong)', opacity: 0.75 }} />
+                <div
+                  aria-hidden
+                  style={{
+                    width: 1,
+                    height: '100%',
+                    background: 'var(--accent)',
+                    opacity: splitterHovered || splitterDragging ? 0.9 : 0,
+                    transition: 'opacity 120ms ease',
+                  }}
+                />
               </div>
               <div
                 role="complementary"
@@ -470,7 +487,7 @@ export function LiveWorkarea({
                   minHeight: 0,
                   overflowY: 'auto',
                   overflowX: 'hidden',
-                  border: '1px solid var(--border)',
+                  // 보더 없음(A안) — 차트 패널과 동일하게 톤+간격+shadow로 분리.
                   borderRadius: 8,
                   background: 'var(--bg-card)',
                   boxShadow: 'var(--shadow-panel)',
@@ -503,7 +520,7 @@ export function LiveWorkarea({
                 gap: 10,
                 paddingTop: 8,
                 minHeight: 0,
-                border: '1px solid var(--border)',
+                // 보더 없음(A안) — 톤+shadow로 분리.
                 borderRadius: 8,
                 background: 'var(--bg-card)',
                 boxShadow: 'var(--shadow-panel)',
