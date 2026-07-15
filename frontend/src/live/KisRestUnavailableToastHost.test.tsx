@@ -37,6 +37,7 @@ describe('KisRestUnavailableToastHost', () => {
       program_trade_storage_enabled: false,
       kis_rest_bypass_enabled: true,
       heatmap_capture_enabled: true,
+      screener_depth_autocollect: false,
     });
     renderWithClient({
       schema_version: 1,
@@ -44,6 +45,7 @@ describe('KisRestUnavailableToastHost', () => {
       program_trade_storage_enabled: false,
       kis_rest_bypass_enabled: false,
       heatmap_capture_enabled: true,
+      screener_depth_autocollect: false,
     });
 
     act(() => {
@@ -73,6 +75,7 @@ describe('KisRestUnavailableToastHost', () => {
       program_trade_storage_enabled: false,
       kis_rest_bypass_enabled: false,
       heatmap_capture_enabled: true,
+      screener_depth_autocollect: false,
     });
 
     act(() => {
@@ -95,6 +98,7 @@ describe('KisRestUnavailableToastHost', () => {
       program_trade_storage_enabled: false,
       kis_rest_bypass_enabled: false,
       heatmap_capture_enabled: true,
+      screener_depth_autocollect: false,
     });
 
     act(() => {
@@ -123,6 +127,7 @@ describe('KisRestUnavailableToastHost', () => {
       program_trade_storage_enabled: false,
       kis_rest_bypass_enabled: false,
       heatmap_capture_enabled: true,
+      screener_depth_autocollect: false,
     });
 
     expect(screen.queryByRole('status')).toBeNull();
@@ -136,6 +141,7 @@ describe('KisRestUnavailableToastHost', () => {
       program_trade_storage_enabled: false,
       kis_rest_bypass_enabled: true,
       heatmap_capture_enabled: true,
+      screener_depth_autocollect: false,
     });
     const markSpy = vi.spyOn(kisRestMode, 'markLegacyKisRestBypassMigrated');
 
@@ -145,6 +151,7 @@ describe('KisRestUnavailableToastHost', () => {
       program_trade_storage_enabled: false,
       kis_rest_bypass_enabled: false,
       heatmap_capture_enabled: true,
+      screener_depth_autocollect: false,
     });
 
     await waitFor(() => expect(apiCall).toHaveBeenCalledWith('/api/live/settings', {
@@ -166,6 +173,7 @@ describe('KisRestUnavailableToastHost', () => {
       program_trade_storage_enabled: false,
       kis_rest_bypass_enabled: false,
       heatmap_capture_enabled: true,
+      screener_depth_autocollect: false,
     });
 
     await waitFor(() => expect(apiCall).toHaveBeenCalledWith('/api/live/settings', {

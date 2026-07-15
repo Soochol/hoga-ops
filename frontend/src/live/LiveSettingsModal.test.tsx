@@ -85,6 +85,7 @@ describe('LiveSettingsModal (2단)', () => {
       program_trade_storage_enabled: false,
       kis_rest_bypass_enabled: false,
       heatmap_capture_enabled: true,
+      screener_depth_autocollect: false,
     });
     render(<LiveSettingsModal variant="study" onClose={() => {}} />, {
       wrapper: wrap(new QueryClient({ defaultOptions: { queries: { retry: false } } })),

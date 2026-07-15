@@ -202,6 +202,7 @@ function createWrapper(settings?: Partial<LiveSettings>) {
     program_trade_storage_enabled: false,
     kis_rest_bypass_enabled: false,
     heatmap_capture_enabled: true,
+    screener_depth_autocollect: false,
     ...settings,
   } satisfies LiveSettings);
   return ({ children }: { children: ReactNode }) => (

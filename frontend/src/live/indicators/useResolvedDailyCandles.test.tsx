@@ -24,6 +24,7 @@ function makeWrapper(bypass = false) {
       program_trade_storage_enabled: false,
       kis_rest_bypass_enabled: bypass,
       heatmap_capture_enabled: true,
+      screener_depth_autocollect: false,
     } satisfies LiveSettings);
     return <QueryClientProvider client={qc}>{children}</QueryClientProvider>;
   };

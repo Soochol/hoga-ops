@@ -1357,6 +1357,7 @@ def build_router(
             program_trade_storage_enabled=req.program_trade_storage_enabled,
             kis_rest_bypass_enabled=req.kis_rest_bypass_enabled,
             heatmap_capture_enabled=req.heatmap_capture_enabled,
+            screener_depth_autocollect=req.screener_depth_autocollect,
         )
         try:
             await refresh_live_stream(data_dir=data_dir)

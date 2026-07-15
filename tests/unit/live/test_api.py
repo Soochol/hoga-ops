@@ -2578,6 +2578,7 @@ def test_live_settings_routes_round_trip(tmp_path):
         "program_trade_storage_enabled": False,
         "kis_rest_bypass_enabled": False,
         "heatmap_capture_enabled": True,
+        "screener_depth_autocollect": False,
     }
 
     r = client.patch(
@@ -2661,5 +2662,6 @@ def test_live_settings_patch_can_set_bypass_without_storage_policy(tmp_path):
         "program_trade_storage_enabled": False,
         "kis_rest_bypass_enabled": True,
         "heatmap_capture_enabled": True,
+        "screener_depth_autocollect": False,
     }
     assert client.get("/api/live/settings").json()["kis_rest_bypass_enabled"] is True
