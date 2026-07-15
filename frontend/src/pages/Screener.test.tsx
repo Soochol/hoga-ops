@@ -1,7 +1,7 @@
 import { render, screen, fireEvent, waitFor, within } from '@testing-library/react';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { MemoryRouter } from 'react-router';
-import { it, expect, vi, afterEach } from 'vitest';
+import { it, expect, vi, afterEach, beforeEach } from 'vitest';
 
 vi.mock('../api/screener', async (orig) => ({
   ...(await orig<typeof import('../api/screener')>()),
@@ -54,6 +54,20 @@ import { runScan } from '../api/screener';
 import { listSaves, createSave, updateSave } from '../api/savedScreeners';
 import { useQuoteByCode } from '../api/liveQuotes';
 import type { SavedScreener } from '../api/savedScreeners';
+import { useScreenerPanelStore } from '../state/screenerPanel';
+
+// 조회 결과·정렬은 이제 screenerPanel 싱글톤 스토어(+localStorage)에 산다. 결과가 다음
+// 테스트로 새면 스캔 없이 이전 rows 가 복원돼 격리가 깨지므로, 매 테스트 전에 스토어와
+// localStorage(빌더 draft 포함)를 초기화한다.
+beforeEach(() => {
+  localStorage.clear();
+  useScreenerPanelStore.setState({
+    selectedSavedId: null,
+    lastScan: null,
+    sortMode: 'default',
+    updateState: { status: 'idle' },
+  });
+});
 
 // 오버레이 테스트가 주입한 quote 가 다음 테스트로 새지 않도록 매 테스트 후 기본 map 복구.
 afterEach(() => {
@@ -103,6 +117,21 @@ it('runs scan and renders row; click sets the active tab code', async () => {
   await waitFor(() => screen.getByText('삼성전자'));
   fireEvent.click(screen.getByText('삼성전자'));
   expect(activateLiveCode).toHaveBeenCalledWith('005930', '삼성전자');
+});
+
+it('restores scan results after unmount/remount (route round-trip)', async () => {
+  const { unmount } = renderPage();
+  fireEvent.click(screen.getByText('조회'));
+  await screen.findByText('삼성전자');
+  unmount();
+
+  // 다른 페이지 왕복 = Screener unmount 후 재마운트. 재조회 없이 결과가 복원되고,
+  // 동일 조건이므로 "다시 조회 필요" 는 뜨지 않는다.
+  vi.mocked(runScan).mockClear();
+  renderPage();
+  expect(await screen.findByText('삼성전자')).toBeInTheDocument();
+  expect(screen.queryByText('다시 조회 필요')).not.toBeInTheDocument();
+  expect(runScan).not.toHaveBeenCalled();
 });
 
 it('runs full-page scans with intraday basis by default', async () => {
