@@ -24,7 +24,7 @@ export function SectorTempStrip({ groups, quoteByCode, onJump }: SectorTempStrip
     .sort((a, b) => b.avg - a.avg);
   if (chips.length === 0) return null;
   return (
-    <div className="flex flex-wrap gap-1 px-2 py-1.5 bg-bg-subtle border-b border-border-strong flex-none"
+    <div className="flex flex-wrap gap-1 px-2 py-1.5 bg-bg-card border-b border-border flex-none"
       aria-label="섹터 온도">
       {/* 칩 = 점프 버튼. role="list/listitem"을 button에 얹지 않는다(role 충돌) —
           접근성은 각 버튼의 aria-label(섹터명+평균)로 충분하고, 테스트는 role 'button'으로 쿼리. */}

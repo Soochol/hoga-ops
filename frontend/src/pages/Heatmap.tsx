@@ -87,8 +87,10 @@ export function Heatmap() {
 
   return (
     <PageContainer className="min-h-0">
-      <PanelCard data-testid="heatmap-page-primary" className="flex h-full min-h-0 flex-col overflow-hidden">
-        <header className="flex items-center gap-3 px-3 py-2 bg-bg-subtle border-b border-border-strong flex-none">
+      <PanelCard borderless data-testid="heatmap-page-primary" className="flex h-full min-h-0 flex-col overflow-hidden">
+        {/* 헤더 밴드는 live 부유 카드 모델과 통일 — bg-subtle 어두운 밴드 대신 bg-card,
+            구분선은 border-strong→border 로 완화(live WorkspaceToolbar: bg-card + border-b border). */}
+        <header className="flex items-center gap-3 px-3 py-2 bg-bg-card border-b border-border flex-none">
           <span className="text-md font-semibold text-fg">히트맵</span>
           {phase && <span className="text-xs font-mono text-fg-dim">{PHASE_LABEL[phase] ?? phase}</span>}
           <span className="text-xs font-mono text-fg-dimmer">{updated} 갱신 · {visibleCount}종목</span>
@@ -138,7 +140,7 @@ export function Heatmap() {
 function HeatmapStateShell({ children, tone = 'neutral' }: { children: ReactNode; tone?: 'neutral' | 'error' }) {
   return (
     <PageContainer className="min-h-0">
-      <PanelCard data-testid="heatmap-page-primary">
+      <PanelCard borderless data-testid="heatmap-page-primary">
         <PageState tone={tone}>{children}</PageState>
       </PanelCard>
     </PageContainer>

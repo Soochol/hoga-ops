@@ -21,6 +21,17 @@ describe('PageShell primitives', () => {
     expect(panel).toHaveClass('min-h-0');
   });
 
+  it('drops the border under `borderless` (부유 카드 모델, /heatmap)', () => {
+    render(<PanelCard borderless>floating</PanelCard>);
+    const panel = screen.getByText('floating');
+    // 테두리는 빠지되 나머지 카드 크롬(bg-card + shadow-panel + radius)은 유지 — live 패널과 동형.
+    expect(panel).not.toHaveClass('border');
+    expect(panel).not.toHaveClass('border-border');
+    expect(panel).toHaveClass('bg-bg-card');
+    expect(panel).toHaveClass('shadow-panel');
+    expect(panel).toHaveClass('rounded-lg');
+  });
+
   it('can render PanelCard as a section', () => {
     render(<PanelCard as="section">section body</PanelCard>);
     expect(screen.getByText('section body').tagName).toBe('SECTION');
