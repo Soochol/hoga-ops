@@ -9,7 +9,7 @@ import { PageState, PanelCard } from '../ui/PageShell';
 function InventoryStateShell({ children }: { children: ReactNode }) {
   return (
     <PageContainer className="grid grid-cols-[minmax(0,42rem)] content-start">
-      <PanelCard data-testid="inventory-page-primary">
+      <PanelCard borderless data-testid="inventory-page-primary">
         <PageState>{children}</PageState>
       </PanelCard>
     </PageContainer>
@@ -45,10 +45,10 @@ export default function Inventory() {
       className="grid gap-md"
       style={{ gridTemplateColumns: 'var(--sidebar-w) 1fr' }}
     >
-      <PanelCard data-testid="inventory-list-pane" className="flex min-h-0 flex-col overflow-hidden">
+      <PanelCard borderless data-testid="inventory-list-pane" className="flex min-h-0 flex-col overflow-hidden">
         <StockDateGroupList rows={rows} selectedCode={selectedCode} onSelect={setSelectedCode} />
       </PanelCard>
-      <PanelCard data-testid="inventory-detail-pane" className="flex min-h-0 flex-col overflow-hidden">
+      <PanelCard borderless data-testid="inventory-detail-pane" className="flex min-h-0 flex-col overflow-hidden">
         <StockDateGroupDetail group={selectedGroup} />
       </PanelCard>
     </PageContainer>

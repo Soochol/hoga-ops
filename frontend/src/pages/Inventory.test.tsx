@@ -51,9 +51,12 @@ describe('Inventory page', () => {
   it('renders surfaced list and detail panes', () => {
     render(<Inventory />);
 
+    // 부유 카드 모델(2026-07-15): borderless — --bg-card + shadow-panel 만으로 분리.
     expect(screen.getByTestId('inventory-list-pane')).toHaveClass('bg-bg-card');
-    expect(screen.getByTestId('inventory-list-pane')).toHaveClass('border');
+    expect(screen.getByTestId('inventory-list-pane')).not.toHaveClass('border');
+    expect(screen.getByTestId('inventory-list-pane')).toHaveClass('shadow-panel');
     expect(screen.getByTestId('inventory-detail-pane')).toHaveClass('bg-bg-card');
-    expect(screen.getByTestId('inventory-detail-pane')).toHaveClass('border');
+    expect(screen.getByTestId('inventory-detail-pane')).not.toHaveClass('border');
+    expect(screen.getByTestId('inventory-detail-pane')).toHaveClass('shadow-panel');
   });
 });

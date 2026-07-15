@@ -10,15 +10,23 @@ type PanelCardProps = {
   as?: 'div' | 'section' | 'article';
   className?: string;
   style?: CSSProperties;
+  /**
+   * Drop the card `--border`, leaving `--bg-card` + `--shadow-panel` to carry the
+   * separation on their own — the `/live`·`/study` 부유 카드 모델(DESIGN.md). Opt-in:
+   * feature-route cards keep the border (critical in Ledger, where the border is
+   * the only card boundary). Used by `/heatmap` to sit on `--bg` like the live panel.
+   */
+  borderless?: boolean;
   children: ReactNode;
 } & Omit<HTMLAttributes<HTMLElement>, 'className' | 'children' | 'style'>;
 
-export function PanelCard({ as = 'div', className = '', style, children, ...props }: PanelCardProps) {
+export function PanelCard({ as = 'div', className = '', style, borderless = false, children, ...props }: PanelCardProps) {
   const Tag = as as ElementType;
+  const borderClass = borderless ? '' : 'border border-border';
   return (
     <Tag
       {...props}
-      className={`bg-bg-card border border-border rounded-lg min-w-0 shadow-panel ${className}`.trim()}
+      className={`bg-bg-card ${borderClass} rounded-lg min-w-0 shadow-panel ${className}`.replace(/\s+/g, ' ').trim()}
       style={style}
     >
       {children}
