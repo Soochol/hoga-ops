@@ -6,7 +6,7 @@ from hoga.live.lifecycle import (
     partition_live_set,
 )
 
-M = _PER_ACCOUNT_MAX  # 계좌당 종목 상한(현재 10). 리터럴 대신 도출값에 묶어 강건화.
+M = _PER_ACCOUNT_MAX  # 계좌당 종목 상한(현재 19). 리터럴 대신 도출값에 묶어 강건화.
 
 
 def _codes(n: int) -> list[str]:
@@ -49,8 +49,8 @@ def test_partition_stable_account_0_unchanged_when_appending_overflow():
 
 def test_per_account_max_derives_from_cap():
     # 계좌당 상한 = 등록 한도 // 코드당 구독수 (사이징 단일진실원).
-    # 39//3 = 13 (ADR-0101: 등록 상한 41 실측 후 30→39 상향).
-    assert _PER_ACCOUNT_MAX == 13
+    # 39//2 = 19 (ADR-0111: 거래원 TR 제외로 종목당 3→2 TR, 13→19종목).
+    assert _PER_ACCOUNT_MAX == 19
     assert _PER_ACCOUNT_MAX == KIS_WS_MAX_REGISTRATIONS // TRS_PER_CODE
 
 

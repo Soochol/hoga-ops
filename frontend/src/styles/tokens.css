@@ -7,10 +7,12 @@
 [data-theme='dark'],
 [data-theme='obsidian'] {
   /* ───── Scale dial (single source for default density) ─────
-     :root font-size is the ONE dial. 20px = 1.25× default; 16px would be 1.0×.
+     :root font-size is the ONE dial. 18px = 1.125× default; 16px would be 1.0×.
+     MUST mirror RENDERED_ROOT_PX in design-tokens.ts (generator comments +
+     chart canvas constants derive from it).
      All rem-based tokens (--text-*, --space-*, layout tokens) follow automatically.
      Chart canvas options in util/chartScale.ts are NOT reactive — see DESIGN.md Scale Factor. */
-  font-size: 20px;
+  font-size: 18px;
 
   /* ───── Typography · Font families (theme-independent) ─────
      IBM Plex Sans KR carries Latin + Hangul in one family; IBM Plex Mono
@@ -19,8 +21,11 @@
   --font-ui: 'IBM Plex Sans KR', 'Pretendard', ui-sans-serif, system-ui, 'Malgun Gothic', sans-serif;
   --font-mono: 'IBM Plex Mono', ui-monospace, 'SF Mono', 'Menlo', Consolas, monospace;
 
-  /* ───── Color · Surfaces (Obsidian — warm graphite, 3-tier) ───── */
-  --bg: #0a0a0c;
+  /* ───── Color · Surfaces (Obsidian — warm graphite, 3-tier) ─────
+     --bg 는 카드가 "떠 보이는" 홈 역할 — --bg-card(#121216)와의 명도차가
+     패널 분리의 1차 수단이다(다크에서 1px 보더 강화는 반복 실패한 방향,
+     #610~613). 2026-07-15 #0a0a0c → #060608 로 심도 강화. */
+  --bg: #060608;
   --bg-card: #121216;
   --bg-subtle: #0e0e11;
   --bg-input: #101014;
@@ -121,24 +126,24 @@
 
   /* BEGIN AUTO-GENERATED (size + radius + layout) — regenerate via npm run gen:tokens */
   /* ───── Typography sizes (rem-based) ───── */
-  --text-badge: 0.53125rem; /* 10.625px @ default; 8.5px base intent */
-  --text-xs: 0.65625rem; /* 13.125px @ default; 10.5px base intent */
-  --text-sm: 0.71875rem; /* 14.375px @ default; 11.5px base intent */
-  --text-base: 0.8125rem; /* 16.25px @ default; 13px base intent */
-  --text-md: 0.875rem; /* 17.5px @ default; 14px base intent */
-  --text-lg: 1rem; /* 20px @ default; 16px base intent */
-  --text-xl: 1.375rem; /* 27.5px @ default; 22px base intent */
-  --text-2xl: 2rem; /* 40px @ default; 32px base intent */
+  --text-badge: 0.53125rem; /* 9.563px @ default; 8.5px base intent */
+  --text-xs: 0.65625rem; /* 11.813px @ default; 10.5px base intent */
+  --text-sm: 0.71875rem; /* 12.938px @ default; 11.5px base intent */
+  --text-base: 0.8125rem; /* 14.625px @ default; 13px base intent */
+  --text-md: 0.875rem; /* 15.75px @ default; 14px base intent */
+  --text-lg: 1rem; /* 18px @ default; 16px base intent */
+  --text-xl: 1.375rem; /* 24.75px @ default; 22px base intent */
+  --text-2xl: 2rem; /* 36px @ default; 32px base intent */
 
   /* ───── Spacing (rem-based; 4px base unit) ───── */
-  --space-2xs: 0.125rem; /* 2.5px @ default; 2px base intent */
-  --space-xs: 0.25rem; /* 5px @ default; 4px base intent */
-  --space-sm: 0.5rem; /* 10px @ default; 8px base intent */
-  --space-md: 0.75rem; /* 15px @ default; 12px base intent */
-  --space-lg: 1rem; /* 20px @ default; 16px base intent */
-  --space-xl: 1.5rem; /* 30px @ default; 24px base intent */
-  --space-2xl: 2rem; /* 40px @ default; 32px base intent */
-  --space-3xl: 3rem; /* 60px @ default; 48px base intent */
+  --space-2xs: 0.125rem; /* 2.25px @ default; 2px base intent */
+  --space-xs: 0.25rem; /* 4.5px @ default; 4px base intent */
+  --space-sm: 0.5rem; /* 9px @ default; 8px base intent */
+  --space-md: 0.75rem; /* 13.5px @ default; 12px base intent */
+  --space-lg: 1rem; /* 18px @ default; 16px base intent */
+  --space-xl: 1.5rem; /* 27px @ default; 24px base intent */
+  --space-2xl: 2rem; /* 36px @ default; 32px base intent */
+  --space-3xl: 3rem; /* 54px @ default; 48px base intent */
 
   /* ───── Border radius (intentionally fixed px — see ADR-0011) ───── */
   --radius-sm: 2px; /* Rarely used */
@@ -146,20 +151,21 @@
   --radius-lg: 6px; /* Cards, inputs, buttons (default) */
   --radius-full: 9999px; /* Status dots, avatars */
 
-  /* ───── Layout (rem-based; rendered px @ 20px root = default density) ───── */
-  --h-tab: 2rem; /* 40px @ default; 32px base intent — Tab strip main tab height */
-  --h-tab-secondary: 1.875rem; /* 37.5px @ default; 30px base intent — Secondary action button — intentionally 2px shorter than main tab */
-  --h-toolbar: 3.75rem; /* 75px @ default; 60px base intent — Replay-page toolbar row */
-  --h-pricestrip: 3.25rem; /* 65px @ default; 52px base intent — Current-price strip below toolbar */
-  --h-orderbook-row: 1.375rem; /* 27.5px @ default; 22px base intent — Single row in the orderbook table */
-  --h-capture-row: 2.25rem; /* 45px @ default; 36px base intent — Single row in the capture queue */
-  --h-live-header: 2rem; /* 40px @ default; 32px base intent — Live page header row */
-  --h-top-nav: 2rem; /* 40px @ default; 32px base intent — Global top navigation row */
-  --sidebar-w: 20rem; /* 400px @ default; 320px base intent — Cursor sidebar on the right of replay viewer */
-  --combobox-min-w: 13.75rem; /* 275px @ default; 220px base intent — Stock combobox trigger minimum width */
-  --dropdown-min-w: 20rem; /* 400px @ default; 320px base intent — Combobox / search dropdown minimum width */
-  --watchlist-panel-w: 17.5rem; /* 350px @ default; 280px base intent — Global Watchlist Panel (Right Rail) width */
-  --rail-w: 3rem; /* 60px @ default; 48px base intent — Right Rail icon column width (fixed) */
+  /* ───── Layout (rem-based; rendered px @ 18px root = default density) ───── */
+  --h-tab: 2rem; /* 36px @ default; 32px base intent — Tab strip main tab height */
+  --h-tab-secondary: 1.875rem; /* 33.75px @ default; 30px base intent — Secondary action button — intentionally 2px shorter than main tab */
+  --h-toolbar: 3.75rem; /* 67.5px @ default; 60px base intent — Replay-page toolbar row */
+  --h-pricestrip: 3.25rem; /* 58.5px @ default; 52px base intent — Current-price strip below toolbar */
+  --h-orderbook-row: 1.375rem; /* 24.75px @ default; 22px base intent — Single row in the orderbook table */
+  --h-capture-row: 2.25rem; /* 40.5px @ default; 36px base intent — Single row in the capture queue */
+  --h-live-header: 2rem; /* 36px @ default; 32px base intent — Live page header row */
+  --h-top-nav: 2rem; /* 36px @ default; 32px base intent — Global top navigation row */
+  --h-bottom-bar: 1.5rem; /* 27px @ default; 24px base intent — Global market-index bottom bar row */
+  --sidebar-w: 20rem; /* 360px @ default; 320px base intent — Cursor sidebar on the right of replay viewer */
+  --combobox-min-w: 13.75rem; /* 247.5px @ default; 220px base intent — Stock combobox trigger minimum width */
+  --dropdown-min-w: 20rem; /* 360px @ default; 320px base intent — Combobox / search dropdown minimum width */
+  --watchlist-panel-w: 17.5rem; /* 315px @ default; 280px base intent — Global Watchlist Panel (Right Rail) width */
+  --rail-w: 3rem; /* 54px @ default; 48px base intent — Right Rail icon column width (fixed) */
 /* END AUTO-GENERATED */
 }
 

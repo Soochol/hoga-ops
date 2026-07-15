@@ -103,17 +103,16 @@ async def test_recv_loop_counts_subscription_acks():
     OPSP0002(ALREADY IN SUBSCRIBE = 서버에 이미 구독됨)는 acked로, 그 외 비-0
     (OPSP0008 등)은 sub_rejected로 센다. sub_acked는 기대 키와의 교집합 크기."""
     ok = '{"header":{"tr_id":"H0STASP0","tr_key":"005930"},"body":{"rt_cd":"0","msg_cd":"OPSP0000","msg1":"SUBSCRIBE SUCCESS"}}'
-    ok2 = '{"header":{"tr_id":"H0STCNT0","tr_key":"005930"},"body":{"rt_cd":"0","msg_cd":"OPSP0000"}}'
-    already = '{"header":{"tr_id":"H0STMBC0","tr_key":"005930"},"body":{"rt_cd":"1","msg_cd":"OPSP0002","msg1":"ALREADY IN SUBSCRIBE"}}'
+    already = '{"header":{"tr_id":"H0STCNT0","tr_key":"005930"},"body":{"rt_cd":"1","msg_cd":"OPSP0002","msg1":"ALREADY IN SUBSCRIBE"}}'
     reject = '{"header":{"tr_id":"H0STASP0","tr_key":"000660"},"body":{"rt_cd":"1","msg_cd":"OPSP0008","msg1":"MAX SUBSCRIBE OVER"}}'
-    fake = FakeWs([ok, ok2, already, reject])
+    fake = FakeWs([ok, already, reject])
     client = KisWsClient(
         approval_key_fn=_fake_approval, on_tick=None, date_fn=lambda: "20260605"
     )
-    client._codes = ["005930"]   # 기대 = 005930 × 3TR
+    client._codes = ["005930"]   # 기대 = 005930 × 2TR(ADR-0111)
     with pytest.raises(ConnectionError):
         await client._recv_loop(fake)
-    assert client.sub_acked == 3      # 3 TR 모두 확인(OPSP0002 포함)
+    assert client.sub_acked == 2      # 2 TR 모두 확인(OPSP0002 포함)
     assert client.sub_rejected == 1   # OPSP0008(실제 거부)
 
 
@@ -171,19 +170,20 @@ async def test_subscription_counters_reset_fields_exist():
     assert client.sub_rejected == 0
 
 
-async def test_subscribe_sends_three_trs_per_code():
+async def test_subscribe_sends_two_trs_per_code():
+    """ADR-0111: 거래원 TR(H0STMBC0)을 WS에서 제외 — 종목당 호가+체결 2 TR만 구독."""
     fake = FakeWs([])
     client = KisWsClient(approval_key_fn=_fake_approval, on_tick=None, date_fn=lambda: "20260605")
     await client._send_subscriptions(fake, "APPR", ["005930", "000660"], tr_type="1")
-    assert len(fake.sent) == 6                  # 2종목 × 3TR
+    assert len(fake.sent) == 4                  # 2종목 × 2TR
     trs = {json.loads(s)["body"]["input"]["tr_id"] for s in fake.sent}
-    assert trs == {"H0STASP0", "H0STCNT0", "H0STMBC0"}
+    assert trs == {"H0STASP0", "H0STCNT0"}
 
 
 async def test_ensure_venue_swaps_trs_unregister_before_register():
     """#524 시분할 스왑: KRX→NXT 전환 시 KRX를 먼저 해제(슬롯 비움)하고 NXT를 등록.
-    unregister-before-register — 연결당 등록 상한 41 준수(ADR-0101: register-first면
-    스왑 찰나 종목당 5 TR로 초과)."""
+    unregister-before-register — 연결당 등록 상한 41 준수(ADR-0101/0111: register-first면
+    스왑 찰나 종목당 4 TR로 초과)."""
     fake = FakeWs([])
     client = KisWsClient(approval_key_fn=_fake_approval, on_tick=None, date_fn=lambda: "20260605")
     client._ws = fake            # 연결 상태 시뮬레이션
@@ -203,7 +203,8 @@ async def test_ensure_venue_swaps_trs_unregister_before_register():
     reg = [f for f in frames if f["header"]["tr_type"] == "1"]
     unreg = [f for f in frames if f["header"]["tr_type"] == "2"]
     assert {f["body"]["input"]["tr_id"] for f in reg} == {"H0NXASP0", "H0NXCNT0"}
-    assert {f["body"]["input"]["tr_id"] for f in unreg} == {"H0STASP0", "H0STCNT0", "H0STMBC0"}
+    # ADR-0111: KRX도 거래원 제외 후 호가+체결 2 TR만(H0STMBC0 없음).
+    assert {f["body"]["input"]["tr_id"] for f in unreg} == {"H0STASP0", "H0STCNT0"}
     # unregister-before-register: 첫 해제 프레임이 첫 등록 프레임보다 앞선다(상한 41 준수).
     first_reg = next(i for i, f in enumerate(frames) if f["header"]["tr_type"] == "1")
     first_unreg = next(i for i, f in enumerate(frames) if f["header"]["tr_type"] == "2")
@@ -279,23 +280,23 @@ async def test_run_reconnects_and_resubscribes_after_failure(monkeypatch):
     )
     task = asyncio.create_task(client.run(["005930", "000660"]))
     for _ in range(100):
-        if len(fake.sent) >= 6:
+        if len(fake.sent) >= 4:
             break
         await asyncio.sleep(0)
-    assert client.sub_expected == 6   # 2종목 × 3TR — 연결 시 설정 핀(line 93)
+    assert client.sub_expected == 4   # 2종목 × 2TR(ADR-0111) — 연결 시 설정 핀(line 93)
     task.cancel()
     with pytest.raises(asyncio.CancelledError):
         await task
 
     assert calls["n"] >= 2  # 1회차 실패 후 백오프 → 재연결
-    # 재연결 성공 시 전 종목 × 3TR 재구독 (tr_type="1")
+    # 재연결 성공 시 전 종목 × 2TR 재구독 (tr_type="1")
     sent = {
         (json.loads(s)["body"]["input"]["tr_id"], json.loads(s)["body"]["input"]["tr_key"])
         for s in fake.sent
     }
     assert sent == {
         (tr, code)
-        for tr in ("H0STASP0", "H0STCNT0", "H0STMBC0")
+        for tr in ("H0STASP0", "H0STCNT0")
         for code in ("005930", "000660")
     }
     assert all(json.loads(s)["header"]["tr_type"] == "1" for s in fake.sent)
@@ -324,18 +325,18 @@ async def test_reconnect_resets_subscription_counters(monkeypatch):
     client.sub_rejected = 7
     task = asyncio.create_task(client.run(["005930", "000660"]))
     for _ in range(100):
-        if len(fake.sent) >= 6:
+        if len(fake.sent) >= 4:
             break
         await asyncio.sleep(0)
     task.cancel()
     with pytest.raises(asyncio.CancelledError):
         await task
     assert client._acked_keys == set()   # 재연결 시 ack 리셋(새 소켓, 아직 무-ACK)
-    # 송신기록은 리셋 후 초기 구독이 새 6키로 다시 스탬프 — 이전 오염 키는 사라졌다.
+    # 송신기록은 리셋 후 초기 구독이 새 4키로 다시 스탬프 — 이전 오염 키는 사라졌다.
     assert ("H0STASP0", "999999") not in client._sub_sent_ms
-    assert len(client._sub_sent_ms) == 6
+    assert len(client._sub_sent_ms) == 4
     assert client.sub_rejected == 0
-    assert client.sub_expected == 6      # 2종목 × 3TR
+    assert client.sub_expected == 4      # 2종목 × 2TR(ADR-0111)
 
 
 async def test_run_does_not_connect_while_gate_closed(monkeypatch):
@@ -404,7 +405,7 @@ async def test_sub_missing_ignores_keys_within_ack_grace():
     for tr in F.TRS_KRX:
         client._sub_sent_ms[(tr, "005930")] = now
     assert client.sub_missing(now + 1_000) == []                      # 유예 안
-    assert len(client.sub_missing(now + _grace() + 1)) == 3           # 유예 후
+    assert len(client.sub_missing(now + _grace() + 1)) == 2           # 유예 후(2TR)
 
 
 async def test_sub_missing_excludes_never_sent_keys():
@@ -454,15 +455,15 @@ async def test_resubscribe_missing_sends_only_missing_keys():
     client._approval = "APPR"
     client._codes = ["005930"]
     now = 1_000_000
-    # ASP0만 acked, 나머지 2개는 오래전 송신 후 미확인(유예 경과).
+    # ASP0만 acked, 나머지(CNT0)는 오래전 송신 후 미확인(유예 경과).
     client._acked_keys.add(("H0STASP0", "005930"))
     for tr in F.TRS_KRX:
         client._sub_sent_ms[(tr, "005930")] = now
     later = now + _grace() + 1
     sent = await client.resubscribe_missing(later)
-    assert sent == 2
+    assert sent == 1
     trs = {json.loads(s)["body"]["input"]["tr_id"] for s in fake.sent}
-    assert trs == {"H0STCNT0", "H0STMBC0"}          # ASP0(acked)은 제외
+    assert trs == {"H0STCNT0"}                       # ASP0(acked)은 제외
     assert all(json.loads(s)["header"]["tr_type"] == "1" for s in fake.sent)
     # 재송신한 키의 송신 시각이 갱신돼 즉시 다시 missing으로 잡히지 않는다.
     assert client.sub_missing(later) == []
@@ -497,15 +498,13 @@ async def test_venue_roundtrip_detects_lost_reregistration():
     # 3) KRX로 복귀 스왑(NXT 해제 → KRX 재등록)
     await client.ensure_venue("KRX")
     assert client.venue == "KRX"
-    # 4) 재등록 ACK 중 ASP0만 도착, CNT0/MBC0는 유실됐다고 가정(_recv_loop 구동)
+    # 4) 재등록 ACK 중 ASP0만 도착, CNT0는 유실됐다고 가정(_recv_loop 구동)
     ack = '{"header":{"tr_id":"H0STASP0","tr_key":"005930"},"body":{"rt_cd":"0"}}'
     with pytest.raises(ConnectionError):
         await client._recv_loop(FakeWs([ack]))
     # 5) 유예 경과 후 유실된 2키가 missing으로 노출 → 헬스가 sub_failed로 잡을 수 있다.
     later = int(time.time() * 1000) + _grace() + 1
-    assert set(client.sub_missing(later)) == {
-        ("H0STCNT0", "005930"), ("H0STMBC0", "005930")
-    }
+    assert set(client.sub_missing(later)) == {("H0STCNT0", "005930")}
 
 
 def _grace() -> int:
@@ -530,15 +529,15 @@ async def test_midbatch_send_failure_leaves_remaining_keys_visible():
             self._left -= 1
             self.sent.append(data)
 
-    fake = FailAfterN(2)   # 3TR 중 2개만 송신 성공
+    fake = FailAfterN(1)   # 2TR 중 1개만 송신 성공
     client = KisWsClient(
         approval_key_fn=_fake_approval, on_tick=None, date_fn=lambda: "20260605"
     )
     client._codes = ["005930"]
     with pytest.raises(ConnectionError):
         await client._send_subscriptions(fake, "APPR", ["005930"], tr_type="1")
-    assert len(fake.sent) == 2
-    # 미송신 3번째 키까지 전부 스탬프됨 → 유예 후 3키 모두 missing(ACK가 없으므로).
-    assert len(client._sub_sent_ms) == 3
+    assert len(fake.sent) == 1
+    # 미송신 2번째 키까지 전부 스탬프됨 → 유예 후 2키 모두 missing(ACK가 없으므로).
+    assert len(client._sub_sent_ms) == 2
     later = int(time.time() * 1000) + _grace() + 1
-    assert len(client.sub_missing(later)) == 3
+    assert len(client.sub_missing(later)) == 2

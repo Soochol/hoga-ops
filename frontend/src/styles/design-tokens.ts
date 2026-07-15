@@ -31,6 +31,15 @@
  * Tokens that don't match any prefix fail the generator's name-check.
  */
 
+/**
+ * Rendered root font-size (px) at default density — MUST mirror the scale
+ * dial (`:root { font-size }`) in tokens.css. The generator uses it for
+ * "rendered @ default" comments/tables; `util/chartScale.ts` derives the
+ * canvas font/offset from it (lightweight-charts can't read CSS rem).
+ * 18px = 1.125× of the 16px base intent (2026-07-15, was 20px = 1.25×).
+ */
+export const RENDERED_ROOT_PX = 18;
+
 export type SizeToken = Readonly<{
   /** rem value emitted into CSS. Single source of truth for size. */
   rem: number;
@@ -79,6 +88,7 @@ export const SIZE_TOKENS = {
   'h-capture-row':      { rem: 2.25,    baseIntentPx: 36, usage: 'Single row in the capture queue' },
   'h-live-header':      { rem: 2,       baseIntentPx: 32, usage: 'Live page header row' },
   'h-top-nav':          { rem: 2,       baseIntentPx: 32, usage: 'Global top navigation row' },
+  'h-bottom-bar':       { rem: 1.5,     baseIntentPx: 24, usage: 'Global market-index bottom bar row' },
 
   // ── layout — widths ───────────────────────────────────────────
   'sidebar-w':          { rem: 20,      baseIntentPx: 320, usage: 'Cursor sidebar on the right of replay viewer' },

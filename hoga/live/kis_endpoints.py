@@ -97,6 +97,20 @@ class IndexCandleFetchResult:
 
 
 @dataclass(frozen=True)
+class IndexQuoteSnapshot:
+    """국내업종 현재지수 1건 (FHPUP02100000) — 하단 시장지표 바 용.
+
+    change/change_rate 는 부호 정규화 완료값 (KRX 하락 = 음수).
+    t_ms 는 fetch 시각(epoch ms) — KIS 응답에 체결 시각이 없어 수신 시각으로 대체.
+    """
+    index_id: str
+    value: float
+    change: float
+    change_rate: float
+    t_ms: int
+
+
+@dataclass(frozen=True)
 class KisQuote:
     """One row of intstock-multprice (현재가 + 등락률 + 전일대비 등락액 + 당일 OHLCV) for a Code."""
     code: str
@@ -672,6 +686,50 @@ class KisEndpointsMixin:
 
         candles.sort(key=lambda c: c.t_ms)
         return IndexCandleFetchResult(candles=candles, violations=violations)
+
+    async def fetch_index_price(
+        self,
+        index: RepresentativeIndex,
+        *,
+        foreground: bool = False,
+    ) -> IndexQuoteSnapshot:
+        """국내업종 현재지수 1건 (TR FHPUP02100000, inquire-index-price).
+
+        output 필드는 공식 레포 COLUMN_MAPPING 기준: bstp_nmix_prpr(현재지수)·
+        bstp_nmix_prdy_vrss(전일대비)·prdy_vrss_sign(1상한/2상승/3보합/4하한/5하락)·
+        bstp_nmix_prdy_ctrt(등락률). 전일대비/등락률은 TR에 따라 부호가 이미 실려
+        오기도 하므로, 부호 코드가 하락(4/5)일 때만 음수로 강제하고 보합(3)은 0으로
+        정규화한다 — 이중 부호 적용을 피하는 방어.
+        """
+        if index.kis_index_code is None:
+            raise KisApiError(msg_cd="UNSUPPORTED_INDEX", msg1=f"{index.id} has no KIS index code")
+        body = await self._get(
+            path="/uapi/domestic-stock/v1/quotations/inquire-index-price",
+            tr_id="FHPUP02100000",
+            params={
+                "FID_COND_MRKT_DIV_CODE": "U",
+                "FID_INPUT_ISCD": index.kis_index_code,
+            },
+            foreground=foreground,
+        )
+        output = body.get("output") or {}
+        value = float(_row_value(output, "bstp_nmix_prpr", "prpr"))
+        change = float(_row_value(output, "bstp_nmix_prdy_vrss", "prdy_vrss"))
+        change_rate = float(_row_value(output, "bstp_nmix_prdy_ctrt", "prdy_ctrt"))
+        sign = str(output.get("prdy_vrss_sign") or "")
+        if sign in ("4", "5"):
+            change = -abs(change)
+            change_rate = -abs(change_rate)
+        elif sign == "3":
+            change = 0.0
+            change_rate = 0.0
+        return IndexQuoteSnapshot(
+            index_id=index.id,
+            value=value,
+            change=change,
+            change_rate=change_rate,
+            t_ms=int(datetime.now(KIS_KST).timestamp() * 1000),
+        )
 
     async def fetch_index_minute_candles(
         self,

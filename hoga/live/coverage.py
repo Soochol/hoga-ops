@@ -13,11 +13,12 @@ from .ws_fields import TRS
 
 _log = logging.getLogger(__name__)
 
-# 연결당 등록 상한은 실측 41(OPSP0008, 2026-07-10; ADR-0101). 39 = 13종목×3TR로
-# 상한 아래 여유 2. 스왑 점유도 unregister-first라 종목당 3(=39)을 넘지 않는다(ADR-0101).
+# 연결당 등록 상한은 실측 41(OPSP0008, 2026-07-10; ADR-0101). ADR-0111에서 거래원 TR을
+# 빼 종목당 2 TR이 되어 39 = 19종목×2TR + 여유 1(상한 41 아래 여유 2). 스왑 점유도
+# unregister-first라 종목당 2를 넘지 않는다(ADR-0101/0111).
 KIS_WS_MAX_REGISTRATIONS = 39
 TRS_PER_CODE = len(TRS)
-_PER_ACCOUNT_MAX = KIS_WS_MAX_REGISTRATIONS // TRS_PER_CODE  # = 13
+_PER_ACCOUNT_MAX = KIS_WS_MAX_REGISTRATIONS // TRS_PER_CODE  # = 19
 LIVE_SET_MAX_CODES = _PER_ACCOUNT_MAX
 
 

@@ -26,6 +26,11 @@ import { INTER_SEGMENT_GAP_MS } from '../util/time';
 import { realMsToVirtualSeconds } from './viewportAnchor';
 import type { RangeBundle } from '../api/types';
 import { useChartPrefsStore } from '../state/chartPrefs';
+import { CHART_TIMESCALE_OPTIONS } from '../util/chartScale';
+
+/** 일봉 윈도잉 산식은 rightOffset(밀도 파생)을 더한다 — 기대값을 상수에서 유도해
+ *  밀도 다이얼 변경 시 테스트가 마법수로 깨지지 않게 한다. */
+const RIGHT_OFFSET = CHART_TIMESCALE_OPTIONS.rightOffset ?? 0;
 
 vi.mock('lightweight-charts', async () => {
   const mod = await vi.importActual<typeof import('lightweight-charts')>('lightweight-charts');
@@ -882,7 +887,7 @@ describe('LiveChartRoot', () => {
       { wrapper },
     );
     expect(ts.fitContent).not.toHaveBeenCalled();
-    expect(ts.setVisibleLogicalRange).toHaveBeenLastCalledWith({ from: 0, to: 29 });
+    expect(ts.setVisibleLogicalRange).toHaveBeenLastCalledWith({ from: 0, to: 14 + RIGHT_OFFSET });
     expect(ts.scrollToPosition).not.toHaveBeenCalled();
 
     rerender(
@@ -897,7 +902,7 @@ describe('LiveChartRoot', () => {
     // Count growth from placeholder/extension must re-window so the extended
     // daily history stays legible instead of letting fitContent settle twice.
     expect(ts.fitContent).not.toHaveBeenCalled();
-    expect(ts.setVisibleLogicalRange).toHaveBeenLastCalledWith({ from: 37, to: 265 });
+    expect(ts.setVisibleLogicalRange).toHaveBeenLastCalledWith({ from: 250 + RIGHT_OFFSET - 228, to: 250 + RIGHT_OFFSET });
 
     rerender(
       <LiveChartRoot
@@ -911,7 +916,7 @@ describe('LiveChartRoot', () => {
     // Shrink still re-windows; otherwise a placeholder/wider previous calendar
     // response can leave the D chart at stale spacing.
     expect(ts.fitContent).not.toHaveBeenCalled();
-    expect(ts.setVisibleLogicalRange).toHaveBeenLastCalledWith({ from: 0, to: 95 });
+    expect(ts.setVisibleLogicalRange).toHaveBeenLastCalledWith({ from: 0, to: 80 + RIGHT_OFFSET });
   });
 
   it('D timeframe: caps a long daily history by pane width so bodies do not collapse', () => {
@@ -934,7 +939,7 @@ describe('LiveChartRoot', () => {
     expect(ts.fitContent).not.toHaveBeenCalled();
     // 628px / 3.5px = 179 logical bars. fitContent would ask lightweight-charts
     // to settle all 464 daily bars, which is the visible jump users report.
-    expect(ts.setVisibleLogicalRange).toHaveBeenLastCalledWith({ from: 300, to: 479 });
+    expect(ts.setVisibleLogicalRange).toHaveBeenLastCalledWith({ from: 464 + RIGHT_OFFSET - 179, to: 464 + RIGHT_OFFSET });
   });
 
   it('D timeframe: re-applies the daily window after an initially narrow time scale width', () => {
@@ -968,7 +973,7 @@ describe('LiveChartRoot', () => {
       />,
     );
 
-    expect(ts.setVisibleLogicalRange).toHaveBeenLastCalledWith({ from: 0, to: 75 });
+    expect(ts.setVisibleLogicalRange).toHaveBeenLastCalledWith({ from: 0, to: 60 + RIGHT_OFFSET });
   });
 
   it('D timeframe: keeps the daily viewport contiguous when raw segment dates are sparse', () => {
@@ -990,7 +995,7 @@ describe('LiveChartRoot', () => {
       { wrapper },
     );
 
-    expect(ts.setVisibleLogicalRange).toHaveBeenLastCalledWith({ from: 0, to: 75 });
+    expect(ts.setVisibleLogicalRange).toHaveBeenLastCalledWith({ from: 0, to: 60 + RIGHT_OFFSET });
   });
 
   it('D timeframe: captures the actual live-edge viewport without daily clamping', () => {
@@ -2685,7 +2690,7 @@ describe('LiveChartRoot historical-prepend viewport preservation', () => {
     );
 
     expect(ts.fitContent).not.toHaveBeenCalled();
-    expect(ts.setVisibleLogicalRange).toHaveBeenLastCalledWith({ from: 300, to: 479 });
+    expect(ts.setVisibleLogicalRange).toHaveBeenLastCalledWith({ from: 464 + RIGHT_OFFSET - 179, to: 464 + RIGHT_OFFSET });
     expect(ts.scrollToPosition).not.toHaveBeenCalled();
   });
 
@@ -3972,7 +3977,7 @@ describe('LiveChartRoot per-view chart remount (cross-view staleness guard)', ()
     // The D initial viewport must land on chart B — with the unkeyed chart
     // state it fired on the removed chart A and B received ZERO viewport calls.
     expect(b.ts.fitContent).not.toHaveBeenCalled();
-    expect(b.ts.setVisibleLogicalRange).toHaveBeenLastCalledWith({ from: 0, to: 16 });
+    expect(b.ts.setVisibleLogicalRange).toHaveBeenLastCalledWith({ from: 0, to: 1 + RIGHT_OFFSET });
   });
 });
 

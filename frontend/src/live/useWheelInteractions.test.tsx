@@ -5,6 +5,10 @@ import type { IChartApi } from 'lightweight-charts';
 import type { RangeBundle } from '../api/types';
 import type { VirtualAxis } from '../util/virtualAxis';
 import { useWheelInteractions } from './useWheelInteractions';
+import { CHART_TIMESCALE_OPTIONS } from '../util/chartScale';
+
+// 오른쪽 벽 = 마지막 캔들 + rightOffset(밀도 파생) — 기대값을 상수에서 유도.
+const RIGHT_OFFSET = CHART_TIMESCALE_OPTIONS.rightOffset ?? 0;
 
 // 훅이 실제로 사용하는 timeScale 표면만 흉내 낸다. 테스트별로 필요한
 // 메서드만 override. width 1000 × minBarSpacing 0.5 → maxSpan 2000:
@@ -240,7 +244,7 @@ describe('useWheelInteractions', () => {
 
   it('bundle 교체 시 마지막 캔들 ms는 ref로 갱신 — 리스너 재부착 없음', () => {
     // timeToIndex mock = makeBundle의 ts_ms 공식 역산 → 캔들 인덱스(100개→99,
-    // 50개→49). maxTo = trueLast + rightOffset(15). bundle 교체가 lastMsRef를
+    // 50개→49). maxTo = trueLast + rightOffset. bundle 교체가 lastMsRef를
     // 갱신하므로 이벤트 시점 변환이 새 캔들(49)을 반영해야 한다.
     const BASE = 1_780_000_000_000;
     const ts = makeTs({
@@ -256,11 +260,12 @@ describe('useWheelInteractions', () => {
     rerender(<Harness chart={chart} bundle={makeBundle(50)} axis={axis} />); // trueLast 99 → 49
     // 재부착 없음: bundle 교체가 addEventListener('wheel', ...)를 다시 부르지 않는다.
     expect(addSpy.mock.calls.filter(([type]) => type === 'wheel')).toHaveLength(0);
-    // 이벤트 시점 변환: trueLast 49 → maxTo 64(=49+15). range {0,100}, step +10 →
-    // newTo 110 > 64 → 클램프 {from: -36, to: 64}. 교체 전 trueLast(99→maxTo 114)가
-    // 스테일하면 110 < 114라 클램프 미발동 {from:10, to:110}으로 실패한다.
+    // 이벤트 시점 변환: trueLast 49 → maxTo 49+rightOffset. range {0,100}, step +10 →
+    // newTo 110 > maxTo → 클램프 {from: maxTo-100, to: maxTo}. 교체 전 trueLast(99)가
+    // 스테일하면 110 < 99+rightOffset라 클램프 미발동 {from:10, to:110}으로 실패한다.
     wheel(host, { deltaY: 100, shiftKey: true });
-    expect(ts.setVisibleLogicalRange).toHaveBeenCalledWith({ from: -36, to: 64 });
+    const MAX_TO = 49 + RIGHT_OFFSET;
+    expect(ts.setVisibleLogicalRange).toHaveBeenCalledWith({ from: MAX_TO - 100, to: MAX_TO });
   });
 
   it('shift wheel: supplied right-offset policy owns the live-edge wall', () => {
