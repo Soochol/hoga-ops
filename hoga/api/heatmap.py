@@ -32,7 +32,7 @@ from hoga.api.watchlist import _mint_folder_id  # shared pure helper (ADR-0068 G
 
 log = logging.getLogger(__name__)
 
-# v2→v3 마이그레이션에서 folder_id=null(구 미분류) 종목을 수용하는 실폴더 (ADR-0111).
+# v2→v3 마이그레이션에서 folder_id=null(구 미분류) 종목을 수용하는 실폴더 (ADR-0112).
 # 결정론적 id — load 는 디스크에 쓰지 않으므로(다음 mutation 이 저장) 랜덤 id 면
 # 로드마다 id 가 바뀌어 프론트 접기상태(폴더 id 키)가 흔들린다. watchlist v3 의
 # _DEFAULT_FOLDER_ID 와 같은 값이지만 별개 문서 스코프(문서 간 id 공유는 무해 — G5).
@@ -59,7 +59,7 @@ def _migrate(raw: dict) -> dict:
     """Normalise any on-disk shape to a v3 dict, repairing (not wiping) drift.
     Mirrors watchlist._migrate (ADR-0065 governance applied independently).
 
-    v3 (ADR-0111): folder_id is required. A folder-less entry (v1/v2 미분류,
+    v3 (ADR-0112): folder_id is required. A folder-less entry (v1/v2 미분류,
     or a v3 entry whose folder id dangles) is rescued into the 미분류 REAL
     folder (_UNCAT_FOLDER_ID) — an ordinary folder thereafter (renamable,
     deletable, never auto-recreated). If that id already exists (heatmap.json
@@ -109,7 +109,7 @@ def _reindex(doc: HeatmapDocument) -> HeatmapDocument:
 
 
 def load_document(data_dir: Path) -> HeatmapDocument:
-    """Read heatmap.json as a v2 HeatmapDocument. Missing → empty doc.
+    """Read heatmap.json as a v3 HeatmapDocument. Missing → empty doc.
     Genuine corruption → backup + empty (never crash/wipe on read, ADR-0065);
     an unrecognised future version raises UnsupportedHeatmapSchema (loud)."""
     p = _path(data_dir)
@@ -131,7 +131,7 @@ def load_document(data_dir: Path) -> HeatmapDocument:
 
 
 def save_document(data_dir: Path, doc: HeatmapDocument) -> None:
-    """Atomic write of the WHOLE v2 document. The only write path."""
+    """Atomic write of the WHOLE v3 document. The only write path."""
     atomic_write_json(_path(data_dir), _reindex(doc).model_dump())
 
 
@@ -202,7 +202,7 @@ async def add_entry_to_folder(
     folder_id: str,
 ) -> HeatmapEntry:
     """Add code to the Heatmap placed in folder_id — the ONLY add command
-    (v3, ADR-0111: every entry needs a real folder, so a folder-less add_entry
+    (v3, ADR-0112: every entry needs a real folder, so a folder-less add_entry
     no longer exists).
 
     If the code already exists, this moves the existing entry to folder_id
@@ -270,7 +270,7 @@ async def rename_folder(data_dir: Path, *, folder_id: str, name: str) -> None:
 
 
 async def delete_folder(data_dir: Path, *, folder_id: str) -> None:
-    """Delete the folder AND its member entries (v3, ADR-0111 — destructive,
+    """Delete the folder AND its member entries (v3, ADR-0112 — destructive,
     watchlist delete_folder semantics; there is no 미분류 to reparent into).
     The UI confirms before calling when the folder has members; this function
     itself is the committed delete. Callers must resync storage targets — the

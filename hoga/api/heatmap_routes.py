@@ -7,10 +7,10 @@ The Heatmap is an independent monitoring list (ADR-0068). This router mirrors
 Since ADR-0097 the heatmap DOES feed the REST 30s recorder (never the KIS WS
 subscription — heatmap codes are REST-only extras), so every route that can
 change the entry SET calls ``refresh_live_stream`` to resync storage targets —
-including delete-folder, which since v3 (ADR-0111) deletes the folder's member
+including delete-folder, which since v3 (ADR-0112) deletes the folder's member
 entries too. Folder-shape routes (rename/reorder/move) leave the set intact
 and stay hook-free.
-v3 (ADR-0111): there is no 미분류 — the only add surface is the folder-scoped
+v3 (ADR-0112): there is no 미분류 — the only add surface is the folder-scoped
 member add (POST /folders/{id}/members); the folder-less POST "" is gone.
 """
 from __future__ import annotations
@@ -146,7 +146,7 @@ def build_router(*, data_dir: Path) -> APIRouter:  # noqa: PLR0915
         except FolderNotFoundError as e:
             raise HTTPException(status_code=404, detail={
                 "code": "folder_not_found", "message": f"Folder {folder_id} not found."}) from e
-        # v3 (ADR-0111): 폴더 삭제는 멤버 종목도 함께 지우므로 entry SET 이 줄어들 수
+        # v3 (ADR-0112): 폴더 삭제는 멤버 종목도 함께 지우므로 entry SET 이 줄어들 수
         # 있다 → REST 30s 수집 대상 재동기화(ADR-0097). 멤버 0 폴더면 no-op 에 가깝다.
         await _refresh_storage_targets(data_dir, op="delete_folder")
 

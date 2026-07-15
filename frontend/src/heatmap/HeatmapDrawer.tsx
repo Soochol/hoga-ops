@@ -236,7 +236,7 @@ function GroupHeader(props: {
                 <span className="w-4 grid place-items-center"><ArrowDownIcon /></span> 아래로 이동
               </button>
               <div role="separator" className="my-1 border-t border-border" />
-              {/* v3 (ADR-0111): 그룹 삭제는 파괴적(멤버 종목도 함께 삭제) — watchlist 와
+              {/* v3 (ADR-0112): 그룹 삭제는 파괴적(멤버 종목도 함께 삭제) — watchlist 와
                   동일하게 호출측(deleteFolderWithConfirm)이 멤버가 있으면 confirm 을 띄운다. */}
               <button type="button" role="menuitem"
                 onClick={() => { setMenuOpen(false); props.onDelete?.(); }}
@@ -277,7 +277,7 @@ const POP_W = 320;
 /** 종목 검색 팝오버 (controlled) — 마운트되면 열린 상태. anchorRef 우하단 기준 우측정렬 후
  *  useClampedFixedPosition 으로 뷰포트 보정, createPortal 로 body 에 fixed(드로어 overflow
  *  탈출). 선택+추가 시 onAdd(code, folderId) 후 onClose; 바깥 클릭·Escape 로도 onClose.
- *  헤더 "종목 추가"(folders 전달 → 그룹 선택 셀렉트 표시, v3 는 그룹 필수 — ADR-0111)와
+ *  헤더 "종목 추가"(folders 전달 → 그룹 선택 셀렉트 표시, v3 는 그룹 필수 — ADR-0112)와
  *  그룹 ⋯ 메뉴 "종목 추가"(folders 미전달 — 그 그룹으로 고정)가 공유. */
 function SymbolAddPopover({ anchorRef, onClose, onAdd, pending, folders }: {
   anchorRef: React.RefObject<HTMLElement | null>;
@@ -310,7 +310,7 @@ function SymbolAddPopover({ anchorRef, onClose, onAdd, pending, folders }: {
       window.removeEventListener('keydown', onKey);
     };
   }, [anchorRef, popRef, onClose]);
-  // folders 모드에서 그룹 미선택(빈 배열)이면 추가 불가 — v3 는 그룹 필수(ADR-0111).
+  // folders 모드에서 그룹 미선택(빈 배열)이면 추가 불가 — v3 는 그룹 필수(ADR-0112).
   const needsFolder = folders !== undefined;
   const canSubmit = !!picked && !pending && (!needsFolder || folderId !== '');
   const submit = async () => {
@@ -350,7 +350,7 @@ function SymbolAddPopover({ anchorRef, onClose, onAdd, pending, folders }: {
 }
 
 /** 드로어 헤더 "종목 추가" — SymbolAddPopover(그룹 셀렉트 포함) → 지정 그룹으로 추가.
- *  v3 (ADR-0111): 미분류가 없으므로 헤더 추가도 그룹을 고른다(기본=첫 그룹). */
+ *  v3 (ADR-0112): 미분류가 없으므로 헤더 추가도 그룹을 고른다(기본=첫 그룹). */
 function HeaderAddButton({ folders }: { folders: { id: string; name: string }[] }) {
   const [open, setOpen] = useState(false);
   const { addToFolder, isPending } = useAddToFolder();
@@ -460,9 +460,12 @@ export function HeatmapDrawer() {
     setMenu({ x: e.clientX, y: e.clientY, code, name, folderId });
   };
 
-  // v3 (ADR-0111): 그룹 삭제는 멤버 종목까지 지운다 — 멤버가 있으면 watchlist 와 같은
-  // 문법으로 confirm(빈 그룹은 즉시 삭제).
-  const deleteFolderWithConfirm = (folderId: string, name: string, memberCount: number) => {
+  // v3 (ADR-0112): 그룹 삭제는 멤버 종목까지 지운다 — 멤버가 있으면 watchlist 와 같은
+  // 문법으로 confirm(빈 그룹은 즉시 삭제). 종목 수는 반드시 **필터 전 원본**(data.entries)
+  // 에서 센다 — 화면 그룹(visibleGroups)은 검색 중 filterGroups 가 매칭 행만 남긴 부분집합이라
+  // 그 length 를 쓰면 confirm 이 실제보다 적은 수를 알리고도 전체를 지운다.
+  const deleteFolderWithConfirm = (folderId: string, name: string) => {
+    const memberCount = data?.entries.filter((e) => e.folder_id === folderId).length ?? 0;
     if (memberCount > 0 &&
         !window.confirm(`'${name}' 그룹과 종목 ${memberCount}개가 함께 삭제됩니다. 계속할까요?`)) {
       return;
@@ -565,7 +568,7 @@ export function HeatmapDrawer() {
                     avg={avgPct(g.entries, pctOf)}
                     onToggle={() => toggle(key)}
                     onRename={() => setRenameTarget({ id: folder.id, name: folder.name })}
-                    onDelete={() => deleteFolderWithConfirm(folder.id, folder.name, g.entries.length)}
+                    onDelete={() => deleteFolderWithConfirm(folder.id, folder.name)}
                     onMoveUp={() => moveFolder(folder.id, -1)}
                     onMoveDown={() => moveFolder(folder.id, +1)}
                     canMoveUp={canMoveGroups && gi > 0}

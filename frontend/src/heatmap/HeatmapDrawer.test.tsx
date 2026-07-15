@@ -177,7 +177,7 @@ describe('HeatmapDrawer', () => {
       expect(api.reorderHeatmapFolders).toHaveBeenCalledWith(['f2', 'f1', 'f3']));
   });
 
-  it('멤버 있는 그룹 삭제는 confirm 후 진행, 취소하면 삭제 안 함 (v3, ADR-0111)', async () => {
+  it('멤버 있는 그룹 삭제는 confirm 후 진행, 취소하면 삭제 안 함 (v3, ADR-0112)', async () => {
     const confirmSpy = vi.spyOn(window, 'confirm');
     wrap(<HeatmapDrawer />);
     await screen.findByRole('button', { name: '반도체 1' });
@@ -194,6 +194,20 @@ describe('HeatmapDrawer', () => {
     fireEvent.click(screen.getByRole('button', { name: '반도체 그룹 메뉴' }));
     fireEvent.click(screen.getByRole('menuitem', { name: /그룹 삭제/ }));
     await waitFor(() => expect(api.deleteHeatmapFolder).toHaveBeenCalledWith('f2'));
+    confirmSpy.mockRestore();
+  });
+
+  it('검색 필터 중 삭제 confirm 의 종목 수는 필터 전 전체 멤버 수다', async () => {
+    const confirmSpy = vi.spyOn(window, 'confirm').mockReturnValue(false);
+    wrap(<HeatmapDrawer />);
+    await screen.findByTestId('heatmap-drawer-row-000001');
+    // '에코' 검색 → 2차전지(f1, 멤버 2)에서 에코프로 1행만 화면에 남는다.
+    fireEvent.change(screen.getByTestId('heatmap-drawer-search'), { target: { value: '에코' } });
+    await waitFor(() => expect(screen.queryByTestId('heatmap-drawer-row-000002')).toBeNull());
+    fireEvent.click(screen.getByRole('button', { name: '2차전지 그룹 메뉴' }));
+    fireEvent.click(screen.getByRole('menuitem', { name: /그룹 삭제/ }));
+    // confirm 은 화면에 보이는 1개가 아니라 실제 삭제될 2개를 알려야 한다.
+    expect(confirmSpy).toHaveBeenCalledWith(expect.stringContaining('종목 2개'));
     confirmSpy.mockRestore();
   });
 

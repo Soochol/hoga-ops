@@ -2,7 +2,7 @@ import type { HeatmapEntry, HeatmapFolder } from '../api/heatmap';
 import type { LiveQuote } from '../api/liveQuotes';
 import { makeChangePctOf, sortEntriesByChangePct, type QuoteSortMode } from '../rightrail/quoteSort';
 
-/** 히트맵 그룹 = 실폴더 + 소속 종목. v3 (ADR-0111): folder 는 항상 non-null —
+/** 히트맵 그룹 = 실폴더 + 소속 종목. v3 (ADR-0112): folder 는 항상 non-null —
  *  미분류(render-only null 그룹, 구 ADR-0068 G3)는 존재하지 않는다. watchlist 의
  *  FolderGroup(folder: … | null)과 구분되는 히트맵 전용 모양. */
 export interface HeatmapGroup {

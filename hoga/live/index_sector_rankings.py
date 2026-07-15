@@ -78,7 +78,7 @@ def _entry_groups(
         grouped.setdefault(entry.folder_id, []).append(entry)
     rows: list[tuple[str, str, int, list[HeatmapEntry]]] = []
     for folder_id, group_entries in grouped.items():
-        # v3 (ADR-0111): folder_id 는 항상 실폴더(load_document 가 dangling 복구) —
+        # v3 (ADR-0112): folder_id 는 항상 실폴더(load_document 가 dangling 복구) —
         # 이름 결측은 방어적 폴백으로 id 를 그대로 노출(미분류 render-group 은 폐지).
         name = folder_names.get(folder_id, folder_id)
         order = folder_orders.get(folder_id, 1_000_000)

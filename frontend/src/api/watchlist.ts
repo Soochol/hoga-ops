@@ -16,7 +16,7 @@ export interface WatchlistEntry {
   registered_at_kst_date: string;  // YYYYMMDD
   last_success_date: string | null;
   folder_id: string | null;        // watchlist v3 와이어는 항상 실폴더(null 없음, ADR-0070);
-                                   // heatmap 도 v3 부터 자체 HeatmapEntry(비-null)를 쓴다(ADR-0111)
+                                   // heatmap 도 v3 부터 자체 HeatmapEntry(비-null)를 쓴다(ADR-0112)
                                    // — null 은 grouping.ts 제네릭 하위호환으로만 남아 있다
   order: number;                   // 0-based, 폴더 내 인덱스
   capture_candidate?: boolean;     // code-level: any capture-enabled watchlist membership

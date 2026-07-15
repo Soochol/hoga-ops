@@ -1,12 +1,12 @@
-"""Heatmap independent-store + route tests (ADR-0068, amended by ADR-0097/0111).
+"""Heatmap independent-store + route tests (ADR-0068, amended by ADR-0097/0112).
 
 Mirrors the watchlist suite but asserts the SEPARATION invariants:
   - the heatmap store/routes never touch watchlist.json;
   - HeatmapEntry carries no capture fields;
   - entry-SET mutations resync storage targets (ADR-0097) while folder-shape
     mutations (rename/reorder/move) do not — delete-folder resyncs since v3
-    (it deletes member entries too, ADR-0111);
-  - v3 (ADR-0111): folder_id is required (no 미분류 null group) — folder
+    (it deletes member entries too, ADR-0112);
+  - v3 (ADR-0112): folder_id is required (no 미분류 null group) — folder
     delete is destructive, and v1/v2 folder-less entries migrate into a real
     '미분류' folder (f_00000000);
   - the one-time seed copies the watchlist (capture-stripped) only when
@@ -81,7 +81,7 @@ async def test_add_and_remove_entry(tmp_path: Path):
 
 @pytest.mark.asyncio
 async def test_delete_folder_deletes_members(tmp_path: Path):
-    """v3 (ADR-0111): folder delete is destructive — the folder AND its member
+    """v3 (ADR-0112): folder delete is destructive — the folder AND its member
     entries disappear; nothing is reparented (no 미분류)."""
     from hoga.api import heatmap
     f = await heatmap.create_folder(tmp_path, name="반도체")
@@ -105,7 +105,7 @@ async def test_reorder_set_mismatch_raises(tmp_path: Path):
         await heatmap.reorder_entries(tmp_path, folder_id=f.id, ordered_codes=["005930"])
 
 
-# --- store: v2 → v3 migration (ADR-0111) ------------------------------------
+# --- store: v2 → v3 migration (ADR-0112) ------------------------------------
 
 def _write_v2(tmp_path: Path, *, folders: list[dict], entries: list[dict]) -> None:
     import json
@@ -153,6 +153,22 @@ def test_migrate_v2_merges_into_existing_f00000000(tmp_path: Path):
     by_code = {e.code: e for e in doc.entries}
     assert by_code["035720"].folder_id == "f_00000000"
     assert by_code["005930"].order < by_code["035720"].order
+
+
+def test_migrate_v1_folderless_file_rescues_all_entries(tmp_path: Path):
+    """v1 (no schema_version, no folders key) — every entry is folder-less, so
+    all land in the 미분류 real folder preserving file order."""
+    import json
+    (tmp_path / "heatmap.json").write_text(json.dumps({"entries": [
+        {"code": "005930", "name": "삼성전자"},
+        {"code": "035720", "name": "카카오"},
+    ]}, ensure_ascii=False), encoding="utf-8")
+    from hoga.api.heatmap import load_document
+    doc = load_document(tmp_path)
+    assert doc.schema_version == 3
+    assert [(f.id, f.name) for f in doc.folders] == [("f_00000000", "미분류")]
+    assert [(e.code, e.folder_id, e.order) for e in doc.entries] == [
+        ("005930", "f_00000000", 0), ("035720", "f_00000000", 1)]
 
 
 def test_migrate_v2_without_nulls_is_clean_version_bump(tmp_path: Path):
@@ -214,7 +230,7 @@ def test_heatmap_folder_wire_drops_member_codes(tmp_path: Path):
 
 
 def test_folderless_post_route_is_gone(tmp_path: Path):
-    """v3 (ADR-0111): the folder-less POST /api/heatmap no longer exists —
+    """v3 (ADR-0112): the folder-less POST /api/heatmap no longer exists —
     the only add surface is the folder-scoped member add."""
     r = TestClient(_app(tmp_path)).post("/api/heatmap", json={"code": "003490"})
     assert r.status_code == 405
@@ -340,7 +356,7 @@ def test_folder_member_add_rejects_missing_folder_without_adding_code(tmp_path: 
 # --- separation invariants --------------------------------------------------
 
 def test_entry_set_mutations_resync_storage_targets(tmp_path: Path, stub_refresh_live_stream):
-    """ADR-0097 (amended by ADR-0111): every route that can change the entry
+    """ADR-0097 (amended by ADR-0112): every route that can change the entry
     SET — member add, delete, bulk remove, and folder delete (which deletes
     members too) — resyncs storage targets so the REST 30s recorder follows."""
     client = TestClient(_app(tmp_path))

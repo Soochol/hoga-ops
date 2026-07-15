@@ -1,4 +1,4 @@
-# 0111 — 히트맵 미분류(null 그룹) 폐지: folder_id 필수 + 파괴적 그룹 삭제 (heatmap.json v3)
+# 0112 — 히트맵 미분류(null 그룹) 폐지: folder_id 필수 + 파괴적 그룹 삭제 (heatmap.json v3)
 
 **Status:** accepted (2026-07-15)
 

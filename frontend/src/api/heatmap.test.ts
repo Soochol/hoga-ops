@@ -31,7 +31,7 @@ describe('heatmap api client (independent of watchlist, ADR-0068)', () => {
     expect('next_run_at_ms' in r).toBe(false);
   });
 
-  it('exposes no folder-less add (v3, ADR-0111 — the only add is folder-scoped)', async () => {
+  it('exposes no folder-less add (v3, ADR-0112 — the only add is folder-scoped)', async () => {
     const mod = await import('./heatmap');
     expect('addToHeatmap' in mod).toBe(false);
   });

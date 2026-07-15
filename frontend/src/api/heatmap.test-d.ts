@@ -15,7 +15,7 @@ const _heatmapEntry: HeatmapEntry = {
 };
 void _heatmapEntry;
 
-// v3 (ADR-0111): folder_id 는 실폴더 필수 — null(구 미분류)은 타입 오류다.
+// v3 (ADR-0112): folder_id 는 실폴더 필수 — null(구 미분류)은 타입 오류다.
 const _heatmapEntryNullFolder: HeatmapEntry = {
   code: '005930',
   name: '삼성전자',

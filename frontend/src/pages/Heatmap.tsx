@@ -80,7 +80,7 @@ export function Heatmap() {
   if (isLoading) return <HeatmapStateShell>히트맵 불러오는 중…</HeatmapStateShell>;
   if (error) return <HeatmapStateShell tone="error">히트맵을 불러오지 못했습니다.</HeatmapStateShell>;
   // 그룹이 하나라도 있으면 일반 페이지를 렌더 — v3 는 그룹이 있어야 종목을 추가할 수
-  // 있으므로(ADR-0111), "그룹만 있고 종목 0" 상태에서 ＋새 그룹·툴바가 막히면 안 된다.
+  // 있으므로(ADR-0112), "그룹만 있고 종목 0" 상태에서 ＋새 그룹·툴바가 막히면 안 된다.
   if (entries.length === 0 && folders.length === 0) {
     return <HeatmapStateShell>히트맵이 비어 있습니다.</HeatmapStateShell>;
   }
