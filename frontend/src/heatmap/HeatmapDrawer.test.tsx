@@ -8,8 +8,7 @@ import type { HeatmapResponse } from '../api/heatmap';
 //     드로어 변경이 진짜 mutation fn 을 호출하는지(→ /heatmap 페이지 동기화의 근거)까지 확인. ---
 const api = vi.hoisted(() => ({
   getHeatmap: vi.fn<() => Promise<HeatmapResponse>>(),
-  addToHeatmap: vi.fn(() => Promise.resolve({ code: '', name: '', folder_id: null, order: 0 })),
-  addToHeatmapFolder: vi.fn(() => Promise.resolve({ code: '', name: '', folder_id: null, order: 0 })),
+  addToHeatmapFolder: vi.fn(() => Promise.resolve({ code: '', name: '', folder_id: 'f1', order: 0 })),
   removeFromHeatmap: vi.fn(() => Promise.resolve()),
   createHeatmapFolder: vi.fn(() => Promise.resolve({ id: 'fNew', name: '', order: 9 })),
   renameHeatmapFolder: vi.fn(() => Promise.resolve()),
@@ -57,7 +56,6 @@ function makeData(): HeatmapResponse {
       { code: '000001', name: '에코프로', folder_id: 'f1', order: 0 },
       { code: '000002', name: 'LG엔솔', folder_id: 'f1', order: 1 },
       { code: '000003', name: '삼성전자', folder_id: 'f2', order: 0 },
-      { code: '000004', name: '미분류종목', folder_id: null, order: 0 },
     ],
   };
 }
@@ -94,25 +92,12 @@ function renderedGroupLabels(): string[] {
 afterEach(() => cleanup());
 
 describe('HeatmapDrawer', () => {
-  it('renders groups with rows; shows an empty real folder but hides empty 미분류', async () => {
-    // 미분류 엔트리를 제거해 빈 미분류가 되게 한다.
-    api.getHeatmap.mockResolvedValue({
-      ...makeData(),
-      entries: makeData().entries.filter((e) => e.folder_id !== null),
-    });
+  it('renders groups with rows; shows an empty folder too', async () => {
     wrap(<HeatmapDrawer />);
     expect(await screen.findByRole('button', { name: '2차전지 2' })).toBeInTheDocument();
-    // 빈 실폴더(f3)는 표시(＋종목으로 채울 수 있어야 하므로).
+    // 빈 폴더(f3)도 표시(＋종목으로 채울 수 있어야 하므로).
     expect(screen.getByRole('button', { name: '빈그룹 0' })).toBeInTheDocument();
-    // 빈 미분류는 숨김.
-    expect(screen.queryByRole('button', { name: /^미분류/ })).toBeNull();
     expect(screen.getByTestId('heatmap-drawer-row-000001')).toBeInTheDocument();
-  });
-
-  it('shows the 미분류 group when it has entries', async () => {
-    wrap(<HeatmapDrawer />);
-    expect(await screen.findByRole('button', { name: '미분류 1' })).toBeInTheDocument();
-    expect(screen.getByTestId('heatmap-drawer-row-000004')).toBeInTheDocument();
   });
 
   it('그룹 헤더에 평균 등락률(비가중)을 표시; 시세 결측이면 미표시', async () => {
@@ -161,7 +146,6 @@ describe('HeatmapDrawer', () => {
     // 이동 항목 부재 확인 (다른 행 메뉴를 열어도 move 버튼 없음).
     fireEvent.click(screen.getByRole('button', { name: 'LG엔솔 행 메뉴' }));
     expect(screen.queryByTestId('heatmap-menu-move-f2')).toBeNull();
-    expect(screen.queryByTestId('heatmap-menu-move-uncat')).toBeNull();
   });
 
   it('header ＋ creates a folder via GroupNameModal', async () => {
@@ -174,7 +158,7 @@ describe('HeatmapDrawer', () => {
     await waitFor(() => expect(api.createHeatmapFolder).toHaveBeenCalledWith('신규'));
   });
 
-  it('group ⋯ renames, deletes (no confirm), and reorders folders', async () => {
+  it('group ⋯ renames and reorders folders', async () => {
     wrap(<HeatmapDrawer />);
     await screen.findByRole('button', { name: '반도체 1' });
 
@@ -191,20 +175,67 @@ describe('HeatmapDrawer', () => {
     fireEvent.click(screen.getByRole('menuitem', { name: /위로 이동/ }));
     await waitFor(() =>
       expect(api.reorderHeatmapFolders).toHaveBeenCalledWith(['f2', 'f1', 'f3']));
+  });
 
-    // 삭제 → confirm 없이 즉시 deleteHeatmapFolder
+  it('멤버 있는 그룹 삭제는 confirm 후 진행, 취소하면 삭제 안 함 (v3, ADR-0111)', async () => {
+    const confirmSpy = vi.spyOn(window, 'confirm');
+    wrap(<HeatmapDrawer />);
+    await screen.findByRole('button', { name: '반도체 1' });
+
+    // 취소 → 삭제 없음
+    confirmSpy.mockReturnValueOnce(false);
+    fireEvent.click(screen.getByRole('button', { name: '반도체 그룹 메뉴' }));
+    fireEvent.click(screen.getByRole('menuitem', { name: /그룹 삭제/ }));
+    expect(confirmSpy).toHaveBeenCalledWith(expect.stringContaining('종목 1개'));
+    expect(api.deleteHeatmapFolder).not.toHaveBeenCalled();
+
+    // 확인 → 삭제
+    confirmSpy.mockReturnValueOnce(true);
     fireEvent.click(screen.getByRole('button', { name: '반도체 그룹 메뉴' }));
     fireEvent.click(screen.getByRole('menuitem', { name: /그룹 삭제/ }));
     await waitFor(() => expect(api.deleteHeatmapFolder).toHaveBeenCalledWith('f2'));
+    confirmSpy.mockRestore();
   });
 
-  it('header 종목 추가 adds to 미분류 (addToHeatmap)', async () => {
+  it('빈 그룹 삭제는 confirm 없이 즉시', async () => {
+    const confirmSpy = vi.spyOn(window, 'confirm');
+    wrap(<HeatmapDrawer />);
+    await screen.findByRole('button', { name: '빈그룹 0' });
+    fireEvent.click(screen.getByRole('button', { name: '빈그룹 그룹 메뉴' }));
+    fireEvent.click(screen.getByRole('menuitem', { name: /그룹 삭제/ }));
+    await waitFor(() => expect(api.deleteHeatmapFolder).toHaveBeenCalledWith('f3'));
+    expect(confirmSpy).not.toHaveBeenCalled();
+    confirmSpy.mockRestore();
+  });
+
+  it('header 종목 추가는 그룹 셀렉트(기본=첫 그룹)로 addToHeatmapFolder 를 부른다 (v3)', async () => {
     wrap(<HeatmapDrawer />);
     await screen.findByRole('button', { name: '2차전지 2' });
     fireEvent.click(screen.getByTestId('heatmap-header-add'));
     fireEvent.click(screen.getByTestId('pick'));
     fireEvent.click(screen.getByRole('button', { name: '추가' }));
-    await waitFor(() => expect(api.addToHeatmap).toHaveBeenCalledWith('005930'));
+    await waitFor(() => expect(api.addToHeatmapFolder).toHaveBeenCalledWith('005930', 'f1'));
+  });
+
+  it('header 종목 추가에서 그룹을 바꿔 선택하면 그 그룹으로 추가한다', async () => {
+    wrap(<HeatmapDrawer />);
+    await screen.findByRole('button', { name: '2차전지 2' });
+    fireEvent.click(screen.getByTestId('heatmap-header-add'));
+    fireEvent.click(screen.getByTestId('pick'));
+    fireEvent.change(screen.getByRole('combobox', { name: '추가할 그룹' }), { target: { value: 'f2' } });
+    fireEvent.click(screen.getByRole('button', { name: '추가' }));
+    await waitFor(() => expect(api.addToHeatmapFolder).toHaveBeenCalledWith('005930', 'f2'));
+  });
+
+  it('그룹이 없으면 header 종목 추가는 안내를 보이고 추가 버튼이 비활성', async () => {
+    api.getHeatmap.mockResolvedValue({ folders: [], entries: [] });
+    wrap(<HeatmapDrawer />);
+    await screen.findByText('히트맵이 비어 있습니다');
+    fireEvent.click(screen.getByTestId('heatmap-header-add'));
+    expect(screen.getByText(/그룹이 없습니다/)).toBeInTheDocument();
+    fireEvent.click(screen.getByTestId('pick'));
+    expect(screen.getByRole('button', { name: '추가' })).toBeDisabled();
+    expect(api.addToHeatmapFolder).not.toHaveBeenCalled();
   });
 
   it('그룹 ⋯ 메뉴의 "종목 추가"가 검색 팝오버를 열고 그 폴더에 추가한다 (addToHeatmapFolder)', async () => {
@@ -337,10 +368,10 @@ describe('HeatmapDrawer', () => {
   const draggableHeaders = () =>
     screen.queryAllByTestId('heatmap-group-header').filter((h) => h.hasAttribute('data-draggable'));
 
-  it('비검색 시 실폴더 헤더가 드래그 가능(data-draggable), 미분류는 제외', async () => {
+  it('비검색 시 그룹 헤더가 드래그 가능(data-draggable)', async () => {
     wrap(<HeatmapDrawer />);
     await screen.findByTestId('heatmap-drawer-row-000001');
-    // 실폴더 f1/f2/f3 → 3개 draggable. 미분류는 sortable 아님.
+    // f1/f2/f3 → 3개 draggable.
     expect(draggableHeaders()).toHaveLength(3);
     // 별도 드래그 핸들 아이콘은 없다.
     expect(screen.queryByTestId('heatmap-group-drag-handle')).toBeNull();

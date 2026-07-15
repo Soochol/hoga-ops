@@ -4,11 +4,12 @@ import type { WatchlistFolder } from './watchlist';
 // 히트맵은 watchlist와 독립 스토어(ADR-0068)다. 폴더·엔트리의 프론트 표시 타입은
 // 백엔드 wire와 같은 최소 필드만 가진다. WatchlistEntry의 capture fields를 재사용하면
 // 실제 /api/heatmap payload보다 넓은 타입이 되어 wire drift를 숨긴다.
+// v3 (ADR-0111): folder_id 는 항상 실폴더 — 미분류(null) 상태가 타입에서 사라졌다.
 export type HeatmapFolder = WatchlistFolder;
 export interface HeatmapEntry {
   code: string;
   name: string;
-  folder_id: string | null;
+  folder_id: string;
   order: number;
 }
 
@@ -22,14 +23,8 @@ export function getHeatmap(): Promise<HeatmapResponse> {
   return apiCall<HeatmapResponse>('/api/heatmap');
 }
 
-export function addToHeatmap(code: string): Promise<HeatmapEntry> {
-  return apiCall<HeatmapEntry>('/api/heatmap', {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ code }),
-  });
-}
-
+// v3 유일한 추가 커맨드 — 폴더 지정 추가(없으면 추가, 있으면 이동). 폴더 없는 추가
+// (구 addToHeatmap → 미분류)는 백엔드 라우트와 함께 제거됐다(ADR-0111).
 export function addToHeatmapFolder(code: string, folderId: string): Promise<HeatmapEntry> {
   return apiCall<HeatmapEntry>(`/api/heatmap/folders/${folderId}/members`, {
     method: 'POST',
@@ -65,13 +60,13 @@ export function reorderHeatmapFolders(orderedIds: string[]): Promise<void> {
     body: JSON.stringify({ ordered_ids: orderedIds }),
   });
 }
-export function moveHeatmapEntries(codes: string[], folderId: string | null): Promise<void> {
+export function moveHeatmapEntries(codes: string[], folderId: string): Promise<void> {
   return apiAction('/api/heatmap/move', {
     method: 'POST', headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ codes, folder_id: folderId }),
   });
 }
-export function reorderHeatmapEntries(folderId: string | null, orderedCodes: string[]): Promise<void> {
+export function reorderHeatmapEntries(folderId: string, orderedCodes: string[]): Promise<void> {
   return apiAction('/api/heatmap/reorder', {
     method: 'PUT', headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ folder_id: folderId, ordered_codes: orderedCodes }),

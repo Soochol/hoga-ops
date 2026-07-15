@@ -32,6 +32,13 @@ from hoga.api.watchlist import _mint_folder_id  # shared pure helper (ADR-0068 G
 
 log = logging.getLogger(__name__)
 
+# v2→v3 마이그레이션에서 folder_id=null(구 미분류) 종목을 수용하는 실폴더 (ADR-0111).
+# 결정론적 id — load 는 디스크에 쓰지 않으므로(다음 mutation 이 저장) 랜덤 id 면
+# 로드마다 id 가 바뀌어 프론트 접기상태(폴더 id 키)가 흔들린다. watchlist v3 의
+# _DEFAULT_FOLDER_ID 와 같은 값이지만 별개 문서 스코프(문서 간 id 공유는 무해 — G5).
+_UNCAT_FOLDER_ID = "f_00000000"
+_UNCAT_FOLDER_NAME = "미분류"
+
 # Own lock — serializes load → mutate → save across heatmap writers only.
 # Deliberately NOT watchlist._lock: the heatmap must never block (or be blocked
 # by) the capture finalize hook / daily scheduler (ADR-0068 rule 1).
@@ -43,33 +50,48 @@ def _path(data_dir: Path) -> Path:
 
 
 class UnsupportedHeatmapSchema(Exception):
-    """An unrecognised FUTURE schema_version (>2). NOT a ValueError so
+    """An unrecognised FUTURE schema_version (>3). NOT a ValueError so
     load_document's corruption catch does not swallow it — an unknown future
     version must halt loudly, never be downgraded (ADR-0065)."""
 
 
 def _migrate(raw: dict) -> dict:
-    """Normalise any on-disk shape to a v2 dict, repairing (not wiping) drift.
-    Mirrors watchlist._migrate (ADR-0065 governance applied independently)."""
+    """Normalise any on-disk shape to a v3 dict, repairing (not wiping) drift.
+    Mirrors watchlist._migrate (ADR-0065 governance applied independently).
+
+    v3 (ADR-0111): folder_id is required. A folder-less entry (v1/v2 미분류,
+    or a v3 entry whose folder id dangles) is rescued into the 미분류 REAL
+    folder (_UNCAT_FOLDER_ID) — an ordinary folder thereafter (renamable,
+    deletable, never auto-recreated). If that id already exists (heatmap.json
+    seeded verbatim from a v3 watchlist carries f_00000000 '기본'), rescued
+    entries merge into the existing folder instead of duplicating the id."""
     version = raw.get("schema_version", raw.get("version", 1))
-    if version > 2:
+    if version > 3:
         raise UnsupportedHeatmapSchema(f"unsupported heatmap schema_version {version}")
-    folders = raw.get("folders", []) if version >= 2 else []
+    folders = [dict(f) for f in raw.get("folders", [])] if version >= 2 else []
     valid_ids = {f.get("id") for f in folders}
     entries: list[dict] = []
+    rescued = False
     for i, e in enumerate(raw.get("entries", [])):
         e = dict(e)
-        fid = e.get("folder_id")
-        e["folder_id"] = fid if fid in valid_ids else None
         e["order"] = e.get("order", i)
+        if e.get("folder_id") not in valid_ids:
+            e["folder_id"] = _UNCAT_FOLDER_ID
+            # 기존 per-folder order 대역(0..k-1) 위로 올려 rescue 종목이 수용 폴더의
+            # 기존 멤버 뒤에 서게 한다 — _reindex 가 최종 0..N-1 로 압축.
+            e["order"] += len(raw.get("entries", []))
+            rescued = True
         entries.append(e)
-    return {"schema_version": 2, "folders": folders, "entries": entries}
+    if rescued and _UNCAT_FOLDER_ID not in valid_ids:
+        folders.append({"id": _UNCAT_FOLDER_ID, "name": _UNCAT_FOLDER_NAME,
+                        "order": len(folders)})
+    return {"schema_version": 3, "folders": folders, "entries": entries}
 
 
 def _reindex(doc: HeatmapDocument) -> HeatmapDocument:
-    """Reassign entry.order to 0..N-1 within each folder group (incl. null),
+    """Reassign entry.order to 0..N-1 within each folder group,
     folders[].order to 0..N-1. Flat list order preserved. Idempotent."""
-    groups: dict[str | None, list[int]] = {}
+    groups: dict[str, list[int]] = {}
     for idx, e in enumerate(doc.entries):
         groups.setdefault(e.folder_id, []).append(idx)
     order_for: dict[int, int] = {}
@@ -158,10 +180,6 @@ def seed_from_watchlist_if_absent(data_dir: Path) -> None:
              len(folders), len(entries))
 
 
-class AlreadyInHeatmapError(Exception):
-    """Raised by add_entry when the Code is already present."""
-
-
 class NotInHeatmapError(Exception):
     """Raised by remove_entry when the Code is absent."""
 
@@ -176,19 +194,6 @@ class FolderNotFoundError(Exception):
     """Raised when a folder_id is absent from the Heatmap."""
 
 
-async def add_entry(data_dir: Path, *, code: str, name: str) -> HeatmapEntry:
-    async with _lock:
-        doc = load_document(data_dir)
-        if any(e.code == code for e in doc.entries):
-            raise AlreadyInHeatmapError(code)
-        # Seed beyond any existing per-group order so the new Code sorts LAST in
-        # 미분류; _reindex (ranks by `order` first) compresses it to the final
-        # slot. len(entries) is a safe upper bound (per-group orders are 0..k-1).
-        entry = HeatmapEntry(code=code, name=name, folder_id=None, order=len(doc.entries))
-        save_document(data_dir, doc.model_copy(update={"entries": [*doc.entries, entry]}))
-        return entry
-
-
 async def add_entry_to_folder(
     data_dir: Path,
     *,
@@ -196,11 +201,12 @@ async def add_entry_to_folder(
     name: str,
     folder_id: str,
 ) -> HeatmapEntry:
-    """Add code to the Heatmap and place it in folder_id atomically.
+    """Add code to the Heatmap placed in folder_id — the ONLY add command
+    (v3, ADR-0111: every entry needs a real folder, so a folder-less add_entry
+    no longer exists).
 
     If the code already exists, this moves the existing entry to folder_id
-    instead of failing. This is the single-command form of the old UI
-    choreography: add to 미분류, then move.
+    instead of failing.
     """
     async with _lock:
         doc = load_document(data_dir)
@@ -264,14 +270,17 @@ async def rename_folder(data_dir: Path, *, folder_id: str, name: str) -> None:
 
 
 async def delete_folder(data_dir: Path, *, folder_id: str) -> None:
-    """Delete the folder and reparent its members to 미분류 (folder_id=null)."""
+    """Delete the folder AND its member entries (v3, ADR-0111 — destructive,
+    watchlist delete_folder semantics; there is no 미분류 to reparent into).
+    The UI confirms before calling when the folder has members; this function
+    itself is the committed delete. Callers must resync storage targets — the
+    entry SET may shrink (ADR-0097)."""
     async with _lock:
         doc = load_document(data_dir)
         if not any(f.id == folder_id for f in doc.folders):
             raise FolderNotFoundError(folder_id)
         new_folders = [f for f in doc.folders if f.id != folder_id]
-        new_entries = [e.model_copy(update={"folder_id": None}) if e.folder_id == folder_id else e
-                       for e in doc.entries]
+        new_entries = [e for e in doc.entries if e.folder_id != folder_id]
         save_document(data_dir, doc.model_copy(
             update={"folders": new_folders, "entries": new_entries}))
 
@@ -290,13 +299,14 @@ async def reorder_folders(data_dir: Path, *, ordered_ids: list[str]) -> None:
         save_document(data_dir, doc.model_copy(update={"folders": new}))
 
 
-async def move_entries(data_dir: Path, *, codes: list[str], folder_id: str | None) -> None:
-    """Move codes into folder_id (null = 미분류), appended after the target's
-    current members, preserving caller order. A code already in folder_id is a
-    no-op; absent codes are ignored. _reindex compacts order to 0..N-1."""
+async def move_entries(data_dir: Path, *, codes: list[str], folder_id: str) -> None:
+    """Move codes into folder_id (a real folder — v3 has no null group),
+    appended after the target's current members, preserving caller order. A
+    code already in folder_id is a no-op; absent codes are ignored. _reindex
+    compacts order to 0..N-1."""
     async with _lock:
         doc = load_document(data_dir)
-        if folder_id is not None and not any(f.id == folder_id for f in doc.folders):
+        if not any(f.id == folder_id for f in doc.folders):
             raise FolderNotFoundError(folder_id)
         by_code = {e.code: e for e in doc.entries}
         moving = [c for c in codes if c in by_code and by_code[c].folder_id != folder_id]
@@ -310,7 +320,7 @@ async def move_entries(data_dir: Path, *, codes: list[str], folder_id: str | Non
         save_document(data_dir, doc.model_copy(update={"entries": new}))
 
 
-async def reorder_entries(data_dir: Path, *, folder_id: str | None,
+async def reorder_entries(data_dir: Path, *, folder_id: str,
                           ordered_codes: list[str]) -> None:
     """Authoritative reorder within one folder: ordered_codes must be exactly
     the codes currently in folder_id. Server reassigns order = position."""

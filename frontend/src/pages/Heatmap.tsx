@@ -3,7 +3,6 @@ import {
   useHeatmap, useCreateHeatmapFolder, useReorderHeatmapEntries,
   useRemoveFromHeatmap, useMoveHeatmapEntries,
 } from '../heatmap/useHeatmap';
-import { groupByFolder } from '../watchlist/grouping';
 import { useLiveQuoteOverlay } from '../api/liveQuotes';
 import { useJumpToLive } from '../live/useJumpToLive';
 import { useHeatmapPrefsStore } from '../state/heatmapPrefs';
@@ -14,7 +13,7 @@ import { HeatmapRowMenu } from '../heatmap/HeatmapRowMenu';
 import { SortCycleButton } from '../heatmap/SortCycleButton';
 import { HeatmapSearchInput } from '../heatmap/HeatmapSearchInput';
 import { filterGroups } from '../heatmap/filterGroups';
-import { avgPct, orderFolderGroups, makePctOf, nextSort } from '../heatmap/heat';
+import { avgPct, groupHeatmapEntries, orderFolderGroups, makePctOf, nextSort } from '../heatmap/heat';
 import { useFrozenWhileDragging } from '../heatmap/useFrozenWhileDragging';
 import { GroupNameModal } from '../watchlist/GroupNameModal';
 import { PageContainer } from '../layout/PageContainer';
@@ -22,7 +21,7 @@ import { ControlBar, PageState, PanelCard, ToolbarButton } from '../ui/PageShell
 
 const PHASE_LABEL: Record<string, string> = { pre_open: '장전', open: '● 장중', closed: '장마감' };
 
-type RowMenu = { x: number; y: number; code: string; name: string; folderId: string | null };
+type RowMenu = { x: number; y: number; code: string; name: string; folderId: string };
 
 export function Heatmap() {
   // 독립 스토어(ADR-0068): useHeatmap(['heatmap']) — 관심종목(['watchlist'])과 분리.
@@ -33,7 +32,7 @@ export function Heatmap() {
   const venue = useLiveVenueStore((s) => s.venue);
 
   const { quoteByCode, phase, dataUpdatedAt } = useLiveQuoteOverlay(codes, venue);
-  const groups = useMemo(() => groupByFolder(folders, entries), [folders, entries]);
+  const groups = useMemo(() => groupHeatmapEntries(folders, entries), [folders, entries]);
   const onPick = useJumpToLive();
   const sortMode = useHeatmapPrefsStore((s) => s.sortMode);
   const setSortMode = useHeatmapPrefsStore((s) => s.setSortMode);
@@ -61,10 +60,10 @@ export function Heatmap() {
   const reorderEntriesM = useReorderHeatmapEntries();
   const removeM = useRemoveFromHeatmap();
   const moveM = useMoveHeatmapEntries();
-  const onReorder = (folderId: string | null, orderedCodes: string[]) =>
+  const onReorder = (folderId: string, orderedCodes: string[]) =>
     reorderEntriesM.mutate({ folderId, orderedCodes });
   // 행 우클릭 → 컨텍스트 메뉴(삭제·폴더이동, ADR-0068 G3). 분리 후 히트맵 편집의 단독 표면.
-  const onRowMenu = (e: React.MouseEvent, code: string, name: string, folderId: string | null) => {
+  const onRowMenu = (e: React.MouseEvent, code: string, name: string, folderId: string) => {
     e.preventDefault();
     setMenu({ x: e.clientX, y: e.clientY, code, name, folderId });
   };
@@ -80,7 +79,11 @@ export function Heatmap() {
   const visibleCount = visibleGroups.reduce((n, g) => n + g.entries.length, 0);
   if (isLoading) return <HeatmapStateShell>히트맵 불러오는 중…</HeatmapStateShell>;
   if (error) return <HeatmapStateShell tone="error">히트맵을 불러오지 못했습니다.</HeatmapStateShell>;
-  if (entries.length === 0) return <HeatmapStateShell>히트맵이 비어 있습니다.</HeatmapStateShell>;
+  // 그룹이 하나라도 있으면 일반 페이지를 렌더 — v3 는 그룹이 있어야 종목을 추가할 수
+  // 있으므로(ADR-0111), "그룹만 있고 종목 0" 상태에서 ＋새 그룹·툴바가 막히면 안 된다.
+  if (entries.length === 0 && folders.length === 0) {
+    return <HeatmapStateShell>히트맵이 비어 있습니다.</HeatmapStateShell>;
+  }
 
   return (
     <PageContainer className="min-h-0">

@@ -37,15 +37,15 @@ it('행 클릭 시 onPick(code, name, current-tab) — 종목명을 탭 라벨�
   expect(onPick).toHaveBeenCalledWith('005930', '삼성전자', { disposition: 'current-tab' });
 });
 
-it('미분류(folder=null) 헤더도 자체 평균 틴트(무분기, G8)', () => {
-  const uncatEntries = [E('111111', '에이', 0), E('222222', '비이', 1)];
-  const uncatQuotes = new Map<string, LiveQuote>([
+it('하락 평균도 헤더 밴드에 그대로 반영(파랑 틴트)', () => {
+  const downEntries = [E('111111', '에이', 0), E('222222', '비이', 1)];
+  const downQuotes = new Map<string, LiveQuote>([
     ['111111', { code: '111111', price: 1000, change_pct: -2, change_won: -20 }],
     ['222222', { code: '222222', price: 2000, change_pct: -4, change_won: -80 }],
   ]);
-  render(<HeatmapFolder folder={null} entries={uncatEntries} quoteByCode={uncatQuotes}
+  render(<HeatmapFolder folder={folder} entries={downEntries} quoteByCode={downQuotes}
     sortMode="manual" onPick={() => {}} />);
-  const header = screen.getByText('미분류').parentElement as HTMLElement;
+  const header = screen.getByText('반도체').parentElement as HTMLElement;
   expect(header.style.background).toBe(heatHeaderBg(-3)); // (−2−4)/2
 });
 

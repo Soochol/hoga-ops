@@ -163,17 +163,20 @@ async def test_storage_runtime_appends_heatmap_codes_as_rest_only_extras(
     """Heatmap entries feed the REST 30s recorder (ADR-0097): duplicates of
     watchlist codes dedup, unknown codes drop, and WS targets never change."""
     from hoga.api.heatmap import save_document as save_heatmap_document
-    from hoga.api.models import HeatmapDocument, HeatmapEntry
+    from hoga.api.models import HeatmapDocument, HeatmapEntry, WatchlistFolder
 
     _patch_common(monkeypatch)
     _seed_watchlist(tmp_path)
     save_heatmap_document(
         tmp_path,
-        HeatmapDocument(entries=[
-            HeatmapEntry(code="000660", name="SK하이닉스"),  # watchlist dup → dedup
-            HeatmapEntry(code="005380", name="현대차"),      # heatmap-only → REST
-            HeatmapEntry(code="999999", name="유령"),        # unknown → dropped
-        ]),
+        HeatmapDocument(
+            folders=[WatchlistFolder(id="f_00000aaa", name="히트맵", order=0)],
+            entries=[
+                HeatmapEntry(code="000660", name="SK하이닉스", folder_id="f_00000aaa"),  # watchlist dup → dedup
+                HeatmapEntry(code="005380", name="현대차", folder_id="f_00000aaa"),      # heatmap-only → REST
+                HeatmapEntry(code="999999", name="유령", folder_id="f_00000aaa"),        # unknown → dropped
+            ],
+        ),
     )
 
     class Hit:
@@ -213,13 +216,16 @@ async def test_storage_runtime_heatmap_capture_disabled_drops_heatmap_extras(
     """heatmap_capture_enabled=False gates ONLY the heatmap extras — the
     watchlist REST spillover is untouched (heatmap-only code drops out)."""
     from hoga.api.heatmap import save_document as save_heatmap_document
-    from hoga.api.models import HeatmapDocument, HeatmapEntry
+    from hoga.api.models import HeatmapDocument, HeatmapEntry, WatchlistFolder
 
     _patch_common(monkeypatch)
     _seed_watchlist(tmp_path)
     save_heatmap_document(
         tmp_path,
-        HeatmapDocument(entries=[HeatmapEntry(code="005380", name="현대차")]),
+        HeatmapDocument(
+            folders=[WatchlistFolder(id="f_00000aaa", name="히트맵", order=0)],
+            entries=[HeatmapEntry(code="005380", name="현대차", folder_id="f_00000aaa")],
+        ),
     )
 
     class Hit:

@@ -1,7 +1,28 @@
-import type { FolderGroup } from '../watchlist/grouping';
-import type { HeatmapEntry } from '../api/heatmap';
+import type { HeatmapEntry, HeatmapFolder } from '../api/heatmap';
 import type { LiveQuote } from '../api/liveQuotes';
 import { makeChangePctOf, sortEntriesByChangePct, type QuoteSortMode } from '../rightrail/quoteSort';
+
+/** 히트맵 그룹 = 실폴더 + 소속 종목. v3 (ADR-0111): folder 는 항상 non-null —
+ *  미분류(render-only null 그룹, 구 ADR-0068 G3)는 존재하지 않는다. watchlist 의
+ *  FolderGroup(folder: … | null)과 구분되는 히트맵 전용 모양. */
+export interface HeatmapGroup {
+  folder: HeatmapFolder;
+  entries: HeatmapEntry[];
+}
+
+/** 폴더·종목을 표시용 그룹으로 묶는다. 폴더는 `.order`순, 그룹 내 종목도 `.order`순.
+ *  빈 폴더 포함(드로어가 "새 그룹 직후 종목 추가" 흐름을 보여야 함 — 보드는
+ *  visibleFolderGroups 가 빈 그룹을 걸러낸다). 순수(비파괴). */
+export function groupHeatmapEntries(
+  folders: HeatmapFolder[],
+  entries: HeatmapEntry[],
+): HeatmapGroup[] {
+  const byOrder = (a: HeatmapEntry, b: HeatmapEntry) => a.order - b.order;
+  return [...folders].sort((a, b) => a.order - b.order).map((folder) => ({
+    folder,
+    entries: entries.filter((e) => e.folder_id === folder.id).sort(byOrder),
+  }));
+}
 
 // 행(종목)·그룹 정렬 공용 3-상태: manual=기본(저장 순서), desc=등락률 내림, asc=오름.
 // 관심종목의 QuoteSortMode(default/change_pct_desc/change_pct_asc)와 1:1 대응(아이콘 공용).
@@ -75,18 +96,17 @@ export function avgPct(
 
 export type GroupSort = 'manual' | 'desc' | 'asc';
 
-/** 그룹(폴더) 순서. 'manual'=입력 순서 그대로(folder.order, 미분류 맨 끝).
- *  'desc'/'asc'=실폴더를 평균 등락(avgOf)으로 정렬, avg=null인 실폴더는 실폴더 구간
- *  끝에(원순서 안정), 미분류(folder=null)는 **항상 맨 끝** 고정. 비파괴(복사). */
+/** 그룹(폴더) 순서. 'manual'=입력 순서 그대로(folder.order).
+ *  'desc'/'asc'=평균 등락(avgOf)으로 정렬, avg=null인 폴더는 끝에(원순서 안정).
+ *  비파괴(복사). */
 export function orderFolderGroups(
-  groups: FolderGroup<HeatmapEntry>[],
+  groups: HeatmapGroup[],
   mode: GroupSort,
-  avgOf: (g: FolderGroup<HeatmapEntry>) => number | null,
-): FolderGroup<HeatmapEntry>[] {
+  avgOf: (g: HeatmapGroup) => number | null,
+): HeatmapGroup[] {
   if (mode === 'manual') return groups;
-  const real = groups.map((g, i) => ({ g, i })).filter((x) => x.g.folder !== null);
-  const uncat = groups.filter((g) => g.folder === null);
-  real.sort((a, b) => {
+  const indexed = groups.map((g, i) => ({ g, i }));
+  indexed.sort((a, b) => {
     const pa = avgOf(a.g);
     const pb = avgOf(b.g);
     if (pa === null && pb === null) return a.i - b.i; // 원순서 안정
@@ -94,5 +114,5 @@ export function orderFolderGroups(
     if (pb === null) return -1;
     return mode === 'desc' ? pb - pa : pa - pb;
   });
-  return [...real.map((x) => x.g), ...uncat];
+  return indexed.map((x) => x.g);
 }

@@ -1,6 +1,8 @@
 import { describe, it, expect } from 'vitest';
-import { heatBg, sortEntries, avgPct, heatHeaderBg, orderFolderGroups, makePctOf } from './heat';
-import type { FolderGroup } from '../watchlist/grouping';
+import {
+  heatBg, sortEntries, avgPct, heatHeaderBg, groupHeatmapEntries, orderFolderGroups, makePctOf,
+  type HeatmapGroup,
+} from './heat';
 import type { HeatmapEntry } from '../api/heatmap';
 import type { LiveQuote } from '../api/liveQuotes';
 
@@ -87,36 +89,55 @@ describe('avgPct', () => {
   });
 });
 
-const FG = (id: string | null): FolderGroup<HeatmapEntry> => ({
-  folder: id === null ? null : { id, name: id, order: 0 },
+const FG = (id: string): HeatmapGroup => ({
+  folder: { id, name: id, order: 0 },
   entries: [],
 });
-const avgMap = (m: Record<string, number | null>) => (g: FolderGroup<HeatmapEntry>): number | null =>
-  g.folder ? (m[g.folder.id] ?? null) : (m.__uncat__ ?? null);
-const ids = (gs: FolderGroup<HeatmapEntry>[]) => gs.map((x) => x.folder?.id ?? '__uncat__');
+const avgMap = (m: Record<string, number | null>) => (g: HeatmapGroup): number | null =>
+  m[g.folder.id] ?? null;
+const ids = (gs: HeatmapGroup[]) => gs.map((x) => x.folder.id);
+
+describe('groupHeatmapEntries', () => {
+  it('폴더는 order순, 그룹 내 종목도 order순, 빈 폴더 포함', () => {
+    const folders = [
+      { id: 'f2', name: '반도체', order: 1 },
+      { id: 'f1', name: '2차전지', order: 0 },
+      { id: 'f3', name: '빈그룹', order: 2 },
+    ];
+    const entries: HeatmapEntry[] = [
+      { code: 'b', name: 'b', folder_id: 'f1', order: 1 },
+      { code: 'a', name: 'a', folder_id: 'f1', order: 0 },
+      { code: 'c', name: 'c', folder_id: 'f2', order: 0 },
+    ];
+    const gs = groupHeatmapEntries(folders, entries);
+    expect(ids(gs)).toEqual(['f1', 'f2', 'f3']);
+    expect(gs[0].entries.map((e) => e.code)).toEqual(['a', 'b']);
+    expect(gs[2].entries).toEqual([]);
+  });
+});
 
 describe('orderFolderGroups', () => {
   it('manual = 입력 순서 그대로(동일 참조)', () => {
-    const gs = [FG('a'), FG('b'), FG(null)];
+    const gs = [FG('a'), FG('b')];
     expect(orderFolderGroups(gs, 'manual', () => 0)).toBe(gs);
   });
-  it('desc = 평균 내림차순, 미분류 항상 맨 끝', () => {
-    const gs = [FG('a'), FG('b'), FG('c'), FG(null)];
+  it('desc = 평균 내림차순', () => {
+    const gs = [FG('a'), FG('b'), FG('c')];
     expect(ids(orderFolderGroups(gs, 'desc', avgMap({ a: 1, b: 5, c: -2 }))))
-      .toEqual(['b', 'a', 'c', '__uncat__']);
+      .toEqual(['b', 'a', 'c']);
   });
-  it('asc = 평균 오름차순, 미분류 항상 맨 끝', () => {
-    const gs = [FG('a'), FG('b'), FG('c'), FG(null)];
+  it('asc = 평균 오름차순', () => {
+    const gs = [FG('a'), FG('b'), FG('c')];
     expect(ids(orderFolderGroups(gs, 'asc', avgMap({ a: 1, b: 5, c: -2 }))))
-      .toEqual(['c', 'a', 'b', '__uncat__']);
+      .toEqual(['c', 'a', 'b']);
   });
-  it('null-avg 실폴더는 실폴더 구간 끝(원순서 안정), 미분류 더 끝', () => {
-    const gs = [FG('a'), FG('b'), FG('c'), FG(null)];
+  it('null-avg 폴더는 끝(원순서 안정)', () => {
+    const gs = [FG('a'), FG('b'), FG('c')];
     expect(ids(orderFolderGroups(gs, 'desc', avgMap({ a: 3, b: null, c: 1 }))))
-      .toEqual(['a', 'c', 'b', '__uncat__']);
+      .toEqual(['a', 'c', 'b']);
   });
-  it('전부 null-avg → 원순서 보존, 미분류 맨 끝', () => {
-    const gs = [FG('a'), FG('b'), FG(null), FG('c')];
-    expect(ids(orderFolderGroups(gs, 'desc', () => null))).toEqual(['a', 'b', 'c', '__uncat__']);
+  it('전부 null-avg → 원순서 보존', () => {
+    const gs = [FG('a'), FG('b'), FG('c')];
+    expect(ids(orderFolderGroups(gs, 'desc', () => null))).toEqual(['a', 'b', 'c']);
   });
 });

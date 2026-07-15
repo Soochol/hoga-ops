@@ -1016,12 +1016,22 @@ class EntriesRemoveRequest(BaseModel):
 class HeatmapEntry(BaseModel):
     """One Code on the Heatmap. Mirrors WatchlistEntry MINUS the capture
     markers (registered_at_kst_date / last_success_date) — the heatmap drives
-    no captures (ADR-0068)."""
+    no captures (ADR-0068). v3 (ADR-0111): folder_id is REQUIRED — every entry
+    belongs to a real folder; the 미분류(null) render-group no longer exists."""
 
     code: str = Field(pattern=CODE_PATTERN)
     name: str
-    folder_id: str | None = Field(default=None, pattern=r"^f_[0-9a-f]{8}$")
+    folder_id: str = Field(pattern=r"^f_[0-9a-f]{8}$")
     order: int = Field(default=0, ge=0)
+
+
+class HeatmapEntriesMoveRequest(BaseModel):
+    """POST /api/heatmap/move body. The watchlist's shared EntriesMoveRequest
+    allows folder_id=null; the heatmap has no null group (ADR-0111), so the
+    wire itself rejects a null destination (422, not a silent reparent)."""
+
+    codes: list[Annotated[str, Field(pattern=CODE_PATTERN)]]
+    folder_id: str = Field(pattern=r"^f_[0-9a-f]{8}$")
 
 
 class HeatmapFolderView(BaseModel):
@@ -1034,11 +1044,12 @@ class HeatmapFolderView(BaseModel):
 
 
 class HeatmapDocument(BaseModel):
-    """On-disk heatmap.json (v2). Same envelope discipline as
+    """On-disk heatmap.json (v3, ADR-0111). Same envelope discipline as
     WatchlistDocument (ADR-0065 applied independently); entries are
-    HeatmapEntry (no capture fields). Folders reuse WatchlistFolder."""
+    HeatmapEntry (no capture fields, folder_id required). Folders reuse
+    WatchlistFolder."""
 
-    schema_version: int = 2
+    schema_version: int = 3
     folders: list[WatchlistFolder] = Field(default_factory=list)
     entries: list[HeatmapEntry] = Field(default_factory=list)
 
@@ -1046,7 +1057,7 @@ class HeatmapDocument(BaseModel):
     def _no_dangling_folder_id(self) -> "HeatmapDocument":
         valid = {f.id for f in self.folders}
         for e in self.entries:
-            if e.folder_id is not None and e.folder_id not in valid:
+            if e.folder_id not in valid:
                 raise ValueError(
                     f"entry {e.code} references unknown folder {e.folder_id}"
                 )
