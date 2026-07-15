@@ -41,6 +41,12 @@ type Props<T extends ChartTabLike> = {
   tablistAriaLabel?: string;
   tabStatus?: (tab: T, active: boolean) => ChartTabStatus;
   onTogglePin?: (id: string) => void;
+  /**
+   * 탭 바 거터 배경. 기본값은 크롬 톤(`--bg-subtle`) — 흰 탭 칩이 얹히는 recessed 거터.
+   * `/live` 는 "배경 통일"(2026-07-15)로 `--bg` 를 넘겨 탭 바+스트립+차트를 한 콘텐츠 존으로
+   * 합친다(탭 어포던스는 거터 대비 대신 테두리+활성 accent 가 담당). `/study` 등은 기본값 유지.
+   */
+  background?: string;
 };
 
 /** 상태점: 활성+로딩=accent pulse(◌), 활성+로드=success(●), 비활성=dimmer outline(○). */
@@ -65,6 +71,7 @@ export function ChartTabBar<T extends ChartTabLike>({
   tablistAriaLabel = '열린 탭',
   tabStatus,
   onTogglePin,
+  background = 'var(--bg-subtle)',
 }: Props<T>) {
   const activeElRef = useRef<HTMLDivElement | null>(null);
   const tablistRef = useRef<HTMLDivElement | null>(null);
@@ -167,7 +174,7 @@ export function ChartTabBar<T extends ChartTabLike>({
   const fullLabel = (tab: T) => renderLabelParts?.(tab).full ?? renderLabel(tab);
 
   return (
-    <div className="flex h-full min-w-0 items-end gap-1 px-2 font-ui" style={{ background: 'var(--bg-subtle)' }}>
+    <div className="flex h-full min-w-0 items-end gap-1 px-2 font-ui" style={{ background }}>
       {overflow.left && (
         <button
           type="button"

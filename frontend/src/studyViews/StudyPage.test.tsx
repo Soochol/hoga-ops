@@ -287,8 +287,12 @@ describe('StudyPage', () => {
   it('renders a v2 reference view from raw range data without snapshot overrides', () => {
     renderPage('/study?view=view-ref');
 
-    expect(screen.getByTestId('study-page-primary')).toHaveClass('bg-bg-card');
-    expect(screen.getByTestId('study-page-primary')).toHaveClass('border');
+    // 부유 카드 모델(/live 통일): 바깥 프레임은 --bg 필드(보더 없음), 차트·상세가 각각
+    // bg-card + shadow-panel 카드로 떠 있다.
+    expect(screen.getByTestId('study-page-primary')).toHaveClass('bg-bg');
+    expect(screen.getByTestId('study-page-primary')).not.toHaveClass('border');
+    expect(screen.getByTestId('study-chart-card')).toHaveClass('shadow-panel');
+    expect(screen.getByTestId('study-chart-card')).toHaveClass('bg-bg-card');
     expect(screen.getByTestId('live-chart-root-stub')).toBeTruthy();
     expect(screen.getByTestId('live-drawing-rail')).toBeInTheDocument();
     expect(useStudyReferenceBundleMock).toHaveBeenCalledWith(expect.objectContaining(referenceSave));

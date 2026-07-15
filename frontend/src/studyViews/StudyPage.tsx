@@ -491,11 +491,15 @@ export function StudyPage() {
 
   return (
     <PageContainer className="min-h-0">
-      <PanelCard data-testid="study-page-primary" className="flex h-full min-h-0 flex-col overflow-hidden">
-        <WorkspaceRoot testId="study-page" className="grid flex-1 grid-rows-[auto_auto_minmax(0,1fr)] bg-transparent">
+      {/* 부유 카드 모델(2026-07-15, /live 통일) — 바깥 PanelCard 프레임 제거. 탭 바·헤더는
+          --bg full-bleed 크롬이 되고, 차트·상세는 --bg 필드 위에 gap+shadow 로 떠 있는
+          카드 2장이 된다. 분리는 톤+간격(gap+shadow-panel)이 담당(보더 없음). */}
+      <div data-testid="study-page-primary" className="flex h-full min-h-0 flex-col overflow-hidden bg-bg text-fg">
+        <div data-testid="study-page" className="grid flex-1 min-h-0 grid-rows-[auto_auto_minmax(0,1fr)]">
           {tabs.length > 0 && (
-            <div className="min-w-0 border-b border-[var(--border)]">
+            <div className="min-w-0">
               <StudyTabBar
+                background="var(--bg)"
                 tabs={tabs}
                 activeTabId={activeTabId}
                 activeLoading={isStudyPageLoading}
@@ -508,7 +512,7 @@ export function StudyPage() {
               />
             </div>
           )}
-          <WorkspaceHeader className="min-h-12 px-4">
+          <div className="flex items-center gap-3 min-h-12 px-3">
             <div className="min-w-0">
               <div className="truncate text-sm font-semibold">{headerLabel}</div>
               <div className="flex items-center gap-2 text-xs text-[var(--fg-dimmer)]">
@@ -536,11 +540,11 @@ export function StudyPage() {
                 메모
               </IconToolbarButton>
             </div>
-          </WorkspaceHeader>
+          </div>
           <div
             ref={studyDropTargetRef}
             data-testid="study-drop-target"
-            className="relative grid min-h-0"
+            className="relative grid min-h-0 gap-1 p-1"
             style={{
               gridTemplateColumns: detailPanelCollapsed
                 ? `minmax(0,1fr) ${STUDY_DETAIL_PANEL_RAIL_WIDTH_PX}px`
@@ -548,7 +552,7 @@ export function StudyPage() {
             }}
             onWheelCapture={handleWheelCapture}
           >
-            <div className="relative min-h-0 min-w-0 overflow-hidden">
+            <div data-testid="study-chart-card" className="relative min-h-0 min-w-0 overflow-hidden rounded-lg bg-bg-card shadow-panel">
               {isStudyPageLoading ? (
                 <div data-testid="study-page-loading" className="flex h-full items-center justify-center text-sm text-[var(--fg-dimmer)]">
                   학습뷰 불러오는 중...
@@ -586,8 +590,8 @@ export function StudyPage() {
               data-testid={selectedSave ? studyReferenceDetailPanelTestId(selectedSave) : undefined}
               className={
                 detailPanelCollapsed
-                  ? 'relative z-10 flex min-h-0 bg-bg-subtle'
-                  : 'relative z-10 grid min-h-0 grid-rows-[auto_minmax(0,1fr)] overflow-y-auto overflow-x-hidden bg-bg-subtle'
+                  ? 'relative z-10 flex min-h-0 overflow-hidden rounded-lg bg-bg-card shadow-panel'
+                  : 'relative z-10 grid min-h-0 grid-rows-[auto_minmax(0,1fr)] overflow-y-auto overflow-x-hidden rounded-lg bg-bg-card shadow-panel'
               }
               style={{ scrollbarGutter: 'stable' }}
             >
@@ -642,8 +646,8 @@ export function StudyPage() {
           {settingsOpen && (
             <LiveSettingsModal variant="study" onClose={() => setSettingsOpen(false)} />
           )}
-        </WorkspaceRoot>
-      </PanelCard>
+        </div>
+      </div>
     </PageContainer>
   );
 }

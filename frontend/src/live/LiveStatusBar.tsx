@@ -104,10 +104,12 @@ export function LiveStatusBar({ activeCode, captureHealth, bundle, venue, hogaGa
       className="flex items-center gap-2 px-3"
       style={{
         height: 'var(--h-pricestrip)',
-        // 하단 border-b 제거(2026-07-15 borderless) — 스트립과 아래 워크에어리어 분리는
-        // bg-subtle↔bg 톤 스텝이 담당. 라이트(Δ가 옅음)에서도 아래 차트 카드(bg-card)
-        // 상단 엣지가 함께 경계를 만든다.
-        background: 'var(--bg-subtle)',
+        // 종목명 스트립을 --bg 로 통일(2026-07-15 배경 통일 확장) — 이전엔 --bg-subtle 로
+        // nav·탭과 함께 "크롬 존"에 묶였으나, 스트립+차트가 한 콘텐츠 존으로 읽히도록
+        // 페이지 배경(=워크에어리어)과 동일 톤으로 당긴다. 경계는 위쪽 탭 바(--bg-subtle
+        // 거터, 칩 어포던스로 유지)↔스트립 톤 스텝으로 올라간다. 차트 카드는 그 아래에서
+        // 4px gap + --shadow-panel 로 계속 부유한다.
+        background: 'var(--bg)',
         fontSize: 'var(--text-sm)',
         color: 'var(--fg-dim)',
         fontVariantNumeric: 'tabular-nums',
