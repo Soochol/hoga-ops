@@ -25,6 +25,7 @@ export function DataSection({
   showEmptyDot = false,
   toggleTestId,
   headerTrailing,
+  flushHeader = false,
 }: {
   title: ReactNode;
   children: ReactNode;
@@ -37,10 +38,14 @@ export function DataSection({
   /** 접기 토글 버튼 우측에 나란히 놓이는 컨트롤(드래그 핸들·숨김 버튼 등, ADR-0114).
    *  넘기지 않으면 버튼이 헤더 전체를 차지해 렌더가 불변한다. */
   headerTrailing?: ReactNode;
+  /** 헤더 밑 구분선(border-b) 제거 — 헤더가 본문과 같은 톤으로 흐르는 부유 카드 스타일
+   *  (예: /capture 캡처 요청·대기열). 기본은 구분선 유지. */
+  flushHeader?: boolean;
 }) {
   const headerId = useId();
   const label = typeof title === 'string' ? title : undefined;
   const collapsible = typeof onToggleCollapse === 'function';
+  const headerDivider = flushHeader ? '' : 'border-b border-border';
   return (
     <section
       aria-label={label}
@@ -50,7 +55,7 @@ export function DataSection({
       {collapsible ? (
         <header
           id={headerId}
-          className="flex items-center border-b border-border text-xs font-semibold uppercase tracking-[0.08em] text-fg-dimmer"
+          className={`flex items-center ${headerDivider} text-xs font-semibold uppercase tracking-[0.08em] text-fg-dimmer`.trim()}
         >
           <button
             type="button"
@@ -79,7 +84,7 @@ export function DataSection({
       ) : (
         <header
           id={headerId}
-          className="border-b border-border px-3 py-2 text-xs font-semibold uppercase tracking-[0.08em] text-fg-dimmer"
+          className={`${headerDivider} px-3 py-2 text-xs font-semibold uppercase tracking-[0.08em] text-fg-dimmer`.trim()}
         >
           {title}
         </header>

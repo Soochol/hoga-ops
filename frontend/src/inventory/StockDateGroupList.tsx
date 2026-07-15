@@ -20,7 +20,7 @@ export function StockDateGroupList({ rows, selectedCode, onSelect }: Props) {
       data-testid="stock-date-group-list-root"
       className="flex h-full flex-col min-h-0 overflow-hidden"
     >
-      <header className="px-3 py-2 border-b text-xs uppercase tracking-wider text-fg-dimmer font-semibold">
+      <header className="px-3 py-2 text-xs uppercase tracking-wider text-fg-dimmer font-semibold">
         종목 {allGroupsCount}개 · 캡처 {rows.length}건
       </header>
       <div className="p-2 border-b sticky top-0 bg-bg-card z-10">
