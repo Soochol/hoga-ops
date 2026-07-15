@@ -7,24 +7,15 @@ import { useLiveLayoutStore } from '../state/liveLayout';
 function Harness({
   onNextCode,
   onPrevCode,
-  onNextTab,
-  onPrevTab,
-  onSelectTabIndex,
   onSelectTimeframeShortcut,
 }: {
   onNextCode?: () => void;
   onPrevCode?: () => void;
-  onNextTab?: () => void;
-  onPrevTab?: () => void;
-  onSelectTabIndex?: (index: number) => void;
   onSelectTimeframeShortcut?: (slot: 'minute' | 'D' | 'W' | 'M') => void;
 }) {
   useLiveKeyboard({
     onNextCode,
     onPrevCode,
-    onNextTab,
-    onPrevTab,
-    onSelectTabIndex,
     onSelectTimeframeShortcut,
   });
   return <div data-testid="harness" tabIndex={0} />;
@@ -32,14 +23,12 @@ function Harness({
 
 function HarnessWithInput({
   onNextCode,
-  onSelectTabIndex,
   onSelectTimeframeShortcut,
 }: {
   onNextCode?: () => void;
-  onSelectTabIndex?: (index: number) => void;
   onSelectTimeframeShortcut?: (slot: 'minute' | 'D' | 'W' | 'M') => void;
 }) {
-  useLiveKeyboard({ onNextCode, onSelectTabIndex, onSelectTimeframeShortcut });
+  useLiveKeyboard({ onNextCode, onSelectTimeframeShortcut });
   return <input data-testid="input" />;
 }
 
@@ -114,38 +103,6 @@ describe('useLiveKeyboard', () => {
     expect(next).not.toHaveBeenCalled();
   });
 
-  it('] triggers onNextTab, [ triggers onPrevTab', () => {
-    const onNextTab = vi.fn();
-    const onPrevTab = vi.fn();
-    render(<Harness onNextTab={onNextTab} onPrevTab={onPrevTab} />);
-    fireEvent.keyDown(window, { key: ']' });
-    expect(onNextTab).toHaveBeenCalledOnce();
-    fireEvent.keyDown(window, { key: '[' });
-    expect(onPrevTab).toHaveBeenCalledOnce();
-  });
-
-  it('digit keys call onSelectTabIndex with a 0-based index', () => {
-    const onSelectTabIndex = vi.fn();
-    render(<Harness onSelectTabIndex={onSelectTabIndex} />);
-    fireEvent.keyDown(window, { key: '3' });
-    expect(onSelectTabIndex).toHaveBeenCalledWith(2);
-  });
-
-  it('ignores Ctrl-modified tab keys (browser-reserved)', () => {
-    const onNextTab = vi.fn();
-    render(<Harness onNextTab={onNextTab} />);
-    fireEvent.keyDown(window, { key: ']', ctrlKey: true });
-    expect(onNextTab).not.toHaveBeenCalled();
-  });
-
-  it('does not switch tabs when a digit is typed into an input (e.g. 005930)', () => {
-    const onSelectTabIndex = vi.fn();
-    const { getByTestId } = render(<HarnessWithInput onSelectTabIndex={onSelectTabIndex} />);
-    const input = getByTestId('input');
-    fireEvent.keyDown(input, { key: '5' });
-    expect(onSelectTabIndex).not.toHaveBeenCalled();
-  });
-
   it('Shift+1..4 trigger timeframe shortcuts', () => {
     const onSelectTimeframeShortcut = vi.fn();
     render(<Harness onSelectTimeframeShortcut={onSelectTimeframeShortcut} />);
@@ -163,37 +120,14 @@ describe('useLiveKeyboard', () => {
     ]);
   });
 
-  it('Shift+1 does not select tab index 0', () => {
-    const onSelectTabIndex = vi.fn();
-    const onSelectTimeframeShortcut = vi.fn();
-    render(
-      <Harness
-        onSelectTabIndex={onSelectTabIndex}
-        onSelectTimeframeShortcut={onSelectTimeframeShortcut}
-      />,
-    );
-
-    fireEvent.keyDown(window, { key: '!', code: 'Digit1', shiftKey: true });
-
-    expect(onSelectTimeframeShortcut).toHaveBeenCalledWith('minute');
-    expect(onSelectTabIndex).not.toHaveBeenCalled();
-  });
-
   it('Shift+1 with ! key text still triggers minute shortcut using code Digit1', () => {
-    const onSelectTabIndex = vi.fn();
     const onSelectTimeframeShortcut = vi.fn();
-    render(
-      <Harness
-        onSelectTabIndex={onSelectTabIndex}
-        onSelectTimeframeShortcut={onSelectTimeframeShortcut}
-      />,
-    );
+    render(<Harness onSelectTimeframeShortcut={onSelectTimeframeShortcut} />);
 
     fireEvent.keyDown(window, { key: '!', code: 'Digit1', shiftKey: true });
 
     expect(onSelectTimeframeShortcut).toHaveBeenCalledOnce();
     expect(onSelectTimeframeShortcut).toHaveBeenCalledWith('minute');
-    expect(onSelectTabIndex).not.toHaveBeenCalled();
   });
 
   it('ignores Shift timeframe shortcuts when focus is in an input', () => {
@@ -220,19 +154,14 @@ describe('useLiveKeyboard', () => {
     expect(onSelectTimeframeShortcut).not.toHaveBeenCalled();
   });
 
-  it('plain 1 still selects tab index 0', () => {
-    const onSelectTabIndex = vi.fn();
+  it('plain digit keys are no-ops now that tab switching is removed', () => {
     const onSelectTimeframeShortcut = vi.fn();
-    render(
-      <Harness
-        onSelectTabIndex={onSelectTabIndex}
-        onSelectTimeframeShortcut={onSelectTimeframeShortcut}
-      />,
-    );
+    render(<Harness onSelectTimeframeShortcut={onSelectTimeframeShortcut} />);
 
     fireEvent.keyDown(window, { key: '1' });
+    fireEvent.keyDown(window, { key: '3' });
 
-    expect(onSelectTabIndex).toHaveBeenCalledWith(0);
+    // 평범한 숫자는 더 이상 아무 단축키도 트리거하지 않는다(타임프레임은 Shift+숫자만).
     expect(onSelectTimeframeShortcut).not.toHaveBeenCalled();
   });
 });

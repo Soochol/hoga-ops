@@ -2,7 +2,7 @@ import { useEffect, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { useSymbolSearch } from '../capture/useSymbols';
 import { useCombobox } from '../util/useCombobox';
-import { useLiveTabsStore } from '../state/liveTabs';
+import { activateLiveCode, activateLiveInstrument } from './liveNavigate';
 import { onFocusLiveSearch } from './liveSearchFocus';
 import { shouldIgnoreEvent } from '../util/keyboard';
 import { WatchlistHeartButton } from '../watchlist/WatchlistHeartButton';
@@ -41,8 +41,6 @@ function writeRecentSearches(recent: RecentSearch[]) {
 }
 
 export function LiveSymbolSearch() {
-  const setActiveTabCode = useLiveTabsStore((s) => s.setActiveTabCode);
-  const setActiveTabInstrument = useLiveTabsStore((s) => s.setActiveTabInstrument);
   const [query, setQuery] = useState('');
   const [recentSearches, setRecentSearches] = useState<RecentSearch[]>(() => readRecentSearches());
   const rawItems = useSymbolSearch(query, 20);
@@ -70,7 +68,7 @@ export function LiveSymbolSearch() {
 
   const selectItem = (item: SearchItem) => {
     if (item.kind === 'stock') {
-      setActiveTabCode(item.hit.code, item.hit.name);
+      activateLiveCode(item.hit.code, item.hit.name);
       const nextRecent = [
         { code: item.hit.code, name: item.hit.name, market: item.hit.market },
         ...recentSearches.filter((recent) => recent.code !== item.hit.code),
@@ -78,7 +76,7 @@ export function LiveSymbolSearch() {
       setRecentSearches(nextRecent);
       writeRecentSearches(nextRecent);
     } else {
-      setActiveTabInstrument(indexInstrument(item.index.id as LiveIndexId, item.index.label));
+      activateLiveInstrument(indexInstrument(item.index.id as LiveIndexId, item.index.label));
     }
     setQuery('');
   };
@@ -90,7 +88,7 @@ export function LiveSymbolSearch() {
     onSelect: selectItem,
     onEnterEmpty: (q) => {
       const t = q.trim();
-      if (/^\d{6}$/.test(t)) { setActiveTabCode(t); setQuery(''); return true; }
+      if (/^\d{6}$/.test(t)) { activateLiveCode(t); setQuery(''); return true; }
       return false;
     },
   });

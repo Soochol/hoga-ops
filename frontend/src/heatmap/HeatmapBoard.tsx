@@ -1,5 +1,4 @@
 import type { LiveQuote } from '../api/liveQuotes';
-import type { LiveOpenDisposition } from '../live/liveActivation';
 import { HeatmapFolder, type RowMenuOpener } from './HeatmapFolder';
 import { visibleFolderGroups } from './visibleGroups';
 import type { HeatmapGroup, SortMode } from './heat';
@@ -8,7 +7,7 @@ export interface HeatmapBoardProps {
   groups: HeatmapGroup[];
   quoteByCode: Map<string, LiveQuote>;
   sortMode: SortMode;
-  onPick: (code: string, name?: string, options?: { disposition?: LiveOpenDisposition }) => void;
+  onPick: (code: string, name?: string) => void;
   /** 그룹 내 드래그 재정렬 커밋(manual 모드). 페이지에서 useReorderHeatmapEntries 로 주입. */
   onReorder?: (folderId: string, orderedCodes: string[]) => void;
   /** 행 우클릭 메뉴(삭제·폴더이동) 오프너. 페이지에서 주입. */

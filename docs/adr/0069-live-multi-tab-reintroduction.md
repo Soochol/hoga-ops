@@ -1,6 +1,7 @@
 # 0069 — `/live` 멀티 종목 탭 재도입 (보는상태 탭별 / 분석설정 전역)
 
-**Status:** proposed (2026-06-11) — spec `docs/superpowers/specs/2026-06-11-live-tabs-design.md` (v2, eng-review 반영). 미구현.
+**Status:** superseded by ADR-0113 (2026-07-15) — 구현되어 운용되다 `/live` 단일 뷰 복귀로 제거됨.
+(원문: proposed 2026-06-11 — spec `docs/superpowers/specs/2026-06-11-live-tabs-design.md` v2, eng-review 반영.)
 
 **Context — 왜 ADR인가:**
 `/live`에 멀티 종목 탭을 **재도입**한다. 탭은 2026-05-29 `/replay`→`/live` 통합 때 페이지째 삭제됐던

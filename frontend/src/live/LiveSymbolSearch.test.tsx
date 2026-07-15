@@ -3,7 +3,6 @@ import { render, screen, fireEvent, cleanup } from '@testing-library/react';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { LiveSymbolSearch } from './LiveSymbolSearch';
 import { useLivePageStore } from '../state/livePage';
-import { useLiveTabsStore } from '../state/liveTabs';
 import type { SymbolHit } from '../api/types';
 
 const HIT: SymbolHit = {
@@ -55,8 +54,7 @@ describe('LiveSymbolSearch', () => {
   beforeEach(() => {
     cleanup();
     localStorage.clear();
-    useLivePageStore.setState({ activeCode: null });
-    useLiveTabsStore.setState({ tabs: [], activeTabId: null });
+    useLivePageStore.setState({ activeInstrument: null, activeCode: null });
   });
 
   it('opens a centered search popover when "/" is pressed', () => {
@@ -117,13 +115,11 @@ describe('LiveSymbolSearch', () => {
     expect(screen.queryByText('셀트리온')).toBeNull();
   });
 
-  it('selecting an index result opens an index instrument tab', () => {
+  it('selecting an index result opens an index instrument in the current view', () => {
     renderSearch();
     const input = openSearchPopover();
     fireEvent.change(input, { target: { value: 'kospi' } });
     fireEvent.click(screen.getAllByRole('option')[0]);
-    const active = useLiveTabsStore.getState().tabs[0];
-    expect(active.instrument).toEqual({ kind: 'index', id: 'KOSPI', label: 'KOSPI' });
     expect(useLivePageStore.getState().activeInstrument).toEqual({
       kind: 'index',
       id: 'KOSPI',

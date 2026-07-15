@@ -4,8 +4,7 @@ import { CaptureForm } from '../capture/CaptureForm';
 import { CaptureQueue } from '../capture/CaptureQueue';
 import VerticalSplitter from '../layout/VerticalSplitter';
 import { PageContainer } from '../layout/PageContainer';
-import { instrumentToActiveCode } from '../live/liveInstrument';
-import { useLiveTabsStore } from '../state/liveTabs';
+import { useLivePageStore } from '../state/livePage';
 import { PanelCard } from '../ui/PageShell';
 import { DataSection } from '../ui/DataSurface';
 
@@ -39,11 +38,8 @@ export default function Capture() {
   const { year, month } = currentKstMonth();
   const [searchParams] = useSearchParams();
   const codeParam = searchParams.get('code');
-  const activeLiveTabCode = useLiveTabsStore((s) => {
-    const active = s.tabs.find((t) => t.id === s.activeTabId);
-    return active ? instrumentToActiveCode(active.instrument ?? null) : null;
-  });
-  const initialCode = codeParam ?? activeLiveTabCode;
+  const activeLiveCode = useLivePageStore((s) => s.activeCode);
+  const initialCode = codeParam ?? activeLiveCode;
   const containerRef = useRef<HTMLDivElement>(null);
   const [leftPct, setLeftPct] = useState<number>(loadInitialPct);
 

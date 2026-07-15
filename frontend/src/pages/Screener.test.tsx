@@ -42,18 +42,11 @@ vi.mock('../state/livePage', () => ({
   useLivePageStore: (sel: (s: { setActiveCode: typeof setActiveCode }) => unknown) =>
     sel({ setActiveCode }),
 }));
-// 단일-탭 모델(ADR-0069 개정): 행 클릭은 useJumpToLive → setActiveTabCode(code, label?)로 흐른다.
-// 실제 liveTabs 모듈은 import 시 useLivePageStore.subscribe를 부르는데, 위 livePage
-// 모킹은 selector만 제공하므로 모킹하지 않으면 모듈 로드가 crash 한다.
-const { setActiveTabCode, openSymbolInNewTab } = vi.hoisted(() => ({
-  setActiveTabCode: vi.fn(),
-  openSymbolInNewTab: vi.fn(),
-}));
-vi.mock('../state/liveTabs', () => ({
-  useLiveTabsStore: (sel: (s: {
-    setActiveTabCode: typeof setActiveTabCode;
-    openSymbolInNewTab: typeof openSymbolInNewTab;
-  }) => unknown) => sel({ setActiveTabCode, openSymbolInNewTab }),
+// 단일 뷰 모델(ADR-0113): 행 클릭은 useJumpToLive → activateLiveCode(code, label?)로 흐른다.
+const { activateLiveCode } = vi.hoisted(() => ({ activateLiveCode: vi.fn() }));
+vi.mock('../live/liveNavigate', () => ({
+  activateLiveCode,
+  activateLiveInstrument: vi.fn(),
 }));
 
 import { Screener } from './Screener';
@@ -65,8 +58,7 @@ import type { SavedScreener } from '../api/savedScreeners';
 // 오버레이 테스트가 주입한 quote 가 다음 테스트로 새지 않도록 매 테스트 후 기본 map 복구.
 afterEach(() => {
   vi.mocked(useQuoteByCode).mockReturnValue(defaultQuoteMap());
-  setActiveTabCode.mockClear();
-  openSymbolInNewTab.mockClear();
+  activateLiveCode.mockClear();
 });
 
 function renderPage() {
@@ -109,7 +101,7 @@ it('runs scan and renders row; click sets the active tab code', async () => {
   fireEvent.click(screen.getByText('조회'));
   await waitFor(() => screen.getByText('삼성전자'));
   fireEvent.click(screen.getByText('삼성전자'));
-  expect(setActiveTabCode).toHaveBeenCalledWith('005930', '삼성전자');
+  expect(activateLiveCode).toHaveBeenCalledWith('005930', '삼성전자');
 });
 
 it('runs full-page scans with intraday basis by default', async () => {
@@ -133,22 +125,15 @@ it('uses shared action styling in the save dialog', async () => {
   expect(within(dialog).getByRole('button', { name: '저장' })).toHaveClass('bg-accent');
 });
 
-it('Ctrl-clicking a row opens the result in a new live tab', async () => {
+it('Ctrl/Meta-click도 현재 뷰 교체와 동일(탭 제거 후 새 탭 없음)', async () => {
   renderPage();
   fireEvent.click(screen.getByText('조회'));
   await waitFor(() => screen.getByText('삼성전자'));
   fireEvent.click(screen.getByText('삼성전자'), { ctrlKey: true });
-  expect(openSymbolInNewTab).toHaveBeenCalledWith('005930', '삼성전자');
-  expect(setActiveTabCode).not.toHaveBeenCalled();
-});
-
-it('Meta-clicking a row opens the result in a new live tab', async () => {
-  renderPage();
-  fireEvent.click(screen.getByText('조회'));
-  await waitFor(() => screen.getByText('삼성전자'));
   fireEvent.click(screen.getByText('삼성전자'), { metaKey: true });
-  expect(openSymbolInNewTab).toHaveBeenCalledWith('005930', '삼성전자');
-  expect(setActiveTabCode).not.toHaveBeenCalled();
+  expect(activateLiveCode).toHaveBeenCalledTimes(2);
+  expect(activateLiveCode).toHaveBeenNthCalledWith(1, '005930', '삼성전자');
+  expect(activateLiveCode).toHaveBeenNthCalledWith(2, '005930', '삼성전자');
 });
 
 it('row is keyboard-activatable', async () => {
@@ -156,7 +141,7 @@ it('row is keyboard-activatable', async () => {
   fireEvent.click(screen.getByText('조회'));
   const row = await screen.findByText('삼성전자');
   fireEvent.keyDown(row.closest('[role="button"]')!, { key: 'Enter' });
-  expect(setActiveTabCode).toHaveBeenCalledWith('005930', '삼성전자');
+  expect(activateLiveCode).toHaveBeenCalledWith('005930', '삼성전자');
 });
 
 it('sorts full-page screener results and resets to default on re-scan', async () => {

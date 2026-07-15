@@ -4,7 +4,6 @@ import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { MemoryRouter, Routes, Route, useLocation } from 'react-router';
 import { WatchlistDrawer } from './WatchlistDrawer';
 import { useLivePageStore } from '../state/livePage';
-import { useLiveTabsStore } from '../state/liveTabs';
 import * as watchlistApi from '../api/watchlist';
 import * as client from '../api/client';
 
@@ -39,8 +38,7 @@ describe('WatchlistDrawer', () => {
     // 접기 토글이 watchlist.collapsed를 영속하므로 매 테스트 격리 필수 —
     // 없으면 접기를 수행한 테스트가 이후 테스트의 행 가시성을 오염시킨다.
     window.localStorage.clear();
-    useLivePageStore.setState({ activeCode: null, candleTimeframe: '1m' });
-    useLiveTabsStore.setState({ tabs: [], activeTabId: null });
+    useLivePageStore.setState({ activeInstrument: null, activeCode: null, candleTimeframe: '1m' });
     vi.restoreAllMocks();
     // useQuoteByCode → useQuotes → getQuotes → apiCall('/api/live/quotes')
     vi.spyOn(client, 'apiCall').mockResolvedValue({ phase: 'open', quotes: [] });
@@ -68,19 +66,12 @@ describe('WatchlistDrawer', () => {
     await waitFor(() => expect(screen.getByTestId('pathname').textContent).toBe('/live'));
   });
 
-  it('Ctrl-clicking a row opens the symbol in a new focused live tab', async () => {
+  it('Ctrl/Meta-click도 현재 뷰 종목 교체와 동일(탭 제거 후 새 탭 없음)', async () => {
     vi.spyOn(watchlistApi, 'getWatchlist').mockResolvedValue(DATA);
-    useLiveTabsStore.setState({
-      tabs: [{
-        id: 'tab-a',
-        code: '000660',
-        label: 'SK하이닉스',
-        timeframe: '1m',
-        historicalFromDate: null,
-      }],
-      activeTabId: 'tab-a',
+    useLivePageStore.setState({
+      activeInstrument: { kind: 'stock', code: '000660', label: 'SK하이닉스' },
+      activeCode: '000660', candleTimeframe: '1m', historicalFromDate: null,
     });
-    useLivePageStore.setState({ activeCode: '000660', candleTimeframe: '1m', historicalFromDate: null });
 
     const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } });
     render(<WatchlistDrawer />, { wrapper: wrap(qc, '/inventory') });
@@ -88,38 +79,7 @@ describe('WatchlistDrawer', () => {
 
     fireEvent.click(screen.getByText('삼성전자'), { ctrlKey: true });
 
-    const { tabs, activeTabId } = useLiveTabsStore.getState();
-    expect(tabs.map((t) => t.code)).toEqual(['000660', '005930']);
-    expect(tabs[1]).toMatchObject({ code: '005930', label: '삼성전자' });
-    expect(activeTabId).toBe(tabs[1].id);
-    expect(useLivePageStore.getState().activeCode).toBe('005930');
-    await waitFor(() => expect(screen.getByTestId('pathname').textContent).toBe('/live'));
-  });
-
-  it('Meta-clicking a row opens the symbol in a new focused live tab', async () => {
-    vi.spyOn(watchlistApi, 'getWatchlist').mockResolvedValue(DATA);
-    useLiveTabsStore.setState({
-      tabs: [{
-        id: 'tab-a',
-        code: '000660',
-        label: 'SK하이닉스',
-        timeframe: '1m',
-        historicalFromDate: null,
-      }],
-      activeTabId: 'tab-a',
-    });
-    useLivePageStore.setState({ activeCode: '000660', candleTimeframe: '1m', historicalFromDate: null });
-
-    const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } });
-    render(<WatchlistDrawer />, { wrapper: wrap(qc, '/inventory') });
-    await waitFor(() => expect(screen.getByText('삼성전자')).toBeInTheDocument());
-
-    fireEvent.click(screen.getByText('삼성전자'), { metaKey: true });
-
-    const { tabs, activeTabId } = useLiveTabsStore.getState();
-    expect(tabs.map((t) => t.code)).toEqual(['000660', '005930']);
-    expect(tabs[1]).toMatchObject({ code: '005930', label: '삼성전자' });
-    expect(activeTabId).toBe(tabs[1].id);
+    // 새 탭을 만들지 않고 현재 뷰의 종목만 교체한다.
     expect(useLivePageStore.getState().activeCode).toBe('005930');
     await waitFor(() => expect(screen.getByTestId('pathname').textContent).toBe('/live'));
   });

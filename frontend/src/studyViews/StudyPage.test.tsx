@@ -9,7 +9,6 @@ import { useLiveCursorStore } from '../live/useLiveCursorStore';
 import { useStudyTabsStore } from '../state/studyTabs';
 import { useEntryDragStore } from '../state/entryDrag';
 import { useLivePageStore } from '../state/livePage';
-import { useLiveTabsStore } from '../state/liveTabs';
 import { useStudyLayoutStore } from '../state/studyLayout';
 
 const {
@@ -247,7 +246,6 @@ beforeEach(() => {
     (args: { finalProfile: DayVolumeDistribution | null | undefined }) => args.finalProfile,
   );
   useLiveCursorStore.getState().resetCursor();
-  useLiveTabsStore.setState({ tabs: [], activeTabId: null });
   useLivePageStore.setState({
     volumeDistributionEnabled: true,
     volumeDistributionHoverCutoffEnabled: false,

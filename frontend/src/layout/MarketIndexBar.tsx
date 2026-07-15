@@ -5,12 +5,12 @@
  * 남지 않게 하는 계약. 높이는 --h-bottom-bar 토큰.
  *
  * 색 규율(DESIGN.md): 등락은 가격 방향 카테고리(priceDirClass, 색+부호 2중),
- * 라벨은 --fg-dim, 값은 mono --fg. 지수 클릭 = 해당 지수 /live 탭 열기
- * (기존 setActiveTabInstrument 단축경로 — 이미 열린 탭이 있으면 전환). */
+ * 라벨은 --fg-dim, 값은 mono --fg. 지수 클릭 = 해당 지수를 /live 현재 뷰로 연다
+ * (activateLiveInstrument — 단일 뷰 제자리 교체, ADR-0113). */
 import { useNavigate } from 'react-router';
 import { useMarketIndexQuotes, type MarketIndexQuote } from '../api/marketIndexQuotes';
 import { indexInstrument, isLiveIndexId } from '../live/liveInstrument';
-import { useLiveTabsStore } from '../state/liveTabs';
+import { activateLiveInstrument } from '../live/liveNavigate';
 import { priceDirClass } from '../ui/priceDir';
 
 const VALUE_FORMAT = new Intl.NumberFormat('ko-KR', {
@@ -25,12 +25,11 @@ function formatChange(quote: MarketIndexQuote): string {
 
 function MarketIndexItem({ quote }: { quote: MarketIndexQuote }) {
   const navigate = useNavigate();
-  const setActiveTabInstrument = useLiveTabsStore((s) => s.setActiveTabInstrument);
   const openable = isLiveIndexId(quote.id);
 
   const open = () => {
     if (!isLiveIndexId(quote.id)) return;
-    setActiveTabInstrument(indexInstrument(quote.id, quote.label));
+    activateLiveInstrument(indexInstrument(quote.id, quote.label));
     navigate('/live');
   };
 

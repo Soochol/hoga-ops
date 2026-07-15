@@ -64,15 +64,10 @@ const { setActiveCode } = vi.hoisted(() => ({ setActiveCode: vi.fn() }));
 vi.mock('../state/livePage', () => ({
   useLivePageStore: (sel: (s: { setActiveCode: typeof setActiveCode }) => unknown) => sel({ setActiveCode }),
 }));
-const { setActiveTabCode, openSymbolInNewTab } = vi.hoisted(() => ({
-  setActiveTabCode: vi.fn(),
-  openSymbolInNewTab: vi.fn(),
-}));
-vi.mock('../state/liveTabs', () => ({
-  useLiveTabsStore: (sel: (s: {
-    setActiveTabCode: typeof setActiveTabCode;
-    openSymbolInNewTab: typeof openSymbolInNewTab;
-  }) => unknown) => sel({ setActiveTabCode, openSymbolInNewTab }),
+// 단일 뷰 모델(ADR-0113): liveNavigate를 모킹해 jump 경로를 차단한다.
+vi.mock('../live/liveNavigate', () => ({
+  activateLiveCode: vi.fn(),
+  activateLiveInstrument: vi.fn(),
 }));
 
 import { Heatmap } from './Heatmap';

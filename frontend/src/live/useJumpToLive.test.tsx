@@ -2,17 +2,18 @@ import { describe, it, expect, beforeEach } from 'vitest';
 import { render, screen, fireEvent, waitFor, renderHook } from '@testing-library/react';
 import { MemoryRouter, Routes, Route, useLocation } from 'react-router';
 import { useJumpToLive } from './useJumpToLive';
-import { dispositionFromMouseEvent } from './liveActivation';
-import { useLiveTabsStore } from '../state/liveTabs';
 import { useLivePageStore } from '../state/livePage';
 
-// Unified isolation: every jump now creates a persisted tab (module-singleton
-// store + localStorage), so each test must reset both stores AND storage —
-// otherwise tab/persistence state leaks across tests in file order.
+// 단일 뷰 모델(ADR-0113): jump 은 page 스토어의 activeCode/activeInstrument 를 제자리
+// 교체한다. 스토어는 모듈 싱글턴 + localStorage 이므로 각 테스트가 둘 다 리셋한다.
 beforeEach(() => {
   localStorage.clear();
-  useLiveTabsStore.setState({ tabs: [], activeTabId: null });
-  useLivePageStore.setState({ activeCode: null, candleTimeframe: '1m', historicalFromDate: null });
+  useLivePageStore.setState({
+    activeInstrument: null,
+    activeCode: null,
+    candleTimeframe: '1m',
+    historicalFromDate: null,
+  });
 });
 
 function Probe() {
@@ -27,13 +28,6 @@ function Probe() {
 }
 
 describe('useJumpToLive', () => {
-  it('maps Ctrl and Meta mouse events to new-tab disposition', () => {
-    expect(dispositionFromMouseEvent({ ctrlKey: false, metaKey: false })).toBe('current-tab');
-    expect(dispositionFromMouseEvent({ ctrlKey: true, metaKey: false })).toBe('new-tab');
-    expect(dispositionFromMouseEvent({ ctrlKey: false, metaKey: true })).toBe('new-tab');
-    expect(dispositionFromMouseEvent({ ctrlKey: true, metaKey: true })).toBe('new-tab');
-  });
-
   it('sets activeCode and navigates to /live when elsewhere', async () => {
     render(
       <MemoryRouter initialEntries={['/inventory']}>
@@ -57,68 +51,37 @@ describe('useJumpToLive', () => {
     expect(screen.getByTestId('path').textContent).toBe('/live');
   });
 
-  it('jump sets the active tab code (creating the first tab) instead of only setting activeCode', () => {
+  it('projects code + label onto the active view (activeInstrument carries the label)', () => {
     const { result } = renderHook(() => useJumpToLive(), {
       wrapper: ({ children }) => <MemoryRouter initialEntries={['/live']}>{children}</MemoryRouter>,
     });
-    result.current('005930');
-    expect(useLiveTabsStore.getState().tabs.map((t) => t.code)).toEqual(['005930']);
+    result.current('005930', '삼성전자');
     expect(useLivePageStore.getState().activeCode).toBe('005930');
-  });
-
-  it('new-tab disposition appends a focused populated tab and preserves the previous tab', () => {
-    useLiveTabsStore.setState({
-      tabs: [{
-        id: 'tab-a',
-        code: '000660',
-        label: 'SK하이닉스',
-        timeframe: '1m',
-        historicalFromDate: null,
-      }],
-      activeTabId: 'tab-a',
-    });
-    useLivePageStore.setState({ activeCode: '000660', candleTimeframe: '1m', historicalFromDate: null });
-
-    const { result } = renderHook(() => useJumpToLive(), {
-      wrapper: ({ children }) => <MemoryRouter initialEntries={['/live']}>{children}</MemoryRouter>,
-    });
-
-    result.current('005930', '삼성전자', { disposition: 'new-tab' });
-
-    const { tabs, activeTabId } = useLiveTabsStore.getState();
-    expect(tabs.map((t) => t.code)).toEqual(['000660', '005930']);
-    expect(tabs[1]).toMatchObject({
+    expect(useLivePageStore.getState().activeInstrument).toEqual({
+      kind: 'stock',
       code: '005930',
       label: '삼성전자',
-      timeframe: '1m',
-      historicalFromDate: null,
     });
-    expect(activeTabId).toBe(tabs[1].id);
-    expect(useLivePageStore.getState().activeCode).toBe('005930');
   });
 
-  it('current-tab disposition keeps replacing the active tab', () => {
-    useLiveTabsStore.setState({
-      tabs: [{
-        id: 'tab-a',
-        code: '000660',
-        label: 'SK하이닉스',
-        timeframe: '1m',
-        historicalFromDate: null,
-      }],
-      activeTabId: 'tab-a',
+  it('replaces the active view in place, resetting pan for the new subject', () => {
+    useLivePageStore.setState({
+      activeInstrument: { kind: 'stock', code: '000660', label: 'SK하이닉스' },
+      activeCode: '000660',
+      candleTimeframe: '5m',
+      historicalFromDate: '20260101',
     });
-    useLivePageStore.setState({ activeCode: '000660', candleTimeframe: '1m', historicalFromDate: null });
 
     const { result } = renderHook(() => useJumpToLive(), {
       wrapper: ({ children }) => <MemoryRouter initialEntries={['/live']}>{children}</MemoryRouter>,
     });
 
-    result.current('005930', '삼성전자', { disposition: 'current-tab' });
+    result.current('005930', '삼성전자');
 
-    const { tabs, activeTabId } = useLiveTabsStore.getState();
-    expect(tabs.map((t) => t.code)).toEqual(['005930']);
-    expect(activeTabId).toBe('tab-a');
-    expect(useLivePageStore.getState().activeCode).toBe('005930');
+    const state = useLivePageStore.getState();
+    expect(state.activeCode).toBe('005930');
+    // timeframe 유지(같은 봉으로 종목만 전환), pan 은 새 종목 기본 뷰로 초기화.
+    expect(state.candleTimeframe).toBe('5m');
+    expect(state.historicalFromDate).toBeNull();
   });
 });

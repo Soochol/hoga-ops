@@ -1,5 +1,4 @@
 import type { DraggableAttributes, DraggableSyntheticListeners } from '@dnd-kit/core';
-import { dispositionFromMouseEvent, type LiveOpenDisposition } from '../live/liveActivation';
 import { priceDirClass } from '../ui/priceDir';
 import { dropIndicatorClass, sortableDraggingStyle, type DropIndicator } from '../ui/sortableDragVisuals';
 
@@ -16,7 +15,7 @@ export interface QuoteRowProps {
   active: boolean;
   ariaLabel: string;
   testId: string;
-  onClick: (options?: { disposition?: LiveOpenDisposition }) => void;
+  onClick: () => void;
   trailingAction?: React.ReactNode;
   // --- drag (선택 패널용; 미전달 시 비-드래그 동작) ---
   sortableRef?: (node: HTMLElement | null) => void;
@@ -95,7 +94,7 @@ export function QuoteRow({
       aria-current={active ? 'true' : undefined}
       aria-label={ariaLabel}
       aria-keyshortcuts={onDelete ? 'Delete' : undefined}
-      onClick={(e) => onClick({ disposition: dispositionFromMouseEvent(e) })}
+      onClick={onClick}
       onKeyDown={onKeyDown}
       onContextMenu={onContextMenu}
       className={`group cursor-pointer touch-none ${indented ? 'pl-10' : 'pl-md'} pr-md py-sm flex items-center gap-2 border-b outline-none hover:bg-bg-input-hover focus-visible:bg-bg-input-hover ${
