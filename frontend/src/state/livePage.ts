@@ -1,6 +1,7 @@
 import { create } from 'zustand';
 import type { MASource } from '../chart/projectors/movingAverage';
-import type { LineStyle } from '../chart/drawing/types';
+import type { LineStyle, PaneId } from '../chart/drawing/types';
+import { swapInPaneOrder } from '../chart/paneOrder';
 import {
   mergeLiveIndicatorPrefs,
   DEFAULT_LIVE_MAS,
@@ -156,6 +157,8 @@ type Store = Persisted & PersistedIndicators & {
   setForeignNetEnabled: (enabled: boolean) => void;
   setInstitutionNetEnabled: (enabled: boolean) => void;
   setPanePrefForTimeframe: (timeframe: LiveTimeframe, key: PanePrefKey, enabled: boolean) => void;
+  /** 두 pane 의 순서 위치를 교환한다(레전드 ↑/↓, candle 은 고정, ADR-0114 §3). */
+  swapPaneOrder: (a: PaneId, b: PaneId) => void;
   setVolumeEnabled: (enabled: boolean) => void;
   setMovingAverageHidden: (hidden: boolean) => void;
   setAskPeakEnabled: (enabled: boolean) => void;
@@ -340,6 +343,7 @@ function snapshotIndicators(get: () => Store): PersistedIndicators {
     dailyMovingAverageEnabled: s.dailyMovingAverageEnabled,
     dailyMovingAverageHidden: s.dailyMovingAverageHidden,
     panePrefsByTimeframe: s.panePrefsByTimeframe,
+    paneOrder: s.paneOrder,
   };
 }
 
@@ -468,6 +472,11 @@ export const useLivePageStore = create<Store>((set, get) => ({
       },
     };
     set({ panePrefsByTimeframe: next });
+    persistIndicators(snapshotIndicators(get));
+  },
+
+  swapPaneOrder: (a, b) => {
+    set({ paneOrder: swapInPaneOrder(get().paneOrder, a, b) });
     persistIndicators(snapshotIndicators(get));
   },
 

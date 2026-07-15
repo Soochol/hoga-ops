@@ -259,6 +259,33 @@ describe('livePage store', () => {
   });
 });
 
+describe('useLivePageStore.swapPaneOrder', () => {
+  beforeEach(() => {
+    localStorage.clear();
+    useLivePageStore.setState({
+      paneOrder: [
+        'candle', 'volume', 'quote-totals', 'ratio',
+        'fill-strength', 'program-trade', 'investor-foreign', 'investor-institution',
+      ],
+    });
+  });
+
+  it('swaps two non-candle panes and persists to live.indicators.v1', () => {
+    useLivePageStore.getState().swapPaneOrder('volume', 'quote-totals');
+    expect(useLivePageStore.getState().paneOrder.slice(0, 3)).toEqual([
+      'candle', 'quote-totals', 'volume',
+    ]);
+    const persisted = JSON.parse(localStorage.getItem('live.indicators.v1') ?? '{}');
+    expect(persisted.paneOrder.slice(0, 3)).toEqual(['candle', 'quote-totals', 'volume']);
+  });
+
+  it('refuses to move the candle pane', () => {
+    const before = useLivePageStore.getState().paneOrder;
+    useLivePageStore.getState().swapPaneOrder('candle', 'volume');
+    expect(useLivePageStore.getState().paneOrder).toEqual(before);
+  });
+});
+
 describe('useLivePageStore.movingAverages', () => {
   beforeEach(() => {
     localStorage.removeItem('live.indicators.v1');

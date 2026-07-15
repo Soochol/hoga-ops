@@ -1156,6 +1156,8 @@ export function LiveChartRoot({
       panePrefsByTimeframe: s.panePrefsByTimeframe,
     })),
   );
+  // 사용자 소유 pane 순서(ADR-0114 §3) — paneSpecsForTimeframe 의 3번째 인자로 전달.
+  const paneOrder = useLivePageStore((s) => s.paneOrder);
   const askPeakEnabled = useLivePageStore((s) => s.askPeakEnabled);
   const bidPeakEnabled = useLivePageStore((s) => s.bidPeakEnabled);
   const askPeakWallHidden = useLivePageStore((s) => s.askPeakHidden);
@@ -1365,7 +1367,7 @@ export function LiveChartRoot({
 
   useEffect(() => {
     if (!chart || !cb) return;
-    const specs = paneSpecsForTimeframe(timeframe, activePaneToggles);
+    const specs = paneSpecsForTimeframe(timeframe, activePaneToggles, paneOrder);
     let cancelled = false;
     const apply = () => {
       if (cancelled) return;
@@ -1390,7 +1392,7 @@ export function LiveChartRoot({
       cancelled = true;
       cancelAnimationFrame(raf);
     };
-  }, [chart, activePaneToggles, cb, timeframe]);
+  }, [chart, activePaneToggles, cb, timeframe, paneOrder]);
 
   // 고저 극값 라벨이 피할 매도/매수 최대벽 도킹 라벨 입력(가격·선 끝 시각·텍스트 —
   // 픽셀 아님). 좌표 변환은 HighLowAnnotationOverlay 렌더 본문이 매 프레임 수행한다:
@@ -1761,7 +1763,7 @@ export function LiveChartRoot({
               <DailyMovingAverageOverlay chart={chart} bundle={cb} axis={axis} code={code} timeframe={timeframe} venue={venue} todayKst={todayKst} dailyCandleKisEnabled={dailyCandleKisEnabled} override={dailyMovingAverageOverride} />
             </>
           )}
-          {paneSpecsForTimeframe(timeframe, activePaneToggles).map((spec, i) => (
+          {paneSpecsForTimeframe(timeframe, activePaneToggles, paneOrder).map((spec, i) => (
             <RangeSeriesPane
               key={spec.name}
               chart={chart}

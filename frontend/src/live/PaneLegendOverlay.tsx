@@ -23,6 +23,7 @@ import { useMaSeriesRegistry } from './indicators/maSeriesRegistry';
 import { useDailyMaSeriesRegistry } from './indicators/dailyMaSeriesRegistry';
 import { usePaneLegendRegistry } from './indicators/paneLegendRegistry';
 import { paneSpecsForTimeframe, type PaneToggles } from './paneSpecsForTimeframe';
+import type { PaneId } from '../chart/drawing/types';
 import {
   buildLegendRows,
   readSeriesValue,
@@ -141,6 +142,104 @@ function HoverIcon({
     >
       {children}
     </button>
+  );
+}
+
+function ChevronGlyph({ dir }: { dir: 'up' | 'down' }) {
+  return (
+    <svg width="12" height="12" viewBox="0 0 24 24" aria-hidden="true" fill="none">
+      <path
+        d={dir === 'up' ? 'M6 15l6-6 6 6' : 'M6 9l6 6 6-6'}
+        stroke="currentColor"
+        strokeWidth="2"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+      />
+    </svg>
+  );
+}
+
+/** pane 순서 이동 버튼 하나(↑ 또는 ↓). disabled 시 클릭 불가·저채도. HoverIcon 은
+ *  disabled/testId 를 안 받으므로 별도 — iconBtnStyle 재사용. */
+function PaneMoveButton({
+  dir,
+  label,
+  testId,
+  disabled,
+  onClick,
+}: {
+  dir: 'up' | 'down';
+  label: string;
+  testId: string;
+  disabled: boolean;
+  onClick: () => void;
+}) {
+  return (
+    <button
+      type="button"
+      aria-label={label}
+      title={label}
+      data-testid={testId}
+      disabled={disabled}
+      onClick={onClick}
+      style={{
+        ...iconBtnStyle,
+        width: 16,
+        height: 16,
+        cursor: disabled ? 'default' : 'pointer',
+        color: disabled ? 'var(--fg-disabled, var(--fg-dimmer))' : 'var(--fg-dimmer)',
+        opacity: disabled ? 0.4 : 1,
+      }}
+      onMouseEnter={(e) => {
+        if (!disabled) e.currentTarget.style.color = 'var(--fg-dim)';
+      }}
+      onMouseLeave={(e) => {
+        if (!disabled) e.currentTarget.style.color = 'var(--fg-dimmer)';
+      }}
+    >
+      <ChevronGlyph dir={dir} />
+    </button>
+  );
+}
+
+/** 한 pane 의 ↑/↓ 순서 이동 컨트롤. candle(idx 0)은 렌더하지 않는다. 이동은
+ *  **마운트된 이웃과 스왑**이라 게이트로 부재중인 pane 을 건너뛴다(ADR-0114 §3). */
+function PaneMoveControls({
+  paneId,
+  label,
+  idx,
+  mountedCount,
+  upNeighbor,
+  downNeighbor,
+}: {
+  paneId: PaneId;
+  label: string;
+  idx: number;
+  mountedCount: number;
+  upNeighbor: PaneId | null;
+  downNeighbor: PaneId | null;
+}) {
+  const swapPaneOrder = useLivePageStore((s) => s.swapPaneOrder);
+  // idx 1 의 위 이웃은 candle(고정) → 위로 이동 불가. 마지막 마운트 pane → 아래 불가.
+  const canUp = idx > 1 && upNeighbor !== null && upNeighbor !== 'candle';
+  const canDown = idx < mountedCount - 1 && downNeighbor !== null;
+  return (
+    <span style={{ ...boxStyle, gap: 'var(--space-2xs)', pointerEvents: 'auto', padding: 'var(--space-2xs)' }}>
+      <PaneMoveButton
+        dir="up"
+        label={`${label} pane 위로 이동`}
+        testId={`pane-move-up-${paneId}`}
+        disabled={!canUp}
+        onClick={() => { if (canUp && upNeighbor) swapPaneOrder(paneId, upNeighbor); }}
+      />
+      <PaneMoveButton
+        dir="down"
+        label={`${label} pane 아래로 이동`}
+        testId={`pane-move-down-${paneId}`}
+        disabled={!canDown}
+        onClick={() => { if (canDown && downNeighbor) swapPaneOrder(paneId, downNeighbor); }}
+      />
+    </span>
   );
 }
 
@@ -335,6 +434,8 @@ function PaneLegendOverlay({ chart, timeframe, paneToggles }: Props) {
   const paramRef = useRef<MouseEventParams | null>(null);
   const [, tick] = useReducer((n: number) => n + 1, 0);
 
+  // 사용자 소유 pane 순서 — 내부 구독이라 memo(props)를 우회해 재정렬 즉시 반영.
+  const paneOrder = useLivePageStore((s) => s.paneOrder);
   const movingAverages = useLivePageStore((s) => s.movingAverages);
   const movingAverageEnabled = useLivePageStore((s) => s.movingAverageEnabled);
   const movingAverageHidden = useLivePageStore((s) => s.movingAverageHidden);
@@ -398,11 +499,9 @@ function PaneLegendOverlay({ chart, timeframe, paneToggles }: Props) {
   }, [chart]);
 
   // ── runtime pane order (spec) — drives both cell metadata and Y placement ──
-  const specs = paneSpecsForTimeframe(timeframe, paneToggles);
-  const indexByPaneId = new Map<string, number>();
+  const specs = paneSpecsForTimeframe(timeframe, paneToggles, paneOrder);
   const specByPaneId = new Map<string, (typeof specs)[number]>();
-  specs.forEach((s, i) => {
-    indexByPaneId.set(s.name, i);
+  specs.forEach((s) => {
     specByPaneId.set(s.name, s);
   });
 
@@ -547,11 +646,16 @@ function PaneLegendOverlay({ chart, timeframe, paneToggles }: Props) {
       // the icon buttons re-enable hits (iconBtnStyle).
       style={{ position: 'absolute', inset: 0, pointerEvents: 'none', zIndex: 4 }}
     >
-      {Array.from(rowsByPane, ([paneId, paneRows]) => {
-        const idx = indexByPaneId.get(paneId);
-        // Pane not mounted yet (first frame after a toggle) → skip; self-heals
-        // next tick once chart.panes() includes it.
-        if (idx == null || idx >= paneTops.length) return null;
+      {/* 마운트된 pane 순서(specs)로 순회 — 레전드 행이 없는 pane 도 래퍼를 받아
+          ↑/↓ 순서 컨트롤을 노출한다. 캔들(idx 0)은 컨트롤 없이 행만 렌더. */}
+      {specs.map((spec, idx) => {
+        const paneId = spec.name;
+        // Pane not mounted yet (first frame after a toggle/reorder) → skip;
+        // self-heals next tick once chart.panes() includes it.
+        if (idx >= paneTops.length) return null;
+        const paneRows = rowsByPane.get(paneId) ?? [];
+        const showMoveControls = idx > 0; // 캔들은 고정
+        if (paneRows.length === 0 && !showMoveControls) return null;
         return (
           <div
             key={paneId}
@@ -567,6 +671,16 @@ function PaneLegendOverlay({ chart, timeframe, paneToggles }: Props) {
               pointerEvents: 'none',
             }}
           >
+            {showMoveControls && (
+              <PaneMoveControls
+                paneId={paneId}
+                label={spec.legendTitle ?? paneId}
+                idx={idx}
+                mountedCount={Math.min(specs.length, paneTops.length)}
+                upNeighbor={idx - 1 >= 0 ? specs[idx - 1].name : null}
+                downNeighbor={idx + 1 < specs.length ? specs[idx + 1].name : null}
+              />
+            )}
             {paneRows.map((row) => (
               <div
                 // paneId+kind(+flag id): 캔들 pane은 MA/daily-MA/flag row가 공존 —
