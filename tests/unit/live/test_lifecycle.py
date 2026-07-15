@@ -1710,3 +1710,149 @@ async def test_get_status_exposes_capture_missing_codes(monkeypatch, tmp_path) -
         with contextlib.suppress(asyncio.CancelledError):
             await task
         lifecycle.reset_for_tests()
+
+
+@pytest.mark.asyncio
+async def test_ws_watchdog_rest_fallback_enroll_and_release(monkeypatch, tmp_path) -> None:
+    """해결안 ③: 사다리(재구독 3→재시작 2) 소진 후 다음 패스에 유실 종목이 REST
+    폴백으로 편입되고 storage 재동기화가 1회 호출된다. missing 해소 패스에는
+    자동 해제 + 재동기화. 변화 없는 패스엔 재동기화 없음."""
+    from hoga.live import lifecycle
+
+    lifecycle.reset_for_tests()
+    monkeypatch.setattr("hoga.live.session_gate.should_run_now", lambda t: True)
+    monkeypatch.setattr("hoga.live.session_gate.market_phase", lambda t: "regular")
+    monkeypatch.setattr(lifecycle, "_restart_conn", AsyncMock())
+
+    sync_calls: list[tuple[str, ...]] = []
+
+    async def fake_sync(data_dir, *, n_configured=None):
+        sync_calls.append(tuple(sorted(lifecycle._ws_rest_fallback_codes)))
+        return ([], ())
+
+    monkeypatch.setattr(lifecycle, "_sync_storage_targets", fake_sync)
+
+    async def _forever() -> None:
+        await asyncio.sleep(60)
+
+    tasks = [asyncio.create_task(_forever()) for _ in range(2)]
+    now_ms = 10_000_000
+    try:
+        ws = _install_resub_state(
+            started_at_ms=1_000, ws_task=tasks[0], flush_task=tasks[1], now_ms=now_ms,
+        )
+
+        async def check() -> bool:
+            return await lifecycle._ws_watchdog_check(
+                data_dir=tmp_path, now_ms=now_ms, stale_after_ms=120_000,
+            )
+
+        # 사다리 소진: 재구독 3 + 재시작 2 — 이 동안은 폴백 미편입.
+        for _ in range(5):
+            await check()
+        assert lifecycle._ws_rest_fallback_codes == set()
+        assert sync_calls == []
+        # 6번째 패스 = "log" 종착 → 편입 + 재동기화 1회.
+        await check()
+        assert lifecycle._ws_rest_fallback_codes == {"005930"}
+        assert sync_calls == [("005930",)]
+        # 변화 없는 패스 — 재동기화 추가 호출 없음(편입 유지).
+        await check()
+        assert sync_calls == [("005930",)]
+        # WS 회복(missing 해소) → 자동 해제 + 재동기화.
+        ws._missing = []
+        await check()
+        assert lifecycle._ws_rest_fallback_codes == set()
+        assert sync_calls == [("005930",), ()]
+    finally:
+        for t in tasks:
+            t.cancel()
+            with contextlib.suppress(asyncio.CancelledError):
+                await t
+        lifecycle.reset_for_tests()
+
+
+@pytest.mark.asyncio
+async def test_ws_watchdog_rest_fallback_skips_nxt(monkeypatch, tmp_path) -> None:
+    """NXT(표시 전용) 사다리 소진은 폴백 미편입 — 정규장 캡처 무영향."""
+    from hoga.live import lifecycle
+
+    lifecycle.reset_for_tests()
+    monkeypatch.setattr("hoga.live.session_gate.should_run_now", lambda t: True)
+    monkeypatch.setattr("hoga.live.session_gate.market_phase", lambda t: "regular")
+    monkeypatch.setattr(lifecycle, "_restart_conn", AsyncMock())
+    monkeypatch.setattr(lifecycle, "_sync_storage_targets", AsyncMock())
+
+    async def _forever() -> None:
+        await asyncio.sleep(60)
+
+    tasks = [asyncio.create_task(_forever()) for _ in range(2)]
+    now_ms = 10_000_000
+    try:
+        _install_resub_state(
+            started_at_ms=1_000, ws_task=tasks[0], flush_task=tasks[1],
+            now_ms=now_ms, venue="NXT",
+        )
+        for _ in range(8):
+            await lifecycle._ws_watchdog_check(
+                data_dir=tmp_path, now_ms=now_ms, stale_after_ms=120_000,
+            )
+        assert lifecycle._ws_rest_fallback_codes == set()
+    finally:
+        for t in tasks:
+            t.cancel()
+            with contextlib.suppress(asyncio.CancelledError):
+                await t
+        lifecycle.reset_for_tests()
+
+
+@pytest.mark.asyncio
+async def test_ws_watchdog_rest_fallback_clears_on_new_session(monkeypatch, tmp_path) -> None:
+    """세션(started_at_ms) 교체 시 폴백 집합이 리셋된다 — 새 세션은 백지에서 시작."""
+    from hoga.live import lifecycle
+
+    lifecycle.reset_for_tests()
+    monkeypatch.setattr("hoga.live.session_gate.should_run_now", lambda t: True)
+    monkeypatch.setattr("hoga.live.session_gate.market_phase", lambda t: "regular")
+    monkeypatch.setattr(lifecycle, "_restart_conn", AsyncMock())
+    monkeypatch.setattr(lifecycle, "_sync_storage_targets", AsyncMock())
+
+    async def _forever() -> None:
+        await asyncio.sleep(60)
+
+    tasks = [asyncio.create_task(_forever()) for _ in range(4)]
+    now_ms = 10_000_000
+    try:
+        _install_resub_state(
+            started_at_ms=1_000, ws_task=tasks[0], flush_task=tasks[1], now_ms=now_ms,
+        )
+        lifecycle._ws_rest_fallback_codes.add("999999")   # 이전 세션 잔재 시뮬레이션
+        _install_resub_state(
+            started_at_ms=2_000, ws_task=tasks[2], flush_task=tasks[3], now_ms=now_ms,
+        )
+        await lifecycle._ws_watchdog_check(
+            data_dir=tmp_path, now_ms=now_ms, stale_after_ms=120_000,
+        )
+        assert "999999" not in lifecycle._ws_rest_fallback_codes
+    finally:
+        for t in tasks:
+            t.cancel()
+            with contextlib.suppress(asyncio.CancelledError):
+                await t
+        lifecycle.reset_for_tests()
+
+
+@pytest.mark.asyncio
+async def test_get_status_exposes_rest_fallback_codes(monkeypatch, tmp_path) -> None:
+    """get_status가 폴백 편입 종목을 capture_rest_fallback_codes로 노출."""
+    from hoga.live import lifecycle
+
+    lifecycle.reset_for_tests()
+    try:
+        lifecycle._ws_rest_fallback_codes.update({"000660", "005930"})
+        st = lifecycle.get_status()
+        assert st.capture_rest_fallback_codes == ["005930", "000660"] or (
+            st.capture_rest_fallback_codes == sorted(["000660", "005930"])
+        )
+    finally:
+        lifecycle.reset_for_tests()

@@ -411,3 +411,33 @@ def test_rest30_concurrency_scales_per_account(tmp_path, monkeypatch) -> None:
     assert sr._rest30_concurrency(tmp_path) == 48, "6계정 = 48 (상한 clamp)"
     monkeypatch.setattr(sr.kis_runtime, "configured_account_ids", _ids(0))
     assert sr._rest30_concurrency(tmp_path) == 10, "계정 0 = 10 (하한)"
+
+
+@pytest.mark.asyncio
+async def test_storage_runtime_rest_fallback_codes_reach_recorder(
+    tmp_path,
+    monkeypatch,
+) -> None:
+    """해결안 ③: rest_fallback_codes가 plan을 관통해 recorder 타깃에 편입된다.
+    ws_plus_rest + n=1 + 종목 3개면 계정당 13슬롯이라 전부 WS(REST 잔여 0) —
+    폴백이 없으면 recorder 타깃이 비고, 폴백 종목만 REST 타깃이 된다."""
+    _patch_common(monkeypatch)
+    _seed_watchlist(tmp_path)
+    save_live_settings(tmp_path, LiveSettings(storage_policy="ws_plus_rest"))
+    state = FakeStorageState()
+
+    snapshot = await sync_storage_runtime(
+        tmp_path,
+        state=state,
+        buffer=object(),  # type: ignore[arg-type]
+        date_fn=lambda: "20260623",
+        now_ms_fn=lambda: 0,
+        n_configured=1,
+        rest_fallback_codes=("000660", "035420"),
+    )
+
+    assert snapshot.ws_targets == ("005930", "000660", "035420")
+    assert snapshot.kis_api_targets == ("000660", "035420")   # WS 소속이지만 폴백 편입
+    assert state.rest30_recorder is not None
+    assert state.rest30_recorder.targets == {"000660", "035420"}
+    assert state.rest30_recorder.started is True
