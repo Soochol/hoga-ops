@@ -1,7 +1,11 @@
-import { describe, it, expect } from 'vitest';
+import { describe, it, expect, beforeEach } from 'vitest';
 import { renderHook, act } from '@testing-library/react';
 import { useSaveAnchor } from './useSaveAnchor';
 import type { SavedScreener } from '../api/savedScreeners';
+
+// useSaveAnchor 는 이제 빌더 draft 를 localStorage(screenerDraft.v1)에 영속한다. 한
+// 테스트의 draft 가 다음 테스트 마운트 시 하이드레이션돼 새지 않도록 매번 초기화한다.
+beforeEach(() => localStorage.clear());
 
 const SAVE: SavedScreener = {
   id: 's1', name: '급등주',

@@ -1,6 +1,7 @@
-import { useRef, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import type { ConditionLeaf, ScreenerUniverse } from '../api/screener';
 import type { SavedScreener } from '../api/savedScreeners';
+import { persistScreenerDraft, readScreenerDraft } from './screenerDraft';
 
 export interface SaveAnchor {
   conditions: ConditionLeaf[];
@@ -38,13 +39,20 @@ export interface SaveAnchor {
 // editConditions/editUniverse + dirty=true. Keeping these paths separate is what
 // makes "clean on load, dirty on edit" hold.
 export function useSaveAnchor(): SaveAnchor {
-  const [conditions, setConditions] = useState<ConditionLeaf[]>(() => []);
-  const [universe, setUniverse] = useState<ScreenerUniverse>({});
-  const [anchorId, setAnchorId] = useState<string | null>(null);
-  const [anchorName, setAnchorName] = useState<string | null>(null);
-  const [dirty, setDirty] = useState(false);
+  // 마운트 시 1회 localStorage 하이드레이션 — 라우트 왕복/새로고침 후 조건 입력값 복원.
+  const [seed] = useState(readScreenerDraft);
+  const [conditions, setConditions] = useState<ConditionLeaf[]>(seed.conditions);
+  const [universe, setUniverse] = useState<ScreenerUniverse>(seed.universe);
+  const [anchorId, setAnchorId] = useState<string | null>(seed.anchorId);
+  const [anchorName, setAnchorName] = useState<string | null>(seed.anchorName);
+  const [dirty, setDirty] = useState(seed.dirty);
   const editGen = useRef(0);
   const pendingSaveGen = useRef<number | null>(null);
+
+  // 빌더 상태가 바뀔 때마다 영속(조건 편집은 keystroke 가 아닌 discrete op 라 write 빈도 낮음).
+  useEffect(() => {
+    persistScreenerDraft({ conditions, universe, anchorId, anchorName, dirty });
+  }, [conditions, universe, anchorId, anchorName, dirty]);
 
   const loadSave = (s: SavedScreener) => {
     setConditions(s.conditions);
