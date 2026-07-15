@@ -58,7 +58,9 @@ describe('IndicatorPanel', () => {
     expect(screen.getByRole('dialog')).toHaveClass('z-[60]');
     expect(screen.getByTestId('indicator-panel-shell')).toHaveClass('bg-bg-card');
     const nav = screen.getByRole('navigation', { name: '지표 카테고리' });
-    expect(nav).toHaveClass('border-r');
+    // nav는 border-r 대신 bg-subtle 톤 스텝으로 분리(2026-07-15 borderless 통일).
+    expect(nav).toHaveClass('bg-bg-subtle');
+    expect(nav).not.toHaveClass('border-r');
     expect(nav.parentElement).toHaveClass('grid-cols-[240px_minmax(0,1fr)]');
     expect(screen.getByText('10호가 지표')).toHaveClass('uppercase');
   });

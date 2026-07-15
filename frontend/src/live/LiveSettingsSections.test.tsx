@@ -44,7 +44,9 @@ describe('LiveSettingsSections (2단 nav+detail)', () => {
   it('uses a flat section surface for the detail pane', () => {
     render(<LiveSettingsSections />);
 
-    expect(screen.getByRole('navigation', { name: '설정 카테고리' })).toHaveClass('border-r');
+    // nav는 border-r 대신 bg-subtle 톤 스텝으로 분리(2026-07-15 borderless 통일).
+    expect(screen.getByRole('navigation', { name: '설정 카테고리' })).toHaveClass('bg-bg-subtle');
+    expect(screen.getByRole('navigation', { name: '설정 카테고리' })).not.toHaveClass('border-r');
     expect(screen.getByRole('region', { name: '차트' })).not.toHaveClass('bg-bg-card');
   });
 
