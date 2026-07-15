@@ -11,6 +11,12 @@ class CookieMissingError(RuntimeError):
     """Raised when no cookie source is available."""
 
 
+def _xdg_base() -> Path:
+    """XDG data-home base: $XDG_DATA_HOME if set, else ~/.local/share."""
+    xdg = os.environ.get("XDG_DATA_HOME")
+    return Path(xdg) if xdg else Path.home() / ".local" / "share"
+
+
 def resolve_data_dir() -> Path:
     """Return the canonical hoga-ops data directory.
 
@@ -33,9 +39,7 @@ def resolve_data_dir() -> Path:
     env = os.environ.get("HOGA_DATA_DIR")
     if env:
         return Path(env)
-    xdg = os.environ.get("XDG_DATA_HOME")
-    base = Path(xdg) if xdg else Path.home() / ".local" / "share"
-    return base / "hoga-ops" / "data"
+    return _xdg_base() / "hoga-ops" / "data"
 
 
 def resolve_symbol_master_path() -> Path:
@@ -49,9 +53,25 @@ def resolve_symbol_master_path() -> Path:
     do not apply — the Symbol Master is a machine-global KRX catalog, not
     capture data. Tests sandbox via monkeypatch on this function directly.
     """
-    xdg = os.environ.get("XDG_DATA_HOME")
-    base = Path(xdg) if xdg else Path.home() / ".local" / "share"
-    return base / "hoga-ops" / "symbol-master.json"
+    return _xdg_base() / "hoga-ops" / "symbol-master.json"
+
+
+def resolve_log_dir() -> Path:
+    """Return the canonical hoga-ops log directory.
+
+    Resolution order:
+      1. ``HOGA_LOG_DIR`` env var — explicit override (tests, sandboxes).
+      2. ``$XDG_DATA_HOME/hoga-ops/logs`` if XDG_DATA_HOME is set.
+      3. ``~/.local/share/hoga-ops/logs`` — XDG default.
+
+    Sibling of resolve_data_dir() but NOT inside data/ (logs are machine-
+    global operational output, not capture data — HOGA_DATA_DIR does not
+    apply). Mirrors resolve_symbol_master_path's placement.
+    """
+    env = os.environ.get("HOGA_LOG_DIR")
+    if env:
+        return Path(env)
+    return _xdg_base() / "hoga-ops" / "logs"
 
 
 @dataclass(frozen=True)

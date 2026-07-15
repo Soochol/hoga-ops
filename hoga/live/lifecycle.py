@@ -18,9 +18,9 @@ from __future__ import annotations
 import asyncio
 import logging
 import time
-from collections.abc import Callable
+from collections.abc import Awaitable, Callable
 from pathlib import Path
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Literal, cast
 
 if TYPE_CHECKING:
     from .broker_rest_poller import BrokerRestPoller
@@ -89,6 +89,8 @@ class LiveStatus(BaseModel):
     # 캡처 헬스(spec 2026-06-08 §2.2) — cycle_lag_ms를 대체하는 정직한 신호.
     capture_healthy: bool = True
     capture_reason: str = "offline"
+    # 구독 유실로 실시간 미수집 중인 종목(additive; sub_failed 시 진단·UI 배지).
+    capture_missing_codes: list[str] = Field(default_factory=list)
     storage_policy: LiveStoragePolicy = "ws_plus_rest"
     kis_api_running: bool = False
     kis_api_targets: list[str] = Field(default_factory=list)
@@ -442,8 +444,9 @@ def get_status() -> LiveStatus:
         cap_healthy = bool(running)        # poller-only면 서비스 중 → healthy/idle
         cap_reason = "idle" if running else "offline"
         degraded: list[int] = []
+        missing_codes: list[str] = []
     else:
-        cap_healthy, cap_reason, degraded = capture
+        cap_healthy, cap_reason, degraded, missing_codes = capture
 
     return LiveStatus(
         running=running,
@@ -460,6 +463,7 @@ def get_status() -> LiveStatus:
         degraded_accounts=degraded,
         capture_healthy=cap_healthy,
         capture_reason=cap_reason,
+        capture_missing_codes=missing_codes,
         storage_policy=_state.storage_policy,
         kis_api_running=bool(rest30_status and rest30_status.running),
         kis_api_targets=list(rest30_status.targets) if rest30_status else [],
@@ -530,6 +534,7 @@ def reset_for_tests() -> None:
     _today_promote_last_ms.clear()
     global _sub_failed_restart_session_ms  # noqa: PLW0603
     _sub_failed_restart_counts.clear()
+    _resub_attempt_counts.clear()
     _sub_failed_restart_session_ms = None
 
 
@@ -623,6 +628,13 @@ _WATCHDOG_STALE_AFTER_MS = 120_000  # ~2 min (≈6 cycles) without a completed t
 _SUB_FAILED_MAX_RESTARTS = 2
 _sub_failed_restart_counts: dict[int, int] = {}
 _sub_failed_restart_session_ms: int | None = None
+
+# 표적 재구독 상한 (2026-07-15 인시던트 근본수정). sub_failed 감지 시 conn 전체
+# 재시작(비싸다: 소켓 재수립·전 종목 재구독)에 앞서, 유실된 (tr, code)만 골라
+# resubscribe_missing으로 값싸게 재송신한다(watchdog 30s 주기로 최대 N회). 수렴 안 하면
+# 기존 제한 재시작으로 승격. 카운터는 _sub_failed_restart와 같은 세션 마커로 리셋된다.
+_RESUB_MAX_ATTEMPTS = 3
+_resub_attempt_counts: dict[int, int] = {}
 
 
 async def start_live_stream(*, data_dir: Path) -> bool:
@@ -923,6 +935,43 @@ async def _restart_conn(account_id: int, *, data_dir: Path) -> None:
             )
 
 
+def _plan_sub_failed_action(
+    account_id: int, ws: object,
+) -> Literal["resubscribe", "restart", "log"]:
+    """sub_failed conn의 복구 조치 결정(카운터 갱신 포함).
+
+    사다리(2026-07-15 근본수정): ① 표적 재구독(유실된 (tr,code)만) 상한까지 → ② 소진
+    시 KRX면 기존 제한 conn 재시작 → ③ NXT(표시 전용)면 로그만(정규장 캡처와 무관,
+    에스컬레이션 금지). ①이 대부분의 ACK-유실을 값싸게 흡수하고, 비싼 conn 재시작은
+    재구독이 수렴 못 할 때만. await 없는 순수 결정(watchdog 동기 수집 불변식 준수)."""
+    resub_ok = callable(getattr(ws, "resubscribe_missing", None))
+    resub_attempts = _resub_attempt_counts.get(account_id, 0)
+    if resub_ok and resub_attempts < _RESUB_MAX_ATTEMPTS:
+        _resub_attempt_counts[account_id] = resub_attempts + 1
+        return "resubscribe"
+    if getattr(ws, "venue", "KRX") != "KRX":
+        _log.warning(
+            "live.stream.sub_failed_nxt acct=%d — NXT 표시 구독 부분 실패, 재시작 안 함",
+            account_id,
+        )
+        return "log"
+    attempts = _sub_failed_restart_counts.get(account_id, 0)
+    if attempts < _SUB_FAILED_MAX_RESTARTS:
+        _sub_failed_restart_counts[account_id] = attempts + 1
+        _log.warning(
+            "live.stream.sub_failed_restart acct=%d acked=%s expected=%s attempt=%d/%d",
+            account_id, getattr(ws, "sub_acked", 0), getattr(ws, "sub_expected", 0),
+            attempts + 1, _SUB_FAILED_MAX_RESTARTS,
+        )
+        return "restart"
+    _log.warning(
+        "live.stream.sub_failed acct=%d acked=%s expected=%s — 상한(%d) 도달",
+        account_id, getattr(ws, "sub_acked", 0), getattr(ws, "sub_expected", 0),
+        _SUB_FAILED_MAX_RESTARTS,
+    )
+    return "log"
+
+
 async def _ws_watchdog_check(
     *, data_dir: Path, now_ms: int, stale_after_ms: int
 ) -> bool:
@@ -952,47 +1001,62 @@ async def _ws_watchdog_check(
     )
     ref_ms = max(started, session_open_ms)
 
-    # sub_failed 자동 재시작 카운터는 세션(started_at_ms) 단위 — 새 세션이면 리셋.
+    # sub_failed 자동 복구 카운터(재시작·재구독)는 세션(started_at_ms) 단위 — 새 세션이면 리셋.
     global _sub_failed_restart_session_ms
     if _sub_failed_restart_session_ms != started:
         _sub_failed_restart_session_ms = started
         _sub_failed_restart_counts.clear()
+        _resub_attempt_counts.clear()
 
-    # 동기 수집(await 없음): 재시작 대상 account_id 목록
+    # 동기 수집(await 없음): 재구독/재시작 대상 목록 + 정상 복귀 account
+    to_resubscribe: list[int] = []
     to_restart: list[int] = []
+    healthy_accounts: list[int] = []
     for account_id, conn in _state.streams.items():
         dead = conn.ws_task.done() or conn.flush_task.done()
         ws = getattr(conn.stream_obj, "ws", None)
-        _healthy, reason = _capture_health(
+        healthy, reason = _capture_health(
             running=True, ws=ws, now_ms=now_ms, ref_ms=ref_ms,
             stale_after_ms=stale_after_ms, market_closed=False,
         )
+        if healthy:
+            healthy_accounts.append(account_id)
         if dead or reason == "stale":
             _log.warning("live.stream.watchdog_restart acct=%d dead=%s reason=%s",
                          account_id, dead, reason)
             to_restart.append(account_id)
         elif reason == "sub_failed":
-            # 부분 구독 실패 = 일부 코드 틱 영구 침묵. 세션당 상한까지 자동 재시작하고,
-            # 상한 도달 후엔 로그만(결정적 거부의 무한 churn 방지 — Fix D).
-            attempts = _sub_failed_restart_counts.get(account_id, 0)
-            if attempts < _SUB_FAILED_MAX_RESTARTS:
-                _sub_failed_restart_counts[account_id] = attempts + 1
-                _log.warning(
-                    "live.stream.sub_failed_restart acct=%d acked=%s expected=%s attempt=%d/%d",
-                    account_id, getattr(ws, "sub_acked", 0), getattr(ws, "sub_expected", 0),
-                    attempts + 1, _SUB_FAILED_MAX_RESTARTS,
-                )
+            action = _plan_sub_failed_action(account_id, ws)
+            if action == "resubscribe":
+                to_resubscribe.append(account_id)
+            elif action == "restart":
                 to_restart.append(account_id)
-            else:
-                _log.warning(
-                    "live.stream.sub_failed acct=%d acked=%s expected=%s — 상한(%d) 도달, 재시작 안 함",
-                    account_id, getattr(ws, "sub_acked", 0), getattr(ws, "sub_expected", 0),
-                    _SUB_FAILED_MAX_RESTARTS,
-                )
+
+    # healthy 복귀 시 resub 카운터 재장전(인시던트 단위) — 다음 실패에 다시 표적 재구독부터.
+    for account_id in healthy_accounts:
+        _resub_attempt_counts.pop(account_id, None)
+
+    # 값싼 표적 재구독 먼저, 수렴 못 한 건은 다음 주기에 재시작으로 승격.
+    await _run_resubscribes(to_resubscribe, now_ms)
 
     for account_id in to_restart:
         await _restart_conn(account_id, data_dir=data_dir)
     return bool(to_restart)
+
+
+async def _run_resubscribes(account_ids: list[int], now_ms: int) -> None:
+    """표적 재구독 실행 — conn별 예외 격리(한 conn 실패가 다른 conn·재시작을 막지 않게)."""
+    for account_id in account_ids:
+        conn = _state.streams.get(account_id)
+        ws = getattr(conn.stream_obj, "ws", None) if conn is not None else None
+        resub = getattr(ws, "resubscribe_missing", None)
+        if not callable(resub):
+            continue
+        try:
+            count = await cast("Awaitable[int]", resub(now_ms))
+            _log.warning("live.stream.resubscribe acct=%d keys=%d", account_id, count)
+        except Exception:  # noqa: BLE001 — 격리
+            _log.exception("live.stream.resubscribe_failed acct=%d", account_id)
 
 
 async def start_live_stream_watchdog(

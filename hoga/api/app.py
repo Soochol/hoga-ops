@@ -4,9 +4,11 @@ from __future__ import annotations
 
 import asyncio
 import functools
+import logging
 import os
 from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
+from logging.handlers import RotatingFileHandler
 from pathlib import Path
 
 from fastapi import FastAPI
@@ -36,7 +38,7 @@ from hoga.api.test_routes import build_test_router
 from hoga.api.watchlist_routes import build_router as build_watchlist_router
 from hoga.api.ws import build_ws_router
 from hoga.collector.client import HogaplayClient
-from hoga.config import Config, resolve_data_dir, resolve_symbol_master_path
+from hoga.config import Config, resolve_data_dir, resolve_log_dir, resolve_symbol_master_path
 from hoga.env import load_env
 from hoga.live.api import build_router as build_live_router
 from hoga.live.candle_repair import build_saved_view_repair_hook
@@ -248,6 +250,39 @@ def create_app(data_dir: Path) -> FastAPI:
     return app
 
 
+def _ensure_file_logging() -> None:
+    """Attach a rotating file handler to the ``hoga`` logger namespace.
+
+    Called from default_app() (the uvicorn factory) — NOT create_app(), so
+    the test app never writes log files. Idempotent: skips if the ``hoga``
+    logger already has a RotatingFileHandler for the same file, so
+    ``uvicorn --reload`` re-imports don't stack handlers.
+
+    propagate is left True so console output (uvicorn's default) is
+    unchanged — this only adds a durable file sink. Terminal-only logs meant
+    KIS WS rejection codes couldn't be confirmed post-hoc (2026-07-15).
+    """
+    log_dir = resolve_log_dir()
+    log_dir.mkdir(parents=True, exist_ok=True)
+    log_path = log_dir / "hoga.log"
+    target = str(log_path)
+    logger = logging.getLogger("hoga")
+    for handler in logger.handlers:
+        if isinstance(handler, RotatingFileHandler) and handler.baseFilename == target:
+            return
+    handler = RotatingFileHandler(
+        log_path, maxBytes=10 * 1024 * 1024, backupCount=5, encoding="utf-8"
+    )
+    handler.setLevel(logging.INFO)
+    handler.setFormatter(
+        logging.Formatter("%(asctime)s %(levelname)s %(name)s %(message)s")
+    )
+    logger.addHandler(handler)
+    # Only lower the threshold — never raise it above a caller's explicit level.
+    if logger.level == logging.NOTSET or logger.level > logging.INFO:
+        logger.setLevel(logging.INFO)
+
+
 def default_app() -> FastAPI:
     """Factory used by uvicorn.
 
@@ -262,6 +297,7 @@ def default_app() -> FastAPI:
     second call a no-op.
     """
     load_env()
+    _ensure_file_logging()
     data_dir = resolve_data_dir()
     data_dir.mkdir(parents=True, exist_ok=True)
     return create_app(data_dir)

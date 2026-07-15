@@ -1449,3 +1449,264 @@ async def test_ws_watchdog_sub_failed_bounded_auto_restart(monkeypatch, tmp_path
             with contextlib.suppress(asyncio.CancelledError):
                 await t
         lifecycle.reset_for_tests()
+
+
+def _install_resub_state(
+    *, started_at_ms, ws_task, flush_task, now_ms, venue="KRX", missing=None,
+):
+    """sub_failed 상태 + per-key sub_missing/resubscribe_missing을 가진 conn 설치.
+    _capture_health가 sub_missing(비어있지 않음)으로 sub_failed를 판정하는 새 경로."""
+    from hoga.live import lifecycle
+    from hoga.live.lifecycle import _State, _StreamConn
+
+    default_missing = [("H0STCNT0", "005930"), ("H0STMBC0", "005930")]
+
+    class _FakeWs:
+        def __init__(self):
+            self.last_tick_ms = None
+            self.last_recv_ms = now_ms - 1_000   # fresh (not stale)
+            self.connected = True
+            self.venue = venue
+            self.resub_calls: list[int] = []
+            self._missing = list(missing if missing is not None else default_missing)
+
+        def sub_missing(self, _t):
+            return list(self._missing)
+
+        async def resubscribe_missing(self, t):
+            self.resub_calls.append(t)
+            return len(self._missing)
+
+    ws = _FakeWs()
+
+    class _FakeStream:
+        def __init__(self):
+            self.ws = ws
+            self.last_flush_ms = None
+
+    conn = _StreamConn(
+        account_id=0, stream_obj=_FakeStream(),
+        ws_task=ws_task, flush_task=flush_task, codes=("005930",),
+    )
+    lifecycle._state = _State(
+        started_at_ms=started_at_ms, n_configured=1,
+        watchlist_codes=("005930",), streams={0: conn}, live_set=("005930",),
+    )
+    return ws
+
+
+@pytest.mark.asyncio
+async def test_ws_watchdog_resubscribe_before_restart(monkeypatch, tmp_path) -> None:
+    """sub_failed 사다리: 표적 재구독을 상한(3)까지 먼저 시도하고 conn 재시작은
+    하지 않는다. 재구독이 수렴 못 하면(missing 지속) 재시작으로 승격."""
+    from hoga.live import lifecycle
+
+    lifecycle.reset_for_tests()
+    monkeypatch.setattr("hoga.live.session_gate.should_run_now", lambda t: True)
+    monkeypatch.setattr("hoga.live.session_gate.market_phase", lambda t: "regular")
+
+    restart_calls: list[int] = []
+
+    async def fake_restart(account_id, *, data_dir):
+        restart_calls.append(account_id)
+
+    monkeypatch.setattr(lifecycle, "_restart_conn", fake_restart)
+
+    async def _forever() -> None:
+        await asyncio.sleep(60)
+
+    tasks = [asyncio.create_task(_forever()) for _ in range(2)]
+    now_ms = 10_000_000
+    try:
+        ws = _install_resub_state(
+            started_at_ms=1_000, ws_task=tasks[0], flush_task=tasks[1], now_ms=now_ms,
+        )
+
+        async def check() -> bool:
+            return await lifecycle._ws_watchdog_check(
+                data_dir=tmp_path, now_ms=now_ms, stale_after_ms=120_000,
+            )
+
+        # 재구독 3회(상한) — 재시작 없음.
+        assert await check() is False
+        assert await check() is False
+        assert await check() is False
+        assert len(ws.resub_calls) == 3
+        assert restart_calls == []
+        # 재구독 소진 → KRX 제한 재시작 2회 → 로그만.
+        assert await check() is True
+        assert await check() is True
+        assert await check() is False
+        assert restart_calls == [0, 0]
+        assert len(ws.resub_calls) == 3   # 재구독은 더 늘지 않는다
+    finally:
+        for t in tasks:
+            t.cancel()
+            with contextlib.suppress(asyncio.CancelledError):
+                await t
+        lifecycle.reset_for_tests()
+
+
+@pytest.mark.asyncio
+async def test_ws_watchdog_nxt_sub_failed_never_restarts(monkeypatch, tmp_path) -> None:
+    """NXT(표시 전용) 부분 구독 실패는 재구독 소진 후에도 conn 재시작을 유발하지
+    않는다 — 정규장 캡처와 무관하므로 에스컬레이션 금지."""
+    from hoga.live import lifecycle
+
+    lifecycle.reset_for_tests()
+    monkeypatch.setattr("hoga.live.session_gate.should_run_now", lambda t: True)
+    monkeypatch.setattr("hoga.live.session_gate.market_phase", lambda t: "regular")
+
+    restart_calls: list[int] = []
+
+    async def fake_restart(account_id, *, data_dir):
+        restart_calls.append(account_id)
+
+    monkeypatch.setattr(lifecycle, "_restart_conn", fake_restart)
+
+    async def _forever() -> None:
+        await asyncio.sleep(60)
+
+    tasks = [asyncio.create_task(_forever()) for _ in range(2)]
+    now_ms = 10_000_000
+    try:
+        _install_resub_state(
+            started_at_ms=1_000, ws_task=tasks[0], flush_task=tasks[1],
+            now_ms=now_ms, venue="NXT",
+        )
+
+        async def check() -> bool:
+            return await lifecycle._ws_watchdog_check(
+                data_dir=tmp_path, now_ms=now_ms, stale_after_ms=120_000,
+            )
+
+        # 재구독 3회 후 소진 → NXT라 재시작 안 함(로그만).
+        for _ in range(6):
+            assert await check() is False
+        assert restart_calls == []
+    finally:
+        for t in tasks:
+            t.cancel()
+            with contextlib.suppress(asyncio.CancelledError):
+                await t
+        lifecycle.reset_for_tests()
+
+
+@pytest.mark.asyncio
+async def test_ws_watchdog_healthy_rearms_resub_counter(monkeypatch, tmp_path) -> None:
+    """healthy 복귀 시 resub 카운터가 재장전돼 다음 실패에 다시 표적 재구독부터."""
+    from hoga.live import lifecycle
+
+    lifecycle.reset_for_tests()
+    monkeypatch.setattr("hoga.live.session_gate.should_run_now", lambda t: True)
+    monkeypatch.setattr("hoga.live.session_gate.market_phase", lambda t: "regular")
+    monkeypatch.setattr(lifecycle, "_restart_conn", AsyncMock())
+
+    async def _forever() -> None:
+        await asyncio.sleep(60)
+
+    tasks = [asyncio.create_task(_forever()) for _ in range(2)]
+    now_ms = 10_000_000
+    try:
+        ws = _install_resub_state(
+            started_at_ms=1_000, ws_task=tasks[0], flush_task=tasks[1], now_ms=now_ms,
+        )
+
+        async def check() -> bool:
+            return await lifecycle._ws_watchdog_check(
+                data_dir=tmp_path, now_ms=now_ms, stale_after_ms=120_000,
+            )
+
+        await check()
+        await check()
+        assert len(ws.resub_calls) == 2
+        assert lifecycle._resub_attempt_counts.get(0) == 2
+        # 구독 회복(missing 없음) → healthy → 카운터 재장전.
+        ws._missing = []
+        await check()
+        assert lifecycle._resub_attempt_counts.get(0) is None
+        # 재발 시 다시 재구독부터(재시작 아님).
+        ws._missing = [("H0STCNT0", "005930")]
+        assert await check() is False
+        assert len(ws.resub_calls) == 3
+    finally:
+        for t in tasks:
+            t.cancel()
+            with contextlib.suppress(asyncio.CancelledError):
+                await t
+        lifecycle.reset_for_tests()
+
+
+def test_capture_health_sub_missing_path():
+    """sub_missing callable ws: 미확인 키가 있으면 grace 경과 시 sub_failed,
+    grace 안이면 subscribing, 없으면 healthy. recv-stale은 여전히 우선한다."""
+    from types import SimpleNamespace
+    from hoga.live.lifecycle import _capture_health
+    GRACE = 120_000
+    NOW = 10_000_000
+    REF = NOW - 200_000
+
+    def ws(missing, last_recv):
+        return SimpleNamespace(
+            connected=True, last_recv_ms=last_recv,
+            sub_missing=lambda _t: list(missing),
+        )
+
+    # 미확인 키 + grace 경과 → sub_failed
+    assert _capture_health(running=True, ws=ws([("H0STCNT0", "005930")], NOW - 1000),
+                           now_ms=NOW, ref_ms=REF, stale_after_ms=GRACE,
+                           market_closed=False) == (False, "sub_failed")
+    # 미확인 키 + grace 안(ref=NOW) → subscribing
+    assert _capture_health(running=True, ws=ws([("H0STCNT0", "005930")], NOW - 1000),
+                           now_ms=NOW, ref_ms=NOW - 1000, stale_after_ms=GRACE,
+                           market_closed=False) == (False, "subscribing")
+    # 미확인 없음 → healthy
+    assert _capture_health(running=True, ws=ws([], NOW - 1000),
+                           now_ms=NOW, ref_ms=REF, stale_after_ms=GRACE,
+                           market_closed=False) == (True, "healthy")
+    # recv stale은 sub_missing보다 우선(dead socket → 재시작)
+    assert _capture_health(running=True, ws=ws([], NOW - 200_000),
+                           now_ms=NOW, ref_ms=REF, stale_after_ms=GRACE,
+                           market_closed=False) == (False, "stale")
+
+
+@pytest.mark.asyncio
+async def test_get_status_exposes_capture_missing_codes(monkeypatch, tmp_path) -> None:
+    """get_status가 유실 종목을 capture_missing_codes로 노출(sub_failed 진단·UI)."""
+    from hoga.live import lifecycle
+    from hoga.live.lifecycle import _State, _StreamConn
+    lifecycle.reset_for_tests()
+
+    class _FakeWs:
+        connected = True
+        last_tick_ms = None
+        last_recv_ms = lifecycle._now_ms()
+
+        def sub_missing(self, _t):
+            return [("H0STCNT0", "000660"), ("H0STMBC0", "000660")]
+
+    class _FakeStream:
+        ws = _FakeWs()
+
+    async def _forever():
+        await asyncio.sleep(60)
+
+    task = asyncio.create_task(_forever())
+    try:
+        conn = _StreamConn(account_id=0, stream_obj=_FakeStream(),
+                           ws_task=task, flush_task=task, codes=("000660",))
+        lifecycle._state = _State(
+            started_at_ms=lifecycle._now_ms() - 200_000,
+            n_configured=1, watchlist_codes=("000660",),
+            streams={0: conn}, live_set=("000660",),
+        )
+        monkeypatch.setattr(lifecycle, "_market_clock_closed_for_capture",
+                            lambda _now: False)
+        st = lifecycle.get_status()
+        assert st.capture_reason == "sub_failed"
+        assert st.capture_missing_codes == ["000660"]
+    finally:
+        task.cancel()
+        with contextlib.suppress(asyncio.CancelledError):
+            await task
+        lifecycle.reset_for_tests()
