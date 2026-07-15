@@ -28,16 +28,6 @@ body {
   50% { opacity: 0.3; }
 }
 
-/* Session Tape playhead glow — subtle brass/green pulse (theme via --accent). */
-@keyframes session-head-pulse {
-  0%, 100% { box-shadow: 0 0 8px 0 var(--accent); }
-  50% { box-shadow: 0 0 2px 0 color-mix(in srgb, var(--accent) 45%, transparent); }
-}
-.session-head-pulse { animation: session-head-pulse 2.4s ease-in-out infinite; }
-@media (prefers-reduced-motion: reduce) {
-  .session-head-pulse { animation: none; }
-}
-
 /* 토스트 카드 enter/exit — 하단 중앙에서 아래→위로 떠오르는 슬라이드(8px)+페이드.
    DESIGN.md Motion: Enter ease-out 250ms · Exit ease-in 200ms.
    data-phase 는 useToastPresence 가 부여. */
