@@ -214,8 +214,8 @@ describe('liveLayout store helpers', () => {
       rightCardHidden: { program: true },
       rightCardCollapsed: { brokers: true },
       rightCardWeights: { orderbook: 30, brokers: 20, volumeDistribution: 20, program: 15, investor: 15 },
+      lastAppliedPresetId: 'preset-y',
     });
-    useLiveLayoutStore.getState().setLastAppliedPresetId('preset-y');
 
     const s = useLiveLayoutStore.getState();
     expect(s.rightPanelWidthPx).toBe(455);

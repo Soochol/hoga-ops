@@ -24,6 +24,7 @@ import { useDailyMaSeriesRegistry } from './indicators/dailyMaSeriesRegistry';
 import { usePaneLegendRegistry } from './indicators/paneLegendRegistry';
 import { paneSpecsForTimeframe, type PaneToggles } from './paneSpecsForTimeframe';
 import type { PaneId } from '../chart/drawing/types';
+import { movePaneBeside } from '../chart/paneOrder';
 import {
   buildLegendRows,
   readSeriesValue,
@@ -211,15 +212,18 @@ function PaneMoveControls({
   mountedCount,
   upNeighbor,
   downNeighbor,
+  paneOrder,
 }: {
   paneId: PaneId;
   label: string;
   idx: number;
   mountedCount: number;
+  /** 바로 위/아래에 **마운트된** 이웃 pane(게이트로 부재중인 pane 은 건너뛴 값). */
   upNeighbor: PaneId | null;
   downNeighbor: PaneId | null;
+  paneOrder: readonly PaneId[];
 }) {
-  const swapPaneOrder = useLivePageStore((s) => s.swapPaneOrder);
+  const setPaneOrder = useLivePageStore((s) => s.setPaneOrder);
   // idx 1 의 위 이웃은 candle(고정) → 위로 이동 불가. 마지막 마운트 pane → 아래 불가.
   const canUp = idx > 1 && upNeighbor !== null && upNeighbor !== 'candle';
   const canDown = idx < mountedCount - 1 && downNeighbor !== null;
@@ -230,14 +234,14 @@ function PaneMoveControls({
         label={`${label} pane 위로 이동`}
         testId={`pane-move-up-${paneId}`}
         disabled={!canUp}
-        onClick={() => { if (canUp && upNeighbor) swapPaneOrder(paneId, upNeighbor); }}
+        onClick={() => { if (canUp && upNeighbor) setPaneOrder(movePaneBeside(paneOrder, paneId, upNeighbor, 'before')); }}
       />
       <PaneMoveButton
         dir="down"
         label={`${label} pane 아래로 이동`}
         testId={`pane-move-down-${paneId}`}
         disabled={!canDown}
-        onClick={() => { if (canDown && downNeighbor) swapPaneOrder(paneId, downNeighbor); }}
+        onClick={() => { if (canDown && downNeighbor) setPaneOrder(movePaneBeside(paneOrder, paneId, downNeighbor, 'after')); }}
       />
     </span>
   );
@@ -679,6 +683,7 @@ function PaneLegendOverlay({ chart, timeframe, paneToggles }: Props) {
                 mountedCount={Math.min(specs.length, paneTops.length)}
                 upNeighbor={idx - 1 >= 0 ? specs[idx - 1].name : null}
                 downNeighbor={idx + 1 < specs.length ? specs[idx + 1].name : null}
+                paneOrder={paneOrder}
               />
             )}
             {paneRows.map((row) => (

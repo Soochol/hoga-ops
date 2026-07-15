@@ -51,17 +51,24 @@ export function normalizePaneOrder(raw: unknown): PaneId[] {
 }
 
 /**
- * 두 pane 이름의 순서 위치를 교환한다. 둘 중 하나라도 candle 이거나(고정) 순서에
- * 없으면 원본 사본을 반환한다. 전체 순서에서 위치를 바꾸므로, 게이트로 부재중인
- * pane 을 사이에 두고도 "마운트된 이웃 스왑"이 올바르게 동작한다.
+ * `pane` 을 전역 순서에서 빼내 `neighbor` 바로 앞/뒤에 다시 끼운다(레전드 ↑/↓).
+ *
+ * **위치 교환(swap)이 아니라 인접 삽입인 이유**: 단일 전역 paneOrder 는 여러
+ * 타임프레임이 공유하는데(D 는 investor, 분봉은 호가 pane 만 마운트), swap 은
+ * 이웃을 상대의 전역 슬롯으로 보내 **다른 타임프레임 뷰에서 그 이웃이 튀는**
+ * leapfrog 를 일으킨다. 인접 삽입은 `pane` 만 이웃 옆으로 최소 이동시켜, 게이트로
+ * 부재중인 pane 들의 상대 위치를 보존한다. candle 은 이동 금지(고정).
  */
-export function swapInPaneOrder(order: readonly PaneId[], a: PaneId, b: PaneId): PaneId[] {
-  if (a === 'candle' || b === 'candle' || a === b) return [...order];
-  const ia = order.indexOf(a);
-  const ib = order.indexOf(b);
-  if (ia < 0 || ib < 0) return [...order];
-  const next = [...order];
-  next[ia] = b;
-  next[ib] = a;
-  return next;
+export function movePaneBeside(
+  order: readonly PaneId[],
+  pane: PaneId,
+  neighbor: PaneId,
+  side: 'before' | 'after',
+): PaneId[] {
+  if (pane === 'candle' || pane === neighbor) return [...order];
+  const without = order.filter((id) => id !== pane);
+  const ni = without.indexOf(neighbor);
+  if (ni < 0) return [...order];
+  without.splice(side === 'before' ? ni : ni + 1, 0, pane);
+  return without;
 }
