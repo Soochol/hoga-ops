@@ -175,7 +175,7 @@ describe('LiveSidebar', () => {
     });
     useLiveCursorStore.getState().resetCursor();
     useLiveAxisStore.setState({ axis: null });
-    useLiveLayoutStore.setState({ rightCardCollapsed: {}, detailPanelCollapsed: false });
+    useLiveLayoutStore.setState({ rightCardCollapsed: {}, rightCardHidden: {}, detailPanelCollapsed: false });
     vi.mocked(TotalQtyBar).mockClear();
   });
   afterEach(() => cleanup());
@@ -349,40 +349,22 @@ describe('LiveSidebar', () => {
     expect(screen.getByTestId('volume-distribution-max-bar')).toHaveStyle({ width: '100%' });
   });
 
-  it('gates the hover-cutoff hook off while the volume distribution card is collapsed', () => {
+  it('gates the hover-cutoff hook off while the volume distribution card is hidden', () => {
     useLivePageStore.setState({
       volumeDistributionEnabled: true,
       volumeDistributionHoverCutoffEnabled: true,
       volumeDistributionRangeCount: 2,
     });
-    useLiveLayoutStore.setState({ rightCardCollapsed: { volumeDistribution: true } });
+    // 접기 제거(2026-07-15) 이후 무거운 매물대 훅 게이트는 숨김으로 이동.
+    useLiveLayoutStore.setState({ rightCardHidden: { volumeDistribution: true } });
     act(() => useLiveCursorStore.getState().setSidebarCursor(Date.UTC(2026, 4, 27, 0, 1, 0)));
 
     renderSidebar({ code: '005930', bundle: bundleWithFinalDistribution });
 
-    // 위 'hover cutoff mode on' 테스트와 동일 조건 — 카드 접힘만 다르다. enabled 가
-    // false 로 내려가야 커서 이동마다 도는 컷오프 재계산이 실제로 꺼진 것.
+    // 카드 숨김 시 enabled 가 false 로 내려가 커서 이동마다 도는 컷오프 재계산이 꺼진다.
     expect(volumeDistributionCutoffProfileMock).toHaveBeenCalledWith(expect.objectContaining({
       enabled: false,
     }));
-  });
-
-  it('keeps the collapsed volume distribution empty-dot truthful while hooks are gated', () => {
-    useLiveLayoutStore.setState({ rightCardCollapsed: { volumeDistribution: true } });
-
-    // 데이터가 있는 번들(persisted 프로필 + 캔들): 훅이 게이트로 꺼져 출력이 비어도
-    // 점은 언게이트 입력으로 판정하므로 나타나면 안 된다.
-    renderSidebar({ code: '005930', bundle: bundleWithFinalDistribution });
-    expect(
-      screen.getByTestId('live-detail-toggle-volumeDistribution').textContent,
-    ).not.toContain('데이터 없음');
-    cleanup();
-
-    // 번들 자체가 없으면 진짜 빈 상태 — 점이 나타난다.
-    renderSidebar({ code: '005930', bundle: null });
-    expect(
-      screen.getByTestId('live-detail-toggle-volumeDistribution').textContent,
-    ).toContain('데이터 없음');
   });
 
   it('passes only the active stock-date candles to the hover-cutoff fallback hook', () => {
@@ -723,7 +705,7 @@ describe('LiveSidebar cursor branching (ADR-0044)', () => {
     (cursorHooks.useLiveBrokersAtCursor as ReturnType<typeof vi.fn>).mockReturnValue(undefined);
     useLiveCursorStore.getState().resetCursor();
     useLiveAxisStore.setState({ axis: null });
-    useLiveLayoutStore.setState({ rightCardCollapsed: {}, detailPanelCollapsed: false });
+    useLiveLayoutStore.setState({ rightCardCollapsed: {}, rightCardHidden: {}, detailPanelCollapsed: false });
     vi.mocked(TotalQtyBar).mockClear();
   });
   afterEach(() => cleanup());
@@ -913,7 +895,7 @@ describe('LiveSidebar — REST 준실시간 안내 배너 제거 확인', () => 
     (cursorHooks.useLiveBrokersAtCursor as ReturnType<typeof vi.fn>).mockReturnValue(undefined);
     useLiveCursorStore.getState().resetCursor();
     useLiveAxisStore.setState({ axis: null });
-    useLiveLayoutStore.setState({ rightCardCollapsed: {}, detailPanelCollapsed: false });
+    useLiveLayoutStore.setState({ rightCardCollapsed: {}, rightCardHidden: {}, detailPanelCollapsed: false });
     vi.mocked(TotalQtyBar).mockClear();
   });
   afterEach(() => cleanup());

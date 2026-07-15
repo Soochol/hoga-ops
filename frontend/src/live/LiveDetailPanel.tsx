@@ -1,7 +1,10 @@
-import { Fragment, type ReactNode, useEffect, useRef } from 'react';
+import { type ReactNode, useState } from 'react';
 import {
   DndContext,
+  DragOverlay,
   type DragEndEvent,
+  type DragOverEvent,
+  type DragStartEvent,
   PointerSensor,
   closestCenter,
   useSensor,
@@ -9,12 +12,7 @@ import {
 } from '@dnd-kit/core';
 import { SortableContext, useSortable, verticalListSortingStrategy } from '@dnd-kit/sortable';
 import { CSS } from '@dnd-kit/utilities';
-import {
-  type LiveCardKey,
-  LIVE_CARD_MIN_HEIGHT_PX,
-  resizeAdjacentWeights,
-  useLiveLayoutStore,
-} from '../state/liveLayout';
+import { type LiveCardKey, useLiveLayoutStore } from '../state/liveLayout';
 import { reorderVisible } from '../state/keyOrder';
 import { DataSection } from '../ui/DataSurface';
 import { CardRestoreMenu } from '../ui/CardRestoreMenu';
@@ -26,8 +24,6 @@ type Props = {
   program: ReactNode;
   brokers: ReactNode;
   investor: ReactNode;
-  /** 접힌 카드 헤더의 "데이터 없음" 점 표시용. 키 부재/false = 점 없음. */
-  emptyByCard?: Partial<Record<LiveCardKey, boolean>>;
 };
 
 type CardMeta = { label: string; testId: string; contentTestId: string };
@@ -46,10 +42,7 @@ const CARD_META: Record<LiveCardKey, CardMeta> = {
   investor: { label: '잠정투자자', testId: 'live-detail-card-investor', contentTestId: 'card-investor' },
 };
 
-const RESIZER_HEIGHT_PX = 8;
-const WEIGHT_TO_MIN_HEIGHT_PX = 6;
-
-type ResizerPair = { upper: LiveCardKey; lower: LiveCardKey; label: string };
+const CARD_SHELL = 'relative flex flex-col rounded-lg border border-border bg-bg-card';
 
 function GripIcon() {
   return (
@@ -64,61 +57,52 @@ function GripIcon() {
   );
 }
 
-/** 카드 헤더 우측에 놓이는 드래그 핸들 + 숨김 버튼. 핸들의 listeners/attributes 는
- *  SortableCard 가 주입한다(핸들만 잡아 드래그, 헤더 클릭은 접기 그대로). */
-function CardHeaderControls({
+function CloseGlyph() {
+  return (
+    <svg width="11" height="11" viewBox="0 0 12 12" aria-hidden fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round">
+      <path d="M3 3l6 6M9 3l-6 6" />
+    </svg>
+  );
+}
+
+function GripButton({
   cardKey,
   label,
   dragProps,
 }: {
   cardKey: LiveCardKey;
   label: string;
-  dragProps: React.HTMLAttributes<HTMLButtonElement>;
+  dragProps?: React.HTMLAttributes<HTMLButtonElement>;
 }) {
-  const setCardHidden = useLiveLayoutStore((state) => state.setCardHidden);
   return (
-    <>
-      <button
-        type="button"
-        data-testid={`live-detail-drag-${cardKey}`}
-        aria-label={`${label} 카드 이동`}
-        className="flex h-6 w-5 cursor-grab items-center justify-center text-fg-dimmer hover:text-fg active:cursor-grabbing"
-        {...dragProps}
-      >
-        <GripIcon />
-      </button>
-      <button
-        type="button"
-        data-testid={`live-detail-hide-${cardKey}`}
-        aria-label={`${label} 카드 숨기기`}
-        onClick={() => setCardHidden(cardKey, true)}
-        className="flex h-6 w-5 items-center justify-center text-fg-dimmer hover:text-fg"
-      >
-        <svg width="11" height="11" viewBox="0 0 12 12" aria-hidden fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round">
-          <path d="M3 3l6 6M9 3l-6 6" />
-        </svg>
-      </button>
-    </>
+    <button
+      type="button"
+      data-testid={`live-detail-drag-${cardKey}`}
+      aria-label={`${label} 카드 이동`}
+      className="flex h-6 w-5 cursor-grab items-center justify-center text-fg-dimmer hover:text-fg active:cursor-grabbing"
+      {...dragProps}
+    >
+      <GripIcon />
+    </button>
   );
 }
 
+/** 정렬 가능한 카드. 드래그 중에는 원래 슬롯을 opacity 0 으로 비워 자리만 유지하고(형제
+ *  reflow 계산용), 실제 시각은 DragOverlay 의 고정 크기 클론이 담당한다 — 가변 높이
+ *  카드의 드래그 중 크기 변동(reflow jank)을 없앤다. */
 function SortableCard({
   cardKey,
   meta,
   content,
-  collapsed,
-  minHeight,
-  emptyDot,
-  onToggleCollapse,
+  insertionEdge,
 }: {
   cardKey: LiveCardKey;
   meta: CardMeta;
   content: ReactNode;
-  collapsed: boolean;
-  minHeight: number | undefined;
-  emptyDot: boolean;
-  onToggleCollapse: () => void;
+  /** 드래그 중 이 카드가 드롭 타겟일 때 삽입선을 그릴 가장자리. null = 표시 안 함. */
+  insertionEdge: 'top' | 'bottom' | null;
 }) {
+  const setCardHidden = useLiveLayoutStore((state) => state.setCardHidden);
   const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({
     id: cardKey,
   });
@@ -128,30 +112,35 @@ function SortableCard({
       ref={setNodeRef}
       data-testid={meta.testId}
       data-card={cardKey}
-      // 독립 카드 외관(2026-07-15): 각 지표를 테두리+둥근모서리+그림자를 가진 개별
-      // 카드로 렌더한다(/study PanelCard 와 동일 크롬, DESIGN.md 승인). 패널 배경을
-      // bg-subtle 로 낮춰 카드가 떠 보인다. overflow-hidden 은 붙이지 않는다 — 스크롤은
-      // 패널 레벨에서만(카드별 스크롤 컨테이너 금지 규칙 보존).
-      className="flex flex-col rounded-lg border border-border bg-bg-card shadow-panel"
+      className={`${CARD_SHELL} shadow-panel`}
       style={{
-        minHeight,
         transform: CSS.Transform.toString(transform),
         transition,
-        ...(isDragging ? { opacity: 0.65, position: 'relative', zIndex: 10 } : {}),
+        // 드래그 중인 카드는 자리만 유지(투명) — 실제 카드는 DragOverlay 클론이 그린다.
+        ...(isDragging ? { opacity: 0 } : {}),
       }}
     >
+      {insertionEdge && (
+        <span
+          aria-hidden
+          data-testid={`live-detail-drop-${cardKey}`}
+          className="pointer-events-none absolute inset-x-1 z-20 h-0.5 rounded-full bg-accent"
+          style={{ [insertionEdge]: -5 }}
+        />
+      )}
       <DataSection
         title={meta.label}
-        collapsed={collapsed}
-        onToggleCollapse={onToggleCollapse}
-        showEmptyDot={emptyDot}
-        toggleTestId={`live-detail-toggle-${cardKey}`}
+        headerLeading={<GripButton cardKey={cardKey} label={meta.label} dragProps={{ ...attributes, ...listeners }} />}
         headerTrailing={
-          <CardHeaderControls
-            cardKey={cardKey}
-            label={meta.label}
-            dragProps={{ ...attributes, ...listeners }}
-          />
+          <button
+            type="button"
+            data-testid={`live-detail-hide-${cardKey}`}
+            aria-label={`${meta.label} 카드 숨기기`}
+            onClick={() => setCardHidden(cardKey, true)}
+            className="flex h-6 w-5 items-center justify-center text-fg-dimmer hover:text-fg"
+          >
+            <CloseGlyph />
+          </button>
         }
         className="flex flex-1 flex-col border-t-0"
         contentClassName="flex-1"
@@ -164,32 +153,49 @@ function SortableCard({
   );
 }
 
+/** DragOverlay 안에서 커서를 따라 떠다니는 고정 크기 클론(비대화형). 크기는 DragOverlay
+ *  가 원본 카드 rect 로 자동 지정하므로 드래그 내내 일정하다. testid 는 붙이지 않는다
+ *  (원본과 충돌 방지). */
+function DragOverlayCard({ meta, content }: { meta: CardMeta; content: ReactNode }) {
+  return (
+    <div className={`${CARD_SHELL} shadow-modal`}>
+      <DataSection
+        title={meta.label}
+        headerLeading={
+          <span className="flex h-6 w-5 cursor-grabbing items-center justify-center text-fg-dim">
+            <GripIcon />
+          </span>
+        }
+        headerTrailing={
+          <span className="flex h-6 w-5 items-center justify-center text-fg-dimmer">
+            <CloseGlyph />
+          </span>
+        }
+        className="flex flex-1 flex-col border-t-0"
+        contentClassName="flex-1"
+      >
+        <div className="flex-1">{content}</div>
+      </DataSection>
+    </div>
+  );
+}
+
 export function LiveDetailPanel({
   orderbook,
   volumeDistribution,
   program,
   brokers,
   investor,
-  emptyByCard,
 }: Props) {
-  const panelRef = useRef<HTMLDivElement>(null);
-  const activeResizeCleanupRef = useRef<(() => void) | null>(null);
-  const weights = useLiveLayoutStore((state) => state.rightCardWeights);
-  const setWeights = useLiveLayoutStore((state) => state.setRightCardWeights);
   const order = useLiveLayoutStore((state) => state.rightCardOrder);
   const hidden = useLiveLayoutStore((state) => state.rightCardHidden);
   const setRightCardOrder = useLiveLayoutStore((state) => state.setRightCardOrder);
   const setCardHidden = useLiveLayoutStore((state) => state.setCardHidden);
-  const collapsed = useLiveLayoutStore((state) => state.rightCardCollapsed);
-  const toggleCardCollapsed = useLiveLayoutStore((state) => state.toggleCardCollapsed);
-  const setAllCardsCollapsed = useLiveLayoutStore((state) => state.setAllCardsCollapsed);
   const setDetailPanelCollapsed = useLiveLayoutStore((state) => state.setDetailPanelCollapsed);
   const sensors = useSensors(useSensor(PointerSensor, { activationConstraint: { distance: 5 } }));
 
-  useEffect(() => () => {
-    activeResizeCleanupRef.current?.();
-    activeResizeCleanupRef.current = null;
-  }, []);
+  // 드래그 상태 — 삽입선 위치 + DragOverlay 클론 대상. { active, over } 키.
+  const [drag, setDrag] = useState<{ active: LiveCardKey; over: LiveCardKey | null } | null>(null);
 
   const contentByKey: Record<LiveCardKey, ReactNode> = {
     orderbook,
@@ -204,73 +210,24 @@ export function LiveDetailPanel({
     .filter((key) => hidden[key])
     .map((key) => ({ key, label: CARD_META[key].label }));
 
-  // 리사이저는 보이는 카드의 인접쌍에서 파생 — 기본 순서·숨김 없음이면 오늘과
-  // 동일한 4개 separator(라벨·testid 동일)를 재생산한다.
-  const pairs: ResizerPair[] = visible.slice(0, -1).map((upper, index) => {
-    const lower = visible[index + 1];
-    return { upper, lower, label: `${CARD_META[upper].label} / ${CARD_META[lower].label} 크기 조절` };
-  });
+  // 드롭 타겟 카드의 어느 가장자리에 삽입선을 그릴지 — active 가 over 보다 위면 아래,
+  // 아래면 위(놓을 방향). active 카드 자신엔 표시하지 않는다.
+  const insertionEdgeFor = (key: LiveCardKey): 'top' | 'bottom' | null => {
+    if (!drag || !drag.over || drag.active === key || drag.over !== key) return null;
+    const ai = visible.indexOf(drag.active);
+    const oi = visible.indexOf(key);
+    if (ai < 0 || oi < 0) return null;
+    return ai < oi ? 'bottom' : 'top';
+  };
 
-  const beginResize =
-    (upper: LiveCardKey, lower: LiveCardKey) => (event: React.PointerEvent<HTMLDivElement>) => {
-      event.preventDefault();
-      const target = event.currentTarget;
-      const startY = event.clientY;
-      const startWeights = useLiveLayoutStore.getState().rightCardWeights;
-      const panelHeight = panelRef.current?.clientHeight ?? 0;
-      const totalWeight = Object.values(startWeights).reduce((sum, weight) => sum + weight, 0);
-      const pairWeight = startWeights[upper] + startWeights[lower];
-      const contentHeight = Math.max(0, panelHeight - pairs.length * RESIZER_HEIGHT_PX);
-      const pairHeight =
-        totalWeight > 0 && pairWeight > 0 ? (contentHeight * pairWeight) / totalWeight : 0;
-
-      target.setPointerCapture(event.pointerId);
-      document.body.style.cursor = 'row-resize';
-      document.body.style.userSelect = 'none';
-
-      const handlePointerMove = (moveEvent: PointerEvent) => {
-        const nextWeights = resizeAdjacentWeights(
-          startWeights,
-          upper,
-          lower,
-          moveEvent.clientY - startY,
-          pairHeight,
-        );
-        useLiveLayoutStore.setState({ rightCardWeights: nextWeights });
-      };
-
-      const cleanup = () => {
-        window.removeEventListener('pointermove', handlePointerMove);
-        window.removeEventListener('pointerup', handlePointerUp);
-        window.removeEventListener('pointercancel', handlePointerCancel);
-        document.body.style.cursor = '';
-        document.body.style.userSelect = '';
-        activeResizeCleanupRef.current = null;
-      };
-
-      const finishResize = (pointerId: number) => {
-        if (target.hasPointerCapture(pointerId)) {
-          target.releasePointerCapture(pointerId);
-        }
-        cleanup();
-        setWeights(useLiveLayoutStore.getState().rightCardWeights);
-      };
-
-      const handlePointerUp = (upEvent: PointerEvent) => {
-        finishResize(upEvent.pointerId);
-      };
-
-      const handlePointerCancel = (cancelEvent: PointerEvent) => {
-        finishResize(cancelEvent.pointerId);
-      };
-
-      window.addEventListener('pointermove', handlePointerMove);
-      window.addEventListener('pointerup', handlePointerUp);
-      window.addEventListener('pointercancel', handlePointerCancel);
-      activeResizeCleanupRef.current = cleanup;
-    };
-
+  const handleDragStart = (event: DragStartEvent) => {
+    setDrag({ active: event.active.id as LiveCardKey, over: event.active.id as LiveCardKey });
+  };
+  const handleDragOver = (event: DragOverEvent) => {
+    setDrag((prev) => (prev ? { active: prev.active, over: (event.over?.id ?? null) as LiveCardKey | null } : prev));
+  };
   const handleDragEnd = (event: DragEndEvent) => {
+    setDrag(null);
     const activeKey = event.active.id as LiveCardKey;
     const overKey = event.over?.id as LiveCardKey | undefined;
     if (!overKey || activeKey === overKey) return;
@@ -280,14 +237,13 @@ export function LiveDetailPanel({
     const hiddenSet = new Set(order.filter((key) => hidden[key]));
     setRightCardOrder(reorderVisible(order, hiddenSet, from, to));
   };
-
-  const allCollapsed = visible.length > 0 && visible.every((key) => collapsed[key]);
+  const handleDragCancel = () => setDrag(null);
 
   return (
-    <div className="flex min-h-full flex-col bg-bg-card">
+    <div className="flex min-h-full flex-col bg-bg-subtle">
       <div
         data-testid="live-detail-controls"
-        className="sticky top-0 z-10 flex shrink-0 items-center justify-between gap-2 border-b border-border bg-bg-card px-2 py-1"
+        className="sticky top-0 z-10 flex shrink-0 items-center justify-between gap-2 border-b border-border bg-bg-subtle px-2 py-1"
       >
         <button
           type="button"
@@ -298,87 +254,39 @@ export function LiveDetailPanel({
         >
           <DoubleChevronIcon direction="right" />
         </button>
-        <div className="flex items-center gap-1">
-          <CardRestoreMenu
-            hidden={hiddenCards}
-            onRestore={(key) => setCardHidden(key as LiveCardKey, false)}
-            testId="live-detail-restore"
-          />
-          <button
-            type="button"
-            data-testid="live-detail-collapse-all"
-            onClick={() => setAllCardsCollapsed(!allCollapsed)}
-            className="rounded px-2 py-0.5 text-[11px] font-medium uppercase tracking-wider text-fg-dimmer hover:bg-bg-input-hover hover:text-fg"
-          >
-            {allCollapsed ? '모두 펴기' : '모두 접기'}
-          </button>
-        </div>
+        <CardRestoreMenu
+          hidden={hiddenCards}
+          onRestore={(key) => setCardHidden(key as LiveCardKey, false)}
+          testId="live-detail-restore"
+        />
       </div>
-      <DndContext sensors={sensors} collisionDetection={closestCenter} onDragEnd={handleDragEnd}>
+      <DndContext
+        sensors={sensors}
+        collisionDetection={closestCenter}
+        onDragStart={handleDragStart}
+        onDragOver={handleDragOver}
+        onDragEnd={handleDragEnd}
+        onDragCancel={handleDragCancel}
+      >
         <SortableContext items={visible} strategy={verticalListSortingStrategy}>
           <aside
-            ref={panelRef}
             data-testid="live-detail-panel"
-            className="grid min-h-full flex-1 content-start bg-bg-subtle p-2"
-            style={{
-              gridTemplateRows: visible
-                .map((key) => (collapsed[key] ? 'min-content' : 'auto'))
-                .join(' 8px '),
-            }}
+            className="flex min-h-full flex-1 flex-col gap-2 bg-bg-subtle p-2"
           >
-            {visible.map((key, index) => {
-              const isCollapsed = Boolean(collapsed[key]);
-              const resizer = index < pairs.length ? pairs[index] : null;
-              // 이웃 카드가 하나라도 접혀 있으면 리사이저를 inert 로 — DOM 에는 유지하되
-              // 드래그를 비활성해 8px 행 정렬과 separator 개수를 보존한다.
-              const resizerInert = resizer
-                ? Boolean(collapsed[resizer.upper]) || Boolean(collapsed[resizer.lower])
-                : false;
-              return (
-                <Fragment key={key}>
-                  <SortableCard
-                    cardKey={key}
-                    meta={CARD_META[key]}
-                    content={contentByKey[key]}
-                    collapsed={isCollapsed}
-                    minHeight={
-                      isCollapsed
-                        ? undefined
-                        : Math.max(
-                            LIVE_CARD_MIN_HEIGHT_PX[key],
-                            Math.round(weights[key] * WEIGHT_TO_MIN_HEIGHT_PX),
-                          )
-                    }
-                    emptyDot={Boolean(emptyByCard?.[key])}
-                    onToggleCollapse={() => toggleCardCollapsed(key)}
-                  />
-                  {resizer ? (
-                    <div
-                      role="separator"
-                      aria-label={resizer.label}
-                      aria-orientation="horizontal"
-                      aria-disabled={resizerInert || undefined}
-                      data-inert={resizerInert || undefined}
-                      data-testid={`live-detail-resizer-${resizer.upper}-${resizer.lower}`}
-                      className={`group grid min-h-[8px] place-items-center ${resizerInert ? 'cursor-default' : 'cursor-row-resize'}`}
-                      style={{ touchAction: 'none' }}
-                      onPointerDown={resizerInert ? undefined : beginResize(resizer.upper, resizer.lower)}
-                    >
-                      {/* 독립 카드 사이는 여백으로 분리 — 하이라인 대신 호버 시에만 짧은
-                          그립을 노출(카드 자체 테두리가 이미 경계를 담당). */}
-                      <div
-                        aria-hidden
-                        className={`h-1 w-8 rounded-full bg-transparent transition-colors ${
-                          resizerInert ? '' : 'group-hover:bg-border'
-                        }`.trim()}
-                      />
-                    </div>
-                  ) : null}
-                </Fragment>
-              );
-            })}
+            {visible.map((key) => (
+              <SortableCard
+                key={key}
+                cardKey={key}
+                meta={CARD_META[key]}
+                content={contentByKey[key]}
+                insertionEdge={insertionEdgeFor(key)}
+              />
+            ))}
           </aside>
         </SortableContext>
+        <DragOverlay>
+          {drag ? <DragOverlayCard meta={CARD_META[drag.active]} content={contentByKey[drag.active]} /> : null}
+        </DragOverlay>
       </DndContext>
     </div>
   );

@@ -134,6 +134,28 @@ describe('DataSurface primitives', () => {
     expect(toggle.contains(handle)).toBe(false);
   });
 
+  it('renders a non-collapsible header with leading and trailing controls around the title', () => {
+    render(
+      <DataSection
+        title="10호가"
+        headerLeading={<button type="button" data-testid="drag">handle</button>}
+        headerTrailing={<button type="button" data-testid="hide">x</button>}
+      >
+        rows
+      </DataSection>,
+    );
+
+    // 접기 토글 버튼은 없다(비접기).
+    expect(screen.queryByRole('button', { name: /펼치기|접기/ })).toBeNull();
+    const drag = screen.getByTestId('drag');
+    const hide = screen.getByTestId('hide');
+    const title = screen.getByText('10호가');
+    // 리딩(드래그)이 제목 앞, 트레일링(숨김)이 제목 뒤. 본문은 항상 표시.
+    expect(drag.compareDocumentPosition(title) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+    expect(title.compareDocumentPosition(hide) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+    expect(screen.getByText('rows')).toBeInTheDocument();
+  });
+
   it('renders empty states, form fields, and inline state tones', () => {
     render(
       <>

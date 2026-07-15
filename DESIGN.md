@@ -179,7 +179,7 @@ The design system has a **single density dial** at `:root font-size`.
 - **Replay Viewer workarea:** `grid-template-columns: 1fr 12px <sidebarPx>` (chart + splitter + Cursor Sidebar). `--sidebar-w` seeds the default `sidebarPx`; runtime width and the collapsed flag are owned by `frontend/src/state/replayLayout.ts` and persisted to `localStorage['replay.layout']`. When collapsed, the grid collapses to `1fr` and a floating right-edge handle plus a Toolbar toggle let the user re-expand. Double-click on the splitter reads the *current* token value via `getComputedStyle`, so future density-mode changes reseed automatically. Trade-off captured in ADR-0022.
 - **Chart stage:** `grid-template-rows: 1fr 0.5fr 1fr 0.6fr` (candles+vol / ratio / intensity / fill).
 - **Max content width:** No cap. App fills the viewport (desktop-only).
-- Dense tool panels use one outer surface with internal dividers; avoid nested cards inside sidebars, drawers, modals, and detail panels.
+- Dense tool panels use one outer surface with internal dividers; avoid nested cards inside sidebars, drawers, modals, and detail panels. (Exception: `/live`·`/study` 상세 지표 카드는 승인된 예외 — Migration Status 참조.)
 - **Border radius:**
   - `sm` 2px (rarely used)
   - `md` 4px (presets, small buttons)
@@ -198,7 +198,7 @@ Every feature route except the chart workspace follows one shell:
 
 ### Migration Status
 
-Quiet Trading Terminal migration completed across app shell, route surfaces, rail drawers, live dialogs, and dense data panels. Nested-card chrome is prohibited in sidebars, drawers, modals, and detail panels; use `DataSection` dividers inside a single outer surface. **Exception — `/live`·`/study` 상세 지표 카드 (2026-07-15, 사용자 요청):** 각 지표(10호가·거래원·매물대·프로그램·잠정투자자)는 이제 개별 **독립 카드**(`bg-bg-card` + `border` + `rounded-lg` + `shadow-panel`)로 렌더하고 상세 aside 배경을 `bg-bg-subtle` 로 낮춰 카드가 떠 보인다. 드래그 재배열(ADR-0114)의 이동 단위가 카드로 명확해지도록 "플랫 섹션"(단일 표면+DataSection 구분선)을 카드화한 것 — `/study` 가 이미 쓰던 `PanelCard` 크롬과 일치. 카드 사이는 8px 여백, 리사이저 하이라인은 호버 시에만 짧은 그립 노출. 카드별 스크롤 컨테이너는 여전히 금지(스크롤은 패널 레벨).
+Quiet Trading Terminal migration completed across app shell, route surfaces, rail drawers, live dialogs, and dense data panels. Nested-card chrome is prohibited in sidebars, drawers, modals, and detail panels; use `DataSection` dividers inside a single outer surface. **Exception — `/live`·`/study` 상세 지표 카드 (2026-07-15, 사용자 요청):** 각 지표(10호가·거래원·매물대·프로그램·잠정투자자)는 이제 개별 **독립 카드**로 렌더한다. **카드 크롬**은 `/study` 가 이미 쓰던 `PanelCard` 와 동일하다(`bg-bg-card` + `border` + `rounded-lg` + `shadow-panel`) — 이 부분만 두 화면이 일치. **aside 배경 톤은 아직 다르다**: `/live` 는 솔리드 `bg-bg-subtle`, `/study` 는 `bg-bg-subtle/40`(향후 통일 여지). 드래그 재배열(ADR-0114)의 이동 단위가 카드로 명확해지도록 "플랫 섹션"(단일 표면+DataSection 구분선)을 카드화한 것. 카드 사이는 8px 여백. 드래그 시 잡은 카드는 `DragOverlay` 고정 크기 클론으로 뜨고 원래 슬롯은 opacity 0 placeholder(가변 높이 reflow 흔들림 제거), 놓을 위치엔 `bg-accent` 삽입선. 접기·높이 리사이저는 제거(2026-07-15, 카드는 내용 높이). **카드별 스크롤 컨테이너(`overflow-auto/scroll`)는 여전히 금지** — 스크롤은 패널 레벨(`overflow-hidden` clip 자체는 허용, 다만 현재는 붙이지 않음).
 
 ## Motion
 

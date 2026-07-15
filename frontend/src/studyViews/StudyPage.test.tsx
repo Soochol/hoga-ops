@@ -660,18 +660,16 @@ describe('StudyPage', () => {
     expect(screen.getByText('+1억')).toBeTruthy();
   });
 
-  it('collapses a study detail card via its header toggle and persists', () => {
+  it('has no per-card collapse toggle or collapse-all control (접기 제거)', () => {
     renderPage('/study?view=view-ref');
 
     expect(screen.getByTestId('study-detail-content-orderbook')).toBeInTheDocument();
-    act(() => {
-      screen.getByTestId('study-detail-toggle-orderbook').click();
-    });
-    expect(useStudyLayoutStore.getState().cardCollapsed.orderbook).toBe(true);
-    expect(screen.queryByTestId('study-detail-content-orderbook')).toBeNull();
-    expect(
-      JSON.parse(localStorage.getItem('study.layout.v1') ?? '{}').cardCollapsed.orderbook,
-    ).toBe(true);
+    expect(screen.queryByTestId('study-detail-toggle-orderbook')).toBeNull();
+    expect(screen.queryByTestId('study-detail-collapse-all')).toBeNull();
+    // 드래그 핸들은 제목보다 앞(왼쪽).
+    const handle = screen.getByTestId('study-detail-drag-orderbook');
+    const title = screen.getByText('10호가');
+    expect(handle.compareDocumentPosition(title) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
   });
 
   it('renders study detail cards in the persisted order', () => {
@@ -914,9 +912,9 @@ describe('StudyPage', () => {
 
     const stack = screen.getByTestId('study-reference-detail-cards');
     expect(stack).toHaveClass('min-h-full');
+    expect(stack).toHaveClass('flex-col');
     expect(stack).toHaveClass('gap-2');
     expect(stack).toHaveClass('p-2');
-    expect(stack.getAttribute('style') ?? '').toContain('auto auto auto auto');
     for (const key of ['orderbook', 'volume-distribution', 'brokers', 'program']) {
       expect(screen.getByTestId(`study-detail-card-${key}`)).toHaveClass('rounded-lg');
       expect(screen.getByTestId(`study-detail-card-${key}`)).toHaveClass('bg-bg-card');
