@@ -1,10 +1,16 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { render, screen, fireEvent, within } from '@testing-library/react';
+import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { LiveToolbar } from './LiveToolbar';
 import { useLivePageStore } from '../state/livePage';
 
 function renderToolbar() {
-  return render(<LiveToolbar onOpenIndicators={() => {}} onOpenSettings={() => {}} />);
+  const qc = new QueryClient();
+  return render(
+    <QueryClientProvider client={qc}>
+      <LiveToolbar onOpenIndicators={() => {}} onOpenSettings={() => {}} />
+    </QueryClientProvider>,
+  );
 }
 
 describe('LiveToolbar', () => {
@@ -157,7 +163,12 @@ describe('LiveToolbar', () => {
 
   it('renders settings button and calls onOpenSettings on click', () => {
     const onOpenSettings = vi.fn();
-    render(<LiveToolbar onOpenIndicators={() => {}} onOpenSettings={onOpenSettings} />);
+    const qc = new QueryClient();
+    render(
+      <QueryClientProvider client={qc}>
+        <LiveToolbar onOpenIndicators={() => {}} onOpenSettings={onOpenSettings} />
+      </QueryClientProvider>,
+    );
     const btn = screen.getByTestId('live-settings-button');
     expect(btn).toHaveClass('bg-transparent');
     expect(btn).toHaveClass('text-fg-dim');
@@ -167,7 +178,12 @@ describe('LiveToolbar', () => {
 
   it('renders indicators button and calls onOpenIndicators on click', () => {
     const onOpenIndicators = vi.fn();
-    render(<LiveToolbar onOpenIndicators={onOpenIndicators} onOpenSettings={() => {}} />);
+    const qc = new QueryClient();
+    render(
+      <QueryClientProvider client={qc}>
+        <LiveToolbar onOpenIndicators={onOpenIndicators} onOpenSettings={() => {}} />
+      </QueryClientProvider>,
+    );
     const btn = screen.getByTestId('live-indicators-button');
     expect(btn).toHaveClass('bg-transparent');
     expect(btn).toHaveClass('text-fg-dim');
@@ -176,13 +192,23 @@ describe('LiveToolbar', () => {
   });
 
   it('renders current-view save after chart action buttons without the old drawing menu', () => {
+    const qc = new QueryClient();
     const studySaveControl = <button type="button">현재 뷰 저장</button>;
-    render(<LiveToolbar onOpenIndicators={() => {}} onOpenSettings={() => {}} studySaveControl={studySaveControl} />);
+    render(
+      <QueryClientProvider client={qc}>
+        <LiveToolbar onOpenIndicators={() => {}} onOpenSettings={() => {}} studySaveControl={studySaveControl} />
+      </QueryClientProvider>,
+    );
 
     expect(screen.queryByRole('button', { name: '그리기' })).toBeNull();
     const settings = screen.getByTestId('live-settings-button');
     const save = screen.getByRole('button', { name: '현재 뷰 저장' });
 
     expect(settings.compareDocumentPosition(save) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+  });
+
+  it('renders the layout preset menu button', () => {
+    renderToolbar();
+    expect(screen.getByTestId('layout-preset-button')).toBeInTheDocument();
   });
 });
