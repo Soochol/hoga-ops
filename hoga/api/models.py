@@ -508,6 +508,56 @@ class EnqueueResponse(BaseModel):
     blocked: list[BlockedItem] = Field(default_factory=list)
 
 
+# --- 다종목 지난 N일 수집: coverage-preview + bulk-items (히트맵/스크리너 공용) ---
+
+
+class CoveragePreviewRequest(BaseModel):
+    """여러 종목의 지난 N거래일 hogaplay 커버리지 미리보기 요청.
+
+    ``lookback_days`` 또는 명시적 ``start_date``+``end_date`` 중 하나. lookback 이면
+    오늘(KST)로 끝나는 최근 N거래일(오늘이 16:30 전이면 제외)을 캘린더로 전개한다."""
+    codes: list[Annotated[str, Field(pattern=CODE_PATTERN)]] = Field(min_length=1)
+    lookback_days: int | None = Field(default=None, ge=1, le=120)
+    start_date: str | None = Field(default=None, pattern=r"^\d{8}$")
+    end_date: str | None = Field(default=None, pattern=r"^\d{8}$")
+
+
+class MissingStockDate(BaseModel):
+    code: str = Field(pattern=CODE_PATTERN)
+    date: str = Field(pattern=r"^\d{8}$")
+
+
+class CoveragePreviewResponse(BaseModel):
+    """(codes × 거래일) 디스크 커버리지 요약. ``missing`` = 수집 대상(code,date) —
+    bulk-items 가 정확히 이것만 적재한다(이미 보유/상류무데이터는 제외)."""
+    dates: list[str]                    # 창의 거래일(YYYYMMDD)
+    codes: int
+    total: int                          # codes × dates
+    have: int                           # COMPLETE (이미 보유)
+    no_upstream: int                    # NO_UPSTREAM_DATA (상류 무데이터, 재시도 제외)
+    to_collect: int                     # 수집 대상 수(= len(missing))
+    est_minutes: int                    # 대략적 예상 소요(분)
+    missing: list[MissingStockDate]
+
+
+class BulkEnqueueItem(BaseModel):
+    code: str = Field(pattern=CODE_PATTERN)
+    dates: list[str] = Field(min_length=1)
+
+
+class BulkEnqueueRequest(BaseModel):
+    """정확히 (code, dates) 목록을 적재. coverage-preview.missing 를 그대로 넘긴다."""
+    items: list[BulkEnqueueItem] = Field(min_length=1)
+
+
+class BulkEnqueueResponse(BaseModel):
+    enqueued: int
+    deduped: int
+    blocked: int
+    failed: int = 0        # 코드별 enqueue 가 raise 한 수(부분 적재는 유지됨)
+    codes: int
+
+
 # --- POST /api/captures/items/retry request/response (ADR-0031) ------------
 
 

@@ -460,6 +460,33 @@ export interface GapRangesResponse {
   origin: 'meta' | 'computed';
 }
 
+/** Mirrors hoga/api/models.py::MissingStockDate. */
+export interface MissingStockDate {
+  code: string;
+  date: string;
+}
+
+/** Mirrors hoga/api/models.py::CoveragePreviewResponse. 지난 N일 hogaplay 커버리지. */
+export interface CoveragePreviewResponse {
+  dates: string[];
+  codes: number;
+  total: number;
+  have: number;
+  no_upstream: number;
+  to_collect: number;
+  est_minutes: number;
+  missing: MissingStockDate[];
+}
+
+/** Mirrors hoga/api/models.py::BulkEnqueueResponse. */
+export interface BulkEnqueueResponse {
+  enqueued: number;
+  deduped: number;
+  blocked: number;
+  failed: number;
+  codes: number;
+}
+
 export interface QueueSnapshot {
   active: QueueItem[];
   queued: QueueItem[];
