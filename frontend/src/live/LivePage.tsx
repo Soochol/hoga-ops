@@ -3,7 +3,6 @@ import { useSearchParams } from 'react-router';
 import { isMinuteTimeframe, useLivePageStore } from '../state/livePage';
 import { useLiveStatus } from '../api/liveStatus';
 import { useLiveStatusProjection } from './liveStatusProjection';
-import SessionTape from './SessionTape';
 import { LiveStatusBar } from './LiveStatusBar';
 import { LiveWorkarea } from './LiveWorkarea';
 import { LiveStateBanner } from './LiveStateBanner';
@@ -393,10 +392,9 @@ export function LivePage() {
         // minmax(0, 1fr) on the workarea row prevents the chart canvas's
         // intrinsic size from pushing the row past viewport height.
         gridTemplateRows:
-          '3px var(--h-tab) auto var(--h-pricestrip) minmax(0, 1fr)',
+          'var(--h-tab) auto var(--h-pricestrip) minmax(0, 1fr)',
       }}
     >
-      <SessionTape />
       <LiveTabBar
         tabs={tabs}
         activeTabId={activeTabId}
