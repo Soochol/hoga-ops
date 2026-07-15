@@ -1,14 +1,13 @@
-import type { FolderGroup } from '../watchlist/grouping';
 import type { LiveQuote } from '../api/liveQuotes';
-import type { HeatmapEntry } from '../api/heatmap';
-import { avgPct, heatBg, makePctOf } from './heat';
+import type { HeatmapFolder } from '../api/heatmap';
+import { avgPct, heatBg, makePctOf, type HeatmapGroup } from './heat';
 import { visibleFolderGroups } from './visibleGroups';
 
 /** 스트립 칩 배경 농도(작은 칩이라 행 칩보다 옅게, 헤더 밴드보단 진하게). */
 const STRIP_ALPHA = 0.55;
 
 export interface SectorTempStripProps {
-  groups: FolderGroup<HeatmapEntry>[];
+  groups: HeatmapGroup[];
   quoteByCode: Map<string, LiveQuote>;
   /** 칩 클릭 시 호출(해당 섹터 카드로 스크롤). */
   onJump: (folderId: string) => void;
@@ -20,9 +19,8 @@ export interface SectorTempStripProps {
 export function SectorTempStrip({ groups, quoteByCode, onJump }: SectorTempStripProps) {
   const pctOf = makePctOf(quoteByCode);
   const chips = visibleFolderGroups(groups)
-    .filter((g) => g.folder !== null) // 미분류(folder=null)는 섹터 온도/점프 대상 아님(ADR-0068)
-    .map((g) => ({ folder: g.folder!, avg: avgPct(g.entries, pctOf) }))
-    .filter((c): c is { folder: NonNullable<FolderGroup<HeatmapEntry>['folder']>; avg: number } => c.avg !== null)
+    .map((g) => ({ folder: g.folder, avg: avgPct(g.entries, pctOf) }))
+    .filter((c): c is { folder: HeatmapFolder; avg: number } => c.avg !== null)
     .sort((a, b) => b.avg - a.avg);
   if (chips.length === 0) return null;
   return (

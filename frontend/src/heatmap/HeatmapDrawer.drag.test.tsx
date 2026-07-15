@@ -36,8 +36,7 @@ vi.mock('@dnd-kit/sortable', async (orig) => {
 
 const api = vi.hoisted(() => ({
   getHeatmap: vi.fn<() => Promise<HeatmapResponse>>(),
-  addToHeatmap: vi.fn(() => Promise.resolve({ code: '', name: '', folder_id: null, order: 0 })),
-  addToHeatmapFolder: vi.fn(() => Promise.resolve({ code: '', name: '', folder_id: null, order: 0 })),
+  addToHeatmapFolder: vi.fn(() => Promise.resolve({ code: '', name: '', folder_id: 'f1', order: 0 })),
   removeFromHeatmap: vi.fn(() => Promise.resolve()),
   createHeatmapFolder: vi.fn(() => Promise.resolve({ id: 'fNew', name: '', order: 9 })),
   renameHeatmapFolder: vi.fn(() => Promise.resolve()),
@@ -68,7 +67,6 @@ function makeData(): HeatmapResponse {
     entries: [
       { code: '000001', name: '에코프로', folder_id: 'f1', order: 0 },
       { code: '000003', name: '삼성전자', folder_id: 'f2', order: 0 },
-      { code: '000004', name: '미분류종목', folder_id: null, order: 0 },
     ],
   };
 }
@@ -79,9 +77,9 @@ function wrap(ui: ReactNode) {
 }
 
 // onDragEnd 이벤트 헬퍼
-const entryDrag = (code: string, from: string | null, to: string | null) => ({
+const entryDrag = (code: string, from: string, to: string) => ({
   active: { id: code, data: { current: { type: 'entry', code, folderId: from } } },
-  over: { id: `folder:${to ?? '__uncat__'}`, data: { current: { type: 'entry-target', folderId: to } } },
+  over: { id: `folder:${to}`, data: { current: { type: 'entry-target', folderId: to } } },
 });
 
 beforeEach(() => {
@@ -99,13 +97,6 @@ describe('HeatmapDrawer 행 드래그 이동 wiring', () => {
     await screen.findByTestId('heatmap-drawer-row-000001');
     h.onDragEnd!(entryDrag('000001', 'f1', 'f2'));
     await waitFor(() => expect(api.moveHeatmapEntries).toHaveBeenCalledWith(['000001'], 'f2'));
-  });
-
-  it('미분류로 드롭 → folderId=null 로 이동', async () => {
-    wrap(<HeatmapDrawer />);
-    await screen.findByTestId('heatmap-drawer-row-000001');
-    h.onDragEnd!(entryDrag('000001', 'f1', null));
-    await waitFor(() => expect(api.moveHeatmapEntries).toHaveBeenCalledWith(['000001'], null));
   });
 
   it('같은 그룹에 드롭 → no-op (mutate 미호출)', async () => {

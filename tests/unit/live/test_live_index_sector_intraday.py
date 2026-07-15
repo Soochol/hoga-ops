@@ -52,13 +52,14 @@ class _RecordingScheduler:
 
 
 def _seed_heatmap(tmp_path) -> None:
+    from hoga.api.models import WatchlistFolder
     save_document(
         tmp_path,
         HeatmapDocument(
-            folders=[],
+            folders=[WatchlistFolder(id="f_00000aaa", name="반도체", order=0)],
             entries=[
-                HeatmapEntry.model_construct(code="005930", name="삼성전자", folder_id=None, order=0),
-                HeatmapEntry.model_construct(code="000660", name="SK하이닉스", folder_id=None, order=1),
+                HeatmapEntry(code="005930", name="삼성전자", folder_id="f_00000aaa", order=0),
+                HeatmapEntry(code="000660", name="SK하이닉스", folder_id="f_00000aaa", order=1),
             ],
         ),
     )

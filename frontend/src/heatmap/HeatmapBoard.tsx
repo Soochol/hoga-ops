@@ -1,26 +1,23 @@
-import type { FolderGroup } from '../watchlist/grouping';
 import type { LiveQuote } from '../api/liveQuotes';
 import type { LiveOpenDisposition } from '../live/liveActivation';
-import type { HeatmapEntry } from '../api/heatmap';
 import { HeatmapFolder, type RowMenuOpener } from './HeatmapFolder';
 import { visibleFolderGroups } from './visibleGroups';
-import type { SortMode } from './heat';
+import type { HeatmapGroup, SortMode } from './heat';
 
 export interface HeatmapBoardProps {
-  groups: FolderGroup<HeatmapEntry>[];
+  groups: HeatmapGroup[];
   quoteByCode: Map<string, LiveQuote>;
   sortMode: SortMode;
   onPick: (code: string, name?: string, options?: { disposition?: LiveOpenDisposition }) => void;
-  /** 그룹 내 드래그 재정렬 커밋(manual 모드). folderId=null 은 미분류 그룹.
-   *  페이지에서 useReorderHeatmapEntries 로 주입. */
-  onReorder?: (folderId: string | null, orderedCodes: string[]) => void;
+  /** 그룹 내 드래그 재정렬 커밋(manual 모드). 페이지에서 useReorderHeatmapEntries 로 주입. */
+  onReorder?: (folderId: string, orderedCodes: string[]) => void;
   /** 행 우클릭 메뉴(삭제·폴더이동) 오프너. 페이지에서 주입. */
   onRowMenu?: RowMenuOpener;
   /** 행 드래그 시작/끝을 페이지로 전파(그룹순서 동결용, G1). manual 모드에서만 발화. */
   onRowDragState?: (dragging: boolean) => void;
 }
 
-/** 신문형 멀티칼럼 보드. 빈 그룹만 제외(미분류 포함 — ADR-0068 G3). columnWidth 로 가용 폭만큼
+/** 신문형 멀티칼럼 보드. 빈 그룹만 제외. columnWidth 로 가용 폭만큼
  *  칼럼 수가 자동 결정된다(순수 CSS 메이슨리, 레이아웃 JS 없음). columnWidth 는 행 그리드의 측정
  *  min-content(합성 하니스 실측 ≈15.7rem — 이름+캔들 2.5rem+현재가+칩; 20px root 시절 ≈314px 실측을
  *  rem 환산, rem 기준이라 root 크기와 무관) 위로
@@ -41,7 +38,7 @@ export function HeatmapBoard({ groups, quoteByCode, sortMode, onPick, onReorder,
       <div style={{ columnWidth: '16.5rem', columnGap: '0.5rem' }}>
         {visible.map((g) => (
           <HeatmapFolder
-            key={g.folder?.id ?? '__uncat__'}
+            key={g.folder.id}
             folder={g.folder}
             entries={g.entries}
             quoteByCode={quoteByCode}

@@ -3,7 +3,6 @@ import { HEATMAP_KEY } from './heatmapKeys';
 import { INDEX_SECTOR_RANKINGS_KEY } from '../api/indexSectorRankings';
 import {
   getHeatmap,
-  addToHeatmap,
   addToHeatmapFolder,
   removeFromHeatmap,
   createHeatmapFolder,
@@ -31,15 +30,6 @@ export function useHeatmap() {
 function invalidateHeatmapDependents(qc: QueryClient) {
   void qc.invalidateQueries({ queryKey: HEATMAP_KEY });
   void qc.invalidateQueries({ queryKey: INDEX_SECTOR_RANKINGS_KEY });
-}
-
-export function useAddToHeatmap() {
-  const qc = useQueryClient();
-  return useMutation({
-    mutationKey: ['heatmap', 'add'],
-    mutationFn: (code: string) => addToHeatmap(code),
-    onSuccess: () => invalidateHeatmapDependents(qc),
-  });
 }
 
 export function useAddToHeatmapFolder() {
@@ -84,8 +74,8 @@ export function useDeleteHeatmapFolder() {
 }
 
 // --- move / reorder: optimistic + rollback (DnD smoothness) ---
-type ReorderVars = { folderId: string | null; orderedCodes: string[] };
-type MoveVars = { codes: string[]; folderId: string | null };
+type ReorderVars = { folderId: string; orderedCodes: string[] };
+type MoveVars = { codes: string[]; folderId: string };
 
 // no-jump invariant: 서버가 target 그룹을 0..N-1로 compact 유지하므로(_reindex), 아래 낙관적
 // order는 invalidate 후 서버 값과 같은 *상대순서*에 안착 → 화면 jump 없음 (useWatchlist 와 동일).

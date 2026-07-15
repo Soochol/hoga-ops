@@ -1,15 +1,15 @@
 import { render, screen, fireEvent } from '@testing-library/react';
 import { it, expect, vi } from 'vitest';
 import { SectorTempStrip } from './SectorTempStrip';
-import type { FolderGroup } from '../watchlist/grouping';
+import type { HeatmapGroup } from './heat';
 import type { LiveQuote } from '../api/liveQuotes';
 import type { HeatmapEntry } from '../api/heatmap';
 
-const entry = (code: string, folderId: string | null, order = 0): HeatmapEntry => ({
+const entry = (code: string, folderId: string, order = 0): HeatmapEntry => ({
   code, name: code, folder_id: folderId, order,
 });
 
-const groups: FolderGroup<HeatmapEntry>[] = [
+const groups: HeatmapGroup[] = [
   { folder: { id: 'f1', name: '반도체', order: 0 }, entries: [entry('005930', 'f1')] }, // +1
   { folder: { id: 'f2', name: '로봇', order: 1 }, entries: [entry('111', 'f2')] },       // +4
   { folder: { id: 'f3', name: '통신', order: 2 }, entries: [entry('222', 'f3')] },       // -2
@@ -49,7 +49,7 @@ it('상승 칩 배경 = 적(--price-up), 하락 칩 = 청(--price-down) 토큰',
 });
 
 it('stale 종목은 평균 계산에서 제외되어 섹터 정렬/표시에 영향 없음', () => {
-  const staleGroups: FolderGroup<HeatmapEntry>[] = [
+  const staleGroups: HeatmapGroup[] = [
     { folder: { id: 'f1', name: '로봇', order: 0 }, entries: [entry('111', 'f1')] },      // +2
     { folder: { id: 'f2', name: '통신', order: 1 }, entries: [entry('222', 'f2')] },      // -3
     { folder: { id: 'f3', name: '반도체', order: 2 }, entries: [entry('005930', 'f3')] },   // stale +20 (제외)

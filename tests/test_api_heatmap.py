@@ -1,10 +1,14 @@
-"""Heatmap independent-store + route tests (ADR-0068, amended by ADR-0097).
+"""Heatmap independent-store + route tests (ADR-0068, amended by ADR-0097/0112).
 
 Mirrors the watchlist suite but asserts the SEPARATION invariants:
   - the heatmap store/routes never touch watchlist.json;
   - HeatmapEntry carries no capture fields;
   - entry-SET mutations resync storage targets (ADR-0097) while folder-shape
-    mutations (rename/reorder/move/delete-folder) do not;
+    mutations (rename/reorder/move) do not — delete-folder resyncs since v3
+    (it deletes member entries too, ADR-0112);
+  - v3 (ADR-0112): folder_id is required (no 미분류 null group) — folder
+    delete is destructive, and v1/v2 folder-less entries migrate into a real
+    '미분류' folder (f_00000000);
   - the one-time seed copies the watchlist (capture-stripped) only when
     heatmap.json is absent AND the watchlist is non-empty, and never writes
     the watchlist.
@@ -36,8 +40,10 @@ def test_load_returns_empty_when_file_missing(tmp_path: Path):
 
 def test_save_then_load_round_trip(tmp_path: Path):
     from hoga.api.heatmap import load_heatmap, save_document
-    from hoga.api.models import HeatmapDocument, HeatmapEntry
-    save_document(tmp_path, HeatmapDocument(entries=[HeatmapEntry(code="003490", name="대한항공")]))
+    from hoga.api.models import HeatmapDocument, HeatmapEntry, WatchlistFolder
+    save_document(tmp_path, HeatmapDocument(
+        folders=[WatchlistFolder(id="f_0000000a", name="항공", order=0)],
+        entries=[HeatmapEntry(code="003490", name="대한항공", folder_id="f_0000000a")]))
     entries = load_heatmap(tmp_path)
     assert len(entries) == 1
     assert entries[0].code == "003490"
@@ -58,41 +64,131 @@ def test_corrupted_json_is_backed_up_and_returns_empty(tmp_path: Path):
 
 @pytest.mark.asyncio
 async def test_add_and_remove_entry(tmp_path: Path):
-    from hoga.api.heatmap import add_entry, remove_entry, load_heatmap
-    from hoga.api.heatmap import AlreadyInHeatmapError, NotInHeatmapError
-    await add_entry(tmp_path, code="003490", name="대한항공")
-    assert [e.code for e in load_heatmap(tmp_path)] == ["003490"]
-    with pytest.raises(AlreadyInHeatmapError):
-        await add_entry(tmp_path, code="003490", name="대한항공")
-    await remove_entry(tmp_path, code="003490")
-    assert load_heatmap(tmp_path) == []
+    from hoga.api import heatmap
+    from hoga.api.heatmap import NotInHeatmapError
+    f = await heatmap.create_folder(tmp_path, name="항공")
+    await heatmap.add_entry_to_folder(tmp_path, code="003490", name="대한항공", folder_id=f.id)
+    assert [e.code for e in heatmap.load_heatmap(tmp_path)] == ["003490"]
+    # Re-adding an existing code is a move/no-op, never a duplicate (v3 single
+    # add command — the old AlreadyInHeatmapError surface is gone).
+    await heatmap.add_entry_to_folder(tmp_path, code="003490", name="대한항공", folder_id=f.id)
+    assert [e.code for e in heatmap.load_heatmap(tmp_path)] == ["003490"]
+    await heatmap.remove_entry(tmp_path, code="003490")
+    assert heatmap.load_heatmap(tmp_path) == []
     with pytest.raises(NotInHeatmapError):
-        await remove_entry(tmp_path, code="003490")
+        await heatmap.remove_entry(tmp_path, code="003490")
 
 
 @pytest.mark.asyncio
-async def test_folder_crud_and_reparent(tmp_path: Path):
+async def test_delete_folder_deletes_members(tmp_path: Path):
+    """v3 (ADR-0112): folder delete is destructive — the folder AND its member
+    entries disappear; nothing is reparented (no 미분류)."""
     from hoga.api import heatmap
     f = await heatmap.create_folder(tmp_path, name="반도체")
-    await heatmap.add_entry(tmp_path, code="005930", name="삼성전자")
-    await heatmap.move_entries(tmp_path, codes=["005930"], folder_id=f.id)
-    doc = heatmap.load_document(tmp_path)
-    assert doc.entries[0].folder_id == f.id
-    # delete folder → member reparented to 미분류 (null), folder gone.
+    keep = await heatmap.create_folder(tmp_path, name="자동차")
+    await heatmap.add_entry_to_folder(tmp_path, code="005930", name="삼성전자", folder_id=f.id)
+    await heatmap.add_entry_to_folder(tmp_path, code="005380", name="현대차", folder_id=keep.id)
     await heatmap.delete_folder(tmp_path, folder_id=f.id)
     doc = heatmap.load_document(tmp_path)
-    assert doc.folders == []
-    assert doc.entries[0].folder_id is None
+    assert [fo.id for fo in doc.folders] == [keep.id]
+    assert [(e.code, e.folder_id) for e in doc.entries] == [("005380", keep.id)]
 
 
 @pytest.mark.asyncio
 async def test_reorder_set_mismatch_raises(tmp_path: Path):
     from hoga.api import heatmap
     from hoga.api.heatmap import HeatmapSetMismatchError
-    await heatmap.add_entry(tmp_path, code="005930", name="삼성전자")
-    await heatmap.add_entry(tmp_path, code="000660", name="SK하이닉스")
+    f = await heatmap.create_folder(tmp_path, name="반도체")
+    await heatmap.add_entry_to_folder(tmp_path, code="005930", name="삼성전자", folder_id=f.id)
+    await heatmap.add_entry_to_folder(tmp_path, code="000660", name="SK하이닉스", folder_id=f.id)
     with pytest.raises(HeatmapSetMismatchError):
-        await heatmap.reorder_entries(tmp_path, folder_id=None, ordered_codes=["005930"])
+        await heatmap.reorder_entries(tmp_path, folder_id=f.id, ordered_codes=["005930"])
+
+
+# --- store: v2 → v3 migration (ADR-0112) ------------------------------------
+
+def _write_v2(tmp_path: Path, *, folders: list[dict], entries: list[dict]) -> None:
+    import json
+    (tmp_path / "heatmap.json").write_text(json.dumps(
+        {"schema_version": 2, "folders": folders, "entries": entries},
+        ensure_ascii=False), encoding="utf-8")
+
+
+def test_migrate_v2_null_entries_land_in_uncat_real_folder(tmp_path: Path):
+    """v2 folder-less (미분류) entries are rescued into a REAL '미분류' folder
+    with the deterministic id f_00000000 — after existing folder members."""
+    from hoga.api.heatmap import load_document
+    _write_v2(tmp_path,
+              folders=[{"id": "f_0000000a", "name": "반도체", "order": 0}],
+              entries=[
+                  {"code": "005930", "name": "삼성전자", "folder_id": "f_0000000a", "order": 0},
+                  {"code": "035720", "name": "카카오", "folder_id": None, "order": 0},
+                  {"code": "003490", "name": "대한항공", "folder_id": None, "order": 1},
+              ])
+    doc = load_document(tmp_path)
+    assert doc.schema_version == 3
+    assert [(f.id, f.name) for f in doc.folders] == [
+        ("f_0000000a", "반도체"), ("f_00000000", "미분류")]
+    by_code = {e.code: e for e in doc.entries}
+    assert by_code["005930"].folder_id == "f_0000000a"
+    assert by_code["035720"].folder_id == "f_00000000"
+    assert by_code["003490"].folder_id == "f_00000000"
+    # rescued entries keep their relative order, compacted to 0..N-1.
+    assert (by_code["035720"].order, by_code["003490"].order) == (0, 1)
+
+
+def test_migrate_v2_merges_into_existing_f00000000(tmp_path: Path):
+    """A heatmap seeded verbatim from a v3 watchlist already carries
+    f_00000000 ('기본') — rescued entries merge into it AFTER its members,
+    never duplicating the folder id."""
+    from hoga.api.heatmap import load_document
+    _write_v2(tmp_path,
+              folders=[{"id": "f_00000000", "name": "기본", "order": 0}],
+              entries=[
+                  {"code": "005930", "name": "삼성전자", "folder_id": "f_00000000", "order": 0},
+                  {"code": "035720", "name": "카카오", "folder_id": None, "order": 0},
+              ])
+    doc = load_document(tmp_path)
+    assert [(f.id, f.name) for f in doc.folders] == [("f_00000000", "기본")]
+    by_code = {e.code: e for e in doc.entries}
+    assert by_code["035720"].folder_id == "f_00000000"
+    assert by_code["005930"].order < by_code["035720"].order
+
+
+def test_migrate_v1_folderless_file_rescues_all_entries(tmp_path: Path):
+    """v1 (no schema_version, no folders key) — every entry is folder-less, so
+    all land in the 미분류 real folder preserving file order."""
+    import json
+    (tmp_path / "heatmap.json").write_text(json.dumps({"entries": [
+        {"code": "005930", "name": "삼성전자"},
+        {"code": "035720", "name": "카카오"},
+    ]}, ensure_ascii=False), encoding="utf-8")
+    from hoga.api.heatmap import load_document
+    doc = load_document(tmp_path)
+    assert doc.schema_version == 3
+    assert [(f.id, f.name) for f in doc.folders] == [("f_00000000", "미분류")]
+    assert [(e.code, e.folder_id, e.order) for e in doc.entries] == [
+        ("005930", "f_00000000", 0), ("035720", "f_00000000", 1)]
+
+
+def test_migrate_v2_without_nulls_is_clean_version_bump(tmp_path: Path):
+    from hoga.api.heatmap import load_document
+    _write_v2(tmp_path,
+              folders=[{"id": "f_0000000a", "name": "반도체", "order": 0}],
+              entries=[{"code": "005930", "name": "삼성전자",
+                        "folder_id": "f_0000000a", "order": 0}])
+    doc = load_document(tmp_path)
+    assert doc.schema_version == 3
+    assert [f.id for f in doc.folders] == ["f_0000000a"]  # no 미분류 minted
+
+
+def test_future_schema_version_halts_loudly(tmp_path: Path):
+    import json
+    from hoga.api.heatmap import UnsupportedHeatmapSchema, load_document
+    (tmp_path / "heatmap.json").write_text(
+        json.dumps({"schema_version": 4, "folders": [], "entries": []}))
+    with pytest.raises(UnsupportedHeatmapSchema):
+        load_document(tmp_path)
 
 
 # --- routes -----------------------------------------------------------------
@@ -133,27 +229,33 @@ def test_heatmap_folder_wire_drops_member_codes(tmp_path: Path):
     assert "member_codes" not in body["folders"][0]
 
 
-def test_post_unknown_code_404(tmp_path: Path):
+def test_folderless_post_route_is_gone(tmp_path: Path):
+    """v3 (ADR-0112): the folder-less POST /api/heatmap no longer exists —
+    the only add surface is the folder-scoped member add."""
+    r = TestClient(_app(tmp_path)).post("/api/heatmap", json={"code": "003490"})
+    assert r.status_code == 405
+
+
+def test_member_add_unknown_code_404(tmp_path: Path):
     from unittest.mock import patch
+    client = TestClient(_app(tmp_path))
+    fid = client.post("/api/heatmap/folders", json={"name": "항공"}).json()["id"]
     with patch("hoga.api.heatmap_routes.symbols.search", return_value=[]):
-        r = TestClient(_app(tmp_path)).post("/api/heatmap", json={"code": "999999"})
+        r = client.post(f"/api/heatmap/folders/{fid}/members", json={"code": "999999"})
     assert r.status_code == 404
     assert r.json()["detail"]["code"] == "unknown_code"
 
 
-def test_post_adds_then_duplicate_409(tmp_path: Path):
+def test_member_add_wire_has_no_capture_fields(tmp_path: Path):
     from unittest.mock import patch
+    client = TestClient(_app(tmp_path))
+    fid = client.post("/api/heatmap/folders", json={"name": "항공"}).json()["id"]
     with patch("hoga.api.heatmap_routes.symbols.search", return_value=[_fake_hit()]):
-        client = TestClient(_app(tmp_path))
-        r1 = client.post("/api/heatmap", json={"code": "003490"})
-        r2 = client.post("/api/heatmap", json={"code": "003490"})
-    assert r1.status_code == 201
-    assert r1.json()["code"] == "003490"
-    # Capture fields are absent on the wire shape too.
-    assert "last_success_date" not in r1.json()
-    assert "registered_at_kst_date" not in r1.json()
-    assert r2.status_code == 409
-    assert r2.json()["detail"]["code"] == "already_in_heatmap"
+        r = client.post(f"/api/heatmap/folders/{fid}/members", json={"code": "003490"})
+    assert r.status_code == 201
+    assert r.json()["code"] == "003490"
+    assert "last_success_date" not in r.json()
+    assert "registered_at_kst_date" not in r.json()
 
 
 def test_delete_absent_404(tmp_path: Path):
@@ -165,15 +267,22 @@ def test_delete_absent_404(tmp_path: Path):
 def test_folder_create_and_move_routes(tmp_path: Path):
     from unittest.mock import patch
     hit = [_fake_hit("005930", "삼성전자")]
+    client = TestClient(_app(tmp_path))
+    src = client.post("/api/heatmap/folders", json={"name": "반도체"}).json()["id"]
+    dst = client.post("/api/heatmap/folders", json={"name": "대형주"}).json()["id"]
     with patch("hoga.api.heatmap_routes.symbols.search", return_value=hit):
-        client = TestClient(_app(tmp_path))
-        fr = client.post("/api/heatmap/folders", json={"name": "반도체"})
-        client.post("/api/heatmap", json={"code": "005930"})
-    assert fr.status_code == 201
-    fid = fr.json()["id"]
-    mv = client.post("/api/heatmap/move", json={"codes": ["005930"], "folder_id": fid})
+        client.post(f"/api/heatmap/folders/{src}/members", json={"code": "005930"})
+    mv = client.post("/api/heatmap/move", json={"codes": ["005930"], "folder_id": dst})
     assert mv.status_code == 204
-    assert client.get("/api/heatmap").json()["entries"][0]["folder_id"] == fid
+    assert client.get("/api/heatmap").json()["entries"][0]["folder_id"] == dst
+
+
+def test_move_to_null_folder_is_rejected_422(tmp_path: Path):
+    """v3 wire contract: folder_id must be a real folder id — a null
+    destination (the old 미분류) is a validation error, not a reparent."""
+    r = TestClient(_app(tmp_path)).post(
+        "/api/heatmap/move", json={"codes": ["005930"], "folder_id": None})
+    assert r.status_code == 422
 
 
 def test_folder_member_add_is_atomic_for_new_code(tmp_path: Path):
@@ -196,15 +305,17 @@ def test_folder_member_add_moves_existing_code_without_duplicate(tmp_path: Path)
     from unittest.mock import patch
     hit = [_fake_hit("005930", "삼성전자")]
     client = TestClient(_app(tmp_path))
-    fid = client.post("/api/heatmap/folders", json={"name": "반도체"}).json()["id"]
+    src = client.post("/api/heatmap/folders", json={"name": "대형주"}).json()["id"]
+    dst = client.post("/api/heatmap/folders", json={"name": "반도체"}).json()["id"]
 
     with patch("hoga.api.heatmap_routes.symbols.search", return_value=hit):
-        assert client.post("/api/heatmap", json={"code": "005930"}).status_code == 201
-        r = client.post(f"/api/heatmap/folders/{fid}/members", json={"code": "005930"})
+        assert client.post(f"/api/heatmap/folders/{src}/members",
+                           json={"code": "005930"}).status_code == 201
+        r = client.post(f"/api/heatmap/folders/{dst}/members", json={"code": "005930"})
 
     assert r.status_code == 201
     entries = client.get("/api/heatmap").json()["entries"]
-    assert [(e["code"], e["folder_id"]) for e in entries] == [("005930", fid)]
+    assert [(e["code"], e["folder_id"]) for e in entries] == [("005930", dst)]
 
 
 def test_folder_member_add_preserves_order_when_code_already_in_folder(tmp_path: Path):
@@ -245,42 +356,43 @@ def test_folder_member_add_rejects_missing_folder_without_adding_code(tmp_path: 
 # --- separation invariants --------------------------------------------------
 
 def test_entry_set_mutations_resync_storage_targets(tmp_path: Path, stub_refresh_live_stream):
-    """ADR-0097: the four routes that change the entry SET resync storage
-    targets so the REST 30s recorder follows heatmap membership."""
+    """ADR-0097 (amended by ADR-0112): every route that can change the entry
+    SET — member add, delete, bulk remove, and folder delete (which deletes
+    members too) — resyncs storage targets so the REST 30s recorder follows."""
     client = TestClient(_app(tmp_path))
+    fid = client.post("/api/heatmap/folders", json={"name": "반도체"}).json()["id"]
+    assert stub_refresh_live_stream.await_count == 0  # folder create: no resync
+
     with patch("hoga.api.heatmap_routes.symbols.search",
                return_value=[_fake_hit("005930", "삼성전자")]):
-        client.post("/api/heatmap", json={"code": "005930"})
+        client.post(f"/api/heatmap/folders/{fid}/members", json={"code": "005930"})
         assert stub_refresh_live_stream.await_count == 1
 
-        fid = client.post("/api/heatmap/folders", json={"name": "반도체"}).json()["id"]
-        assert stub_refresh_live_stream.await_count == 1  # folder create: no resync
-
-        client.post(f"/api/heatmap/folders/{fid}/members", json={"code": "005930"})
-        assert stub_refresh_live_stream.await_count == 2
-
     client.delete("/api/heatmap/005930")
-    assert stub_refresh_live_stream.await_count == 3
+    assert stub_refresh_live_stream.await_count == 2
 
     client.post("/api/heatmap/remove", json={"codes": ["005930"]})
-    assert stub_refresh_live_stream.await_count == 4
+    assert stub_refresh_live_stream.await_count == 3
+
+    client.delete(f"/api/heatmap/folders/{fid}")
+    assert stub_refresh_live_stream.await_count == 4  # v3: deletes members too
 
 
 def test_folder_shape_mutations_do_not_resync(tmp_path: Path, stub_refresh_live_stream):
-    """Rename/reorder/move/delete-folder leave the entry SET intact — the
-    storage-target resync hook must not fire (heatmap UI stays snappy)."""
+    """Rename/reorder/move leave the entry SET intact — the storage-target
+    resync hook must not fire (heatmap UI stays snappy). Folder DELETE is no
+    longer shape-only (v3 deletes members) and lives in the resync test."""
     client = TestClient(_app(tmp_path))
+    fid = client.post("/api/heatmap/folders", json={"name": "반도체"}).json()["id"]
     with patch("hoga.api.heatmap_routes.symbols.search",
                return_value=[_fake_hit("005930", "삼성전자")]):
-        client.post("/api/heatmap", json={"code": "005930"})
-    fid = client.post("/api/heatmap/folders", json={"name": "반도체"}).json()["id"]
+        client.post(f"/api/heatmap/folders/{fid}/members", json={"code": "005930"})
     calls_after_setup = stub_refresh_live_stream.await_count
 
     client.patch(f"/api/heatmap/folders/{fid}", json={"name": "IT"})
     client.put("/api/heatmap/folders/order", json={"ordered_ids": [fid]})
     client.post("/api/heatmap/move", json={"codes": ["005930"], "folder_id": fid})
     client.put("/api/heatmap/reorder", json={"folder_id": fid, "ordered_codes": ["005930"]})
-    client.delete(f"/api/heatmap/folders/{fid}")
 
     assert stub_refresh_live_stream.await_count == calls_after_setup
 
@@ -290,16 +402,19 @@ def test_add_succeeds_even_if_storage_resync_fails(tmp_path: Path, stub_refresh_
     route (best-effort hook, same contract as the watchlist routes)."""
     stub_refresh_live_stream.side_effect = RuntimeError("lifecycle down")
     client = TestClient(_app(tmp_path))
+    fid = client.post("/api/heatmap/folders", json={"name": "항공"}).json()["id"]
     with patch("hoga.api.heatmap_routes.symbols.search", return_value=[_fake_hit()]):
-        r = client.post("/api/heatmap", json={"code": "003490"})
+        r = client.post(f"/api/heatmap/folders/{fid}/members", json={"code": "003490"})
     assert r.status_code == 201
     assert client.delete("/api/heatmap/003490").status_code == 204
 
 
-def test_post_heatmap_does_not_touch_watchlist(tmp_path: Path):
+def test_member_add_does_not_touch_watchlist(tmp_path: Path):
     from unittest.mock import patch
+    client = TestClient(_app(tmp_path))
+    fid = client.post("/api/heatmap/folders", json={"name": "항공"}).json()["id"]
     with patch("hoga.api.heatmap_routes.symbols.search", return_value=[_fake_hit()]):
-        TestClient(_app(tmp_path)).post("/api/heatmap", json={"code": "003490"})
+        client.post(f"/api/heatmap/folders/{fid}/members", json={"code": "003490"})
     # Adding to the heatmap writes heatmap.json only — watchlist.json untouched.
     assert (tmp_path / "heatmap.json").exists()
     assert not (tmp_path / "watchlist.json").exists()

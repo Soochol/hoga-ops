@@ -72,14 +72,16 @@ def _entry_groups(
     entries: list[HeatmapEntry],
     folder_names: dict[str, str],
     folder_orders: dict[str, int],
-) -> list[tuple[str | None, str, int, list[HeatmapEntry]]]:
-    grouped: dict[str | None, list[HeatmapEntry]] = {}
+) -> list[tuple[str, str, int, list[HeatmapEntry]]]:
+    grouped: dict[str, list[HeatmapEntry]] = {}
     for entry in entries:
         grouped.setdefault(entry.folder_id, []).append(entry)
-    rows: list[tuple[str | None, str, int, list[HeatmapEntry]]] = []
+    rows: list[tuple[str, str, int, list[HeatmapEntry]]] = []
     for folder_id, group_entries in grouped.items():
-        name = folder_names.get(folder_id or "", "미분류") if folder_id is not None else "미분류"
-        order = folder_orders.get(folder_id or "", 1_000_000)
+        # v3 (ADR-0112): folder_id 는 항상 실폴더(load_document 가 dangling 복구) —
+        # 이름 결측은 방어적 폴백으로 id 를 그대로 노출(미분류 render-group 은 폐지).
+        name = folder_names.get(folder_id, folder_id)
+        order = folder_orders.get(folder_id, 1_000_000)
         rows.append((folder_id, name, order, sorted(group_entries, key=lambda e: (e.order, e.code))))
     return sorted(rows, key=lambda row: (row[2], row[1]))
 

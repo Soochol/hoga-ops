@@ -16,7 +16,7 @@ import { useLivePageStore } from '../state/livePage';
 import { useLiveVenueStore } from '../state/liveVenue';
 import { useHeatmapPrefsStore } from '../state/heatmapPrefs';
 import { persistJson, readJsonObject } from '../state/persist';
-import { groupByFolder, swapFolderOrder } from '../watchlist/grouping';
+import { swapFolderOrder } from '../watchlist/grouping';
 import { GroupNameModal } from '../watchlist/GroupNameModal';
 import { QuoteRow } from '../rightrail/QuoteRow';
 import { RailDrawer, RailDrawerBody, RailDrawerHeader, RailState } from '../ui/RailShell';
@@ -32,15 +32,14 @@ import { HeatmapSearchInput } from './HeatmapSearchInput';
 import { priceDirClass } from '../ui/priceDir';
 import { ChevronIcon } from '../ui/ChevronIcon';
 import { filterGroups } from './filterGroups';
-import { sortEntries, avgPct, orderFolderGroups, makePctOf, nextSort } from './heat';
+import { sortEntries, avgPct, groupHeatmapEntries, orderFolderGroups, makePctOf, nextSort } from './heat';
 import {
-  useHeatmap, useAddToHeatmap, useRemoveFromHeatmap, useMoveHeatmapEntries,
+  useHeatmap, useRemoveFromHeatmap, useMoveHeatmapEntries,
   useCreateHeatmapFolder, useRenameHeatmapFolder, useDeleteHeatmapFolder,
   useReorderHeatmapFolders,
 } from './useHeatmap';
 
 const COLLAPSE_STORAGE_KEY = 'heatmapDrawer.collapsed';
-const UNCAT_KEY = '__uncat__';
 
 // --- 아이콘 (WatchlistDrawer 의 module-private glyph 들과 동일 계약: SVG 로 통일해
 //     폰트별 유니코드 렌더 불일치를 피한다). chevron 은 ui/ChevronIcon 공유 프리미티브
@@ -97,12 +96,12 @@ function SortableGroup({ folderId, children }: {
   );
 }
 
-/** 한 그룹 블록을 종목 이동의 드롭 타깃으로 감싼다(미분류 포함, id=folderDroppableId).
+/** 한 그룹 블록을 종목 이동의 드롭 타깃으로 감싼다(id=folderDroppableId).
  *  data.folderId 를 실어 onDragEnd 가 id 디코딩 없이 대상 그룹을 읽는다. 드래그 중 종목이
  *  이 그룹 위면 isOver 하이라이트. 헤더 그룹 드래그(type='folder')는 typeAwareCollision 이
  *  걸러 여기로 오지 않는다. */
 function GroupDropZone({ folderId, children }: {
-  folderId: string | null;
+  folderId: string;
   children: React.ReactNode;
 }) {
   const { setNodeRef, isOver } = useDroppable({
@@ -111,7 +110,7 @@ function GroupDropZone({ folderId, children }: {
   });
   return (
     <div ref={setNodeRef}
-      data-testid={`heatmap-drawer-dropzone-${folderId ?? UNCAT_KEY}`}
+      data-testid={`heatmap-drawer-dropzone-${folderId}`}
       className={isOver ? 'rounded ring-1 ring-inset ring-accent bg-tint-selection' : ''}>
       {children}
     </div>
@@ -123,7 +122,7 @@ function GroupDropZone({ folderId, children }: {
  *  과 드래그를 구분한다. children 에 drag 소품을 넘겨 QuoteRow 에 그대로 스레드. */
 function DraggableRow({ code, folderId, children }: {
   code: string;
-  folderId: string | null;
+  folderId: string;
   children: (drag: {
     setNodeRef: (n: HTMLElement | null) => void;
     listeners: DraggableSyntheticListeners;
@@ -147,7 +146,7 @@ const typeAwareCollision: CollisionDetection = (args) => {
 
 /**
  * 그룹 헤더 행 — ⠿ 드래그 핸들(수동 정렬 시) + chevron 접기 + 라벨/개수 + 평균 등락률 + ⋯ 메뉴
- * (종목 추가/이름 변경/순서/삭제; 실폴더만 — 미분류는 chevron+라벨만). WatchlistDrawer.GroupHeader
+ * (종목 추가/이름 변경/순서/삭제). WatchlistDrawer.GroupHeader
  * 미러(폴더별 행 정렬 토글은 드로어 툴바로 승격돼 헤더엔 없음).
  */
 function GroupHeader(props: {
@@ -237,12 +236,12 @@ function GroupHeader(props: {
                 <span className="w-4 grid place-items-center"><ArrowDownIcon /></span> 아래로 이동
               </button>
               <div role="separator" className="my-1 border-t border-border" />
-              {/* 히트맵 그룹 삭제는 비파괴적(백엔드가 멤버를 미분류로 reparent) — confirm 없이
-                  라벨로만 결과를 명시한다(watchlist 의 파괴적 삭제 confirm 과의 의미 차이). */}
+              {/* v3 (ADR-0112): 그룹 삭제는 파괴적(멤버 종목도 함께 삭제) — watchlist 와
+                  동일하게 호출측(deleteFolderWithConfirm)이 멤버가 있으면 confirm 을 띄운다. */}
               <button type="button" role="menuitem"
                 onClick={() => { setMenuOpen(false); props.onDelete?.(); }}
                 className="w-full text-left px-3 py-1.5 text-sm text-error hover:bg-tint-error flex items-center gap-2 disabled:opacity-40 disabled:hover:bg-transparent">
-                <span className="w-4 grid place-items-center"><TrashIcon className="w-[1em] h-[1em]" /></span> 그룹 삭제 (종목은 미분류로)
+                <span className="w-4 grid place-items-center"><TrashIcon className="w-[1em] h-[1em]" /></span> 그룹 삭제
               </button>
             </AnchoredMenu>
           )}
@@ -277,15 +276,19 @@ const POP_W = 320;
 
 /** 종목 검색 팝오버 (controlled) — 마운트되면 열린 상태. anchorRef 우하단 기준 우측정렬 후
  *  useClampedFixedPosition 으로 뷰포트 보정, createPortal 로 body 에 fixed(드로어 overflow
- *  탈출). 선택+추가 시 onAdd(code) 후 onClose; 바깥 클릭·Escape 로도 onClose. 헤더 "종목 추가"
- *  (미분류)와 그룹 ⋯ 메뉴 "종목 추가"(폴더 지정)가 공유 — 팝오버 UI/닫힘 로직 단일 출처. */
-function SymbolAddPopover({ anchorRef, onClose, onAdd, pending }: {
+ *  탈출). 선택+추가 시 onAdd(code, folderId) 후 onClose; 바깥 클릭·Escape 로도 onClose.
+ *  헤더 "종목 추가"(folders 전달 → 그룹 선택 셀렉트 표시, v3 는 그룹 필수 — ADR-0112)와
+ *  그룹 ⋯ 메뉴 "종목 추가"(folders 미전달 — 그 그룹으로 고정)가 공유. */
+function SymbolAddPopover({ anchorRef, onClose, onAdd, pending, folders }: {
   anchorRef: React.RefObject<HTMLElement | null>;
   onClose: () => void;
-  onAdd: (code: string) => Promise<void>;
+  onAdd: (code: string, folderId?: string) => Promise<void>;
   pending: boolean;
+  /** 전달되면 대상 그룹 셀렉트를 보인다(기본값=첫 그룹). 빈 배열이면 추가 불가 안내. */
+  folders?: { id: string; name: string }[];
 }) {
   const [picked, setPicked] = useState<SymbolHit | null>(null);
+  const [folderId, setFolderId] = useState<string>(() => folders?.[0]?.id ?? '');
   const [anchor, setAnchor] = useState({ left: 0, top: 0 });
   useLayoutEffect(() => {
     const r = anchorRef.current?.getBoundingClientRect();
@@ -307,10 +310,13 @@ function SymbolAddPopover({ anchorRef, onClose, onAdd, pending }: {
       window.removeEventListener('keydown', onKey);
     };
   }, [anchorRef, popRef, onClose]);
+  // folders 모드에서 그룹 미선택(빈 배열)이면 추가 불가 — v3 는 그룹 필수(ADR-0112).
+  const needsFolder = folders !== undefined;
+  const canSubmit = !!picked && !pending && (!needsFolder || folderId !== '');
   const submit = async () => {
-    if (!picked) return;
+    if (!canSubmit || !picked) return;
     try {
-      await onAdd(picked.code);
+      await onAdd(picked.code, needsFolder ? folderId : undefined);
     } catch {
       return; // 실패 시 팝오버 유지(재시도) — fire-and-forget rejection 삼킴.
     }
@@ -321,20 +327,33 @@ function SymbolAddPopover({ anchorRef, onClose, onAdd, pending }: {
       style={{ position: 'fixed', left, top, width: POP_W }}
       className="z-30 bg-bg-card border border-border-strong rounded p-2 flex flex-col gap-2 shadow-lg">
       <SymbolSearch value={picked} onChange={setPicked} />
+      {needsFolder && (folders.length > 0 ? (
+        <label className="flex items-center gap-2 text-xs text-fg-dim">
+          <span className="flex-none">그룹</span>
+          <select value={folderId} onChange={(e) => setFolderId(e.target.value)}
+            aria-label="추가할 그룹"
+            className="flex-1 min-w-0 bg-bg-input border border-border rounded px-1.5 py-1 text-fg">
+            {folders.map((f) => <option key={f.id} value={f.id}>{f.name}</option>)}
+          </select>
+        </label>
+      ) : (
+        <div className="text-xs text-fg-dimmer">그룹이 없습니다 — 먼저 ＋ 버튼으로 그룹을 만들어 주세요.</div>
+      ))}
       <div className="flex justify-end gap-2">
         <button type="button" className="text-xs px-2 py-1 text-fg-dim" onClick={onClose}>닫기</button>
         <button type="button" className="text-xs px-2 py-1 rounded bg-accent text-accent-fg disabled:opacity-40"
-          disabled={!picked || pending} onClick={submit}>추가</button>
+          disabled={!canSubmit} onClick={submit}>추가</button>
       </div>
     </div>,
     document.body,
   );
 }
 
-/** 드로어 헤더 "종목 추가" — SymbolAddPopover → useAddToHeatmap(미분류로 추가). */
-function HeaderAddButton() {
+/** 드로어 헤더 "종목 추가" — SymbolAddPopover(그룹 셀렉트 포함) → 지정 그룹으로 추가.
+ *  v3 (ADR-0112): 미분류가 없으므로 헤더 추가도 그룹을 고른다(기본=첫 그룹). */
+function HeaderAddButton({ folders }: { folders: { id: string; name: string }[] }) {
   const [open, setOpen] = useState(false);
-  const addM = useAddToHeatmap();
+  const { addToFolder, isPending } = useAddToFolder();
   const btnRef = useRef<HTMLButtonElement>(null);
   return (
     <>
@@ -344,8 +363,9 @@ function HeaderAddButton() {
         종목 추가
       </button>
       {open && (
-        <SymbolAddPopover anchorRef={btnRef} onClose={() => setOpen(false)} pending={addM.isPending}
-          onAdd={async (code) => { await addM.mutateAsync(code); }} />
+        <SymbolAddPopover anchorRef={btnRef} onClose={() => setOpen(false)} pending={isPending}
+          folders={folders}
+          onAdd={async (code, folderId) => { if (folderId) await addToFolder(code, folderId); }} />
       )}
     </>
   );
@@ -409,7 +429,7 @@ export function HeatmapDrawer() {
   const [renameTarget, setRenameTarget] = useState<{ id: string; name: string } | null>(null);
   const [query, setQuery] = useState('');
   const [menu, setMenu] =
-    useState<{ x: number; y: number; code: string; name: string; folderId: string | null } | null>(null);
+    useState<{ x: number; y: number; code: string; name: string; folderId: string } | null>(null);
 
   // 정렬 취향은 페이지와 공유(heatmapPrefs). 행=sortMode, 그룹=groupSort.
   const sortMode = useHeatmapPrefsStore((s) => s.sortMode);
@@ -431,13 +451,26 @@ export function HeatmapDrawer() {
   // 영속화는 상태 변화에 반응. 기록 시점에 실존 그룹 키만 남겨 삭제된 그룹 키가 누적되지
   // 않게 한다(WatchlistDrawer.collapsed 와 동일 패턴).
   useEffect(() => {
-    const valid = data ? new Set([...data.folders.map((f) => f.id), UNCAT_KEY]) : null;
+    const valid = data ? new Set(data.folders.map((f) => f.id)) : null;
     persistJson(COLLAPSE_STORAGE_KEY, { keys: [...collapsed].filter((k) => !valid || valid.has(k)) });
   }, [collapsed, data]);
 
-  const openMenu = (e: React.MouseEvent, code: string, name: string, folderId: string | null) => {
+  const openMenu = (e: React.MouseEvent, code: string, name: string, folderId: string) => {
     e.preventDefault();
     setMenu({ x: e.clientX, y: e.clientY, code, name, folderId });
+  };
+
+  // v3 (ADR-0112): 그룹 삭제는 멤버 종목까지 지운다 — 멤버가 있으면 watchlist 와 같은
+  // 문법으로 confirm(빈 그룹은 즉시 삭제). 종목 수는 반드시 **필터 전 원본**(data.entries)
+  // 에서 센다 — 화면 그룹(visibleGroups)은 검색 중 filterGroups 가 매칭 행만 남긴 부분집합이라
+  // 그 length 를 쓰면 confirm 이 실제보다 적은 수를 알리고도 전체를 지운다.
+  const deleteFolderWithConfirm = (folderId: string, name: string) => {
+    const memberCount = data?.entries.filter((e) => e.folder_id === folderId).length ?? 0;
+    if (memberCount > 0 &&
+        !window.confirm(`'${name}' 그룹과 종목 ${memberCount}개가 함께 삭제됩니다. 계속할까요?`)) {
+      return;
+    }
+    deleteM.mutate(folderId);
   };
 
   // 렌더 파이프라인: groupByFolder → orderFolderGroups(그룹간 정렬) → filterGroups(검색)
@@ -447,7 +480,7 @@ export function HeatmapDrawer() {
   const pctOf = useMemo(() => makePctOf(quoteByCode), [quoteByCode]);
   const visibleGroups = useMemo(() => {
     if (!data) return [];
-    const grouped = groupByFolder(data.folders, data.entries);
+    const grouped = groupHeatmapEntries(data.folders, data.entries);
     const ordered = orderFolderGroups(grouped, groupSort, (g) => avgPct(g.entries, pctOf));
     return filterGroups(ordered, query);
   }, [data, groupSort, pctOf, query]);
@@ -468,7 +501,7 @@ export function HeatmapDrawer() {
   const groupDragEnabled = !isSearching;
   const sensors = useSensors(useSensor(PointerSensor, { activationConstraint: { distance: 5 } }));
   const draggableFolderIds = groupDragEnabled
-    ? visibleGroups.filter((g) => g.folder).map((g) => g.folder!.id)
+    ? visibleGroups.map((g) => g.folder.id)
     : [];
   const onDragEnd = (ev: DragEndEvent) => {
     const activeType = ev.active.data.current?.type;
@@ -477,9 +510,9 @@ export function HeatmapDrawer() {
       // 그룹을 읽어 id 디코딩 불필요. 같은 그룹이면 no-op. 서버가 대상 그룹 끝에 배치.
       const over = ev.over?.data.current;
       if (!over || over.type !== 'entry-target') return;
-      const from = (ev.active.data.current?.folderId ?? null) as string | null;
-      const to = (over.folderId ?? null) as string | null;
-      if (from === to) return;
+      const from = String(ev.active.data.current?.folderId ?? '');
+      const to = String(over.folderId ?? '');
+      if (to === '' || from === to) return;
       moveM.mutate({ codes: [String(ev.active.data.current?.code)], folderId: to });
       return;
     }
@@ -503,7 +536,7 @@ export function HeatmapDrawer() {
                     className="grid h-5 w-5 place-items-center rounded text-fg-dim hover:bg-bg-input-hover hover:text-fg">
               <PlusIcon />
             </button>
-            <HeaderAddButton />
+            <HeaderAddButton folders={data?.folders ?? []} />
           </div>
         )}
       />
@@ -522,27 +555,25 @@ export function HeatmapDrawer() {
         <DndContext sensors={sensors} collisionDetection={typeAwareCollision} onDragEnd={onDragEnd}>
           <SortableContext items={draggableFolderIds} strategy={verticalListSortingStrategy}>
             {visibleGroups.map((g, gi) => {
-              const key = g.folder?.id ?? UNCAT_KEY;
-              const label = g.folder?.name ?? '미분류';
-              // 빈 미분류만 숨긴다. 빈 실폴더는 표시 — 새 그룹 직후 종목 추가로 채울 수 있어야
-              // 하기 때문(/heatmap 보드의 visibleFolderGroups 는 빈 폴더 전부 숨김 → 의도적 비대칭).
-              if (g.entries.length === 0 && g.folder === null) return null;
+              const folder = g.folder;
+              const key = folder.id;
+              // 빈 그룹도 표시 — 새 그룹 직후 종목 추가로 채울 수 있어야 하기 때문
+              // (/heatmap 보드의 visibleFolderGroups 는 빈 폴더 숨김 → 의도적 비대칭).
               // 검색 중엔 접기 무시 — 매칭된 행이 보여야 한다(collapsed Set 은 안 건드림).
               const isCollapsed = !isSearching && collapsed.has(key);
-              const folder = g.folder;
               const rows = sortEntries(g.entries, sortMode, pctOf);
               const renderGroup = (dragHandle?: GroupDragHandle) => (
                 <>
-                  <GroupHeader label={label} count={g.entries.length} collapsed={isCollapsed}
+                  <GroupHeader label={folder.name} count={g.entries.length} collapsed={isCollapsed}
                     avg={avgPct(g.entries, pctOf)}
                     onToggle={() => toggle(key)}
-                    onRename={folder ? () => setRenameTarget({ id: folder.id, name: folder.name }) : undefined}
-                    onDelete={folder ? () => deleteM.mutate(folder.id) : undefined}
-                    onMoveUp={folder ? () => moveFolder(folder.id, -1) : undefined}
-                    onMoveDown={folder ? () => moveFolder(folder.id, +1) : undefined}
+                    onRename={() => setRenameTarget({ id: folder.id, name: folder.name })}
+                    onDelete={() => deleteFolderWithConfirm(folder.id, folder.name)}
+                    onMoveUp={() => moveFolder(folder.id, -1)}
+                    onMoveDown={() => moveFolder(folder.id, +1)}
                     canMoveUp={canMoveGroups && gi > 0}
                     canMoveDown={canMoveGroups && gi < folderCount - 1}
-                    onAddSymbol={folder ? (code) => addToFolder(code, folder.id) : undefined}
+                    onAddSymbol={(code) => addToFolder(code, folder.id)}
                     addPending={addingToFolder}
                     dragHandle={dragHandle} />
                   {!isCollapsed && (
@@ -581,11 +612,11 @@ export function HeatmapDrawer() {
                   )}
                 </>
               );
-              // GroupDropZone: 종목 이동 드롭 타깃(미분류 포함). 그 안에서 실폴더 + 비검색이면
-              // SortableGroup 으로 헤더를 드래그 활성 영역으로(그룹 순서 변경), 아니면 일반 div.
+              // GroupDropZone: 종목 이동 드롭 타깃. 그 안에서 비검색이면 SortableGroup 으로
+              // 헤더를 드래그 활성 영역으로(그룹 순서 변경), 아니면 일반 div.
               return (
-                <GroupDropZone key={key} folderId={g.folder?.id ?? null}>
-                  {folder && groupDragEnabled ? (
+                <GroupDropZone key={key} folderId={folder.id}>
+                  {groupDragEnabled ? (
                     <SortableGroup folderId={folder.id}>
                       {(dragHandle) => renderGroup(dragHandle)}
                     </SortableGroup>

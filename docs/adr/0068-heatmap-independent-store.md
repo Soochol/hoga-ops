@@ -1,6 +1,8 @@
 # 0068 — 히트맵은 독립 스토어: watchlist 공유를 끊고 heatmap.json 평행 스토어로
 
-**Status:** proposed (2026-06-11)
+**Status:** proposed (2026-06-11) — **amended by ADR-0112 (2026-07-15)**: 미분류
+(folder_id=null render-only 그룹) 표시와 그룹 삭제의 비파괴 reparent 는 폐지됐다.
+heatmap.json 은 v3(folder_id 필수), 그룹 삭제는 멤버 동반 파괴적 삭제(confirm).
 
 **Related:**
 - `docs/superpowers/specs/2026-06-11-heatmap-watchlist-separation.md` — 이 ADR이 근거를 기록하는 스펙.

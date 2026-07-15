@@ -1,16 +1,17 @@
 """FastAPI router for /api/heatmap.
 
 The Heatmap is an independent monitoring list (ADR-0068). This router mirrors
-/api/watchlist's folder/entry CRUD 1:1 but deliberately OMITS:
+/api/watchlist's folder/entry CRUD but deliberately OMITS:
   - the catch-up routes — the heatmap drives no hogaplay captures;
   - ``next_run_at_ms`` — the heatmap has no scheduler.
 Since ADR-0097 the heatmap DOES feed the REST 30s recorder (never the KIS WS
-subscription — heatmap codes are REST-only extras), so the four routes that
-change the entry SET call ``refresh_live_stream`` to resync storage targets.
-Folder-shape routes (rename/reorder/move/delete-folder) leave the set intact
+subscription — heatmap codes are REST-only extras), so every route that can
+change the entry SET calls ``refresh_live_stream`` to resync storage targets —
+including delete-folder, which since v3 (ADR-0112) deletes the folder's member
+entries too. Folder-shape routes (rename/reorder/move) leave the set intact
 and stay hook-free.
-Error code is ``already_in_heatmap`` (distinct from ``already_in_watchlist``)
-so the frontend can't cross-wire the two stores' add flows.
+v3 (ADR-0112): there is no 미분류 — the only add surface is the folder-scoped
+member add (POST /folders/{id}/members); the folder-less POST "" is gone.
 """
 from __future__ import annotations
 
@@ -24,11 +25,9 @@ from fastapi import Path as PathParam
 
 from hoga.api import symbols
 from hoga.api.heatmap import (
-    AlreadyInHeatmapError,
     FolderNotFoundError,
     HeatmapSetMismatchError,
     NotInHeatmapError,
-    add_entry,
     add_entry_to_folder,
     create_folder,
     delete_folder,
@@ -41,17 +40,16 @@ from hoga.api.heatmap import (
     reorder_folders,
 )
 from hoga.api.models import (
-    EntriesMoveRequest,
     EntriesRemoveRequest,
     EntriesReorderRequest,
     FolderCreateRequest,
     FolderRenameRequest,
     FolderReorderRequest,
+    HeatmapEntriesMoveRequest,
     HeatmapEntry,
     HeatmapFolderView,
     HeatmapResponse,
     MemberAddRequest,
-    WatchlistAddRequest,
     WatchlistFolder,
 )
 from hoga.api.params import CODE_PATTERN
@@ -85,25 +83,6 @@ def build_router(*, data_dir: Path) -> APIRouter:  # noqa: PLR0915
     async def get_heatmap() -> HeatmapResponse:
         doc = load_document(data_dir)
         return HeatmapResponse(folders=_folder_views(doc.folders), entries=doc.entries)
-
-    @router.post("", status_code=201, response_model=HeatmapEntry)
-    async def add_to_heatmap(req: WatchlistAddRequest) -> HeatmapEntry:
-        hits = symbols.search(req.code, limit=1)
-        match = next((h for h in hits if h.code == req.code), None)
-        if match is None:
-            raise HTTPException(status_code=404, detail={
-                "code": "unknown_code",
-                "message": f"Code {req.code} is not in the symbol master.",
-            })
-        try:
-            entry = await add_entry(data_dir, code=req.code, name=match.name)
-        except AlreadyInHeatmapError as e:
-            raise HTTPException(status_code=409, detail={
-                "code": "already_in_heatmap",
-                "message": f"Code {req.code} is already in the Heatmap.",
-            }) from e
-        await _refresh_storage_targets(data_dir, op="add")
-        return entry
 
     @router.delete("/{code}", status_code=204)
     async def remove_from_heatmap(code: CodePathParam) -> None:
@@ -167,9 +146,12 @@ def build_router(*, data_dir: Path) -> APIRouter:  # noqa: PLR0915
         except FolderNotFoundError as e:
             raise HTTPException(status_code=404, detail={
                 "code": "folder_not_found", "message": f"Folder {folder_id} not found."}) from e
+        # v3 (ADR-0112): 폴더 삭제는 멤버 종목도 함께 지우므로 entry SET 이 줄어들 수
+        # 있다 → REST 30s 수집 대상 재동기화(ADR-0097). 멤버 0 폴더면 no-op 에 가깝다.
+        await _refresh_storage_targets(data_dir, op="delete_folder")
 
     @router.post("/move", status_code=204)
-    async def move_heatmap_entries(req: EntriesMoveRequest) -> None:
+    async def move_heatmap_entries(req: HeatmapEntriesMoveRequest) -> None:
         try:
             await move_entries(data_dir, codes=req.codes, folder_id=req.folder_id)
         except FolderNotFoundError as e:

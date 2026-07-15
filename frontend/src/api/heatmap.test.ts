@@ -1,7 +1,6 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import {
   getHeatmap,
-  addToHeatmap,
   addToHeatmapFolder,
   removeFromHeatmap,
   moveHeatmapEntries,
@@ -32,13 +31,9 @@ describe('heatmap api client (independent of watchlist, ADR-0068)', () => {
     expect('next_run_at_ms' in r).toBe(false);
   });
 
-  it('addToHeatmap POSTs JSON body with the code to /api/heatmap', async () => {
-    vi.mocked(apiCall).mockResolvedValueOnce({ code: '003490', name: '대한항공', folder_id: null, order: 0 });
-    await addToHeatmap('003490');
-    const [path, init] = vi.mocked(apiCall).mock.calls[0];
-    expect(path).toBe('/api/heatmap');
-    expect(init?.method).toBe('POST');
-    expect(JSON.parse(init?.body as string)).toEqual({ code: '003490' });
+  it('exposes no folder-less add (v3, ADR-0112 — the only add is folder-scoped)', async () => {
+    const mod = await import('./heatmap');
+    expect('addToHeatmap' in mod).toBe(false);
   });
 
   it('addToHeatmapFolder POSTs code to the folder member command', async () => {
@@ -67,13 +62,13 @@ describe('heatmap api client (independent of watchlist, ADR-0068)', () => {
     expect(JSON.parse(init?.body as string)).toEqual({ codes: ['005930', '003490'], folder_id: 'f_0000000a' });
   });
 
-  it('reorderHeatmapEntries PUTs folder_id (null=미분류) + ordered_codes to /api/heatmap/reorder', async () => {
+  it('reorderHeatmapEntries PUTs folder_id + ordered_codes to /api/heatmap/reorder', async () => {
     vi.mocked(apiAction).mockResolvedValueOnce(undefined);
-    await reorderHeatmapEntries(null, ['000660', '005930']);
+    await reorderHeatmapEntries('f_0000000a', ['000660', '005930']);
     const [path, init] = vi.mocked(apiAction).mock.calls[0];
     expect(path).toBe('/api/heatmap/reorder');
     expect(init?.method).toBe('PUT');
-    expect(JSON.parse(init?.body as string)).toEqual({ folder_id: null, ordered_codes: ['000660', '005930'] });
+    expect(JSON.parse(init?.body as string)).toEqual({ folder_id: 'f_0000000a', ordered_codes: ['000660', '005930'] });
   });
 
   it('createHeatmapFolder POSTs name to /api/heatmap/folders', async () => {

@@ -7,7 +7,10 @@ import { it, expect, vi, beforeEach } from 'vitest';
 vi.mock('../api/heatmap', async (orig) => ({
   ...(await orig<typeof import('../api/heatmap')>()),
   getHeatmap: vi.fn(() => Promise.resolve({
-    folders: [{ id: 'f1', name: '반도체', order: 0 }],
+    folders: [
+      { id: 'f1', name: '반도체', order: 0 },
+      { id: 'f2', name: '대형주', order: 1 },
+    ],
     entries: [{ code: '005930', name: '삼성전자', folder_id: 'f1', order: 0 }],
   })),
   removeFromHeatmap: vi.fn(() => Promise.resolve()),
@@ -58,10 +61,11 @@ it('행 우클릭 → "히트맵에서 제거" → removeFromHeatmap 호출', as
   await waitFor(() => expect(removeFromHeatmap).toHaveBeenCalledWith('005930'));
 });
 
-it('행 우클릭 → "미분류"로 이동 → moveHeatmapEntries(코드, null) 호출', async () => {
+it('행 우클릭 → 다른 그룹으로 이동 → moveHeatmapEntries(코드, folderId) 호출', async () => {
   renderPage();
   fireEvent.contextMenu(await screen.findByTestId('heatmap-row-005930'));
-  // 005930 은 f1 소속 → 이동 대상에 미분류(uncat)가 뜬다.
-  fireEvent.click(await screen.findByTestId('heatmap-menu-move-uncat'));
-  await waitFor(() => expect(moveHeatmapEntries).toHaveBeenCalledWith(['005930'], null));
+  // 005930 은 f1 소속 → 이동 대상은 f2 만(현재 그룹 제외, v3: 미분류 없음).
+  expect(screen.queryByTestId('heatmap-menu-move-f1')).toBeNull();
+  fireEvent.click(await screen.findByTestId('heatmap-menu-move-f2'));
+  await waitFor(() => expect(moveHeatmapEntries).toHaveBeenCalledWith(['005930'], 'f2'));
 });
