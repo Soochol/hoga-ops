@@ -2,7 +2,6 @@ import type { LiveTimeframe } from '../state/livePage';
 
 export type LiveTabMetrics = {
   changePct?: number | null;
-  ratioX?: number | null;
 };
 
 export type LiveViewLabelParts = {
@@ -27,10 +26,6 @@ function formatChangePct(value: number): string {
   return `${sign}${value.toFixed(2)}%`;
 }
 
-function formatRatioX(value: number): string {
-  return `${value.toFixed(2)}x`;
-}
-
 export function formatLiveViewLabel(
   nameOrCode: string,
   timeframe: LiveTimeframe | null | undefined,
@@ -46,10 +41,7 @@ export function formatLiveViewLabelParts(
 ): LiveViewLabelParts {
   if (metrics !== undefined) {
     if (!finiteNumber(metrics.changePct)) return { primary: nameOrCode, full: nameOrCode };
-    const ratioSuffix = finiteNumber(metrics.ratioX) && metrics.ratioX > 0
-      ? ` · ${formatRatioX(metrics.ratioX)}`
-      : '';
-    const detail = `${formatChangePct(metrics.changePct)}${ratioSuffix}`;
+    const detail = formatChangePct(metrics.changePct);
     return { primary: nameOrCode, detail, full: `${nameOrCode} ${detail}` };
   }
   const full = timeframe ? `${nameOrCode} ${formatTimeframeLabel(timeframe)}` : nameOrCode;

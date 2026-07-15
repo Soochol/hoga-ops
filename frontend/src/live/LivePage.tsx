@@ -281,7 +281,6 @@ export function LivePage() {
       const metric = code ? tabMetricByCode.get(code) : undefined;
       next[tab.id] = {
         changePct: metric?.change_pct ?? null,
-        ratioX: metric?.hoga_ratio_x ?? null,
       };
     }
     return next;
