@@ -278,7 +278,7 @@ def test_live_set_is_watchlist_order_prefix() -> None:
         display_ordered_codes,
     )
 
-    # 계좌당 한도 = KIS_WS_MAX_REGISTRATIONS // TRS_PER_CODE (30 // 3 = 10), spec §4·§5.1
+    # 계좌당 한도 = KIS_WS_MAX_REGISTRATIONS // TRS_PER_CODE (39 // 2 = 19, ADR-0111), spec §4·§5.1
     assert LIVE_SET_MAX_CODES == _PER_ACCOUNT_MAX
 
     # 폴더 2개 (order=1이 삽입 앞, order=0이 삽입 뒤 — 렌더는 order 기준)
@@ -803,13 +803,13 @@ async def test_refresh_live_stream_updates_ws_and_buffer(
     lifecycle.reset_for_tests()
     monkeypatch.setattr(symbols, "_cache", [])  # cold cache → 무필터 폴백
 
-    # v1 watchlist 15개 — display order = 삽입 순서(order=index 시드)
+    # v1 watchlist 25개(계좌당 상한 19 초과 — 절단 검증) — display order = 삽입 순서
     (tmp_path / "watchlist.json").write_text(json.dumps({
         "version": 1,
         "entries": [
             {"code": f"{i:06d}", "name": f"{i:06d}",
              "registered_at_kst_date": "20260101", "last_success_date": None}
-            for i in range(15)
+            for i in range(25)
         ],
     }))
 
@@ -848,7 +848,7 @@ async def test_refresh_live_stream_updates_ws_and_buffer(
     try:
         await lifecycle.refresh_live_stream(data_dir=tmp_path)
 
-        # n_configured=1 → 단일 파티션 = 상위 LIVE_SET_MAX_CODES (15개 → 절단)
+        # n_configured=1 → 단일 파티션 = 상위 LIVE_SET_MAX_CODES (25개 → 절단)
         expected = [f"{i:06d}" for i in range(lifecycle.LIVE_SET_MAX_CODES)]
         assert calls["update_codes"] == expected
         assert calls["set_active_codes"] == set(expected)
