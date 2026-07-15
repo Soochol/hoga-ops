@@ -3,7 +3,41 @@ import { fireEvent, render, screen } from '@testing-library/react';
 import { act } from 'react';
 import { LiveDetailPanel } from './LiveDetailPanel';
 import * as liveLayout from '../state/liveLayout';
-import { DEFAULT_CARD_WEIGHTS, useLiveLayoutStore } from '../state/liveLayout';
+import { DEFAULT_CARD_WEIGHTS, LIVE_CARD_KEYS, useLiveLayoutStore } from '../state/liveLayout';
+
+// dnd-kit 은 실제 포인터 드래그를 jsdom 에서 구동하기 어려우므로, DndContext 의
+// onDragEnd 를 캡처해 합성 이벤트로 직접 호출한다(StudyViewsDrawer.test 패턴).
+const dnd = vi.hoisted<{ onDragEnd: null | ((event: unknown) => void) }>(() => ({ onDragEnd: null }));
+
+vi.mock('@dnd-kit/core', async (orig) => {
+  const actual = await orig<typeof import('@dnd-kit/core')>();
+  return {
+    ...actual,
+    DndContext: ({ children, onDragEnd }: { children: React.ReactNode; onDragEnd?: (e: unknown) => void }) => {
+      dnd.onDragEnd = onDragEnd ?? null;
+      return <>{children}</>;
+    },
+    useSensor: () => ({}),
+    useSensors: () => [],
+    PointerSensor: class {},
+  };
+});
+
+vi.mock('@dnd-kit/sortable', async (orig) => {
+  const actual = await orig<typeof import('@dnd-kit/sortable')>();
+  return {
+    ...actual,
+    SortableContext: ({ children }: { children: React.ReactNode }) => <>{children}</>,
+    useSortable: () => ({
+      attributes: {},
+      setNodeRef: () => {},
+      listeners: {},
+      transform: null,
+      transition: undefined,
+      isDragging: false,
+    }),
+  };
+});
 
 describe('LiveDetailPanel', () => {
   beforeEach(() => {
@@ -11,6 +45,8 @@ describe('LiveDetailPanel', () => {
     useLiveLayoutStore.setState({
       rightPanelWidthPx: 400,
       rightCardWeights: DEFAULT_CARD_WEIGHTS,
+      rightCardOrder: [...LIVE_CARD_KEYS],
+      rightCardHidden: {},
       rightCardCollapsed: {},
       detailPanelCollapsed: false,
     });
@@ -383,5 +419,109 @@ describe('LiveDetailPanel', () => {
       screen.getByTestId('live-detail-panel-collapse').click();
     });
     expect(useLiveLayoutStore.getState().detailPanelCollapsed).toBe(true);
+  });
+
+  it('renders cards in the persisted order and recomputes resizer adjacency', () => {
+    useLiveLayoutStore.setState({
+      rightCardOrder: ['volumeDistribution', 'orderbook', 'brokers', 'program', 'investor'],
+    });
+    render(
+      <LiveDetailPanel
+        orderbook={<div>orderbook</div>}
+        volumeDistribution={<div>volume</div>}
+        program={<div>program</div>}
+        brokers={<div>brokers</div>}
+        investor={<div>investor</div>}
+      />,
+    );
+
+    const volume = screen.getByTestId('live-detail-card-volumeDistribution');
+    const orderbook = screen.getByTestId('live-detail-card-orderbook');
+    expect(
+      volume.compareDocumentPosition(orderbook) & Node.DOCUMENT_POSITION_FOLLOWING,
+    ).toBeTruthy();
+    // 새 인접쌍: 매물대/10호가 리사이저가 생기고, 기존 10호가/거래원 순서는 유지.
+    expect(
+      screen.getByRole('separator', { name: '매물대 / 10호가 크기 조절' }),
+    ).toBeInTheDocument();
+  });
+
+  it('hides a card (unmount) and drops it to three separators, then restores it', () => {
+    render(
+      <LiveDetailPanel
+        orderbook={<div>orderbook</div>}
+        volumeDistribution={<div>volume</div>}
+        program={<div>program</div>}
+        brokers={<div>brokers</div>}
+        investor={<div>investor</div>}
+      />,
+    );
+
+    expect(screen.getAllByRole('separator')).toHaveLength(4);
+
+    act(() => {
+      screen.getByTestId('live-detail-hide-program').click();
+    });
+
+    expect(useLiveLayoutStore.getState().rightCardHidden.program).toBe(true);
+    // 숨김 = unmount(접힘과 달리 카드 래퍼 자체가 사라진다).
+    expect(screen.queryByTestId('live-detail-card-program')).toBeNull();
+    expect(screen.getAllByRole('separator')).toHaveLength(3);
+
+    // 복구 메뉴에서 다시 표시.
+    act(() => {
+      screen.getByTestId('live-detail-restore').click();
+    });
+    act(() => {
+      screen.getByTestId('live-detail-restore-item-program').click();
+    });
+    expect(useLiveLayoutStore.getState().rightCardHidden.program).toBe(false);
+    expect(screen.getByTestId('live-detail-card-program')).toBeInTheDocument();
+    expect(screen.getAllByRole('separator')).toHaveLength(4);
+  });
+
+  it('dispatches a reorder on drag end via reorderVisible over the full order', () => {
+    render(
+      <LiveDetailPanel
+        orderbook={<div />}
+        volumeDistribution={<div />}
+        program={<div />}
+        brokers={<div />}
+        investor={<div />}
+      />,
+    );
+
+    // 잠정투자자(visible index 4)를 10호가(index 0) 위치로 이동.
+    act(() => {
+      dnd.onDragEnd?.({ active: { id: 'investor' }, over: { id: 'orderbook' } });
+    });
+
+    expect(useLiveLayoutStore.getState().rightCardOrder).toEqual([
+      'investor', 'orderbook', 'brokers', 'volumeDistribution', 'program',
+    ]);
+  });
+
+  it('keeps hidden cards anchored when reordering visible cards', () => {
+    useLiveLayoutStore.setState({ rightCardHidden: { brokers: true } });
+    render(
+      <LiveDetailPanel
+        orderbook={<div />}
+        volumeDistribution={<div />}
+        program={<div />}
+        brokers={<div />}
+        investor={<div />}
+      />,
+    );
+
+    // visible = [orderbook, volumeDistribution, program, investor] (brokers 숨김, index 1 고정).
+    // orderbook(0) → program(index 2) 위치로.
+    act(() => {
+      dnd.onDragEnd?.({ active: { id: 'orderbook' }, over: { id: 'program' } });
+    });
+
+    // brokers 는 전체 순서 index 1 에 고정 유지.
+    expect(useLiveLayoutStore.getState().rightCardOrder).toEqual([
+      'volumeDistribution', 'brokers', 'program', 'orderbook', 'investor',
+    ]);
   });
 });

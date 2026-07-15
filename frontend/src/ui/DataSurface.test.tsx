@@ -115,6 +115,25 @@ describe('DataSurface primitives', () => {
     expect(screen.queryByText('데이터 없음')).toBeNull();
   });
 
+  it('renders headerTrailing controls as a sibling outside the toggle button', () => {
+    render(
+      <DataSection
+        title="10호가"
+        onToggleCollapse={() => {}}
+        toggleTestId="toggle-orderbook"
+        headerTrailing={<button type="button" data-testid="drag-handle">handle</button>}
+      >
+        rows
+      </DataSection>,
+    );
+
+    const toggle = screen.getByTestId('toggle-orderbook');
+    const handle = screen.getByTestId('drag-handle');
+    expect(handle).toBeInTheDocument();
+    // 핸들은 토글 버튼 내부가 아니라 형제여야 클릭이 접기와 충돌하지 않는다.
+    expect(toggle.contains(handle)).toBe(false);
+  });
+
   it('renders empty states, form fields, and inline state tones', () => {
     render(
       <>

@@ -167,4 +167,52 @@ describe('liveLayout store helpers', () => {
     useLiveLayoutStore.getState().toggleDetailPanelCollapsed();
     expect(useLiveLayoutStore.getState().detailPanelCollapsed).toBe(false);
   });
+
+  it('defaults card order to the canonical render order and hidden to empty', async () => {
+    const { useLiveLayoutStore, LIVE_CARD_KEYS } = await import('./liveLayout');
+
+    expect(useLiveLayoutStore.getState().rightCardOrder).toEqual([...LIVE_CARD_KEYS]);
+    expect(useLiveLayoutStore.getState().rightCardHidden).toEqual({});
+  });
+
+  it('normalizes a persisted card order: unknown dropped, missing appended', async () => {
+    localStorage.setItem('live.layout.v1', JSON.stringify({
+      rightCardOrder: ['program', 'bogus', 'orderbook'],
+    }));
+
+    const { useLiveLayoutStore } = await import('./liveLayout');
+
+    // program, orderbook 유지 → 누락(brokers, volumeDistribution, investor) canonical 순서로 append.
+    expect(useLiveLayoutStore.getState().rightCardOrder).toEqual([
+      'program', 'orderbook', 'brokers', 'volumeDistribution', 'investor',
+    ]);
+  });
+
+  it('persists order + hidden after a width write (persist centralization)', async () => {
+    const { useLiveLayoutStore } = await import('./liveLayout');
+
+    useLiveLayoutStore.getState().setRightCardOrder(['investor', 'orderbook']);
+    useLiveLayoutStore.getState().setCardHidden('program', true);
+    useLiveLayoutStore.getState().setRightPanelWidthPx(420);
+
+    const persisted = JSON.parse(localStorage.getItem('live.layout.v1') ?? '{}');
+    expect(persisted.rightPanelWidthPx).toBe(420);
+    expect(persisted.rightCardOrder).toEqual([
+      'investor', 'orderbook', 'brokers', 'volumeDistribution', 'program',
+    ]);
+    expect(persisted.rightCardHidden).toEqual({ program: true });
+  });
+
+  it('hiding a card leaves weights and collapse untouched (restore fidelity)', async () => {
+    const { useLiveLayoutStore, DEFAULT_CARD_WEIGHTS } = await import('./liveLayout');
+
+    useLiveLayoutStore.getState().toggleCardCollapsed('brokers');
+    useLiveLayoutStore.getState().setCardHidden('brokers', true);
+
+    expect(useLiveLayoutStore.getState().rightCardWeights).toEqual(DEFAULT_CARD_WEIGHTS);
+    expect(useLiveLayoutStore.getState().rightCardCollapsed.brokers).toBe(true);
+
+    useLiveLayoutStore.getState().setCardHidden('brokers', false);
+    expect(useLiveLayoutStore.getState().rightCardCollapsed.brokers).toBe(true);
+  });
 });

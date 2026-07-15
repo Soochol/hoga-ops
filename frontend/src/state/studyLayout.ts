@@ -1,4 +1,5 @@
 import { create } from 'zustand';
+import { normalizeKeyOrder } from './keyOrder';
 import { DETAIL_PANEL_RAIL_WIDTH_PX } from './liveLayout';
 import { persistJson, readJsonObject } from './persist';
 
@@ -21,12 +22,18 @@ function isStudyCardKey(value: string): value is StudyCardKey {
 }
 
 type Persisted = {
+  /** 사용자 소유 카드 순서(안정 키 배열, ADR-0114). */
+  cardOrder: StudyCardKey[];
+  /** 키 부재 = 표시. 숨김은 collapse 를 파괴하지 않는다. */
+  cardHidden: Partial<Record<StudyCardKey, boolean>>;
   /** 키 부재 = 펼침. */
   cardCollapsed: Partial<Record<StudyCardKey, boolean>>;
   detailPanelCollapsed: boolean;
 };
 
 type Store = Persisted & {
+  setCardOrder: (order: StudyCardKey[]) => void;
+  setCardHidden: (key: StudyCardKey, hidden: boolean) => void;
   toggleCardCollapsed: (key: StudyCardKey) => void;
   setAllCardsCollapsed: (collapsed: boolean) => void;
   setDetailPanelCollapsed: (collapsed: boolean) => void;
@@ -46,6 +53,8 @@ function readCollapsedMap(value: unknown): Partial<Record<StudyCardKey, boolean>
 function readStorage(): Partial<Persisted> {
   const parsed = readJsonObject(STUDY_LAYOUT_STORAGE_KEY);
   const next: Partial<Persisted> = {
+    cardOrder: normalizeKeyOrder(parsed.cardOrder, STUDY_CARD_KEYS, isStudyCardKey),
+    cardHidden: readCollapsedMap(parsed.cardHidden),
     cardCollapsed: readCollapsedMap(parsed.cardCollapsed),
   };
   if (typeof parsed.detailPanelCollapsed === 'boolean') {
@@ -56,6 +65,8 @@ function readStorage(): Partial<Persisted> {
 
 function persistFromState(state: Persisted): void {
   persistJson(STUDY_LAYOUT_STORAGE_KEY, {
+    cardOrder: state.cardOrder,
+    cardHidden: state.cardHidden,
     cardCollapsed: state.cardCollapsed,
     detailPanelCollapsed: state.detailPanelCollapsed,
   });
@@ -64,9 +75,25 @@ function persistFromState(state: Persisted): void {
 const hydrated = readStorage();
 
 export const useStudyLayoutStore = create<Store>((set) => ({
+  cardOrder: [...STUDY_CARD_KEYS],
+  cardHidden: {},
   cardCollapsed: {},
   detailPanelCollapsed: false,
   ...hydrated,
+  setCardOrder: (order) => {
+    const nextOrder = normalizeKeyOrder(order, STUDY_CARD_KEYS, isStudyCardKey);
+    set((state) => {
+      persistFromState({ ...state, cardOrder: nextOrder });
+      return { cardOrder: nextOrder };
+    });
+  },
+  setCardHidden: (key, hidden) => {
+    set((state) => {
+      const nextHidden = { ...state.cardHidden, [key]: hidden };
+      persistFromState({ ...state, cardHidden: nextHidden });
+      return { cardHidden: nextHidden };
+    });
+  },
   toggleCardCollapsed: (key) => {
     set((state) => {
       const nextCollapsed = { ...state.cardCollapsed, [key]: !state.cardCollapsed[key] };
