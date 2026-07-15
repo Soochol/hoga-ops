@@ -71,7 +71,9 @@ export function IconToolbarButton({
     <button
       type="button"
       {...props}
-      className={`inline-flex items-center gap-1 rounded-md border border-border-strong bg-bg-input px-2 py-1 text-xs text-fg-dim transition-colors hover:bg-bg-input-hover hover:text-fg disabled:opacity-50 ${className}`.trim()}
+      // 테두리 없는 ghost 버튼(2026-07-15) — 라이트에서 bg-input=툴바 bg라 보더 없이 채우면
+      // 안 보이므로 투명 배경 + hover 시 배경으로 어포던스. 분리는 hover 상태가 담당.
+      className={`inline-flex items-center gap-1 rounded-md bg-transparent px-2 py-1 text-xs text-fg-dim transition-colors hover:bg-bg-input-hover hover:text-fg disabled:opacity-50 ${className}`.trim()}
     >
       {icon}
       {children}

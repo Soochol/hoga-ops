@@ -23,11 +23,10 @@ export function LiveStudyViewSaveButton() {
         type="button"
         disabled={!liveSource}
         onClick={openDialog}
-        className="inline-flex items-center gap-1 px-2 py-1 rounded hover:opacity-90 transition-opacity disabled:opacity-50"
+        className="inline-flex items-center gap-1 rounded px-2 py-1 text-fg-dim transition-colors hover:bg-bg-input-hover hover:text-fg disabled:opacity-50"
         style={{
-          background: 'var(--bg-input)',
-          color: 'var(--fg-dim)',
-          border: '1px solid var(--border)',
+          // 테두리 없는 ghost(2026-07-15) — 투명 배경 + hover 시 배경.
+          background: 'transparent',
           fontSize: 'var(--text-xs)',
         }}
       >

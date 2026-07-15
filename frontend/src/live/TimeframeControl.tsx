@@ -108,12 +108,12 @@ export function TimeframeControl({ timeframe, rememberedMinute, onChange }: Prop
           aria-label={minuteButtonLabel}
           aria-haspopup="menu"
           aria-expanded={minuteMenuOpen}
-          className="inline-flex min-h-6 items-center gap-1 rounded-[7px] border font-mono text-xs transition-colors hover:bg-bg-input-hover hover:text-fg"
+          className="inline-flex min-h-6 items-center gap-1 rounded-[7px] font-mono text-xs transition-colors hover:bg-bg-input-hover hover:text-fg"
           style={{
             padding: '4px 10px',
-            background: isCurrentMinute ? 'var(--tint-selection)' : 'var(--bg-input)',
+            // 테두리 없는 ghost(2026-07-15) — 비활성은 투명, 활성만 tint-selection+accent로 강조.
+            background: isCurrentMinute ? 'var(--tint-selection)' : 'transparent',
             color: isCurrentMinute ? 'var(--accent)' : 'var(--fg-dim)',
-            borderColor: isCurrentMinute ? 'var(--accent)' : 'var(--border)',
           }}
         >
           <span>{minuteLabel(displayedMinute)}</span>
@@ -129,11 +129,11 @@ export function TimeframeControl({ timeframe, rememberedMinute, onChange }: Prop
             type="button"
             onClick={() => pickCalendar(calendar)}
             aria-pressed={active}
-            className="min-h-6 rounded-[7px] border px-2 py-1 font-mono text-xs transition-colors hover:bg-bg-input-hover hover:text-fg"
+            className="min-h-6 rounded-[7px] px-2 py-1 font-mono text-xs transition-colors hover:bg-bg-input-hover hover:text-fg"
             style={{
-              background: active ? 'var(--tint-selection)' : 'var(--bg-input)',
+              // 테두리 없는 ghost(2026-07-15) — 비활성은 투명, 활성만 tint-selection+accent로 강조.
+              background: active ? 'var(--tint-selection)' : 'transparent',
               color: active ? 'var(--accent)' : 'var(--fg-dim)',
-              borderColor: active ? 'var(--accent)' : 'var(--border)',
             }}
           >
             {CALENDAR_LABELS[calendar]}
