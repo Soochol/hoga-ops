@@ -961,6 +961,10 @@ class LiveSettingsResponse(BaseModel):
     # 히트맵 종목을 KIS REST 30초 기록기에 합류시킬지(ADR-0097). 기본 True는
     # ADR-0097 도입 당시의 무조건 합류 동작을 보존한다(끄면 히트맵 전용 수집만 중단).
     heatmap_capture_enabled: bool = True
+    # 스크리너 총잔량 조건에서 hogaplay 결측 종목을 발견하면 자동으로 지난 N일치 수집을
+    # 큐에 적재할지. 기본 False — 스캔은 탐색적으로 반복 실행되므로 묵시적 큐 증가를 막고
+    # 명시적 [수집 요청] 버튼을 1차 UX 로 둔다.
+    screener_depth_autocollect: bool = False
 
 
 class LiveSettingsUpdate(BaseModel):
@@ -968,6 +972,7 @@ class LiveSettingsUpdate(BaseModel):
     program_trade_storage_enabled: bool | None = None
     kis_rest_bypass_enabled: bool | None = None
     heatmap_capture_enabled: bool | None = None
+    screener_depth_autocollect: bool | None = None
 
 
 SignalAlertSource = Literal["ws", "rest"]

@@ -166,6 +166,8 @@ function DataCollectionSection() {
   const patch = usePatchLiveSettings();
   // 기본 True: ADR-0097 도입 당시의 무조건 히트맵 합류 동작을 낙관적으로 반영.
   const enabled = data?.heatmap_capture_enabled ?? true;
+  // 기본 False: 스캔은 탐색적 반복 실행이라 묵시적 큐 증가를 막는다(명시적 버튼이 1차 UX).
+  const autoCollect = data?.screener_depth_autocollect ?? false;
   // isError는 비활성 사유가 아니다 — PATCH는 partial(heatmap 필드만 전송)이라
   // GET 실패로 현재값을 몰라도 조작이 안전하고, 복구 조작을 열어둔다.
   const busy = isLoading || patch.isPending;
@@ -182,6 +184,18 @@ function DataCollectionSection() {
           checked={enabled}
           disabled={busy}
           onClick={() => patch.mutate({ heatmap_capture_enabled: !enabled })}
+        />
+      </SettingsRow>
+      <SettingsRow
+        label="스크리너 총잔량 결측 자동 수집"
+        description="스크리너 총잔량 신고 조건에서 hogaplay 과거 데이터가 없는 종목을 발견하면 지난 N일치를 자동으로 수집 큐에 적재합니다. 끄면(기본) 결과 배너의 [수집 요청] 버튼으로만 수집합니다."
+        testId="settings-depth-autocollect-row"
+      >
+        <ToggleSwitch
+          label="스크리너 총잔량 결측 자동 수집"
+          checked={autoCollect}
+          disabled={busy}
+          onClick={() => patch.mutate({ screener_depth_autocollect: !autoCollect })}
         />
       </SettingsRow>
       {isError && (

@@ -9,6 +9,7 @@ export interface LiveSettings {
   program_trade_storage_enabled: boolean;
   kis_rest_bypass_enabled: boolean;
   heatmap_capture_enabled: boolean;
+  screener_depth_autocollect: boolean;
 }
 
 export type LiveSettingsPatch = {
@@ -16,6 +17,7 @@ export type LiveSettingsPatch = {
   program_trade_storage_enabled?: boolean;
   kis_rest_bypass_enabled?: boolean;
   heatmap_capture_enabled?: boolean;
+  screener_depth_autocollect?: boolean;
 };
 
 export const LIVE_SETTINGS_KEY = ['live', 'settings'] as const;

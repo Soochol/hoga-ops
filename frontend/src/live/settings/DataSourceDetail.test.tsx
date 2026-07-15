@@ -21,6 +21,7 @@ const SETTINGS = {
   program_trade_storage_enabled: false,
   kis_rest_bypass_enabled: false,
   heatmap_capture_enabled: true,
+  screener_depth_autocollect: false,
 };
 
 describe('DataSourceDetail (메인 Settings·복기뷰 공용)', () => {

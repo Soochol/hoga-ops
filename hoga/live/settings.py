@@ -48,6 +48,7 @@ def update_live_settings(
     program_trade_storage_enabled: bool | None = None,
     kis_rest_bypass_enabled: bool | None = None,
     heatmap_capture_enabled: bool | None = None,
+    screener_depth_autocollect: bool | None = None,
 ) -> LiveSettings:
     previous = load_live_settings(data_dir)
     next_storage_policy = storage_policy or previous.storage_policy
@@ -70,6 +71,11 @@ def update_live_settings(
             previous.heatmap_capture_enabled
             if heatmap_capture_enabled is None
             else bool(heatmap_capture_enabled)
+        ),
+        screener_depth_autocollect=(
+            previous.screener_depth_autocollect
+            if screener_depth_autocollect is None
+            else bool(screener_depth_autocollect)
         ),
     )
     save_live_settings(data_dir, settings)

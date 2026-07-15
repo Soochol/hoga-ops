@@ -16,7 +16,9 @@ import { DataSection, InlineState } from '../ui/DataSurface';
 import { ModalShell } from '../ui/ModalShell';
 import { ControlBar, PanelCard, SegmentedControl, ToolbarButton } from '../ui/PageShell';
 import { ScreenerResultSortControl } from '../screener/ScreenerResultSortControl';
+import { DepthCoverageBanner } from '../screener/DepthCoverageBanner';
 import { sortScreenerRows, type ScreenerResultSortMode } from '../screener/sortResults';
+import { useLiveSettings } from '../api/liveSettings';
 import type { ScanBasis } from '../api/screener';
 
 type SaveDialogMode = 'save-new' | 'save-as';
@@ -66,6 +68,7 @@ export function Screener() {
   const [basis, setBasis] = useState<ScanBasis>('intraday');
 
   const screener = useScreener();
+  const { data: liveSettings } = useLiveSettings();
   const { data: status } = useScreenerStatus();
   const update = useScreenerUpdate();
   const updateFeedback = useScreenerUpdateFeedback((s) => s.feedback);
@@ -199,6 +202,16 @@ export function Screener() {
               )}
               {intradayFallback && (
                 <InlineState tone="warn">장중 조회 불가 · 전일 확정 데이터로 표시 중</InlineState>
+              )}
+              {screener.data?.depth_coverage && (
+                // key = 결측 코드 집합. 재조회로 집합이 바뀌면 배너를 새 인스턴스로
+                // 리마운트해 stale "수집 중 N건"/사라진 버튼 상태를 리셋한다(같은 집합이면
+                // 인스턴스 유지 → 진행 안내·자동수집 가드 보존).
+                <DepthCoverageBanner
+                  key={screener.data.depth_coverage.excluded.map((c) => c.code).join(',')}
+                  coverage={screener.data.depth_coverage}
+                  autoCollect={liveSettings?.screener_depth_autocollect ?? false}
+                />
               )}
               <div className="flex justify-end">
                 <ScreenerResultSortControl mode={sortMode} onChange={setSortMode} disabled={rows.length === 0} />
