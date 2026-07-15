@@ -1,4 +1,4 @@
-import { useEffect, useState, Fragment } from 'react';
+import { useState, Fragment } from 'react';
 import { useLivePageStore } from '../../state/livePage';
 import MovingAverageConfig from './MovingAverageConfig';
 import DailyMovingAverageConfig from './DailyMovingAverageConfig';
@@ -22,7 +22,8 @@ import {
 import ToggleRow from '../settings/ToggleRow';
 import { CheckIcon } from '../../ui/CheckIcon';
 import { STOCK_CAPABILITIES, type LiveInstrumentCapabilities } from '../liveInstrumentCapabilities';
-import { DataSection, ListRow } from '../../ui/DataSurface';
+import { ListRow } from '../../ui/DataSurface';
+import { ModalShell } from '../../ui/ModalShell';
 import type { LiveTimeframe } from '../../state/livePage';
 
 type CategoryId =
@@ -124,14 +125,6 @@ export default function IndicatorPanel({ onClose, capabilities = STOCK_CAPABILIT
   // navigates here; the checkbox icon toggles its master switch separately.
   const [selected, setSelected] = useState<CategoryId>('moving-average');
 
-  useEffect(() => {
-    const onKey = (event: KeyboardEvent) => {
-      if (event.key === 'Escape') onClose();
-    };
-    document.addEventListener('keydown', onKey);
-    return () => document.removeEventListener('keydown', onKey);
-  }, [onClose]);
-
   const categories = CATEGORIES.filter((c) => {
     if (c.group === 'hoga' || c.group === 'program') return capabilities.hogaPanes;
     if ((c.id === 'foreign-net' || c.id === 'institution-net') && capabilities.investorNet === 'none') {
@@ -184,28 +177,21 @@ export default function IndicatorPanel({ onClose, capabilities = STOCK_CAPABILIT
   const selectedCategory = categories.find((category) => category.id === selected) ?? categories[0];
 
   return (
-    <div
-      role="dialog"
-      aria-modal="true"
-      aria-label="지표"
-      onClick={onClose}
-      className="fixed inset-0 z-[60] grid place-items-center bg-black/45"
+    // Settings 모달과 동일한 크롬(2026-07-15): ModalShell로 백드롭·Escape·다이얼로그 토큰을
+    // 공유하고, 전폭 헤더 바·푸터를 없앤다. 그룹 제목·닫기 X는 콘텐츠 헤더가 담당(title 미전달).
+    <ModalShell
+      ariaLabel="지표"
+      width="w-[min(1040px,calc(100vw-48px))]"
+      height="h-[min(820px,calc(100vh-48px))]"
+      onClose={onClose}
     >
       <div
         data-testid="indicator-panel-shell"
-        onClick={(event) => event.stopPropagation()}
-        className="grid max-h-[min(820px,calc(100vh-48px))] w-[min(1040px,calc(100vw-48px))] grid-rows-[auto_minmax(0,1fr)_auto] overflow-hidden rounded-lg border border-border bg-bg-card shadow-modal"
+        className="grid h-full min-h-0 grid-cols-[240px_minmax(0,1fr)] overflow-hidden rounded-[6px] bg-bg-card"
       >
-        <div className="flex items-center justify-between border-b border-border px-4 py-3">
-          <h2 className="text-base font-medium text-fg">지표</h2>
-          <button type="button" aria-label="닫기" onClick={onClose} className="text-lg leading-none text-fg-dim hover:text-fg">
-            ✕
-          </button>
-        </div>
-        <div className="grid min-h-0 grid-cols-[240px_minmax(0,1fr)]">
-          {/* nav↔콘텐츠 분리는 border-r가 아니라 bg-subtle↔bg-card 톤 스텝이 담당(2026-07-15
-              borderless 규칙). 선택은 좌측 accent 보더 대신 둥근 pill. */}
-          <nav className="space-y-0.5 overflow-y-auto bg-bg-subtle p-2" aria-label="지표 카테고리">
+        {/* nav↔콘텐츠 분리는 border-r가 아니라 bg-subtle↔bg-card 톤 스텝이 담당(2026-07-15
+            borderless 규칙). 선택은 좌측 accent 보더 대신 둥근 pill. */}
+        <nav className="space-y-0.5 overflow-y-auto bg-bg-subtle p-2" aria-label="지표 카테고리">
           {categories.map((c, i) => {
             const checked = checkedFor(c.id);
             const onToggle = toggleFor(c.id);
@@ -247,9 +233,20 @@ export default function IndicatorPanel({ onClose, capabilities = STOCK_CAPABILIT
               </Fragment>
             );
           })}
-          </nav>
-          <div className="min-h-0 overflow-y-auto">
-            <DataSection title={GROUP_LABEL[selectedCategory.group]} contentClassName="space-y-3 p-4">
+        </nav>
+        <div className="flex min-h-0 flex-col">
+          <header className="flex items-center justify-between px-5 pb-3 pt-4">
+            <h2 className="text-lg font-semibold text-fg">{GROUP_LABEL[selectedCategory.group]}</h2>
+            <button
+              type="button"
+              aria-label="닫기"
+              onClick={onClose}
+              className="-mr-1 px-1 text-lg leading-none text-fg-dim transition-colors hover:text-fg"
+            >
+              ✕
+            </button>
+          </header>
+          <section aria-label={GROUP_LABEL[selectedCategory.group]} className="min-h-0 flex-1 space-y-3 overflow-y-auto px-5 pb-5">
               {selected === 'moving-average' && <MovingAverageConfig />}
               {selected === 'daily-moving-average' && <DailyMovingAverageConfig />}
               {selected === 'volume' && <VolumeConfig />}
@@ -370,19 +367,9 @@ export default function IndicatorPanel({ onClose, capabilities = STOCK_CAPABILIT
               {selected === 'ratio' && <RatioConfig />}
               {selected === 'fill-strength' && <FillStrengthConfig />}
               {selected === 'program-trade' && <ProgramTradeConfig />}
-            </DataSection>
-          </div>
-        </div>
-        <div className="flex justify-end border-t border-border px-4 py-3">
-          <button
-            type="button"
-            onClick={onClose}
-            className="rounded-md border border-border bg-bg-input px-3 py-1.5 text-sm text-fg hover:bg-bg-input-hover"
-          >
-            닫기
-          </button>
+          </section>
         </div>
       </div>
-    </div>
+    </ModalShell>
   );
 }
