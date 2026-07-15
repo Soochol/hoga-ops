@@ -16,7 +16,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from pathlib import Path
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, cast
 
 from .coverage import (
     KIS_WS_MAX_REGISTRATIONS,
@@ -81,9 +81,19 @@ def _capture_health(
     )
     if recv_stale:
         return (False, "stale")
-    expected = getattr(ws, "sub_expected", 0)
-    acked = getattr(ws, "sub_acked", 0)
-    if expected > 0 and acked < expected:
+    # 구독 미확인 감지: (tr, code) 단위 sub_missing이 있으면 우선 사용 —
+    # venue 스왑 시 유실된 개별 등록을 잡는다(스칼라 acked<expected는 스왑 후
+    # 구 venue ACK가 신 venue 기대치를 가려 못 잡던 2026-07-15 버그). 유예 안의
+    # 갓 송신 키는 sub_missing이 제외하므로 순간적 거짓 sub_failed가 없다.
+    # sub_missing 미보유(구 페이크)면 스칼라 폴백 유지.
+    sub_missing = getattr(ws, "sub_missing", None)
+    if callable(sub_missing):
+        has_missing = bool(sub_missing(now_ms))
+    else:
+        expected = getattr(ws, "sub_expected", 0)
+        acked = getattr(ws, "sub_acked", 0)
+        has_missing = expected > 0 and acked < expected
+    if has_missing:
         return (False, "sub_failed" if grace_elapsed else "subscribing")
     return (True, "healthy")
 
@@ -219,18 +229,20 @@ class LiveSession:
 
     def _capture_status(
         self, *, now_ms: int, market_closed: bool, stale_after_ms: int,
-    ) -> tuple[bool, str, list[int]] | None:
-        """WS 연결집합 캡처 헬스 — (cap_healthy, cap_reason, degraded id 정렬) | None(streams
-        없음). market_closed(전역 장 마감)는 per-conn 루프 밖에서 단락 — 계좌별 결함이 아니라
-        전역 상태라, 안 그러면 밤/주말마다 모든 conn이 degraded로 잡히는 거짓 신호(advisor 버그
-        회피). 정규장이면 conn별 _capture_health 집계, cap_reason=worst(마지막 비정상, Q10 값 불변).
+    ) -> tuple[bool, str, list[int], list[str]] | None:
+        """WS 연결집합 캡처 헬스 — (cap_healthy, cap_reason, degraded id 정렬,
+        missing 종목 정렬) | None(streams 없음). market_closed(전역 장 마감)는 per-conn
+        루프 밖에서 단락 — 계좌별 결함이 아니라 전역 상태라, 안 그러면 밤/주말마다 모든
+        conn이 degraded로 잡히는 거짓 신호(advisor 버그 회피). 정규장이면 conn별
+        _capture_health 집계, cap_reason=worst(마지막 비정상, Q10 값 불변).
 
-        get_status(표시: cap_healthy/reason/degraded)와 account_health WS-probe(라우팅: degraded
-        집합)가 이 단일 계산을 공유한다(중복 제거)."""
+        missing 종목은 각 conn ws.sub_missing의 종목 합집합 — UI/진단 가시화용
+        (capture_missing_codes). get_status(표시)와 account_health WS-probe(라우팅:
+        degraded 집합)가 이 단일 계산을 공유한다(중복 제거)."""
         if self.started_at_ms is None or not self.streams:
             return None
         if market_closed:
-            return (False, "closed", [])
+            return (False, "closed", [], [])
         from datetime import datetime  # noqa: PLC0415
 
         from .kis_client import KIS_KST  # noqa: PLC0415
@@ -240,6 +252,7 @@ class LiveSession:
         )
         ref_ms = max(self.started_at_ms, session_open_ms)
         cap_healthy, cap_reason, degraded = True, "healthy", []
+        missing_codes: set[str] = set()
         for account_id, conn in self.streams.items():
             ws = getattr(conn.stream_obj, "ws", None)
             healthy, reason = _capture_health(
@@ -250,8 +263,12 @@ class LiveSession:
                 cap_healthy = False
                 cap_reason = reason
                 degraded.append(account_id)
+            sub_missing = getattr(ws, "sub_missing", None)
+            if callable(sub_missing):
+                keys = cast("list[tuple[str, str]]", sub_missing(now_ms))
+                missing_codes.update(code for _tr, code in keys)
         degraded.sort()
-        return (cap_healthy, cap_reason, degraded)
+        return (cap_healthy, cap_reason, degraded, sorted(missing_codes))
 
     def degraded_set(
         self, *, now_ms: int, market_closed: bool, stale_after_ms: int,

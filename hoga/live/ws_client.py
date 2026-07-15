@@ -23,6 +23,9 @@ WS_URL_REAL = "ws://ops.koreainvestment.com:21000"
 _TRS = F.TRS  # 종목당 구독 TR — ws_fields 단일진실원(사이징=구독수, 드리프트 불가)
 _BACKOFF_S = (1, 2, 4, 8, 16, 32, 60)
 _APPKEY_IN_USE_BACKOFF_S = 60
+# 구독 ACK 유예 — 송신 후 이 시간 안에는 미확인 키를 'missing'으로 치지 않는다.
+# venue 스왑·update_codes diff 직후 ACK 도착 전 순간을 sub_failed로 오판하지 않게 함.
+_SUB_ACK_GRACE_MS = 10_000
 
 
 class DuplicateAppKeyInUse(RuntimeError):
@@ -67,12 +70,40 @@ class KisWsClient:
         self.last_tick_ms: int | None = None
         self.last_recv_ms: int | None = None
         self.connected: bool = False
-        # 구독 확인 추적(spec 2026-06-08 §2.1): 이번 연결의 초기 구독 ACK.
-        # 헬스 술어가 '기대 ACK의 부재'(sub_acked < sub_expected)로 구독
-        # 거부/상실을 감지한다. update_codes diff는 범위 밖(초기 구독만).
-        self.sub_expected: int = 0
-        self.sub_acked: int = 0
+        # 구독 확인 추적(spec 2026-06-08 §2.1) — (tr_id, code) 단위 상태.
+        # 기대 집합은 저장하지 않고 self._codes × self._trs로 파생하므로 venue
+        # 스왑·update_codes diff에 자동으로 현재 venue 기준이 된다(스칼라 카운터가
+        # 스왑 시 stale해지던 문제를 구조적으로 제거 — 2026-07-15 인시던트 근본수정).
+        # _acked_keys: ACK 받은 (tr, code). _sub_sent_ms: 각 키 마지막 구독 송신 시각
+        # (ACK 유예 기준). 헬스 술어는 sub_missing()으로 '유예 지난 미확인 키'를 본다.
+        self._acked_keys: set[tuple[str, str]] = set()
+        self._sub_sent_ms: dict[tuple[str, str], int] = {}
         self.sub_rejected: int = 0
+
+    @property
+    def expected_keys(self) -> set[tuple[str, str]]:
+        """현재 (venue, 종목) 구독 기대 집합 — 파생값(저장 안 함)."""
+        return {(tr, code) for code in self._codes for tr in self._trs}
+
+    @property
+    def sub_expected(self) -> int:
+        return len(self._codes) * len(self._trs)
+
+    @property
+    def sub_acked(self) -> int:
+        return len(self._acked_keys & self.expected_keys)
+
+    def sub_missing(self, now_ms: int) -> list[tuple[str, str]]:
+        """유예(_SUB_ACK_GRACE_MS)를 지났는데도 ACK 미확인인 기대 키 정렬 목록.
+
+        송신 기록(_sub_sent_ms)이 없는 키는 제외(보수적 — 아직 송신 전이라 판단
+        불가). 스왑/디프 직후 갓 (재)송신된 키는 유예 안이라 missing이 아니다."""
+        missing = []
+        for key in self.expected_keys - self._acked_keys:
+            sent = self._sub_sent_ms.get(key)
+            if sent is not None and (now_ms - sent) > _SUB_ACK_GRACE_MS:
+                missing.append(key)
+        return sorted(missing)
 
     async def run(self, codes: list[str]) -> None:
         """끊겨도 살아남는 메인 루프 — 호출자(stream)가 task로 돌리고 cancel로 끝낸다."""
@@ -99,9 +130,9 @@ class KisWsClient:
                         attempt = 0
                         codes_now = list(self._codes)
                         trs_now = self._trs
-                        # 연결별 구독 확인 카운터 리셋(spec §2.1) — 초기 구독 수가 기대치.
-                        self.sub_expected = len(codes_now) * len(trs_now)
-                        self.sub_acked = 0
+                        # 연결별 구독 확인 상태 리셋(spec §2.1) — 새 소켓엔 이전 ACK 무효.
+                        self._acked_keys.clear()
+                        self._sub_sent_ms.clear()
                         self.sub_rejected = 0
                         await self._send_subscriptions(
                             ws, approval, codes_now, tr_type="1"
@@ -172,12 +203,12 @@ class KisWsClient:
                 return
             old_trs = self._trs
             self._trs = trs
-            # sub_acked/expected/rejected는 **리셋하지 않는다** — update_codes(동일한 구독
-            # diff 연산)와 동일한 선례. 리셋하면 ① ACK 도착 전 acked<expected 창이 status의
-            # _capture_health에 순간적 거짓 'sub_failed'로 잡히고, ② 표시 전용 NXT 구독이
-            # 거부되면 그 비성역 실패로 watchdog이 conn 전체를 재시작(에스컬레이션)한다.
-            # 스왑 ACK는 recv 루프가 계속 카운트(재연결 시 sub_expected가 현재 venue로
-            # 재계산되므로 stale하지 않다). NXT 거부는 sub_rejected 경고 로그로 가시화된다.
+            # 기대 집합(expected_keys)은 self._trs 파생이라 이 대입 한 줄로 즉시 새 venue
+            # 기준이 된다. _send_subscriptions(tr_type="2")가 구 venue 키의 ACK를 폐기하고
+            # (tr_type="1")가 새 키를 송신 시각 스탬프와 함께 등록 → sub_missing은 유예
+            # (_SUB_ACK_GRACE_MS) 안에는 새 키를 missing으로 치지 않아 순간적 거짓
+            # 'sub_failed'가 없다(구 스칼라 카운터의 '스왑 시 미리셋' 우회가 불필요해짐).
+            # NXT 표시 구독의 부분 거부는 watchdog의 NXT-무재시작 분기가 흡수한다(lifecycle).
             ws, approval = self._ws, self._approval
             if ws is None or approval is None:
                 return  # 미연결 — 다음 (재)연결이 self._trs로 초기 구독
@@ -187,13 +218,49 @@ class KisWsClient:
             await self._send_subscriptions(ws, approval, self._codes, tr_type="1", trs=trs)
             _log.info("live.ws.venue_swapped venue=%s codes=%d", venue, len(self._codes))
 
+    async def resubscribe_missing(self, now_ms: int) -> int:
+        """유예 지난 미확인 키(sub_missing)만 골라 재구독 송신. 재송신 건수 반환.
+
+        watchdog이 sub_failed 감지 시 conn 전체 재시작 전에 먼저 부르는 값싼 표적
+        복구다(2026-07-15 인시던트: 스왑 시 일부 KRX 등록이 조용히 유실됐는데 재시도가
+        없어 87분 공백). missing ⊆ expected ⊆ 41 상한이라 과잉 등록 불가. ACK가 유실됐을
+        뿐 서버엔 구독이 살아있으면 재송신에 OPSP0002(ALREADY IN SUBSCRIBE)로 응답 →
+        _recv_loop이 acked로 수렴시킨다. 미연결이면 no-op(0). sub_lock으로 직렬화."""
+        async with self._sub_lock:
+            ws, approval = self._ws, self._approval
+            if ws is None or approval is None:
+                return 0
+            missing = self.sub_missing(now_ms)
+            if not missing:
+                return 0
+            await self._send_keys(ws, approval, missing, now_ms)
+            _log.warning("live.ws.resubscribe_missing count=%d keys=%r",
+                         len(missing), missing[:10])
+            return len(missing)
+
+    async def _send_keys(
+        self, ws, approval_key: str, keys: list[tuple[str, str]], now_ms: int,
+    ) -> None:
+        """지정 (tr, code) 키만 재구독 송신 + 송신 시각 스탬프(표적 복구용)."""
+        for tr, code in keys:
+            await ws.send(build_request(approval_key, "1", tr, code))
+            self._sub_sent_ms[(tr, code)] = now_ms
+
     async def _send_subscriptions(
         self, ws, approval_key: str, codes: list[str], *, tr_type: str,
         trs: tuple[str, ...] | None = None,
     ) -> None:
+        now_ms = int(time.time() * 1000)
         for code in codes:
             for tr in (trs if trs is not None else self._trs):
+                key = (tr, code)
                 await ws.send(build_request(approval_key, tr_type, tr, code))
+                if tr_type == "1":
+                    self._sub_sent_ms[key] = now_ms  # ACK 유예 기준 스탬프
+                else:
+                    # 해제(tr_type="2"): 기대 이탈 → 송신 기록·ACK 폐기(스왑 시 구 venue).
+                    self._sub_sent_ms.pop(key, None)
+                    self._acked_keys.discard(key)
 
     async def _recv_loop(self, ws) -> None:
         while True:
@@ -221,21 +288,28 @@ class KisWsClient:
                     msg = json.loads(raw)
                 except (TypeError, json.JSONDecodeError):
                     continue
-                tr_id = msg.get("header", {}).get("tr_id")
-                if tr_id == "PINGPONG":
+                header = msg.get("header", {})
+                if header.get("tr_id") == "PINGPONG":
                     await ws.send(raw)  # 공식 규약: 받은 메시지 그대로 echo
                 else:
-                    # 구독 ACK 카운트(spec §2.1): rt_cd=="0" 성공, 그 외 거부.
-                    # 거부 형태는 미관측이라 '0이 아닌 모든 control'을 거부로 본다.
-                    body = msg.get("body", {})
-                    rt_cd = body.get("rt_cd")
-                    if rt_cd == "0":
-                        self.sub_acked += 1
-                        _log.info("live.ws.subscribed tr_id=%s", tr_id)
-                    else:
-                        self.sub_rejected += 1
-                        _log.warning("live.ws.sub_rejected tr_id=%s msg=%s",
-                                     tr_id, str(body)[:200])
-                        if body.get("msg_cd") == "OPSP8996":
-                            msg1 = str(body.get("msg1", ""))
-                            raise DuplicateAppKeyInUse(msg1 or "ALREADY IN USE appkey")
+                    self._handle_control_frame(header, msg.get("body", {}))
+
+    def _handle_control_frame(self, header: dict, body: dict) -> None:
+        """구독 ACK/거부 처리(spec §2.1). rt_cd=="0" 성공. OPSP0002(ALREADY IN
+        SUBSCRIBE)는 서버에 구독이 이미 있다는 뜻이라 성공으로 본다(resubscribe_missing
+        재송신의 정상 수렴 경로). 그 외 비-0은 거부. OPSP8996은 DuplicateAppKeyInUse."""
+        tr_id = header.get("tr_id")
+        tr_key = header.get("tr_key")
+        rt_cd = body.get("rt_cd")
+        msg_cd = body.get("msg_cd")
+        if rt_cd == "0" or msg_cd == "OPSP0002":
+            if tr_id is not None and tr_key is not None:
+                self._acked_keys.add((tr_id, tr_key))
+            _log.info("live.ws.subscribed tr_id=%s tr_key=%s", tr_id, tr_key)
+            return
+        self.sub_rejected += 1
+        _log.warning("live.ws.sub_rejected tr_id=%s tr_key=%s msg=%s",
+                     tr_id, tr_key, str(body)[:200])
+        if msg_cd == "OPSP8996":
+            msg1 = str(body.get("msg1", ""))
+            raise DuplicateAppKeyInUse(msg1 or "ALREADY IN USE appkey")

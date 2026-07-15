@@ -1,9 +1,11 @@
 import asyncio
 import json
+import time
 
 import pytest
 
 import hoga.live.ws_client as ws_client_mod
+from hoga.live import ws_fields as F
 from hoga.live.ws_client import DuplicateAppKeyInUse, KisWsClient, build_request
 
 
@@ -97,20 +99,22 @@ async def test_recv_loop_stamps_last_recv_ms_on_control_frames():
 
 
 async def test_recv_loop_counts_subscription_acks():
-    """spec 2026-06-08 §2.1: control 프레임의 body.rt_cd로 구독 확인을 센다 —
-    rt_cd=='0'은 sub_acked, 그 외는 sub_rejected(+WARNING). watchdog/pill의
-    헬스 술어가 '기대 ACK의 부재'로 구독 거부를 감지하는 입력."""
+    """control 프레임 body.rt_cd/msg_cd로 (tr, code) 단위 구독 확인. rt_cd=='0' 또는
+    OPSP0002(ALREADY IN SUBSCRIBE = 서버에 이미 구독됨)는 acked로, 그 외 비-0
+    (OPSP0008 등)은 sub_rejected로 센다. sub_acked는 기대 키와의 교집합 크기."""
     ok = '{"header":{"tr_id":"H0STASP0","tr_key":"005930"},"body":{"rt_cd":"0","msg_cd":"OPSP0000","msg1":"SUBSCRIBE SUCCESS"}}'
     ok2 = '{"header":{"tr_id":"H0STCNT0","tr_key":"005930"},"body":{"rt_cd":"0","msg_cd":"OPSP0000"}}'
-    reject = '{"header":{"tr_id":"H0STMBC0","tr_key":"005930"},"body":{"rt_cd":"1","msg_cd":"OPSP0002","msg1":"ALREADY IN SUBSCRIBE"}}'
-    fake = FakeWs([ok, ok2, reject])
+    already = '{"header":{"tr_id":"H0STMBC0","tr_key":"005930"},"body":{"rt_cd":"1","msg_cd":"OPSP0002","msg1":"ALREADY IN SUBSCRIBE"}}'
+    reject = '{"header":{"tr_id":"H0STASP0","tr_key":"000660"},"body":{"rt_cd":"1","msg_cd":"OPSP0008","msg1":"MAX SUBSCRIBE OVER"}}'
+    fake = FakeWs([ok, ok2, already, reject])
     client = KisWsClient(
         approval_key_fn=_fake_approval, on_tick=None, date_fn=lambda: "20260605"
     )
+    client._codes = ["005930"]   # 기대 = 005930 × 3TR
     with pytest.raises(ConnectionError):
         await client._recv_loop(fake)
-    assert client.sub_acked == 2
-    assert client.sub_rejected == 1
+    assert client.sub_acked == 3      # 3 TR 모두 확인(OPSP0002 포함)
+    assert client.sub_rejected == 1   # OPSP0008(실제 거부)
 
 
 async def test_recv_loop_raises_duplicate_appkey_on_ops8996():
@@ -185,8 +189,11 @@ async def test_ensure_venue_swaps_trs_unregister_before_register():
     client._ws = fake            # 연결 상태 시뮬레이션
     client._approval = "APPR"
     client._codes = ["005930"]
-    # 스왑 전 구독 헬스 카운터(초기 연결분) — 스왑이 이를 리셋하지 않아야 한다.
-    client.sub_expected, client.sub_acked, client.sub_rejected = 3, 3, 0
+    # 초기 KRX 구독분을 acked로 시뮬레이션 — 스왑(해제)이 이를 폐기하는지 검증.
+    now0 = int(time.time() * 1000)
+    for tr in F.TRS_KRX:
+        client._acked_keys.add((tr, "005930"))
+        client._sub_sent_ms[(tr, "005930")] = now0
     assert client.venue == "KRX"
 
     await client.ensure_venue("NXT")
@@ -201,9 +208,15 @@ async def test_ensure_venue_swaps_trs_unregister_before_register():
     first_reg = next(i for i, f in enumerate(frames) if f["header"]["tr_type"] == "1")
     first_unreg = next(i for i, f in enumerate(frames) if f["header"]["tr_type"] == "2")
     assert first_unreg < first_reg
-    # 카운터 리셋 안 함(update_codes 선례) — 표시 전용 NXT 실패가 watchdog 재시작을
-    # 유발하거나 status에 순간 거짓 sub_failed를 노출하지 않게 한다.
-    assert (client.sub_expected, client.sub_acked) == (3, 3)
+    # 스왑 후 기대는 NXT 키. KRX 해제가 구 venue ACK를 폐기해 _acked_keys는 비었고,
+    # 갓 등록된 NXT 키는 유예 안이라 missing이 아니다(순간 거짓 sub_failed 없음).
+    assert client.expected_keys == {("H0NXASP0", "005930"), ("H0NXCNT0", "005930")}
+    assert client._acked_keys == set()
+    swap_ms = int(time.time() * 1000)
+    assert client.sub_missing(swap_ms) == []
+    # 유예 경과 후 NXT ACK가 안 오면 그때 missing으로 잡힌다.
+    after = swap_ms + ws_client_mod._SUB_ACK_GRACE_MS + 1000
+    assert set(client.sub_missing(after)) == {("H0NXASP0", "005930"), ("H0NXCNT0", "005930")}
 
 
 async def test_ensure_venue_noop_when_already_on_target():
@@ -289,8 +302,8 @@ async def test_run_reconnects_and_resubscribes_after_failure(monkeypatch):
 
 
 async def test_reconnect_resets_subscription_counters(monkeypatch):
-    """spec §4.1: 재연결 시 sub_acked/rejected가 0으로 리셋된다(연결별 카운트).
-    이전 연결의 잔여 카운트가 헬스 술어를 오염시키면 안 된다."""
+    """spec §4.1: 재연결 시 구독 확인 상태가 리셋된다(연결별). 이전 연결의 잔여
+    ack/송신기록이 헬스 술어를 오염시키면 안 된다 — 새 소켓엔 이전 ACK가 무효."""
     fake = FakeWs([])
     calls = {"n": 0}
 
@@ -305,7 +318,9 @@ async def test_reconnect_resets_subscription_counters(monkeypatch):
     client = KisWsClient(
         approval_key_fn=_fake_approval, on_tick=None, date_fn=lambda: "20260605"
     )
-    client.sub_acked = 99      # 이전 연결의 잔여 오염
+    # 이전 연결의 잔여 오염(다른 종목의 ack·송신기록·거부 카운트).
+    client._acked_keys.add(("H0STASP0", "999999"))
+    client._sub_sent_ms[("H0STASP0", "999999")] = 1
     client.sub_rejected = 7
     task = asyncio.create_task(client.run(["005930", "000660"]))
     for _ in range(100):
@@ -315,9 +330,12 @@ async def test_reconnect_resets_subscription_counters(monkeypatch):
     task.cancel()
     with pytest.raises(asyncio.CancelledError):
         await task
-    assert client.sub_acked == 0       # 재연결 시 리셋(line 94)
-    assert client.sub_rejected == 0    # (line 95)
-    assert client.sub_expected == 6    # (line 93)
+    assert client._acked_keys == set()   # 재연결 시 ack 리셋(새 소켓, 아직 무-ACK)
+    # 송신기록은 리셋 후 초기 구독이 새 6키로 다시 스탬프 — 이전 오염 키는 사라졌다.
+    assert ("H0STASP0", "999999") not in client._sub_sent_ms
+    assert len(client._sub_sent_ms) == 6
+    assert client.sub_rejected == 0
+    assert client.sub_expected == 6      # 2종목 × 3TR
 
 
 async def test_run_does_not_connect_while_gate_closed(monkeypatch):
@@ -371,3 +389,124 @@ async def test_gate_fn_runs_off_event_loop():
         await task
     assert seen, "게이트가 한 번도 평가되지 않음"
     assert not any(seen), "gate_fn이 이벤트 루프(메인 스레드)에서 실행됨"
+
+
+# ── per-key 구독 추적 · 표적 재구독 (2026-07-15 인시던트 근본수정) ────────────────
+
+async def test_sub_missing_ignores_keys_within_ack_grace():
+    """갓 (재)송신된 키는 유예(_SUB_ACK_GRACE_MS) 안에는 missing이 아니다 —
+    스왑/디프 직후 순간적 거짓 sub_failed 방지."""
+    client = KisWsClient(
+        approval_key_fn=_fake_approval, on_tick=None, date_fn=lambda: "20260605"
+    )
+    client._codes = ["005930"]
+    now = 1_000_000
+    for tr in F.TRS_KRX:
+        client._sub_sent_ms[(tr, "005930")] = now
+    assert client.sub_missing(now + 1_000) == []                      # 유예 안
+    assert len(client.sub_missing(now + _grace() + 1)) == 3           # 유예 후
+
+
+async def test_sub_missing_excludes_never_sent_keys():
+    """송신 기록 없는 기대 키는 missing에서 제외(아직 송신 전 — 판단 불가, 보수적)."""
+    client = KisWsClient(
+        approval_key_fn=_fake_approval, on_tick=None, date_fn=lambda: "20260605"
+    )
+    client._codes = ["005930"]  # 기대는 있으나 _sub_sent_ms 비어있음
+    assert client.sub_missing(9_999_999) == []
+
+
+async def test_ack_key_marks_only_that_code_tr():
+    """ACK는 header.tr_key/tr_id 단위로 특정 (tr, code)만 확인 처리한다."""
+    ok = '{"header":{"tr_id":"H0STASP0","tr_key":"005930"},"body":{"rt_cd":"0"}}'
+    fake = FakeWs([ok])
+    client = KisWsClient(
+        approval_key_fn=_fake_approval, on_tick=None, date_fn=lambda: "20260605"
+    )
+    client._codes = ["005930"]
+    with pytest.raises(ConnectionError):
+        await client._recv_loop(fake)
+    assert client._acked_keys == {("H0STASP0", "005930")}
+
+
+async def test_ops0002_already_in_subscribe_counts_as_acked():
+    """OPSP0002(ALREADY IN SUBSCRIBE)는 서버에 구독이 살아있다는 뜻 → acked 처리
+    (resubscribe_missing 재송신의 정상 수렴 경로)."""
+    already = '{"header":{"tr_id":"H0STCNT0","tr_key":"005930"},"body":{"rt_cd":"1","msg_cd":"OPSP0002"}}'
+    fake = FakeWs([already])
+    client = KisWsClient(
+        approval_key_fn=_fake_approval, on_tick=None, date_fn=lambda: "20260605"
+    )
+    client._codes = ["005930"]
+    with pytest.raises(ConnectionError):
+        await client._recv_loop(fake)
+    assert ("H0STCNT0", "005930") in client._acked_keys
+    assert client.sub_rejected == 0
+
+
+async def test_resubscribe_missing_sends_only_missing_keys():
+    """표적 재구독은 유예 지난 미확인 키만 재송신하고 송신 시각을 갱신한다."""
+    fake = FakeWs([])
+    client = KisWsClient(
+        approval_key_fn=_fake_approval, on_tick=None, date_fn=lambda: "20260605"
+    )
+    client._ws = fake
+    client._approval = "APPR"
+    client._codes = ["005930"]
+    now = 1_000_000
+    # ASP0만 acked, 나머지 2개는 오래전 송신 후 미확인(유예 경과).
+    client._acked_keys.add(("H0STASP0", "005930"))
+    for tr in F.TRS_KRX:
+        client._sub_sent_ms[(tr, "005930")] = now
+    later = now + _grace() + 1
+    sent = await client.resubscribe_missing(later)
+    assert sent == 2
+    trs = {json.loads(s)["body"]["input"]["tr_id"] for s in fake.sent}
+    assert trs == {"H0STCNT0", "H0STMBC0"}          # ASP0(acked)은 제외
+    assert all(json.loads(s)["header"]["tr_type"] == "1" for s in fake.sent)
+    # 재송신한 키의 송신 시각이 갱신돼 즉시 다시 missing으로 잡히지 않는다.
+    assert client.sub_missing(later) == []
+
+
+async def test_resubscribe_missing_noop_when_disconnected():
+    client = KisWsClient(
+        approval_key_fn=_fake_approval, on_tick=None, date_fn=lambda: "20260605"
+    )
+    client._codes = ["005930"]
+    client._sub_sent_ms[("H0STASP0", "005930")] = 1
+    assert await client.resubscribe_missing(9_999_999) == 0    # _ws None → no-op
+
+
+async def test_venue_roundtrip_detects_lost_reregistration():
+    """2026-07-15 인시던트 재현: KRX 전량 acked → NXT 스왑 → KRX 복귀 시 재등록
+    일부만 ACK되면(나머지 유실) 유예 후 그 키들이 sub_missing으로 잡힌다."""
+    fake = FakeWs([])
+    client = KisWsClient(
+        approval_key_fn=_fake_approval, on_tick=None, date_fn=lambda: "20260605"
+    )
+    client._ws = fake
+    client._approval = "APPR"
+    client._codes = ["005930"]
+    # 1) 초기 KRX 3TR 전량 acked
+    now = 1_000_000
+    for tr in F.TRS_KRX:
+        client._acked_keys.add((tr, "005930"))
+        client._sub_sent_ms[(tr, "005930")] = now
+    # 2) NXT로 스왑(KRX 해제 → NXT 등록)
+    await client.ensure_venue("NXT")
+    # 3) KRX로 복귀 스왑(NXT 해제 → KRX 재등록)
+    await client.ensure_venue("KRX")
+    assert client.venue == "KRX"
+    # 4) 재등록 ACK 중 ASP0만 도착, CNT0/MBC0는 유실됐다고 가정(_recv_loop 구동)
+    ack = '{"header":{"tr_id":"H0STASP0","tr_key":"005930"},"body":{"rt_cd":"0"}}'
+    with pytest.raises(ConnectionError):
+        await client._recv_loop(FakeWs([ack]))
+    # 5) 유예 경과 후 유실된 2키가 missing으로 노출 → 헬스가 sub_failed로 잡을 수 있다.
+    later = int(time.time() * 1000) + _grace() + 1
+    assert set(client.sub_missing(later)) == {
+        ("H0STCNT0", "005930"), ("H0STMBC0", "005930")
+    }
+
+
+def _grace() -> int:
+    return ws_client_mod._SUB_ACK_GRACE_MS

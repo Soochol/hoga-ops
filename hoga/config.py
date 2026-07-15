@@ -54,6 +54,26 @@ def resolve_symbol_master_path() -> Path:
     return base / "hoga-ops" / "symbol-master.json"
 
 
+def resolve_log_dir() -> Path:
+    """Return the canonical hoga-ops log directory.
+
+    Resolution order:
+      1. ``HOGA_LOG_DIR`` env var — explicit override (tests, sandboxes).
+      2. ``$XDG_DATA_HOME/hoga-ops/logs`` if XDG_DATA_HOME is set.
+      3. ``~/.local/share/hoga-ops/logs`` — XDG default.
+
+    Sibling of resolve_data_dir() but NOT inside data/ (logs are machine-
+    global operational output, not capture data — HOGA_DATA_DIR does not
+    apply). Mirrors resolve_symbol_master_path's placement.
+    """
+    env = os.environ.get("HOGA_LOG_DIR")
+    if env:
+        return Path(env)
+    xdg = os.environ.get("XDG_DATA_HOME")
+    base = Path(xdg) if xdg else Path.home() / ".local" / "share"
+    return base / "hoga-ops" / "logs"
+
+
 @dataclass(frozen=True)
 class Config:
     repo_root: Path

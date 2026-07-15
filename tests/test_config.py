@@ -4,7 +4,13 @@ from pathlib import Path
 
 import pytest
 
-from hoga.config import Config, CookieMissingError, resolve_data_dir, resolve_symbol_master_path
+from hoga.config import (
+    Config,
+    CookieMissingError,
+    resolve_data_dir,
+    resolve_log_dir,
+    resolve_symbol_master_path,
+)
 
 
 def test_cookie_from_env(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
@@ -88,3 +94,24 @@ def test_resolve_symbol_master_path_independent_of_hoga_data_dir(monkeypatch: py
     monkeypatch.delenv("XDG_DATA_HOME", raising=False)
     result = resolve_symbol_master_path()
     assert "sandbox" not in str(result)
+
+
+def test_resolve_log_dir_env_wins(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
+    monkeypatch.setenv("HOGA_LOG_DIR", str(tmp_path / "explicit-logs"))
+    monkeypatch.setenv("XDG_DATA_HOME", str(tmp_path / "xdg"))
+    assert resolve_log_dir() == tmp_path / "explicit-logs"
+
+
+def test_resolve_log_dir_xdg_home(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
+    monkeypatch.delenv("HOGA_LOG_DIR", raising=False)
+    monkeypatch.setenv("XDG_DATA_HOME", str(tmp_path / "xdg"))
+    assert resolve_log_dir() == tmp_path / "xdg" / "hoga-ops" / "logs"
+
+
+def test_resolve_log_dir_default_local_share(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    monkeypatch.delenv("HOGA_LOG_DIR", raising=False)
+    monkeypatch.delenv("XDG_DATA_HOME", raising=False)
+    monkeypatch.setattr(Path, "home", classmethod(lambda cls: tmp_path))
+    assert resolve_log_dir() == tmp_path / ".local" / "share" / "hoga-ops" / "logs"
