@@ -136,8 +136,13 @@ async def sync_storage_runtime(
     date_fn: Callable[[], str],
     now_ms_fn: Callable[[], int],
     n_configured: int | None = None,
+    rest_fallback_codes: tuple[str, ...] = (),
 ) -> StorageRuntimeSnapshot:
-    """Load settings, plan targets, and sync the persisted REST 30s runtime."""
+    """Load settings, plan targets, and sync the persisted REST 30s runtime.
+
+    rest_fallback_codes: WS 구독 사다리 소진 종목의 REST 임시 편입(해결안 ③) —
+    lifecycle의 watchdog이 소유하는 폴백 집합을 관통시킨다. bypass 시엔 REST
+    저장 전체가 꺼지므로 폴백도 함께 드롭된다."""
     settings = load_live_settings(data_dir)
     bypass = settings.kis_rest_bypass_enabled
     state.storage_policy = settings.storage_policy
@@ -153,6 +158,7 @@ async def sync_storage_runtime(
         n_configured=n_configured,
         storage_policy=settings.storage_policy,
         rest_extra_candidates=heatmap_extras,
+        rest_fallback_codes=rest_fallback_codes,
     )
     if bypass:
         targets = LiveStorageTargets(

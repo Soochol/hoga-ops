@@ -84,6 +84,7 @@ def plan_storage_targets(
     current_ws_live_set: tuple[str, ...] = (),
     per_account_max: int | None = None,
     rest_extra_candidates: tuple[str, ...] = (),
+    rest_fallback_codes: tuple[str, ...] = (),
 ) -> LiveStorageTargets:
     """Split capture_candidates into WS slots + REST 30s remainder.
 
@@ -91,6 +92,16 @@ def plan_storage_targets(
     slots — they are appended to kis_api_targets only, after dedup against
     capture_candidates, and are dropped entirely under ws_only (the policy
     forbids KIS API storage, not just watchlist REST spillover).
+
+    rest_fallback_codes (해결안 ③, PR #622 후속): WS 구독 사다리(재구독→재시작)가
+    소진된 종목의 REST 캡처 임시 편입. rest_extra와 달리 **후보 dedup를 하지
+    않는다** — 폴백 종목은 정의상 ws_targets 소속이라 후보 dedup를 거치면 전부
+    걸러진다. 즉 WS-XOR-REST 불변식의 의도적 예외: 디스크는 루트(live/live_api)와
+    parquet venue(kis_live/kis_api)로 분리돼 무충돌이고, 유일한 공유면인 인메모리
+    표시 링(LiveBuffer)의 행 인터리브는 WS 회복~해제 사이 최대 1 watchdog
+    주기(30s)의 표시 전용·자연 소멸 현상이다. ws_only에선 heatmap extras와 같은
+    선례로 드롭(정책이 REST 저장 금지), rest_only에선 이미 전 종목 REST라 dedup가
+    흡수한다.
     """
     if per_account_max is None:
         per_account_max = _PER_ACCOUNT_MAX
@@ -101,22 +112,32 @@ def plan_storage_targets(
     )
     max_codes = per_account_max * n_configured
     if storage_policy == "rest_only":
+        rest_targets = candidates + rest_extra
         return LiveStorageTargets(
             ws_targets=(),
-            kis_api_targets=candidates + rest_extra,
+            kis_api_targets=rest_targets + _dedup_fallback(rest_fallback_codes, rest_targets),
             capture_candidates=candidates,
         )
     ws_targets = candidates[:max_codes]
     if storage_policy == "ws_only":
-        rest_targets: tuple[str, ...] = ()
+        rest_targets = ()
     else:
         ws_set = set(ws_targets)
         rest_targets = tuple(code for code in candidates if code not in ws_set) + rest_extra
+        rest_targets = rest_targets + _dedup_fallback(rest_fallback_codes, rest_targets)
     return LiveStorageTargets(
         ws_targets=ws_targets,
         kis_api_targets=rest_targets,
         capture_candidates=candidates,
     )
+
+
+def _dedup_fallback(
+    fallback: tuple[str, ...], existing: tuple[str, ...],
+) -> tuple[str, ...]:
+    """폴백 종목 중 기존 REST 타깃에 이미 있는 것 제거(순서 보존)."""
+    seen = set(existing)
+    return tuple(code for code in dict.fromkeys(fallback) if code not in seen)
 
 
 def _known_symbol_codes() -> set[str]:

@@ -91,6 +91,8 @@ class LiveStatus(BaseModel):
     capture_reason: str = "offline"
     # 구독 유실로 실시간 미수집 중인 종목(additive; sub_failed 시 진단·UI 배지).
     capture_missing_codes: list[str] = Field(default_factory=list)
+    # WS 사다리 소진 후 REST 캡처로 임시 편입된 종목(additive; 해결안 ③ 최후 보험).
+    capture_rest_fallback_codes: list[str] = Field(default_factory=list)
     storage_policy: LiveStoragePolicy = "ws_plus_rest"
     kis_api_running: bool = False
     kis_api_targets: list[str] = Field(default_factory=list)
@@ -464,6 +466,7 @@ def get_status() -> LiveStatus:
         capture_healthy=cap_healthy,
         capture_reason=cap_reason,
         capture_missing_codes=missing_codes,
+        capture_rest_fallback_codes=sorted(_ws_rest_fallback_codes),
         storage_policy=_state.storage_policy,
         kis_api_running=bool(rest30_status and rest30_status.running),
         kis_api_targets=list(rest30_status.targets) if rest30_status else [],
@@ -535,6 +538,7 @@ def reset_for_tests() -> None:
     global _sub_failed_restart_session_ms  # noqa: PLW0603
     _sub_failed_restart_counts.clear()
     _resub_attempt_counts.clear()
+    _ws_rest_fallback_codes.clear()
     _sub_failed_restart_session_ms = None
 
 
@@ -635,6 +639,12 @@ _sub_failed_restart_session_ms: int | None = None
 # 기존 제한 재시작으로 승격. 카운터는 _sub_failed_restart와 같은 세션 마커로 리셋된다.
 _RESUB_MAX_ATTEMPTS = 3
 _resub_attempt_counts: dict[int, int] = {}
+
+# WS 실패종목 REST 캡처 폴백 집합 (해결안 ③, PR #622 후속). 사다리(재구독→재시작)가
+# 소진된 KRX conn의 sub_missing 종목을 담고, _sync_storage_targets가 REST 타깃에
+# 병합해 10초 REST 스냅숏으로 최후 보험 캡처한다. WS 회복(missing 해소)이 watchdog
+# 패스에서 감지되면 자동 해제. 세션 마커·reset_for_tests에서 리셋.
+_ws_rest_fallback_codes: set[str] = set()
 
 
 async def start_live_stream(*, data_dir: Path) -> bool:
@@ -746,6 +756,7 @@ async def _sync_storage_targets(
         date_fn=_today_kst,
         now_ms_fn=_now_ms,
         n_configured=n_configured,
+        rest_fallback_codes=tuple(sorted(_ws_rest_fallback_codes)),
     )
     monitor = get_signal_alert_monitor()
     if monitor is not None:
@@ -1007,11 +1018,15 @@ async def _ws_watchdog_check(
         _sub_failed_restart_session_ms = started
         _sub_failed_restart_counts.clear()
         _resub_attempt_counts.clear()
+        _ws_rest_fallback_codes.clear()
 
-    # 동기 수집(await 없음): 재구독/재시작 대상 목록 + 정상 복귀 account
+    # 동기 수집(await 없음): 재구독/재시작 대상 목록 + 정상 복귀 account +
+    # REST 폴백 편입/해제 후보(해결안 ③).
     to_resubscribe: list[int] = []
     to_restart: list[int] = []
     healthy_accounts: list[int] = []
+    all_missing_codes: set[str] = set()   # 전 conn 합집합 — 폴백 자동 해제 판정
+    fallback_enroll: set[str] = set()     # 사다리 소진 KRX conn의 유실 종목
     for account_id, conn in _state.streams.items():
         dead = conn.ws_task.done() or conn.flush_task.done()
         ws = getattr(conn.stream_obj, "ws", None)
@@ -1019,6 +1034,8 @@ async def _ws_watchdog_check(
             running=True, ws=ws, now_ms=now_ms, ref_ms=ref_ms,
             stale_after_ms=stale_after_ms, market_closed=False,
         )
+        missing_codes = _conn_missing_codes(ws, now_ms)
+        all_missing_codes |= missing_codes
         if healthy:
             healthy_accounts.append(account_id)
         if dead or reason == "stale":
@@ -1031,10 +1048,18 @@ async def _ws_watchdog_check(
                 to_resubscribe.append(account_id)
             elif action == "restart":
                 to_restart.append(account_id)
+            elif getattr(ws, "venue", "KRX") == "KRX":
+                # 사다리 종착("log") = WS 복구 수단 소진 → REST 캡처 최후 보험 편입.
+                # NXT는 표시 전용(정규장 캡처 무영향)이라 편입하지 않는다.
+                fallback_enroll |= missing_codes
 
     # healthy 복귀 시 resub 카운터 재장전(인시던트 단위) — 다음 실패에 다시 표적 재구독부터.
     for account_id in healthy_accounts:
         _resub_attempt_counts.pop(account_id, None)
+
+    await _apply_rest_fallback_delta(
+        data_dir, all_missing=all_missing_codes, enroll=fallback_enroll,
+    )
 
     # 값싼 표적 재구독 먼저, 수렴 못 한 건은 다음 주기에 재시작으로 승격.
     await _run_resubscribes(to_resubscribe, now_ms)
@@ -1042,6 +1067,34 @@ async def _ws_watchdog_check(
     for account_id in to_restart:
         await _restart_conn(account_id, data_dir=data_dir)
     return bool(to_restart)
+
+
+def _conn_missing_codes(ws: object, now_ms: int) -> set[str]:
+    """conn의 유예 지난 미확인 구독 종목 집합 — sub_missing 미보유(구 페이크)면 빈 집합."""
+    sub_missing = getattr(ws, "sub_missing", None)
+    if not callable(sub_missing):
+        return set()
+    keys = cast("list[tuple[str, str]]", sub_missing(now_ms))
+    return {code for _tr, code in keys}
+
+
+async def _apply_rest_fallback_delta(
+    data_dir: Path, *, all_missing: set[str], enroll: set[str],
+) -> None:
+    """REST 폴백 집합 갱신(해결안 ③): 사다리 소진 종목 편입 + 회복(더는 missing
+    아님) 종목 자동 해제. 집합이 변했을 때만 storage 재동기화 — recorder의
+    set_targets는 다음 폴 사이클에 반영된다. _restart_conn과 같은 락 규율."""
+    fallback_next = (_ws_rest_fallback_codes & all_missing) | enroll
+    if fallback_next == _ws_rest_fallback_codes:
+        return
+    enrolled = fallback_next - _ws_rest_fallback_codes
+    released = _ws_rest_fallback_codes - fallback_next
+    _ws_rest_fallback_codes.clear()
+    _ws_rest_fallback_codes.update(fallback_next)
+    _log.warning("live.stream.rest_fallback enrolled=%r released=%r active=%d",
+                 sorted(enrolled), sorted(released), len(fallback_next))
+    async with _lifecycle_lock:
+        await _sync_storage_targets(data_dir)
 
 
 async def _run_resubscribes(account_ids: list[int], now_ms: int) -> None:

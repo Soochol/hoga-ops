@@ -161,3 +161,47 @@ def test_plan_storage_targets_does_not_silently_cap_rest_targets() -> None:
     )
 
     assert plan.kis_api_targets == tuple(candidates)
+
+
+def test_plan_storage_targets_fallback_joins_rest_under_ws_plus_rest() -> None:
+    """해결안 ③: 폴백 종목은 ws_targets 소속이어도 kis_api_targets에 병합된다
+    (WS-XOR-REST 불변식의 의도적 예외 — 후보 dedup를 타지 않는 별도 파라미터).
+    기존 REST 타깃과는 dedupe."""
+    from hoga.live.coverage import plan_storage_targets
+
+    plan = plan_storage_targets(
+        ["005930", "000660", "035420"],
+        n_configured=1,
+        storage_policy="ws_plus_rest",
+        per_account_max=2,          # ws=[005930,000660], rest 잔여=[035420]
+        rest_fallback_codes=("000660", "035420"),   # 000660=WS 소속, 035420=이미 REST
+    )
+    assert plan.ws_targets == ("005930", "000660")
+    # 잔여(035420) 뒤에 폴백(000660)만 append — 035420은 dedupe로 중복 없음.
+    assert plan.kis_api_targets == ("035420", "000660")
+
+
+def test_plan_storage_targets_fallback_dropped_under_ws_only() -> None:
+    """ws_only는 REST 저장 금지 정책 — 폴백도 heatmap extras와 같은 선례로 드롭."""
+    from hoga.live.coverage import plan_storage_targets
+
+    plan = plan_storage_targets(
+        ["005930"],
+        n_configured=1,
+        storage_policy="ws_only",
+        rest_fallback_codes=("005930",),
+    )
+    assert plan.kis_api_targets == ()
+
+
+def test_plan_storage_targets_fallback_noop_under_rest_only() -> None:
+    """rest_only는 이미 전 종목 REST — 폴백은 dedupe가 흡수(중복 없음)."""
+    from hoga.live.coverage import plan_storage_targets
+
+    plan = plan_storage_targets(
+        ["005930", "000660"],
+        n_configured=1,
+        storage_policy="rest_only",
+        rest_fallback_codes=("000660",),
+    )
+    assert plan.kis_api_targets == ("005930", "000660")
