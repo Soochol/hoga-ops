@@ -92,7 +92,7 @@ export function LayoutPresetMenu() {
       aria-label="레이아웃 프리셋"
       data-testid="layout-preset-menu"
       onMouseDown={(e) => e.stopPropagation()}
-      className="min-w-56 rounded border border-border bg-bg-card py-1 shadow-lg z-50"
+      className="min-w-56 rounded border border-border bg-bg-card py-1 shadow-overlay z-50"
       style={{ position: 'fixed', left, top }}
     >
       {error && (

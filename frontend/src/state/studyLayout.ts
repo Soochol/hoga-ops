@@ -24,9 +24,10 @@ function isStudyCardKey(value: string): value is StudyCardKey {
 type Persisted = {
   /** 사용자 소유 카드 순서(안정 키 배열, ADR-0114). */
   cardOrder: StudyCardKey[];
-  /** 키 부재 = 표시. 숨김은 collapse 를 파괴하지 않는다. */
+  /** 키 부재 = 표시. */
   cardHidden: Partial<Record<StudyCardKey, boolean>>;
-  /** 키 부재 = 펼침. */
+  /** 접기 제거(2026-07-15) 후 UI 미사용. study.layout.v1 하위호환용으로만 유지
+   *  (retained-for-migration; setter 는 제거됨). */
   cardCollapsed: Partial<Record<StudyCardKey, boolean>>;
   detailPanelCollapsed: boolean;
 };
@@ -34,8 +35,6 @@ type Persisted = {
 type Store = Persisted & {
   setCardOrder: (order: StudyCardKey[]) => void;
   setCardHidden: (key: StudyCardKey, hidden: boolean) => void;
-  toggleCardCollapsed: (key: StudyCardKey) => void;
-  setAllCardsCollapsed: (collapsed: boolean) => void;
   setDetailPanelCollapsed: (collapsed: boolean) => void;
   toggleDetailPanelCollapsed: () => void;
 };
@@ -92,21 +91,6 @@ export const useStudyLayoutStore = create<Store>((set) => ({
       const nextHidden = { ...state.cardHidden, [key]: hidden };
       persistFromState({ ...state, cardHidden: nextHidden });
       return { cardHidden: nextHidden };
-    });
-  },
-  toggleCardCollapsed: (key) => {
-    set((state) => {
-      const nextCollapsed = { ...state.cardCollapsed, [key]: !state.cardCollapsed[key] };
-      persistFromState({ ...state, cardCollapsed: nextCollapsed });
-      return { cardCollapsed: nextCollapsed };
-    });
-  },
-  setAllCardsCollapsed: (collapsed) => {
-    set((state) => {
-      const nextCollapsed: Partial<Record<StudyCardKey, boolean>> = {};
-      for (const key of STUDY_CARD_KEYS) nextCollapsed[key] = collapsed;
-      persistFromState({ ...state, cardCollapsed: nextCollapsed });
-      return { cardCollapsed: nextCollapsed };
     });
   },
   setDetailPanelCollapsed: (collapsed) => {

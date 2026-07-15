@@ -34,22 +34,16 @@ export const DEFAULT_CARD_WEIGHTS: LiveCardWeights = {
   investor: 14,
 };
 
-export const LIVE_CARD_MIN_HEIGHT_PX: Record<LiveCardKey, number> = {
-  orderbook: 260,
-  volumeDistribution: 180,
-  program: 96,
-  brokers: 160,
-  investor: 120,
-};
-
 type Persisted = {
   rightPanelWidthPx: number;
+  /** 접기·리사이저 제거(2026-07-15) 후 UI 는 사용하지 않지만 레이아웃 프리셋이
+   *  캡처/적용하므로 하위호환·프리셋 계약을 위해 유지한다(retained-for-migration). */
   rightCardWeights: LiveCardWeights;
   /** 사용자 소유 카드 순서(안정 키 배열; 인덱스 아님, ADR-0114). */
   rightCardOrder: LiveCardKey[];
-  /** 키 부재 = 표시. 숨김은 weights/collapse 를 파괴하지 않으므로 복구 시 이전 상태. */
+  /** 키 부재 = 표시. 숨김은 복구 시 이전 상태. */
   rightCardHidden: Partial<Record<LiveCardKey, boolean>>;
-  /** 키 부재 = 펼침. weights 를 파괴하지 않으므로 펴면 이전 비율 복원. */
+  /** 접기 제거 후 UI 미사용. 프리셋 캡처/적용용으로만 유지(retained-for-migration). */
   rightCardCollapsed: Partial<Record<LiveCardKey, boolean>>;
   /** 상세 패널 전체 접힘 여부(사용자 선호; 지수 종목 여부와 독립). */
   detailPanelCollapsed: boolean;
@@ -69,11 +63,8 @@ export type LiveLayoutPresetInput = {
 
 type Store = Persisted & {
   setRightPanelWidthPx: (widthPx: number) => void;
-  setRightCardWeights: (weights: LiveCardWeights) => void;
   setRightCardOrder: (order: LiveCardKey[]) => void;
   setCardHidden: (key: LiveCardKey, hidden: boolean) => void;
-  toggleCardCollapsed: (key: LiveCardKey) => void;
-  setAllCardsCollapsed: (collapsed: boolean) => void;
   setDetailPanelCollapsed: (collapsed: boolean) => void;
   toggleDetailPanelCollapsed: () => void;
   applyLayoutPreset: (input: LiveLayoutPresetInput) => void;
@@ -142,40 +133,6 @@ export function clampCardWeights(weights: Partial<LiveCardWeights>): LiveCardWei
     }
   }
   return next;
-}
-
-export function resizeAdjacentWeights(
-  weights: LiveCardWeights,
-  upperKey: LiveCardKey,
-  lowerKey: LiveCardKey,
-  deltaPx: number,
-  panelHeightPx: number,
-): LiveCardWeights {
-  if (!isFiniteNumber(deltaPx) || !isPositiveFiniteNumber(panelHeightPx)) return weights;
-
-  const totalWeight = weights[upperKey] + weights[lowerKey];
-  if (!(totalWeight > 0)) return weights;
-
-  const upperMinPx = LIVE_CARD_MIN_HEIGHT_PX[upperKey];
-  const lowerMinPx = LIVE_CARD_MIN_HEIGHT_PX[lowerKey];
-  const minTotalPx = upperMinPx + lowerMinPx;
-  if (panelHeightPx < minTotalPx) return weights;
-
-  const currentUpperPx = (weights[upperKey] / totalWeight) * panelHeightPx;
-  const maxUpperPx = panelHeightPx - lowerMinPx;
-  const nextUpperPx = Math.min(
-    maxUpperPx,
-    Math.max(upperMinPx, currentUpperPx + deltaPx),
-  );
-
-  const nextUpperWeight = (nextUpperPx / panelHeightPx) * totalWeight;
-  const nextLowerWeight = totalWeight - nextUpperWeight;
-
-  return {
-    ...weights,
-    [upperKey]: nextUpperWeight,
-    [lowerKey]: nextLowerWeight,
-  };
 }
 
 /** 접힘 맵은 엔트리별로 관대하게 검증한다(weights 의 all-or-nothing 검증과 달리,
@@ -248,13 +205,6 @@ export const useLiveLayoutStore = create<Store>((set) => ({
       return { rightPanelWidthPx: nextWidthPx };
     });
   },
-  setRightCardWeights: (weights) => {
-    const nextWeights = clampCardWeights(weights);
-    set((state) => {
-      persistFromState({ ...state, rightCardWeights: nextWeights });
-      return { rightCardWeights: nextWeights };
-    });
-  },
   setRightCardOrder: (order) => {
     const nextOrder = normalizeKeyOrder(order, LIVE_CARD_KEYS, isLiveCardKey);
     set((state) => {
@@ -268,23 +218,6 @@ export const useLiveLayoutStore = create<Store>((set) => ({
       const nextHidden = { ...state.rightCardHidden, [key]: hidden };
       persistFromState({ ...state, rightCardHidden: nextHidden });
       return { rightCardHidden: nextHidden };
-    });
-  },
-  toggleCardCollapsed: (key) => {
-    set((state) => {
-      const nextCollapsed = { ...state.rightCardCollapsed, [key]: !state.rightCardCollapsed[key] };
-      persistFromState({ ...state, rightCardCollapsed: nextCollapsed });
-      return { rightCardCollapsed: nextCollapsed };
-    });
-  },
-  setAllCardsCollapsed: (collapsed) => {
-    set((state) => {
-      const nextCollapsed: Partial<Record<LiveCardKey, boolean>> = {};
-      for (const key of Object.keys(DEFAULT_CARD_WEIGHTS)) {
-        if (isLiveCardKey(key)) nextCollapsed[key] = collapsed;
-      }
-      persistFromState({ ...state, rightCardCollapsed: nextCollapsed });
-      return { rightCardCollapsed: nextCollapsed };
     });
   },
   setDetailPanelCollapsed: (collapsed) => {
