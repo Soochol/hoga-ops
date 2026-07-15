@@ -159,9 +159,10 @@ class KisWsClient:
 
         해제 먼저·등록 나중(unregister-before-register) — 연결당 등록 상한 41
         (OPSP0008 MAX SUBSCRIBE OVER, 2026-07-10 실측)을 지키기 위함이다.
-        register-first면 스왑 찰나 종목당 KRX3+NXT2=5 TR을 동시 점유해(13종목=65,
-        10종목=50) 41을 초과, 신 venue 등록 일부가 조용히 거부된다(재시도 없음 →
-        KRX 재등록분이 거부되면 정규장 캡처 구멍). 스왑 시각(08:50·15:31)은 저장창
+        register-first면 스왑 찰나 종목당 KRX2+NXT2=4 TR을 동시 점유해(19종목=76)
+        41을 초과, 신 venue 등록 일부가 조용히 거부된다(재시도 없음 → KRX 재등록분이
+        거부되면 정규장 캡처 구멍). 해제-먼저면 종목당 2를 넘지 않아 안전하다(ADR-0111에서
+        거래원 TR 제외 후 KRX·NXT 둘 다 2 TR). 스왑 시각(08:50·15:31)은 저장창
         (정규장 09:00-15:30) 밖이라 해제-후-등록의 찰나 공백은 캡처 무손실이다(ADR-0101).
         update_codes의 remove-before-add와 동일 패턴. 미연결이면 self._trs만 갱신해
         다음 (재)연결이 새 venue로 초기 구독한다. sub_lock으로 update_codes·초기

@@ -67,9 +67,9 @@ class LiveStatus(BaseModel):
     last_tick_ms: int | None
     cycle_lag_ms: int
     # WS 전환 후 의미(Task 11 리뷰 이월 문서화): "수집이 활성인 종목 수" =
-    # len(live_set) ≤ 13. 원의미("폴러가 순회하는 종목 수")의 자연 승계 —
-    # watchlist 전체 수가 아니다(그건 GET /api/watchlist). 프론트는 의도적으로
-    # 이 필드를 비소비(useLiveBannerState.ts 주석 참조).
+    # len(live_set) ≤ 계좌당 상한×계좌수(ADR-0111 이후 계좌당 19). 원의미("폴러가
+    # 순회하는 종목 수")의 자연 승계 — watchlist 전체 수가 아니다(그건 GET /api/watchlist).
+    # 프론트는 의도적으로 이 필드를 비소비(useLiveBannerState.ts 주석 참조).
     watchlist_count: int
     # poller-era 필드(wire 호환 유지): WS 전환 후 캡처 경로는 REST를 쓰지
     # 않으므로 0/None 고정. quote 오버레이·캔들 시드의 REST 콜은 비집계.

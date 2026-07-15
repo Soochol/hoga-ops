@@ -102,7 +102,7 @@ async def test_recv_loop_counts_subscription_acks():
     헬스 술어가 '기대 ACK의 부재'로 구독 거부를 감지하는 입력."""
     ok = '{"header":{"tr_id":"H0STASP0","tr_key":"005930"},"body":{"rt_cd":"0","msg_cd":"OPSP0000","msg1":"SUBSCRIBE SUCCESS"}}'
     ok2 = '{"header":{"tr_id":"H0STCNT0","tr_key":"005930"},"body":{"rt_cd":"0","msg_cd":"OPSP0000"}}'
-    reject = '{"header":{"tr_id":"H0STMBC0","tr_key":"005930"},"body":{"rt_cd":"1","msg_cd":"OPSP0002","msg1":"ALREADY IN SUBSCRIBE"}}'
+    reject = '{"header":{"tr_id":"H0STASP0","tr_key":"005930"},"body":{"rt_cd":"1","msg_cd":"OPSP0002","msg1":"ALREADY IN SUBSCRIBE"}}'
     fake = FakeWs([ok, ok2, reject])
     client = KisWsClient(
         approval_key_fn=_fake_approval, on_tick=None, date_fn=lambda: "20260605"
@@ -167,26 +167,27 @@ async def test_subscription_counters_reset_fields_exist():
     assert client.sub_rejected == 0
 
 
-async def test_subscribe_sends_three_trs_per_code():
+async def test_subscribe_sends_two_trs_per_code():
+    """ADR-0111: 거래원 TR(H0STMBC0)을 WS에서 제외 — 종목당 호가+체결 2 TR만 구독."""
     fake = FakeWs([])
     client = KisWsClient(approval_key_fn=_fake_approval, on_tick=None, date_fn=lambda: "20260605")
     await client._send_subscriptions(fake, "APPR", ["005930", "000660"], tr_type="1")
-    assert len(fake.sent) == 6                  # 2종목 × 3TR
+    assert len(fake.sent) == 4                  # 2종목 × 2TR
     trs = {json.loads(s)["body"]["input"]["tr_id"] for s in fake.sent}
-    assert trs == {"H0STASP0", "H0STCNT0", "H0STMBC0"}
+    assert trs == {"H0STASP0", "H0STCNT0"}
 
 
 async def test_ensure_venue_swaps_trs_unregister_before_register():
     """#524 시분할 스왑: KRX→NXT 전환 시 KRX를 먼저 해제(슬롯 비움)하고 NXT를 등록.
-    unregister-before-register — 연결당 등록 상한 41 준수(ADR-0101: register-first면
-    스왑 찰나 종목당 5 TR로 초과)."""
+    unregister-before-register — 연결당 등록 상한 41 준수(ADR-0101/0111: register-first면
+    스왑 찰나 종목당 4 TR로 초과)."""
     fake = FakeWs([])
     client = KisWsClient(approval_key_fn=_fake_approval, on_tick=None, date_fn=lambda: "20260605")
     client._ws = fake            # 연결 상태 시뮬레이션
     client._approval = "APPR"
     client._codes = ["005930"]
     # 스왑 전 구독 헬스 카운터(초기 연결분) — 스왑이 이를 리셋하지 않아야 한다.
-    client.sub_expected, client.sub_acked, client.sub_rejected = 3, 3, 0
+    client.sub_expected, client.sub_acked, client.sub_rejected = 2, 2, 0
     assert client.venue == "KRX"
 
     await client.ensure_venue("NXT")
@@ -196,14 +197,15 @@ async def test_ensure_venue_swaps_trs_unregister_before_register():
     reg = [f for f in frames if f["header"]["tr_type"] == "1"]
     unreg = [f for f in frames if f["header"]["tr_type"] == "2"]
     assert {f["body"]["input"]["tr_id"] for f in reg} == {"H0NXASP0", "H0NXCNT0"}
-    assert {f["body"]["input"]["tr_id"] for f in unreg} == {"H0STASP0", "H0STCNT0", "H0STMBC0"}
+    # ADR-0111: KRX도 거래원 제외 후 호가+체결 2 TR만(H0STMBC0 없음).
+    assert {f["body"]["input"]["tr_id"] for f in unreg} == {"H0STASP0", "H0STCNT0"}
     # unregister-before-register: 첫 해제 프레임이 첫 등록 프레임보다 앞선다(상한 41 준수).
     first_reg = next(i for i, f in enumerate(frames) if f["header"]["tr_type"] == "1")
     first_unreg = next(i for i, f in enumerate(frames) if f["header"]["tr_type"] == "2")
     assert first_unreg < first_reg
     # 카운터 리셋 안 함(update_codes 선례) — 표시 전용 NXT 실패가 watchdog 재시작을
     # 유발하거나 status에 순간 거짓 sub_failed를 노출하지 않게 한다.
-    assert (client.sub_expected, client.sub_acked) == (3, 3)
+    assert (client.sub_expected, client.sub_acked) == (2, 2)
 
 
 async def test_ensure_venue_noop_when_already_on_target():
@@ -266,23 +268,23 @@ async def test_run_reconnects_and_resubscribes_after_failure(monkeypatch):
     )
     task = asyncio.create_task(client.run(["005930", "000660"]))
     for _ in range(100):
-        if len(fake.sent) >= 6:
+        if len(fake.sent) >= 4:
             break
         await asyncio.sleep(0)
-    assert client.sub_expected == 6   # 2종목 × 3TR — 연결 시 설정 핀(line 93)
+    assert client.sub_expected == 4   # 2종목 × 2TR(ADR-0111) — 연결 시 설정 핀(line 93)
     task.cancel()
     with pytest.raises(asyncio.CancelledError):
         await task
 
     assert calls["n"] >= 2  # 1회차 실패 후 백오프 → 재연결
-    # 재연결 성공 시 전 종목 × 3TR 재구독 (tr_type="1")
+    # 재연결 성공 시 전 종목 × 2TR 재구독 (tr_type="1")
     sent = {
         (json.loads(s)["body"]["input"]["tr_id"], json.loads(s)["body"]["input"]["tr_key"])
         for s in fake.sent
     }
     assert sent == {
         (tr, code)
-        for tr in ("H0STASP0", "H0STCNT0", "H0STMBC0")
+        for tr in ("H0STASP0", "H0STCNT0")
         for code in ("005930", "000660")
     }
     assert all(json.loads(s)["header"]["tr_type"] == "1" for s in fake.sent)
@@ -309,7 +311,7 @@ async def test_reconnect_resets_subscription_counters(monkeypatch):
     client.sub_rejected = 7
     task = asyncio.create_task(client.run(["005930", "000660"]))
     for _ in range(100):
-        if len(fake.sent) >= 6:
+        if len(fake.sent) >= 4:
             break
         await asyncio.sleep(0)
     task.cancel()
@@ -317,7 +319,7 @@ async def test_reconnect_resets_subscription_counters(monkeypatch):
         await task
     assert client.sub_acked == 0       # 재연결 시 리셋(line 94)
     assert client.sub_rejected == 0    # (line 95)
-    assert client.sub_expected == 6    # (line 93)
+    assert client.sub_expected == 4    # 2종목 × 2TR(ADR-0111) — (line 93)
 
 
 async def test_run_does_not_connect_while_gate_closed(monkeypatch):
