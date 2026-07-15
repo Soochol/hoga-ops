@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react';
 import { Outlet, useLocation } from 'react-router';
 import TopNav from './nav/TopNav';
+import { MarketIndexBar } from './layout/MarketIndexBar';
 import { SYSTEM_NAV_ITEMS, WORKSPACE_NAV_ITEMS } from './nav/items';
 import RightRail from './rightrail/RightRail';
 import { WatchlistDrawer } from './watchlist/WatchlistDrawer';
@@ -61,7 +62,9 @@ export default function App() {
     <div
       className="grid h-screen w-screen overflow-hidden"
       style={{
-        gridTemplateRows: 'var(--h-top-nav) minmax(0, 1fr)',
+        // 3행: 하단 시장지표 바는 auto — 데이터 없으면(MarketIndexBar가 null)
+        // 행이 0으로 접혀 빈 띠가 남지 않는다.
+        gridTemplateRows: 'var(--h-top-nav) minmax(0, 1fr) auto',
       }}
     >
       {staticTitle !== null && <StaticDocumentTitle title={staticTitle} />}
@@ -99,6 +102,7 @@ export default function App() {
         {activePanel === 'signalAlerts' && <SignalAlertsDrawer />}
         <RightRail />
       </div>
+      <MarketIndexBar />
     </div>
   );
 }

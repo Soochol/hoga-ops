@@ -36,6 +36,7 @@ class KisRestEndpoint(StrEnum):
     INDEX_DAILY = "index-daily"
     INDEX_INVESTOR_NET = "index-investor-net"
     INDEX_MINUTE = "index-minute"
+    INDEX_PRICE = "index-price"
     LIVE_BROKERS = "live-brokers"
     LIVE_ORDERBOOK = "live-orderbook"
     LIVE_TRADES = "live-trades"
