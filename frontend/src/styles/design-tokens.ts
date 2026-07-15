@@ -88,6 +88,7 @@ export const SIZE_TOKENS = {
   'h-capture-row':      { rem: 2.25,    baseIntentPx: 36, usage: 'Single row in the capture queue' },
   'h-live-header':      { rem: 2,       baseIntentPx: 32, usage: 'Live page header row' },
   'h-top-nav':          { rem: 2,       baseIntentPx: 32, usage: 'Global top navigation row' },
+  'h-bottom-bar':       { rem: 1.5,     baseIntentPx: 24, usage: 'Global market-index bottom bar row' },
 
   // ── layout — widths ───────────────────────────────────────────
   'sidebar-w':          { rem: 20,      baseIntentPx: 320, usage: 'Cursor sidebar on the right of replay viewer' },
