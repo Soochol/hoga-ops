@@ -1284,6 +1284,12 @@ class MaParams(BaseModel):
     relation: Literal["above", "below"]                # source >= SMA(source) / source <= SMA(source)
     source: Literal["open", "high", "low", "close"] = "close"
 
+class DepthPeakParams(BaseModel):                      # 매도/매수 총잔량 분봉 peak 신고
+    lookback: int = Field(ge=1)                        # N: 비교 대상 과거 거래일 수
+    # 당일 peak ≥ (threshold_pct/100) × 지난 N일 peak. 100=신고 돌파, <100=근접,
+    # >100=초과 돌파. 단일 비율 파라미터로 "보다 클 때"와 "N% 이상"을 통합.
+    threshold_pct: float = Field(default=100.0, ge=1)
+
 class TradeValueLeaf(BaseModel):
     type: Literal["trade_value"] = "trade_value"
     id: str
@@ -1329,9 +1335,20 @@ class MaLeaf(BaseModel):
     id: str
     params: MaParams
 
+class AskDepthNewHighLeaf(BaseModel):
+    type: Literal["ask_depth_new_high"] = "ask_depth_new_high"
+    id: str
+    params: DepthPeakParams
+
+class BidDepthNewHighLeaf(BaseModel):
+    type: Literal["bid_depth_new_high"] = "bid_depth_new_high"
+    id: str
+    params: DepthPeakParams
+
 ConditionLeaf = Annotated[
     Union[TradeValueLeaf, TradeValuePeriodLeaf, NewHighTodayLeaf, NewHighLeaf,
-          NewHighVolTodayLeaf, NewHighVolLeaf, ChangePctLeaf, PriceRangeLeaf, MaLeaf],
+          NewHighVolTodayLeaf, NewHighVolLeaf, ChangePctLeaf, PriceRangeLeaf, MaLeaf,
+          AskDepthNewHighLeaf, BidDepthNewHighLeaf],
     Field(discriminator="type"),
 ]
 
@@ -1360,10 +1377,42 @@ class ScreenerRow(BaseModel):                          # 평면형 — 조건 �
     trade_value_won: int
     change_pct: float | None
 
+class DepthCoverageCode(BaseModel):                    # 총잔량 조건 커버리지 한 종목
+    code: str = Field(pattern=CODE_PATTERN)
+    name: str
+    have_days: int                                     # 지난 N거래일 중 hogaplay 보유 일수
+    need_days: int                                     # N
+
+class DepthCoverage(BaseModel):
+    """총잔량 신고 조건의 hogaplay 데이터 커버리지 리포트(가장 넓은 N 기준).
+
+    excluded = 보유 0일(비교 불가, 결과 제외 + 수집 요청 대상). partial = 0<보유<N
+    (보유분만으로 비교 — 과거 peak 과소평가 가능, 결과 행에 배지). 평가 유니버스는
+    관심∪히트맵(캡처 대상 집합)으로, 총잔량 데이터가 정의되는 종목만 대상.
+    """
+    lookback: int
+    evaluated: int
+    excluded: list[DepthCoverageCode] = Field(default_factory=list)
+    partial: list[DepthCoverageCode] = Field(default_factory=list)
+
+class DepthPeakValue(BaseModel):                       # 결과 행 검증용 사이드카(코드→값)
+    # side별 당일/과거 peak + 보유일 — 배지는 활성 조건 side만, 각 side의 자기 N 기준.
+    ask_today: int | None = None
+    ask_past_peak: int | None = None
+    ask_have_days: int = 0
+    ask_need_days: int = 0
+    bid_today: int | None = None
+    bid_past_peak: int | None = None
+    bid_have_days: int = 0
+    bid_need_days: int = 0
+
 class ScreenerResponse(BaseModel):
     status: Literal["ok", "not_seeded", "building"]
     rows: list[ScreenerRow]
     warnings: list[str] = Field(default_factory=list)
+    # 총잔량 신고 조건이 있을 때만 채워진다(없으면 None — 기존 응답과 하위호환).
+    depth_coverage: DepthCoverage | None = None
+    depth_values: dict[str, DepthPeakValue] | None = None
 
 class ScreenerSaveWriteRequest(BaseModel):
     name: str = Field(min_length=1, max_length=80)

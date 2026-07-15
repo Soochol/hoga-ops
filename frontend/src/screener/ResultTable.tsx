@@ -1,4 +1,5 @@
 import type { ScreenerRowLive } from './useScreenerRowsLive';
+import type { DepthPeakValue } from '../api/screener';
 import { WatchlistHeartButton } from '../watchlist/WatchlistHeartButton';
 import { nextScreenerSortMode, type ScreenerResultSortField, type ScreenerResultSortMode } from './sortResults';
 import { DataTableHeader, DataTableRow, DataTableShell, EmptyState } from '../ui/DataSurface';
@@ -11,6 +12,47 @@ interface Props {
   sortMode?: ScreenerResultSortMode;
   onSortChange?: (mode: ScreenerResultSortMode) => void;
   embedded?: boolean;
+  /** 총잔량 신고 조건이 있을 때만: code→당일/과거 peak. 결과행 검증 배지. */
+  depthValues?: Record<string, DepthPeakValue> | null;
+  /** 활성 총잔량 조건의 side. 배지가 통과를 좌우한 side만 표시하도록. */
+  depthSides?: DepthSides;
+}
+
+/** 활성화된 총잔량 조건의 side(매도/매수). evaluate 는 code 마다 양쪽을 모두 채우므로,
+ *  배지는 실제로 통과를 좌우한 side 만 보여줘야 한다(매수 조건인데 매도 값 표시 방지). */
+export interface DepthSides { ask: boolean; bid: boolean }
+
+const fmtQty = (n: number | null | undefined) => (n == null ? '—' : n.toLocaleString('ko-KR'));
+
+/** 결과행의 총잔량 peak 배지 — side별 당일/과거 값 + 부분 커버리지(N/M일). /live 총잔량
+ *  pane 의 intra-bar max 와 같은 값이라 사용자가 눈으로 대조할 수 있다. */
+function DepthBadge({ v, sides }: { v: DepthPeakValue; sides: DepthSides }) {
+  // 조건에 있는 side만. 둘 다면 매도·매수 각각 표시(어느 쪽이 통과를 좌우했는지 명확).
+  // 각 side는 자기 leaf N 기준(혼합 N 스크린에서 과거 peak·부분커버리지가 정확).
+  interface Row { label: string; today: number | null; past: number | null; have: number; need: number }
+  const rows: Row[] = [];
+  if (sides.ask) rows.push({ label: '매도', today: v.ask_today, past: v.ask_past_peak, have: v.ask_have_days, need: v.ask_need_days });
+  if (sides.bid) rows.push({ label: '매수', today: v.bid_today, past: v.bid_past_peak, have: v.bid_have_days, need: v.bid_need_days });
+  if (rows.length === 0 || rows.every((r) => r.today == null && r.past == null)) return null;
+  const isPartial = (r: Row) => r.have > 0 && r.have < r.need;
+  const title = rows
+    .map((r) => `${r.label} 당일 peak ${fmtQty(r.today)} · 지난 ${r.need}일 peak ${fmtQty(r.past)}`)
+    .join(' / ');
+  return (
+    <span className="inline-flex items-center gap-1.5 font-mono text-[10px] tabular-nums text-fg-dimmer" title={title}>
+      {rows.map((r) => (
+        <span key={r.label} className="inline-flex items-center gap-1">
+          {rows.length > 1 && <span className="text-fg-dimmer">{r.label}</span>}
+          <span>{fmtQty(r.today)}/{fmtQty(r.past)}</span>
+          {isPartial(r) && (
+            <span className="rounded-sm px-1" style={{ color: 'var(--warn)', background: 'var(--tint-selection)' }}>
+              {r.have}/{r.need}일
+            </span>
+          )}
+        </span>
+      ))}
+    </span>
+  );
 }
 
 const COLS = 'grid-cols-[3.5rem_1fr_4rem_8.5rem_6rem_2.4rem]';
@@ -56,7 +98,7 @@ function SortHeader({ field, label, sortLabel = label, align, sortMode = 'defaul
   );
 }
 
-export function ResultTable({ rows, onActivate, sortMode = 'default', onSortChange, embedded = false }: Props) {
+export function ResultTable({ rows, onActivate, sortMode = 'default', onSortChange, embedded = false, depthValues, depthSides }: Props) {
   return (
     <DataTableShell
       minWidth="640px"
@@ -81,7 +123,10 @@ export function ResultTable({ rows, onActivate, sortMode = 'default', onSortChan
               columns={COLS}
               className="cursor-pointer outline-none hover:bg-bg-input-hover focus-visible:bg-bg-input-hover">
               <span className="font-mono tabular-nums text-fg-dim">{r.code}</span>
-              <span className="truncate">{r.name}</span>
+              <span className="flex min-w-0 items-center gap-2">
+                <span className="truncate">{r.name}</span>
+                {depthValues?.[r.code] && depthSides && <DepthBadge v={depthValues[r.code]} sides={depthSides} />}
+              </span>
               <span className="font-mono text-xs text-fg-dim">{r.market}</span>
               <span className={`font-mono tabular-nums text-right ${r.change_pct === null ? '' : priceDirClass(r.change_pct)}`}>
                 {r.price != null ? `${r.price.toLocaleString('ko-KR')} (${formatPct(r.change_pct)})` : '—'}

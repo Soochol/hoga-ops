@@ -116,10 +116,17 @@ CONDITION_COMPILERS: dict[str, LeafCompiler] = {
 }
 
 
+# run_scan 이 사전계산 코드셋으로 처리하는 조건 타입(총잔량 신고). SQL CTE 가 아니라
+# screener_depth.evaluate 가 이미 통과 코드셋을 계산해 넘긴다 — CTE 는 그 코드셋을
+# 등록한 relation 을 읽는 얇은 SELECT 로만 emit 한다(기존 컴파일러 dict 미경유).
+_DEPTH_TYPES = ("ask_depth_new_high", "bid_depth_new_high")
+
+
 def run_scan(adjusted_path: Path, stocks_path: Path, *,
              conditions: list[ConditionLeaf], universe: ScreenerUniverse,
              limit: int = 1000,
-             intraday_rows: pl.DataFrame | None = None) -> list[ScreenerRow]:
+             intraday_rows: pl.DataFrame | None = None,
+             depth_pass: dict[str, list[str]] | None = None) -> list[ScreenerRow]:
     con = connect_bounded()
     con.execute(f"CREATE VIEW adj_hist AS SELECT * FROM '{adjusted_path}'")
     if intraday_rows is not None and intraday_rows.height > 0:
@@ -143,6 +150,16 @@ def run_scan(adjusted_path: Path, stocks_path: Path, *,
     joins: list[str] = []
     params: list = []
     for i, leaf in enumerate(conditions):
+        if leaf.type in _DEPTH_TYPES:
+            # 총잔량 신고: screener_depth 가 계산한 통과 코드셋을 relation 으로 등록해
+            # 읽는다(빈 셋 → 0행 → JOIN 이 전체를 비운다). 같은 con 이라 등록 뷰 유지.
+            codes = (depth_pass or {}).get(leaf.id, [])
+            rel = f"depth_src_{i}"
+            con.register(rel, pl.DataFrame(
+                {"code": pl.Series("code", list(codes), dtype=pl.Utf8)}))
+            ctes.append(f"cond_{i} AS (SELECT code FROM {rel})")
+            joins.append(f"JOIN cond_{i} ON cond_{i}.code = base.code")
+            continue
         cte, p = CONDITION_COMPILERS[leaf.type](leaf, i)
         ctes.append(cte)
         joins.append(f"JOIN cond_{i} ON cond_{i}.code = base.code")

@@ -209,6 +209,11 @@ export function Screener() {
                 sortMode={sortMode}
                 onSortChange={setSortMode}
                 embedded
+                depthValues={screener.data?.depth_values}
+                depthSides={{
+                  ask: editor.conditions.some((c) => c.type === 'ask_depth_new_high'),
+                  bid: editor.conditions.some((c) => c.type === 'bid_depth_new_high'),
+                }}
               />
             </>
           )}

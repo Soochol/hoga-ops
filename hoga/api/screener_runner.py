@@ -5,7 +5,9 @@ import datetime as dt
 import time
 from pathlib import Path
 
-from hoga.api import screener_intraday, screener_scan, screener_universe
+from hoga.api import (
+    screener_depth, screener_intraday, screener_scan, screener_universe,
+)
 from hoga.api.models import ScanRequest, ScreenerResponse
 from hoga.collector.orchestrator import now_kst
 
@@ -46,6 +48,28 @@ async def run_screener_scan(
             if overlay.rows.height == 0:
                 warnings.append("intraday_fallback_eod")
 
+    depth_eval = None
+    if screener_depth.has_depth_conditions(req.conditions):
+        universe_codes = set(await asyncio.to_thread(
+            screener_universe.codes_for_universe,
+            sdir / "stocks.parquet",
+            req.universe,
+        ))
+        depth_eval = await asyncio.to_thread(
+            screener_depth.evaluate,
+            data_dir=data_dir,
+            sdir=sdir,
+            conditions=req.conditions,
+            universe_codes=universe_codes,
+            basis=req.basis,
+            today=now_value.strftime("%Y%m%d"),
+        )
+        warnings.extend(depth_eval.warnings)
+
+    depth_pass = (
+        {leaf_id: sorted(codes) for leaf_id, codes in depth_eval.passing.items()}
+        if depth_eval is not None else None
+    )
     rows = await asyncio.to_thread(
         screener_scan.run_scan,
         sdir / "daily_adjusted.parquet",
@@ -54,5 +78,10 @@ async def run_screener_scan(
         universe=req.universe,
         limit=req.limit,
         intraday_rows=intraday_rows,
+        depth_pass=depth_pass,
     )
-    return ScreenerResponse(status="ok", rows=rows, warnings=warnings)
+    return ScreenerResponse(
+        status="ok", rows=rows, warnings=warnings,
+        depth_coverage=depth_eval.coverage if depth_eval is not None else None,
+        depth_values=depth_eval.values if depth_eval is not None else None,
+    )

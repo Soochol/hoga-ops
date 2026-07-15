@@ -1,4 +1,4 @@
-import type { BreakoutParams, PeriodParams } from '../api/screener';
+import type { BreakoutParams, DepthPeakParams, PeriodParams } from '../api/screener';
 
 export function SectionLabel({ children }: { children: React.ReactNode }) {
   return <div className="text-[10.5px] font-semibold uppercase tracking-[0.08em] text-fg-dimmer">{children}</div>;
@@ -38,6 +38,19 @@ export function PeriodForm({ params, onChange }: { params: PeriodParams; onChang
   return <div className="flex items-center gap-2">
     <Num label="period (M)" value={params.period} onChange={(n) => onChange({ period: n ?? 1 })} />
     <span className="text-sm text-fg-dimmer">일</span></div>;
+}
+
+/** (비교기간 N, 과거 peak 대비 X%) 폼 — ask/bid_depth_new_high(총잔량 신고) 공용. */
+export function DepthPeakForm({ params, onChange }: { params: DepthPeakParams; onChange: (p: DepthPeakParams) => void }) {
+  return <div className="flex flex-col gap-2">
+    <div className="flex items-center gap-2 flex-wrap">
+      <Num label="비교 기간 (N)" value={params.lookback} onChange={(n) => onChange({ ...params, lookback: n ?? 1 })} />
+      <span className="text-sm text-fg-dimmer">일</span>
+      <Num label="과거 peak 대비" value={params.threshold_pct} onChange={(n) => onChange({ ...params, threshold_pct: n ?? 100 })} />
+      <span className="text-sm text-fg-dimmer">% 이상</span>
+    </div>
+    <div className="text-[10.5px] text-fg-dimmer">관심·히트맵 종목 중 데이터 보유 종목 대상</div>
+  </div>;
 }
 
 
