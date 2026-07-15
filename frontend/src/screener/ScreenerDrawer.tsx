@@ -14,7 +14,7 @@ import { CSS } from '@dnd-kit/utilities';
 import { useJumpToLive } from '../live/useJumpToLive';
 import { useEntryDragStore, isPointOnChart, dropPoint } from '../state/entryDrag';
 import { useLivePageStore } from '../state/livePage';
-import { useScreenerPanelStore } from '../state/screenerPanel';
+import { useScreenerPanelStore, useExpireScreenerScan } from '../state/screenerPanel';
 import { useSavedScreeners } from './useSavedScreeners';
 import { useScreener } from './useScreener';
 import { useScreenerStatus } from './useScreenerStatus';
@@ -166,7 +166,6 @@ export function ScreenerDrawer() {
   const sortMode = useScreenerPanelStore((s) => s.sortMode);
   const setSortMode = useScreenerPanelStore((s) => s.setSortMode);
   const updateFeedback = useScreenerUpdateFeedback((s) => s.feedback);
-  const clearExpiredScan = useScreenerPanelStore((s) => s.clearExpiredScan);
 
   const { data: savesData, isSuccess: savesLoaded } = useSavedScreeners();
   const saves = useMemo(() => savesData?.saves ?? [], [savesData]);
@@ -186,18 +185,17 @@ export function ScreenerDrawer() {
     if (!saves.some((s) => s.id === selectedSavedId)) setSelectedSavedId(saves[0].id);
   }, [savesLoaded, saves, selectedSavedId, setSelectedSavedId]);
 
-  useEffect(() => {
-    clearExpiredScan();
-    const timer = window.setInterval(() => clearExpiredScan(), 60_000);
-    return () => window.clearInterval(timer);
-  }, [clearExpiredScan]);
+  useExpireScreenerScan();
 
   const selected = saves.find((s) => s.id === selectedSavedId) ?? null;
   const notSeeded = status?.status === 'not_seeded' || lastScan?.scanStatus === 'not_seeded';
   const lastScanStaleReason = (() => {
     if (!lastScan) return null;
+    // 풀페이지 Screener 에서 임시 조건으로 조회한 결과 — 드로어의 저장본 선택과 신원이
+    // 다르므로 재조회를 유도한다(savedId null 이면 신원 비교 자체가 성립 안 함).
+    if (lastScan.savedId === null) return '페이지에서 조회한 결과';
     if (selectedSavedId !== lastScan.savedId) return '선택한 조건과 다름';
-    if (selected && selected.updated_at_ms !== lastScan.savedUpdatedAtMs) return '조건 저장본 변경됨';
+    if (selected && lastScan.savedUpdatedAtMs !== null && selected.updated_at_ms !== lastScan.savedUpdatedAtMs) return '조건 저장본 변경됨';
     if (lastScan.dataStale) return '데이터 갱신됨';
     return null;
   })();
@@ -212,9 +210,12 @@ export function ScreenerDrawer() {
             savedId: selected.id,
             savedName: selected.name,
             savedUpdatedAtMs: selected.updated_at_ms,
+            // 드로어는 신원 기반 staleness 라 scanKey 불필요(null).
+            scanKey: null,
             rows: res.rows,
             scanStatus: res.status,
             warnings: res.warnings,
+            depthValues: res.depth_values ?? null,
             scannedAtMs: Date.now(),
             basis: DRAWER_SCAN_BASIS,
             dataStale: false,
@@ -315,7 +316,7 @@ export function ScreenerDrawer() {
         {lastScan && !screener.isError && (
           <div className="flex items-center gap-2 border-t border-border pt-sm text-xs uppercase tracking-[0.08em] text-fg-dimmer">
             <div className="min-w-0 flex-1 truncate">
-              결과 {lastScan.rows.length} · {lastScan.savedName}
+              결과 {lastScan.rows.length} · {lastScan.savedName ?? '임시 조건'}
               {lastScanStaleReason && (
                 <span className="ml-1 normal-case tracking-normal" style={{ color: 'var(--warn)' }}>
                   · {lastScanStaleReason} — 조회로 갱신
