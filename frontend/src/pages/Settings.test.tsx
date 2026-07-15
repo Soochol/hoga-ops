@@ -65,11 +65,15 @@ describe('Settings — 사이드바 레이아웃', () => {
     expect(screen.getByText('캡처 저장')).toBeInTheDocument();
   });
 
-  it('uses the feature page shell without repeating the nav page title', () => {
+  it('renders a borderless full-bleed panel without repeating the nav page title', () => {
     renderWithQuery(<Settings />);
     expect(screen.queryByRole('heading', { name: 'Settings' })).toBeNull();
-    expect(screen.getByTestId('settings-page-primary')).toHaveClass('bg-bg-card');
-    expect(screen.getByTestId('settings-page-primary')).toHaveClass('border');
+    const panel = screen.getByTestId('settings-page-primary');
+    // 카드 크롬(보더) 제거 — 분리는 nav의 bg-subtle 톤 스텝이 담당. 페이지 프레임은
+    // 바깥 래퍼로 이동했으므로 패널 자체는 borderless full-bleed 그리드다.
+    expect(panel).toHaveClass('bg-bg-card');
+    expect(panel).not.toHaveClass('border');
+    expect(panel).toHaveClass('overflow-hidden');
   });
 });
 

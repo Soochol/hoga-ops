@@ -79,14 +79,13 @@ export default function App() {
       {settingsOpen && (
         <ModalShell
           ariaLabel="Settings"
-          title="Settings"
           width="w-[min(720px,calc(100vw-48px))]"
-          height="h-[min(720px,calc(100vh-80px))]"
+          height="h-[min(560px,calc(100vh-80px))]"
           onClose={() => setSettingsOpen(false)}
         >
-          <div className="min-h-0 overflow-auto p-md">
-            <SettingsPanel />
-          </div>
+          {/* title 없음 — 섹션 제목·닫기 X는 SettingsPanel 콘텐츠 헤더가 담당(첨부 디자인).
+              SettingsPanel이 다이얼로그를 edge-to-edge로 채운다(중첩 카드 제거). */}
+          <SettingsPanel onClose={() => setSettingsOpen(false)} />
         </ModalShell>
       )}
       <div
