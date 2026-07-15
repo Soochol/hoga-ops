@@ -77,7 +77,7 @@ describe('LayoutPresetMenu', () => {
     act(() => { useLiveLayoutStore.setState({ lastAppliedPresetId: 'p1' }); });
     expect(screen.getByTestId('layout-preset-save-current')).not.toBeDisabled();
     act(() => screen.getByTestId('layout-preset-save-current').click());
-    expect(updateMutate).toHaveBeenCalledWith(expect.objectContaining({ id: 'p1' }));
+    expect(updateMutate).toHaveBeenCalledWith(expect.objectContaining({ id: 'p1' }), expect.anything());
   });
 
   it('saves as a new preset via the inline name input', () => {
@@ -99,7 +99,20 @@ describe('LayoutPresetMenu', () => {
     // 1차 클릭 = 확인 대기, 아직 삭제 안 함.
     expect(removeMutate).not.toHaveBeenCalled();
     act(() => screen.getByTestId('layout-preset-confirm-delete-p1').click());
-    expect(removeMutate).toHaveBeenCalledWith('p1');
+    expect(removeMutate).toHaveBeenCalledWith('p1', expect.anything());
+  });
+
+  it('surfaces an error and keeps the menu open when a mutation fails', () => {
+    // update.mutate 가 실패하면 onError 콜백을 호출하도록 목.
+    updateMutate.mockImplementationOnce((_body, opts) => opts?.onError?.(new Error('서버 오류')));
+    renderMenu();
+    act(() => screen.getByTestId('layout-preset-button').click());
+    act(() => { useLiveLayoutStore.setState({ lastAppliedPresetId: 'p1' }); });
+    act(() => screen.getByTestId('layout-preset-save-current').click());
+
+    // 에러가 표면화되고 메뉴는 닫히지 않는다.
+    expect(screen.getByTestId('layout-preset-error')).toHaveTextContent('서버 오류');
+    expect(screen.getByTestId('layout-preset-menu')).toBeInTheDocument();
   });
 
   it('resets to the default layout', () => {
