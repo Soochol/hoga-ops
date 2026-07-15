@@ -21,11 +21,14 @@
   --font-ui: 'IBM Plex Sans KR', 'Pretendard', ui-sans-serif, system-ui, 'Malgun Gothic', sans-serif;
   --font-mono: 'IBM Plex Mono', ui-monospace, 'SF Mono', 'Menlo', Consolas, monospace;
 
-  /* ───── Color · Surfaces (Obsidian — warm graphite, 3-tier) ─────
-     --bg 는 카드가 "떠 보이는" 홈 역할 — --bg-card(#121216)와의 명도차가
-     패널 분리의 1차 수단이다(다크에서 1px 보더 강화는 반복 실패한 방향,
-     #610~613). 2026-07-15 #0a0a0c → #060608 로 심도 강화. */
-  --bg: #060608;
+  /* ───── Color · Surfaces (Obsidian — warm graphite) ─────
+     --bg 를 --bg-card 와 동일 톤(#121216)으로 통일 — "배경 통일"(토스 레퍼런스,
+     PR #636) 방향 전환. 이전엔 --bg #060608 로 카드를 슬랩처럼 띄웠으나(2026-07-15
+     심도 강화), 차트↔호가 gutter 가 어두운 골로 읽혀 화면이 쪼개졌다. 이제 패널
+     분리는 4px gap + --shadow-panel(카드 가장자리 옅은 다크 헤일로)만 담당한다
+     ("분리는 톤+간격" 의 극단 — 톤 스텝 0, 간격+섀도만). --bg-subtle/--bg-input 은
+     불변이라 nav·탭·입력 크롬 어포던스는 보존. */
+  --bg: #121216;
   --bg-card: #121216;
   --bg-subtle: #0e0e11;
   --bg-input: #101014;
