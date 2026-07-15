@@ -34,7 +34,8 @@ _fingerprint_cache: OrderedDict[tuple[str, tuple[int, int, int, int, int]], str]
 class IndexSectorStock(BaseModel):
     code: str
     name: str
-    folder_id: str | None
+    # v3 (ADR-0112): heatmap folder_id 는 항상 실폴더 — null 미분류 와이어는 폐지.
+    folder_id: str
     folder_name: str
     order: int
     close: float | None
@@ -44,7 +45,7 @@ class IndexSectorStock(BaseModel):
 
 
 class IndexSectorGroup(BaseModel):
-    folder_id: str | None
+    folder_id: str
     folder_name: str
     order: int
     change_pct: float | None

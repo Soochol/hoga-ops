@@ -52,15 +52,17 @@ const rankingWithUncategorized: IndexSectorRankingResponse = {
         { code: '005930', name: '삼성전자', folder_id: 'semi', folder_name: '반도체', order: 0, close: 110, previous_close: 100, change_pct: 10, missing_reason: null },
       ],
     },
+    // v3 (ADR-0112): null 섹터는 와이어에서 폐지 — 마이그레이션 산물인 "미분류" 이름의
+    // 실폴더(f_00000000) 시나리오로 대체.
     {
-      folder_id: null,
+      folder_id: 'f_00000000',
       folder_name: '미분류',
       order: 1,
       change_pct: 1.2,
       finite_count: 1,
       total_count: 1,
       stocks: [
-        { code: '999999', name: '미분류종목', folder_id: null, folder_name: '미분류', order: 0, close: 50, previous_close: 49, change_pct: 2.04, missing_reason: null },
+        { code: '999999', name: '미분류종목', folder_id: 'f_00000000', folder_name: '미분류', order: 0, close: 50, previous_close: 49, change_pct: 2.04, missing_reason: null },
       ],
     },
   ],

@@ -3,10 +3,9 @@ import type { IndexSectorRankingSector } from '../api/indexSectorRankings';
 export type BasisMode = 'latest' | 'hover' | 'pinned';
 export type SectorIdentityKey = string;
 
-const UNCATEGORIZED_SECTOR_KEY = '__uncat__';
-
-export function sectorIdentityKey(folderId: string | null): SectorIdentityKey {
-  return folderId === null ? UNCATEGORIZED_SECTOR_KEY : `folder:${folderId}`;
+// v3 (ADR-0112): heatmap folder_id 는 항상 실폴더 — __uncat__ 센티널 키는 폐지.
+export function sectorIdentityKey(folderId: string): SectorIdentityKey {
+  return `folder:${folderId}`;
 }
 
 export interface IndexSectorRankingUiState {
