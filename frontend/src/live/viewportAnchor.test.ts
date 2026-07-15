@@ -6,6 +6,11 @@ import {
   computeRestoreRange,
   type TabViewport,
 } from './viewportAnchor';
+import { CHART_TIMESCALE_OPTIONS } from '../util/chartScale';
+
+// live-edge 복원은 rightOffset(밀도 파생)을 더한다 — 기대값을 상수에서 유도해
+// 밀도 다이얼 변경 시 마법수로 깨지지 않게 한다.
+const RIGHT_OFFSET = CHART_TIMESCALE_OPTIONS.rightOffset ?? 0;
 
 // Real-anchored single-session axis (origin = session open), so within the
 // session toReal/toVirtual are identity in ms — keeps the expected math obvious.
@@ -93,7 +98,7 @@ describe('computeRestoreRange', () => {
   });
 
   it('live-edge: preserves the saved zoom with right-offset whitespace, ignoring the index', () => {
-    expect(computeRestoreRange(liveEdge, 200, null)).toEqual({ from: 150, to: 215, scrollToRight: false });
+    expect(computeRestoreRange(liveEdge, 200, null)).toEqual({ from: 150, to: 200 + RIGHT_OFFSET, scrollToRight: false });
   });
 
   it('live-edge: preserves the saved right-side padding exactly when captured', () => {
@@ -117,7 +122,7 @@ describe('computeRestoreRange', () => {
   });
 
   it('live-edge: clamps from to >= 0 when fewer bars than the saved span', () => {
-    expect(computeRestoreRange(liveEdge, 30, null)).toEqual({ from: 0, to: 45, scrollToRight: false });
+    expect(computeRestoreRange(liveEdge, 30, null)).toEqual({ from: 0, to: 30 + RIGHT_OFFSET, scrollToRight: false });
   });
 
   it('rounds a fractional saved span', () => {

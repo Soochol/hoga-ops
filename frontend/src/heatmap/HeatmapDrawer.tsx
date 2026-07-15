@@ -272,7 +272,7 @@ function RowTrailing({ name, onOpenMenu }: { name: string; onOpenMenu: (e: React
   );
 }
 
-// w-64 = 320px @ 20px root. FolderAddButton 과 동일한 우측정렬 초기추정폭.
+// w-64 = 288px @ 18px root. FolderAddButton 과 동일한 우측정렬 초기추정폭.
 const POP_W = 320;
 
 /** 종목 검색 팝오버 (controlled) — 마운트되면 열린 상태. anchorRef 우하단 기준 우측정렬 후

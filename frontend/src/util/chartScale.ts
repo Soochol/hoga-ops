@@ -1,15 +1,14 @@
 /**
- * Static chart option overrides for the 1.25× default density.
+ * Static chart option overrides for the default density.
  *
  * Why this module exists: `lightweight-charts` renders to `<canvas>` and
  * its layout/text options do not inherit from CSS. The CSS single-dial
- * (`:root font-size: 20px`) does not reach the canvas. These constants
- * keep all charts visually aligned with the rest of the UI at the current
- * default density.
- *
- * Future density modes: if `:root font-size` changes, the values below
- * must be updated alongside. See DESIGN.md "Scale Factor" for the
- * intentional scope limitation.
+ * (`:root font-size`, mirrored by RENDERED_ROOT_PX in design-tokens.ts)
+ * does not reach the canvas. The constants below derive from
+ * RENDERED_ROOT_PX so a dial change propagates here automatically —
+ * but charts read them at mount, so density changes still need a chart
+ * remount. See DESIGN.md "Scale Factor" for the intentional scope
+ * limitation.
  */
 import { CrosshairMode } from 'lightweight-charts';
 import type {
@@ -18,18 +17,22 @@ import type {
   LayoutOptions,
   TimeScaleOptions,
 } from 'lightweight-charts';
+import { RENDERED_ROOT_PX } from '../styles/design-tokens';
 
-/** Library default font is 12; we use 15 (= 12 × 1.25). */
+/** Default density multiplier (18px root / 16px base intent = 1.125). */
+const DENSITY = RENDERED_ROOT_PX / 16;
+
+/** Library default font is 12; scaled by the density dial (12 × 1.125 → 14). */
 export const CHART_LAYOUT_OPTIONS: DeepPartial<LayoutOptions> = {
-  fontSize: 15,
+  fontSize: Math.round(12 * DENSITY),
 };
 
 /**
- * `rightOffset` stays at 15 (1.25× of the default 12).
- * `barSpacing` uses default spacing.
+ * `rightOffset` scales from the library default 12 with the dial
+ * (12 × 1.125 → 14 bars). `barSpacing` uses default spacing.
  */
 export const CHART_TIMESCALE_OPTIONS: DeepPartial<TimeScaleOptions> = {
-  rightOffset: 15,
+  rightOffset: Math.round(12 * DENSITY),
   barSpacing: 6,
 };
 

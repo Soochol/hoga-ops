@@ -20,7 +20,7 @@ The design system has a **single density dial** at `:root font-size`.
 | Term | Meaning |
 |---|---|
 | **Base intent (1.0×)** | The pixel target captured in token rem values, calibrated against a 16px root. Reflects the original 2026-05-20 design intent. |
-| **Default density (1.25×)** | What the app renders at browser zoom 100%. `:root { font-size: 20px }` lifts every rem-based token by 1.25×. |
+| **Default density (1.125×)** | What the app renders at browser zoom 100%. `:root { font-size: 18px }` lifts every rem-based token by 1.125×. |
 | **Scale dial** | The `:root font-size` declaration in `frontend/src/styles/tokens.css`. Changing it shifts all CSS sizing uniformly. |
 
 **Scope of the dial:**
@@ -28,7 +28,7 @@ The design system has a **single density dial** at `:root font-size`.
 - ❌ `lightweight-charts` canvas — text and bar spacing live in `frontend/src/util/chartScale.ts` as static constants. Must be updated alongside the dial.
 - ❌ 1px borders, hairlines, small radii (2–6px), chart canvas internal coordinates — stay in px to protect anti-aliasing and pixel-grid sharpness.
 
-**Future density modes (backlog):** A user-facing toggle (Compact 1.0× / Comfortable 1.25× / Cozy 1.4×) would set `:root font-size` via `[data-density="..."]` and require `chartScale.ts` values updated in lockstep. Not in scope today.
+**Future density modes (backlog):** A user-facing toggle (Compact 1.0× / Comfortable 1.125× / Cozy 1.25×) would set `:root font-size` via `[data-density="..."]`; `chartScale.ts` now derives from `RENDERED_ROOT_PX` (design-tokens.ts) but charts read it at mount, so a runtime toggle still needs a chart remount. Not in scope today.
 
 ## Aesthetic Direction
 
@@ -36,7 +36,7 @@ The design system has a **single density dial** at `:root font-size`.
 - **Decoration level:** Minimal-intentional — typography does the work. Single accent color. No patterns, textures, gradients, or decorative blobs.
 - **Mood:** Serious. Information-first. The product should feel like a precision tool, not a SaaS dashboard. Closer in spirit to Linear than to a Y Combinator startup landing page.
 - **Reference points:** TradingView (chart syntax), Linear (UI restraint), Vercel (typography), Bloomberg (data density — but without the 1990s color palette).
-- **Density posture:** Ships at a comfortable density (1.25× of base intent) that approaches typical-SaaS sizing. The original 1.0× intent (`denser than typical SaaS`, Bloomberg-leaning) is preserved in the token system and reachable through a future Compact density toggle. The product DNA is "Linear-like restraint" at the chosen density, not "must always be small."
+- **Density posture:** Ships at a comfortable density (1.125× of base intent), a notch denser than typical-SaaS sizing (was 1.25× until 2026-07-15). The original 1.0× intent (`denser than typical SaaS`, Bloomberg-leaning) is preserved in the token system and reachable through a future Compact density toggle. The product DNA is "Linear-like restraint" at the chosen density, not "must always be small."
 
 ## Typography
 
@@ -53,16 +53,16 @@ The design system has a **single density dial** at `:root font-size`.
 - **Scale (rem-based, single dial at `:root font-size`):**
 
 <!-- BEGIN AUTO: tokens-typography -->
-| Token | Base intent (1.0×) | Rendered @ default (1.25×) | Use |
+| Token | Base intent (1.0×) | Rendered @ default (1.125×) | Use |
 |---|---|---|---|
-| `badge` | 8.5px | 10.625px | Hierarchical badges (e.g., SymbolSearch market tag) |
-| `xs` | 10.5px | 13.125px | Small-caps labels, badges |
-| `sm` | 11.5px | 14.375px | Table rows, secondary mono values |
-| `base` | 13px | 16.25px | Body / UI default |
-| `md` | 14px | 17.5px | Section / page headings |
-| `lg` | 16px | 20px | Brand text |
-| `xl` | 22px | 27.5px | Current price (price strip) |
-| `2xl` | 32px | 40px | Future hero numerics |
+| `badge` | 8.5px | 9.563px | Hierarchical badges (e.g., SymbolSearch market tag) |
+| `xs` | 10.5px | 11.813px | Small-caps labels, badges |
+| `sm` | 11.5px | 12.938px | Table rows, secondary mono values |
+| `base` | 13px | 14.625px | Body / UI default |
+| `md` | 14px | 15.75px | Section / page headings |
+| `lg` | 16px | 18px | Brand text |
+| `xl` | 22px | 24.75px | Current price (price strip) |
+| `2xl` | 32px | 36px | Future hero numerics |
 <!-- END AUTO: tokens-typography -->
 
 ## Color
@@ -76,7 +76,7 @@ The design system has a **single density dial** at `:root font-size`.
 
   | Token | Obsidian (dark) | Ledger (light) | Use |
   |---|---|---|---|
-  | `--bg` | `#0A0A0C` | `#F6F4EE` | App background |
+  | `--bg` | `#060608` | `#F6F4EE` | App background — 카드와의 명도차가 패널 분리의 1차 수단 (2026-07-15 심도 강화) |
   | `--bg-card` | `#121216` | `#FDFCF8` | Panes, cards, toolbars |
   | `--bg-subtle` | `#0E0E11` | `#F2EFE7` | Nav, price strip, dropdown headers |
   | `--bg-input` | `#101014` | `#FDFCF8` | Inputs, comboboxes, default tab |
@@ -147,27 +147,27 @@ The design system has a **single density dial** at `:root font-size`.
 
 ## Spacing
 
-- **Base unit:** 4px (base intent); 5px (rendered @ default density)
-- **Density:** Comfortable at default density (1.25×) — capable of reaching Bloomberg-density via a future Compact mode (1.0× = base intent). Density is a spectrum, not a fixed point. The token system holds both; default rendering picks one.
+- **Base unit:** 4px (base intent); 4.5px (rendered @ default density)
+- **Density:** Comfortable at default density (1.125×) — capable of reaching Bloomberg-density via a future Compact mode (1.0× = base intent). Density is a spectrum, not a fixed point. The token system holds both; default rendering picks one.
 - **Scale (rem-based, single dial):**
 
 <!-- BEGIN AUTO: tokens-spacing -->
-| Token | Base intent (1.0×) | Rendered @ default (1.25×) | Use |
+| Token | Base intent (1.0×) | Rendered @ default (1.125×) | Use |
 |---|---|---|---|
-| `2xs` | 2px | 2.5px | Hairline gaps |
-| `xs` | 4px | 5px | Pane gap, tight stacking |
-| `sm` | 8px | 10px | Card padding inside, gap between sidebar cards |
-| `md` | 12px | 15px | Card padding default |
-| `lg` | 16px | 20px | Section spacing, nav item padding |
-| `xl` | 24px | 30px | Major section dividers |
-| `2xl` | 32px | 40px | (rarely used) |
-| `3xl` | 48px | 60px | (rarely used) |
+| `2xs` | 2px | 2.25px | Hairline gaps |
+| `xs` | 4px | 4.5px | Pane gap, tight stacking |
+| `sm` | 8px | 9px | Card padding inside, gap between sidebar cards |
+| `md` | 12px | 13.5px | Card padding default |
+| `lg` | 16px | 18px | Section spacing, nav item padding |
+| `xl` | 24px | 27px | Major section dividers |
+| `2xl` | 32px | 36px | (rarely used) |
+| `3xl` | 48px | 54px | (rarely used) |
 <!-- END AUTO: tokens-spacing -->
 
-- **Card padding:** 12–14px standard. Sidebar cards 12px. Pane bodies 4–6px (info density priority) (base intent — rendered ×1.25 at default density).
-- **Pane gap:** 8px between chart panes (base intent — rendered ×1.25 at default density).
-- **Sidebar width:** 320px base intent / 400px rendered (token: --sidebar-w).
-- **Top nav height:** 32px base intent / 40px rendered (token: --h-top-nav).
+- **Card padding:** 12–14px standard. Sidebar cards 12px. Pane bodies 4–6px (info density priority) (base intent — rendered ×1.125 at default density).
+- **Pane gap:** 8px between chart panes (base intent — rendered ×1.125 at default density).
+- **Sidebar width:** 320px base intent / 360px rendered (token: --sidebar-w).
+- **Top nav height:** 32px base intent / 36px rendered (token: --h-top-nav).
 
 ## Layout
 
@@ -219,7 +219,7 @@ Quiet Trading Terminal migration completed across app shell, route surfaces, rai
 ## Components — Design Tokens for Specific Patterns
 
 > **Scale note:** All px values in this section are **1.0× base intent**.
-> Default rendering = × 1.25. See [Scale Factor](#scale-factor).
+> Default rendering = × 1.125. See [Scale Factor](#scale-factor).
 
 ### Tabs (Replay Viewer page)
 - Height: 32px
@@ -305,17 +305,19 @@ Two layers, each with one shared owner. Use them; do **not** hand-roll a dismiss
 | 2026-07-08 | 미정의 `--font-ui`/`--font-mono` 정의 + Geist→IBM Plex 전환 | 토큰이 정의된 적 없어 앱 전체가 Times(세리프)로 렌더링되던 P0. IBM Plex Sans KR 은 한글까지 한 패밀리로 커버, Plex Mono 로 tabular-nums 유지. |
 | 2026-07-08 | 상업화 듀얼 테마 Obsidian(다크)/Ledger(라이트) 도입 — 기존 틸 다크는 Obsidian 으로 교체 | 판매 가능한 프로 룩 요구. 틸+단일 형광은 생성형 기본값이라 차별성 없음 → 브래스/장부초록으로 아이덴티티 확보. 색 규율(UI/상태/시세 3분류)은 양 테마 계승. `[data-theme]` 계약 + 라우트별 auto. |
 | 2026-07-08 | 차트 색을 `resolveTokensThemed` 지연 해석으로 전환 (모듈 상수 박제 제거) | canvas 가 var() 를 못 받아 모듈 로드 시점 색을 박제 → 부트 테마에 고정되던 결함. 프로젝터 캐시에 테마 키, 시리즈 옵션 thunk 화로 테마 전환 대응. |
+| 2026-07-15 | 기본 밀도 1.25×(20px) → 1.125×(18px) 하향 + `RENDERED_ROOT_PX` SSOT 신설 | 사용자 A/B(16/18/20px 스크린샷)로 18px 확정 — 기본 글씨가 크다는 체감 해소, 밀도 DNA 회복. 다이얼 값을 design-tokens.ts `RENDERED_ROOT_PX` 로 승격해 생성기 주석·표와 chartScale.ts 캔버스 상수가 모두 파생(하드코딩 ×20 제거). |
+| 2026-07-15 | Obsidian `--bg` #0A0A0C → #060608 심도 강화 | 배경↔카드 명도차(Δ~8)가 너무 옅어 패널이 한 덩어리로 읽힘. 다크에서 1px 보더 강화는 반복 실패(#610~613) — 분리는 톤+간격이 담당한다는 규칙 확정. 카드 크롬(`--bg-card`+border+radius+gap) 자체는 기존 구조 유지. |
 
 ## App-shell & live tokens (ADR-0039, ADR-0052)
 
 Layout and source-identity tokens beyond the core scale. The Right Rail tokens (ADR-0052) are app-shell-wide (every route); the live tokens are `/live`-scoped. These layout widths/heights live in `design-tokens.ts` `SIZE_TOKENS` (ADR-0012); this hand-maintained table mirrors them for reference (no auto-marker yet):
 
-| Token | Base intent (1.0×) | Rendered @ default (1.25×) | Use |
+| Token | Base intent (1.0×) | Rendered @ default (1.125×) | Use |
 |---|---|---|---|
-| `--rail-w` | 48px | 60px | Right Rail icon column width (app shell, all routes; fixed — does not collapse) |
-| `--watchlist-panel-w` | 280px | 350px | Watchlist Panel width — opened from the Right Rail (global) |
-| `--h-top-nav` | 32px | 40px | Global top navigation row |
-| `--h-live-header` | 32px | 40px | Live page header row (page title) |
+| `--rail-w` | 48px | 54px | Right Rail icon column width (app shell, all routes; fixed — does not collapse) |
+| `--watchlist-panel-w` | 280px | 315px | Watchlist Panel width — opened from the Right Rail (global) |
+| `--h-top-nav` | 32px | 36px | Global top navigation row |
+| `--h-live-header` | 32px | 36px | Live page header row (page title) |
 
 **Source identity chips** — neither UI state nor status nor price direction, but data provenance.
 A fourth category limited to identifying which capture source rendered a given segment.
@@ -332,4 +334,4 @@ A fourth category limited to identifying which capture source rendered a given s
 - **Domain identifiers** (`hogaplay`, `kis_live`, `cycle_lag_ms`, `EGW00201`): English lowercase, code-style (monospace where appropriate). Never localized.
 - **User-facing messages**: Korean natural-language sentences. No trailing periods. Actions are nominalized ("재발급" not "재발급하기").
 - **Status labels** (LiveStatusBar pills, banner badges): Korean single words ("장 외", "대기 중", "준비됨").
-- **Layout grid for `/live`**: 4-row grid mirroring `/replay`'s PriceStrip pattern — header (32/40px) + status bar (52/65px) + toolbar (60/75px) + workarea (1fr).
+- **Layout grid for `/live`**: 4-row grid mirroring `/replay`'s PriceStrip pattern — header (32/36px) + status bar (52/58.5px) + toolbar (60/67.5px) + workarea (1fr).

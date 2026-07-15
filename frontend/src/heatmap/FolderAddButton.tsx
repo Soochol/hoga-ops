@@ -5,7 +5,7 @@ import type { SymbolHit } from '../api/types';
 import { useAddToFolder } from './useAddToFolder';
 import { useClampedFixedPosition } from '../util/useClampedFixedPosition';
 
-// w-64 = 16rem = 320px @ 20px root. 우측 정렬용 초기 추정폭 — 클램프가 실측으로 보정한다.
+// w-64 = 16rem = 288px @ 18px root. 우측 정렬용 초기 추정폭 — 클램프가 실측으로 보정한다.
 const POP_W = 320;
 
 /** 폴더 헤더의 ＋종목: SymbolSearch 팝오버 → useAddToFolder(code, folderId).
