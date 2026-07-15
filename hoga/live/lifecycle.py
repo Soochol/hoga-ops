@@ -23,8 +23,10 @@ from pathlib import Path
 from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
+    from .broker_rest_poller import BrokerRestPoller
     from .rest30_recorder import Rest30sRecorder
     from .rest_poller import LiveRestPoller
+    from .ws_frames import WsTick
 
 from pydantic import BaseModel, Field
 
@@ -104,6 +106,14 @@ class LiveStatus(BaseModel):
     rest_poller_last_error_code: str | None = None
     rest_poller_last_error_count: int = 0
     rest_poller_backoff_remaining: int = 0
+    # 거래원 REST 폴러(ADR-0111) — WS member TR 대체. additive; 프론트 미소비(관측 전용).
+    # PR① 실검증 신호: broker_poll_running·last_cycle_ms로 REST 경로가 도는지 확인한다.
+    broker_poll_running: bool = False
+    broker_poll_last_cycle_ms: int | None = None
+    broker_poll_target_count: int = 0
+    broker_poll_degraded: bool = False
+    broker_poll_last_error: str | None = None
+    broker_poll_rate_limit_bounces: int | None = None
     kis_capacity_scheduler: dict[str, object] | None = None
     # Per-cache hit/miss/eviction observability (PR-1). Assembled in the status
     # route from closure-reachable cache instances; keyed by cache name. additive
@@ -136,6 +146,7 @@ class _State:
         live_set: tuple[str, ...] = (),
         rest_poller: LiveRestPoller | None = None,
         rest30_recorder: Rest30sRecorder | None = None,
+        broker_poller: BrokerRestPoller | None = None,
         program_trade_collector=None,
         storage_policy: LiveStoragePolicy = "ws_plus_rest",
         kis_rest_bypass_enabled: bool = False,
@@ -152,6 +163,10 @@ class _State:
         self.session = session
         self.rest_poller = rest_poller
         self.rest30_recorder = rest30_recorder
+        # 거래원(회원사) REST 폴러 — WS member TR(H0STMBC0) 대체(ADR-0111). rest_poller와
+        # 같이 WS 세션 밖이라 lifecycle이 직접 소유. live_set을 타깃으로 폴링해 스트림
+        # on_tick에 합성 BROKER 틱을 주입한다(기존 저장 경로 재사용).
+        self.broker_poller = broker_poller
         self.program_trade_collector = program_trade_collector
         self.storage_policy = storage_policy
         self.kis_rest_bypass_enabled = kis_rest_bypass_enabled
@@ -397,6 +412,11 @@ def get_status() -> LiveStatus:
     session.status_fields가 단일 계산(account_health WS-probe와 공유, dedup). poller.alive OR-항·
     idle/offline·today-promote 합성은 여기 전용. market_closed는 lifecycle이 계산해 전달."""
     poller = _state.rest_poller
+    broker_poll_status = (
+        _state.broker_poller.status()
+        if _state.broker_poller is not None
+        else None
+    )
     rest30_status = (
         _state.rest30_recorder.status()
         if _state.rest30_recorder is not None
@@ -467,6 +487,20 @@ def get_status() -> LiveStatus:
         rest_poller_backoff_remaining=(
             rest_poller_status.backoff_remaining if rest_poller_status else 0
         ),
+        broker_poll_running=bool(broker_poll_status and broker_poll_status.running),
+        broker_poll_last_cycle_ms=(
+            broker_poll_status.last_cycle_ms if broker_poll_status else None
+        ),
+        broker_poll_target_count=(
+            broker_poll_status.target_count if broker_poll_status else 0
+        ),
+        broker_poll_degraded=bool(broker_poll_status and broker_poll_status.degraded),
+        broker_poll_last_error=(
+            broker_poll_status.last_error if broker_poll_status else None
+        ),
+        broker_poll_rate_limit_bounces=(
+            broker_poll_status.rate_limit_bounces if broker_poll_status else None
+        ),
         kis_rest_bypass_enabled=_state.kis_rest_bypass_enabled,
     )
 
@@ -484,6 +518,10 @@ def reset_for_tests() -> None:
         task.cancel()
     collector = _state.program_trade_collector
     task = getattr(collector, "_task", None)
+    if task is not None and not task.done():
+        task.cancel()
+    broker_poller = _state.broker_poller
+    task = getattr(broker_poller, "_task", None)
     if task is not None and not task.done():
         task.cancel()
     _state = _State()
@@ -631,6 +669,52 @@ def _sync_exclusion(poller: LiveRestPoller | None, live_set: tuple[str, ...]) ->
         poller.set_excluded_codes(set(live_set))
 
 
+async def _dispatch_broker_tick(tick: WsTick) -> None:
+    """거래원 폴러가 만든 합성 BROKER 틱을 현재 모든 스트림에 브로드캐스트한다(ADR-0111).
+
+    파티션은 disjoint하고 각 스트림의 on_tick이 활성집합 밖 코드를 입구에서 드롭하므로
+    (stream.py 활성집합 필터), 정확히 소유 스트림 1개만 실제로 수집한다. 코드→계정 소유를
+    폴러에 복제하는 대신 브로드캐스트하는 이유: refresh Pass 0의 활성집합 스왑이 동기·원자라
+    이중 수락 레이스가 없고(이중-write 방지 불변식과 동일 근거), ≤4개 스트림 순회가 소유
+    해석보다 단순·안전하다. `_state.session.streams`를 호출 시점에 읽어 refresh 후에도 항상
+    현재 스트림 집합에 디스패치한다."""
+    for conn in list(_state.session.streams.values()):
+        stream = conn.stream_obj
+        on_tick = getattr(stream, "on_tick", None)
+        if on_tick is not None:
+            await on_tick(tick)
+
+
+def _ensure_broker_poller(data_dir: Path) -> BrokerRestPoller | None:
+    """broker_poller를 1회 생성·재사용. creds(account 0) 없으면 None(_ensure_poller 미러).
+    이미 있으면 그대로 반환 → 타깃(live_set) 보존."""
+    from .broker_rest_poller import BrokerRestPoller  # noqa: PLC0415
+
+    if _state.broker_poller is not None:
+        return _state.broker_poller
+    if kis_runtime.ensure_kis_client_from_env(data_dir) is None:  # account 0
+        return None
+    # rest_poller와 동일하게 KisClient 고정 참조가 아니라 scheduler-backed proxy를 준다.
+    # 거래원 fetch는 background 우선순위라 user-visible 호가/캔들에 양보한다(ADR-0100).
+    capture_client = ScheduledLiveRestCaptureClient(
+        data_dir=data_dir,
+        scheduler=ensure_kis_capacity_scheduler(data_dir),
+        source="live-broker-poller",
+    )
+    poller = BrokerRestPoller(
+        kis_resolver=lambda: capture_client,
+        dispatch_fn=_dispatch_broker_tick,
+    )
+    poller.start()
+    return poller
+
+
+def _sync_broker_poller_targets(live_set: tuple[str, ...]) -> None:
+    """거래원 폴러 타깃을 live_set과 동기화. start/refresh가 live_set을 재계산한 직후 호출."""
+    if _state.broker_poller is not None:
+        _state.broker_poller.set_targets(set(live_set))
+
+
 def _signal_alert_target_names(data_dir: Path, codes: set[str]) -> dict[str, str]:
     from hoga.api.watchlist import load_document  # noqa: PLC0415
 
@@ -679,15 +763,22 @@ async def _start_live_stream_locked(*, data_dir: Path) -> bool:
 
     # 3. poller 보장(없으면 생성, 있으면 _subscribed 보존)
     poller = _state.rest_poller
+    broker_poller = _state.broker_poller
     if _state.kis_rest_bypass_enabled:
         if poller is not None:
             await poller.stop()
             _state.rest_poller = None
         poller = None
+        # 거래원 폴러도 REST 기반이라 bypass면 함께 정지(rest_poller와 동일 정책).
+        if broker_poller is not None:
+            await broker_poller.stop()
+            _state.broker_poller = None
+        broker_poller = None
     else:
         poller = _ensure_poller(data_dir)
         if poller is None:
             return False  # account 0 creds 사라짐(레이스) — 오프라인
+        broker_poller = _ensure_broker_poller(data_dir)
 
     # 4. Storage policy 적용: WS targets + REST 30s recorder targets 산출.
     codes, _rest_targets = await _sync_storage_targets(data_dir)
@@ -697,10 +788,13 @@ async def _start_live_stream_locked(*, data_dir: Path) -> bool:
 
     if _state.storage_policy == "rest_only":
         _state.rest_poller = poller
+        _state.broker_poller = broker_poller
         await _state.session.start(
             codes=[], n_configured=n_configured, data_dir=data_dir,
             now_ms=_now_ms(), build_conn=_build_conn,
         )
+        # rest_only면 live_set이 비어 폴러는 유휴(빈 타깃 → no-op 사이클).
+        _sync_broker_poller_targets(_state.session.live_set)
         return True
 
     # 6. 코드 있는 파티션만 conn 생성(session이 dynamic-N 빌드 — 빈 part=연결 없음 → C4)
@@ -709,6 +803,9 @@ async def _start_live_stream_locked(*, data_dir: Path) -> bool:
         now_ms=_now_ms(), build_conn=_build_conn,
     )
     _state.rest_poller = poller
+    _state.broker_poller = broker_poller
+    # 거래원 폴러 타깃을 live_set과 동기화(session.start가 확정한 live_set 기준).
+    _sync_broker_poller_targets(_state.session.live_set)
 
     _seed_today_peak_states(date=_today_kst(), live_root=data_dir / "live")
 
@@ -724,10 +821,13 @@ async def _stop_live_stream_locked() -> None:
     """완전 정지 — conn teardown + poller stop + _state 리셋."""
     global _state  # noqa: PLW0603
     poller = _state.rest_poller
+    broker_poller = _state.broker_poller
     await _state.session.stop(_teardown_conn)
     await stop_storage_runtime(_state)
     if poller is not None:
         await poller.stop()
+    if broker_poller is not None:
+        await broker_poller.stop()
     _state = _State()
 
 
@@ -772,6 +872,9 @@ async def refresh_live_stream(*, data_dir: Path) -> None:
         if _state.kis_rest_bypass_enabled and _state.rest_poller is not None:
             await _state.rest_poller.stop()
             _state.rest_poller = None
+        if _state.kis_rest_bypass_enabled and _state.broker_poller is not None:
+            await _state.broker_poller.stop()
+            _state.broker_poller = None
         if not _state.streams and _state.rest_poller is None:
             # 한 번도 시작 안 됨 → start가 가드(creds/빈 watchlist) 수행
             await _start_live_stream_locked(data_dir=data_dir)
@@ -794,6 +897,11 @@ async def refresh_live_stream(*, data_dir: Path) -> None:
             codes=codes, data_dir=data_dir,
             build_conn=_build_conn, teardown_conn=_teardown_conn,
         )
+        # 거래원 폴러 보장(부팅 후 최초 refresh에서 생성될 수도) + 타깃을 갱신된 live_set과
+        # 동기화. bypass가 아니고 streams가 있을 때만(위 가드 통과) 도달.
+        if not _state.kis_rest_bypass_enabled and _state.broker_poller is None:
+            _state.broker_poller = _ensure_broker_poller(data_dir)
+        _sync_broker_poller_targets(_state.session.live_set)
         _seed_today_peak_states(date=_today_kst(), live_root=data_dir / "live")
         await _buffer.drop_codes_except(set(codes))  # 떠난 코드 ring 해제
 
