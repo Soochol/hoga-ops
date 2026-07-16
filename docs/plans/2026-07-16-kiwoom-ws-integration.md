@@ -136,7 +136,8 @@ DISCONNECTED → CONNECTING → AUTHED → REGISTERING → LIVE
 
 | PR | 범위 | 합격 기준 |
 |---|---|---|
-| **PR-1** | kiwoom_runtime + 토큰 + frames + ws_client (배선 없음, 순수 추가) | 실측 payload 골든 테스트 + KIS 필드명 byte-parity + 실키 스모크 |
+| ~~**PR-0**~~ ✅ | 플랜 + ADR-0116 (커밋 32211c4c) | — |
+| ~~**PR-1**~~ ✅ | kiwoom_fields/frames/ws_client/token_provider/runtime (커밋 42281847) | 골든 테스트(실측 payload)·byte-parity·fake소켓 상태머신·**실 API NXT 애프터마켓 367틱 검증**·20 tests·ruff/pyright clean |
 | **PR-2** | sources.py `kiwoom_live` + promote/완결성 게이트 확장 | 기존 소스 read-path 무회귀 |
 | **PR-3** | coverage+lifecycle 배선 + `kiwoom_enabled` (기본 off) | 머지 후 동작 불변, 토글 on 도그푸딩 |
 | **PR-4** | 온디맨드 WS(표시전용) + 0F/0w 어댑터 + 관측성(LiveStatus collectors) | 장중 이중 구독 parity 확인 |
