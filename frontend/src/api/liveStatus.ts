@@ -43,6 +43,9 @@ export interface KiwoomStatus {
   accounts_configured: number;
   connected_accounts: number;
   subscribed_count: number;
+  // 키움 WS 수집 중인 종목 코드(화질 도트용). deriveCollectionStatus가 멤버십으로
+  // realtime(●) 판정. 백엔드 신규 필드라 optional — 구 응답엔 없을 수 있음.
+  subscribed_codes?: string[];
   last_tick_ms: number | null;
   accounts: KiwoomAccountStatus[];
 }

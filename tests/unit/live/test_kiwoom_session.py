@@ -118,6 +118,7 @@ async def test_status_snapshot_shape():
     assert st["accounts_configured"] == 2
     assert st["connected_accounts"] == 2  # FakeClient.connected=True
     assert st["subscribed_count"] == 250
+    assert set(st["subscribed_codes"]) == set(f"{i:06d}" for i in range(250))
     assert [a["account_id"] for a in st["accounts"]] == [0, 1]
     assert st["accounts"][0]["sub_expected"] == 200
     await mgr.stop()

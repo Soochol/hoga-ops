@@ -116,11 +116,16 @@ class KiwoomSessionManager:
                 "kicked_by_peer": c.kicked_by_peer,
                 "last_tick_ms": c.last_tick_ms,
             })
+        codes = self.active_codes()
         return {
             "enabled": True,
             "accounts_configured": len(self._conns),
             "connected_accounts": self.connected_accounts,
-            "subscribed_count": len(self.active_codes()),
+            "subscribed_count": len(codes),
+            # 종목별 화질 도트(PR-6b)용 — 프론트 deriveCollectionStatus가 이 집합
+            # 멤버십으로 키움 종목을 realtime(●)으로 판정. kis_api_targets(최대 500)와
+            # 동급 페이로드라 status 폴링 규모와 정합.
+            "subscribed_codes": codes,
             "last_tick_ms": last_tick,
             "accounts": accounts,
         }

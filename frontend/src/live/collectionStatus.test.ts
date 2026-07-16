@@ -25,6 +25,13 @@ describe('deriveCollectionStatus', () => {
   it('uncollected: code가 null', () => {
     expect(deriveCollectionStatus(null, ['005930'], ['005930'], ['005930'])).toBe('uncollected');
   });
+  it('realtime: 키움 WS 수집 종목(히트맵)도 realtime (ADR-0116 PR-6b)', () => {
+    // live_set 밖이지만 kiwoomCodes에 있으면 realtime(●).
+    expect(deriveCollectionStatus('005380', [], [], [], ['005380'])).toBe('realtime');
+  });
+  it('kiwoomCodes 미지정(구 응답)이면 기존 동작 유지', () => {
+    expect(deriveCollectionStatus('005380', [], [], ['005380'])).toBe('polling');
+  });
 });
 
 describe('deriveDisplayStatus', () => {

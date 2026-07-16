@@ -12,9 +12,12 @@ export function deriveCollectionStatus(
   liveSet: string[],
   watchlistCodes: string[],
   viewedCodes: string[],
+  kiwoomCodes: string[] = [],
 ): CollectionStatus {
   if (!code) return 'uncollected';
-  if (liveSet.includes(code)) return 'realtime';
+  // 키움 WS 수집 종목(히트맵)도 KIS WS(live_set)와 동급 실시간(ADR-0116). 종목 소유권
+  // 단일이라 두 집합은 disjoint — 합집합 멤버십으로 realtime(●) 판정.
+  if (liveSet.includes(code) || kiwoomCodes.includes(code)) return 'realtime';
   if (viewedCodes.includes(code)) return 'polling';
   if (watchlistCodes.includes(code)) return 'waiting_eod';
   return 'uncollected';
@@ -55,6 +58,7 @@ export interface CollectionViewInput {
   liveSet: string[];
   watchlistCodes: string[];
   viewedCodes: string[];
+  kiwoomCodes?: string[];
   kisApiTargets?: string[];
   captureCandidate?: boolean;
   liveConnection?: boolean;
@@ -70,12 +74,14 @@ export interface CollectionView {
 export function deriveStorageLabel(input: {
   code: string | null;
   liveSet: string[];
+  kiwoomCodes?: string[];
   kisApiTargets?: string[];
   captureCandidate?: boolean;
 }): string {
-  const { code, liveSet, kisApiTargets = [], captureCandidate = true } = input;
+  const { code, liveSet, kiwoomCodes = [], kisApiTargets = [], captureCandidate = true } = input;
   if (!code || !captureCandidate) return '저장 제외';
   if (liveSet.includes(code)) return 'KIS WS 저장 중';
+  if (kiwoomCodes.includes(code)) return '키움 WS 저장 중';
   if (kisApiTargets.includes(code)) return 'KIS API 30초 저장 중';
   return '대기';
 }
@@ -86,6 +92,7 @@ export function deriveCollectionView(input: CollectionViewInput): CollectionView
     input.liveSet,
     input.watchlistCodes,
     input.viewedCodes,
+    input.kiwoomCodes ?? [],
   );
   const displayStatus = deriveDisplayStatus(input.liveConnection ?? true, collectionStatus);
   return {
@@ -95,6 +102,7 @@ export function deriveCollectionView(input: CollectionViewInput): CollectionView
     storageLabel: deriveStorageLabel({
       code: input.code,
       liveSet: input.liveSet,
+      kiwoomCodes: input.kiwoomCodes,
       kisApiTargets: input.kisApiTargets,
       captureCandidate: input.captureCandidate,
     }),
