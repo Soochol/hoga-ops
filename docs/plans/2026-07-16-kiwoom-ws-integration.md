@@ -147,7 +147,7 @@ DISCONNECTED → CONNECTING → AUTHED → REGISTERING → LIVE
 | ~~**PR-5**~~ ✅ | kiwoom_client ka10080 REST + KisCandle 어댑터 (커밋 543722f6) | 어댑터·walk-back·until_date·dedup 7종(MockTransport 실응답 재현) |
 | ~~**PR-5b**~~ ✅ | 백필 range prefetch 키움우선→KIS폴백 (커밋 31ca3760) | range채움→KIS미호출·갭폴백·예외폴백·미배선불변 5종·134 api tests. ka10080 실측(900봉·날짜앵커없음)으로 range prefetch 확정 |
 | ~~**PR-6**~~ ✅ | 프론트: 설정 키움 카드(토글+상태줄)·하단바 커버리지 칩 (커밋 c0efa285) | 칩 3종·토글/상태줄 4종·3746 tests·build |
-| **PR-6b** | 종목별 화질 도트(`●`/`◐`) — 백엔드 per-code 소스 귀속 노출 후 | CollectionDot 패턴 재사용 |
+| ~~**PR-6b**~~ ✅ | 화질 도트 — 키움 종목도 realtime(●) (커밋 cd9c0dea) | status subscribed_codes 노출 + deriveCollectionStatus 확장, 기존 CollectionDot 재사용·147 tests |
 
 UX 원칙: 사용자에겐 브로커명이 아니라 **화질 등급**(실시간●/폴링◐)으로 노출.
 장애는 토스트가 아니라 커버리지 칩 숫자 하락으로.
