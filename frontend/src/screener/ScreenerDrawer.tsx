@@ -345,26 +345,18 @@ export function ScreenerDrawer() {
             onSelect={setSelectedSavedId}
           />
         )}
-        <div className="flex gap-sm">
-          <ToolbarButton
-            tone="primary"
-            onClick={() => void scanOnce()}
-            disabled={screener.isPending || notSeeded || !selected}
-            className="flex-1 py-1.5"
-          >
-            {screener.isPending ? '조회 중…' : '조회'}
-          </ToolbarButton>
-          <ToolbarButton
-            tone={monitoringActive ? undefined : 'primary'}
-            onClick={() => setMonitoringActive(!monitoringActive)}
-            disabled={notSeeded || !selected}
-            className="flex-1 py-1.5"
-            aria-pressed={monitoringActive}
-            data-testid="screener-monitor-toggle"
-          >
-            {monitoringActive ? '■ 종료' : '▶ 시작'}
-          </ToolbarButton>
-        </div>
+        {/* 시작 = 즉시 1회 조회 + 실시간 유지. 종료 = 중지(마지막 결과 유지). 별도의
+            수동 조회 버튼은 두지 않는다 — 시작이 즉시 조회를 겸한다. */}
+        <ToolbarButton
+          tone={monitoringActive ? undefined : 'primary'}
+          onClick={() => setMonitoringActive(!monitoringActive)}
+          disabled={notSeeded || !selected}
+          className="w-full py-1.5"
+          aria-pressed={monitoringActive}
+          data-testid="screener-monitor-toggle"
+        >
+          {monitoringActive ? '■ 종료' : '▶ 시작'}
+        </ToolbarButton>
         {monitoringActive && (
           <div className="flex flex-col gap-1.5" data-testid="screener-monitor-status">
             <div className="flex items-center gap-2 text-xs text-fg-dim">
@@ -414,7 +406,7 @@ export function ScreenerDrawer() {
           </RailState>
         )}
         {notSeeded && (
-          <RailState tone="warn" className="p-0">시드 필요 — 운영자 CLI로 시드 후 조회하세요</RailState>
+          <RailState tone="warn" className="p-0">시드 필요 — 운영자 CLI로 시드 후 시작하세요</RailState>
         )}
         {lastScan && !screener.isError && (
           <div className="flex items-center gap-2 border-t border-border pt-sm text-xs uppercase tracking-[0.08em] text-fg-dimmer">
@@ -422,7 +414,7 @@ export function ScreenerDrawer() {
               결과 {lastScan.rows.length} · {lastScan.savedName ?? '임시 조건'}
               {lastScanStaleReason && (
                 <span className="ml-1 normal-case tracking-normal" style={{ color: 'var(--warn)' }}>
-                  · {lastScanStaleReason} — 조회로 갱신
+                  · {lastScanStaleReason} — 시작으로 갱신
                 </span>
               )}
             </div>
@@ -477,7 +469,7 @@ export function ScreenerDrawer() {
             )}
           </>
         ) : (
-          <RailState>조건을 선택하고 조회하세요.</RailState>
+          <RailState>조건을 선택하고 시작하세요.</RailState>
         )}
       </RailDrawerBody>
     </RailDrawer>
