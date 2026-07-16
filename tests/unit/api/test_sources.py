@@ -34,19 +34,22 @@ def _seed_invalid_source(tmp_path: Path, date: str, code: str, source: str) -> N
     (sd / "meta.json").write_text("{")
 
 
-def test_source_name_literal_includes_kis_api() -> None:
-    assert set(get_args(SourceName)) == {"hogaplay", "kis_live", "kis_api"}
+def test_source_name_literal_includes_all_sources() -> None:
+    # kiwoom_live 추가(ADR-0116) — kis_live 인접 실시간 WS 티어.
+    assert set(get_args(SourceName)) == {"hogaplay", "kis_live", "kiwoom_live", "kis_api"}
 
 
 @pytest.mark.parametrize(
     ("policy", "expected"),
     [
-        ("hogaplay", ("hogaplay", "kis_live", "kis_api")),
-        ("hogaplay_first", ("hogaplay", "kis_live", "kis_api")),
-        ("kis_live", ("kis_live", "kis_api", "hogaplay")),
-        ("kis_ws_first", ("kis_live", "kis_api", "hogaplay")),
-        ("kis_api", ("kis_api", "kis_live", "hogaplay")),
-        ("kis_api_first", ("kis_api", "kis_live", "hogaplay")),
+        ("hogaplay", ("hogaplay", "kis_live", "kiwoom_live", "kis_api")),
+        ("hogaplay_first", ("hogaplay", "kis_live", "kiwoom_live", "kis_api")),
+        ("kis_live", ("kis_live", "kiwoom_live", "kis_api", "hogaplay")),
+        ("kis_ws_first", ("kis_live", "kiwoom_live", "kis_api", "hogaplay")),
+        ("kiwoom_live", ("kiwoom_live", "kis_live", "kis_api", "hogaplay")),
+        ("kiwoom_ws_first", ("kiwoom_live", "kis_live", "kis_api", "hogaplay")),
+        ("kis_api", ("kis_api", "kis_live", "kiwoom_live", "hogaplay")),
+        ("kis_api_first", ("kis_api", "kis_live", "kiwoom_live", "hogaplay")),
     ],
 )
 def test_ordered_sources_maps_legacy_and_policy_names(policy, expected) -> None:
@@ -62,6 +65,21 @@ def test_resolve_source_uses_ordered_policy(tmp_path: Path) -> None:
     assert resolve_source(engine, "20260622", "005930", "hogaplay_first") == "hogaplay"
     assert resolve_source(engine, "20260622", "005930", "kis_ws_first") == "kis_live"
     assert resolve_source(engine, "20260622", "005930", "kis_api_first") == "kis_api"
+
+
+def test_resolve_source_honors_kiwoom_live(tmp_path: Path) -> None:
+    # 히트맵 종목: 키움 WS 승격본만 존재(종목 소유권 단일). hogaplay_first 정책에서도
+    # hogaplay/kis_live 부재 시 kiwoom_live로 해석돼야 한다(ADR-0116).
+    _seed_source(tmp_path, "20260716", "005930", "kiwoom_live")
+    engine = _make_engine(tmp_path)
+
+    result = resolve_source_result(engine, "20260716", "005930", "hogaplay_first")
+    assert result.source == "kiwoom_live"
+    assert result.path == tmp_path / "parquet" / "20260716" / "005930" / "kiwoom_live"
+    assert result.classification is not None
+    assert result.classification.state == DiskState.COMPLETE
+    # kiwoom_ws_first 정책은 명시적으로 kiwoom_live를 최우선.
+    assert resolve_source(engine, "20260716", "005930", "kiwoom_ws_first") == "kiwoom_live"
 
 
 def test_resolve_source_falls_back_to_second_source(tmp_path: Path) -> None:

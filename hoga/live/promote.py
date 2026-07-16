@@ -513,20 +513,55 @@ async def promote_api_today(data_dir: Path, *, code: str) -> None:
     await asyncio.to_thread(_sync_parse_and_write)
 
 
+async def promote_kiwoom_today(data_dir: Path, *, code: str) -> None:
+    """키움 WS 승격 (ADR-0116) — live_kiwoom JSONL → parquet/{date}/{code}/kiwoom_live.
+
+    promote_api_today의 키움판. 소스만 다르고(kiwoom_live) 나머지는 동일: 실시간
+    WS라 kis_live처럼 sampling 메타 없음(_build_meta의 kis_api 분기 밖). 별도 루트
+    (live_kiwoom)라 KIS live JSONL과 무충돌. record/return 없음(promote_api_today와 동일).
+    """
+    from hoga.api._atomic_write import atomic_write_json
+
+    today = _today_kst_yyyymmdd()
+    jsonl_path = data_dir / "live_kiwoom" / today / f"{code}.jsonl"
+    target = data_dir / "parquet" / today / code / "kiwoom_live"
+    if not jsonl_path.exists():
+        return
+
+    def _sync_parse_and_write() -> None:
+        snapshots, trades, broker_rows, fills, meta = _parse_jsonl_incremental(
+            jsonl_path,
+            code=code,
+            date=today,
+            source="kiwoom_live",
+        )
+        target.mkdir(parents=True, exist_ok=True)
+        _atomic_write_table(write_snapshots_parquet, snapshots, target / "snapshots.parquet")
+        _atomic_write_table(write_trades_parquet, trades, target / "trades.parquet")
+        _atomic_write_table(write_brokers_parquet, broker_rows, target / "brokers.parquet")
+        _atomic_write_table(write_fills_parquet, fills, target / "fills.parquet")
+        atomic_write_json(target / "meta.json", meta, indent=2)
+
+    await asyncio.to_thread(_sync_parse_and_write)
+
+
 async def promote_one(
     jsonl_path: Path,
     parquet_root: Path,
     *,
     code: str,
     date: str,
+    source: str = "kis_live",
 ) -> None:
-    """Convert one JSONL file to Parquet artifacts under `parquet/{date}/{code}/kis_live/`.
+    """Convert one JSONL file to Parquet artifacts under `parquet/{date}/{code}/{source}/`.
 
     Idempotent: if `meta.json` already exists at the target, skip.
+    ``source`` = "kis_live"(기본) 또는 "kiwoom_live"(ADR-0116 일배치 승격). 실시간 WS라
+    양쪽 모두 sampling 메타 없음(_build_meta의 kis_api 분기 밖).
     See ADR-0038 (deferred batch promotion) and ADR-0043 (sister Today
     Promotion that this helper coexists with).
     """
-    target = parquet_root / date / code / "kis_live"
+    target = parquet_root / date / code / source
     meta_path = target / "meta.json"
     if meta_path.exists():
         # Skip ONLY a finalized promotion. A meta left by an intraday cycle whose
@@ -548,7 +583,7 @@ async def promote_one(
         return
 
     snapshots, trades, broker_rows, fills, meta = _parse_jsonl_to_records(
-        jsonl_path, code=code, date=date,
+        jsonl_path, code=code, date=date, source=source,
     )
 
     target.mkdir(parents=True, exist_ok=True)
@@ -563,8 +598,17 @@ async def promote_one(
     )
 
 
+# 일배치 승격 대상 (JSONL 루트, 승격 소스). live=KIS WS, live_kiwoom=키움 WS(ADR-0116).
+# 키움을 누락하면 크래시/이탈로 남은 과거일 live_kiwoom JSONL이 영영 미승격+디스크
+# 무한 증가하고, kiwoom_live가 read-path 소스라 완결 플래그가 ✕로 고착된다(리뷰 Major).
+_PROMOTE_ROOTS: tuple[tuple[str, str], ...] = (
+    ("live", "kis_live"),
+    ("live_kiwoom", "kiwoom_live"),
+)
+
+
 async def promote_pending(data_dir: Path) -> None:
-    """Walk `<data_dir>/live/{date}/*.jsonl` and promote each, then archive.
+    """Walk `<data_dir>/{live,live_kiwoom}/{date}/*.jsonl` and promote each, then archive.
 
     Skipped entries:
     - `_archive/` subdirectory (we don't re-promote our own backup).
@@ -574,36 +618,40 @@ async def promote_pending(data_dir: Path) -> None:
     - (date, code) pairs already promoted (handled by promote_one's idempotency).
     """
     today = _today_kst_yyyymmdd()
-    live_root = data_dir / "live"
-    archive_root = live_root / "_archive"
     parquet_root = data_dir / "parquet"
-    if not live_root.exists():
-        return
-    for date_dir in live_root.iterdir():
-        if not date_dir.is_dir() or date_dir.name == "_archive":
+    for subdir, source in _PROMOTE_ROOTS:
+        live_root = data_dir / subdir
+        archive_root = live_root / "_archive"
+        if not live_root.exists():
             continue
-        if date_dir.name == today:  # ADR-0043 — owned by Today Promotion
-            continue
-        for jsonl in date_dir.iterdir():
-            if jsonl.suffix != ".jsonl" or not jsonl.is_file():
+        for date_dir in live_root.iterdir():
+            if not date_dir.is_dir() or date_dir.name == "_archive":
                 continue
-            code = jsonl.stem
-            await promote_one(jsonl, parquet_root, code=code, date=date_dir.name)
-            arch_target = archive_root / date_dir.name / jsonl.name
-            arch_target.parent.mkdir(parents=True, exist_ok=True)
-            shutil.move(str(jsonl), str(arch_target))
+            if date_dir.name == today:  # ADR-0043 — owned by Today Promotion
+                continue
+            for jsonl in date_dir.iterdir():
+                if jsonl.suffix != ".jsonl" or not jsonl.is_file():
+                    continue
+                code = jsonl.stem
+                await promote_one(
+                    jsonl, parquet_root, code=code, date=date_dir.name, source=source,
+                )
+                arch_target = archive_root / date_dir.name / jsonl.name
+                arch_target.parent.mkdir(parents=True, exist_ok=True)
+                shutil.move(str(jsonl), str(arch_target))
 
 
 async def cleanup_archive(data_dir: Path, retention_days: int = 7) -> None:
-    """Remove archived JSONL files older than `retention_days`.
+    """Remove archived JSONL files older than `retention_days` under every promote root.
 
     Called by Daily Scheduler at 17:00 KST after promote_pending. Keeps the
-    `_archive` tree from growing unbounded.
+    `_archive` trees (live·live_kiwoom) from growing unbounded.
     """
-    archive_root = data_dir / "live" / "_archive"
-    if not archive_root.exists():
-        return
     cutoff = time.time() - retention_days * 86400
-    for path in archive_root.rglob("*.jsonl"):
-        if path.stat().st_mtime < cutoff:
-            path.unlink()
+    for subdir, _source in _PROMOTE_ROOTS:
+        archive_root = data_dir / subdir / "_archive"
+        if not archive_root.exists():
+            continue
+        for path in archive_root.rglob("*.jsonl"):
+            if path.stat().st_mtime < cutoff:
+                path.unlink()

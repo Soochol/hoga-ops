@@ -7,6 +7,7 @@ import {
   type LiveVenueOption,
 } from '../../state/liveVenue';
 import { useLiveSettings, usePatchLiveSettings, type LiveStoragePolicy } from '../../api/liveSettings';
+import { useLiveStatus } from '../../api/liveStatus';
 import { SettingsRow, ToggleSwitch } from './SettingsRow';
 import SourcePreferenceRadio from './SourcePreferenceRadio';
 
@@ -55,6 +56,7 @@ export function DataSourceDetail({ variant }: { variant: 'live' | 'study' }) {
   const storagePolicy = data?.storage_policy ?? 'ws_plus_rest';
   const restAllowed = data != null && storagePolicy !== 'ws_only';
   const programTradeEnabled = data?.program_trade_storage_enabled ?? false;
+  const kiwoomEnabled = data?.kiwoom_enabled ?? false;
 
   return (
     <>
@@ -152,12 +154,50 @@ export function DataSourceDetail({ variant }: { variant: 'live' | 'study' }) {
             />
           </SettingsRow>
         </RoleSourceGroup>
+        <RoleSourceGroup
+          title="키움 WS 병행 수집"
+          description="히트맵 종목을 KIS REST 대신 키움 WebSocket으로 실시간 수집합니다(앱키당 200종목). 끄면(기본) 기존 KIS REST 경로를 씁니다. .env에 KIWOOM_APP_KEY 필요."
+        >
+          <SettingsRow label="키움 WS 병행 수집" testId="kiwoom-enabled-row">
+            <ToggleSwitch
+              label="키움 WS 병행 수집"
+              checked={kiwoomEnabled}
+              onClick={() => patch.mutate({ kiwoom_enabled: !kiwoomEnabled })}
+            />
+          </SettingsRow>
+          {kiwoomEnabled && <KiwoomStatusLine />}
+        </RoleSourceGroup>
       </div>
 
       <div className="text-xs text-fg-dimmer">
         차트 상단 칩은 실제 렌더링에 사용된 source를 표시합니다.
       </div>
     </>
+  );
+}
+
+/** 키움 세션 상태 한 줄 — 토글 ON일 때만. LiveStatus.kiwoom(관측)에서 조립.
+ * 미배선(null)이면 '상태 확인 중', 킥 감지 시 경고 톤. */
+function KiwoomStatusLine() {
+  const { data } = useLiveStatus();
+  const k = data?.kiwoom;
+  if (k == null) {
+    return (
+      <div className="mt-1 text-xs text-fg-dimmer" data-testid="kiwoom-status-line">
+        상태 확인 중…
+      </div>
+    );
+  }
+  const kicked = k.accounts.some((a) => a.kicked_by_peer);
+  return (
+    <div className="mt-1 text-xs text-fg-dim" data-testid="kiwoom-status-line">
+      연결 {k.connected_accounts}/{k.accounts_configured}계정 · 수집 {k.subscribed_count}종목
+      {kicked && (
+        <span className="ml-1 text-warn" data-testid="kiwoom-kicked-warning">
+          · 다른 프로세스가 앱키 점유 중
+        </span>
+      )}
+    </div>
   );
 }
 

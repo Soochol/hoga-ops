@@ -384,6 +384,7 @@ export function WatchlistDrawer() {
   const { data: liveStatusData } = useLiveStatus();
   const liveCodes = liveStatusData?.live_set ?? [];
   const apiTargets = liveStatusData?.kis_api_targets ?? [];
+  const kiwoomCodes = liveStatusData?.kiwoom?.subscribed_codes ?? [];
   const viewedCodes = activeCode ? [activeCode] : [];
 
   // 함수형 업데이터 — 같은 배치의 다중 toggle도 최신 Set 위에서 계산된다.
@@ -573,6 +574,7 @@ export function WatchlistDrawer() {
                         liveSet: liveCodes,
                         watchlistCodes: codes,
                         viewedCodes,
+                        kiwoomCodes,
                         kisApiTargets: apiTargets,
                         captureCandidate: entry.capture_candidate !== false,
                       });

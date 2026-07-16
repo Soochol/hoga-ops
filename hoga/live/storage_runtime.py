@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import logging
 from collections.abc import Callable
 from dataclasses import dataclass
 from pathlib import Path
@@ -9,9 +10,12 @@ from typing import Protocol
 
 from hoga.api.models import LiveStoragePolicy
 
+log = logging.getLogger(__name__)
+
 from . import kis_runtime
 from .buffer import LiveBuffer
 from .coverage import (
+    KIWOOM_PER_ACCOUNT_MAX,
     LiveStorageTargets,
     _compute_capture_candidates,
     _compute_heatmap_rest_extras,
@@ -50,9 +54,17 @@ class ProgramTradeCollectorLike(Protocol):
     async def stop(self) -> None: ...
 
 
+class KiwoomSessionLike(Protocol):
+    async def sync(self, kiwoom_targets: tuple[str, ...], *, n_accounts: int) -> None: ...
+    def active_codes(self) -> list[str]: ...
+    def status(self) -> dict: ...
+    async def stop(self) -> None: ...
+
+
 class StorageRuntimeState(Protocol):
     rest30_recorder: Rest30RecorderLike | None
     program_trade_collector: ProgramTradeCollectorLike | None
+    kiwoom_session: KiwoomSessionLike | None
     storage_policy: LiveStoragePolicy
 
 
@@ -61,6 +73,8 @@ class StorageRuntimeSnapshot:
     storage_policy: LiveStoragePolicy
     ws_targets: tuple[str, ...]
     kis_api_targets: tuple[str, ...]
+    # 키움 WS 수집 대상(ADR-0116). lifecycle이 SignalAlertMonitor 타깃 합집합에 쓴다.
+    kiwoom_targets: tuple[str, ...] = ()
 
 
 def _ensure_rest30_recorder(
@@ -105,6 +119,31 @@ def _ensure_rest30_recorder(
     )
     state.rest30_recorder = recorder
     return recorder
+
+
+def _ensure_kiwoom_session(
+    state: StorageRuntimeState,
+    *,
+    data_dir: Path,
+    buffer: LiveBuffer,
+    date_fn: Callable[[], str],
+    now_ms_fn: Callable[[], int],
+) -> KiwoomSessionLike:
+    """키움 세션 매니저 싱글톤(state 소유). ws_connection_window 게이트로 KIS와 동일한
+    연결 시간대(08~20)를 쓴다 — 저장 게이트(정규장)는 LiveStream 내부 flush 루프가 유지."""
+    if state.kiwoom_session is not None:
+        return state.kiwoom_session
+    from .kiwoom_session import KiwoomSessionManager  # noqa: PLC0415
+    from .session_gate import ws_connection_window  # noqa: PLC0415
+
+    mgr = KiwoomSessionManager(
+        buffer=buffer,
+        data_dir=data_dir,
+        date_fn=date_fn,
+        gate_fn=lambda: ws_connection_window(now_ms_fn()),
+    )
+    state.kiwoom_session = mgr
+    return mgr
 
 
 def _ensure_program_trade_collector(
@@ -153,18 +192,26 @@ async def sync_storage_runtime(
         if settings.heatmap_capture_enabled
         else ()
     )
+    # 키움 실수용량으로 히트맵 라우팅을 게이트(리뷰 Major): 앱키 0이면 KIS REST 유지,
+    # 200×앱키수 초과분은 KIS로 되돌려 어디서도 수집 안 되는 구멍을 막는다.
+    from . import kiwoom_runtime  # noqa: PLC0415
+    n_kiwoom = len(kiwoom_runtime.configured_account_ids(data_dir))
+    kiwoom_capacity = KIWOOM_PER_ACCOUNT_MAX * n_kiwoom
     targets = plan_storage_targets(
         _compute_capture_candidates(data_dir),
         n_configured=n_configured,
         storage_policy=settings.storage_policy,
         rest_extra_candidates=heatmap_extras,
         rest_fallback_codes=rest_fallback_codes,
+        kiwoom_enabled=settings.kiwoom_enabled,
+        kiwoom_capacity=kiwoom_capacity,
     )
     if bypass:
         targets = LiveStorageTargets(
             ws_targets=targets.ws_targets,
             kis_api_targets=(),
             capture_candidates=targets.capture_candidates,
+            kiwoom_targets=targets.kiwoom_targets,  # bypass는 KIS REST만 끔 — 키움 무관
         )
     recorder = (
         _ensure_rest30_recorder(
@@ -204,10 +251,27 @@ async def sync_storage_runtime(
             program_collector.start()
         else:
             await program_collector.stop()
+
+    # 키움 WS 세션(ADR-0116) — 히트맵을 KIS REST30 대신 키움 WS로. off/앱키0/타깃 비면
+    # sync가 conn 0으로 정합화(휴면). 예외 격리(리뷰 Major): 키움 sync 오류가 이 함수를
+    # 뚫고 나가 KIS 경로(session.refresh 등 호출자 후속)를 죽이면 안 된다.
+    if settings.kiwoom_enabled and n_kiwoom > 0:
+        kiwoom_mgr = _ensure_kiwoom_session(
+            state, data_dir=data_dir, buffer=buffer,
+            date_fn=date_fn, now_ms_fn=now_ms_fn,
+        )
+        try:
+            await kiwoom_mgr.sync(targets.kiwoom_targets, n_accounts=n_kiwoom)
+        except Exception:  # noqa: BLE001 — 키움 실패가 KIS 경로를 오염시키지 않게 격리
+            log.warning("live.kiwoom.session_sync_failed", exc_info=True)
+    elif state.kiwoom_session is not None:
+        await state.kiwoom_session.stop()
+
     return StorageRuntimeSnapshot(
         storage_policy=settings.storage_policy,
         ws_targets=targets.ws_targets,
         kis_api_targets=targets.kis_api_targets,
+        kiwoom_targets=targets.kiwoom_targets,
     )
 
 
@@ -218,3 +282,6 @@ async def stop_storage_runtime(state: StorageRuntimeState) -> None:
     collector = state.program_trade_collector
     if collector is not None:
         await collector.stop()
+    kiwoom = state.kiwoom_session
+    if kiwoom is not None:
+        await kiwoom.stop()

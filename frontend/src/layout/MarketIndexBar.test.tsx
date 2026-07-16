@@ -67,6 +67,41 @@ describe('MarketIndexBar', () => {
     expect(screen.queryByTestId('market-index-bar')).not.toBeInTheDocument();
   });
 
+  function mockByUrl(status: unknown) {
+    vi.spyOn(client, 'apiCall').mockImplementation((url: string) => {
+      if (url.includes('/status')) return Promise.resolve(status);
+      return Promise.resolve({ quotes: [KOSPI_WIRE] });
+    });
+  }
+
+  it('renders 실시간 coverage chip = KIS WS + 키움 WS when kiwoom present', async () => {
+    mockByUrl({
+      running: true, live_set: ['a', 'b', 'c'], capture_reason: 'ok',
+      kiwoom: { enabled: true, accounts_configured: 2, connected_accounts: 2, subscribed_count: 40, last_tick_ms: null, accounts: [] },
+    });
+    renderBar();
+    const chip = await screen.findByTestId('kiwoom-coverage-chip');
+    expect(chip).toHaveTextContent('실시간');
+    expect(chip).toHaveTextContent('43'); // 3 KIS WS + 40 키움 WS
+  });
+
+  it('paints coverage count with --warn when a kiwoom account is disconnected', async () => {
+    mockByUrl({
+      running: true, live_set: [], capture_reason: 'ok',
+      kiwoom: { enabled: true, accounts_configured: 4, connected_accounts: 2, subscribed_count: 100, last_tick_ms: null, accounts: [] },
+    });
+    renderBar();
+    const chip = await screen.findByTestId('kiwoom-coverage-chip');
+    expect(chip.querySelector('.text-warn')).not.toBeNull();
+  });
+
+  it('hides coverage chip when kiwoom is absent (unwired)', async () => {
+    mockByUrl({ running: true, live_set: ['a'], capture_reason: 'ok' });
+    renderBar();
+    await screen.findByTestId('market-index-bar');
+    expect(screen.queryByTestId('kiwoom-coverage-chip')).not.toBeInTheDocument();
+  });
+
   it('click opens the index in the current /live view and navigates', async () => {
     vi.spyOn(client, 'apiCall').mockResolvedValue({ quotes: [KOSPI_WIRE] });
     const user = userEvent.setup();

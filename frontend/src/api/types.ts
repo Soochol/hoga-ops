@@ -93,8 +93,9 @@ export type OrderbookSnapshot = {
 };
 
 /** Source name surfaced by the chart source chip. Orderflow sources mirror
- * hoga/api/sources.py::SourceName; screener_daily is a chart-only daily corpus. */
-export type SourceName = 'hogaplay' | 'kis_live' | 'kis_api' | 'screener_daily';
+ * hoga/api/sources.py::SourceName (kiwoom_live=키움 WS, ADR-0116); screener_daily is a
+ * chart-only daily corpus. getSourceCapability는 미지 소스도 폴백 처리한다(백엔드 드리프트 방어). */
+export type SourceName = 'hogaplay' | 'kis_live' | 'kiwoom_live' | 'kis_api' | 'screener_daily';
 
 /** GET /api/orderbook response envelope. */
 export type OrderbookResponse = {

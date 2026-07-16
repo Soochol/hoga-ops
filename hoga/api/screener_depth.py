@@ -30,8 +30,9 @@ log = logging.getLogger(__name__)
 ASK_TYPE = "ask_depth_new_high"
 BID_TYPE = "bid_depth_new_high"
 _DEPTH_TYPES = (ASK_TYPE, BID_TYPE)
-# 당일 값 소스: 관심종목은 WS 승격(kis_live), 히트맵은 REST30 승격(kis_api).
-_TODAY_SOURCES = ("kis_live", "kis_api")
+# 당일 값 소스: 관심종목은 KIS WS 승격(kis_live), 히트맵은 키움 WS 승격(kiwoom_live,
+# ADR-0116) 또는 REST30 승격(kis_api 폴백). 종목 소유권 단일이라 코드별로 하나만 존재.
+_TODAY_SOURCES = ("kis_live", "kiwoom_live", "kis_api")
 _KRX_OPEN_MS = 90_000_000    # 09:00:00.000 (HHMMSSmmm)
 _KRX_CLOSE_MS = 153_000_000  # 15:30:00.000
 

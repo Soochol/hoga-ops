@@ -48,6 +48,8 @@ class StartupRuntimeDeps:
     needs_symbol_boot_refresh: Callable[[], bool]
     refresh_symbols: Callable[..., Awaitable[None]]
     resolve_symbol_master_path: Callable[[], Path]
+    # 키움 WS 승격 대상 콜백(ADR-0116). 기본 None — 미주입이면 promoter가 키움 루프 skip.
+    get_kiwoom_capture_codes: Callable[[], Sequence[str]] | None = None
 
 
 @dataclass
@@ -126,6 +128,7 @@ async def start_app_runtime(
             runtime.today_promoter_task = await deps.start_today_promoter(
                 data_dir=data_dir,
                 get_active_codes=deps.get_active_codes,
+                get_kiwoom_capture_codes=deps.get_kiwoom_capture_codes,
                 interval_s=today_promoter_interval_from_env(deps.env),
             )
 

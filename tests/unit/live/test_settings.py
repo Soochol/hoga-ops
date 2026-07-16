@@ -84,3 +84,26 @@ def test_corrupt_settings_falls_back_to_bypass_false(tmp_path):
 
     assert settings.kis_rest_bypass_enabled is False
     assert list(tmp_path.glob("live_settings.json.corrupt-*"))
+
+
+def test_kiwoom_enabled_defaults_false_and_toggles(tmp_path):
+    # 기본 off — 킬스위치 안전값(ADR-0116).
+    assert load_live_settings(tmp_path).kiwoom_enabled is False
+
+    updated = update_live_settings(tmp_path, kiwoom_enabled=True)
+    assert updated.kiwoom_enabled is True
+    assert load_live_settings(tmp_path).kiwoom_enabled is True
+
+    # 다른 필드 patch가 kiwoom_enabled를 보존.
+    other = update_live_settings(tmp_path, heatmap_capture_enabled=False)
+    assert other.kiwoom_enabled is True
+
+    off = update_live_settings(tmp_path, kiwoom_enabled=False)
+    assert off.kiwoom_enabled is False
+
+
+def test_kiwoom_enabled_backcompat_missing_field_defaults_false(tmp_path):
+    # 구 설정 파일(kiwoom_enabled 필드 없음) → 기본 False로 로드(마이그레이션 불필요).
+    save_path = tmp_path / "live_settings.json"
+    save_path.write_text(json.dumps({"storage_policy": "ws_plus_rest"}))
+    assert load_live_settings(tmp_path).kiwoom_enabled is False
