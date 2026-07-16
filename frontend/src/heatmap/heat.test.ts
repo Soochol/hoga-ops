@@ -19,10 +19,11 @@ describe('makePctOf', () => {
     expect(pctOf('b')).toBeNull();   // present-but-null
     expect(pctOf('zzz')).toBeNull(); // map miss
   });
-  it('stale quote change_pct 는 null로 취급한다', () => {
+  it('stale quote change_pct 도 값으로 쓴다 (정렬/집계 순서 안정성)', () => {
+    // stale 은 백엔드가 보존한 마지막 정상값 — 정렬키/평균에는 값 없음보다 낫다.
     const m = new Map<string, LiveQuote>([['a', { code: 'a', price: 0, change_pct: 3.5, change_won: 0, stale: true }]]);
     const pctOf = makePctOf(m);
-    expect(pctOf('a')).toBeNull();
+    expect(pctOf('a')).toBe(3.5);
   });
 });
 

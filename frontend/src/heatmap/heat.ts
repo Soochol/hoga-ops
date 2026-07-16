@@ -53,9 +53,9 @@ export function heatHeaderBg(pct: number | null): string {
   return `linear-gradient(0deg, ${heat}, ${heat}), var(--bg-input)`;
 }
 
-/** quoteByCode → (code → 등락률|null) 접근자 팩토리. Map miss·change_pct=null 둘 다 null로
- *  접는 정책을 한 곳에 모은다(헤더 틴트·strip 칩·그룹 정렬이 공유). sortEntries/avgPct/
- *  orderFolderGroups의 pctOf 파라미터와 동형. */
+/** quoteByCode → (code → 등락률|null) 접근자 팩토리. Map miss·change_pct=null 만 null로
+ *  접고 stale 값은 정렬키로 유지하는 정책은 makeChangePctOf가 소유(헤더 틴트·strip 칩·
+ *  그룹 정렬이 공유). sortEntries/avgPct/orderFolderGroups의 pctOf 파라미터와 동형. */
 export function makePctOf(quoteByCode: Map<string, LiveQuote>): (code: string) => number | null {
   return makeChangePctOf(quoteByCode);
 }

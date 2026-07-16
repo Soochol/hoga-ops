@@ -11,7 +11,6 @@ type SortableScreenerRow = {
   price?: number | null | undefined;
   trade_value_won?: number | null | undefined;
   change_pct: number | null | undefined;
-  change_pct_sort?: number | null | undefined;
 };
 
 const collator = new Intl.Collator(undefined, { numeric: true, sensitivity: 'base' });
@@ -28,15 +27,8 @@ function normalizeText(value: unknown): string | null {
   return typeof value === 'string' && value.length > 0 ? value : null;
 }
 
-function changePctForSort(row: SortableScreenerRow): number | null {
-  if (Object.prototype.hasOwnProperty.call(row, 'change_pct_sort')) {
-    return normalizeChangePct(row.change_pct_sort);
-  }
-  return normalizeChangePct(row.change_pct);
-}
-
 function valueForSort(row: SortableScreenerRow, field: ScreenerResultSortField): number | string | null {
-  if (field === 'change_pct') return changePctForSort(row);
+  if (field === 'change_pct') return normalizeChangePct(row.change_pct);
   if (field === 'price') return normalizeNumber(row.price);
   if (field === 'trade_value_won') return normalizeNumber(row.trade_value_won);
   if (field === 'code') return normalizeText(row.code);
