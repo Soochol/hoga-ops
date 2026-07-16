@@ -29,8 +29,9 @@ from hoga.live.promote import _completeness_fields
 _log = logging.getLogger(__name__)
 
 # Live sources whose meta this sweep repairs. hogaplay is excluded — its parser
-# already writes the completeness fields at capture time.
-_LIVE_SOURCES: tuple[str, ...] = ("kis_live", "kis_api")
+# already writes the completeness fields at capture time. kiwoom_live(ADR-0116)는
+# kis_live와 동일하게 승격 후 메타 복구가 필요하다.
+_LIVE_SOURCES: tuple[str, ...] = ("kis_live", "kiwoom_live", "kis_api")
 _KST = timezone(timedelta(hours=9))
 
 

@@ -16,24 +16,31 @@ from hoga.api.disk_state import (
 if TYPE_CHECKING:
     from hoga.api.queries import QueryEngine
 
-SourceName = Literal["hogaplay", "kis_live", "kis_api"]
+# kiwoom_live: 키움 WS 승격본(ADR-0116). kis_live와 같은 실시간 WS 티어라 우선순위도
+# kis_live 인접(뒤). 종목 소유권 단일 원칙(한 종목 실시간 소스 하나)이라 보통 한
+# stock-date엔 kis_live/kiwoom_live 중 하나만 존재 — 순서는 전환기 이중구독 시에만 유효.
+SourceName = Literal["hogaplay", "kis_live", "kiwoom_live", "kis_api"]
 MissingReason = Literal["stock_date_missing", "source_missing"]
 SourcePolicy = Literal[
     "hogaplay",
     "kis_live",
+    "kiwoom_live",
     "kis_api",
     "hogaplay_first",
     "kis_ws_first",
+    "kiwoom_ws_first",
     "kis_api_first",
 ]
 
 _POLICY_ORDER: dict[str, tuple[SourceName, ...]] = {
-    "hogaplay": ("hogaplay", "kis_live", "kis_api"),
-    "hogaplay_first": ("hogaplay", "kis_live", "kis_api"),
-    "kis_live": ("kis_live", "kis_api", "hogaplay"),
-    "kis_ws_first": ("kis_live", "kis_api", "hogaplay"),
-    "kis_api": ("kis_api", "kis_live", "hogaplay"),
-    "kis_api_first": ("kis_api", "kis_live", "hogaplay"),
+    "hogaplay": ("hogaplay", "kis_live", "kiwoom_live", "kis_api"),
+    "hogaplay_first": ("hogaplay", "kis_live", "kiwoom_live", "kis_api"),
+    "kis_live": ("kis_live", "kiwoom_live", "kis_api", "hogaplay"),
+    "kis_ws_first": ("kis_live", "kiwoom_live", "kis_api", "hogaplay"),
+    "kiwoom_live": ("kiwoom_live", "kis_live", "kis_api", "hogaplay"),
+    "kiwoom_ws_first": ("kiwoom_live", "kis_live", "kis_api", "hogaplay"),
+    "kis_api": ("kis_api", "kis_live", "kiwoom_live", "hogaplay"),
+    "kis_api_first": ("kis_api", "kis_live", "kiwoom_live", "hogaplay"),
 }
 
 
