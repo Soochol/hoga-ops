@@ -16,7 +16,8 @@ import SignalAlertSettingsSection from '../signalAlerts/SignalAlertSettingsSecti
 
 /**
  * The live settings body — mirrors `IndicatorPanel`'s two-column layout (left
- * category nav `w-[200px]` + right detail pane). Categories come from the
+ * category nav 240px + right detail pane; 지표 드로어와 동일 폭이라 툴바에서
+ * 보조지표↔설정을 오가도 nav가 흔들리지 않는다). Categories come from the
  * `CHART_TOGGLES` registry (차트) plus a 데이터소스 item; 'indicator-modal'
  * toggles are excluded (they live in the 「지표」 modal instead). Adding
  * a toggle/pref stays a one-line registry edit.
@@ -155,13 +156,13 @@ export default function LiveSettingsSections({ variant = 'live', onClose }: { va
   ];
   const [selected, setSelected] = useState<NavId>(navIds[0]);
 
-  // Settings 모달과 동일한 크롬(2026-07-15): 전폭 헤더 바·푸터 없이 nav+콘텐츠가
-  // 다이얼로그를 edge-to-edge로 채우고, 섹션 제목과 닫기 X는 콘텐츠 헤더가 담당.
+  // 지표 드로어와 동일한 크롬(ADR-0116, 우측 드로어): 전폭 헤더 바·푸터 없이 nav+콘텐츠가
+  // 드로어를 edge-to-edge로 채우고, 섹션 제목과 닫기 X는 콘텐츠 헤더가 담당.
   // nav↔콘텐츠 분리는 bg-subtle↔bg-card 톤 스텝. rounded-[6px]는 ModalShell 반경에 맞춰 클립.
   return (
     <div
       data-testid="live-settings-modal-shell"
-      className="grid h-full min-h-0 grid-cols-[200px_minmax(0,1fr)] overflow-hidden rounded-[6px] bg-bg-card"
+      className="grid h-full min-h-0 grid-cols-[240px_minmax(0,1fr)] overflow-hidden rounded-[6px] bg-bg-card"
     >
       <nav className="space-y-0.5 overflow-y-auto bg-bg-subtle p-2" aria-label="설정 카테고리">
         {navIds.map((id) => (
