@@ -376,7 +376,10 @@ export type CalendarStatus =
   | 'holiday'
   | 'future'
   | 'today_locked'
-  | 'no_upstream_data';
+  | 'no_upstream_data'
+  // KIS live/REST-only promotion (no hogaplay artifact for this Stock-Date).
+  | 'complete_live'
+  | 'partial_live';
 
 /** Mirrors hoga/api/models.py::CalendarCell. */
 export interface CalendarCell {

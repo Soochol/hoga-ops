@@ -17,6 +17,7 @@ describe('CALENDAR_STATUS table', () => {
     const expected: CalendarStatus[] = [
       'complete', 'source_partial', 'client_incomplete', 'invalid',
       'none', 'weekend', 'holiday', 'future', 'today_locked', 'no_upstream_data',
+      'complete_live', 'partial_live',
     ];
     for (const s of expected) {
       expect(CALENDAR_STATUS[s]).toBeDefined();
@@ -93,7 +94,8 @@ describe('isDisabled', () => {
 describe('legendText', () => {
   it('joins the visible legend chunks in LEGEND_ORDER', () => {
     expect(legendText()).toBe(
-      'Legend: ✓ complete · ⚠ partial · ✕ broken · – no upstream data · 🔒 today < 16:30 KST'
+      'Legend: ✓ complete · ⚠ partial · ✕ broken · – no upstream data · '
+        + '✓ KIS live · ⚠ KIS live partial · 🔒 today < 16:30 KST'
     );
   });
 

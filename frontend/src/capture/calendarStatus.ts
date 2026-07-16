@@ -72,6 +72,27 @@ export const CALENDAR_STATUS: Record<CalendarStatus, CalendarStatusDescriptor> =
     tooltipSuffix: 'no upstream data (retry on capture)',
     legendLabel: '– no upstream data',
   },
+  complete_live: {
+    // KIS live/REST-only promotion, no hogaplay artifact. Reuses the ✓ glyph but
+    // uses --accent (the kis_live source color, per DESIGN.md --source-kis-live)
+    // instead of --success green, so it's visually distinct from a hogaplay
+    // capture. Cell stays clickable — this date is still a hogaplay target.
+    marker: '✓',
+    badgeColor: 'var(--accent)',
+    baseColorVar: 'var(--fg)',
+    disabled: false,
+    tooltipSuffix: 'KIS live data (hogaplay not collected)',
+    legendLabel: '✓ KIS live',
+  },
+  partial_live: {
+    // KIS live/REST-only promotion with session gaps. ⚠ glyph in --accent.
+    marker: '⚠',
+    badgeColor: 'var(--accent)',
+    baseColorVar: 'var(--fg)',
+    disabled: false,
+    tooltipSuffix: 'KIS live data, partial (hogaplay not collected)',
+    legendLabel: '⚠ KIS live partial',
+  },
   today_locked: {
     marker: '🔒',
     baseColorVar: 'var(--fg-dim)',
@@ -116,6 +137,8 @@ export const LEGEND_ORDER: readonly CalendarStatus[] = [
   'source_partial',
   'client_incomplete',
   'no_upstream_data',
+  'complete_live',
+  'partial_live',
   'today_locked',
 ];
 

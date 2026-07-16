@@ -328,6 +328,32 @@ def depth_daily_sweep(
     )
 
 
+@app.command(name="backfill-live-meta")
+def backfill_live_meta_cmd(
+    dry_run: bool = typer.Option(False, "--dry-run", help="갱신 대상만 세고 쓰지 않음"),
+) -> None:
+    """이미 승격된 KIS live/REST meta.json 에 완결성 필드를 소급 기록한다.
+
+    변경 이전에 승격된 kis_live/kis_api Stock-Date 는 collection_complete/
+    is_partial/gap_ranges 가 없어 캘린더에서 영구 ✕ 로 남는다. 이 스윕은
+    snapshots.parquet 의 ts_ms 로 갭 분석을 재계산해 그 세 필드를 채운다
+    (과거 날짜만; 오늘은 Today Promoter 가 15:35 에 최종화). 멱등.
+    """
+    from hoga.live.meta_backfill import backfill_live_meta  # noqa: PLC0415 — CLI-local
+
+    data_dir = resolve_data_dir()
+    try:
+        res = backfill_live_meta(data_dir, dry_run=dry_run)
+    except Exception as e:  # noqa: BLE001
+        console.print(f"[red]backfill-live-meta failed: {e}[/red]")
+        raise typer.Exit(code=1) from e
+    tag = "dry-run" if dry_run else "done"
+    console.print(
+        f"[green]backfill-live-meta {tag}[/green]: "
+        f"scanned={res.scanned} updated={res.updated} skipped={res.skipped}"
+    )
+
+
 @app.command(name="ls")
 def list_stock_dates() -> None:
     """Show captured/parsed Stock-Dates."""

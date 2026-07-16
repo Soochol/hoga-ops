@@ -612,6 +612,10 @@ CalendarStatus = Literal[
     "complete", "source_partial", "client_incomplete", "invalid", "none",
     "weekend", "holiday", "future", "today_locked",
     "no_upstream_data",   # ADR-0021
+    # KIS live/REST-only promotion (no hogaplay artifact for this Stock-Date).
+    # Distinct from "complete"/"source_partial" so the cell signals "WS data
+    # present, hogaplay not collected" and stays a hogaplay collection target.
+    "complete_live", "partial_live",
 ]
 
 

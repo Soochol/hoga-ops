@@ -285,7 +285,21 @@ def _cell_status_for(date_str: str, now: dt.datetime, trading_days: set[str],
         return "today_locked"
     if date_str not in trading_days:
         return "weekend" if d.weekday() >= 5 else "holiday"
-    return _disk_state_to_status(check_disk_state(data_dir, code, date_str).state)
+    # hogaplay is the canonical capture source — show its state directly (this
+    # also covers the sentinel / raw / legacy-flat fallbacks, all hogaplay-only
+    # artifacts). Only when there is NO hogaplay artifact at all do we consider a
+    # KIS live/REST promotion, surfacing it with a distinct *_live status so the
+    # cell reads "WS data present, hogaplay not collected" rather than a
+    # misleading hogaplay-framed ✕ (client_incomplete = "resume on capture").
+    hp = check_disk_state(data_dir, code, date_str, source="hogaplay").state
+    if hp != DiskState.NONE:
+        return _disk_state_to_status(hp)
+    kis = check_disk_state(data_dir, code, date_str).state  # aggregate: kis_live/kis_api
+    if kis == DiskState.COMPLETE:
+        return "complete_live"
+    if kis == DiskState.SOURCE_PARTIAL:
+        return "partial_live"
+    return "none"
 
 
 def get_month_map(*, data_dir: Path, code: str, year: int, month: int) -> CalendarResponse:
@@ -304,7 +318,8 @@ def get_month_map(*, data_dir: Path, code: str, year: int, month: int) -> Calend
         date_str = f"{year:04d}{month:02d}{day:02d}"
         status = _cell_status_for(date_str, now, effective_trading_days, data_dir, code)
         captured_ms = (_captured_at_ms(data_dir, code, date_str)
-                       if status in ("complete", "source_partial", "client_incomplete")
+                       if status in ("complete", "source_partial", "client_incomplete",
+                                     "complete_live", "partial_live")
                        else None)
         cells.append(CalendarCell(date=date_str, status=status,  # type: ignore[arg-type]
                                   captured_at_ms=captured_ms))

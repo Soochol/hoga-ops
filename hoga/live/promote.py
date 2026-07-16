@@ -22,7 +22,8 @@ from dataclasses import dataclass, field
 from datetime import UTC, datetime, timedelta, timezone
 from pathlib import Path
 
-from hoga.api.timeenc import unix_ms_to_hhmmssms
+from hoga.api.disk_state import analyze_gaps
+from hoga.api.timeenc import HogaMs, unix_ms_to_hhmmssms
 from hoga.tables.brokers import BrokerRow
 from hoga.tables.brokers import write_parquet as write_brokers_parquet
 from hoga.tables.fills import Fill, write_fills_parquet
@@ -33,7 +34,42 @@ from hoga.tables.trades import write_parquet as write_trades_parquet
 
 _ZERO_LEVELS: tuple[int, ...] = (0,) * 10
 
+# Live promotions hardcode the Regular Session boundaries (09:00 / 15:30). This
+# mirrors the existing `_build_meta` constants and the promote-path assumption
+# that KIS live capture only runs the Regular Session — Half-Day sessions are a
+# known, pre-existing limitation shared with the rest of this module.
+_REGULAR_SESSION_CLOSE_MS: HogaMs = HogaMs(153000000)  # 15:30:00.000 (HHMMSSmmm)
+_KST = timezone(timedelta(hours=9))
+# Session close 15:30 + 5-min settle buffer: the first Today-Promoter cycle at or
+# after 15:35 KST finalizes today's meta to collection_complete=True.
+_SESSION_FINALIZE_HHMM: tuple[int, int] = (15, 35)
+
 _log = logging.getLogger(__name__)
+
+
+def _collection_finished(date: str, *, now: datetime | None = None) -> bool:
+    """Time-based completeness verdict for a live (kis_live/kis_api) promotion.
+
+    A live stream has no ``_progress.json`` cursor (that's hogaplay's finished
+    flag), so "did collection finish" is decided by the clock instead:
+
+    - ``date < today_kst`` → True: a past day's stream has ended; whatever was
+      captured is final (its data-quality is carried separately by is_partial).
+    - ``date == today_kst`` → True only once KST is at/after 15:35 (Regular
+      Session close 15:30 + a 5-min settle buffer). Intraday cycles return
+      False → the Stock-Date stays CLIENT_INCOMPLETE, so an early COMPLETE flip
+      can't make the hogaplay worker skip today as ``already_complete``.
+    - ``date > today_kst`` → False (conservative; e.g. a midnight-race jsonl).
+
+    ``now`` is injectable for tests; production reads the KST wall clock.
+    """
+    now = now or datetime.now(_KST)
+    today = now.strftime("%Y%m%d")
+    if date < today:
+        return True
+    if date > today:
+        return False
+    return (now.hour, now.minute) >= _SESSION_FINALIZE_HHMM
 
 
 def _atomic_write_table(writer, records, path: Path) -> None:
@@ -306,6 +342,18 @@ def _build_meta(
     *,
     source: str = "kis_live",
 ) -> dict:
+    # Completeness/partiality — the SAME gap analysis hogaplay's parser runs
+    # (hoga/parser/__init__.py:_build_meta), so classify_from_meta routes
+    # kis_live/kis_api Stock-Dates through the identical COMPLETE / SOURCE_PARTIAL
+    # / CLIENT_INCOMPLETE logic. `anchor_edges=True`: a live stream that only
+    # started at 13:00 or died mid-session has no interior gap but is plainly
+    # partial — only the session-edge anchors catch it. Orderbook.ts_ms is
+    # already HHMMSSmmm (entity native); cast to HogaMs at this single seam.
+    gaps = analyze_gaps(
+        [HogaMs(s.ts_ms) for s in snapshots],
+        session_close_ms=_REGULAR_SESSION_CLOSE_MS,
+        anchor_edges=True,
+    )
     meta = {
         "source": source,
         "code": code,
@@ -319,7 +367,15 @@ def _build_meta(
         },
         # ADR-0003 HHMMSSmmm encoding.
         "regular_session_open_ms": 90000000,    # 09:00:00.000
-        "regular_session_close_ms": 153000000,  # 15:30:00.000
+        "regular_session_close_ms": int(_REGULAR_SESSION_CLOSE_MS),  # 15:30:00.000
+        "collection_complete": _collection_finished(date),
+        "is_partial": gaps.is_partial,
+        # Continuous-trading gap boundaries in HHMMSSmmm — same shape as
+        # hogaplay's parser so the inventory drawer renders them uniformly.
+        "gap_ranges": [
+            {"start_ms": int(start), "end_ms": int(end)}
+            for start, end in gaps.gap_ranges
+        ],
     }
     if source == "kis_api":
         meta["sampling_ms"] = 30000
@@ -460,10 +516,21 @@ async def promote_one(
     target = parquet_root / date / code / "kis_live"
     meta_path = target / "meta.json"
     if meta_path.exists():
-        _log.info(
-            "live.promote.skip code=%s date=%s reason=already_promoted", code, date
-        )
-        return
+        # Skip ONLY a finalized promotion. A meta left by an intraday cycle whose
+        # server died mid-session carries collection_complete=False; re-promoting
+        # it (full re-parse) lets the next-day batch finalize the Stock-Date
+        # (True + a tail gap → SOURCE_PARTIAL) instead of freezing it at ✕.
+        # Unreadable meta → re-promote (conservative).
+        try:
+            prior = json.loads(meta_path.read_text(encoding="utf-8"))
+            already_final = prior.get("collection_complete") is True
+        except (ValueError, OSError):
+            already_final = False
+        if already_final:
+            _log.info(
+                "live.promote.skip code=%s date=%s reason=already_promoted", code, date
+            )
+            return
     if not jsonl_path.exists():
         return
 

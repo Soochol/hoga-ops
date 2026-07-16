@@ -939,8 +939,14 @@ async def _finalize_item(state: QueueItemState) -> None:
     if state.phase == "done":
         from hoga.api.disk_state import DiskState, check_disk_state
         try:
+            # source="hogaplay": this gates the hogaplay worker's fail_streak
+            # reset and Watchlist last_success marker. A COMPLETE kis_live/kis_api
+            # promotion in the same Stock-Date dir must NOT mask a hogaplay
+            # partial failure into a spurious done→reset + marker bump.
             done_complete = (
-                check_disk_state(_require_data_dir(), state.code, state.date).state
+                check_disk_state(
+                    _require_data_dir(), state.code, state.date, source="hogaplay",
+                ).state
                 == DiskState.COMPLETE
             )
         except Exception:  # noqa: BLE001 — unclassifiable ⇒ not confirmed COMPLETE (+1)
@@ -1637,7 +1643,9 @@ async def coverage_preview_core(
         missing: list[MissingStockDate] = []
         for code in req.codes:
             for date in dates:
-                st = check_disk_state(data_dir, code, date).state
+                # source="hogaplay": bulk coverage is about hogaplay collection;
+                # a kis_live-only COMPLETE date must stay in the "to collect" set.
+                st = check_disk_state(data_dir, code, date, source="hogaplay").state
                 if st == DiskState.COMPLETE:
                     have += 1
                 elif st == DiskState.NO_UPSTREAM_DATA:

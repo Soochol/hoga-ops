@@ -525,7 +525,7 @@ def test_latest_complete_date_finds_max_complete(tmp_path: Path, monkeypatch) ->
     # Different code — must not influence the result.
     (tmp_path / "parquet" / "20260320" / "005930").mkdir(parents=True)
 
-    def fake_check(_dir, code, date):
+    def fake_check(_dir, code, date, *, source=None):
         return disk_state.Classification(state=disk_state.DiskState.COMPLETE)
     monkeypatch.setattr(disk_state, "check_disk_state", fake_check)
 
@@ -540,7 +540,7 @@ def test_latest_complete_date_skips_non_complete(tmp_path: Path, monkeypatch) ->
     (tmp_path / "parquet" / "20260301" / "098460").mkdir(parents=True)
     (tmp_path / "parquet" / "20260315" / "098460").mkdir(parents=True)
 
-    def fake_check(_dir, code, date):
+    def fake_check(_dir, code, date, *, source=None):
         if date == "20260301":
             return disk_state.Classification(state=disk_state.DiskState.COMPLETE)
         return disk_state.Classification(state=disk_state.DiskState.INVALID)
@@ -613,3 +613,66 @@ def test_close_ms_zero_still_invalid() -> None:
         "is_partial": False,
     }
     assert classify_from_meta(meta).state is DiskState.INVALID
+
+
+# === ADR-0115 — analyze_gaps(anchor_edges=True) session-edge detection ===
+
+def test_anchor_edges_off_by_default_ignores_late_head() -> None:
+    """Default (anchor_edges=False) keeps consecutive-pairs-only: a stream that
+    starts at 13:00 with no interior gap is NOT flagged — hogaplay's behavior."""
+    ts = [HogaMs(130000000 + i * 1000) for i in range(120)]
+    assert has_meaningful_gaps(ts, session_close_ms=_REGULAR_CLOSE) is False
+
+
+def test_anchor_edges_flags_late_head() -> None:
+    from hoga.api.disk_state import analyze_gaps
+
+    ts = [HogaMs(130000000 + i * 1000) for i in range(120)]
+    g = analyze_gaps(ts, session_close_ms=_REGULAR_CLOSE, anchor_edges=True)
+    assert g.is_partial is True
+    # Head gap boundary: session open → first snapshot.
+    assert g.gap_ranges[0] == (HogaMs(90000000), HogaMs(130000000))
+
+
+def test_anchor_edges_flags_early_tail() -> None:
+    from hoga.api.disk_state import (
+        _hhmmssms_to_intra_ms, _intra_ms_to_hhmmssms, analyze_gaps,
+    )
+
+    # Dense from 09:00 but the stream dies at 11:00 — a big tail gap runs to the
+    # auction-window start (15:20). Build proper HHMMSSmmm via linear encode.
+    t = _hhmmssms_to_intra_ms(HogaMs(90000000))
+    end = _hhmmssms_to_intra_ms(HogaMs(110000000))  # 11:00:00
+    ts = []
+    while t < end:
+        ts.append(_intra_ms_to_hhmmssms(t))
+        t += 30_000
+    g = analyze_gaps(ts, session_close_ms=_REGULAR_CLOSE, anchor_edges=True)
+    assert g.is_partial is True
+    # The final gap runs from the last snapshot to the auction-window start.
+    assert g.gap_ranges[-1][1] == HogaMs(152000000)
+
+
+def test_anchor_edges_empty_flags_whole_window() -> None:
+    from hoga.api.disk_state import analyze_gaps
+
+    g = analyze_gaps([], session_close_ms=_REGULAR_CLOSE, anchor_edges=True)
+    assert g.in_session_count == 0
+    assert g.is_partial is True
+    assert g.gap_ranges == [(HogaMs(90000000), HogaMs(152000000))]
+
+
+def test_anchor_edges_dense_full_window_no_gap() -> None:
+    from hoga.api.disk_state import (
+        _hhmmssms_to_intra_ms, _intra_ms_to_hhmmssms, analyze_gaps,
+    )
+
+    t = _hhmmssms_to_intra_ms(HogaMs(90000000))
+    end = _hhmmssms_to_intra_ms(_REGULAR_CLOSE) - 10 * 60 * 1000
+    ts = []
+    while t < end:
+        ts.append(_intra_ms_to_hhmmssms(t))
+        t += 30_000
+    g = analyze_gaps(ts, session_close_ms=_REGULAR_CLOSE, anchor_edges=True)
+    assert g.is_partial is False
+    assert g.gap_ranges == []
