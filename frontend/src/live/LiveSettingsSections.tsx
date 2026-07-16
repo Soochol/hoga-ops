@@ -13,6 +13,7 @@ import IndicatorPrefRows from './settings/IndicatorPrefRows';
 import { SettingsRow } from './settings/SettingsRow';
 import { DataSourceDetail } from './settings/DataSourceDetail';
 import SignalAlertSettingsSection from '../signalAlerts/SignalAlertSettingsSection';
+import { WORKSPACE_DRAWER_SHELL_CLASS } from './workspaceDrawer';
 
 /**
  * The live settings body — mirrors `IndicatorPanel`'s two-column layout (left
@@ -161,8 +162,8 @@ export default function LiveSettingsSections({ variant = 'live', onClose }: { va
   // nav↔콘텐츠 분리는 bg-subtle↔bg-card 톤 스텝. rounded-[6px]는 ModalShell 반경에 맞춰 클립.
   return (
     <div
-      data-testid="live-settings-modal-shell"
-      className="grid h-full min-h-0 grid-cols-[240px_minmax(0,1fr)] overflow-hidden rounded-[6px] bg-bg-card"
+      data-testid="live-settings-drawer-shell"
+      className={WORKSPACE_DRAWER_SHELL_CLASS}
     >
       <nav className="space-y-0.5 overflow-y-auto bg-bg-subtle p-2" aria-label="설정 카테고리">
         {navIds.map((id) => (

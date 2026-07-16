@@ -27,9 +27,9 @@ describe('LiveSettingsModal (2단)', () => {
 
     expect(screen.getByRole('dialog')).not.toHaveClass('bg-bg-card');
     expect(screen.getByRole('dialog')).toHaveClass('z-[60]');
-    expect(screen.getByTestId('live-settings-modal-shell')).toHaveClass('bg-bg-card');
+    expect(screen.getByTestId('live-settings-drawer-shell')).toHaveClass('bg-bg-card');
     // 높이는 ModalShell 다이얼로그가 강제하고(2026-07-15 크롬 통일), 패널은 h-full로 채운다.
-    expect(screen.getByTestId('live-settings-modal-shell')).toHaveClass('h-full');
+    expect(screen.getByTestId('live-settings-drawer-shell')).toHaveClass('h-full');
     // nav는 border-r 대신 bg-subtle 톤 스텝으로 분리(2026-07-15 borderless 통일).
     expect(screen.getByRole('navigation', { name: '설정 카테고리' })).toHaveClass('bg-bg-subtle');
     expect(screen.getByRole('navigation', { name: '설정 카테고리' })).not.toHaveClass('border-r');
@@ -42,7 +42,7 @@ describe('LiveSettingsModal (2단)', () => {
     expect(dialog).toHaveClass('justify-end');
     expect(dialog).toHaveClass('bg-black/30');
     // ModalShell 카드는 좌측 보더의 전체 높이 드로어(패널의 부모).
-    const card = screen.getByTestId('live-settings-modal-shell').parentElement!;
+    const card = screen.getByTestId('live-settings-drawer-shell').parentElement!;
     expect(card).toHaveClass('border-l');
     expect(card).toHaveClass('h-full');
   });
