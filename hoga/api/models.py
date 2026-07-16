@@ -969,6 +969,9 @@ class LiveSettingsResponse(BaseModel):
     # 큐에 적재할지. 기본 False — 스캔은 탐색적으로 반복 실행되므로 묵시적 큐 증가를 막고
     # 명시적 [수집 요청] 버튼을 1차 UX 로 둔다.
     screener_depth_autocollect: bool = False
+    # 키움 WS 병행 수집 킬스위치(ADR-0116). 기본 False — 켜면 히트맵 종목을 KIS REST30
+    # 대신 키움 WS로 수집한다(PR-3b 배선). off일 때 전 경로 동작 불변.
+    kiwoom_enabled: bool = False
 
 
 class LiveSettingsUpdate(BaseModel):
@@ -977,6 +980,7 @@ class LiveSettingsUpdate(BaseModel):
     kis_rest_bypass_enabled: bool | None = None
     heatmap_capture_enabled: bool | None = None
     screener_depth_autocollect: bool | None = None
+    kiwoom_enabled: bool | None = None
 
 
 SignalAlertSource = Literal["ws", "rest"]

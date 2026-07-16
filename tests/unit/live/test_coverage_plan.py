@@ -205,3 +205,70 @@ def test_plan_storage_targets_fallback_noop_under_rest_only() -> None:
         rest_fallback_codes=("000660",),
     )
     assert plan.kis_api_targets == ("005930", "000660")
+
+
+# ── 키움 WS 라우팅 (ADR-0116, PR-3) ──
+
+
+def test_plan_storage_targets_kiwoom_disabled_is_byte_identical() -> None:
+    """kiwoom_enabled=False(기본): 히트맵은 기존대로 KIS REST, kiwoom_targets=().
+    킬스위치 off일 때 plan 출력 불변 — 회귀 방지 골든."""
+    from hoga.live.coverage import plan_storage_targets
+
+    plan = plan_storage_targets(
+        ["A", "B", "C"],
+        n_configured=1,
+        per_account_max=2,
+        storage_policy="ws_plus_rest",
+        rest_extra_candidates=("H1", "H2"),
+    )
+    assert plan.ws_targets == ("A", "B")
+    assert plan.kis_api_targets == ("C", "H1", "H2")  # 히트맵 KIS REST (기존)
+    assert plan.kiwoom_targets == ()
+
+
+def test_plan_storage_targets_kiwoom_diverts_heatmap_from_kis_rest() -> None:
+    """kiwoom_enabled=True: 히트맵(rest_extra)이 kiwoom_targets로 가고 KIS REST에서 빠짐.
+    관심종목 잔여(C)는 그대로 KIS REST 유지 — 히트맵만 diverted."""
+    from hoga.live.coverage import plan_storage_targets
+
+    plan = plan_storage_targets(
+        ["A", "B", "C"],
+        n_configured=1,
+        per_account_max=2,
+        storage_policy="ws_plus_rest",
+        rest_extra_candidates=("H1", "H2"),
+        kiwoom_enabled=True,
+    )
+    assert plan.ws_targets == ("A", "B")       # KIS WS 관심종목 불변
+    assert plan.kis_api_targets == ("C",)      # 관심 잔여만, 히트맵 빠짐
+    assert plan.kiwoom_targets == ("H1", "H2")  # 히트맵 → 키움
+
+
+def test_plan_storage_targets_kiwoom_captures_heatmap_under_ws_only() -> None:
+    """ws_only는 KIS REST 저장 금지라 히트맵이 원래 드롭됐지만, kiwoom_enabled면
+    키움 WS(별개 수집기)로 캡처된다 — off일 때만 드롭."""
+    from hoga.live.coverage import plan_storage_targets
+
+    plan = plan_storage_targets(
+        ["A", "B"],
+        n_configured=1,
+        per_account_max=2,
+        storage_policy="ws_only",
+        rest_extra_candidates=("H1",),
+        kiwoom_enabled=True,
+    )
+    assert plan.kis_api_targets == ()
+    assert plan.kiwoom_targets == ("H1",)
+
+
+def test_partition_kiwoom_slices_200_per_account() -> None:
+    from hoga.live.coverage import KIWOOM_PER_ACCOUNT_MAX, partition_kiwoom
+
+    assert KIWOOM_PER_ACCOUNT_MAX == 200
+    codes = [f"{i:06d}" for i in range(450)]
+    parts = partition_kiwoom(codes, 4)
+    assert [len(p) for p in parts] == [200, 200, 50, 0]
+    assert parts[0] == tuple(codes[:200]) or parts[0] == codes[:200]
+    # 4앱키 = 800 상한, 450종목은 3계정에 담김(4번째 빈 리스트).
+    assert sum(len(p) for p in parts) == 450

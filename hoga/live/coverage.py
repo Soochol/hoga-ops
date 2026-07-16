@@ -21,6 +21,11 @@ TRS_PER_CODE = len(TRS)
 _PER_ACCOUNT_MAX = KIS_WS_MAX_REGISTRATIONS // TRS_PER_CODE  # = 19
 LIVE_SET_MAX_CODES = _PER_ACCOUNT_MAX
 
+# 키움 WS 연결당 등록 상한 = 총 200종목, **타입 무관**(실측 2026-07-16, ADR-0116).
+# KIS와 달리 종목당 1건(0B+0D 쌍도 200종목)이라 TR 수로 나누지 않는다. 4앱키=800종목.
+KIWOOM_WS_MAX_REGISTRATIONS = 200
+KIWOOM_PER_ACCOUNT_MAX = KIWOOM_WS_MAX_REGISTRATIONS
+
 
 @dataclass(frozen=True)
 class LiveCoveragePlan:
@@ -34,11 +39,20 @@ class LiveStorageTargets:
     ws_targets: tuple[str, ...]
     kis_api_targets: tuple[str, ...]
     capture_candidates: tuple[str, ...]
+    # 키움 WS 수집 대상(ADR-0116). kiwoom_enabled 시 히트맵(rest_extra)이 여기로 가고
+    # kis_api_targets(REST30)에서 빠진다. 기본 () — off일 때 기존 소비자 무영향.
+    kiwoom_targets: tuple[str, ...] = ()
 
 
 def partition_live_set(codes: list[str], n: int) -> list[list[str]]:
     """display-order contiguous allocation: account k = codes[k*W:(k+1)*W]."""
     return [codes[k * _PER_ACCOUNT_MAX:(k + 1) * _PER_ACCOUNT_MAX] for k in range(n)]
+
+
+def partition_kiwoom(codes: list[str], n: int) -> list[list[str]]:
+    """키움 계정별 disjoint 분할 — 계정 k = codes[k*200:(k+1)*200]. partition_live_set의
+    키움판(앱키당 200). 초과분(200×n 넘는 종목)은 어느 계정에도 안 담긴다(호출자 책임)."""
+    return [codes[k * KIWOOM_PER_ACCOUNT_MAX:(k + 1) * KIWOOM_PER_ACCOUNT_MAX] for k in range(n)]
 
 
 def plan_live_coverage(
@@ -85,6 +99,7 @@ def plan_storage_targets(
     per_account_max: int | None = None,
     rest_extra_candidates: tuple[str, ...] = (),
     rest_fallback_codes: tuple[str, ...] = (),
+    kiwoom_enabled: bool = False,
 ) -> LiveStorageTargets:
     """Split capture_candidates into WS slots + REST 30s remainder.
 
@@ -110,25 +125,31 @@ def plan_storage_targets(
     rest_extra = tuple(
         code for code in dict.fromkeys(rest_extra_candidates) if code not in candidate_set
     )
+    # 키움 켜짐(ADR-0116): 히트맵(rest_extra)을 키움 WS로 돌리고 KIS REST에서 뺀다.
+    # off면 kiwoom_targets=() + 히트맵은 기존대로 KIS REST — plan 출력 byte-identical.
+    kiwoom_targets = rest_extra if kiwoom_enabled else ()
+    kis_rest_extra = () if kiwoom_enabled else rest_extra
     max_codes = per_account_max * n_configured
     if storage_policy == "rest_only":
-        rest_targets = candidates + rest_extra
+        rest_targets = candidates + kis_rest_extra
         return LiveStorageTargets(
             ws_targets=(),
             kis_api_targets=rest_targets + _dedup_fallback(rest_fallback_codes, rest_targets),
             capture_candidates=candidates,
+            kiwoom_targets=kiwoom_targets,
         )
     ws_targets = candidates[:max_codes]
     if storage_policy == "ws_only":
         rest_targets = ()
     else:
         ws_set = set(ws_targets)
-        rest_targets = tuple(code for code in candidates if code not in ws_set) + rest_extra
+        rest_targets = tuple(code for code in candidates if code not in ws_set) + kis_rest_extra
         rest_targets = rest_targets + _dedup_fallback(rest_fallback_codes, rest_targets)
     return LiveStorageTargets(
         ws_targets=ws_targets,
         kis_api_targets=rest_targets,
         capture_candidates=candidates,
+        kiwoom_targets=kiwoom_targets,
     )
 
 

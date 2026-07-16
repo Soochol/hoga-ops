@@ -1358,6 +1358,7 @@ def build_router(
             kis_rest_bypass_enabled=req.kis_rest_bypass_enabled,
             heatmap_capture_enabled=req.heatmap_capture_enabled,
             screener_depth_autocollect=req.screener_depth_autocollect,
+            kiwoom_enabled=req.kiwoom_enabled,
         )
         try:
             await refresh_live_stream(data_dir=data_dir)

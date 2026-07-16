@@ -165,6 +165,7 @@ async def sync_storage_runtime(
             ws_targets=targets.ws_targets,
             kis_api_targets=(),
             capture_candidates=targets.capture_candidates,
+            kiwoom_targets=targets.kiwoom_targets,  # bypass는 KIS REST만 끔 — 키움 무관
         )
     recorder = (
         _ensure_rest30_recorder(
