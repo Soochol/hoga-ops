@@ -145,7 +145,7 @@ DISCONNECTED → CONNECTING → AUTHED → REGISTERING → LIVE
 | **PR-4b** | 온디맨드 표시전용 WS(뷰-구독 통합, 낯선 종목) | 장중: 낯선 종목 열람 시 키움 임시구독·닫으면 해제 |
 | **PR-4c** | 0F/0w 어댑터(거래원·프로그램) — **정규장 스모크로 실측 FID 확정 후** | payload parity(추측 FID 금지) |
 | ~~**PR-5**~~ ✅ | kiwoom_client ka10080 REST + KisCandle 어댑터 (커밋 543722f6) | 어댑터·walk-back·until_date·dedup 7종(MockTransport 실응답 재현) |
-| **PR-5b** | 백필 hot-path 통합(키움우선→KIS폴백) — ka10080 날짜앵커링 스모크 확인 후 | 동일 구간 양소스 패리티·per-date vs walk-back 매핑 |
+| ~~**PR-5b**~~ ✅ | 백필 range prefetch 키움우선→KIS폴백 (커밋 31ca3760) | range채움→KIS미호출·갭폴백·예외폴백·미배선불변 5종·134 api tests. ka10080 실측(900봉·날짜앵커없음)으로 range prefetch 확정 |
 | ~~**PR-6**~~ ✅ | 프론트: 설정 키움 카드(토글+상태줄)·하단바 커버리지 칩 (커밋 c0efa285) | 칩 3종·토글/상태줄 4종·3746 tests·build |
 | **PR-6b** | 종목별 화질 도트(`●`/`◐`) — 백엔드 per-code 소스 귀속 노출 후 | CollectionDot 패턴 재사용 |
 
