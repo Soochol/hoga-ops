@@ -221,6 +221,18 @@ vi.mock('../studyViews/studySaveSource', async (importOriginal) => {
   };
 });
 
+vi.mock('../capture/useSymbols', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('../capture/useSymbols')>();
+  return {
+    ...actual,
+    // 심볼 마스터 스텁 — 000660만 실명 해석. 005930은 목록에 없어 미해석 폴백
+    // (탭 타이틀 테스트의 document.title === '005930' 단언)을 그대로 유지한다.
+    useSymbols: () => ({
+      data: { symbols: [{ code: '000660', name: 'SK하이닉스', market: 'KOSPI' }] },
+    } as unknown as ReturnType<typeof actual.useSymbols>),
+  };
+});
+
 function rangeBundleFixture(overrides: Partial<RangeBundle> = {}): RangeBundle {
   return {
     code: '005930',
@@ -327,16 +339,17 @@ describe('LivePage shell', () => {
     expect(screen.getByTestId('live-chart-panel')).toContainElement(screen.getByTestId('live-toolbar'));
   });
 
-  it('shows the collect button for a stock code and opens the collect dialog', async () => {
+  it('shows the collect button for a stock code and opens the collect dialog with the symbol name', async () => {
     renderWithRouter('/live?code=000660');
 
     act(() => {
       screen.getByTestId('live-collect-button').click();
     });
 
-    expect(await screen.findByRole('dialog', { name: /지난 N일 수집/ })).toBeInTheDocument();
+    // 딥링크 시드는 label=code 지만, 제목은 심볼 마스터의 실명으로 보강된다.
+    const dialog = await screen.findByRole('dialog', { name: 'SK하이닉스 지난 N일 수집' });
     // 단일 종목 스코프 — 대상 1종목이 그대로 노출된다.
-    expect(screen.getByRole('dialog', { name: /지난 N일 수집/ }).textContent).toContain('1');
+    expect(dialog.textContent).toContain('1');
   });
 
   it('hides the collect button for index instruments', async () => {

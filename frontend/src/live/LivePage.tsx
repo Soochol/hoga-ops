@@ -30,7 +30,8 @@ import IndicatorPanel from './indicators/IndicatorPanel';
 import { panePrefsForTimeframe, type PanePrefsIndicatorSource } from './indicators/indicatorPaneProfiles';
 import { useDailyMaRevealGate } from './indicators/useDailyMaRevealGate';
 import LiveSettingsModal from './LiveSettingsModal';
-import { CollectDialog } from '../heatmap/CollectDialog';
+import { SingleCodeCollectDialog } from '../heatmap/CollectDialog';
+import { useSymbols } from '../capture/useSymbols';
 import { useDocumentTitle } from '../util/useDocumentTitle';
 import { indexInstrument, instrumentLabel, isLiveIndexId } from './liveInstrument';
 import { useLiveIndexCandles, useLiveIndexInvestorNet } from '../api/liveIndices';
@@ -141,6 +142,18 @@ export function LivePage() {
   const [settingsOpen, setSettingsOpen] = useState(false);
   // 활성 종목 지난 N일 hogaplay 수집(히트맵 CollectDialog 재사용) — 주식 종목 한정.
   const [collectOpen, setCollectOpen] = useState(false);
+  // 활성 종목이 사라지면(지수 전환 등) 열림 플래그도 정리 — 다음 주식 선택 때
+  // 다이얼로그가 사용자 액션 없이 재등장하지 않게.
+  useEffect(() => {
+    if (!activeCode) setCollectOpen(false);
+  }, [activeCode]);
+  // 딥링크(?code=) 시드는 instrument label=code 라, 수집 다이얼로그 제목은 상태바와
+  // 동일 소스(심볼 마스터)에서 실명을 보강한다. 미해석이면 label(=검색 경유 시 실명)로.
+  const { data: symbolsData } = useSymbols();
+  const collectSymbolName = useMemo(
+    () => (activeCode ? symbolsData?.symbols.find((s) => s.code === activeCode)?.name : undefined),
+    [symbolsData, activeCode],
+  );
   // 저장뷰(Study View Save)가 현재 차트 뷰포트를 캡처하는 데 쓰는 ref — 탭이 아니라
   // 뷰포트 프리미티브다(ADR-0113: 탭별 뷰포트 저장은 제거, 저장뷰 캡처는 유지).
   const viewportCaptureRef = useRef<() => TabViewport | null>(() => null);
@@ -381,11 +394,11 @@ export function LivePage() {
         <LiveSettingsModal onClose={() => setSettingsOpen(false)} />
       )}
       {collectOpen && activeCode && (
-        <CollectDialog
+        <SingleCodeCollectDialog
           // 다이얼로그가 열린 채 종목이 바뀌면 remount 로 미리보기·기간 상태를 초기화한다.
           key={activeCode}
-          title={`${activeLabel ?? activeCode} 지난 N일 수집`}
-          groups={[{ id: '_one', name: activeLabel ?? activeCode, codes: [activeCode] }]}
+          code={activeCode}
+          name={collectSymbolName ?? activeLabel ?? activeCode}
           onClose={() => setCollectOpen(false)}
         />
       )}

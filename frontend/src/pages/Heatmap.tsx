@@ -12,7 +12,7 @@ import { SectorTempStrip } from '../heatmap/SectorTempStrip';
 import { HeatmapRowMenu } from '../heatmap/HeatmapRowMenu';
 import { SortCycleButton } from '../heatmap/SortCycleButton';
 import { HeatmapSearchInput } from '../heatmap/HeatmapSearchInput';
-import { CollectDialog } from '../heatmap/CollectDialog';
+import { CollectDialog, SingleCodeCollectDialog } from '../heatmap/CollectDialog';
 import { filterGroups } from '../heatmap/filterGroups';
 import { avgPct, groupHeatmapEntries, orderFolderGroups, makePctOf, nextSort } from '../heatmap/heat';
 import { useFrozenWhileDragging } from '../heatmap/useFrozenWhileDragging';
@@ -134,9 +134,9 @@ export function Heatmap() {
           <CollectDialog groups={collectScopes} onClose={() => setShowCollect(false)} />
         )}
         {collectOne && (
-          <CollectDialog
-            title={`${collectOne.name} 지난 N일 수집`}
-            groups={[{ id: '_one', name: collectOne.name, codes: [collectOne.code] }]}
+          <SingleCodeCollectDialog
+            code={collectOne.code}
+            name={collectOne.name}
             onClose={() => setCollectOne(null)}
           />
         )}

@@ -1,14 +1,15 @@
+import type { ComponentProps } from 'react';
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { render, screen, fireEvent, within } from '@testing-library/react';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { LiveToolbar } from './LiveToolbar';
 import { useLivePageStore } from '../state/livePage';
 
-function renderToolbar() {
+function renderToolbar(props: Partial<ComponentProps<typeof LiveToolbar>> = {}) {
   const qc = new QueryClient();
   return render(
     <QueryClientProvider client={qc}>
-      <LiveToolbar onOpenIndicators={() => {}} onOpenSettings={() => {}} />
+      <LiveToolbar onOpenIndicators={() => {}} onOpenSettings={() => {}} {...props} />
     </QueryClientProvider>,
   );
 }
@@ -217,12 +218,7 @@ describe('LiveToolbar', () => {
     expect(screen.queryByTestId('live-collect-button')).toBeNull();
 
     const onOpenCollect = vi.fn();
-    const qc = new QueryClient();
-    render(
-      <QueryClientProvider client={qc}>
-        <LiveToolbar onOpenIndicators={() => {}} onOpenSettings={() => {}} onOpenCollect={onOpenCollect} />
-      </QueryClientProvider>,
-    );
+    renderToolbar({ onOpenCollect });
     fireEvent.click(screen.getByTestId('live-collect-button'));
     expect(onOpenCollect).toHaveBeenCalledOnce();
   });
