@@ -359,12 +359,11 @@ export function ScreenerDrawer() {
             ▶ 시작
           </ToolbarButton>
         ) : (
-          // 활성 = '켜짐'을 accent-tint 배경 + 좌측 accent 보더로 표현하는 단일 패널.
-          // 상태·종료를 한 줄에, 주기 선택은 그 안 하단에 — 하나의 라이브 단위로 읽힘.
+          // 활성 = '켜짐'을 accent-tint 배경으로 표현하는 단일 패널. 상태·종료를 한
+          // 줄에, 주기 선택은 그 안 하단에 — 하나의 라이브 단위로 읽힘.
           <div
             data-testid="screener-monitor-status"
-            className="flex flex-col gap-2 rounded-lg border-l-2 bg-tint-selection px-2.5 py-2"
-            style={{ borderLeftColor: 'var(--accent)' }}
+            className="flex flex-col gap-2 rounded-lg bg-tint-selection px-2.5 py-2"
           >
             <div className="flex items-center justify-between gap-2">
               <span className="flex min-w-0 items-center gap-1.5 text-xs text-fg">
