@@ -202,7 +202,8 @@ const labelStyle = (place: ExtremeLabelPlace, color: string): CSSProperties => (
   background: 'var(--bg-card)',
   borderRadius: 3,
   padding: '1px 5px',
-  boxShadow: '0 0 0 1px var(--border-strong), 0 1px 3px rgba(0, 0, 0, 0.28)',
+  // 외곽선(테두리 링) 제거 — 불투명 배경 + 드롭섀도만으로 캔들 위 가독성 유지.
+  boxShadow: '0 1px 3px rgba(0, 0, 0, 0.28)',
 });
 
 /**
