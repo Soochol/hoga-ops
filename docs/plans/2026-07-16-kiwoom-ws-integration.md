@@ -138,7 +138,7 @@ DISCONNECTED → CONNECTING → AUTHED → REGISTERING → LIVE
 |---|---|---|
 | ~~**PR-0**~~ ✅ | 플랜 + ADR-0116 (커밋 32211c4c) | — |
 | ~~**PR-1**~~ ✅ | kiwoom_fields/frames/ws_client/token_provider/runtime (커밋 42281847) | 골든 테스트(실측 payload)·byte-parity·fake소켓 상태머신·**실 API NXT 애프터마켓 367틱 검증**·20 tests·ruff/pyright clean |
-| **PR-2** | sources.py `kiwoom_live` + promote/완결성 게이트 확장 | 기존 소스 read-path 무회귀 |
+| ~~**PR-2**~~ ✅ | sources.py `kiwoom_live` + disk_state/screener_depth/meta_backfill 소스 튜플 (커밋 b9fca6e0) | 소스 계약 테스트 갱신·1278 api/live tests·promote 무변경(source:str) |
 | **PR-3** | coverage+lifecycle 배선 + `kiwoom_enabled` (기본 off) | 머지 후 동작 불변, 토글 on 도그푸딩 |
 | **PR-4** | 온디맨드 WS(표시전용) + 0F/0w 어댑터 + 관측성(LiveStatus collectors) | 장중 이중 구독 parity 확인 |
 | **PR-5** | 분봉 백필 키움 이관 (키움우선→KIS폴백) | 동일 구간 양소스 패리티 테스트 |
