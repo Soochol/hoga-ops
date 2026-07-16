@@ -5,12 +5,24 @@ from hoga.live.kiwoom_session import KiwoomSessionManager, _KiwoomConn
 
 
 class _FakeClient:
-    def __init__(self):
+    def __init__(self, codes=()):
         self.connected = True
         self.updated: list[list[str]] = []
+        self._codes = list(codes)
+        self.kicked_by_peer = False
+        self.last_tick_ms = None
+
+    @property
+    def sub_expected(self):
+        return len(self._codes)
+
+    @property
+    def sub_acked(self):
+        return len(self._codes)
 
     async def update_codes(self, codes):
         self.updated.append(list(codes))
+        self._codes = list(codes)
 
 
 class _FakeStream:
@@ -35,7 +47,7 @@ def _fake_manager():
         return _KiwoomConn(
             account_id=account_id,
             stream=_FakeStream(),
-            client=_FakeClient(),
+            client=_FakeClient(codes),
             ws_task=asyncio.create_task(_idle()),
             flush_task=asyncio.create_task(_idle()),
             codes=tuple(codes),
@@ -96,3 +108,24 @@ async def test_sync_shrinking_accounts_tears_down_extra():
     assert set(mgr._conns) == {0, 1}
     await mgr.sync(tuple(f"{i:06d}" for i in range(100)), n_accounts=4)  # 계정 0만
     assert set(mgr._conns) == {0}
+
+
+async def test_status_snapshot_shape():
+    mgr, _ = _fake_manager()
+    await mgr.sync(tuple(f"{i:06d}" for i in range(250)), n_accounts=4)  # 계정 0,1
+    st = mgr.status()
+    assert st["enabled"] is True
+    assert st["accounts_configured"] == 2
+    assert st["connected_accounts"] == 2  # FakeClient.connected=True
+    assert st["subscribed_count"] == 250
+    assert [a["account_id"] for a in st["accounts"]] == [0, 1]
+    assert st["accounts"][0]["sub_expected"] == 200
+    await mgr.stop()
+
+
+async def test_status_empty_when_idle():
+    mgr, _ = _fake_manager()
+    st = mgr.status()
+    assert st["connected_accounts"] == 0
+    assert st["subscribed_count"] == 0
+    assert st["accounts"] == []

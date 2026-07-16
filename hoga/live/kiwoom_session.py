@@ -99,6 +99,32 @@ class KiwoomSessionManager:
     def connected_accounts(self) -> int:
         return sum(1 for c in self._conns.values() if c.client.connected)
 
+    def status(self) -> dict:
+        """관측 스냅샷 — LiveStatus.kiwoom로 노출(PR-6 커버리지 칩·진단). 프론트는
+        connected_accounts/subscribed_count을 칩에, accounts를 진단에 쓴다."""
+        accounts = []
+        last_tick: int | None = None
+        for account_id, conn in sorted(self._conns.items()):
+            c = conn.client
+            if c.last_tick_ms is not None:
+                last_tick = max(last_tick or 0, c.last_tick_ms)
+            accounts.append({
+                "account_id": account_id,
+                "connected": c.connected,
+                "sub_expected": c.sub_expected,
+                "sub_acked": c.sub_acked,
+                "kicked_by_peer": c.kicked_by_peer,
+                "last_tick_ms": c.last_tick_ms,
+            })
+        return {
+            "enabled": True,
+            "accounts_configured": len(self._conns),
+            "connected_accounts": self.connected_accounts,
+            "subscribed_count": len(self.active_codes()),
+            "last_tick_ms": last_tick,
+            "accounts": accounts,
+        }
+
     async def stop(self) -> None:
         for account_id in list(self._conns):
             await self._teardown(account_id)

@@ -130,6 +130,11 @@ class LiveStatus(BaseModel):
     # 위해 last_cycle 시간이 아니라 task 생존만 본다(ADR-0064 정직 health 패턴).
     # additive; unknown 필드라 프론트 무시 안전. 항목: {name, running}.
     supervised_tasks: list[dict[str, object]] = Field(default_factory=list)
+    # 키움 WS 수집 관측(ADR-0116, PR-4). kiwoom_enabled off/미배선이면 None. additive —
+    # unknown 필드라 프론트 무시 안전. PR-6 커버리지 칩이 connected_accounts/subscribed_count을,
+    # 진단이 accounts[]를 소비한다. 키(enabled/accounts_configured/connected_accounts/
+    # subscribed_count/last_tick_ms/accounts)는 KiwoomSessionManager.status()가 정의.
+    kiwoom: dict[str, object] | None = None
 
 
 # ── State ──────────────────────────────────────────────────────────────────────
@@ -524,6 +529,11 @@ def get_status() -> LiveStatus:
             broker_poll_status.rate_limit_bounces if broker_poll_status else None
         ),
         kis_rest_bypass_enabled=_state.kis_rest_bypass_enabled,
+        kiwoom=(
+            _state.kiwoom_session.status()
+            if _state.kiwoom_session is not None
+            else None
+        ),
     )
 
 

@@ -463,6 +463,9 @@ class FakeKiwoomSession:
     def active_codes(self):
         return list(self._codes)
 
+    def status(self):
+        return {"enabled": True, "subscribed_count": len(self._codes)}
+
     async def stop(self):
         self.stopped += 1
         self._codes = ()
