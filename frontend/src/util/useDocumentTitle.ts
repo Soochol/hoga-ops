@@ -1,6 +1,6 @@
 import { useEffect } from 'react';
 import { useSymbols } from '../capture/useSymbols';
-import { isStaleLiveQuote, useQuoteByCode, type LiveQuote } from '../api/liveQuotes';
+import { useQuoteByCode, type LiveQuote } from '../api/liveQuotes';
 import { useLiveVenueStore } from '../state/liveVenue';
 
 const DEFAULT_TITLE = 'hoga-ops';
@@ -15,7 +15,11 @@ function formatTitleChangePct(pct: number | null): string | null {
 }
 
 function formatTitleBase(base: string, quote: LiveQuote | undefined): string {
-  if (!quote || isStaleLiveQuote(quote)) return base;
+  // stale quote(kis_capacity_timeout 등 장중 일시 미응답 시 last-good 값)도 그대로 붙인다.
+  // stale 을 숨기면 235종목 폴링에서 stale 배치가 올 때마다 탭 제목의 가격·등락률이 사라졌다
+  // 나타나며 깜빡인다 — 값은 수 초 전 last-good 이라 탭 제목엔 충분히 정확하고, 탭 제목엔
+  // 신선도 표식이 없어 숨기면 정보만 잃는다. 정렬/집계와 동일 정책(makeChangePctOf 주석 참조).
+  if (!quote) return base;
   const parts = [base, formatTitlePrice(quote.price)];
   const pct = formatTitleChangePct(quote.change_pct);
   if (pct) parts.push(pct);

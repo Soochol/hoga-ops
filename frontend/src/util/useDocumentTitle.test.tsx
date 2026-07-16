@@ -104,17 +104,19 @@ describe('useDocumentTitle', () => {
     expect(document.title).toBe('삼성전자 70,000');
   });
 
-  it('does not present stale live quote values in the browser title as current truth', () => {
+  it('keeps stale live quote values in the title (last-good, 깜빡임 방지)', () => {
+    // stale 은 장중 일시 타임아웃의 last-good 값 — 숨기면 stale 배치마다 제목이 깜빡인다.
+    // 정렬/집계와 동일하게 그대로 표시한다.
     const qc = makeQc({ symbols: HITS, status: 'fresh', fetched_at_ms: 1 });
     seedQuote(qc, '005930', {
       price: 70000,
       change_pct: 2.34,
       change_won: 1600,
       stale: true,
-      stale_reason: 'kis_rest_bypassed',
+      stale_reason: 'kis_capacity_timeout',
     });
     renderHook(() => useDocumentTitle('005930'), { wrapper: wrap(qc) });
-    expect(document.title).toBe('삼성전자');
+    expect(document.title).toBe('삼성전자 70,000 +2.34%');
   });
 
   it('falls back to the raw code when Symbol Master has no match', () => {
