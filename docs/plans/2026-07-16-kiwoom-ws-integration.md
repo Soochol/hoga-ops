@@ -139,7 +139,8 @@ DISCONNECTED → CONNECTING → AUTHED → REGISTERING → LIVE
 | ~~**PR-0**~~ ✅ | 플랜 + ADR-0116 (커밋 32211c4c) | — |
 | ~~**PR-1**~~ ✅ | kiwoom_fields/frames/ws_client/token_provider/runtime (커밋 42281847) | 골든 테스트(실측 payload)·byte-parity·fake소켓 상태머신·**실 API NXT 애프터마켓 367틱 검증**·20 tests·ruff/pyright clean |
 | ~~**PR-2**~~ ✅ | sources.py `kiwoom_live` + disk_state/screener_depth/meta_backfill 소스 튜플 (커밋 b9fca6e0) | 소스 계약 테스트 갱신·1278 api/live tests·promote 무변경(source:str) |
-| **PR-3** | coverage+lifecycle 배선 + `kiwoom_enabled` (기본 off) | 머지 후 동작 불변, 토글 on 도그푸딩 |
+| ~~**PR-3**~~ ✅ | coverage `kiwoom_targets` 라우팅 + `kiwoom_enabled` 킬스위치(데이터모델·operator 제어) (커밋 c3879648) | off=plan byte-identical 골든·partition·settings backcompat·1077 live tests |
+| **PR-3b** | lifecycle collector 인스턴스화 + 키움 writer/promote(kiwoom_live parquet) + storage_runtime 라우팅 전파 | 장중 도그푸딩: 히트맵 코드가 kiwoom_live로 캡처, KIS REST30 부하 감소 |
 | **PR-4** | 온디맨드 WS(표시전용) + 0F/0w 어댑터 + 관측성(LiveStatus collectors) | 장중 이중 구독 parity 확인 |
 | **PR-5** | 분봉 백필 키움 이관 (키움우선→KIS폴백) | 동일 구간 양소스 패리티 테스트 |
 | **PR-6** | 프론트: 설정 키움 카드·하단바 커버리지 칩(`실시간 876/…`)·화질 도트(`●`/`◐`) | 도그푸딩 |
