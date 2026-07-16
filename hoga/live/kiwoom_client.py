@@ -31,6 +31,10 @@ _MINUTE_ROWS_KEY = "stk_min_pole_chart_qry"
 _DEFAULT_MAX_PAGES = 20  # 900봉×20 ≈ 46거래일 상한(런어웨이 방지)
 
 
+class KiwoomMinuteError(RuntimeError):
+    """ka10080 HTTP/에러바디 — 부분 데이터를 완결로 오인하지 않도록 예외로 전파."""
+
+
 def _num(raw: str | None) -> int:
     """부호 접두(등락방향) strip 후 정수. 빈/None은 0."""
     s = (raw or "").strip()
@@ -81,15 +85,20 @@ class KiwoomClient:
 
     async def fetch_minute_candles(
         self, code: str, *, until_date: str | None = None, max_pages: int = _DEFAULT_MAX_PAGES,
-    ) -> list[KisCandle]:
-        """code의 1분봉을 최근→과거로 walk-back. until_date(YYYYMMDD) 이전 봉이 나오면 정지.
+    ) -> tuple[list[KisCandle], bool]:
+        """code의 1분봉을 최근→과거로 walk-back. (candles, complete) 반환.
 
+        complete=True는 **until_date 도달 또는 cont_yn=N 자연 종료**(경계 날짜까지 완전
+        수집)를 뜻한다. max_pages 소진으로 until_date 미도달이면 complete=False — 이때
+        최과거 경계 날짜는 하루 중간에서 잘린 부분 데이터이므로 호출자가 그 날짜를
+        캐시에 저장하면 안 된다(리뷰 C3: 부분 날짜 '완결' 캐시 오염 방지).
+        HTTP 오류/에러바디는 _one_page가 예외를 던져 여기서 전파 → 호출자 전량 폴백.
         cont_yn 페이지네이션(next_key에 날짜시각 인코딩). t_ms 오름차순 반환(dedup).
-        until_date=None이면 max_pages까지 전부. 900봉/페이지라 대부분 소수 페이지로 충분.
         """
         seen: set[int] = set()
         candles: list[KisCandle] = []
         cont_yn, next_key = "N", ""
+        complete = False
         for _page in range(max_pages):
             rows, cont_yn, next_key = await self._one_page(code, cont_yn, next_key)
             reached = False
@@ -103,14 +112,18 @@ class KiwoomClient:
                 seen.add(c.t_ms)
                 candles.append(c)
             if reached or cont_yn != "Y" or not next_key:
+                complete = True
                 break
         candles.sort(key=lambda c: c.t_ms)
-        return candles
+        return candles, complete
 
     async def _one_page(
         self, code: str, cont_yn: str, next_key: str,
     ) -> tuple[list[dict], str, str]:
-        """ka10080 1페이지 — (rows, 응답 cont-yn, 응답 next-key). 1/s 페이싱."""
+        """ka10080 1페이지 — (rows, 응답 cont-yn, 응답 next-key). 1/s 페이싱.
+
+        비200·return_code≠0은 KiwoomMinuteError를 던진다(리뷰 G4: 침묵 잘림 대신 예외로
+        전파해 호출자가 부분 데이터를 완결로 오인·저장하지 않고 전량 KIS 폴백하게 함)."""
         async with self._lock:
             await self._pace()
             token = await self._token_fn()
@@ -127,9 +140,11 @@ class KiwoomClient:
             )
             self._last_call_mono = time.monotonic()
         if resp.status_code != 200:  # noqa: PLR2004
-            _log.warning("live.kiwoom.minute_http code=%s status=%d", code, resp.status_code)
-            return [], "N", ""
+            raise KiwoomMinuteError(f"ka10080 HTTP {resp.status_code} code={code}")
         body = resp.json()
+        rc = body.get("return_code")
+        if rc not in (0, None):
+            raise KiwoomMinuteError(f"ka10080 return_code={rc} code={code}")
         rows = body.get(_MINUTE_ROWS_KEY) or []
         return rows, resp.headers.get("cont-yn", "N"), resp.headers.get("next-key", "")
 

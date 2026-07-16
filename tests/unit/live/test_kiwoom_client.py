@@ -44,9 +44,10 @@ async def test_fetch_single_page():
         return httpx.Response(200, json=body, headers={"cont-yn": "N", "next-key": ""})
 
     client = _client(handler)
-    candles = await client.fetch_minute_candles("005930")
+    candles, complete = await client.fetch_minute_candles("005930")
     await client.aclose()
     assert len(candles) == 3
+    assert complete is True  # cont-yn=N 자연 종료
     # t_ms 오름차순.
     assert [c.t_ms for c in candles] == sorted(c.t_ms for c in candles)
 
@@ -64,9 +65,10 @@ async def test_fetch_walks_back_via_cont_yn():
         return httpx.Response(200, json=body, headers={"cont-yn": "N", "next-key": ""})
 
     client = _client(handler)
-    candles = await client.fetch_minute_candles("005930")
+    candles, complete = await client.fetch_minute_candles("005930")
     await client.aclose()
     assert len(candles) == 4  # 2페이지 병합
+    assert complete is True
     # 첫 호출 cont-yn=N, 둘째는 이전 응답의 next-key(K2)로.
     assert calls[0] == ("N", "")
     assert calls[1] == ("Y", "K2")
@@ -82,10 +84,11 @@ async def test_until_date_stops_walkback():
         return httpx.Response(200, json=body, headers={"cont-yn": "Y", "next-key": "K3"})
 
     client = _client(handler)
-    candles = await client.fetch_minute_candles("005930", until_date="20260716")
+    candles, complete = await client.fetch_minute_candles("005930", until_date="20260716")
     await client.aclose()
     # 20260716 봉만, 20260715는 until_date 이전이라 제외 + walk-back 정지.
     assert len(candles) == 1
+    assert complete is True  # until_date 도달
 
 
 async def test_dedup_across_pages():
@@ -98,15 +101,46 @@ async def test_dedup_across_pages():
         return httpx.Response(200, json=body, headers={"cont-yn": "N", "next-key": ""})
 
     client = _client(handler)
-    candles = await client.fetch_minute_candles("005930")
+    candles, _complete = await client.fetch_minute_candles("005930")
     await client.aclose()
     assert len(candles) == 3  # 150900 중복 제거
 
 
-async def test_http_error_returns_empty():
+async def test_http_error_raises():
+    # 리뷰 G4: 비200은 침묵 잘림 대신 예외 → 호출자 전량 KIS 폴백.
+    import pytest
+    from hoga.live.kiwoom_client import KiwoomMinuteError
+
     def handler(req):
         return httpx.Response(500, text="err")
     client = _client(handler)
-    candles = await client.fetch_minute_candles("005930")
+    with pytest.raises(KiwoomMinuteError):
+        await client.fetch_minute_candles("005930")
     await client.aclose()
-    assert candles == []
+
+
+async def test_error_body_raises():
+    # 200 + return_code≠0 도 예외(침묵 잘림 방지).
+    import pytest
+    from hoga.live.kiwoom_client import KiwoomMinuteError
+
+    def handler(req):
+        return httpx.Response(200, json={"return_code": 900, "return_msg": "err"})
+    client = _client(handler)
+    with pytest.raises(KiwoomMinuteError):
+        await client.fetch_minute_candles("005930")
+    await client.aclose()
+
+
+async def test_max_pages_exhaustion_marks_incomplete():
+    # 리뷰 C3: until_date 미도달로 max_pages 소진 → complete=False.
+    def handler(req):
+        # 항상 더 과거가 있다고 응답(cont-yn=Y) → 절대 until_date 도달 못 함.
+        body = {"stk_min_pole_chart_qry": [_row("20260716151000")]}
+        return httpx.Response(200, json=body, headers={"cont-yn": "Y", "next-key": "K"})
+    client = _client(handler)
+    candles, complete = await client.fetch_minute_candles(
+        "005930", until_date="20200101", max_pages=3,
+    )
+    await client.aclose()
+    assert complete is False  # 3페이지 소진, until_date 미도달

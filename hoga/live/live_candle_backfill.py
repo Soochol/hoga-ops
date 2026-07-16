@@ -52,11 +52,12 @@ class _MinuteCandle(Protocol):
 
 
 class KiwoomMinuteFetcher(Protocol):
-    """키움 분봉 walk-back 페처(kiwoom_client.KiwoomClient 구조). until_date까지 긁는다."""
+    """키움 분봉 walk-back 페처(kiwoom_client.KiwoomClient 구조). (candles, complete) 반환 —
+    complete=False면 최과거 경계 날짜가 부분 데이터(리뷰 C3)."""
 
     async def fetch_minute_candles(
         self, code: str, *, until_date: str | None = None, max_pages: int = ...,
-    ) -> list[_MinuteCandle]: ...
+    ) -> tuple[list[_MinuteCandle], bool]: ...
 
 
 @dataclass(frozen=True)
@@ -598,13 +599,18 @@ class LiveMinuteCandleBackfill:
             return
         oldest = min(pending)
         try:
-            candles = await fetcher.fetch_minute_candles(code, until_date=oldest)
+            candles, complete = await fetcher.fetch_minute_candles(code, until_date=oldest)
         except Exception:  # noqa: BLE001 — 키움 실패는 전량 KIS 폴백(사다리)
             log.warning("live.kiwoom.minute_prefetch_failed code=%s", code, exc_info=True)
             return
         by_date: dict[str, list[dict]] = {}
         for c in candles:
             by_date.setdefault(_date_from_t_ms(c.t_ms), []).append(_candle_to_dict(c))
+        # 리뷰 C3: walk-back 미완결(max_pages 소진 등)이면 최과거 경계 날짜는 하루 중간에서
+        # 잘린 부분 데이터 — 캐시에 '완결'로 저장하면 영구 반쪽 차트가 된다. 그 날짜는
+        # 저장에서 제외해 KIS 폴백이 완전 수집하게 한다.
+        if not complete and by_date:
+            del by_date[min(by_date)]
         pending_set = set(pending)
         for date_s, bars in by_date.items():
             if date_s in pending_set:

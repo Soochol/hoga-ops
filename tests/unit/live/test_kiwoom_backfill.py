@@ -35,17 +35,19 @@ class _RecordingScheduler:
 
 
 class _FakeKiwoom:
-    """지정 날짜 집합에 대해 캔들을 반환하는 walk-back 페처."""
-    def __init__(self, dates):
+    """지정 날짜 집합에 대해 캔들을 반환하는 walk-back 페처. complete=완결 도달 여부."""
+    def __init__(self, dates, *, complete=True):
         self._dates = dates
+        self._complete = complete
         self.calls = []
 
     async def fetch_minute_candles(self, code, *, until_date=None, max_pages=20):
         self.calls.append((code, until_date))
-        return [
+        candles = [
             KisCandle(t_ms=_kst_ms(d, 9, i), open=1, high=1, low=1, close=1, volume=1)
             for d in self._dates for i in range(2)
         ]
+        return candles, self._complete
 
 
 def _backfill(tmp_path, kis, *, kiwoom=None):
@@ -96,6 +98,20 @@ async def test_kis_fallback_for_dates_kiwoom_misses(tmp_path):
     assert kis.calls == [("005930", "20260519")]  # 갭만 KIS
     assert "20260519" in result.fresh_dates
     assert {"20260518", "20260520"} <= set(result.cached_dates)
+
+
+async def test_kiwoom_incomplete_walkback_drops_boundary_date_to_kis(tmp_path):
+    """리뷰 C3: walk-back 미완결(complete=False)이면 최과거 경계 날짜(18)는 부분 데이터라
+    캐시에 저장 안 하고 KIS 폴백 — 나머지(19·20)만 키움 저장."""
+    tmp = tmp_path
+    kis = _FakeKis()
+    kiwoom = _FakeKiwoom(["20260518", "20260519", "20260520"], complete=False)
+    bf = _backfill(tmp, kis, kiwoom=kiwoom)
+    result = await _collect_krx(bf, ["20260518", "20260520"])
+    # 경계(최과거) 18은 부분 → KIS 폴백, 19·20은 키움 저장.
+    assert kis.calls == [("005930", "20260518")]
+    assert "20260518" in result.fresh_dates
+    assert {"20260519", "20260520"} <= set(result.cached_dates)
 
 
 async def test_kiwoom_failure_falls_back_entirely_to_kis(tmp_path):

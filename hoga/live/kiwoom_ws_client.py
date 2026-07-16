@@ -81,7 +81,16 @@ class KiwoomWsClient:
         self._codes: list[str] = []
         self._ws: _WsLike | None = None
         self._sub_lock = asyncio.Lock()  # 구독 전송 직렬화 — wire≠_codes 발산 방지
-        self._acked: set[str] = set()  # REG ACK 받은 종목
+        self._acked: set[str] = set()  # REG rc=0 받은 종목 (실등록 여부는 틱 유입 워치독)
+        # ACK 라우팅(리뷰 C1): _recv_loop이 유일한 recv 소유자다. LOGIN/REG/REMOVE ACK는
+        # 여기 Future로 라우팅되고 sender(_login/_reg_batch)가 await한다 — sender가 직접
+        # recv를 걸지 않으므로 websockets의 동시 recv 금지(ConcurrencyError)를 구조적으로
+        # 회피한다(KIS ws_client의 단일 _recv_loop 미러).
+        self._ack_waiters: dict[str, asyncio.Future[dict]] = {}
+        # 재연결/킥 상태 — _session_once가 연결 성공 시 리셋(리뷰: run()의 리셋은
+        # _session_once가 정상 return 안 해 dead code였음. 연결 성공 시점에 리셋한다).
+        self._attempt = 0
+        self._consecutive_kicks = 0
         # 의미 분리(KisWsClient 미러): last_tick_ms=데이터 프레임 전용(표시),
         # last_recv_ms=모든 수신(PING 포함, watchdog liveness).
         self.last_tick_ms: int | None = None
@@ -121,97 +130,114 @@ class KiwoomWsClient:
         킥(close 1000)이 _max_kicks회 연속되면 kicked_by_peer로 정지(무한 핑퐁 방지).
         """
         self._codes = list(codes)
-        attempt = 0
-        consecutive_kicks = 0
+        self._attempt = 0
+        self._consecutive_kicks = 0
         while True:
             if self._gate_fn is not None and not await asyncio.to_thread(self._gate_fn):
                 self.connected = False
                 await asyncio.sleep(30)
                 continue
-            was_kick = False
             try:
                 await self._session_once()
-                consecutive_kicks = 0
-                attempt = 0
             except asyncio.CancelledError:
                 self.connected = False
                 raise
             except Exception as e:  # noqa: BLE001 — 연결 오류는 전부 재시도 대상
                 self.connected = False
                 self._ws = None
-                was_kick = self._is_kick(e)
-                if was_kick:
-                    consecutive_kicks += 1
-                    if consecutive_kicks >= self._max_kicks:
+                if self._is_kick(e):
+                    self._consecutive_kicks += 1
+                    if self._consecutive_kicks >= self._max_kicks:
                         self.kicked_by_peer = True
                         _log.error(
                             "live.kiwoom.kicked_by_peer kicks=%d — 다른 프로세스가 "
-                            "앱키 점유. 정지.", consecutive_kicks,
+                            "앱키 점유. 정지.", self._consecutive_kicks,
                         )
                         return
-                    delay = _BACKOFF_S[min(attempt, len(_BACKOFF_S) - 1)]
-                    attempt += 1
-                    _log.warning("live.kiwoom.kicked attempt=%d delay=%ds", attempt, delay)
+                    delay = _BACKOFF_S[min(self._attempt, len(_BACKOFF_S) - 1)]
+                    self._attempt += 1
+                    _log.warning("live.kiwoom.kicked attempt=%d delay=%ds",
+                                 self._attempt, delay)
                 else:
-                    consecutive_kicks = 0
-                    delay = _BACKOFF_S[min(attempt, len(_BACKOFF_S) - 1)]
-                    attempt += 1
+                    delay = _BACKOFF_S[min(self._attempt, len(_BACKOFF_S) - 1)]
+                    self._attempt += 1
                     _log.warning("live.kiwoom.reconnect attempt=%d delay=%ds err=%r",
-                                 attempt, delay, e)
+                                 self._attempt, delay, e)
                 await asyncio.sleep(delay)
 
     async def _session_once(self) -> None:
-        """1세션: connect → LOGIN → 전 종목 배치 REG → drain(수신). 끊기면 예외 전파."""
+        """1세션: connect → recv 루프 기동 → LOGIN → 전 종목 배치 REG → drain(recv 루프
+        await). recv 소유는 _recv_loop 하나 — LOGIN/REG는 send 후 ACK Future를 await한다.
+        연결 성공(LOGIN) 시 재연결/킥 카운터를 리셋(정상 return 없어 run()에선 dead code였음)."""
         token = await self._token_fn()
         ws = await self._connect(self._url)
+        recv_task = asyncio.create_task(self._recv_loop(ws))
         try:
             async with self._sub_lock:
                 self._ws = ws
                 self._acked.clear()
                 self.sub_rejected = 0
+                self._reject_all_waiters(RuntimeError("new session"))
                 await self._login(ws, token)
                 self.connected = True
+                self._attempt = 0
+                self._consecutive_kicks = 0
                 await self._register_all(ws, list(self._codes))
             _log.info("live.kiwoom.connected codes=%d acked=%d",
                       len(self._codes), len(self._acked))
-            await self._drain(ws)
+            # drain: recv 루프가 연결 종료(예외)로 끝날 때까지 대기 → run()이 재연결.
+            await recv_task
         finally:
             self.connected = False
             self._ws = None
+            recv_task.cancel()
+            with contextlib.suppress(asyncio.CancelledError):
+                await recv_task
+            self._reject_all_waiters(ConnectionError("session ended"))
             await self._safe_close(ws)
 
+    async def _recv_loop(self, ws: _WsLike) -> None:
+        """유일한 recv 소유자 — REAL→on_tick·PING 에코·control ACK→Future 라우팅.
+        연결 종료 시 예외 전파(_session_once가 잡아 재연결)."""
+        while True:
+            raw = await ws.recv()
+            await self._dispatch(raw)
+
     async def _login(self, ws: _WsLike, token: str) -> None:
-        await ws.send(json.dumps({"trnm": "LOGIN", "token": token}))
-        ack = await self._read_until(ws, "LOGIN")
+        ack = await self._send_and_wait(
+            ws, json.dumps({"trnm": "LOGIN", "token": token}), "LOGIN",
+        )
         rc = ack.get("return_code")
         if rc != _RC_OK:
             raise RuntimeError(f"kiwoom LOGIN failed rc={rc} {ack.get('return_msg')!r}")
 
     async def _register_all(self, ws: _WsLike, codes: list[str]) -> None:
-        """전 종목을 배치(50)로 REG. rc 유량이면 백오프 재시도, 슬롯 상한이면 중단."""
+        """전 종목을 배치(50)로 REG. 성공(rc=0) 배치만 _acked에 추가 — 거부/유량소진 배치는
+        미기록으로 남겨 sub_missing 워치독에 잡히게 한다(리뷰: 무조건 acked 오마킹 수정)."""
         for start in range(0, len(codes), _REG_BATCH):
             chunk = codes[start : start + _REG_BATCH]
             try:
-                await self._reg_batch(ws, chunk, tr="REG")
+                ok = await self._reg_batch(ws, chunk, tr="REG")
             except KiwoomSlotCapReached:
                 _log.warning("live.kiwoom.slot_cap acked=%d requested=%d",
                              len(self._acked), len(codes))
                 break
-            self._acked.update(chunk)
+            if ok:
+                self._acked.update(chunk)
             await asyncio.sleep(_REG_PACING_S)
 
-    async def _reg_batch(self, ws: _WsLike, chunk: list[str], *, tr: str) -> None:
-        """1배치 REG/REMOVE 송신 + ACK 대기. 유량 rc는 내부에서 백오프 재시도."""
+    async def _reg_batch(self, ws: _WsLike, chunk: list[str], *, tr: str) -> bool:
+        """1배치 REG/REMOVE 송신 + ACK 대기. rc=OK면 True. 유량 rc는 백오프 재시도,
+        슬롯 상한은 KiwoomSlotCapReached, 그 외 거부·유량소진은 False(미등록)."""
         msg = json.dumps({
             "trnm": tr, "grp_no": "1", "refresh": "1",
             "data": [{"item": chunk, "type": self._types}],
         })
         for attempt in range(_MAX_RATE_RETRY):
-            await ws.send(msg)
-            ack = await self._read_until(ws, tr)
+            ack = await self._send_and_wait(ws, msg, tr)
             rc = ack.get("return_code")
             if rc == _RC_OK:
-                return
+                return True
             if rc == _RC_RATE_LIMIT:
                 await asyncio.sleep(1.0 + attempt)
                 continue
@@ -219,8 +245,9 @@ class KiwoomWsClient:
                 raise KiwoomSlotCapReached(str(ack.get("return_msg")))
             self.sub_rejected += 1
             _log.warning("live.kiwoom.reg_rejected rc=%s msg=%s", rc, ack.get("return_msg"))
-            return
+            return False
         _log.warning("live.kiwoom.reg_rate_limited_persist chunk=%d", len(chunk))
+        return False
 
     async def update_codes(self, codes: list[str]) -> None:
         """Live Set 변경 — diff만 REG(added)/REMOVE(removed). 미연결이면 상태만 갱신."""
@@ -240,26 +267,27 @@ class KiwoomWsClient:
             if added:
                 await self._register_all(ws, added)
 
-    async def _drain(self, ws: _WsLike) -> None:
-        """수신 루프 — REAL 디스패치·PING 에코. 끊기면 예외 전파(run이 재시도)."""
-        while True:
-            raw = await ws.recv()
-            await self._dispatch(raw)
+    async def _send_and_wait(self, ws: _WsLike, msg: str, trnm: str) -> dict:
+        """control 프레임 송신 후 그 trnm ACK를 Future로 대기(recv 루프가 채운다).
+        waiter 등록을 send **전에** 해 ACK가 send 직후 도착해도 유실 없다. 같은 trnm의
+        이전 대기자는 send 직렬화(_sub_lock)로 없다. 유예 초과 시 TimeoutError."""
+        fut: asyncio.Future[dict] = asyncio.get_running_loop().create_future()
+        self._ack_waiters[trnm] = fut
+        try:
+            await ws.send(msg)
+            return await asyncio.wait_for(fut, timeout=_ACK_TIMEOUT_S)
+        finally:
+            if self._ack_waiters.get(trnm) is fut:
+                del self._ack_waiters[trnm]
 
-    async def _read_until(self, ws: _WsLike, trnm: str) -> dict:
-        """지정 trnm 응답까지 수신하며 그 사이 REAL/PING을 처리. 유예 초과 시 TimeoutError."""
-        deadline = time.monotonic() + _ACK_TIMEOUT_S
-        while True:
-            remain = deadline - time.monotonic()
-            if remain <= 0:
-                raise TimeoutError(f"kiwoom no {trnm} ack in {_ACK_TIMEOUT_S}s")
-            raw = await asyncio.wait_for(ws.recv(), timeout=remain)
-            msg = await self._dispatch(raw)
-            if msg is not None and msg.get("trnm") == trnm:
-                return msg
+    def _reject_all_waiters(self, exc: BaseException) -> None:
+        for fut in list(self._ack_waiters.values()):
+            if not fut.done():
+                fut.set_exception(exc)
+        self._ack_waiters.clear()
 
-    async def _dispatch(self, raw: str | bytes) -> dict | None:
-        """1수신 → JSON 파싱. PING 에코, REAL→on_tick. control 메시지 dict 반환."""
+    async def _dispatch(self, raw: str | bytes) -> None:
+        """1수신 → JSON 파싱. PING 에코, REAL→on_tick, control ACK→대기 Future 라우팅."""
         now_ms = int(time.time() * 1000)
         self.last_recv_ms = now_ms
         if isinstance(raw, bytes):
@@ -267,19 +295,22 @@ class KiwoomWsClient:
         try:
             msg = json.loads(raw)
         except (TypeError, json.JSONDecodeError):
-            return None
+            return
         trnm = msg.get("trnm")
         if trnm == "PING":
             await self._echo(raw)
-            return None
+            return
         if trnm == "REAL":
             date = self._date_fn()
             for tick in parse_real_message(msg, date=date, now_ms=now_ms):
                 self.last_tick_ms = now_ms
                 if self._on_tick is not None:
                     await self._on_tick(tick)
-            return None
-        return msg
+            return
+        # control (LOGIN/REG/REMOVE ACK) → 대기 중인 sender에게 전달.
+        waiter = self._ack_waiters.pop(trnm, None) if isinstance(trnm, str) else None
+        if waiter is not None and not waiter.done():
+            waiter.set_result(msg)
 
     async def _echo(self, raw: str | bytes) -> None:
         if self._ws is not None:
