@@ -1,14 +1,15 @@
+import type { ComponentProps } from 'react';
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { render, screen, fireEvent, within } from '@testing-library/react';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { LiveToolbar } from './LiveToolbar';
 import { useLivePageStore } from '../state/livePage';
 
-function renderToolbar() {
+function renderToolbar(props: Partial<ComponentProps<typeof LiveToolbar>> = {}) {
   const qc = new QueryClient();
   return render(
     <QueryClientProvider client={qc}>
-      <LiveToolbar onOpenIndicators={() => {}} onOpenSettings={() => {}} />
+      <LiveToolbar onOpenIndicators={() => {}} onOpenSettings={() => {}} {...props} />
     </QueryClientProvider>,
   );
 }
@@ -210,5 +211,15 @@ describe('LiveToolbar', () => {
   it('renders the layout preset menu button', () => {
     renderToolbar();
     expect(screen.getByTestId('layout-preset-button')).toBeInTheDocument();
+  });
+
+  it('renders collect button only when onOpenCollect is provided and calls it on click', () => {
+    renderToolbar();
+    expect(screen.queryByTestId('live-collect-button')).toBeNull();
+
+    const onOpenCollect = vi.fn();
+    renderToolbar({ onOpenCollect });
+    fireEvent.click(screen.getByTestId('live-collect-button'));
+    expect(onOpenCollect).toHaveBeenCalledOnce();
   });
 });

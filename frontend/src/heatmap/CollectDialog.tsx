@@ -11,6 +11,22 @@ const LARGE_COLLECT_WARN = 200;
 
 interface FolderScope { id: string; name: string; codes: string[] }
 
+/** 단일 종목 스코프 편의 래퍼 — 히트맵 행 메뉴 '지난 N일 수집'과 /live 활성 종목
+ *  수집이 공유한다. 제목 템플릿·센티넬 스코프 id 를 한 곳에 가둔다. */
+export function SingleCodeCollectDialog({ code, name, onClose }: {
+  code: string;
+  name: string;
+  onClose: () => void;
+}) {
+  return (
+    <CollectDialog
+      title={`${name} 지난 N일 수집`}
+      groups={[{ id: '_one', name, codes: [code] }]}
+      onClose={onClose}
+    />
+  );
+}
+
 /** 히트맵/그룹/종목의 지난 N거래일 hogaplay 데이터를 수집하는 다이얼로그.
  *  적재 전 coverage-preview 로 보유/무데이터/수집 예정/예상 소요를 보여준다. */
 export function CollectDialog({ groups, title = '지난 N일 데이터 수집', onClose }: {
