@@ -25,7 +25,9 @@ const BUILDER_UNIVERSE: ScreenerUniverse = { exclude_etf: true };
 const wrapper = ({ children }: { children: ReactNode }) =>
   createElement(QueryClientProvider, { client: new QueryClient() }, children);
 
-beforeEach(() => vi.clearAllMocks());
+// useSaveAnchor 가 빌더 draft 를 localStorage(screenerDraft.v1)에 영속하므로, 앞
+// 테스트의 anchorId/조건이 다음 테스트의 마운트 시드로 새지 않게 매번 비운다.
+beforeEach(() => { vi.clearAllMocks(); localStorage.clear(); });
 
 describe('useSavedScreenerEditor', () => {
   it('saveAsNew with no mid-flight edit re-anchors to the created id and goes clean', async () => {
