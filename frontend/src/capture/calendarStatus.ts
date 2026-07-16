@@ -74,20 +74,21 @@ export const CALENDAR_STATUS: Record<CalendarStatus, CalendarStatusDescriptor> =
   },
   complete_live: {
     // KIS live/REST-only promotion, no hogaplay artifact. Reuses the ✓ glyph but
-    // uses --accent (the kis_live source color, per DESIGN.md --source-kis-live)
+    // uses the kis_live source-identity token (DESIGN.md --source-kis-live-border)
     // instead of --success green, so it's visually distinct from a hogaplay
     // capture. Cell stays clickable — this date is still a hogaplay target.
     marker: '✓',
-    badgeColor: 'var(--accent)',
+    badgeColor: 'var(--source-kis-live-border)',
     baseColorVar: 'var(--fg)',
     disabled: false,
     tooltipSuffix: 'KIS live data (hogaplay not collected)',
     legendLabel: '✓ KIS live',
   },
   partial_live: {
-    // KIS live/REST-only promotion with session gaps. ⚠ glyph in --accent.
+    // KIS live/REST-only promotion with session gaps. ⚠ glyph in the kis_live
+    // source-identity token.
     marker: '⚠',
-    badgeColor: 'var(--accent)',
+    badgeColor: 'var(--source-kis-live-border)',
     baseColorVar: 'var(--fg)',
     disabled: false,
     tooltipSuffix: 'KIS live data, partial (hogaplay not collected)',

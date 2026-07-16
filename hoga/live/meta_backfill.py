@@ -23,9 +23,8 @@ from pathlib import Path
 import polars as pl
 
 from hoga.api._atomic_write import atomic_write_json
-from hoga.api.disk_state import analyze_gaps
 from hoga.api.timeenc import HogaMs
-from hoga.live.promote import _REGULAR_SESSION_CLOSE_MS
+from hoga.live.promote import _completeness_fields
 
 _log = logging.getLogger(__name__)
 
@@ -55,7 +54,9 @@ def _is_yyyymmdd(name: str) -> bool:
 def _recompute_fields(snapshots_path: Path) -> dict:
     """Recompute the three completeness fields from a snapshots.parquet.
 
-    Missing / unreadable parquet → zero in-session snapshots, which
+    Delegates the gap analysis + wire shape to ``promote._completeness_fields``
+    (the same builder the live promoter uses) so backfill can't drift from it.
+    Missing / unreadable parquet → zero in-session snapshots, which the shared
     ``analyze_gaps(anchor_edges=True)`` treats as a full-window gap
     (is_partial=True). ``collection_complete`` is always True here: this sweep
     only runs on past dates, whose streams have ended.
@@ -67,17 +68,7 @@ def _recompute_fields(snapshots_path: Path) -> dict:
             ts_values = [HogaMs(int(v)) for v in df["ts_ms"].to_list()]
         except Exception:  # noqa: BLE001 — corrupt parquet → treat as empty
             _log.warning("meta_backfill.snapshots_unreadable path=%s", snapshots_path)
-    gaps = analyze_gaps(
-        ts_values, session_close_ms=_REGULAR_SESSION_CLOSE_MS, anchor_edges=True,
-    )
-    return {
-        "collection_complete": True,
-        "is_partial": gaps.is_partial,
-        "gap_ranges": [
-            {"start_ms": int(start), "end_ms": int(end)}
-            for start, end in gaps.gap_ranges
-        ],
-    }
+    return _completeness_fields(ts_values, collection_complete=True)
 
 
 def backfill_live_meta(

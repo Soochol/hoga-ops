@@ -41,6 +41,9 @@ COMPLETE 날짜를 `already_complete` 로 스킵하고(더 낮은 화질의 합�
   당일 hogaplay 캡처를 차단하는 사고를 막는다.
 - `promote_one` 의 멱등 스킵은 `collection_complete is True` 일 때만 성립하게 강화한다.
   서버가 장중 사망한 날(마지막 intraday meta=False)을 다음날 배치가 최종화할 수 있다.
+  이 재승격 경로는 `promote_pending`→`promote_one`(kis_live) 에만 적용된다. kis_api 는
+  `promote_api_today` 가 매 사이클 meta 를 통째로 덮어쓰므로(멱등 스킵 없음) 별도 최종화
+  경로가 불필요하다 — 두 소스의 최종화 메커니즘이 다른 것은 의도된 설계다.
 
 **2. aggregate 는 "표시용", 캡처 게이트는 "hogaplay per-source" 로 분리한다.**
 `check_disk_state(..., source="hogaplay")` 파라미터를 추가하고, hogaplay 캡처 파이프라인의
@@ -65,6 +68,11 @@ aggregate 를 본다. hogaplay 아티팩트가 아예 없고 KIS 만 있으면 �
 이로써 (a) "✓ 인데 수집 대상" 모순이 사라지고, (b) 현재 aggregate 가 WS-only 날짜를
 hogaplay 문구의 ✕("resume on capture")로 오표시하던 노이즈가 함께 해소된다. 종목 배지
 카운트(`symbols`)도 같은 축으로 hogaplay per-source 로 전환한다.
+
+의도적으로 **완결(COMPLETE)·부분(SOURCE_PARTIAL) 두 상태만** `*_live` 로 표면화한다.
+hogaplay 가 NONE 이고 KIS 가 CLIENT_INCOMPLETE/INVALID(예: 아직 백필 안 된 과거일)면
+`none` 으로 둔다 — 달력은 hogaplay 수집 관점의 UI 이고, in-flight/broken 한 KIS 잔여는
+백필 CLI(§4)이 해소하거나 다음 재승격이 최종화하므로 "수집 가능" 셀로 두는 편이 정직하다.
 
 **4. 과거 승격분은 CLI 로 소급한다.**
 `hoga backfill-live-meta`(`hoga/live/meta_backfill.py`)가 완결성 필드가 없는 과거

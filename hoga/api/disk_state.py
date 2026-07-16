@@ -371,10 +371,15 @@ class GapAnalysis:
     """Result of scanning a snapshot stream for continuous-trading gaps.
 
     ``gap_ranges`` carries the (last-snapshot-before-gap, first-snapshot-after-
-    gap) boundary pair for each ≥1min gap, in the ORIGINAL HHMMSSmmm (HogaMs)
-    encoding — never a linear-ms value back-converted to HogaMs (that round-trip
-    is unsafe across minute/hour boundaries; see ``_hhmmssms_to_intra_ms``).
-    ``in_session_count`` is the number of datapoints inside the analysis window.
+    gap) boundary pair for each ≥1min gap. In-stream boundaries keep their
+    ORIGINAL HHMMSSmmm (HogaMs) encoding — never a linear-ms value back-converted
+    to HogaMs (that round-trip is unsafe across minute/hour boundaries; see
+    ``_hhmmssms_to_intra_ms``). The sole exception is the ``anchor_edges=True``
+    session anchors (09:00 open, ~15:20 auction start): these are fixed
+    whole-second times, so ``_intra_ms_to_hhmmssms`` encodes them losslessly —
+    the unsafe-round-trip rule concerns arbitrary in-stream timestamps, not these
+    two constants. ``in_session_count`` is the number of datapoints inside the
+    analysis window.
     """
     in_session_count: int
     gap_ranges: list[tuple[HogaMs, HogaMs]]

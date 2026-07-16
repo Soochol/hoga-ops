@@ -18,6 +18,7 @@ import json
 import logging
 import shutil
 import time
+from collections.abc import Iterable
 from dataclasses import dataclass, field
 from datetime import UTC, datetime, timedelta, timezone
 from pathlib import Path
@@ -70,6 +71,32 @@ def _collection_finished(date: str, *, now: datetime | None = None) -> bool:
     if date > today:
         return False
     return (now.hour, now.minute) >= _SESSION_FINALIZE_HHMM
+
+
+def _completeness_fields(
+    ts_values: Iterable[HogaMs], *, collection_complete: bool,
+) -> dict:
+    """The completeness block for a live promotion — the SAME gap analysis
+    hogaplay's parser runs (``analyze_gaps``), with ``anchor_edges=True`` so a
+    stream that started late (13:00) or died mid-session is flagged by the
+    session-edge anchors even with no interior gap.
+
+    Shared by :func:`_build_meta` (live promote) and ``meta_backfill`` (retro-fit),
+    so the two paths can't drift on gap semantics or the ``gap_ranges`` wire shape
+    (same {start_ms, end_ms} form hogaplay's parser emits). ``ts_values`` are
+    snapshot ``ts_ms`` in HHMMSSmmm (entity native, already HogaMs-compatible).
+    """
+    gaps = analyze_gaps(
+        ts_values, session_close_ms=_REGULAR_SESSION_CLOSE_MS, anchor_edges=True,
+    )
+    return {
+        "collection_complete": collection_complete,
+        "is_partial": gaps.is_partial,
+        "gap_ranges": [
+            {"start_ms": int(start), "end_ms": int(end)}
+            for start, end in gaps.gap_ranges
+        ],
+    }
 
 
 def _atomic_write_table(writer, records, path: Path) -> None:
@@ -342,18 +369,6 @@ def _build_meta(
     *,
     source: str = "kis_live",
 ) -> dict:
-    # Completeness/partiality — the SAME gap analysis hogaplay's parser runs
-    # (hoga/parser/__init__.py:_build_meta), so classify_from_meta routes
-    # kis_live/kis_api Stock-Dates through the identical COMPLETE / SOURCE_PARTIAL
-    # / CLIENT_INCOMPLETE logic. `anchor_edges=True`: a live stream that only
-    # started at 13:00 or died mid-session has no interior gap but is plainly
-    # partial — only the session-edge anchors catch it. Orderbook.ts_ms is
-    # already HHMMSSmmm (entity native); cast to HogaMs at this single seam.
-    gaps = analyze_gaps(
-        [HogaMs(s.ts_ms) for s in snapshots],
-        session_close_ms=_REGULAR_SESSION_CLOSE_MS,
-        anchor_edges=True,
-    )
     meta = {
         "source": source,
         "code": code,
@@ -368,14 +383,12 @@ def _build_meta(
         # ADR-0003 HHMMSSmmm encoding.
         "regular_session_open_ms": 90000000,    # 09:00:00.000
         "regular_session_close_ms": int(_REGULAR_SESSION_CLOSE_MS),  # 15:30:00.000
-        "collection_complete": _collection_finished(date),
-        "is_partial": gaps.is_partial,
-        # Continuous-trading gap boundaries in HHMMSSmmm — same shape as
-        # hogaplay's parser so the inventory drawer renders them uniformly.
-        "gap_ranges": [
-            {"start_ms": int(start), "end_ms": int(end)}
-            for start, end in gaps.gap_ranges
-        ],
+        # Completeness routed through the SAME classifier hogaplay uses. Orderbook
+        # .ts_ms is already HHMMSSmmm (entity native); cast to HogaMs at this seam.
+        **_completeness_fields(
+            [HogaMs(s.ts_ms) for s in snapshots],
+            collection_complete=_collection_finished(date),
+        ),
     }
     if source == "kis_api":
         meta["sampling_ms"] = 30000
