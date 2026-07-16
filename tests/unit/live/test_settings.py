@@ -6,46 +6,19 @@ from hoga.api.models import LiveSettingsResponse
 from hoga.live.settings import load_live_settings, save_live_settings, update_live_settings
 
 
-def test_live_settings_default_has_bypass_false(tmp_path):
+def test_live_settings_defaults(tmp_path):
     settings = load_live_settings(tmp_path)
 
-    assert settings.storage_policy == "ws_plus_rest"
     assert settings.program_trade_storage_enabled is False
     assert settings.kis_rest_bypass_enabled is False
-    # ADR-0097 도입 동작(무조건 히트맵 합류) 보존을 위해 기본 True.
-    assert settings.heatmap_capture_enabled is True
-
-
-def test_update_live_settings_toggles_heatmap_capture_and_preserves_others(tmp_path):
-    save_live_settings(
-        tmp_path,
-        LiveSettingsResponse(
-            storage_policy="rest_only",
-            program_trade_storage_enabled=True,
-            kis_rest_bypass_enabled=True,
-        ),
-    )
-
-    updated = update_live_settings(tmp_path, heatmap_capture_enabled=False)
-
-    assert updated.heatmap_capture_enabled is False
-    # 다른 필드는 omit되었으므로 보존.
-    assert updated.storage_policy == "rest_only"
-    assert updated.program_trade_storage_enabled is True
-    assert updated.kis_rest_bypass_enabled is True
-    on_disk = json.loads((tmp_path / "live_settings.json").read_text(encoding="utf-8"))
-    assert on_disk["heatmap_capture_enabled"] is False
-
-    # 재-토글로 다시 켜진다(멱등 아님 — 명시적 True 반영).
-    re_enabled = update_live_settings(tmp_path, heatmap_capture_enabled=True)
-    assert re_enabled.heatmap_capture_enabled is True
+    assert settings.screener_depth_autocollect is False
+    assert settings.kiwoom_enabled is False
 
 
 def test_update_live_settings_partial_patch_preserves_omitted_fields(tmp_path):
     save_live_settings(
         tmp_path,
         LiveSettingsResponse(
-            storage_policy="rest_only",
             program_trade_storage_enabled=True,
             kis_rest_bypass_enabled=False,
         ),
@@ -53,28 +26,24 @@ def test_update_live_settings_partial_patch_preserves_omitted_fields(tmp_path):
 
     updated = update_live_settings(tmp_path, kis_rest_bypass_enabled=True)
 
-    assert updated.storage_policy == "rest_only"
     assert updated.program_trade_storage_enabled is True
     assert updated.kis_rest_bypass_enabled is True
     on_disk = json.loads((tmp_path / "live_settings.json").read_text(encoding="utf-8"))
     assert on_disk["kis_rest_bypass_enabled"] is True
 
 
-def test_ws_only_still_disables_program_trade_without_changing_bypass(tmp_path):
-    save_live_settings(
-        tmp_path,
-        LiveSettingsResponse(
-            storage_policy="rest_only",
-            program_trade_storage_enabled=True,
-            kis_rest_bypass_enabled=True,
-        ),
-    )
+def test_update_live_settings_program_trade_is_independent_toggle(tmp_path):
+    """storage_policy 제거(2026-07-17) 후 program_trade는 독립 토글 — ws_only 강제
+    off 규칙 같은 결합이 없다."""
+    updated = update_live_settings(tmp_path, program_trade_storage_enabled=True)
+    assert updated.program_trade_storage_enabled is True
 
-    updated = update_live_settings(tmp_path, storage_policy="ws_only")
+    # 다른 필드 patch가 값을 보존.
+    other = update_live_settings(tmp_path, kis_rest_bypass_enabled=True)
+    assert other.program_trade_storage_enabled is True
 
-    assert updated.storage_policy == "ws_only"
-    assert updated.program_trade_storage_enabled is False
-    assert updated.kis_rest_bypass_enabled is True
+    off = update_live_settings(tmp_path, program_trade_storage_enabled=False)
+    assert off.program_trade_storage_enabled is False
 
 
 def test_corrupt_settings_falls_back_to_bypass_false(tmp_path):
@@ -95,7 +64,7 @@ def test_kiwoom_enabled_defaults_false_and_toggles(tmp_path):
     assert load_live_settings(tmp_path).kiwoom_enabled is True
 
     # 다른 필드 patch가 kiwoom_enabled를 보존.
-    other = update_live_settings(tmp_path, heatmap_capture_enabled=False)
+    other = update_live_settings(tmp_path, program_trade_storage_enabled=True)
     assert other.kiwoom_enabled is True
 
     off = update_live_settings(tmp_path, kiwoom_enabled=False)
@@ -105,5 +74,34 @@ def test_kiwoom_enabled_defaults_false_and_toggles(tmp_path):
 def test_kiwoom_enabled_backcompat_missing_field_defaults_false(tmp_path):
     # 구 설정 파일(kiwoom_enabled 필드 없음) → 기본 False로 로드(마이그레이션 불필요).
     save_path = tmp_path / "live_settings.json"
-    save_path.write_text(json.dumps({"storage_policy": "ws_plus_rest"}))
+    save_path.write_text(json.dumps({"program_trade_storage_enabled": False}))
     assert load_live_settings(tmp_path).kiwoom_enabled is False
+
+
+def test_legacy_storage_policy_keys_are_ignored_on_load(tmp_path):
+    """회귀 가드(2026-07-17): rest30 시절 live_settings.json에 남은
+    storage_policy·heatmap_capture_enabled 키가 로드를 깨지 않는다(pydantic extra
+    ignore). 다른 필드 값은 정상 반영, corrupt 백업도 안 생긴다."""
+    save_path = tmp_path / "live_settings.json"
+    save_path.write_text(json.dumps({
+        "schema_version": 1,
+        "storage_policy": "ws_plus_rest",
+        "heatmap_capture_enabled": True,
+        "program_trade_storage_enabled": True,
+        "kis_rest_bypass_enabled": False,
+        "kiwoom_enabled": True,
+    }))
+
+    settings = load_live_settings(tmp_path)
+
+    assert settings.program_trade_storage_enabled is True
+    assert settings.kiwoom_enabled is True
+    assert not hasattr(settings, "storage_policy")
+    assert not hasattr(settings, "heatmap_capture_enabled")
+    assert not list(tmp_path.glob("live_settings.json.corrupt-*"))
+
+    # 후속 patch 저장은 레거시 키를 다시 쓰지 않는다.
+    update_live_settings(tmp_path, kis_rest_bypass_enabled=True)
+    on_disk = json.loads(save_path.read_text(encoding="utf-8"))
+    assert "storage_policy" not in on_disk
+    assert "heatmap_capture_enabled" not in on_disk

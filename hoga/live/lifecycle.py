@@ -24,13 +24,10 @@ from typing import TYPE_CHECKING, Literal, cast
 
 if TYPE_CHECKING:
     from .broker_rest_poller import BrokerRestPoller
-    from .rest30_recorder import Rest30sRecorder
     from .rest_poller import LiveRestPoller
     from .ws_frames import WsTick
 
 from pydantic import BaseModel, Field
-
-from hoga.api.models import LiveStoragePolicy
 
 from . import account_health, kis_runtime  # health probe / 리소스
 from .buffer import LiveBuffer
@@ -49,7 +46,7 @@ from .live_session import (  # noqa: F401 — C3 재export(호출부·테스트 
     live_set_codes,
     partition_live_set,
 )
-from .promote import promote_api_today, promote_kiwoom_today, promote_today
+from .promote import promote_kiwoom_today, promote_today
 from .settings import load_live_settings
 from .signal_alert_monitor import SignalAlertMonitor
 from .storage_runtime import stop_storage_runtime, sync_storage_runtime
@@ -91,19 +88,6 @@ class LiveStatus(BaseModel):
     capture_reason: str = "offline"
     # 구독 유실로 실시간 미수집 중인 종목(additive; sub_failed 시 진단·UI 배지).
     capture_missing_codes: list[str] = Field(default_factory=list)
-    # WS 사다리 소진 후 REST 캡처로 임시 편입된 종목(additive; 해결안 ③ 최후 보험).
-    capture_rest_fallback_codes: list[str] = Field(default_factory=list)
-    storage_policy: LiveStoragePolicy = "ws_plus_rest"
-    kis_api_running: bool = False
-    kis_api_targets: list[str] = Field(default_factory=list)
-    kis_api_target_count: int = 0
-    kis_api_last_cycle_ms: int | None = None
-    kis_api_last_error: str | None = None
-    kis_api_last_error_count: int = 0
-    kis_api_degraded: bool = False
-    # 직전 rest30 사이클의 EGW00201 바운스 수(프로세스 전역 델타). 설계된 정상
-    # 손실률(~9-12%, ADR-0100)의 관측 채널 — 개별 WARN 로그 대신 율로 노출.
-    kis_api_rate_limit_bounces: int | None = None
     rest_poller_degraded: bool = False
     rest_poller_last_error: str | None = None
     rest_poller_last_error_kind: str | None = None
@@ -154,11 +138,9 @@ class _State:
         streams: dict[int, _StreamConn] | None = None,
         live_set: tuple[str, ...] = (),
         rest_poller: LiveRestPoller | None = None,
-        rest30_recorder: Rest30sRecorder | None = None,
         broker_poller: BrokerRestPoller | None = None,
         program_trade_collector=None,
         kiwoom_session=None,
-        storage_policy: LiveStoragePolicy = "ws_plus_rest",
         kis_rest_bypass_enabled: bool = False,
         session: LiveSession | None = None,
     ) -> None:
@@ -172,7 +154,6 @@ class _State:
                 session.streams = streams
         self.session = session
         self.rest_poller = rest_poller
-        self.rest30_recorder = rest30_recorder
         # 거래원(회원사) REST 폴러 — WS member TR(H0STMBC0) 대체(ADR-0111). rest_poller와
         # 같이 WS 세션 밖이라 lifecycle이 직접 소유. live_set을 타깃으로 폴링해 스트림
         # on_tick에 합성 BROKER 틱을 주입한다(기존 저장 경로 재사용).
@@ -181,7 +162,6 @@ class _State:
         # 키움 WS 세션 매니저(ADR-0116) — storage_runtime이 소유·정합화. KIS conn(streams)과
         # 별개라 KIS 상태/watchdog 경로에 무간섭. get_kiwoom_capture_codes가 승격 루프에 노출.
         self.kiwoom_session = kiwoom_session
-        self.storage_policy = storage_policy
         self.kis_rest_bypass_enabled = kis_rest_bypass_enabled
 
     # 위임 property — 기존 `_state.X` 접근 호환(streams dict의 in-place 변이도 그대로 통과).
@@ -244,14 +224,6 @@ def get_active_codes() -> list[str]:
     no caching, no stale closure.
     """
     return list(_state.watchlist_codes)
-
-
-def get_api_codes() -> list[str]:
-    """Return currently configured persisted KIS REST 30s capture targets."""
-    recorder = _state.rest30_recorder
-    if recorder is None:
-        return []
-    return list(recorder.status().targets)
 
 
 def get_kiwoom_capture_codes() -> list[str]:
@@ -441,11 +413,6 @@ def get_status() -> LiveStatus:
         if _state.broker_poller is not None
         else None
     )
-    rest30_status = (
-        _state.rest30_recorder.status()
-        if _state.rest30_recorder is not None
-        else None
-    )
     rest_poller_status = poller.status() if poller is not None else None
     now_ms = _now_ms()
     sf = _state.session.status_fields(
@@ -456,7 +423,6 @@ def get_status() -> LiveStatus:
     running = (
         sf["streams_running"]
         or (poller is not None and poller.alive)
-        or bool(rest30_status and rest30_status.running)
     )
 
     # 캡처 헬스 — 존재 conn 기준(Q11). capture=None(conn 0, C4 poller-only)이면 running과
@@ -486,18 +452,6 @@ def get_status() -> LiveStatus:
         capture_healthy=cap_healthy,
         capture_reason=cap_reason,
         capture_missing_codes=missing_codes,
-        capture_rest_fallback_codes=sorted(_ws_rest_fallback_codes),
-        storage_policy=_state.storage_policy,
-        kis_api_running=bool(rest30_status and rest30_status.running),
-        kis_api_targets=list(rest30_status.targets) if rest30_status else [],
-        kis_api_target_count=rest30_status.target_count if rest30_status else 0,
-        kis_api_last_cycle_ms=rest30_status.last_cycle_ms if rest30_status else None,
-        kis_api_last_error=rest30_status.last_error if rest30_status else None,
-        kis_api_last_error_count=rest30_status.last_error_count if rest30_status else 0,
-        kis_api_degraded=rest30_status.degraded if rest30_status else False,
-        kis_api_rate_limit_bounces=(
-            rest30_status.rate_limit_bounces if rest30_status else None
-        ),
         rest_poller_degraded=bool(rest_poller_status and rest_poller_status.degraded),
         rest_poller_last_error=(
             rest_poller_status.last_error if rest_poller_status else None
@@ -544,10 +498,6 @@ def reset_for_tests() -> None:
         for task in (conn.ws_task, conn.flush_task):
             if task is not None and not task.done():
                 task.cancel()
-    recorder = _state.rest30_recorder
-    task = getattr(recorder, "_task", None)
-    if task is not None and not task.done():
-        task.cancel()
     collector = _state.program_trade_collector
     task = getattr(collector, "_task", None)
     if task is not None and not task.done():
@@ -563,13 +513,11 @@ def reset_for_tests() -> None:
     global _sub_failed_restart_session_ms  # noqa: PLW0603
     _sub_failed_restart_counts.clear()
     _resub_attempt_counts.clear()
-    _ws_rest_fallback_codes.clear()
     _sub_failed_restart_session_ms = None
 
 
 def refresh_status_from_settings(data_dir: Path) -> None:
     settings = load_live_settings(data_dir)
-    _state.storage_policy = settings.storage_policy
     _state.kis_rest_bypass_enabled = settings.kis_rest_bypass_enabled
 
 
@@ -579,7 +527,6 @@ async def start_today_promoter(
     *,
     data_dir: Path,
     get_active_codes: Callable[[], list[str]],
-    get_api_capture_codes: Callable[[], list[str]] | None = None,
     get_kiwoom_capture_codes: Callable[[], list[str]] | None = None,
     interval_s: float = 300.0,
     on_promoted: Callable[[dict], object] | None = None,
@@ -608,7 +555,6 @@ async def start_today_promoter(
         while True:
             try:
                 ws_codes = get_active_codes()
-                api_codes = (get_api_capture_codes or get_api_codes)()
                 for code in ws_codes:
                     try:
                         promoted_date = await promote_today(data_dir, code=code)
@@ -621,13 +567,6 @@ async def start_today_promoter(
                     except Exception:
                         log.exception(
                             "live.today_promote.code_failed code=%s", code,
-                        )
-                for code in api_codes:
-                    try:
-                        await promote_api_today(data_dir, code=code)
-                    except Exception:
-                        log.exception(
-                            "live.today_promote.api_code_failed code=%s", code,
                         )
                 # 키움 WS 승격(ADR-0116) — live_kiwoom → kiwoom_live parquet. 미배선/off면
                 # 콜백이 [] 반환이라 루프 no-op. 히트맵 종목이 여기서 kiwoom_live로 영속화된다.
@@ -677,13 +616,6 @@ _sub_failed_restart_session_ms: int | None = None
 # 기존 제한 재시작으로 승격. 카운터는 _sub_failed_restart와 같은 세션 마커로 리셋된다.
 _RESUB_MAX_ATTEMPTS = 3
 _resub_attempt_counts: dict[int, int] = {}
-
-# WS 실패종목 REST 캡처 폴백 집합 (해결안 ③, PR #622 후속). 사다리(재구독→재시작)가
-# 소진된 KRX conn의 sub_missing 종목을 담고, _sync_storage_targets가 REST 타깃에
-# 병합해 10초 REST 스냅숏으로 최후 보험 캡처한다. WS 회복(missing 해소)이 watchdog
-# 패스에서 감지되면 자동 해제. 세션 마커·reset_for_tests에서 리셋.
-_ws_rest_fallback_codes: set[str] = set()
-
 
 async def start_live_stream(*, data_dir: Path) -> bool:
     """start_live_poller의 WS 대체 — 구조 동일(creds/watchlist 가드 → 기동).
@@ -786,7 +718,7 @@ async def _sync_storage_targets(
     data_dir: Path,
     *,
     n_configured: int | None = None,
-) -> tuple[list[str], tuple[str, ...]]:
+) -> list[str]:
     snapshot = await sync_storage_runtime(
         data_dir,
         state=_state,
@@ -794,20 +726,15 @@ async def _sync_storage_targets(
         date_fn=_today_kst,
         now_ms_fn=_now_ms,
         n_configured=n_configured,
-        rest_fallback_codes=tuple(sorted(_ws_rest_fallback_codes)),
     )
     monitor = get_signal_alert_monitor()
     if monitor is not None:
-        # 키움 타깃 포함(리뷰 Major): kiwoom_enabled 시 히트맵이 kis_api_targets에서
-        # kiwoom_targets로 이동하는데, 이를 monitor 타깃에 안 넣으면 stream.on_tick의
-        # ingest_orderbook이 code∉targets로 전량 드롭돼 매도총잔량 갱신 알림이 침묵 정지한다.
-        targets = (
-            set(snapshot.ws_targets)
-            | set(snapshot.kis_api_targets)
-            | set(snapshot.kiwoom_targets)
-        )
+        # 키움 타깃 포함(리뷰 Major): 히트맵은 kiwoom_targets로만 수집되는데, 이를
+        # monitor 타깃에 안 넣으면 stream.on_tick의 ingest_orderbook이 code∉targets로
+        # 전량 드롭돼 매도총잔량 갱신 알림이 침묵 정지한다.
+        targets = set(snapshot.ws_targets) | set(snapshot.kiwoom_targets)
         monitor.set_targets(_signal_alert_target_names(data_dir, targets))
-    return list(snapshot.ws_targets), snapshot.kis_api_targets
+    return list(snapshot.ws_targets)
 
 
 async def _start_live_stream_locked(*, data_dir: Path) -> bool:
@@ -848,22 +775,11 @@ async def _start_live_stream_locked(*, data_dir: Path) -> bool:
             return False  # account 0 creds 사라짐(레이스) — 오프라인
         broker_poller = _ensure_broker_poller(data_dir)
 
-    # 4. Storage policy 적용: WS targets + REST 30s recorder targets 산출.
-    codes, _rest_targets = await _sync_storage_targets(data_dir)
+    # 4. Storage targets 산출: 관심종목 WS + 키움 히트맵(REST 캡처 제거, 2026-07-17).
+    codes = await _sync_storage_targets(data_dir)
 
     # 5. exclude-then-subscribe: 먼저 배제 동기화, 그 다음 conn build(session.start)
     _sync_exclusion(poller, tuple(codes))
-
-    if _state.storage_policy == "rest_only":
-        _state.rest_poller = poller
-        _state.broker_poller = broker_poller
-        await _state.session.start(
-            codes=[], n_configured=n_configured, data_dir=data_dir,
-            now_ms=_now_ms(), build_conn=_build_conn,
-        )
-        # rest_only면 live_set이 비어 폴러는 유휴(빈 타깃 → no-op 사이클).
-        _sync_broker_poller_targets(_state.session.live_set)
-        return True
 
     # 6. 코드 있는 파티션만 conn 생성(session이 dynamic-N 빌드 — 빈 part=연결 없음 → C4)
     await _state.session.start(
@@ -952,7 +868,7 @@ async def refresh_live_stream(*, data_dir: Path) -> None:
             await _start_live_stream_locked(data_dir=data_dir)
             return
 
-        codes, _rest_targets = await _sync_storage_targets(
+        codes = await _sync_storage_targets(
             data_dir, n_configured=_state.n_configured,
         )
 
@@ -981,7 +897,6 @@ async def _restart_conn(account_id: int, *, data_dir: Path) -> None:
     async with _lifecycle_lock:
         await _state.session.restart(
             account_id, data_dir=data_dir,
-            storage_policy=_state.storage_policy,
             build_conn=_build_conn, teardown_conn=_teardown_conn,
         )
         conn = _state.streams.get(account_id)
@@ -1063,15 +978,13 @@ async def _ws_watchdog_check(
         _sub_failed_restart_session_ms = started
         _sub_failed_restart_counts.clear()
         _resub_attempt_counts.clear()
-        _ws_rest_fallback_codes.clear()
 
-    # 동기 수집(await 없음): 재구독/재시작 대상 목록 + 정상 복귀 account +
-    # REST 폴백 편입/해제 후보(해결안 ③).
+    # 동기 수집(await 없음): 재구독/재시작 대상 목록 + 정상 복귀 account.
+    # REST 캡처 폴백(해결안 ③)은 rest30 제거(2026-07-17 정책: api 폴백 없음)와 함께
+    # 철거 — 사다리 종착(log)이면 sub_failed 가시화만 남는다(capture_missing_codes).
     to_resubscribe: list[int] = []
     to_restart: list[int] = []
     healthy_accounts: list[int] = []
-    all_missing_codes: set[str] = set()   # 전 conn 합집합 — 폴백 자동 해제 판정
-    fallback_enroll: set[str] = set()     # 사다리 소진 KRX conn의 유실 종목
     for account_id, conn in _state.streams.items():
         dead = conn.ws_task.done() or conn.flush_task.done()
         ws = getattr(conn.stream_obj, "ws", None)
@@ -1079,8 +992,6 @@ async def _ws_watchdog_check(
             running=True, ws=ws, now_ms=now_ms, ref_ms=ref_ms,
             stale_after_ms=stale_after_ms, market_closed=False,
         )
-        missing_codes = _conn_missing_codes(ws, now_ms)
-        all_missing_codes |= missing_codes
         if healthy:
             healthy_accounts.append(account_id)
         if dead or reason == "stale":
@@ -1093,18 +1004,10 @@ async def _ws_watchdog_check(
                 to_resubscribe.append(account_id)
             elif action == "restart":
                 to_restart.append(account_id)
-            elif getattr(ws, "venue", "KRX") == "KRX":
-                # 사다리 종착("log") = WS 복구 수단 소진 → REST 캡처 최후 보험 편입.
-                # NXT는 표시 전용(정규장 캡처 무영향)이라 편입하지 않는다.
-                fallback_enroll |= missing_codes
 
     # healthy 복귀 시 resub 카운터 재장전(인시던트 단위) — 다음 실패에 다시 표적 재구독부터.
     for account_id in healthy_accounts:
         _resub_attempt_counts.pop(account_id, None)
-
-    await _apply_rest_fallback_delta(
-        data_dir, all_missing=all_missing_codes, enroll=fallback_enroll,
-    )
 
     # 값싼 표적 재구독 먼저, 수렴 못 한 건은 다음 주기에 재시작으로 승격.
     await _run_resubscribes(to_resubscribe, now_ms)
@@ -1112,34 +1015,6 @@ async def _ws_watchdog_check(
     for account_id in to_restart:
         await _restart_conn(account_id, data_dir=data_dir)
     return bool(to_restart)
-
-
-def _conn_missing_codes(ws: object, now_ms: int) -> set[str]:
-    """conn의 유예 지난 미확인 구독 종목 집합 — sub_missing 미보유(구 페이크)면 빈 집합."""
-    sub_missing = getattr(ws, "sub_missing", None)
-    if not callable(sub_missing):
-        return set()
-    keys = cast("list[tuple[str, str]]", sub_missing(now_ms))
-    return {code for _tr, code in keys}
-
-
-async def _apply_rest_fallback_delta(
-    data_dir: Path, *, all_missing: set[str], enroll: set[str],
-) -> None:
-    """REST 폴백 집합 갱신(해결안 ③): 사다리 소진 종목 편입 + 회복(더는 missing
-    아님) 종목 자동 해제. 집합이 변했을 때만 storage 재동기화 — recorder의
-    set_targets는 다음 폴 사이클에 반영된다. _restart_conn과 같은 락 규율."""
-    fallback_next = (_ws_rest_fallback_codes & all_missing) | enroll
-    if fallback_next == _ws_rest_fallback_codes:
-        return
-    enrolled = fallback_next - _ws_rest_fallback_codes
-    released = _ws_rest_fallback_codes - fallback_next
-    _ws_rest_fallback_codes.clear()
-    _ws_rest_fallback_codes.update(fallback_next)
-    _log.warning("live.stream.rest_fallback enrolled=%r released=%r active=%d",
-                 sorted(enrolled), sorted(released), len(fallback_next))
-    async with _lifecycle_lock:
-        await _sync_storage_targets(data_dir)
 
 
 async def _run_resubscribes(account_ids: list[int], now_ms: int) -> None:

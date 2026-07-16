@@ -204,7 +204,9 @@ def test_source_pref_fallback_when_pref_missing(tmp_path: Path) -> None:
     assert any(p.bid_total == 33333 for p in bundle.quote_ratio.points)
 
 
-def test_source_pref_kis_api_first_reads_kis_api(tmp_path: Path) -> None:
+def test_source_pref_kis_api_first_resolves_but_suppresses_orderflow(tmp_path: Path) -> None:
+    """kis_api는 캔들 전용(2026-07-17 정책): kis_api_first(레거시 pref)로 kis_api가
+    이겨도 segment만 방출되고 호가·체결 지표는 빈 배열(스냅샷이 디스크에 있어도)."""
     code = "003490"
     date = "20260622"
     sd_dir = tmp_path / "parquet" / date / code
@@ -233,4 +235,5 @@ def test_source_pref_kis_api_first_reads_kis_api(tmp_path: Path) -> None:
         engine.close()
 
     assert bundle.segments[0].source == "kis_api"
-    assert any(p.bid_total == 33333 for p in bundle.quote_ratio.points)
+    assert bundle.quote_ratio.points == []
+    assert bundle.fill_strength.points == []

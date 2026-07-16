@@ -954,31 +954,26 @@ class FolderReorderRequest(BaseModel):
     ordered_ids: list[str]
 
 
-LiveStoragePolicy = Literal["ws_only", "ws_plus_rest", "rest_only"]
-
-
 class LiveSettingsResponse(BaseModel):
+    """KIS REST 호가 캡처(rest30)·storage_policy·heatmap_capture_enabled는 제거됨
+    (2026-07-17 정책: 호가는 api로 받지 않는다 — 관심종목=KIS WS, 히트맵=키움 WS).
+    디스크의 옛 live_settings.json에 남은 키는 pydantic 기본(extra ignore)이 무시."""
+
     schema_version: int = 1
-    storage_policy: LiveStoragePolicy = "ws_plus_rest"
     program_trade_storage_enabled: bool = False
     kis_rest_bypass_enabled: bool = False
-    # 히트맵 종목을 KIS REST 30초 기록기에 합류시킬지(ADR-0097). 기본 True는
-    # ADR-0097 도입 당시의 무조건 합류 동작을 보존한다(끄면 히트맵 전용 수집만 중단).
-    heatmap_capture_enabled: bool = True
     # 스크리너 총잔량 조건에서 hogaplay 결측 종목을 발견하면 자동으로 지난 N일치 수집을
     # 큐에 적재할지. 기본 False — 스캔은 탐색적으로 반복 실행되므로 묵시적 큐 증가를 막고
     # 명시적 [수집 요청] 버튼을 1차 UX 로 둔다.
     screener_depth_autocollect: bool = False
-    # 키움 WS 병행 수집 킬스위치(ADR-0116). 기본 False — 켜면 히트맵 종목을 KIS REST30
-    # 대신 키움 WS로 수집한다(PR-3b 배선). off일 때 전 경로 동작 불변.
+    # 키움 WS 병행 수집 킬스위치(ADR-0116). 기본 False — 켜면 히트맵 종목을 키움 WS로
+    # 수집한다(히트맵의 유일한 저장 경로 — off/무자격이면 히트맵은 수집되지 않는다).
     kiwoom_enabled: bool = False
 
 
 class LiveSettingsUpdate(BaseModel):
-    storage_policy: LiveStoragePolicy | None = None
     program_trade_storage_enabled: bool | None = None
     kis_rest_bypass_enabled: bool | None = None
-    heatmap_capture_enabled: bool | None = None
     screener_depth_autocollect: bool | None = None
     kiwoom_enabled: bool | None = None
 

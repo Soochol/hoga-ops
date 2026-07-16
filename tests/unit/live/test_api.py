@@ -2574,13 +2574,38 @@ def test_live_settings_routes_round_trip(tmp_path):
 
     assert client.get("/api/live/settings").json() == {
         "schema_version": 1,
-        "storage_policy": "ws_plus_rest",
         "program_trade_storage_enabled": False,
         "kis_rest_bypass_enabled": False,
-        "heatmap_capture_enabled": True,
         "screener_depth_autocollect": False,
         "kiwoom_enabled": False,
     }
+
+    r = client.patch(
+        "/api/live/settings",
+        json={"program_trade_storage_enabled": True},
+    )
+
+    assert r.status_code == 200
+    assert r.json()["program_trade_storage_enabled"] is True
+    assert r.json()["kis_rest_bypass_enabled"] is False
+    assert client.get("/api/live/settings").json()["program_trade_storage_enabled"] is True
+
+
+def test_live_settings_patch_ignores_legacy_storage_policy_key(tmp_path):
+    """storage_policy는 제거됨(2026-07-17) — 레거시 클라이언트가 보내도 무해하게
+    무시되고(422 아님) 응답에도 나타나지 않는다."""
+    from hoga.live import lifecycle
+    from hoga.live.api import build_router
+
+    lifecycle.reset_for_tests()
+    app = FastAPI()
+    app.include_router(
+        build_router(
+            data_dir=tmp_path,
+            get_status=lifecycle.get_status,
+        )
+    )
+    client = TestClient(app)
 
     r = client.patch(
         "/api/live/settings",
@@ -2588,56 +2613,12 @@ def test_live_settings_routes_round_trip(tmp_path):
     )
 
     assert r.status_code == 200
-    assert r.json()["storage_policy"] == "rest_only"
+    assert "storage_policy" not in r.json()
+    assert "heatmap_capture_enabled" not in r.json()
     assert r.json()["program_trade_storage_enabled"] is True
-    assert r.json()["kis_rest_bypass_enabled"] is False
-    assert client.get("/api/live/settings").json()["program_trade_storage_enabled"] is True
 
 
-def test_live_settings_forces_program_trade_off_under_ws_only(tmp_path):
-    from hoga.live import lifecycle
-    from hoga.live.api import build_router
-
-    lifecycle.reset_for_tests()
-    app = FastAPI()
-    app.include_router(
-        build_router(
-            data_dir=tmp_path,
-            get_status=lifecycle.get_status,
-        )
-    )
-    client = TestClient(app)
-
-    r = client.patch(
-        "/api/live/settings",
-        json={"storage_policy": "ws_only", "program_trade_storage_enabled": True},
-    )
-
-    assert r.status_code == 200
-    assert r.json()["storage_policy"] == "ws_only"
-    assert r.json()["program_trade_storage_enabled"] is False
-
-
-def test_live_settings_rejects_unknown_storage_policy(tmp_path):
-    from hoga.live import lifecycle
-    from hoga.live.api import build_router
-
-    lifecycle.reset_for_tests()
-    app = FastAPI()
-    app.include_router(
-        build_router(
-            data_dir=tmp_path,
-            get_status=lifecycle.get_status,
-        )
-    )
-    client = TestClient(app)
-
-    r = client.patch("/api/live/settings", json={"storage_policy": "bad"})
-
-    assert r.status_code == 422
-
-
-def test_live_settings_patch_can_set_bypass_without_storage_policy(tmp_path):
+def test_live_settings_patch_can_set_bypass_alone(tmp_path):
     from hoga.live import lifecycle
     from hoga.live.api import build_router
 
@@ -2659,10 +2640,8 @@ def test_live_settings_patch_can_set_bypass_without_storage_policy(tmp_path):
     assert r.status_code == 200
     assert r.json() == {
         "schema_version": 1,
-        "storage_policy": "ws_plus_rest",
         "program_trade_storage_enabled": False,
         "kis_rest_bypass_enabled": True,
-        "heatmap_capture_enabled": True,
         "screener_depth_autocollect": False,
         "kiwoom_enabled": False,
     }

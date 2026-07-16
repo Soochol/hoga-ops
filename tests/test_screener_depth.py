@@ -85,7 +85,7 @@ def test_ask_depth_new_high_passes_when_today_exceeds_past(tmp_path: Path) -> No
     depth_daily.sweep(data_dir)
 
     # 당일(20260715) live: ask peak 5000 > 과거 max 4000.
-    _write_snap(data_dir, date="20260715", code=code, source="kis_api",
+    _write_snap(data_dir, date="20260715", code=code, source="kiwoom_live",
                 obs=[_ob(ts_ms=91_000_000, ask_q=(500,) * 10, bid_q=(100,) * 10)])
 
     leaf = AskDepthNewHighLeaf(id="a1", params=DepthPeakParams(lookback=20, threshold_pct=100))
@@ -110,7 +110,7 @@ def test_ask_depth_below_threshold_fails(tmp_path: Path) -> None:
                 obs=[_ob(ts_ms=91_000_000, ask_q=(400,) * 10, bid_q=(100,) * 10)])
     depth_daily.sweep(data_dir)
     # 당일 ask 3000 < 과거 4000.
-    _write_snap(data_dir, date="20260715", code=code, source="kis_api",
+    _write_snap(data_dir, date="20260715", code=code, source="kiwoom_live",
                 obs=[_ob(ts_ms=91_000_000, ask_q=(300,) * 10, bid_q=(100,) * 10)])
     leaf = AskDepthNewHighLeaf(id="a1", params=DepthPeakParams(lookback=20, threshold_pct=100))
     res = screener_depth.evaluate(
@@ -128,7 +128,7 @@ def test_missing_past_data_excluded_and_reported(tmp_path: Path) -> None:
     _seed_heatmap(data_dir, [code])
     _seed_corpus(sdir, ["20260713", "20260714"], [code])
     # 과거 hogaplay 없음. 당일만 존재.
-    _write_snap(data_dir, date="20260715", code=code, source="kis_api",
+    _write_snap(data_dir, date="20260715", code=code, source="kiwoom_live",
                 obs=[_ob(ts_ms=91_000_000, ask_q=(500,) * 10, bid_q=(100,) * 10)])
     leaf = AskDepthNewHighLeaf(id="a1", params=DepthPeakParams(lookback=20, threshold_pct=100))
     res = screener_depth.evaluate(
@@ -151,7 +151,7 @@ def test_partial_coverage_flagged(tmp_path: Path) -> None:
     _write_snap(data_dir, date="20260713", code=code, source="hogaplay",
                 obs=[_ob(ts_ms=91_000_000, ask_q=(400,) * 10, bid_q=(100,) * 10)])
     depth_daily.sweep(data_dir)
-    _write_snap(data_dir, date="20260715", code=code, source="kis_api",
+    _write_snap(data_dir, date="20260715", code=code, source="kiwoom_live",
                 obs=[_ob(ts_ms=91_000_000, ask_q=(500,) * 10, bid_q=(100,) * 10)])
     # N=20 이지만 보유 1일 → partial.
     leaf = AskDepthNewHighLeaf(id="a1", params=DepthPeakParams(lookback=20, threshold_pct=100))
@@ -173,7 +173,7 @@ def test_bid_side_condition(tmp_path: Path) -> None:
     _write_snap(data_dir, date="20260713", code=code, source="hogaplay",
                 obs=[_ob(ts_ms=91_000_000, ask_q=(100,) * 10, bid_q=(200,) * 10)])
     depth_daily.sweep(data_dir)
-    _write_snap(data_dir, date="20260715", code=code, source="kis_api",
+    _write_snap(data_dir, date="20260715", code=code, source="kiwoom_live",
                 obs=[_ob(ts_ms=91_000_000, ask_q=(100,) * 10, bid_q=(300,) * 10)])
     leaf = BidDepthNewHighLeaf(id="b1", params=DepthPeakParams(lookback=20, threshold_pct=100))
     res = screener_depth.evaluate(

@@ -19,6 +19,14 @@ if TYPE_CHECKING:
 # kiwoom_live: 키움 WS 승격본(ADR-0116). kis_live와 같은 실시간 WS 티어라 우선순위도
 # kis_live 인접(뒤). 종목 소유권 단일 원칙(한 종목 실시간 소스 하나)이라 보통 한
 # stock-date엔 kis_live/kiwoom_live 중 하나만 존재 — 순서는 전환기 이중구독 시에만 유효.
+#
+# kis_api(2026-07-17 정책): **캔들 전용 소스**다. rest30 REST 호가 캡처가 제거되면서
+# 호가·체결 계열(orderflow — /api/orderbook·/api/brokers/series·range의 호가/체결
+# 차원)은 kis_api를 더는 서빙하지 않는다(소비 지점에서 억제 — bundle.orderflow_ok,
+# routes._resolved_parquet_dir). 이 사다리에 kis_api tail을 유지하는 이유는 캔들:
+# ADR-0109 복구 분봉(kis_api/candles.parquet)이 hogaplay 공백일에 여기서 이겨야
+# 서빙된다. kis_api는 사다리 꼬리 전용이라(다른 소스 존재 시 절대 승리 불가,
+# kis_api_first는 프론트 미노출 레거시) 소비 지점 억제 = 필터된 사다리와 동치.
 SourceName = Literal["hogaplay", "kis_live", "kiwoom_live", "kis_api"]
 MissingReason = Literal["stock_date_missing", "source_missing"]
 SourcePolicy = Literal[

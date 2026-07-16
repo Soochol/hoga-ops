@@ -383,7 +383,6 @@ export function WatchlistDrawer() {
   // ADR-0067: 행별 수집상태 배지 — live_set을 한 번 읽어 공유 (행마다 재계산 없음).
   const { data: liveStatusData } = useLiveStatus();
   const liveCodes = liveStatusData?.live_set ?? [];
-  const apiTargets = liveStatusData?.kis_api_targets ?? [];
   const kiwoomCodes = liveStatusData?.kiwoom?.subscribed_codes ?? [];
   const viewedCodes = activeCode ? [activeCode] : [];
 
@@ -575,7 +574,6 @@ export function WatchlistDrawer() {
                         watchlistCodes: codes,
                         viewedCodes,
                         kiwoomCodes,
-                        kisApiTargets: apiTargets,
                         captureCandidate: entry.capture_candidate !== false,
                       });
                       const trailing = (

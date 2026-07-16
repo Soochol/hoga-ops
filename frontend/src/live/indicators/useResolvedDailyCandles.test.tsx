@@ -20,10 +20,8 @@ function makeWrapper(bypass = false) {
     const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } });
     qc.setQueryData(LIVE_SETTINGS_KEY, {
       schema_version: 1,
-      storage_policy: 'ws_plus_rest',
       program_trade_storage_enabled: false,
       kis_rest_bypass_enabled: bypass,
-      heatmap_capture_enabled: true,
       screener_depth_autocollect: false,
     } satisfies LiveSettings);
     return <QueryClientProvider client={qc}>{children}</QueryClientProvider>;

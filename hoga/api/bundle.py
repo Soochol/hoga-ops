@@ -117,10 +117,15 @@ def _resolve_trade_indicator_source(
     source_pref: str,
     selected_source: str,
 ) -> str:
-    """Pick the first policy source with price-level trades for trade indicators."""
+    """Pick the first policy source with price-level trades for trade indicators.
+
+    kis_api는 제외(2026-07-17): 캔들 전용 소스라 체결 지표의 폴백으로도 안 쓴다.
+    """
     candidates = [selected_source]
     candidates.extend(source for source in ordered_sources(source_pref) if source not in candidates)
     for source in candidates:
+        if source == "kis_api":
+            continue
         try:
             source_dir = engine.parquet_dir(date, code, source)
         except (FileNotFoundError, StockDateNotFound):
@@ -1329,6 +1334,12 @@ def build_range_bundle(
         date_warnings_before = len(warnings_list)
         resolution = resolve_source_result(engine, d, code, source_pref)
         source = resolution.source
+        # 2026-07-17 정책: kis_api는 캔들 전용(ADR-0109 복구 candles.parquet)이다 —
+        # 호가·체결 계열(호가비·체결강도·peak·vdist·거래원·depth heatmap)은 kis_api를
+        # 더는 서빙하지 않는다(rest30 캡처 제거와 동시 폐지; 캔들 사다리는 tail 유지).
+        # kis_api는 사다리 꼬리라 이 소스가 이겼다 = 다른 소스가 없다 → 차원 억제가
+        # 필터된 사다리와 동치다(kis_api_first는 프론트 옵션에서 제거됨).
+        orderflow_ok = source != "kis_api"
         if resolution.path is not None:
             try:
                 meta = json.loads((resolution.path / "meta.json").read_text(encoding="utf-8"))
@@ -1414,7 +1425,7 @@ def build_range_bundle(
         norm_meta, _ = normalize_session_bounds(meta)   # value-conversion only (notes handled by classify)
         qr_d = (
             QuoteRatio(bucket_ms=bucket_ms, points=[])
-            if sidecar_only or candles_only
+            if sidecar_only or candles_only or not orderflow_ok
             else build_quote_ratio_slice(
                 engine, code=code, date=d, bucket_ms=bucket_ms, source=source,
                 session_open_ms=norm_meta["regular_session_open_ms"],
@@ -1423,12 +1434,14 @@ def build_range_bundle(
         )
         fs_d = (
             FillStrength(bucket_ms=bucket_ms, points=[])
-            if sidecar_only or candles_only
+            if sidecar_only or candles_only or not orderflow_ok
             else build_fill_strength_slice(
                 engine, code=code, date=d, bucket_ms=bucket_ms, source=source,
             )
         )
-        continuous_before_needed = needs_trade_price_range and not hoga_only and not candles_only
+        continuous_before_needed = (
+            needs_trade_price_range and not hoga_only and not candles_only and orderflow_ok
+        )
         continuous_before_ms = (
             _first_trailing_single_price_book_hhmmssms(
                 engine,
@@ -1440,7 +1453,7 @@ def build_range_bundle(
             if continuous_before_needed
             else None
         )
-        if include_ask_peaks or include_bid_peaks:
+        if (include_ask_peaks or include_bid_peaks) and orderflow_ok:
             ap_d, bp_d = build_ask_bid_peak_slices(
                 engine, code=code, date=d, bucket_ms=bucket_ms, source=source,
                 session_open_ms=norm_meta["regular_session_open_ms"],
@@ -1462,7 +1475,7 @@ def build_range_bundle(
                 price_range=price_range,
                 continuous_before_ms=continuous_before_ms,
             )
-            if include_trade_volume_pocs
+            if include_trade_volume_pocs and orderflow_ok
             else None
         )
         segments.append(RangeSegment(
@@ -1476,7 +1489,10 @@ def build_range_bundle(
             # 이 거래일 캔들은 hogaplay 공백을 KIS 분봉으로 복구한 것 —
             # 프론트 배지용(호가 기반 지표는 없음). hoga.live.candle_repair 참조.
             repaired_candle_dates.append(d)
-        if not hoga_only and not cutoff_sidecar and not candles_only and broker_late_entries_enabled:
+        if (
+            not hoga_only and not cutoff_sidecar and not candles_only
+            and broker_late_entries_enabled and orderflow_ok
+        ):
             broker_late_entries.extend(
                 build_broker_late_entries_slice(
                     engine,
@@ -1489,7 +1505,10 @@ def build_range_bundle(
         candles.extend(candles_d)
         ratio_pts.extend(qr_d.points)
         fill_pts.extend(fs_d.points)
-        if not hoga_only and not candles_only and volume_distribution_bins is not None:
+        if (
+            not hoga_only and not candles_only
+            and volume_distribution_bins is not None and orderflow_ok
+        ):
             profile = build_volume_distribution_slice(
                 engine,
                 code=code,
@@ -1511,7 +1530,7 @@ def build_range_bundle(
             bid_peaks.append(bp_d)
         if tvp_d is not None:
             trade_volume_pocs.append(tvp_d)
-        if include_depth_heatmap:
+        if include_depth_heatmap and orderflow_ok:
             depth_heatmap.extend(
                 build_depth_heatmap_slice(
                     engine,

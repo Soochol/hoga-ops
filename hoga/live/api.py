@@ -1353,10 +1353,8 @@ def build_router(
             raise HTTPException(503, "live settings not wired")
         settings = update_live_settings(
             data_dir,
-            storage_policy=req.storage_policy,
             program_trade_storage_enabled=req.program_trade_storage_enabled,
             kis_rest_bypass_enabled=req.kis_rest_bypass_enabled,
-            heatmap_capture_enabled=req.heatmap_capture_enabled,
             screener_depth_autocollect=req.screener_depth_autocollect,
             kiwoom_enabled=req.kiwoom_enabled,
         )

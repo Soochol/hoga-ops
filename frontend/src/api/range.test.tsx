@@ -913,7 +913,7 @@ describe('useRange', () => {
 
   it('threads sourcePref into the query string and key', async () => {
     vi.spyOn(client, 'apiCall').mockResolvedValue({} as RangeBundle);
-    useSourcePreferenceStore.setState({ sourcePreference: 'kis_api_first' });
+    useSourcePreferenceStore.setState({ sourcePreference: 'kis_ws_first' });
 
     renderHook(
       () => useRange('005930', '20260520', '20260520', '1m', undefined, undefined, { mode: 'full' }),
@@ -921,12 +921,12 @@ describe('useRange', () => {
     );
     await waitFor(() => expect(client.apiCall).toHaveBeenCalled());
     const calledWith = (client.apiCall as ReturnType<typeof vi.spyOn>).mock.calls[0][0] as string;
-    expect(calledWith).toContain('source_pref=kis_api_first');
+    expect(calledWith).toContain('source_pref=kis_ws_first');
   });
 
   it('allows a caller to override the global source preference for one range query', async () => {
     vi.spyOn(client, 'apiCall').mockResolvedValue({} as RangeBundle);
-    useSourcePreferenceStore.setState({ sourcePreference: 'kis_api_first' });
+    useSourcePreferenceStore.setState({ sourcePreference: 'kis_ws_first' });
 
     renderHook(
       () => useRange(

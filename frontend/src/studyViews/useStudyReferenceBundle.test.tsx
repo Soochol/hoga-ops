@@ -132,7 +132,7 @@ describe('useStudyReferenceBundle', () => {
     screenerDailyFixture = [];
     useQueryMock.mockImplementation(queryResultFor);
     useLiveVenueStore.setState({ venue: 'UN' });
-    useSourcePreferenceStore.setState({ sourcePreference: 'kis_api_first' });
+    useSourcePreferenceStore.setState({ sourcePreference: 'kis_ws_first' });
     useLivePageStore.setState({
       brokerLateEntryEnabled: true,
       brokerLateEntryStartHHMM: 1000,
@@ -147,7 +147,7 @@ describe('useStudyReferenceBundle', () => {
 
     // settings에 venue가 없다 — 캔들은 rangeCandles(venue 무관)로만 로드된다.
     expect(studyReferenceQueryOptionsMock).toHaveBeenCalledWith(save, {
-      sourcePref: 'kis_api_first',
+      sourcePref: 'kis_ws_first',
       brokerLateEntryEnabled: true,
       brokerLateEntryStartHHMM: 1000,
       tradeVolumePocEnabled: true,

@@ -21,17 +21,6 @@ export interface LiveStatus {
   kis_rate_limit_remaining: number | null;
   /** Codes the backend is *actively collecting* in the current cycle. Used for collection-status badge visibility. */
   live_set: string[];
-  storage_policy: 'ws_only' | 'ws_plus_rest' | 'rest_only';
-  kis_api_running: boolean;
-  kis_api_targets: string[];
-  kis_api_target_count: number;
-  kis_api_last_cycle_ms: number | null;
-  kis_api_last_error: string | null;
-  kis_api_last_error_count: number;
-  kis_api_degraded: boolean;
-  // 직전 rest30 사이클의 EGW00201 바운스 수(설계된 정상 손실률 ~9-12%의 관측 채널).
-  // 백엔드 신규 필드라 optional — UI 표시는 후속.
-  kis_api_rate_limit_bounces?: number | null;
   kis_rest_bypass_enabled: boolean;
   // 키움 WS 수집 관측(ADR-0116). kiwoom_enabled off/미배선이면 null. 백엔드 신규
   // 필드라 optional — 설정 상태줄·커버리지 칩이 소비한다.

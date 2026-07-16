@@ -33,7 +33,7 @@ def market_phase(t_ms: int) -> Literal["regular", "after_hours_closing", "closed
 def is_trading_day_now(t_ms: int) -> bool:
     """거래일 여부 — **시계 무관** 순수 캘린더 술어(주말 단축 후 chk-holiday).
 
-    ``should_run_now``·``ws_connection_window``·``Rest30sRecorder`` 저장 게이트가
+    ``should_run_now``·``ws_connection_window`` 저장 게이트가
     공유하는 SSOT. '거래일'의 정의를 한 곳에 봉인해 소비자별 재구현이 표류하지 않게
     한다 — 이 함수가 도입되기 전 레코더는 ``market_phase``(시계만)로만 게이트해
     비거래일(주말/휴장) 09:00–15:30에도 호가를 캡처·저장했다(ADR-0099가 주장한 WS

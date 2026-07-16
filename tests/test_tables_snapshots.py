@@ -111,9 +111,10 @@ def test_write_parquet_quantities_exceed_int32(tmp_path: Path) -> None:
     """총잔량·개별 호가 잔량이 int32 max(2,147,483,647)를 넘는 고거래량/상한가-락
     종목도 write→read 왕복이 깨지지 않아야 한다. 프로덕션 회귀: 252670(KODEX
     인버스) 총잔량 2,366,893,147 이 int32 스키마의 pa.array(type=int32())에서
-    ArrowInvalid('Value ... too large to fit in C integer type')로 promote_api_today
-    를 죽였다. 상한가 락이면 물량이 한 호가에 몰려 bid_q1 도 int32 를 넘고, 델타는
-    부호 있는 하방 오버플로가 난다 — 셋 다 int64 로 커버되는지 검증한다."""
+    ArrowInvalid('Value ... too large to fit in C integer type')로 당시 승격
+    루프(REST 30s promote, 현재는 제거됨)를 죽였다. 상한가 락이면 물량이 한 호가에
+    몰려 bid_q1 도 int32 를 넘고, 델타는 부호 있는 하방 오버플로가 난다 — 셋 다
+    int64 로 커버되는지 검증한다."""
     from hoga.tables.snapshots import read_parquet
 
     big_tot = 2_366_893_147   # 실제 프로덕션 크래시 값 (> int32 max)

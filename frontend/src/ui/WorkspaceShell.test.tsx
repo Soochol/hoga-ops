@@ -36,10 +36,11 @@ describe('WorkspaceShell primitives', () => {
   });
 
   it('renders shared icon toolbar buttons', () => {
+    // #633: 툴바 버튼은 ghost(투명 배경·무테두리) — hover에서만 배경이 생긴다.
     render(<IconToolbarButton aria-label="설정">설정</IconToolbarButton>);
     const button = screen.getByRole('button', { name: '설정' });
-    expect(button).toHaveClass('bg-bg-input');
-    expect(button).toHaveClass('border-border-strong');
+    expect(button).toHaveClass('bg-transparent');
+    expect(button).toHaveClass('hover:bg-bg-input-hover');
     expect(button).toHaveClass('text-fg-dim');
   });
 

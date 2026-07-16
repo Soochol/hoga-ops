@@ -600,14 +600,6 @@ describe('WatchlistDrawer', () => {
       capture_healthy: true, capture_reason: 'healthy',
       watchlist_count: 4, kis_calls_today: 0, kis_rate_limit_remaining: null,
       live_set: ['005930'],
-      storage_policy: 'ws_plus_rest',
-      kis_api_running: true,
-      kis_api_targets: ['000660'],
-      kis_api_target_count: 1,
-      kis_api_last_cycle_ms: null,
-      kis_api_last_error: null,
-      kis_api_last_error_count: 0,
-      kis_api_degraded: false,
     });
 
     render(<WatchlistDrawer />, { wrapper: wrap(qc, '/inventory') });
@@ -616,7 +608,6 @@ describe('WatchlistDrawer', () => {
     expect(screen.getByTestId('watchlist-row-005930')).toHaveTextContent('삼성전자');
     expect(screen.getByTestId('watchlist-row-005930')).toHaveTextContent('—');
     expect(screen.getByTestId('watchlist-row-005930')).not.toHaveTextContent('KIS WS 저장 중');
-    expect(screen.getByTestId('watchlist-row-000660')).not.toHaveTextContent('KIS API 30초 저장 중');
     expect(screen.getByTestId('watchlist-row-035420')).not.toHaveTextContent('대기');
     expect(screen.getByTestId('watchlist-row-051910')).not.toHaveTextContent('저장 제외');
     // realtime(정상)은 점 숨김; 비-정상(waiting_eod)만 점 표시.
@@ -645,14 +636,6 @@ describe('WatchlistDrawer', () => {
       capture_healthy: true, capture_reason: 'healthy',
       watchlist_count: 2, kis_calls_today: 0, kis_rate_limit_remaining: null,
       live_set: [],
-      storage_policy: 'ws_plus_rest',
-      kis_api_running: true,
-      kis_api_targets: [],
-      kis_api_target_count: 0,
-      kis_api_last_cycle_ms: null,
-      kis_api_last_error: null,
-      kis_api_last_error_count: 0,
-      kis_api_degraded: false,
     });
 
     render(<WatchlistDrawer />, { wrapper: wrap(qc, '/inventory') });
