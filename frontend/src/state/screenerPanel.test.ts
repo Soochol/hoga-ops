@@ -12,6 +12,7 @@ const SCAN: PanelScan = {
   savedId: 's1',
   savedName: '돌파',
   savedUpdatedAtMs: 10,
+  scanKey: null,
   rows: [
     {
       code: '005930',
@@ -24,6 +25,7 @@ const SCAN: PanelScan = {
   ],
   scanStatus: 'ok',
   warnings: [],
+  depthValues: null,
   scannedAtMs: NOW,
   basis: 'intraday',
   dataStale: false,
@@ -110,6 +112,66 @@ describe('screenerPanel store', () => {
     expect(fresh.getState().selectedSavedId).toBe('s1');
     expect(fresh.getState().lastScan).toBeNull();
     expect(fresh.getState().sortMode).toBe('default');
+  });
+
+  it('migrates a legacy scan without scanKey/depthValues by filling nulls', async () => {
+    // 단일 뷰 시절 데이터: saved* 필수, scanKey/depthValues 없음. 키는 v1 유지이므로
+    // 누락 필드를 null 로 채워 통과해야 한다(하위호환).
+    localStorage.setItem('screenerPanel.v1', JSON.stringify({
+      selectedSavedId: 's1',
+      lastScan: {
+        savedId: 's1',
+        savedName: '돌파',
+        savedUpdatedAtMs: 10,
+        rows: SCAN.rows,
+        scanStatus: 'ok',
+        warnings: [],
+        scannedAtMs: NOW,
+        basis: 'intraday',
+        dataStale: false,
+      },
+    }));
+    vi.resetModules();
+    vi.setSystemTime(NOW);
+
+    const { useScreenerPanelStore: fresh } = await import('./screenerPanel');
+
+    expect(fresh.getState().lastScan).toEqual(SCAN);
+  });
+
+  it('hydrates a page-style scan (null savedId, scanKey + depthValues)', async () => {
+    const pageScan: PanelScan = {
+      ...SCAN,
+      savedId: null,
+      savedName: null,
+      savedUpdatedAtMs: null,
+      scanKey: '{"conditions":[],"universe":{},"basis":"intraday"}',
+      depthValues: {
+        '005930': {
+          ask_today: 1000, ask_past_peak: 900, ask_have_days: 5, ask_need_days: 5,
+          bid_today: null, bid_past_peak: null, bid_have_days: 0, bid_need_days: 5,
+        },
+      },
+    };
+    localStorage.setItem('screenerPanel.v1', JSON.stringify({ lastScan: pageScan }));
+    vi.resetModules();
+    vi.setSystemTime(NOW);
+
+    const { useScreenerPanelStore: fresh } = await import('./screenerPanel');
+
+    expect(fresh.getState().lastScan).toEqual(pageScan);
+  });
+
+  it('rejects a scan with corrupt depthValues', async () => {
+    localStorage.setItem('screenerPanel.v1', JSON.stringify({
+      lastScan: { ...SCAN, depthValues: { '005930': { ask_today: 'nope' } } },
+    }));
+    vi.resetModules();
+    vi.setSystemTime(NOW);
+
+    const { useScreenerPanelStore: fresh } = await import('./screenerPanel');
+
+    expect(fresh.getState().lastScan).toBeNull();
   });
 
   it('marks the last scan stale after data update succeeds', () => {

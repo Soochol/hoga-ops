@@ -43,8 +43,8 @@ const OK_STATUS: ScreenerStatus = {
 };
 
 const SCAN = {
-  savedId: 's1', savedName: 'n', savedUpdatedAtMs: 1,
-  rows: [], scanStatus: 'ok' as const, warnings: [],
+  savedId: 's1', savedName: 'n', savedUpdatedAtMs: 1, scanKey: null,
+  rows: [], scanStatus: 'ok' as const, warnings: [], depthValues: null,
   scannedAtMs: Date.now(), basis: 'intraday' as const, dataStale: false,
 };
 

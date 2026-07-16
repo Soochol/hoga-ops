@@ -1,5 +1,6 @@
+import { useEffect } from 'react';
 import { create } from 'zustand';
-import type { ScanBasis, ScreenerResponse, ScreenerRow } from '../api/screener';
+import type { DepthPeakValue, ScanBasis, ScreenerResponse, ScreenerRow } from '../api/screener';
 import type {
   ScreenerResultSortDirection,
   ScreenerResultSortField,
@@ -21,12 +22,19 @@ const SORT_FIELDS: readonly ScreenerResultSortField[] = [
 const SORT_DIRECTIONS: readonly ScreenerResultSortDirection[] = ['asc', 'desc'];
 
 export interface PanelScan {
-  savedId: string;
-  savedName: string;
-  savedUpdatedAtMs: number;
+  // saved* 는 드로어(저장본 기반 스캔)에서만 채워진다. 풀페이지 Screener 는 저장 안 된
+  // 임시 조건으로도 조회하므로 nullable — null 이면 "임시 조건" 결과다.
+  savedId: string | null;
+  savedName: string | null;
+  savedUpdatedAtMs: number | null;
+  // 풀페이지 Screener 의 내용 기반 staleness 판정용(요청 바디 직렬화). 드로어는 신원
+  // 기반(savedId/savedUpdatedAtMs)이라 null 로 둔다.
+  scanKey: string | null;
   rows: ScreenerRow[];
   scanStatus: ScreenerResponse['status'];
   warnings: string[];
+  // 총잔량 신고 조건이 있을 때만 채워진다 — 결과 테이블의 호가 신고 값 컬럼 복원용.
+  depthValues: Record<string, DepthPeakValue> | null;
   scannedAtMs: number;
   basis: ScanBasis;
   dataStale: boolean;
@@ -113,6 +121,30 @@ function isScreenerRow(value: unknown): value is ScreenerRow {
   );
 }
 
+function isDepthPeakValue(value: unknown): value is DepthPeakValue {
+  if (typeof value !== 'object' || value === null) return false;
+  const raw = value as Record<string, unknown>;
+  return (
+    isNumberOrNull(raw.ask_today)
+    && isNumberOrNull(raw.ask_past_peak)
+    && typeof raw.ask_have_days === 'number'
+    && typeof raw.ask_need_days === 'number'
+    && isNumberOrNull(raw.bid_today)
+    && isNumberOrNull(raw.bid_past_peak)
+    && typeof raw.bid_have_days === 'number'
+    && typeof raw.bid_need_days === 'number'
+  );
+}
+
+function isDepthValues(value: unknown): value is Record<string, DepthPeakValue> {
+  if (typeof value !== 'object' || value === null) return false;
+  return Object.values(value as Record<string, unknown>).every(isDepthPeakValue);
+}
+
+function isStringOrNull(value: unknown): value is string | null {
+  return value === null || typeof value === 'string';
+}
+
 export function isPanelScanFresh(scan: PanelScan, nowMs = Date.now()): boolean {
   const ageMs = nowMs - scan.scannedAtMs;
   return ageMs >= 0 && ageMs <= SCREENER_PANEL_SCAN_TTL_MS;
@@ -157,24 +189,45 @@ function isPanelUpdateState(value: unknown, nowMs = Date.now()): value is PanelU
   return false;
 }
 
-function isPanelScan(value: unknown, nowMs = Date.now()): value is PanelScan {
-  if (typeof value !== 'object' || value === null) return false;
+// 검증 + 정규화를 한 번에: 유효하면 완전한 PanelScan, 아니면 null. 구버전 스키마(단일
+// 뷰 시절 saved* 필수, scanKey/depthValues 없음)는 누락 필드를 null 로 채워 마이그레이션
+// 한다(키는 screenerPanel.v1 유지 — 필드를 넓히기만 해 하위호환).
+function coercePanelScan(value: unknown, nowMs = Date.now()): PanelScan | null {
+  if (typeof value !== 'object' || value === null) return null;
   const raw = value as Record<string, unknown>;
-  if (raw.scanStatus !== 'ok' && raw.scanStatus !== 'not_seeded' && raw.scanStatus !== 'building') return false;
-  if (raw.basis !== 'intraday' && raw.basis !== 'eod') return false;
-  if (!Array.isArray(raw.rows) || !raw.rows.every(isScreenerRow)) return false;
-  if (!Array.isArray(raw.warnings) || !raw.warnings.every((w) => typeof w === 'string')) return false;
-  const scan = raw as Partial<PanelScan>;
-  return (
-    typeof scan.savedId === 'string'
-    && typeof scan.savedName === 'string'
-    && typeof scan.savedUpdatedAtMs === 'number'
-    && Number.isFinite(scan.savedUpdatedAtMs)
-    && typeof scan.scannedAtMs === 'number'
-    && Number.isFinite(scan.scannedAtMs)
-    && typeof scan.dataStale === 'boolean'
-    && isPanelScanFresh(scan as PanelScan, nowMs)
-  );
+  if (raw.scanStatus !== 'ok' && raw.scanStatus !== 'not_seeded' && raw.scanStatus !== 'building') return null;
+  if (raw.basis !== 'intraday' && raw.basis !== 'eod') return null;
+  if (!Array.isArray(raw.rows) || !raw.rows.every(isScreenerRow)) return null;
+  if (!Array.isArray(raw.warnings) || !raw.warnings.every((w) => typeof w === 'string')) return null;
+  if (typeof raw.scannedAtMs !== 'number' || !Number.isFinite(raw.scannedAtMs)) return null;
+  if (typeof raw.dataStale !== 'boolean') return null;
+
+  const savedId = raw.savedId ?? null;
+  const savedName = raw.savedName ?? null;
+  const savedUpdatedAtMs = raw.savedUpdatedAtMs ?? null;
+  const scanKey = raw.scanKey ?? null;
+  if (!isStringOrNull(savedId) || !isStringOrNull(savedName) || !isStringOrNull(scanKey)) return null;
+  if (!isNumberOrNull(savedUpdatedAtMs)) return null;
+  let depthValues: Record<string, DepthPeakValue> | null = null;
+  if (raw.depthValues != null) {
+    if (!isDepthValues(raw.depthValues)) return null;
+    depthValues = raw.depthValues;
+  }
+
+  const scan: PanelScan = {
+    savedId,
+    savedName,
+    savedUpdatedAtMs,
+    scanKey,
+    rows: raw.rows as ScreenerRow[],
+    scanStatus: raw.scanStatus,
+    warnings: raw.warnings as string[],
+    depthValues,
+    scannedAtMs: raw.scannedAtMs,
+    basis: raw.basis,
+    dataStale: raw.dataStale,
+  };
+  return isPanelScanFresh(scan, nowMs) ? scan : null;
 }
 
 function readStorage(nowMs = Date.now()): Partial<Persisted> {
@@ -182,7 +235,8 @@ function readStorage(nowMs = Date.now()): Partial<Persisted> {
   const out: Partial<Persisted> = {};
   if (parsed.selectedSavedId === null) out.selectedSavedId = null;
   else if (typeof parsed.selectedSavedId === 'string') out.selectedSavedId = parsed.selectedSavedId;
-  if (isPanelScan(parsed.lastScan, nowMs)) out.lastScan = parsed.lastScan;
+  const lastScan = coercePanelScan(parsed.lastScan, nowMs);
+  if (lastScan) out.lastScan = lastScan;
   if (isSortMode(parsed.sortMode)) out.sortMode = parsed.sortMode;
   if (isPanelUpdateState(parsed.updateState, nowMs)) out.updateState = parsed.updateState;
   return out;
@@ -253,3 +307,16 @@ export const useScreenerPanelStore = create<Store>((set, get) => ({
     persistFromState(get());
   },
 }));
+
+/**
+ * 마운트 시 만료 스캔을 즉시 정리하고 60초마다 재확인 — 페이지·드로어가 공유하는
+ * 단일 관용구(TTL 경과분이 오래 남아 "다시 조회 필요" 없이 유령 결과로 보이지 않게).
+ */
+export function useExpireScreenerScan(): void {
+  const clearExpiredScan = useScreenerPanelStore((s) => s.clearExpiredScan);
+  useEffect(() => {
+    clearExpiredScan();
+    const timer = window.setInterval(() => clearExpiredScan(), 60_000);
+    return () => window.clearInterval(timer);
+  }, [clearExpiredScan]);
+}

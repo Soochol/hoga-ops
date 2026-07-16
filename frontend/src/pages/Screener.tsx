@@ -11,13 +11,15 @@ import { SavedScreenerList } from '../screener/SavedScreenerList';
 import { ResultTable } from '../screener/ResultTable';
 import { StalenessChip } from '../screener/StalenessChip';
 import { useSavedScreenerEditor } from '../screener/useSavedScreenerEditor';
+import { useSavedScreeners } from '../screener/useSavedScreeners';
 import { useScreenerRowsLive } from '../screener/useScreenerRowsLive';
+import { useScreenerPanelStore, useExpireScreenerScan } from '../state/screenerPanel';
 import { DataSection, InlineState } from '../ui/DataSurface';
 import { ModalShell } from '../ui/ModalShell';
 import { ControlBar, PanelCard, SegmentedControl, ToolbarButton } from '../ui/PageShell';
 import { ScreenerResultSortControl } from '../screener/ScreenerResultSortControl';
 import { DepthCoverageBanner } from '../screener/DepthCoverageBanner';
-import { sortScreenerRows, type ScreenerResultSortMode } from '../screener/sortResults';
+import { sortScreenerRows } from '../screener/sortResults';
 import { useLiveSettings } from '../api/liveSettings';
 import type { ScanBasis } from '../api/screener';
 
@@ -63,12 +65,19 @@ export function Screener() {
   const openLive = useJumpToLive();
   const editor = useSavedScreenerEditor();
   const [saveDialog, setSaveDialog] = useState<SaveDialogMode | null>(null);
-  const [lastScanKey, setLastScanKey] = useState<string | null>(null);
-  const [sortMode, setSortMode] = useState<ScreenerResultSortMode>('default');
-  const [basis, setBasis] = useState<ScanBasis>('intraday');
+
+  // 조회 결과·정렬은 screenerPanel 스토어(localStorage + 30분 TTL)에 산다 — 라우트
+  // 이탈/복귀·새로고침 후에도 유지되고 드로어와 마지막 스캔을 공유한다.
+  const lastScan = useScreenerPanelStore((s) => s.lastScan);
+  const setLastScan = useScreenerPanelStore((s) => s.setLastScan);
+  const sortMode = useScreenerPanelStore((s) => s.sortMode);
+  const setSortMode = useScreenerPanelStore((s) => s.setSortMode);
+  const [basis, setBasis] = useState<ScanBasis>(() => lastScan?.basis ?? 'intraday');
+  useExpireScreenerScan();
 
   const screener = useScreener();
   const { data: liveSettings } = useLiveSettings();
+  const { data: savesData } = useSavedScreeners();
   const { data: status } = useScreenerStatus();
   const update = useScreenerUpdate();
   const updateFeedback = useScreenerUpdateFeedback((s) => s.feedback);
@@ -78,21 +87,39 @@ export function Screener() {
   // 결과 행에 Live Quote 오버레이(현재가·등락률)를 적용 — 드로어와 공유하는 단일
   // 머지 seam. rows 를 메모화해 훅 내부 polling 의 queryKey 가 매 렌더 흔들리지 않게
   // 하고, codes 가 비면(notSeeded/error/무결과) 훅이 폴링을 끈다.
-  const rows = useMemo(() => screener.data?.rows ?? [], [screener.data]);
+  const rows = useMemo(() => lastScan?.rows ?? [], [lastScan]);
   const liveRows = useScreenerRowsLive(rows);
   const sortedLiveRows = useMemo(() => sortScreenerRows(liveRows, sortMode), [liveRows, sortMode]);
 
-  const notSeeded = screener.data?.status === 'not_seeded' || status?.status === 'not_seeded';
+  const notSeeded = lastScan?.scanStatus === 'not_seeded' || status?.status === 'not_seeded';
   const scanBody = useMemo(
     () => ({ conditions: editor.conditions, universe: editor.universe, basis }),
     [editor.conditions, editor.universe, basis],
   );
   const scanKey = useMemo(() => JSON.stringify(scanBody), [scanBody]);
-  const resultsStale = lastScanKey !== null && lastScanKey !== scanKey;
-  const intradayFallback = basis === 'intraday' && (screener.data?.warnings ?? []).includes('intraday_fallback_eod');
+  // 내용 기반 staleness: 저장된 scanKey 와 현재 빌더 key 가 다르면 "다시 조회 필요".
+  // 드로어 스캔은 scanKey null → 비교 불가 시 stale 판정하지 않는다.
+  const resultsStale = lastScan?.scanKey != null && lastScan.scanKey !== scanKey;
+  const intradayFallback = lastScan?.basis === 'intraday' && (lastScan?.warnings ?? []).includes('intraday_fallback_eod');
   const runScan = () => screener.mutate(scanBody, {
-    onSuccess: () => {
-      setLastScanKey(scanKey);
+    onSuccess: (res) => {
+      // 저장본을 로드해 수정 없이 조회한 경우에만 저장본 신원을 붙인다 — dirty/미저장이면
+      // null(임시 조건). 드로어의 신원 기반 staleness 를 오염시키지 않기 위함.
+      const anchored = !editor.dirty && editor.anchorId != null;
+      const saved = anchored ? savesData?.saves.find((s) => s.id === editor.anchorId) ?? null : null;
+      setLastScan({
+        savedId: anchored ? editor.anchorId : null,
+        savedName: anchored ? editor.anchorName : null,
+        savedUpdatedAtMs: saved?.updated_at_ms ?? null,
+        scanKey,
+        rows: res.rows,
+        scanStatus: res.status,
+        warnings: res.warnings,
+        depthValues: res.depth_values ?? null,
+        scannedAtMs: Date.now(),
+        basis,
+        dataStale: false,
+      });
       setSortMode('default');
     },
   });
@@ -222,7 +249,7 @@ export function Screener() {
                 sortMode={sortMode}
                 onSortChange={setSortMode}
                 embedded
-                depthValues={screener.data?.depth_values}
+                depthValues={lastScan?.depthValues ?? undefined}
                 depthSides={{
                   ask: editor.conditions.some((c) => c.type === 'ask_depth_new_high'),
                   bid: editor.conditions.some((c) => c.type === 'bid_depth_new_high'),
