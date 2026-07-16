@@ -26,7 +26,7 @@ async def test_coverage_preview_classifies_and_lists_missing(monkeypatch, tmp_pa
     }
     monkeypatch.setattr(
         "hoga.api.disk_state.check_disk_state",
-        lambda data_dir, code, date: Classification(state=states[(code, date)]),
+        lambda data_dir, code, date, *, source=None: Classification(state=states[(code, date)]),
     )
     req = CoveragePreviewRequest(codes=[_A, _B], start_date="20260713", end_date="20260714")
     res = await captures.coverage_preview_core(req, data_dir=tmp_path, now=_NOW)

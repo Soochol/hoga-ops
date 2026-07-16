@@ -355,7 +355,14 @@ def _build_all_captured_breakdowns(data_dir: Path) -> dict[str, dict[str, int]]:
             for code_dir in date_dir.iterdir():
                 if not code_dir.is_dir():
                     continue
-                st = check_disk_state(data_dir, code_dir.name, date_dir.name).state
+                # source="hogaplay": the breakdown buckets mirror the capture
+                # calendar's hogaplay-framed states, so a COMPLETE kis_live/kis_api
+                # promotion must not inflate the "complete" count. kis_live-only
+                # Stock-Dates resolve to NONE here (surfaced separately as *_live
+                # on the calendar), matching the display axis.
+                st = check_disk_state(
+                    data_dir, code_dir.name, date_dir.name, source="hogaplay",
+                ).state
                 bucket = breakdowns.setdefault(
                     code_dir.name,
                     {"complete": 0, "source_partial": 0, "client_incomplete": 0, "invalid": 0},

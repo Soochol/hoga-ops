@@ -11,6 +11,7 @@ import pytest
 from hoga.api.disk_state import (
     DiskState,
     aggregate_disk_state,
+    check_disk_state,
     classify_stock_date,
 )
 
@@ -37,15 +38,54 @@ def test_classify_stock_date_returns_per_source_states(tmp_path: Path) -> None:
         {
             "source": "kis_live",
             "row_counts": {"snapshots": 100},
-            # kis_live meta doesn't carry the hogaplay collection_complete /
-            # is_partial fields; classify_from_meta should treat absence as
-            # the conservative CLIENT_INCOMPLETE default.
+            # A legacy kis_live meta (pre-ADR-0115) lacks collection_complete /
+            # is_partial; classify_from_meta treats absence as the conservative
+            # CLIENT_INCOMPLETE default. New promotions DO carry them (see
+            # test_check_disk_state_* below and tests/unit/live/test_promote.py).
         },
     )
 
     states = {k: v.state for k, v in classify_stock_date(sd_dir).items()}
     assert set(states.keys()) == {"hogaplay", "kis_live"}
     assert states["hogaplay"] == DiskState.COMPLETE
+
+
+def _COMPLETE_META(source: str) -> dict:
+    return {
+        "source": source,
+        "collection_complete": True,
+        "is_partial": False,
+        "regular_session_open_ms": 90000000,
+        "regular_session_close_ms": 153000000,
+    }
+
+
+def test_check_disk_state_source_none_aggregates(tmp_path: Path) -> None:
+    """ADR-0115: default (source=None) aggregates — a COMPLETE kis_live promotes
+    the Stock-Date to COMPLETE even with no hogaplay artifact."""
+    sd_dir = tmp_path / "parquet" / "20260527" / "005930"
+    _write_meta(sd_dir / "kis_live" / "meta.json", _COMPLETE_META("kis_live"))
+    assert check_disk_state(tmp_path, "005930", "20260527").state == DiskState.COMPLETE
+
+
+def test_check_disk_state_source_hogaplay_ignores_kis(tmp_path: Path) -> None:
+    """ADR-0115: source='hogaplay' ignores a kis_live-only COMPLETE → NONE, so
+    the capture pipeline still collects hogaplay for that date."""
+    sd_dir = tmp_path / "parquet" / "20260527" / "005930"
+    _write_meta(sd_dir / "kis_live" / "meta.json", _COMPLETE_META("kis_live"))
+    assert check_disk_state(
+        tmp_path, "005930", "20260527", source="hogaplay",
+    ).state == DiskState.NONE
+
+
+def test_check_disk_state_source_hogaplay_sees_hogaplay(tmp_path: Path) -> None:
+    """source='hogaplay' still returns a real hogaplay COMPLETE."""
+    sd_dir = tmp_path / "parquet" / "20260527" / "005930"
+    _write_meta(sd_dir / "hogaplay" / "meta.json", _COMPLETE_META("hogaplay"))
+    _write_meta(sd_dir / "kis_live" / "meta.json", _COMPLETE_META("kis_live"))
+    assert check_disk_state(
+        tmp_path, "005930", "20260527", source="hogaplay",
+    ).state == DiskState.COMPLETE
 
 
 def test_classify_stock_date_handles_only_one_source(tmp_path: Path) -> None:

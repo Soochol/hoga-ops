@@ -78,7 +78,10 @@ def decide_capture(
     if that re-capture is still gappy, the done+not-COMPLETE fail_streak rule
     (ADR-0042) still caps runaway retries.
     """
-    classification = check_disk_state(data_dir, code, date)
+    # source="hogaplay": the worker collects hogaplay, so a COMPLETE
+    # kis_live/kis_api promotion (lower-fidelity synthesized data) must NOT
+    # mark this Stock-Date "already_complete" and suppress hogaplay collection.
+    classification = check_disk_state(data_dir, code, date, source="hogaplay")
     disk = classification.state
     if disk == DiskState.COMPLETE:
         return CaptureDecision(skip_reason="already_complete", resume=False)

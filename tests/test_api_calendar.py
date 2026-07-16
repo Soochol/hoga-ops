@@ -94,6 +94,53 @@ def test_calendar_uses_disk_state_for_captured_cells(monkeypatch, tmp_path):
         assert cell["captured_at_ms"] is not None
 
 
+def _write_source_meta(tmp_path, date, code, source, meta):
+    d = tmp_path / "parquet" / date / code / source
+    d.mkdir(parents=True, exist_ok=True)
+    (d / "meta.json").write_text(json.dumps(meta))
+
+
+def _status_for(monkeypatch, tmp_path, date, code):
+    app = _build_app(monkeypatch, tmp_path)
+    with TestClient(app) as c:
+        body = c.get(f"/api/inventory/calendar?code={code}&year=2026&month=5").json()
+        return next(cc for cc in body["cells"] if cc["date"] == date)
+
+
+def test_calendar_kis_live_only_complete_shows_complete_live(monkeypatch, tmp_path):
+    """ADR-0115: hogaplay absent, kis_live COMPLETE → complete_live (not complete)."""
+    _write_source_meta(tmp_path, "20260518", "005930", "kis_live",
+                       {"collection_complete": True, "is_partial": False})
+    cell = _status_for(monkeypatch, tmp_path, "20260518", "005930")
+    assert cell["status"] == "complete_live"
+    assert cell["captured_at_ms"] is not None
+
+
+def test_calendar_kis_live_only_partial_shows_partial_live(monkeypatch, tmp_path):
+    _write_source_meta(tmp_path, "20260518", "005930", "kis_live",
+                       {"collection_complete": True, "is_partial": True})
+    cell = _status_for(monkeypatch, tmp_path, "20260518", "005930")
+    assert cell["status"] == "partial_live"
+
+
+def test_calendar_hogaplay_wins_over_kis_live(monkeypatch, tmp_path):
+    """hogaplay COMPLETE + kis_live present → hogaplay-framed 'complete'."""
+    _write_source_meta(tmp_path, "20260518", "005930", "hogaplay",
+                       {"collection_complete": True, "is_partial": False})
+    _write_source_meta(tmp_path, "20260518", "005930", "kis_live",
+                       {"collection_complete": True, "is_partial": False})
+    cell = _status_for(monkeypatch, tmp_path, "20260518", "005930")
+    assert cell["status"] == "complete"
+
+
+def test_calendar_kis_live_incomplete_shows_none(monkeypatch, tmp_path):
+    """kis_live not finalized (CLIENT_INCOMPLETE) → 'none' (✕ noise removed)."""
+    _write_source_meta(tmp_path, "20260518", "005930", "kis_live",
+                       {"collection_complete": False, "is_partial": True})
+    cell = _status_for(monkeypatch, tmp_path, "20260518", "005930")
+    assert cell["status"] == "none"
+
+
 import pytest
 from pathlib import Path
 

@@ -221,8 +221,12 @@ async def test_promote_idempotent_skips_if_meta_exists(tmp_path: Path) -> None:
     parquet_root = tmp_path / "parquet"
     target = parquet_root / "20260527" / "005930" / "kis_live"
     target.mkdir(parents=True)
+    # ADR-0115: a FINALIZED meta (collection_complete=True) is the skip condition.
     (target / "meta.json").write_text(
-        json.dumps({"source": "kis_live", "code": "005930", "preserved": True})
+        json.dumps({
+            "source": "kis_live", "code": "005930", "preserved": True,
+            "collection_complete": True,
+        })
     )
 
     live_root = tmp_path / "live"
@@ -660,3 +664,120 @@ async def test_promote_pending_skips_today(tmp_path: Path) -> None:
     assert not yesterday_jsonl.exists()
     assert (tmp_path / "live" / "_archive" / yesterday / "003490.jsonl").exists()
     assert (tmp_path / "parquet" / yesterday / "003490" / "kis_live" / "meta.json").exists()
+
+
+# === ADR-0115 — completeness fields (analyze_gaps + time-based collection_complete) ===
+
+def _dense_snapshots():
+    """Dense 30s snapshots across the whole continuous-trading window."""
+    from hoga.api.disk_state import _hhmmssms_to_intra_ms, _intra_ms_to_hhmmssms
+    from hoga.api.timeenc import HogaMs
+    from hoga.tables.snapshots import Orderbook
+
+    t = _hhmmssms_to_intra_ms(HogaMs(90000000))
+    end = _hhmmssms_to_intra_ms(HogaMs(153000000)) - 10 * 60 * 1000  # auction start
+    out = []
+    seq = 0
+    while t < end:
+        seq += 1
+        out.append(Orderbook(
+            ts_ms=int(_intra_ms_to_hhmmssms(t)), seq=seq,
+            ask_p=(0,) * 10, ask_q=(0,) * 10, ask_d=(0,) * 10,
+            bid_p=(0,) * 10, bid_q=(0,) * 10, bid_d=(0,) * 10,
+            tot_ask=0, tot_ask_d=0, tot_bid=0, tot_bid_d=0,
+        ))
+        t += 30_000
+    return out
+
+
+def test_build_meta_complete_for_dense_past_stream() -> None:
+    """A past-date dense stream → collection_complete=True, is_partial=False."""
+    from hoga.live.promote import _build_meta
+
+    snaps = _dense_snapshots()
+    meta = _build_meta("005930", "20200101", snaps, [], 0, source="kis_live")
+    assert meta["collection_complete"] is True
+    assert meta["is_partial"] is False
+    assert meta["gap_ranges"] == []
+
+
+def test_build_meta_partial_on_late_head() -> None:
+    """A stream that only starts at 13:00 has a head gap → SOURCE_PARTIAL shape."""
+    from hoga.api.disk_state import classify_from_meta, DiskState
+    from hoga.live.promote import _build_meta
+
+    late = [s for s in _dense_snapshots() if s.ts_ms >= 130000000]
+    meta = _build_meta("005930", "20200101", late, [], 0, source="kis_live")
+    assert meta["collection_complete"] is True
+    assert meta["is_partial"] is True
+    assert meta["gap_ranges"], "expected a head gap range"
+    # The completeness fields route kis_live through the SAME classifier hogaplay uses.
+    assert classify_from_meta(meta).state == DiskState.SOURCE_PARTIAL
+
+
+def test_build_meta_dense_classifies_complete() -> None:
+    from hoga.api.disk_state import classify_from_meta, DiskState
+    from hoga.live.promote import _build_meta
+
+    meta = _build_meta("005930", "20200101", _dense_snapshots(), [], 0, source="kis_live")
+    assert classify_from_meta(meta).state == DiskState.COMPLETE
+
+
+def test_collection_finished_time_rule() -> None:
+    from hoga.live.promote import _collection_finished
+
+    kst = timezone(timedelta(hours=9))
+    intraday = datetime(2026, 7, 16, 10, 0, tzinfo=kst)
+    after_close = datetime(2026, 7, 16, 15, 40, tzinfo=kst)
+    assert _collection_finished("20260101", now=intraday) is True   # past day
+    assert _collection_finished("20260716", now=intraday) is False  # today, intraday
+    assert _collection_finished("20260716", now=after_close) is True  # today, ≥15:35
+    assert _collection_finished("20260717", now=after_close) is False  # future
+
+
+@pytest.mark.asyncio
+async def test_promote_one_reparses_when_not_finalized(tmp_path: Path) -> None:
+    """promote_one skips only a finalized meta (collection_complete=True). An
+    intraday meta left at False is re-parsed so the batch can finalize it."""
+    from hoga.live.promote import promote_one
+
+    target = tmp_path / "parquet" / "20260527" / "005930" / "kis_live"
+    target.mkdir(parents=True)
+    # Stale intraday meta: not finalized.
+    (target / "meta.json").write_text(json.dumps({
+        "source": "kis_live", "collection_complete": False, "is_partial": True,
+    }))
+    jsonl = tmp_path / "live" / "20260527" / "005930.jsonl"
+    jsonl.parent.mkdir(parents=True)
+    jsonl.write_text(json.dumps({
+        "t_ms": 1, "kind": "ob",
+        "payload": {"bids": [], "asks": [], "total_bid_qty": 0, "total_ask_qty": 0},
+    }) + "\n")
+
+    await promote_one(jsonl, tmp_path / "parquet", code="005930", date="20260527")
+    meta = json.loads((target / "meta.json").read_text())
+    # Re-promoted: past date → finalized True (data-quality carried by is_partial).
+    assert meta["collection_complete"] is True
+
+
+@pytest.mark.asyncio
+async def test_promote_one_skips_finalized(tmp_path: Path) -> None:
+    from hoga.live.promote import promote_one
+
+    target = tmp_path / "parquet" / "20260527" / "005930" / "kis_live"
+    target.mkdir(parents=True)
+    (target / "meta.json").write_text(json.dumps({
+        "source": "kis_live", "collection_complete": True, "is_partial": False,
+        "row_counts": {"snapshots": 999},
+    }))
+    jsonl = tmp_path / "live" / "20260527" / "005930.jsonl"
+    jsonl.parent.mkdir(parents=True)
+    jsonl.write_text(json.dumps({
+        "t_ms": 1, "kind": "ob",
+        "payload": {"bids": [], "asks": [], "total_bid_qty": 0, "total_ask_qty": 0},
+    }) + "\n")
+
+    await promote_one(jsonl, tmp_path / "parquet", code="005930", date="20260527")
+    # Untouched — the finalized meta's row_counts stays at the sentinel value.
+    meta = json.loads((target / "meta.json").read_text())
+    assert meta["row_counts"]["snapshots"] == 999

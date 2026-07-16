@@ -159,8 +159,13 @@ def latest_complete_date(data_dir: Path, code: str) -> str | None:
     Backs Watchlist's disk-reconcile flow: ``add_entry`` seeds
     ``last_success_date`` from this helper when registering a Code, and
     ``_catchup_run`` advances stale markers to match the disk on every
-    server start. Source-of-truth: COMPLETE only (SOURCE_PARTIAL and
+    server start. Source-of-truth: hogaplay COMPLETE only (SOURCE_PARTIAL and
     CLIENT_INCOMPLETE are in-flight from the user's POV).
+
+    Gated to ``source="hogaplay"``: this helper drives the hogaplay capture
+    pipeline's catch-up floor and Watchlist markers, so a COMPLETE
+    ``kis_live``/``kis_api`` promotion (lower-fidelity synthesized data) must
+    NOT advance the floor and skip hogaplay collection for that date.
     """
     parquet_root = data_dir / "parquet"
     if not parquet_root.exists():
@@ -173,14 +178,16 @@ def latest_complete_date(data_dir: Path, code: str) -> str | None:
         # Cheap pre-check before the more expensive disk_state inspection.
         if not (date_dir / code).is_dir():
             continue
-        if check_disk_state(data_dir, code, date).state != DiskState.COMPLETE:
+        if check_disk_state(data_dir, code, date, source="hogaplay").state != DiskState.COMPLETE:
             continue
         if latest is None or date > latest:
             latest = date
     return latest
 
 
-def check_disk_state(data_dir: Path, code: str, date: str) -> Classification:
+def check_disk_state(
+    data_dir: Path, code: str, date: str, *, source: str | None = None,
+) -> Classification:
     """Classify the on-disk state for ``(code, date)`` under ``data_dir``.
 
     Resolution order (ADR-0021 + ADR-0020 + ADR-0007):
@@ -194,6 +201,17 @@ def check_disk_state(data_dir: Path, code: str, date: str) -> Classification:
          ``CLIENT_INCOMPLETE`` (no violations).
       2. ``data/raw/{date}/{code}/`` has any TSV files → ``CLIENT_INCOMPLETE``.
       3. Otherwise → ``NONE``.
+
+    ``source`` restricts the per-source lookup to a single Source (e.g.
+    ``"hogaplay"``) instead of aggregating across all of them. The capture
+    pipeline (eligibility, catch-up floor, coverage preview, fail_streak)
+    passes ``"hogaplay"`` so a COMPLETE ``kis_live``/``kis_api`` promotion —
+    lower-fidelity synthesized data — cannot mark a Stock-Date as
+    "already captured" and suppress hogaplay collection. When the restricted
+    source has no meta, we fall through to the sentinel/legacy/raw steps, all
+    of which are hogaplay-only artifacts (ADR-0075), so the fallback stays
+    faithful to the requested source. ``None`` (default) keeps the
+    cross-source aggregate used by display surfaces.
     """
     raw_dir = data_dir / "raw" / date / code
     if (raw_dir / ".no_upstream_data").exists():
@@ -202,8 +220,11 @@ def check_disk_state(data_dir: Path, code: str, date: str) -> Classification:
     parquet_dir = data_dir / "parquet" / date / code
     # Source-aware lookup (ADR-0037): prefer per-source meta.json under
     # parquet/{date}/{code}/{source}/meta.json. We aggregate across sources
-    # via the same priority used by aggregate_disk_state.
+    # via the same priority used by aggregate_disk_state — unless a single
+    # ``source`` was requested, in which case only that Source is considered.
     per_source = classify_stock_date(parquet_dir)
+    if source is not None:
+        per_source = {source: per_source[source]} if source in per_source else {}
     if per_source:
         aggregated = aggregate_disk_state({src: c.state for src, c in per_source.items()})
         # classify_stock_date already parsed every source's meta and kept the
@@ -327,15 +348,38 @@ def _hhmmssms_to_intra_ms(t: HogaMs) -> int:
     return (h * 3600 + m * 60 + s) * 1000 + ms
 
 
+def _intra_ms_to_hhmmssms(intra_ms: int) -> HogaMs:
+    """Inverse of :func:`_hhmmssms_to_intra_ms`: linear ms-from-midnight →
+    HHMMSSmmm packed-decimal (HogaMs).
+
+    Used only to encode SESSION-boundary anchors (auction-window start) computed
+    in linear ms back into the native HogaMs encoding for ``gap_ranges`` — never
+    to round-trip an in-stream snapshot's timestamp (those keep their original
+    HogaMs; see :func:`analyze_gaps`). The two known anchors (09:00 open, ~15:20
+    auction start) land on whole-second boundaries, so no precision is lost.
+    """
+    ms = intra_ms % 1000
+    total_s = intra_ms // 1000
+    s = total_s % 60
+    m = (total_s // 60) % 60
+    h = total_s // 3600
+    return HogaMs(h * 10_000_000 + m * 100_000 + s * 1000 + ms)
+
+
 @dataclass(frozen=True)
 class GapAnalysis:
     """Result of scanning a snapshot stream for continuous-trading gaps.
 
     ``gap_ranges`` carries the (last-snapshot-before-gap, first-snapshot-after-
-    gap) boundary pair for each ≥1min gap, in the ORIGINAL HHMMSSmmm (HogaMs)
-    encoding — never a linear-ms value back-converted to HogaMs (that round-trip
-    is unsafe across minute/hour boundaries; see ``_hhmmssms_to_intra_ms``).
-    ``in_session_count`` is the number of datapoints inside the analysis window.
+    gap) boundary pair for each ≥1min gap. In-stream boundaries keep their
+    ORIGINAL HHMMSSmmm (HogaMs) encoding — never a linear-ms value back-converted
+    to HogaMs (that round-trip is unsafe across minute/hour boundaries; see
+    ``_hhmmssms_to_intra_ms``). The sole exception is the ``anchor_edges=True``
+    session anchors (09:00 open, ~15:20 auction start): these are fixed
+    whole-second times, so ``_intra_ms_to_hhmmssms`` encodes them losslessly —
+    the unsafe-round-trip rule concerns arbitrary in-stream timestamps, not these
+    two constants. ``in_session_count`` is the number of datapoints inside the
+    analysis window.
     """
     in_session_count: int
     gap_ranges: list[tuple[HogaMs, HogaMs]]
@@ -357,6 +401,7 @@ def analyze_gaps(
     ts_ms_values: Iterable[HogaMs],
     *,
     session_close_ms: HogaMs,
+    anchor_edges: bool = False,
 ) -> GapAnalysis:
     """Scan the continuous-trading window for ≥1min gaps, returning each gap's
     boundary pair. Pure function — no I/O.
@@ -380,6 +425,16 @@ def analyze_gaps(
       session_close_ms: this Stock-Date's ``regular_session_close_ms`` from
         meta (HogaMs / HHMMSSmmm). Required: a hardcoded default would re-
         introduce the Half-Day footgun.
+      anchor_edges: when True, also flag a head gap (session open → first
+        snapshot) and a tail gap (last snapshot → auction-window start) if
+        either exceeds the 1-min threshold, and flag the ENTIRE window when
+        there are zero in-session snapshots. The default False keeps the
+        consecutive-pairs-only behavior that hogaplay's parser, ``check`` /
+        ``series.snapshots_no_gaps`` invariants, and ``has_meaningful_gaps``
+        rely on. Live (KIS WS/REST) promotion sets True: a stream that only
+        started at 13:00 (server late-boot) or died at 11:00 (mid-session
+        crash) has no interior gap yet is plainly partial, and only the edge
+        anchors catch it.
     """
     open_linear = _hhmmssms_to_intra_ms(_SESSION_OPEN_MS)
     auction_start_linear = _hhmmssms_to_intra_ms(session_close_ms) - _AUCTION_WINDOW_DURATION_MS
@@ -393,11 +448,21 @@ def analyze_gaps(
         key=lambda pair: pair[0],
     )
     gap_ranges: list[tuple[HogaMs, HogaMs]] = []
+    if anchor_edges and not in_session:
+        # No continuous-trading data at all — the whole window is a gap. The
+        # auction-start anchor is computed in linear ms, so encode it back to
+        # HHMMSSmmm for a native-encoding boundary.
+        gap_ranges.append((_SESSION_OPEN_MS, _intra_ms_to_hhmmssms(auction_start_linear)))
+        return GapAnalysis(in_session_count=0, gap_ranges=gap_ranges)
+    if anchor_edges and in_session[0][0] - open_linear >= _GAP_THRESHOLD_MS:
+        gap_ranges.append((_SESSION_OPEN_MS, in_session[0][1]))
     # strict=False is correct: in_session[1:] is intentionally one shorter
     # (we're walking consecutive pairs, last element has no successor).
     for (prev_lin, prev_ts), (curr_lin, curr_ts) in zip(in_session, in_session[1:], strict=False):
         if curr_lin - prev_lin >= _GAP_THRESHOLD_MS:
             gap_ranges.append((prev_ts, curr_ts))
+    if anchor_edges and auction_start_linear - in_session[-1][0] >= _GAP_THRESHOLD_MS:
+        gap_ranges.append((in_session[-1][1], _intra_ms_to_hhmmssms(auction_start_linear)))
     return GapAnalysis(in_session_count=len(in_session), gap_ranges=gap_ranges)
 
 
