@@ -21,11 +21,9 @@ export interface ScreenerRowLive extends Omit<ScreenerRow, 'price'> {
  * 쓰지 않는다(ADR-0056, 2026-07-09 개정). 드로어/풀페이지 두 표시 컴포넌트가 공유하는 단일
  * 머지 seam — codes 추출·폴링·머지를 캡슐화하고, 호출처는 레이아웃만 책임진다.
  *
- * stale quote(kis_capacity_timeout·rest_bypass 등 일시 미응답 시 마지막 캐시값)는 "받아온 값"
- * 이므로 change_pct 에 그대로 쓴다(표시·정렬 공용). 정렬(sortResults)이 change_pct 를 직접
- * 읽으므로 stale 을 빼면 stale 배치마다 등락률 정렬이 스캔 원순서로 리셋됐다가 fresh 폴에
- * 스냅백한다 — 관심종목/히트맵의 quoteSort 규약(makeChangePctOf)과 동일하게 순서 안정성을
- * 위해 "몇 초 전 값"을 유지한다.
+ * stale quote 는 change_pct 에 그대로 쓴다(표시·정렬 공용). 정렬(sortResults)이 change_pct
+ * 를 직접 읽으므로, stale 을 빼면 등락률 정렬이 주기적으로 리셋된다 — stale 을 정렬키로
+ * 유지하는 근거는 makeChangePctOf(quoteSort.ts) 주석 참조(단일 소유).
  */
 export function useScreenerRowsLive(rows: ScreenerRow[]): ScreenerRowLive[] {
   const codes = useMemo(() => rows.map((r) => r.code), [rows]);
