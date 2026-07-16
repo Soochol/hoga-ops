@@ -7,15 +7,16 @@ type Props = {
   variant?: 'live' | 'study';
 };
 
-// Settings 모달과 동일한 크롬(2026-07-15): ModalShell로 백드롭·Escape·다이얼로그 토큰을
-// 공유하고, 전폭 헤더 바·푸터를 없앤다. 섹션 제목·닫기 X는 LiveSettingsSections의 콘텐츠
-// 헤더가 담당한다(title 미전달 → ModalShell 헤더 없음).
+// 지표 드로어와 통일된 우측 드로어(side='right', ADR-0116): 왼쪽에 차트가 딤 너머로
+// 남아 즉시 적용이 실시간 반영된다(예: 날짜 구분선 토글). 폭·앵커를 지표 드로어(760px)와
+// 맞춰 툴바에서 보조지표↔설정을 오가도 패널이 흔들리지 않는다. 섹션 제목·닫기 X는
+// LiveSettingsSections의 콘텐츠 헤더가 담당(title 미전달 → ModalShell 헤더 없음).
 export default function LiveSettingsModal({ onClose, variant = 'live' }: Props) {
   return (
     <ModalShell
       ariaLabel="설정"
-      width="w-[min(1040px,calc(100vw-48px))]"
-      height="h-[min(820px,calc(100vh-48px))]"
+      side="right"
+      width="w-[min(760px,100vw)]"
       onClose={onClose}
     >
       <LiveSettingsSections variant={variant} onClose={onClose} />

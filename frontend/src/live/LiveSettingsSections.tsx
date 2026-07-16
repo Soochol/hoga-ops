@@ -161,7 +161,7 @@ export default function LiveSettingsSections({ variant = 'live', onClose }: { va
   return (
     <div
       data-testid="live-settings-modal-shell"
-      className="grid h-full min-h-0 grid-cols-[200px_minmax(0,1fr)] overflow-hidden rounded-[6px] bg-bg-card"
+      className="grid h-full min-h-0 grid-cols-[240px_minmax(0,1fr)] overflow-hidden rounded-[6px] bg-bg-card"
     >
       <nav className="space-y-0.5 overflow-y-auto bg-bg-subtle p-2" aria-label="설정 카테고리">
         {navIds.map((id) => (

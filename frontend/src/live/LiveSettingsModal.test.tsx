@@ -35,6 +35,18 @@ describe('LiveSettingsModal (2단)', () => {
     expect(screen.getByRole('navigation', { name: '설정 카테고리' })).not.toHaveClass('border-r');
   });
 
+  it('지표 드로어와 통일된 우측 드로어로 렌더된다(ADR-0116)', () => {
+    render(<LiveSettingsModal onClose={() => {}} />);
+    const dialog = screen.getByRole('dialog');
+    // 우측 정렬 + 가벼운 딤(왼쪽 차트가 뒤로 보이도록).
+    expect(dialog).toHaveClass('justify-end');
+    expect(dialog).toHaveClass('bg-black/30');
+    // ModalShell 카드는 좌측 보더의 전체 높이 드로어(패널의 부모).
+    const card = screen.getByTestId('live-settings-modal-shell').parentElement!;
+    expect(card).toHaveClass('border-l');
+    expect(card).toHaveClass('h-full');
+  });
+
   it('toggle click mutates chartPrefs store', () => {
     render(<LiveSettingsModal onClose={() => {}} />);
     fireEvent.click(screen.getByTestId('settings-nav-chart'));
