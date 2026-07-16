@@ -25,6 +25,21 @@ from hoga.live.past_candles_cache import PastCandlesCache
 
 _KST = timezone(timedelta(hours=9))
 _WEEKEND_START_WEEKDAY = 5
+
+# 키움 분봉 walk-back 도달 지평선(거래일). ka10080은 now→과거로만 걷고 페이지당 900봉,
+# 정규장 1분봉은 ~391봉/일(09:00–15:30)이라 20페이지 소진해도 ~46거래일까지만 닿는다.
+# 이보다 과거인 pending은 20페이지를 다 써도 못 닿아 ~20s를 헛되이 버리고 실패하므로
+# (실측 2026-07-16), 지평선 밖 딥팬은 prefetch를 스킵하고 즉시 KIS 폴백에 맡긴다.
+# max_pages는 kiwoom_client._DEFAULT_MAX_PAGES 미러 — ADR-0116 규율1(kis↔kiwoom 상호
+# import 금지)에 따라 import 대신 상수 재선언(드리프트 시 여기와 동기).
+_KIWOOM_MINUTE_MAX_PAGES = 20
+_KIWOOM_MINUTE_CANDLES_PER_PAGE = 900
+_KIWOOM_MINUTE_CANDLES_PER_TRADING_DAY = 391
+_KIWOOM_WALKBACK_REACH_DAYS = (
+    _KIWOOM_MINUTE_MAX_PAGES
+    * _KIWOOM_MINUTE_CANDLES_PER_PAGE
+    // _KIWOOM_MINUTE_CANDLES_PER_TRADING_DAY
+)
 log = logging.getLogger(__name__)
 
 
@@ -115,6 +130,10 @@ class LiveMinuteCandleBackfill:
             tuple[KisVenue, str, str],
             asyncio.Task[list[dict]],
         ] = {}
+        # 키움 분봉 prefetch single-flight(리뷰 Major): 같은 (venue, code)의 동시 collect가
+        # 각자 now→과거 walk-back을 돌면 중복 낭비. (venue, code)별 Lock으로 직렬화하고,
+        # 락 획득 후 아직 미캐시인 pending만 재수집 — 두 번째 호출자는 첫 번째 결과를 본다.
+        self._kiwoom_prefetch_locks: dict[tuple[KisVenue, str], asyncio.Lock] = {}
         self._rate_limit_until = 0.0
         # Fresh KIS past-minute fetches — the true cold re-spend metric (PR-1 (a)):
         # counted at the deduped fetch chokepoint (_fetch_past_scheduled), so it
@@ -360,7 +379,7 @@ class LiveMinuteCandleBackfill:
 
         # 키움 딥 백필 우선(ADR-0116): pending을 한 walk-back으로 캐시에 채운 뒤
         # 재스캔 — 채워진 날짜는 cached로 이동하고 KIS는 미도달분(폴백)만 가져온다.
-        await self._kiwoom_prefetch(venue, code, pending)
+        await self._kiwoom_prefetch(venue, code, pending, today_s=today_s)
         if self._kiwoom_source is not None and pending:
             still_pending: list[str] = []
             for date_s in pending:
@@ -585,36 +604,61 @@ class LiveMinuteCandleBackfill:
         return result
 
     async def _kiwoom_prefetch(
-        self, venue: KisVenue, code: str, pending: list[str],
+        self, venue: KisVenue, code: str, pending: list[str], *, today_s: str,
     ) -> None:
         """kiwoom_enabled + KRX + pending 있으면 한 walk-back으로 pending 최과거일까지
         긁어 per-date 캐시에 store(키움우선). 실패/미도달 날짜는 캐시에 안 남아 KIS
         폴백(ADR-0109 사다리). ka10080은 now→과거 walk-back이라 range prefetch로 한 번에
         채운다(per-date 재walk는 KIS보다 나쁨 — 실측 2026-07-16).
+
+        리뷰 Major 2건:
+        - 지평선 밖 딥팬 스킵: pending 최과거가 walk-back 도달 범위(~46거래일)를 넘으면
+          20페이지를 소진해도 못 닿아 ~20s를 헛되이 쓴다 → prefetch 스킵, 즉시 KIS.
+        - single-flight: (venue, code)별 Lock으로 동시 collect의 중복 walk-back 방지.
         """
         if self._kiwoom_source is None or venue != "KRX" or not pending:
             return
-        fetcher = self._kiwoom_source()
-        if fetcher is None:  # off/미배선
-            return
         oldest = min(pending)
+        # 지평선 밖 딥팬은 도달 불가 → 헛수고 스킵(정확한 거래일 수로 판정, 공휴일 반영).
+        # 달력 조회 실패(자격증명 부재 등)는 fail-open — 이 스킵은 최적화 가드일 뿐이라,
+        # 못 세면 예전처럼 prefetch를 진행한다(trading_days_in_range는 불가 시 예외를 던짐).
         try:
-            candles, complete = await fetcher.fetch_minute_candles(code, until_date=oldest)
-        except Exception:  # noqa: BLE001 — 키움 실패는 전량 KIS 폴백(사다리)
-            log.warning("live.kiwoom.minute_prefetch_failed code=%s", code, exc_info=True)
+            span_td = len(trading_calendar.trading_days_in_range(oldest, today_s))
+        except Exception:  # noqa: BLE001 — 달력 불가 시 지평선 스킵 포기(fail-open)
+            span_td = 0
+        if span_td > _KIWOOM_WALKBACK_REACH_DAYS:
+            log.info(
+                "live.kiwoom.minute_prefetch_skip_deep code=%s oldest=%s span_td=%d reach=%d",
+                code, oldest, span_td, _KIWOOM_WALKBACK_REACH_DAYS,
+            )
             return
-        by_date: dict[str, list[dict]] = {}
-        for c in candles:
-            by_date.setdefault(_date_from_t_ms(c.t_ms), []).append(_candle_to_dict(c))
-        # 리뷰 C3: walk-back 미완결(max_pages 소진 등)이면 최과거 경계 날짜는 하루 중간에서
-        # 잘린 부분 데이터 — 캐시에 '완결'로 저장하면 영구 반쪽 차트가 된다. 그 날짜는
-        # 저장에서 제외해 KIS 폴백이 완전 수집하게 한다.
-        if not complete and by_date:
-            del by_date[min(by_date)]
-        pending_set = set(pending)
-        for date_s, bars in by_date.items():
-            if date_s in pending_set:
-                self._cache.store_past(venue, code, date_s, bars)
+        lock = self._kiwoom_prefetch_locks.setdefault((venue, code), asyncio.Lock())
+        async with lock:
+            # 락 대기 중 다른 collect가 이미 채웠을 수 있다 — 미캐시 pending만 재수집.
+            remaining = [d for d in pending if self._cache.get_past(venue, code, d) is None]
+            if not remaining:
+                return
+            fetcher = self._kiwoom_source()
+            if fetcher is None:  # off/미배선
+                return
+            oldest = min(remaining)
+            try:
+                candles, complete = await fetcher.fetch_minute_candles(code, until_date=oldest)
+            except Exception:  # noqa: BLE001 — 키움 실패는 전량 KIS 폴백(사다리)
+                log.warning("live.kiwoom.minute_prefetch_failed code=%s", code, exc_info=True)
+                return
+            by_date: dict[str, list[dict]] = {}
+            for c in candles:
+                by_date.setdefault(_date_from_t_ms(c.t_ms), []).append(_candle_to_dict(c))
+            # 리뷰 C3: walk-back 미완결(max_pages 소진 등)이면 최과거 경계 날짜는 하루
+            # 중간에서 잘린 부분 데이터 — 캐시에 '완결'로 저장하면 영구 반쪽 차트가 된다.
+            # 그 날짜는 저장에서 제외해 KIS 폴백이 완전 수집하게 한다.
+            if not complete and by_date:
+                del by_date[min(by_date)]
+            remaining_set = set(remaining)
+            for date_s, bars in by_date.items():
+                if date_s in remaining_set:
+                    self._cache.store_past(venue, code, date_s, bars)
 
     async def _fetch_past_once(
         self,

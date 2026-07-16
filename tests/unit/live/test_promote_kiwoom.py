@@ -53,3 +53,29 @@ async def test_promote_kiwoom_today_noop_when_no_jsonl(tmp_path):
     await promote_kiwoom_today(tmp_path, code="005930")
     today = _today_kst_yyyymmdd()
     assert not (tmp_path / "parquet" / today / "005930" / "kiwoom_live").exists()
+
+
+async def test_promote_pending_promotes_live_kiwoom_to_kiwoom_live(tmp_path):
+    """리뷰 Major: promote_pending이 live_kiwoom 과거일 JSONL도 kiwoom_live parquet로
+    승격+아카이브 — 크래시/이탈 후 미승격·디스크 무한증가 방지."""
+    import json as _json
+
+    from hoga.live.promote import promote_pending
+
+    # 과거일(오늘 아님) live_kiwoom JSONL 시딩.
+    jsonl = tmp_path / "live_kiwoom" / "20260527" / "005930.jsonl"
+    jsonl.parent.mkdir(parents=True)
+    jsonl.write_text(_json.dumps({
+        "t_ms": 1, "kind": "ob",
+        "payload": {"asks": [], "bids": [], "code": "005930", "t_ms": 1,
+                    "total_ask_qty": 0, "total_bid_qty": 0, "phase": "regular"},
+    }) + "\n")
+
+    await promote_pending(tmp_path)
+
+    target = tmp_path / "parquet" / "20260527" / "005930" / "kiwoom_live"
+    assert (target / "meta.json").exists()
+    assert _json.loads((target / "meta.json").read_text())["source"] == "kiwoom_live"
+    # 아카이브 이동(live_kiwoom/_archive).
+    assert (tmp_path / "live_kiwoom" / "_archive" / "20260527" / "005930.jsonl").exists()
+    assert not jsonl.exists()

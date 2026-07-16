@@ -798,7 +798,14 @@ async def _sync_storage_targets(
     )
     monitor = get_signal_alert_monitor()
     if monitor is not None:
-        targets = set(snapshot.ws_targets) | set(snapshot.kis_api_targets)
+        # 키움 타깃 포함(리뷰 Major): kiwoom_enabled 시 히트맵이 kis_api_targets에서
+        # kiwoom_targets로 이동하는데, 이를 monitor 타깃에 안 넣으면 stream.on_tick의
+        # ingest_orderbook이 code∉targets로 전량 드롭돼 매도총잔량 갱신 알림이 침묵 정지한다.
+        targets = (
+            set(snapshot.ws_targets)
+            | set(snapshot.kis_api_targets)
+            | set(snapshot.kiwoom_targets)
+        )
         monitor.set_targets(_signal_alert_target_names(data_dir, targets))
     return list(snapshot.ws_targets), snapshot.kis_api_targets
 

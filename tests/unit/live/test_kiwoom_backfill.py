@@ -1,4 +1,5 @@
 """키움 분봉 딥 백필 통합 — range prefetch 키움우선→KIS폴백 (ADR-0116, PR-5b)."""
+import asyncio
 import datetime as dt
 
 import pytest
@@ -63,6 +64,8 @@ def _backfill(tmp_path, kis, *, kiwoom=None):
 @pytest.fixture(autouse=True)
 def _all_trading(monkeypatch):
     monkeypatch.setattr(cal, "is_trading_day", lambda _d: True)
+    # 지평선 판정용 — 기본은 짧은 span(도달권 내)이라 prefetch 진행. 딥팬 테스트가 오버라이드.
+    monkeypatch.setattr(cal, "trading_days_in_range", lambda _s, _e: ["x"])
 
 
 async def _collect_krx(backfill, dates):
@@ -143,5 +146,42 @@ async def test_kiwoom_prefetch_skips_non_krx_venue(tmp_path):
     tmp = tmp_path
     kiwoom = _FakeKiwoom(["20260518"])
     bf = _backfill(tmp, _FakeKis(), kiwoom=kiwoom)
-    await bf._kiwoom_prefetch("NXT", "005930", ["20260518"])
+    await bf._kiwoom_prefetch("NXT", "005930", ["20260518"], today_s="20260601")
     assert kiwoom.calls == []  # NXT는 키움 대상 아님(ka10080=KRX 캔들)
+
+
+async def test_kiwoom_prefetch_skips_deep_pan_beyond_horizon(tmp_path, monkeypatch):
+    """리뷰 Major: pending 최과거가 walk-back 도달권(~46거래일)을 넘으면 prefetch 스킵 —
+    20페이지 소진해도 못 닿아 ~20s 낭비. 즉시 KIS 폴백에 맡긴다."""
+    monkeypatch.setattr(cal, "trading_days_in_range", lambda _s, _e: ["d"] * 50)  # >46
+    kiwoom = _FakeKiwoom(["20260101"])
+    bf = _backfill(tmp_path, _FakeKis(), kiwoom=kiwoom)
+    await bf._kiwoom_prefetch("KRX", "005930", ["20260101"], today_s="20260601")
+    assert kiwoom.calls == []  # 지평선 밖 → walk-back 아예 시도 안 함
+
+
+async def test_kiwoom_prefetch_within_horizon_still_fetches(tmp_path, monkeypatch):
+    monkeypatch.setattr(cal, "trading_days_in_range", lambda _s, _e: ["d"] * 46)  # ==reach
+    kiwoom = _FakeKiwoom(["20260518"])
+    bf = _backfill(tmp_path, _FakeKis(), kiwoom=kiwoom)
+    await bf._kiwoom_prefetch("KRX", "005930", ["20260518"], today_s="20260601")
+    assert kiwoom.calls == [("005930", "20260518")]  # 도달권 경계는 진행
+
+
+async def test_kiwoom_prefetch_single_flight_dedups_concurrent(tmp_path):
+    """리뷰 Major: 같은 (venue, code)의 동시 collect가 walk-back을 중복하지 않는다 —
+    Lock으로 직렬화, 두 번째는 첫 번째가 채운 캐시를 보고 재수집 안 함."""
+
+    class _SlowKiwoom(_FakeKiwoom):
+        async def fetch_minute_candles(self, code, *, until_date=None, max_pages=20):
+            await asyncio.sleep(0)  # 양보 — 두 코루틴이 락에서 경합하도록
+            return await super().fetch_minute_candles(code, until_date=until_date)
+
+    kiwoom = _SlowKiwoom(["20260518", "20260519"])
+    bf = _backfill(tmp_path, _FakeKis(), kiwoom=kiwoom)
+    pending = ["20260518", "20260519"]
+    await asyncio.gather(
+        bf._kiwoom_prefetch("KRX", "005930", pending, today_s="20260601"),
+        bf._kiwoom_prefetch("KRX", "005930", pending, today_s="20260601"),
+    )
+    assert len(kiwoom.calls) == 1  # 한 번만 walk-back(single-flight)

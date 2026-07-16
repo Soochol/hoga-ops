@@ -130,3 +130,37 @@ async def test_status_empty_when_idle():
     assert st["connected_accounts"] == 0
     assert st["subscribed_count"] == 0
     assert st["accounts"] == []
+
+
+async def test_sync_rebuilds_dead_conn():
+    """리뷰 Major: 죽은 conn(ws_task 종료/킥)을 sync가 teardown 후 재빌드."""
+    mgr, built = _fake_manager()
+    await mgr.sync(("A", "B"), n_accounts=1)
+    assert len(built) == 1
+    # 계정 0의 ws_task를 죽인다(킥 정지 모의).
+    conn = mgr._conns[0]
+    conn.ws_task.cancel()
+    try:
+        await conn.ws_task
+    except asyncio.CancelledError:
+        pass
+    assert conn.ws_task.done()
+    # 다음 sync가 죽은 conn을 재빌드.
+    await mgr.sync(("A", "B"), n_accounts=1)
+    assert len(built) == 2  # 재빌드됨
+    assert not mgr._conns[0].ws_task.done()
+    await mgr.stop()
+
+
+async def test_active_codes_excludes_kicked_account():
+    """리뷰 Major: 킥 정지된 계정의 종목은 active_codes/subscribed_codes에서 제외
+    (죽은 계정 종목이 realtime● 오표시 방지)."""
+    mgr, _ = _fake_manager()
+    await mgr.sync(tuple(f"{i:06d}" for i in range(250)), n_accounts=4)  # 계정 0,1
+    # 계정 1을 킥 정지 상태로.
+    mgr._conns[1].client.kicked_by_peer = True
+    codes = mgr.active_codes()
+    # 계정 0(200종목)만, 계정 1(50종목)은 제외.
+    assert len(codes) == 200
+    assert mgr.status()["subscribed_count"] == 200
+    await mgr.stop()

@@ -239,6 +239,7 @@ def test_plan_storage_targets_kiwoom_diverts_heatmap_from_kis_rest() -> None:
         storage_policy="ws_plus_rest",
         rest_extra_candidates=("H1", "H2"),
         kiwoom_enabled=True,
+        kiwoom_capacity=200,
     )
     assert plan.ws_targets == ("A", "B")       # KIS WS 관심종목 불변
     assert plan.kis_api_targets == ("C",)      # 관심 잔여만, 히트맵 빠짐
@@ -257,6 +258,7 @@ def test_plan_storage_targets_kiwoom_captures_heatmap_under_ws_only() -> None:
         storage_policy="ws_only",
         rest_extra_candidates=("H1",),
         kiwoom_enabled=True,
+        kiwoom_capacity=200,
     )
     assert plan.kis_api_targets == ()
     assert plan.kiwoom_targets == ("H1",)
@@ -272,3 +274,38 @@ def test_partition_kiwoom_slices_200_per_account() -> None:
     assert parts[0] == tuple(codes[:200]) or parts[0] == codes[:200]
     # 4앱키 = 800 상한, 450종목은 3계정에 담김(4번째 빈 리스트).
     assert sum(len(p) for p in parts) == 450
+
+
+def test_plan_storage_targets_kiwoom_no_capacity_keeps_heatmap_on_kis() -> None:
+    """리뷰 Major: kiwoom_enabled=True인데 앱키 0(capacity=0)이면 히트맵을 키움으로
+    돌리지 않고 KIS REST에 유지 — 어디서도 수집 안 되는 구멍 방지."""
+    from hoga.live.coverage import plan_storage_targets
+
+    plan = plan_storage_targets(
+        ["A", "B", "C"],
+        n_configured=1,
+        per_account_max=2,
+        storage_policy="ws_plus_rest",
+        rest_extra_candidates=("H1", "H2"),
+        kiwoom_enabled=True,
+        kiwoom_capacity=0,  # 앱키 0
+    )
+    assert plan.kiwoom_targets == ()
+    assert plan.kis_api_targets == ("C", "H1", "H2")  # 히트맵 KIS 유지
+
+
+def test_plan_storage_targets_kiwoom_overflow_spills_to_kis() -> None:
+    """리뷰 Major: 키움 용량 초과 히트맵은 KIS REST로 되돌린다(양쪽 소실 방지)."""
+    from hoga.live.coverage import plan_storage_targets
+
+    plan = plan_storage_targets(
+        ["A", "B"],
+        n_configured=1,
+        per_account_max=2,
+        storage_policy="ws_plus_rest",
+        rest_extra_candidates=("H1", "H2", "H3"),
+        kiwoom_enabled=True,
+        kiwoom_capacity=2,  # 2종목만 키움
+    )
+    assert plan.kiwoom_targets == ("H1", "H2")   # 용량 내
+    assert plan.kis_api_targets == ("H3",)       # 초과분 KIS

@@ -10,6 +10,20 @@ MAX_BUFFER_ENTRIES hard cap as a flood safety pin.
 Concurrency: a single asyncio.Lock guards all mutations and reads.
 Readers grab a frozen tuple snapshot of the deque under the lock, then
 release before processing — keeps the critical section short.
+
+Scaling ceiling (ADR-0116 리뷰 Major, 유예/검토 — 실측 후 후속 PR):
+  이 버퍼는 **표시 전용**(/api/live/snapshot·/series). 저장 경로는 LiveStream의
+  writer(JSONL→promote→parquet)라 버퍼와 무관하다. 그런데 on_tick은 자기 구독 집합
+  전체를 publish하므로, 키움 WS(히트맵, 최대 200×4=800종목)가 붙으면 KIS와 공유하는
+  이 인스턴스에 800종목이 per-tick으로 쌓인다 — 실제로 화면에 조회 중인 건 1종목뿐인데
+  나머지 799종목이 보존창(15분)만큼 dead-weight로 남는다(OB 엔트리 ~수 KB × 수백~수천/
+  종목 → 수 GB 가능).
+  naive 완화(미구독 종목 보존창 단축)는 사이징 불변식(보존 > 2× promote_interval;
+  기본 promote 300s → 바닥 600s)에 막혀 900→600s(33%)뿐이라 효과가 작다. 근본 해법은
+  '구독(조회) 종목만 버퍼링 + 첫 조회 시 backfill' 인데, 첫 조회 intraday tail이 최대
+  promote_interval만큼 비는 UX 트레이드오프가 있어 4×200 실규모 활성화 시 부하 실측 후
+  별도 설계(ADR)로 진행한다. 현재 안전핀: MAX_BUFFER_ENTRIES 하드캡 + 시간 eviction +
+  drop_codes_except(Live Set 축출 즉시 회수).
 """
 from __future__ import annotations
 

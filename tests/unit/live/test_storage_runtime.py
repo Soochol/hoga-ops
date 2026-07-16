@@ -535,3 +535,46 @@ async def test_storage_runtime_kiwoom_disabled_stops_existing_session(
     )
     assert kiwoom.stopped == 1
     assert kiwoom.synced == []
+
+
+@pytest.mark.asyncio
+async def test_storage_runtime_kiwoom_enabled_but_no_accounts_keeps_heatmap_on_kis(
+    tmp_path, monkeypatch,
+) -> None:
+    """리뷰 Major: kiwoom_enabled=True인데 키움 앱키 0개면 히트맵을 키움으로 안 돌리고
+    KIS REST에 유지(양쪽 소실 방지). 키움 세션도 sync 안 함."""
+    from hoga.api.heatmap import save_document as save_heatmap_document
+    from hoga.api.models import HeatmapDocument, HeatmapEntry, WatchlistFolder
+
+    _patch_common(monkeypatch)
+    _seed_watchlist(tmp_path)
+    save_heatmap_document(
+        tmp_path,
+        HeatmapDocument(
+            folders=[WatchlistFolder(id="f_00000aaa", name="히트맵", order=0)],
+            entries=[HeatmapEntry(code="005380", name="현대차", folder_id="f_00000aaa")],
+        ),
+    )
+
+    class Hit:
+        def __init__(self, code): self.code = code
+
+    monkeypatch.setattr(
+        "hoga.api.symbols.search",
+        lambda _q, limit=10_000: [Hit("005930"), Hit("000660"), Hit("035420"), Hit("005380")],
+    )
+    monkeypatch.setattr("hoga.live.coverage._PER_ACCOUNT_MAX", 1)
+    monkeypatch.setattr("hoga.live.kiwoom_runtime.configured_account_ids", lambda _d: [])  # 앱키 0
+    save_live_settings(tmp_path, LiveSettings(storage_policy="ws_plus_rest", kiwoom_enabled=True))
+
+    kiwoom = FakeKiwoomSession()
+    state = FakeStorageState(kiwoom_session=kiwoom)
+
+    snapshot = await sync_storage_runtime(
+        tmp_path, state=state, buffer=object(),  # type: ignore[arg-type]
+        date_fn=lambda: "20260716", now_ms_fn=lambda: 0, n_configured=1,
+    )
+    # 앱키 0 → 히트맵은 KIS REST 유지, 키움 미배정/미sync.
+    assert "005380" in snapshot.kis_api_targets
+    assert snapshot.kiwoom_targets == ()
+    assert kiwoom.synced == []

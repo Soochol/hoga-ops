@@ -100,6 +100,7 @@ def plan_storage_targets(
     rest_extra_candidates: tuple[str, ...] = (),
     rest_fallback_codes: tuple[str, ...] = (),
     kiwoom_enabled: bool = False,
+    kiwoom_capacity: int = 0,
 ) -> LiveStorageTargets:
     """Split capture_candidates into WS slots + REST 30s remainder.
 
@@ -125,10 +126,16 @@ def plan_storage_targets(
     rest_extra = tuple(
         code for code in dict.fromkeys(rest_extra_candidates) if code not in candidate_set
     )
-    # 키움 켜짐(ADR-0116): 히트맵(rest_extra)을 키움 WS로 돌리고 KIS REST에서 뺀다.
-    # off면 kiwoom_targets=() + 히트맵은 기존대로 KIS REST — plan 출력 byte-identical.
-    kiwoom_targets = rest_extra if kiwoom_enabled else ()
-    kis_rest_extra = () if kiwoom_enabled else rest_extra
+    # 키움 켜짐(ADR-0116): 히트맵(rest_extra)을 키움 WS로 돌리되 **키움 실수용량
+    # (kiwoom_capacity=200×앱키수)까지만** — 계정 0(capacity=0)이거나 초과분은 KIS REST로
+    # 되돌려 어디서도 수집 안 되는 구멍을 막는다(리뷰 Major: 토글만 보고 라우팅하면
+    # 무자격/초과 시 히트맵이 양쪽에서 소실). off면 kiwoom_targets=()라 byte-identical.
+    if kiwoom_enabled and kiwoom_capacity > 0:
+        kiwoom_targets = rest_extra[:kiwoom_capacity]
+        kis_rest_extra = rest_extra[kiwoom_capacity:]  # 초과분 KIS 폴백
+    else:
+        kiwoom_targets = ()
+        kis_rest_extra = rest_extra
     max_codes = per_account_max * n_configured
     if storage_policy == "rest_only":
         rest_targets = candidates + kis_rest_extra

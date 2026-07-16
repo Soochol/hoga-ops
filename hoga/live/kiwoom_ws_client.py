@@ -68,9 +68,14 @@ class KiwoomWsClient:
         types: tuple[str, ...] = DEFAULT_TYPES,
         gate_fn: Callable[[], bool] | None = None,
         max_consecutive_kicks: int = 5,
+        invalidate_fn: Callable[[], None] | None = None,
         _connect: Callable[[str], Awaitable[_WsLike]] | None = None,
     ) -> None:
         self._token_fn = token_fn
+        # LOGIN rc!=0(토큰 거부) 시 호출 — 캐시 토큰을 무효화해 다음 재연결이 신선 토큰을
+        # 받게 한다(리뷰 Major: 없으면 stale 토큰으로 최대 24h 재연결 루프). provider의
+        # 60s 발급 쿨다운은 유지돼 발급 폭주를 막는다(WS 백오프와 함께 ~1분 내 복구).
+        self._invalidate_fn = invalidate_fn
         self._on_tick = on_tick
         self._date_fn = date_fn
         self._url = url
@@ -209,6 +214,9 @@ class KiwoomWsClient:
         )
         rc = ack.get("return_code")
         if rc != _RC_OK:
+            if self._invalidate_fn is not None:
+                with contextlib.suppress(Exception):
+                    self._invalidate_fn()  # 거부 토큰 캐시 무효화 → 다음 재연결이 재발급
             raise RuntimeError(f"kiwoom LOGIN failed rc={rc} {ack.get('return_msg')!r}")
 
     async def _register_all(self, ws: _WsLike, codes: list[str]) -> None:

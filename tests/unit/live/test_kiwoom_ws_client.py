@@ -273,3 +273,14 @@ async def test_kick_counter_resets_after_healthy_session(monkeypatch):
         await task
     # 4번 킥당했지만 매번 healthy 세션이라 리셋 → 영구정지 안 함.
     assert client.kicked_by_peer is False
+
+
+async def test_login_failure_invalidates_token():
+    """리뷰 Major: LOGIN rc!=0(토큰 거부) 시 invalidate_fn 호출 — 다음 재연결이 신선
+    토큰을 받게 해 stale 토큰 24h 루프를 막는다."""
+    invalidated = []
+    ws = FakeServer(login_rc=1)  # LOGIN 거부
+    client = _client(ws, invalidate_fn=lambda: invalidated.append(True))
+    with pytest.raises(RuntimeError):
+        await client._session_once()
+    assert invalidated == [True]

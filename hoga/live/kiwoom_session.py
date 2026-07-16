@@ -78,6 +78,15 @@ class KiwoomSessionManager:
         # build/update.
         for account_id, part in wanted.items():
             conn = self._conns.get(account_id)
+            # 죽은 conn(킥 정지·ws/flush 태스크 예외 사망) 재생(리뷰: sync가 ws_task.done()을
+            # 확인 안 해 킥된 계정 200종목이 재시작까지 무수집이었다). teardown 후 재빌드 —
+            # 킥 핑퐁은 클라이언트 내부 backoff+max_consecutive_kicks가 완화한다(피어가
+            # 계속 점유하면 새 클라이언트도 ~31s 만에 재정지, 그동안 done 아니라 재빌드 안 함).
+            if conn is not None and _conn_dead(conn):
+                _log.warning("live.kiwoom.conn_dead_rebuild account=%d kicked=%s",
+                             account_id, conn.client.kicked_by_peer)
+                await self._teardown(account_id)
+                conn = None
             if conn is None:
                 built = self._build(account_id, part)
                 if built is not None:
@@ -88,9 +97,13 @@ class KiwoomSessionManager:
                 self._conns[account_id] = _replace_codes(conn, tuple(part))
 
     def active_codes(self) -> list[str]:
-        """전 계정 구독 종목 합집합(승격 루프용)."""
+        """수집 살아있는 계정의 구독 종목 합집합(승격 루프·화질 도트용). 킥 정지·태스크
+        사망 계정은 제외(리뷰: 죽은 계정 종목이 realtime●·'저장 중'으로 오표시됐다).
+        재연결 중(connected=False지만 kicked 아님)은 곧 재개되므로 포함."""
         seen: dict[str, None] = {}
         for conn in self._conns.values():
+            if _conn_dead(conn):
+                continue
             for code in conn.codes:
                 seen.setdefault(code, None)
         return list(seen)
@@ -174,6 +187,7 @@ class KiwoomSessionManager:
             on_tick=stream.on_tick,
             date_fn=self._date_fn,
             gate_fn=self._gate_fn,
+            invalidate_fn=prov.invalidate,  # LOGIN 거부 시 캐시 토큰 무효화(리뷰 Major)
         )
         return _KiwoomConn(
             account_id=account_id,
@@ -185,6 +199,16 @@ class KiwoomSessionManager:
             ),
             codes=tuple(codes),
         )
+
+
+def _conn_dead(conn: _KiwoomConn) -> bool:
+    """conn이 죽었나 — ws/flush 태스크 종료(킥 정지 포함) 또는 kicked_by_peer 플래그.
+    reconnecting(태스크 살아있고 kicked 아님)은 죽은 게 아니다(자가치유)."""
+    return (
+        conn.ws_task.done()
+        or conn.flush_task.done()
+        or conn.client.kicked_by_peer
+    )
 
 
 def _set_active(stream: object, codes: set[str]) -> None:
