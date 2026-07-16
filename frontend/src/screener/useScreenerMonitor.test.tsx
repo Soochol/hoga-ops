@@ -23,7 +23,7 @@ function setHidden(hidden: boolean) {
 const baseArgs = (over: Partial<UseScreenerMonitorArgs> = {}): UseScreenerMonitorArgs => ({
   active: true,
   selectedId: 's1',
-  scoped: false,
+  periodMs: MONITOR_PERIOD_FULL_MS,
   disabled: false,
   resultCodes: ['005930'],
   scanOnce: vi.fn().mockResolvedValue(true),
@@ -54,10 +54,10 @@ describe('useScreenerMonitor', () => {
     expect(scanOnce).toHaveBeenCalledTimes(2);            // 30초 후 2회
   });
 
-  it('스코프 유니버스면 15초 주기', async () => {
+  it('전달된 주기(periodMs)대로 재조회한다 — 스코프 15초', async () => {
     const scanOnce = vi.fn().mockResolvedValue(true);
     renderHook((props: UseScreenerMonitorArgs) => useScreenerMonitor(props), {
-      initialProps: baseArgs({ scanOnce, scoped: true }),
+      initialProps: baseArgs({ scanOnce, periodMs: MONITOR_PERIOD_SCOPED_MS }),
     });
     await act(async () => { await Promise.resolve(); });
     await act(async () => { await vi.advanceTimersByTimeAsync(MONITOR_PERIOD_SCOPED_MS); });

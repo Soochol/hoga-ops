@@ -42,6 +42,7 @@ describe('screenerPanel store', () => {
       sortMode: 'default',
       updateState: { status: 'idle' },
       monitoringActive: false,
+      monitorPeriodMs: null,
     });
   });
 
@@ -197,6 +198,22 @@ describe('screenerPanel store', () => {
     vi.setSystemTime(NOW);
     const { useScreenerPanelStore: fresh } = await import('./screenerPanel');
     expect(fresh.getState().monitoringActive).toBe(false);
+  });
+
+  it('persists and re-hydrates a valid monitorPeriodMs, rejecting unknown values', async () => {
+    useScreenerPanelStore.getState().setMonitorPeriodMs(30_000);
+    expect(JSON.parse(localStorage.getItem('screenerPanel.v1')!).monitorPeriodMs).toBe(30_000);
+    vi.resetModules();
+    vi.setSystemTime(NOW);
+    const { useScreenerPanelStore: fresh } = await import('./screenerPanel');
+    expect(fresh.getState().monitorPeriodMs).toBe(30_000);
+
+    // 목록에 없는 값은 기각 → default(null=자동)로 폴백.
+    localStorage.setItem('screenerPanel.v1', JSON.stringify({ monitorPeriodMs: 7_777 }));
+    vi.resetModules();
+    vi.setSystemTime(NOW);
+    const { useScreenerPanelStore: rejected } = await import('./screenerPanel');
+    expect(rejected.getState().monitorPeriodMs).toBeNull();
   });
 
   it('persists terminal update status across short reloads without restoring pending', async () => {

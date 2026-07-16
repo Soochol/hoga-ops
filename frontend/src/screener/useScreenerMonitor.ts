@@ -18,8 +18,8 @@ export interface UseScreenerMonitorArgs {
   active: boolean;
   /** 선택 저장본 id — 변경되면 즉시 1회 재조회(재앵커). null 이면 루프 미가동. */
   selectedId: string | null;
-  /** 선택 저장본의 스코프 유무 — 재조회 주기를 정한다. */
-  scoped: boolean;
+  /** 재조회 주기(ms). 드로어가 사용자 override ?? 자동(스코프15/전체30)으로 해석해 넘긴다. */
+  periodMs: number;
   /** 시드 안 됨 등 조회 불가 게이트. */
   disabled: boolean;
   /** 결과 코드 — 장 상태(phase)를 추가 요청 없이 얻기 위한 quotes 키(드로어와 동일). */
@@ -45,7 +45,7 @@ export interface ScreenerMonitorStatus {
  * 않게 한다 — 재예약 트리거는 active/selectedId/disabled/scoped 뿐.
  */
 export function useScreenerMonitor(args: UseScreenerMonitorArgs): ScreenerMonitorStatus {
-  const { active, selectedId, scoped, disabled, resultCodes, scanOnce, onAutoStop } = args;
+  const { active, selectedId, periodMs, disabled, resultCodes, scanOnce, onAutoStop } = args;
   const venue = useLiveVenueStore((s) => s.venue);
   // 드로어 내부 useScreenerRowsLive 와 동일 queryKey(codes+venue) → react-query 캐시
   // 공유, 추가 요청 0. 장 상태만 읽는다.
@@ -61,7 +61,6 @@ export function useScreenerMonitor(args: UseScreenerMonitorArgs): ScreenerMonito
   useEffect(() => {
     if (!active || disabled || selectedId === null) return;
 
-    const periodMs = scoped ? MONITOR_PERIOD_SCOPED_MS : MONITOR_PERIOD_FULL_MS;
     let timer: number | undefined;
     let cancelled = false;
     let failStreak = 0;
@@ -108,7 +107,7 @@ export function useScreenerMonitor(args: UseScreenerMonitorArgs): ScreenerMonito
       window.clearTimeout(timer);
       document.removeEventListener('visibilitychange', onVisibility);
     };
-  }, [active, selectedId, scoped, disabled]);
+  }, [active, selectedId, periodMs, disabled]);
 
   return { paused: active && phase === 'closed' ? 'closed' : null };
 }

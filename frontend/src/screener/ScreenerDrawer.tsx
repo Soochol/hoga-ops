@@ -14,7 +14,7 @@ import { CSS } from '@dnd-kit/utilities';
 import { useJumpToLive } from '../live/useJumpToLive';
 import { useEntryDragStore, isPointOnChart, dropPoint } from '../state/entryDrag';
 import { useLivePageStore } from '../state/livePage';
-import { useScreenerPanelStore, useExpireScreenerScan } from '../state/screenerPanel';
+import { useScreenerPanelStore, useExpireScreenerScan, MONITOR_PERIOD_CHOICES_MS } from '../state/screenerPanel';
 import { useSavedScreeners } from './useSavedScreeners';
 import { useScreener } from './useScreener';
 import { useScreenerStatus } from './useScreenerStatus';
@@ -24,14 +24,14 @@ import { StalenessChip } from './StalenessChip';
 import { QuoteRow } from '../rightrail/QuoteRow';
 import { useScreenerRowsLive } from './useScreenerRowsLive';
 import type { ScreenerRowLive } from './useScreenerRowsLive';
-import { useScreenerMonitor } from './useScreenerMonitor';
+import { useScreenerMonitor, MONITOR_PERIOD_SCOPED_MS, MONITOR_PERIOD_FULL_MS } from './useScreenerMonitor';
 import { useNewEntryFlash } from './useNewEntryFlash';
 import { WatchlistHeartButton } from '../watchlist/WatchlistHeartButton';
 import { ScreenerResultSortControl } from './ScreenerResultSortControl';
 import { sortScreenerRows, type ScreenerResultSortMode } from './sortResults';
 import type { ScanBasis, ScreenerRow } from '../api/screener';
 import { RailDrawer, RailDrawerBody, RailDrawerHeader, RailDrawerSection, RailState } from '../ui/RailShell';
-import { ToolbarButton } from '../ui/PageShell';
+import { ToolbarButton, SegmentedControl } from '../ui/PageShell';
 import { useDismissablePopover } from '../util/useDismissablePopover';
 import { useClampedFixedPosition } from '../util/useClampedFixedPosition';
 
@@ -258,10 +258,15 @@ export function ScreenerDrawer() {
   // 대칭). resultCodes 는 모니터 훅의 phase 조회 키(드로어 내부 useQuotes 와 동일).
   const scanRows = useMemo(() => lastScan?.rows ?? [], [lastScan]);
   const resultCodes = useMemo(() => scanRows.map((r) => r.code), [scanRows]);
+  // 재조회 주기: 사용자 override(monitorPeriodMs) ?? 자동(스코프15/전체30초).
+  const scoped = (selected?.universe.scopes?.length ?? 0) > 0;
+  const monitorPeriodMs = useScreenerPanelStore((s) => s.monitorPeriodMs);
+  const setMonitorPeriodMs = useScreenerPanelStore((s) => s.setMonitorPeriodMs);
+  const effectivePeriodMs = monitorPeriodMs ?? (scoped ? MONITOR_PERIOD_SCOPED_MS : MONITOR_PERIOD_FULL_MS);
   const monitor = useScreenerMonitor({
     active: monitoringActive,
     selectedId: selectedSavedId,
-    scoped: (selected?.universe.scopes?.length ?? 0) > 0,
+    periodMs: effectivePeriodMs,
     disabled: notSeeded || !selected,
     resultCodes,
     scanOnce,
@@ -361,24 +366,38 @@ export function ScreenerDrawer() {
           </ToolbarButton>
         </div>
         {monitoringActive && (
-          <div
-            className="flex items-center gap-2 text-xs text-fg-dim"
-            data-testid="screener-monitor-status"
-          >
-            {monitor.paused === 'closed' ? (
-              <span className="text-fg-dimmer">장마감 — 개장 시 자동 재개</span>
-            ) : (
-              <>
-                <span
-                  aria-hidden
-                  className="inline-block h-1.5 w-1.5 animate-pulse rounded-full"
-                  style={{ backgroundColor: 'var(--accent)' }}
-                />
-                <span>
-                  실시간 모니터링 중 · {(selected?.universe.scopes?.length ?? 0) > 0 ? '15초' : '30초'}마다 갱신
-                </span>
-              </>
-            )}
+          <div className="flex flex-col gap-1.5" data-testid="screener-monitor-status">
+            <div className="flex items-center gap-2 text-xs text-fg-dim">
+              {monitor.paused === 'closed' ? (
+                <span className="text-fg-dimmer">장마감 — 개장 시 자동 재개</span>
+              ) : (
+                <>
+                  <span
+                    aria-hidden
+                    className="inline-block h-1.5 w-1.5 animate-pulse rounded-full"
+                    style={{ backgroundColor: 'var(--accent)' }}
+                  />
+                  <span>실시간 모니터링 중 · {Math.round(effectivePeriodMs / 1000)}초마다 갱신</span>
+                </>
+              )}
+            </div>
+            <SegmentedControl aria-label="갱신 주기" className="self-start">
+              {MONITOR_PERIOD_CHOICES_MS.map((choice) => {
+                const on = monitorPeriodMs === choice;
+                const label = choice === null ? '자동' : `${choice / 1000}초`;
+                return (
+                  <button
+                    key={label}
+                    type="button"
+                    aria-pressed={on}
+                    onClick={() => setMonitorPeriodMs(choice)}
+                    className={`px-2 py-[3px] text-xs ${on ? 'bg-tint-selection text-accent' : 'text-fg-dim hover:bg-bg-input-hover'}`}
+                  >
+                    {label}
+                  </button>
+                );
+              })}
+            </SegmentedControl>
           </div>
         )}
         {serverUpdating && (
