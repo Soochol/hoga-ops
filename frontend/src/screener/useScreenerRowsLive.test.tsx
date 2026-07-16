@@ -49,9 +49,10 @@ describe('useScreenerRowsLive', () => {
     });
   });
 
-  it('stale live quote 는 마지막 라이브값을 표시하되 정렬값은 null 로 뺀다', () => {
+  it('stale live quote 는 표시·정렬값 모두 마지막 라이브값을 쓴다 (정렬 리셋 방지)', () => {
     // stale 도 "받아온 값"이므로 표시(관심종목과 동일 — 표시 경로는 stale 검사 안 함).
-    // 정렬만 null 로 빼 quoteSort 규약과 거동을 맞춘다. EOD(70000/2.1)로 되돌리지 않는다.
+    // 정렬값도 동일하게 유지: stale 을 정렬에서 빼면 등락률 정렬이 스캔 원순서로 주기적
+    // 리셋된다(makeChangePctOf 와 동일 규약). EOD(70000/2.1)로 되돌리지도 않는다.
     vi.spyOn(liveQuotes, 'useQuoteByCode').mockReturnValue(new Map([
       ['005930', {
         code: '005930',
@@ -59,7 +60,7 @@ describe('useScreenerRowsLive', () => {
         change_pct: 9.9,
         change_won: 6300,
         stale: true,
-        stale_reason: 'kis_rest_bypassed',
+        stale_reason: 'kis_capacity_timeout',
       }],
     ]));
     const { result } = renderHook(() => useScreenerRowsLive(ROWS));
@@ -68,7 +69,7 @@ describe('useScreenerRowsLive', () => {
       price: 72000,
       change_pct: 9.9,
       change_won: 6300,
-      change_pct_sort: null,
+      change_pct_sort: 9.9,
     });
   });
 

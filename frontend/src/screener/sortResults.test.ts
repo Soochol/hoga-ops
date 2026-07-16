@@ -68,4 +68,17 @@ describe('sortScreenerRows', () => {
     expect(sortScreenerRows(mixedFreshness, { field: 'change_pct', direction: 'desc' }).map((row) => row.code))
       .toEqual(['C', 'B', 'A']);
   });
+
+  it('전 종목 stale 배치(정렬키 실값 유지)에도 등락률 순서가 보존된다 (정렬 리셋 회귀 가드)', () => {
+    // useScreenerRowsLive 가 stale quote 의 change_pct 를 change_pct_sort 로 그대로 넘기므로
+    // (게이트 제거 후) sortScreenerRows 는 정상 값처럼 정렬한다. 예전엔 전부 null → 스캔
+    // 원순서(A,B,C)로 붕괴했다.
+    const allStaleSortInputs = [
+      { code: 'A', change_pct: 1.2, change_pct_sort: 1.2 },
+      { code: 'B', change_pct: -0.8, change_pct_sort: -0.8 },
+      { code: 'C', change_pct: 3.4, change_pct_sort: 3.4 },
+    ];
+    expect(sortScreenerRows(allStaleSortInputs, { field: 'change_pct', direction: 'desc' }).map((row) => row.code))
+      .toEqual(['C', 'A', 'B']);
+  });
 });

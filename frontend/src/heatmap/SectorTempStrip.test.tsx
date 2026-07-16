@@ -48,11 +48,12 @@ it('상승 칩 배경 = 적(--price-up), 하락 칩 = 청(--price-down) 토큰',
   expect(down.getAttribute('style') ?? '').toContain('var(--price-down)');
 });
 
-it('stale 종목은 평균 계산에서 제외되어 섹터 정렬/표시에 영향 없음', () => {
+it('stale 종목도 평균/칩에 포함된다 (stale 배치에 스트립이 사라지지 않음)', () => {
+  // stale 은 마지막 정상값 — 평균/표시에 그대로 반영한다. 전 종목 stale 이어도 칩은 유지된다.
   const staleGroups: HeatmapGroup[] = [
     { folder: { id: 'f1', name: '로봇', order: 0 }, entries: [entry('111', 'f1')] },      // +2
     { folder: { id: 'f2', name: '통신', order: 1 }, entries: [entry('222', 'f2')] },      // -3
-    { folder: { id: 'f3', name: '반도체', order: 2 }, entries: [entry('005930', 'f3')] },   // stale +20 (제외)
+    { folder: { id: 'f3', name: '반도체', order: 2 }, entries: [entry('005930', 'f3')] },   // stale +20 (포함 → 맨 위)
   ];
   const staleQuoteByCode = new Map<string, LiveQuote>([
     ['111', { code: '111', price: 1, change_pct: 2, change_won: 0 }],
@@ -62,7 +63,21 @@ it('stale 종목은 평균 계산에서 제외되어 섹터 정렬/표시에 영
 
   render(<SectorTempStrip groups={staleGroups} quoteByCode={staleQuoteByCode} onJump={() => {}} />);
   const chips = screen.getAllByRole('button').map((c) => c.textContent ?? '');
-  expect(chips).toHaveLength(2);
-  expect(chips[0]).toContain('로봇');  // +2 should be first
-  expect(chips[1]).toContain('통신');  // -3 should be second
+  expect(chips).toHaveLength(3);
+  expect(chips[0]).toContain('반도체'); // stale +20 → 맨 위
+  expect(chips[1]).toContain('로봇');   // +2
+  expect(chips[2]).toContain('통신');   // -3
+});
+
+it('전 종목 stale 이어도 스트립은 유지된다 (스트립 소실 회귀 가드)', () => {
+  const allStaleGroups: HeatmapGroup[] = [
+    { folder: { id: 'f1', name: '로봇', order: 0 }, entries: [entry('111', 'f1')] },
+    { folder: { id: 'f2', name: '통신', order: 1 }, entries: [entry('222', 'f2')] },
+  ];
+  const allStale = new Map<string, LiveQuote>([
+    ['111', { code: '111', price: 1, change_pct: 2, change_won: 0, stale: true }],
+    ['222', { code: '222', price: 1, change_pct: -3, change_won: 0, stale: true }],
+  ]);
+  render(<SectorTempStrip groups={allStaleGroups} quoteByCode={allStale} onJump={() => {}} />);
+  expect(screen.getAllByRole('button')).toHaveLength(2);
 });
