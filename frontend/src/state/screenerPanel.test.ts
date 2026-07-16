@@ -41,6 +41,8 @@ describe('screenerPanel store', () => {
       lastScan: null,
       sortMode: 'default',
       updateState: { status: 'idle' },
+      monitoringActive: false,
+      monitorPeriodMs: null,
     });
   });
 
@@ -178,6 +180,40 @@ describe('screenerPanel store', () => {
     useScreenerPanelStore.getState().setLastScan(SCAN);
     useScreenerPanelStore.getState().markLastScanDataStale();
     expect(useScreenerPanelStore.getState().lastScan?.dataStale).toBe(true);
+  });
+
+  it('persists monitoringActive and re-hydrates it (auto-resume across reloads)', async () => {
+    useScreenerPanelStore.getState().setMonitoringActive(true);
+    expect(JSON.parse(localStorage.getItem('screenerPanel.v1')!).monitoringActive).toBe(true);
+
+    vi.resetModules();
+    vi.setSystemTime(NOW);
+    const { useScreenerPanelStore: fresh } = await import('./screenerPanel');
+    expect(fresh.getState().monitoringActive).toBe(true);
+  });
+
+  it('defaults monitoringActive to false when absent from storage', async () => {
+    localStorage.setItem('screenerPanel.v1', JSON.stringify({ selectedSavedId: 's1' }));
+    vi.resetModules();
+    vi.setSystemTime(NOW);
+    const { useScreenerPanelStore: fresh } = await import('./screenerPanel');
+    expect(fresh.getState().monitoringActive).toBe(false);
+  });
+
+  it('persists and re-hydrates a valid monitorPeriodMs, rejecting unknown values', async () => {
+    useScreenerPanelStore.getState().setMonitorPeriodMs(30_000);
+    expect(JSON.parse(localStorage.getItem('screenerPanel.v1')!).monitorPeriodMs).toBe(30_000);
+    vi.resetModules();
+    vi.setSystemTime(NOW);
+    const { useScreenerPanelStore: fresh } = await import('./screenerPanel');
+    expect(fresh.getState().monitorPeriodMs).toBe(30_000);
+
+    // 목록에 없는 값은 기각 → default(null=자동)로 폴백.
+    localStorage.setItem('screenerPanel.v1', JSON.stringify({ monitorPeriodMs: 7_777 }));
+    vi.resetModules();
+    vi.setSystemTime(NOW);
+    const { useScreenerPanelStore: rejected } = await import('./screenerPanel');
+    expect(rejected.getState().monitorPeriodMs).toBeNull();
   });
 
   it('persists terminal update status across short reloads without restoring pending', async () => {

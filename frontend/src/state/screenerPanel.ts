@@ -51,6 +51,11 @@ type Persisted = {
   lastScan: PanelScan | null;
   sortMode: ScreenerResultSortMode;
   updateState: PanelUpdateState;
+  // 드로어 실시간 모니터링 on/off. 영속 → 새로고침·재접속 후 자동 재개(장중 켜두는
+  // 사용 패턴).
+  monitoringActive: boolean;
+  // 재조회 주기(ms) 사용자 override. null = 자동(스코프15/전체30초). 영속.
+  monitorPeriodMs: number | null;
 };
 
 type Store = Persisted & {
@@ -61,6 +66,8 @@ type Store = Persisted & {
   setLastScan: (scan: PanelScan) => void;
   markLastScanDataStale: () => void;
   clearExpiredScan: (nowMs?: number) => void;
+  setMonitoringActive: (active: boolean) => void;
+  setMonitorPeriodMs: (periodMs: number | null) => void;
   setUpdatePending: (startedAtMs: number) => void;
   setUpdateSuccess: (finishedAtMs: number) => void;
   setUpdateError: (message: string, finishedAtMs: number) => void;
@@ -71,7 +78,12 @@ const DEFAULTS: Persisted = {
   lastScan: null,
   sortMode: 'default',
   updateState: { status: 'idle' },
+  monitoringActive: false,
+  monitorPeriodMs: null,
 };
+
+// 사용자가 고를 수 있는 재조회 주기(ms). null = 자동(스코프15/전체30초).
+export const MONITOR_PERIOD_CHOICES_MS: readonly (number | null)[] = [null, 10_000, 30_000, 60_000];
 
 function persist(state: Persisted): void {
   persistJson(STORAGE_KEY, state);
@@ -83,6 +95,8 @@ function persistFromState(state: Store): void {
     lastScan: state.lastScan,
     sortMode: state.sortMode,
     updateState: persistableUpdateState(state.updateState),
+    monitoringActive: state.monitoringActive,
+    monitorPeriodMs: state.monitorPeriodMs,
   });
 }
 
@@ -239,6 +253,10 @@ function readStorage(nowMs = Date.now()): Partial<Persisted> {
   if (lastScan) out.lastScan = lastScan;
   if (isSortMode(parsed.sortMode)) out.sortMode = parsed.sortMode;
   if (isPanelUpdateState(parsed.updateState, nowMs)) out.updateState = parsed.updateState;
+  if (typeof parsed.monitoringActive === 'boolean') out.monitoringActive = parsed.monitoringActive;
+  const period = parsed.monitorPeriodMs;
+  if (period === null) out.monitorPeriodMs = null;
+  else if (typeof period === 'number' && MONITOR_PERIOD_CHOICES_MS.includes(period)) out.monitorPeriodMs = period;
   return out;
 }
 
@@ -274,6 +292,16 @@ export const useScreenerPanelStore = create<Store>((set, get) => ({
     const { lastScan } = get();
     if (!lastScan || isPanelScanFresh(lastScan, nowMs)) return;
     set({ lastScan: null });
+    persistFromState(get());
+  },
+
+  setMonitoringActive: (active) => {
+    set({ monitoringActive: active });
+    persistFromState(get());
+  },
+
+  setMonitorPeriodMs: (periodMs) => {
+    set({ monitorPeriodMs: periodMs });
     persistFromState(get());
   },
 

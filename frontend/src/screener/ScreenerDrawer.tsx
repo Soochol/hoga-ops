@@ -14,7 +14,7 @@ import { CSS } from '@dnd-kit/utilities';
 import { useJumpToLive } from '../live/useJumpToLive';
 import { useEntryDragStore, isPointOnChart, dropPoint } from '../state/entryDrag';
 import { useLivePageStore } from '../state/livePage';
-import { useScreenerPanelStore, useExpireScreenerScan } from '../state/screenerPanel';
+import { useScreenerPanelStore, useExpireScreenerScan, MONITOR_PERIOD_CHOICES_MS } from '../state/screenerPanel';
 import { useSavedScreeners } from './useSavedScreeners';
 import { useScreener } from './useScreener';
 import { useScreenerStatus } from './useScreenerStatus';
@@ -24,12 +24,14 @@ import { StalenessChip } from './StalenessChip';
 import { QuoteRow } from '../rightrail/QuoteRow';
 import { useScreenerRowsLive } from './useScreenerRowsLive';
 import type { ScreenerRowLive } from './useScreenerRowsLive';
+import { useScreenerMonitor, MONITOR_PERIOD_SCOPED_MS, MONITOR_PERIOD_FULL_MS } from './useScreenerMonitor';
+import { useNewEntryFlash } from './useNewEntryFlash';
 import { WatchlistHeartButton } from '../watchlist/WatchlistHeartButton';
 import { ScreenerResultSortControl } from './ScreenerResultSortControl';
 import { sortScreenerRows, type ScreenerResultSortMode } from './sortResults';
-import type { ScanBasis } from '../api/screener';
+import type { ScanBasis, ScreenerRow } from '../api/screener';
 import { RailDrawer, RailDrawerBody, RailDrawerHeader, RailDrawerSection, RailState } from '../ui/RailShell';
-import { ToolbarButton } from '../ui/PageShell';
+import { ToolbarButton, SegmentedControl } from '../ui/PageShell';
 import { useDismissablePopover } from '../util/useDismissablePopover';
 import { useClampedFixedPosition } from '../util/useClampedFixedPosition';
 
@@ -111,6 +113,15 @@ const SCREENER_ENTRY_TYPE = 'screener-entry';
 const SCREENER_DRAG_SENSOR_OPTIONS = { activationConstraint: { distance: 5 } };
 const DRAWER_SCAN_BASIS: ScanBasis = 'intraday';
 
+/** 멤버십(코드 집합) 동일 여부. 실시간 모니터링의 동일 결과 skip 판정용 — 같으면
+ *  결과 리스트 재렌더·localStorage 재직렬화를 건너뛴다(가격은 라이브 오버레이 몫이라
+ *  멤버십만 바뀌지 않으면 리스트를 새로 그릴 이유가 없다). */
+function sameCodeSet(a: readonly ScreenerRow[], b: readonly ScreenerRow[]): boolean {
+  if (a.length !== b.length) return false;
+  const codes = new Set(a.map((r) => r.code));
+  return b.every((r) => codes.has(r.code));
+}
+
 function screenerDraggableId(code: string): string {
   return `${SCREENER_ENTRY_TYPE}:${code}`;
 }
@@ -118,10 +129,12 @@ function screenerDraggableId(code: string): string {
 function DraggableScreenerRow({
   row,
   active,
+  flash,
   onActivate,
 }: {
   row: ScreenerRowLive;
   active: boolean;
+  flash: boolean;
   onActivate: () => void;
 }) {
   const { setNodeRef, listeners, attributes, transform, isDragging } = useDraggable({
@@ -135,6 +148,7 @@ function DraggableScreenerRow({
       pct={row.change_pct}
       changeWon={row.change_won}
       active={active}
+      flash={flash}
       ariaLabel={`${row.name} ${row.code} 차트 열기`}
       testId={`screener-row-${row.code}`}
       onClick={onActivate}
@@ -165,6 +179,8 @@ export function ScreenerDrawer() {
   const setLastScan = useScreenerPanelStore((s) => s.setLastScan);
   const sortMode = useScreenerPanelStore((s) => s.sortMode);
   const setSortMode = useScreenerPanelStore((s) => s.setSortMode);
+  const monitoringActive = useScreenerPanelStore((s) => s.monitoringActive);
+  const setMonitoringActive = useScreenerPanelStore((s) => s.setMonitoringActive);
   const updateFeedback = useScreenerUpdateFeedback((s) => s.feedback);
 
   const { data: savesData, isSuccess: savesLoaded } = useSavedScreeners();
@@ -200,31 +216,70 @@ export function ScreenerDrawer() {
     return null;
   })();
 
-  const runScan = () => {
-    if (!selected) return;
-    screener.mutate(
-      { conditions: selected.conditions, universe: selected.universe, basis: DRAWER_SCAN_BASIS },
-      {
-        onSuccess: (res) => {
-          setLastScan({
-            savedId: selected.id,
-            savedName: selected.name,
-            savedUpdatedAtMs: selected.updated_at_ms,
-            // 드로어는 신원 기반 staleness 라 scanKey 불필요(null).
-            scanKey: null,
-            rows: res.rows,
-            scanStatus: res.status,
-            warnings: res.warnings,
-            depthValues: res.depth_values ?? null,
-            scannedAtMs: Date.now(),
-            basis: DRAWER_SCAN_BASIS,
-            dataStale: false,
-          });
-          setSortMode('default');
-        },
-      },
-    );
+  // 1회 조회 + 결과 처리. 수동 버튼과 실시간 모니터링 루프가 공유하는 단일 seam(두
+  // 경로의 결과 처리 드리프트 방지). 성공 시 true. 동일 멤버십(코드 집합)이고 총잔량
+  // 값이 없으면 setLastScan 을 건너뛰어 리렌더·localStorage 재직렬화를 막는다 — 단
+  // 총잔량 조건이 있으면(depthValues 존재) 값이 매 조회 변하므로 항상 갱신한다.
+  const scanOnce = async (): Promise<boolean> => {
+    const sel = selected;
+    if (!sel) return false;
+    try {
+      const res = await screener.mutateAsync({
+        conditions: sel.conditions, universe: sel.universe, basis: DRAWER_SCAN_BASIS,
+      });
+      const prev = useScreenerPanelStore.getState().lastScan;
+      const canSkip = prev != null && prev.savedId === sel.id
+        && res.depth_values == null && prev.depthValues == null
+        && sameCodeSet(prev.rows, res.rows);
+      if (canSkip) return true;
+      setLastScan({
+        savedId: sel.id,
+        savedName: sel.name,
+        savedUpdatedAtMs: sel.updated_at_ms,
+        // 드로어는 신원 기반 staleness 라 scanKey 불필요(null).
+        scanKey: null,
+        rows: res.rows,
+        scanStatus: res.status,
+        warnings: res.warnings,
+        depthValues: res.depth_values ?? null,
+        scannedAtMs: Date.now(),
+        basis: DRAWER_SCAN_BASIS,
+        dataStale: false,
+      });
+      setSortMode('default');
+      return true;
+    } catch {
+      return false;
+    }
   };
+
+  // 결과 전 종목에 Live Quote 오버레이(ADR-0056). scanRows 메모화로 lastScan null 동안
+  // 매 렌더 새 [] 가 훅 내부 codes 메모를 무효화하지 않게 한다(풀페이지 Screener.tsx 와
+  // 대칭). resultCodes 는 모니터 훅의 phase 조회 키(드로어 내부 useQuotes 와 동일).
+  const scanRows = useMemo(() => lastScan?.rows ?? [], [lastScan]);
+  const resultCodes = useMemo(() => scanRows.map((r) => r.code), [scanRows]);
+  // 재조회 주기: 사용자 override(monitorPeriodMs) ?? 자동(스코프15/전체30초).
+  const scoped = (selected?.universe.scopes?.length ?? 0) > 0;
+  const monitorPeriodMs = useScreenerPanelStore((s) => s.monitorPeriodMs);
+  const setMonitorPeriodMs = useScreenerPanelStore((s) => s.setMonitorPeriodMs);
+  const effectivePeriodMs = monitorPeriodMs ?? (scoped ? MONITOR_PERIOD_SCOPED_MS : MONITOR_PERIOD_FULL_MS);
+  const monitor = useScreenerMonitor({
+    active: monitoringActive,
+    selectedId: selectedSavedId,
+    periodMs: effectivePeriodMs,
+    disabled: notSeeded || !selected,
+    resultCodes,
+    scanOnce,
+    onAutoStop: (message) => {
+      setMonitoringActive(false);
+      useScreenerUpdateFeedback.getState().setFeedback({ tone: 'error', message, atMs: Date.now() });
+    },
+  });
+
+  // 모니터링 중 시드 없음·선택 해제 등으로 조회 불가가 되면 자동 종료(유령 활성 방지).
+  useEffect(() => {
+    if (monitoringActive && (notSeeded || !selected)) setMonitoringActive(false);
+  }, [monitoringActive, notSeeded, selected, setMonitoringActive]);
 
   const handleSortChange = (mode: ScreenerResultSortMode) => {
     setSortMode(mode);
@@ -237,11 +292,12 @@ export function ScreenerDrawer() {
 
   // 결과 전 종목에 Live Quote 오버레이(ADR-0056 개정 2026-06-03 — 상위 30 cap 제거).
   // 풀페이지 ResultTable 과 공유하는 단일 머지 seam(codes 추출·폴링·머지 캡슐화).
-  // scanRows 메모화로 lastScan null 동안 매 렌더 새 [] 가 훅 내부 codes 메모를
-  // 무효화하지 않게 한다(풀페이지 Screener.tsx 와 대칭).
-  const scanRows = useMemo(() => lastScan?.rows ?? [], [lastScan]);
+  // scanRows 는 위에서 정의(모니터 phase 조회와 공유).
   const liveRows = useScreenerRowsLive(scanRows);
   const sortedLiveRows = useMemo(() => sortScreenerRows(liveRows, sortMode), [liveRows, sortMode]);
+  // 재조회로 새로 편입된 종목을 잠시 플래시. 훅은 항상 resultCodes 를 추적해 이전
+  // 집합을 정확히 유지하고(토글 시 전체 플래시 방지), 표시만 모니터링 중으로 게이트한다.
+  const flashCodes = useNewEntryFlash(resultCodes);
   const sensors = useSensors(useSensor(PointerSensor, SCREENER_DRAG_SENSOR_OPTIONS));
   const startEntryDrag = useEntryDragStore((s) => s.startDrag);
   const setOverChart = useEntryDragStore((s) => s.setOverChart);
@@ -289,14 +345,61 @@ export function ScreenerDrawer() {
             onSelect={setSelectedSavedId}
           />
         )}
-        <ToolbarButton
-          tone="primary"
-          onClick={runScan}
-          disabled={screener.isPending || notSeeded || !selected}
-          className="w-full py-1.5"
-        >
-          {screener.isPending ? '조회 중…' : '조회'}
-        </ToolbarButton>
+        <div className="flex gap-sm">
+          <ToolbarButton
+            tone="primary"
+            onClick={() => void scanOnce()}
+            disabled={screener.isPending || notSeeded || !selected}
+            className="flex-1 py-1.5"
+          >
+            {screener.isPending ? '조회 중…' : '조회'}
+          </ToolbarButton>
+          <ToolbarButton
+            tone={monitoringActive ? undefined : 'primary'}
+            onClick={() => setMonitoringActive(!monitoringActive)}
+            disabled={notSeeded || !selected}
+            className="flex-1 py-1.5"
+            aria-pressed={monitoringActive}
+            data-testid="screener-monitor-toggle"
+          >
+            {monitoringActive ? '■ 종료' : '▶ 시작'}
+          </ToolbarButton>
+        </div>
+        {monitoringActive && (
+          <div className="flex flex-col gap-1.5" data-testid="screener-monitor-status">
+            <div className="flex items-center gap-2 text-xs text-fg-dim">
+              {monitor.paused === 'closed' ? (
+                <span className="text-fg-dimmer">장마감 — 개장 시 자동 재개</span>
+              ) : (
+                <>
+                  <span
+                    aria-hidden
+                    className="inline-block h-1.5 w-1.5 animate-pulse rounded-full"
+                    style={{ backgroundColor: 'var(--accent)' }}
+                  />
+                  <span>실시간 모니터링 중 · {Math.round(effectivePeriodMs / 1000)}초마다 갱신</span>
+                </>
+              )}
+            </div>
+            <SegmentedControl aria-label="갱신 주기" className="self-start">
+              {MONITOR_PERIOD_CHOICES_MS.map((choice) => {
+                const on = monitorPeriodMs === choice;
+                const label = choice === null ? '자동' : `${choice / 1000}초`;
+                return (
+                  <button
+                    key={label}
+                    type="button"
+                    aria-pressed={on}
+                    onClick={() => setMonitorPeriodMs(choice)}
+                    className={`px-2 py-[3px] text-xs ${on ? 'bg-tint-selection text-accent' : 'text-fg-dim hover:bg-bg-input-hover'}`}
+                  >
+                    {label}
+                  </button>
+                );
+              })}
+            </SegmentedControl>
+          </div>
+        )}
         {serverUpdating && (
           <div className="flex items-center">
             <ScreenerUpdateProgress updating={status?.updating} />
@@ -344,6 +447,11 @@ export function ScreenerDrawer() {
                 장중 조회 불가 · 전일 확정 데이터로 표시 중
               </div>
             )}
+            {(lastScan.warnings ?? []).includes('scope_universe_empty') && (
+              <div className="mx-md mt-sm rounded-lg border px-3 py-2 text-sm" style={{ color: 'var(--warn)' }}>
+                종목 범위가 비어 있음 · 관심종목·히트맵에 종목을 추가하세요
+              </div>
+            )}
             {lastScan.rows.length === 0 ? (
               <RailState>조건에 맞는 종목이 없습니다.</RailState>
             ) : (
@@ -360,6 +468,7 @@ export function ScreenerDrawer() {
                       key={r.code}
                       row={r}
                       active={r.code === activeCode}
+                      flash={monitoringActive && flashCodes.has(r.code)}
                       onActivate={() => openLive(r.code, r.name)}
                     />
                   ))}
