@@ -123,3 +123,48 @@ async def test_runner_intraday_bypass_skips_overlay_and_uses_eod(tmp_path, monke
     assert [r.code for r in res.rows] == ["000001"]
     assert "kis_rest_bypassed_intraday_overlay_skipped" in res.warnings
     assert "intraday_fallback_eod" in res.warnings
+
+
+def _seed_heatmap(tmp_path, codes):
+    from hoga.api.heatmap import save_document
+    from hoga.api.models import HeatmapDocument, HeatmapEntry, WatchlistFolder
+    save_document(tmp_path, HeatmapDocument(
+        folders=[WatchlistFolder(id="f_0000000a", name="A", order=0)],
+        entries=[HeatmapEntry(code=c, name=c, folder_id="f_0000000a") for c in codes]))
+
+
+@pytest.mark.asyncio
+async def test_runner_scope_narrows_universe(tmp_path):
+    # scopes=["heatmap"]에 000002만 담기면, 000001은 조건을 통과해도 스코프 밖이라 배제.
+    _seed(tmp_path)
+    _seed_heatmap(tmp_path, ["000002"])
+
+    res = await screener_runner.run_screener_scan(
+        data_dir=tmp_path,
+        req=ScanRequest.model_validate({
+            "conditions": [{"id": "a", "type": "price_range", "params": {"min": 100}}],
+            "universe": {"scopes": ["heatmap"]},
+        }),
+        now=dt.datetime(2026, 5, 15, 10, 0),
+    )
+
+    assert [r.code for r in res.rows] == ["000002"]
+    assert "scope_universe_empty" not in res.warnings
+
+
+@pytest.mark.asyncio
+async def test_runner_empty_scope_warns_and_zero_rows(tmp_path):
+    # 스코프는 켰으나(관심·히트맵 모두 비어) 대상 0종목 → scope_universe_empty + 0행.
+    _seed(tmp_path)
+
+    res = await screener_runner.run_screener_scan(
+        data_dir=tmp_path,
+        req=ScanRequest.model_validate({
+            "conditions": [{"id": "a", "type": "price_range", "params": {"min": 100}}],
+            "universe": {"scopes": ["watchlist", "heatmap"]},
+        }),
+        now=dt.datetime(2026, 5, 15, 10, 0),
+    )
+
+    assert res.rows == []
+    assert "scope_universe_empty" in res.warnings

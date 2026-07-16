@@ -63,4 +63,37 @@ describe('UniverseFilterModal', () => {
     fireEvent.click(screen.getByLabelText('ETF 제외'));               // 이미 체크됨 → 해제
     expect(onChange).toHaveBeenCalledWith({ exclude_etf: undefined });
   });
+
+  it('종목 범위 그룹으로 pane 전환 → 관심종목/히트맵 체크박스', () => {
+    mount();
+    fireEvent.click(screen.getByRole('button', { name: '종목 범위' }));
+    expect(screen.getByLabelText('관심종목')).toBeInTheDocument();
+    expect(screen.getByLabelText('히트맵 종목')).toBeInTheDocument();
+  });
+
+  it('관심종목 스코프 토글 → onChange 에 scopes 갱신', () => {
+    const { onChange } = mount({});
+    fireEvent.click(screen.getByRole('button', { name: '종목 범위' }));
+    fireEvent.click(screen.getByLabelText('관심종목'));
+    expect(onChange).toHaveBeenCalledWith({ scopes: ['watchlist'] });
+  });
+
+  it('두 번째 스코프 토글 → 합집합으로 누적', () => {
+    const { onChange } = mount({ scopes: ['watchlist'] });
+    fireEvent.click(screen.getByRole('button', { name: '종목 범위' }));
+    fireEvent.click(screen.getByLabelText('히트맵 종목'));
+    expect(onChange).toHaveBeenCalledWith({ scopes: ['watchlist', 'heatmap'] });
+  });
+
+  it('마지막 스코프 해제 → scopes undefined 로 정규화', () => {
+    const { onChange } = mount({ scopes: ['heatmap'] });
+    fireEvent.click(screen.getByRole('button', { name: '종목 범위' }));
+    fireEvent.click(screen.getByLabelText('히트맵 종목'));   // 유일한 스코프 해제
+    expect(onChange).toHaveBeenCalledWith({ scopes: undefined });
+  });
+
+  it('스코프 활성이면 종목 범위 nav 행이 data-active=true', () => {
+    mount({ scopes: ['watchlist'] });
+    expect(screen.getByRole('button', { name: '종목 범위' })).toHaveAttribute('data-active', 'true');
+  });
 });

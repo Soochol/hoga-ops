@@ -1364,6 +1364,11 @@ class ScreenerUniverse(BaseModel):
     markets: list[Literal["KOSPI", "KOSDAQ"]] = Field(default_factory=list)
     exclude_etf: bool = False
     exclude_halted: bool = False
+    # 조회 유니버스를 캡처 대상 집합으로 좁힌다(빈 리스트 = 전체 시장, 기존 동작).
+    # 체크된 스코프의 합집합 ∩ 나머지 필터. 관심∪히트맵은 총잔량 데이터가 정의되는
+    # 집합과 동일(screener_depth._depth_universe). 기존 저장본은 키 부재 → default 로
+    # 하위호환. 스크리너 실시간 모니터링의 리소스 절감 축(intraday fetch 유니버스 축소).
+    scopes: list[Literal["watchlist", "heatmap"]] = Field(default_factory=list)
 
 ScanBasis = Literal["eod", "intraday"]
 

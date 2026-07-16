@@ -28,10 +28,14 @@ export type ConditionLeaf =
   | { id: string; type: 'bid_depth_new_high'; params: DepthPeakParams };
 export type ConditionType = ConditionLeaf['type'];
 
+export type ScreenerScope = 'watchlist' | 'heatmap';
+
 export interface ScreenerUniverse {
   markets?: ('KOSPI' | 'KOSDAQ')[];
   exclude_etf?: boolean;
   exclude_halted?: boolean;
+  // 조회 대상을 캡처 집합으로 좁힌다(빈/미지정 = 전체 시장). 체크된 스코프의 합집합.
+  scopes?: ScreenerScope[];
 }
 
 export type ScanBasis = 'eod' | 'intraday';

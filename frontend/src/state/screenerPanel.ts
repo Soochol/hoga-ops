@@ -51,6 +51,9 @@ type Persisted = {
   lastScan: PanelScan | null;
   sortMode: ScreenerResultSortMode;
   updateState: PanelUpdateState;
+  // 드로어 실시간 모니터링 on/off. 영속 → 새로고침·재접속 후 자동 재개(장중 켜두는
+  // 사용 패턴). 재조회 주기는 파생(선택 저장본 스코프 유무)이라 영속하지 않는다.
+  monitoringActive: boolean;
 };
 
 type Store = Persisted & {
@@ -61,6 +64,7 @@ type Store = Persisted & {
   setLastScan: (scan: PanelScan) => void;
   markLastScanDataStale: () => void;
   clearExpiredScan: (nowMs?: number) => void;
+  setMonitoringActive: (active: boolean) => void;
   setUpdatePending: (startedAtMs: number) => void;
   setUpdateSuccess: (finishedAtMs: number) => void;
   setUpdateError: (message: string, finishedAtMs: number) => void;
@@ -71,6 +75,7 @@ const DEFAULTS: Persisted = {
   lastScan: null,
   sortMode: 'default',
   updateState: { status: 'idle' },
+  monitoringActive: false,
 };
 
 function persist(state: Persisted): void {
@@ -83,6 +88,7 @@ function persistFromState(state: Store): void {
     lastScan: state.lastScan,
     sortMode: state.sortMode,
     updateState: persistableUpdateState(state.updateState),
+    monitoringActive: state.monitoringActive,
   });
 }
 
@@ -239,6 +245,7 @@ function readStorage(nowMs = Date.now()): Partial<Persisted> {
   if (lastScan) out.lastScan = lastScan;
   if (isSortMode(parsed.sortMode)) out.sortMode = parsed.sortMode;
   if (isPanelUpdateState(parsed.updateState, nowMs)) out.updateState = parsed.updateState;
+  if (typeof parsed.monitoringActive === 'boolean') out.monitoringActive = parsed.monitoringActive;
   return out;
 }
 
@@ -274,6 +281,11 @@ export const useScreenerPanelStore = create<Store>((set, get) => ({
     const { lastScan } = get();
     if (!lastScan || isPanelScanFresh(lastScan, nowMs)) return;
     set({ lastScan: null });
+    persistFromState(get());
+  },
+
+  setMonitoringActive: (active) => {
+    set({ monitoringActive: active });
     persistFromState(get());
   },
 

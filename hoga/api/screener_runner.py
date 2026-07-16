@@ -25,6 +25,15 @@ async def run_screener_scan(
     warnings: list[str] = []
     intraday_rows = None
     now_value = now or now_kst()
+
+    # 유니버스 스코프(관심∪히트맵) 1회 해석 — intraday overlay·depth·run_scan 세 경로가
+    # 공유한다. None = 무제한(전체 시장). 빈 set = 스코프는 켰으나 대상 0종목 → 조건
+    # 미충족과 구분되게 warning 을 붙인다(결과는 자연히 0행).
+    scope = await asyncio.to_thread(
+        screener_universe.scope_codes, data_dir, req.universe.scopes)
+    if scope is not None and not scope:
+        warnings.append("scope_universe_empty")
+
     if req.basis == "intraday":
         if screener_intraday.intraday_overlay_bypassed(data_dir):
             warnings.extend([
@@ -36,6 +45,7 @@ async def run_screener_scan(
                 screener_universe.codes_for_universe,
                 sdir / "stocks.parquet",
                 req.universe,
+                scope=scope,
             )
             overlay = await screener_intraday.build_intraday_overlay(
                 data_dir=data_dir,
@@ -54,6 +64,7 @@ async def run_screener_scan(
             screener_universe.codes_for_universe,
             sdir / "stocks.parquet",
             req.universe,
+            scope=scope,
         ))
         depth_eval = await asyncio.to_thread(
             screener_depth.evaluate,
@@ -79,6 +90,7 @@ async def run_screener_scan(
         limit=req.limit,
         intraday_rows=intraday_rows,
         depth_pass=depth_pass,
+        scope_codes=scope,
     )
     return ScreenerResponse(
         status="ok", rows=rows, warnings=warnings,

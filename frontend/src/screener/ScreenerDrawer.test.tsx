@@ -138,6 +138,7 @@ describe('ScreenerDrawer', () => {
       lastScan: null,
       updateState: { status: 'idle' },
       sortMode: 'default',
+      monitoringActive: false,
     });
     useScreenerUpdateFeedback.setState({ feedback: null });
     vi.restoreAllMocks();
@@ -170,6 +171,33 @@ describe('ScreenerDrawer', () => {
       basis: 'intraday',
     }));
     await waitFor(() => expect(screen.getByText('삼성전자')).toBeInTheDocument());
+  });
+
+  it('시작 버튼: 모니터링을 켜고 즉시 1회 조회한다', async () => {
+    vi.spyOn(savesApi, 'listSaves').mockResolvedValue({ schema_version: 1, saves: [SAVE] });
+    const scan = vi.spyOn(screenerApi, 'runScan').mockResolvedValue({ status: 'ok', rows: ROWS, warnings: [] });
+    render(<ScreenerDrawer />, { wrapper: wrap(qc(), '/live') });
+    await waitFor(() => expect(useScreenerPanelStore.getState().selectedSavedId).toBe('s1'));
+
+    fireEvent.click(screen.getByTestId('screener-monitor-toggle'));
+
+    await waitFor(() => expect(useScreenerPanelStore.getState().monitoringActive).toBe(true));
+    await waitFor(() => expect(scan).toHaveBeenCalled());          // 시작 즉시 1회 조회
+    expect(screen.getByTestId('screener-monitor-status')).toHaveTextContent('실시간 모니터링 중');
+  });
+
+  it('종료 버튼: 모니터링을 끄고 상태 표시를 감춘다', async () => {
+    vi.spyOn(savesApi, 'listSaves').mockResolvedValue({ schema_version: 1, saves: [SAVE] });
+    vi.spyOn(screenerApi, 'runScan').mockResolvedValue({ status: 'ok', rows: ROWS, warnings: [] });
+    render(<ScreenerDrawer />, { wrapper: wrap(qc(), '/live') });
+    await waitFor(() => expect(useScreenerPanelStore.getState().selectedSavedId).toBe('s1'));
+
+    fireEvent.click(screen.getByTestId('screener-monitor-toggle'));   // 시작
+    await waitFor(() => expect(useScreenerPanelStore.getState().monitoringActive).toBe(true));
+    fireEvent.click(screen.getByTestId('screener-monitor-toggle'));   // 종료
+
+    await waitFor(() => expect(useScreenerPanelStore.getState().monitoringActive).toBe(false));
+    expect(screen.queryByTestId('screener-monitor-status')).not.toBeInTheDocument();
   });
 
   it('shows that drawer scans use the intraday quote basis and surfaces EOD fallback', async () => {

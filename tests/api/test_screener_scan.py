@@ -31,6 +31,45 @@ def test_trade_value_filters_latest_day(tmp_path):
     assert rows[0].code == "005930" and rows[0].trade_value_won == 600_000_000
 
 
+def test_scope_codes_semi_join_excludes_out_of_scope(tmp_path):
+    # scope_codes={005930} → 000660 이 조건을 통과해도 스코프 밖이라 결과에서 배제.
+    adj, stk = _seed(tmp_path,
+        rows=[("005930", "2026-05-30", 100, 100, 100, 100, 6_000_000),   # 6억
+              ("000660", "2026-05-30", 100, 100, 100, 100, 6_000_000)],  # 6억, 스코프 밖
+        stocks=[("005930", "삼성전자", "KOSPI", False, False),
+                ("000660", "하이닉스", "KOSPI", False, False)])
+    leaf = TradeValueLeaf(id="t", params=TradeValueParams(min_eok=5))
+    rows = screener_scan.run_scan(
+        adj, stk, conditions=[leaf], universe=ScreenerUniverse(),
+        scope_codes={"005930"})
+    assert [r.code for r in rows] == ["005930"]
+
+
+def test_scope_codes_empty_set_yields_zero_rows(tmp_path):
+    # 빈 스코프(스코프는 켰으나 대상 0종목) → 0행. runner 가 scope_universe_empty warning.
+    adj, stk = _seed(tmp_path,
+        rows=[("005930", "2026-05-30", 100, 100, 100, 100, 6_000_000)],
+        stocks=[("005930", "삼성전자", "KOSPI", False, False)])
+    leaf = TradeValueLeaf(id="t", params=TradeValueParams(min_eok=5))
+    rows = screener_scan.run_scan(
+        adj, stk, conditions=[leaf], universe=ScreenerUniverse(),
+        scope_codes=set())
+    assert rows == []
+
+
+def test_scope_codes_shrinks_window_cte_history(tmp_path):
+    # semi-join 이 adj_hist(윈도우 CTE 소스)를 좁힌다: MA20 은 스코프 밖 종목 이력을
+    # 계산에 넣지 않는다. 스코프={000111} 이면 000222 는 완전히 사라진다(윈도우 포함).
+    rows = _ramp("000111", 1000, 25, 100) + _ramp("000222", 1000, 25, 100)
+    adj, stk = _seed(tmp_path, rows=rows,
+        stocks=[("000111","a","KOSPI",False,False),("000222","b","KOSPI",False,False)])
+    leaf = MaLeaf(id="m", params=MaParams(period=20, relation="above"))
+    out = screener_scan.run_scan(
+        adj, stk, conditions=[leaf], universe=ScreenerUniverse(),
+        scope_codes={"000111"})
+    assert [r.code for r in out] == ["000111"]
+
+
 def test_intraday_rows_participate_in_new_high_today(tmp_path):
     from hoga.api.models import NewHighTodayLeaf, PeriodParams
 

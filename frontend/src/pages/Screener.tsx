@@ -105,6 +105,7 @@ export function Screener() {
   // 드로어 스캔은 scanKey null → 비교 불가 시 stale 판정하지 않는다.
   const resultsStale = lastScan?.scanKey != null && lastScan.scanKey !== scanKey;
   const intradayFallback = lastScan?.basis === 'intraday' && (lastScan?.warnings ?? []).includes('intraday_fallback_eod');
+  const scopeUniverseEmpty = (lastScan?.warnings ?? []).includes('scope_universe_empty');
   const runScan = () => screener.mutate(scanBody, {
     onSuccess: (res) => {
       // 저장본을 로드해 수정 없이 조회한 경우에만 저장본 신원을 붙인다 — dirty/미저장이면
@@ -240,6 +241,9 @@ export function Screener() {
               )}
               {intradayFallback && (
                 <InlineState tone="warn">장중 조회 불가 · 전일 확정 데이터로 표시 중</InlineState>
+              )}
+              {scopeUniverseEmpty && (
+                <InlineState tone="warn">종목 범위가 비어 있음 · 관심종목·히트맵에 종목을 추가하세요</InlineState>
               )}
               {screener.data?.depth_coverage && (
                 // key = 결측 코드 집합. 재조회로 집합이 바뀌면 배너를 새 인스턴스로

@@ -126,9 +126,20 @@ def run_scan(adjusted_path: Path, stocks_path: Path, *,
              conditions: list[ConditionLeaf], universe: ScreenerUniverse,
              limit: int = 1000,
              intraday_rows: pl.DataFrame | None = None,
-             depth_pass: dict[str, list[str]] | None = None) -> list[ScreenerRow]:
+             depth_pass: dict[str, list[str]] | None = None,
+             scope_codes: set[str] | None = None) -> list[ScreenerRow]:
     con = connect_bounded()
-    con.execute(f"CREATE VIEW adj_hist AS SELECT * FROM '{adjusted_path}'")
+    # 스코프(관심∪히트맵)가 있으면 adj_hist 를 코드셋으로 semi-join — 다운스트림 CTE
+    # (base·신고가·MA 윈도우)가 전 종목 이력이 아니라 스코프 크기로 계산돼 리소스가
+    # 유니버스에 비례해 준다. 최종 JOIN 만 좁히면 윈도우는 여전히 전체 위에서 돈다.
+    if scope_codes is not None:
+        con.register("scope_codes", pl.DataFrame(
+            {"code": pl.Series("code", sorted(scope_codes), dtype=pl.Utf8)}))
+        con.execute(
+            f"CREATE VIEW adj_hist AS SELECT h.* FROM '{adjusted_path}' h "
+            "SEMI JOIN scope_codes s ON s.code = h.code")
+    else:
+        con.execute(f"CREATE VIEW adj_hist AS SELECT * FROM '{adjusted_path}'")
     if intraday_rows is not None and intraday_rows.height > 0:
         con.register("intraday_rows", intraday_rows)
         con.execute("""
