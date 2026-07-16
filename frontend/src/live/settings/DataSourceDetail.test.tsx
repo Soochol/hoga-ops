@@ -133,4 +133,55 @@ describe('DataSourceDetail (메인 Settings·복기뷰 공용)', () => {
 
     expect(await screen.findByRole('switch', { name: '프로그램 순매수 저장' })).toBeDisabled();
   });
+
+  it('키움 WS 병행 수집 토글을 렌더하고 PATCH한다', async () => {
+    // usePatchLiveSettings가 patchLiveSettings를 모듈 내부 참조로 호출하므로
+    // apiCall(그 하위)을 spy해 PATCH body를 검증한다.
+    const call = vi.spyOn(apiClient, 'apiCall').mockResolvedValue({ ...SETTINGS, kiwoom_enabled: true });
+    const qc = freshQc();
+    qc.setQueryData(liveSettingsApi.LIVE_SETTINGS_KEY, { ...SETTINGS, kiwoom_enabled: false });
+
+    render(<DataSourceDetail variant="live" />, { wrapper: wrap(qc) });
+
+    const toggle = await screen.findByRole('switch', { name: '키움 WS 병행 수집' });
+    expect(toggle).toHaveAttribute('aria-checked', 'false');
+    fireEvent.click(toggle);
+    // 낙관적 업데이트로 즉시 켜짐 + PATCH body에 kiwoom_enabled:true.
+    await waitFor(() => expect(toggle).toHaveAttribute('aria-checked', 'true'));
+    expect(call).toHaveBeenCalledWith('/api/live/settings', expect.objectContaining({
+      method: 'PATCH', body: JSON.stringify({ kiwoom_enabled: true }),
+    }));
+  });
+
+  it('키움 ON일 때 상태줄에 연결 계정·수집 종목 수를 보인다', async () => {
+    const qc = freshQc();
+    // URL별 라우팅: settings는 kiwoom_enabled:true, status는 kiwoom 관측.
+    vi.spyOn(apiClient, 'apiCall').mockImplementation((url: string) => {
+      if (url.includes('/status')) {
+        return Promise.resolve({
+          running: true, live_set: [], capture_reason: 'ok',
+          kiwoom: { enabled: true, accounts_configured: 2, connected_accounts: 1, subscribed_count: 190, last_tick_ms: null, accounts: [] },
+        });
+      }
+      return Promise.resolve({ ...SETTINGS, kiwoom_enabled: true });
+    });
+
+    render(<DataSourceDetail variant="live" />, { wrapper: wrap(qc) });
+
+    // 상태줄은 처음 '상태 확인 중'으로 뜨고 status 쿼리 해결 후 내용이 채워진다.
+    await waitFor(() =>
+      expect(screen.getByTestId('kiwoom-status-line')).toHaveTextContent('연결 1/2계정'),
+    );
+    expect(screen.getByTestId('kiwoom-status-line')).toHaveTextContent('수집 190종목');
+  });
+
+  it('키움 OFF일 때는 상태줄을 숨긴다', async () => {
+    const qc = freshQc();
+    qc.setQueryData(liveSettingsApi.LIVE_SETTINGS_KEY, { ...SETTINGS, kiwoom_enabled: false });
+
+    render(<DataSourceDetail variant="live" />, { wrapper: wrap(qc) });
+
+    await screen.findByRole('switch', { name: '키움 WS 병행 수집' });
+    expect(screen.queryByTestId('kiwoom-status-line')).toBeNull();
+  });
 });

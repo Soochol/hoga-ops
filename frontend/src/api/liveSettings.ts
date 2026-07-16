@@ -10,6 +10,9 @@ export interface LiveSettings {
   kis_rest_bypass_enabled: boolean;
   heatmap_capture_enabled: boolean;
   screener_depth_autocollect: boolean;
+  // 키움 WS 병행 수집 킬스위치(ADR-0116). 백엔드 신규 필드라 optional — 구 서버
+  // 응답·mock 픽스처엔 없을 수 있어 소비부는 `?? false` 로 폴백한다.
+  kiwoom_enabled?: boolean;
 }
 
 export type LiveSettingsPatch = {
@@ -18,6 +21,7 @@ export type LiveSettingsPatch = {
   kis_rest_bypass_enabled?: boolean;
   heatmap_capture_enabled?: boolean;
   screener_depth_autocollect?: boolean;
+  kiwoom_enabled?: boolean;
 };
 
 export const LIVE_SETTINGS_KEY = ['live', 'settings'] as const;

@@ -33,6 +33,27 @@ export interface LiveStatus {
   // 백엔드 신규 필드라 optional — UI 표시는 후속.
   kis_api_rate_limit_bounces?: number | null;
   kis_rest_bypass_enabled: boolean;
+  // 키움 WS 수집 관측(ADR-0116). kiwoom_enabled off/미배선이면 null. 백엔드 신규
+  // 필드라 optional — 설정 상태줄·커버리지 칩이 소비한다.
+  kiwoom?: KiwoomStatus | null;
+}
+
+export interface KiwoomStatus {
+  enabled: boolean;
+  accounts_configured: number;
+  connected_accounts: number;
+  subscribed_count: number;
+  last_tick_ms: number | null;
+  accounts: KiwoomAccountStatus[];
+}
+
+export interface KiwoomAccountStatus {
+  account_id: number;
+  connected: boolean;
+  sub_expected: number;
+  sub_acked: number;
+  kicked_by_peer: boolean;
+  last_tick_ms: number | null;
 }
 
 /**
