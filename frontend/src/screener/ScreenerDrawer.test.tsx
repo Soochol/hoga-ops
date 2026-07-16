@@ -184,7 +184,7 @@ describe('ScreenerDrawer', () => {
 
     await waitFor(() => expect(useScreenerPanelStore.getState().monitoringActive).toBe(true));
     await waitFor(() => expect(scan).toHaveBeenCalled());          // 시작 즉시 1회 조회
-    expect(screen.getByTestId('screener-monitor-status')).toHaveTextContent('실시간 모니터링 중');
+    expect(screen.getByTestId('screener-monitor-status')).toHaveTextContent('실시간 · 30초');
   });
 
   it('주기 선택: 30초 클릭 시 상태 텍스트와 스토어가 갱신된다', async () => {
@@ -196,11 +196,11 @@ describe('ScreenerDrawer', () => {
     fireEvent.click(screen.getByTestId('screener-monitor-toggle'));   // 시작(SAVE 는 스코프 없음 → 자동 30초)
     await waitFor(() => expect(useScreenerPanelStore.getState().monitoringActive).toBe(true));
     const status = screen.getByTestId('screener-monitor-status');
-    expect(status).toHaveTextContent('30초마다 갱신');
+    expect(status).toHaveTextContent('실시간 · 30초');
 
     fireEvent.click(within(status).getByRole('button', { name: '10초' }));
     await waitFor(() => expect(useScreenerPanelStore.getState().monitorPeriodMs).toBe(10_000));
-    expect(screen.getByTestId('screener-monitor-status')).toHaveTextContent('10초마다 갱신');
+    expect(screen.getByTestId('screener-monitor-status')).toHaveTextContent('실시간 · 10초');
   });
 
   it('종료 버튼: 모니터링을 끄고 상태 표시를 감춘다', async () => {

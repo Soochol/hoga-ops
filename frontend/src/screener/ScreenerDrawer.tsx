@@ -345,33 +345,51 @@ export function ScreenerDrawer() {
             onSelect={setSelectedSavedId}
           />
         )}
-        {/* 시작 = 즉시 1회 조회 + 실시간 유지. 종료 = 중지(마지막 결과 유지). 별도의
-            수동 조회 버튼은 두지 않는다 — 시작이 즉시 조회를 겸한다. */}
-        <ToolbarButton
-          tone={monitoringActive ? undefined : 'primary'}
-          onClick={() => setMonitoringActive(!monitoringActive)}
-          disabled={notSeeded || !selected}
-          className="w-full py-1.5"
-          aria-pressed={monitoringActive}
-          data-testid="screener-monitor-toggle"
-        >
-          {monitoringActive ? '■ 종료' : '▶ 시작'}
-        </ToolbarButton>
-        {monitoringActive && (
-          <div className="flex flex-col gap-1.5" data-testid="screener-monitor-status">
-            <div className="flex items-center gap-2 text-xs text-fg-dim">
-              {monitor.paused === 'closed' ? (
-                <span className="text-fg-dimmer">장마감 — 개장 시 자동 재개</span>
-              ) : (
-                <>
-                  <span
-                    aria-hidden
-                    className="inline-block h-1.5 w-1.5 animate-pulse rounded-full"
-                    style={{ backgroundColor: 'var(--accent)' }}
-                  />
-                  <span>실시간 모니터링 중 · {Math.round(effectivePeriodMs / 1000)}초마다 갱신</span>
-                </>
-              )}
+        {/* 대기 = 시작(즉시 1회 조회 + 실시간 유지)만. 별도의 수동 조회 버튼은 두지
+            않는다 — 시작이 즉시 조회를 겸한다. */}
+        {!monitoringActive ? (
+          <ToolbarButton
+            tone="primary"
+            onClick={() => setMonitoringActive(true)}
+            disabled={notSeeded || !selected}
+            className="w-full py-1.5"
+            aria-pressed={false}
+            data-testid="screener-monitor-toggle"
+          >
+            ▶ 시작
+          </ToolbarButton>
+        ) : (
+          // 활성 = '켜짐'을 accent-tint 배경 + 좌측 accent 보더로 표현하는 단일 패널.
+          // 상태·종료를 한 줄에, 주기 선택은 그 안 하단에 — 하나의 라이브 단위로 읽힘.
+          <div
+            data-testid="screener-monitor-status"
+            className="flex flex-col gap-2 rounded-lg border-l-2 bg-tint-selection px-2.5 py-2"
+            style={{ borderLeftColor: 'var(--accent)' }}
+          >
+            <div className="flex items-center justify-between gap-2">
+              <span className="flex min-w-0 items-center gap-1.5 text-xs text-fg">
+                {monitor.paused === 'closed' ? (
+                  <span className="truncate text-fg-dim">장마감 — 대기 중</span>
+                ) : (
+                  <>
+                    <span
+                      aria-hidden
+                      className="inline-block h-1.5 w-1.5 shrink-0 animate-pulse rounded-full"
+                      style={{ backgroundColor: 'var(--accent)' }}
+                    />
+                    <span className="truncate">실시간 · {Math.round(effectivePeriodMs / 1000)}초</span>
+                  </>
+                )}
+              </span>
+              <button
+                type="button"
+                onClick={() => setMonitoringActive(false)}
+                aria-pressed
+                data-testid="screener-monitor-toggle"
+                className="shrink-0 rounded-md border border-border px-3 py-[3px] text-xs text-fg transition-colors hover:border-transparent hover:bg-bg-input-hover"
+              >
+                종료
+              </button>
             </div>
             <SegmentedControl aria-label="갱신 주기" className="self-start">
               {MONITOR_PERIOD_CHOICES_MS.map((choice) => {
