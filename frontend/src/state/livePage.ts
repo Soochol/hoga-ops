@@ -170,6 +170,10 @@ type Store = Persisted & PersistedIndicators & {
     panePrefsByTimeframe: PersistedPanePrefsByTimeframe;
     flags: PresetIndicatorFlags;
   }) => void;
+  /** 모든 지표 설정(색·on/off·MA·per-timeframe)을 기본값으로 되돌린다. pane 배열
+   *  순서(레이아웃, ADR-0114)는 사용자 구성이라 보존한다. chartPrefs(수치/토글)는
+   *  별도 스토어라 호출부에서 함께 리셋한다. */
+  resetIndicators: () => void;
   setVolumeEnabled: (enabled: boolean) => void;
   setMovingAverageHidden: (hidden: boolean) => void;
   setAskPeakEnabled: (enabled: boolean) => void;
@@ -503,6 +507,13 @@ export const useLivePageStore = create<Store>((set, get) => ({
       panePrefsByTimeframe: normalizePanePrefsByTimeframe(panePrefsByTimeframe),
       ...flagPatch,
     });
+    persistIndicators(snapshotIndicators(get));
+  },
+
+  resetIndicators: () => {
+    // 전 지표 기본값 = 빈 입력을 정규화한 결과. 레이아웃(paneOrder)만 현재 값 유지.
+    const defaults = mergeLiveIndicatorPrefs(undefined);
+    set({ ...defaults, paneOrder: get().paneOrder });
     persistIndicators(snapshotIndicators(get));
   },
 

@@ -27,7 +27,8 @@ describe('IndicatorPanel', () => {
     });
     renderPanel();
     const checkboxes = screen.getAllByRole('checkbox');
-    expect(checkboxes).toHaveLength(15); // 상단 3 + 10호가 8 + 프로그램 1 + 거래원 3
+    // 상단 3 + 10호가 7(매도/매수 최대벽 병합) + 프로그램 1 + 거래원 3
+    expect(checkboxes).toHaveLength(14);
     expect(checkboxes.filter((c) => (c as HTMLButtonElement).disabled)).toHaveLength(0);
     for (const name of ['총잔량', '호가비', '체결강도', '연속체결 매물대 분포', '프로그램 순매수', '당일 최대 매물대']) {
       const cb = screen.getByRole('checkbox', { name }) as HTMLButtonElement;
@@ -58,10 +59,12 @@ describe('IndicatorPanel', () => {
     expect(screen.getByRole('dialog')).toHaveClass('z-[60]');
     expect(screen.getByTestId('indicator-panel-shell')).toHaveClass('bg-bg-card');
     const nav = screen.getByRole('navigation', { name: '지표 카테고리' });
-    // nav는 border-r 대신 bg-subtle 톤 스텝으로 분리(2026-07-15 borderless 통일).
-    expect(nav).toHaveClass('bg-bg-subtle');
+    // 좌측 컬럼(nav + 리셋 푸터)을 감싼 래퍼가 border-r 대신 bg-subtle 톤 스텝으로
+    // 분리(2026-07-15 borderless 통일). 래퍼의 부모가 2-컬럼 그리드.
+    const navColumn = nav.parentElement!;
+    expect(navColumn).toHaveClass('bg-bg-subtle');
     expect(nav).not.toHaveClass('border-r');
-    expect(nav.parentElement).toHaveClass('grid-cols-[240px_minmax(0,1fr)]');
+    expect(navColumn.parentElement).toHaveClass('grid-cols-[240px_minmax(0,1fr)]');
     expect(screen.getByText('10호가 지표')).toHaveClass('uppercase');
   });
 
@@ -76,7 +79,7 @@ describe('IndicatorPanel', () => {
     expect(screen.queryByText('10호가 지표')).toBeNull();
     expect(screen.queryByText('프로그램 지표')).toBeNull();
     expect(screen.getByText('거래원 지표')).toBeTruthy();
-    for (const name of ['총잔량', '호가비', '체결강도', '연속체결 매물대 분포', '프로그램 순매수', '당일 최대 매물대', '당일 매도 최대벽', '당일 매수 최대벽']) {
+    for (const name of ['총잔량', '호가비', '체결강도', '연속체결 매물대 분포', '프로그램 순매수', '당일 최대 매물대', '당일 최대벽']) {
       expect(screen.queryByRole('checkbox', { name })).toBeNull();
       expect(screen.queryByRole('button', { name })).toBeNull();
     }
@@ -91,31 +94,31 @@ describe('IndicatorPanel', () => {
     expect(screen.getByRole('checkbox', { name: '거래량' })).toBeTruthy();
   });
 
-  it('당일 매도 최대벽은 10호가 지표 그룹(체결강도 뒤)에 위치', () => {
+  it('당일 최대벽(매도/매수 병합)은 10호가 지표 그룹(체결강도 뒤)에 위치', () => {
     renderPanel();
     // 네비 라벨 버튼은 CATEGORIES 순서대로 렌더된다(체크박스는 role=checkbox라 제외).
     const labels = screen.getAllByRole('button').map((b) => b.textContent);
-    const askPeak = labels.indexOf('당일 매도 최대벽');
+    const peakWalls = labels.indexOf('당일 최대벽');
     const poc = labels.indexOf('당일 최대 매물대');
     const distribution = labels.indexOf('연속체결 매물대 분포');
     const fill = labels.indexOf('체결강도');
     const program = labels.indexOf('프로그램 순매수');
-    expect(askPeak).toBeGreaterThan(fill); // 호가 그룹 안, 체결강도 뒤
+    expect(peakWalls).toBeGreaterThan(fill); // 호가 그룹 안, 체결강도 뒤
     expect(distribution).toBeGreaterThan(fill);
     expect(poc).toBeGreaterThan(distribution);
     expect(poc).toBeGreaterThan(fill);
-    expect(askPeak).toBeGreaterThan(poc);
-    expect(askPeak).toBeLessThan(program);
+    expect(peakWalls).toBeGreaterThan(poc);
+    expect(peakWalls).toBeLessThan(program);
   });
 
   it('프로그램 순매수는 거래원 지표 뒤에 위치', () => {
     renderPanel();
     const labels = screen.getAllByRole('button').map((b) => b.textContent);
-    const bidPeak = labels.indexOf('당일 매수 최대벽');
+    const peakWalls = labels.indexOf('당일 최대벽');
     const program = labels.indexOf('프로그램 순매수');
     const foreign = labels.indexOf('외국인 순매수량');
-    expect(program).toBeGreaterThan(bidPeak);
-    expect(foreign).toBeGreaterThan(bidPeak);
+    expect(program).toBeGreaterThan(peakWalls);
+    expect(foreign).toBeGreaterThan(peakWalls);
     expect(program).toBeGreaterThan(foreign);
   });
 
@@ -149,7 +152,7 @@ describe('IndicatorPanel', () => {
 
   it('매도 최대벽 선택 시 스타일 pane과 보이는 최신 봉 기준 토글 표시', () => {
     renderPanel();
-    fireEvent.click(screen.getByRole('button', { name: '당일 매도 최대벽' }));
+    fireEvent.click(screen.getByRole('button', { name: '당일 최대벽' }));
     expect(screen.getByRole('button', { name: '체결된 벽 스타일 선택' })).toBeTruthy();
     expect(screen.getByRole('button', { name: '미체결된 벽 스타일 선택' })).toBeTruthy();
     expect(screen.getByRole('button', { name: '보이는 영역 최대벽 스타일 선택' })).toBeTruthy();
@@ -159,7 +162,7 @@ describe('IndicatorPanel', () => {
 
   it('매도 최대벽 상세 pane에 체결된/미체결된 벽 표시 개수 controls를 렌더한다', () => {
     renderPanel();
-    fireEvent.click(screen.getByRole('button', { name: '당일 매도 최대벽' }));
+    fireEvent.click(screen.getByRole('button', { name: '당일 최대벽' }));
 
     expect(screen.getByText('체결된 벽 표시 개수')).toBeTruthy();
     expect(screen.getByText('미체결된 벽 표시 개수')).toBeTruthy();
@@ -197,7 +200,7 @@ describe('IndicatorPanel', () => {
   it('renders broker late-entry controls under 거래원 지표', async () => {
     renderPanel();
     await userEvent.click(screen.getByText('신규 거래원 등장'));
-    expect(screen.getByText('기준 시각 (HHMM)')).toBeTruthy();
+    expect(screen.getByText('기준 시각')).toBeTruthy();
     expect(screen.queryByText(new RegExp(['부재', '시간'].join(' ')))).toBeNull();
     expect(screen.getByText('표시 방향')).toBeTruthy();
     expect(screen.getByRole('button', { name: '둘다' })).toBeTruthy();
@@ -207,19 +210,28 @@ describe('IndicatorPanel', () => {
     expect(screen.getByText('매도 색상')).toBeTruthy();
   });
 
-  it('allows entering broker late-entry start time as four HHMM digits', async () => {
+  it('신규 거래원 등장 기준 시각을 HH:MM으로 표시하고 HHMM 입력을 정규화한다', async () => {
     useLivePageStore.setState({ brokerLateEntryStartHHMM: 930 });
     renderPanel();
     await userEvent.click(screen.getByText('신규 거래원 등장'));
 
     const input = screen.getByRole('textbox', { name: '신규 거래원 등장 기준 시각' }) as HTMLInputElement;
+    // 저장값 930 → HH:MM 표시.
+    expect(input.value).toBe('09:30');
+
+    // 네 자리 HHMM 입력도 계속 허용하되, blur 시 HH:MM으로 정규화.
     await userEvent.clear(input);
     await userEvent.type(input, '0900');
-
-    expect(input.value).toBe('0900');
     fireEvent.blur(input);
     expect(useLivePageStore.getState().brokerLateEntryStartHHMM).toBe(900);
-    expect(input.value).toBe('0900');
+    expect(input.value).toBe('09:00');
+
+    // 콜론 형식 입력도 동일하게 파싱.
+    await userEvent.clear(input);
+    await userEvent.type(input, '10:05');
+    fireEvent.blur(input);
+    expect(useLivePageStore.getState().brokerLateEntryStartHHMM).toBe(1005);
+    expect(input.value).toBe('10:05');
   });
 
   it('clicking 외국인 순매수량 toggles foreignNetEnabled', async () => {
@@ -357,14 +369,16 @@ describe('IndicatorPanel', () => {
 
   it('매수 최대벽 선택 시 보이는 최신 봉 기준 토글 표시', () => {
     renderPanel();
-    fireEvent.click(screen.getByRole('button', { name: '당일 매수 최대벽' }));
+    fireEvent.click(screen.getByRole('button', { name: '당일 최대벽' }));
+    fireEvent.click(screen.getByRole('tab', { name: '매수' }));
     expect(screen.getByTestId('settings-toggle-bidPeakVisibleTimeCutoff')).toBeTruthy();
     expect(screen.getByTestId('settings-toggle-bidPeakLabelEnabled')).toBeTruthy();
   });
 
   it('매수 최대벽 상세 pane에 체결된/미체결된 벽 표시 개수 controls를 렌더한다', () => {
     renderPanel();
-    fireEvent.click(screen.getByRole('button', { name: '당일 매수 최대벽' }));
+    fireEvent.click(screen.getByRole('button', { name: '당일 최대벽' }));
+    fireEvent.click(screen.getByRole('tab', { name: '매수' }));
 
     expect(screen.getByText('체결된 벽 표시 개수')).toBeTruthy();
     expect(screen.getByText('미체결된 벽 표시 개수')).toBeTruthy();
@@ -409,6 +423,112 @@ describe('IndicatorPanel', () => {
     expect(useLivePageStore.getState().volumeEnabled).toBe(true);
   });
 
+  it('상세 헤더에 지표명과 마스터 토글을 표시한다', () => {
+    useLivePageStore.setState({ movingAverageEnabled: true });
+    renderPanel();
+    // 헤더 h2가 그룹명이 아니라 선택된 지표명을 보여준다.
+    expect(screen.getByRole('heading', { name: '이동평균선', level: 2 })).toBeTruthy();
+    // 헤더 마스터 토글(switch)은 nav 체크박스와 같은 상태를 미러링한다.
+    const masterSwitch = screen.getByRole('switch', { name: '이동평균선 표시' });
+    expect(masterSwitch.getAttribute('aria-checked')).toBe('true');
+    fireEvent.click(masterSwitch);
+    expect(useLivePageStore.getState().movingAverageEnabled).toBe(false);
+    expect(masterSwitch.getAttribute('aria-checked')).toBe('false');
+  });
+
+  it('헤더 마스터 토글과 nav 체크박스가 같은 상태를 공유한다', () => {
+    useLivePageStore.setState({ movingAverageEnabled: false });
+    renderPanel();
+    // 이동평균선 상세로 이동(기본 선택이지만 명시).
+    fireEvent.click(screen.getByRole('button', { name: '이동평균선' }));
+    const masterSwitch = screen.getByRole('switch', { name: '이동평균선 표시' });
+    expect(masterSwitch.getAttribute('aria-checked')).toBe('false');
+    // nav 체크박스로 켜면 헤더 토글도 즉시 켜진 상태로 반영된다.
+    fireEvent.click(screen.getByRole('checkbox', { name: '이동평균선' }));
+    expect(useLivePageStore.getState().movingAverageEnabled).toBe(true);
+    expect(masterSwitch.getAttribute('aria-checked')).toBe('true');
+  });
+
+  it('당일 최대벽 nav 체크박스(병합 마스터)는 매도·매수를 함께 토글한다', () => {
+    useLivePageStore.setState({ askPeakEnabled: false, bidPeakEnabled: false });
+    renderPanel();
+    const cb = screen.getByRole('checkbox', { name: '당일 최대벽' });
+    expect(cb.getAttribute('aria-checked')).toBe('false');
+    // 둘 다 꺼짐 → 클릭 시 둘 다 켜짐.
+    fireEvent.click(cb);
+    expect(useLivePageStore.getState().askPeakEnabled).toBe(true);
+    expect(useLivePageStore.getState().bidPeakEnabled).toBe(true);
+    expect(cb.getAttribute('aria-checked')).toBe('true');
+    // 한쪽만 켜져 있어도 checked=true, 클릭 시 둘 다 꺼짐.
+    useLivePageStore.setState({ askPeakEnabled: true, bidPeakEnabled: false });
+    expect(cb.getAttribute('aria-checked')).toBe('true');
+    fireEvent.click(cb);
+    expect(useLivePageStore.getState().askPeakEnabled).toBe(false);
+    expect(useLivePageStore.getState().bidPeakEnabled).toBe(false);
+  });
+
+  it('체크박스 클릭은 상세 pane을 전환하지 않는다', () => {
+    renderPanel();
+    // 기본 상세는 이동평균선. 다른 카테고리 체크박스를 눌러도 이동평균선 상세가 유지된다.
+    expect(screen.getByText(/지난 n일 동안/)).toBeTruthy();
+    fireEvent.click(screen.getByRole('checkbox', { name: '거래량' }));
+    expect(screen.getByText(/지난 n일 동안/)).toBeTruthy();
+    expect(screen.queryByText(/거래량을 막대로/)).toBeNull();
+  });
+
+  it('타임프레임별 저장 지표에는 스코프 칩을 표시한다', () => {
+    renderPanel({ timeframe: 'D' });
+    fireEvent.click(screen.getByRole('button', { name: '거래량' }));
+    expect(screen.getByText('일봉별 표시')).toBeTruthy();
+  });
+
+  it('전역 지표에는 스코프 칩을 표시하지 않는다', () => {
+    renderPanel();
+    // 이동평균선은 타임프레임 무관 전역 지표 — 칩 없음.
+    expect(screen.queryByText(/별 표시$/)).toBeNull();
+  });
+
+  it('기본값 복원은 2단계 확인 후 지표·chartPrefs를 기본값으로 되돌린다', () => {
+    // 기본에서 벗어난 상태를 만든다.
+    useLivePageStore.setState({
+      askPeakEnabled: true,
+      volumeDistributionColor: '#22C55E',
+      movingAverageEnabled: false,
+    });
+    useChartPrefsStore.setState({ surgeStartHHMM: 1030, ratioOutlierThreshold: 500 });
+    renderPanel();
+
+    // 1단계: '기본값 복원' → 확인 행 노출(아직 리셋 안 됨).
+    fireEvent.click(screen.getByRole('button', { name: '기본값 복원' }));
+    expect(useLivePageStore.getState().askPeakEnabled).toBe(true);
+    expect(screen.getByText('모두 초기화?')).toBeTruthy();
+
+    // 취소는 되돌리지 않는다.
+    fireEvent.click(screen.getByRole('button', { name: '취소' }));
+    expect(screen.queryByText('모두 초기화?')).toBeNull();
+    expect(useLivePageStore.getState().askPeakEnabled).toBe(true);
+
+    // 2단계: 다시 열고 '복원' → 실제 리셋.
+    fireEvent.click(screen.getByRole('button', { name: '기본값 복원' }));
+    fireEvent.click(screen.getByRole('button', { name: '복원' }));
+    expect(useLivePageStore.getState().askPeakEnabled).toBe(false);
+    expect(useLivePageStore.getState().volumeDistributionColor).toBe('#64748B');
+    expect(useLivePageStore.getState().movingAverageEnabled).toBe(true);
+    expect(useChartPrefsStore.getState().surgeStartHHMM).toBe(900);
+    expect(useChartPrefsStore.getState().ratioOutlierThreshold).toBe(100);
+  });
+
+  it('기본값 복원은 pane 배열 순서(레이아웃)를 보존한다', () => {
+    const customOrder = ['candle', 'ratio', 'volume'] as unknown as never;
+    useLivePageStore.setState({ paneOrder: customOrder, volumeDistributionColor: '#22C55E' });
+    renderPanel();
+    fireEvent.click(screen.getByRole('button', { name: '기본값 복원' }));
+    fireEvent.click(screen.getByRole('button', { name: '복원' }));
+    // 색은 기본값으로, paneOrder는 그대로.
+    expect(useLivePageStore.getState().volumeDistributionColor).toBe('#64748B');
+    expect(useLivePageStore.getState().paneOrder).toEqual(['candle', 'ratio', 'volume']);
+  });
+
   it('Escape calls onClose', () => {
     const onClose = vi.fn();
     renderPanel({ onClose });
@@ -438,11 +558,12 @@ describe('IndicatorPanel', () => {
     expect(onClose).toHaveBeenCalledTimes(1);
   });
 
-  it('당일 매도 최대벽 카테고리 토글', () => {
+  it('당일 최대벽 매도 서브탭의 표시 토글로 askPeakEnabled 반전', () => {
     useLivePageStore.setState({ askPeakEnabled: false });
     renderPanel();
-    const cb = screen.getByRole('checkbox', { name: '당일 매도 최대벽' });
-    fireEvent.click(cb);
+    fireEvent.click(screen.getByRole('button', { name: '당일 최대벽' }));
+    // 기본 서브탭은 매도.
+    fireEvent.click(screen.getByRole('switch', { name: '매도 최대벽 표시' }));
     expect(useLivePageStore.getState().askPeakEnabled).toBe(true);
   });
 
@@ -473,7 +594,10 @@ describe('IndicatorPanel', () => {
     fireEvent.change(screen.getByRole('spinbutton', { name: '연속체결 매물대 분포 구간 수' }), {
       target: { value: '18' },
     });
+    // 색상은 이제 스와치 trigger→팝오버 패턴(ColorSwatchPicker). 팝오버를 먼저 연다.
+    fireEvent.click(screen.getByRole('button', { name: '연속체결 매물대 분포 색상 선택' }));
     fireEvent.click(screen.getByRole('button', { name: '연속체결 매물대 분포 색상 #22C55E' }));
+    fireEvent.click(screen.getByRole('button', { name: '연속체결 매물대 분포 최대 구간 색상 선택' }));
     fireEvent.click(screen.getByRole('button', { name: '연속체결 매물대 분포 최대 구간 색상 #EF4444' }));
     expect(useLivePageStore.getState().volumeDistributionRangeCount).toBe(18);
     expect(useLivePageStore.getState().volumeDistributionColor).toBe('#22C55E');
@@ -497,7 +621,7 @@ describe('IndicatorPanel', () => {
     expect(screen.queryByRole('button', { name: '±0.25%' })).toBeNull();
     expect(screen.queryByRole('button', { name: '±0.5%' })).toBeNull();
     expect(screen.queryByRole('button', { name: '±1%' })).toBeNull();
-    expect(screen.getByRole('button', { name: '당일 최대 매물대 색상 #22C55E' })).toBeTruthy();
+    expect(screen.getByRole('button', { name: '당일 최대 매물대 색상 선택' })).toBeTruthy();
     expect(screen.getByRole('slider', { name: '당일 최대 매물대 투명도' })).toBeTruthy();
     expect(screen.getByText(/동시호가 제외/)).toBeTruthy();
   });
@@ -509,6 +633,7 @@ describe('IndicatorPanel', () => {
     });
     renderPanel();
     fireEvent.click(screen.getByRole('button', { name: '당일 최대 매물대' }));
+    fireEvent.click(screen.getByRole('button', { name: '당일 최대 매물대 색상 선택' }));
     fireEvent.click(screen.getByRole('button', { name: '당일 최대 매물대 색상 #22C55E' }));
     fireEvent.change(screen.getByRole('slider', { name: '당일 최대 매물대 투명도' }), {
       target: { value: '28' },
@@ -519,23 +644,25 @@ describe('IndicatorPanel', () => {
 
   it('매도 최대벽 선택 시 스타일 pane(MAStylePicker) 표시', () => {
     renderPanel();
-    fireEvent.click(screen.getByRole('button', { name: '당일 매도 최대벽' }));
+    fireEvent.click(screen.getByRole('button', { name: '당일 최대벽' }));
     expect(screen.getByRole('button', { name: '체결된 벽 스타일 선택' })).toBeTruthy();
     expect(screen.getByRole('button', { name: '미체결된 벽 스타일 선택' })).toBeTruthy();
     expect(screen.getByRole('button', { name: '보이는 영역 최대벽 스타일 선택' })).toBeTruthy();
   });
 
-  it('당일 매수 최대벽 카테고리 토글', () => {
+  it('당일 최대벽 매수 서브탭의 표시 토글로 bidPeakEnabled 반전', () => {
     useLivePageStore.setState({ bidPeakEnabled: false });
     renderPanel();
-    const cb = screen.getByRole('checkbox', { name: '당일 매수 최대벽' });
-    fireEvent.click(cb);
+    fireEvent.click(screen.getByRole('button', { name: '당일 최대벽' }));
+    fireEvent.click(screen.getByRole('tab', { name: '매수' }));
+    fireEvent.click(screen.getByRole('switch', { name: '매수 최대벽 표시' }));
     expect(useLivePageStore.getState().bidPeakEnabled).toBe(true);
   });
 
   it('매수 최대벽 선택 시 스타일 pane과 토글 표시', () => {
     renderPanel();
-    fireEvent.click(screen.getByRole('button', { name: '당일 매수 최대벽' }));
+    fireEvent.click(screen.getByRole('button', { name: '당일 최대벽' }));
+    fireEvent.click(screen.getByRole('tab', { name: '매수' }));
     expect(screen.getByRole('button', { name: '체결된 벽 스타일 선택' })).toBeTruthy();
     expect(screen.getByRole('button', { name: '미체결된 벽 스타일 선택' })).toBeTruthy();
     expect(screen.getByTestId('settings-toggle-bidPeakIntraMax')).toBeTruthy();

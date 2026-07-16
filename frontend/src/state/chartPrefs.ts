@@ -227,6 +227,9 @@ export type NumericPrefDef = {
   readonly enabledBy?: ChartToggleKey;
   /** UI surface this pref belongs to. Unset → chart settings modal. */
   readonly category?: ChartToggleCategory;
+  /** Render hint. `'time'` → HH:MM 시각 입력(TimeOfDayInput). 값은 여전히
+   *  HHMM 정수로 저장. 미지정 → 일반 숫자 입력. */
+  readonly kind?: 'time';
 };
 
 export const CHART_NUMERIC_PREFS = [
@@ -264,14 +267,15 @@ export const CHART_NUMERIC_PREFS = [
   },
   {
     key: 'surgeStartHHMM',
-    label: '급증 마커 시작 시각 (HHMM)',
-    description: '이 시각 이후에 발생한 급증만 마커로 표시합니다. HHMM 형식 — 예: 930 = 09:30, 1000 = 10:00. 기본 900(장 시작 09:00, 전체 표시). 직전 고가 추적·재무장은 장 시작부터 계속되며, 가려지는 건 표시뿐입니다(장 초반 변동성 마커 숨김용).',
+    label: '급증 마커 시작 시각',
+    description: '이 시각 이후에 발생한 급증만 마커로 표시합니다. 기본 09:00(장 시작, 전체 표시). 직전 고가 추적·재무장은 장 시작부터 계속되며, 가려지는 건 표시뿐입니다(장 초반 변동성 마커 숨김용).',
     default: 900,
     // HHMM 정수. 900(09:00, 정규장 시작)~1520(15:20, 마감 동시호가 시작 — 그 뒤는 어차피 마커 없음).
     // 분 자리(00–59)를 벗어난 값(예 960)은 hhmmToMinute에서 10:00으로 자연 환산되어 무해.
     min: 900,
     max: 1520,
     enabledBy: 'surgeMarkerEnabled',
+    kind: 'time',
   },
   {
     key: 'askPeakAllPriceRankLimit',

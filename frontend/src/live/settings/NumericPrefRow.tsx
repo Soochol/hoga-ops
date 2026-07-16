@@ -6,6 +6,8 @@ import {
   type NumericPrefKey,
 } from '../../state/chartPrefs';
 import { SettingsRow } from './SettingsRow';
+import TimeOfDayInput from './TimeOfDayInput';
+import { formatHhmm } from '../../util/tradingTime';
 
 export default function NumericPrefRow({ def }: { def: NumericPrefDef }) {
   const value = useChartPrefsStore((s) => s[def.key as NumericPrefKey]);
@@ -18,6 +20,25 @@ export default function NumericPrefRow({ def }: { def: NumericPrefDef }) {
   useEffect(() => {
     setInputValue(String(value));
   }, [value]);
+
+  // 시각 종류는 HH:MM 입력(TimeOfDayInput)으로 통일. 값은 HHMM 정수 그대로 저장.
+  // 범위 접미어는 숫자 대신 포맷된 시각(09:00–15:20)으로 표시한다.
+  if (def.kind === 'time') {
+    return (
+      <SettingsRow
+        label={def.label}
+        description={`${def.description} (${formatHhmm(def.min)}–${formatHhmm(def.max)})`}
+        disabled={!gateEnabled}
+      >
+        <TimeOfDayInput
+          hhmm={value}
+          onCommit={(hhmm) => setNumericPref(def.key as NumericPrefKey, hhmm)}
+          ariaLabel={def.label}
+          disabled={!gateEnabled}
+        />
+      </SettingsRow>
+    );
+  }
 
   const commit = () => {
     const trimmed = inputValue.trim();

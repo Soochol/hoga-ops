@@ -5,6 +5,7 @@ import {
   type SignalAlertSettings,
 } from '../api/signalAlerts';
 import { SettingsRow, ToggleSwitch } from '../live/settings/SettingsRow';
+import { formatHhmm, parseTradingTimeInput } from '../util/tradingTime';
 
 type SignalAlertRule = SignalAlertSettings['sell_total_renewal'];
 
@@ -40,7 +41,7 @@ function SignalAlertSettingsEditor({ serverRule }: { serverRule: SignalAlertRule
   };
 
   const commitStartTime = () => {
-    const next = parseTimeInput(startTime);
+    const next = parseTradingTimeInput(startTime);
     if (next === null) {
       setStartTime(formatHhmm(draftRule.start_hhmm));
       return;
@@ -117,40 +118,3 @@ function SignalAlertSettingsEditor({ serverRule }: { serverRule: SignalAlertRule
   );
 }
 
-function formatHhmm(hhmm: number): string {
-  const hours = String(Math.floor(hhmm / 100)).padStart(2, '0');
-  const minutes = String(hhmm % 100).padStart(2, '0');
-  return `${hours}:${minutes}`;
-}
-
-function parseTimeInput(value: string): number | null {
-  const trimmed = value.trim();
-  if (/^\d{3,4}$/.test(trimmed)) {
-    const hhmm = Number(trimmed);
-    const hours = Math.floor(hhmm / 100);
-    const minutes = hhmm % 100;
-    return validateHhmm(hours, minutes);
-  }
-
-  const [hoursRaw, minutesRaw] = trimmed.split(':');
-  const hours = Number(hoursRaw);
-  const minutes = Number(minutesRaw);
-  return validateHhmm(hours, minutes);
-}
-
-function validateHhmm(hours: number, minutes: number): number | null {
-  if (
-    !Number.isInteger(hours) ||
-    !Number.isInteger(minutes) ||
-    hours < 0 ||
-    hours > 23 ||
-    minutes < 0 ||
-    minutes > 59
-  ) {
-    return null;
-  }
-  if (hours < 9 || hours > 15 || (hours === 15 && minutes > 20)) {
-    return null;
-  }
-  return hours * 100 + minutes;
-}
