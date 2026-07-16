@@ -95,7 +95,7 @@ def ensure_minute_client(data_dir: Path):
     공유한다(발급 캐시 재사용, 실측 지정단말기 락 회피에 필수). kiwoom_enabled
     게이트는 호출자(api._resolve_kiwoom_minute_fetcher)가 본다.
     """
-    global _minute_client
+    global _minute_client  # noqa: PLW0603 — 모듈 싱글톤 지연 생성(토큰 provider 공유)
     if _minute_client is not None:
         return _minute_client
     prov = ensure_token_provider_for_account(0, data_dir)
@@ -117,7 +117,7 @@ def close_all() -> None:
 
     분봉 클라이언트(httpx.AsyncClient)는 참조만 드롭(aclose는 루프 필요라 shutdown
     시점에 불안정 — 소켓 정리는 GC/프로세스 종료에 위임, best-effort)."""
-    global _minute_client
+    global _minute_client  # noqa: PLW0603 — 모듈 싱글톤 리셋(프로세스 종료 시)
     _minute_client = None
     for prov in list(_token_providers.values()):
         with contextlib.suppress(Exception):
