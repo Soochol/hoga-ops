@@ -13,8 +13,20 @@ vi.mock('../api/screener', async (orig) => ({
   getScreenerStatus: vi.fn(() => Promise.resolve({ status: 'ok', last_raw_date: '20260530', days_behind: 0 })),
   triggerScreenerUpdate: vi.fn(),
 }));
+// 페이지 진입 시 저장 조건검색이 자동 로드된다(빈 빌더 = 조회 비활성). 기본 mock 은
+// 저장본 1개를 반환해 대부분의 테스트가 "자동 로드 → 조회 가능" 경로를 타게 한다.
+const { defaultSaves } = vi.hoisted(() => ({
+  defaultSaves: () => ({
+    schema_version: 1,
+    saves: [{
+      id: 'default1', name: '기본조건',
+      conditions: [{ id: 'c1', type: 'trade_value' as const, params: { min_eok: 100 } }],
+      universe: {}, created_at_ms: 1, updated_at_ms: 1,
+    }],
+  }),
+}));
 vi.mock('../api/savedScreeners', () => ({
-  listSaves: vi.fn(() => Promise.resolve({ schema_version: 1, saves: [] })),
+  listSaves: vi.fn(() => Promise.resolve(defaultSaves())),
   createSave: vi.fn(), updateSave: vi.fn(), deleteSave: vi.fn(),
 }));
 // 표시는 순수 라이브(EOD 폴백 없음) — quote 미도착 행은 '—'. 기본 mock 은 스캔 코퍼스와
@@ -70,14 +82,26 @@ beforeEach(() => {
 });
 
 // 오버레이 테스트가 주입한 quote 가 다음 테스트로 새지 않도록 매 테스트 후 기본 map 복구.
+// persist 된 anchor id(screenerEditor.v1)도 지워 자동 로드가 테스트 간 새지 않게 한다.
 afterEach(() => {
   vi.mocked(useQuoteByCode).mockReturnValue(defaultQuoteMap());
   activateLiveCode.mockClear();
+  localStorage.clear();
+  // C4 race 테스트가 mockResolvedValue(지속)로 saves 를 갈아끼우므로 기본 구현 복구.
+  vi.mocked(listSaves).mockImplementation(() => Promise.resolve(defaultSaves()));
 });
 
 function renderPage() {
   const qc = new QueryClient();
   return render(<QueryClientProvider client={qc}><MemoryRouter><Screener /></MemoryRouter></QueryClientProvider>);
+}
+
+// 저장 조건 자동 로드가 끝나 조회가 가능해질 때까지 대기. 빈 빌더에선 조회가
+// 비활성이므로, 조회를 누르는 테스트는 반드시 이 헬퍼를 거친다.
+async function renderPageReady() {
+  const r = renderPage();
+  await waitFor(() => expect(screen.getByRole('button', { name: '조회' })).toBeEnabled());
+  return r;
 }
 
 function resultNames() {
@@ -89,7 +113,7 @@ function sortButton() {
 }
 
 it('조회 결과 액션에는 관심 그룹 하트만 표시한다', async () => {
-  renderPage();
+  await renderPageReady();
   fireEvent.click(screen.getByText('조회'));
   await screen.findByText('삼성전자');
   const row = screen.getByRole('button', { name: '삼성전자 005930 호가창 열기' });
@@ -112,7 +136,7 @@ it('renders shared top action buttons without changing the screener workflow', a
 });
 
 it('runs scan and renders row; click sets the active tab code', async () => {
-  renderPage();
+  await renderPageReady();
   fireEvent.click(screen.getByText('조회'));
   await waitFor(() => screen.getByText('삼성전자'));
   fireEvent.click(screen.getByText('삼성전자'));
@@ -120,7 +144,7 @@ it('runs scan and renders row; click sets the active tab code', async () => {
 });
 
 it('restores scan results after unmount/remount (route round-trip)', async () => {
-  const { unmount } = renderPage();
+  const { unmount } = await renderPageReady();
   fireEvent.click(screen.getByText('조회'));
   await screen.findByText('삼성전자');
   unmount();
@@ -135,7 +159,7 @@ it('restores scan results after unmount/remount (route round-trip)', async () =>
 });
 
 it('runs full-page scans with intraday basis by default', async () => {
-  renderPage();
+  await renderPageReady();
   fireEvent.click(screen.getByText('조회'));
   await waitFor(() => expect(runScan).toHaveBeenCalled());
   expect(vi.mocked(runScan).mock.calls.at(-1)?.[0]).toMatchObject({ basis: 'intraday' });
@@ -143,12 +167,14 @@ it('runs full-page scans with intraday basis by default', async () => {
 
 it('shows an EOD fallback warning when intraday scan falls back', async () => {
   vi.mocked(runScan).mockResolvedValueOnce({ status: 'ok', warnings: ['intraday_fallback_eod'], rows: [] });
-  renderPage();
+  await renderPageReady();
   fireEvent.click(screen.getByText('조회'));
   expect(await screen.findByText('장중 조회 불가 · 전일 확정 데이터로 표시 중')).toBeInTheDocument();
 });
 
 it('uses shared action styling in the save dialog', async () => {
+  // 저장본이 있으면 자동 로드로 anchor 가 생겨 저장이 dialog 없이 update 로 흐른다.
+  vi.mocked(listSaves).mockResolvedValueOnce({ schema_version: 1, saves: [] });
   renderPage();
   fireEvent.click(await screen.findByRole('button', { name: '저장' }));
   const dialog = await screen.findByRole('dialog', { name: '조건검색 저장' });
@@ -156,7 +182,7 @@ it('uses shared action styling in the save dialog', async () => {
 });
 
 it('Ctrl/Meta-click도 현재 뷰 교체와 동일(탭 제거 후 새 탭 없음)', async () => {
-  renderPage();
+  await renderPageReady();
   fireEvent.click(screen.getByText('조회'));
   await waitFor(() => screen.getByText('삼성전자'));
   fireEvent.click(screen.getByText('삼성전자'), { ctrlKey: true });
@@ -167,7 +193,7 @@ it('Ctrl/Meta-click도 현재 뷰 교체와 동일(탭 제거 후 새 탭 없음
 });
 
 it('row is keyboard-activatable', async () => {
-  renderPage();
+  await renderPageReady();
   fireEvent.click(screen.getByText('조회'));
   const row = await screen.findByText('삼성전자');
   fireEvent.keyDown(row.closest('[role="button"]')!, { key: 'Enter' });
@@ -175,7 +201,7 @@ it('row is keyboard-activatable', async () => {
 });
 
 it('sorts full-page screener results and resets to default on re-scan', async () => {
-  renderPage();
+  await renderPageReady();
   fireEvent.click(screen.getByRole('button', { name: '조회' }));
   await screen.findByText('삼성전자');
 
@@ -224,7 +250,7 @@ it('sorts by overlayed live change_pct when present', async () => {
     ['035420', { code: '035420', price: 200000, change_pct: 12.5, change_won: 25000 }],
   ]));
 
-  renderPage();
+  await renderPageReady();
   fireEvent.click(screen.getByRole('button', { name: '조회' }));
   await screen.findByText('삼성전자');
 
@@ -244,7 +270,7 @@ it('sorts by overlayed live change_pct when present', async () => {
 });
 
 it('sorts full-page screener results by clicking table headers', async () => {
-  renderPage();
+  await renderPageReady();
   fireEvent.click(screen.getByRole('button', { name: '조회' }));
   await screen.findByText('삼성전자');
 
@@ -273,7 +299,7 @@ it('sorts full-page screener results by clicking table headers', async () => {
 it('keeps the full-page sort control disabled for empty scan results', async () => {
   vi.mocked(runScan).mockResolvedValueOnce({ status: 'ok', warnings: [], rows: [] });
 
-  renderPage();
+  await renderPageReady();
   fireEvent.click(screen.getByRole('button', { name: '조회' }));
 
   await waitFor(() => expect(runScan).toHaveBeenCalled());
@@ -283,7 +309,7 @@ it('keeps the full-page sort control disabled for empty scan results', async () 
 
 it('surfaces a scan error instead of a silent dead-end', async () => {
   vi.mocked(runScan).mockRejectedValueOnce(new Error('422'));
-  renderPage();
+  await renderPageReady();
   fireEvent.click(screen.getByText('조회'));
   expect(await screen.findByText('조회 실패 — 조건을 확인하세요')).toBeInTheDocument();
 });
@@ -326,6 +352,7 @@ it('toolbar save creates a new screener when there is no loaded save', async () 
     id: 'new1', name: '새전략',
     conditions: [], universe: {}, created_at_ms: 2, updated_at_ms: 2,
   };
+  vi.mocked(listSaves).mockResolvedValueOnce({ schema_version: 1, saves: [] });
   vi.mocked(createSave).mockResolvedValueOnce(created);
   renderPage();
 
@@ -364,7 +391,7 @@ it('toolbar save-as always creates a new screener from the current builder', asy
 });
 
 it('marks scan results stale after builder edits, then clears after a new scan', async () => {
-  renderPage();
+  await renderPageReady();
   fireEvent.click(screen.getByRole('button', { name: '조회' }));
   await screen.findByText('삼성전자');
 
@@ -417,12 +444,50 @@ it('does not lie "clean" when the builder is edited while a create is in flight 
     .not.toContain('bg-tint-selection');
 });
 
-it('starts with an empty builder (no default 신고가 condition)', async () => {
+it('starts with an empty builder when no saves exist, and 조회 stays disabled', async () => {
+  vi.mocked(listSaves).mockResolvedValueOnce({ schema_version: 1, saves: [] });
   renderPage();
   // The seed condition used to render a 신고가 row. With an empty builder there
   // is no condition row and no AND label.
   expect(screen.queryByText('신고가')).not.toBeInTheDocument();
   expect(screen.queryByText('모두 충족 · AND')).not.toBeInTheDocument();
+  // 빈 빌더 = 조건 0개 → 전종목 조회 차단. 버튼은 비활성 + 안내가 뜬다.
+  expect(await screen.findByText(/조건이 없습니다 · 저장된 조건검색을 선택하거나/)).toBeInTheDocument();
+  expect(screen.getByRole('button', { name: '조회' })).toBeDisabled();
+});
+
+it('auto-loads a saved screener on entry so 조회 runs the saved conditions', async () => {
+  await renderPageReady();
+  // 자동 로드된 저장본 이름이 타이틀·목록에 앵커로 뜬다 (수정됨 없음 = clean).
+  expect(screen.getAllByText('기본조건').length).toBeGreaterThanOrEqual(1);
+  expect(screen.queryByText('수정됨')).not.toBeInTheDocument();
+  fireEvent.click(screen.getByRole('button', { name: '조회' }));
+  await waitFor(() => expect(runScan).toHaveBeenCalled());
+  expect(vi.mocked(runScan).mock.calls.at(-1)?.[0]).toMatchObject({
+    conditions: [{ id: 'c1', type: 'trade_value', params: { min_eok: 100 } }],
+  });
+});
+
+it('auto-load prefers the persisted anchor id over the first save', async () => {
+  localStorage.setItem('screenerEditor.v1', JSON.stringify({ anchorId: 's2' }));
+  vi.mocked(listSaves).mockResolvedValueOnce({ schema_version: 1, saves: [
+    ...defaultSaves().saves,
+    { id: 's2', name: '두번째', conditions: [{ id: 'c2', type: 'trade_value' as const, params: { min_eok: 5 } }],
+      universe: {}, created_at_ms: 2, updated_at_ms: 2 },
+  ] });
+  await renderPageReady();
+  expect(screen.getAllByText('두번째').length).toBeGreaterThanOrEqual(1);
+  fireEvent.click(screen.getByRole('button', { name: '조회' }));
+  await waitFor(() => expect(runScan).toHaveBeenCalled());
+  expect(vi.mocked(runScan).mock.calls.at(-1)?.[0]).toMatchObject({
+    conditions: [{ id: 'c2', type: 'trade_value', params: { min_eok: 5 } }],
+  });
+});
+
+it('auto-load falls back to the first save when the persisted id was deleted', async () => {
+  localStorage.setItem('screenerEditor.v1', JSON.stringify({ anchorId: 'ghost' }));
+  await renderPageReady();
+  expect(screen.getAllByText('기본조건').length).toBeGreaterThanOrEqual(1);
 });
 
 it('현재가·등락률을 라이브 quote 로 덮는다 (EOD 코퍼스 위 오버레이)', async () => {
@@ -430,7 +495,7 @@ it('현재가·등락률을 라이브 quote 로 덮는다 (EOD 코퍼스 위 오
   vi.mocked(useQuoteByCode).mockReturnValue(new Map([
     ['005930', { code: '005930', price: 80000, change_pct: 7.7, change_won: 5000 }],
   ]));
-  renderPage();
+  await renderPageReady();
   fireEvent.click(screen.getByText('조회'));
   await screen.findByText('삼성전자');
   expect(screen.getByText('80,000 (+7.70%)')).toBeInTheDocument(); // 라이브 현재가+등락률

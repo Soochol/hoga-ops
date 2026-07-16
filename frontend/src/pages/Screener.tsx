@@ -92,6 +92,10 @@ export function Screener() {
   const sortedLiveRows = useMemo(() => sortScreenerRows(liveRows, sortMode), [liveRows, sortMode]);
 
   const notSeeded = lastScan?.scanStatus === 'not_seeded' || status?.status === 'not_seeded';
+  // 빈 빌더 조회 차단: 조건 0개로 조회하면 백엔드 JOIN 필터가 하나도 붙지 않아
+  // "KOSPI·KOSDAQ 전종목 거래대금 상위 1000행"이 나온다. 진입 시 저장 조건이
+  // 자동 로드되므로(useSavedScreenerEditor) 평상시엔 걸리지 않는 가드.
+  const hasConditions = editor.conditions.length > 0;
   const scanBody = useMemo(
     () => ({ conditions: editor.conditions, universe: editor.universe, basis }),
     [editor.conditions, editor.universe, basis],
@@ -178,7 +182,9 @@ export function Screener() {
                 </button>
               ))}
             </SegmentedControl>
-            <ToolbarButton tone="primary" onClick={runScan} disabled={screener.isPending || notSeeded}
+            <ToolbarButton tone="primary" onClick={runScan}
+              disabled={screener.isPending || notSeeded || !hasConditions}
+              title={!hasConditions ? '조건이 없습니다 — 저장된 조건검색을 선택하거나 조건을 추가하세요' : undefined}
               className="px-lg py-sm text-base">
               {screener.isPending ? '조회 중…' : '조회'}
             </ToolbarButton>
@@ -224,6 +230,11 @@ export function Screener() {
             </InlineState>
           ) : (
             <>
+              {!hasConditions && (
+                <InlineState className="text-sm">
+                  조건이 없습니다 · 저장된 조건검색을 선택하거나 조건을 추가하면 조회할 수 있습니다
+                </InlineState>
+              )}
               {resultsStale && (
                 <InlineState tone="warn">조건 변경됨 · 다시 조회 필요</InlineState>
               )}

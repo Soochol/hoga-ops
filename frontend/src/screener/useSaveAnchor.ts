@@ -2,6 +2,24 @@ import { useEffect, useRef, useState } from 'react';
 import type { ConditionLeaf, ScreenerUniverse } from '../api/screener';
 import type { SavedScreener } from '../api/savedScreeners';
 import { persistScreenerDraft, readScreenerDraft } from './screenerDraft';
+import { persistJson, readJsonObject } from '../state/persist';
+
+// 마지막으로 앵커된 저장 조건검색 id — 페이지 재진입 시 자동 로드의 씨앗.
+// screenerDraft.v1(라이브 빌더 미러)과 달리 마지막 "비-null 앵커"만 기억한다:
+// 새 조건검색으로 draft 가 비워져도 재진입 자동 로드가 마지막 사용 저장본을
+// 고를 수 있게. 드로어의 screenerPanel.v1(selectedSavedId)과도 별도 키 —
+// 드로어 선택이 페이지 초기 상태를 끌고 다니는 결합을 피한다. 삭제된 id 는
+// hydration 쪽이 목록 첫 항목으로 폴백해 복구하므로 여기서 지우지 않는다.
+const STORAGE_KEY = 'screenerEditor.v1';
+
+export function readPersistedAnchorId(): string | null {
+  const raw = readJsonObject(STORAGE_KEY).anchorId;
+  return typeof raw === 'string' ? raw : null;
+}
+
+function persistAnchorId(id: string): void {
+  persistJson(STORAGE_KEY, { anchorId: id });
+}
 
 export interface SaveAnchor {
   conditions: ConditionLeaf[];
@@ -60,6 +78,7 @@ export function useSaveAnchor(): SaveAnchor {
     setAnchorId(s.id);
     setAnchorName(s.name);
     setDirty(false);
+    persistAnchorId(s.id);
   };
   const newDraft = () => { setConditions([]); setUniverse({}); setAnchorId(null); setAnchorName(null); setDirty(false); };
   const editConditions = (c: ConditionLeaf[]) => { editGen.current += 1; setConditions(c); setDirty(true); };
@@ -67,6 +86,7 @@ export function useSaveAnchor(): SaveAnchor {
   const beginSave = () => { pendingSaveGen.current = editGen.current; };
   const settleAnchor = (id: string | null, name?: string | null) => {
     setAnchorId(id);
+    if (id !== null) persistAnchorId(id);
     if (id === null) setAnchorName(null);
     else if (name !== undefined) setAnchorName(name);
     // Clean only when nothing was edited since the save was dispatched (or when

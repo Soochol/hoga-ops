@@ -1,5 +1,6 @@
-import { useSaveAnchor } from './useSaveAnchor';
-import { useSaveMutations } from './useSavedScreeners';
+import { useEffect, useRef } from 'react';
+import { readPersistedAnchorId, useSaveAnchor } from './useSaveAnchor';
+import { useSavedScreeners, useSaveMutations } from './useSavedScreeners';
 import type { ConditionLeaf, ScreenerUniverse } from '../api/screener';
 import type { SavedScreener } from '../api/savedScreeners';
 
@@ -31,6 +32,25 @@ export interface SavedScreenerEditor {
 export function useSavedScreenerEditor(): SavedScreenerEditor {
   const anchor = useSaveAnchor();
   const { create, update, remove } = useSaveMutations();
+  const { data: savesData, isSuccess: savesLoaded } = useSavedScreeners();
+
+  // 첫 진입 자동 로드(1회): 저장 목록이 도착하면 마지막으로 앵커됐던 저장본
+  // (persist된 id)을, 없어졌으면 목록 첫 항목을 빌더에 로드한다 — 드로어의
+  // restore/repair 패턴(ScreenerDrawer)의 페이지판. 목록이 도착하기 전에 사용자가
+  // 이미 편집/로드를 시작했다면(dirty 또는 anchor 존재) 절대 덮어쓰지 않는다.
+  // 목적: 빈 빌더로 조회해 "전종목 1000행"이 나오는 초기 상태를 없앤다.
+  const hydratedRef = useRef(false);
+  useEffect(() => {
+    if (hydratedRef.current || !savesLoaded) return;
+    hydratedRef.current = true;
+    if (anchor.anchorId !== null || anchor.dirty) return;
+    const saves = savesData?.saves ?? [];
+    if (saves.length === 0) return;
+    const persistedId = readPersistedAnchorId();
+    anchor.loadSave(saves.find((s) => s.id === persistedId) ?? saves[0]);
+    // anchor 는 렌더마다 새 객체지만 hydratedRef 가드로 1회만 실행된다.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [savesLoaded, savesData]);
 
   // create re-anchors to the new save (race-guarded: settle only if no edit
   // landed mid-flight — beginSave snapshots, settleAnchor checks).
