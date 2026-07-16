@@ -160,12 +160,12 @@ describe('ScreenerDrawer', () => {
     expect(screen.getByRole('option', { name: '돌파+거래대금' })).toBeInTheDocument();
   });
 
-  it('defaults selection to the first save and 조회 scans with its conditions', async () => {
+  it('defaults selection to the first save and 시작 scans with its conditions', async () => {
     vi.spyOn(savesApi, 'listSaves').mockResolvedValue({ schema_version: 1, saves: [SAVE] });
     const scan = vi.spyOn(screenerApi, 'runScan').mockResolvedValue({ status: 'ok', rows: ROWS, warnings: [] });
     render(<ScreenerDrawer />, { wrapper: wrap(qc(), '/live') });
     await waitFor(() => expect(useScreenerPanelStore.getState().selectedSavedId).toBe('s1'));
-    fireEvent.click(screen.getByRole('button', { name: '조회' }));
+    fireEvent.click(screen.getByTestId('screener-monitor-toggle'));   // 시작 = 즉시 조회
     await waitFor(() => expect(scan).toHaveBeenCalledWith({
       conditions: SAVE.conditions,
       universe: SAVE.universe,
@@ -229,7 +229,7 @@ describe('ScreenerDrawer', () => {
 
     await waitFor(() => expect(screen.queryByText('오늘 장중: KIS quote 반영')).not.toBeInTheDocument());
     await waitFor(() => expect(useScreenerPanelStore.getState().selectedSavedId).toBe('s1'));
-    fireEvent.click(screen.getByRole('button', { name: '조회' }));
+    fireEvent.click(screen.getByTestId('screener-monitor-toggle'));   // 시작 = 즉시 조회
 
     await waitFor(() => expect(screen.getByText('장중 조회 불가 · 전일 확정 데이터로 표시 중')).toBeInTheDocument());
   });
@@ -262,7 +262,7 @@ describe('ScreenerDrawer', () => {
 
     await waitFor(() => expect(screen.getByText('결과 2 · 돌파+거래대금')).toBeInTheDocument());
     await waitFor(() => expect(screen.getByRole('button', { name: '저장한 조건검색 선택' })).toHaveTextContent('돌파+거래대금'));
-    fireEvent.click(screen.getByRole('button', { name: '조회' }));
+    fireEvent.click(screen.getByTestId('screener-monitor-toggle'));   // 시작 = 즉시 조회
     await waitFor(() => expect(screen.getByText('조회 실패')).toBeInTheDocument());
     expect(screen.queryByText('결과 2 · 돌파+거래대금')).not.toBeInTheDocument();
     expect(screen.queryByRole('button', { name: '스크리너 결과 정렬' })).not.toBeInTheDocument();
@@ -273,26 +273,26 @@ describe('ScreenerDrawer', () => {
     vi.spyOn(screenerApi, 'runScan').mockResolvedValue({ status: 'ok', rows: ROWS, warnings: [] });
     render(<ScreenerDrawer />, { wrapper: wrap(qc(), '/inventory') });
     await waitFor(() => expect(useScreenerPanelStore.getState().selectedSavedId).toBe('s1'));
-    fireEvent.click(screen.getByRole('button', { name: '조회' }));
+    fireEvent.click(screen.getByTestId('screener-monitor-toggle'));   // 시작 = 즉시 조회
     await waitFor(() => expect(screen.getByText('삼성전자')).toBeInTheDocument());
     fireEvent.click(screen.getByText('삼성전자'));
     expect(useLivePageStore.getState().activeCode).toBe('005930');
     await waitFor(() => expect(screen.getByTestId('pathname').textContent).toBe('/live'));
   });
 
-  it('disables 조회 when status is not_seeded', async () => {
+  it('disables 시작 when status is not_seeded', async () => {
     vi.spyOn(savesApi, 'listSaves').mockResolvedValue({ schema_version: 1, saves: [SAVE] });
     vi.spyOn(screenerApi, 'getScreenerStatus').mockResolvedValue({ status: 'not_seeded' });
     render(<ScreenerDrawer />, { wrapper: wrap(qc(), '/live') });
     await waitFor(() => expect(screen.getByText(/시드 필요/)).toBeInTheDocument());
-    expect((screen.getByRole('button', { name: '조회' }) as HTMLButtonElement).disabled).toBe(true);
+    expect((screen.getByTestId('screener-monitor-toggle') as HTMLButtonElement).disabled).toBe(true);
   });
 
-  it('shows an empty message and disables 조회 when there are no saves', async () => {
+  it('shows an empty message and disables 시작 when there are no saves', async () => {
     vi.spyOn(savesApi, 'listSaves').mockResolvedValue({ schema_version: 1, saves: [] });
     render(<ScreenerDrawer />, { wrapper: wrap(qc(), '/live') });
     await waitFor(() => expect(screen.getByText(/저장된 조건이 없습니다/)).toBeInTheDocument());
-    expect((screen.getByRole('button', { name: '조회' }) as HTMLButtonElement).disabled).toBe(true);
+    expect((screen.getByTestId('screener-monitor-toggle') as HTMLButtonElement).disabled).toBe(true);
   });
 
   it('renders results from the store without re-scanning (persist across reopen)', async () => {
@@ -331,7 +331,7 @@ describe('ScreenerDrawer', () => {
     const clientForRender = qc();
     const rendered = render(<ScreenerDrawer />, { wrapper: wrap(clientForRender, '/live') });
     await waitFor(() => expect(useScreenerPanelStore.getState().selectedSavedId).toBe('s1'));
-    fireEvent.click(screen.getByRole('button', { name: '조회' }));
+    fireEvent.click(screen.getByTestId('screener-monitor-toggle'));   // 시작 = 즉시 조회
     await waitFor(() => expect(screen.getByText('NAVER')).toBeInTheDocument());
 
     const rowOrder = () => screen.getAllByTestId(/^screener-row-/).map((el) => el.dataset.testid);
@@ -393,7 +393,7 @@ describe('ScreenerDrawer', () => {
     vi.spyOn(screenerApi, 'runScan').mockRejectedValue(new Error('boom'));
     render(<ScreenerDrawer />, { wrapper: wrap(qc(), '/live') });
     await waitFor(() => expect(useScreenerPanelStore.getState().selectedSavedId).toBe('s1'));
-    fireEvent.click(screen.getByRole('button', { name: '조회' }));
+    fireEvent.click(screen.getByTestId('screener-monitor-toggle'));   // 시작 = 즉시 조회
     await waitFor(() => expect(screen.getByText('조회 실패')).toBeInTheDocument());
     expect(screen.getByText('boom')).toBeInTheDocument();
   });
@@ -403,7 +403,7 @@ describe('ScreenerDrawer', () => {
     vi.spyOn(screenerApi, 'runScan').mockResolvedValue({ status: 'ok', rows: [], warnings: [] });
     render(<ScreenerDrawer />, { wrapper: wrap(qc(), '/live') });
     await waitFor(() => expect(useScreenerPanelStore.getState().selectedSavedId).toBe('s1'));
-    fireEvent.click(screen.getByRole('button', { name: '조회' }));
+    fireEvent.click(screen.getByTestId('screener-monitor-toggle'));   // 시작 = 즉시 조회
     await waitFor(() => expect(screen.getByText('조건에 맞는 종목이 없습니다.')).toBeInTheDocument());
     expect(sortButton()).toBeDisabled();
   });
@@ -413,7 +413,7 @@ describe('ScreenerDrawer', () => {
     vi.spyOn(screenerApi, 'runScan').mockResolvedValue({ status: 'ok', rows: ROWS, warnings: [] });
     render(<ScreenerDrawer />, { wrapper: wrap(qc(), '/live') });
     await waitFor(() => expect(useScreenerPanelStore.getState().selectedSavedId).toBe('s1'));
-    fireEvent.click(screen.getByRole('button', { name: '조회' }));
+    fireEvent.click(screen.getByTestId('screener-monitor-toggle'));   // 시작 = 즉시 조회
     await waitFor(() => expect(screen.getByText('SK하이닉스')).toBeInTheDocument());
     fireEvent.click(screen.getByText('SK하이닉스'));
     expect(useLivePageStore.getState().activeCode).toBe('000660');
