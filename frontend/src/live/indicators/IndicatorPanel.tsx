@@ -25,6 +25,7 @@ import { CheckIcon } from '../../ui/CheckIcon';
 import { STOCK_CAPABILITIES, type LiveInstrumentCapabilities } from '../liveInstrumentCapabilities';
 import { ListRow } from '../../ui/DataSurface';
 import { ModalShell } from '../../ui/ModalShell';
+import { WORKSPACE_DRAWER_WIDTH_CLASS, WORKSPACE_DRAWER_SHELL_CLASS } from '../workspaceDrawer';
 import type { LiveTimeframe } from '../../state/livePage';
 
 type CategoryId =
@@ -211,12 +212,12 @@ export default function IndicatorPanel({ onClose, capabilities = STOCK_CAPABILIT
     <ModalShell
       ariaLabel="지표"
       side="right"
-      width="w-[min(760px,100vw)]"
+      width={WORKSPACE_DRAWER_WIDTH_CLASS}
       onClose={onClose}
     >
       <div
         data-testid="indicator-panel-shell"
-        className="grid h-full min-h-0 grid-cols-[240px_minmax(0,1fr)] overflow-hidden rounded-[6px] bg-bg-card"
+        className={WORKSPACE_DRAWER_SHELL_CLASS}
       >
         {/* nav↔콘텐츠 분리는 border-r가 아니라 bg-subtle↔bg-card 톤 스텝이 담당(2026-07-15
             borderless 규칙). 선택은 좌측 accent 보더 대신 둥근 pill. 리셋 푸터는

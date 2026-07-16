@@ -1,5 +1,6 @@
 import { ModalShell } from '../ui/ModalShell';
 import LiveSettingsSections from './LiveSettingsSections';
+import { WORKSPACE_DRAWER_WIDTH_CLASS } from './workspaceDrawer';
 
 type Props = {
   onClose: () => void;
@@ -16,7 +17,7 @@ export default function LiveSettingsModal({ onClose, variant = 'live' }: Props) 
     <ModalShell
       ariaLabel="설정"
       side="right"
-      width="w-[min(760px,100vw)]"
+      width={WORKSPACE_DRAWER_WIDTH_CLASS}
       onClose={onClose}
     >
       <LiveSettingsSections variant={variant} onClose={onClose} />
