@@ -11,7 +11,6 @@ import { useLiveVenueStore } from '../state/liveVenue';
 export interface ScreenerRowLive extends Omit<ScreenerRow, 'price'> {
   price: number | null;
   change_won: number | null;
-  change_pct_sort: number | null;
 }
 
 /**
@@ -23,10 +22,10 @@ export interface ScreenerRowLive extends Omit<ScreenerRow, 'price'> {
  * 머지 seam — codes 추출·폴링·머지를 캡슐화하고, 호출처는 레이아웃만 책임진다.
  *
  * stale quote(kis_capacity_timeout·rest_bypass 등 일시 미응답 시 마지막 캐시값)는 "받아온 값"
- * 이므로 표시(change_pct)와 정렬값(change_pct_sort) 모두에 그대로 쓴다. stale 을 정렬에서만
- * 빼면 stale 배치가 올 때마다 등락률 정렬이 스캔 원순서로 리셋됐다가 fresh 폴에 스냅백하는
- * 주기적 리셋이 생긴다 — 관심종목/히트맵의 quoteSort 규약(makeChangePctOf)과 동일하게, 순서
- * 안정성을 위해 "몇 초 전 값"을 유지한다.
+ * 이므로 change_pct 에 그대로 쓴다(표시·정렬 공용). 정렬(sortResults)이 change_pct 를 직접
+ * 읽으므로 stale 을 빼면 stale 배치마다 등락률 정렬이 스캔 원순서로 리셋됐다가 fresh 폴에
+ * 스냅백한다 — 관심종목/히트맵의 quoteSort 규약(makeChangePctOf)과 동일하게 순서 안정성을
+ * 위해 "몇 초 전 값"을 유지한다.
  */
 export function useScreenerRowsLive(rows: ScreenerRow[]): ScreenerRowLive[] {
   const codes = useMemo(() => rows.map((r) => r.code), [rows]);
@@ -41,7 +40,6 @@ export function useScreenerRowsLive(rows: ScreenerRow[]): ScreenerRowLive[] {
           price: q?.price ?? null,
           change_pct: q?.change_pct ?? null,
           change_won: q?.change_won ?? null,
-          change_pct_sort: q?.change_pct ?? null,
         };
       }),
     [rows, quoteByCode],

@@ -16,7 +16,7 @@ describe('useScreenerRowsLive', () => {
     ]));
     const { result } = renderHook(() => useScreenerRowsLive(ROWS));
     expect(result.current[0]).toMatchObject({
-      code: '005930', price: 80000, change_pct: 7.7, change_won: 5000, change_pct_sort: 7.7,
+      code: '005930', price: 80000, change_pct: 7.7, change_won: 5000,
     });
   });
 
@@ -27,7 +27,7 @@ describe('useScreenerRowsLive', () => {
     const { result } = renderHook(() => useScreenerRowsLive(ROWS));
     // 000660 has no quote → 표시 필드 전부 null → '—'(관심종목과 동일 기준)
     expect(result.current[1]).toMatchObject({
-      code: '000660', price: null, change_pct: null, change_won: null, change_pct_sort: null,
+      code: '000660', price: null, change_pct: null, change_won: null,
     });
   });
 
@@ -45,14 +45,14 @@ describe('useScreenerRowsLive', () => {
     ]));
     const { result } = renderHook(() => useScreenerRowsLive(ROWS));
     expect(result.current[0]).toMatchObject({
-      code: '005930', price: 72000, change_pct: null, change_won: null, change_pct_sort: null,
+      code: '005930', price: 72000, change_pct: null, change_won: null,
     });
   });
 
-  it('stale live quote 는 표시·정렬값 모두 마지막 라이브값을 쓴다 (정렬 리셋 방지)', () => {
-    // stale 도 "받아온 값"이므로 표시(관심종목과 동일 — 표시 경로는 stale 검사 안 함).
-    // 정렬값도 동일하게 유지: stale 을 정렬에서 빼면 등락률 정렬이 스캔 원순서로 주기적
-    // 리셋된다(makeChangePctOf 와 동일 규약). EOD(70000/2.1)로 되돌리지도 않는다.
+  it('stale live quote 는 change_pct 에 마지막 라이브값을 유지한다 (정렬 리셋 방지)', () => {
+    // stale 도 "받아온 값"이므로 change_pct 에 그대로 쓴다(표시·정렬 공용). 정렬(sortResults)
+    // 이 change_pct 를 직접 읽으므로, stale 을 빼면 등락률 정렬이 스캔 원순서로 주기적 리셋된다
+    // (makeChangePctOf 와 동일 규약). EOD(70000/2.1)로 되돌리지도 않는다.
     vi.spyOn(liveQuotes, 'useQuoteByCode').mockReturnValue(new Map([
       ['005930', {
         code: '005930',
@@ -69,13 +69,12 @@ describe('useScreenerRowsLive', () => {
       price: 72000,
       change_pct: 9.9,
       change_won: 6300,
-      change_pct_sort: 9.9,
     });
   });
 
-  it('라이브 batch 도착 전엔 정렬값도 null(EOD 초기 정렬 없음)', () => {
+  it('라이브 batch 도착 전엔 change_pct 도 null(EOD 초기 정렬 없음)', () => {
     vi.spyOn(liveQuotes, 'useQuoteByCode').mockReturnValue(new Map());
     const { result } = renderHook(() => useScreenerRowsLive(ROWS));
-    expect(result.current.map((row) => row.change_pct_sort)).toEqual([null, null]);
+    expect(result.current.map((row) => row.change_pct)).toEqual([null, null]);
   });
 });
