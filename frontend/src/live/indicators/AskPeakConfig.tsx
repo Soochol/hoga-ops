@@ -14,8 +14,9 @@ const VISIBLE_MAX_RANK_OPTIONS = [
   ...RANK_OPTIONS,
 ] as const;
 
-/** 당일 매도 최대벽 상세 설정 — 선 색·두께(MAStylePicker 재활용). */
-export default function AskPeakConfig() {
+/** 당일 매도 최대벽 상세 설정 — 선 색·두께(MAStylePicker 재활용).
+ *  `embedded` — 병합된 「당일 최대벽」 서브탭 안에서 제목·설명을 숨긴다(BidPeakConfig와 동일). */
+export default function AskPeakConfig({ embedded = false }: { embedded?: boolean } = {}) {
   const color = useLivePageStore((s) => s.askPeakColor);
   const lineWidth = useLivePageStore((s) => s.askPeakLineWidth);
   const allPriceColor = useLivePageStore((s) => s.askPeakAllPriceColor);
@@ -31,14 +32,18 @@ export default function AskPeakConfig() {
   const setNumericPref = useChartPrefsStore((s) => s.setNumericPref);
   return (
     <div>
-      <h3 className="text-fg text-base font-medium pb-1">
-        당일 매도 최대벽 <span aria-hidden="true" className="text-fg-dimmer text-sm">ⓘ</span>
-      </h3>
-      <p className="text-fg-dim text-xs mb-3">
-        차트에 보이는 거래일마다, 그 날 매도 10호가 중 한 단계에 가장 크게 걸렸던 물량의 가격에 그날 구간만큼
-        수평선을 그립니다. 체결된 벽과 미체결된 벽을 각각 표시합니다.
-        분봉 차트에서만 표시됩니다.
-      </p>
+      {!embedded && (
+        <>
+          <h3 className="text-fg text-base font-medium pb-1">
+            당일 매도 최대벽 <span aria-hidden="true" className="text-fg-dimmer text-sm">ⓘ</span>
+          </h3>
+          <p className="text-fg-dim text-xs mb-3">
+            차트에 보이는 거래일마다, 그 날 매도 10호가 중 한 단계에 가장 크게 걸렸던 물량의 가격에 그날 구간만큼
+            수평선을 그립니다. 체결된 벽과 미체결된 벽을 각각 표시합니다.
+            분봉 차트에서만 표시됩니다.
+          </p>
+        </>
+      )}
       <div className="space-y-2">
         <div className="flex items-center gap-2">
           <span className="text-sm text-fg">체결된 벽</span>

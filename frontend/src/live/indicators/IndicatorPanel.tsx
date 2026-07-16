@@ -1,17 +1,17 @@
 import { useState, Fragment } from 'react';
 import { useLivePageStore } from '../../state/livePage';
+import { useChartPrefsStore } from '../../state/chartPrefs';
 import MovingAverageConfig from './MovingAverageConfig';
 import DailyMovingAverageConfig from './DailyMovingAverageConfig';
 import VolumeConfig from './VolumeConfig';
 import InvestorNetConfig from './InvestorNetConfig';
-import AskPeakConfig from './AskPeakConfig';
-import BidPeakConfig from './BidPeakConfig';
+import PeakWallsConfig from './PeakWallsConfig';
 import TradeVolumePocConfig from './TradeVolumePocConfig';
 import DepthHeatmapConfig from './DepthHeatmapConfig';
 import QuoteTotalsConfig from './QuoteTotalsConfig';
 import RatioConfig from './RatioConfig';
 import FillStrengthConfig from './FillStrengthConfig';
-import { MA_COLOR_ROWS } from './MAStylePicker';
+import ColorSwatchPicker from './ColorSwatchPicker';
 import ProgramTradeConfig from './ProgramTradeConfig';
 import BrokerLateEntryConfig from './BrokerLateEntryConfig';
 import {
@@ -20,6 +20,7 @@ import {
   type PanePrefsIndicatorSource,
 } from './indicatorPaneProfiles';
 import ToggleRow from '../settings/ToggleRow';
+import { ToggleSwitch } from '../settings/SettingsRow';
 import { CheckIcon } from '../../ui/CheckIcon';
 import { STOCK_CAPABILITIES, type LiveInstrumentCapabilities } from '../liveInstrumentCapabilities';
 import { ListRow } from '../../ui/DataSurface';
@@ -32,8 +33,7 @@ type CategoryId =
   | 'volume'
   | 'foreign-net'
   | 'institution-net'
-  | 'ask-peak'
-  | 'bid-peak'
+  | 'peak-walls'
   | 'trade-volume-poc'
   | 'depth-heatmap'
   | 'volume-distribution'
@@ -60,14 +60,23 @@ const CATEGORIES: ReadonlyArray<{ id: CategoryId; label: string; group: GroupId 
   { id: 'fill-strength',   label: '체결강도',         group: 'hoga' },
   { id: 'volume-distribution', label: '연속체결 매물대 분포', group: 'hoga' },
   { id: 'trade-volume-poc', label: '당일 최대 매물대', group: 'hoga' },
-  { id: 'ask-peak',        label: '당일 매도 최대벽', group: 'hoga' },
-  { id: 'bid-peak',        label: '당일 매수 최대벽', group: 'hoga' },
+  { id: 'peak-walls',      label: '당일 최대벽',     group: 'hoga' },
   { id: 'depth-heatmap',   label: '호가 잔량 히트맵', group: 'hoga' },
   { id: 'foreign-net',     label: '외국인 순매수량',  group: 'broker'  },
   { id: 'institution-net', label: '기관 순매수량',    group: 'broker'  },
   { id: 'broker-late-entry', label: '신규 거래원 등장', group: 'broker' },
   { id: 'program-trade',   label: '프로그램 순매수',  group: 'program' },
 ];
+
+// Per-timeframe indicators (those in PANE_CATEGORY_TO_KEY) save their on/off
+// separately per profile bucket (분봉/일봉/주봉/월봉). The header chip surfaces
+// that scope so flipping timeframes doesn't read as "my toggles reset".
+function timeframeScopeLabel(tf: LiveTimeframe): string {
+  if (tf === 'D') return '일봉';
+  if (tf === 'W') return '주봉';
+  if (tf === 'M') return '월봉';
+  return '분봉';
+}
 
 const PANE_CATEGORY_TO_KEY: Partial<Record<CategoryId, PanePrefKey>> = {
   volume: 'volumeEnabled',
@@ -121,9 +130,20 @@ export default function IndicatorPanel({ onClose, capabilities = STOCK_CAPABILIT
   }));
   const setPanePrefForTimeframe = useLivePageStore((s) => s.setPanePrefForTimeframe);
 
+  const resetIndicators = useLivePageStore((s) => s.resetIndicators);
+  const resetChartPrefs = useChartPrefsStore((s) => s.resetToDefaults);
+
   // Which category's detail pane shows on the right. Clicking a category label
   // navigates here; the checkbox icon toggles its master switch separately.
   const [selected, setSelected] = useState<CategoryId>('moving-average');
+  // 파괴적 리셋은 인라인 2단계 확인(중첩 모달 회피). 클릭 → 확인 행 → 복원.
+  const [confirmingReset, setConfirmingReset] = useState(false);
+
+  const handleReset = () => {
+    resetIndicators();
+    resetChartPrefs();
+    setConfirmingReset(false);
+  };
 
   const categories = CATEGORIES.filter((c) => {
     if (c.group === 'hoga' || c.group === 'program') return capabilities.hogaPanes;
@@ -143,8 +163,8 @@ export default function IndicatorPanel({ onClose, capabilities = STOCK_CAPABILIT
     switch (id) {
       case 'moving-average': return maEnabled;
       case 'daily-moving-average': return dailyMaEnabled;
-      case 'ask-peak': return askPeakEnabled;
-      case 'bid-peak': return bidPeakEnabled;
+      // 병합 카테고리: 어느 한쪽이라도 켜져 있으면 checked. 마스터 토글은 둘을 함께 켠다.
+      case 'peak-walls': return askPeakEnabled || bidPeakEnabled;
       case 'trade-volume-poc': return tradeVolumePocEnabled;
       case 'volume-distribution': return volumeDistributionEnabled;
       case 'depth-heatmap': return depthHeatmapEnabled;
@@ -164,8 +184,12 @@ export default function IndicatorPanel({ onClose, capabilities = STOCK_CAPABILIT
     switch (id) {
       case 'moving-average': return () => setMaEnabled(!maEnabled);
       case 'daily-moving-average': return () => setDailyMaEnabled(!dailyMaEnabled);
-      case 'ask-peak': return () => setAskPeakEnabled(!askPeakEnabled);
-      case 'bid-peak': return () => setBidPeakEnabled(!bidPeakEnabled);
+      case 'peak-walls': return () => {
+        // 한쪽이라도 켜져 있으면 둘 다 끄고, 모두 꺼져 있으면 둘 다 켠다.
+        const next = !(askPeakEnabled || bidPeakEnabled);
+        setAskPeakEnabled(next);
+        setBidPeakEnabled(next);
+      };
       case 'trade-volume-poc': return () => setTradeVolumePocEnabled(!tradeVolumePocEnabled);
       case 'volume-distribution': return () => setVolumeDistributionEnabled(!volumeDistributionEnabled);
       case 'depth-heatmap': return () => setDepthHeatmapEnabled(!depthHeatmapEnabled);
@@ -175,14 +199,19 @@ export default function IndicatorPanel({ onClose, capabilities = STOCK_CAPABILIT
   };
 
   const selectedCategory = categories.find((category) => category.id === selected) ?? categories[0];
+  const selectedChecked = checkedFor(selectedCategory.id);
+  const selectedToggle = toggleFor(selectedCategory.id);
+  const selectedIsTimeframeScoped = PANE_CATEGORY_TO_KEY[selectedCategory.id] !== undefined;
+  const scopeLabel = timeframeScopeLabel(timeframe);
 
   return (
-    // Settings 모달과 동일한 크롬(2026-07-15): ModalShell로 백드롭·Escape·다이얼로그 토큰을
-    // 공유하고, 전폭 헤더 바·푸터를 없앤다. 그룹 제목·닫기 X는 콘텐츠 헤더가 담당(title 미전달).
+    // 우측 드로어(side='right', ADR-0116): 왼쪽에 차트가 반투명 딤 너머로 남아 즉시
+    // 적용이 실시간 반영된다. 마스터-디테일(240 nav + 디테일)을 유지하되 폭을 760px로
+    // 좁혀 넓은 화면에서 좌측 차트를 살린다. 높이는 드로어라 항상 전체(=height 무시).
     <ModalShell
       ariaLabel="지표"
-      width="w-[min(1040px,calc(100vw-48px))]"
-      height="h-[min(820px,calc(100vh-48px))]"
+      side="right"
+      width="w-[min(760px,100vw)]"
       onClose={onClose}
     >
       <div
@@ -190,8 +219,10 @@ export default function IndicatorPanel({ onClose, capabilities = STOCK_CAPABILIT
         className="grid h-full min-h-0 grid-cols-[240px_minmax(0,1fr)] overflow-hidden rounded-[6px] bg-bg-card"
       >
         {/* nav↔콘텐츠 분리는 border-r가 아니라 bg-subtle↔bg-card 톤 스텝이 담당(2026-07-15
-            borderless 규칙). 선택은 좌측 accent 보더 대신 둥근 pill. */}
-        <nav className="space-y-0.5 overflow-y-auto bg-bg-subtle p-2" aria-label="지표 카테고리">
+            borderless 규칙). 선택은 좌측 accent 보더 대신 둥근 pill. 리셋 푸터는
+            스크롤과 무관하게 하단 고정 — nav는 flex-1로 스크롤. */}
+      <div className="flex min-h-0 flex-col bg-bg-subtle">
+        <nav className="min-h-0 flex-1 space-y-0.5 overflow-y-auto p-2" aria-label="지표 카테고리">
           {categories.map((c, i) => {
             const checked = checkedFor(c.id);
             const onToggle = toggleFor(c.id);
@@ -224,7 +255,7 @@ export default function IndicatorPanel({ onClose, capabilities = STOCK_CAPABILIT
                     role="checkbox"
                     aria-checked={checked}
                     aria-label={c.label}
-                    onClick={() => { onToggle?.(); setSelected(c.id); }}
+                    onClick={() => onToggle?.()}
                     className="ml-3 p-1.5 cursor-pointer"
                   >
                     <CheckIcon filled={checked} />
@@ -234,27 +265,92 @@ export default function IndicatorPanel({ onClose, capabilities = STOCK_CAPABILIT
             );
           })}
         </nav>
-        <div className="flex min-h-0 flex-col">
-          <header className="flex items-center justify-between px-5 pb-3 pt-4">
-            <h2 className="text-lg font-semibold text-fg">{GROUP_LABEL[selectedCategory.group]}</h2>
+        {/* 기본값 복원 — 파괴적이라 인라인 2단계 확인. */}
+        <div className="border-t border-border p-2">
+          {confirmingReset ? (
+            <div className="flex items-center justify-between gap-2 px-1">
+              <span className="text-xs text-fg-dim">모두 초기화?</span>
+              <div className="flex items-center gap-1">
+                <button
+                  type="button"
+                  onClick={() => setConfirmingReset(false)}
+                  className="rounded px-2 py-1 text-xs text-fg-dim hover:text-fg"
+                >
+                  취소
+                </button>
+                <button
+                  type="button"
+                  onClick={handleReset}
+                  className="rounded px-2 py-1 text-xs font-medium"
+                  style={{ background: 'var(--error)', color: 'var(--fg)' }}
+                >
+                  복원
+                </button>
+              </div>
+            </div>
+          ) : (
             <button
               type="button"
-              aria-label="닫기"
-              onClick={onClose}
-              className="-mr-1 px-1 text-lg leading-none text-fg-dim transition-colors hover:text-fg"
+              onClick={() => setConfirmingReset(true)}
+              className="w-full rounded-lg px-3 py-2 text-left text-sm text-fg-dim transition-colors hover:bg-bg-input-hover hover:text-fg"
             >
-              ✕
+              기본값 복원
             </button>
+          )}
+        </div>
+      </div>
+        <div className="flex min-h-0 flex-col">
+          {/* 헤더는 그룹명이 아니라 '지금 편집 중인 지표'를 보여준다(그룹은 eyebrow).
+              마스터 토글을 우측에 상주시켜 스크롤과 무관하게 켜짐/꺼짐을 읽고 바꾼다. */}
+          <header className="flex items-start justify-between gap-3 px-5 pb-3 pt-4">
+            <div className="min-w-0">
+              <div className="text-xs font-medium uppercase tracking-[0.08em] text-fg-dimmer">
+                {GROUP_LABEL[selectedCategory.group]}
+              </div>
+              <h2 className="truncate text-lg font-semibold text-fg">{selectedCategory.label}</h2>
+            </div>
+            <div className="flex shrink-0 items-center gap-3">
+              {selectedIsTimeframeScoped && (
+                <span
+                  title="표시 여부가 분봉·일봉·주봉·월봉 차트마다 따로 저장됩니다."
+                  className="rounded-full border border-border px-2 py-0.5 text-[11px] text-fg-dim"
+                >
+                  {scopeLabel}별 표시
+                </span>
+              )}
+              {selectedToggle && (
+                <div className="flex items-center gap-2">
+                  <span className="text-xs text-fg-dim">{selectedChecked ? '표시' : '숨김'}</span>
+                  <ToggleSwitch
+                    label={`${selectedCategory.label} 표시`}
+                    checked={selectedChecked}
+                    onClick={() => selectedToggle()}
+                  />
+                </div>
+              )}
+              <button
+                type="button"
+                aria-label="닫기"
+                onClick={onClose}
+                className="-mr-1 px-1 text-lg leading-none text-fg-dim transition-colors hover:text-fg"
+              >
+                ✕
+              </button>
+            </div>
           </header>
-          <section aria-label={GROUP_LABEL[selectedCategory.group]} className="min-h-0 flex-1 space-y-3 overflow-y-auto px-5 pb-5">
+          <section
+            aria-label={selectedCategory.label}
+            className={`min-h-0 flex-1 space-y-3 overflow-y-auto px-5 pb-5 transition-opacity ${
+              selectedToggle && !selectedChecked ? 'opacity-55' : ''
+            }`}
+          >
               {selected === 'moving-average' && <MovingAverageConfig />}
               {selected === 'daily-moving-average' && <DailyMovingAverageConfig />}
               {selected === 'volume' && <VolumeConfig />}
               {selected === 'foreign-net' && <InvestorNetConfig which="foreign" />}
               {selected === 'institution-net' && <InvestorNetConfig which="institution" />}
               {selected === 'broker-late-entry' && <BrokerLateEntryConfig />}
-              {selected === 'ask-peak' && <AskPeakConfig />}
-              {selected === 'bid-peak' && <BidPeakConfig />}
+              {selected === 'peak-walls' && <PeakWallsConfig />}
               {selected === 'trade-volume-poc' && <TradeVolumePocConfig />}
               {selected === 'depth-heatmap' && <DepthHeatmapConfig />}
               {selected === 'volume-distribution' && (
@@ -289,70 +385,22 @@ export default function IndicatorPanel({ onClose, capabilities = STOCK_CAPABILIT
                   </div>
                   <div className="mb-3">
                     <div className="mb-1.5 text-xs text-fg-dim">색상</div>
-                    <div className="flex flex-col gap-3">
+                    <div className="flex flex-col gap-2">
                       <div className="flex items-center gap-2">
-                        <div
-                          aria-hidden="true"
-                          className="h-6 w-10 rounded border border-border-subtle"
-                          style={{ backgroundColor: volumeDistributionColor, borderColor: volumeDistributionColor }}
+                        <span className="w-20 text-sm text-fg">기본 구간</span>
+                        <ColorSwatchPicker
+                          label="연속체결 매물대 분포 색상"
+                          color={volumeDistributionColor}
+                          onChange={(color) => setVolumeDistributionStyle({ color })}
                         />
-                        <div className="flex flex-col gap-1">
-                          {MA_COLOR_ROWS.map((row, rowIndex) => (
-                            <div key={`volume-distribution-color-row-${rowIndex}`} className="grid grid-cols-8 gap-1">
-                              {row.map((candidate) => {
-                                const selected = candidate.toLowerCase() === volumeDistributionColor.toLowerCase();
-                                return (
-                                  <button
-                                    key={candidate}
-                                    type="button"
-                                    aria-label={`연속체결 매물대 분포 색상 ${candidate}`}
-                                    aria-pressed={selected}
-                                    className="h-5 w-5 rounded-full"
-                                    style={{
-                                      backgroundColor: candidate,
-                                      outline: selected ? '2px solid var(--fg)' : 'none',
-                                      outlineOffset: 2,
-                                      border: '1px solid var(--border-subtle)',
-                                    }}
-                                    onClick={() => setVolumeDistributionStyle({ color: candidate })}
-                                  />
-                                );
-                              })}
-                            </div>
-                          ))}
-                        </div>
                       </div>
                       <div className="flex items-center gap-2">
-                        <div
-                          aria-hidden="true"
-                          className="h-6 w-10 rounded border border-border-subtle"
-                          style={{ backgroundColor: volumeDistributionMaxColor, borderColor: volumeDistributionMaxColor }}
+                        <span className="w-20 text-sm text-fg">최대 구간</span>
+                        <ColorSwatchPicker
+                          label="연속체결 매물대 분포 최대 구간 색상"
+                          color={volumeDistributionMaxColor}
+                          onChange={(maxColor) => setVolumeDistributionStyle({ maxColor })}
                         />
-                        <div className="flex flex-col gap-1">
-                          {MA_COLOR_ROWS.map((row, rowIndex) => (
-                            <div key={`volume-distribution-max-color-row-${rowIndex}`} className="grid grid-cols-8 gap-1">
-                              {row.map((candidate) => {
-                                const selected = candidate.toLowerCase() === volumeDistributionMaxColor.toLowerCase();
-                                return (
-                                  <button
-                                    key={candidate}
-                                    type="button"
-                                    aria-label={`연속체결 매물대 분포 최대 구간 색상 ${candidate}`}
-                                    aria-pressed={selected}
-                                    className="h-5 w-5 rounded-full"
-                                    style={{
-                                      backgroundColor: candidate,
-                                      outline: selected ? '2px solid var(--fg)' : 'none',
-                                      outlineOffset: 2,
-                                      border: '1px solid var(--border-subtle)',
-                                    }}
-                                    onClick={() => setVolumeDistributionStyle({ maxColor: candidate })}
-                                  />
-                                );
-                              })}
-                            </div>
-                          ))}
-                        </div>
                       </div>
                     </div>
                   </div>

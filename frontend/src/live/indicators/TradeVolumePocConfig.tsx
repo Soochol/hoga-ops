@@ -1,5 +1,5 @@
 import { useLivePageStore } from '../../state/livePage';
-import { MA_COLOR_ROWS } from './MAStylePicker';
+import ColorSwatchPicker from './ColorSwatchPicker';
 
 function hexToRgba(hex: string, opacity: number): string {
   const match = /^#?([0-9a-f]{6})$/i.exec(hex);
@@ -33,31 +33,11 @@ export default function TradeVolumePocConfig() {
             className="h-6 w-10 rounded border border-border-subtle"
             style={{ backgroundColor: hexToRgba(color, opacity), borderColor: color }}
           />
-          <div className="flex flex-col gap-1">
-            {MA_COLOR_ROWS.map((row, rowIndex) => (
-              <div key={rowIndex} className="grid grid-cols-8 gap-1">
-                {row.map((candidate) => {
-                  const selected = candidate.toLowerCase() === color.toLowerCase();
-                  return (
-                    <button
-                      key={candidate}
-                      type="button"
-                      aria-label={`당일 최대 매물대 색상 ${candidate}`}
-                      aria-pressed={selected}
-                      className="h-5 w-5 rounded-full"
-                      style={{
-                        backgroundColor: candidate,
-                        outline: selected ? '2px solid var(--fg)' : undefined,
-                        outlineOffset: 2,
-                        border: '1px solid var(--border-subtle)',
-                      }}
-                      onClick={() => setStyle({ color: candidate })}
-                    />
-                  );
-                })}
-              </div>
-            ))}
-          </div>
+          <ColorSwatchPicker
+            label="당일 최대 매물대 색상"
+            color={color}
+            onChange={(next) => setStyle({ color: next })}
+          />
         </div>
       </div>
       <div className="mb-3">

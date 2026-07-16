@@ -27,4 +27,25 @@ describe('ModalShell', () => {
     fireEvent.keyDown(document, { key: 'Escape' });
     expect(onClose).toHaveBeenCalledTimes(1);
   });
+  it('side="right" renders a right-anchored drawer (lighter dim, border-l)', () => {
+    render(
+      <ModalShell ariaLabel="지표" side="right" onClose={vi.fn()}>
+        <p>body</p>
+      </ModalShell>,
+    );
+    const dialog = screen.getByRole('dialog');
+    // 우측 정렬 + 가벼운 딤(차트가 뒤로 보이도록).
+    expect(dialog).toHaveClass('justify-end');
+    expect(dialog).toHaveClass('bg-black/30');
+    // 카드는 좌측 보더의 전체 높이 드로어.
+    const card = screen.getByText('body').parentElement!;
+    expect(card).toHaveClass('border-l');
+    expect(card).toHaveClass('h-full');
+  });
+  it('center variant keeps the classic centered card', () => {
+    render(<ModalShell ariaLabel="확인" onClose={vi.fn()}><p>body</p></ModalShell>);
+    const dialog = screen.getByRole('dialog');
+    expect(dialog).toHaveClass('justify-center');
+    expect(dialog).toHaveClass('bg-black/50');
+  });
 });

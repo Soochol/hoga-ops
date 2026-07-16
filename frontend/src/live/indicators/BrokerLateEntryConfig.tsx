@@ -1,7 +1,6 @@
-import { useEffect, useState } from 'react';
-
 import { useLivePageStore, type BrokerLateEntrySideMode } from '../../state/livePage';
-import { MA_COLOR_ROWS } from './MAStylePicker';
+import ColorSwatchPicker from './ColorSwatchPicker';
+import TimeOfDayInput from '../settings/TimeOfDayInput';
 
 const SIDE_OPTIONS: Array<{ value: BrokerLateEntrySideMode; label: string }> = [
   { value: 'both', label: '둘다' },
@@ -9,20 +8,7 @@ const SIDE_OPTIONS: Array<{ value: BrokerLateEntrySideMode; label: string }> = [
   { value: 'sell', label: '매도만' },
 ];
 
-function formatHHMM(value: number): string {
-  return String(value).padStart(4, '0');
-}
-
-function parseValidHHMM(value: string): number | null {
-  if (!/^\d{3,4}$/.test(value)) return null;
-  const n = Number(value);
-  const hh = Math.floor(n / 100);
-  const mm = n % 100;
-  if (hh < 9 || hh > 15 || mm > 59 || (hh === 15 && mm > 20)) return null;
-  return n;
-}
-
-function ColorGrid({
+function ColorRow({
   label,
   color,
   onChange,
@@ -33,39 +19,8 @@ function ColorGrid({
 }) {
   return (
     <div className="flex items-center gap-2">
-      <div
-        aria-hidden="true"
-        className="h-6 w-10 rounded border border-border-subtle"
-        style={{ backgroundColor: color, borderColor: color }}
-      />
-      <div>
-        <div className="mb-1 text-xs text-fg-dim">{label}</div>
-        <div className="flex flex-col gap-1">
-          {MA_COLOR_ROWS.map((row, rowIndex) => (
-            <div key={`${label}-${rowIndex}`} className="grid grid-cols-8 gap-1">
-              {row.map((candidate) => {
-                const selected = candidate.toLowerCase() === color.toLowerCase();
-                return (
-                  <button
-                    key={candidate}
-                    type="button"
-                    aria-label={`${label} ${candidate}`}
-                    aria-pressed={selected}
-                    className="h-5 w-5 rounded-full"
-                    style={{
-                      backgroundColor: candidate,
-                      outline: selected ? '2px solid var(--fg)' : 'none',
-                      outlineOffset: 2,
-                      border: '1px solid var(--border-subtle)',
-                    }}
-                    onClick={() => onChange(candidate)}
-                  />
-                );
-              })}
-            </div>
-          ))}
-        </div>
-      </div>
+      <span className="w-16 text-sm text-fg">{label}</span>
+      <ColorSwatchPicker label={label} color={color} onChange={onChange} />
     </div>
   );
 }
@@ -78,46 +33,17 @@ export default function BrokerLateEntryConfig() {
   const setStart = useLivePageStore((s) => s.setBrokerLateEntryStartHHMM);
   const setSideMode = useLivePageStore((s) => s.setBrokerLateEntrySideMode);
   const setStyle = useLivePageStore((s) => s.setBrokerLateEntryStyle);
-  const [startDraft, setStartDraft] = useState(() => formatHHMM(start));
-
-  useEffect(() => {
-    setStartDraft(formatHHMM(start));
-  }, [start]);
-
-  const commitStartDraft = () => {
-    const parsed = parseValidHHMM(startDraft);
-    if (parsed == null) {
-      setStartDraft(formatHHMM(start));
-      return;
-    }
-    setStart(parsed);
-    setStartDraft(formatHHMM(parsed));
-  };
 
   return (
     <div>
       <h3 className="text-fg text-base font-medium pb-1">신규 거래원 등장</h3>
       <div className="mb-3">
         <label className="flex items-center justify-between gap-3 text-sm text-fg">
-          <span>기준 시각 (HHMM)</span>
-          <input
-            type="text"
-            inputMode="numeric"
-            maxLength={4}
-            aria-label="신규 거래원 등장 기준 시각"
-            className="w-[84px] text-right text-sm bg-bg-input border border-border rounded-[4px] px-2 py-1 tabular-nums"
-            value={startDraft}
-            onBlur={commitStartDraft}
-            onChange={(event) => {
-              const next = event.currentTarget.value;
-              if (/^\d{0,4}$/.test(next)) setStartDraft(next);
-            }}
-            onKeyDown={(event) => {
-              if (event.key === 'Enter') {
-                commitStartDraft();
-                event.currentTarget.blur();
-              }
-            }}
+          <span>기준 시각</span>
+          <TimeOfDayInput
+            hhmm={start}
+            onCommit={setStart}
+            ariaLabel="신규 거래원 등장 기준 시각"
           />
         </label>
       </div>
@@ -137,9 +63,9 @@ export default function BrokerLateEntryConfig() {
           ))}
         </div>
       </div>
-      <div className="flex flex-col gap-3">
-        <ColorGrid label="매수 색상" color={buyColor} onChange={(color) => setStyle({ buyColor: color })} />
-        <ColorGrid label="매도 색상" color={sellColor} onChange={(color) => setStyle({ sellColor: color })} />
+      <div className="flex flex-col gap-2">
+        <ColorRow label="매수 색상" color={buyColor} onChange={(color) => setStyle({ buyColor: color })} />
+        <ColorRow label="매도 색상" color={sellColor} onChange={(color) => setStyle({ sellColor: color })} />
       </div>
     </div>
   );
