@@ -25,6 +25,7 @@ import { QuoteRow } from '../rightrail/QuoteRow';
 import { useScreenerRowsLive } from './useScreenerRowsLive';
 import type { ScreenerRowLive } from './useScreenerRowsLive';
 import { useScreenerMonitor } from './useScreenerMonitor';
+import { useNewEntryFlash } from './useNewEntryFlash';
 import { WatchlistHeartButton } from '../watchlist/WatchlistHeartButton';
 import { ScreenerResultSortControl } from './ScreenerResultSortControl';
 import { sortScreenerRows, type ScreenerResultSortMode } from './sortResults';
@@ -128,10 +129,12 @@ function screenerDraggableId(code: string): string {
 function DraggableScreenerRow({
   row,
   active,
+  flash,
   onActivate,
 }: {
   row: ScreenerRowLive;
   active: boolean;
+  flash: boolean;
   onActivate: () => void;
 }) {
   const { setNodeRef, listeners, attributes, transform, isDragging } = useDraggable({
@@ -145,6 +148,7 @@ function DraggableScreenerRow({
       pct={row.change_pct}
       changeWon={row.change_won}
       active={active}
+      flash={flash}
       ariaLabel={`${row.name} ${row.code} 차트 열기`}
       testId={`screener-row-${row.code}`}
       onClick={onActivate}
@@ -286,6 +290,9 @@ export function ScreenerDrawer() {
   // scanRows 는 위에서 정의(모니터 phase 조회와 공유).
   const liveRows = useScreenerRowsLive(scanRows);
   const sortedLiveRows = useMemo(() => sortScreenerRows(liveRows, sortMode), [liveRows, sortMode]);
+  // 재조회로 새로 편입된 종목을 잠시 플래시. 훅은 항상 resultCodes 를 추적해 이전
+  // 집합을 정확히 유지하고(토글 시 전체 플래시 방지), 표시만 모니터링 중으로 게이트한다.
+  const flashCodes = useNewEntryFlash(resultCodes);
   const sensors = useSensors(useSensor(PointerSensor, SCREENER_DRAG_SENSOR_OPTIONS));
   const startEntryDrag = useEntryDragStore((s) => s.startDrag);
   const setOverChart = useEntryDragStore((s) => s.setOverChart);
@@ -442,6 +449,7 @@ export function ScreenerDrawer() {
                       key={r.code}
                       row={r}
                       active={r.code === activeCode}
+                      flash={monitoringActive && flashCodes.has(r.code)}
                       onActivate={() => openLive(r.code, r.name)}
                     />
                   ))}

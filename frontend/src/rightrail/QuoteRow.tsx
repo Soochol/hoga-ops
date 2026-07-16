@@ -32,6 +32,8 @@ export interface QuoteRowProps {
   // 그룹명 첫 글자(≈46px)보다 왼쪽에서 시작해 위계가 역전되는 것을 교정.
   // pl-10(50px) > 라벨 시작. 그룹 없는 스크리너는 미전달(평면 목록, 폭 절약). ---
   indented?: boolean;
+  // 스크리너 모니터링 전용: 재조회로 새로 편입된 행이면 한 번 accent tint 플래시.
+  flash?: boolean;
 }
 
 function formatPct(pct: number | null): string {
@@ -42,7 +44,7 @@ function formatPct(pct: number | null): string {
 export function QuoteRow({
   name, price, pct, changeWon: _changeWon, active, ariaLabel, testId, onClick, trailingAction,
   sortableRef, sortableStyle, dragListeners, dragAttributes, dragActivatorRef, dragging, dropIndicator,
-  onContextMenu, onDelete, indented,
+  onContextMenu, onDelete, indented, flash,
 }: QuoteRowProps) {
   void _changeWon;
   const setRowRef = (node: HTMLElement | null) => {
@@ -98,8 +100,8 @@ export function QuoteRow({
       onKeyDown={onKeyDown}
       onContextMenu={onContextMenu}
       className={`group cursor-pointer touch-none ${indented ? 'pl-10' : 'pl-md'} pr-md py-sm flex items-center gap-2 border-b outline-none hover:bg-bg-input-hover focus-visible:bg-bg-input-hover ${
-        dropIndicatorClass(dropIndicator)
-      }`}
+        flash ? 'screener-row-flash' : ''
+      } ${dropIndicatorClass(dropIndicator)}`}
       style={{
         background: active ? 'var(--tint-selection)' : 'transparent',
         borderLeft: `2px solid ${active ? 'var(--accent)' : 'transparent'}`,

@@ -52,6 +52,18 @@ body {
   transition-duration: 200ms;
 }
 
+/* 스크리너 실시간 모니터링 — 재조회로 새로 편입된 종목 행에 accent tint 를 한 번
+   깔았다가 서서히 걷어낸다(신규 진입을 눈에 띄게). inset box-shadow 로 채워 행의
+   inline background·borderLeft(active 표식)와 충돌하지 않게 한다. 2s ease-out 소멸.
+   DESIGN.md tint-selection 과 같은 accent 계열이라 온-브랜드. */
+@keyframes screener-row-flash {
+  from { box-shadow: inset 0 0 0 999px var(--tint-selection); }
+  to   { box-shadow: inset 0 0 0 999px transparent; }
+}
+.screener-row-flash {
+  animation: screener-row-flash 2s ease-out forwards;
+}
+
 /* 남은시간 진행바 — scaleX(1→0), origin left. duration/play-state 는 인라인 제어. */
 @keyframes toast-progress {
   from { transform: scaleX(1); }
@@ -66,6 +78,7 @@ body {
 @media (prefers-reduced-motion: reduce) {
   .toast-card { transition: none; }
   .toast-progress { display: none; }
+  .screener-row-flash { animation: none; }
 }
 
 /* Chart pane 구분선 강조 — lightweight-charts 는 pane separator 를 상수 1px
