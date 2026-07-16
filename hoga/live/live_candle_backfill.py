@@ -40,6 +40,25 @@ class KisRestScheduler(Protocol):
     ): ...
 
 
+class _MinuteCandle(Protocol):
+    """t_ms/OHLCV — KisCandle 구조(캔들 포트). 키움 fetcher 반환 원소."""
+
+    t_ms: int
+    open: int
+    high: int
+    low: int
+    close: int
+    volume: int
+
+
+class KiwoomMinuteFetcher(Protocol):
+    """키움 분봉 walk-back 페처(kiwoom_client.KiwoomClient 구조). until_date까지 긁는다."""
+
+    async def fetch_minute_candles(
+        self, code: str, *, until_date: str | None = None, max_pages: int = ...,
+    ) -> list[_MinuteCandle]: ...
+
+
 @dataclass(frozen=True)
 class LiveMinuteCandleBackfillResult:
     candles: list[dict]
@@ -70,10 +89,15 @@ class LiveMinuteCandleBackfill:
         concurrency: int = 3,
         rate_limit_cooldown_s: float = 10.0,
         max_fresh_dates_per_collect: int = 12,
+        kiwoom_source: Callable[[], KiwoomMinuteFetcher | None] | None = None,
     ) -> None:
         self._data_dir = data_dir
         self._cache = cache
         self._scheduler = scheduler
+        # 키움 분봉 딥 백필 소스(ADR-0116). 호출마다 resolve — kiwoom_enabled off/
+        # 미배선이면 None → 전량 기존 KIS 경로(동작 불변). KRX venue만 대상(ka10080은
+        # plain code로 KRX 캔들 반환). 실측: 900봉/콜 walk-back(KIS 120봉/콜의 7.5배).
+        self._kiwoom_source = kiwoom_source
         self._sem = asyncio.Semaphore(concurrency)
         self._rate_limit_cooldown_s = rate_limit_cooldown_s
         # 한 collect 호출이 KIS에서 새로 가져올 수 있는 날짜 수 상한.
@@ -333,6 +357,20 @@ class LiveMinuteCandleBackfill:
                 continue
             pending.append(date_s)
 
+        # 키움 딥 백필 우선(ADR-0116): pending을 한 walk-back으로 캐시에 채운 뒤
+        # 재스캔 — 채워진 날짜는 cached로 이동하고 KIS는 미도달분(폴백)만 가져온다.
+        await self._kiwoom_prefetch(venue, code, pending)
+        if self._kiwoom_source is not None and pending:
+            still_pending: list[str] = []
+            for date_s in pending:
+                bars = self._cache.get_past(venue, code, date_s)
+                if bars is not None:
+                    rows[date_s] = bars
+                    cached_dates.append(date_s)
+                else:
+                    still_pending.append(date_s)
+            pending = still_pending
+
         deferred = 0
         if len(pending) > self._max_fresh_dates_per_collect:
             # 최신 날짜 우선(차트는 우측=최신부터 보인다). 유예분은 blocking
@@ -544,6 +582,33 @@ class LiveMinuteCandleBackfill:
                 perf_debug.elapsed_ms(t0),
             )
         return result
+
+    async def _kiwoom_prefetch(
+        self, venue: KisVenue, code: str, pending: list[str],
+    ) -> None:
+        """kiwoom_enabled + KRX + pending 있으면 한 walk-back으로 pending 최과거일까지
+        긁어 per-date 캐시에 store(키움우선). 실패/미도달 날짜는 캐시에 안 남아 KIS
+        폴백(ADR-0109 사다리). ka10080은 now→과거 walk-back이라 range prefetch로 한 번에
+        채운다(per-date 재walk는 KIS보다 나쁨 — 실측 2026-07-16).
+        """
+        if self._kiwoom_source is None or venue != "KRX" or not pending:
+            return
+        fetcher = self._kiwoom_source()
+        if fetcher is None:  # off/미배선
+            return
+        oldest = min(pending)
+        try:
+            candles = await fetcher.fetch_minute_candles(code, until_date=oldest)
+        except Exception:  # noqa: BLE001 — 키움 실패는 전량 KIS 폴백(사다리)
+            log.warning("live.kiwoom.minute_prefetch_failed code=%s", code, exc_info=True)
+            return
+        by_date: dict[str, list[dict]] = {}
+        for c in candles:
+            by_date.setdefault(_date_from_t_ms(c.t_ms), []).append(_candle_to_dict(c))
+        pending_set = set(pending)
+        for date_s, bars in by_date.items():
+            if date_s in pending_set:
+                self._cache.store_past(venue, code, date_s, bars)
 
     async def _fetch_past_once(
         self,
