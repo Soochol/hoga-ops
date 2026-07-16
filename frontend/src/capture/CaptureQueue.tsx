@@ -261,6 +261,9 @@ function VirtualList({
   const v = useVirtualizer({
     count: rows.length,
     getScrollElement: () => parentRef.current,
+    // Initial guess only — a collapsed row is ~36px. Real heights are read back
+    // via measureElement (below), so an expanded row's detail panel grows the
+    // slot and pushes following rows down instead of overlapping them.
     estimateSize: () => 36,
     overscan: 8,
   });
@@ -270,7 +273,17 @@ function VirtualList({
         {v.getVirtualItems().map((vr) => {
           const row = rows[vr.index];
           return (
-            <div key={row.item_id} style={{ position: 'absolute', top: 0, left: 0, right: 0, transform: `translateY(${vr.start}px)` }}>
+            <div
+              key={row.item_id}
+              // Dynamic measurement: the virtualizer observes this element's real
+              // height (collapsed row OR row + expanded CaptureRowDetail) and
+              // repositions subsequent rows. Without data-index + measureElement
+              // every slot stays the 36px estimate and expanded details overlap
+              // the next rows.
+              data-index={vr.index}
+              ref={v.measureElement}
+              style={{ position: 'absolute', top: 0, left: 0, right: 0, transform: `translateY(${vr.start}px)` }}
+            >
               <CaptureQueueRow
                 item={row}
                 symbolName={nameByCode.get(row.code) ?? '—'}
