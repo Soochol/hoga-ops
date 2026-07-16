@@ -144,7 +144,8 @@ DISCONNECTED → CONNECTING → AUTHED → REGISTERING → LIVE
 | ~~**PR-4a**~~ ✅ | 관측성 — LiveStatus.kiwoom(status snapshot) (커밋 cc76b603) | 매니저 status·get_status 노출·1088 live tests |
 | **PR-4b** | 온디맨드 표시전용 WS(뷰-구독 통합, 낯선 종목) | 장중: 낯선 종목 열람 시 키움 임시구독·닫으면 해제 |
 | **PR-4c** | 0F/0w 어댑터(거래원·프로그램) — **정규장 스모크로 실측 FID 확정 후** | payload parity(추측 FID 금지) |
-| **PR-5** | 분봉 백필 키움 이관 (키움우선→KIS폴백) | 동일 구간 양소스 패리티 테스트 |
+| ~~**PR-5**~~ ✅ | kiwoom_client ka10080 REST + KisCandle 어댑터 (커밋 543722f6) | 어댑터·walk-back·until_date·dedup 7종(MockTransport 실응답 재현) |
+| **PR-5b** | 백필 hot-path 통합(키움우선→KIS폴백) — ka10080 날짜앵커링 스모크 확인 후 | 동일 구간 양소스 패리티·per-date vs walk-back 매핑 |
 | **PR-6** | 프론트: 설정 키움 카드·하단바 커버리지 칩(`실시간 876/…`)·화질 도트(`●`/`◐`) | 도그푸딩 |
 
 UX 원칙: 사용자에겐 브로커명이 아니라 **화질 등급**(실시간●/폴링◐)으로 노출.
