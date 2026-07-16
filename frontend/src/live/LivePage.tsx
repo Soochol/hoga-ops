@@ -30,6 +30,7 @@ import IndicatorPanel from './indicators/IndicatorPanel';
 import { panePrefsForTimeframe, type PanePrefsIndicatorSource } from './indicators/indicatorPaneProfiles';
 import { useDailyMaRevealGate } from './indicators/useDailyMaRevealGate';
 import LiveSettingsModal from './LiveSettingsModal';
+import { CollectDialog } from '../heatmap/CollectDialog';
 import { useDocumentTitle } from '../util/useDocumentTitle';
 import { indexInstrument, instrumentLabel, isLiveIndexId } from './liveInstrument';
 import { useLiveIndexCandles, useLiveIndexInvestorNet } from '../api/liveIndices';
@@ -138,6 +139,8 @@ export function LivePage() {
   useDocumentTitle(activeCode);
   const [indicatorPanelOpen, setIndicatorPanelOpen] = useState(false);
   const [settingsOpen, setSettingsOpen] = useState(false);
+  // 활성 종목 지난 N일 hogaplay 수집(히트맵 CollectDialog 재사용) — 주식 종목 한정.
+  const [collectOpen, setCollectOpen] = useState(false);
   // 저장뷰(Study View Save)가 현재 차트 뷰포트를 캡처하는 데 쓰는 ref — 탭이 아니라
   // 뷰포트 프리미티브다(ADR-0113: 탭별 뷰포트 저장은 제거, 저장뷰 캡처는 유지).
   const viewportCaptureRef = useRef<() => TabViewport | null>(() => null);
@@ -359,6 +362,7 @@ export function LivePage() {
         tradeVolumePocs={tradeVolumePocs}
         onOpenIndicators={() => setIndicatorPanelOpen(true)}
         onOpenSettings={() => setSettingsOpen(true)}
+        onOpenCollect={activeCode ? () => setCollectOpen(true) : undefined}
         onOpenSearch={focusLiveSearch}
         studySaveControl={<LiveStudyViewSaveButton />}
         onViewportCaptureReady={handleViewportCaptureReady}
@@ -375,6 +379,15 @@ export function LivePage() {
       )}
       {settingsOpen && (
         <LiveSettingsModal onClose={() => setSettingsOpen(false)} />
+      )}
+      {collectOpen && activeCode && (
+        <CollectDialog
+          // 다이얼로그가 열린 채 종목이 바뀌면 remount 로 미리보기·기간 상태를 초기화한다.
+          key={activeCode}
+          title={`${activeLabel ?? activeCode} 지난 N일 수집`}
+          groups={[{ id: '_one', name: activeLabel ?? activeCode, codes: [activeCode] }]}
+          onClose={() => setCollectOpen(false)}
+        />
       )}
     </div>
   );

@@ -211,4 +211,19 @@ describe('LiveToolbar', () => {
     renderToolbar();
     expect(screen.getByTestId('layout-preset-button')).toBeInTheDocument();
   });
+
+  it('renders collect button only when onOpenCollect is provided and calls it on click', () => {
+    renderToolbar();
+    expect(screen.queryByTestId('live-collect-button')).toBeNull();
+
+    const onOpenCollect = vi.fn();
+    const qc = new QueryClient();
+    render(
+      <QueryClientProvider client={qc}>
+        <LiveToolbar onOpenIndicators={() => {}} onOpenSettings={() => {}} onOpenCollect={onOpenCollect} />
+      </QueryClientProvider>,
+    );
+    fireEvent.click(screen.getByTestId('live-collect-button'));
+    expect(onOpenCollect).toHaveBeenCalledOnce();
+  });
 });

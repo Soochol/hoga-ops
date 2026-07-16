@@ -135,6 +135,8 @@ interface Props {
   };
   onOpenIndicators?: () => void;
   onOpenSettings?: () => void;
+  /** 활성 종목 지난 N일 데이터 수집 — 주식 종목일 때만 전달(지수 미지원). */
+  onOpenCollect?: () => void;
   onOpenSearch?: () => void;
   studySaveControl?: ReactNode;
   /** LivePage save flows keep this callback and invoke it at save time. */
@@ -173,6 +175,7 @@ export function LiveWorkarea({
   paneTogglesOverride,
   onOpenIndicators,
   onOpenSettings,
+  onOpenCollect,
   onOpenSearch,
   studySaveControl,
   onViewportCaptureReady,
@@ -392,6 +395,7 @@ export function LiveWorkarea({
               <LiveToolbar
                 onOpenIndicators={onOpenIndicators}
                 onOpenSettings={onOpenSettings}
+                onOpenCollect={onOpenCollect}
                 studySaveControl={studySaveControl}
               />
             )}

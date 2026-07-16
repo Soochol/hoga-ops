@@ -327,6 +327,26 @@ describe('LivePage shell', () => {
     expect(screen.getByTestId('live-chart-panel')).toContainElement(screen.getByTestId('live-toolbar'));
   });
 
+  it('shows the collect button for a stock code and opens the collect dialog', async () => {
+    renderWithRouter('/live?code=000660');
+
+    act(() => {
+      screen.getByTestId('live-collect-button').click();
+    });
+
+    expect(await screen.findByRole('dialog', { name: /지난 N일 수집/ })).toBeInTheDocument();
+    // 단일 종목 스코프 — 대상 1종목이 그대로 노출된다.
+    expect(screen.getByRole('dialog', { name: /지난 N일 수집/ }).textContent).toContain('1');
+  });
+
+  it('hides the collect button for index instruments', async () => {
+    renderWithRouter('/live?index=KOSPI');
+
+    await waitFor(() => expect(useLivePageStore.getState().activeInstrument?.kind).toBe('index'));
+    expect(screen.getByTestId('live-toolbar')).toBeInTheDocument();
+    expect(screen.queryByTestId('live-collect-button')).toBeNull();
+  });
+
   it('passes the active live timeframe into IndicatorPanel', async () => {
     useLivePageStore.setState({ candleTimeframe: 'D' });
 
