@@ -49,7 +49,7 @@ from .live_session import (  # noqa: F401 — C3 재export(호출부·테스트 
     live_set_codes,
     partition_live_set,
 )
-from .promote import promote_api_today, promote_today
+from .promote import promote_api_today, promote_kiwoom_today, promote_today
 from .settings import load_live_settings
 from .signal_alert_monitor import SignalAlertMonitor
 from .storage_runtime import stop_storage_runtime, sync_storage_runtime
@@ -152,6 +152,7 @@ class _State:
         rest30_recorder: Rest30sRecorder | None = None,
         broker_poller: BrokerRestPoller | None = None,
         program_trade_collector=None,
+        kiwoom_session=None,
         storage_policy: LiveStoragePolicy = "ws_plus_rest",
         kis_rest_bypass_enabled: bool = False,
         session: LiveSession | None = None,
@@ -172,6 +173,9 @@ class _State:
         # on_tick에 합성 BROKER 틱을 주입한다(기존 저장 경로 재사용).
         self.broker_poller = broker_poller
         self.program_trade_collector = program_trade_collector
+        # 키움 WS 세션 매니저(ADR-0116) — storage_runtime이 소유·정합화. KIS conn(streams)과
+        # 별개라 KIS 상태/watchdog 경로에 무간섭. get_kiwoom_capture_codes가 승격 루프에 노출.
+        self.kiwoom_session = kiwoom_session
         self.storage_policy = storage_policy
         self.kis_rest_bypass_enabled = kis_rest_bypass_enabled
 
@@ -243,6 +247,17 @@ def get_api_codes() -> list[str]:
     if recorder is None:
         return []
     return list(recorder.status().targets)
+
+
+def get_kiwoom_capture_codes() -> list[str]:
+    """키움 WS 수집 중인 종목(ADR-0116) — 승격 루프(promote_kiwoom_today)가 읽는다.
+
+    kiwoom_session이 None(off/미배선)이면 []. get_active_codes와 동일 계약(호출 시점
+    스냅샷). storage_runtime.sync가 매 사이클 kiwoom_session.sync로 갱신한다."""
+    session = _state.kiwoom_session
+    if session is None:
+        return []
+    return session.active_codes()
 
 
 def get_buffer() -> LiveBuffer:
@@ -555,6 +570,7 @@ async def start_today_promoter(
     data_dir: Path,
     get_active_codes: Callable[[], list[str]],
     get_api_capture_codes: Callable[[], list[str]] | None = None,
+    get_kiwoom_capture_codes: Callable[[], list[str]] | None = None,
     interval_s: float = 300.0,
     on_promoted: Callable[[dict], object] | None = None,
 ) -> asyncio.Task:
@@ -602,6 +618,18 @@ async def start_today_promoter(
                     except Exception:
                         log.exception(
                             "live.today_promote.api_code_failed code=%s", code,
+                        )
+                # 키움 WS 승격(ADR-0116) — live_kiwoom → kiwoom_live parquet. 미배선/off면
+                # 콜백이 [] 반환이라 루프 no-op. 히트맵 종목이 여기서 kiwoom_live로 영속화된다.
+                kiwoom_codes = (
+                    get_kiwoom_capture_codes() if get_kiwoom_capture_codes else []
+                )
+                for code in kiwoom_codes:
+                    try:
+                        await promote_kiwoom_today(data_dir, code=code)
+                    except Exception:
+                        log.exception(
+                            "live.today_promote.kiwoom_code_failed code=%s", code,
                         )
             except Exception:
                 log.exception("live.today_promote.cycle_failed")

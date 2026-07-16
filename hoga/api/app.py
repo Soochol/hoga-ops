@@ -51,6 +51,7 @@ from hoga.live.kis_runtime import aclose_kis_client, get_kis_client
 from hoga.live.lifecycle import (
     configure_signal_alert_monitor,
     get_active_codes,
+    get_kiwoom_capture_codes,
     start_live_stream,
     start_live_stream_watchdog,
     start_today_promoter,
@@ -151,6 +152,7 @@ def create_app(data_dir: Path) -> FastAPI:
                 aclose_kis_capacity_scheduler=aclose_kis_capacity_scheduler,
                 aclose_kis_client=aclose_kis_client,
                 get_active_codes=get_active_codes,
+                get_kiwoom_capture_codes=get_kiwoom_capture_codes,
                 load_symbol_disk_state=_symbols_module.load_disk_state,
                 needs_symbol_boot_refresh=_symbols_module.needs_boot_refresh,
                 refresh_symbols=_symbols_module.refresh,

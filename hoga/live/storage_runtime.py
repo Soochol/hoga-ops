@@ -50,9 +50,16 @@ class ProgramTradeCollectorLike(Protocol):
     async def stop(self) -> None: ...
 
 
+class KiwoomSessionLike(Protocol):
+    async def sync(self, kiwoom_targets: tuple[str, ...], *, n_accounts: int) -> None: ...
+    def active_codes(self) -> list[str]: ...
+    async def stop(self) -> None: ...
+
+
 class StorageRuntimeState(Protocol):
     rest30_recorder: Rest30RecorderLike | None
     program_trade_collector: ProgramTradeCollectorLike | None
+    kiwoom_session: KiwoomSessionLike | None
     storage_policy: LiveStoragePolicy
 
 
@@ -107,6 +114,31 @@ def _ensure_rest30_recorder(
     return recorder
 
 
+def _ensure_kiwoom_session(
+    state: StorageRuntimeState,
+    *,
+    data_dir: Path,
+    buffer: LiveBuffer,
+    date_fn: Callable[[], str],
+    now_ms_fn: Callable[[], int],
+) -> KiwoomSessionLike:
+    """키움 세션 매니저 싱글톤(state 소유). ws_connection_window 게이트로 KIS와 동일한
+    연결 시간대(08~20)를 쓴다 — 저장 게이트(정규장)는 LiveStream 내부 flush 루프가 유지."""
+    if state.kiwoom_session is not None:
+        return state.kiwoom_session
+    from .kiwoom_session import KiwoomSessionManager  # noqa: PLC0415
+    from .session_gate import ws_connection_window  # noqa: PLC0415
+
+    mgr = KiwoomSessionManager(
+        buffer=buffer,
+        data_dir=data_dir,
+        date_fn=date_fn,
+        gate_fn=lambda: ws_connection_window(now_ms_fn()),
+    )
+    state.kiwoom_session = mgr
+    return mgr
+
+
 def _ensure_program_trade_collector(
     state: StorageRuntimeState,
     *,
@@ -159,6 +191,7 @@ async def sync_storage_runtime(
         storage_policy=settings.storage_policy,
         rest_extra_candidates=heatmap_extras,
         rest_fallback_codes=rest_fallback_codes,
+        kiwoom_enabled=settings.kiwoom_enabled,
     )
     if bypass:
         targets = LiveStorageTargets(
@@ -205,6 +238,20 @@ async def sync_storage_runtime(
             program_collector.start()
         else:
             await program_collector.stop()
+
+    # 키움 WS 세션(ADR-0116) — 히트맵을 KIS REST30 대신 키움 WS로. off거나 타깃 비면
+    # sync가 conn 0으로 정합화(휴면). n_accounts는 키움 앱키 수(KIS와 독립).
+    if settings.kiwoom_enabled:
+        from . import kiwoom_runtime  # noqa: PLC0415
+        kiwoom_mgr = _ensure_kiwoom_session(
+            state, data_dir=data_dir, buffer=buffer,
+            date_fn=date_fn, now_ms_fn=now_ms_fn,
+        )
+        n_kiwoom = len(kiwoom_runtime.configured_account_ids(data_dir))
+        await kiwoom_mgr.sync(targets.kiwoom_targets, n_accounts=n_kiwoom)
+    elif state.kiwoom_session is not None:
+        await state.kiwoom_session.stop()
+
     return StorageRuntimeSnapshot(
         storage_policy=settings.storage_policy,
         ws_targets=targets.ws_targets,
@@ -219,3 +266,6 @@ async def stop_storage_runtime(state: StorageRuntimeState) -> None:
     collector = state.program_trade_collector
     if collector is not None:
         await collector.stop()
+    kiwoom = state.kiwoom_session
+    if kiwoom is not None:
+        await kiwoom.stop()

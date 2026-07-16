@@ -513,6 +513,38 @@ async def promote_api_today(data_dir: Path, *, code: str) -> None:
     await asyncio.to_thread(_sync_parse_and_write)
 
 
+async def promote_kiwoom_today(data_dir: Path, *, code: str) -> None:
+    """키움 WS 승격 (ADR-0116) — live_kiwoom JSONL → parquet/{date}/{code}/kiwoom_live.
+
+    promote_api_today의 키움판. 소스만 다르고(kiwoom_live) 나머지는 동일: 실시간
+    WS라 kis_live처럼 sampling 메타 없음(_build_meta의 kis_api 분기 밖). 별도 루트
+    (live_kiwoom)라 KIS live JSONL과 무충돌. record/return 없음(promote_api_today와 동일).
+    """
+    from hoga.api._atomic_write import atomic_write_json
+
+    today = _today_kst_yyyymmdd()
+    jsonl_path = data_dir / "live_kiwoom" / today / f"{code}.jsonl"
+    target = data_dir / "parquet" / today / code / "kiwoom_live"
+    if not jsonl_path.exists():
+        return
+
+    def _sync_parse_and_write() -> None:
+        snapshots, trades, broker_rows, fills, meta = _parse_jsonl_incremental(
+            jsonl_path,
+            code=code,
+            date=today,
+            source="kiwoom_live",
+        )
+        target.mkdir(parents=True, exist_ok=True)
+        _atomic_write_table(write_snapshots_parquet, snapshots, target / "snapshots.parquet")
+        _atomic_write_table(write_trades_parquet, trades, target / "trades.parquet")
+        _atomic_write_table(write_brokers_parquet, broker_rows, target / "brokers.parquet")
+        _atomic_write_table(write_fills_parquet, fills, target / "fills.parquet")
+        atomic_write_json(target / "meta.json", meta, indent=2)
+
+    await asyncio.to_thread(_sync_parse_and_write)
+
+
 async def promote_one(
     jsonl_path: Path,
     parquet_root: Path,
