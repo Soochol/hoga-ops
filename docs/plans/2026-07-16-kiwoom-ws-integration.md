@@ -141,7 +141,9 @@ DISCONNECTED → CONNECTING → AUTHED → REGISTERING → LIVE
 | ~~**PR-2**~~ ✅ | sources.py `kiwoom_live` + disk_state/screener_depth/meta_backfill 소스 튜플 (커밋 b9fca6e0) | 소스 계약 테스트 갱신·1278 api/live tests·promote 무변경(source:str) |
 | ~~**PR-3**~~ ✅ | coverage `kiwoom_targets` 라우팅 + `kiwoom_enabled` 킬스위치(데이터모델·operator 제어) (커밋 c3879648) | off=plan byte-identical 골든·partition·settings backcompat·1077 live tests |
 | ~~**PR-3b**~~ ✅ | promote_kiwoom_today + KiwoomSessionManager + storage_runtime/lifecycle/promoter/app 배선 (커밋 e902aaf0) | promote 골든·매니저 5종·라우팅 2종·1084 live+15 startup·실API 매니저 배선·**저장 flush 장중 도그푸딩 내일** |
-| **PR-4** | 온디맨드 WS(표시전용) + 0F/0w 어댑터 + 관측성(LiveStatus collectors) | 장중 이중 구독 parity 확인 |
+| ~~**PR-4a**~~ ✅ | 관측성 — LiveStatus.kiwoom(status snapshot) (커밋 cc76b603) | 매니저 status·get_status 노출·1088 live tests |
+| **PR-4b** | 온디맨드 표시전용 WS(뷰-구독 통합, 낯선 종목) | 장중: 낯선 종목 열람 시 키움 임시구독·닫으면 해제 |
+| **PR-4c** | 0F/0w 어댑터(거래원·프로그램) — **정규장 스모크로 실측 FID 확정 후** | payload parity(추측 FID 금지) |
 | **PR-5** | 분봉 백필 키움 이관 (키움우선→KIS폴백) | 동일 구간 양소스 패리티 테스트 |
 | **PR-6** | 프론트: 설정 키움 카드·하단바 커버리지 칩(`실시간 876/…`)·화질 도트(`●`/`◐`) | 도그푸딩 |
 
