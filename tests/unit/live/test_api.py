@@ -1714,7 +1714,6 @@ def _two_account_app(tmp_path, monkeypatch, fake0, fake1):
 
 def test_past_investor_net_uses_capacity_scheduler_pool(tmp_path, monkeypatch) -> None:
     """N=2 정상: investor-net은 fixed account role이 아니라 scheduler pool을 쓴다."""
-    monkeypatch.setattr("hoga.live.account_health._ws_probe", lambda: set())
     fake0, fake1 = _FakeKisForInvestor(), _FakeKisForInvestor()
     app = _two_account_app(tmp_path, monkeypatch, fake0, fake1)
     with TestClient(app) as c:

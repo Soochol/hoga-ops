@@ -35,8 +35,6 @@ _HOT_PATH_MODULES = (
     "hoga/live/__init__.py",
     "hoga/live/writer.py",
     "hoga/live/stream.py",
-    "hoga/live/ws_client.py",
-    "hoga/live/ws_frames.py",
     "hoga/live/downsampler.py",
     "hoga/live/session_gate.py",
     "hoga/live/coverage.py",
@@ -45,7 +43,6 @@ _HOT_PATH_MODULES = (
     "hoga/live/buffer.py",
     "hoga/live/api.py",
     "hoga/live/lifecycle.py",
-    "hoga/live/live_session.py",
     "hoga/live/kis_client.py",
     "hoga/live/kis_models.py",
     "hoga/live/broker_rest_poller.py",  # ADR-0111 — 거래원 REST 폴러도 핫패스(틱 주입)
@@ -124,14 +121,14 @@ def test_live_package_imports_cleanly_with_single_worker() -> None:
 
 
 def test_wstick_single_source_of_truth() -> None:
-    """PR-A (ADR-0118): WsTick lives in hoga.live.ticks; ws_frames re-exports it.
+    """PR-A/PR-G (ADR-0118): WsTick lives in hoga.live.ticks — 단일 SSOT.
 
-    The re-export must resolve to the *same* class object. A second WsTick
-    definition in ws_frames would silently break identity across the port
-    boundary — kiwoom/broker 합성 틱과 KIS 파서 출력이 다른 타입이 되어
-    isinstance/frozen-dataclass 계약이 어긋난다. PR-G에서 ws_frames의 KIS
-    파서를 제거할 때 WsTick이 실수로 재정의되지 않도록 고정한다.
-    """
-    from hoga.live import ticks, ws_frames
+    KIS ws_frames(파서) 삭제 후에도 키움/거래원 합성 틱이 이 한 타입만 쓰도록 고정한다.
+    kiwoom_frames·broker_rest_poller가 같은 클래스 객체를 참조해야 isinstance/frozen-
+    dataclass 계약이 어긋나지 않는다."""
+    from hoga.live import ticks
+    from hoga.live.broker_rest_poller import WsTick as BrokerWsTick
+    from hoga.live.kiwoom_frames import WsTick as KiwoomWsTick
 
-    assert ws_frames.WsTick is ticks.WsTick
+    assert BrokerWsTick is ticks.WsTick
+    assert KiwoomWsTick is ticks.WsTick

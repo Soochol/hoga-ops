@@ -12,7 +12,7 @@ def _doc(folders, entries_codes):
 
 
 def test_flatten_dedup_topmost_folder_wins():
-    from hoga.live.live_session import display_ordered_codes
+    from hoga.api.watchlist_projection import display_ordered_codes
     doc = _doc(
         folders=[
             {"id": "f_0000000a", "name": "A", "order": 0, "member_codes": ["005930", "000660"]},
@@ -25,7 +25,7 @@ def test_flatten_dedup_topmost_folder_wins():
 
 
 def test_folders_sorted_by_order():
-    from hoga.live.live_session import display_ordered_codes
+    from hoga.api.watchlist_projection import display_ordered_codes
     doc = _doc(
         folders=[
             {"id": "f_0000000b", "name": "B", "order": 1, "member_codes": ["035720"]},
@@ -37,7 +37,7 @@ def test_folders_sorted_by_order():
 
 
 def test_empty_folders_yield_empty():
-    from hoga.live.live_session import display_ordered_codes
+    from hoga.api.watchlist_projection import display_ordered_codes
     doc = _doc(folders=[{"id": "f_0000000a", "name": "A", "order": 0, "member_codes": []}],
                entries_codes=[])
     assert display_ordered_codes(doc) == []

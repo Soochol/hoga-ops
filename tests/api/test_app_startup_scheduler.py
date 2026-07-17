@@ -24,7 +24,6 @@ def test_app_startup_scheduler_does_not_spawn_catchup_by_default(
 
     original_create_task = asyncio.create_task
     start_live_stream = AsyncMock(return_value=True)
-    start_live_stream_watchdog = AsyncMock(return_value=None)
     start_today_promoter = AsyncMock(return_value=None)
 
     def tracking_create_task(coro, *, name=None, context=None):
@@ -38,7 +37,6 @@ def test_app_startup_scheduler_does_not_spawn_catchup_by_default(
     monkeypatch.setattr(scheduler_mod, "_catchup_run", fake_catchup)
     monkeypatch.setattr(app_mod._symbols_module, "needs_boot_refresh", lambda: False)
     monkeypatch.setattr(app_mod, "start_live_stream", start_live_stream)
-    monkeypatch.setattr(app_mod, "start_live_stream_watchdog", start_live_stream_watchdog)
     monkeypatch.setattr(app_mod, "start_today_promoter", start_today_promoter)
     monkeypatch.setattr(asyncio, "create_task", tracking_create_task)
 
@@ -67,7 +65,6 @@ def test_app_startup_can_opt_into_live_startup(
 
     original_create_task = asyncio.create_task
     start_live_stream = AsyncMock(return_value=True)
-    start_live_stream_watchdog = AsyncMock(return_value=None)
     start_today_promoter = AsyncMock(return_value=None)
 
     def tracking_create_task(coro, *, name=None, context=None):
@@ -81,7 +78,6 @@ def test_app_startup_can_opt_into_live_startup(
     monkeypatch.setattr(scheduler_mod, "_catchup_run", fake_catchup)
     monkeypatch.setattr(app_mod._symbols_module, "needs_boot_refresh", lambda: False)
     monkeypatch.setattr(app_mod, "start_live_stream", start_live_stream)
-    monkeypatch.setattr(app_mod, "start_live_stream_watchdog", start_live_stream_watchdog)
     monkeypatch.setattr(app_mod, "start_today_promoter", start_today_promoter)
     monkeypatch.setattr(asyncio, "create_task", tracking_create_task)
 

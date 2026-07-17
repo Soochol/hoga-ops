@@ -7,9 +7,14 @@ parity 테스트로 고정한다.
 from hoga.api.timeenc import hhmmssms_to_unix_ms
 from hoga.live.kiwoom_frames import parse_real_message, parse_real_row
 from hoga.live.snapshot import SnapshotKind
-from hoga.live.ws_frames import parse_message
 
 DATE = "20260716"
+
+# 포트 계약(구 KIS ws_frames 파서 출력 — 삭제 후 하드코딩). ws_frames의 _parse_orderbook /
+# _parse_trades가 만들던 payload 키 집합·중첩 구조. 값은 무관(키 셋만 대조).
+_KIS_OB_PAYLOAD_KEYS = {"code", "t_ms", "asks", "bids", "total_ask_qty", "total_bid_qty"}
+_KIS_LEVEL_KEYS = {"price", "qty"}
+_KIS_TRADE_RECORD_KEYS = {"t_ms", "price", "qty", "side", "side_source"}
 
 # 실측 0D(주식호가잔량, 000020) — 10호가 전 단계 채움, KRX 장중.
 REAL_0D_KRX = {
@@ -114,40 +119,22 @@ def test_unsupported_type_and_malformed_dropped():
     assert parse_real_message({"trnm": "REAL"}, date=DATE, now_ms=0) == []
 
 
-# ── 포트 계약: KIS ws_frames와 payload 구조 byte 동일 ──
-
-
-def _kis_asp_frame(hhmmss: str = "135622") -> str:
-    f = ["0"] * 45
-    f[0], f[1] = "000020", hhmmss
-    for i, idx in enumerate(range(3, 13)):
-        f[idx] = str(6500 + i * 10)
-    for i, idx in enumerate(range(13, 23)):
-        f[idx] = str(6490 - i * 10)
-    for i, idx in enumerate(range(23, 33)):
-        f[idx] = str(100 + i)
-    for i, idx in enumerate(range(33, 43)):
-        f[idx] = str(200 + i)
-    f[43], f[44] = "4343", "26747"
-    return "0|H0STASP0|001|" + "^".join(f)
+# ── 포트 계약: 구 KIS ws_frames 파서 payload 구조와 byte 동일(하드코딩 기대값) ──
 
 
 def test_orderbook_payload_keys_match_kis():
-    """키움 OB payload의 키 집합·중첩 구조가 KIS와 동일 — 포트 계약."""
+    """키움 OB payload의 키 집합·중첩 구조가 (삭제된) KIS 파서와 동일 — 포트 계약."""
     kiwoom = parse_real_row(REAL_0D_KRX, date=DATE, now_ms=0)
-    kis = parse_message(_kis_asp_frame(), date=DATE, now_ms=0)[0]
-    assert set(kiwoom.payload) == set(kis.payload)
-    assert set(kiwoom.payload["asks"][0]) == set(kis.payload["asks"][0])
-    assert len(kiwoom.payload["asks"]) == len(kis.payload["asks"]) == 10
-    assert len(kiwoom.payload["bids"]) == len(kis.payload["bids"]) == 10
-    # 같은 논리 데이터 → 같은 값(best ask price/qty).
-    assert kiwoom.payload["asks"][0]["price"] == kis.payload["asks"][0]["price"] == 6500
+    assert set(kiwoom.payload) == _KIS_OB_PAYLOAD_KEYS
+    assert set(kiwoom.payload["asks"][0]) == _KIS_LEVEL_KEYS
+    assert set(kiwoom.payload["bids"][0]) == _KIS_LEVEL_KEYS
+    assert len(kiwoom.payload["asks"]) == 10
+    assert len(kiwoom.payload["bids"]) == 10
+    # 실측 fixture의 best ask price(000020 10호가 전단계 채움).
+    assert kiwoom.payload["asks"][0]["price"] == 6500
 
 
 def test_trade_payload_keys_match_kis():
     kiwoom = parse_real_row(REAL_0B, date=DATE, now_ms=0)
-    f = ["0"] * 46
-    f[0], f[1], f[2], f[12], f[21] = "000810", "135622", "686000", "3", "1"
-    kis = parse_message("0|H0STCNT0|001|" + "^".join(f), date=DATE, now_ms=0)[0]
-    assert set(kiwoom.payload) == set(kis.payload) == {"trades"}
-    assert set(kiwoom.payload["trades"][0]) == set(kis.payload["trades"][0])
+    assert set(kiwoom.payload) == {"trades"}
+    assert set(kiwoom.payload["trades"][0]) == _KIS_TRADE_RECORD_KEYS

@@ -54,7 +54,6 @@ from hoga.live.lifecycle import (
     get_kiwoom_capture_codes,
     start_kiwoom_session_watchdog,
     start_live_stream,
-    start_live_stream_watchdog,
     start_today_promoter,
     stop_live_stream,
     stop_today_promoter,
@@ -141,7 +140,6 @@ def create_app(data_dir: Path) -> FastAPI:
                 env=os.environ,
                 start_scheduler=start_scheduler,
                 start_live_stream=start_live_stream,
-                start_live_stream_watchdog=start_live_stream_watchdog,
                 start_kiwoom_watchdog=start_kiwoom_session_watchdog,
                 # Inject the event bus so a real Today Promotion fires a
                 # promotion_completed event (WS 푸시 승격 무효화). Same

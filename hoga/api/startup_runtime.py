@@ -37,7 +37,6 @@ class StartupRuntimeDeps:
     env: Mapping[str, str]
     start_scheduler: Callable[[Path], list[asyncio.Task]]
     start_live_stream: Callable[..., Awaitable[bool]]
-    start_live_stream_watchdog: Callable[..., Awaitable[TaskOrNone]]
     start_today_promoter: Callable[..., Awaitable[TaskOrNone]]
     stop_today_promoter: Callable[[TaskOrNone], Awaitable[None]]
     stop_live_stream: Callable[[], Awaitable[None]]
@@ -57,7 +56,6 @@ class StartupRuntimeDeps:
 @dataclass
 class AppStartupRuntime:
     scheduler_tasks: list[asyncio.Task]
-    live_watchdog_task: TaskOrNone
     today_promoter_task: TaskOrNone
     deps: StartupRuntimeDeps
     kiwoom_watchdog_task: TaskOrNone = None
@@ -79,7 +77,6 @@ class AppStartupRuntime:
         """
         tasks: list[tuple[str, TaskOrNone]] = [
             *((t.get_name(), t) for t in self.scheduler_tasks),
-            ("live-stream-watchdog", self.live_watchdog_task),
             ("kiwoom-session-watchdog", self.kiwoom_watchdog_task),
             ("today-promoter", self.today_promoter_task),
         ]
@@ -91,7 +88,6 @@ class AppStartupRuntime:
     async def stop(self) -> None:
         """Stop runtime-owned background work in shutdown order."""
         await self.deps.stop_today_promoter(self.today_promoter_task)
-        await self.deps.stop_today_promoter(self.live_watchdog_task)
         await self.deps.stop_today_promoter(self.kiwoom_watchdog_task)
         await self.deps.stop_live_stream()
 
@@ -117,7 +113,6 @@ async def start_app_runtime(
     """Start scheduler, Live Capture helpers, Today Promotion, and symbol boot refresh."""
     runtime = AppStartupRuntime(
         scheduler_tasks=[],
-        live_watchdog_task=None,
         today_promoter_task=None,
         deps=deps,
     )
@@ -126,8 +121,6 @@ async def start_app_runtime(
 
         if live_startup_enabled_from_env(deps.env):
             await deps.start_live_stream(data_dir=data_dir)
-
-        runtime.live_watchdog_task = await deps.start_live_stream_watchdog(data_dir=data_dir)
 
         if deps.start_kiwoom_watchdog is not None:
             runtime.kiwoom_watchdog_task = await deps.start_kiwoom_watchdog()

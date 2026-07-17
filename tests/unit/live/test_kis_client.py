@@ -1048,65 +1048,6 @@ async def test_get_retry_false_kwarg_disables_retry(monkeypatch) -> None:
         await client.aclose()
 
 
-@pytest.mark.asyncio
-async def test_get_approval_key() -> None:
-    def handler(request: httpx.Request) -> httpx.Response:
-        assert request.url.path == "/oauth2/Approval"
-        body = json.loads(request.content)
-        assert body == {"grant_type": "client_credentials",
-                        "appkey": "AK", "secretkey": "AS"}  # 필드명 secretkey!
-        return httpx.Response(200, json={"approval_key": "APPROVAL-123"})
-
-    kis = KisClient(
-        KisCredentials(app_key="AK", app_secret="AS"),
-        token_provider=FakeTokenProvider(),
-        _transport=httpx.MockTransport(handler),
-    )
-    try:
-        assert await kis.get_approval_key() == "APPROVAL-123"
-    finally:
-        await kis.aclose()
-
-
-async def test_get_approval_key_missing_key_raises_with_body() -> None:
-    """200 without approval_key (KIS error envelope) — the error message must
-    carry the response body, since the WS reconnect loop's `err=%r` log is the
-    operator's only diagnostic surface (Task 6)."""
-    transport = httpx.MockTransport(
-        lambda req: httpx.Response(200, json={"error_description": "bad appkey"})
-    )
-    kis = KisClient(
-        KisCredentials(app_key="AK", app_secret="AS"),
-        token_provider=FakeTokenProvider(),
-        _transport=transport,
-    )
-    try:
-        with pytest.raises(KisAuthError) as exc_info:
-            await kis.get_approval_key()
-        assert "bad appkey" in str(exc_info.value)
-    finally:
-        await kis.aclose()
-
-
-async def test_get_approval_key_non_200_raises_with_status() -> None:
-    """Non-200 → KisAuthError naming the HTTP status (same pattern as
-    token issuance) instead of a bare httpx.HTTPStatusError traceback."""
-    transport = httpx.MockTransport(
-        lambda req: httpx.Response(403, json={"error_description": "forbidden"})
-    )
-    kis = KisClient(
-        KisCredentials(app_key="AK", app_secret="AS"),
-        token_provider=FakeTokenProvider(),
-        _transport=transport,
-    )
-    try:
-        with pytest.raises(KisAuthError) as exc_info:
-            await kis.get_approval_key()
-        assert "HTTP 403" in str(exc_info.value)
-    finally:
-        await kis.aclose()
-
-
 async def test_get_retry_re_acquires_rate_limiter_each_attempt(monkeypatch) -> None:
     """Each retry passes through the token bucket again — a retry burst can't
     skip the per-API-key budget by reusing the previous attempt's token. This

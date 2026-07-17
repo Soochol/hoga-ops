@@ -167,7 +167,6 @@ def test_lifespan_does_not_run_screener_recovery_on_startup(tmp_path: Path, monk
     monkeypatch.setattr(app_mod._screener_module, "trigger_update", fake_trigger_update)
     monkeypatch.setattr(app_mod, "start_scheduler", lambda data_dir: [])
     monkeypatch.setattr(app_mod, "start_live_stream", async_noop)
-    monkeypatch.setattr(app_mod, "start_live_stream_watchdog", async_noop)
     monkeypatch.setattr(app_mod, "start_today_promoter", async_noop)
 
     with TestClient(app_mod.create_app(tmp_path)) as client:

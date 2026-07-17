@@ -116,19 +116,10 @@ def test_for_account_missing_returns_none(tmp_path, monkeypatch):
 # KisAccountPool.eligible_accounts(test_kis_account_pool.py)가 커버한다.
 
 
-def test_is_degraded_swallows_probe_errors(monkeypatch):
-    """WS probe 조회 실패 시 보수적으로 False(라우팅을 막지 않는다)."""
-    def boom():
-        raise RuntimeError("probe not ready")
-    monkeypatch.setattr("hoga.live.account_health._ws_probe", boom)
-    assert account_health.is_degraded(1) is False
-
-
 def test_rest_auth_latch_warns_once_on_transition(tmp_path, monkeypatch, caplog):
     """FM5: account 1 REST 토큰 발급 실패 latch는 degraded로 전환하고, 운영자가 grep할
     1회성 WARNING을 남긴다(silent capacity degradation 방지). 멱등 — 로그는 1회만."""
     import logging
-    monkeypatch.setattr("hoga.live.account_health._ws_probe", lambda: set())
     assert account_health.is_degraded(1) is False
     with caplog.at_level(logging.WARNING, logger="hoga.live.account_health"):
         account_health.mark_rest_auth_degraded(1)  # 토큰 provider 콜백이 호출하는 것
@@ -139,9 +130,8 @@ def test_rest_auth_latch_warns_once_on_transition(tmp_path, monkeypatch, caplog)
     assert account_health.is_rest_degraded(1) is True
 
 
-def test_mark_rest_auth_degraded_noops_for_account0(monkeypatch):
+def test_mark_rest_auth_degraded_noops_for_account0():
     """account 0은 폴백 대상 자체 → 마킹해도 degraded 아님(자기 자신으로 폴백 불가)."""
-    monkeypatch.setattr("hoga.live.account_health._ws_probe", lambda: set())
     account_health.mark_rest_auth_degraded(0)
     assert account_health.is_degraded(0) is False
 

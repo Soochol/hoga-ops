@@ -23,7 +23,6 @@ from .session_gate import market_phase, ws_capture_window_async
 from .snapshot import LiveSnapshot, SnapshotKind
 from .ticks import WsTick
 from .writer import LiveWriter
-from .ws_client import KisWsClient
 
 _log = logging.getLogger(__name__)
 
@@ -79,7 +78,6 @@ class LiveStream:
         # set_active_codes 전 부분 조립·단위 테스트 호환); 실경로는
         # start(_start_live_stream_locked)와 refresh가 항상 설정한다.
         self._active_codes: set[str] | None = None
-        self.ws: KisWsClient | None = None       # lifecycle이 주입
         self.last_flush_ms: int | None = None
         self._last_flush_date: str | None = None  # R1: 미관측 일경계 백스톱
         # R2: 게이트 판정은 flush 루프가 1Hz로 유지 — on_tick은 이 플래그만 읽는다

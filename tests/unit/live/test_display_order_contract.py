@@ -14,7 +14,7 @@ _FIXTURE = (Path(__file__).resolve().parents[3]
 
 def test_display_ordered_codes_matches_golden_fixture():
     from hoga.api.models import WatchlistDocument, WatchlistFolder, WatchlistEntry
-    from hoga.live.live_session import display_ordered_codes
+    from hoga.api.watchlist_projection import display_ordered_codes
     fx = json.loads(_FIXTURE.read_text(encoding="utf-8"))
     doc = WatchlistDocument(
         folders=[WatchlistFolder(**f) for f in fx["folders"]],

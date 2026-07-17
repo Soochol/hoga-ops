@@ -102,8 +102,9 @@ def _seed_heatmap(tmp_path, codes: list[tuple[str, str]]):
 
 
 @pytest.mark.asyncio
-async def test_storage_runtime_ws_targets_from_watchlist(tmp_path, monkeypatch) -> None:
-    """기본 경로: 관심종목이 슬롯 내면 전부 KIS WS 타깃, 키움 off면 kiwoom_targets=()."""
+async def test_storage_runtime_ws_targets_always_empty(tmp_path, monkeypatch) -> None:
+    """ADR-0118 PR-G: KIS WS 삭제 → ws_targets 항상 (). 키움 off면 kiwoom_targets=() —
+    아무것도 수집하지 않는다(폴백 없음)."""
     _patch_common(monkeypatch)
     _seed_watchlist(tmp_path)
     save_live_settings(tmp_path, LiveSettings())
@@ -118,32 +119,7 @@ async def test_storage_runtime_ws_targets_from_watchlist(tmp_path, monkeypatch) 
         n_configured=1,
     )
 
-    assert snapshot.ws_targets == ("005930", "000660", "035420")
-    assert snapshot.kiwoom_targets == ()
-
-
-@pytest.mark.asyncio
-async def test_storage_runtime_ws_targets_clamped_to_account_slots(
-    tmp_path, monkeypatch,
-) -> None:
-    """슬롯(per_account_max×n) 초과 관심종목은 WS 타깃에서 잘린다 — REST 스필오버 없음."""
-    _patch_common(monkeypatch)
-    _seed_watchlist(tmp_path)
-    monkeypatch.setattr("hoga.live.coverage._PER_ACCOUNT_MAX", 1)
-    save_live_settings(tmp_path, LiveSettings())
-    state = FakeStorageState()
-
-    snapshot = await sync_storage_runtime(
-        tmp_path,
-        state=state,
-        buffer=object(),  # type: ignore[arg-type]
-        date_fn=lambda: "20260717",
-        now_ms_fn=lambda: 0,
-        n_configured=1,
-    )
-
-    assert snapshot.ws_targets == ("005930",)
-    # 초과분(000660, 035420)은 어디에도 안 담긴다(계좌 추가로 대응).
+    assert snapshot.ws_targets == ()
     assert snapshot.kiwoom_targets == ()
 
 
@@ -359,5 +335,5 @@ async def test_storage_runtime_bypass_stops_program_trade_collector(
     )
 
     assert existing.stopped is True
-    # bypass는 WS 타깃 계획엔 영향 없다.
-    assert snapshot.ws_targets == ("005930", "000660", "035420")
+    # KIS WS 삭제 → ws_targets는 항상 ()(bypass 무관).
+    assert snapshot.ws_targets == ()

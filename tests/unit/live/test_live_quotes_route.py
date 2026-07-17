@@ -522,7 +522,6 @@ def _two_account_quotes_app(tmp_path, monkeypatch, fake0, fake1):
 def test_quotes_uses_shared_capacity_pool_first_healthy_account(monkeypatch, tmp_path):
     """N=2 정상: /quotes는 역할 고정이 아니라 공유 capacity pool의 least-loaded 후보를 쓴다."""
     monkeypatch.setattr(live_api, "_quote_phase", lambda now, venue_policy="KRX": "open")
-    monkeypatch.setattr("hoga.live.account_health._ws_probe", lambda: set())
     fake0, fake1 = _CountingFakeKis(QUOTES), _CountingFakeKis(QUOTES)
     app = _two_account_quotes_app(tmp_path, monkeypatch, fake0, fake1)
     r = TestClient(app).get("/api/live/quotes", params={"codes": "005930,000660"})
