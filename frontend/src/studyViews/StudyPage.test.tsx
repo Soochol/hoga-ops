@@ -353,6 +353,32 @@ describe('StudyPage', () => {
     expect(screen.getByText('005930 · 3m · 복기뷰')).toBeTruthy();
   });
 
+  it('never requests the saved timeframe when the tab overrides it', () => {
+    // tab.timeframe(3m) ≠ save.timeframe(5m)일 때 첫 렌더부터 3m이어야 한다.
+    // viewTimeframes effect 동기화를 기다리면 5m range 번들(수십 MB)을 한 벌
+    // fetch한 뒤 버리는 회귀가 된다 (#689 후속).
+    useStudyTabsStore.setState({
+      tabs: [{
+        id: 'tab-ref',
+        viewId: 'view-ref',
+        code: '005930',
+        label: '삼성전자 · 돌파 복기 · 3m',
+        name: '돌파 복기',
+        timeframe: '3m',
+      }],
+      activeTabId: 'tab-ref',
+    });
+
+    useStudyReferenceBundleMock.mockClear();
+    renderPage('/study?view=view-ref');
+
+    const requestedTimeframes = useStudyReferenceBundleMock.mock.calls
+      .map(([save]) => (save as StudyViewReference | null)?.timeframe)
+      .filter((timeframe): timeframe is StudyViewReference['timeframe'] => timeframe != null);
+    expect(requestedTimeframes.length).toBeGreaterThan(0);
+    expect(requestedTimeframes.every((timeframe) => timeframe === '3m')).toBe(true);
+  });
+
   it('switches the study reference timeframe with the live timeframe controls', () => {
     renderPage('/study?view=view-ref');
 

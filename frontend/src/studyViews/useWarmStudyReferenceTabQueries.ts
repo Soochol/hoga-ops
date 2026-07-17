@@ -1,7 +1,7 @@
 import { useMemo } from 'react';
 import { useQueries } from '@tanstack/react-query';
 import type { StudyViewReference } from '../api/studyViews';
-import { useLivePageStore, type LiveTimeframe } from '../state/livePage';
+import { useLivePageStore } from '../state/livePage';
 import type { StudyTab } from '../state/studyTabs';
 import { useSourcePreferenceStore } from '../state/sourcePreference';
 import { referenceStudyView } from './studyViewVariant';
@@ -19,7 +19,6 @@ type UseWarmStudyReferenceTabQueriesArgs = {
   activeTabId: string | null;
   activatedTabIds: readonly string[];
   saves: StudyViewReference[];
-  viewTimeframes: Record<string, LiveTimeframe>;
 };
 
 export function useWarmStudyReferenceTabQueries({
@@ -27,7 +26,6 @@ export function useWarmStudyReferenceTabQueries({
   activeTabId,
   activatedTabIds,
   saves,
-  viewTimeframes,
 }: UseWarmStudyReferenceTabQueriesArgs): Record<string, StudyTabQueryStatus> {
   const sourcePref = useSourcePreferenceStore((s) => s.sourcePreference);
   const brokerLateEntryEnabled = useLivePageStore((s) => s.brokerLateEntryEnabled);
@@ -58,7 +56,10 @@ export function useWarmStudyReferenceTabQueries({
       if (!warmTabIds.has(tab.id)) return [];
       const save = referenceStudyView(savesById.get(tab.viewId) ?? null);
       if (!save) return [];
-      const timeframe = viewTimeframes[save.id] ?? save.timeframe;
+      // tab.timeframe이 SSOT: viewTimeframes는 effect로 한 커밋 늦게 동기화돼,
+      // "열 때 기본 시간봉" override로 연 첫 렌더에서 save.timeframe으로 워밍
+      // 쿼리를 만들면 즉시 버려질 range 번들을 한 벌 더 fetch하게 된다.
+      const timeframe = tab.timeframe;
       const options = studyReferenceQueryOptions({ ...save, timeframe }, settings);
       return [options.rangeHoga, options.rangeSidecars, options.rangeCandles, options.screenerDaily]
         .filter((query) => query.enabled)
@@ -72,7 +73,6 @@ export function useWarmStudyReferenceTabQueries({
     tabs,
     tradeVolumePocEnabled,
     depthHeatmapEnabled,
-    viewTimeframes,
     volumeDistributionEnabled,
     volumeDistributionRangeCount,
     warmTabIds,
