@@ -160,8 +160,14 @@ export function StudyPage() {
     [activeViewId, savesQuery.data?.saves],
   );
   const referenceSave = referenceStudyView(selectedSave);
+  // 탭이 이 뷰를 들고 있으면 tab.timeframe이 렌더 시점 SSOT다. viewTimeframes는
+  // effect로 한 커밋 늦게 동기화되므로, 그걸 먼저 읽으면 "열 때 기본 시간봉"
+  // override로 연 첫 렌더가 save.timeframe으로 range 번들(수십 MB)을 한 벌
+  // 더 fetch한다. viewTimeframes는 탭 없는 라우트 과도기 전용 폴백.
   const selectedTimeframe = activeViewId && referenceSave
-    ? viewTimeframes[activeViewId] ?? referenceSave.timeframe
+    ? (activeTab?.viewId === activeViewId ? activeTab.timeframe : undefined)
+      ?? viewTimeframes[activeViewId]
+      ?? referenceSave.timeframe
     : null;
   const rememberedMinuteTimeframe = activeViewId && referenceSave
     ? rememberedMinuteTimeframes[activeViewId]
@@ -205,7 +211,6 @@ export function StudyPage() {
     activeTabId,
     activatedTabIds,
     saves: savesQuery.data?.saves ?? [],
-    viewTimeframes,
   });
   useStudyRangeCacheEviction(tabs);
   const handleViewportCaptureReady = useCallback((capture: () => TabViewport | null) => {

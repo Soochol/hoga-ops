@@ -107,7 +107,6 @@ describe('useWarmStudyReferenceTabQueries', () => {
         activeTabId: 'tab-a',
         activatedTabIds: ['tab-b'],
         saves,
-        viewTimeframes: {},
       }),
       { wrapper: wrapper(client) },
     );
@@ -125,6 +124,31 @@ describe('useWarmStudyReferenceTabQueries', () => {
     expect(result.current['tab-c']).toBe('idle');
   });
 
+  it('warms with the tab timeframe, never the save timeframe', async () => {
+    // "열 때 기본 시간봉" override로 tab.timeframe(3m) ≠ save.timeframe(5m)인 탭.
+    // save 쪽(bucket 300000)으로 fetch하면 즉시 버려질 번들을 한 벌 더 받는 회귀.
+    const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+    const saves = [save('view-a', '005930', '삼성전자')];
+    const overriddenTab = { ...tab('tab-a', 'view-a', '005930', '삼성전자'), timeframe: '3m' as const };
+
+    renderHook(
+      () => useWarmStudyReferenceTabQueries({
+        tabs: [overriddenTab],
+        activeTabId: 'tab-a',
+        activatedTabIds: [],
+        saves,
+      }),
+      { wrapper: wrapper(client) },
+    );
+
+    await waitFor(() => {
+      const urls = vi.mocked(apiCall).mock.calls.map(([url]) => String(url));
+      expect(urls.some((url) => url.includes('bucket_ms=180000'))).toBe(true);
+    });
+    const urls = vi.mocked(apiCall).mock.calls.map(([url]) => String(url));
+    expect(urls.some((url) => url.includes('bucket_ms=300000'))).toBe(false);
+  });
+
   it('drops removed tabs from the status map', async () => {
     const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
     const saves = [save('view-a', '005930', '삼성전자'), save('view-b', '000660', 'SK하이닉스')];
@@ -139,7 +163,6 @@ describe('useWarmStudyReferenceTabQueries', () => {
         activeTabId: 'tab-a',
         activatedTabIds: ['tab-b'],
         saves,
-        viewTimeframes: {},
       }),
       {
         wrapper: wrapper(client),
@@ -176,7 +199,6 @@ describe('useWarmStudyReferenceTabQueries', () => {
         activeTabId,
         activatedTabIds,
         saves,
-        viewTimeframes: {},
       }),
       {
         wrapper: wrapper(client),
