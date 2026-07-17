@@ -662,16 +662,23 @@ def _sync_exclusion(poller: LiveRestPoller | None, live_set: tuple[str, ...]) ->
 
 
 async def _dispatch_broker_tick(tick: WsTick) -> None:
-    """거래원 폴러가 만든 합성 BROKER 틱을 현재 모든 스트림에 브로드캐스트한다(ADR-0111).
+    """거래원 폴러가 만든 합성 BROKER 틱(ADR-0111 승계)을 **키움 매니저**의 관심종목 소유
+    스트림에 브로드캐스트한다(ADR-0118 PR-D — 착지 위치를 kiwoom_live/brokers로 통일).
 
-    파티션은 disjoint하고 각 스트림의 on_tick이 활성집합 밖 코드를 입구에서 드롭하므로
-    (stream.py 활성집합 필터), 정확히 소유 스트림 1개만 실제로 수집한다. 코드→계정 소유를
-    폴러에 복제하는 대신 브로드캐스트하는 이유: refresh Pass 0의 활성집합 스왑이 동기·원자라
-    이중 수락 레이스가 없고(이중-write 방지 불변식과 동일 근거), ≤4개 스트림 순회가 소유
-    해석보다 단순·안전하다. `_state.session.streams`를 호출 시점에 읽어 refresh 후에도 항상
-    현재 스트림 집합에 디스패치한다."""
-    for conn in list(_state.session.streams.values()):
-        stream = conn.stream_obj
+    각 스트림의 on_tick이 활성집합 밖 코드를 입구에서 드롭하므로(stream.py 활성집합 필터),
+    멤버십은 스트림 활성 셋이 흡수 → 정확히 소유 스트림 1개만 실제 수집한다. 코드→계정
+    소유를 폴러에 복제하는 대신 브로드캐스트(≤5 스트림 순회가 소유 해석보다 단순·안전).
+    호출 시점에 kiwoom_session을 읽어 sync/재빌드 후에도 현재 스트림 집합에 디스패치한다.
+    키움 미배선(off)이면 no-op(폴백 없음 — 관심종목 키움 이관 전제).
+
+    과도기 공급자는 KIS REST(BrokerRestPoller), 최종은 키움 0F push(정규장 스모크 검증 후,
+    PR-F). 어느 쪽이든 착지·소비자 무변경(ADR-0111 합성 틱 원칙 승계). ⚠ 관심종목이 키움
+    저장셋에 편입(PR-E 컷오버)되기 전엔 키움 스트림 활성셋이 히트맵뿐이라 관심종목 거래원
+    틱이 드롭된다 — PR-D/E는 함께 배포한다."""
+    session = _state.kiwoom_session
+    if session is None:
+        return
+    for stream in session.broker_dispatch_streams():
         on_tick = getattr(stream, "on_tick", None)
         if on_tick is not None:
             await on_tick(tick)

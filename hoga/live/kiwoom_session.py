@@ -404,6 +404,13 @@ class KiwoomSessionManager:
     def connected_accounts(self) -> int:
         return sum(1 for c in self._conns.values() if c.client.connected)
 
+    def broker_dispatch_streams(self) -> list[object]:
+        """거래원 합성 틱(ADR-0111 승계) 브로드캐스트 대상 — 살아있는 conn의 LiveStream
+        목록(ADR-0118 PR-D). 각 stream 활성집합 필터가 멤버십을 흡수(비소유 코드 입구
+        드롭) → 소유 stream 1개만 실수집. 킥·태스크 사망 conn은 제외(active_codes 규율과
+        동일 — 재빌드 중 유령 저장 방지)."""
+        return [conn.stream for conn in self._conns.values() if not _conn_dead(conn)]
+
     def status(self) -> dict:
         """관측 스냅샷 — LiveStatus.kiwoom로 노출(PR-6 커버리지 칩·진단). 프론트는
         connected_accounts/subscribed_count을 칩에, accounts를 진단에 쓴다."""

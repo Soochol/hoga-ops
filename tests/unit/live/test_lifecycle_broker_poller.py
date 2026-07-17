@@ -172,6 +172,53 @@ async def test_refresh_bypass_stops_existing_broker_poller(
 
 
 @pytest.mark.asyncio
+async def test_dispatch_broker_tick_broadcasts_to_kiwoom_streams() -> None:
+    """PR-D: 거래원 합성 틱이 KIS(_state.session.streams)가 아닌 키움 매니저 스트림에
+    브로드캐스트된다(착지 위치 kiwoom_live 통일, ADR-0118 §3). 각 스트림 활성집합 필터가
+    멤버십 흡수 → 소유 스트림 1개만 실수집."""
+    from hoga.live import lifecycle
+    from hoga.live.lifecycle import _State
+    from hoga.live.snapshot import SnapshotKind
+    from hoga.live.ticks import WsTick
+
+    lifecycle.reset_for_tests()
+
+    class _RecStream:
+        def __init__(self) -> None:
+            self.ticks: list = []
+
+        async def on_tick(self, tick) -> None:
+            self.ticks.append(tick)
+
+    s0, s1 = _RecStream(), _RecStream()
+
+    class _FakeKiwoom:
+        def broker_dispatch_streams(self):
+            return [s0, s1]
+
+    lifecycle._state = _State(kiwoom_session=_FakeKiwoom())
+    tick = WsTick(code="005930", t_ms=1, kind=SnapshotKind.BROKER, payload={})
+    await lifecycle._dispatch_broker_tick(tick)
+    assert s0.ticks == [tick]
+    assert s1.ticks == [tick]  # 전 키움 스트림에 브로드캐스트
+
+
+@pytest.mark.asyncio
+async def test_dispatch_broker_tick_noop_when_kiwoom_off() -> None:
+    """키움 미배선(off)이면 거래원 디스패치는 no-op(폴백 없음 — 예외 없이)."""
+    from hoga.live import lifecycle
+    from hoga.live.lifecycle import _State
+    from hoga.live.snapshot import SnapshotKind
+    from hoga.live.ticks import WsTick
+
+    lifecycle.reset_for_tests()
+    lifecycle._state = _State()  # kiwoom_session None
+    await lifecycle._dispatch_broker_tick(
+        WsTick(code="005930", t_ms=1, kind=SnapshotKind.BROKER, payload={})
+    )  # 예외 없음
+
+
+@pytest.mark.asyncio
 async def test_refresh_resyncs_broker_poller_targets(monkeypatch, tmp_path) -> None:
     """watchlist 변경 후 refresh가 타깃을 갱신된 live_set으로 재동기화한다."""
     from hoga.live import lifecycle, session_gate
