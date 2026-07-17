@@ -275,5 +275,59 @@ async def test_supervised_task_health_reports_alive_sleeping_and_dead(tmp_path: 
     daily.cancel()
 
 
+@pytest.mark.asyncio
+async def test_startup_runtime_spawns_and_stops_kiwoom_watchdog(tmp_path: Path) -> None:
+    """PR-B(ADR-0118 §5): start_kiwoom_watchdog 주입 시 기동·health 노출·shutdown 정지.
+    미주입(기본 None)이면 미기동 — KIS watchdog과 별개 태스크로 배선된다."""
+    from hoga.api.startup_runtime import StartupRuntimeDeps, start_app_runtime
+
+    calls: list[Any] = []
+
+    async def noop_task() -> None:
+        await asyncio.sleep(3600)
+
+    async def start_live_stream_watchdog(*, data_dir: Path) -> asyncio.Task | None:
+        return None
+
+    async def start_today_promoter(**_kwargs: Any) -> asyncio.Task | None:
+        return None
+
+    async def start_kiwoom_watchdog() -> asyncio.Task | None:
+        calls.append(("kiwoom-start",))
+        return asyncio.create_task(noop_task(), name="kiwoom-session-watchdog")
+
+    runtime = await start_app_runtime(
+        tmp_path,
+        deps=StartupRuntimeDeps(
+            env={},
+            start_scheduler=lambda _d: [],
+            start_live_stream=lambda *, data_dir: _record_async(calls, "live", data_dir),
+            start_live_stream_watchdog=start_live_stream_watchdog,
+            start_today_promoter=start_today_promoter,
+            stop_today_promoter=lambda task: _record_async(calls, "stop", task),
+            stop_live_stream=lambda: _record_async(calls, "stop-live", None),
+            aclose_kis_capacity_scheduler=lambda: _record_async(calls, "close-cap", None),
+            aclose_kis_client=lambda: _record_async(calls, "close-kis", None),
+            get_active_codes=lambda: [],
+            load_symbol_disk_state=lambda **_k: None,
+            needs_symbol_boot_refresh=lambda: False,
+            refresh_symbols=lambda **_k: _record_async(calls, "refresh", None),
+            resolve_symbol_master_path=lambda: tmp_path / "symbols.json",
+            start_kiwoom_watchdog=start_kiwoom_watchdog,
+        ),
+    )
+
+    task = runtime.kiwoom_watchdog_task
+    assert ("kiwoom-start",) in calls          # 기동됨
+    assert task is not None
+    health = {row["name"]: row["running"] for row in runtime.supervised_task_health()}
+    assert health["kiwoom-session-watchdog"] is True  # 살아있음 노출
+
+    await runtime.stop()
+    assert ("stop", task) in calls             # shutdown이 정지 훅에 위임
+    if not task.done():
+        task.cancel()  # 페이크 stop은 기록만 — 누수 방지 정리
+
+
 async def _record_async(calls: list[Any], name: str, value: Any) -> None:
     calls.append((name, value))

@@ -284,3 +284,41 @@ async def test_login_failure_invalidates_token():
     with pytest.raises(RuntimeError):
         await client._session_once()
     assert invalidated == [True]
+
+
+async def test_resubscribe_missing_reregs_unacked():
+    """워치독 표적 복구(PR-B ④, KIS resubscribe_missing 미러): 초기 REG 거부로
+    미확인 남은 종목만 재 REG해 acked로 수렴시킨다."""
+    ws = FakeServer(reg_rc_seq=[9999, 0])  # 초기 REG 거부 → 재구독 REG 성공
+    client = _client(ws)
+    task = await _run_briefly(client, ["005930"])
+    assert client.sub_missing() == ["005930"]  # 초기 등록 실패로 미확인
+    reg_before = sum(1 for s in ws.sent if json.loads(s)["trnm"] == "REG")
+
+    count = await client.resubscribe_missing()
+    await asyncio.sleep(0.01)
+    assert count == 1
+    assert client.sub_missing() == []       # 재구독으로 수렴
+    assert client.sub_acked == 1
+    reg_after = sum(1 for s in ws.sent if json.loads(s)["trnm"] == "REG")
+    assert reg_after == reg_before + 1      # 미확인 1건만 재 REG
+    await _cancel(task)
+
+
+async def test_resubscribe_missing_noop_when_all_acked():
+    """전부 acked면 재구독은 no-op(0) — 불필요한 REG 트래픽 없음."""
+    ws = FakeServer()  # 모든 REG rc=0
+    client = _client(ws)
+    task = await _run_briefly(client, ["005930"])
+    assert client.sub_missing() == []
+    assert await client.resubscribe_missing() == 0
+    await _cancel(task)
+
+
+async def test_resubscribe_missing_disconnected_is_noop():
+    """미연결이면 재구독은 0 — _ws None 가드."""
+    ws = FakeServer()
+    client = _client(ws)
+    # run 안 함 → 미연결(_ws None). sub_missing 있어도 재구독 no-op.
+    client._codes = ["005930"]
+    assert await client.resubscribe_missing() == 0

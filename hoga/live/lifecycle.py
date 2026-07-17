@@ -1082,3 +1082,31 @@ async def _ensure_conn_venues(now_ms: int) -> None:
         except Exception:  # noqa: BLE001 — 한 conn 스왑 실패가 다른 conn을 막지 않게 격리
             _log.exception("live.stream.venue_swap_failed account=%s venue=%s",
                            conn.account_id, venue)
+
+
+# ADR-0118 §5 — 키움 세션 워치독(KIS live-stream-watchdog 대칭, 별개 태스크)
+_KIWOOM_WATCHDOG_INTERVAL_S = 30.0
+
+
+async def start_kiwoom_session_watchdog(
+    *, interval_s: float = _KIWOOM_WATCHDOG_INTERVAL_S,
+) -> asyncio.Task:
+    """키움 세션 워치독 30s 루프(ADR-0118 §5). 죽은 conn 재빌드·시간대 venue 스왑·
+    표적 재구독·08:50 저장셋 등록 완결 술어를 매니저 watchdog_pass에 위임한다.
+
+    _state.kiwoom_session은 storage_runtime.sync가 lazy 생성하므로 매 패스에 조회 —
+    미생성(kiwoom off/부팅 전)이면 no-op. 자가 감독(한 패스 실패는 로그 후 계속) —
+    lifespan(startup_runtime)이 shutdown에 cancel한다. KIS watchdog과 별개 태스크라
+    한 브로커 워치독 장애가 다른 브로커 복구를 막지 않는다(ADR-0116 상호 무간섭)."""
+
+    async def loop() -> None:
+        while True:
+            try:
+                session = _state.kiwoom_session
+                if session is not None:
+                    await session.watchdog_pass(_now_ms())
+            except Exception:  # noqa: BLE001 — 워치독은 어떤 단일 패스보다 오래 살아야 한다
+                _log.exception("live.kiwoom.watchdog_cycle_failed")
+            await asyncio.sleep(interval_s)
+
+    return asyncio.create_task(loop(), name="kiwoom-session-watchdog")

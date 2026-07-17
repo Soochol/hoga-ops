@@ -151,3 +151,19 @@ def target_ws_venue(now_ms: int) -> str:
     kst = datetime.fromtimestamp(now_ms / 1000, tz=KIS_KST)
     minutes = kst.hour * 60 + kst.minute
     return "KRX" if _KRX_WARMUP_MIN <= minutes < _KRX_DRAIN_MARGIN_MIN else "NXT"
+
+
+_MARKET_OPEN_MIN = 9 * 60  # 09:00 KST — 정규장 개장(저장 게이트 시작)
+
+
+def in_krx_warmup_window(now_ms: int) -> bool:
+    """08:50–09:00 KRX 워밍 창(ADR-0118 §5). 순수 시계.
+
+    KRX venue 스왑 시작(_KRX_WARMUP_MIN=08:50)과 개장(09:00) 사이 — 이 창 안에
+    저장셋 등록 ACK가 완결돼야 정규장 첫 틱부터 무손실 캡처다. 키움 워치독이 이
+    술어로 09:00 전 미완 등록을 감지해 재구독+경고한다(유일한 저장 리스크 창).
+    09:00(개장)은 배제 — 그 순간부터는 정규 캡처 게이트가 별도로 커버한다.
+    """
+    kst = datetime.fromtimestamp(now_ms / 1000, tz=KIS_KST)
+    minutes = kst.hour * 60 + kst.minute
+    return _KRX_WARMUP_MIN <= minutes < _MARKET_OPEN_MIN

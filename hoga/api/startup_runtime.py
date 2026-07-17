@@ -50,6 +50,8 @@ class StartupRuntimeDeps:
     resolve_symbol_master_path: Callable[[], Path]
     # 키움 WS 승격 대상 콜백(ADR-0116). 기본 None — 미주입이면 promoter가 키움 루프 skip.
     get_kiwoom_capture_codes: Callable[[], Sequence[str]] | None = None
+    # 키움 세션 워치독 30s 루프 스포너(ADR-0118 §5). 기본 None — 미주입이면 미기동.
+    start_kiwoom_watchdog: Callable[..., Awaitable[TaskOrNone]] | None = None
 
 
 @dataclass
@@ -58,6 +60,7 @@ class AppStartupRuntime:
     live_watchdog_task: TaskOrNone
     today_promoter_task: TaskOrNone
     deps: StartupRuntimeDeps
+    kiwoom_watchdog_task: TaskOrNone = None
 
     def supervised_task_health(self) -> list[dict[str, object]]:
         """Honest alive/dead snapshot of each lifespan-owned background task.
@@ -77,6 +80,7 @@ class AppStartupRuntime:
         tasks: list[tuple[str, TaskOrNone]] = [
             *((t.get_name(), t) for t in self.scheduler_tasks),
             ("live-stream-watchdog", self.live_watchdog_task),
+            ("kiwoom-session-watchdog", self.kiwoom_watchdog_task),
             ("today-promoter", self.today_promoter_task),
         ]
         return [
@@ -88,6 +92,7 @@ class AppStartupRuntime:
         """Stop runtime-owned background work in shutdown order."""
         await self.deps.stop_today_promoter(self.today_promoter_task)
         await self.deps.stop_today_promoter(self.live_watchdog_task)
+        await self.deps.stop_today_promoter(self.kiwoom_watchdog_task)
         await self.deps.stop_live_stream()
 
         for task in self.scheduler_tasks:
@@ -123,6 +128,9 @@ async def start_app_runtime(
             await deps.start_live_stream(data_dir=data_dir)
 
         runtime.live_watchdog_task = await deps.start_live_stream_watchdog(data_dir=data_dir)
+
+        if deps.start_kiwoom_watchdog is not None:
+            runtime.kiwoom_watchdog_task = await deps.start_kiwoom_watchdog()
 
         if today_promoter_enabled_from_env(deps.env):
             runtime.today_promoter_task = await deps.start_today_promoter(

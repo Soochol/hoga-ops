@@ -12,6 +12,7 @@ from __future__ import annotations
 
 import asyncio
 import logging
+import time
 from collections.abc import Callable
 from dataclasses import dataclass
 from pathlib import Path
@@ -19,9 +20,14 @@ from pathlib import Path
 from . import kiwoom_runtime
 from .buffer import LiveBuffer
 from .coverage import partition_kiwoom
+from .kiwoom_fields import apply_venue
 from .kiwoom_ws_client import KiwoomWsClient
 
 _log = logging.getLogger(__name__)
+
+
+def _default_now_ms() -> int:
+    return int(time.time() * 1000)
 
 
 @dataclass
@@ -49,21 +55,36 @@ class KiwoomSessionManager:
         data_dir: Path,
         date_fn: Callable[[], str],
         gate_fn: Callable[[], bool] | None = None,
+        now_fn: Callable[[], int] | None = None,
         _build_conn: Callable[[int, list[str]], _KiwoomConn] | None = None,
     ) -> None:
         self._buffer = buffer
         self._data_dir = data_dir
         self._date_fn = date_fn
         self._gate_fn = gate_fn
+        # venue 파생·warmup 술어의 시각원(테스트 주입). 실경로는 벽시계.
+        self._now_fn = now_fn or _default_now_ms
         self._build = _build_conn or self._default_build_conn
         self._conns: dict[int, _KiwoomConn] = {}
+        # sync(멤버십)·watchdog_pass(venue/재빌드)·stop의 _conns/구독 변이 직렬화 —
+        # update_codes의 다중 await(배치 REG 페이싱)가 서로 인터리브하지 않게 한다.
+        self._lock = asyncio.Lock()
+        # 08:50–09:00 워밍 창에 저장셋 등록 미완이면 True(status 진단 표면화).
+        self._warmup_incomplete = False
 
     async def sync(self, kiwoom_targets: tuple[str, ...], *, n_accounts: int) -> None:
-        """kiwoom_targets를 계정에 분배하고 conn을 정합화. n_accounts=0 또는 빈 타깃이면
-        전체 teardown(휴면). 200×n 초과분은 partition_kiwoom이 자연 드롭(경고)."""
+        """kiwoom_targets를 계정에 분배하고 conn 멤버십을 정합화. n_accounts=0 또는 빈
+        타깃이면 전체 teardown(휴면). 200×n 초과분은 partition_kiwoom이 자연 드롭(경고).
+
+        운영 건강(죽은 conn 재빌드·시간대 venue 스왑·재구독)은 watchdog_pass(30s)로
+        분리됐다(ADR-0118 §5) — sync는 저장셋 멤버십만 반영한다."""
+        async with self._lock:
+            await self._sync_locked(kiwoom_targets, n_accounts=n_accounts)
+
+    async def _sync_locked(self, kiwoom_targets: tuple[str, ...], *, n_accounts: int) -> None:
         codes = list(dict.fromkeys(kiwoom_targets))
         if not codes or n_accounts <= 0:
-            await self.stop()
+            await self._stop_locked()
             return
         parts = partition_kiwoom(codes, n_accounts)
         dropped = len(codes) - sum(len(p) for p in parts)
@@ -71,30 +92,103 @@ class KiwoomSessionManager:
             _log.warning("live.kiwoom.targets_over_capacity dropped=%d cap=%d",
                          dropped, n_accounts * 200)
         wanted = {k: part for k, part in enumerate(parts) if part}
+        now_ms = self._now_fn()
         # teardown: 더는 필요 없는 계정(빈 파티션 포함).
         for account_id in list(self._conns):
             if account_id not in wanted:
                 await self._teardown(account_id)
-        # build/update.
+        # build(신규) / 멤버십 갱신 → 현재 창 venue로 reconcile(파생 집합).
         for account_id, part in wanted.items():
             conn = self._conns.get(account_id)
-            # 죽은 conn(킥 정지·ws/flush 태스크 예외 사망) 재생(리뷰: sync가 ws_task.done()을
-            # 확인 안 해 킥된 계정 200종목이 재시작까지 무수집이었다). teardown 후 재빌드 —
-            # 킥 핑퐁은 클라이언트 내부 backoff+max_consecutive_kicks가 완화한다(피어가
-            # 계속 점유하면 새 클라이언트도 ~31s 만에 재정지, 그동안 done 아니라 재빌드 안 함).
-            if conn is not None and _conn_dead(conn):
-                _log.warning("live.kiwoom.conn_dead_rebuild account=%d kicked=%s",
-                             account_id, conn.client.kicked_by_peer)
-                await self._teardown(account_id)
-                conn = None
             if conn is None:
                 built = self._build(account_id, part)
-                if built is not None:
-                    self._conns[account_id] = built
+                if built is None:
+                    continue
+                self._conns[account_id] = conn = built
             elif set(conn.codes) != set(part):
-                await conn.client.update_codes(part)
                 _set_active(conn.stream, set(part))
-                self._conns[account_id] = _replace_codes(conn, tuple(part))
+                self._conns[account_id] = conn = _replace_codes(conn, tuple(part))
+            await self._reconcile(conn, now_ms)
+
+    async def watchdog_pass(self, now_ms: int) -> None:
+        """워치독 1패스(ADR-0118 §5, KIS live-stream-watchdog 후계). 실행 순서(괄호는
+        ADR 단계 번호 — 실행 순서와 다름):
+        1) 죽은 conn 재빌드(저장셋 멤버십 보존; ADR ①)
+        2) 시간대 venue 스왑 reconcile(ADR ②)
+        3) 미확인 구독 표적 재구독(ADR ④)
+        4) 08:50–09:00 저장셋 등록 완결 술어(ADR ③) — 재구독 뒤에 둬야 잔여 미확인 판정이
+           정확하다(방금 재송신한 건은 이미 반영).
+        자가 감독(한 패스 실패는 로그 후 계속)은 호출 루프(start_kiwoom_session_watchdog)가
+        담당한다. sync와 _lock으로 직렬화."""
+        async with self._lock:
+            await self._rebuild_dead_locked()
+            for conn in list(self._conns.values()):
+                await self._reconcile(conn, now_ms)
+            await self._resubscribe_missing_locked()
+            self._check_warmup_locked(now_ms)
+
+    async def _rebuild_dead_locked(self) -> None:
+        """죽은 conn(킥 정지·ws/flush 태스크 사망) teardown 후 재빌드 — 저장셋 멤버십
+        (bare codes)을 보존해 재파생 재등록한다. 킥 핑퐁은 클라이언트 내부
+        backoff+max_consecutive_kicks가 완화(피어 점유 지속이면 새 클라이언트도 ~31s 만에
+        재정지, 그동안 done 아니라 재빌드 안 함). sync에서 이관(PR-B ①: 30s 주기로 승격)."""
+        for account_id, conn in list(self._conns.items()):
+            if not _conn_dead(conn):
+                continue
+            _log.warning("live.kiwoom.conn_dead_rebuild account=%d kicked=%s",
+                         account_id, conn.client.kicked_by_peer)
+            bare = list(conn.codes)  # 저장셋 멤버십 보존
+            await self._teardown(account_id)
+            built = self._build(account_id, bare)
+            if built is not None:
+                self._conns[account_id] = built
+
+    async def _reconcile(self, conn: _KiwoomConn, now_ms: int) -> None:
+        """conn 구독을 현재 시각의 target venue로 재파생 정합(ADR-0118 §2 파생 집합).
+
+        기대 wire = 저장셋(bare) × venue(target_ws_venue(now)). 클라이언트 현재 wire와
+        다를 때만 update_codes diff(remove-before-add: 키당 200 상한 준수). 이미 목표면
+        no-op이라 매 주기·매 sync 호출이 값싸다. bare 멤버십(conn.codes)은 불변."""
+        from .session_gate import target_ws_venue  # noqa: PLC0415 — 순환/kis import 회피(lazy)
+
+        venue = target_ws_venue(now_ms)
+        desired = [apply_venue(c, venue) for c in conn.codes]
+        if set(desired) != conn.client.expected_codes:
+            await conn.client.update_codes(desired)
+
+    async def _resubscribe_missing_locked(self) -> None:
+        """미확인(sub_missing) 구독을 conn별 표적 재구독(PR-B ④). conn별 예외 격리 —
+        한 conn 실패가 다른 conn을 막지 않게. 30s 주기가 REG 유량을 자연 상한한다."""
+        for conn in list(self._conns.values()):
+            try:
+                count = await conn.client.resubscribe_missing()
+                if count:
+                    _log.warning("live.kiwoom.resubscribe account=%d keys=%d",
+                                 conn.account_id, count)
+            except Exception:  # noqa: BLE001 — conn별 격리
+                _log.exception("live.kiwoom.resubscribe_failed account=%d", conn.account_id)
+
+    def _check_warmup_locked(self, now_ms: int) -> None:
+        """08:50–09:00 KRX 워밍 창에 저장셋 등록 완결을 확인(ADR-0118 §5 유일한 저장
+        리스크 창). 미완이면 warmup_incomplete 플래그 + 경고(재시도는 ④가 이미 수행 —
+        여기선 09:00 전 미완을 가시화). 창 밖이면 플래그 해제."""
+        from .session_gate import in_krx_warmup_window  # noqa: PLC0415
+
+        if not in_krx_warmup_window(now_ms):
+            self._warmup_incomplete = False
+            return
+        pending = {
+            conn.account_id: conn.client.sub_missing()
+            for conn in self._conns.values()
+            if conn.client.sub_missing()
+        }
+        self._warmup_incomplete = bool(pending)
+        if pending:
+            total = sum(len(m) for m in pending.values())
+            _log.warning(
+                "live.kiwoom.warmup_incomplete accounts=%s missing=%d — 09:00 전 저장셋 "
+                "등록 미완, 재구독 재시도 중", sorted(pending), total,
+            )
 
     def active_codes(self) -> list[str]:
         """수집 살아있는 계정의 구독 종목 합집합(승격 루프·화질 도트용). 킥 정지·태스크
@@ -140,10 +234,16 @@ class KiwoomSessionManager:
             # 동급 페이로드라 status 폴링 규모와 정합.
             "subscribed_codes": codes,
             "last_tick_ms": last_tick,
+            # 08:50–09:00 워밍 창 저장셋 등록 미완 여부(ADR-0118 §5 진단 표면).
+            "warmup_incomplete": self._warmup_incomplete,
             "accounts": accounts,
         }
 
     async def stop(self) -> None:
+        async with self._lock:
+            await self._stop_locked()
+
+    async def _stop_locked(self) -> None:
         for account_id in list(self._conns):
             await self._teardown(account_id)
 
@@ -165,6 +265,7 @@ class KiwoomSessionManager:
                                  exc_info=True)
 
     def _default_build_conn(self, account_id: int, codes: list[str]) -> _KiwoomConn | None:
+        from .session_gate import target_ws_venue  # noqa: PLC0415 — lazy(kis import 회피)
         from .stream import LiveStream  # noqa: PLC0415 — 순환 import 회피
         from .writer import LiveWriter  # noqa: PLC0415
 
@@ -177,7 +278,7 @@ class KiwoomSessionManager:
             writer=LiveWriter(self._data_dir / "live_kiwoom"),
             date_fn=self._date_fn,
         )
-        stream.set_active_codes(set(codes))
+        stream.set_active_codes(set(codes))  # stream 필터는 bare(WsTick.code=bare)
 
         async def token_fn() -> str:
             return await asyncio.to_thread(prov.get_token)
@@ -189,11 +290,14 @@ class KiwoomSessionManager:
             gate_fn=self._gate_fn,
             invalidate_fn=prov.invalidate,  # LOGIN 거부 시 캐시 토큰 무효화(리뷰 Major)
         )
+        # 초기 구독 wire = 저장셋 × 현재 창 venue(파생 집합). 이후 스왑은 watchdog reconcile.
+        venue = target_ws_venue(self._now_fn())
+        wire = [apply_venue(c, venue) for c in codes]
         return _KiwoomConn(
             account_id=account_id,
             stream=stream,
             client=client,
-            ws_task=asyncio.create_task(client.run(codes), name=f"kiwoom-ws-{account_id}"),
+            ws_task=asyncio.create_task(client.run(wire), name=f"kiwoom-ws-{account_id}"),
             flush_task=asyncio.create_task(
                 stream.run_flush_loop(), name=f"kiwoom-flush-{account_id}"
             ),

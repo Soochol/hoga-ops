@@ -50,3 +50,12 @@ def split_venue(item: str) -> tuple[str, str]:
         if item.endswith(suffix):
             return item[: -len(suffix)], venue
     return item, "KRX"
+
+
+def apply_venue(code: str, venue: str) -> str:
+    """bare code + venue → 구독 wire 코드(split_venue 역). NXT면 _NX 접미, 그 외 무접미.
+
+    매니저가 target_ws_venue로 파생한 venue를 구독 코드에 실어 시간대 스왑한다
+    (ADR-0118 §2 — venue 태깅 = 구독 코드 접미). apply_venue∘split_venue = 항등.
+    """
+    return f"{code}_NX" if venue == "NXT" else code
