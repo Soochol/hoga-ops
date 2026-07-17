@@ -1673,14 +1673,26 @@ def test_capture_health_sub_missing_path():
 @pytest.mark.asyncio
 async def test_get_status_exposes_capture_missing_codes(monkeypatch, tmp_path) -> None:
     """get_status가 유실 종목을 capture_missing_codes로 노출(sub_failed 진단·UI)."""
+    from datetime import datetime, timedelta, timezone
+
     from hoga.live import lifecycle
     from hoga.live.lifecycle import _State, _StreamConn
     lifecycle.reset_for_tests()
 
+    # 시각 무관 결정론화: get_status가 읽는 유일한 시각 소스(_now_ms)를 정규장
+    # 시각으로 고정한다. 자정~09:00 사이 실행 시엔 session_open_ms(오늘 09:00 KST)가
+    # 미래라 ref_ms가 미래가 되어 grace 미경과 → 'sub_failed'가 아니라 'subscribing'을
+    # 반환하던 flaky 회귀를 차단(started_at은 세션오픈 200s 뒤 → grace 경과 보장).
+    FIXED_NOW = int(
+        datetime(2026, 7, 16, 10, 0, 0, tzinfo=timezone(timedelta(hours=9)))
+        .timestamp() * 1000
+    )
+    monkeypatch.setattr(lifecycle, "_now_ms", lambda: FIXED_NOW)
+
     class _FakeWs:
         connected = True
         last_tick_ms = None
-        last_recv_ms = lifecycle._now_ms()
+        last_recv_ms = FIXED_NOW  # 고정 now와 동일 → recv 신선(=stale 아님 → sub_failed로 갈림)
 
         def sub_missing(self, _t):
             return [("H0STCNT0", "000660"), ("H0STMBC0", "000660")]
@@ -1696,7 +1708,7 @@ async def test_get_status_exposes_capture_missing_codes(monkeypatch, tmp_path) -
         conn = _StreamConn(account_id=0, stream_obj=_FakeStream(),
                            ws_task=task, flush_task=task, codes=("000660",))
         lifecycle._state = _State(
-            started_at_ms=lifecycle._now_ms() - 200_000,
+            started_at_ms=FIXED_NOW - 200_000,  # grace(120s) 경과
             n_configured=1, watchlist_codes=("000660",),
             streams={0: conn}, live_set=("000660",),
         )
