@@ -487,12 +487,17 @@ async def promote_today(data_dir: Path, *, code: str) -> str | None:
     return today
 
 
-async def promote_kiwoom_today(data_dir: Path, *, code: str) -> None:
+async def promote_kiwoom_today(data_dir: Path, *, code: str) -> str | None:
     """키움 WS 승격 (ADR-0116) — live_kiwoom JSONL → parquet/{date}/{code}/kiwoom_live.
 
     promote_today의 키움판(REST 캡처 승격 promote_api_today는 rest30과 함께 제거됨,
     2026-07-17). 실시간 WS라 kis_live처럼 sampling 메타 없음(_build_meta의 kis_api
-    분기 밖). 별도 루트(live_kiwoom)라 KIS live JSONL과 무충돌. record/return 없음.
+    분기 밖). 별도 루트(live_kiwoom)라 KIS live JSONL과 무충돌.
+
+    promote_today와 대칭 계약: 실승격 시 승격 날짜(YYYYMMDD), skip(이번 사이클 jsonl
+    없음) 시 None. 승격 루프가 이 반환으로 promotion_completed 발행을 판단한다
+    (PR-E 컷오버로 관심종목이 키움 전담이 되면서 이 경로가 프론트 today 갱신의
+    유일한 이벤트 소스가 됨 — None은 스퓨리어스 리페치를 막는다).
     """
     from hoga.api._atomic_write import atomic_write_json
 
@@ -500,7 +505,7 @@ async def promote_kiwoom_today(data_dir: Path, *, code: str) -> None:
     jsonl_path = data_dir / "live_kiwoom" / today / f"{code}.jsonl"
     target = data_dir / "parquet" / today / code / "kiwoom_live"
     if not jsonl_path.exists():
-        return
+        return None
 
     def _sync_parse_and_write() -> None:
         snapshots, trades, broker_rows, fills, meta = _parse_jsonl_incremental(
@@ -517,6 +522,7 @@ async def promote_kiwoom_today(data_dir: Path, *, code: str) -> None:
         atomic_write_json(target / "meta.json", meta, indent=2)
 
     await asyncio.to_thread(_sync_parse_and_write)
+    return today
 
 
 async def promote_one(

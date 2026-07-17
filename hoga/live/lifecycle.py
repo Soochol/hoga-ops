@@ -354,31 +354,41 @@ async def start_today_promoter(
     """
     log = logging.getLogger(__name__)
 
+    def _publish_promotion(code: str, promoted_date: str | None) -> None:
+        """실승격(date)에만 promotion_completed 발행 — skip(None)은 스퓨리어스 프론트
+        리페치를 막는다. KIS·키움 두 경로가 이벤트 wire-shape를 한 곳에서 공유한다."""
+        if promoted_date is not None and on_promoted is not None:
+            on_promoted({
+                "type": "promotion_completed",
+                "code": code,
+                "date": promoted_date,
+            })
+
     async def loop() -> None:
         while True:
             try:
                 ws_codes = get_active_codes()
                 for code in ws_codes:
                     try:
-                        promoted_date = await promote_today(data_dir, code=code)
-                        if promoted_date is not None and on_promoted is not None:
-                            on_promoted({
-                                "type": "promotion_completed",
-                                "code": code,
-                                "date": promoted_date,
-                            })
+                        _publish_promotion(
+                            code, await promote_today(data_dir, code=code),
+                        )
                     except Exception:
                         log.exception(
                             "live.today_promote.code_failed code=%s", code,
                         )
                 # 키움 WS 승격(ADR-0116) — live_kiwoom → kiwoom_live parquet. 미배선/off면
                 # 콜백이 [] 반환이라 루프 no-op. 히트맵·관심종목이 여기서 kiwoom_live로 영속화.
+                # KIS 경로와 대칭으로 실승격(date)에만 promotion_completed 발행 — PR-E 컷오버
+                # 이후 관심종목이 키움 전담이라 이 발행이 프론트 today 갱신의 유일한 소스다.
                 kiwoom_codes = (
                     get_kiwoom_capture_codes() if get_kiwoom_capture_codes else []
                 )
                 for code in kiwoom_codes:
                     try:
-                        await promote_kiwoom_today(data_dir, code=code)
+                        _publish_promotion(
+                            code, await promote_kiwoom_today(data_dir, code=code),
+                        )
                     except Exception:
                         log.exception(
                             "live.today_promote.kiwoom_code_failed code=%s", code,

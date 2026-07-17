@@ -28,7 +28,11 @@ async def test_promote_kiwoom_today_writes_kiwoom_live_parquet(tmp_path):
         }}))
     jsonl_path.write_text("\n".join(lines) + "\n")
 
-    await promote_kiwoom_today(tmp_path, code="005930")
+    result = await promote_kiwoom_today(tmp_path, code="005930")
+
+    # 실승격 시 승격 날짜 반환 — 승격 루프가 promotion_completed 발행 판단에 사용
+    # (promote_today와 대칭 계약). None이면 skip이라 프론트 리페치 금지.
+    assert result == today
 
     target = tmp_path / "parquet" / today / "005930" / "kiwoom_live"
     assert (target / "snapshots.parquet").exists()
@@ -50,9 +54,11 @@ async def test_promote_kiwoom_today_writes_kiwoom_live_parquet(tmp_path):
 
 async def test_promote_kiwoom_today_noop_when_no_jsonl(tmp_path):
     # live_kiwoom JSONL 부재 → no-op(파일 안 만듦). KIS live_kiwoom 경로와 격리.
-    await promote_kiwoom_today(tmp_path, code="005930")
+    result = await promote_kiwoom_today(tmp_path, code="005930")
     today = _today_kst_yyyymmdd()
     assert not (tmp_path / "parquet" / today / "005930" / "kiwoom_live").exists()
+    # skip은 None 반환 — 승격 루프가 promotion_completed를 발행하지 않도록(스퓨리어스 리페치 금지).
+    assert result is None
 
 
 async def test_promote_pending_promotes_live_kiwoom_to_kiwoom_live(tmp_path):
