@@ -823,26 +823,47 @@ async def stop_live_stream() -> None:
 
 # ── ADR-0067: 보는종목 view 진입점 ─────────────────────────────────────────────
 
-def on_view_subscribe(code: str) -> None:
-    """보는종목 구독 신호 — rest_poller.on_subscribe(code)로 위임.
+def _resolve_view_venues(venues: set[str] | None) -> set[str]:
+    """뷰 구독 venue 해석 — 미지정(구 프론트)이면 현재 창 venue 1개(=현재 실시간)."""
+    if venues:
+        return venues
+    from .session_gate import target_ws_venue  # noqa: PLC0415
 
-    ws.py(Task B5)가 호출하는 진입점. rest_poller가 없으면(오프라인/start 전)
-    예외 없이 no-op — get_active_codes()의 동일 snapshot 패턴 사용.
-    """
+    return {target_ws_venue(_now_ms())}
+
+
+async def on_view_subscribe(
+    code: str, venues: set[str] | None = None, *, ref: str | None = None,
+) -> bool:
+    """보는종목 구독 신호 — rest_poller(KIS 2s, PR-G 삭제 예정)와 키움 매니저 표시셋에
+    병존 위임(ADR-0118 PR-C). ws.py 진입점.
+
+    키움이 만석(전 연결 슬롯 소진)으로 거부하면 False → ws.py가 요청 탭에 만석 이벤트를
+    보낸다. rest_poller·키움 둘 다 미배선(오프라인/start 전)이면 True(no-op). venues
+    미지정(구 프론트)이면 현재 창 venue 1개로 기본(=현재 실시간). ref는 연결(탭) 식별
+    토큰 — 두 탭이 같은 종목을 봐도 참조만 늘고 등록은 1회(refcount)."""
     poller = _state.rest_poller
     if poller is not None:
         poller.on_subscribe(code)
+    session = _state.kiwoom_session
+    if session is None:
+        return True
+    return await session.on_view_subscribe(code, _resolve_view_venues(venues), ref=ref or code)
 
 
-def on_view_unsubscribe(code: str) -> None:
-    """보는종목 구독 해제 신호 — rest_poller.on_unsubscribe(code)로 위임.
-
-    ws.py(Task B5)가 호출하는 진입점. rest_poller가 없으면(오프라인/start 전)
-    예외 없이 no-op.
-    """
+async def on_view_unsubscribe(
+    code: str, venues: set[str] | None = None, *, ref: str | None = None,
+) -> None:
+    """보는종목 구독 해제 신호 — rest_poller와 키움 매니저 표시셋에 병존 위임(ADR-0118
+    PR-C). 키움은 참조 0이면 유예 후 해제(즉시 아님). venues·ref는 구독 시와 동일하게
+    ws.py가 전달(안 하면 현재 창 venue 기본)."""
     poller = _state.rest_poller
     if poller is not None:
         poller.on_unsubscribe(code)
+    session = _state.kiwoom_session
+    if session is None:
+        return
+    await session.on_view_unsubscribe(code, _resolve_view_venues(venues), ref=ref or code)
 
 
 async def refresh_live_stream(*, data_dir: Path) -> None:

@@ -301,7 +301,7 @@ async def test_on_view_subscribe_delegates_to_rest_poller(
     fake_poller = _FakePoller()
     lifecycle._state = _State(rest_poller=fake_poller)
 
-    lifecycle.on_view_subscribe("005930")
+    await lifecycle.on_view_subscribe("005930")
 
     assert "005930" in fake_poller.subscribed
 
@@ -318,26 +318,59 @@ async def test_on_view_unsubscribe_delegates_to_rest_poller(
     fake_poller = _FakePoller()
     lifecycle._state = _State(rest_poller=fake_poller)
 
-    lifecycle.on_view_unsubscribe("005930")
+    await lifecycle.on_view_unsubscribe("005930")
 
     assert "005930" in fake_poller.unsubscribed
 
 
-def test_on_view_subscribe_noop_when_no_poller() -> None:
-    """rest_poller가 없을 때(오프라인/start 전) 예외 없이 no-op."""
+@pytest.mark.asyncio
+async def test_on_view_subscribe_delegates_to_kiwoom_and_propagates_full_house() -> None:
+    """PR-C: on_view_subscribe가 키움 매니저에 (code,venues,ref) 위임하고 만석 bool을
+    전파한다(rest_poller 위임과 병존). ws.py가 이 bool로 만석 토스트를 판단."""
+    from hoga.live import lifecycle
+    from hoga.live.lifecycle import _State
+
+    lifecycle.reset_for_tests()
+
+    class _FakeKiwoom:
+        def __init__(self):
+            self.calls: list = []
+
+        async def on_view_subscribe(self, code, venues, *, ref):
+            self.calls.append((code, venues, ref))
+            return False  # 만석 모의
+
+        async def on_view_unsubscribe(self, code, venues, *, ref):
+            self.calls.append(("un", code, venues, ref))
+
+    fake = _FakeKiwoom()
+    lifecycle._state = _State(kiwoom_session=fake)
+
+    accepted = await lifecycle.on_view_subscribe("005930", {"KRX"}, ref="tab1")
+    assert accepted is False                              # 키움 만석 bool 전파
+    assert fake.calls == [("005930", {"KRX"}, "tab1")]
+
+    await lifecycle.on_view_unsubscribe("005930", {"KRX"}, ref="tab1")
+    assert fake.calls[-1] == ("un", "005930", {"KRX"}, "tab1")
+
+
+@pytest.mark.asyncio
+async def test_on_view_subscribe_noop_when_no_poller() -> None:
+    """rest_poller·키움 둘 다 없을 때(오프라인/start 전) 예외 없이 no-op(True)."""
     from hoga.live import lifecycle
 
     lifecycle.reset_for_tests()
-    # 폴러 없이도 예외가 나면 안 된다
-    lifecycle.on_view_subscribe("005930")
+    # 폴러 없이도 예외가 나면 안 된다(키움 미배선이면 True).
+    assert await lifecycle.on_view_subscribe("005930") is True
 
 
-def test_on_view_unsubscribe_noop_when_no_poller() -> None:
-    """rest_poller가 없을 때 예외 없이 no-op."""
+@pytest.mark.asyncio
+async def test_on_view_unsubscribe_noop_when_no_poller() -> None:
+    """rest_poller·키움 둘 다 없을 때 예외 없이 no-op."""
     from hoga.live import lifecycle
 
     lifecycle.reset_for_tests()
-    lifecycle.on_view_unsubscribe("005930")
+    await lifecycle.on_view_unsubscribe("005930")
 
 
 @pytest.mark.asyncio
@@ -418,7 +451,7 @@ async def test_view_subscription_survives_stream_restart(tmp_path, monkeypatch):
     await lifecycle.start_live_stream(data_dir=tmp_path)
 
     # 보는종목(관심 밖) 구독
-    lifecycle.on_view_subscribe("999999")
+    await lifecycle.on_view_subscribe("999999")
     assert "999999" in lifecycle._state.rest_poller._subscribed
 
     # 전체 재시작(watchdog 전체 재시작 경로와 동일하게 poller 보존)
@@ -468,7 +501,7 @@ async def test_empty_watchlist_view_subscribe_polls(tmp_path, monkeypatch):
     _write_watchlist(tmp_path, [])
     assert await lifecycle.start_live_stream(data_dir=tmp_path) is True
     assert lifecycle._state.streams == {}                       # WS 연결 0 (C4)
-    lifecycle.on_view_subscribe("005930")
+    await lifecycle.on_view_subscribe("005930")
     assert "005930" in lifecycle._state.rest_poller._subscribed  # 폴링 대상(빈 화면 아님)
     await lifecycle.stop_live_stream()
 
