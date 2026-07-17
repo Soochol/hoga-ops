@@ -6,18 +6,10 @@ import {
   useLiveVenueStore,
   type LiveVenueOption,
 } from '../../state/liveVenue';
-import { useLiveSettings, usePatchLiveSettings, type LiveStoragePolicy } from '../../api/liveSettings';
+import { useLiveSettings, usePatchLiveSettings } from '../../api/liveSettings';
 import { useLiveStatus } from '../../api/liveStatus';
 import { SettingsRow, ToggleSwitch } from './SettingsRow';
 import SourcePreferenceRadio from './SourcePreferenceRadio';
-
-const STORAGE_POLICY_LABEL: Record<LiveStoragePolicy, string> = {
-  ws_only: 'WS만 저장',
-  ws_plus_rest: 'WS 우선 + 나머지 REST 저장',
-  rest_only: 'REST만 저장',
-};
-
-const STORAGE_POLICY_OPTIONS: LiveStoragePolicy[] = ['ws_only', 'ws_plus_rest', 'rest_only'];
 
 function RoleSourceGroup({
   title,
@@ -53,8 +45,6 @@ export function DataSourceDetail({ variant }: { variant: 'live' | 'study' }) {
   const { data } = useLiveSettings();
   const patch = usePatchLiveSettings();
   const kisRestBypassEnabled = data?.kis_rest_bypass_enabled ?? false;
-  const storagePolicy = data?.storage_policy ?? 'ws_plus_rest';
-  const restAllowed = data != null && storagePolicy !== 'ws_only';
   const programTradeEnabled = data?.program_trade_storage_enabled ?? false;
   const kiwoomEnabled = data?.kiwoom_enabled ?? false;
 
@@ -105,7 +95,7 @@ export function DataSourceDetail({ variant }: { variant: 'live' | 'study' }) {
         )}
         <RoleSourceGroup
           title="호가·체결 데이터 기준"
-          description="호가창, 체결, 거래원, 호가비, 체결강도 같은 보조 데이터에 적용됩니다. 캔들과 독립된 소스입니다."
+          description="호가창, 체결, 거래원, 호가비, 체결강도 같은 보조 데이터에 적용됩니다. 캔들과 독립된 소스입니다. 실시간 WS는 종목별로 KIS·키움 중 실제 수집한 소스가 자동 선택됩니다."
         >
           {/* pb-2: 라디오가 다음 그룹 구분선에 붙지 않도록 하단 여백(거래소 그룹과 동일). */}
           <div className="flex flex-col gap-2 pb-2">
@@ -124,39 +114,28 @@ export function DataSourceDetail({ variant }: { variant: 'live' | 'study' }) {
         </RoleSourceGroup>
       </div>
 
-      {/* 캡처 저장(쓰기): 라이브 수신 데이터를 디스크에 어떻게 저장하는가. 표시와 무관. */}
+      {/* 캡처 저장(쓰기): 라이브 수신 데이터를 디스크에 어떻게 저장하는가. 표시와 무관.
+          관심종목=KIS WS, 히트맵=키움 WS 고정(2026-07-17 정책: 호가는 KIS REST로
+          받지 않는다) — 저장 방식 라디오(storage_policy)는 폐기됐다. */}
       <MacroGroupLabel>캡처 저장</MacroGroupLabel>
       <div>
-        <RoleSourceGroup
-          title="데이터 저장 방식"
-          description="라이브 캡처 시 WS·REST 중 무엇을 디스크에 저장할지 정합니다. (차트 표시와 무관)"
-        >
-          {/* pb-2: 라디오가 다음 그룹 구분선에 붙지 않도록 하단 여백(거래소·호가체결 그룹과 동일). */}
-          <div className="flex flex-col gap-2 pb-2">
-            {STORAGE_POLICY_OPTIONS.map((opt) => (
-              <StoragePolicyRadio key={opt} value={opt} />
-            ))}
-          </div>
-        </RoleSourceGroup>
         <RoleSourceGroup
           title="프로그램 순매수 저장"
           description="캡처 활성 관심그룹 종목의 프로그램 순매수 시계열을 저장합니다."
         >
-          <SettingsRow label="프로그램 순매수 저장" testId="program-trade-storage-row" disabled={!restAllowed}>
+          <SettingsRow label="프로그램 순매수 저장" testId="program-trade-storage-row">
             <ToggleSwitch
               label="프로그램 순매수 저장"
-              checked={programTradeEnabled && restAllowed}
-              disabled={!restAllowed}
+              checked={programTradeEnabled}
               onClick={() => patch.mutate({
-                storage_policy: storagePolicy,
-                program_trade_storage_enabled: !(programTradeEnabled && restAllowed),
+                program_trade_storage_enabled: !programTradeEnabled,
               })}
             />
           </SettingsRow>
         </RoleSourceGroup>
         <RoleSourceGroup
           title="키움 WS 병행 수집"
-          description="히트맵 종목을 KIS REST 대신 키움 WebSocket으로 실시간 수집합니다(앱키당 200종목). 끄면(기본) 기존 KIS REST 경로를 씁니다. .env에 KIWOOM_APP_KEY 필요."
+          description="히트맵 종목을 키움 WebSocket으로 실시간 수집합니다(앱키당 200종목). 끄면 히트맵 실시간 수집이 중단됩니다. .env에 KIWOOM_APP_KEY 필요."
         >
           <SettingsRow label="키움 WS 병행 수집" testId="kiwoom-enabled-row">
             <ToggleSwitch
@@ -198,31 +177,6 @@ function KiwoomStatusLine() {
         </span>
       )}
     </div>
-  );
-}
-
-function StoragePolicyRadio({ value }: { value: LiveStoragePolicy }) {
-  const { data } = useLiveSettings();
-  const patch = usePatchLiveSettings();
-  const checked = (data?.storage_policy ?? 'ws_plus_rest') === value;
-  return (
-    <label style={{ display: 'flex', alignItems: 'center', gap: 'var(--space-sm)', cursor: 'pointer' }}>
-      <input
-        type="radio"
-        name="live-storage-policy"
-        value={value}
-        checked={checked}
-        onChange={() => patch.mutate({
-          storage_policy: value,
-          program_trade_storage_enabled: value === 'ws_only'
-            ? false
-            : (data?.program_trade_storage_enabled ?? false),
-        })}
-      />
-      <span style={{ fontSize: 'var(--text-sm)', color: 'var(--fg)' }}>
-        {STORAGE_POLICY_LABEL[value]}
-      </span>
-    </label>
   );
 }
 

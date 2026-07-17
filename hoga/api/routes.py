@@ -86,6 +86,10 @@ def _resolved_parquet_dir(
     is the same.
     """
     resolution = resolve_source_result(engine, date, code, source_pref)
+    if resolution.source == "kis_api":
+        # 2026-07-17 정책: kis_api는 캔들 전용(ADR-0109 복구) — 호가·체결 스팟
+        # 라우트(/api/orderbook·/api/brokers/series)는 더는 서빙하지 않는다(빈 200).
+        return None, resolution.source
     return resolution.path, resolution.source
 
 

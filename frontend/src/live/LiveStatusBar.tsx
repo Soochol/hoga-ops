@@ -71,7 +71,6 @@ export function LiveStatusBar({ activeCode, captureHealth, bundle, venue, hogaGa
     watchlistCodes,
     viewedCodes: activeCode ? [activeCode] : [],
     kiwoomCodes: liveStatusData?.kiwoom?.subscribed_codes ?? [],
-    kisApiTargets: liveStatusData?.kis_api_targets ?? [],
     captureCandidate: watchlistData?.entries.some((e) =>
       e.code === activeCode && e.capture_candidate !== false) ?? member,
     liveConnection: live,

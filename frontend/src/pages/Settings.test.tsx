@@ -15,7 +15,7 @@ vi.mock('../config', () => ({
 const { heatmapMutate, liveSettingsState } = vi.hoisted(() => ({
   heatmapMutate: vi.fn(),
   liveSettingsState: {
-    data: { heatmap_capture_enabled: true } as { heatmap_capture_enabled: boolean } | undefined,
+    data: { screener_depth_autocollect: false } as { screener_depth_autocollect: boolean } | undefined,
     isLoading: false,
     isError: false,
   },
@@ -209,12 +209,12 @@ describe('Settings — Symbol Master section', () => {
   });
 });
 
-describe('Settings — 데이터 수집 (히트맵 API 수집 토글)', () => {
+describe('Settings — 데이터 수집', () => {
   beforeEach(() => {
     vi.restoreAllMocks();
     localStorage.clear();
     heatmapMutate.mockReset();
-    liveSettingsState.data = { heatmap_capture_enabled: true };
+    liveSettingsState.data = { screener_depth_autocollect: false };
     liveSettingsState.isLoading = false;
     liveSettingsState.isError = false;
     vi.spyOn(symbolsApi, 'getSymbolMasterInfo').mockResolvedValue({
@@ -222,50 +222,55 @@ describe('Settings — 데이터 수집 (히트맵 API 수집 토글)', () => {
     });
   });
 
-  it('shows the heatmap capture toggle checked when enabled', () => {
+  it('히트맵 API 수집 토글은 제거됐다 (2026-07-17: rest30 폐지 — 히트맵=키움 WS)', () => {
     renderWithQuery(<Settings />);
     selectSection('data');
-    const toggle = screen.getByRole('switch', { name: '히트맵 종목 API 수집' });
-    expect(toggle).toHaveAttribute('aria-checked', 'true');
+    expect(screen.queryByRole('switch', { name: '히트맵 종목 API 수집' })).toBeNull();
+    expect(screen.queryByTestId('settings-heatmap-capture-row')).toBeNull();
   });
 
-  it('reflects the disabled wire value', () => {
-    liveSettingsState.data = { heatmap_capture_enabled: false };
+  it('shows the screener autocollect toggle unchecked by default', () => {
     renderWithQuery(<Settings />);
     selectSection('data');
-    expect(screen.getByRole('switch', { name: '히트맵 종목 API 수집' })).toHaveAttribute('aria-checked', 'false');
+    const toggle = screen.getByRole('switch', { name: '스크리너 총잔량 결측 자동 수집' });
+    expect(toggle).toHaveAttribute('aria-checked', 'false');
+  });
+
+  it('reflects the enabled wire value', () => {
+    liveSettingsState.data = { screener_depth_autocollect: true };
+    renderWithQuery(<Settings />);
+    selectSection('data');
+    expect(screen.getByRole('switch', { name: '스크리너 총잔량 결측 자동 수집' })).toHaveAttribute('aria-checked', 'true');
   });
 
   it('clicking the toggle PATCHes the inverted value', () => {
     renderWithQuery(<Settings />);
     selectSection('data');
-    fireEvent.click(screen.getByRole('switch', { name: '히트맵 종목 API 수집' }));
-    expect(heatmapMutate).toHaveBeenCalledWith({ heatmap_capture_enabled: false });
+    fireEvent.click(screen.getByRole('switch', { name: '스크리너 총잔량 결측 자동 수집' }));
+    expect(heatmapMutate).toHaveBeenCalledWith({ screener_depth_autocollect: true });
   });
 
-  it('defaults to enabled and disables the toggle while settings are loading', () => {
+  it('disables the toggle while settings are loading', () => {
     liveSettingsState.data = undefined;
     liveSettingsState.isLoading = true;
     renderWithQuery(<Settings />);
     selectSection('data');
-    const toggle = screen.getByRole('switch', { name: '히트맵 종목 API 수집' });
-    expect(toggle).toHaveAttribute('aria-checked', 'true'); // optimistic default
-    expect(toggle).toBeDisabled();
+    expect(screen.getByRole('switch', { name: '스크리너 총잔량 결측 자동 수집' })).toBeDisabled();
   });
 
   it('stays actionable (not disabled) when settings failed to load', () => {
-    // PATCH is partial (heatmap field only), so a GET failure must not lock the
-    // toggle — the user can still recover by toggling.
+    // PATCH is partial, so a GET failure must not lock the toggle — the user
+    // can still recover by toggling.
     liveSettingsState.data = undefined;
     liveSettingsState.isLoading = false;
     liveSettingsState.isError = true;
     renderWithQuery(<Settings />);
     selectSection('data');
-    const toggle = screen.getByRole('switch', { name: '히트맵 종목 API 수집' });
+    const toggle = screen.getByRole('switch', { name: '스크리너 총잔량 결측 자동 수집' });
     expect(toggle).toBeEnabled();
     expect(screen.getByText(/라이브 설정을 불러오지 못했습니다/)).toBeInTheDocument();
     fireEvent.click(toggle);
-    expect(heatmapMutate).toHaveBeenCalledWith({ heatmap_capture_enabled: false });
+    expect(heatmapMutate).toHaveBeenCalledWith({ screener_depth_autocollect: true });
   });
 });
 

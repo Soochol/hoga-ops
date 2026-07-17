@@ -755,7 +755,9 @@ def test_build_volume_distribution_slice_uses_supplied_price_range_without_candl
     assert [bin.qty for bin in profile.bins][1] == 456
 
 
-def test_build_range_bundle_falls_back_to_trade_source_with_supplied_distribution_range(tmp_path):
+def test_build_range_bundle_trade_source_fallback_skips_kis_api(tmp_path):
+    """kis_api는 캔들 전용(2026-07-17 정책) — trades.parquet가 kis_api에만 있어도
+    체결 지표 소스 폴백이 kis_api로 내려가지 않고 선택 소스에 머문다."""
     import contextlib
     import json
 
@@ -821,10 +823,10 @@ def test_build_range_bundle_falls_back_to_trade_source_with_supplied_distributio
 
     assert rb.segments[0].source == "kis_live"
     assert rb.volume_distributions == [profile]
-    assert dist_builder.call_args.kwargs["source"] == "kis_api"
+    assert dist_builder.call_args.kwargs["source"] == "kis_live"
     assert dist_builder.call_args.kwargs["price_min"] == 69_900
     assert dist_builder.call_args.kwargs["price_max"] == 70_100
-    assert poc_builder.call_args.kwargs["source"] == "kis_api"
+    assert poc_builder.call_args.kwargs["source"] == "kis_live"
 
 
 def test_range_volume_distribution_uses_first_single_price_book_cutoff(tmp_path):

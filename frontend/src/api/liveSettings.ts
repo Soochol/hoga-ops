@@ -1,14 +1,12 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { apiCall } from './client';
 
-export type LiveStoragePolicy = 'ws_only' | 'ws_plus_rest' | 'rest_only';
-
+// storage_policy·heatmap_capture_enabled는 제거됨(2026-07-17 정책: 호가·체결은
+// KIS REST로 받지 않는다 — 관심종목=KIS WS, 히트맵=키움 WS).
 export interface LiveSettings {
   schema_version: number;
-  storage_policy: LiveStoragePolicy;
   program_trade_storage_enabled: boolean;
   kis_rest_bypass_enabled: boolean;
-  heatmap_capture_enabled: boolean;
   screener_depth_autocollect: boolean;
   // 키움 WS 병행 수집 킬스위치(ADR-0116). 백엔드 신규 필드라 optional — 구 서버
   // 응답·mock 픽스처엔 없을 수 있어 소비부는 `?? false` 로 폴백한다.
@@ -16,10 +14,8 @@ export interface LiveSettings {
 }
 
 export type LiveSettingsPatch = {
-  storage_policy?: LiveStoragePolicy;
   program_trade_storage_enabled?: boolean;
   kis_rest_bypass_enabled?: boolean;
-  heatmap_capture_enabled?: boolean;
   screener_depth_autocollect?: boolean;
   kiwoom_enabled?: boolean;
 };
@@ -51,7 +47,7 @@ export function usePatchLiveSettings() {
     mutationFn: patchLiveSettings,
     // Optimistic shallow-merge so toggles flip instantly. onSuccess overwrites
     // with the authoritative server value, which corrects any server-derived
-    // field the patch can't predict (e.g. program_trade forced off under ws_only).
+    // field the patch can't predict.
     // No cancelQueries: this settings query has no background refetch to race,
     // and cancelling it races the mount-time auto-PATCH in KisRestUnavailableToastHost.
     onMutate: (patch): { previous: LiveSettings | undefined } => {

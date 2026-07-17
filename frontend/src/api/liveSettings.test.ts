@@ -6,10 +6,9 @@ import * as client from './client';
 
 const BASE_SETTINGS = {
   schema_version: 1,
-  storage_policy: 'ws_plus_rest' as const,
   program_trade_storage_enabled: false,
   kis_rest_bypass_enabled: false,
-  heatmap_capture_enabled: true,
+  screener_depth_autocollect: false,
 };
 
 function makeWrapper(qc: QueryClient) {
@@ -22,7 +21,6 @@ describe('liveSettings api', () => {
     const { getLiveSettings } = await import('./liveSettings');
     vi.spyOn(client, 'apiCall').mockResolvedValue({
       schema_version: 1,
-      storage_policy: 'ws_plus_rest',
       program_trade_storage_enabled: false,
     });
 
@@ -31,17 +29,15 @@ describe('liveSettings api', () => {
     expect(client.apiCall).toHaveBeenCalledWith('/api/live/settings');
   });
 
-  it('patches live storage policy', async () => {
+  it('patches program trade storage', async () => {
     const { patchLiveSettings } = await import('./liveSettings');
     vi.spyOn(client, 'apiCall').mockResolvedValue({
       schema_version: 1,
-      storage_policy: 'rest_only',
       program_trade_storage_enabled: true,
       kis_rest_bypass_enabled: false,
     });
 
     const result = await patchLiveSettings({
-      storage_policy: 'rest_only',
       program_trade_storage_enabled: true,
     });
 
@@ -49,11 +45,9 @@ describe('liveSettings api', () => {
       method: 'PATCH',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
-        storage_policy: 'rest_only',
         program_trade_storage_enabled: true,
       }),
     });
-    expect(result.storage_policy).toBe('rest_only');
     expect(result.program_trade_storage_enabled).toBe(true);
   });
 
@@ -61,7 +55,6 @@ describe('liveSettings api', () => {
     const { patchLiveSettings } = await import('./liveSettings');
     const spy = vi.spyOn(client, 'apiCall').mockResolvedValue({
       schema_version: 1,
-      storage_policy: 'ws_plus_rest',
       program_trade_storage_enabled: false,
       kis_rest_bypass_enabled: true,
     });
@@ -85,24 +78,23 @@ describe('usePatchLiveSettings — optimistic update', () => {
     qc.setQueryData(LIVE_SETTINGS_KEY, BASE_SETTINGS);
 
     const { result } = renderHook(() => usePatchLiveSettings(), { wrapper: makeWrapper(qc) });
-    act(() => { result.current.mutate({ heatmap_capture_enabled: false }); });
+    act(() => { result.current.mutate({ program_trade_storage_enabled: true }); });
 
     // Cache reflects the patch while the PATCH is still in flight.
     await waitFor(() => {
-      expect((qc.getQueryData(LIVE_SETTINGS_KEY) as { heatmap_capture_enabled: boolean }).heatmap_capture_enabled)
-        .toBe(false);
+      expect((qc.getQueryData(LIVE_SETTINGS_KEY) as { program_trade_storage_enabled: boolean }).program_trade_storage_enabled)
+        .toBe(true);
     });
-    resolve({ ...BASE_SETTINGS, heatmap_capture_enabled: false });
+    resolve({ ...BASE_SETTINGS, program_trade_storage_enabled: true });
   });
 
   it('keeps the authoritative server value on success', async () => {
     const { usePatchLiveSettings, LIVE_SETTINGS_KEY } = await import('./liveSettings');
-    // Server derives a field the patch did not send (ws_only forces program off).
+    // Server may derive fields the patch did not send — server value wins.
     const server = {
       ...BASE_SETTINGS,
-      storage_policy: 'ws_only' as const,
       program_trade_storage_enabled: false,
-      heatmap_capture_enabled: false,
+      kiwoom_enabled: true,
     };
     vi.spyOn(client, 'apiCall').mockResolvedValue(server);
     const qc = new QueryClient();
@@ -110,7 +102,7 @@ describe('usePatchLiveSettings — optimistic update', () => {
 
     const { result } = renderHook(() => usePatchLiveSettings(), { wrapper: makeWrapper(qc) });
     await act(async () => {
-      await result.current.mutateAsync({ storage_policy: 'ws_only', heatmap_capture_enabled: false });
+      await result.current.mutateAsync({ kiwoom_enabled: true });
     });
 
     expect(qc.getQueryData(LIVE_SETTINGS_KEY)).toEqual(server);
@@ -124,10 +116,10 @@ describe('usePatchLiveSettings — optimistic update', () => {
 
     const { result } = renderHook(() => usePatchLiveSettings(), { wrapper: makeWrapper(qc) });
     await act(async () => {
-      await result.current.mutateAsync({ heatmap_capture_enabled: false }).catch(() => {});
+      await result.current.mutateAsync({ program_trade_storage_enabled: true }).catch(() => {});
     });
 
-    // Optimistic false was rolled back to the original true.
+    // Optimistic true was rolled back to the original false.
     expect(qc.getQueryData(LIVE_SETTINGS_KEY)).toEqual(BASE_SETTINGS);
   });
 });

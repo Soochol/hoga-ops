@@ -35,20 +35,21 @@ describe('sourceCapabilities', () => {
     expect(cap.resolutionLabel).toBe('');
   });
 
-  it('keeps display preference options in backend policy order', () => {
-    expect(SOURCE_PREFERENCE_OPTIONS).toEqual(['hogaplay_first', 'kis_ws_first', 'kis_api_first']);
+  it('keeps display preference options in backend policy order (kis_api_first 제거)', () => {
+    // 2026-07-17 정책: 호가·체결은 KIS REST로 받지 않는다 — kis_api_first 옵션 폐지.
+    expect(SOURCE_PREFERENCE_OPTIONS).toEqual(['hogaplay_first', 'kis_ws_first']);
     expect(SOURCE_PREFERENCE_PRIMARY_SOURCE).toEqual({
       hogaplay_first: 'hogaplay',
       kis_ws_first: 'kis_live',
-      kis_api_first: 'kis_api',
     });
   });
 
-  it('derives orderflow labels from source capabilities', () => {
+  it('derives orderflow labels', () => {
+    // kis_api capability 자체는 유지(복구 캔들 배지/칩이 소스명을 표시).
     expect(getSourceCapability('kis_api').resolutionLabel).toBe('30s');
     expect(getOrderflowSourcePreferenceLabel('hogaplay_first')).toBe('hogaplay 우선');
-    expect(getOrderflowSourcePreferenceLabel('kis_ws_first')).toBe('KIS WS 우선');
-    expect(getOrderflowSourcePreferenceLabel('kis_api_first')).toBe('KIS API 우선');
-    expect(getSourcePreferenceLabel('kis_ws_first')).toBe('KIS WS 우선');
+    // 종목별 KIS·키움 자동 선택이라 'KIS WS 우선'이 아닌 '실시간 WS 우선'.
+    expect(getOrderflowSourcePreferenceLabel('kis_ws_first')).toBe('실시간 WS 우선');
+    expect(getSourcePreferenceLabel('kis_ws_first')).toBe('실시간 WS 우선');
   });
 });

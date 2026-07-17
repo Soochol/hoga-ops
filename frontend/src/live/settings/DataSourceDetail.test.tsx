@@ -17,10 +17,8 @@ function freshQc() {
 
 const SETTINGS = {
   schema_version: 1,
-  storage_policy: 'ws_plus_rest' as const,
   program_trade_storage_enabled: false,
   kis_rest_bypass_enabled: false,
-  heatmap_capture_enabled: true,
   screener_depth_autocollect: false,
 };
 
@@ -47,12 +45,10 @@ describe('DataSourceDetail (메인 Settings·복기뷰 공용)', () => {
 
   it('상세를 캔들/호가체결/스크리너 일봉 + 표시/캡처 매크로 그룹으로 구조화한다 (live)', async () => {
     vi.spyOn(liveSettingsApi, 'getLiveSettings').mockResolvedValue(SETTINGS);
-    vi.spyOn(liveSettingsApi, 'patchLiveSettings').mockResolvedValue({ ...SETTINGS, storage_policy: 'rest_only' });
 
     render(<DataSourceDetail variant="live" />, { wrapper: wrap(freshQc()) });
 
-    expect(await screen.findByText('데이터 저장 방식')).toBeInTheDocument();
-    expect(screen.getByText('표시 소스')).toBeInTheDocument();
+    expect(await screen.findByText('표시 소스')).toBeInTheDocument();
     expect(screen.getByText('캡처 저장')).toBeInTheDocument();
     expect(screen.getByText('캔들 데이터 기준')).toBeInTheDocument();
     expect(screen.getByRole('switch', { name: 'KIS API 우회' })).toBeInTheDocument();
@@ -60,12 +56,16 @@ describe('DataSourceDetail (메인 Settings·복기뷰 공용)', () => {
     expect(screen.queryByRole('radio', { name: '스크리너 일봉 우선' })).toBeNull();
     expect(screen.getByText('호가·체결 데이터 기준')).toBeInTheDocument();
     expect(screen.getByText('스크리너 일봉 데이터')).toBeInTheDocument();
-    expect(screen.getByRole('radio', { name: 'WS만 저장' })).toBeInTheDocument();
-    expect(screen.getByRole('radio', { name: 'WS 우선 + 나머지 REST 저장' })).toBeChecked();
-    expect(screen.getByRole('radio', { name: 'REST만 저장' })).toBeInTheDocument();
+    // 저장 방식 라디오(storage_policy)는 폐지(2026-07-17: 관심종목=KIS WS·히트맵=키움 WS 고정).
+    expect(screen.queryByText('데이터 저장 방식')).toBeNull();
+    expect(screen.queryByRole('radio', { name: 'WS만 저장' })).toBeNull();
+    expect(screen.queryByRole('radio', { name: 'WS 우선 + 나머지 REST 저장' })).toBeNull();
+    expect(screen.queryByRole('radio', { name: 'REST만 저장' })).toBeNull();
+    // 호가·체결 기준 라디오는 2개 — kis_api_first(KIS API 우선) 제거.
     expect(screen.getByRole('radio', { name: 'hogaplay 우선' })).toBeInTheDocument();
-    expect(screen.getByRole('radio', { name: 'KIS WS 우선' })).toBeInTheDocument();
-    expect(screen.getByRole('radio', { name: 'KIS API 우선' })).toBeInTheDocument();
+    expect(screen.getByRole('radio', { name: '실시간 WS 우선' })).toBeInTheDocument();
+    expect(screen.queryByRole('radio', { name: 'KIS API 우선' })).toBeNull();
+    expect(screen.queryByRole('radio', { name: 'KIS WS 우선' })).toBeNull();
     expect(screen.getByText(/'KIS API 우회'를 켜면 분봉은 캡처\(hogaplay\)/)).toBeInTheDocument();
   });
 
@@ -81,7 +81,7 @@ describe('DataSourceDetail (메인 Settings·복기뷰 공용)', () => {
     expect(screen.queryByLabelText('NXT')).toBeNull();
     // 호가·체결 기준은 study에서도 유지(사이드카가 소비).
     expect(screen.getByText('호가·체결 데이터 기준')).toBeInTheDocument();
-    expect(screen.getByRole('radio', { name: 'KIS WS 우선' })).toBeInTheDocument();
+    expect(screen.getByRole('radio', { name: '실시간 WS 우선' })).toBeInTheDocument();
   });
 
   it('KIS API 우회 토글을 backend settings로 저장한다', async () => {
@@ -103,7 +103,7 @@ describe('DataSourceDetail (메인 Settings·복기뷰 공용)', () => {
     await waitFor(() => expect(screen.getByRole('switch', { name: 'KIS API 우회' })).toHaveAttribute('aria-checked', 'true'));
   });
 
-  it('프로그램 순매수 저장 토글을 REST 허용 정책에서만 켠다', async () => {
+  it('프로그램 순매수 저장 토글은 독립 토글로 PATCH한다 (storage_policy 폐지)', async () => {
     const qc = freshQc();
     qc.setQueryData(liveSettingsApi.LIVE_SETTINGS_KEY, SETTINGS);
     const apiCall = vi.spyOn(apiClient, 'apiCall')
@@ -119,19 +119,9 @@ describe('DataSourceDetail (메인 Settings·복기뷰 공용)', () => {
       method: 'PATCH',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
-        storage_policy: 'ws_plus_rest',
         program_trade_storage_enabled: true,
       }),
     }));
-  });
-
-  it('WS만 저장 정책에서는 프로그램 순매수 저장 토글을 비활성화한다', async () => {
-    const qc = freshQc();
-    qc.setQueryData(liveSettingsApi.LIVE_SETTINGS_KEY, { ...SETTINGS, storage_policy: 'ws_only' });
-
-    render(<DataSourceDetail variant="live" />, { wrapper: wrap(qc) });
-
-    expect(await screen.findByRole('switch', { name: '프로그램 순매수 저장' })).toBeDisabled();
   });
 
   it('키움 WS 병행 수집 토글을 렌더하고 PATCH한다', async () => {

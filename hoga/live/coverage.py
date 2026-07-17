@@ -6,7 +6,7 @@ import logging
 from dataclasses import dataclass
 from pathlib import Path
 
-from hoga.api.models import LiveStoragePolicy, WatchlistDocument
+from hoga.api.models import WatchlistDocument
 from hoga.api.watchlist_projection import capture_ordered_codes, display_ordered_codes
 
 from .ws_fields import TRS
@@ -37,10 +37,9 @@ class LiveCoveragePlan:
 @dataclass(frozen=True)
 class LiveStorageTargets:
     ws_targets: tuple[str, ...]
-    kis_api_targets: tuple[str, ...]
     capture_candidates: tuple[str, ...]
-    # 키움 WS 수집 대상(ADR-0116). kiwoom_enabled 시 히트맵(rest_extra)이 여기로 가고
-    # kis_api_targets(REST30)에서 빠진다. 기본 () — off일 때 기존 소비자 무영향.
+    # 키움 WS 수집 대상(ADR-0116). REST 30s 캡처 제거(2026-07-17 정책: api 폴백 없음)
+    # 후 히트맵의 유일한 저장 경로. kiwoom off/무자격(capacity 0)이면 () — 미수집.
     kiwoom_targets: tuple[str, ...] = ()
 
 
@@ -94,78 +93,38 @@ def plan_storage_targets(
     capture_candidates: list[str],
     *,
     n_configured: int,
-    storage_policy: LiveStoragePolicy,
-    current_ws_live_set: tuple[str, ...] = (),
     per_account_max: int | None = None,
-    rest_extra_candidates: tuple[str, ...] = (),
-    rest_fallback_codes: tuple[str, ...] = (),
+    heatmap_candidates: tuple[str, ...] = (),
     kiwoom_enabled: bool = False,
     kiwoom_capacity: int = 0,
 ) -> LiveStorageTargets:
-    """Split capture_candidates into WS slots + REST 30s remainder.
+    """관심종목=KIS WS 슬롯(19×계좌)까지, 히트맵=키움 WS 용량(200×앱키)까지.
 
-    rest_extra_candidates (ADR-0097: heatmap codes) never compete for WS
-    slots — they are appended to kis_api_targets only, after dedup against
-    capture_candidates, and are dropped entirely under ws_only (the policy
-    forbids KIS API storage, not just watchlist REST spillover).
-
-    rest_fallback_codes (해결안 ③, PR #622 후속): WS 구독 사다리(재구독→재시작)가
-    소진된 종목의 REST 캡처 임시 편입. rest_extra와 달리 **후보 dedup를 하지
-    않는다** — 폴백 종목은 정의상 ws_targets 소속이라 후보 dedup를 거치면 전부
-    걸러진다. 즉 WS-XOR-REST 불변식의 의도적 예외: 디스크는 루트(live/live_api)와
-    parquet venue(kis_live/kis_api)로 분리돼 무충돌이고, 유일한 공유면인 인메모리
-    표시 링(LiveBuffer)의 행 인터리브는 WS 회복~해제 사이 최대 1 watchdog
-    주기(30s)의 표시 전용·자연 소멸 현상이다. ws_only에선 heatmap extras와 같은
-    선례로 드롭(정책이 REST 저장 금지), rest_only에선 이미 전 종목 REST라 dedup가
-    흡수한다.
+    KIS REST 30s 캡처(ADR-0097 rest30)는 제거됐다(2026-07-17 정책: 호가는 api로
+    받지 않는다 — 폴백 없음, 커버리지는 계좌 추가로). 슬롯/용량 초과분은 어디에도
+    담기지 않으며(경고), kiwoom off/무자격(capacity 0)이면 히트맵은 수집되지 않는다.
+    heatmap_candidates는 관심종목(candidates)과 dedup — 관심종목은 KIS WS가 전담.
     """
     if per_account_max is None:
         per_account_max = _PER_ACCOUNT_MAX
     candidates = tuple(capture_candidates)
     candidate_set = set(candidates)
-    rest_extra = tuple(
-        code for code in dict.fromkeys(rest_extra_candidates) if code not in candidate_set
+    heatmap = tuple(
+        code for code in dict.fromkeys(heatmap_candidates) if code not in candidate_set
     )
-    # 키움 켜짐(ADR-0116): 히트맵(rest_extra)을 키움 WS로 돌리되 **키움 실수용량
-    # (kiwoom_capacity=200×앱키수)까지만** — 계정 0(capacity=0)이거나 초과분은 KIS REST로
-    # 되돌려 어디서도 수집 안 되는 구멍을 막는다(리뷰 Major: 토글만 보고 라우팅하면
-    # 무자격/초과 시 히트맵이 양쪽에서 소실). off면 kiwoom_targets=()라 byte-identical.
     if kiwoom_enabled and kiwoom_capacity > 0:
-        kiwoom_targets = rest_extra[:kiwoom_capacity]
-        kis_rest_extra = rest_extra[kiwoom_capacity:]  # 초과분 KIS 폴백
+        kiwoom_targets = heatmap[:kiwoom_capacity]
+        dropped = len(heatmap) - len(kiwoom_targets)
+        if dropped > 0:  # 초과분은 미수집 — 계좌 추가로 대응(REST 폴백 없음)
+            _log.warning("live.storage.heatmap_over_kiwoom_capacity dropped=%d cap=%d",
+                         dropped, kiwoom_capacity)
     else:
         kiwoom_targets = ()
-        kis_rest_extra = rest_extra
-    max_codes = per_account_max * n_configured
-    if storage_policy == "rest_only":
-        rest_targets = candidates + kis_rest_extra
-        return LiveStorageTargets(
-            ws_targets=(),
-            kis_api_targets=rest_targets + _dedup_fallback(rest_fallback_codes, rest_targets),
-            capture_candidates=candidates,
-            kiwoom_targets=kiwoom_targets,
-        )
-    ws_targets = candidates[:max_codes]
-    if storage_policy == "ws_only":
-        rest_targets = ()
-    else:
-        ws_set = set(ws_targets)
-        rest_targets = tuple(code for code in candidates if code not in ws_set) + kis_rest_extra
-        rest_targets = rest_targets + _dedup_fallback(rest_fallback_codes, rest_targets)
     return LiveStorageTargets(
-        ws_targets=ws_targets,
-        kis_api_targets=rest_targets,
+        ws_targets=candidates[:per_account_max * n_configured],
         capture_candidates=candidates,
         kiwoom_targets=kiwoom_targets,
     )
-
-
-def _dedup_fallback(
-    fallback: tuple[str, ...], existing: tuple[str, ...],
-) -> tuple[str, ...]:
-    """폴백 종목 중 기존 REST 타깃에 이미 있는 것 제거(순서 보존)."""
-    seen = set(existing)
-    return tuple(code for code in dict.fromkeys(fallback) if code not in seen)
 
 
 def _known_symbol_codes() -> set[str]:
@@ -188,8 +147,8 @@ def _compute_capture_candidates(data_dir: Path) -> list[str]:
     return candidates
 
 
-def _compute_heatmap_rest_extras(data_dir: Path) -> tuple[str, ...]:
-    """Heatmap codes as REST-only capture extras (ADR-0097).
+def _compute_heatmap_codes(data_dir: Path) -> tuple[str, ...]:
+    """Heatmap codes for Kiwoom WS capture (ADR-0116; REST 캡처 제거 후 유일 경로).
 
     Document order preserved; symbol-master filter mirrors
     _compute_capture_candidates (cold cache keeps all)."""
@@ -208,19 +167,17 @@ def _compute_heatmap_rest_extras(data_dir: Path) -> tuple[str, ...]:
 def _compute_ws_targets(
     data_dir: Path,
     n_configured: int = 1,
-    storage_policy: LiveStoragePolicy = "ws_plus_rest",
 ) -> list[str]:
     targets = plan_storage_targets(
         _compute_capture_candidates(data_dir),
         n_configured=n_configured,
-        storage_policy=storage_policy,
     )
     return list(targets.ws_targets)
 
 
 def _compute_live_set(data_dir: Path, n_configured: int = 1) -> list[str]:
-    """Load Watchlist and return dynamic-N WS targets with current default policy."""
-    return _compute_ws_targets(data_dir, n_configured, "ws_plus_rest")
+    """Load Watchlist and return dynamic-N WS targets."""
+    return _compute_ws_targets(data_dir, n_configured)
 
 
 def live_set_codes(doc: WatchlistDocument) -> list[str]:

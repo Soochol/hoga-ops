@@ -29,6 +29,8 @@ function readStorage(): { sourcePreference: SourcePreference } | null {
     const legacy: Record<string, SourcePreference> = {
       hogaplay: 'hogaplay_first',
       kis_live: 'kis_ws_first',
+      // kis_api_first는 옵션에서 제거(2026-07-17) — 저장된 옛 값은 기본값으로 강등.
+      kis_api_first: 'hogaplay_first',
     };
     const value = legacy[parsed.sourcePreference] ?? parsed.sourcePreference;
     if (SOURCE_PREFERENCE_OPTIONS.includes(value as SourcePreference)) {

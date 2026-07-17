@@ -198,10 +198,8 @@ function createWrapper(settings?: Partial<LiveSettings>) {
   const client = new QueryClient({ defaultOptions: { queries: { retry: false, staleTime: Infinity } } });
   client.setQueryData(LIVE_SETTINGS_KEY, {
     schema_version: 1,
-    storage_policy: 'ws_plus_rest',
     program_trade_storage_enabled: false,
     kis_rest_bypass_enabled: false,
-    heatmap_capture_enabled: true,
     screener_depth_autocollect: false,
     ...settings,
   } satisfies LiveSettings);

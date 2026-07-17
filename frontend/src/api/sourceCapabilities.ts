@@ -1,6 +1,8 @@
 import type { SourceName } from './types';
 
-export type SourcePreference = 'hogaplay_first' | 'kis_ws_first' | 'kis_api_first';
+// kis_api_first는 제거됨(2026-07-17 정책: 호가·체결은 KIS REST로 받지 않는다).
+// SOURCE_CAPABILITIES의 kis_api 항목은 유지 — 복구 캔들 배지/칩이 소스명을 표시한다.
+export type SourcePreference = 'hogaplay_first' | 'kis_ws_first';
 
 export interface SourceCapability {
   source: SourceName;
@@ -45,13 +47,11 @@ export const SOURCE_CAPABILITIES: Record<SourceName, SourceCapability> = {
 export const SOURCE_PREFERENCE_OPTIONS = [
   'hogaplay_first',
   'kis_ws_first',
-  'kis_api_first',
 ] as const satisfies readonly SourcePreference[];
 
 export const SOURCE_PREFERENCE_PRIMARY_SOURCE: Record<SourcePreference, SourceName> = {
   hogaplay_first: 'hogaplay',
   kis_ws_first: 'kis_live',
-  kis_api_first: 'kis_api',
 };
 
 // 백엔드가 프론트 유니온에 없는 소스 문자열을 보내도 크래시하지 않도록 폴백을 준다
@@ -70,8 +70,15 @@ export function getSourceCapability(source: SourceName): SourceCapability {
   return SOURCE_CAPABILITIES[source] ?? _fallbackCapability(source);
 }
 
+// kis_ws_first는 종목별로 KIS·키움 중 실제 수집한 실시간 WS 소스가 자동 선택되므로
+// 'KIS WS 우선' 대신 '실시간 WS 우선'으로 표기한다.
+const SOURCE_PREFERENCE_LABELS: Record<SourcePreference, string> = {
+  hogaplay_first: `${SOURCE_CAPABILITIES.hogaplay.label} 우선`,
+  kis_ws_first: '실시간 WS 우선',
+};
+
 export function getOrderflowSourcePreferenceLabel(value: SourcePreference): string {
-  return `${SOURCE_CAPABILITIES[SOURCE_PREFERENCE_PRIMARY_SOURCE[value]].label} 우선`;
+  return SOURCE_PREFERENCE_LABELS[value];
 }
 
 export function getSourcePreferenceLabel(value: SourcePreference): string {

@@ -54,29 +54,28 @@ describe('deriveDisplayStatus', () => {
 });
 
 describe('deriveStorageLabel', () => {
-  it('prefers KIS WS storage over KIS API storage', () => {
+  // KIS API 30초 저장(rest30)은 제거됨(2026-07-17) — 저장 라벨은 KIS WS/키움 WS/대기/제외뿐.
+  it('labels KIS WS storage for live_set members', () => {
     expect(deriveStorageLabel({
       code: '005930',
       liveSet: ['005930'],
-      kisApiTargets: ['005930'],
       captureCandidate: true,
     })).toBe('KIS WS 저장 중');
   });
 
-  it('uses KIS API label for persisted REST 30s targets outside WS', () => {
+  it('labels 키움 WS storage for kiwoom-captured codes outside the KIS live_set', () => {
     expect(deriveStorageLabel({
-      code: '000660',
+      code: '005380',
       liveSet: ['005930'],
-      kisApiTargets: ['000660'],
+      kiwoomCodes: ['005380'],
       captureCandidate: true,
-    })).toBe('KIS API 30초 저장 중');
+    })).toBe('키움 WS 저장 중');
   });
 
   it('shows waiting for capture candidates not currently assigned', () => {
     expect(deriveStorageLabel({
       code: '035420',
       liveSet: [],
-      kisApiTargets: [],
       captureCandidate: true,
     })).toBe('대기');
   });
@@ -85,7 +84,6 @@ describe('deriveStorageLabel', () => {
     expect(deriveStorageLabel({
       code: '051910',
       liveSet: [],
-      kisApiTargets: [],
       captureCandidate: false,
     })).toBe('저장 제외');
   });
@@ -98,7 +96,6 @@ describe('deriveCollectionView', () => {
       liveSet: ['005930'],
       watchlistCodes: ['005930', '000660'],
       viewedCodes: [],
-      kisApiTargets: ['000660'],
       captureCandidate: true,
       liveConnection: true,
     });
@@ -106,6 +103,6 @@ describe('deriveCollectionView', () => {
     expect(view.collectionStatus).toBe('waiting_eod');
     expect(view.displayStatus).toBe('waiting_eod');
     expect(view.ariaLabel).toBe('관심종목 대기 중');
-    expect(view.storageLabel).toBe('KIS API 30초 저장 중');
+    expect(view.storageLabel).toBe('대기');
   });
 });

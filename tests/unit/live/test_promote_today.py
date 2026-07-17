@@ -162,21 +162,3 @@ async def test_promote_today_does_not_create_candles_parquet(tmp_path: Path) -> 
     target = tmp_path / "parquet" / today / "003490" / "kis_live"
     assert (target / "snapshots.parquet").exists()
     assert not (target / "candles.parquet").exists()
-
-
-@pytest.mark.asyncio
-async def test_promote_api_today_writes_kis_api_source(tmp_path: Path) -> None:
-    from hoga.live.promote import promote_api_today
-
-    today = _today_kst_yyyymmdd()
-    jsonl = tmp_path / "live_api" / today / "003490.jsonl"
-    _write_jsonl(jsonl, [_ob_event(_t_ms_for(today))])
-
-    await promote_api_today(tmp_path, code="003490")
-
-    target = tmp_path / "parquet" / today / "003490" / "kis_api"
-    assert (target / "snapshots.parquet").exists()
-    meta = json.loads((target / "meta.json").read_text())
-    assert meta["source"] == "kis_api"
-    assert meta["sampling_ms"] == 30000
-    assert meta["created_from"] == "kis_rest"

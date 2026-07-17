@@ -4,7 +4,6 @@ from pathlib import Path
 
 import pytest
 
-from hoga.api.models import LiveStoragePolicy
 import hoga.live.kis_runtime as kis_runtime
 import hoga.live.lifecycle as lifecycle
 import hoga.live.live_session as live_session_module
@@ -24,9 +23,6 @@ class _FakeKis:
 
     async def aclose(self) -> None:
         self.aclose_calls += 1
-
-
-_DEFAULT_STORAGE_POLICY: LiveStoragePolicy = "ws_plus_rest"
 
 
 @pytest.mark.asyncio
@@ -158,7 +154,7 @@ async def test_watchdog_restarts_only_dead_conn(tmp_path, monkeypatch):
 
 
 @pytest.mark.asyncio
-async def test_restart_passes_ws_plus_rest_storage_policy(tmp_path, monkeypatch):
+async def test_restart_recomputes_partitions_from_current_targets(tmp_path, monkeypatch):
     session = lifecycle.LiveSession()
     session.n_configured = 2
     overflow_code = f"{lifecycle._PER_ACCOUNT_MAX:06d}"
@@ -179,11 +175,9 @@ async def test_restart_passes_ws_plus_rest_storage_policy(tmp_path, monkeypatch)
     def fake_compute_ws_targets(
         data_dir: Path,
         n_configured: int = 1,
-        storage_policy: LiveStoragePolicy = "ws_plus_rest",
     ) -> list[str]:
         seen["data_dir"] = data_dir
         seen["n_configured"] = n_configured
-        seen["storage_policy"] = storage_policy
         return [f"{i:06d}" for i in range(lifecycle._PER_ACCOUNT_MAX)] + [overflow_code]
 
     def fake_build_conn(account_id: int, codes: list[str], data_dir: Path):
@@ -200,14 +194,12 @@ async def test_restart_passes_ws_plus_rest_storage_policy(tmp_path, monkeypatch)
     await session.restart(
         1,
         data_dir=tmp_path,
-        storage_policy=_DEFAULT_STORAGE_POLICY,
         build_conn=fake_build_conn,
         teardown_conn=fake_teardown_conn,
     )
 
     assert seen["data_dir"] == tmp_path
     assert seen["n_configured"] == 2
-    assert seen["storage_policy"] == "ws_plus_rest"
     assert seen["torn_down"] is True
     assert seen["build_account_id"] == 1
     assert seen["build_codes"] == (overflow_code,)
