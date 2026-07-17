@@ -18,7 +18,7 @@ import json
 import logging
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, TypeVar
 
 from fastapi import HTTPException
 
@@ -816,6 +816,22 @@ def _compute_bid_peak(
     )
 
 
+_PeakT = TypeVar("_PeakT", AskPeak, BidPeak)
+
+
+def _without_all_peak_rankings(peak: _PeakT) -> _PeakT:
+    """`all_peaks`/`all_max_peaks` 전체 랭킹 배열을 range 응답에서 뺀다.
+
+    이 두 배열은 하루당 수천 후보(실측 avg ~1.3k/1.6k)로 sidecar 페이로드의 99%를
+    차지하는데, range 소비처(/live·/study seed 경로)는 어느 필드도 읽지 않는다 —
+    전체 랭킹은 라이브 `ask_peak_today`(별도 상태) 전용이다. 빌더/캐시는 그대로
+    두고(단위 계약·기존 디스크 캐시 유지) 응답 조립 시점에만 벗긴다. `all_*`
+    스칼라(rank-1)는 바이트 기여가 무시 수준이라 와이어 계약 그대로 남긴다."""
+    if not peak.all_peaks and not peak.all_max_peaks:
+        return peak
+    return peak.model_copy(update={"all_peaks": [], "all_max_peaks": []})
+
+
 def build_ask_bid_peak_slices(
     engine: QueryEngine,
     *,
@@ -1525,9 +1541,9 @@ def build_range_bundle(
             if profile is not None:
                 volume_distributions.append(profile)
         if ap_d is not None:
-            ask_peaks.append(ap_d)
+            ask_peaks.append(_without_all_peak_rankings(ap_d))
         if bp_d is not None:
-            bid_peaks.append(bp_d)
+            bid_peaks.append(_without_all_peak_rankings(bp_d))
         if tvp_d is not None:
             trade_volume_pocs.append(tvp_d)
         if include_depth_heatmap and orderflow_ok:
