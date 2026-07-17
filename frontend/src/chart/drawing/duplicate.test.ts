@@ -61,21 +61,26 @@ describe('cloneWithOffset', () => {
     const dom = dragTimeDomain(axis, { lastRealMs: 10_900_000, bucketMs: 60_000 });
     const rect: Drawing = {
       id: 'r1', kind: 'rect',
-      // Wide rect late in session A: a (ref) near the close, b much earlier.
-      a: { realMs: 996_000, price: 50 }, b: { realMs: 500_000, price: 60 },
+      // Wide rect late in session A: a (ref) on the last full bar (#16),
+      // b much earlier (#8) — bar-grid values, like real pixel-derived anchors.
+      a: { realMs: 960_000, price: 50 }, b: { realMs: 480_000, price: 60 },
       fillOpacity: 0.1, ...style,
     };
-    // Ref vertex offset lands 60_000 into session B → Δvirtual = 65_000.
+    // Ref vertex offset lands 1 bar into session B → Δvirtual = 101_000 (the
+    // crossed gap's 1s rides along).
     const refShifted = 10_060_000;
     const dVirtual = dom.toVirtual(refShifted) - dom.toVirtual(rect.kind === 'rect' ? rect.a.realMs : 0);
     const clone = cloneWithOffset(rect, (ms) => dom.toReal(dom.toVirtual(ms) + dVirtual), 1);
     if (clone.kind === 'rect') {
       expect(clone.a.realMs).toBe(refShifted);
-      // b shifted by the same VIRTUAL span stays on-axis inside session A;
-      // the flat real-ms path would have put it at 9_564_000 — inside the gap.
-      expect(clone.b.realMs).toBe(565_000);
+      // b stays inside session A, shifted by the same bar count as the ref
+      // (+2 bars once the grid snap cancels the gap residue — un-snapped it
+      // would sit at 581_000, off the bar grid, which timeToCoordinate can't
+      // resolve; the flat real-ms path would have put it inside the gap).
+      expect(clone.b.realMs).toBe(600_000);
       expect(axis.contains(clone.a.realMs)).toBe(true);
       expect(axis.contains(clone.b.realMs)).toBe(true);
+      expect(clone.b.realMs % 60_000).toBe(0);
     }
   });
 });
