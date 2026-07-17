@@ -49,7 +49,7 @@ from .live_session import (  # noqa: F401 — C3 재export(호출부·테스트 
 from .promote import promote_kiwoom_today, promote_today
 from .settings import load_live_settings
 from .signal_alert_monitor import SignalAlertMonitor
-from .storage_runtime import stop_storage_runtime, sync_storage_runtime
+from .storage_runtime import StorageRuntimeSnapshot, stop_storage_runtime, sync_storage_runtime
 
 _log = logging.getLogger(__name__)
 
@@ -721,11 +721,28 @@ def _signal_alert_target_names(data_dir: Path, codes: set[str]) -> dict[str, str
     return {code: by_code.get(code, code) for code in codes}
 
 
+def _storage_set(snapshot: StorageRuntimeSnapshot) -> tuple[str, ...]:
+    """저장 중인 전체 코드 = ws_targets ∪ kiwoom_targets(dedup, 순서 보존). rest_poller
+    배제·버퍼 링 보존(drop_codes_except)의 SSOT — 컷오버 후 저장은 kiwoom_targets에만
+    있으므로 ws_targets만 보면 키움 표시 링을 지우거나(refresh) 이미 캡처된 코드를
+    rest_poller가 중복 폴링한다(ADR-0118 PR-E)."""
+    return tuple(dict.fromkeys(snapshot.ws_targets + snapshot.kiwoom_targets))
+
+
+def _captured_watchlist(snapshot: StorageRuntimeSnapshot) -> tuple[str, ...]:
+    """거래원 폴러 타깃 = 저장 중인 관심종목(capture_candidates ∩ 저장셋). 컷오버 후
+    관심종목은 kiwoom_targets에 있으므로 session.live_set(=ws_targets)에서만 소싱하면
+    거래원 데이터가 조용히 끊긴다(ADR-0118 PR-E 재소싱). kiwoom off 폴백에선 저장셋이
+    ws_targets라 기존 동작(=session.live_set)과 동치."""
+    storage = set(_storage_set(snapshot))  # 저장셋 SSOT 재사용(union 재구현 금지, 리뷰)
+    return tuple(code for code in snapshot.capture_candidates if code in storage)
+
+
 async def _sync_storage_targets(
     data_dir: Path,
     *,
     n_configured: int | None = None,
-) -> list[str]:
+) -> StorageRuntimeSnapshot:
     snapshot = await sync_storage_runtime(
         data_dir,
         state=_state,
@@ -738,10 +755,9 @@ async def _sync_storage_targets(
     if monitor is not None:
         # 키움 타깃 포함(리뷰 Major): 히트맵은 kiwoom_targets로만 수집되는데, 이를
         # monitor 타깃에 안 넣으면 stream.on_tick의 ingest_orderbook이 code∉targets로
-        # 전량 드롭돼 매도총잔량 갱신 알림이 침묵 정지한다.
-        targets = set(snapshot.ws_targets) | set(snapshot.kiwoom_targets)
-        monitor.set_targets(_signal_alert_target_names(data_dir, targets))
-    return list(snapshot.ws_targets)
+        # 전량 드롭돼 매도총잔량 갱신 알림이 침묵 정지한다. 컷오버 후 관심종목도 여기.
+        monitor.set_targets(_signal_alert_target_names(data_dir, set(_storage_set(snapshot))))
+    return snapshot
 
 
 async def _start_live_stream_locked(*, data_dir: Path) -> bool:
@@ -782,21 +798,24 @@ async def _start_live_stream_locked(*, data_dir: Path) -> bool:
             return False  # account 0 creds 사라짐(레이스) — 오프라인
         broker_poller = _ensure_broker_poller(data_dir)
 
-    # 4. Storage targets 산출: 관심종목 WS + 키움 히트맵(REST 캡처 제거, 2026-07-17).
-    codes = await _sync_storage_targets(data_dir)
+    # 4. Storage targets 산출: 컷오버 후 저장셋=키움(ws_targets 빈값), 폴백 시 관심종목=KIS WS.
+    snapshot = await _sync_storage_targets(data_dir)
+    ws_codes = list(snapshot.ws_targets)
 
-    # 5. exclude-then-subscribe: 먼저 배제 동기화, 그 다음 conn build(session.start)
-    _sync_exclusion(poller, tuple(codes))
+    # 5. exclude-then-subscribe: 저장셋(ws∪kiwoom) 배제 — 이미 캡처된 코드는 rest_poller
+    #    표시 폴링 제외(컷오버 후 관심종목은 kiwoom_targets에 있어 ws만으론 부족, PR-E).
+    _sync_exclusion(poller, _storage_set(snapshot))
 
-    # 6. 코드 있는 파티션만 conn 생성(session이 dynamic-N 빌드 — 빈 part=연결 없음 → C4)
+    # 6. 코드 있는 파티션만 KIS conn 생성(빈 ws_targets=컷오버 → 연결 0, 자연 소멸 → C4)
     await _state.session.start(
-        codes=codes, n_configured=n_configured, data_dir=data_dir,
+        codes=ws_codes, n_configured=n_configured, data_dir=data_dir,
         now_ms=_now_ms(), build_conn=_build_conn,
     )
     _state.rest_poller = poller
     _state.broker_poller = broker_poller
-    # 거래원 폴러 타깃을 live_set과 동기화(session.start가 확정한 live_set 기준).
-    _sync_broker_poller_targets(_state.session.live_set)
+    # 거래원 폴러 타깃 = 저장 중인 관심종목(PR-E 재소싱: 컷오버 후 kiwoom_targets에서,
+    # session.live_set 빈값이어도 안 빔).
+    _sync_broker_poller_targets(_captured_watchlist(snapshot))
 
     _seed_today_peak_states(date=_today_kst(), live_root=data_dir / "live")
 
@@ -896,26 +915,29 @@ async def refresh_live_stream(*, data_dir: Path) -> None:
             await _start_live_stream_locked(data_dir=data_dir)
             return
 
-        codes = await _sync_storage_targets(
+        snapshot = await _sync_storage_targets(
             data_dir, n_configured=_state.n_configured,
         )
+        ws_codes = list(snapshot.ws_targets)
 
-        # exclude-then-subscribe: build/update 전에 배제 동기화(스펙 §5.5, C3 ①).
-        _sync_exclusion(_state.rest_poller, tuple(codes))
+        # exclude-then-subscribe: 저장셋(ws∪kiwoom) 배제(스펙 §5.5, C3 ①; PR-E 재소싱 —
+        # 컷오버 후 이미 캡처된 관심종목을 rest_poller가 중복 폴링하지 않게).
+        _sync_exclusion(_state.rest_poller, _storage_set(snapshot))
 
         # 원자 활성집합 스왑(Pass 0) + WS 재구독 diff·build/teardown(Pass 1) +
         # live_set/watchlist 갱신은 session.refresh가 소유(이중-write 방지 불변식 봉인).
         await _state.session.refresh(
-            codes=codes, data_dir=data_dir,
+            codes=ws_codes, data_dir=data_dir,
             build_conn=_build_conn, teardown_conn=_teardown_conn,
         )
-        # 거래원 폴러 보장(부팅 후 최초 refresh에서 생성될 수도) + 타깃을 갱신된 live_set과
-        # 동기화. bypass가 아니고 streams가 있을 때만(위 가드 통과) 도달.
+        # 거래원 폴러 보장(부팅 후 최초 refresh에서 생성될 수도) + 타깃 = 저장 중인
+        # 관심종목(PR-E 재소싱). bypass가 아니고 streams가 있을 때만(위 가드 통과) 도달.
         if not _state.kis_rest_bypass_enabled and _state.broker_poller is None:
             _state.broker_poller = _ensure_broker_poller(data_dir)
-        _sync_broker_poller_targets(_state.session.live_set)
+        _sync_broker_poller_targets(_captured_watchlist(snapshot))
         _seed_today_peak_states(date=_today_kst(), live_root=data_dir / "live")
-        await _buffer.drop_codes_except(set(codes))  # 떠난 코드 ring 해제
+        # 저장셋(ws∪kiwoom) 밖 링만 해제 — 컷오버 후 ws_targets 빈값이어도 키움 표시 링 보존.
+        await _buffer.drop_codes_except(set(_storage_set(snapshot)))
 
 
 # ADR-0064 이식 — WS 스트림 watchdog

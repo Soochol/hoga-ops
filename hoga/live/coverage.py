@@ -98,12 +98,14 @@ def plan_storage_targets(
     kiwoom_enabled: bool = False,
     kiwoom_capacity: int = 0,
 ) -> LiveStorageTargets:
-    """관심종목=KIS WS 슬롯(19×계좌)까지, 히트맵=키움 WS 용량(200×앱키)까지.
+    """저장셋 = 관심종목 + 히트맵(키움 WS 전담, ADR-0118 PR-E 칼 컷오버).
 
-    KIS REST 30s 캡처(ADR-0097 rest30)는 제거됐다(2026-07-17 정책: 호가는 api로
-    받지 않는다 — 폴백 없음, 커버리지는 계좌 추가로). 슬롯/용량 초과분은 어디에도
-    담기지 않으며(경고), kiwoom off/무자격(capacity 0)이면 히트맵은 수집되지 않는다.
-    heatmap_candidates는 관심종목(candidates)과 dedup — 관심종목은 KIS WS가 전담.
+    **kiwoom 활성**(enabled + capacity>0): 관심종목+히트맵 dedup union이 kiwoom_targets
+    (저장셋, 용량까지 관심종목 우선), KIS ws_targets는 빈 튜플 → KIS WS conn은 dynamic-N에
+    의해 자연 소멸(빈 파티션 = 연결 없음). 용량 초과분은 미수집(경고, 계좌 추가로 대응).
+
+    **kiwoom off/무자격**(capacity 0): 관심종목은 KIS WS 슬롯(per_account_max×계좌)까지
+    유지(무회귀 폴백), 히트맵은 미수집. KIS REST 30s 캡처(ADR-0097)는 제거됨(폴백 없음).
     """
     if per_account_max is None:
         per_account_max = _PER_ACCOUNT_MAX
@@ -113,15 +115,19 @@ def plan_storage_targets(
         code for code in dict.fromkeys(heatmap_candidates) if code not in candidate_set
     )
     if kiwoom_enabled and kiwoom_capacity > 0:
-        kiwoom_targets = heatmap[:kiwoom_capacity]
-        dropped = len(heatmap) - len(kiwoom_targets)
+        # 컷오버: 관심종목 먼저(우선) + 히트맵 = 저장셋. 관심종목은 KIS 슬롯 무관 전량.
+        storage_set = candidates + heatmap
+        kiwoom_targets = storage_set[:kiwoom_capacity]
+        dropped = len(storage_set) - len(kiwoom_targets)
         if dropped > 0:  # 초과분은 미수집 — 계좌 추가로 대응(REST 폴백 없음)
-            _log.warning("live.storage.heatmap_over_kiwoom_capacity dropped=%d cap=%d",
+            _log.warning("live.storage.storage_set_over_kiwoom_capacity dropped=%d cap=%d",
                          dropped, kiwoom_capacity)
+        ws_targets: tuple[str, ...] = ()  # 관심종목 키움 이관 → KIS WS 빈 파티션
     else:
         kiwoom_targets = ()
+        ws_targets = candidates[:per_account_max * n_configured]  # 폴백: KIS WS 유지
     return LiveStorageTargets(
-        ws_targets=candidates[:per_account_max * n_configured],
+        ws_targets=ws_targets,
         capture_candidates=candidates,
         kiwoom_targets=kiwoom_targets,
     )

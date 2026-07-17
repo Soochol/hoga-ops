@@ -171,6 +171,65 @@ async def test_refresh_bypass_stops_existing_broker_poller(
     assert lifecycle._state.broker_poller is None
 
 
+def test_captured_watchlist_after_cutover_sources_from_kiwoom_targets() -> None:
+    """PR-E 재소싱: 거래원 폴러 타깃 = 캡처된 관심종목(capture_candidates ∩ 저장셋).
+    컷오버 후 관심종목은 kiwoom_targets에 있으므로 ws_targets 빈값이어도 안 빈다 —
+    session.live_set(=ws_targets)에서만 소싱하면 거래원 데이터가 조용히 끊긴다."""
+    from hoga.live.lifecycle import _captured_watchlist
+    from hoga.live.storage_runtime import StorageRuntimeSnapshot
+
+    snap = StorageRuntimeSnapshot(
+        ws_targets=(),                                   # 컷오버 후 빈값
+        capture_candidates=("A", "B"),
+        kiwoom_targets=("A", "B", "H1", "H2"),
+    )
+    assert _captured_watchlist(snap) == ("A", "B")       # 관심종목만(히트맵 제외)
+
+
+def test_captured_watchlist_kiwoom_off_equals_ws_targets() -> None:
+    """kiwoom off 폴백: captured_watchlist == 저장된 관심종목(=ws_targets) — 기존 거래원
+    타깃 동작 무회귀. 슬롯 밖 관심종목(C)은 미저장이라 제외."""
+    from hoga.live.lifecycle import _captured_watchlist
+    from hoga.live.storage_runtime import StorageRuntimeSnapshot
+
+    snap = StorageRuntimeSnapshot(
+        ws_targets=("A", "B"),
+        capture_candidates=("A", "B", "C"),  # C는 KIS 슬롯 밖(미저장)
+        kiwoom_targets=(),
+    )
+    assert _captured_watchlist(snap) == ("A", "B")
+
+
+@pytest.mark.asyncio
+async def test_get_kiwoom_capture_codes_includes_watchlist_after_cutover() -> None:
+    """PR-E E2E 링크: 컷오버 후 키움 active_codes(=저장셋)에 관심종목이 포함돼, 승격
+    루프(promote_kiwoom_today)가 관심종목을 kiwoom_live로 자동 승격한다(별도 배선 불요)."""
+    from hoga.live import lifecycle
+    from hoga.live.lifecycle import _State
+
+    lifecycle.reset_for_tests()
+
+    class _FakeKiwoom:
+        def active_codes(self):
+            return ["005930", "000660", "H1"]  # 관심종목 + 히트맵(컷오버 저장셋)
+
+    lifecycle._state = _State(kiwoom_session=_FakeKiwoom())
+    codes = lifecycle.get_kiwoom_capture_codes()
+    assert "005930" in codes and "000660" in codes  # 관심종목 포함 → kiwoom_live 승격 대상
+
+
+def test_storage_set_is_dedup_union_of_ws_and_kiwoom() -> None:
+    """PR-E: rest_poller 배제·버퍼 링 보존용 저장셋 = ws ∪ kiwoom(dedup)."""
+    from hoga.live.lifecycle import _storage_set
+    from hoga.live.storage_runtime import StorageRuntimeSnapshot
+
+    snap = StorageRuntimeSnapshot(
+        ws_targets=(), capture_candidates=("A", "B"),
+        kiwoom_targets=("A", "B", "H1"),
+    )
+    assert set(_storage_set(snap)) == {"A", "B", "H1"}
+
+
 @pytest.mark.asyncio
 async def test_dispatch_broker_tick_broadcasts_to_kiwoom_streams() -> None:
     """PR-D: 거래원 합성 틱이 KIS(_state.session.streams)가 아닌 키움 매니저 스트림에

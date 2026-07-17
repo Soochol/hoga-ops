@@ -172,8 +172,8 @@ class FakeKiwoomSession:
 async def test_storage_runtime_kiwoom_enabled_routes_heatmap_to_kiwoom(
     tmp_path, monkeypatch,
 ) -> None:
-    """kiwoom_enabled=True: 히트맵 종목이 kiwoom_session.sync로 간다. 관심종목 중복은
-    dedup(KIS WS 전담), 미지 종목은 드롭, WS 타깃은 불변."""
+    """kiwoom_enabled=True 칼 컷오버(ADR-0118 PR-E): 관심종목+히트맵 union이 kiwoom_session.
+    sync로 간다. 히트맵의 관심종목 중복은 dedup, 미지 종목은 드롭. KIS ws_targets는 빈 튜플."""
     _patch_common(monkeypatch)
     _seed_watchlist(tmp_path)
     _seed_heatmap(tmp_path, [
@@ -196,10 +196,10 @@ async def test_storage_runtime_kiwoom_enabled_routes_heatmap_to_kiwoom(
         date_fn=lambda: "20260717", now_ms_fn=lambda: 0, n_configured=1,
     )
 
-    assert snapshot.ws_targets == ("005930", "000660", "035420")
-    assert snapshot.kiwoom_targets == ("005380",)
-    # n_accounts=키움 앱키 수(2).
-    assert kiwoom.synced == [(("005380",), 2)]
+    assert snapshot.ws_targets == ()                       # 관심종목 키움 이관(컷오버)
+    assert snapshot.kiwoom_targets == ("005930", "000660", "035420", "005380")  # 관심+히트맵
+    # n_accounts=키움 앱키 수(2). 저장셋 전체가 sync로.
+    assert kiwoom.synced == [(("005930", "000660", "035420", "005380"), 2)]
 
 
 @pytest.mark.asyncio
@@ -282,9 +282,9 @@ async def test_storage_runtime_kiwoom_sync_failure_is_isolated(
         tmp_path, state=state, buffer=object(),  # type: ignore[arg-type]
         date_fn=lambda: "20260717", now_ms_fn=lambda: 0, n_configured=1,
     )
-    # 예외가 삼켜지고 스냅샷은 정상 반환(kiwoom_targets는 계획값 유지).
-    assert snapshot.ws_targets == ("005930", "000660", "035420")
-    assert snapshot.kiwoom_targets == ("005380",)
+    # 예외가 삼켜지고 스냅샷은 정상 반환(계획값 유지 — 컷오버: 저장셋=kiwoom, ws 빈값).
+    assert snapshot.ws_targets == ()
+    assert snapshot.kiwoom_targets == ("005930", "000660", "035420", "005380")
 
 
 @pytest.mark.asyncio
