@@ -146,6 +146,9 @@ class AskPeak(BaseModel):
     ``price``/``qty``/``t_ms`` = 체결가격 기준 버킷 종가 대표 위에서의 당일 max.
     ``max_*`` = 체결가격 기준 버킷 틱-max 위에서의 당일 max(Intra-Bar Max, ADR-0076).
     ``all_*`` = 모든 eligible ask price 기준. None이면 legacy payload.
+    ``all_peaks``/``all_max_peaks`` 전체 랭킹 배열은 /api/range 응답에서 비워진다
+    (bundle._without_all_peak_rankings — 하루당 수천 후보로 페이로드의 99%인데
+    range 소비처 미사용). 전체 랭킹은 라이브 ``ask_peak_today`` 경로 전용.
     ``traded_*`` arrays = post-touch ranked wire; single ``price``/``max_price`` remain
     the legacy rank-1 compatibility fields.
     ``untraded_*`` = post-untouched legacy rank-1 wire. ``untraded_*_peaks`` carries

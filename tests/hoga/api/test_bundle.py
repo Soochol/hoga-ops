@@ -1368,6 +1368,53 @@ def test_range_bundle_omits_depth_heatmap_when_disabled(monkeypatch, tmp_path) -
     assert bundle.depth_heatmap == []
 
 
+def test_build_range_bundle_strips_all_peak_rankings() -> None:
+    """range 응답의 ask/bid_peaks는 all_peaks/all_max_peaks 전체 랭킹을 싣지 않는다.
+
+    두 배열은 하루당 수천 후보로 sidecar 페이로드의 99%인데 range 소비처가 읽지
+    않는다(전체 랭킹은 라이브 ask_peak_today 전용). traded_*/untraded_* 랭킹과
+    all_* 스칼라는 와이어 계약 그대로 남아야 한다. 캐시된 과거일 entry(빌더를
+    거치지 않는 경로)도 조립 시점 스트립으로 커버되는 계약의 회귀 가드."""
+    import contextlib
+    from unittest.mock import patch
+    from hoga.api import bundle as bundle_mod
+    from hoga.api.bundle import build_range_bundle
+    from hoga.api.models import AskPeak, BidPeak
+
+    candidate = {"price": 70_200, "qty": 5000, "t_ms": 1}
+    fat = dict(
+        date="20260512", price=70_200, qty=5000, t_ms=1,
+        max_price=70_200, max_qty=5000, max_t_ms=1,
+        all_price=70_300, all_qty=6000, all_t_ms=2,
+        traded_peaks=[candidate], traded_max_peaks=[candidate],
+        all_peaks=[candidate] * 4, all_max_peaks=[candidate] * 4,
+        untraded_peaks=[candidate], untraded_max_peaks=[candidate],
+    )
+    ask = AskPeak(**fat)
+    bid = BidPeak(**fat)
+
+    mock_engine = _engine_with_meta_for_dates(["20260512"])
+    patches = _patch_slice_builders(bundle_mod)
+    with contextlib.ExitStack() as stack:
+        for pcm in patches:
+            stack.enter_context(pcm)
+        stack.enter_context(patch.object(bundle_mod, "build_ask_bid_peak_slices", return_value=(ask, bid)))
+        rb = build_range_bundle(
+            mock_engine, code="005930", from_date="20260512", to_date="20260512",
+            bucket_ms=60_000, mode="sidecar",
+        )
+
+    for peak in (rb.ask_peaks[0], rb.bid_peaks[0]):
+        assert peak.all_peaks == []
+        assert peak.all_max_peaks == []
+        assert [c.model_dump() for c in peak.traded_peaks] == [candidate]
+        assert [c.model_dump() for c in peak.untraded_peaks] == [candidate]
+        assert (peak.all_price, peak.all_qty, peak.all_t_ms) == (70_300, 6000, 2)
+    # 원본 객체는 변형하지 않는다(캐시 공유 객체 오염 방지).
+    assert len(ask.all_peaks) == 4
+    assert len(bid.all_max_peaks) == 4
+
+
 def test_build_range_bundle_ask_peaks_includes_past_day_even_when_not_today(monkeypatch, tmp_path) -> None:
     """범위가 과거일만(오늘 미포함)이어도 그날 항목이 ask_peaks에 들어간다(per-day).
     (이전엔 '달력상 오늘'에만 계산해 휴장·과거일 조회 시 항상 비어 선이 안 보였다 — 회귀 가드.)"""
