@@ -158,26 +158,48 @@ describe('dragTimeDomain — intraday', () => {
   const future: FutureBand = { lastRealMs: 10_500_000, bucketMs: 60_000 };
   const dom = dragTimeDomain(axis, future);
 
-  it('round-trips on-axis realMs exactly (identity when unshifted)', () => {
-    for (const ms of [0, 500_000, 1_000_000, 10_000_000, 10_200_000]) {
+  it('round-trips on-axis bar-grid realMs exactly (identity when unshifted)', () => {
+    // Samples sit on the bar grid (session open + k·bucketMs) — the only
+    // times creation can produce. 1_000_000 is session A's close, preserved
+    // by the grid snap's close cap.
+    for (const ms of [0, 480_000, 1_000_000, 10_000_000, 10_180_000]) {
       expect(dom.toReal(dom.toVirtual(ms))).toBe(ms);
     }
   });
 
-  it('a gap-crossing shift lands the vertex ON-AXIS in the next session', () => {
+  it('a gap-crossing shift lands the vertex ON-AXIS and ON-GRID in the next session', () => {
     // Vertex late in session A, shifted right by 200_000 virtual ms — enough
     // to cross the compressed overnight gap into session B.
     const shifted = dom.toReal(dom.toVirtual(900_000) + 200_000);
     expect(axis.contains(shifted)).toBe(true);
-    // virtual 1_100_000 → 99_000 into session B → real 10_099_000. The old
-    // real-ms shift (900_000 + 200_000 = 1_100_000) landed in the gap instead.
-    expect(shifted).toBe(10_099_000);
+    // virtual 1_100_000 → 99_000 into session B, which is 1.65 bars: the
+    // crossed gap's INTER_SEGMENT_GAP_MS rode along in Δvirtual. Un-snapped
+    // this landed at 10_099_000 — on-axis but off the bar grid, which
+    // timeToCoordinate can't resolve (the trendline edge-pin stretch bug).
+    // The grid snap rounds to the nearest bar: 2 bars into session B.
+    expect(shifted).toBe(10_120_000);
+    expect((shifted - 10_000_000) % future.bucketMs).toBe(0);
     expect(axis.contains(1_100_000)).toBe(false);
   });
 
   it('a leftward gap-crossing shift is exactly inverse (drag back restores)', () => {
     const there = dom.toVirtual(900_000) + 200_000;
     expect(dom.toReal(there - 200_000)).toBe(900_000);
+  });
+
+  it('a leftward boundary crossing walks bar-space onto the previous session grid', () => {
+    // Vertex 2 bars into session B, dragged 3 bars left: B#2 → B#1 → B#0 →
+    // session A's last full bar (16 × 60_000 = 960_000). A flat Δvirtual
+    // would have produced 941_000 (the gap residue) — off the bar grid.
+    const shifted = dom.toReal(dom.toVirtual(10_120_000) - 3 * future.bucketMs);
+    expect(shifted).toBe(960_000);
+  });
+
+  it('heals an off-grid on-axis realMs (persisted boundary residue) on a zero-shift grab', () => {
+    // 10_099_000 is contained (so the gap-heal never fires) but 1.65 bars into
+    // session B — a leftover from a pre-snap boundary-crossing drag. The
+    // round-trip snaps it onto the nearest bar instead of preserving it.
+    expect(dom.toReal(dom.toVirtual(10_099_000))).toBe(10_120_000);
   });
 
   it('heals a gap-stranded realMs (legacy real-ms drag leftover) to the next open', () => {
@@ -203,6 +225,67 @@ describe('dragTimeDomain — intraday', () => {
 
   it('exposes the axis origin for the shape-preserving left cap', () => {
     expect(dom.originV).toBe(0);
+  });
+});
+
+describe('realMsToCanvasX — off-grid on-axis fallback (boundary-residue render)', () => {
+  // Same two-session intraday axis as the dragTimeDomain suite, but with a
+  // STRICT timeToCoordinate that — like real lightweight-charts — resolves
+  // only exact bar times present in the data. The original linear stub hid
+  // this bug class entirely.
+  const axis = createVirtualAxis([
+    { date: '20260101', sessionOpenMs: 0, sessionCloseMs: 1_000_000 },
+    { date: '20260102', sessionOpenMs: 10_000_000, sessionCloseMs: 11_000_000 },
+  ]);
+  const BUCKET_1M = 60_000;
+  const future: FutureBand = { lastRealMs: 10_500_000, bucketMs: BUCKET_1M };
+  // Bars: every full bucket of each session, in virtual time.
+  const barsV: number[] = [];
+  for (const seg of axis.segments) {
+    const len = seg.sessionCloseMs - seg.sessionOpenMs;
+    for (let off = 0; off <= len; off += BUCKET_1M) {
+      barsV.push(seg.virtualStart + off);
+    }
+  }
+  const strictChart = {
+    timeScale: () => ({
+      timeToCoordinate: (timeSec: number) => {
+        const i = barsV.indexOf(timeSec * 1000);
+        return i < 0 ? null : i * PX_PER_BAR;
+      },
+      coordinateToTime: () => null,
+      coordinateToLogical: (x: number) => x / PX_PER_BAR,
+      logicalToCoordinate: (logical: number) => logical * PX_PER_BAR,
+    }),
+  } as unknown as IChartApi;
+
+  it('projects a bar-aligned realMs directly (control)', () => {
+    // Session B bar #2 (10_120_000). Session A has 17 bars (0..960_000) —
+    // plus its close-time bar 1_000_000? No: bars step by full buckets from
+    // the open, so A contributes ceil-less floor(1_000_000/60_000)+1 = 17
+    // entries (0..960_000) and one at 1_000_000 is NOT on the bucket ladder.
+    const aBars = Math.floor(1_000_000 / BUCKET_1M) + 1; // 17
+    const x = realMsToCanvasX(strictChart, axis, 10_120_000, future);
+    expect(x).toBe((aBars + 2) * PX_PER_BAR);
+  });
+
+  it('resolves an off-grid on-axis realMs by snapping to the nearest bar', () => {
+    // 10_099_000 = 1.65 bars into session B — a persisted boundary-crossing
+    // drag residue. Direct lookup fails (not a bar time); the fallback snaps
+    // to bar #2 instead of returning null (which the render layer would have
+    // edge-pinned via `?? 0 / ?? width` — the stretched-trendline bug).
+    const aBars = Math.floor(1_000_000 / BUCKET_1M) + 1;
+    const x = realMsToCanvasX(strictChart, axis, 10_099_000, future);
+    expect(x).toBe((aBars + 2) * PX_PER_BAR);
+  });
+
+  it('still returns null for an off-grid realMs without a future ref', () => {
+    // No bucket → no grid to snap to; legacy behavior preserved.
+    expect(realMsToCanvasX(strictChart, axis, 10_099_000)).toBeNull();
+  });
+
+  it('still returns null inside an inter-session gap (off-axis stays owned by callers)', () => {
+    expect(realMsToCanvasX(strictChart, axis, 5_000_000, future)).toBeNull();
   });
 });
 

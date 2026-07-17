@@ -84,10 +84,37 @@ export function dragTimeDomain(axis: VirtualAxis, future?: FutureBand): DragTime
       if (hasFuture && virtualMs > lastV) {
         return future.lastRealMs + ((virtualMs - lastV) / vPerBar) * future.bucketMs;
       }
-      return axis.toReal(virtualMs);
+      // On-axis result → snap to the bar grid. A Δvirtual measured across a
+      // session boundary carries the compressed gap (INTER_SEGMENT_GAP_MS per
+      // boundary); applied to a vertex crossing a different number of
+      // boundaries it would land ±gap off the bar grid — still `contains()`ed
+      // (so the gap-heal above never fires) but unresolvable by
+      // timeToCoordinate, which edge-pins the render (`?? 0 / ?? width`).
+      // The snap also heals already-misaligned vertices on their next drag.
+      const real = axis.toReal(virtualMs);
+      return hasFuture ? nearestBarGridRealMs(axis, real, future.bucketMs) : real;
     },
     originV: axis.segments.length > 0 ? axis.segments[0].virtualStart : 0,
   };
+}
+
+/**
+ * Nearest bar-grid real-ms for an on-axis intraday `realMs`: the containing
+ * segment's open plus a whole number of `bucketMs` buckets (capped at the
+ * close). Candle times are anchored at each session's open, so this is exactly
+ * the ladder `timeToCoordinate` can resolve. Passthrough for calendar axes
+ * (their toReal only emits segment opens, which are bar times already) and for
+ * off-axis times (the gap / future-band paths own those).
+ */
+function nearestBarGridRealMs(axis: VirtualAxis, realMs: number, bucketMs: number): number {
+  if (axis.mode === 'calendar' || bucketMs <= 0) return realMs;
+  const idx = axis.findByReal(realMs);
+  if (idx < 0) return realMs;
+  const seg = axis.segments[idx];
+  if (realMs < seg.sessionOpenMs || realMs > seg.sessionCloseMs) return realMs;
+  const sessionLen = seg.sessionCloseMs - seg.sessionOpenMs;
+  const snapped = Math.round((realMs - seg.sessionOpenMs) / bucketMs) * bucketMs;
+  return seg.sessionOpenMs + Math.min(snapped, sessionLen);
 }
 
 /** Core real→canvas-X (in-axis only). Split out so the future-band path can
@@ -182,6 +209,16 @@ export function realMsToCanvasX(
   // drawings still render.
   if (future && future.bucketMs > 0 && realMs > future.lastRealMs) {
     return extrapolateFutureX(chart, axis, realMs, future);
+  }
+  // On-axis but off the bar grid (a persisted boundary-crossing drag residue,
+  // ±INTER_SEGMENT_GAP_MS per crossed session boundary): timeToCoordinate only
+  // resolves exact bar times, so retry on the nearest bar. Without this the
+  // `?? 0 / ?? width` render fallback pins the vertex to the canvas edge and
+  // the drawing appears stretched. The drag path snaps new values (see
+  // dragTimeDomain.toReal); this covers drawings saved before that snap.
+  if (future && future.bucketMs > 0 && axis.contains(realMs)) {
+    const snapped = nearestBarGridRealMs(axis, realMs, future.bucketMs);
+    if (snapped !== realMs) return coreRealMsToCanvasX(chart, axis, snapped);
   }
   return null;
 }
