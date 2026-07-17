@@ -17,7 +17,7 @@ import pytest
 
 from hoga.live.kis_models import KisBrokerEntry, KisBrokers
 from hoga.live.snapshot import SnapshotKind
-from hoga.live.ws_frames import WsTick
+from hoga.live.ticks import WsTick
 
 if TYPE_CHECKING:
     from hoga.live.broker_rest_poller import KisBrokerFetchProto

@@ -21,9 +21,9 @@ from .downsampler import TickDownsampler
 from .lifecycle import get_signal_alert_monitor
 from .session_gate import market_phase, ws_capture_window_async
 from .snapshot import LiveSnapshot, SnapshotKind
+from .ticks import WsTick
 from .writer import LiveWriter
 from .ws_client import KisWsClient
-from .ws_frames import WsTick
 
 _log = logging.getLogger(__name__)
 

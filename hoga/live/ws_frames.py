@@ -8,33 +8,16 @@ payload 형태는 poller 시절 JSONL payload와 키-호환(shape-compat; 키 �
 from __future__ import annotations
 
 import logging
-from dataclasses import dataclass
-from typing import Any
 
 from hoga.api.timeenc import hhmmssms_to_unix_ms
 
 from . import ws_fields as F
 from .snapshot import SnapshotKind
+from .ticks import WsTick  # 이주처(PR-A/ADR-0118). 재수출 — ws_client·구경로 하위호환.
 
 _log = logging.getLogger(__name__)
 
 _SIDE_MAP = {"1": 1, "5": -1}  # 그 외('3' 장전 등) → 0 (Auction Cross 규약과 동일)
-
-
-@dataclass(frozen=True)
-class WsTick:
-    """Live Tick — WS 1메시지에서 나온 1개 도메인 이벤트 (CONTEXT.md 'Live Tick').
-
-    venue: 이 틱을 실어온 TR의 시장(KRX/NXT). #524 통합 venue 시분할에서 stream이
-    저장(KRX만)·표시 분기에 쓴다. 기본 "KRX"라 기존 생성부·구경로는 무변경으로
-    KRX 의미를 유지(하위호환).
-    """
-
-    code: str
-    t_ms: int
-    kind: SnapshotKind
-    payload: dict[str, Any]
-    venue: str = "KRX"
 
 
 def _hhmmss_to_unix_ms(date: str, hhmmss: str) -> int:

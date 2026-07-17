@@ -25,7 +25,7 @@ from typing import TYPE_CHECKING, Literal, cast
 if TYPE_CHECKING:
     from .broker_rest_poller import BrokerRestPoller
     from .rest_poller import LiveRestPoller
-    from .ws_frames import WsTick
+    from .ticks import WsTick
 
 from pydantic import BaseModel, Field
 

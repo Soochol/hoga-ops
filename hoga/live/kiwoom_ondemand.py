@@ -26,7 +26,7 @@ from .buffer import LiveBuffer
 from .kiwoom_ws_client import KiwoomWsClient
 from .session_gate import market_phase
 from .snapshot import LiveSnapshot
-from .ws_frames import WsTick
+from .ticks import WsTick
 
 # 예약 앱키 클라이언트를 on_tick 콜백을 받아 만드는 팩토리. 예약 앱키 부재면 None.
 ClientFactory = Callable[[Callable[[WsTick], Awaitable[None]]], KiwoomWsClient | None]

@@ -23,7 +23,7 @@ from typing import Protocol
 import websockets
 
 from .kiwoom_frames import parse_real_message
-from .ws_frames import WsTick  # 포트 계약 타입(공유) — kis 수집 로직 아님
+from .ticks import WsTick  # 포트 계약 타입(공유)
 
 _log = logging.getLogger(__name__)
 

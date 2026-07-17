@@ -15,7 +15,7 @@ from hoga.api.timeenc import hhmmssms_to_unix_ms
 
 from . import kiwoom_fields as K
 from .snapshot import SnapshotKind
-from .ws_frames import WsTick
+from .ticks import WsTick
 
 _log = logging.getLogger(__name__)
 

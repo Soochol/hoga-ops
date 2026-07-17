@@ -41,6 +41,7 @@ _HOT_PATH_MODULES = (
     "hoga/live/session_gate.py",
     "hoga/live/coverage.py",
     "hoga/live/snapshot.py",
+    "hoga/live/ticks.py",  # PR-A (ADR-0118) — WsTick 모델 이주처(포트 계약 타입)
     "hoga/live/buffer.py",
     "hoga/live/api.py",
     "hoga/live/lifecycle.py",
@@ -120,3 +121,17 @@ def test_live_package_imports_cleanly_with_single_worker() -> None:
     # confirm we can re-import it with the default env.
     importlib.import_module("hoga.live")
     # No assertion needed — successful import is the contract.
+
+
+def test_wstick_single_source_of_truth() -> None:
+    """PR-A (ADR-0118): WsTick lives in hoga.live.ticks; ws_frames re-exports it.
+
+    The re-export must resolve to the *same* class object. A second WsTick
+    definition in ws_frames would silently break identity across the port
+    boundary — kiwoom/broker 합성 틱과 KIS 파서 출력이 다른 타입이 되어
+    isinstance/frozen-dataclass 계약이 어긋난다. PR-G에서 ws_frames의 KIS
+    파서를 제거할 때 WsTick이 실수로 재정의되지 않도록 고정한다.
+    """
+    from hoga.live import ticks, ws_frames
+
+    assert ws_frames.WsTick is ticks.WsTick

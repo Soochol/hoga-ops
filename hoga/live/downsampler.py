@@ -11,7 +11,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 
 from .snapshot import LiveSnapshot, SnapshotKind
-from .ws_frames import WsTick
+from .ticks import WsTick
 
 
 @dataclass

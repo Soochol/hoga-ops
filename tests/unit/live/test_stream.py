@@ -10,8 +10,8 @@ import hoga.live.stream as stream_mod
 from hoga.live.buffer import LiveBuffer
 from hoga.live.snapshot import SnapshotKind
 from hoga.live.stream import LiveStream
+from hoga.live.ticks import WsTick
 from hoga.live.writer import LiveWriter
-from hoga.live.ws_frames import WsTick
 
 KST = timezone(timedelta(hours=9))
 

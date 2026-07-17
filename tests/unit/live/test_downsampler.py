@@ -1,6 +1,6 @@
 from hoga.live.downsampler import TickDownsampler
 from hoga.live.snapshot import SnapshotKind
-from hoga.live.ws_frames import WsTick
+from hoga.live.ticks import WsTick
 
 
 def _ob(code, t_ms, tot_ask):
