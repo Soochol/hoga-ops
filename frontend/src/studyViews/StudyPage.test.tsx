@@ -50,6 +50,10 @@ vi.mock('./useWarmStudyReferenceTabQueries', () => ({
   useWarmStudyReferenceTabQueries: useWarmStudyReferenceTabQueriesMock,
 }));
 
+vi.mock('./useStudyRangeCacheEviction', () => ({
+  useStudyRangeCacheEviction: () => {},
+}));
+
 vi.mock('../api/useLiveCursor', () => ({
   useLiveOrderbookAtCursor: useLiveOrderbookAtCursorMock,
   useLiveBrokersAtCursor: useLiveBrokersAtCursorMock,

@@ -21,6 +21,7 @@ import { StudyTabBar } from './StudyTabBar';
 import { useStudyKeyboard } from './useStudyKeyboard';
 import { useStudyViewMutations, useStudyViews } from './useStudyViews';
 import { useStudyReferenceBundle } from './useStudyReferenceBundle';
+import { useStudyRangeCacheEviction } from './useStudyRangeCacheEviction';
 import { useWarmStudyReferenceTabQueries } from './useWarmStudyReferenceTabQueries';
 import {
   referenceStudyView,
@@ -206,6 +207,7 @@ export function StudyPage() {
     saves: savesQuery.data?.saves ?? [],
     viewTimeframes,
   });
+  useStudyRangeCacheEviction(tabs);
   const handleViewportCaptureReady = useCallback((capture: () => TabViewport | null) => {
     captureViewportRef.current = capture;
   }, []);
