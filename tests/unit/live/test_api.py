@@ -2576,7 +2576,7 @@ def test_live_settings_routes_round_trip(tmp_path):
         "program_trade_storage_enabled": False,
         "kis_rest_bypass_enabled": False,
         "screener_depth_autocollect": False,
-        "kiwoom_enabled": False,
+        "kiwoom_enabled": True,  # ADR-0118: 실시간 유일 소스라 기본 on(자격증명 게이트)
     }
 
     r = client.patch(
@@ -2642,6 +2642,6 @@ def test_live_settings_patch_can_set_bypass_alone(tmp_path):
         "program_trade_storage_enabled": False,
         "kis_rest_bypass_enabled": True,
         "screener_depth_autocollect": False,
-        "kiwoom_enabled": False,
+        "kiwoom_enabled": True,  # ADR-0118: 실시간 유일 소스라 기본 on(자격증명 게이트)
     }
     assert client.get("/api/live/settings").json()["kis_rest_bypass_enabled"] is True

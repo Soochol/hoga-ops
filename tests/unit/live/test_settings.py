@@ -12,7 +12,8 @@ def test_live_settings_defaults(tmp_path):
     assert settings.program_trade_storage_enabled is False
     assert settings.kis_rest_bypass_enabled is False
     assert settings.screener_depth_autocollect is False
-    assert settings.kiwoom_enabled is False
+    # ADR-0118: 키움이 실시간 유일 소스라 기본 True(실제 활성화는 자격증명 게이트).
+    assert settings.kiwoom_enabled is True
 
 
 def test_update_live_settings_partial_patch_preserves_omitted_fields(tmp_path):
@@ -55,27 +56,29 @@ def test_corrupt_settings_falls_back_to_bypass_false(tmp_path):
     assert list(tmp_path.glob("live_settings.json.corrupt-*"))
 
 
-def test_kiwoom_enabled_defaults_false_and_toggles(tmp_path):
-    # 기본 off — 킬스위치 안전값(ADR-0116).
-    assert load_live_settings(tmp_path).kiwoom_enabled is False
-
-    updated = update_live_settings(tmp_path, kiwoom_enabled=True)
-    assert updated.kiwoom_enabled is True
+def test_kiwoom_enabled_defaults_true_and_toggles(tmp_path):
+    # 기본 on — 키움이 실시간 유일 소스(ADR-0118). 실제 활성화는 자격증명 게이트.
     assert load_live_settings(tmp_path).kiwoom_enabled is True
 
-    # 다른 필드 patch가 kiwoom_enabled를 보존.
-    other = update_live_settings(tmp_path, program_trade_storage_enabled=True)
-    assert other.kiwoom_enabled is True
-
+    # 명시적 off 토글이 영속되는지(운영자가 끌 수 있어야 함).
     off = update_live_settings(tmp_path, kiwoom_enabled=False)
     assert off.kiwoom_enabled is False
+    assert load_live_settings(tmp_path).kiwoom_enabled is False
+
+    # 다른 필드 patch가 off 값을 보존.
+    other = update_live_settings(tmp_path, program_trade_storage_enabled=True)
+    assert other.kiwoom_enabled is False
+
+    back_on = update_live_settings(tmp_path, kiwoom_enabled=True)
+    assert back_on.kiwoom_enabled is True
 
 
-def test_kiwoom_enabled_backcompat_missing_field_defaults_false(tmp_path):
-    # 구 설정 파일(kiwoom_enabled 필드 없음) → 기본 False로 로드(마이그레이션 불필요).
+def test_kiwoom_enabled_backcompat_missing_field_defaults_true(tmp_path):
+    # 구 설정 파일(kiwoom_enabled 필드 없음) → 기본 True로 로드(ADR-0118, 마이그레이션
+    # 불필요). 자격증명 게이트가 있어 키 없는 구 배포는 여전히 휴면.
     save_path = tmp_path / "live_settings.json"
     save_path.write_text(json.dumps({"program_trade_storage_enabled": False}))
-    assert load_live_settings(tmp_path).kiwoom_enabled is False
+    assert load_live_settings(tmp_path).kiwoom_enabled is True
 
 
 def test_legacy_storage_policy_keys_are_ignored_on_load(tmp_path):
