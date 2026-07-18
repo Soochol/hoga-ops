@@ -40,7 +40,8 @@ def load_presets(data_dir: Path) -> LiveLayoutPresetsFile:
         empty_factory=LiveLayoutPresetsFile,
     )
     # 구버전 파일(schema_version < 현재)은 폐기 — payload 형식이 바뀌어 변환하지
-    # 않는다(#699 PR-D). 빈 목록으로 재시작하고, 다음 쓰기가 v2 로 덮어쓴다.
+    # 않는다(#699 PR-D). 폐기의 단일 기준: 빈 목록을 반환하고(다음 쓰기가 v2 로
+    # 덮어쓴다) 구 매니페스트는 손대지 않는다.
     if file.schema_version < _CURRENT_VERSION:
         return LiveLayoutPresetsFile()
     return file

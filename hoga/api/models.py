@@ -1622,9 +1622,10 @@ class LiveLayoutPresetWriteRequest(BaseModel):
 
 
 class LiveLayoutPreset(BaseModel):
-    # v2 (#699 PR-D): payload 가 by_timeframe_enable 로 바뀜. 구 v1 프리셋은
-    # 이 Literal 로 model_validate 가 거부 → 파일 격리(=폐기), 변환 없음.
-    schema_version: Literal[2] = 2
+    # v2 (#699 PR-D): payload 가 by_timeframe_enable 로 바뀜. 폐기는 파일 레벨
+    # 버전(LiveLayoutPresetsFile.schema_version)이 단일 기준 — load_presets 참조.
+    # 여긴 정보용 int(구 v1 preset 도 관용 로드시켜 파일 레벨 가드가 폐기하게 둔다).
+    schema_version: int = 2
     id: str
     name: str
     payload: LiveLayoutPresetPayload

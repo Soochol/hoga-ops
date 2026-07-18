@@ -45,36 +45,39 @@ export const INDICATOR_PANE_PREF_KEYS: readonly PanePrefKey[] = [
 ] as const;
 
 const PROFILE_KEY_SET = new Set<string>(INDICATOR_PANE_PROFILE_KEYS);
-const PANE_PREF_KEY_SET = new Set<string>(INDICATOR_PANE_PREF_KEYS);
-
 function isProfileKey(value: string): value is IndicatorPaneProfileKey {
   return PROFILE_KEY_SET.has(value);
-}
-
-function isPanePrefKey(value: string): value is PanePrefKey {
-  return PANE_PREF_KEY_SET.has(value);
 }
 
 export function profileKeyForTimeframe(tf: LiveTimeframe): IndicatorPaneProfileKey {
   return tf === 'D' || tf === 'W' || tf === 'M' ? tf : 'minute';
 }
 
-/** 구 v1 블롭·구 프리셋 payload 의 per-timeframe pane 서브트리 파서. */
-export function normalizePanePrefsByTimeframe(raw: unknown): PersistedPanePrefsByTimeframe {
+/** per-timeframe boolean 오버라이드 맵의 공용 정규화기: 미지 프로파일·미지 키·
+ *  비불리언 값·빈 버킷을 드롭한다. pane 7키(구 v1 블롭)와 프리셋 enable 15키가
+ *  동일 형태라 이 하나를 공유한다(#699 PR-D 코드 리뷰). */
+export function normalizeBooleanByTimeframe<K extends string>(
+  raw: unknown,
+  allowedKeys: readonly K[],
+): Partial<Record<IndicatorPaneProfileKey, Partial<Record<K, boolean>>>> {
   if (!raw || typeof raw !== 'object' || Array.isArray(raw)) return {};
-  const normalized: PersistedPanePrefsByTimeframe = {};
+  const allowed = new Set<string>(allowedKeys);
+  const out: Partial<Record<IndicatorPaneProfileKey, Partial<Record<K, boolean>>>> = {};
   for (const [profileKey, value] of Object.entries(raw as Record<string, unknown>)) {
     if (!isProfileKey(profileKey)) continue;
     if (!value || typeof value !== 'object' || Array.isArray(value)) continue;
-    const profile: Partial<IndicatorPanePrefs> = {};
-    for (const [paneKey, paneValue] of Object.entries(value as Record<string, unknown>)) {
-      if (!isPanePrefKey(paneKey)) continue;
-      if (typeof paneValue !== 'boolean') continue;
-      profile[paneKey] = paneValue;
+    const bucket: Partial<Record<K, boolean>> = {};
+    for (const [key, v] of Object.entries(value as Record<string, unknown>)) {
+      if (allowed.has(key) && typeof v === 'boolean') bucket[key as K] = v;
     }
-    if (Object.keys(profile).length > 0) normalized[profileKey] = profile;
+    if (Object.keys(bucket).length > 0) out[profileKey] = bucket;
   }
-  return normalized;
+  return out;
+}
+
+/** 구 v1 블롭·구 프리셋 payload 의 per-timeframe pane 서브트리 파서. */
+export function normalizePanePrefsByTimeframe(raw: unknown): PersistedPanePrefsByTimeframe {
+  return normalizeBooleanByTimeframe(raw, INDICATOR_PANE_PREF_KEYS);
 }
 
 /** resolve 된 store 슬라이스에서 pane 토글 7종을 골라 담는다(병합 없음). */
