@@ -25,7 +25,9 @@ function project(input: Partial<LiveStatusProjectionInput>) {
 }
 
 describe('projectLiveStatus', () => {
-  it('keeps offline startup neutral instead of showing missing KIS credentials', () => {
+  it('surfaces realtime_unavailable when market-open capture is offline (F2)', () => {
+    // ADR-0118: 실시간=키움 전담. 시장 열림(offline≠closed)인데 세션이 없으면 호가·체결이
+    // 조용히 멈춘다 — F2가 이 dark 상태를 배너로 표면화. (구 false-credentials 배너는 아님.)
     const projection = project({
       status: {
         ...baseStatus,
@@ -37,9 +39,26 @@ describe('projectLiveStatus', () => {
       inventory: { kind: 'watchlist', size: 2 },
     });
 
-    expect(projection.banner.primary).toBeNull();
+    expect(projection.banner.primary).toBe('realtime_unavailable');
+    // 캡처 칩은 그대로 '오프라인'(severity ok) — 배너는 별개 표면.
     expect(projection.captureHealth.severity).toBe('ok');
     expect(projection.captureHealth.label).toBe('오프라인');
+  });
+
+  it('keeps market-closed capture neutral (no realtime_unavailable banner)', () => {
+    // closed = 장 마감이라 실시간 정지는 정상 — 배너 없음(offline과 구분).
+    const projection = project({
+      status: {
+        ...baseStatus,
+        running: false,
+        started_at_ms: null,
+        capture_healthy: false,
+        capture_reason: 'closed',
+      },
+      inventory: { kind: 'watchlist', size: 2 },
+    });
+
+    expect(projection.banner.primary).toBeNull();
   });
 
   it('shows missing KIS credentials for a non-empty watchlist and stopped non-offline capture', () => {

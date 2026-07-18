@@ -1,9 +1,8 @@
-"""start_live_stream / stop_live_stream / _compute_live_set integration.
+"""start_live_stream / stop_live_stream / capture-candidate integration.
 
-Task 13: poller 시절 테스트(start/refresh_live_poller 등)는 함수와 함께 은퇴.
-가드 의미론(creds/빈 watchlist/symbol 필터/cold cache/stop 멱등)은 stream
-경로로 포팅해 커버리지를 승계한다. refresh 경로는 test_lifecycle.py의
-Task 11 테스트가 커버.
+ADR-0118 PR-G: KIS WS 계층 삭제 후 실시간 캡처는 키움 전담. start의 가드 의미론
+(creds/빈 watchlist/symbol 필터/cold cache/stop 멱등)은 유지된다. 심볼-마스터 필터는
+`coverage._compute_capture_candidates`가 소유한다(구 `_compute_live_set` 승계).
 """
 import json
 from pathlib import Path
@@ -27,7 +26,7 @@ def _write_watchlist(tmp_path: Path, codes: list[str]) -> None:
 async def test_start_live_stream_returns_falsy_when_creds_missing(
     tmp_path: Path, monkeypatch,
 ) -> None:
-    """Without KIS_APP_KEY/SECRET, stream stays off (poller 가드 승계)."""
+    """Without KIS_APP_KEY/SECRET, start stays off (creds 가드 승계)."""
     from hoga.live import lifecycle
 
     lifecycle.reset_for_tests()
@@ -36,26 +35,6 @@ async def test_start_live_stream_returns_falsy_when_creds_missing(
     _write_watchlist(tmp_path, ["005930"])
     assert not await lifecycle.start_live_stream(data_dir=tmp_path)
     assert lifecycle.get_status().running is False
-
-
-@pytest.mark.asyncio
-async def test_start_live_stream_poller_only_when_watchlist_empty(
-    tmp_path: Path, monkeypatch,
-) -> None:
-    """C4: 빈 watchlist여도 creds 있으면 poller-only로 시작(보는종목 표시 살림)."""
-    from hoga.live import lifecycle, session_gate
-
-    lifecycle.reset_for_tests()
-    monkeypatch.setattr(session_gate, "should_run_now", lambda _t: False)
-    monkeypatch.setenv("KIS_APP_KEY", "K")
-    monkeypatch.setenv("KIS_APP_SECRET", "S")
-    _write_watchlist(tmp_path, [])
-    assert await lifecycle.start_live_stream(data_dir=tmp_path) is True
-    st = lifecycle.get_status()
-    assert st.running is True          # poller alive = 서비스 중
-    assert st.live_set == []           # WS 연결 0
-    assert lifecycle._state.rest_poller is not None
-    await lifecycle.stop_live_stream()
 
 
 @pytest.mark.asyncio
@@ -68,12 +47,14 @@ async def test_stop_live_stream_is_idempotent(tmp_path: Path) -> None:
     assert lifecycle.get_status().running is False
 
 
-def test_compute_live_set_filters_unknown_codes(tmp_path: Path, monkeypatch, caplog) -> None:
-    """symbol-master에 없는 코드는 drop + 경고 로그 — poller 필터 정책 승계."""
+def test_compute_capture_candidates_filters_unknown_codes(
+    tmp_path: Path, monkeypatch, caplog,
+) -> None:
+    """symbol-master에 없는 코드는 drop + 경고 로그 — 심볼 필터 정책(구 _compute_live_set)."""
     import logging
 
     from hoga.api import symbols
-    from hoga.live import lifecycle
+    from hoga.live.coverage import _compute_capture_candidates
 
     _write_watchlist(tmp_path, ["005930", "999999"])
     monkeypatch.setattr(
@@ -81,29 +62,29 @@ def test_compute_live_set_filters_unknown_codes(tmp_path: Path, monkeypatch, cap
         lambda q, limit=10_000: [SimpleNamespace(code="005930")],
     )
     with caplog.at_level(logging.WARNING):
-        assert lifecycle._compute_live_set(tmp_path) == ["005930"]
+        assert _compute_capture_candidates(tmp_path) == ["005930"]
     assert any("codes_unknown" in r.message for r in caplog.records)  # I2 pin
 
 
-def test_compute_live_set_cold_cache_keeps_all(tmp_path: Path, monkeypatch) -> None:
+def test_compute_capture_candidates_cold_cache_keeps_all(
+    tmp_path: Path, monkeypatch,
+) -> None:
     """symbol-master cold cache(빈 결과)면 무필터 폴백 — 캡처 중단보다 노이즈 선호."""
     from hoga.api import symbols
-    from hoga.live import lifecycle
+    from hoga.live.coverage import _compute_capture_candidates
 
     _write_watchlist(tmp_path, ["005930", "999999"])
     monkeypatch.setattr(symbols, "search", lambda q, limit=10_000: [])
-    assert lifecycle._compute_live_set(tmp_path) == ["005930", "999999"]
+    assert _compute_capture_candidates(tmp_path) == ["005930", "999999"]
 
 
 @pytest.mark.asyncio
 async def test_lifespan_starts_and_stops_stream_gracefully(tmp_path: Path, monkeypatch) -> None:
-    """The FastAPI lifespan integrates start_live_stream + stop_live_stream.
+    """The FastAPI lifespan integrates start_live_stream + stop_live_stream gracefully.
 
-    Task 11: lifespan was switched from poller to stream path.  The WS gate
-    (ws_capture_window) is deterministically forced closed so KisWsClient.run
-    sleeps instead of attempting a real approval-key fetch — the test is
-    therefore safe to run at any day/time without network access. The live
-    startup is opt-in, so this test enables it explicitly.
+    ADR-0118 PR-G: 실시간 캡처=키움 전담. 키움 off(이 테스트)면 running=False가 정직한
+    신호다 — 그래도 lifespan은 예외 없이 기동·정지하고 /api/live/status가 200을 반환해야
+    한다. WS 게이트(should_run_now=False)는 REST 사이드카를 네트워크 없이 idle로 유지한다.
     """
     import json
     from fastapi.testclient import TestClient
@@ -111,10 +92,6 @@ async def test_lifespan_starts_and_stops_stream_gracefully(tmp_path: Path, monke
     from hoga.api.app import create_app
     from hoga.live import lifecycle, session_gate
 
-    # Force the WS gate closed: ws_capture_window → should_run_now → False.
-    # This makes KisWsClient.run sleep(30) in its gate loop instead of calling
-    # kis.get_approval_key(), keeping the test network-free regardless of wall
-    # clock (the gate is nondeterministic on a weekday trading-hours grader run).
     monkeypatch.setattr(session_gate, "should_run_now", lambda _t: False)
 
     lifecycle.reset_for_tests()
@@ -133,9 +110,8 @@ async def test_lifespan_starts_and_stops_stream_gracefully(tmp_path: Path, monke
     with TestClient(app) as c:
         r = c.get("/api/live/status")
         assert r.status_code == 200
-        # With creds + watchlist, stream should be running (tasks spawned)
-        assert r.json()["running"] is True
-        assert r.json()["watchlist_count"] == 1
+        # 키움 off → 실시간 캡처 없음 → running=False(정직 신호).
+        assert r.json()["running"] is False
 
     # After TestClient exits, lifespan finally ran — stream should be stopped
     assert lifecycle.get_status().running is False

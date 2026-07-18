@@ -6,6 +6,7 @@ import pytest
 from hoga.api import calendar as cal
 from hoga.live.kis_client import KIS_KST
 from hoga.live.session_gate import (
+    in_krx_warmup_window,
     target_ws_venue,
     ws_capture_window,
     ws_capture_window_async,
@@ -89,3 +90,13 @@ def test_target_venue_krx_only_around_regular_session_with_margins():
     assert target_ws_venue(_ms(2026, 5, 27, 15, 30)) == "KRX"  # 마감 순간까지 KRX(drain 보존)
     assert target_ws_venue(_ms(2026, 5, 27, 15, 31)) == "NXT"  # drain 마진 후 NXT 스왑
     assert target_ws_venue(_ms(2026, 5, 27, 18, 0)) == "NXT"   # 장후 NXT
+
+
+def test_krx_warmup_window_is_0850_to_0900():
+    """08:50–09:00 KRX 워밍 창(ADR-0118 §5 저장셋 등록 완결 술어). 순수 시계 —
+    경계: 08:50 포함, 09:00 배제(개장). target_ws_venue의 KRX 시작과 정렬."""
+    assert in_krx_warmup_window(_ms(2026, 5, 27, 8, 49)) is False  # 워밍 직전(NXT)
+    assert in_krx_warmup_window(_ms(2026, 5, 27, 8, 50)) is True   # 워밍 시작(경계 포함)
+    assert in_krx_warmup_window(_ms(2026, 5, 27, 8, 59)) is True   # 워밍 중
+    assert in_krx_warmup_window(_ms(2026, 5, 27, 9, 0)) is False   # 개장 — 창 종료
+    assert in_krx_warmup_window(_ms(2026, 5, 27, 10, 0)) is False  # 정규장 중

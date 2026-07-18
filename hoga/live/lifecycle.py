@@ -1,13 +1,15 @@
 """Live Capture lifecycle singleton.
 
-Owns the single in-process LiveStream instance and exposes a stable
-`get_status()` callable for the API layer.
+실시간 호가·체결 수집은 **키움 WS 전담**이다(ADR-0118 PR-G — KIS WebSocket 계층 삭제).
+lifecycle은 키움 세션(storage_runtime 소유)·거래원 REST 폴러(ADR-0111)·프로그램매매
+사이드카·Today Promotion을 오케스트레이션하고, API 계층에 안정적인 `get_status()`를
+노출한다.
 
-Lifecycle: ``start_live_stream`` / ``stop_live_stream`` / ``refresh_live_stream``
-— KIS WebSocket path (Task 11; REST poller는 Task 13에서 은퇴, 2026-06-06).
+Lifecycle: ``start_live_stream`` / ``stop_live_stream`` / ``refresh_live_stream``.
 
 ``get_status()`` is always safe to call and returns defaults before anything
-starts so ``/api/live/status`` works at any time.
+starts so ``/api/live/status`` works at any time. status 필드는 키움 세션
+(``kiwoom_session.status()``)에서 유도한다.
 
 Single-worker invariant: see ADR-0038. The module-level singleton is
 safe because hoga/live/__init__.py asserts UVICORN_WORKERS == 1 at
@@ -18,38 +20,24 @@ from __future__ import annotations
 import asyncio
 import logging
 import time
-from collections.abc import Awaitable, Callable
+from collections.abc import Callable
 from pathlib import Path
-from typing import TYPE_CHECKING, Literal, cast
+from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
     from .broker_rest_poller import BrokerRestPoller
-    from .rest_poller import LiveRestPoller
-    from .ws_frames import WsTick
+    from .ticks import WsTick
 
 from pydantic import BaseModel, Field
 
-from . import account_health, kis_runtime  # health probe / 리소스
+from . import kis_runtime
 from .buffer import LiveBuffer
 from .kis_capacity_runtime import ensure_kis_capacity_scheduler
 from .live_rest_capture_access import ScheduledLiveRestCaptureClient
-from .live_session import (  # noqa: F401 — C3 재export(호출부·테스트 호환) + LiveSession 사용
-    _PER_ACCOUNT_MAX,
-    KIS_WS_MAX_REGISTRATIONS,
-    LIVE_SET_MAX_CODES,
-    TRS_PER_CODE,
-    LiveSession,
-    _capture_health,
-    _compute_live_set,
-    _StreamConn,
-    display_ordered_codes,
-    live_set_codes,
-    partition_live_set,
-)
 from .promote import promote_kiwoom_today, promote_today
 from .settings import load_live_settings
 from .signal_alert_monitor import SignalAlertMonitor
-from .storage_runtime import stop_storage_runtime, sync_storage_runtime
+from .storage_runtime import StorageRuntimeSnapshot, stop_storage_runtime, sync_storage_runtime
 
 _log = logging.getLogger(__name__)
 
@@ -63,39 +51,26 @@ class LiveStatus(BaseModel):
     started_at_ms: int | None
     last_tick_ms: int | None
     cycle_lag_ms: int
-    # WS 전환 후 의미(Task 11 리뷰 이월 문서화): "수집이 활성인 종목 수" =
-    # len(live_set) ≤ 계좌당 상한×계좌수(ADR-0111 이후 계좌당 19). 원의미("폴러가
-    # 순회하는 종목 수")의 자연 승계 — watchlist 전체 수가 아니다(그건 GET /api/watchlist).
+    # "수집이 활성인 종목 수" = len(live_set) = 키움 세션 subscribed_count.
     # 프론트는 의도적으로 이 필드를 비소비(useLiveBannerState.ts 주석 참조).
     watchlist_count: int
-    # poller-era 필드(wire 호환 유지): WS 전환 후 캡처 경로는 REST를 쓰지
-    # 않으므로 0/None 고정. quote 오버레이·캔들 시드의 REST 콜은 비집계.
-    # 프론트 소비 0 — 차기 wire 정리 때 제거 후보.
+    # poller-era 필드(wire 호환 유지): 캡처 경로가 REST를 쓰지 않으므로 0/None 고정.
     kis_calls_today: int
     kis_rate_limit_remaining: int | None
     # ADR-0043 / design-review B2 — last successful Today Promotion per code (epoch ms).
-    # Empty dict means no promotion has occurred yet this session.
     today_promote_last_ms: dict[str, int] = Field(default_factory=dict)
-    # Task 11 additions — WS transport info (unknown keys are safely ignored by frontend)
+    # WS transport info (unknown keys are safely ignored by frontend)
     transport: str = "ws"
     ws_connected: bool = False
     live_set: list[str] = Field(default_factory=list)
-    # Q10 (출시2) — 저하 계좌 id 목록(additive; capture_reason 값은 불변).
-    # 프론트는 미소비(C3가 per-code 배지로 소비) — unknown 필드라 무시 안전.
+    # 저하 계좌 id 목록(additive; 키움 킥된 계좌).
     degraded_accounts: list[int] = Field(default_factory=list)
     # 캡처 헬스(spec 2026-06-08 §2.2) — cycle_lag_ms를 대체하는 정직한 신호.
     capture_healthy: bool = True
     capture_reason: str = "offline"
-    # 구독 유실로 실시간 미수집 중인 종목(additive; sub_failed 시 진단·UI 배지).
+    # 구독 유실로 실시간 미수집 중인 종목(additive; 키움 표적 재구독이 처리 → 항상 []).
     capture_missing_codes: list[str] = Field(default_factory=list)
-    rest_poller_degraded: bool = False
-    rest_poller_last_error: str | None = None
-    rest_poller_last_error_kind: str | None = None
-    rest_poller_last_error_code: str | None = None
-    rest_poller_last_error_count: int = 0
-    rest_poller_backoff_remaining: int = 0
-    # 거래원 REST 폴러(ADR-0111) — WS member TR 대체. additive; 프론트 미소비(관측 전용).
-    # PR① 실검증 신호: broker_poll_running·last_cycle_ms로 REST 경로가 도는지 확인한다.
+    # 거래원 REST 폴러(ADR-0111) — additive; 프론트 미소비(관측 전용).
     broker_poll_running: bool = False
     broker_poll_last_cycle_ms: int | None = None
     broker_poll_target_count: int = 0
@@ -103,101 +78,60 @@ class LiveStatus(BaseModel):
     broker_poll_last_error: str | None = None
     broker_poll_rate_limit_bounces: int | None = None
     kis_capacity_scheduler: dict[str, object] | None = None
-    # Per-cache hit/miss/eviction observability (PR-1). Assembled in the status
-    # route from closure-reachable cache instances; keyed by cache name. additive
-    # — unknown field, frontend ignores it safely.
+    # Per-cache hit/miss/eviction observability (PR-1). Assembled in the status route.
     cache_stats: dict[str, object] | None = None
     kis_rest_bypass_enabled: bool = False
     # 감독 태스크 헬스(ADR-0088) — 각 lifespan-소유 배경 태스크의 alive 여부.
-    # `running`은 정직한 신호(task is not None and not task.done()) — 하루 한 번
-    # 도는 watchlist-daily-loop 등 '잠자는 살아있는' 태스크를 stale로 오판하지 않기
-    # 위해 last_cycle 시간이 아니라 task 생존만 본다(ADR-0064 정직 health 패턴).
-    # additive; unknown 필드라 프론트 무시 안전. 항목: {name, running}.
     supervised_tasks: list[dict[str, object]] = Field(default_factory=list)
-    # 키움 WS 수집 관측(ADR-0116, PR-4). kiwoom_enabled off/미배선이면 None. additive —
-    # unknown 필드라 프론트 무시 안전. PR-6 커버리지 칩이 connected_accounts/subscribed_count을,
-    # 진단이 accounts[]를 소비한다. 키(enabled/accounts_configured/connected_accounts/
-    # subscribed_count/last_tick_ms/accounts)는 KiwoomSessionManager.status()가 정의.
+    # 키움 WS 수집 관측(ADR-0116, PR-4). kiwoom_enabled off/미배선이면 None. additive.
+    # 키(enabled/accounts_configured/connected_accounts/subscribed_count/last_tick_ms/
+    # accounts 등)는 KiwoomSessionManager.status()가 정의.
     kiwoom: dict[str, object] | None = None
 
 
 # ── State ──────────────────────────────────────────────────────────────────────
 
 class _State:
-    """In-process live state. streams + 세션 스코프 상태(started_at_ms·n_configured·
-    watchlist_codes·live_set)는 LiveSession이 소유하고, 여기선 위임 property로 노출한다
-    (C3 step 2 — 기존 호출부·테스트의 `_state.streams`/`started_at_ms` 등 접근 호환).
-    rest_poller는 WS 세션 밖(REST)이라 lifecycle이 직접 소유. Mutated only via this module."""
+    """In-process live state. Mutated only via this module.
+
+    실시간 캡처는 키움 세션(storage_runtime 소유)이 담당하므로 KIS WS conn 상태
+    (streams·live_set)는 없다. lifecycle은 거래원/프로그램 REST 사이드카와 키움 세션의
+    핸들만 소유한다."""
 
     def __init__(
         self,
         *,
         started_at_ms: int | None = None,
-        n_configured: int = 0,
         watchlist_codes: tuple[str, ...] = (),
-        streams: dict[int, _StreamConn] | None = None,
-        live_set: tuple[str, ...] = (),
-        rest_poller: LiveRestPoller | None = None,
         broker_poller: BrokerRestPoller | None = None,
         program_trade_collector=None,
         kiwoom_session=None,
         kis_rest_bypass_enabled: bool = False,
-        session: LiveSession | None = None,
     ) -> None:
-        if session is None:
-            session = LiveSession()
-            session.started_at_ms = started_at_ms
-            session.n_configured = n_configured
-            session.watchlist_codes = tuple(watchlist_codes)
-            session.live_set = tuple(live_set)
-            if streams is not None:
-                session.streams = streams
-        self.session = session
-        self.rest_poller = rest_poller
-        # 거래원(회원사) REST 폴러 — WS member TR(H0STMBC0) 대체(ADR-0111). rest_poller와
-        # 같이 WS 세션 밖이라 lifecycle이 직접 소유. live_set을 타깃으로 폴링해 스트림
-        # on_tick에 합성 BROKER 틱을 주입한다(기존 저장 경로 재사용).
+        self.started_at_ms = started_at_ms
+        # get_active_codes(→ KIS Today Promotion)의 스냅샷 소스. 신규 flow는 채우지 않으나
+        # 필드는 유지(호출부·테스트 호환) — KIS live/ 는 더는 수집되지 않아 실질 no-op.
+        self.watchlist_codes = tuple(watchlist_codes)
+        # 거래원(회원사) REST 폴러 — WS member TR(H0STMBC0) 대체(ADR-0111). 합성 BROKER 틱을
+        # 키움 스트림 on_tick에 주입한다(ADR-0118 PR-D — 기존 저장 경로 재사용).
         self.broker_poller = broker_poller
         self.program_trade_collector = program_trade_collector
-        # 키움 WS 세션 매니저(ADR-0116) — storage_runtime이 소유·정합화. KIS conn(streams)과
-        # 별개라 KIS 상태/watchdog 경로에 무간섭. get_kiwoom_capture_codes가 승격 루프에 노출.
+        # 키움 WS 세션 매니저(ADR-0116) — storage_runtime이 소유·정합화. 실시간 캡처 SSOT.
         self.kiwoom_session = kiwoom_session
         self.kis_rest_bypass_enabled = kis_rest_bypass_enabled
-
-    # 위임 property — 기존 `_state.X` 접근 호환(streams dict의 in-place 변이도 그대로 통과).
-    @property
-    def streams(self) -> dict[int, _StreamConn]:
-        return self.session.streams
-
-    @property
-    def started_at_ms(self) -> int | None:
-        return self.session.started_at_ms
-
-    @property
-    def n_configured(self) -> int:
-        return self.session.n_configured
-
-    @property
-    def watchlist_codes(self) -> tuple[str, ...]:
-        return self.session.watchlist_codes
-
-    @property
-    def live_set(self) -> tuple[str, ...]:
-        return self.session.live_set
 
 
 _state = _State()
 _buffer = LiveBuffer()
 _signal_alert_monitor: SignalAlertMonitor | None = None
 
-# Task 11 리뷰 이월: start/stop/refresh의 await 경계에서 _state 교체가 interleave
-# 되지 않도록 직렬화. start가 내부에서 stop을 부르므로(재진입) 잠금 없는
-# `_stop_live_stream_locked`를 공유한다 — 공개 stop만 락을 잡는다.
+# start/stop/refresh의 await 경계에서 _state 교체가 interleave 되지 않도록 직렬화.
+# start가 내부에서 stop을 부르므로(재진입) 잠금 없는 `_stop_live_stream_locked`를
+# 공유한다 — 공개 stop만 락을 잡는다.
 _lifecycle_lock = asyncio.Lock()
 
 # ADR-0043 / design-review B2 — in-memory dict of code → last successful
-# Today Promotion epoch_ms. Populated by promote_today via
-# record_today_promote_success; surfaced via LiveStatus.
+# Today Promotion epoch_ms. Surfaced via LiveStatus.
 _today_promote_last_ms: dict[str, int] = {}
 
 
@@ -212,17 +146,10 @@ def get_today_promote_last_ms() -> dict[str, int]:
 
 
 def get_active_codes() -> list[str]:
-    """Return currently active Live Set codes the stream is capturing.
+    """Return the KIS Today-Promotion snapshot codes (watchlist_codes).
 
-    Empty list if nothing has started or all stopped.
-
-    Contract (eng-review Blocker 2): readers receive a snapshot at call time —
-    `_state.watchlist_codes` is read synchronously. `start_today_promoter`
-    (ADR-0043) calls this each cycle (every `interval_s` seconds), so
-    watchlist mutations through `start_live_stream`
-    (which rebuild `_state`) propagate immediately to the next cycle —
-    no caching, no stale closure.
-    """
+    KIS live/ 수집은 삭제됐으므로 신규 flow는 이 집합을 채우지 않는다 — promote_today
+    루프는 KIS live/ 디스크가 비어 사실상 no-op이다. 계약(호출 시점 스냅샷)은 유지."""
     return list(_state.watchlist_codes)
 
 
@@ -253,26 +180,35 @@ def get_signal_alert_monitor() -> SignalAlertMonitor | None:
 
 
 def get_today_ask_peak(code: str) -> dict | None:
-    """Return today's ask-peak snapshot for an active live stream code."""
-    for conn in _state.streams.values():
-        if code not in conn.codes:
-            continue
-        snapshot = getattr(conn.stream_obj, "ask_peak_snapshot", None)
+    """Return today's ask-peak snapshot for a captured code (키움 스트림).
+
+    실시간 캡처=키움 전담(ADR-0118 PR-G)이므로 키움 세션의 살아있는 스트림(코드-disjoint
+    파티션)에서 조회한다. 소유 스트림 1개만 non-None을 반환한다."""
+    session = _state.kiwoom_session
+    if session is None:
+        return None
+    for stream in session.broker_dispatch_streams():
+        snapshot = getattr(stream, "ask_peak_snapshot", None)
         if snapshot is None:
             continue
-        return snapshot(code)
+        result = snapshot(code)
+        if result is not None:
+            return result
     return None
 
 
 def get_today_bid_peak(code: str) -> dict | None:
-    """Return today's bid-peak snapshot for an active live stream code."""
-    for conn in _state.streams.values():
-        if code not in conn.codes:
-            continue
-        snapshot = getattr(conn.stream_obj, "bid_peak_snapshot", None)
+    """Return today's bid-peak snapshot for a captured code (키움 스트림)."""
+    session = _state.kiwoom_session
+    if session is None:
+        return None
+    for stream in session.broker_dispatch_streams():
+        snapshot = getattr(stream, "bid_peak_snapshot", None)
         if snapshot is None:
             continue
-        return snapshot(code)
+        result = snapshot(code)
+        if result is not None:
+            return result
     return None
 
 
@@ -286,92 +222,12 @@ def _today_kst() -> str:
     return datetime.now(timezone(timedelta(hours=9))).strftime("%Y%m%d")
 
 
-def _seed_today_peak_state(*, conn: _StreamConn, date: str, live_root: Path) -> None:
-    """Replay persisted today peak state into a rebuilt stream when supported."""
-    if conn.stream_obj is None:
-        return
-    for code in conn.codes:
-        ask_seed = getattr(conn.stream_obj, "seed_ask_peak_from_live_file", None)
-        if ask_seed is not None:
-            ask_seed(code=code, date=date, live_root=live_root)
-        bid_seed = getattr(conn.stream_obj, "seed_bid_peak_from_live_file", None)
-        if bid_seed is not None:
-            bid_seed(code=code, date=date, live_root=live_root)
-
-
-def _seed_today_peak_states(*, date: str, live_root: Path) -> None:
-    for conn in _state.streams.values():
-        _seed_today_peak_state(conn=conn, date=date, live_root=live_root)
-
-
-def _build_conn(account_id: int, codes: list[str], data_dir: Path) -> _StreamConn:
-    """한 계좌의 WS 연결 묶음 생성 (스펙 §5.2). 호출자(start/refresh/watchdog)는
-    account_id ∈ configured_account_ids 임을 보장하므로 client는 non-None.
-
-    각 conn은 자체 LiveStream+LiveWriter(code-disjoint라 (date,code) 충돌 없음).
-    공유: 단일 _buffer. KisClient는 kis_runtime의 account별 싱글톤(재사용)."""
-    # sync ws_connection_window을 의도적으로 씀(아래 gate_fn): KisWsClient가 gate_fn을
-    # `await to_thread(gate_fn)`로 감싸 blocking을 격리한다 — 유일한 합법적 sync 사용처.
-    # 연결 게이트(08~20)는 저장 게이트(정규장)와 분리(#524) — NXT 시분할 시간대에도
-    # 연결 유지. 초기 구독 venue는 target_ws_venue(현재 시각) — 콜드 스타트가 장전이면
-    # NXT로, 정규장이면 KRX로 시작한다. 이후 스왑은 watchdog 주기의 ensure_venue가 유지.
-    from . import ws_fields as F  # noqa: PLC0415
-    from .session_gate import target_ws_venue, ws_connection_window  # noqa: PLC0415
-    from .stream import LiveStream  # noqa: PLC0415
-    from .writer import LiveWriter  # noqa: PLC0415
-    from .ws_client import KisWsClient  # noqa: PLC0415
-
-    kis = kis_runtime.ensure_kis_client_for_account(account_id, data_dir)
-    if kis is None:  # configured 보장 위반 — 방어적
-        raise RuntimeError(f"no KIS client for account {account_id}")
-
-    stream = LiveStream(
-        buffer=_buffer,
-        writer=LiveWriter(data_dir / "live"),
-        date_fn=_today_kst,
-    )
-    stream.set_active_codes(set(codes))
-    ws = KisWsClient(
-        approval_key_fn=kis.get_approval_key,
-        on_tick=stream.on_tick,
-        date_fn=_today_kst,
-        gate_fn=lambda: ws_connection_window(_now_ms()),
-        trs=F.trs_for_venue(target_ws_venue(_now_ms())),
-    )
-    stream.ws = ws
-    return _StreamConn(
-        account_id=account_id,
-        stream_obj=stream,
-        ws_task=asyncio.create_task(ws.run(codes), name=f"live-ws-{account_id}"),
-        flush_task=asyncio.create_task(stream.run_flush_loop(), name=f"live-flush-{account_id}"),
-        codes=tuple(codes),
-    )
-
-
-async def _teardown_conn(conn: _StreamConn) -> None:
-    """conn의 ws/flush task만 cancel+await. ★ R1: KisClient는 닫지 않는다
-    (account 싱글톤은 kis_runtime dict에 남아 다음 _build_conn이 재사용)."""
-    for task in (conn.ws_task, conn.flush_task):
-        if task is not None and not task.done():
-            task.cancel()
-            try:
-                await task
-            except asyncio.CancelledError:
-                # M4: 외부에서 우리가 취소된 경우만 전파, 자식 취소는 흡수.
-                cur = asyncio.current_task()
-                if cur is not None and cur.cancelling():
-                    raise
-            except Exception:  # noqa: BLE001
-                pass
-
-
 def _market_clock_closed_for_capture(now_ms: int) -> bool:
     """캡처 게이트(ws_capture_window)의 순수-시계 근사 — 주말 또는 정규장
     (09:00–15:30 KST) 밖이면 True. get_status는 sync 라우트라 캘린더 HTTP
-    (is_trading_session_today)를 못 쓴다(0a67a3e가 to_thread로 격리한 그 블록).
-    그래서 순수 weekday+clock으로 'closed'를 판정해 밤·주말 pill 거짓-앰버를
-    막는다. 평일 공휴일 장중은 'closed'로 안 잡혀 reconnecting 앰버로 보이나
-    드물어 수용(quote 게이트와 동일 트레이드오프)."""
+    (is_trading_session_today)를 못 쓴다. 그래서 순수 weekday+clock으로 'closed'를
+    판정해 밤·주말 pill 거짓-앰버를 막는다. 평일 공휴일 장중은 'closed'로 안 잡혀
+    reconnecting 앰버로 보이나 드물어 수용(quote 게이트와 동일 트레이드오프)."""
     from datetime import datetime  # noqa: PLC0415
 
     from .kis_client import KIS_KST  # noqa: PLC0415
@@ -383,91 +239,54 @@ def _market_clock_closed_for_capture(now_ms: int) -> bool:
     return market_phase(now_ms) != "regular"  # regular = 09:00–15:30
 
 
-def _ws_degraded_probe() -> set[int]:
-    """account_health가 등록받는 WS-degraded probe(의존 역전 — leaf가 lifecycle을 import
-    안 하게). 호출 시점의 `_state.session`에서 평가 — start가 session을 통째 교체해도 항상
-    *현재* 세션을 읽는다(bound method `_state.session.degraded_set` 등록이면 죽은 인스턴스를
-    잡음, C3 trap). market_closed(전역 장 마감)는 lifecycle이 계산해 전달."""
+def get_status() -> LiveStatus:
+    """Read the current live status. Always safe to call.
+
+    status 필드는 키움 세션(``kiwoom_session.status()``)에서 유도한다(ADR-0118 PR-G).
+    kiwoom off/미배선이면 offline. broker_poll_*·kis_rest_bypass만 lifecycle 소유."""
     now_ms = _now_ms()
-    return _state.session.degraded_set(
-        now_ms=now_ms,
-        market_closed=_market_clock_closed_for_capture(now_ms),
-        stale_after_ms=_WATCHDOG_STALE_AFTER_MS,
+    k = _state.kiwoom_session.status() if _state.kiwoom_session is not None else None
+
+    running = bool(k and (k["connected_accounts"] > 0 or k["subscribed_count"] > 0))
+    ws_connected = bool(k and k["connected_accounts"] > 0)
+    live_set = list(k["subscribed_codes"]) if k else []
+    last_tick_ms = k["last_tick_ms"] if k else None
+    degraded_accounts = (
+        [a["account_id"] for a in k["accounts"] if a["kicked_by_peer"]] if k else []
     )
 
+    if k is None or k["connected_accounts"] == 0:
+        cap_healthy = False
+        cap_reason = "closed" if _market_clock_closed_for_capture(now_ms) else "offline"
+    elif k.get("warmup_incomplete"):
+        cap_healthy = False
+        cap_reason = "warmup_incomplete"
+    else:
+        cap_healthy = True
+        cap_reason = "healthy"
 
-# 모듈 로드 시 1회 push 등록 — probe는 _state(reset로 비워짐)를 시점-평가하므로 stateless,
-# reset_for_tests가 따로 해제할 필요 없음(빈 _state → 빈 집합).
-account_health.register_ws_probe(_ws_degraded_probe)
-
-
-def get_status() -> LiveStatus:
-    """Read the current live status. Always safe to call. dynamic-N 집계(스펙 §5.7).
-
-    streams-파생 필드(running의 streams-항·ws_connected·last_tick·cap_healthy/reason/degraded)는
-    session.status_fields가 단일 계산(account_health WS-probe와 공유, dedup). poller.alive OR-항·
-    idle/offline·today-promote 합성은 여기 전용. market_closed는 lifecycle이 계산해 전달."""
-    poller = _state.rest_poller
     broker_poll_status = (
         _state.broker_poller.status()
         if _state.broker_poller is not None
         else None
     )
-    rest_poller_status = poller.status() if poller is not None else None
-    now_ms = _now_ms()
-    sf = _state.session.status_fields(
-        now_ms=now_ms,
-        market_closed=_market_clock_closed_for_capture(now_ms),
-        stale_after_ms=_WATCHDOG_STALE_AFTER_MS,
-    )
-    running = (
-        sf["streams_running"]
-        or (poller is not None and poller.alive)
-    )
-
-    # 캡처 헬스 — 존재 conn 기준(Q11). capture=None(conn 0, C4 poller-only)이면 running과
-    # 결합해 idle/offline 판정(streams 있을 때의 셋은 session이 계산).
-    capture = sf["capture"]
-    if capture is None:
-        cap_healthy = bool(running)        # poller-only면 서비스 중 → healthy/idle
-        cap_reason = "idle" if running else "offline"
-        degraded: list[int] = []
-        missing_codes: list[str] = []
-    else:
-        cap_healthy, cap_reason, degraded, missing_codes = capture
 
     return LiveStatus(
         running=running,
-        started_at_ms=sf["started_at_ms"],
-        last_tick_ms=sf["last_tick_ms"],
+        started_at_ms=_state.started_at_ms,
+        last_tick_ms=last_tick_ms,
         cycle_lag_ms=0,
-        watchlist_count=sf["watchlist_count"],
+        watchlist_count=len(live_set),
         kis_calls_today=0,
         kis_rate_limit_remaining=None,
         today_promote_last_ms=get_today_promote_last_ms(),
         transport="ws",
-        ws_connected=sf["ws_connected"],
-        live_set=sf["live_set"],
-        degraded_accounts=degraded,
+        ws_connected=ws_connected,
+        live_set=live_set,
+        degraded_accounts=degraded_accounts,
         capture_healthy=cap_healthy,
         capture_reason=cap_reason,
-        capture_missing_codes=missing_codes,
-        rest_poller_degraded=bool(rest_poller_status and rest_poller_status.degraded),
-        rest_poller_last_error=(
-            rest_poller_status.last_error if rest_poller_status else None
-        ),
-        rest_poller_last_error_kind=(
-            rest_poller_status.last_error_kind if rest_poller_status else None
-        ),
-        rest_poller_last_error_code=(
-            rest_poller_status.last_error_code if rest_poller_status else None
-        ),
-        rest_poller_last_error_count=(
-            rest_poller_status.last_error_count if rest_poller_status else 0
-        ),
-        rest_poller_backoff_remaining=(
-            rest_poller_status.backoff_remaining if rest_poller_status else 0
-        ),
+        capture_missing_codes=[],
         broker_poll_running=bool(broker_poll_status and broker_poll_status.running),
         broker_poll_last_cycle_ms=(
             broker_poll_status.last_cycle_ms if broker_poll_status else None
@@ -483,21 +302,13 @@ def get_status() -> LiveStatus:
             broker_poll_status.rate_limit_bounces if broker_poll_status else None
         ),
         kis_rest_bypass_enabled=_state.kis_rest_bypass_enabled,
-        kiwoom=(
-            _state.kiwoom_session.status()
-            if _state.kiwoom_session is not None
-            else None
-        ),
+        kiwoom=k,
     )
 
 
 def reset_for_tests() -> None:
     """Test-only hook. Resets module state without raising."""
     global _state, _buffer  # noqa: PLW0603
-    for conn in list(_state.streams.values()):
-        for task in (conn.ws_task, conn.flush_task):
-            if task is not None and not task.done():
-                task.cancel()
     collector = _state.program_trade_collector
     task = getattr(collector, "_task", None)
     if task is not None and not task.done():
@@ -510,10 +321,6 @@ def reset_for_tests() -> None:
     _buffer = LiveBuffer()
     kis_runtime.reset_for_tests()
     _today_promote_last_ms.clear()
-    global _sub_failed_restart_session_ms  # noqa: PLW0603
-    _sub_failed_restart_counts.clear()
-    _resub_attempt_counts.clear()
-    _sub_failed_restart_session_ms = None
 
 
 def refresh_status_from_settings(data_dir: Path) -> None:
@@ -534,22 +341,28 @@ async def start_today_promoter(
     """Start the ADR-0043 Today Promotion loop.
 
     Polls `get_active_codes()` each `interval_s` seconds and calls
-    `promote_today(data_dir, code=...)` for each. Per-code exceptions
+    `promote_today(data_dir, code=...)` for each (KIS live/). Per-code exceptions
     are caught and logged so one bad code doesn't break the cycle.
-    The outer try/except prevents the loop itself from dying on a
-    transient get_active_codes failure.
 
     `on_promoted` (typically `EventBus.publish`, injected in app.py via
     functools.partial) receives a `{type, code, date}` dict after each *real*
     promotion (promote_today returned a date, not None). This lets the frontend
-    refetch the today range the moment its disk data advances, instead of
-    waiting out the polling fallback — pure acceleration on top of the poll, so
-    a dropped event only costs latency, never correctness (WS 푸시 승격 무효화).
+    refetch the today range the moment its disk data advances.
 
     Returns the created asyncio.Task; caller (lifespan) is responsible
     for cancelling on shutdown via `stop_today_promoter`.
     """
     log = logging.getLogger(__name__)
+
+    def _publish_promotion(code: str, promoted_date: str | None) -> None:
+        """실승격(date)에만 promotion_completed 발행 — skip(None)은 스퓨리어스 프론트
+        리페치를 막는다. KIS·키움 두 경로가 이벤트 wire-shape를 한 곳에서 공유한다."""
+        if promoted_date is not None and on_promoted is not None:
+            on_promoted({
+                "type": "promotion_completed",
+                "code": code,
+                "date": promoted_date,
+            })
 
     async def loop() -> None:
         while True:
@@ -557,25 +370,25 @@ async def start_today_promoter(
                 ws_codes = get_active_codes()
                 for code in ws_codes:
                     try:
-                        promoted_date = await promote_today(data_dir, code=code)
-                        if promoted_date is not None and on_promoted is not None:
-                            on_promoted({
-                                "type": "promotion_completed",
-                                "code": code,
-                                "date": promoted_date,
-                            })
+                        _publish_promotion(
+                            code, await promote_today(data_dir, code=code),
+                        )
                     except Exception:
                         log.exception(
                             "live.today_promote.code_failed code=%s", code,
                         )
                 # 키움 WS 승격(ADR-0116) — live_kiwoom → kiwoom_live parquet. 미배선/off면
-                # 콜백이 [] 반환이라 루프 no-op. 히트맵 종목이 여기서 kiwoom_live로 영속화된다.
+                # 콜백이 [] 반환이라 루프 no-op. 히트맵·관심종목이 여기서 kiwoom_live로 영속화.
+                # KIS 경로와 대칭으로 실승격(date)에만 promotion_completed 발행 — PR-E 컷오버
+                # 이후 관심종목이 키움 전담이라 이 발행이 프론트 today 갱신의 유일한 소스다.
                 kiwoom_codes = (
                     get_kiwoom_capture_codes() if get_kiwoom_capture_codes else []
                 )
                 for code in kiwoom_codes:
                     try:
-                        await promote_kiwoom_today(data_dir, code=code)
+                        _publish_promotion(
+                            code, await promote_kiwoom_today(data_dir, code=code),
+                        )
                     except Exception:
                         log.exception(
                             "live.today_promote.kiwoom_code_failed code=%s", code,
@@ -598,96 +411,45 @@ async def stop_today_promoter(task: asyncio.Task | None) -> None:
         pass
 
 
-_WATCHDOG_CHECK_INTERVAL_S = 30.0
-_WATCHDOG_STALE_AFTER_MS = 120_000  # ~2 min (≈6 cycles) without a completed tick
-
-# 부분 구독 실패(sub_failed) 자동 복구 상한 (2026-07-08 KIS audit Fix D).
-# sub_failed는 일부 코드의 틱이 영구 침묵하는 상태 — 원래는 "재시작 안 함"으로
-# 가시화만 했으나(결정적 거부로 인한 무한 재시작 churn 방지), 대부분의 부분 거부는
-# 재연결로 회복되므로 세션당 상한부 자동 재시작을 준다. 상한 도달 후엔 원래처럼
-# 로그만(churn 방지 의도 보존). 카운터는 세션(started_at_ms) 단위로 리셋된다.
-_SUB_FAILED_MAX_RESTARTS = 2
-_sub_failed_restart_counts: dict[int, int] = {}
-_sub_failed_restart_session_ms: int | None = None
-
-# 표적 재구독 상한 (2026-07-15 인시던트 근본수정). sub_failed 감지 시 conn 전체
-# 재시작(비싸다: 소켓 재수립·전 종목 재구독)에 앞서, 유실된 (tr, code)만 골라
-# resubscribe_missing으로 값싸게 재송신한다(watchdog 30s 주기로 최대 N회). 수렴 안 하면
-# 기존 제한 재시작으로 승격. 카운터는 _sub_failed_restart와 같은 세션 마커로 리셋된다.
-_RESUB_MAX_ATTEMPTS = 3
-_resub_attempt_counts: dict[int, int] = {}
+# ── Start / refresh / stop ──────────────────────────────────────────────────────
 
 async def start_live_stream(*, data_dir: Path) -> bool:
-    """start_live_poller의 WS 대체 — 구조 동일(creds/watchlist 가드 → 기동).
+    """Live Capture 기동 — KIS creds 가드 통과 시 거래원 폴러 + 키움 세션 정합화.
 
-    poller와 같은 가드: KIS creds 없거나 watchlist 비면 False.
-    symbol-master 필터를 먼저 적용한 뒤 _compute_live_set으로 상위 (_PER_ACCOUNT_MAX×N) 절단.
-    ⚠️ 머지(v0.6.1.0) 후: load_document로 폴더 포함 문서를 받아
-    display_ordered_codes → symbol-master filter → [:13] 순서를 지킨다.
-    KisClient 싱글턴 접근은 `hoga.live.kis_runtime`에서 수행.
-    """
+    KIS 자격증명(account 0)이 없으면 False(오프라인). 실시간 호가·체결은 키움 세션이
+    담당하고(storage_runtime.sync), 거래원·프로그램 REST 사이드카는 KIS 계정을 쓴다."""
     async with _lifecycle_lock:
         return await _start_live_stream_locked(data_dir=data_dir)
 
 
-def _ensure_poller(data_dir: Path) -> LiveRestPoller | None:
-    """rest_poller를 1회 생성·재사용(§3 분리). creds(account 0) 없으면 None.
-    이미 있으면 그대로 반환 → _subscribed(보는종목) 보존(잠복 버그 수정)."""
-    from .rest_poller import LiveRestPoller  # noqa: PLC0415
-
-    if _state.rest_poller is not None:
-        return _state.rest_poller
-    # account 0 creds 게이트: 없으면 폴러 미생성(완전 오프라인). 있으면 REST 표시
-    # 폴러에는 KisClient 고정 참조가 아니라 scheduler-backed proxy를 준다. 계정 선택,
-    # health filtering, EGW00201 cooldown은 KIS Capacity Scheduler가 소유한다.
-    if kis_runtime.ensure_kis_client_from_env(data_dir) is None:  # account 0
-        return None
-    capture_client = ScheduledLiveRestCaptureClient(
-        data_dir=data_dir,
-        scheduler=ensure_kis_capacity_scheduler(data_dir),
-        source="live-rest-poller",
-    )
-    poller = LiveRestPoller(
-        lambda: capture_client, _buffer
-    )
-    poller.start()
-    return poller
-
-
-def _sync_exclusion(poller: LiveRestPoller | None, live_set: tuple[str, ...]) -> None:
-    """배타 동기화: WS 수집 종목(live_set)을 poller 배제로(ADR-0067 §5).
-    exclude-then-subscribe 순서를 위해 conn build/update 전에 호출(스펙 §5.5)."""
-    if poller is not None:
-        poller.set_excluded_codes(set(live_set))
-
-
 async def _dispatch_broker_tick(tick: WsTick) -> None:
-    """거래원 폴러가 만든 합성 BROKER 틱을 현재 모든 스트림에 브로드캐스트한다(ADR-0111).
+    """거래원 폴러가 만든 합성 BROKER 틱(ADR-0111 승계)을 **키움 매니저**의 관심종목 소유
+    스트림에 브로드캐스트한다(ADR-0118 PR-D — 착지 위치를 kiwoom_live/brokers로 통일).
 
-    파티션은 disjoint하고 각 스트림의 on_tick이 활성집합 밖 코드를 입구에서 드롭하므로
-    (stream.py 활성집합 필터), 정확히 소유 스트림 1개만 실제로 수집한다. 코드→계정 소유를
-    폴러에 복제하는 대신 브로드캐스트하는 이유: refresh Pass 0의 활성집합 스왑이 동기·원자라
-    이중 수락 레이스가 없고(이중-write 방지 불변식과 동일 근거), ≤4개 스트림 순회가 소유
-    해석보다 단순·안전하다. `_state.session.streams`를 호출 시점에 읽어 refresh 후에도 항상
-    현재 스트림 집합에 디스패치한다."""
-    for conn in list(_state.session.streams.values()):
-        stream = conn.stream_obj
+    각 스트림의 on_tick이 활성집합 밖 코드를 입구에서 드롭하므로(stream.py 활성집합 필터),
+    멤버십은 스트림 활성 셋이 흡수 → 정확히 소유 스트림 1개만 실제 수집한다. 호출 시점에
+    kiwoom_session을 읽어 sync/재빌드 후에도 현재 스트림 집합에 디스패치한다. 키움
+    미배선(off)이면 no-op(폴백 없음 — 관심종목 키움 이관 전제)."""
+    session = _state.kiwoom_session
+    if session is None:
+        return
+    for stream in session.broker_dispatch_streams():
         on_tick = getattr(stream, "on_tick", None)
         if on_tick is not None:
             await on_tick(tick)
 
 
 def _ensure_broker_poller(data_dir: Path) -> BrokerRestPoller | None:
-    """broker_poller를 1회 생성·재사용. creds(account 0) 없으면 None(_ensure_poller 미러).
-    이미 있으면 그대로 반환 → 타깃(live_set) 보존."""
+    """broker_poller를 1회 생성·재사용. creds(account 0) 없으면 None.
+    이미 있으면 그대로 반환 → 타깃 보존."""
     from .broker_rest_poller import BrokerRestPoller  # noqa: PLC0415
 
     if _state.broker_poller is not None:
         return _state.broker_poller
     if kis_runtime.ensure_kis_client_from_env(data_dir) is None:  # account 0
         return None
-    # rest_poller와 동일하게 KisClient 고정 참조가 아니라 scheduler-backed proxy를 준다.
-    # 거래원 fetch는 background 우선순위라 user-visible 호가/캔들에 양보한다(ADR-0100).
+    # KisClient 고정 참조가 아니라 scheduler-backed proxy를 준다. 거래원 fetch는 background
+    # 우선순위라 user-visible 호가/캔들에 양보한다(ADR-0100).
     capture_client = ScheduledLiveRestCaptureClient(
         data_dir=data_dir,
         scheduler=ensure_kis_capacity_scheduler(data_dir),
@@ -701,10 +463,10 @@ def _ensure_broker_poller(data_dir: Path) -> BrokerRestPoller | None:
     return poller
 
 
-def _sync_broker_poller_targets(live_set: tuple[str, ...]) -> None:
-    """거래원 폴러 타깃을 live_set과 동기화. start/refresh가 live_set을 재계산한 직후 호출."""
+def _sync_broker_poller_targets(codes: tuple[str, ...]) -> None:
+    """거래원 폴러 타깃을 저장 중인 관심종목과 동기화. start/refresh가 스토리지 계획 직후 호출."""
     if _state.broker_poller is not None:
-        _state.broker_poller.set_targets(set(live_set))
+        _state.broker_poller.set_targets(set(codes))
 
 
 def _signal_alert_target_names(data_dir: Path, codes: set[str]) -> dict[str, str]:
@@ -714,371 +476,166 @@ def _signal_alert_target_names(data_dir: Path, codes: set[str]) -> dict[str, str
     return {code: by_code.get(code, code) for code in codes}
 
 
-async def _sync_storage_targets(
-    data_dir: Path,
-    *,
-    n_configured: int | None = None,
-) -> list[str]:
+def _storage_set(snapshot: StorageRuntimeSnapshot) -> tuple[str, ...]:
+    """저장 중인 전체 코드 = ws_targets ∪ kiwoom_targets(dedup, 순서 보존). 버퍼 링
+    보존(drop_codes_except)의 SSOT — 컷오버 후 저장은 kiwoom_targets에만 있다(ws_targets는
+    항상 빈 튜플). ws_targets 항은 하위호환용 no-op(항상 ())."""
+    return tuple(dict.fromkeys(snapshot.ws_targets + snapshot.kiwoom_targets))
+
+
+def _captured_watchlist(snapshot: StorageRuntimeSnapshot) -> tuple[str, ...]:
+    """거래원 폴러 타깃 = 저장 중인 관심종목(capture_candidates ∩ 저장셋). 컷오버 후
+    관심종목은 kiwoom_targets에 있으므로 저장셋에서 소싱한다(ADR-0118 PR-E)."""
+    storage = set(_storage_set(snapshot))  # 저장셋 SSOT 재사용(union 재구현 금지)
+    return tuple(code for code in snapshot.capture_candidates if code in storage)
+
+
+async def _sync_storage_targets(data_dir: Path) -> StorageRuntimeSnapshot:
     snapshot = await sync_storage_runtime(
         data_dir,
         state=_state,
         buffer=_buffer,
         date_fn=_today_kst,
         now_ms_fn=_now_ms,
-        n_configured=n_configured,
     )
     monitor = get_signal_alert_monitor()
     if monitor is not None:
-        # 키움 타깃 포함(리뷰 Major): 히트맵은 kiwoom_targets로만 수집되는데, 이를
-        # monitor 타깃에 안 넣으면 stream.on_tick의 ingest_orderbook이 code∉targets로
-        # 전량 드롭돼 매도총잔량 갱신 알림이 침묵 정지한다.
-        targets = set(snapshot.ws_targets) | set(snapshot.kiwoom_targets)
-        monitor.set_targets(_signal_alert_target_names(data_dir, targets))
-    return list(snapshot.ws_targets)
+        # 저장셋 전체(키움 히트맵 + 관심종목)를 monitor 타깃에. 안 그러면 stream.on_tick의
+        # ingest_orderbook이 code∉targets로 전량 드롭돼 매도총잔량 알림이 침묵 정지한다.
+        monitor.set_targets(_signal_alert_target_names(data_dir, set(_storage_set(snapshot))))
+    return snapshot
 
 
 async def _start_live_stream_locked(*, data_dir: Path) -> bool:
-    """start의 본체(락 보유 중). dynamic-N + poller 분리 + C4 (스펙 §5.4).
+    """start의 본체(락 보유 중) — 거래원 폴러 + 키움 세션 정합화.
 
-    exclude-then-subscribe 순서를 lifecycle이 봉인(C3 ①): stop → ensure_poller →
-    _sync_exclusion → session.start(conn build). poller는 WS 세션 밖이라 lifecycle 소유.
-    """
+    KIS creds(account 0)가 없으면 오프라인(False). 실시간 캡처는 키움 세션이 담당하며
+    (_sync_storage_targets → storage_runtime.sync), 거래원 폴러 타깃은 저장 중인 관심종목."""
     refresh_status_from_settings(data_dir)
-    if _state.kis_rest_bypass_enabled and _state.rest_poller is not None:
-        await _state.rest_poller.stop()
-        _state.rest_poller = None
+    # bypass: KIS REST 전면 우회 → 거래원 폴러(REST 기반)도 정지.
+    if _state.kis_rest_bypass_enabled and _state.broker_poller is not None:
+        await _state.broker_poller.stop()
+        _state.broker_poller = None
 
-    # 1. account 0 creds 게이트(완전 오프라인이면 stop만)
-    n_configured = len(kis_runtime.configured_account_ids(data_dir))
-    if n_configured == 0:
+    # KIS creds 게이트(account 0). 거래원·프로그램 REST 사이드카의 전제.
+    if len(kis_runtime.configured_account_ids(data_dir)) == 0:
         return False
 
-    # 2. 기존 conn 정지(poller는 보존)
-    await _state.session.stop(_teardown_conn)
-
-    # 3. poller 보장(없으면 생성, 있으면 _subscribed 보존)
-    poller = _state.rest_poller
-    broker_poller = _state.broker_poller
-    if _state.kis_rest_bypass_enabled:
-        if poller is not None:
-            await poller.stop()
-            _state.rest_poller = None
-        poller = None
-        # 거래원 폴러도 REST 기반이라 bypass면 함께 정지(rest_poller와 동일 정책).
-        if broker_poller is not None:
-            await broker_poller.stop()
-            _state.broker_poller = None
-        broker_poller = None
-    else:
-        poller = _ensure_poller(data_dir)
-        if poller is None:
-            return False  # account 0 creds 사라짐(레이스) — 오프라인
+    if not _state.kis_rest_bypass_enabled:
         broker_poller = _ensure_broker_poller(data_dir)
+        if broker_poller is None:
+            return False  # account 0 creds 사라짐(레이스) — 오프라인
+        _state.broker_poller = broker_poller
 
-    # 4. Storage targets 산출: 관심종목 WS + 키움 히트맵(REST 캡처 제거, 2026-07-17).
-    codes = await _sync_storage_targets(data_dir)
-
-    # 5. exclude-then-subscribe: 먼저 배제 동기화, 그 다음 conn build(session.start)
-    _sync_exclusion(poller, tuple(codes))
-
-    # 6. 코드 있는 파티션만 conn 생성(session이 dynamic-N 빌드 — 빈 part=연결 없음 → C4)
-    await _state.session.start(
-        codes=codes, n_configured=n_configured, data_dir=data_dir,
-        now_ms=_now_ms(), build_conn=_build_conn,
-    )
-    _state.rest_poller = poller
-    _state.broker_poller = broker_poller
-    # 거래원 폴러 타깃을 live_set과 동기화(session.start가 확정한 live_set 기준).
-    _sync_broker_poller_targets(_state.session.live_set)
-
-    _seed_today_peak_states(date=_today_kst(), live_root=data_dir / "live")
-
+    # Storage targets 산출: 실시간 캡처는 키움 세션이 흡수(storage_runtime.sync).
+    snapshot = await _sync_storage_targets(data_dir)
+    # 거래원 폴러 타깃 = 저장 중인 관심종목(kiwoom_targets에서 재소싱).
+    _sync_broker_poller_targets(_captured_watchlist(snapshot))
+    # 저장셋 밖 표시 링만 해제.
+    await _buffer.drop_codes_except(set(_storage_set(snapshot)))
+    _state.started_at_ms = _now_ms()
     return True
 
 
-async def _stop_streams_locked() -> None:
-    """현재 conn들만 teardown(poller·_state.rest_poller는 보존) — session에 위임."""
-    await _state.session.stop(_teardown_conn)
-
-
 async def _stop_live_stream_locked() -> None:
-    """완전 정지 — conn teardown + poller stop + _state 리셋."""
+    """완전 정지 — 거래원 폴러 + 키움 세션/프로그램 사이드카 stop + _state 리셋."""
     global _state  # noqa: PLW0603
-    poller = _state.rest_poller
     broker_poller = _state.broker_poller
-    await _state.session.stop(_teardown_conn)
     await stop_storage_runtime(_state)
-    if poller is not None:
-        await poller.stop()
     if broker_poller is not None:
         await broker_poller.stop()
     _state = _State()
 
 
 async def stop_live_stream() -> None:
-    """stop_live_poller와 동일 패턴 — KisClient 싱글턴은 건드리지 않는다."""
+    """완전 정지 — KisClient 싱글턴은 건드리지 않는다."""
     async with _lifecycle_lock:
         await _stop_live_stream_locked()
 
 
 # ── ADR-0067: 보는종목 view 진입점 ─────────────────────────────────────────────
 
-def on_view_subscribe(code: str) -> None:
-    """보는종목 구독 신호 — rest_poller.on_subscribe(code)로 위임.
+def _resolve_view_venues(venues: set[str] | None) -> set[str]:
+    """뷰 구독 venue 해석 — 미지정(구 프론트)이면 현재 창 venue 1개(=현재 실시간)."""
+    if venues:
+        return venues
+    from .session_gate import target_ws_venue  # noqa: PLC0415
 
-    ws.py(Task B5)가 호출하는 진입점. rest_poller가 없으면(오프라인/start 전)
-    예외 없이 no-op — get_active_codes()의 동일 snapshot 패턴 사용.
-    """
-    poller = _state.rest_poller
-    if poller is not None:
-        poller.on_subscribe(code)
+    return {target_ws_venue(_now_ms())}
 
 
-def on_view_unsubscribe(code: str) -> None:
-    """보는종목 구독 해제 신호 — rest_poller.on_unsubscribe(code)로 위임.
+async def on_view_subscribe(
+    code: str, venues: set[str] | None = None, *, ref: str | None = None,
+) -> bool:
+    """보는종목 구독 신호 — 키움 매니저 표시셋에 위임(ADR-0118 PR-C·PR-G). ws.py 진입점.
 
-    ws.py(Task B5)가 호출하는 진입점. rest_poller가 없으면(오프라인/start 전)
-    예외 없이 no-op.
-    """
-    poller = _state.rest_poller
-    if poller is not None:
-        poller.on_unsubscribe(code)
+    키움이 만석(전 연결 슬롯 소진)으로 거부하면 False → ws.py가 요청 탭에 만석 이벤트를
+    보낸다. 키움 미배선(오프라인/start 전)이면 True(no-op). venues 미지정(구 프론트)이면
+    현재 창 venue 1개로 기본. ref는 연결(탭) 식별 토큰 — 두 탭이 같은 종목을 봐도 참조만
+    늘고 등록은 1회(refcount)."""
+    session = _state.kiwoom_session
+    if session is None:
+        return True
+    return await session.on_view_subscribe(code, _resolve_view_venues(venues), ref=ref or code)
+
+
+async def on_view_unsubscribe(
+    code: str, venues: set[str] | None = None, *, ref: str | None = None,
+) -> None:
+    """보는종목 구독 해제 신호 — 키움 매니저 표시셋에 위임(ADR-0118 PR-C·PR-G). 키움은
+    참조 0이면 유예 후 해제(즉시 아님). venues·ref는 구독 시와 동일하게 ws.py가 전달."""
+    session = _state.kiwoom_session
+    if session is None:
+        return
+    await session.on_view_unsubscribe(code, _resolve_view_venues(venues), ref=ref or code)
 
 
 async def refresh_live_stream(*, data_dir: Path) -> None:
-    """watchlist 변경 후크 — dynamic-N create/teardown (스펙 §5.5).
+    """watchlist/히트맵 변경 후크 — 저장 타깃 재계획 + 키움/거래원 정합화.
 
-    streams=={}면(부팅·C4 poller-only) start로 위임. 아니면 account별로:
-    part 차면 build, 비면 teardown, 둘 다 있으면 update_codes diff.
-    """
+    한 번도 start 안 됐으면(started_at_ms None) start로 위임(creds 가드 수행)."""
     async with _lifecycle_lock:
         refresh_status_from_settings(data_dir)
-        if _state.kis_rest_bypass_enabled and _state.rest_poller is not None:
-            await _state.rest_poller.stop()
-            _state.rest_poller = None
         if _state.kis_rest_bypass_enabled and _state.broker_poller is not None:
             await _state.broker_poller.stop()
             _state.broker_poller = None
-        if not _state.streams and _state.rest_poller is None:
-            # 한 번도 시작 안 됨 → start가 가드(creds/빈 watchlist) 수행
-            await _start_live_stream_locked(data_dir=data_dir)
-            return
-        if not _state.streams:
-            # C4 poller-only 상태에서 watchlist 채워짐 → start로 conn 생성
+        if _state.started_at_ms is None:
+            # 한 번도 시작 안 됨 → start가 가드(creds) 수행.
             await _start_live_stream_locked(data_dir=data_dir)
             return
 
-        codes = await _sync_storage_targets(
-            data_dir, n_configured=_state.n_configured,
-        )
-
-        # exclude-then-subscribe: build/update 전에 배제 동기화(스펙 §5.5, C3 ①).
-        _sync_exclusion(_state.rest_poller, tuple(codes))
-
-        # 원자 활성집합 스왑(Pass 0) + WS 재구독 diff·build/teardown(Pass 1) +
-        # live_set/watchlist 갱신은 session.refresh가 소유(이중-write 방지 불변식 봉인).
-        await _state.session.refresh(
-            codes=codes, data_dir=data_dir,
-            build_conn=_build_conn, teardown_conn=_teardown_conn,
-        )
-        # 거래원 폴러 보장(부팅 후 최초 refresh에서 생성될 수도) + 타깃을 갱신된 live_set과
-        # 동기화. bypass가 아니고 streams가 있을 때만(위 가드 통과) 도달.
+        # 거래원 폴러 보장(부팅 후 최초 refresh에서 생성될 수도).
         if not _state.kis_rest_bypass_enabled and _state.broker_poller is None:
             _state.broker_poller = _ensure_broker_poller(data_dir)
-        _sync_broker_poller_targets(_state.session.live_set)
-        _seed_today_peak_states(date=_today_kst(), live_root=data_dir / "live")
-        await _buffer.drop_codes_except(set(codes))  # 떠난 코드 ring 해제
+
+        snapshot = await _sync_storage_targets(data_dir)
+        _sync_broker_poller_targets(_captured_watchlist(snapshot))
+        # 저장셋(ws∪kiwoom) 밖 링만 해제 — 컷오버 후 ws_targets 빈값이어도 키움 표시 링 보존.
+        await _buffer.drop_codes_except(set(_storage_set(snapshot)))
 
 
-# ADR-0064 이식 — WS 스트림 watchdog
-async def _restart_conn(account_id: int, *, data_dir: Path) -> None:
-    """죽은 conn 하나만 격리 복구 — session.restart에 위임(락 보유). teardown+build(R1
-    KisClient 보존)·현재 파티션 재계산은 session이 소유(스펙 §5.6, Q6)."""
-    async with _lifecycle_lock:
-        await _state.session.restart(
-            account_id, data_dir=data_dir,
-            build_conn=_build_conn, teardown_conn=_teardown_conn,
-        )
-        conn = _state.streams.get(account_id)
-        if conn is not None:
-            _seed_today_peak_state(
-                conn=conn, date=_today_kst(), live_root=data_dir / "live",
-            )
+# ── ADR-0118 §5 — 키움 세션 워치독(별개 태스크) ─────────────────────────────────
+_KIWOOM_WATCHDOG_INTERVAL_S = 30.0
 
 
-def _plan_sub_failed_action(
-    account_id: int, ws: object,
-) -> Literal["resubscribe", "restart", "log"]:
-    """sub_failed conn의 복구 조치 결정(카운터 갱신 포함).
-
-    사다리(2026-07-15 근본수정): ① 표적 재구독(유실된 (tr,code)만) 상한까지 → ② 소진
-    시 KRX면 기존 제한 conn 재시작 → ③ NXT(표시 전용)면 로그만(정규장 캡처와 무관,
-    에스컬레이션 금지). ①이 대부분의 ACK-유실을 값싸게 흡수하고, 비싼 conn 재시작은
-    재구독이 수렴 못 할 때만. await 없는 순수 결정(watchdog 동기 수집 불변식 준수)."""
-    resub_ok = callable(getattr(ws, "resubscribe_missing", None))
-    resub_attempts = _resub_attempt_counts.get(account_id, 0)
-    if resub_ok and resub_attempts < _RESUB_MAX_ATTEMPTS:
-        _resub_attempt_counts[account_id] = resub_attempts + 1
-        return "resubscribe"
-    if getattr(ws, "venue", "KRX") != "KRX":
-        _log.warning(
-            "live.stream.sub_failed_nxt acct=%d — NXT 표시 구독 부분 실패, 재시작 안 함",
-            account_id,
-        )
-        return "log"
-    attempts = _sub_failed_restart_counts.get(account_id, 0)
-    if attempts < _SUB_FAILED_MAX_RESTARTS:
-        _sub_failed_restart_counts[account_id] = attempts + 1
-        _log.warning(
-            "live.stream.sub_failed_restart acct=%d acked=%s expected=%s attempt=%d/%d",
-            account_id, getattr(ws, "sub_acked", 0), getattr(ws, "sub_expected", 0),
-            attempts + 1, _SUB_FAILED_MAX_RESTARTS,
-        )
-        return "restart"
-    _log.warning(
-        "live.stream.sub_failed acct=%d acked=%s expected=%s — 상한(%d) 도달",
-        account_id, getattr(ws, "sub_acked", 0), getattr(ws, "sub_expected", 0),
-        _SUB_FAILED_MAX_RESTARTS,
-    )
-    return "log"
-
-
-async def _ws_watchdog_check(
-    *, data_dir: Path, now_ms: int, stale_after_ms: int
-) -> bool:
-    """One WS watchdog pass — 연결별 격리 복구(결정 C, Q6). Returns True iff
-    어떤 conn이라도 재시작했으면.
-
-    dict 원자 순회(advisor): streams 순회 중 await 금지 — 단일 이벤트루프
-    (ADR-0038)라 await-free 순회만 원자적. dead/stale 대상을 동기 수집한 뒤
-    변이는 _restart_conn(lock 안)에서.
-    """
-    from datetime import datetime  # noqa: PLC0415
-
-    from .kis_client import KIS_KST  # noqa: PLC0415
-    from .session_gate import ws_connection_window_async  # noqa: PLC0415
-
-    started = _state.started_at_ms
-    if started is None:
-        return False
-    # 연결 창(08~20) 기준 — NXT 시분할 시간대에도 stale conn을 복구한다(#524).
-    # 저장은 별도 ws_capture_window(정규장)가 게이트하므로 이 확대는 캡처 무영향.
-    if not await ws_connection_window_async(now_ms):  # async 진입점이 to_thread 봉인(blocking 계약)
-        return False
-
-    kst = datetime.fromtimestamp(now_ms / 1000, tz=KIS_KST)
-    session_open_ms = int(
-        kst.replace(hour=9, minute=0, second=0, microsecond=0).timestamp() * 1000
-    )
-    ref_ms = max(started, session_open_ms)
-
-    # sub_failed 자동 복구 카운터(재시작·재구독)는 세션(started_at_ms) 단위 — 새 세션이면 리셋.
-    global _sub_failed_restart_session_ms
-    if _sub_failed_restart_session_ms != started:
-        _sub_failed_restart_session_ms = started
-        _sub_failed_restart_counts.clear()
-        _resub_attempt_counts.clear()
-
-    # 동기 수집(await 없음): 재구독/재시작 대상 목록 + 정상 복귀 account.
-    # REST 캡처 폴백(해결안 ③)은 rest30 제거(2026-07-17 정책: api 폴백 없음)와 함께
-    # 철거 — 사다리 종착(log)이면 sub_failed 가시화만 남는다(capture_missing_codes).
-    to_resubscribe: list[int] = []
-    to_restart: list[int] = []
-    healthy_accounts: list[int] = []
-    for account_id, conn in _state.streams.items():
-        dead = conn.ws_task.done() or conn.flush_task.done()
-        ws = getattr(conn.stream_obj, "ws", None)
-        healthy, reason = _capture_health(
-            running=True, ws=ws, now_ms=now_ms, ref_ms=ref_ms,
-            stale_after_ms=stale_after_ms, market_closed=False,
-        )
-        if healthy:
-            healthy_accounts.append(account_id)
-        if dead or reason == "stale":
-            _log.warning("live.stream.watchdog_restart acct=%d dead=%s reason=%s",
-                         account_id, dead, reason)
-            to_restart.append(account_id)
-        elif reason == "sub_failed":
-            action = _plan_sub_failed_action(account_id, ws)
-            if action == "resubscribe":
-                to_resubscribe.append(account_id)
-            elif action == "restart":
-                to_restart.append(account_id)
-
-    # healthy 복귀 시 resub 카운터 재장전(인시던트 단위) — 다음 실패에 다시 표적 재구독부터.
-    for account_id in healthy_accounts:
-        _resub_attempt_counts.pop(account_id, None)
-
-    # 값싼 표적 재구독 먼저, 수렴 못 한 건은 다음 주기에 재시작으로 승격.
-    await _run_resubscribes(to_resubscribe, now_ms)
-
-    for account_id in to_restart:
-        await _restart_conn(account_id, data_dir=data_dir)
-    return bool(to_restart)
-
-
-async def _run_resubscribes(account_ids: list[int], now_ms: int) -> None:
-    """표적 재구독 실행 — conn별 예외 격리(한 conn 실패가 다른 conn·재시작을 막지 않게)."""
-    for account_id in account_ids:
-        conn = _state.streams.get(account_id)
-        ws = getattr(conn.stream_obj, "ws", None) if conn is not None else None
-        resub = getattr(ws, "resubscribe_missing", None)
-        if not callable(resub):
-            continue
-        try:
-            count = await cast("Awaitable[int]", resub(now_ms))
-            _log.warning("live.stream.resubscribe acct=%d keys=%d", account_id, count)
-        except Exception:  # noqa: BLE001 — 격리
-            _log.exception("live.stream.resubscribe_failed acct=%d", account_id)
-
-
-async def start_live_stream_watchdog(
-    *,
-    data_dir: Path,
-    check_interval_s: float = _WATCHDOG_CHECK_INTERVAL_S,
-    stale_after_ms: int = _WATCHDOG_STALE_AFTER_MS,
+async def start_kiwoom_session_watchdog(
+    *, interval_s: float = _KIWOOM_WATCHDOG_INTERVAL_S,
 ) -> asyncio.Task:
-    """Spawn the WS stream watchdog loop. Caller (lifespan) cancels on shutdown.
-    The loop is self-supervised — a bad pass logs and continues."""
+    """키움 세션 워치독 30s 루프(ADR-0118 §5). 죽은 conn 재빌드·시간대 venue 스왑·
+    표적 재구독·08:50 저장셋 등록 완결 술어를 매니저 watchdog_pass에 위임한다.
+
+    _state.kiwoom_session은 storage_runtime.sync가 lazy 생성하므로 매 패스에 조회 —
+    미생성(kiwoom off/부팅 전)이면 no-op. 자가 감독(한 패스 실패는 로그 후 계속) —
+    lifespan(startup_runtime)이 shutdown에 cancel한다."""
 
     async def loop() -> None:
         while True:
             try:
-                now_ms = _now_ms()
-                await _ws_watchdog_check(
-                    data_dir=data_dir,
-                    now_ms=now_ms,
-                    stale_after_ms=stale_after_ms,
-                )
-                # #524 시분할 venue 스왑 — watchdog 주기(30s)로 각 conn의 구독 venue를
-                # target_ws_venue(현재 시각)에 맞춘다. 별도 태스크 대신 기존 주기 루프에
-                # 얹어 배선 표면을 최소화. ensure_venue는 이미 목표면 no-op이라 값싸다.
-                await _ensure_conn_venues(now_ms)
-            except Exception:  # noqa: BLE001 — watchdog must outlive any single pass
-                _log.exception("live.stream.watchdog_cycle_failed")
-            await asyncio.sleep(check_interval_s)
+                session = _state.kiwoom_session
+                if session is not None:
+                    await session.watchdog_pass(_now_ms())
+            except Exception:  # noqa: BLE001 — 워치독은 어떤 단일 패스보다 오래 살아야 한다
+                _log.exception("live.kiwoom.watchdog_cycle_failed")
+            await asyncio.sleep(interval_s)
 
-    return asyncio.create_task(loop(), name="live-stream-watchdog")
-
-
-async def _ensure_conn_venues(now_ms: int) -> None:
-    """각 conn의 WS 구독 venue를 현재 시각의 target_ws_venue로 맞춘다(#524 시분할).
-
-    연결 창(거래일 08~20) 밖이면 target은 무의미하나 그 시간엔 conn이 없거나 게이트가
-    닫혀 있어 무해 — 판정은 순수 시계라 blocking 없음. ensure_venue가 sub_lock으로
-    update_codes/재연결과 직렬화하고, 이미 목표 venue면 no-op이라 매 주기 호출 안전.
-    저장 격리는 stream.on_tick의 KRX 가드 + ws_capture_window(정규장)가 별도로 보장하므로,
-    스왑 경계 오차가 정규장 캡처를 침범하지 않는다.
-    """
-    from .session_gate import target_ws_venue  # noqa: PLC0415
-
-    venue = target_ws_venue(now_ms)
-    for conn in list(_state.streams.values()):
-        ws = getattr(conn.stream_obj, "ws", None)
-        if ws is None:
-            continue
-        try:
-            await ws.ensure_venue(venue)
-        except Exception:  # noqa: BLE001 — 한 conn 스왑 실패가 다른 conn을 막지 않게 격리
-            _log.exception("live.stream.venue_swap_failed account=%s venue=%s",
-                           conn.account_id, venue)
+    return asyncio.create_task(loop(), name="kiwoom-session-watchdog")

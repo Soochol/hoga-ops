@@ -5,7 +5,7 @@ global EventBus events are auto-delivered, per-code subscribe acks then streams
 code-tagged live frames, and explicit unsubscribe tears the subscription down.
 """
 import threading
-from unittest.mock import MagicMock
+from unittest.mock import AsyncMock
 
 import pytest
 from fastapi import FastAPI
@@ -187,7 +187,7 @@ def test_subscribe_forwards_to_lifecycle_on_view_subscribe(monkeypatch):
     """
     from hoga.live import lifecycle as lc
 
-    spy_subscribe = MagicMock()
+    spy_subscribe = AsyncMock(return_value=True)
     monkeypatch.setattr(lc, "on_view_subscribe", spy_subscribe)
 
     app, _, _ = _make_app()
@@ -198,8 +198,48 @@ def test_subscribe_forwards_to_lifecycle_on_view_subscribe(monkeypatch):
 
     # Existing behaviour preserved — ack frame still arrives.
     assert ack == {"ch": "subscribed", "code": "005930"}
-    # ADR-0067 forward: called exactly once with the code.
-    spy_subscribe.assert_called_once_with("005930")
+    # ADR-0067/PR-C forward: awaited once, first positional arg = the code.
+    spy_subscribe.assert_awaited_once()
+    assert spy_subscribe.await_args.args[0] == "005930"
+
+
+def test_subscribe_forwards_venues_and_ref(monkeypatch):
+    """PR-C: subscribe 액션의 venues 옵션과 연결별 ref가 lifecycle로 전달된다."""
+    from hoga.live import lifecycle as lc
+
+    spy = AsyncMock(return_value=True)
+    monkeypatch.setattr(lc, "on_view_subscribe", spy)
+
+    app, _, _ = _make_app()
+    with TestClient(app) as client, client.websocket_connect("/api/ws") as ws:
+        ws.send_json({"action": "subscribe", "code": "005930", "venues": ["KRX", "NXT"]})
+        ws.receive_json()  # ack
+        ws.close()
+
+    spy.assert_awaited_once()
+    args = spy.await_args
+    assert args.args[0] == "005930"
+    assert args.args[1] == {"KRX", "NXT"}          # venues 파싱 전달(UN 옵션)
+    assert args.kwargs["ref"].startswith("ws-")     # 연결(탭)별 참조 토큰
+
+
+def test_subscribe_full_house_emits_event(monkeypatch):
+    """PR-C: 키움 만석(on_view_subscribe False)이면 요청 탭에 만석 이벤트(토스트)."""
+    from hoga.live import lifecycle as lc
+
+    monkeypatch.setattr(lc, "on_view_subscribe", AsyncMock(return_value=False))
+
+    app, _, _ = _make_app()
+    with TestClient(app) as client, client.websocket_connect("/api/ws") as ws:
+        ws.send_json({"action": "subscribe", "code": "005930"})
+        frames = [ws.receive_json(), ws.receive_json()]
+        ws.close()
+
+    events = [f for f in frames if f.get("ch") == "event"]
+    assert any(e["data"].get("type") == "kiwoom_full_house"
+               and e["data"].get("code") == "005930" for e in events)
+    # 만석이어도 구독 ack은 도착(탭은 버퍼 구독 유지).
+    assert any(f == {"ch": "subscribed", "code": "005930"} for f in frames)
 
 
 def test_unsubscribe_forwards_to_lifecycle_on_view_unsubscribe(monkeypatch):
@@ -217,7 +257,7 @@ def test_unsubscribe_forwards_to_lifecycle_on_view_unsubscribe(monkeypatch):
     calls: list[str] = []
     done = threading.Event()
 
-    def spy(code: str) -> None:
+    async def spy(code, venues=None, *, ref=None):
         calls.append(code)
         done.set()
 
@@ -257,7 +297,7 @@ def test_disconnect_calls_on_view_unsubscribe_for_all_subscribed_codes(monkeypat
     unsubscribed_codes: list[str] = []
     done = threading.Event()
 
-    def spy(code: str) -> None:
+    async def spy(code, venues=None, *, ref=None):
         unsubscribed_codes.append(code)
         if len(unsubscribed_codes) >= 2:  # noqa: PLR2004
             done.set()

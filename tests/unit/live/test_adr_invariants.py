@@ -35,16 +35,14 @@ _HOT_PATH_MODULES = (
     "hoga/live/__init__.py",
     "hoga/live/writer.py",
     "hoga/live/stream.py",
-    "hoga/live/ws_client.py",
-    "hoga/live/ws_frames.py",
     "hoga/live/downsampler.py",
     "hoga/live/session_gate.py",
     "hoga/live/coverage.py",
     "hoga/live/snapshot.py",
+    "hoga/live/ticks.py",  # PR-A (ADR-0118) — WsTick 모델 이주처(포트 계약 타입)
     "hoga/live/buffer.py",
     "hoga/live/api.py",
     "hoga/live/lifecycle.py",
-    "hoga/live/live_session.py",
     "hoga/live/kis_client.py",
     "hoga/live/kis_models.py",
     "hoga/live/broker_rest_poller.py",  # ADR-0111 — 거래원 REST 폴러도 핫패스(틱 주입)
@@ -120,3 +118,17 @@ def test_live_package_imports_cleanly_with_single_worker() -> None:
     # confirm we can re-import it with the default env.
     importlib.import_module("hoga.live")
     # No assertion needed — successful import is the contract.
+
+
+def test_wstick_single_source_of_truth() -> None:
+    """PR-A/PR-G (ADR-0118): WsTick lives in hoga.live.ticks — 단일 SSOT.
+
+    KIS ws_frames(파서) 삭제 후에도 키움/거래원 합성 틱이 이 한 타입만 쓰도록 고정한다.
+    kiwoom_frames·broker_rest_poller가 같은 클래스 객체를 참조해야 isinstance/frozen-
+    dataclass 계약이 어긋나지 않는다."""
+    from hoga.live import ticks
+    from hoga.live.broker_rest_poller import WsTick as BrokerWsTick
+    from hoga.live.kiwoom_frames import WsTick as KiwoomWsTick
+
+    assert BrokerWsTick is ticks.WsTick
+    assert KiwoomWsTick is ticks.WsTick

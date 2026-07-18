@@ -34,6 +34,10 @@ class ProgramTradeCollectorLike(Protocol):
 
 class KiwoomSessionLike(Protocol):
     async def sync(self, kiwoom_targets: tuple[str, ...], *, n_accounts: int) -> None: ...
+    async def watchdog_pass(self, now_ms: int) -> None: ...
+    async def on_view_subscribe(self, code: str, venues: set[str], *, ref: str) -> bool: ...
+    async def on_view_unsubscribe(self, code: str, venues: set[str], *, ref: str) -> None: ...
+    def broker_dispatch_streams(self) -> list[object]: ...
     def active_codes(self) -> list[str]: ...
     def status(self) -> dict: ...
     async def stop(self) -> None: ...
@@ -49,6 +53,8 @@ class StorageRuntimeSnapshot:
     ws_targets: tuple[str, ...]
     # 키움 WS 수집 대상(ADR-0116). lifecycle이 SignalAlertMonitor 타깃 합집합에 쓴다.
     kiwoom_targets: tuple[str, ...] = ()
+    # 관심종목(슬롯/용량 무관 전체). 컷오버 후 거래원 폴러 타깃 재소싱에 쓴다(ADR-0118 PR-E).
+    capture_candidates: tuple[str, ...] = ()
 
 
 def _ensure_kiwoom_session(
@@ -71,6 +77,7 @@ def _ensure_kiwoom_session(
         data_dir=data_dir,
         date_fn=date_fn,
         gate_fn=lambda: ws_connection_window(now_ms_fn()),
+        now_fn=now_ms_fn,  # venue 스왑·warmup 술어의 시각원(워치독과 공유)
     )
     state.kiwoom_session = mgr
     return mgr
@@ -158,6 +165,7 @@ async def sync_storage_runtime(
     return StorageRuntimeSnapshot(
         ws_targets=targets.ws_targets,
         kiwoom_targets=targets.kiwoom_targets,
+        capture_candidates=targets.capture_candidates,
     )
 
 

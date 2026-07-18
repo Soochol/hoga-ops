@@ -34,17 +34,22 @@ def _constructs(node: ast.AST, name: str) -> bool:
     return _calls(node, name)
 
 
-def test_live_coverage_imports_watchlist_display_order_instead_of_defining_it():
+def test_live_coverage_imports_watchlist_order_instead_of_defining_it():
+    """coverage.py must delegate watchlist ordering to the projection SSOT, not redefine it.
+
+    ADR-0118 PR-G: KIS live-set(display_ordered_codes 소비) 삭제 후 coverage는
+    capture 순서(capture_ordered_codes)만 쓴다 — 여전히 watchlist_projection에서 임포트한다."""
     tree = _module("hoga/live/coverage.py")
 
     assert not any(
-        isinstance(node, ast.FunctionDef) and node.name == "display_ordered_codes"
+        isinstance(node, ast.FunctionDef)
+        and node.name in {"display_ordered_codes", "capture_ordered_codes"}
         for node in tree.body
     )
     assert any(
         isinstance(node, ast.ImportFrom)
         and node.module == "hoga.api.watchlist_projection"
-        and any(alias.name == "display_ordered_codes" for alias in node.names)
+        and any(alias.name == "capture_ordered_codes" for alias in node.names)
         for node in tree.body
     )
 

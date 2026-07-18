@@ -17,7 +17,7 @@ import pytest
 
 from hoga.live.kis_models import KisBrokerEntry, KisBrokers
 from hoga.live.snapshot import SnapshotKind
-from hoga.live.ws_frames import WsTick
+from hoga.live.ticks import WsTick
 
 if TYPE_CHECKING:
     from hoga.live.broker_rest_poller import KisBrokerFetchProto
@@ -373,17 +373,28 @@ def _mbc_frame_matching_brokers() -> tuple[str, KisBrokers]:
     return frame, brokers
 
 
-def test_broker_ws_tick_payload_parity_with_ws_member_frame() -> None:
-    """brokers_to_ws_tick가 _parse_member와 동일 payload를 만든다(같은 now_ms 기준)."""
-    from hoga.live.broker_rest_poller import brokers_to_ws_tick
-    from hoga.live.ws_frames import parse_message
+def _expected_member_tick(brokers: KisBrokers, now_ms: int) -> WsTick:
+    """구 KIS ws_frames._parse_member 출력과 byte 동일한 canonical WsTick(파서 삭제 후
+    하드코딩 — ADR-0118 PR-G). 키 삽입 순서(code·t_ms·sell_top·buy_top)까지 재현한다."""
+    payload = {
+        "code": brokers.code,
+        "t_ms": now_ms,
+        "sell_top": [{"name": e.name, "qty": e.qty} for e in brokers.sell_top],
+        "buy_top": [{"name": e.name, "qty": e.qty} for e in brokers.buy_top],
+    }
+    return WsTick(code=brokers.code, t_ms=now_ms, kind=SnapshotKind.BROKER, payload=payload)
 
-    frame, brokers = _mbc_frame_matching_brokers()
-    ws_tick = parse_message(frame, date="20260605", now_ms=_FIXED_NOW)[0]
+
+def test_broker_ws_tick_payload_parity_with_ws_member_frame() -> None:
+    """brokers_to_ws_tick가 구 WS member 경로(_parse_member)와 동일 payload를 만든다."""
+    from hoga.live.broker_rest_poller import brokers_to_ws_tick
+
+    _frame, brokers = _mbc_frame_matching_brokers()
+    ws_tick = _expected_member_tick(brokers, now_ms=_FIXED_NOW)
     poll_tick = brokers_to_ws_tick(brokers, now_ms=_FIXED_NOW)
 
-    assert poll_tick.kind is ws_tick.kind
-    assert poll_tick.venue == ws_tick.venue
+    assert poll_tick.kind is ws_tick.kind is SnapshotKind.BROKER
+    assert poll_tick.venue == ws_tick.venue == "KRX"
     assert poll_tick.t_ms == ws_tick.t_ms
     # 키 순서까지 동일해야 JSONL이 byte-identical(dict 삽입순 보존).
     assert list(poll_tick.payload.keys()) == list(ws_tick.payload.keys())
@@ -398,9 +409,8 @@ async def test_broker_poller_jsonl_identical_to_ws_member_path(tmp_path) -> None
     from hoga.live.buffer import LiveBuffer
     from hoga.live.stream import LiveStream
     from hoga.live.writer import LiveWriter
-    from hoga.live.ws_frames import parse_message
 
-    frame, brokers = _mbc_frame_matching_brokers()
+    _frame, brokers = _mbc_frame_matching_brokers()
     flush_ms = _FIXED_NOW + 10_000
 
     async def _run(tick: WsTick, sub: str) -> str:
@@ -417,9 +427,7 @@ async def test_broker_poller_jsonl_identical_to_ws_member_path(tmp_path) -> None
         text = (tmp_path / sub / "20260605" / "005930.jsonl").read_text()
         return next(ln for ln in text.splitlines() if '"kind": "broker"' in ln)
 
-    ws_line = await _run(
-        parse_message(frame, date="20260605", now_ms=_FIXED_NOW)[0], "ws"
-    )
+    ws_line = await _run(_expected_member_tick(brokers, now_ms=_FIXED_NOW), "ws")
     poll_line = await _run(brokers_to_ws_tick(brokers, now_ms=_FIXED_NOW), "poll")
 
     assert ws_line == poll_line

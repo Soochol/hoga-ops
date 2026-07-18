@@ -30,7 +30,7 @@ from hoga.live.rest_buffer_build import (
     brokers_to_snapshot,
 )
 from hoga.live.snapshot import SnapshotKind
-from hoga.live.ws_frames import parse_message
+from hoga.live.ticks import WsTick
 
 
 # ---------------------------------------------------------------------------
@@ -256,53 +256,48 @@ def _ws_entry(tick_payload: dict, t_ms: int, kind_value: str, phase: str = "regu
     return set(entry.keys())
 
 
-def _asp_frame(code: str = "005930", hhmmss: str = "093015") -> str:
-    """Minimal synthetic ASP frame (mirrors test_ws_frames.py fixture)."""
-    f = ["0"] * 59
-    f[0], f[1], f[2] = code, hhmmss, "0"
-    for i, idx in enumerate(range(3, 13)):
-        f[idx] = str(75000 + i * 10)
-    for i, idx in enumerate(range(13, 23)):
-        f[idx] = str(74990 - i * 10)
-    for i, idx in enumerate(range(23, 33)):
-        f[idx] = str(100 + i)
-    for i, idx in enumerate(range(33, 43)):
-        f[idx] = str(200 + i)
-    f[43], f[44] = "1500", "2500"
-    return "0|H0STASP0|001|" + "^".join(f)
+# 구 KIS ws_frames 파서(_parse_orderbook/_parse_trades/_parse_member) 출력 payload를
+# 직접 WsTick으로 재현한다(파서 삭제 — ADR-0118 PR-G). 키 셋만 대조하므로 값은 대표값.
+def _ws_ob_tick() -> WsTick:
+    payload = {
+        "code": "005930",
+        "t_ms": 1_770_000_000_000,
+        "asks": [{"price": 75000 + i, "qty": 100 + i} for i in range(10)],
+        "bids": [{"price": 74990 - i, "qty": 200 + i} for i in range(10)],
+        "total_ask_qty": 1500,
+        "total_bid_qty": 2500,
+    }
+    return WsTick(code="005930", t_ms=payload["t_ms"], kind=SnapshotKind.OB, payload=payload)
 
 
-def _cnt_frame(n: int = 1) -> str:
-    recs = []
-    for k in range(n):
-        f = ["0"] * 46
-        f[0], f[1], f[2] = "005930", "093015", "75000"
-        f[12] = str(5 + k)
-        f[21] = "1"
-        recs.append("^".join(f))
-    return f"0|H0STCNT0|{n:03d}|" + "^".join(recs)
+def _ws_trade_tick() -> WsTick:
+    payload = {
+        "trades": [{
+            "t_ms": 1_770_000_000_000,
+            "price": 75000,
+            "qty": 5,
+            "side": 1,
+            "side_source": "kis_ws",
+        }],
+    }
+    return WsTick(code="005930", t_ms=1_770_000_000_000, kind=SnapshotKind.TRADE, payload=payload)
 
 
-def _mbc_frame() -> str:
-    f = ["0"] * 80
-    f[0] = "005930"
-    for i, idx in enumerate(range(1, 6)):
-        f[idx] = f"매도사{i + 1}"
-    for i, idx in enumerate(range(6, 11)):
-        f[idx] = f"매수사{i + 1}"
-    for i, idx in enumerate(range(11, 16)):
-        f[idx] = str(1000 + i)
-    for i, idx in enumerate(range(16, 21)):
-        f[idx] = str(2000 + i)
-    return "0|H0STMBC0|001|" + "^".join(f)
+def _ws_broker_tick(now_ms: int = 1_770_000_000_000) -> WsTick:
+    payload = {
+        "code": "005930",
+        "t_ms": now_ms,
+        "sell_top": [{"name": f"매도사{i + 1}", "qty": 1000 + i} for i in range(5)],
+        "buy_top": [{"name": f"매수사{i + 1}", "qty": 2000 + i} for i in range(5)],
+    }
+    return WsTick(code="005930", t_ms=now_ms, kind=SnapshotKind.BROKER, payload=payload)
 
 
 class TestWsKeyParity:
     """Builder entry keys must equal the keys that on_tick would put in buffer."""
 
     def test_ob_key_parity_with_ws_path(self):
-        ticks = parse_message(_asp_frame(), date="20260605", now_ms=0)
-        ws_tick = ticks[0]
+        ws_tick = _ws_ob_tick()
         ws_keys = _ws_entry(ws_tick.payload, ws_tick.t_ms, ws_tick.kind.value)
 
         ob = _make_orderbook()
@@ -315,8 +310,7 @@ class TestWsKeyParity:
         )
 
     def test_trade_key_parity_with_ws_path(self):
-        ticks = parse_message(_cnt_frame(1), date="20260605", now_ms=0)
-        ws_tick = ticks[0]
+        ws_tick = _ws_trade_tick()
         ws_keys = _ws_entry(ws_tick.payload, ws_tick.t_ms, ws_tick.kind.value)
 
         trade = _make_trades()[0]
@@ -331,8 +325,7 @@ class TestWsKeyParity:
 
     def test_trade_record_key_parity_with_ws_path(self):
         """trades 리스트 안의 레코드 키도 WS와 동일해야."""
-        ticks = parse_message(_cnt_frame(1), date="20260605", now_ms=0)
-        ws_trade_rec_keys = set(ticks[0].payload["trades"][0].keys())
+        ws_trade_rec_keys = set(_ws_trade_tick().payload["trades"][0].keys())
 
         trade = _make_trades()[0]
         snap = trades_to_snapshots([trade], phase="regular")[0]
@@ -344,8 +337,7 @@ class TestWsKeyParity:
         )
 
     def test_broker_key_parity_with_ws_path(self):
-        ticks = parse_message(_mbc_frame(), date="20260605", now_ms=1_770_000_000_000)
-        ws_tick = ticks[0]
+        ws_tick = _ws_broker_tick(now_ms=1_770_000_000_000)
         ws_keys = _ws_entry(ws_tick.payload, ws_tick.t_ms, ws_tick.kind.value)
 
         snap = brokers_to_snapshot(_make_brokers(), now_ms=1_770_000_000_000, phase="regular")

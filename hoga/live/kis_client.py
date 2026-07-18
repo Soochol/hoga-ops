@@ -30,7 +30,7 @@ import httpx
 from hoga.live.kis_venue import KIS_KST  # noqa: F401  (re-export facade)
 from hoga.live.kis_errors import (
     KisApiError,
-    KisAuthError,
+    KisAuthError,  # noqa: F401 — re-export facade (ADR-0050); get_approval_key 삭제 후 in-module 미사용
     KisRateLimitError,
     KisTransportError,
 )
@@ -282,33 +282,6 @@ class KisClient(KisEndpointsMixin):
 
     async def aclose(self) -> None:
         await self._client.aclose()
-
-    async def get_approval_key(self) -> str:
-        """WS 접속키 발급 (POST /oauth2/Approval). ADR-0050 단일 ingress —
-        WS 클라이언트도 KIS HTTP는 이 클라이언트를 경유한다.
-
-        연결할 때마다 1회 발급(공식 샘플과 동일). 데이터 호출이 아니므로
-        15/s 토큰버킷은 통과하지 않는다(토큰 발급과 같은 취급).
-        주의: KIS가 이 엔드포인트만 필드명을 ``secretkey``로 받는다.
-        """
-        resp = await self._client.post(
-            "/oauth2/Approval",
-            json={
-                "grant_type": "client_credentials",
-                "appkey": self._creds.app_key,
-                "secretkey": self._creds.app_secret,
-            },
-        )
-        if resp.status_code != 200:  # noqa: PLR2004 — HTTP 상수
-            raise KisAuthError(
-                f"/oauth2/Approval HTTP {resp.status_code}: {resp.text[:200]}"
-            )
-        key = resp.json().get("approval_key")
-        if not key:
-            raise KisAuthError(
-                f"approval_key missing in /oauth2/Approval response: {resp.text[:200]}"
-            )
-        return str(key)
 
     async def _get(
         self,

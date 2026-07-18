@@ -1,6 +1,6 @@
 import type { LiveStatus } from '../api/liveStatus';
 import { useWatchlist } from '../watchlist/useWatchlist';
-import { projectLiveStatus, type LiveBannerCause } from './liveStatusProjection';
+import { projectLiveStatus, type LiveBannerCause, type LiveBannerPrimary } from './liveStatusProjection';
 
 export type BannerCause = LiveBannerCause;
 
@@ -32,7 +32,7 @@ export interface BannerInput {
 }
 
 export interface BannerState {
-  primary: 'watchlist_empty' | 'kis_credentials_missing' | null;
+  primary: LiveBannerPrimary;
   stack: BannerCause[]; // priority-2 stackable causes, ordered
 }
 

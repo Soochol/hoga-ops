@@ -199,3 +199,42 @@ async def test_today_promoter_promotes_ws_and_kiwoom_targets(
 
     assert "005930" in live_calls
     assert "000660" in kiwoom_calls
+
+
+@pytest.mark.asyncio
+async def test_today_promoter_publishes_on_kiwoom_promotion(
+    tmp_path: Path, monkeypatch,
+) -> None:
+    """키움 승격(ADR-0116)도 실승격 시 promotion_completed를 발행한다.
+
+    PR-E 컷오버로 관심종목이 키움 전담이 되면서 KIS 경로가 사실상 죽었다
+    (kis live/ 부재 → promote_today가 매 사이클 None). 키움 루프가 이 이벤트를
+    발행하지 않으면 프론트 today 집계 자동갱신(range.ts livePromotion 스탬프)이
+    전 종목에서 멈춘다 — KIS 경로와 대칭으로 실승격(date)에만 발행, skip(None)은 무발행.
+    """
+    events: list[dict] = []
+
+    async def fake_promote(data_dir, *, code):  # KIS 분기는 빈 코드리스트라 미호출(방어용)
+        return None
+
+    async def fake_promote_kiwoom(data_dir, *, code):
+        # 000660은 승격할 데이터 있음, 005930은 skip(jsonl 부재 → None).
+        return "20260718" if code == "000660" else None
+
+    monkeypatch.setattr("hoga.live.lifecycle.promote_today", fake_promote)
+    monkeypatch.setattr("hoga.live.lifecycle.promote_kiwoom_today", fake_promote_kiwoom)
+
+    task = await start_today_promoter(
+        data_dir=tmp_path,
+        get_active_codes=lambda: [],
+        get_kiwoom_capture_codes=lambda: ["000660", "005930"],
+        interval_s=0.05,
+        on_promoted=events.append,
+    )
+    await asyncio.sleep(0.12)
+    await stop_today_promoter(task)
+
+    assert events, "expected a promotion_completed event from kiwoom promotion"
+    assert all(e["type"] == "promotion_completed" for e in events)
+    assert {e["code"] for e in events} == {"000660"}  # skip code never published
+    assert all(e["date"] == "20260718" for e in events)

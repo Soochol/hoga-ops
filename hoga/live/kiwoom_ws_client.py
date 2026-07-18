@@ -23,7 +23,7 @@ from typing import Protocol
 import websockets
 
 from .kiwoom_frames import parse_real_message
-from .ws_frames import WsTick  # 포트 계약 타입(공유) — kis 수집 로직 아님
+from .ticks import WsTick  # 포트 계약 타입(공유)
 
 _log = logging.getLogger(__name__)
 
@@ -274,6 +274,26 @@ class KiwoomWsClient:
                 self._acked -= set(removed)
             if added:
                 await self._register_all(ws, added)
+
+    async def resubscribe_missing(self) -> int:
+        """미확인(sub_missing) 종목만 골라 재 REG 송신 — 재송신 건수 반환.
+
+        워치독이 표적 복구로 부르는 값싼 재구독(KIS resubscribe_missing 미러). 스왑·
+        유량소진·거부로 초기 REG가 유실된 종목을 conn 전체 재시작 없이 되살린다.
+        키움 `_acked`는 REG rc=0 응답 시 동기 갱신이라(KIS의 send-후-grace 갭 없음)
+        sub_missing = expected−acked가 이미 유예-free — now_ms 인자 불요. missing ⊆
+        expected ⊆ 200 상한이라 과잉 등록 불가. 미연결이면 no-op(0). sub_lock으로
+        update_codes·초기 구독과 직렬화(wire≠상태 발산 방지)."""
+        async with self._sub_lock:
+            ws = self._ws
+            if ws is None:
+                return 0
+            missing = self.sub_missing()
+            if not missing:
+                return 0
+            await self._register_all(ws, missing)
+            _log.warning("live.kiwoom.resubscribe_missing count=%d", len(missing))
+            return len(missing)
 
     async def _send_and_wait(self, ws: _WsLike, msg: str, trnm: str) -> dict:
         """control 프레임 송신 후 그 trnm ACK를 Future로 대기(recv 루프가 채운다).

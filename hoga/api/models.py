@@ -969,9 +969,10 @@ class LiveSettingsResponse(BaseModel):
     # 큐에 적재할지. 기본 False — 스캔은 탐색적으로 반복 실행되므로 묵시적 큐 증가를 막고
     # 명시적 [수집 요청] 버튼을 1차 UX 로 둔다.
     screener_depth_autocollect: bool = False
-    # 키움 WS 병행 수집 킬스위치(ADR-0116). 기본 False — 켜면 히트맵 종목을 키움 WS로
-    # 수집한다(히트맵의 유일한 저장 경로 — off/무자격이면 히트맵은 수집되지 않는다).
-    kiwoom_enabled: bool = False
+    # 키움 WS 실시간 스위치(ADR-0116 → ADR-0118). 기본 True — 키움이 실시간(호가·체결)의
+    # 유일한 소스이므로 on-by-default가 종착 상태다. 실제 활성화는 kiwoom_enabled AND
+    # n_kiwoom>0(자격증명 존재) 게이트라, 키 없는 배포는 이 값과 무관하게 휴면(조용한 skip).
+    kiwoom_enabled: bool = True
 
 
 class LiveSettingsUpdate(BaseModel):
