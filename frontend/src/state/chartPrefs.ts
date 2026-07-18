@@ -213,6 +213,11 @@ export function categoryOf(
  * its gating toggle. The value is preserved while disabled. The projector
  * that reads the pref is responsible
  * for honoring the same toggle (the pref alone is not load-bearing).
+ *
+ * 두 번째 의미(PR-B #699): enabledBy 가 indicator-modal 토글이면 이 수치도
+ * **per-timeframe 버킷화 대상**으로 분류된다(`INDICATOR_MODAL_NUMERIC_KEYS`).
+ * 게이트 토글과 함께 드로어에 렌더되는 항목이기 때문 — chart 카테고리 수치를
+ * indicator-modal 토글에 게이트하면 의도치 않게 봉별 저장이 되니 주의.
  */
 export type NumericPrefDef = {
   readonly key: string;
@@ -384,7 +389,7 @@ const INDICATOR_MODAL_TOGGLE_SET = new Set<string>(INDICATOR_MODAL_TOGGLE_KEYS);
 
 export const INDICATOR_MODAL_NUMERIC_KEYS: readonly NumericPrefKey[] = CHART_NUMERIC_PREFS
   .filter((p) => ('category' in p && p.category === 'indicator-modal')
-    || ('enabledBy' in p && INDICATOR_MODAL_TOGGLE_SET.has(p.enabledBy as string)))
+    || ('enabledBy' in p && INDICATOR_MODAL_TOGGLE_SET.has(p.enabledBy)))
   .map((p) => p.key);
 
 export type IndicatorModalPrefKey = ChartToggleKey | NumericPrefKey;
@@ -439,8 +444,13 @@ type ChartPrefsStore = ChartViewPrefs & {
 };
 
 export const useChartPrefsStore = create<ChartPrefsStore>((set, get) => {
-  /** indicator-modal 키 쓰기: ambient 봉 버킷에 기록 + 최상위 투영 갱신. */
-  const writeIndicatorModal = (key: IndicatorModalPrefKey, value: boolean | number): void => {
+  /** 키 종류별 단일 쓰기 경로: indicator-modal 키는 ambient 봉 버킷에 기록 +
+   *  최상위 투영 갱신, 차트 전반 키는 flat 그대로. */
+  const writePref = (key: ChartToggleKey | NumericPrefKey, value: boolean | number): void => {
+    if (!isIndicatorModalPrefKey(key)) {
+      set({ [key]: value } as Partial<ChartPrefsStore>);
+      return;
+    }
     const s = get();
     const profileKey = profileKeyForTimeframe(s.indicatorModalTimeframe);
     const bucket = { ...(s.indicatorModalByTimeframe[profileKey] ?? {}), [key]: value };
@@ -463,21 +473,9 @@ export const useChartPrefsStore = create<ChartPrefsStore>((set, get) => {
       });
     },
 
-    setToggle: (key, value) => {
-      if (isIndicatorModalPrefKey(key)) {
-        writeIndicatorModal(key, value);
-        return;
-      }
-      set({ [key]: value } as Partial<ChartPrefsStore>);
-    },
+    setToggle: (key, value) => writePref(key, value),
 
-    setNumericPref: (key, value) => {
-      if (isIndicatorModalPrefKey(key)) {
-        writeIndicatorModal(key, value);
-        return;
-      }
-      set({ [key]: value } as Partial<ChartPrefsStore>);
-    },
+    setNumericPref: (key, value) => writePref(key, value),
 
     setDayBoundaryStyle: (patch) =>
       set((s) => ({
