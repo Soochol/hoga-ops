@@ -4,7 +4,7 @@ import type { LineStyle, PaneId } from '../chart/drawing/types';
 import { normalizePaneOrder } from '../chart/paneOrder';
 import {
   PRESET_INDICATOR_FLAG_KEYS,
-  type PresetIndicatorFlags,
+  type PresetEnableByTimeframe,
 } from '../live/presets/presetFlags';
 import {
   DEFAULT_LIVE_MAS,
@@ -29,12 +29,9 @@ import {
 } from './indicatorSettingsV2';
 import { syncIndicatorModalTimeframe } from './chartPrefs';
 import {
-  INDICATOR_PANE_PREF_KEYS,
   INDICATOR_PANE_PROFILE_KEYS,
-  normalizePanePrefsByTimeframe,
   profileKeyForTimeframe,
   type PanePrefKey,
-  type PersistedPanePrefsByTimeframe,
 } from '../live/indicators/indicatorPaneProfiles';
 import {
   instrumentToActiveCode,
@@ -188,13 +185,12 @@ type Store = Persisted & IndicatorSettings & {
    *  normalizePaneOrder 가 index 0 으로 고정, ADR-0114 §3). */
   setPaneOrder: (order: PaneId[]) => void;
   /** 레이아웃 프리셋의 지표 슬라이스를 한 번에 적용(단일 set + 단일 persist, ADR-0114 §4).
-   *  PR-D(프리셋 payload v2) 전 브리지: flat flags 는 4버킷 전부에, 구
-   *  pane_prefs_by_timeframe 은 각 버킷에 enable 오버라이드로 적용한다(#698 —
-   *  프리셋 = 4버킷 전체 on/off 스냅샷). */
+   *  #698·#699 PR-D: 프리셋 = 4버킷 전체 on/off 스냅샷. 각 봉 버킷의 enable
+   *  오버라이드를 프리셋 값으로 **통째 교체**하되(결정론), 파라미터(색·기간)
+   *  오버라이드는 보존한다(프리셋 범위 밖). */
   applyIndicatorPreset: (input: {
     paneOrder: PaneId[];
-    panePrefsByTimeframe: PersistedPanePrefsByTimeframe;
-    flags: PresetIndicatorFlags;
+    byTimeframeEnable: PresetEnableByTimeframe;
   }) => void;
   /** 현재 봉 버킷의 오버라이드만 비워 공장 기본값으로 되돌린다(#697 — 리셋은
    *  현재 봉만). 다른 봉·paneOrder(레이아웃)는 건드리지 않는다. chartPrefs 는
@@ -347,6 +343,10 @@ function nextSlotColor(existing: readonly LiveMAConfig[]): string {
   return free ?? MA_PALETTE[existing.length % MA_PALETTE.length];
 }
 
+/** 프리셋이 봉별로 교체하는 enable 키 집합 — 이 키만 프리셋으로 덮이고
+ *  나머지(파라미터)는 보존된다(applyIndicatorPreset, #699 PR-D). */
+const PRESET_ENABLE_KEY_SET = new Set<string>(PRESET_INDICATOR_FLAG_KEYS);
+
 const initialIndicatorsV2 = loadIndicatorsV2Storage();
 const initialPage = { ...DEFAULTS, ...readStorage() };
 
@@ -460,27 +460,21 @@ export const useLivePageStore = create<Store>((set, get) => {
       persistIndicatorsV2({ paneOrder, byTimeframe: get().indicatorsByTimeframe });
     },
 
-    applyIndicatorPreset: ({ paneOrder, panePrefsByTimeframe, flags }) => {
-      // 화이트리스트 키만 반영 — payload 에 든 미지의 키가 store 로 새지 않게.
-      const flagPatch: PresetIndicatorFlags = {};
-      for (const key of PRESET_INDICATOR_FLAG_KEYS) {
-        const v = flags[key];
-        if (typeof v === 'boolean') flagPatch[key] = v;
-      }
-      const panePrefs = normalizePanePrefsByTimeframe(panePrefsByTimeframe);
+    applyIndicatorPreset: ({ paneOrder, byTimeframeEnable }) => {
       const s = get();
-      const byTimeframe: IndicatorSettingsByTimeframe = { ...s.indicatorsByTimeframe };
+      const byTimeframe: IndicatorSettingsByTimeframe = {};
       for (const profileKey of INDICATOR_PANE_PROFILE_KEYS) {
-        const bucketPanePrefs: Partial<Record<PanePrefKey, boolean>> = {};
-        for (const paneKey of INDICATOR_PANE_PREF_KEYS) {
-          const v = panePrefs[profileKey]?.[paneKey];
-          if (typeof v === 'boolean') bucketPanePrefs[paneKey] = v;
+        const existing = s.indicatorsByTimeframe[profileKey] ?? {};
+        // 파라미터(색·기간 등 enable 이 아닌 오버라이드)는 보존, enable 15키는
+        // 프리셋 값으로 통째 교체(#699 §5 — 결정론: 미포함 enable 은 공장값 복귀).
+        const params: Partial<IndicatorSettings> = {};
+        for (const [key, value] of Object.entries(existing)) {
+          if (!PRESET_ENABLE_KEY_SET.has(key)) {
+            (params as Record<string, unknown>)[key] = value;
+          }
         }
-        byTimeframe[profileKey] = {
-          ...(byTimeframe[profileKey] ?? {}),
-          ...flagPatch,
-          ...bucketPanePrefs,
-        };
+        const merged = { ...params, ...(byTimeframeEnable[profileKey] ?? {}) };
+        if (Object.keys(merged).length > 0) byTimeframe[profileKey] = merged;
       }
       const nextPaneOrder = normalizePaneOrder(paneOrder);
       set({

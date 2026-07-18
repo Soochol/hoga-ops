@@ -9,15 +9,10 @@ import {
 } from '../../state/liveLayout';
 import { normalizeKeyOrder } from '../../state/keyOrder';
 import { normalizePaneOrder } from '../../chart/paneOrder';
-import { FACTORY_INDICATOR_SETTINGS } from '../../state/indicatorSettingsV2';
-import {
-  INDICATOR_PANE_PREF_KEYS,
-  normalizePanePrefsByTimeframe,
-} from '../indicators/indicatorPaneProfiles';
 import type { LiveLayoutPresetPayload } from '../../api/liveLayoutPresets';
 import {
   PRESET_INDICATOR_FLAG_KEYS,
-  type PresetIndicatorFlags,
+  normalizePresetEnableByTimeframe,
 } from './presetFlags';
 
 /**
@@ -51,21 +46,13 @@ export function capturePresetPayload(): LiveLayoutPresetPayload {
   const page = useLivePageStore.getState();
   const layout = useLiveLayoutStore.getState();
 
-  const flags: Record<string, boolean> = {};
-  for (const key of PRESET_INDICATOR_FLAG_KEYS) {
-    flags[key] = Boolean((page as unknown as Record<string, unknown>)[key]);
-  }
-
-  // PR-A(#699) 이후 per-timeframe 원본은 indicatorsByTimeframe(4버킷 sparse)다.
-  // PR-D(payload v2) 전 브리지: 구 payload 형식 유지를 위해 각 버킷에서 pane 토글
-  // 7종 오버라이드만 슬라이스해 pane_prefs_by_timeframe 로 캡처한다.
-  // 알려진 브리지 한계: 오버레이 enable(flags)은 현재 봉 투영에서 읽어 적용 시
-  // 4버킷 전부에 퍼지므로, D에서 캡처→적용하면 다른 봉의 오버레이 enable이 D 값으로
-  // 덮인다(캡처→적용 비항등). PR-D의 payload v2(4버킷 enable 맵)가 해소한다.
-  const panePrefsByTimeframe = Object.fromEntries(
+  // 프리셋 = 4버킷 전체의 지표 on/off 스냅샷(#698·#699 PR-D). indicatorsByTimeframe
+  // 는 이미 공장값 diff sparse 이므로, 각 버킷에서 enable 15키만 슬라이스하면 된다.
+  // 현재 봉 투영이 아니라 버킷 원본을 읽으므로 캡처가 timeframe-무관 = 캡처→적용 항등.
+  const byTimeframeEnable = Object.fromEntries(
     Object.entries(page.indicatorsByTimeframe).flatMap(([profileKey, bucket]) => {
       const slice = Object.fromEntries(
-        INDICATOR_PANE_PREF_KEYS.flatMap((key) => (
+        PRESET_INDICATOR_FLAG_KEYS.flatMap((key) => (
           typeof bucket?.[key] === 'boolean' ? [[key, bucket[key]]] : []
         )),
       );
@@ -75,8 +62,7 @@ export function capturePresetPayload(): LiveLayoutPresetPayload {
 
   return {
     pane_order: [...page.paneOrder],
-    pane_prefs_by_timeframe: panePrefsByTimeframe,
-    indicator_flags: flags,
+    by_timeframe_enable: byTimeframeEnable,
     right_panel_width_px: layout.rightPanelWidthPx,
     right_card_order: [...layout.rightCardOrder],
     right_card_hidden: { ...layout.rightCardHidden },
@@ -88,19 +74,12 @@ export function capturePresetPayload(): LiveLayoutPresetPayload {
 /**
  * 프리셋 payload 를 현재 화면에 적용한다. 모든 필드를 클라이언트에서 canonical
  * 재정규화한 뒤, 스토어별 벌크 액션으로 각각 단일 set + 단일 persist 를 수행한다.
- * flat 레거시 pane 플래그와 panePrefsByTimeframe 를 **둘 다** 덮어써 결정론 확보.
+ * 각 봉 버킷의 enable 오버라이드를 프리셋 값으로 통째 교체해 결정론 확보(#699 §5).
  */
 export function applyPresetPayload(payload: LiveLayoutPresetPayload, presetId: string | null): void {
-  const flags: PresetIndicatorFlags = {};
-  const rawFlags = boolMap(payload.indicator_flags);
-  for (const key of PRESET_INDICATOR_FLAG_KEYS) {
-    if (key in rawFlags) flags[key] = rawFlags[key];
-  }
-
   useLivePageStore.getState().applyIndicatorPreset({
     paneOrder: normalizePaneOrder(payload.pane_order),
-    panePrefsByTimeframe: normalizePanePrefsByTimeframe(payload.pane_prefs_by_timeframe),
-    flags,
+    byTimeframeEnable: normalizePresetEnableByTimeframe(payload.by_timeframe_enable),
   });
 
   const layoutInput: LiveLayoutPresetInput = {
@@ -117,18 +96,12 @@ export function applyPresetPayload(payload: LiveLayoutPresetPayload, presetId: s
 }
 
 /** 기본 레이아웃(코드 기본값) payload — "기본으로 초기화"에 사용.
- *  지표 플래그의 기준은 v1 코어서 기본값이 아니라 **새 공장 기본값**(#697 —
- *  거래량+MA만 on)이다. v1 기본값을 쓰면 초기화가 호가 pane·POC 등 6종을
- *  전 버킷에 켜 새 베이스라인과 모순된다(코드 리뷰). */
+ *  by_timeframe_enable 를 비우면 적용 시 전 봉이 공장 기본값(#697 — 거래량+MA만
+ *  on)으로 리셋된다 — 별도 플래그 나열 없이 sparse 모델이 공장값을 그대로 태운다. */
 export function defaultPresetPayload(): LiveLayoutPresetPayload {
-  const flags: Record<string, boolean> = {};
-  for (const key of PRESET_INDICATOR_FLAG_KEYS) {
-    flags[key] = Boolean(FACTORY_INDICATOR_SETTINGS[key]);
-  }
   return {
     pane_order: normalizePaneOrder(undefined),
-    pane_prefs_by_timeframe: {},
-    indicator_flags: flags,
+    by_timeframe_enable: {},
     right_panel_width_px: DEFAULT_RIGHT_PANEL_WIDTH_PX,
     right_card_order: [...LIVE_CARD_KEYS],
     right_card_hidden: {},

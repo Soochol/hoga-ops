@@ -1601,8 +1601,9 @@ class StudyViewsFile(BaseModel):
 # 카드/지표 추가에 백엔드 변경이 필요 없다.
 class LiveLayoutPresetPayload(BaseModel):
     pane_order: list[str] = Field(default_factory=list)
-    pane_prefs_by_timeframe: dict[str, dict[str, bool]] = Field(default_factory=dict)
-    indicator_flags: dict[str, bool] = Field(default_factory=dict)
+    # 프리셋 = 4버킷(분/일/주/월) 전체의 지표 on/off 스냅샷(#698·#699 PR-D).
+    # 구 payload 의 pane_prefs_by_timeframe + indicator_flags 를 이 하나로 통합.
+    by_timeframe_enable: dict[str, dict[str, bool]] = Field(default_factory=dict)
     right_panel_width_px: int = 400
     right_card_order: list[str] = Field(default_factory=list)
     right_card_hidden: dict[str, bool] = Field(default_factory=dict)
@@ -1621,7 +1622,9 @@ class LiveLayoutPresetWriteRequest(BaseModel):
 
 
 class LiveLayoutPreset(BaseModel):
-    schema_version: Literal[1] = 1
+    # v2 (#699 PR-D): payload 가 by_timeframe_enable 로 바뀜. 구 v1 프리셋은
+    # 이 Literal 로 model_validate 가 거부 → 파일 격리(=폐기), 변환 없음.
+    schema_version: Literal[2] = 2
     id: str
     name: str
     payload: LiveLayoutPresetPayload
@@ -1638,5 +1641,5 @@ LiveLayoutPresetListRow = LiveLayoutPreset
 
 
 class LiveLayoutPresetsFile(BaseModel):
-    schema_version: int = 1
+    schema_version: int = 2
     presets: list[LiveLayoutPreset] = Field(default_factory=list)

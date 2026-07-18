@@ -14,7 +14,9 @@ from hoga.api.versioned_json_file import load_versioned_json_file
 
 # 화면 구성 프리셋 저장소 — study_views 와 동일한 versioned-JSON-manifest 패턴
 # (asyncio.Lock + load_versioned_json_file + atomic_write_json). ADR-0114 §4.
-_CURRENT_VERSION = 1
+# v2 (#699 PR-D): payload 가 by_timeframe_enable 로 통합됨. 구 v1 프리셋은
+# 폐기(변환 없음) — 아래 load_presets 가 stale 버전 파일을 빈 목록으로 대체한다.
+_CURRENT_VERSION = 2
 _lock = asyncio.Lock()
 
 
@@ -31,12 +33,17 @@ def _manifest_path(data_dir: Path) -> Path:
 
 
 def load_presets(data_dir: Path) -> LiveLayoutPresetsFile:
-    return load_versioned_json_file(
+    file = load_versioned_json_file(
         _manifest_path(data_dir),
         model=LiveLayoutPresetsFile,
         current_version=_CURRENT_VERSION,
         empty_factory=LiveLayoutPresetsFile,
     )
+    # 구버전 파일(schema_version < 현재)은 폐기 — payload 형식이 바뀌어 변환하지
+    # 않는다(#699 PR-D). 빈 목록으로 재시작하고, 다음 쓰기가 v2 로 덮어쓴다.
+    if file.schema_version < _CURRENT_VERSION:
+        return LiveLayoutPresetsFile()
+    return file
 
 
 def save_presets(data_dir: Path, file: LiveLayoutPresetsFile) -> None:
