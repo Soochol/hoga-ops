@@ -15,7 +15,7 @@ import ColorSwatchPicker from './ColorSwatchPicker';
 import ProgramTradeConfig from './ProgramTradeConfig';
 import BrokerLateEntryConfig from './BrokerLateEntryConfig';
 import {
-  panePrefsForTimeframe,
+  pickPanePrefs,
   type PanePrefKey,
   type PanePrefsIndicatorSource,
 } from './indicatorPaneProfiles';
@@ -127,7 +127,6 @@ export default function IndicatorPanel({ onClose, capabilities = STOCK_CAPABILIT
     programTradeEnabled: s.programTradeEnabled,
     foreignNetEnabled: s.foreignNetEnabled,
     institutionNetEnabled: s.institutionNetEnabled,
-    panePrefsByTimeframe: s.panePrefsByTimeframe,
   }));
   const setPanePrefForTimeframe = useLivePageStore((s) => s.setPanePrefForTimeframe);
 
@@ -153,7 +152,8 @@ export default function IndicatorPanel({ onClose, capabilities = STOCK_CAPABILIT
     }
     return true;
   });
-  const selectedPanePrefs = panePrefsForTimeframe(paneIndicators, timeframe);
+  // store 최상위 필드가 이미 현재 봉으로 resolve 된 투영(PR-A #699) — pick만 한다.
+  const selectedPanePrefs = pickPanePrefs(paneIndicators);
 
   // Each category maps to a master on/off toggle. Investor bars have an
   // informational detail pane (legend + daily note) but no per-slot config,

@@ -5,6 +5,7 @@ import userEvent from '@testing-library/user-event';
 import IndicatorPanel from './IndicatorPanel';
 import { useLivePageStore } from '../../state/livePage';
 import { useChartPrefsStore } from '../../state/chartPrefs';
+import { FACTORY_INDICATOR_SETTINGS } from '../../state/indicatorSettingsV2';
 
 function renderPanel(props: Partial<ComponentProps<typeof IndicatorPanel>> = {}) {
   const onClose = props.onClose ?? (() => {});
@@ -14,6 +15,13 @@ function renderPanel(props: Partial<ComponentProps<typeof IndicatorPanel>> = {})
 
 describe('IndicatorPanel', () => {
   beforeEach(() => {
+    localStorage.clear();
+    // 지표 슬라이스를 공장 상태로 되돌린다 — 최상위 투영·버킷·ambient 봉 모두.
+    useLivePageStore.setState({
+      ...FACTORY_INDICATOR_SETTINGS,
+      indicatorsByTimeframe: {},
+      indicatorTimeframe: '1m',
+    });
     useChartPrefsStore.getState().resetToDefaults();
   });
 
@@ -24,6 +32,7 @@ describe('IndicatorPanel', () => {
       fillStrengthEnabled: true,
       tradeVolumePocEnabled: true,
       volumeDistributionEnabled: true,
+      programTradeEnabled: true,
     });
     renderPanel();
     const checkboxes = screen.getAllByRole('checkbox');
@@ -122,26 +131,21 @@ describe('IndicatorPanel', () => {
     expect(program).toBeGreaterThan(foreign);
   });
 
-  it('총잔량 토글 클릭 → quoteTotalsEnabled 반전', () => {
-    useLivePageStore.setState({
-      quoteTotalsEnabled: true,
-      panePrefsByTimeframe: {},
-    });
+  it('총잔량 토글 클릭 → minute 버킷 기록 + ambient 투영 반전', () => {
+    useLivePageStore.setState({ quoteTotalsEnabled: true });
     renderPanel();
     fireEvent.click(screen.getByRole('checkbox', { name: '총잔량' }));
-    expect(useLivePageStore.getState().panePrefsByTimeframe.minute?.quoteTotalsEnabled).toBe(false);
-    expect(useLivePageStore.getState().quoteTotalsEnabled).toBe(true);
+    expect(useLivePageStore.getState().indicatorsByTimeframe.minute?.quoteTotalsEnabled).toBe(false);
+    // ambient(1m)와 같은 프로파일이므로 최상위 투영도 함께 뒤집힌다(PR-A).
+    expect(useLivePageStore.getState().quoteTotalsEnabled).toBe(false);
   });
 
-  it('프로그램 순매수 토글 클릭 → programTradeEnabled 반전', () => {
-    useLivePageStore.setState({
-      programTradeEnabled: true,
-      panePrefsByTimeframe: {},
-    });
+  it('프로그램 순매수 토글 클릭 → minute 버킷 기록 + ambient 투영 반전', () => {
+    useLivePageStore.setState({ programTradeEnabled: true });
     renderPanel();
     fireEvent.click(screen.getByRole('checkbox', { name: '프로그램 순매수' }));
-    expect(useLivePageStore.getState().panePrefsByTimeframe.minute?.programTradeEnabled).toBe(false);
-    expect(useLivePageStore.getState().programTradeEnabled).toBe(true);
+    expect(useLivePageStore.getState().indicatorsByTimeframe.minute?.programTradeEnabled).toBe(false);
+    expect(useLivePageStore.getState().programTradeEnabled).toBe(false);
   });
 
   it('프로그램 순매수 라벨 클릭 → 설명 표시', () => {
@@ -236,43 +240,34 @@ describe('IndicatorPanel', () => {
 
   it('clicking 외국인 순매수량 toggles foreignNetEnabled', async () => {
     const { useLivePageStore } = await import('../../state/livePage');
-    useLivePageStore.setState({
-      foreignNetEnabled: false,
-      panePrefsByTimeframe: {},
-    });
+    useLivePageStore.setState({ foreignNetEnabled: false });
     renderPanel();
     fireEvent.click(screen.getByRole('checkbox', { name: '외국인 순매수량' }));
-    expect(useLivePageStore.getState().panePrefsByTimeframe.minute?.foreignNetEnabled).toBe(true);
-    expect(useLivePageStore.getState().foreignNetEnabled).toBe(false);
+    expect(useLivePageStore.getState().indicatorsByTimeframe.minute?.foreignNetEnabled).toBe(true);
+    expect(useLivePageStore.getState().foreignNetEnabled).toBe(true);
   });
 
   it('clicking 기관 순매수량 toggles institutionNetEnabled', async () => {
     const { useLivePageStore } = await import('../../state/livePage');
-    useLivePageStore.setState({
-      institutionNetEnabled: false,
-      panePrefsByTimeframe: {},
-    });
+    useLivePageStore.setState({ institutionNetEnabled: false });
     renderPanel();
     fireEvent.click(screen.getByRole('checkbox', { name: '기관 순매수량' }));
-    expect(useLivePageStore.getState().panePrefsByTimeframe.minute?.institutionNetEnabled).toBe(true);
-    expect(useLivePageStore.getState().institutionNetEnabled).toBe(false);
+    expect(useLivePageStore.getState().indicatorsByTimeframe.minute?.institutionNetEnabled).toBe(true);
+    expect(useLivePageStore.getState().institutionNetEnabled).toBe(true);
   });
 
   it('clicking 거래량 toggles volumeEnabled', async () => {
     const { useLivePageStore } = await import('../../state/livePage');
-    useLivePageStore.setState({
-      volumeEnabled: true,
-      panePrefsByTimeframe: {},
-    });
+    useLivePageStore.setState({ volumeEnabled: true });
     renderPanel();
     const vol = screen.getByRole('checkbox', { name: '거래량' }) as HTMLButtonElement;
-    // 거래량은 active 카테고리 — 기본 켜짐(default true), 클릭하면 토글.
+    // 거래량은 active 카테고리 — 기본 켜짐(공장값 true), 클릭하면 토글.
     expect(vol.disabled).toBe(false);
     fireEvent.click(vol);
-    expect(useLivePageStore.getState().panePrefsByTimeframe.minute?.volumeEnabled).toBe(false);
-    expect(useLivePageStore.getState().volumeEnabled).toBe(true);
+    expect(useLivePageStore.getState().indicatorsByTimeframe.minute?.volumeEnabled).toBe(false);
+    expect(useLivePageStore.getState().volumeEnabled).toBe(false);
     fireEvent.click(vol);
-    expect(useLivePageStore.getState().panePrefsByTimeframe.minute?.volumeEnabled).toBe(true);
+    expect(useLivePageStore.getState().indicatorsByTimeframe.minute?.volumeEnabled).toBe(true);
     expect(useLivePageStore.getState().volumeEnabled).toBe(true);
   });
 
@@ -286,49 +281,46 @@ describe('IndicatorPanel', () => {
     expect(screen.queryByLabelText('시간봉별 pane profile')).toBeNull();
   });
 
-  it('reads pane checkbox state from the current chart timeframe profile', () => {
+  it('reads pane checkbox state from the ambient timeframe bucket', () => {
     useLivePageStore.setState({
-      volumeEnabled: true,
-      panePrefsByTimeframe: {
+      indicatorsByTimeframe: {
         D: { volumeEnabled: false },
         W: { volumeEnabled: true },
       },
     });
+    // 페이지가 ambient 봉을 공급하면 store 가 그 봉으로 투영한다(PR-A).
+    useLivePageStore.getState().setIndicatorTimeframe('D');
 
     const view = renderPanel({ timeframe: 'D' });
     expect(screen.getByRole('checkbox', { name: '거래량' })).toHaveAttribute('aria-checked', 'false');
 
+    useLivePageStore.getState().setIndicatorTimeframe('W');
     view.rerender(<IndicatorPanel onClose={() => {}} timeframe="W" />);
     expect(screen.getByRole('checkbox', { name: '거래량' })).toHaveAttribute('aria-checked', 'true');
   });
 
-  it('writes pane category changes to the current chart timeframe profile only', () => {
-    useLivePageStore.setState({
-      volumeEnabled: true,
-      panePrefsByTimeframe: {},
-    });
+  it('writes pane category changes to the drawer timeframe bucket only', () => {
+    useLivePageStore.setState({ volumeEnabled: true });
 
     renderPanel({ timeframe: 'D' });
 
     fireEvent.click(screen.getByRole('checkbox', { name: '거래량' }));
 
-    expect(useLivePageStore.getState().panePrefsByTimeframe.D?.volumeEnabled).toBe(false);
-    expect(useLivePageStore.getState().panePrefsByTimeframe.minute?.volumeEnabled).toBeUndefined();
+    expect(useLivePageStore.getState().indicatorsByTimeframe.D?.volumeEnabled).toBe(false);
+    expect(useLivePageStore.getState().indicatorsByTimeframe.minute?.volumeEnabled).toBeUndefined();
+    // ambient(1m)와 다른 프로파일(D)에 쓴 것이므로 최상위 투영은 그대로다.
     expect(useLivePageStore.getState().volumeEnabled).toBe(true);
   });
 
   it('uses the minute profile for every minute chart timeframe', () => {
-    useLivePageStore.setState({
-      volumeEnabled: true,
-      panePrefsByTimeframe: {},
-    });
+    useLivePageStore.setState({ volumeEnabled: true });
 
     renderPanel({ timeframe: '3m' });
 
     fireEvent.click(screen.getByRole('checkbox', { name: '거래량' }));
 
-    expect(useLivePageStore.getState().panePrefsByTimeframe.minute?.volumeEnabled).toBe(false);
-    expect(useLivePageStore.getState().panePrefsByTimeframe.D?.volumeEnabled).toBeUndefined();
+    expect(useLivePageStore.getState().indicatorsByTimeframe.minute?.volumeEnabled).toBe(false);
+    expect(useLivePageStore.getState().indicatorsByTimeframe.D?.volumeEnabled).toBeUndefined();
   });
 
   it('clicking 이동평균선 checkbox toggles movingAverageEnabled', async () => {

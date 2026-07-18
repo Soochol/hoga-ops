@@ -2,6 +2,15 @@ import type { LiveTimeframe } from '../../state/livePage';
 import type { PersistedIndicators } from '../../state/liveIndicatorsPersistence';
 import type { PaneToggles } from '../paneSpecsForTimeframe';
 
+/**
+ * Timeframe 프로파일 키(분/D/W/M 4버킷)와 pane 토글 7종의 어휘.
+ *
+ * PR-A(#699) 이후 per-timeframe 해석은 store 가 소유한다 — 최상위 지표 필드는
+ * 항상 현재 봉으로 resolve 된 투영이므로, 이 모듈의 함수들은 병합 없이 그 투영을
+ * 골라 담기만 한다. `normalizePanePrefsByTimeframe` 는 구 v1 블롭(전환 시드)과
+ * 프리셋 payload(PR-D 전 구 형식) 파싱용으로 남는다.
+ */
+
 export type IndicatorPaneProfileKey = 'minute' | 'D' | 'W' | 'M';
 
 export type IndicatorPanePrefs = {
@@ -16,20 +25,8 @@ export type IndicatorPanePrefs = {
 
 export type PanePrefKey = keyof IndicatorPanePrefs;
 
-export type PanePrefsIndicatorSource = Pick<
-  PersistedIndicators,
-  | 'volumeEnabled'
-  | 'quoteTotalsEnabled'
-  | 'ratioEnabled'
-  | 'fillStrengthEnabled'
-  | 'programTradeEnabled'
-  | 'foreignNetEnabled'
-  | 'institutionNetEnabled'
-  | 'panePrefsByTimeframe'
->;
-
-export type IndicatorPanePrefsByTimeframe =
-  Record<IndicatorPaneProfileKey, IndicatorPanePrefs>;
+/** 소비자가 store 에서 골라오는, 이미 resolve 된 pane 토글 7종. */
+export type PanePrefsIndicatorSource = Pick<PersistedIndicators, PanePrefKey>;
 
 export type PersistedPanePrefsByTimeframe =
   Partial<Record<IndicatorPaneProfileKey, Partial<IndicatorPanePrefs>>>;
@@ -62,6 +59,7 @@ export function profileKeyForTimeframe(tf: LiveTimeframe): IndicatorPaneProfileK
   return tf === 'D' || tf === 'W' || tf === 'M' ? tf : 'minute';
 }
 
+/** 구 v1 블롭·구 프리셋 payload 의 per-timeframe pane 서브트리 파서. */
 export function normalizePanePrefsByTimeframe(raw: unknown): PersistedPanePrefsByTimeframe {
   if (!raw || typeof raw !== 'object' || Array.isArray(raw)) return {};
   const normalized: PersistedPanePrefsByTimeframe = {};
@@ -79,7 +77,8 @@ export function normalizePanePrefsByTimeframe(raw: unknown): PersistedPanePrefsB
   return normalized;
 }
 
-export function legacyPanePrefsFromIndicators(indicators: PanePrefsIndicatorSource): IndicatorPanePrefs {
+/** resolve 된 store 슬라이스에서 pane 토글 7종을 골라 담는다(병합 없음). */
+export function pickPanePrefs(indicators: PanePrefsIndicatorSource): IndicatorPanePrefs {
   return {
     volumeEnabled: indicators.volumeEnabled,
     quoteTotalsEnabled: indicators.quoteTotalsEnabled,
@@ -91,31 +90,14 @@ export function legacyPanePrefsFromIndicators(indicators: PanePrefsIndicatorSour
   };
 }
 
-function panePrefsByTimeframeFromIndicators(indicators: PanePrefsIndicatorSource): PersistedPanePrefsByTimeframe {
-  return normalizePanePrefsByTimeframe(indicators.panePrefsByTimeframe);
-}
-
-export function panePrefsForTimeframe(
-  indicators: PanePrefsIndicatorSource,
-  timeframe: LiveTimeframe,
-): IndicatorPanePrefs {
-  const legacy = legacyPanePrefsFromIndicators(indicators);
-  const profileKey = profileKeyForTimeframe(timeframe);
-  const byTimeframe = panePrefsByTimeframeFromIndicators(indicators);
-  return {
-    ...legacy,
-    ...(byTimeframe[profileKey] ?? {}),
-  };
-}
-
-export function resolvePaneTogglesForTimeframe(input: {
+/** resolve 된 pane 토글에 차트 국지 override 를 얹어 PaneToggles 를 만든다. */
+export function resolvePaneToggles(input: {
   indicators: PanePrefsIndicatorSource;
-  timeframe: LiveTimeframe;
   forceHogaPanes?: boolean;
   hogaPanes?: boolean;
   override?: Partial<PaneToggles>;
 }): PaneToggles {
-  const prefs = panePrefsForTimeframe(input.indicators, input.timeframe);
+  const prefs = pickPanePrefs(input.indicators);
   return {
     foreignNet: prefs.foreignNetEnabled,
     institutionNet: prefs.institutionNetEnabled,

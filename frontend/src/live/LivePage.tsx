@@ -27,7 +27,7 @@ import {
 } from '../studyViews/studySaveSource';
 import { LiveStudyViewSaveButton } from '../studyViews/LiveStudyViewSaveButton';
 import IndicatorPanel from './indicators/IndicatorPanel';
-import { panePrefsForTimeframe, type PanePrefsIndicatorSource } from './indicators/indicatorPaneProfiles';
+import { pickPanePrefs, type PanePrefsIndicatorSource } from './indicators/indicatorPaneProfiles';
 import { useDailyMaRevealGate } from './indicators/useDailyMaRevealGate';
 import LiveSettingsModal from './LiveSettingsModal';
 import { SingleCodeCollectDialog } from '../heatmap/CollectDialog';
@@ -130,11 +130,16 @@ export function LivePage() {
     programTradeEnabled: s.programTradeEnabled,
     foreignNetEnabled: s.foreignNetEnabled,
     institutionNetEnabled: s.institutionNetEnabled,
-    panePrefsByTimeframe: s.panePrefsByTimeframe,
   }));
+  // /live 의 ambient 지표 봉 동기화 — 세터 경로가 이미 투영하지만, /study 에서
+  // 돌아온 마운트 시점의 재동기화는 이 effect 가 책임진다(PR-A #699).
+  const setIndicatorTimeframe = useLivePageStore((s) => s.setIndicatorTimeframe);
+  useEffect(() => {
+    setIndicatorTimeframe(timeframe);
+  }, [setIndicatorTimeframe, timeframe]);
   const activePanePrefs = useMemo(
-    () => panePrefsForTimeframe(paneIndicators, timeframe),
-    [paneIndicators, timeframe],
+    () => pickPanePrefs(paneIndicators),
+    [paneIndicators],
   );
   const investorNetEnabled = activePanePrefs.foreignNetEnabled || activePanePrefs.institutionNetEnabled;
   useDocumentTitle(activeCode);

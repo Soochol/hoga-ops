@@ -27,7 +27,8 @@ beforeEach(() => {
   });
   useLivePageStore.setState({
     paneOrder: [...CANON_PANES] as never,
-    panePrefsByTimeframe: {},
+    indicatorsByTimeframe: {},
+    indicatorTimeframe: '1m',
     volumeEnabled: true,
     ratioEnabled: true,
     movingAverageEnabled: true,
@@ -82,19 +83,28 @@ describe('applyPresetPayload', () => {
     expect(useLiveLayoutStore.getState().lastAppliedPresetId).toBe('preset-1');
   });
 
-  it('overwrites both the flat pane flags and the timeframe pref map', () => {
-    // stale flat: ratioEnabled=false 로 시작.
+  it('applies flags to every bucket and pane map slices to their buckets (PR-D 전 브리지)', () => {
+    // stale 투영: ratioEnabled=false 로 시작.
     useLivePageStore.setState({ ratioEnabled: false });
     applyPresetPayload(basePayload({
       indicator_flags: { ratioEnabled: true, volumeEnabled: false },
       pane_prefs_by_timeframe: { minute: { fillStrengthEnabled: false } },
     }), null);
 
-    expect(useLivePageStore.getState().ratioEnabled).toBe(true); // flat 덮어씀
+    // ambient(minute) 투영이 프리셋 결과를 반영한다.
+    expect(useLivePageStore.getState().ratioEnabled).toBe(true);
     expect(useLivePageStore.getState().volumeEnabled).toBe(false);
-    expect(useLivePageStore.getState().panePrefsByTimeframe).toEqual({
-      minute: { fillStrengthEnabled: false },
+    // flags 는 4버킷 전부에(#698: 프리셋 = 4버킷 전체 스냅샷), pane 맵은 해당 버킷에만.
+    const byTimeframe = useLivePageStore.getState().indicatorsByTimeframe;
+    expect(byTimeframe.minute).toMatchObject({
+      ratioEnabled: true,
+      volumeEnabled: false,
+      fillStrengthEnabled: false,
     });
+    expect(byTimeframe.D).toMatchObject({ ratioEnabled: true, volumeEnabled: false });
+    expect(byTimeframe.D?.fillStrengthEnabled).toBeUndefined();
+    expect(byTimeframe.W).toMatchObject({ ratioEnabled: true, volumeEnabled: false });
+    expect(byTimeframe.M).toMatchObject({ ratioEnabled: true, volumeEnabled: false });
   });
 
   it('persists the applied state to both storage keys', () => {
@@ -103,7 +113,7 @@ describe('applyPresetPayload', () => {
       right_panel_width_px: 455,
     }), 'p2');
 
-    const indicators = JSON.parse(localStorage.getItem('live.indicators.v1') ?? '{}');
+    const indicators = JSON.parse(localStorage.getItem('live.indicators.v2') ?? '{}');
     expect(indicators.paneOrder.slice(0, 3)).toEqual(['candle', 'ratio', 'volume']);
 
     const layout = JSON.parse(localStorage.getItem('live.layout.v1') ?? '{}');

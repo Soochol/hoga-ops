@@ -10,7 +10,12 @@ import {
 import { normalizeKeyOrder } from '../../state/keyOrder';
 import { normalizePaneOrder } from '../../chart/paneOrder';
 import { mergeLiveIndicatorPrefs } from '../../state/liveIndicatorsPersistence';
-import { normalizePanePrefsByTimeframe } from '../indicators/indicatorPaneProfiles';
+import {
+  INDICATOR_PANE_PREF_KEYS,
+  normalizePanePrefsByTimeframe,
+} from '../indicators/indicatorPaneProfiles';
+
+const PANE_PREF_SLICE_KEYS = INDICATOR_PANE_PREF_KEYS;
 import type { LiveLayoutPresetPayload } from '../../api/liveLayoutPresets';
 import {
   PRESET_INDICATOR_FLAG_KEYS,
@@ -53,9 +58,23 @@ export function capturePresetPayload(): LiveLayoutPresetPayload {
     flags[key] = Boolean((page as unknown as Record<string, unknown>)[key]);
   }
 
+  // PR-A(#699) 이후 per-timeframe 원본은 indicatorsByTimeframe(4버킷 sparse)다.
+  // PR-D(payload v2) 전 브리지: 구 payload 형식 유지를 위해 각 버킷에서 pane 토글
+  // 7종 오버라이드만 슬라이스해 pane_prefs_by_timeframe 로 캡처한다.
+  const panePrefsByTimeframe = Object.fromEntries(
+    Object.entries(page.indicatorsByTimeframe).flatMap(([profileKey, bucket]) => {
+      const slice = Object.fromEntries(
+        PANE_PREF_SLICE_KEYS.flatMap((key) => (
+          typeof bucket?.[key] === 'boolean' ? [[key, bucket[key]]] : []
+        )),
+      );
+      return Object.keys(slice).length > 0 ? [[profileKey, slice]] : [];
+    }),
+  );
+
   return {
     pane_order: [...page.paneOrder],
-    pane_prefs_by_timeframe: JSON.parse(JSON.stringify(page.panePrefsByTimeframe)),
+    pane_prefs_by_timeframe: panePrefsByTimeframe,
     indicator_flags: flags,
     right_panel_width_px: layout.rightPanelWidthPx,
     right_card_order: [...layout.rightCardOrder],

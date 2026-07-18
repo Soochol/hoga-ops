@@ -19,7 +19,7 @@ import { createVirtualAxis, type VirtualAxis } from '../util/virtualAxis';
 import RangeSeriesPane, { type SeriesLegendMeta } from '../chart/RangeSeriesPane';
 import { usePaneLegendRegistry } from './indicators/paneLegendRegistry';
 import { paneSpecsForTimeframe } from './paneSpecsForTimeframe';
-import { resolvePaneTogglesForTimeframe } from './indicators/indicatorPaneProfiles';
+import { resolvePaneToggles } from './indicators/indicatorPaneProfiles';
 import DayBoundaryOverlay from '../chart/DayBoundaryOverlay';
 import {
   useLivePageStore,
@@ -28,7 +28,6 @@ import {
   isMinuteTimeframe,
   isCalendarTimeframe,
 } from '../state/livePage';
-import type { PersistedIndicators } from '../state/liveIndicatorsPersistence';
 import { useActivePrefs, useChartPrefsStore, type ChartViewPrefs } from '../state/chartPrefs';
 import type { LiveVenueOption } from '../state/liveVenue';
 import type { LiveTodayAskPeak, LiveTodayBidPeak } from '../api/liveSeries';
@@ -1153,7 +1152,6 @@ export function LiveChartRoot({
       programTradeEnabled: s.programTradeEnabled,
       foreignNetEnabled: s.foreignNetEnabled,
       institutionNetEnabled: s.institutionNetEnabled,
-      panePrefsByTimeframe: s.panePrefsByTimeframe,
     })),
   );
   // 사용자 소유 pane 순서(ADR-0114 §3) — paneSpecsForTimeframe 의 3번째 인자로 전달.
@@ -1324,9 +1322,10 @@ export function LiveChartRoot({
     ],
   );
   const activePaneToggles = useMemo(
-    () => resolvePaneTogglesForTimeframe({
-      indicators: indicatorPrefs as PersistedIndicators,
-      timeframe,
+    // 최상위 지표 필드는 store 가 현재 봉으로 resolve 해 둔 투영이라(PR-A #699)
+    // timeframe 병합 없이 국지 override 만 얹는다.
+    () => resolvePaneToggles({
+      indicators: indicatorPrefs,
       forceHogaPanes,
       hogaPanes: paneTogglesOverride?.hogaPanes,
       override: {
@@ -1350,7 +1349,6 @@ export function LiveChartRoot({
     [
       forceHogaPanes,
       indicatorPrefs,
-      timeframe,
       paneTogglesOverride?.hogaPanes,
       paneTogglesOverride?.volumeEnabled,
       paneTogglesOverride?.quoteTotalsEnabled,
