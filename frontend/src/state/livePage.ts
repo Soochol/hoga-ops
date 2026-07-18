@@ -1,7 +1,7 @@
 import { create } from 'zustand';
 import type { MASource } from '../chart/projectors/movingAverage';
 import type { LineStyle, PaneId } from '../chart/drawing/types';
-import { normalizePaneOrder } from '../chart/paneOrder';
+import { normalizePaneOrder, normalizePaneStretch, type PaneStretchMap } from '../chart/paneOrder';
 import {
   PRESET_INDICATOR_FLAG_KEYS,
   type PresetIndicatorFlags,
@@ -164,11 +164,15 @@ type Store = Persisted & PersistedIndicators & {
   /** pane 순서를 통째로 교체한다(레전드 ↑/↓ 의 reorderVisible 결과; candle 은
    *  normalizePaneOrder 가 index 0 으로 고정, ADR-0114 §3). */
   setPaneOrder: (order: PaneId[]) => void;
+  /** separator 드래그로 조정된 Pane 크기 가중치를 병합 저장한다(부분 patch —
+   *  현재 안 마운트된 pane 의 저장값은 보존). */
+  setPaneStretch: (patch: PaneStretchMap) => void;
   /** 레이아웃 프리셋의 지표 슬라이스를 한 번에 적용(단일 set + 단일 persist, ADR-0114 §4). */
   applyIndicatorPreset: (input: {
     paneOrder: PaneId[];
     panePrefsByTimeframe: PersistedPanePrefsByTimeframe;
     flags: PresetIndicatorFlags;
+    paneStretch: PaneStretchMap;
   }) => void;
   /** 모든 지표 설정(색·on/off·MA·per-timeframe)을 기본값으로 되돌린다. pane 배열
    *  순서(레이아웃, ADR-0114)는 사용자 구성이라 보존한다. chartPrefs(수치/토글)는
@@ -359,6 +363,7 @@ function snapshotIndicators(get: () => Store): PersistedIndicators {
     dailyMovingAverageHidden: s.dailyMovingAverageHidden,
     panePrefsByTimeframe: s.panePrefsByTimeframe,
     paneOrder: s.paneOrder,
+    paneStretch: s.paneStretch,
   };
 }
 
@@ -495,7 +500,13 @@ export const useLivePageStore = create<Store>((set, get) => ({
     persistIndicators(snapshotIndicators(get));
   },
 
-  applyIndicatorPreset: ({ paneOrder, panePrefsByTimeframe, flags }) => {
+  setPaneStretch: (patch) => {
+    const next = normalizePaneStretch({ ...get().paneStretch, ...patch });
+    set({ paneStretch: next });
+    persistIndicators(snapshotIndicators(get));
+  },
+
+  applyIndicatorPreset: ({ paneOrder, panePrefsByTimeframe, flags, paneStretch }) => {
     // 화이트리스트 키만 반영 — payload 에 든 미지의 키가 store 로 새지 않게.
     const flagPatch: PresetIndicatorFlags = {};
     for (const key of PRESET_INDICATOR_FLAG_KEYS) {
@@ -505,15 +516,17 @@ export const useLivePageStore = create<Store>((set, get) => ({
     set({
       paneOrder: normalizePaneOrder(paneOrder),
       panePrefsByTimeframe: normalizePanePrefsByTimeframe(panePrefsByTimeframe),
+      paneStretch: normalizePaneStretch(paneStretch),
       ...flagPatch,
     });
     persistIndicators(snapshotIndicators(get));
   },
 
   resetIndicators: () => {
-    // 전 지표 기본값 = 빈 입력을 정규화한 결과. 레이아웃(paneOrder)만 현재 값 유지.
+    // 전 지표 기본값 = 빈 입력을 정규화한 결과. 레이아웃(paneOrder·paneStretch)만
+    // 현재 값 유지 — 크기 리셋은 프리셋 메뉴 "기본 레이아웃으로 초기화"가 담당.
     const defaults = mergeLiveIndicatorPrefs(undefined);
-    set({ ...defaults, paneOrder: get().paneOrder });
+    set({ ...defaults, paneOrder: get().paneOrder, paneStretch: get().paneStretch });
     persistIndicators(snapshotIndicators(get));
   },
 

@@ -4025,7 +4025,9 @@ describe('LiveChartRoot wheel interactions wiring', () => {
     // Dedicated --chart-pane-divider (dark fallback). 2026-07-15 완화: 이전
     // #63636F(Δ~80)는 화면 최강 선이라 border-strong 근처 #3a3a42(Δ~35)로 낮췄다.
     expect(options.layout?.panes?.separatorColor).toBe('#3a3a42');
-    expect(options.layout?.panes?.separatorHoverColor).toBe('#3a3a42');
+    // 호버는 DESIGN.md 의 승인된 --tint-selection(primary hover, accent 추적)이다
+    // (#703). 테스트 DOM 엔 테마 CSS 가 없어 TOKEN_SPEC 폴백값으로 해석된다.
+    expect(options.layout?.panes?.separatorHoverColor).toBe('rgba(240, 180, 41, 0.10)');
     expect(options.layout?.panes?.separatorHoverColor).not.toBe(options.layout?.textColor);
   });
 
@@ -4152,5 +4154,222 @@ describe('LiveChartRoot wheel interactions wiring', () => {
     const last = ts.setVisibleLogicalRange.mock.calls.at(-1)![0] as { from: number; to: number };
     expect(last.to).toBe(100);
     expect(last.from).toBeCloseTo(100 - 100 * Math.exp(0.1), 6); // ≈ -10.517
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Pane 크기 가중치 (Pane Stretch, #703) — separator 드래그 영속화 + 스냅백 방지
+// ---------------------------------------------------------------------------
+
+describe('LiveChartRoot pane stretch (Pane 크기 가중치, #703)', () => {
+  beforeEach(() => {
+    useChartPrefsStore.getState().resetToDefaults();
+    useLivePageStore.setState({ historicalFromDate: null, paneStretch: {} });
+    vi.mocked(createChartEx).mockClear();
+  });
+
+  const makePane = (stretch: number) => ({
+    setStretchFactor: vi.fn(),
+    getStretchFactor: vi.fn(() => stretch),
+    // PaneLegendOverlay 가 pane top 오프셋 계산에 사용한다(드래그 캡처는 아님).
+    getHeight: vi.fn(() => 100),
+  });
+
+  // 1m 기본 토글 = candle, volume, quote-totals, ratio, fill-strength,
+  // program-trade 6개 pane.
+  const makeChartWithPanes = (panes: ReturnType<typeof makePane>[]) => ({
+    addSeries: vi.fn(() => ({
+      setData: vi.fn(),
+      update: vi.fn(),
+      removeSeries: vi.fn(),
+      applyOptions: vi.fn(),
+      priceScale: vi.fn(() => ({ applyOptions: vi.fn() })),
+      createPriceLine: vi.fn(() => ({ applyOptions: vi.fn() })),
+      removePriceLine: vi.fn(),
+      attachPrimitive: vi.fn(),
+      detachPrimitive: vi.fn(),
+      setMarkers: vi.fn(),
+    })),
+    removeSeries: vi.fn(),
+    timeScale: vi.fn(() => ({
+      subscribeVisibleTimeRangeChange: vi.fn(),
+      unsubscribeVisibleTimeRangeChange: vi.fn(),
+      subscribeVisibleLogicalRangeChange: vi.fn(),
+      unsubscribeVisibleLogicalRangeChange: vi.fn(),
+      applyOptions: vi.fn(),
+      fitContent: vi.fn(),
+      scrollToRealTime: vi.fn(),
+      scrollToPosition: vi.fn(),
+      setVisibleLogicalRange: vi.fn(),
+      getVisibleLogicalRange: vi.fn(() => null),
+      getVisibleRange: vi.fn(() => null),
+      setVisibleRange: vi.fn(),
+      timeToCoordinate: vi.fn(() => null),
+      coordinateToTime: vi.fn(() => null),
+      coordinateToLogical: vi.fn(() => null),
+      width: vi.fn(() => 800),
+      timeToIndex: vi.fn(() => null),
+    })),
+    panes: vi.fn(() => panes),
+    remove: vi.fn(),
+    resize: vi.fn(),
+    applyOptions: vi.fn(),
+    options: vi.fn(() => ({ timeScale: { minBarSpacing: 0.5 } })),
+    subscribeCrosshairMove: vi.fn(),
+    unsubscribeCrosshairMove: vi.fn(),
+    subscribeClick: vi.fn(),
+    unsubscribeClick: vi.fn(),
+    chartElement: vi.fn(() => ({ clientWidth: 800, clientHeight: 400 })),
+  });
+
+  const flushRaf = async () => {
+    await act(async () => {
+      await new Promise((resolve) => requestAnimationFrame(resolve));
+      await new Promise((resolve) => requestAnimationFrame(resolve));
+    });
+  };
+
+  it('applies saved Pane Stretch over spec defaults, and keeps it across bundle churn', async () => {
+    const panes = Array.from({ length: 6 }, () => makePane(1));
+    const chart = makeChartWithPanes(panes);
+    vi.mocked(createChartEx).mockReturnValue(chart as never);
+    useLivePageStore.setState({ paneStretch: { candle: 2.5 } });
+
+    const { rerender } = render(
+      <LiveChartRoot
+        code="005930"
+        timeframe="1m"
+        bundle={DEFAULT_BUNDLE}
+        clampEngaged={false}
+        isPastCandlesLoading={false}
+      />,
+      { wrapper },
+    );
+    await flushRaf();
+
+    // 저장값 우선(candle=2.5), 미저장 pane 은 스펙 기본값(volume=0.3).
+    expect(panes[0].setStretchFactor).toHaveBeenCalledWith(2.5);
+    expect(panes[1].setStretchFactor).toHaveBeenCalledWith(0.3);
+
+    // 스냅백 회귀 가드: 캔들 번들 identity 가 바뀌어도(실시간 틱·refetch 모사)
+    // 재적용값은 여전히 저장값이다 — 스펙 기본값(1.4)으로 되돌리지 않는다.
+    panes[0].setStretchFactor.mockClear();
+    rerender(
+      <LiveChartRoot
+        code="005930"
+        timeframe="1m"
+        bundle={{ ...DEFAULT_BUNDLE }}
+        clampEngaged={false}
+        isPastCandlesLoading={false}
+      />,
+    );
+    await flushRaf();
+    const calls = panes[0].setStretchFactor.mock.calls;
+    expect(calls.length).toBeGreaterThan(0);
+    expect(calls.every(([v]) => v === 2.5)).toBe(true);
+  });
+
+  it('captures pane stretch to the store when a separator drag ends', async () => {
+    const panes = [3.3, 0.7, 0.5, 0.4, 0.4, 0.3].map(makePane);
+    const chart = makeChartWithPanes(panes);
+    vi.mocked(createChartEx).mockReturnValue(chart as never);
+
+    render(
+      <LiveChartRoot
+        code="005930"
+        timeframe="1m"
+        bundle={DEFAULT_BUNDLE}
+        clampEngaged={false}
+        isPastCandlesLoading={false}
+      />,
+      { wrapper },
+    );
+    await flushRaf();
+
+    // lwc separator 핸들 모사 — 차트 내부에서 inline cursor:row-resize 를 가진
+    // 유일한 요소라는 계약으로 식별된다(LiveChartRoot 드래그 캡처 참조).
+    const el = vi.mocked(createChartEx).mock.calls.at(-1)![0] as HTMLElement;
+    const handle = document.createElement('div');
+    handle.style.cursor = 'row-resize';
+    el.appendChild(handle);
+
+    await act(async () => {
+      handle.dispatchEvent(new Event('pointerdown', { bubbles: true }));
+      window.dispatchEvent(new Event('pointerup'));
+    });
+
+    expect(useLivePageStore.getState().paneStretch).toEqual({
+      candle: 3.3,
+      volume: 0.7,
+      'quote-totals': 0.5,
+      ratio: 0.4,
+      'fill-strength': 0.4,
+      'program-trade': 0.3,
+    });
+    // 영속까지: live.indicators.v1 에 실렸는지.
+    const persisted = JSON.parse(localStorage.getItem('live.indicators.v1') ?? '{}');
+    expect(persisted.paneStretch?.candle).toBe(3.3);
+  });
+
+  it('ignores pointerdown that does not start on a separator handle', async () => {
+    const panes = Array.from({ length: 6 }, () => makePane(9.9));
+    const chart = makeChartWithPanes(panes);
+    vi.mocked(createChartEx).mockReturnValue(chart as never);
+
+    render(
+      <LiveChartRoot
+        code="005930"
+        timeframe="1m"
+        bundle={DEFAULT_BUNDLE}
+        clampEngaged={false}
+        isPastCandlesLoading={false}
+      />,
+      { wrapper },
+    );
+    await flushRaf();
+
+    const el = vi.mocked(createChartEx).mock.calls.at(-1)![0] as HTMLElement;
+    await act(async () => {
+      el.dispatchEvent(new Event('pointerdown', { bubbles: true }));
+      window.dispatchEvent(new Event('pointerup'));
+    });
+
+    expect(useLivePageStore.getState().paneStretch).toEqual({});
+  });
+
+  it('does not leak the drag pointerup listener when the chart unmounts mid-drag', async () => {
+    const panes = [3.3, 0.7, 0.5, 0.4, 0.4, 0.3].map(makePane);
+    const chart = makeChartWithPanes(panes);
+    vi.mocked(createChartEx).mockReturnValue(chart as never);
+
+    const { unmount } = render(
+      <LiveChartRoot
+        code="005930"
+        timeframe="1m"
+        bundle={DEFAULT_BUNDLE}
+        clampEngaged={false}
+        isPastCandlesLoading={false}
+      />,
+      { wrapper },
+    );
+    await flushRaf();
+
+    const el = vi.mocked(createChartEx).mock.calls.at(-1)![0] as HTMLElement;
+    const handle = document.createElement('div');
+    handle.style.cursor = 'row-resize';
+    el.appendChild(handle);
+
+    // 드래그 시작 후 종료 없이 언마운트 — cleanup 이 pointerup 리스너를 떼야 한다.
+    await act(async () => {
+      handle.dispatchEvent(new Event('pointerdown', { bubbles: true }));
+    });
+    useLivePageStore.setState({ paneStretch: {} });
+    unmount();
+
+    // 언마운트 후 뒤늦게 도착한 pointerup 은 stale 클로저를 발화시키지 않는다.
+    await act(async () => {
+      window.dispatchEvent(new Event('pointerup'));
+    });
+    expect(useLivePageStore.getState().paneStretch).toEqual({});
   });
 });

@@ -40,6 +40,10 @@ _Avoid_: "snapshot", "fixed view", "captured chart"; saying it restores saved in
 The current analysis indicator setup shared by `/live` and `/study`. It is not owned by a saved study view or a live tab: `/study` v2 reloads the saved period and re-analyzes it with this current setup, while `/live` renders the active instrument with the same setup. Pane visibility may be profiled by **LiveTimeframe** group (분봉 / 일봉 / 주봉 / 월봉), but the setup remains shared across `/live` and `/study`.
 _Avoid_: "`/live` indicator settings" when discussing `/study` behavior; saying a v2 **복기뷰** restores or stores indicator state.
 
+**Pane 크기 가중치 (Pane Stretch)**:
+The user-owned relative height weight of each chart pane kind (candle, volume, 호가비, …) inside the `/live`·`/study` chart, adjusted by dragging the pane separator. One global set keyed by pane kind — not per **LiveTimeframe** and not per page: a weight adjusted on a 분봉 chart applies identically on D/W/M and on `/study`, because a stretch is a relative preference ("candle large, volume thin"), not timeframe content. It lives beside pane order in the persisted indicator slice and travels with layout presets. Like pane order (layout, not indicator config), it is treated as user-owned layout: the indicator drawer's "기본값 복원" **preserves** it, and only the preset menu's "기본 레이아웃으로 초기화" restores the spec defaults. A pane kind the user never dragged keeps its spec default weight.
+_Avoid_: "pane height" in pixels (weights are relative; pixel height is derived), "per-timeframe pane sizes" (deliberately global), "separator position" as the stored state (the separator is chrome; the stored state is the adjacent panes' weights).
+
 **스냅샷 학습뷰 (Legacy Parquet Study Snapshot)**:
 A v1 **저장 학습뷰** artifact that carries saved candle/indicator data and optional bucket-representative 10-level orderbook and broker detail arrays needed to reopen the chart as it was saved.
 _Avoid_: using this term for new saves; expecting `/study` to repair missing legacy detail arrays from parquet during load.

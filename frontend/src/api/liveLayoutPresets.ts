@@ -8,6 +8,9 @@ import type { LineStyle } from '../chart/drawing/types';
 export type LiveLayoutPresetPayload = {
   pane_order: string[];
   pane_prefs_by_timeframe: Record<string, Record<string, boolean>>;
+  /** Pane 크기 가중치(PaneId → stretch). 필드 도입 전에 저장된 프리셋에는 없다 —
+   *  부재 = 스펙 기본 크기로 적용. */
+  pane_stretch?: Record<string, number>;
   indicator_flags: Record<string, boolean>;
   right_panel_width_px: number;
   right_card_order: string[];

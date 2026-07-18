@@ -8,7 +8,7 @@ import {
   useLiveLayoutStore,
 } from '../../state/liveLayout';
 import { normalizeKeyOrder } from '../../state/keyOrder';
-import { normalizePaneOrder } from '../../chart/paneOrder';
+import { normalizePaneOrder, normalizePaneStretch } from '../../chart/paneOrder';
 import { mergeLiveIndicatorPrefs } from '../../state/liveIndicatorsPersistence';
 import { normalizePanePrefsByTimeframe } from '../indicators/indicatorPaneProfiles';
 import type { LiveLayoutPresetPayload } from '../../api/liveLayoutPresets';
@@ -56,6 +56,7 @@ export function capturePresetPayload(): LiveLayoutPresetPayload {
   return {
     pane_order: [...page.paneOrder],
     pane_prefs_by_timeframe: JSON.parse(JSON.stringify(page.panePrefsByTimeframe)),
+    pane_stretch: { ...page.paneStretch },
     indicator_flags: flags,
     right_panel_width_px: layout.rightPanelWidthPx,
     right_card_order: [...layout.rightCardOrder],
@@ -81,6 +82,8 @@ export function applyPresetPayload(payload: LiveLayoutPresetPayload, presetId: s
     paneOrder: normalizePaneOrder(payload.pane_order),
     panePrefsByTimeframe: normalizePanePrefsByTimeframe(payload.pane_prefs_by_timeframe),
     flags,
+    // 구버전 프리셋(필드 부재)은 {} 로 정규화 → 스펙 기본 크기로 적용된다.
+    paneStretch: normalizePaneStretch(payload.pane_stretch),
   });
 
   const layoutInput: LiveLayoutPresetInput = {
@@ -106,6 +109,7 @@ export function defaultPresetPayload(): LiveLayoutPresetPayload {
   return {
     pane_order: [...prefs.paneOrder],
     pane_prefs_by_timeframe: {},
+    pane_stretch: {},
     indicator_flags: flags,
     right_panel_width_px: DEFAULT_RIGHT_PANEL_WIDTH_PX,
     right_card_order: [...LIVE_CARD_KEYS],
