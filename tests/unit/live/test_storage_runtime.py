@@ -116,7 +116,6 @@ async def test_storage_runtime_ws_targets_always_empty(tmp_path, monkeypatch) ->
         buffer=object(),  # type: ignore[arg-type]
         date_fn=lambda: "20260717",
         now_ms_fn=lambda: 0,
-        n_configured=1,
     )
 
     assert snapshot.ws_targets == ()
@@ -169,7 +168,7 @@ async def test_storage_runtime_kiwoom_keys_route_heatmap_to_kiwoom(
 
     snapshot = await sync_storage_runtime(
         tmp_path, state=state, buffer=object(),  # type: ignore[arg-type]
-        date_fn=lambda: "20260717", now_ms_fn=lambda: 0, n_configured=1,
+        date_fn=lambda: "20260717", now_ms_fn=lambda: 0,
     )
 
     assert snapshot.ws_targets == ()                       # 관심종목 키움 이관(컷오버)
@@ -198,7 +197,7 @@ async def test_storage_runtime_kiwoom_no_keys_stops_existing_session(
 
     snapshot = await sync_storage_runtime(
         tmp_path, state=state, buffer=object(),  # type: ignore[arg-type]
-        date_fn=lambda: "20260717", now_ms_fn=lambda: 0, n_configured=1,
+        date_fn=lambda: "20260717", now_ms_fn=lambda: 0,
     )
     assert kiwoom.stopped == 1
     assert kiwoom.synced == []
@@ -226,7 +225,7 @@ async def test_storage_runtime_kiwoom_no_accounts_collects_nothing(
 
     snapshot = await sync_storage_runtime(
         tmp_path, state=state, buffer=object(),  # type: ignore[arg-type]
-        date_fn=lambda: "20260717", now_ms_fn=lambda: 0, n_configured=1,
+        date_fn=lambda: "20260717", now_ms_fn=lambda: 0,
     )
     assert snapshot.kiwoom_targets == ()
     assert kiwoom.synced == []
@@ -255,7 +254,7 @@ async def test_storage_runtime_kiwoom_sync_failure_is_isolated(
 
     snapshot = await sync_storage_runtime(
         tmp_path, state=state, buffer=object(),  # type: ignore[arg-type]
-        date_fn=lambda: "20260717", now_ms_fn=lambda: 0, n_configured=1,
+        date_fn=lambda: "20260717", now_ms_fn=lambda: 0,
     )
     # 예외가 삼켜지고 스냅샷은 정상 반환(계획값 유지 — 컷오버: 저장셋=kiwoom, ws 빈값).
     assert snapshot.ws_targets == ()
@@ -277,7 +276,6 @@ async def test_storage_runtime_starts_program_trade_collector_when_enabled(
         buffer=object(),  # type: ignore[arg-type]
         date_fn=lambda: "20260717",
         now_ms_fn=lambda: 0,
-        n_configured=1,
     )
 
     assert state.program_trade_collector is FakeProgramTradeCollector.created[0]
@@ -300,7 +298,6 @@ async def test_storage_runtime_stops_program_trade_collector_when_disabled(
         buffer=object(),  # type: ignore[arg-type]
         date_fn=lambda: "20260717",
         now_ms_fn=lambda: 0,
-        n_configured=1,
     )
 
     assert existing.stopped is True
@@ -330,7 +327,6 @@ async def test_storage_runtime_bypass_stops_program_trade_collector(
         buffer=object(),  # type: ignore[arg-type]
         date_fn=lambda: "20260717",
         now_ms_fn=lambda: 0,
-        n_configured=1,
     )
 
     assert existing.stopped is True

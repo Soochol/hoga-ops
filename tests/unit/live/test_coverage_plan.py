@@ -11,8 +11,6 @@ def test_plan_storage_targets_ws_targets_always_empty() -> None:
 
     plan = plan_storage_targets(
         ["A", "B", "C"],
-        n_configured=1,
-        per_account_max=2,
     )
 
     # KIS WS 삭제 → ws_targets 항상 빈 튜플. kiwoom off면 저장셋도 빈다.
@@ -28,8 +26,6 @@ def test_plan_storage_targets_no_capacity_drops_everything() -> None:
 
     plan = plan_storage_targets(
         ["A", "B"],
-        n_configured=1,
-        per_account_max=2,
         heatmap_candidates=("H1", "H2"),
         # kiwoom_capacity 미지정 → 0(앱키 없음) → 미수집.
     )
@@ -38,15 +34,12 @@ def test_plan_storage_targets_no_capacity_drops_everything() -> None:
 
 
 def test_plan_storage_targets_kiwoom_cutover_watchlist_and_heatmap_to_kiwoom() -> None:
-    """관심종목 칼 컷오버(ADR-0118 PR-E): kiwoom 활성 시 관심종목+히트맵 dedup union이
-    kiwoom_targets(저장셋)로, KIS ws_targets는 빈 튜플(→ KIS conn 자연 소멸). per_account_max
-    (KIS 슬롯)는 관심종목에 더는 적용 안 됨 — 전량 kiwoom 용량까지."""
+    """관심종목 칼 컷오버(ADR-0118 PR-E): kiwoom 활성(capacity>0) 시 관심종목+히트맵 dedup
+    union이 kiwoom_targets(저장셋)로, KIS ws_targets는 빈 튜플(→ KIS conn 자연 소멸)."""
     from hoga.live.coverage import plan_storage_targets
 
     plan = plan_storage_targets(
         ["A", "B", "C"],
-        n_configured=1,
-        per_account_max=2,
         heatmap_candidates=("H1", "H2"),
         kiwoom_capacity=200,
     )
@@ -61,8 +54,6 @@ def test_plan_storage_targets_cutover_dedups_watchlist_and_self() -> None:
 
     plan = plan_storage_targets(
         ["A", "B", "C"],
-        n_configured=1,
-        per_account_max=2,
         heatmap_candidates=("H1", "B", "H2", "H1"),
         kiwoom_capacity=200,
     )
@@ -71,15 +62,12 @@ def test_plan_storage_targets_cutover_dedups_watchlist_and_self() -> None:
     assert plan.capture_candidates == ("A", "B", "C")
 
 
-def test_plan_storage_targets_cutover_whole_watchlist_regardless_of_ws_slots() -> None:
-    """컷오버 후 관심종목은 KIS 슬롯(per_account_max) 무관하게 전량 kiwoom으로 — 예전
-    슬롯에서 잘리던 종목(C)도 kiwoom 용량이 크므로 저장셋에 편입."""
+def test_plan_storage_targets_cutover_whole_watchlist_into_kiwoom() -> None:
+    """컷오버 후 관심종목은 전량 kiwoom 저장셋으로 편입 — 히트맵의 관심 중복(C)은 dedup."""
     from hoga.live.coverage import plan_storage_targets
 
     plan = plan_storage_targets(
         ["A", "B", "C"],
-        n_configured=1,
-        per_account_max=1,          # 예전이면 ws=(A,), B·C 슬롯 밖 — 이젠 무관
         heatmap_candidates=("C", "H1"),
         kiwoom_capacity=200,
     )
@@ -93,8 +81,6 @@ def test_plan_storage_targets_cutover_capacity_prioritizes_watchlist() -> None:
 
     plan = plan_storage_targets(
         ["A", "B"],
-        n_configured=1,
-        per_account_max=2,
         heatmap_candidates=("H1", "H2", "H3"),
         kiwoom_capacity=2,
     )
@@ -108,8 +94,6 @@ def test_plan_storage_targets_kiwoom_zero_capacity_collects_nothing() -> None:
 
     plan = plan_storage_targets(
         ["A", "B"],
-        n_configured=1,
-        per_account_max=2,
         heatmap_candidates=("H1", "H2"),
         kiwoom_capacity=0,
     )
