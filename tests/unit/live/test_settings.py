@@ -12,8 +12,8 @@ def test_live_settings_defaults(tmp_path):
     assert settings.program_trade_storage_enabled is False
     assert settings.kis_rest_bypass_enabled is False
     assert settings.screener_depth_autocollect is False
-    # ADR-0118: 키움이 실시간 유일 소스라 기본 True(실제 활성화는 자격증명 게이트).
-    assert settings.kiwoom_enabled is True
+    # kiwoom_enabled 활성화 스위치는 폐지됨(ADR-0118) — 필드 자체가 없다.
+    assert not hasattr(settings, "kiwoom_enabled")
 
 
 def test_update_live_settings_partial_patch_preserves_omitted_fields(tmp_path):
@@ -56,29 +56,21 @@ def test_corrupt_settings_falls_back_to_bypass_false(tmp_path):
     assert list(tmp_path.glob("live_settings.json.corrupt-*"))
 
 
-def test_kiwoom_enabled_defaults_true_and_toggles(tmp_path):
-    # 기본 on — 키움이 실시간 유일 소스(ADR-0118). 실제 활성화는 자격증명 게이트.
-    assert load_live_settings(tmp_path).kiwoom_enabled is True
+def test_kiwoom_enabled_field_removed_and_legacy_key_ignored(tmp_path):
+    """활성화 스위치 폐지(ADR-0118) — 필드 자체가 없다. 실시간은 키움 WS 유일 소스라
+    '쓸지 말지'가 선택지가 아니고, 활성화는 자격증명(앱키) 존재만으로 게이트된다.
+    옛 live_settings.json에 남은 kiwoom_enabled 키(True/False 무관)는 pydantic
+    extra-ignore로 무시된다 — 마이그레이션·크래시 없이 로드는 정상."""
+    assert not hasattr(load_live_settings(tmp_path), "kiwoom_enabled")
 
-    # 명시적 off 토글이 영속되는지(운영자가 끌 수 있어야 함).
-    off = update_live_settings(tmp_path, kiwoom_enabled=False)
-    assert off.kiwoom_enabled is False
-    assert load_live_settings(tmp_path).kiwoom_enabled is False
-
-    # 다른 필드 patch가 off 값을 보존.
-    other = update_live_settings(tmp_path, program_trade_storage_enabled=True)
-    assert other.kiwoom_enabled is False
-
-    back_on = update_live_settings(tmp_path, kiwoom_enabled=True)
-    assert back_on.kiwoom_enabled is True
-
-
-def test_kiwoom_enabled_backcompat_missing_field_defaults_true(tmp_path):
-    # 구 설정 파일(kiwoom_enabled 필드 없음) → 기본 True로 로드(ADR-0118, 마이그레이션
-    # 불필요). 자격증명 게이트가 있어 키 없는 구 배포는 여전히 휴면.
     save_path = tmp_path / "live_settings.json"
-    save_path.write_text(json.dumps({"program_trade_storage_enabled": False}))
-    assert load_live_settings(tmp_path).kiwoom_enabled is True
+    save_path.write_text(json.dumps({
+        "program_trade_storage_enabled": True,
+        "kiwoom_enabled": False,  # 옛 킬스위치 값 — 이제 무시됨
+    }))
+    settings = load_live_settings(tmp_path)
+    assert settings.program_trade_storage_enabled is True
+    assert not hasattr(settings, "kiwoom_enabled")
 
 
 def test_legacy_storage_policy_keys_are_ignored_on_load(tmp_path):
@@ -98,7 +90,8 @@ def test_legacy_storage_policy_keys_are_ignored_on_load(tmp_path):
     settings = load_live_settings(tmp_path)
 
     assert settings.program_trade_storage_enabled is True
-    assert settings.kiwoom_enabled is True
+    # kiwoom_enabled도 이제 폐지된 레거시 키 — extra-ignore로 무시된다.
+    assert not hasattr(settings, "kiwoom_enabled")
     assert not hasattr(settings, "storage_policy")
     assert not hasattr(settings, "heatmap_capture_enabled")
     assert not list(tmp_path.glob("live_settings.json.corrupt-*"))

@@ -46,7 +46,6 @@ export function DataSourceDetail({ variant }: { variant: 'live' | 'study' }) {
   const patch = usePatchLiveSettings();
   const kisRestBypassEnabled = data?.kis_rest_bypass_enabled ?? false;
   const programTradeEnabled = data?.program_trade_storage_enabled ?? false;
-  const kiwoomEnabled = data?.kiwoom_enabled ?? false;
 
   return (
     <>
@@ -83,7 +82,7 @@ export function DataSourceDetail({ variant }: { variant: 'live' | 'study' }) {
         {variant !== 'study' && (
           <RoleSourceGroup
             title="KIS 캔들 거래소"
-            description="KIS 캔들·세션·실시간 스트림을 가져올 거래소입니다. 우회 ON 시 캔들엔 무효(저장 데이터는 KRX 정규장)."
+            description="KIS 캔들·세션을 가져올 거래소입니다. 우회 ON 시 캔들엔 무효(저장 데이터는 KRX 정규장)."
           >
             {/* pb-2: 박스형 거래소 pill이 다음 그룹 구분선에 붙지 않도록 하단 여백. */}
             <div className="flex flex-wrap gap-2 pb-2">
@@ -95,7 +94,7 @@ export function DataSourceDetail({ variant }: { variant: 'live' | 'study' }) {
         )}
         <RoleSourceGroup
           title="호가·체결 데이터 기준"
-          description="호가창, 체결, 거래원, 호가비, 체결강도 같은 보조 데이터에 적용됩니다. 캔들과 독립된 소스입니다. 실시간 WS는 종목별로 KIS·키움 중 실제 수집한 소스가 자동 선택됩니다."
+          description="호가창, 체결, 거래원, 호가비, 체결강도 같은 보조 데이터에 적용됩니다. 캔들과 독립된 소스입니다. 실시간 WS(호가·체결)는 키움 WS가 전담 수집합니다(ADR-0118)."
         >
           {/* pb-2: 라디오가 다음 그룹 구분선에 붙지 않도록 하단 여백(거래소 그룹과 동일). */}
           <div className="flex flex-col gap-2 pb-2">
@@ -115,7 +114,7 @@ export function DataSourceDetail({ variant }: { variant: 'live' | 'study' }) {
       </div>
 
       {/* 캡처 저장(쓰기): 라이브 수신 데이터를 디스크에 어떻게 저장하는가. 표시와 무관.
-          관심종목=KIS WS, 히트맵=키움 WS 고정(2026-07-17 정책: 호가는 KIS REST로
+          관심종목·히트맵 모두 키움 WS 전담(ADR-0118 — KIS WS 삭제, 호가는 KIS REST로도
           받지 않는다) — 저장 방식 라디오(storage_policy)는 폐기됐다. */}
       <MacroGroupLabel>캡처 저장</MacroGroupLabel>
       <div>
@@ -134,17 +133,10 @@ export function DataSourceDetail({ variant }: { variant: 'live' | 'study' }) {
           </SettingsRow>
         </RoleSourceGroup>
         <RoleSourceGroup
-          title="키움 WS 병행 수집"
-          description="히트맵 종목을 키움 WebSocket으로 실시간 수집합니다(앱키당 200종목). 끄면 히트맵 실시간 수집이 중단됩니다. .env에 KIWOOM_APP_KEY 필요."
+          title="키움 실시간 수집"
+          description="관심종목·히트맵의 실시간(호가·체결)을 키움 WebSocket으로 수집합니다(앱키당 200종목). 실시간의 유일한 소스이며, .env에 KIWOOM_APP_KEY가 설정되면 자동 활성화됩니다(별도 켜기 불필요)."
         >
-          <SettingsRow label="키움 WS 병행 수집" testId="kiwoom-enabled-row">
-            <ToggleSwitch
-              label="키움 WS 병행 수집"
-              checked={kiwoomEnabled}
-              onClick={() => patch.mutate({ kiwoom_enabled: !kiwoomEnabled })}
-            />
-          </SettingsRow>
-          {kiwoomEnabled && <KiwoomStatusLine />}
+          <KiwoomStatusLine />
         </RoleSourceGroup>
       </div>
 
@@ -155,15 +147,23 @@ export function DataSourceDetail({ variant }: { variant: 'live' | 'study' }) {
   );
 }
 
-/** 키움 세션 상태 한 줄 — 토글 ON일 때만. LiveStatus.kiwoom(관측)에서 조립.
- * 미배선(null)이면 '상태 확인 중', 킥 감지 시 경고 톤. */
+/** 키움 세션 상태 한 줄 — 항상 표시(활성화 스위치 폐지, ADR-0118). LiveStatus.kiwoom
+ * (관측)에서 조립. status 미해결이면 '상태 확인 중', kiwoom=null(앱키 미설정/미배선)이면
+ * .env 안내, 킥 감지 시 경고 톤. */
 function KiwoomStatusLine() {
   const { data } = useLiveStatus();
-  const k = data?.kiwoom;
-  if (k == null) {
+  if (data === undefined) {
     return (
       <div className="mt-1 text-xs text-fg-dimmer" data-testid="kiwoom-status-line">
         상태 확인 중…
+      </div>
+    );
+  }
+  const k = data.kiwoom;
+  if (k == null) {
+    return (
+      <div className="mt-1 text-xs text-fg-dimmer" data-testid="kiwoom-status-line">
+        키움 앱키 미설정 — <code>.env</code>에 <code>KIWOOM_APP_KEY</code>를 추가하면 실시간이 활성화됩니다.
       </div>
     );
   }

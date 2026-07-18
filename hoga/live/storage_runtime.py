@@ -124,7 +124,6 @@ async def sync_storage_runtime(
         _compute_capture_candidates(data_dir),
         n_configured=n_configured,
         heatmap_candidates=_compute_heatmap_codes(data_dir),
-        kiwoom_enabled=settings.kiwoom_enabled,
         kiwoom_capacity=KIWOOM_PER_ACCOUNT_MAX * n_kiwoom,
     )
 
@@ -147,10 +146,11 @@ async def sync_storage_runtime(
         else:
             await program_collector.stop()
 
-    # 키움 WS 세션(ADR-0116) — 히트맵의 유일한 저장 경로. off/앱키0/타깃 비면
-    # sync가 conn 0으로 정합화(휴면). 예외 격리(리뷰 Major): 키움 sync 오류가 이
-    # 함수를 뚫고 나가 KIS 경로(session.refresh 등 호출자 후속)를 죽이면 안 된다.
-    if settings.kiwoom_enabled and n_kiwoom > 0:
+    # 키움 WS 세션(ADR-0116) — 실시간(호가·체결)의 유일한 소스. 활성화 스위치는 폐지
+    # (ADR-0118) — 자격증명(앱키)만 있으면 항상 활성. 앱키0/타깃 비면 sync가 conn 0으로
+    # 정합화(휴면). 예외 격리(리뷰 Major): 키움 sync 오류가 이 함수를 뚫고 나가 KIS
+    # 경로(session.refresh 등 호출자 후속)를 죽이면 안 된다.
+    if n_kiwoom > 0:
         kiwoom_mgr = _ensure_kiwoom_session(
             state, data_dir=data_dir, buffer=buffer,
             date_fn=date_fn, now_ms_fn=now_ms_fn,

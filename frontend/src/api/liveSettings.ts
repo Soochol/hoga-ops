@@ -3,21 +3,19 @@ import { apiCall } from './client';
 
 // storage_policy·heatmap_capture_enabled는 제거됨(2026-07-17 정책: 호가·체결은
 // KIS REST로 받지 않는다 — 관심종목=KIS WS, 히트맵=키움 WS).
+// kiwoom_enabled(키움 활성화 스위치)는 폐지됨(ADR-0118) — 실시간=키움 WS 유일 소스라
+// 선택지가 아니고, 활성화는 백엔드에서 자격증명(앱키) 존재만으로 게이트된다.
 export interface LiveSettings {
   schema_version: number;
   program_trade_storage_enabled: boolean;
   kis_rest_bypass_enabled: boolean;
   screener_depth_autocollect: boolean;
-  // 키움 WS 병행 수집 킬스위치(ADR-0116). 백엔드 신규 필드라 optional — 구 서버
-  // 응답·mock 픽스처엔 없을 수 있어 소비부는 `?? false` 로 폴백한다.
-  kiwoom_enabled?: boolean;
 }
 
 export type LiveSettingsPatch = {
   program_trade_storage_enabled?: boolean;
   kis_rest_bypass_enabled?: boolean;
   screener_depth_autocollect?: boolean;
-  kiwoom_enabled?: boolean;
 };
 
 export const LIVE_SETTINGS_KEY = ['live', 'settings'] as const;

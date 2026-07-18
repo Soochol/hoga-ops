@@ -113,11 +113,10 @@ def _patch_broker_poller(monkeypatch) -> list[_FakeBrokerPoller]:
 
 
 def _enable_kiwoom(monkeypatch, tmp_path) -> _FakeKiwoomSession:
-    """키움 활성(관심종목이 kiwoom_targets 저장셋에 편입되도록) + 세션 pre-inject."""
+    """키움 활성(관심종목이 kiwoom_targets 저장셋에 편입되도록) + 세션 pre-inject.
+    활성화는 앱키 존재만으로 게이트되므로(ADR-0118) 계좌 id를 주입한다."""
     from hoga.live import lifecycle
-    from hoga.live.settings import LiveSettings, save_live_settings
 
-    save_live_settings(tmp_path, LiveSettings(kiwoom_enabled=True))
     monkeypatch.setattr("hoga.live.kiwoom_runtime.configured_account_ids", lambda _d: [0])
     session = _FakeKiwoomSession()
     lifecycle._state = lifecycle._State(kiwoom_session=session)

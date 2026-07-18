@@ -1356,7 +1356,6 @@ def build_router(
             program_trade_storage_enabled=req.program_trade_storage_enabled,
             kis_rest_bypass_enabled=req.kis_rest_bypass_enabled,
             screener_depth_autocollect=req.screener_depth_autocollect,
-            kiwoom_enabled=req.kiwoom_enabled,
         )
         try:
             await refresh_live_stream(data_dir=data_dir)
@@ -1934,16 +1933,13 @@ def build_router(
     )
 
     def _resolve_kiwoom_minute_fetcher(dd):
-        """kiwoom_enabled면 키움 분봉 클라이언트(싱글톤), 아니면 None. 매 range 요청 시
-        호출 — 설정 토글을 런타임 반영(ADR-0116). off/미배선/자격증명부재면 None →
-        백필은 전량 KIS(동작 불변)."""
+        """키움 분봉 클라이언트(싱글톤), 자격증명 없으면 None. 매 range 요청 시 호출.
+        활성화 스위치는 폐지(ADR-0118) — ensure_minute_client가 앱키 부재 시 None을
+        반환하므로 그것이 곧 게이트다(백필은 전량 KIS로 동작 불변)."""
         if dd is None:
             return None
         from .kiwoom_runtime import ensure_minute_client  # noqa: PLC0415
-        from .settings import load_live_settings  # noqa: PLC0415
 
-        if not load_live_settings(dd).kiwoom_enabled:
-            return None
         return ensure_minute_client(dd)
     minute_backfill: LiveMinuteCandleBackfill | None = (
         LiveMinuteCandleBackfill(
