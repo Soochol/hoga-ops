@@ -4,7 +4,8 @@ import { useWatchlist } from '../watchlist/useWatchlist';
 export type LiveBannerCause =
   | 'watchlist_empty'
   | 'kis_credentials_missing'
-  | 'kis_token_expired';
+  | 'kis_token_expired'
+  | 'realtime_unavailable';
 
 export type InventoryState =
   | { kind: 'watchlist'; size: number | null }
@@ -28,7 +29,7 @@ export interface LiveStatusProjectionInput {
 
 export interface LiveStatusProjection {
   banner: {
-    primary: 'watchlist_empty' | 'kis_credentials_missing' | null;
+    primary: 'watchlist_empty' | 'kis_credentials_missing' | 'realtime_unavailable' | null;
     stack: LiveBannerCause[];
   };
   captureHealth: CaptureHealthView;
@@ -89,7 +90,14 @@ export function projectLiveStatus({
     if (inventory.size === 0) {
       return { banner: { primary: 'watchlist_empty', stack }, captureHealth };
     }
-    if (!status.running && status.started_at_ms == null && reason !== 'offline') {
+    // ADR-0118 F2: 실시간=키움 전담. 시장 열림(offline)인데 세션이 없으면 호가·체결이
+    // 조용히 멈추므로 배너로 표면화. closed(장 마감)는 정지가 정상이라 여기 안 걸린다.
+    if (reason === 'offline') {
+      return { banner: { primary: 'realtime_unavailable', stack }, captureHealth };
+    }
+    // 정지+미시작이면서 offline/closed가 아닌 잔여 상태 = KIS 자격증명 문제로 간주
+    // (캔들·지수 경로의 KIS 키 결측). closed는 실시간 정지가 정상이므로 제외.
+    if (!status.running && status.started_at_ms == null && reason !== 'closed') {
       return { banner: { primary: 'kis_credentials_missing', stack }, captureHealth };
     }
   }

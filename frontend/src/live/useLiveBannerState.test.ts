@@ -23,12 +23,14 @@ describe('deriveBannerState', () => {
     expect(r.primary).toBe('kis_credentials_missing');
   });
 
-  it('does not show kis_credentials_missing for normal offline live startup state', () => {
+  it('surfaces realtime_unavailable (not kis_credentials_missing) for market-open offline', () => {
+    // ADR-0118 F2: offline(시장 열림·세션 없음)은 구 false-credentials 배너가 아니라
+    // 실시간 dark를 정직하게 알리는 realtime_unavailable로 표면화한다.
     const r = deriveBannerState({
       status: { ...baseStatus, running: false, started_at_ms: null, capture_reason: 'offline' },
       watchlistSize: 2,
     });
-    expect(r.primary).toBeNull();
+    expect(r.primary).toBe('realtime_unavailable');
   });
 
   // Regression (diagnose 2026-05-30): /live keyed its empty-state off

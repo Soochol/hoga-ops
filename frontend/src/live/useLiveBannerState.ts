@@ -32,7 +32,7 @@ export interface BannerInput {
 }
 
 export interface BannerState {
-  primary: 'watchlist_empty' | 'kis_credentials_missing' | null;
+  primary: 'watchlist_empty' | 'kis_credentials_missing' | 'realtime_unavailable' | null;
   stack: BannerCause[]; // priority-2 stackable causes, ordered
 }
 

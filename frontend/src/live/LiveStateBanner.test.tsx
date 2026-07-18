@@ -23,4 +23,10 @@ describe('LiveStateBanner', () => {
     render_(<LiveStateBanner primary={null} stack={['kis_token_expired']} />);
     expect(screen.getByText(/토큰이 만료/)).toBeInTheDocument();
   });
+
+  it('shows realtime_unavailable banner with a settings action (F2)', () => {
+    render_(<LiveStateBanner primary="realtime_unavailable" stack={[]} />);
+    expect(screen.getByText(/실시간 미가동/)).toBeInTheDocument();
+    expect(screen.getByText('설정').getAttribute('href')).toBe('/settings');
+  });
 });
