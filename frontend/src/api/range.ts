@@ -172,6 +172,37 @@ function liveRangeDeltaIdentityFromKey(queryKey: QueryKey): string | null {
   return JSON.stringify(key);
 }
 
+/** 라이브 델타 병합본을 1-샷 복원하기 위한 canonical React Query 키. 실 청크 요청
+ * 키(`['range', code, from, to, …]`)와 겹치지 않는 전용 네임스페이스('live'/
+ * 'range-merged')를 써서 두 가지를 얻는다:
+ *  ① /study 의 useStudyRangeCacheEviction(`removeQueries({queryKey:['range']})`)이
+ *     prefix 불일치로 이 병합본을 축출하지 못한다 — /live 웜 캐시가 /study 왕복에도
+ *     생존.
+ *  ② main.tsx 의 setQueryDefaults(['live','range-merged'], gcTime 2h)를 상속해
+ *     전역 30분보다 오래 살아 "점심 후 복귀"에서 네트워크 재-워크백 없이 복원.
+ * identity(=liveRangeDeltaIdentity)가 이미 code·to·bucketMs·mode·options 를 담은
+ * JSON이라 그 자체가 캐시 축 — code/tf/mode별 분리가 자동이고 identity당 1개만
+ * 자기-덮어쓰므로 파편화가 없다. 캔들 mergedPastCandlesKey(livePastCandles.ts)의
+ * range 판(版). */
+export function mergedLiveRangeKey(
+  identity: string,
+): readonly ['live', 'range-merged', string] {
+  return ['live', 'range-merged', identity] as const;
+}
+
+/** canonical 병합본 정확-키 O(1) 복원. 실키 스캔(cachedLiveRangeDeltaPrevious)의
+ * 폴백이 아니라 선행 경로 — 개별 청크 키가 gc돼도(전역 30분) 병합본은 2h 살아
+ * 있으므로 최광폭을 잃지 않는다. */
+function restoredLiveRangeMerged(
+  queryClient: QueryClient,
+  identity: string,
+): { data: RangeBundle; updatedAtMs: number } | undefined {
+  const key = mergedLiveRangeKey(identity);
+  const data = queryClient.getQueryData<RangeBundle>(key);
+  if (!data) return undefined;
+  return { data, updatedAtMs: queryClient.getQueryState(key)?.dataUpdatedAt ?? 0 };
+}
+
 function cachedLiveRangeDeltaPrevious(
   queryClient: QueryClient,
   input: RangeBundleRequestInput,
@@ -234,7 +265,20 @@ function planLiveRangeDelta(
     previousIdentity === identity
   );
 
-  if (sameIdentity && previous.from_date === input.from) {
+  if (sameIdentity && previous.from_date <= input.from) {
+    // previous(캐시된 병합본)가 요청 창 [input.from, to]를 완전히 덮는다:
+    //  - `=== input.from`: 경계 정확히 일치.
+    //  - `<  input.from`: previous 가 더 깊다. 웜 복귀 경로가 여기 걸린다 —
+    //    setActiveCode/setCandleTimeframe 이 historicalFromDate 를 null 로 리셋해
+    //    input.from 이 기본 시드 창으로 좁아지지만, 캐시에는 이전 세션에 좌측 팬으로
+    //    확장해 둔 딥 번들이 남아 있다(cachedLiveRangeDeltaPrevious 가 from_date
+    //    최소인 것을 집어 온다).
+    // 두 하위 케이스 모두 오늘-델타(from=to=today) refresh 로만 수렴시키고 딥
+    // 병합본을 계속 서빙한다. 종전엔 `<` 하위 케이스를 좁은 창 통짜 재요청 +
+    // servePrevious:false 로 폐기해, 캔들은 딥(livePastCandles.ts:202 가
+    // previous.from<=from 을 딥 서빙 + 오늘-델타로 처리)인데 지표만 시드 창으로
+    // 얕아지는 비대칭 + 재요청 동안 지표 pane 빈 플래시를 만들었다. canReusePrevious
+    // 로 mergeRangeBundles(previous, 오늘응답) 하면 from_date=min 이라 딥 유지.
     const nextRefreshAtMs = previousUpdatedAtMs ? previousUpdatedAtMs + TODAY_RANGE_REFETCH_MS : 0;
     const refreshDue = liveRangeRefreshDue(previousUpdatedAtMs, nowMs, lastPromotionMs);
     return {
@@ -247,20 +291,6 @@ function planLiveRangeDelta(
       blocksHistoricalExtension: false,
       scheduleRefreshAtMs: refreshDue ? null : nextRefreshAtMs,
       identity,
-    };
-  }
-
-  if (sameIdentity && previous.from_date < input.from) {
-    return {
-      enabled: true,
-      requestInput: fullInput,
-      canReusePrevious: false,
-      servePrevious: false,
-      usePlaceholderData: false,
-      identity,
-      forceRerenderAfterMerge: false,
-      blocksHistoricalExtension: false,
-      scheduleRefreshAtMs: null,
     };
   }
 
@@ -496,9 +526,13 @@ function useLiveRangeDelta(
   const merged = mergedRef.current;
   const identity = liveRangeDeltaIdentity(baseInput);
   const previousIdentity = merged?.identity === identity ? merged.identity : identity;
+  // 복원 우선순위: 같은 마운트 mergedRef → canonical 병합본(O(1), gcTime 2h) →
+  // 실키 스캔(구버전 캐시·동시 창 폴백). canonical 이 리마운트·/study 왕복·gcTime
+  // 초과를 커버하는 주 경로다.
   const cachedPrevious = merged && merged.identity === identity
     ? merged
-    : cachedLiveRangeDeltaPrevious(queryClient, baseInput, identity);
+    : restoredLiveRangeMerged(queryClient, identity)
+      ?? cachedLiveRangeDeltaPrevious(queryClient, baseInput, identity);
   const previous = cachedPrevious?.data;
   // Per-code promotion stamp — updating it re-renders only this code's hooks,
   // recomputing the plan so refreshDue fires the moment disk data advances.
@@ -545,6 +579,11 @@ function useLiveRangeDelta(
     if (mergedRef.current?.identity === plan.identity && mergedRef.current.data === data) return;
     mergedRef.current = { identity: plan.identity, data, updatedAtMs };
     queryClient.setQueryData(buildRangeBundleRequest(baseInput).queryKey, data);
+    // canonical 병합본 재발행 → 다음 리마운트·탭 복귀의 복원 소스(gcTime 2h). 이
+    // 키엔 옵저버(useQuery)가 없어 setQueryData 가 재렌더를 유발하지 않는다. 위
+    // 가드가 mergedRef 와 canonical 을 동기 유지하므로(둘 다 이 effect 에서만 쓰기)
+    // 캔들의 별도 publishedRef 는 불필요 — range.ts 는 렌더 단계 pin 이 없다.
+    queryClient.setQueryData(mergedLiveRangeKey(plan.identity), data);
     if (plan.forceRerenderAfterMerge) forceRerender();
   }, [baseInput, data, queryClient, query.dataUpdatedAt, query.isPlaceholderData, plan.identity, plan.forceRerenderAfterMerge]);
 

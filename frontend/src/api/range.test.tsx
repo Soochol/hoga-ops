@@ -5,6 +5,7 @@ import type { ReactNode } from 'react';
 
 import {
   buildRangeBundleRequest,
+  mergedLiveRangeKey,
   mergeRangeBundles,
   planHogaRangeDelta,
   planSidecarRangeDelta,
@@ -409,6 +410,26 @@ describe('planSidecarRangeDelta', () => {
     expect(plan.requestInput.to).toBe('20260706');
   });
 
+  it('serves the deep previous bundle and refreshes only today when previous is DEEPER than the requested seed (warm return)', () => {
+    // 웜 복귀(종목 전환 후 복귀·타임프레임 전환): setActiveCode/setCandleTimeframe 이
+    // historicalFromDate 를 null 로 리셋해 input.from 이 시드 창(20260701)으로
+    // 좁아지지만, 캐시엔 이전 세션 좌측 팬으로 확장해 둔 딥 번들(from_date 20260629)이
+    // 남아 있다. 종전엔 previous.from_date < input.from 을 좁은 창 통짜 재요청 +
+    // servePrevious:false 로 폐기해 지표만 얕아졌다. 이제 딥 서빙 + 오늘-델타로 수렴.
+    const plan = planSidecarRangeDelta({
+      ...previousRequest,
+      from: '20260701',
+    }, previous, previousIdentity);
+
+    expect(plan.enabled).toBe(true);
+    expect(plan.canReusePrevious).toBe(true);
+    expect(plan.servePrevious).toBe(true);
+    // 좁은 창 [20260701, 20260706] 통짜 재요청이 아니라 오늘-델타만.
+    expect(plan.requestInput.from).toBe('20260706');
+    expect(plan.requestInput.to).toBe('20260706');
+    expect(plan.blocksHistoricalExtension).toBe(false);
+  });
+
   it('seeds only the most-recent chunk when to-date changes (identity break)', () => {
     const plan = planSidecarRangeDelta({
       code: '005930',
@@ -593,6 +614,20 @@ describe('planHogaRangeDelta', () => {
     const plan = planHogaRangeDelta({
       ...previousRequest,
       from: '20260629',
+    }, previous, previousIdentity);
+
+    expect(plan.enabled).toBe(true);
+    expect(plan.canReusePrevious).toBe(true);
+    expect(plan.servePrevious).toBe(true);
+    expect(plan.requestInput.from).toBe('20260706');
+    expect(plan.requestInput.to).toBe('20260706');
+  });
+
+  it('serves the deep previous bundle and refreshes only today when previous is DEEPER (warm return)', () => {
+    // sidecar 와 동일 계약(웜 복귀): 딥 previous 서빙 + 오늘-델타, 좁은 창 통짜 폐기 금지.
+    const plan = planHogaRangeDelta({
+      ...previousRequest,
+      from: '20260701',
     }, previous, previousIdentity);
 
     expect(plan.enabled).toBe(true);
@@ -1141,6 +1176,130 @@ describe('useRangeSidecarDelta', () => {
     ]);
   });
 
+  it('keeps the deep merged bundle on a warm return that narrows from to the seed window (no cumulative refetch)', async () => {
+    // 웜 복귀 회귀 가드: 딥 뷰포트를 먼저 축적한 뒤 from 이 시드 창으로 좁아지면
+    // (종목 전환 후 복귀·타임프레임 전환의 historicalFromDate=null 리셋 시뮬),
+    // 캔들과 달리 지표만 딥을 폐기하고 좁은 창을 통짜 재요청하던 것이 이번 수정의
+    // 대상이다. data 는 딥(from_date 20260629)을 유지하고, 좁은 창 통짜
+    // [20260703, 20260706] 요청은 절대 나가지 않아야 한다.
+    const today = '20260706';
+    const bundleFor = (url: unknown): RangeBundle => {
+      const m = String(url).match(/from=(\d+)&to=(\d+)/);
+      return {
+        ...fakeBundle,
+        code: '005930',
+        from_date: m ? m[1] : today,
+        to_date: m ? m[2] : today,
+        bucket_ms: 60_000,
+      };
+    };
+    const spy = vi.spyOn(client, 'apiCall').mockImplementation((url) => Promise.resolve(bundleFor(url)));
+    const options = { mode: 'sidecar' as const, volumeDistributionBins: 10 };
+    const { result, rerender } = renderHook(
+      ({ from }: { from: string }) =>
+        useRangeSidecarDelta('005930', from, today, '1m', undefined, today, options, 'hogaplay_first'),
+      { wrapper: makeWrapper(), initialProps: { from: '20260629' } },
+    );
+
+    // 딥 축적: 시드 [0630,0706] + 좌측 타일 [0629,0629] 워크백 → from_date 20260629.
+    await waitFor(() => expect(result.current.data?.from_date).toBe('20260629'));
+
+    // 웜 복귀: from 이 시드 창 이내로 좁아짐. 딥 유지 + 좁은 통짜 요청 부재.
+    rerender({ from: '20260703' });
+    await waitFor(() => expect(result.current.data?.from_date).toBe('20260629'));
+    expect(result.current.data?.to_date).toBe(today);
+
+    const urls = spy.mock.calls.map(([u]) => String(u));
+    expect(urls.some((u) => /from=20260703&to=20260706/.test(u))).toBe(false);
+  });
+
+  it('publishes a canonical merged bundle that survives range eviction and restores on remount (PR-2)', async () => {
+    // PR-2: 병합본을 ['live','range-merged',identity] 에 발행 → /study 축출
+    // (removeQueries(['range']))·리마운트·gcTime 초과에도 딥을 잃지 않는다.
+    const today = '20260706';
+    const bundleFor = (url: unknown): RangeBundle => {
+      const m = String(url).match(/from=(\d+)&to=(\d+)/);
+      return {
+        ...fakeBundle,
+        code: '005930',
+        from_date: m ? m[1] : today,
+        to_date: m ? m[2] : today,
+        bucket_ms: 60_000,
+      };
+    };
+    const spy = vi.spyOn(client, 'apiCall').mockImplementation((url) => Promise.resolve(bundleFor(url)));
+    const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+    const wrapper = ({ children }: { children: ReactNode }) => (
+      <QueryClientProvider client={qc}>{children}</QueryClientProvider>
+    );
+    const options = { mode: 'sidecar' as const, volumeDistributionBins: 10 };
+    const identity = planSidecarRangeDelta({
+      code: '005930', from: '20260629', to: today, timeframe: '1m', todayKst: today,
+      sourcePref: 'hogaplay_first', options,
+    }).identity;
+
+    const view = renderHook(
+      () => useRangeSidecarDelta('005930', '20260629', today, '1m', undefined, today, options, 'hogaplay_first'),
+      { wrapper },
+    );
+    // 시드 [0630,0706] + 타일 [0629,0629] 워크백 → 딥 from_date 20260629.
+    await waitFor(() => expect(view.result.current.data?.from_date).toBe('20260629'));
+    // canonical 병합본이 발행됐다.
+    expect(qc.getQueryData(mergedLiveRangeKey(identity))).toMatchObject({ from_date: '20260629', to_date: today });
+
+    // /study 축출 시뮬 — 실 청크 키(['range', …])만 지운다. canonical 은 prefix 불일치로 생존.
+    qc.removeQueries({ queryKey: ['range'] });
+    expect(qc.getQueryData(mergedLiveRangeKey(identity))).toMatchObject({ from_date: '20260629' });
+
+    view.unmount();
+    const callsBefore = spy.mock.calls.length;
+
+    // 리마운트: mergedRef 소실 → canonical O(1) 복원으로 즉시 딥, 통짜 재요청 없음.
+    const view2 = renderHook(
+      () => useRangeSidecarDelta('005930', '20260629', today, '1m', undefined, today, options, 'hogaplay_first'),
+      { wrapper },
+    );
+    await waitFor(() => expect(view2.result.current.data?.from_date).toBe('20260629'));
+    expect(view2.result.current.data?.to_date).toBe(today);
+    const newUrls = spy.mock.calls.slice(callsBefore).map(([u]) => String(u));
+    // 통짜 재요청 없음 + 콜드 시드([0630,0706]) 재발사 없음 = canonical 복원 증명
+    // (복원 실패 시 축출된 청크를 시드부터 다시 워크백했을 것).
+    expect(newUrls.some((u) => /from=20260629&to=20260706/.test(u))).toBe(false);
+    expect(newUrls.some((u) => /from=20260630&to=20260706/.test(u))).toBe(false);
+  });
+
+  it('does not reuse a canonical merged bundle from a different identity after a date rollover (PR-2)', async () => {
+    // 날짜 롤오버(to 20260705→20260706)는 identity 를 깨므로 어제 병합본을 초기
+    // previous 로 집지 않는다 — 콜드 시드부터 시작해야 stale 어제 데이터가 새어들지 않는다.
+    const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+    const options = { mode: 'sidecar' as const, volumeDistributionBins: 10 };
+    const yesterdayIdentity = planSidecarRangeDelta({
+      code: '005930', from: '20260620', to: '20260705', timeframe: '1m', todayKst: '20260705',
+      sourcePref: 'hogaplay_first', options,
+    }).identity;
+    qc.setQueryData(mergedLiveRangeKey(yesterdayIdentity), {
+      ...fakeBundle, code: '005930', from_date: '20260620', to_date: '20260705', bucket_ms: 60_000,
+    });
+    const spy = vi.spyOn(client, 'apiCall').mockImplementation((url) => {
+      const m = String(url).match(/from=(\d+)&to=(\d+)/);
+      return Promise.resolve({ ...fakeBundle, code: '005930', from_date: m ? m[1] : '', to_date: m ? m[2] : '', bucket_ms: 60_000 });
+    });
+    const wrapper = ({ children }: { children: ReactNode }) => (
+      <QueryClientProvider client={qc}>{children}</QueryClientProvider>
+    );
+
+    renderHook(
+      () => useRangeSidecarDelta('005930', '20260620', '20260706', '1m', undefined, '20260706', options, 'hogaplay_first'),
+      { wrapper },
+    );
+
+    // 첫 요청이 오늘 identity 의 콜드 시드([0630,0706])여야 한다. 어제 병합본을
+    // 집었다면 input.from(20260620) <= previous.from_date(20260620) → 오늘-델타
+    // [0706,0706]가 첫 요청이 됐을 것.
+    await waitFor(() => expect(spy).toHaveBeenCalled());
+    expect(String(spy.mock.calls[0][0])).toMatch(/from=20260630&to=20260706/);
+  });
+
   it('reports isHistoricalDeltaFetching during a COLD in-flight fetch (backpressure blind spot)', async () => {
     // 콜드에는 placeholder가 없어 종전 신호(isPlaceholderData 의존)가 false였다
     // → 콜드 52s 창 동안 팬이 추가 통짜를 발사(슬로그: 동일 wide 3건 동시).
@@ -1496,7 +1655,13 @@ describe('useRangeHogaDelta', () => {
     expect(result.current.data?.quote_ratio.points.map((p) => p.t)).toEqual([1, 2]);
   });
 
-  it('does not serve a wider merged hoga bundle when narrowing to an unseen range', async () => {
+  it('keeps the deep merged hoga bundle when from narrows to a subset range (no stale-wide refetch)', async () => {
+    // aff2ddcf 역전(PR-1, 웜 복귀 패리티): from 이 [0624→0625]로 얕아져도 previous
+    // ([0624,0706])는 요청 [0625,0706]의 슈퍼셋(같은 identity·to_date)이라 "stale
+    // wide"가 아니라 정확한 딥 서빙이다. historicalFromDate 는 단조 감소만 하므로
+    // from 이 얕아지는 유일한 경로는 리셋 후 시드 재파생(=웜 복귀)이고, 종전엔 이때
+    // 좁은 창 [0625,0706]을 통짜 재요청하며 딥 지표를 폐기해 캔들만 딥·지표는 얕은
+    // 비대칭을 만들었다(사용자 버그). 이제 딥 유지 + 좁은 창 통짜 요청 부재.
     const first: RangeBundle = {
       ...fakeBundle,
       code: '005930',
@@ -1513,22 +1678,9 @@ describe('useRangeHogaDelta', () => {
       bucket_ms: 60_000,
       quote_ratio: { bucket_ms: 60_000, points: [{ t: 1, bid_total: 9, ask_total: 10, bid_max: 3, ask_max: 4, imb_max_bid: 0, imb_max_ask: 1 }] },
     };
-    const narrow: RangeBundle = {
-      ...fakeBundle,
-      code: '005930',
-      from_date: '20260625',
-      to_date: '20260706',
-      bucket_ms: 60_000,
-      quote_ratio: { bucket_ms: 60_000, points: [{ t: 4, bid_total: 12, ask_total: 10, bid_max: 5, ask_max: 4, imb_max_bid: 1, imb_max_ask: 0 }] },
-    };
-    let resolveNarrow!: (value: RangeBundle) => void;
-    const narrowPending = new Promise<RangeBundle>((resolve) => {
-      resolveNarrow = resolve;
-    });
     const spy = vi.spyOn(client, 'apiCall').mockImplementation((url) => {
       const text = String(url);
       if (text.includes('from=20260624&to=20260628')) return Promise.resolve(delta);
-      if (text.includes('from=20260625&to=20260706')) return narrowPending;
       return Promise.resolve(first);
     });
     const wrapper = makeWrapper();
@@ -1544,17 +1696,12 @@ describe('useRangeHogaDelta', () => {
     expect(result.current.data?.quote_ratio.points.map((p) => p.t)).toEqual([1, 2]);
 
     rerender({ from: '20260625' });
-
-    await waitFor(() => expect(spy.mock.calls.map(([url]) => String(url))).toContain(
-      '/api/range?code=005930&from=20260625&to=20260706&bucket_ms=60000'
-        + '&source_pref=hogaplay_first&mode=hoga',
-    ));
-    expect(result.current.data?.from_date).not.toBe('20260624');
-    expect(result.current.data?.quote_ratio.points.map((p) => p.t)).not.toEqual([1, 2]);
-
-    resolveNarrow(narrow);
-    await waitFor(() => expect(result.current.data?.from_date).toBe('20260625'));
-    expect(result.current.data?.quote_ratio.points.map((p) => p.t)).toEqual([4]);
+    // 얕아진 뒤에도 딥([0624], qr [1,2]) 유지 — 좁은 창을 새로 받지 않는다.
+    await new Promise((resolve) => setTimeout(resolve, 50));
+    expect(result.current.data?.from_date).toBe('20260624');
+    expect(result.current.data?.quote_ratio.points.map((p) => p.t)).toEqual([1, 2]);
+    const urls = spy.mock.calls.map(([url]) => String(url));
+    expect(urls.some((u) => /from=20260625&to=20260706/.test(u))).toBe(false);
   });
 });
 

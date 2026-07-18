@@ -335,3 +335,95 @@ describe('useViewportBackfill — coverage-gap trigger (3b, A안)', () => {
     expect(extendSpy).not.toHaveBeenCalled();
   });
 });
+
+describe('useViewportBackfill — initial-display coverage trigger (3c, PR-3)', () => {
+  // 3b(coverage-gap)는 뷰포트 이벤트에만 발화하므로 저장 뷰포트가 처음부터 지표
+  // 커버리지 밖이면 사용자 무조작 시 지표가 빈 채 방치됐다. 3c는 최초 캔들+지표 신호
+  // 준비 커밋에서 이벤트 없이 1회 판정한다. mock getVisibleRange().from=1 →
+  // viewportLeftDate='20260709'.
+  let extendSpy: ReturnType<typeof vi.spyOn>;
+
+  beforeEach(() => {
+    vi.useFakeTimers();
+    useLivePageStore.setState({
+      activeCode: '005930',
+      candleTimeframe: '1m',
+      historicalFromDate: '20260601',
+    });
+    extendSpy = vi
+      .spyOn(useLivePageStore.getState(), 'extendHistoricalRange')
+      .mockImplementation(() => {});
+  });
+
+  afterEach(() => {
+    vi.runOnlyPendingTimers();
+    vi.useRealTimers();
+    extendSpy.mockRestore();
+  });
+
+  type Props = {
+    bundle?: RangeBundle | null;
+    indicatorCoverageFromDate?: string | null;
+    rangeWindowFromDate?: string | null;
+    canTrigger?: boolean;
+  };
+  function renderInitial(initialProps: Props) {
+    return renderHook(
+      (p: Props) =>
+        useViewportBackfill({
+          chart: chartWithCapturedHandler().chart,
+          axis: axisWithOneSession(),
+          bundle: p.bundle === undefined ? bundleWithCandles() : p.bundle,
+          timeframe: '1m',
+          isExtending: false,
+          code: '005930',
+          canTriggerBackfill: () => p.canTrigger ?? true,
+          indicatorCoverageFromDate: p.indicatorCoverageFromDate === undefined ? '20260715' : p.indicatorCoverageFromDate,
+          rangeWindowFromDate: p.rangeWindowFromDate === undefined ? '20260601' : p.rangeWindowFromDate,
+        }),
+      { initialProps },
+    );
+  }
+
+  it('dispatches once on initial display when viewport starts older than coverage (no viewport event)', () => {
+    // 핵심: cap.fire 없이 초기 렌더만으로 발화. coverage('20260715') > viewport('20260709') → 갭.
+    renderInitial({});
+    expect(extendSpy).toHaveBeenCalledTimes(1);
+  });
+
+  it('does NOT dispatch when indicator coverage already reaches the viewport left edge', () => {
+    renderInitial({ indicatorCoverageFromDate: '20260601' }); // viewport보다 과거 → 갭 없음
+    expect(extendSpy).not.toHaveBeenCalled();
+  });
+
+  it('holds until candles arrive, then dispatches on the candle-landing commit', () => {
+    const { rerender } = renderInitial({ bundle: null });
+    expect(extendSpy).not.toHaveBeenCalled();
+    rerender({ bundle: bundleWithCandles() });
+    expect(extendSpy).toHaveBeenCalledTimes(1);
+  });
+
+  it('holds until the coverage signal is non-null, then dispatches (candles-first commit does not consume the one-shot)', () => {
+    // 마킹 함정 가드: 캔들이 지표 신호보다 먼저 도착하므로 coverage=null 커밋에서
+    // 마킹하면 지표 도착 후 재판정을 영영 못 한다. null 커밋은 미마킹, 신호 도착 발화.
+    const { rerender } = renderInitial({ indicatorCoverageFromDate: null });
+    expect(extendSpy).not.toHaveBeenCalled();
+    rerender({ indicatorCoverageFromDate: '20260715' });
+    expect(extendSpy).toHaveBeenCalledTimes(1);
+  });
+
+  it('holds while initial viewport placement is in progress (canTriggerBackfill false), then dispatches', () => {
+    const { rerender } = renderInitial({ canTrigger: false });
+    expect(extendSpy).not.toHaveBeenCalled();
+    rerender({ canTrigger: true });
+    expect(extendSpy).toHaveBeenCalledTimes(1);
+  });
+
+  it('checks at most once — no re-dispatch on later commits (SSE ticks)', () => {
+    const { rerender } = renderInitial({});
+    expect(extendSpy).toHaveBeenCalledTimes(1);
+    rerender({}); // SSE 틱 시뮬 재렌더
+    rerender({});
+    expect(extendSpy).toHaveBeenCalledTimes(1);
+  });
+});
