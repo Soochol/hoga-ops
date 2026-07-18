@@ -45,6 +45,13 @@ const qc = new QueryClient({
 // 높아 불변(RQ v5: 훅 옵션 > setQueryDefaults > defaultOptions) — gcTime 만 승격된다.
 qc.setQueryDefaults(['live', 'past-candles'], { gcTime: 2 * 60 * 60_000 });
 
+// range 지표(mode=hoga/sidecar) 델타의 canonical 병합본도 캔들과 동일 수명(2h)으로
+// 승격 — 그래야 웜 복귀 시 캔들만 딥·지표는 얕은 비대칭이 안 생긴다. 실 청크 쿼리
+// (['range', …])는 전역 30분 유지(무거운 sidecar 번들 상주 최소화); 장수명은
+// identity당 1개인 병합본(['live','range-merged',identity])에만 준다. 이 prefix 는
+// /study 의 useStudyRangeCacheEviction(['range'] 축출)과 겹치지 않아 왕복에도 생존.
+qc.setQueryDefaults(['live', 'range-merged'], { gcTime: 2 * 60 * 60_000 });
+
 createRoot(document.getElementById('root')!).render(
   <QueryClientProvider client={qc}>
     <BrowserRouter>

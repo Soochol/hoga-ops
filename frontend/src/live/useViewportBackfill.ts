@@ -31,6 +31,28 @@ function readViewportLeftDate(chart: IChartApi, axis: VirtualAxis): string | nul
  * 된다. 분봉 250일 클램프·D/W/M 데이터 고갈이 보통 먼저 멈춘다. */
 const MAX_FILL_STEPS = 60;
 
+/** coverage_gap 트리거 판정(3b lazy-fetch·3c 초기표시 공유). viewport 좌단 가시
+ * 날짜가 활성 range 지표 커버리지(coverageFrom)보다 과거면 range 창을 그 좌단까지
+ * 당기는 확장 계획을 반환, 아니면 null. window-base nextCoverageFrom 을 쓴다 —
+ * 캔들은 병합 캐시로 복원됐으니 axis-base 로 확장하면 폭발한다. 목표(coverageTarget)는
+ * 트리거 순간의 좌단 날짜라 캔들 전체 범위를 따라잡지 않는다(#582 wide-range 재발 방지). */
+function planCoverageGapFill(
+  chart: IChartApi,
+  axis: VirtualAxis,
+  timeframe: LiveTimeframe,
+  historicalFromDate: string | null,
+  coverageFrom: string | null,
+  windowFrom: string | null,
+): { nextFrom: string; coverageTarget: string } | null {
+  if (coverageFrom === null || windowFrom === null) return null;
+  const leftDate = readViewportLeftDate(chart, axis);
+  if (leftDate === null || leftDate >= coverageFrom) return null;
+  return {
+    nextFrom: nextCoverageFrom(historicalFromDate, windowFrom, timeframe),
+    coverageTarget: leftDate,
+  };
+}
+
 /** 재배치 skip 허용 오차(논리 인덱스). lwc가 스스로 타깃에 착지한 경우(라이브
  * 엣지 보존) 중복 set으로 한 프레임 플래시를 만들지 않기 위한 게이트. */
 const REPOSITION_EPSILON = 0.5;
@@ -122,6 +144,10 @@ export function useViewportBackfill({
   const fillKindRef = useRef<'left_pan' | 'coverage_gap' | null>(null);
   const fillBudgetRef = useRef(0);
   const fillCoverageTargetRef = useRef<string | null>(null);
+  // 초기 표시 coverage_gap 판정을 (code, timeframe)당 1회로 제한하는 래치. 저장
+  // 뷰포트가 처음부터 지표 커버리지 밖 과거를 보고 있으면 사용자 무조작으로도 갭을
+  // 메우되, 지표 신호가 유효해진 첫 커밋에서 단 한 번만 판정한다(effect 3c).
+  const initialCoverageCheckedRef = useRef(false);
   // Candle count of the CURRENT render, mirrored into a ref so the lazy-fetch
   // trigger (3b) and settle-loop (3a) can read it without `bundle` in their
   // deps (3b would re-subscribe every SSE tick). NEITHER may run before the
@@ -164,6 +190,7 @@ export function useViewportBackfill({
     fillKindRef.current = null;
     fillBudgetRef.current = 0;
     fillCoverageTargetRef.current = null;
+    initialCoverageCheckedRef.current = false;
   }, [code, timeframe]);
 
   // 1. Pre-swap snapshot. Runs in the layout phase of every bundle/axis
@@ -371,15 +398,14 @@ export function useViewportBackfill({
         nextFrom = nextHistoricalFrom(axis.segments[0].sessionOpenMs, cur, timeframe);
         budget = Math.min(fillBudgetSteps(-r.from, timeframe), MAX_FILL_STEPS);
       } else {
-        const coverageFrom = coverageFromRef.current;
-        const windowFrom = rangeWindowFromRef.current;
-        if (coverageFrom === null || windowFrom === null) return;
-        const leftDate = readViewportLeftDate(chart, axis);
-        if (leftDate === null || leftDate >= coverageFrom) return;
+        const covPlan = planCoverageGapFill(
+          chart, axis, timeframe, cur, coverageFromRef.current, rangeWindowFromRef.current,
+        );
+        if (!covPlan) return;
         trigger = 'coverage_gap';
-        nextFrom = nextCoverageFrom(cur, windowFrom, timeframe);
+        nextFrom = covPlan.nextFrom;
         budget = MAX_FILL_STEPS; // 종료는 날짜 수렴이 담당, 예산은 백스톱
-        coverageTarget = leftDate;
+        coverageTarget = covPlan.coverageTarget;
       }
       // SR-3: the holiday-span / monotonic-decrease backfill policy lives in the
       // pure nextHistoricalFrom / nextCoverageFrom kernels (liveDateTime,
@@ -428,4 +454,49 @@ export function useViewportBackfill({
       ts.unsubscribeVisibleLogicalRangeChange(handler);
     };
   }, [chart, axis, timeframe, canTriggerBackfill]);
+
+  // 3c. 초기 표시 coverage_gap 판정(1회). 3b는 subscribeVisibleLogicalRangeChange
+  // 이벤트에만 발화하므로, 저장 뷰포트가 처음부터 지표 커버리지 밖 과거를 보고 있으면
+  // 사용자가 팬/줌하기 전까지 지표가 빈 채 방치됐다. PR-1/2가 "받아본 범위"는 복원하니
+  // 여기 남는 갭은 캔들 병합 캐시가 지표보다 원래 깊은 경우(주로 타임프레임 전환 —
+  // 캔들 merged key는 tf 무관, range identity는 bucketMs 포함이라 tf 전환마다 지표 콜드).
+  //
+  // 판정 로직·게이트·fill 동결은 3b와 완전 동일(planCoverageGapFill 공유) — 다른 점은
+  // 트리거 소스뿐(뷰포트 이벤트 대신 최초 캔들+지표 신호 준비 커밋)이다. 발화하면
+  // fillKindRef 를 세워 진행 루프(3a)가 나머지 청크 워크백을 이어받는다.
+  //
+  // 1회성(initialCoverageCheckedRef): 캔들이 지표 신호보다 먼저 도착하므로, 마킹은
+  // coverage 신호가 유효해진(non-null) 첫 커밋에서만 한다 — 캔들만 온 이른 커밋에서
+  // 마킹하면 지표 도착 후 재판정을 영영 못 한다. 갭이 없다고 판정돼도 마킹은 유지해
+  // 반복 판정을 막고, 이후는 3b의 이벤트 트리거가 담당한다.
+  useEffect(() => {
+    if (initialCoverageCheckedRef.current) return;
+    if (!chart || !bundle || bundle.candles.length === 0) return;
+    if (!canTriggerBackfill()) return;
+    if (axis.segments.length === 0) return;
+    // 지표 신호 미도착이면 판정 보류(미마킹) — 다음 커밋 재시도.
+    if (indicatorCoverageFromDate === null || rangeWindowFromDate === null) return;
+    if (isExtendingRef.current || fillKindRef.current !== null) return;
+    initialCoverageCheckedRef.current = true;
+    const cur = useLivePageStore.getState().historicalFromDate;
+    const covPlan = planCoverageGapFill(
+      chart, axis, timeframe, cur, indicatorCoverageFromDate, rangeWindowFromDate,
+    );
+    if (!covPlan) return; // 갭 없음 — 마킹된 채 종료(반복 판정 금지)
+    fillKindRef.current = 'coverage_gap';
+    fillBudgetRef.current = MAX_FILL_STEPS;
+    fillCoverageTargetRef.current = covPlan.coverageTarget;
+    fillStepCountRef.current = 1;
+    livePerfLog('viewport_backfill_extend', {
+      code,
+      timeframe,
+      trigger: 'initial_coverage',
+      from: cur,
+      nextFrom: covPlan.nextFrom,
+      stepCount: fillStepCountRef.current,
+      budget: fillBudgetRef.current,
+      candleCount: bundle.candles.length,
+    });
+    useLivePageStore.getState().extendHistoricalRange(covPlan.nextFrom);
+  }, [chart, bundle, axis, timeframe, canTriggerBackfill, indicatorCoverageFromDate, rangeWindowFromDate, code]);
 }
