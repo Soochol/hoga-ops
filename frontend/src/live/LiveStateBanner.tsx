@@ -1,8 +1,9 @@
 import { Link } from 'react-router';
+import type { LiveBannerPrimary } from './liveStatusProjection';
 import type { BannerCause } from './useLiveBannerState';
 
 interface Props {
-  primary: 'watchlist_empty' | 'kis_credentials_missing' | 'realtime_unavailable' | null;
+  primary: LiveBannerPrimary;
   stack: BannerCause[];
 }
 
@@ -52,7 +53,7 @@ function BannerRow({
   const c = COPY[cause];
   const bg =
     c.severity === 'error' ? 'var(--tint-error)' :
-    c.severity === 'warn' ? 'rgba(245, 158, 11, 0.10)' :
+    c.severity === 'warn' ? 'var(--tint-warn)' :
     'var(--bg-card)';
   const borderColor =
     c.severity === 'error' ? 'var(--error)' :

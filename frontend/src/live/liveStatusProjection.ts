@@ -7,6 +7,15 @@ export type LiveBannerCause =
   | 'kis_token_expired'
   | 'realtime_unavailable';
 
+/** 헤더 밴드에 렌더되는 우선순위-1 배너 값(액션 링크 동반). 세 소비처
+ * (projection·bannerState·LiveStateBanner Props)가 이 타입 하나를 공유한다 —
+ * 멤버 추가 시 lockstep(CONTEXT.md STATE_SEVERITY SSOT 규율). */
+export type LiveBannerPrimary =
+  | 'watchlist_empty'
+  | 'kis_credentials_missing'
+  | 'realtime_unavailable'
+  | null;
+
 export type InventoryState =
   | { kind: 'watchlist'; size: number | null }
   | { kind: 'heatmap'; size: number | null }
@@ -29,7 +38,7 @@ export interface LiveStatusProjectionInput {
 
 export interface LiveStatusProjection {
   banner: {
-    primary: 'watchlist_empty' | 'kis_credentials_missing' | 'realtime_unavailable' | null;
+    primary: LiveBannerPrimary;
     stack: LiveBannerCause[];
   };
   captureHealth: CaptureHealthView;

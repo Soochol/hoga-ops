@@ -97,6 +97,7 @@
   --tint-selection:  rgba(240, 180, 41, 0.10);
   --tint-success:    rgba(47, 191, 113, 0.10);
   --tint-error:      rgba(242, 92, 122, 0.10);
+  --tint-warn:       rgba(245, 158, 11, 0.10);      /* warn @ 10% — 배너 warn 배경 */
   --tint-success-border: rgba(47, 191, 113, 0.30);  /* banner/chip borders */
   --tint-error-border:   rgba(242, 92, 122, 0.30);  /* banner/chip borders */
   --tint-price-up:   rgba(240, 68, 82, 0.10);   /* F04452 @ 10% */
@@ -238,6 +239,7 @@
   --tint-selection:  rgba(31, 111, 84, 0.09);
   --tint-success:    rgba(31, 138, 80, 0.10);
   --tint-error:      rgba(193, 59, 82, 0.10);
+  --tint-warn:       rgba(161, 98, 7, 0.10);    /* warn @ 10% — 배너 warn 배경 */
   --tint-success-border: rgba(31, 138, 80, 0.30);
   --tint-error-border:   rgba(193, 59, 82, 0.30);
   --tint-price-up:   rgba(196, 50, 46, 0.09);   /* C4322E @ 9% */
