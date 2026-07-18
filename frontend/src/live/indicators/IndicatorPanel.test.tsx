@@ -23,6 +23,9 @@ describe('IndicatorPanel', () => {
       indicatorTimeframe: '1m',
     });
     useChartPrefsStore.getState().resetToDefaults();
+    // chartPrefs 의 ambient 봉도 '1m' 으로 — resetToDefaults 는 투영 pointer 를
+    // 건드리지 않으므로 명시 초기화(테스트 격리).
+    useChartPrefsStore.getState().setIndicatorModalTimeframe('1m');
   });
 
   it('활성 13개 체크박스(비활성 0), 10호가·프로그램·거래원 지표 포함', () => {
@@ -468,54 +471,71 @@ describe('IndicatorPanel', () => {
     expect(screen.queryByText(/거래량을 막대로/)).toBeNull();
   });
 
-  it('타임프레임별 저장 지표에는 스코프 칩을 표시한다', () => {
-    renderPanel({ timeframe: 'D' });
-    fireEvent.click(screen.getByRole('button', { name: '거래량' }));
-    expect(screen.getByText('일봉별 표시')).toBeTruthy();
+  it('헤더에 현재 봉 배지를 표시하고 봉에 따라 갱신한다', () => {
+    const view = renderPanel({ timeframe: 'D' });
+    expect(screen.getByText('현재: 일봉')).toBeTruthy();
+    view.rerender(<IndicatorPanel onClose={() => {}} timeframe="1m" />);
+    expect(screen.getByText('현재: 분봉')).toBeTruthy();
   });
 
-  it('전역 지표에는 스코프 칩을 표시하지 않는다', () => {
-    renderPanel();
-    // 이동평균선은 타임프레임 무관 전역 지표 — 칩 없음.
+  it('카테고리별 스코프 칩은 더 이상 렌더하지 않는다', () => {
+    renderPanel({ timeframe: 'D' });
+    // 이동평균선(구 전역)·거래량(구 pane 스코프) 어느 쪽도 칩 없음 — 배지 하나로 통일.
+    fireEvent.click(screen.getByRole('button', { name: '거래량' }));
     expect(screen.queryByText(/별 표시$/)).toBeNull();
   });
 
-  it('기본값 복원은 2단계 확인 후 지표·chartPrefs를 기본값으로 되돌린다', () => {
-    // 기본에서 벗어난 상태를 만든다.
-    useLivePageStore.setState({
-      askPeakEnabled: true,
-      volumeDistributionColor: '#22C55E',
-      movingAverageEnabled: false,
-    });
-    useChartPrefsStore.setState({ surgeStartHHMM: 1030, ratioOutlierThreshold: 500 });
+  it('현재 봉 초기화는 2단계 확인 후 현재 봉의 지표·IM chartPrefs만 되돌린다', () => {
+    // 현재 봉(1m) 버킷에 실제 오버라이드를 쓴다(setter 경유).
+    useLivePageStore.getState().setAskPeakEnabled(true);
+    useLivePageStore.getState().setVolumeDistributionStyle({ color: '#22C55E' });
+    useLivePageStore.getState().setMovingAverageEnabled(false);
+    useChartPrefsStore.getState().setNumericPref('surgeStartHHMM', 1030);
+    useChartPrefsStore.getState().setNumericPref('ratioOutlierThreshold', 500);
+    // 차트 전반 flat(⚙️ 설정 항목)은 드로어 리셋이 건드리면 안 된다.
+    useChartPrefsStore.getState().setToggle('candleTooltipEnabled', false);
     renderPanel();
 
-    // 1단계: '기본값 복원' → 확인 행 노출(아직 리셋 안 됨).
-    fireEvent.click(screen.getByRole('button', { name: '기본값 복원' }));
+    // 1단계: '현재 봉 초기화' → 확인 행 노출(아직 리셋 안 됨).
+    fireEvent.click(screen.getByRole('button', { name: '현재 봉 초기화' }));
     expect(useLivePageStore.getState().askPeakEnabled).toBe(true);
-    expect(screen.getByText('모두 초기화?')).toBeTruthy();
+    expect(screen.getByText('분봉 초기화?')).toBeTruthy();
 
     // 취소는 되돌리지 않는다.
     fireEvent.click(screen.getByRole('button', { name: '취소' }));
-    expect(screen.queryByText('모두 초기화?')).toBeNull();
+    expect(screen.queryByText('분봉 초기화?')).toBeNull();
     expect(useLivePageStore.getState().askPeakEnabled).toBe(true);
 
-    // 2단계: 다시 열고 '복원' → 실제 리셋.
-    fireEvent.click(screen.getByRole('button', { name: '기본값 복원' }));
-    fireEvent.click(screen.getByRole('button', { name: '복원' }));
+    // 2단계: 다시 열고 '초기화' → 실제 리셋.
+    fireEvent.click(screen.getByRole('button', { name: '현재 봉 초기화' }));
+    fireEvent.click(screen.getByRole('button', { name: '초기화' }));
     expect(useLivePageStore.getState().askPeakEnabled).toBe(false);
     expect(useLivePageStore.getState().volumeDistributionColor).toBe('#64748B');
     expect(useLivePageStore.getState().movingAverageEnabled).toBe(true);
     expect(useChartPrefsStore.getState().surgeStartHHMM).toBe(900);
     expect(useChartPrefsStore.getState().ratioOutlierThreshold).toBe(100);
+    // 차트 전반 flat 은 초기화되지 않는다(#699 — 리셋은 현재 봉 버킷만).
+    expect(useChartPrefsStore.getState().candleTooltipEnabled).toBe(false);
   });
 
-  it('기본값 복원은 pane 배열 순서(레이아웃)를 보존한다', () => {
+  it('현재 봉 초기화는 다른 봉 버킷을 건드리지 않는다', () => {
+    // D 버킷에 오버라이드를 심고, 1m(현재 봉)에서 초기화한다.
+    useLivePageStore.getState().setPanePrefForTimeframe('D', 'volumeEnabled', false);
+    useLivePageStore.getState().setAskPeakEnabled(true); // minute 버킷
+    renderPanel({ timeframe: '1m' });
+    fireEvent.click(screen.getByRole('button', { name: '현재 봉 초기화' }));
+    fireEvent.click(screen.getByRole('button', { name: '초기화' }));
+    expect(useLivePageStore.getState().indicatorsByTimeframe.minute).toBeUndefined();
+    expect(useLivePageStore.getState().indicatorsByTimeframe.D?.volumeEnabled).toBe(false);
+  });
+
+  it('현재 봉 초기화는 pane 배열 순서(레이아웃)를 보존한다', () => {
     const customOrder = ['candle', 'ratio', 'volume'] as unknown as never;
-    useLivePageStore.setState({ paneOrder: customOrder, volumeDistributionColor: '#22C55E' });
+    useLivePageStore.setState({ paneOrder: customOrder });
+    useLivePageStore.getState().setVolumeDistributionStyle({ color: '#22C55E' });
     renderPanel();
-    fireEvent.click(screen.getByRole('button', { name: '기본값 복원' }));
-    fireEvent.click(screen.getByRole('button', { name: '복원' }));
+    fireEvent.click(screen.getByRole('button', { name: '현재 봉 초기화' }));
+    fireEvent.click(screen.getByRole('button', { name: '초기화' }));
     // 색은 기본값으로, paneOrder는 그대로.
     expect(useLivePageStore.getState().volumeDistributionColor).toBe('#64748B');
     expect(useLivePageStore.getState().paneOrder).toEqual(['candle', 'ratio', 'volume']);

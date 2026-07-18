@@ -438,8 +438,11 @@ type ChartPrefsStore = ChartViewPrefs & {
   setToggle: (key: ChartToggleKey, value: boolean) => void;
   setNumericPref: (key: NumericPrefKey, value: number) => void;
   setDayBoundaryStyle: (patch: { color?: string; lineWidth?: DayBoundaryLineWidth }) => void;
-  /** 차트 전반 flat 은 전부 기본값으로, indicator-modal 은 **현재 봉 버킷만** 비운다
-   *  (#697 — 드로어에서 하는 일은 현재 봉에만). */
+  /** 지표 드로어 "현재 봉 초기화"(PR-C #699): indicator-modal 의 **현재 봉 버킷만**
+   *  비우고 재투영한다. 차트 전반 flat(그리드·툴팁 등 ⚙️ 설정 항목)은 드로어 밖이라
+   *  건드리지 않는다. */
+  resetIndicatorModalBucket: () => void;
+  /** 전체 초기화: 차트 전반 flat + **전 봉 버킷**을 기본값으로. */
   resetToDefaults: () => void;
 };
 
@@ -483,13 +486,18 @@ export const useChartPrefsStore = create<ChartPrefsStore>((set, get) => {
         dayBoundaryLineWidth: patch.lineWidth ?? s.dayBoundaryLineWidth,
       })),
 
-    resetToDefaults: () => {
+    resetIndicatorModalBucket: () => {
       const s = get();
       const profileKey = profileKeyForTimeframe(s.indicatorModalTimeframe);
       const byTimeframe = { ...s.indicatorModalByTimeframe };
       delete byTimeframe[profileKey];
-      set({ ...DEFAULT_PREFS, indicatorModalByTimeframe: byTimeframe });
+      set({
+        indicatorModalByTimeframe: byTimeframe,
+        ...resolveIndicatorModalPrefs(byTimeframe, s.indicatorModalTimeframe),
+      });
     },
+
+    resetToDefaults: () => set({ ...DEFAULT_PREFS, indicatorModalByTimeframe: {} }),
   };
 });
 

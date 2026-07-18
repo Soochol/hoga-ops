@@ -416,15 +416,28 @@ describe('indicator-modal per-timeframe 버킷 (PR-B #699)', () => {
     expect(s.indicatorModalByTimeframe.D?.bidPeakUntradedRankLimit).toBe(3);
   });
 
-  it('resetToDefaults 는 현재 봉 버킷만 비운다', () => {
-    useChartPrefsStore.getState().setToggle('askPeakIntraMax', true); // minute
+  it('resetIndicatorModalBucket 은 현재 봉 버킷만 비우고 차트 전반 flat 은 보존한다', () => {
+    useChartPrefsStore.getState().setToggle('askPeakIntraMax', true); // minute IM
+    useChartPrefsStore.getState().setToggle('candleTooltipEnabled', false); // 차트 전반 flat
     useChartPrefsStore.getState().setIndicatorModalTimeframe('D');
-    useChartPrefsStore.getState().setToggle('bidPeakIntraMax', true); // D
-    useChartPrefsStore.getState().resetToDefaults();                  // D 만 비움
+    useChartPrefsStore.getState().setToggle('bidPeakIntraMax', true); // D IM
+    useChartPrefsStore.getState().resetIndicatorModalBucket();        // D IM 버킷만
     const s = useChartPrefsStore.getState();
     expect(s.indicatorModalByTimeframe.D).toBeUndefined();
     expect(s.indicatorModalByTimeframe.minute?.askPeakIntraMax).toBe(true);
-    expect(s.bidPeakIntraMax).toBe(false);
+    expect(s.bidPeakIntraMax).toBe(false);          // D 투영 = 기본값
+    expect(s.candleTooltipEnabled).toBe(false);     // 차트 전반 flat 무손상
+  });
+
+  it('resetToDefaults 는 차트 전반 flat + 전 봉 버킷을 전부 비운다', () => {
+    useChartPrefsStore.getState().setToggle('askPeakIntraMax', true); // minute IM
+    useChartPrefsStore.getState().setIndicatorModalTimeframe('D');
+    useChartPrefsStore.getState().setToggle('bidPeakIntraMax', true); // D IM
+    useChartPrefsStore.getState().setToggle('candleTooltipEnabled', false); // 차트 전반
+    useChartPrefsStore.getState().resetToDefaults();
+    const s = useChartPrefsStore.getState();
+    expect(s.indicatorModalByTimeframe).toEqual({});
+    expect(s.candleTooltipEnabled).toBe(true);
   });
 
   it('저장 블롭에 indicatorModalByTimeframe 가 있으면 flat IM 값을 무시한다', () => {

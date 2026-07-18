@@ -69,10 +69,9 @@ const CATEGORIES: ReadonlyArray<{ id: CategoryId; label: string; group: GroupId 
   { id: 'program-trade',   label: '프로그램 순매수',  group: 'program' },
 ];
 
-// Per-timeframe indicators (those in PANE_CATEGORY_TO_KEY) save their on/off
-// separately per profile bucket (분봉/일봉/주봉/월봉). The header chip surfaces
-// that scope so flipping timeframes doesn't read as "my toggles reset".
-function timeframeScopeLabel(tf: LiveTimeframe): string {
+// 모든 지표 설정이 현재 봉(분/일/주/월) 버킷에 저장되므로(#699), 카테고리별
+// 스코프 칩 대신 헤더에 '현재: 분봉' 배지 하나로 스코프를 알린다(PR-C).
+function timeframeLabel(tf: LiveTimeframe): string {
   if (tf === 'D') return '일봉';
   if (tf === 'W') return '주봉';
   if (tf === 'M') return '월봉';
@@ -131,7 +130,7 @@ export default function IndicatorPanel({ onClose, capabilities = STOCK_CAPABILIT
   const setPanePrefForTimeframe = useLivePageStore((s) => s.setPanePrefForTimeframe);
 
   const resetIndicators = useLivePageStore((s) => s.resetIndicators);
-  const resetChartPrefs = useChartPrefsStore((s) => s.resetToDefaults);
+  const resetChartPrefsBucket = useChartPrefsStore((s) => s.resetIndicatorModalBucket);
 
   // Which category's detail pane shows on the right. Clicking a category label
   // navigates here; the checkbox icon toggles its master switch separately.
@@ -139,9 +138,11 @@ export default function IndicatorPanel({ onClose, capabilities = STOCK_CAPABILIT
   // 파괴적 리셋은 인라인 2단계 확인(중첩 모달 회피). 클릭 → 확인 행 → 복원.
   const [confirmingReset, setConfirmingReset] = useState(false);
 
+  // "현재 봉 초기화"(PR-C #699): 지표 버킷과 indicator-modal chartPrefs 버킷을
+  // 현재 봉만 비운다. 차트 전반 flat(⚙️ 설정 항목)은 드로어 밖이라 건드리지 않는다.
   const handleReset = () => {
     resetIndicators();
-    resetChartPrefs();
+    resetChartPrefsBucket();
     setConfirmingReset(false);
   };
 
@@ -202,8 +203,7 @@ export default function IndicatorPanel({ onClose, capabilities = STOCK_CAPABILIT
   const selectedCategory = categories.find((category) => category.id === selected) ?? categories[0];
   const selectedChecked = checkedFor(selectedCategory.id);
   const selectedToggle = toggleFor(selectedCategory.id);
-  const selectedIsTimeframeScoped = PANE_CATEGORY_TO_KEY[selectedCategory.id] !== undefined;
-  const scopeLabel = timeframeScopeLabel(timeframe);
+  const currentTimeframeLabel = timeframeLabel(timeframe);
 
   return (
     // 우측 드로어(side='right', ADR-0116): 왼쪽에 차트가 반투명 딤 너머로 남아 즉시
@@ -266,11 +266,12 @@ export default function IndicatorPanel({ onClose, capabilities = STOCK_CAPABILIT
             );
           })}
         </nav>
-        {/* 기본값 복원 — 파괴적이라 인라인 2단계 확인. */}
+        {/* 현재 봉 초기화 — 현재 보는 봉의 지표 설정만 되돌린다(#699). 파괴적이라
+            인라인 2단계 확인. */}
         <div className="border-t border-border p-2">
           {confirmingReset ? (
             <div className="flex items-center justify-between gap-2 px-1">
-              <span className="text-xs text-fg-dim">모두 초기화?</span>
+              <span className="text-xs text-fg-dim">{currentTimeframeLabel} 초기화?</span>
               <div className="flex items-center gap-1">
                 <button
                   type="button"
@@ -285,7 +286,7 @@ export default function IndicatorPanel({ onClose, capabilities = STOCK_CAPABILIT
                   className="rounded px-2 py-1 text-xs font-medium"
                   style={{ background: 'var(--error)', color: 'var(--fg)' }}
                 >
-                  복원
+                  초기화
                 </button>
               </div>
             </div>
@@ -295,7 +296,7 @@ export default function IndicatorPanel({ onClose, capabilities = STOCK_CAPABILIT
               onClick={() => setConfirmingReset(true)}
               className="w-full rounded-lg px-3 py-2 text-left text-sm text-fg-dim transition-colors hover:bg-bg-input-hover hover:text-fg"
             >
-              기본값 복원
+              현재 봉 초기화
             </button>
           )}
         </div>
@@ -311,14 +312,14 @@ export default function IndicatorPanel({ onClose, capabilities = STOCK_CAPABILIT
               <h2 className="truncate text-lg font-semibold text-fg">{selectedCategory.label}</h2>
             </div>
             <div className="flex shrink-0 items-center gap-3">
-              {selectedIsTimeframeScoped && (
-                <span
-                  title="표시 여부가 분봉·일봉·주봉·월봉 차트마다 따로 저장됩니다."
-                  className="rounded-full border border-border px-2 py-0.5 text-[11px] text-fg-dim"
-                >
-                  {scopeLabel}별 표시
-                </span>
-              )}
+              {/* 모든 지표 설정은 현재 보는 봉 버킷에 저장된다(#699). 읽기전용 배지
+                  하나로 스코프를 알린다 — 봉 전환 시 timeframe prop 으로 자동 갱신. */}
+              <span
+                title="지표 설정은 현재 보는 봉(분·일·주·월)마다 따로 저장됩니다."
+                className="rounded-full border border-border px-2 py-0.5 text-[11px] text-fg-dim"
+              >
+                현재: {currentTimeframeLabel}
+              </span>
               {selectedToggle && (
                 <div className="flex items-center gap-2">
                   <span className="text-xs text-fg-dim">{selectedChecked ? '표시' : '숨김'}</span>
