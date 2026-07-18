@@ -302,6 +302,8 @@ export const CHART_NUMERIC_PREFS = [
     default: 1,
     min: 0,
     max: 3,
+    // AskPeakConfig(지표 드로어)가 직접 렌더 — ⚙️ 설정에는 나오지 않는 드로어 항목.
+    category: 'indicator-modal',
   },
   {
     key: 'bidPeakAllPriceRankLimit',
@@ -328,6 +330,8 @@ export const CHART_NUMERIC_PREFS = [
     default: 1,
     min: 0,
     max: 3,
+    // BidPeakConfig(지표 드로어)가 직접 렌더 — ⚙️ 설정에는 나오지 않는 드로어 항목.
+    category: 'indicator-modal',
   },
 ] as const satisfies readonly NumericPrefDef[];
 
@@ -364,26 +368,138 @@ export const DEFAULT_PREFS: ChartViewPrefs = {
   dayBoundaryLineWidth: DAY_BOUNDARY_LINE_WIDTH_DEFAULT,
 };
 
+/**
+ * 지표 드로어 스코프(per-timeframe 버킷화 대상, #696·#699 PR-B) 키 분류.
+ *
+ * 드로어에 렌더되는 chartPrefs = indicator-modal 카테고리 토글 + (그 토글이
+ * `enabledBy` 로 게이트하는 수치 ∪ indicator-modal 카테고리 수치). 이 키들은
+ * 현재 봉(분/D/W/M) 버킷에 저장되고, 나머지(차트 전반 토글·날짜선 스타일)는
+ * 종전대로 전역 flat 이다.
+ */
+export const INDICATOR_MODAL_TOGGLE_KEYS: readonly ChartToggleKey[] = CHART_TOGGLES
+  .filter((t) => categoryOf(t) === 'indicator-modal')
+  .map((t) => t.key);
+
+const INDICATOR_MODAL_TOGGLE_SET = new Set<string>(INDICATOR_MODAL_TOGGLE_KEYS);
+
+export const INDICATOR_MODAL_NUMERIC_KEYS: readonly NumericPrefKey[] = CHART_NUMERIC_PREFS
+  .filter((p) => ('category' in p && p.category === 'indicator-modal')
+    || ('enabledBy' in p && INDICATOR_MODAL_TOGGLE_SET.has(p.enabledBy as string)))
+  .map((p) => p.key);
+
+export type IndicatorModalPrefKey = ChartToggleKey | NumericPrefKey;
+
+export const INDICATOR_MODAL_PREF_KEYS: readonly IndicatorModalPrefKey[] = [
+  ...INDICATOR_MODAL_TOGGLE_KEYS,
+  ...INDICATOR_MODAL_NUMERIC_KEYS,
+];
+
+const INDICATOR_MODAL_PREF_SET = new Set<string>(INDICATOR_MODAL_PREF_KEYS);
+
+export function isIndicatorModalPrefKey(key: string): key is IndicatorModalPrefKey {
+  return INDICATOR_MODAL_PREF_SET.has(key);
+}
+
+/** indicator-modal 키의 per-timeframe sparse 오버라이드 (기본값과의 diff). */
+export type IndicatorModalByTimeframe =
+  Partial<Record<IndicatorPaneProfileKey, Partial<Record<IndicatorModalPrefKey, boolean | number>>>>;
+
+/** 주어진 봉의 indicator-modal 유효값 = 레지스트리 기본값 ⊕ 해당 버킷. */
+export function resolveIndicatorModalPrefs(
+  byTimeframe: IndicatorModalByTimeframe,
+  timeframe: LiveTimeframe,
+): Partial<ChartViewPrefs> {
+  const bucket = byTimeframe[profileKeyForTimeframe(timeframe)] ?? {};
+  const out: Record<string, boolean | number> = {};
+  for (const key of INDICATOR_MODAL_PREF_KEYS) {
+    out[key] = (bucket[key] ?? DEFAULT_PREFS[key]) as boolean | number;
+  }
+  return out as Partial<ChartViewPrefs>;
+}
+
 import { create } from 'zustand';
+import {
+  profileKeyForTimeframe,
+  type IndicatorPaneProfileKey,
+} from '../live/indicators/indicatorPaneProfiles';
+import type { LiveTimeframe } from './livePage';
 
 type ChartPrefsStore = ChartViewPrefs & {
+  /** indicator-modal 키의 4버킷 원본 — 최상위 필드는 ambient 봉 투영(PR-A 패턴). */
+  indicatorModalByTimeframe: IndicatorModalByTimeframe;
+  /** indicator-modal 투영이 현재 따르는 봉 — livePage 의 ambient 와 동기화된다. */
+  indicatorModalTimeframe: LiveTimeframe;
+  setIndicatorModalTimeframe: (tf: LiveTimeframe) => void;
   setToggle: (key: ChartToggleKey, value: boolean) => void;
   setNumericPref: (key: NumericPrefKey, value: number) => void;
   setDayBoundaryStyle: (patch: { color?: string; lineWidth?: DayBoundaryLineWidth }) => void;
+  /** 차트 전반 flat 은 전부 기본값으로, indicator-modal 은 **현재 봉 버킷만** 비운다
+   *  (#697 — 드로어에서 하는 일은 현재 봉에만). */
   resetToDefaults: () => void;
 };
 
-export const useChartPrefsStore = create<ChartPrefsStore>((set) => ({
-  ...DEFAULT_PREFS,
-  setToggle: (key, value) => set({ [key]: value } as Partial<ChartPrefsStore>),
-  setNumericPref: (key, value) => set({ [key]: value } as Partial<ChartPrefsStore>),
-  setDayBoundaryStyle: (patch) =>
-    set((s) => ({
-      dayBoundaryColor: patch.color ?? s.dayBoundaryColor,
-      dayBoundaryLineWidth: patch.lineWidth ?? s.dayBoundaryLineWidth,
-    })),
-  resetToDefaults: () => set(DEFAULT_PREFS),
-}));
+export const useChartPrefsStore = create<ChartPrefsStore>((set, get) => {
+  /** indicator-modal 키 쓰기: ambient 봉 버킷에 기록 + 최상위 투영 갱신. */
+  const writeIndicatorModal = (key: IndicatorModalPrefKey, value: boolean | number): void => {
+    const s = get();
+    const profileKey = profileKeyForTimeframe(s.indicatorModalTimeframe);
+    const bucket = { ...(s.indicatorModalByTimeframe[profileKey] ?? {}), [key]: value };
+    set({
+      [key]: value,
+      indicatorModalByTimeframe: { ...s.indicatorModalByTimeframe, [profileKey]: bucket },
+    } as Partial<ChartPrefsStore>);
+  };
+
+  return {
+    ...DEFAULT_PREFS,
+    indicatorModalByTimeframe: {},
+    indicatorModalTimeframe: '1m',
+
+    setIndicatorModalTimeframe: (tf) => {
+      // 같은 봉이어도 무조건 재투영(PR-A 의 setIndicatorTimeframe 과 동일한 이유).
+      set({
+        indicatorModalTimeframe: tf,
+        ...resolveIndicatorModalPrefs(get().indicatorModalByTimeframe, tf),
+      });
+    },
+
+    setToggle: (key, value) => {
+      if (isIndicatorModalPrefKey(key)) {
+        writeIndicatorModal(key, value);
+        return;
+      }
+      set({ [key]: value } as Partial<ChartPrefsStore>);
+    },
+
+    setNumericPref: (key, value) => {
+      if (isIndicatorModalPrefKey(key)) {
+        writeIndicatorModal(key, value);
+        return;
+      }
+      set({ [key]: value } as Partial<ChartPrefsStore>);
+    },
+
+    setDayBoundaryStyle: (patch) =>
+      set((s) => ({
+        dayBoundaryColor: patch.color ?? s.dayBoundaryColor,
+        dayBoundaryLineWidth: patch.lineWidth ?? s.dayBoundaryLineWidth,
+      })),
+
+    resetToDefaults: () => {
+      const s = get();
+      const profileKey = profileKeyForTimeframe(s.indicatorModalTimeframe);
+      const byTimeframe = { ...s.indicatorModalByTimeframe };
+      delete byTimeframe[profileKey];
+      set({ ...DEFAULT_PREFS, indicatorModalByTimeframe: byTimeframe });
+    },
+  };
+});
+
+/** livePage 의 ambient 봉 전환이 호출하는 동기화 진입점 — 두 스토어의 투영을
+ *  같은 틱에 맞춘다(livePage → chartPrefs 단방향 의존, 순환 없음). */
+export function syncIndicatorModalTimeframe(tf: LiveTimeframe): void {
+  useChartPrefsStore.getState().setIndicatorModalTimeframe(tf);
+}
 
 /**
  * Subscribe to a slice of the global `ChartViewPrefs`.

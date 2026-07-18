@@ -27,6 +27,7 @@ import {
   type IndicatorSettings,
   type IndicatorSettingsByTimeframe,
 } from './indicatorSettingsV2';
+import { syncIndicatorModalTimeframe } from './chartPrefs';
 import {
   INDICATOR_PANE_PREF_KEYS,
   INDICATOR_PANE_PROFILE_KEYS,
@@ -362,11 +363,15 @@ export const useLivePageStore = create<Store>((set, get) => {
     persistIndicatorsV2({ paneOrder: get().paneOrder, byTimeframe });
   };
 
-  /** 봉 전환 시 투영 재계산. candleTimeframe 세터·페이지 동기화가 호출한다. */
-  const projectIndicatorsFor = (tf: LiveTimeframe): Partial<Store> => ({
-    indicatorTimeframe: tf,
-    ...resolveIndicatorSettings(get().indicatorsByTimeframe, tf),
-  });
+  /** 봉 전환 시 투영 재계산. candleTimeframe 세터·페이지 동기화가 호출한다.
+   *  chartPrefs 의 indicator-modal 투영(PR-B)도 같은 틱에 함께 맞춘다. */
+  const projectIndicatorsFor = (tf: LiveTimeframe): Partial<Store> => {
+    syncIndicatorModalTimeframe(tf);
+    return {
+      indicatorTimeframe: tf,
+      ...resolveIndicatorSettings(get().indicatorsByTimeframe, tf),
+    };
+  };
 
   return {
     ...initialPage,
@@ -861,3 +866,7 @@ export const useLivePageStore = create<Store>((set, get) => {
     },
   };
 });
+
+// 콜드 로드: chartPrefs 의 indicator-modal 투영을 저장된 봉으로 1회 정렬(PR-B).
+// (chartPrefs 스토어는 '1m' 투영으로 시작하고, 이후 전환은 projectIndicatorsFor 가 동기화.)
+syncIndicatorModalTimeframe(initialPage.candleTimeframe);
