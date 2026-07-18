@@ -254,6 +254,15 @@ beforeEach(() => {
     volumeDistributionEnabled: true,
     volumeDistributionHoverCutoffEnabled: false,
     volumeDistributionRangeCount: 2,
+    // StudyPage 마운트가 ambient 봉으로 재투영하므로(PR-A #699), 최상위뿐 아니라
+    // minute 버킷에도 넣어야 투영 후에도 살아남는다.
+    indicatorsByTimeframe: {
+      minute: {
+        volumeDistributionEnabled: true,
+        volumeDistributionHoverCutoffEnabled: false,
+        volumeDistributionRangeCount: 2,
+      },
+    },
   });
   useStudyTabsStore.setState({ tabs: [], activeTabId: null });
   useEntryDragStore.setState({ draggingCode: null, overStudy: false });
@@ -874,6 +883,13 @@ describe('StudyPage', () => {
       volumeDistributionEnabled: true,
       volumeDistributionHoverCutoffEnabled: true,
       volumeDistributionRangeCount: 2,
+      indicatorsByTimeframe: {
+        minute: {
+          volumeDistributionEnabled: true,
+          volumeDistributionHoverCutoffEnabled: true,
+          volumeDistributionRangeCount: 2,
+        },
+      },
     });
     const previousDateCandle = {
       ts_ms: Date.UTC(2026, 5, 15, 1, 0, 0),

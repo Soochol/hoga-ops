@@ -9,12 +9,10 @@ import {
 } from '../../state/liveLayout';
 import { normalizeKeyOrder } from '../../state/keyOrder';
 import { normalizePaneOrder, normalizePaneStretch } from '../../chart/paneOrder';
-import { mergeLiveIndicatorPrefs } from '../../state/liveIndicatorsPersistence';
-import { normalizePanePrefsByTimeframe } from '../indicators/indicatorPaneProfiles';
 import type { LiveLayoutPresetPayload } from '../../api/liveLayoutPresets';
 import {
   PRESET_INDICATOR_FLAG_KEYS,
-  type PresetIndicatorFlags,
+  normalizePresetEnableByTimeframe,
 } from './presetFlags';
 
 /**
@@ -48,16 +46,24 @@ export function capturePresetPayload(): LiveLayoutPresetPayload {
   const page = useLivePageStore.getState();
   const layout = useLiveLayoutStore.getState();
 
-  const flags: Record<string, boolean> = {};
-  for (const key of PRESET_INDICATOR_FLAG_KEYS) {
-    flags[key] = Boolean((page as unknown as Record<string, unknown>)[key]);
-  }
+  // 프리셋 = 4버킷 전체의 지표 on/off 스냅샷(#698·#699 PR-D). indicatorsByTimeframe
+  // 는 이미 공장값 diff sparse 이므로, 각 버킷에서 enable 15키만 슬라이스하면 된다.
+  // 현재 봉 투영이 아니라 버킷 원본을 읽으므로 캡처가 timeframe-무관 = 캡처→적용 항등.
+  const byTimeframeEnable = Object.fromEntries(
+    Object.entries(page.indicatorsByTimeframe).flatMap(([profileKey, bucket]) => {
+      const slice = Object.fromEntries(
+        PRESET_INDICATOR_FLAG_KEYS.flatMap((key) => (
+          typeof bucket?.[key] === 'boolean' ? [[key, bucket[key]]] : []
+        )),
+      );
+      return Object.keys(slice).length > 0 ? [[profileKey, slice]] : [];
+    }),
+  );
 
   return {
     pane_order: [...page.paneOrder],
-    pane_prefs_by_timeframe: JSON.parse(JSON.stringify(page.panePrefsByTimeframe)),
+    by_timeframe_enable: byTimeframeEnable,
     pane_stretch: { ...page.paneStretch },
-    indicator_flags: flags,
     right_panel_width_px: layout.rightPanelWidthPx,
     right_card_order: [...layout.rightCardOrder],
     right_card_hidden: { ...layout.rightCardHidden },
@@ -69,19 +75,12 @@ export function capturePresetPayload(): LiveLayoutPresetPayload {
 /**
  * 프리셋 payload 를 현재 화면에 적용한다. 모든 필드를 클라이언트에서 canonical
  * 재정규화한 뒤, 스토어별 벌크 액션으로 각각 단일 set + 단일 persist 를 수행한다.
- * flat 레거시 pane 플래그와 panePrefsByTimeframe 를 **둘 다** 덮어써 결정론 확보.
+ * 각 봉 버킷의 enable 오버라이드를 프리셋 값으로 통째 교체해 결정론 확보(#699 §5).
  */
 export function applyPresetPayload(payload: LiveLayoutPresetPayload, presetId: string | null): void {
-  const flags: PresetIndicatorFlags = {};
-  const rawFlags = boolMap(payload.indicator_flags);
-  for (const key of PRESET_INDICATOR_FLAG_KEYS) {
-    if (key in rawFlags) flags[key] = rawFlags[key];
-  }
-
   useLivePageStore.getState().applyIndicatorPreset({
     paneOrder: normalizePaneOrder(payload.pane_order),
-    panePrefsByTimeframe: normalizePanePrefsByTimeframe(payload.pane_prefs_by_timeframe),
-    flags,
+    byTimeframeEnable: normalizePresetEnableByTimeframe(payload.by_timeframe_enable),
     // 구버전 프리셋(필드 부재)은 {} 로 정규화 → 스펙 기본 크기로 적용된다.
     paneStretch: normalizePaneStretch(payload.pane_stretch),
   });
@@ -99,18 +98,14 @@ export function applyPresetPayload(payload: LiveLayoutPresetPayload, presetId: s
   useLiveLayoutStore.getState().applyLayoutPreset(layoutInput);
 }
 
-/** 기본 레이아웃(코드 기본값) payload — "기본으로 초기화"에 사용. */
+/** 기본 레이아웃(코드 기본값) payload — "기본으로 초기화"에 사용.
+ *  by_timeframe_enable 를 비우면 적용 시 전 봉이 공장 기본값(#697 — 거래량+MA만
+ *  on)으로 리셋된다 — 별도 플래그 나열 없이 sparse 모델이 공장값을 그대로 태운다. */
 export function defaultPresetPayload(): LiveLayoutPresetPayload {
-  const prefs = mergeLiveIndicatorPrefs(undefined);
-  const flags: Record<string, boolean> = {};
-  for (const key of PRESET_INDICATOR_FLAG_KEYS) {
-    flags[key] = Boolean((prefs as unknown as Record<string, unknown>)[key]);
-  }
   return {
-    pane_order: [...prefs.paneOrder],
-    pane_prefs_by_timeframe: {},
+    pane_order: normalizePaneOrder(undefined),
+    by_timeframe_enable: {},
     pane_stretch: {},
-    indicator_flags: flags,
     right_panel_width_px: DEFAULT_RIGHT_PANEL_WIDTH_PX,
     right_card_order: [...LIVE_CARD_KEYS],
     right_card_hidden: {},

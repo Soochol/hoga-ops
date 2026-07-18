@@ -270,7 +270,7 @@ describe('useLivePageStore.setPaneOrder', () => {
     });
   });
 
-  it('replaces the order (normalized) and persists to live.indicators.v1', () => {
+  it('replaces the order (normalized) and persists to live.indicators.v2', () => {
     useLivePageStore.getState().setPaneOrder([
       'candle', 'quote-totals', 'volume', 'ratio',
       'fill-strength', 'program-trade', 'investor-foreign', 'investor-institution',
@@ -278,7 +278,7 @@ describe('useLivePageStore.setPaneOrder', () => {
     expect(useLivePageStore.getState().paneOrder.slice(0, 3)).toEqual([
       'candle', 'quote-totals', 'volume',
     ]);
-    const persisted = JSON.parse(localStorage.getItem('live.indicators.v1') ?? '{}');
+    const persisted = JSON.parse(localStorage.getItem('live.indicators.v2') ?? '{}');
     expect(persisted.paneOrder.slice(0, 3)).toEqual(['candle', 'quote-totals', 'volume']);
   });
 
@@ -294,11 +294,11 @@ describe('useLivePageStore.setPaneStretch', () => {
     useLivePageStore.setState({ paneStretch: {} });
   });
 
-  it('merges the patch and persists to live.indicators.v1', () => {
+  it('merges the patch and persists to live.indicators.v2', () => {
     useLivePageStore.getState().setPaneStretch({ candle: 2.5, volume: 0.2 });
     useLivePageStore.getState().setPaneStretch({ ratio: 0.6 });
     expect(useLivePageStore.getState().paneStretch).toEqual({ candle: 2.5, volume: 0.2, ratio: 0.6 });
-    const persisted = JSON.parse(localStorage.getItem('live.indicators.v1') ?? '{}');
+    const persisted = JSON.parse(localStorage.getItem('live.indicators.v2') ?? '{}');
     expect(persisted.paneStretch).toEqual({ candle: 2.5, volume: 0.2, ratio: 0.6 });
   });
 
@@ -323,8 +323,7 @@ describe('useLivePageStore.setPaneStretch', () => {
     useLivePageStore.getState().setPaneStretch({ candle: 2.5 });
     useLivePageStore.getState().applyIndicatorPreset({
       paneOrder: ['candle'],
-      panePrefsByTimeframe: {},
-      flags: {},
+      byTimeframeEnable: {},
       paneStretch: {},
     });
     expect(useLivePageStore.getState().paneStretch).toEqual({});
@@ -334,6 +333,7 @@ describe('useLivePageStore.setPaneStretch', () => {
 describe('useLivePageStore.movingAverages', () => {
   beforeEach(() => {
     localStorage.removeItem('live.indicators.v1');
+    localStorage.removeItem('live.indicators.v2');
     // Force re-hydrate by resetting state to DEFAULT_LIVE_MAS clone.
     useLivePageStore.setState({
       movingAverages: DEFAULT_LIVE_MAS.map((m) => ({ ...m })),
@@ -423,21 +423,23 @@ describe('useLivePageStore.movingAverages', () => {
     expect(useLivePageStore.getState().movingAverages).toBe(before);
   });
 
-  it('mutations persist to localStorage("live.indicators.v1")', () => {
+  it('mutations persist to localStorage("live.indicators.v2") under the ambient bucket', () => {
     const id = useLivePageStore.getState().movingAverages[0].id;
     useLivePageStore.getState().setMovingAverage(id, { period: 7 });
-    const raw = localStorage.getItem('live.indicators.v1');
+    const raw = localStorage.getItem('live.indicators.v2');
     expect(raw).toContain('"period":7');
 
     useLivePageStore.getState().setVolumeDistributionHoverCutoffEnabled(true);
-    const persisted = JSON.parse(localStorage.getItem('live.indicators.v1')!);
-    expect(persisted.volumeDistributionHoverCutoffEnabled).toBe(true);
+    const persisted = JSON.parse(localStorage.getItem('live.indicators.v2')!);
+    const bucketKey = useLivePageStore.getState().indicatorTimeframe === 'D' ? 'D' : 'minute';
+    expect(persisted.byTimeframe[bucketKey].volumeDistributionHoverCutoffEnabled).toBe(true);
   });
 });
 
 describe('useLivePageStore.askPeakAllPriceStyle', () => {
   beforeEach(() => {
     localStorage.removeItem('live.indicators.v1');
+    localStorage.removeItem('live.indicators.v2');
     useLivePageStore.setState({
       askPeakAllPriceColor: '#F97316',
       askPeakAllPriceLineWidth: 1,
@@ -456,15 +458,17 @@ describe('useLivePageStore.askPeakAllPriceStyle', () => {
 
   it('persists all-price style fields in the indicator snapshot', () => {
     useLivePageStore.getState().setAskPeakAllPriceStyle({ color: '#22C55E', lineWidth: 3 });
-    const raw = JSON.parse(localStorage.getItem('live.indicators.v1') ?? '{}');
-    expect(raw.askPeakAllPriceColor).toBe('#22C55E');
-    expect(raw.askPeakAllPriceLineWidth).toBe(3);
+    const raw = JSON.parse(localStorage.getItem('live.indicators.v2') ?? '{}');
+    const bucket = raw.byTimeframe?.[useLivePageStore.getState().indicatorTimeframe === 'D' ? 'D' : 'minute'] ?? {};
+    expect(bucket.askPeakAllPriceColor).toBe('#22C55E');
+    expect(bucket.askPeakAllPriceLineWidth).toBe(3);
   });
 });
 
 describe('useLivePageStore.askPeakVisibleMaxStyle', () => {
   beforeEach(() => {
     localStorage.removeItem('live.indicators.v1');
+    localStorage.removeItem('live.indicators.v2');
     useLivePageStore.setState({
       askPeakVisibleMaxColor: '#EAB308',
       askPeakVisibleMaxLineWidth: 3,
@@ -483,15 +487,17 @@ describe('useLivePageStore.askPeakVisibleMaxStyle', () => {
 
   it('persists visible max style fields in the indicator snapshot', () => {
     useLivePageStore.getState().setAskPeakVisibleMaxStyle({ color: '#A855F7', lineWidth: 4 });
-    const raw = JSON.parse(localStorage.getItem('live.indicators.v1') ?? '{}');
-    expect(raw.askPeakVisibleMaxColor).toBe('#A855F7');
-    expect(raw.askPeakVisibleMaxLineWidth).toBe(4);
+    const raw = JSON.parse(localStorage.getItem('live.indicators.v2') ?? '{}');
+    const bucket = raw.byTimeframe?.[useLivePageStore.getState().indicatorTimeframe === 'D' ? 'D' : 'minute'] ?? {};
+    expect(bucket.askPeakVisibleMaxColor).toBe('#A855F7');
+    expect(bucket.askPeakVisibleMaxLineWidth).toBe(4);
   });
 });
 
 describe('useLivePageStore.viLimitPriceLineStyle', () => {
   beforeEach(() => {
     localStorage.removeItem('live.indicators.v1');
+    localStorage.removeItem('live.indicators.v2');
     useLivePageStore.setState({
       viLimitPriceLineColor: '#EAB308',
       viLimitPriceLineWidth: 3,
@@ -510,9 +516,10 @@ describe('useLivePageStore.viLimitPriceLineStyle', () => {
 
   it('persists VI/상하한가 line style fields in the indicator snapshot', () => {
     useLivePageStore.getState().setViLimitPriceLineStyle({ color: '#A855F7', lineWidth: 4 });
-    const raw = JSON.parse(localStorage.getItem('live.indicators.v1') ?? '{}');
-    expect(raw.viLimitPriceLineColor).toBe('#A855F7');
-    expect(raw.viLimitPriceLineWidth).toBe(4);
+    const raw = JSON.parse(localStorage.getItem('live.indicators.v2') ?? '{}');
+    const bucket = raw.byTimeframe?.[useLivePageStore.getState().indicatorTimeframe === 'D' ? 'D' : 'minute'] ?? {};
+    expect(bucket.viLimitPriceLineColor).toBe('#A855F7');
+    expect(bucket.viLimitPriceLineWidth).toBe(4);
   });
 });
 

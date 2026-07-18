@@ -1,5 +1,6 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { useLivePageStore } from '../../state/livePage';
+import { FACTORY_INDICATOR_SETTINGS } from '../../state/indicatorSettingsV2';
 import { useLiveLayoutStore, DEFAULT_CARD_WEIGHTS, LIVE_CARD_KEYS } from '../../state/liveLayout';
 import {
   applyPresetPayload,
@@ -25,20 +26,22 @@ beforeEach(() => {
     detailPanelCollapsed: false,
     lastAppliedPresetId: null,
   });
+  // 공장 상태에서 시작 — 투영·버킷·ambient 봉 일관(빈 버킷 ⊕ 공장값 = 투영).
   useLivePageStore.setState({
+    ...FACTORY_INDICATOR_SETTINGS,
     paneOrder: [...CANON_PANES] as never,
     paneStretch: {},
-    panePrefsByTimeframe: {},
-    volumeEnabled: true,
-    ratioEnabled: true,
-    movingAverageEnabled: true,
-    askPeakEnabled: false,
+    indicatorsByTimeframe: {},
+    indicatorTimeframe: '1m',
   });
 });
 
 describe('capturePresetPayload', () => {
-  it('captures pane order, flags, and right-panel layout (not symbol/timeframe)', () => {
-    useLivePageStore.setState({ paneOrder: ['candle', 'ratio', 'volume'] as never, ratioEnabled: false });
+  it('captures pane order, per-bucket enables, and right-panel layout (not symbol/timeframe)', () => {
+    // 현재 봉(1m)에서 ratio 끄고, D 버킷엔 volume 끄기 오버라이드를 심는다.
+    useLivePageStore.getState().setRatioEnabled(false);            // minute 버킷
+    useLivePageStore.getState().setPanePrefForTimeframe('D', 'volumeEnabled', false);
+    useLivePageStore.setState({ paneOrder: ['candle', 'ratio', 'volume'] as never });
     useLiveLayoutStore.setState({ rightPanelWidthPx: 460, rightCardHidden: { program: true } });
 
     useLivePageStore.setState({ paneStretch: { candle: 2.2, volume: 0.2 } });
@@ -46,21 +49,31 @@ describe('capturePresetPayload', () => {
     const payload = capturePresetPayload();
     expect(payload.pane_order.slice(0, 3)).toEqual(['candle', 'ratio', 'volume']);
     expect(payload.pane_stretch).toEqual({ candle: 2.2, volume: 0.2 });
-    expect(payload.indicator_flags.ratioEnabled).toBe(false);
-    expect(payload.indicator_flags.volumeEnabled).toBe(true);
+    // by_timeframe_enable = 각 버킷의 sparse enable 오버라이드(공장값 diff).
+    expect(payload.by_timeframe_enable.minute).toEqual({ ratioEnabled: false });
+    expect(payload.by_timeframe_enable.D).toEqual({ volumeEnabled: false });
     expect(payload.right_panel_width_px).toBe(460);
     expect(payload.right_card_hidden).toEqual({ program: true });
     // 종목/타임프레임/뷰포트 키는 존재하지 않는다.
     expect(payload).not.toHaveProperty('code');
     expect(payload).not.toHaveProperty('timeframe');
   });
+
+  it('is timeframe-independent — capture from any ambient 봉 yields the same map', () => {
+    useLivePageStore.getState().setRatioEnabled(false);            // minute 버킷
+    useLivePageStore.getState().setPanePrefForTimeframe('D', 'volumeEnabled', false);
+    const fromMinute = capturePresetPayload().by_timeframe_enable;
+    // ambient 를 D 로 옮겨도(투영이 바뀌어도) 버킷 원본에서 읽으므로 동일.
+    useLivePageStore.getState().setIndicatorTimeframe('D');
+    const fromDaily = capturePresetPayload().by_timeframe_enable;
+    expect(fromDaily).toEqual(fromMinute);
+  });
 });
 
 describe('applyPresetPayload', () => {
   const basePayload = (over: Partial<LiveLayoutPresetPayload> = {}): LiveLayoutPresetPayload => ({
     pane_order: [...CANON_PANES],
-    pane_prefs_by_timeframe: {},
-    indicator_flags: {},
+    by_timeframe_enable: {},
     right_panel_width_px: 420,
     right_card_order: [...LIVE_CARD_KEYS],
     right_card_hidden: {},
@@ -86,19 +99,47 @@ describe('applyPresetPayload', () => {
     expect(useLiveLayoutStore.getState().lastAppliedPresetId).toBe('preset-1');
   });
 
-  it('overwrites both the flat pane flags and the timeframe pref map', () => {
-    // stale flat: ratioEnabled=false 로 시작.
-    useLivePageStore.setState({ ratioEnabled: false });
+  it('replaces each bucket enable overrides deterministically, preserving params', () => {
+    // 기존 상태: minute 에 stale enable(askPeak on) + 파라미터(색) 오버라이드.
+    useLivePageStore.getState().setAskPeakEnabled(true);
+    useLivePageStore.getState().setAskPeakStyle({ color: '#123456' });
     applyPresetPayload(basePayload({
-      indicator_flags: { ratioEnabled: true, volumeEnabled: false },
-      pane_prefs_by_timeframe: { minute: { fillStrengthEnabled: false } },
+      by_timeframe_enable: { minute: { ratioEnabled: false }, D: { volumeEnabled: false } },
     }), null);
 
-    expect(useLivePageStore.getState().ratioEnabled).toBe(true); // flat 덮어씀
-    expect(useLivePageStore.getState().volumeEnabled).toBe(false);
-    expect(useLivePageStore.getState().panePrefsByTimeframe).toEqual({
-      minute: { fillStrengthEnabled: false },
-    });
+    const byTimeframe = useLivePageStore.getState().indicatorsByTimeframe;
+    // enable 은 프리셋으로 통째 교체 — stale askPeakEnabled 오버라이드는 제거됨.
+    expect(byTimeframe.minute?.askPeakEnabled).toBeUndefined();
+    expect(byTimeframe.minute?.ratioEnabled).toBe(false);
+    // 파라미터(색) 오버라이드는 프리셋 범위 밖이라 보존.
+    expect(byTimeframe.minute?.askPeakColor).toBe('#123456');
+    // 프리셋에 없는 봉의 enable 은 공장값 복귀(오버라이드 없음).
+    expect(byTimeframe.D).toEqual({ volumeEnabled: false });
+    expect(byTimeframe.W).toBeUndefined();
+    // ambient(minute) 투영 반영.
+    expect(useLivePageStore.getState().ratioEnabled).toBe(false);
+    expect(useLivePageStore.getState().askPeakEnabled).toBe(false);
+  });
+
+  it('capture→apply is identity (PR-D 회귀: 캡처가 timeframe-무관)', () => {
+    // 서로 다른 봉에 서로 다른 enable 을 심는다. overlay enable(askPeak)은
+    // ambient 를 그 봉으로 옮겨 setter 로 기록한다(pane 세터는 pane 7종 전용).
+    useLivePageStore.getState().setRatioEnabled(false);              // minute (ambient=1m)
+    useLivePageStore.getState().setIndicatorTimeframe('D');
+    useLivePageStore.getState().setVolumeEnabled(false);             // D pane
+    useLivePageStore.getState().setAskPeakEnabled(true);             // D overlay
+    useLivePageStore.getState().setIndicatorTimeframe('1m');
+    const snapshot = JSON.parse(JSON.stringify(useLivePageStore.getState().indicatorsByTimeframe));
+
+    const payload = capturePresetPayload();
+    // 다른 상태로 흩뜨린 뒤 되적용해도 원상 복구되는지.
+    useLivePageStore.getState().resetIndicators();
+    useLivePageStore.getState().setIndicatorTimeframe('W');
+    useLivePageStore.getState().setVolumeEnabled(false);
+    useLivePageStore.getState().setIndicatorTimeframe('1m');
+    applyPresetPayload(payload, null);
+
+    expect(useLivePageStore.getState().indicatorsByTimeframe).toEqual(snapshot);
   });
 
   it('applies pane_stretch and resets it when the field is absent (legacy preset)', () => {
@@ -116,7 +157,7 @@ describe('applyPresetPayload', () => {
       right_panel_width_px: 455,
     }), 'p2');
 
-    const indicators = JSON.parse(localStorage.getItem('live.indicators.v1') ?? '{}');
+    const indicators = JSON.parse(localStorage.getItem('live.indicators.v2') ?? '{}');
     expect(indicators.paneOrder.slice(0, 3)).toEqual(['candle', 'ratio', 'volume']);
 
     const layout = JSON.parse(localStorage.getItem('live.layout.v1') ?? '{}');
@@ -126,13 +167,13 @@ describe('applyPresetPayload', () => {
 });
 
 describe('defaultPresetPayload', () => {
-  it('produces canonical defaults for reset-to-default', () => {
+  it('produces canonical defaults for reset-to-default (empty enable map = 공장값)', () => {
     const payload = defaultPresetPayload();
     expect(payload.pane_order).toEqual(CANON_PANES);
     expect(payload.right_card_order).toEqual([...LIVE_CARD_KEYS]);
     expect(payload.right_card_hidden).toEqual({});
     expect(payload.right_card_weights).toEqual(DEFAULT_CARD_WEIGHTS);
-    expect(payload.pane_prefs_by_timeframe).toEqual({});
+    expect(payload.by_timeframe_enable).toEqual({});
     expect(payload.pane_stretch).toEqual({});
   });
 });

@@ -4,10 +4,9 @@ import type { LineStyle, PaneId } from '../chart/drawing/types';
 import { normalizePaneOrder, normalizePaneStretch, type PaneStretchMap } from '../chart/paneOrder';
 import {
   PRESET_INDICATOR_FLAG_KEYS,
-  type PresetIndicatorFlags,
+  type PresetEnableByTimeframe,
 } from '../live/presets/presetFlags';
 import {
-  mergeLiveIndicatorPrefs,
   DEFAULT_LIVE_MAS,
   DEFAULT_DAILY_MAS,
   MA_PERIOD_MIN,
@@ -19,13 +18,20 @@ import {
   BROKER_LATE_ENTRY_DEFAULT_START_HHMM,
   type LiveMAConfig,
   type BrokerLateEntrySideMode,
-  type PersistedIndicators,
 } from './liveIndicatorsPersistence';
 import {
-  normalizePanePrefsByTimeframe,
+  FACTORY_INDICATOR_SETTINGS,
+  loadIndicatorsV2Storage,
+  persistIndicatorsV2,
+  resolveIndicatorSettings,
+  type IndicatorSettings,
+  type IndicatorSettingsByTimeframe,
+} from './indicatorSettingsV2';
+import { syncIndicatorModalTimeframe } from './chartPrefs';
+import {
+  INDICATOR_PANE_PROFILE_KEYS,
   profileKeyForTimeframe,
   type PanePrefKey,
-  type PersistedPanePrefsByTimeframe,
 } from '../live/indicators/indicatorPaneProfiles';
 import {
   instrumentToActiveCode,
@@ -50,7 +56,7 @@ export {
   TRADE_VOLUME_POC_DEFAULT_COLOR,
   TRADE_VOLUME_POC_DEFAULT_OPACITY,
 };
-export type { BrokerLateEntrySideMode, LiveMAConfig };
+export type { BrokerLateEntrySideMode, LiveMAConfig, IndicatorSettings };
 
 /** Timeframes the live page supports.
  *
@@ -103,7 +109,6 @@ export function bucketSeconds(tf: LiveTimeframe): number | null {
 }
 
 const STORAGE_KEY = 'live.page.v1';
-const INDICATORS_STORAGE_KEY = 'live.indicators.v1';
 
 type Persisted = {
   activeInstrument: LiveInstrument | null;
@@ -115,11 +120,6 @@ type Persisted = {
    * changes. */
   historicalFromDate: string | null;
 };
-
-// `PersistedIndicators` (the persisted indicator-prefs slice — MA config + the
-// per-indicator master toggles) is defined ONCE in ./liveIndicatorsPersistence
-// and imported above. Single source of truth (ADR-0046): adding an indicator
-// field touches one type, not two. The store's indicator slice IS that type.
 
 /** The full active-view tuple the page renders. Written atomically by the active
  *  Live Tab (applyTabToPage → projectActiveView) so there is no setter ordering to
@@ -136,7 +136,27 @@ export type ActiveViewProjection = {
   viewport?: TabViewport | null;
 };
 
-type Store = Persisted & PersistedIndicators & {
+/**
+ * 지표 슬라이스 (지도 #694 / 스펙 #699, PR-A).
+ *
+ * 최상위 `IndicatorSettings` 필드들은 항상 **`indicatorTimeframe` 으로 resolve 된
+ * 값의 투영**이다 — 읽기 소비자(차트·드로어·레전드 수십 곳)는 무변경으로 현재
+ * 봉의 설정을 본다(ADR-0113 "writer 만 교체" 패턴 재사용). 원본은
+ * `indicatorsByTimeframe`(4버킷 sparse)이고, 세터는 ambient 버킷에 변경 필드만
+ * 기록한 뒤 투영을 갱신한다. ambient 는 /live 가 candleTimeframe 으로,
+ * /study 가 activeTab.timeframe 으로 `setIndicatorTimeframe` 을 통해 공급한다.
+ */
+type Store = Persisted & IndicatorSettings & {
+  /** 사용자 소유 차트 pane 순서(전역 — 봉 무관, ADR-0114 §3 / #696). */
+  paneOrder: PaneId[];
+  /** 사용자 소유 Pane 크기 가중치(#703 — 전역, paneOrder 와 같은 레이아웃 슬라이스). */
+  paneStretch: PaneStretchMap;
+  /** 4버킷 sparse 오버라이드 원본 (`live.indicators.v2`). */
+  indicatorsByTimeframe: IndicatorSettingsByTimeframe;
+  /** 지표 설정이 현재 투영된 봉 — 보는 차트의 timeframe 과 항상 일치해야 한다. */
+  indicatorTimeframe: LiveTimeframe;
+  /** 페이지가 현재 봉을 공급한다(/live=candleTimeframe·/study=activeTab.timeframe). */
+  setIndicatorTimeframe: (tf: LiveTimeframe) => void;
   activeViewport: TabViewport | null;
   /** 직전 분봉 뷰에서 팬으로 넓힌 historicalFromDate의 런타임 기억.
    *  분봉을 떠날 때 저장되고, 분봉 복귀 시 LiveChartRoot가 초기 뷰 배치 직후
@@ -160,6 +180,8 @@ type Store = Persisted & PersistedIndicators & {
   setMovingAverageEnabled: (enabled: boolean) => void;
   setForeignNetEnabled: (enabled: boolean) => void;
   setInstitutionNetEnabled: (enabled: boolean) => void;
+  /** 지정한 봉의 버킷에 pane 토글을 기록한다(레전드 ✕ 등 명시적 timeframe 호출용).
+   *  ambient 봉과 같은 프로파일이면 투영도 함께 갱신된다. */
   setPanePrefForTimeframe: (timeframe: LiveTimeframe, key: PanePrefKey, enabled: boolean) => void;
   /** pane 순서를 통째로 교체한다(레전드 ↑/↓ 의 reorderVisible 결과; candle 은
    *  normalizePaneOrder 가 index 0 으로 고정, ADR-0114 §3). */
@@ -167,15 +189,17 @@ type Store = Persisted & PersistedIndicators & {
   /** separator 드래그로 조정된 Pane 크기 가중치를 병합 저장한다(부분 patch —
    *  현재 안 마운트된 pane 의 저장값은 보존). */
   setPaneStretch: (patch: PaneStretchMap) => void;
-  /** 레이아웃 프리셋의 지표 슬라이스를 한 번에 적용(단일 set + 단일 persist, ADR-0114 §4). */
+  /** 레이아웃 프리셋의 지표 슬라이스를 한 번에 적용(단일 set + 단일 persist, ADR-0114 §4).
+   *  #698·#699 PR-D: 프리셋 = 4버킷 전체 on/off 스냅샷. 각 봉 버킷의 enable
+   *  오버라이드를 프리셋 값으로 **통째 교체**하되(결정론), 파라미터(색·기간)
+   *  오버라이드는 보존한다(프리셋 범위 밖). paneStretch(레이아웃)도 함께 교체. */
   applyIndicatorPreset: (input: {
     paneOrder: PaneId[];
-    panePrefsByTimeframe: PersistedPanePrefsByTimeframe;
-    flags: PresetIndicatorFlags;
+    byTimeframeEnable: PresetEnableByTimeframe;
     paneStretch: PaneStretchMap;
   }) => void;
-  /** 모든 지표 설정(색·on/off·MA·per-timeframe)을 기본값으로 되돌린다. pane 배열
-   *  순서(레이아웃, ADR-0114)는 사용자 구성이라 보존한다. chartPrefs(수치/토글)는
+  /** 현재 봉 버킷의 오버라이드만 비워 공장 기본값으로 되돌린다(#697 — 리셋은
+   *  현재 봉만). 다른 봉·paneOrder(레이아웃)는 건드리지 않는다. chartPrefs 는
    *  별도 스토어라 호출부에서 함께 리셋한다. */
   resetIndicators: () => void;
   setVolumeEnabled: (enabled: boolean) => void;
@@ -286,96 +310,6 @@ function readStorage(): Partial<Persisted> {
   }
 }
 
-function persistIndicators(state: PersistedIndicators): void {
-  try {
-    localStorage.setItem(INDICATORS_STORAGE_KEY, JSON.stringify(state));
-  } catch {
-    // localStorage unavailable — silent fallback
-  }
-}
-
-/** Serialize the current indicator slice for persistence. Reads the live store
- *  so every setter persists ALL indicator fields, not just the one it changed
- *  (prevents a foreign-toggle write from clobbering MA prefs, and vice versa). */
-function snapshotIndicators(get: () => Store): PersistedIndicators {
-  const s = get();
-  return {
-    movingAverages: s.movingAverages,
-    movingAverageEnabled: s.movingAverageEnabled,
-    foreignNetEnabled: s.foreignNetEnabled,
-    institutionNetEnabled: s.institutionNetEnabled,
-    volumeEnabled: s.volumeEnabled,
-    movingAverageHidden: s.movingAverageHidden,
-    askPeakEnabled: s.askPeakEnabled,
-    askPeakHidden: s.askPeakHidden,
-    askPeakColor: s.askPeakColor,
-    askPeakLineWidth: s.askPeakLineWidth,
-    askPeakAllPriceColor: s.askPeakAllPriceColor,
-    askPeakAllPriceLineWidth: s.askPeakAllPriceLineWidth,
-    askPeakVisibleMaxColor: s.askPeakVisibleMaxColor,
-    askPeakVisibleMaxLineWidth: s.askPeakVisibleMaxLineWidth,
-    viLimitPriceLineColor: s.viLimitPriceLineColor,
-    viLimitPriceLineWidth: s.viLimitPriceLineWidth,
-    bidPeakEnabled: s.bidPeakEnabled,
-    bidPeakHidden: s.bidPeakHidden,
-    bidPeakColor: s.bidPeakColor,
-    bidPeakLineWidth: s.bidPeakLineWidth,
-    bidPeakAllPriceColor: s.bidPeakAllPriceColor,
-    bidPeakAllPriceLineWidth: s.bidPeakAllPriceLineWidth,
-    tradeVolumePocEnabled: s.tradeVolumePocEnabled,
-    tradeVolumePocHidden: s.tradeVolumePocHidden,
-    tradeVolumePocBandPct: s.tradeVolumePocBandPct,
-    tradeVolumePocColor: s.tradeVolumePocColor,
-    tradeVolumePocOpacity: s.tradeVolumePocOpacity,
-    depthHeatmapEnabled: s.depthHeatmapEnabled,
-    depthHeatmapHidden: s.depthHeatmapHidden,
-    depthHeatmapBidColor: s.depthHeatmapBidColor,
-    depthHeatmapAskColor: s.depthHeatmapAskColor,
-    depthHeatmapMaxOpacity: s.depthHeatmapMaxOpacity,
-    volumeDistributionEnabled: s.volumeDistributionEnabled,
-    volumeDistributionHoverCutoffEnabled: s.volumeDistributionHoverCutoffEnabled,
-    volumeDistributionRangeCount: s.volumeDistributionRangeCount,
-    volumeDistributionColor: s.volumeDistributionColor,
-    volumeDistributionMaxColor: s.volumeDistributionMaxColor,
-    quoteTotalsEnabled: s.quoteTotalsEnabled,
-    quoteTotalsLevelLineEnabled: s.quoteTotalsLevelLineEnabled,
-    quoteTotalsBidLevelColor: s.quoteTotalsBidLevelColor,
-    quoteTotalsBidLevelWidth: s.quoteTotalsBidLevelWidth,
-    quoteTotalsBidLevelStyle: s.quoteTotalsBidLevelStyle,
-    quoteTotalsAskLevelColor: s.quoteTotalsAskLevelColor,
-    quoteTotalsAskLevelWidth: s.quoteTotalsAskLevelWidth,
-    quoteTotalsAskLevelStyle: s.quoteTotalsAskLevelStyle,
-    ratioEnabled: s.ratioEnabled,
-    ratioLevelLineEnabled: s.ratioLevelLineEnabled,
-    ratioLevelColor: s.ratioLevelColor,
-    ratioLevelWidth: s.ratioLevelWidth,
-    ratioLevelStyle: s.ratioLevelStyle,
-    fillStrengthEnabled: s.fillStrengthEnabled,
-    programTradeEnabled: s.programTradeEnabled,
-    brokerLateEntryEnabled: s.brokerLateEntryEnabled,
-    brokerLateEntryHidden: s.brokerLateEntryHidden,
-    brokerLateEntryStartHHMM: s.brokerLateEntryStartHHMM,
-    brokerLateEntrySideMode: s.brokerLateEntrySideMode,
-    brokerLateEntryBuyColor: s.brokerLateEntryBuyColor,
-    brokerLateEntrySellColor: s.brokerLateEntrySellColor,
-    dailyMovingAverages: s.dailyMovingAverages,
-    dailyMovingAverageEnabled: s.dailyMovingAverageEnabled,
-    dailyMovingAverageHidden: s.dailyMovingAverageHidden,
-    panePrefsByTimeframe: s.panePrefsByTimeframe,
-    paneOrder: s.paneOrder,
-    paneStretch: s.paneStretch,
-  };
-}
-
-function readIndicatorsStorage(): PersistedIndicators {
-  try {
-    const raw = localStorage.getItem(INDICATORS_STORAGE_KEY);
-    return mergeLiveIndicatorPrefs(raw ? JSON.parse(raw) : undefined);
-  } catch {
-    return mergeLiveIndicatorPrefs(undefined);
-  }
-}
-
 function clamp(n: number, min: number, max: number): number {
   return Math.max(min, Math.min(max, n));
 }
@@ -415,506 +349,535 @@ function nextSlotColor(existing: readonly LiveMAConfig[]): string {
   return free ?? MA_PALETTE[existing.length % MA_PALETTE.length];
 }
 
-export const useLivePageStore = create<Store>((set, get) => ({
-  ...DEFAULTS,
-  ...readStorage(),
-  ...readIndicatorsStorage(),
-  activeViewport: null,
-  lastMinuteHistoricalFromDate: null,
+/** 프리셋이 봉별로 교체하는 enable 키 집합 — 이 키만 프리셋으로 덮이고
+ *  나머지(파라미터)는 보존된다(applyIndicatorPreset, #699 PR-D). */
+const PRESET_ENABLE_KEY_SET = new Set<string>(PRESET_INDICATOR_FLAG_KEYS);
 
-  setMovingAverage: (id, patch) => {
-    const current = get().movingAverages;
-    const idx = current.findIndex((m) => m.id === id);
-    if (idx === -1) return;
-    const cur = current[idx];
-    const next: LiveMAConfig = { ...cur, ...patch };
-    if (patch.period !== undefined) {
-      const p = Number(patch.period);
-      if (!Number.isFinite(p)) return;
-      next.period = clamp(Math.floor(p), MA_PERIOD_MIN, MA_PERIOD_MAX);
-    }
-    const nextArr = current.slice();
-    nextArr[idx] = next;
-    set({ movingAverages: nextArr });
-    persistIndicators(snapshotIndicators(get));
-  },
+const initialIndicatorsV2 = loadIndicatorsV2Storage();
+const initialPage = { ...DEFAULTS, ...readStorage() };
 
-  addMovingAverage: () => {
-    const current = get().movingAverages;
-    if (current.length >= MA_SLOT_LIMIT) return;
-    const last = current[current.length - 1];
-    const period = last ? clamp(last.period * 2, MA_PERIOD_MIN, MA_PERIOD_MAX) : 20;
-    const next: LiveMAConfig = {
-      id: nextSlotId(current),
-      enabled: true,
-      period,
-      color: nextSlotColor(current),
-      lineWidth: 1,
-      source: 'close',
-    };
-    const nextArr = [...current, next];
-    set({ movingAverages: nextArr });
-    persistIndicators(snapshotIndicators(get));
-  },
-
-  removeMovingAverage: (id) => {
-    const current = get().movingAverages;
-    if (current.length <= 1) return;
-    const nextArr = current.filter((m) => m.id !== id);
-    if (nextArr.length === current.length) return; // unknown id
-    set({ movingAverages: nextArr });
-    persistIndicators(snapshotIndicators(get));
-  },
-
-  setMovingAverageEnabled: (enabled) => {
-    set({ movingAverageEnabled: enabled });
-    persistIndicators(snapshotIndicators(get));
-  },
-
-  setForeignNetEnabled: (enabled) => {
-    set({ foreignNetEnabled: enabled });
-    persistIndicators(snapshotIndicators(get));
-  },
-
-  setInstitutionNetEnabled: (enabled) => {
-    set({ institutionNetEnabled: enabled });
-    persistIndicators(snapshotIndicators(get));
-  },
-
-  setPanePrefForTimeframe: (timeframe, key, enabled) => {
-    const profileKey = profileKeyForTimeframe(timeframe);
-    const current = normalizePanePrefsByTimeframe(get().panePrefsByTimeframe);
-    const next: PersistedPanePrefsByTimeframe = {
-      ...current,
-      [profileKey]: {
-        ...(current[profileKey] ?? {}),
-        [key]: enabled,
-      },
-    };
-    set({ panePrefsByTimeframe: next });
-    persistIndicators(snapshotIndicators(get));
-  },
-
-  setPaneOrder: (order) => {
-    set({ paneOrder: normalizePaneOrder(order) });
-    persistIndicators(snapshotIndicators(get));
-  },
-
-  setPaneStretch: (patch) => {
-    const next = normalizePaneStretch({ ...get().paneStretch, ...patch });
-    set({ paneStretch: next });
-    persistIndicators(snapshotIndicators(get));
-  },
-
-  applyIndicatorPreset: ({ paneOrder, panePrefsByTimeframe, flags, paneStretch }) => {
-    // 화이트리스트 키만 반영 — payload 에 든 미지의 키가 store 로 새지 않게.
-    const flagPatch: PresetIndicatorFlags = {};
-    for (const key of PRESET_INDICATOR_FLAG_KEYS) {
-      const v = flags[key];
-      if (typeof v === 'boolean') flagPatch[key] = v;
-    }
-    set({
-      paneOrder: normalizePaneOrder(paneOrder),
-      panePrefsByTimeframe: normalizePanePrefsByTimeframe(panePrefsByTimeframe),
-      paneStretch: normalizePaneStretch(paneStretch),
-      ...flagPatch,
-    });
-    persistIndicators(snapshotIndicators(get));
-  },
-
-  resetIndicators: () => {
-    // 전 지표 기본값 = 빈 입력을 정규화한 결과. 레이아웃(paneOrder·paneStretch)만
-    // 현재 값 유지 — 크기 리셋은 프리셋 메뉴 "기본 레이아웃으로 초기화"가 담당.
-    const defaults = mergeLiveIndicatorPrefs(undefined);
-    set({ ...defaults, paneOrder: get().paneOrder, paneStretch: get().paneStretch });
-    persistIndicators(snapshotIndicators(get));
-  },
-
-  setVolumeEnabled: (enabled) => {
-    set({ volumeEnabled: enabled });
-    persistIndicators(snapshotIndicators(get));
-  },
-
-  setMovingAverageHidden: (hidden) => {
-    set({ movingAverageHidden: hidden });
-    persistIndicators(snapshotIndicators(get));
-  },
-
-  setAskPeakEnabled: (enabled) => {
-    // MA 마스터 규칙 미러: 켤 때 hidden 초기화(꺼진 채 켜지는 혼란 방지).
-    set(enabled ? { askPeakEnabled: true, askPeakHidden: false } : { askPeakEnabled: false });
-    persistIndicators(snapshotIndicators(get));
-  },
-
-  setAskPeakHidden: (hidden) => {
-    set({ askPeakHidden: hidden });
-    persistIndicators(snapshotIndicators(get));
-  },
-
-  setAskPeakStyle: (patch) => {
-    set((s) => ({
-      askPeakColor: patch.color ?? s.askPeakColor,
-      askPeakLineWidth: patch.lineWidth ?? s.askPeakLineWidth,
-    }));
-    persistIndicators(snapshotIndicators(get));
-  },
-
-  setAskPeakAllPriceStyle: (patch) => {
-    set((s) => ({
-      askPeakAllPriceColor: patch.color ?? s.askPeakAllPriceColor,
-      askPeakAllPriceLineWidth: patch.lineWidth ?? s.askPeakAllPriceLineWidth,
-    }));
-    persistIndicators(snapshotIndicators(get));
-  },
-
-  setAskPeakVisibleMaxStyle: (patch) => {
-    set((s) => ({
-      askPeakVisibleMaxColor: patch.color ?? s.askPeakVisibleMaxColor,
-      askPeakVisibleMaxLineWidth: patch.lineWidth ?? s.askPeakVisibleMaxLineWidth,
-    }));
-    persistIndicators(snapshotIndicators(get));
-  },
-
-  setViLimitPriceLineStyle: (patch) => {
-    set((s) => ({
-      viLimitPriceLineColor: patch.color ?? s.viLimitPriceLineColor,
-      viLimitPriceLineWidth: patch.lineWidth ?? s.viLimitPriceLineWidth,
-    }));
-    persistIndicators(snapshotIndicators(get));
-  },
-
-  setBidPeakEnabled: (enabled) => {
-    set(enabled ? { bidPeakEnabled: true, bidPeakHidden: false } : { bidPeakEnabled: false });
-    persistIndicators(snapshotIndicators(get));
-  },
-
-  setBidPeakHidden: (hidden) => {
-    set({ bidPeakHidden: hidden });
-    persistIndicators(snapshotIndicators(get));
-  },
-
-  setBidPeakStyle: (patch) => {
-    set((s) => ({
-      bidPeakColor: patch.color ?? s.bidPeakColor,
-      bidPeakLineWidth: patch.lineWidth ?? s.bidPeakLineWidth,
-    }));
-    persistIndicators(snapshotIndicators(get));
-  },
-
-  setBidPeakAllPriceStyle: (patch) => {
-    set((s) => ({
-      bidPeakAllPriceColor: patch.color ?? s.bidPeakAllPriceColor,
-      bidPeakAllPriceLineWidth: patch.lineWidth ?? s.bidPeakAllPriceLineWidth,
-    }));
-    persistIndicators(snapshotIndicators(get));
-  },
-
-  setTradeVolumePocEnabled: (enabled) => {
-    set(enabled
-      ? { tradeVolumePocEnabled: true, tradeVolumePocHidden: false }
-      : { tradeVolumePocEnabled: false });
-    persistIndicators(snapshotIndicators(get));
-  },
-
-  setTradeVolumePocHidden: (hidden) => {
-    set({ tradeVolumePocHidden: hidden });
-    persistIndicators(snapshotIndicators(get));
-  },
-
-  setTradeVolumePocBandPct: (bandPct) => {
-    if (bandPct !== 0.0025 && bandPct !== 0.005 && bandPct !== 0.01) return;
-    set({ tradeVolumePocBandPct: bandPct });
-    persistIndicators(snapshotIndicators(get));
-  },
-
-  setTradeVolumePocStyle: (patch) => {
-    set((s) => ({
-      tradeVolumePocColor: patch.color ?? s.tradeVolumePocColor,
-      tradeVolumePocOpacity: patch.opacity === undefined
-        ? s.tradeVolumePocOpacity
-        : clamp(patch.opacity, 0, 1),
-    }));
-    persistIndicators(snapshotIndicators(get));
-  },
-
-  setDepthHeatmapEnabled: (enabled) => {
-    set(enabled
-      ? { depthHeatmapEnabled: true, depthHeatmapHidden: false }
-      : { depthHeatmapEnabled: false });
-    persistIndicators(snapshotIndicators(get));
-  },
-
-  setDepthHeatmapHidden: (hidden) => {
-    set({ depthHeatmapHidden: hidden });
-    persistIndicators(snapshotIndicators(get));
-  },
-
-  setDepthHeatmapStyle: (patch) => {
-    set((s) => ({
-      depthHeatmapBidColor: patch.bidColor ?? s.depthHeatmapBidColor,
-      depthHeatmapAskColor: patch.askColor ?? s.depthHeatmapAskColor,
-      depthHeatmapMaxOpacity: patch.maxOpacity === undefined
-        ? s.depthHeatmapMaxOpacity
-        : clamp(patch.maxOpacity, 0.2, 1),
-    }));
-    persistIndicators(snapshotIndicators(get));
-  },
-
-  setVolumeDistributionEnabled: (enabled) => {
-    set({ volumeDistributionEnabled: enabled });
-    persistIndicators(snapshotIndicators(get));
-  },
-
-  setVolumeDistributionHoverCutoffEnabled: (enabled) => {
-    set({ volumeDistributionHoverCutoffEnabled: enabled });
-    persistIndicators(snapshotIndicators(get));
-  },
-
-  setVolumeDistributionRangeCount: (count) => {
-    if (!Number.isFinite(count)) return;
-    set({ volumeDistributionRangeCount: clamp(Math.trunc(count), 5, 30) });
-    persistIndicators(snapshotIndicators(get));
-  },
-
-  setVolumeDistributionStyle: (patch) => {
-    set((s) => ({
-      volumeDistributionColor: patch.color ?? s.volumeDistributionColor,
-      volumeDistributionMaxColor: patch.maxColor ?? s.volumeDistributionMaxColor,
-    }));
-    persistIndicators(snapshotIndicators(get));
-  },
-
-  setQuoteTotalsEnabled: (enabled) => {
-    set({ quoteTotalsEnabled: enabled });
-    persistIndicators(snapshotIndicators(get));
-  },
-
-  setQuoteTotalsLevelLineEnabled: (enabled) => {
-    set({ quoteTotalsLevelLineEnabled: enabled });
-    persistIndicators(snapshotIndicators(get));
-  },
-
-  setQuoteTotalsBidLevelStyle: (patch) => {
+export const useLivePageStore = create<Store>((set, get) => {
+  /** 세터 공통 경로: 변경 필드를 ambient 봉의 버킷에 기록하고 투영을 갱신한 뒤
+   *  v2 로 영속한다. sparse 는 "공장값과의 diff" — 공장값과 같아진 항목은 다음
+   *  로드의 normalize 가 걷어낸다(런타임 버킷은 단순 누적). */
+  const patchIndicators = (patch: Partial<IndicatorSettings>): void => {
     const s = get();
-    set({
-      quoteTotalsBidLevelColor: patch.color ?? s.quoteTotalsBidLevelColor,
-      quoteTotalsBidLevelWidth: patch.lineWidth ?? s.quoteTotalsBidLevelWidth,
-      quoteTotalsBidLevelStyle: patch.lineStyle ?? s.quoteTotalsBidLevelStyle,
-    });
-    persistIndicators(snapshotIndicators(get));
-  },
+    const profileKey = profileKeyForTimeframe(s.indicatorTimeframe);
+    const bucket = { ...(s.indicatorsByTimeframe[profileKey] ?? {}), ...patch };
+    const byTimeframe = { ...s.indicatorsByTimeframe, [profileKey]: bucket };
+    set({ ...patch, indicatorsByTimeframe: byTimeframe } as Partial<Store>);
+    persistIndicatorsV2({ paneOrder: get().paneOrder, paneStretch: get().paneStretch, byTimeframe });
+  };
 
-  setQuoteTotalsAskLevelStyle: (patch) => {
-    const s = get();
-    set({
-      quoteTotalsAskLevelColor: patch.color ?? s.quoteTotalsAskLevelColor,
-      quoteTotalsAskLevelWidth: patch.lineWidth ?? s.quoteTotalsAskLevelWidth,
-      quoteTotalsAskLevelStyle: patch.lineStyle ?? s.quoteTotalsAskLevelStyle,
-    });
-    persistIndicators(snapshotIndicators(get));
-  },
-
-  setRatioEnabled: (enabled) => {
-    set({ ratioEnabled: enabled });
-    persistIndicators(snapshotIndicators(get));
-  },
-
-  setRatioLevelLineEnabled: (enabled) => {
-    set({ ratioLevelLineEnabled: enabled });
-    persistIndicators(snapshotIndicators(get));
-  },
-
-  setRatioLevelStyle: (patch) => {
-    const s = get();
-    set({
-      ratioLevelColor: patch.color ?? s.ratioLevelColor,
-      ratioLevelWidth: patch.lineWidth ?? s.ratioLevelWidth,
-      ratioLevelStyle: patch.lineStyle ?? s.ratioLevelStyle,
-    });
-    persistIndicators(snapshotIndicators(get));
-  },
-
-  setFillStrengthEnabled: (enabled) => {
-    set({ fillStrengthEnabled: enabled });
-    persistIndicators(snapshotIndicators(get));
-  },
-
-  setProgramTradeEnabled: (enabled) => {
-    set({ programTradeEnabled: enabled });
-    persistIndicators(snapshotIndicators(get));
-  },
-
-  setBrokerLateEntryEnabled: (enabled) => {
-    set(enabled
-      ? { brokerLateEntryEnabled: true, brokerLateEntryHidden: false }
-      : { brokerLateEntryEnabled: false });
-    persistIndicators(snapshotIndicators(get));
-  },
-
-  setBrokerLateEntryHidden: (hidden) => {
-    set({ brokerLateEntryHidden: hidden });
-    persistIndicators(snapshotIndicators(get));
-  },
-
-  setBrokerLateEntryStartHHMM: (value) => {
-    if (!Number.isFinite(value)) {
-      set({ brokerLateEntryStartHHMM: BROKER_LATE_ENTRY_DEFAULT_START_HHMM });
-      persistIndicators(snapshotIndicators(get));
-      return;
-    }
-    set({ brokerLateEntryStartHHMM: normalizeBrokerLateEntryStartHHMM(value) });
-    persistIndicators(snapshotIndicators(get));
-  },
-
-  setBrokerLateEntrySideMode: (mode) => {
-    if (mode !== 'both' && mode !== 'buy' && mode !== 'sell') return;
-    set({ brokerLateEntrySideMode: mode });
-    persistIndicators(snapshotIndicators(get));
-  },
-
-  setBrokerLateEntryStyle: (patch) => {
-    set((s) => ({
-      brokerLateEntryBuyColor: patch.buyColor ?? s.brokerLateEntryBuyColor,
-      brokerLateEntrySellColor: patch.sellColor ?? s.brokerLateEntrySellColor,
-    }));
-    persistIndicators(snapshotIndicators(get));
-  },
-
-  setDailyMovingAverage: (id, patch) => {
-    const current = get().dailyMovingAverages;
-    const idx = current.findIndex((m) => m.id === id);
-    if (idx === -1) return;
-    const cur = current[idx];
-    const next: LiveMAConfig = { ...cur, ...patch };
-    if (patch.period !== undefined) {
-      const p = Number(patch.period);
-      if (!Number.isFinite(p)) return;
-      next.period = clamp(Math.floor(p), MA_PERIOD_MIN, MA_PERIOD_MAX);
-    }
-    const nextArr = current.slice();
-    nextArr[idx] = next;
-    set({ dailyMovingAverages: nextArr });
-    persistIndicators(snapshotIndicators(get));
-  },
-
-  addDailyMovingAverage: () => {
-    const current = get().dailyMovingAverages;
-    if (current.length >= MA_SLOT_LIMIT) return;
-    const last = current[current.length - 1];
-    const period = last ? clamp(last.period * 2, MA_PERIOD_MIN, MA_PERIOD_MAX) : 20;
-    const next: LiveMAConfig = {
-      id: nextSlotId(current, 'dma'),
-      enabled: true,
-      period,
-      color: nextSlotColor(current),
-      lineWidth: 2,
-      source: 'close',
+  /** 봉 전환 시 투영 재계산. candleTimeframe 세터·페이지 동기화가 호출한다.
+   *  chartPrefs 의 indicator-modal 투영(PR-B)도 같은 틱에 함께 맞춘다. */
+  const projectIndicatorsFor = (tf: LiveTimeframe): Partial<Store> => {
+    syncIndicatorModalTimeframe(tf);
+    return {
+      indicatorTimeframe: tf,
+      ...resolveIndicatorSettings(get().indicatorsByTimeframe, tf),
     };
-    set({ dailyMovingAverages: [...current, next] });
-    persistIndicators(snapshotIndicators(get));
-  },
+  };
 
-  removeDailyMovingAverage: (id) => {
-    const current = get().dailyMovingAverages;
-    if (current.length <= 1) return;
-    const nextArr = current.filter((m) => m.id !== id);
-    if (nextArr.length === current.length) return;
-    set({ dailyMovingAverages: nextArr });
-    persistIndicators(snapshotIndicators(get));
-  },
+  return {
+    ...initialPage,
+    ...resolveIndicatorSettings(initialIndicatorsV2.byTimeframe, initialPage.candleTimeframe),
+    paneOrder: initialIndicatorsV2.paneOrder,
+    paneStretch: initialIndicatorsV2.paneStretch,
+    indicatorsByTimeframe: initialIndicatorsV2.byTimeframe,
+    indicatorTimeframe: initialPage.candleTimeframe,
+    activeViewport: null,
+    lastMinuteHistoricalFromDate: null,
 
-  setDailyMovingAverageEnabled: (enabled) => {
-    set(enabled
-      ? { dailyMovingAverageEnabled: true, dailyMovingAverageHidden: false }
-      : { dailyMovingAverageEnabled: false });
-    persistIndicators(snapshotIndicators(get));
-  },
+    setIndicatorTimeframe: (tf) => {
+      // 같은 봉이어도 무조건 재투영 — 호출은 봉 전환·페이지 마운트 시뿐이라 싸고,
+      // (테스트 등에서) 버킷이 setState 로 직접 주입된 경우의 투영 표류를 없앤다.
+      if (!isLiveTimeframe(tf)) return;
+      set(projectIndicatorsFor(tf));
+    },
 
-  setDailyMovingAverageHidden: (hidden) => {
-    set({ dailyMovingAverageHidden: hidden });
-    persistIndicators(snapshotIndicators(get));
-  },
+    setMovingAverage: (id, patch) => {
+      const current = get().movingAverages;
+      const idx = current.findIndex((m) => m.id === id);
+      if (idx === -1) return;
+      const cur = current[idx];
+      const next: LiveMAConfig = { ...cur, ...patch };
+      if (patch.period !== undefined) {
+        const p = Number(patch.period);
+        if (!Number.isFinite(p)) return;
+        next.period = clamp(Math.floor(p), MA_PERIOD_MIN, MA_PERIOD_MAX);
+      }
+      const nextArr = current.slice();
+      nextArr[idx] = next;
+      patchIndicators({ movingAverages: nextArr });
+    },
 
-  projectActiveView: ({ instrument, code, timeframe, historicalFromDate, lastMinuteHistoricalFromDate, viewport }) => {
-    // One atomic write — no reset-then-restore. tf is clamped like setCandleTimeframe
-    // (belt-and-suspenders; callers already pass validated timeframes).
-    const tf = LIVE_TIMEFRAMES.includes(timeframe) ? timeframe : get().candleTimeframe;
-    const nextInstrument = instrument === undefined
-      ? (code ? stockInstrument(code) : null)
-      : instrument;
-    const next = {
-      activeInstrument: nextInstrument,
-      activeCode: instrument === undefined
-        ? code
-        : (instrument === null && code === '' ? '' : instrumentToActiveCode(nextInstrument)),
-      candleTimeframe: tf,
-      lastMinuteTimeframe: isMinuteTimeframe(tf) ? tf : get().lastMinuteTimeframe,
-      historicalFromDate,
-      // 뷰 교체 시 이전 subject의 분봉 창 기억이 새 subject로 새지 않도록,
-      // 투영되는 값으로 재시드한다(ADR-0113 단일 뷰 — liveNavigate가 null 전달).
-      // 필드 생략(레거시 호출)이면 기존 derive 폴백: 분봉이면 pan, 아니면 null.
-      lastMinuteHistoricalFromDate: lastMinuteHistoricalFromDate !== undefined
-        ? lastMinuteHistoricalFromDate
-        : (isMinuteTimeframe(tf) ? historicalFromDate : null),
-      activeViewport: viewport ?? null,
-    };
-    set(next);
-    persist({ ...get(), ...next });
-  },
+    addMovingAverage: () => {
+      const current = get().movingAverages;
+      if (current.length >= MA_SLOT_LIMIT) return;
+      const last = current[current.length - 1];
+      const period = last ? clamp(last.period * 2, MA_PERIOD_MIN, MA_PERIOD_MAX) : 20;
+      const next: LiveMAConfig = {
+        id: nextSlotId(current),
+        enabled: true,
+        period,
+        color: nextSlotColor(current),
+        lineWidth: 1,
+        source: 'close',
+      };
+      patchIndicators({ movingAverages: [...current, next] });
+    },
 
-  setActiveCode: (code) => {
-    const activeInstrument = code ? stockInstrument(code) : null;
-    set({
-      activeInstrument,
-      activeCode: code,
-      historicalFromDate: null,
-      lastMinuteHistoricalFromDate: null,
-      activeViewport: null,
-    });
-    persist({ ...get(), activeInstrument, activeCode: code, historicalFromDate: null });
-  },
+    removeMovingAverage: (id) => {
+      const current = get().movingAverages;
+      if (current.length <= 1) return;
+      const nextArr = current.filter((m) => m.id !== id);
+      if (nextArr.length === current.length) return; // unknown id
+      patchIndicators({ movingAverages: nextArr });
+    },
 
-  setCandleTimeframe: (tf) => {
-    if (!LIVE_TIMEFRAMES.includes(tf)) return;
-    const cur = get();
-    const next = {
-      candleTimeframe: tf,
-      lastMinuteTimeframe: isMinuteTimeframe(tf) ? tf : cur.lastMinuteTimeframe,
-      historicalFromDate: null,
-      // 분봉을 떠나는 순간의 pan 창을 기억한다(분봉→분봉 전환 포함 — 같은 1m
-      // 데이터의 재집계라 창 유지가 자연스럽다). 복원은 LiveChartRoot가 초기 뷰
-      // 배치 직후 1-샷 dispatch — Store 타입의 필드 주석 참조.
-      // `??` 폴백: 복원 dispatch가 아직 안 돈 창(빠른 D→분봉→재이탈, 콜드 로드
-      // 배치 전)에는 historicalFromDate가 여전히 null이므로, null로 덮어쓰면
-      // 기억이 영구 소실된다. hFD=null && 기억≠null은 그 "복원 대기" 상태뿐 —
-      // 명시적 리셋은 resetHistoricalRange가 기억까지 직접 클리어하므로 폴백이
-      // 리셋을 되살리는 일은 없다.
-      lastMinuteHistoricalFromDate: isMinuteTimeframe(cur.candleTimeframe)
-        ? cur.historicalFromDate ?? cur.lastMinuteHistoricalFromDate
-        : cur.lastMinuteHistoricalFromDate,
-      activeViewport: null,
-    };
-    set(next);
-    persist({ ...get(), ...next });
-  },
+    setMovingAverageEnabled: (enabled) => {
+      patchIndicators({ movingAverageEnabled: enabled });
+    },
 
-  extendHistoricalRange: (date) => {
-    const cur = get().historicalFromDate;
-    if (cur !== null && cur <= date) return; // already at or before this date
-    set({ historicalFromDate: date });
-    persist({ ...get(), historicalFromDate: date });
-  },
+    setForeignNetEnabled: (enabled) => {
+      patchIndicators({ foreignNetEnabled: enabled });
+    },
 
-  resetHistoricalRange: () => {
-    set({ historicalFromDate: null, lastMinuteHistoricalFromDate: null, activeViewport: null });
-    persist({ ...get(), historicalFromDate: null });
-  },
+    setInstitutionNetEnabled: (enabled) => {
+      patchIndicators({ institutionNetEnabled: enabled });
+    },
 
-  hydrateFromStorage: () => {
-    const stored = readStorage();
-    const merged = { ...DEFAULTS, ...stored };
-    const lastMinuteTimeframe = stored.lastMinuteTimeframe
-      ?? (isMinuteTimeframe(merged.candleTimeframe) ? merged.candleTimeframe : DEFAULTS.lastMinuteTimeframe);
-    set({ ...merged, lastMinuteTimeframe, activeViewport: null });
-  },
-}));
+    setPanePrefForTimeframe: (timeframe, key, enabled) => {
+      const s = get();
+      const profileKey = profileKeyForTimeframe(timeframe);
+      const bucket = { ...(s.indicatorsByTimeframe[profileKey] ?? {}), [key]: enabled };
+      const byTimeframe = { ...s.indicatorsByTimeframe, [profileKey]: bucket };
+      const patch: Partial<Store> = { indicatorsByTimeframe: byTimeframe };
+      if (profileKey === profileKeyForTimeframe(s.indicatorTimeframe)) {
+        (patch as Record<string, unknown>)[key] = enabled;
+      }
+      set(patch);
+      persistIndicatorsV2({ paneOrder: get().paneOrder, paneStretch: get().paneStretch, byTimeframe });
+    },
+
+    setPaneOrder: (order) => {
+      const paneOrder = normalizePaneOrder(order);
+      set({ paneOrder });
+      persistIndicatorsV2({ paneOrder, paneStretch: get().paneStretch, byTimeframe: get().indicatorsByTimeframe });
+    },
+
+    setPaneStretch: (patch) => {
+      const paneStretch = normalizePaneStretch({ ...get().paneStretch, ...patch });
+      set({ paneStretch });
+      persistIndicatorsV2({ paneOrder: get().paneOrder, paneStretch, byTimeframe: get().indicatorsByTimeframe });
+    },
+
+    applyIndicatorPreset: ({ paneOrder, byTimeframeEnable, paneStretch }) => {
+      const s = get();
+      const byTimeframe: IndicatorSettingsByTimeframe = {};
+      for (const profileKey of INDICATOR_PANE_PROFILE_KEYS) {
+        const existing = s.indicatorsByTimeframe[profileKey] ?? {};
+        // 파라미터(색·기간 등 enable 이 아닌 오버라이드)는 보존, enable 15키는
+        // 프리셋 값으로 통째 교체(#699 §5 — 결정론: 미포함 enable 은 공장값 복귀).
+        const params: Partial<IndicatorSettings> = {};
+        for (const [key, value] of Object.entries(existing)) {
+          if (!PRESET_ENABLE_KEY_SET.has(key)) {
+            (params as Record<string, unknown>)[key] = value;
+          }
+        }
+        const merged = { ...params, ...(byTimeframeEnable[profileKey] ?? {}) };
+        if (Object.keys(merged).length > 0) byTimeframe[profileKey] = merged;
+      }
+      const nextPaneOrder = normalizePaneOrder(paneOrder);
+      const nextPaneStretch = normalizePaneStretch(paneStretch);
+      set({
+        paneOrder: nextPaneOrder,
+        paneStretch: nextPaneStretch,
+        indicatorsByTimeframe: byTimeframe,
+        ...resolveIndicatorSettings(byTimeframe, s.indicatorTimeframe),
+      });
+      persistIndicatorsV2({ paneOrder: nextPaneOrder, paneStretch: nextPaneStretch, byTimeframe });
+    },
+
+    resetIndicators: () => {
+      // 현재 봉 버킷만 공장값으로(#697). 레이아웃(paneOrder·paneStretch)은
+      // 보존 — 크기 리셋은 프리셋 "기본 레이아웃으로 초기화"가 담당(#703).
+      const s = get();
+      const profileKey = profileKeyForTimeframe(s.indicatorTimeframe);
+      const byTimeframe = { ...s.indicatorsByTimeframe };
+      delete byTimeframe[profileKey];
+      set({ ...FACTORY_INDICATOR_SETTINGS, indicatorsByTimeframe: byTimeframe });
+      persistIndicatorsV2({ paneOrder: s.paneOrder, paneStretch: s.paneStretch, byTimeframe });
+    },
+
+    setVolumeEnabled: (enabled) => {
+      patchIndicators({ volumeEnabled: enabled });
+    },
+
+    setMovingAverageHidden: (hidden) => {
+      patchIndicators({ movingAverageHidden: hidden });
+    },
+
+    setAskPeakEnabled: (enabled) => {
+      // MA 마스터 규칙 미러: 켤 때 hidden 초기화(꺼진 채 켜지는 혼란 방지).
+      patchIndicators(enabled
+        ? { askPeakEnabled: true, askPeakHidden: false }
+        : { askPeakEnabled: false });
+    },
+
+    setAskPeakHidden: (hidden) => {
+      patchIndicators({ askPeakHidden: hidden });
+    },
+
+    setAskPeakStyle: (patch) => {
+      const s = get();
+      patchIndicators({
+        askPeakColor: patch.color ?? s.askPeakColor,
+        askPeakLineWidth: patch.lineWidth ?? s.askPeakLineWidth,
+      });
+    },
+
+    setAskPeakAllPriceStyle: (patch) => {
+      const s = get();
+      patchIndicators({
+        askPeakAllPriceColor: patch.color ?? s.askPeakAllPriceColor,
+        askPeakAllPriceLineWidth: patch.lineWidth ?? s.askPeakAllPriceLineWidth,
+      });
+    },
+
+    setAskPeakVisibleMaxStyle: (patch) => {
+      const s = get();
+      patchIndicators({
+        askPeakVisibleMaxColor: patch.color ?? s.askPeakVisibleMaxColor,
+        askPeakVisibleMaxLineWidth: patch.lineWidth ?? s.askPeakVisibleMaxLineWidth,
+      });
+    },
+
+    setViLimitPriceLineStyle: (patch) => {
+      const s = get();
+      patchIndicators({
+        viLimitPriceLineColor: patch.color ?? s.viLimitPriceLineColor,
+        viLimitPriceLineWidth: patch.lineWidth ?? s.viLimitPriceLineWidth,
+      });
+    },
+
+    setBidPeakEnabled: (enabled) => {
+      patchIndicators(enabled
+        ? { bidPeakEnabled: true, bidPeakHidden: false }
+        : { bidPeakEnabled: false });
+    },
+
+    setBidPeakHidden: (hidden) => {
+      patchIndicators({ bidPeakHidden: hidden });
+    },
+
+    setBidPeakStyle: (patch) => {
+      const s = get();
+      patchIndicators({
+        bidPeakColor: patch.color ?? s.bidPeakColor,
+        bidPeakLineWidth: patch.lineWidth ?? s.bidPeakLineWidth,
+      });
+    },
+
+    setBidPeakAllPriceStyle: (patch) => {
+      const s = get();
+      patchIndicators({
+        bidPeakAllPriceColor: patch.color ?? s.bidPeakAllPriceColor,
+        bidPeakAllPriceLineWidth: patch.lineWidth ?? s.bidPeakAllPriceLineWidth,
+      });
+    },
+
+    setTradeVolumePocEnabled: (enabled) => {
+      patchIndicators(enabled
+        ? { tradeVolumePocEnabled: true, tradeVolumePocHidden: false }
+        : { tradeVolumePocEnabled: false });
+    },
+
+    setTradeVolumePocHidden: (hidden) => {
+      patchIndicators({ tradeVolumePocHidden: hidden });
+    },
+
+    setTradeVolumePocBandPct: (bandPct) => {
+      if (bandPct !== 0.0025 && bandPct !== 0.005 && bandPct !== 0.01) return;
+      patchIndicators({ tradeVolumePocBandPct: bandPct });
+    },
+
+    setTradeVolumePocStyle: (patch) => {
+      const s = get();
+      patchIndicators({
+        tradeVolumePocColor: patch.color ?? s.tradeVolumePocColor,
+        tradeVolumePocOpacity: patch.opacity === undefined
+          ? s.tradeVolumePocOpacity
+          : clamp(patch.opacity, 0, 1),
+      });
+    },
+
+    setDepthHeatmapEnabled: (enabled) => {
+      patchIndicators(enabled
+        ? { depthHeatmapEnabled: true, depthHeatmapHidden: false }
+        : { depthHeatmapEnabled: false });
+    },
+
+    setDepthHeatmapHidden: (hidden) => {
+      patchIndicators({ depthHeatmapHidden: hidden });
+    },
+
+    setDepthHeatmapStyle: (patch) => {
+      const s = get();
+      patchIndicators({
+        depthHeatmapBidColor: patch.bidColor ?? s.depthHeatmapBidColor,
+        depthHeatmapAskColor: patch.askColor ?? s.depthHeatmapAskColor,
+        depthHeatmapMaxOpacity: patch.maxOpacity === undefined
+          ? s.depthHeatmapMaxOpacity
+          : clamp(patch.maxOpacity, 0.2, 1),
+      });
+    },
+
+    setVolumeDistributionEnabled: (enabled) => {
+      patchIndicators({ volumeDistributionEnabled: enabled });
+    },
+
+    setVolumeDistributionHoverCutoffEnabled: (enabled) => {
+      patchIndicators({ volumeDistributionHoverCutoffEnabled: enabled });
+    },
+
+    setVolumeDistributionRangeCount: (count) => {
+      if (!Number.isFinite(count)) return;
+      patchIndicators({ volumeDistributionRangeCount: clamp(Math.trunc(count), 5, 30) });
+    },
+
+    setVolumeDistributionStyle: (patch) => {
+      const s = get();
+      patchIndicators({
+        volumeDistributionColor: patch.color ?? s.volumeDistributionColor,
+        volumeDistributionMaxColor: patch.maxColor ?? s.volumeDistributionMaxColor,
+      });
+    },
+
+    setQuoteTotalsEnabled: (enabled) => {
+      patchIndicators({ quoteTotalsEnabled: enabled });
+    },
+
+    setQuoteTotalsLevelLineEnabled: (enabled) => {
+      patchIndicators({ quoteTotalsLevelLineEnabled: enabled });
+    },
+
+    setQuoteTotalsBidLevelStyle: (patch) => {
+      const s = get();
+      patchIndicators({
+        quoteTotalsBidLevelColor: patch.color ?? s.quoteTotalsBidLevelColor,
+        quoteTotalsBidLevelWidth: patch.lineWidth ?? s.quoteTotalsBidLevelWidth,
+        quoteTotalsBidLevelStyle: patch.lineStyle ?? s.quoteTotalsBidLevelStyle,
+      });
+    },
+
+    setQuoteTotalsAskLevelStyle: (patch) => {
+      const s = get();
+      patchIndicators({
+        quoteTotalsAskLevelColor: patch.color ?? s.quoteTotalsAskLevelColor,
+        quoteTotalsAskLevelWidth: patch.lineWidth ?? s.quoteTotalsAskLevelWidth,
+        quoteTotalsAskLevelStyle: patch.lineStyle ?? s.quoteTotalsAskLevelStyle,
+      });
+    },
+
+    setRatioEnabled: (enabled) => {
+      patchIndicators({ ratioEnabled: enabled });
+    },
+
+    setRatioLevelLineEnabled: (enabled) => {
+      patchIndicators({ ratioLevelLineEnabled: enabled });
+    },
+
+    setRatioLevelStyle: (patch) => {
+      const s = get();
+      patchIndicators({
+        ratioLevelColor: patch.color ?? s.ratioLevelColor,
+        ratioLevelWidth: patch.lineWidth ?? s.ratioLevelWidth,
+        ratioLevelStyle: patch.lineStyle ?? s.ratioLevelStyle,
+      });
+    },
+
+    setFillStrengthEnabled: (enabled) => {
+      patchIndicators({ fillStrengthEnabled: enabled });
+    },
+
+    setProgramTradeEnabled: (enabled) => {
+      patchIndicators({ programTradeEnabled: enabled });
+    },
+
+    setBrokerLateEntryEnabled: (enabled) => {
+      patchIndicators(enabled
+        ? { brokerLateEntryEnabled: true, brokerLateEntryHidden: false }
+        : { brokerLateEntryEnabled: false });
+    },
+
+    setBrokerLateEntryHidden: (hidden) => {
+      patchIndicators({ brokerLateEntryHidden: hidden });
+    },
+
+    setBrokerLateEntryStartHHMM: (value) => {
+      if (!Number.isFinite(value)) {
+        patchIndicators({ brokerLateEntryStartHHMM: BROKER_LATE_ENTRY_DEFAULT_START_HHMM });
+        return;
+      }
+      patchIndicators({ brokerLateEntryStartHHMM: normalizeBrokerLateEntryStartHHMM(value) });
+    },
+
+    setBrokerLateEntrySideMode: (mode) => {
+      if (mode !== 'both' && mode !== 'buy' && mode !== 'sell') return;
+      patchIndicators({ brokerLateEntrySideMode: mode });
+    },
+
+    setBrokerLateEntryStyle: (patch) => {
+      const s = get();
+      patchIndicators({
+        brokerLateEntryBuyColor: patch.buyColor ?? s.brokerLateEntryBuyColor,
+        brokerLateEntrySellColor: patch.sellColor ?? s.brokerLateEntrySellColor,
+      });
+    },
+
+    setDailyMovingAverage: (id, patch) => {
+      const current = get().dailyMovingAverages;
+      const idx = current.findIndex((m) => m.id === id);
+      if (idx === -1) return;
+      const cur = current[idx];
+      const next: LiveMAConfig = { ...cur, ...patch };
+      if (patch.period !== undefined) {
+        const p = Number(patch.period);
+        if (!Number.isFinite(p)) return;
+        next.period = clamp(Math.floor(p), MA_PERIOD_MIN, MA_PERIOD_MAX);
+      }
+      const nextArr = current.slice();
+      nextArr[idx] = next;
+      patchIndicators({ dailyMovingAverages: nextArr });
+    },
+
+    addDailyMovingAverage: () => {
+      const current = get().dailyMovingAverages;
+      if (current.length >= MA_SLOT_LIMIT) return;
+      const last = current[current.length - 1];
+      const period = last ? clamp(last.period * 2, MA_PERIOD_MIN, MA_PERIOD_MAX) : 20;
+      const next: LiveMAConfig = {
+        id: nextSlotId(current, 'dma'),
+        enabled: true,
+        period,
+        color: nextSlotColor(current),
+        lineWidth: 2,
+        source: 'close',
+      };
+      patchIndicators({ dailyMovingAverages: [...current, next] });
+    },
+
+    removeDailyMovingAverage: (id) => {
+      const current = get().dailyMovingAverages;
+      if (current.length <= 1) return;
+      const nextArr = current.filter((m) => m.id !== id);
+      if (nextArr.length === current.length) return;
+      patchIndicators({ dailyMovingAverages: nextArr });
+    },
+
+    setDailyMovingAverageEnabled: (enabled) => {
+      patchIndicators(enabled
+        ? { dailyMovingAverageEnabled: true, dailyMovingAverageHidden: false }
+        : { dailyMovingAverageEnabled: false });
+    },
+
+    setDailyMovingAverageHidden: (hidden) => {
+      patchIndicators({ dailyMovingAverageHidden: hidden });
+    },
+
+    projectActiveView: ({ instrument, code, timeframe, historicalFromDate, lastMinuteHistoricalFromDate, viewport }) => {
+      // One atomic write — no reset-then-restore. tf is clamped like setCandleTimeframe
+      // (belt-and-suspenders; callers already pass validated timeframes).
+      const tf = LIVE_TIMEFRAMES.includes(timeframe) ? timeframe : get().candleTimeframe;
+      const nextInstrument = instrument === undefined
+        ? (code ? stockInstrument(code) : null)
+        : instrument;
+      const next = {
+        activeInstrument: nextInstrument,
+        activeCode: instrument === undefined
+          ? code
+          : (instrument === null && code === '' ? '' : instrumentToActiveCode(nextInstrument)),
+        candleTimeframe: tf,
+        lastMinuteTimeframe: isMinuteTimeframe(tf) ? tf : get().lastMinuteTimeframe,
+        historicalFromDate,
+        // 뷰 교체 시 이전 subject의 분봉 창 기억이 새 subject로 새지 않도록,
+        // 투영되는 값으로 재시드한다(ADR-0113 단일 뷰 — liveNavigate가 null 전달).
+        // 필드 생략(레거시 호출)이면 기존 derive 폴백: 분봉이면 pan, 아니면 null.
+        lastMinuteHistoricalFromDate: lastMinuteHistoricalFromDate !== undefined
+          ? lastMinuteHistoricalFromDate
+          : (isMinuteTimeframe(tf) ? historicalFromDate : null),
+        activeViewport: viewport ?? null,
+      };
+      // /live 의 ambient 지표 봉은 candleTimeframe 을 따른다 — 같은 원자적 쓰기로 투영.
+      set({ ...next, ...projectIndicatorsFor(tf) });
+      persist({ ...get(), ...next });
+    },
+
+    setActiveCode: (code) => {
+      const activeInstrument = code ? stockInstrument(code) : null;
+      set({
+        activeInstrument,
+        activeCode: code,
+        historicalFromDate: null,
+        lastMinuteHistoricalFromDate: null,
+        activeViewport: null,
+      });
+      persist({ ...get(), activeInstrument, activeCode: code, historicalFromDate: null });
+    },
+
+    setCandleTimeframe: (tf) => {
+      if (!LIVE_TIMEFRAMES.includes(tf)) return;
+      const cur = get();
+      const next = {
+        candleTimeframe: tf,
+        lastMinuteTimeframe: isMinuteTimeframe(tf) ? tf : cur.lastMinuteTimeframe,
+        historicalFromDate: null,
+        // 분봉을 떠나는 순간의 pan 창을 기억한다(분봉→분봉 전환 포함 — 같은 1m
+        // 데이터의 재집계라 창 유지가 자연스럽다). 복원은 LiveChartRoot가 초기 뷰
+        // 배치 직후 1-샷 dispatch — Store 타입의 필드 주석 참조.
+        // `??` 폴백: 복원 dispatch가 아직 안 돈 창(빠른 D→분봉→재이탈, 콜드 로드
+        // 배치 전)에는 historicalFromDate가 여전히 null이므로, null로 덮어쓰면
+        // 기억이 영구 소실된다. hFD=null && 기억≠null은 그 "복원 대기" 상태뿐 —
+        // 명시적 리셋은 resetHistoricalRange가 기억까지 직접 클리어하므로 폴백이
+        // 리셋을 되살리는 일은 없다.
+        lastMinuteHistoricalFromDate: isMinuteTimeframe(cur.candleTimeframe)
+          ? cur.historicalFromDate ?? cur.lastMinuteHistoricalFromDate
+          : cur.lastMinuteHistoricalFromDate,
+        activeViewport: null,
+      };
+      set({ ...next, ...projectIndicatorsFor(tf) });
+      persist({ ...get(), ...next });
+    },
+
+    extendHistoricalRange: (date) => {
+      const cur = get().historicalFromDate;
+      if (cur !== null && cur <= date) return; // already at or before this date
+      set({ historicalFromDate: date });
+      persist({ ...get(), historicalFromDate: date });
+    },
+
+    resetHistoricalRange: () => {
+      set({ historicalFromDate: null, lastMinuteHistoricalFromDate: null, activeViewport: null });
+      persist({ ...get(), historicalFromDate: null });
+    },
+
+    hydrateFromStorage: () => {
+      const stored = readStorage();
+      const merged = { ...DEFAULTS, ...stored };
+      const lastMinuteTimeframe = stored.lastMinuteTimeframe
+        ?? (isMinuteTimeframe(merged.candleTimeframe) ? merged.candleTimeframe : DEFAULTS.lastMinuteTimeframe);
+      set({
+        ...merged,
+        lastMinuteTimeframe,
+        activeViewport: null,
+        ...projectIndicatorsFor(merged.candleTimeframe),
+      });
+    },
+  };
+});
+
+// 콜드 로드: chartPrefs 의 indicator-modal 투영을 저장된 봉으로 1회 정렬(PR-B).
+// (chartPrefs 스토어는 '1m' 투영으로 시작하고, 이후 전환은 projectIndicatorsFor 가 동기화.)
+syncIndicatorModalTimeframe(initialPage.candleTimeframe);

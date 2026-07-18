@@ -1,3 +1,5 @@
+import json
+
 import pytest
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
@@ -16,8 +18,11 @@ def _preset_req(**overrides):
         "name": "단타용",
         "payload": {
             "pane_order": ["candle", "volume", "ratio", "quote-totals"],
-            "pane_prefs_by_timeframe": {"minute": {"ratioEnabled": False}},
-            "indicator_flags": {"movingAverageEnabled": True, "volumeEnabled": True},
+            # 프리셋 = 4버킷 전체의 지표 on/off 스냅샷(#699 PR-D).
+            "by_timeframe_enable": {
+                "minute": {"ratioEnabled": False},
+                "D": {"volumeEnabled": False, "movingAverageEnabled": True},
+            },
             "right_panel_width_px": 420,
             "right_card_order": ["orderbook", "brokers"],
             "right_card_hidden": {"program": True},
@@ -41,7 +46,7 @@ def test_preset_routes_crud(preset_client):
     assert create.status_code == 201
     created = create.json()
     pid = created["id"]
-    assert created["schema_version"] == 1
+    assert created["schema_version"] == 2
     assert created["name"] == "단타용"
     assert created["payload"]["right_panel_width_px"] == 420
     assert created["payload"]["pane_order"] == ["candle", "volume", "ratio", "quote-totals"]
@@ -86,12 +91,39 @@ def test_preset_payload_accepts_unknown_keys_shallowly():
     req = LiveLayoutPresetWriteRequest.model_validate(
         _preset_req(payload={
             "pane_order": ["candle", "brand-new-pane"],
-            "indicator_flags": {"someFutureFlag": True},
+            "by_timeframe_enable": {"minute": {"someFutureFlag": True}},
             "right_card_order": ["orderbook", "future-card"],
         })
     )
     assert "brand-new-pane" in req.payload.pane_order
-    assert req.payload.indicator_flags["someFutureFlag"] is True
+    assert req.payload.by_timeframe_enable["minute"]["someFutureFlag"] is True
+
+
+def test_stale_v1_preset_file_is_discarded(tmp_path):
+    # 구 v1 프리셋(pane_prefs_by_timeframe + indicator_flags, per-preset
+    # schema_version=1)은 폐기된다 — 변환 없이 빈 목록으로 재시작(#699 PR-D).
+    manifest = llp._manifest_path(tmp_path)
+    manifest.parent.mkdir(parents=True, exist_ok=True)
+    manifest.write_text(
+        json.dumps({
+            "schema_version": 1,
+            "presets": [{
+                "schema_version": 1,
+                "id": "old-1",
+                "name": "구버전",
+                "payload": {
+                    "pane_order": ["candle"],
+                    "pane_prefs_by_timeframe": {"minute": {"ratioEnabled": False}},
+                    "indicator_flags": {"movingAverageEnabled": True},
+                },
+                "created_at_ms": 1,
+                "updated_at_ms": 1,
+            }],
+        }),
+        encoding="utf-8",
+    )
+    reloaded = llp.load_presets(tmp_path)
+    assert reloaded.presets == []
 
 
 def test_presets_sorted_by_updated_at_desc_and_persist_across_reload(tmp_path):

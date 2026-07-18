@@ -4164,7 +4164,16 @@ describe('LiveChartRoot wheel interactions wiring', () => {
 describe('LiveChartRoot pane stretch (Pane 크기 가중치, #703)', () => {
   beforeEach(() => {
     useChartPrefsStore.getState().resetToDefaults();
-    useLivePageStore.setState({ historicalFromDate: null, paneStretch: {} });
+    // 공장 기본값(#694)은 호가 pane 4종을 끈다 — 6-pane 시나리오를 재현하려면
+    // 명시적으로 켜서 candle+volume+호가 4종이 모두 마운트되게 한다.
+    useLivePageStore.setState({
+      historicalFromDate: null,
+      paneStretch: {},
+      quoteTotalsEnabled: true,
+      ratioEnabled: true,
+      fillStrengthEnabled: true,
+      programTradeEnabled: true,
+    });
     vi.mocked(createChartEx).mockClear();
   });
 
@@ -4306,8 +4315,8 @@ describe('LiveChartRoot pane stretch (Pane 크기 가중치, #703)', () => {
       'fill-strength': 0.4,
       'program-trade': 0.3,
     });
-    // 영속까지: live.indicators.v1 에 실렸는지.
-    const persisted = JSON.parse(localStorage.getItem('live.indicators.v1') ?? '{}');
+    // 영속까지: live.indicators.v2 에 실렸는지.
+    const persisted = JSON.parse(localStorage.getItem('live.indicators.v2') ?? '{}');
     expect(persisted.paneStretch?.candle).toBe(3.3);
   });
 

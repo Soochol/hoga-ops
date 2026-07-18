@@ -322,7 +322,7 @@ describe('PaneLegendOverlay — generic pane rows', () => {
     expect(screen.getByText('매도')).toBeInTheDocument();
     expect(screen.getByText('6,789')).toBeInTheDocument();
     fireEvent.click(screen.getByRole('button', { name: '총잔량 지표 끄기' }));
-    expect(useLivePageStore.getState().panePrefsByTimeframe.minute?.quoteTotalsEnabled).toBe(false);
+    expect(useLivePageStore.getState().indicatorsByTimeframe.minute?.quoteTotalsEnabled).toBe(false);
   });
 
   it('omits a null-valued cell (체결강도 누적 off) but keeps the rest', () => {
@@ -357,7 +357,7 @@ describe('PaneLegendOverlay — generic pane rows', () => {
     );
     expect(screen.getByText('5,000')).toBeInTheDocument();
     fireEvent.click(screen.getByRole('button', { name: '거래량 지표 끄기' }));
-    expect(useLivePageStore.getState().panePrefsByTimeframe.D?.volumeEnabled).toBe(false);
+    expect(useLivePageStore.getState().indicatorsByTimeframe.D?.volumeEnabled).toBe(false);
     expect(useLivePageStore.getState().volumeEnabled).toBe(true);
   });
 
@@ -385,7 +385,7 @@ describe('PaneLegendOverlay — generic pane rows', () => {
     useLivePageStore.setState({
       movingAverageEnabled: false,
       foreignNetEnabled: true,
-      panePrefsByTimeframe: { D: { foreignNetEnabled: true } },
+      indicatorsByTimeframe: { D: { foreignNetEnabled: true } },
     });
     registerLegend('investor-foreign', [{ label: '외국인 순매수량', value: 100 }]);
     renderOverlay({
@@ -396,7 +396,7 @@ describe('PaneLegendOverlay — generic pane rows', () => {
 
     await userEvent.click(screen.getByLabelText('외국인 순매수량 지표 끄기'));
 
-    expect(useLivePageStore.getState().panePrefsByTimeframe.D?.foreignNetEnabled).toBe(false);
+    expect(useLivePageStore.getState().indicatorsByTimeframe.D?.foreignNetEnabled).toBe(false);
     expect(useLivePageStore.getState().foreignNetEnabled).toBe(true);
   });
 });

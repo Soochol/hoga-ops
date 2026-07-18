@@ -182,7 +182,8 @@ describe('LiveChartRoot — pane 토글 배선 (store → 마운트된 pane 집�
       programTradeEnabled: true,
       foreignNetEnabled: false,
       institutionNetEnabled: false,
-      panePrefsByTimeframe: {},
+      indicatorsByTimeframe: {},
+      indicatorTimeframe: '1m',
     });
     useChartPrefsStore.getState().setToggle('volumeFillStrengthCumulative', false);
   });
@@ -227,34 +228,30 @@ describe('LiveChartRoot — pane 토글 배선 (store → 마운트된 pane 집�
     expect(mounted).toEqual(['candle', 'volume']);
   });
 
-  it('uses the active timeframe pane profile instead of flat legacy fields', () => {
-    useLivePageStore.setState({
-      ratioEnabled: true,
-      panePrefsByTimeframe: {
-        minute: { ratioEnabled: false },
-      },
-    });
+  it('uses the ambient timeframe bucket instead of flat legacy fields', () => {
+    // 공개 세터 경로: minute 버킷에 기록 + ambient(1m) 투영 갱신.
+    useLivePageStore.getState().setPanePrefForTimeframe('1m', 'ratioEnabled', false);
     renderAt('1m');
     expect(mounted).not.toContain('ratio');
     expect(mounted).toContain('quote-totals');
   });
 
-  it('keeps /live D hoga panes gated even when the D profile enables them', () => {
-    useLivePageStore.setState({
-      panePrefsByTimeframe: {
-        D: { quoteTotalsEnabled: true, ratioEnabled: true, fillStrengthEnabled: true },
-      },
-    });
+  it('keeps /live D hoga panes gated even when the D bucket enables them', () => {
+    useLivePageStore.getState().setPanePrefForTimeframe('D', 'quoteTotalsEnabled', true);
+    useLivePageStore.getState().setPanePrefForTimeframe('D', 'ratioEnabled', true);
+    useLivePageStore.getState().setPanePrefForTimeframe('D', 'fillStrengthEnabled', true);
+    useLivePageStore.getState().setIndicatorTimeframe('D');
     renderAt('D');
     expect(mounted).toEqual(['candle', 'volume']);
   });
 
-  it('allows forced study-style D hoga panes from the D profile', () => {
-    useLivePageStore.setState({
-      panePrefsByTimeframe: {
-        D: { ratioEnabled: true, quoteTotalsEnabled: false, fillStrengthEnabled: false },
-      },
-    });
+  it('allows forced study-style D hoga panes from the D bucket', () => {
+    // 새 공장값은 호가 pane off — D 버킷에서 ratio·program-trade 만 켠 상태를 만든다.
+    useLivePageStore.getState().setPanePrefForTimeframe('D', 'ratioEnabled', true);
+    useLivePageStore.getState().setPanePrefForTimeframe('D', 'programTradeEnabled', true);
+    useLivePageStore.getState().setPanePrefForTimeframe('D', 'quoteTotalsEnabled', false);
+    useLivePageStore.getState().setPanePrefForTimeframe('D', 'fillStrengthEnabled', false);
+    useLivePageStore.getState().setIndicatorTimeframe('D');
     renderAt('D', { forceHogaPanes: true });
     expect(mounted).toEqual(['candle', 'volume', 'ratio', 'program-trade']);
   });
