@@ -30,6 +30,7 @@ beforeEach(() => {
   useLivePageStore.setState({
     ...FACTORY_INDICATOR_SETTINGS,
     paneOrder: [...CANON_PANES] as never,
+    paneStretch: {},
     indicatorsByTimeframe: {},
     indicatorTimeframe: '1m',
   });
@@ -43,8 +44,11 @@ describe('capturePresetPayload', () => {
     useLivePageStore.setState({ paneOrder: ['candle', 'ratio', 'volume'] as never });
     useLiveLayoutStore.setState({ rightPanelWidthPx: 460, rightCardHidden: { program: true } });
 
+    useLivePageStore.setState({ paneStretch: { candle: 2.2, volume: 0.2 } });
+
     const payload = capturePresetPayload();
     expect(payload.pane_order.slice(0, 3)).toEqual(['candle', 'ratio', 'volume']);
+    expect(payload.pane_stretch).toEqual({ candle: 2.2, volume: 0.2 });
     // by_timeframe_enable = 각 버킷의 sparse enable 오버라이드(공장값 diff).
     expect(payload.by_timeframe_enable.minute).toEqual({ ratioEnabled: false });
     expect(payload.by_timeframe_enable.D).toEqual({ volumeEnabled: false });
@@ -138,6 +142,15 @@ describe('applyPresetPayload', () => {
     expect(useLivePageStore.getState().indicatorsByTimeframe).toEqual(snapshot);
   });
 
+  it('applies pane_stretch and resets it when the field is absent (legacy preset)', () => {
+    applyPresetPayload(basePayload({ pane_stretch: { candle: 2.2, 'not-a-pane': 3 } }), null);
+    expect(useLivePageStore.getState().paneStretch).toEqual({ candle: 2.2 });
+
+    // 필드 도입 전 저장된 프리셋(pane_stretch 부재) 적용 = 스펙 기본 크기로 리셋.
+    applyPresetPayload(basePayload(), null);
+    expect(useLivePageStore.getState().paneStretch).toEqual({});
+  });
+
   it('persists the applied state to both storage keys', () => {
     applyPresetPayload(basePayload({
       pane_order: ['candle', 'ratio', 'volume'],
@@ -161,5 +174,6 @@ describe('defaultPresetPayload', () => {
     expect(payload.right_card_hidden).toEqual({});
     expect(payload.right_card_weights).toEqual(DEFAULT_CARD_WEIGHTS);
     expect(payload.by_timeframe_enable).toEqual({});
+    expect(payload.pane_stretch).toEqual({});
   });
 });

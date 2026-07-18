@@ -68,6 +68,7 @@ describe('mergeLiveIndicatorPrefs', () => {
         'candle', 'volume', 'quote-totals', 'ratio',
         'fill-strength', 'program-trade', 'investor-foreign', 'investor-institution',
       ],
+      paneStretch: {},
       dailyMovingAverages: DEFAULT_DAILY_MAS.map((m) => ({ ...m })),
       dailyMovingAverageEnabled: false,
       dailyMovingAverageHidden: false,
@@ -224,6 +225,21 @@ describe('mergeLiveIndicatorPrefs — paneOrder', () => {
       'candle', 'ratio', 'volume',
       'quote-totals', 'fill-strength', 'program-trade', 'investor-foreign', 'investor-institution',
     ]);
+  });
+});
+
+describe('mergeLiveIndicatorPrefs — paneStretch', () => {
+  it('defaults paneStretch to an empty map', () => {
+    expect(mergeLiveIndicatorPrefs(undefined).paneStretch).toEqual({});
+  });
+
+  it('rehydrates a persisted blob with stretch values, dropping invalid entries', () => {
+    // 읽기 쪽 왕복: 값이 든 블롭이 mergeLiveIndicatorPrefs 를 통과해 살아남고,
+    // 미지 키·비유한·범위 밖 값은 정규화 단계에서 떨어진다.
+    const m = mergeLiveIndicatorPrefs({
+      paneStretch: { candle: 2.5, volume: 0.2, bogus: 1, ratio: 0, 'quote-totals': 999 },
+    } as never);
+    expect(m.paneStretch).toEqual({ candle: 2.5, volume: 0.2 });
   });
 });
 

@@ -1,6 +1,6 @@
 import type { MASource } from '../chart/projectors/movingAverage';
 import { LINE_STYLES, type LineStyle, type PaneId } from '../chart/drawing/types';
-import { normalizePaneOrder } from '../chart/paneOrder';
+import { normalizePaneOrder, normalizePaneStretch, type PaneStretchMap } from '../chart/paneOrder';
 import {
   normalizePanePrefsByTimeframe,
   type PersistedPanePrefsByTimeframe,
@@ -217,6 +217,9 @@ export type PersistedIndicators = {
   panePrefsByTimeframe: PersistedPanePrefsByTimeframe;
   /** 사용자 소유 차트 pane 순서(안정 PaneId 배열; candle 은 항상 index 0, ADR-0114 §3). */
   paneOrder: PaneId[];
+  /** 사용자 소유 Pane 크기 가중치(Pane Stretch) — separator 드래그로 조정한
+   *  pane 종류별 상대 높이. 없는 키 = 스펙 기본값. 전역 1세트(타임프레임 공통). */
+  paneStretch: PaneStretchMap;
 };
 
 function isValidEntry(m: unknown): m is LiveMAConfig {
@@ -393,6 +396,7 @@ export function mergeLiveIndicatorPrefs(
   const ratioLevelStyle = normalizeLineStyle(obj?.ratioLevelStyle, QUOTE_LEVEL_LINE_DEFAULT_STYLE);
   const panePrefsByTimeframe = normalizePanePrefsByTimeframe(obj?.panePrefsByTimeframe);
   const paneOrder = normalizePaneOrder(obj?.paneOrder);
+  const paneStretch = normalizePaneStretch(obj?.paneStretch);
   const build = (
     mas: LiveMAConfig[], enabled: boolean, fNet: boolean, iNet: boolean,
     vol: boolean, hidden: boolean,
@@ -461,6 +465,7 @@ export function mergeLiveIndicatorPrefs(
     dailyMovingAverageHidden: dHidden,
     panePrefsByTimeframe,
     paneOrder,
+    paneStretch,
   });
   if (!raw || typeof raw !== 'object') return build(defaults, true, false, false, true, false, true, true, true, true, true);
   // obj is guaranteed non-null here (same condition checked above)

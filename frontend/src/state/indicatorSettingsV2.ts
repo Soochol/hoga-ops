@@ -1,5 +1,5 @@
 import type { PaneId } from '../chart/drawing/types';
-import { normalizePaneOrder } from '../chart/paneOrder';
+import { normalizePaneOrder, normalizePaneStretch, type PaneStretchMap } from '../chart/paneOrder';
 import {
   mergeLiveIndicatorPrefs,
   type PersistedIndicators,
@@ -24,14 +24,19 @@ import type { LiveTimeframe } from './livePage';
  */
 
 /** 버킷 하나가 담는 지표 설정 전체 — v1 `PersistedIndicators` 에서 per-timeframe
- *  컨테이너(panePrefsByTimeframe)와 레이아웃(paneOrder)만 뺀 것. */
-export type IndicatorSettings = Omit<PersistedIndicators, 'panePrefsByTimeframe' | 'paneOrder'>;
+ *  컨테이너(panePrefsByTimeframe)와 레이아웃(paneOrder·paneStretch)만 뺀 것.
+ *  paneStretch(#703)는 paneOrder 와 함께 v2 레이아웃 슬라이스에 산다(버킷 아님). */
+export type IndicatorSettings =
+  Omit<PersistedIndicators, 'panePrefsByTimeframe' | 'paneOrder' | 'paneStretch'>;
 
 export type IndicatorSettingsByTimeframe =
   Partial<Record<IndicatorPaneProfileKey, Partial<IndicatorSettings>>>;
 
 export type PersistedIndicatorsV2 = {
   paneOrder: PaneId[];
+  /** 사용자 소유 Pane 크기 가중치(#703) — paneOrder 와 같은 레이아웃 슬라이스.
+   *  전역 1세트, pane 종류별. 없는 키 = 스펙 기본값. */
+  paneStretch: PaneStretchMap;
   byTimeframe: IndicatorSettingsByTimeframe;
 };
 
@@ -39,7 +44,10 @@ export const INDICATORS_V2_STORAGE_KEY = 'live.indicators.v2';
 const V1_STORAGE_KEY = 'live.indicators.v1';
 
 function stripContainers(v1: PersistedIndicators): IndicatorSettings {
-  const { panePrefsByTimeframe: _p, paneOrder: _o, ...settings } = v1;
+  // paneStretch(#703)도 레이아웃이라 버킷 설정에서 제외 — 그러지 않으면
+  // FACTORY_INDICATOR_SETTINGS 가 paneStretch:{} 를 실어, reset/applyPreset 의
+  // `...FACTORY`/`...resolveIndicatorSettings` 스프레드가 실제 값을 덮어쓴다.
+  const { panePrefsByTimeframe: _p, paneOrder: _o, paneStretch: _s, ...settings } = v1;
   return settings;
 }
 
@@ -132,6 +140,7 @@ export function normalizeIndicatorsV2(raw: unknown): PersistedIndicatorsV2 {
   }
   return {
     paneOrder: normalizePaneOrder(obj.paneOrder),
+    paneStretch: normalizePaneStretch(obj.paneStretch),
     byTimeframe,
   };
 }
@@ -161,6 +170,8 @@ export function seedV2FromV1(v1raw: unknown): PersistedIndicatorsV2 {
   const minuteDiff = diffIndicatorSettingsFromFactory(minuteView);
   return {
     paneOrder: normalizePaneOrder(v1.paneOrder),
+    // v1 블롭에 paneStretch 가 있으면 이관(구 프로덕션 v1 엔 없어 대개 {}).
+    paneStretch: normalizePaneStretch((v1raw as { paneStretch?: unknown } | null)?.paneStretch),
     byTimeframe: Object.keys(minuteDiff).length > 0 ? { minute: minuteDiff } : {},
   };
 }

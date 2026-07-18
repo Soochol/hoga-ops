@@ -288,6 +288,48 @@ describe('useLivePageStore.setPaneOrder', () => {
   });
 });
 
+describe('useLivePageStore.setPaneStretch', () => {
+  beforeEach(() => {
+    localStorage.clear();
+    useLivePageStore.setState({ paneStretch: {} });
+  });
+
+  it('merges the patch and persists to live.indicators.v2', () => {
+    useLivePageStore.getState().setPaneStretch({ candle: 2.5, volume: 0.2 });
+    useLivePageStore.getState().setPaneStretch({ ratio: 0.6 });
+    expect(useLivePageStore.getState().paneStretch).toEqual({ candle: 2.5, volume: 0.2, ratio: 0.6 });
+    const persisted = JSON.parse(localStorage.getItem('live.indicators.v2') ?? '{}');
+    expect(persisted.paneStretch).toEqual({ candle: 2.5, volume: 0.2, ratio: 0.6 });
+  });
+
+  it('drops invalid entries (unknown key, non-finite, out-of-range)', () => {
+    useLivePageStore.getState().setPaneStretch({
+      candle: 1.8,
+      nope: 1,
+      volume: Number.NaN,
+      ratio: 0,
+      'quote-totals': 999,
+    } as never);
+    expect(useLivePageStore.getState().paneStretch).toEqual({ candle: 1.8 });
+  });
+
+  it('resetIndicators preserves paneStretch (layout, like paneOrder)', () => {
+    useLivePageStore.getState().setPaneStretch({ candle: 2.5 });
+    useLivePageStore.getState().resetIndicators();
+    expect(useLivePageStore.getState().paneStretch).toEqual({ candle: 2.5 });
+  });
+
+  it('applyIndicatorPreset replaces paneStretch wholesale ({} resets to spec defaults)', () => {
+    useLivePageStore.getState().setPaneStretch({ candle: 2.5 });
+    useLivePageStore.getState().applyIndicatorPreset({
+      paneOrder: ['candle'],
+      byTimeframeEnable: {},
+      paneStretch: {},
+    });
+    expect(useLivePageStore.getState().paneStretch).toEqual({});
+  });
+});
+
 describe('useLivePageStore.movingAverages', () => {
   beforeEach(() => {
     localStorage.removeItem('live.indicators.v1');

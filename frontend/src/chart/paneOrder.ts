@@ -50,6 +50,30 @@ export function normalizePaneOrder(raw: unknown): PaneId[] {
   return ['candle', ...withoutCandle];
 }
 
+/** 사용자 소유 Pane 크기 가중치(Pane Stretch) — pane 종류별 상대 높이 가중치.
+ *  전역 1세트(타임프레임·페이지 공통): 크기는 "캔들 크게, 거래량 얇게" 같은 공간
+ *  취향이지 타임프레임 내용이 아니다. 없는 키 = 스펙 기본값(`spec.stretch`) 사용. */
+export type PaneStretchMap = Partial<Record<PaneId, number>>;
+
+// 스펙 기본값이 0.3~1.4 스케일이므로 [0.05, 20] 밖은 손상된 저장값으로 간주해 드롭
+// (lwc 렌더는 MinPaneHeight 30px 로 자체 바닥이 있지만, 극단값이 다른 pane 을
+// 사실상 0 으로 짓누르는 것을 저장 단계에서 차단).
+const STRETCH_MIN = 0.05;
+const STRETCH_MAX = 20;
+
+/** 저장된 Pane Stretch 를 정규화한다: PaneId 아닌 키·비유한·범위 밖 값 드롭. */
+export function normalizePaneStretch(raw: unknown): PaneStretchMap {
+  if (!raw || typeof raw !== 'object' || Array.isArray(raw)) return {};
+  const out: PaneStretchMap = {};
+  for (const [k, v] of Object.entries(raw as Record<string, unknown>)) {
+    if (!isPaneId(k)) continue;
+    if (typeof v !== 'number' || !Number.isFinite(v)) continue;
+    if (v < STRETCH_MIN || v > STRETCH_MAX) continue;
+    out[k] = v;
+  }
+  return out;
+}
+
 /**
  * `pane` 을 전역 순서에서 빼내 `neighbor` 바로 앞/뒤에 다시 끼운다(레전드 ↑/↓).
  *

@@ -12,6 +12,9 @@ export type LiveLayoutPresetPayload = {
    *  프리셋 범위 밖이라 담지 않는다. 구 payload 의 pane_prefs_by_timeframe +
    *  indicator_flags 를 이 하나로 통합. */
   by_timeframe_enable: Record<string, Record<string, boolean>>;
+  /** Pane 크기 가중치(PaneId → stretch). 필드 도입 전에 저장된 프리셋에는 없다 —
+   *  부재 = 스펙 기본 크기로 적용. */
+  pane_stretch?: Record<string, number>;
   right_panel_width_px: number;
   right_card_order: string[];
   right_card_hidden: Record<string, boolean>;

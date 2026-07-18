@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { CANONICAL_PANE_ORDER, movePaneBeside, normalizePaneOrder } from './paneOrder';
+import { CANONICAL_PANE_ORDER, movePaneBeside, normalizePaneOrder, normalizePaneStretch } from './paneOrder';
 
 describe('CANONICAL_PANE_ORDER', () => {
   it('starts with candle and includes the two investor panes', () => {
@@ -33,6 +33,35 @@ describe('normalizePaneOrder', () => {
       'quote-totals', 'fill-strength', 'program-trade',
       'investor-foreign', 'investor-institution',
     ]);
+  });
+});
+
+describe('normalizePaneStretch', () => {
+  it('returns {} for non-object input', () => {
+    expect(normalizePaneStretch(undefined)).toEqual({});
+    expect(normalizePaneStretch(null)).toEqual({});
+    expect(normalizePaneStretch([1, 2])).toEqual({});
+    expect(normalizePaneStretch('candle')).toEqual({});
+  });
+
+  it('keeps finite in-range values on known PaneIds only', () => {
+    expect(normalizePaneStretch({
+      candle: 1.4,
+      volume: 0.05,
+      ratio: 20,
+      bogus: 1,
+    })).toEqual({ candle: 1.4, volume: 0.05, ratio: 20 });
+  });
+
+  it('drops non-finite and out-of-range values', () => {
+    expect(normalizePaneStretch({
+      candle: Number.NaN,
+      volume: Number.POSITIVE_INFINITY,
+      ratio: 0,
+      'quote-totals': -1,
+      'fill-strength': 0.049,
+      'program-trade': 20.1,
+    })).toEqual({});
   });
 });
 

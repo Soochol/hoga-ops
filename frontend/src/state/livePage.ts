@@ -1,7 +1,7 @@
 import { create } from 'zustand';
 import type { MASource } from '../chart/projectors/movingAverage';
 import type { LineStyle, PaneId } from '../chart/drawing/types';
-import { normalizePaneOrder } from '../chart/paneOrder';
+import { normalizePaneOrder, normalizePaneStretch, type PaneStretchMap } from '../chart/paneOrder';
 import {
   PRESET_INDICATOR_FLAG_KEYS,
   type PresetEnableByTimeframe,
@@ -149,6 +149,8 @@ export type ActiveViewProjection = {
 type Store = Persisted & IndicatorSettings & {
   /** 사용자 소유 차트 pane 순서(전역 — 봉 무관, ADR-0114 §3 / #696). */
   paneOrder: PaneId[];
+  /** 사용자 소유 Pane 크기 가중치(#703 — 전역, paneOrder 와 같은 레이아웃 슬라이스). */
+  paneStretch: PaneStretchMap;
   /** 4버킷 sparse 오버라이드 원본 (`live.indicators.v2`). */
   indicatorsByTimeframe: IndicatorSettingsByTimeframe;
   /** 지표 설정이 현재 투영된 봉 — 보는 차트의 timeframe 과 항상 일치해야 한다. */
@@ -184,13 +186,17 @@ type Store = Persisted & IndicatorSettings & {
   /** pane 순서를 통째로 교체한다(레전드 ↑/↓ 의 reorderVisible 결과; candle 은
    *  normalizePaneOrder 가 index 0 으로 고정, ADR-0114 §3). */
   setPaneOrder: (order: PaneId[]) => void;
+  /** separator 드래그로 조정된 Pane 크기 가중치를 병합 저장한다(부분 patch —
+   *  현재 안 마운트된 pane 의 저장값은 보존). */
+  setPaneStretch: (patch: PaneStretchMap) => void;
   /** 레이아웃 프리셋의 지표 슬라이스를 한 번에 적용(단일 set + 단일 persist, ADR-0114 §4).
    *  #698·#699 PR-D: 프리셋 = 4버킷 전체 on/off 스냅샷. 각 봉 버킷의 enable
    *  오버라이드를 프리셋 값으로 **통째 교체**하되(결정론), 파라미터(색·기간)
-   *  오버라이드는 보존한다(프리셋 범위 밖). */
+   *  오버라이드는 보존한다(프리셋 범위 밖). paneStretch(레이아웃)도 함께 교체. */
   applyIndicatorPreset: (input: {
     paneOrder: PaneId[];
     byTimeframeEnable: PresetEnableByTimeframe;
+    paneStretch: PaneStretchMap;
   }) => void;
   /** 현재 봉 버킷의 오버라이드만 비워 공장 기본값으로 되돌린다(#697 — 리셋은
    *  현재 봉만). 다른 봉·paneOrder(레이아웃)는 건드리지 않는다. chartPrefs 는
@@ -360,7 +366,7 @@ export const useLivePageStore = create<Store>((set, get) => {
     const bucket = { ...(s.indicatorsByTimeframe[profileKey] ?? {}), ...patch };
     const byTimeframe = { ...s.indicatorsByTimeframe, [profileKey]: bucket };
     set({ ...patch, indicatorsByTimeframe: byTimeframe } as Partial<Store>);
-    persistIndicatorsV2({ paneOrder: get().paneOrder, byTimeframe });
+    persistIndicatorsV2({ paneOrder: get().paneOrder, paneStretch: get().paneStretch, byTimeframe });
   };
 
   /** 봉 전환 시 투영 재계산. candleTimeframe 세터·페이지 동기화가 호출한다.
@@ -377,6 +383,7 @@ export const useLivePageStore = create<Store>((set, get) => {
     ...initialPage,
     ...resolveIndicatorSettings(initialIndicatorsV2.byTimeframe, initialPage.candleTimeframe),
     paneOrder: initialIndicatorsV2.paneOrder,
+    paneStretch: initialIndicatorsV2.paneStretch,
     indicatorsByTimeframe: initialIndicatorsV2.byTimeframe,
     indicatorTimeframe: initialPage.candleTimeframe,
     activeViewport: null,
@@ -451,16 +458,22 @@ export const useLivePageStore = create<Store>((set, get) => {
         (patch as Record<string, unknown>)[key] = enabled;
       }
       set(patch);
-      persistIndicatorsV2({ paneOrder: get().paneOrder, byTimeframe });
+      persistIndicatorsV2({ paneOrder: get().paneOrder, paneStretch: get().paneStretch, byTimeframe });
     },
 
     setPaneOrder: (order) => {
       const paneOrder = normalizePaneOrder(order);
       set({ paneOrder });
-      persistIndicatorsV2({ paneOrder, byTimeframe: get().indicatorsByTimeframe });
+      persistIndicatorsV2({ paneOrder, paneStretch: get().paneStretch, byTimeframe: get().indicatorsByTimeframe });
     },
 
-    applyIndicatorPreset: ({ paneOrder, byTimeframeEnable }) => {
+    setPaneStretch: (patch) => {
+      const paneStretch = normalizePaneStretch({ ...get().paneStretch, ...patch });
+      set({ paneStretch });
+      persistIndicatorsV2({ paneOrder: get().paneOrder, paneStretch, byTimeframe: get().indicatorsByTimeframe });
+    },
+
+    applyIndicatorPreset: ({ paneOrder, byTimeframeEnable, paneStretch }) => {
       const s = get();
       const byTimeframe: IndicatorSettingsByTimeframe = {};
       for (const profileKey of INDICATOR_PANE_PROFILE_KEYS) {
@@ -477,21 +490,25 @@ export const useLivePageStore = create<Store>((set, get) => {
         if (Object.keys(merged).length > 0) byTimeframe[profileKey] = merged;
       }
       const nextPaneOrder = normalizePaneOrder(paneOrder);
+      const nextPaneStretch = normalizePaneStretch(paneStretch);
       set({
         paneOrder: nextPaneOrder,
+        paneStretch: nextPaneStretch,
         indicatorsByTimeframe: byTimeframe,
         ...resolveIndicatorSettings(byTimeframe, s.indicatorTimeframe),
       });
-      persistIndicatorsV2({ paneOrder: nextPaneOrder, byTimeframe });
+      persistIndicatorsV2({ paneOrder: nextPaneOrder, paneStretch: nextPaneStretch, byTimeframe });
     },
 
     resetIndicators: () => {
+      // 현재 봉 버킷만 공장값으로(#697). 레이아웃(paneOrder·paneStretch)은
+      // 보존 — 크기 리셋은 프리셋 "기본 레이아웃으로 초기화"가 담당(#703).
       const s = get();
       const profileKey = profileKeyForTimeframe(s.indicatorTimeframe);
       const byTimeframe = { ...s.indicatorsByTimeframe };
       delete byTimeframe[profileKey];
       set({ ...FACTORY_INDICATOR_SETTINGS, indicatorsByTimeframe: byTimeframe });
-      persistIndicatorsV2({ paneOrder: s.paneOrder, byTimeframe });
+      persistIndicatorsV2({ paneOrder: s.paneOrder, paneStretch: s.paneStretch, byTimeframe });
     },
 
     setVolumeEnabled: (enabled) => {

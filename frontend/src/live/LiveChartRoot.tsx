@@ -85,6 +85,8 @@ import HighLowAnnotationOverlay from './HighLowAnnotationOverlay';
 import PriceLevelDotsOverlay from './PriceLevelDotsOverlay';
 import type { CandlePaneContext } from '../chart/projectors/candle';
 import type { PaneId } from '../chart/drawing/types';
+import type { PaneStretchMap } from '../chart/paneOrder';
+import type { BoundPaneSpec } from '../chart/paneSpecs';
 import { useDrawingHost } from '../chart/useDrawingHost';
 import type { TradeVolumePoc } from './tradeVolumePoc';
 
@@ -95,6 +97,11 @@ const TOKEN_SPEC = {
   border: ['--border', '#232329'],
   borderStrong: ['--border-strong', '#33333C'],
   paneDivider: ['--chart-pane-divider', '#3a3a42'],
+  // DESIGN.md §Tint: primary hover 는 accent 를 추적하는 --tint-selection 을
+  // 읽는다(테마별로 값이 다르므로 rgba 하드코딩 금지). lwc separator hover 는
+  // JS 문자열이라 CSS var 를 직접 못 받지만, resolveTokens 가 getComputedStyle
+  // 로 완성된 rgba 문자열을 준다(#703).
+  tintSelection: ['--tint-selection', 'rgba(240, 180, 41, 0.10)'],
 } as const;
 
 function chartGridOptions(
@@ -1030,7 +1037,10 @@ export function LiveChartRoot({
         textColor: tokens.fg,
         panes: {
           separatorColor: tokens.paneDivider,
-          separatorHoverColor: tokens.paneDivider,
+          // 호버는 워크스페이스 스플리터와 동일한 accent 어포던스 — DESIGN.md 의
+          // 승인된 --tint-selection(primary hover, accent 추적·테마별 값)이라
+          // 9px 핸들이 "굵은 선"이 아니라 은은한 하이라이트로 읽힌다(#703).
+          separatorHoverColor: tokens.tintSelection,
         },
       },
       grid: chartGridOptions(
@@ -1156,6 +1166,13 @@ export function LiveChartRoot({
   );
   // 사용자 소유 pane 순서(ADR-0114 §3) — paneSpecsForTimeframe 의 3번째 인자로 전달.
   const paneOrder = useLivePageStore((s) => s.paneOrder);
+  // 사용자 소유 Pane 크기 가중치(#703) — separator 드래그 결과의 SSOT.
+  const paneStretch = useLivePageStore((s) => s.paneStretch);
+  const setPaneStretch = useLivePageStore((s) => s.setPaneStretch);
+  // separator 드래그 진행 중 여부 — stretch 재적용 effect 의 가드.
+  const paneDragRef = useRef(false);
+  // 드래그 종료 시 pane index → PaneId 매핑에 쓰는 최신 spec 목록.
+  const paneSpecsRef = useRef<readonly BoundPaneSpec[]>([]);
   const askPeakEnabled = useLivePageStore((s) => s.askPeakEnabled);
   const bidPeakEnabled = useLivePageStore((s) => s.bidPeakEnabled);
   const askPeakWallHidden = useLivePageStore((s) => s.askPeakHidden);
@@ -1366,9 +1383,14 @@ export function LiveChartRoot({
   useEffect(() => {
     if (!chart || !cb) return;
     const specs = paneSpecsForTimeframe(timeframe, activePaneToggles, paneOrder);
+    paneSpecsRef.current = specs;
     let cancelled = false;
     const apply = () => {
       if (cancelled) return;
+      // separator 드래그 중에는 lwc 가 stretch 를 소유한다 — 여기서 재적용하면
+      // 드래그와 싸운다. 종료 시 setPaneStretch 가 paneStretch 를 갱신해 이
+      // effect 가 다시 돌며 최종값을 재적용한다(멱등).
+      if (paneDragRef.current) return;
       try {
         const panes = chart.panes();
         if (panes.length < specs.length) {
@@ -1376,10 +1398,12 @@ export function LiveChartRoot({
           return;
         }
         panes.forEach((p, i) => {
-          const f = specs[i]?.stretch;
-          if (f !== undefined && typeof p.setStretchFactor === 'function') {
-            p.setStretchFactor(f);
-          }
+          const spec = specs[i];
+          if (!spec || typeof p.setStretchFactor !== 'function') return;
+          // 저장된 Pane Stretch 우선, 없으면 스펙 기본값. 저장값 재적용은
+          // 멱등이라 cb identity churn(실시간 틱·refetch)이 사용자 드래그를
+          // 스펙 기본값으로 되돌리던 스냅백이 사라진다(#703).
+          p.setStretchFactor(paneStretch[spec.name] ?? spec.stretch);
         });
       } catch {
         // chart tearing down
@@ -1390,7 +1414,58 @@ export function LiveChartRoot({
       cancelled = true;
       cancelAnimationFrame(raf);
     };
-  }, [chart, activePaneToggles, cb, timeframe, paneOrder]);
+  }, [chart, activePaneToggles, cb, timeframe, paneOrder, paneStretch]);
+
+  // separator 드래그 캡처 — lwc(검증: 5.2.0)는 pane resize 종료 이벤트를 공개
+  // API 로 제공하지 않는다. 핸들은 inline `cursor: row-resize` 를 가진 유일한
+  // 차트 내부 요소이므로 pointerdown 에서 드래그 시작을 식별하고, pointerup 에서
+  // lwc 가 드래그 중 갱신한 각 pane 의 stretch 를 읽어 Pane Stretch 로 저장한다.
+  useEffect(() => {
+    const el = containerRef.current;
+    if (!el || !chart) return;
+    const isSeparatorHandle = (t: EventTarget | null): boolean =>
+      t instanceof HTMLElement && t.style.cursor === 'row-resize';
+    // 진행 중 드래그의 pointerup 리스너 핸들 — cleanup 이 언마운트 시점에도
+    // 확실히 떼도록 effect 스코프에 잡아둔다(드래그 도중 차트 teardown 시 window
+    // 리스너 누수 방지).
+    let activeOnUp: (() => void) | null = null;
+    const detachOnUp = () => {
+      if (!activeOnUp) return;
+      window.removeEventListener('pointerup', activeOnUp);
+      window.removeEventListener('pointercancel', activeOnUp);
+      activeOnUp = null;
+    };
+    const onPointerDown = (e: PointerEvent) => {
+      if (!isSeparatorHandle(e.target)) return;
+      paneDragRef.current = true;
+      const onUp = () => {
+        detachOnUp();
+        paneDragRef.current = false;
+        try {
+          const specs = paneSpecsRef.current;
+          const patch: PaneStretchMap = {};
+          chart.panes().forEach((p, i) => {
+            const name = specs[i]?.name;
+            if (name === undefined || typeof p.getStretchFactor !== 'function') return;
+            const f = p.getStretchFactor();
+            if (Number.isFinite(f) && f > 0) patch[name] = f;
+          });
+          if (Object.keys(patch).length > 0) setPaneStretch(patch);
+        } catch {
+          // chart torn down mid-drag
+        }
+      };
+      activeOnUp = onUp;
+      window.addEventListener('pointerup', onUp);
+      window.addEventListener('pointercancel', onUp);
+    };
+    el.addEventListener('pointerdown', onPointerDown, true);
+    return () => {
+      el.removeEventListener('pointerdown', onPointerDown, true);
+      detachOnUp();
+      paneDragRef.current = false;
+    };
+  }, [chart, setPaneStretch]);
 
   // 고저 극값 라벨이 피할 매도/매수 최대벽 도킹 라벨 입력(가격·선 끝 시각·텍스트 —
   // 픽셀 아님). 좌표 변환은 HighLowAnnotationOverlay 렌더 본문이 매 프레임 수행한다:
