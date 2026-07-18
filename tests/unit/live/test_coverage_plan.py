@@ -21,8 +21,9 @@ def test_plan_storage_targets_ws_targets_always_empty() -> None:
     assert plan.kiwoom_targets == ()
 
 
-def test_plan_storage_targets_kiwoom_disabled_drops_heatmap() -> None:
-    """kiwoom off(기본): 히트맵도 관심종목도 어디에도 안 담긴다 — 폴백 없음."""
+def test_plan_storage_targets_no_capacity_drops_everything() -> None:
+    """자격증명 부재(capacity 0, 앱키 없음): 히트맵도 관심종목도 어디에도 안 담긴다
+    — 폴백 없음. ADR-0118: 활성화 스위치는 폐지, capacity>0(키 존재)만이 게이트."""
     from hoga.live.coverage import plan_storage_targets
 
     plan = plan_storage_targets(
@@ -30,6 +31,7 @@ def test_plan_storage_targets_kiwoom_disabled_drops_heatmap() -> None:
         n_configured=1,
         per_account_max=2,
         heatmap_candidates=("H1", "H2"),
+        # kiwoom_capacity 미지정 → 0(앱키 없음) → 미수집.
     )
     assert plan.ws_targets == ()
     assert plan.kiwoom_targets == ()
@@ -46,7 +48,6 @@ def test_plan_storage_targets_kiwoom_cutover_watchlist_and_heatmap_to_kiwoom() -
         n_configured=1,
         per_account_max=2,
         heatmap_candidates=("H1", "H2"),
-        kiwoom_enabled=True,
         kiwoom_capacity=200,
     )
     assert plan.ws_targets == ()                                    # 관심종목 키움 이관
@@ -63,7 +64,6 @@ def test_plan_storage_targets_cutover_dedups_watchlist_and_self() -> None:
         n_configured=1,
         per_account_max=2,
         heatmap_candidates=("H1", "B", "H2", "H1"),
-        kiwoom_enabled=True,
         kiwoom_capacity=200,
     )
     assert plan.ws_targets == ()
@@ -81,7 +81,6 @@ def test_plan_storage_targets_cutover_whole_watchlist_regardless_of_ws_slots() -
         n_configured=1,
         per_account_max=1,          # 예전이면 ws=(A,), B·C 슬롯 밖 — 이젠 무관
         heatmap_candidates=("C", "H1"),
-        kiwoom_enabled=True,
         kiwoom_capacity=200,
     )
     assert plan.ws_targets == ()
@@ -97,30 +96,14 @@ def test_plan_storage_targets_cutover_capacity_prioritizes_watchlist() -> None:
         n_configured=1,
         per_account_max=2,
         heatmap_candidates=("H1", "H2", "H3"),
-        kiwoom_enabled=True,
         kiwoom_capacity=2,
     )
     assert plan.ws_targets == ()
     assert plan.kiwoom_targets == ("A", "B")   # 관심종목이 용량 채움 → 히트맵 전량 드롭
 
 
-def test_plan_storage_targets_kiwoom_off_collects_nothing() -> None:
-    """kiwoom off(전담 미이관)면 저장셋이 빈다 — KIS WS 폴백 삭제(ADR-0118 PR-G)."""
-    from hoga.live.coverage import plan_storage_targets
-
-    plan = plan_storage_targets(
-        ["A", "B", "C"],
-        n_configured=1,
-        per_account_max=2,
-        heatmap_candidates=("H1", "H2"),
-        kiwoom_enabled=False,
-    )
-    assert plan.ws_targets == ()           # KIS WS 삭제 — 폴백 없음
-    assert plan.kiwoom_targets == ()
-
-
 def test_plan_storage_targets_kiwoom_zero_capacity_collects_nothing() -> None:
-    """kiwoom_enabled=True인데 앱키 0(capacity=0)이면 히트맵은 미수집 — 폴백 없음."""
+    """앱키 0(capacity=0)이면 히트맵은 미수집 — 폴백 없음(ADR-0118: capacity가 곧 게이트)."""
     from hoga.live.coverage import plan_storage_targets
 
     plan = plan_storage_targets(
@@ -128,7 +111,6 @@ def test_plan_storage_targets_kiwoom_zero_capacity_collects_nothing() -> None:
         n_configured=1,
         per_account_max=2,
         heatmap_candidates=("H1", "H2"),
-        kiwoom_enabled=True,
         kiwoom_capacity=0,
     )
     assert plan.kiwoom_targets == ()

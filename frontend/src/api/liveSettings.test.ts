@@ -94,7 +94,7 @@ describe('usePatchLiveSettings — optimistic update', () => {
     const server = {
       ...BASE_SETTINGS,
       program_trade_storage_enabled: false,
-      kiwoom_enabled: true,
+      kis_rest_bypass_enabled: true,  // 패치가 보내지 않은 서버-유도 필드
     };
     vi.spyOn(client, 'apiCall').mockResolvedValue(server);
     const qc = new QueryClient();
@@ -102,7 +102,7 @@ describe('usePatchLiveSettings — optimistic update', () => {
 
     const { result } = renderHook(() => usePatchLiveSettings(), { wrapper: makeWrapper(qc) });
     await act(async () => {
-      await result.current.mutateAsync({ kiwoom_enabled: true });
+      await result.current.mutateAsync({ program_trade_storage_enabled: false });
     });
 
     expect(qc.getQueryData(LIVE_SETTINGS_KEY)).toEqual(server);

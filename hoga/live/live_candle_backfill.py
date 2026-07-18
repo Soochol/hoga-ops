@@ -110,8 +110,8 @@ class LiveMinuteCandleBackfill:
         self._data_dir = data_dir
         self._cache = cache
         self._scheduler = scheduler
-        # 키움 분봉 딥 백필 소스(ADR-0116). 호출마다 resolve — kiwoom_enabled off/
-        # 미배선이면 None → 전량 기존 KIS 경로(동작 불변). KRX venue만 대상(ka10080은
+        # 키움 분봉 딥 백필 소스(ADR-0116). 호출마다 resolve — 키움 미배선/무자격이면
+        # None → 전량 기존 KIS 경로(동작 불변). KRX venue만 대상(ka10080은
         # plain code로 KRX 캔들 반환). 실측: 900봉/콜 walk-back(KIS 120봉/콜의 7.5배).
         self._kiwoom_source = kiwoom_source
         self._sem = asyncio.Semaphore(concurrency)
@@ -606,7 +606,7 @@ class LiveMinuteCandleBackfill:
     async def _kiwoom_prefetch(
         self, venue: KisVenue, code: str, pending: list[str], *, today_s: str,
     ) -> None:
-        """kiwoom_enabled + KRX + pending 있으면 한 walk-back으로 pending 최과거일까지
+        """키움 소스(자격증명 존재) + KRX + pending 있으면 한 walk-back으로 pending 최과거일까지
         긁어 per-date 캐시에 store(키움우선). 실패/미도달 날짜는 캐시에 안 남아 KIS
         폴백(ADR-0109 사다리). ka10080은 now→과거 walk-back이라 range prefetch로 한 번에
         채운다(per-date 재walk는 KIS보다 나쁨 — 실측 2026-07-16).

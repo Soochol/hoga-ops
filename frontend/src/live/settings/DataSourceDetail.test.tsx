@@ -106,9 +106,16 @@ describe('DataSourceDetail (메인 Settings·복기뷰 공용)', () => {
   it('프로그램 순매수 저장 토글은 독립 토글로 PATCH한다 (storage_policy 폐지)', async () => {
     const qc = freshQc();
     qc.setQueryData(liveSettingsApi.LIVE_SETTINGS_KEY, SETTINGS);
-    const apiCall = vi.spyOn(apiClient, 'apiCall')
-      .mockResolvedValueOnce(SETTINGS)
-      .mockResolvedValueOnce({ ...SETTINGS, program_trade_storage_enabled: true });
+    // URL 라우팅: KiwoomStatusLine이 항상 /status를 호출하므로(활성화 스위치 폐지)
+    // Once-시퀀싱 대신 URL·method로 분기 — 상태 쿼리가 settings/patch mock을 소비하지
+    // 않게. GET은 초기 false(SETTINGS), PATCH만 true 응답(원 Once 시퀀싱과 동형).
+    const apiCall = vi.spyOn(apiClient, 'apiCall').mockImplementation((url: string, opts?: { method?: string }) =>
+      url.includes('/status')
+        ? Promise.resolve({ running: false, live_set: [], capture_reason: 'offline', kiwoom: null })
+        : opts?.method === 'PATCH'
+          ? Promise.resolve({ ...SETTINGS, program_trade_storage_enabled: true })
+          : Promise.resolve(SETTINGS),
+    );
 
     render(<DataSourceDetail variant="live" />, { wrapper: wrap(qc) });
     const toggle = await screen.findByRole('switch', { name: '프로그램 순매수 저장' });
@@ -124,28 +131,9 @@ describe('DataSourceDetail (메인 Settings·복기뷰 공용)', () => {
     }));
   });
 
-  it('키움 WS 병행 수집 토글을 렌더하고 PATCH한다', async () => {
-    // usePatchLiveSettings가 patchLiveSettings를 모듈 내부 참조로 호출하므로
-    // apiCall(그 하위)을 spy해 PATCH body를 검증한다.
-    const call = vi.spyOn(apiClient, 'apiCall').mockResolvedValue({ ...SETTINGS, kiwoom_enabled: true });
+  it('키움 상태줄에 연결 계정·수집 종목 수를 보인다 (활성화 스위치 폐지, ADR-0118)', async () => {
     const qc = freshQc();
-    qc.setQueryData(liveSettingsApi.LIVE_SETTINGS_KEY, { ...SETTINGS, kiwoom_enabled: false });
-
-    render(<DataSourceDetail variant="live" />, { wrapper: wrap(qc) });
-
-    const toggle = await screen.findByRole('switch', { name: '키움 WS 병행 수집' });
-    expect(toggle).toHaveAttribute('aria-checked', 'false');
-    fireEvent.click(toggle);
-    // 낙관적 업데이트로 즉시 켜짐 + PATCH body에 kiwoom_enabled:true.
-    await waitFor(() => expect(toggle).toHaveAttribute('aria-checked', 'true'));
-    expect(call).toHaveBeenCalledWith('/api/live/settings', expect.objectContaining({
-      method: 'PATCH', body: JSON.stringify({ kiwoom_enabled: true }),
-    }));
-  });
-
-  it('키움 ON일 때 상태줄에 연결 계정·수집 종목 수를 보인다', async () => {
-    const qc = freshQc();
-    // URL별 라우팅: settings는 kiwoom_enabled:true, status는 kiwoom 관측.
+    // 활성화 토글은 없다 — 상태줄은 status.kiwoom 관측에서 항상 조립된다.
     vi.spyOn(apiClient, 'apiCall').mockImplementation((url: string) => {
       if (url.includes('/status')) {
         return Promise.resolve({
@@ -153,7 +141,7 @@ describe('DataSourceDetail (메인 Settings·복기뷰 공용)', () => {
           kiwoom: { enabled: true, accounts_configured: 2, connected_accounts: 1, subscribed_count: 190, last_tick_ms: null, accounts: [] },
         });
       }
-      return Promise.resolve({ ...SETTINGS, kiwoom_enabled: true });
+      return Promise.resolve({ ...SETTINGS });
     });
 
     render(<DataSourceDetail variant="live" />, { wrapper: wrap(qc) });
@@ -163,15 +151,26 @@ describe('DataSourceDetail (메인 Settings·복기뷰 공용)', () => {
       expect(screen.getByTestId('kiwoom-status-line')).toHaveTextContent('연결 1/2계정'),
     );
     expect(screen.getByTestId('kiwoom-status-line')).toHaveTextContent('수집 190종목');
+    // 토글 스위치는 더 이상 렌더되지 않는다.
+    expect(screen.queryByRole('switch', { name: /키움/ })).toBeNull();
   });
 
-  it('키움 OFF일 때는 상태줄을 숨긴다', async () => {
+  it('키움 앱키 미설정(status.kiwoom=null)이면 .env 안내 문구를 보인다', async () => {
     const qc = freshQc();
-    qc.setQueryData(liveSettingsApi.LIVE_SETTINGS_KEY, { ...SETTINGS, kiwoom_enabled: false });
+    vi.spyOn(apiClient, 'apiCall').mockImplementation((url: string) => {
+      if (url.includes('/status')) {
+        return Promise.resolve({
+          running: false, live_set: [], capture_reason: 'offline', kiwoom: null,
+        });
+      }
+      return Promise.resolve({ ...SETTINGS });
+    });
 
     render(<DataSourceDetail variant="live" />, { wrapper: wrap(qc) });
 
-    await screen.findByRole('switch', { name: '키움 WS 병행 수집' });
-    expect(screen.queryByTestId('kiwoom-status-line')).toBeNull();
+    await waitFor(() =>
+      expect(screen.getByTestId('kiwoom-status-line')).toHaveTextContent('키움 앱키 미설정'),
+    );
+    expect(screen.getByTestId('kiwoom-status-line')).toHaveTextContent('KIWOOM_APP_KEY');
   });
 });

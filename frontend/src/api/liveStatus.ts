@@ -22,7 +22,7 @@ export interface LiveStatus {
   /** Codes the backend is *actively collecting* in the current cycle. Used for collection-status badge visibility. */
   live_set: string[];
   kis_rest_bypass_enabled: boolean;
-  // 키움 WS 수집 관측(ADR-0116). kiwoom_enabled off/미배선이면 null. 백엔드 신규
+  // 키움 WS 수집 관측(ADR-0116). 키움 미배선/무자격(앱키 없음)이면 null. 백엔드 신규
   // 필드라 optional — 설정 상태줄·커버리지 칩이 소비한다.
   kiwoom?: KiwoomStatus | null;
 }

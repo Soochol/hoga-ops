@@ -5,7 +5,7 @@ KIS lifecycle._build_conn 패턴의 키움판. lifecycle _state.streams(KIS 상�
 디커플링 불필요: 키움 LiveStream의 .ws는 None으로 두고 KiwoomWsClient는 여기 보관).
 
 저장 루트는 live_kiwoom(KIS live와 분리) → promote_kiwoom_today가 kiwoom_live parquet로
-승격. kiwoom_enabled off면 sync가 빈 타깃을 받아 conn 0 — 완전 휴면(생성 비용 없음).
+승격. 앱키 부재/타깃 비면 sync가 conn 0 — 완전 휴면(생성 비용 없음).
 kis_* 모듈은 import하지 않는다(ADR-0116 규율 1).
 """
 from __future__ import annotations
@@ -484,7 +484,7 @@ class KiwoomSessionManager:
         from .writer import LiveWriter  # noqa: PLC0415
 
         prov = kiwoom_runtime.ensure_token_provider_for_account(account_id, self._data_dir)
-        if prov is None:  # 키움 자격증명 부재 — 조용히 스킵(kiwoom_enabled인데 키 없음)
+        if prov is None:  # 키움 자격증명 부재 — 조용히 스킵(계좌는 설정됐으나 키 없음)
             _log.warning("live.kiwoom.no_creds account=%d — skip", account_id)
             return None
         stream = LiveStream(

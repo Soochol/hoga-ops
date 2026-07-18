@@ -966,17 +966,16 @@ class LiveSettingsResponse(BaseModel):
     # 큐에 적재할지. 기본 False — 스캔은 탐색적으로 반복 실행되므로 묵시적 큐 증가를 막고
     # 명시적 [수집 요청] 버튼을 1차 UX 로 둔다.
     screener_depth_autocollect: bool = False
-    # 키움 WS 실시간 스위치(ADR-0116 → ADR-0118). 기본 True — 키움이 실시간(호가·체결)의
-    # 유일한 소스이므로 on-by-default가 종착 상태다. 실제 활성화는 kiwoom_enabled AND
-    # n_kiwoom>0(자격증명 존재) 게이트라, 키 없는 배포는 이 값과 무관하게 휴면(조용한 skip).
-    kiwoom_enabled: bool = True
+    # 키움 WS 실시간 활성화 스위치는 폐지(ADR-0118, 2026-07-18). 실시간=키움 WS 유일
+    # 소스이므로 '쓸지 말지'는 선택지가 아니다 — 활성화는 오직 자격증명 존재(n_kiwoom>0)
+    # 로 게이트된다(키 있으면 항상 ON). 옛 live_settings.json의 kiwoom_enabled 키는
+    # pydantic extra-ignore로 무시된다(마이그레이션 불필요).
 
 
 class LiveSettingsUpdate(BaseModel):
     program_trade_storage_enabled: bool | None = None
     kis_rest_bypass_enabled: bool | None = None
     screener_depth_autocollect: bool | None = None
-    kiwoom_enabled: bool | None = None
 
 
 SignalAlertSource = Literal["ws", "rest"]

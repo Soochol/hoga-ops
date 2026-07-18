@@ -83,7 +83,7 @@ class LiveStatus(BaseModel):
     kis_rest_bypass_enabled: bool = False
     # 감독 태스크 헬스(ADR-0088) — 각 lifespan-소유 배경 태스크의 alive 여부.
     supervised_tasks: list[dict[str, object]] = Field(default_factory=list)
-    # 키움 WS 수집 관측(ADR-0116, PR-4). kiwoom_enabled off/미배선이면 None. additive.
+    # 키움 WS 수집 관측(ADR-0116, PR-4). 키움 미배선/무자격이면 None. additive.
     # 키(enabled/accounts_configured/connected_accounts/subscribed_count/last_tick_ms/
     # accounts 등)는 KiwoomSessionManager.status()가 정의.
     kiwoom: dict[str, object] | None = None

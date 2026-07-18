@@ -145,11 +145,12 @@ class FakeKiwoomSession:
 
 
 @pytest.mark.asyncio
-async def test_storage_runtime_kiwoom_enabled_routes_heatmap_to_kiwoom(
+async def test_storage_runtime_kiwoom_keys_route_heatmap_to_kiwoom(
     tmp_path, monkeypatch,
 ) -> None:
-    """kiwoom_enabled=True 칼 컷오버(ADR-0118 PR-E): 관심종목+히트맵 union이 kiwoom_session.
-    sync로 간다. 히트맵의 관심종목 중복은 dedup, 미지 종목은 드롭. KIS ws_targets는 빈 튜플."""
+    """키움 앱키 존재(configured_account_ids=[0,1]) → 칼 컷오버(ADR-0118 PR-E): 관심종목+
+    히트맵 union이 kiwoom_session.sync로 간다. 활성화 스위치는 폐지 — 키 존재가 곧 활성.
+    히트맵의 관심종목 중복은 dedup, 미지 종목은 드롭. KIS ws_targets는 빈 튜플."""
     _patch_common(monkeypatch)
     _seed_watchlist(tmp_path)
     _seed_heatmap(tmp_path, [
@@ -162,7 +163,6 @@ async def test_storage_runtime_kiwoom_enabled_routes_heatmap_to_kiwoom(
         lambda _q, limit=10_000: [Hit("005930"), Hit("000660"), Hit("035420"), Hit("005380")],
     )
     monkeypatch.setattr("hoga.live.kiwoom_runtime.configured_account_ids", lambda _d: [0, 1])
-    save_live_settings(tmp_path, LiveSettings(kiwoom_enabled=True))
 
     kiwoom = FakeKiwoomSession()
     state = FakeStorageState(kiwoom_session=kiwoom)
@@ -179,10 +179,11 @@ async def test_storage_runtime_kiwoom_enabled_routes_heatmap_to_kiwoom(
 
 
 @pytest.mark.asyncio
-async def test_storage_runtime_kiwoom_disabled_stops_existing_session(
+async def test_storage_runtime_kiwoom_no_keys_stops_existing_session(
     tmp_path, monkeypatch,
 ) -> None:
-    """kiwoom_enabled=False인데 세션이 살아있으면 stop(휴면 전환). 히트맵은 미수집."""
+    """키움 앱키 0개(configured_account_ids=[])면 세션이 살아있어도 stop(휴면 전환).
+    히트맵은 미수집 — 활성화는 키 존재만으로 게이트(ADR-0118, 설정 토글 폐지)."""
     _patch_common(monkeypatch)
     _seed_watchlist(tmp_path)
     _seed_heatmap(tmp_path, [("005380", "현대차")])
@@ -190,7 +191,7 @@ async def test_storage_runtime_kiwoom_disabled_stops_existing_session(
         "hoga.api.symbols.search",
         lambda _q, limit=10_000: [Hit("005930"), Hit("000660"), Hit("035420"), Hit("005380")],
     )
-    save_live_settings(tmp_path, LiveSettings())  # kiwoom off
+    monkeypatch.setattr("hoga.live.kiwoom_runtime.configured_account_ids", lambda _d: [])
 
     kiwoom = FakeKiwoomSession()
     state = FakeStorageState(kiwoom_session=kiwoom)
@@ -206,11 +207,11 @@ async def test_storage_runtime_kiwoom_disabled_stops_existing_session(
 
 
 @pytest.mark.asyncio
-async def test_storage_runtime_kiwoom_enabled_but_no_accounts_collects_nothing(
+async def test_storage_runtime_kiwoom_no_accounts_collects_nothing(
     tmp_path, monkeypatch,
 ) -> None:
-    """kiwoom_enabled=True인데 키움 앱키 0개(capacity=0)면 히트맵은 미수집 —
-    KIS REST 폴백은 존재하지 않는다(2026-07-17 정책). 세션 sync도 없음."""
+    """키움 앱키 0개(capacity=0)면 히트맵은 미수집 — KIS REST 폴백은 존재하지 않는다
+    (2026-07-17 정책). 세션 sync도 없음(활성화는 키 존재만으로 게이트, ADR-0118)."""
     _patch_common(monkeypatch)
     _seed_watchlist(tmp_path)
     _seed_heatmap(tmp_path, [("005380", "현대차")])
@@ -219,7 +220,6 @@ async def test_storage_runtime_kiwoom_enabled_but_no_accounts_collects_nothing(
         lambda _q, limit=10_000: [Hit("005930"), Hit("000660"), Hit("035420"), Hit("005380")],
     )
     monkeypatch.setattr("hoga.live.kiwoom_runtime.configured_account_ids", lambda _d: [])
-    save_live_settings(tmp_path, LiveSettings(kiwoom_enabled=True))
 
     kiwoom = FakeKiwoomSession()
     state = FakeStorageState(kiwoom_session=kiwoom)
@@ -246,7 +246,6 @@ async def test_storage_runtime_kiwoom_sync_failure_is_isolated(
         lambda _q, limit=10_000: [Hit("005930"), Hit("000660"), Hit("035420"), Hit("005380")],
     )
     monkeypatch.setattr("hoga.live.kiwoom_runtime.configured_account_ids", lambda _d: [0])
-    save_live_settings(tmp_path, LiveSettings(kiwoom_enabled=True))
 
     class ExplodingKiwoom(FakeKiwoomSession):
         async def sync(self, kiwoom_targets, *, n_accounts):

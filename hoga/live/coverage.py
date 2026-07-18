@@ -40,17 +40,18 @@ def plan_storage_targets(
     n_configured: int = 0,
     per_account_max: int | None = None,
     heatmap_candidates: tuple[str, ...] = (),
-    kiwoom_enabled: bool = False,
     kiwoom_capacity: int = 0,
 ) -> LiveStorageTargets:
     """저장셋 = 관심종목 + 히트맵, 키움 WS 전담(ADR-0118 PR-G 칼 컷오버).
 
-    KIS WebSocket 계층이 삭제되어 ``ws_targets``는 **항상 빈 튜플**이다.
+    KIS WebSocket 계층이 삭제되어 ``ws_targets``는 **항상 빈 튜플**이다. 실시간은 키움
+    WS가 유일 소스이므로 활성화 스위치가 따로 없다 — ``kiwoom_capacity``(=200×앱키수)가
+    양수면(자격증명 존재) 곧 활성이다.
 
-    **kiwoom 활성**(enabled + capacity>0): 관심종목+히트맵 dedup union이 kiwoom_targets
-    (저장셋, 용량까지 관심종목 우선). 용량 초과분은 미수집(경고, 계좌 추가로 대응).
+    **자격증명 존재**(capacity>0): 관심종목+히트맵 dedup union이 kiwoom_targets(저장셋,
+    용량까지 관심종목 우선). 용량 초과분은 미수집(경고, 계좌 추가로 대응).
 
-    **kiwoom off/무자격**(capacity 0): 저장셋이 비어 아무것도 수집하지 않는다
+    **자격증명 부재**(capacity 0): 저장셋이 비어 아무것도 수집하지 않는다
     (fix-forward — KIS REST/WS 폴백 없음).
 
     ``n_configured``/``per_account_max``는 삭제된 KIS WS 슬롯 산식의 잔재라 더는 쓰이지
@@ -61,7 +62,7 @@ def plan_storage_targets(
     heatmap = tuple(
         code for code in dict.fromkeys(heatmap_candidates) if code not in candidate_set
     )
-    if kiwoom_enabled and kiwoom_capacity > 0:
+    if kiwoom_capacity > 0:
         # 컷오버: 관심종목 먼저(우선) + 히트맵 = 저장셋.
         storage_set = candidates + heatmap
         kiwoom_targets = storage_set[:kiwoom_capacity]

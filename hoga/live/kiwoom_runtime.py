@@ -92,8 +92,8 @@ def ensure_minute_client(data_dir: Path):
     """account-0 KiwoomClient 싱글톤(분봉 ka10080). 키움 자격증명 없으면 None.
 
     분봉 백필 resolver가 매 range 요청 시 호출 — 한 번만 생성해 토큰 provider를
-    공유한다(발급 캐시 재사용, 실측 지정단말기 락 회피에 필수). kiwoom_enabled
-    게이트는 호출자(api._resolve_kiwoom_minute_fetcher)가 본다.
+    공유한다(발급 캐시 재사용, 실측 지정단말기 락 회피에 필수). 자격증명 부재 시
+    None 반환이 곧 게이트다(활성화 스위치는 폐지, ADR-0118).
     """
     global _minute_client  # noqa: PLW0603 — 모듈 싱글톤 지연 생성(토큰 provider 공유)
     if _minute_client is not None:
